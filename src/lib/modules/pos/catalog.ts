@@ -9,6 +9,8 @@
 //   • เงิน = สตางค์ Int · basePriceSatang null = "ยังไม่ตั้งราคา" (ไม่ใช้ต้นทุนแทน) · 0 = ขายฟรีจริง
 //   • ทุกการเขียนมีแถว AuditLog ในธุรกรรมเดียวกัน (ล็อกแถวก่อนอ่านค่าเดิม ⇒ สาย before→after ต่อกัน · C11)
 // 🔴 P1.1a: ไม่มี dual-write และไม่เขียนกลับตารางเดิม (P1.1b) — ข้อยกเว้นเดียว: backfill ตั้งคอลัมน์เชื่อมใหม่ (ไม่แตะ updatedAt)
+// 🔁 P1.1b (ส่วน A): ทางย้อน G4b — setPrice/updateProduct(ชื่อ)/archive/restore เขียนช่องเดิมช่องเดียวในธุรกรรมเดียว (writeBack*)
+//   ขาเดิม→แคตตาล็อกอยู่ที่ `catalog-legacy.ts` (ผู้เขียนคนที่สอง · ประตูเดิมเรียกด้วย tx ของตัวเอง) · ตัวแปลงเดียว (G3) อยู่ที่นี่
 // 🔴 ห้ามแตะ createSale/voidSale (service.ts) · register.ts — จอเดิมทุกจอยังอ่านตารางเดิมตามเดิม
 // หนี้ (N5 → P1.1b): อ่านตารางของโมดูลอื่นตรง (AppSystemUnit · InvItem · AccountProduct · AccountSystemLink · AccountSettings · Menu*)
 //   แบบเดียวกับ register.ts — P1.1b ตัดสินว่าจะย้ายไป facade หรือบันทึกเป็นข้อยกเว้น
@@ -364,11 +366,12 @@ async function unitInventory(tenantId: string, unitId: string, db: CatalogClient
 
 /**
  * สินค้าของระบบ POS ใน ctx — ไม่ใช่ = NOT_FOUND · ของสาขาที่ผู้กระทำเข้าไม่ได้ = NOT_FOUND
- * AUDIT-CLASS X6 + C11: `forUpdate` ล็อกแถว (SELECT … FOR UPDATE) ก่อนอ่านค่าเดิม ⇒ ผู้เขียนพร้อมกันต่อคิว · audit before→after ต่อกันเป็นสาย
+ * AUDIT-CLASS X6 + C11: `forUpdate` ล็อกแถว ก่อนอ่านค่าเดิม ⇒ ผู้เขียนพร้อมกันต่อคิว · audit before→after ต่อกันเป็นสาย
+ * P1.1b G7: `FOR NO KEY UPDATE` (บทเรียน HF-INV-1 — FOR UPDATE ชนกับ FK insert) · ลำดับล็อกทั้งสองทิศ = ล็อกร้าน (ถ้าต้อง) → PosProduct → ตารางเดิม
  */
 async function loadProduct(ctx: CatalogCtx, actor: MembershipCtx | null, id: unknown, db: CatalogClient, forUpdate = false): Promise<PosProduct> {
   if (typeof id !== "string" || !id) throw notFound();
-  if (forUpdate) await db.$queryRaw`SELECT id FROM "PosProduct" WHERE id = ${id} AND "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId} FOR UPDATE`;
+  if (forUpdate) await db.$queryRaw`SELECT id FROM "PosProduct" WHERE id = ${id} AND "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId} FOR NO KEY UPDATE`;
   // AUDIT-CLASS X2: id + tenantId + systemId ในคำสั่งเดียว — productId ของร้านอื่น/ระบบอื่น = ไม่พบ
   const p = await db.posProduct.findFirst({ where: { id, tenantId: ctx.tenantId, systemId: ctx.systemId } });
   if (!p) throw notFound();
@@ -418,6 +421,14 @@ async function tryLockTenant(tx: Prisma.TransactionClient, tenantId: string): Pr
     await new Promise((res) => setTimeout(res, Math.max(1, Math.min(left, Math.round(step * (0.5 + Math.random()))))));
     step = Math.min(step * 2, 400);
   }
+}
+
+/**
+ * P1.1b G7: ล็อกร้านแบบมีงบสำหรับซิงก์ของประตูเดิมที่ "สร้างลิงก์ InvItem ใหม่" (แถวเว็บร้านเองที่ผูก InvItem นอก POS แรก · C9b)
+ * — ล็อกเดียวกับ createProduct/ensureForInvItem/backfill · ไม่ว่าง = BUSY (ลองใหม่ทั้งธุรกรรม) · ไม่ให้สิทธิ์อะไรเพิ่ม (แค่ต่อคิว)
+ */
+export async function tryLockCatalogTenant(tx: Prisma.TransactionClient, tenantId: string): Promise<void> {
+  await tryLockTenant(tx, tenantId);
 }
 
 async function audit(
@@ -578,6 +589,173 @@ function strictAp(inv: { accountProductId: string | null } | null, apById: Map<s
 /** C8: VAT คัดลอกเมื่อสมุดที่ผูกจด VAT เท่านั้น — ไม่จด/ไม่มีบัญชี = null (ตามตั้งค่า VAT ของระบบตอนขาย · P1.6) */
 const vatOf = (ap: ApRow | null, book: BookInfo): number | null => (ap && book.vatRegistered ? ap.vatRateBp : null);
 
+// ═══════════════════ P1.1b G3 · ตัวแปลงเดียว "แถวเดิม → ช่องของ PosProduct" (backfill + ซิงก์ใช้ร่วม · ฟังก์ชันบริสุทธิ์ — มติ 8) ═══════════════════
+
+/** InvItem ที่ตัวแปลงต้องรู้ */
+export type InvLite = { id: string; systemId: string; name: string; kind: string; priceSatang: number; costSatang: number; archivedAt: Date | null; onHand: number; accountProductId: string | null; sortOrder: number };
+export type { ApRow, BookInfo };
+type MenuLite = {
+  unitId: string; name: string; nameEn: string | null; basePrice: number; images: unknown; sortOrder: number; stationId: string;
+  stockQty: number | null; dailyStockQty: number | null; isOutOfStock: boolean; archivedAt: Date | null; status: string; updatedAt: Date;
+};
+type ShopLite = { unitId: string; name: string; priceSatang: number; imageUrl: string | null; sortOrder: number; active: boolean };
+type MenuCatLite = { unitId: string; name: string; nameEn: string | null; sortOrder: number; isVisible: boolean; availableFrom: string | null; availableTo: string | null; archivedAt: Date | null };
+
+/** แถวของ InvItem (C7 ราคา · C8 VAT · ชนิดตาม InvItem · trackStock AUTO · เก็บถาวรตาม InvItem) — ใช้ใน backfill · ensureForInvItem · ซิงก์ */
+export function invItemProductFields(inv: InvLite, ap: ApRow | null, book: BookInfo) {
+  const price = initialPrice({ ap, inv });
+  const kind: PosProductKind = inv.kind === "SERVICE" ? "SERVICE" : "PRODUCT";
+  return {
+    price,
+    data: { invItemId: inv.id, kind, name: inv.name, basePriceSatang: price.price, vatRateBp: vatOf(ap, book), sortOrder: inv.sortOrder, trackStock: null, archivedAt: inv.archivedAt },
+  };
+}
+
+/** แถวของเมนู (MENU · สาขาเมนู · ไม่ผูก InvItem ตรง · ราคา basePrice · สต็อกเมนูสำเนาตอนสร้างเท่านั้น — G8 ตัวนับสดไม่ mirror) */
+export function menuItemProductFields(m: MenuLite, categoryId: string | null) {
+  const price = initialPrice({ own: m.basePrice });
+  return {
+    price,
+    data: {
+      unitId: m.unitId, invItemId: null, kind: "MENU" as PosProductKind, name: m.name, nameEn: m.nameEn, categoryId, basePriceSatang: price.price,
+      images: toStrings(m.images), sortOrder: m.sortOrder, trackStock: null, stationId: m.stationId, stockQty: m.stockQty, dailyStockQty: m.dailyStockQty,
+      isOutOfStock: m.isOutOfStock, archivedAt: m.archivedAt ?? (m.status === "ARCHIVED" ? m.updatedAt : null),
+    },
+  };
+}
+
+/** แถวของเว็บร้านเอง (C9b/c/d) — ราคา C7 (AP ของ InvItem ที่ผูก ถ้ามี) → ราคาเว็บ · ปิดขาย = ปิดที่สาขานั้น (ไม่ใช่เก็บถาวร · มติ 5) */
+export function shopProductFields(sp: ShopLite, inv: InvLite | null, ap: ApRow | null, book: BookInfo) {
+  const price = initialPrice({ ap, inv, own: sp.priceSatang });
+  return {
+    price,
+    data: {
+      unitId: sp.unitId, invItemId: inv ? inv.id : null, kind: (inv?.kind === "SERVICE" ? "SERVICE" : "PRODUCT") as PosProductKind, name: sp.name,
+      basePriceSatang: price.price, vatRateBp: vatOf(ap, book), images: sp.imageUrl ? [sp.imageUrl] : [], sortOrder: sp.sortOrder, trackStock: null,
+      unavailableUnitIds: sp.active ? [] : [sp.unitId],
+    },
+  };
+}
+
+/** หมวดเมนู → PosCategory ของสาขานั้น (1 ต่อ 1 · กุญแจธรรมชาติ ระบบ+สาขา+ชื่อ) */
+export function menuCategoryFields(mc: MenuCatLite) {
+  return {
+    unitId: mc.unitId, name: mc.name, nameEn: mc.nameEn, sortOrder: mc.sortOrder, isVisible: mc.isVisible,
+    availableFrom: mc.availableFrom, availableTo: mc.availableTo, archivedAt: mc.archivedAt,
+  };
+}
+
+// ═══════════════════ P1.1b · แหล่งเดิมของแถวแคตตาล็อก (อ่านล้วน — ใช้ทั้งทางย้อน G4b ใน catalog.ts และซิงก์ใน catalog-legacy.ts) ═══════════════════
+
+/** แถวนี้มาจากอะไร: เมนู · InvItem ที่ขายผ่าน POS นี้ (แถวร่วม C9a) · เว็บร้านเอง (C9b/c/d) · แคตตาล็อกล้วน */
+export type LegacySource =
+  | { type: "menu"; menuItemId: string }
+  | { type: "inv"; inv: InvLite; ap: ApRow | null; book: BookInfo }
+  | { type: "shop"; shopIds: string[]; inv: InvLite | null; ap: ApRow | null; book: BookInfo }
+  | { type: "native" };
+
+const INV_LITE = { id: true, systemId: true, name: true, kind: true, priceSatang: true, costSatang: true, archivedAt: true, onHand: true, accountProductId: true, sortOrder: true } as const;
+const AP_ROW = { id: true, systemId: true, salePrice: true, posPrice: true, posEnabled: true, vatRateBp: true, archivedAt: true } as const;
+
+/** AccountProduct แบบลิ้นชัก (C7 strictAp) ของ InvItem ในสมุดที่ผูก POS นี้ */
+export async function strictApOf(tenantId: string, inv: InvLite | null, book: BookInfo, db: CatalogClient): Promise<ApRow | null> {
+  if (!inv?.accountProductId) return null;
+  const rows = await db.accountProduct.findMany({ where: { tenantId, id: inv.accountProductId }, select: AP_ROW });
+  return strictAp(inv, new Map(rows.map((a) => [a.id, a])), book);
+}
+export async function bookOfPosSystem(tenantId: string, posSystemId: string, db: CatalogClient): Promise<BookInfo> {
+  return bookOfPos(tenantId, posSystemId, db);
+}
+
+/** จัดชนิดแถว (ทุกคำสั่งกรอง tenantId) — ตัวตัดสินเดียวของ "แถวนี้มีต้นฉบับเดิมที่ไหน" */
+export async function legacySourceOf(row: { id: string; tenantId: string; systemId: string; kind: PosProductKind; invItemId: string | null }, db: CatalogClient): Promise<LegacySource> {
+  const t = row.tenantId;
+  if (row.kind === "MENU") {
+    const m = await db.menuItem.findFirst({ where: { tenantId: t, posProductId: row.id }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { id: true } });
+    return m ? { type: "menu", menuItemId: m.id } : { type: "native" };
+  }
+  const inv = row.invItemId ? await db.invItem.findFirst({ where: { id: row.invItemId, tenantId: t }, select: INV_LITE }) : null;
+  const sellsHere = !!inv && (await inventorySystemsOfPos(t, row.systemId, db)).includes(inv.systemId);
+  const shops = sellsHere ? [] : await db.shopProduct.findMany({ where: { tenantId: t, posProductId: row.id }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { id: true } });
+  if (!sellsHere && !shops.length) return { type: "native" };
+  const book = await bookOfPos(t, row.systemId, db);
+  const ap = await strictApOf(t, inv, book, db);
+  if (sellsHere && inv) return { type: "inv", inv, ap, book };
+  return { type: "shop", shopIds: shops.map((s) => s.id), inv, ap, book };
+}
+
+/**
+ * G4b + มติ 11 — ราคาจากแคตตาล็อกไปลงช่องเดิม "ช่องเดียว" = ช่องที่ชนะลำดับ C7 (ราคาที่ลิ้นชักคิด):
+ *   MENU → MenuItem.basePrice · มี AP แบบลิ้นชัก (สินค้า หรือ AP ที่ราคาขาย/ราคา POS กำลังชนะ) → AccountProduct.salePrice ·
+ *   บริการไม่มี AP ที่ชนะ → InvItem.priceSatang · แถวเว็บร้านเอง → ShopProduct.priceSatang · สินค้าไม่มี AP / แคตตาล็อกล้วน → PosProduct อย่างเดียว (X8.1)
+ */
+function priceTarget(src: LegacySource): "MenuItem" | "AccountProduct" | "InvItem" | "ShopProduct" | null {
+  if (src.type === "menu") return "MenuItem";
+  if (src.type === "native") return null;
+  const ap = src.ap;
+  const apWins = !!ap && ((legalPrice(ap.salePrice) && ap.salePrice > 0) || (ap.posEnabled && legalPrice(ap.posPrice) && ap.posPrice > 0));
+  if (src.type === "inv") {
+    if (ap && (apWins || src.inv.kind !== "SERVICE")) return "AccountProduct";
+    return src.inv.kind === "SERVICE" ? "InvItem" : null;
+  }
+  if (ap && apWins) return "AccountProduct";
+  return src.shopIds.length ? "ShopProduct" : null;
+}
+
+/** ทางย้อนของ setPrice — คำสั่งเดียวบนตารางเดิม (หลังล็อกแถว PosProduct แล้ว · ลำดับล็อก G7) */
+async function writeBackPrice(tx: Prisma.TransactionClient, tenantId: string, src: LegacySource, price: number): Promise<void> {
+  switch (priceTarget(src)) {
+    case "MenuItem":
+      if (src.type === "menu") await tx.menuItem.updateMany({ where: { id: src.menuItemId, tenantId }, data: { basePrice: price } });
+      return;
+    case "AccountProduct":
+      if (src.type !== "native" && src.type !== "menu" && src.ap) await tx.accountProduct.updateMany({ where: { id: src.ap.id, tenantId }, data: { salePrice: price } });
+      return;
+    case "InvItem":
+      if (src.type === "inv") await tx.invItem.updateMany({ where: { id: src.inv.id, tenantId }, data: { priceSatang: price } });
+      return;
+    case "ShopProduct":
+      if (src.type === "shop") await tx.shopProduct.updateMany({ where: { id: { in: src.shopIds }, tenantId }, data: { priceSatang: price } });
+      return;
+    default:
+      return;
+  }
+}
+
+/** ทางย้อนของ updateProduct (ชื่อ) — เมนู: name/nameEn · InvItem: name (มติ 12) · เว็บร้าน: name · แคตตาล็อกล้วน: ไม่มี */
+async function writeBackNames(tx: Prisma.TransactionClient, tenantId: string, src: LegacySource, names: { name?: string; nameEn?: string | null }): Promise<void> {
+  if (src.type === "menu") {
+    const data: { name?: string; nameEn?: string | null } = {};
+    if (names.name !== undefined) data.name = names.name;
+    if (names.nameEn !== undefined) data.nameEn = names.nameEn;
+    if (Object.keys(data).length) await tx.menuItem.updateMany({ where: { id: src.menuItemId, tenantId }, data });
+  } else if (src.type === "inv" && names.name !== undefined) await tx.invItem.updateMany({ where: { id: src.inv.id, tenantId }, data: { name: names.name } });
+  else if (src.type === "shop" && names.name !== undefined && src.shopIds.length) await tx.shopProduct.updateMany({ where: { id: { in: src.shopIds }, tenantId }, data: { name: names.name } });
+}
+
+/** ทางย้อนของ archive/restore (G6 + มติ 4): เมนู = ARCHIVED+archivedAt / ACTIVE+null · เว็บร้าน = active · InvItem = แคตตาล็อกอย่างเดียว */
+async function writeBackArchived(tx: Prisma.TransactionClient, tenantId: string, src: LegacySource, archivedAt: Date | null): Promise<void> {
+  if (src.type === "menu")
+    await tx.menuItem.updateMany({ where: { id: src.menuItemId, tenantId }, data: archivedAt ? { status: "ARCHIVED", archivedAt } : { status: "ACTIVE", archivedAt: null } });
+  else if (src.type === "shop" && src.shopIds.length) await tx.shopProduct.updateMany({ where: { id: { in: src.shopIds }, tenantId }, data: { active: archivedAt === null } });
+}
+
+/**
+ * G8 + มติ 3 — ความพร้อมขายสดของแถว MENU = MenuItem (86 มือ หรือ stockQty ≤ 0 · กติกาเดียวกับ orderingMenu) · คืน Set ของ productId ที่หมด
+ * ผู้อ่านทุกตัว (listForUnit/byBarcode ผ่าน toViews · หน้าขายใหม่ registerCatalog) ใช้ฟังก์ชันนี้ — ไม่อ่าน PosProduct.isOutOfStock ของแถว MENU
+ */
+export async function menuSoldOutIds(tenantId: string, rows: { id: string; kind: PosProductKind }[], db: CatalogClient): Promise<Set<string>> {
+  const ids = rows.filter((r) => r.kind === "MENU").map((r) => r.id);
+  if (!ids.length) return new Set();
+  const ms = await db.menuItem.findMany({ where: { tenantId, posProductId: { in: ids } }, select: { posProductId: true, isOutOfStock: true, stockQty: true } });
+  return new Set(ms.filter((m) => m.isOutOfStock || (m.stockQty != null && m.stockQty <= 0)).map((m) => m.posProductId as string));
+}
+/** availability ของแถวที่สาขาหนึ่ง: ปิดขายรายสาขา · MENU = สดจาก MenuItem · อื่น ๆ = PosProduct.isOutOfStock (เดิม) */
+export function rowAvailable(p: { id: string; kind: PosProductKind; unavailableUnitIds: string[] | null; isOutOfStock: boolean }, unitId: string, menuSoldOut: Set<string>): boolean {
+  if ((p.unavailableUnitIds ?? []).includes(unitId)) return false;
+  return p.kind === "MENU" ? !menuSoldOut.has(p.id) : !p.isOutOfStock;
+}
+
 // ═══════════════════ ตัวอ่าน: listForUnit · byBarcode ═══════════════════
 
 type Cursor = { n: string; i: string };
@@ -607,10 +785,12 @@ async function toViews(tenantId: string, unitId: string, unitInv: string | null,
   if (!rows.length) return [];
   const ids = rows.map((r) => r.id);
   const invIds = [...new Set(rows.map((r) => r.invItemId).filter((x): x is string => !!x))];
-  const [items, links, recipes] = await Promise.all([
+  const [items, links, recipes, menuSoldOut] = await Promise.all([
     invIds.length ? db.invItem.findMany({ where: { tenantId, id: { in: invIds } }, select: { id: true, onHand: true, barcode: true, sku: true } }) : Promise.resolve([]),
     db.posProductOptionGroup.findMany({ where: { tenantId, productId: { in: ids } }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] }),
     db.recipeLine.findMany({ where: { tenantId, productId: { in: ids } }, orderBy: [{ createdAt: "asc" }] }),
+    // P1.1b มติ 3: แถว MENU อ่านความพร้อมขายสดจาก MenuItem (G8 — ตัวนับสดไม่ mirror)
+    menuSoldOutIds(tenantId, rows, db),
   ]);
   const groupIds = [...new Set(links.map((l) => l.groupId))];
   const groups = groupIds.length
@@ -671,7 +851,7 @@ async function toViews(tenantId: string, unitId: string, unitInv: string | null,
       variants: [],
       recipe: recipesBy.get(p.id) ?? [],
       channelPrices: [],
-      availability: { [unitId]: !(p.unavailableUnitIds ?? []).includes(unitId) && !p.isOutOfStock },
+      availability: { [unitId]: rowAvailable(p, unitId, menuSoldOut) },
       stock: inv ? { [unitId]: inv.onHand } : {},
     };
   });
@@ -842,8 +1022,8 @@ const ownHas = (o: Record<string, unknown>, k: string) => Object.prototype.hasOw
 /**
  * เพิ่มสินค้าในแคตตาล็อก (สิทธิ์ pos.product.manage ตามขอบเขต D1) — kind ปริยาย PRODUCT (ผูก InvItem แล้วไม่ส่ง = ชนิดของ InvItem)
  * D6: สินค้าธรรมดา (ไม่ผูก InvItem · ไม่มีบาร์โค้ด) ไม่จับล็อกร้าน — ไม่ต้องรอ backfill ที่ถือล็อกอยู่
- * R5: F6 อ่านเฉพาะคีย์ของตัวเอง (คีย์แปลก/ไม่ใช่ออบเจกต์ = VALIDATION) · F3 ผูกคลัง/มีบาร์โค้ด = ล็อกร้านแบบมีงบเป็นคำสั่งแรกของธุรกรรม
- *     (ตัดสินจากข้อมูลเข้าล้วน — ระหว่างรอไม่ถืออะไร) ไม่ว่าง = BUSY · F1 InvItem ที่มีแถวเก็บถาวรอยู่ = CONFLICT ที่บอกให้กู้คืน (ไม่มี id)
+ * R5: F6 อ่านเฉพาะคีย์ของตัวเอง (คีย์แปลก/ไม่ใช่ออบเจกต์ = VALIDATION) · F3 ผูกคลัง/มีบาร์โค้ด = ล็อกร้านแบบมีงบ (ตัดสินจากข้อมูลเข้าล้วน) ไม่ว่าง = BUSY
+ *     P1.1b G12: ล็อกหลังตรวจสิทธิ์ (การอ่านก่อนหน้าไม่ถือล็อกแถวใด ⇒ ระหว่างรอล็อกร้านยังไม่ถืออะไร) · F1 InvItem ที่มีแถวเก็บถาวรอยู่ = CONFLICT ที่บอกให้กู้คืน (ไม่มี id)
  */
 export async function createProduct(ctx: CatalogCtx, input: CreateProductInput, client: CatalogClient = prisma): Promise<PosProduct> {
   return boundary(async () => {
@@ -853,14 +1033,15 @@ export async function createProduct(ctx: CatalogCtx, input: CreateProductInput, 
     const wantsLock =
       (ownHas(raw, "invItemId") && raw.invItemId !== undefined && raw.invItemId !== null) || (ownHas(raw, "barcode") && typeof raw.barcode === "string" && raw.barcode.trim() !== "");
     return inTx(client, async (tx) => {
-      // AUDIT-CLASS X6 + R5 F3: แถวผูกคลัง/บาร์โค้ด ตรวจซ้ำ + เขียน ภายใต้ล็อกร้าน (unique ของ DB เป็นตาข่ายชั้นสุดท้าย → CONFLICT)
-      if (wantsLock) await tryLockTenant(tx, ctx.tenantId);
+      // P1.1b G12: ตรวจคีย์ของตัวเอง (VALIDATION) ได้ก่อนตรวจสิทธิ์ · ล็อกร้านอยู่ "หลัง" ตรวจสิทธิ์ — ผู้ไม่มีสิทธิ์ไม่ต้องรอ/แย่งล็อก
       await assertPosSystem(ctx, tx);
       const actor = await actorOf(ctx, tx);
       const i = ownFields(input, CREATE_KEYS, "สินค้า", "มีช่องที่เพิ่มสินค้าผ่านทางนี้ไม่ได้ (เช่น SKU อยู่ที่สินค้าคลัง) — ยังไม่ได้บันทึกอะไร");
       const unitId = i.unitId === undefined || i.unitId === null ? null : await assertUnit(ctx, actor, i.unitId, tx);
       const wantInv = typeof i.invItemId === "string" && i.invItemId ? i.invItemId : null;
       await requireRowWrite(ctx, actor, { unitId, invItemId: wantInv }, PERM_MANAGE, tx);
+      // AUDIT-CLASS X6 + R5 F3: แถวผูกคลัง/บาร์โค้ด ตรวจซ้ำ + เขียน ภายใต้ล็อกร้าน (unique ของ DB เป็นตาข่ายชั้นสุดท้าย → CONFLICT)
+      if (wantsLock) await tryLockTenant(tx, ctx.tenantId);
       const name = cleanName(i.name, "ชื่อสินค้า");
       const nameEn = cleanOptional(i.nameEn, "ชื่อภาษาอังกฤษ");
       if (i.kind !== undefined && !PRODUCT_KINDS.includes(i.kind as PosProductKind)) throw invalid("ชนิดสินค้าไม่ถูกต้อง");
@@ -979,6 +1160,13 @@ export async function updateProduct(ctx: CatalogCtx, id: string, patch: UpdatePr
           "updatedAt" = now()
           WHERE id = ${before.id} AND "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId}`;
       }
+      // P1.1b G4b + มติ 12: ชื่อไปลงช่องเดิมของแถว (เมนู name/nameEn · InvItem name · เว็บร้าน name) ในธุรกรรมเดียว · ช่องอื่นไม่มีทางย้อน
+      if ("name" in changed || "nameEn" in changed) {
+        const names: { name?: string; nameEn?: string | null } = {};
+        if ("name" in changed) names.name = changed.name as string;
+        if ("nameEn" in changed) names.nameEn = changed.nameEn as string | null;
+        await writeBackNames(tx, ctx.tenantId, await legacySourceOf(before, tx), names);
+      }
       const prev: Record<string, unknown> = {};
       for (const k of Object.keys(changed)) prev[k] = k === "availability" ? before.unavailableUnitIds : (before as unknown as Record<string, unknown>)[k];
       await audit(tx, ctx, "pos.product.update", "PosProduct", before.id, prev, changed);
@@ -988,7 +1176,7 @@ export async function updateProduct(ctx: CatalogCtx, id: string, patch: UpdatePr
 }
 
 /**
- * ตั้งราคาขาย (สตางค์ Int ≥ 0 · 0 = ฟรี) — สิทธิ์ pos.product.setPrice (+ ขอบเขตสาขา C4) · P1.1a ไม่เขียนกลับตารางเดิม (P1.1b)
+ * ตั้งราคาขาย (สตางค์ Int ≥ 0 · 0 = ฟรี) — สิทธิ์ pos.product.setPrice (+ ขอบเขตสาขา C4) · P1.1b: เขียนช่องเดิมที่ชนะลำดับราคาด้วย (writeBackPrice)
  * R5 F1: แถวเก็บถาวรตั้งราคาได้ (กู้คืนแล้วขายราคาปัจจุบัน — ตรึงใน S3.50)
  */
 export async function setPrice(
@@ -1008,6 +1196,8 @@ export async function setPrice(
       // AUDIT-CLASS X4: จำนวนเต็มสตางค์เท่านั้น — ติดลบ/เศษสตางค์/NaN/สตริง = VALIDATION (ราคาเดิมไม่เปลี่ยน)
       if (!isSatang(priceSatang)) throw invalid("ราคาต้องเป็นจำนวนเต็มสตางค์ไม่ติดลบ");
       await tx.posProduct.updateMany({ where: { id: before.id, tenantId: ctx.tenantId, systemId: ctx.systemId }, data: { basePriceSatang: priceSatang } });
+      // P1.1b G4b: ช่องเดิมช่องเดียวที่ชนะลำดับ C7 (มติ 11) — ธุรกรรมเดียว · ไม่สร้าง AccountProduct (X8.1) · ไม่เรียกประตูเดิม (G4c)
+      await writeBackPrice(tx, ctx.tenantId, await legacySourceOf(before, tx), priceSatang);
       await audit(tx, ctx, "pos.product.price", "PosProduct", before.id, { basePriceSatang: before.basePriceSatang }, { basePriceSatang: priceSatang });
       return { id: before.id, basePriceSatang: priceSatang };
     });
@@ -1027,6 +1217,8 @@ export async function archive(ctx: CatalogCtx, id: string, client: CatalogClient
       const r = await tx.posProduct.updateMany({ where: { id: before.id, tenantId: ctx.tenantId, systemId: ctx.systemId, archivedAt: null }, data: { archivedAt: new Date() } });
       const stored = await tx.posProduct.findFirst({ where: { id: before.id, tenantId: ctx.tenantId, systemId: ctx.systemId }, select: { archivedAt: true } });
       if (!stored?.archivedAt) throw notFound();
+      // P1.1b G6 + มติ 4: เมนู → ARCHIVED · เว็บร้าน → active=false · แถว InvItem = แคตตาล็อกอย่างเดียว (ของยังอยู่ในคลัง)
+      if (r.count === 1) await writeBackArchived(tx, ctx.tenantId, await legacySourceOf(before, tx), stored.archivedAt);
       if (r.count === 1) await audit(tx, ctx, "pos.product.archive", "PosProduct", before.id, { archivedAt: null }, { archivedAt: stored.archivedAt.toISOString() });
       return { id: before.id, archivedAt: stored.archivedAt };
     });
@@ -1060,6 +1252,8 @@ export async function restore(ctx: CatalogCtx, id: string, client: CatalogClient
       }
       // AUDIT-CLASS X6 + C11: ล็อกแถวก่อนอ่านค่าเดิม ⇒ กดพร้อมกันได้ audit แถวเดียว
       const before = await loadProduct(ctx, actor, id, tx, true);
+      // P1.1b G6 / N1: ตรวจสิทธิ์ซ้ำบนแถวที่ "ล็อกแล้ว" — แถวถูกย้ายขอบเขตระหว่างรอล็อก = ตัดสินจากค่าปัจจุบัน
+      await requireRowWrite(ctx, actor, before, PERM_MANAGE, tx);
       if (!before.archivedAt) return { id: before.id, archivedAt: null, restored: false };
       if (before.barcode) {
         if (!locked) await tryLockTenant(tx, ctx.tenantId);
@@ -1069,7 +1263,10 @@ export async function restore(ctx: CatalogCtx, id: string, client: CatalogClient
         where: { id: before.id, tenantId: ctx.tenantId, systemId: ctx.systemId, archivedAt: { not: null } },
         data: { archivedAt: null },
       });
-      if (r.count === 1) await audit(tx, ctx, "pos.product.restore", "PosProduct", before.id, { archivedAt: before.archivedAt.toISOString() }, { archivedAt: null });
+      if (r.count === 1) {
+        await writeBackArchived(tx, ctx.tenantId, await legacySourceOf(before, tx), null);
+        await audit(tx, ctx, "pos.product.restore", "PosProduct", before.id, { archivedAt: before.archivedAt.toISOString() }, { archivedAt: null });
+      }
       return { id: before.id, archivedAt: null, restored: r.count === 1 };
     });
   });
@@ -1111,23 +1308,10 @@ export async function ensureForInvItem(ctx: CatalogCtx, invItemId: string, clien
           })
         : [];
       const ap = strictAp(inv, new Map(apRows.map((a) => [a.id, a])), book);
-      const kind: PosProductKind = inv.kind === "SERVICE" ? "SERVICE" : "PRODUCT";
-      const r = await tx.posProduct.createMany({
-        data: [{
-          id: randomUUID(),
-          tenantId: ctx.tenantId,
-          systemId: ctx.systemId,
-          invItemId: inv.id,
-          kind,
-          name: inv.name,
-          basePriceSatang: initialPrice({ ap, inv }).price,
-          vatRateBp: vatOf(ap, book),
-          sortOrder: inv.sortOrder,
-          trackStock: null,
-          archivedAt: inv.archivedAt,
-        }],
-        skipDuplicates: true,
-      });
+      // P1.1b G3: ตัวแปลงเดียวกับ backfill (invItemProductFields)
+      const { data } = invItemProductFields(inv, ap, book);
+      const kind = data.kind;
+      const r = await tx.posProduct.createMany({ data: [{ id: randomUUID(), tenantId: ctx.tenantId, systemId: ctx.systemId, ...data }], skipDuplicates: true });
       const row = await tx.posProduct.findFirst({
         where: { tenantId: ctx.tenantId, systemId: ctx.systemId, invItemId: inv.id },
         select: { id: true, basePriceSatang: true, archivedAt: true },
@@ -1143,6 +1327,7 @@ export async function ensureForInvItem(ctx: CatalogCtx, invItemId: string, clien
  * เพิ่มหมวด (ทุกสาขา หรือเฉพาะสาขา) — สิทธิ์ pos.product.manage ตามขอบเขต D1 (หมวดทุกสาขา = ทุกสาขาของ POS) · ไม่จับล็อกร้าน (D6)
  * ชื่อซ้ำในระบบ+สาขาเดียวกัน = CONFLICT (unique ของสาขา + M5 partial unique ของหมวดทุกสาขา — แข่งกันก็ได้ CONFLICT)
  */
+const CATEGORY_KEYS: ReadonlySet<string> = new Set(["name", "nameEn", "unitId", "sortOrder"]);
 export async function createCategory(
   ctx: CatalogCtx,
   input: { name: string; nameEn?: string | null; unitId?: string | null; sortOrder?: number },
@@ -1153,7 +1338,8 @@ export async function createCategory(
     return inTx(client, async (tx) => {
       await assertPosSystem(ctx, tx);
       const actor = await actorOf(ctx, tx);
-      const i: Record<string, unknown> = isRecord(input) ? input : {};
+      // P1.1b G12: อ่านเฉพาะคีย์ของตัวเอง (ownFields) — unitId จาก prototype ไม่ลงสาขา · คีย์แปลก/null/อาร์เรย์ = VALIDATION
+      const i = ownFields(input, CATEGORY_KEYS, "หมวด", "มีช่องที่เพิ่มหมวดผ่านทางนี้ไม่ได้ — ยังไม่ได้บันทึกอะไร");
       const unitId = i.unitId === undefined || i.unitId === null ? null : await assertUnit(ctx, actor, i.unitId, tx);
       await requireRowWrite(ctx, actor, { unitId, invItemId: null }, PERM_MANAGE, tx);
       const name = cleanName(i.name, "ชื่อหมวด");
@@ -1387,12 +1573,9 @@ async function planTenant(tenantId: string, db: CatalogClient, s: BackfillSummar
       s.alreadyDone.invItem++;
       continue;
     }
-    const kind: PosProductKind = inv.kind === "SERVICE" ? "SERVICE" : "PRODUCT";
     const id = randomUUID();
-    plan.products.push({
-      id, tenantId, systemId: r.systemId, invItemId: inv.id, kind, name: inv.name,
-      basePriceSatang: pr.price, vatRateBp: vatOf(ap, bk), sortOrder: inv.sortOrder, trackStock: null, archivedAt: inv.archivedAt,
-    });
+    // G3: ตัวแปลงเดียวกับซิงก์ของ P1.1b
+    plan.products.push({ id, tenantId, systemId: r.systemId, ...invItemProductFields(inv, ap, bk).data });
     byInvKey.set(key, id);
     priceOfProduct.set(id, pr.price);
   }
@@ -1408,10 +1591,7 @@ async function planTenant(tenantId: string, db: CatalogClient, s: BackfillSummar
     let id = catByKey.get(k);
     if (!id) {
       id = randomUUID();
-      plan.categories.push({
-        id, tenantId, systemId: sys, unitId: mc.unitId, name: mc.name, nameEn: mc.nameEn, sortOrder: mc.sortOrder, isVisible: mc.isVisible,
-        availableFrom: mc.availableFrom, availableTo: mc.availableTo, archivedAt: mc.archivedAt,
-      });
+      plan.categories.push({ id, tenantId, systemId: sys, ...menuCategoryFields(mc) });
       catByKey.set(k, id);
     }
     catOfMenuCat.set(mc.id, id);
@@ -1429,7 +1609,8 @@ async function planTenant(tenantId: string, db: CatalogClient, s: BackfillSummar
       continue;
     }
     per(r.systemId).menuItem++;
-    const pr = initialPrice({ own: m.basePrice });
+    const conv = menuItemProductFields(m, catOfMenuCat.get(m.categoryId) ?? null);
+    const pr = conv.price;
     // partition ราคา null (ลำดับเดียวกับขั้น 1 — เมนูไม่มีราคาลิ้นชักจาก InvItem ⇒ เหลือ 3) / 4))
     if (pr.price === null) {
       if (pr.invalidLegacy) invalidLegacy({ id: m.id, name: m.name });
@@ -1441,12 +1622,7 @@ async function planTenant(tenantId: string, db: CatalogClient, s: BackfillSummar
       continue;
     }
     const id = randomUUID();
-    plan.products.push({
-      id, tenantId, systemId: r.systemId, unitId: m.unitId, invItemId: null, kind: "MENU", name: m.name, nameEn: m.nameEn,
-      categoryId: catOfMenuCat.get(m.categoryId) ?? null, basePriceSatang: pr.price, images: toStrings(m.images), sortOrder: m.sortOrder,
-      trackStock: null, stationId: m.stationId, stockQty: m.stockQty, dailyStockQty: m.dailyStockQty, isOutOfStock: m.isOutOfStock,
-      archivedAt: m.archivedAt ?? (m.status === "ARCHIVED" ? m.updatedAt : null),
-    });
+    plan.products.push({ id, tenantId, systemId: r.systemId, ...conv.data });
     for (const og of ogsByItem.get(m.id) ?? []) plan.optionLinks.push({ tenantId, productId: id, groupId: og.groupId, sortOrder: og.sortOrder });
     if (m.invItemId) {
       if (itemById.has(m.invItemId)) plan.recipes.push({ tenantId, productId: id, invItemId: m.invItemId, qty: 1 });
@@ -1513,15 +1689,9 @@ async function planTenant(tenantId: string, db: CatalogClient, s: BackfillSummar
     }
     const bk = book(r.systemId);
     const ap = inv ? strictAp(inv, apById, bk) : null;
-    const pr = initialPrice({ ap, inv, own: sp.priceSatang });
     const id = randomUUID();
-    plan.products.push({
-      id, tenantId, systemId: r.systemId, unitId: sp.unitId, invItemId: inv ? inv.id : null,
-      kind: inv?.kind === "SERVICE" ? "SERVICE" : "PRODUCT", name: sp.name, basePriceSatang: pr.price, vatRateBp: vatOf(ap, bk),
-      images: sp.imageUrl ? [sp.imageUrl] : [], sortOrder: sp.sortOrder, trackStock: null,
-      // สินค้าเว็บที่ปิดขาย = ปิดขายที่สาขานั้น (ไม่ใช่เก็บถาวร — เปิดคืนได้)
-      unavailableUnitIds: sp.active ? [] : [sp.unitId],
-    });
+    // สินค้าเว็บที่ปิดขาย = ปิดขายที่สาขานั้น (ไม่ใช่เก็บถาวร — เปิดคืนได้) · G3 ตัวแปลงเดียว
+    plan.products.push({ id, tenantId, systemId: r.systemId, ...shopProductFields(sp, inv, ap, bk).data });
     if (inv) byInvKey.set(`${r.systemId}|${inv.id}`, id);
     plan.shopLinks.push({ id: sp.id, productId: id });
   }

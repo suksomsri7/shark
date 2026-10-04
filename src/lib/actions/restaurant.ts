@@ -13,6 +13,7 @@ import * as table from "@/lib/modules/restaurant/table";
 import * as order from "@/lib/modules/restaurant/order";
 import * as kds from "@/lib/modules/restaurant/kds";
 import type { CartLine } from "@/lib/modules/restaurant/order";
+import { CatalogError } from "@/lib/modules/pos";
 
 function base(unitSlug: string) {
   return `/app/u/${unitSlug}/restaurant`;
@@ -176,7 +177,13 @@ export async function setItemStockAction(unitSlug: string, formData: FormData) {
     const v = String(formData.get("stockQty") ?? "");
     data.stockQty = v === "" ? null : Number(v);
   }
-  await menu.setItemStock(tenantId, unitId, id, data);
+  try {
+    await menu.setItemStock(tenantId, unitId, id, data);
+  } catch (e) {
+    // POS P1.1b G11: การปฏิเสธจากแคตตาล็อก (เช่น BUSY ระหว่าง backfill) คืนเป็นข้อมูล (?err=) — ไม่ throw ถึงผู้ใช้
+    if (!(e instanceof CatalogError)) throw e;
+    redirect(`${base(unitSlug)}/menu?err=${encodeURIComponent(e.message)}`);
+  }
   revalidatePath(`${base(unitSlug)}/menu`);
   revalidatePath(`${base(unitSlug)}/menu/stock`);
 }
@@ -189,7 +196,13 @@ export async function duplicateItemAction(unitSlug: string, formData: FormData) 
 
 export async function archiveItemAction(unitSlug: string, formData: FormData) {
   const { tenantId, unitId } = await ctx(unitSlug, "restaurant.item.archive");
-  await menu.archiveItem(tenantId, unitId, String(formData.get("id") ?? ""));
+  try {
+    await menu.archiveItem(tenantId, unitId, String(formData.get("id") ?? ""));
+  } catch (e) {
+    // POS P1.1b G11: การปฏิเสธจากแคตตาล็อก คืนเป็นข้อมูล (?err=) — ไม่ throw ถึงผู้ใช้
+    if (!(e instanceof CatalogError)) throw e;
+    redirect(`${base(unitSlug)}/menu?err=${encodeURIComponent(e.message)}`);
+  }
   revalidatePath(`${base(unitSlug)}/menu`);
 }
 

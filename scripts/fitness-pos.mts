@@ -77,6 +77,11 @@ function guarded(chk: PosChk, id: string, name: string, fn: () => void) {
 // ═══════════════════════════════════════════════════════════════
 /** ที่เดียวที่ได้เขียนแคตตาล็อกหลัง P1.1 (ยังไม่มีไฟล์ ณ P0.1) */
 export const CATALOG_WRITER = "src/lib/modules/pos/catalog.ts";
+/**
+ * POS P1.1b ▸ G1 ชุดผู้เขียนแคตตาล็อก = catalog.ts + catalog-legacy.ts (ผู้เขียนคนที่สอง: ประตูเดิมส่ง tx ของตัวเองมา — คำสั่งเขียนตารางเดิม
+ * ย้ายมาที่นี่พร้อมฝั่ง PosProduct ในธุรกรรมเดียว) ◂
+ */
+export const CATALOG_WRITERS: readonly string[] = [CATALOG_WRITER, "src/lib/modules/pos/catalog-legacy.ts"];
 /** โมเดลที่ "ทุก write" นับ (ต้นฉบับแคตตาล็อกเมนู/เว็บร้าน) */
 const ALL_WRITE_MODELS = ["MenuItem", "MenuCategory", "MenuOptionGroup", "MenuOptionChoice", "MenuItemOptionGroup", "ShopProduct"] as const;
 /** โมเดลที่นับเฉพาะ write ที่ตั้ง "ราคา" (ฟิลด์ที่ระบุ) — data ไม่ใช่ literal = นับ (fail-closed) */
@@ -95,10 +100,7 @@ const CLIENT_NAMES = /^(prisma|tx|db|client|P|p|trx|tenantDb)$/;
  * ratchet: จำนวนจริงต้อง = ตัวเลขที่นี่ · P1.1b ย้ายเข้า catalog.ts แล้วลบแถวออก (เป้า = ว่าง)
  */
 export const CATALOG_WRITER_BASELINE: Record<string, Record<string, number>> = {
-  // เมนูร้านอาหาร: สร้าง/แก้/ทำซ้ำ/เก็บ เมนู · หมวด · กลุ่มตัวเลือก/ตัวเลือก(priceDelta) · ผูกเมนู↔กลุ่ม · สต็อกเมนู · reset รายวัน
-  "src/lib/modules/restaurant/menu.ts": { "MenuItem.write": 6, "MenuCategory.write": 2, "MenuOptionGroup.write": 2, "MenuOptionChoice.write": 2, "MenuItemOptionGroup.write": 5 },
-  // หักสต็อกเมนู + 86 อัตโนมัติตอนยืนยัน/ยกเลิกออเดอร์ (availability — P1.1b ตัดสินว่าไป catalog.ts หรือบริการ availability)
-  "src/lib/modules/restaurant/order.ts": { "MenuItem.write": 3 },
+  // POS P1.1b ▸ restaurant/menu.ts + restaurant/order.ts ย้ายเข้า catalog-legacy.ts แล้ว (G2 · G8) ◂
   // สินค้าเว็บร้าน createProduct/updateProduct
   "src/lib/modules/shop/service.ts": { "ShopProduct.write": 2 },
   // ราคาขาย POS หน้า "สินค้า/ราคา": updateAccountProductSalePrice · createAccountProductWithSalePrice
@@ -710,7 +712,7 @@ export function runPosFitness(chk: PosChk, ROOT: string): void {
     const down: string[] = [];
     const now = new Map(writers.map((w) => [w.file, w]));
     for (const w of writers) {
-      if (w.file === CATALOG_WRITER) continue;
+      if (CATALOG_WRITERS.includes(w.file)) continue;
       const base = CATALOG_WRITER_BASELINE[w.file] ?? {};
       const c = countKinds(w.hits);
       for (const [k, n] of Object.entries(c)) {
@@ -995,8 +997,9 @@ function markerMisuse(abs: string, text: string, allowAlias: boolean, isHome = f
   const out: { line: number; why: string }[] = [];
   const visit = (n: ts.Node) => {
     // R5 F5 — ทุกไฟล์ (รวม catalog.ts และ qc-*): ค่าปริยายของพารามิเตอร์ · ค่าปริยายตอนแยกค่า · `??=` / `||=` / `&&=` · `&& <ตัวบ่งชี้>`
-    if (ts.isParameter(n) && carriesMarker(n.initializer)) out.push({ line: lineAt(sf, n), why: `ค่าปริยายของพารามิเตอร์ = ${MARKER_ID} (ผู้เรียกที่ไม่ส่งค่ากลายเป็นผู้เรียกระดับระบบ)` });
-    if (ts.isBindingElement(n) && carriesMarker(n.initializer)) out.push({ line: lineAt(sf, n), why: `ค่าปริยายตอนแยกค่า (destructuring) = ${MARKER_ID}` });
+    // POS P1.1b ▸ G12: ค่าปริยายที่เป็นออบเจกต์ "ถือ" ตัวบ่งชี้ (`ctx = { actorUserId: M }`) ก็นับ (holdsMarker) ◂
+    if (ts.isParameter(n) && holdsMarker(n.initializer)) out.push({ line: lineAt(sf, n), why: `ค่าปริยายของพารามิเตอร์ = ${MARKER_ID} (ผู้เรียกที่ไม่ส่งค่ากลายเป็นผู้เรียกระดับระบบ)` });
+    if (ts.isBindingElement(n) && holdsMarker(n.initializer)) out.push({ line: lineAt(sf, n), why: `ค่าปริยายตอนแยกค่า (destructuring) = ${MARKER_ID}` });
     if (ts.isShorthandPropertyAssignment(n) && carriesMarker(n.objectAssignmentInitializer))
       out.push({ line: lineAt(sf, n), why: `ค่าปริยายตอนแยกค่า (\`{ x = ${MARKER_ID} } = …\`)` });
     if (
@@ -1037,7 +1040,15 @@ function markerMisuse(abs: string, text: string, allowAlias: boolean, isHome = f
 }
 const MARKER_HOME = "src/lib/modules/pos/catalog.ts";
 /** ไฟล์ที่ได้รับอนุญาตเพิ่ม (ว่างวันนี้ — P1.1b เติมไฟล์ legacy-sync ของตัวเอง พร้อมเหตุผล) */
-export const SYSTEM_MARKER_ALLOWLIST: ReadonlyMap<string, string> = new Map<string, string>([]);
+export const SYSTEM_MARKER_ALLOWLIST: ReadonlyMap<string, string> = new Map<string, string>([
+  // POS P1.1b ▸ G4a
+  [
+    "src/lib/modules/pos/catalog-legacy.ts",
+    "ซิงก์ขาเดิม→แคตตาล็อก (P1.1b G4a): ประตูเดิมอนุญาตผู้กระทำตามกติกาโมดูลของตัวเองแล้ว ⇒ ฝั่งแคตตาล็อกเรียกแบบระบบ · ทุก export รับ tx ของผู้เรียก · ห้าม import จากโค้ดที่รับคำขอ (สแกนด้านล่าง)",
+  ],
+]);
+/** POS P1.1b ▸ G4a: ไฟล์ที่โค้ดรับคำขอ (src/app · src/lib/actions · "use server") ห้าม import ทุกรูปแบบ ◂ */
+const LEGACY_SYNC_HOME = "src/lib/modules/pos/catalog-legacy.ts";
 const isMarkerAllowedPath = (f: string) =>
   f === MARKER_HOME || f === "scripts/pos-backfill-catalog.mts" || /^scripts\/qc-[^/]+\.mts$/.test(f) || SYSTEM_MARKER_ALLOWLIST.has(f);
 const isRequestPath = (f: string, text: string) =>
@@ -1072,6 +1083,26 @@ export function scanSystemMarker(ROOT: string): string[] {
       if (!ts.isExportDeclaration(st) || (st.exportClause && !ts.isNamespaceExport(st.exportClause)) || !st.moduleSpecifier || !ts.isStringLiteralLike(st.moduleSpecifier)) continue;
       if (resolvesTo(ROOT, abs, st.moduleSpecifier.text, MARKER_HOME)) out.push(`${f}:${lineAt(sf, st)}: \`export *\` จาก catalog.ts — ส่งออก ${MARKER_ID} ต่อ (ใช้รายการชื่อชัดเจนแบบ pos/index.ts)`);
     }
+  }
+  // POS P1.1b ▸ G4a: import catalog-legacy จากโค้ดที่รับคำขอ (static · namespace · export from · import() · require · import = require) ◂
+  for (const abs of files) {
+    const f = relative(ROOT, abs).replace(/\\/g, "/");
+    if (f === self || f === LEGACY_SYNC_HOME || !f.startsWith("src/")) continue;
+    const text = readFileSync(abs, "utf8");
+    if (!text.includes("catalog-legacy") || !isRequestPath(f, text)) continue;
+    const sf = parse(abs, text);
+    const visit = (n: ts.Node) => {
+      let spec: string | null = null;
+      if ((ts.isImportDeclaration(n) || ts.isExportDeclaration(n)) && n.moduleSpecifier && ts.isStringLiteralLike(n.moduleSpecifier)) spec = n.moduleSpecifier.text;
+      else if (ts.isImportEqualsDeclaration(n) && ts.isExternalModuleReference(n.moduleReference) && ts.isStringLiteralLike(n.moduleReference.expression)) spec = n.moduleReference.expression.text;
+      else if (ts.isCallExpression(n) && (n.expression.kind === ts.SyntaxKind.ImportKeyword || (ts.isIdentifier(n.expression) && n.expression.text === "require")) && n.arguments[0] && ts.isStringLiteralLike(n.arguments[0]))
+        spec = n.arguments[0].text;
+      else if (ts.isImportTypeNode(n) && ts.isLiteralTypeNode(n.argument) && ts.isStringLiteral(n.argument.literal)) spec = n.argument.literal.text;
+      if (spec !== null && resolvesTo(ROOT, abs, spec, LEGACY_SYNC_HOME))
+        out.push(`${f}:${lineAt(sf, n)}: import catalog-legacy จากโค้ดที่รับคำขอ (src/app · src/lib/actions · "use server") — เรียกผ่านประตูเดิมของโมดูลเท่านั้น`);
+      ts.forEachChild(n, visit);
+    };
+    visit(sf);
   }
   const home = existsSync(join(ROOT, MARKER_HOME)) ? readFileSync(join(ROOT, MARKER_HOME), "utf8") : "";
   if (home && !new RegExp(`${MARKER_ID}[^=\\n]*=\\s*Symbol\\(`).test(home)) out.push(`${MARKER_HOME}: ${MARKER_ID} ต้องสร้างด้วย Symbol(…)`);

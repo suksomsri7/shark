@@ -408,7 +408,7 @@ export async function posLinkSaleToDeal(tenantId: string, actor: MemberActor, in
 import { Prisma, type PosProduct, type PrismaClient } from "@prisma/client";
 import { canAccessUnit, evaluate, permissionValue } from "@/lib/core/rbac";
 import { createSale, type CreateSaleInput } from "./service";
-import { effectiveTrackStock } from "./catalog";
+import { effectiveTrackStock, menuSoldOutIds, rowAvailable } from "./catalog";
 import { priceCart, roundHalfUp, PRICE_MAX_SATANG, type PriceDiscount } from "./pricing-shared";
 import {
   REGISTER_MAX_LINES,
@@ -576,9 +576,11 @@ async function regViews(db: RegDb, s: RegScope, rows: PosProduct[]): Promise<Reg
   if (!rows.length) return [];
   const ids = rows.map((r) => r.id);
   const invIds = [...new Set(rows.map((r) => r.invItemId).filter((x): x is string => !!x))];
-  const [items, links] = await Promise.all([
+  const [items, links, menuSoldOut] = await Promise.all([
     invIds.length ? db.invItem.findMany({ where: { tenantId: s.tenantId, id: { in: invIds } }, select: { id: true, onHand: true, barcode: true, sku: true } }) : Promise.resolve([]),
     db.posProductOptionGroup.findMany({ where: { tenantId: s.tenantId, productId: { in: ids } }, select: { productId: true, groupId: true } }),
+    // P1.1b มติ 3 (merge): แถว MENU ใช้ความพร้อมขายสดจาก MenuItem — กติกาเดียวกับ catalog.listForUnit (S1.27)
+    menuSoldOutIds(s.tenantId, rows, db),
   ]);
   const groupIds = [...new Set(links.map((l) => l.groupId))];
   const groups = groupIds.length
@@ -601,7 +603,7 @@ async function regViews(db: RegDb, s: RegScope, rows: PosProduct[]): Promise<Reg
     const ts = effectiveTrackStock(p, inv ? { hasMovement: movedSet.has(inv.id), onHand: inv.onHand } : null);
     const grp = links.filter((l) => l.productId === p.id).map((l) => groupById.get(l.groupId)).filter((g): g is { id: string; minSelect: number } => !!g);
     const stockLeft = ts.trackStock && inv ? inv.onHand : null;
-    const unavailable = (p.unavailableUnitIds ?? []).includes(s.unitId) || p.isOutOfStock;
+    const unavailable = !rowAvailable(p, s.unitId, menuSoldOut);
     // มติ 3.1 ข้อ 12: ปิดขายมือชนะหมดสต็อก
     const soldOutReason = unavailable ? ("UNAVAILABLE" as const) : stockLeft !== null && stockLeft <= 0 ? ("NO_STOCK" as const) : null;
     const images = Array.isArray(p.images) ? p.images.filter((x): x is string => typeof x === "string") : [];

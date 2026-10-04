@@ -6,6 +6,8 @@ import { systemForUnit } from "@/lib/modules/system/service";
 import * as member from "@/lib/modules/member/service";
 import { bizDateBkk, kitchenOpenNow } from "./scope";
 import { getSetting } from "./menu";
+// POS P1.1b G8 ▸ คำสั่งหักสต็อก/86/คืนสต็อกของเมนู ย้ายไป catalog-legacy "ไม่เปลี่ยน" (F15.1 ผู้เขียนเดียว · ไม่เพิ่มคำสั่งบนทางร้อน)
+import { consumeMenuStock, markMenuItemOutOfStock, restoreMenuStock } from "@/lib/modules/pos/catalog-legacy";
 import "./scope";
 
 // ───────────────────────── ตะกร้า → validate → snapshot ─────────────────────────
@@ -165,16 +167,13 @@ export async function createOrder(input: {
       for (const [itemId, qty] of byItem) {
         const it = await tx.menuItem.findFirst({ where: { id: itemId, tenantId, unitId }, select: { stockQty: true } });
         if (it?.stockQty == null) continue; // ไม่นับสต็อก
-        const res = await tx.menuItem.updateMany({
-          where: { id: itemId, tenantId, unitId, stockQty: { gte: qty } },
-          data: { stockQty: { decrement: qty } },
-        });
+        const res = await consumeMenuStock(tx, { itemId, tenantId, unitId, qty });
         if (res.count === 0) {
           outOfStock.push(itemId);
         } else {
           const after = await tx.menuItem.findFirst({ where: { id: itemId }, select: { stockQty: true } });
           if (after && after.stockQty !== null && after.stockQty <= 0) {
-            await tx.menuItem.update({ where: { id: itemId }, data: { isOutOfStock: true } });
+            await markMenuItemOutOfStock(tx, itemId);
           }
         }
       }
@@ -277,10 +276,7 @@ export async function cancelOrderItem(
     if (it.menuItemId && (it.kdsStatus === "NEW")) {
       const mi = await tx.menuItem.findFirst({ where: { id: it.menuItemId }, select: { stockQty: true } });
       if (mi?.stockQty != null) {
-        await tx.menuItem.update({
-          where: { id: it.menuItemId },
-          data: { stockQty: { increment: it.qty }, isOutOfStock: false },
-        });
+        await restoreMenuStock(tx, it.menuItemId, it.qty);
       }
     }
     await tx.restaurantOrderItem.update({
