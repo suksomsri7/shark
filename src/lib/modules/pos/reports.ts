@@ -832,8 +832,12 @@ export async function reportTax(ctx: ReportCtx, actor: RegisterActor, input: Rep
 const CSV_BOM = "﻿";
 const CSV_CONTENT_TYPE = "text/csv; charset=utf-8";
 const TOTAL_LABEL = "รวม";
+/** R2-F1 — กันสูตรใน Excel/Sheets: ขึ้นต้น = + - @ TAB CR และไม่ใช่ตัวเลขล้วน ⇒ เติม ' นำหน้า (ตัวเลขติดลบคงเป็นตัวเลข) */
+const CSV_FORMULA_LEAD = /^[=+\-@\t\r]/;
+const CSV_PLAIN_NUMBER = /^-?\d+(\.\d+)?$/;
 const csvEsc = (v: unknown): string => {
-  const t = v == null ? "" : String(v);
+  const raw = v == null ? "" : String(v);
+  const t = CSV_FORMULA_LEAD.test(raw) && !CSV_PLAIN_NUMBER.test(raw) ? `'${raw}` : raw;
   return /[",\n\r]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
 };
 /** สตางค์ → บาท 2 ตำแหน่ง (เลขจำนวนเต็มล้วน · ติดลบคงเครื่องหมาย) */

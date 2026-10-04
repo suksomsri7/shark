@@ -1031,9 +1031,11 @@ export async function closeDayBills(ctx: CloseCtx, businessDate?: string): Promi
 
 // ── CSV ปิดวัน (BOM · รายการบิล + บล็อกสรุป) — self-contained เพื่อให้ oracle เรียกได้โดยไม่ต้องมี session ──
 const CSV_BOM = "﻿";
+/** P1.17 R2-F1 — กันสูตรใน Excel/Sheets: ขึ้นต้น = + - @ TAB CR และไม่ใช่ตัวเลขล้วน ⇒ เติม ' นำหน้า (ตัวเลขติดลบคงเป็นตัวเลข) */
 function csvEsc(v: unknown): string {
-  const s = v == null ? "" : String(v);
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  const raw = v == null ? "" : String(v);
+  const s = /^[=+\-@\t\r]/.test(raw) && !/^-?\d+(\.\d+)?$/.test(raw) ? `'${raw}` : raw;
+  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 const baht = (satang: number) => (satang / 100).toFixed(2);
 const STATUS_TH: Record<string, string> = { PAID: "ชำระแล้ว", VOIDED: "ยกเลิก" };
