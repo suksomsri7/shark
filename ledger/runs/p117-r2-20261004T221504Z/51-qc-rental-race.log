@@ -1,0 +1,20 @@
+[env] qc-rental-race · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech
+(node:1857773) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ [R-1.1] race asset เดียวช่วงทับ → สำเร็จ 1 ล้มเหลว 1 (ok=1 fail=1)
+  ✅ [R-1.2] หลัง race มี booking active จริงใน DB แค่ 1 (ไม่จองซ้อน) — พบ 1
+  ✅ [R-2.1] จองทับช่วงเดิม (sequential) → throw ไทย
+  ✅ [R-2.2] sequential overlap ไม่เพิ่ม booking (ยังคง 1) — พบ 1
+  ✅ [R-3.1] คนละ asset ช่วงเดียวกัน → ได้ทั้งคู่
+  ✅ [R-4.1] ช่วงต่อท้ายแบบไม่ทับ (endDate exclusive) → จองได้
+
+===== QC Rental Race =====
+ผ่าน 6/6
+JSON_SUMMARY {"total":6,"passed":6,"findings":[]}

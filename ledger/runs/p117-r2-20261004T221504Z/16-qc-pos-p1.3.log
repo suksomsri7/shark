@@ -1,0 +1,158 @@
+[env] qc-pos-p1.3 · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4)
+(node:1845039) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+── S2 เครื่องคิดเงินตะกร้า (priceCart) ──
+  ✅ [P1.3-S2.1] ตะกร้าภาพ 01: รวม 68,500 · ส่วนลดรายการ 1,000 · คูปอง 5,000 → ยอดสุทธิ 62,500 · VAT 7% รวมในราคา 4,089 (฿40.89 ตามภาพ)
+  ✅ [P1.3-S2.2] ราคาตัวเลือก: ลาเต้ 7,500 + M 1,000 + นมโอ๊ต 1,500 × 2 → บรรทัด 20,000 (฿200 ตามภาพ)
+  ✅ [P1.3-S2.3] ส่วนลดบรรทัด % (basis point · ปัดครึ่งขึ้น): 10% ของ 9,500 = 950 · 15% ของ 333 = 50 (49.95)
+  ✅ [P1.3-S2.4] ส่วนลดบรรทัดเกินราคาบรรทัด → ปฏิเสธ LINE_DISCOUNT_EXCEEDS_LINE (ไม่ clamp)
+  ✅ [P1.3-S2.5] ส่วนลดท้ายบิล: % คิดจากยอดหลังส่วนลดรายการ · บาทตรงตัว · เกินยอด → ปฏิเสธ BILL_DISCOUNT_EXCEEDS_TOTAL
+  ✅ [P1.3-S2.6] เพดานส่วนลด maxDiscountBp=1000: (รายการ+ท้ายบิล)/รวม = 15% → ok:false DISCOUNT_EXCEEDS_LIMIT ไม่มียอดคืน (refusal not clamp) · 10% พอดี → ผ่าน · null = ไม่จำกัด
+  ✅ [P1.3-S2.7] คูปองไม่นับในเพดานส่วนลด · คูปองเกินยอด → หักได้แค่ยอดที่เหลือ ยอดสุทธิ 0 (ไม่ติดลบ)
+  ✅ [P1.3-S2.8] VAT แยกนอกราคา ปัดครึ่งขึ้น: net 150 → VAT 11 รวม 161 · NONE → VAT 0 รวม = net · INCLUDED → รวม = net
+  ✅ [P1.3-S2.9] VAT คิดระดับบิล ไม่ใช่รายบรรทัด: INCLUDED 3×10 → 2 (รายบรรทัดจะได้ 3) · EXCLUDED 3×7 → 1 (รายบรรทัดจะได้ 0)
+  ✅ [P1.3-S2.10] บรรทัดราคา 0 ได้ (ยอดบรรทัด 0) · ทั้งบิล 0 บาท → ok ยอด 0
+  ✅ [P1.3-S2.11] 200 บรรทัดผ่านและยอดตรง · 201 บรรทัด → TOO_MANY_LINES · qty 10000 → INVALID_LINE
+  ✅ [P1.3-S2.12] เงินต้องเป็นจำนวนเต็มสตางค์ไม่ติดลบ: ราคา 10.5 / ราคาติดลบ / qty 0 → INVALID_LINE
+  ✅ [P1.3-S2.13] บริสุทธิ์: เรียกซ้ำผลเท่ากันทุกไบต์ · ไม่แก้ object ที่ส่งเข้า · ไฟล์ไม่ import prisma/server (ใช้ฝั่ง client ได้)
+  ✅ [P1.3-S2.14] สุ่ม 300 ตะกร้า (seed คงที่): Σ ยอดบรรทัด − ท้ายบิล − คูปอง (+VAT ถ้าแยก) = ยอดสุทธิ เป๊ะ · ทุกค่าเป็น Int ≥ 0
+  ✅ [P1.3-S2.15] [3.2 ข้อ 4] เพดานส่วนลด vs การปัด (priceCart · STAFF 1000 bp): 10% ของ ฿33.35 · 10% ของ 5×฿33.33 · ท้ายบิล 10% ของ ฿123.45 → ผ่าน · 10.01% ของ ฿100 → DISCOUNT_EXCEEDS_LIMIT · AMOUNT = เพดานปัดครึ่งขึ้น ผ่าน · +1 สตางค์ → ปฏิเสธ
+
+── S5 สถิต (i18n · testid · แป้นลัด · ปุ่มแตะ · สัญญา createSale) ──
+  ✅ [P1.3-S5.1] ข้อความหน้าขายครบ 2 ภาษา: ทุกคีย์ pos.register.* ที่จอใช้ (รายการในโน้ต) มีทั้ง th และ en (F15.4)
+  ✅ [P1.3-S5.2] ข้อความ en ไม่มีอักษรไทย · th ไม่ว่าง ไม่ใช่ชื่อคีย์/enum ดิบ · ตัวแปร ICU {x} ตรงกันทั้งสองภาษา · ต้นไม้คีย์ pos.register.* th = en (A6)
+  ✅ [P1.3-S5.3] ไฟล์ UI หน้าขายใหม่ (มี data-testid="pos-reg-…") ไม่มีข้อความไทยฮาร์ดโค้ดนอกคอมเมนต์
+  ✅ [P1.3-S5.4] data-testid ทุกตัวของภาพ 01 (+ แถบตะกร้ามือถือ 05ก) มีในโค้ดหน้าขาย
+  ✅ [P1.3-S5.5] ปุ่ม/ช่องที่กดได้ของภาพ 01 มีแถวใน scripts/pos-ui-inventory.json (page /app/sys/[id]/pos/register · roles)
+  ✅ [P1.3-S5.6] [Q4] หนี้ปุ่มไร้ testid: register/page.tsx = 0 (หรือไม่มีแถวหนี้) · register-ui.tsx (จอเดิมหลังธง) ≤ baseline 22 ได้ตราบที่ธงยังอยู่
+  ✅ [P1.3-S5.7] แป้นลัด F2 ค้นหา · F4 ชำระ · F8 พักบิล · Esc ล้าง มีตัวจับ keydown ในโค้ดหน้าขาย [static]
+  ✅ [P1.3-S5.8] ช่องค้นหา/สแกน (pos-reg-search) autofocus และโฟกัสกลับหลังเพิ่มสินค้า [static]
+  ✅ [P1.3-S5.9] ปุ่มหลัก (ชำระ · หมวด · การ์ดสินค้า · +/− จำนวน · พักบิล · บิลที่พัก · สมาชิก · รายการเอง · สแกนกล้อง) มีคลาสสูง ≥44px [static heuristic · ยืนยันจริงที่ visual]
+
+── F15: POS (แคตตาล็อก/ราคาผู้เขียนเดียว · สัญญา createSale · ทะเบียนปุ่ม POS · ข้อความ pos.* สองภาษา) ──
+  ✅ [P1.3-S5.10] สัญญา createSale/voidSale เข้ากันได้ย้อนหลัง (F15.2 ของ scripts/fitness-pos.mts เขียว) — 6 โมดูลที่เรียกไม่พัง
+  ✅ [P1.3-S5.11] [Q4] ธง: register/page.tsx เลือกจอใหม่เมื่อ settings.pos.registerV2 === true เท่านั้น (อื่น ๆ = <PosRegister> เดิม) · ด่านสิทธิ์ HF-POS-PAGES คงอยู่ · seed QC ตั้ง registerV2: true [static]
+  ❌ [P1.3-S5.12] [Q4] จอเดิมไม่ถูกแตะ: register-ui.tsx และ actions/pos.ts ตรงไบต์กับฐาน a670d313 (sha256) · แถวทะเบียนจอเดิม 3 แถวยังอยู่ [static · regression guard] — expected ไบต์ตรงฐาน · แถวจอเดิม 3 | actual ไบต์ต่าง: src/lib/actions/pos.ts=e65c4ac537e9 · แถวหาย: -
+  ✅ [P1.3-S5.13] [Addendum+§4.6+มติ 3.1 ข้อ 5] refusalMessageKey(code): ทุกรหัสในคำศัพท์ได้คีย์ตามตารางสเปก · BUSY → errors.busy · CONFLICT → errors.conflict · OPTIONS_REQUIRED → errors.optionsRequired · INTERNAL/UNKNOWN/รหัสไม่รู้จัก → errors.unknown · ทุกคีย์ที่คืนมีทั้ง th+en
+  ✅ [P1.3-S5.14] register-shared.ts บริสุทธิ์ (import ค่าได้แค่ ./*-shared · @/lib/modules/pos/*-shared · @/lib/ui/money สำหรับ moneyText) · REGISTER_MAX_LINES 200 · MAX_QTY 9999 · LOW_STOCK 5 (Q10) · PAGE_SIZE 100 · moneyText 8550 → ฿85.50 · 62500 → ฿625 · −1000 → −฿10
+  ✅ [P1.3-S5.15] [Addendum+G10] register-actions.ts: "use server" · export เฉพาะ async function (4 action ตามสเปก) · ทุกตัวเรียก requireTenant + มี catch · ไม่มี throw · checkCatalogWrite รับ membership ของ session ไม่ใช่ object ที่ประกอบเอง [static]
+  ✅ [P1.3-S5.16] [Addendum] โค้ดหน้าขาย P1.3 ไม่มีตัวบ่งชี้ระบบ CATALOG_SYSTEM_ACTOR เลย · ไม่ import scripts/** · fitness F15.1 F15.5 F15.6 เขียว
+  ✅ [P1.3-S5.17] [G9] ไฟล์ "use client" ของหน้าขายไม่ import โมดูลเซิร์ฟเวอร์ (register.ts · catalog · service · core/db · prisma · next/headers · core/context) [static]
+  ✅ [P1.3-S5.18] [3.2 ข้อ 13 · Q24] register.ts export registerScan ⇒ register-actions.ts export registerScanAction (async · requireTenant) [static]
+  ✅ [P1.3-S5.19] [B2.1 · Q4] รางไอคอนของ /pos/register ขึ้นกับธง: isRailPath บังคับรางหน้าขายเฉพาะ id ที่ layout ส่งมา (posRegisterV2On) · AppShell+AppMain ส่ง id ต่อ · ไม่มี regex หน้าขายแบบไม่มีเงื่อนไข ⇒ ธงปิด = shell เท่า main [static]
+  ✅ [P1.3-S5.20] [B2.2 รีวิว B2] จอขายกันพลาดระดับซอร์ส: เพิ่มสินค้าใช้ setCart แบบฟังก์ชัน + ผลสแกนเช็กรุ่นบิล · openPay ไม่ซ้อนกล่องชำระ · หลังม่าน inert + RegisterDialog กักโฟกัส · ยืนยันชำระปิดระหว่างรอ quote · beforeunload ตอน sending/unknown · สแกน none/choose มีข้อความ · Esc ข้าม isComposing · แถวปุ่มรอง ≥40px · [B2.3] โฟกัสค้นหาหลัง commit (ไม่เรียกข้าง pop/setLayers([])) · quote ล้มแสดงในกล่องชำระ [static]
+  ✅ [P1.3-S5.21] [R4 K3] RegisterScreen.tsx หมุนคีย์ (ตัวสร้างคีย์ที่เรียก randomUUID · setIdemKey(newKey…)) เฉพาะใน resetBill เท่านั้น · ปฏิเสธ/ไม่แน่ใจใน send ไม่หมุนคีย์และไม่เรียก resetBill/nextSale · ไฟล์อื่นของหน้าขายไม่สร้างคีย์เอง [static]
+  ✅ [P1.3-S5.22] [R4 K5] คำขอที่ค้าง (คีย์ + payload + phase) เก็บใน sessionStorage คีย์ตาม systemId+unitId: setItem/getItem/removeItem · ทุกการแตะ sessionStorage อยู่ใน try (private mode) · เก็บเป็น JSON · โหลดกลับ (JSON.parse) แล้วขึ้นสถานะ 'unknown' (ลองซ้ำคีย์เดิม) [static]
+
+── S1 ข้อมูลกริด/หมวด/ค้นหา ──
+  ✅ [P1.3-S1.1] สาขาสีลมของร้าน QC: สินค้าที่ seed ไว้ 7 ตัว (PosProduct ของ InvItem ทั้ง 7) ขึ้นกริดครบ ตัวละ 1 แถว ไม่ซ้ำ
+  ✅ [P1.3-S1.2] ราคาบนกริด = PosProduct.basePriceSatang ทุกตัว (สตางค์ Int) · อเมริกาโน่ = 6500 · สินค้า 0 บาทขึ้นกริดด้วยราคา 0 (ไม่ซ่อน ไม่เป็น null)
+  ✅ [P1.3-S1.3] ทรงข้อมูลสินค้าบนกริด: id invItemId name nameEn kind categoryId priceSatang sku barcode imageUrl optionGroupCount soldOut stockLeft trackStock trackStockMode · ผลมี nextCursor (แบ่งหน้า · C6)
+  ✅ [P1.3-S1.4] สต็อกบนการ์ด (trackStock โหมด auto · C2): ครัวซองต์/น้ำดื่ม trackStock=true stockLeft = InvItem.onHand · อเมริกาโน่/ลาเต้ (ไม่เคยรับเข้า) trackStock=false stockLeft = null ไม่ขึ้น 'หมด' · ทุกตัว trackStockMode 'auto'
+  ✅ [P1.3-S1.9] ค้นชื่อภาษาไทยบางส่วน 'ครัวซอง' → ครัวซองต์เนยสดตัวเดียว · มีช่องว่างหัวท้ายก็ยังเจอ
+  ✅ [P1.3-S1.10] ค้น SKU: ตรงตัว 'PQC-CF-WATER' → 1 · ตัวพิมพ์เล็ก 'pqc-cf-latte' → ลาเต้ · prefix 'PQC-CF-' → ครบ 7
+  ✅ [P1.3-S1.11] ค้นบาร์โค้ด EAN-13 '8850999000015' → น้ำดื่มตัวเดียว
+  ✅ [P1.3-S1.14] ข้ามร้าน: ctx ร้านกาแฟ + unitId ของร้านอาหาร → ปฏิเสธ (NOT_FOUND) และไม่มี id ของร้านอื่นหลุดในผลใด ๆ
+  ✅ [P1.3-S1.16] ข้ามสาขา: แคชเชียร์ (unitAccess = สีลม) อ่านกริดสาขาอารีย์ → NOT_FOUND (404 ไม่ใช่ 403 · มติ R8) · สาขาสีลมของตัวเอง → ได้ (คู่บวก)
+
+── sandbox qc-p1.3-qpibnk (สาขา + ระบบ POS/คลัง ชั่วคราวในร้าน QC กาแฟ) ──
+  ✅ [P1.3-S1.5] สาขาที่ยังไม่มีสินค้า → products [] categories [] (ข้อมูล empty state ภาพ 19ก) ไม่ throw
+  ✅ [P1.3-S1.15] ข้ามระบบ: สาขาร้านเดียวกันที่ไม่ได้ผูกกับระบบ POS นี้ → ปฏิเสธ (NOT_FOUND)
+  ✅ [P1.3-S1.6] สินค้าที่ archive แล้วไม่ขึ้นกริด (ตัวพี่น้องที่ไม่ archive ยังขึ้น)
+  ✅ [P1.3-S1.7] ปิดขายเฉพาะสาขา (availability=false · 86) → ยังขึ้นกริดแต่ soldOut=true (ภาพ 01 'หมด' สีจาง)
+  ✅ [P1.3-S1.8] สินค้านับสต็อกที่ onHand ≤ 0 → soldOut=true · onHand 2 → stockLeft 2 (ป้าย 'เหลือ 2')
+  ✅ [P1.3-S1.12] ค้นชื่ออังกฤษ (nameEn) ไม่สนตัวพิมพ์ 'ALMOND' → สินค้าที่ nameEn = 'Almond croissant' (ภาพ 20B)
+  ✅ [P1.3-S1.13] ค้นคำที่ไม่มี → products [] ไม่ error · หมวด: categoryId กรองเฉพาะหมวดนั้น · ไม่ส่ง = ทั้งหมด · หมวดมี productCount ถูก
+  ✅ [P1.3-S1.18] PosProduct ผูกสาขาอื่น (unitId ≠ สาขานี้ · มติ R3) ไม่ขึ้นกริด · unitId = null (ทุกสาขา) ขึ้น
+  ✅ [P1.3-S1.19] สินค้าที่ยังไม่ตั้งราคา (ไม่มี posPrice/salePrice) → priceSatang = null บนกริด — ห้ามเอาต้นทุนมาเป็นราคา (มติ R2)
+  ✅ [P1.3-S1.20] trackStock auto (C2): สินค้าผูก InvItem ที่ยังไม่เคยมีสต็อก → trackStock=false (mode auto) ไม่ขึ้น 'หมด' · รับเข้า 3 → trackStock=true stockLeft 3 · ตัดออกครบ → soldOut=true
+  ✅ [P1.3-S1.21] POS สองคลัง (C3): สาขา sandbox (คลัง X) ไม่เห็นสินค้าของคลังสาขา 2 (Y) ทั้งกริด · ค้นชื่อ/SKU/บาร์โค้ด · สแกน · สาขา 2 เห็นของตัวเองแต่ไม่เห็นของคลัง X
+  ✅ [P1.3-S1.17] แคตตาล็อกเกิน 200 ตัว (R4 + C6): หน้าแรกปริยาย ≤100 + nextCursor · limit 1000 ถูกบีบ ≤500 · เดินทุกหน้าได้ครบไม่ซ้ำ (>200) · ตัวท้าย ๆ ค้นเจอทั้งชื่อ · SKU · บาร์โค้ด
+  ✅ [P1.3-S1.22] สแกนบาร์โค้ด (C5): registerScan บาร์โค้ดซ้ำ 2 ตัว → match 'choose' + products 2 ตัว ลำดับคงที่ (ไม่ใช่ตัวเก่าสุดเงียบ ๆ) · ตัวเดียว → 'one' · ไม่มี → 'none'
+  ✅ [P1.3-S1.23] [Q6] ทุกสินค้ามี requiredOptionGroupCount (Int): กลุ่มบังคับ (minSelect ≥1) + กลุ่มเลือกได้ → optionGroupCount 2 required 1 · กลุ่มเลือกได้อย่างเดียว → 1/0 · ไม่มีกลุ่ม → 0/0 · required ≤ optionGroupCount
+  ✅ [P1.3-S1.24] [Q9 + มติ 3.1 ข้อ 12] ทุกสินค้ามี soldOutReason: ปิดขายสาขา (86) → 'UNAVAILABLE' · นับสต็อกหมด → 'NO_STOCK' · ทั้งปิดขายและหมด → 'UNAVAILABLE' (ปิดมือชนะ) · ขายได้ (รวมเหลือน้อย/ไม่นับสต็อก/ยังไม่ตั้งราคา) → null
+  ✅ [P1.3-S1.25] [Q21] แบ่งหน้า (แคตตาล็อก >500): ไม่ส่ง limit = 100 + nextCursor · limit 1000 ถูกบีบ = 500 พอดี + nextCursor · 3 หน้า (limit 100) ต่อกัน = 300 ตัวแรกของหน้า 500 ลำดับเดียวกัน (ไม่ซ้ำ ไม่ขาด) · หน้าสุดท้าย nextCursor null
+  ✅ [P1.3-S1.26] [Q21 + มติ 3.1 ข้อ 9] cursor ของสาขาอื่น (สาขา 2 ของ POS เดียวกัน · ร้านอื่น) ใช้ที่สาขานี้ → VALIDATION (คืน ไม่ throw) หรือหน้าที่มีแต่ของสาขานี้ (ไม่มีของเฉพาะสาขา 2/คลัง Y/ร้านอื่น)
+  ✅ [P1.3-S1.27] [3.2 ข้อ 8] ไม่เพี้ยนจากแคตตาล็อก: registerCatalog (เดินทุกหน้า) = catalog.listForUnit ทั้งชุด id และลำดับ สำหรับ OWNER · MANAGER · STAFF (สมาชิกจริงใน DB) บน fixture สาขาเฉพาะ/ทุกสาขา/archive/ปิดขาย/สาขาอื่น/หมวดซ่อน
+  ✅ [P1.3-S1.28] [3.2 ข้อ 8] เดินหน้าระหว่างมีการ archive / เพิ่ม / เปลี่ยนราคา ระหว่างหน้า: แถวที่ไม่ถูกแก้ไม่ซ้ำ ไม่ขาด (keyset)
+
+── S3 ส่งบิลฝั่งเซิร์ฟเวอร์ ──
+  ✅ [P1.3-S3.1] quoteRegisterCart ใช้ราคาแคตตาล็อกฝั่งเซิร์ฟเวอร์ (unitPriceSatang ที่ client ส่งมากับสินค้าแคตตาล็อกถูกเมิน) = priceCart ของราคาจริง
+  ✅ [P1.3-S3.2] ขายสำเร็จ (เจ้าของ · เงินสด · ตะกร้าเดียวกับ quote ไม่แนบราคา client): PAID + receiptNo · grandTotal = ยอด quote · Σ payments = grandTotal · subtotalSatang = Σ lineTotal (ความหมายเดิมของ createSale)
+  ✅ [P1.3-S3.3] บรรทัดที่บันทึก: lineTotal/discount ตรง quote · productId = PosProduct · itemId = InvItem ของสินค้า (ตัดสต็อกตามเดิม) · ตัดสต็อก 1 ครั้งต่อบรรทัด
+  ✅ [P1.3-S3.4] ขายบริการจากแคตตาล็อก (InvItem kind SERVICE · มติ R5): บรรทัดเก็บ serviceId = InvItem ของบริการ + productId · itemId = null · ไม่ตัดสต็อก · ราคา = ราคาบริการ
+  ✅ [P1.3-S3.5] client แก้ราคาสินค้าแคตตาล็อก (unitPrice 1 สตางค์): ยอดที่คาด/จ่ายปลอม → PRICE_CHANGED (มติ 3.1 ข้อ 2 · คืนยอดสดของเซิร์ฟเวอร์) ไม่มีบิล · จ่ายยอดจริง → ราคาที่บันทึก = ราคาเซิร์ฟเวอร์ (หรือ VALIDATION|PERMISSION_DENIED) · ไม่มีบรรทัดราคา 1 สตางค์เกิดเลย (มติ R2)
+  ✅ [P1.3-S3.6] ยอดที่คาด = ยอดเซิร์ฟเวอร์ แต่จ่ายขาด/เกิน 1 สตางค์ → PAYMENT_MISMATCH · ไม่มี PosSale เกิด
+  ✅ [P1.3-S3.7] แคชเชียร์ส่วนลด 15% (เพดานปริยาย STAFF 10%) → DISCOUNT_EXCEEDS_LIMIT ไม่มีบิล · เจ้าของตะกร้าเดียวกัน → PAID · แคชเชียร์ที่มี pos._maxDiscountBp=2000 → PAID
+  ✅ [P1.3-S3.8] รายการกำหนดเอง (ชื่อ+ราคาเอง ไม่มี productId): แคชเชียร์ไม่มี pos.sale.priceOverride → PERMISSION_DENIED · เจ้าของ → PAID
+  ✅ [P1.3-S3.9] STAFF ที่ไม่มี pos.sale.create → PERMISSION_DENIED ทั้ง quote และ submit · ไม่มีบิล
+  ✅ [P1.3-S3.10] แคชเชียร์จริง (unitAccess = สีลม) ส่งบิลเข้าสาขา sandbox → NOT_FOUND ไม่มีบิล (มติ R8 · คู่บวก = แคชเชียร์ที่มีสิทธิ์สาขานี้ขายได้ใน S3.7)
+  ✅ [P1.3-S3.11] ctx ร้านกาแฟ + unitId ร้านอาหาร → NOT_FOUND · ไม่มีบิลเกิดในร้านอาหาร
+  ✅ [P1.3-S3.12] productId ของร้านอื่น / สินค้า archive / id มั่ว → PRODUCT_NOT_FOUND (มติ 3.1 ข้อ 3) · สินค้าปิดขายที่สาขานี้ → PRODUCT_UNAVAILABLE · ไม่มีบิล
+  ✅ [P1.3-S3.13] memberId ที่ไม่ใช่ของร้านนี้ → ปฏิเสธ (MEMBER_NOT_FOUND) ไม่มีบิล
+  ✅ [P1.3-S3.14] key เดิมส่งซ้ำ 2 ครั้ง → saleId เดิม · ครั้งที่ 2 duplicated=true · บิล 1 · payments 1 ชุด · ตัดสต็อก 1 ครั้ง
+  ✅ [P1.3-S3.15] key เดิม 10 คำขอพร้อมกัน (connection คนละเส้น) × 3 รอบ → บิลเดียวต่อรอบ ทุกคำตอบ saleId เดียวกัน ตัดสต็อกครั้งเดียว
+  ✅ [P1.3-S3.16] key เดิมแต่ตะกร้า (qty) / วิธีจ่าย / expectedGrandTotalSatang เปลี่ยน → IDEMPOTENCY_CONFLICT (ไม่ใช่บิลเดิมเงียบ ๆ) · ไม่มีบิลที่ 2 · ยอดบิลเดิมไม่เปลี่ยน · key เดิม payload เดิมยังได้บิลเดิม
+  ✅ [P1.3-S3.17] 10 เครื่องขายพร้อมกัน (key ต่างกัน) × 2 รอบ → receiptNo ไม่ชน ไม่ว่าง ครบ 20
+  ✅ [P1.3-S3.18] ชิ้นสุดท้าย นโยบายปริยาย ALLOW_NEGATIVE: 10 เครื่องขายพร้อมกัน × 3 รอบ → PAID ครบ · onHand = 1−10 เป๊ะ (ไม่มี lost update) · OUT 10 แถว
+  ✅ [P1.3-S6.1] [P1.6] ชิ้นสุดท้าย นโยบาย BLOCK (settings.pos.stock.oversellPolicy): 10 เครื่องพร้อมกัน × 3 รอบ → PAID 1 · ที่เหลือ STOCK_INSUFFICIENT · onHand 0 · ผู้แพ้ไม่มีบิล
+  ✅ [P1.3-S3.20] ไม่เชื่อมบัญชี/แต้ม/สมาชิก (sandbox) → ยังขายได้ · event pos.sale.paid ประมวลผลไม่ FAILED · ไม่มี AccountJournalEntry/PointLedger ของบิล
+  ✅ [P1.3-S3.21] ตะกร้า 200 บรรทัดส่งได้ → PAID · บันทึก 200 บรรทัด · Σ lineTotal = subtotalSatang
+  ✅ [P1.3-S3.22] createSale แบบเดิม (โมดูลอื่น: itemId + unitPrice จากผู้เรียก ไม่มี productId) ยังทำงาน · ยอด = qty×price − ส่วนลด เหมือนเดิม
+  ✅ [P1.3-S3.23] สินค้ายังไม่ตั้งราคา: ขายปกติ → PRICE_NOT_SET (ไม่ขายที่ต้นทุน) · ราคาเปิด (openPrice) แคชเชียร์ไม่มี pos.sale.priceOverride → PERMISSION_DENIED · เจ้าของ → PAID ที่ราคาที่กรอก
+  ✅ [P1.3-S3.24] สาขาร้านเดียวกันที่ไม่ได้ผูกกับระบบ POS นี้ → submit/quote NOT_FOUND ไม่มีบิล (มติ R8 · createSale เองไม่ตรวจคู่นี้) · คู่บวก: ตะกร้าเดียวกันที่สาขาผูกแล้ว → PAID
+  ✅ [P1.3-S3.25] trackStock ตั้งเป็น false (mode 'off') ชัดแจ้ง: ขายแล้วไม่ตัดสต็อก (OUT 0 · onHand เดิม) · กริดแสดง trackStock=false stockLeft null
+  ✅ [P1.3-S3.26] [Q6 + มติ 3.1 ข้อ 1] สินค้ามีกลุ่มตัวเลือกบังคับ: quote และ submit → OPTIONS_REQUIRED ไม่มียอด ไม่มีบิล · กลุ่มเลือกได้อย่างเดียว → quote/บิลที่ราคาฐาน
+  ✅ [P1.3-S3.27] [Q9] หมดสต็อก (NO_STOCK) ยังขายได้ตามนโยบายปริยาย: PAID · OUT 1 · onHand 0 → −1 · ปิดขายสาขา (UNAVAILABLE) และทั้งปิดขาย+หมด → quote/submit PRODUCT_UNAVAILABLE ไม่มียอด ไม่มีบิล
+  ✅ [P1.3-S3.28] [Q8] รายการกำหนดเอง/ราคาเปิด: STAFF ไม่มี pos.sale.priceOverride → quote PERMISSION_DENIED ทั้งสองแบบ · STAFF ที่มีคีย์ → quote+PAID ที่ราคาที่กรอก · MANAGER (ปริยายตามบทบาท) → PAID · คีย์อยู่ในแคตตาล็อกสิทธิ์
+  ✅ [P1.3-S3.29] [Q12] client ส่ง couponCode / couponDiscountSatang มากับ quote หรือ submit → VALIDATION (ไม่เมิน ไม่เชื่อ) · ไม่มีบิล · ไม่มี CouponRedemption
+  ✅ [P1.3-S3.30] [Q22+Q7] quote lines ตรงลำดับที่ส่ง: [สินค้า+ส่วนลด, รายการเอง, สินค้า×2 ราคา client ปลอม] → {productId?, unitPriceSatang (ราคาเซิร์ฟเวอร์), grossSatang, discountSatang, lineTotalSatang} ทุกช่อง Int · subtotal = Σ gross ก่อนส่วนลดบรรทัด
+  ✅ [P1.3-S3.31] ราคาเปลี่ยนระหว่าง quote กับ submit (มติ 3.1 ข้อ 2): expectedGrandTotalSatang เก่า → PRICE_CHANGED (จ่ายยอดเก่าหรือยอดใหม่ก็ตาม) พร้อมยอด/บรรทัดสดของเซิร์ฟเวอร์ · ไม่มีบิล · quote ใหม่ได้ราคาใหม่ · คาด+จ่ายยอดใหม่ → PAID ที่ราคาใหม่ · ไม่มีบรรทัดราคาเก่า
+  ✅ [P1.3-S3.32] Σ payMethods = ยอดเป๊ะ (หลายวิธี): เงินสด+พร้อมเพย์ ครบ → PAID 2 แถวรวม = ยอด · ขาด 1 สตางค์ → PAYMENT_MISMATCH · ยอดติดลบชดเชย / เศษสตางค์ / ไม่มีวิธีจ่าย → ปฏิเสธ · ไม่มีบิล
+  ✅ [P1.3-S3.33] เพดานส่วนลดที่ quote (ปฏิเสธ ไม่ clamp): STAFF ส่วนลดบรรทัด 15% / ท้ายบิล 15% / ท้ายบิลเกิน 10% 1 สตางค์ → DISCOUNT_EXCEEDS_LIMIT ไม่มียอด · 10% พอดี → 5,850 · บรรทัดติดลบ/บิลติดลบ → ปฏิเสธ quote+submit ไม่มีบิล
+  ✅ [P1.3-S3.34] qty ฝั่งเซิร์ฟเวอร์: 0 / −1 / 1.5 / 10000 / "2" → INVALID_LINE|VALIDATION · 9999 → quote ได้ (gross 9999×ราคา) · submit qty 10000 / 201 บรรทัด → ปฏิเสธ ไม่มีบิล · 201 บรรทัด quote → TOO_MANY_LINES
+  ✅ [P1.3-S3.35] ขอบเขตสาขา/ร้านของ productId: สินค้าเฉพาะสาขา 2 · ของคลังสาขา 2 · ของร้านอื่น → quote/submit PRODUCT_NOT_FOUND (มติ 3.1 ข้อ 3) ไม่มียอด/บรรทัด/ชื่อรั่ว ไม่มีบิล · คู่บวก: สินค้าสาขา 2 quote ที่สาขา 2 ได้
+  ✅ [P1.3-S3.36] [Addendum + มติ 3.1 ข้อ 9] ปฏิเสธ = คืน {ok:false, code, message} ไม่ throw: limit 0 / 1.5 / "10" / cursor มั่ว → VALIDATION · q มี NUL → VALIDATION หรือ ok · quote lines ผิดชนิด · submit input null · status unitId มี NUL
+  ✅ [P1.3-S3.37] [มติ 3.1 ข้อ 2] expectedGrandTotalSatang: ไม่ส่ง / 6500.5 / −1 / สตริง → VALIDATION · คาด = ยอดเซิร์ฟเวอร์แต่จ่ายต่าง → PAYMENT_MISMATCH · คาดผิดและจ่ายผิด → PRICE_CHANGED (ตรวจก่อน) · ไม่มีบิล
+  ✅ [P1.3-S3.38] [มติ 3.1 ข้อ 4 · ORACLE-EDIT P1.6 §8.7] TRANSFER / CARD → PAID (P1.6 R2) · DEPOSIT / ROOM_CHARGE / รหัสมั่ว → VALIDATION ไม่มีบิล · PROMPTPAY ล้วน (ไม่ส่ง cashReceived) → PAID เงินทอน 0
+  ✅ [P1.3-S3.39] [มติ 3.1 ข้อ 4] เงินสด: ไม่ส่ง cashReceivedSatang / รับน้อยกว่าส่วนเงินสด 1 สตางค์ → PAYMENT_MISMATCH ไม่มีบิล · เงินสด 4,000 + พร้อมเพย์ รับ 5,000 → PAID changeSatang 1,000 (คิดจากส่วนเงินสด)
+  ✅ [P1.3-S3.40] [3.2 ข้อ 1] idempotency ไม่ขึ้นกับลำดับบรรทัด: [ราคาเปิด 60.00 ของ P, P ปกติ] สลับลำดับ → ok duplicated บิลเดียว · ต่างจริง (สินค้าอื่นราคาเท่ากัน / สมาชิกอื่น / แบ่งส่วนลดต่างแต่ยอดเท่า / แบ่งวิธีจ่ายต่าง) → IDEMPOTENCY_CONFLICT พร้อม saleId ของบิลเดิม
+  ✅ [P1.3-S3.41] [3.2 ข้อ 2] ส่งซ้ำ key ของบิลที่ VOIDED แล้ว → ไม่ใช่ ok: IDEMPOTENCY_CONFLICT พร้อม saleId และสถานะบิล (VOIDED)
+  ✅ [P1.3-S3.42] [3.2 ข้อ 3] สมาชิกที่ระดับมีส่วนลดอัตโนมัติ → quote และ submit MEMBER_RIGHTS_UNSUPPORTED ไม่มีแถวใดถูกเขียน · สมาชิกที่ระดับไม่มีส่วนลด → แนบและขายได้
+  ✅ [P1.3-S3.43] [3.2 ข้อ 5] รูปวิธีจ่าย: มีรายการยอด 0 → VALIDATION · บิลยอด 0 (ลด 100% โดย OWNER / ราคาเปิด 0 ที่มีสิทธิ์) ส่งวิธีจ่ายว่าง → PAID · วิธีจ่ายว่างกับยอด ≠ 0 → PAYMENT_MISMATCH
+  ✅ [P1.3-S3.44] [3.2 ข้อ 6] ส่งซ้ำ payload เดิมทุกไบต์ → changeSatang เท่าคำตอบแรก (duplicated)
+  ✅ [P1.3-S3.45] [3.2 ข้อ 9] สุ่ม ≥500 ตะกร้า (seed คงที่ · ส่วนลด/จำนวน/ราคาเปิด/รายการเอง · OWNER+STAFF): priceCart ฝั่ง client = quoteRegisterCart ทุกช่องยอดและทุกบรรทัด (หรือปฏิเสธรหัสเดียวกัน) · 0 ต่าง
+  ✅ [P1.3-S3.46] [3.2 ข้อ 10] ผลข้างเคียงเทียบทางเดิม (สินค้านับสต็อก): movement เดียวกัน · ชนิด outbox เดียวกัน · ข้อมูลเข้า bridge บัญชีเดียวกัน · COGS GL เท่ากัน · ตรึงความต่างที่รับรอง: AUTO ไม่เคยมีสต็อก ขายไม่ตัด (C2) · บริการ serviceId = InvItem ไม่ตัดสต็อก (R5)
+  ✅ [P1.3-S3.47] [3.2 ข้อ 12] STAFF ที่มี wildcard pos.* ตั้งราคาเปิดได้ (PAID) · STAFF ที่มีแค่ pos.sale.create → PERMISSION_DENIED
+  ✅ [P1.3-S3.48] [3.2 ข้อ 7] idempotencyKey: ว่าง / ช่องว่างล้วน / ไม่ใช่สตริง / ยาว 101 → VALIDATION ไม่มีบิล · ยาว 100 → PAID
+  ✅ [P1.3-S3.49] [3.2 ข้อ 4] เพดานส่วนลด vs การปัดที่ quote ของเซิร์ฟเวอร์ (STAFF): กรณีเดียวกับ S2.15 ให้ผลเดียวกัน
+
+── S3 รอบ R4 (K1–K5) ──
+  ✅ [P1.3-S3.50] [R4 K1] คีย์หน้าขายอยู่ใน namespace ของตัวเอง (เก็บ 'reg2:'+คีย์): submit คีย์ hotel-sale-<id> → บิลเก็บ reg2:… ไม่ยึดคีย์ดิบ · เช็คเอาท์โรงแรม (createSale HOTEL คีย์เดียวกัน) ได้บิลใหม่ของตัวเอง · บิลโรงแรมมาก่อน → submit ได้บิลใหม่ ไม่เจอ/ไม่รั่วบิลโรงแรม · rental-/rental-deposit-/booking-deposit- ไม่ถูกยึด · คีย์ 8–100 [A-Za-z0-9_-] (7 ตัว · จุด · โคลอน 'reg2:' · ไทย · ช่องว่าง → VALIDATION ไม่มีบิล · 8 ตัว / UUID → PAID)
+  ✅ [P1.3-S3.51] [R4 K2] IDEMPOTENCY_CONFLICT พก saleId/receiptNo/saleStatus เฉพาะบิล POS สาขาเดียวกันที่ผู้ขอมองเห็น: คีย์ของสาขา 2 ใช้ที่สาขา sandbox (เจ้าของ · แคชเชียร์ · payload เดิม/ต่าง) → CONFLICT เปล่า ไม่มี id/เลขใบเสร็จ/unitId ของสาขา 2 · บิลโมดูลอื่น (HOTEL) ที่คีย์ reg2:… สาขาเดียวกัน → CONFLICT เปล่า ไม่มีบิลที่ 2 · คู่บวก: สาขา 2 payload เดิม = duplicated · payload ต่าง = CONFLICT + saleId
+  ✅ [P1.3-S3.52] [R4 K3] คำขอแรกค้าง (ตัวนับใบเสร็จถูกล็อกจาก connection อื่น) · ราคาเปลี่ยน · ส่งตะกร้าที่คิดราคาใหม่ด้วยคีย์เดิม (ค้างเช่นกัน) → ปล่อยล็อก: บิล PAID เดียวของคีย์ · คำตอบหนึ่ง ok อีกคำตอบ duplicated หรือ IDEMPOTENCY_CONFLICT (saleId เดียวกัน) · ไม่มี THROW/INTERNAL/BUSY · Σ จ่าย = ยอดบิล
+  ✅ [P1.3-S3.53] [R4 K4 · มติ r4 ข้อ 3] ส่งซ้ำคีย์เดิมด้วย cashReceivedSatang 0 / รับขาด 1 สตางค์ / ไม่ส่ง → PAYMENT_MISMATCH · ติดลบ → VALIDATION (ตรวจเหมือนครั้งแรก ก่อนดูคีย์ · ห้าม ok แม้ทอน ≥ 0) · บิลเดียว · ส่งซ้ำ payload เดิมยังทอนเท่าเดิม
+  ✅ [P1.3-S3.54] [R4 m2 · คงมติ S3.47] STAFF ที่มี wildcard pos.* ได้ pos.sale.priceOverride: quote + PAID รายการกำหนดเอง (บันทึกพฤติกรรม — เปิด V2 = STAFF pos.* ตั้งราคาเองได้ · อยู่ใน checklist deploy)
+
+── S4 แถบสถานะ ──
+  ✅ [P1.3-S4.1] registerStatus: unit.name · user.name · roleLabel เป็นภาษาคน (ไม่ใช่ OWNER/STAFF ดิบ) · pendingSyncCount = 0 (ออฟไลน์ P3)
+  ✅ [P1.3-S4.2] ยังไม่มีกะ (PosShift ของ P1.9 ยังไม่มี/ไม่เปิด) → shift = null ไม่ throw
+  ✅ [P1.3-S4.3] pendingStockCount ('รอตัดสต็อก'): บิลวันนี้ (ตัดวันเวลาไทย +07:00) ที่ตัดสต็อกครบ → 0 · บิลที่ยังไม่ตัด (createSale ใน tx ผู้อื่น) → นับ 1
+  ✅ [P1.3-S4.4] registerStatus ข้ามร้าน (unit ร้านอาหาร) → NOT_FOUND · แคชเชียร์สาขาอื่น → NOT_FOUND · สาขาตัวเอง → ok (คู่บวก)
+  ✅ [P1.3-S4.5] [Q23] registerStatus.user.role = รหัสบทบาท OWNER · MANAGER · STAFF ตาม actor (roleLabel ภาษาคนยังอยู่ · S4.1)
+  ✅ [P1.3-S4.6] [Q25] registerVatConfig(ctx) = {mode, rateBp} เดียวกับ vatMode/vatRateBp ของ quote (สาขา sandbox และสาขาสีลม) · mode ∈ INCLUDED|NONE
+  ✅ [P1.3-S4.7] [3.2 ข้อ 11] pendingStockCount: บิล PAID วันนี้ที่บรรทัดผูกสต็อกยังไม่มี movement pos-consume-<sale>-<line> → +1 · ตัดด้วยคีย์นั้นแล้ว → กลับเท่าเดิม
+  ลบแล้ว: {"outbox":109,"audit":268,"journal":0,"point":0,"coupon":0,"payment":110,"line":310,"sale":108,"product":537,"productBySystem":0,"category":2,"menuGroup":2,"invJournal":59,"invItem":20,"customer":2,"user":2} · สาขา 3 · ระบบ 4
+  ✅ [P1.3-S9.1] QC4 คืนสภาพ: จำนวนแถวของร้าน QC POS ทั้งสอง (ทุกตารางที่ข้อสอบแตะ) ก่อน = หลัง · ตัวนับใบเสร็จสาขาจริงไม่ขยับ
+  ✅ [P1.3-S9.2] QC4 ลายนิ้วมือ: แถวเดิมของร้าน QC POS (PosProduct · PosCategory · InvItem · AppSystem รวม settings · AppSystemUnit · BusinessUnit · Membership · PosReceiptCounter) ทุกคอลัมน์ ก่อน = หลัง
+
+===== qc-pos-p1.3 ===== ผ่าน 127/128
+JSON_SUMMARY {"suite":"qc-pos-p1.3","total":128,"passed":127,"failed":["P1.3-S5.12"],"skipped":false,"forced":false,"skippedChecks":{},"missing":[],"a5":{"drift":[]}}

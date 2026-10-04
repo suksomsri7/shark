@@ -1,0 +1,53 @@
+[env] qc-pos-p1.17 · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4)
+(node:1841172) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+── ST ข้อสถิต (ไม่แตะ DB) ──
+  ✅ [P1.17-ST1] [static · R1] src/lib/modules/pos/reports.ts export ครบ 9: reportDailySales reportProducts reportStaff reportPayments reportMargin reportShifts reportTax reportCsv posDashboardCard
+  ✅ [P1.17-ST2] [static · R14] report-actions.ts "use server" บรรทัดแรก · export async function ล้วน · posReportAction / posReportCsvAction / posDashboardCardAction เรียกบริการ + catch · ไม่มี throw
+  ✅ [P1.17-ST3] [static · R12] core/permissions.ts โมดูล pos มี pos.report.view
+  ✅ [P1.17-ST4] [static · R6] PosSale.soldByUserId String? · migration ADD COLUMN "soldByUserId" nullable (ไม่มี DROP/RENAME/SET NOT NULL) · CreateSaleInput.soldByUserId?: string · submitRegisterSale ส่ง soldByUserId: actor.userId
+  ✅ [P1.17-ST5] [static · R15] ทุกคิวรี PosSale ใน reports.ts (prisma หรือ SQL ดิบ) กรองทั้ง unitId และ createdAt ⇒ ใช้ดัชนี (tenantId, unitId, createdAt)
+  ✅ [P1.17-ST6] [static · R3 R4] reports.ts อ่านอย่างเดียว (ไม่มี create/update/upsert/delete/$executeRaw) · ไม่คำนวณ VAT เอง (ไม่ import splitIncludedVat/posVatRateBp) · ไม่เรียก forceCloseStaleShifts
+
+── sandbox qc-p1.17-vsll7b (3 สาขา + POS 2 + คลัง 1 ชั่วคราวในร้าน QC กาแฟ · บิล 10 · กะ 3) ──
+  ✅ [P1.17-F1] ข้อมูลทดสอบถูกเขียนครบ + ข้อสอบตรวจตัวเอง: ทุกบิล Σจ่าย = grandTotal + ทิป · grand = subtotal − ส่วนลด + ค่าบริการ · ค่าที่ข้อสอบคำนวณ = ตัวเลขใน brief (D1 55,450/4 บิล/VAT 3,431 · D2 9,000/2 · ต้นทุน 13,600 · กำไรสุทธิ 46,831)
+  ✅ [P1.17-D1] รายวัน D1–D2: แถว D1 = 4 บิล · ก่อนส่วนลด 54,000 · ส่วนลด 1,000 · ค่าบริการ 2,450 (อยู่ในยอด) · สุทธิ 55,450 · VAT 3,431 (จากคอลัมน์) · ก่อน VAT 52,019 · ทิป 1,000 (ไม่อยู่ในยอด) · ยกเลิก 1/18,000 · เฉลี่ย 13,862 · แถว D2 9,000/2 · รวม = Σ แถว
+  ✅ [P1.17-D2] ตัดวันเวลาไทย: บิล 23:59:30 อยู่ D1 · 00:00:30 และ 06:30 (วันก่อนตาม UTC) อยู่ D2 · ช่วง 09-12..09-16 ได้ 5 แถวเรียงวัน วันไม่มีขาย = แถวศูนย์ · บิล 09-13 23:59:59 / 09-16 00:00:00 อยู่วันของมันเท่านั้น
+  ✅ [P1.17-D3] ตรงกับหน้าปิดวันเดิม: closeDaySummary(D1/D2) netSales · billCount · voidCount · voidTotal = แถวรายวันของวันนั้น
+  ✅ [P1.17-D4] กรองสาขา: ctx.unitId = u2 → D1 3,000/1 บิล (บิลไม่มี VAT) · D2 4,500/1 บิล · ไม่มีบิลของ u1
+  ✅ [P1.17-PR1] สินค้าขายดี: 4 แถวเรียงยอดขาย ลาเต้ 22,500 (5 ชิ้น 4 บิล) · บริการ 20,000 · เค้ก 17,500 (ยอดเต็ม 18,000 ส่วนลดบรรทัด 500) · พิมพ์เอง 3,000 (3) · คีย์ p:/s:/n: · บิล void ไม่นับ
+  ✅ [P1.17-PR2] เอกลักษณ์: Σ ยอดขายสินค้า = Σ subtotal ของบิล PAID (63,000) = Σ grossSatang รายวัน · totals.salesSatang ตรง
+  ✅ [P1.17-SF1] พนักงาน: B 3 บิล 43,450 ทิป 1,000 ยกเลิก 1/18,000 · A 2 บิล 16,500 ส่วนลด 1,000 · ไม่ระบุ (userId null) 1 บิล 4,500 · ชื่อจาก User · Σ สุทธิ = ยอดรวม
+  ✅ [P1.17-SF2] ผู้ขาย = soldByUserId ?? ผู้เปิดกะของบิล ?? null: บิล 06:30 (soldBy ว่าง ผูกกะของ B) นับให้ B · บิล 00:00:30 (ไม่มีทั้งคู่) อยู่แถว null · บิล void นับยกเลิกให้ผู้ขายของมัน
+  ✅ [P1.17-PM1] วิธีชำระเรียง CASH PROMPTPAY TRANSFER CARD: เงินสด 4 รายการ 35,950 (รับ 42,500 ทอน 6,550) · พร้อมเพย์ 2/5,000 · โอน 1/4,500 · บัตร 1/20,000 · billCount ต่อวิธี (บิลแบ่งจ่ายนับทุกวิธี)
+  ✅ [P1.17-PM2] เอกลักษณ์: Σ รับ 65,450 = ยอดขาย 64,450 + ทิป 1,000 · totals มี totalPaidSatang/salesSatang/tipSatang ตรง
+  ✅ [P1.17-MG1] กำไรต่อสินค้า: ลาเต้ ต้นทุน 6,100 จาก InvMovement ที่เก็บไว้ (ไม่ใช่ต้นทุนวันนี้ 1,500×5) กำไร 16,400 · 72.88% · เค้ก ต้นทุนประมาณ 7,500 (ไม่มี movement → ต้นทุนเฉลี่ยปัจจุบัน) · บริการ/พิมพ์เอง ต้นทุน null
+  ✅ [P1.17-MG2] รวมกำไร: ยอด 63,000 · ยอดที่มีต้นทุน 40,000 · ต้นทุน 13,600 (ประมาณ 7,500) · กำไรขั้นต้น 26,400 · ไม่มีต้นทุน 23,000/2 บรรทัด · ก่อน VAT 60,431 · กำไรสุทธิ 46,831 · movement ของบิล void ไม่นับ
+  ✅ [P1.17-TX1] ภาษีขายรายวันต่อสาขา 4 แถว: D1/u1 3 บิล 52,450 VAT 3,431 ฐาน 49,019 เลขที่แรก/สุดท้าย + เลขยกเลิก 1 · D1/u2 3,000 ไม่มี VAT · D2/u1 4,500 VAT 294 · D2/u2 4,500 VAT 294
+  ✅ [P1.17-TX2] VAT จากคอลัมน์ที่เก็บ: บิล VAT 0 อยู่ nonVatGross ไม่ถูกคิดใหม่ (ไม่ใช่ 196) · Σ VAT = 4,019 = Σ vatSatang ใน DB · ยอดภาษีไม่รวมทิป · base = gross − vat
+  ✅ [P1.17-CSV1] CSV รายวัน: ขึ้นต้น BOM U+FEFF · หัวตารางตรงตัว · 2 แถววัน + แถว "รวม" · เงินเป็นบาท 2 ตำแหน่ง (55450 → 554.50) ตรงกับรายงาน · filename pos-daily-2026-09-14_2026-09-15.csv · contentType text/csv; charset=utf-8
+  ✅ [P1.17-CSV2] CSV ครบ 7 ชนิด: BOM + หัวตารางของชนิดนั้นตรงตัว + จำนวนแถว = แถวรายงาน + 1 (รวม) · ชื่อมีจุลภาค/อัญประกาศถูก escape ("พิมพ์เอง, ""พิเศษ""")
+  ✅ [P1.17-CD1] การ์ด (now = D2 10:00 ไทย): businessDate D2 · 9,000/2 บิล · เฉลี่ย 4,500 · เมื่อวาน 55,450 · deltaBp −8,377 · กะเปิด 1 · สินค้าขายดี ลาเต้ 2 ชิ้น 9,000
+  ✅ [P1.17-V1] ตรวจช่วงวัน: from > to · 2026-9-14 · 2026-02-30 · ตัวเลข · ไม่ส่ง · 93 วัน → VALIDATION (ทุกรายงาน + CSV) · 92 วัน ok · CSV kind ไม่รู้จัก → VALIDATION
+  ✅ [P1.17-A1] สิทธิ์: STAFF มีแค่ pos.sale.create → PERMISSION_DENIED ทั้ง 7 รายงาน + CSV (การ์ด ok) · STAFF ไม่มีสิทธิ์ POS → การ์ด PERMISSION_DENIED
+  ✅ [P1.17-A2] สาขาจำกัด: STAFF pos.report.view unitAccess [u1] ไม่ส่ง unitId → เห็นแค่ u1 (D1 52,450/3 · D2 4,500/1) · ส่ง unitId u2 → NOT_FOUND · การ์ดเห็น u1 (4,500/1 · กะเปิด 0)
+  ✅ [P1.17-I1] ข้ามระบบ: บิลของ POS อีกตัว (u3) ไม่อยู่ในรายงานของ POS นี้ และกลับกัน · systemId ที่เป็นระบบคลัง / ไม่มีจริง / unitId ร้านอื่น → NOT_FOUND
+  ✅ [P1.17-I2] ข้ามร้าน: เจ้าของร้าน QC อาหาร (ctx ร้านตัวเอง) กับ systemId ร้านกาแฟ → NOT_FOUND ทั้งรายวัน/ภาษี/CSV/การ์ด
+  ✅ [P1.17-SH1] กะในช่วง (วันเปิดกะเวลาไทย): กะปิดของ B = ค่าจาก Z แช่แข็ง (3 บิล 43,450 ทิป 1,000) + คอลัมน์ (ควรมี 72,450 นับ 72,000 ขาด −450 Z#1) · กะเปิดของ A คำนวณสด (0 บิล ควรมี 100,000 นับ null) · กะ 09-16 ไม่อยู่ · รวม ขาด −450 shortCount 1 openCount 1
+  ✅ [P1.17-SB1] ทางเขียนผู้ขาย: createSale({…, soldByUserId}) → แถว PosSale.soldByUserId ตรง · ไม่ส่ง = null (ผู้เรียกเดิมไม่กระทบ)
+  ✅ [P1.17-SH2] Z แช่แข็งในรายงาน: เปลี่ยนบิล 06:30 ในกะที่ปิดแล้วเป็น VOIDED ใน DB → แถวกะเดิมไม่เปลี่ยน (3/43,450) แต่รายวัน D2 เหลือ 1 บิล 4,500
+  ✅ [P1.17-R1] คำปฏิเสธของ reports.ts (VALIDATION · NOT_FOUND · PERMISSION_DENIED) ≥ 12 รายการ = คืน {ok:false, code, message} ไม่ throw
+  ลบแล้ว: {"outbox":2,"audit":0,"movementBySale":5,"payment":14,"line":14,"sale":12,"movement":0,"item":2,"shift":3} · บิล 12 · กะ 3 · สาขา 3 · ระบบ 3
+  ✅ [P1.17-Z1] QC4 คืนสภาพ: จำนวนแถวของร้าน QC POS ทั้งสอง (ทุกตารางที่ข้อสอบแตะ · รวม InvItem/InvMovement/PosShift) ก่อน = หลัง · ผลรวมตัวนับใบเสร็จไม่ขยับ
+  ✅ [P1.17-Z2] QC4 ลายนิ้วมือ: แถวเดิมของร้าน QC POS (PosProduct · PosCategory · AppSystem · AppSystemUnit · BusinessUnit · Membership · PosReceiptCounter · PosShift · InvItem) ทุกคอลัมน์ ก่อน = หลัง
+
+===== qc-pos-p1.17 ===== ผ่าน 35/35 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-pos-p1.17","total":35,"passed":35,"failed":[],"skipped":false,"forced":true,"skippedChecks":{},"missing":[],"a5":{"drift":[]}}
