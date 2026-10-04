@@ -1,0 +1,38 @@
+[env] qc-inventory-account · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech
+(node:914553) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ [IA-1.1] receive procurement → 1 entry สมดุล
+  ✅ [IA-1.2] Dr 1200 =500 (สินค้าคงเหลือ)
+  ✅ [IA-1.3] Cr 2100 =500 (เจ้าหนี้การค้า)
+  ✅ [IA-2.1] consume → 1 entry สมดุล
+  ✅ [IA-2.2] Dr 5000 =150 (ต้นทุนขาย)
+  ✅ [IA-2.3] Cr 1200 =150 (ลดสินค้าคงเหลือ)
+  ✅ [IA-3.1] refund receive → 1 entry สมดุล
+  ✅ [IA-3.2] Dr 1200 =150 (คืนเข้าคลัง)
+  ✅ [IA-3.3] Cr 5000 =150 (กลับต้นทุนขาย)
+  ✅ [IA-4.1] manual receive → 1 entry สมดุล
+  ✅ [IA-4.2] Dr 1200 =100
+  ✅ [IA-4.3] Cr 3000 =100 (ทุนเจ้าของ)
+  ✅ [IA-5.1] trial balance สมดุล (Σdebit=Σcredit)
+  ✅ [IA-5.2] 1200 สินค้าคงเหลือ net = 600 (A 10×50 + B 4×25)
+  ✅ [IA-5.3] 5000 ต้นทุนขาย net = 0 (ขาย 150 แล้ว refund กลับ 150)
+  ✅ [IA-5.4] 2100 เจ้าหนี้ net = -500 (เครดิต 500)
+  ✅ [IA-5.5] 3000 ทุนเจ้าของ net = -100 (เครดิต 100)
+  ✅ [IA-6.1] receive ซ้ำ → คืน movement เดิม + GL entry ยัง 1 (ไม่เบิ้ล)
+  ✅ [IA-6.2] consume ซ้ำ → คืน movement เดิม + GL entry ยัง 1 (ไม่เบิ้ล)
+  ✅ [IA-6.3] trial balance ไม่เปลี่ยน (ยัง 900/900)
+  ✅ [IA-7.1] ไม่มี ACCOUNT → receive/consume ไม่ error + movement ถูกบันทึก (2)
+  ✅ [IA-7.2] ไม่มี ACCOUNT → ไม่มี GL entry เลย (0)
+  ✅ [IA-8.1] adjust → ไม่โพสต์ GL (out of scope)
+
+===== QC Inventory → Account (perpetual) =====
+ผ่าน 23/23
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":23,"passed":23,"findings":[]}

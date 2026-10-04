@@ -1,0 +1,50 @@
+[env] qc-restaurant-pay · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech
+── setup: ร้าน RESTAURANT ผูก POS + ตั้งพร้อมเพย์ ──
+(node:913866) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+── ลูกค้าเปิดโต๊ะจาก QR + สั่งข้าวกะเพรา ฿60 ×2 ──
+  ✅ [RP-1.1] resolveTableSession จาก qrToken คืน session + ชื่อโต๊ะ
+
+── billPreview + guestBill (ฝั่งลูกค้า) ──
+  ✅ [RP-2.1] billPreview ยอดรวม = ฿120.00 (60×2)
+  ✅ [RP-2.2] guestBill คืน ok + ยอด 12000
+  ✅ [RP-2.3] guestBill สร้าง payload PromptPay (ร้านตั้งพร้อมเพย์แล้ว)
+  ✅ [RP-2.4] payload ล็อกยอด 120.00 (dynamic amount tag 54)
+
+── ลูกค้ากด 'แจ้งชำระแล้ว' → ร้านเห็นสัญญาณ ──
+  ✅ [RP-3.1] notifyPromptpayPayment คืน ok
+  ✅ [RP-3.2] ร้านเห็นคำขอ PAY_PROMPTPAY (ผ่าน listServiceRequests)
+  ✅ [RP-3.3] note ระบุยอดที่ลูกค้าแจ้ง (฿120.00)
+  ✅ [RP-3.4] หน้าผังโต๊ะขึ้นธง hasPayNotified
+  ✅ [RP-3.5] กดแจ้งซ้ำภายใน 2 นาที → ไม่สร้างคำขอซ้ำ (dedup)
+
+── ร้านกด 'ยืนยันรับเงิน' → checkout PROMPTPAY ──
+  ✅ [RP-4.1] checkout PROMPTPAY สำเร็จ + saleId
+  ✅ [RP-4.2] ปิดโต๊ะอัตโนมัติเมื่อจ่ายครบ (sessionClosed)
+  ✅ [RP-4.3] เกิด posSale 1 ใบ สถานะ PAID (ลงบัญชีการขาย)
+  ✅ [RP-4.4] posPayment เป็น PROMPTPAY ยอด 12000
+  ✅ [RP-4.5] TableSession = CLOSED
+
+── idempotency: กดยืนยันรับเงินซ้ำ → ไม่เกิดบิลซ้ำ ──
+  ✅ [RP-5.1] checkout ครั้งที่ 2 ไม่มีรายการค้าง (ok:false)
+  ✅ [RP-5.2] posSale ยังคง 1 ใบเดียว (ไม่เก็บเงินซ้ำ)
+
+── cross-tenant: qrToken ร้านอื่น ไม่คืนบิล ──
+  ✅ [RP-6.1] guestBill(ร้าน1, qrToken ร้าน2) → ไม่คืน (กันข้ามร้าน)
+  ✅ [RP-6.2] notifyPromptpayPayment(ร้าน2, qrToken ร้าน1) → ไม่คืน
+
+[cleanup] เรียบร้อย
+
+===== QC Restaurant Customer-Pay (PromptPay) =====
+ผ่าน 19/19
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+
+JSON_SUMMARY {"total":19,"passed":19,"findings":[]}
