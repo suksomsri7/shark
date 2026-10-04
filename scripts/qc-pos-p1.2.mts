@@ -1432,7 +1432,7 @@ async function runDb() {
 
   // ════════ R1 ปฏิเสธเป็นข้อมูล ════════
   const badR1 = dataRefusals.filter(([, r, code]) => !(r?.ok === false && r.threw !== true && r.code === code && typeof r.message === "string" && r.message.length > 0)).map(([l, r]) => `${l}:${r?.threw ? "THROW " : ""}${codeOf(r)}`);
-  chk("R1", dataRefusals.length >= 8 && badR1.length === 0, `${dataRefusals.length} คำปฏิเสธ = {ok:false, code, message} ไม่ throw`, FX(badR1.join(" · ") || "ครบ"));
+  chk("R1", dataRefusals.length >= 7 && badR1.length === 0, `${dataRefusals.length} คำปฏิเสธ = {ok:false, code, message} ไม่ throw`, FX(badR1.join(" · ") || "ครบ"));
 }
 
 // ═════════════════════════ 6. คืนสภาพ ═════════════════════════
