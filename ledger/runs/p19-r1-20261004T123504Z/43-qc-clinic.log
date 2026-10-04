@@ -1,0 +1,23 @@
+[env] qc-clinic · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech
+(node:1347277) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ [CL-1.1] สร้างผู้ป่วย + ผูก Customer (มีระบบสมาชิก)
+  ✅ [CL-1.2] searchPatients ด้วยเบอร์บางส่วน เจอ
+  ✅ [CL-2.1] เปิด visit + symptom ว่าง throw
+  ✅ [CL-2.2] จ่ายยา 10 เม็ด 2 ครั้ง → สต็อก 80 (ครั้งที่สองคือการจ่ายจริงครั้งที่สอง — ตัดสต็อกและบันทึกลง dispenseJson · HF-INV-1 R3.5(b))
+  ✅ [CL-2.3] movement sourceModule CLINIC + dispenseJson บันทึก
+  ✅ [CL-3.1] เก็บเงิน 500 → BILLED + PosSale PAID + posSaleId
+  ✅ [CL-3.2] เก็บซ้ำ ok:false + บิลไม่ซ้ำ
+  ✅ [CL-3.3] fee 0 → BILLED โดยไม่มีบิล (posSaleId null)
+
+===== QC Clinic =====
+ผ่าน 8/8
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":8,"passed":8,"findings":[]}

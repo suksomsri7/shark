@@ -1,0 +1,86 @@
+[env] qc-pos-p0.2 · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech
+
+── S1 ทะเบียนโหลดได้ + รูปทรงของ op (static) ──
+  ✅ [P0.2-S1.1] POS_OPS โหลดได้และไม่ว่าง
+  ✅ [P0.2-S1.2] op id ไม่ซ้ำ
+  ✅ [P0.2-S1.3] method+path ไม่ซ้ำ
+  ✅ [P0.2-S1.4] ทุก op: module=pos · auditAction · scope · summary EN · ป้ายไทย · test id · มี input schema
+  ✅ [P0.2-S1.6] ทุก op: payload ถูกต้องผ่าน · payload เดิม + ฟิลด์แปลก 1 ตัว ถูกปัด (strict)
+
+── S2 scope (static) ──
+  ✅ [P0.2-S2.1] scope ของทุก op เป็น permission key จริงของโมดูล pos
+  ✅ [P0.2-S2.2] POS_SCOPES ทุกตัวมีจริง และทุก op ใช้ค่าจาก POS_SCOPES
+  ✅ [P0.2-S2.3] ยังไม่มี bundle คีย์ API ของ POS (เลื่อนไป P2.13)
+  ✅ [P0.2-S2.4] sales.void = danger + pos.sale.void
+  ✅ [P0.2-S2.5] sales.create = write + pos.sale.create · อ่านทั้งสอง = read + pos.sale.create
+
+── S3 tool เดิมของสกิล sales ↔ op (static) ──
+  ✅ [P0.2-S3.1] ตาราง POS_LEGACY_AI_TOOLS = รายชื่อ tool ของสกิล sales พอดี
+  ✅ [P0.2-S3.2] opId ทุกแถวมีจริงในทะเบียน
+  ✅ [P0.2-S3.3] op ทุกตัวมีแถวในตาราง
+  ✅ [P0.2-S3.4] แถวที่ไม่ใช่ของ POS ไม่มี op ปลอม (owner≠pos ⇔ opId=null)
+  ✅ [P0.2-S3.5] ไม่มี op ไหนประกาศ tool (มติข้อ 1)
+  ✅ [P0.2-S3.6] tool เดิมทั้ง 6 ของสกิล sales ยังอยู่ในทะเบียน tool จริง
+  ✅ [P0.2-S3.7] assertSkillRegistryComplete ผ่าน (F10.1)
+
+── S4 matchOp / dispatch helpers (static) ──
+  ✅ [P0.2-S4.1] matchOp POST /sales/{id}/void → sales.void + params.id
+  ✅ [P0.2-S4.2] matchOp POST /sales/ (trailing slash) → sales.create
+  ✅ [P0.2-S4.3] matchOpIn(POS_OPS) GET /reports/daily (POS-API §3) → sales.byDay
+  ✅ [P0.2-S4.3b] matchOp GET /reports/summary → sales.summary
+  ✅ [P0.2-S4.4] allowedMethods(/sales)=[POST] · path ที่ไม่มี = []
+  ✅ [P0.2-S4.5] matchOp GET /sales → null (ยังไม่มี op อ่านรายการบิล)
+  ✅ [P0.2-S4.6] ยังไม่มี route ใต้ src/app/api/v1/pos (โครงเท่านั้น — P2.13)
+
+── S5 input schema + helper (unit) ──
+  ✅ [P0.2-S5.1] sales.create: จ่ายครบพอดีผ่าน
+  ✅ [P0.2-S5.2] sales.create: แนบ tenantId/systemId มาใน body = ถูกปัด (strict)
+  ✅ [P0.2-S5.3] sales.create: เงินไม่ใช่จำนวนเต็มสตางค์/ติดลบ = ถูกปัด
+  ✅ [P0.2-S5.4] sales.create: qty 0 / ไม่มีรายการ / ชื่อว่าง = ถูกปัด
+  ✅ [P0.2-S5.5] sales.create: DEPOSIT / itemId (ยังไม่ resolve) = ถูกปัด
+  ✅ [P0.2-S5.8] sales.create: Σ จ่าย ≠ ยอดบิล → validation ที่ช่อง payMethods ข้อความไทย
+  ✅ [P0.2-S5.9] sales.create: หลายวิธีจ่ายรวมพอดี = ผ่าน
+  ✅ [P0.2-S5.10] sales.create: ล้น Int (บรรทัดเดียว / ผลรวมหลายบรรทัด / ช่องเกิน) = ถูกปัดพร้อมข้อความไทย · พอดี Int max = ผ่าน
+  ✅ [P0.2-S5.6] sales.void: ต้องมีเหตุผล ≥5 ตัวอักษร
+  ✅ [P0.2-S5.7] sales.summary: days จาก query string แปลงได้ · 0/32 ถูกปัด
+  ✅ [P0.2-S5.11] คีย์กันซ้ำของ createSale: คนละผู้เรียก + Idempotency-Key เดียวกัน = คนละคีย์ · ผู้เรียกเดิม = คีย์เดิม
+  ✅ [P0.2-S5.12] สิทธิ์สาขา: คีย์ API ผ่านทุกสาขา · คนที่ได้แค่สาขา A ใช้ B ไม่ได้ · OWNER ผ่าน
+  ✅ [P0.2-S5.13] sales.void: บิลจากระบบอื่น (รวมค่าที่ไม่รู้จัก) → 409 บอกให้ยกเลิกจากระบบต้นทาง · POS/AI/API → ยกเลิกได้
+  ✅ [P0.2-S5.14] sales.void: voidSale โยนเรื่องสถานะ (ชนกันระหว่างตรวจ-ลงมือ) → 409 state_conflict · error อื่นผ่านไปตามเดิม
+
+── S6 ด่าน id/สาขา (อ่าน DB · การเขียนถูกตัด) ──
+  ✅ [P0.2-S6.B] positive control: ตัวตัดการเขียน ($transaction โยน QC-WRITE-BLOCKED) ทำงานจริง
+(node:1341071) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ [P0.2-S6.1] sales.create: unitId ที่ไม่มีจริง → 404
+  ✅ [P0.2-S6.0] positive control: สาขาจริง + ระบบจริง ผ่านด่าน แล้วไปชนตัวตัดการเขียน (ไม่ใช่ 404)
+  ✅ [P0.2-S6.2] sales.create: สาขาจริงของร้านอื่น (tenant ไม่ตรง) → 404
+  ✅ [P0.2-S6.3] sales.create: สาขาจริงของร้านเดียวกันแต่คนละระบบ POS → 404
+  ✅ [P0.2-S6.4] sales.create: คนที่เข้าได้แค่สาขาอื่น → 404 · positive control: คนที่เข้าสาขานี้ได้ผ่านด่าน (ชนตัวตัด)
+  ✅ [P0.2-S6.5] sales.void: saleId ที่ไม่มีจริง → 404
+  ✅ [P0.2-S6.6] sales.void: บิลจริงของร้านอื่น / ระบบอื่น → 404 ทั้งคู่
+  ✅ [P0.2-S6.8] sales.void: คนที่เข้าได้แค่สาขาอื่น → 404 · positive control: คนที่เข้าสาขาของบิลได้ผ่านด่าน (ไม่ใช่ 404)
+  ✅ [P0.2-S6.9] sales.void: บิลจริงที่มาจาก BOOKING → 409 (ไม่ถึง voidSale)
+  ⏭  [P0.2-S6.7] บิล POS ที่ void แล้ว — SKIP: QC DB ไม่มี PosSale สถานะ VOIDED (เส้นเดียวกันครอบโดย S5.14 ระดับ unit)
+
+── S7 op อ่านยอดขาย (อ่าน DB · เทียบ aggregate อิสระบนวันที่มีบิลจริง) ──
+  ✅ [P0.2-S7.2] sales.summary ช่วงวัน = วันไทย 3 วันรวมวันนี้
+  ✅ [P0.2-S7.3] sales.summary ไม่ระบุ days = 7
+  ✅ [P0.2-S7.4] sales.byDay 5 แถว ใหม่→เก่า เริ่มวันนี้ วันต่อเนื่อง
+  ✅ [P0.2-S7.1] sales.summary ระบบจริง 1 วัน = aggregate อิสระ (ยอด 114000 สตางค์ · 6 บิล)
+  ✅ [P0.2-S7.5] sales.byDay วัน 2026-10-04 = aggregate อิสระของวันนั้น (114000 สตางค์)
+  ✅ [P0.2-S7.6] ระบบ POS อื่นของร้านเดียวกัน (ช่วงเดียวกันที่มียอดจริง > 0) เห็น 0 — ไม่รั่วข้ามระบบ
+  ✅ [P0.2-S1.5] ทุก op มี test id ไม่ซ้ำ และมีข้อสอบที่รันจริง + ผ่าน ติดป้าย id นั้น (ไม่นับข้อความในไฟล์)
+
+===== QC: POS P0.2 ทะเบียน op =====
+ผ่าน 55/55 · SKIP 1 (P0.2-S6.7)
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+
+JSON_SUMMARY {"total":55,"passed":55,"skipped":["P0.2-S6.7"],"findings":[]}

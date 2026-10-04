@@ -1,0 +1,48 @@
+[env] qc-booking-edit-schedule · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech
+(node:1347112) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+── แก้ราคาบริการ: ประวัติต้องไม่ขยับ ──
+  ✅ [PR-0] จองนัดได้
+  ✅ [PR-1] 🔴 บิลที่ขายไปแล้วยังเป็นราคาเดิม 50 บาท
+  ✅ [PR-2] 🔴 ยอดรวมบิลเดิมไม่ขยับ
+  ✅ [PR-3] 🔴 นัดที่จองไว้ก่อนขึ้นราคา เก็บราคา ณ วันจอง (50 บาท)
+  ✅ [PR-4] บริการเองเปลี่ยนเป็น 60 บาทแล้ว (มีผลกับครั้งถัดไป)
+── วันหยุดรายวัน ──
+  ✅ [CL-1] ปกติมีช่องจอง
+  ✅ [CL-2] 🔴 ตั้งปิดทั้งวัน → ไม่มีช่องจองเลย (ทับเวลาทำการรายสัปดาห์)
+  ✅ [CL-3] เปลี่ยนเป็นเปิดพิเศษ 10:00-12:00 → มีช่องจองในกรอบนั้น
+  ✅ [CL-4] วันหยุดโผล่ในรายการให้แก้/ลบได้
+  ✅ [CL-5] ลบวันหยุด → กลับไปใช้เวลาทำการปกติ
+  ✅ [CL-6] วันหยุดมีผลเฉพาะวันที่ตั้ง ไม่ลามวันอื่น
+── พนักงานซ้ำซ้อน ──
+  ✅ [ST-1] เพิ่มช่างในระบบจอง → ขึ้นทะเบียนทีมงานให้อัตโนมัติ
+  ✅ [ST-2] มีพนักงานชื่อเดียวกันอยู่ในทะเบียนทีมงานจริง
+  ✅ [ST-3] ช่างที่เพิ่มไว้ก่อนมีการเชื่อม — กดรวมแล้วผูกทะเบียนให้
+  ✅ [ST-3b] ช่างที่เพิ่มหลังมีระบบทีมงาน ถูกผูกตั้งแต่ตอนสร้างอยู่แล้ว
+  ✅ [ST-4] กดรวมซ้ำไม่สร้างพนักงานซ้ำ
+  ✅ [ST-5] เพิ่มช่างชื่อซ้ำ → ผูกพนักงานคนเดิม ไม่สร้างใหม่
+── ตารางเข้างานรายพนักงาน ──
+  ✅ [SC-1] ยังไม่ตั้ง → ว่างทั้ง 7 วัน
+  ✅ [SC-2] 🔴 ยังไม่ตั้งตาราง ห้ามตัดสินว่าสาย
+  ✅ [SC-3] ตั้ง จ-ศ เต็มวัน + ส-อา ครึ่งวัน ได้
+  ✅ [SC-4] อ่านกลับได้ครบ: จันทร์ 09:00-18:00 · เสาร์ 09:00-13:00
+  ✅ [SC-5] เข้า 09:10 (ผ่อนผัน 15 นาที) = ตรงเวลา
+  ✅ [SC-6] เข้า 09:30 = สาย
+  ✅ [SC-7] ตั้งวันหยุดประจำได้ + วันที่ไม่ส่งมาถูกล้าง (กลับเป็นยังไม่ตั้ง)
+  ✅ [SC-8] วันหยุดประจำ = ไม่นับสาย
+  ✅ [SC-9] เวลาออกก่อนเวลาเข้า → ปฏิเสธ
+
+[cleanup] ลบ test tenant เรียบร้อย
+
+===== QC: แก้ไขบริการ / วันหยุด / พนักงาน / ตารางงาน =====
+ผ่าน 26/26
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+
+JSON_SUMMARY {"total":26,"passed":26,"findings":[]}

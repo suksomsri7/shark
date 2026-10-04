@@ -1,0 +1,75 @@
+
+> shark-in-th@0.1.0 fitness /root/projects/shark-pos-p11
+> tsx scripts/fitness.mts
+
+
+── F7: docs xref — path ที่อ้างในเอกสารต้องมีจริง ──
+  ✅ [F7.1] ไม่มี ref ตายใหม่ในเอกสาร (ตรวจ 455 ref ใน 117 ไฟล์ · หนี้เดิม 8)
+  ✅ [F7.2] XREF_BASELINE ไม่มีรายการที่ซ่อมแล้ว (ratchet)
+
+── F1: ทุก model ลงทะเบียน scope (fail-closed) ──
+  ✅ [F1.1] ทุก model (320) ลงทะเบียนใน scope.ts
+  ✅ [F1.2] ไม่มี model ในทะเบียนที่ไม่มีใน schema แล้ว
+  ✅ [F1.3] scopeOf fail-closed (ไม่มี `?? "global"` ในโค้ดจริง)
+  ✅ [F1.4] scopeOf โยนเมื่อไม่รู้จัก model
+
+── F8: migration ครอบทุก model (กัน `db push` drift) ──
+  ✅ [F8.1] ทุก model (320) มีใน migration
+
+── F2/F5: ขอบเขตโมดูล (baseline ratchet — ห้ามเพิ่ม) ──
+  ✅ [F2.1] import ข้ามโมดูลอยู่ใน allowlist (102 เส้น / อนุญาต 106)
+  ✅ [F2.2] โมดูลอื่นแตะ account ได้เฉพาะผ่าน account/index (facade)
+  ✅ [F2.3] โค้ดอื่นแตะ crm ได้เฉพาะผ่าน crm/index (facade) หรือ crm/ui (ทางเข้าคอมโพเนนต์)
+  ✅ [F2.4] ฝั่ง CRM/พอร์ทัลแตะโมดูลสมาชิกได้เฉพาะผ่าน member/index หรือ member/session-facade
+  ✅ [F5.1] raw prisma ในโมดูลไม่เพิ่ม (baseline 46)
+
+── F6: authz coverage (ratchet — ห้ามเพิ่มไฟล์ไร้การตรวจสิทธิ์) ──
+  ✅ [F6.1] ไม่มีไฟล์ action ใหม่ที่ไร้การตรวจสิทธิ์ (หนี้เดิม 0)
+  ✅ [F6.2] AUTHZ_BASELINE ไม่มีรายการที่ปิดแล้ว (ratchet)
+
+── F9: ทะเบียนระบบสอดคล้องกับ Prisma enum ──
+  ✅ [F9.1] SYSTEM_DEFS ที่ available ทุกตัวมีใน Prisma enum จริง (24 entry)
+  ✅ [F9.2] comment ใน systems.ts ตรงกับจำนวน SYSTEM_DEFS จริง (24)
+
+── F10: ทะเบียนสกิล AI (tool ทุกตัวต้องมีบ้าน) ──
+  ✅ [F10.1] ทุก tool อยู่ในสกิลหรือแกนกลาง พอดี 1 ที่
+
+── F11: ข้อสอบไม่เน่าตามเวลา (ห้ามฮาร์ดโค้ดวันที่ที่เป็นอดีตแล้ว) ──
+  ✅ [F11.1] ข้อสอบที่ยิง flow กันจองย้อนหลัง ไม่มีวันที่ตายตัวที่เป็นอดีตแล้ว
+
+── F12: cookie ทุกตัวตั้ง secure (ห้ามหลุดผ่าน http) ──
+  ✅ [F12.1] ทุกจุดที่ตั้ง cookie ระบุ secure
+
+── F13: ทะเบียน API (op ทุกตัวมีข้อสอบ · คู่มือไม่เก่า · tool มีบ้าน) ──
+  ✅ [F13.1] ทุก op (199) มี test id ที่อ้างถึงจริงใน scripts/qc-account-api-*.mts
+  ✅ [F13.2] docs/api/ACCOUNT-API.md ตรงกับ generator (ไม่ stale)
+  ✅ [F13.3] tool ของ op บัญชี (36 ตัว) ลงทะเบียนในสกิล AI แล้ว
+  ✅ [F13.4] ทุก op ของบอร์ดงาน (88) มี test id ที่อ้างถึงจริงใน scripts/qc-kanban-*.mts
+  ✅ [F13.5] docs/api/KANBAN-API.md ตรงกับ generator (ไม่ stale)
+  ✅ [F13.6] tool ของ op บอร์ดงาน (22 ตัว) ลงทะเบียนในสกิล AI แล้ว
+  ✅ [F13.7] ทุก op ของระบบสมาชิก (212) มี test id ที่อ้างถึงจริงใน scripts/qc-member-*.mts
+  ✅ [F13.8] docs/api/MEMBER-API.md ตรงกับ generator (ไม่ stale)
+  ✅ [F13.9] tool ของ op ระบบสมาชิก (54 ตัว) ลงทะเบียนในสกิล AI แล้ว
+  ✅ [F13.10] ทุก op ของ CRM (122 + พอร์ทัล 16) มี test id ที่อ้างถึงจริงใน scripts/qc-crm-*.mts
+  ✅ [F13.11] docs/api/CRM-API.md ตรงกับ generator (ไม่ stale)
+  ✅ [F13.12] tool ของ op CRM (32 ตัว) ลงทะเบียนในสกิล AI แล้ว
+
+── F14: ทะเบียนปุ่ม CRM (ปุ่มทุกตัวมีแถว · แถวทุกแถวมีปุ่มจริง) ──
+  ✅ [F14.1] data-testid ที่กดได้ในโฟลเดอร์ CRM (1052 ตัว · สแกน 368 ไฟล์ใน 9 โฟลเดอร์: src/app/api/mobile/crm, src/app/api/v1/crm, src/app/app/sys/[id]/crm, src/app/b, src/app/t, src/app/u, src/components/chat/crm, src/components/crm, src/lib/modules/crm) มีแถวใน scripts/crm-ui-inventory.json ครบ (หนี้เดิม 0)
+  ✅ [F14.2] ทุกแถวใน scripts/crm-ui-inventory.json (1052) ชี้ไปที่ testid ที่มีจริงในโค้ด + baseline ไม่มีตัวที่ปิดแล้ว
+
+── F15: POS (แคตตาล็อก/ราคาผู้เขียนเดียว · สัญญา createSale · ทะเบียนปุ่ม POS · ข้อความ pos.* สองภาษา) ──
+  ✅ [F15.1] แคตตาล็อก/ราคามีผู้เขียนที่เดียว (catalog.ts ∪ baseline ต่อจุดเขียน · หนี้เดิม 1 ไฟล์ 2 จุด)
+  ✅ [F15.2] สัญญา createSale/voidSale/refundSale ใน src/lib/modules/pos/service.ts เข้ากันได้ย้อนหลังกับ scripts/pos-sale-contract.json (ขาเข้า/ขาออก · ทุก overload)
+  ✅ [F15.3a] ปุ่ม POS ที่มี data-testid มีแถวใน scripts/pos-ui-inventory.json ครบ + ไม่มีปุ่มใหม่ที่ไร้ testid (สแกน 58 ไฟล์ · หนี้ไร้ testid 47)
+  ✅ [F15.3b] ทุกแถวใน scripts/pos-ui-inventory.json ชี้ testid ที่มีจริง · ไม่ซ้ำ · ฟิลด์ถูกต้อง · baselineDebt ไม่เหลือหนี้ที่ปิดแล้ว (107 แถว)
+  ✅ [F15.4] ข้อความ pos.* มีครบทั้ง th/en · ไม่ว่าง · ค่าภาษาไทยมีอักษรไทย (ยกเว้นคำสากลใน UNIVERSAL_TOKENS)
+  ✅ [F15.5] ตัวบ่งชี้ผู้เรียกระดับระบบของแคตตาล็อก + backfill ไม่หลุดถึงโค้ดที่รับคำขอ (catalog.ts · สคริปต์ backfill · qc-* · allowlist เท่านั้น) · R4: ห้าม ?? / || / ?: / alias ของตัวบ่งชี้
+  ✅ [F15.7] ประตูเดิมของคลัง/บัญชีแตะ POS ได้เฉพาะ pos/catalog-legacy · pos (CatalogError) · pos/catalog (F2.1 เปิดเส้น inventory→pos / account→pos ให้แค่นี้)
+  ✅ [F15.6] src/** ห้าม import จาก scripts/** (static · import() · require · import = require · typeof import()) · baseline 0 จุด
+
+===== FITNESS =====
+ผ่าน 41/41
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+
+JSON_SUMMARY {"total":41,"passed":41,"findings":[]}
