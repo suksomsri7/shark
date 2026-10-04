@@ -14,3 +14,11 @@ H4 Scope: per unit (not cross-branch); visible to all register users of that uni
 H5 Holding the current cart clears the screen and rotates the bill's idempotency key; recall creates a NEW key (a held cart never reuses a key that might have reached the server).
 H6 F8 hold · held-bills button with count pill (P1.3 spec rows 14/15) · drawer per mockup 14 · ≥44px · `pos.*` th+en.
 H7 Oracle `qc-pos-p1.5.mts` (~20): hold/list/recall/discard, race, re-price, cross-unit/cross-tenant = NOT_FOUND, permission, idempotency key rotation static, residue check.
+
+## Controller rulings on the oracle writer's questions (4 Oct · oracle `wip/pos-p1.45-oracle` 171e8fbc, 21 checks)
+1. **Expiry** is rolling, measured from `createdAt` (default 2 days = 48 h, settable). It is lazy on list, with no cron.
+2. **Bad lines on recall:** keep them with a visible warning, never drop them silently. Pay is blocked until the cashier removes or fixes them; the quote path already refuses archived and unavailable lines.
+3. **Discarding another user's held cart:** needs the same permission as clearing a bill (H4), with no extra role. The audit row records who discarded it.
+4. **Recall while the current cart is not empty:** the UI asks "hold current bill first?" (hold or cancel). The server is unaffected. The current cart is never silently overwritten.
+5. **Approval link** uses `entityType` (the code name). POS-CONTRACTS:66 `refType` is outdated; fix it at P6 docs.
+6. **Names ratified** as listed in `ledger/wo-notes/pos-P1.5-oracle.md`. Key rotation goes through `resetBill()` for both hold and recall (this keeps P1.3 S5.21).
