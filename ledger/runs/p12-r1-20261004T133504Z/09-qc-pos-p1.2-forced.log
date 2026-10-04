@@ -1,0 +1,78 @@
+[env] qc-pos-p1.2 · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4)
+(node:1387828) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+── E C S ข้อบริสุทธิ์/สถิต (ไม่แตะ DB) ──
+  ✅ [P1.2-E1] ean13CheckDigit: 400638133393→1 · 590123412345→7 · 300 รหัสสุ่มเท่าตัวอ้างอิง (น้ำหนัก 1/3 จากซ้าย) · คืน number
+  ✅ [P1.2-E2] parseWeighedBarcode WEIGHT (prefix 20): 20|12345|01234|C → {prefix 20, itemCode 12345, kind WEIGHT, grams 1234, priceSatang null} · 00005 → 5 กรัม
+  ✅ [P1.2-E3] parseWeighedBarcode PRICE (prefix 22): 22|12345|04321|C → {kind PRICE, priceSatang 4321, grams null}
+  ✅ [P1.2-E4] ปฏิเสธ = null: check digit ผิด · 12/14 หลัก · มีตัวอักษร · prefix ไม่อยู่ในกฎ · ปิดใช้ · weighedBarcodeSettings: {}/undefined = ปิด · กฎ prefix 30 / kind แปลก ถูกทิ้ง
+  ✅ [P1.2-E5] weighedPriceSatang(1234,35000)=43190 · (333,9999)=3330 · (500,1)=1 · (499,1)=0 · weighedGramsFromPrice(4321,35000)=123 · 500 คู่สุ่ม = ปัดครึ่งขึ้น
+  ✅ [P1.2-C1] cartAddProduct +1 เฉพาะชุดตัวเลือกเดียวกัน (ไม่ขึ้นกับลำดับ · undefined≡[]) · ชุดต่าง/ไม่มีตัวเลือก = บรรทัดใหม่ · ไม่มีตัวเลือกยังรวมแบบเดิม · บรรทัดชั่งไม่รวม · ไม่แก้ตะกร้าที่ส่งเข้า
+  ✅ [P1.2-C2] cartToQuoteInput ส่ง options [{choiceId}] · weighedBarcode · weightGrams · quoteInputToCart ไป-กลับคงครบ · บรรทัดไม่มีตัวเลือกไม่มีช่อง options ที่มีของ
+  ❌ [P1.2-S1] refusalMessageKey: OPTIONS_INVALID OPTION_UNAVAILABLE VARIANT_REQUIRED WEIGHT_REQUIRED → errors.* · คีย์ errors.* + options.{title required optional pickUpTo confirm unavailable} + variants.title มี th+en · en ไม่มีอักษรไทย · options.* ใช้ในจอ — expected 4 รหัส → คีย์ · 11 คีย์ th+en · ใช้ในจอ | actual options.title: th ขาด · options.title: en ขาด · options.title: ไม่ถูกใช้ในจอ · options.required: th ขาด · options.required: en ขาด · options.required: ไม่ถูกใช้ในจอ · options.optional: th ขาด · options.optional: en ขาด …(+12)
+  ❌ [P1.2-S2] [static · R16] pick เปิดตัวเลือก/ตัวแปร (optionGroupCount/variantCount) ไม่ toast optionsRequired · เรียก registerProductOptionsAction · cartAddProduct 4 อาร์กิวเมนต์ · testid pos-reg-options-dialog · pos-reg-option-/pos-reg-options-confirm/pos-reg-variant- ≥44px · action use server + catch — expected ป๊อปโอเวอร์จริง · action · ≥44px · cartAddProduct+ตัวเลือก | actual pick ยัง toast errors.optionsRequired · pick ไม่ตัดสินด้วย optionGroupCount + variantCount · จอไม่เรียก registerProductOptionsAction · cartAddProduct ไม่มีการเรียกพร้อมตัวเลือก (อาร์กิวเมนต์ 3,3) · ไม่มี pos-reg-options-dialog · ไม่มี pos-reg-option- · ไม่มี pos-reg-options-confirm · ไม่มี pos-reg-variant-
+  ✅ [P1.2-S3] [static · F15.1] เขียน menuOptionGroup/menuOptionChoice/menuItemOptionGroup/posProductOptionGroup/recipeLine เฉพาะใน catalog.ts + catalog-legacy.ts
+
+── sandbox qc-p1.2-s905vz (สาขา + ระบบ POS/คลัง ชั่วคราวในร้าน QC กาแฟ · สาขา 1 แห่งในร้าน QC อาหาร) ──
+
+── P ความเข้ากันได้ P1.3 ──
+  ✅ [P1.2-P1] [P1.3 S3.26 คงเดิม] ลาเต้ไม่ส่ง options → OPTIONS_REQUIRED (quote+submit · ไม่มียอด/บิล) · ชาเลือกได้อย่างเดียว → 4,000 PAID · payload แบบ P1.3 ส่งซ้ำ → duplicated · กริด 3/1 และ 1/0
+
+── O ตัวเลือก ──
+  ✅ [P1.2-O1] quote ลาเต้ 5,500 + M (+1,000) + ไข่มุก (+500) → บรรทัด 7,000 · optionsSatang 1,500 · options[] 2 รายการ (choiceId groupId name priceDeltaSatang จากเซิร์ฟเวอร์)
+  ✅ [P1.2-O2] submit ×2 → PAID · บรรทัด @7,000 รวม 14,000 · PosSaleLineOption 2 แถวผูก lineId/saleId: ชื่อกลุ่ม/ตัวเลือก + priceDeltaSatang snapshot
+  ✅ [P1.2-O3] OPTIONS_REQUIRED (lineIndex · ไม่มียอด · ไม่มีบิล): ไม่ส่ง options · ส่งแต่ไม่เลือกกลุ่มบังคับ · กลุ่ม min 2 เลือก 1 · บรรทัดที่ 2 ผิด → lineIndex 1
+  ✅ [P1.2-O4] max: กลุ่ม max1 เลือก 2 → OPTIONS_INVALID · ท็อปปิ้ง max3 เลือก 4 → OPTIONS_INVALID · เลือก 3 → 8,200 · min2/max2 เลือก 2 → 3,000 · เลือก 3 → OPTIONS_INVALID
+  ✅ [P1.2-O5] OPTIONS_INVALID: ตัวเลือกของกลุ่มที่ไม่ได้ผูก · id ไม่มีจริง · VALIDATION: choiceId ซ้ำ · options ไม่ใช่ array · {} · คีย์แปลก · 21 รายการ · รายการกำหนดเองมี options
+  ✅ [P1.2-O6] client ปลอมราคา: unitPriceSatang 1 + priceDeltaSatang 0 + name ปลอม → quote 6,500 (ไม่ถูกเชื่อ) · submit expected 5,500 → PRICE_CHANGED ไม่มีบิล · expected 6,500 → PAID แถวตัวเลือก delta 1,000 ชื่อจริง
+  ✅ [P1.2-O7] delta ติดลบ: M + หวานน้อย (−500) → 6,000 · ราคาต่อหน่วยติดลบ → INVALID_LINE ไม่มียอด · ส่วนลดบรรทัด 10% คิดบนฐานรวมตัวเลือก: L 7,000 → ลด 700 รวม 6,300
+  ✅ [P1.2-O8] 86 (isOutOfStock) → OPTION_UNAVAILABLE lineIndex 0 · ตัวเลือกเก็บถาวร → OPTIONS_INVALID · กลุ่มบังคับที่เก็บถาวร = ไม่บังคับแล้ว (ขายราคาฐาน)
+  ✅ [P1.2-O9] isDefault ไม่ถูกใส่ให้เอง: ชาไม่ส่ง options → 4,000 · optionsSatang 0 · options [] · ราคาเปิด + options → VALIDATION · ราคาเปิดอย่างเดียว 4,200 ยังได้
+
+── V ตัวแปร ──
+  ❌ [P1.2-O10] registerProductOptions: กลุ่มตามลำดับผูก (ขนาด ท็อปปิ้ง ความหวาน) · min/max · choices ไม่มีตัวที่เก็บถาวร · 86 = unavailable · isDefault · variants [] · สินค้าแม่: variants 2 (6,500 / สืบราคา 5,500) + กลุ่มของแม่ · ไม่มีจริง → PRODUCT_NOT_FOUND — expected กลุ่ม/ตัวเลือก/variants ตามสัญญา | actual fixture:variant-fixture:createProduct ล้ม: CONFLICT สินค้าจากคลังรายการนี้อยู่ในแคตตาล็อกขายแล้ว · แม่ OK []
+  ❌ [P1.2-O11] ตัวเขียน: createOptionGroup (สาขาบน POS นี้) → แถว + ตัวเลือก · min>max → VALIDATION · สาขาไม่อยู่บน POS → NOT_FOUND · setProductOptionGroups ตามลำดับ · ซ้ำ = เท่าเดิม · กลุ่มใช้ร่วม: มอคค่า M+โอ๊ต 8,500 ลาเต้ M+ไข่มุก ยัง 7,000 · ตัวแปร → VALIDATION — expected ตัวเขียนกลุ่ม/ลิงก์ตามสัญญา · ใช้ร่วม | actual fixture:variant-fixture:createProduct ล้ม: CONFLICT สินค้าจากคลังรายการนี้อยู่ในแคตตาล็อกขายแล้ว · ไม่มีตัวแปรให้ลอง (fixture)
+
+── M ร้านอาหาร (P1.1b) ──
+  ✅ [P1.2-M1] อ่านสด: ร้านอาหารแก้ delta ไข่มุก 500→800 → quote ถัดไป 7,300 · บิล O2 ยัง snapshot 500 · 86 วิปที่ร้านอาหาร → OPTION_UNAVAILABLE ทันที
+  ✅ [P1.2-M2] setProductOptionGroups บนแถว MENU ที่มี MenuItem คู่ → MenuItemOptionGroup = ชุดเดียวกัน (สาขาของเมนู) · ตั้งเป็น [] → ทั้งสองฝั่งว่าง
+  ❌ [P1.2-V1] กริด registerCatalog: แม่มี variantCount 2 parentId null · ลูกไม่ขึ้นกริด/ค้นหา · catalog.listForUnit แม่ variants = [แดง, น้ำเงิน] — expected แม่ 2 ลูก · ลูกซ่อน · listForUnit variants | actual fixture:variant-fixture:createProduct ล้ม: CONFLICT สินค้าจากคลังรายการนี้อยู่ในแคตตาล็อกขายแล้ว · แม่ {"vc":0,"parentId":null} · listForUnit variants []
+  ❌ [P1.2-V2] สแกนบาร์โค้ดลูก → one (ลูก · parentId แม่ · ราคา 6,500) · สแกนบาร์โค้ดแม่ → choose เฉพาะลูก 2 ตัว · ลูกไม่ตั้งราคา priceSatang 5,500 (สืบแม่) — expected one ลูก · choose 2 ลูก · สืบราคา | actual fixture:variant-fixture:createProduct ล้ม: CONFLICT สินค้าจากคลังรายการนี้อยู่ในแคตตาล็อกขายแล้ว · ลูก none undefined · แม่ one 0 · น้ำเงิน undefined
+  ❌ [P1.2-V3] quote ลูกแดง + M → 7,500 · ลูกน้ำเงิน (สืบราคา) + M → 6,500 · ลูกไม่ส่งตัวเลือก → OPTIONS_REQUIRED (กลุ่มของแม่) · ขายแม่ตรง → VARIANT_REQUIRED — expected 7,500 · 6,500 · OPTIONS_REQUIRED · VARIANT_REQUIRED | actual fixture:variant-fixture:createProduct ล้ม: CONFLICT สินค้าจากคลังรายการนี้อยู่ในแคตตาล็อกขายแล้ว · แดง VALIDATION undefined · น้ำเงิน VALIDATION undefined · ไม่เลือก VALIDATION · แม่ OK
+  ❌ [P1.2-V4] submit ลูกแดง ×2 → บรรทัด productId ลูก · itemId = InvItem ของลูก · สต็อกลูกแดง 10→8 · ลูกน้ำเงิน 10 คงเดิม · OUT 1 แถว — expected ลูก · InvItem ลูก · 10→8 · 10 | actual fixture:variant-fixture:createProduct ล้ม: CONFLICT สินค้าจากคลังรายการนี้อยู่ในแคตตาล็อกขายแล้ว · บิล VALIDATION undefined · สต็อก แดง 10 น้ำเงิน 10 OUT 0
+  ❌ [P1.2-V5] ตัวเขียน: ลูกของลูก → VALIDATION · แม่เป็นชุด → VALIDATION · แม่อยู่ POS อื่น → NOT_FOUND · บาร์โค้ดชน → CONFLICT · เก็บแม่ถาวร → ลูก quote PRODUCT_NOT_FOUND · สแกน none — expected VALIDATION ×2 · NOT_FOUND · CONFLICT · แม่ถาวร = ลูกขายไม่ได้ | actual fixture:variant-fixture:createProduct ล้ม: CONFLICT สินค้าจากคลังรายการนี้อยู่ในแคตตาล็อกขายแล้ว · ลูกของลูก NOT_FOUND · บาร์โค้ดชน OBJ · แม่ถาวร quote VALIDATION
+
+── B ชุด/คอมโบ ──
+  ✅ [P1.2-B1] setRecipe ชุด: [CA×1, CB×3] → RecipeLine ตรง · ตั้งใหม่ [CA×2] แทนทั้งชุด · listForUnit recipe ตรง · qty 0 → VALIDATION · InvItem คลังที่ไม่ขายผ่าน POS นี้ → NOT_FOUND · บนสินค้า PRODUCT → VALIDATION
+  ✅ [P1.2-B2] ขายชุด ×2 + M → 2×16,900 = 33,800 (ราคาชุด ไม่ใช่ผลรวม) · itemId null · components snapshot [CA×1, CB×2] · สต็อก CA 20→18 · CB 20→16 · OUT 2 แถว คีย์ pos-consume-<sale>-<line>-<invItem>
+  ✅ [P1.2-B3] void บิลชุด → สต็อก CA/CB กลับ 20/20 · บิล VOIDED
+  ✅ [P1.2-B4] registerStatus.pendingStockCount: บิลชุดที่ยังไม่ตัดส่วนประกอบ (createSale ใน tx ผู้เรียก) นับ +1 · สต็อกไม่ขยับ
+
+── W สินค้าชั่ง ──
+  ✅ [P1.2-W1] สแกนน้ำหนัก (เปิดตั้งค่า): 20|12345|01234 → one หมู + weighed {grams 1234, priceSatang 43,190} · check digit ผิด → none · บาร์โค้ดที่ลงทะเบียนตรงชนะ · PLU ไม่มี → none · ปิดตั้งค่า → none
+  ✅ [P1.2-W2] quote บรรทัดชั่ง: weighedBarcode → 43,190 (ราคาปลอม 1 ไม่ถูกเชื่อ) · qty 2 → INVALID_LINE · PLU ของสินค้าอื่น → VALIDATION · check digit ผิด → VALIDATION
+  ✅ [P1.2-W3] ป้ายฝังราคา (22): ราคา 4,321 ตรงตัว · quote ok
+  ✅ [P1.2-W4] submit ชั่ง: PosSaleLine.weightGrams 1234 qty 1 @43,190 itemId หมู · สต็อกกรัม 5000→3766 · ป้ายราคา → weightGrams 123 · สต็อก 3643
+  ✅ [P1.2-W5] soldByWeight ไม่มีน้ำหนัก → WEIGHT_REQUIRED · กรอกน้ำหนักเอง 500 g (เจ้าของ) → 17,500 · แคชเชียร์ไม่มี priceOverride → PERMISSION_DENIED · ส่งทั้งสองช่อง → VALIDATION · 0 g → INVALID_LINE
+
+── I idempotency ──
+  ✅ [P1.2-I1] สองบรรทัดลาเต้ราคาเท่ากัน ตัวเลือกต่าง ([M,ไข่มุก] / [L]) → PAID · ส่งซ้ำคีย์เดิม สลับบรรทัด+สลับลำดับตัวเลือก → duplicated:true · บิลเดียว · แถวตัวเลือกตามบรรทัด
+  ✅ [P1.2-I2] คีย์เดิม ยอดเท่าเดิม แต่ตัวเลือกต่าง ([M,เจลลี่]/[L]) → IDEMPOTENCY_CONFLICT + saleId · ไม่ส่งตัวเลือกเลย → IDEMPOTENCY_CONFLICT · ยังบิลเดียว
+  ✅ [P1.2-I3] บรรทัดชั่ง: คีย์เดิม ป้ายเดิม → duplicated · ป้ายน้ำหนักอื่น → IDEMPOTENCY_CONFLICT
+  ✅ [P1.2-H1] พักตะกร้าที่มีตัวเลือก + บรรทัดชั่ง → เรียกคืน: options ชุดเดิม · weighedBarcode เดิม · quote 15,750
+  ✅ [P1.2-X1] ตัวเลือกของร้านอื่นบนลาเต้ → OPTIONS_INVALID · ผูกกลุ่มร้านอื่น → NOT_FOUND ลิงก์ไม่เปลี่ยน · ร้านอาหาร quote/registerProductOptions สินค้ากาแฟ → PRODUCT_NOT_FOUND · สแกนบาร์โค้ดลูกที่ร้านอาหาร → none
+  ❌ [P1.2-R1] คำปฏิเสธใหม่ (OPTIONS_INVALID OPTION_UNAVAILABLE VARIANT_REQUIRED WEIGHT_REQUIRED + OPTIONS_REQUIRED/VALIDATION ของตัวเลือก) = {ok:false, code, message} ไม่ throw — expected 7 คำปฏิเสธ = {ok:false, code, message} ไม่ throw | actual ขายแม่:OK
+  ลบแล้ว: {"held":1,"outbox":10,"audit":32,"journal":0,"point":0,"lineOption":7,"payment":10,"line":12,"sale":10,"menuItem":1,"menuCategory":1,"kdsStation":1,"product":22,"productBySystem":0,"choice":23,"group":11,"invJournal":12,"invItem":6,"counter":1} · สาขา 4 · ระบบ 4 · กลุ่ม 11
+  ✅ [P1.2-Z1] QC4 คืนสภาพ: จำนวนแถวของร้าน QC POS ทั้งสอง (ทุกตารางที่ข้อสอบแตะ) ก่อน = หลัง · ผลรวมตัวนับใบเสร็จไม่ขยับ
+  ✅ [P1.2-Z2] QC4 ลายนิ้วมือ: แถวเดิม (PosProduct PosCategory InvItem AppSystem AppSystemUnit BusinessUnit Membership PosReceiptCounter MenuOptionGroup MenuOptionChoice PosProductOptionGroup RecipeLine) ก่อน = หลัง
+
+===== qc-pos-p1.2 ===== ผ่าน 36/46 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-pos-p1.2","total":46,"passed":36,"failed":["P1.2-S1","P1.2-S2","P1.2-O10","P1.2-O11","P1.2-V1","P1.2-V2","P1.2-V3","P1.2-V4","P1.2-V5","P1.2-R1"],"skipped":false,"forced":true,"skippedChecks":{},"missing":[],"a5":{"drift":[]}}

@@ -1,0 +1,18 @@
+(node:1404153) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+💥 TypeError: Cannot read properties of null (reading 'role')
+    at <anonymous> (/root/projects/shark-pos-p11/scripts/qc-member-fix-s2.mts:97:36)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async <anonymous> (/root/projects/shark-pos-p11/scripts/qc-member-fix-s2.mts:94:17)
+  ❌ [S2-ERR] ข้อสอบรันจนจบ — exp จบ | act Cannot read properties of null (reading 'role')
+  ✅ [S2-CLEAN] ข้อสอบคืนฐานข้อมูล QC ให้เหมือนเดิม (ไม่เหลือสมาชิก/บิล/ระบบ/คิว/บัตรตรา/log ที่สร้างระหว่างเทส)
+
+🔴 FIX-S2: 1/2
+JSON_SUMMARY {"total":2,"passed":1,"findings":[{"id":"S2-ERR","sev":"CRITICAL"}]}
