@@ -5,7 +5,7 @@ Container has **no DB** (TCP 5432 blocked), so the suite has never run against d
 
 ```
 bash scripts/iso.sh bash scripts/qc4.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/qc-pos-p1.6.mts              # expect SKIPPED, exit 0
-QC_FORCE=1 bash scripts/iso.sh bash scripts/qc4.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/qc-pos-p1.6.mts    # expect 9 green / 38 red, exit 1, Z1+Z2 green
+QC_FORCE=1 bash scripts/iso.sh bash scripts/qc4.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/qc-pos-p1.6.mts    # expect 8 green / 40 red, exit 1, Z1+Z2 green
 ```
 
 House style is copied from `qc-pos-p1.3.mts`: the `CHECKS` registry and `--list`, the whole-suite SKIP gate (`QC_FORCE=1` runs it anyway and the result must be red for the right reason, never a crash), `call()`/`callSync()` wrappers, the `qc-p1.6-<rand>` tag plus `KTAG` for register keys, sandbox units and systems in the QC coffee tenant, cleanup in `finally`, the A5/Z1 row counts plus receipt-counter sum, the Z2 fingerprint, and `JSON_SUMMARY`.
@@ -15,7 +15,7 @@ What I added on top of the P1.3 style:
 - **New columns and enums are detected, not assumed.** Detection uses the Prisma DMMF, falling back to `information_schema` when the DMMF is absent. Enum values come from `pg_enum`. The skip reason states client ✓/✗ and DB ✓/✗ separately, so "generated but not migrated" can be told apart from "migrated but not generated".
 - **`quietTx`.** Any sale on a POS linked to an accounting book runs inside the oracle's own tx. The `pos.sale.paid` outbox row is deleted before commit, and a non-ok result rolls the whole tx back. This means no journal entry or AccountDocument is ever posted to a real or sandbox book (V3–V5, K, U2, U3).
 
-## Check list (47)
+## Check list (48)
 
 | id | X | what |
 |---|---|---|
@@ -31,18 +31,19 @@ What I added on top of the P1.3 style:
 | **T5** | – | CARD `reference` is stored verbatim (`PosPayment.reference` if that column exists, otherwise `.note`), through the register and through legacy createSale. |
 | **T6** | X4 | Register accepts CASH, PROMPTPAY, TRANSFER and CARD. TRANSFER-only and CARD-only are PAID. DEPOSIT, ROOM_CHARGE and garbage are `VALIDATION`. |
 | **T7** | X4 | `closeDaySummary.byMethod` includes CARD equal to the sum of CARD payments. `cashInDrawer` excludes card. `closeDayBills` label is not "—". |
-| **C1** | X4 | Register: CASH 4000 + PROMPTPAY, received 5000 → change 1000, and tendered 5000 / change 1000 are stored. PROMPTPAY-only stores tendered and change as 0 or null. |
-| **C2** | X4 | createSale `cashTenderedSatang` 10000 on CASH 6500 stores 10000 / 3500. |
+| **C1** | X4 | Register: CASH 4000 + PROMPTPAY, received 5000 → change 1000. The CASH `PosPayment` row stores `tenderedSatang` 5000 / `changeSatang` 1000; other rows store none. PROMPTPAY-only has no CASH row. |
+| **C2** | X4 | createSale `payMethods[].cashTenderedSatang` 10000 on CASH 6500 → CASH row `tenderedSatang` 10000 / `changeSatang` 3500. |
 | **C3** | X4 | Tendered 1 satang below the cash portion is `PAYMENT_MISMATCH` in both the register and createSale. No bill, and the unit's counter does not move. |
 | **C4** | X4 | A legacy caller that sends no tendered amount is still PAID. |
 | **K1** | X4 | Off (no settings, or `enabled:false` with a rate): serviceCharge 0, tip 0, totals equal today's priceCart. Legacy rows store 0/0. |
 | **K2** | X4 | SC 10% on: 6500 → 650 / 7150. Stored with vat 468 (SC is inside the VAT base). Paying 6500 is `PAYMENT_MISMATCH`. |
 | **K3** | X4 | SC is rounded half-up on the total after discounts: 3335 → 334 (not 333). 13000 − 1000 → 1200 / 13200. Client `priceCart({serviceChargeBp})` gives the same result. |
-| **K4** | X3 | Enabling tip with no ledger account is `TIP_ACCOUNT_REQUIRED` (as data) and tip stays off. With `ledgerAccountId` it turns on. |
+| **K4** | X3 | Enabling tip with no ledger account, or with a ledger of another book (sandbox book N), is `TIP_ACCOUNT_REQUIRED` (as data) and tip stays off. A ledger of the book linked to POS-V turns it on. Fixture creates both ledgers (code 2195, LIABILITY) in the sandbox books. |
 | **K5** | X4 | Tip 500 on 6500: `tipSatang` 500, grand 6500, vat 425 (not 458), Σpay 7000. Paying 6500 is `PAYMENT_MISMATCH`. |
 | **K6** | X4 | Tip off but `tipSatang` 500 sent is `VALIDATION`. Tip on but −1, 1.5 or "500" is `VALIDATION`. |
 | **K7** | X3 | STAFF changing settings is `PERMISSION_DENIED`. rateBp 1.5, −1 or 10001 is `VALIDATION`. Settings are unchanged afterwards. |
 | **K8** | X4 | SC is on at the POS, but a legacy createSale (restaurant-style, with its own SC line) stores serviceCharge 0 and grand 6600. |
+| **K9** | X3 | POS not linked to any book (POS-S): enabling tip, even with an existing ledger id, is `TIP_ACCOUNT_REQUIRED` (as data); tip stays off. |
 | **N1** | – | Bill note of 500 chars is stored verbatim (register and createSale). 501 is `VALIDATION`. |
 | **N2** | – | Line note is stored on `PosSaleLine.note`. 501 is `VALIDATION`. |
 | **I1** | X1 | Legacy, same payload (including reordered lines) on a PAID sale: same saleId, `status:"PAID"`, 1 bill, 1 payment set. |
@@ -50,7 +51,7 @@ What I added on top of the P1.3 style:
 | **I3** | X1 | Legacy, same payload on a VOIDED sale: same saleId, `status:"VOIDED"`, no new bill, counter unchanged. |
 | **I4** | X1 | Legacy, different payload on a VOIDED sale: `IDEMPOTENCY_CONFLICT`. |
 | **I5** | X1 | Register matrix (P1.3 contract kept): PAID+same → dup. PAID+diff → CONFLICT+saleId. VOIDED+same or diff → CONFLICT + saleStatus VOIDED. |
-| **I6** | X1 | Restaurant checkout → voidCheckout → re-checkout with the same items: ok, the old saleId (VOIDED), 1 bill, no new revenue (unchanged). Changing the pay method creates no new PAID bill and does not throw. |
+| **I6** | X1 | Restaurant checkout → voidCheckout → re-checkout with the same items ends **PAID** on a new sale (the caller mints a new key when the stored sale is VOIDED): exactly one PAID bill for the unit, and the first bill is still VOIDED. |
 | **I7** | X6 | Legacy, same key from 10 connections × 3 rounds: all ok, one saleId, 1 bill per round (no P2002 reaches the caller). |
 | **U1** | X2 | Explicit wrong pair (unit linked to another POS) while that unit's receipt counter is locked from another connection: `UNIT_SYSTEM_MISMATCH` without blocking (< 1.5 s), no bill, counter unchanged after release. |
 | **U2** | X2 | Tenant with 2+ POS, unit linked to no POS: `UNIT_SYSTEM_MISMATCH`, message contains "เลือกจุดขายก่อน", no bill, no counter row. |
@@ -61,7 +62,7 @@ What I added on top of the P1.3 style:
 | **B3** | X6 | BLOCK, last unit, 10 lanes × 3 rounds: PAID 1, SI 9, stock 0, no other codes (deadlock/BUSY/INTERNAL/THROW). |
 | **B4** | X6 | BLOCK, two items (5 each), lanes alternate [X,Y]/[Y,X], 10 × 3: PAID 5, SI 5, stock 0/0, no deadlock. |
 | **B5** | X4 | No policy, or `ALLOW_NEGATIVE`: oversell is PAID and stock goes to −1 (today's behaviour). |
-| **R1** | – | Six collected refusals (T3, C3, K4, K6, N1, B1) are returned as `{ok:false, code, message}`. None is thrown. |
+| **R1** | – | Eight collected refusals (T3, C3, K4 ×2, K9, K6, N1, B1) are returned as `{ok:false, code, message}`. None is thrown. |
 | **R2** | – | Static: every `src/lib/modules/pos/*actions*.ts` file has "use server", exports only async functions, has no `throw`, and has a `catch` per action. `updatePosPaymentSettingsAction` exists. |
 | **R3** | – | `refusalMessageKey` maps UNIT_SYSTEM_MISMATCH, SPLIT_INVALID, STOCK_INSUFFICIENT and TIP_ACCOUNT_REQUIRED to `errors.unitSystemMismatch`, `.splitInvalid`, `.stockInsufficient`, `.tipAccountRequired`. Each key exists in th and en. en has no Thai. th unitSystemMismatch contains "เลือกจุดขาย". |
 | **Z1** | – | Row counts for both QC tenants (29 models) and the receipt-counter sum are equal before and after. |
@@ -81,19 +82,20 @@ Groups: V = VAT (R1) · T = split (R2) · C = cash (R3) · K = SC/tip (O19/O20) 
 - No `oversellPolicy` reader exists.
 - `payment-settings.ts` is missing.
 
-**Forced (`QC_FORCE=1`):** exit 1. Expected **green (9)**: V4, T1, C4, I5, I6, U3, B5, Z1, Z2. These are regression guards: the behaviour they pin is already correct today and must survive the build.
+**Forced (`QC_FORCE=1`):** exit 1. Expected **green (8)**: V4, T1, C4, I5, U3, B5, Z1, Z2. These are regression guards: the behaviour they pin is already correct today and must survive the build.
 
-Expected **red (38)**, with reasons:
+Expected **red (40)**, with reasons:
 - **V1** `MISSING:splitIncludedVat`.
 - **V2** All 6 static findings (verified here).
 - **V3, V5** Stored vat is 0 where 425/700/… is expected.
 - **T2–T6** The register rejects TRANSFER, CARD and the `reference` key with VALIDATION, and caps payMethods at 2. On T4 the CARD leg makes the result VALIDATION instead of PAYMENT_MISMATCH.
 - **T7** No CARD payments exist, and closeDay has no CARD row.
-- **C1, C2** Tendered/change columns are absent. C1's response `changeSatang` is already 1000.
+- **C1, C2** `PosPayment.tenderedSatang`/`changeSatang` are absent. C1's response `changeSatang` is already 1000.
 - **C3** The legacy leg ignores tendered and goes PAID.
-- **K1–K8** `serviceChargeSatang`/`tipSatang` are undefined, `MISSING:updatePosPaymentSettings`, and the register refuses the `tipSatang` key (VALIDATION, so K6 partly matches but still fails on the settings calls).
+- **K1–K9** `serviceChargeSatang`/`tipSatang` are undefined, `MISSING:updatePosPaymentSettings`, and the register refuses the `tipSatang` key (VALIDATION, so K6 partly matches but still fails on the settings calls).
 - **N1, N2** `note` is an unknown register key. The line note is parsed but not stored.
 - **I1, I3** The result has no `status`.
+- **I6** Today the re-checkout returns the VOIDED sale (same key), so it never ends PAID.
 - **I2, I4** The stored sale is returned silently.
 - **I7** P2002 surfaces to some lanes (REVIEW §3.5).
 - **U1** The call blocks on the counter, then goes PAID on the wrong POS.
@@ -112,7 +114,7 @@ If Z1 or Z2 is red on the forced base run, that is an oracle cleanup bug. Report
 |---|---|---|
 | `splitIncludedVat(grossSatang, rateBp) → {baseSatang, vatSatang}` | `src/lib/money/vat.ts` | Kept outside `src/lib/modules` so both `pos` and `account` can import it without a new F2 edge (account→pos is not allowed). Integer half-up and the float bridge formula agree on every V1 case (checked here), so either implementation passes. |
 | createSale input `note`, `lines[].note`, `serviceChargeSatang`, `tipSatang`, `payMethods[].cashTenderedSatang`, `payMethods[].reference` | `pos/service.ts` | Additive. The oracle also sends a top-level `cashTenderedSatang` (same value) in case the controller rules sale-level input. |
-| Columns `PosSale.note/serviceChargeSatang/tipSatang`, `PosSaleLine.note`, `cashTenderedSatang` + `changeSatang` (on PosSale **or** on the CASH PosPayment row), optional `PosPayment.reference` | migration | The oracle accepts either tender location (R3 is still open). The card ref falls back to the existing `PosPayment.note`. |
+| Columns `PosSale.note/serviceChargeSatang/tipSatang`, `PosSaleLine.note`, `PosPayment.tenderedSatang` + `PosPayment.changeSatang` on the CASH row (ruled §8.2), optional `PosPayment.reference` | migration | The oracle accepts either tender location (R3 is still open). The card ref falls back to the existing `PosPayment.note`. |
 | `SaleResult.status` on a duplicate key | createSale | `"PAID"` / `"VOIDED"` (R6). |
 | Register submit keys `note`, `tipSatang`, `payMethods[].reference`. Quote field `serviceChargeSatang` | register.ts | |
 | `priceCart` input `serviceChargeBp` → output `serviceChargeSatang` | pricing-shared.ts | Needed so the client total equals the quote when SC is on (K3). |
@@ -195,6 +197,17 @@ How the guard is covered in the DB tests: the guard lives in createSale, so U1�
 ## Commands run here
 
 - `esbuild scripts/qc-pos-p1.6.mts --loader:.mts=ts` → OK.
-- `pnpm exec tsx scripts/qc-pos-p1.6.mts --list` → 47 ids, exit 0, no DB. X-coverage: X4=24, -=9, X1=6, X6=3, X2=3, X3=2.
+- `pnpm exec tsx scripts/qc-pos-p1.6.mts --list` → 48 ids, exit 0, no DB. X-coverage: X4=24, -=9, X1=6, X3=3, X6=3, X2=3.
 - Scratch harness (not committed) running V1/V2/U4/R2/R3 against the tree → all red, each for the expected reason listed above.
 - Scratch check of the bridge formula: float vs integer half-up gives 0 differences over 12,001 grosses at all 8 rates. priceCart at 700 equals the bridge (0 differences).
+
+## Round 2 — controller rulings applied (pos-brief-P1.6.md §8 · session/pos 359f79c1)
+
+- §8.2 → C1–C3 and the SKIP gate now require `PosPayment.tenderedSatang` + `changeSatang` on the CASH row (no sale-level fallback). createSale input stays `payMethods[].cashTenderedSatang` (ratified §8.10); register input stays `cashReceivedSatang`.
+- §8.3 → I6 tightened: re-checkout ends PAID on a new sale, exactly one PAID bill, first bill still VOIDED. The changed-pay-method leg was dropped. I3/I4 unchanged (VOIDED + same → `status:"VOIDED"`, different → `IDEMPOTENCY_CONFLICT`).
+- §8.6 → K4 uses a ledger created in the book linked to POS-V, and adds the wrong-book refusal; new **K9** refuses tip on an unlinked POS. Total now **48** checks.
+- §8.4 I7 kept as is. §8.1/§8.5/§8.7–§8.10 need no oracle change.
+- Expected on base: unforced SKIPPED exit 0; forced **8 green / 40 red** (I6 moved to red; K9 is new and red), Z1/Z2 green. Note §8.11 still says 9/38 — this round supersedes it.
+- Re-verified here: esbuild OK · `--list` 48 ids exit 0 · no-DB checks V1 V2 U4 R2 R3 red for the same reasons as round 1.
+
+Questions 1–12 above are answered by §8 and kept for history.

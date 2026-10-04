@@ -14,8 +14,8 @@
 //   pos/service.ts createSale (เพิ่มฟิลด์ล้วน · F15.2):
 //     input: note? (≤500) · lines[].note? · serviceChargeSatang? · tipSatang? · payMethods[].cashTenderedSatang? (ที่วิธี CASH) ·
 //            payMethods[].reference? (CARD) · คงฟิลด์เดิมทุกตัว
-//     เก็บ: PosSale.vatSatang (R1) · note · serviceChargeSatang · tipSatang · เงินรับ/ทอน (cashTenderedSatang + changeSatang ที่ PosSale
-//           หรือที่แถว PosPayment ของ CASH — ข้อสอบรับทั้งสองที่ เพราะ R3 ให้ผู้คุมงานตัดสิน) · PosSaleLine.note · ref ของบัตร
+//     เก็บ: PosSale.vatSatang (R1) · note · serviceChargeSatang · tipSatang · เงินรับ/ทอน ที่แถว PosPayment ของ CASH: tenderedSatang + changeSatang
+//           (มติผู้คุมงาน §8 ข้อ 2) · PosSaleLine.note · ref ของบัตร
 //           (PosPayment.reference ถ้ามีคอลัมน์ · ไม่มี = PosPayment.note ที่มีอยู่แล้ว)
 //     ยอด: grandTotal = Σบรรทัด − ส่วนลด − คูปอง + serviceCharge (VAT รวมในราคา · ทิปไม่อยู่ใน grandTotal) · Σ payMethods = grandTotal + tip
 //     ปฏิเสธ (throw error ที่มี .code หรือข้อความขึ้นต้นด้วยรหัส): PAYMENT_MISMATCH (รวมเงินรับ < ส่วนเงินสด) · IDEMPOTENCY_CONFLICT ·
@@ -26,7 +26,7 @@
 //   pos/pricing-shared.ts priceCart: input เพิ่ม serviceChargeBp? → serviceChargeSatang (ปัดครึ่งขึ้นจากยอดหลังส่วนลดทั้งหมด) · grand รวมค่าบริการ
 //   pos/payment-settings.ts: posPaymentSettings(ctx) · updatePosPaymentSettings(ctx, actor, patch) → {ok:true, settings} | {ok:false, code, message}
 //     เก็บที่ AppSystem(POS).settings.pos.serviceCharge {enabled, rateBp} · settings.pos.tip {enabled, ledgerAccountId} · ปริยายปิดทั้งคู่
-//     เปิดทิปโดยไม่มี ledgerAccountId = TIP_ACCOUNT_REQUIRED (O20) · STAFF = PERMISSION_DENIED · rateBp ผิดรูป = VALIDATION
+//     เปิดทิปโดยไม่มี ledgerAccountId / บัญชีไม่ใช่ของสมุดที่ผูก POS นี้ / POS ไม่ผูกสมุด = TIP_ACCOUNT_REQUIRED (O20 · มติ §8 ข้อ 6) · STAFF = PERMISSION_DENIED · rateBp ผิดรูป = VALIDATION
 //   action เปลือกบาง updatePosPaymentSettingsAction ในไฟล์ src/lib/modules/pos/*actions*.ts ("use server" · ไม่ throw)
 //   R7+O21 การ์ดคู่สาขา↔ระบบใน createSale: สาขาผูก POS อื่น = UNIT_SYSTEM_MISMATCH เสมอ · สาขาไม่ผูก POS ใดเลย: ร้านมี POS ตัวเดียว = ขายได้เหมือนวันนี้ ·
 //     ร้านมี POS 2+ = UNIT_SYSTEM_MISMATCH + ข้อความไทยมีคำว่า "เลือกจุดขายก่อน"
@@ -71,18 +71,19 @@ const CHECKS: readonly (readonly [string, string, string])[] = [
   ["P1.6-T6", "X4", "ชนิดวิธีจ่ายของหน้าขาย = CASH|PROMPTPAY|TRANSFER|CARD: TRANSFER ล้วน / CARD ล้วน → PAID · DEPOSIT / ROOM_CHARGE / รหัสมั่ว → VALIDATION ไม่มีบิล"],
   ["P1.6-T7", "X4", "ปิดวันเห็นบัตร: closeDaySummary(POS sandbox).byMethod มี CARD = Σ ยอด CARD ของบิล PAID วันนี้ · cashInDrawer ไม่รวมบัตร · closeDayBills ของบิลบัตรไม่ใช่ '—'"],
   // ── C เงินสดรับ/ทอน (R3) ──
-  ["P1.6-C1", "X4", "หน้าขาย เงินสด 4,000 + พร้อมเพย์ รับ 5,000 → changeSatang 1,000 · เก็บเงินรับ 5,000 + ทอน 1,000 ลง DB · พร้อมเพย์ล้วน → ทอน 0/null เงินรับ 0/null"],
-  ["P1.6-C2", "X4", "createSale: CASH 6,500 + cashTenderedSatang 10,000 → เก็บ 10,000 / ทอน 3,500"],
+  ["P1.6-C1", "X4", "หน้าขาย เงินสด 4,000 + พร้อมเพย์ รับ 5,000 → changeSatang 1,000 · แถว PosPayment CASH เก็บ tenderedSatang 5,000 + changeSatang 1,000 · พร้อมเพย์ล้วน → ไม่มีแถว CASH"],
+  ["P1.6-C2", "X4", "createSale: CASH 6,500 + cashTenderedSatang 10,000 → แถว CASH tenderedSatang 10,000 / changeSatang 3,500"],
   ["P1.6-C3", "X4", "เงินรับ < ส่วนเงินสด 1 สตางค์ → PAYMENT_MISMATCH ทั้งหน้าขายและ createSale · ไม่มีบิล · ตัวนับใบเสร็จสาขาไม่ขยับ"],
   ["P1.6-C4", "X4", "ผู้เรียกเดิมที่ไม่ส่งเงินรับ (createSale CASH ไม่มี cashTenderedSatang) ยัง PAID เหมือนเดิม (ไม่ปฏิเสธ · F15.2)"],
   // ── K ค่าบริการ / ทิป (O19/O20) ──
   ["P1.6-K1", "X4", "ปิด (ไม่มีตั้งค่า หรือ enabled:false + rateBp) → quote/บิล serviceChargeSatang 0 tipSatang 0 · grandTotal = priceCart แบบวันนี้ · createSale เดิมเก็บ 0/0"],
   ["P1.6-K2", "X4", "ค่าบริการเปิด 10%: quote 6,500 → ค่าบริการ 650 รวม 7,150 · บิลเก็บ 650/7,150 · VAT = splitIncludedVat(7,150) = 468 (อยู่ในฐาน VAT) · จ่าย 6,500 → PAYMENT_MISMATCH"],
   ["P1.6-K3", "X4", "ค่าบริการปัดครึ่งขึ้นจากยอดหลังส่วนลด: 3,335 → 334 (ไม่ใช่ 333) · 13,000 − ท้ายบิล 1,000 → 1,200 รวม 13,200 · priceCart(serviceChargeBp) ฝั่ง client ได้เท่ากัน"],
-  ["P1.6-K4", "X3", "เปิดทิปโดยไม่มีบัญชีรองรับ → TIP_ACCOUNT_REQUIRED (คืนเป็นข้อมูล) และทิปยังปิด · มี ledgerAccountId → เปิดได้"],
+  ["P1.6-K4", "X3", "เปิดทิปโดยไม่มีบัญชี / บัญชีของสมุดอื่น → TIP_ACCOUNT_REQUIRED (คืนเป็นข้อมูล) ทิปยังปิด · บัญชีของสมุดที่ผูก POS นี้ → เปิดได้"],
   ["P1.6-K5", "X4", "ทิปเปิด: ทิป 500 บนบิล 6,500 → tipSatang 500 · grandTotal 6,500 (ไม่ใช่รายได้) · VAT 425 (ไม่ใช่ 458 · ไม่อยู่ในฐาน) · Σจ่าย 7,000 · จ่าย 6,500 → PAYMENT_MISMATCH"],
   ["P1.6-K6", "X4", "ทิปปิดแต่ส่ง tipSatang 500 → VALIDATION ไม่มีบิล (ไม่เมินเงียบ) · ทิปเปิดแต่ −1 / 1.5 / \"500\" → VALIDATION"],
   ["P1.6-K7", "X3", "ตั้งค่าชำระเงิน: STAFF → PERMISSION_DENIED · rateBp 1.5 / −1 / 10001 → VALIDATION · ค่าตั้งเดิมไม่เปลี่ยน"],
+  ["P1.6-K9", "X3", "POS ที่ไม่ผูกสมุดบัญชี: เปิดทิป (แม้ส่ง ledgerAccountId ของสมุดใด ๆ) → TIP_ACCOUNT_REQUIRED คืนเป็นข้อมูล · ทิปยังปิด"],
   ["P1.6-K8", "X4", "ค่าบริการเปิดที่ POS แต่ผู้เรียกเดิม (createSale ไม่ส่ง serviceChargeSatang เช่นร้านอาหารที่มีบรรทัด service charge เอง) → serviceChargeSatang 0 ยอดเดิม (ไม่คิดซ้ำ)"],
   // ── N หมายเหตุ (R5 · Q11) ──
   ["P1.6-N1", "-", "หมายเหตุบิล 500 ตัวอักษร → PosSale.note ตรงตัว (หน้าขาย + createSale) · 501 → VALIDATION ไม่มีบิล"],
@@ -93,7 +94,7 @@ const CHECKS: readonly (readonly [string, string, string])[] = [
   ["P1.6-I3", "X1", "createSale เดิม คีย์ของบิลที่ VOIDED + payload เดิม → saleId เดิม status \"VOIDED\" · ไม่มีบิลใหม่ · ตัวนับใบเสร็จไม่ขยับ"],
   ["P1.6-I4", "X1", "createSale เดิม คีย์ของบิลที่ VOIDED + payload ต่าง → IDEMPOTENCY_CONFLICT · ไม่มีบิลใหม่"],
   ["P1.6-I5", "X1", "หน้าขาย (คงสัญญา P1.3): PAID+เดิม → ok duplicated · PAID+ต่าง → CONFLICT+saleId · VOIDED+เดิม/ต่าง → CONFLICT + saleStatus VOIDED"],
-  ["P1.6-I6", "X1", "ร้านอาหาร re-checkout (restaurant/order.ts:418 คีย์ rest-<hash>) หลัง voidCheckout รายการชุดเดิม → พฤติกรรมเดิม: ok + saleId บิลเดิม (VOIDED) ไม่มีบิล/รายได้ใหม่ · เปลี่ยนวิธีจ่ายก็ไม่มีบิล PAID ใหม่ ไม่ throw"],
+  ["P1.6-I6", "X1", "ร้านอาหาร re-checkout (restaurant/order.ts:418 คีย์ rest-<hash>) หลัง voidCheckout รายการชุดเดิม → จบ PAID (มติ §8 ข้อ 3: ผู้เรียกออกคีย์ใหม่เมื่อบิลเดิม VOIDED) · บิลใหม่ ≠ บิลเดิม · PAID เพียง 1 บิล · บิลเดิมยัง VOIDED"],
   ["P1.6-I7", "X6", "createSale เดิม คีย์เดียว 10 connection พร้อมกัน × 3 รอบ → ทุกคำตอบ ok saleId เดียว · บิล 1 ต่อรอบ (ไม่มี P2002 หลุดถึงผู้เรียก)"],
   // ── U คู่สาขา↔ระบบ (R7 + O21) ──
   ["P1.6-U1", "X2", "คู่ผิดชัดแจ้ง (สาขาผูก POS อื่น): ขณะตัวนับใบเสร็จของสาขาถูกล็อกจาก connection อื่น → UNIT_SYSTEM_MISMATCH ทันที (ไม่ค้างรอ) · ไม่มีบิล · ตัวนับไม่ขยับหลังปล่อยล็อก"],
@@ -214,7 +215,8 @@ try {
   console.log(`  (อ่าน information_schema ไม่ได้: ${(e as Error).message.slice(0, 100)})`);
 }
 /** ที่เก็บเงินรับ/ทอน (R3 ให้ผู้คุมงานตัดสิน) — ข้อสอบรับทั้งระดับบิลและระดับแถวจ่าย CASH */
-const TENDER_LOC: "sale" | "payment" | null = hasField("PosSale", "cashTenderedSatang") ? "sale" : hasField("PosPayment", "cashTenderedSatang") ? "payment" : null;
+/** เงินรับ/ทอน = แถว PosPayment ของ CASH (มติ §8 ข้อ 2) */
+const TENDER_READY = hasField("PosPayment", "tenderedSatang") && hasField("PosPayment", "changeSatang");
 const NEW_FIELDS: [string, string][] = [["PosSale", "note"], ["PosSale", "serviceChargeSatang"], ["PosSale", "tipSatang"], ["PosSaleLine", "note"]];
 
 let scope: Any = null;
@@ -307,8 +309,11 @@ for (const [m, f] of NEW_FIELDS) {
   const d = dbCols.has(`${m}.${f}`);
   if (!c || !d) skipReasons.push(`คอลัมน์ ${m}.${f} ยังไม่มี (client ${c ? "✓" : "✗"} · DB ${d ? "✓" : "✗"})`);
 }
-if (!TENDER_LOC) skipReasons.push("คอลัมน์เงินรับ cashTenderedSatang ยังไม่มีทั้งที่ PosSale และ PosPayment (R3)");
-else if (!hasField(TENDER_LOC === "sale" ? "PosSale" : "PosPayment", "changeSatang")) skipReasons.push(`คอลัมน์ทอน changeSatang ยังไม่มีคู่กับเงินรับ (${TENDER_LOC})`);
+for (const f of ["tenderedSatang", "changeSatang"]) {
+  const c = hasField("PosPayment", f);
+  const d = dbCols.has(`PosPayment.${f}`);
+  if (!c || !d) skipReasons.push(`คอลัมน์ PosPayment.${f} ยังไม่มี (client ${c ? "✓" : "✗"} · DB ${d ? "✓" : "✗"}) (R3 · มติ §8 ข้อ 2)`);
+}
 if (!enumHas("PosPayType", "CARD") || !dbPayTypes.has("CARD")) skipReasons.push(`enum PosPayType ยังไม่มี CARD (client ${enumHas("PosPayType", "CARD") ? "✓" : "✗"} · DB ${dbPayTypes.has("CARD") ? "✓" : "✗"})`);
 if (!/["']CARD["']/.test(payTypesLine) || !/["']TRANSFER["']/.test(payTypesLine)) skipReasons.push("REGISTER_PAY_TYPES ยังไม่รวม TRANSFER/CARD (R2)");
 if (!/UNIT_SYSTEM_MISMATCH/.test(svcSrc)) skipReasons.push("service.ts ยังไม่มีการ์ด UNIT_SYSTEM_MISMATCH (R7)");
@@ -700,14 +705,11 @@ async function runDb() {
   const sub = (a: Any, input: Any, c: Any = ctxS, cl?: Any) => subRaw(a, withDefaults(input), c, cl);
   const quote = (a: Any, input: Any, c: Any = ctxS) => call(register, "quoteRegisterCart", c, a, input);
   const pay = (amt: number) => [{ type: "CASH", amountSatang: amt }];
-  const tenderOf = (sale: Any): { t: unknown; c: unknown } => {
-    if (!sale) return { t: undefined, c: undefined };
-    if (TENDER_LOC === "sale") return { t: sale.cashTenderedSatang, c: sale.changeSatang };
-    if (TENDER_LOC === "payment") {
-      const cp = (sale.payments as Any[]).find((p) => p.type === "CASH");
-      return { t: cp?.cashTenderedSatang, c: cp?.changeSatang };
-    }
-    return { t: "ไม่มีคอลัมน์", c: "ไม่มีคอลัมน์" };
+  /** เงินรับ/ทอนของแถว CASH (มติ §8 ข้อ 2) · ไม่มีแถว CASH = null */
+  const tenderOf = (sale: Any): { t: unknown; c: unknown } | null => {
+    if (!TENDER_READY) return { t: "ไม่มีคอลัมน์", c: "ไม่มีคอลัมน์" };
+    const cp = ((sale?.payments ?? []) as Any[]).find((p) => p.type === "CASH");
+    return cp ? { t: cp.tenderedSatang, c: cp.changeSatang } : null;
   };
   const refOf = (p: Any) => (hasField("PosPayment", "reference") ? p?.reference : p?.note);
   const zeroish = (v: unknown) => v === 0 || v === null || v === undefined;
@@ -864,13 +866,13 @@ async function runDb() {
   const c1p = await sub(owner, { idempotencyKey: kC1p, lines: LA(), payMethods: [{ type: "PROMPTPAY", amountSatang: tA }] });
   const sc1p = await saleByKey(kC1p);
   const tc1 = tenderOf(sc1), tc1p = tenderOf(sc1p);
-  chk("P1.6-C1", c1?.ok === true && c1.changeSatang === 1000 && tc1.t === 5000 && tc1.c === 1000 && c1p?.ok === true && zeroish(tc1p.t) && zeroish(tc1p.c),
-    `รับ 5000 ทอน 1000 (ที่เก็บ: ${TENDER_LOC ?? "ยังไม่มี"}) · พร้อมเพย์ล้วน 0/null`, FX(`${codeOf(c1)} ทอน ${c1?.changeSatang} · DB ${short(tc1)} · pp ${codeOf(c1p)} ${short(tc1p)}`));
+  chk("P1.6-C1", c1?.ok === true && c1.changeSatang === 1000 && tc1?.t === 5000 && tc1?.c === 1000 && c1p?.ok === true && tc1p === null && (sc1?.payments as Any[] | undefined)?.filter((p) => p.type !== "CASH").every((p) => zeroish(p.tenderedSatang) && zeroish(p.changeSatang)),
+    "แถว CASH 5000/1000 · แถวอื่นไม่มีเงินรับ/ทอน · พร้อมเพย์ล้วนไม่มีแถว CASH", FX(`${codeOf(c1)} ทอน ${c1?.changeSatang} · DB ${short(tc1)} · pp ${codeOf(c1p)} ${short(tc1p)}`));
   const kC2 = key("cash-legacy");
   const c2 = await callSale(legacy({ idempotencyKey: kC2, payMethods: [{ type: "CASH", amountSatang: 6500, cashTenderedSatang: 10000 }], cashTenderedSatang: 10000 }));
   const sc2 = await saleByKey(kC2);
   const tc2 = tenderOf(sc2);
-  chk("P1.6-C2", c2?.ok === true && tc2.t === 10000 && tc2.c === 3500, "เก็บ 10000 / ทอน 3500", FX(`${codeOf(c2)} · DB ${short(tc2)}`));
+  chk("P1.6-C2", c2?.ok === true && tc2?.t === 10000 && tc2?.c === 3500, "แถว CASH 10000 / 3500", FX(`${codeOf(c2)} · DB ${short(tc2)}`));
   const seqC3 = await counterSeq(uS);
   const kC3a = key("cash-low-reg");
   const c3a = await sub(owner, { idempotencyKey: kC3a, lines: LA(), payMethods: [{ type: "CASH", amountSatang: 4000 }, { type: "PROMPTPAY", amountSatang: tA - 4000 }], cashReceivedSatang: 3999 });
@@ -931,16 +933,33 @@ async function runDb() {
       && pc3a?.serviceChargeSatang === 334 && pc3a?.grandTotalSatang === 3669 && pc3b?.serviceChargeSatang === 1200 && pc3b?.grandTotalSatang === 13200 && pc3b?.vatSatang === q3b?.vatSatang,
     "334/3669 · 1200/13200 · priceCart = quote", FX(`q ${q3a?.serviceChargeSatang}/${q3a?.grandTotalSatang} · ${q3b?.serviceChargeSatang}/${q3b?.grandTotalSatang} (${codeOf(q3b)}) · pc ${pc3a?.serviceChargeSatang}/${pc3a?.grandTotalSatang} · ${pc3b?.serviceChargeSatang}/${pc3b?.grandTotalSatang}`));
   // K4 เปิดทิป
-  const ledger = await P.accountLedger?.findFirst?.({ where: { tenantId: tid }, select: { id: true } }).catch(() => null);
-  const ledgerId: string = ledger?.id ?? `${TAG}-tip-ledger`;
+  // บัญชีพักทิป (หนี้สิน) ในสมุด sandbox: ของสมุด V (ผูก posV) = ถูก · ของสมุด N (ผูก posN) = สมุดอื่น — ลบด้วย systemId ตอนคืนสภาพ
+  let ledgerV = "", ledgerN = "", fxK4 = "";
+  try {
+    if (accV) ledgerV = (await P.accountLedger.create({ data: { tenantId: tid, systemId: accV, code: "2195", name: `${TAG} ทิปรอจ่ายพนักงาน`, type: "LIABILITY" } })).id;
+    if (accN) ledgerN = (await P.accountLedger.create({ data: { tenantId: tid, systemId: accN, code: "2195", name: `${TAG} ทิปรอจ่าย (สมุดอื่น)`, type: "LIABILITY" } })).id;
+  } catch (e) {
+    fxK4 = (e as Error).message.slice(0, 80);
+  }
   await setPay({ serviceCharge: { enabled: false } });
   const t4a = await setPay({ tip: { enabled: true } });
   asData("K4 เปิดทิปไม่มีบัญชี", t4a, "TIP_ACCOUNT_REQUIRED");
   const after4a = await readPay();
-  const t4b = await setPay({ tip: { enabled: true, ledgerAccountId: ledgerId } });
+  const t4w = await setPay({ tip: { enabled: true, ledgerAccountId: ledgerN || "-" } });
+  asData("K4 บัญชีสมุดอื่น", t4w, "TIP_ACCOUNT_REQUIRED");
+  const after4w = await readPay();
+  const t4b = await setPay({ tip: { enabled: true, ledgerAccountId: ledgerV || "-" } });
   const after4b = await readPay();
-  chk("P1.6-K4", refused(t4a, ["TIP_ACCOUNT_REQUIRED"]) && after4a?.tip?.enabled === false && t4b?.ok === true && after4b?.tip?.enabled === true && after4b?.tip?.ledgerAccountId === ledgerId,
-    "ไม่มีบัญชี → TIP_ACCOUNT_REQUIRED ทิปยังปิด · มีบัญชี → เปิด", FX(`${codeOf(t4a)} → tip ${short(after4a?.tip)} · ${codeOf(t4b)} → ${short(after4b?.tip)}`));
+  chk("P1.6-K4", !fxK4 && !!ledgerV && refused(t4a, ["TIP_ACCOUNT_REQUIRED"]) && after4a?.tip?.enabled === false && refused(t4w, ["TIP_ACCOUNT_REQUIRED"]) && after4w?.tip?.enabled === false
+      && t4b?.ok === true && after4b?.tip?.enabled === true && after4b?.tip?.ledgerAccountId === ledgerV,
+    "ไม่มีบัญชี / สมุดอื่น → TIP_ACCOUNT_REQUIRED ทิปยังปิด · บัญชีสมุดที่ผูก → เปิด",
+    FX(`${fxK4 ? `ledger:${fxK4} · ` : ""}${codeOf(t4a)} → ${short(after4a?.tip)} · สมุดอื่น ${codeOf(t4w)} → ${short(after4w?.tip)} · ${codeOf(t4b)} → ${short(after4b?.tip)}`));
+  // K9 POS ไม่ผูกสมุด (posS) — เปิดทิปไม่ได้แม้ส่งบัญชีที่มีอยู่จริง
+  const sysCtxS = { tenantId: tid, systemId: posS };
+  const t9 = await call(paySet, "updatePosPaymentSettings", sysCtxS, owner, { tip: { enabled: true, ledgerAccountId: ledgerV || "-" } });
+  asData("K9 POS ไม่ผูกสมุด", t9, "TIP_ACCOUNT_REQUIRED");
+  const after9 = await call(paySet, "posPaymentSettings", sysCtxS);
+  chk("P1.6-K9", refused(t9, ["TIP_ACCOUNT_REQUIRED"]) && after9?.tip?.enabled === false, "TIP_ACCOUNT_REQUIRED · ทิปยังปิด", FX(`${codeOf(t9)} → ${short(after9?.tip)}`));
   // K5 ทิปเปิด
   const k5a = key("tip-on");
   const s5a = await quietTx((tx) => sub(owner, { idempotencyKey: k5a, lines: custom(6500), tipSatang: 500, payMethods: [{ type: "PROMPTPAY", amountSatang: 7000 }], expectedGrandTotalSatang: 6500 }, ctxV, tx));
@@ -1070,7 +1089,7 @@ async function runDb() {
     "dup · CONFLICT+saleId · VOIDED CONFLICT+status ×2 · 1 บิล", FX(`${codeOf(i5a)} · ${codeOf(i5b)}/dup ${i5b?.duplicated} · ${codeOf(i5c)} · void:${v5 || "ok"} · ${codeOf(i5d)}/${st(i5d)} · ${codeOf(i5e)}/${st(i5e)}`));
   // I6 ร้านอาหาร re-checkout
   let fx6 = "";
-  let r6a: Any = null, r6v: Any = null, r6b: Any = null, r6v2: Any = null, r6c: Any = null;
+  let r6a: Any = null, r6v: Any = null, r6b: Any = null;
   try {
     if (!uR || fx) throw new Error("ไม่มีสาขาร้านอาหาร sandbox");
     const bkk = new Date(Date.now() + 7 * 3600000).toISOString().slice(0, 10);
@@ -1083,16 +1102,15 @@ async function runDb() {
     r6a = await call(restaurant, "checkout", { tenantId: tid, unitId: uR, sessionId: sess.id, payMethod: "CASH" });
     r6v = await call(restaurant, "voidCheckout", tid, uR, sess.id);
     r6b = await call(restaurant, "checkout", { tenantId: tid, unitId: uR, sessionId: sess.id, payMethod: "CASH" });
-    r6v2 = await call(restaurant, "voidCheckout", tid, uR, sess.id);
-    r6c = await call(restaurant, "checkout", { tenantId: tid, unitId: uR, sessionId: sess.id, payMethod: "TRANSFER" });
   } catch (e) {
     fx6 = (e as Error).message.slice(0, 100);
   }
   const restSales = (await P.posSale.findMany({ where: { tenantId: tid, unitId: uR || "-" }, select: { id: true, status: true } })) as Any[];
-  chk("P1.6-I6", !fx6 && r6a?.ok === true && r6v?.ok === true && r6b?.ok === true && r6b.saleId === r6a.saleId && restSales.length === 1 && restSales[0].status === "VOIDED"
-      && r6c?.threw !== true && (r6c?.ok !== true || r6c.saleId === r6a.saleId),
-    "ครั้งแรก PAID → void → re-checkout ok saleId เดิม (VOIDED) · 1 บิล ไม่มี PAID · เปลี่ยนวิธีจ่ายไม่มีบิลใหม่",
-    `${fx6 ? `fixture:${fx6} · ` : ""}1:${codeOf(r6a)} void:${codeOf(r6v)} 2:${codeOf(r6b)} same ${r6b?.saleId === r6a?.saleId} void2:${codeOf(r6v2)} 3:${codeOf(r6c)}${r6c?.reason ? `(${short(r6c.reason, 50)})` : ""} · บิล ${restSales.map((x) => x.status).join(",")}`);
+  const paid6 = restSales.filter((x) => x.status === "PAID");
+  const first6 = restSales.find((x) => x.id === r6a?.saleId);
+  chk("P1.6-I6", !fx6 && r6a?.ok === true && r6v?.ok === true && r6b?.ok === true && r6b.saleId !== r6a.saleId && paid6.length === 1 && paid6[0].id === r6b.saleId && first6?.status === "VOIDED",
+    "ครั้งแรก PAID → void → re-checkout ok บิลใหม่ PAID · PAID 1 บิล · บิลเดิม VOIDED",
+    `${fx6 ? `fixture:${fx6} · ` : ""}1:${codeOf(r6a)} void:${codeOf(r6v)} 2:${codeOf(r6b)} ใหม่ ${r6b?.saleId !== r6a?.saleId} · บิล ${restSales.map((x) => x.status).join(",")} · เดิม ${first6?.status}`);
   // I7 แข่งคีย์เดียว (ผู้เรียกเดิม)
   const r7: string[] = [];
   let ok7 = !fx;
@@ -1297,7 +1315,7 @@ async function runDb() {
   // ════════ R1 ปฏิเสธเป็นข้อมูล ════════
   const badR1 = dataRefusals.filter(([, r, code]) => !(r?.ok === false && r.threw !== true && r.code === code && typeof r.message === "string" && r.message.length > 0))
     .map(([l, r]) => `${l}:${r?.threw ? "THROW " : ""}${codeOf(r)}`);
-  chk("P1.6-R1", dataRefusals.length >= 6 && badR1.length === 0, `${dataRefusals.length} คำปฏิเสธ = {ok:false, code, message} ไม่ throw`, FX(badR1.join(" · ") || "ครบ"));
+  chk("P1.6-R1", dataRefusals.length >= 8 && badR1.length === 0, `${dataRefusals.length} คำปฏิเสธ = {ok:false, code, message} ไม่ throw`, FX(badR1.join(" · ") || "ครบ"));
 }
 
 // ═════════════════════════ 6. คืนสภาพ (ลบทุกอย่างที่ข้อสอบสร้าง) ═════════════════════════
