@@ -16,3 +16,6 @@ B5 Oracle `qc-pos-p1.4.mts` (~15): burst classifier unit tests (timings table), 
 
 ## Owner question
 - **O22**: add a barcode-decoding dependency (e.g. `@zxing/browser`, lazy-loaded, ~100 KB gz) so iPhone/Safari can scan with the camera? `package.json` is shared with the CRM branch (merge cost small). Recommendation: yes.
+
+## Owner answer (4 Oct 2026)
+- **O22 → YES.** Add a barcode-decoding dependency for the camera fallback (e.g. `@zxing/browser`), lazy-loaded only when the camera opens and BarcodeDetector is missing. The builder adds it via `pnpm add` in its own tree, commits `package.json` + `pnpm-lock.yaml` by explicit path, and lists it for the CRM/main merge checklist.
