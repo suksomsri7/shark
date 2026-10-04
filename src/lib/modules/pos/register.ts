@@ -1190,6 +1190,8 @@ async function regPrice(
           base = wb.priceSatang ?? 0;
           if (perKg < 1) return regRefuse("INVALID_LINE", "ตั้งราคาต่อกิโลกรัมก่อนขายด้วยป้ายฝังราคา", i);
           weightGrams = weighedGramsFromPrice(base, perKg);
+          // R2 F3: ป้ายราคาที่ราคา < 1 สตางค์ หรือคิดน้ำหนักได้ < 1 กรัม = INVALID_LINE ตั้งแต่ quote (ไม่ใช่ VALIDATION ตอนบันทึก)
+          if (base < 1 || weightGrams < 1) return regRefuse("INVALID_LINE", "ราคาบนป้ายน้อยเกินไป — คิดน้ำหนักไม่ได้ สแกนป้ายใหม่", i);
         }
       } else {
         weightGrams = l.weightGrams!;
