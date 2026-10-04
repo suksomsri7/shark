@@ -33,47 +33,14 @@ const INV_LITE = { id: true, systemId: true, name: true, kind: true, priceSatang
 
 // ═══════════════════ ตัวช่วยภายใน ═══════════════════
 
-/** G7: ล็อกแถว PosProduct (เรียง id · คำสั่งเดียว) แล้วอ่านค่าปัจจุบัน — ก่อนเขียนตารางเดิม */
-async function lockRows(tx: Tx, tenantId: string, ids: (string | null | undefined)[]): Promise<PosProduct[]> {
-  const want = [...new Set(ids.filter((x): x is string => typeof x === "string" && !!x))].sort();
-  if (!want.length) return [];
-  await tx.$queryRaw`SELECT id FROM "PosProduct" WHERE id = ANY(${want}::text[]) AND "tenantId" = ${tenantId} ORDER BY id FOR NO KEY UPDATE`;
-  return tx.posProduct.findMany({ where: { tenantId, id: { in: want } }, orderBy: { id: "asc" } });
-}
+/** G7: ล็อกแถว PosProduct (เรียง id · คำสั่งเดียว) แล้วอ่านค่าปัจจุบัน — ตัวเดียวกับทางย้อน (catalog.lockProductRows) */
+const lockRows = (tx: Tx, tenantId: string, ids: (string | null | undefined)[]) => C.lockProductRows(tx, tenantId, ids);
 
-async function auditSys(tx: Tx, tenantId: string, action: string, targetType: "PosProduct" | "PosCategory", targetId: string, before: unknown, after: unknown): Promise<void> {
-  await tx.auditLog.create({
-    data: {
-      tenantId,
-      actorType: "SYSTEM",
-      actorId: null,
-      action,
-      targetType,
-      targetId,
-      before: before === null ? undefined : (before as Prisma.InputJsonValue),
-      after: after === null ? undefined : (after as Prisma.InputJsonValue),
-      createdAt: new Date(),
-    },
-  });
-}
+const auditSys = (tx: Tx, tenantId: string, action: string, targetType: "PosProduct" | "PosCategory", targetId: string, before: unknown, after: unknown) =>
+  C.auditSync(tx, tenantId, C.SYSTEM_AUDIT, action, targetType, targetId, before, after);
 
-const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
-
-/** เขียนเฉพาะช่องที่ต่างจากค่าปัจจุบัน — คำสั่งเดียว (G4c) · ไม่ต่าง = ไม่เขียน (บันทึกซ้ำไม่ขยับ updatedAt) · audit `pos.product.sync` */
-async function applySync(tx: Tx, row: PosProduct, want: Record<string, unknown>): Promise<void> {
-  const data: Record<string, unknown> = {};
-  const before: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(want)) {
-    const cur = (row as unknown as Record<string, unknown>)[k];
-    if (!same(cur, v)) {
-      data[k] = v;
-      before[k] = cur;
-    }
-  }
-  if (!Object.keys(data).length) return;
-  await tx.posProduct.updateMany({ where: { id: row.id, tenantId: row.tenantId }, data: data as Prisma.PosProductUncheckedUpdateManyInput });
-  await auditSys(tx, row.tenantId, "pos.product.sync", "PosProduct", row.id, before, data);
-}
+/** เขียนเฉพาะช่องที่ต่าง — catalog.applyDerived (คำสั่งเดียว · audit `pos.product.sync`) */
+const applySync = (tx: Tx, row: PosProduct, want: Record<string, unknown>) => C.applyDerived(tx, row, want, C.SYSTEM_AUDIT);
 
 /** ระบบ POS ที่ขายเมนูของสาขานี้ (ทางเดียวกับ backfill — C.resolvePosSystem) */
 async function posOfUnit(tx: Tx, tenantId: string, unitId: string): Promise<string | null> {
@@ -84,10 +51,18 @@ async function posOfUnit(tx: Tx, tenantId: string, unitId: string): Promise<stri
 async function categoryFor(tx: Tx, tenantId: string, systemId: string, menuCategoryId: string): Promise<string | null> {
   const mc = await tx.menuCategory.findFirst({ where: { id: menuCategoryId, tenantId } });
   if (!mc) return null;
-  const hit = await tx.posCategory.findFirst({ where: { tenantId, systemId, unitId: mc.unitId, name: mc.name }, select: { id: true } });
+  const find = () => tx.posCategory.findFirst({ where: { tenantId, systemId, unitId: mc.unitId, name: mc.name }, select: { id: true } });
+  const hit = await find();
   if (hit) return hit.id;
-  const row = await tx.posCategory.create({ data: { tenantId, systemId, ...C.menuCategoryFields(mc) } });
-  await auditSys(tx, tenantId, "pos.category.create", "PosCategory", row.id, null, { name: row.name, unitId: row.unitId, source: "menuCategory" });
+  // R2 F6: สองประตูพร้อมกันสร้างหมวดเดียวกัน — INSERT … ON CONFLICT DO NOTHING (ไม่มี P2002 ใน tx ของผู้เรียก · G11) แล้วอ่านซ้ำใน tx เดิม
+  const f = C.menuCategoryFields(mc);
+  const id = randomUUID();
+  const n = await tx.$executeRaw`INSERT INTO "PosCategory" ("id", "tenantId", "systemId", "unitId", "name", "nameEn", "sortOrder", "isVisible", "availableFrom", "availableTo", "archivedAt", "createdAt", "updatedAt")
+    VALUES (${id}, ${tenantId}, ${systemId}, ${f.unitId}, ${f.name}, ${f.nameEn}, ${f.sortOrder}, ${f.isVisible}, ${f.availableFrom}, ${f.availableTo}, ${f.archivedAt}, now(), now())
+    ON CONFLICT DO NOTHING`;
+  const row = await find();
+  if (!row) return null;
+  if (n === 1) await auditSys(tx, tenantId, "pos.category.create", "PosCategory", row.id, null, { name: f.name, unitId: f.unitId, source: "menuCategory" });
   return row.id;
 }
 
@@ -101,39 +76,14 @@ async function syncMenuRow(tx: Tx, row: PosProduct, item: MenuItem): Promise<voi
   });
 }
 
-/**
- * แถวที่ผูก InvItem — คิดใหม่ตามแหล่งเดิมของแต่ละแถว · `name`: ชื่อ InvItem (แถว InvItem) · `price`: ราคา C7 + VAT
- * (แถว InvItem และแถวเว็บร้านเองที่ผูก InvItem นั้น) — ประตูส่งธงตามช่องที่ตัวเองเปลี่ยน (G5)
- */
-async function resyncRows(tx: Tx, rows: PosProduct[], what: { name?: boolean; price?: boolean }): Promise<void> {
-  for (const row of rows) {
-    const src = await C.legacySourceOf(row, tx);
-    const want: Record<string, unknown> = {};
-    if (src.type === "inv") {
-      const d = C.invItemProductFields(src.inv, src.ap, src.book).data;
-      if (what.name) want.name = d.name;
-      if (what.price) Object.assign(want, { basePriceSatang: d.basePriceSatang, vatRateBp: d.vatRateBp });
-    } else if (src.type === "shop" && what.price && src.shopIds.length) {
-      const sp = await tx.shopProduct.findFirst({ where: { id: src.shopIds[0], tenantId: row.tenantId } });
-      if (sp) {
-        const d = C.shopProductFields(sp, src.inv, src.ap, src.book).data;
-        Object.assign(want, { basePriceSatang: d.basePriceSatang, vatRateBp: d.vatRateBp });
-      }
-    }
-    if (Object.keys(want).length) await applySync(tx, row, want);
-  }
-}
+/** แถวที่ผูก InvItem — คิดใหม่ตามแหล่งเดิม (catalog.rederiveRows · ตัวเดียวกับพี่น้องของ setPrice) · ประตูส่งธงตามช่องที่ตัวเองเปลี่ยน (G5) */
+const resyncRows = (tx: Tx, rows: PosProduct[], what: { name?: boolean; price?: boolean }) => C.rederiveRows(tx, rows, what, C.SYSTEM_AUDIT);
 
 /** แถวแคตตาล็อกทุกแถวที่ผูก InvItem นี้ (แถว InvItem ทุกระบบ + แถวเว็บร้านเองที่ผูกมัน) */
 async function rowIdsOfInvItem(tx: Tx, tenantId: string, invItemId: string): Promise<string[]> {
   return (await tx.posProduct.findMany({ where: { tenantId, invItemId }, select: { id: true } })).map((r) => r.id);
 }
-/** แถวแคตตาล็อกที่ราคามาจาก AccountProduct นี้ (ผ่าน InvItem.accountProductId — ทางเดียวกับ C7 strictAp) */
-async function rowIdsOfAccountProduct(tx: Tx, tenantId: string, productId: string): Promise<string[]> {
-  const rows = await tx.$queryRaw<{ id: string }[]>`SELECT p.id FROM "PosProduct" p JOIN "InvItem" i ON i.id = p."invItemId" AND i."tenantId" = ${tenantId}
-    WHERE p."tenantId" = ${tenantId} AND i."accountProductId" = ${productId}`;
-  return rows.map((r) => r.id);
-}
+const rowIdsOfAccountProduct = (tx: Tx, tenantId: string, productId: string) => C.rowIdsOfAccountProductTx(tx, tenantId, productId);
 
 async function activePos(tx: Tx, tenantId: string, systemIds: string[]): Promise<Set<string>> {
   if (!systemIds.length) return new Set();
@@ -345,7 +295,8 @@ export async function updateShopProduct(tx: Tx, s: UnitScope, id: string, data: 
   if (!r.count) return r;
   for (const row of rows) {
     const src = await C.legacySourceOf(row, tx);
-    if (src.type !== "shop") continue;
+    // R2 F5 / มติ 5: แถวของเว็บร้านที่หลาย ShopProduct ใช้ร่วม รับค่าจาก ShopProduct แถวแรกเท่านั้น (ต้นทางเดียวกับ backfill · rederiveRows · --verify)
+    if (src.type !== "shop" || src.shopIds[0] !== id) continue;
     const sp = await tx.shopProduct.findFirst({ where: { id, tenantId: s.tenantId } });
     if (!sp) continue;
     const d = C.shopProductFields(sp, src.inv, src.ap, src.book).data;
@@ -375,7 +326,10 @@ export async function updateInvItem(tx: Tx, ctx: SysScope, itemId: string, data:
 
 /** เก็บ/เลิกเก็บ InvItem (คำสั่งเดิม) → archive / restore แถว InvItem (G6 · ensureForInvItem ไม่ปลดเอง — P1.1a กติกา 1) */
 export async function setInvItemArchived(tx: Tx, ctx: SysScope, itemId: string, archived: boolean): Promise<void> {
-  const rows = await lockRows(tx, ctx.tenantId, await rowIdsOfInvItem(tx, ctx.tenantId, itemId));
+  const ids = await rowIdsOfInvItem(tx, ctx.tenantId, itemId);
+  // R2 F7 + G7: เลิกเก็บ = catalog.restore อาจล็อกร้าน (แถวมีบาร์โค้ด) ⇒ ล็อกร้านก่อนล็อกแถว (ร้าน → แถว) — ไม่ถือแถวระหว่างรอล็อกร้าน
+  if (!archived && ids.length) await C.tryLockCatalogTenant(tx, ctx.tenantId);
+  const rows = await lockRows(tx, ctx.tenantId, ids);
   await tx.invItem.update({ where: { id: itemId, tenantId: ctx.tenantId, systemId: ctx.systemId }, data: { archivedAt: archived ? new Date() : null } });
   const live = await activePos(tx, ctx.tenantId, rows.map((r) => r.systemId));
   for (const row of rows) {

@@ -148,3 +148,9 @@ Text = the catalogue's Thai message (already says "ยังไม่ได้�
 - F3: setPrice = peek (no lock) → permission → sibling set of the target field (`siblingIdsOf`: AP → rows via `InvItem.accountProductId`; InvItem → rows with that `invItemId`; ShopProduct → their linked rows) → `lockProductRows` (own row + siblings, id order, one `FOR NO KEY UPDATE`) → re-read + permission on the locked row → write own PosProduct → legacy field → `rederiveRows` on siblings (same function the forward doors use, moved into catalog.ts). Siblings that appear between peek and lock are locked additionally.
 - F4: `reverseTarget.sim(price)` runs the forward derivation with the written value; `sim(p) !== p` ⇒ `VALIDATION` "ราคา 0 ใช้กับสินค้านี้ไม่ได้ — ตั้งราคาที่ระบบเดิม" before any write. 0 that round-trips (MENU, web price, AP salePrice 0 with cost 0 → "free") is still accepted. `--verify`: stored 0 + derived null → own bucket `zeroVsNull` (exit 1), `catalogueOnlyPrice` stays info.
 - Typecheck 0 · fitness 40/40.
+
+## F5 + F6 + F7 (one file, one commit)
+- F5: `updateShopProduct` writes the shared own row only when the edited ShopProduct is `src.shopIds[0]` (`legacySourceOf` now carries `first` = ShopProduct #1, used by backfill order, `rederiveRows`, `reverseTarget` and `--verify`).
+- F6: `categoryFor` = find → `INSERT … ON CONFLICT DO NOTHING` (raw, same tx client) → re-read; audit only when the insert won. No P2002 can reach the caller's tx.
+- F7: `setInvItemArchived(…, false)` takes the budgeted tenant try-lock BEFORE `lockRows` (tenant → row), so `catalog.restore`'s own tenant lock is re-entrant and never waited for while holding rows.
+- catalog-legacy now delegates lock/derive/audit helpers to the shared ones in catalog.ts (`lockProductRows` · `applyDerived` · `rederiveRows` · `auditSync`). Typecheck 0 · fitness 40/40.
