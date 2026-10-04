@@ -286,7 +286,7 @@ async function runStatic(): Promise<void> {
   if (!migFiles.length) s2.push("ไม่มี migration ที่แตะ PosShift");
   const migAll = migFiles.map((f) => rd(f).replace(/--.*$/gm, "")).join("\n");
   if (migFiles.length && !/CREATE\s+TABLE\s+"PosShift"/i.test(migAll)) s2.push("ไม่มี CREATE TABLE \"PosShift\"");
-  if (migFiles.length && !/CREATE\s+UNIQUE\s+INDEX[^;]*one_open_shift_per_device[^;]*\(\s*"unitId"\s*,\s*"deviceId"\s*\)[^;]*WHERE[^;]*status[^;]*'OPEN'/is.test(migAll)) s2.push("ไม่มี partial unique one_open_shift_per_device (unitId, deviceId) WHERE status='OPEN'");
+  if (migFiles.length && !/CREATE\s+UNIQUE\s+INDEX[^;]*one_open_shift_per_device[^;]*\(\s*"unitId"\s*,\s*"deviceId"\s*\)[^;]*WHERE[^;]*status[^;]*'OPEN'/i.test(migAll)) s2.push("ไม่มี partial unique one_open_shift_per_device (unitId, deviceId) WHERE status='OPEN'");
   const addShiftId = /ALTER\s+TABLE\s+"PosSale"[^;]*ADD\s+COLUMN\s+"shiftId"[^;,]*/i.exec(migAll)?.[0] ?? "";
   if (migFiles.length && !addShiftId) s2.push("ไม่มี ADD COLUMN \"shiftId\" ของ PosSale");
   else if (/NOT\s+NULL/i.test(addShiftId)) s2.push("PosSale.shiftId NOT NULL");
