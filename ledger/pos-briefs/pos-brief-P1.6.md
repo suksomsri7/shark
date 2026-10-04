@@ -69,3 +69,4 @@ Dynamic PromptPay/Beam/card gateway (P1.7) · refunds/CN (P1.8) · shifts/drawer
 - F6: the legacy idempotency compare includes item/product/service ids and memberId; the unlinked single-POS branch validates `input.systemId`; the `stockInsufficient` copy is fixed.
 - Cross-lane (CRM): `crm/commissions.ts` uses `grand − vatSatang`. With VAT now stored, commission on VAT-linked POS sales becomes net-of-VAT, about 6.5% lower than before. This needs an owner/CRM ruling; POS does not change CRM files.
 - Deferred to P1.9: closeDay/Z shows tip as its own line.
+- Owner ruling (4 Oct): CRM commission base on POS sales = **net of VAT** (`grand − vatSatang`), i.e. the current CRM code is correct now that VAT is stored.
