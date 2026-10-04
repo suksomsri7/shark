@@ -307,7 +307,8 @@ async function bumpCounter(tx: Tx, tenantId: string, unitId: string, field: "shi
 }
 
 // ═══════════ รายงาน (S7/S9) — คำนวณสด อ่านอย่างเดียว ═══════════
-async function computeReport(db: Db | Tx, r: PosShift): Promise<ShiftReport> {
+// POS P1.17 ▸ export ให้ reports.ts คำนวณแถวกะที่ยัง OPEN (R9) — อ่านอย่างเดียว · กะที่ปิดแล้วอ่าน Z แช่แข็งเสมอ ◂
+export async function computeReport(db: Db | Tx, r: PosShift): Promise<ShiftReport> {
   const sales = await db.posSale.findMany({
     // R2 F1: createdAt >= openedAt ⇒ ใช้ดัชนี (tenantId, unitId, createdAt) ขณะถือล็อกแถวกะ (ไม่สแกนทั้งสาขา)
     where: { tenantId: r.tenantId, unitId: r.unitId, createdAt: { gte: new Date(r.openedAt.getTime() - SALE_CLOCK_SLACK_MS) }, shiftId: r.id },
