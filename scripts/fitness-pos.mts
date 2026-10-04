@@ -106,10 +106,8 @@ export const CATALOG_WRITER_BASELINE: Record<string, Record<string, number>> = {
   "src/lib/modules/account/service.ts": { "AccountProduct.price": 2 },
   // หน้าสินค้าระบบบัญชี / import / REST+AI products-write: createProduct · updateProduct (data ทางอ้อม — fail-closed · มี salePrice/posPrice จริง)
   "src/lib/modules/account/product.ts": { "AccountProduct.price": 2 },
-  // ซิงก์ลิงก์คลัง↔บัญชี (data ทางอ้อม — fail-closed · วันนี้ไม่ได้ตั้งราคา แต่ตรวจพิสูจน์ไม่ได้แบบ static)
-  "src/lib/modules/account/inventory-link.ts": { "AccountProduct.price": 2, "InvItem.price": 2 },
-  // InvItem.priceSatang: createItem (ผู้เรียก: inventory/actions · ai/proposals inventory_create_item · booking importServicesToCatalog · inventory-link) · updateItem
-  "src/lib/modules/inventory/service.ts": { "InvItem.price": 2 },
+  // POS P1.1b ▸ account/inventory-link.ts ซิงก์ลิงก์คลัง↔บัญชี ย้ายเข้า catalog-legacy.ts / inventory.applyAccountProductSync แล้ว (มติ 2) ◂
+  // POS P1.1b ▸ inventory/service.ts createItem/updateItem ย้ายเข้า catalog-legacy.ts แล้ว ◂
   // BookingService.priceSatang: ซิงก์ราคาจาก InvItem ตอนอ่าน serviceRoster (:254) · ตั้งค่าบริการ (:301-302)
   "src/lib/modules/booking/service.ts": { "BookingService.price": 3 },
   // ลบข้อมูลทั้งร้านตาม PDPA ผ่าน delegate ไดนามิก (ทุกโมเดล รวมแคตตาล็อก) — ถูกต้อง แต่มองไม่เห็นแบบ static ⇒ fail-closed

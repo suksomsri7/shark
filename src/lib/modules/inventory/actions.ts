@@ -2,6 +2,7 @@
 
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { requireTenant } from "@/lib/core/context";
 import { assertCan } from "@/lib/core/rbac";
 import { parseCsv, type ImportSummary } from "@/lib/core/csv";
@@ -27,6 +28,7 @@ import {
   updateItem,
 } from "./service";
 import { findInventoryCtx, inventoryActor, inventoryCanRead, requireInventoryCtx } from "./guard";
+import { CatalogError } from "@/lib/modules/pos";
 
 // ตรวจสิทธิ์โมดูล Inventory (system-scoped) — OWNER/MANAGER ผ่าน · STAFF ตาม permission
 // convention action = "inventory.<entity>.<verb>" (F6 ratchet บังคับให้ไฟล์นี้เรียก assertCan)
@@ -73,15 +75,21 @@ export async function createItemAction(formData: FormData) {
   const name = String(formData.get("name") ?? "").trim();
   if (!systemId || !sku || !name) return;
   const ctx = await requireInventoryCtx(auth.active.tenantId, systemId); // HF-INV-0: ต้องเป็นระบบคลังของร้านนี้
-  await createItem(ctx, {
-    sku,
-    name,
-    barcode: String(formData.get("barcode") ?? "").trim() || null,
-    unitLabel: String(formData.get("unitLabel") ?? "").trim() || null,
-    category: String(formData.get("category") ?? "").trim() || null,
-    reorderPoint: toQty(formData.get("reorderPoint")),
-    costSatang: bahtToSatang(formData.get("cost")),
-  });
+  try {
+    await createItem(ctx, {
+      sku,
+      name,
+      barcode: String(formData.get("barcode") ?? "").trim() || null,
+      unitLabel: String(formData.get("unitLabel") ?? "").trim() || null,
+      category: String(formData.get("category") ?? "").trim() || null,
+      reorderPoint: toQty(formData.get("reorderPoint")),
+      costSatang: bahtToSatang(formData.get("cost")),
+    });
+  } catch (e) {
+    // POS P1.1b G11: การปฏิเสธจากแคตตาล็อก (เช่น BUSY ระหว่าง backfill) คืนเป็นข้อมูล (?err=) — ไม่ throw ถึงผู้ใช้
+    if (!(e instanceof CatalogError)) throw e;
+    redirect(`/app/sys/${systemId}?err=${encodeURIComponent(e.message)}`);
+  }
   revalidate(systemId);
 }
 
@@ -94,14 +102,20 @@ export async function updateItemAction(formData: FormData) {
   const name = String(formData.get("name") ?? "").trim();
   if (!systemId || !itemId || !name) return;
   const ctx = await requireInventoryCtx(auth.active.tenantId, systemId); // HF-INV-0: ต้องเป็นระบบคลังของร้านนี้
-  await updateItem(ctx, itemId, {
-    name,
-    sku: String(formData.get("sku") ?? "").trim(),
-    barcode: String(formData.get("barcode") ?? "").trim() || null,
-    category: String(formData.get("category") ?? "").trim() || null,
-    unitLabel: String(formData.get("unitLabel") ?? "").trim(),
-    reorderPoint: toQty(formData.get("reorderPoint")),
-  });
+  try {
+    await updateItem(ctx, itemId, {
+      name,
+      sku: String(formData.get("sku") ?? "").trim(),
+      barcode: String(formData.get("barcode") ?? "").trim() || null,
+      category: String(formData.get("category") ?? "").trim() || null,
+      unitLabel: String(formData.get("unitLabel") ?? "").trim(),
+      reorderPoint: toQty(formData.get("reorderPoint")),
+    });
+  } catch (e) {
+    // POS P1.1b G11: การปฏิเสธจากแคตตาล็อก (เช่น BUSY ระหว่าง backfill) คืนเป็นข้อมูล (?err=) — ไม่ throw ถึงผู้ใช้
+    if (!(e instanceof CatalogError)) throw e;
+    redirect(`/app/sys/${systemId}?err=${encodeURIComponent(e.message)}`);
+  }
   revalidate(systemId);
 }
 
@@ -113,7 +127,13 @@ export async function archiveItemAction(formData: FormData) {
   const itemId = String(formData.get("itemId") ?? "");
   if (!systemId || !itemId) return;
   const ctx = await requireInventoryCtx(auth.active.tenantId, systemId); // HF-INV-0: ต้องเป็นระบบคลังของร้านนี้
-  await archiveItem(ctx, itemId);
+  try {
+    await archiveItem(ctx, itemId);
+  } catch (e) {
+    // POS P1.1b G11: การปฏิเสธจากแคตตาล็อก (เช่น BUSY ระหว่าง backfill) คืนเป็นข้อมูล (?err=) — ไม่ throw ถึงผู้ใช้
+    if (!(e instanceof CatalogError)) throw e;
+    redirect(`/app/sys/${systemId}?err=${encodeURIComponent(e.message)}`);
+  }
   revalidate(systemId);
 }
 
@@ -312,19 +332,25 @@ export async function createServiceAction(formData: FormData) {
   const sku = String(formData.get("sku") ?? "").trim() || (await nextSku(ctx, categoryId));
   const price = toBaht(formData.get("priceBaht"));
   const deposit = toBaht(formData.get("depositBaht"));
-  await createItem(ctx, {
-    sku,
-    name,
-    kind: "SERVICE",
-    unitLabel: String(formData.get("unitLabel") ?? "").trim() || "ครั้ง",
-    categoryId,
-    priceSatang: price != null ? Math.round(price * 100) : 0,
-    durationMin: toQty(formData.get("durationMin")) || 30,
-    bufferMin: toQty(formData.get("bufferMin")),
-    depositSatang: deposit != null ? Math.round(deposit * 100) : 0,
-    bookable: formData.get("bookable") != null,
-    description: String(formData.get("description") ?? "").trim() || null,
-  });
+  try {
+    await createItem(ctx, {
+      sku,
+      name,
+      kind: "SERVICE",
+      unitLabel: String(formData.get("unitLabel") ?? "").trim() || "ครั้ง",
+      categoryId,
+      priceSatang: price != null ? Math.round(price * 100) : 0,
+      durationMin: toQty(formData.get("durationMin")) || 30,
+      bufferMin: toQty(formData.get("bufferMin")),
+      depositSatang: deposit != null ? Math.round(deposit * 100) : 0,
+      bookable: formData.get("bookable") != null,
+      description: String(formData.get("description") ?? "").trim() || null,
+    });
+  } catch (e) {
+    // POS P1.1b G11: การปฏิเสธจากแคตตาล็อก (เช่น BUSY ระหว่าง backfill) คืนเป็นข้อมูล (?err=) — ไม่ throw ถึงผู้ใช้
+    if (!(e instanceof CatalogError)) throw e;
+    redirect(`/app/sys/${systemId}?err=${encodeURIComponent(e.message)}`);
+  }
   revalidate(systemId);
 }
 
@@ -339,16 +365,22 @@ export async function updateServiceAction(formData: FormData) {
   const ctx = await requireInventoryCtx(auth.active.tenantId, systemId); // HF-INV-0: ต้องเป็นระบบคลังของร้านนี้
   const price = toBaht(formData.get("priceBaht"));
   const deposit = toBaht(formData.get("depositBaht"));
-  await updateItem(ctx, itemId, {
-    name,
-    ...(price != null ? { priceSatang: Math.round(price * 100) } : {}),
-    durationMin: toQty(formData.get("durationMin")) || 30,
-    bufferMin: toQty(formData.get("bufferMin")),
-    ...(deposit != null ? { depositSatang: Math.round(deposit * 100) } : {}),
-    bookable: formData.get("bookable") != null,
-    categoryId: String(formData.get("categoryId") ?? "").trim() || null,
-    description: String(formData.get("description") ?? "").trim() || null,
-  });
+  try {
+    await updateItem(ctx, itemId, {
+      name,
+      ...(price != null ? { priceSatang: Math.round(price * 100) } : {}),
+      durationMin: toQty(formData.get("durationMin")) || 30,
+      bufferMin: toQty(formData.get("bufferMin")),
+      ...(deposit != null ? { depositSatang: Math.round(deposit * 100) } : {}),
+      bookable: formData.get("bookable") != null,
+      categoryId: String(formData.get("categoryId") ?? "").trim() || null,
+      description: String(formData.get("description") ?? "").trim() || null,
+    });
+  } catch (e) {
+    // POS P1.1b G11: การปฏิเสธจากแคตตาล็อก (เช่น BUSY ระหว่าง backfill) คืนเป็นข้อมูล (?err=) — ไม่ throw ถึงผู้ใช้
+    if (!(e instanceof CatalogError)) throw e;
+    redirect(`/app/sys/${systemId}?err=${encodeURIComponent(e.message)}`);
+  }
   revalidate(systemId);
 }
 
