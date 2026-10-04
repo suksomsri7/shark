@@ -91,6 +91,16 @@ const isUniqueViolation = (e: unknown): boolean => {
 function runTx<T>(db: Db, fn: (tx: Tx) => Promise<T>, timeout = 30_000): Promise<T> {
   return db.$transaction((tx) => fn(tx), { timeout, maxWait: 10_000 });
 }
+/** R2 F3: งานหลัง commit (กระจกบัญชี · audit ทางลัด) ล้ม = เตือนใน log (ids เท่านั้น) · ผลของผู้เรียกยัง ok */
+async function afterCommit(what: string, ids: Record<string, string>, fn: () => Promise<unknown>): Promise<void> {
+  try {
+    await fn();
+  } catch (e) {
+    console.warn(`[pos/stock-count] ${what} failed after commit`, ids, (e as { code?: unknown } | null)?.code ?? (e instanceof Error ? e.name : "error"));
+  }
+}
+const syncAfterCommit = (invCtx: { tenantId: string; systemId: string }, itemId: string) =>
+  afterCommit("syncAccountProductAfterTx", { tenantId: invCtx.tenantId, systemId: invCtx.systemId, itemId }, () => inventory.syncAccountProductAfterTx(invCtx, itemId));
 /** R2 F1: tx ยืนยันมีเวลาของตัวเอง (สูงสุด 2,000 บรรทัด × adjustInTx) */
 const CONFIRM_TX_TIMEOUT_MS = 120_000;
 
@@ -650,7 +660,7 @@ export async function confirmStockCount(
     }, CONFIRM_TX_TIMEOUT_MS);
     if (!res.duplicated) {
       // หลัง commit: กระจกสินค้าบัญชีตามยอดใหม่ (แบบ adjust เดิม · ADJUST ไม่โพสต์ GL — R15/Q2)
-      for (const id of res.adjusted) await inventory.syncAccountProductAfterTx(invCtx, id);
+      for (const id of res.adjusted) await syncAfterCommit(invCtx, id);
       scheduleDrain();
     }
     return done(res.row, res.duplicated);
@@ -754,10 +764,12 @@ function itemOrCodeOk(input: Record<string, unknown>): boolean {
 }
 
 async function shortcutAudit(db: Db, s: Scope, action: string, movementId: string, after: Record<string, unknown>): Promise<void> {
-  // R13: เขียนหลัง movement commit (ตัวห่อของคลังถือ tx เอง) — ล้มตรงนี้เสียแค่แถว audit ไม่เสียสต็อก
-  await db.auditLog.create({
-    data: { tenantId: s.tenantId, unitId: s.unitId, actorType: "USER", actorId: s.actor.userId, action, targetType: "InvMovement", targetId: movementId, after: after as Prisma.InputJsonValue },
-  });
+  // R13: เขียนหลัง movement commit (ตัวห่อของคลังถือ tx เอง) — ล้มตรงนี้เสียแค่แถว audit ไม่เสียสต็อก (R2 F3: เตือนแล้วคืน ok)
+  await afterCommit("shortcutAudit", { tenantId: s.tenantId, unitId: s.unitId, action, movementId }, () =>
+    db.auditLog.create({
+      data: { tenantId: s.tenantId, unitId: s.unitId, actorType: "USER", actorId: s.actor.userId, action, targetType: "InvMovement", targetId: movementId, after: after as Prisma.InputJsonValue },
+    }),
+  );
 }
 
 export type ShortcutResult = { ok: true; movementId: string; duplicated?: true } | StockCountRefusal;
@@ -923,7 +935,7 @@ export async function posAdjustStock(ctx: RegisterCtx, actor: RegisterActor, inp
       out = await run();
     }
     if (out.prior) return judge(out.prior);
-    await inventory.syncAccountProductAfterTx(invCtx, it.id);
+    await syncAfterCommit(invCtx, it.id);
     await shortcutAudit(db, s, "pos.stock.adjust", out.id!, { itemId: it.id, deltaQty: delta, reason, locationId: loc.id });
     return { ok: true, movementId: out.id! };
   });
