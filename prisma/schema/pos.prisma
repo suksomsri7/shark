@@ -56,6 +56,10 @@ model PosSale {
   serviceChargeSatang Int     @default(0) // ค่าบริการ — อยู่ใน grandTotal และในฐาน VAT
   tipSatang           Int     @default(0) // ทิป — ไม่อยู่ใน grandTotal · ไม่ใช่รายได้ · Σจ่าย = grandTotal + tip
 
+  // ── P1.9 — กะ/ลิ้นชัก · เพิ่มคอลัมน์ล้วน (บิลเดิม = null = นอกกะ) ──
+  // id หลวม (ไม่มี FK · metadata-only แบบ M1) · index สร้างใน P6.1 ด้วย CREATE INDEX CONCURRENTLY นอก prisma migrate
+  shiftId             String? // PosShift.id ที่บิลนี้ผูก (createSale ล็อกแถวกะ FOR SHARE ในtx ของบิล)
+
   lines    PosSaleLine[]
   payments PosPayment[]
 
@@ -253,4 +257,77 @@ model PosHeldCart {
   version           Int               @default(1)
 
   @@index([unitId, status, createdAt])
+}
+
+// ═══════════════════ P1.9 — กะ · ลิ้นชักเงินสด · X/Z · บังคับปิด (มติ S1–S16 · ตารางใหม่ล้วน) ═══════════════════
+// ผู้เขียนเดียว = src/lib/modules/pos/shift.ts · เครื่อง = deviceId ทึบ (P1.10 เพิ่ม PosDevice + FK ทีหลัง)
+// 1 กะ OPEN ต่อ (สาขา, เครื่อง) = partial unique `one_open_shift_per_device` (SQL เขียนมือใน migration)
+// Z แช่แข็ง: zReport เขียนครั้งเดียวตอนปิด ไม่มีโค้ดใดเขียนแถวที่ปิดแล้วอีก
+// 🔴 ไม่มี PIN ที่นี่ — PIN เป็นของ HR (verifyPin · P1.15/P3.5)
+
+enum PosShiftStatus {
+  OPEN
+  CLOSED
+  FORCE_CLOSED
+}
+
+enum PosCashMoveKind {
+  IN
+  OUT
+}
+
+model PosShift {
+  id                 String         @id @default(cuid())
+  tenantId           String
+  unitId             String
+  systemId           String // AppSystem.id (type POS)
+  deviceId           String // [A-Za-z0-9_-]{8,64} จาก client
+  deviceLabel        String? // ≤ 40
+  shiftNo            Int // จากตัวนับต่อสาขา (PosShiftCounter.shiftSeq)
+  status             PosShiftStatus @default(OPEN)
+  openedByUserId     String
+  openedAt           DateTime       @default(now())
+  floatSatang        Int // เงินทอนตั้งต้น
+  floatDetail        Json? // { "<ธนบัตรสตางค์>": จำนวน }
+  closedByUserId     String? // null = ระบบบังคับปิด
+  closedAt           DateTime?
+  expectedCashSatang Int?
+  countedCashSatang  Int?
+  overShortSatang    Int? // counted − expected
+  countDetail        Json?
+  countedByMethod    Json? // { CARD: 2900, PROMPTPAY: 4000 } ยอดที่นับ/กระทบได้ของวิธีอื่น
+  closeNote          String?
+  closeKey           String? // idempotencyKey ของการปิดที่ชนะ
+  zNumber            Int? // เลข Z ต่อสาขา (PosShiftCounter.zSeq) เรียงตามลำดับปิด ไม่มีช่องว่าง
+  zReport            Json? // Z แช่แข็ง (ShiftReport + ผลนับ)
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  @@unique([unitId, shiftNo])
+  @@unique([unitId, zNumber])
+  @@index([tenantId, unitId, status])
+}
+
+model PosCashMovement {
+  id             String          @id @default(cuid())
+  tenantId       String
+  unitId         String
+  shiftId        String // PosShift.id (id หลวม ไม่มี FK แบบ PosHeldCart)
+  kind           PosCashMoveKind
+  amountSatang   Int // > 0
+  reason         String // 1–200
+  byUserId       String
+  idempotencyKey String
+  createdAt      DateTime        @default(now())
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([shiftId])
+}
+
+model PosShiftCounter {
+  id       String @id @default(cuid())
+  tenantId String
+  unitId   String @unique
+  shiftSeq Int    @default(0)
+  zSeq     Int    @default(0)
 }

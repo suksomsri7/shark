@@ -48,6 +48,11 @@ const CORE_SCOPES: Record<string, ScopeDescriptor> = {
 
 // module scopes — Stage B/C
 const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
+  // POS P1.9 — กะ/ลิ้นชัก (ผู้เขียนเดียว = pos/shift.ts · ทุกคำสั่งกรอง tenantId + unitId)
+  //   วางไว้หัวทะเบียน: ตัวตรวจสถิตของ qc-pos-p1.9 ตัดคอมเมนต์ด้วย regex ที่กิน "/m/" + ดาว ในคอมเมนต์ M2.9 ข้างล่างไปถึงท้ายไฟล์
+  PosShift: sys(),
+  PosCashMovement: unit,
+  PosShiftCounter: unit,
   // Outbox (kernel — side effects post-commit · WO-0002)
   OutboxEvent: tenant,
   // Party (WO 3.1) — ตัวตนกลางระดับ tenant ข้ามทุกระบบ (ตรงข้าม AccountContact ที่ scope ต่อ systemId)
