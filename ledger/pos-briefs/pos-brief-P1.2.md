@@ -180,3 +180,6 @@
 - Channel prices per variant (P2.2).
 - Printing options on the receipt (P1.10).
 - Options in the legacy register `actions/pos.ts`.
+
+## Owner answers (4 Oct 2026)
+- Owner: use all recommended defaults for every owner question in this brief (see POS-RESUME 4 Oct).

@@ -148,3 +148,6 @@ S16 **Legacy `closeDay`** (`closeDaySummary/Bills/Csv`, `/pos/close`) stays as i
 - shift reports and monthly over/short (P1.17)
 - settings UI for `pos.shift.*` (P1.18; P1.9 reads settings only)
 - offline shifts (P3.4)
+
+## Owner answers (4 Oct 2026)
+- Owner: use all recommended defaults for every owner question in this brief (see POS-RESUME 4 Oct). The questions labelled O22–O26 in this brief are tracked as Q9.1–Q9.5 (ids clash with earlier O22/O23).
