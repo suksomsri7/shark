@@ -30,6 +30,8 @@ const DEVICE_RE = /^[A-Za-z0-9_-]{8,64}$/;
 const OTHER_METHODS = ["CARD", "PROMPTPAY", "TRANSFER"] as const;
 const METHOD_ORDER = ["CASH", "CARD", "PROMPTPAY", "TRANSFER", "DEPOSIT", "ROOM_CHARGE"];
 const HOUR_MS = 3_600_000;
+/** R2 F1: บิลของกะสร้างหลังเปิดกะเสมอ · เผื่อนาฬิกาเครื่องแอปเหลื่อมกัน 5 นาที (กรอง shiftId อยู่แล้ว เผื่อมากไม่ทำให้ผิด) */
+const SALE_CLOCK_SLACK_MS = 5 * 60_000;
 
 export const isShiftDeviceId = (v: unknown): v is string => typeof v === "string" && DEVICE_RE.test(v);
 
@@ -264,7 +266,8 @@ async function bumpCounter(tx: Tx, tenantId: string, unitId: string, field: "shi
 // ═══════════ รายงาน (S7/S9) — คำนวณสด อ่านอย่างเดียว ═══════════
 async function computeReport(db: Db | Tx, r: PosShift): Promise<ShiftReport> {
   const sales = await db.posSale.findMany({
-    where: { tenantId: r.tenantId, unitId: r.unitId, shiftId: r.id },
+    // R2 F1: createdAt >= openedAt ⇒ ใช้ดัชนี (tenantId, unitId, createdAt) ขณะถือล็อกแถวกะ (ไม่สแกนทั้งสาขา)
+    where: { tenantId: r.tenantId, unitId: r.unitId, createdAt: { gte: new Date(r.openedAt.getTime() - SALE_CLOCK_SLACK_MS) }, shiftId: r.id },
     select: { id: true, status: true, grandTotalSatang: true, tipSatang: true },
     orderBy: { id: "asc" },
   });
