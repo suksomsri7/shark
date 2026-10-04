@@ -60,6 +60,10 @@ model PosSale {
   // id หลวม (ไม่มี FK · metadata-only แบบ M1) · index สร้างใน P6.1 ด้วย CREATE INDEX CONCURRENTLY นอก prisma migrate
   shiftId             String? // PosShift.id ที่บิลนี้ผูก (createSale ล็อกแถวกะ FOR SHARE ในtx ของบิล)
 
+  // ── P1.17 — ผู้ขายของบิล (R6 · Q17.1) · เพิ่มคอลัมน์ล้วน (บิลเดิม = null → รายงานใช้ผู้เปิดกะ / "ไม่ระบุ") ──
+  // id หลวม (User.id · ไม่มี FK · ไม่มี index แบบ shiftId) · หน้าขาย (submitRegisterSale) + หน้าขายเดิม (actions/pos.ts) เขียน · โมดูลอื่น = null
+  soldByUserId        String?
+
   lines    PosSaleLine[]
   payments PosPayment[]
 
