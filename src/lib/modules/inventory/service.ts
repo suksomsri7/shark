@@ -741,60 +741,86 @@ export type AdjustInput = {
   idempotencyKey: string;
   note?: string | null;
   locationId?: string | null; // ไม่ส่ง = คลัง default (WO-0037)
+  // POS P1.14 ▸ R8: ที่มาของรายการ (ไม่ส่ง = null เหมือนเดิม) — ตรวจนับจาก POS ส่ง "POS"/"PosStockCount"/countId ◂
+  sourceModule?: string | null;
+  refType?: string | null;
+  refId?: string | null;
 };
 
 export async function adjust(ctx: Ctx, input: AdjustInput): Promise<{ id: string }> {
-  const newQty = Math.round(input.newQty);
   const db = tenantDb(ctx);
 
   return withStockRetry("adjust", input.itemId, () => db.$transaction(async (tx) => {
-    const txc = tx as unknown as Db;
-    // idempotent guard — key เดิมเคยบันทึกแล้ว → คืนรายการเดิม ไม่แตะสต็อก
-    const want = { itemId: input.itemId, type: "ADJUST" as const, balanceAfter: newQty }; // R3.5: คีย์ซ้ำต้องยอดนับเดียวกัน
-    const dup = await tx.invMovement.findFirst({ where: { idempotencyKey: input.idempotencyKey } });
-    if (dup) return { id: sameMovementOrThrow(dup, want).id };
-
-    // 🔴 HF-INV-1: ล็อกแถวสินค้าก่อนอ่านยอด — qtyDelta ต้องคิดจากยอดล่าสุดจริง ไม่ใช่ยอดที่อ่านก่อนรายการอื่น commit
-    const item = await lockItemForStock(txc, ctx, input.itemId);
-    if (!item) throw new Error("ไม่พบสินค้าในคลัง");
-    const dupAfterLock = await tx.invMovement.findFirst({ where: { idempotencyKey: input.idempotencyKey } });
-    if (dupAfterLock) return { id: sameMovementOrThrow(dupAfterLock, want).id };
-    // 🔴 บริการไม่มีสต็อก (13 ส.ค. 2026) — กันเผลอรับเข้า/ตัด/นับ "ค่าตัดผม" เป็นชิ้น
-    if (item.kind === "SERVICE") throw new Error(`"${item.name}" เป็นบริการ — ไม่มีสต็อกให้รับเข้า/ตัด/นับ`);
-
-    const locId = await resolveLocationId(txc, ctx, input.locationId);
-    await seedDefaultStockIfNeeded(txc, ctx, item);
-
-    const qtyDelta = newQty - item.onHand;
-
-    await tx.invItem.update({
-      where: { id: item.id },
-      data: { onHand: newQty }, // ตั้งเป็นค่านับจริงโดยตรง (ไม่กระทบต้นทุนถัวเฉลี่ย)
-    });
-    await applyLocationDelta(txc, ctx, item.id, locId, qtyDelta); // คลังที่ระบุขยับตาม delta → invariant คง
-
-    const mv = await tx.invMovement.create({
-      data: {
-        tenantId: ctx.tenantId,
-        systemId: ctx.systemId,
-        itemId: item.id,
-        type: "ADJUST",
-        locationId: locId,
-        qtyDelta,
-        balanceAfter: newQty,
-        costSatang: item.costSatang,
-        idempotencyKey: input.idempotencyKey,
-        note: input.note?.trim() || null,
-        // ปรับจนติดลบ = ตั้งธงให้ร้านมาเคลียร์
-        needsReview: isNegative(newQty),
-      },
-    }).catch(rethrowKeyConflict); // R3.5(d)
+    const mv = await adjustInTx(tx as unknown as Db, ctx, input);
     return { id: mv.id };
   })).then(async (r) => {
     // WO 4.2: นับสต็อก/ปรับยอด ก็ทำให้กระจกฝั่งบัญชีล้าสมัยเหมือนกัน → sync หลัง commit (เงียบถ้าไม่ผูก)
     await syncLinkedAccountProduct(ctx, input.itemId);
     return r;
   });
+}
+
+/**
+ * POS P1.14 ▸ R8 — ปรับสต็อก "ภายใน tx ของผู้เรียก" (ตัวเดียวกับที่ adjust ใช้ · พฤติกรรมเดิมทุกอย่าง)
+ * ⚠️ ไม่ sync AccountProduct ให้ (ต้อง commit ก่อน) — ผู้เรียกเรียก `syncAccountProductAfterTx` เอง · ADJUST ไม่โพสต์ GL อยู่แล้ว
+ * ⚠️ `tx` อาจไม่ได้ผูก scope → ทุก where ในนี้ใส่ tenantId/systemId เอง (ผ่าน tenantDb ก็ได้ตัวกรองซ้ำ = ไม่มีผล)
+ * ผู้เรียกที่ล็อกหลายสินค้าใน tx เดียวต้องเรียก `lockItemsInTx` ก่อน (ล็อกซ้ำตัวที่ถือแล้วไม่มีผล) ◂
+ */
+export async function adjustInTx(tx: Db, ctx: Ctx, input: AdjustInput): Promise<MovementRow> {
+  const newQty = Math.round(input.newQty);
+  // idempotent guard — key เดิมเคยบันทึกแล้ว → คืนรายการเดิม ไม่แตะสต็อก
+  const want = { itemId: input.itemId, type: "ADJUST" as const, balanceAfter: newQty }; // R3.5: คีย์ซ้ำต้องยอดนับเดียวกัน
+  const dup = await tx.invMovement.findFirst({ where: { ...scope(ctx), idempotencyKey: input.idempotencyKey } });
+  if (dup) return sameMovementOrThrow(dup, want);
+
+  // 🔴 HF-INV-1: ล็อกแถวสินค้าก่อนอ่านยอด — qtyDelta ต้องคิดจากยอดล่าสุดจริง ไม่ใช่ยอดที่อ่านก่อนรายการอื่น commit
+  const item = await lockItemForStock(tx, ctx, input.itemId);
+  if (!item) throw new Error("ไม่พบสินค้าในคลัง");
+  const dupAfterLock = await tx.invMovement.findFirst({ where: { ...scope(ctx), idempotencyKey: input.idempotencyKey } });
+  if (dupAfterLock) return sameMovementOrThrow(dupAfterLock, want);
+  // 🔴 บริการไม่มีสต็อก (13 ส.ค. 2026) — กันเผลอรับเข้า/ตัด/นับ "ค่าตัดผม" เป็นชิ้น
+  if (item.kind === "SERVICE") throw new Error(`"${item.name}" เป็นบริการ — ไม่มีสต็อกให้รับเข้า/ตัด/นับ`);
+
+  const locId = await resolveLocationId(tx, ctx, input.locationId);
+  await seedDefaultStockIfNeeded(tx, ctx, item);
+
+  const qtyDelta = newQty - item.onHand;
+
+  await tx.invItem.update({
+    where: { id: item.id },
+    data: { onHand: newQty }, // ตั้งเป็นค่านับจริงโดยตรง (ไม่กระทบต้นทุนถัวเฉลี่ย)
+  });
+  await applyLocationDelta(tx, ctx, item.id, locId, qtyDelta); // คลังที่ระบุขยับตาม delta → invariant คง
+
+  return tx.invMovement.create({
+    data: {
+      tenantId: ctx.tenantId,
+      systemId: ctx.systemId,
+      itemId: item.id,
+      type: "ADJUST",
+      locationId: locId,
+      qtyDelta,
+      balanceAfter: newQty,
+      costSatang: item.costSatang,
+      sourceModule: input.sourceModule?.trim() || null,
+      refType: input.refType?.trim() || null,
+      refId: input.refId?.trim() || null,
+      idempotencyKey: input.idempotencyKey,
+      note: input.note?.trim() || null,
+      // ปรับจนติดลบ = ตั้งธงให้ร้านมาเคลียร์
+      needsReview: isNegative(newQty),
+    },
+  }).catch(rethrowKeyConflict); // R3.5(d)
+}
+
+/** POS P1.14 ▸ ให้ผู้เรียก `adjustInTx` ดันยอดไปกระจกสินค้าบัญชี "หลัง commit" (แบบ postMovementGlAfterTx · เงียบถ้าไม่ผูก) ◂ */
+export async function syncAccountProductAfterTx(ctx: Ctx, itemId: string): Promise<void> {
+  await syncLinkedAccountProduct(ctx, itemId);
+}
+
+/** POS P1.14 ▸ ผู้เรียกที่เปิด tx สต็อกเอง (pos/stock-count) แยก "ล็อกชนกัน" ออกจาก error อื่นได้ (รหัส SQLSTATE/Prisma หรือ null) ◂ */
+export function isStockContention(e: unknown): boolean {
+  return stockContentionCode(e) !== null;
 }
 
 // ── นับสต็อกหลายรายการพร้อมกัน (bulk stock take) — วน adjust() ตั้ง onHand = จำนวนนับจริง ทีละตัว ──
