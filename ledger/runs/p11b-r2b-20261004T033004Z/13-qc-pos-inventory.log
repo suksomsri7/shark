@@ -1,0 +1,54 @@
+[env] qc-pos-inventory · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech
+── setup: ร้านของชำ — POS + INVENTORY + ACCOUNT ผูกหน้าร้าน ──
+(node:839340) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ [PI-1.1] รับเข้าคลัง → onHand A = 10
+
+── Act 1: ขาย — line ผูก itemId (ตัดสต็อก) + line เพิ่มเอง (ไม่ตัด) ──
+  ✅ [PI-2.1] บิล status=PAID
+  ✅ [PI-2.2] ขายแล้ว onHand A ลดเหลือ 8 (ตัด 2)
+  ✅ [PI-2.3] มี InvMovement OUT 1 รายการ (เฉพาะ line ผูก itemId)
+  ✅ [PI-2.4] OUT ตัด 2 ชิ้น (qtyDelta=-2) itemId ตรง
+
+── Act 2: COGS ต้นทุนขาย (perpetual) ──
+  ✅ [PI-3.1] consume → 1 journal entry สมดุล
+  ✅ [PI-3.2] Dr 5000 = 10000 สตางค์ (ต้นทุนขาย 2×50)
+  ✅ [PI-3.3] Cr 1200 = 10000 สตางค์ (ลดสินค้าคงเหลือ)
+  ✅ [PI-3.4] trial balance สมดุล (Σdr=Σcr) หลังขาย
+
+── Act 3: void บิล → คืนสต็อก + กลับ COGS ──
+  ✅ [PI-4.1] บิล status=VOIDED
+  ✅ [PI-4.2] void แล้ว onHand A กลับเป็น 10 (คืน 2)
+  ✅ [PI-4.3] มี InvMovement IN 1 รายการ (คืนสต็อก)
+  ✅ [PI-4.4] receive คืน → 1 journal entry สมดุล
+  ✅ [PI-4.5] Dr 1200 = 10000 (คืนเข้าคลัง)
+  ✅ [PI-4.6] Cr 5000 = 10000 (กลับต้นทุนขาย)
+  ✅ [PI-4.7] net 5000 ต้นทุนขาย = 0 (ขายแล้ว void กลับหมด)
+  ✅ [PI-4.8] net 1200 สินค้าคงเหลือ = 50000 (10×50 ยังอยู่ครบ)
+  ✅ [PI-4.9] trial balance สมดุลหลัง void
+
+── Act 4: void ซ้ำ → idempotent ──
+  ✅ [PI-5.1] void ซ้ำ → ปฏิเสธ (บิล VOIDED แล้ว)
+  ✅ [PI-5.2] onHand ไม่คืนเบิ้ล (ยัง 10)
+  ✅ [PI-5.3] ไม่มี IN movement เพิ่ม (ยัง 1)
+  ✅ [PI-5.4] net 5000 ยัง = 0 (ไม่กลับ COGS เบิ้ล)
+
+── Act 5: ร้านไม่มีคลัง/บัญชี → ขายได้ปกติ ──
+  ✅ [PI-6.1] ไม่มีคลัง → ขายผ่าน (PAID) ไม่ error
+  ✅ [PI-6.2] ไม่มีคลัง → ไม่มี InvMovement (0)
+  ✅ [PI-6.3] ไม่มีบัญชี → ไม่มี GL entry (0)
+
+[cleanup] ลบ test tenant เรียบร้อย
+
+===== QC: POS หน้าขายตัดสต็อก + COGS + void =====
+ผ่าน 25/25
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+
+JSON_SUMMARY {"total":25,"passed":25,"findings":[]}

@@ -1,0 +1,25 @@
+[env] qc-inventory-item · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech
+(node:844359) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ [II-1.1] แก้ชื่อ/บาร์โค้ด/จุดสั่งซื้อ/หมวด สำเร็จ
+  ✅ [II-1.2] onHand/costSatang ไม่เปลี่ยน (onHand 20 cost 5000)
+  ✅ [II-1.3] แก้ SKU สำเร็จ
+  ✅ [II-1.4] name ว่าง → throw · sku ซ้ำ → throw
+  ✅ [II-1.5] หลัง throw ข้อมูลเดิมคงอยู่ (sku ยัง SH-99)
+  ✅ [II-2.1] archiveItem → ไม่โผล่ listItems
+  ✅ [II-2.2] archivedAt ถูกตั้ง
+  ✅ [II-2.3] ประวัติ movement คงอยู่ (1 → 1)
+  ✅ [II-2.4] unarchive → กลับมาโผล่ listItems
+  ✅ [II-3.1] update/archive ข้ามร้าน → throw (ปฏิเสธ)
+  ✅ [II-3.2] ของร้านเดิมไม่ถูกแตะ (ชื่อยังไม่ใช่ 'โดนแฮก')
+
+===== QC Inventory Item (CRUD) =====
+ผ่าน 11/11
+JSON_SUMMARY {"total":11,"passed":11,"findings":[]}
