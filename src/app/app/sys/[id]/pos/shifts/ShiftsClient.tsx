@@ -103,6 +103,8 @@ export function ShiftsClient({ systemId, units, unitId, canManage }: Props) {
   const [countB, setCountB] = useState("");
   const [note, setNote] = useState("");
   const [closeKey, setCloseKey] = useState(newKey);
+  // R2 F6: คีย์กันซ้ำเงินเข้า/ออก คงไว้จนสำเร็จ (แบบ closeKey) — กดซ้ำหลังเน็ตหลุด = รายการเดิม ไม่บันทึกสองครั้ง
+  const [moveKey, setMoveKey] = useState(newKey);
 
   const base = { systemId, unitId, ...(deviceId ? { deviceId } : {}) };
   const fail = useCallback((r: { code: string }) => setError(te(refusalMessageKey(r.code))), [te]);
@@ -170,13 +172,14 @@ export function ShiftsClient({ systemId, units, unitId, canManage }: Props) {
         setError(te("errors.invalidLine"));
         return false;
       }
-      const r = await recordCashMovementAction({ ...base, movement: { shiftId: shift.id, kind, amountSatang: a, reason: moveReason.trim(), idempotencyKey: newKey() } });
+      const r = await recordCashMovementAction({ ...base, movement: { shiftId: shift.id, kind, amountSatang: a, reason: moveReason.trim(), idempotencyKey: moveKey } });
       if (!r.ok) {
         fail(r);
         return false;
       }
       setMoveB("");
       setMoveReason("");
+      setMoveKey(newKey());
       return true;
     });
   const doClose = () =>
