@@ -58,4 +58,4 @@ Dynamic PromptPay/Beam/card gateway (P1.7) · refunds/CN (P1.8) · shifts/drawer
 8. **Gate runs the full COMMON §7 set plus all createSale callers' suites.** Any suite that relies on an unlinked pair gets a fixture fix, never a weakened guard.
 9. **UI (R9)** is covered by controller visual + parity, not by this oracle.
 10. **Invented names are ratified as proposed**: `splitIncludedVat` in `src/lib/money/vat.ts`, the input fields, the payment-settings API, `SPLIT_INVALID`, `TIP_ACCOUNT_REQUIRED` and the message keys.
-11. **Next step**: run the oracle once on the VPS against base, unforced and forced. Expect unforced SKIPPED exit 0, and forced 9 green / 38 red with Z1/Z2 green. Then accept the oracle and merge it into session/pos, then builder S.
+11. **Next step**: run the oracle once on the VPS against base, unforced and forced. Expect unforced SKIPPED exit 0, and forced 8 green / 40 red with Z1/Z2 green (48 checks after e39c8d02). Then accept the oracle and merge it into session/pos, then builder S.
