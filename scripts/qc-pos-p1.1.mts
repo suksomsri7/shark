@@ -179,6 +179,10 @@ const CHECKS: readonly Def[] = [
   D("S2.R2.4", "-", "R2 F5 แถวเว็บร้านที่ ShopProduct สองแถวใช้ร่วม: แก้ ShopProduct แถวที่สองไม่เปลี่ยนราคา/ชื่อของแถวแคตตาล็อก (แถวแรกเป็นต้นทาง) · ShopProduct แถวที่สองยังถูกเขียน"),
   D("S2.R2.5", "X6", "R2 F6 menu.createItem 2 ครั้งพร้อมกัน หมวดใหม่ที่ยังไม่มี PosCategory: สำเร็จทั้งคู่ · PosCategory ชื่อนั้น 1 แถว · ทั้งสองแถว MENU ชี้หมวดเดียวกัน"),
   D("S2.R2.6", "-", "R2 F1 (static) ทุก redirect ?err= ใน inventory/actions · shop/actions · actions/booking · actions/restaurant ไปหน้าที่อ่าน err จาก searchParams แล้วแสดง (InvHub รับ err)"),
+  // ORACLE-ADD (controller R3 ruling) ▸ S2.R3 — ข้อของการแก้ R3 (brief pos-brief-P1.1b-R3.md H1–H2) · S2.R3.1/S2.R3.2 ต้องแดงบน 6668635c
+  D("S2.R3.1", "X6", "R3 H1 (2 connection) conn1 UPDATE AccountProduct.salePrice ค้างไม่ commit · conn2 inventory.linkAccountProduct(Y→A) เบื้องหลัง · conn1 commit → แถวของ Y = ราคาใหม่ · verifyCatalog ไม่มี drift ของแถว Y"),
+  D("S2.R3.2", "X6", "R3 H1 (2 connection) conn1 UPDATE AccountProduct.salePrice ค้างไม่ commit · conn2 shop.createProduct({invItemId: Y ผูก A · C9b}) เบื้องหลัง · conn1 commit → แถวใหม่ = ราคาใหม่ · verifyCatalog ไม่มี drift"),
+  D("S2.R3.3", "X6", "R3 H2 3 เลน (setPrice แถว P · link Y→A · account.updateProduct(A)) × 5 รอบ → ทุกเลนสำเร็จ · ไม่มี deadlock (error + pg_stat_database.deadlocks ส่วนเพิ่ม 0) · ทุกแถวของ A ราคาเท่ากัน = AP.salePrice · verify ไม่ drift"),
   // ── S3 · ROUND 2 (brief P1.1a-R2 · มติหลังผู้ตรวจ+นักล่า) — 1 ข้อขึ้นไปต่อ C/M ──
   D("S3.1", "X3", "C1 ผู้เรียกระดับระบบ = CATALOG_SYSTEM_ACTOR (unique symbol) ทำงาน · actorUserId null/undefined/\"\" = PERMISSION_DENIED (ensureForInvItem · createProduct · setPrice · createCategory)"),
   D("S3.2", "-", "C2 backfill/ensure ทิ้ง trackStock = null (AUTO) · read model มี trackStock (ค่าจริง) + trackStockMode auto|on|off"),
@@ -3237,6 +3241,88 @@ try {
           }
         }
         chk("S2.R2.6", n6 > 0 && bad6.length === 0, "ทุกปลายทาง ?err= อ่าน err และแสดง", `redirect ${n6} · ไม่แสดง ${bad6.length}: ${[...new Set(bad6)].slice(0, 5).join(" · ") || "-"}`);
+      });
+
+      // ═══ ORACLE-ADD (controller R3 ruling) ▸ S2.R3.1–S2.R3.3 · brief pos-brief-P1.1b-R3.md ═══
+      await section("s2-r3", ["S2.R3.1", "S2.R3.2", "S2.R3.3"], async () => {
+        const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+        const driftOf = async (ids: (string | null | undefined)[]) => {
+          const want = new Set(ids.filter(Boolean) as string[]);
+          const v = await attempt(() => C.verifyCatalog({ tenantIds: [cfT] }));
+          return v.ok ? ((v.value?.samples ?? []) as Any[]).filter((d) => want.has(d.productId)) : null;
+        };
+        /** conn1 (connection แยก): UPDATE AccountProduct.salePrice ค้างไว้ไม่ commit → รัน conn2 เบื้องหลัง → รอ 1.5 วิ → commit → รอ conn2 จบ */
+        const raceAp = async (apId: string, price: number, conn2: () => Promise<Any>) => {
+          let release!: () => void; const gate = new Promise<void>((r) => (release = r));
+          let held = false;
+          const t1 = attempt(() => lane(30).$transaction(async (tx: Any) => {
+            await tx.$executeRawUnsafe(`UPDATE "AccountProduct" SET "salePrice" = $1 WHERE id = $2`, price, apId);
+            held = true;
+            await gate;
+          }, { timeout: 60_000, maxWait: 10_000 }));
+          for (let i = 0; i < 100 && !held; i++) await sleep(50);
+          const t2 = attempt(conn2);
+          await sleep(1_500);
+          const waited = await Promise.race([t2.then(() => false), sleep(10).then(() => true)]);
+          release();
+          return { held, waited, c1: await t1, c2: await t2 };
+        };
+        // H1 ข้อ 1: InvItem ที่ขายผ่าน POS แรก (มีแถวแล้ว · ยังไม่ผูก) + AP A ในสมุดที่ผูก POS (salePrice 2000)
+        const y1 = await mkInv(cfT, sysC.INVENTORY, "r3-link", { costSatang: 100 });
+        const a1 = await mkAp(cfT, sysC.ACCOUNT, y1, 2000, 700, null, { halfLink: true });
+        const e1 = await attempt(() => C.ensureForInvItem(ctxSys(cfT, sysC.POS), y1.id));
+        const r1 = await raceAp(a1.id, 2700, () => inventory.linkAccountProduct(ctxInvC, y1.id, a1.id));
+        const rows1 = await prodByInv(y1.id);
+        const d1 = await driftOf(rows1.map((r) => r.id));
+        const s31 = {
+          setup: e1.ok && r1.held, bothOk: r1.c1.ok && r1.c2.ok, linked: (await rowOf("InvItem", y1.id))?.accountProductId === a1.id,
+          price: rows1.length > 0 && rows1.every((r) => r.basePriceSatang === 2700), noDrift: !!d1 && d1.length === 0,
+        };
+        chk("S2.R3.1", Object.values(s31).every(Boolean), "แถวของ Y = 2700 (ราคาหลัง conn1 commit) · verify ไม่มี drift",
+          `${flags2(s31)} · conn2 รอ ${r1.waited} · ${r1.c1.ok ? "" : `conn1 ${r1.c1.err} · `}${r1.c2.ok ? "" : `conn2 ${r1.c2.err} · `}แถว ${rows1.map((r) => r.basePriceSatang).join(",")} · drift ${d1 ? JSON.stringify(d1.slice(0, 2)) : "verify ล้ม"}`);
+        // H1 ข้อ 2: InvItem นอกคลังของ POS แรก ผูก AP A (commit แล้ว) → shop.createProduct = แถวของเว็บร้านเอง (C9b) ราคาจาก AP
+        const y2 = await mkInv(cfT, fx.tInvX.id, "r3-shop", { costSatang: 100 });
+        const a2 = await mkAp(cfT, sysC.ACCOUNT, y2, 3000);
+        const r2 = await raceAp(a2.id, 3700, () => shop.createProduct(ctxShop, { name: `${TAG} r3-shop`, priceSatang: 1000, invItemId: y2.id }));
+        const l2 = r2.c2.ok && r2.c2.value?.id ? await linkOf("ShopProduct", r2.c2.value.id) : null;
+        const p2 = await prodById(l2);
+        const d2 = await driftOf([l2]);
+        const s32 = { setup: r2.held, bothOk: r2.c1.ok && r2.c2.ok, row: !!p2 && p2.invItemId === y2.id, price: p2?.basePriceSatang === 3700, noDrift: !!d2 && d2.length === 0 };
+        chk("S2.R3.2", Object.values(s32).every(Boolean), "แถวใหม่ = 3700 (ราคาหลัง conn1 commit) · verify ไม่มี drift",
+          `${flags2(s32)} · conn2 รอ ${r2.waited} · ${r2.c1.ok ? "" : `conn1 ${r2.c1.err} · `}${r2.c2.ok ? "" : `conn2 ${r2.c2.err} · `}แถว ${p2?.basePriceSatang} · drift ${d2 ? JSON.stringify(d2.slice(0, 2)) : "verify ล้ม"}`);
+        // H2: 3 เลน × 5 รอบ บน AP A3 (แถว P ผูกแล้ว) · แต่ละรอบ InvItem ใหม่ (มีแถวแล้ว) ถูกผูกเข้า A3 ระหว่าง setPrice/updateProduct
+        const dl = async () => Number((await q<{ d: unknown }>(`select deadlocks as d from pg_stat_database where datname = current_database()`))[0]?.d ?? -1);
+        const dl0 = await dl();
+        const pInv = await mkInv(cfT, sysC.INVENTORY, "r3-p", { costSatang: 100 });
+        const a3 = await mkAp(cfT, sysC.ACCOUNT, pInv, 4000);
+        const eP = await attempt(() => C.ensureForInvItem(ctxSys(cfT, sysC.POS), pInv.id));
+        const rowP = eP.ok ? (eP.value?.id as string) : null;
+        const errs3: string[] = []; const notes3: string[] = []; const ys: string[] = [];
+        for (let round = 1; round <= 5 && rowP; round++) {
+          const y = await mkInv(cfT, sysC.INVENTORY, `r3-y${round}`, { costSatang: 100 });
+          await attempt(() => C.ensureForInvItem(ctxSys(cfT, sysC.POS), y.id));
+          ys.push(y.id);
+          const rs = await Promise.all([
+            attempt(() => C.setPrice(ctxOwner, rowP, 4100 + round, lane(31))),
+            sleep(round * 7).then(() => attempt(() => inventory.linkAccountProduct(ctxInvC, y.id, a3.id))),
+            attempt(() => accProduct.updateProduct(cfT, sysC.ACCOUNT, a3.id, { name: a3.name, salePrice: 4500 + round, vatRateBp: 700 })),
+          ]);
+          rs.forEach((r, i) => { if (!r.ok || r.value?.ok === false) errs3.push(`รอบ${round} เลน${i + 1}: ${r.ok ? r.value?.reason : r.err}`); });
+          const ap = await rowOf("AccountProduct", a3.id);
+          const prices = [...(await prodByInv(pInv.id)), ...(await Promise.all(ys.map((x) => prodByInv(x)))).flat()].map((p) => p.basePriceSatang);
+          notes3.push(`รอบ${round}: AP ${ap?.salePrice} · แถว ${[...new Set(prices)].join("/")}`);
+        }
+        await sleep(12_000); // สถิติ pg_stat ส่งช้าได้ถึง ~10 วิ
+        const dl1 = await dl();
+        const apEnd = await rowOf("AccountProduct", a3.id);
+        const all3 = [...(await prodByInv(pInv.id)), ...(await Promise.all(ys.map((x) => prodByInv(x)))).flat()];
+        const d3 = await driftOf(all3.map((r) => r.id));
+        const s33 = {
+          setup: !!rowP && ys.length === 5, allOk: errs3.length === 0, noDeadlockErr: !errs3.some((e) => /deadlock|40P01/i.test(e)), deadlockCounter: dl0 >= 0 && dl1 - dl0 === 0,
+          equal: all3.length === 6 && all3.every((r) => r.basePriceSatang === apEnd?.salePrice), noDrift: !!d3 && d3.length === 0,
+        };
+        chk("S2.R3.3", Object.values(s33).every(Boolean), "ทุกเลนสำเร็จ · deadlock 0 · ทุกแถวของ A = AP.salePrice · verify ไม่ drift",
+          `${flags2(s33)} · ${notes3.join(" · ")} · deadlocks +${dl1 - dl0} · ${errs3.slice(0, 3).join(" | ") || "-"} · drift ${d3 ? d3.length : "verify ล้ม"}`);
       });
     }
   }
