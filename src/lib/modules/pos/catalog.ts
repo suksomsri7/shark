@@ -1755,6 +1755,118 @@ export async function backfillCatalog(opts: { tenantIds: string[]; dryRun: boole
   return s;
 }
 
+// ═══════════════════ P1.1b A5 · `--verify` — เทียบของเดิมกับแคตตาล็อกทีละช่อง (อ่านล้วน · ใช้ก่อน cut-over ใน P6.1) ═══════════════════
+
+export type VerifyDrift = { tenantId: string; source: "InvItem" | "MenuItem" | "ShopProduct"; sourceId: string; productId: string; field: string; legacy: unknown; catalogue: unknown };
+export type VerifySummary = {
+  tenants: number;
+  /** แหล่งเดิมที่ควรมีแถวแคตตาล็อกแต่ยังไม่มี (= ที่ backfill จะสร้าง) */
+  missing: { invItem: number; menuItem: number; shopProduct: number };
+  /** ช่องที่ซิงก์ต้องรักษาให้เท่ากันแต่ไม่เท่า — ต่อช่อง */
+  drift: Record<string, number>;
+  driftTotal: number;
+  /** ไม่ใช่ drift (ตั้งใจ): แถว InvItem ถูกเก็บที่หน้าขายทั้งที่ของยังอยู่ในคลัง (R5 F1) · ราคาตั้งที่แคตตาล็อกเมื่อของเดิมไม่มีแหล่งราคา (X8.1) */
+  info: { archivedAtTillOnly: number; catalogueOnlyPrice: number };
+  samples: VerifyDrift[];
+};
+
+/**
+ * อ่านล้วน: คิดค่าที่ตัวแปลง G3 ให้จากของเดิม แล้วเทียบกับแถวแคตตาล็อกที่ผูกอยู่ — เฉพาะช่องที่ซิงก์ของ P1.1b เป็นเจ้าของ
+ *   MENU: name nameEn categoryId basePriceSatang images sortOrder stationId dailyStockQty archived · InvItem: name basePriceSatang vatRateBp archived ·
+ *   เว็บร้านเอง: name basePriceSatang vatRateBp images sortOrder ปิดขายที่สาขาร้าน · ตัวนับสด (stockQty/isOutOfStock) ไม่เทียบ (G8)
+ */
+export async function verifyCatalog(opts: { tenantIds: string[] }, client: CatalogClient = prisma): Promise<VerifySummary> {
+  const out: VerifySummary = { tenants: 0, missing: { invItem: 0, menuItem: 0, shopProduct: 0 }, drift: {}, driftTotal: 0, info: { archivedAtTillOnly: 0, catalogueOnlyPrice: 0 }, samples: [] };
+  for (const tenantId of [...new Set(opts.tenantIds)].sort()) {
+    out.tenants++;
+    const res = await loadPosResolution(tenantId, client);
+    const [products, posCats, items, aps, menuCats, menus, shops, bookLinks, settings] = await Promise.all([
+      client.posProduct.findMany({ where: { tenantId } }),
+      client.posCategory.findMany({ where: { tenantId }, select: { id: true, systemId: true, unitId: true, name: true } }),
+      client.invItem.findMany({ where: { tenantId }, select: INV_LITE }),
+      client.accountProduct.findMany({ where: { tenantId }, select: AP_ROW }),
+      client.menuCategory.findMany({ where: { tenantId }, select: { id: true, unitId: true, name: true } }),
+      client.menuItem.findMany({ where: { tenantId } }),
+      client.shopProduct.findMany({ where: { tenantId }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] }),
+      client.accountSystemLink.findMany({ where: { tenantId, linkedKind: "POS", archivedAt: null, enabled: true }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { linkedId: true, systemId: true } }),
+      client.accountSettings.findMany({ where: { tenantId }, select: { systemId: true, vatRegistered: true } }),
+    ]);
+    const byId = new Map(products.map((p) => [p.id, p]));
+    const byInvKey = new Map(products.filter((p) => p.invItemId).map((p) => [`${p.systemId}|${p.invItemId}`, p]));
+    const apById = new Map(aps.map((a) => [a.id, a]));
+    const itemById = new Map(items.map((i) => [i.id, i]));
+    const vatReg = new Map(settings.map((x) => [x.systemId, x.vatRegistered]));
+    const bookOf = new Map<string, BookInfo>();
+    for (const l of bookLinks) if (!bookOf.has(l.linkedId)) bookOf.set(l.linkedId, { accountSystemId: l.systemId, vatRegistered: vatReg.get(l.systemId) ?? true });
+    const book = (sys: string): BookInfo => bookOf.get(sys) ?? { accountSystemId: null, vatRegistered: false };
+    const catKey = new Map(posCats.map((c) => [`${c.systemId}|${c.unitId ?? ""}|${c.name}`, c.id]));
+    const mcById = new Map(menuCats.map((c) => [c.id, c]));
+    const cmp = (source: VerifyDrift["source"], sourceId: string, row: PosProduct, want: Record<string, unknown>, cat: Record<string, unknown> = {}) => {
+      for (const [field, legacy] of Object.entries(want)) {
+        const catalogue = field in cat ? cat[field] : field === "archived" ? row.archivedAt !== null : (row as unknown as Record<string, unknown>)[field];
+        if (JSON.stringify(legacy ?? null) === JSON.stringify(catalogue ?? null)) continue;
+        out.drift[field] = (out.drift[field] ?? 0) + 1;
+        out.driftTotal++;
+        if (out.samples.length < 50) out.samples.push({ tenantId, source, sourceId, productId: row.id, field, legacy, catalogue });
+      }
+    };
+    for (const inv of items) {
+      const sys = resolvePosSystem(res, { kind: "invItem", inventorySystemId: inv.systemId }).systemId;
+      if (!sys) continue;
+      const row = byInvKey.get(`${sys}|${inv.id}`);
+      if (!row) {
+        out.missing.invItem++;
+        continue;
+      }
+      const bk = book(sys);
+      const { data, price } = invItemProductFields(inv, strictAp(inv, apById, bk), bk);
+      const want: Record<string, unknown> = { name: data.name, vatRateBp: data.vatRateBp };
+      if (price.rung === "none" && row.basePriceSatang !== null) out.info.catalogueOnlyPrice++;
+      else want.basePriceSatang = data.basePriceSatang;
+      if (row.archivedAt && !inv.archivedAt) out.info.archivedAtTillOnly++;
+      else want.archived = inv.archivedAt !== null;
+      cmp("InvItem", inv.id, row, want);
+    }
+    for (const m of menus) {
+      const sys = resolvePosSystem(res, { kind: "menuItem", unitId: m.unitId }).systemId;
+      if (!sys) continue;
+      const row = m.posProductId ? byId.get(m.posProductId) : undefined;
+      if (!row) {
+        out.missing.menuItem++;
+        continue;
+      }
+      const mc = mcById.get(m.categoryId);
+      const d = menuItemProductFields(m, mc ? (catKey.get(`${row.systemId}|${mc.unitId}|${mc.name}`) ?? null) : null).data;
+      cmp("MenuItem", m.id, row, {
+        name: d.name, nameEn: d.nameEn, categoryId: d.categoryId, basePriceSatang: d.basePriceSatang, images: d.images, sortOrder: d.sortOrder,
+        stationId: d.stationId, dailyStockQty: d.dailyStockQty, archived: d.archivedAt !== null,
+      });
+    }
+    const ownSeen = new Set<string>();
+    for (const sp of shops) {
+      const sys = resolvePosSystem(res, { kind: "shopProduct" }).systemId;
+      if (!sys) continue;
+      const row = sp.posProductId ? byId.get(sp.posProductId) : undefined;
+      if (!row) {
+        out.missing.shopProduct++;
+        continue;
+      }
+      const inv = sp.invItemId ? (itemById.get(sp.invItemId) ?? null) : null;
+      // แถวร่วมของ InvItem (C9a) = เทียบที่ขา InvItem แล้ว · แถวของเว็บร้านเองที่หลายแถวใช้ร่วม = เทียบกับแถวแรก (ลำดับเดียวกับ backfill)
+      if (inv && resolvePosSystem(res, { kind: "invItem", inventorySystemId: inv.systemId }).systemId === row.systemId) continue;
+      if (ownSeen.has(row.id)) continue;
+      ownSeen.add(row.id);
+      const bk = book(row.systemId);
+      const d = shopProductFields(sp, inv, inv ? strictAp(inv, apById, bk) : null, bk).data;
+      cmp("ShopProduct", sp.id, row, {
+        name: d.name, basePriceSatang: d.basePriceSatang, vatRateBp: d.vatRateBp, images: d.images, sortOrder: d.sortOrder,
+        offAtShopUnit: !sp.active,
+      }, { offAtShopUnit: (row.unavailableUnitIds ?? []).includes(sp.unitId) });
+    }
+  }
+  return out;
+}
+
 function mergeSummary(into: BackfillSummary, from: BackfillSummary): void {
   for (const k of ["invItem", "menuItem", "shopProduct"] as const) {
     into.sources[k] += from.sources[k];

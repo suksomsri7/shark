@@ -13,6 +13,7 @@
 //   PROD : ALLOW_PROD_BACKFILL=1 pnpm exec tsx scripts/pos-backfill-catalog.mts --tenant=<id> --dry-run   ← ต้องรัน dry-run ก่อนเสมอ
 //          ALLOW_PROD_BACKFILL=1 pnpm exec tsx scripts/pos-backfill-catalog.mts --tenant=<id>             ← จริง (ต้องมี dry-run ภายใน 24 ชม. ชุดร้านเดียวกัน)
 //          ทุกร้านบน prod ต้องพิมพ์ `--all` เอง (C13: prod ไม่มี --tenant และไม่มี --all = ปฏิเสธ)
+//   VERIFY (P1.1b A5 · อ่านล้วน): … pos-backfill-catalog.mts --tenant=<id> --verify  → ขาดแถว + drift ทีละช่อง (ตัวอย่าง ≤50) · exit 1 ถ้ามี
 // บรรทัดท้าย = `JSON_SUMMARY {...}` (มี `counts` ตัวนับ C7/C9/D3 + `samples` ตัวอย่าง ≤20 ต่อร้าน) · ร้านใดล้ม = exit 1 (ร้านอื่นยังเดินต่อ)
 // 🔴 ฐาน QC: ไม่ระบุ --tenant = ทุกร้านในฐานนั้น · รัน backfill นอกเวลาขาย (ล็อกระดับร้านชนกับผู้เขียนแคตตาล็อก — หนี้ P6.1 runbook)
 
@@ -24,7 +25,9 @@ const SCRIPT = "pos-backfill-catalog";
 
 // ── argv ──
 const argv = process.argv.slice(2);
-const dryRun = argv.includes("--dry-run") || argv.includes("--dryrun");
+// POS P1.1b A5: --verify = เทียบของเดิมกับแคตตาล็อกทีละช่อง (อ่านล้วน · ไม่เขียนอะไรเลย · ใช้ก่อน cut-over ใน P6.1) · exit 1 เมื่อมี drift/ขาดแถว
+const verify = argv.includes("--verify");
+const dryRun = verify || argv.includes("--dry-run") || argv.includes("--dryrun");
 const allTenants = argv.includes("--all");
 const tenantArgs: string[] = [];
 for (let i = 0; i < argv.length; i++) {
@@ -112,6 +115,14 @@ if (tenantArgs.length) {
 }
 
 const t0 = Date.now();
+if (verify) {
+  const v = await catalog.verifyCatalog({ tenantIds }, prisma);
+  await prisma.$disconnect();
+  console.log(`[verify] ร้าน ${v.tenants} · ขาดแถว ${JSON.stringify(v.missing)} · drift ${v.driftTotal} ${JSON.stringify(v.drift)} · ไม่ใช่ drift ${JSON.stringify(v.info)} · ${Date.now() - t0} ms`);
+  for (const d of v.samples) console.log(`  ${d.source} ${d.sourceId} → ${d.productId} · ${d.field}: เดิม ${JSON.stringify(d.legacy)} · แคตตาล็อก ${JSON.stringify(d.catalogue)}`);
+  console.log(`JSON_SUMMARY ${JSON.stringify(v)}`);
+  process.exit(v.driftTotal || v.missing.invItem || v.missing.menuItem || v.missing.shopProduct ? 1 : 0);
+}
 const s = await catalog.backfillCatalog({ tenantIds, dryRun }, prisma);
 await prisma.$disconnect();
 
