@@ -16,6 +16,7 @@ export const STOCK_COUNT_REFUSAL_CODES = [
   "IDEMPOTENCY_CONFLICT",
   "STOCK_BUSY",
   "INTERNAL",
+  "COUNT_TOO_LARGE", // POS P1.14 R2 (F1)
 ] as const;
 export type StockCountRefusalCode = (typeof STOCK_COUNT_REFUSAL_CODES)[number];
 
@@ -34,6 +35,10 @@ export const STOCK_COUNT_MESSAGES: Record<StockCountRefusalCode, { th: string; e
   IDEMPOTENCY_CONFLICT: { th: "มีรายการของรหัสนี้อยู่แล้วแต่ข้อมูลไม่ตรงกัน — ยังไม่ได้บันทึกรายการนี้", en: "A record with this key already exists with different data. This request was not saved." },
   STOCK_BUSY: { th: "สินค้านี้กำลังถูกบันทึกสต็อกจากหลายรายการพร้อมกัน — กรุณาลองใหม่อีกครั้ง", en: "This item is being updated by other transactions. Please try again." },
   INTERNAL: { th: "ระบบตรวจนับขัดข้องชั่วคราว — ลองอีกครั้ง", en: "The stock count service had a temporary problem. Please try again." },
+  COUNT_TOO_LARGE: {
+    th: "รายการที่ต้องปรับมากเกิน 2,000 รายการ — แบ่งนับเป็นหลายรอบตามหมวด",
+    en: "More than 2,000 items would be adjusted. Split the count into several rounds by category.",
+  },
 };
 
 export type StockCountRefusal = { ok: false; code: StockCountRefusalCode; message: string; countId?: string };
@@ -44,6 +49,8 @@ export const STOCK_COUNT_NOTE_MAX = 200;
 export const STOCK_COUNT_REASON_MAX = 200;
 export const STOCK_COUNT_CATEGORY_MAX = 50;
 export const STOCK_COUNT_LIST_MAX = 100;
+/** R2 F1: ยืนยันหนึ่งครั้งปรับได้ไม่เกินนี้ (เกิน = COUNT_TOO_LARGE ก่อนล็อกสินค้า) */
+export const STOCK_COUNT_CONFIRM_MAX_LINES = 2_000;
 export const STOCK_COUNT_KEY_RE = /^[A-Za-z0-9_-]{8,64}$/;
 
 export type StockCountStatus = "OPEN" | "CONFIRMED" | "CANCELLED";

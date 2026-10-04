@@ -18,6 +18,7 @@ import { parseWeighedBarcode, weighedGramsFromPrice } from "./scan-shared";
 import type { RegisterActor, RegisterCtx } from "./register-shared";
 import {
   STOCK_COUNT_CATEGORY_MAX,
+  STOCK_COUNT_CONFIRM_MAX_LINES,
   STOCK_COUNT_KEY_RE,
   STOCK_COUNT_LIST_MAX,
   STOCK_COUNT_MESSAGES,
@@ -87,9 +88,11 @@ const isUniqueViolation = (e: unknown): boolean => {
   const o = e as { code?: unknown; message?: unknown } | null;
   return o?.code === "P2002" || /\b23505\b|Unique constraint/i.test(String(o?.message ?? ""));
 };
-function runTx<T>(db: Db, fn: (tx: Tx) => Promise<T>): Promise<T> {
-  return db.$transaction((tx) => fn(tx), { timeout: 30_000, maxWait: 10_000 });
+function runTx<T>(db: Db, fn: (tx: Tx) => Promise<T>, timeout = 30_000): Promise<T> {
+  return db.$transaction((tx) => fn(tx), { timeout, maxWait: 10_000 });
 }
+/** R2 F1: tx ยืนยันมีเวลาของตัวเอง (สูงสุด 2,000 บรรทัด × adjustInTx) */
+const CONFIRM_TX_TIMEOUT_MS = 120_000;
 
 function actorOf(a: unknown): RegisterActor | null {
   if (!isRecord(a) || !isId(a.userId)) return null;
@@ -560,6 +563,8 @@ export async function confirmStockCount(
       const all = await tx.posStockCountLine.findMany({ where: { countId: c.id, tenantId: c.tenantId }, orderBy: { itemId: "asc" } });
       const targets = all.filter((l) => l.countedQty !== null || uncounted === "ZERO");
       if (!all.some((l) => l.countedQty !== null) && (uncounted === "SKIP" || targets.length === 0)) throw new RefuseTx(refuse("NOTHING_COUNTED"));
+      // R2 F1: เกินเพดาน → ปฏิเสธก่อนล็อกสินค้า (รอบยังเปิด แบ่งนับตามหมวดได้)
+      if (targets.length > STOCK_COUNT_CONFIRM_MAX_LINES) throw new RefuseTx(refuse("COUNT_TOO_LARGE"));
       const ids = targets.map((l) => l.itemId);
       await inventory.lockItemsInTx(tx, invCtx, ids);
       const items = await tx.invItem.findMany({ where: { tenantId: invCtx.tenantId, systemId: invCtx.systemId, id: { in: ids } }, select: { id: true, onHand: true, costSatang: true } });
@@ -639,7 +644,7 @@ export async function confirmStockCount(
         unitId: c.unitId,
       });
       return { row, duplicated: false, adjusted };
-    });
+    }, CONFIRM_TX_TIMEOUT_MS);
     if (!res.duplicated) {
       // หลัง commit: กระจกสินค้าบัญชีตามยอดใหม่ (แบบ adjust เดิม · ADJUST ไม่โพสต์ GL — R15/Q2)
       for (const id of res.adjusted) await inventory.syncAccountProductAfterTx(invCtx, id);
