@@ -1,0 +1,39 @@
+[env] qc-pos-p1.4 · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4)
+(node:1464373) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+── B/R/C/S ข้อที่ไม่แตะ DB ──
+  ✅ [P1.4-B1] scan-shared.ts: export classifyScanBurst · SCAN_MAX_GAP_MS = 30 · SCAN_MIN_LENGTH = 4 · ไฟล์บริสุทธิ์ (ไม่ import react/next/prisma/server/@/lib/core) · เรียกซ้ำผลเท่าเดิม · ไม่แก้ array/object ที่ส่งเข้า (แช่แข็งแล้วไม่ throw)
+  ✅ [P1.4-B2] ตารางจังหวะ → scan + code ตรงตัว: EAN-13 ห่าง 8ms+Enter · +Tab · ห่าง 30ms พอดี · 4 ตัวพอดี · ห่าง 0ms (USB บัฟเฟอร์) · Code128 'PQC-CF-WATER' · ตัวพิมพ์ใหญ่มี Shift แทรก ('ABC-1234')
+  ✅ [P1.4-B3] ตารางจังหวะ → type: คนพิมพ์ห่าง 120ms · เครื่องสแกนช้า 45ms · ห่าง 31ms · รหัส 3 ตัว · ช่องว่าง 200ms กลางรหัส · Enter ช้า 150ms · ไม่มีตัวจบ · Backspace กลางรหัส · ว่าง · Enter เดี่ยว
+  ✅ [P1.4-B4] บริบท: isComposing / key 'Process' → ignore ime · dialogOpen → ignore dialog · target 'input' → ignore input · target 'search' และ 'body' (ตัวจับทั้งหน้า) จังหวะเครื่องสแกน → scan
+  ✅ [P1.4-R1] cartAddProduct (register-shared.ts): สแกนซ้ำ = +1 บรรทัดเดิม (key เดิม · ไม่เพิ่มบรรทัด) · บรรทัดมีส่วนลด / ราคาเปิด / สินค้าอื่น → บรรทัดใหม่ key ใหม่ qty 1 · เพดาน 9999 · ตะกร้าเต็ม 200 + สินค้าใหม่ = เท่าเดิม (สินค้าเดิมยัง +1 ได้) · คง billDiscount/memberId · ไม่แก้ตะกร้าเดิม
+  ✅ [P1.4-R2] scanOutcome (scan-shared.ts): one → add สินค้าตัวนั้น · choose → choose ครบทุกตัวลำดับเดิม · none + canOverridePrice → offerCustom true · none ไม่มีสิทธิ์ → false · ปฏิเสธ → error + code
+  ✅ [P1.4-C1] SCAN_CAMERA_FORMATS ครบ ean_13 ean_8 upc_a code_128 qr_code · SCAN_CAMERA_FALLBACK_PKG ตรง O22 (yes = ชื่อแพ็กเกจที่อยู่ใน package.json dependencies · no = null)
+  ✅ [P1.4-C2] [static] ไฟล์กล้องใน src/components/pos/register: ตรวจ BarcodeDetector ก่อน ('BarcodeDetector' in window / typeof) · getUserMedia · แผ่น pos-reg-scan-sheet · ปุ่มกล้องไม่ใช่ soon · O22 yes: ตัวสำรองโหลดด้วย import("<pkg>") หลังจุดตรวจ BarcodeDetector และไม่มี import แบบ static ที่ใดใน src · O22 no: ไม่มีตัวสำรองเลย
+  ✅ [P1.4-S1] [static] ทางเครื่องสแกนไม่ผ่านหน่วงค้นหา: RegisterScreen import classifyScanBurst · มี onScannedCode ที่เรียก registerScanAction + ทิ้งผลเมื่อ billGen เปลี่ยน · ไม่เรียก setQ/setTimeout/loadCatalog · ถูกเรียกจากตัวจับแป้น
+  ✅ [P1.4-S2] [static] ตัวจับแป้นทั้งหน้าไม่รับ IME/ช่องกรอกอื่น/ตอนกล่องเปิด: classifyScanBurst(…) ส่ง dialogOpen + target · บัฟเฟอร์เก็บ isComposing: · ตรวจ tagName/isContentEditable/HTMLInputElement ของเป้า
+  ✅ [P1.4-S3] [static] none → เสนอรายการกำหนดเองเฉพาะผู้มีสิทธิ์ราคาเปิด: RegisterScreen เรียก scanOutcome(…canOverridePrice…) · ใช้ offerCustom · มีข้อความ scan.addAsCustom
+  ✅ [P1.4-S4] [static] choose = กล่องเลือกจริง: pos-reg-scan-chooser + แถว pos-reg-scan-choice- มีคลาส ≥44px · ไม่ยึดกริดด้วย setProducts(r.products) · สแกนขณะกล่องเปิด = toast scan.ignoredWhileDialog
+  ✅ [P1.4-S5] ข้อความ pos.register.scan.{chooseTitle notFound addAsCustom ignoredWhileDialog cameraTitle cameraDenied cameraNone} มี th+en ไม่ว่าง · en ไม่มีอักษรไทย · ทุกคีย์ถูกใช้ในโค้ดหน้าขาย
+
+── sandbox qc-p1.4-9iyybl (สาขา 2 + ระบบ POS/คลัง ชั่วคราวในร้าน QC กาแฟ · ระบบ POS ชั่วคราว 1 ตัวในร้าน QC อาหาร) ──
+  ✅ [P1.4-K1] บาร์โค้ดเฉพาะตัว (InvItem) → one + สินค้านั้น · สแกนซ้ำได้ตัวเดิม · มีช่องว่างหัวท้ายยังเจอ
+  ✅ [P1.4-R3] ทางเซิร์ฟเวอร์ของ +1: cartAddProduct ×2 สินค้าเดียวกัน → cartToQuoteInput → quoteRegisterCart = 1 บรรทัด gross 2×ราคา · ยอด 2×ราคา (ไม่ใช่ 2 บรรทัด)
+  ✅ [P1.4-K2] บาร์โค้ดเดียว 4 สินค้า (A B ปกติ · C เก็บถาวร · D ผูกสาขา 2): สาขา 1 → choose = {A,B} ครบ ลำดับคงที่สองครั้ง · สาขา 2 → choose = {A,B,D} · C ไม่โผล่เลย
+  ✅ [P1.4-K3] บาร์โค้ดที่มีเฉพาะในร้านอื่น (ร้าน QC อาหาร · ระบบ POS sandbox) → none ที่ร้านกาแฟ (แถวของร้านอื่นมีจริง)
+  ✅ [P1.4-K4] สินค้าผูกสาขา 2 (unitId) บาร์โค้ดเฉพาะตัว → สาขา 1 none · สาขา 2 one
+  ✅ [P1.4-K5] สินค้าเก็บถาวร: บาร์โค้ดของแถว PosProduct เอง และบาร์โค้ดของ InvItem ที่ผูก → none ทั้งคู่
+  ลบแล้ว: {"outbox":0,"audit":14,"product":9,"productBySystem":0,"invItem":6} · สาขา 2 · ระบบ 3
+  ✅ [P1.4-Z1] QC4 คืนสภาพ: จำนวนแถวของร้าน QC POS ทั้งสอง (ทุกตารางที่ข้อสอบแตะ) ก่อน = หลัง · ผลรวมตัวนับใบเสร็จไม่ขยับ
+  ✅ [P1.4-Z2] QC4 ลายนิ้วมือ: แถวเดิมของร้าน QC POS (PosProduct · PosCategory · InvItem · AppSystem · AppSystemUnit · BusinessUnit · Membership · PosReceiptCounter) ทุกคอลัมน์ ก่อน = หลัง
+
+===== qc-pos-p1.4 ===== ผ่าน 21/21
+JSON_SUMMARY {"suite":"qc-pos-p1.4","total":21,"passed":21,"failed":[],"skipped":false,"forced":false,"skippedChecks":{},"missing":[],"o22":"yes","a5":{"drift":[]}}
