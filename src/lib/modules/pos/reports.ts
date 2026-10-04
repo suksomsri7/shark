@@ -449,7 +449,9 @@ export async function reportDailySales(ctx: ReportCtx, actor: RegisterActor, inp
     const byDay = new Map<string, SaleRow[]>();
     for (const x of sales) {
       const d = bkkBusinessDate(x.createdAt);
-      byDay.set(d, [...(byDay.get(d) ?? []), x]);
+      const day = byDay.get(d);
+      if (day) day.push(x);
+      else byDay.set(d, [x]);
     }
     const rows: DailyRow[] = daysOf(r.from, r.to).map((d) => ({ businessDate: d, ...dailyTotalsOf(byDay.get(d) ?? []) }));
     return envelope("daily", s, r, rows, dailyTotalsOf(sales));
