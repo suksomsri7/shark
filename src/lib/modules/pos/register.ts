@@ -845,7 +845,15 @@ export async function registerScan(ctx: RegisterCtx, actor: RegisterActor, input
       }
       return { ok: true, match: "one", product: one };
     }
-    if (products.length > 1) return { ok: true, match: "choose", products };
+    if (products.length > 1) {
+      // P1.2 R2 F6: รายการให้เลือกไม่รวมแม่ที่มีตัวแปร (แม่ขายตรงไม่ได้ = VARIANT_REQUIRED) · เหลือตัวเดียว = one ·
+      //   ไม่เหลือเลย (ทุกตัวเป็นแม่) = ให้เลือกจากตัวแปรของแม่เหล่านั้น (แบบเดียวกับสแกนแม่ตัวเดียว)
+      const sellable = products.filter((x) => x.variantCount === 0);
+      if (sellable.length === 1) return { ok: true, match: "one", product: sellable[0]! };
+      if (sellable.length > 1) return { ok: true, match: "choose", products: sellable };
+      const kids = (await Promise.all(products.map((x) => regChildViews(db, s, x.id)))).flat().slice(0, REGISTER_PAGE_MAX);
+      return kids.length ? { ok: true, match: "choose", products: kids } : { ok: true, match: "none" };
+    }
     // P1.2 R11 ②: ไม่มีบาร์โค้ดที่ลงทะเบียน → ป้ายเครื่องชั่ง (เปิดค่าตั้ง + กฎตรง + check digit ถูก) → PLU ของสินค้าชั่งที่ขายได้ที่สาขานี้
     //   ③ อย่างอื่น = none (check digit ผิด = none ไม่เดา)
     const wb = parseWeighedBarcode(code, await regWeighedSettings(db, s));
