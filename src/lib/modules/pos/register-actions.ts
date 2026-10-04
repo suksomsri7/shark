@@ -16,7 +16,7 @@ import { unstable_rethrow } from "next/navigation";
 import { requireTenant } from "@/lib/core/context";
 import { assertCan, canAccessUnit } from "@/lib/core/rbac";
 import { posMembership } from "./access";
-import { registerCatalog, registerScan, quoteRegisterCart, submitRegisterSale, registerStatus } from "./register";
+import { registerCatalog, registerScan, quoteRegisterCart, submitRegisterSale, registerStatus, registerProductOptions } from "./register";
 import { discardHeldCart, holdRegisterCart, listHeldCarts, recallHeldCart } from "./held-cart";
 import type {
   DiscardHeldCartResult,
@@ -27,6 +27,7 @@ import type {
   RegisterCatalogInput,
   RegisterCatalogResult,
   RegisterCtx,
+  RegisterProductOptionsResult,
   RegisterQuoteInput,
   RegisterQuoteResult,
   RegisterRefusal,
@@ -144,6 +145,19 @@ export async function registerScanAction(args: Target & { barcode: string }): Pr
     return await registerScan(s.ctx, s.actor, { barcode: typeof args?.barcode === "string" ? args.barcode : "" });
   } catch (e) {
     return unexpected("registerScanAction", e);
+  }
+}
+
+/** POS P1.2 R7 — ตัวเลือก/ตัวแปรของสินค้า (ป๊อปโอเวอร์ภาพ 01) · ปฏิเสธเป็นข้อมูล ไม่โยน */
+export async function registerProductOptionsAction(args: Target & { productId: string }): Promise<RegisterProductOptionsResult> {
+  const auth = await session("registerProductOptionsAction");
+  if ("ok" in auth) return auth;
+  try {
+    const s = sessionScope(auth, args);
+    if ("ok" in s) return s;
+    return await registerProductOptions(s.ctx, s.actor, { productId: typeof args?.productId === "string" ? args.productId : "" });
+  } catch (e) {
+    return unexpected("registerProductOptionsAction", e);
   }
 }
 

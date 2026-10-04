@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/core/db";
 import type { Prisma, PrismaClient, PosPayType } from "@prisma/client";
 import * as coupon from "@/lib/modules/coupon/service";
@@ -45,6 +46,11 @@ export type MemberSaleChoices = {
   giftCard?: { number: string; pin: string; satang: number };
 };
 
+/** POS P1.2 R4: ตัวเลือกที่เลือกบนบรรทัด (สำเนา ณ เวลาขาย · priceDeltaSatang รวมอยู่ใน unitPriceSatang ของบรรทัดแล้ว) */
+export type SaleLineOption = { choiceId: string; groupId: string; groupName: string; choiceName: string; priceDeltaSatang: number };
+/** POS P1.2 R8: ส่วนประกอบของชุดต่อ 1 หน่วย (ตัดสต็อก qty × line.qty) */
+export type SaleLineComponent = { invItemId: string; qty: number };
+
 export type CreateSaleInput = {
   tenantId: string;
   unitId: string;
@@ -62,7 +68,21 @@ export type CreateSaleInput = {
   // serviceId = BookingService.id (บริการ) → ใช้แยกยอดสินค้า/บริการในรายงาน · ไม่ตัดสต็อก
   // productId = PosProduct.id (POS P1.3 ▸ หน้าขายใหม่ส่งมา · ฟิลด์เพิ่มแบบไม่บังคับ — ผู้เรียกเดิมไม่ส่ง = null เหมือนเดิม ◂)
   // note = หมายเหตุบรรทัด/เหตุผลส่วนลด (POS P1.6 R5 · ≤500 ตัว · ไม่ส่ง = null)
-  lines: { name: string; qty: number; unitPriceSatang: number; discountSatang?: number; itemId?: string; serviceId?: string; productId?: string; note?: string }[];
+  // POS P1.2 (เพิ่มล้วน · ไม่ส่ง = เหมือนเดิม): options = สำเนาตัวเลือก → PosSaleLineOption · components = ส่วนประกอบชุด (ตัดสต็อกต่อส่วนประกอบ) ·
+  //   weightGrams = น้ำหนักบรรทัดชั่ง (qty ต้องเป็น 1 · ตัดสต็อก itemId เป็นกรัม)
+  lines: {
+    name: string;
+    qty: number;
+    unitPriceSatang: number;
+    discountSatang?: number;
+    itemId?: string;
+    serviceId?: string;
+    productId?: string;
+    note?: string;
+    options?: SaleLineOption[];
+    components?: SaleLineComponent[];
+    weightGrams?: number;
+  }[];
   billDiscountSatang?: number;
   // คูปอง (contract 2.3) — ต้องมาคู่กันเสมอ · ระบุแล้วใช้ไม่ได้ = โยน error (ห้ามขายต่อเงียบ ๆ)
   couponSystemId?: string;
@@ -116,6 +136,9 @@ export class PosSaleError extends Error {
 const MAX_PAY_METHODS = 10; // R2
 const MAX_NOTE = 500; // R5
 const MAX_REFERENCE = 100;
+/** POS P1.2: เพดานตัวเลือก/ส่วนประกอบต่อบรรทัด (กันคำขอผิดปกติ) */
+const MAX_LINE_OPTIONS = 20;
+const MAX_LINE_COMPONENTS = 50;
 /** ข้อความ O21 — ร้านมี POS หลายจุดแต่สาขานี้ไม่ได้ผูกกับจุดใด */
 export const UNIT_SYSTEM_AMBIGUOUS_TH = "เลือกจุดขายก่อน — ร้านนี้มีจุดขายหลายจุด แต่สาขานี้ยังไม่ได้ผูกกับจุดขายใด";
 
@@ -127,6 +150,25 @@ function validateSaleInput(input: CreateSaleInput): void {
   if (input.note !== undefined && input.note !== null && (typeof input.note !== "string" || input.note.length > MAX_NOTE)) throw bad(`หมายเหตุบิลยาวเกิน ${MAX_NOTE} ตัวอักษร`);
   for (const l of input.lines) {
     if (l.note !== undefined && l.note !== null && (typeof l.note !== "string" || l.note.length > MAX_NOTE)) throw bad(`หมายเหตุรายการยาวเกิน ${MAX_NOTE} ตัวอักษร`);
+    // POS P1.2: ตรวจเฉพาะเมื่อส่งมา (ผู้เรียกเดิมไม่ส่ง = ไม่ถูกตรวจเพิ่ม)
+    if (l.options !== undefined && l.options !== null) {
+      const okText = (v: unknown) => typeof v === "string" && v.length > 0 && v.length <= 200;
+      if (!Array.isArray(l.options) || l.options.length > MAX_LINE_OPTIONS) throw bad(`ตัวเลือกต่อรายการได้ไม่เกิน ${MAX_LINE_OPTIONS}`);
+      for (const o of l.options) {
+        if (!o || !okText(o.choiceId) || !okText(o.groupId) || !okText(o.groupName) || !okText(o.choiceName) || !Number.isInteger(o.priceDeltaSatang)) throw bad("ข้อมูลตัวเลือกของรายการไม่ครบ");
+      }
+    }
+    if (l.components !== undefined && l.components !== null) {
+      if (!Array.isArray(l.components) || l.components.length > MAX_LINE_COMPONENTS) throw bad(`ส่วนประกอบต่อรายการได้ไม่เกิน ${MAX_LINE_COMPONENTS}`);
+      const seen = new Set<string>();
+      for (const c of l.components) {
+        if (!c || typeof c.invItemId !== "string" || !c.invItemId || !Number.isInteger(c.qty) || c.qty < 1 || seen.has(c.invItemId)) throw bad("ส่วนประกอบของชุดไม่ถูกต้อง");
+        seen.add(c.invItemId);
+      }
+    }
+    if (l.weightGrams !== undefined && l.weightGrams !== null && (!Number.isInteger(l.weightGrams) || l.weightGrams < 1 || l.qty !== 1)) {
+      throw bad("น้ำหนักต้องเป็นจำนวนเต็มกรัมตั้งแต่ 1 และจำนวนต้องเป็น 1");
+    }
   }
   if (input.serviceChargeSatang !== undefined && !isNonNegInt(input.serviceChargeSatang)) throw bad("ค่าบริการต้องเป็นจำนวนเต็มสตางค์ ไม่ติดลบ");
   if (input.tipSatang !== undefined && !isNonNegInt(input.tipSatang)) throw bad("ทิปต้องเป็นจำนวนเต็มสตางค์ ไม่ติดลบ");
@@ -152,14 +194,14 @@ function samePayload(
     memberId: string | null;
     serviceChargeSatang: number;
     tipSatang: number;
-    lines: { qty: number; unitPriceSatang: number; discountSatang: number; itemId: string | null; productId: string | null; serviceId: string | null }[];
+    lines: { qty: number; unitPriceSatang: number; discountSatang: number; itemId: string | null; productId: string | null; serviceId: string | null; weightGrams: number | null }[];
     payments: { type: string; amountSatang: number }[];
   },
 ): boolean {
   const bag = (xs: string[]) => [...xs].sort().join(",");
-  // R2 F6: บรรทัดเทียบ ราคา|จำนวน|ส่วนลด|สินค้าคลัง|สินค้า POS|บริการ · สมาชิกของบิลด้วย
-  const tup = (l: { unitPriceSatang: number; qty: number; discountSatang?: number | null; itemId?: string | null; productId?: string | null; serviceId?: string | null }) =>
-    `${l.unitPriceSatang}|${l.qty}|${l.discountSatang ?? 0}|${l.itemId ?? ""}|${l.productId ?? ""}|${l.serviceId ?? ""}`;
+  // R2 F6: บรรทัดเทียบ ราคา|จำนวน|ส่วนลด|สินค้าคลัง|สินค้า POS|บริการ · สมาชิกของบิลด้วย · P1.2: + น้ำหนัก (ไม่ส่ง = ว่าง = เทียบเหมือนเดิม)
+  const tup = (l: { unitPriceSatang: number; qty: number; discountSatang?: number | null; itemId?: string | null; productId?: string | null; serviceId?: string | null; weightGrams?: number | null }) =>
+    `${l.unitPriceSatang}|${l.qty}|${l.discountSatang ?? 0}|${l.itemId ?? ""}|${l.productId ?? ""}|${l.serviceId ?? ""}|${l.weightGrams ?? ""}`;
   return (
     dup.unitId === input.unitId &&
     dup.systemId === input.systemId &&
@@ -308,7 +350,7 @@ async function createSaleOnce(input: CreateSaleInput, client: Client, ownsTx: bo
     const dup = await tx.posSale.findUnique({
       where: { tenantId_idempotencyKey: { tenantId: input.tenantId, idempotencyKey: input.idempotencyKey } },
       include: {
-        lines: { select: { qty: true, unitPriceSatang: true, discountSatang: true, itemId: true, productId: true, serviceId: true } },
+        lines: { select: { qty: true, unitPriceSatang: true, discountSatang: true, itemId: true, productId: true, serviceId: true, weightGrams: true } },
         payments: { select: { type: true, amountSatang: true } },
       },
     });
@@ -388,13 +430,14 @@ async function createSaleOnce(input: CreateSaleInput, client: Client, ownsTx: bo
     let blockInv: { tenantId: string; systemId: string } | null = null;
     // R2 F3: ตัดในtx เฉพาะสินค้าที่อยู่ในชุดที่ล็อกได้และไม่ใช่บริการ — ที่เหลือ (ไม่พบในคลังนี้/บริการ) เดินทางเดิมหลัง commit ไม่ทำให้บิลล้ม
     const blockItemIds = new Set<string>();
-    const stockLines = lines.filter((l) => l.itemId);
-    if (stockLines.length > 0 && (await unitOversellPolicy(tx, input.tenantId, input.unitId)) === "BLOCK") {
+    // POS P1.2: ความต้องการสต็อกต่อ InvItem = บรรทัดผูกคลัง (จำนวน หรือ กรัมของบรรทัดชั่ง) + ส่วนประกอบชุด (qty × จำนวน)
+    const stockParts = lines.flatMap((l) => lineConsumption("", { id: "", itemId: l.itemId ?? null, qty: l.qty, weightGrams: l.weightGrams ?? null, components: l.components ?? null }));
+    if (stockParts.length > 0 && (await unitOversellPolicy(tx, input.tenantId, input.unitId)) === "BLOCK") {
       const invSystemId = await systemForUnit(input.tenantId, input.unitId, "INVENTORY", tx);
       if (invSystemId) {
         blockInv = { tenantId: input.tenantId, systemId: invSystemId };
         const need = new Map<string, number>();
-        for (const l of stockLines) need.set(l.itemId!, (need.get(l.itemId!) ?? 0) + Math.round(l.qty));
+        for (const p of stockParts) need.set(p.itemId, (need.get(p.itemId) ?? 0) + Math.round(p.qty));
         await inventory.lockItemsInTx(tx as Prisma.TransactionClient, blockInv, [...need.keys()]);
         const items = await tx.invItem.findMany({
           where: { tenantId: input.tenantId, systemId: invSystemId, id: { in: [...need.keys()] } },
@@ -440,9 +483,20 @@ async function createSaleOnce(input: CreateSaleInput, client: Client, ownsTx: bo
         shiftId,
       },
     });
+    // POS P1.2: บรรทัดที่มีตัวเลือกได้ id ตั้งแต่ตอนเขียน (ผูก PosSaleLineOption ในtx เดียวกัน) · ที่เหลือ id ปริยายแบบเดิม
+    const lineIds = lines.map((l) => (l.options && l.options.length ? randomUUID() : undefined));
     await tx.posSaleLine.createMany({
-      data: lines.map((l) => ({ tenantId: input.tenantId, unitId: input.unitId, saleId: sale.id, name: l.name, qty: l.qty, unitPriceSatang: l.unitPriceSatang, discountSatang: l.discountSatang, lineTotalSatang: l.lineTotalSatang, itemId: l.itemId ?? null, serviceId: l.serviceId ?? null, productId: l.productId ?? null, note: l.note ?? null })),
+      data: lines.map((l, i) => ({
+        ...(lineIds[i] ? { id: lineIds[i] } : {}),
+        tenantId: input.tenantId, unitId: input.unitId, saleId: sale.id, name: l.name, qty: l.qty, unitPriceSatang: l.unitPriceSatang, discountSatang: l.discountSatang, lineTotalSatang: l.lineTotalSatang, itemId: l.itemId ?? null, serviceId: l.serviceId ?? null, productId: l.productId ?? null, note: l.note ?? null,
+        weightGrams: l.weightGrams ?? null,
+        ...(l.components && l.components.length ? { components: l.components.map((c) => ({ invItemId: c.invItemId, qty: c.qty })) } : {}),
+      })),
     });
+    const optionRows = lines.flatMap((l, i) =>
+      (l.options ?? []).map((o) => ({ tenantId: input.tenantId, saleId: sale.id, lineId: lineIds[i]!, choiceId: o.choiceId, groupId: o.groupId, groupName: o.groupName, choiceName: o.choiceName, priceDeltaSatang: o.priceDeltaSatang })),
+    );
+    if (optionRows.length) await tx.posSaleLineOption.createMany({ data: optionRows });
 
     // ── ใช้สิทธิ์สมาชิกจริง (M2.8 · §9.1) — ในtx เดียวกับบิล ──
     // 🔴 บิลถูกเขียนก่อนเพราะ voucher/แต้ม/บัตรกำนัลต้องผูก `saleId` ที่มีอยู่จริง (ร่องรอยย้อนกลับได้)
@@ -541,16 +595,17 @@ async function createSaleOnce(input: CreateSaleInput, client: Client, ownsTx: bo
     // R8 BLOCK: ตัดสต็อกในtx เดียวกับบิล (ล็อกถือไว้แล้ว) — คีย์ต่อบรรทัดเดียวกับการตัดหลัง commit ⇒ ตัวหลัง commit เจอคีย์เดิม
     //   ไม่ตัดซ้ำ แต่ยังโพสต์ต้นทุน (GL) + sync สินค้าบัญชีให้ (inventory.consume เส้นเดิม)
     if (blockInv) {
-      const saved = await tx.posSaleLine.findMany({ where: { saleId: sale.id, itemId: { not: null } }, select: { id: true, itemId: true, qty: true } });
-      for (const l of saved) {
-        if (!blockItemIds.has(l.itemId!)) continue;
+      // POS P1.2: ส่วนประกอบชุดตัดต่อส่วนประกอบ (คีย์ pos-consume-<sale>-<line>-<invItem>) · บรรทัดชั่งตัดเป็นกรัม — คีย์เดียวกับการตัดหลัง commit
+      const saved = await tx.posSaleLine.findMany({ where: { saleId: sale.id }, select: { id: true, itemId: true, qty: true, weightGrams: true, components: true } });
+      for (const part of saved.flatMap((l) => lineConsumption(sale.id, l))) {
+        if (!blockItemIds.has(part.itemId)) continue;
         await inventory.consumeInTx(tx as Prisma.TransactionClient, blockInv, {
-          itemId: l.itemId!,
-          qty: l.qty,
+          itemId: part.itemId,
+          qty: part.qty,
           sourceModule: "POS",
           refType: "PosSale",
           refId: sale.id,
-          idempotencyKey: `pos-consume-${sale.id}-${l.id}`,
+          idempotencyKey: part.key,
         });
       }
     }
@@ -597,7 +652,7 @@ async function createSaleOnce(input: CreateSaleInput, client: Client, ownsTx: bo
     // ตัดสต็อกเฉพาะบิลที่มี line ผูก itemId — inventory.consume เปิด tx เอง + โพสต์ COGS หลัง tx
     //   (P1.6 BLOCK: ตัดไปแล้วในtx ของบิล — คีย์เดิมคืนรายการเดิม ไม่ตัดซ้ำ แต่ยังโพสต์ COGS ให้)
     //   (Dr5000/Cr1200 ผ่าน bridge) จึงทำนอก tx ของบิล = เลี่ยง nested tx
-    if (input.lines.some((l) => l.itemId)) await consumeSaleInventory(input.tenantId, input.unitId, result.saleId);
+    if (input.lines.some((l) => l.itemId || (l.components && l.components.length))) await consumeSaleInventory(input.tenantId, input.unitId, result.saleId);
     scheduleDrain(); // post ยอดขาย→บัญชี · cron /api/cron/outbox เก็บตกถ้าล้ม
   }
   return result;
@@ -619,32 +674,55 @@ function stockErrorCode(e: unknown): string {
 // ไม่มีระบบ INVENTORY ผูก unit → ไม่ตัด (ขายบริการ/ร้านไม่ใช้คลัง — ปกติ ไม่ error)
 // สต็อกไม่พอ → inventory.consume ยอมติดลบ ไม่ block (เงินสำคัญกว่า · ตั้งธง needsReview ให้ร้านเคลียร์)
 // ตัดล้มรายบรรทัด (เช่น item ถูกลบ) → catch ไว้ (บิลชำระแล้ว ห้าม rollback การขาย)
+/**
+ * POS P1.2 — การตัดสต็อกของบรรทัดหนึ่ง (ตัวกำหนดเดียว: ตัดหลัง commit · ตัดในtx แบบ BLOCK · registerStatus นับคีย์เดียวกัน)
+ *   บรรทัดผูกคลัง (itemId) = 1 ส่วน จำนวน = กรัม (บรรทัดชั่ง) หรือ qty · คีย์ `pos-consume-<saleId>-<lineId>` (เดิม)
+ *   ส่วนประกอบชุด = 1 ส่วนต่อ InvItem จำนวน = qty × line.qty · คีย์ `pos-consume-<saleId>-<lineId>-<invItemId>` (R8)
+ *   components ที่อ่านจาก DB ผิดรูป = ข้ามรายการนั้น (บิลชำระแล้ว ห้ามล้ม)
+ */
+function lineConsumption(
+  saleId: string,
+  l: { id: string; itemId: string | null; qty: number; weightGrams: number | null; components: unknown },
+): { itemId: string; qty: number; key: string }[] {
+  const out: { itemId: string; qty: number; key: string }[] = [];
+  if (l.itemId) out.push({ itemId: l.itemId, qty: l.weightGrams ?? l.qty, key: `pos-consume-${saleId}-${l.id}` });
+  if (Array.isArray(l.components)) {
+    for (const c of l.components as unknown[]) {
+      const x = c as { invItemId?: unknown; qty?: unknown } | null;
+      if (!x || typeof x.invItemId !== "string" || !x.invItemId || typeof x.qty !== "number" || !Number.isInteger(x.qty) || x.qty < 1) continue;
+      out.push({ itemId: x.invItemId, qty: x.qty * l.qty, key: `pos-consume-${saleId}-${l.id}-${x.invItemId}` });
+    }
+  }
+  return out;
+}
+
 async function consumeSaleInventory(tenantId: string, unitId: string, saleId: string): Promise<void> {
   const sale = await prisma.posSale.findFirst({ where: { id: saleId, tenantId }, select: { status: true } });
   if (!sale || sale.status !== "PAID") return; // void แล้ว = อย่าตัด
+  // POS P1.2: ทุกบรรทัดของบิล (บรรทัดชุดไม่มี itemId แต่มี components) → ส่วนที่ต้องตัด
   const lines = await prisma.posSaleLine.findMany({
-    where: { tenantId, saleId, itemId: { not: null } },
-    select: { id: true, itemId: true, qty: true },
+    where: { tenantId, saleId },
+    select: { id: true, itemId: true, qty: true, weightGrams: true, components: true },
   });
-  if (lines.length === 0) return;
+  const parts = lines.flatMap((l) => lineConsumption(saleId, l));
+  if (parts.length === 0) return;
   const inventorySystemId = await systemForUnit(tenantId, unitId, "INVENTORY");
   if (!inventorySystemId) return;
   const invCtx = { tenantId, systemId: inventorySystemId };
-  for (const l of lines) {
-    if (!l.itemId) continue;
+  for (const p of parts) {
     try {
       await inventory.consume(invCtx, {
-        itemId: l.itemId,
-        qty: l.qty,
+        itemId: p.itemId,
+        qty: p.qty,
         sourceModule: "POS",
         refType: "PosSale",
         refId: saleId,
-        idempotencyKey: `pos-consume-${saleId}-${l.id}`,
+        idempotencyKey: p.key,
       });
     } catch (e) {
       // ตัดสต็อกล้ม → บิลชำระแล้ว ปล่อยผ่าน (ไม่ล้มการขาย)
       // HF-INV-1 ▸ R3.3: แต่ต้องทิ้งร่องรอย (เดิมเงียบ — ตอนนี้ล้มได้จริงเมื่อสินค้าถูกล็อกนาน ≈10 วิ) · ไม่มีข้อมูลลูกค้า ◂
-      console.error("[pos] stock cut failed — sale committed without stock movement", { saleId, itemId: l.itemId, qty: l.qty, code: stockErrorCode(e) });
+      console.error("[pos] stock cut failed — sale committed without stock movement", { saleId, itemId: p.itemId, qty: p.qty, code: stockErrorCode(e) });
     }
   }
 }

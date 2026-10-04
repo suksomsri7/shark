@@ -417,8 +417,12 @@ import { posPaymentSettings, type PosPaymentSettings } from "./payment-settings"
 import { isShiftDeviceId, registerShiftStatus, resolveRegisterShift } from "./shift";
 import { effectiveTrackStock, menuSoldOutIds, rowAvailable } from "./catalog";
 import { priceCart, roundHalfUp, PRICE_MAX_SATANG, type PriceDiscount } from "./pricing-shared";
+// POS P1.2 ▸ R10 ป้ายเครื่องชั่ง (ตัวถอดบริสุทธิ์ชุดเดียวกับจอ) ◂
+import { parseWeighedBarcode, weighedBarcodeSettings, weighedGramsFromPrice, weighedPriceSatang, type WeighedBarcodeSettings } from "./scan-shared";
 import {
   REGISTER_MAX_LINES,
+  REGISTER_MAX_OPTIONS_PER_LINE,
+  REGISTER_MAX_WEIGHT_GRAMS,
   REGISTER_MAX_PAY_METHODS,
   REGISTER_MAX_QTY,
   REGISTER_NOTE_MAX,
@@ -434,9 +438,11 @@ import {
   type RegisterCtx,
   type RegisterPayType,
   type RegisterProduct,
+  type RegisterProductOptionsResult,
   type RegisterQuoteInput,
   type RegisterQuoteLine,
   type RegisterQuoteLineInput,
+  type RegisterQuoteLineOption,
   type RegisterQuoteResult,
   type RegisterQuoteTotals,
   type RegisterRefusal,
@@ -447,6 +453,7 @@ import {
   type RegisterSubmitInput,
   type RegisterSubmitResult,
   type RegisterVatConfigResult,
+  type RegisterWeighedScan,
 } from "./register-shared";
 
 /** ผู้เรียกส่ง PrismaClient ของตัวเองได้ (ข้อสอบยิงพร้อมกันบน connection แยกต่อคำขอ) — ไม่ส่ง = prisma ของแอป */
@@ -459,7 +466,12 @@ const REG_MESSAGE: Record<RegisterRefusalCode, string> = {
   INVALID_LINE: "จำนวนหรือราคาไม่ถูกต้อง — ตรวจรายการอีกครั้ง",
   PRODUCT_NOT_FOUND: "มีสินค้าที่ไม่ได้ขายที่สาขานี้แล้ว — นำออกจากตะกร้าแล้วลองใหม่",
   PRODUCT_UNAVAILABLE: "สินค้านี้ปิดขายที่สาขานี้อยู่",
-  OPTIONS_REQUIRED: "สินค้านี้ต้องเลือกตัวเลือก — ยังขายจากหน้านี้ไม่ได้",
+  OPTIONS_REQUIRED: "สินค้านี้ต้องเลือกตัวเลือกให้ครบก่อน",
+  // POS P1.2 ▸ ตัวเลือก · ตัวแปร · สินค้าชั่ง ◂
+  OPTIONS_INVALID: "ตัวเลือกไม่ถูกต้อง — เลือกตัวเลือกใหม่อีกครั้ง",
+  OPTION_UNAVAILABLE: "ตัวเลือกนี้หมดชั่วคราว — เลือกตัวเลือกอื่น",
+  VARIANT_REQUIRED: "เลือกขนาด/แบบของสินค้านี้ก่อน",
+  WEIGHT_REQUIRED: "สินค้านี้ขายตามน้ำหนัก — สแกนป้ายชั่งหรือใส่น้ำหนักก่อน",
   MEMBER_NOT_FOUND: "ไม่พบสมาชิกนี้ในร้าน",
   MEMBER_RIGHTS_UNSUPPORTED: "สมาชิกคนนี้มีส่วนลดอัตโนมัติ — หน้าขายนี้ยังคิดสิทธิ์สมาชิกไม่ได้ ขายแบบไม่แนบสมาชิก หรือใช้หน้าขายเดิม",
   PRICE_NOT_SET: "สินค้านี้ยังไม่ตั้งราคา — ตั้งราคาที่หน้าสินค้าก่อน",
@@ -568,8 +580,10 @@ function regVisibleWhere(s: RegScope): Prisma.Sql {
   const wh = s.unitInv
     ? Prisma.sql`(p."invItemId" IS NULL OR EXISTS (SELECT 1 FROM "InvItem" w WHERE w.id = p."invItemId" AND w."tenantId" = ${s.tenantId} AND w."systemId" = ${s.unitInv}))`
     : Prisma.sql`p."invItemId" IS NULL`;
+  // P1.2 R6: แม่เก็บถาวร = ตัวแปรขายไม่ได้ (PRODUCT_NOT_FOUND · สแกน none)
   return Prisma.sql`p."tenantId" = ${s.tenantId} AND p."systemId" = ${s.systemId} AND p."archivedAt" IS NULL
-    AND (p."unitId" IS NULL OR p."unitId" = ${s.unitId}) AND ${wh}`;
+    AND (p."unitId" IS NULL OR p."unitId" = ${s.unitId}) AND ${wh}
+    AND (p."parentId" IS NULL OR EXISTS (SELECT 1 FROM "PosProduct" pp WHERE pp.id = p."parentId" AND pp."tenantId" = ${s.tenantId} AND pp."archivedAt" IS NULL))`;
 }
 const regLike = (q: string) => `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
 
@@ -597,12 +611,21 @@ async function regViews(db: RegDb, s: RegScope, rows: PosProduct[]): Promise<Reg
   if (!rows.length) return [];
   const ids = rows.map((r) => r.id);
   const invIds = [...new Set(rows.map((r) => r.invItemId).filter((x): x is string => !!x))];
-  const [items, links, menuSoldOut] = await Promise.all([
+  // P1.2 R6: ตัวแปรใช้กลุ่มตัวเลือกของแม่ (P6) และราคาแม่เมื่อไม่ตั้งราคาเอง (P5)
+  const parentIds = [...new Set(rows.map((r) => r.parentId).filter((x): x is string => !!x))];
+  const ownerIds = [...new Set(rows.map((r) => r.parentId ?? r.id))];
+  const [items, links, menuSoldOut, parents, kids] = await Promise.all([
     invIds.length ? db.invItem.findMany({ where: { tenantId: s.tenantId, id: { in: invIds } }, select: { id: true, onHand: true, barcode: true, sku: true } }) : Promise.resolve([]),
-    db.posProductOptionGroup.findMany({ where: { tenantId: s.tenantId, productId: { in: ids } }, select: { productId: true, groupId: true } }),
+    db.posProductOptionGroup.findMany({ where: { tenantId: s.tenantId, productId: { in: ownerIds } }, select: { productId: true, groupId: true } }),
     // P1.1b มติ 3 (merge): แถว MENU ใช้ความพร้อมขายสดจาก MenuItem — กติกาเดียวกับ catalog.listForUnit (S1.27)
     menuSoldOutIds(s.tenantId, rows, db),
+    parentIds.length ? db.posProduct.findMany({ where: { tenantId: s.tenantId, id: { in: parentIds } }, select: { id: true, basePriceSatang: true } }) : Promise.resolve([]),
+    // P1.2 R6: ตัวแปรที่ขายได้ที่สาขานี้ (กติกามองเห็นเดียวกัน) ต่อแม่
+    db.$queryRaw<{ id: string; n: number }[]>`SELECT p."parentId" AS id, count(*)::int AS n FROM "PosProduct" p
+      WHERE ${regVisibleWhere(s)} AND p."parentId" = ANY(${ids}::text[]) GROUP BY p."parentId"`,
   ]);
+  const parentPrice = new Map(parents.map((p) => [p.id, p.basePriceSatang]));
+  const kidCount = new Map(kids.map((k) => [k.id, Number(k.n)]));
   const groupIds = [...new Set(links.map((l) => l.groupId))];
   const groups = groupIds.length
     ? await db.menuOptionGroup.findMany({ where: { tenantId: s.tenantId, id: { in: groupIds }, archivedAt: null }, select: { id: true, minSelect: true } })
@@ -622,7 +645,7 @@ async function regViews(db: RegDb, s: RegScope, rows: PosProduct[]): Promise<Reg
   return rows.map((p) => {
     const inv = p.invItemId ? itemById.get(p.invItemId) : undefined;
     const ts = effectiveTrackStock(p, inv ? { hasMovement: movedSet.has(inv.id), onHand: inv.onHand } : null);
-    const grp = links.filter((l) => l.productId === p.id).map((l) => groupById.get(l.groupId)).filter((g): g is { id: string; minSelect: number } => !!g);
+    const grp = links.filter((l) => l.productId === (p.parentId ?? p.id)).map((l) => groupById.get(l.groupId)).filter((g): g is { id: string; minSelect: number } => !!g);
     const stockLeft = ts.trackStock && inv ? inv.onHand : null;
     const unavailable = !rowAvailable(p, s.unitId, menuSoldOut);
     // มติ 3.1 ข้อ 12: ปิดขายมือชนะหมดสต็อก
@@ -635,12 +658,16 @@ async function regViews(db: RegDb, s: RegScope, rows: PosProduct[]): Promise<Reg
       nameEn: p.nameEn,
       kind: p.kind,
       categoryId: p.categoryId,
-      priceSatang: p.basePriceSatang,
+      // P1.2 P5: ตัวแปรที่ไม่ตั้งราคา = ราคาแม่ (สินค้าชั่ง = ราคาต่อกิโลกรัม)
+      priceSatang: p.basePriceSatang ?? (p.parentId ? (parentPrice.get(p.parentId) ?? null) : null),
       sku: inv?.sku ?? null,
       barcode: p.barcode ?? inv?.barcode ?? null,
       imageUrl: images[0] ?? null,
       optionGroupCount: grp.length,
       requiredOptionGroupCount: grp.filter((g) => g.minSelect >= 1).length,
+      parentId: p.parentId,
+      variantCount: kidCount.get(p.id) ?? 0,
+      soldByWeight: p.soldByWeight,
       soldOut: soldOutReason !== null,
       soldOutReason,
       stockLeft,
@@ -648,6 +675,72 @@ async function regViews(db: RegDb, s: RegScope, rows: PosProduct[]): Promise<Reg
       trackStockMode: ts.mode,
     };
   });
+}
+
+// ── POS P1.2 ▸ ตัวช่วยอ่านตัวเลือก/ตัวแปร/ค่าตั้งป้ายชั่ง (อ่านอย่างเดียว · ใช้ร่วม quote/submit/สแกน/ป๊อปโอเวอร์) ◂ ──
+type RegOptChoice = { id: string; name: string; nameEn: string | null; priceDelta: number; isDefault: boolean; isOutOfStock: boolean };
+type RegOptGroup = { id: string; name: string; nameEn: string | null; minSelect: number; maxSelect: number; choices: RegOptChoice[] };
+
+/**
+ * กลุ่มตัวเลือกที่ผูกกับสินค้า (owner = แม่ของตัวแปร หรือตัวเอง) อ่านสดจาก MenuOptionGroup/Choice (brief §3 · ไม่มีสำเนา):
+ * ตามลำดับผูก · เฉพาะกลุ่มของร้านนี้ที่ไม่เก็บถาวร · ตัวเลือกที่ไม่เก็บถาวร (86 ยังอยู่ — ผู้เรียกตัดสิน)
+ */
+async function regOptionCatalog(db: RegDb, tenantId: string, ownerIds: string[]): Promise<Map<string, RegOptGroup[]>> {
+  const out = new Map<string, RegOptGroup[]>();
+  if (!ownerIds.length) return out;
+  const links = await db.posProductOptionGroup.findMany({
+    where: { tenantId, productId: { in: ownerIds } },
+    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }, { id: "asc" }],
+    select: { productId: true, groupId: true },
+  });
+  const gids = [...new Set(links.map((l) => l.groupId))];
+  const groups = gids.length
+    ? await db.menuOptionGroup.findMany({
+        where: { tenantId, id: { in: gids }, archivedAt: null },
+        select: {
+          id: true, name: true, nameEn: true, minSelect: true, maxSelect: true,
+          choices: { where: { archivedAt: null }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }, { id: "asc" }], select: { id: true, name: true, nameEn: true, priceDelta: true, isDefault: true, isOutOfStock: true } },
+        },
+      })
+    : [];
+  const byId = new Map(groups.map((g) => [g.id, g]));
+  for (const l of links) {
+    const g = byId.get(l.groupId);
+    if (g) out.set(l.productId, [...(out.get(l.productId) ?? []), g]);
+  }
+  return out;
+}
+
+type RegPickedOption = { choiceId: string; groupId: string; groupName: string; name: string; priceDeltaSatang: number };
+/**
+ * R2 — ตัวเลือกที่ส่งมากับบรรทัด ตรวจตามลำดับ: ไม่ใช่ตัวเลือกที่ใช้งานของกลุ่มที่ผูก = OPTIONS_INVALID → 86 = OPTION_UNAVAILABLE →
+ * กลุ่มใดเลือกน้อยกว่า minSelect = OPTIONS_REQUIRED → เกิน maxSelect = OPTIONS_INVALID · ไม่ใส่ isDefault ให้เอง · ราคา/ชื่อจาก DB เท่านั้น
+ */
+function regResolveOptions(groups: RegOptGroup[], chosen: string[]): { ok: true; picked: RegPickedOption[]; delta: number } | { ok: false; code: "OPTIONS_INVALID" | "OPTION_UNAVAILABLE" | "OPTIONS_REQUIRED" } {
+  const byChoice = new Map<string, { g: RegOptGroup; c: RegOptChoice }>();
+  for (const g of groups) for (const c of g.choices) byChoice.set(c.id, { g, c });
+  const hits = chosen.map((id) => byChoice.get(id));
+  if (hits.some((h) => !h)) return { ok: false, code: "OPTIONS_INVALID" };
+  const found = hits as { g: RegOptGroup; c: RegOptChoice }[];
+  if (found.some((h) => h.c.isOutOfStock)) return { ok: false, code: "OPTION_UNAVAILABLE" };
+  const count = new Map<string, number>();
+  for (const h of found) count.set(h.g.id, (count.get(h.g.id) ?? 0) + 1);
+  if (groups.some((g) => (count.get(g.id) ?? 0) < g.minSelect)) return { ok: false, code: "OPTIONS_REQUIRED" };
+  if (groups.some((g) => (count.get(g.id) ?? 0) > g.maxSelect)) return { ok: false, code: "OPTIONS_INVALID" };
+  const picked = found.map((h) => ({ choiceId: h.c.id, groupId: h.g.id, groupName: h.g.name, name: h.c.name, priceDeltaSatang: h.c.priceDelta }));
+  return { ok: true, picked, delta: picked.reduce((t, x) => t + x.priceDeltaSatang, 0) };
+}
+
+/** ตัวแปรของแม่ที่ขายได้ที่สาขานี้ (กติกามองเห็นเดียวกับกริด) เรียงชื่อ+id */
+async function regChildViews(db: RegDb, s: RegScope, parentId: string): Promise<RegisterProduct[]> {
+  const ids = await db.$queryRaw<{ id: string }[]>`SELECT p.id FROM "PosProduct" p WHERE ${regVisibleWhere(s)} AND p."parentId" = ${parentId} ORDER BY p.name, p.id LIMIT ${REGISTER_PAGE_MAX}`;
+  return regViews(db, s, await regRowsInOrder(db, s.tenantId, ids.map((r) => r.id)));
+}
+
+/** R10: ค่าตั้งป้ายเครื่องชั่งของระบบ POS นี้ (ตัวอ่านเดียวใน scan-shared · ไม่ตั้ง = ปิด) */
+async function regWeighedSettings(db: RegDb, s: { tenantId: string; systemId: string }): Promise<WeighedBarcodeSettings> {
+  const sys = await db.appSystem.findFirst({ where: { id: s.systemId, tenantId: s.tenantId }, select: { settings: true } });
+  return weighedBarcodeSettings(sys?.settings);
 }
 
 const REG_CATALOG_KEYS: ReadonlySet<string> = new Set(["q", "categoryId", "cursor", "limit"]);
@@ -687,9 +780,10 @@ export async function registerCatalog(ctx: RegisterCtx, actor: RegisterActor, in
     }
     const where = regVisibleWhere(s);
     const pat = q ? regLike(q) : null;
+    // P1.2 R6: กริด/ค้นหาแสดงเฉพาะแม่ (ตัวแปรเลือกผ่านป๊อปโอเวอร์ · สแกนบาร์โค้ดลูกยังได้ลูก)
     const ids = await db.$queryRaw<{ id: string }[]>`
       SELECT p.id FROM "PosProduct" p
-      WHERE ${where}
+      WHERE ${where} AND p."parentId" IS NULL
         ${categoryId ? Prisma.sql`AND p."categoryId" = ${categoryId}` : Prisma.empty}
         ${pat ? Prisma.sql`AND (p.name ILIKE ${pat} OR p."nameEn" ILIKE ${pat} OR p.barcode ILIKE ${pat}
           OR EXISTS (SELECT 1 FROM "InvItem" s WHERE s.id = p."invItemId" AND s."tenantId" = ${s.tenantId} AND (s.sku ILIKE ${pat} OR s.barcode ILIKE ${pat})))` : Prisma.empty}
@@ -701,7 +795,7 @@ export async function registerCatalog(ctx: RegisterCtx, actor: RegisterActor, in
     // หมวด: เฉพาะหมวดที่มีสินค้าขายได้ที่สาขานี้ (นับตามกติกามองเห็นเดียวกัน · ไม่ขึ้นกับคำค้น/หน้า)
     const counts = await db.$queryRaw<{ id: string; n: number }[]>`
       SELECT p."categoryId" AS id, count(*)::int AS n FROM "PosProduct" p
-      WHERE ${where} AND p."categoryId" IS NOT NULL GROUP BY p."categoryId"`;
+      WHERE ${where} AND p."parentId" IS NULL AND p."categoryId" IS NOT NULL GROUP BY p."categoryId"`;
     const countById = new Map(counts.map((c) => [c.id, Number(c.n)]));
     const cats = countById.size
       ? await db.posCategory.findMany({
@@ -735,23 +829,107 @@ export async function registerScan(ctx: RegisterCtx, actor: RegisterActor, input
       ORDER BY p.name, p.id
       LIMIT ${REGISTER_PAGE_MAX}`;
     const products = await regViews(db, s, await regRowsInOrder(db, s.tenantId, ids.map((r) => r.id)));
-    if (products.length === 0) return { ok: true, match: "none" };
-    if (products.length === 1) return { ok: true, match: "one", product: products[0]! };
-    return { ok: true, match: "choose", products };
+    if (products.length === 1) {
+      // P1.2 R6: บาร์โค้ดของแม่ที่มีตัวแปร = ให้เลือกตัวแปร (เฉพาะลูกที่ขายได้ที่สาขานี้) · บาร์โค้ดของลูก = ลูกตัวเดียว
+      const one = products[0]!;
+      if (one.variantCount > 0) {
+        const kids = await regChildViews(db, s, one.id);
+        if (kids.length) return { ok: true, match: "choose", products: kids };
+      }
+      return { ok: true, match: "one", product: one };
+    }
+    if (products.length > 1) return { ok: true, match: "choose", products };
+    // P1.2 R11 ②: ไม่มีบาร์โค้ดที่ลงทะเบียน → ป้ายเครื่องชั่ง (เปิดค่าตั้ง + กฎตรง + check digit ถูก) → PLU ของสินค้าชั่งที่ขายได้ที่สาขานี้
+    //   ③ อย่างอื่น = none (check digit ผิด = none ไม่เดา)
+    const wb = parseWeighedBarcode(code, await regWeighedSettings(db, s));
+    if (!wb) return { ok: true, match: "none" };
+    const wIds = await db.$queryRaw<{ id: string }[]>`
+      SELECT p.id FROM "PosProduct" p
+      WHERE ${where} AND p."soldByWeight" = true AND p."scalePlu" = ${wb.itemCode}
+      ORDER BY p.name, p.id
+      LIMIT 2`;
+    if (wIds.length !== 1) return { ok: true, match: "none" };
+    const [w] = await regViews(db, s, await regRowsInOrder(db, s.tenantId, [wIds[0]!.id]));
+    if (!w) return { ok: true, match: "none" };
+    return { ok: true, match: "one", product: w, weighed: regWeighedOf(wb, code, w.priceSatang) };
+  });
+}
+
+/** R11: น้ำหนัก/ราคาของป้ายชั่ง ด้วยราคาต่อกก.ของสินค้า (ไม่มีราคา = ค่าที่คิดไม่ได้เป็น null) */
+function regWeighedOf(wb: NonNullable<ReturnType<typeof parseWeighedBarcode>>, code: string, perKg: number | null): RegisterWeighedScan {
+  if (wb.kind === "WEIGHT") return { code, grams: wb.grams, priceSatang: perKg === null ? null : weighedPriceSatang(wb.grams ?? 0, perKg) };
+  return { code, grams: perKg !== null && perKg > 0 ? weighedGramsFromPrice(wb.priceSatang ?? 0, perKg) : null, priceSatang: wb.priceSatang };
+}
+
+/**
+ * POS P1.2 R7 — ตัวเลือก/ตัวแปรของสินค้า 1 ตัว (ป๊อปโอเวอร์ภาพ 01) · ด่านขอบเขตเดียวกับกริด · สินค้าที่ขายไม่ได้ที่สาขานี้/ไม่มีจริง = PRODUCT_NOT_FOUND
+ *   groups = กลุ่มที่ผูก (ตัวแปร = ของแม่) ตามลำดับผูก · ตัวเลือกที่เก็บถาวรไม่อยู่ · 86 = unavailable:true · variants = ลูกที่ขายได้ที่สาขานี้ (ลูก = [])
+ */
+export async function registerProductOptions(ctx: RegisterCtx, actor: RegisterActor, input: { productId: string }, client?: RegDb): Promise<RegisterProductOptionsResult> {
+  return regGuard("registerProductOptions", async (): Promise<RegisterProductOptionsResult> => {
+    const db: RegDb = client ?? prisma;
+    const s = await regScope(db, ctx, actor);
+    if (isRegRefusal(s)) return s;
+    const o: unknown = input;
+    if (!regIsRecord(o) || !regOnlyKeys(o, new Set(["productId"]))) return regRefuse("VALIDATION");
+    const pid = o.productId;
+    if (!regIsId(pid)) return regRefuse("PRODUCT_NOT_FOUND");
+    const vis = await db.$queryRaw<{ id: string }[]>`SELECT p.id FROM "PosProduct" p WHERE ${regVisibleWhere(s)} AND p.id = ${pid}`;
+    const [row] = await regRowsInOrder(db, s.tenantId, vis.map((r) => r.id));
+    if (!row) return regRefuse("PRODUCT_NOT_FOUND");
+    const owner = row.parentId ?? row.id;
+    const [cat, kids] = await Promise.all([regOptionCatalog(db, s.tenantId, [owner]), row.parentId ? Promise.resolve([]) : regChildViews(db, s, row.id)]);
+    return {
+      ok: true,
+      productId: row.id,
+      groups: (cat.get(owner) ?? []).map((g) => ({
+        groupId: g.id,
+        name: g.name,
+        nameEn: g.nameEn,
+        minSelect: g.minSelect,
+        maxSelect: g.maxSelect,
+        choices: g.choices.map((c) => ({ choiceId: c.id, name: c.name, nameEn: c.nameEn, priceDeltaSatang: c.priceDelta, isDefault: c.isDefault, unavailable: c.isOutOfStock })),
+      })),
+      variants: kids.map((k) => ({ id: k.id, name: k.name, nameEn: k.nameEn, priceSatang: k.priceSatang, barcode: k.barcode, soldOut: k.soldOut })),
+    };
   });
 }
 
 // ── ตะกร้าของคำขอ (quote/submit) ──
 // note = หมายเหตุบรรทัด (P1.6 R5 · เก็บลงบิลตอน submit · quote ไม่ใช้)
+// P1.2: options = choiceId ที่เลือก (ว่าง = ไม่มี) · บรรทัดชั่ง = weighedBarcode (ป้าย) หรือ weightGrams (กรอกเอง) อย่างใดอย่างหนึ่ง (qty 1)
 type RegParsedLine =
-  | { kind: "product"; productId: string; qty: number; discount: PriceDiscount | null; openPrice: number | null; note?: string | null }
+  | {
+      kind: "product";
+      productId: string;
+      qty: number;
+      discount: PriceDiscount | null;
+      openPrice: number | null;
+      note?: string | null;
+      options: string[];
+      weighedBarcode: string | null;
+      weightGrams: number | null;
+    }
   | { kind: "custom"; name: string; qty: number; unitPriceSatang: number; discount: PriceDiscount | null; note?: string | null };
 type RegParsedCart = { lines: RegParsedLine[]; billDiscount: PriceDiscount | null; memberId: string | null };
 
 const REG_QUOTE_KEYS: ReadonlySet<string> = new Set(["lines", "billDiscount", "memberId"]);
 const REG_SUBMIT_KEYS: ReadonlySet<string> = new Set([...REG_QUOTE_KEYS, "idempotencyKey", "payMethods", "cashReceivedSatang", "expectedGrandTotalSatang", "tipSatang", "note"]);
 const REG_PAY_KEYS: ReadonlySet<string> = new Set(["type", "amountSatang", "reference"]);
-const REG_LINE_KEYS: ReadonlySet<string> = new Set(["productId", "name", "qty", "unitPriceSatang", "openPrice", "discount", "note"]);
+const REG_LINE_KEYS: ReadonlySet<string> = new Set(["productId", "name", "qty", "unitPriceSatang", "openPrice", "discount", "note", "options", "weighedBarcode", "weightGrams"]);
+/** P1.2 R1: คีย์ของรายการตัวเลือก — priceDeltaSatang/name รับได้แต่ "ไม่ใช้" (ราคาจาก client ไม่ถูกเชื่อ · มติ R2) · คีย์อื่น = VALIDATION */
+const REG_OPTION_KEYS: ReadonlySet<string> = new Set(["choiceId", "priceDeltaSatang", "name"]);
+
+/** P1.2 R1: options ถูกรูป → choiceId ตามลำดับ · ไม่ใช่ array / เกินเพดาน / รายการผิดรูป / choiceId ซ้ำ = null (VALIDATION) */
+function regOptionIds(v: unknown): string[] | null {
+  if (!Array.isArray(v) || v.length > REGISTER_MAX_OPTIONS_PER_LINE) return null;
+  const out: string[] = [];
+  for (const e of v as unknown[]) {
+    if (!regIsRecord(e) || !regOnlyKeys(e, REG_OPTION_KEYS) || !regIsId(e.choiceId)) return null;
+    out.push(e.choiceId);
+  }
+  return new Set(out).size === out.length ? out : null;
+}
 
 /** ส่วนลดถูกรูป: undefined/null = ไม่มี · ผิดรูป = undefined */
 function regDiscount(v: unknown): PriceDiscount | null | undefined {
@@ -798,6 +976,10 @@ function regParseCart(raw: unknown, allowed: ReadonlySet<string>): RegParsedCart
     }
     const note = typeof l.note === "string" && l.note.length > 0 ? l.note : null;
     if (l.openPrice !== undefined && typeof l.openPrice !== "boolean") return regRefuse("VALIDATION", undefined, i);
+    // P1.2: ช่องตัวเลือก/น้ำหนัก (undefined/null = ไม่ส่ง)
+    const hasOpt = l.options !== undefined && l.options !== null;
+    const hasWb = l.weighedBarcode !== undefined && l.weighedBarcode !== null;
+    const hasWg = l.weightGrams !== undefined && l.weightGrams !== null;
     if (l.productId !== undefined && l.productId !== null) {
       if (!regIsId(l.productId)) return regRefuse("VALIDATION", undefined, i);
       let openPrice: number | null = null;
@@ -805,10 +987,37 @@ function regParseCart(raw: unknown, allowed: ReadonlySet<string>): RegParsedCart
         if (!regIsMoney(l.unitPriceSatang)) return regRefuse("INVALID_LINE", "ราคาที่กรอกต้องเป็นจำนวนเต็มสตางค์ที่ไม่ติดลบ", i);
         openPrice = l.unitPriceSatang;
       }
+      // P1.2 R1: ตัวเลือก — ผิดรูป/ซ้ำ/เกิน 20 = VALIDATION · ราคาเปิดคู่ตัวเลือก = VALIDATION (P1.2)
+      let options: string[] = [];
+      if (hasOpt) {
+        const ids = regOptionIds(l.options);
+        if (!ids) return regRefuse("VALIDATION", "ตัวเลือกที่ส่งมาไม่ถูกต้อง", i);
+        options = ids;
+      }
+      if (openPrice !== null && options.length) return regRefuse("VALIDATION", "ราคาที่กรอกเองใช้คู่กับตัวเลือกไม่ได้", i);
+      // P1.2 R12: บรรทัดชั่ง — ป้ายหรือน้ำหนักอย่างใดอย่างหนึ่ง · ไม่คู่ราคาเปิด · qty 1 · น้ำหนัก 1–99999 กรัม
+      if (hasWb && hasWg) return regRefuse("VALIDATION", "ส่งได้อย่างใดอย่างหนึ่ง: ป้ายชั่ง หรือ น้ำหนัก", i);
+      if ((hasWb || hasWg) && openPrice !== null) return regRefuse("VALIDATION", "สินค้าชั่งใช้ราคาที่กรอกเองไม่ได้", i);
+      let weighedBarcode: string | null = null;
+      let weightGrams: number | null = null;
+      if (hasWb) {
+        if (typeof l.weighedBarcode !== "string" || l.weighedBarcode.length > 64 || !regCleanText(l.weighedBarcode)) return regRefuse("VALIDATION", "ป้ายชั่งไม่ถูกต้อง", i);
+        weighedBarcode = l.weighedBarcode.trim();
+      }
+      if (hasWg) {
+        if (typeof l.weightGrams !== "number") return regRefuse("VALIDATION", "น้ำหนักไม่ถูกต้อง", i);
+        if (!Number.isInteger(l.weightGrams) || l.weightGrams < 1 || l.weightGrams > REGISTER_MAX_WEIGHT_GRAMS) {
+          return regRefuse("INVALID_LINE", `น้ำหนักต้องเป็นจำนวนเต็ม 1–${REGISTER_MAX_WEIGHT_GRAMS} กรัม`, i);
+        }
+        weightGrams = l.weightGrams;
+      }
+      if ((hasWb || hasWg) && l.qty !== 1) return regRefuse("INVALID_LINE", "สินค้าชั่งใส่ได้ครั้งละ 1 ป้าย (จำนวน 1)", i);
       // ราคาที่ client ส่งมากับสินค้าแคตตาล็อก (ไม่ใช่ราคาเปิด) = ไม่ใช้เลย — ราคามาจาก DB เสมอ (มติ R2)
-      lines.push({ kind: "product", productId: l.productId, qty: l.qty, discount, openPrice, note });
+      lines.push({ kind: "product", productId: l.productId, qty: l.qty, discount, openPrice, note, options, weighedBarcode, weightGrams });
     } else {
       if (l.openPrice === true) return regRefuse("VALIDATION", undefined, i);
+      // P1.2: รายการกำหนดเองไม่มีตัวเลือก/น้ำหนัก
+      if (hasOpt || hasWb || hasWg) return regRefuse("VALIDATION", "รายการกำหนดเองใส่ตัวเลือกหรือน้ำหนักไม่ได้", i);
       const name = typeof l.name === "string" ? l.name.trim() : "";
       if (!name || name.length > 200 || !regCleanText(name)) return regRefuse("VALIDATION", "รายการกำหนดเองต้องมีชื่อ", i);
       if (!regIsMoney(l.unitPriceSatang)) return regRefuse("INVALID_LINE", "ราคาต้องเป็นจำนวนเต็มสตางค์ที่ไม่ติดลบ", i);
@@ -888,6 +1097,10 @@ type RegResolvedLine = {
   itemId: string | null;
   serviceId: string | null;
   note: string | null;
+  /** P1.2: ตัวเลือกที่ใช้คิดราคา (สำเนาลงบิล) · ส่วนประกอบชุด ต่อ 1 หน่วย · น้ำหนักบรรทัดชั่ง (กรัม) */
+  options: RegPickedOption[];
+  components: { invItemId: string; qty: number }[];
+  weightGrams: number | null;
 };
 
 /**
@@ -901,7 +1114,8 @@ async function regPrice(
   pay?: PosPaymentSettings,
 ): Promise<{ quote: RegisterQuoteTotals; resolved: RegResolvedLine[] } | RegisterRefusal> {
   // Q8: รายการกำหนดเอง / ราคาเปิด ต้องมี pos.sale.priceOverride (OWNER/MANAGER ได้ตามบทบาท · STAFF ต้องได้รับ)
-  const needOverride = cart.lines.findIndex((l) => l.kind === "custom" || l.openPrice !== null);
+  // P1.2 R12 (มติ P4): กรอกน้ำหนักเอง = ตั้งราคาเอง (กันโกงตาชั่ง) · สแกนป้ายชั่งไม่ต้องมีสิทธิ์
+  const needOverride = cart.lines.findIndex((l) => l.kind === "custom" || l.openPrice !== null || l.weightGrams !== null);
   if (needOverride >= 0 && !evaluate(s.actor, { module: "pos", action: "pos.sale.priceOverride", unitId: s.unitId })) {
     return regRefuse("PERMISSION_DENIED", "ต้องมีสิทธิ์ตั้งราคาเอง — ให้ผู้จัดการทำรายการนี้", needOverride);
   }
@@ -915,27 +1129,73 @@ async function regPrice(
     : [];
   const rows = await regRowsInOrder(db, s.tenantId, visibleIds);
   const views = new Map((await regViews(db, s, rows)).map((v) => [v.id, v]));
+  const rowById = new Map(rows.map((r) => [r.id, r]));
+  // P1.2: กลุ่มตัวเลือก (สด) ของเจ้าของกลุ่ม · สูตรชุด · ค่าตั้งป้ายชั่ง (อ่านเมื่อมีบรรทัดที่ต้องใช้เท่านั้น)
+  const optCat = await regOptionCatalog(db, s.tenantId, [...new Set(rows.map((r) => r.parentId ?? r.id))]);
+  const bundleIds = rows.filter((r) => r.kind === "BUNDLE").map((r) => r.id);
+  const recipes = bundleIds.length
+    ? await db.recipeLine.findMany({ where: { tenantId: s.tenantId, productId: { in: bundleIds } }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { productId: true, invItemId: true, qty: true } })
+    : [];
+  const wbs = cart.lines.some((l) => l.kind === "product" && l.weighedBarcode !== null) ? await regWeighedSettings(db, s) : null;
   const priceLines: { qty: number; unitPriceSatang: number; discount: PriceDiscount | null }[] = [];
   const meta: Omit<RegResolvedLine, "discountSatang" | "unitPriceSatang">[] = [];
   for (let i = 0; i < cart.lines.length; i++) {
     const l = cart.lines[i]!;
     if (l.kind === "custom") {
       priceLines.push({ qty: l.qty, unitPriceSatang: l.unitPriceSatang, discount: l.discount });
-      meta.push({ name: l.name, qty: l.qty, productId: null, itemId: null, serviceId: null, note: l.note ?? null });
+      meta.push({ name: l.name, qty: l.qty, productId: null, itemId: null, serviceId: null, note: l.note ?? null, options: [], components: [], weightGrams: null });
       continue;
     }
     const v = views.get(l.productId);
+    const row = rowById.get(l.productId);
     // มติ 3.1 ข้อ 3: สาขาอื่น / คลังอื่น / ร้านอื่น / เก็บถาวร / ไม่มีจริง = PRODUCT_NOT_FOUND (ไม่คิดราคา · ไม่บอกชื่อ)
-    if (!v) return regRefuse("PRODUCT_NOT_FOUND", undefined, i);
+    if (!v || !row) return regRefuse("PRODUCT_NOT_FOUND", undefined, i);
     if (v.soldOutReason === "UNAVAILABLE") return regRefuse("PRODUCT_UNAVAILABLE", undefined, i);
-    if (v.requiredOptionGroupCount > 0) return regRefuse("OPTIONS_REQUIRED", undefined, i);
-    const unit = l.openPrice ?? v.priceSatang;
-    if (unit === null) return regRefuse("PRICE_NOT_SET", undefined, i);
+    // P1.2 R6: แม่ที่มีตัวแปรขายได้ = ต้องเลือกตัวแปร (ไม่คิดราคา)
+    if (v.variantCount > 0) return regRefuse("VARIANT_REQUIRED", undefined, i);
+    // P1.2 R1/R2: ตัวเลือก (ตัวแปร = กลุ่มของแม่) — ราคา/ชื่อสดจาก DB · ไม่ส่ง options เลยกับกลุ่มบังคับ = OPTIONS_REQUIRED (P1.3 S3.26 คงเดิม)
+    const opt = regResolveOptions(optCat.get(row.parentId ?? row.id) ?? [], l.options);
+    if (!opt.ok) return regRefuse(opt.code, undefined, i);
+    let base: number;
+    let weightGrams: number | null = null;
+    if (row.soldByWeight) {
+      // P1.2 R12: ราคาต่อกก. = ราคาของแถว (ตัวแปรสืบแม่) · ป้าย WEIGHT = ปัดครึ่งขึ้น(กรัม × ราคา/1000) · ป้าย PRICE = ราคาบนป้าย (สตางค์ · มติ P2)
+      if (l.weighedBarcode === null && l.weightGrams === null) return regRefuse("WEIGHT_REQUIRED", undefined, i);
+      const perKg = v.priceSatang;
+      if (perKg === null) return regRefuse("PRICE_NOT_SET", undefined, i);
+      if (l.weighedBarcode !== null) {
+        const wb = wbs ? parseWeighedBarcode(l.weighedBarcode, wbs) : null;
+        // ป้ายอ่านไม่ได้ (ปิดค่าตั้ง · check digit ผิด · คำนำหน้าไม่อยู่ในกฎ) / PLU ไม่ใช่สินค้านี้ = VALIDATION (ราคา/น้ำหนักจาก client ไม่ถูกใช้)
+        if (!wb || wb.itemCode !== row.scalePlu) return regRefuse("VALIDATION", "ป้ายชั่งนี้ไม่ใช่ของสินค้านี้ — สแกนป้ายใหม่", i);
+        if (wb.kind === "WEIGHT") {
+          weightGrams = wb.grams ?? 0;
+          if (weightGrams < 1) return regRefuse("INVALID_LINE", "น้ำหนักบนป้ายต้องมากกว่า 0", i);
+          base = weighedPriceSatang(weightGrams, perKg);
+        } else {
+          base = wb.priceSatang ?? 0;
+          if (perKg < 1) return regRefuse("INVALID_LINE", "ตั้งราคาต่อกิโลกรัมก่อนขายด้วยป้ายฝังราคา", i);
+          weightGrams = weighedGramsFromPrice(base, perKg);
+        }
+      } else {
+        weightGrams = l.weightGrams!;
+        base = weighedPriceSatang(weightGrams, perKg);
+      }
+    } else {
+      if (l.weighedBarcode !== null || l.weightGrams !== null) return regRefuse("VALIDATION", "สินค้านี้ไม่ได้ขายตามน้ำหนัก", i);
+      const unit0 = l.openPrice ?? v.priceSatang;
+      if (unit0 === null) return regRefuse("PRICE_NOT_SET", undefined, i);
+      base = unit0;
+    }
+    // R1: ราคาต่อหน่วย = ฐาน + Σ delta (ส่วนลดบรรทัด/ท้ายบิลคิดบนราคานี้) · ติดลบ = INVALID_LINE
+    const unit = base + opt.delta;
+    if (unit < 0 || unit > PRICE_MAX_SATANG) return regRefuse("INVALID_LINE", "ราคารวมตัวเลือกไม่ถูกต้อง", i);
     priceLines.push({ qty: l.qty, unitPriceSatang: unit, discount: l.discount });
     // ตัดสต็อกเฉพาะสินค้าที่นับสต็อกจริง (C2 · trackStock off/AUTO ที่ยังไม่เคยมีสต็อก = ไม่ตัด) · บริการผูก serviceId (มติ R5)
+    //   P1.2: ตัวแปรตัด InvItem ของตัวเอง · ชุด (BUNDLE) ไม่มี itemId — ตัดส่วนประกอบตามสูตร ณ ตอนขาย (R8) · สินค้าชั่งตัดเป็นกรัม (P3)
     const itemId = v.kind === "PRODUCT" && v.invItemId && v.trackStock ? v.invItemId : null;
     const serviceId = v.kind === "SERVICE" && v.invItemId ? v.invItemId : null;
-    meta.push({ name: v.name, qty: l.qty, productId: v.id, itemId, serviceId, note: l.note ?? null });
+    const components = v.kind === "BUNDLE" ? recipes.filter((r) => r.productId === v.id).map((r) => ({ invItemId: r.invItemId, qty: r.qty })) : [];
+    meta.push({ name: v.name, qty: l.qty, productId: v.id, itemId, serviceId, note: l.note ?? null, options: opt.picked, components, weightGrams });
   }
   const vat = await regVat(db, s.tenantId, s.systemId);
   // P1.6 O19: ค่าบริการตามค่าตั้งของระบบ POS (ปิด = 0 · ยอดเท่าวันนี้)
@@ -948,13 +1208,21 @@ async function regPrice(
     const wallet = r.lines.map((x, i) => ({ name: meta[i]!.name, qty: x.qty, unitPriceSatang: x.unitPriceSatang, discountSatang: x.discountSatang, itemId: meta[i]!.itemId, serviceId: meta[i]!.serviceId }));
     if (await regMemberAutoDiscount(s, cart.memberId, wallet)) return regRefuse("MEMBER_RIGHTS_UNSUPPORTED");
   }
-  const lines: RegisterQuoteLine[] = r.lines.map((x, i) => ({
-    productId: meta[i]!.productId,
-    unitPriceSatang: x.unitPriceSatang,
-    grossSatang: x.grossSatang,
-    discountSatang: x.discountSatang,
-    lineTotalSatang: x.lineTotalSatang,
-  }));
+  const lines: RegisterQuoteLine[] = r.lines.map((x, i) => {
+    const m = meta[i]!;
+    const options: RegisterQuoteLineOption[] = m.options.map((o) => ({ choiceId: o.choiceId, groupId: o.groupId, name: o.name, priceDeltaSatang: o.priceDeltaSatang }));
+    return {
+      productId: m.productId,
+      unitPriceSatang: x.unitPriceSatang,
+      grossSatang: x.grossSatang,
+      discountSatang: x.discountSatang,
+      lineTotalSatang: x.lineTotalSatang,
+      // P1.2 R3
+      optionsSatang: m.options.reduce((t, o) => t + o.priceDeltaSatang, 0),
+      options,
+      weightGrams: m.weightGrams,
+    };
+  });
   const quote: RegisterQuoteTotals = {
     subtotalSatang: r.subtotalSatang,
     lineDiscountSatang: r.lineDiscountSatang,
@@ -1014,7 +1282,16 @@ export function registerCanonicalCart(raw: unknown): RegisterQuoteInput | Regist
   const lines: RegisterQuoteLineInput[] = c.lines.map((l) => {
     const discount = l.discount ? { discount: { ...l.discount } } : {};
     if (l.kind === "custom") return { name: l.name, qty: l.qty, unitPriceSatang: l.unitPriceSatang, ...discount };
-    return { productId: l.productId, qty: l.qty, ...discount, ...(l.openPrice !== null ? { openPrice: true as const, unitPriceSatang: l.openPrice } : {}) };
+    return {
+      productId: l.productId,
+      qty: l.qty,
+      ...discount,
+      ...(l.openPrice !== null ? { openPrice: true as const, unitPriceSatang: l.openPrice } : {}),
+      // P1.2 R13: บิลพักเก็บตัวเลือก (choiceId เท่านั้น) + ป้ายชั่ง/น้ำหนัก — เรียกคืนแล้ว quote ใหม่ด้วยราคาสด
+      ...(l.options.length ? { options: l.options.map((choiceId) => ({ choiceId })) } : {}),
+      ...(l.weighedBarcode !== null ? { weighedBarcode: l.weighedBarcode } : {}),
+      ...(l.weightGrams !== null ? { weightGrams: l.weightGrams } : {}),
+    };
   });
   return { lines, ...(c.billDiscount ? { billDiscount: { ...c.billDiscount } } : {}), ...(c.memberId ? { memberId: c.memberId } : {}) };
 }
@@ -1040,6 +1317,8 @@ type RegParsedSubmit = {
   /** P1.6 ทิป (0 = ไม่มี) · หมายเหตุบิล (null = ไม่มี) */
   tipSatang: number;
   note: string | null;
+  /** P1.2 R14: ค่าตั้งป้ายชั่ง ณ ตอนเทียบคำขอซ้ำ (โหลดเมื่อมีบรรทัดป้ายชั่งเท่านั้น) */
+  wb?: WeighedBarcodeSettings | null;
 };
 
 /** โครงของ submit (ไม่แตะ DB) — วิธีจ่าย CASH/PROMPTPAY เท่านั้น (Addendum 2) · expected ต้องเป็นจำนวนเต็ม ≥ 0 */
@@ -1093,12 +1372,13 @@ function regParseSubmit(raw: unknown): RegParsedSubmit | RegisterRefusal {
   return { cart, idempotencyKey: REG_KEY_PREFIX + raw.idempotencyKey, payMethods, cashReceivedSatang, expected: raw.expectedGrandTotalSatang, tipSatang, note };
 }
 
-type RegSaleRow = Prisma.PosSaleGetPayload<{ include: { lines: true; payments: true } }>;
+// P1.2 R14: บรรทัดพกตัวเลือกที่บันทึก (PosSaleLineOption) มาด้วย — ใช้เทียบคำขอซ้ำ
+type RegSaleRow = Prisma.PosSaleGetPayload<{ include: { lines: { include: { options: true } }; payments: true } }>;
 async function regLoadSale(db: RegDb, tenantId: string, idempotencyKey: string): Promise<RegSaleRow | null> {
   // B1.1: ลำดับคงที่ (การเทียบเป็น multiset อยู่แล้ว — ลำดับนี้ให้ผลอ่านซ้ำได้เหมือนเดิมทุกครั้ง)
   return db.posSale.findUnique({
     where: { tenantId_idempotencyKey: { tenantId, idempotencyKey } },
-    include: { lines: { orderBy: { id: "asc" } }, payments: { orderBy: { id: "asc" } } },
+    include: { lines: { orderBy: { id: "asc" }, include: { options: { orderBy: { id: "asc" } } } }, payments: { orderBy: { id: "asc" } } },
   });
 }
 
@@ -1115,19 +1395,66 @@ const regBag = (xs: string[]) => xs.slice().sort().join("\n");
  *     จากราคาที่บันทึกของสินค้านั้น ที่ทำให้ multiset (ราคาเปิด ∪ ปกติ@c) เท่ากับ multiset ที่บันทึกพอดี
  *   ส่วนลดของคำขอคิดด้วยสูตรเดียวกับ priceCart บนฐานราคาที่ใช้เทียบ · ราคาแคตตาล็อกที่เปลี่ยนหลังขายไม่ทำให้ "ต่าง"
  */
-function regLinesEqual(req: RegParsedLine[], stored: RegSaleRow["lines"]): boolean {
+type RegProductLine = Extract<RegParsedLine, { kind: "product" }>;
+type RegStoredLine = RegSaleRow["lines"][number];
+/** P1.2 R14: ชุดตัวเลือกแบบไม่ขึ้นกับลำดับ */
+const regOptKey = (ids: readonly string[]) => [...ids].sort().join(",");
+const regIsWeighedReq = (l: RegProductLine) => l.weighedBarcode !== null || l.weightGrams !== null;
+
+/**
+ * P1.2 R14 — บรรทัดชั่งของคำขอ ↔ บรรทัดชั่งที่บันทึก (จับคู่หนึ่งต่อหนึ่งแบบ augmenting path · ไม่ตะกละ):
+ *   สินค้า · ชุดตัวเลือก · จำนวน เท่ากัน และ น้ำหนักกรอกเอง/ป้าย WEIGHT = กรัมเท่ากัน · ป้าย PRICE = ราคาบนป้าย = ราคาที่บันทึก − Σ delta ที่บันทึก ·
+ *   ส่วนลดของคำขอคิดบนราคาที่บันทึก = ส่วนลดที่บันทึก · ป้ายที่อ่านไม่ได้แล้ว (ปิดค่าตั้งภายหลัง) = ไม่ตรง
+ */
+function regWeighedEqual(req: RegProductLine[], stored: RegStoredLine[], wb: WeighedBarcodeSettings | null): boolean {
+  if (req.length !== stored.length) return false;
+  if (!req.length) return true;
+  const fits = (r: RegProductLine, x: RegStoredLine): boolean => {
+    if (x.productId !== r.productId || x.qty !== r.qty || x.weightGrams === null) return false;
+    if (regOptKey(x.options.map((o) => o.choiceId)) !== regOptKey(r.options)) return false;
+    if (regDiscountSatang(r.discount, x.unitPriceSatang * x.qty) !== x.discountSatang) return false;
+    if (r.weightGrams !== null) return x.weightGrams === r.weightGrams;
+    const p = wb && r.weighedBarcode !== null ? parseWeighedBarcode(r.weighedBarcode, wb) : null;
+    if (!p) return false;
+    if (p.kind === "WEIGHT") return x.weightGrams === p.grams;
+    return x.unitPriceSatang - x.options.reduce((t, o) => t + o.priceDeltaSatang, 0) === p.priceSatang;
+  };
+  const owner: (number | null)[] = stored.map(() => null);
+  const tryAssign = (ri: number, seen: boolean[]): boolean => {
+    for (let si = 0; si < stored.length; si++) {
+      if (seen[si] || !fits(req[ri]!, stored[si]!)) continue;
+      seen[si] = true;
+      if (owner[si] === null || tryAssign(owner[si]!, seen)) {
+        owner[si] = ri;
+        return true;
+      }
+    }
+    return false;
+  };
+  for (let ri = 0; ri < req.length; ri++) if (!tryAssign(ri, stored.map(() => false))) return false;
+  return true;
+}
+
+function regLinesEqual(req: RegParsedLine[], stored: RegSaleRow["lines"], wb: WeighedBarcodeSettings | null = null): boolean {
   if (stored.length !== req.length) return false;
   const sCustom = stored.filter((x) => x.productId === null).map((x) => `${x.name}|${regTup(x.unitPriceSatang, x.qty, x.discountSatang)}`);
   const rCustom = req.flatMap((l) => (l.kind === "custom" ? [`${l.name}|${regTup(l.unitPriceSatang, l.qty, regDiscountSatang(l.discount, l.unitPriceSatang * l.qty))}`] : []));
   if (regBag(sCustom) !== regBag(rCustom)) return false;
-  const pids = new Set<string>([
-    ...stored.flatMap((x) => (x.productId ? [x.productId] : [])),
-    ...req.flatMap((l) => (l.kind === "product" ? [l.productId] : [])),
-  ]);
-  for (const pid of pids) {
-    const sLines = stored.filter((x) => x.productId === pid);
+  // P1.2 R14: บรรทัดชั่งเทียบแยก (น้ำหนัก/ป้ายเป็นส่วนหนึ่งของตัวตนบรรทัด)
+  const rProd = req.filter((l): l is RegProductLine => l.kind === "product");
+  const sProd = stored.filter((x) => x.productId !== null);
+  if (!regWeighedEqual(rProd.filter(regIsWeighedReq), sProd.filter((x) => x.weightGrams !== null), wb)) return false;
+  // บรรทัดปกติ: กลุ่ม = สินค้า + ชุดตัวเลือก (ทุกบรรทัดของกลุ่มเดียวกันในบิลเดียวใช้ราคาเดียวกันเสมอ — ฐาน + Σ delta อ่านครั้งเดียว) ·
+  //   ไม่มีตัวเลือกเลย = กลุ่มของสินค้าแบบเดิมทุกประการ (payload แบบ P1.3 เทียบเหมือนวันนี้)
+  const rPlain = rProd.filter((l) => !regIsWeighedReq(l));
+  const sPlain = sProd.filter((x) => x.weightGrams === null);
+  const gk = (pid: string, opts: readonly string[]) => `${pid}#${regOptKey(opts)}`;
+  const sKey = (x: RegStoredLine) => gk(x.productId!, x.options.map((o) => o.choiceId));
+  const groups = new Set<string>([...sPlain.map(sKey), ...rPlain.map((l) => gk(l.productId, l.options))]);
+  for (const g of groups) {
+    const sLines = sPlain.filter((x) => sKey(x) === g);
     const target = regBag(sLines.map((x) => regTup(x.unitPriceSatang, x.qty, x.discountSatang)));
-    const mine = req.filter((l): l is Extract<RegParsedLine, { kind: "product" }> => l.kind === "product" && l.productId === pid);
+    const mine = rPlain.filter((l) => gk(l.productId, l.options) === g);
     const open = mine.filter((l) => l.openPrice !== null).map((l) => regTup(l.openPrice!, l.qty, regDiscountSatang(l.discount, l.openPrice! * l.qty)));
     const plain = mine.filter((l) => l.openPrice === null);
     if (sLines.length !== mine.length) return false;
@@ -1156,7 +1483,7 @@ function regSameSubmission(s: RegScope, req: RegParsedSubmit, sale: RegSaleRow):
   const payKey = (xs: { type: string; amountSatang: number }[]) => regBag(xs.map((p) => `${p.type}:${p.amountSatang}`));
   if (payKey(sale.payments) !== payKey(req.payMethods)) return false;
   if (sale.discountSatang !== regDiscountSatang(req.cart.billDiscount, sale.subtotalSatang)) return false;
-  return regLinesEqual(req.cart.lines, sale.lines);
+  return regLinesEqual(req.cart.lines, sale.lines, req.wb ?? null);
 }
 
 const regChange = (req: RegParsedSubmit): number => {
@@ -1203,6 +1530,8 @@ export async function submitRegisterSale(ctx: RegisterCtx, actor: RegisterActor,
     if (cash > 0 && (req.cashReceivedSatang === null || req.cashReceivedSatang < cash)) {
       return regRefuse("PAYMENT_MISMATCH", "เงินที่รับน้อยกว่าส่วนที่จ่ายเงินสด");
     }
+    // P1.2 R14: ป้ายชั่งเป็นส่วนหนึ่งของตัวตนบรรทัด — โหลดค่าตั้งไว้เทียบคำขอซ้ำ (เฉพาะเมื่อมีบรรทัดป้ายชั่ง)
+    req.wb = req.cart.lines.some((l) => l.kind === "product" && l.weighedBarcode !== null) ? await regWeighedSettings(db, s) : null;
     // ① คีย์เดิมก่อนคิดราคา (ลองซ้ำหลังราคาเปลี่ยนต้องได้บิลเดิม)
     const prior = await regLoadSale(db, s.tenantId, req.idempotencyKey);
     if (prior) return regDuplicate(s, req, prior, true);
@@ -1237,6 +1566,12 @@ export async function submitRegisterSale(ctx: RegisterCtx, actor: RegisterActor,
         ...(l.serviceId ? { serviceId: l.serviceId } : {}),
         ...(l.productId ? { productId: l.productId } : {}),
         ...(l.note ? { note: l.note } : {}),
+        // P1.2: สำเนาตัวเลือก (R4) · ส่วนประกอบชุด (R8) · น้ำหนัก (R12) — ไม่มี = ไม่ส่ง (บิลแบบ P1.3 เหมือนเดิมทุกไบต์)
+        ...(l.options.length
+          ? { options: l.options.map((o) => ({ choiceId: o.choiceId, groupId: o.groupId, groupName: o.groupName, choiceName: o.name, priceDeltaSatang: o.priceDeltaSatang })) }
+          : {}),
+        ...(l.components.length ? { components: l.components.map((c) => ({ ...c })) } : {}),
+        ...(l.weightGrams !== null ? { weightGrams: l.weightGrams } : {}),
       })),
       billDiscountSatang: q.billDiscountSatang,
       // P1.6: เงินที่รับอยู่บนแถวเงินสด (ทอนคิดที่ createSale) · เลขอ้างอิงบัตร/โอน
@@ -1304,11 +1639,18 @@ export async function registerStatus(ctx: RegisterCtx, actor: RegisterActor, cli
     const bkk = new Date(Date.now() + 7 * 3600000).toISOString().slice(0, 10);
     const dayStart = new Date(new Date(`${bkk}T00:00:00Z`).getTime() - 7 * 3600000);
     // คีย์ตัดสต็อกต่อบรรทัดของ createSale = `pos-consume-<saleId>-<lineId>` (service.ts consumeSaleInventory) — ใช้ unique (tenantId, idempotencyKey)
+    // P1.2 R8: บรรทัดชุดนับจนกว่าคีย์ของ "ทุก" ส่วนประกอบ `pos-consume-<saleId>-<lineId>-<invItemId>` จะมีครบ
     const pend = await db.$queryRaw<{ n: number }[]>`
       SELECT count(DISTINCT s.id)::int AS n FROM "PosSale" s JOIN "PosSaleLine" l ON l."saleId" = s.id
       WHERE s."tenantId" = ${s.tenantId} AND s."unitId" = ${s.unitId} AND s.status = 'PAID' AND s."createdAt" >= ${dayStart}
-        AND l."itemId" IS NOT NULL
-        AND NOT EXISTS (SELECT 1 FROM "InvMovement" m WHERE m."tenantId" = ${s.tenantId} AND m."idempotencyKey" = 'pos-consume-' || s.id || '-' || l.id)`;
+        AND (
+          (l."itemId" IS NOT NULL
+            AND NOT EXISTS (SELECT 1 FROM "InvMovement" m WHERE m."tenantId" = ${s.tenantId} AND m."idempotencyKey" = 'pos-consume-' || s.id || '-' || l.id))
+          OR (l."components" IS NOT NULL AND jsonb_typeof(l."components") = 'array'
+            AND EXISTS (SELECT 1 FROM jsonb_array_elements(l."components") c
+              WHERE NOT EXISTS (SELECT 1 FROM "InvMovement" m WHERE m."tenantId" = ${s.tenantId}
+                AND m."idempotencyKey" = 'pos-consume-' || s.id || '-' || l.id || '-' || (c->>'invItemId'))))
+        )`;
     return {
       ok: true,
       unit: { id: s.unitId, name: s.unitName },

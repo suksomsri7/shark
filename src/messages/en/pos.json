@@ -204,7 +204,7 @@
       "invalidLine": "A quantity or price isn't valid — please check the items",
       "productNotFound": "An item was removed from the catalogue — take it out of the cart and try again",
       "productUnavailable": "This item isn't on sale at this branch right now",
-      "optionsRequired": "This item needs options — it can't be sold from here yet",
+      "optionsRequired": "Choose the required options for this item first",
       "memberNotFound": "This member wasn't found in the shop",
       "memberRightsUnsupported": "This member has an automatic discount the new register can't apply yet — sell without the member, or use the classic register",
       "priceNotSet": "This item has no price yet — set it on the Products page first",
@@ -236,7 +236,11 @@
       "shiftAlreadyOpen": "This device already has an open shift",
       "shiftClosed": "This shift is closed and cannot be changed",
       "reasonRequired": "Over/short is above the limit — enter a reason before closing",
-      "drawerInsufficient": "Not enough cash in the drawer for this pay-out"
+      "drawerInsufficient": "Not enough cash in the drawer for this pay-out",
+      "optionsInvalid": "An option isn't valid — please choose the options again",
+      "optionUnavailable": "This option is sold out — choose another",
+      "variantRequired": "Choose a size or style for this item first",
+      "weightRequired": "This item is sold by weight — scan the scale label or enter the weight first"
     },
     "held": {
       "title": "Held bills",

@@ -208,7 +208,17 @@ export async function recallHeldCart(ctx: RegisterCtx, actor: RegisterActor, inp
       // ชุดตรวจ: เฉพาะบรรทัดแคตตาล็อก ไม่มีส่วนลด/สมาชิก ⇒ ปฏิเสธได้แค่เพราะ "สินค้าขายไม่ได้" รายบรรทัด · ตัดบรรทัดเสียทีละบรรทัด
       let probe = [...catalogIdx];
       for (let n = 0; probe.length && n <= catalogIdx.length; n++) {
-        const lines = probe.map((i) => ({ productId: (cart.lines[i] as { productId: string }).productId, qty: cart.lines[i]!.qty }));
+        // POS P1.2: บรรทัดทดสอบพกตัวเลือก/ป้ายชั่ง/น้ำหนักเดิม (ไม่งั้นสินค้าที่มีกลุ่มบังคับ/สินค้าชั่งถูกตีว่า "ขายไม่ได้")
+        const lines = probe.map((i) => {
+          const l = cart.lines[i] as { productId: string; qty: number; options?: { choiceId: string }[]; weighedBarcode?: string; weightGrams?: number };
+          return {
+            productId: l.productId,
+            qty: l.qty,
+            ...(l.options ? { options: l.options } : {}),
+            ...(l.weighedBarcode !== undefined ? { weighedBarcode: l.weighedBarcode } : {}),
+            ...(l.weightGrams !== undefined ? { weightGrams: l.weightGrams } : {}),
+          };
+        });
         const q = await quoteRegisterCart(s.ctx, s.actor, { lines }, db);
         if (q.ok) {
           probe.forEach((i, k) => current.set(i, q.lines[k]!.unitPriceSatang));

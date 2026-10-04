@@ -96,3 +96,75 @@ export const SCAN_CAMERA_FORMATS: readonly string[] = ["ean_13", "ean_8", "upc_a
  *   โหลดแบบ import() ตอนเปิดแผ่นกล้องเท่านั้น (ScanCameraDialog) — ห้าม import แบบ static ที่ใดใน src
  */
 export const SCAN_CAMERA_FALLBACK_PKG: string | null = "@zxing/browser";
+
+// ═══════════════════ POS P1.2 ▸ R10 บาร์โค้ดน้ำหนัก/ราคาจากเครื่องชั่ง (EAN-13 · บริสุทธิ์) ◂ ═══════════════════
+// รูปแบบ: PP IIIII VVVVV C — PP = คำนำหน้า (20–29 ตามกฎของร้าน) · IIIII = รหัสสินค้า (PosProduct.scalePlu) ·
+//   VVVVV = ค่า: กรัม (WEIGHT) หรือ สตางค์ (PRICE · สูงสุด ฿999.99 — มติเจ้าของ P2) · C = check digit EAN-13 (น้ำหนัก 1/3 จากซ้าย)
+// ค่าตั้ง: AppSystem(POS).settings.pos.weighedBarcode = { enabled, rules: [{ prefix: "20"…"29", kind }] } · ปิดเป็นปริยาย (มติ P1)
+
+export type WeighedBarcodeKind = "WEIGHT" | "PRICE";
+export type WeighedBarcodeRule = { prefix: string; kind: WeighedBarcodeKind };
+export type WeighedBarcodeSettings = { enabled: boolean; rules: WeighedBarcodeRule[] };
+/** ผลถอดป้าย — grams มีค่าเมื่อ WEIGHT · priceSatang มีค่าเมื่อ PRICE (อีกช่อง = null) */
+export type WeighedBarcode = { prefix: string; itemCode: string; kind: WeighedBarcodeKind; grams: number | null; priceSatang: number | null };
+
+/** check digit ของ EAN-13 จาก 12 หลักแรก (น้ำหนัก 1,3,1,3… จากซ้าย) · อินพุตไม่ใช่ตัวเลข 12 หลัก = −1 */
+export function ean13CheckDigit(first12: string): number {
+  if (typeof first12 !== "string" || !/^\d{12}$/.test(first12)) return -1;
+  let sum = 0;
+  for (let i = 0; i < 12; i++) sum += (i % 2 === 0 ? 1 : 3) * (first12.charCodeAt(i) - 48);
+  return (10 - (sum % 10)) % 10;
+}
+
+const WEIGHED_KINDS: ReadonlySet<string> = new Set(["WEIGHT", "PRICE"]);
+/** กฎที่ใช้ได้เท่านั้น: prefix "20"…"29" · kind WEIGHT/PRICE · prefix ซ้ำ = ตัวแรกชนะ (ผิดรูปถูกทิ้งเงียบ ๆ) */
+function cleanWeighedRules(v: unknown): WeighedBarcodeRule[] {
+  if (!Array.isArray(v)) return [];
+  const out: WeighedBarcodeRule[] = [];
+  for (const r of v as unknown[]) {
+    if (!r || typeof r !== "object" || Array.isArray(r)) continue;
+    const { prefix, kind } = r as { prefix?: unknown; kind?: unknown };
+    if (typeof prefix !== "string" || !/^2\d$/.test(prefix) || typeof kind !== "string" || !WEIGHED_KINDS.has(kind)) continue;
+    if (out.some((x) => x.prefix === prefix)) continue;
+    out.push({ prefix, kind: kind as WeighedBarcodeKind });
+  }
+  return out;
+}
+
+/** ตัวอ่านค่าตั้งเดียว (จาก AppSystem.settings ทั้งก้อน) — ไม่ตั้ง/ผิดรูป = ปิด · enabled ต้องเป็น true เคร่ง · ไม่แก้อินพุต */
+export function weighedBarcodeSettings(settings: unknown): WeighedBarcodeSettings {
+  const pos = settings && typeof settings === "object" ? (settings as { pos?: unknown }).pos : undefined;
+  const wb = pos && typeof pos === "object" ? (pos as { weighedBarcode?: unknown }).weighedBarcode : undefined;
+  if (!wb || typeof wb !== "object" || Array.isArray(wb)) return { enabled: false, rules: [] };
+  const o = wb as { enabled?: unknown; rules?: unknown };
+  return { enabled: o.enabled === true, rules: cleanWeighedRules(o.rules) };
+}
+
+/**
+ * ถอดป้ายเครื่องชั่ง → ผล หรือ null (ปิดใช้ · ไม่ใช่ตัวเลข 13 หลัก · check digit ผิด · prefix ไม่อยู่ในกฎ)
+ * `settings` = ผลของ weighedBarcodeSettings (รับค่าตั้งทั้งก้อนของ AppSystem ก็ได้ — อ่านผ่านตัวอ่านเดียวกัน)
+ */
+export function parseWeighedBarcode(code: string, settings: WeighedBarcodeSettings | unknown): WeighedBarcode | null {
+  const st: WeighedBarcodeSettings =
+    settings && typeof settings === "object" && "rules" in (settings as object) && "enabled" in (settings as object)
+      ? { enabled: (settings as WeighedBarcodeSettings).enabled === true, rules: cleanWeighedRules((settings as WeighedBarcodeSettings).rules) }
+      : weighedBarcodeSettings(settings);
+  if (!st.enabled || typeof code !== "string" || !/^\d{13}$/.test(code)) return null;
+  if (ean13CheckDigit(code.slice(0, 12)) !== code.charCodeAt(12) - 48) return null;
+  const prefix = code.slice(0, 2);
+  const rule = st.rules.find((r) => r.prefix === prefix);
+  if (!rule) return null;
+  const value = Number(code.slice(7, 12));
+  return { prefix, itemCode: code.slice(2, 7), kind: rule.kind, grams: rule.kind === "WEIGHT" ? value : null, priceSatang: rule.kind === "PRICE" ? value : null };
+}
+
+/** ปัดครึ่งขึ้นของ num/den (num ≥ 0 · den > 0 · จำนวนเต็ม) — สูตรเดียวกับ roundHalfUp ของ pricing-shared (ไฟล์นี้ห้าม import ค่า) */
+const halfUp = (num: number, den: number): number => Math.floor((2 * num + den) / (2 * den));
+/** ราคาของน้ำหนัก (สตางค์) = ปัดครึ่งขึ้น(กรัม × ราคาต่อกก. ÷ 1000) · อินพุตต้องเป็นจำนวนเต็ม ≥ 0 */
+export function weighedPriceSatang(grams: number, perKgSatang: number): number {
+  return halfUp(grams * perKgSatang, 1000);
+}
+/** น้ำหนัก (กรัม) จากป้ายฝังราคา = ปัดครึ่งขึ้น(ราคา × 1000 ÷ ราคาต่อกก.) · ราคาต่อกก. ≤ 0 = 0 (ผู้เรียกต้องตรวจก่อน) */
+export function weighedGramsFromPrice(priceSatang: number, perKgSatang: number): number {
+  return perKgSatang > 0 ? halfUp(priceSatang * 1000, perKgSatang) : 0;
+}
