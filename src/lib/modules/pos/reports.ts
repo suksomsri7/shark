@@ -380,9 +380,11 @@ type LineRow = {
   serviceId: string | null;
   productId: string | null;
   weightGrams: number | null;
-  components: unknown;
+  /** โหลดเฉพาะเมื่อขอ (รายงานกำไร) · อื่น ๆ = undefined */
+  components?: unknown;
 };
-async function loadLines(db: Db, tenantId: string, saleIds: string[]): Promise<LineRow[]> {
+/** withComponents = เลือกคอลัมน์ JSON components ด้วย (รายงานกำไรเท่านั้น · R2-F4) */
+async function loadLines(db: Db, tenantId: string, saleIds: string[], withComponents = false): Promise<LineRow[]> {
   const out: LineRow[] = [];
   for (const ids of chunks(saleIds)) {
     out.push(
@@ -400,7 +402,7 @@ async function loadLines(db: Db, tenantId: string, saleIds: string[]): Promise<L
           serviceId: true,
           productId: true,
           weightGrams: true,
-          components: true,
+          components: withComponents,
         },
         orderBy: { id: "asc" },
       })),
@@ -464,10 +466,10 @@ const productKey = (l: Pick<LineRow, "productId" | "itemId" | "serviceId" | "nam
   l.productId ? `p:${l.productId}` : l.itemId ? `i:${l.itemId}` : l.serviceId ? `s:${l.serviceId}` : `n:${l.name}`;
 
 /** บรรทัดของบิล PAID เรียงตามเวลาบิล (ชื่อของแถว = ชื่อบรรทัดล่าสุด) */
-async function paidLines(db: Db, s: Scope, sales: SaleRow[]): Promise<LineRow[]> {
+async function paidLines(db: Db, s: Scope, sales: SaleRow[], withComponents = false): Promise<LineRow[]> {
   const paid = paidOf(sales);
   const order = new Map(paid.map((x, i) => [x.id, i]));
-  const lines = await loadLines(db, s.tenantId, paid.map((x) => x.id));
+  const lines = await loadLines(db, s.tenantId, paid.map((x) => x.id), withComponents);
   return lines.sort((a, b) => order.get(a.saleId)! - order.get(b.saleId)! || cmpStr(a.id, b.id));
 }
 
@@ -658,8 +660,8 @@ export async function reportMargin(ctx: ReportCtx, actor: RegisterActor, input: 
     const { s, r } = p;
     const sales = await loadSales(db, s, r.start, r.end);
     const paid = paidOf(sales);
-    const lines = await paidLines(db, s, sales);
-    const partsOf = new Map(lines.map((l) => [l.id, lineConsumption(l.saleId, l)]));
+    const lines = await paidLines(db, s, sales, true);
+    const partsOf = new Map(lines.map((l) => [l.id, lineConsumption(l.saleId, { ...l, components: l.components ?? null })]));
     // ต้นทุนที่บันทึก: ค้นด้วยดัชนี unique (tenantId, idempotencyKey) เท่านั้น (InvMovement ไม่มีดัชนี refId)
     const moved = new Map<string, number>();
     for (const keys of chunks([...partsOf.values()].flat().map((x) => x.key))) {
