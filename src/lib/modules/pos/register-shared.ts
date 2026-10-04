@@ -21,6 +21,12 @@ export const REGISTER_PAY_TYPES = ["CASH", "PROMPTPAY"] as const;
 /** เพดานส่วนลดปริยายของ STAFF (basis point · docs/modules/14-pos.md §9) — OWNER/MANAGER ไม่จำกัด เว้นตั้ง `pos._maxDiscountBp` */
 export const REGISTER_STAFF_MAX_DISCOUNT_BP = 1000;
 
+/** POS P1.5: บิลที่พัก (HELD) อายุเกินกี่วันนับจาก createdAt (24 ชม.ต่อวัน แบบเลื่อน) ⇒ ทิ้งเองตอนเปิดรายการ — ตั้งได้ที่
+ *  `AppSystem(POS).settings.pos.heldCart.expireDays` (จำนวนเต็ม 1–365) · ไม่ตั้ง/ผิดรูป = ค่านี้ */
+export const HELD_CART_EXPIRE_DAYS = 2;
+/** ป้ายบิลที่พักยาวได้ไม่เกิน (ตัวอักษร) */
+export const HELD_CART_LABEL_MAX = 60;
+
 // ═══════════ ธงหน้าขายใหม่ (มติ Q4) ═══════════
 /**
  * ธง `AppSystem(POS).settings.pos.registerV2` — เทียบ === true เคร่ง (สตริง "true" / 1 = จอเดิม)
@@ -63,7 +69,9 @@ export type RegisterRefusalCode =
   | "CONFLICT"
   | "BUSY"
   | "INTERNAL"
-  | "UNKNOWN";
+  | "UNKNOWN"
+  // POS P1.5: เรียกคืนบิลที่พักซึ่งเครื่องอื่นเรียกไปแล้ว (ผู้ชนะคนเดียว · H2)
+  | "ALREADY_RECALLED";
 
 /** คำปฏิเสธ — คืนค่า ไม่ throw · `lineIndex` = บรรทัดที่ผิด (ลำดับเดียวกับที่ส่งมา) ถ้าระบุได้ */
 export type RegisterRefusal = { ok: false; code: RegisterRefusalCode; message: string; lineIndex?: number };
@@ -175,6 +183,31 @@ export type RegisterStatusResult = RegisterStatus | RegisterRefusal;
 export type RegisterVatConfig = { ok: true; mode: "INCLUDED" | "NONE"; rateBp: number };
 export type RegisterVatConfigResult = RegisterVatConfig | RegisterRefusal;
 
+// ═══════════ POS P1.5 — พักบิล / เรียกคืน ═══════════
+/** แถวในลิ้นชักบิลที่พัก · createdAt = ISO · preview = ชื่อรายการย่อ (ตอนพัก) · heldByName = ชื่อผู้พัก (ไม่มี = null) */
+export type HeldCartSummary = {
+  id: string;
+  label: string | null;
+  lineCount: number;
+  approxTotalSatang: number;
+  heldByUserId: string;
+  heldByName: string | null;
+  preview: string;
+  createdAt: string;
+};
+export type HeldCartNoticeCode = "PRICE_CHANGED" | "PRODUCT_NOT_FOUND" | "PRODUCT_UNAVAILABLE";
+/** คำเตือนต่อบรรทัดตอนเรียกคืน (ลำดับบรรทัดเดียวกับ cart ที่คืน) — PRICE_CHANGED มีราคาตอนพัก/ราคาปัจจุบัน */
+export type HeldCartNotice = { lineIndex: number; code: HeldCartNoticeCode; heldUnitPriceSatang?: number; unitPriceSatang?: number };
+export type HoldRegisterCartInput = { cart: RegisterQuoteInput; label?: string | null };
+export type HoldRegisterCartResult = { ok: true; heldCart: HeldCartSummary } | RegisterRefusal;
+export type ListHeldCartsResult = { ok: true; items: HeldCartSummary[]; count: number } | RegisterRefusal;
+/** quote = ราคาปัจจุบัน (ไม่ใช่ราคาตอนพัก) · บรรทัดที่ขายไม่ได้แล้วยังอยู่ใน cart พร้อม notice (quote จึงไม่ ok จนกว่าจะเอาออก) ·
+ *  products = สินค้าของบรรทัดที่ยังขายได้ (จอใช้แสดงชื่อ/ราคา) · lineNames = ชื่อสินค้าต่อบรรทัด (null = รายการกำหนดเอง/ไม่พบ) */
+export type RecallHeldCartResult =
+  | { ok: true; heldCartId: string; cart: RegisterQuoteInput; quote: RegisterQuoteResult; notices: HeldCartNotice[]; products: RegisterProduct[]; lineNames: (string | null)[] }
+  | RegisterRefusal;
+export type DiscardHeldCartResult = { ok: true } | RegisterRefusal;
+
 // ═══════════ สถานะตะกร้าฝั่ง client (สเปก §3.3) ═══════════
 export type RegisterCartLine =
   | { key: string; kind: "product"; productId: string; qty: number; discount?: PriceDiscount; openPriceSatang?: number }
@@ -198,6 +231,22 @@ export function cartAddProduct(cart: RegisterCart, productId: string, newLineKey
 }
 
 // ═══════════ ตัวช่วยบริสุทธิ์ ═══════════
+/**
+ * POS P1.5: ตะกร้าที่เรียกคืน (RegisterQuoteInput จากเซิร์ฟเวอร์) → ตะกร้าบนจอ · คีย์บรรทัดใหม่ทุกบรรทัด (newLineKey ต่อบรรทัด) ·
+ * ราคาของสินค้าแคตตาล็อกไม่ถูกนำมา (เว้นราคาเปิด) · ไม่มีคูปอง · ไม่มีคีย์บิล (คีย์ใหม่มาจาก resetBill เท่านั้น)
+ */
+export function quoteInputToCart(input: RegisterQuoteInput, newLineKey: () => string): RegisterCart {
+  const lines: RegisterCartLine[] = input.lines.map((l) => {
+    const discount = l.discount ? { discount: { ...l.discount } } : {};
+    if ("productId" in l && typeof l.productId === "string") {
+      return { key: newLineKey(), kind: "product", productId: l.productId, qty: l.qty, ...discount, ...(l.openPrice === true && typeof l.unitPriceSatang === "number" ? { openPriceSatang: l.unitPriceSatang } : {}) };
+    }
+    const c = l as { name: string; qty: number; unitPriceSatang: number };
+    return { key: newLineKey(), kind: "custom", name: c.name, unitPriceSatang: c.unitPriceSatang, qty: c.qty, ...discount };
+  });
+  return { lines, ...(input.billDiscount ? { billDiscount: { ...input.billDiscount } } : {}), ...(input.memberId ? { memberId: input.memberId } : {}) };
+}
+
 
 /** ตะกร้าบนจอ → คำขอ quote (ชุดเดียวกับที่ submit ส่ง · ไม่ส่งคูปอง · ไม่ส่งราคาของสินค้าแคตตาล็อก) */
 export function cartToQuoteInput(cart: RegisterCart): RegisterQuoteInput {
@@ -285,6 +334,7 @@ const REFUSAL_KEY: Readonly<Record<string, string>> = {
   STOCK_INSUFFICIENT: "errors.stockInsufficient",
   CONFLICT: "errors.conflict",
   BUSY: "errors.busy",
+  ALREADY_RECALLED: "errors.alreadyRecalled",
 };
 
 /**

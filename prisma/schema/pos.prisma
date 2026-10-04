@@ -212,3 +212,34 @@ model RecipeLine {
   @@index([tenantId])
   @@index([invItemId])
 }
+
+// ═══════════════════ P1.5 — พักบิล / เรียกคืน (PosHeldCart) · ตารางใหม่ล้วน (มติ H1) ═══════════════════
+// ขอบเขต: ต่อสาขา (tenantId + systemId POS + unitId) · ทุกผู้ใช้หน้าขายของสาขาเห็น · id หลวม (ไม่มี FK) แบบ PosProduct
+// ผู้เขียนเดียว = src/lib/modules/pos/held-cart.ts · cartJson = { cart: RegisterQuoteInput ที่ผ่านการตรวจแล้ว, heldUnitPrices }
+//   🔴 ราคาใน cartJson ไม่ถูกเชื่อ — เรียกคืนแล้วคิดราคาใหม่ผ่าน quoteRegisterCart เสมอ (H3) · heldUnitPrices ใช้แค่บอก "ราคาเปลี่ยน"
+// เรียกคืน = UPDATE … WHERE id AND status='HELD' (ผู้ชนะคนเดียว · H2) · หมดอายุแบบขี้เกียจตอน list (H4 · ไม่มี cron)
+
+enum PosHeldCartStatus {
+  HELD
+  RECALLED
+  DISCARDED
+}
+
+model PosHeldCart {
+  id                String            @id @default(cuid())
+  tenantId          String
+  unitId            String // BusinessUnit.id — สาขาที่พัก (เห็น/เรียกคืนได้เฉพาะสาขานี้)
+  systemId          String // AppSystem.id (type POS)
+  label             String? // ≤ 60 ตัวอักษร (ตรวจใน held-cart.ts) · null = ไม่ตั้งป้าย
+  cartJson          Json
+  lineCount         Int
+  approxTotalSatang Int // ยอด quote ของเซิร์ฟเวอร์ ณ ตอนพัก (ไว้แสดงในลิ้นชักเท่านั้น)
+  heldByUserId      String
+  recalledAt        DateTime?
+  recalledByUserId  String?
+  status            PosHeldCartStatus @default(HELD)
+  createdAt         DateTime          @default(now())
+  version           Int               @default(1)
+
+  @@index([unitId, status, createdAt])
+}

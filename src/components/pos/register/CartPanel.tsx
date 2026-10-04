@@ -42,6 +42,12 @@ type Props = {
   onRemoveMember?: () => void;
   onPay: () => void;
   onSoon: () => void;
+  /** P1.5: ปุ่มพักบิล (เปิดกล่องตั้งป้าย) · ปุ่มบิลที่พัก (เปิดลิ้นชัก) · จำนวนบิลที่พักของสาขา (0 = ไม่แสดงป้าย) */
+  onHold: () => void;
+  onOpenHeld: () => void;
+  heldCount: number;
+  /** P1.5: คำเตือนของบิลที่เพิ่งเรียกคืน (ราคาเปลี่ยน / ขายไม่ได้แล้ว) — แสดงเหนือรายการ */
+  notice?: React.ReactNode;
   onBillDiscount: () => void;
   onOpenLine: (key: string, focus: "qty" | "discount") => void;
   onKeep: (key: string) => void;
@@ -79,24 +85,30 @@ export function CartPanel(p: Props) {
           data-testid="pos-reg-hold"
           className="btn-sm h-11 shrink-0 gap-1.5 rounded-[11px] px-[11px] text-[13px] xl:px-[14px] xl:text-[14px]"
           type="button"
-          aria-disabled="true"
           aria-keyshortcuts="F8"
-          title={t("soon")}
-          onClick={p.onSoon}
+          disabled={p.frozen || empty}
+          onClick={p.onHold}
         >
           <RegisterIcon name="clock" size={14} />
           {t("cart.hold")}
         </button>
         <button
           data-testid="pos-reg-held-bills"
-          className="btn-sm h-11 shrink-0 rounded-[11px] px-[11px] text-[13px] xl:px-[14px] xl:text-[14px]"
+          className="btn-sm h-11 shrink-0 gap-1.5 rounded-[11px] px-[11px] text-[13px] xl:px-[14px] xl:text-[14px]"
           type="button"
-          aria-disabled="true"
-          title={t("soon")}
-          onClick={p.onSoon}
+          disabled={p.frozen}
+          onClick={p.onOpenHeld}
         >
           <span className="xl:hidden">{t("cart.heldBillsShort")}</span>
           <span className="hidden xl:inline">{t("cart.heldBills")}</span>
+          {p.heldCount > 0 && (
+            <span
+              data-testid="pos-reg-held-count"
+              className="grid h-5 min-w-5 place-items-center rounded-full bg-[color:var(--color-ink)] px-1.5 text-[11.5px] font-bold tabular-nums text-[color:var(--color-surface)]"
+            >
+              {p.heldCount > 99 ? "99+" : p.heldCount}
+            </span>
+          )}
         </button>
         {sheet && p.onClose && (
           <button
@@ -143,6 +155,8 @@ export function CartPanel(p: Props) {
           </button>
           ))}
       </div>
+
+      {p.notice && <div className="mx-[14px] mt-2 shrink-0 xl:mx-4">{p.notice}</div>}
 
       <div data-testid="pos-reg-lines" className="min-h-0 flex-1 overflow-y-auto" role="list" aria-label={t("cart.title")}>
         {empty ? (

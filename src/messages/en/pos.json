@@ -226,7 +226,33 @@
       "couponInvalid": "This coupon can't be used",
       "amountInvalid": "That number isn't valid — use digits with up to 2 decimals",
       "qtyInvalid": "Quantity must be a whole number from 1 to {max}",
-      "nameRequired": "Enter an item name first"
+      "nameRequired": "Enter an item name first",
+      "alreadyRecalled": "This bill was already recalled (maybe on another device)"
+    },
+    "held": {
+      "title": "Held bills",
+      "titleCount": "Held bills ({count})",
+      "scope": "This branch",
+      "loading": "Loading...",
+      "empty": "No held bills yet\nPress \"Hold\" (F8) to park the current cart",
+      "recall": "Recall",
+      "discard": "Discard",
+      "discardConfirm": "Confirm discard",
+      "label": "Bill label (optional)",
+      "labelPlaceholder": "e.g. Table 5 · glasses guy",
+      "holdTitle": "Hold this bill",
+      "holdDone": "Bill held — recall it from \"Held bills\"",
+      "recalled": "Bill recalled — check the total before payment",
+      "discarded": "Held bill discarded",
+      "untitled": "Bill {time}",
+      "untitledShort": "Held bill",
+      "meta": "{count} items · held {time}",
+      "expiryNote": "Held bills older than {days} days are discarded automatically · prices are re-checked on recall",
+      "noticePriceChanged": "{name}: price changed {from} → {to}",
+      "noticeUnavailable": "{name}: no longer sold — remove it before payment",
+      "confirmTitle": "Recall bill \"{label}\" {total}",
+      "confirmDetail": "The current cart has {count} items — hold it first?",
+      "confirmHoldFirst": "Hold current cart, then recall"
     }
   }
 }

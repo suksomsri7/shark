@@ -474,12 +474,12 @@
       ],
       "hiddenFor": [],
       "expect": {
-        "type": "toast",
-        "target": "pos-reg-toast",
-        "note": "เร็ว ๆ นี้ — P1.5 พักบิล · F8 ให้ผลเดียวกัน"
+        "type": "modal",
+        "target": "pos-reg-hold-dialog",
+        "note": "P1.5: กล่องตั้งป้าย (ไม่บังคับ) แล้วพัก · ตะกร้าว่าง/กำลังส่ง = ปุ่มปิด · F8 = พักทันทีไม่ถามป้าย"
       },
-      "wo": "P1.3",
-      "oracle": "qc-pos-p1.3",
+      "wo": "P1.3 · P1.5",
+      "oracle": "qc-pos-p1.5",
       "system": "POS",
       "query": "unit=[unitId]"
     },
@@ -493,12 +493,12 @@
       ],
       "hiddenFor": [],
       "expect": {
-        "type": "toast",
-        "target": "pos-reg-toast",
-        "note": "เร็ว ๆ นี้ — P1.5 บิลที่พัก"
+        "type": "modal",
+        "target": "pos-reg-held-drawer",
+        "note": "P1.5: ลิ้นชักบิลที่พักของสาขา (ภาพ 14B) · ป้ายจำนวน pos-reg-held-count"
       },
-      "wo": "P1.3",
-      "oracle": "qc-pos-p1.3",
+      "wo": "P1.3 · P1.5",
+      "oracle": "qc-pos-p1.5",
       "system": "POS",
       "query": "unit=[unitId]"
     },
@@ -1765,6 +1765,198 @@
         "note": "ขายบิลถัดไป = ล้างตะกร้า + คีย์ใหม่ + โฟกัสช่องค้นหา"
       },
       "wo": "P1.3",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-hold-label",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-hold-dialog",
+        "state": "changes",
+        "note": "ป้ายบิล ≤ 60 ตัว (ไม่บังคับ)"
+      },
+      "wo": "P1.5",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-hold-confirm",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-reg-held-count",
+        "note": "พักบิล (holdRegisterCartAction) → ล้างตะกร้า + คีย์บิลใหม่ (resetBill) · toast held.holdDone"
+      },
+      "wo": "P1.5",
+      "oracle": "qc-pos-p1.5",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-hold-cancel",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-hold-dialog",
+        "state": "disappears"
+      },
+      "wo": "P1.5",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-hold-dialog",
+      "kind": "form",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-reg-held-count",
+        "note": "Enter ในช่องป้าย = พักบิล (เหมือน pos-reg-hold-confirm)"
+      },
+      "wo": "P1.5",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-held-close",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-held-drawer",
+        "state": "disappears"
+      },
+      "wo": "P1.5",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-held-recall-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-reg-lines",
+        "note": "เรียกคืน (ผู้ชนะคนเดียว · ราคาปัจจุบัน) · ตะกร้ามีของ = pos-reg-held-confirm ก่อน · ถูกเรียกไปแล้ว = toast errors.alreadyRecalled"
+      },
+      "wo": "P1.5",
+      "oracle": "qc-pos-p1.5",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-held-discard-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-reg-held-drawer",
+        "note": "แตะครั้งแรก = ยืนยันทิ้ง · ครั้งที่สอง = ทิ้ง (audit) แล้วหายจากลิ้นชัก"
+      },
+      "wo": "P1.5",
+      "oracle": "qc-pos-p1.5",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-held-confirm-hold",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-reg-lines",
+        "note": "พักตะกร้าปัจจุบันก่อน แล้วเรียกคืนบิลที่เลือก (มติ 4)"
+      },
+      "wo": "P1.5",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-held-confirm-cancel",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-held-confirm",
+        "state": "disappears",
+        "note": "โฟกัสเริ่มต้น · ตะกร้าปัจจุบันไม่เปลี่ยน"
+      },
+      "wo": "P1.5",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-held-notices-close",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-held-notices",
+        "state": "disappears"
+      },
+      "wo": "P1.5",
       "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]"

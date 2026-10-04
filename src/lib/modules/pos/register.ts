@@ -430,6 +430,7 @@ import {
   type RegisterProduct,
   type RegisterQuoteInput,
   type RegisterQuoteLine,
+  type RegisterQuoteLineInput,
   type RegisterQuoteResult,
   type RegisterQuoteTotals,
   type RegisterRefusal,
@@ -468,6 +469,7 @@ const REG_MESSAGE: Record<RegisterRefusalCode, string> = {
   BUSY: "ระบบกำลังบันทึกบิลอื่นของสาขานี้อยู่ — ลองอีกครั้งด้วยบิลเดิม ระบบจะไม่เก็บเงินซ้ำ",
   INTERNAL: "ระบบขายขัดข้องชั่วคราว — ลองอีกครั้งด้วยบิลเดิม ระบบจะไม่เก็บเงินซ้ำ",
   UNKNOWN: "เกิดข้อผิดพลาด — ลองอีกครั้ง",
+  ALREADY_RECALLED: "บิลที่พักนี้ถูกเรียกคืนไปแล้ว (อาจจากอีกเครื่อง)",
 };
 const REG_ROLE_LABEL: Record<RegisterRole, string> = { OWNER: "เจ้าของร้าน", MANAGER: "ผู้จัดการ", STAFF: "แคชเชียร์" };
 
@@ -954,6 +956,48 @@ export async function quoteRegisterCart(ctx: RegisterCtx, actor: RegisterActor, 
     if (isRegRefusal(p)) return p;
     return { ok: true, ...p.quote };
   });
+}
+
+// ── POS P1.5 ▸ ตัวช่วยของ held-cart.ts (พัก/เรียกคืน) — ใช้ด่านขอบเขต + ตัวตรวจตะกร้า "ชุดเดียว" กับ quote/submit ◂ ──
+/** client ของ held-cart.ts — ไม่ส่ง = prisma ของแอป (ทางเข้า DB เดียวของตระกูลหน้าขาย · ไม่เพิ่มไฟล์ raw prisma ใหม่ · fitness F5.1) */
+export function registerDb(client?: RegDb): RegDb {
+  return client ?? prisma;
+}
+
+/** ด่านขอบเขตเดียวกับหน้าขาย (ร้าน · ระบบ POS · สาขา · เข้าสาขาได้ · pos.sale.create) — ok = ctx/actor ที่ตรวจแล้ว */
+export async function registerScopeCheck(
+  ctx: RegisterCtx,
+  actor: RegisterActor,
+  client?: RegDb,
+): Promise<{ ok: true; ctx: RegisterCtx; actor: RegisterActor } | RegisterRefusal> {
+  const s = await regScope(client ?? prisma, ctx, actor);
+  if (isRegRefusal(s)) return s;
+  return { ok: true, ctx: { tenantId: s.tenantId, systemId: s.systemId, unitId: s.unitId }, actor: s.actor };
+}
+
+/**
+ * ตะกร้าจาก client/DB → รูปมาตรฐานของ RegisterQuoteInput (ตัวตรวจเดียวกับ quote · คีย์แปลก/คูปอง = VALIDATION) —
+ * ราคาของสินค้าแคตตาล็อกที่ไม่ใช่ราคาเปิด "ถูกตัดทิ้ง" (ไม่เก็บ ไม่เชื่อ · มติ R2) · note ไม่เก็บ (quote/submit ไม่ใช้)
+ */
+export function registerCanonicalCart(raw: unknown): RegisterQuoteInput | RegisterRefusal {
+  const c = regParseCart(raw, REG_QUOTE_KEYS);
+  if (isRegRefusal(c)) return c;
+  const lines: RegisterQuoteLineInput[] = c.lines.map((l) => {
+    const discount = l.discount ? { discount: { ...l.discount } } : {};
+    if (l.kind === "custom") return { name: l.name, qty: l.qty, unitPriceSatang: l.unitPriceSatang, ...discount };
+    return { productId: l.productId, qty: l.qty, ...discount, ...(l.openPrice !== null ? { openPrice: true as const, unitPriceSatang: l.openPrice } : {}) };
+  });
+  return { lines, ...(c.billDiscount ? { billDiscount: { ...c.billDiscount } } : {}), ...(c.memberId ? { memberId: c.memberId } : {}) };
+}
+
+/** สินค้าที่ "ยังขายได้ที่สาขานี้" ตาม id (กติกามองเห็นเดียวกับกริด) — จอใช้แสดงชื่อ/ราคาบรรทัดที่เรียกคืน · ไม่เจอ = ไม่อยู่ในผล */
+export async function registerProductsByIds(ctx: RegisterCtx, actor: RegisterActor, ids: string[], client?: RegDb): Promise<RegisterProduct[]> {
+  const db: RegDb = client ?? prisma;
+  const s = await regScope(db, ctx, actor);
+  const want = [...new Set(ids.filter(regIsId))].slice(0, REGISTER_MAX_LINES);
+  if (isRegRefusal(s) || !want.length) return [];
+  const visible = (await db.$queryRaw<{ id: string }[]>`SELECT p.id FROM "PosProduct" p WHERE ${regVisibleWhere(s)} AND p.id = ANY(${want}::text[])`).map((r) => r.id);
+  return regViews(db, s, await regRowsInOrder(db, s.tenantId, visible));
 }
 
 // ── ส่งบิล ──

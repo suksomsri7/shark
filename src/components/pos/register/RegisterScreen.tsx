@@ -35,10 +35,14 @@ import {
   cartToQuoteInput,
   cartToSubmitInput,
   displayName,
+  HELD_CART_EXPIRE_DAYS,
   moneyText,
+  quoteInputToCart,
   refusalMessageKey,
   REGISTER_MAX_LINES,
   REGISTER_MAX_QTY,
+  type HeldCartNoticeCode,
+  type HeldCartSummary,
   type RegisterCart,
   type RegisterCartLine,
   type RegisterPayMethod,
@@ -52,7 +56,17 @@ import {
   type RegisterSubmitOk,
 } from "@/lib/modules/pos/register-shared";
 import { classifyScanBurst, scanKeyFromEvent, scanOutcome, SCAN_MAX_GAP_MS, type ScanKey } from "@/lib/modules/pos/scan-shared";
-import { quoteRegisterCartAction, registerCatalogAction, registerScanAction, registerStatusAction, submitRegisterSaleAction } from "@/lib/modules/pos/register-actions";
+import {
+  discardHeldCartAction,
+  holdRegisterCartAction,
+  listHeldCartsAction,
+  quoteRegisterCartAction,
+  recallHeldCartAction,
+  registerCatalogAction,
+  registerScanAction,
+  registerStatusAction,
+  submitRegisterSaleAction,
+} from "@/lib/modules/pos/register-actions";
 import { BillDiscountDialog } from "./BillDiscountDialog";
 import { CartPanel, type CartTotalsModel } from "./CartPanel";
 import type { CartLineModel } from "./CartLine";
@@ -60,6 +74,8 @@ import { CategoryChips } from "./CategoryChips";
 import { ClearBillDialog } from "./ClearBillDialog";
 import { CouponDialog } from "./CouponDialog";
 import { CustomItemDialog } from "./CustomItemDialog";
+import { HeldBillsDialog } from "./HeldBillsDrawer";
+import { HeldRecallConfirmDialog, HoldLabelDialog } from "./HeldDialogs";
 import { InterimPayDialog, type PayChoice, type PayError, type PayPhase } from "./InterimPayDialog";
 import { LineEditor, type LineEditResult } from "./LineEditor";
 import { MobileCartBar } from "./MobileCartBar";
@@ -108,7 +124,11 @@ type Layer =
   | { kind: "pay" }
   | { kind: "done"; result: RegisterSubmitOk }
   | { kind: "scanChoose"; products: RegisterProduct[] }
-  | { kind: "camera" };
+  | { kind: "camera" }
+  // P1.5: ลิ้นชักบิลที่พัก · กล่องตั้งป้ายก่อนพัก · ถาม "พักตะกร้านี้ก่อน?" เมื่อเรียกคืนทับตะกร้าที่มีของ
+  | { kind: "held" }
+  | { kind: "holdLabel" }
+  | { kind: "heldConfirm"; item: HeldCartSummary };
 
 const newKey = () => {
   try {
@@ -202,6 +222,39 @@ export function RegisterScreen(props: RegisterScreenProps) {
   const [lastSyncAt, setLastSyncAt] = useState<Date | null>(null);
   const [status, setStatus] = useState<RegisterStatus | null>(props.initialStatus);
   const synced = () => setLastSyncAt(new Date());
+
+  // ═══════ P1.5 บิลที่พักของสาขา (ป้ายจำนวน + ลิ้นชัก) ═══════
+  const [heldItems, setHeldItems] = useState<HeldCartSummary[] | null>(null);
+  const [heldCount, setHeldCount] = useState(0);
+  const [heldBusy, setHeldBusy] = useState(false);
+  const heldBusyRef = useRef(false);
+  /** ชื่อสินค้าของบรรทัดที่เรียกคืน (รวมที่ขายไม่ได้แล้ว — ไม่อยู่ใน known) */
+  const heldNames = useRef(new Map<string, string>());
+  /** คำเตือนของบิลที่เพิ่งเรียกคืน ผูกกับคีย์บรรทัด — เอาบรรทัดออก/บิลใหม่ = หายเอง */
+  const [heldNotices, setHeldNotices] = useState<{ key: string; code: HeldCartNoticeCode; from?: number; to?: number }[]>([]);
+  const heldSeq = useRef(0);
+  const refreshHeld = useCallback(async () => {
+    const seq = ++heldSeq.current;
+    try {
+      const r = await listHeldCartsAction({ systemId, unitId });
+      if (seq !== heldSeq.current) return;
+      if (r.ok) {
+        setHeldItems(r.items);
+        setHeldCount(r.count);
+      } else setHeldItems([]);
+    } catch {
+      if (seq === heldSeq.current) setHeldItems((v) => v ?? []);
+    }
+  }, [systemId, unitId]);
+  useEffect(() => {
+    void refreshHeld();
+    // เครื่องอื่นในสาขาพัก/เรียกคืน ⇒ ป้ายจำนวนตามทันเมื่อกลับมาที่แท็บ
+    const onVis = () => {
+      if (document.visibilityState === "visible") void refreshHeld();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, [refreshHeld]);
 
   // ═══════ การส่งบิล ═══════
   const [idemKey, setIdemKey] = useState(newKey);
@@ -451,7 +504,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
     const over = stockLeft !== null && l.qty > stockLeft;
     return {
       key: l.key,
-      name: l.kind === "custom" ? l.name : prod ? displayName(prod, locale) : "-",
+      name: l.kind === "custom" ? l.name : prod ? displayName(prod, locale) : (heldNames.current.get(l.productId) ?? "-"),
       qty: l.qty,
       unitPriceSatang: unit,
       grossSatang: ql?.grossSatang ?? ll?.grossSatang ?? unit * l.qty,
@@ -475,7 +528,90 @@ export function RegisterScreen(props: RegisterScreenProps) {
 
   // ═══════ การกระทำบนตะกร้า ═══════
   const soon = () => showToast({ key: "soon" });
-  const onHold = soon; // P1.5 แทน: พักบิล (F8)
+
+  // ═══════ P1.5 พักบิล / เรียกคืน ═══════
+  // H5: พักสำเร็จ ⇒ resetBill() (ล้างจอ + หมุนคีย์บิล "ที่เดียว" ตาม S5.21) · เรียกคืน ⇒ resetBill() ก่อนวางตะกร้าที่คืน (คีย์ใหม่เสมอ ·
+  //     บิลที่พักไม่เคยพกคีย์ไปด้วย — cartToQuoteInput ไม่มีคีย์) · พักล้ม = ตะกร้าเดิมอยู่ครบ
+  const onHold = async (label?: string): Promise<boolean> => {
+    if (frozenRef.current || frozen || !cart.lines.length || heldBusyRef.current) return false;
+    heldBusyRef.current = true;
+    setHeldBusy(true);
+    try {
+      const r = await holdRegisterCartAction({ systemId, unitId, cart: cartToQuoteInput(cart), label: label?.trim() || null });
+      if (!r.ok) {
+        showToast(errorFor(r.code));
+        return false;
+      }
+      resetBill();
+      setLayers((s) => s.filter((l) => l.kind !== "holdLabel"));
+      showToast({ key: "held.holdDone" });
+      void refreshHeld();
+      return true;
+    } catch {
+      showToast({ key: "errors.loadFailed" });
+      return false;
+    } finally {
+      heldBusyRef.current = false;
+      setHeldBusy(false);
+    }
+  };
+  const onRecallHeld = async (id: string): Promise<void> => {
+    if (frozenRef.current || heldBusyRef.current) return;
+    heldBusyRef.current = true;
+    setHeldBusy(true);
+    try {
+      const r = await recallHeldCartAction({ systemId, unitId, id });
+      if (!r.ok) {
+        showToast(errorFor(r.code));
+        void refreshHeld();
+        return;
+      }
+      remember(r.products);
+      r.cart.lines.forEach((l, i) => {
+        const nm = r.lineNames[i];
+        if ("productId" in l && nm) heldNames.current.set(l.productId, nm);
+      });
+      resetBill();
+      const next = quoteInputToCart(r.cart, newKey);
+      changeCart(next);
+      setHeldNotices(r.notices.flatMap((n) => (next.lines[n.lineIndex] ? [{ key: next.lines[n.lineIndex]!.key, code: n.code, from: n.heldUnitPriceSatang, to: n.unitPriceSatang }] : [])));
+      setLayers([]);
+      showToast({ key: "held.recalled" });
+      void refreshHeld();
+    } catch {
+      showToast({ key: "errors.loadFailed" });
+    } finally {
+      heldBusyRef.current = false;
+      setHeldBusy(false);
+    }
+  };
+  /** มติ 4: ตะกร้ามีของ ⇒ ถามก่อน (พักก่อน / ยกเลิก) · ว่าง ⇒ เรียกคืนเลย */
+  const requestRecall = (h: HeldCartSummary) => {
+    if (frozenRef.current) return;
+    if (cart.lines.length) push({ kind: "heldConfirm", item: h });
+    else void onRecallHeld(h.id);
+  };
+  const onDiscardHeld = async (h: HeldCartSummary) => {
+    if (heldBusyRef.current) return;
+    heldBusyRef.current = true;
+    setHeldBusy(true);
+    try {
+      const r = await discardHeldCartAction({ systemId, unitId, id: h.id });
+      showToast(r.ok ? { key: "held.discarded" } : errorFor(r.code));
+    } catch {
+      showToast({ key: "errors.loadFailed" });
+    } finally {
+      heldBusyRef.current = false;
+      setHeldBusy(false);
+      void refreshHeld();
+    }
+  };
+  const openHeld = () => {
+    if (frozenRef.current || layersRef.current.some((l) => l.kind === "held")) return;
+    setHeldItems(null);
+    push({ kind: "held" });
+    void refreshHeld();
+  };
   /** P1.15: เปิด PIN ผู้จัดการ · วันนี้ = แสดงเหตุผล */
   const onNeedsApproval = (key: string) => showToast({ key });
 
@@ -878,6 +1014,38 @@ export function RegisterScreen(props: RegisterScreenProps) {
 
   // ═══════ วาด ═══════
   const lineOf = (key: string) => cart.lines.find((l) => l.key === key);
+  // P1.5 H3: คำเตือนของบิลที่เรียกคืน — เฉพาะบรรทัดที่ยังอยู่ (เอาออก = หาย) · ขายไม่ได้แล้ว ⇒ quote ปฏิเสธ = ชำระไม่ได้จนกว่าจะเอาออก
+  const shownNotices = heldNotices.filter((n) => cart.lines.some((l) => l.key === n.key));
+  const noticeName = (key: string) => {
+    const l = lineOf(key);
+    if (!l) return "-";
+    if (l.kind === "custom") return l.name;
+    const prod = known.current.get(l.productId);
+    return prod ? displayName(prod, locale) : (heldNames.current.get(l.productId) ?? "-");
+  };
+  const heldNoticeNode = shownNotices.length ? (
+    <div data-testid="pos-reg-held-notices" role="status" className="flex items-start gap-2.5 rounded-[14px] border border-[color:var(--color-danger)] bg-[color:var(--color-surface)] px-3.5 py-2.5 text-[13.5px] leading-[1.5]">
+      <RegisterIcon name="warn" size={16} className="mt-0.5 shrink-0 text-[color:var(--color-danger)]" />
+      <ul className="min-w-0 flex-1">
+        {shownNotices.map((n) => (
+          <li key={`${n.key}-${n.code}`}>
+            {n.code === "PRICE_CHANGED"
+              ? t("held.noticePriceChanged", { name: noticeName(n.key), from: moneyText(n.from ?? 0), to: moneyText(n.to ?? 0) })
+              : t("held.noticeUnavailable", { name: noticeName(n.key) })}
+          </li>
+        ))}
+      </ul>
+      <button
+        data-testid="pos-reg-held-notices-close"
+        className="-my-1.5 -mr-2 grid size-11 shrink-0 place-items-center rounded-[11px] text-[color:var(--color-muted)]"
+        type="button"
+        aria-label={t("cart.close")}
+        onClick={() => setHeldNotices([])}
+      >
+        <RegisterIcon name="x" size={14} />
+      </button>
+    </div>
+  ) : null;
   const cartPanel = (variant: "inline" | "sheet") => (
     <CartPanel
       variant={variant}
@@ -889,6 +1057,12 @@ export function RegisterScreen(props: RegisterScreenProps) {
       frozen={frozen}
       onPay={openPay}
       onSoon={soon}
+      onHold={() => {
+        if (!frozenRef.current && cart.lines.length) push({ kind: "holdLabel" });
+      }}
+      onOpenHeld={openHeld}
+      heldCount={heldCount}
+      notice={heldNoticeNode}
       onBillDiscount={() => push({ kind: "billDiscount" })}
       onOpenLine={(key, focus) => push({ kind: "line", key, focus })}
       onKeep={keepSelling}
@@ -1009,6 +1183,36 @@ export function RegisterScreen(props: RegisterScreenProps) {
             onPick={(p) => {
               pop();
               pick(p);
+            }}
+            onClose={pop}
+          />
+        );
+      case "held":
+        return (
+          <HeldBillsDialog
+            key={k}
+            items={heldItems}
+            expireDays={HELD_CART_EXPIRE_DAYS}
+            busy={heldBusy}
+            onRecall={requestRecall}
+            onDiscard={(h) => void onDiscardHeld(h)}
+            onClose={pop}
+          />
+        );
+      case "holdLabel":
+        return <HoldLabelDialog key={k} busy={heldBusy} onHold={(label) => void onHold(label)} onClose={pop} />;
+      case "heldConfirm":
+        return (
+          <HeldRecallConfirmDialog
+            key={k}
+            item={l.item}
+            currentCount={cart.lines.length}
+            currentTotal={quoteFresh ? moneyText(quoteFresh.grandTotalSatang) : null}
+            busy={heldBusy}
+            onHoldFirst={() => {
+              void (async () => {
+                if (await onHold()) await onRecallHeld(l.item.id);
+              })();
             }}
             onClose={pop}
           />

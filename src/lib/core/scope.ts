@@ -303,6 +303,8 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   PosCategory: sys(),
   PosProductOptionGroup: tenant,
   RecipeLine: tenant,
+  // POS P1.5 — บิลที่พัก (ผู้เขียนเดียว = pos/held-cart.ts · ทุกคำสั่งกรอง tenantId + systemId + unitId)
+  PosHeldCart: sys(),
   // Booking
   BookingService: unit,
   BookingStaff: unit,
