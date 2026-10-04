@@ -385,3 +385,85 @@ model PosShiftRecount {
   @@unique([tenantId, idempotencyKey])
   @@index([tenantId, unitId, createdAt])
 }
+
+// POS P1.14 — ตรวจนับสต็อกจากหน้าขาย (มติ R1 · ledger/pos-briefs/pos-brief-P1.14.md) · ผู้เขียนเดียว = pos/stock-count.ts
+//   id หลวม ไม่มี FK (แบบ PosShift) · 1 รอบ OPEN ต่อ (คลัง × ที่เก็บ) = partial unique เขียนมือใน migration
+//   (PosStockCount_open_location_key ON ("inventorySystemId","locationId") WHERE status = 'OPEN' — prisma แสดง WHERE ไม่ได้)
+//   จำนวนเป็นหน่วยสต็อกของสินค้า (ชิ้น · กรัมสำหรับสินค้าชั่ง P1.2) · เงินเป็นสตางค์
+enum PosStockCountStatus {
+  OPEN
+  CONFIRMED
+  CANCELLED
+}
+
+enum PosStockCountScope {
+  ALL
+  CATEGORY
+}
+
+model PosStockCount {
+  id                String              @id @default(cuid())
+  tenantId          String
+  systemId          String // AppSystem.id (type POS)
+  unitId            String
+  inventorySystemId String // AppSystem.id (type INVENTORY) ของสาขา ณ ตอนเปิด
+  locationId        String // InvLocation.id ที่นับ
+  countNo           Int // เลขรอบต่อสาขา 1,2,3… ("ตรวจนับ #7")
+  scope             PosStockCountScope
+  categoryIds       String[]            @default([]) // InvCategory.id (scope CATEGORY)
+  blind             Boolean             @default(false)
+  status            PosStockCountStatus @default(OPEN)
+  note              String?
+  snapshotAt        DateTime
+  openedByUserId    String
+  openKey           String
+  confirmKey        String?
+  confirmedByUserId String?
+  confirmedAt       DateTime?
+  cancelKey         String?
+  cancelledByUserId String?
+  cancelledAt       DateTime?
+  cancelReason      String?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  @@unique([tenantId, openKey])
+  @@unique([unitId, countNo])
+  @@index([tenantId, unitId, status])
+}
+
+model PosStockCountLine {
+  id              String    @id @default(cuid())
+  tenantId        String
+  countId         String // PosStockCount.id (id หลวม)
+  itemId          String // InvItem.id
+  snapshotQty     Int // ยอดที่ที่เก็บ ณ เปิดรอบ (ข้อมูลประกอบ)
+  countedQty      Int? // ยอดที่นับได้ (null = ยังไม่นับ)
+  expectedAtCount Int? // ยอดระบบที่ที่เก็บ ณ รายการนับล่าสุด (อ่านใต้ล็อกสินค้า · R6)
+  countedAt       DateTime?
+  varianceQty     Int? // countedQty − expectedAtCount (แช่แข็งตอนยืนยัน)
+  costSatang      Int? // ต้นทุนเฉลี่ยของสินค้า ณ ยืนยัน
+  movementId      String? // InvMovement.id ของ ADJUST (ผลต่าง ≠ 0)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([countId, itemId])
+  @@index([tenantId])
+}
+
+model PosStockCountEntry {
+  id             String   @id @default(cuid())
+  tenantId       String
+  countId        String
+  lineId         String
+  itemId         String
+  mode           String // "SET" | "ADD"
+  qty            Int
+  code           String? // รหัสที่สแกน (บาร์โค้ด/SKU/ป้ายเครื่องชั่ง)
+  byUserId       String
+  idempotencyKey String
+  createdAt      DateTime @default(now())
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([countId])
+}
