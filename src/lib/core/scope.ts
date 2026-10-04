@@ -301,6 +301,7 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   // POS
   PosSale: sys(),
   PosSaleLine: unit,
+  PosSaleLineOption: tenant, // POS P1.2 — ตัวเลือกบนบรรทัดบิล (สำเนา ณ เวลาขาย)
   PosPayment: unit,
   PosReceiptCounter: unit,
   // POS P1.1a — แคตตาล็อกเดียว (ผู้เขียนเดียว = pos/catalog.ts) · ลูกของ PosProduct มี tenantId ของตัวเอง

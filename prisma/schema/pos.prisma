@@ -84,9 +84,32 @@ model PosSaleLine {
   // (itemId=null อย่างเดียวแยกไม่ออกว่าเป็นบริการหรือรายการพิมพ์เอง)
   productId       String? // P1.1a: PosProduct.id (แคตตาล็อกเดียว) · id หลวมแบบ itemId/serviceId · null = บิลเดิม
   note            String? // P1.6: หมายเหตุบรรทัด/เหตุผลส่วนลด (≤500)
+  // ── P1.2 — เพิ่มคอลัมน์ล้วน (บิลเดิม = null = พฤติกรรมเดิม) ──
+  components      Json? // ชุด/คอมโบ: สำเนาส่วนประกอบตอนขาย [{invItemId, qty}] ต่อ 1 หน่วย · ตัดสต็อก qty × line.qty คีย์ pos-consume-<sale>-<line>-<invItem>
+  weightGrams     Int? // สินค้าชั่ง: น้ำหนัก (กรัม) ของบรรทัด (qty = 1 เสมอ) · ตัดสต็อกเป็นกรัม
+  options         PosSaleLineOption[]
 
   @@index([saleId])
   // P1.1a: index ของคอลัมน์นี้เพิ่มใน P6.1 ด้วย CREATE INDEX CONCURRENTLY นอก prisma migrate (round 2 M1)
+}
+
+// P1.2 — ตัวเลือกที่เลือกบนบรรทัดบิล (สำเนา ณ เวลาขาย แบบ RestaurantOrderItemOption) · ราคาตัวเลือกที่แก้ทีหลังไม่กระทบบิลเดิม
+// PosSaleLine.unitPriceSatang = ราคาเต็มต่อหน่วย (ฐาน + Σ priceDeltaSatang) อยู่แล้ว ⇒ สะพานบัญชี/รายงาน/คืนเงินไม่ต้องอ่านตารางนี้
+model PosSaleLineOption {
+  id               String      @id @default(cuid())
+  tenantId         String
+  saleId           String // PosSale.id (id หลวม · มี index)
+  lineId           String
+  line             PosSaleLine @relation(fields: [lineId], references: [id], onDelete: Cascade)
+  choiceId         String // MenuOptionChoice.id ณ เวลาขาย (id หลวม — ตัวเลือกถูกเก็บถาวรได้)
+  groupId          String // MenuOptionGroup.id ณ เวลาขาย
+  groupName        String
+  choiceName       String
+  priceDeltaSatang Int // สตางค์ต่อหน่วย ติดลบได้
+
+  @@index([tenantId])
+  @@index([saleId])
+  @@index([lineId])
 }
 
 model PosPayment {
@@ -183,6 +206,11 @@ model PosProduct {
   stockQty           Int?
   dailyStockQty      Int?
   isOutOfStock       Boolean        @default(false)
+  // ── P1.2 สินค้าชั่ง — basePriceSatang = ราคาต่อกิโลกรัม · สต็อกนับเป็นกรัม ──
+  soldByWeight       Boolean        @default(false)
+  /// รหัสสินค้าบนป้ายเครื่องชั่ง (5 หลัก) · ไม่ซ้ำในแถวที่ยังไม่เก็บถาวรของระบบ POS เดียว =
+  /// partial unique `PosProduct_systemId_scalePlu_active_key` (SQL เขียนมือใน migration 20261124000000_pos_p12_options · prisma มองไม่เห็น WHERE)
+  scalePlu           String?
   archivedAt         DateTime?
   createdAt          DateTime       @default(now())
   updatedAt          DateTime       @updatedAt
