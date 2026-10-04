@@ -17,6 +17,7 @@ import {
   offShiftCash,
   openShift,
   recordCashMovement,
+  recountShift,
   xReport,
   zReport,
   type CashMovementInput,
@@ -28,6 +29,8 @@ import {
   type OffShiftCashResult,
   type OpenShiftInput,
   type OpenShiftResult,
+  type RecountShiftInput,
+  type RecountShiftResult,
   type ShiftRefusal,
   type ShiftReportResult,
 } from "./shift";
@@ -188,5 +191,20 @@ export async function offShiftCashAction(args: Target & { businessDate?: string 
     return await offShiftCash(s.ctx, s.actor, args.businessDate !== undefined ? { businessDate: args.businessDate } : {});
   } catch (e) {
     return unexpected("offShiftCashAction", e);
+  }
+}
+
+/** P1.9b (R13) ผู้จัดการนับเงินย้อนหลังของกะที่ระบบบังคับปิด — สิทธิ์ manage ตัดสินใน shift.ts */
+export async function recountShiftAction(args: Target & { recount: RecountShiftInput }): Promise<RecountShiftResult> {
+  const auth = await session("recountShiftAction");
+  if ("ok" in auth) return auth;
+  try {
+    const s = scopeOf(auth, args);
+    if ("ok" in s) return s;
+    const r = await recountShift(s.ctx, s.actor, args.recount);
+    if (r.ok) touch(s.ctx.systemId);
+    return r;
+  } catch (e) {
+    return unexpected("recountShiftAction", e);
   }
 }

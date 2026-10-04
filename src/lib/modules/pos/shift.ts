@@ -7,7 +7,7 @@
 // 🔴 ล็อก: ปิดกะ/เงินเข้าออก = แถวกะ FOR UPDATE · บิล (createSale) = FOR SHARE ⇒ ปิดกะรอบิลที่กำลังบันทึก · ทุกบิลที่ commit แล้วอยู่ใน Z
 // 🔴 ไม่มี PIN ที่นี่ — PIN เป็นของ HR (verifyPin · P1.15/P3.5) · ผู้ทำรายการ = ผู้ใช้ของ session
 import { randomUUID } from "node:crypto";
-import { Prisma, type PosShift, type PrismaClient } from "@prisma/client";
+import { Prisma, type PosShift, type PosShiftRecount, type PrismaClient } from "@prisma/client";
 import { prisma } from "./db";
 import { canAccessUnit, evaluate } from "@/lib/core/rbac";
 import { emitOutbox } from "@/lib/core/outbox";
@@ -69,8 +69,11 @@ export type ShiftRefusalCode =
   | "REASON_REQUIRED"
   | "DRAWER_INSUFFICIENT"
   | "IDEMPOTENCY_CONFLICT"
-  | "INTERNAL";
-export type ShiftRefusal = { ok: false; code: ShiftRefusalCode; message: string; shiftId?: string };
+  | "INTERNAL"
+  // P1.9b (R14) — นับย้อนหลังกะที่บังคับปิด
+  | "SHIFT_NOT_FORCED"
+  | "ALREADY_RECOUNTED";
+export type ShiftRefusal = { ok: false; code: ShiftRefusalCode; message: string; shiftId?: string; recountId?: string };
 
 export type ShiftView = {
   id: string;
@@ -125,6 +128,22 @@ export type ShiftReport = {
   forced?: boolean;
 };
 
+/** P1.9b (R2) — ผลนับย้อนหลังของกะที่บังคับปิด · แสดงข้าง Z เสมอ ไม่ผสานเข้า Z (R12) */
+export type RecountView = {
+  id: string;
+  shiftId: string;
+  zNumber: number;
+  expectedCashSatang: number;
+  countedCashSatang: number;
+  varianceSatang: number;
+  countDetail: Record<string, number> | null;
+  note: string;
+  recountedByUserId: string;
+  recountedAt: string;
+};
+/** P1.9b (R12) — สรุปการนับย้อนหลังในรายการประวัติกะ */
+export type ShiftRecountBrief = { countedCashSatang: number; varianceSatang: number; recountedAt: string };
+
 const MSG: Record<ShiftRefusalCode, string> = {
   NOT_FOUND: "ไม่พบกะนี้ หรือบัญชีนี้ใช้สาขานี้ไม่ได้",
   PERMISSION_DENIED: "บัญชีนี้ยังไม่มีสิทธิ์จัดการกะ — ขอสิทธิ์จากเจ้าของร้าน",
@@ -136,8 +155,10 @@ const MSG: Record<ShiftRefusalCode, string> = {
   DRAWER_INSUFFICIENT: "เงินในลิ้นชักไม่พอสำหรับยอดที่จะนำออก",
   IDEMPOTENCY_CONFLICT: "มีรายการของรหัสนี้อยู่แล้วแต่ข้อมูลไม่ตรงกัน",
   INTERNAL: "ระบบกะขัดข้องชั่วคราว — ลองอีกครั้ง",
+  SHIFT_NOT_FORCED: "นับย้อนหลังได้เฉพาะกะที่ระบบบังคับปิด",
+  ALREADY_RECOUNTED: "กะนี้ถูกนับย้อนหลังไปแล้ว — นับได้ครั้งเดียว",
 };
-const refuse = (code: ShiftRefusalCode, message?: string, extra?: { shiftId?: string }): ShiftRefusal => ({ ok: false, code, message: message ?? MSG[code], ...(extra ?? {}) });
+const refuse = (code: ShiftRefusalCode, message?: string, extra?: { shiftId?: string; recountId?: string }): ShiftRefusal => ({ ok: false, code, message: message ?? MSG[code], ...(extra ?? {}) });
 const isRefusal = (v: unknown): v is ShiftRefusal => !!v && typeof v === "object" && (v as { ok?: unknown }).ok === false;
 
 async function guard<T>(name: string, body: () => Promise<T>): Promise<T | ShiftRefusal> {
@@ -238,6 +259,28 @@ function viewOf(r: PosShift): ShiftView {
     overShortSatang: r.overShortSatang,
   };
 }
+
+function recountViewOf(x: PosShiftRecount): RecountView {
+  return {
+    id: x.id,
+    shiftId: x.shiftId,
+    zNumber: x.zNumber,
+    expectedCashSatang: x.expectedCashSatang,
+    countedCashSatang: x.countedCashSatang,
+    varianceSatang: x.varianceSatang,
+    countDetail: isRecord(x.countDetail) ? (x.countDetail as Record<string, number>) : null,
+    note: x.note,
+    recountedByUserId: x.recountedByUserId,
+    recountedAt: x.createdAt.toISOString(),
+  };
+}
+/** การนับย้อนหลังของกะ (กะอยู่ในขอบเขตแล้ว · ไม่มี = null) — R12 ทางอ่าน */
+async function recountOf(db: Db | Tx, r: Pick<PosShift, "id" | "tenantId">): Promise<RecountView | null> {
+  const x = await db.posShiftRecount.findFirst({ where: { shiftId: r.id, tenantId: r.tenantId } });
+  return x ? recountViewOf(x) : null;
+}
+/** { "<ธนบัตร>": จำนวน } เทียบแบบไม่สนลำดับคีย์ (jsonb คืนลำดับคีย์ต่างจากที่ส่ง) */
+const detailKey = (v: unknown): string => (isRecord(v) ? JSON.stringify(Object.entries(v).sort(([a], [b]) => a.localeCompare(b))) : "null");
 
 const isStale = (r: Pick<PosShift, "status" | "openedAt">, hours: number, now: Date) => r.status === "OPEN" && r.openedAt.getTime() + hours * HOUR_MS < now.getTime();
 
@@ -495,7 +538,8 @@ export async function currentShift(ctx: RegisterCtx, actor: RegisterActor, input
   });
 }
 
-export type ShiftReportResult = { ok: true; report: ShiftReport } | ShiftRefusal;
+/** P1.9b (R12): กะที่ปิดแล้ว = Z เดิมทุกไบต์ + recount ข้างกัน (null = ยังไม่นับย้อนหลัง) · X ของกะ OPEN ไม่มีคีย์ recount */
+export type ShiftReportResult = { ok: true; report: ShiftReport; recount?: RecountView | null } | ShiftRefusal;
 /** รายงาน X (S9) — คำนวณสด ไม่เขียนอะไร · กะที่ปิดแล้ว = Z ที่เก็บไว้ · blindClose: ไม่มี manage ไม่เห็นยอดที่ควรมีระหว่างกะเปิด · ไม่มี manage = กะของตัวเอง/กะเปิดของเครื่องนี้ (R2 F3) */
 export async function xReport(ctx: RegisterCtx, actor: RegisterActor, input: { shiftId: string }, client?: Db): Promise<ShiftReportResult> {
   return guard("xReport", async (): Promise<ShiftReportResult> => {
@@ -509,7 +553,7 @@ export async function xReport(ctx: RegisterCtx, actor: RegisterActor, input: { s
     //   ข้อยกเว้นเดียว: กะ OPEN ของเครื่องที่ยืนอยู่ (ctx.deviceId = เครื่องของกะ) — แคชเชียร์รับลิ้นชักต่อ (X4 · blindClose ยังซ่อนยอดที่ควรมี)
     const atDevice = r.status === "OPEN" && isRecord(ctx) && typeof ctx.deviceId === "string" && ctx.deviceId === r.deviceId;
     if (!s.manage && r.openedByUserId !== s.actor.userId && !atDevice) return refuse("PERMISSION_DENIED");
-    if (r.status !== "OPEN" && r.zReport) return { ok: true, report: r.zReport as unknown as ShiftReport };
+    if (r.status !== "OPEN" && r.zReport) return { ok: true, report: r.zReport as unknown as ShiftReport, recount: await recountOf(db, r) };
     const rep = await computeReport(db, r);
     if (s.settings.blindClose && !s.manage && r.status === "OPEN") rep.expectedCashSatang = null;
     return { ok: true, report: rep };
@@ -527,7 +571,7 @@ export async function zReport(ctx: RegisterCtx, actor: RegisterActor, input: { s
     if (!r) return refuse("NOT_FOUND");
     if (!s.manage && r.openedByUserId !== s.actor.userId) return refuse("PERMISSION_DENIED");
     if (r.status === "OPEN" || !r.zReport) return refuse("VALIDATION", "กะนี้ยังไม่ปิด — ดูรายงาน X แทน");
-    return { ok: true, report: r.zReport as unknown as ShiftReport };
+    return { ok: true, report: r.zReport as unknown as ShiftReport, recount: await recountOf(db, r) };
   });
 }
 
@@ -648,7 +692,100 @@ export async function recordCashMovement(ctx: RegisterCtx, actor: RegisterActor,
   });
 }
 
-export type ListShiftsResult = { ok: true; items: ShiftView[] } | ShiftRefusal;
+export type RecountShiftInput = { shiftId: string; countedCashSatang: number; countDetail?: Record<string, number> | null; note: string; idempotencyKey: string };
+export type RecountShiftResult = { ok: true; recount: RecountView; duplicated?: true } | ShiftRefusal;
+
+/**
+ * P1.9b (Q9.4 · R1–R11) ผู้จัดการนับเงินย้อนหลังของกะที่ระบบบังคับปิด — 1 ครั้งต่อกะ ครั้งเดียวจบ · audit ในtx เดียวกัน
+ * ลำดับตายตัว: ขอบเขต → สิทธิ์ manage → ตรวจค่า → คีย์กันซ้ำ → tx (ล็อกกะ FOR UPDATE → FORCE_CLOSED → มีการนับแล้ว? → เขียน)
+ * 🔴 ไม่เขียนแถว PosShift (Z แช่แข็ง R3) · ไม่ขยับตัวนับ · ไม่มี event (R14) · variance = counted − expected ของ Z (R4)
+ */
+export async function recountShift(ctx: RegisterCtx, actor: RegisterActor, input: RecountShiftInput, client?: Db): Promise<RecountShiftResult> {
+  return guard("recountShift", async (): Promise<RecountShiftResult> => {
+    const db = client ?? prisma;
+    const s = await scopeOf(db, ctx, actor);
+    if (isRefusal(s)) return s;
+    // R7: manage เท่านั้น (คนเปิดกะที่มีแค่ operate ก็ไม่ได้) · ตรวจก่อนคีย์กันซ้ำ ⇒ คีย์เดิมข้ามสิทธิ์ไม่ได้
+    if (!s.manage) return refuse("PERMISSION_DENIED", "นับย้อนหลังต้องมีสิทธิ์จัดการกะ");
+    if (!isRecord(input) || !onlyKeys(input, ["shiftId", "countedCashSatang", "countDetail", "note", "idempotencyKey"])) return refuse("VALIDATION");
+    if (!isInt(input.countedCashSatang, 0, COUNT_MAX)) return refuse("VALIDATION", "ยอดนับต้องเป็นจำนวนเต็มสตางค์ ไม่ติดลบ");
+    const counted = input.countedCashSatang;
+    const detail = denomDetail(input.countDetail, counted);
+    if (detail === false) return refuse("VALIDATION", "จำนวนธนบัตร/เหรียญรวมไม่เท่ายอดนับ");
+    const note = typeof input.note === "string" ? optText(input.note, NOTE_MAX) : false;
+    if (!note) return refuse("VALIDATION", `ใส่เหตุผล 1–${NOTE_MAX} ตัวอักษร`);
+    if (!isId(input.idempotencyKey)) return refuse("VALIDATION", "ไม่มีรหัสรายการ");
+    if (!isId(input.shiftId)) return refuse("NOT_FOUND");
+    const { shiftId, idempotencyKey } = input;
+
+    const same = (x: PosShiftRecount) =>
+      x.unitId === s.unitId && x.systemId === s.systemId && x.shiftId === shiftId && x.countedCashSatang === counted && x.note === note && detailKey(x.countDetail) === detailKey(detail);
+    const prior = async (): Promise<RecountShiftResult | null> => {
+      const x = await db.posShiftRecount.findUnique({ where: { tenantId_idempotencyKey: { tenantId: s.tenantId, idempotencyKey } } });
+      if (!x) return null;
+      return same(x) ? { ok: true, recount: recountViewOf(x), duplicated: true } : refuse("IDEMPOTENCY_CONFLICT");
+    };
+    const p0 = await prior();
+    if (p0) return p0;
+    try {
+      return await runTx(db, async (tx): Promise<RecountShiftResult> => {
+        const r = await lockShift(tx, s, shiftId);
+        if (!r) return refuse("NOT_FOUND");
+        if (r.status !== "FORCE_CLOSED") return refuse("SHIFT_NOT_FORCED");
+        if (r.zNumber === null || r.expectedCashSatang === null) return refuse("INTERNAL");
+        // ล็อกแถวกะแล้ว ⇒ ผู้แข่งที่ชนะก่อน commit แล้ว (READ COMMITTED อ่านเห็น) · คีย์เดียวกัน payload เดิม = ผู้แพ้การแข่ง prior() (R11)
+        const ex = await tx.posShiftRecount.findUnique({ where: { shiftId } });
+        if (ex) {
+          if (ex.tenantId === s.tenantId && ex.idempotencyKey === idempotencyKey) return same(ex) ? { ok: true, recount: recountViewOf(ex), duplicated: true } : refuse("IDEMPOTENCY_CONFLICT");
+          return refuse("ALREADY_RECOUNTED", undefined, { recountId: ex.id });
+        }
+        const variance = counted - r.expectedCashSatang;
+        const row = await tx.posShiftRecount.create({
+          data: {
+            tenantId: s.tenantId,
+            unitId: s.unitId,
+            systemId: s.systemId,
+            shiftId,
+            zNumber: r.zNumber,
+            expectedCashSatang: r.expectedCashSatang,
+            countedCashSatang: counted,
+            varianceSatang: variance,
+            countDetail: detail ?? Prisma.DbNull,
+            note,
+            recountedByUserId: s.actor.userId,
+            idempotencyKey,
+          },
+        });
+        // R5: audit 1 แถวต่อการนับ ในtx เดียวกัน (ซ้ำ/ปฏิเสธ = ไม่มี audit)
+        await tx.auditLog.create({
+          data: {
+            tenantId: s.tenantId,
+            unitId: s.unitId,
+            actorType: "USER",
+            actorId: s.actor.userId,
+            action: "pos.shift.recount",
+            targetType: "PosShift",
+            targetId: shiftId,
+            before: { status: "FORCE_CLOSED", zNumber: r.zNumber, expectedCashSatang: r.expectedCashSatang, countedCashSatang: null } as Prisma.InputJsonValue,
+            after: { recountId: row.id, countedCashSatang: counted, varianceSatang: variance, note } as Prisma.InputJsonValue,
+          },
+        });
+        return { ok: true, recount: recountViewOf(row) };
+      });
+    } catch (e) {
+      // ตัวสำรอง: unique (tenantId, key) หรือ shiftId ตัดสิน — คีย์เดิม = prior() · อื่น = ALREADY_RECOUNTED
+      if (!isUniqueViolation(e)) throw e;
+      const p1 = await prior();
+      if (p1) return p1;
+      const w = await db.posShiftRecount.findUnique({ where: { shiftId }, select: { id: true } });
+      return refuse("ALREADY_RECOUNTED", undefined, w ? { recountId: w.id } : undefined);
+    }
+  });
+}
+
+/** P1.9b (R12): item.recount = สรุปการนับย้อนหลัง (null = ไม่มี) */
+export type ShiftListItem = ShiftView & { recount: ShiftRecountBrief | null };
+export type ListShiftsResult = { ok: true; items: ShiftListItem[] } | ShiftRefusal;
 /** ประวัติกะของสาขา (ใหม่ก่อน) — manage = ทุกกะ · operate = ของตัวเอง */
 export async function listShifts(ctx: RegisterCtx, actor: RegisterActor, input: { limit?: number } = {}, client?: Db): Promise<ListShiftsResult> {
   return guard("listShifts", async (): Promise<ListShiftsResult> => {
@@ -663,7 +800,20 @@ export async function listShifts(ctx: RegisterCtx, actor: RegisterActor, input: 
       orderBy: [{ openedAt: "desc" }, { id: "desc" }],
       take: lim,
     });
-    return { ok: true, items: rows.map(viewOf) };
+    const recs = rows.length
+      ? await db.posShiftRecount.findMany({
+          where: { tenantId: s.tenantId, shiftId: { in: rows.map((x) => x.id) } },
+          select: { shiftId: true, countedCashSatang: true, varianceSatang: true, createdAt: true },
+        })
+      : [];
+    const byShift = new Map(recs.map((x) => [x.shiftId, x]));
+    return {
+      ok: true,
+      items: rows.map((x) => {
+        const rc = byShift.get(x.id);
+        return { ...viewOf(x), recount: rc ? { countedCashSatang: rc.countedCashSatang, varianceSatang: rc.varianceSatang, recountedAt: rc.createdAt.toISOString() } : null };
+      }),
+    };
   });
 }
 
