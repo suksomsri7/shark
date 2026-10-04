@@ -161,7 +161,7 @@ const CHECKS: readonly (readonly [string, string, string])[] = [
   ["P1.3-S3.35", "X2", "ขอบเขตสาขา/ร้านของ productId: สินค้าเฉพาะสาขา 2 · ของคลังสาขา 2 · ของร้านอื่น → quote/submit PRODUCT_NOT_FOUND (มติ 3.1 ข้อ 3) ไม่มียอด/บรรทัด/ชื่อรั่ว ไม่มีบิล · คู่บวก: สินค้าสาขา 2 quote ที่สาขา 2 ได้"],
   ["P1.3-S3.36", "-", "[Addendum + มติ 3.1 ข้อ 9] ปฏิเสธ = คืน {ok:false, code, message} ไม่ throw: limit 0 / 1.5 / \"10\" / cursor มั่ว → VALIDATION · q มี NUL → VALIDATION หรือ ok · quote lines ผิดชนิด · submit input null · status unitId มี NUL"],
   ["P1.3-S3.37", "X4", "[มติ 3.1 ข้อ 2] expectedGrandTotalSatang: ไม่ส่ง / 6500.5 / −1 / สตริง → VALIDATION · คาด = ยอดเซิร์ฟเวอร์แต่จ่ายต่าง → PAYMENT_MISMATCH · คาดผิดและจ่ายผิด → PRICE_CHANGED (ตรวจก่อน) · ไม่มีบิล"],
-  ["P1.3-S3.38", "X4", "[มติ 3.1 ข้อ 4] วิธีจ่ายใน P1.3 = CASH|PROMPTPAY เท่านั้น: TRANSFER / DEPOSIT / ROOM_CHARGE / CARD / รหัสมั่ว → VALIDATION ไม่มีบิล · PROMPTPAY ล้วน (ไม่ส่ง cashReceived) → PAID เงินทอน 0"],
+  ["P1.3-S3.38", "X4", "[มติ 3.1 ข้อ 4 · ORACLE-EDIT P1.6 §8.7] TRANSFER / CARD → PAID (P1.6 R2) · DEPOSIT / ROOM_CHARGE / รหัสมั่ว → VALIDATION ไม่มีบิล · PROMPTPAY ล้วน (ไม่ส่ง cashReceived) → PAID เงินทอน 0"],
   ["P1.3-S3.39", "X4", "[มติ 3.1 ข้อ 4] เงินสด: ไม่ส่ง cashReceivedSatang / รับน้อยกว่าส่วนเงินสด 1 สตางค์ → PAYMENT_MISMATCH ไม่มีบิล · เงินสด 4,000 + พร้อมเพย์ รับ 5,000 → PAID changeSatang 1,000 (คิดจากส่วนเงินสด)"],
   ["P1.3-S3.40", "X1", "[3.2 ข้อ 1] idempotency ไม่ขึ้นกับลำดับบรรทัด: [ราคาเปิด 60.00 ของ P, P ปกติ] สลับลำดับ → ok duplicated บิลเดียว · ต่างจริง (สินค้าอื่นราคาเท่ากัน / สมาชิกอื่น / แบ่งส่วนลดต่างแต่ยอดเท่า / แบ่งวิธีจ่ายต่าง) → IDEMPOTENCY_CONFLICT พร้อม saleId ของบิลเดิม"],
   ["P1.3-S3.41", "X1", "[3.2 ข้อ 2] ส่งซ้ำ key ของบิลที่ VOIDED แล้ว → ไม่ใช่ ok: IDEMPOTENCY_CONFLICT พร้อม saleId และสถานะบิล (VOIDED)"],
@@ -1980,7 +1980,17 @@ async function runDb() {
   // S3.38 วิธีจ่ายของ P1.3 = CASH | PROMPTPAY (มติ ข้อ 4 · P1.6 เปิดที่เหลือ) — createSale เดิมของโมดูลอื่นไม่เปลี่ยน (S3.22)
   const r38: string[] = [];
   let ok38 = true;
-  for (const t of ["TRANSFER", "DEPOSIT", "ROOM_CHARGE", "CARD", "QC_NOT_A_METHOD"]) {
+  // ORACLE-EDIT (P1.6 · มติ pos-brief-P1.6 §8 ข้อ 7 — อนุมัติให้แก้ตอน build): TRANSFER + CARD เป็นวิธีจ่ายของหน้าขายแล้ว (P1.6 R2)
+  //   ⇒ สองตัวนี้ต้อง PAID (แถวจ่ายชนิดนั้น 1 แถว) · DEPOSIT / ROOM_CHARGE / รหัสมั่ว ยัง VALIDATION ไม่มีบิลเหมือนเดิม
+  for (const t of ["TRANSFER", "CARD"]) {
+    const k = key(`paytype-${t}`);
+    const r = await sub(owner, { idempotencyKey: k, lines: [{ productId: A?.id, qty: 1 }], payMethods: [{ type: t, amountSatang: tA }] });
+    const sale = await saleByKey(k);
+    const pays = sale ? ((await P.posPayment.findMany({ where: { saleId: sale.id } })) as Any[]) : [];
+    r38.push(`${t}:${codeOf(r)}${sale ? "+บิล" : ""}`);
+    if (!(r?.ok === true && pays.length === 1 && pays[0].type === t)) ok38 = false;
+  }
+  for (const t of ["DEPOSIT", "ROOM_CHARGE", "QC_NOT_A_METHOD"]) {
     const k = key(`paytype-${t}`);
     const r = await sub(owner, { idempotencyKey: k, lines: [{ productId: A?.id, qty: 1 }], payMethods: [{ type: t, amountSatang: tA }] });
     const made = !!(await saleByKey(k));
@@ -1992,7 +2002,7 @@ async function runDb() {
   const sale38pp = await saleByKey(k38pp);
   const pays38 = sale38pp ? ((await P.posPayment.findMany({ where: { saleId: sale38pp.id } })) as Any[]) : [];
   chk("P1.3-S3.38", ok38 && s38pp?.ok === true && s38pp.changeSatang === 0 && pays38.length === 1 && pays38[0].type === "PROMPTPAY" && pays38[0].amountSatang === tA,
-    "5 วิธีนอก CASH/PROMPTPAY → VALIDATION ไม่มีบิล · PROMPTPAY ล้วน PAID ทอน 0", `${r38.join(" ")} · pp ${codeOf(s38pp)} ทอน ${s38pp?.changeSatang} pays ${pays38.map((p) => `${p.type}:${p.amountSatang}`).join(",")}`);
+    "TRANSFER/CARD → PAID (P1.6 ORACLE-EDIT) · DEPOSIT/ROOM_CHARGE/มั่ว → VALIDATION ไม่มีบิล · PROMPTPAY ล้วน PAID ทอน 0", `${r38.join(" ")} · pp ${codeOf(s38pp)} ทอน ${s38pp?.changeSatang} pays ${pays38.map((p) => `${p.type}:${p.amountSatang}`).join(",")}`);
   // S3.39 เงินสดที่รับ (มติ ข้อ 4): ต้องส่งเมื่อมีส่วนเงินสด · ≥ ส่วนเงินสด · ทอน = รับ − ส่วนเงินสด
   const k39a = key("cash-no-recv");
   const s39a = await subRaw(owner, { idempotencyKey: k39a, lines: [{ productId: A?.id, qty: 1 }], payMethods: pay(tA), expectedGrandTotalSatang: tA });

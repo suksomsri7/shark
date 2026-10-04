@@ -31,6 +31,8 @@ export type PriceCartInput = {
   vat: PriceVat;
   /** เพดานส่วนลดของผู้ขาย (basis point ของ subtotal) · null/ไม่ส่ง = ไม่จำกัด */
   maxDiscountBp?: number | null;
+  /** POS P1.6 ค่าบริการ (basis point · 0–10000) ของยอดหลังส่วนลดทั้งหมด · ปัดครึ่งขึ้นระดับบิล · อยู่ในฐาน VAT · ไม่ส่ง/0 = ไม่มี */
+  serviceChargeBp?: number | null;
 };
 
 export type PriceCartLine = {
@@ -50,6 +52,8 @@ export type PriceCartOk = {
   billDiscountSatang: number;
   couponDiscountSatang: number;
   netSatang: number;
+  /** POS P1.6 ค่าบริการ (สตางค์) — รวมอยู่ใน grandTotal · ไม่เปิด = 0 */
+  serviceChargeSatang: number;
   vatSatang: number;
   grandTotalSatang: number;
   vatMode: PriceVatMode;
@@ -131,6 +135,9 @@ export function priceCart(input: PriceCartInput): PriceCartResult {
   const maxRaw: unknown = input.maxDiscountBp;
   if (maxRaw !== undefined && maxRaw !== null && !(isInt(maxRaw) && maxRaw >= 0)) return refuse("VALIDATION", "เพดานส่วนลดไม่ถูกต้อง");
   const maxDiscountBp = maxRaw === undefined || maxRaw === null ? null : Math.min(maxRaw as number, BP_FULL);
+  const scRaw: unknown = input.serviceChargeBp;
+  if (scRaw !== undefined && scRaw !== null && !(isInt(scRaw) && scRaw >= 0 && scRaw <= BP_FULL)) return refuse("VALIDATION", "อัตราค่าบริการไม่ถูกต้อง");
+  const serviceChargeBp = scRaw === undefined || scRaw === null ? 0 : (scRaw as number);
   const couponRaw: unknown = input.couponDiscountSatang;
   if (couponRaw !== undefined && couponRaw !== null && !isMoney(couponRaw)) return refuse("VALIDATION", "ส่วนลดคูปองไม่ถูกต้อง");
   const couponAsked = (couponRaw as number | null | undefined) ?? 0;
@@ -199,13 +206,17 @@ export function priceCart(input: PriceCartInput): PriceCartResult {
   const couponDiscountSatang = Math.min(couponAsked, afterBill);
   const net = afterBill - couponDiscountSatang;
 
+  // POS P1.6 ค่าบริการ: % ของยอดหลังส่วนลดทั้งหมด ปัดครึ่งขึ้นระดับบิล (มติ K3) · อยู่ในฐาน VAT
+  const serviceChargeSatang = serviceChargeBp > 0 && net > 0 ? roundHalfUp(net * serviceChargeBp, BP_FULL) : 0;
+  const vatBase = net + serviceChargeSatang;
+
   // VAT ระดับบิล ปัดครึ่งขึ้น
   let vatSatang = 0;
-  let grand = net;
-  if (vatMode === "INCLUDED" && vatRateBp > 0) vatSatang = roundHalfUp(net * vatRateBp, BP_FULL + vatRateBp);
+  let grand = vatBase;
+  if (vatMode === "INCLUDED" && vatRateBp > 0) vatSatang = roundHalfUp(vatBase * vatRateBp, BP_FULL + vatRateBp);
   else if (vatMode === "EXCLUDED" && vatRateBp > 0) {
-    vatSatang = roundHalfUp(net * vatRateBp, BP_FULL);
-    grand = net + vatSatang;
+    vatSatang = roundHalfUp(vatBase * vatRateBp, BP_FULL);
+    grand = vatBase + vatSatang;
   }
   if (grand > PRICE_MAX_SATANG) return refuse("INVALID_LINE", "ยอดรวมของบิลสูงเกินที่ระบบรับได้");
 
@@ -216,6 +227,7 @@ export function priceCart(input: PriceCartInput): PriceCartResult {
     billDiscountSatang,
     couponDiscountSatang,
     netSatang: net,
+    serviceChargeSatang,
     vatSatang,
     grandTotalSatang: grand,
     vatMode,

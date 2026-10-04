@@ -834,6 +834,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
             billDiscountSatang: r.billDiscountSatang,
             couponDiscountSatang: r.couponDiscountSatang,
             netSatang: r.netSatang,
+            serviceChargeSatang: r.serviceChargeSatang, // P1.6: ยอดสดมีค่าบริการด้วย (ส่งต่อเฉย ๆ · การแสดงผลเป็นงานของ builder U)
             vatSatang: r.vatSatang,
             grandTotalSatang: r.grandTotalSatang,
             lines: r.lines,

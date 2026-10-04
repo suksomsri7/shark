@@ -411,12 +411,16 @@ export async function posLinkSaleToDeal(tenantId: string, actor: MemberActor, in
 //    ส่วนลดเกินเพดาน/เกินยอด = ปฏิเสธ · บิลจริงเดินผ่าน createSale เดิม (ตัดสต็อก · บัญชี · แต้ม · outbox เหมือนวันนี้ทุกประการ)
 import { Prisma, type PosProduct, type PrismaClient } from "@prisma/client";
 import { canAccessUnit, evaluate, permissionValue } from "@/lib/core/rbac";
-import { createSale, type CreateSaleInput } from "./service";
+import { createSale, PosSaleError, type CreateSaleInput } from "./service";
+import { posPaymentSettings, type PosPaymentSettings } from "./payment-settings";
 import { effectiveTrackStock, menuSoldOutIds, rowAvailable } from "./catalog";
 import { priceCart, roundHalfUp, PRICE_MAX_SATANG, type PriceDiscount } from "./pricing-shared";
 import {
   REGISTER_MAX_LINES,
+  REGISTER_MAX_PAY_METHODS,
   REGISTER_MAX_QTY,
+  REGISTER_NOTE_MAX,
+  REGISTER_REFERENCE_MAX,
   REGISTER_PAGE_MAX,
   REGISTER_PAGE_SIZE,
   REGISTER_PAY_TYPES,
@@ -470,6 +474,9 @@ const REG_MESSAGE: Record<RegisterRefusalCode, string> = {
   INTERNAL: "ระบบขายขัดข้องชั่วคราว — ลองอีกครั้งด้วยบิลเดิม ระบบจะไม่เก็บเงินซ้ำ",
   UNKNOWN: "เกิดข้อผิดพลาด — ลองอีกครั้ง",
   ALREADY_RECALLED: "บิลที่พักนี้ถูกเรียกคืนไปแล้ว (อาจจากอีกเครื่อง)",
+  UNIT_SYSTEM_MISMATCH: "เลือกจุดขายก่อน — สาขานี้ไม่ได้ผูกกับจุดขายนี้",
+  SPLIT_INVALID: `แบ่งจ่ายได้ไม่เกิน ${REGISTER_MAX_PAY_METHODS} รายการ`,
+  TIP_ACCOUNT_REQUIRED: "เปิดรับทิปไม่ได้ — เลือกบัญชีพักทิปในสมุดบัญชีที่เชื่อมกับจุดขายนี้ก่อน",
 };
 const REG_ROLE_LABEL: Record<RegisterRole, string> = { OWNER: "เจ้าของร้าน", MANAGER: "ผู้จัดการ", STAFF: "แคชเชียร์" };
 
@@ -727,13 +734,15 @@ export async function registerScan(ctx: RegisterCtx, actor: RegisterActor, input
 }
 
 // ── ตะกร้าของคำขอ (quote/submit) ──
+// note = หมายเหตุบรรทัด (P1.6 R5 · เก็บลงบิลตอน submit · quote ไม่ใช้)
 type RegParsedLine =
-  | { kind: "product"; productId: string; qty: number; discount: PriceDiscount | null; openPrice: number | null }
-  | { kind: "custom"; name: string; qty: number; unitPriceSatang: number; discount: PriceDiscount | null };
+  | { kind: "product"; productId: string; qty: number; discount: PriceDiscount | null; openPrice: number | null; note?: string | null }
+  | { kind: "custom"; name: string; qty: number; unitPriceSatang: number; discount: PriceDiscount | null; note?: string | null };
 type RegParsedCart = { lines: RegParsedLine[]; billDiscount: PriceDiscount | null; memberId: string | null };
 
 const REG_QUOTE_KEYS: ReadonlySet<string> = new Set(["lines", "billDiscount", "memberId"]);
-const REG_SUBMIT_KEYS: ReadonlySet<string> = new Set([...REG_QUOTE_KEYS, "idempotencyKey", "payMethods", "cashReceivedSatang", "expectedGrandTotalSatang"]);
+const REG_SUBMIT_KEYS: ReadonlySet<string> = new Set([...REG_QUOTE_KEYS, "idempotencyKey", "payMethods", "cashReceivedSatang", "expectedGrandTotalSatang", "tipSatang", "note"]);
+const REG_PAY_KEYS: ReadonlySet<string> = new Set(["type", "amountSatang", "reference"]);
 const REG_LINE_KEYS: ReadonlySet<string> = new Set(["productId", "name", "qty", "unitPriceSatang", "openPrice", "discount", "note"]);
 
 /** ส่วนลดถูกรูป: undefined/null = ไม่มี · ผิดรูป = undefined */
@@ -776,9 +785,10 @@ function regParseCart(raw: unknown, allowed: ReadonlySet<string>): RegParsedCart
     }
     const discount = regDiscount(l.discount);
     if (discount === undefined) return regRefuse("INVALID_LINE", "ส่วนลดของรายการไม่ถูกต้อง", i);
-    if (l.note !== undefined && l.note !== null && (typeof l.note !== "string" || l.note.length > 500 || !regCleanText(l.note))) {
+    if (l.note !== undefined && l.note !== null && (typeof l.note !== "string" || l.note.length > REGISTER_NOTE_MAX || !regCleanText(l.note))) {
       return regRefuse("VALIDATION", undefined, i);
     }
+    const note = typeof l.note === "string" && l.note.length > 0 ? l.note : null;
     if (l.openPrice !== undefined && typeof l.openPrice !== "boolean") return regRefuse("VALIDATION", undefined, i);
     if (l.productId !== undefined && l.productId !== null) {
       if (!regIsId(l.productId)) return regRefuse("VALIDATION", undefined, i);
@@ -788,13 +798,13 @@ function regParseCart(raw: unknown, allowed: ReadonlySet<string>): RegParsedCart
         openPrice = l.unitPriceSatang;
       }
       // ราคาที่ client ส่งมากับสินค้าแคตตาล็อก (ไม่ใช่ราคาเปิด) = ไม่ใช้เลย — ราคามาจาก DB เสมอ (มติ R2)
-      lines.push({ kind: "product", productId: l.productId, qty: l.qty, discount, openPrice });
+      lines.push({ kind: "product", productId: l.productId, qty: l.qty, discount, openPrice, note });
     } else {
       if (l.openPrice === true) return regRefuse("VALIDATION", undefined, i);
       const name = typeof l.name === "string" ? l.name.trim() : "";
       if (!name || name.length > 200 || !regCleanText(name)) return regRefuse("VALIDATION", "รายการกำหนดเองต้องมีชื่อ", i);
       if (!regIsMoney(l.unitPriceSatang)) return regRefuse("INVALID_LINE", "ราคาต้องเป็นจำนวนเต็มสตางค์ที่ไม่ติดลบ", i);
-      lines.push({ kind: "custom", name, qty: l.qty, unitPriceSatang: l.unitPriceSatang, discount });
+      lines.push({ kind: "custom", name, qty: l.qty, unitPriceSatang: l.unitPriceSatang, discount, note });
     }
   }
   return { lines, billDiscount, memberId };
@@ -869,13 +879,19 @@ type RegResolvedLine = {
   productId: string | null;
   itemId: string | null;
   serviceId: string | null;
+  note: string | null;
 };
 
 /**
  * คิดราคาฝั่งเซิร์ฟเวอร์ (ใช้ร่วม quote + submit): สิทธิ์ราคาเอง → สมาชิก → สินค้า (ขายได้ที่สาขานี้ · เปิดขาย · ไม่มีตัวเลือกบังคับ ·
  * มีราคา) → priceCart ด้วยราคาจาก DB · เพดานส่วนลดของผู้ขาย · VAT ของสมุดที่ผูก
  */
-async function regPrice(db: RegDb, s: RegScope, cart: RegParsedCart): Promise<{ quote: RegisterQuoteTotals; resolved: RegResolvedLine[] } | RegisterRefusal> {
+async function regPrice(
+  db: RegDb,
+  s: RegScope,
+  cart: RegParsedCart,
+  pay?: PosPaymentSettings,
+): Promise<{ quote: RegisterQuoteTotals; resolved: RegResolvedLine[] } | RegisterRefusal> {
   // Q8: รายการกำหนดเอง / ราคาเปิด ต้องมี pos.sale.priceOverride (OWNER/MANAGER ได้ตามบทบาท · STAFF ต้องได้รับ)
   const needOverride = cart.lines.findIndex((l) => l.kind === "custom" || l.openPrice !== null);
   if (needOverride >= 0 && !evaluate(s.actor, { module: "pos", action: "pos.sale.priceOverride", unitId: s.unitId })) {
@@ -897,7 +913,7 @@ async function regPrice(db: RegDb, s: RegScope, cart: RegParsedCart): Promise<{ 
     const l = cart.lines[i]!;
     if (l.kind === "custom") {
       priceLines.push({ qty: l.qty, unitPriceSatang: l.unitPriceSatang, discount: l.discount });
-      meta.push({ name: l.name, qty: l.qty, productId: null, itemId: null, serviceId: null });
+      meta.push({ name: l.name, qty: l.qty, productId: null, itemId: null, serviceId: null, note: l.note ?? null });
       continue;
     }
     const v = views.get(l.productId);
@@ -911,10 +927,13 @@ async function regPrice(db: RegDb, s: RegScope, cart: RegParsedCart): Promise<{ 
     // ตัดสต็อกเฉพาะสินค้าที่นับสต็อกจริง (C2 · trackStock off/AUTO ที่ยังไม่เคยมีสต็อก = ไม่ตัด) · บริการผูก serviceId (มติ R5)
     const itemId = v.kind === "PRODUCT" && v.invItemId && v.trackStock ? v.invItemId : null;
     const serviceId = v.kind === "SERVICE" && v.invItemId ? v.invItemId : null;
-    meta.push({ name: v.name, qty: l.qty, productId: v.id, itemId, serviceId });
+    meta.push({ name: v.name, qty: l.qty, productId: v.id, itemId, serviceId, note: l.note ?? null });
   }
   const vat = await regVat(db, s.tenantId, s.systemId);
-  const r = priceCart({ lines: priceLines, billDiscount: cart.billDiscount, vat, maxDiscountBp: regMaxDiscountBp(s.actor) });
+  // P1.6 O19: ค่าบริการตามค่าตั้งของระบบ POS (ปิด = 0 · ยอดเท่าวันนี้)
+  const settings = pay ?? (await regPaySettings(db, s));
+  const serviceChargeBp = settings.serviceCharge.enabled ? settings.serviceCharge.rateBp : 0;
+  const r = priceCart({ lines: priceLines, billDiscount: cart.billDiscount, vat, maxDiscountBp: regMaxDiscountBp(s.actor), serviceChargeBp });
   if (!r.ok) return regRefuse(r.code, r.code === "DISCOUNT_EXCEEDS_LIMIT" || r.code === "TOO_MANY_LINES" ? undefined : r.message, r.lineIndex);
   // B1.1 (มติ 3.2 ข้อ 3 · D6 ใหม่): สมาชิกที่ createSale จะหักส่วนลดอัตโนมัติให้ = ปฏิเสธตั้งแต่ quote ก่อนเขียนอะไร (P1.12 รองรับ)
   if (cart.memberId) {
@@ -934,6 +953,7 @@ async function regPrice(db: RegDb, s: RegScope, cart: RegParsedCart): Promise<{ 
     billDiscountSatang: r.billDiscountSatang,
     couponDiscountSatang: r.couponDiscountSatang,
     netSatang: r.netSatang,
+    serviceChargeSatang: r.serviceChargeSatang,
     vatSatang: r.vatSatang,
     grandTotalSatang: r.grandTotalSatang,
     lines,
@@ -942,6 +962,12 @@ async function regPrice(db: RegDb, s: RegScope, cart: RegParsedCart): Promise<{ 
   };
   const resolved = r.lines.map((x, i) => ({ ...meta[i]!, unitPriceSatang: x.unitPriceSatang, discountSatang: x.discountSatang }));
   return { quote, resolved };
+}
+
+/** P1.6: ค่าตั้งการชำระเงินของระบบ POS นี้ (อ่านไม่ได้ = ปิดทั้งคู่ — ยอดเท่าวันนี้ ไม่เดาค่าบริการ) */
+async function regPaySettings(db: RegDb, s: RegScope): Promise<PosPaymentSettings> {
+  const r = await posPaymentSettings({ tenantId: s.tenantId, systemId: s.systemId }, db);
+  return r.ok ? { serviceCharge: r.serviceCharge, tip: r.tip } : { serviceCharge: { enabled: false, rateBp: 0 }, tip: { enabled: false, ledgerAccountId: null } };
 }
 
 /** ยอดบนจอจากราคาฝั่งเซิร์ฟเวอร์ (ไม่บันทึกอะไร) — ปฏิเสธไม่มียอดติดมา */
@@ -1000,9 +1026,12 @@ type RegParsedSubmit = {
   cart: RegParsedCart;
   /** คีย์ที่เก็บจริง = REG_KEY_PREFIX + คีย์ของ client (R4 K1) */
   idempotencyKey: string;
-  payMethods: { type: RegisterPayType; amountSatang: number }[];
+  payMethods: { type: RegisterPayType; amountSatang: number; reference: string | null }[];
   cashReceivedSatang: number | null;
   expected: number;
+  /** P1.6 ทิป (0 = ไม่มี) · หมายเหตุบิล (null = ไม่มี) */
+  tipSatang: number;
+  note: string | null;
 };
 
 /** โครงของ submit (ไม่แตะ DB) — วิธีจ่าย CASH/PROMPTPAY เท่านั้น (Addendum 2) · expected ต้องเป็นจำนวนเต็ม ≥ 0 */
@@ -1015,15 +1044,24 @@ function regParseSubmit(raw: unknown): RegParsedSubmit | RegisterRefusal {
   if (!regIsMoney(raw.expectedGrandTotalSatang)) return regRefuse("VALIDATION", "ยอดที่ต้องชำระไม่ถูกต้อง — ตรวจยอดใหม่อีกครั้ง");
   const pmRaw: unknown = raw.payMethods;
   // B1.1 (มติ 3.2 ข้อ 5): รายการว่างได้ (บิลยอด 0) — ว่างกับยอด ≠ 0 = PAYMENT_MISMATCH ที่ขั้น ④
-  if (!Array.isArray(pmRaw) || pmRaw.length > REGISTER_PAY_TYPES.length) return regRefuse("VALIDATION", "วิธีชำระเงินไม่ถูกต้อง");
+  if (!Array.isArray(pmRaw)) return regRefuse("VALIDATION", "วิธีชำระเงินไม่ถูกต้อง");
+  // P1.6 R2: แบ่งจ่าย 1…10 รายการ (ชนิดซ้ำได้ — เช่น บัตรสองใบ) · เกิน = SPLIT_INVALID ไม่มีบิล
+  if (pmRaw.length > REGISTER_MAX_PAY_METHODS) return regRefuse("SPLIT_INVALID");
   const payMethods: RegParsedSubmit["payMethods"] = [];
   for (const p of pmRaw as unknown[]) {
-    if (!regIsRecord(p) || !regOnlyKeys(p, new Set(["type", "amountSatang"]))) return regRefuse("VALIDATION", "วิธีชำระเงินไม่ถูกต้อง");
-    if (!(REGISTER_PAY_TYPES as readonly unknown[]).includes(p.type)) return regRefuse("VALIDATION", "หน้าขายนี้รับเงินสดและพร้อมเพย์เท่านั้น");
+    if (!regIsRecord(p) || !regOnlyKeys(p, REG_PAY_KEYS)) return regRefuse("VALIDATION", "วิธีชำระเงินไม่ถูกต้อง");
+    if (!(REGISTER_PAY_TYPES as readonly unknown[]).includes(p.type)) return regRefuse("VALIDATION", "หน้าขายนี้รับเงินสด พร้อมเพย์ โอน และบัตรเท่านั้น");
     // B1.1: แต่ละรายการต้อง ≥ 1 สตางค์ (รายการยอด 0 = VALIDATION — บิลยอด 0 ส่งรายการว่าง)
     if (!regIsMoney(p.amountSatang) || p.amountSatang < 1) return regRefuse("VALIDATION", "จำนวนเงินของแต่ละวิธีต้องเป็นจำนวนเต็มสตางค์ตั้งแต่ 1");
-    if (payMethods.some((x) => x.type === p.type)) return regRefuse("VALIDATION", "วิธีชำระเงินซ้ำกัน");
-    payMethods.push({ type: p.type as RegisterPayType, amountSatang: p.amountSatang });
+    // เงินสดได้รายการเดียว (เงินที่รับ/ทอนผูกกับแถวเงินสดแถวเดียว · มติ §8 ข้อ 2)
+    if (p.type === "CASH" && payMethods.some((x) => x.type === "CASH")) return regRefuse("VALIDATION", "เงินสดใส่ได้รายการเดียว");
+    let reference: string | null = null;
+    if (p.reference !== undefined && p.reference !== null) {
+      if (p.type !== "CARD" && p.type !== "TRANSFER") return regRefuse("VALIDATION", "เลขอ้างอิงใส่ได้เฉพาะบัตรและโอน");
+      if (typeof p.reference !== "string" || p.reference.length > REGISTER_REFERENCE_MAX || !regCleanText(p.reference)) return regRefuse("VALIDATION", "เลขอ้างอิงไม่ถูกต้อง");
+      reference = p.reference.trim() || null;
+    }
+    payMethods.push({ type: p.type as RegisterPayType, amountSatang: p.amountSatang, reference });
   }
   let cashReceivedSatang: number | null = null;
   if (raw.cashReceivedSatang !== undefined && raw.cashReceivedSatang !== null) {
@@ -1032,7 +1070,19 @@ function regParseSubmit(raw: unknown): RegParsedSubmit | RegisterRefusal {
   }
   const cash = payMethods.find((p) => p.type === "CASH")?.amountSatang ?? 0;
   if (cash === 0 && cashReceivedSatang !== null && cashReceivedSatang !== 0) return regRefuse("VALIDATION", "ไม่มีส่วนเงินสด — ไม่ต้องกรอกเงินที่รับ");
-  return { cart, idempotencyKey: REG_KEY_PREFIX + raw.idempotencyKey, payMethods, cashReceivedSatang, expected: raw.expectedGrandTotalSatang };
+  // P1.6 ทิป: จำนวนเต็มสตางค์ ≥ 0 (เปิดรับทิปไหม ตรวจกับค่าตั้งของระบบตอน submit)
+  let tipSatang = 0;
+  if (raw.tipSatang !== undefined && raw.tipSatang !== null) {
+    if (!regIsMoney(raw.tipSatang)) return regRefuse("VALIDATION", "ทิปต้องเป็นจำนวนเต็มสตางค์ที่ไม่ติดลบ");
+    tipSatang = raw.tipSatang;
+  }
+  // P1.6 R5 หมายเหตุบิล
+  let note: string | null = null;
+  if (raw.note !== undefined && raw.note !== null) {
+    if (typeof raw.note !== "string" || raw.note.length > REGISTER_NOTE_MAX || !regCleanText(raw.note)) return regRefuse("VALIDATION", `หมายเหตุบิลยาวได้ไม่เกิน ${REGISTER_NOTE_MAX} ตัวอักษร`);
+    note = raw.note.length > 0 ? raw.note : null;
+  }
+  return { cart, idempotencyKey: REG_KEY_PREFIX + raw.idempotencyKey, payMethods, cashReceivedSatang, expected: raw.expectedGrandTotalSatang, tipSatang, note };
 }
 
 type RegSaleRow = Prisma.PosSaleGetPayload<{ include: { lines: true; payments: true } }>;
@@ -1093,6 +1143,8 @@ function regSameSubmission(s: RegScope, req: RegParsedSubmit, sale: RegSaleRow):
   if (sale.unitId !== s.unitId || sale.systemId !== s.systemId || sale.sourceModule !== "POS") return false;
   if ((sale.memberId ?? null) !== req.cart.memberId) return false;
   if (sale.grandTotalSatang !== req.expected) return false;
+  // P1.6: ทิป + หมายเหตุบิลเป็นส่วนหนึ่งของคำขอ
+  if (sale.tipSatang !== req.tipSatang || (sale.note ?? null) !== req.note) return false;
   const payKey = (xs: { type: string; amountSatang: number }[]) => regBag(xs.map((p) => `${p.type}:${p.amountSatang}`));
   if (payKey(sale.payments) !== payKey(req.payMethods)) return false;
   if (sale.discountSatang !== regDiscountSatang(req.cart.billDiscount, sale.subtotalSatang)) return false;
@@ -1143,14 +1195,17 @@ export async function submitRegisterSale(ctx: RegisterCtx, actor: RegisterActor,
     // ① คีย์เดิมก่อนคิดราคา (ลองซ้ำหลังราคาเปลี่ยนต้องได้บิลเดิม)
     const prior = await regLoadSale(db, s.tenantId, req.idempotencyKey);
     if (prior) return regDuplicate(s, req, prior, true);
+    // P1.6: ค่าตั้งการชำระเงิน (ค่าบริการ · ทิป) — ทิปส่งมาตอนระบบไม่เปิดรับทิป = VALIDATION (ไม่มีบิล)
+    const paySettings = await regPaySettings(db, s);
+    if (req.tipSatang > 0 && !paySettings.tip.enabled) return regRefuse("VALIDATION", "จุดขายนี้ยังไม่เปิดรับทิป");
     // ②
-    const p = await regPrice(db, s, req.cart);
+    const p = await regPrice(db, s, req.cart, paySettings);
     if (isRegRefusal(p)) return p;
     const q = p.quote;
     // ③
     if (req.expected !== q.grandTotalSatang) return { ok: false, code: "PRICE_CHANGED", message: REG_MESSAGE.PRICE_CHANGED, ...q };
-    // ④ (⑤ ย้ายไปก่อน ① — R4 K4)
-    if (req.payMethods.reduce((t, x) => t + x.amountSatang, 0) !== q.grandTotalSatang) return regRefuse("PAYMENT_MISMATCH");
+    // ④ (⑤ ย้ายไปก่อน ① — R4 K4) · P1.6: ทิปอยู่นอกยอดบิล ⇒ Σ วิธีจ่าย = ยอด + ทิป (มติ §8 ข้อ 1)
+    if (req.payMethods.reduce((t, x) => t + x.amountSatang, 0) !== q.grandTotalSatang + req.tipSatang) return regRefuse("PAYMENT_MISMATCH");
     // ⑥
     const saleInput: CreateSaleInput = {
       tenantId: s.tenantId,
@@ -1167,9 +1222,19 @@ export async function submitRegisterSale(ctx: RegisterCtx, actor: RegisterActor,
         ...(l.itemId ? { itemId: l.itemId } : {}),
         ...(l.serviceId ? { serviceId: l.serviceId } : {}),
         ...(l.productId ? { productId: l.productId } : {}),
+        ...(l.note ? { note: l.note } : {}),
       })),
       billDiscountSatang: q.billDiscountSatang,
-      payMethods: req.payMethods.map((x) => ({ type: x.type, amountSatang: x.amountSatang })),
+      // P1.6: เงินที่รับอยู่บนแถวเงินสด (ทอนคิดที่ createSale) · เลขอ้างอิงบัตร/โอน
+      payMethods: req.payMethods.map((x) => ({
+        type: x.type,
+        amountSatang: x.amountSatang,
+        ...(x.reference ? { reference: x.reference } : {}),
+        ...(x.type === "CASH" && req.cashReceivedSatang !== null ? { cashTenderedSatang: req.cashReceivedSatang } : {}),
+      })),
+      ...(q.serviceChargeSatang > 0 ? { serviceChargeSatang: q.serviceChargeSatang } : {}),
+      ...(req.tipSatang > 0 ? { tipSatang: req.tipSatang } : {}),
+      ...(req.note ? { note: req.note } : {}),
     };
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
@@ -1187,6 +1252,14 @@ export async function submitRegisterSale(ctx: RegisterCtx, actor: RegisterActor,
           continue;
         }
         if (code === "P2034" || code === "P2028") continue; // ธุรกรรมชน/หมดเวลา = rollback แล้ว ลองซ้ำได้ (คีย์กันซ้ำ)
+        // P1.6: คำปฏิเสธของ createSale เป็นข้อมูล (ไม่มีบิลเกิด) — คีย์ชนแต่ payload ต่าง = อ่านบิลจริงมาตอบแบบคีย์ซ้ำ
+        if (e instanceof PosSaleError) {
+          if (e.code === "IDEMPOTENCY_CONFLICT") {
+            const row = await regLoadSale(db, s.tenantId, req.idempotencyKey);
+            return row ? regDuplicate(s, req, row, true) : regRefuse("IDEMPOTENCY_CONFLICT");
+          }
+          return regRefuse(e.code, e.code === "STOCK_INSUFFICIENT" ? e.message : undefined);
+        }
         // createSale ตรวจยอดอีกชั้น (เช่น ส่วนลดอัตโนมัติของระดับสมาชิกที่ P1.3 ยังไม่คิด · P1.12) — ไม่มีบิลเกิด
         if (e instanceof Error && e.message.startsWith("PAYMENT_MISMATCH")) return regRefuse("PAYMENT_MISMATCH");
         throw e;

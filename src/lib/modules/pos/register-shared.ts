@@ -16,8 +16,14 @@ export const REGISTER_LOW_STOCK = 5;
 /** ขนาดหน้าปริยายของ registerCatalog (สูงสุด REGISTER_PAGE_MAX) */
 export const REGISTER_PAGE_SIZE = 100;
 export const REGISTER_PAGE_MAX = 500;
-/** วิธีจ่ายที่หน้าขาย P1.3 รับ (Addendum 2 · ที่เหลือเปิดใน P1.6) */
-export const REGISTER_PAY_TYPES = ["CASH", "PROMPTPAY"] as const;
+/** วิธีจ่ายที่หน้าขายรับ (P1.3 Addendum 2 + P1.6 R2: โอน + บัตรแบบกรอกเลขอ้างอิง EDC · ไม่มีเกตเวย์ = P1.7) */
+export const REGISTER_PAY_TYPES = ["CASH", "PROMPTPAY", "TRANSFER", "CARD"] as const;
+/** P1.6 R2: แบ่งจ่ายได้ไม่เกินกี่รายการ (ชนิดซ้ำได้ · เงินสดได้รายการเดียว) — เกิน = SPLIT_INVALID */
+export const REGISTER_MAX_PAY_METHODS = 10;
+/** P1.6 R5: หมายเหตุบิล/บรรทัดยาวได้ไม่เกิน (ตัวอักษร) */
+export const REGISTER_NOTE_MAX = 500;
+/** P1.6: เลขอ้างอิงบัตร/โอน ยาวได้ไม่เกิน */
+export const REGISTER_REFERENCE_MAX = 100;
 /** เพดานส่วนลดปริยายของ STAFF (basis point · docs/modules/14-pos.md §9) — OWNER/MANAGER ไม่จำกัด เว้นตั้ง `pos._maxDiscountBp` */
 export const REGISTER_STAFF_MAX_DISCOUNT_BP = 1000;
 
@@ -71,7 +77,11 @@ export type RegisterRefusalCode =
   | "INTERNAL"
   | "UNKNOWN"
   // POS P1.5: เรียกคืนบิลที่พักซึ่งเครื่องอื่นเรียกไปแล้ว (ผู้ชนะคนเดียว · H2)
-  | "ALREADY_RECALLED";
+  | "ALREADY_RECALLED"
+  // POS P1.6: สาขาไม่ใช่ของจุดขายนี้ / ร้านมีหลายจุดขายแต่สาขาไม่ผูก (O21) · แบ่งจ่ายเกินเพดาน · เปิดทิปโดยไม่มีบัญชีพักทิป
+  | "UNIT_SYSTEM_MISMATCH"
+  | "SPLIT_INVALID"
+  | "TIP_ACCOUNT_REQUIRED";
 
 /** คำปฏิเสธ — คืนค่า ไม่ throw · `lineIndex` = บรรทัดที่ผิด (ลำดับเดียวกับที่ส่งมา) ถ้าระบุได้ */
 export type RegisterRefusal = { ok: false; code: RegisterRefusalCode; message: string; lineIndex?: number };
@@ -126,6 +136,8 @@ export type RegisterQuoteTotals = {
   billDiscountSatang: number;
   couponDiscountSatang: number;
   netSatang: number;
+  /** P1.6 ค่าบริการ (รวมอยู่ใน grandTotal + ฐาน VAT) · ระบบไม่เปิดค่าบริการ = 0 */
+  serviceChargeSatang: number;
   vatSatang: number;
   grandTotalSatang: number;
   /** ตรงลำดับบรรทัดที่ส่งมา · ราคาต่อหน่วย = ราคาที่เซิร์ฟเวอร์ใช้จริง (มติ Q22) */
@@ -137,13 +149,18 @@ export type RegisterQuote = { ok: true } & RegisterQuoteTotals;
 export type RegisterQuoteResult = RegisterQuote | RegisterRefusal;
 
 export type RegisterPayType = (typeof REGISTER_PAY_TYPES)[number];
-export type RegisterPayMethod = { type: RegisterPayType; amountSatang: number };
+/** reference = เลขอ้างอิงบัตร/EDC หรือโอน (P1.6 · ≤ REGISTER_REFERENCE_MAX · เงินสด/พร้อมเพย์ไม่มี) */
+export type RegisterPayMethod = { type: RegisterPayType; amountSatang: number; reference?: string };
 export type RegisterSubmitInput = RegisterQuoteInput & {
   /** คีย์เดียวต่อบิล — คงเดิมทุกการลองซ้ำ (สเปก §3.4) */
   idempotencyKey: string;
   payMethods: RegisterPayMethod[];
   /** ต้องมีเมื่อมีส่วนเงินสด และ ≥ ส่วนเงินสด */
   cashReceivedSatang?: number;
+  /** P1.6 ทิป (สตางค์ · นอกยอดบิล ⇒ Σ วิธีจ่าย = ยอดบิล + ทิป) — ส่งได้เมื่อระบบเปิดรับทิปเท่านั้น */
+  tipSatang?: number;
+  /** P1.6 หมายเหตุบิล (≤ REGISTER_NOTE_MAX) */
+  note?: string;
   /** ยอดที่แคชเชียร์เห็นจาก quote ล่าสุด (บังคับ · จำนวนเต็ม ≥ 0) — ไม่ตรงยอดเซิร์ฟเวอร์ = PRICE_CHANGED */
   expectedGrandTotalSatang: number;
 };
@@ -275,14 +292,16 @@ export function cartToQuoteInput(cart: RegisterCart): RegisterQuoteInput {
  */
 export function cartToSubmitInput(
   cart: RegisterCart,
-  pay: { idempotencyKey: string; payMethods: RegisterPayMethod[]; cashReceivedSatang?: number; expectedGrandTotalSatang: number },
+  pay: { idempotencyKey: string; payMethods: RegisterPayMethod[]; cashReceivedSatang?: number; expectedGrandTotalSatang: number; tipSatang?: number; note?: string },
 ): RegisterSubmitInput {
   const hasCash = pay.payMethods.some((p) => p.type === "CASH" && p.amountSatang > 0);
   return {
     ...cartToQuoteInput(cart),
     idempotencyKey: pay.idempotencyKey,
-    payMethods: pay.payMethods.map((p) => ({ type: p.type, amountSatang: p.amountSatang })),
+    payMethods: pay.payMethods.map((p) => ({ type: p.type, amountSatang: p.amountSatang, ...(p.reference ? { reference: p.reference } : {}) })),
     ...(hasCash && pay.cashReceivedSatang !== undefined ? { cashReceivedSatang: pay.cashReceivedSatang } : {}),
+    ...(pay.tipSatang ? { tipSatang: pay.tipSatang } : {}),
+    ...(pay.note ? { note: pay.note } : {}),
     expectedGrandTotalSatang: pay.expectedGrandTotalSatang,
   };
 }
@@ -336,6 +355,10 @@ const REFUSAL_KEY: Readonly<Record<string, string>> = {
   CONFLICT: "errors.conflict",
   BUSY: "errors.busy",
   ALREADY_RECALLED: "errors.alreadyRecalled",
+  // POS P1.6
+  UNIT_SYSTEM_MISMATCH: "errors.unitSystemMismatch",
+  SPLIT_INVALID: "errors.splitInvalid",
+  TIP_ACCOUNT_REQUIRED: "errors.tipAccountRequired",
 };
 
 /**

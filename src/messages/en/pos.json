@@ -227,7 +227,10 @@
       "amountInvalid": "That number isn't valid — use digits with up to 2 decimals",
       "qtyInvalid": "Quantity must be a whole number from 1 to {max}",
       "nameRequired": "Enter an item name first",
-      "alreadyRecalled": "This bill was already recalled (maybe on another device)"
+      "alreadyRecalled": "This bill was already recalled (maybe on another device)",
+      "unitSystemMismatch": "Choose a point of sale first — this branch is not linked to this POS",
+      "splitInvalid": "A bill can be split into at most 10 payments",
+      "tipAccountRequired": "Tips can't be turned on yet — choose a tip holding account in the accounting book linked to this POS first"
     },
     "held": {
       "title": "Held bills",
