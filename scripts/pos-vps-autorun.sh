@@ -29,6 +29,19 @@ cd "$CTRL" || { echo "[$(date -u +%FT%TZ)] no $CTRL"; exit 2; }
 git fetch -q origin session/pos || exit 0
 git merge -q --ff-only origin/session/pos || { echo "[$(date -u +%FT%TZ)] cannot ff session/pos — skip"; exit 2; }
 
+# generic suite requests: ledger/runs/REQUEST-suites-<id> (see scripts/pos-vps-run-suites.sh) — one per cron tick, sorted
+for SREQ in ledger/runs/REQUEST-suites-*; do
+  [ -f "$SREQ" ] || continue
+  read -r SID _ < "$SREQ" || true
+  case "$SID" in ""|*[!A-Za-z0-9._-]*) continue ;; esac
+  grep -qx "suites:$SID" "$STATE" && continue
+  echo "suites:$SID" >> "$STATE"
+  echo "[$(date -u +%FT%TZ)] ▶ suites $SID"
+  bash scripts/pos-vps-run-suites.sh "$SREQ" > "/root/pos-run-$SID.log" 2>&1
+  echo "[$(date -u +%FT%TZ)] ◀ suites $SID exit $? (log /root/pos-run-$SID.log)"
+  exit 0
+done
+
 [ -f "$REQ" ] || exit 0
 read -r RID HEADSHA MODE < "$REQ" || true
 case "$RID" in ""|\#*) exit 0 ;; esac
