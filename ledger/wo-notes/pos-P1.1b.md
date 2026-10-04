@@ -154,3 +154,10 @@ Text = the catalogue's Thai message (already says "ยังไม่ได้�
 - F6: `categoryFor` = find → `INSERT … ON CONFLICT DO NOTHING` (raw, same tx client) → re-read; audit only when the insert won. No P2002 can reach the caller's tx.
 - F7: `setInvItemArchived(…, false)` takes the budgeted tenant try-lock BEFORE `lockRows` (tenant → row), so `catalog.restore`'s own tenant lock is re-entrant and never waited for while holding rows.
 - catalog-legacy now delegates lock/derive/audit helpers to the shared ones in catalog.ts (`lockProductRows` · `applyDerived` · `rederiveRows` · `auditSync`). Typecheck 0 · fitness 40/40.
+
+## F8 — fitness tightening (`scripts/fitness-pos.mts`)
+- New **F15.7** `scanDoorPosImports`: files under `src/lib/modules/inventory/` and `src/lib/modules/account/` may import from POS only `pos/catalog-legacy`, `pos` (index — CatalogError) or `pos/catalog` (static · export-from · `import()` · `require`). F2.1 edges `inventory→pos`/`account→pos` therefore carry only these three entries.
+- F15.5 (`scanSystemMarker`): `export * from` / `export { … } from` of catalog-legacy in ANY file = violation (same as catalog.ts).
+- `CATALOG_WRITER_EXEMPT` narrowed: pdpa.ts exempts only `{dynamic}` hits whose call is `.deleteMany` — every other write in pdpa.ts is counted again.
+- Negative proofs (temp files, deleted; pdpa.ts restored byte-for-byte): `inventory/zz-p11b.ts` importing `pos/service` → F15.7 ❌ (+F2.1 unaffected since the edge exists); `zzp11b/reexp.ts` with `export *` + `export {createInvItem} from` → F15.5 ❌ at lines 1 and 2; appending `tx[m].updateMany(…)` to pdpa.ts → F15.1 ❌ `pdpa.ts dynamic 0→1 [@133 tx[m].updateMany …]`.
+- Fitness 41/41 with env and without env.

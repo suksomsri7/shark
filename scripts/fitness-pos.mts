@@ -94,8 +94,9 @@ const PRICE_MODELS: Record<string, readonly string[]> = {
  * POS P1.1b ▸ มติ 2: ไฟล์ที่ยกเว้นจาก F15.1 พร้อมเหตุผล (ไม่ใช่การเขียนแคตตาล็อก — ตัวสแกน static แยกไม่ได้)
  *   ใส่ได้เฉพาะเมื่อผู้คุมงานรับรอง · ห้ามใช้หลบผู้เขียนจริง ◂
  */
-export const CATALOG_WRITER_EXEMPT: ReadonlyMap<string, string> = new Map([
-  ["src/lib/platform/pdpa.ts", "ลบข้อมูลทั้งร้านตาม PDPA ผ่าน delegate ไดนามิก (ทุกโมเดลของร้าน) — ไม่ใช่การเขียนแคตตาล็อกรายแถว · ข้อมูลทั้งร้านหายพร้อมแถวแคตตาล็อก"],
+export const CATALOG_WRITER_EXEMPT: ReadonlyMap<string, { kinds: readonly string[]; method: string; why: string }> = new Map([
+  // R2 F8: แคบเฉพาะจุด `{dynamic}` ที่เป็น deleteMany (ลบทั้งร้าน) — จุดเขียนชนิดอื่น/วิธีอื่นในไฟล์นี้ยังถูกนับ
+  ["src/lib/platform/pdpa.ts", { kinds: ["dynamic"], method: "deleteMany", why: "ลบข้อมูลทั้งร้านตาม PDPA ผ่าน delegate ไดนามิก (ทุกโมเดลของร้าน) — ไม่ใช่การเขียนแคตตาล็อกรายแถว · ข้อมูลทั้งร้านหายพร้อมแถวแคตตาล็อก" }],
 ]);
 const WRITE_METHODS = new Set(["create", "createMany", "createManyAndReturn", "update", "updateMany", "updateManyAndReturn", "upsert", "delete", "deleteMany"]);
 const NESTED_OPS = new Set(["create", "createMany", "update", "updateMany", "upsert", "connectOrCreate", "delete", "deleteMany", "set"]);
@@ -302,8 +303,9 @@ export function scanCatalogWriters(ROOT: string): CatalogWriter[] {
   for (const abs of walk(join(ROOT, "src"), (p) => /\.(ts|tsx|mts)$/.test(p))) {
     const text = readFileSync(abs, "utf8");
     if (!PREFILTER.test(text)) continue;
-    if (CATALOG_WRITER_EXEMPT.has(relative(ROOT, abs).replace(/\\/g, "/"))) continue; // POS P1.1b ▸ มติ 2 ◂
-    const hits = scanFileWrites(parse(abs, text), schema);
+    // POS P1.1b ▸ มติ 2 + R2 F8: ยกเว้นเฉพาะชนิด+วิธีที่ระบุของไฟล์นั้น (pdpa: `{dynamic}` deleteMany) ◂
+    const ex = CATALOG_WRITER_EXEMPT.get(relative(ROOT, abs).replace(/\\/g, "/"));
+    const hits = scanFileWrites(parse(abs, text), schema).filter((h) => !(ex && ex.kinds.includes(h.kind) && h.why.includes(`.${ex.method} `)));
     if (hits.length) out.push({ file: relative(ROOT, abs), hits });
   }
   return out;
@@ -929,6 +931,13 @@ export function runPosFitness(chk: PosChk, ROOT: string): void {
     chk("F15.5", n155, v.length === 0, v.length ? v.slice(0, 6).join(" · ") : "สะอาด", "CRITICAL");
   });
 
+  // ── F15.7 ── POS P1.1b R2 ▸ F8
+  const n157 = "ประตูเดิมของคลัง/บัญชีแตะ POS ได้เฉพาะ pos/catalog-legacy · pos (CatalogError) · pos/catalog (F2.1 เปิดเส้น inventory→pos / account→pos ให้แค่นี้)";
+  guarded(chk, "F15.7", n157, () => {
+    const v = scanDoorPosImports(ROOT);
+    chk("F15.7", n157, v.length === 0, v.length ? v.slice(0, 6).join(" · ") : "สะอาด", "CRITICAL");
+  });
+
   // ── F15.6 ── POS P1.1a R5 ▸ F5
   const n156 = `src/** ห้าม import จาก scripts/** (static · import() · require · import = require · typeof import()) · baseline ${SRC_IMPORTS_SCRIPTS_BASELINE.size} จุด`;
   guarded(chk, "F15.6", n156, () => {
@@ -1105,6 +1114,18 @@ export function scanSystemMarker(ROOT: string): string[] {
     };
     visit(sf);
   }
+  // POS P1.1b R2 F8 ▸ ห้ามส่งออกต่อ catalog-legacy (`export * from` · `export { … } from`) จากไฟล์ใดก็ตาม — แบบเดียวกับ catalog.ts ◂
+  for (const abs of files) {
+    const f = relative(ROOT, abs).replace(/\\/g, "/");
+    if (f === self || f === LEGACY_SYNC_HOME) continue;
+    const text = readFileSync(abs, "utf8");
+    if (!text.includes("catalog-legacy") || !/export\s*[*{]/.test(text)) continue;
+    const sf = parse(abs, text);
+    for (const st of sf.statements) {
+      if (!ts.isExportDeclaration(st) || !st.moduleSpecifier || !ts.isStringLiteralLike(st.moduleSpecifier)) continue;
+      if (resolvesTo(ROOT, abs, st.moduleSpecifier.text, LEGACY_SYNC_HOME)) out.push(`${f}:${lineAt(sf, st)}: ส่งออกต่อ catalog-legacy (\`export … from\`) — ห้าม: ทุกคนที่ import ไฟล์นี้จะได้ตัวเขียนที่ข้ามสิทธิ์`);
+    }
+  }
   const home = existsSync(join(ROOT, MARKER_HOME)) ? readFileSync(join(ROOT, MARKER_HOME), "utf8") : "";
   if (home && !new RegExp(`${MARKER_ID}[^=\\n]*=\\s*Symbol\\(`).test(home)) out.push(`${MARKER_HOME}: ${MARKER_ID} ต้องสร้างด้วย Symbol(…)`);
   if (/Symbol\.for\(/.test(home)) out.push(`${MARKER_HOME}: ห้าม Symbol.for( (ลงทะเบียนกลาง = ปลอมได้)`);
@@ -1133,6 +1154,40 @@ function specToAbs(ROOT: string, fromAbs: string, spec: string): string | null {
   }
   if (spec === "scripts" || spec.startsWith("scripts/")) return resolve(ROOT, spec); // ไม่มี baseUrl — กันไว้ (fail-closed)
   return null;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// F15.7 — POS P1.1b R2 F8: เส้น inventory→pos / account→pos ใช้ได้เฉพาะ 3 ทางเข้า (ไม่ใช่ทั้งโมดูล)
+// ═══════════════════════════════════════════════════════════════
+/** ทางเข้าที่อนุญาต: catalog-legacy (ประตูเดิมส่ง tx) · pos/index + pos/catalog (CatalogError เท่านั้น) */
+export const POS_ENTRY_FOR_DOORS: readonly string[] = ["src/lib/modules/pos/catalog-legacy", "src/lib/modules/pos/catalog", "src/lib/modules/pos/index", "src/lib/modules/pos"];
+export const POS_DOOR_MODULES: readonly string[] = ["src/lib/modules/inventory/", "src/lib/modules/account/"];
+export function scanDoorPosImports(ROOT: string): string[] {
+  const out: string[] = [];
+  for (const dir of POS_DOOR_MODULES) {
+    for (const abs of walk(join(ROOT, dir), (p) => /\.(ts|tsx|mts)$/.test(p))) {
+      const f = relative(ROOT, abs).replace(/\\/g, "/");
+      const text = readFileSync(abs, "utf8");
+      if (!/modules\/pos|\.\.\/pos/.test(text)) continue;
+      const sf = parse(abs, text);
+      const visit = (n: ts.Node) => {
+        let spec: string | null = null;
+        if ((ts.isImportDeclaration(n) || ts.isExportDeclaration(n)) && n.moduleSpecifier && ts.isStringLiteralLike(n.moduleSpecifier)) spec = n.moduleSpecifier.text;
+        else if (ts.isCallExpression(n) && (n.expression.kind === ts.SyntaxKind.ImportKeyword || (ts.isIdentifier(n.expression) && n.expression.text === "require")) && n.arguments[0] && ts.isStringLiteralLike(n.arguments[0]))
+          spec = n.arguments[0].text;
+        if (spec !== null) {
+          const to = specToAbs(ROOT, abs, spec);
+          const rel = to ? relative(ROOT, to).replace(/\\/g, "/").replace(/\.(ts|tsx|mts|js|mjs)$/, "") : "";
+          if (rel.startsWith("src/lib/modules/pos/") || rel === "src/lib/modules/pos") {
+            if (!POS_ENTRY_FOR_DOORS.includes(rel)) out.push(`${f}:${lineAt(sf, n)}: import ${spec} — โมดูล${dir.split("/")[3]}แตะ POS ได้แค่ pos/catalog-legacy · pos (CatalogError) · pos/catalog`);
+          }
+        }
+        ts.forEachChild(n, visit);
+      };
+      visit(sf);
+    }
+  }
+  return out;
 }
 
 // ═══════════════════════════════════════════════════════════════
