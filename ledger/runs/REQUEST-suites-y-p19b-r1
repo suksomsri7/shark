@@ -1,0 +1,17 @@
+p19b-r1 /root/projects/shark-pos-p11 wip/pos-p1.9b 3490f690
+migrate-qc4
+typecheck
+fitness
+fitness-pos
+forced:qc-pos-p1.9b
+forced:qc-pos-p1.9b
+unforced:qc-pos-p1.9b
+unforced:qc-pos-p1.9
+forced:qc-pos-p1.3
+unforced:qc-pos-p1.6
+unforced:qc-pos-p1.5
+unforced:qc-pos-p1.2
+qc-pos-closeday
+qc-pos-register
+qc-hf-pos-page-authz
+build
