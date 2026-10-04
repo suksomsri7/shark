@@ -147,3 +147,50 @@ This is what I expect from walking each check against the code; none of it has b
    - The pending SQL is unchanged for itemId lines.
    - Please still run the COMMON §7 money set, `qc-pos-account` and `qc-restaurant-money`.
 6. The migration's partial index is created non-concurrently on `PosProduct`, under a 3 s `lock_timeout`, matching P1.5/P1.9 style. If QC4 or prod `PosProduct` is large, consider CONCURRENTLY outside `prisma migrate`, as M1 did.
+
+## R2 — server fixes after review+hunt (controller §R2 rulings F1–F6) · cloud run · 4 Oct 2026
+Branch: local `p12-local`, pushed to **`wip/pos-p1.2-r2`** only (`wip/pos-p1.2` left at a0b7401c for the pinned VPS run).
+First merged `origin/wip/pos-p1.9` e05664af (P1.9 R2) as a merge commit. It merged cleanly (auto-merge in `pos/index.ts`, `service.ts`, `pos.json` th/en); typecheck 0 afterwards.
+No schema change and no migration in R2. There is no DB in this container, so the DB checks are a CONTROLLER-RUN.
+
+| fix | commit | what | evidence |
+|---|---|---|---|
+| F1 (S1) | 732f7a0d | `regVisibleWhere`: a BUNDLE is visible/sellable only when every `RecipeLine` InvItem is in `s.unitInv`. A unit with no inventory sees only component-free bundles. This covers grid, search, category counts, scan, quote/submit (PRODUCT_NOT_FOUND) and `registerProductOptions`. `regPrice` re-checks the recipe it actually loaded. `createSale`: lines with `components` must have every component in the unit's INVENTORY system, else VALIDATION (covers non-register callers; today only the register sends components). | S.R2.1 (DB) · S.R2.8 (static) |
+| F2 (S2) | 32def0c8 | `createSale`: a sale with any option line gives **every** line an explicit id `c<time36 ×9><12 hex><4-digit index>`. All the same length, lowercase+digits, so `orderBy id` = cart order in any collation. Sales without options keep the default cuid (legacy callers unchanged). | S.R2.2 |
+| F3 (S3) | 10327065 | `regPrice`: a PRICE label with embedded price < 1 satang, or derived grams < 1, gives `INVALID_LINE` with lineIndex at quote and submit (was ok at quote, then a VALIDATION throw from createSale at submit). | S.R2.3 |
+| F4 (N3) | 4a180d49 | `createProduct`: a variant with null own price must have the parent's `soldByWeight`; otherwise VALIDATION. `updateProduct`: changing `soldByWeight` on such a child away from the parent gives VALIDATION. **Also (my addition, keeps the invariant):** changing `soldByWeight` on a parent that has price-inheriting children of the other kind gives VALIDATION. `setPrice` cannot set null, so it needs no guard. | S.R2.4 |
+| F5 (N5) | 732107fd | `HeldCartNoticeCode` gains `PERMISSION_DENIED`. The recall probe maps a per-line PERMISSION_DENIED (typed weight, recaller without `pos.sale.priceOverride`) to it instead of PRODUCT_UNAVAILABLE. Minimal UI needed for the fix: RegisterScreen's existing notice list shows the new key `pos.register.held.noticeNeedsPermission` (th+en). | S.R2.5 (DB) · S.R2.7 (static) |
+| F6 (N6) | d8ee743e | `registerScan` with several matches: parents that have sellable variants are dropped from `choose`. **Edge rules I chose:** exactly 1 left gives `one`; 0 left (every match was a parent) gives `choose` over those parents' sellable variants, the same as scanning one parent; no variants gives `none`. | S.R2.6 |
+| tests | b6baa052 | `S.R2` block, `// ORACLE-ADD (controller R2 ruling)` | below |
+
+### New checks (46 → **54**)
+- **DB (CONTROLLER-RUN):**
+  - S.R2.1 X4 · S.R2.2 · S.R2.3 X4 · S.R2.4 · S.R2.5 X3 · S.R2.6.
+  - They run after X1 and before R1, in the order 1 2 3 5 6 4. S.R2.4 runs last because it gives the pork product variants.
+  - Each has its own fixture guard: the result shows `fixture:` and the check is red, not a crash. A try/catch marks any unreached S.R2 id red with the reason.
+  - No `asData`, so the R1 count is unchanged.
+  - All rows go through `sb.*`: products, the InvItem in INV-Z, and recipe lines on sb products. The held cart and sales are in sandbox unit S. The existing cleanup removes all of them, so Z1/Z2 should hold.
+- **Static, also in `--no-db`:** S.R2.7 (F5: code · probe · th/en key · used in the UI) and S.R2.8 (F1: `regVisibleWhere` references RecipeLine + BUNDLE).
+  - In normal mode they run after `runDb`, so a "not seeded" DB failure cannot overwrite them.
+- **Expected red on 0b4b5cca / green now:**
+  - Static: **verified**. A detached worktree of 0b4b5cca with the new oracle gives `--no-db` 8/12, with S.R2.7 and S.R2.8 red (plus the known S1/S2). This head gives 10/12; only S1/S2 are red, and those are builder U's.
+  - DB reasoning (not run):
+    - R2.1 base: the cross-inventory bundle quotes ok, so red.
+    - R2.2 base: the lines are PLAIN cuid, LATTE uuid, TEA cuid. A uuid can sort between two same-sale cuids only by sharing the `c<timestamp>` prefix, so the base is red essentially deterministically.
+    - R2.3 base: quote ok with 0 g, so red.
+    - R2.4 base: the per-piece child is created, so red.
+    - R2.5 base: notice PRODUCT_UNAVAILABLE, so red.
+    - R2.6 base: choose returns 3 including the parent, so red.
+- **Expected full DB run on this head:** 54 checks; red only on S1 and S2 (builder U). R1 is now `>= 7` after the controller edit.
+
+### Results (this container, after every fix)
+- typecheck (5632) exit 0.
+- fitness (no DB env) 41/41; fitness-pos 8/8.
+- esbuild syntax ok.
+- `qc-pos-p1.2 --no-db` 8/10 before the S.R2 block and 10/12 after it; `--list` 54.
+- `qc-pos-p1.4 --no-db` 13/13 · `p1.5` 5/5 · `p1.9` 13/13.
+
+### Notes for the controller
+- F1 also changes **visibility** of such bundles in `registerCatalog`, scan and `registerProductOptions`. It does not change `catalog.listForUnit` (back office), which still lists them.
+- F5 adds one UI line and one message key. This is the minimum needed for the cashier to see the new state; the styling is unchanged for builder U.
+- The F4 parent-side guard and the F6 edge rules (1 left gives `one`; 0 left gives the variants) are my choices. Please ratify or adjust them.
