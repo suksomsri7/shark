@@ -8,6 +8,8 @@ import { scheduleDrain } from "@/lib/outbox-consumers";
 // POS P1.6 ▸ ถอด VAT สูตรเดียวกับสะพานบัญชี (R1) ◂
 import { splitIncludedVat } from "@/lib/money/vat";
 import { parsePosPaymentSettings } from "./payment-settings";
+// POS P1.9 ▸ ค่าตั้งกะ (otherSources) — ตัวอ่านเดียวกับ shift.ts ◂
+import { parseShiftSettings } from "./shift";
 
 // POS createSale — contract 2.1 (จุดตัดเงินกลาง). MVP: PAID_NOW
 //
@@ -74,6 +76,12 @@ export type CreateSaleInput = {
   serviceChargeSatang?: number;
   /** ทิป (สตางค์ · ไม่ใช่รายได้ · ไม่อยู่ใน grandTotal/ฐาน VAT) ⇒ Σ payMethods = grandTotal + tip (มติ §8 ข้อ 1) */
   tipSatang?: number;
+  /**
+   * POS P1.9 (S5/S6 · เพิ่มล้วน): กะที่บิลนี้ผูก — string = ล็อกแถวกะ FOR SHARE ในtx ของบิล (ไม่พบ/คนละร้าน-สาขา-ระบบ = SHIFT_REQUIRED ·
+   * ไม่ OPEN = SHIFT_CLOSED) · null = ผู้เรียก (หน้าขาย) ตัดสินแล้วว่านอกกะ · ไม่ส่ง = ผู้เรียกเดิม: นอกกะเหมือนวันนี้ เว้นแต่ค่าตั้ง
+   * `pos.shift.required.otherSources` เปิด (0 กะเปิด = SHIFT_REQUIRED · 1 กะ = ผูกกะนั้น · 2+ = นอกกะ)
+   */
+  shiftId?: string | null;
 };
 
 export type SaleResult = {
@@ -92,7 +100,10 @@ export type PosSaleErrorCode =
   | "PAYMENT_MISMATCH"
   | "IDEMPOTENCY_CONFLICT"
   | "UNIT_SYSTEM_MISMATCH"
-  | "STOCK_INSUFFICIENT";
+  | "STOCK_INSUFFICIENT"
+  // POS P1.9: ไม่มีกะที่ใช้ได้ / กะปิดแล้ว (ขาย · void)
+  | "SHIFT_REQUIRED"
+  | "SHIFT_CLOSED";
 export class PosSaleError extends Error {
   readonly code: PosSaleErrorCode;
   constructor(code: PosSaleErrorCode, message: string) {
@@ -223,6 +234,32 @@ export async function unitOversellPolicy(db: Client, tenantId: string, unitId: s
 
 const isUniqueViolation = (e: unknown) => (e as { code?: unknown } | null)?.code === "P2002";
 
+/**
+ * POS P1.9 (S5/S6): กะของบิล — เรียกในtx ของบิล หลังค้นคีย์ซ้ำ (ลองซ้ำบิลที่ commit ในกะที่ปิดไปแล้ว = คืนบิลเดิม) และก่อนตัวนับใบเสร็จ
+ * ล็อกแถวกะ FOR SHARE ⇒ closeShift (FOR UPDATE) รอบิลที่กำลังบันทึก · บิลที่ commit แล้วทุกใบอยู่ใน Z
+ */
+async function bindSaleShift(tx: Client, input: CreateSaleInput): Promise<string | null> {
+  if (typeof input.shiftId === "string") {
+    const rows = await tx.$queryRaw<{ status: string; tenantId: string; unitId: string; systemId: string }[]>`
+      SELECT status::text AS status, "tenantId", "unitId", "systemId" FROM "PosShift" WHERE id = ${input.shiftId} FOR SHARE`;
+    const r = rows[0];
+    if (!r || r.tenantId !== input.tenantId || r.unitId !== input.unitId || r.systemId !== input.systemId) {
+      throw new PosSaleError("SHIFT_REQUIRED", "ไม่พบกะของเครื่องนี้ — เปิดกะก่อนเริ่มขาย");
+    }
+    if (r.status !== "OPEN") throw new PosSaleError("SHIFT_CLOSED", "กะนี้ปิดแล้ว — เปิดกะใหม่ก่อนขาย");
+    return input.shiftId;
+  }
+  if (input.shiftId === null) return null;
+  // ผู้เรียกเดิม (ไม่ส่ง shiftId): ค่าปริยาย otherSources = false ⇒ นอกกะเหมือนวันนี้ ไม่ถูกปฏิเสธ
+  const sys = await tx.appSystem.findFirst({ where: { id: input.systemId, tenantId: input.tenantId }, select: { settings: true } });
+  if (!parseShiftSettings(sys?.settings).requiredOtherSources) return null;
+  const open = await tx.$queryRaw<{ id: string }[]>`
+    SELECT id FROM "PosShift" WHERE "tenantId" = ${input.tenantId} AND "unitId" = ${input.unitId} AND status = 'OPEN'
+    ORDER BY "openedAt", id LIMIT 2 FOR SHARE`;
+  if (open.length === 0) throw new PosSaleError("SHIFT_REQUIRED", "สาขานี้ยังไม่มีกะที่เปิดอยู่ — เปิดกะก่อนรับเงิน");
+  return open.length === 1 ? open[0]!.id : null; // 2+ ลิ้นชักเปิดอยู่ = ไม่เดา (นอกกะ · O24)
+}
+
 type MemberFacade = typeof import("@/lib/modules/member");
 type AppliedRights = Awaited<ReturnType<MemberFacade["applyOnSale"]>>;
 
@@ -296,6 +333,8 @@ async function createSaleOnce(input: CreateSaleInput, client: Client, ownsTx: bo
       const sys = await tx.appSystem.findFirst({ where: { id: input.systemId, tenantId: input.tenantId }, select: { settings: true } });
       if (!parsePosPaymentSettings(sys?.settings).tip.enabled) throw new PosSaleError("VALIDATION", "จุดขายนี้ยังไม่เปิดรับทิป");
     }
+    // POS P1.9 ▸ กะ (S5/S6) — หลังค้นคีย์ซ้ำ · ก่อนล็อกสินค้า/ตัวนับใบเสร็จ ◂
+    const shiftId = await bindSaleShift(tx, input);
 
     const lines = input.lines.map((l) => ({
       ...l,
@@ -398,6 +437,7 @@ async function createSaleOnce(input: CreateSaleInput, client: Client, ownsTx: bo
         tipSatang: tip,
         note: input.note ?? null,
         paidAt: new Date(),
+        shiftId,
       },
     });
     await tx.posSaleLine.createMany({
@@ -614,6 +654,11 @@ export async function voidSale(tenantId: string, unitId: string, saleId: string)
   await prisma.$transaction(async (tx) => {
     const sale = await tx.posSale.findFirst({ where: { id: saleId, tenantId, unitId } });
     if (!sale || sale.status !== "PAID") throw new Error("บิลนี้ void ไม่ได้");
+    // POS P1.9 ▸ S11: บิลในกะที่ปิดแล้ว void ไม่ได้ (คืนเงินเท่านั้น) · ล็อกแถวกะ FOR SHARE แบบ createSale · บิลนอกกะ (null) = เดิม ◂
+    if (sale.shiftId) {
+      const sh = await tx.$queryRaw<{ status: string }[]>`SELECT status::text AS status FROM "PosShift" WHERE id = ${sale.shiftId} FOR SHARE`;
+      if (sh[0]?.status !== "OPEN") throw new PosSaleError("SHIFT_CLOSED", "กะของบิลนี้ปิดแล้ว — ยกเลิกบิลไม่ได้ ใช้การคืนเงินแทน");
+    }
     await tx.posSale.update({ where: { id: saleId }, data: { status: "VOIDED" } });
     // outbox: void → กลับรายการบัญชี (contract 2.4)
     await emitOutbox(tx, {

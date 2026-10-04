@@ -413,6 +413,8 @@ import { Prisma, type PosProduct, type PrismaClient } from "@prisma/client";
 import { canAccessUnit, evaluate, permissionValue } from "@/lib/core/rbac";
 import { createSale, PosSaleError, type CreateSaleInput } from "./service";
 import { posPaymentSettings, type PosPaymentSettings } from "./payment-settings";
+// POS P1.9 ▸ กะของเครื่อง (S5/S6/S15) ◂
+import { isShiftDeviceId, registerShiftStatus, resolveRegisterShift } from "./shift";
 import { effectiveTrackStock, menuSoldOutIds, rowAvailable } from "./catalog";
 import { priceCart, roundHalfUp, PRICE_MAX_SATANG, type PriceDiscount } from "./pricing-shared";
 import {
@@ -477,6 +479,12 @@ const REG_MESSAGE: Record<RegisterRefusalCode, string> = {
   UNIT_SYSTEM_MISMATCH: "เลือกจุดขายก่อน — สาขานี้ไม่ได้ผูกกับจุดขายนี้",
   SPLIT_INVALID: `แบ่งจ่ายได้ไม่เกิน ${REGISTER_MAX_PAY_METHODS} รายการ`,
   TIP_ACCOUNT_REQUIRED: "เปิดรับทิปไม่ได้ — เลือกบัญชีพักทิปในสมุดบัญชีที่เชื่อมกับจุดขายนี้ก่อน",
+  // POS P1.9 ▸ กะ ◂
+  SHIFT_REQUIRED: "เปิดกะก่อนเริ่มขาย",
+  SHIFT_ALREADY_OPEN: "เครื่องนี้มีกะที่เปิดอยู่แล้ว",
+  SHIFT_CLOSED: "กะนี้ปิดแล้ว",
+  REASON_REQUIRED: "เงินขาด/เกินเกินเกณฑ์ — ใส่เหตุผลก่อนปิดกะ",
+  DRAWER_INSUFFICIENT: "เงินในลิ้นชักไม่พอ",
 };
 const REG_ROLE_LABEL: Record<RegisterRole, string> = { OWNER: "เจ้าของร้าน", MANAGER: "ผู้จัดการ", STAFF: "แคชเชียร์" };
 
@@ -1184,6 +1192,9 @@ export async function submitRegisterSale(ctx: RegisterCtx, actor: RegisterActor,
     const db: RegDb = client ?? prisma;
     const s = await regScope(db, ctx, actor);
     if (isRegRefusal(s)) return s;
+    // POS P1.9: รหัสเครื่องผิดรูป = VALIDATION (ไม่ส่ง = ไม่มีเครื่อง → ตัดสินตามค่าตั้ง S6 หลังค้นคีย์)
+    const deviceId = regDeviceOf(ctx);
+    if (deviceId === false) return regRefuse("VALIDATION", "รหัสเครื่องไม่ถูกต้อง");
     const req = regParseSubmit(input);
     if (isRegRefusal(req)) return req;
     // R4 K4 (มติ R4.1 ข้อ 3): ⑤ เงินสดที่รับ ตรวจ "ก่อน" ค้นคีย์ — คำขอแรกและคำขอซ้ำผ่านด่านเดียวกัน (ไม่มีทอนติดลบจากการส่งซ้ำ)
@@ -1195,6 +1206,9 @@ export async function submitRegisterSale(ctx: RegisterCtx, actor: RegisterActor,
     // ① คีย์เดิมก่อนคิดราคา (ลองซ้ำหลังราคาเปลี่ยนต้องได้บิลเดิม)
     const prior = await regLoadSale(db, s.tenantId, req.idempotencyKey);
     if (prior) return regDuplicate(s, req, prior, true);
+    // POS P1.9 ▸ S6: กะของเครื่อง (หลังคีย์ซ้ำ ⇒ ลองซ้ำบิลที่ commit ในกะที่ปิดแล้ว = บิลเดิม) · บังคับมีกะแต่ไม่มี = SHIFT_REQUIRED ไม่มีบิล ◂
+    const shift = await resolveRegisterShift(db, s, deviceId);
+    if (!shift.ok) return regRefuse("SHIFT_REQUIRED");
     // P1.6: ค่าตั้งการชำระเงิน (ค่าบริการ · ทิป) — ทิปส่งมาตอนระบบไม่เปิดรับทิป = VALIDATION (ไม่มีบิล)
     const paySettings = await regPaySettings(db, s);
     if (req.tipSatang > 0 && !paySettings.tip.enabled) return regRefuse("VALIDATION", "จุดขายนี้ยังไม่เปิดรับทิป");
@@ -1235,6 +1249,7 @@ export async function submitRegisterSale(ctx: RegisterCtx, actor: RegisterActor,
       ...(q.serviceChargeSatang > 0 ? { serviceChargeSatang: q.serviceChargeSatang } : {}),
       ...(req.tipSatang > 0 ? { tipSatang: req.tipSatang } : {}),
       ...(req.note ? { note: req.note } : {}),
+      shiftId: shift.shiftId,
     };
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
@@ -1269,12 +1284,22 @@ export async function submitRegisterSale(ctx: RegisterCtx, actor: RegisterActor,
   });
 }
 
-/** แถบสถานะ (สเปก §4.5) — กะ = P1.9 (null) · ออฟไลน์ = P3 (0) · รอตัดสต็อก = บิลวันนี้ (เวลาไทย) ที่บรรทัดผูกสต็อกยังไม่ถูกตัดครบ */
+/** POS P1.9: ctx.deviceId — ไม่ส่ง = undefined · ผิดรูป = false */
+function regDeviceOf(ctx: unknown): string | undefined | false {
+  const v = regIsRecord(ctx) ? ctx.deviceId : undefined;
+  if (v === undefined || v === null) return undefined;
+  return isShiftDeviceId(v) ? v : false;
+}
+
+/** แถบสถานะ (สเปก §4.5) — กะของเครื่อง (P1.9) · ออฟไลน์ = P3 (0) · รอตัดสต็อก = บิลวันนี้ (เวลาไทย) ที่บรรทัดผูกสต็อกยังไม่ถูกตัดครบ */
 export async function registerStatus(ctx: RegisterCtx, actor: RegisterActor, client?: RegDb): Promise<RegisterStatusResult> {
   return regGuard("registerStatus", async (): Promise<RegisterStatusResult> => {
     const db: RegDb = client ?? prisma;
     const s = await regScope(db, ctx, actor);
     if (isRegRefusal(s)) return s;
+    const deviceId = regDeviceOf(ctx);
+    if (deviceId === false) return regRefuse("VALIDATION", "รหัสเครื่องไม่ถูกต้อง");
+    const sh = await registerShiftStatus(db, s, deviceId);
     const user = await db.user.findUnique({ where: { id: s.actor.userId }, select: { name: true, email: true } });
     const bkk = new Date(Date.now() + 7 * 3600000).toISOString().slice(0, 10);
     const dayStart = new Date(new Date(`${bkk}T00:00:00Z`).getTime() - 7 * 3600000);
@@ -1288,7 +1313,8 @@ export async function registerStatus(ctx: RegisterCtx, actor: RegisterActor, cli
       ok: true,
       unit: { id: s.unitId, name: s.unitName },
       user: { name: user?.name?.trim() || user?.email || "-", roleLabel: REG_ROLE_LABEL[s.actor.role], role: s.actor.role },
-      shift: null,
+      shift: sh.shift,
+      shiftRequired: sh.required,
       pendingStockCount: Number(pend[0]?.n ?? 0),
       pendingSyncCount: 0,
     };

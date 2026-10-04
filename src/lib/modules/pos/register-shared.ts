@@ -50,7 +50,8 @@ export type RegisterRole = "OWNER" | "MANAGER" | "STAFF";
 /** ผู้ขาย — ทรงเดียวกับ MemberActor · action สร้างจาก membership ของ SESSION เท่านั้น */
 export type RegisterActor = { userId: string; role: RegisterRole; unitAccess: string[]; permissions: Record<string, unknown> };
 /** ขอบเขตของคำขอ: ร้าน (จาก session) + ระบบ POS + สาขา */
-export type RegisterCtx = { tenantId: string; systemId: string; unitId: string };
+/** POS P1.9: deviceId = รหัสเครื่อง (client สร้างครั้งเดียวเก็บ localStorage · [A-Za-z0-9_-]{8,64}) — ใช้หากะของเครื่อง · ผิดรูป = VALIDATION */
+export type RegisterCtx = { tenantId: string; systemId: string; unitId: string; deviceId?: string };
 
 /** คำศัพท์รหัสปฏิเสธ (ชุดเดียวกับ catalog + สเปก §4.6 + Addendum) */
 export type RegisterRefusalCode =
@@ -81,7 +82,13 @@ export type RegisterRefusalCode =
   // POS P1.6: สาขาไม่ใช่ของจุดขายนี้ / ร้านมีหลายจุดขายแต่สาขาไม่ผูก (O21) · แบ่งจ่ายเกินเพดาน · เปิดทิปโดยไม่มีบัญชีพักทิป
   | "UNIT_SYSTEM_MISMATCH"
   | "SPLIT_INVALID"
-  | "TIP_ACCOUNT_REQUIRED";
+  | "TIP_ACCOUNT_REQUIRED"
+  // POS P1.9: กะ/ลิ้นชัก
+  | "SHIFT_REQUIRED"
+  | "SHIFT_ALREADY_OPEN"
+  | "SHIFT_CLOSED"
+  | "REASON_REQUIRED"
+  | "DRAWER_INSUFFICIENT";
 
 /** คำปฏิเสธ — คืนค่า ไม่ throw · `lineIndex` = บรรทัดที่ผิด (ลำดับเดียวกับที่ส่งมา) ถ้าระบุได้ */
 export type RegisterRefusal = { ok: false; code: RegisterRefusalCode; message: string; lineIndex?: number };
@@ -188,14 +195,18 @@ export type RegisterStatus = {
   unit: { id: string; name: string };
   /** roleLabel = ภาษาไทยจากเซิร์ฟเวอร์ · จออังกฤษแปลจาก role (มติ Q23) */
   user: { name: string; roleLabel: string; role: RegisterRole };
-  /** กะ = P1.9 — วันนี้ null เสมอ */
-  shift: null;
+  /** กะ OPEN ของเครื่องนี้ (P1.9 · null = ยังไม่เปิด/ไม่ส่ง deviceId) */
+  shift: RegisterShiftInfo | null;
+  /** P1.9: จุดขายนี้บังคับเปิดกะก่อนขาย (S6) — true + shift null = ปุ่มชำระถูกล็อก "เปิดกะก่อนเริ่มขาย" */
+  shiftRequired?: boolean;
   /** บิลวันนี้ (เวลาไทย) ที่ยังตัดสต็อกไม่ครบ */
   pendingStockCount: number;
   /** บิลออฟไลน์รอซิงก์ = P3 — วันนี้ 0 เสมอ */
   pendingSyncCount: number;
 };
 export type RegisterStatusResult = RegisterStatus | RegisterRefusal;
+/** POS P1.9 (S15) — กะของเครื่องบนแถบสถานะ */
+export type RegisterShiftInfo = { id: string; shiftNo: number; openedAt: string; openedByName: string; deviceLabel: string | null };
 
 export type RegisterVatConfig = { ok: true; mode: "INCLUDED" | "NONE"; rateBp: number };
 export type RegisterVatConfigResult = RegisterVatConfig | RegisterRefusal;
@@ -335,6 +346,12 @@ export function cartToPriceInput(
 
 const REFUSAL_KEY: Readonly<Record<string, string>> = {
   NOT_FOUND: "errors.notFound",
+  // POS P1.9 ▸ กะ ◂
+  SHIFT_REQUIRED: "errors.shiftRequired",
+  SHIFT_ALREADY_OPEN: "errors.shiftAlreadyOpen",
+  SHIFT_CLOSED: "errors.shiftClosed",
+  REASON_REQUIRED: "errors.reasonRequired",
+  DRAWER_INSUFFICIENT: "errors.drawerInsufficient",
   PERMISSION_DENIED: "errors.permissionDenied",
   VALIDATION: "errors.invalidLine",
   INVALID_LINE: "errors.invalidLine",
