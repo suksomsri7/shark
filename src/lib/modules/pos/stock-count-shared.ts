@@ -96,4 +96,5 @@ export type StockCountLineView = {
   countedAt: string | null;
 };
 
-export type StockCountSummary = { total: number; counted: number; withVariance: number };
+/** withVariance = null เมื่อผู้เรียกอยู่ใต้ blind (R2 F2 — ไม่บอกใบ้ว่ามีผลต่างกี่รายการ) */
+export type StockCountSummary = { total: number; counted: number; withVariance: number | null };

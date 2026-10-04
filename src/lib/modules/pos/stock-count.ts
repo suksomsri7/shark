@@ -477,15 +477,18 @@ export async function getStockCount(ctx: RegisterCtx, actor: RegisterActor, inpu
     if (filter !== "ALL" && filter !== "UNCOUNTED" && filter !== "VARIANCE") return refuse("VALIDATION");
     const c = await countInScope(db, s, input.countId);
     if (!c) return refuse("NOT_FOUND");
+    // R2 F2: ผู้เรียกใต้ blind ไม่ได้รู้ผลต่าง — ตัวกรอง VARIANCE = VALIDATION · summary.withVariance = null
+    const hide = c.blind && !canAdjust(s);
+    if (hide && filter === "VARIANCE") return refuse("VALIDATION");
     const rows = await db.posStockCountLine.findMany({ where: { countId: c.id, tenantId: c.tenantId }, orderBy: { id: "asc" } });
     const all = await lineViews(db, s, c, rows);
     all.sort((a, b) => a.name.localeCompare(b.name, "th") || a.id.localeCompare(b.id));
-    // ผลต่างนับจากแถวจริง (ไม่ขึ้นกับ blind) — blind ซ่อนตัวเลขแต่ตัวกรองยังใช้ได้
+    // ผลต่างนับจากแถวจริง (ใช้เฉพาะผู้ที่เห็นตัวเลข)
     const varianceOf = new Map(rows.map((l) => [l.id, l.varianceQty ?? (l.countedQty !== null && l.expectedAtCount !== null ? l.countedQty - l.expectedAtCount : null)]));
     const summary: StockCountSummary = {
       total: rows.length,
       counted: rows.filter((l) => l.countedQty !== null).length,
-      withVariance: rows.filter((l) => (varianceOf.get(l.id) ?? 0) !== 0).length,
+      withVariance: hide ? null : rows.filter((l) => (varianceOf.get(l.id) ?? 0) !== 0).length,
     };
     const lines =
       filter === "UNCOUNTED" ? all.filter((l) => l.countedQty === null) : filter === "VARIANCE" ? all.filter((l) => (varianceOf.get(l.id) ?? 0) !== 0) : all;
