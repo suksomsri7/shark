@@ -1,6 +1,6 @@
 # POS P1.6 — builder S notes (branch wip/pos-p1.6 · base origin/session/pos cb1a2331)
 
-## QUOTA STOP — next: deploy migration to QC4, then build step 2 (createSale)
+## (history) QUOTA STOP after step 1 — superseded by "S-cloud" below
 Stopped on owner's order (4 Oct 2026) at a clean commit.
 
 Done:
@@ -37,3 +37,65 @@ Next steps, in order:
 3. Payment settings (K).
 4. Register (R1–R3).
 5. Restaurant new key on VOIDED (I6).
+
+
+## S-cloud — builder S continuation (cloud · 4 Oct 2026 · branch wip/pos-p1.6 · no DB in this container)
+
+Commits (pushed to `wip/pos-p1.6`): 78a4cd36 step 1 (createSale) · 96fe39e7 + f023fc67 step 2 (payment settings) · 8a0d7799 step 3 (register) · 75d038e1 step 4 (restaurant I6).
+**The migration `20261122000000_pos_p16_payment` is still NOT deployed anywhere.** `prisma generate` was run here (container-local client only).
+
+### What was built
+- **createSale** (`pos/service.ts`, additive only · F15.2 snapshot `scripts/pos-sale-contract.json` updated with `--update-pos-contract`: 8 additive fields incl. the P1.3 `lines[].productId?` that was never snapshotted):
+  - New input: `note`, `lines[].note`, `serviceChargeSatang`, `tipSatang`, `payMethods[].cashTenderedSatang`, `payMethods[].reference`. Output: `status`.
+  - Typed refusals `PosSaleError` (`.code` + Thai message; PAYMENT_MISMATCH keeps its `"PAYMENT_MISMATCH: …"` message prefix for old `startsWith` callers): VALIDATION · SPLIT_INVALID (> 10 payMethods) · PAYMENT_MISMATCH · IDEMPOTENCY_CONFLICT · UNIT_SYSTEM_MISMATCH · STOCK_INSUFFICIENT.
+  - Order inside the tx: dup lookup → field validation → **O21 guard** → coupon → VAT rate → early Σpay check → **BLOCK lock + stock check** → receipt counter → … So every refusal happens before the counter.
+  - R1 VAT: `posVatRateBp(tx, …)` (enabled AccountSystemLink + AccountSettings, defaults registered/700, same rule as the bridge `vatConfigOf` / register `regVat`), `vatSatang = splitIncludedVat(grand)`, recomputed when member discounts change grand.
+  - R4: grand = subtotal − discounts + serviceCharge (SC inside the VAT base); Σpay = grand + tip (§8.1). Columns `serviceChargeSatang`, `tipSatang`, `note`, `PosSaleLine.note` stored.
+  - R3: `tenderedSatang`/`changeSatang` on the CASH `PosPayment` row (§8.2); tendered < row amount ⇒ PAYMENT_MISMATCH before the counter. `reference` stored on `PosPayment.reference`.
+  - R6: duplicate key ⇒ compare unit/system, SC, tip, lines bag (price|qty|disc), payments bag (type|amount). Same ⇒ stored sale + `status` (PAID or VOIDED). Different ⇒ IDEMPOTENCY_CONFLICT. I7: when createSale owns the tx, a P2002 is retried (≤3) and lands on the dup path. Inside a caller tx the P2002 still surfaces (the tx is dead).
+  - R7/O21 guard `assertUnitOfSystem`: unit linked to this POS ⇒ ok; linked to another POS ⇒ refuse; unlinked ⇒ ok only when the tenant has exactly 1 active POS, else refuse with "เลือกจุดขายก่อน …".
+  - R8 BLOCK: `BusinessUnit.settings.pos.stock.oversellPolicy === "BLOCK"` and the unit has an INVENTORY system ⇒ `inventory.lockItemsInTx` (sorted ids) + onHand check (aggregated per item) ⇒ STOCK_INSUFFICIENT, else `consumeInTx` per line with key `pos-consume-<saleId>-<lineId>` inside the sale tx. The post-commit `consumeSaleInventory` still runs; it hits the same keys (no second OUT) and posts COGS GL + account-product sync as before. ALLOW_NEGATIVE / unset = unchanged path.
+  - Interactive tx timeout raised to 20 s / maxWait 10 s (BLOCK queues on the item lock).
+  - closeDay: CARD in `PAY_TYPE_ORDER` + label "บัตร" (T7).
+- **Bridge** (`pos/account-bridge.ts`, pos side only — `account/index.ts` unchanged since step 1): SC becomes a document line "ค่าบริการ" so Σlines = grand; tip is removed from the Dr lines (from the last payment row backwards) so the JV balances at grand. The consumer already passes the full PosSale row, so `outbox-consumers.ts` is untouched.
+- **Payment settings** `pos/payment-settings.ts` (`posPaymentSettings`, `updatePosPaymentSettings`, `parsePosPaymentSettings`, `serviceChargeOf`) + `pos/payment-settings-actions.ts` (`posPaymentSettingsAction`, `updatePosPaymentSettingsAction`; `assertCan pos.settings.payment` for fitness F6.1). Storage `AppSystem(POS).settings.pos.{serviceCharge:{enabled,rateBp}, tip:{enabled,ledgerAccountId}}`, partial merge under `SELECT … FOR UPDATE`. OWNER only. Tip ON needs a non-archived AccountLedger of the book linked (enabled link) to that POS, else TIP_ACCOUNT_REQUIRED (K4/K9). All refusals returned as data.
+- **Register** (`register.ts`, `register-shared.ts`, `pricing-shared.ts`): `REGISTER_PAY_TYPES` = CASH, PROMPTPAY, TRANSFER, CARD; 0…10 methods (11 ⇒ SPLIT_INVALID), duplicate types allowed except a second CASH row; `reference` on CARD/TRANSFER (≤100); `tipSatang` (VALIDATION when malformed or tip is off); bill `note` + line notes stored; quote returns `serviceChargeSatang`; `priceCart({serviceChargeBp})` (half-up on net after all discounts, inside the VAT base). createSale refusals are mapped to `regRefuse(code)`; IDEMPOTENCY_CONFLICT from createSale re-reads the row and answers through `regDuplicate`. New codes + `errors.unitSystemMismatch|splitInvalid|tipAccountRequired` in `src/messages/{th,en}/pos.json` (append-only).
+  - `RegisterScreen.tsx`: one line, passes `serviceChargeSatang` through on PRICE_CHANGED (type compat only, no visual change — UI is builder U).
+- **Restaurant** (`restaurant/order.ts`): when createSale answers `status:"VOIDED"`, re-call with `rest-<hash>-r1`, `-r2`, … (deterministic, so a retry after a crash finds the same PAID bill). Still a single `createSale(` call site (U4 inventory unchanged: 18/15).
+
+### Callers table (O21)
+| caller | how system is chosen | under the guard |
+|---|---|---|
+| actions/pos.ts (old screen) · pos/api/ops/sales.ts · pos/register.ts | explicit + `posUnitIsLinked` / regScope | always linked ⇒ unaffected |
+| actions/booking.ts · booking/service.ts · ticket · hotel ×2 · rental deposit · restaurant/order.ts | `systemForUnit(unit,"POS")` | linked ⇒ unaffected |
+| giftcard ×2 · member/subscription.ts | `resolvePosForMember` (unit-linked POS) | linked ⇒ unaffected |
+| **shop/service.ts · clinic/service.ts · school/service.ts · rental returnAsset · ai/proposals.ts** | **first POS of the tenant** | **O21**: works when the unit is linked to that POS or the tenant has exactly 1 active POS; otherwise UNIT_SYSTEM_MISMATCH "เลือกจุดขายก่อน" (thrown, surfaces as each caller's error text) |
+
+### ORACLE-EDIT
+- `scripts/qc-pos-p1.3.mts` **S3.38** only (approved §8.7): TRANSFER and CARD now expected PAID with one payment row of that type; DEPOSIT / ROOM_CHARGE / garbage still VALIDATION with no bill. Registry title updated to match. No other assertion touched; `qc-pos-p1.6.mts` untouched.
+
+### FIXTURE fixes (legacy suites that sold through an unlinked or wrongly linked pair — guard not weakened)
+- `scripts/qc-pos-account.mts`: tenant has POS + POS2 and the unit was linked to neither ⇒ unit linked to POS, new unit "kiosk" linked to POS2, `sale()` picks the unit by system.
+- `scripts/qc-pos-closeday.mts`: the same unit was linked to posSys and then posSys2 (`linkUnit` replaces, so posSys sales were a wrong pair) ⇒ unit ↔ posSys, new "สาขา 2" ↔ posSys2.
+- Static scan only (no DB here). Suites I could not decide statically: CRM lane `qc-crm-c2.7` / `c2.9` (they sell through `POS.createSale` on their own fixtures — not my lane, flag to CRM if red); member suites use the member-QC seed (`seed-member-qc` links units to POS ⇒ expected fine).
+
+### Verified here (no DB)
+- `pnpm exec tsx scripts/qc-pos-p1.6.mts --list` → 48 ids, exit 0 (oracle has no `--no-db` mode; it connects at startup).
+- Scratch harness of the oracle's pure groups (outside the repo): **V1 V2 U4 R2 R3 all green**.
+- `qc-pos-p1.4 --no-db` 13/13 · `qc-pos-p1.5 --no-db` 5/5 · `qc-pos-p1.3 --list` exit 0.
+- `pnpm fitness` with DATABASE_URL/DIRECT_URL unset: 41/41, exit 0 (F15.2 additive). Typecheck (`NODE_OPTIONS=--max-old-space-size=6144 pnpm typecheck`): exit 0 after every step.
+
+### CONTROLLER-RUN (VPS, QC4) — in this order
+1. `bash scripts/iso.sh bash scripts/qc4.sh bash scripts/with-gate-lock.sh pnpm exec prisma migrate deploy` (then the client generate the lane rules allow).
+2. P1.6 oracle ×2: `bash scripts/iso.sh bash scripts/qc4.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/qc-pos-p1.6.mts` (expect 48/48, Z1/Z2 green).
+3. All POS suites: qc-pos-p0.2 · qc-pos-p1.1 · qc-pos-p1.3 (S3.38 edited; **S6.1 should turn green**) · qc-pos-p1.4 · qc-pos-p1.5 · qc-pos-account · qc-pos-closeday · qc-pos-coupon · qc-pos-inventory · qc-pos-products · qc-pos-register.
+4. COMMON §7 money set: qc-account-cpa · qc-restaurant-money · qc-shop-refund · qc-hotel-money · qc-ticket-money · qc-subscription-money.
+5. Every createSale caller's suite: qc-booking-deposit · qc-booking-edit-schedule · qc-booking-race · qc-hotel-refund · qc-ticket-cancel · qc-rental · qc-rental-race · qc-rental-refund · qc-restaurant · qc-restaurant-pay · qc-restaurant-void · qc-shop · qc-clinic · qc-clinic-refund · qc-school · qc-school-refund · qc-subscription · qc-member-m2.6 (giftcard) · qc-member-m1.7 · m1.9 · m2.3 · m2.8 · m3.2 · m3.3 · m3.5 · m3.7 · qc-member-fix-s2 · qc-money-mapping · qc-hf-inventory-atomic · qc-hf-pos-page-authz · qc-ai-phase-a · qc-ai-phase-b1 (+ CRM-lane qc-crm-c2.7 / c2.9 for information).
+6. `pnpm fitness` with and without .env · typecheck · build.
+
+### Open questions
+1. **Tip ledger posting.** The bridge now excludes tip from the JV (balanced at grand), but the tip cash itself is not booked (Dr cash / Cr tip-liability ledger). Posting it needs a GL entry with an arbitrary ledger id (`gl.ts`, outside "applyExternalSale only"). Rule: follow-up WO, or allow a minimal `postExternalSale` extension?
+2. **R6 for legacy callers.** A legacy retry with the same key but a changed payload (e.g. a re-recorded deposit amount) used to get the old sale silently; it now throws IDEMPOTENCY_CONFLICT. That is the ruling, but watch the booking/rental deposit suites.
+3. **BLOCK inside a caller's tx** (createSale called with a tx client): stock is cut in-tx, but COGS GL is not posted (the post-commit path only runs when createSale owns the tx). No current BLOCK caller does this (giftcard lines have no itemId).
+4. createSale (not the register) does not check the tip/SC *settings*: legacy callers pass amounts they computed themselves (K8 relies on that). OK?
+5. Register refuses a second CASH row (tendered/change lives on one CASH row). OK?
