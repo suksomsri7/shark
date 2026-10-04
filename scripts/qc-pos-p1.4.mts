@@ -174,7 +174,7 @@ function deepFreeze<T>(o: T): T {
   }
   return o;
 }
-const clone = <T>(o: T): T => JSON.parse(JSON.stringify(o)) as T;
+const clone = <T,>(o: T): T => JSON.parse(JSON.stringify(o)) as T;
 
 // ── ซอร์ส (สถิต) ──
 function walk(dir: string, out: string[] = []): string[] {
