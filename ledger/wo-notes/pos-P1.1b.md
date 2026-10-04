@@ -188,3 +188,38 @@ Registry 177 checks (P1.1b 62). Existing assertions untouched; new block marked 
 - G13 re-run (32 suites) vs the 51a5e7d6 before-run: 31 identical; **qc-pos-p1.3 S5.12 red** — P1.3's byte guard requires `src/lib/actions/pos.ts` = base, and F9 had added `auth.user.id` to the `setItemSalePrice` call there. Reverted that one line (this commit) → qc-pos-p1.3 127/127 + qc-pos-products 24/24 identical to before. Consequence: the "/pos/products" price page still audits as SYSTEM (`setItemSalePrice` keeps its optional `actorUserId` for when P1.3's guard is re-baselined — open question for the controller).
 - Typecheck 0 · fitness 41/41 with env and without env.
 - No oracle file changes besides the ORACLE-ADD block. Deferred items (archived PosCategory reuse → P2.4 · book link/vatRegistered not doors → P6.1/P2.1 · unordered `inventorySystemId()` → P2.1) noted only, no code.
+
+# Round R3 (brief `pos-brief-P1.1b-R3.md` · 4 Oct 2026)
+
+## H1 — price-source rows read `FOR SHARE` in every sync/create path (1aa0103d)
+- `catalog.ts`: `strictApOf(…, share)` runs `SELECT id FROM "AccountProduct" WHERE id=… AND "tenantId"=… FOR SHARE` before reading the AP · new `sharePriceSourceInv` = `FOR SHARE` on the InvItem **only when it is a SERVICE** (its `priceSatang` is a C7 price source), then re-reads it · `legacySourceOf(row, db, share)` uses both.
+- Callers with `share = true` (all after their PosProduct row locks, G7): `rederiveRows` (= every door's resync: `linkInvItemAccountProduct` · `writeInvItemFromAccountProduct` · `updateInvItem` · `updateAccountProduct` · `archiveAccountProduct` · `writeAccountProductSalePrice` · setPrice siblings) · `updateShopProduct` · `createShopProduct` C9b (after the tenant try-lock) · `ensureForInvItem` (after the tenant try-lock; also reached from `createInvItem` and shop C9a).
+- Not shared: setPrice's own reads (it writes the source itself), backfill/`--verify` (read-only, not in a door tx). PRODUCT InvItems are not share-locked, so stock writes never queue behind a catalogue sync.
+- READ COMMITTED: the `FOR SHARE` waits for the uncommitted price writer, and the next statement's snapshot sees the committed price → the row is derived from the new price.
+- **Why no lock cycle is added.** No price writer takes the tenant lock. Every catalogue-side price writer (`updateAccountProduct` · `archiveAccountProduct` · `writeAccountProductSalePrice` · `updateInvItem` · setPrice) locks its PosProduct rows **before** it updates the source row, and after that update it takes no further PosProduct lock (H2 removed the only late lock). So a tx that holds a source row is never waiting for a PosProduct row. A sync that waits on `FOR SHARE` therefore waits on a tx that can only wait on (a) other source rows, which it shares in the same row→source order, or (b) the tenant lock, which is a budgeted `pg_try_advisory_xact_lock` (never blocks → BUSY). Writers outside the catalogue (raw SQL, account/service.ts PART B) hold the source row without holding any PosProduct row. When two txs both touch an item's rows, both lock those PosProduct rows first, so they are serialized before either touches the source. The tenant try-lock is taken before the share in `ensureForInvItem`/C9b; it cannot block either.
+- S2.R3.3's deadlock counter (+0 over 5×3 lanes) and X6.5 (+0) are the runtime proof.
+
+## H2 — setPrice: no out-of-order sibling locks (1aa0103d)
+- After the first `lockProductRows` (own + siblings, id order) and the re-read, setPrice re-queries the sibling set of the current target **before any write**. A sibling that is not locked → internal `SiblingsGrew` → the tx is thrown away (all locks released).
+- The same re-query runs once more right after `writeBackPrice`. That UPDATE can wait for a linker that holds `FOR SHARE` on the same source (H1). If the linker commits a new sibling, the tx is rolled back the same way, so a row linked in between never keeps the old price. No lock is taken there either.
+- `setPrice` retries the whole tx up to 3 rounds when it owns the transaction (`client` = PrismaClient). With a caller's tx, or after 3 rounds, it throws `BUSY` with the existing Thai busy message. The old "lock extras after writing" code is gone.
+
+## S2.R3 tests (ORACLE-ADD, controller R3 ruling) — `scripts/qc-pos-p1.1.mts` section `s2-r3` (0385db69)
+Registry 180 checks. Existing assertions untouched; new block marked `// ORACLE-ADD (controller R3 ruling)`.
+| id | proves |
+|---|---|
+| S2.R3.1 | conn1 (lane 30, interactive tx) `UPDATE "AccountProduct" SET "salePrice"=2700` left open → conn2 `inventory.linkAccountProduct(ctxInvC, Y, A)` in the background (Y = InvItem of the first POS, row already ensured, A 2000 half-linked) → 1.5 s → conn1 commits → Y's rows = 2700 and `verifyCatalog` has no sample for them |
+| S2.R3.2 | same with conn2 = `shop.createProduct(ctxShop, {invItemId: Y2})`, Y2 in warehouse X (outside the first POS → C9b own row) linked to A2 (3000) → new row = 3700, no drift |
+| S2.R3.3 | AP A3 with row P (linked) × 5 rounds of 3 parallel lanes: `setPrice(P)` on its own connection · `inventory.linkAccountProduct(Y_r → A3)` (fresh ensured InvItem per round, staggered `round×7` ms) · `account.updateProduct(A3)` → every lane ok, no deadlock error, `pg_stat_database.deadlocks` delta 0 (after the 12 s stats delay), all 6 rows of A3 = `AP.salePrice`, no drift |
+- **Red on 6668635c**: catalog.ts + catalog-legacy.ts checked out from 6668635c with this oracle, forced, then restored. Result `ผ่าน 176/178`; failed exactly S2.R3.1 (`price✗ noDrift✗` · conn2 waited · row 2000) and S2.R3.2 (`price✗ noDrift✗` · row 3000). R.1/R.2 were green. S2.R3.3 was green on the base too: the old late extra lock did not deadlock in these 5 rounds. The check guards H2's no-deadlock/equal-price contract and was not required to be red.
+- Green on the fix: first forced run `ผ่าน 178/178` (180 − 2 PART-B skips).
+
+## Deferred (notes only, per brief)
+- Backfill vs. a concurrent edit on a not-yet-linked row (hunter #3) → P6.1 runbook. Add the line "re-run `--verify` after backfill; it must report 0 before dual-write goes live". The runbook lives in the controller's tree, so this is for the controller to add.
+- `/pos/products` audit actor (hunter #4): the R2 revert stays as ruled (P1.3 S5.12 freeze wins). No action; deferred to P2.4.
+
+## R3 final results (head 0385db69)
+- Forced ×2 + unforced: `ผ่าน 178/178` each (180 registered − 2 PART-B skips S2.11b/S2.19) · R.1/R.2 green · S2.42 = 13/6 (base).
+- Module suites (restaurant ×4 · shop ×2 · inventory ×3 · account-cpa · acc-v2 ×3 · booking ×4 · qc-pos-* ×8 · ai ×4 · hotel/ticket/subscription money): every JSON_SUMMARY identical to the 51a5e7d6 before-run. That includes qc-pos-p1.3 127/127; acc-v2-products/-invitem/-pos-lines and qc-ai-actions were already red/crash on the base and are unchanged.
+- Typecheck 0 · fitness 41/41 with env and without env.
+- Files changed in R3: `src/lib/modules/pos/catalog.ts`, `src/lib/modules/pos/catalog-legacy.ts`, `scripts/qc-pos-p1.1.mts` (ORACLE-ADD block only), this notes file.
