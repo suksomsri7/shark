@@ -121,7 +121,7 @@ export function ShiftsClient({ systemId, units, unitId, canManage }: Props) {
       if (list.ok) setHistory(list.items);
       if (off && off.ok) setOffShift(off.totalSatang);
       if (s) {
-        const x = await xReportAction({ systemId, unitId, shiftId: s.id });
+        const x = await xReportAction({ ...b, shiftId: s.id }); // R2 F3: ส่ง deviceId — แคชเชียร์เห็น X ของกะเปิดที่เครื่องนี้
         setReport(x.ok ? x.report : null);
       } else setReport(null);
       setLoaded(true);
