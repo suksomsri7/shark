@@ -83,3 +83,21 @@ Not touched: `src/lib/actions/pos.ts`, `register-ui.tsx`, `prisma/`, `.env*`, th
 4. **"Ignored while dialog" scope:** it applies to every open layer (mobile cart sheet, chooser, camera, line editor …), not only pay. Is that OK?
 5. **Scan with focus outside search while a search term is shown:** the term is kept and the scan only adds the item. The search box is cleared only when the burst was typed into it.
 6. **Node engines:** `@zxing/library` declares `engines.node >= 24`. Check the VPS and build node version (pnpm only warns unless engine-strict is on).
+
+## R2 (reviewer MERGEABLE-AFTER-FIXES → fixes 1–3; findings 4–5 left as notes)
+1. **SHOULD-FIX, a scan corrupts a focused dialog input.**
+   - On the first key of a burst buffer, a target that is an `input` or `textarea` other than search has its value saved (`scanFieldSnap`).
+   - When the burst is scan-timed and its keys landed in that field, the value is restored. This covers a dialog-ignored scan and a scan into a non-dialog input. The restore uses the prototype `value` setter plus a bubbling `input` event (`restoreFieldValue`), so React state follows.
+   - The toast and the swallowed terminator are unchanged.
+2. **NOTE, Thai-layout mapping.**
+   - The pure `scanKeyFromEvent({key, code, shiftKey, isComposing})` in `scan-shared.ts` uses a US table: Digit0–9, Minus, Equal, BracketLeft/Right, Backslash, Semicolon, Quote, Backquote, Comma, Period and Slash, each as [plain, Shift]. Numpad0–9 and KeyA–Z are also mapped.
+   - Shift+Digit now gives the symbol. ASCII keys and multi-char keys pass through unchanged.
+   - `RegisterScreen`'s local `scanKeyOf` is removed.
+3. **NOTE, silent drops now show a toast.**
+   - `addProduct` checks the last-rendered cart (`cartRef`). If `cartAddProduct` returns the same cart, it shows `errors.qtyInvalid {max 9999}` when the same-price line is at the cap, or `errors.tooManyLines {max 200}` otherwise.
+   - `onScannedCode` while frozen (before or after the server call) shows `scan.ignoredWhileDialog`.
+
+R2 results: `qc-pos-p1.4 --no-db` 13/13 · P1.3 static re-check all true · `pnpm fitness` (DB env unset) 41/41, exit 0 · `pnpm typecheck` exit 0 (the controller's ORACLE-EDIT 7ad61a44 fixed TS7060).
+
+New browser check 9: open the pay dialog, type 500 in "received" (the cursor stays in the field), then scan an EAN-13. The field shows 500 again, the change and confirm state match 500, the toast "ignoredWhileDialog" appears, and nothing is added or paid. Repeat with the custom-item price field and the line editor qty field.
+New browser check 10: scan the same product past 9999, or a new product into a 200-line cart, and you get a toast (not silence). Scan while the bill is sending and you get a toast.

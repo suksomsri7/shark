@@ -45,6 +45,32 @@ export function classifyScanBurst(keys: readonly ScanKey[], ctx: ScanBurstContex
   return { kind: "scan", code };
 }
 
+/**
+ * แป้นภาษาไทย (Kedmanee): เครื่องสแกนแบบพิมพ์ส่ง "ตำแหน่งปุ่ม" แต่ระบบแปลงเป็นอักษรไทย (1 → ๅ · . → ใ …)
+ *   ⇒ ตารางตำแหน่งปุ่ม (KeyboardEvent.code) → [ไม่กด Shift, กด Shift] ตามแป้น US — ตัวเครื่องสแกนตั้งมาเป็นแป้น US เสมอ
+ */
+const US_KEY_BY_CODE: Readonly<Record<string, readonly [string, string]>> = {
+  Digit1: ["1", "!"], Digit2: ["2", "@"], Digit3: ["3", "#"], Digit4: ["4", "$"], Digit5: ["5", "%"],
+  Digit6: ["6", "^"], Digit7: ["7", "&"], Digit8: ["8", "*"], Digit9: ["9", "("], Digit0: ["0", ")"],
+  Minus: ["-", "_"], Equal: ["=", "+"], BracketLeft: ["[", "{"], BracketRight: ["]", "}"], Backslash: ["\\", "|"],
+  Semicolon: [";", ":"], Quote: ["'", '"'], Backquote: ["`", "~"], Comma: [",", "<"], Period: [".", ">"], Slash: ["/", "?"],
+};
+
+/**
+ * คีย์ที่ใส่บัฟเฟอร์ของตัวแยกเครื่องสแกน — key เป็น ASCII อยู่แล้ว/ยาวกว่า 1/IME ประกอบคำ = คงเดิม
+ *   อักษรนอก ASCII ⇒ แปลงจากตำแหน่งปุ่ม: ตาราง US (เคารพ Shift) · Numpad0–9 · KeyA–Z (Shift = ตัวพิมพ์ใหญ่) · ไม่รู้จัก = คงเดิม
+ */
+export function scanKeyFromEvent(e: { key: string; code: string; shiftKey: boolean; isComposing?: boolean }): string {
+  if (e.isComposing || e.key.length !== 1 || /^[\x20-\x7e]$/.test(e.key)) return e.key;
+  const us = US_KEY_BY_CODE[e.code];
+  if (us) return e.shiftKey ? us[1] : us[0];
+  const n = /^Numpad(\d)$/.exec(e.code);
+  if (n) return n[1]!;
+  const a = /^Key([A-Z])$/.exec(e.code);
+  if (a) return e.shiftKey ? a[1]! : a[1]!.toLowerCase();
+  return e.key;
+}
+
 export type ScanOutcome<P = RegisterProduct> =
   | { action: "add"; product: P }
   | { action: "choose"; products: P[] }

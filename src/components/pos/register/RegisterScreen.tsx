@@ -38,6 +38,7 @@ import {
   moneyText,
   refusalMessageKey,
   REGISTER_MAX_LINES,
+  REGISTER_MAX_QTY,
   type RegisterCart,
   type RegisterCartLine,
   type RegisterPayMethod,
@@ -50,7 +51,7 @@ import {
   type RegisterSubmitInput,
   type RegisterSubmitOk,
 } from "@/lib/modules/pos/register-shared";
-import { classifyScanBurst, scanOutcome, SCAN_MAX_GAP_MS, type ScanKey } from "@/lib/modules/pos/scan-shared";
+import { classifyScanBurst, scanKeyFromEvent, scanOutcome, SCAN_MAX_GAP_MS, type ScanKey } from "@/lib/modules/pos/scan-shared";
 import { quoteRegisterCartAction, registerCatalogAction, registerScanAction, registerStatusAction, submitRegisterSaleAction } from "@/lib/modules/pos/register-actions";
 import { BillDiscountDialog } from "./BillDiscountDialog";
 import { CartPanel, type CartTotalsModel } from "./CartPanel";
@@ -117,17 +118,14 @@ const newKey = () => {
   }
 };
 /**
- * คีย์ของเครื่องสแกนแบบพิมพ์ (P1.4): แป้นภาษาไทยทำให้ตัวเลข/อักษรของเครื่องสแกนกลายเป็นอักษรไทย (เช่น 1 → ๅ)
- *   ⇒ ใช้ตำแหน่งปุ่ม (e.code) แทนเมื่อ key ไม่ใช่ ASCII · ระหว่าง IME ประกอบคำคง key เดิม (classifyScanBurst ตัดสินเป็น ime)
+ * P1.4 R2: คีย์ของเครื่องสแกนตกลงในช่องกรอกอื่น (เช่น "รับเงิน" ของกล่องชำระ) ⇒ คืนค่าก่อนการสแกน
+ *   ใช้ setter ของ prototype + เหตุการณ์ input ⇒ React (controlled input) รับค่าคืนด้วย
  */
-const scanKeyOf = (e: KeyboardEvent): string => {
-  if (e.isComposing || e.key.length !== 1 || /^[\x20-\x7e]$/.test(e.key)) return e.key;
-  const d = /^(?:Digit|Numpad)(\d)$/.exec(e.code);
-  if (d) return d[1]!;
-  const a = /^Key([A-Z])$/.exec(e.code);
-  if (a) return e.shiftKey ? a[1]! : a[1]!.toLowerCase();
-  if (e.code === "Minus") return "-";
-  return e.key;
+const restoreFieldValue = (el: HTMLInputElement | HTMLTextAreaElement, value: string) => {
+  if (el.value === value) return;
+  const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+  Object.getOwnPropertyDescriptor(proto, "value")?.set?.call(el, value);
+  el.dispatchEvent(new Event("input", { bubbles: true }));
 };
 const isFinePointer = () => typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(pointer: fine)").matches;
 
@@ -176,6 +174,8 @@ export function RegisterScreen(props: RegisterScreenProps) {
   // ═══════ ตะกร้า + ยอด ═══════
   const [cart, setCart] = useState<RegisterCart>({ lines: [] });
   const [cartVer, setCartVer] = useState(0);
+  const cartRef = useRef(cart);
+  cartRef.current = cart;
   const [quote, setQuote] = useState<{ ver: number; q: RegisterQuote } | null>(null);
   const [quoteErr, setQuoteErr] = useState<{ ver: number; code: string } | null>(null);
   const [quoteSlow, setQuoteSlow] = useState(false);
@@ -492,6 +492,12 @@ export function RegisterScreen(props: RegisterScreenProps) {
   const addProduct = (p: RegisterProduct) => {
     if (frozenRef.current) return;
     const key = newKey();
+    // R2: เพดานจำนวน/จำนวนบรรทัด = บอกผู้ใช้ (เดิมเงียบ) · ตรวจกับตะกร้าล่าสุดที่วาดแล้ว (cartRef)
+    const cur = cartRef.current;
+    if (cartAddProduct(cur, p.id, key) === cur) {
+      const atMaxQty = cur.lines.some((l) => l.kind === "product" && l.productId === p.id && !l.discount && l.openPriceSatang === undefined);
+      return showToast(atMaxQty ? { key: "errors.qtyInvalid", values: { max: REGISTER_MAX_QTY } } : { key: "errors.tooManyLines", values: { max: REGISTER_MAX_LINES } });
+    }
     // P1.4 B2: สแกนซ้ำ/แตะซ้ำ = +1 บรรทัดเดิม (ราคาเดียวกัน) — ตัวลดรูปบริสุทธิ์ใน register-shared (ข้อสอบ R1)
     updateCart((prev) => cartAddProduct(prev, p.id, key));
     focusSearch();
@@ -557,11 +563,12 @@ export function RegisterScreen(props: RegisterScreenProps) {
 
   /** ทางสแกนทางเดียว (เครื่องสแกนรัว · กล้อง) — เรียก registerScanAction ตรง: ไม่ผ่านคำค้น/หน่วง 200ms/โหลดกริด (B1 · ข้อสอบ S1) */
   const onScannedCode = async (code: string) => {
-    if (frozenRef.current) return;
+    if (frozenRef.current) return showToast({ key: "scan.ignoredWhileDialog" }); // R2: ระหว่างส่งบิล = บอก ไม่เงียบ
     const gen = billGen.current;
     try {
       const r = await registerScanAction({ systemId, unitId, barcode: code });
-      if (gen !== billGen.current || frozenRef.current) return; // บิลเปลี่ยนรุ่นระหว่างรอ = ทิ้ง (B2.2 S1)
+      if (gen !== billGen.current) return; // บิลเปลี่ยนรุ่นระหว่างรอ = ทิ้ง (B2.2 S1)
+      if (frozenRef.current) return showToast({ key: "scan.ignoredWhileDialog" });
       // B2: ระหว่างรอ ผู้ใช้เปิดกล่องชำระ/จบการขาย ⇒ ไม่แตะตะกร้าใต้กล่องนั้น
       if (layersRef.current.some((l) => l.kind === "pay" || l.kind === "done")) return showToast({ key: "scan.ignoredWhileDialog" });
       applyScan(r, code, "scan");
@@ -819,6 +826,8 @@ export function RegisterScreen(props: RegisterScreenProps) {
   //   onKeyDown ของช่องค้นหาไม่ถึง (หนึ่งสแกน = หนึ่งครั้ง) · ปุ่มที่โฟกัสไม่ถูกกด · Tab ไม่ย้ายโฟกัส · Enter ไม่ไปยืนยันกล่องชำระ
   //   ตัดสินที่ classifyScanBurst เท่านั้น (IME → กล่องเปิด → ช่องกรอกอื่น → จังหวะ) — คนพิมพ์ = ปล่อยผ่านตามเดิมทุกอย่าง
   const scanBuf = useRef<ScanKey[]>([]);
+  /** ค่าของช่องกรอก (ไม่ใช่ช่องค้นหา) ตอนคีย์แรกของบัฟเฟอร์ — คืนค่านี้ถ้าบัฟเฟอร์กลายเป็นการสแกน (R2) */
+  const scanFieldSnap = useRef<{ el: HTMLInputElement | HTMLTextAreaElement; value: string } | null>(null);
   const scanHandlers = useRef({ onScannedCode, clearSearchForScan, showToast });
   scanHandlers.current = { onScannedCode, clearSearchForScan, showToast };
   useEffect(() => {
@@ -826,7 +835,11 @@ export function RegisterScreen(props: RegisterScreenProps) {
       const buf = scanBuf.current;
       const prev = buf[buf.length - 1];
       if (prev && e.timeStamp - prev.at > SCAN_MAX_GAP_MS) buf.length = 0; // ห่างเกินจังหวะเครื่องสแกน = เริ่มบัฟเฟอร์ใหม่
-      buf.push({ key: scanKeyOf(e), at: e.timeStamp, isComposing: e.isComposing });
+      if (!buf.length) {
+        const t0 = e.target;
+        scanFieldSnap.current = t0 !== searchRef.current && (t0 instanceof HTMLInputElement || t0 instanceof HTMLTextAreaElement) ? { el: t0, value: t0.value } : null;
+      }
+      buf.push({ key: scanKeyFromEvent(e), at: e.timeStamp, isComposing: e.isComposing });
       if (buf.length > 128) buf.splice(0, buf.length - 128);
       if (e.key !== "Enter" && e.key !== "Tab") return;
       const keys = buf.splice(0);
@@ -839,6 +852,11 @@ export function RegisterScreen(props: RegisterScreenProps) {
             : "body";
       const r = classifyScanBurst(keys, { dialogOpen: layersRef.current.length > 0, target });
       const h = scanHandlers.current;
+      const snap = scanFieldSnap.current;
+      scanFieldSnap.current = null;
+      const scanTimed = r.kind === "scan" || (r.kind === "ignore" && r.reason !== "ime" && classifyScanBurst(keys, { target: "body" }).kind === "scan");
+      // R2: รหัสที่สแกนตกลงในช่องกรอกอื่น (กล่องชำระ "รับเงิน" 500 → 5008850…) ⇒ คืนค่าเดิมก่อนทำอย่างอื่น
+      if (scanTimed && snap && snap.el === el) restoreFieldValue(snap.el, snap.value);
       if (r.kind === "scan") {
         e.preventDefault();
         e.stopPropagation();
@@ -848,7 +866,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
         return;
       }
       // กล่องเปิดอยู่ (ชำระ · ตัวเลือก · กล้อง …) และจังหวะเป็นเครื่องสแกน ⇒ ไม่ทำอะไร + บอกผู้ใช้ (B2) · กลืนตัวจบไม่ให้ไปกดปุ่มในกล่อง
-      if (r.kind === "ignore" && r.reason === "dialog" && classifyScanBurst(keys, { target: "body" }).kind === "scan") {
+      if (r.kind === "ignore" && r.reason === "dialog" && scanTimed) {
         e.preventDefault();
         e.stopPropagation();
         h.showToast({ key: "scan.ignoredWhileDialog" });
