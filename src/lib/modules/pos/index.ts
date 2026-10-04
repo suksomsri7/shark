@@ -47,6 +47,10 @@ import {
   ensureForInvItem as catalogEnsureForInvItem,
   createCategory as catalogCreateCategory,
   checkCatalogWrite,
+  // POS P1.2 ▸ R5 ตัวเลือก · R8 สูตรชุด ◂
+  createOptionGroup as catalogCreateOptionGroup,
+  setProductOptionGroups as catalogSetProductOptionGroups,
+  setRecipe as catalogSetRecipe,
 } from "./catalog";
 export const catalog = {
   createProduct: catalogCreateProduct,
@@ -61,6 +65,11 @@ export const catalog = {
   createCategory: catalogCreateCategory,
   /** D1 — ตัวตัดสินสิทธิ์เขียนตามขอบเขตสาขาของแถว (หน้า POS ใช้ร่วม) */
   checkCatalogWrite,
+  /** P1.2 R5 — กลุ่มตัวเลือก (ตารางร้านอาหาร · ต่อสาขา) · ผูกกลุ่มกับสินค้าแทนทั้งชุด (MENU เขียน MenuItemOptionGroup ด้วย) */
+  createOptionGroup: catalogCreateOptionGroup,
+  setProductOptionGroups: catalogSetProductOptionGroups,
+  /** P1.2 R8 — ส่วนประกอบของชุด/คอมโบ (BUNDLE เท่านั้น) */
+  setRecipe: catalogSetRecipe,
 } as const;
 export type { CatalogCtx, CatalogActor, CatalogClient, CatalogErrorCode, CatalogRowScope, CatalogWriteVerdict, PosProductView, PosOptionGroupView, TrackStockMode } from "./catalog";
 export { CatalogError } from "./catalog";

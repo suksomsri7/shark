@@ -100,8 +100,13 @@ export type PosProductView = {
   trackStockMode: TrackStockMode;
   images: string[];
   optionGroups: PosOptionGroupView[];
-  /** P1.2 เป็นเจ้าของ — P1.1a ว่างเสมอ */
+  /** P1.2 R6: ตัวแปร (แถวลูก) ที่ยังไม่เก็บถาวรและขายได้ที่สาขานี้ · เรียงชื่อ+id · แถวลูกเอง = [] */
   variants: { id: string }[];
+  /** P1.2 R6: แม่ของตัวแปร (null = ไม่ใช่ตัวแปร) */
+  parentId: string | null;
+  /** P1.2 R9: สินค้าชั่ง (basePriceSatang = ราคาต่อกิโลกรัม) · รหัสป้ายชั่ง 5 หลัก */
+  soldByWeight: boolean;
+  scalePlu: string | null;
   recipe: { invItemId: string; qty: number }[];
   /** ราคาต่อช่องทาง — ใบช่องทางขายเป็นเจ้าของ · P1.1a ว่างเสมอ */
   channelPrices: { channelId: string; priceSatang: number }[];
@@ -444,7 +449,7 @@ async function audit(
   tx: Prisma.TransactionClient,
   ctx: CatalogCtx,
   action: string,
-  targetType: "PosProduct" | "PosCategory",
+  targetType: "PosProduct" | "PosCategory" | "MenuOptionGroup",
   targetId: string,
   before: Record<string, unknown> | null,
   after: Record<string, unknown> | null,
@@ -935,6 +940,14 @@ async function toViews(tenantId: string, unitId: string, unitInv: string | null,
         AND EXISTS (SELECT 1 FROM "InvMovement" m WHERE m."itemId" = i.id AND m."tenantId" = ${tenantId} AND m."systemId" = ${unitInv} LIMIT 1)`
     : [];
   const movedSet = new Set(moved.map((m) => m.id));
+  // P1.2 R6: ตัวแปรของแต่ละแถว — กติกามองเห็นเดียวกับรายการ (ไม่เก็บถาวร · สาขา · C3 คลังของสาขา)
+  const kids = await db.$queryRaw<{ id: string; parentId: string }[]>`
+    SELECT p.id, p."parentId" FROM "PosProduct" p
+    WHERE p."tenantId" = ${tenantId} AND p."parentId" = ANY(${ids}::text[]) AND p."archivedAt" IS NULL
+      AND (p."unitId" IS NULL OR p."unitId" = ${unitId}) AND ${warehouseCond(tenantId, unitInv)}
+    ORDER BY p.name, p.id`;
+  const kidsBy = new Map<string, { id: string }[]>();
+  for (const k of kids) kidsBy.set(k.parentId, [...(kidsBy.get(k.parentId) ?? []), { id: k.id }]);
   const groupById = new Map(groups.map((g) => [g.id, g]));
   const linksBy = new Map<string, typeof links>();
   for (const l of links) linksBy.set(l.productId, [...(linksBy.get(l.productId) ?? []), l]);
@@ -973,7 +986,10 @@ async function toViews(tenantId: string, unitId: string, unitInv: string | null,
       trackStockMode: ts.mode,
       images: toStrings(p.images),
       optionGroups,
-      variants: [],
+      variants: kidsBy.get(p.id) ?? [],
+      parentId: p.parentId,
+      soldByWeight: p.soldByWeight,
+      scalePlu: p.scalePlu,
       recipe: recipesBy.get(p.id) ?? [],
       channelPrices: [],
       availability: { [unitId]: rowAvailable(p, unitId, menuSoldOut) },
@@ -1082,7 +1098,37 @@ export type CreateProductInput = {
   invItemId?: string | null;
   /** C2: ไม่ส่ง/null = AUTO */
   trackStock?: boolean | null;
+  /** P1.2 R6: แม่ของตัวแปร (ระบบเดียวกัน · ไม่เก็บถาวร · ไม่ใช่ตัวแปร · ชนิด PRODUCT/MENU) */
+  parentId?: string | null;
+  /** P1.2 R9: สินค้าชั่ง (ชนิด PRODUCT เท่านั้น) · basePriceSatang = ราคาต่อกิโลกรัม */
+  soldByWeight?: boolean;
+  /** P1.2 R9: รหัสป้ายชั่ง 5 หลัก (ไม่ซ้ำในแถวที่ยังขายของระบบนี้ · ชน = CONFLICT) — ตั้งได้เฉพาะสินค้าชั่ง */
+  scalePlu?: string | null;
 };
+
+/** P1.2 R9: รหัสป้ายชั่ง = ตัวเลข 5 หลักพอดี (PP IIIII VVVVV C) · null/undefined = ไม่มี */
+function cleanScalePlu(v: unknown): string | null {
+  if (v === undefined || v === null) return null;
+  if (typeof v !== "string" || !/^\d{5}$/.test(v)) throw invalid("รหัสป้ายชั่งต้องเป็นตัวเลข 5 หลัก");
+  return v;
+}
+function cleanSoldByWeight(v: unknown): boolean {
+  if (typeof v !== "boolean") throw invalid("ค่าสินค้าชั่งต้องเป็น ใช่/ไม่ใช่");
+  return v;
+}
+/** P1.2 R9: กติการ่วมของสินค้าชั่ง (สร้าง/แก้) — ชั่งได้เฉพาะ PRODUCT · รหัสป้ายชั่งต้องคู่กับสินค้าชั่ง */
+function assertWeighedShape(kind: PosProductKind, soldByWeight: boolean, scalePlu: string | null): void {
+  if (soldByWeight && kind !== "PRODUCT") throw invalid("ขายตามน้ำหนักได้เฉพาะสินค้า (ไม่ใช่บริการ/เมนู/ชุด)");
+  if (scalePlu !== null && !soldByWeight) throw invalid("ตั้งรหัสป้ายชั่งได้เฉพาะสินค้าที่ขายตามน้ำหนัก");
+}
+/** P1.2 R9: รหัสป้ายชั่งซ้ำกับแถวที่ยังขายของระบบนี้ = CONFLICT (เรียกใต้ล็อกร้าน · partial unique ของ DB เป็นตาข่ายชั้นสุดท้าย) */
+async function assertScalePluFree(ctx: CatalogCtx, plu: string, exceptProductId: string | null, db: CatalogClient): Promise<void> {
+  const clash = await db.posProduct.findFirst({
+    where: { tenantId: ctx.tenantId, systemId: ctx.systemId, scalePlu: plu, archivedAt: null, ...(exceptProductId ? { id: { not: exceptProductId } } : {}) },
+    select: { id: true },
+  });
+  if (clash) throw conflict("รหัสป้ายชั่งนี้มีสินค้าอื่นใช้อยู่ในระบบขายนี้แล้ว");
+}
 
 function cleanVat(v: unknown): number | null {
   if (v === undefined || v === null) return null;
@@ -1141,7 +1187,7 @@ async function loadSellableItem(ctx: CatalogCtx, invItemId: unknown, db: Catalog
 }
 
 /** R5 F6: คีย์ที่ createProduct รับ (sku ไม่อยู่ — SKU เป็นของ InvItem · ส่งมา = คีย์แปลก VALIDATION) */
-const CREATE_KEYS: ReadonlySet<string> = new Set(["name", "nameEn", "kind", "categoryId", "basePriceSatang", "vatRateBp", "barcode", "unitId", "invItemId", "trackStock"]);
+const CREATE_KEYS: ReadonlySet<string> = new Set(["name", "nameEn", "kind", "categoryId", "basePriceSatang", "vatRateBp", "barcode", "unitId", "invItemId", "trackStock", "parentId", "soldByWeight", "scalePlu"]);
 const ownHas = (o: Record<string, unknown>, k: string) => Object.prototype.hasOwnProperty.call(o, k);
 
 /**
@@ -1156,7 +1202,9 @@ export async function createProduct(ctx: CatalogCtx, input: CreateProductInput, 
     assertCtxShape(ctx);
     const raw: Record<string, unknown> = isRecord(input) ? input : {};
     const wantsLock =
-      (ownHas(raw, "invItemId") && raw.invItemId !== undefined && raw.invItemId !== null) || (ownHas(raw, "barcode") && typeof raw.barcode === "string" && raw.barcode.trim() !== "");
+      (ownHas(raw, "invItemId") && raw.invItemId !== undefined && raw.invItemId !== null) ||
+      (ownHas(raw, "barcode") && typeof raw.barcode === "string" && raw.barcode.trim() !== "") ||
+      (ownHas(raw, "scalePlu") && raw.scalePlu !== undefined && raw.scalePlu !== null); // P1.2 R9: รหัสป้ายชั่ง = ตรวจซ้ำใต้ล็อกร้าน
     return inTx(client, async (tx) => {
       // P1.1b G12: ตรวจคีย์ของตัวเอง (VALIDATION) ได้ก่อนตรวจสิทธิ์ · ล็อกร้านอยู่ "หลัง" ตรวจสิทธิ์ — ผู้ไม่มีสิทธิ์ไม่ต้องรอ/แย่งล็อก
       await assertPosSystem(ctx, tx);
@@ -1199,12 +1247,32 @@ export async function createProduct(ctx: CatalogCtx, input: CreateProductInput, 
       }
       if (trackStock === true && !invItemId) throw invalid("ตัดสต็อกได้เฉพาะสินค้าที่ผูกสินค้าคลัง");
       if (trackStock === true && kind === "SERVICE") throw invalid("บริการไม่ตัดสต็อก");
+      // P1.2 R6: ตัวแปร = แถวลูกหนึ่งชั้น — แม่ต่างระบบ/ร้าน/ไม่มีจริง/สาขาที่เข้าไม่ได้ = NOT_FOUND · แม่เก็บถาวร/เป็นตัวแปร/ชนิดอื่น = VALIDATION
+      //   ราคา null = ใช้ราคาแม่ (P5 · ตัดสินตอนอ่าน) · สต็อกอยู่ที่ InvItem ของลูกเอง (C-1)
+      let parentId: string | null = null;
+      if (i.parentId !== undefined && i.parentId !== null) {
+        if (typeof i.parentId !== "string" || !i.parentId) throw notFound();
+        const parent = await tx.posProduct.findFirst({ where: { id: i.parentId, tenantId: ctx.tenantId, systemId: ctx.systemId } });
+        if (!parent || (actor && parent.unitId && !canAccessUnit(actor, parent.unitId))) throw notFound();
+        if (parent.archivedAt) throw invalid("สินค้าแม่ถูกเก็บถาวรแล้ว — กู้คืนก่อนเพิ่มตัวแปร");
+        if (parent.parentId) throw invalid("ตัวแปรมีตัวแปรซ้อนไม่ได้ (ได้ชั้นเดียว)");
+        if (parent.kind !== "PRODUCT" && parent.kind !== "MENU") throw invalid("เพิ่มตัวแปรได้เฉพาะสินค้าหรือเมนู");
+        if (kind === "BUNDLE") throw invalid("ชุดสินค้าเป็นตัวแปรไม่ได้");
+        parentId = parent.id;
+      }
+      // P1.2 R9: สินค้าชั่ง
+      const soldByWeight = i.soldByWeight === undefined ? false : cleanSoldByWeight(i.soldByWeight);
+      const scalePlu = cleanScalePlu(i.scalePlu);
+      assertWeighedShape(kind, soldByWeight, scalePlu);
       if (barcode) await assertBarcodeFree(ctx, barcode, invItemId, null, tx);
+      if (scalePlu) await assertScalePluFree(ctx, scalePlu, null, tx);
       const row = await tx.posProduct.create({
-        data: { tenantId: ctx.tenantId, systemId: ctx.systemId, unitId, invItemId, kind, name, nameEn, categoryId, basePriceSatang: price as number | null, vatRateBp, barcode, trackStock },
+        data: { tenantId: ctx.tenantId, systemId: ctx.systemId, unitId, invItemId, kind, name, nameEn, categoryId, basePriceSatang: price as number | null, vatRateBp, barcode, trackStock, parentId, soldByWeight, scalePlu },
       });
       await audit(tx, ctx, "pos.product.create", "PosProduct", row.id, null, {
         name, kind, unitId, invItemId, basePriceSatang: row.basePriceSatang, vatRateBp, barcode, categoryId, trackStock,
+        ...(parentId ? { parentId } : {}),
+        ...(soldByWeight ? { soldByWeight, scalePlu } : {}),
       });
       return row;
     });
@@ -1220,8 +1288,11 @@ export type UpdateProductPatch = {
   trackStock?: boolean | null;
   /** เปิด/ปิดขายรายสาขา { [unitId]: true|false } — แทน setAvailability (ไม่มีฟังก์ชันนั้น) */
   availability?: Record<string, boolean>;
+  /** P1.2 R9: สินค้าชั่ง · รหัสป้ายชั่ง 5 หลัก (null = ล้าง) */
+  soldByWeight?: boolean;
+  scalePlu?: string | null;
 };
-const PATCH_KEYS: ReadonlySet<string> = new Set(["name", "nameEn", "categoryId", "unitId", "trackStock", "availability"]);
+const PATCH_KEYS: ReadonlySet<string> = new Set(["name", "nameEn", "categoryId", "unitId", "trackStock", "availability", "soldByWeight", "scalePlu"]);
 
 /**
  * แก้ชื่อ/หมวด/สาขา/การตัดสต็อก/ความพร้อมขาย (สิทธิ์ pos.product.manage) — ราคาไปทาง setPrice
@@ -1231,9 +1302,15 @@ const PATCH_KEYS: ReadonlySet<string> = new Set(["name", "nameEn", "categoryId",
 export async function updateProduct(ctx: CatalogCtx, id: string, patch: UpdateProductPatch, client: CatalogClient = prisma): Promise<PosProduct> {
   return boundary(async () => {
     assertCleanInputs(ctx, id, patch);
+    // P1.2 R9: ตั้งรหัสป้ายชั่ง = ตรวจซ้ำใต้ล็อกร้าน — ตัดสินจากข้อมูลเข้าล้วน · ล็อกร้านก่อนล็อกแถว (ลำดับเดียวกับ restore)
+    const wantsLock = isRecord(patch) && ownHas(patch, "scalePlu") && patch.scalePlu !== undefined && patch.scalePlu !== null;
     return inTx(client, async (tx) => {
       await assertPosSystem(ctx, tx);
       const actor = await actorOf(ctx, tx);
+      if (wantsLock) {
+        await requireRowWrite(ctx, actor, await loadProduct(ctx, actor, id, tx), PERM_MANAGE, tx);
+        await tryLockTenant(tx, ctx.tenantId);
+      }
       const before = await loadProduct(ctx, actor, id, tx, true);
       await requireRowWrite(ctx, actor, before, PERM_MANAGE, tx);
       const p = ownFields(patch, PATCH_KEYS, "ที่แก้", "มีช่องที่แก้ผ่านทางนี้ไม่ได้ (ราคาใช้การตั้งราคา)");
@@ -1261,6 +1338,15 @@ export async function updateProduct(ctx: CatalogCtx, id: string, patch: UpdatePr
       }
       if ("categoryId" in p) data.categoryId = changed.categoryId = await assertCategory(ctx, p.categoryId, unitId, tx);
       else if ("unitId" in p && before.categoryId) await assertCategory(ctx, before.categoryId, unitId, tx);
+      // P1.2 R9: สินค้าชั่ง / รหัสป้ายชั่ง — ตรวจรูปร่างจากค่าหลังแก้ทั้งคู่
+      if ("soldByWeight" in p || "scalePlu" in p) {
+        const sbw = "soldByWeight" in p ? cleanSoldByWeight(p.soldByWeight) : before.soldByWeight;
+        const plu = "scalePlu" in p ? cleanScalePlu(p.scalePlu) : before.scalePlu;
+        assertWeighedShape(before.kind, sbw, plu);
+        if (plu && plu !== before.scalePlu && !before.archivedAt) await assertScalePluFree(ctx, plu, before.id, tx);
+        if ("soldByWeight" in p) data.soldByWeight = changed.soldByWeight = sbw;
+        if ("scalePlu" in p) data.scalePlu = changed.scalePlu = plu;
+      }
       let off: string[] = [];
       let on: string[] = [];
       if ("availability" in p) {
@@ -1407,7 +1493,7 @@ export async function restore(ctx: CatalogCtx, id: string, client: CatalogClient
       await requireRowWrite(ctx, actor, peek, PERM_MANAGE, tx);
       if (!peek.archivedAt) return { id: peek.id, archivedAt: null, restored: false };
       let locked = false;
-      if (peek.barcode) {
+      if (peek.barcode || peek.scalePlu) {
         await tryLockTenant(tx, ctx.tenantId);
         locked = true;
       }
@@ -1419,6 +1505,11 @@ export async function restore(ctx: CatalogCtx, id: string, client: CatalogClient
       if (before.barcode) {
         if (!locked) await tryLockTenant(tx, ctx.tenantId);
         await assertBarcodeFree(ctx, before.barcode, before.invItemId, before.id, tx);
+      }
+      // P1.2 R9: รหัสป้ายชั่งของแถวนี้มีแถวที่ขายอยู่ใช้แล้ว = CONFLICT (ไม่ใช่ P2002 ดิบ)
+      if (before.scalePlu) {
+        if (!locked) await tryLockTenant(tx, ctx.tenantId);
+        await assertScalePluFree(ctx, before.scalePlu, before.id, tx);
       }
       const r = await tx.posProduct.updateMany({
         where: { id: before.id, tenantId: ctx.tenantId, systemId: ctx.systemId, archivedAt: { not: null } },
@@ -1476,6 +1567,173 @@ export async function ensureForInvItem(ctx: CatalogCtx, invItemId: string, clien
       if (!row) throw notFound();
       if (r.count === 1) await audit(tx, ctx, "pos.product.create", "PosProduct", row.id, null, { invItemId: inv.id, kind, basePriceSatang: row.basePriceSatang, source: "ensureForInvItem" });
       return { id: row.id, created: r.count === 1, archived: row.archivedAt !== null };
+    });
+  });
+}
+
+// ═══════════════════ POS P1.2 ▸ ตัวเขียนตัวเลือก · ชุด/คอมโบ (R5 · R8) — ผู้เขียนเดียว F15.1 ◂ ═══════════════════
+// กลุ่ม/ตัวเลือกยังเป็นตารางของร้านอาหาร (MenuOptionGroup/Choice · ต่อสาขา) อ่านสด ไม่มีสำเนา (brief §3)
+//   "ใช้ร่วม" = กลุ่มเดียวผูกหลายสินค้า · กลุ่มเป็นของสาขาเดียว (ที่แก้) แต่ลิงก์ใช้ได้ทุกสาขาที่สินค้าขาย
+// สูตรชุด (RecipeLine) ของ BUNDLE เท่านั้นใน P1.2 — BOM ของเมนู = P2.3
+
+const OPTION_GROUP_KEYS: ReadonlySet<string> = new Set(["unitId", "name", "nameEn", "minSelect", "maxSelect", "choices"]);
+const OPTION_CHOICE_KEYS: ReadonlySet<string> = new Set(["name", "nameEn", "priceDelta", "isDefault"]);
+/** เพดานต่อกลุ่ม/ต่อสินค้า/ต่อชุด (กันคำขอใหญ่ผิดปกติ — ไม่ใช่กติกาธุรกิจ) */
+const MAX_OPTION_CHOICES = 50;
+const MAX_PRODUCT_OPTION_GROUPS = 20;
+const MAX_RECIPE_LINES = 50;
+const isSignedInt4 = (v: unknown): v is number => typeof v === "number" && Number.isInteger(v) && Math.abs(v) <= MAX_INT4;
+
+export type CreateOptionGroupInput = {
+  unitId: string;
+  name: string;
+  nameEn?: string | null;
+  minSelect: number;
+  maxSelect: number;
+  /** priceDelta = สตางค์ต่อหน่วย (ติดลบได้) · ลำดับในรายการ = sortOrder */
+  choices: { name: string; nameEn?: string | null; priceDelta: number; isDefault?: boolean }[];
+};
+
+/**
+ * P1.2 R5 — สร้างกลุ่มตัวเลือก + ตัวเลือก (ตารางร้านอาหาร · ต่อสาขา) ในธุรกรรมเดียว · สิทธิ์ pos.product.manage ที่สาขานั้น (D1)
+ *   สาขาต้องผูกระบบ POS ใน ctx (ไม่เก็บถาวร · ผู้กระทำเข้าได้) — ไม่ใช่ = NOT_FOUND · 0 ≤ min ≤ max · max ≥ 1 · ตัวเลือก 1–50 ชื่อไม่ซ้ำ = ไม่งั้น VALIDATION
+ *   ชื่อกลุ่มซ้ำในสาขา = CONFLICT (unique เดิม unitId+name)
+ */
+export async function createOptionGroup(ctx: CatalogCtx, input: CreateOptionGroupInput, client: CatalogClient = prisma): Promise<{ id: string }> {
+  return boundary(async () => {
+    assertCleanInputs(ctx, input);
+    return inTx(client, async (tx) => {
+      await assertPosSystem(ctx, tx);
+      const actor = await actorOf(ctx, tx);
+      const i = ownFields(input, OPTION_GROUP_KEYS, "กลุ่มตัวเลือก", "มีช่องที่เพิ่มกลุ่มตัวเลือกผ่านทางนี้ไม่ได้ — ยังไม่ได้บันทึกอะไร");
+      const unitId = await assertUnit(ctx, actor, i.unitId, tx);
+      await requireRowWrite(ctx, actor, { unitId, invItemId: null }, PERM_MANAGE, tx);
+      const name = cleanName(i.name, "ชื่อกลุ่มตัวเลือก");
+      const nameEn = cleanOptional(i.nameEn, "ชื่อกลุ่มภาษาอังกฤษ");
+      const min = i.minSelect;
+      const max = i.maxSelect;
+      if (typeof min !== "number" || !Number.isInteger(min) || typeof max !== "number" || !Number.isInteger(max) || min < 0 || max < 1 || min > max || max > MAX_OPTION_CHOICES) {
+        throw invalid("จำนวนที่เลือกได้ต้องเป็นจำนวนเต็ม: ขั้นต่ำ 0 ขึ้นไป · สูงสุดอย่างน้อย 1 และไม่น้อยกว่าขั้นต่ำ");
+      }
+      if (!Array.isArray(i.choices) || i.choices.length < 1 || i.choices.length > MAX_OPTION_CHOICES) throw invalid(`กลุ่มต้องมีตัวเลือก 1–${MAX_OPTION_CHOICES} รายการ`);
+      const choices = (i.choices as unknown[]).map((raw) => {
+        const c = ownFields(raw, OPTION_CHOICE_KEYS, "ตัวเลือก", "มีช่องของตัวเลือกที่รับไม่ได้ — ยังไม่ได้บันทึกอะไร");
+        if (!isSignedInt4(c.priceDelta)) throw invalid("ราคาบวกของตัวเลือกต้องเป็นจำนวนเต็มสตางค์ (ติดลบได้)");
+        if (c.isDefault !== undefined && typeof c.isDefault !== "boolean") throw invalid("ค่าตัวเลือกปริยายต้องเป็น ใช่/ไม่ใช่");
+        return { name: cleanName(c.name, "ชื่อตัวเลือก"), nameEn: cleanOptional(c.nameEn, "ชื่อตัวเลือกภาษาอังกฤษ"), priceDelta: c.priceDelta, isDefault: c.isDefault === true };
+      });
+      if (new Set(choices.map((c) => c.name)).size !== choices.length) throw invalid("ชื่อตัวเลือกในกลุ่มเดียวกันซ้ำกัน");
+      const g = await tx.menuOptionGroup.create({ data: { tenantId: ctx.tenantId, unitId, name, nameEn, minSelect: min, maxSelect: max } });
+      await tx.menuOptionChoice.createMany({
+        data: choices.map((c, k) => ({ tenantId: ctx.tenantId, unitId, groupId: g.id, name: c.name, nameEn: c.nameEn, priceDelta: c.priceDelta, isDefault: c.isDefault, sortOrder: k })),
+      });
+      await audit(tx, ctx, "pos.optionGroup.create", "MenuOptionGroup", g.id, null, { unitId, name, minSelect: min, maxSelect: max, choices: choices.map((c) => `${c.name}:${c.priceDelta}`) });
+      return { id: g.id };
+    });
+  });
+}
+
+/**
+ * P1.2 R5 — ผูกกลุ่มตัวเลือกกับสินค้า "แทนทั้งชุด" ตามลำดับที่ส่ง (sortOrder = ตำแหน่ง) · ชุดเดิม = ไม่เขียน ไม่ audit (idempotent)
+ *   • สิทธิ์ pos.product.manage ตามขอบเขตแถว (D1) · แถวตัวแปร = VALIDATION (ตัวเลือกตั้งที่แม่ · P6)
+ *   • กลุ่มต้องเป็นของร้านนี้ ไม่เก็บถาวร และสาขาของกลุ่มผูกระบบ POS นี้ (ผู้กระทำเข้าสาขานั้นได้) — ไม่ใช่ = NOT_FOUND (ไม่มีอะไรเปลี่ยน)
+ *   • แถว MENU ที่มี MenuItem คู่: เขียน MenuItemOptionGroup ชุดเดียวกันในธุรกรรมเดียว (ทางกลับของ catalog-legacy.setMenuItemOptionGroups ·
+ *     เขียนตารางตรง ไม่เรียกประตูเดิม ⇒ ไม่ปิงปอง G4c) — กลุ่มต้องเป็นของสาขาเดียวกับเมนู (กลุ่มของร้านอาหารเป็นต่อสาขา) ไม่งั้น VALIDATION
+ */
+export async function setProductOptionGroups(
+  ctx: CatalogCtx,
+  productId: string,
+  groupIds: string[],
+  client: CatalogClient = prisma,
+): Promise<{ id: string; groupIds: string[] }> {
+  return boundary(async () => {
+    assertCleanInputs(ctx, productId, groupIds);
+    return inTx(client, async (tx) => {
+      await assertPosSystem(ctx, tx);
+      const actor = await actorOf(ctx, tx);
+      const before = await loadProduct(ctx, actor, productId, tx, true);
+      await requireRowWrite(ctx, actor, before, PERM_MANAGE, tx);
+      if (before.parentId) throw invalid("ตัวแปรใช้ตัวเลือกของสินค้าแม่ — ตั้งตัวเลือกที่สินค้าแม่");
+      if (!Array.isArray(groupIds) || groupIds.length > MAX_PRODUCT_OPTION_GROUPS || !groupIds.every((g) => typeof g === "string" && g.length > 0)) {
+        throw invalid(`กลุ่มตัวเลือกต้องเป็นรายการรหัส ไม่เกิน ${MAX_PRODUCT_OPTION_GROUPS} กลุ่ม`);
+      }
+      if (new Set(groupIds).size !== groupIds.length) throw invalid("ส่งกลุ่มตัวเลือกซ้ำกัน");
+      const groups = groupIds.length
+        ? await tx.menuOptionGroup.findMany({ where: { tenantId: ctx.tenantId, id: { in: groupIds }, archivedAt: null }, select: { id: true, unitId: true } })
+        : [];
+      if (groups.length !== groupIds.length) throw notFound();
+      const units = [...new Set(groups.map((g) => g.unitId))];
+      const links = units.length
+        ? await tx.appSystemUnit.findMany({ where: { tenantId: ctx.tenantId, type: "POS", unitId: { in: units } }, select: { unitId: true, systemId: true } })
+        : [];
+      for (const u of units) {
+        if (!links.some((l) => l.unitId === u && l.systemId === ctx.systemId)) throw notFound();
+        if (actor && !canAccessUnit(actor, u)) throw notFound();
+      }
+      const want = groupIds.map((groupId, sortOrder) => ({ groupId, sortOrder }));
+      const key = (xs: { groupId: string; sortOrder: number }[]) => xs.map((x) => `${x.groupId}:${x.sortOrder}`).sort().join(",");
+      // MENU คู่ MenuItem (ตรวจก่อนเขียนอะไร)
+      const menu = before.kind === "MENU" ? await tx.menuItem.findFirst({ where: { tenantId: ctx.tenantId, posProductId: before.id }, select: { id: true, unitId: true } }) : null;
+      if (menu && groups.some((g) => g.unitId !== menu.unitId)) throw invalid("เมนูร้านอาหารใช้ได้เฉพาะกลุ่มตัวเลือกของสาขาเดียวกับเมนู");
+      const have = await tx.posProductOptionGroup.findMany({ where: { tenantId: ctx.tenantId, productId: before.id }, select: { groupId: true, sortOrder: true } });
+      if (key(have) !== key(want)) {
+        await tx.posProductOptionGroup.deleteMany({ where: { tenantId: ctx.tenantId, productId: before.id } });
+        if (want.length) await tx.posProductOptionGroup.createMany({ data: want.map((w) => ({ tenantId: ctx.tenantId, productId: before.id, ...w })) });
+        await audit(tx, ctx, "pos.product.optionGroups", "PosProduct", before.id, { optionGroups: key(have) }, { optionGroups: key(want) });
+      }
+      if (menu) {
+        const mHave = await tx.menuItemOptionGroup.findMany({ where: { tenantId: ctx.tenantId, itemId: menu.id }, select: { groupId: true, sortOrder: true } });
+        if (key(mHave) !== key(want)) {
+          await tx.menuItemOptionGroup.deleteMany({ where: { tenantId: ctx.tenantId, itemId: menu.id } });
+          if (want.length) await tx.menuItemOptionGroup.createMany({ data: want.map((w) => ({ tenantId: ctx.tenantId, unitId: menu.unitId, itemId: menu.id, ...w })) });
+        }
+      }
+      return { id: before.id, groupIds: [...groupIds] };
+    });
+  });
+}
+
+/**
+ * P1.2 R8 — สูตรของชุด/คอมโบ (RecipeLine) "แทนทั้งชุด" · ชุดเดิม = ไม่เขียน ไม่ audit · [] = ชุดไม่มีส่วนประกอบ (ขายแบบไม่ตัดสต็อก)
+ *   • เฉพาะแถว BUNDLE (MENU = P2.3 · ชนิดอื่น = VALIDATION) · สิทธิ์ pos.product.manage ตามขอบเขตแถว (D1)
+ *   • ส่วนประกอบ {invItemId, qty จำนวนเต็ม ≥ 1} ไม่ซ้ำ · InvItem ต้องอยู่ในคลังที่ขายผ่าน POS นี้ (ไม่ใช่ = NOT_FOUND) · ยังใช้งาน · ไม่ใช่บริการ
+ *   • ตรวจทุกอย่างก่อนเขียน ⇒ คำขอที่ถูกปฏิเสธไม่แตะสูตรเดิม
+ */
+export async function setRecipe(
+  ctx: CatalogCtx,
+  productId: string,
+  lines: { invItemId: string; qty: number }[],
+  client: CatalogClient = prisma,
+): Promise<{ id: string; recipe: { invItemId: string; qty: number }[] }> {
+  return boundary(async () => {
+    assertCleanInputs(ctx, productId, lines);
+    return inTx(client, async (tx) => {
+      await assertPosSystem(ctx, tx);
+      const actor = await actorOf(ctx, tx);
+      const before = await loadProduct(ctx, actor, productId, tx, true);
+      await requireRowWrite(ctx, actor, before, PERM_MANAGE, tx);
+      if (before.kind !== "BUNDLE") throw invalid("ตั้งส่วนประกอบได้เฉพาะชุดสินค้า (สูตรเมนูมาในรอบถัดไป)");
+      if (!Array.isArray(lines) || lines.length > MAX_RECIPE_LINES) throw invalid(`ส่วนประกอบต้องเป็นรายการ ไม่เกิน ${MAX_RECIPE_LINES} รายการ`);
+      const want = (lines as unknown[]).map((raw) => {
+        const l = ownFields(raw, new Set(["invItemId", "qty"]), "ส่วนประกอบ", "มีช่องของส่วนประกอบที่รับไม่ได้ — ยังไม่ได้บันทึกอะไร");
+        if (typeof l.invItemId !== "string" || !l.invItemId) throw invalid("ส่วนประกอบต้องระบุสินค้าคลัง");
+        if (typeof l.qty !== "number" || !Number.isInteger(l.qty) || l.qty < 1 || l.qty > 1_000_000) throw invalid("จำนวนของส่วนประกอบต้องเป็นจำนวนเต็มตั้งแต่ 1");
+        return { invItemId: l.invItemId, qty: l.qty };
+      });
+      if (new Set(want.map((w) => w.invItemId)).size !== want.length) throw invalid("ส่วนประกอบซ้ำกัน — รวมจำนวนไว้ในรายการเดียว");
+      for (const w of want) {
+        const inv = await loadSellableItem(ctx, w.invItemId, tx);
+        if (inv.archivedAt) throw invalid("สินค้าคลังในส่วนประกอบถูกเก็บถาวรแล้ว");
+        if (inv.kind === "SERVICE") throw invalid("บริการเป็นส่วนประกอบของชุดไม่ได้ (ไม่มีสต็อก)");
+      }
+      const have = await tx.recipeLine.findMany({ where: { tenantId: ctx.tenantId, productId: before.id }, select: { invItemId: true, qty: true } });
+      const key = (xs: { invItemId: string; qty: number }[]) => xs.map((x) => `${x.invItemId}:${x.qty}`).sort().join(",");
+      if (key(have) !== key(want)) {
+        await tx.recipeLine.deleteMany({ where: { tenantId: ctx.tenantId, productId: before.id } });
+        if (want.length) await tx.recipeLine.createMany({ data: want.map((w) => ({ tenantId: ctx.tenantId, productId: before.id, invItemId: w.invItemId, qty: w.qty })) });
+        await audit(tx, ctx, "pos.product.recipe", "PosProduct", before.id, { recipe: key(have) }, { recipe: key(want) });
+      }
+      return { id: before.id, recipe: want };
     });
   });
 }
