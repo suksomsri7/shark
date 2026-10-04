@@ -433,7 +433,6 @@ export async function registerSaleAction(input: SaleInput): Promise<RegisterSale
       couponSystemId: totals.couponSystemId ?? undefined,
       couponCode: totals.couponSystemId ? input.couponCode?.trim().toUpperCase() : undefined,
       payMethods: [{ type: payType, amountSatang: grandTotal }],
-      soldByUserId: auth.user.id, // POS P1.17 ▸ R6 · หน้าขายเดิม ◂
     });
     // ── CRM C2.7: ผูกบิลที่ขายสำเร็จแล้วเข้ากับดีลที่แคชเชียร์เลือก (`crm.payments.linkSaleToDeal` ผ่าน `pos/register.ts`) ──
     // 🔴 ลูกค้าจ่ายเงินไปแล้ว: ความล้มของฝั่ง CRM **ห้าม** ทำให้การขายล้ม ⇒ ห่อไว้ที่นี่ แล้วบันทึกเป็น WARN (id ล้วน · X8)

@@ -92,3 +92,7 @@ Risk to watch: any older oracle that fingerprints a register-made `PosSale` row 
 - Ratified as is: PERMISSION_DENIED for an accessible unit without `pos.report.view`.
 
 R2 checks: typecheck exit 0 · `fitness` (no DB env) 41/41 · `fitness-pos` 8/8 · `qc-pos-p1.17 --no-db` 6/6. The in-memory trace from R1 was not kept, so it was not re-run. The oracle fixture has no component lines and no recounts, and the oracle checks no exact key sets, so F2 and F5 leave every expected number above unchanged (recount fields = null, recount totals 0). DB expectation still 35/35.
+
+## R3 (controller fix, 5 Oct 2026)
+- VPS p117-r2 (79ca612f): qc-pos-p1.17 35/35 forced ×2 + unforced; all other suites unchanged EXCEPT qc-pos-p1.3 S5.12 (Q4 guard: legacy `src/lib/actions/pos.ts` must stay byte-identical to base a670d313).
+- Controller reverted the one line `soldByUserId: auth.user.id` in `registerSaleAction` (same ruling as P1.1b R2: Q4 wins). Legacy-screen bills keep `soldByUserId = null` and fall back to the shift opener / "ไม่ระบุ" per Q17.1. Seller is stored for register (V2) bills only. Revisit when the legacy screen is retired (P1.18).
