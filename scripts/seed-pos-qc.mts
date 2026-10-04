@@ -110,6 +110,20 @@ async function ensureUnit(tenantId: string, u: { id: string; name: string; slug:
 }
 async function ensureSystem(tenantId: string, type: string, s: { id: string; name: string }) {
   const row = await P.appSystem.findFirst({ where: { id: s.id, tenantId } });
+  // POS P1.3 ▸ ร้าน QC เปิดหน้าขายใหม่: ธง settings.pos.registerV2: true (ร้านจริงปิดจนถึง P1.6 + P1.12 · มติ Q4)
+  //   รวมกับค่าเดิม (ไม่ทับคีย์อื่นของ settings) · ตั้งแล้ว = ไม่แตะซ้ำ · ระบบ POS ใหม่สร้างพร้อมธง ◂
+  if (type === "POS") {
+    const cur = (row?.settings && typeof row.settings === "object" && !Array.isArray(row.settings) ? row.settings : {}) as Record<string, unknown>;
+    const pos = (cur.pos && typeof cur.pos === "object" && !Array.isArray(cur.pos) ? cur.pos : {}) as Record<string, unknown>;
+    if (!row) {
+      bump("appSystem");
+      return P.appSystem.create({ data: { id: s.id, tenantId, type, name: s.name, settings: { pos: { registerV2: true } } } });
+    }
+    if (pos.registerV2 !== true) {
+      bump("appSystem.settings.pos.registerV2");
+      return P.appSystem.update({ where: { id: row.id }, data: { settings: { ...cur, pos: { ...pos, registerV2: true } } } });
+    }
+  }
   if (row) return row;
   bump("appSystem");
   // createSystem ของจริงคือ appSystem.create ล้วน — สร้างตรงเพื่อกำหนด id ตายตัว (ไม่มีตรรกะอื่นที่ข้าม)

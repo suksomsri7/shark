@@ -1,0 +1,222 @@
+{
+  "register": {
+    "title": "Register",
+    "soon": "Coming soon",
+    "soonChip": "Soon",
+    "menu": "Menu",
+    "unit": {
+      "label": "Branch"
+    },
+    "tabs": {
+      "sale": "Sale",
+      "tables": "Tables",
+      "onlineOrders": "Online orders",
+      "bills": "Today's bills",
+      "shift": "Shift",
+      "products": "Products",
+      "reports": "Reports",
+      "settings": "Settings",
+      "label": "Modes"
+    },
+    "tabsShort": {
+      "sale": "Sale",
+      "tables": "Tables",
+      "onlineOrders": "Online",
+      "bills": "Bills",
+      "shift": "Shift",
+      "products": "Products",
+      "reports": "Reports",
+      "settings": "Settings"
+    },
+    "search": {
+      "placeholder": "Search name / SKU or scan barcode (F2)",
+      "placeholderShort": "Search name / SKU or scan",
+      "customItem": "Custom item",
+      "scanCamera": "Scan with camera",
+      "loadMore": "Show more",
+      "noResult": "Nothing matches “{q}” — try another name, SKU or barcode",
+      "chooseOne": "This barcode matches {count} items — tap one below",
+      "noResultCategory": "No products in this category",
+      "clear": "Clear search"
+    },
+    "category": {
+      "all": "All",
+      "label": "Categories"
+    },
+    "product": {
+      "soldOut": "Sold out",
+      "left": "{count} left",
+      "stock": "Stock {count}",
+      "service": "Service",
+      "sizes": "{count} sizes",
+      "noPrice": "No price set"
+    },
+    "cart": {
+      "title": "Cart",
+      "newBill": "New bill",
+      "billType": {
+        "takeaway": "Takeaway"
+      },
+      "hold": "Hold",
+      "heldBills": "Held bills",
+      "heldBillsShort": "Held",
+      "empty": "No items yet\nTap a product to start a bill",
+      "viewCart": "View cart",
+      "itemCount": "{count, plural, one {# item} other {# items}}",
+      "payShort": "Pay",
+      "close": "Close"
+    },
+    "member": {
+      "add": "Add member",
+      "attached": "Member on this bill",
+      "remove": "Remove"
+    },
+    "line": {
+      "discount": "−{amount}",
+      "stockMove": "Stock {from} → {to}",
+      "unitTimesQty": "{price} × {qty}",
+      "keepSelling": "Keep selling",
+      "reduceTo": "Reduce to {count}",
+      "aria": "{qty} × {name} {amount} — tap to edit"
+    },
+    "totals": {
+      "subtotal": "Subtotal",
+      "lineDiscounts": "Line discounts",
+      "billDiscount": "Bill discount",
+      "edit": "Edit",
+      "coupon": "Coupon {code}",
+      "vatIncluded": "VAT {rate}% (included)",
+      "vatExcluded": "VAT {rate}% (excluded)",
+      "total": "Total"
+    },
+    "actions": {
+      "billDiscount": "Bill discount",
+      "billDiscountShort": "Discount",
+      "note": "Note",
+      "taxInvoice": "Full tax invoice",
+      "taxInvoiceShort": "Tax invoice",
+      "pay": "Pay"
+    },
+    "shortcuts": {
+      "title": "Shortcuts",
+      "search": "Search",
+      "pay": "Pay",
+      "hold": "Hold",
+      "clear": "Clear"
+    },
+    "status": {
+      "online": "Online",
+      "offline": "Offline",
+      "lastSync": "last sync {time}",
+      "shift": "Shift #{no} · opened {time}",
+      "noShift": "No shift open",
+      "pendingStock": "Stock pending {count}",
+      "pendingSync": "Sync pending {count}",
+      "printerReady": "Printer {width} mm ready",
+      "printerNone": "No printer connected",
+      "offlineBanner": "Offline since {time} — you can sell again once back online"
+    },
+    "empty": {
+      "title": "No products to sell yet",
+      "body": "Add your first product on the Products page, then come back here to sell",
+      "addProduct": "Add product"
+    },
+    "editor": {
+      "title": "Edit item",
+      "qty": "Quantity",
+      "qtyDec": "Decrease quantity",
+      "qtyInc": "Increase quantity",
+      "discount": "Item discount",
+      "baht": "Baht",
+      "percent": "Percent",
+      "apply": "Apply",
+      "remove": "Remove item"
+    },
+    "billDiscount": {
+      "value": "Discount",
+      "apply": "Apply discount",
+      "remove": "No discount"
+    },
+    "coupon": {
+      "label": "Coupon",
+      "placeholder": "Coupon code",
+      "soonBody": "Coupons at the register are coming soon — they arrive together with member rights"
+    },
+    "custom": {
+      "name": "Item name",
+      "price": "Price (baht)",
+      "add": "Add to cart"
+    },
+    "openPrice": {
+      "title": "Set a price for this sale",
+      "hint": "{name} has no price yet — this price applies to this bill only"
+    },
+    "clear": {
+      "title": "Clear this bill?",
+      "detail": "Every item in the cart will be removed",
+      "confirm": "Clear bill"
+    },
+    "pay": {
+      "title": "Payment",
+      "due": "Amount due",
+      "cash": "Cash",
+      "promptpay": "PromptPay",
+      "noPromptPay": "PromptPay ID not set up",
+      "received": "Cash received",
+      "exact": "Exact",
+      "change": "Change",
+      "confirmCash": "Confirm cash {amount}",
+      "confirmPromptPay": "Confirm money received",
+      "confirmFree": "Save bill (nothing to pay)",
+      "scanToPay": "Ask the customer to scan and pay this amount, then confirm once the money is in",
+      "sending": "Saving the bill...",
+      "retry": "Try again",
+      "statusPaid": "paid",
+      "statusVoided": "voided",
+      "statusRefunded": "refunded",
+      "existingBill": "Existing bill: receipt {no} · {status} — check Today's bills before selling again",
+      "newBill": "Start a new bill",
+      "removeMember": "Sell without the member"
+    },
+    "done": {
+      "title": "Sale complete",
+      "receipt": "Receipt {no}",
+      "next": "Next sale"
+    },
+    "roles": {
+      "owner": "Owner",
+      "manager": "Manager",
+      "cashier": "Cashier"
+    },
+    "errors": {
+      "notFound": "This branch isn't available to this account",
+      "permissionDenied": "This account can't sell yet — ask the owner to grant access",
+      "invalidLine": "A quantity or price isn't valid — please check the items",
+      "productNotFound": "An item was removed from the catalogue — take it out of the cart and try again",
+      "productUnavailable": "This item isn't on sale at this branch right now",
+      "optionsRequired": "This item needs options — it can't be sold from here yet",
+      "memberNotFound": "This member wasn't found in the shop",
+      "memberRightsUnsupported": "This member has an automatic discount the new register can't apply yet — sell without the member, or use the classic register",
+      "priceNotSet": "This item has no price yet — set it on the Products page first",
+      "priceChanged": "Some prices changed — check the new total and pay again",
+      "paymentMismatch": "The amount doesn't match the latest total — check it and pay again",
+      "idempotencyConflict": "This bill was already saved — don't take payment twice",
+      "lineDiscountExceedsLine": "The discount is more than the item's price",
+      "billDiscountExceedsTotal": "The bill discount is more than the bill total",
+      "discountExceedsLimit": "This discount is above this account's limit (max {limit}%) — ask a manager",
+      "tooManyLines": "A bill can hold up to {max} items — start a new bill for the rest",
+      "stockInsufficient": "<b>Only {count} in stock</b> — you can still sell; a stock count will be flagged",
+      "conflict": "This was just changed elsewhere — please try again",
+      "busy": "The system is busy — please try again in a moment",
+      "unknown": "Something went wrong — please try again",
+      "offline": "You're offline — you can take payment once back online",
+      "unknownResult": "We're not sure the bill was saved — tap Try again; the customer won't be charged twice",
+      "loadFailed": "Couldn't load products — try again",
+      "needPriceOverride": "Setting your own price needs a manager",
+      "couponInvalid": "This coupon can't be used",
+      "amountInvalid": "That number isn't valid — use digits with up to 2 decimals",
+      "qtyInvalid": "Quantity must be a whole number from 1 to {max}",
+      "nameRequired": "Enter an item name first"
+    }
+  }
+}

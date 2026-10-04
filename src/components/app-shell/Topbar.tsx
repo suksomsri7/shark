@@ -104,6 +104,8 @@ export function Topbar({
           )}
           <span className="truncate text-sm font-bold tracking-tight">{branding.displayName}</span>
         </div>
+        {/* POS P1.3 ▸ ช่องว่างให้หน้าที่ต้องการบริบทบนแถบบน (หน้าขาย portal เข้ามา) · ว่าง = ซ่อน ไม่กินที่ ◂ */}
+        <div id="app-topbar-slot" className="flex min-w-0 flex-[3] items-center gap-3 empty:hidden" />
 
         {/* ขวา: 2 ปุ่มเท่านั้น (T7) · pr-1 เผื่อจุดแจ้งเตือนที่ล้นมุม orb ไม่ให้ชนขอบจอ */}
         <div className="flex shrink-0 items-center gap-2 pr-1">

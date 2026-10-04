@@ -678,6 +678,16 @@ export async function quoteApply(
   return result;
 }
 
+// POS P1.3 ▸ ส่วนลดอัตโนมัติที่ `applyOnSale` จะหักให้บิลนี้เมื่อไม่ได้เลือกสิทธิ์ใด = ขั้น 1 ของ computeQuote (ส่วนลดระดับ)
+//   ด้วยตัวช่วยชุดเดียวกัน (loadCustomer → benefitsFor → tierDiscountOf บน subtotalOf ของตะกร้า) · อ่านอย่างเดียว:
+//   ไม่เรียก computeEarn/สแตมป์ ⇒ ไม่มีแถวตั้งค่าถูกสร้าง · ลูกค้าไม่อยู่ในระบบสมาชิกนี้ = MemberNotFoundError (เหมือน applyOnSale)
+//   หน้าขายใหม่ (pos/register.ts) ใช้ปฏิเสธ MEMBER_RIGHTS_UNSUPPORTED ก่อนเขียนบิล — P1.12 เลิกใช้เมื่อคิดสิทธิ์ที่จอได้ ◂
+export async function automaticDiscountForSale(ctx: MemberCtx, customerId: string, cart: WalletCart): Promise<number> {
+  const customer = await loadCustomer(ctx, customerId);
+  const benefits = await benefitsFor(ctx, customer.id);
+  return tierDiscountOf(benefits, subtotalOf(cart ?? { lines: [] }));
+}
+
 // ───────────────────────── ตะกร้าของบิล (ทางสำรองทางเดียวที่เหลือ) ─────────────────────────
 //
 // 🔴 M2.8 ลบ "ตะกร้าล่าสุดในหน่วยความจำ" ทิ้งแล้ว (หนี้จาก M2.7): บน serverless คนละอินสแตนซ์ =

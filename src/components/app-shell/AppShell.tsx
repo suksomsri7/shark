@@ -29,6 +29,7 @@ export function AppShell({
   navCollapsed = false,
   chatSystemIds = [],
   showTeams = false,
+  posRegisterV2Ids = [],
 }: {
   tenantName: string;
   userEmail: string;
@@ -47,6 +48,8 @@ export function AppShell({
   chatSystemIds?: string[];
   /** CRM C1.7 ▸ แสดงลิงก์ "ทีมขาย" ในหมวดตั้งค่าของเมนู (layout ตัดสิน: ร้านมี CRM + เจ้าของ/crm.team.manage) ◂ */
   showTeams?: boolean;
+  /** POS P1.3 B2.1 ▸ id ระบบ POS ที่ธง registerV2 เปิด (layout) — หน้าขายของระบบเหล่านี้เท่านั้นที่บังคับราง ◂ */
+  posRegisterV2Ids?: string[];
 }) {
   const [drawer, setDrawer] = useState(false);
   // แผ่นแจ้งปัญหาที่เปิดจาก "ท้ายเมนู" (จอเล็ก/แอป) — ตัวที่เปิดจากปุ่มบนแถบบนอยู่ใน Topbar เอง
@@ -106,7 +109,7 @@ export function AppShell({
   //   (พิมพ์เขียว 13-kanban-v2 §3.2 + ภาพ 02) — โมดูลอื่นไม่กระทบ เพราะตัดสินจาก pathname ที่นี่ที่เดียว
   //   ระยะขอบซ้ายของเนื้อหาคิดคู่กันใน AppMain
   // B3: รางไอคอนใช้ได้ทุกหน้าแล้ว — ผู้ใช้เป็นคนเลือก (จำต่อบัญชี) · หน้าบอร์ดงานยัง "บังคับ" ราง (K1.5)
-  const boardRail = isRailPath(pathname);
+  const boardRail = isRailPath(pathname, posRegisterV2Ids);
   const railMode = collapsed || boardRail;
   // เปลี่ยนสถานะ = optimistic ทันที + บอก AppMain (พี่น้องกันใน layout) + จำลง prefs ของผู้ใช้เบื้องหลัง
   const applyCollapsed = useCallback((next: boolean) => {

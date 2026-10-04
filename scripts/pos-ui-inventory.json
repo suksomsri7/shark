@@ -44,9 +44,16 @@
       },
       {
         "file": "src/app/app/sys/[id]/pos/register/page.tsx",
+        "untestid": 0,
+        "closes": "P1.3 (ปิดแล้ว)",
+        "note": "ปิดแล้วใน P1.3: page.tsx เขียนใหม่ (ธง registerV2) — โครงหน้าขายเดิมพร้อมหนี้ 5 จุดย้ายไป src/lib/modules/pos/register-legacy-page.tsx (แถวถัดไป)",
+        "byTag": {}
+      },
+      {
+        "file": "src/lib/modules/pos/register-legacy-page.tsx",
         "untestid": 5,
-        "closes": "P1.3 / P4.1",
-        "note": "แท็บโมดูล · EmptyState action · ลิงก์เลือกสาขา · ลิงก์ตั้ง PromptPay",
+        "closes": "P1.12 (ลบหน้าขายเดิมทั้งชุด) / P4.1",
+        "note": "ย้ายมาจาก register/page.tsx ใน P1.3 (สเปก §4.7 'move into a legacy component under the same debt rules'): แท็บโมดูล ×2 · EmptyState action · ลิงก์เลือกสาขา · ลิงก์ตั้ง PromptPay — markup เดิมทุกตัวอักษร",
         "byTag": {
           "ModuleTabs": 2,
           "EmptyState": 1,
@@ -157,6 +164,1526 @@
         "note": "เพิ่มสินค้า/บริการลงตะกร้า (กดซ้ำ = +1) · ใช้ testid เดียวกันทั้งปุ่มบริการและปุ่มสินค้า"
       },
       "wo": "Wave1-B",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-unit-switch",
+      "kind": "menu",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]/pos/register",
+        "note": "?unit=<สาขาอื่นที่ผู้ใช้เข้าได้> ผ่านเมนู pos-reg-unit-option-* · ผู้ที่เข้าได้สาขาเดียวเห็นชิปเฉย ๆ (span ไม่กดได้)"
+      },
+      "wo": "P1.3",
+      "oracle": "qc-pos-p1.3",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-unit-option-*",
+      "kind": "link",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]/pos/register",
+        "note": "รายการในเมนูสาขา → ?unit=<id> · เฉพาะสาขาที่ posRegisterView อนุญาต"
+      },
+      "wo": "P1.3",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-mobile-menu",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "nav-drawer",
+        "state": "appears",
+        "note": "เฉพาะในแอป SHARK (WebView) — ยิง app:drawer-open · เว็บใช้ ☰ ของแถบบน"
+      },
+      "wo": "P1.3",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-tab-*",
+      "kind": "tab",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]/pos/*",
+        "anyOf": [
+          "/app/sys/[id]"
+        ],
+        "note": "บิลวันนี้→/pos/sales · กะ→/pos/close · สินค้า→/pos/products · ตั้งค่า→/app/sys/[id] · โต๊ะ/ออเดอร์ออนไลน์/รายงาน = เร็ว ๆ นี้ (span ไม่ใช่ลิงก์) จนถึง P2.4/P2.8/P1.17 · หน้าขาย = แท็บปัจจุบัน"
+      },
+      "wo": "P1.3",
+      "oracle": "qc-pos-p1.3",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-search",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-grid",
+        "state": "changes",
+        "note": "ค้นชื่อ/SKU/บาร์โค้ดฝั่งเซิร์ฟเวอร์ (หน่วง 200ms) · Enter = เพิ่มเมื่อผลเหลือตัวเดียวหรือ SKU/บาร์โค้ดตรงตัว (registerScanAction) · F2 โฟกัส"
+      },
+      "wo": "P1.3",
+      "oracle": "qc-pos-p1.3",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-custom-item",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "modal",
+        "target": "pos-reg-custom-dialog",
+        "note": "ต้องมี pos.sale.priceOverride (มติ Q8) · แคชเชียร์เห็นปุ่มจาง (aria-disabled) แตะแล้วขึ้นเหตุผล errors.needPriceOverride ที่ pos-reg-toast"
+      },
+      "wo": "P1.3",
+      "oracle": "qc-pos-p1.3",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-scan-camera",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "toast",
+        "target": "pos-reg-toast",
+        "note": "เร็ว ๆ นี้ — P1.4 ต่อกล้อง (มือถืออยู่หัวจอ · ≥768 อยู่แถวค้นหา)"
+      },
+      "wo": "P1.3",
+      "oracle": "qc-pos-p1.3",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-category-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-grid",
+        "state": "changes",
+        "note": "รวม pos-reg-category-all · registerCatalogAction({categoryId})"
+      },
+      "wo": "P1.3",
+      "oracle": "qc-pos-p1.3",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-category-all",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-grid",
+        "state": "changes",
+        "note": "ชิป 'ทั้งหมด' (ไม่กรองหมวด)"
+      },
+      "wo": "P1.3",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-product-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-lines",
+        "state": "changes",
+        "note": "เพิ่มลงตะกร้า (กดซ้ำ = +1) · ปิดขาย/ตัวเลือกบังคับ = เตือนที่ pos-reg-toast · ไม่มีราคา: มีสิทธิ์ = pos-reg-open-price-dialog ไม่มี = เตือน · ห้ามสร้าง id pos-reg-product-grid"
+      },
+      "wo": "P1.3",
+      "oracle": "qc-pos-p1.3",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-grid-more",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-grid",
+        "state": "changes",
+        "note": "หน้าถัดไป (cursor) · เลื่อนถึงปุ่มก็โหลดเอง"
+      },
+      "wo": "P1.3",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-grid-retry",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-grid",
+        "state": "appears",
+        "note": "แสดงเมื่อโหลดกริดหน้าแรกไม่สำเร็จ"
+      },
+      "wo": "P1.3",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-search-clear",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-grid",
+        "state": "changes",
+        "note": "อยู่ในกล่อง 'ไม่พบ' (pos-reg-search-empty)"
+      },
+      "wo": "P1.3",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-empty-add-product",
+      "kind": "link",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]/pos/products",
+        "note": "สถานะร้านยังไม่มีสินค้า (19ก) · แคชเชียร์เห็นปุ่มด้วย หน้าสินค้าเป็นผู้ตัดสินสิทธิ์"
+      },
+      "wo": "P1.3",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-bill-type",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "toast",
+        "target": "pos-reg-toast",
+        "note": "เร็ว ๆ นี้ — ประเภทบิลยังไม่มีใบงานเจ้าของ (DESIGN M1 [P2])"
+      },
+      "wo": "P1.3",
+      "oracle": "qc-pos-p1.3",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-hold",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "toast",
+        "target": "pos-reg-toast",
+        "note": "เร็ว ๆ นี้ — P1.5 พักบิล · F8 ให้ผลเดียวกัน"
+      },
+      "wo": "P1.3",
+      "oracle": "qc-pos-p1.3",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-held-bills",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "toast",
+        "target": "pos-reg-toast",
+        "note": "เร็ว ๆ นี้ — P1.5 บิลที่พัก"
+      },
+      "wo": "P1.3",
+      "oracle": "qc-pos-p1.3",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-member-pick",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "toast",
+        "target": "pos-reg-toast",
+        "note": "เร็ว ๆ นี้ — P1.12 เลือกสมาชิก"
+      },
+      "wo": "P1.3",
+      "oracle": "qc-pos-p1.3",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-member-remove",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-member-pick",
+        "state": "appears",
+        "note": "แสดงเฉพาะเมื่อบิลมีสมาชิก — P1.3 ใส่สมาชิกไม่ได้ จึงไม่เคยแสดง (โค้ดเตรียมไว้)"
+      },
+      "wo": "P1.3",
+      "oracle": "qc-pos-p1.3",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-cart-line-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "modal",
+        "target": "pos-reg-line-editor",
+        "note": "แตะชื่อ/ยอดของบรรทัด → ตัวแก้ (โฟกัสช่องส่วนลด)"
+      },
+      "wo": "P1.3",
+      "oracle": "qc-pos-p1.3",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-line-qty-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "modal",
+        "target": "pos-reg-line-editor",
+        "note": "กล่องจำนวน 44×44 → ตัวแก้ (โฟกัสจำนวน)"
+      },
+      "wo": "P1.3",
+      "oracle": "qc-pos-p1.3",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-line-warn-keep-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-line-warn-*",
+        "state": "disappears",
+        "note": "ขายต่อทั้งที่สต็อกไม่พอ (นโยบายปริยายขายติดลบได้)"
+      },
+      "wo": "P1.3",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-line-warn-reduce-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-line-warn-*",
+        "state": "disappears",
+        "note": "ลดจำนวนบรรทัดเหลือเท่าคงเหลือ · ซ่อนเมื่อคงเหลือ 0"
+      },
+      "wo": "P1.3",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-bill-discount-edit",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "modal",
+        "target": "pos-reg-bill-discount-dialog",
+        "note": "ลิงก์ 'แก้' ในแถวส่วนลดท้ายบิล"
+      },
+      "wo": "P1.3",
+      "oracle": "qc-pos-p1.3",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-bill-discount",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "modal",
+        "target": "pos-reg-bill-discount-dialog"
+      },
+      "wo": "P1.3",
+      "oracle": "qc-pos-p1.3",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-note",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "toast",
+        "target": "pos-reg-toast",
+        "note": "เร็ว ๆ นี้ — หมายเหตุบิลยังไม่มีช่องเก็บใน createSale (มติ Q11 · P1.6)"
+      },
+      "wo": "P1.3",
+      "oracle": "qc-pos-p1.3",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-tax-invoice",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "toast",
+        "target": "pos-reg-toast",
+        "note": "เร็ว ๆ นี้ — P1.13 ใบกำกับเต็มรูป"
+      },
+      "wo": "P1.3",
+      "oracle": "qc-pos-p1.3",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-pay",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "modal",
+        "target": "pos-reg-paydlg",
+        "note": "F4 ให้ผลเดียวกัน · ปิดเมื่อตะกร้าว่าง/ยอดจากเซิร์ฟเวอร์ยังไม่มาหรือล้ม/ออฟไลน์/ไม่มีสิทธิ์ขาย/กำลังส่งบิล"
+      },
+      "wo": "P1.3",
+      "oracle": "qc-pos-p1.3",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-cart-bar",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "modal",
+        "target": "pos-reg-cart-sheet",
+        "note": "มือถือ (<768) แตะแถบ (ยกเว้นปุ่มชำระ) = เปิดแผ่นตะกร้า"
+      },
+      "wo": "P1.3",
+      "oracle": "qc-pos-p1.3",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-cart-view",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "modal",
+        "target": "pos-reg-cart-sheet",
+        "note": "ปุ่ม 'ดูตะกร้า' ในแถบล่างมือถือ (ทางของคีย์บอร์ด/โปรแกรมอ่านจอ)"
+      },
+      "wo": "P1.3",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-cart-bar-pay",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "modal",
+        "target": "pos-reg-paydlg",
+        "note": "ปุ่มชำระบนแถบล่างมือถือ · เงื่อนไขเปิดเดียวกับ pos-reg-pay"
+      },
+      "wo": "P1.3",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-sheet-close",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-cart-sheet",
+        "state": "disappears"
+      },
+      "wo": "P1.3",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-scrim",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-scrim",
+        "state": "disappears",
+        "note": "แตะม่านนอกกล่อง = ปิดชั้นบนสุด · ระหว่างส่งบิล/ผลยังไม่แน่ใจ ปิดไม่ได้"
+      },
+      "wo": "P1.3",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-editor-close",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-line-editor",
+        "state": "disappears"
+      },
+      "wo": "P1.3",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-editor-form",
+      "kind": "form",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-line-editor",
+        "state": "disappears",
+        "note": "Enter ในตัวแก้ = ใช้ · ไม่ผ่าน priceCart = pos-reg-editor-error (ไม่ตัดเลขให้พอดี)"
+      },
+      "wo": "P1.3",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-editor-qty-dec",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-editor-qty-input",
+        "state": "changes"
+      },
+      "wo": "P1.3",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-editor-qty-inc",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-editor-qty-input",
+        "state": "changes"
+      },
+      "wo": "P1.3",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-editor-qty-input",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-total",
+        "state": "changes",
+        "note": "จำนวนเต็ม 1–9999 · มีผลเมื่อกดใช้"
+      },
+      "wo": "P1.3",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-editor-discount-amount",
+      "kind": "toggle",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-line-editor",
+        "state": "changes",
+        "note": "ส่วนลดเป็นบาท"
+      },
+      "wo": "P1.3",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-editor-discount-percent",
+      "kind": "toggle",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-line-editor",
+        "state": "changes",
+        "note": "ส่วนลดเป็น % (เก็บเป็น basis point)"
+      },
+      "wo": "P1.3",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-line-discount-*",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-line-discounts",
+        "state": "appears",
+        "note": "ช่องส่วนลดรายการในตัวแก้ · เกินราคาบรรทัด/เกินเพดาน = pos-reg-editor-error"
+      },
+      "wo": "P1.3",
+      "oracle": "qc-pos-p1.3",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-line-remove-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-cart-line-*",
+        "state": "disappears",
+        "note": "ไม่มีกล่องยืนยันซ้ำ (มติ Q27)"
+      },
+      "wo": "P1.3",
+      "oracle": "qc-pos-p1.3",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-editor-apply",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-line-editor",
+        "state": "disappears",
+        "anyOf": [
+          {
+            "type": "inline-error",
+            "target": "pos-reg-editor-error"
+          }
+        ]
+      },
+      "wo": "P1.3",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-bill-discount-form",
+      "kind": "form",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-bill-discount-line",
+        "state": "changes",
+        "note": "Enter = ใช้ส่วนลด"
+      },
+      "wo": "P1.3",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-bill-discount-amount",
+      "kind": "toggle",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-bill-discount-dialog",
+        "state": "changes"
+      },
+      "wo": "P1.3",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-bill-discount-percent",
+      "kind": "toggle",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-bill-discount-dialog",
+        "state": "changes"
+      },
+      "wo": "P1.3",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-bill-discount-value",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-bill-discount-dialog",
+        "state": "changes"
+      },
+      "wo": "P1.3",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-bill-discount-apply",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-bill-discount-line",
+        "state": "changes",
+        "anyOf": [
+          {
+            "type": "inline-error",
+            "target": "pos-reg-bill-discount-error"
+          }
+        ]
+      },
+      "wo": "P1.3",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-bill-discount-clear",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-bill-discount-line",
+        "state": "changes",
+        "note": "ไม่มีส่วนลดท้ายบิล"
+      },
+      "wo": "P1.3",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-bill-discount-cancel",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-bill-discount-dialog",
+        "state": "disappears"
+      },
+      "wo": "P1.3",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-coupon",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "modal",
+        "target": "pos-reg-coupon-dialog",
+        "note": "ในกล่องส่วนลดท้ายบิล · คูปอง = เร็ว ๆ นี้ (มติ Q12 DEFER → P1.12) · กล่องบอกสถานะเท่านั้น ไม่ส่งโค้ดไปเซิร์ฟเวอร์"
+      },
+      "wo": "P1.3",
+      "oracle": "qc-pos-p1.3",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-coupon-close",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-coupon-dialog",
+        "state": "disappears"
+      },
+      "wo": "P1.3",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-custom-form",
+      "kind": "form",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-lines",
+        "state": "changes"
+      },
+      "wo": "P1.3",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-custom-name",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-custom-dialog",
+        "state": "changes"
+      },
+      "wo": "P1.3",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-custom-price",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-custom-dialog",
+        "state": "changes"
+      },
+      "wo": "P1.3",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-custom-add",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-lines",
+        "state": "changes",
+        "anyOf": [
+          {
+            "type": "inline-error",
+            "target": "pos-reg-custom-error"
+          }
+        ]
+      },
+      "wo": "P1.3",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-custom-cancel",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-custom-dialog",
+        "state": "disappears"
+      },
+      "wo": "P1.3",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-open-price-form",
+      "kind": "form",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-lines",
+        "state": "changes",
+        "note": "สินค้ายังไม่ตั้งราคา + มี pos.sale.priceOverride"
+      },
+      "wo": "P1.3",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-open-price-input",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-open-price-dialog",
+        "state": "changes"
+      },
+      "wo": "P1.3",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-open-price-add",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-lines",
+        "state": "changes",
+        "anyOf": [
+          {
+            "type": "inline-error",
+            "target": "pos-reg-open-price-error"
+          }
+        ]
+      },
+      "wo": "P1.3",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-open-price-cancel",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-open-price-dialog",
+        "state": "disappears"
+      },
+      "wo": "P1.3",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-clear-confirm",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-cart-empty",
+        "state": "appears",
+        "note": "Esc บนตะกร้าที่มีของ → กล่องนี้ · ยืนยัน = ล้าง + คีย์บิลใหม่"
+      },
+      "wo": "P1.3",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-clear-cancel",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-clear-dialog",
+        "state": "disappears",
+        "note": "โฟกัสเริ่มต้น (Enter จากเครื่องสแกนไม่ล้างบิล)"
+      },
+      "wo": "P1.3",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-paydlg-close",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-paydlg",
+        "state": "disappears",
+        "note": "ซ่อนระหว่างส่ง/ผลไม่แน่ใจ/บิลซ้ำ"
+      },
+      "wo": "P1.3",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-paydlg-form",
+      "kind": "form",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "action:submitRegisterSaleAction",
+        "resultTarget": "pos-reg-done",
+        "db": "PosSale PAID + PosPayment",
+        "note": "Enter = ยืนยัน (ส่งได้ทีละครั้ง)"
+      },
+      "wo": "P1.3",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-paydlg-method-cash",
+      "kind": "toggle",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-paydlg",
+        "state": "changes"
+      },
+      "wo": "P1.3",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-paydlg-method-promptpay",
+      "kind": "toggle",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-paydlg",
+        "state": "changes",
+        "note": "QR ล็อกยอดจาก quote · ปิดเมื่อร้านยังไม่ตั้ง PromptPay ID"
+      },
+      "wo": "P1.3",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-paydlg-received",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-paydlg-change",
+        "state": "changes"
+      },
+      "wo": "P1.3",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-paydlg-quick-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-paydlg-change",
+        "state": "changes",
+        "note": "พอดี · ฿100 · ฿500 · ฿1,000 (เฉพาะที่ ≥ ยอด)"
+      },
+      "wo": "P1.3",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-paydlg-quick-exact",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-paydlg-change",
+        "state": "changes",
+        "note": "รับเงินพอดียอด (ทอน 0)"
+      },
+      "wo": "P1.3",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-paydlg-confirm",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "action:submitRegisterSaleAction",
+        "resultTarget": "pos-reg-done",
+        "db": "PosSale PAID + PosPayment",
+        "anyOf": [
+          {
+            "type": "inline-error",
+            "target": "pos-reg-paydlg-error"
+          }
+        ],
+        "note": "เงินสดรับน้อยกว่ายอด = ปิด · ปฏิเสธ = การ์ดข้อผิดพลาดในกล่อง (data-code)"
+      },
+      "wo": "P1.3",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-paydlg-retry",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "action:submitRegisterSaleAction",
+        "resultTarget": "pos-reg-done",
+        "note": "แสดงเฉพาะผลไม่แน่ใจ (UNKNOWN/INTERNAL/BUSY/เครือข่าย) · ส่งชุดคำขอเดิม คีย์เดิม"
+      },
+      "wo": "P1.3",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-paydlg-new-bill",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-cart-empty",
+        "state": "appears",
+        "note": "แสดงเมื่อ IDEMPOTENCY_CONFLICT (มีบิลของคีย์นี้แล้ว) · เริ่มบิลใหม่ = ล้างตะกร้า + คีย์ใหม่ โดยผู้ใช้กดเอง"
+      },
+      "wo": "P1.3",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-paydlg-bills",
+      "kind": "link",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]/pos/sales",
+        "note": "ตรวจบิลเดิมเมื่อ IDEMPOTENCY_CONFLICT"
+      },
+      "wo": "P1.3",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-paydlg-remove-member",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-paydlg-error",
+        "state": "disappears",
+        "note": "แสดงเมื่อ MEMBER_RIGHTS_UNSUPPORTED และบิลมีสมาชิก (P1.3 ใส่สมาชิกไม่ได้ — โค้ดเตรียมไว้)"
+      },
+      "wo": "P1.3",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-done-next",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-cart-empty",
+        "state": "appears",
+        "note": "ขายบิลถัดไป = ล้างตะกร้า + คีย์ใหม่ + โฟกัสช่องค้นหา"
+      },
+      "wo": "P1.3",
       "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]"

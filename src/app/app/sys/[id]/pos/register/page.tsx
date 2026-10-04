@@ -1,19 +1,27 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
 import { systemDef } from "@/lib/systems";
 import { getPaymentProfile } from "@/lib/payment/service";
-import { posUnits, resolvePosLinks, posCatalog, posMembers, posServices } from "@/lib/modules/pos/register";
+import { isValidPromptPayId } from "@/lib/payment/promptpay";
+import { posUnits, resolvePosLinks, posCatalog, posMembers, posServices, registerCatalog, registerSellerLimits, registerStatus, registerVatConfig } from "@/lib/modules/pos/register";
 import { PosRegister } from "@/lib/modules/pos/register-ui";
+import { PosLegacyRegisterFrame, PosRegisterUnlinked } from "@/lib/modules/pos/register-legacy-page";
+import { posRegisterV2On } from "@/lib/modules/pos/register-shared";
 import { posTabs } from "@/lib/modules/pos/tabs";
 import { posMembership, posRegisterView } from "@/lib/modules/pos/access";
-import { PageHeader } from "@/components/ui/PageHeader";
-import { Section } from "@/components/ui/Section";
-import { EmptyState } from "@/components/ui/EmptyState";
-import { ModuleTabs } from "@/components/module-tabs";
+import { RegisterScreen } from "@/components/pos/register/RegisterScreen";
 
 // หน้าขาย POS (cashier) — เปิดบิลเก็บเงิน walk-in เงินสด/พร้อมเพย์
+//
+// POS P1.3 (มติ Q4): ธงต่อระบบ POS `AppSystem.settings.pos.registerV2`
+//   === true เท่านั้น ⇒ หน้าขายใหม่ (RegisterScreen · src/components/pos/register/*) · ค่าอื่นทุกแบบ (ไม่มี · "true" · 1) ⇒ หน้าขายเดิม
+//   ร้านจริง: ปิดจนกว่า P1.6 + P1.12 ลง · ร้าน QC: เปิดผ่าน scripts/seed-pos-qc.mts
+// 🔴 ด่านสิทธิ์ HF-POS-PAGES ด้านล่างใช้ร่วมทั้งสองจอ (ห้ามแยก/ข้าม) · ขอสาขาที่เข้าไม่ได้ = notFound (404 ไม่ใช่ 403)
+// 🔴 หน้าขายเดิม: <PosRegister> + โครงหน้าเดิม (register-legacy-page.tsx) props ชุดเดิมทุกตัว · register-ui.tsx ห้ามแตะ (S5.12)
+// B2.1: ตัวอ่านธงย้ายไป register-shared.ts (posRegisterV2On) — layout ใช้ตัวเดียวกันตัดสินโหมดรางของ shell ตอน SSR
+//   ⇒ ธงปิด = shell วาดแถบเมนูตามที่ผู้ใช้เลือกเหมือน main ทุกอย่าง · ธงเปิด = รางไอคอนตั้งแต่ HTML แรก (ไม่กระพริบ)
+
 export default async function PosRegisterPage({
   params,
   searchParams,
@@ -29,6 +37,8 @@ export default async function PosRegisterPage({
   const sys = await prisma.appSystem.findFirst({ where: { id, tenantId, type: "POS" } });
   if (!sys) notFound();
   const def = systemDef(sys.type);
+  // B2.3 N-b: จอใหม่เฉพาะระบบที่ active — ตรงกับ layout ที่โหลดเฉพาะระบบ active มาตัดสินโหมดราง (ไม่งั้นจอใหม่ไม่มีราง)
+  const v2 = sys.active && posRegisterV2On(sys.settings);
 
   const tabs = posTabs(id);
 
@@ -40,21 +50,42 @@ export default async function PosRegisterPage({
 
   // ยังไม่ผูก POS กับกิจการใด → ขายไม่ได้ (createSale ต้องมี unit) → ชี้ไปเชื่อม
   if (units.length === 0 || !view.active) {
-    return (
-      <div className="flex max-w-2xl flex-col gap-5">
-        <PageHeader title={`${def?.icon ?? ""} ${sys.name}`.trim()} desc="หน้าขาย" />
-        <ModuleTabs items={tabs} />
-        <EmptyState
-          text="ยังเปิดขายไม่ได้ — เชื่อมระบบขายนี้กับกิจการ (สาขา/หน้าร้าน) ก่อนที่หน้าภาพรวม"
-          action={{ href: `/app/sys/${id}`, label: "ไปเชื่อมกิจการ" }}
-        />
-      </div>
-    );
+    return <PosRegisterUnlinked title={`${def?.icon ?? ""} ${sys.name}`.trim()} tabs={tabs} systemId={id} railFrame={v2} />;
   }
 
   // เลือก unit ที่จะขาย: จาก ?unit= ถ้าถูกต้อง ไม่งั้นตัวแรกที่เข้าได้ (posRegisterView)
   const active = view.active;
 
+  // ── หน้าขายใหม่ (ธงเปิด) — ผู้ขาย = membership ของ session เท่านั้น ──
+  if (v2) {
+    const actor = { userId: auth.user.id, ...posMembership(auth.active) };
+    const ctx = { tenantId, systemId: id, unitId: active.id };
+    const [catalog, status, vat, profile] = await Promise.all([
+      registerCatalog(ctx, actor),
+      registerStatus(ctx, actor),
+      registerVatConfig(ctx),
+      getPaymentProfile({ tenantId }),
+    ]);
+    const limits = registerSellerLimits(actor, active.id);
+    const ppId = profile?.promptpayId && isValidPromptPayId(profile.promptpayId) ? profile.promptpayId : null;
+    return (
+      <RegisterScreen
+        key={active.id}
+        systemId={id}
+        unitId={active.id}
+        userId={auth.user.id}
+        tenantName={auth.active.tenant.name}
+        units={units.map((u) => ({ id: u.id, name: u.name }))}
+        initialCatalog={catalog.ok ? { categories: catalog.categories, products: catalog.products, nextCursor: catalog.nextCursor } : null}
+        initialStatus={status.ok ? status : null}
+        vat={vat.ok ? { mode: vat.mode, rateBp: vat.rateBp } : { mode: "NONE", rateBp: 0 }}
+        limits={limits}
+        promptpayId={ppId}
+      />
+    );
+  }
+
+  // ── หน้าขายเดิม (ธงปิด) — เหมือนก่อน P1.3 ทุกอย่าง ──
   const [links, profile] = await Promise.all([resolvePosLinks(tenantId, active.id), getPaymentProfile({ tenantId })]);
   const [catalog, members, services] = await Promise.all([
     links.inventorySystemId ? posCatalog(tenantId, links.inventorySystemId) : Promise.resolve([]),
@@ -64,50 +95,25 @@ export default async function PosRegisterPage({
   ]);
   const hasPromptPay = !!profile?.promptpayId;
 
-  // M2.8: สาขาที่เปิดใช้ระบบสมาชิกมีแผงสิทธิ์ทางขวา → ต้องการความกว้างมากกว่าบิลเปล่า
-  // (ยังไม่เลือกสมาชิก = ฝั่งซ้ายจัดกลางที่ความกว้างเดิม ไม่เปลี่ยนหน้าตาของร้านที่ไม่มีระบบสมาชิก)
   return (
-    <div className={`flex flex-col gap-5 ${links.memberSystemId ? "max-w-6xl" : "max-w-2xl"}`}>
-      <PageHeader title={`${def?.icon ?? ""} ${sys.name}`.trim()} desc="หน้าขาย — เปิดบิลเก็บเงิน" />
-      <ModuleTabs items={tabs} />
-
-      {/* เลือกจุดขาย (เมื่อมีหลายสาขาผูก POS นี้) */}
-      {units.length > 1 && (
-        <div className="-mb-1 flex flex-wrap gap-2">
-          {units.map((u) => (
-            <Link
-              key={u.id}
-              href={`/app/sys/${id}/pos/register?unit=${u.id}`}
-              className={`rounded-full border px-3 py-1.5 text-xs ${
-                u.id === active.id ? "border-[color:var(--color-accent)] bg-[color:var(--color-surface-2)] font-medium" : "hover:bg-[color:var(--color-surface-2)]"
-              }`}
-            >
-              {u.name}
-            </Link>
-          ))}
-        </div>
-      )}
-
-      {!hasPromptPay && (
-        <p className="rounded-xl border border-dashed p-2.5 text-xs text-[color:var(--color-muted)]">
-          รับพร้อมเพย์ได้ด้วย —{" "}
-          <Link href="/app/settings/payment" className="text-[color:var(--color-accent)] underline">
-            ตั้ง PromptPay ID ของร้าน
-          </Link>
-        </p>
-      )}
-
-      <Section>
-        <PosRegister
+    <PosLegacyRegisterFrame
+      title={`${def?.icon ?? ""} ${sys.name}`.trim()}
+      tabs={tabs}
+      systemId={id}
+      units={units}
+      activeUnitId={active.id}
+      wide={!!links.memberSystemId}
+      hasPromptPay={hasPromptPay}
+    >
+      <PosRegister
         services={services}
-          systemId={id}
-          unitId={active.id}
-          catalog={catalog}
-          members={members}
-          couponEnabled={!!links.couponSystemId}
-          hasPromptPay={hasPromptPay}
-        />
-      </Section>
-    </div>
+        systemId={id}
+        unitId={active.id}
+        catalog={catalog}
+        members={members}
+        couponEnabled={!!links.couponSystemId}
+        hasPromptPay={hasPromptPay}
+      />
+    </PosLegacyRegisterFrame>
   );
 }

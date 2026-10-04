@@ -134,6 +134,7 @@ const MODULE_DEFS: readonly ModuleDef[] = [
       "pos.product.setPrice": "ตั้งราคาขายสินค้า",
       "pos.product.manage": "เพิ่ม/แก้/เก็บสินค้าและหมวดในแคตตาล็อกขาย", // POS P1.1a ▸ แคตตาล็อกเดียว (pos/catalog.ts) ◂
       "pos.sale.void": "ยกเลิกบิลขาย (ใช้กับข้อเสนอของผู้ช่วย AI)",
+      "pos.sale.priceOverride": "ขายด้วยราคาที่กำหนดเอง (รายการกำหนดเอง / ราคาเปิด / แก้ราคาในบิล)", // POS P1.3 ▸ หน้าขายใหม่ (register.ts) ◂
     },
   },
   {

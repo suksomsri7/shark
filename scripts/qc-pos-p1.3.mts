@@ -30,6 +30,31 @@
 //   subtotalSatang = Σ ยอดบรรทัดหลังส่วนลดบรรทัด (ความหมายของโค้ด · รับรองแล้ว = แก้สเปก) · VAT: ผู้เรียกส่ง config บัญชีเข้า priceCart
 //   (priceCart บริสุทธิ์) · เก็บ VAT ลงบิล = P1.6 · S6.1 (BLOCK oversell) = กลุ่มของ P1.6 มีด่าน SKIP ของตัวเอง
 //
+// 🔁 รอบ 3 (brief สุดท้าย ledger/pos-briefs/pos-brief-P1.3.md · มติ Q1–Q29 + Addendum · โน้ต ledger/wo-notes/pos-P1.3-oracle-r3.md):
+//   Q4  หน้าใหม่อยู่หลังธง AppSystem(POS).settings.pos.registerV2 === true · อื่น ๆ = PosRegister เดิมทุกไบต์ (S5.6 S5.11 S5.12)
+//   Q6/Q9 สินค้า: requiredOptionGroupCount · soldOutReason "UNAVAILABLE"|"NO_STOCK"|null (S1.23 S1.24 S3.26 S3.27)
+//   Q8  pos.sale.priceOverride (OWNER/MANAGER ได้ · STAFF ไม่ได้) ตรวจที่ quote และ submit (S3.28)
+//   Q12 ไม่มีคูปองใน P1.3: quote/submit ที่ client ส่ง couponCode/couponDiscountSatang = VALIDATION (S3.29)
+//   Q21 registerCatalog {cursor?, limit?} → nextCursor (ปริยาย 100 · สูงสุด 500 · ลำดับคงที่) (S1.25 S1.26)
+//   Q22 quote lines[i] = {productId?, unitPriceSatang, grossSatang, discountSatang, lineTotalSatang} ตามลำดับที่ส่ง (S3.30 S3.31)
+//   Q23 registerStatus.user.role = OWNER|MANAGER|STAFF (S4.5) · Q25 registerVatConfig(ctx) (S4.6)
+//   Addendum: ปฏิเสธ = คืน {ok:false, code, message} ไม่ throw (S3.36 S5.15) · BUSY→errors.busy INTERNAL→errors.unknown (S5.13)
+//             checkCatalogWrite รับ membership ของ session (S5.15) · F15.5/F15.6 (S5.16) · client ไม่ import โมดูลเซิร์ฟเวอร์ (S5.17)
+//   เงิน: re-read ราคาตอน quote+submit (S3.1 S3.5 S3.31) · Σ payMethods = ยอด (S3.6 S3.32) · idempotency (S3.14–S3.16)
+//         ขอบเขตสาขา/ร้านของ productId (S3.12 S3.35) · เพดานส่วนลดปฏิเสธไม่ clamp (S2.6 S3.7 S3.33) · qty 1…9999 ≤200 บรรทัด (S3.34)
+//   คืนสภาพ: นับแถว (S9.1) + ลายนิ้วมือแถวเดิมของร้าน QC (S9.2)
+// 🔁 รอบ 3.1 (มติผู้คุมงานต่อคำถาม r3 · โน้ต r3 หัวข้อ "Round 3.1"): OPTIONS_REQUIRED เคร่ง (S3.26) · submit ต้องมี expectedGrandTotalSatang
+//   ลำดับ คิดราคาใหม่ → คาด≠ยอด PRICE_CHANGED (พกยอดสด) → จ่าย≠ยอด PAYMENT_MISMATCH (S3.5 S3.6 S3.31 S3.37 · idempotency รวม expected S3.16)
+//   · บรรทัดสินค้าขายที่สาขานี้ไม่ได้ = PRODUCT_NOT_FOUND · NOT_FOUND สงวนให้ ctx (S3.12 S3.35) · วิธีจ่าย CASH|PROMPTPAY เท่านั้น (S3.38)
+//   · cashReceivedSatang ต้องมีเมื่อมีเงินสด ≥ ส่วนเงินสด · ทอน = รับ − ส่วนเงินสด (S3.39) · CONFLICT/OPTIONS_REQUIRED → คีย์ (S5.13)
+//   · ไม่บังคับ pos-reg-coupon-line (S5.4) · limit/cursor ผิดรูป = VALIDATION (S3.36 S1.26) · ปิดมือชนะหมดสต็อก (S1.24 S3.27)
+// 🔁 รอบ R4 (ผู้ล่าโค้ดบน 5f97add4 · มติ K1–K5 ledger/pos-briefs/pos-brief-P1.3-R4.md · โน้ต ledger/wo-notes/pos-P1.3-oracle-r4.md):
+//   K1 คีย์หน้าขายเก็บเป็น 'reg2:'+คีย์ client (8–100 [A-Za-z0-9_-]) (S3.50) · K2 CONFLICT เปล่าเมื่อบิลไม่ใช่ POS สาขาเดียวกัน (S3.51)
+//   K3 แข่งตอนคำขอแรกยังไม่ commit (S3.52) + client หมุนคีย์เฉพาะ resetBill (S5.21) · K4 ส่งซ้ำห้ามทอนติดลบ (S3.53)
+//   K5 คำขอค้างอยู่ใน sessionStorage (S5.22) · m2 บันทึก pos.* ⇒ priceOverride (S3.54)
+//   ⚙️ ปรับตัวช่วยตาม K1 (ไม่ลดความเข้มข้อเดิม): คีย์ของข้อสอบใช้ได้เฉพาะ [A-Za-z0-9_-] (KTAG แทน '.' ของ TAG · ป้ายไทย → '_') ·
+//      ค้นบิลตามคีย์ = คีย์ดิบ หรือ 'reg2:'+คีย์ (keyIn — เจอทั้งสองแบบ = นับครบ ไม่หลุด) · cleanup จับคีย์ที่มี KTAG + บิลสาขา 2
+//
 // ขอบเขต (ไม่ซ้ำ scripts/qc-pos-register.mts 42 ข้อเดิม — ชุดนั้นยังเป็น regression ทั้งชุด ดูโน้ต):
 //   S1 ข้อมูลกริด/หมวด/ค้นหา · S2 เครื่องคิดเงินตะกร้า (บริสุทธิ์) · S3 ส่งบิลฝั่งเซิร์ฟเวอร์ (X1 X2 X3 X4 X6 X8)
 //   S4 แถบสถานะ · S5 สถิต (i18n · data-testid · แป้นลัด · ปุ่มแตะ · สัญญา createSale) · S9 คืนสภาพ QC4
@@ -42,6 +67,7 @@
 type Any = any;
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { createHash, randomUUID } from "node:crypto";
 
 const SUITE = "qc-pos-p1.3";
 const ROOT = process.cwd();
@@ -74,6 +100,12 @@ const CHECKS: readonly (readonly [string, string, string])[] = [
   ["P1.3-S1.21", "X2", "POS สองคลัง (C3): สาขา sandbox (คลัง X) ไม่เห็นสินค้าของคลังสาขา 2 (Y) ทั้งกริด · ค้นชื่อ/SKU/บาร์โค้ด · สแกน · สาขา 2 เห็นของตัวเองแต่ไม่เห็นของคลัง X"],
   ["P1.3-S1.22", "-", "สแกนบาร์โค้ด (C5): registerScan บาร์โค้ดซ้ำ 2 ตัว → match 'choose' + products 2 ตัว ลำดับคงที่ (ไม่ใช่ตัวเก่าสุดเงียบ ๆ) · ตัวเดียว → 'one' · ไม่มี → 'none'"],
   ["P1.3-S1.19", "X4", "สินค้าที่ยังไม่ตั้งราคา (ไม่มี posPrice/salePrice) → priceSatang = null บนกริด — ห้ามเอาต้นทุนมาเป็นราคา (มติ R2)"],
+  ["P1.3-S1.23", "-", "[Q6] ทุกสินค้ามี requiredOptionGroupCount (Int): กลุ่มบังคับ (minSelect ≥1) + กลุ่มเลือกได้ → optionGroupCount 2 required 1 · กลุ่มเลือกได้อย่างเดียว → 1/0 · ไม่มีกลุ่ม → 0/0 · required ≤ optionGroupCount"],
+  ["P1.3-S1.24", "-", "[Q9 + มติ 3.1 ข้อ 12] ทุกสินค้ามี soldOutReason: ปิดขายสาขา (86) → 'UNAVAILABLE' · นับสต็อกหมด → 'NO_STOCK' · ทั้งปิดขายและหมด → 'UNAVAILABLE' (ปิดมือชนะ) · ขายได้ (รวมเหลือน้อย/ไม่นับสต็อก/ยังไม่ตั้งราคา) → null"],
+  ["P1.3-S1.25", "-", "[Q21] แบ่งหน้า (แคตตาล็อก >500): ไม่ส่ง limit = 100 + nextCursor · limit 1000 ถูกบีบ = 500 พอดี + nextCursor · 3 หน้า (limit 100) ต่อกัน = 300 ตัวแรกของหน้า 500 ลำดับเดียวกัน (ไม่ซ้ำ ไม่ขาด) · หน้าสุดท้าย nextCursor null"],
+  ["P1.3-S1.26", "X2", "[Q21 + มติ 3.1 ข้อ 9] cursor ของสาขาอื่น (สาขา 2 ของ POS เดียวกัน · ร้านอื่น) ใช้ที่สาขานี้ → VALIDATION (คืน ไม่ throw) หรือหน้าที่มีแต่ของสาขานี้ (ไม่มีของเฉพาะสาขา 2/คลัง Y/ร้านอื่น)"],
+  ["P1.3-S1.27", "X2", "[3.2 ข้อ 8] ไม่เพี้ยนจากแคตตาล็อก: registerCatalog (เดินทุกหน้า) = catalog.listForUnit ทั้งชุด id และลำดับ สำหรับ OWNER · MANAGER · STAFF (สมาชิกจริงใน DB) บน fixture สาขาเฉพาะ/ทุกสาขา/archive/ปิดขาย/สาขาอื่น/หมวดซ่อน"],
+  ["P1.3-S1.28", "-", "[3.2 ข้อ 8] เดินหน้าระหว่างมีการ archive / เพิ่ม / เปลี่ยนราคา ระหว่างหน้า: แถวที่ไม่ถูกแก้ไม่ซ้ำ ไม่ขาด (keyset)"],
   // ── S2 เครื่องคิดเงินตะกร้า priceCart (บริสุทธิ์ · pricing-shared.ts) ──
   ["P1.3-S2.1", "X4", "ตะกร้าภาพ 01: รวม 68,500 · ส่วนลดรายการ 1,000 · คูปอง 5,000 → ยอดสุทธิ 62,500 · VAT 7% รวมในราคา 4,089 (฿40.89 ตามภาพ)"],
   ["P1.3-S2.2", "X4", "ราคาตัวเลือก: ลาเต้ 7,500 + M 1,000 + นมโอ๊ต 1,500 × 2 → บรรทัด 20,000 (฿200 ตามภาพ)"],
@@ -89,23 +121,24 @@ const CHECKS: readonly (readonly [string, string, string])[] = [
   ["P1.3-S2.12", "X4", "เงินต้องเป็นจำนวนเต็มสตางค์ไม่ติดลบ: ราคา 10.5 / ราคาติดลบ / qty 0 → INVALID_LINE"],
   ["P1.3-S2.13", "-", "บริสุทธิ์: เรียกซ้ำผลเท่ากันทุกไบต์ · ไม่แก้ object ที่ส่งเข้า · ไฟล์ไม่ import prisma/server (ใช้ฝั่ง client ได้)"],
   ["P1.3-S2.14", "X4", "สุ่ม 300 ตะกร้า (seed คงที่): Σ ยอดบรรทัด − ท้ายบิล − คูปอง (+VAT ถ้าแยก) = ยอดสุทธิ เป๊ะ · ทุกค่าเป็น Int ≥ 0"],
+  ["P1.3-S2.15", "X3", "[3.2 ข้อ 4] เพดานส่วนลด vs การปัด (priceCart · STAFF 1000 bp): 10% ของ ฿33.35 · 10% ของ 5×฿33.33 · ท้ายบิล 10% ของ ฿123.45 → ผ่าน · 10.01% ของ ฿100 → DISCOUNT_EXCEEDS_LIMIT · AMOUNT = เพดานปัดครึ่งขึ้น ผ่าน · +1 สตางค์ → ปฏิเสธ"],
   // ── S3 ส่งบิลฝั่งเซิร์ฟเวอร์ (สาขา sandbox ชั่วคราว · ระบบ POS/คลังชั่วคราว ไม่เชื่อมบัญชี/แต้ม/สมาชิก) ──
   ["P1.3-S3.1", "X4", "quoteRegisterCart ใช้ราคาแคตตาล็อกฝั่งเซิร์ฟเวอร์ (unitPriceSatang ที่ client ส่งมากับสินค้าแคตตาล็อกถูกเมิน) = priceCart ของราคาจริง"],
-  ["P1.3-S3.2", "X4", "ขายสำเร็จ (เจ้าของ · เงินสด): PAID + receiptNo · grandTotal = ยอด quote · Σ payments = grandTotal · subtotalSatang = Σ lineTotal (ความหมายเดิมของ createSale)"],
+  ["P1.3-S3.2", "X4", "ขายสำเร็จ (เจ้าของ · เงินสด · ตะกร้าเดียวกับ quote ไม่แนบราคา client): PAID + receiptNo · grandTotal = ยอด quote · Σ payments = grandTotal · subtotalSatang = Σ lineTotal (ความหมายเดิมของ createSale)"],
   ["P1.3-S3.3", "X4", "บรรทัดที่บันทึก: lineTotal/discount ตรง quote · productId = PosProduct · itemId = InvItem ของสินค้า (ตัดสต็อกตามเดิม) · ตัดสต็อก 1 ครั้งต่อบรรทัด"],
   ["P1.3-S3.4", "-", "ขายบริการจากแคตตาล็อก (InvItem kind SERVICE · มติ R5): บรรทัดเก็บ serviceId = InvItem ของบริการ + productId · itemId = null · ไม่ตัดสต็อก · ราคา = ราคาบริการ"],
-  ["P1.3-S3.5", "X4", "client แก้ราคาสินค้าแคตตาล็อก (unitPrice 1 สตางค์): จ่ายตามยอดปลอม → ปฏิเสธ ไม่มีบิล · จ่ายตามยอดจริง → ราคาที่บันทึก = ราคาเซิร์ฟเวอร์ (หรือปฏิเสธ) · ไม่มีบรรทัดราคา 1 สตางค์เกิดเลย (มติ R2)"],
-  ["P1.3-S3.6", "X4", "จ่ายขาด/เกิน 1 สตางค์ → ปฏิเสธ PAYMENT_MISMATCH · ไม่มี PosSale เกิด"],
+  ["P1.3-S3.5", "X4", "client แก้ราคาสินค้าแคตตาล็อก (unitPrice 1 สตางค์): ยอดที่คาด/จ่ายปลอม → PRICE_CHANGED (มติ 3.1 ข้อ 2 · คืนยอดสดของเซิร์ฟเวอร์) ไม่มีบิล · จ่ายยอดจริง → ราคาที่บันทึก = ราคาเซิร์ฟเวอร์ (หรือ VALIDATION|PERMISSION_DENIED) · ไม่มีบรรทัดราคา 1 สตางค์เกิดเลย (มติ R2)"],
+  ["P1.3-S3.6", "X4", "ยอดที่คาด = ยอดเซิร์ฟเวอร์ แต่จ่ายขาด/เกิน 1 สตางค์ → PAYMENT_MISMATCH · ไม่มี PosSale เกิด"],
   ["P1.3-S3.7", "X3", "แคชเชียร์ส่วนลด 15% (เพดานปริยาย STAFF 10%) → DISCOUNT_EXCEEDS_LIMIT ไม่มีบิล · เจ้าของตะกร้าเดียวกัน → PAID · แคชเชียร์ที่มี pos._maxDiscountBp=2000 → PAID"],
   ["P1.3-S3.8", "X3", "รายการกำหนดเอง (ชื่อ+ราคาเอง ไม่มี productId): แคชเชียร์ไม่มี pos.sale.priceOverride → PERMISSION_DENIED · เจ้าของ → PAID"],
   ["P1.3-S3.9", "X3", "STAFF ที่ไม่มี pos.sale.create → PERMISSION_DENIED ทั้ง quote และ submit · ไม่มีบิล"],
   ["P1.3-S3.10", "X3", "แคชเชียร์จริง (unitAccess = สีลม) ส่งบิลเข้าสาขา sandbox → NOT_FOUND ไม่มีบิล (มติ R8 · คู่บวก = แคชเชียร์ที่มีสิทธิ์สาขานี้ขายได้ใน S3.7)"],
   ["P1.3-S3.11", "X2", "ctx ร้านกาแฟ + unitId ร้านอาหาร → NOT_FOUND · ไม่มีบิลเกิดในร้านอาหาร"],
-  ["P1.3-S3.12", "X2", "productId ของร้านอื่น / สินค้า archive / id มั่ว → PRODUCT_NOT_FOUND · สินค้าปิดขายที่สาขานี้ → PRODUCT_UNAVAILABLE · ไม่มีบิล"],
+  ["P1.3-S3.12", "X2", "productId ของร้านอื่น / สินค้า archive / id มั่ว → PRODUCT_NOT_FOUND (มติ 3.1 ข้อ 3) · สินค้าปิดขายที่สาขานี้ → PRODUCT_UNAVAILABLE · ไม่มีบิล"],
   ["P1.3-S3.13", "X2", "memberId ที่ไม่ใช่ของร้านนี้ → ปฏิเสธ (MEMBER_NOT_FOUND) ไม่มีบิล"],
   ["P1.3-S3.14", "X1", "key เดิมส่งซ้ำ 2 ครั้ง → saleId เดิม · ครั้งที่ 2 duplicated=true · บิล 1 · payments 1 ชุด · ตัดสต็อก 1 ครั้ง"],
   ["P1.3-S3.15", "X1", "key เดิม 10 คำขอพร้อมกัน (connection คนละเส้น) × 3 รอบ → บิลเดียวต่อรอบ ทุกคำตอบ saleId เดียวกัน ตัดสต็อกครั้งเดียว"],
-  ["P1.3-S3.16", "X1", "key เดิมแต่ตะกร้าเปลี่ยน → ได้บิลเดิม (หรือ IDEMPOTENCY_CONFLICT) ไม่มีบิลที่ 2 ยอดเดิมไม่เปลี่ยน"],
+  ["P1.3-S3.16", "X1", "key เดิมแต่ตะกร้า (qty) / วิธีจ่าย / expectedGrandTotalSatang เปลี่ยน → IDEMPOTENCY_CONFLICT (ไม่ใช่บิลเดิมเงียบ ๆ) · ไม่มีบิลที่ 2 · ยอดบิลเดิมไม่เปลี่ยน · key เดิม payload เดิมยังได้บิลเดิม"],
   ["P1.3-S3.17", "X6", "10 เครื่องขายพร้อมกัน (key ต่างกัน) × 2 รอบ → receiptNo ไม่ชน ไม่ว่าง ครบ 20"],
   ["P1.3-S3.18", "X6", "ชิ้นสุดท้าย นโยบายปริยาย ALLOW_NEGATIVE: 10 เครื่องขายพร้อมกัน × 3 รอบ → PAID ครบ · onHand = 1−10 เป๊ะ (ไม่มี lost update) · OUT 10 แถว"],
   ["P1.3-S3.20", "X8", "ไม่เชื่อมบัญชี/แต้ม/สมาชิก (sandbox) → ยังขายได้ · event pos.sale.paid ประมวลผลไม่ FAILED · ไม่มี AccountJournalEntry/PointLedger ของบิล"],
@@ -115,25 +148,72 @@ const CHECKS: readonly (readonly [string, string, string])[] = [
   ["P1.3-S3.24", "X2", "สาขาร้านเดียวกันที่ไม่ได้ผูกกับระบบ POS นี้ → submit/quote NOT_FOUND ไม่มีบิล (มติ R8 · createSale เองไม่ตรวจคู่นี้) · คู่บวก: ตะกร้าเดียวกันที่สาขาผูกแล้ว → PAID"],
   // ── S4 แถบสถานะ (เฉพาะส่วนที่ P1.3 เป็นเจ้าของ) ──
   ["P1.3-S3.25", "X4", "trackStock ตั้งเป็น false (mode 'off') ชัดแจ้ง: ขายแล้วไม่ตัดสต็อก (OUT 0 · onHand เดิม) · กริดแสดง trackStock=false stockLeft null"],
+  // ── S3 รอบ 3 (มติ Q6 Q8 Q9 Q12 Q22 + กฎเงินของ brief) ──
+  ["P1.3-S3.26", "X4", "[Q6 + มติ 3.1 ข้อ 1] สินค้ามีกลุ่มตัวเลือกบังคับ: quote และ submit → OPTIONS_REQUIRED ไม่มียอด ไม่มีบิล · กลุ่มเลือกได้อย่างเดียว → quote/บิลที่ราคาฐาน"],
+  ["P1.3-S3.27", "X4", "[Q9] หมดสต็อก (NO_STOCK) ยังขายได้ตามนโยบายปริยาย: PAID · OUT 1 · onHand 0 → −1 · ปิดขายสาขา (UNAVAILABLE) และทั้งปิดขาย+หมด → quote/submit PRODUCT_UNAVAILABLE ไม่มียอด ไม่มีบิล"],
+  ["P1.3-S3.28", "X3", "[Q8] รายการกำหนดเอง/ราคาเปิด: STAFF ไม่มี pos.sale.priceOverride → quote PERMISSION_DENIED ทั้งสองแบบ · STAFF ที่มีคีย์ → quote+PAID ที่ราคาที่กรอก · MANAGER (ปริยายตามบทบาท) → PAID · คีย์อยู่ในแคตตาล็อกสิทธิ์"],
+  ["P1.3-S3.29", "X4", "[Q12] client ส่ง couponCode / couponDiscountSatang มากับ quote หรือ submit → VALIDATION (ไม่เมิน ไม่เชื่อ) · ไม่มีบิล · ไม่มี CouponRedemption"],
+  ["P1.3-S3.30", "X4", "[Q22+Q7] quote lines ตรงลำดับที่ส่ง: [สินค้า+ส่วนลด, รายการเอง, สินค้า×2 ราคา client ปลอม] → {productId?, unitPriceSatang (ราคาเซิร์ฟเวอร์), grossSatang, discountSatang, lineTotalSatang} ทุกช่อง Int · subtotal = Σ gross ก่อนส่วนลดบรรทัด"],
+  ["P1.3-S3.31", "X4", "ราคาเปลี่ยนระหว่าง quote กับ submit (มติ 3.1 ข้อ 2): expectedGrandTotalSatang เก่า → PRICE_CHANGED (จ่ายยอดเก่าหรือยอดใหม่ก็ตาม) พร้อมยอด/บรรทัดสดของเซิร์ฟเวอร์ · ไม่มีบิล · quote ใหม่ได้ราคาใหม่ · คาด+จ่ายยอดใหม่ → PAID ที่ราคาใหม่ · ไม่มีบรรทัดราคาเก่า"],
+  ["P1.3-S3.32", "X4", "Σ payMethods = ยอดเป๊ะ (หลายวิธี): เงินสด+พร้อมเพย์ ครบ → PAID 2 แถวรวม = ยอด · ขาด 1 สตางค์ → PAYMENT_MISMATCH · ยอดติดลบชดเชย / เศษสตางค์ / ไม่มีวิธีจ่าย → ปฏิเสธ · ไม่มีบิล"],
+  ["P1.3-S3.33", "X3", "เพดานส่วนลดที่ quote (ปฏิเสธ ไม่ clamp): STAFF ส่วนลดบรรทัด 15% / ท้ายบิล 15% / ท้ายบิลเกิน 10% 1 สตางค์ → DISCOUNT_EXCEEDS_LIMIT ไม่มียอด · 10% พอดี → 5,850 · บรรทัดติดลบ/บิลติดลบ → ปฏิเสธ quote+submit ไม่มีบิล"],
+  ["P1.3-S3.34", "X4", "qty ฝั่งเซิร์ฟเวอร์: 0 / −1 / 1.5 / 10000 / \"2\" → INVALID_LINE|VALIDATION · 9999 → quote ได้ (gross 9999×ราคา) · submit qty 10000 / 201 บรรทัด → ปฏิเสธ ไม่มีบิล · 201 บรรทัด quote → TOO_MANY_LINES"],
+  ["P1.3-S3.35", "X2", "ขอบเขตสาขา/ร้านของ productId: สินค้าเฉพาะสาขา 2 · ของคลังสาขา 2 · ของร้านอื่น → quote/submit PRODUCT_NOT_FOUND (มติ 3.1 ข้อ 3) ไม่มียอด/บรรทัด/ชื่อรั่ว ไม่มีบิล · คู่บวก: สินค้าสาขา 2 quote ที่สาขา 2 ได้"],
+  ["P1.3-S3.36", "-", "[Addendum + มติ 3.1 ข้อ 9] ปฏิเสธ = คืน {ok:false, code, message} ไม่ throw: limit 0 / 1.5 / \"10\" / cursor มั่ว → VALIDATION · q มี NUL → VALIDATION หรือ ok · quote lines ผิดชนิด · submit input null · status unitId มี NUL"],
+  ["P1.3-S3.37", "X4", "[มติ 3.1 ข้อ 2] expectedGrandTotalSatang: ไม่ส่ง / 6500.5 / −1 / สตริง → VALIDATION · คาด = ยอดเซิร์ฟเวอร์แต่จ่ายต่าง → PAYMENT_MISMATCH · คาดผิดและจ่ายผิด → PRICE_CHANGED (ตรวจก่อน) · ไม่มีบิล"],
+  ["P1.3-S3.38", "X4", "[มติ 3.1 ข้อ 4] วิธีจ่ายใน P1.3 = CASH|PROMPTPAY เท่านั้น: TRANSFER / DEPOSIT / ROOM_CHARGE / CARD / รหัสมั่ว → VALIDATION ไม่มีบิล · PROMPTPAY ล้วน (ไม่ส่ง cashReceived) → PAID เงินทอน 0"],
+  ["P1.3-S3.39", "X4", "[มติ 3.1 ข้อ 4] เงินสด: ไม่ส่ง cashReceivedSatang / รับน้อยกว่าส่วนเงินสด 1 สตางค์ → PAYMENT_MISMATCH ไม่มีบิล · เงินสด 4,000 + พร้อมเพย์ รับ 5,000 → PAID changeSatang 1,000 (คิดจากส่วนเงินสด)"],
+  ["P1.3-S3.40", "X1", "[3.2 ข้อ 1] idempotency ไม่ขึ้นกับลำดับบรรทัด: [ราคาเปิด 60.00 ของ P, P ปกติ] สลับลำดับ → ok duplicated บิลเดียว · ต่างจริง (สินค้าอื่นราคาเท่ากัน / สมาชิกอื่น / แบ่งส่วนลดต่างแต่ยอดเท่า / แบ่งวิธีจ่ายต่าง) → IDEMPOTENCY_CONFLICT พร้อม saleId ของบิลเดิม"],
+  ["P1.3-S3.41", "X1", "[3.2 ข้อ 2] ส่งซ้ำ key ของบิลที่ VOIDED แล้ว → ไม่ใช่ ok: IDEMPOTENCY_CONFLICT พร้อม saleId และสถานะบิล (VOIDED)"],
+  ["P1.3-S3.42", "X8", "[3.2 ข้อ 3] สมาชิกที่ระดับมีส่วนลดอัตโนมัติ → quote และ submit MEMBER_RIGHTS_UNSUPPORTED ไม่มีแถวใดถูกเขียน · สมาชิกที่ระดับไม่มีส่วนลด → แนบและขายได้"],
+  ["P1.3-S3.43", "X4", "[3.2 ข้อ 5] รูปวิธีจ่าย: มีรายการยอด 0 → VALIDATION · บิลยอด 0 (ลด 100% โดย OWNER / ราคาเปิด 0 ที่มีสิทธิ์) ส่งวิธีจ่ายว่าง → PAID · วิธีจ่ายว่างกับยอด ≠ 0 → PAYMENT_MISMATCH"],
+  ["P1.3-S3.44", "X1", "[3.2 ข้อ 6] ส่งซ้ำ payload เดิมทุกไบต์ → changeSatang เท่าคำตอบแรก (duplicated)"],
+  ["P1.3-S3.45", "X4", "[3.2 ข้อ 9] สุ่ม ≥500 ตะกร้า (seed คงที่ · ส่วนลด/จำนวน/ราคาเปิด/รายการเอง · OWNER+STAFF): priceCart ฝั่ง client = quoteRegisterCart ทุกช่องยอดและทุกบรรทัด (หรือปฏิเสธรหัสเดียวกัน) · 0 ต่าง"],
+  ["P1.3-S3.46", "X8", "[3.2 ข้อ 10] ผลข้างเคียงเทียบทางเดิม (สินค้านับสต็อก): movement เดียวกัน · ชนิด outbox เดียวกัน · ข้อมูลเข้า bridge บัญชีเดียวกัน · COGS GL เท่ากัน · ตรึงความต่างที่รับรอง: AUTO ไม่เคยมีสต็อก ขายไม่ตัด (C2) · บริการ serviceId = InvItem ไม่ตัดสต็อก (R5)"],
+  ["P1.3-S3.47", "X3", "[3.2 ข้อ 12] STAFF ที่มี wildcard pos.* ตั้งราคาเปิดได้ (PAID) · STAFF ที่มีแค่ pos.sale.create → PERMISSION_DENIED"],
+  ["P1.3-S3.48", "X1", "[3.2 ข้อ 7] idempotencyKey: ว่าง / ช่องว่างล้วน / ไม่ใช่สตริง / ยาว 101 → VALIDATION ไม่มีบิล · ยาว 100 → PAID"],
+  ["P1.3-S3.49", "X3", "[3.2 ข้อ 4] เพดานส่วนลด vs การปัดที่ quote ของเซิร์ฟเวอร์ (STAFF): กรณีเดียวกับ S2.15 ให้ผลเดียวกัน"],
+  // ── S3 รอบ R4 (ผู้ล่าโค้ด 5f97add4 · มติ K1–K5 ใน ledger/pos-briefs/pos-brief-P1.3-R4.md) ──
+  ["P1.3-S3.50", "X1", "[R4 K1] คีย์หน้าขายอยู่ใน namespace ของตัวเอง (เก็บ 'reg2:'+คีย์): submit คีย์ hotel-sale-<id> → บิลเก็บ reg2:… ไม่ยึดคีย์ดิบ · เช็คเอาท์โรงแรม (createSale HOTEL คีย์เดียวกัน) ได้บิลใหม่ของตัวเอง · บิลโรงแรมมาก่อน → submit ได้บิลใหม่ ไม่เจอ/ไม่รั่วบิลโรงแรม · rental-/rental-deposit-/booking-deposit- ไม่ถูกยึด · คีย์ 8–100 [A-Za-z0-9_-] (7 ตัว · จุด · โคลอน 'reg2:' · ไทย · ช่องว่าง → VALIDATION ไม่มีบิล · 8 ตัว / UUID → PAID)"],
+  ["P1.3-S3.51", "X2", "[R4 K2] IDEMPOTENCY_CONFLICT พก saleId/receiptNo/saleStatus เฉพาะบิล POS สาขาเดียวกันที่ผู้ขอมองเห็น: คีย์ของสาขา 2 ใช้ที่สาขา sandbox (เจ้าของ · แคชเชียร์ · payload เดิม/ต่าง) → CONFLICT เปล่า ไม่มี id/เลขใบเสร็จ/unitId ของสาขา 2 · บิลโมดูลอื่น (HOTEL) ที่คีย์ reg2:… สาขาเดียวกัน → CONFLICT เปล่า ไม่มีบิลที่ 2 · คู่บวก: สาขา 2 payload เดิม = duplicated · payload ต่าง = CONFLICT + saleId"],
+  ["P1.3-S3.52", "X1", "[R4 K3] คำขอแรกค้าง (ตัวนับใบเสร็จถูกล็อกจาก connection อื่น) · ราคาเปลี่ยน · ส่งตะกร้าที่คิดราคาใหม่ด้วยคีย์เดิม (ค้างเช่นกัน) → ปล่อยล็อก: บิล PAID เดียวของคีย์ · คำตอบหนึ่ง ok อีกคำตอบ duplicated หรือ IDEMPOTENCY_CONFLICT (saleId เดียวกัน) · ไม่มี THROW/INTERNAL/BUSY · Σ จ่าย = ยอดบิล"],
+  ["P1.3-S3.53", "X4", "[R4 K4 · มติ r4 ข้อ 3] ส่งซ้ำคีย์เดิมด้วย cashReceivedSatang 0 / รับขาด 1 สตางค์ / ไม่ส่ง → PAYMENT_MISMATCH · ติดลบ → VALIDATION (ตรวจเหมือนครั้งแรก ก่อนดูคีย์ · ห้าม ok แม้ทอน ≥ 0) · บิลเดียว · ส่งซ้ำ payload เดิมยังทอนเท่าเดิม"],
+  ["P1.3-S3.54", "X3", "[R4 m2 · คงมติ S3.47] STAFF ที่มี wildcard pos.* ได้ pos.sale.priceOverride: quote + PAID รายการกำหนดเอง (บันทึกพฤติกรรม — เปิด V2 = STAFF pos.* ตั้งราคาเองได้ · อยู่ใน checklist deploy)"],
   ["P1.3-S4.1", "-", "registerStatus: unit.name · user.name · roleLabel เป็นภาษาคน (ไม่ใช่ OWNER/STAFF ดิบ) · pendingSyncCount = 0 (ออฟไลน์ P3)"],
   ["P1.3-S4.2", "-", "ยังไม่มีกะ (PosShift ของ P1.9 ยังไม่มี/ไม่เปิด) → shift = null ไม่ throw"],
   ["P1.3-S4.3", "X7", "pendingStockCount ('รอตัดสต็อก'): บิลวันนี้ (ตัดวันเวลาไทย +07:00) ที่ตัดสต็อกครบ → 0 · บิลที่ยังไม่ตัด (createSale ใน tx ผู้อื่น) → นับ 1"],
   ["P1.3-S4.4", "X2", "registerStatus ข้ามร้าน (unit ร้านอาหาร) → NOT_FOUND · แคชเชียร์สาขาอื่น → NOT_FOUND · สาขาตัวเอง → ok (คู่บวก)"],
+  ["P1.3-S4.5", "-", "[Q23] registerStatus.user.role = รหัสบทบาท OWNER · MANAGER · STAFF ตาม actor (roleLabel ภาษาคนยังอยู่ · S4.1)"],
+  ["P1.3-S4.6", "X4", "[Q25] registerVatConfig(ctx) = {mode, rateBp} เดียวกับ vatMode/vatRateBp ของ quote (สาขา sandbox และสาขาสีลม) · mode ∈ INCLUDED|NONE"],
+  ["P1.3-S4.7", "X7", "[3.2 ข้อ 11] pendingStockCount: บิล PAID วันนี้ที่บรรทัดผูกสต็อกยังไม่มี movement pos-consume-<sale>-<line> → +1 · ตัดด้วยคีย์นั้นแล้ว → กลับเท่าเดิม"],
   // ── S5 สถิต (ไม่แตะ DB) ──
   ["P1.3-S5.1", "-", "ข้อความหน้าขายครบ 2 ภาษา: ทุกคีย์ pos.register.* ที่จอใช้ (รายการในโน้ต) มีทั้ง th และ en (F15.4)"],
-  ["P1.3-S5.2", "-", "ข้อความ en ไม่มีอักษรไทย · th ไม่ว่าง ไม่ใช่ชื่อคีย์/enum ดิบ · ตัวแปร ICU {x} ตรงกันทั้งสองภาษา"],
+  ["P1.3-S5.2", "-", "ข้อความ en ไม่มีอักษรไทย · th ไม่ว่าง ไม่ใช่ชื่อคีย์/enum ดิบ · ตัวแปร ICU {x} ตรงกันทั้งสองภาษา · ต้นไม้คีย์ pos.register.* th = en (A6)"],
   ["P1.3-S5.3", "-", "ไฟล์ UI หน้าขายใหม่ (มี data-testid=\"pos-reg-…\") ไม่มีข้อความไทยฮาร์ดโค้ดนอกคอมเมนต์"],
   ["P1.3-S5.4", "-", "data-testid ทุกตัวของภาพ 01 (+ แถบตะกร้ามือถือ 05ก) มีในโค้ดหน้าขาย"],
   ["P1.3-S5.5", "-", "ปุ่ม/ช่องที่กดได้ของภาพ 01 มีแถวใน scripts/pos-ui-inventory.json (page /app/sys/[id]/pos/register · roles)"],
-  ["P1.3-S5.6", "-", "หนี้ปุ่มไร้ testid ของหน้าขาย (register-ui.tsx · register/page.tsx) ใน baselineDebt = 0 หรือไฟล์ถูกแทนที่แล้ว"],
+  ["P1.3-S5.6", "-", "[Q4] หนี้ปุ่มไร้ testid: register/page.tsx = 0 (หรือไม่มีแถวหนี้) · register-ui.tsx (จอเดิมหลังธง) ≤ baseline 22 ได้ตราบที่ธงยังอยู่"],
   ["P1.3-S5.7", "X11", "แป้นลัด F2 ค้นหา · F4 ชำระ · F8 พักบิล · Esc ล้าง มีตัวจับ keydown ในโค้ดหน้าขาย [static]"],
   ["P1.3-S5.8", "X11", "ช่องค้นหา/สแกน (pos-reg-search) autofocus และโฟกัสกลับหลังเพิ่มสินค้า [static]"],
   ["P1.3-S5.9", "X11", "ปุ่มหลัก (ชำระ · หมวด · การ์ดสินค้า · +/− จำนวน · พักบิล · บิลที่พัก · สมาชิก · รายการเอง · สแกนกล้อง) มีคลาสสูง ≥44px [static heuristic · ยืนยันจริงที่ visual]"],
   ["P1.3-S5.10", "X4", "สัญญา createSale/voidSale เข้ากันได้ย้อนหลัง (F15.2 ของ scripts/fitness-pos.mts เขียว) — 6 โมดูลที่เรียกไม่พัง"],
+  ["P1.3-S5.11", "-", "[Q4] ธง: register/page.tsx เลือกจอใหม่เมื่อ settings.pos.registerV2 === true เท่านั้น (อื่น ๆ = <PosRegister> เดิม) · ด่านสิทธิ์ HF-POS-PAGES คงอยู่ · seed QC ตั้ง registerV2: true [static]"],
+  ["P1.3-S5.12", "-", "[Q4] จอเดิมไม่ถูกแตะ: register-ui.tsx และ actions/pos.ts ตรงไบต์กับฐาน a670d313 (sha256) · แถวทะเบียนจอเดิม 3 แถวยังอยู่ [static · regression guard]"],
+  ["P1.3-S5.13", "-", "[Addendum+§4.6+มติ 3.1 ข้อ 5] refusalMessageKey(code): ทุกรหัสในคำศัพท์ได้คีย์ตามตารางสเปก · BUSY → errors.busy · CONFLICT → errors.conflict · OPTIONS_REQUIRED → errors.optionsRequired · INTERNAL/UNKNOWN/รหัสไม่รู้จัก → errors.unknown · ทุกคีย์ที่คืนมีทั้ง th+en"],
+  ["P1.3-S5.14", "-", "register-shared.ts บริสุทธิ์ (import ค่าได้แค่ ./*-shared · @/lib/modules/pos/*-shared · @/lib/ui/money สำหรับ moneyText) · REGISTER_MAX_LINES 200 · MAX_QTY 9999 · LOW_STOCK 5 (Q10) · PAGE_SIZE 100 · moneyText 8550 → ฿85.50 · 62500 → ฿625 · −1000 → −฿10"],
+  ["P1.3-S5.15", "-", "[Addendum+G10] register-actions.ts: \"use server\" · export เฉพาะ async function (4 action ตามสเปก) · ทุกตัวเรียก requireTenant + มี catch · ไม่มี throw · checkCatalogWrite รับ membership ของ session ไม่ใช่ object ที่ประกอบเอง [static]"],
+  ["P1.3-S5.16", "-", "[Addendum] โค้ดหน้าขาย P1.3 ไม่มีตัวบ่งชี้ระบบ CATALOG_SYSTEM_ACTOR เลย · ไม่ import scripts/** · fitness F15.1 F15.5 F15.6 เขียว"],
+  ["P1.3-S5.17", "-", "[G9] ไฟล์ \"use client\" ของหน้าขายไม่ import โมดูลเซิร์ฟเวอร์ (register.ts · catalog · service · core/db · prisma · next/headers · core/context) [static]"],
+  ["P1.3-S5.18", "-", "[3.2 ข้อ 13 · Q24] register.ts export registerScan ⇒ register-actions.ts export registerScanAction (async · requireTenant) [static]"],
+  ["P1.3-S5.19", "-", "[B2.1 · Q4] รางไอคอนของ /pos/register ขึ้นกับธง: isRailPath บังคับรางหน้าขายเฉพาะ id ที่ layout ส่งมา (posRegisterV2On) · AppShell+AppMain ส่ง id ต่อ · ไม่มี regex หน้าขายแบบไม่มีเงื่อนไข ⇒ ธงปิด = shell เท่า main [static]"],
+  ["P1.3-S5.20", "-", "[B2.2 รีวิว B2] จอขายกันพลาดระดับซอร์ส: เพิ่มสินค้าใช้ setCart แบบฟังก์ชัน + ผลสแกนเช็กรุ่นบิล · openPay ไม่ซ้อนกล่องชำระ · หลังม่าน inert + RegisterDialog กักโฟกัส · ยืนยันชำระปิดระหว่างรอ quote · beforeunload ตอน sending/unknown · สแกน none/choose มีข้อความ · Esc ข้าม isComposing · แถวปุ่มรอง ≥40px · [B2.3] โฟกัสค้นหาหลัง commit (ไม่เรียกข้าง pop/setLayers([])) · quote ล้มแสดงในกล่องชำระ [static]"],
+  ["P1.3-S5.21", "X1", "[R4 K3] RegisterScreen.tsx หมุนคีย์ (ตัวสร้างคีย์ที่เรียก randomUUID · setIdemKey(newKey…)) เฉพาะใน resetBill เท่านั้น · ปฏิเสธ/ไม่แน่ใจใน send ไม่หมุนคีย์และไม่เรียก resetBill/nextSale · ไฟล์อื่นของหน้าขายไม่สร้างคีย์เอง [static]"],
+  ["P1.3-S5.22", "X1", "[R4 K5] คำขอที่ค้าง (คีย์ + payload + phase) เก็บใน sessionStorage คีย์ตาม systemId+unitId: setItem/getItem/removeItem · ทุกการแตะ sessionStorage อยู่ใน try (private mode) · เก็บเป็น JSON · โหลดกลับ (JSON.parse) แล้วขึ้นสถานะ 'unknown' (ลองซ้ำคีย์เดิม) [static]"],
   // ── S6 กลุ่มแยกของ P1.6 (SKIP เองจนกว่าโค้ดจะอ่าน settings.pos.stock.oversellPolicy · มติผู้คุมงาน 1 ต.ค. ข้อ 4) ──
   ["P1.3-S6.1", "X6", "[P1.6] ชิ้นสุดท้าย นโยบาย BLOCK (settings.pos.stock.oversellPolicy): 10 เครื่องพร้อมกัน × 3 รอบ → PAID 1 · ที่เหลือ STOCK_INSUFFICIENT · onHand 0 · ผู้แพ้ไม่มีบิล"],
   // ── S9 คืนสภาพ ──
   ["P1.3-S9.1", "-", "QC4 คืนสภาพ: จำนวนแถวของร้าน QC POS ทั้งสอง (ทุกตารางที่ข้อสอบแตะ) ก่อน = หลัง · ตัวนับใบเสร็จสาขาจริงไม่ขยับ"],
+  ["P1.3-S9.2", "-", "QC4 ลายนิ้วมือ: แถวเดิมของร้าน QC POS (PosProduct · PosCategory · InvItem · AppSystem รวม settings · AppSystemUnit · BusinessUnit · Membership · PosReceiptCounter) ทุกคอลัมน์ ก่อน = หลัง"],
 ] as const;
 
 if (LIST) {
@@ -232,7 +312,31 @@ const COUNT_MODELS = [
   "posSale", "posSaleLine", "posPayment", "posReceiptCounter", "outboxEvent", "invItem", "invMovement", "invLocationStock",
   "appSystem", "appSystemUnit", "businessUnit", "auditLog", "accountJournalEntry", "pointLedger", "customer", "couponRedemption",
   "posProduct", "posCategory",
+  // รอบ 3: fixture กลุ่มตัวเลือก (Q6) เขียน MenuOptionGroup/Choice + PosProductOptionGroup ตรง (catalog ยังไม่มี API ผูกกลุ่ม)
+  "menuOptionGroup", "menuOptionChoice", "posProductOptionGroup", "recipeLine",
+  // รอบ 3.2: ระดับสมาชิกชั่วคราวของ S3.42
+  "memberTierDef", "memberTierBenefit",
 ] as const;
+/** S9.2 ลายนิ้วมือ: แถวเดิมของร้าน QC (ทุกคอลัมน์) — จับ "แก้แถวที่ข้อสอบไม่ได้สร้าง" ที่การนับแถวมองไม่เห็น (เช่นราคา/ธง/สต็อกของสาขาจริง) */
+const FP_MODELS = ["posProduct", "posCategory", "invItem", "appSystem", "appSystemUnit", "businessUnit", "membership", "posReceiptCounter"] as const;
+async function fingerprint(): Promise<Record<string, string>> {
+  const out: Record<string, string> = {};
+  const tids = envMod.PQC_TENANT_IDS as string[];
+  for (const m of FP_MODELS) {
+    const d = P[m];
+    if (typeof d?.findMany !== "function") {
+      out[m] = "absent";
+      continue;
+    }
+    try {
+      const rows = (await d.findMany({ where: { tenantId: { in: tids } }, orderBy: { id: "asc" } })) as Any[];
+      out[m] = `${rows.length}:${createHash("sha256").update(JSON.stringify(rows)).digest("hex").slice(0, 16)}`;
+    } catch (e) {
+      out[m] = `err:${(e as Error).message.slice(0, 40)}`;
+    }
+  }
+  return out;
+}
 async function snapshotCounts(): Promise<Record<string, number | string>> {
   const out: Record<string, number | string> = {};
   for (const tid of envMod.PQC_TENANT_IDS as string[]) {
@@ -276,6 +380,7 @@ if (skipReasons.length > 0 && !FORCE) {
   process.exit(0);
 }
 if (FORCE && skipReasons.length) console.log(`⚠️  QC_FORCE=1 — ข้ามด่าน SKIP ทั้งที่ยังขาด: ${skipReasons.join(" | ")} (คาด: แดงตามเหตุผล ไม่ crash)`);
+const fpBefore = await fingerprint();
 
 // ═════════════════════════ 3. โหลดโมดูล (ไม่มี = null → ข้อที่ใช้แดงด้วยเหตุ MISSING) ═════════════════════════
 const tryImport = async (p: string): Promise<Any> => {
@@ -287,6 +392,7 @@ const tryImport = async (p: string): Promise<Any> => {
   }
 };
 const pricing = await tryImport("@/lib/modules/pos/pricing-shared");
+const regShared = existsSync(join(ROOT, "src/lib/modules/pos/register-shared.ts")) ? await tryImport("@/lib/modules/pos/register-shared") : null;
 const register = await tryImport("@/lib/modules/pos/register");
 const catalog = await tryImport("@/lib/modules/pos/catalog");
 const service = await tryImport("@/lib/modules/pos/service");
@@ -295,6 +401,11 @@ const sysSvc = await tryImport("@/lib/modules/system/service");
 
 const RAND = Math.random().toString(36).slice(2, 8);
 const TAG = `qc-p1.3-${RAND}`;
+// R4 K1: คีย์ idempotency ของหน้าขาย = 8–100 ตัว [A-Za-z0-9_-] ⇒ TAG มี '.' ใช้เป็นคีย์ไม่ได้ · เซิร์ฟเวอร์เก็บ REG_NS + คีย์
+const KTAG = TAG.replace(/[^A-Za-z0-9_-]/g, "_");
+const REG_NS = "reg2:";
+/** where ของ PosSale.idempotencyKey: คีย์ดิบ (createSale ของโมดูลอื่น/ก่อน K1) หรือคีย์ใน namespace หน้าขาย (หลัง K1) */
+const keyIn = (k: string) => ({ in: [k, `${REG_NS}${k}`] });
 const runStart = new Date();
 
 // ═════════════════════════ 4. S2 + S5 (ไม่ต้องใช้ seed) ═════════════════════════
@@ -418,7 +529,24 @@ function runPricing() {
     if (r.grandTotalSatang !== expTotal || r.netSatang !== net || r.vatSatang !== expVat || !ints.every((x) => Number.isInteger(x) && x >= 0)) bad = `cart#${k} total ${r.grandTotalSatang}≠${expTotal} net ${r.netSatang}≠${net} vat ${r.vatSatang}≠${expVat}`;
   }
   chk("P1.3-S2.14", !bad, "300/300 สมการตรง", bad || "ok");
+  // S2.15 (รอบ 3.2 ข้อ 4): ส่วนลด PERCENT ที่ bp ≤ เพดาน ห้ามถูกปฏิเสธเพราะการปัดสตางค์ · AMOUNT เทียบเพดานที่ปัดครึ่งขึ้นแล้ว
+  const r215 = ROUNDING_CASES.map(([label, lines, bill, want]) => {
+    const r = price({ lines, billDiscount: bill, vat: VAT0, maxDiscountBp: 1000 });
+    return { label, got: r?.ok === true ? `OK:${r.grandTotalSatang}` : codeOf(r), want };
+  });
+  const bad215 = r215.filter((x) => x.got !== x.want);
+  chk("P1.3-S2.15", bad215.length === 0, ROUNDING_CASES.map(([l, , , w]) => `${l}=${w}`).join(" · "), bad215.map((x) => `${x.label}:${x.got}≠${x.want}`).join(" · ") || "ตรงทุกกรณี");
 }
+/** กรณีเพดาน vs การปัด (S2.15 pure · S3.49 เซิร์ฟเวอร์) — [ชื่อ, บรรทัด, ส่วนลดท้ายบิล, ผลที่ต้องได้ "OK:<ยอด>" | รหัส] · เพดาน STAFF 1000 bp */
+const ROUNDING_CASES: [string, Line[], Cart["billDiscount"], string][] = [
+  ["10%×33.35", [{ qty: 1, unitPriceSatang: 3335, discount: { type: "PERCENT", value: 1000 } }], undefined, "OK:3001"],
+  ["10%×5×33.33", [{ qty: 5, unitPriceSatang: 3333, discount: { type: "PERCENT", value: 1000 } }], undefined, "OK:14998"],
+  ["บิล10%×123.45", [{ qty: 1, unitPriceSatang: 12345 }], { type: "PERCENT", value: 1000 }, "OK:11110"],
+  ["10.01%×100", [{ qty: 1, unitPriceSatang: 10000, discount: { type: "PERCENT", value: 1001 } }], undefined, "DISCOUNT_EXCEEDS_LIMIT"],
+  ["฿3.34 บน 33.35", [{ qty: 1, unitPriceSatang: 3335, discount: { type: "AMOUNT", value: 334 } }], undefined, "OK:3001"],
+  ["฿3.35 บน 33.35", [{ qty: 1, unitPriceSatang: 3335, discount: { type: "AMOUNT", value: 335 } }], undefined, "DISCOUNT_EXCEEDS_LIMIT"],
+  ["บิล฿10.01 บน 100", [{ qty: 1, unitPriceSatang: 10000 }], { type: "AMOUNT", value: 1001 }, "DISCOUNT_EXCEEDS_LIMIT"],
+];
 
 // ── S5 สถิต ──
 const POS_DIRS = ["src/lib/modules/pos", "src/app/app/sys/[id]/pos", "src/components/pos"];
@@ -464,7 +592,7 @@ const TESTIDS_CLICKABLE = [
 const TESTIDS_DISPLAY = [
   "pos-reg-status-online", "pos-reg-status-shift", "pos-reg-status-user", "pos-reg-status-stock-pending", "pos-reg-status-sync-pending",
   "pos-reg-status-printer", "pos-reg-shortcuts", "pos-reg-subtotal", "pos-reg-line-discounts", "pos-reg-bill-discount-line",
-  "pos-reg-coupon-line", "pos-reg-vat-line", "pos-reg-total",
+  "pos-reg-vat-line", "pos-reg-total", // มติ 3.1 ข้อ 6: pos-reg-coupon-line ออก (P1.12 เพิ่มพร้อมฟีเจอร์คูปอง) · pos-reg-coupon (soon) ยังบังคับ
 ] as const;
 /** ปุ่มหลักที่ต้องสูง ≥44px (X11) */
 const TOUCH_TESTIDS = ["pos-reg-pay", "pos-reg-category-", "pos-reg-product-", "pos-reg-line-qty-", "pos-reg-hold", "pos-reg-held-bills", "pos-reg-member-pick", "pos-reg-custom-item", "pos-reg-scan-camera"];
@@ -514,6 +642,8 @@ async function runStatic() {
     if (typeof e === "string" && thai.test(e)) probs.push(`${k}: en มีอักษรไทย`);
     if (typeof t === "string" && (!t.trim() || t === k || /^[A-Z][A-Z0-9_]+$/.test(t.trim()))) probs.push(`${k}: th ว่าง/ชื่อคีย์/enum`);
     if (typeof t === "string" && typeof e === "string" && ph(t) !== ph(e)) probs.push(`${k}: ตัวแปร {${ph(t)}}≠{${ph(e)}}`);
+    // รอบ 3 (A6 · สเปก §6.1): ต้นไม้คีย์สองภาษาเท่ากัน — คีย์ที่มีฝั่งเดียว = จออีกภาษาโชว์ชื่อคีย์
+    if (th.has(k) !== en.has(k)) probs.push(`${k}: มีแค่ ${th.has(k) ? "th" : "en"}`);
   }
   chk("P1.3-S5.2", th.size > 0 && probs.length === 0, "0 ปัญหา", th.size === 0 ? "ยังไม่มีคีย์ pos.* เลย" : probs.slice(0, 6).join(" · ") || "0");
 
@@ -541,9 +671,14 @@ async function runStatic() {
   const rows = (inv?.rows ?? []) as Any[];
   const noRow = TESTIDS_CLICKABLE.filter((t) => !rows.some((r) => r.testid === t && r.page === "/app/sys/[id]/pos/register" && Array.isArray(r.roles) && r.roles.length > 0));
   chk("P1.3-S5.5", inv && noRow.length === 0, `${TESTIDS_CLICKABLE.length} แถว`, noRow.length ? `ไม่มีแถว ${noRow.length}: ${noRow.slice(0, 8).join(", ")}${noRow.length > 8 ? " …" : ""}` : "ครบ");
-  const debt = ((inv?.baselineDebt?.items ?? []) as Any[]).filter((d) => ["src/lib/modules/pos/register-ui.tsx", "src/app/app/sys/[id]/pos/register/page.tsx"].includes(d.file));
-  const openDebt = debt.filter((d) => Number(d.untestid) > 0 && existsSync(join(ROOT, d.file)));
-  chk("P1.3-S5.6", inv && openDebt.length === 0, "หนี้หน้าขาย 0", openDebt.map((d) => `${d.file}=${d.untestid}`).join(", ") || "0");
+  // S5.6 (รอบ 3 · ORACLE-EDIT ตาม Q4): page.tsx เขียนใหม่ ⇒ หนี้ 0 · register-ui.tsx = จอเดิมหลังธง (ห้ามแตะ) ⇒ คงที่ ≤ baseline 22 จน P1.12 ลบไฟล์
+  const debtItems = (inv?.baselineDebt?.items ?? []) as Any[];
+  const pageDebt = debtItems.find((d) => d.file === "src/app/app/sys/[id]/pos/register/page.tsx");
+  const legacyDebt = debtItems.find((d) => d.file === "src/lib/modules/pos/register-ui.tsx");
+  const LEGACY_DEBT_BASELINE = 22;
+  const pageOk = !pageDebt || Number(pageDebt.untestid) === 0;
+  const legacyOk = !existsSync(join(ROOT, "src/lib/modules/pos/register-ui.tsx")) || !legacyDebt || Number(legacyDebt.untestid) <= LEGACY_DEBT_BASELINE;
+  chk("P1.3-S5.6", !!inv && pageOk && legacyOk, `page.tsx 0 · register-ui.tsx ≤ ${LEGACY_DEBT_BASELINE}`, `page.tsx=${pageDebt ? pageDebt.untestid : "ไม่มีแถว"} · register-ui.tsx=${legacyDebt ? legacyDebt.untestid : "ไม่มีแถว"}`);
   const code = stripComments(regSrcAll);
   const keys = ["F2", "F4", "F8", "Escape"].filter((k) => !new RegExp(`["'\`]${k}["'\`]`).test(code));
   chk("P1.3-S5.7", regFiles.length > 0 && /keydown|onKeyDown/.test(code) && keys.length === 0, "keydown + F2 F4 F8 Escape", regFiles.length === 0 ? "ยังไม่มีไฟล์หน้าขายใหม่" : `ขาด: ${keys.join(",") || "-"} · keydown:${/keydown|onKeyDown/.test(code)}`);
@@ -559,18 +694,264 @@ async function runStatic() {
   const TOUCH = /(^|[\s"'`])(min-h-(1[1-9]|[2-9]\d)|h-(1[1-9]|[2-9]\d)|size-(1[1-9]|[2-9]\d)|min-h-\[(4[4-9]|[5-9]\d|\d{3})px\]|h-\[(4[4-9]|[5-9]\d|\d{3})px\]|touch-target|pos-touch)(?=$|[\s"'`])/;
   const small = TOUCH_TESTIDS.filter((t) => !TOUCH.test(tagOf(t)));
   chk("P1.3-S5.9", regFiles.length > 0 && small.length === 0, "ทุกปุ่มหลักมีคลาส ≥44px (h-11+/min-h-11+/[44px]+/touch-target)", regFiles.length === 0 ? "ยังไม่มีไฟล์หน้าขายใหม่" : `ไม่ผ่าน: ${small.join(", ") || "-"}`);
-  // S5.10 สัญญา createSale (F15.2)
-  let f152: { ok: boolean; detail: string } | null = null;
+  // S5.10 สัญญา createSale (F15.2) — รัน fitness-pos ครั้งเดียว เก็บผลทุกด่าน (S5.16 ใช้ F15.1/F15.5/F15.6)
+  const fit = new Map<string, { ok: boolean; detail: string }>();
+  let fitErr = "";
   try {
     const fp = (await import("./fitness-pos.mjs" as string)) as Any;
     fp.runPosFitness((id: string, _n: string, ok: boolean, detail: string) => {
-      if (id === "F15.2") f152 = { ok, detail };
+      fit.set(id, { ok, detail });
     }, ROOT);
   } catch (e) {
-    f152 = { ok: false, detail: `โหลด fitness-pos ไม่ได้: ${(e as Error).message.slice(0, 100)}` };
+    fitErr = `โหลด fitness-pos ไม่ได้: ${(e as Error).message.slice(0, 100)}`;
   }
-  const f = f152 as { ok: boolean; detail: string } | null;
-  chk("P1.3-S5.10", f?.ok === true, "F15.2 ✅", f ? short(f.detail, 200) : "ไม่พบผล F15.2");
+  const f = fit.get("F15.2");
+  chk("P1.3-S5.10", f?.ok === true, "F15.2 ✅", f ? short(f.detail, 200) : fitErr || "ไม่พบผล F15.2");
+
+  // ── รอบ 3: สถิตของมติ Q4 + Addendum ──
+  const PAGE = "src/app/app/sys/[id]/pos/register/page.tsx";
+  const LEGACY_UI = "src/lib/modules/pos/register-ui.tsx";
+  const LEGACY_ACTIONS = "src/lib/actions/pos.ts";
+  const SHARED = "src/lib/modules/pos/register-shared.ts";
+  const ACTIONS = "src/lib/modules/pos/register-actions.ts";
+  const SEED = "scripts/seed-pos-qc.mts";
+  const pageCode = stripComments(rd(PAGE));
+  // S5.11 ธง Q4 — ตัวอ่านธงอยู่ใน page.tsx หรือในโมดูล POS ที่ page ใช้ (ผู้สร้างเลือกได้) · เทียบ === true เคร่ง (สตริง "true" = จอเดิม)
+  const flagSrc = [pageCode, ...walk("src/lib/modules/pos").filter((x) => /\.ts$/.test(x)).map((x) => stripComments(rd(x)))].join("\n");
+  const flagStrict = /registerV2[^\n;]{0,80}[!=]==\s*true\b|\btrue\s*[!=]==[^\n;]{0,80}registerV2/.test(flagSrc);
+  const flagPath = /settings[\s\S]{0,120}\bpos\b[\s\S]{0,80}registerV2/.test(flagSrc);
+  const bothScreens = /<RegisterScreen\b/.test(pageCode) && /<PosRegister\b/.test(pageCode);
+  const guardKept = /posRegisterView\s*\(/.test(pageCode) && /notFound\s*\(\s*\)/.test(pageCode) && /requireTenant\s*\(/.test(pageCode);
+  const seedOn = /registerV2["']?\s*:\s*true\b/.test(stripComments(rd(SEED)));
+  chk("P1.3-S5.11", flagStrict && flagPath && bothScreens && guardKept && seedOn, "registerV2 === true · settings.pos · <RegisterScreen>+<PosRegister> · ด่าน HF-POS-PAGES · seed on",
+    `strict:${flagStrict} path:${flagPath} screens:${bothScreens} guard:${guardKept} seed:${seedOn}`);
+  // S5.12 จอเดิมไม่ถูกแตะ — sha256 ตอนฐาน a670d313 (accepted P1.1a + hotfix/pos-page-authz)
+  //   🔴 ตั้งใจเป็นสายสะดุด (มติ 3.1 ข้อ 7): merge ที่แก้สองไฟล์นี้อย่างชอบธรรม (เช่น CRM pos-deal-select · hotfix POS) ต้องเปลี่ยน hash
+  //      ผ่าน ORACLE-EDIT ที่ผู้คุมงานเห็นเท่านั้น — ห้ามเปลี่ยนเป็น "diff กับ merge-base" (merge-base ของ session/pos ไม่มี hotfix ⇒ แดงหลอก)
+  const LEGACY_SHA: Record<string, string> = {
+    [LEGACY_UI]: "c69cb3f2b374889f3d3825bd330b06ce85ecd74cf58a192a0820d76dfa3abf30",
+    [LEGACY_ACTIONS]: "49ef6de456953b100eaf2d0890d6438ff68e502d33b363b3436fbed5dc01fd24",
+  };
+  const shaOf = (p: string) => (existsSync(join(ROOT, p)) ? createHash("sha256").update(readFileSync(join(ROOT, p))).digest("hex") : "absent");
+  const shaBad = Object.entries(LEGACY_SHA).filter(([p, h]) => shaOf(p) !== h).map(([p]) => `${p}=${shaOf(p).slice(0, 12)}`);
+  const legacyRows = ["pos-pay-button", "pos-member-select", "pos-catalog-item"].filter((t) => !rows.some((r) => r.testid === t && r.page === "/app/sys/[id]/pos/register"));
+  chk("P1.3-S5.12", shaBad.length === 0 && legacyRows.length === 0, "ไบต์ตรงฐาน · แถวจอเดิม 3", `ไบต์ต่าง: ${shaBad.join(", ") || "-"} · แถวหาย: ${legacyRows.join(", ") || "-"}`);
+  // S5.13 รหัสปฏิเสธ → คีย์ข้อความ (สเปก §4.6 + Addendum) — client ห้ามโชว์ message ไทยของเซิร์ฟเวอร์
+  const EXPECT_KEY: Record<string, string> = {
+    NOT_FOUND: "errors.notFound", PERMISSION_DENIED: "errors.permissionDenied", VALIDATION: "errors.invalidLine", INVALID_LINE: "errors.invalidLine",
+    PRODUCT_NOT_FOUND: "errors.productNotFound", PRODUCT_UNAVAILABLE: "errors.productUnavailable", MEMBER_NOT_FOUND: "errors.memberNotFound",
+    PRICE_NOT_SET: "errors.priceNotSet", PRICE_CHANGED: "errors.priceChanged", PAYMENT_MISMATCH: "errors.paymentMismatch",
+    IDEMPOTENCY_CONFLICT: "errors.idempotencyConflict", LINE_DISCOUNT_EXCEEDS_LINE: "errors.lineDiscountExceedsLine",
+    BILL_DISCOUNT_EXCEEDS_TOTAL: "errors.billDiscountExceedsTotal", DISCOUNT_EXCEEDS_LIMIT: "errors.discountExceedsLimit",
+    TOO_MANY_LINES: "errors.tooManyLines", STOCK_INSUFFICIENT: "errors.stockInsufficient",
+    BUSY: "errors.busy", INTERNAL: "errors.unknown", "QC_NEVER_A_CODE": "errors.unknown",
+    // มติ 3.1 ข้อ 5 · UNKNOWN = รหัสกันตกของ action (สเปก §3.1) → "anything else" ของตาราง §4.6
+    CONFLICT: "errors.conflict", OPTIONS_REQUIRED: "errors.optionsRequired", UNKNOWN: "errors.unknown",
+    MEMBER_RIGHTS_UNSUPPORTED: "errors.memberRightsUnsupported", // มติ 3.2 ข้อ 3
+  };
+  const ANY_KEY: string[] = [];
+  const normKey = (k: unknown) => (typeof k === "string" ? k.replace(/^pos\.register\./, "") : `<${typeof k}>`);
+  const keyProbs: string[] = [];
+  if (typeof regShared?.refusalMessageKey !== "function") keyProbs.push(`ยังไม่มี ${SHARED} refusalMessageKey`);
+  else {
+    for (const [code, want] of Object.entries(EXPECT_KEY)) {
+      const got = normKey(callSync(regShared, "refusalMessageKey", code));
+      if (got !== want) keyProbs.push(`${code}→${got}≠${want}`);
+    }
+    for (const code of [...Object.keys(EXPECT_KEY), ...ANY_KEY]) {
+      const got = normKey(callSync(regShared, "refusalMessageKey", code));
+      if (typeof th.get(`pos.register.${got}`) !== "string" || typeof en.get(`pos.register.${got}`) !== "string") keyProbs.push(`${code}→${got} ไม่มีใน th/en`);
+    }
+  }
+  chk("P1.3-S5.13", keyProbs.length === 0, "ทุกรหัสได้คีย์ตามตาราง · BUSY→errors.busy · CONFLICT→errors.conflict · OPTIONS_REQUIRED→errors.optionsRequired · INTERNAL/UNKNOWN→errors.unknown · คีย์มีสองภาษา", keyProbs.slice(0, 6).join(" · ") || "ครบ");
+  // S5.14 register-shared บริสุทธิ์ + ค่าคงที่ + moneyText
+  const sSrc = rd(SHARED);
+  const sImports = [...sSrc.matchAll(/^\s*import\s+(?!type\b)[^;]*?from\s+["']([^"']+)["']/gm)].map((m) => m[1]);
+  const sBad = sImports.filter((m) => !/^\.\/[\w-]+-shared(\.ts)?$/.test(m) && !/^@\/lib\/modules\/pos\/[\w-]+-shared$/.test(m) && m !== "@/lib/ui/money");
+  const sServer = /["']use server["']|server-only|@\/lib\/core\/db|@prisma\/client|next\/headers/.test(sSrc.replace(/^\s*import\s+type[^;]*;/gm, ""));
+  const consts = { REGISTER_MAX_LINES: 200, REGISTER_MAX_QTY: 9999, REGISTER_LOW_STOCK: 5, REGISTER_PAGE_SIZE: 100 } as Record<string, number>;
+  const cBad = Object.entries(consts).filter(([k, v]) => regShared?.[k] !== v).map(([k]) => `${k}=${short(regShared?.[k])}`);
+  const money = [[8550, "฿85.50"], [62500, "฿625"], [-1000, "−฿10"]] as const;
+  const mBad = money.filter(([v, want]) => callSync(regShared, "moneyText", v) !== want).map(([v]) => `${v}→${short(callSync(regShared, "moneyText", v))}`);
+  chk("P1.3-S5.14", sSrc.length > 0 && sBad.length === 0 && !sServer && cBad.length === 0 && mBad.length === 0, "import ./*-shared + @/lib/ui/money เท่านั้น · ค่าคงที่ 200/9999/5/100 · moneyText",
+    sSrc.length === 0 ? `ยังไม่มี ${SHARED}` : `imports:[${sBad.join(",")}] server:${sServer} consts:[${cBad.join(",")}] money:[${mBad.join(",")}]`);
+  // S5.15 server action — ไฟล์ "use server" แยก (ไม่ต่อท้าย actions/pos.ts) · export async function อย่างเดียว · ไม่ throw ปฏิเสธ
+  const aRaw = rd(ACTIONS);
+  const aCode = stripComments(aRaw);
+  const aProbs: string[] = [];
+  if (!aRaw) aProbs.push(`ยังไม่มี ${ACTIONS}`);
+  else {
+    if (!/^\s*["']use server["']\s*;?/.test(aCode)) aProbs.push(`บรรทัดแรกไม่ใช่ "use server"`);
+    const exportsAll = [...aCode.matchAll(/^\s*export\b[^\n]*/gm)].map((m) => m[0].trim());
+    const nonFn = exportsAll.filter((x) => !/^export\s+async\s+function\s+\w+/.test(x));
+    if (nonFn.length) aProbs.push(`export ที่ไม่ใช่ async function: ${nonFn.slice(0, 3).join(" | ")}`);
+    const fnNames = exportsAll.map((x) => /^export\s+async\s+function\s+(\w+)/.exec(x)?.[1]).filter((x): x is string => !!x);
+    const missingActs = ["registerCatalogAction", "quoteRegisterCartAction", "submitRegisterSaleAction", "registerStatusAction"].filter((n) => !fnNames.includes(n));
+    if (missingActs.length) aProbs.push(`ไม่มี action: ${missingActs.join(",")}`);
+    if (/\bthrow\b/.test(aCode)) aProbs.push("มี throw (ปฏิเสธต้องคืน {ok:false, code, message})");
+    // แยกการประกาศระดับบนสุด ⇒ ทุก action ต้องเรียก requireTenant และมี catch (ผิดพลาดไม่คาดคิด = {ok:false, code}) —
+    //   ตรงในตัวมันเอง หรือผ่านตัวช่วยในไฟล์เดียวกัน (ฟังก์ชัน/const ไม่ export) ที่มีของนั้น
+    const decls = [...aCode.matchAll(/^(export\s+)?(?:async\s+)?function\s+(\w+)|^(export\s+)?const\s+(\w+)\s*=/gm)].map((m) => ({ exported: !!(m[1] || m[3]), name: m[2] ?? m[4], at: m.index ?? 0 }));
+    const seg = (i: number) => aCode.slice(decls[i].at, i + 1 < decls.length ? decls[i + 1].at : aCode.length);
+    const helpersWith = (re: RegExp) => decls.map((d, i) => ({ d, i })).filter(({ d, i }) => !d.exported && re.test(seg(i))).map(({ d }) => d.name);
+    const tenantHelpers = helpersWith(/requireTenant\s*\(/);
+    const catchHelpers = helpersWith(/\bcatch\b/);
+    const callsAny = (body: string, names: string[]) => names.some((n) => new RegExp(`\\b${n}\\s*\\(`).test(body));
+    decls.forEach((d, i) => {
+      if (!d.exported) return;
+      const body = seg(i);
+      if (!/requireTenant\s*\(/.test(body) && !callsAny(body, tenantHelpers)) aProbs.push(`${d.name} ไม่เรียก requireTenant`);
+      if (!/\bcatch\b/.test(body) && !callsAny(body, catchHelpers)) aProbs.push(`${d.name} ไม่มี catch`);
+    });
+  }
+  // checkCatalogWrite ในโค้ด P1.3: อาร์กิวเมนต์แรกต้องไม่ใช่ object ที่ประกอบเอง/spread (ต้องเป็น membership ของ session จาก requireTenant)
+  const p13Files = [...new Set([...regFiles, SHARED, ACTIONS, "src/lib/modules/pos/pricing-shared.ts", PAGE, ...walk("src/components/pos/register")])].filter((x) => existsSync(join(ROOT, x)));
+  for (const pf of [...p13Files, "src/lib/modules/pos/register.ts"]) {
+    for (const m of stripComments(rd(pf)).matchAll(/checkCatalogWrite\s*\(\s*([^,)]*)/g)) {
+      const arg = m[1].trim();
+      if (/^[{[]|^\.\.\.|body|input|req|params|searchParams|formData/i.test(arg)) aProbs.push(`${pf}: checkCatalogWrite(${arg.slice(0, 30)} …) ไม่ใช่ membership ของ session`);
+    }
+  }
+  chk("P1.3-S5.15", aProbs.length === 0, "use server · async function ×4 · requireTenant+catch ทุกตัว · ไม่ throw · checkCatalogWrite(session)", aProbs.slice(0, 5).join(" · ") || "ผ่าน");
+  // S5.16 Addendum F15.5/F15.6 — โค้ดหน้าขาย P1.3 ไม่มีตัวบ่งชี้ระบบเลย · ไม่ import scripts/** · fitness ทั้งสามด่านเขียว
+  //   (register.ts ไม่อยู่ในชุดเข้มนี้: P1.1b แก้ setItemSalePrice ในไฟล์เดียวกันขนาน — register.ts ถูกคุมด้วย F15.5 ของ fitness ตามเดิม)
+  const p16Probs: string[] = [];
+  const mustExist = [SHARED, ACTIONS, "src/lib/modules/pos/pricing-shared.ts"].filter((x) => !existsSync(join(ROOT, x)));
+  if (mustExist.length) p16Probs.push(`ยังไม่มี: ${mustExist.join(", ")}`);
+  if (!walk("src/components/pos/register").length) p16Probs.push("ยังไม่มี src/components/pos/register/*");
+  for (const pf of p13Files) {
+    const c = stripComments(rd(pf));
+    if (/CATALOG_SYSTEM_ACTOR/.test(c)) p16Probs.push(`${pf}: CATALOG_SYSTEM_ACTOR`);
+    if (/(from\s+|import\s*\(\s*|require\s*\(\s*)["'](?:[^"']*\/)?scripts\//.test(c)) p16Probs.push(`${pf}: import scripts/**`);
+  }
+  for (const id of ["F15.1", "F15.5", "F15.6"]) {
+    const r = fit.get(id);
+    if (!r) p16Probs.push(`${id}: ไม่มีผล${fitErr ? ` (${fitErr})` : ""}`);
+    else if (!r.ok) p16Probs.push(`${id}: ${short(r.detail, 80)}`);
+  }
+  chk("P1.3-S5.16", p16Probs.length === 0, "ไฟล์ P1.3 ครบ · ไม่มี marker · ไม่ import scripts · F15.1/F15.5/F15.6 ✅", p16Probs.slice(0, 5).join(" · ") || "ผ่าน");
+  // S5.17 G9 — ไฟล์ "use client" ใต้หน้าขายไม่ import โมดูลที่ถึง prisma (tsc ผ่านแต่ next build พัง)
+  const clientFiles = p13Files.filter((x) => /^\s*["']use client["']/.test(rd(x)));
+  const SERVER_MOD = /^(@\/lib\/modules\/pos\/(register|catalog|service|index|db|access|tabs)(\.tsx?)?$|@\/lib\/modules\/pos$|\.{1,2}\/(.*\/)?(register|catalog|service|db)(\.tsx?)?$|@\/lib\/core\/(db|context)$|@prisma\/client$|next\/headers$|server-only$|@\/lib\/modules\/(inventory|account|member|crm|system)(\/|$))/;
+  const g9: string[] = [];
+  for (const cf of clientFiles) {
+    for (const m of stripComments(rd(cf)).matchAll(/^\s*import\s+(?!type\b)[^;]*?from\s+["']([^"']+)["']/gm)) {
+      if (SERVER_MOD.test(m[1]) && !/-shared$|-actions$/.test(m[1])) g9.push(`${cf} ← ${m[1]}`);
+    }
+  }
+  chk("P1.3-S5.17", clientFiles.length > 0 && g9.length === 0, "มีไฟล์ client ของหน้าขาย · 0 import โมดูลเซิร์ฟเวอร์", clientFiles.length === 0 ? "ยังไม่มีไฟล์ \"use client\" ของหน้าขาย" : g9.slice(0, 4).join(" · ") || "สะอาด");
+  // S5.18 (รอบ 3.2 ข้อ 13 · Q24 Enter บนบาร์โค้ดตรงตัว): มี registerScan ฝั่งบริการ ⇒ ต้องมี action ให้จอเรียก
+  const regExportsScan = /export\s+(async\s+)?function\s+registerScan\b|export\s+const\s+registerScan\b/.test(stripComments(rd("src/lib/modules/pos/register.ts")));
+  const scanAct = /^\s*export\s+async\s+function\s+registerScanAction\s*\(/m.test(aCode);
+  const scanBody = scanAct ? aCode.slice(aCode.search(/export\s+async\s+function\s+registerScanAction/)).split(/\n\s*export\s+/)[0] : "";
+  chk("P1.3-S5.18", !regExportsScan || (scanAct && /registerScan\s*\(/.test(scanBody)),
+    "registerScan ⇒ export async function registerScanAction (เรียก registerScan)", `register.ts registerScan:${regExportsScan} · action:${scanAct} · เรียก registerScan:${/registerScan\s*\(/.test(scanBody)}`);
+  // S5.19 (B2.1 · ORACLE-EDIT): ธงปิด ⇒ หน้าขายเดิมต้องได้ shell เหมือน main (ไม่ถูกบังคับราง) — ตรวจระดับซอร์ส ไม่แตะ DB
+  //   🔴 อ่านซอร์สดิบ (ไม่ stripComments) — regex บอร์ดงาน `\/kanban\/b\//` มี "//" ที่ stripComments ตีเป็นคอมเมนต์แล้วตัดท้ายบรรทัดทิ้ง
+  const railSrc = rd("src/components/app-shell/NavRail.tsx");
+  const railFn = railSrc.slice(Math.max(0, railSrc.search(/export\s+function\s+isRailPath\b/))).split(/\n\}/)[0];
+  const railGated = /isRailPath\s*\(\s*pathname\s*:\s*string\s*,\s*posRegisterV2Ids\b/.test(railFn) && /pos\\\/register/.test(railFn) && /posRegisterV2Ids\.includes\(/.test(railFn);
+  const railUncond = /pos\\\/register\\\/\?\$\/\.test\(\s*pathname\s*\)/.test(railSrc);
+  const shellPass = ["src/components/app-shell/AppShell.tsx", "src/components/app-shell/AppMain.tsx"].filter((f) => !/isRailPath\(\s*pathname\s*,\s*posRegisterV2Ids\s*\)/.test(stripComments(rd(f))));
+  const layoutSrc = stripComments(rd("src/app/app/layout.tsx"));
+  const layoutOk = /posRegisterV2On\s*\(/.test(layoutSrc) && (layoutSrc.match(/posRegisterV2Ids=\{posRegisterV2Ids\}/g) ?? []).length >= 2;
+  chk("P1.3-S5.19", railGated && !railUncond && shellPass.length === 0 && layoutOk,
+    "isRailPath(pathname, posRegisterV2Ids) · ไม่มี regex ไม่มีเงื่อนไข · AppShell+AppMain ส่ง id · layout ใช้ posRegisterV2On ส่งทั้งคู่",
+    `gated:${railGated} uncond:${railUncond} shell-miss:${shellPass.join(",") || "-"} layout:${layoutOk}`);
+  // S5.20 (B2.2 · ORACLE-EDIT): ข้อที่รีวิว B2 พบ — ตรวจระดับซอร์สเท่านั้น (พฤติกรรมจริงยืนยันที่เบราว์เซอร์ของผู้คุมงาน)
+  const RS = stripComments(rd("src/components/pos/register/RegisterScreen.tsx"));
+  const RD = stripComments(rd("src/components/pos/register/RegisterDialog.tsx"));
+  const PD = stripComments(rd("src/components/pos/register/InterimPayDialog.tsx"));
+  const CP = stripComments(rd("src/components/pos/register/CartPanel.tsx"));
+  const fnBody = (src: string, name: string) => { const k = src.search(new RegExp(`const\\s+${name}\\s*=`)); return k < 0 ? "" : src.slice(k, k + 900); };
+  const b22: Record<string, boolean> = {
+    s1Fn: /setCart\(\s*fn\s*\)|setCart\(\s*\(\s*prev/.test(RS) && /updateCart\(\s*\(\s*prev/.test(fnBody(RS, "addProduct")) && /updateCart\(\s*\(\s*prev/.test(fnBody(RS, "addLine")),
+    s1Gen: /billGen\.current\+\+/.test(fnBody(RS, "resetBill")) && /gen\s*!==\s*billGen\.current/.test(fnBody(RS, "addFromSearchEnter").concat(RS.slice(RS.indexOf("registerScanAction({"), RS.indexOf("registerScanAction({") + 400))),
+    s2Pay: /kind\s*===\s*"pay"/.test(fnBody(RS, "openPay")),
+    s2Inert: /inert=\{\s*layers\.length\s*>\s*0\s*\}/.test(RS) && /inert=\{\s*i\s*<\s*layers\.length\s*-\s*1\s*\}/.test(RS),
+    s2Trap: /focusin/.test(RD) && /"Tab"/.test(RD) && /closest\(\s*"\[inert\]"\s*\)/.test(RD),
+    n1: /quotePending/.test(PD) && /!p\.quotePending/.test(PD) && /quotePending=\{\s*!quoteFresh\b/.test(RS),
+    n2: /beforeunload/.test(RS) && /"sending"[\s\S]{0,80}"unknown"|"unknown"[\s\S]{0,80}"sending"/.test(RS.slice(Math.max(0, RS.indexOf("beforeunload") - 300), RS.indexOf("beforeunload") + 10)),
+    n3: /match\s*===\s*"choose"/.test(RS) && /search\.noResult/.test(RS),
+    n4: /isComposing/.test(RS.slice(RS.indexOf('"Escape"'), RS.indexOf('"Escape"') + 300)),
+    s3: !/pos-reg-(bill-discount|note|tax-invoice)"\s+className="[^"]*\bh-9\b/.test(CP),
+    // B2.3 R1: focusSearch ข้าง pop()/setLayers([]) = ไม่มีผล (หลังม่านยัง inert ตอนนั้น) ⇒ ต้องโฟกัสหลัง commit จาก effect ที่ดู layers.length
+    r1: !/(?:\bpop\(\s*\)|setLayers\(\s*\[\s*\]\s*\))\s*;?\s*(?:\S[^\n]*\n\s*){0,2}focusSearch\(/.test(RS) && /useEffect\([\s\S]{0,400}layers\.length[\s\S]{0,300}focusSearch\(\)[\s\S]{0,120}\[\s*layers\.length/.test(RS),
+    // B2.3 N-a: quote ล้ม ⇒ ส่ง error เข้ากล่องชำระ (ไม่ใช่ "กำลังโหลด" ค้าง)
+    na: /quoteError/.test(PD) && /!p\.quoteError/.test(PD) && /quotePending=\{\s*!quoteFresh\s*&&\s*!quoteFailed\s*\}/.test(RS) && /quoteError=\{/.test(RS),
+  };
+  const b22Bad = Object.entries(b22).filter(([, v]) => !v).map(([k]) => k);
+  chk("P1.3-S5.20", b22Bad.length === 0, "S1 S2 S3 N1–N4 + B2.3 R1 N-a ครบ (static)", b22Bad.length ? `ขาด: ${b22Bad.join(", ")}` : "ครบ");
+
+  // ── รอบ R4 (มติ K3 · K5) — ตรวจระดับซอร์สเท่านั้น (พฤติกรรมจริงยืนยันที่เบราว์เซอร์ของผู้คุมงาน) ──
+  /** ช่วง [เปิด, ปิด] ของบล็อก {…} แรกหลังตำแหน่ง at (นับวงเล็บปีกกาแบบหยาบ · ใช้กับซอร์สที่ stripComments แล้ว) */
+  const blockAt = (src: string, at: number): [number, number] => {
+    if (at < 0) return [-1, -1];
+    const open = src.indexOf("{", at);
+    if (open < 0) return [-1, -1];
+    let depth = 0;
+    for (let i = open; i < src.length; i++) {
+      if (src[i] === "{") depth++;
+      else if (src[i] === "}" && --depth === 0) return [open, i];
+    }
+    return [open, src.length];
+  };
+  const inSpan = (i: number, [a, b]: [number, number]) => a >= 0 && i > a && i < b;
+  const idxAll = (src: string, re: RegExp) => [...src.matchAll(new RegExp(re.source, re.flags.includes("g") ? re.flags : `${re.flags}g`))].map((m) => m.index ?? -1);
+  // S5.21 K3: คีย์ของบิลหมุนเฉพาะใน resetBill (บิลใหม่ · ล้างบิล · พักบิลภายหลัง) — ปฏิเสธใด ๆ ใน send ต้องเก็บคีย์เดิม
+  const k3: string[] = [];
+  if (!RS) k3.push("ไม่มี RegisterScreen.tsx");
+  else {
+    const genM = /const\s+(\w+)\s*=\s*(?:\(\s*\)\s*=>|function\s*\(\s*\))[\s\S]{0,240}?randomUUID/.exec(RS);
+    const gen = genM?.[1] ?? "";
+    if (!gen) k3.push("ไม่พบตัวสร้างคีย์ (const X = () => … randomUUID)");
+    const genSpan = genM ? blockAt(RS, genM.index) : ([-1, -1] as [number, number]);
+    const resetSpan = blockAt(RS, RS.search(/const\s+resetBill\s*=/));
+    const sendSpan = blockAt(RS, RS.search(/const\s+send\s*=/));
+    if (resetSpan[0] < 0) k3.push("ไม่พบ resetBill");
+    if (sendSpan[0] < 0) k3.push("ไม่พบ send");
+    if (gen) {
+      // จุดหมุน = ตั้งที่เก็บคีย์บิลด้วยค่าใหม่: setIdemKey(gen()|gen|randomUUID…) หรือ <…idem…>(.current) = gen()/randomUUID
+      //   (ตัวสร้างเดียวกันใช้ทำ key ของบรรทัดตะกร้าด้วย ⇒ นับเฉพาะที่ไหลเข้าที่เก็บคีย์ · ค่าเริ่มต้น useState(gen)/useRef(gen()) ไม่นับ ·
+      //    setIdemKey(ค่าที่โหลดกลับจาก storage) = คีย์เดิม ไม่นับ)
+      const newVal = `(?:${gen}\\b|crypto\\.randomUUID|randomUUID)`;
+      const rot = [...idxAll(RS, new RegExp(`setIdemKey\\(\\s*${newVal}`)), ...idxAll(RS, new RegExp(`\\b\\w*[Ii]dem\\w*(?:\\.current)?\\s*=\\s*${newVal}`))]
+        .filter((i) => !inSpan(i, genSpan));
+      if (!/setIdemKey\(|[Ii]dem\w*Ref\b/.test(RS)) k3.push("ไม่พบที่เก็บคีย์บิล (setIdemKey / …idem…Ref)");
+      const outside = rot.filter((i) => !inSpan(i, resetSpan));
+      if (outside.length) k3.push(`หมุนคีย์นอก resetBill ${outside.length} จุด: ${outside.map((i) => RS.slice(i, i + 28).replace(/\s+/g, " ")).slice(0, 3).join(" | ")}`);
+      if (!rot.some((i) => inSpan(i, resetSpan))) k3.push("resetBill ไม่หมุนคีย์");
+    }
+    const uuidOut = idxAll(RS, /randomUUID\s*\(/).filter((i) => !inSpan(i, genSpan) && !(genM && i >= genM.index && i <= genM.index + genM[0].length));
+    if (uuidOut.length) k3.push(`randomUUID นอกตัวสร้างคีย์ ${uuidOut.length} จุด`);
+    const sendBody = sendSpan[0] >= 0 ? RS.slice(sendSpan[0], sendSpan[1]) : "";
+    if (/\b(resetBill|nextSale)\s*\(/.test(sendBody)) k3.push("send เรียก resetBill/nextSale (ปฏิเสธ = ล้างคีย์)");
+    for (const f of walk("src/components/pos/register").filter((x) => !/RegisterScreen\.tsx$/.test(x))) {
+      if (/randomUUID\s*\(/.test(stripComments(rd(f)))) k3.push(`${f}: สร้างคีย์เอง (randomUUID)`);
+    }
+  }
+  chk("P1.3-S5.21", k3.length === 0, "หมุนคีย์เฉพาะใน resetBill · send ไม่หมุน/ไม่ resetBill · ไม่มีตัวสร้างคีย์อื่น", k3.slice(0, 4).join(" · ") || "ผ่าน");
+  // S5.22 K5: คำขอที่ค้าง (คีย์ + payload + phase) อยู่รอด reload/Back ด้วย sessionStorage ต่อ POS system + unit · ทุกการแตะอยู่ใน try
+  const k5: string[] = [];
+  const ssFiles = walk("src/components/pos/register").map((f) => ({ f, c: stripComments(rd(f)) })).filter((x) => /sessionStorage/.test(x.c));
+  if (!ssFiles.length) k5.push("ยังไม่มีไฟล์หน้าขายที่ใช้ sessionStorage");
+  else {
+    const all = ssFiles.map((x) => x.c).join("\n");
+    for (const m of ["setItem", "getItem", "removeItem"]) if (!new RegExp(`\\.${m}\\s*\\(`).test(all)) k5.push(`ไม่มี sessionStorage.${m}`);
+    for (const { f, c } of ssFiles) {
+      const tries = idxAll(c, /\btry\s*\{/).map((i) => blockAt(c, i));
+      const naked = idxAll(c, /sessionStorage/).filter((i) => !tries.some((sp) => inSpan(i, sp)));
+      if (naked.length) k5.push(`${f}: แตะ sessionStorage นอก try ${naked.length} จุด`);
+    }
+    const scoped = /`[^`]*\$\{[^}]*\b(systemId|sysId)\b[^}]*\}[^`]*\$\{[^}]*\bunitId\b[^}]*\}[^`]*`|`[^`]*\$\{[^}]*\bunitId\b[^}]*\}[^`]*\$\{[^}]*\b(systemId|sysId)\b[^}]*\}[^`]*`/.test(all);
+    if (!scoped) k5.push("คีย์ storage ไม่ได้ผูก systemId+unitId (template `…${systemId}…${unitId}…`)");
+    const near = (re: RegExp, win: number, need: RegExp) => idxAll(all, re).some((i) => need.test(all.slice(Math.max(0, i - win), i + win)));
+    if (!near(/\.setItem\s*\(/, 400, /JSON\.stringify\s*\(/)) k5.push("setItem ไม่ได้เก็บ JSON");
+    if (!near(/\.getItem\s*\(/, 1500, /JSON\.parse\s*\(/)) k5.push("getItem ไม่ได้ JSON.parse");
+    if (!idxAll(all, /\.getItem\s*\(/).some((i) => /"unknown"/.test(all.slice(i, i + 1500)))) k5.push("โหลดกลับแล้วไม่ขึ้นสถานะ \"unknown\"");
+    if (!/idempotencyKey|idemKey/.test(all) || !/phase/i.test(all)) k5.push("ไม่เห็นคีย์/phase ในข้อมูลที่เก็บ");
+  }
+  chk("P1.3-S5.22", k5.length === 0, "sessionStorage set/get/remove ใน try · คีย์ตาม systemId+unitId · JSON · โหลดกลับเป็น unknown", k5.slice(0, 4).join(" · ") || "ผ่าน");
 }
 
 // ═════════════════════════ 5. S1 S3 S4 (ต้องมี seed + sandbox) ═════════════════════════
@@ -579,10 +960,14 @@ const DB_IDS = CHECKS.map(([id]) => id).filter((id) => /-S[1346]\./.test(id));
 const OVERSELL_READY = walk("src").some((f) => /oversellPolicy/.test(stripComments(rd(f))));
 const sb = {
   unitId: "", unlinkedUnitId: "", unit2Id: "", posSysId: "", invSysId: "", invSys2Id: "",
-  productIds: [] as string[], categoryIds: [] as string[], invItemIds: [] as string[],
+  productIds: [] as string[], categoryIds: [] as string[], invItemIds: [] as string[], menuGroupIds: [] as string[],
+  // รอบ 3.2: ผู้ใช้/สมาชิกร้านชั่วคราว (S1.27) · ระบบสมาชิก + ลูกค้า + ระดับ ชั่วคราว (S3.42)
+  userIds: [] as string[], membershipIds: [] as string[], memSysId: "", customerIds: [] as string[],
 };
 const lanes: Any[] = [];
 let realCounters: Any[] = [];
+/** R4.2: snapshot ตัวนับถูกถ่ายแล้ว (ว่างก็นับว่าถ่าย) ⇒ cleanup ลบตัวนับที่ไม่อยู่ใน snapshot เสมอ · ยังไม่ถ่าย (ล้มก่อน) = ไม่แตะ */
+let realCountersTaken = false;
 
 async function lane(i: number): Promise<Any> {
   if (lanes[i]) return lanes[i];
@@ -615,6 +1000,7 @@ async function runDb() {
   const owner = actor(mOwner, E.coffee.users.owner.userId);
   const cashierReal = actor(mCash, E.coffee.users.cashier.userId);
   realCounters = await P.posReceiptCounter.findMany({ where: { tenantId: { in: envMod.PQC_TENANT_IDS } } });
+  realCountersTaken = true;
 
   // ─── S1 อ่านกริดของสาขาจริงที่ seed ไว้ (อ่านอย่างเดียว) ───
   console.log("\n── S1 ข้อมูลกริด/หมวด/ค้นหา ──");
@@ -739,6 +1125,9 @@ async function runDb() {
   let built = false;
   let A: Any = null, B: Any = null, C: Any = null, D: Any = null, LOW: Any = null, ZERO: Any = null, ARCH: Any = null, OFF: Any = null;
   let NOPRICE: Any = null, SVC: Any = null, OTHER: Any = null, AUTO: Any = null, OFFSTK: Any = null, DUP1: Any = null, DUP2: Any = null, W2: Any = null;
+  let REQP: Any = null, OPTP: Any = null, RP: Any = null, BOTH: Any = null;
+  // รอบ 3.2: สินค้าเฉพาะสาขานี้ · สินค้าในหมวดซ่อน (S1.27) · AUTO ไม่เคยมีสต็อก (S3.46) · ราคาปัดยาก (S3.49) · P/Q ราคาเท่ากัน (S3.40)
+  let UNITP: Any = null, HIDP: Any = null, NEVER: Any = null, P3335: Any = null, P3333: Any = null, P12345: Any = null, P10000: Any = null, PP: Any = null, QQ: Any = null; // รอบ 3: สินค้ามีกลุ่มบังคับ (Q6) · กลุ่มเลือกได้ · สินค้าเปลี่ยนราคา (S3.31)
   let catId = "";
   try {
     const cat = must("createCategory", await call(catalog, "createCategory", cctx, { name: `${TAG} ขนม`, sortOrder: 1 }));
@@ -772,6 +1161,37 @@ async function runDb() {
     must("archive", await call(catalog, "archive", cctx, ARCH.id));
     // ไม่มี setAvailability (ratified) — ปิดขายเฉพาะสาขาผ่าน updateProduct · ชื่อคีย์ patch `availability` = ตาม read model POS-API §1 (โน้ต §6)
     must("updateProduct(availability)", await call(catalog, "updateProduct", cctx, OFF.id, { availability: { [unit.id]: false } }));
+    // รอบ 3 (Q6): สินค้า + กลุ่มตัวเลือก — P1.1a ไม่มี API ผูกกลุ่ม (backfill เท่านั้น · P1.2 เป็นเจ้าของ) ⇒ fixture เขียนแถวตรงแบบเดียวกับ
+    //   qc-pos-p1.1 (MenuOptionGroup ของร้านนี้ unitId = สาขา sandbox + PosProductOptionGroup) · ลบใน finally · นับใน S9.1
+    // รอบ 3.1 (มติ ข้อ 12): ทั้งปิดขายที่สาขา (86) และนับสต็อกหมด — ปิดมือต้องชนะ (soldOutReason UNAVAILABLE · ไม่ขาย)
+    BOTH = await mkTracked("BOTH", "ขนมปิดขายและหมด", 3000, "consumed", { availability: { [unit.id]: false } });
+    REQP = await mkFree("ลาเต้ต้องเลือกขนาด", 7500, { nameEn: "Latte (size required)" });
+    UNITP = await mkFree("ขนมเฉพาะสาขานี้", 2200, { unitId: unit.id });
+    const hid = must("createCategory(hidden)", await call(catalog, "createCategory", cctx, { name: `${TAG} หมวดซ่อน`, sortOrder: 9 }));
+    const hidId = idOf(hid) ?? hid?.category?.id ?? "";
+    if (hidId) {
+      sb.categoryIds.push(hidId);
+      await P.posCategory.update({ where: { id: hidId }, data: { isVisible: false } }); // catalog ยังไม่มีทางซ่อนหมวด (สำเนาจาก MenuCategory.isVisible)
+    }
+    HIDP = await mkFree("ขนมในหมวดซ่อน", 2300, { categoryId: hidId || undefined });
+    NEVER = await mkTracked("NEVER", "ขนมยังไม่เคยรับเข้า", 2500, null);
+    P3335 = await mkFree("ราคาปัดยาก 3335", 3335);
+    P3333 = await mkFree("ราคาปัดยาก 3333", 3333);
+    P12345 = await mkFree("ราคาปัดยาก 12345", 12345);
+    P10000 = await mkFree("ราคาเต็มร้อย 10000", 10000);
+    PP = await mkFree("ขนมพีราคาเปิดได้", 4500);
+    QQ = await mkFree("ขนมคิวราคาเท่าพี", 4500);
+    OPTP = await mkFree("อเมริกาโน่ท็อปปิ้งเสริม", 5500);
+    RP = await mkFree("ขนมเปลี่ยนราคา", 5000);
+    const gReq = await P.menuOptionGroup.create({ data: { tenantId: tid, unitId: unit.id, name: `${TAG} ขนาด`, minSelect: 1, maxSelect: 1,
+      choices: { create: [{ tenantId: tid, unitId: unit.id, name: "S", priceDelta: 0 }, { tenantId: tid, unitId: unit.id, name: "M", priceDelta: 1000 }] } } });
+    sb.menuGroupIds.push(gReq.id);
+    const gOpt = await P.menuOptionGroup.create({ data: { tenantId: tid, unitId: unit.id, name: `${TAG} ท็อปปิ้ง`, minSelect: 0, maxSelect: 3,
+      choices: { create: [{ tenantId: tid, unitId: unit.id, name: "ช็อตเพิ่ม", priceDelta: 1500 }] } } });
+    sb.menuGroupIds.push(gOpt.id);
+    await P.posProductOptionGroup.create({ data: { tenantId: tid, productId: REQP.id, groupId: gReq.id, sortOrder: 0 } });
+    await P.posProductOptionGroup.create({ data: { tenantId: tid, productId: REQP.id, groupId: gOpt.id, sortOrder: 1 } });
+    await P.posProductOptionGroup.create({ data: { tenantId: tid, productId: OPTP.id, groupId: gOpt.id, sortOrder: 0 } });
     built = true;
   } catch (e) {
     console.log(`  ⚠️  สร้างสินค้า sandbox ไม่สำเร็จ: ${(e as Error).message.slice(0, 200)}`);
@@ -835,6 +1255,9 @@ async function runDb() {
     try {
       for (let i = 0; i < 196; i++) await mkFree(`สินค้าเติม ${i}`, 1000 + i);
       needle = await mkTracked("NEEDLE", "ขนมเปี๊ยะไส้ทุเรียนเข็ม", 4500, null, {}, { barcode: "8850999888881" });
+      // รอบ 3 (Q21 เพดาน 500 ต้องพิสูจน์ด้วยแคตตาล็อก >500): เติมอีก 300 แถวแบบ createMany ตรง — แถวทรงเดียวกับ createProduct
+      //   (PRODUCT · ไม่ผูกคลัง · ทุกสาขา) ไม่ผ่าน catalog.ts เพื่อความเร็วเท่านั้น (F15.1 สแกนแค่ src/) · ลบด้วย systemId sandbox ใน finally
+      await P.posProduct.createMany({ data: Array.from({ length: 300 }, (_, i) => ({ tenantId: tid, systemId: sPos.id, name: `สินค้าเติมชุด ${String(i).padStart(3, "0")}`, kind: "PRODUCT", basePriceSatang: 2000 + i })) });
     } catch (e) {
       console.log(`  ⚠️  เติมสินค้า 200+ ไม่สำเร็จ: ${(e as Error).message.slice(0, 120)}`);
     }
@@ -868,12 +1291,200 @@ async function runDb() {
     && chooseIds.join() === ((sc1b?.products ?? []) as Any[]).map((p) => p.id).join() && sc2?.ok === true && sc2.match === "one" && sc2.product?.id === needle?.id && sc3?.ok === true && sc3.match === "none",
     "choose ×2 ลำดับคงที่ · one · none", `${codeOf(sc1)}/${sc1?.match}/${chooseIds.length} · ${sc2?.match} · ${sc3?.match}`);
 
+  // ─── S1 รอบ 3 ───
+  // S1.23 Q6 จำนวนกลุ่มบังคับ (กริด sandbox ก่อนเติม 200+ · และสาขาจริงที่ seed ไว้ — ทุกแถวต้องมีคีย์)
+  const optOf = (p: Any) => (p ? `${p.optionGroupCount}/${p.requiredOptionGroupCount}` : "ไม่ขึ้นกริด");
+  const allHaveReq = [...sbP, ...prods].every((p) => Number.isInteger(p.requiredOptionGroupCount) && p.requiredOptionGroupCount >= 0 && p.requiredOptionGroupCount <= p.optionGroupCount);
+  chk("P1.3-S1.23", built && sbP.length > 0 && allHaveReq && optOf(find(REQP?.id)) === "2/1" && optOf(find(OPTP?.id)) === "1/0" && optOf(find(A?.id)) === "0/0",
+    "ทุกแถวมีคีย์ · REQP 2/1 · OPTP 1/0 · A 0/0", `keys:${allHaveReq} · REQP ${optOf(find(REQP?.id))} · OPTP ${optOf(find(OPTP?.id))} · A ${optOf(find(A?.id))} (${codeOf(g2)})`);
+  // S1.24 Q9 เหตุที่หมด
+  const reasonOf = (p: Any) => (p ? (p.soldOutReason === undefined ? "<ไม่มีคีย์>" : String(p.soldOutReason)) : "ไม่ขึ้นกริด");
+  const reasonKeys = [...sbP, ...prods].every((p) => "soldOutReason" in p && [null, "UNAVAILABLE", "NO_STOCK"].includes(p.soldOutReason) && (p.soldOutReason === null) === (p.soldOut === false));
+  const wantReason: [Any, string][] = [[OFF, "UNAVAILABLE"], [ZERO, "NO_STOCK"], [BOTH, "UNAVAILABLE"], [A, "null"], [LOW, "null"], [AUTO, "null"], [NOPRICE, "null"], [OFFSTK, "null"]];
+  const reasonBad = wantReason.filter(([p, w]) => reasonOf(find(p?.id)) !== w).map(([p, w]) => `${find(p?.id)?.name ?? p?.id}:${reasonOf(find(p?.id))}≠${w}`);
+  chk("P1.3-S1.24", built && sbP.length > 0 && reasonKeys && reasonBad.length === 0, "ทุกแถว null⇔ขายได้ · OFF UNAVAILABLE · ZERO NO_STOCK · BOTH (ปิด+หมด) UNAVAILABLE · ที่เหลือ null", `keys:${reasonKeys} · ${reasonBad.join(" · ") || "ตรง"}`);
+  // S1.25 Q21 แบ่งหน้า — ตอนนี้ sandbox มี >500 ตัว (16 + 196 + เข็ม + 300)
+  const pDef = await call(register, "registerCatalog", ctx, owner, {});
+  const p500 = await call(register, "registerCatalog", ctx, owner, { limit: 1000 });
+  const ids500 = ((p500?.products ?? []) as Any[]).map((p) => p.id);
+  const three: string[] = [];
+  let curP: Any = undefined;
+  let pageRes: Any = null;
+  for (let i = 0; i < 3; i++) {
+    pageRes = await call(register, "registerCatalog", ctx, owner, { limit: 100, ...(curP ? { cursor: curP } : {}) });
+    if (pageRes?.ok !== true) break;
+    three.push(...(pageRes.products as Any[]).map((p) => p.id));
+    curP = pageRes.nextCursor;
+    if (!curP) break;
+  }
+  // หน้าสุดท้ายของการเดินทั้งหมด (S1.17 เดินไปแล้ว — เดินซ้ำที่ limit 500 เพื่อหา nextCursor null)
+  let lastCur: Any = undefined;
+  let walkN = 0;
+  let lastNull = false;
+  for (let i = 0; i < 10; i++) {
+    const r = await call(register, "registerCatalog", ctx, owner, { limit: 500, ...(lastCur ? { cursor: lastCur } : {}) });
+    if (r?.ok !== true) break;
+    walkN += (r.products as Any[]).length;
+    lastCur = r.nextCursor;
+    if (!lastCur) {
+      lastNull = r.nextCursor === null || r.nextCursor === undefined;
+      break;
+    }
+  }
+  const threeOk = three.length === 300 && new Set(three).size === 300 && three.join() === ids500.slice(0, 300).join();
+  chk("P1.3-S1.25", pDef?.ok === true && pDef.products.length === 100 && !!pDef.nextCursor && p500?.ok === true && ids500.length === 500 && !!p500.nextCursor && threeOk && lastNull && walkN === walked.size && walkN > 500,
+    "ปริยาย 100+cursor · 1000→500+cursor · 3×100 = 300 แรกของ 500 · หน้าสุดท้าย null · เดินครบ = S1.17",
+    `def ${pDef?.products?.length}/${!!pDef?.nextCursor} · big ${ids500.length}/${!!p500?.nextCursor} · 3 หน้า ${three.length} uniq ${new Set(three).size} ลำดับตรง ${three.join() === ids500.slice(0, 300).join()} · walk ${walkN} (S1.17 ${walked.size}) last null ${lastNull} (${codeOf(pDef)})`);
+  // S1.26 Q21 cursor ข้ามสาขา/ร้าน — ปฏิเสธ (คืน ไม่ throw) หรือผลอยู่ในชุดที่สาขานี้เห็น
+  const visibleHere = new Set<string>(walked);
+  const foreignCursors: string[] = [];
+  {
+    let c: Any = undefined;
+    for (let i = 0; i < 8; i++) {
+      const r = await call(register, "registerCatalog", c2, owner, { limit: 100, ...(c ? { cursor: c } : {}) });
+      if (r?.ok !== true || !r.nextCursor) break;
+      foreignCursors.push(r.nextCursor);
+      c = r.nextCursor;
+    }
+    const r1 = await call(register, "registerCatalog", c2, owner, { limit: 1 });
+    if (r1?.ok && r1.nextCursor) foreignCursors.push(r1.nextCursor);
+  }
+  if (restoScope && E.resto?.users?.owner?.userId) {
+    const mRO = await P.membership.findFirst({ where: { tenantId: restoTid, userId: E.resto.users.owner.userId } });
+    const rr = await call(register, "registerCatalog", { tenantId: restoTid, systemId: E.resto.posSystemId ?? restoScope.posSystemId, unitId: restoUnit }, actor(mRO, E.resto.users.owner.userId), { limit: 1 });
+    if (rr?.ok && rr.nextCursor) foreignCursors.push(rr.nextCursor);
+  }
+  const leakIds = new Set([OTHER?.id, W2?.id].filter(Boolean));
+  const curProbs: string[] = [];
+  for (const fc of foreignCursors) {
+    const r = await call(register, "registerCatalog", ctx, owner, { limit: 100, cursor: fc });
+    if (r?.threw) curProbs.push(`throw ${r.code}`);
+    else if (r?.ok === true) {
+      const outside = (r.products as Any[]).filter((p) => !visibleHere.has(p.id) || leakIds.has(p.id));
+      if (outside.length) curProbs.push(`หลุด ${outside.length}: ${outside.slice(0, 2).map((p) => p.name).join(",")}`);
+    } else if (!refused(r, ["VALIDATION"])) curProbs.push(`code ${codeOf(r)}`); // มติ 3.1 ข้อ 9: VALIDATION หรือหน้าของสาขานี้
+  }
+  chk("P1.3-S1.26", built && foreignCursors.length >= 2 && curProbs.length === 0, `cursor ต่างถิ่น ${foreignCursors.length} ตัว: VALIDATION (คืน) หรืออยู่ในชุดของสาขานี้`,
+    foreignCursors.length < 2 ? `ได้ cursor ต่างถิ่นแค่ ${foreignCursors.length} (registerCatalog ${codeOf(await call(register, "registerCatalog", c2, owner, { limit: 1 }))})` : curProbs.slice(0, 4).join(" · ") || "ปลอดภัยทุกตัว");
+
+  // ─── S1 รอบ 3.2 ───
+  // S1.27 ไม่เพี้ยนจาก catalog.listForUnit (B1 อ่านตรงด้วย SQL ชุดเดียวกัน · D2) — สมาชิกจริงใน DB เพราะ listForUnit โหลด membership เอง
+  const roleActors: { role: string; userId: string; actor: Any }[] = [{ role: "OWNER", userId: owner.userId, actor: owner }];
+  for (const [role, perms] of [["MANAGER", {}], ["STAFF", { ...(PQC.cashierPermissions as Record<string, unknown>) }]] as [string, Record<string, unknown>][]) {
+    try {
+      const u = await P.user.create({ data: { email: `${TAG}-${role.toLowerCase()}@qc.invalid`, name: `${TAG} ${role}` } });
+      sb.userIds.push(u.id);
+      const m = await P.membership.create({ data: { userId: u.id, tenantId: tid, role, unitAccess: [unit.id], permissions: perms, acceptedAt: new Date() } });
+      sb.membershipIds.push(m.id);
+      roleActors.push({ role, userId: u.id, actor: actor(m, u.id) });
+    } catch (e) {
+      console.log(`  (S1.27 สร้างสมาชิกร้าน ${role} ไม่ได้: ${(e as Error).message.slice(0, 80)})`);
+    }
+  }
+  const walkReg = async (a: Any, c: Any = ctx): Promise<{ ids: string[]; err: string }> => {
+    const ids: string[] = [];
+    let cur: Any = undefined;
+    for (let i = 0; i < 20; i++) {
+      const r = await call(register, "registerCatalog", c, a, { limit: 500, ...(cur ? { cursor: cur } : {}) });
+      if (r?.ok !== true) return { ids, err: codeOf(r) };
+      ids.push(...(r.products as Any[]).map((p) => p.id));
+      cur = r.nextCursor;
+      if (!cur) return { ids, err: "" };
+    }
+    return { ids, err: "เกิน 20 หน้า" };
+  };
+  const walkCat = async (userId: string): Promise<{ ids: string[]; err: string }> => {
+    const ids: string[] = [];
+    let cur: Any = null;
+    for (let i = 0; i < 20; i++) {
+      const r = await call(catalog, "listForUnit", { tenantId: tid, systemId: sPos.id, actorUserId: userId }, unit.id, { limit: 500, cursor: cur });
+      if (!Array.isArray(r?.items)) return { ids, err: codeOf(r) };
+      ids.push(...(r.items as Any[]).map((p) => p.id));
+      cur = r.nextCursor;
+      if (!cur) return { ids, err: "" };
+    }
+    return { ids, err: "เกิน 20 หน้า" };
+  };
+  const drift27: string[] = [];
+  let ownerIds27: string[] = [];
+  for (const ra of roleActors) {
+    const a = await walkReg(ra.actor);
+    const b = await walkCat(ra.userId);
+    if (ra.role === "OWNER") ownerIds27 = a.ids;
+    const same = !a.err && !b.err && a.ids.length === b.ids.length && a.ids.join() === b.ids.join();
+    if (!same) {
+      const firstDiff = a.ids.findIndex((x, i) => x !== b.ids[i]);
+      drift27.push(`${ra.role}: reg ${a.ids.length}${a.err ? `/${a.err}` : ""} cat ${b.ids.length}${b.err ? `/${b.err}` : ""} ต่างที่ #${firstDiff}`);
+    }
+  }
+  const has27 = (x: Any) => !!x?.id && ownerIds27.includes(x.id);
+  const cover27 = built && has27(UNITP) && has27(HIDP) && has27(A) && has27(OFF) && !has27(ARCH) && !has27(OTHER) && !has27(W2) && ownerIds27.length > 500;
+  chk("P1.3-S1.27", roleActors.length === 3 && drift27.length === 0 && cover27, "OWNER/MANAGER/STAFF: id+ลำดับ = listForUnit · fixture ครบ (สาขานี้/หมวดซ่อน/ทุกสาขา/ปิดขาย มี · archive/สาขาอื่น/คลังอื่น ไม่มี)",
+    `actors ${roleActors.map((r) => r.role).join(",")} · ${drift27.join(" · ") || "ไม่เพี้ยน"} · cover ${cover27} (n ${ownerIds27.length})`);
+  // S1.28 เดินหน้าในขณะที่แคตตาล็อกเปลี่ยนระหว่างหน้า (archive ข้างหน้า · archive ข้างหลัง · เพิ่ม 2 · เปลี่ยนราคา)
+  const pre28 = await walkReg(owner);
+  const seen28: string[] = [];
+  const archLater = pre28.ids[250];
+  const archEarlier = pre28.ids[50];
+  const repriced = pre28.ids[300];
+  let mut28 = "";
+  {
+    let cur: Any = undefined;
+    for (let page = 1; page <= 30; page++) {
+      const r = await call(register, "registerCatalog", ctx, owner, { limit: 100, ...(cur ? { cursor: cur } : {}) });
+      if (r?.ok !== true) {
+        mut28 += ` page${page}:${codeOf(r)}`;
+        break;
+      }
+      seen28.push(...(r.products as Any[]).map((p) => p.id));
+      try {
+        if (page === 1) {
+          must("archive(later)", await call(catalog, "archive", cctx, archLater));
+          for (const nm of ["!! ขนมแทรกต้นรายการ", "สินค้าเติมชุด 150 แทรก", "ฮฮ ขนมแทรกท้ายรายการ"]) {
+            const np = must("createProduct(insert)", await call(catalog, "createProduct", cctx, { name: `${nm} ${TAG}`, kind: "PRODUCT", basePriceSatang: 1111 }));
+            if (idOf(np)) sb.productIds.push(idOf(np)!);
+          }
+          must("setPrice(repriced)", await call(catalog, "setPrice", cctx, repriced, 7777));
+        }
+        if (page === 2) must("archive(earlier)", await call(catalog, "archive", cctx, archEarlier));
+      } catch (e) {
+        mut28 += ` mut:${(e as Error).message.slice(0, 60)}`;
+      }
+      cur = r.nextCursor;
+      if (!cur) break;
+    }
+  }
+  const count28 = new Map<string, number>();
+  for (const id of seen28) count28.set(id, (count28.get(id) ?? 0) + 1);
+  const dup28 = [...count28.values()].filter((n) => n > 1).length;
+  const unchanged28 = pre28.ids.filter((id) => id !== archLater && id !== archEarlier);
+  const gap28 = unchanged28.filter((id) => count28.get(id) !== 1).length;
+  chk("P1.3-S1.28", pre28.ids.length > 300 && !mut28 && dup28 === 0 && gap28 === 0 && !count28.has(archLater) && count28.get(archEarlier) === 1,
+    "ไม่ซ้ำ · แถวไม่ถูกแก้ครบหน้าละครั้ง · archive ข้างหน้าไม่โผล่ · archive ข้างหลังเห็นครั้งเดียว",
+    `pre ${pre28.ids.length} seen ${seen28.length} dup ${dup28} gap ${gap28} later:${count28.get(archLater) ?? 0} earlier:${count28.get(archEarlier) ?? 0}${mut28}`);
+
   // ─── S3 quote + submit ───
   console.log("\n── S3 ส่งบิลฝั่งเซิร์ฟเวอร์ ──");
   let keyN = 0;
-  const key = (label: string) => `${TAG}-${label}-${++keyN}`;
-  const saleByKey = async (k: string) => P.posSale.findFirst({ where: { tenantId: tid, idempotencyKey: k } });
-  const sub = (a: Any, input: Any, cl?: Any, c: Any = ctx) => call(register, "submitRegisterSale", c, a, input, cl);
+  // R4 K1: คีย์ต้องเป็น [A-Za-z0-9_-] ⇒ KTAG + ป้าย (ไทย/อักขระอื่น → '_') · ตัวนับต่อท้ายทำให้ไม่ซ้ำเสมอ
+  const key = (label: string) => `${KTAG}-${label}-${++keyN}`.replace(/[^A-Za-z0-9_-]/g, "_");
+  const saleByKey = async (k: string) => P.posSale.findFirst({ where: { tenantId: tid, idempotencyKey: keyIn(k) } });
+  // รอบ 3.1 (มติ ข้อ 2 + 4): submit ต้องมี expectedGrandTotalSatang (ยอดที่แคชเชียร์เห็นจาก quote ล่าสุด) และ cashReceivedSatang เมื่อมีเงินสด
+  //   sub() เติมให้เมื่อข้อสอบไม่ได้ระบุคีย์นั้น: expected = Σ payMethods (แคชเชียร์จ่ายยอดที่เห็น) · received = ส่วนเงินสด (ทอน 0)
+  //   ข้อที่ทดสอบ "คาดต่างจากที่จ่าย" ระบุ expected เอง · ข้อที่ทดสอบ "ไม่ส่งคีย์" ใช้ subRaw (ไม่เติมอะไร) · ไม่แก้ object ของผู้เรียก
+  const withDefaults = (input: Any): Any => {
+    if (!input || typeof input !== "object") return input;
+    const pm = (Array.isArray(input.payMethods) ? input.payMethods : []) as Any[];
+    const sum = pm.reduce((t: number, p: Any) => t + (Number(p?.amountSatang) || 0), 0);
+    const cash = pm.filter((p) => p?.type === "CASH").reduce((t: number, p: Any) => t + (Number(p?.amountSatang) || 0), 0);
+    return {
+      ...input,
+      ...("expectedGrandTotalSatang" in input ? {} : { expectedGrandTotalSatang: sum }),
+      ...("cashReceivedSatang" in input || cash === 0 ? {} : { cashReceivedSatang: cash }),
+    };
+  };
+  const subRaw = (a: Any, input: Any, cl?: Any, c: Any = ctx) => call(register, "submitRegisterSale", c, a, input, cl);
+  const sub = (a: Any, input: Any, cl?: Any, c: Any = ctx) => subRaw(a, withDefaults(input), cl, c);
   const quote = (a: Any, input: Any, c: Any = ctx) => call(register, "quoteRegisterCart", c, a, input);
   const pay = (amt: number) => [{ type: "CASH", amountSatang: amt }];
   const outMoves = async (saleId: string) => P.invMovement.count({ where: { tenantId: tid, type: "OUT", refType: "PosSale", refId: saleId } });
@@ -886,7 +1497,9 @@ async function runDb() {
     `subtotal 22500 · total ${exp1?.grandTotalSatang}`, `${codeOf(q1)} subtotal ${q1?.subtotalSatang} total ${q1?.grandTotalSatang} vat ${q1?.vatSatang}/${exp1?.vatSatang}`);
   // S3.2–S3.4 ขายจริง
   const k2 = key("happy");
-  const s2 = q1?.ok ? await sub(owner, { idempotencyKey: k2, ...cart1, payMethods: pay(q1.grandTotalSatang), cashReceivedSatang: 100000 }) : { ok: false, code: "NO_QUOTE" };
+  // รอบ 3: ส่งตะกร้าแบบที่จอส่งจริง (บรรทัดสินค้าไม่มีราคา client · สเปก §3.3) — ราคาปลอมตอน submit คือ S3.5 (PRICE_CHANGED ได้ตาม Q22)
+  const cart1Clean = { lines: cart1.lines.map(({ unitPriceSatang: _u, ...l }: Any) => l) };
+  const s2 = q1?.ok ? await sub(owner, { idempotencyKey: k2, ...cart1Clean, payMethods: pay(q1.grandTotalSatang), cashReceivedSatang: 100000 }) : { ok: false, code: "NO_QUOTE" };
   const sale2 = await saleByKey(k2);
   const pays2 = sale2 ? await P.posPayment.findMany({ where: { saleId: sale2.id } }) : [];
   const lines2 = sale2 ? ((await P.posSaleLine.findMany({ where: { saleId: sale2.id }, orderBy: { lineTotalSatang: "asc" } })) as Any[]) : [];
@@ -918,15 +1531,17 @@ async function runDb() {
   const sale5b = await saleByKey(k5b);
   const l5b = sale5b ? await P.posSaleLine.findFirst({ where: { saleId: sale5b.id } }) : null;
   const oneSatang = await P.posSaleLine.count({ where: { tenantId: tid, unitId: unit.id, unitPriceSatang: 1 } });
-  const ok5b = s5b?.ok === true ? l5b?.unitPriceSatang === 6500 && sale5b?.grandTotalSatang === qA0?.grandTotalSatang : refused(s5b, ["PRICE_CHANGED", "PAYMENT_MISMATCH", "PERMISSION_DENIED"]) && !sale5b;
-  chk("P1.3-S3.5", refused(s5, ["PAYMENT_MISMATCH", "PRICE_CHANGED"]) && !(await saleByKey(k5)) && ok5b && oneSatang === 0,
-    "ยอดปลอมปฏิเสธ · ยอดจริง → ราคา 6500 หรือปฏิเสธ · 0 บรรทัดราคา 1", `${codeOf(s5)} · ${codeOf(s5b)} price ${l5b?.unitPriceSatang} · บรรทัด 1 สตางค์ ${oneSatang}`);
+  // รอบ 3.1 (มติ ข้อ 2): s5 คาดยอด 1 สตางค์ (sub เติม expected = ที่จ่าย) ⇒ PRICE_CHANGED เท่านั้น พร้อมยอดสดของเซิร์ฟเวอร์ ·
+  //   s5b คาด = จ่าย = ยอดจริง ⇒ ราคา client ต่อบรรทัดถูกเมิน (PAID @6500) หรือถูกปฏิเสธเป็นอินพุตต้องห้าม (VALIDATION|PERMISSION_DENIED)
+  const ok5b = s5b?.ok === true ? l5b?.unitPriceSatang === 6500 && sale5b?.grandTotalSatang === qA0?.grandTotalSatang : refused(s5b, ["VALIDATION", "PERMISSION_DENIED"]) && !sale5b;
+  chk("P1.3-S3.5", refused(s5, ["PRICE_CHANGED"]) && s5.grandTotalSatang === qA0?.grandTotalSatang && !(await saleByKey(k5)) && ok5b && oneSatang === 0,
+    "ยอดปลอม PRICE_CHANGED + ยอดสด · ยอดจริง → ราคา 6500 หรือ VALIDATION|PERMISSION_DENIED · 0 บรรทัดราคา 1", `${codeOf(s5)} fresh ${s5?.grandTotalSatang}/${qA0?.grandTotalSatang} · ${codeOf(s5b)} price ${l5b?.unitPriceSatang} · บรรทัด 1 สตางค์ ${oneSatang}`);
   // S3.6 จ่ายขาด/เกิน 1 สตางค์
   const qA = await quote(owner, { lines: [{ productId: A?.id, qty: 1 }] });
   const k6a = key("under");
   const k6b = key("over");
-  const s6a = await sub(owner, { idempotencyKey: k6a, lines: [{ productId: A?.id, qty: 1 }], payMethods: pay((qA?.grandTotalSatang ?? 0) - 1) });
-  const s6b = await sub(owner, { idempotencyKey: k6b, lines: [{ productId: A?.id, qty: 1 }], payMethods: pay((qA?.grandTotalSatang ?? 0) + 1) });
+  const s6a = await sub(owner, { idempotencyKey: k6a, lines: [{ productId: A?.id, qty: 1 }], payMethods: pay((qA?.grandTotalSatang ?? 0) - 1), expectedGrandTotalSatang: qA?.grandTotalSatang ?? 0 });
+  const s6b = await sub(owner, { idempotencyKey: k6b, lines: [{ productId: A?.id, qty: 1 }], payMethods: pay((qA?.grandTotalSatang ?? 0) + 1), expectedGrandTotalSatang: qA?.grandTotalSatang ?? 0 });
   chk("P1.3-S3.6", qA?.ok === true && refused(s6a, ["PAYMENT_MISMATCH"]) && refused(s6b, ["PAYMENT_MISMATCH"]) && !(await saleByKey(k6a)) && !(await saleByKey(k6b)), "PAYMENT_MISMATCH ×2", `${codeOf(qA)} · ${codeOf(s6a)} · ${codeOf(s6b)}`);
   // S3.7 เพดานส่วนลด
   const disc15 = { lines: [{ productId: A?.id, qty: 1, discount: { type: "PERCENT", value: 1500 } }] };
@@ -966,7 +1581,9 @@ async function runDb() {
   for (const pid of badIds) r12.push(codeOf(await sub(owner, { idempotencyKey: key("badprod"), lines: [{ productId: pid, qty: 1 }], payMethods: pay(100) })));
   const s12off = await sub(owner, { idempotencyKey: key("offprod"), lines: [{ productId: OFF?.id, qty: 1 }], payMethods: pay(4000) });
   const tagged12 = await P.posSale.count({ where: { tenantId: tid, idempotencyKey: { contains: "-badprod-" } } });
-  chk("P1.3-S3.12", r12.every((c) => c === "PRODUCT_NOT_FOUND") && refused(s12off, ["PRODUCT_UNAVAILABLE"]) && tagged12 === 0 && !!restoProd, "PRODUCT_NOT_FOUND ×3 · PRODUCT_UNAVAILABLE · 0 บิล", `${r12.join(",")} · ${codeOf(s12off)} · บิล ${tagged12} · restoProduct:${!!restoProd}`);
+  // รอบ 3.1 (มติ ข้อ 3): บรรทัดสินค้าที่ขายที่สาขานี้ไม่ได้ = PRODUCT_NOT_FOUND เท่านั้น (NOT_FOUND สงวนให้ ctx สาขา/ระบบ)
+  const PNF = ["PRODUCT_NOT_FOUND"];
+  chk("P1.3-S3.12", r12.every((c) => PNF.includes(c)) && refused(s12off, ["PRODUCT_UNAVAILABLE"]) && tagged12 === 0 && !!restoProd, "PRODUCT_NOT_FOUND ×3 · PRODUCT_UNAVAILABLE · 0 บิล", `${r12.join(",")} · ${codeOf(s12off)} · บิล ${tagged12} · restoProduct:${!!restoProd}`);
   // S3.13 member ข้ามร้าน
   const foreign = await P.customer.findFirst({ where: { tenantId: { not: tid } }, select: { id: true } });
   const k13 = key("member");
@@ -978,7 +1595,7 @@ async function runDb() {
   const in14 = { idempotencyKey: k14, lines: [{ productId: C?.id, qty: 1 }], payMethods: pay(qC?.grandTotalSatang ?? 0) };
   const a14 = await sub(owner, in14);
   const b14 = await sub(owner, in14);
-  const n14 = await P.posSale.count({ where: { tenantId: tid, idempotencyKey: k14 } });
+  const n14 = await P.posSale.count({ where: { tenantId: tid, idempotencyKey: keyIn(k14) } });
   const sale14 = await saleByKey(k14);
   const p14 = sale14 ? await P.posPayment.count({ where: { saleId: sale14.id } }) : -1;
   const m14 = sale14 ? await outMoves(sale14.id) : -1;
@@ -991,7 +1608,7 @@ async function runDb() {
     const k = key(`idem-par${r}`);
     const res = await Promise.all(Array.from({ length: 10 }, async (_, i) => sub(owner, { idempotencyKey: k, lines: [{ productId: C?.id, qty: 1 }], payMethods: pay(qC?.grandTotalSatang ?? 0) }, await lane(i))));
     const ids = new Set(res.filter((x) => x?.ok).map((x) => x.saleId));
-    const n = await P.posSale.count({ where: { tenantId: tid, idempotencyKey: k } });
+    const n = await P.posSale.count({ where: { tenantId: tid, idempotencyKey: keyIn(k) } });
     const sale = await saleByKey(k);
     const mv = sale ? await outMoves(sale.id) : -1;
     const allOk = res.every((x) => x?.ok === true);
@@ -1000,11 +1617,17 @@ async function runDb() {
   }
   chk("P1.3-S3.15", ok15, "ทุกรอบ: 10/10 ok · id เดียว · 1 บิล · OUT 1", rounds15.join(" ; "));
   // S3.16 key เดิม ตะกร้าเปลี่ยน
+  // รอบ 3: เคร่งเป็น IDEMPOTENCY_CONFLICT (brief "same key different payload ⇒ IDEMPOTENCY_CONFLICT") — คืนบิลเดิมเงียบ ๆ ทำให้แคชเชียร์
+  //   เข้าใจว่าบิลใหม่ (qty 3) ถูกเก็บเงินแล้วทั้งที่บันทึกแค่ qty 1 · ตะกร้าเดิม key เดิม (retry จริง) ยังต้องได้บิลเดิม
   const c16 = await sub(owner, { idempotencyKey: k14, lines: [{ productId: C?.id, qty: 3 }], payMethods: pay((qC?.grandTotalSatang ?? 0) * 3) });
-  const n16 = await P.posSale.count({ where: { tenantId: tid, idempotencyKey: k14 } });
+  const c16pay = await sub(owner, { idempotencyKey: k14, lines: [{ productId: C?.id, qty: 1 }], payMethods: [{ type: "PROMPTPAY", amountSatang: qC?.grandTotalSatang ?? 0 }] });
+  // รอบ 3.1 (มติ ข้อ 2): payload ที่เทียบรวม expectedGrandTotalSatang ด้วย — ตรวจ key ก่อนคิดราคา (retry หลังราคาเปลี่ยนต้องได้บิลเดิม)
+  const c16exp = await sub(owner, { ...in14, expectedGrandTotalSatang: (qC?.grandTotalSatang ?? 0) + 1 });
+  const c16same = await sub(owner, in14);
+  const n16 = await P.posSale.count({ where: { tenantId: tid, idempotencyKey: keyIn(k14) } });
   const sale16 = await saleByKey(k14);
-  chk("P1.3-S3.16", (c16?.ok === true ? c16.saleId === sale14?.id && c16.grandTotalSatang === sale14?.grandTotalSatang : refused(c16, ["IDEMPOTENCY_CONFLICT"])) && n16 === 1 && sale16?.grandTotalSatang === sale14?.grandTotalSatang,
-    "บิลเดิม/IDEMPOTENCY_CONFLICT · 1 บิล · ยอดเดิม", `${codeOf(c16)} n ${n16} total ${sale16?.grandTotalSatang}/${sale14?.grandTotalSatang}`);
+  chk("P1.3-S3.16", refused(c16, ["IDEMPOTENCY_CONFLICT"]) && refused(c16pay, ["IDEMPOTENCY_CONFLICT"]) && refused(c16exp, ["IDEMPOTENCY_CONFLICT"]) && c16same?.ok === true && c16same.saleId === sale14?.id && n16 === 1 && sale16?.grandTotalSatang === sale14?.grandTotalSatang,
+    "qty/วิธีจ่าย/expected ต่าง IDEMPOTENCY_CONFLICT · payload เดิม = บิลเดิม · 1 บิล · ยอดเดิม", `${codeOf(c16)} · ${codeOf(c16pay)} · ${codeOf(c16exp)} · same ${codeOf(c16same)}/${c16same?.saleId === sale14?.id} · n ${n16} total ${sale16?.grandTotalSatang}/${sale14?.grandTotalSatang}`);
   // S3.17 เลขใบเสร็จไม่ชน
   const rn: string[] = [];
   let fail17 = "";
@@ -1055,7 +1678,7 @@ async function runDb() {
     const paid = res.filter((x) => x?.ok).length;
     const lost = res.filter((x) => refused(x, ["STOCK_INSUFFICIENT"])).length;
     const oh = await onHandOf(L.invItemId);
-    const sales = await P.posSale.count({ where: { tenantId: tid, idempotencyKey: { in: keys19 } } });
+    const sales = await P.posSale.count({ where: { tenantId: tid, idempotencyKey: { in: keys19.flatMap((k) => keyIn(k).in) } } });
     r19.push(`r${r}: PAID ${paid} STOCK_INSUFFICIENT ${lost} onHand ${oh} บิล ${sales}`);
     if (!(paid === 1 && lost === 9 && oh === 0 && sales === 1)) ok19 = false;
   }
@@ -1106,7 +1729,7 @@ async function runDb() {
   // S3.23 ยังไม่ตั้งราคา / ราคาเปิด
   const k23a = key("noprice");
   const s23a = await sub(owner, { idempotencyKey: k23a, lines: [{ productId: NOPRICE?.id, qty: 1 }], payMethods: pay(1234) });
-  const s23a0 = await sub(owner, { idempotencyKey: key("noprice0"), lines: [{ productId: NOPRICE?.id, qty: 1 }], payMethods: pay(0) });
+  const s23a0 = await sub(owner, { idempotencyKey: key("noprice0"), lines: [{ productId: NOPRICE?.id, qty: 1 }], payMethods: pay(1) }); // รอบ 3.2: จ่ายยอด 0 = VALIDATION ที่โครง (มติ 3.2 ข้อ 5) ⇒ ใช้ 1 สตางค์ (ยังต้อง PRICE_NOT_SET)
   const k23b = key("open-cashier");
   const s23b = await sub(cashier, { idempotencyKey: k23b, lines: [{ productId: NOPRICE?.id, qty: 1, unitPriceSatang: 4200, openPrice: true }], payMethods: pay(4200) });
   const k23c = key("open-owner");
@@ -1137,6 +1760,711 @@ async function runDb() {
   chk("P1.3-S3.25", s25?.ok === true && mv25 === 0 && ohOff1 === ohOff0 && ohOff0 === 5 && v25?.trackStock === false && v25?.trackStockMode === "off" && v25?.stockLeft === null,
     "PAID · OUT 0 · onHand 5 คงเดิม · off/null", `${codeOf(s25)} OUT ${mv25} onHand ${ohOff0}→${ohOff1} · ${short(v25 && [v25.trackStock, v25.trackStockMode, v25.stockLeft])}`);
 
+  // ─── S3 รอบ 3 ───
+  /** ปฏิเสธที่ "ไม่มียอด" — ไม่ clamp ไม่คิดราคาให้ของที่ไม่ควรถูกคิด */
+  const noTotals = (r: Any) => r?.ok === false && r.grandTotalSatang === undefined && r.subtotalSatang === undefined && r.lines === undefined;
+  const linesOf = (r: Any) => ((r?.lines ?? []) as Any[]);
+  const lineOfSale = async (k: string) => {
+    const s = await saleByKey(k);
+    return s ? await P.posSaleLine.findFirst({ where: { saleId: s.id } }) : null;
+  };
+  // S3.26 Q6 ตัวเลือกบังคับ
+  const OPTCODES = ["OPTIONS_REQUIRED"]; // มติ 3.1 ข้อ 1
+  const q26r = await quote(owner, { lines: [{ productId: REQP?.id, qty: 1 }] });
+  const k26r = key("req-opt");
+  const s26r = await sub(owner, { idempotencyKey: k26r, lines: [{ productId: REQP?.id, qty: 1 }], payMethods: pay(7500) });
+  const q26o = await quote(owner, { lines: [{ productId: OPTP?.id, qty: 1 }] });
+  const k26o = key("opt-only");
+  const s26o = q26o?.ok ? await sub(owner, { idempotencyKey: k26o, lines: [{ productId: OPTP?.id, qty: 1 }], payMethods: pay(q26o.grandTotalSatang) }) : q26o;
+  const l26o = await lineOfSale(k26o);
+  chk("P1.3-S3.26", refused(q26r, OPTCODES) && noTotals(q26r) && refused(s26r, OPTCODES) && !(await saleByKey(k26r)) && q26o?.ok === true && linesOf(q26o)[0]?.unitPriceSatang === 5500 && s26o?.ok === true && l26o?.unitPriceSatang === 5500 && l26o?.productId === OPTP?.id,
+    "บังคับ: ปฏิเสธ quote+submit ไม่มียอด/บิล · เลือกได้: 5500 · PAID @5500", `req ${codeOf(q26r)}/${noTotals(q26r)} · ${codeOf(s26r)} · opt ${codeOf(q26o)} @${linesOf(q26o)[0]?.unitPriceSatang} · ${codeOf(s26o)} @${l26o?.unitPriceSatang}`);
+  // S3.27 Q9 หมดสต็อกยังขาย · ปิดขายสาขาไม่ขาย
+  const oh27a = ZERO ? await onHandOf(ZERO.invItemId) : NaN;
+  const q27 = await quote(owner, { lines: [{ productId: ZERO?.id, qty: 1 }] });
+  const k27 = key("no-stock");
+  const s27 = q27?.ok ? await sub(owner, { idempotencyKey: k27, lines: [{ productId: ZERO?.id, qty: 1 }], payMethods: pay(q27.grandTotalSatang) }) : q27;
+  const sale27 = await saleByKey(k27);
+  const mv27 = sale27 ? await outMoves(sale27.id) : -1;
+  const oh27b = ZERO ? await onHandOf(ZERO.invItemId) : NaN;
+  const q27off = await quote(owner, { lines: [{ productId: OFF?.id, qty: 1 }] });
+  const q27both = await quote(owner, { lines: [{ productId: BOTH?.id, qty: 1 }] });
+  const k27both = key("off-and-empty");
+  const s27both = await sub(owner, { idempotencyKey: k27both, lines: [{ productId: BOTH?.id, qty: 1 }], payMethods: pay(3000) });
+  chk("P1.3-S3.27", oh27a === 0 && s27?.ok === true && sale27?.status === "PAID" && mv27 === 1 && oh27b === -1 && refused(q27off, ["PRODUCT_UNAVAILABLE"]) && noTotals(q27off)
+      && refused(q27both, ["PRODUCT_UNAVAILABLE"]) && noTotals(q27both) && refused(s27both, ["PRODUCT_UNAVAILABLE"]) && !(await saleByKey(k27both)),
+    "NO_STOCK: PAID · OUT 1 · 0→−1 · UNAVAILABLE: quote ปฏิเสธไม่มียอด", `${codeOf(s27)} ${sale27?.status} OUT ${mv27} onHand ${oh27a}→${oh27b} · off ${codeOf(q27off)}/${noTotals(q27off)} · ปิด+หมด ${codeOf(q27both)}/${codeOf(s27both)}`);
+  // S3.28 Q8 pos.sale.priceOverride ที่ quote + submit
+  const customQ = { lines: [{ name: "ค่าห่อของขวัญ", qty: 1, unitPriceSatang: 2000 }] };
+  const openQ = { lines: [{ productId: NOPRICE?.id, qty: 1, unitPriceSatang: 4200, openPrice: true }] };
+  const q28a = await quote(cashier, customQ);
+  const q28b = await quote(cashier, openQ);
+  const cashierPO = { ...cashier, permissions: { ...cashier.permissions, "pos.sale.priceOverride": true } };
+  const q28c = await quote(cashierPO, customQ);
+  const k28c = key("po-custom");
+  const s28c = q28c?.ok ? await sub(cashierPO, { idempotencyKey: k28c, ...customQ, payMethods: pay(q28c.grandTotalSatang) }) : q28c;
+  const l28c = await lineOfSale(k28c);
+  const q28d = await quote(cashierPO, openQ);
+  const k28d = key("po-open");
+  const s28d = q28d?.ok ? await sub(cashierPO, { idempotencyKey: k28d, ...openQ, payMethods: pay(q28d.grandTotalSatang) }) : q28d;
+  const l28d = await lineOfSale(k28d);
+  const manager = actor(mCash, E.coffee.users.cashier.userId, { role: "MANAGER", unitAccess: [unit.id], permissions: {} });
+  const k28e = key("mgr-custom");
+  const s28e = await sub(manager, { idempotencyKey: k28e, ...customQ, payMethods: pay(q28c?.grandTotalSatang ?? 2000) });
+  const permKey = /["']pos\.sale\.priceOverride["']\s*:/.test(stripComments(rd("src/lib/core/permissions.ts")));
+  chk("P1.3-S3.28", refused(q28a, ["PERMISSION_DENIED"]) && noTotals(q28a) && refused(q28b, ["PERMISSION_DENIED"]) && noTotals(q28b) && s28c?.ok === true && l28c?.unitPriceSatang === 2000 && !l28c?.productId
+      && s28d?.ok === true && l28d?.unitPriceSatang === 4200 && l28d?.productId === NOPRICE?.id && s28e?.ok === true && permKey,
+    "STAFF quote ×2 PERMISSION_DENIED · STAFF+คีย์ PAID @2000/@4200 · MANAGER PAID · คีย์ในแคตตาล็อก", `${codeOf(q28a)} · ${codeOf(q28b)} · ${codeOf(s28c)} @${l28c?.unitPriceSatang} · ${codeOf(s28d)} @${l28d?.unitPriceSatang} · mgr ${codeOf(s28e)} · key ${permKey}`);
+  // S3.29 Q12 คูปองจาก client = VALIDATION
+  const crBefore = await P.couponRedemption.count({ where: { tenantId: tid } });
+  const tA = qA?.grandTotalSatang ?? 6500;
+  const q29a = await quote(owner, { lines: [{ productId: A?.id, qty: 1 }], couponCode: "WELCOME50" });
+  const q29b = await quote(owner, { lines: [{ productId: A?.id, qty: 1 }], couponDiscountSatang: 1000 });
+  const k29c = key("coupon-code");
+  const s29c = await sub(owner, { idempotencyKey: k29c, lines: [{ productId: A?.id, qty: 1 }], couponCode: "WELCOME50", payMethods: pay(tA) });
+  const k29d = key("coupon-disc");
+  const s29d = await sub(owner, { idempotencyKey: k29d, lines: [{ productId: A?.id, qty: 1 }], couponDiscountSatang: 1000, payMethods: pay(tA - 1000) });
+  const crAfter = await P.couponRedemption.count({ where: { tenantId: tid } });
+  chk("P1.3-S3.29", [q29a, q29b, s29c, s29d].every((r) => refused(r, ["VALIDATION"])) && noTotals(q29a) && noTotals(q29b) && !(await saleByKey(k29c)) && !(await saleByKey(k29d)) && crAfter === crBefore,
+    "VALIDATION ×4 · ไม่มียอด · ไม่มีบิล · CouponRedemption คงเดิม", `${[q29a, q29b, s29c, s29d].map(codeOf).join(",")} · redemption ${crBefore}→${crAfter}`);
+  // S3.30 Q22 ทรงบรรทัด quote ตรงลำดับ + Q7 subtotal ก่อนส่วนลดบรรทัด
+  const q30 = await quote(owner, { lines: [
+    { productId: B?.id, qty: 1, discount: { type: "AMOUNT", value: 1000 } },
+    { name: "ค่าส่งในเมือง", qty: 1, unitPriceSatang: 3000 },
+    { productId: A?.id, qty: 2, unitPriceSatang: 1 },
+  ] });
+  const want30: [string | null, number, number, number, number][] = [[B?.id ?? "?", 9500, 9500, 1000, 8500], [null, 3000, 3000, 0, 3000], [A?.id ?? "?", 6500, 13000, 0, 13000]];
+  const bad30 = want30.flatMap(([pid, up, gr, dc, lt], i) => {
+    const l = linesOf(q30)[i];
+    if (!l) return [`#${i} ไม่มี`];
+    const got = [l.productId ?? null, l.unitPriceSatang, l.grossSatang, l.discountSatang, l.lineTotalSatang];
+    const ints = [l.unitPriceSatang, l.grossSatang, l.discountSatang, l.lineTotalSatang].every((x) => Number.isInteger(x));
+    return got.join("|") === [pid, up, gr, dc, lt].join("|") && ints ? [] : [`#${i} ${short(got, 80)}`];
+  });
+  chk("P1.3-S3.30", q30?.ok === true && linesOf(q30).length === 3 && bad30.length === 0 && q30.subtotalSatang === 25500 && q30.lineDiscountSatang === 1000,
+    "3 บรรทัดตามลำดับ · ราคาเซิร์ฟเวอร์ · subtotal 25500 (ก่อนส่วนลด) · lineDiscount 1000", `${codeOf(q30)} n ${linesOf(q30).length} · ${bad30.join(" · ") || "ตรง"} · sub ${q30?.subtotalSatang} ld ${q30?.lineDiscountSatang}`);
+  // S3.31 ราคาเปลี่ยนระหว่าง quote กับ submit (เซิร์ฟเวอร์อ่านราคาใหม่ตอน submit ไม่ใช้ quote ที่จำไว้)
+  const PC = ["PRICE_CHANGED"]; // มติ 3.1 ข้อ 2: ยอดที่คาด ≠ ยอดเซิร์ฟเวอร์ ⇒ PRICE_CHANGED เสมอ (ตรวจก่อนการจ่าย)
+  const q31a = await quote(owner, { lines: [{ productId: RP?.id, qty: 2 }] });
+  const up31a = linesOf(q31a)[0]?.unitPriceSatang;
+  let setOk = false;
+  try {
+    must("setPrice(RP)", await call(catalog, "setPrice", cctx, RP?.id, 5600));
+    setOk = true;
+  } catch (e) {
+    console.log(`  (S3.31 setPrice ไม่ได้: ${(e as Error).message.slice(0, 80)})`);
+  }
+  // s31a: คาดยอดเก่า + จ่ายยอดเก่า · s31b: คาดยอดเก่า + จ่ายยอดใหม่ (ลำดับตรวจ: คาดก่อนจ่าย ⇒ ยัง PRICE_CHANGED)
+  const oldTotal = q31a?.grandTotalSatang ?? 10000;
+  const k31a = key("stale-expect");
+  const s31a = await sub(owner, { idempotencyKey: k31a, lines: [{ productId: RP?.id, qty: 2 }], payMethods: pay(oldTotal), expectedGrandTotalSatang: oldTotal });
+  const k31b = key("stale-total");
+  const s31b = await sub(owner, { idempotencyKey: k31b, lines: [{ productId: RP?.id, qty: 2 }], payMethods: pay(oldTotal + 1200), expectedGrandTotalSatang: oldTotal });
+  const q31c = await quote(owner, { lines: [{ productId: RP?.id, qty: 2 }] });
+  const k31c = key("repriced");
+  const s31c = q31c?.ok ? await sub(owner, { idempotencyKey: k31c, lines: [{ productId: RP?.id, qty: 2 }], payMethods: pay(q31c.grandTotalSatang) }) : q31c;
+  const l31c = await lineOfSale(k31c);
+  const stale31 = await P.posSaleLine.count({ where: { tenantId: tid, productId: RP?.id ?? "-", unitPriceSatang: 5000 } });
+  // คำปฏิเสธ PRICE_CHANGED พกยอดสดของ quote มาด้วย (จอแสดงใหม่ได้ทันที)
+  const fresh31 = s31a?.grandTotalSatang === q31c?.grandTotalSatang && linesOf(s31a)[0]?.unitPriceSatang === 5600;
+  chk("P1.3-S3.31", setOk && up31a === 5000 && refused(s31a, PC) && fresh31 && refused(s31b, PC) && !(await saleByKey(k31a)) && !(await saleByKey(k31b)) && linesOf(q31c)[0]?.unitPriceSatang === 5600 && s31c?.ok === true && l31c?.unitPriceSatang === 5600 && stale31 === 0,
+    "ราคาเดิม 5000 → คาดยอดเก่า PRICE_CHANGED ×2 + ยอดสด · quote ใหม่ 5600 · PAID @5600 · 0 บรรทัด @5000", `set ${setOk} · q ${up31a} · ${codeOf(s31a)} fresh ${fresh31} (${s31a?.grandTotalSatang}) · ${codeOf(s31b)} · re-q ${linesOf(q31c)[0]?.unitPriceSatang} · ${codeOf(s31c)} @${l31c?.unitPriceSatang} · stale ${stale31}`);
+  // S3.32 Σ payMethods = ยอด (หลายวิธี · ค่าผิดรูป)
+  const k32 = key("split");
+  const s32 = await sub(owner, { idempotencyKey: k32, lines: [{ productId: A?.id, qty: 1 }], payMethods: [{ type: "CASH", amountSatang: 4000 }, { type: "PROMPTPAY", amountSatang: tA - 4000 }], cashReceivedSatang: 4000 });
+  const sale32 = await saleByKey(k32);
+  const pays32 = sale32 ? ((await P.posPayment.findMany({ where: { saleId: sale32.id } })) as Any[]) : [];
+  const BADPAY = ["VALIDATION", "INVALID_LINE", "PAYMENT_MISMATCH"];
+  const badPays: [string, Any[], string[]][] = [
+    ["short", [{ type: "CASH", amountSatang: 4000 }, { type: "PROMPTPAY", amountSatang: tA - 4001 }], ["PAYMENT_MISMATCH"]],
+    ["negative", [{ type: "CASH", amountSatang: tA + 1000 }, { type: "PROMPTPAY", amountSatang: -1000 }], BADPAY],
+    ["fraction", [{ type: "CASH", amountSatang: tA - 0.5 }, { type: "PROMPTPAY", amountSatang: 0.5 }], BADPAY],
+    ["empty", [], BADPAY],
+  ];
+  const r32: string[] = [];
+  let ok32 = true;
+  for (const [label, pm, codes] of badPays) {
+    const k = key(`pay-${label}`);
+    const r = await sub(owner, { idempotencyKey: k, lines: [{ productId: A?.id, qty: 1 }], payMethods: pm, expectedGrandTotalSatang: tA });
+    const made = !!(await saleByKey(k));
+    r32.push(`${label}:${codeOf(r)}${made ? "+บิล" : ""}`);
+    if (!refused(r, codes) || made) ok32 = false;
+  }
+  chk("P1.3-S3.32", s32?.ok === true && pays32.length === 2 && pays32.reduce((t, p) => t + p.amountSatang, 0) === sale32?.grandTotalSatang && sale32?.grandTotalSatang === tA && ok32,
+    "split PAID 2 แถว Σ = ยอด · ขาด/ติดลบ/เศษ/ว่าง ปฏิเสธ ไม่มีบิล", `${codeOf(s32)} pays ${pays32.length} Σ ${pays32.reduce((t, p) => t + p.amountSatang, 0)}/${sale32?.grandTotalSatang} · ${r32.join(" ")}`);
+  // S3.33 เพดานส่วนลดที่ quote (ปฏิเสธ ไม่ clamp) + บรรทัด/บิลติดลบ
+  const DEL = ["DISCOUNT_EXCEEDS_LIMIT"];
+  const q33a = await quote(cashier, { lines: [{ productId: A?.id, qty: 1, discount: { type: "PERCENT", value: 1500 } }] });
+  const q33b = await quote(cashier, { lines: [{ productId: A?.id, qty: 1 }], billDiscount: { type: "PERCENT", value: 1500 } });
+  const q33c = await quote(cashier, { lines: [{ productId: A?.id, qty: 1 }], billDiscount: { type: "AMOUNT", value: 650 } });
+  const q33d = await quote(cashier, { lines: [{ productId: A?.id, qty: 1 }], billDiscount: { type: "AMOUNT", value: 651 } });
+  const q33e = await quote(owner, { lines: [{ productId: A?.id, qty: 1, discount: { type: "AMOUNT", value: 6501 } }] });
+  const k33f = key("neg-line");
+  const s33f = await sub(owner, { idempotencyKey: k33f, lines: [{ productId: A?.id, qty: 1, discount: { type: "AMOUNT", value: 6501 } }], payMethods: pay(tA) }); // รอบ 3.2: ไม่ใช้รายการจ่าย 0
+  const k33g = key("neg-bill");
+  const s33g = await sub(owner, { idempotencyKey: k33g, lines: [{ productId: A?.id, qty: 1 }], billDiscount: { type: "AMOUNT", value: 6501 }, payMethods: pay(tA) });
+  const neg33 = (await P.posSaleLine.count({ where: { tenantId: tid, unitId: unit.id, lineTotalSatang: { lt: 0 } } })) + (await P.posSale.count({ where: { tenantId: tid, unitId: unit.id, grandTotalSatang: { lt: 0 } } }));
+  chk("P1.3-S3.33", refused(q33a, DEL) && noTotals(q33a) && refused(q33b, DEL) && noTotals(q33b) && q33c?.ok === true && q33c.grandTotalSatang === 5850 && refused(q33d, DEL) && noTotals(q33d)
+      && refused(q33e, ["LINE_DISCOUNT_EXCEEDS_LINE"]) && refused(s33f, ["LINE_DISCOUNT_EXCEEDS_LINE"]) && refused(s33g, ["BILL_DISCOUNT_EXCEEDS_TOTAL"]) && !(await saleByKey(k33f)) && !(await saleByKey(k33g)) && neg33 === 0,
+    "15%/15%/651 ปฏิเสธไม่มียอด · 650 → 5850 · บรรทัด/บิลติดลบ ปฏิเสธ · 0 แถวติดลบ",
+    `${codeOf(q33a)}/${noTotals(q33a)} · ${codeOf(q33b)} · ${codeOf(q33c)}=${q33c?.grandTotalSatang} · ${codeOf(q33d)} · ${codeOf(q33e)} · ${codeOf(s33f)} · ${codeOf(s33g)} · neg ${neg33}`);
+  // S3.34 qty ฝั่งเซิร์ฟเวอร์
+  const QTYC = ["INVALID_LINE", "VALIDATION"];
+  const r34: string[] = [];
+  for (const v of [0, -1, 1.5, 10000, "2"] as unknown[]) r34.push(codeOf(await quote(owner, { lines: [{ productId: A?.id, qty: v }] })));
+  const q34ok = await quote(owner, { lines: [{ productId: A?.id, qty: 9999 }] });
+  const k34a = key("qty-10000");
+  const s34a = await sub(owner, { idempotencyKey: k34a, lines: [{ productId: A?.id, qty: 10000 }], payMethods: pay(10000 * 6500) });
+  const lines201 = Array.from({ length: 201 }, (_, i) => ({ productId: i % 2 ? A?.id : D?.id, qty: 1 }));
+  const q34b = await quote(owner, { lines: lines201 });
+  const k34c = key("201");
+  const s34c = await sub(owner, { idempotencyKey: k34c, lines: lines201, payMethods: pay(100 * 6500) });
+  chk("P1.3-S3.34", r34.every((c) => QTYC.includes(c)) && q34ok?.ok === true && linesOf(q34ok)[0]?.grossSatang === 9999 * 6500 && refused(s34a, QTYC) && !(await saleByKey(k34a)) && refused(q34b, ["TOO_MANY_LINES"]) && refused(s34c, ["TOO_MANY_LINES"]) && !(await saleByKey(k34c)),
+    "5 ค่าผิด INVALID_LINE|VALIDATION · 9999 ได้ · submit 10000/201 ปฏิเสธ ไม่มีบิล", `${r34.join(",")} · 9999 ${codeOf(q34ok)}/${linesOf(q34ok)[0]?.grossSatang} · ${codeOf(s34a)} · ${codeOf(q34b)} · ${codeOf(s34c)}`);
+  // S3.35 ขอบเขตสาขา/ร้านของ productId — ไม่คิดราคาให้ ไม่รั่วชื่อ
+  const scopeCases: [string, string | undefined, string | undefined][] = [
+    ["สาขา2", OTHER?.id, "สินค้าเฉพาะสาขาอื่น"],
+    ["คลังY", W2?.id, "สินค้าคลังสาขาสอง"],
+    ["ร้านอื่น", restoProd?.id, restoProd?.name],
+  ];
+  const r35: string[] = [];
+  let ok35 = scopeCases.every(([, id]) => !!id);
+  for (const [label, pid, nm] of scopeCases) {
+    const qx = await quote(owner, { lines: [{ productId: pid ?? "-", qty: 1 }] });
+    const kx = key(`scope-${label}`);
+    const sx = await sub(owner, { idempotencyKey: kx, lines: [{ productId: pid ?? "-", qty: 1 }], payMethods: pay(1800) });
+    const leak = !!nm && (JSON.stringify(qx).includes(nm) || JSON.stringify(sx).includes(nm));
+    const made = !!(await saleByKey(kx));
+    r35.push(`${label}:${codeOf(qx)}/${codeOf(sx)}${leak ? "+ชื่อรั่ว" : ""}${made ? "+บิล" : ""}${noTotals(qx) ? "" : "+มียอด"}`);
+    if (!(refused(qx, PNF) && noTotals(qx) && refused(sx, PNF) && !leak && !made)) ok35 = false;
+  }
+  const q35pos = await quote(owner, { lines: [{ productId: OTHER?.id, qty: 1 }] }, c2);
+  chk("P1.3-S3.35", ok35 && q35pos?.ok === true && linesOf(q35pos)[0]?.unitPriceSatang === 1500, "3 ทาง PRODUCT_NOT_FOUND ไม่มียอด ไม่รั่ว ไม่มีบิล · คู่บวกสาขา 2 = 1500",
+    `${r35.join(" · ")} · สาขา2 ${codeOf(q35pos)} @${linesOf(q35pos)[0]?.unitPriceSatang}`);
+  // S3.36 Addendum: ปฏิเสธต้อง "คืน" (server action ใน production ปิดข้อความของ error ที่ throw)
+  const t36: [string, Any, (r: Any) => boolean][] = [
+    ["q-NUL", await call(register, "registerCatalog", ctx, owner, { q: "กาแฟ\u0000" }), (r) => r?.ok === true || refused(r, ["VALIDATION"])],
+    // มติ 3.1 ข้อ 9: limit ที่ไม่ใช่จำนวนเต็ม ≥ 1 และ cursor ผิดรูป = VALIDATION เท่านั้น (เกิน 500 = บีบ · S1.25)
+    ["cursor-มั่ว", await call(register, "registerCatalog", ctx, owner, { cursor: "%%%not-a-cursor%%%" }), (r) => refused(r, ["VALIDATION"])],
+    ["limit-0", await call(register, "registerCatalog", ctx, owner, { limit: 0 }), (r) => refused(r, ["VALIDATION"])],
+    ["limit-1.5", await call(register, "registerCatalog", ctx, owner, { limit: 1.5 }), (r) => refused(r, ["VALIDATION"])],
+    ["limit-str", await call(register, "registerCatalog", ctx, owner, { limit: "10" }), (r) => refused(r, ["VALIDATION"])],
+    ["quote-lines-x", await quote(owner, { lines: "x" }), (r) => refused(r, ["VALIDATION", "INVALID_LINE"])],
+    ["submit-null", await call(register, "submitRegisterSale", ctx, owner, null), (r) => refused(r, ["VALIDATION", "INVALID_LINE"])],
+    ["status-NUL", await call(register, "registerStatus", { ...ctx, unitId: `${unit.id}\u0000` }, owner), (r) => refused(r, ["NOT_FOUND", "VALIDATION"])],
+  ];
+  const bad36 = t36.filter(([, r, ok]) => r?.threw === true || !ok(r) || (r?.ok === false && (typeof r.code !== "string" || typeof r.message !== "string"))).map(([l, r]) => `${l}:${r?.threw ? "THROW " : ""}${codeOf(r)}`);
+  chk("P1.3-S3.36", bad36.length === 0, "8 กรณี: คืน {ok:false, code, message} ตามรหัส (q NUL ok ได้) ไม่ throw", bad36.join(" · ") || "ไม่มี throw");
+
+  // ─── S3 รอบ 3.1 (มติผู้คุมงานต่อคำถาม r3) ───
+  // S3.37 expectedGrandTotalSatang (มติ ข้อ 2): ลำดับ = คิดราคาใหม่ → คาด ≠ ยอด ⇒ PRICE_CHANGED → จ่าย ≠ ยอด ⇒ PAYMENT_MISMATCH
+  const base37 = { lines: [{ productId: A?.id, qty: 1 }], payMethods: pay(tA), cashReceivedSatang: tA };
+  const cases37: [string, Any, string][] = [
+    ["ไม่ส่ง", base37, "VALIDATION"],
+    ["เศษ", { ...base37, expectedGrandTotalSatang: tA + 0.5 }, "VALIDATION"],
+    ["ติดลบ", { ...base37, expectedGrandTotalSatang: -1 }, "VALIDATION"],
+    ["สตริง", { ...base37, expectedGrandTotalSatang: String(tA) }, "VALIDATION"],
+    ["จ่ายต่าง", { ...base37, payMethods: pay(tA + 100), cashReceivedSatang: tA + 100, expectedGrandTotalSatang: tA }, "PAYMENT_MISMATCH"],
+    ["คาดผิด+จ่ายผิด", { ...base37, payMethods: pay(tA + 200), cashReceivedSatang: tA + 200, expectedGrandTotalSatang: tA + 100 }, "PRICE_CHANGED"],
+  ];
+  const r37: string[] = [];
+  let ok37 = true;
+  for (const [label, input, want] of cases37) {
+    const k = key(`exp-${label}`);
+    const r = await subRaw(owner, { idempotencyKey: k, ...input });
+    const made = !!(await saleByKey(k));
+    r37.push(`${label}:${codeOf(r)}${made ? "+บิล" : ""}`);
+    if (!refused(r, [want]) || made) ok37 = false;
+  }
+  chk("P1.3-S3.37", ok37, "ไม่ส่ง/เศษ/ติดลบ/สตริง VALIDATION · จ่ายต่าง PAYMENT_MISMATCH · คาดผิดก่อน PRICE_CHANGED · ไม่มีบิล", r37.join(" · "));
+  // S3.38 วิธีจ่ายของ P1.3 = CASH | PROMPTPAY (มติ ข้อ 4 · P1.6 เปิดที่เหลือ) — createSale เดิมของโมดูลอื่นไม่เปลี่ยน (S3.22)
+  const r38: string[] = [];
+  let ok38 = true;
+  for (const t of ["TRANSFER", "DEPOSIT", "ROOM_CHARGE", "CARD", "QC_NOT_A_METHOD"]) {
+    const k = key(`paytype-${t}`);
+    const r = await sub(owner, { idempotencyKey: k, lines: [{ productId: A?.id, qty: 1 }], payMethods: [{ type: t, amountSatang: tA }] });
+    const made = !!(await saleByKey(k));
+    r38.push(`${t}:${codeOf(r)}${made ? "+บิล" : ""}`);
+    if (!refused(r, ["VALIDATION"]) || made) ok38 = false;
+  }
+  const k38pp = key("promptpay-only");
+  const s38pp = await sub(owner, { idempotencyKey: k38pp, lines: [{ productId: A?.id, qty: 1 }], payMethods: [{ type: "PROMPTPAY", amountSatang: tA }] });
+  const sale38pp = await saleByKey(k38pp);
+  const pays38 = sale38pp ? ((await P.posPayment.findMany({ where: { saleId: sale38pp.id } })) as Any[]) : [];
+  chk("P1.3-S3.38", ok38 && s38pp?.ok === true && s38pp.changeSatang === 0 && pays38.length === 1 && pays38[0].type === "PROMPTPAY" && pays38[0].amountSatang === tA,
+    "5 วิธีนอก CASH/PROMPTPAY → VALIDATION ไม่มีบิล · PROMPTPAY ล้วน PAID ทอน 0", `${r38.join(" ")} · pp ${codeOf(s38pp)} ทอน ${s38pp?.changeSatang} pays ${pays38.map((p) => `${p.type}:${p.amountSatang}`).join(",")}`);
+  // S3.39 เงินสดที่รับ (มติ ข้อ 4): ต้องส่งเมื่อมีส่วนเงินสด · ≥ ส่วนเงินสด · ทอน = รับ − ส่วนเงินสด
+  const k39a = key("cash-no-recv");
+  const s39a = await subRaw(owner, { idempotencyKey: k39a, lines: [{ productId: A?.id, qty: 1 }], payMethods: pay(tA), expectedGrandTotalSatang: tA });
+  const k39b = key("cash-low-recv");
+  const s39b = await sub(owner, { idempotencyKey: k39b, lines: [{ productId: A?.id, qty: 1 }], payMethods: pay(tA), cashReceivedSatang: tA - 1 });
+  const k39c = key("cash-split-change");
+  const s39c = await sub(owner, { idempotencyKey: k39c, lines: [{ productId: A?.id, qty: 1 }], payMethods: [{ type: "CASH", amountSatang: 4000 }, { type: "PROMPTPAY", amountSatang: tA - 4000 }], cashReceivedSatang: 5000 });
+  const sale39c = await saleByKey(k39c);
+  chk("P1.3-S3.39", refused(s39a, ["PAYMENT_MISMATCH"]) && !(await saleByKey(k39a)) && refused(s39b, ["PAYMENT_MISMATCH"]) && !(await saleByKey(k39b)) && s39c?.ok === true && s39c.changeSatang === 1000 && sale39c?.grandTotalSatang === tA,
+    "ไม่ส่ง/รับขาด PAYMENT_MISMATCH ไม่มีบิล · เงินสด 4000 รับ 5000 + พร้อมเพย์ → ทอน 1000", `${codeOf(s39a)} · ${codeOf(s39b)} · ${codeOf(s39c)} ทอน ${s39c?.changeSatang}`);
+
+  // ─── S3 รอบ 3.2 (ช่องโหว่ที่ผู้ตรวจ B1 พบ · มติผู้คุมงาน) ───
+  const salesByKey = async (k: string) => P.posSale.count({ where: { tenantId: tid, idempotencyKey: keyIn(k) } });
+  // S3.40 idempotency ไม่ขึ้นกับลำดับบรรทัด · payload ต่างจริง = IDEMPOTENCY_CONFLICT ที่พก saleId ของบิลเดิม
+  const l40open = { productId: PP?.id, qty: 1, openPrice: true, unitPriceSatang: 6000 };
+  const l40plain = { productId: PP?.id, qty: 1 };
+  //   ตามมติตรงตัว: บรรทัดไม่มีส่วนลด [ราคาเปิด 6,000 ของ P, P ปกติ 4,500] — บรรทัด P ปกติที่มาก่อนต้องไม่ "กิน" บรรทัดราคาเปิดที่บันทึกไว้
+  const base40 = { lines: [l40open, l40plain], payMethods: [{ type: "CASH", amountSatang: 4000 }, { type: "PROMPTPAY", amountSatang: 6500 }], cashReceivedSatang: 4000, expectedGrandTotalSatang: 10500 };
+  const k40 = key("order");
+  const s40 = await sub(owner, { idempotencyKey: k40, ...base40 });
+  const s40swap = await sub(owner, { idempotencyKey: k40, ...base40, lines: [l40plain, l40open] });
+  //   แบ่งส่วนลดต่างแต่ยอดเท่า ต้องมีส่วนลดในบิลต้นฉบับ ⇒ คีย์ที่สอง: [ราคาเปิด −500, P ปกติ] ยอด 10,000
+  const base40d = { lines: [{ ...l40open, discount: { type: "AMOUNT", value: 500 } }, l40plain], payMethods: [{ type: "CASH", amountSatang: 4000 }, { type: "PROMPTPAY", amountSatang: 6000 }], cashReceivedSatang: 4000, expectedGrandTotalSatang: 10000 };
+  const k40d = key("order-disc");
+  const s40d = await sub(owner, { idempotencyKey: k40d, ...base40d });
+  const var40: [string, string, Any, Any][] = [
+    ["สินค้าอื่นราคาเท่ากัน", k40, s40, { ...base40, lines: [l40open, { productId: QQ?.id, qty: 1 }] }],
+    ["สมาชิกอื่น", k40, s40, { ...base40, memberId: E.coffee.memberId }],
+    ["แบ่งวิธีจ่ายต่าง", k40, s40, { ...base40, payMethods: [{ type: "CASH", amountSatang: 6500 }, { type: "PROMPTPAY", amountSatang: 4000 }], cashReceivedSatang: 6500 }],
+    ["แบ่งส่วนลดต่าง", k40d, s40d, { ...base40d, lines: [l40open, { ...l40plain, discount: { type: "AMOUNT", value: 500 } }] }],
+  ];
+  const r40: string[] = [];
+  let ok40 = s40d?.ok === true;
+  for (const [label, k, orig, input] of var40) {
+    const r = await sub(owner, { idempotencyKey: k, ...input });
+    const carries = r?.saleId === orig?.saleId && !!orig?.saleId;
+    r40.push(`${label}:${codeOf(r)}${carries ? "+saleId" : ""}`);
+    if (!refused(r, ["IDEMPOTENCY_CONFLICT"]) || !carries) ok40 = false;
+  }
+  const n40 = (await salesByKey(k40)) + (await salesByKey(k40d));
+  chk("P1.3-S3.40", s40?.ok === true && s40swap?.ok === true && s40swap.duplicated === true && s40swap.saleId === s40.saleId && ok40 && n40 === 2,
+    "สลับลำดับ = บิลเดิม duplicated · 4 แบบต่างจริง IDEMPOTENCY_CONFLICT + saleId ของบิลเดิม · คีย์ละบิลเดียว", `${codeOf(s40)}/${codeOf(s40d)} · swap ${codeOf(s40swap)}/dup ${s40swap?.duplicated} · ${r40.join(" ")} · n ${n40}`);
+  // S3.41 key ของบิลที่ void แล้ว — ห้ามตอบ ok (จอจะบอกว่าขายสำเร็จทั้งที่บิลถูกยกเลิก)
+  const k41 = key("voided");
+  const in41 = { idempotencyKey: k41, lines: [{ productId: A?.id, qty: 1 }], payMethods: pay(tA) };
+  const s41 = await sub(owner, in41);
+  let void41 = "";
+  try {
+    if (s41?.ok) await service.voidSale(tid, unit.id, s41.saleId);
+    else void41 = "ไม่มีบิลให้ void";
+  } catch (e) {
+    void41 = (e as Error).message.slice(0, 60);
+  }
+  const s41b = await sub(owner, in41);
+  const st41 = (await saleByKey(k41))?.status;
+  const status41 = s41b?.saleStatus ?? s41b?.status;
+  chk("P1.3-S3.41", s41?.ok === true && !void41 && st41 === "VOIDED" && refused(s41b, ["IDEMPOTENCY_CONFLICT"]) && s41b.saleId === s41.saleId && status41 === "VOIDED" && (await salesByKey(k41)) === 1,
+    "VOIDED → IDEMPOTENCY_CONFLICT + saleId + สถานะ VOIDED", `${codeOf(s41)} void:${void41 || "ok"} st ${st41} · retry ${codeOf(s41b)} saleId:${s41b?.saleId === s41?.saleId} status:${status41}`);
+  // S3.42 สิทธิ์สมาชิกอัตโนมัติ (ส่วนลดระดับ) ยังไม่รองรับในหน้าขาย P1.3 — ปฏิเสธตั้งแต่ quote · ไม่มีแถวใดถูกเขียน
+  let cDisc: Any = null, cPlain: Any = null, fx42 = "";
+  try {
+    const sMem = await P.appSystem.create({ data: { tenantId: tid, type: "MEMBER", name: `${TAG} MEMBER` } });
+    sb.memSysId = sMem.id;
+    await sysSvc.linkUnit(tid, sMem.id, unit.id);
+    const tDisc = await P.memberTierDef.create({ data: { tenantId: tid, systemId: sMem.id, key: `${TAG}-disc`, name: "ระดับมีส่วนลด" } });
+    await P.memberTierBenefit.create({ data: { tenantId: tid, tierDefId: tDisc.id, type: "DISCOUNT_PCT", config: { pct: 10 } } });
+    const tPlain = await P.memberTierDef.create({ data: { tenantId: tid, systemId: sMem.id, key: `${TAG}-plain`, name: "ระดับธรรมดา" } });
+    cDisc = await P.customer.create({ data: { tenantId: tid, memberSystemId: sMem.id, name: `${TAG} สมาชิกมีส่วนลด`, tierDefId: tDisc.id } });
+    sb.customerIds.push(cDisc.id);
+    cPlain = await P.customer.create({ data: { tenantId: tid, memberSystemId: sMem.id, name: `${TAG} สมาชิกธรรมดา`, tierDefId: tPlain.id } });
+    sb.customerIds.push(cPlain.id);
+  } catch (e) {
+    fx42 = (e as Error).message.slice(0, 80);
+  }
+  const quiet = async () => {
+    for (let i = 0; i < 40; i++) {
+      if ((await P.outboxEvent.count({ where: { tenantId: { in: envMod.PQC_TENANT_IDS }, status: "PENDING" } })) === 0) return;
+      await new Promise((r) => setTimeout(r, 500));
+    }
+  };
+  await quiet();
+  const c42a = await snapshotCounts();
+  const q42 = await quote(owner, { lines: [{ productId: A?.id, qty: 1 }], memberId: cDisc?.id ?? "-" });
+  const k42 = key("member-tier");
+  const s42 = await sub(owner, { idempotencyKey: k42, lines: [{ productId: A?.id, qty: 1 }], memberId: cDisc?.id ?? "-", payMethods: pay(tA) });
+  await quiet();
+  const c42b = await snapshotCounts();
+  const drift42 = Object.keys(c42a).filter((k) => c42a[k] !== c42b[k]).map((k) => `${k}:${c42a[k]}→${c42b[k]}`);
+  const k42p = key("member-plain");
+  const s42p = await sub(owner, { idempotencyKey: k42p, lines: [{ productId: A?.id, qty: 1 }], memberId: cPlain?.id ?? "-", payMethods: pay(tA) });
+  const sale42p = await saleByKey(k42p);
+  const MRU = ["MEMBER_RIGHTS_UNSUPPORTED"];
+  chk("P1.3-S3.42", !fx42 && refused(q42, MRU) && noTotals(q42) && refused(s42, MRU) && drift42.length === 0 && s42p?.ok === true && sale42p?.memberId === cPlain?.id && sale42p?.grandTotalSatang === tA,
+    "มีส่วนลดระดับ: quote+submit MEMBER_RIGHTS_UNSUPPORTED · ไม่มีแถวใหม่ · ไม่มีส่วนลด: PAID แนบสมาชิก", `${fx42 ? `fixture:${fx42} · ` : ""}${codeOf(q42)} · ${codeOf(s42)} · drift ${drift42.join(",") || "0"} · plain ${codeOf(s42p)} member:${sale42p?.memberId === cPlain?.id}`);
+  // S3.43 รูปวิธีจ่าย
+  const r43: string[] = [];
+  const zeroEntry = await sub(owner, { idempotencyKey: key("pay-zero-entry"), lines: [{ productId: A?.id, qty: 1 }], payMethods: [{ type: "CASH", amountSatang: 0 }, { type: "PROMPTPAY", amountSatang: tA }] });
+  const zeroOnly = await sub(owner, { idempotencyKey: key("pay-zero-only"), lines: [{ productId: A?.id, qty: 1, discount: { type: "PERCENT", value: 10000 } }], payMethods: [{ type: "CASH", amountSatang: 0 }] });
+  const k43a = key("zero-bill-discount");
+  const z43a = await sub(owner, { idempotencyKey: k43a, lines: [{ productId: A?.id, qty: 1, discount: { type: "PERCENT", value: 10000 } }], payMethods: [] });
+  const k43b = key("zero-bill-open");
+  const z43b = await sub(owner, { idempotencyKey: k43b, lines: [{ productId: NOPRICE?.id, qty: 1, openPrice: true, unitPriceSatang: 0 }], payMethods: [] });
+  const k43c = key("empty-nonzero");
+  const z43c = await sub(owner, { idempotencyKey: k43c, lines: [{ productId: A?.id, qty: 1 }], payMethods: [], expectedGrandTotalSatang: tA });
+  const sale43a = await saleByKey(k43a);
+  const sale43b = await saleByKey(k43b);
+  const pays43 = sale43a ? await P.posPayment.count({ where: { saleId: sale43a.id } }) : -1;
+  r43.push(`0+PP:${codeOf(zeroEntry)}`, `0เดี่ยว:${codeOf(zeroOnly)}`, `ลด100%:${codeOf(z43a)}/${sale43a?.grandTotalSatang}`, `เปิด0:${codeOf(z43b)}/${sale43b?.grandTotalSatang}`, `ว่าง≠0:${codeOf(z43c)}`);
+  chk("P1.3-S3.43", refused(zeroEntry, ["VALIDATION"]) && refused(zeroOnly, ["VALIDATION"]) && z43a?.ok === true && sale43a?.grandTotalSatang === 0 && pays43 === 0 && z43b?.ok === true && sale43b?.grandTotalSatang === 0
+      && refused(z43c, ["PAYMENT_MISMATCH"]) && !(await saleByKey(k43c)),
+    "ยอด 0 ในรายการจ่าย VALIDATION ×2 · บิล 0 + จ่ายว่าง PAID ×2 (0 แถวจ่าย) · ว่างกับยอด ≠ 0 PAYMENT_MISMATCH", r43.join(" · "));
+  // S3.44 ส่งซ้ำทุกไบต์ → เงินทอนเท่าเดิม
+  const in44 = { idempotencyKey: key("same-change"), lines: [{ productId: A?.id, qty: 1 }], payMethods: pay(tA), cashReceivedSatang: tA + 3500 };
+  const s44a = await sub(owner, in44);
+  const s44b = await sub(owner, in44);
+  chk("P1.3-S3.44", s44a?.ok === true && s44a.changeSatang === 3500 && s44b?.ok === true && s44b.duplicated === true && s44b.saleId === s44a.saleId && s44b.changeSatang === s44a.changeSatang,
+    "ทอน 3500 ทั้งสองคำตอบ · duplicated", `${codeOf(s44a)} ${s44a?.changeSatang} · ${codeOf(s44b)} ${s44b?.changeSatang} dup ${s44b?.duplicated}`);
+  // S3.45 สุ่มเทียบ priceCart (client) กับ quoteRegisterCart (server)
+  const cat45 = await call(register, "registerCatalog", ctx, owner, { limit: 200 });
+  const pool45 = ((cat45?.products ?? []) as Any[]).filter((p) => p.priceSatang !== null && p.soldOutReason !== "UNAVAILABLE" && p.requiredOptionGroupCount === 0).slice(0, 40);
+  const vat45 = await call(register, "registerVatConfig", ctx);
+  const vcfg45 = { mode: (vat45?.mode ?? "NONE") as "NONE" | "INCLUDED" | "EXCLUDED", rateBp: Number(vat45?.rateBp ?? 0) };
+  let seed45 = 20261002;
+  const rnd45 = (n: number) => {
+    seed45 = (seed45 * 1103515245 + 12345) % 2147483648;
+    return n <= 0 ? 0 : seed45 % n;
+  };
+  const F45 = ["subtotalSatang", "lineDiscountSatang", "billDiscountSatang", "couponDiscountSatang", "netSatang", "vatSatang", "grandTotalSatang"];
+  let n45 = 0, ok45n = 0, misN45 = 0;
+  const mis45: string[] = [];
+  for (let k = 0; k < 520 && pool45.length >= 10; k++) {
+    const asStaff = rnd45(3) === 0;
+    const a = asStaff ? cashier : owner;
+    const pureLines: Line[] = [];
+    const srvLines: Any[] = [];
+    for (let i = 0, n = 1 + rnd45(6); i < n; i++) {
+      const qty = 1 + rnd45(12);
+      let unitP: number;
+      let srv: Any;
+      if (!asStaff && rnd45(10) === 0) {
+        unitP = rnd45(50000);
+        srv = { name: `สุ่ม ${k}-${i}`, qty, unitPriceSatang: unitP };
+      } else {
+        const p = pool45[rnd45(pool45.length)];
+        const open = !asStaff && rnd45(6) === 0 ? rnd45(100000) : null;
+        unitP = open ?? p.priceSatang;
+        srv = { productId: p.id, qty, ...(open !== null ? { openPrice: true, unitPriceSatang: open } : {}) };
+      }
+      const gross = qty * unitP;
+      const dk = rnd45(5);
+      const disc = dk === 2 ? { type: "AMOUNT" as const, value: rnd45(asStaff ? Math.floor(gross / 8) + 1 : gross + 2) } : dk === 3 ? { type: "PERCENT" as const, value: rnd45(asStaff ? 1300 : 10500) } : undefined;
+      pureLines.push({ qty, unitPriceSatang: unitP, ...(disc ? { discount: disc } : {}) });
+      srvLines.push({ ...srv, ...(disc ? { discount: disc } : {}) });
+    }
+    const bill = rnd45(4) === 0 ? (rnd45(2) ? { type: "AMOUNT" as const, value: rnd45(2000) } : { type: "PERCENT" as const, value: rnd45(asStaff ? 1200 : 3000) }) : undefined;
+    const pr = price({ lines: pureLines, billDiscount: bill, vat: vcfg45, maxDiscountBp: asStaff ? 1000 : null });
+    const sr = await quote(a, { lines: srvLines, ...(bill ? { billDiscount: bill } : {}) });
+    n45++;
+    let same: boolean;
+    if (pr?.ok === true && sr?.ok === true) {
+      ok45n++;
+      same = F45.every((f) => pr[f] === sr[f]) && (pr.lines as Any[]).length === linesOf(sr).length
+        && (pr.lines as Any[]).every((l: Any, i: number) => ["unitPriceSatang", "grossSatang", "discountSatang", "lineTotalSatang"].every((f) => l[f] === linesOf(sr)[i]?.[f]));
+    } else same = pr?.ok === false && sr?.ok === false && pr.code === sr.code;
+    if (!same) {
+      misN45++;
+      if (mis45.length < 3) mis45.push(`#${k}${asStaff ? "S" : "O"} pure ${pr?.ok ? pr.grandTotalSatang : codeOf(pr)} srv ${sr?.ok ? sr.grandTotalSatang : codeOf(sr)}`);
+    }
+  }
+  chk("P1.3-S3.45", pool45.length >= 10 && n45 >= 500 && misN45 === 0 && ok45n >= 300, "≥500 ตะกร้า · 0 ต่าง · ≥300 ตะกร้าคิดได้", `pool ${pool45.length} · n ${n45} ok ${ok45n} · ต่าง ${misN45}: ${mis45.join(" · ") || "-"}`);
+  // S3.46 ผลข้างเคียงเทียบทางเดิม (createSale ของโมดูลอื่น) — สินค้านับสต็อก B
+  const qB46 = await quote(owner, { lines: [{ productId: B?.id, qty: 1 }] });
+  const k46r = key("side-register");
+  const s46r = await sub(owner, { idempotencyKey: k46r, lines: [{ productId: B?.id, qty: 1 }], payMethods: pay(qB46?.grandTotalSatang ?? 9500) });
+  const k46l = key("side-legacy");
+  let leg46 = "";
+  try {
+    await service.createSale({ tenantId: tid, unitId: unit.id, systemId: sPos.id, sourceModule: "POS", idempotencyKey: k46l,
+      lines: [{ name: "ครัวซองต์อัลมอนด์ทดสอบ", qty: 1, unitPriceSatang: 9500, discountSatang: 0, itemId: B?.invItemId }], payMethods: [{ type: "CASH", amountSatang: 9500 }] });
+  } catch (e) {
+    leg46 = (e as Error).message.slice(0, 60);
+  }
+  const shape46 = async (k: string) => {
+    const sale = await P.posSale.findFirst({ where: { tenantId: tid, idempotencyKey: keyIn(k) }, include: { lines: true, payments: true } });
+    if (!sale) return null;
+    const mv = (await P.invMovement.findMany({ where: { tenantId: tid, refType: "PosSale", refId: sale.id } })) as Any[];
+    const ev = ((await P.outboxEvent.findMany({ where: { tenantId: tid, idempotencyKey: { startsWith: `PosSale#${sale.id}#` } }, select: { type: true } })) as Any[]).map((e) => e.type).sort();
+    const gl = (await P.accountJournalEntry.findMany({ where: { tenantId: tid, refType: "InvMovement", refId: { in: mv.map((m) => m.id) } }, include: { lines: true } })) as Any[];
+    const keyOk = mv.every((m) => sale.lines.some((l: Any) => m.idempotencyKey === `pos-consume-${sale.id}-${l.id}`));
+    return {
+      movements: mv.map((m) => `${m.type}:${m.qtyDelta}:${m.itemId === B?.invItemId}`).sort().join(","),
+      keyOk,
+      events: ev.join(","),
+      bridge: JSON.stringify({
+        sale: [sale.status, sale.sourceModule, sale.subtotalSatang, sale.discountSatang, sale.vatSatang, sale.grandTotalSatang, sale.memberId, sale.giftCardId ?? null],
+        lines: sale.lines.map((l: Any) => [l.name, l.qty, l.unitPriceSatang, l.discountSatang, l.lineTotalSatang, l.itemId, l.serviceId]),
+        payments: sale.payments.map((p: Any) => [p.type, p.amountSatang]),
+      }),
+      cogs: gl.map((e) => e.lines.map((l: Any) => `${l.accountId}:${l.debit}:${l.credit}`).sort().join("|")).sort().join(" / "),
+    };
+  };
+  const sh46r = await shape46(k46r);
+  const sh46l = await shape46(k46l);
+  const sameSide = !!sh46r && !!sh46l && sh46r.movements === sh46l.movements && sh46r.movements === "OUT:-1:true" && sh46r.keyOk && sh46l.keyOk && sh46r.events === sh46l.events && sh46r.events.includes("pos.sale.paid") && sh46r.bridge === sh46l.bridge && sh46r.cogs === sh46l.cogs;
+  // (a) AUTO ที่ไม่เคยมีสต็อก: ขายผ่านหน้าใหม่ไม่ตัดสต็อก (C2) — ความต่างที่รับรองจากทางเดิม (ทางเดิมผูก itemId แล้วตัด)
+  const qN46 = await quote(owner, { lines: [{ productId: NEVER?.id, qty: 1 }] });
+  const k46n = key("side-never");
+  const s46n = qN46?.ok ? await sub(owner, { idempotencyKey: k46n, lines: [{ productId: NEVER?.id, qty: 1 }], payMethods: pay(qN46.grandTotalSatang) }) : qN46;
+  const l46n = await lineOfSale(k46n);
+  const mvN = NEVER ? await P.invMovement.count({ where: { tenantId: tid, itemId: NEVER.invItemId } }) : -1;
+  const vN = NEVER ? await bySku(`${TAG}-NEVER`) : null;
+  const okNever = s46n?.ok === true && l46n?.productId === NEVER?.id && l46n?.itemId === null && mvN === 0 && (NEVER ? await onHandOf(NEVER.invItemId) : NaN) === 0 && vN?.trackStock === false && vN?.soldOut === false;
+  // (b) บริการจากแคตตาล็อก: serviceId = InvItem · ไม่ตัดสต็อก (R5) — บัญชีรายได้ที่ bridge ใช้ = บันทึกในโน้ต (ค่าที่สังเกต)
+  const k46s = key("side-service");
+  const s46s = await sub(owner, { idempotencyKey: k46s, lines: [{ productId: SVC?.id, qty: 1 }], payMethods: pay(30000) });
+  const l46s = await lineOfSale(k46s);
+  const sale46s = await saleByKey(k46s);
+  const mvS = sale46s ? await outMoves(sale46s.id) : -1;
+  const okSvc = s46s?.ok === true && l46s?.serviceId === SVC?.invItemId && l46s?.itemId === null && l46s?.productId === SVC?.id && mvS === 0;
+  chk("P1.3-S3.46", !leg46 && sameSide && okNever && okSvc, "B: movement/outbox/ข้อมูล bridge/COGS เท่าทางเดิม · AUTO ไม่เคยมีสต็อก ไม่ตัด · บริการ serviceId ไม่ตัด",
+    `legacy:${leg46 || "ok"} · reg ${short(sh46r && { m: sh46r.movements, k: sh46r.keyOk, e: sh46r.events, c: sh46r.cogs.length }, 140)} · same:${sameSide} · never:${okNever} (${codeOf(s46n)} item ${l46n?.itemId} mv ${mvN}) · svc:${okSvc} (${codeOf(s46s)} mv ${mvS})`);
+  // S3.47 wildcard pos.* = ตั้งราคาเปิดได้ (rbac วันนี้) · มีแค่ pos.sale.create = ไม่ได้
+  const staffW = { ...cashier, permissions: { "pos.*": true } };
+  const k47a = key("wild-open");
+  const s47a = await sub(staffW, { idempotencyKey: k47a, ...openQ, payMethods: pay(4200) });
+  const l47a = await lineOfSale(k47a);
+  const k47b = key("create-only-open");
+  const s47b = await sub({ ...cashier, permissions: { "pos.sale.create": true } }, { idempotencyKey: k47b, ...openQ, payMethods: pay(4200) });
+  chk("P1.3-S3.47", s47a?.ok === true && l47a?.unitPriceSatang === 4200 && refused(s47b, ["PERMISSION_DENIED"]) && !(await saleByKey(k47b)),
+    "pos.* → PAID @4200 · pos.sale.create อย่างเดียว → PERMISSION_DENIED", `${codeOf(s47a)} @${l47a?.unitPriceSatang} · ${codeOf(s47b)}`);
+  // S3.48 รูปแบบ idempotencyKey
+  const bad48: [string, unknown][] = [["ว่าง", ""], ["ช่องว่างล้วน", "   \t "], ["ตัวเลข", 12345], ["ยาว101", `${KTAG}-k101-`.padEnd(101, "x")]];
+  const r48: string[] = [];
+  let ok48 = true;
+  for (const [label, k] of bad48) {
+    const r = await sub(owner, { idempotencyKey: k, lines: [{ productId: A?.id, qty: 1 }], payMethods: pay(tA) });
+    const made = typeof k === "string" ? !!(await saleByKey(k)) : false;
+    r48.push(`${label}:${codeOf(r)}${made ? "+บิล" : ""}`);
+    if (!refused(r, ["VALIDATION"]) || made) ok48 = false;
+  }
+  const k48ok = `${KTAG}-k100-`.padEnd(100, "y"); // R4 K1: '.' ของ TAG ไม่อยู่ในชุดอักขระคีย์
+  const s48ok = await sub(owner, { idempotencyKey: k48ok, lines: [{ productId: A?.id, qty: 1 }], payMethods: pay(tA) });
+  chk("P1.3-S3.48", ok48 && s48ok?.ok === true, "ว่าง/ช่องว่าง/ตัวเลข/101 → VALIDATION ไม่มีบิล · 100 ตัว PAID", `${r48.join(" ")} · 100:${codeOf(s48ok)}`);
+  // S3.49 เพดานส่วนลด vs การปัด ที่ quote ของเซิร์ฟเวอร์ (กรณีเดียวกับ S2.15 · STAFF)
+  const byPrice49: Record<number, Any> = { 3335: P3335, 3333: P3333, 12345: P12345, 10000: P10000 };
+  const r49 = [] as { label: string; got: string; want: string }[];
+  for (const [label, lines, bill, want] of ROUNDING_CASES) {
+    const q = await quote(cashier, { lines: lines.map((l) => ({ productId: byPrice49[l.unitPriceSatang]?.id ?? "-", qty: l.qty, ...(l.discount ? { discount: l.discount } : {}) })), ...(bill ? { billDiscount: bill } : {}) });
+    r49.push({ label, got: q?.ok === true ? `OK:${q.grandTotalSatang}` : codeOf(q), want });
+  }
+  const bad49 = r49.filter((x) => x.got !== x.want);
+  chk("P1.3-S3.49", bad49.length === 0, ROUNDING_CASES.map(([l, , , w]) => `${l}=${w}`).join(" · "), bad49.map((x) => `${x.label}:${x.got}≠${x.want}`).join(" · ") || "ตรงทุกกรณี");
+
+  // ─── S3 รอบ R4 (ผู้ล่าโค้ด 5f97add4 · มติ K1–K5 · สูตร probe 1/2/3/5 ของผู้ล่า) ───
+  console.log("\n── S3 รอบ R4 (K1–K5) ──");
+  /** แถวที่ "ยึด" คีย์ดิบนี้ตรงตัว (ไม่ผ่าน keyIn — คือสิ่งที่ hotel/service.ts ใช้หา hotel-sale-<id>) */
+  const rawRow = async (k: string) => P.posSale.findUnique({ where: { tenantId_idempotencyKey: { tenantId: tid, idempotencyKey: k } } });
+  const posSaleById = async (id: unknown) => (typeof id === "string" ? P.posSale.findFirst({ where: { id, tenantId: tid } }) : null);
+  const legacySale = async (input: Any): Promise<Any> => {
+    try {
+      return await service.createSale({ tenantId: tid, unitId: unit.id, systemId: sPos.id, ...input });
+    } catch (e) {
+      return { ok: false, code: (e as Error).message.slice(0, 80) };
+    }
+  };
+  // สินค้า R4 สองตัว (catalog · ทุกสาขา · ไม่ผูกคลัง ⇒ ขายได้ทั้งสาขา sandbox และสาขา 2): R4P = K1/K2/K4 · R4R = K3 (ถูกเปลี่ยนราคา)
+  let R4P: Any = null, R4R: Any = null, fxR4 = "";
+  try {
+    R4P = await mkFree(`สินค้า R4 ${TAG}`, 3000);
+    R4R = await mkFree(`สินค้า R4 แข่ง ${TAG}`, 4000);
+  } catch (e) {
+    fxR4 = (e as Error).message.slice(0, 80);
+  }
+  const lR4 = [{ productId: R4P?.id ?? "-", qty: 1 }];
+  const tR4 = (await quote(owner, { lines: lR4 }))?.grandTotalSatang ?? 3000;
+
+  // S3.50 K1 — probe 1: ยึดคีย์ hotel-sale-<reservationId> ผ่านหน้าขาย แล้วเช็คเอาท์ (ทางเดียวกับ hotel/service.ts: pos.createSale HOTEL คีย์เดียวกัน)
+  const r50: string[] = [];
+  let ok50 = !fxR4 && !!R4P;
+  {
+    const kSq = `hotel-sale-${KTAG}-resv1`;
+    const s = await sub(owner, { idempotencyKey: kSq, lines: lR4, payMethods: pay(tR4) });
+    const occupied = await rawRow(kSq);
+    const own = s?.ok ? await posSaleById(s.saleId) : null;
+    const h = await legacySale({ sourceModule: "HOTEL", sourceId: `${KTAG}-resv1`, idempotencyKey: kSq, lines: [{ name: "ค่าห้อง 1 คืน", qty: 1, unitPriceSatang: 150000 }], payMethods: [{ type: "CASH", amountSatang: 150000 }] });
+    const hRow = await rawRow(kSq);
+    const okSq = s?.ok === true && !occupied && own?.idempotencyKey === `${REG_NS}${kSq}` && own?.sourceModule === "POS"
+      && typeof h?.saleId === "string" && h.saleId !== s.saleId && hRow?.id === h.saleId && hRow?.sourceModule === "HOTEL" && hRow?.grandTotalSatang === 150000 && hRow?.status === "PAID";
+    r50.push(`squat:${codeOf(s)} เก็บ=${own?.idempotencyKey === `${REG_NS}${kSq}` ? "reg2:…" : short(own?.idempotencyKey, 40)} ยึดดิบ:${!!occupied} เช็คเอาท์:${h?.saleId === s?.saleId ? "ได้บิลหน้าขาย❌" : hRow?.sourceModule ?? short(h?.code, 40)}/${hRow?.grandTotalSatang}`);
+    if (!okSq) ok50 = false;
+  }
+  {
+    // บิลโรงแรมมาก่อน → submit คีย์เดียวกันต้องไม่ "เจอ" บิลนั้น (ไม่ duplicated · ไม่ CONFLICT · ไม่มี id/เลขใบเสร็จรั่ว) และบิลโรงแรมไม่ถูกแตะ
+    const kH = `hotel-sale-${KTAG}-resv2`;
+    const h = await legacySale({ sourceModule: "HOTEL", sourceId: `${KTAG}-resv2`, idempotencyKey: kH, lines: [{ name: "ค่าห้อง 2 คืน", qty: 1, unitPriceSatang: 120000 }], payMethods: [{ type: "CASH", amountSatang: 120000 }] });
+    const s = await sub(owner, { idempotencyKey: kH, lines: lR4, payMethods: pay(tR4) });
+    const js = JSON.stringify(s ?? {});
+    const hRow = await rawRow(kH);
+    const okH = typeof h?.saleId === "string" && s?.ok === true && s.saleId !== h.saleId && s.duplicated !== true && !js.includes(h.saleId) && !(h.receiptNo && js.includes(h.receiptNo))
+      && hRow?.id === h.saleId && hRow?.grandTotalSatang === 120000 && hRow?.sourceModule === "HOTEL";
+    r50.push(`โรงแรมก่อน:${codeOf(s)}${s?.saleId === h?.saleId ? " (ได้บิลโรงแรม❌)" : ""}`);
+    if (!okH) ok50 = false;
+  }
+  for (const pre of ["rental-", "rental-deposit-", "booking-deposit-"]) {
+    const k = `${pre}${KTAG}-x`;
+    const s = await sub(owner, { idempotencyKey: k, lines: lR4, payMethods: pay(tR4) });
+    const occ = await rawRow(k);
+    r50.push(`${pre}:${codeOf(s)}${occ ? " ยึดดิบ❌" : ""}`);
+    if (s?.ok !== true || occ) ok50 = false;
+  }
+  {
+    const r8 = (RAND + "zzzzzz").slice(0, 6);
+    const badK: [string, string][] = [["7ตัว", `R4${r8.slice(0, 5)}`], ["จุด", `${KTAG}.dot`], ["โคลอน", `${REG_NS}${KTAG}`], ["ไทย", `${KTAG}-ไทย`], ["ช่องว่าง", `${KTAG} sp`]];
+    for (const [label, k] of badK) {
+      const s = await sub(owner, { idempotencyKey: k, lines: lR4, payMethods: pay(tR4) });
+      const made = !!(await saleByKey(k));
+      r50.push(`${label}:${codeOf(s)}${made ? "+บิล" : ""}`);
+      if (!refused(s, ["VALIDATION"]) || made) ok50 = false;
+    }
+    // คีย์นอก KTAG สองตัวนี้ถูกลบใน cleanup ผ่านบิลของสาขา sandbox (orUnits)
+    const goodK: [string, string][] = [["8ตัว", `R4${r8}`], ["UUID", randomUUID()]];
+    for (const [label, k] of goodK) {
+      const s = await sub(owner, { idempotencyKey: k, lines: lR4, payMethods: pay(tR4) });
+      const row = s?.ok ? await posSaleById(s.saleId) : null;
+      r50.push(`${label}:${codeOf(s)}`);
+      if (s?.ok !== true || row?.idempotencyKey !== `${REG_NS}${k}` || (await rawRow(k))) ok50 = false;
+    }
+  }
+  chk("P1.3-S3.50", ok50, "reg2: namespace · hotel-sale-/rental-/booking-deposit- ไม่ถูกยึด · เช็คเอาท์ได้บิลของตัวเอง · ชุดอักขระ/ความยาวคีย์ตาม K1",
+    `${fxR4 ? `fixture:${fxR4} · ` : ""}${r50.join(" · ")}`);
+
+  // S3.51 K2 — probe 2: คีย์ข้ามสาขา ⇒ CONFLICT เปล่า (ไม่บอกว่าสาขาอื่นมีบิลอะไร)
+  const r51: string[] = [];
+  let ok51 = !fxR4;
+  {
+    const c2 = { tenantId: tid, systemId: sPos.id, unitId: unit2.id };
+    const k51 = key("xbranch");
+    const in51 = { idempotencyKey: k51, lines: lR4, payMethods: pay(tR4) };
+    const in51b = { ...in51, lines: [{ ...lR4[0], qty: 2 }], payMethods: pay(tR4 * 2) };
+    const s = await sub(owner, in51, undefined, c2);
+    const row = s?.ok ? await posSaleById(s.saleId) : null;
+    const secrets = [s?.saleId, row?.receiptNo, unit2.id].filter((x): x is string => typeof x === "string" && x.length > 0);
+    const leaks = (r: Any) => secrets.some((x) => JSON.stringify(r ?? {}).includes(x));
+    const bare = (r: Any) => refused(r, ["IDEMPOTENCY_CONFLICT"]) && r.saleId == null && r.receiptNo == null && r.saleStatus == null && !leaks(r);
+    const xs: [string, Any][] = [
+      ["เจ้าของ payload เดิม", await sub(owner, in51)],
+      ["เจ้าของ payload ต่าง", await sub(owner, in51b)],
+      ["แคชเชียร์ sandbox", await sub(cashier, in51)],
+    ];
+    const pDup = await sub(owner, in51, undefined, c2);
+    const pCon = await sub(owner, in51b, undefined, c2);
+    const n = await salesByKey(k51);
+    const okX = s?.ok === true && row?.unitId === unit2.id && xs.every(([, r]) => bare(r)) && pDup?.ok === true && pDup.duplicated === true && pDup.saleId === s.saleId
+      && refused(pCon, ["IDEMPOTENCY_CONFLICT"]) && pCon.saleId === s.saleId && n === 1;
+    r51.push(`สาขา2:${codeOf(s)} · ${xs.map(([l, r]) => `${l}:${codeOf(r)}${r?.saleId ? "+saleId❌" : ""}${r?.receiptNo ? "+receiptNo❌" : ""}${r?.saleStatus ? "+status❌" : ""}${leaks(r) ? "+รั่ว❌" : ""}`).join(" ")} · คู่บวก dup:${pDup?.duplicated}/${pDup?.saleId === s?.saleId} con:${codeOf(pCon)}/${pCon?.saleId === s?.saleId} · n ${n}`);
+    if (!okX) ok51 = false;
+  }
+  {
+    // บิลของโมดูลอื่น (sourceModule HOTEL) ที่ถือคีย์รูป reg2:… สาขาเดียวกัน (เช่นมาจาก actions/pos.ts เดิมที่รับคีย์อะไรก็ได้ · O23)
+    const kF = key("foreign-src");
+    const h = await legacySale({ sourceModule: "HOTEL", sourceId: `${KTAG}-src`, idempotencyKey: `${REG_NS}${kF}`, lines: [{ name: "ค่าห้อง (โมดูลอื่น)", qty: 1, unitPriceSatang: 2100 }], payMethods: [{ type: "CASH", amountSatang: 2100 }] });
+    const s = await sub(owner, { idempotencyKey: kF, lines: lR4, payMethods: pay(tR4) });
+    const js = JSON.stringify(s ?? {});
+    const n = await salesByKey(kF);
+    const okF = typeof h?.saleId === "string" && refused(s, ["IDEMPOTENCY_CONFLICT"]) && s.saleId == null && s.receiptNo == null && s.saleStatus == null && !js.includes(h.saleId) && !(h.receiptNo && js.includes(h.receiptNo)) && n === 1;
+    r51.push(`โมดูลอื่น reg2:…:${codeOf(s)}${s?.saleId ? "+saleId❌" : ""} n ${n}${typeof h?.saleId === "string" ? "" : ` fixture:${short(h?.code, 40)}`}`);
+    if (!okF) ok51 = false;
+  }
+  chk("P1.3-S3.51", ok51, "ข้ามสาขา/โมดูลอื่น: CONFLICT เปล่า ไม่มี saleId/receiptNo/saleStatus/unitId รั่ว · คู่บวกสาขาเดียวกันยังพก saleId · คีย์ละบิลเดียว", r51.join(" ; "));
+
+  // S3.52 K3 — probe 3: คำขอแรกค้างใน tx (ล็อกแถวตัวนับใบเสร็จของสาขา sandbox จาก connection อื่น) · ราคาเปลี่ยน ·
+  //   client (หลัง K3) ส่งตะกร้าที่คิดราคาใหม่ด้วยคีย์เดิม → ต้องจบที่บิลเดียว (เส้น P2002) · ล็อกค้างรวม ≈2.5 วิ < 5 วิ (tx ปริยายของ Prisma)
+  const r52: string[] = [];
+  let ok52 = !fxR4 && !!R4R;
+  if (ok52) {
+    const lR = [{ productId: R4R.id, qty: 1 }];
+    const tA52 = (await quote(owner, { lines: lR }))?.grandTotalSatang ?? 4000;
+    const k52 = key("race-reprice");
+    const holder = await lane(0);
+    const subLane1 = await lane(1);
+    const subLane2 = await lane(2);
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => (release = r));
+    let lockedN = -1;
+    let fx52 = "";
+    let onLocked: () => void = () => {};
+    const lockedP = new Promise<void>((r) => (onLocked = r));
+    const holdP = (holder.$transaction(async (tx: Any) => {
+      const rows = (await tx.$queryRaw`SELECT id FROM "PosReceiptCounter" WHERE "unitId" = ${unit.id} FOR UPDATE`) as Any[];
+      lockedN = rows.length;
+      onLocked();
+      await gate;
+    }, { timeout: 30000, maxWait: 10000 }) as Promise<unknown>).catch((e: unknown) => {
+      fx52 ||= `lock:${String((e as Error)?.message ?? e).slice(0, 60)}`;
+      onLocked();
+    });
+    await lockedP;
+    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    const track = (p: Promise<Any>) => {
+      const st = { done: false };
+      p.then(() => (st.done = true), () => (st.done = true));
+      return st;
+    };
+    let p1: Promise<Any> = Promise.resolve({ ok: false, code: "NOT_STARTED" });
+    let p2: Promise<Any> = Promise.resolve({ ok: false, code: "NOT_STARTED" });
+    let blocked1 = false, blocked2 = false, tB52 = -1;
+    try {
+      if (lockedN > 0) {
+        p1 = sub(owner, { idempotencyKey: k52, lines: lR, payMethods: pay(tA52) }, subLane1);
+        const st1 = track(p1);
+        await sleep(1500);
+        blocked1 = !st1.done;
+        must("setPrice(R4R)", await call(catalog, "setPrice", cctx, R4R.id, 4500));
+        tB52 = (await quote(owner, { lines: lR }))?.grandTotalSatang ?? -1;
+        p2 = sub(owner, { idempotencyKey: k52, lines: lR, payMethods: pay(tB52) }, subLane2);
+        const st2 = track(p2);
+        await sleep(800);
+        blocked2 = !st2.done;
+      } else fx52 ||= `ไม่มีแถวตัวนับให้ล็อก (${lockedN})`;
+    } catch (e) {
+      fx52 ||= (e as Error).message.slice(0, 60);
+    } finally {
+      release();
+    }
+    await holdP;
+    const [a, b] = await Promise.all([p1, p2]);
+    const rows52 = (await P.posSale.findMany({ where: { tenantId: tid, idempotencyKey: keyIn(k52) }, include: { payments: true } })) as Any[];
+    const row = rows52[0];
+    const bad = (r: Any) => r?.threw === true || ["INTERNAL", "BUSY", "UNKNOWN", "THROW", "NOT_STARTED"].includes(String(r?.code));
+    const winner = [a, b].filter((r) => r?.ok === true && r.duplicated !== true);
+    const loserOk = (r: Any) => (r?.ok === true && r.duplicated === true && r.saleId === row?.id) || (refused(r, ["IDEMPOTENCY_CONFLICT"]) && (r.saleId == null || r.saleId === row?.id));
+    const other = winner.length === 1 ? [a, b].find((r) => r !== winner[0]) : null;
+    ok52 = !fx52 && lockedN > 0 && blocked1 && rows52.length === 1 && row?.status === "PAID" && winner.length === 1 && winner[0].saleId === row.id && !!other && loserOk(other)
+      && !bad(a) && !bad(b) && [tA52, tB52].includes(row.grandTotalSatang) && (row.payments as Any[]).reduce((t: number, p: Any) => t + p.amountSatang, 0) === row.grandTotalSatang;
+    r52.push(`${fx52 ? `fixture:${fx52} · ` : ""}ล็อก ${lockedN} แถว · ค้าง1:${blocked1} ค้าง2:${blocked2} · ราคา ${tA52}→${tB52} · ตอบ1 ${codeOf(a)}${a?.duplicated ? "/dup" : ""} · ตอบ2 ${codeOf(b)}${b?.duplicated ? "/dup" : ""} · บิล ${rows52.length} ${row?.status ?? "-"} ยอด ${row?.grandTotalSatang ?? "-"}`);
+  } else r52.push(`fixture:${fxR4 || "ไม่มีสินค้า R4R"}`);
+  chk("P1.3-S3.52", ok52, "คำขอค้าง+คีย์เดิมตะกร้าคิดราคาใหม่ → บิล PAID เดียว · ok หนึ่ง + dup|CONFLICT หนึ่ง · ไม่มี INTERNAL/BUSY/THROW", r52.join(""));
+
+  // S3.53 K4 — probe 5: ส่งซ้ำคีย์เดิมด้วยเงินรับต่าง ⇒ ห้ามทอนติดลบ (ลำดับตรวจเดียวกับครั้งแรก — ปฏิเสธดีกว่า)
+  const r53: string[] = [];
+  let ok53 = !fxR4;
+  {
+    const k53 = key("replay-change");
+    const in53 = { idempotencyKey: k53, lines: lR4, payMethods: pay(tR4), cashReceivedSatang: tR4 + 500, expectedGrandTotalSatang: tR4 };
+    const s = await subRaw(owner, in53);
+    const { cashReceivedSatang: _c, ...noRecv } = in53;
+    // มติผู้คุมงาน (คำถาม r4 ข้อ 3): ต้องปฏิเสธด้วยรหัสเดียวกับการส่งครั้งแรก (S3.39 · S3.36) ก่อนดูคีย์ — ทอน ≥ 0 อย่างเดียวไม่พอ
+    const reps: [string, Any, string][] = [
+      ["รับ0", await subRaw(owner, { ...in53, cashReceivedSatang: 0 }), "PAYMENT_MISMATCH"],
+      ["รับขาด1", await subRaw(owner, { ...in53, cashReceivedSatang: tR4 - 1 }), "PAYMENT_MISMATCH"],
+      ["ไม่ส่ง", await subRaw(owner, noRecv), "PAYMENT_MISMATCH"],
+      ["ติดลบ", await subRaw(owner, { ...in53, cashReceivedSatang: -500 }), "VALIDATION"],
+    ];
+    const same = await subRaw(owner, in53);
+    const okRep = (r: Any, want: string) => refused(r, [want]) && r.changeSatang === undefined && r.saleId == null;
+    const n = await salesByKey(k53);
+    ok53 = ok53 && s?.ok === true && s.changeSatang === 500 && reps.every(([, r, want]) => okRep(r, want)) && same?.ok === true && same.duplicated === true && same.changeSatang === 500 && n === 1;
+    r53.push(`แรก ${codeOf(s)} ทอน ${s?.changeSatang} · ${reps.map(([l, r, w]) => `${l}:${codeOf(r)}${r?.ok ? ` ทอน ${r.changeSatang}` : ""}(≠${w})`).join(" ")} · ซ้ำเดิม ทอน ${same?.changeSatang}/dup ${same?.duplicated} · n ${n}`);
+  }
+  chk("P1.3-S3.53", ok53, "ส่งซ้ำ: เงินรับ 0/ขาด/ไม่ส่ง → PAYMENT_MISMATCH · ติดลบ → VALIDATION (ปฏิเสธเท่านั้น เหมือนครั้งแรก) · บิลเดียว · payload เดิมทอน 500", r53.join(""));
+
+  // S3.54 m2 — คงมติ S3.47 (wildcard pos.* = ทุกคีย์ pos.*) · บันทึกให้เห็นว่า STAFF pos.* ทำรายการกำหนดเองได้เมื่อเปิด V2
+  {
+    const staffW54 = { ...cashier, permissions: { "pos.*": true } };
+    const q54 = await quote(staffW54, custom);
+    const k54 = key("wild-custom");
+    const s54 = await sub(staffW54, { idempotencyKey: k54, ...custom, payMethods: pay(2000) });
+    const l54 = await lineOfSale(k54);
+    chk("P1.3-S3.54", q54?.ok === true && q54.grandTotalSatang === 2000 && s54?.ok === true && l54?.unitPriceSatang === 2000 && l54?.productId === null,
+      "STAFF pos.*: quote 2000 + PAID รายการกำหนดเอง @2000 (พฤติกรรมที่รับรอง · ไม่ใช่บั๊ก)", `quote ${codeOf(q54)}/${q54?.grandTotalSatang} · submit ${codeOf(s54)} @${l54?.unitPriceSatang} prod ${short(l54?.productId)}`);
+  }
+
   // ─── S4 แถบสถานะ ───
   console.log("\n── S4 แถบสถานะ ──");
   const st = await call(register, "registerStatus", ctx, owner);
@@ -1159,6 +2487,45 @@ async function runDb() {
   const x4b = await call(register, "registerStatus", { tenantId: tid, systemId: posSys, unitId: ari }, cashierReal);
   const x4c = await call(register, "registerStatus", { tenantId: tid, systemId: posSys, unitId: silom }, cashierReal);
   chk("P1.3-S4.4", refused(x4a, ["NOT_FOUND"]) && refused(x4b, ["NOT_FOUND"]) && x4c?.ok === true, "NOT_FOUND · NOT_FOUND · สีลม ok", `${codeOf(x4a)} · ${codeOf(x4b)} · ${codeOf(x4c)}`);
+  // S4.5 Q23 รหัสบทบาท (จออังกฤษแปลจากรหัส — roleLabel เป็นภาษาไทยจากเซิร์ฟเวอร์)
+  const manager4 = actor(mCash, E.coffee.users.cashier.userId, { role: "MANAGER", unitAccess: [unit.id], permissions: {} });
+  const r45 = [] as Any[];
+  for (const a of [owner, manager4, cashier]) r45.push(await call(register, "registerStatus", ctx, a));
+  const roles45 = r45.map((r) => String(r?.user?.role)).join(",");
+  const labels45 = r45.every((r) => r?.ok === true && typeof r.user?.roleLabel === "string" && !!r.user.roleLabel && !/^(OWNER|MANAGER|STAFF)$/.test(r.user.roleLabel));
+  chk("P1.3-S4.5", roles45 === "OWNER,MANAGER,STAFF" && labels45, "OWNER,MANAGER,STAFF · roleLabel ภาษาคน", `${roles45} · labels ${labels45} (${r45.map(codeOf).join(",")})`);
+  // S4.6 Q25 registerVatConfig(ctx) — ค่าเดียวกับที่ quote ใช้ (หน้าเพจส่งให้ client คิดยอดทันใจก่อน quote แรก)
+  const vatOf = async (c: Any) => {
+    const r = await call(register, "registerVatConfig", c);
+    return r?.ok === false ? { err: codeOf(r) } : { mode: r?.mode ?? r?.vatMode, rateBp: r?.rateBp ?? r?.vatRateBp };
+  };
+  const vSb = await vatOf(ctx);
+  const qSb = await quote(owner, { lines: [{ productId: A?.id, qty: 1 }] });
+  const vSi = await vatOf(cSilom);
+  const qSi = amer ? await quote(owner, { lines: [{ productId: amer.id, qty: 1 }] }, cSilom) : { ok: false, code: "NO_AMER" };
+  const vatSame = (v: Any, q: Any) => !v.err && q?.ok === true && v.mode === q.vatMode && v.rateBp === q.vatRateBp && ["INCLUDED", "NONE"].includes(v.mode) && Number.isInteger(v.rateBp);
+  chk("P1.3-S4.6", vatSame(vSb, qSb) && vatSame(vSi, qSi), "sandbox + สีลม: {mode, rateBp} = quote · INCLUDED|NONE", `sb ${short(vSb)} vs ${qSb?.vatMode}/${qSb?.vatRateBp} · silom ${short(vSi)} vs ${qSi?.vatMode}/${qSi?.vatRateBp}`);
+  // S4.7 รอตัดสต็อก: บิล PAID วันนี้ที่บรรทัดผูกสต็อกยังไม่มี movement คีย์ pos-consume-<sale>-<line> (สร้างใน tx ของผู้อื่น = ไม่ตัดหลัง commit)
+  const p47a = (await call(register, "registerStatus", ctx, owner))?.pendingStockCount;
+  const k47s = key("pending-2");
+  let p47fx = "";
+  try {
+    await P.$transaction((tx: Any) =>
+      service.createSale({ tenantId: tid, unitId: unit.id, systemId: sPos.id, idempotencyKey: k47s, lines: [{ name: "รอตัดสต็อก 2", qty: 1, unitPriceSatang: 700, itemId: C?.invItemId }], payMethods: [{ type: "CASH", amountSatang: 700 }] }, tx),
+    );
+  } catch (e) {
+    p47fx = (e as Error).message.slice(0, 60);
+  }
+  const p47b = (await call(register, "registerStatus", ctx, owner))?.pendingStockCount;
+  const sale47 = await saleByKey(k47s);
+  const line47 = sale47 ? await P.posSaleLine.findFirst({ where: { saleId: sale47.id } }) : null;
+  try {
+    if (sale47 && line47) await inventory.consume(invCtx, { itemId: C?.invItemId, qty: 1, sourceModule: "POS", refType: "PosSale", refId: sale47.id, idempotencyKey: `pos-consume-${sale47.id}-${line47.id}` });
+  } catch (e) {
+    p47fx += ` consume:${(e as Error).message.slice(0, 60)}`;
+  }
+  const p47c = (await call(register, "registerStatus", ctx, owner))?.pendingStockCount;
+  chk("P1.3-S4.7", !p47fx && Number.isInteger(p47a) && p47b === p47a + 1 && p47c === p47a, "n → n+1 (ไม่มี movement) → n (มี movement คีย์ pos-consume)", `${p47fx ? `fixture:${p47fx} · ` : ""}${short(p47a)} → ${short(p47b)} → ${short(p47c)}`);
 }
 
 // ═════════════════════════ 6. คืนสภาพ (ลบทุกอย่างที่ข้อสอบสร้าง) ═════════════════════════
@@ -1175,7 +2542,8 @@ async function del(model: string, where: Any): Promise<number> {
 async function cleanup() {
   const tids = envMod.PQC_TENANT_IDS as string[];
   const orUnits = sb.unitId ? [{ unitId: sb.unitId }] : [];
-  const sales = (await P.posSale.findMany({ where: { tenantId: { in: tids }, OR: [{ idempotencyKey: { startsWith: TAG } }, ...orUnits] }, select: { id: true } })) as Any[];
+  // R4: คีย์หน้าขายหลัง K1 = 'reg2:'+KTAG… · คีย์ hotel-sale-/rental-…KTAG ของ S3.50 · บิลสาขา 2 ของ S3.51
+  const sales = (await P.posSale.findMany({ where: { tenantId: { in: tids }, OR: [{ idempotencyKey: { startsWith: TAG } }, { idempotencyKey: { contains: KTAG } }, ...orUnits, ...(sb.unit2Id ? [{ unitId: sb.unit2Id }] : [])] }, select: { id: true } })) as Any[];
   const saleIds = sales.map((s) => s.id);
   // สินค้า/หมวดที่ catalog สร้างในระบบ POS sandbox (รวมที่ข้อสอบไม่รู้ id) — รวบไว้ก่อนลบ audit/ตารางลูก
   if (sb.posSysId && typeof P.posProduct?.findMany === "function") {
@@ -1208,6 +2576,16 @@ async function cleanup() {
   counts.product = sb.productIds.length ? await del("posProduct", { id: { in: sb.productIds } }) : 0;
   if (sb.posSysId) counts.productBySystem = await del("posProduct", { tenantId: { in: tids }, systemId: sb.posSysId }); // ที่ catalog สร้างเองโดยข้อสอบไม่รู้ id
   counts.category = sb.categoryIds.length ? await del("posCategory", { id: { in: sb.categoryIds } }) : 0;
+  // รอบ 3: กลุ่มตัวเลือกของ fixture Q6 (ลิงก์ PosProductOptionGroup ลบไปพร้อมสินค้าแล้วด้านบน) — ลบตัวเลือกก่อนกลุ่ม (FK)
+  if (sb.unitId || sb.menuGroupIds.length) {
+    const gw = { tenantId: { in: tids }, OR: [{ id: { in: sb.menuGroupIds } }, ...(sb.unitId ? [{ unitId: sb.unitId }] : [])] };
+    const gids = typeof P.menuOptionGroup?.findMany === "function" ? ((await P.menuOptionGroup.findMany({ where: gw, select: { id: true } })) as Any[]).map((g) => g.id) : [];
+    if (gids.length) {
+      await del("posProductOptionGroup", { tenantId: { in: tids }, groupId: { in: gids } });
+      await del("menuOptionChoice", { groupId: { in: gids } });
+      counts.menuGroup = await del("menuOptionGroup", { id: { in: gids } });
+    }
+  }
   for (const sbInv of [sb.invSysId, sb.invSys2Id].filter(Boolean)) {
     // 🔴 inventory.receive/consume โพสต์ GL เข้าระบบบัญชี "ตัวแรกของร้าน" (inventory/service.ts postMovementGl) แม้ระบบคลัง
     //    sandbox ไม่ได้ผูกบัญชี ⇒ ต้องลบ AccountJournalEntry refType InvMovement ของ movement ชั่วคราวก่อน (บรรทัดลบตาม cascade)
@@ -1227,10 +2605,29 @@ async function cleanup() {
       /* แถวหาย = ไม่มีอะไรให้คืน */
     }
   }
-  if (realCounters.length) await del("posReceiptCounter", { tenantId: { in: tids }, id: { notIn: realCounters.map((c: Any) => c.id) }, ...(sb.unitId ? { unitId: { not: sb.unitId } } : {}) });
+  // R4.2 (VPS run A: ตัวนับของสาขา 2 ชั่วคราว (S3.51 ขาย 1 บิล) ค้าง เพราะเดิมลบเฉพาะเมื่อ snapshot ไม่ว่าง):
+  //   ตัวนับของสาขาชั่วคราวทุกสาขา · และตัวนับใด ๆ ของร้าน QC ที่ไม่อยู่ใน snapshot ก่อนรัน (snapshot ว่างก็ลบ)
+  const tmpUnits = [sb.unit2Id, sb.unlinkedUnitId].filter(Boolean);
+  if (tmpUnits.length) await del("posReceiptCounter", { tenantId: { in: tids }, unitId: { in: tmpUnits } });
+  if (realCountersTaken) await del("posReceiptCounter", { tenantId: { in: tids }, id: { notIn: realCounters.map((c: Any) => c.id) }, ...(sb.unitId ? { unitId: { not: sb.unitId } } : {}) });
+  // รอบ 3.2: ลูกค้า/ระดับ/ระบบสมาชิกชั่วคราว (S3.42) — แถวที่อ้าง customerId ก่อน แล้วลูกค้า แล้วระดับ
+  if (sb.customerIds.length) {
+    for (const m of ["memberActivity", "memberTierHistory", "memberAttribution", "memberConsent", "memberFieldValue", "memberFieldValueHistory", "memberChannelIdentity",
+      "memberNotification", "memberAccessLog", "memberAddress", "pointLedger", "pointLot", "pointBalance", "pointAdjustRequest", "voucher", "stampCardProgress",
+      "couponRedemption", "rewardRedemption", "automationRun", "customerSession", "customerOtp"]) await del(m, { customerId: { in: sb.customerIds } });
+    counts.customer = await del("customer", { id: { in: sb.customerIds } });
+  }
+  if (sb.memSysId) {
+    const defs = typeof P.memberTierDef?.findMany === "function" ? ((await P.memberTierDef.findMany({ where: { systemId: sb.memSysId }, select: { id: true } })) as Any[]).map((d) => d.id) : [];
+    if (defs.length) await del("memberTierBenefit", { tierDefId: { in: defs } });
+    await del("memberTierDef", { systemId: sb.memSysId });
+  }
+  // รอบ 3.2: สมาชิกร้าน/ผู้ใช้ชั่วคราวของ S1.27
+  if (sb.membershipIds.length) await del("membership", { id: { in: sb.membershipIds } });
+  if (sb.userIds.length) counts.user = await del("user", { id: { in: sb.userIds } });
   const units = [sb.unitId, sb.unlinkedUnitId, sb.unit2Id].filter(Boolean);
   if (units.length) await del("appSystemUnit", { unitId: { in: units } });
-  const systems = [sb.posSysId, sb.invSysId, sb.invSys2Id].filter(Boolean);
+  const systems = [sb.posSysId, sb.invSysId, sb.invSys2Id, sb.memSysId].filter(Boolean);
   if (systems.length) {
     await del("appSystemUnit", { systemId: { in: systems } });
     await del("appSystem", { id: { in: systems } });
@@ -1258,6 +2655,9 @@ try {
 const countsAfter = await snapshotCounts();
 const drift = Object.keys(countsBefore).filter((k) => countsBefore[k] !== countsAfter[k]).map((k) => `${k}:${countsBefore[k]}→${countsAfter[k]}`);
 chk("P1.3-S9.1", drift.length === 0, "ก่อน = หลัง", drift.length ? drift.join(", ") : "เท่ากันทุกตาราง");
+const fpAfter = await fingerprint();
+const fpDrift = Object.keys(fpBefore).filter((k) => fpBefore[k] !== fpAfter[k]).map((k) => `${k}:${fpBefore[k]}→${fpAfter[k]}`);
+chk("P1.3-S9.2", fpDrift.length === 0 && !Object.values(fpBefore).some((v) => v.startsWith("err")), "ลายนิ้วมือเท่าเดิมทุกตาราง", fpDrift.length ? fpDrift.join(", ") : `เท่าเดิม (${Object.entries(fpAfter).map(([k, v]) => `${k}=${v.split(":")[0]}`).join(" ")})`);
 // ข้อที่ไม่ถึง (harness ล้มกลางทาง) = แดง ไม่ใช่หายเงียบ
 for (const [id] of CHECKS) if (!results.has(id) && !skippedChecks.has(id)) chk(id, false, "ถูกตรวจ", crashed ? `ไม่ถึง (harness ล้ม: ${crashed.slice(0, 80)})` : "ไม่ถึง");
 for (const c of lanes) await c.$disconnect?.().catch?.(() => {});
