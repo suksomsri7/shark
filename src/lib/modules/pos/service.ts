@@ -655,7 +655,8 @@ export async function voidSale(tenantId: string, unitId: string, saleId: string)
     const sale = await tx.posSale.findFirst({ where: { id: saleId, tenantId, unitId } });
     if (!sale || sale.status !== "PAID") throw new Error("บิลนี้ void ไม่ได้");
     // POS P1.9 ▸ S11: บิลในกะที่ปิดแล้ว void ไม่ได้ (คืนเงินเท่านั้น) · ล็อกแถวกะ FOR SHARE แบบ createSale · บิลนอกกะ (null) = เดิม ◂
-    if (sale.shiftId) {
+    // POS P1.9 R2 F4 ▸ เฉพาะบิลหน้าขาย (sourceModule "POS") · บิลของโมดูลอื่น (คืนเงินโรงแรม/จอง/… เคลมฝั่งตัวเองก่อนแล้วค่อย void) ไม่ถูกปฏิเสธ — ปฏิเสธ = ค้างครึ่งทาง ◂
+    if (sale.shiftId && sale.sourceModule === "POS") {
       const sh = await tx.$queryRaw<{ status: string }[]>`SELECT status::text AS status FROM "PosShift" WHERE id = ${sale.shiftId} FOR SHARE`;
       if (sh[0]?.status !== "OPEN") throw new PosSaleError("SHIFT_CLOSED", "กะของบิลนี้ปิดแล้ว — ยกเลิกบิลไม่ได้ ใช้การคืนเงินแทน");
     }
