@@ -145,6 +145,9 @@ export type ShiftRow = {
   countedCashSatang: number | null;
   overShortSatang: number | null;
   forced: boolean;
+  /** P1.9b — การนับย้อนหลัง (ไม่มี = null) · ไม่แก้ค่าขาด/เกินของ Z แช่แข็ง (R2-F2) */
+  recountCountedCashSatang: number | null;
+  recountVarianceSatang: number | null;
 };
 export type ShiftTotals = {
   shiftCount: number;
@@ -156,6 +159,9 @@ export type ShiftTotals = {
   overCount: number;
   forcedCount: number;
   openCount: number;
+  /** P1.9b — ผลรวมส่วนต่างของการนับย้อนหลัง (แยกจาก overShortSatang ที่มาจาก Z) + จำนวนกะที่นับใหม่ */
+  recountVarianceSatang: number;
+  recountCount: number;
 };
 
 export type TaxRow = {
@@ -733,6 +739,13 @@ export async function reportShifts(ctx: ReportCtx, actor: RegisterActor, input: 
       orderBy: [{ openedAt: "asc" }, { id: "asc" }],
     });
     const names = await userNames(db, shifts.map((x) => x.openedByUserId));
+    // P1.9b — การนับย้อนหลัง (1 ต่อกะ) · คิวรีเดียวต่อก้อน (R2-F2)
+    const recount = new Map<string, { counted: number; variance: number }>();
+    for (const ids of chunks(shifts.map((x) => x.id))) {
+      for (const x of await db.posShiftRecount.findMany({ where: { tenantId: s.tenantId, shiftId: { in: ids } }, select: { shiftId: true, countedCashSatang: true, varianceSatang: true } })) {
+        recount.set(x.shiftId, { counted: x.countedCashSatang, variance: x.varianceSatang });
+      }
+    }
     const rows: ShiftRow[] = [];
     for (const sh of shifts) {
       // ปิดแล้ว = ค่าจาก Z แช่แข็ง + คอลัมน์ของแถว (ไม่คำนวณใหม่ · P1.9 S10) · OPEN = คำนวณสดแบบรายงาน X
@@ -760,6 +773,8 @@ export async function reportShifts(ctx: ReportCtx, actor: RegisterActor, input: 
         countedCashSatang: open ? null : sh.countedCashSatang,
         overShortSatang: open ? null : sh.overShortSatang,
         forced: sh.status === "FORCE_CLOSED",
+        recountCountedCashSatang: recount.get(sh.id)?.counted ?? null,
+        recountVarianceSatang: recount.get(sh.id)?.variance ?? null,
       });
     }
     const closed = rows.filter((x) => x.overShortSatang !== null);
@@ -773,6 +788,8 @@ export async function reportShifts(ctx: ReportCtx, actor: RegisterActor, input: 
       overCount: closed.filter((x) => (x.overShortSatang ?? 0) > 0).length,
       forcedCount: rows.filter((x) => x.forced).length,
       openCount: rows.filter((x) => x.status === "OPEN").length,
+      recountVarianceSatang: sum(rows, (x) => x.recountVarianceSatang ?? 0),
+      recountCount: rows.filter((x) => x.recountVarianceSatang !== null).length,
     });
   });
 }
