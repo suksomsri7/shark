@@ -1,0 +1,4 @@
+
+> shark-in-th@0.1.0 typecheck /root/projects/shark-pos-p11
+> tsc --noEmit
+
