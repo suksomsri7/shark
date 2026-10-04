@@ -1,0 +1,39 @@
+[env] qc-pos-p1.5 · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4)
+(node:1429595) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+── S ข้อสถิต (ไม่แตะ DB) ──
+  ✅ [P1.5-S1] [static · H5] onHold ไม่ใช่ soon: เรียก holdRegisterCartAction · แล้ว resetBill() (หมุนคีย์ที่เดียว) · ไม่พักขณะกำลังส่ง (frozen) หรือตะกร้าว่าง · ไม่ส่ง idemKey/pendingSubmit ไปกับบิลพัก
+  ✅ [P1.5-S2] [static · H5] onRecallHeld: เรียก recallHeldCartAction · resetBill() ก่อนวางตะกร้าที่คืน (คีย์ใหม่) · ไม่ setIdemKey เอง · ไม่อ่านคีย์จากผลเรียกคืน
+  ✅ [P1.5-S3] [static · H6] F8 → onHold · ปุ่ม pos-reg-hold / pos-reg-held-bills ไม่ใช่ onSoon · ป้ายจำนวน pos-reg-held-count · ลิ้นชัก pos-reg-held-drawer · ปุ่มแถว pos-reg-held-recall- / pos-reg-held-discard- ≥44px · จอเรียก listHeldCartsAction
+  ✅ [P1.5-S4] ข้อความ pos.register.held.{title empty recall discard label holdDone noticePriceChanged noticeUnavailable} + errors.alreadyRecalled มี th+en · en ไม่มีอักษรไทย · ใช้ในจอ · refusalMessageKey(ALREADY_RECALLED) = errors.alreadyRecalled
+  ✅ [P1.5-S5] [static] register-actions.ts: "use server" · export เฉพาะ async · ไม่มี throw · holdRegisterCartAction listHeldCartsAction recallHeldCartAction discardHeldCartAction แต่ละตัวเรียกฟังก์ชันบริการของมัน + มี catch · register-shared export HELD_CART_EXPIRE_DAYS = 2
+
+── sandbox qc-p1.5-k130cm (สาขา 2 + ระบบ POS ชั่วคราวในร้าน QC กาแฟ) ──
+  ✅ [P1.5-H1] พักบิล: เจ้าของพักตะกร้า 2 บรรทัด (สินค้า ×2 + รายการกำหนดเอง) + ส่วนลดท้ายบิล + ป้าย → ok · แถว HELD ร้าน/สาขา/ระบบถูก · heldByUserId · lineCount 2 · approxTotalSatang = ยอด quote 9,400 · label ตรงตัว · recalledAt null
+  ✅ [P1.5-H2] รายการ: listHeldCarts คืนบิลที่พัก (id label lineCount approxTotalSatang heldByUserId createdAt) ใหม่สุดก่อน · count = จำนวน items · แคชเชียร์ที่มีสิทธิ์สาขานี้เห็นบิลที่เจ้าของพัก
+  ✅ [P1.5-H3] เรียกคืน: ตะกร้าที่คืน = ที่พัก (บรรทัด/จำนวน/รายการเอง/ส่วนลดท้ายบิล) · quote ok ยอด 9,400 · แถว RECALLED + recalledAt + recalledByUserId · หายจากรายการ · ครั้งที่ 2 → ALREADY_RECALLED · ทิ้งหลังเรียกคืน → ปฏิเสธ แถวยัง RECALLED · พัก/เรียกคืนไม่สร้างบิลและตัวนับใบเสร็จไม่ขยับ
+  ✅ [P1.5-H4] ทิ้ง: discardHeldCart → ok · แถว DISCARDED · หายจากรายการ · เรียกคืนหลังทิ้ง → NOT_FOUND · ทิ้งซ้ำ → NOT_FOUND
+  ✅ [P1.5-H5] ตรวจตะกร้าฝั่งเซิร์ฟเวอร์ตอนพัก: ว่าง · ป้าย 61 ตัว · ป้ายไม่ใช่สตริง · couponCode · คีย์แปลก (idempotencyKey) · qty 0 · 201 บรรทัด · productId ไม่มีจริง · cart ไม่ใช่ object → ปฏิเสธตามรหัส ไม่มีแถวเกิด · ป้าย 60 ตัวพอดี → ok
+  ✅ [P1.5-H6] ราคาในบิลพักไม่ถูกเชื่อ: พักพร้อม unitPriceSatang 1 ของสินค้าแคตตาล็อก → ปฏิเสธ หรือยอดพัก = ราคาจริง 6,000 · แก้ cartJson ใน DB ให้ทุกช่องราคา/ยอด = 1 → เรียกคืนแล้ว quote ราคา 6,000 ยอด 6,000 · บรรทัดที่คืนไม่กลายเป็นราคาเปิด
+  ✅ [P1.5-H7] ราคาใหม่ตอนเรียกคืน (H3): พักตอน ฿50 แล้วเปลี่ยนเป็น ฿60 → quote บรรทัด 6,000 ยอด 9,000 (รวมสินค้าที่ราคาไม่เปลี่ยน 3,000) · notices มี PRICE_CHANGED lineIndex 0 ราคาเดิม 5,000 → 6,000 หนึ่งรายการ · บรรทัดที่ราคาไม่เปลี่ยนไม่มี notice
+  ✅ [P1.5-H8] สินค้าเก็บถาวร / ปิดขายที่สาขา ระหว่างพัก → เรียกคืน ok แถว RECALLED · cart คง 3 บรรทัด · notices PRODUCT_NOT_FOUND@0 + PRODUCT_UNAVAILABLE@1 · quote ไม่ ok (ไม่คิดยอดด้วยราคาเก่าเงียบ ๆ)
+  ✅ [P1.5-H9] เรียกคืนพร้อมกัน 10 connection × 3 รอบ (H2): ทุกรอบ ok 1 · ALREADY_RECALLED 9 · ไม่มีรหัสอื่น · แถว RECALLED โดยเจ้าของ
+  ✅ [P1.5-H10] ข้ามสาขา: พักที่สาขา 1 · สาขา 2 (POS เดียวกัน) list ไม่เห็น · recall/discard ด้วย id → NOT_FOUND · แถวยัง HELD
+  ✅ [P1.5-H11] ข้ามร้าน: ร้าน QC อาหาร (เจ้าของร้านนั้น · POS/สาขาจริงของร้านนั้น) recall/discard ด้วย id ของร้านกาแฟ → NOT_FOUND · list ไม่เห็น · แถวยัง HELD
+  ✅ [P1.5-H12] สิทธิ์: STAFF ไม่มี pos.sale.create → PERMISSION_DENIED ทั้ง 4 ฟังก์ชัน ไม่มีแถว · แคชเชียร์จริง (unitAccess สีลม) ที่สาขา sandbox → NOT_FOUND · แคชเชียร์ที่มีสิทธิ์สาขานี้ ทิ้งและเรียกคืนบิลที่เจ้าของพักได้
+  ✅ [P1.5-H13] หมดอายุแบบขี้เกียจ (H4): ปริยาย 2 วัน — อายุ 1 วันยังอยู่ · อายุ 3 วันหายจากรายการและกลายเป็น DISCARDED · เรียกคืนบิลอายุ 3 วัน (ก่อน list) → NOT_FOUND · ตั้ง settings.pos.heldCart.expireDays = 5 → อายุ 3 วันยังอยู่
+  ✅ [P1.5-R1] คำปฏิเสธของพัก/รายการ/เรียกคืน/ทิ้ง (ALREADY_RECALLED · NOT_FOUND · PERMISSION_DENIED · VALIDATION) = คืน {ok:false, code, message} ไม่ throw
+  ลบแล้ว: {"outbox":0,"audit":12,"held":19,"product":7,"productBySystem":0} · บิลพัก 19 · สาขา 2 · ระบบ 1
+  ✅ [P1.5-Z1] QC4 คืนสภาพ: จำนวนแถวของร้าน QC POS ทั้งสอง (ทุกตารางที่ข้อสอบแตะ · รวม PosHeldCart) ก่อน = หลัง · ผลรวมตัวนับใบเสร็จไม่ขยับ
+  ✅ [P1.5-Z2] QC4 ลายนิ้วมือ: แถวเดิมของร้าน QC POS (PosProduct · PosCategory · AppSystem · AppSystemUnit · BusinessUnit · Membership · PosReceiptCounter · PosHeldCart) ทุกคอลัมน์ ก่อน = หลัง
+
+===== qc-pos-p1.5 ===== ผ่าน 21/21
+JSON_SUMMARY {"suite":"qc-pos-p1.5","total":21,"passed":21,"failed":[],"skipped":false,"forced":false,"skippedChecks":{},"missing":[],"a5":{"drift":[]}}
