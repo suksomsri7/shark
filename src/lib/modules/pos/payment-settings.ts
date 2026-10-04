@@ -53,7 +53,8 @@ export function parsePosPaymentSettings(settings: unknown): PosPaymentSettings {
   const ledgerAccountId = typeof tip.ledgerAccountId === "string" && tip.ledgerAccountId ? tip.ledgerAccountId : null;
   return {
     serviceCharge: { enabled: sc.enabled === true && rateBp > 0, rateBp },
-    tip: { enabled: tip.enabled === true && !!ledgerAccountId, ledgerAccountId },
+    // R4 H5: ทิปเปิดจริงได้เฉพาะเมื่อลงบัญชีทิปได้แล้ว (ค่าเก่าที่เคยเปิดไว้ = อ่านเป็นปิด)
+    tip: { enabled: tip.enabled === true && !!ledgerAccountId && TIP_POSTING_READY, ledgerAccountId },
   };
 }
 

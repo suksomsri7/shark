@@ -286,16 +286,26 @@ export async function billVisit(
   if (feeSatang <= 0 || !posSys) return { ok: true };
 
   // 3) เส้นเงิน C-2 — pos.createSale (idempotent ต่อ `clinic-<visitId>`)
-  const sale = await pos.createSale({
-    tenantId: ctx.tenantId,
-    unitId: ctx.unitId,
-    systemId: posSys.id,
-    sourceModule: "CLINIC",
-    sourceId: visitId,
-    idempotencyKey: `clinic-${visitId}`,
-    lines: [{ name: `ค่าบริการคลินิก (${visit.symptom})`, qty: 1, unitPriceSatang: feeSatang }],
-    payMethods: [{ type: "CASH", amountSatang: feeSatang }],
-  });
+  // POS P1.6 R4 H3: createSale ล้ม (เช่น สาขาถูกย้าย POS ระหว่างด่านกับ claim) และไม่มีบิลของคีย์นี้จริง ⇒ คืนสถานะ claim
+  //   (event ของ claim ที่ยิงไปแล้วคงอยู่ — เหมือนกรณีเดิมก่อน C2.9 · ไม่มีบิล = ไม่มีเงินเข้า)
+  let sale: Awaited<ReturnType<typeof pos.createSale>>;
+  try {
+    sale = await pos.createSale({
+      tenantId: ctx.tenantId,
+      unitId: ctx.unitId,
+      systemId: posSys.id,
+      sourceModule: "CLINIC",
+      sourceId: visitId,
+      idempotencyKey: `clinic-${visitId}`,
+      lines: [{ name: `ค่าบริการคลินิก (${visit.symptom})`, qty: 1, unitPriceSatang: feeSatang }],
+      payMethods: [{ type: "CASH", amountSatang: feeSatang }],
+    });
+  } catch (e) {
+    if ((await pos.saleStatusByKey(ctx.tenantId, `clinic-${visitId}`)) === null) {
+      await db.clinicVisit.updateMany({ where: { id: visitId, status: "BILLED", posSaleId: null }, data: { status: "OPEN", billedAt: null } });
+    }
+    throw e;
+  }
 
   await db.clinicVisit.updateMany({ where: { id: visitId }, data: { posSaleId: sale.saleId } });
 

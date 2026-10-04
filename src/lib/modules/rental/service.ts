@@ -242,16 +242,26 @@ export async function returnAsset(
   // 3) เส้นเงิน C-2 — pos.createSale (idempotent ต่อ `rental-<bookingId>`)
   const lines = [{ name: `ค่าเช่า ${asset.name} (${days} วัน)`, qty: 1, unitPriceSatang: quoteSatang }];
   if (lateFeeSatang > 0) lines.push({ name: "ค่าปรับคืนล่าช้า", qty: 1, unitPriceSatang: lateFeeSatang });
-  const sale = await pos.createSale({
-    tenantId: ctx.tenantId,
-    unitId: ctx.unitId,
-    systemId: posSys.id,
-    sourceModule: "RENTAL",
-    sourceId: bookingId,
-    idempotencyKey: `rental-${bookingId}`,
-    lines,
-    payMethods: [{ type: "CASH", amountSatang: totalSatang }],
-  });
+  // POS P1.6 R4 H3: createSale ล้ม (เช่น สาขาถูกย้าย POS ระหว่างด่านกับ claim) และไม่มีบิลของคีย์นี้จริง ⇒ คืนสถานะ claim
+  //   (event ของ claim ที่ยิงไปแล้วคงอยู่ — เหมือนกรณีเดิมก่อน C2.9 · ไม่มีบิล = ไม่มีเงินเข้า)
+  let sale: Awaited<ReturnType<typeof pos.createSale>>;
+  try {
+    sale = await pos.createSale({
+      tenantId: ctx.tenantId,
+      unitId: ctx.unitId,
+      systemId: posSys.id,
+      sourceModule: "RENTAL",
+      sourceId: bookingId,
+      idempotencyKey: `rental-${bookingId}`,
+      lines,
+      payMethods: [{ type: "CASH", amountSatang: totalSatang }],
+    });
+  } catch (e) {
+    if ((await pos.saleStatusByKey(ctx.tenantId, `rental-${bookingId}`)) === null) {
+      await db.rentalBooking.updateMany({ where: { id: bookingId, status: "RETURNED", posSaleId: null }, data: { status: "PICKED_UP", returnedAt: null } });
+    }
+    throw e;
+  }
 
   await db.rentalBooking.updateMany({ where: { id: bookingId }, data: { posSaleId: sale.saleId } });
 

@@ -243,7 +243,8 @@ export async function confirmOrderPaid(ctx: ShopCtx, orderId: string, _actorUser
       payMethods: [{ type: "PROMPTPAY", amountSatang: order.totalSatang }],
     });
   } catch (e) {
-    await revertClaim();
+    // R4 H2: คืนออเดอร์เฉพาะเมื่อ "ไม่มีบิลของคีย์นี้จริง" — บิลที่ commit แล้ว (เช่น ล้มหลัง commit) ห้ามคืนเป็นรอชำระ
+    if ((await pos.saleStatusByKey(ctx.tenantId, `ecom-${orderId}`)) === null) await revertClaim();
     throw e;
   }
 

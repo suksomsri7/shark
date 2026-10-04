@@ -7,6 +7,7 @@ import { emitOutbox } from "@/lib/core/outbox";
 import { scheduleDrain } from "@/lib/outbox-consumers";
 // POS P1.6 ▸ ถอด VAT สูตรเดียวกับสะพานบัญชี (R1) ◂
 import { splitIncludedVat } from "@/lib/money/vat";
+import { parsePosPaymentSettings } from "./payment-settings";
 
 // POS createSale — contract 2.1 (จุดตัดเงินกลาง). MVP: PAID_NOW
 //
@@ -290,6 +291,11 @@ async function createSaleOnce(input: CreateSaleInput, client: Client, ownsTx: bo
     // ── P1.6: โครงฟิลด์ใหม่ + สาขา↔ระบบ (R7/O21) — ทั้งหมดก่อนแตะตัวนับใบเสร็จ ──
     validateSaleInput(input);
     await assertUnitOfSystem(tx, input);
+    // R4 H5: ทิปต้องเปิดที่ค่าตั้งของ POS นี้ (ผู้เรียกเดิมข้ามหน้าขายไม่ได้) — ปิด = VALIDATION ก่อนแตะตัวนับ
+    if ((input.tipSatang ?? 0) > 0) {
+      const sys = await tx.appSystem.findFirst({ where: { id: input.systemId, tenantId: input.tenantId }, select: { settings: true } });
+      if (!parsePosPaymentSettings(sys?.settings).tip.enabled) throw new PosSaleError("VALIDATION", "จุดขายนี้ยังไม่เปิดรับทิป");
+    }
 
     const lines = input.lines.map((l) => ({
       ...l,

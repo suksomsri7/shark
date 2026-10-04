@@ -432,7 +432,8 @@ export async function sell(ctx: GiftCardCtx, actor: MemberActor, input: SellInpu
           saleId: sale.saleId,
         },
       });
-      await tx.posSale.update({ where: { id: sale.saleId }, data: { giftCardId: card.id } });
+      // POS P1.6 R4 H4: บิลขาย/เติมบัตรไม่ลงบัญชีขาย (consumer ข้ามบิลที่มี giftCardId) ⇒ VAT บนบิลต้องเป็น 0 ให้ตรงสมุด
+      await tx.posSale.update({ where: { id: sale.saleId }, data: { giftCardId: card.id, vatSatang: 0 } });
       await tx.giftCardTxn.create({
         data: {
           tenantId: ctx.tenantId,
@@ -683,7 +684,8 @@ export async function reload(
         },
         tx,
       );
-      await tx.posSale.update({ where: { id: sale.saleId }, data: { giftCardId: card.id } });
+      // POS P1.6 R4 H4: บิลขาย/เติมบัตรไม่ลงบัญชีขาย (consumer ข้ามบิลที่มี giftCardId) ⇒ VAT บนบิลต้องเป็น 0 ให้ตรงสมุด
+      await tx.posSale.update({ where: { id: sale.saleId }, data: { giftCardId: card.id, vatSatang: 0 } });
       const after = card.balanceSatang + satang;
       await tx.giftCard.update({
         where: { id: card.id },

@@ -426,23 +426,30 @@ export async function checkout(input: {
       // POS P1.6 (มติ §8 ข้อ 3 · I6 · R2 F2): คีย์ของบิลที่ถูก void แล้วใช้ขายใหม่ไม่ได้ (createSale คืนบิล VOIDED / payload ต่าง = CONFLICT)
       //   ⇒ อ่านสถานะของคีย์ก่อน: VOIDED = เลื่อนไป rest-<hash>-r1, -r2, … จนเจอคีย์ว่างหรือบิลที่ยังไม่ void
       //   (ตายตัว ⇒ ลองซ้ำหลังล่มได้บิลเดิม · re-checkout ที่เปลี่ยนวิธีจ่าย/จำนวนหลัง void ก็ได้คีย์ใหม่)
+      //   R4 H1: อ่านก่อนไม่ใช่ตัวตัดสินเดียว — ถ้า createSale ยังคืนบิลที่ไม่ใช่ PAID (ถูก void ระหว่างทาง) = ไม่ผูกรายการ/ไม่ปิดโต๊ะ เลื่อนคีย์แล้วลองใหม่
       let key = idempotencyKey;
-      for (let round = 1; (await saleStatusByKey(tenantId, key)) === "VOIDED"; round++) {
+      let round = 0;
+      let sale: Awaited<ReturnType<typeof createSale>>;
+      for (;;) {
         if (round > 50) return { ok: false, reason: "บิลของโต๊ะนี้ถูกยกเลิกซ้ำหลายครั้งเกินไป — ติดต่อผู้ดูแลระบบ" };
+        if ((await saleStatusByKey(tenantId, key)) !== "VOIDED") {
+          sale = await createSale({
+            tenantId,
+            unitId,
+            systemId: posSystemId,
+            pointSystemId,
+            memberId,
+            sourceModule: "RESTAURANT",
+            sourceId: sessionId,
+            idempotencyKey: key,
+            lines: posLines.map((l) => ({ name: l.name, qty: l.qty, unitPriceSatang: l.unitPriceSatang })),
+            payMethods: [{ type: payType, amountSatang: total }],
+          });
+          if (sale.status === undefined || sale.status === "PAID") break;
+        }
+        round++;
         key = `${idempotencyKey}-r${round}`;
       }
-      const sale = await createSale({
-        tenantId,
-        unitId,
-        systemId: posSystemId,
-        pointSystemId,
-        memberId,
-        sourceModule: "RESTAURANT",
-        sourceId: sessionId,
-        idempotencyKey: key,
-        lines: posLines.map((l) => ({ name: l.name, qty: l.qty, unitPriceSatang: l.unitPriceSatang })),
-        payMethods: [{ type: payType, amountSatang: total }],
-      });
       saleId = sale.saleId;
       receiptNo = sale.receiptNo;
       pointEarned = sale.pointEarned;

@@ -115,3 +115,16 @@ Commits (pushed to `wip/pos-p1.6`): 78a4cd36 step 1 (createSale) · 96fe39e7 + f
 ## R3 — qc-subscription-money SM-4.1 (VPS run at 3341c290)
 - Diagnosis: the test's idempotent retry (`scripts/qc-subscription-money.mts` ~75) sent `payMethods [CASH 59900]`, but the original subscription sale was paid with **PROMPTPAY** (`sub.subscribe(... payMethod: "PROMPTPAY")`, asserted by SM-2.6). Pay type is a money field ⇒ IDEMPOTENCY_CONFLICT is correct per R6 (oracle I2 "paytype" requires it). Every other field matched: unit/system, memberId, lines price|qty|disc with no item/product/service, SC/tip 0. The line name and pointSystemId are not compared.
 - Case (b) FIXTURE: the retry now sends PROMPTPAY 59900 (same payload as the original). No assertion changed.
+
+## R4 — money-lane hunter fixes (cloud · 4 Oct 2026)
+- **H1** `restaurant/order.ts`: one bounded loop (≤ 50 key moves). A key whose stored sale is VOIDED is skipped (the pre-read), and the createSale result is also checked: a status other than PAID moves to the next `rest-<hash>-rN` and retries. Items are linked and the session closed only for a PAID sale. Still exactly one `createSale(` call site (U4).
+- **H2** `shop/service.ts`: the catch around createSale reverts the claim only when `saleStatusByKey(tenantId, "ecom-"+orderId) === null` (no bill committed).
+- **H3** clinic `billVisit` / school `markPaid` / rental `returnAsset`: the same guarded undo (BILLED→OPEN · PAID→ENROLLED · RETURNED→PICKED_UP, only while `posSaleId` is null and no bill exists for the key). The claim's outbox event (clinic.visit.done / school.enrolled / rental.returned) is already committed and stays, as before C2.9.
+- **H4** `giftcard/service.ts` (sell + reload): `vatSatang: 0` is set in the same tx update that sets `giftCardId` (the consumer skips gift-card bills, so nothing is posted to the ledger).
+- **H5** `parsePosPaymentSettings` ANDs `TIP_POSTING_READY` into `tip.enabled` on read. createSale refuses `tipSatang > 0` with VALIDATION when the POS tip setting reads off (before the counter), so legacy callers cannot bypass it.
+- Verified (no DB): pure oracle groups V1 V2 U4 R2 R3 green · `qc-pos-p1.6 --list` exit 0 · p1.4/p1.5 `--no-db` exit 0 · fitness (DB env unset) 41/41 · typecheck exit 0.
+- DB checks for the controller run. The hunter's own SQL did not reach this session, so these are mine, written from the hunter's findings:
+  - no PAID restaurant session closed on a VOIDED bill: `SELECT i.id FROM "RestaurantOrderItem" i JOIN "PosSale" s ON s.id = i."saleId" WHERE s.status <> 'PAID' AND i."settledAt" IS NOT NULL;` → expect 0 rows (after voidCheckout these items are reset to saleId null).
+  - no claimed caller row without a bill: `SELECT id FROM "ShopOrder" WHERE status='PAID' AND "posSaleId" IS NULL;` · `SELECT id FROM "ClinicVisit" WHERE status='BILLED' AND "posSaleId" IS NULL AND "feeSatang" > 0;` · `SELECT id FROM "SchoolEnrollment" WHERE status='PAID' AND "posSaleId" IS NULL;` · `SELECT id FROM "RentalBooking" WHERE status='RETURNED' AND "posSaleId" IS NULL;` → expect 0 rows (in tenants with a POS).
+  - gift-card bills carry no VAT: `SELECT id FROM "PosSale" WHERE "giftCardId" IS NOT NULL AND "vatSatang" <> 0;` → 0.
+  - no tip while tip is unavailable: `SELECT id FROM "PosSale" WHERE "tipSatang" <> 0 AND "createdAt" > <deploy time>;` → 0.
