@@ -10,6 +10,10 @@
 //
 // --list = พิมพ์ทุก id ไม่แตะ DB · --no-db = รันเฉพาะข้อสถิต/pure (ST*) ไม่โหลด env/prisma (exit 1 ถ้าแดง)
 // SKIP (exit 0) เมื่อของ HF-O23 ยังไม่มี · QC_FORCE=1 = ข้ามด่าน SKIP (ต้องแดงตามเหตุผล ไม่ crash)
+// ⚠️ บนโค้ดฐาน (ก่อน HF-O23) ชุดนี้ SKIP ถ้าไม่ force ⇒ จะยืนยันว่าฐานแดงจริงต้องรันด้วย QC_FORCE=1
+//    (คาด: ST1–ST7 + DB1–DB8 แดงตามเหตุผล · DB6/DB8 แดงเพราะ action เก็บ/คืนคีย์เปล่า)
+// R2: DB6–DB8 เรียก `registerSaleAction` ตัวจริง (ไม่ใช่แค่ lookupPosKey/createSale) ใน Next request scope จำลอง
+//    (workAsyncStorage + workUnitAsyncStorage + คุกกี้ session จริงในตาราง Session — เทคนิคเดียวกับ qc-crm-v1 / qc-crm-c3.5)
 // DB: ร้านชั่วคราว slug qc-hfo23-<stamp> · ลบทั้งหมดใน finally · Z1 ตรวจไม่เหลือแถว
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Any = any;
@@ -33,12 +37,16 @@ const CHECKS: readonly Def[] = [
   D("ST4", "-", "[static] register-ui newKey: crypto.randomUUID + ทางสำรองไม่มี \".\" (Math.random().toString(36))"),
   D("ST5", "X2", "[pure] isPosClientKey: รับ UUID · k-<ts>-<base36> · hotel-sale-<cuid> · ปฏิเสธ pos1:… · reg2:… · มีจุด/ช่องว่าง · <8 · >100 · ไม่ใช่สตริง · posStoredKey ใส่ pos1:"),
   D("ST6", "X2", "[static] ทางเข้าอื่นใน src/lib/actions + src/app/api ไม่ส่งคีย์จาก client ตรงเข้า createSale/posSale (ผู้เรียก createSale ใน actions/api = pos.ts · booking.ts ที่ใช้คีย์ booking-sale-<id> ของเซิร์ฟเวอร์)"),
+  D("ST7", "X2", "[static] R2 race: หลัง createSale ใน registerSaleAction อ่านบิลด้วย id (unitId/sourceModule) · ไม่ใช่ POS หรือคนละสาขา = error ก่อนผูกดีล/คืน ok"),
   D("DB1", "X2", "จองคีย์: คีย์ client hotel-sale-<x> → lookupPosKey = none · ขายด้วย posStoredKey → แถวเก็บเป็น pos1:hotel-sale-<x> (ไม่ใช่คีย์เปล่า)"),
   D("DB2", "X4", "โมดูลโรงแรมขายทีหลังด้วยคีย์เปล่า hotel-sale-<x> → ได้บิลใหม่ของตัวเอง (id ต่างจากบิลจอง · sourceModule HOTEL · ยอดของโรงแรม)"),
   D("DB3", "-", "กดซ้ำ: lookupPosKey(สาขาเดิม, คีย์เดิม) = replay บิลเดิม (receiptNo/ยอดเดียวกัน · legacyBareKey false) · สาขาอื่นของร้านเดียวกัน = taken (ไม่คืนบิล)"),
   D("DB4", "X2", "อ่านบิลโมดูลอื่น: บิล HOTEL คีย์เปล่า hotel-sale-<y> → lookupPosKey(คีย์นั้น) = none (ไม่คืนเลขใบเสร็จ/ยอด) · ขายต่อด้วย pos1: ได้ · บิลโรงแรมไม่ถูกแตะ"),
   D("DB5", "-", "ช่วงเปลี่ยนรุ่น: บิล POS คีย์เปล่า (ก่อน deploy) สาขาเดียวกัน → replay legacyBareKey true · สาขาอื่น → none"),
-  D("Z1", "-", "คืนสภาพ: ร้านชั่วคราว qc-hfo23-* ถูกลบ · ไม่เหลือ PosSale/PosSaleLine/PosPayment/OutboxEvent ของร้านนั้น"),
+  D("DB6", "X2", "[action] registerSaleAction(คีย์ hotel-sale-<z>) → ok · แถวเก็บเป็น pos1:hotel-sale-<z> (POS · สาขานี้) · ไม่มีแถวคีย์เปล่า"),
+  D("DB7", "X4", "[action] หลัง DB6 โรงแรม createSale ด้วยคีย์เปล่า hotel-sale-<z> → บิลใหม่ HOTEL (id ต่าง · ยอดของโรงแรม)"),
+  D("DB8", "X2", "[action] กดซ้ำคีย์เดิม → ok เลขใบเสร็จเดิม (ไม่มีบิลเพิ่ม) · ส่งคีย์ของบิล HOTEL ที่มีอยู่ → ไม่ได้เลขใบเสร็จ/ยอดของโรงแรม"),
+  D("Z1", "-", "คืนสภาพ: ร้านชั่วคราว qc-hfo23-* ถูกลบ · ไม่เหลือ PosSale/PosSaleLine/PosPayment/OutboxEvent ของร้านนั้น · ผู้ใช้ OWNER ชั่วคราว (+session/membership) ถูกลบ"),
 ];
 
 if (LIST) {
@@ -101,10 +109,21 @@ async function runStatic(): Promise<void> {
       createIdx > lookIdx &&
       as.includes("const idempotencyKey = posStoredKey(clientKey)") &&
       /if \(prior\.kind === "taken"\) return \{ status: "error"/.test(as) &&
-      !/posSale\.findUnique/.test(act) &&
+      !/tenantId_idempotencyKey/.test(act) &&
       /createSale\(\{[^}]*?sourceModule: "POS", idempotencyKey,/.test(as),
     "ตรวจคีย์ → lookupPosKey → createSale(pos1:)",
-    act ? `okIdx=${okIdx} lookIdx=${lookIdx} createIdx=${createIdx} rawFind=${/posSale\.findUnique/.test(act)}` : "ไม่พบ registerSaleAction",
+    act ? `okIdx=${okIdx} lookIdx=${lookIdx} createIdx=${createIdx} rawFind=${/tenantId_idempotencyKey/.test(act)}` : "ไม่พบ registerSaleAction",
+  );
+
+  const madeIdx = as.indexOf("prisma.posSale.findUnique({ where: { id: res.saleId }, select: { unitId: true, sourceModule: true } })");
+  const guardIdx = as.indexOf(`if (!made || made.unitId !== input.unitId || made.sourceModule !== "POS") { return { status: "error"`);
+  const dealIdx = as.indexOf("posLinkSaleToDeal(");
+  const okRetIdx = as.indexOf(`return { status: "ok", receiptNo: res.receiptNo`);
+  chk(
+    "ST7",
+    madeIdx > createIdx && createIdx > 0 && guardIdx > madeIdx && dealIdx > guardIdx && okRetIdx > guardIdx,
+    "createSale → อ่าน unitId/sourceModule → error ก่อนผูกดีล/คืน ok",
+    `create=${createIdx} made=${madeIdx} guard=${guardIdx} deal=${dealIdx} okRet=${okRetIdx}`,
   );
 
   const lk = squash(fnBody(k, "lookupPosKey"));
@@ -206,6 +225,24 @@ if (skipReasons.length > 0 && !FORCE) {
 }
 if (FORCE && skipReasons.length) console.log(`⚠️  QC_FORCE=1 — ข้ามด่าน SKIP ทั้งที่ยังขาด ${skipReasons.length} อย่าง (คาด: แดงตามเหตุผล ไม่ crash)`);
 
+// ── Next request scope (เทคนิคเดียวกับ qc-crm-v1 / qc-crm-c3.5) — ให้ requireTenant() อ่านคุกกี้ได้ในโปรเซส ──
+const { AsyncLocalStorage } = await import("node:async_hooks");
+(globalThis as Any).AsyncLocalStorage ??= AsyncLocalStorage;
+const nextWork = (await import("next/dist/server/app-render/work-async-storage.external.js" as string).catch(() => null)) as Any;
+const nextWorkUnit = (await import("next/dist/server/app-render/work-unit-async-storage.external.js" as string).catch(() => null)) as Any;
+const nextCookies = (await import("next/dist/server/web/spec-extension/cookies.js" as string).catch(() => null)) as Any;
+let SCOPE_RUNS = 0;
+async function inScope<T>(cookie: string, pathname: string, fn: () => Promise<T>): Promise<T> {
+  if (!nextWork?.workAsyncStorage || !nextWorkUnit?.workUnitAsyncStorage || !nextCookies?.RequestCookies) throw new Error("ไม่มี Next request scope (next/dist/... โหลดไม่ได้)");
+  const req = new Request(`http://qc.local${pathname}`, { headers: { cookie, "user-agent": SUITE, "x-forwarded-for": "203.0.113.123" } });
+  const jar = new nextCookies.RequestCookies(req.headers);
+  const workStore = { route: pathname, page: `${pathname}/page`, forceStatic: false, dynamicShouldError: false, isStaticGeneration: false, fallbackRouteParams: null, incrementalCache: {}, pendingRevalidatedTags: [] };
+  const unit = { type: "request", phase: "action", implicitTags: [], cookies: jar, mutableCookies: jar, userspaceMutableCookies: jar, headers: req.headers, draftMode: undefined, rootParams: {}, url: { pathname, search: "" } };
+  const out = await nextWork.workAsyncStorage.run(workStore, () => nextWorkUnit.workUnitAsyncStorage.run(unit, fn));
+  SCOPE_RUNS += 1;
+  return out;
+}
+
 const { prisma } = (await import("@/lib/core/db")) as Any;
 const P = prisma as Any;
 const sys = (await import("@/lib/modules/system/service")) as Any;
@@ -229,6 +266,7 @@ const stored = (k: string) => (typeof lk?.posStoredKey === "function" ? lk.posSt
 const stamp = Date.now();
 const SLUG = `qc-hfo23-${stamp}`;
 const tenants: string[] = [];
+const users: string[] = [];
 
 async function runDb(): Promise<void> {
   const t = await P.tenant.create({ data: { name: "QC HF-O23 key squat", slug: SLUG } });
@@ -294,6 +332,62 @@ async function runDb(): Promise<void> {
     "replay legacyBareKey · สาขาอื่น none",
     `${short(b1)} · ${b2.kind}`,
   );
+
+  // ── DB6–DB8: เรียก registerSaleAction ตัวจริง (OWNER ของร้านชั่วคราว · คุกกี้ session จริง) ──
+  const coreHash = (await import("@/lib/core/hash" as string)) as Any;
+  const act = (await import("@/lib/actions/pos" as string)) as Any;
+  const u = await P.user.create({ data: { email: `${SLUG}-owner@qc.invalid`, name: `QC HF-O23 owner ${stamp}` } });
+  users.push(u.id);
+  await P.membership.create({ data: { userId: u.id, tenantId: tid, role: "OWNER", unitAccess: ["*"], permissions: {}, acceptedAt: new Date() } });
+  const token = coreHash.randomToken(32) as string;
+  const DAY = 86_400_000;
+  await P.session.create({ data: { userId: u.id, tokenHash: coreHash.sha256(token), idleExpiresAt: new Date(Date.now() + 30 * DAY), expiresAt: new Date(Date.now() + 90 * DAY) } });
+  const cookie = `shark_session=${token}; __Host-shark_session=${token}; shark_tenant=${tid}`;
+  const register = async (key: string, satang: number): Promise<Any> => {
+    try {
+      return await inScope(cookie, `/app/sys/${posSys.id}/pos/register`, () =>
+        act.registerSaleAction({ systemId: posSys.id, unitId: u1.id, lines: [{ name: "QC action", qty: 1, unitPriceSatang: satang }], payType: "CASH", cashReceivedSatang: satang, idempotencyKey: key }),
+      );
+    } catch (e) {
+      return { status: "THROW", message: `${(e as Error)?.name}: ${String((e as Error)?.message ?? e).slice(0, 160)}` };
+    }
+  };
+
+  // DB6 — action เก็บเป็น pos1:
+  const Z = `hotel-sale-qcz${stamp}`;
+  const r6 = await register(Z, 4_200);
+  const rows6 = await P.posSale.findMany({ where: { tenantId: tid, idempotencyKey: { in: [Z, `pos1:${Z}`] } }, select: { id: true, idempotencyKey: true, sourceModule: true, unitId: true, receiptNo: true } });
+  const pref6 = rows6.find((r: Any) => r.idempotencyKey === `pos1:${Z}`);
+  const bare6 = rows6.filter((r: Any) => r.idempotencyKey === Z).length;
+  chk(
+    "DB6",
+    r6?.status === "ok" && pref6?.sourceModule === "POS" && pref6?.unitId === u1.id && pref6?.receiptNo === r6.receiptNo && bare6 === 0 && SCOPE_RUNS > 0,
+    `ok · pos1:${Z} POS สาขา 1 · คีย์เปล่า 0`,
+    `${short(r6)} · ${short(rows6)} · scope=${SCOPE_RUNS}`,
+  );
+
+  // DB7 — โรงแรมขายจริงทีหลังด้วยคีย์เปล่า
+  const hotelZ = await sale(u1.id, Z, "HOTEL", 310_000);
+  const hotelZRow = await P.posSale.findUnique({ where: { id: hotelZ.saleId }, select: { idempotencyKey: true, sourceModule: true } });
+  chk(
+    "DB7",
+    hotelZ.saleId !== pref6?.id && hotelZRow?.sourceModule === "HOTEL" && hotelZRow?.idempotencyKey === Z && hotelZ.grandTotalSatang === 310_000,
+    "บิลใหม่ HOTEL 310000",
+    `same=${hotelZ.saleId === pref6?.id} ${short(hotelZRow)} total=${hotelZ.grandTotalSatang}`,
+  );
+
+  // DB8 — กดซ้ำ = บิลเดิม · คีย์ของบิล HOTEL (X จาก DB2) = ไม่รั่ว
+  const r8a = await register(Z, 4_200);
+  const nPref = await P.posSale.count({ where: { tenantId: tid, idempotencyKey: `pos1:${Z}` } });
+  const r8b = await register(X, 1_100);
+  const hotelXRow = await P.posSale.findUnique({ where: { id: hotel.saleId }, select: { receiptNo: true, grandTotalSatang: true } });
+  const leak = r8b?.status === "ok" && (r8b.receiptNo === hotelXRow?.receiptNo || r8b.grandTotalSatang === hotelXRow?.grandTotalSatang);
+  chk(
+    "DB8",
+    r8a?.status === "ok" && r8a.receiptNo === r6?.receiptNo && nPref === 1 && r8b?.status === "ok" && r8b.receiptNo === squat.receiptNo && !leak,
+    "ซ้ำ = ใบเสร็จเดิม · คีย์โรงแรม → บิล POS ของตัวเอง (DB1) ไม่ใช่บิลโรงแรม",
+    `${short(r8a)} n=${nPref} · ${short(r8b)} · hotel=${short(hotelXRow)}`,
+  );
 }
 
 const RESIDUE_MODELS = ["posPayment", "posSaleLine", "posSale", "posReceiptCounter", "outboxEvent"] as const;
@@ -306,10 +400,16 @@ async function cleanup(): Promise<void> {
     }
   };
   for (const id of tenants) {
-    for (const m of ["posPayment", "posSaleLine", "posSale", "posReceiptCounter", "outboxEvent", "auditLog", "appNotification", "opsLog", "party", "appSystemUnit", "appSystem", "businessUnit"]) {
+    for (const m of ["posPayment", "posSaleLine", "posSale", "posReceiptCounter", "outboxEvent", "auditLog", "appNotification", "opsLog", "party", "membership", "appSystemUnit", "appSystem", "businessUnit"]) {
       await d(() => P[m]?.deleteMany({ where: { tenantId: id } }));
     }
     await d(() => P.tenant.delete({ where: { id } }));
+  }
+  for (const uid of users) {
+    await d(() => P.session.deleteMany({ where: { userId: uid } }));
+    await d(() => P.appNotification.deleteMany({ where: { recipientUserId: uid } }));
+    await d(() => P.membership.deleteMany({ where: { userId: uid } }));
+    await d(() => P.user.delete({ where: { id: uid } }));
   }
 }
 
@@ -334,6 +434,8 @@ for (const id of tenants) {
     if (n !== 0) residue.push(`${m}=${n}`);
   }
 }
+const leftUsers = users.length ? await P.user.count({ where: { id: { in: users } } }).catch(() => -1) : 0;
+if (leftUsers !== 0) residue.push(`user=${leftUsers}`);
 const leftTenants = await P.tenant.count({ where: { slug: { startsWith: "qc-hfo23-" } } }).catch(() => -1);
 chk("Z1", residue.length === 0 && leftTenants === 0 && tenants.length > 0, "ไม่เหลือแถว", `tenants=${tenants.length} left=${leftTenants} ${residue.join(",")}`);
 for (const [id] of CHECKS) if (!results.has(id)) chk(id.slice(4), false, "ถูกตรวจ", crashed ? `ไม่ถึง (harness ล้ม: ${crashed.slice(0, 80)})` : "ไม่ถึง");

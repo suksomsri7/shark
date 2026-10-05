@@ -438,6 +438,12 @@ export async function registerSaleAction(input: SaleInput): Promise<RegisterSale
       couponCode: totals.couponSystemId ? input.couponCode?.trim().toUpperCase() : undefined,
       payMethods: [{ type: payType, amountSatang: grandTotal }],
     });
+    // HF-O23 R2: ปิดช่อง lookup→create race — createSale คืนบิลเดิมเมื่อคีย์ซ้ำ (ไม่ดู unit/sourceModule)
+    //   ถ้าแถว "pos1:<คีย์>" ถูกสร้างแทรกระหว่างนั้นโดยสาขาอื่น/โมดูลอื่น → error เดียวกับ taken (ไม่คืนเลขใบเสร็จ/ยอด · ไม่ผูกดีล)
+    const made = await prisma.posSale.findUnique({ where: { id: res.saleId }, select: { unitId: true, sourceModule: true } });
+    if (!made || made.unitId !== input.unitId || made.sourceModule !== "POS") {
+      return { status: "error", message: "ข้อมูลบิลไม่ครบ ลองใหม่อีกครั้ง" };
+    }
     // ── CRM C2.7: ผูกบิลที่ขายสำเร็จแล้วเข้ากับดีลที่แคชเชียร์เลือก (`crm.payments.linkSaleToDeal` ผ่าน `pos/register.ts`) ──
     // 🔴 ลูกค้าจ่ายเงินไปแล้ว: ความล้มของฝั่ง CRM **ห้าม** ทำให้การขายล้ม ⇒ ห่อไว้ที่นี่ แล้วบันทึกเป็น WARN (id ล้วน · X8)
     //    บิลที่ `createSale` ทำเป็น PAID แล้ว จะถูก "นับ" ในธุรกรรมเดียวกับการผูก (ตัวรับ `pos.sale.paid` วิ่งไปก่อนหน้านี้แล้ว)
