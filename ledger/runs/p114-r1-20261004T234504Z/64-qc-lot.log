@@ -1,0 +1,28 @@
+[env] qc-lot · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech
+(node:1945583) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ [LOT-1.1] รับเข้า lot L-A 10 → InvLot เกิด onHand 10 + expiry + movement.lotCode
+  ✅ [LOT-1.2] รับ lot เดิมซ้ำ → สะสม 15 ไม่เกิดแถวใหม่
+  ✅ [LOT-1.3] รับไม่ระบุ lot → ไม่แตะ InvLot (ยัง 2 lot รวม 23) + item.onHand รวม 30
+  ✅ [LOT-2.1] ตัด 4 จาก L-A → lot 11 + item 26
+  ✅ [LOT-2.2] ตัดเกิน lot L-B → ติดลบ -12 + movement needsReview
+  ✅ [LOT-3.1] findItemByBarcode เจอ + ไม่เจอคืน null
+  ✅ [LOT-3.2] itemLots เรียง expiry ใกล้ก่อน (L-A ก่อน L-B)
+  ✅ [LOT-4.1] expiringLots 7 วัน → เฉพาะ L-A (L-B 60 วัน + L-B ติดลบไม่นับ)
+  ✅ [LOT-5.1] sweep → AppNotification 1 ฉบับ (body มีชื่อสินค้า) + outbox inventory.lot.expiring
+  ✅ [LOT-5.2] sweep ซ้ำวันเดิม → idempotent (ยัง 1 ฉบับ)
+  ✅ [LOT-6.1] AUTOMATION_EVENTS มี inventory.lot.expiring ป้ายไทย
+  ✅ [LOT-6.2] runDailyCron มี field lotsExpiring (number) + field เดิมครบ
+  ✅ [LOT-7.1] tenant อื่นไม่เห็น lot (guard)
+
+===== QC Lot/Expiry/Barcode =====
+ผ่าน 13/13
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":13,"passed":13,"findings":[]}

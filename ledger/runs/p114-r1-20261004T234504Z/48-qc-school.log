@@ -1,0 +1,22 @@
+[env] qc-school · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech
+(node:1937433) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ [SC-1.1] สมัคร → snapshot ราคา 2500 + ผูก Customer (มีระบบสมาชิก)
+  ✅ [SC-1.2] capacity 2 เต็ม → คนที่ 3 throw ไทย
+  ✅ [SC-2.1] ชำระ → PAID + PosSale 2500 PAID + paidAt
+  ✅ [SC-2.2] outbox pos.sale.paid ≥1 + ชำระซ้ำ ok:false ไม่สร้างบิลซ้ำ
+  ✅ [SC-3.1] เช็คชื่อซ้ำวันเดิม → อัปเดต present ไม่งอกแถว (1 แถว present=false)
+  ✅ [SC-3.2] attendanceSheet: น้องเอ present=false · น้องบียังไม่เช็ค (null)
+  ✅ [SC-4.1] ยกเลิก ENROLLED → true · ชำระหลังยกเลิก → ok:false
+
+===== QC School =====
+ผ่าน 7/7
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":7,"passed":7,"findings":[]}

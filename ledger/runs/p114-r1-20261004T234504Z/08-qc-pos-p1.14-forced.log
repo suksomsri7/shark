@@ -1,0 +1,48 @@
+[env] qc-pos-p1.14 · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4)
+(node:1924004) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+── ST ข้อสถิต (ไม่แตะ DB) ──
+  ✅ [P1.14-ST1] [static · R1] schema: PosStockCount · PosStockCountLine · PosStockCountEntry (คอลัมน์สัญญา · unique (tenantId,openKey) (unitId,countNo) (countId,itemId) (tenantId,idempotencyKey)) · enum PosStockCountStatus {OPEN CONFIRMED CANCELLED} · PosStockCountScope {ALL CATEGORY}
+  ✅ [P1.14-ST2] [static · R1] migration: CREATE TABLE ×3 · partial unique ("inventorySystemId","locationId") WHERE status OPEN · ไม่ ALTER ตาราง Inv*/PosSale*/PosProduct/PosShift* · ไม่มี DROP/RENAME/SET NOT NULL
+  ✅ [P1.14-ST3] [static · R1] scope.ts ลงทะเบียน PosStockCount · PosStockCountLine · PosStockCountEntry (บรรทัดจริง)
+  ✅ [P1.14-ST4] [static · R8] inventory/service.ts export adjustInTx · AdjustInput มี sourceModule/refType/refId · adjust เรียก adjustInTx · bulkCount/adjust ยัง export
+  ✅ [P1.14-ST5] [static · R2 R5 R7 R8 R13] pos/stock-count.ts export 9 ฟังก์ชัน · confirm: lockItemsInTx + adjustInTx + emitOutbox pos.stockCount.confirmed + auditLog · record: lockItemsInTx · ทางลัดเรียก receive/transfer/adjustInTx · ไม่เขียน invItem/invLocationStock/invMovement/invLot เอง (C-1)
+  ✅ [P1.14-ST6] [static · R10 R12 R15] stock-count-shared.ts pure (ไม่ import db/prisma) · 13 รหัส · ข้อความ th (ไทย) + en (ไม่มีไทย) ครบ · สิทธิ์ pos.stock.count ใน permissions.ts · consumer + label ของ pos.stockCount.confirmed
+  ✅ [P1.14-ST7] [static · R8 R16 · เขียวได้บนฐาน] InvMovement/InvLocationStock คอลัมน์เท่าเดิม · bulkCountAction ยังตรวจ inventory.movement.adjust · คีย์สิทธิ์ inventory.* เท่าเดิม 16 ตัว
+
+── sandbox qc-p114-b73dy4 (2 สาขา · POS 1 · คลัง 1 ผูกสาขาแรก · สินค้า 8 · ที่เก็บ 2) ──
+  ✅ [P1.14-OC1] เปิดรอบ ALL ที่คลัง default ของสาขา: บรรทัด = สินค้า PRODUCT ที่ไม่เก็บถาวรของคลังสาขาครบ (ไม่มีบริการ/ของเก็บถาวร) · snapshotQty = ยอดที่ที่เก็บ · OPEN · inventorySystemId/locationId/countNo/snapshotAt/openedBy ถูก · แถว DB ตรงผลคืน
+  ✅ [P1.14-RE1] บันทึกด้วย itemId: SET 9 → ADD 1 → SET 8 · countedQty ตามลำดับ · expectedAtCount = ยอดที่ที่เก็บตอนนับ · countedAt · entry 3 แถว (mode/qty/byUserId)
+  ✅ [P1.14-RE2] สแกนรหัส: บาร์โค้ด InvItem → สินค้านั้น · SKU → สินค้านั้น · รหัสไม่รู้จัก → UNKNOWN_CODE · บริการ / ของเก็บถาวร / สินค้าคลังร้านอื่น → NOT_IN_COUNT · ไม่มี entry ของคำปฏิเสธ
+  ✅ [P1.14-RE3] สินค้าชั่ง (กรัม): ป้ายเครื่องชั่ง prefix 21 → ADD กรัมจากป้าย · ADD กรัมด้วย itemId · บรรทัด weighed:true · ป้าย + qty พร้อมกัน → VALIDATION
+  ✅ [P1.14-RE4] กันซ้ำ entry: คีย์เดิม payload เดิม → duplicated ยอดไม่เปลี่ยน entry ไม่เพิ่ม · คีย์เดิม qty ต่าง → IDEMPOTENCY_CONFLICT · ค่าผิด (ติดลบ · ทศนิยม · ADD 0 · เกินเพดาน · mode แปลก · itemId+code · ไม่มีทั้งคู่ · คีย์แปลก) → VALIDATION ไม่มีแถว
+  ✅ [P1.14-RE5] แข่งนับ ADD 1 จาก 8 connection บนบรรทัดเดียว → ok ทั้ง 8 · countedQty 8 · entry 8 แถว
+  ✅ [P1.14-AB1] ขายระหว่างนับ (บิลจริง createSale): snapshot 20 · ขาย 2 · นับ 17 → expectedAtCount 18 · ขายอีก 1 หลังนับ · (ยืนยันใน CF1) ยอดสุดท้ายนับรวมการขายหลังนับ
+  ✅ [P1.14-AB2] รับเข้า+โอนออกระหว่างนับ: expectedAtCount ตามยอดจริง (5+5−2=8) · นับ 8 → ผลต่าง 0 · invariant expectedAtCount = snapshotQty + Σ movement ที่ที่เก็บช่วง (snapshotAt, countedAt] ทุกบรรทัดที่นับ
+  ✅ [P1.14-CF1] ยืนยัน (แข่งกับการขาย 5 รายการพร้อมกัน): ADJUST เฉพาะบรรทัดที่ผลต่าง ≠ 0 · qtyDelta = ผลต่าง · key pos-count-<count>-<item> · POS/PosStockCount/countId · movementId ในบรรทัด · ยอดสุดท้าย = นับได้ + movement หลังนับ · บรรทัดไม่นับไม่แตะ · Σ ที่เก็บ = onHand
+  ✅ [P1.14-CF3] event + audit: outbox pos.stockCount.confirmed 1 แถว (key PosStockCount#<id>#CONFIRMED · payload countId/countedLines/adjustedLines/varianceValueSatang) · AuditLog pos.stockCount.confirm 1 · ยืนยันซ้ำคีย์เดิม → duplicated ไม่มี movement/event/audit เพิ่ม
+  ✅ [P1.14-CF4] สถานะ: ยืนยันคีย์ใหม่ของรอบที่ยืนยันแล้ว / บันทึกนับ / ยกเลิก → COUNT_NOT_OPEN · รอบไม่เปลี่ยน
+  ✅ [P1.14-CA1] ยกเลิก: CANCELLED · ไม่มี movement/event ของรอบ · audit pos.stockCount.cancel 1 · ซ้ำคีย์เดิม → duplicated · บันทึก/ยืนยันหลังยกเลิก → COUNT_NOT_OPEN · เหตุผลว่าง → VALIDATION · ที่เก็บว่างเปิดรอบใหม่ได้
+  ✅ [P1.14-CF5] แข่งยืนยัน 6 connection คีย์ต่างกัน → ok 1 · COUNT_NOT_OPEN 5 · ADJUST ต่อบรรทัด 1 แถว · event 1 · ยอดถูก
+  ✅ [P1.14-OC2] เปิดรอบ CATEGORY: บรรทัดเฉพาะหมวดที่เลือก · ตรวจค่า (หมวดของคลังอื่น · CATEGORY ไม่มีหมวด · ALL ส่งหมวด · คีย์แปลก · คีย์ซ้ำสั้น) → VALIDATION ไม่มีแถว
+  ✅ [P1.14-CF2] uncounted ZERO: รอบหมวด · ยืนยันแบบ SKIP ทั้งที่ไม่ได้นับ → NOTHING_COUNTED · นับ 1 บรรทัด แล้ว ZERO → บรรทัดที่ไม่นับเป็น 0 (ยอดที่ที่เก็บ = 0) · บรรทัดที่นับตามกติกา R6
+  ✅ [P1.14-OC3] 1 รอบ OPEN ต่อที่เก็บ: เปิดซ้ำคีย์ใหม่ → COUNT_ALREADY_OPEN (+countId) · คีย์เดิม → duplicated id เดิม · ที่เก็บอื่นเปิดได้ (countNo +1) · แข่งเปิด 6 connection → ok 1 · COUNT_ALREADY_OPEN 5 · OPEN 1 แถว
+  ✅ [P1.14-PM1] สิทธิ์/ขอบเขต: ขายได้อย่างเดียว → PERMISSION_DENIED (เปิด/บันทึก) · คนนับ (pos.stock.count) นับได้ ยืนยัน/ยกเลิกรอบคนอื่นไม่ได้ · STAFF สาขาอื่น → PERMISSION_DENIED · สาขาไม่มีคลัง → NO_INVENTORY · ร้านอื่น/สาขาอื่น → NOT_FOUND · blind: คนนับเห็น snapshot/expected/variance = null · เจ้าของเห็นตัวเลข
+  ✅ [P1.14-SH1] รับของจาก POS: IN · key pos-recv-<k> · POS/PosUnit/unitId · ต้นทุนไม่ส่ง = ต้นทุนเฉลี่ยเดิม (ไม่ขยับ) · สแกนบาร์โค้ดได้ · ซ้ำ → duplicated · บริการ → NOT_STOCKED · qty 0 → VALIDATION · ไม่มีสิทธิ์รับ → PERMISSION_DENIED · audit pos.stock.receive 1
+  ✅ [P1.14-SH2] โอนจาก POS: TRANSFER คู่ pos-tf-<k>-out/-in · onHand รวมไม่เปลี่ยน · ที่เก็บปลายทาง +qty · ซ้ำ → duplicated · ต้นทาง=ปลายทาง → VALIDATION · ที่เก็บของคลังร้านอื่น → NOT_FOUND · ไม่มีสิทธิ์ → PERMISSION_DENIED
+  ✅ [P1.14-SH3] ปรับจาก POS: ADJUST qtyDelta = deltaQty · key pos-adj-<k> · note = เหตุผล · POS/PosUnit · ซ้ำ → duplicated · delta 0 / ไม่มีเหตุผล → VALIDATION · คนนับไม่มีสิทธิ์ adjust → PERMISSION_DENIED · Σ ที่เก็บ = onHand
+  ✅ [P1.14-RF1] คำปฏิเสธทุกตัว = {ok:false, code, message} ไม่ throw · code อยู่ใน STOCK_COUNT_REFUSAL_CODES · เห็นครบ 11 รหัสที่ยั่วได้ · message ไม่ว่าง
+  ลบแล้ว: {"outbox":5,"audit":19,"entry":21,"line":33,"count":6,"payment":2,"saleLine":2,"sale":2,"movement":29,"locStock":8,"product":8,"item":8} · รอบ 6 · บิล 2 · สินค้า 8 · สาขา 2 · ระบบ 2
+  ✅ [P1.14-Z1] QC4 คืนสภาพ: จำนวนแถวของร้าน QC POS ทั้งสอง (ทุกตารางที่ข้อสอบแตะ) ก่อน = หลัง
+  ✅ [P1.14-Z2] QC4 ลายนิ้วมือ: แถวเดิมของร้าน QC POS (ระบบ · สาขา · สมาชิก · InvItem · InvLocationStock · InvLocation · PosProduct · PosStockCount*) ทุกคอลัมน์ ก่อน = หลัง
+
+===== qc-pos-p1.14 ===== ผ่าน 30/30 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-pos-p1.14","total":30,"passed":30,"failed":[],"skipped":false,"forced":true,"missing":[],"a5":{"drift":[]}}

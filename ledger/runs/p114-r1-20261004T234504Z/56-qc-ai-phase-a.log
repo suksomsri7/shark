@@ -1,0 +1,24 @@
+[env] qc-ai-phase-a · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech
+(node:1938601) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ [PA-1.1] tool ask_clarify ลงทะเบียน (ถามกลับแบบ choice)
+  ✅ [PA-2.1] proposal ลบการ์ด → risk=DESTRUCTIVE อัตโนมัติ
+  ✅ [PA-2.2] ยืนยันชั้นเดียว → ยังไม่ลบ + needsSecondConfirm
+  ✅ [PA-2.3] ยืนยันชั้นสอง (confirm2x) → ลบจริง (archivedAt set)
+  ✅ [PA-2.4] NORMAL risk + ทำชั้นเดียวได้ทันที (ไม่ต้อง 2 ชั้น)
+  ✅ [PA-2.5] tool void_sale ลงทะเบียน (ยกเลิกบิล — destructive)
+  ✅ [PA-2.6] void_sale ชั้นเดียว → บิลยัง PAID + needsSecondConfirm
+  ✅ [PA-2.7] void_sale ชั้นสอง → บิล VOIDED จริง
+  ✅ [PA-3.1] ปรับสต็อกติดลบ → คืน error (มี suggestion) + ไม่สร้าง proposal
+
+===== QC AI Phase A =====
+ผ่าน 9/9
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":9,"passed":9,"findings":[]}

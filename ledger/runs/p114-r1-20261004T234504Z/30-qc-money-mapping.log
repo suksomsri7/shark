@@ -1,0 +1,20 @@
+[env] qc-money-mapping · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech
+(node:1934846) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ [MM-1.1] DEPOSIT 107 → Dr เงินมัดจำรับ 2110 = 107 (ไม่เข้า 1010)
+  ✅ [MM-1.2] entry สมดุล + Cr รายได้ 4000 = 100 (ฐานหลังถอด VAT) + Cr VAT 2200 = 7
+  ✅ [MM-2.1] ROOM_CHARGE 214 → Dr ลูกหนี้ 1100 = 214 (ไม่เข้า 1010) + สมดุล
+  ✅ [MM-3.1] CASH 107 → Dr เงินสด 1000 = 107 (พฤติกรรมเดิมไม่เพี้ยน)
+  ✅ [MM-4.1] จ่ายผสม CASH 50 + DEPOSIT 57 → Dr 1000=50 · Dr 2110=57 · สมดุล
+
+===== QC Money Mapping =====
+ผ่าน 5/5
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":5,"passed":5,"findings":[]}

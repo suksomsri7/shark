@@ -1,0 +1,133 @@
+[env] qc-hf-inventory-authz · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech
+(node:1945063) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ [HF-1.1] inventoryCanRead: OWNER
+  ✅ [HF-1.2] inventoryCanRead: MANAGER (จำกัดสาขา)
+  ✅ [HF-1.3] inventoryCanRead: STAFF + inventory.item.read
+  ✅ [HF-1.4] inventoryCanRead: STAFF + inventory.*
+  ✅ [HF-1.5] inventoryCanRead: STAFF + inventory.movement.receive อย่างเดียว (เขียน ⇒ อ่าน)
+  ✅ [HF-1.6] inventoryCanRead: STAFF เปล่า
+  ✅ [HF-1.7] inventoryCanRead: STAFF มีแต่ pos.* / account.*
+  ✅ [HF-1.8] inventoryCanRead: STAFF inventory.item.read=false
+  ✅ [HF-1.9] inventoryCanRead: null
+  ✅ [HF-2.1] OWNER เปิดหน้าคลังของร้านตัวเองได้ (คืน ctx ของระบบนี้)
+  ✅ [HF-2.2] MANAGER เปิดได้
+  ✅ [HF-2.3] STAFF + inventory.item.read เปิดได้
+  ✅ [HF-2.4] STAFF ไม่มีสิทธิ์คลัง → 404 (ไม่เห็นต้นทุน/ผู้ขาย)
+  ✅ [HF-2.5] id ระบบ POS ของร้านเดียวกัน → 404
+  ✅ [HF-2.6] id ระบบคลังของร้านอื่น → 404
+  ✅ [HF-3.1] [static] ทุกหน้าใต้ /inventory (7) — await แรก (หลัง params) คือ requireInventoryPage(
+  ✅ [HF-3.1b] [static] ผู้ import Inv*Section (7 ไฟล์) อยู่ในชุดหน้าที่ผ่านด่านทั้งหมด
+  ✅ [HF-3.2] [static] Inv*Section + InvHub ทุกตัว await requireInventoryPage( เป็นตัวแรก (N7 · กันผู้ import ในอนาคต)
+  ✅ [HF-3.3.actions.ts] [static] actions.ts: ชุด action ที่ export = รายการที่ตรวจ (19) — มี action ใหม่ต้องเพิ่มเข้าข้อสอบ
+  ✅ [HF-3.4.createItemAction] [static] createItemAction resolve ระบบ INVENTORY ของร้านก่อนแตะข้อมูล (ไม่มี ctx จาก systemId ดิบ)
+  ✅ [HF-3.4.updateItemAction] [static] updateItemAction resolve ระบบ INVENTORY ของร้านก่อนแตะข้อมูล (ไม่มี ctx จาก systemId ดิบ)
+  ✅ [HF-3.4.archiveItemAction] [static] archiveItemAction resolve ระบบ INVENTORY ของร้านก่อนแตะข้อมูล (ไม่มี ctx จาก systemId ดิบ)
+  ✅ [HF-3.4.receiveAction] [static] receiveAction resolve ระบบ INVENTORY ของร้านก่อนแตะข้อมูล (ไม่มี ctx จาก systemId ดิบ)
+  ✅ [HF-3.4.consumeAction] [static] consumeAction resolve ระบบ INVENTORY ของร้านก่อนแตะข้อมูล (ไม่มี ctx จาก systemId ดิบ)
+  ✅ [HF-3.4.bulkCountAction] [static] bulkCountAction resolve ระบบ INVENTORY ของร้านก่อนแตะข้อมูล (ไม่มี ctx จาก systemId ดิบ)
+  ✅ [HF-3.4.importItemsAction] [static] importItemsAction resolve ระบบ INVENTORY ของร้านก่อนแตะข้อมูล (ไม่มี ctx จาก systemId ดิบ)
+  ✅ [HF-3.4.createLocationAction] [static] createLocationAction resolve ระบบ INVENTORY ของร้านก่อนแตะข้อมูล (ไม่มี ctx จาก systemId ดิบ)
+  ✅ [HF-3.4.transferAction] [static] transferAction resolve ระบบ INVENTORY ของร้านก่อนแตะข้อมูล (ไม่มี ctx จาก systemId ดิบ)
+  ✅ [HF-3.4.itemLotsAction] [static] itemLotsAction resolve ระบบ INVENTORY ของร้านก่อนแตะข้อมูล (ไม่มี ctx จาก systemId ดิบ)
+  ✅ [HF-3.4.findItemByBarcodeAction] [static] findItemByBarcodeAction resolve ระบบ INVENTORY ของร้านก่อนแตะข้อมูล (ไม่มี ctx จาก systemId ดิบ)
+  ✅ [HF-3.4.createServiceAction] [static] createServiceAction resolve ระบบ INVENTORY ของร้านก่อนแตะข้อมูล (ไม่มี ctx จาก systemId ดิบ)
+  ✅ [HF-3.4.updateServiceAction] [static] updateServiceAction resolve ระบบ INVENTORY ของร้านก่อนแตะข้อมูล (ไม่มี ctx จาก systemId ดิบ)
+  ✅ [HF-3.4.saveCategoryAction] [static] saveCategoryAction resolve ระบบ INVENTORY ของร้านก่อนแตะข้อมูล (ไม่มี ctx จาก systemId ดิบ)
+  ✅ [HF-3.4.removeCategoryAction] [static] removeCategoryAction resolve ระบบ INVENTORY ของร้านก่อนแตะข้อมูล (ไม่มี ctx จาก systemId ดิบ)
+  ✅ [HF-3.4.saveSettingsAction] [static] saveSettingsAction resolve ระบบ INVENTORY ของร้านก่อนแตะข้อมูล (ไม่มี ctx จาก systemId ดิบ)
+  ✅ [HF-3.4.uploadItemImageAction] [static] uploadItemImageAction resolve ระบบ INVENTORY ของร้านก่อนแตะข้อมูล (ไม่มี ctx จาก systemId ดิบ)
+  ✅ [HF-3.4.removeItemImageAction] [static] removeItemImageAction resolve ระบบ INVENTORY ของร้านก่อนแตะข้อมูล (ไม่มี ctx จาก systemId ดิบ)
+  ✅ [HF-3.4.setPrimaryImageAction] [static] setPrimaryImageAction resolve ระบบ INVENTORY ของร้านก่อนแตะข้อมูล (ไม่มี ctx จาก systemId ดิบ)
+  ✅ [HF-3.3.procurement-actions.ts] [static] procurement-actions.ts: ชุด action ที่ export = รายการที่ตรวจ (7) — มี action ใหม่ต้องเพิ่มเข้าข้อสอบ
+  ✅ [HF-3.4.createSupplierAction] [static] createSupplierAction resolve ระบบ INVENTORY ของร้านก่อนแตะข้อมูล (ไม่มี ctx จาก systemId ดิบ)
+  ✅ [HF-3.4.enableVendorPortalAction] [static] enableVendorPortalAction resolve ระบบ INVENTORY ของร้านก่อนแตะข้อมูล (ไม่มี ctx จาก systemId ดิบ)
+  ✅ [HF-3.4.disableVendorPortalAction] [static] disableVendorPortalAction resolve ระบบ INVENTORY ของร้านก่อนแตะข้อมูล (ไม่มี ctx จาก systemId ดิบ)
+  ✅ [HF-3.4.createPoAction] [static] createPoAction resolve ระบบ INVENTORY ของร้านก่อนแตะข้อมูล (ไม่มี ctx จาก systemId ดิบ)
+  ✅ [HF-3.4.markOrderedAction] [static] markOrderedAction resolve ระบบ INVENTORY ของร้านก่อนแตะข้อมูล (ไม่มี ctx จาก systemId ดิบ)
+  ✅ [HF-3.4.receivePoAction] [static] receivePoAction resolve ระบบ INVENTORY ของร้านก่อนแตะข้อมูล (ไม่มี ctx จาก systemId ดิบ)
+  ✅ [HF-3.4.cancelPoAction] [static] cancelPoAction resolve ระบบ INVENTORY ของร้านก่อนแตะข้อมูล (ไม่มี ctx จาก systemId ดิบ)
+  ✅ [HF-3.9a] [mutation] ถอด requireInventoryPage ออกจากหน้า procurement → ตัวตรวจหน้า (HF-3.1) แดง
+  ✅ [HF-3.9b] [mutation] เปลี่ยน transferAction กลับเป็น ctx ดิบ → ตัวตรวจ action (HF-3.4) แดง
+  ✅ [HF-3.9c] [mutation] ย้ายการตรวจระบบไปหลัง uploadFile → ตัวตรวจ action แดง
+  ✅ [HF-4.1] action สร้างของด้วย systemId POS ร้านเดียวกัน → ไม่มีแถวเกิดใต้ระบบนั้น (7 action)
+  ✅ [HF-4.2] action สร้างของด้วย systemId คลังร้านอื่น → ไม่มีแถวเกิดใต้ระบบนั้น (7 action)
+  ✅ [HF-4.3] receiveAction ด้วย systemId+itemId ของร้านอื่น → สต็อกร้านอื่นไม่ขยับ
+  ✅ [HF-4.4] bulkCountAction ด้วย id ระบบ POS → ไม่สำเร็จ + สต็อกคง 10
+  ✅ [HF-4.5] itemLotsAction (read) ด้วย systemId ร้านอื่น → ไม่คืนข้อมูล
+  ✅ [HF-4.6] คู่บวก: createItemAction ระบบคลังจริง → สร้างได้
+  ✅ [HF-4.7] STAFF ไม่มี inventory.movement.transfer → ปฏิเสธ + สต็อกคง
+  ✅ [HF-5.1] transfer ต้นทาง = id มั่ว → throw · ไม่มีแถวสต็อกผี · สาขา 2 ไม่ได้ของ
+  ✅ [HF-5.2] transfer ต้นทาง = คลังของระบบคลังอื่นในร้านเดียวกัน → throw · ไม่มีแถวสต็อกผี · สาขา 2 ไม่ได้ของ
+  ✅ [HF-5.3] transfer ต้นทาง = คลังของร้านอื่น → throw · ไม่มีแถวสต็อกผี · สาขา 2 ไม่ได้ของ
+  ✅ [HF-5.4] transfer ต้นทาง = คลังที่ปิดแล้ว (archived) → throw · ไม่มีแถวสต็อกผี · สาขา 2 ไม่ได้ของ
+  ✅ [HF-5.5] transfer ปลายทาง = id มั่ว → throw · ต้นทางไม่ลด
+  ✅ [HF-5.6] transferAction (ฟอร์ม) ต้นทางมั่ว → throw · สาขา 2 ไม่ได้ของ
+  ✅ [HF-5.7] transferAction ด้วย id ระบบ POS → throw · ไม่ขยับ
+  ✅ [HF-5.8] คู่บวก: โอน 4 คลังหลัก→สาขา 2 → 6/4 รวม 10
+  ✅ [HF-5.9] คู่บวก: โอนเกินยอด → ยอม (นโยบายเดิม) สาขา 2 = -5 + needsReview
+  ✅ [HF-5.10] คู่บวก: transferAction ฟอร์มจริง → สาขา 2 กลับเป็น 0
+  ✅ [HF-5.11] receive/consume คลังร้านอื่น/มั่ว → throw ทั้งคู่ (กันถอยหลัง)
+  ✅ [HF-6.1] createPo ผู้ขาย id มั่ว → throw · ไม่มี PO เกิด
+  ✅ [HF-6.2] createPo ผู้ขายของระบบคลังอื่น → throw · ไม่มี PO เกิด
+  ✅ [HF-6.3] createPo สินค้าของระบบคลังอื่น → throw · ไม่มี PO เกิด
+  ✅ [HF-6.4] createPo สินค้าของร้านอื่น → throw · ไม่มี PO เกิด
+  ✅ [HF-6.5] createPo รายการเป็นบริการ (ไม่มีสต็อก) → throw · ไม่มี PO เกิด
+  ✅ [HF-6.6] createPoAction (ฟอร์ม) ผู้ขายมั่ว → ไม่มี PO เกิด
+  ✅ [HF-6.7] คู่บวก: createPo ผู้ขาย+สินค้าจริง → สร้างได้
+  ✅ [HF-6.8] receivePo คลังของร้านอื่น → PO ยัง ORDERED (รับใหม่ได้) · สต็อกไม่ขยับ
+  ✅ [HF-6.9] คู่บวก: receivePo คลังจริง → RECEIVED + สาขา 2 ได้ 2 · รวม 12
+  ✅ [HF-7.1] guard export INVENTORY_PROCUREMENT_KEYS = item.read + supplier.* + po.* (ชื่อจริงจาก permissions.ts)
+  ✅ [HF-7.2] หน้าจัดซื้อ: STAFF มีแค่ inventory.movement.consume → 404 (ไม่เห็นเบอร์/อีเมลผู้ขาย ยอด PO ลิงก์ผู้ขาย)
+  ✅ [HF-7.3] หน้าจัดซื้อ: STAFF + inventory.po.create → เปิดได้
+  ✅ [HF-7.4] หน้าจัดซื้อ: STAFF + inventory.supplier.update → เปิดได้
+  ✅ [HF-7.5] หน้าจัดซื้อ: STAFF + inventory.item.read → เปิดได้
+  ✅ [HF-7.6] หน้าจัดซื้อ: STAFF + inventory.* → เปิดได้
+  ✅ [HF-7.7] หน้าจัดซื้อ: MANAGER เปิดได้
+  ✅ [HF-7.8] หน้าอื่น (ไม่ส่ง anyOf): STAFF consume อย่างเดียว → ยังเปิดได้ (กฎคีย์ใดก็ได้เดิม)
+  ✅ [HF-7.9] [static] หน้า procurement ส่ง anyOf: INVENTORY_PROCUREMENT_KEYS ให้ด่าน
+  ✅ [HF-7.10] คู่บวก: OWNER เห็นลิงก์ผู้ขาย (/vendor/<token>) ในหน้าจัดซื้อ
+  ✅ [HF-7.11] STAFF inventory.po.create (ไม่มี supplier.update) → ไม่มีลิงก์ผู้ขายใน output
+  ✅ [HF-7.12] STAFF inventory.supplier.update → เห็นลิงก์ผู้ขาย
+  ✅ [HF-8.1] เรียก Inv*Section/InvHub ตรง ๆ: STAFF ไม่มีสิทธิ์คลัง / id ระบบ POS → 404 ทุกตัว (8)
+  ✅ [HF-8.2] เรียก section ด้วย id ระบบ POS ไม่สร้างแถวคลังใต้ POS (ensureDefaultLocation ไม่วิ่ง)
+  ✅ [HF-9.1] itemLotsAction: STAFF consume อย่างเดียว (เปิดหน้าได้) → ไม่โดนปฏิเสธ
+  ✅ [HF-9.2] findItemByBarcodeAction: STAFF consume อย่างเดียว → เจอสินค้า
+  ✅ [HF-9.3] STAFF ไม่มีคีย์คลังเลย → ทั้งสอง action ถูกปฏิเสธ (กันถอยหลัง)
+  ✅ [HF-10.1] S3 + R3.8: receivePoAction คลังผิด → คืน { status: "error", message ไทย } (ไม่ throw · ไม่เงียบ) · PO ยัง ORDERED · สต็อกไม่ขยับ
+  ✅ [HF-10.updateItemAction] updateItemAction ด้วย id ระบบ POS ของร้านเดียวกัน → ปฏิเสธ · ไม่มีอะไรเปลี่ยน
+  ✅ [HF-10.archiveItemAction] archiveItemAction ด้วย id ระบบ POS ของร้านเดียวกัน → ปฏิเสธ · ไม่มีอะไรเปลี่ยน
+  ✅ [HF-10.uploadItemImageAction] uploadItemImageAction ด้วย id ระบบ POS ของร้านเดียวกัน → ปฏิเสธ · ไม่มีอะไรเปลี่ยน
+  ✅ [HF-10.removeItemImageAction] removeItemImageAction ด้วย id ระบบ POS ของร้านเดียวกัน → ปฏิเสธ · ไม่มีอะไรเปลี่ยน
+  ✅ [HF-10.setPrimaryImageAction] setPrimaryImageAction ด้วย id ระบบ POS ของร้านเดียวกัน → ปฏิเสธ · ไม่มีอะไรเปลี่ยน
+  ✅ [HF-10.enableVendorPortalAction] enableVendorPortalAction ด้วย id ระบบ POS ของร้านเดียวกัน → ปฏิเสธ · ไม่มีอะไรเปลี่ยน
+  ✅ [HF-10.disableVendorPortalAction] disableVendorPortalAction ด้วย id ระบบ POS ของร้านเดียวกัน → ปฏิเสธ · ไม่มีอะไรเปลี่ยน
+  ✅ [HF-10.markOrderedAction] markOrderedAction ด้วย id ระบบ POS ของร้านเดียวกัน → ปฏิเสธ · ไม่มีอะไรเปลี่ยน
+  ✅ [HF-10.receivePoAction] receivePoAction ด้วย id ระบบ POS ของร้านเดียวกัน → ปฏิเสธ · ไม่มีอะไรเปลี่ยน
+  ✅ [HF-10.cancelPoAction] cancelPoAction ด้วย id ระบบ POS ของร้านเดียวกัน → ปฏิเสธ · ไม่มีอะไรเปลี่ยน
+  ✅ [HF-11.1] STAFF มีแค่ reports.report.run → dataset inventory (มีต้นทุน) ถูกปฏิเสธทั้งจอและ CSV · ข้อความไทย
+  ✅ [HF-11.2] คู่บวก: STAFF reports.report.run + pos.sale.create (ทุกสาขา) รัน dataset sales ได้
+  ✅ [HF-11.3] คู่บวก: STAFF reports.report.run + inventory.item.read → รัน inventory ได้
+  ✅ [HF-11.4] รายงาน customers: แถวที่ส่งกลับมีเฉพาะคีย์ใน columns (ไม่มี id/email/โน้ต/คีย์ภายใน)
+  ✅ [HF-11.5] รายงาน sales: แถวที่ส่งกลับมีเฉพาะคีย์ใน columns (ไม่มี id/email/โน้ต/คีย์ภายใน)
+  ✅ [HF-11.6] รายงาน inventory: แถวที่ส่งกลับมีเฉพาะคีย์ใน columns (ไม่มี id/email/โน้ต/คีย์ภายใน)
+  ✅ [HF-11.7] clampReportTake: 1e9 → EXPORT_CAP · -5 → 1 · NaN/ไม่ส่ง → ค่าเริ่มต้น · 2.7 → 2
+  ✅ [HF-11.8] [static] runReport ใช้ clampReportTake กับ take ที่มาจาก client
+  ✅ [HF-12.1] R3.8: รับของสำเร็จ → คืน { status: "ok", message ไทย } · RECEIVED · สต็อก +2
+  ✅ [HF-12.2] R3.8: กดรับซ้ำหลังรับแล้ว → ไม่ขึ้น error (status ok) · ไม่รับซ้ำ (IN 1 แถว · สต็อกคงเดิม)
+  ✅ [HF-12.3] R3.8: ดับเบิลคลิก (2 คำขอพร้อมกัน) → ทั้งคู่ไม่ขึ้น error · รับครั้งเดียว (IN 2 แถว = 2 บรรทัด · สต็อก +7)
+  ✅ [HF-12.4] [static] R3.8: หน้าจัดซื้อไม่ผูก receivePoAction เป็น form action ตรง ๆ (ผลถูกทิ้ง) — ใช้ PoReceiveForm (useActionState + แสดงข้อความ)
+  ✅ [HF-12.5] R3c: STAFF ไม่มีสิทธิ์รับของ (inventory.po.receive) → คืน { status:"error", message ไทย } ไม่ throw · ไม่รับของ
+  ✅ [HF-12.6] R3c: systemId เป็นระบบ POS (ไม่ใช่คลังของร้าน) → คืน { status:"error", message ไทย } ไม่ throw · ไม่รับของ
+
+===== QC HF-INV-0 inventory authz =====
+ผ่าน 118/118
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":118,"passed":118,"findings":[]}
