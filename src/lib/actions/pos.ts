@@ -8,6 +8,7 @@ import { requireTenant, type Auth } from "@/lib/core/context";
 import { assertCan, ForbiddenError } from "@/lib/core/rbac";
 import { posMembership, posSalesScope, posScopeUnitIds, posCanSetTenantPrice } from "@/lib/modules/pos/access";
 import { createSale, closeDayCsv } from "@/lib/modules/pos/service";
+import { isPosClientKey, lookupPosKey, posStoredKey } from "@/lib/modules/pos/legacy-key";
 import { posUnitIsLinked, resolvePosLinks, setItemSalePrice, posOpenDeals, posLinkSaleToDeal, posPriceUnitIds } from "@/lib/modules/pos/register";
 import type {
   PosDealOption,
@@ -362,17 +363,20 @@ export async function registerSaleAction(input: SaleInput): Promise<RegisterSale
   assertPosCan(auth, input.unitId);
   const tenantId = auth.active.tenantId;
 
-  const idempotencyKey = String(input.idempotencyKey ?? "").trim();
-  if (!idempotencyKey) return { status: "error", message: "ข้อมูลบิลไม่ครบ ลองใหม่อีกครั้ง" };
+  // HF-O23: คีย์ของ client = [A-Za-z0-9_-] 8–100 (UI ส่ง UUID) · เก็บ/ค้นเป็น "pos1:<คีย์>" เสมอ ⇒ ไม่ชน/ไม่อ่านคีย์ของโมดูลอื่น
+  //   (hotel-sale-… · booking-sale-… · ticket-sale-… · ecom-… ฯลฯ อยู่ช่อง unique เดียวกัน) — ดู src/lib/modules/pos/legacy-key.ts
+  const clientKey = String(input.idempotencyKey ?? "").trim();
+  if (!isPosClientKey(clientKey)) return { status: "error", message: "ข้อมูลบิลไม่ครบ ลองใหม่อีกครั้ง" };
+  const idempotencyKey = posStoredKey(clientKey);
 
   // idempotent short-circuit: บิลนี้เคยบันทึกแล้ว (กดยืนยันซ้ำ) → คืนผลเดิม ไม่คิดคูปอง/ยอดซ้ำ
-  const existing = await prisma.posSale.findUnique({
-    where: { tenantId_idempotencyKey: { tenantId, idempotencyKey } },
-    select: { receiptNo: true, grandTotalSatang: true, pointEarned: true },
-  });
-  if (existing) {
-    return { status: "ok", receiptNo: existing.receiptNo, grandTotalSatang: existing.grandTotalSatang, pointEarned: existing.pointEarned, changeSatang: 0 };
+  //   คืนเฉพาะบิล POS ของสาขานี้ · คีย์เปล่า (แท็บที่เปิดก่อน deploy) ค้นเฉพาะเมื่อไม่มีแถว "pos1:" และต้องเป็นบิล POS สาขานี้เท่านั้น
+  const prior = await lookupPosKey(prisma, tenantId, input.unitId, clientKey);
+  if (prior.kind === "replay") {
+    const p = prior.sale;
+    return { status: "ok", receiptNo: p.receiptNo, grandTotalSatang: p.grandTotalSatang, pointEarned: p.pointEarned, changeSatang: 0 };
   }
+  if (prior.kind === "taken") return { status: "error", message: "ข้อมูลบิลไม่ครบ ลองใหม่อีกครั้ง" };
 
   const norm = normalizeLines(input.lines);
   if (!norm.ok) return { status: "error", message: norm.message };

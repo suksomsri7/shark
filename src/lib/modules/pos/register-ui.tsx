@@ -33,7 +33,9 @@ function bahtToSatang(v: string): number {
 }
 
 const newKey = () =>
-  typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `k-${Date.now()}-${Math.random()}`;
+  typeof crypto !== "undefined" && crypto.randomUUID
+    ? crypto.randomUUID()
+    : `k-${Date.now()}-${Math.random().toString(36).slice(2)}`; // HF-O23: ต้องเป็น [A-Za-z0-9_-] 8–100 (ห้ามมี "." ของ Math.random())
 
 const num = (n: number) => n.toLocaleString("th-TH");
 
