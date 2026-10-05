@@ -96,7 +96,7 @@ QC4="bash scripts/iso.sh bash scripts/qc4.sh bash scripts/with-gate-lock.sh"
 tail -n +2 "$REQF" | while read -r step _; do
   case "$step" in
     ""|\#*) continue ;;
-    typecheck)   run typecheck env NODE_OPTIONS=--max-old-space-size=5632 ISO_MEM=6500M bash scripts/iso.sh bash scripts/with-gate-lock.sh pnpm typecheck ;;
+    typecheck)   rm -rf "$TREE/.next/types" 2>/dev/null; run typecheck env NODE_OPTIONS=--max-old-space-size=5632 ISO_MEM=6500M bash scripts/iso.sh bash scripts/with-gate-lock.sh pnpm typecheck ;;
     fitness)     run fitness-env bash scripts/iso.sh bash scripts/qc4.sh pnpm fitness
                  run fitness-noenv env -u DATABASE_URL -u DIRECT_URL -u QC_ENV_FILE pnpm fitness ;;
     build)       run serve-build env ACC_V2_PORT=3226 NODE_OPTIONS=--max-old-space-size=5632 bash scripts/acc-v2-serve.sh
