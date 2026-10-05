@@ -43,3 +43,6 @@
 
 ## P1.9 shift rollout (OQ-P19-1 — owner chose (a), 5 Oct 2026)
 - Existing POSes with registerV2 on become shift-required after deploy; staff holding only pos.sale.create cannot open a shift. Controller recommendation (a): data step sets settings.pos.shift.required.register=false on every existing registerV2 POS before go-live; owners opt in. Alternatives (b) sale.create may open own-device shift, (c) default off. Old register tabs without deviceId must be reloaded.
+
+## m2 — registerV2 grants price override (owner noted 5 Oct 2026)
+- When settings.pos.registerV2 is turned on for a tenant, every STAFF holding the pos.* wildcard gains pos.sale.priceOverride (open price + custom item) at that moment (P1.3 S3.47/S3.54). Owner reviews role grants before enabling.

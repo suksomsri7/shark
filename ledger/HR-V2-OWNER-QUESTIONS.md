@@ -7,7 +7,7 @@
 ## A. Needed before or during H0 (urgent)
 | id | question | blocks | recommendation | Thai (for the owner) | answer |
 |---|---|---|---|---|---|
-| HQ1 | Deploy the RC (`rc/hotfixes-2026-10-01`, includes the HR privacy hotfix) before HR V2 starts? If not yet: may HR lanes branch from `hotfix/hr-privacy` and carry it along? | G0 · every H-WO | Deploy the RC first. Fallback: branch from `hotfix/hr-privacy` | HQ1 อนุมัติ deploy ชุดแก้ช่องโหว่ (รวม HR privacy) ก่อนเริ่ม HR V2 ไหม — ถ้ายัง ให้ HR V2 ต่อจาก branch hotfix ไปก่อนได้ไหม | |
+| HQ1 ✅ owner 5 Oct: YES (O18 approved) | Deploy the RC (`rc/hotfixes-2026-10-01`, includes the HR privacy hotfix) before HR V2 starts? If not yet: may HR lanes branch from `hotfix/hr-privacy` and carry it along? | G0 · every H-WO | Deploy the RC first. Fallback: branch from `hotfix/hr-privacy` | HQ1 อนุมัติ deploy ชุดแก้ช่องโหว่ (รวม HR privacy) ก่อนเริ่ม HR V2 ไหม — ถ้ายัง ให้ HR V2 ต่อจาก branch hotfix ไปก่อนได้ไหม | |
 | HQ2 | PIN hashing secret: add a new server secret (e.g. `HR_PIN_PEPPER`) that the owner sets in Vercel, or reuse an existing server secret? | H0.5 | New dedicated secret, set by the owner in Vercel before the H0.5 rollout. Rotating it means every PIN is reset | HQ2 ตั้งรหัสลับใหม่ 1 ตัวใน Vercel สำหรับเข้ารหัส PIN พนักงาน (แนะนำ) หรือใช้รหัสลับเดิมของระบบ | |
 | HQ3 | PIN rules: unique per **shop (tenant)** among active employees (needed so a PIN alone identifies a person at the POS)? Allowed length 4–6 digits? What happens to existing duplicate PINs? | H0.5 · POS P1.15/P3.5 | Unique per tenant · 4–6 digits allowed (6 suggested for staff who can approve voids) · duplicates found by the backfill → those people must set a new PIN (list sent to the owner) | HQ3 PIN ห้ามซ้ำกันทั้งร้าน · ยาว 4–6 หลัก · คนที่ PIN ซ้ำกันอยู่ตอนนี้ต้องตั้งใหม่ — ตกลงไหม | |
 | HQ4 | Existing plain-text PINs: convert in place (nobody re-enters) or force everyone to set a new PIN? | H0.5 | Convert in place, then delete the plain text | HQ4 PIN เดิมแปลงเป็นรหัสลับให้เลย ไม่ต้องตั้งใหม่ (แนะนำ) หรือบังคับทุกคนตั้งใหม่ | |
@@ -52,3 +52,9 @@
 
 ## E. Answer log
 (controller: copy each answer here with the date and the WO it unblocks; then update the brief.)
+
+## Owner answers 5 Oct 2026 (via POS controller)
+- HQ1: deploy the RC first — APPROVED (O18). Prod read-only checks run first on the VPS.
+- O6 (payroll D1/D2/D6): fix completely in H0.1/H0.2; D15/HQ8 waits for the accountant.
+- O16: (b) 'cancel my leave' button + (c) owner's own leave bypasses the approval chain.
+- O17: two-person rule when a run contains the approver's own lines · no self-edit of own salary (owner excepted) · close the unlinked 'ghost' employee row hole.
