@@ -1,0 +1,27 @@
+[env] qc-inventory · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech
+  ✅ [IV-R.1] moving avg (10@100 + 10@200 = 150)
+  ✅ [IV-R.2] needsReorder (onHand 3 ≤ RP 5)
+  ✅ [IV-R.3] isNegative (-2)
+(node:1962484) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ [IV-1.1] สร้าง item onHand 0
+  ✅ [IV-2.1] รับเข้า 20 → onHand 20
+  ✅ [IV-2.2] movement มี balanceAfter 20
+  ✅ [IV-3.1] รับซ้ำ idempotencyKey เดิม → ไม่เพิ่ม (ยัง 20)
+  ✅ [IV-4.1] ตัดออก 3 → onHand 17
+  ✅ [IV-4.2] onHand() อ่านได้ = 17
+  ✅ [IV-5.1] ตัดเกินสต็อก → ยอมติดลบ (-83) ไม่ throw
+  ✅ [IV-5.2] movement ติดลบตั้งธง needsReview
+  ✅ [IV-6.1] lowStock: ติดลบ ≤ RP → เข้ารายการเตือน
+
+===== QC Inventory =====
+ผ่าน 12/12
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":12,"passed":12,"findings":[]}
