@@ -58,3 +58,5 @@
 - O6 (payroll D1/D2/D6): fix completely in H0.1/H0.2; D15/HQ8 waits for the accountant.
 - O16: (b) 'cancel my leave' button + (c) owner's own leave bypasses the approval chain.
 - O17: two-person rule when a run contains the approver's own lines · no self-edit of own salary (owner excepted) · close the unlinked 'ghost' employee row hole.
+- HQ18: superseded by owner's O16 answer — (b) 'cancel my leave' + (c) owner's own leave bypasses the approval chain (no OWNER self-approval).
+- HQ29: done 5 Oct by account B read-only on prod — 0 HrEmployee rows linked to users ⇒ 0 duplicates (H0.7 unique index safe).

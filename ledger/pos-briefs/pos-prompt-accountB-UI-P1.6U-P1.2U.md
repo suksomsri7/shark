@@ -14,7 +14,9 @@ You are the UI BUILDER for POS work orders **P1.6 U** and then **P1.2 U**. The s
 - AGENTS.md: this Next.js differs from training data. Read `node_modules/next/dist/docs/` before touching Next code.
 
 ## Tree
-- `/root/projects/shark-pos-p11`. Must be clean. `git fetch origin session/pos && git checkout -b wip/pos-p1.6u origin/session/pos`.
+- `/root/projects/shark-pos-b` (NOT shark-pos-p11 — the controller's VPS runner switches branches in p11). Must be clean. `git fetch origin session/pos && git checkout -b wip/pos-p1.6u origin/session/pos`.
+- `node_modules` here is a READ-ONLY bind mount of p11's (re-mount if missing: `mount --bind -o ro /root/projects/shark-pos-p11/node_modules /root/projects/shark-pos-b/node_modules`). Never `pnpm install` / `prisma generate` here. If the Prisma client looks older than session/pos (type errors on Pos* models you did not touch), stop and tell the owner — the controller regenerates it.
+- A parallel HR session works in `/root/projects/shark-hr` on the same QC4: suites wait on the shared gate lock — let them wait.
 - No schema change, no migration, no `prisma generate`. QC4 only (`ep-frosty-lab`, print hostname only) for DB suites, through the wrappers.
 
 ## Order
