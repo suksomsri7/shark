@@ -1,0 +1,19 @@
+o23-r2 /root/projects/shark-pos-p11 wip/pos-hf-o23-r2 70ab5b86
+typecheck
+fitness
+forced:qc-hf-o23
+forced:qc-hf-o23
+unforced:qc-hf-o23
+qc-hf-pos-page-authz
+qc-pos-register
+qc-pos-coupon
+qc-pos-closeday
+qc-pos-account
+qc-hotel-money
+qc-booking-deposit
+qc-shop
+qc-rental
+qc-clinic
+qc-school
+qc-restaurant-pay
+build
