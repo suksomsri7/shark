@@ -1,0 +1,29 @@
+[env] qc-hf-o23 · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech
+  ✅ [O23-ST1] [static] legacy-key.ts: POS1_KEY_PREFIX = "pos1:" · isPosClientKey = /^[A-Za-z0-9_-]{8,100}$/ · export lookupPosKey/posStoredKey
+  ✅ [O23-ST2] [static] registerSaleAction: ตรวจ isPosClientKey ก่อน · idempotencyKey = posStoredKey(…) · ค้นผ่าน lookupPosKey · taken = error · ไม่มี posSale.findUnique ด้วยคีย์ดิบในตัว action
+  ✅ [O23-ST7] [static] R2 race: หลัง createSale ใน registerSaleAction อ่านบิลด้วย id (unitId/sourceModule) · ไม่ใช่ POS หรือคนละสาขา = error ก่อนผูกดีล/คืน ok
+  ✅ [O23-ST3] [static] lookupPosKey: คืนเฉพาะ sourceModule === "POS" && unitId เดียวกัน · ค้นคีย์เปล่าหลังไม่เจอแถว pos1: เท่านั้น
+  ✅ [O23-ST4] [static] register-ui newKey: crypto.randomUUID + ทางสำรองไม่มี "." (Math.random().toString(36))
+  ✅ [O23-ST5] [pure] isPosClientKey: รับ UUID · k-<ts>-<base36> · hotel-sale-<cuid> · ปฏิเสธ pos1:… · reg2:… · มีจุด/ช่องว่าง · <8 · >100 · ไม่ใช่สตริง · posStoredKey ใส่ pos1:
+  ✅ [O23-ST6] [static] ทางเข้าอื่นใน src/lib/actions + src/app/api ไม่ส่งคีย์จาก client ตรงเข้า createSale/posSale (ผู้เรียก createSale ใน actions/api = pos.ts · booking.ts ที่ใช้คีย์ booking-sale-<id> ของเซิร์ฟเวอร์)
+(node:2132906) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ [O23-DB1] จองคีย์: คีย์ client hotel-sale-<x> → lookupPosKey = none · ขายด้วย posStoredKey → แถวเก็บเป็น pos1:hotel-sale-<x> (ไม่ใช่คีย์เปล่า)
+  ✅ [O23-DB2] โมดูลโรงแรมขายทีหลังด้วยคีย์เปล่า hotel-sale-<x> → ได้บิลใหม่ของตัวเอง (id ต่างจากบิลจอง · sourceModule HOTEL · ยอดของโรงแรม)
+  ✅ [O23-DB3] กดซ้ำ: lookupPosKey(สาขาเดิม, คีย์เดิม) = replay บิลเดิม (receiptNo/ยอดเดียวกัน · legacyBareKey false) · สาขาอื่นของร้านเดียวกัน = taken (ไม่คืนบิล)
+  ✅ [O23-DB4] อ่านบิลโมดูลอื่น: บิล HOTEL คีย์เปล่า hotel-sale-<y> → lookupPosKey(คีย์นั้น) = none (ไม่คืนเลขใบเสร็จ/ยอด) · ขายต่อด้วย pos1: ได้ · บิลโรงแรมไม่ถูกแตะ
+  ✅ [O23-DB5] ช่วงเปลี่ยนรุ่น: บิล POS คีย์เปล่า (ก่อน deploy) สาขาเดียวกัน → replay legacyBareKey true · สาขาอื่น → none
+  ✅ [O23-DB6] [action] registerSaleAction(คีย์ hotel-sale-<z>) → ok · แถวเก็บเป็น pos1:hotel-sale-<z> (POS · สาขานี้) · ไม่มีแถวคีย์เปล่า
+  ✅ [O23-DB7] [action] หลัง DB6 โรงแรม createSale ด้วยคีย์เปล่า hotel-sale-<z> → บิลใหม่ HOTEL (id ต่าง · ยอดของโรงแรม)
+  ✅ [O23-DB8] [action] กดซ้ำคีย์เดิม → ok เลขใบเสร็จเดิม (ไม่มีบิลเพิ่ม) · ส่งคีย์ของบิล HOTEL ที่มีอยู่ → ไม่ได้เลขใบเสร็จ/ยอดของโรงแรม
+  ✅ [O23-Z1] คืนสภาพ: ร้านชั่วคราว qc-hfo23-* ถูกลบ · ไม่เหลือ PosSale/PosSaleLine/PosPayment/OutboxEvent ของร้านนั้น · ผู้ใช้ OWNER ชั่วคราว (+session/membership) ถูกลบ
+
+===== qc-hf-o23 ===== ผ่าน 16/16
+JSON_SUMMARY {"suite":"qc-hf-o23","total":16,"passed":16,"failed":[],"skipped":false,"forced":false,"missing":[]}

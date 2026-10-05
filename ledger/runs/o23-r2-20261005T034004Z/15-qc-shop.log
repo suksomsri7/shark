@@ -1,0 +1,30 @@
+[env] qc-shop · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech
+(node:2134040) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ [SH-1.1] ชื่อว่าง → throw
+  ✅ [SH-1.2] listProducts activeOnly เห็น 2 (ตัด inactive)
+  ✅ [SH-2.1] createOrder: total 650 บาท + code SO- + PENDING_PAYMENT
+  ✅ [SH-2.2] line snapshot ชื่อ+ราคา 2 แถว
+  ✅ [SH-2.3] สินค้า inactive / qty 0 → throw ทั้งคู่
+  ✅ [SH-2.4] getOrderByCode ได้ order+lines · code ปลอม → null
+  ✅ [SH-3.1] promptpayForOrder: payload EMVCo (000201 + โอนแล้วห้ามแก้ยอด → มียอด 650.00)
+  ✅ [SH-4.1] PAID + paidAt + PosSale เกิด (650 บาท PAID) + posSaleId เก็บ
+  ✅ [SH-4.2] outbox pos.sale.paid ≥1 (เส้นเงิน C-2 เดิน)
+  ✅ [SH-4.3] สต็อกตัดเฉพาะ line ที่ผูก inv: เสื้อ 50→48
+  ✅ [SH-4.4] ยืนยันซ้ำ → ok:false + PosSale ไม่ซ้ำ (1 ใบ)
+  ✅ [SH-5.1] cancelOrder PENDING→CANCELLED · ยืนยันหลัง cancel → false
+  ✅ [SH-5.2] ไม่มีระบบ POS → throw ไทย + order ยัง PENDING_PAYMENT
+  ✅ [SH-5.3] ไม่มี PaymentProfile → promptpayForOrder null ไม่ throw
+  ✅ [SH-6.1] tenant อื่นไม่เห็นสินค้า (guard)
+
+===== QC E-commerce =====
+ผ่าน 15/15
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":15,"passed":15,"findings":[]}
