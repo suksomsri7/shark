@@ -1,0 +1,10 @@
+p114-r2 /root/projects/shark-pos-p11 wip/pos-p1.14-r2 9a260116
+typecheck
+fitness
+fitness-pos
+forced:qc-pos-p1.14
+unforced:qc-pos-p1.14
+qc-inventory
+qc-hf-inventory-atomic
+forced:qc-pos-p1.3
+build
