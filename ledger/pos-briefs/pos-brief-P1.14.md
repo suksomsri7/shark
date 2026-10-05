@@ -115,3 +115,7 @@ R16 **Out of scope:** receiving against a purchase order from the POS (mockup 16
 
 ## 5. Acceptance
 `qc-pos-p1.14` 30/30 forced ×2 + unforced with no residue · `qc-pos-inventory`, `qc-pos-p1.2`, `qc-pos-p1.6`, `qc-pos-p1.3`, the inventory oracles (`qc-inventory`, `qc-inventory-item`, `qc-inventory-account`, `qc-lot`, `qc-hf-inventory-atomic`, `qc-hf-inventory-authz` — `adjust` refactor) green · COMMON §7 money set · `pnpm fitness` both modes · typecheck.
+
+## Owner answers (5 Oct 2026)
+- Q1: no PO receiving from the POS (free receive only; PO receiving stays in Procurement).
+- Q2: count variance is not posted to the ledger in P1.14; the event carries varianceValueSatang for a later accounting step.
