@@ -1,0 +1,6 @@
+
+> shark-in-th@0.1.0 typecheck /root/projects/shark-pos-p11
+> tsc --noEmit
+
+.next/types/validator.ts(2726,39): error TS2307: Cannot find module '../../src/app/app/sys/[id]/pos/shifts/page.js' or its corresponding type declarations.
+ ELIFECYCLE  Command failed with exit code 2.
