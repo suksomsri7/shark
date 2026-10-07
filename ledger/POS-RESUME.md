@@ -684,3 +684,8 @@
 - ส่ง tg รายงาน 24% + สรุป O2/คำถาม Q1–Q6 ให้เจ้าของ (ค่าปริยายในใบ · ไม่บล็อก) · memory อัปเดต 13/55
 - รอผล: `scripts/qc-pos-p1.8.mts` + `ledger/wo-notes/pos-P1.8-oracle.md` · base run SKIP/RED · typecheck → ผู้คุม merge oracle เข้า session/pos → builder S บน p11 (migration QC4 โดยผู้คุม)
 - p11 ทรีอยู่ที่ 0a7b555f สะอาด · เซิร์ฟเวอร์ :3225 ปิด · ล็อก runner/pos-gate ว่าง · shark-gate ยังถูก CRM ถือ
+
+### 2026-10-07T22:49Z — คำสั่งเจ้าของ "เปิด 2 เลน" → เลน 2 = P1.10 oracle writer
+- เลือก P1.10 (เครื่อง/เครื่องพิมพ์/ใบเสร็จ 58-80/ใบกำกับอย่างย่อ) เพราะพึ่ง P1.9 ที่รับแล้ว ไม่ชนไฟล์ P1.8 (ไม่แตะ service.ts/account/point/outbox) และปลดล็อก P1.11 · brief `pos-brief-P1.10.md` 921b6541 (S = server + renderer บริสุทธิ์ · ฮาร์ดแวร์/หน้า 17A-17B = P1.10U · Q1–Q4 มีค่าปริยาย · เลขใบเสร็จตาม O2 ไม่ใช่ R{YY}{MM} ในภาพ 17A)
+- เลน 1: P1.8 oracle (tree b · `wip/pos-p1.8-oracle`) · เลน 2: P1.10 oracle (tree c · `wip/pos-p1.10-oracle` จาก 921b6541 · fixture prefix posqc-p110-) · ทั้งคู่ใช้ QC4 ร่วม
+- ถัดไป: รับ oracle ทั้งสอง → merge เข้า session/pos → builder S P1.8 บน p11 (migration) · builder S P1.10 บนทรี b/c (migration ของ P1.10 = ตารางใหม่ล้วน ผู้คุม deploy QC4 ทีละใบ)
