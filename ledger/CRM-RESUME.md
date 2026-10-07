@@ -95,6 +95,8 @@ C2.4 (ข้อสอบ 78 · `CRM_ASSIST` พร้อมใช้จาก C2
 
 > **22:10 UTC — container restart killed the C3.10 close lane (~21:50); re-spawned with a RESUME brief.** Worktree `shark-crm-c310` kept its uncommitted edits: c1.2b S8.2 (93/93 in `/tmp/c310-logs/lane/c1.2b-fix.log`), c3.7 X1.3 (unverified, run killed), `scripts/crm-expected.json` = QC1 answer key copied for K.1 (never commit). New lane: verify+commit items 1–2, then runner cookie isolation → customer lock-out standalone (SECURITY stop rule), registry, 4 re-checks, c2.1, 3.7 shots, evidence, final table; checkpoint-commit after each item.
 
+> **22:20 UTC — second container restart (22:10:54) = cgroup OOM: lane ran c3.7 directly in the session cgroup (node anon-rss 4.6 GB > 5 GB limit).** Lane re-spawned (3rd) with HARD RULE: every suite/runner/visual/fitness via `bash scripts/iso.sh bash scripts/with-gate-lock.sh …`, commit+push after every item. State: item 1 committed `541a4b21` (c1.2b 93/93); c3.7 edit uncommitted; remaining items 2–9 per brief.
+
 > **Rules learned this run (keep):** never run Bash calls in parallel when one of them changes directory (three ledger commits landed on agent branches); guard ledger writes with pwd + branch + non-empty line number; merge patches from agent worktrees exclude `ledger/CRM-RESUME.md` and `ledger/CRM-C6-REGISTER-DRAFT.md`; every commit ends with `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`; typecheck through `scripts/iso.sh`.
 
 #### A. In flight right now
