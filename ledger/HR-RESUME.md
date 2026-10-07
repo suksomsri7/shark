@@ -13,3 +13,4 @@
 
 ## Status log (UTC, from `date -u`)
 - 2026-10-07T11:06Z START. Quota at start: session 4% (resets 15:30Z) · weekly 1%. Base `origin/main` f85f5455 (contains hotfix/hr-privacy afcb9bc3). Worktrees created; pnpm install in progress. No lane running yet.
+- 2026-10-07T11:08:44Z Lanes launched: lane 1 = H0.1 oracle writer (Opus, `shark-hr`, `wip/pos-hr-h0.1-oracle`) · lane 2 = H0.2 oracle writer (Opus, `shark-hr-b`, `wip/pos-hr-h0.2-oracle`). Heartbeat cron every 23 min (session-only). Next: controller re-runs each oracle forced/unforced → builder H0.1 (lane 1) · lane 2 → H0.3 oracle (lane A, independent).
