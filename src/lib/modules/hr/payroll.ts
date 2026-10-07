@@ -628,17 +628,54 @@ export async function recomputeDraftRun(ctx: Ctx, runId: string, actor: PayrollA
   });
   return { ok: true, note: res.note };
 }
+const APPROVE_STALE = "ตัวเลขของรอบนี้เปลี่ยนไปแล้ว (มีการคำนวณใหม่) — กรุณาเปิดดูและอนุมัติอีกครั้ง";
+const APPROVE_NOT_DRAFT = "รอบนี้อนุมัติหรือจ่ายไปแล้ว";
+
+/**
+ * H0.1 R4 · R5 — claim DRAFT→APPROVED เฉพาะเมื่อรอบ "ยังเป็นตัวเลขที่ผู้อนุมัติเห็น" (ยอดจ่ายสุทธิรวม + จำนวนคน) แบบอะตอมมิก:
+ *   ล็อกแถวรอบ `FOR UPDATE` (ตัวเดียวกับที่ลบ/คำนวณใหม่ถือตลอด tx ⇒ ไม่มีการคำนวณใหม่ค้างกลางทาง) → นับแถวพนักงานใต้ล็อกนั้น →
+ *   UPDATE เดียวที่ guard `status = DRAFT AND totalNetSatang = ที่เห็น` ⇒ อนุมัติที่รอคิวอยู่หลังการคำนวณใหม่ เห็นตัวเลขใหม่แล้วปฏิเสธ
+ */
+async function claimApproveExpected(ctx: Ctx, runId: string, expect: { totalNetSatang: number; itemCount: number }): Promise<"OK" | "NOT_FOUND" | "NOT_DRAFT" | "STALE"> {
+  if (!Number.isSafeInteger(expect?.totalNetSatang) || !Number.isSafeInteger(expect?.itemCount)) return "STALE";
+  const scope = { tenantId: ctx.tenantId, systemId: ctx.systemId };
+  return tenantDb(ctx).$transaction(async (t) => {
+    const tx = t as unknown as Prisma.TransactionClient;
+    const cur = await lockRunRow(tx, ctx, runId);
+    if (!cur) return "NOT_FOUND" as const;
+    if (cur.status !== "DRAFT") return "NOT_DRAFT" as const;
+    const itemCount = await tx.hrPayrollItem.count({ where: { ...scope, runId } });
+    if (cur.totalNetSatang !== expect.totalNetSatang || itemCount !== expect.itemCount) return "STALE" as const;
+    const claim = await tx.hrPayrollRun.updateMany({
+      where: { ...scope, id: runId, status: "DRAFT", totalNetSatang: expect.totalNetSatang },
+      data: { status: "APPROVED" },
+    });
+    return claim.count === 1 ? ("OK" as const) : ("NOT_DRAFT" as const);
+  }, { maxWait: 20_000, timeout: 60_000 });
+}
 // ◂ H0.1
 
 // ── อนุมัติรอบ (DRAFT→APPROVED) + ลงบัญชี ถ้ามีระบบ ACCOUNT ──
-export async function approveRun(ctx: Ctx, runId: string): Promise<{ ok: boolean; note: string }> {
+export async function approveRun(
+  ctx: Ctx,
+  runId: string,
+  // H0.1 ▸ R4: "อนุมัติเฉพาะตัวเลขที่เห็น" — หน้าเว็บส่งยอดจ่ายสุทธิรวม + จำนวนคนของแถวที่แสดงมาเสมอ · ไม่ส่ง = ทางเดิม (ผู้เรียกเก่า/สคริปต์) ◂
+  expect?: { totalNetSatang: number; itemCount: number },
+): Promise<{ ok: boolean; note: string }> {
   const db = tenantDb(ctx);
-  // claim อะตอมมิก DRAFT→APPROVED — กันอนุมัติซ้ำ/ลงบัญชีเบิ้ล
-  const claim = await db.hrPayrollRun.updateMany({
-    where: { id: runId, status: "DRAFT" },
-    data: { status: "APPROVED" },
-  });
-  if (claim.count === 0) return { ok: false, note: "รอบนี้อนุมัติหรือจ่ายไปแล้ว" };
+  if (expect !== undefined) {
+    const claimed = await claimApproveExpected(ctx, runId, expect);
+    if (claimed === "NOT_FOUND") return { ok: false, note: RUN_NOT_FOUND };
+    if (claimed === "NOT_DRAFT") return { ok: false, note: APPROVE_NOT_DRAFT };
+    if (claimed === "STALE") return { ok: false, note: APPROVE_STALE };
+  } else {
+    // claim อะตอมมิก DRAFT→APPROVED — กันอนุมัติซ้ำ/ลงบัญชีเบิ้ล
+    const claim = await db.hrPayrollRun.updateMany({
+      where: { id: runId, status: "DRAFT" },
+      data: { status: "APPROVED" },
+    });
+    if (claim.count === 0) return { ok: false, note: APPROVE_NOT_DRAFT };
+  }
 
   const run = await db.hrPayrollRun.findFirst({ where: { id: runId } });
   if (!run) return { ok: false, note: "ไม่พบรอบจ่าย" };
