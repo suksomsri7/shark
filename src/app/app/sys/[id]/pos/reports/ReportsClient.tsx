@@ -5,12 +5,14 @@
 // 🔴 คำปฏิเสธแสดงด้วยคีย์ pos.report.errors.* ตามรหัส (ไม่แสดง message ไทยของเซิร์ฟเวอร์ · ไม่แสดงรหัสดิบ)
 // 🔴 CSV: เนื้อไฟล์มี BOM มาจากเซิร์ฟเวอร์แล้ว — ห้ามเติมซ้ำ
 // สถานะอยู่ใน URL (?kind=&from=&to=&unit=) ผ่าน history.replaceState — ไม่โหลดหน้าใหม่
+// R4 (ภาพ 08): kind=overview (ค่าเริ่ม) = แดชบอร์ด ReportsOverview · หัวหน้า (ชื่อ · ช่วงวันที่ · สาขา · ข้อมูลถึง/เทียบกับ · ส่งออก CSV) ใช้ร่วมทุกชนิด
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { MoneyText } from "@/components/ui/MoneyText";
 import { formatBaht } from "@/lib/ui/money";
 import { posReportAction, posReportCsvAction } from "@/lib/modules/pos/report-actions";
+import { bkkHm, Icon, prevRangeOf, rangeLabel, ReportsOverview } from "./ReportsOverview";
 import type {
   AnyReportResult,
   DailyRow,
@@ -32,13 +34,19 @@ import type {
 } from "@/lib/modules/pos/reports";
 
 type Unit = { id: string; name: string };
-type View = { kind: ReportKind; from: string; to: string; unitId: string };
+/** R4 — "overview" = แดชบอร์ดภาพ 08 (ไม่ใช่ชนิดรายงานของเซิร์ฟเวอร์ · CSV ของภาพรวม = daily) */
+export type ViewKind = ReportKind | "overview";
+type View = { kind: ViewKind; from: string; to: string; unitId: string };
 type Props = { systemId: string; units: Unit[]; initial: View; today: string; maxDays: number };
 type T = (key: string, values?: Record<string, string | number>) => string;
 type Loaded = Exclude<AnyReportResult, { ok: false }>["report"];
 
-/** ลำดับแท็บตามสเปก: daily · products · staff · payments · margin · shifts · tax */
-const KINDS: readonly ReportKind[] = ["daily", "products", "staff", "payments", "margin", "shifts", "tax"];
+/** ลำดับแท็บตามสเปก: overview (R4) · daily · products · staff · payments · margin · shifts · tax */
+const KINDS: readonly ViewKind[] = ["overview", "daily", "products", "staff", "payments", "margin", "shifts", "tax"];
+/** ไอคอนจากภาพ 08 (ปฏิทิน · ร้าน · ส่งออก) */
+const I_CAL = ["M6 5h12a2.5 2.5 0 0 1 2.5 2.5v11A2.5 2.5 0 0 1 18 21H6a2.5 2.5 0 0 1-2.5-2.5v-11A2.5 2.5 0 0 1 6 5Z", "M3.5 10h17M8 3v4M16 3v4"] as const;
+const I_SHOP = ["M4 9V4h16v5", "M3 9h18l-1.4 11a1 1 0 0 1-1 .9H5.4a1 1 0 0 1-1-.9Z", "M9.5 13h5"] as const;
+const I_OUT = ["M12 20V7", "m6.5 12.5 5.5-5.5 5.5 5.5", "M4 3h16"] as const;
 const DAY_MS = 86_400_000;
 const isDate = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s) && Number.isFinite(Date.parse(`${s}T00:00:00Z`)) && new Date(`${s}T00:00:00Z`).toISOString().slice(0, 10) === s;
 const spanDays = (from: string, to: string) => (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / DAY_MS + 1;
@@ -403,7 +411,9 @@ export function ReportsClient({ systemId, units, initial, today, maxDays }: Prop
 
   // ตรวจช่วงที่จอ (สเปก: 92 วัน ฝั่งจอ + คำปฏิเสธของเซิร์ฟเวอร์ก็แสดง)
   const rangeError = !isDate(view.from) || !isDate(view.to) ? "errors.validation" : view.from > view.to ? "errors.rangeOrder" : spanDays(view.from, view.to) > maxDays ? "errors.rangeTooLong" : null;
-  const target = useCallback((v: View) => ({ systemId, kind: v.kind, from: v.from, to: v.to, ...(v.unitId ? { unitId: v.unitId } : {}) }), [systemId]);
+  // ภาพรวมไม่ใช่ชนิดของเซิร์ฟเวอร์ ⇒ CSV ของภาพรวม = daily (R4 §2)
+  const target = useCallback((v: View) => ({ systemId, kind: (v.kind === "overview" ? "daily" : v.kind) as ReportKind, from: v.from, to: v.to, ...(v.unitId ? { unitId: v.unitId } : {}) }), [systemId]);
+  const [ovGeneratedAt, setOvGeneratedAt] = useState<string | null>(null);
 
   const load = useCallback(
     async (v: View) => {
@@ -439,7 +449,8 @@ export function ReportsClient({ systemId, units, initial, today, maxDays }: Prop
     } catch {
       /* URL เป็นแค่ความสะดวก — พังไม่กระทบรายงาน */
     }
-    if (rangeError) {
+    if (rangeError || view.kind === "overview") {
+      // ภาพรวมโหลดการ์ดของตัวเอง (ReportsOverview) — ตารางชนิดเดียวไม่ต้องเรียก
       seq.current++;
       setReport(null);
       setLoading(false);
@@ -479,10 +490,49 @@ export function ReportsClient({ systemId, units, initial, today, maxDays }: Prop
     setView((v) => ({ ...v, ...patch }));
   };
   const shownError = rangeError ? t(rangeError) : errorCode ? t(refusalKey(errorCode)) : null;
+  const overview = view.kind === "overview";
+  const seeAll = (k: ReportKind) => set({ kind: k }); // "ดูทั้งหมด" ในการ์ดภาพรวม → แท็บชนิดนั้น (ช่วง/สาขาเดิม)
+  const prev = !rangeError ? prevRangeOf(view.from, view.to) : null;
+  const dateCls = "min-h-[44px] w-full min-w-0 bg-transparent text-sm font-semibold tabular-nums outline-none sm:w-[9.5rem]";
 
   return (
-    <div className="flex w-full min-w-0 flex-col gap-4" data-testid="pos-reports">
-      {/* แท็บชนิดรายงาน — มือถือเลื่อนแนวนอนในแถบเอง */}
+    <div className="flex w-full min-w-0 flex-col gap-5" data-testid="pos-reports">
+      {/* หัวหน้าแบบภาพ 08: ชื่อ · ช่วงวันที่ · สาขา · ข้อมูลถึง/เทียบกับ · ส่งออก CSV (ขวาสุด) */}
+      <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-center lg:gap-x-4" data-testid="pos-report-header">
+        <h2 className="text-2xl font-bold tracking-tight">{overview ? t("overview.title") : t("title")}</h2>
+        <div className="grid min-w-0 grid-cols-1 gap-3 sm:flex sm:flex-wrap sm:items-center sm:gap-4 lg:ml-2">
+          <div className="flex min-h-[48px] min-w-0 items-center gap-2 rounded-xl border bg-[color:var(--color-surface)] px-3" role="group" aria-label={t("overview.dateRange")}>
+            <Icon d={I_CAL} className="h-[18px] w-[18px] text-[color:var(--color-muted)]" />
+            <input data-testid="pos-report-from" type="date" aria-label={t("from")} className={dateCls} value={view.from} max={view.to || today} onChange={(e) => set({ from: e.target.value })} />
+            <span className="text-[color:var(--color-muted)]" aria-hidden="true">–</span>
+            <input data-testid="pos-report-to" type="date" aria-label={t("to")} className={dateCls} value={view.to} min={view.from || undefined} onChange={(e) => set({ to: e.target.value })} />
+          </div>
+          <div className="flex min-h-[48px] min-w-0 items-center gap-2 rounded-xl border bg-[color:var(--color-surface)] px-3">
+            <Icon d={I_SHOP} className="h-[18px] w-[18px] text-[color:var(--color-muted)]" />
+            <select data-testid="pos-report-unit" aria-label={t("unit")} className="min-h-[44px] w-full min-w-0 bg-transparent text-sm font-semibold outline-none sm:w-auto" value={view.unitId} onChange={(e) => set({ unitId: e.target.value })}>
+              <option value="">{t("allUnits")}</option>
+              {units.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          {overview && prev ? (
+            <span className="text-[13px] text-[color:var(--color-muted)]" data-testid="pos-report-ov-info">
+              {ovGeneratedAt ? `${t("overview.upToDate", { time: bkkHm(ovGeneratedAt, locale) })} · ` : ""}
+              {t("overview.compare", { range: rangeLabel(prev.from, prev.to, locale) })}
+            </span>
+          ) : null}
+        </div>
+        <button data-testid="pos-report-csv" type="button" className="btn btn-ghost min-h-[44px] text-sm lg:ml-auto" disabled={csvBusy || !!rangeError || (!overview && loading)} onClick={() => void downloadCsv()}>
+          <Icon d={I_OUT} className="h-[18px] w-[18px]" />
+          {csvBusy ? t("downloading") : t("overview.exportCsv")}
+        </button>
+      </div>
+      {!overview ? <p className="-mt-2 text-xs text-[color:var(--color-muted)]">{t("rangeHint")}</p> : null}
+
+      {/* แท็บชนิดรายงาน: ภาพรวม + 7 ชนิด — มือถือเลื่อนแนวนอนในแถบเอง */}
       <div role="tablist" aria-label={t("kindsLabel")} className="-mx-1 flex min-w-0 gap-1 overflow-x-auto px-1 pb-1" data-testid="pos-report-kinds">
         {KINDS.map((k) => {
           const on = view.kind === k;
@@ -496,38 +546,11 @@ export function ReportsClient({ systemId, units, initial, today, maxDays }: Prop
               className={`min-h-[44px] shrink-0 whitespace-nowrap rounded-full border px-4 text-sm ${on ? "border-[color:var(--color-ink)] bg-[color:var(--color-ink)] text-[color:var(--color-surface)]" : "text-[color:var(--color-ink-soft)] hover:bg-[color:var(--color-surface-2)]"}`}
               onClick={() => set({ kind: k })}
             >
-              {t(`kinds.${k}`)}
+              {k === "overview" ? t("overview.tab") : t(`kinds.${k}`)}
             </button>
           );
         })}
       </div>
-
-      {/* ตัวกรอง: วันที่ · สาขา · CSV */}
-      <div className="grid grid-cols-2 gap-3 sm:flex sm:flex-wrap sm:items-end">
-        <label className="flex min-w-0 flex-col gap-1 text-sm">
-          <span className="text-[color:var(--color-muted)]">{t("from")}</span>
-          <input data-testid="pos-report-from" type="date" className="input min-h-[44px] w-full min-w-0" value={view.from} max={view.to || today} onChange={(e) => set({ from: e.target.value })} />
-        </label>
-        <label className="flex min-w-0 flex-col gap-1 text-sm">
-          <span className="text-[color:var(--color-muted)]">{t("to")}</span>
-          <input data-testid="pos-report-to" type="date" className="input min-h-[44px] w-full min-w-0" value={view.to} min={view.from || undefined} onChange={(e) => set({ to: e.target.value })} />
-        </label>
-        <label className="col-span-2 flex min-w-0 flex-col gap-1 text-sm sm:col-span-1">
-          <span className="text-[color:var(--color-muted)]">{t("unit")}</span>
-          <select data-testid="pos-report-unit" className="input min-h-[44px] w-full min-w-0" value={view.unitId} onChange={(e) => set({ unitId: e.target.value })}>
-            <option value="">{t("allUnits")}</option>
-            {units.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <button data-testid="pos-report-csv" type="button" className="btn btn-ghost col-span-2 min-h-[44px] text-sm sm:col-span-1 sm:ml-auto" disabled={csvBusy || !!rangeError || loading} onClick={() => void downloadCsv()}>
-          {csvBusy ? t("downloading") : t("downloadCsv")}
-        </button>
-      </div>
-      <p className="-mt-2 text-xs text-[color:var(--color-muted)]">{t("rangeHint")}</p>
 
       {csvErrorCode && (
         <div role="alert" className="rounded-xl border border-[color:var(--color-danger)] p-3 text-sm text-[color:var(--color-danger)]" data-testid="pos-report-csv-error">
@@ -535,32 +558,55 @@ export function ReportsClient({ systemId, units, initial, today, maxDays }: Prop
         </div>
       )}
 
-      <section className="card flex min-w-0 flex-col gap-3" aria-busy={loading} data-testid="pos-report-card">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h2 className="text-base font-semibold">{t(`kinds.${view.kind}`)}</h2>
-          {report && !loading ? (
-            <span className="text-xs text-[color:var(--color-muted)]" data-testid="pos-report-generated">
-              {view.from} – {view.to} · {t("generatedAt", { time: bkkTime(report.generatedAt, locale) })}
-            </span>
-          ) : null}
-        </div>
-        {shownError ? (
-          <div role="alert" className="flex flex-col items-start gap-2 rounded-xl border border-[color:var(--color-danger)] p-3 text-sm text-[color:var(--color-danger)]" data-testid="pos-report-error">
-            <span>{shownError}</span>
-            {!rangeError && (
-              <button data-testid="pos-report-retry" type="button" className="btn btn-ghost min-h-[44px] text-sm" onClick={() => void load(view)}>
-                {t("retry")}
-              </button>
-            )}
+      {overview ? (
+        rangeError ? (
+          <div role="alert" className="rounded-xl border border-[color:var(--color-danger)] p-3 text-sm text-[color:var(--color-danger)]" data-testid="pos-report-error">
+            {t(rangeError)}
           </div>
-        ) : loading || !report ? (
-          <p className="py-6 text-center text-sm text-[color:var(--color-muted)]" data-testid="pos-report-loading">
-            {t("loading")}
-          </p>
         ) : (
-          <ReportBody rep={report} t={t} tc={tc} locale={locale} />
-        )}
-      </section>
+          <ReportsOverview
+            systemId={systemId}
+            units={units}
+            from={view.from}
+            to={view.to}
+            unitId={view.unitId}
+            today={today}
+            locale={locale}
+            t={t}
+            tc={tc}
+            refusalText={(code) => t(refusalKey(code))}
+            onGenerated={setOvGeneratedAt}
+            onSeeAll={seeAll}
+          />
+        )
+      ) : (
+        <section className="card flex min-w-0 flex-col gap-3" aria-busy={loading} data-testid="pos-report-card">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="text-base font-semibold">{t(`kinds.${view.kind}`)}</h2>
+            {report && !loading ? (
+              <span className="text-xs text-[color:var(--color-muted)]" data-testid="pos-report-generated">
+                {view.from} – {view.to} · {t("generatedAt", { time: bkkTime(report.generatedAt, locale) })}
+              </span>
+            ) : null}
+          </div>
+          {shownError ? (
+            <div role="alert" className="flex flex-col items-start gap-2 rounded-xl border border-[color:var(--color-danger)] p-3 text-sm text-[color:var(--color-danger)]" data-testid="pos-report-error">
+              <span>{shownError}</span>
+              {!rangeError && (
+                <button data-testid="pos-report-retry" type="button" className="btn btn-ghost min-h-[44px] text-sm" onClick={() => void load(view)}>
+                  {t("retry")}
+                </button>
+              )}
+            </div>
+          ) : loading || !report ? (
+            <p className="py-6 text-center text-sm text-[color:var(--color-muted)]" data-testid="pos-report-loading">
+              {t("loading")}
+            </p>
+          ) : (
+            <ReportBody rep={report} t={t} tc={tc} locale={locale} />
+          )}
+        </section>
+      )}
     </div>
   );
 }
