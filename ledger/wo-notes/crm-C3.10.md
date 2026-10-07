@@ -18,6 +18,25 @@ All 34 reds are `acc-v2-*` (27) and `account-api-*` (7). **No CRM suite red so f
 
 Owner of the fix: session/accounting (`scripts/seed-acc-v2-qc.mts` must pin its own clock / compute overdue from `QC.today`, and `qc-acc-v2-contact-merge` must not restore via the real-clock seed). Not a CRM regression; CRM did not touch these files (C6.0 merge brought accounting hotfixes only via main).
 
+## Progress at 19:38 UTC — 276/380 · crm-buttons done (18 256 s) · CRM reds triaged (controller)
+`crm-*` 44 suites: 41 ✅ (incl. crm-forms 669/0, crm-v1, crm-buttons "passed" at suite level) · 3 ❌ real-content + 3 ❌ env-guard. `hf-*` 7: 6 ✅ (apiv1-scope 143, hr-privacy 194, inventory-atomic 143, inventory-authz 118, pos-page-authz 56, reports-authz 79) · hf-o23 = QC4-only guard. New non-CRM red: `kanban-k2.3` 15/17 (S3.2 dnd-kit-from-member + S3.6 shots absent — both pre-existing, CRM-RESUME line 38).
+
+| suite | finding | triage | class |
+|---|---|---|---|
+| crm-c5.3, crm-c51fix-equiv, crm-perf | "QC2 only (ep-cool-shadow)" guard, 0 checks run | by design on QC1; their QC2 results stand (C6.0 gate) | env-guard ✅ |
+| hf-o23 | "QC4 only (ep-frosty-lab)" guard | by design; owner's POS session runs it | env-guard ✅ |
+| crm-c1.2b S8.2 (92/93) | OpsEvent WARN already at object 24 (80 %) — oracle expects none ≤ 29 | `limits.ts` AUDIT-CLASS X8 / C3.9 §11.9: warn once past 80 % (24/30). Oracle predates it. | **stale oracle → fix c1.2b** |
+| crm-c3.7 X1.3 | API tasks 113 vs raw SQL 120 for thana | QC1 count: thana has exactly 7 open NOTE rows in the window; `mobile.todayTasks` uses `activityStatusWhere` (C5.4-E L6-m1 "ไม่นับโน้ต") — oracle SQL still counts NOTE | **stale oracle → fix c3.7 (exclude NOTE)** |
+| crm-c3.7 S1.1 / S1.6 / S2.2 / S2.4 / S2.6 | 390-px summaries + S2 fixtures dated 2026-10-01, newest UI 2026-10-07 09:34 (linkpolicy) | evidence stale by design of the freshness pass; S1.1's "email-thread 404" is read from the 1 Oct summary, not a live result | **re-run `visual-crm.mts` 3.7 pass + S2 fixtures on this build** |
+| crm-c2.1 S6.2 | child `qc-member-m3.3` unexpected M3.3-S4.1/S4.2 (holdout 50 % hash set) | member-side; wait for the direct `member-m3.3` run later in this qc:all before classifying | pending (member) |
+| crm-buttons (suite ✅, verdict.py **FAIL** 7455/7771) | dead 8 · wrongExpect 8 · hiddenLeak 28 · consoleErrors 8 · VACUOUS 272 (standalone run has no run6 base to pair with) | see rows below | mixed |
+| ↳ hiddenLeak 28 = customer lock-out HTTP 200 on 14 staff pages | `qc-crm-buttons.mts:2915` runs all 5 roles in ONE default browser context; `mintSession("customer")` only ADDS the portal cookie, the previous staff role's `shark_session` stays in the jar → staff page served as thana. run6 passed lock-out because `run-chunks` ran customer in its own process. Portal lock-out itself unproven either way here. | **runner bug (cookie isolation) → fix + re-run `--user customer` standalone** |
+| ↳ wrongExpect crm-auto-rule-toggle (manager) | server refuses: "กฎนี้ทำงานกับ…ทุกรายการ แต่บัญชีนี้มองเห็นเฉพาะบางส่วน" | new guard from C5.5-fix1 `42acc952` (RV-6: automation verdict = manual doors); registry row still expects a mutation for manager | **registry debt → expect inline-error for manager (or hiddenFor)** |
+| ↳ wrongExpect deal-card-* drag (owner/manager/thana; nok passed) | no write request during drag | shot shows the board; cause unclear (drop target / stage layout) — re-run `--page /deals` standalone before touching code | re-check |
+| ↳ dead crm-auto-action-field (owner/manager) | select value does not change after fill | opener SET_FIELD; option list in fixture? re-run standalone | re-check |
+| ↳ dead crm-commission-rule-row-* / approve-selected (manager) | rows not found for manager | registry says roles [owner] only yet reported for manager → `needs` probe / role mapping; re-run standalone | re-check |
+| ↳ consoleErrors 8 | `/api/files/<id>` 404 on contact page (attachment blob missing on QC1 after reseed) | environment; UI shows the "ไม่พบไฟล์" block (fix13) | env ✅ |
+
 ## Verdict rule for closing C3.10
 - CRM suites (crm-*, crm-buttons) must be green or triaged to a CRM cause.
 - acc-v2/account-api reds attributable to cause 1/2 above are **environment debt**, recorded for session/accounting, not counted against CRM.
