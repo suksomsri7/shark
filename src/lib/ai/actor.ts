@@ -29,6 +29,8 @@ export type AiApiKeyActor = {
   scopes: string[];
   /** ระบบที่คีย์ผูกไว้ — null = คีย์ระดับร้าน */
   systemId: string | null;
+  /** C6.0 ▸ HF-APIV1: scopesJson ในแถวเสีย (`scopes` ถูกกรองเหลือ []) ⇒ ห้ามนับเป็นคีย์กลาง ◂ */
+  scopesMalformed?: boolean;
 };
 
 /**
@@ -77,8 +79,15 @@ export function aiMemberActor(
 }
 
 /** คีย์ API — ค่าจาก `authenticateApiRequest` เท่านั้น */
-export function aiApiKeyActor(k: { tenantId: string; keyId: string; scopes: string[]; systemId: string | null }): AiApiKeyActor {
-  return { kind: "apiKey", tenantId: k.tenantId, keyId: k.keyId, scopes: [...k.scopes], systemId: k.systemId };
+export function aiApiKeyActor(k: { tenantId: string; keyId: string; scopes: string[]; systemId: string | null; scopesMalformed?: boolean }): AiApiKeyActor {
+  return {
+    kind: "apiKey",
+    tenantId: k.tenantId,
+    keyId: k.keyId,
+    scopes: [...k.scopes],
+    systemId: k.systemId,
+    ...(k.scopesMalformed === true ? { scopesMalformed: true } : {}), // C6.0 ▸ HF-APIV1 ◂
+  };
 }
 
 /** actor ของงานภายในที่ไฟล์นี้สร้างจริง — ตัวอื่น (เขียน object เอง) ไม่ได้สิทธิ์อะไรเลย */
@@ -134,5 +143,7 @@ export function keyPermissions(scopes: readonly string[]): Record<string, unknow
  * 🔴 ความหมายเดียวกับ `isGeneralApiKey` ของ hotfix/apiv1-scope (ซึ่งเพิ่มเงื่อนไข scopesJson เสีย) — เมื่อรวมกันแล้วให้เรียกตัวนั้นแทน
  */
 export function isGeneralKeyActor(a: AiApiKeyActor): boolean {
-  return a.scopes.length === 0 && a.systemId === null;
+  // C6.0 ▸ รวมกับ hotfix แล้ว: เงื่อนไขเดียวกับ `isGeneralApiKey` (route-auth.ts) ทุกข้อ รวม scopesJson เสีย — เขียนซ้ำที่นี่เพราะ
+  //   route-auth ลาก service ของคีย์/ฐานข้อมูลมาด้วย (ทะเบียน AI ต้องโหลดได้ในโหมดไร้ env · fitness F10) ◂
+  return a.scopes.length === 0 && a.systemId === null && a.scopesMalformed !== true;
 }

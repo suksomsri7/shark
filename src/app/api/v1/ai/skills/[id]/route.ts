@@ -36,7 +36,7 @@ export async function GET(
   const crmLegacyLead = id === "crm" && (await crmApi.crmLegacyLeadOpen(auth.tenantId, auth.systemId ?? req.headers.get("x-shark-system")?.trim() ?? null));
   // CRM C5.5-G1 r2 (F4) ▸ + ด่านเดียวกับ executor — ไม่โฆษณาเครื่องมือที่คีย์ใบนี้เรียกแล้วโดนปฏิเสธ ◂
   // C6.0 merge ▸ ทั้งสองด่าน: HF-APIV1 `generalToolGate` (เครื่องมือนอก 4 โมดูล = คีย์กลางเท่านั้น) และ `toolVerdict` ของ CRM G1 ◂
-  const actor = aiApiKeyActor({ tenantId: auth.tenantId, keyId: auth.keyId, scopes: auth.scopes, systemId: auth.systemId });
+  const actor = aiApiKeyActor({ tenantId: auth.tenantId, keyId: auth.keyId, scopes: auth.scopes, systemId: auth.systemId, scopesMalformed: auth.scopesMalformed });
   const allowed = skillToolsForApiKey(skill, auth.scopes, { crmLegacyLead }).filter(
     (n) => generalToolGate(n, auth) && toolVerdict(actor, n, { crmLegacyLead }).ok, // HF-APIV1 + CRM G1
   );

@@ -59,7 +59,7 @@ export async function POST(
 
   // CRM C5.5-G1 r2 (F4) ▸ ด่านเดียวกับ executor (tool-access) ก่อนแตะอะไร — ไม่ผ่าน = 403 แบบเดียวกับการปฏิเสธอื่นของ route นี้
   //   (เดิม 200 + error ข้างใน · และไม่เปิดห้องแชทเปล่าให้คำขอที่ทำไม่ได้) ◂
-  const actor = aiApiKeyActor({ tenantId: auth.tenantId, keyId: auth.keyId, scopes: auth.scopes, systemId: auth.systemId });
+  const actor = aiApiKeyActor({ tenantId: auth.tenantId, keyId: auth.keyId, scopes: auth.scopes, systemId: auth.systemId, scopesMalformed: auth.scopesMalformed });
   const verdict = toolVerdict(actor, name, { crmLegacyLead });
   if (!verdict.ok) return apiJson({ error: verdict.reason }, 403);
 

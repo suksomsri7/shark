@@ -31,7 +31,7 @@ export async function GET(req: Request): Promise<Response> {
   // CRM C5.5-G1 r2 (F4) ▸ + ด่านเดียวกับ executor — สารบัญไม่โฆษณาสิ่งที่คีย์ใบนี้เรียกแล้วโดนปฏิเสธ (แกนกลางด้วย) ◂
   // HF-APIV1 ▸ เครื่องมือนอก 4 โมดูล = คีย์กลางเท่านั้น (กรองทิ้งจากสารบัญเหมือน "ไม่มีสิทธิ์") ◂
   // C6.0 merge ▸ ต้องผ่านทั้งสองด่าน (generalToolGate ของ hotfix และ toolVerdict ของ CRM G1) ◂
-  const actor = aiApiKeyActor({ tenantId: auth.tenantId, keyId: auth.keyId, scopes: auth.scopes, systemId: auth.systemId });
+  const actor = aiApiKeyActor({ tenantId: auth.tenantId, keyId: auth.keyId, scopes: auth.scopes, systemId: auth.systemId, scopesMalformed: auth.scopesMalformed });
   const usable = (names: readonly string[]) => names.filter((n) => generalToolGate(n, auth) && toolVerdict(actor, n, opts).ok);
   const skills = skillsForTenant(systems.map((s) => s.type)).filter(
     (s) => usable(skillToolsForApiKey(s, auth.scopes, opts)).length > 0,
