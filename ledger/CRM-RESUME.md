@@ -97,6 +97,8 @@ C2.4 (ข้อสอบ 78 · `CRM_ASSIST` พร้อมใช้จาก C2
 
 > **22:20 UTC — second container restart (22:10:54) = cgroup OOM: lane ran c3.7 directly in the session cgroup (node anon-rss 4.6 GB > 5 GB limit).** Lane re-spawned (3rd) with HARD RULE: every suite/runner/visual/fitness via `bash scripts/iso.sh bash scripts/with-gate-lock.sh …`, commit+push after every item. State: item 1 committed `541a4b21` (c1.2b 93/93); c3.7 edit uncommitted; remaining items 2–9 per brief.
 
+> **✅ 2026-10-07 22:34 UTC — C6.2 CLOSED → 51/53 (96 %).** Owner "ทำ": both P15 backfills applied on prod from shark-in-th f132ce21 — revoke-ended-portal revoked 0 · invoice-status applied 0/0 (candidates 2, wouldFix 0) · dry-run after = 0. Record `wo-notes/crm-C6.2.md`, log `ledger/evidence/c62/`. P15-3 (creator-less chat key) waits for the owner's new key. Owner also chose: pilot = `siam-dive-center` (tenant `cmtazbpjh000004lcjikxju2i`; 2 empty CRM systems, both v1) and "ทำตามแนะนำ" for the rest ⇒ controller sets `CRM_V2_SWITCH_TENANTS` on Vercel + redeploy; parity pass queued after C3.10.
+
 > **Rules learned this run (keep):** never run Bash calls in parallel when one of them changes directory (three ledger commits landed on agent branches); guard ledger writes with pwd + branch + non-empty line number; merge patches from agent worktrees exclude `ledger/CRM-RESUME.md` and `ledger/CRM-C6-REGISTER-DRAFT.md`; every commit ends with `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`; typecheck through `scripts/iso.sh`.
 
 #### A. In flight right now
