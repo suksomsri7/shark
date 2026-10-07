@@ -666,3 +666,8 @@
 - ถัดไป: build หัว R2 (102d7ea7) ถ่าย shifts+register owner ซ้ำเพื่อยืนยันสคริปต์ (F2/F6) → merge → 13/55
 
 ## 2026-10-07T22:05:39Z · register บน P1.9U head: 34/37 — state stock-warn ×3 ถูก route ไป runStockState (บั๊ก visual-pos จาก P1.14U 06e3a4b6 จับคำนำหน้า "stock-") → เลน P1.9U แก้ R3 · build ยืนยัน R2 (102d7ea7) กำลังวิ่ง 22:05
+
+### 2026-10-07T22:16Z — คอนเทนเนอร์ผู้คุมรีสตาร์ต · เลน P1.9U หลุดกลาง R3
+- เลน (subagent) หายไปพร้อมคอนเทนเนอร์ · branch `wip/pos-p1.9u` ยังอยู่ที่ R2 102d7ea7 · diff R3 (Set ของ StockStateKey/ShiftsStateKey แทน startsWith) ค้างอยู่ในทรี b ครบแล้ว ⇒ ผู้คุมทำต่อเอง: --dry ผ่าน (37 ภาพ, stock-warn อยู่ใต้หน้าขาย) · typecheck กำลังรันใต้ /tmp/pos-gate.lock
+- build ยืนยัน R2 บน p11 (unit pos-vis12-shifts) รอดเพราะเป็น systemd: shifts owner **12/12** ✅ (F2 cleanup ปิดกะ Z#9 ผ่าน UI) · register owner กำลังถ่าย (คาด stock-warn แดงจนกว่าจะใช้สคริปต์ R3)
+- โควตา B session 22% (reset 01:29 UTC) · ถัดไป: typecheck → commit R3 → ถ่าย register stock-warn ด้วยสคริปต์ R3 บน p11 → merge → 13/55
