@@ -83,3 +83,13 @@ Residue: each suite printed its own cleanup ("ลบแล้ว …"); p1.17 Z1
 ## Follow-ups
 - F2 (R5 V5, accepted): native date inputs follow the browser locale format.
 - F1 (controller verdict R4 Q3): KPI deltas compare with the whole previous day/range; mockup 08 says "same time window" (ช่วงเวลาเดียวกัน). A same-time comparison needs `from`/`to` with times in `reports.ts` (server change) — later card.
+
+## R6 gates (head a121f758)
+| command | result |
+|---|---|
+| `bash scripts/iso.sh env QC_FORCE=1 bash scripts/qc4.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/qc-pos-p1.17.mts` (pre-commit trial) | 39/39 exit 0 |
+| typecheck `env NODE_OPTIONS=--max-old-space-size=5632 ISO_MEM=6500M bash scripts/iso.sh flock -w 3600 /tmp/pos-gate.lock pnpm typecheck` | `tsc --noEmit` exit 0 (16:34:13 → 16:34:45 UTC) |
+| `qc-pos-p1.17` unforced / forced / forced | 39/39 · 39/39 · 39/39, exit 0 ×3 (Z1/Z2 green each run) |
+| `qc-hf-pos-page-authz` unforced / forced | 56/56 · 56/56, exit 0 |
+| `pnpm fitness` no DB / QC4 | 41/41 · 41/41, exit 0 |
+| `env -u DATABASE_URL -u DIRECT_URL pnpm exec tsx scripts/fitness-pos.mts` | 8/8 exit 0 (first R6 run: F15.3a red — `pos-report-ov-retry-branch-rows` needed its own row; added) |
