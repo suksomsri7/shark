@@ -121,6 +121,7 @@ import {
   emailRoutingUnverified, // CRM C5.5-fix3b ◂
 } from "./emails-shared";
 import { renderKbTokens } from "./kb-tokens"; // CRM C3.4 ◂
+import { linkHardVerdict } from "./tracking-shared"; // CRM C6.1-LINKPOLICY r2 ▸ RV-2: ด่านห้ามเด็ดขาดตัวเดียวกับ `/l` สำหรับ `/t/c` ◂
 import "./emails-job";
 import { crmSystemRow } from "./visibility"; // CRM C5.1-fix ▸ ระบบ CRM ผ่านด่านรวมคำสั่งเดียว (memo ต่อคำขอ) ◂
 
@@ -1005,9 +1006,13 @@ function composeOutgoing(args: { emailId: string; storedHtml: string; trackOpens
   const links: { h: string; url: string }[] = [];
   let html = args.storedHtml;
   if (args.trackClicks) {
-    html = html.replace(/href="(https?:\/\/[^"]*)"/gi, (_m, raw: string) => {
+    html = html.replace(/href="(https?:\/\/[^"]*)"/gi, (m, raw: string) => {
+      const url = decodeAttr(raw);
+      // CRM C6.1-LINKPOLICY r2 ▸ RV-2: ปลายทางที่ไม่ผ่านด่านห้ามเด็ดขาด (scheme · userinfo · IP · localhost/.local/.internal · รายการต้องห้าม)
+      //   ไม่ถูกห่อ — shark.in.th/t/c ไม่มีวันพาลูกค้าไปที่นั่น (ลิงก์คงเดิมในจดหมายของร้าน · ไม่นับคลิก) · รายการอนุญาตของร้านยังไม่ใช้ที่นี่ (คำถามเจ้าของ) ◂
+      if (!linkHardVerdict(url).ok) return m;
       const token = newToken(args.emailId, "c", links.length);
-      links.push({ h: tokenHash("c", token), url: decodeAttr(raw) });
+      links.push({ h: tokenHash("c", token), url });
       return `href="${base}/t/c/${token}"`;
     });
   }
@@ -3250,6 +3255,10 @@ export async function trackClick(
     const r = rows[0];
     const url = r?.url && /^https?:\/\//i.test(String(r.url)) ? String(r.url) : null;
     if (!r || !url) return { url: null };
+    // CRM C6.1-LINKPOLICY r2 ▸ RV-2: ด่านห้ามเด็ดขาดตอนกดด้วย (จดหมายที่ห่อไว้ก่อนมีด่าน) — ไม่ผ่าน = คำตอบเดียวกับ token ที่ไม่รู้จัก
+    //   🔴 คลิกถูกนับไปแล้วในคำสั่งเดียวกันข้างบน (url อยู่ในฐาน ตัดสินก่อนคำสั่งไม่ได้โดยไม่เพิ่มรอบไปกลับ) — เกิดได้เฉพาะจดหมายเก่า
+    //      ก่อนใบนี้ เพราะตอนห่อไม่ห่อปลายทางแบบนี้แล้ว ◂
+    if (!linkHardVerdict(url).ok) return { url: null };
     return {
       url,
       ticket: { emailId: id, tenantId: r.tenantId, systemId: r.systemId, contactId: r.contactId, contactTenantId: r.contactTenantId, trackingOptOut: r.optOut === true, settings: r.settings },

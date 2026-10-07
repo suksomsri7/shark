@@ -12,11 +12,13 @@ import { useRouter } from "next/navigation";
 import {
   createTrackedLink,
   deleteTrackedLink,
+  previewLinkHosts,
+  saveLinkHosts,
   saveTrackingWeb,
   trackedLinkQr,
   updateTrackedLink,
 } from "@/app/app/sys/[id]/crm/settings/tracking/actions";
-import type { CrmTrackLinkRow, CrmTrackingPageData } from "./types";
+import type { CrmTrackLinkPolicy, CrmTrackLinkRow, CrmTrackingPageData } from "./types";
 
 const card = "card flex min-w-0 flex-col gap-3 p-4";
 const input = "min-w-0 rounded-lg border px-3 py-2 text-sm text-[color:var(--color-ink)] bg-[color:var(--color-surface)]";
@@ -50,6 +52,30 @@ export function TrackingSettingsForm({ data }: { data: CrmTrackingPageData }) {
   const [linkCode, setLinkCode] = useState("");
   const [delId, setDelId] = useState<string | null>(null);
   const [delReason, setDelReason] = useState("");
+  // CRM C6.1-LINKPOLICY ▸ โดเมนปลายทางที่อนุญาตของลิงก์ติดตาม ◂
+  const [policy, setPolicy] = useState<CrmTrackLinkPolicy>(data.linkPolicy);
+  const [hostsText, setHostsText] = useState(data.linkPolicy.linkHosts.join("\n"));
+  const [hostsErr, setHostsErr] = useState<string | null>(null);
+  const [impact, setImpact] = useState<{ saved: boolean; policy: CrmTrackLinkPolicy } | null>(null);
+  const blocked = new Set(policy.blockedLinkIds);
+
+  async function checkHosts(saveIt: boolean) {
+    setBusy(true);
+    setHostsErr(null);
+    setImpact(null);
+    const r = saveIt ? await saveLinkHosts(data.systemId, hostsText) : await previewLinkHosts(data.systemId, hostsText);
+    setBusy(false);
+    if (!r.ok) {
+      setHostsErr(r.error);
+      return;
+    }
+    if (saveIt) {
+      setPolicy(r.data);
+      setHostsText(r.data.linkHosts.join("\n"));
+      router.refresh();
+    }
+    setImpact({ saved: saveIt, policy: r.data });
+  }
 
   async function save(patch: Parameters<typeof saveTrackingWeb>[1]) {
     setBusy(true);
@@ -292,6 +318,58 @@ export function TrackingSettingsForm({ data }: { data: CrmTrackingPageData }) {
       {/* ── ลิงก์ติดตาม ── */}
       <section className={card}>
         <h2 className="text-sm font-semibold">ลิงก์ติดตาม</h2>
+
+        {/* CRM C6.1-LINKPOLICY ▸ โดเมนปลายทางที่อนุญาต (มติเจ้าของ P11/Q15 ข้อ ข) ◂ */}
+        <div className="flex min-w-0 flex-col gap-2 rounded-lg border p-3" data-testid="crm-track-linkhosts">
+          <span className="text-xs font-medium">โดเมนปลายทางที่อนุญาต</span>
+          <p className="text-xs text-[color:var(--color-muted)]">
+            ลิงก์ติดตามพาลูกค้าไปได้เฉพาะเว็บในรายการนี้ — ใส่บรรทัดละหนึ่งชื่อ เช่น shop.example.com · ใส่ *.example.com เพื่อรวมโดเมนย่อยทั้งหมด (สูงสุด {policy.max} รายการ)
+          </p>
+          {policy.alwaysAllowed.length > 0 && (
+            <p className="break-words text-xs text-[color:var(--color-muted)]">
+              ใช้ได้เสมอโดยไม่ต้องใส่ (เว็บของร้านในส่วนติดตามเว็บ และระบบ SHARK): {policy.alwaysAllowed.join(" · ")}
+            </p>
+          )}
+          <textarea
+            className={`${input} font-mono text-xs`}
+            rows={4}
+            placeholder={"shop.example.com\n*.example.com"}
+            value={hostsText}
+            onChange={(e) => setHostsText(e.target.value)}
+            data-testid="crm-track-linkhosts-input"
+            aria-label="โดเมนปลายทางที่อนุญาต"
+          />
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <button type="button" className={btn} disabled={busy} onClick={() => void checkHosts(false)} data-testid="crm-track-linkhosts-check">
+              ตรวจผลกระทบ
+            </button>
+            <button type="button" className={btnMain} disabled={busy} onClick={() => void checkHosts(true)} data-testid="crm-track-linkhosts-save">
+              บันทึกโดเมนปลายทาง
+            </button>
+          </div>
+          {impact && (
+            <p
+              className={`text-xs ${impact.policy.blockedActiveLinks > 0 ? "text-[color:var(--color-danger)]" : "text-[color:var(--color-accent)]"}`}
+              data-testid="crm-track-linkhosts-impact"
+            >
+              {impact.saved ? "บันทึกแล้ว · " : "ถ้าบันทึกรายการนี้ · "}
+              {impact.policy.blockedActiveLinks > 0
+                ? `ลิงก์ที่เปิดอยู่ ${impact.policy.blockedActiveLinks} ลิงก์${impact.saved ? "ใช้ไม่ได้" : "จะใช้ไม่ได้"} (ปลายทาง: ${impact.policy.blockedHosts.join(", ")}) — ลูกค้าที่กดจะไปหน้าแรกของ SHARK แทน`
+                : "ลิงก์ที่เปิดอยู่ใช้ได้ทุกลิงก์"}
+            </p>
+          )}
+          {!impact && policy.blockedActiveLinks > 0 && (
+            <p className="text-xs text-[color:var(--color-danger)]" data-testid="crm-track-linkhosts-blocked">
+              ตอนนี้มีลิงก์ที่เปิดอยู่ {policy.blockedActiveLinks} ลิงก์ที่ใช้ไม่ได้ เพราะปลายทาง ({policy.blockedHosts.join(", ")}) ยังไม่อยู่ในรายการ
+            </p>
+          )}
+          {hostsErr && (
+            <p className="text-sm text-[color:var(--color-danger)]" role="alert" data-testid="crm-track-linkhosts-error">
+              {hostsErr}
+            </p>
+          )}
+        </div>
+
         <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-end">
           <label className="flex min-w-0 flex-1 flex-col gap-1 text-xs">
             <span>ลิงก์ปลายทาง</span>
@@ -321,6 +399,11 @@ export function TrackingSettingsForm({ data }: { data: CrmTrackingPageData }) {
               <div className="min-w-0">
                 <div className="truncate font-medium">{l.name ?? l.code}</div>
                 <div className="truncate text-xs text-[color:var(--color-muted)]">{l.shortUrl} → {l.url}</div>
+                {l.active && blocked.has(l.id) && (
+                  <div className="text-xs text-[color:var(--color-danger)]" data-testid={`crm-link-blocked-${l.id}`}>
+                    ปลายทางไม่อยู่ในโดเมนปลายทางที่อนุญาต — ลิงก์นี้ยังพาลูกค้าไปไม่ได้
+                  </div>
+                )}
               </div>
               <div className="flex shrink-0 items-center gap-2 text-xs">
                 <span>

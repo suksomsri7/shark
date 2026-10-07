@@ -705,7 +705,9 @@ try {
     for (const url of bad) rs.push(await call(TR.createLink, cA, owner, { url, name: "bad" }));
     const upd = await call(TR.updateLink, cA, owner, L1.id ?? "-", { url: "javascript:alert(document.cookie)" });
     const after = (await safeMany("crmTrackedLink", { where: { tenantId: tidA } })).length;
-    const okHttp = await call(TR.createLink, cA, owner, { url: "http://plain.example.com/x", name: "http ok" });
+    // ORACLE-EDIT (C6.1-LINKPOLICY · owner P11/Q15 (ข)): destination must be an allowed host — the positive control now points at a
+    //   subdomain of shop A's web-tracking domain (always allowed) instead of an undeclared plain.example.com; still plain http
+    const okHttp = await call(TR.createLink, cA, owner, { url: `http://plain.${DOM_A}/x`, name: "http ok" });
     const L1now: Any = L1.id ? await linkRow(L1.id) : null;
     chk("C2.6-X6.1", `createLink/updateLink refuse ${bad.length} non-http(s)/malformed/over-long urls (javascript: with case/whitespace tricks, data:, vbscript:, //host, http:/\\, no host, ftp:, > 2048, mailto:, empty) with VALIDATION Thai, nothing written · plain http accepted (positive control)`,
       rs.every((r) => refused(r, "VALIDATION")) && refused(upd, "VALIDATION") && after === before && L1now?.url === URL1 && okHttp.ok,
