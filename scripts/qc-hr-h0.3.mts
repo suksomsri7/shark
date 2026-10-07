@@ -533,7 +533,7 @@ async function runDb(): Promise<void> {
   ids.push(...cEmps);
   const t25 = Date.now();
   const k60: Any[] = [];
-  for (let b = 0; b < 60; b += 10) k60.push(...(await Promise.all(cEmps.slice(b, b + 10).map((id) => kioskCall(U.kiosk.cookie, sC.id, id, "9999")))));
+  for (let b = 0; b < 60; b += 10) k60.push(...(await Promise.all(cEmps.slice(b, b + 10).map((id: string) => kioskCall(U.kiosk.cookie, sC.id, id, "9999")))));
   const k61 = await kioskCall(U.kiosk.cookie, sC.id, cEmps[60]!, "1111");
   const ms25 = Date.now() - t25;
   const r61 = await rowsOf(cEmps[60]!);
