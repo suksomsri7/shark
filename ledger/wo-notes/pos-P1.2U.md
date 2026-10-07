@@ -53,5 +53,12 @@ options-close · options-form · variant-* · option-* · options-note · option
 | `env -u DATABASE_URL -u DIRECT_URL pnpm fitness` | rc 0 · 41/41 |
 | `bash scripts/iso.sh bash scripts/qc4.sh bash scripts/with-gate-lock.sh pnpm fitness` | rc 0 · 41/41 |
 | typecheck on f969a760 (pre-merge) | exit 0 |
+| typecheck on fc8f2cfb via `/tmp/shark-gate.lock` | 2 attempts timed out (flock -w 3600) — the CRM lane held the machine lock since ~12:38 UTC |
 Residue: a5 drift none in every suite; Z1/Z2 green (p1.2 · p1.4 · p1.5 · p1.6 · p1.9).
 Earlier run on f969a760 (11:46 UTC, already the fixed env): p1.2 forced 55/55 · p1.3 forced 128/128 · fitness no-env 41/41 · fitness QC4 41/41.
+
+## Re-run after quota reset (head d6ed0600 = fc8f2cfb + notes · 15:32–15:41 UTC)
+- Typecheck per controller order on the POS lock: `env NODE_OPTIONS=--max-old-space-size=5632 ISO_MEM=6500M bash scripts/iso.sh flock -w 3600 /tmp/pos-gate.lock pnpm typecheck` → **exit 0**. (My earlier waiter on /tmp/shark-gate.lock — my own `iso-1179662` unit in shark-pos-b — was stopped before this; nothing of other lanes touched.)
+- forced `qc-pos-p1.2` ×2 → 55/55 · 55/55 · unforced → 55/55 (a5 drift none).
+- forced `qc-pos-p1.3` 128/128 · `p1.4` 21/21 · `p1.5` 21/21 · `p1.9` 53/53 · `p1.6` 48/48 — all rc 0.
+- `fitness-pos` 8/8 · `pnpm fitness` no env 41/41 · with QC4 env 41/41.
