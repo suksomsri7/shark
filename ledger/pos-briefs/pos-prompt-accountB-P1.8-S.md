@@ -1,4 +1,4 @@
-# Prompt — P1.8 builder S (server + migration). Controller fills `<ORACLE_SHA>` after merging the oracle into session/pos.
+# Prompt — P1.8 builder S (server + migration). Controller fills `ef22651f` after merging the oracle into session/pos.
 
 ---
 
@@ -12,7 +12,7 @@ You are the BUILDER S for POS work order **P1.8** (partial refund · credit note
 - Memory rules you must respect: `'use client'` files must not import modules that reach prisma; `"use server"` files export only async functions; `scripts/*.mts` are typechecked by `next build`.
 
 ## Tree
-- `/root/projects/shark-pos-p11` (own read-write node_modules; `.env.qc`/`.env.qc4` = QC4 `ep-frosty-lab`, role neondb_owner — print only the hostname to confirm). The tree is clean and detached; run `git fetch origin session/pos && git checkout -b wip/pos-p1.8 origin/session/pos` (the oracle is already merged there at `<ORACLE_SHA>`).
+- `/root/projects/shark-pos-p11` (own read-write node_modules; `.env.qc`/`.env.qc4` = QC4 `ep-frosty-lab`, role neondb_owner — print only the hostname to confirm). The tree is clean and detached; run `git fetch origin session/pos && git checkout -b wip/pos-p1.8 origin/session/pos` (the oracle is already merged there at `ef22651f`).
 - Other trees (`shark-pos`, `shark-pos-b`, `shark-pos-c`, `shark-crm*`, `shark-hr*`, `shark-in-th`) are other sessions — never touch them, never kill their processes, never `pkill -f`. Lane 2 is running a different oracle on QC4 at the same time with fixtures prefixed `posqc-p110-`; your oracle uses its own temporary tenant, so there is no overlap — but do not run `qc-pos-p1.10` and do not wipe QC4.
 - DB commands: `bash scripts/iso.sh env QC_FORCE=1 bash scripts/qc4.sh bash scripts/with-gate-lock.sh <cmd>` (`QC_FORCE` only for the oracle runs that need it). Typecheck/build-grade commands through the POS lock: `env NODE_OPTIONS=--max-old-space-size=5632 ISO_MEM=6500M bash scripts/iso.sh flock -w 3600 /tmp/pos-gate.lock pnpm typecheck`. Never use `/tmp/shark-gate.lock` (held by another session). No `next build`, no server, no deploy, no `.env`, no Telegram.
 
