@@ -586,3 +586,8 @@
 - V6 ตะกร้า 4 บรรทัดที่ 1440×900 เห็นไม่ครบ (ภาพ 01 เห็นครบ) → ปรับความหนาแน่น CartLine/CartPanel · V7 02b: แสดงเลขใบกำกับย่อ/สถานะลงบัญชีถ้า submit คืนมา ไม่มี = follow-up · พิมพ์ซ้ำ/LINE/QR ใบเสร็จ = ใบหลัง (ห้ามปุ่มหลอก)
 - กล่องชั่งน้ำหนัก (ไม่มี mockup): หัว/ราคาต่อกก./คำแนะนำสแกน/ช่องกรัม/ราคาประมาณ/ปุ่มดำ — รับ
 - สถานะ: รอ R3 เลน 1 + R6 เลน 2 → build+ถ่ายซ้ำ (reports 1440/1024/390/EN · register owner+cashier+EN) → merge ทั้งคู่ → เหลือ 1 เลน
+
+## 2026-10-07T17:04:27Z · เลน 2 ส่ง R6 (6d8ed0a4 · โค้ด a121f758) · ผู้ตรวจดูส่วนต่าง R6
+- R6: action รวม `posReportOverviewAction` + `report-overview.ts` (Promise.all ฝั่งเซิร์ฟเวอร์ · refusal ต่อ section) · browser 1 call/โหลด + debounce 300ms · retry ต่อการ์ด · KPI ไม่ truncate · ป้ายกราฟไม่ถูกตัด · ตารางสาขา min 340px · CSV อยู่แถวหัวเสมอ · qc-pos-p1.17 35→39 (ST7/OV1/OV2/OV3) 39/39 ×3 · authz 56/56 ×2 · fitness 41 ×2 · fitness-pos 8/8 · tsc 0
+- GitHub push ล้มชั่วคราว ~10 นาที (commit_refs) แล้วผ่าน
+- รอ: R3 เลน 1 → build รวม + ถ่ายซ้ำ
