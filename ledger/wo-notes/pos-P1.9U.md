@@ -66,16 +66,20 @@ New interactive ids (inventory rows): `pos-shift-move-open/-submit/-cancel`, `po
 1. **Whole-page refusal**: with neither `pos.shift.operate` nor `pos.shift.manage`, `shiftsPageData` returns `PERMISSION_DENIED` (every section would refuse anyway: open/close/move/X/list all need operate or manage). The QC cashier sees the refusal card.
 2. **"เครื่องอื่น" / locked device cards** come from `listShifts` (status OPEN, other device) ⇒ manage sees all units' open shifts, operate-only sees only its own (server rule "operate only own"). No extra query.
 3. **Refund count**: `ShiftReport` has `cashRefundsSatang` but no count ⇒ KPI value "0" while the amount is 0, "—" otherwise.
-4. **`byMethod.count` is a payment count**, labelled "บิล" as in 07/brief; a split-tender bill counts once per method.
-5. **Coins in `countDetail`/`floatDetail`**: `SHIFT_DENOMS` has no "coins" key, so the coin amount is stored as ฿1 × n + 25 สต. × m; a remainder that is not a multiple of 25 satang ⇒ no detail, total only (server accepts either).
+4. **`byMethod.count` is a payment count** — R2 ruling Q4: column header "รายการ" / "Payments" (not "บิล") until the server has a bill count per method (follow-up).
+5. **Coins in `countDetail`/`floatDetail`** (R2 ruling Q3): no invented coin counts. `countDetail`/`floatDetail` carry only the notes actually entered. The server's `denomDetail` accepts only `SHIFT_DENOMS` keys and requires Σ detail = total, so a "coins" key is refused ⇒ when a coin amount is entered, the detail is **omitted** and only `countedCashSatang`/`floatSatang` (notes + coins) is sent; with no coins the notes-only detail sums exactly. **Follow-up (server): add a `coins` (satang) key to `denomDetail`.**
 6. **Off-shift text**: bills carry their own `sourceModule`, so the text is "บิล N ใบรับเงินสดตอนไม่มีกะเปิด — เจ้าของควรตรวจ" and each bill shows its source label (POS/BOOKING/HOTEL/RESTAURANT/TICKET/other) instead of "บิลจากระบบจอง N ใบ".
 7. **Movement list / frozen Z fields / recount author** are read inside the composed read (no existing function returns them); additive, read-only.
 
-## Open questions
-- Q1 Should operate-only staff see other devices' OPEN shifts (device card + locked cards in 13A)? Today: no (follows `listShifts`).
-- Q2 X "คืนเงิน" needs a refund count in `ShiftReport` when P1.8 lands.
-- Q3 Coin decomposition in `countDetail` (D-5 above) — OK, or add a "coins" key to the server contract later?
-- Q4 Should the 07 "บิล" column count bills rather than payments (needs a server field)?
+## Questions — controller rulings (R2)
+- Q1 operate-only staff do not see other devices' shifts (follows `listShifts`) — accepted.
+- Q2 refund count in `ShiftReport` — follow-up for P1.8.
+- Q3 coins: notes-only detail, coins only in the total; server `coins` key = follow-up (conflict 5).
+- Q4 column header "รายการ"/"Payments" until a server bill count exists (follow-up).
+
+## Follow-ups (not this WO)
+- Server `denomDetail`: accept `coins` (satang) so the coin amount can be stored in `countDetail`/`floatDetail`.
+- `ShiftReport`: refund count (P1.8) · bill count per payment method.
 
 ## Gates (code head `ef7ba422`; the last commit adds only this notes file) · 21:44–21:50 UTC
 | gate | result |
@@ -98,3 +102,17 @@ New interactive ids (inventory rows): `pos-shift-move-open/-submit/-cancel`, `po
 Also run once (not a gate): a throw-away read-only probe of `shiftsPageData` on QC4 (deleted, not committed) — owner: ok, manage+operate, settings `{blindClose:false, overShortReasonSatang:10000}`, history 5 items with names/billCount/sales from Z, off-shift 0; cashier: `PERMISSION_DENIED`.
 
 No build, no screenshots, no deploy (controller: build on p11, shoot 1440/1024/390 + EN, `--page shifts --states` owner + cashier, and `--page register --states` to re-check the updated `openShiftAsOwner` helper).
+
+## R2 (reviewer on f223da01: MERGEABLE-AFTER-FIXES)
+| # | fix |
+|---|---|
+| F1 [M] | all 6 `title={…UserId}` removed from `ShiftsClient.tsx` (no user id on screen, tooltips included) |
+| F2 [M] | `visual-pos` `closeShiftsStateShift` looks up the OPEN shift of `SHIFTS_DEVICE_ID` in the DB every time (finally + signal), so a shift opened/closed through the UI is closed even when a step threw before `SHIFTS.opened/id` were set |
+| F3 [L] | `shiftsPageData` names: no name ⇒ "-"; the e-mail is used only for the actor's own user |
+| F4 [L] | cash in/out key bound to the shift (`moveKeyShift`, new key when the dialog opens for another shift) and rotated on `IDEMPOTENCY_CONFLICT`; still kept until success otherwise (S.R2.4 green) |
+| F5 [L] | `run()`: action ok but reload failed ⇒ `pos.shift.savedReloadFailed` "บันทึกแล้ว — โหลดหน้าใหม่ไม่สำเร็จ ลองรีเฟรช" (en "Saved — reloading the page failed, try refreshing"), not `errors.unknown` |
+| F6 [NIT] | `cashSaleAmerLatte(page, device)` shared by the register `sale-done` state and `shiftsSale` |
+| Q3 | `denomTotal`: detail = entered notes only; coins present ⇒ no detail (see conflict 5) |
+| Q4 | `pos.shift.col.bills` = "รายการ" / "Payments" |
+
+R2 gates (code head `9b62c3a1`, 21:58–22:02 UTC): typecheck (pos-gate lock) rc 0 · `qc-pos-p1.9` forced 53/53 · forced **51/53 once (Z1/Z2 drift: QC coffee `outboxEvent` +1 and a `PosShift` fingerprint change — the controller's concurrent visual-pos shifts run closed shift `posqc-vis-shdev-1613502` at 21:59:24, inside that run's window; not this code)** → re-run forced 53/53 · forced 53/53 · unforced 53/53 · `qc-pos-p1.9b` forced 22/22 · fitness-pos 8/8 · `pnpm fitness` no env 41/41 · QC4 41/41 · visual `--states --dry` shifts owner/cashier rc 0 (12/12) · register owner/cashier rc 0 (37/37) · static p1.9 13/13 · p1.9b 8/8.
