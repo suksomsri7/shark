@@ -1,11 +1,11 @@
-# POS P1.2 U — builder U notes (options · variants · weighed · branch wip/pos-p1.2u · from wip/pos-p1.6u ef142ef8 · tree /root/projects/shark-pos-b)
+# POS P1.2 U — builder U notes (options · variants · weighed · branch wip/pos-p1.2u · from wip/pos-p1.6u ef142ef8, then merged P1.6 U head 4aace797 (Q2 fix) · tree /root/projects/shark-pos-b)
 
 Started 2026-10-07 ~11:40 UTC (account B). Server side of P1.2 is accepted; this WO is UI only (R16 · mockup 01 popover). Uses the builder-S helpers `cartAddProduct(…, choiceIds)`, `cartAddWeighed(…)`, scan result `weighed`, `registerProductOptionsAction`.
 
 ## Status
 - [x] Options/variant picker · weighed-entry dialog · scale-label scan · cart line options/weight · grid card labels · th+en keys · inventory rows
 - [x] `qc-pos-p1.2 --no-db` 12/12 (S1 S2 now green) · p1.4/p1.5/p1.9 `--no-db` unchanged · fitness-pos 8/8 · typecheck 0
-- [!] DB suites: blocked in this tree by the QC4 env role (same blocker as P1.6 U notes) — CONTROLLER-RUN
+- [x] DB suites after the controller fixed the QC4 env (role neondb_owner): all green — table below
 
 ## What was built
 - `OptionsDialog.tsx` (mockup 01 popover, as a centred dialog / bottom sheet like the other register dialogs — same deviation as the line editor, B2 note): title · base price · ✕ → variant chips (`pos-reg-variant-<id>`, "เลือกแบบ · ต้องเลือก 1") → one block per option group ("ขนาด · ต้องเลือก 1 / ไม่บังคับ / เลือกได้ไม่เกิน N") with chips `pos-reg-option-<choiceId>` (+delta, 86'd = "หมด" and disabled) → line note → qty −/+ → "เพิ่มลงตะกร้า ฿X" (`pos-reg-options-confirm`). All chips/buttons h-11 (≥44 px; mockup 32 px).
@@ -42,3 +42,16 @@ options-close · options-form · variant-* · option-* · options-note · option
 2. `cartAddProduct` (builder S, oracle-tested) merges +1 into a line that has a note when the choice set matches; the picker therefore always makes a new line when the user types a note. A tap on a plain card can still +1 a noted line.
 3. Weighed label scanned while the weigh dialog is open is ignored (scanner rule "dialog open ⇒ ignore"); the dialog text tells the cashier to close it and scan.
 4. Variant `soldOut` only shows "หมด" on the chip; it stays selectable (NO_STOCK sells under ALLOW_NEGATIVE; BLOCK refuses at submit).
+
+## Gate results — head fc8f2cfb (P1.2 U f969a760 + merge of P1.6 U 4aace797) · 13:15–13:21 UTC
+| command | result |
+|---|---|
+| `bash scripts/iso.sh env QC_FORCE=1 bash scripts/qc4.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/qc-pos-p1.2.mts` ×2 | rc 0 · **55/55** · rc 0 · **55/55** |
+| `bash scripts/iso.sh bash scripts/qc4.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/qc-pos-p1.2.mts` (unforced) | rc 0 · **55/55** |
+| forced `qc-pos-p1.3` · `p1.4` · `p1.5` · `p1.9` · `p1.6` | rc 0 · 128/128 · 21/21 · 21/21 · 53/53 · 48/48 |
+| `env -u DATABASE_URL -u DIRECT_URL pnpm exec tsx scripts/fitness-pos.mts` | rc 0 · 8/8 |
+| `env -u DATABASE_URL -u DIRECT_URL pnpm fitness` | rc 0 · 41/41 |
+| `bash scripts/iso.sh bash scripts/qc4.sh bash scripts/with-gate-lock.sh pnpm fitness` | rc 0 · 41/41 |
+| typecheck on f969a760 (pre-merge) | exit 0 |
+Residue: a5 drift none in every suite; Z1/Z2 green (p1.2 · p1.4 · p1.5 · p1.6 · p1.9).
+Earlier run on f969a760 (11:46 UTC, already the fixed env): p1.2 forced 55/55 · p1.3 forced 128/128 · fitness no-env 41/41 · fitness QC4 41/41.
