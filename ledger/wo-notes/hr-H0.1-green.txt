@@ -5,7 +5,7 @@
   ✅ [H0.1-S4.4] UI: "คำนวณใหม่" + "ลบร่าง" wired to recomputeDraftRunAction / deleteDraftRunAction and only reachable for DRAFT rows
   ✅ [H0.1-S4.5] UI approve form posts expect (net + item count of the rendered row) · approvePayrollRunAction passes a 3rd argument to approveRun
   ✅ [H0.1-S4.6] deleteDraftRunAction + recomputeDraftRunAction exported · assertHrCan(auth, "hr.payroll.create") · return {ok, reason} · actor from session · no e.message
-(node:1106186) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+(node:1192962) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
 In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
 
 To prepare for this change:

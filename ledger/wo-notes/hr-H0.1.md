@@ -68,3 +68,31 @@ Worktree `/root/projects/shark-hr` · branch `wip/pos-hr-h0.1` (cut from `wip/po
 
 ## Temp data left
 - none: Z1 green on every run (throwaway tenants, every tenantId row, users/sessions swept by the oracle).
+
+## Round 2 (7 Oct 2026, on 614bac33 · reviewer ACCEPT WITH NOTES → controller CR11–CR15, appended verbatim to the brief §7)
+Code commit c3a9155a. Oracle not edited. CR9 respected (cancelAdjustment / reverse / pay / computeItem / payroll-rules / CRM block untouched — S4.2/S4.3 hashes green).
+
+### What changed → files:lines
+| CR | where | how |
+|---|---|---|
+| CR11 gross in expect | `payroll.ts:647-667` (`ApproveExpect` :649, check :653/:662, claim where :664) · `approveRun` :674-679 · `lockRunRow` now reads `totalGrossSatang` · `payroll-actions.ts:79-89` (`approveExpectFromForm`) · `RunRowActions.tsx:53` (`expectGross` hidden field) | `totalGrossSatang` optional: present + safe integer ⇒ must equal the `FOR UPDATE` re-read and is added to the guarded claim `updateMany`; present but not an integer (direct caller) ⇒ STALE (fail closed). Form: `expectGross` parsed optionally, omitted when missing/non-integer; `expectNet`/`expectItems` semantics unchanged from round 1 |
+| CR12 approve with reason | `RunRowActions.tsx:11-12, 39-61` · `payroll-actions.ts:91-128` · `payroll.ts:639-640` (`ApproveFailCode`) + `code` on every `approveRun` refusal · `payroll-ui.tsx:276-289` | approve `ConfirmDialog` (label "อนุมัติ", testId `hr-payroll-run-<period>-approve`) moved into `RunRowActions`, shares the `useActionState` + inline `role=alert` span `hr-payroll-run-<period>-error`. Props `totalNetSatang`/`totalGrossSatang`/`itemCount` + `approveDetail` (dialog text built server-side, byte-identical to round 1). Action returns `Promise<{ ok: boolean; reason?: string }>`: ok ⇒ `{ok:true}` after audit + revalidate; refusals map `code` → fixed texts: STALE "ตัวเลขของรอบนี้เปลี่ยนไปแล้ว กรุณาดูยอดใหม่แล้วกดอนุมัติอีกครั้ง", NOT_FOUND/NOT_DRAFT "รอบนี้ไม่ใช่ร่างแล้ว", POST_FAILED (JV error, run back to DRAFT) "ลงบัญชีไม่สำเร็จ รอบนี้ยังเป็นร่าง — ลองอนุมัติอีกครั้ง หรือให้ผู้ดูแลบัญชีตรวจสอบ". The raw `note` (may hold `e.message`) is only written to the audit, never returned |
+| CR13 Forbidden inline | `payroll-actions.ts:102-127` (approve), `:290-320` (delete/recompute) | `requireTenant` outside; `assertHrCan` + service call in try; `ForbiddenError` ⇒ `{ok:false, reason:"คุณไม่มีสิทธิ์ทำรายการนี้"}`; anything else rethrows (error page). Round-1 `console.error + UNEXPECTED_TH` catch removed from these two actions (decide/cancel keep theirs) |
+| CR14 bkkParts | `payroll.ts:7` import `bkkParts` from `./service` (hr/service.ts:679) · `bkkStamp` :510-516 | `dateStr` + `minOfDay` → `YYYY-MM-DD HH:mm น.`; no new helper; no import cycle (service.ts does not import payroll). Probe: note `คำนวณใหม่ 2026-10-07 22:40 น.` at 15:40 UTC |
+| CR15 privacy note | `payroll.ts:326-327` | 2-line comment above `buildRunRows`; no behaviour change |
+
+### Results (all from /root/projects/shark-hr)
+- oracle forced run 1: `===== qc-hr-h0.1 ===== passed 50/50 (QC_FORCE)` exit 0 · Z1 green
+- oracle forced run 2: `===== qc-hr-h0.1 ===== passed 50/50 (QC_FORCE)` exit 0 · Z1 green
+- oracle unforced: `===== qc-hr-h0.1 ===== passed 50/50` exit 0 · Z1 green → `hr-H0.1-green.txt` refreshed
+- throwaway probe (scripts/pending, deleted, not committed; own tenant, residue 0): wrong gross → STALE, DRAFT kept · NaN gross → STALE · right gross → APPROVED · second approve → NOT_DRAFT · expect without gross → APPROVED
+- regressions (same wrapper, QC_FORCE) vs `hr-baseline-f85f5455.txt` — all identical, exit 0: qc-hf-hr-privacy 194/194 · qc-hr 9/9 · qc-hr-attendance 31/31 · qc-hr-roster 24/24 · qc-hr-leave-booking 14/14 · qc-hr-payadjust 27/27 · qc-payroll 19/19 · qc-payroll-reverse 14/14 · qc-booking-hours-hr 13/13 · qc-crm-c3.3 90/90 · qc-approval 16/16 · qc-approval-wiring 7/7
+- fitness: `bash scripts/iso.sh pnpm fitness` → `{"total":33,"passed":33}` exit 0 · `env -u DATABASE_URL` → same exit 0 · pre-commit hook passed (no `--no-verify`)
+- typecheck: **DEFERRED (machine lock)** — one attempt 16:01:56–16:21:56 UTC under `timeout 1200` → exit 124, tsc never started (`/tmp/shark-gate.lock` still held by CRM `qc-all.mts` pid 970499 in shark-crm, idle since ~12:19 UTC; not touched). Its inner `flock -w 3600` waiter (pid 1214655, own iso unit, cwd shark-hr) outlived the timeout and expires by itself ≤ 17:02 UTC; not killed. Scoped tsc fallback skipped: swap in use (2/3 GB).
+
+### Decisions (round 2)
+1. `expectNet`/`expectItems` kept exactly as round 1 (both absent ⇒ no expectation; present but unreadable ⇒ STALE), as I read CR11's "exactly as in round 1".
+2. `totalGrossSatang` passed directly (not via form) but non-integer ⇒ STALE (fail closed, same rule as net/items); the form path never sends a non-integer gross.
+3. `approveRun` gained an additive `code` field (`ApproveFailCode`) so the action picks fixed texts without matching note strings; `note` unchanged for all callers.
+4. A stale/refused approve still revalidates the page, so the row shows the new figures next to the reason.
+5. Round-1 decision 3 (stale approve not shown inline) is now resolved by CR12.

@@ -1,0 +1,14 @@
+# HR regression baseline (controller numbers, base f85f5455 — copied from ledger/wo-notes/hr-H0.1.md round 1)
+# suite | total | passed
+qc-hf-hr-privacy | 194 | 194
+qc-hr | 9 | 9
+qc-hr-attendance | 31 | 31
+qc-hr-roster | 24 | 24
+qc-hr-leave-booking | 14 | 14
+qc-hr-payadjust | 27 | 27
+qc-payroll | 19 | 19
+qc-payroll-reverse | 14 | 14
+qc-booking-hours-hr | 13 | 13
+qc-crm-c3.3 | 90 | 90
+qc-approval | 16 | 16
+qc-approval-wiring | 7 | 7
