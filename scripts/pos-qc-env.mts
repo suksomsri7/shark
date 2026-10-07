@@ -152,6 +152,7 @@ export const POS_MODELS = {
   posProductOptionGroup: { model: "PosProductOptionGroup", file: "pos.prisma", role: "ผูกสินค้า↔MenuOptionGroup เดิม" },
   recipeLine: { model: "RecipeLine", file: "pos.prisma", role: "สูตร/BOM (P1.1a: เมนูที่มี MenuItem.invItemId → 1 แถว qty 1)" },
   posHeldCart: { model: "PosHeldCart", file: "pos.prisma", role: "บิลที่พักไว้ (P1.5 · HELD/RECALLED/DISCARDED · ต่อสาขา)" },
+  posDocCounter: { model: "PosDocCounter", file: "pos.prisma", role: "เลขใบคืนเงิน CN${YYYYMM}-NNNN ต่อสาขา/ชนิด/เดือน (P1.8)" },
 } as const;
 export type PosModelKey = keyof typeof POS_MODELS;
 
@@ -159,7 +160,7 @@ export type PosModelKey = keyof typeof POS_MODELS;
 export const POS_FUTURE_MODELS = [
   "PosVariant", "SalesChannel", "PosProductChannelPrice", // P1.1a ย้าย PosProduct/PosCategory/RecipeLine/PosProductOptionGroup ไป POS_MODELS แล้ว
   "ExternalOrder", "ExternalOrderEvent", "PosShift", "PosDevice", "PosPaymentIntent", "PosReceiptToken",
-  "PosStockCount", "PosStockCountLine", "PosStaffPin", "PosDocCounter",
+  "PosStockCount", "PosStockCountLine", "PosStaffPin", // P1.8 ย้าย PosDocCounter ไป POS_MODELS แล้ว
 ] as const;
 
 // ═══════════════════ 3. สัญญาชุดข้อมูล (seed-pos-qc ต้องสร้างให้ตรงนี้) ═══════════════════

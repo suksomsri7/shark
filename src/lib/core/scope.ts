@@ -310,6 +310,7 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   PosSaleLineOption: tenant, // POS P1.2 — ตัวเลือกบนบรรทัดบิล (สำเนา ณ เวลาขาย)
   PosPayment: unit,
   PosReceiptCounter: unit,
+  PosDocCounter: unit, // POS P1.8 — เลขใบคืนเงิน (CN) ต่อสาขา/ชนิด/เดือน (ผู้เขียนเดียว = pos/refund.ts)
   // POS P1.1a — แคตตาล็อกเดียว (ผู้เขียนเดียว = pos/catalog.ts) · ลูกของ PosProduct มี tenantId ของตัวเอง
   PosProduct: sys(),
   PosCategory: sys(),
