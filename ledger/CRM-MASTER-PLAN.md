@@ -404,7 +404,7 @@ C3.0 → C3.1 → C3.2 ∥ C3.3 → C3.4 ∥ C3.5 → C3.6 ∥ C3.7 → C3.8 →
 | C3 | C3.4 | ✅ | `a06a796b`+`0321c844`+`a9523b59` | AI ในหน้า 9 kind · tool 32 · facade meeting/kb · ประตูข้อเสนอ (rejectProposal สาขา CRM) · ห้องทีม (won/hot/digest + sweep gated) · unfurl · KB tokens · ข้อสอบ 53/53 ×2 · ผู้ตรวจ 3 รอบ · regression static 3 จุดแก้ · ภาพ 14 |
 | C3 | C3.3-fix | ✅ | `a9523b59` | นักล่าเงินหลังรวมพบ MAJOR 5 + race 1 → ORACLE-EDIT H1–H6/M7/X3.3 → แก้ 4 รอบ · ผู้ตรวจเงิน 3 รอบ (B1 จากมติผู้คุมงานเอง) · c3.3 90/90 ×2 บนทรีหลัก |
 | C3 | C3.8 | ✅ | `76b0f81a` | REST/AI ชุดสาม: op 106→122 · manifest 32 tool · OpenAPI ต่อคีย์ · export ผ่านคีย์ admin · key-caps (เพดานผู้สร้างคีย์) · idempotency ไม่เก็บค่าลับ (แกนกลาง) · ข้อสอบ 31/31 ×2 · ผู้ตรวจ 2 รอบ |
-| C3 | C3.9-fix | 🔨 | — | นักล่าความปลอดภัยพบ 12 (BLOCKER 5) → ORACLE-EDIT H1–H12 → builder 4 รอบ (48/48) · ผู้ตรวจรอบ 2 เหลือ R2-S1 กำลังปิด · ⛔ prod รอใบนี้ |
+| C3 | C3.9-fix | ✅ | `c236a490` | 12 security-hunt findings fixed (4 builder rounds · 3 review rounds · 48/48 ×2 + regression on main) · accepted (ledger row was stale until 7 Oct) |
 | C4 | C4.1 | ✅ | (this commit) | button registry 1,066 rows (F14: 1066 testids / 0 debt / 0 ghost rows on session/crm) · ACCEPTED 3 Oct with C4.2 |
 | C4 | C4.2 | ✅ | (this commit) | qc-crm-buttons.mts it7 (71120e8e) + registry (f102f258) landed on session/crm · run6 on build 2f5e411b: 4377/4377, combined run5+run6 7805/7805, 0 dead / wrongExpect / hiddenLeak / VACUOUS, tripwire CLEAN · fresh independent reviewer FINAL VERDICT ACCEPT (crm-C4.2-review.md, findings F1–F4 LOW → C6 register) · lane helpers (verdict.py, counts, tripwire, run6.sh) stay on wip/crm-c42b |
 | C4 | C4.3 | ✅ | (this commit) | every form: 669/669 on main build c6fe26d2 · 22 forms inline errors + focus · required custom fields enforced server-side · reviewer rounds on oracle + fixes |
@@ -414,6 +414,7 @@ C3.0 → C3.1 → C3.2 ∥ C3.3 → C3.4 ∥ C3.5 → C3.6 ∥ C3.7 → C3.8 →
 | C5 | C5.3 | ✅ | (this commit) | qc-crm-c5.3.mts 54 checks (52 red = findings pinned) · reviewer 2 rounds · prod-exposure list · ORACLE-EDIT rulings 1–8 |
 | C5 | C5.4 | ✅ | `264c5440` | all batches on session/crm (1 Oct): A · B · C (money, 14 rounds) · D · E · F · UI fix · J3 · D2 (8cf86985) · N (JV numbering + migration 20261104000001). NOT on main/prod — owner go. Follow-ups → C5.5 fix cards / C5.4-N2 / C6.1 register |
 | C5 | C5.5 | ✅ | `07ce81c2` | CLOSED 3 Oct: hunts 1 · 2a · 2b · 3 · 4 · authz sweep · fix1–fix15 + G1–G3 all independently reviewed and merged on session/crm (last = fix15 07ce81c2, gate record 2f5e411b) · run6 final check: no new product defect · open owner decisions + debt → `ledger/CRM-C6-REGISTER.md` · NOT on main/prod |
-| C6 | C6.1–C6.4 | ⏸️ | — | waiting for the owner's GO (prod) — inputs in `ledger/CRM-C6-REGISTER.md` |
+| C6 | C6.1 | ✅ | `f132ce21` (main) | read-only prod probe green · migration rehearsal on a Neon branch 2.6 s · DEPLOY 1 on prod 7 Oct 11:19 UTC (dpl_GHA989…) · 4 migrations applied in 5 s · crontab installed · VPS checkout at deployed commit · owner smoke pending (`wo-notes/crm-C6.1.md`) |
+| C6 | C6.2–C6.4 | ⏸️ | — | C6.2 backfill dry-runs next · C6.3 pilot = Siamdive (owner e-mail on file) · C6.4 draft `ledger/HANDOVER-2026-10-CRM-DRAFT.md` |
 
 รวม 53 ใบ: C0 5 · C1 12 · C2 12 · C3 11 (รวมปิดเฟส) · C4 4 · C5 5 · C6 4 · ประมาณเวลาเดินเครื่อง 6–8 วัน (เทียบ RUN สมาชิก 34 ใบ ≈ 3 วัน + รอบแก้ 1 วัน) · migration 3 ใบ · ข้อสอบ ≈ 780 (เดิม) + ≈ 350 (กลุ่ม X) + ทะเบียนปุ่ม ≈ 600–800 แถว
