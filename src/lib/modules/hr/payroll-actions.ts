@@ -11,6 +11,8 @@ import {
   cancelAdjustment,
   createPayrollRun,
   decideAdjustment,
+  deleteDraftRun,
+  recomputeDraftRun,
   markPaid,
   requestAdjustment,
   reverseRun,
@@ -73,6 +75,16 @@ export async function createPayrollRunAction(formData: FormData) {
   revalidate(systemId);
 }
 
+// H0.1 ▸ CR3: ตัวเลขที่ผู้อนุมัติเห็นในแถว (hidden `expectNet` = ยอดจ่ายสุทธิรวม · `expectItems` = จำนวนคน) ·
+//   ไม่มีทั้งสองช่อง = undefined (ทางเดิม) · มีแต่อ่านไม่ได้ = NaN ⇒ approveRun ปฏิเสธว่าตัวเลขเปลี่ยน (ไม่อนุมัติแบบเดา) ◂
+function approveExpectFromForm(formData: FormData): { totalNetSatang: number; itemCount: number } | undefined {
+  const net = formData.get("expectNet");
+  const items = formData.get("expectItems");
+  if (net === null && items === null) return undefined;
+  const num = (v: FormDataEntryValue | null) => (typeof v === "string" && v.trim() !== "" ? Number(v.trim()) : Number.NaN);
+  return { totalNetSatang: num(net), itemCount: num(items) };
+}
+
 // ── อนุมัติรอบ (+ลงบัญชี) ──
 export async function approvePayrollRunAction(formData: FormData) {
   const auth = await requireTenant();
@@ -81,7 +93,8 @@ export async function approvePayrollRunAction(formData: FormData) {
   const runId = String(formData.get("runId") ?? "");
   if (!systemId || !runId) return;
   const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
-  const res = await approveRun(ctx, runId);
+  const expect = approveExpectFromForm(formData);
+  const res = await approveRun(ctx, runId, expect);
   await writeAudit({
     tenantId: auth.active.tenantId,
     actorId: auth.user.id,
@@ -244,6 +257,42 @@ export async function cancelAdjustmentAction(formData: FormData): Promise<{ ok: 
     return res.ok ? { ok: true } : { ok: false, reason: res.reason ?? "ลบรายการไม่สำเร็จ" };
   } catch (e) {
     console.error("[hr.payadjust.delete]", e);
+    return { ok: false, reason: UNEXPECTED_TH };
+  }
+}
+
+// ─────────── H0.1 ▸ R6: ลบร่าง / คำนวณใหม่ ของรอบจ่ายที่ยังเป็นร่าง (DRAFT) ───────────
+//   สิทธิ์ hr.payroll.create (คนสร้างรอบได้ = แก้ร่างได้) + ด่าน canViewPayroll ใน assertHrCan (OWNER หรือผู้ดูเงินเดือน) ·
+//   ผู้ทำ = ผู้ใช้ใน session เท่านั้น · คืน { ok, reason } ให้แถว (RunRowActions) แสดงเหตุผล · ประวัติเขียนใน service
+//   (hr.payroll.delete_draft / hr.payroll.recompute) · ข้อผิดพลาดที่ไม่คาดคิด = console.error + ข้อความกลาง (ห้ามคืนข้อความดิบ) ◂
+export async function deleteDraftRunAction(formData: FormData): Promise<{ ok: boolean; reason?: string }> {
+  const auth = await requireTenant();
+  assertHrCan(auth, "hr.payroll.create");
+  const systemId = String(formData.get("systemId") ?? "");
+  const runId = String(formData.get("runId") ?? "");
+  if (!systemId || !runId) return { ok: false, reason: "คำสั่งไม่ถูกต้อง" };
+  try {
+    const res = await deleteDraftRun({ tenantId: auth.active.tenantId, systemId }, runId, { userId: auth.active.userId, isOwner: auth.active.role === "OWNER" });
+    revalidate(systemId);
+    return res.ok ? { ok: true } : { ok: false, reason: res.reason };
+  } catch (e) {
+    console.error("[hr.payroll.delete_draft]", e);
+    return { ok: false, reason: UNEXPECTED_TH };
+  }
+}
+
+export async function recomputeDraftRunAction(formData: FormData): Promise<{ ok: boolean; reason?: string }> {
+  const auth = await requireTenant();
+  assertHrCan(auth, "hr.payroll.create");
+  const systemId = String(formData.get("systemId") ?? "");
+  const runId = String(formData.get("runId") ?? "");
+  if (!systemId || !runId) return { ok: false, reason: "คำสั่งไม่ถูกต้อง" };
+  try {
+    const res = await recomputeDraftRun({ tenantId: auth.active.tenantId, systemId }, runId, { userId: auth.active.userId, isOwner: auth.active.role === "OWNER" });
+    revalidate(systemId);
+    return res.ok ? { ok: true } : { ok: false, reason: res.reason };
+  } catch (e) {
+    console.error("[hr.payroll.recompute]", e);
     return { ok: false, reason: UNEXPECTED_TH };
   }
 }
