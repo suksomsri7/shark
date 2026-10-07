@@ -113,7 +113,7 @@ const CHECKS: readonly Def[] = [
   D("S7.2", "-", "approve expect with gross (CR11): service net+count+gross right → OK · gross off by 1 → STALE (DRAFT, no JV) · no gross → round-1 behaviour · form: expectGross missing/\"abc\"/\"12.5\" omitted (OK) · wrong gross → STALE · expectNet \"abc\" → refused (fail closed · CR18 text) · no net+items → refused (CR18, oracle round 3)"),
   D("S7.3", "-", "gross changed while net + count stay equal (base raise + compensating deduction, recompute) → stale approve with old net/count/gross refused (DRAFT, no JV) · fresh figures → APPROVED + JV"),
   D("S7.4", "-", "JV throws (ACCOUNT period CLOSED): approveRun → {ok:false, code POST_FAILED} · DRAFT · no journalEntryId · no JV · action reason = fixed Thai (no raw error) · then recompute + delete both {ok:true} with audit rows"),
-  D("S7.5", "-", "APPROVED adjustment bound to a DRAFT: cancelAdjustment refused with the fixed Thai text · CRM withdraw/move refused · rows still bound · recompute keeps totals = before = Σ items"),
+  D("S7.5", "-", "(H0.2) APPROVED adjustment bound to a DRAFT: cancel with actor = delete + recompute · no-actor cancel refused · CRM withdraw/move refused · approved-bound cancel refused"),
   D("S7.6", "X2", "CR13: Forbidden is inline — 5 viewers without the right (reader-no-create · MANAGER no payroll · STAFF HR keys · plain member · employee self) × approve/recompute/delete actions → {ok:false, reason \"คุณไม่มีสิทธิ์ทำรายการนี้\"} (no throw) · run untouched · [source] try/catch instanceof ForbiddenError, no e.message"),
   D("S7.7", "-", "[source] approvePayrollRunAction returns Promise<{ ok: boolean; reason?: string }> · RunRowActions renders the reason in hr-payroll-run-${periodKey}-error · approve hidden fields expectNet/expectItems/expectGross from row props"),
   D("S7.8", "-", "[source+runtime] payroll.ts H0.1 block uses bkkParts for the recompute note, no hand-rolled +7 h offset · note stamp = Bangkok wall clock of the call (Intl Asia/Bangkok)"),
@@ -329,6 +329,11 @@ async function adjApproved(ctx: Ctx, employeeId: string, periodKey: string, kind
   const d = await PAY.decideAdjustment(ctx, r.id, "APPROVED", { userId: OWNER_UID, isOwner: true });
   if (!d?.ok) throw new Error(`fixture: decideAdjustment ${short(d)}`);
   return r.id as string;
+}
+// ORACLE-EDIT (H0.2 R2): a period that already has a run refuses new requests — fixtures that need an APPROVED row *after* mkRun insert it directly (same pattern as the S2 "late" row)
+async function adjApprovedDirect(ctx: Ctx, employeeId: string, periodKey: string, kind: string, satang: number): Promise<string> {
+  const row = await P.hrPayAdjustment.create({ data: { tenantId: ctx.tenantId, systemId: ctx.systemId, employeeId, periodKey, kind, amountSatang: satang, status: "APPROVED", decidedById: OWNER_UID, decidedAt: new Date(), requestedById: "qc-h01-requester" } });
+  return row.id as string;
 }
 const mkRun = async (ctx: Ctx, periodKey: string, day = 25): Promise<string> => (await PAY.createPayrollRun(ctx, { periodKey, payDate: new Date(`${periodKey}-${String(day).padStart(2, "0")}T00:00:00Z`) })).id as string;
 const runRow = (id: string) => P.hrPayrollRun.findUnique({ where: { id } });
@@ -757,7 +762,6 @@ async function runDb(): Promise<void> {
       const period = PX[s * ROUNDS + r]!;
       await adjApproved(cHX, x1, period, "BONUS", B(1_000 + s * 10 + r));
       await adjApproved(cHX, x2, period, "DEDUCTION", B(300));
-      const runId = await mkRun(cHX, period);
       const pending: string[] = [];
       if (s === 4) {
         for (let i = 0; i < LANES; i += 1) {
@@ -765,6 +769,7 @@ async function runDb(): Promise<void> {
           pending.push(String(q?.id));
         }
       }
+      const runId = await mkRun(cHX, period); // ORACLE-EDIT H0.2: PENDING rows filed before the run (R2 refuses requests into a period with a run)
       scs.push({ s, r, period, runId, stale: await expectOf(runId), preItems: await itemsState(runId), pending });
     }
   }
@@ -1004,7 +1009,7 @@ async function runDb(): Promise<void> {
     const dNet = Number((await runRow(rg))?.totalNetSatang ?? 0) - eOld.totalNetSatang; // net gained by the raise
     let rc2: Res = { kind: "NO", msg: "not run (raise did not raise net)" };
     if (rc1.kind === "OK" && dNet > 0) {
-      await adjApproved(c7g, g1, "2034-02", "DEDUCTION", dNet);
+      await adjApprovedDirect(c7g, g1, "2034-02", "DEDUCTION", dNet); // ORACLE-EDIT H0.2
       rc2 = await rec(c7g, rg);
     }
     const eNew = await fullExpect(rg);
@@ -1060,29 +1065,46 @@ async function runDb(): Promise<void> {
     chk("S7.8", imp && usesParts && clean && noteStampOk, "import bkkParts · bkkStamp uses it · no +7 h by hand · note = Bangkok clock", `import=${imp} usesParts=${usesParts} noHandOffset=${clean} block=${h01.length}ch note="${noteSeen}" stampOk=${noteStampOk}`, "MINOR");
   }
 
-  // S7.5 — APPROVED adjustment bound to a DRAFT cannot be cancelled / moved away under the run
+  // S7.5 — ORACLE-EDIT (H0.2 CR-H0.2-1): APPROVED adjustment bound to a DRAFT · cancel WITH actor = delete + recompute in one tx · cancel without actor refused · CRM withdraw/move refused · after approve, cancel refused with the APPROVED text
   {
+    const CANCEL_DRAFT_SYSTEM_TH = "รายการนี้อยู่ในรอบจ่ายร่าง — ลบได้จากหน้าเงินเดือนเท่านั้น (ระบบจะคำนวณรอบร่างใหม่ให้)";
+    const CANCEL_APPROVED_TH = "รายการนี้อยู่ในรอบจ่ายที่อนุมัติแล้ว ลบไม่ได้ (ใช้กลับรายการรอบจ่ายแทน)";
     const cid = `qch01${rand}r2`;
     await P.crmCommission.create({ data: { id: cid, tenantId: T, systemId: `qc-h01-crm-${rand}`, dealId: `qc-h01-deal-r2`, ruleId: `qc-h01-rule-${rand}`, userId: `qc-h01-seller-${rand}`, amountSatang: BigInt(40_000), basisSatang: BigInt(400_000), basis: "PAID", status: "APPROVED", periodKey: "2034-08" } });
     const aC = await adjApproved(c7, e71, "2034-08", "COMMISSION", 40_000, { crmCommissionId: cid });
     await P.crmCommission.update({ where: { id: cid }, data: { hrPayAdjustmentId: aC } });
     const aB = await adjApproved(c7, e72, "2034-08", "BONUS", 25_000);
+    const aD = await adjApproved(c7, e72, "2034-08", "BONUS", 10_000);
     const r5 = await mkRun(c7, "2034-08");
     const before = await runRow(r5);
     const bTot = TOTALS.map(([t]) => Number(before?.[t]));
+    const auDel0 = await P.auditLog.count({ where: { tenantId: T, action: "hr.payadjust.delete" } });
+    const auRec0 = await P.auditLog.count({ where: { tenantId: T, action: "hr.payroll.recompute", targetId: r5 } });
     const cu1 = await call(PAY.cancelAdjustment, c7, aB, { userId: OWNER_UID, isOwner: true });
-    const cu2 = await call(PAY.cancelAdjustment, c7, aB);
+    const mid = await runRow(r5);
+    const mTot = TOTALS.map(([t]) => Number(mid?.[t]));
+    const rowB = await P.hrPayAdjustment.findUnique({ where: { id: aB } });
+    const auDel1 = await P.auditLog.count({ where: { tenantId: T, action: "hr.payadjust.delete" } });
+    const auRec1 = await P.auditLog.count({ where: { tenantId: T, action: "hr.payroll.recompute", targetId: r5 } });
+    const cu1Ok = cu1.kind === "OK" && rowB === null && mid?.status === "DRAFT" && !mid?.journalEntryId
+      && Number(mid?.totalAddSatang) === Number(before?.totalAddSatang) - 25_000 && Number(mid?.totalNetSatang) < Number(before?.totalNetSatang)
+      && (await sumOk(r5)).ok && auDel1 === auDel0 + 1 && auRec1 === auRec0 + 1;
+    const cu2 = await call(PAY.cancelAdjustment, c7, aD);
     const wd = await PAY.withdrawCommissionAdjustment(c7, { adjustmentId: aC, crmCommissionId: cid, statuses: ["PENDING", "APPROVED"] }).catch((e: unknown) => `THROW ${errText(e)}`);
     const mv = await PAY.moveCommissionAdjustmentPeriod(c7, { adjustmentId: aC, crmCommissionId: cid, periodKey: "2036-01" }).catch((e: unknown) => `THROW ${errText(e)}`);
-    const rows1 = await P.hrPayAdjustment.findMany({ where: { id: { in: [aB, aC] } } });
+    const rows1 = await P.hrPayAdjustment.findMany({ where: { id: { in: [aC, aD] } } });
     const stillBound = rows1.length === 2 && rows1.every((r: Any) => r.runId === r5 && r.status === "APPROVED" && r.periodKey === "2034-08");
     const rc5 = await rec(c7, r5);
     const after = await runRow(r5);
     const aTot = TOTALS.map(([t]) => Number(after?.[t]));
-    const rows2 = await P.hrPayAdjustment.findMany({ where: { id: { in: [aB, aC] } } });
-    const ok = cu1.kind === "NO" && cu1.msg === CANCEL_BOUND_TH && cu2.kind === "NO" && cu2.msg === CANCEL_BOUND_TH && wd === false && mv === false && stillBound
-      && rc5.kind === "OK" && stable(aTot) === stable(bTot) && (await sumOk(r5)).ok && rows2.every((r: Any) => r.runId === r5);
-    chk("S7.5", ok, "cancel ×2 refused (fixed text) · withdraw/move false · bound · recompute totals unchanged · Σ ok", `cancel ${rs(cu1)} / ${rs(cu2)} · withdraw=${wd} move=${mv} bound=${stillBound} · rec ${rs(rc5)} totals ${short(bTot)}→${short(aTot)}`);
+    const rows2 = await P.hrPayAdjustment.findMany({ where: { id: { in: [aC, aD] } } });
+    const keepOk = cu2.kind === "NO" && cu2.msg === CANCEL_DRAFT_SYSTEM_TH && wd === false && mv === false && stillBound
+      && rc5.kind === "OK" && stable(aTot) === stable(mTot) && (await sumOk(r5)).ok && rows2.every((r: Any) => r.runId === r5);
+    const ap = await call(PAY.approveRun, c7, r5, await fullExpect(r5), ACTOR);
+    const cu3 = await call(PAY.cancelAdjustment, c7, aD, { userId: OWNER_UID, isOwner: true });
+    const rowD = await P.hrPayAdjustment.findUnique({ where: { id: aD } });
+    const apOk = ap.kind === "OK" && (await runRow(r5))?.status === "APPROVED" && cu3.kind === "NO" && cu3.msg === CANCEL_APPROVED_TH && rowD?.runId === r5 && rowD?.status === "APPROVED";
+    chk("S7.5", cu1Ok && keepOk && apOk, "actor cancel = delete + recompute (+2 audits) · no-actor refused · withdraw/move false · recompute stable · approved-bound refused", `cu1 ${rs(cu1)} rowB=${rowB === null} add ${Number(before?.totalAddSatang)}→${Number(mid?.totalAddSatang)} audits +${auDel1 - auDel0}/+${auRec1 - auRec0} · cu2 ${rs(cu2)} · withdraw=${wd} move=${mv} bound=${stillBound} · rec ${rs(rc5)} totals ${short(mTot)}→${short(aTot)} · approve ${rs(ap)} cu3 ${rs(cu3)}`);
   }
 
   // S7.6 — CR13 Forbidden inline, runtime + source
@@ -1242,8 +1264,8 @@ async function runDb(): Promise<void> {
     const r = await mkRun(c8b, "2036-01");
     const eOld = await expect8(r);
     const before = await runRow(r);
-    await adjApproved(c8b, a, "2036-01", "BONUS", B(5_000));
-    await adjApproved(c8b, b, "2036-01", "DEDUCTION", B(5_000));
+    await adjApprovedDirect(c8b, a, "2036-01", "BONUS", B(5_000)); // ORACLE-EDIT H0.2
+    await adjApprovedDirect(c8b, b, "2036-01", "DEDUCTION", B(5_000));
     const rc = await rec(c8b, r);
     const eMid = await expect8(r);
     const after = await runRow(r);
