@@ -102,3 +102,16 @@ R2 gates — code head 79aa3d59 · ~20:30–20:40 UTC: typecheck (pos-gate lock)
 - F5 `unitInventory` (item search + history) now also requires the BusinessUnit not ARCHIVED, same as `scopeOf` in stock-count.ts.
 - F6 receive/transfer: history reloads once after the whole batch, not per row.
 Gates on a7d74b87 (~20:40–20:47 UTC): typecheck (pos-gate lock) exit 0 · qc-pos-p1.14 forced 30/30 · forced 30/30 · unforced 30/30 (cleanup each, a5 drift none) · qc-pos-p1.3 forced 128/128 · fitness-pos 8/8 · `pnpm fitness` no env 41/41 · QC4 41/41 · `qc-pos-p1.6 --no-db` R2 static green · visual-pos `--page stock --states --dry` owner rc 0 / cashier rc 0 (15 shots each).
+
+## R4 — receive table name column (controller on the R3 shots)
+Root cause (measured on p1.14u-r3 `stock-receive-owner-1440x900.png`, CSS px): the receive card is 684 px wide (x 312→996: 288 px app sidebar + 400 px right column at xl), so the rows box is 642 px (border 333→975, content 640). The R2 grid needed 80+120+100+200+44 = 544 fixed + 5×12 = 60 gaps + 32 padding = 636 px ⇒ `minmax(0,1fr)` got 4 px. Not a width bug of the row/table (no w-max / inline-grid / overflow-x) — the fixed columns simply did not fit the 640 px box; the "~840 px" card estimate does not hold with the app sidebar.
+Fix: the rows box is a CSS container (`@container w-full min-w-0`); the table grid applies only when that box is ≥ 608 px (`@min-[608px]:`, same template for header and rows), otherwise the 390-style stacked fields:
+`minmax(140px,1fr) 56px 84px 72px 150px 40px` · gap 8 px · padding 12 px each side (fixed 402 + gaps 40 + padding 24 = 466 px).
+Expected column widths:
+| viewport | rows box content | name (1fr) | qty | cost | total | lot/expiry | remove | layout |
+|---|---|---|---|---|---|---|---|---|
+| 1440 (card 684, measured) | 640 | 640 − 466 = **174** | 56 | 84 | 72 | 150 | 40 | table |
+| 1024 (card 688, measured 312→1000) | 644 | 644 − 466 = **178** | 56 | 84 | 72 | 150 | 40 | table |
+| 390 | < 608 | full width | 2-col stacked fields | | | | | stacked |
+The date input (14 px text "mm/dd/yyyy" + icon + 24 px padding ≈ 125 px) fits the 150 px column; cost "420.00" fits 84 − 24 px padding. Checked the generated CSS with Tailwind 4.3 `compile()`: `.@container{container-type:inline-size}` and `@container (width >= 608px){grid-template-columns:minmax(140px,1fr) 56px 84px 72px 150px 40px}` are emitted.
+R4 gates (~20:55–21:02 UTC): typecheck (pos-gate lock) exit 0 · qc-pos-p1.14 forced 30/30 · unforced 30/30 · fitness-pos 8/8 · `pnpm fitness` no env 41/41 · QC4 41/41. No build/shots (controller).
