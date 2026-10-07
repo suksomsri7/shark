@@ -44,6 +44,7 @@ const CHECKS: readonly Def[] = [
   D("ST3", "X3", "[static · R12] core/permissions.ts โมดูล pos มี pos.report.view"),
   D("ST4", "-", "[static · R6] PosSale.soldByUserId String? · migration ADD COLUMN \"soldByUserId\" nullable (ไม่มี DROP/RENAME/SET NOT NULL) · CreateSaleInput.soldByUserId?: string · submitRegisterSale ส่ง soldByUserId: actor.userId"),
   D("ST5", "-", "[static · R15] ทุกคิวรี PosSale ใน reports.ts (prisma หรือ SQL ดิบ) กรองทั้ง unitId และ createdAt ⇒ ใช้ดัชนี (tenantId, unitId, createdAt)"),
+  D("ST7", "-", "[static · P1.17U R6] report-actions.ts มี posReportOverviewAction เรียก reportOverview + catch · src/lib/modules/pos/report-overview.ts export reportOverview · อ่านอย่างเดียว (ไม่มี create/update/delete/$executeRaw) · ไม่คำนวณ VAT เอง"),
   D("ST6", "X4", "[static · R3 R4] reports.ts อ่านอย่างเดียว (ไม่มี create/update/upsert/delete/$executeRaw) · ไม่คำนวณ VAT เอง (ไม่ import splitIncludedVat/posVatRateBp) · ไม่เรียก forceCloseStaleShifts"),
   // ── F ข้อมูลทดสอบ ──
   D("F1", "X4", "ข้อมูลทดสอบถูกเขียนครบ + ข้อสอบตรวจตัวเอง: ทุกบิล Σจ่าย = grandTotal + ทิป · grand = subtotal − ส่วนลด + ค่าบริการ · ค่าที่ข้อสอบคำนวณ = ตัวเลขใน brief (D1 55,450/4 บิล/VAT 3,431 · D2 9,000/2 · ต้นทุน 13,600 · กำไรสุทธิ 46,831)"),
@@ -81,6 +82,11 @@ const CHECKS: readonly Def[] = [
   D("A2", "X3", "สาขาจำกัด: STAFF pos.report.view unitAccess [u1] ไม่ส่ง unitId → เห็นแค่ u1 (D1 52,450/3 · D2 4,500/1) · ส่ง unitId u2 → NOT_FOUND · การ์ดเห็น u1 (4,500/1 · กะเปิด 0)"),
   D("I1", "X2", "ข้ามระบบ: บิลของ POS อีกตัว (u3) ไม่อยู่ในรายงานของ POS นี้ และกลับกัน · systemId ที่เป็นระบบคลัง / ไม่มีจริง / unitId ร้านอื่น → NOT_FOUND"),
   D("I2", "X2", "ข้ามร้าน: เจ้าของร้าน QC อาหาร (ctx ร้านตัวเอง) กับ systemId ร้านกาแฟ → NOT_FOUND ทั้งรายวัน/ภาษี/CSV/การ์ด"),
+  // ── OV ภาพรวมในคำขอเดียว (P1.17U R6 · ผู้คุมงานสั่งเพิ่ม) ──
+  D("OV1", "X4", "ภาพรวม (เจ้าของ · ทุกสาขา · D1–D2): ทุกส่วน ok และตรงกับรายงานเดิมทีละตัว — daily/prev(09-12..09-13)/margin(5 แถวแรก = 5 แถวแรกของสินค้า: คีย์ ชื่อ จำนวน ยอด)/payments/staff · กราฟ = 14 วันจบที่ to (09-02..09-15) · สาขา u1/u2 = รายวัน/กำไรต่อสาขา · แถวรวม = ทุกสาขา"),
+  D("OV2", "X3", "ภาพรวม สิทธิ์ (+R7: เรียก posReportOverviewAction จริงด้วย session ปลอมของ context.ts — แคชเชียร์ QC → PERMISSION_DENIED ทั้งก้อน · เจ้าของ → ok · ส่ง unitId ที่ไม่มีสิทธิ์ → ส่วนสาขาก็ NOT_FOUND): แคชเชียร์ (pos.sale.create อย่างเดียว / ไม่มีสิทธิ์) → ทุกส่วน PERMISSION_DENIED (ไม่ throw · ok:true ทั้งก้อน) · สาขาจำกัด u1 → daily = u1 · การ์ดสาขาว่าง (เห็น 1 สาขา) · ส่ง unitId u2 → ทุกส่วน NOT_FOUND · เจ้าของเลือก u2 → daily = u2 · สาขาเลือกขึ้นก่อน · แถวรวม = ทุกสาขา"),
+  D("OV4", "X2", "ภาพรวม เห็น 2 จาก 3 สาขา: สาขาชั่วคราวที่ 3 (ผูก POS นี้) · STAFF เห็น [u1, สาขาใหม่] → แถวสาขา = 2 สาขานั้น · totalUnits 2 · แถวรวม = ยอดของ u1 (ไม่รวม u2 ที่มีขาย) ≠ ยอดทุกสาขาของเจ้าของ · ลบสาขาชั่วคราวทันทีหลังข้อนี้"),
+  D("OV3", "-", "ภาพรวม ปฏิเสธต่อส่วน: ช่วง 93 วัน → daily/prev/margin/payments/staff/สาขา VALIDATION (ไม่กระจายต่อสาขา) แต่กราฟ 14 วัน ok · only:[payments] → มีแค่ payments · only ไม่รู้จัก / ช่วงผิดรูป / from > to → VALIDATION ทั้งก้อน"),
   D("SB1", "-", "ทางเขียนผู้ขาย: createSale({…, soldByUserId}) → แถว PosSale.soldByUserId ตรง · ไม่ส่ง = null (ผู้เรียกเดิมไม่กระทบ)"),
   D("R1", "-", "คำปฏิเสธของ reports.ts (VALIDATION · NOT_FOUND · PERMISSION_DENIED) ≥ 12 รายการ = คืน {ok:false, code, message} ไม่ throw"),
   // ── Z คืนสภาพ ──
@@ -180,6 +186,7 @@ function balancedFrom(src: string, at: number): string {
 
 const REPORTS_FILE = "src/lib/modules/pos/reports.ts";
 const REPORT_ACT_FILE = "src/lib/modules/pos/report-actions.ts";
+const OVERVIEW_FILE = "src/lib/modules/pos/report-overview.ts"; // P1.17U R6
 const SERVICE_FILE = "src/lib/modules/pos/service.ts";
 const REGISTER_FILE = "src/lib/modules/pos/register.ts";
 const REPORT_FNS = ["reportDailySales", "reportProducts", "reportStaff", "reportPayments", "reportMargin", "reportShifts", "reportTax", "reportCsv", "posDashboardCard"] as const;
@@ -309,8 +316,29 @@ async function runStatic(): Promise<void> {
     if (/\bforceCloseStaleShifts\b/.test(repSrc)) s6.push("เรียก forceCloseStaleShifts");
   }
   chk("P1.17-ST6", s6.length === 0, "อ่านอย่างเดียว · VAT จากคอลัมน์", s6.join(" · ") || "ครบ");
+
+  // ST7 ภาพรวมในคำขอเดียว (P1.17U R6)
+  const s7: string[] = [];
+  const ovRaw = rd(OVERVIEW_FILE);
+  const ovSrc = stripComments(ovRaw);
+  if (!ovRaw) s7.push(`ไม่มี ${OVERVIEW_FILE}`);
+  else {
+    if (!exportsFn(ovSrc, "reportOverview")) s7.push("ไม่มี export reportOverview");
+    const w = /\.\s*(create|createMany|update|updateMany|upsert|delete|deleteMany)\s*\(|\$executeRaw/.exec(ovSrc);
+    if (w) s7.push(`มีการเขียน (${w[0].slice(0, 30)})`);
+    if (/\bsplitIncludedVat\b|\bposVatRateBp\b/.test(ovSrc)) s7.push("คำนวณ VAT เอง");
+  }
+  const at7 = actSrc.search(/export\s+async\s+function\s+posReportOverviewAction\b/);
+  if (at7 < 0) s7.push("report-actions.ts ไม่มี posReportOverviewAction");
+  else {
+    const body7 = actSrc.slice(at7).split(/\n\s*export\s+/)[0] ?? "";
+    if (!/\breportOverview\b/.test(body7)) s7.push("posReportOverviewAction ไม่เรียก reportOverview");
+    if (!/\bcatch\b/.test(body7)) s7.push("posReportOverviewAction ไม่มี catch");
+    if (!/\bREPORT_PERMISSION\b/.test(body7)) s7.push("posReportOverviewAction ไม่ผ่านด่านสิทธิ์ REPORT_PERMISSION");
+  }
+  chk("P1.17-ST7", s7.length === 0, "action + reportOverview อ่านอย่างเดียว", s7.join(" · ") || "ครบ");
 }
-const STATIC_IDS = ["P1.17-ST1", "P1.17-ST2", "P1.17-ST3", "P1.17-ST4", "P1.17-ST5", "P1.17-ST6"];
+const STATIC_IDS = ["P1.17-ST1", "P1.17-ST2", "P1.17-ST3", "P1.17-ST4", "P1.17-ST5", "P1.17-ST6", "P1.17-ST7"];
 
 const skipReasons: string[] = [];
 for (const f of REPORT_FNS) if (!exportsFn(repSrc, f)) skipReasons.push(`${REPORTS_FILE} ยังไม่มี export ${f}`);
@@ -447,6 +475,35 @@ const fpBefore = await fingerprint();
 
 // ═════════════════════════ 4. โหลดโมดูล ═════════════════════════
 const rep = existsSync(join(ROOT, REPORTS_FILE)) ? await tryImport("@/lib/modules/pos/reports") : null;
+const ovMod = existsSync(join(ROOT, OVERVIEW_FILE)) ? await tryImport("@/lib/modules/pos/report-overview") : null; // P1.17U R6
+// P1.17U R7 ▸ เรียก server action จริงโดยแทน context.ts (requireTenant) ด้วย session ปลอมที่ชี้สมาชิกจริงใน QC4 — แบบเดียวกับ qc-chat-staff-perms ◂
+type QcSession = { userId: string; tenantId: string; role: string; unitAccess: unknown; permissions: unknown };
+let QC_SESSION: QcSession | null = null;
+async function loadActionsWithFakeSession(): Promise<Any> {
+  const { createRequire } = await import("node:module");
+  const req = createRequire(join(ROOT, "package.json"));
+  const ctxFile = join(ROOT, "src/lib/core/context.ts");
+  const saved = req.cache[ctxFile];
+  const fake = {
+    requireTenant: async () => {
+      if (!QC_SESSION) throw new Error("[qc] ไม่มี session ปลอม");
+      return {
+        user: { id: QC_SESSION.userId, email: `${QC_SESSION.userId}@qc.local`, name: null },
+        memberships: [],
+        active: { tenantId: QC_SESSION.tenantId, tenant: { id: QC_SESSION.tenantId, status: "ACTIVE" }, role: QC_SESSION.role, unitAccess: QC_SESSION.unitAccess, permissions: QC_SESSION.permissions },
+      };
+    },
+    requireAuth: async () => ({ user: { id: QC_SESSION?.userId ?? "" }, memberships: [], active: null }),
+    requireMembership: async () => ({}),
+  };
+  req.cache[ctxFile] = { id: ctxFile, filename: ctxFile, path: join(ROOT, "src/lib/core"), loaded: true, exports: fake, children: [], paths: [] } as never;
+  try {
+    return await tryImport("@/lib/modules/pos/report-actions");
+  } finally {
+    if (saved) req.cache[ctxFile] = saved;
+    else delete req.cache[ctxFile];
+  }
+}
 const svc = await tryImport("@/lib/modules/pos/service");
 const sysSvc = await tryImport("@/lib/modules/system/service");
 
@@ -1232,6 +1289,157 @@ async function runDb() {
     if (card?.ok !== true) p.push(`การ์ด ${codeOf(card)}`);
     else cmp("card(u1)", card.card, expCard(NOW, ["u1"]), ["netSalesSatang", "billCount", "openShiftCount", "yesterdayNetSalesSatang"], p);
     chk("P1.17-A2", p.length === 0, "u1 เท่านั้น · u2 NOT_FOUND · การ์ด u1", FX(lim(p)));
+  }
+
+  // ─── OV ภาพรวมในคำขอเดียว (P1.17U R6) ───
+  {
+    const OV = (c: Any, a: Any, input: Any) => call(ovMod, "reportOverview", c, a, input);
+    const J = (v: Any) => JSON.stringify(v);
+    /** ส่วนของภาพรวม (data) = รายงานเดิม (report) — เทียบทั้งก้อนยกเว้น generatedAt */
+    const same = (label: string, part: Any, direct: Any, out: string[], pick: (x: Any) => Any = (x) => ({ ...x, generatedAt: undefined })) => {
+      if (part?.ok !== true) return void out.push(`${label} ส่วน → ${codeOf(part)}`);
+      if (direct?.ok !== true) return void out.push(`${label} รายงานเดิม → ${codeOf(direct)}`);
+      if (J(pick(part.data)) !== J(pick(direct.report))) out.push(`${label} ไม่ตรง ${short(pick(part.data), 80)} ≠ ${short(pick(direct.report), 80)}`);
+    };
+    const tot = (x: Any) => x?.totals ?? x;
+    const p: string[] = [];
+    const o = await OV(ctx(), owner, RANGE);
+    if (o?.ok !== true) p.push(`ภาพรวม → ${codeOf(o)} ${short(o, 80)}`);
+    else {
+      const v = o.overview;
+      if (J(v.prevRange) !== J({ from: "2026-09-12", to: "2026-09-13" })) p.push(`prevRange ${J(v.prevRange)}`);
+      if (J(v.chartRange) !== J({ from: "2026-09-02", to: D2 })) p.push(`chartRange ${J(v.chartRange)}`);
+      same("daily", v.daily, await call(rep, "reportDailySales", ctx(), owner, RANGE), p);
+      same("prev", v.prev, await call(rep, "reportDailySales", ctx(), owner, v.prevRange), p);
+      same("payments", v.payments, await call(rep, "reportPayments", ctx(), owner, RANGE), p);
+      same("staff", v.staff, await call(rep, "reportStaff", ctx(), owner, RANGE), p);
+      same("chart", v.chart, await call(rep, "reportDailySales", ctx(), owner, { from: "2026-09-02", to: D2 }), p);
+      const mg = await call(rep, "reportMargin", ctx(), owner, RANGE);
+      same("margin.totals", v.margin, mg, p, tot);
+      const pr = await call(rep, "reportProducts", ctx(), owner, { ...RANGE, limit: 5 });
+      const top = (v.margin?.data?.rows ?? []).map((r: Any) => [r.key, r.name, r.qty, r.revenueSatang]);
+      const topP = (pr?.report?.rows ?? []).map((r: Any) => [r.key, r.name, r.qty, r.salesSatang]);
+      if (top.length === 0 || J(top) !== J(topP)) p.push(`สินค้าขายดีจาก margin ${short(top, 90)} ≠ สินค้า ${short(topP, 90)}`);
+      const b = v.branches?.data;
+      if (v.branches?.ok !== true) p.push(`branches → ${codeOf(v.branches)}`);
+      else {
+        const ids = (b.rows ?? []).map((r: Any) => r.unitId);
+        if (J([...ids].sort()) !== J([ID.u.u1, ID.u.u2].sort())) p.push(`สาขา ${J(ids)} (ต้อง u1,u2)`);
+        for (const r of b.rows ?? []) {
+          const d = await call(rep, "reportDailySales", ctx({ unitId: r.unitId }), owner, RANGE);
+          if (r.daily?.ok !== true || J(r.daily.data) !== J(d?.report?.totals)) p.push(`สาขา ${r.unitId} daily ไม่ตรง`);
+          const m = await call(rep, "reportMargin", ctx({ unitId: r.unitId }), owner, RANGE);
+          if (r.margin?.ok !== true || J(r.margin.data) !== J(m?.report?.totals)) p.push(`สาขา ${r.unitId} margin ไม่ตรง`);
+        }
+        const all = await call(rep, "reportDailySales", ctx(), owner, RANGE);
+        if (b.all?.daily?.ok !== true || J(b.all.daily.data) !== J(all?.report?.totals)) p.push("แถวรวม daily ไม่ตรง");
+        if (b.all?.margin?.ok !== true || J(b.all.margin.data) !== J(mg?.report?.totals)) p.push("แถวรวม margin ไม่ตรง");
+      }
+    }
+    chk("P1.17-OV1", p.length === 0, "ทุกส่วน = รายงานเดิม", FX(lim(p)));
+  }
+  {
+    const p: string[] = [];
+    const OV = (c: Any, a: Any, input: Any) => call(ovMod, "reportOverview", c, a, input);
+    const SECS = ["daily", "prev", "margin", "payments", "staff", "chart"];
+    const sellOnly = actor(mCash, ID.user.B, "STAFF", { role: "STAFF", unitAccess: units, permissions: { "pos.sale.create": true } });
+    const none = actor(mCash, ID.user.B, "STAFF", { role: "STAFF", unitAccess: units, permissions: {} });
+    const cashier = actor(mCash, ID.user.B, "STAFF"); // สิทธิ์จริงของแคชเชียร์ QC (ไม่มี pos.report.view)
+    for (const [n, a] of [["ขายอย่างเดียว", sellOnly], ["ไม่มีสิทธิ์", none], ["แคชเชียร์ QC", cashier]] as [string, Any][]) {
+      const o = await OV(ctx(), a, RANGE);
+      if (o?.ok !== true) p.push(`${n} → ทั้งก้อน ${codeOf(o)} (ต้อง ok:true + ปฏิเสธต่อส่วน)`);
+      else {
+        for (const k of SECS) if (!(o.overview[k]?.ok === false && o.overview[k].code === "PERMISSION_DENIED")) p.push(`${n} ${k} → ${codeOf(o.overview[k])}`);
+        const br = o.overview.branches;
+        if (!(br?.ok === true && br.data.rows.length === 0)) p.push(`${n} สาขา → ${short(br, 60)} (ต้องว่าง)`);
+      }
+    }
+    const u1Only = actor(mCash, ID.user.B, "STAFF", { role: "STAFF", unitAccess: [ID.u.u1], permissions: { "pos.report.view": true, "pos.sale.create": true } });
+    const o1 = await OV(ctx(), u1Only, RANGE);
+    const d1 = await call(rep, "reportDailySales", ctx({ unitId: ID.u.u1 }), owner, RANGE);
+    if (o1?.ok !== true || o1.overview.daily?.ok !== true || JSON.stringify(o1.overview.daily.data.totals) !== JSON.stringify(d1?.report?.totals)) p.push(`u1 เท่านั้น daily → ${short(o1?.overview?.daily, 80)}`);
+    else if (!(o1.overview.branches?.ok === true && o1.overview.branches.data.rows.length === 0 && o1.overview.branches.data.totalUnits === 1)) p.push(`u1 เท่านั้น สาขา ${short(o1.overview.branches, 60)}`);
+    const o2 = await OV(ctx({ unitId: ID.u.u2 }), u1Only, RANGE);
+    if (o2?.ok !== true) p.push(`u1 เท่านั้น ส่ง u2 → ทั้งก้อน ${codeOf(o2)}`);
+    else for (const k of [...SECS, "branches"]) if (!(o2.overview[k]?.ok === false && o2.overview[k].code === "NOT_FOUND")) p.push(`ส่ง u2 ${k} → ${codeOf(o2.overview[k])}`);
+    // R7 (a): ผ่าน server action จริง (session → ctx/actor → assertCan → reportOverview)
+    const act = await loadActionsWithFakeSession();
+    if (typeof act?.posReportOverviewAction !== "function") p.push("โหลด posReportOverviewAction ไม่ได้");
+    else {
+      QC_SESSION = { userId: ID.user.B, tenantId: tid, role: mCash?.role ?? "STAFF", unitAccess: mCash?.unitAccess ?? [], permissions: mCash?.permissions ?? {} };
+      const ac = await call(act, "posReportOverviewAction", { systemId: ID.S, ...RANGE });
+      if (!(ac?.ok === false && ac.code === "PERMISSION_DENIED")) p.push(`action แคชเชียร์ QC → ${codeOf(ac)} ${short(ac, 60)}`);
+      QC_SESSION = { userId: PQC.coffee.users.owner.userId, tenantId: tid, role: mOwner?.role ?? "OWNER", unitAccess: mOwner?.unitAccess ?? [], permissions: mOwner?.permissions ?? {} };
+      const ao = await call(act, "posReportOverviewAction", { systemId: ID.S, ...RANGE });
+      const dd = await call(rep, "reportDailySales", ctx(), owner, RANGE);
+      if (ao?.ok !== true || ao.overview?.daily?.ok !== true || JSON.stringify(ao.overview.daily.data.totals) !== JSON.stringify(dd?.report?.totals)) p.push(`action เจ้าของ → ${codeOf(ao)} ${short(ao?.overview?.daily, 60)}`);
+      const ax = await call(act, "posReportOverviewAction", { systemId: ID.S, unitId: PQC.resto.units.main.id, ...RANGE });
+      if (ax?.ok !== true || ax.overview?.branches?.ok !== false || ax.overview.branches.code !== "NOT_FOUND") p.push(`action สาขาร้านอื่น ส่วนสาขา → ${short(ax?.overview?.branches, 60)}`);
+      QC_SESSION = null;
+    }
+    const ow = await OV(ctx({ unitId: ID.u.u2 }), owner, RANGE);
+    const d2 = await call(rep, "reportDailySales", ctx({ unitId: ID.u.u2 }), owner, RANGE);
+    const all = await call(rep, "reportDailySales", ctx(), owner, RANGE);
+    if (ow?.ok !== true || ow.overview.daily?.ok !== true || JSON.stringify(ow.overview.daily.data.totals) !== JSON.stringify(d2?.report?.totals)) p.push(`เจ้าของเลือก u2 daily → ${short(ow?.overview?.daily, 80)}`);
+    else {
+      const b = ow.overview.branches?.data;
+      if (b?.rows?.[0]?.unitId !== ID.u.u2) p.push(`สาขาที่เลือกไม่ขึ้นก่อน ${short(b?.rows?.map?.((r: Any) => r.unitId), 60)}`);
+      if (b?.all?.daily?.ok !== true || JSON.stringify(b.all.daily.data) !== JSON.stringify(all?.report?.totals)) p.push("เลือก u2 แถวรวม ≠ ทุกสาขา");
+    }
+    chk("P1.17-OV2", p.length === 0, "แคชเชียร์ DENIED ต่อส่วน · สาขาจำกัด · NOT_FOUND · เจ้าของ ok", FX(lim(p)));
+  }
+  {
+    const p: string[] = [];
+    const OV = (c: Any, a: Any, input: Any) => call(ovMod, "reportOverview", c, a, input);
+    const long = await OV(ctx(), owner, { from: "2026-01-01", to: "2026-04-03" });
+    if (long?.ok !== true) p.push(`93 วัน → ทั้งก้อน ${codeOf(long)}`);
+    else {
+      for (const k of ["daily", "prev", "margin", "payments", "staff", "branches"]) if (!(long.overview[k]?.ok === false && long.overview[k].code === "VALIDATION")) p.push(`93 วัน ${k} → ${codeOf(long.overview[k])}`);
+      if (long.overview.chart?.ok !== true || long.overview.chart.data.rows.length !== 14) p.push(`93 วัน กราฟ → ${codeOf(long.overview.chart)} (ต้อง ok 14 แถว)`);
+    }
+    const only = await OV(ctx(), owner, { ...RANGE, only: ["payments"] });
+    const keys = only?.ok === true ? ["daily", "prev", "margin", "payments", "staff", "chart", "branches"].filter((k) => only.overview[k] !== undefined) : null;
+    if (JSON.stringify(keys) !== JSON.stringify(["payments"])) p.push(`only:[payments] → ${codeOf(only)} ${JSON.stringify(keys)}`);
+    for (const [n, input] of [["only ไม่รู้จัก", { ...RANGE, only: ["bogus"] }], ["only ว่าง", { ...RANGE, only: [] }], ["ช่วงผิดรูป", { from: "2026-9-14", to: D2 }], ["from > to", { from: D2, to: D1 }]] as [string, Any][]) {
+      const r = await OV(ctx(), owner, input);
+      if (!(r?.ok === false && r.code === "VALIDATION")) p.push(`${n} → ${codeOf(r)}`);
+    }
+    chk("P1.17-OV3", p.length === 0, "93 วัน: 5 ส่วน VALIDATION + กราฟ ok · only · VALIDATION ทั้งก้อน", FX(lim(p)));
+  }
+
+  // ─── OV4 เห็น 2 จาก 3 สาขา (สาขาชั่วคราวที่ 3 ผูก POS S · ลบทันทีหลังข้อนี้ + อยู่ใน sb.unitIds กันหลุด) ───
+  {
+    const p: string[] = [];
+    const OV = (c: Any, a: Any, input: Any) => call(ovMod, "reportOverview", c, a, input);
+    let u4 = "";
+    try {
+      const u = await P.businessUnit.create({ data: { tenantId: tid, type: "SHOP", name: `${TAG} u4`, slug: `${TAG}-u4` } });
+      u4 = u.id;
+      sb.unitIds.push(u4);
+      await sysSvc.linkUnit(tid, ID.S, u4);
+      const two = actor(mCash, ID.user.B, "STAFF", { role: "STAFF", unitAccess: [ID.u.u1, u4], permissions: { "pos.report.view": true, "pos.sale.create": true } });
+      const o = await OV(ctx(), two, RANGE);
+      const b = o?.overview?.branches;
+      if (o?.ok !== true || b?.ok !== true) p.push(`ภาพรวม → ${codeOf(o)} สาขา ${short(b, 60)}`);
+      else {
+        const ids = b.data.rows.map((r: Any) => r.unitId).sort();
+        if (JSON.stringify(ids) !== JSON.stringify([ID.u.u1, u4].sort())) p.push(`แถวสาขา ${short(ids, 80)} (ต้อง u1 + สาขาใหม่ · ไม่มี u2)`);
+        if (b.data.totalUnits !== 2) p.push(`totalUnits ${b.data.totalUnits}`);
+        const u1d = await call(rep, "reportDailySales", ctx({ unitId: ID.u.u1 }), owner, RANGE);
+        const allOwner = await call(rep, "reportDailySales", ctx(), owner, RANGE);
+        const tot = b.data.all?.daily?.ok ? b.data.all.daily.data : null;
+        if (!tot || JSON.stringify(tot) !== JSON.stringify(u1d?.report?.totals)) p.push(`แถวรวม ${short(tot, 80)} ≠ ยอด u1 ${short(u1d?.report?.totals, 60)}`);
+        if (tot && JSON.stringify(tot) === JSON.stringify(allOwner?.report?.totals)) p.push("แถวรวมเท่ายอดทุกสาขาของเจ้าของ (u2 รั่ว)");
+      }
+    } catch (e) {
+      p.push(`สร้างสาขาชั่วคราวไม่ได้: ${(e as Error).message.slice(0, 100)}`);
+    } finally {
+      if (u4) {
+        await del("appSystemUnit", { unitId: u4 });
+        await del("businessUnit", { id: u4 });
+      }
+    }
+    chk("P1.17-OV4", p.length === 0, "2 จาก 3 สาขา · แถวรวมไม่รวมสาขาที่ไม่มีสิทธิ์", FX(lim(p)));
   }
 
   // ─── I ข้ามขอบเขต ───

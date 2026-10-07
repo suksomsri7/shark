@@ -31,6 +31,8 @@ import {
   REPORT_PERMISSION,
 } from "./reports";
 import type { RegisterActor } from "./register-shared";
+// POS P1.17U R6 ▸ ภาพรวมในคำขอเดียว (Server Action จาก client ถูกส่งทีละตัว — ขนานฝั่งเซิร์ฟเวอร์แทน) ◂
+import { reportOverview, type OverviewSection, type ReportOverviewResult } from "./report-overview";
 
 type Internal = { ok: false; code: "INTERNAL"; message: string };
 type Session = Awaited<ReturnType<typeof requireTenant>>;
@@ -119,5 +121,25 @@ export async function posDashboardCardAction(args: Target): Promise<DashboardCar
   } catch (e) {
     unstable_rethrow(e);
     return unexpected("posDashboardCardAction", e);
+  }
+}
+
+// POS P1.17U R6 ▸ ภาพรวมการขาย (ภาพ 08) — action เดียวแทน 5–24 คำขอเรียงกัน · ขอบเขต/สิทธิ์ชุดเดียวกับ posReportAction ◂
+/** ภาพรวม: daily · ช่วงก่อน · margin · payments · staff · กราฟ 14 วัน · เปรียบเทียบสาขา — ปฏิเสธต่อส่วน (`only` = โหลดใหม่เฉพาะส่วน) */
+export async function posReportOverviewAction(args: Target & { from: string; to: string; only?: OverviewSection[] }): Promise<ReportOverviewResult | Internal> {
+  const auth = await session("posReportOverviewAction");
+  if ("ok" in auth) return auth;
+  try {
+    const s = scopeOf(auth, args, REPORT_PERMISSION);
+    if ("ok" in s) return s;
+    const a = (args ?? {}) as Partial<typeof args>;
+    return await reportOverview(s.ctx, s.actor, {
+      from: a.from as string,
+      to: a.to as string,
+      ...(a.only !== undefined ? { only: a.only } : {}),
+    });
+  } catch (e) {
+    unstable_rethrow(e);
+    return unexpected("posReportOverviewAction", e);
   }
 }
