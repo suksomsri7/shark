@@ -6,15 +6,16 @@
 // 🔴 ส่วนลด %: ผู้ใช้กรอกเป็นเปอร์เซ็นต์ ("10") → เก็บเป็น basis point (×100) · บาท: ทศนิยมไม่เกิน 2 ตำแหน่ง → สตางค์ · ไม่โชว์ "bp"
 // 🔴 ตรวจด้วย priceCart ก่อนใช้จริง (RegisterScreen.tryLine): ไม่ผ่าน = กล่องค้าง + ข้อความใต้ช่อง · ห้ามตัดเลขให้พอดีเงียบ ๆ
 // 🔴 ลบรายการไม่มีกล่องยืนยันซ้ำ (มติ Q27 — เปิดตัวแก้แล้วกดลบ = สองขั้นอยู่แล้ว)
+// P1.6 U (R5 · มติ Q11): หมายเหตุรายการ ≤ REGISTER_NOTE_MAX ตัวอักษร — ว่าง = ไม่มี · ส่งไปกับ quote/submit (บิลที่พักไม่เก็บ)
 
 import { useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import type { PriceDiscount } from "@/lib/modules/pos/pricing-shared";
-import { REGISTER_MAX_QTY } from "@/lib/modules/pos/register-shared";
+import { REGISTER_MAX_QTY, REGISTER_NOTE_MAX } from "@/lib/modules/pos/register-shared";
 import { REG_DIALOG_PANEL, RegisterDialog, SheetGrab } from "./RegisterDialog";
 import { RegisterIcon } from "./RegisterIcon";
 
-export type LineEditResult = { qty: number; discount: PriceDiscount | undefined };
+export type LineEditResult = { qty: number; discount: PriceDiscount | undefined; note: string | undefined };
 
 /** "12.5" → 1250 (สตางค์ หรือ basis point) · ว่าง = 0 · ผิดรูป/เกิน 2 ตำแหน่ง = null */
 export function parseHundredths(raw: string): number | null {
@@ -32,6 +33,7 @@ type Props = {
   name: string;
   qty: number;
   discount: PriceDiscount | undefined;
+  note?: string;
   focus: "qty" | "discount";
   /** คืนคีย์ข้อความผิดพลาด (พร้อมค่า) ถ้าใช้ไม่ได้ · null = ใช้แล้ว ปิดกล่อง */
   onApply: (r: LineEditResult) => { key: string; values?: Record<string, string | number> } | null;
@@ -39,11 +41,12 @@ type Props = {
   onClose: () => void;
 };
 
-export function LineEditor({ lineKey, name, qty, discount, focus, onApply, onRemove, onClose }: Props) {
+export function LineEditor({ lineKey, name, qty, discount, note, focus, onApply, onRemove, onClose }: Props) {
   const t = useTranslations("pos.register");
   const [q, setQ] = useState(String(qty));
   const [mode, setMode] = useState<"AMOUNT" | "PERCENT">(discount?.type ?? "AMOUNT");
   const [val, setVal] = useState(discount ? hundredthsText(discount.value) : "");
+  const [noteVal, setNoteVal] = useState(note ?? "");
   const [err, setErr] = useState<{ key: string; values?: Record<string, string | number> } | null>(null);
   const qtyRef = useRef<HTMLInputElement>(null);
   const discRef = useRef<HTMLInputElement>(null);
@@ -61,7 +64,8 @@ export function LineEditor({ lineKey, name, qty, discount, focus, onApply, onRem
     if (!Number.isInteger(n) || n < 1 || n > REGISTER_MAX_QTY) return setErr({ key: "errors.qtyInvalid", values: { max: REGISTER_MAX_QTY.toLocaleString("th-TH") } });
     const v = parseHundredths(val);
     if (v === null || (mode === "PERCENT" && v > 10_000)) return setErr({ key: "errors.amountInvalid" });
-    const r = onApply({ qty: n, discount: v > 0 ? { type: mode, value: v } : undefined });
+    if (noteVal.length > REGISTER_NOTE_MAX) return setErr({ key: "note.tooLong", values: { max: REGISTER_NOTE_MAX } });
+    const r = onApply({ qty: n, discount: v > 0 ? { type: mode, value: v } : undefined, note: noteVal.trim() ? noteVal : undefined });
     setErr(r);
   };
 
@@ -155,6 +159,21 @@ export function LineEditor({ lineKey, name, qty, discount, focus, onApply, onRem
               }}
             />
           </div>
+
+          <label className="flex flex-col gap-1.5 text-[13px] text-[color:var(--color-muted)]">
+            {t("editor.note")}
+            <textarea
+              data-testid={`pos-reg-line-note-${lineKey}`}
+              className="input min-h-[72px] resize-y rounded-[13px] py-2.5 text-[15px] leading-[1.5] text-[color:var(--color-ink)]"
+              value={noteVal}
+              placeholder={t("editor.notePlaceholder")}
+              aria-invalid={noteVal.length > REGISTER_NOTE_MAX}
+              onChange={(e) => {
+                setNoteVal(e.target.value);
+                setErr(null);
+              }}
+            />
+          </label>
 
           {err && (
             <p data-testid="pos-reg-editor-error" className="text-[13.5px] text-[color:var(--color-danger)]" role="alert">

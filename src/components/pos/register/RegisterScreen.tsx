@@ -19,7 +19,8 @@
 // P1.4 (บาร์โค้ด): ตัวจับ keydown ทั้งหน้า (capture) แยกเครื่องสแกนด้วย classifyScanBurst → onScannedCode = ทางสแกนทางเดียว
 //   (ไม่ผ่านหน่วงค้นหา 200ms · Enter ของช่องค้นหาไม่ถึงเมื่อเป็นการสแกน) · สแกนซ้ำ = +1 (cartAddProduct) · choose = ScanChooserDialog ·
 //   none = toast + "เพิ่มเป็นรายการกำหนดเอง?" เฉพาะผู้มีสิทธิ์ราคาเปิด · กล้อง = ScanCameraDialog
-// จุดต่อของใบหลัง (สเปก §1.3): onHold/onOpenHeld (P1.5) · InterimPayDialog + SaleDone (P1.6 แทนทั้งไฟล์)
+// จุดต่อของใบหลัง (สเปก §1.3): onHold/onOpenHeld (P1.5) · จอชำระ P1.6 U = PayDialog (ไฟล์ InterimPayDialog.tsx) + PayDone
+//   (แยกจ่าย ≤10 · เงินรับ/ทอนบนแถวเงินสด · บัตร/โอนมีเลขอ้างอิง · ทิปนอกยอดบิล) · หมายเหตุบิล (BillNoteDialog) + หมายเหตุรายการ (LineEditor)
 //   memberSlot ของ CartPanel (P1.12) · onNeedsApproval (P1.15 PIN) · ProductCard.onPick → pick (P1.2 ป๊อปโอเวอร์ตัวเลือก)
 // 🔴 ไฟล์ "use client": import จากโมดูล POS ได้แค่ register-shared · pricing-shared · scan-shared · register-actions (G9 · S5.17)
 // 🔴 ไม่มีข้อความไทยนอกคอมเมนต์ (S5.3) · testid เขียนตรงบนแท็กเสมอ (G1)
@@ -40,6 +41,7 @@ import {
   quoteInputToCart,
   refusalMessageKey,
   REGISTER_MAX_LINES,
+  REGISTER_MAX_PAY_METHODS,
   REGISTER_MAX_QTY,
   type HeldCartNoticeCode,
   type HeldCartSummary,
@@ -68,6 +70,7 @@ import {
   submitRegisterSaleAction,
 } from "@/lib/modules/pos/register-actions";
 import { BillDiscountDialog } from "./BillDiscountDialog";
+import { BillNoteDialog } from "./BillNoteDialog";
 import { CartPanel, type CartTotalsModel } from "./CartPanel";
 import type { CartLineModel } from "./CartLine";
 import { CategoryChips } from "./CategoryChips";
@@ -76,7 +79,7 @@ import { CouponDialog } from "./CouponDialog";
 import { CustomItemDialog } from "./CustomItemDialog";
 import { HeldBillsDialog } from "./HeldBillsDrawer";
 import { HeldRecallConfirmDialog, HoldLabelDialog } from "./HeldDialogs";
-import { InterimPayDialog, type PayChoice, type PayError, type PayPhase } from "./InterimPayDialog";
+import { PayDialog, type PayChoice, type PayError, type PayPhase } from "./InterimPayDialog";
 import { LineEditor, type LineEditResult } from "./LineEditor";
 import { MobileCartBar } from "./MobileCartBar";
 // ชื่อลงท้าย Sheet/Tabs = ตัวสแกนปุ่ม (F15.3) นับเป็น "คอมโพเนนต์กดได้" ⇒ ใช้ชื่อแฝงตอนวาง (ตัวที่กดได้จริงข้างในมี testid ครบแล้ว)
@@ -87,7 +90,7 @@ import { RegisterModeTabs as ModeTabsNav } from "./RegisterModeTabs";
 import { RegisterIcon } from "./RegisterIcon";
 import { RegisterStatusBar } from "./RegisterStatusBar";
 import { RegisterTopContext } from "./RegisterTopContext";
-import { SaleDone } from "./SaleDone";
+import { PayDone } from "./PayDone";
 import { ScanCameraDialog } from "./ScanCameraDialog";
 import { ScanChooserDialog } from "./ScanChooserDialog";
 import { SearchRow } from "./SearchRow";
@@ -108,6 +111,8 @@ export type RegisterScreenProps = {
   limits: { canSell: boolean; canOverridePrice: boolean; maxDiscountBp: number | null };
   /** PromptPay ID ของร้าน (ใช้วาด QR ล็อกยอด) · null = ยังไม่ตั้ง */
   promptpayId: string | null;
+  /** P1.6 R4/F5: ระบบนี้เปิดรับทิป (parsePosPaymentSettings · วันนี้ false เสมอจนกว่า P1.6b) */
+  tipEnabled?: boolean;
 };
 
 type Msg = { key: string; values?: Record<string, string | number> };
@@ -124,7 +129,8 @@ type Layer =
   | { kind: "openPrice"; productId: string }
   | { kind: "clear" }
   | { kind: "pay" }
-  | { kind: "done"; result: RegisterSubmitOk }
+  | { kind: "done"; result: RegisterSubmitOk; payMethods: RegisterPayMethod[] }
+  | { kind: "note" }
   | { kind: "scanChoose"; products: RegisterProduct[] }
   | { kind: "camera" }
   // P1.5: ลิ้นชักบิลที่พัก · กล่องตั้งป้ายก่อนพัก · ถาม "พักตะกร้านี้ก่อน?" เมื่อเรียกคืนทับตะกร้าที่มีของ
@@ -520,6 +526,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
       discountSatang: ql?.discountSatang ?? ll?.discountSatang ?? 0,
       stockLeft,
       warn: over && warnAck[l.key] !== l.qty,
+      ...(l.note ? { note: l.note } : {}),
     };
   });
   const inCart = useMemo(() => {
@@ -743,7 +750,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
   const applyLine = (key: string, r: LineEditResult): Msg | null => {
     const i = lineIndex(key);
     if (i < 0) return null;
-    const lines = cart.lines.map((l, j) => (j === i ? ({ ...l, qty: r.qty, discount: r.discount } as RegisterCartLine) : l));
+    const lines = cart.lines.map((l, j) => (j === i ? ({ ...l, qty: r.qty, discount: r.discount, note: r.note } as RegisterCartLine) : l));
     const next = { ...cart, lines };
     const err = tryCart(next);
     if (err) return err;
@@ -808,7 +815,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
         pendingSubmit.current = null;
         clearPending();
         setPayPhase("form");
-        setLayers((s) => [...s.filter((l) => l.kind !== "pay" && l.kind !== "sheet"), { kind: "done", result: r }]);
+        setLayers((s) => [...s.filter((l) => l.kind !== "pay" && l.kind !== "sheet"), { kind: "done", result: r, payMethods: sale.payMethods }]);
         void refreshStatus();
         return;
       }
@@ -862,13 +869,18 @@ export function RegisterScreen(props: RegisterScreenProps) {
   const confirmPay = (c: PayChoice) => {
     if (!quoteFresh || sendingRef.current || payPhase !== "form") return;
     const due = quoteFresh.grandTotalSatang;
-    // ทุกช่องจ่าย ≥ 1 สตางค์ · บิล 0 บาท = payMethods [] (Addendum 2 · B1.1 ข้อ 4)
-    const payMethods: RegisterPayMethod[] = due === 0 || c.method === "NONE" ? [] : [{ type: c.method, amountSatang: due }];
-    if (c.method === "CASH" && (c.receivedSatang ?? 0) < due) return;
+    // P1.6: Σ วิธีจ่าย = ยอดบิล + ทิป · ทุกแถว ≥ 1 สตางค์ · ≤ 10 แถว · บิล 0 บาท (ไม่มีทิป) = payMethods [] — ตรวจซ้ำก่อนส่ง (กล่องคิดมาแล้ว)
+    const tip = props.tipEnabled ? c.tipSatang : 0;
+    const sum = c.payMethods.reduce((s, m) => s + m.amountSatang, 0);
+    if (sum !== due + tip || c.payMethods.some((m) => m.amountSatang <= 0) || c.payMethods.length > REGISTER_MAX_PAY_METHODS) return;
+    const cash = c.payMethods.find((m) => m.type === "CASH");
+    if (cash && (c.cashReceivedSatang ?? 0) < cash.amountSatang) return;
     const sale = cartToSubmitInput(cart, {
       idempotencyKey: idemKey,
-      payMethods,
-      ...(c.method === "CASH" && due > 0 ? { cashReceivedSatang: c.receivedSatang } : {}),
+      payMethods: c.payMethods,
+      ...(cash ? { cashReceivedSatang: c.cashReceivedSatang } : {}),
+      ...(tip > 0 ? { tipSatang: tip } : {}),
+      ...(cart.note ? { note: cart.note } : {}),
       expectedGrandTotalSatang: due,
     });
     void send(sale);
@@ -1069,6 +1081,10 @@ export function RegisterScreen(props: RegisterScreenProps) {
       frozen={frozen}
       onPay={openPay}
       onSoon={soon}
+      onNote={() => {
+        if (!frozenRef.current && cart.lines.length) push({ kind: "note" });
+      }}
+      hasNote={!!cart.note}
       onHold={() => {
         if (!frozenRef.current && cart.lines.length) push({ kind: "holdLabel" });
       }}
@@ -1109,6 +1125,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
             name={nm}
             qty={line.qty}
             discount={line.discount}
+            note={line.note}
             focus={l.focus}
             onApply={(r) => applyLine(l.key, r)}
             onRemove={() => removeLine(l.key)}
@@ -1160,9 +1177,12 @@ export function RegisterScreen(props: RegisterScreenProps) {
         );
       case "pay":
         return (
-          <InterimPayDialog
+          <PayDialog
             key={k}
             dueSatang={quoteFresh?.grandTotalSatang ?? quote?.q.grandTotalSatang ?? pendingSubmit.current?.expectedGrandTotalSatang ?? 0}
+            breakdown={quoteFresh ?? quote?.q ?? null}
+            tipEnabled={!!props.tipEnabled}
+            billNote={cart.note ?? null}
             quotePending={!quoteFresh && !quoteFailed}
             quoteError={quoteFailed ? { code: quoteFailed, ...errorFor(quoteFailed) } : null}
             itemCount={cart.lines.length || (pendingSubmit.current?.lines.length ?? 0)}
@@ -1242,12 +1262,31 @@ export function RegisterScreen(props: RegisterScreenProps) {
         );
       case "done":
         return (
-          <SaleDone
+          <PayDone
             key={k}
             receiptNo={l.result.receiptNo}
-            totalSatang={l.result.grandTotalSatang}
+            totalSatang={l.payMethods.reduce((s, m) => s + m.amountSatang, 0) || l.result.grandTotalSatang}
             changeSatang={l.result.changeSatang}
+            payMethods={l.payMethods}
             onNext={nextSale}
+          />
+        );
+      case "note":
+        return (
+          <BillNoteDialog
+            key={k}
+            current={cart.note}
+            onSave={(note) => {
+              // หมายเหตุไม่กระทบราคา ⇒ ไม่เพิ่มรุ่นตะกร้า (quote ปัจจุบันยังใช้ได้)
+              setCart((c) => {
+                const next = { ...c };
+                if (note) next.note = note;
+                else delete next.note;
+                return next;
+              });
+              pop();
+            }}
+            onClose={pop}
           />
         );
     }

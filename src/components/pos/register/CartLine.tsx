@@ -23,6 +23,8 @@ export type CartLineModel = {
   stockLeft: number | null;
   /** แสดงกล่องเตือนสต็อก (qty > คงเหลือ และยังไม่กด "ขายต่อ") */
   warn: boolean;
+  /** P1.6 U: หมายเหตุรายการ (ไม่มี = undefined) */
+  note?: string;
 };
 
 type Props = {
@@ -74,6 +76,12 @@ export function CartLine({ line, frozen, onOpen, onKeep, onReduce }: Props) {
           <span className="min-w-0 flex-1">
             <span className="block break-words text-[15px] font-semibold [overflow-wrap:anywhere] xl:text-[16px]">{line.name}</span>
             {sub && <span className="mt-px block text-[12.5px] text-[color:var(--color-muted)] xl:mt-1 xl:text-[13.5px]">{sub}</span>}
+            {line.note && (
+              <span data-testid={`pos-reg-line-note-text-${line.key}`} className="mt-px flex items-start gap-1 text-[12.5px] text-[color:var(--color-ink-soft)] xl:text-[13px]">
+                <RegisterIcon name="edit" size={12} className="mt-[3px]" />
+                <span className="min-w-0 break-words [overflow-wrap:anywhere]">{line.note}</span>
+              </span>
+            )}
           </span>
           <span className="shrink-0 whitespace-nowrap text-right text-[15px] font-semibold tabular-nums xl:text-[16px]">
             {amount}

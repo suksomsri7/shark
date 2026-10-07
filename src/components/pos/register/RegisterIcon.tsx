@@ -124,6 +124,22 @@ const PATHS = {
       <path d="M14 14h3v3h-3ZM20.5 14v3M14 20.5h6.5" />
     </>
   ),
+  // P1.6 U (ภาพ 02 · 05ข): กระเป๋าเงิน (หัวกล่องชำระ) · ย้อนกลับ (หัวมือถือ) · ธนาคาร (โอน) · บัตร
+  wallet: (
+    <>
+      <rect x="3" y="6" width="18" height="13" rx="2.5" />
+      <path d="M3 10h18" />
+      <circle cx="17" cy="14.5" r="1.2" fill="currentColor" stroke="none" />
+    </>
+  ),
+  back: <path d="m15 5-7 7 7 7" />,
+  bank: <path d="M3.5 9.5 12 4l8.5 5.5M5.5 9.5v9M10 9.5v9M14 9.5v9M18.5 9.5v9M3 20h18" />,
+  card: (
+    <>
+      <rect x="3" y="5.5" width="18" height="13" rx="2.5" />
+      <path d="M3 10h18M7 14.5h4" />
+    </>
+  ),
 } as const;
 
 export type RegisterIconName = keyof typeof PATHS;

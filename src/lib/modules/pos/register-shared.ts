@@ -305,10 +305,12 @@ export type RegisterCartLine =
       options?: string[];
       weighedBarcode?: string;
       weightGrams?: number;
+      /** P1.6 R5: หมายเหตุบรรทัด (≤ REGISTER_NOTE_MAX · ส่งไปกับ quote/submit · บิลที่พักไม่เก็บ) */
+      note?: string;
     }
-  | { key: string; kind: "custom"; name: string; unitPriceSatang: number; qty: number; discount?: PriceDiscount };
-/** couponCode อยู่ในสถานะได้ (P1.12) แต่ `cartToQuoteInput` ไม่ส่งไปเซิร์ฟเวอร์ใน P1.3 */
-export type RegisterCart = { lines: RegisterCartLine[]; billDiscount?: PriceDiscount; couponCode?: string; memberId?: string };
+  | { key: string; kind: "custom"; name: string; unitPriceSatang: number; qty: number; discount?: PriceDiscount; note?: string };
+/** couponCode อยู่ในสถานะได้ (P1.12) แต่ `cartToQuoteInput` ไม่ส่งไปเซิร์ฟเวอร์ใน P1.3 · note = หมายเหตุบิล (P1.6 R5 · ส่งตอน submit เท่านั้น) */
+export type RegisterCart = { lines: RegisterCartLine[]; billDiscount?: PriceDiscount; couponCode?: string; memberId?: string; note?: string };
 
 /** ชุดตัวเลือกแบบไม่ขึ้นกับลำดับ (multiset · undefined ≡ []) */
 const optionSetKey = (o: readonly string[] | undefined): string => [...(o ?? [])].sort().join("\u0000");
@@ -392,13 +394,16 @@ export function quoteInputToCart(input: RegisterQuoteInput, newLineKey: () => st
 /** ตะกร้าบนจอ → คำขอ quote (ชุดเดียวกับที่ submit ส่ง · ไม่ส่งคูปอง · ไม่ส่งราคาของสินค้าแคตตาล็อก) */
 export function cartToQuoteInput(cart: RegisterCart): RegisterQuoteInput {
   const lines: RegisterQuoteLineInput[] = cart.lines.map((l) => {
+    // P1.6 R5: หมายเหตุบรรทัดไปกับคำขอ (ว่าง = ไม่ส่ง)
+    const note = l.note && l.note.trim() ? { note: l.note } : {};
     if (l.kind === "custom") {
-      return { name: l.name, qty: l.qty, unitPriceSatang: l.unitPriceSatang, ...(l.discount ? { discount: { ...l.discount } } : {}) };
+      return { name: l.name, qty: l.qty, unitPriceSatang: l.unitPriceSatang, ...(l.discount ? { discount: { ...l.discount } } : {}), ...note };
     }
     return {
       productId: l.productId,
       qty: l.qty,
       ...(l.discount ? { discount: { ...l.discount } } : {}),
+      ...note,
       ...(l.openPriceSatang !== undefined ? { openPrice: true as const, unitPriceSatang: l.openPriceSatang } : {}),
       // P1.2 R13: ส่งแค่ choiceId (ราคา/ชื่อคิดที่เซิร์ฟเวอร์) · บรรทัดชั่งส่งป้าย/น้ำหนัก
       ...(l.options && l.options.length ? { options: l.options.map((choiceId) => ({ choiceId })) } : {}),

@@ -20,6 +20,8 @@ export type CartTotalsModel = {
   lineDiscountSatang: number;
   billDiscountSatang: number;
   couponDiscountSatang: number;
+  /** P1.6 U: ค่าบริการ (มาจาก quote เท่านั้น · ยอดทันใจไม่รู้อัตรา ⇒ ไม่มี) — > 0 = แถว "ค่าบริการ" */
+  serviceChargeSatang?: number;
   vatSatang: number;
   vatMode: "INCLUDED" | "EXCLUDED" | "NONE";
   vatRateBp: number;
@@ -42,6 +44,9 @@ type Props = {
   onRemoveMember?: () => void;
   onPay: () => void;
   onSoon: () => void;
+  /** P1.6 U: ปุ่ม "หมายเหตุ" เปิดกล่องหมายเหตุบิล · hasNote = บิลมีหมายเหตุแล้ว (จุดบอกบนปุ่ม) */
+  onNote: () => void;
+  hasNote: boolean;
   /** P1.5: ปุ่มพักบิล (เปิดกล่องตั้งป้าย) · ปุ่มบิลที่พัก (เปิดลิ้นชัก) · จำนวนบิลที่พักของสาขา (0 = ไม่แสดงป้าย) */
   onHold: () => void;
   onOpenHeld: () => void;
@@ -200,6 +205,12 @@ export function CartPanel(p: Props) {
               {tt.billDiscountSatang > 0 ? moneyText(-tt.billDiscountSatang) : moneyText(0)}
             </span>
           </div>
+          {(tt.serviceChargeSatang ?? 0) > 0 && (
+            <div data-testid="pos-reg-service-charge-line" className="flex justify-between py-px text-[color:var(--color-ink-soft)] xl:py-1.5">
+              <span>{t("totals.serviceCharge")}</span>
+              <span className="tabular-nums">{moneyText(tt.serviceChargeSatang ?? 0)}</span>
+            </div>
+          )}
           {tt.vatMode !== "NONE" && (
             <div data-testid="pos-reg-vat-line" className="flex justify-between py-px text-[12px] text-[color:var(--color-muted)] xl:py-1.5">
               <span>{tt.vatMode === "INCLUDED" ? t("totals.vatIncluded", { rate: ratePct(tt.vatRateBp) }) : t("totals.vatExcluded", { rate: ratePct(tt.vatRateBp) })}</span>
@@ -235,14 +246,15 @@ export function CartPanel(p: Props) {
           </button>
           <button
             data-testid="pos-reg-note"
-            className="btn-sm h-10 min-w-0 gap-[5px] rounded-[11px] px-1.5 text-[13px] xl:gap-1.5 xl:px-[14px] xl:text-[14px]"
+            className={`btn-sm h-10 min-w-0 gap-[5px] rounded-[11px] px-1.5 text-[13px] disabled:opacity-50 xl:gap-1.5 xl:px-[14px] xl:text-[14px] ${p.hasNote ? "border-[color:var(--color-ink)] font-bold" : ""}`}
             type="button"
-            aria-disabled="true"
-            title={t("soon")}
-            onClick={p.onSoon}
+            disabled={p.frozen}
+            aria-label={p.hasNote ? `${t("actions.note")} · ${t("note.has")}` : undefined}
+            onClick={p.onNote}
           >
             <RegisterIcon name="edit" size={12} />
             <span className="truncate">{t("actions.note")}</span>
+            {p.hasNote && <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-[color:var(--color-ink)]" />}
           </button>
           <button
             data-testid="pos-reg-tax-invoice"

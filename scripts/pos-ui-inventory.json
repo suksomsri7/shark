@@ -675,12 +675,12 @@
       ],
       "hiddenFor": [],
       "expect": {
-        "type": "toast",
-        "target": "pos-reg-toast",
-        "note": "เร็ว ๆ นี้ — หมายเหตุบิลยังไม่มีช่องเก็บใน createSale (มติ Q11 · P1.6)"
+        "type": "modal",
+        "target": "pos-reg-note-dialog",
+        "note": "หมายเหตุบิล (≤500) — ส่งไปกับ submit เป็น PosSale.note"
       },
-      "wo": "P1.3",
-      "oracle": "qc-pos-p1.3",
+      "wo": "P1.6U",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]"
     },
@@ -1556,26 +1556,7 @@
     },
     {
       "page": "/app/sys/[id]/pos/register",
-      "testid": "pos-reg-paydlg-method-cash",
-      "kind": "toggle",
-      "roles": [
-        "owner",
-        "cashier"
-      ],
-      "hiddenFor": [],
-      "expect": {
-        "type": "ui",
-        "target": "pos-reg-paydlg",
-        "state": "changes"
-      },
-      "wo": "P1.3",
-      "oracle": "",
-      "system": "POS",
-      "query": "unit=[unitId]"
-    },
-    {
-      "page": "/app/sys/[id]/pos/register",
-      "testid": "pos-reg-paydlg-method-promptpay",
+      "testid": "pos-reg-paydlg-method-*",
       "kind": "toggle",
       "roles": [
         "owner",
@@ -1586,9 +1567,9 @@
         "type": "ui",
         "target": "pos-reg-paydlg",
         "state": "changes",
-        "note": "QR ล็อกยอดจาก quote · ปิดเมื่อร้านยังไม่ตั้ง PromptPay ID"
+        "note": "cash · promptpay · transfer · card — เงินสดปิดเมื่อมีแถวเงินสดแล้ว · พร้อมเพย์ปิดเมื่อร้านยังไม่ตั้ง PromptPay ID"
       },
-      "wo": "P1.3",
+      "wo": "P1.6U",
       "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]"
@@ -1605,9 +1586,10 @@
       "expect": {
         "type": "ui",
         "target": "pos-reg-paydlg-change",
-        "state": "changes"
+        "state": "changes",
+        "note": "ช่องจำนวนของรอบนี้ — เงินสด = เงินที่รับ · บัตร/โอน/พร้อมเพย์ = ยอดที่รับ (ค่าเริ่ม = ยอดคงเหลือ)"
       },
-      "wo": "P1.3",
+      "wo": "P1.6U",
       "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]"
@@ -1672,9 +1654,9 @@
             "target": "pos-reg-paydlg-error"
           }
         ],
-        "note": "เงินสดรับน้อยกว่ายอด = ปิด · ปฏิเสธ = การ์ดข้อผิดพลาดในกล่อง (data-code)"
+        "note": "ยอดรอบนี้ครบยอดคงเหลือ ⇒ ส่งบิล (แถวแยกจ่าย + รอบนี้ · ทิปนอกยอดบิล) · F4/Enter · ปฏิเสธ = การ์ดข้อผิดพลาดในกล่อง (data-code)"
       },
-      "wo": "P1.3",
+      "wo": "P1.6U",
       "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]"
@@ -1754,6 +1736,264 @@
         "note": "แสดงเมื่อ MEMBER_RIGHTS_UNSUPPORTED และบิลมีสมาชิก (P1.3 ใส่สมาชิกไม่ได้ — โค้ดเตรียมไว้)"
       },
       "wo": "P1.3",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-paydlg-key-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-paydlg-received",
+        "state": "changes",
+        "note": "แป้นตัวเลข 0–9 · 00 · back (⌫) — md+ เท่านั้น (มือถือใช้แป้นเครื่อง)"
+      },
+      "wo": "P1.6U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-paydlg-reference",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-paydlg",
+        "state": "changes",
+        "note": "เลขอ้างอิงบัตร (EDC) / โอน ≤100 ตัวอักษร · ไม่บังคับ · เก็บที่ PosPayment.reference"
+      },
+      "wo": "P1.6U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-paydlg-add-split",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-paydlg-remaining",
+        "state": "changes",
+        "note": "ยอดรอบนี้น้อยกว่าคงเหลือ ⇒ เก็บเป็นแถวแยกจ่าย (≤ 9 แถวก่อนรอบสุดท้าย · รวม ≤ 10)"
+      },
+      "wo": "P1.6U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-paydlg-row-remove-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-paydlg-remaining",
+        "state": "changes",
+        "note": "เอาแถวแยกจ่ายออก (ยังไม่ได้ส่ง)"
+      },
+      "wo": "P1.6U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-paydlg-tip-toggle",
+      "kind": "toggle",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-paydlg-tip",
+        "state": "appears",
+        "note": "ปิดอยู่ (TIP_NOT_AVAILABLE) จนกว่า P1.6b ลงบัญชีทิปได้ — แสดงเหตุผลข้างปุ่ม"
+      },
+      "wo": "P1.6U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-paydlg-tip",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-paydlg-due",
+        "state": "changes",
+        "note": "ยอดทิป (นอกยอดบิล · Σ วิธีจ่าย = ยอดบิล + ทิป) · แก้ได้เฉพาะตอนยังไม่มีแถวแยกจ่าย"
+      },
+      "wo": "P1.6U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-paydlg-back",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-paydlg",
+        "state": "disappears",
+        "note": "ย้อนกลับ (md+) — มือถือใช้ปุ่มย้อนกลับที่หัว (pos-reg-paydlg-close)"
+      },
+      "wo": "P1.6U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-note-close",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-note-dialog",
+        "state": "disappears"
+      },
+      "wo": "P1.6U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-note-form",
+      "kind": "form",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-note-dialog",
+        "state": "disappears",
+        "note": "บันทึกหมายเหตุลงตะกร้า (ยังไม่ส่ง)"
+      },
+      "wo": "P1.6U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-note-input",
+      "kind": "textarea",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-note-dialog",
+        "state": "changes",
+        "note": "≤500 ตัวอักษร (เกิน = ปุ่มบันทึกปิด + ข้อความ)"
+      },
+      "wo": "P1.6U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-note-clear",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-note-dialog",
+        "state": "disappears",
+        "note": "ล้างหมายเหตุบิล"
+      },
+      "wo": "P1.6U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-note-save",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-note-dialog",
+        "state": "disappears"
+      },
+      "wo": "P1.6U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-line-note-*",
+      "kind": "textarea",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-line-editor",
+        "state": "changes",
+        "note": "หมายเหตุรายการในตัวแก้บรรทัด (≤500) → PosSaleLine.note"
+      },
+      "wo": "P1.6U",
       "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]"

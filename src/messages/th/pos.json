@@ -97,7 +97,9 @@
       "coupon": "คูปอง {code}",
       "vatIncluded": "VAT {rate}% (รวมในราคา)",
       "vatExcluded": "VAT {rate}% (ไม่รวมในราคา)",
-      "total": "ยอดสุทธิ"
+      "total": "ยอดสุทธิ",
+      "serviceCharge": "ค่าบริการ",
+      "tip": "ทิป"
     },
     "actions": {
       "billDiscount": "ส่วนลดท้ายบิล",
@@ -140,7 +142,9 @@
       "baht": "บาท",
       "percent": "เปอร์เซ็นต์",
       "apply": "ใช้",
-      "remove": "ลบรายการ"
+      "remove": "ลบรายการ",
+      "note": "หมายเหตุรายการ",
+      "notePlaceholder": "เช่น ไม่ใส่น้ำแข็ง"
     },
     "billDiscount": {
       "value": "ส่วนลด",
@@ -186,12 +190,46 @@
       "statusRefunded": "คืนเงินแล้ว",
       "existingBill": "บิลเดิม: ใบเสร็จ {no} · {status} — ตรวจที่บิลวันนี้ก่อนขายซ้ำ",
       "newBill": "เริ่มบิลใหม่",
-      "removeMember": "ขายโดยไม่ใส่สมาชิก"
+      "removeMember": "ขายโดยไม่ใส่สมาชิก",
+      "escClose": "Esc ปิด",
+      "back": "ย้อนกลับ",
+      "splitTitle": "แยกจ่าย",
+      "remaining": "คงเหลือ",
+      "methodsTitle": "วิธีชำระสำหรับยอดคงเหลือ",
+      "transfer": "โอนธนาคาร",
+      "card": "บัตรเครดิต/เดบิต",
+      "promptpayHint": "สแกน QR",
+      "transferHint": "กรอกเลขอ้างอิง",
+      "cardHint": "เครื่อง EDC",
+      "cashUsed": "✓ {amount}",
+      "amountCash": "รับเงินสด",
+      "amountFor": "จำนวนที่รับด้วย {method}",
+      "reference": "เลขอ้างอิง (สลิป/EDC)",
+      "referenceHint": "ไม่บังคับ",
+      "rowCash": "รับมา {received} · ทอน {change}",
+      "rowRef": "อ้างอิง {ref}",
+      "removeRow": "เอารายการจ่าย {method} {amount} ออก",
+      "addSplit": "แยกจ่าย {method} {amount}",
+      "confirm": "ยืนยันรับเงิน {amount}",
+      "overRemaining": "{method} รับได้ไม่เกินยอดคงเหลือ {amount}",
+      "promptpayRound": "PromptPay · ยอดรอบนี้",
+      "numpad": "แป้นตัวเลข",
+      "backspace": "ลบตัวเลข",
+      "tip": "รับทิป",
+      "tipAmount": "ยอดทิป",
+      "tipHint": "ทิปไม่ใช่รายได้ร้าน · ไม่คิด VAT",
+      "billNote": "หมายเหตุบิล: {note}",
+      "breakdownVat": "VAT {rate}% รวมในราคา {amount}"
     },
     "done": {
       "title": "ขายสำเร็จ",
       "receipt": "ใบเสร็จ {no}",
-      "next": "ขายบิลถัดไป"
+      "next": "ขายบิลถัดไป",
+      "paid": "ชำระแล้ว {amount}",
+      "receiptNo": "เลขใบเสร็จ",
+      "paidBy": "วิธีชำระ",
+      "auto": "(อัตโนมัติ {sec} วินาที)",
+      "nextShort": "ขายต่อ"
     },
     "roles": {
       "owner": "เจ้าของ",
@@ -269,6 +307,15 @@
       "confirmTitle": "เรียกคืนบิล \"{label}\" {total}",
       "confirmDetail": "ตะกร้าปัจจุบันมี {count} รายการ — พักตะกร้านี้ก่อนไหม?",
       "confirmHoldFirst": "พักตะกร้านี้ก่อน แล้วเรียกคืน"
+    },
+    "note": {
+      "title": "หมายเหตุบิล",
+      "placeholder": "พิมพ์หมายเหตุของบิลนี้ (พิมพ์ลงใบเสร็จภายหลัง)",
+      "count": "{count}/{max} ตัวอักษร",
+      "save": "บันทึก",
+      "clear": "ล้างหมายเหตุ",
+      "tooLong": "หมายเหตุยาวได้ไม่เกิน {max} ตัวอักษร",
+      "has": "มีหมายเหตุ"
     }
   },
   "shift": {

@@ -8,6 +8,7 @@ import { posUnits, resolvePosLinks, posCatalog, posMembers, posServices, registe
 import { PosRegister } from "@/lib/modules/pos/register-ui";
 import { PosLegacyRegisterFrame, PosRegisterUnlinked } from "@/lib/modules/pos/register-legacy-page";
 import { posRegisterV2On } from "@/lib/modules/pos/register-shared";
+import { parsePosPaymentSettings } from "@/lib/modules/pos/payment-settings";
 import { posTabs } from "@/lib/modules/pos/tabs";
 import { posMembership, posRegisterView } from "@/lib/modules/pos/access";
 import { RegisterScreen } from "@/components/pos/register/RegisterScreen";
@@ -81,6 +82,7 @@ export default async function PosRegisterPage({
         vat={vat.ok ? { mode: vat.mode, rateBp: vat.rateBp } : { mode: "NONE", rateBp: 0 }}
         limits={limits}
         promptpayId={ppId}
+        tipEnabled={parsePosPaymentSettings(sys.settings).tip.enabled}
       />
     );
   }

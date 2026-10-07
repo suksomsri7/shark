@@ -97,7 +97,9 @@
       "coupon": "Coupon {code}",
       "vatIncluded": "VAT {rate}% (included)",
       "vatExcluded": "VAT {rate}% (excluded)",
-      "total": "Total"
+      "total": "Total",
+      "serviceCharge": "Service charge",
+      "tip": "Tip"
     },
     "actions": {
       "billDiscount": "Bill discount",
@@ -140,7 +142,9 @@
       "baht": "Baht",
       "percent": "Percent",
       "apply": "Apply",
-      "remove": "Remove item"
+      "remove": "Remove item",
+      "note": "Item note",
+      "notePlaceholder": "e.g. no ice"
     },
     "billDiscount": {
       "value": "Discount",
@@ -186,12 +190,46 @@
       "statusRefunded": "refunded",
       "existingBill": "Existing bill: receipt {no} · {status} — check Today's bills before selling again",
       "newBill": "Start a new bill",
-      "removeMember": "Sell without the member"
+      "removeMember": "Sell without the member",
+      "escClose": "Esc to close",
+      "back": "Back",
+      "splitTitle": "Split payment",
+      "remaining": "Remaining",
+      "methodsTitle": "Method for the remaining amount",
+      "transfer": "Bank transfer",
+      "card": "Credit/debit card",
+      "promptpayHint": "Scan QR",
+      "transferHint": "Enter a reference",
+      "cardHint": "EDC terminal",
+      "cashUsed": "✓ {amount}",
+      "amountCash": "Cash received",
+      "amountFor": "Amount by {method}",
+      "reference": "Reference (slip/EDC)",
+      "referenceHint": "Optional",
+      "rowCash": "Received {received} · change {change}",
+      "rowRef": "Ref {ref}",
+      "removeRow": "Remove payment {method} {amount}",
+      "addSplit": "Split: {method} {amount}",
+      "confirm": "Confirm payment {amount}",
+      "overRemaining": "{method} can take at most the remaining {amount}",
+      "promptpayRound": "PromptPay · this round",
+      "numpad": "Number pad",
+      "backspace": "Delete digit",
+      "tip": "Take a tip",
+      "tipAmount": "Tip amount",
+      "tipHint": "Tips are not shop revenue · no VAT",
+      "billNote": "Bill note: {note}",
+      "breakdownVat": "VAT {rate}% included {amount}"
     },
     "done": {
       "title": "Sale complete",
       "receipt": "Receipt {no}",
-      "next": "Next sale"
+      "next": "Next sale",
+      "paid": "Paid {amount}",
+      "receiptNo": "Receipt no.",
+      "paidBy": "Paid by",
+      "auto": "(auto in {sec} s)",
+      "nextShort": "Next sale"
     },
     "roles": {
       "owner": "Owner",
@@ -269,6 +307,15 @@
       "confirmTitle": "Recall bill \"{label}\" {total}",
       "confirmDetail": "The current cart has {count} items — hold it first?",
       "confirmHoldFirst": "Hold current cart, then recall"
+    },
+    "note": {
+      "title": "Bill note",
+      "placeholder": "Type a note for this bill (printed on the receipt later)",
+      "count": "{count}/{max} characters",
+      "save": "Save",
+      "clear": "Clear note",
+      "tooLong": "A note can be at most {max} characters",
+      "has": "Has a note"
     }
   },
   "shift": {
