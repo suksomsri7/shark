@@ -657,3 +657,5 @@
 - unit `pos-vis11-shifts` 21:50 UTC
 
 ## 2026-10-07T21:55:13Z · ผู้ตรวจ P1.9U: MERGEABLE-AFTER-FIXES → R2 (F1 id ใน title · F2 visual ทิ้งกะเปิดค้าง · F3 email fallback · F4 moveKey · F5 ข้อความหลัง load ล้ม · F6 รวมฟังก์ชัน sale) + คำตัดสิน Q1–Q4 (เหรียญห้ามปลอมเป็น ฿1 · หัวคอลัมน์ "รายการ")
+
+## 2026-10-07T22:02:30Z · เลนส่ง P1.9U R2 (102d7ea7 · โค้ด 9b62c3a1): F1–F6 + Q3 (countDetail เฉพาะธนบัตร · เหรียญรวมในยอด · follow-up คีย์ coins) + Q4 "รายการ" · gate เขียว (p1.9 51/53 ครั้งหนึ่งเพราะ visual ของผู้คุมงานปิดกะใน QC4 ระหว่าง oracle → รันซ้ำ 53/53 ×2) · 🔴 ห้ามรัน oracle p1.9 ขณะ visual shifts ถ่ายอยู่
