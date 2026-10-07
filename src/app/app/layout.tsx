@@ -121,6 +121,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           { href: s, label: "ภาพรวม" },
           { href: `${s}/pos/register`, label: "ขายหน้าร้าน" },
           { href: `${s}/pos/products`, label: "สินค้า/บริการ" },
+          { href: `${s}/pos/stock`, label: "สต็อก" }, // POS P1.14 U ▸ ต้องตรงกับ posTabs ◂
           { href: `${s}/pos/sales`, label: "ประวัติบิล" },
           { href: `${s}/pos/close`, label: "ปิดวัน" },
           { href: `${s}/pos/reports`, label: "รายงาน" }, // POS P1.17 U ▸ ต้องตรงกับ posTabs ◂

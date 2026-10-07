@@ -13,6 +13,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { MoneyText } from "@/components/ui/MoneyText";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import { ModuleTabs } from "@/components/module-tabs";
+import { getTranslations } from "next-intl/server";
 
 // หน้า "สินค้า/ราคา" ของ POS — ตั้งราคาขายต่อสินค้าในคลังที่ผูกระบบขาย
 // ราคาขายเก็บที่ AccountProduct.salePrice (master data) → register อ่านผ่าน posCatalog
@@ -33,8 +34,15 @@ export default async function PosProductsPage({
   // HF-POS-PAGES: ราคาขายใช้ทั้งร้าน ⇒ ต้องเข้าได้ทุกสาขา (เดิม assertCan ไม่ส่ง unit ⇒ คนสาขาเดียวก็เข้าได้)
   if (!posCanSetTenantPrice(posMembership(auth.active), await posPriceUnitIds(tenantId, id))) notFound();
   const def = systemDef(sys.type);
+  const tStock = await getTranslations("pos.stock");
 
   const tabs = posTabs(id);
+  // POS P1.14 U ▸ ทางเข้าหน้าสต็อก (ตรวจนับ · รับ/โอน/ปรับ) ◂
+  const stockLink = (
+    <Link href={`/app/sys/${id}/pos/stock`} className="btn btn-ghost min-h-11" data-testid="pos-products-stock-link">
+      {tStock("productsLink")}
+    </Link>
+  );
 
   const { inventorySystemId, accountSystemId, items } = await listPosProducts(tenantId, id);
   // บริการมาจากแคตตาล็อกกลาง (ต้นฉบับเดียวกับหน้าจอง) — หน้านี้อ่านอย่างเดียว
@@ -42,7 +50,11 @@ export default async function PosProductsPage({
 
   return (
     <div className="flex max-w-2xl flex-col gap-5">
-      <PageHeader title={`${def?.icon ?? ""} ${sys.name}`.trim()} desc="บริการ/สินค้า — ตั้งรายการที่ขายหน้าร้าน" />
+      <PageHeader
+        title={`${def?.icon ?? ""} ${sys.name}`.trim()}
+        desc="บริการ/สินค้า — ตั้งรายการที่ขายหน้าร้าน"
+        actions={stockLink}
+      />
       <ModuleTabs items={tabs} />
 
       {err && <p className="text-sm text-[color:var(--color-danger)]">{err}</p>}
