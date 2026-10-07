@@ -177,6 +177,37 @@ await sub("R.C", () => {
   chk("R.C5", chain.every((r) => r !== "OK"), `platform redirectors are NOT always-allowed destinations (a /l link → shark.in.th/t/c/<own e-mail token> → any host would bypass the list) → /t/c:${chain[0]} /l:${chain[1]}`);
 });
 
+// ═════════ R.F · round 2: REDIRECTOR path matcher (adversarial) ═════════
+await sub("R.F", () => {
+  for (const app of ["https://shark.in.th", undefined, "http://127.0.0.1:3215"]) {
+    withAppUrl(app, () => {
+      const P0 = "https://shark.in.th";
+      const red = [
+        `${P0}/t/c/x`, `${P0}/T/c/x`, `${P0}/T/C/x`, `${P0}/%74/c/x`, `${P0}/%2574/c/x`, `${P0}/%252574/c/x`, `${P0}/t%2fc/x`, `${P0}/t%2Fc/x`, `${P0}/t%252fc/x`,
+        `${P0}//t/c/x`, `${P0}///t//c/x`, `${P0}/x/../t/c/x`, `${P0}/x/%2e%2e/t/c/x`, `${P0}/x/..%2ft/c/x`, `${P0}/./t/c/x`, `${P0}/t/?q=1`, `${P0}/t/#f`, `${P0}/t?x`, `${P0}/t`,
+        `${P0}/l/`, `${P0}/l/abc123`, `${P0}/L/abc123`, `${P0}/%6c/abc`, "https://shark.in.th:8443/t/c/x", "https://shark.in.th:443/l/x", "http://shark.in.th/t/c/x", "https://SHARK.IN.TH./t/c/x",
+        "https://www.shark.in.th/t/c/x", "https://backoffice.shark.in.th/l/x", "https://a.b.shark.in.th/t/o/x",
+      ];
+      const rv = red.map((u) => V(u, { crm: { tracking: { linkHosts: ["*.shark.in.th", "shark.in.th"] } } }));
+      const bad = rv.map((v: Any, i: number) => (v.ok || v.reason !== "REDIRECTOR" ? `${red[i]}=${v.ok ? "OK" : v.reason}` : "")).filter(Boolean);
+      chk(`R.F1[${app ?? "unset"}]`, bad.length === 0, `/t/ and /l/ on shark.in.th (+ subdomains, any port/scheme/case/trailing dot, %-encoded ×1-3, %2f, //, ., .., query/fragment-only) = REDIRECTOR even when the host is declared → ${bad.join(" ") || `${red.length}/${red.length} REDIRECTOR`}`);
+      const fine = [`${P0}/tracking`, `${P0}/tl/x`, `${P0}/lx`, `${P0}/f/abc`, `${P0}/p/shop`, `${P0}/s/t/c`, `${P0}/`, `${P0}/%74racking`];
+      const fv = fine.map((u) => V(u, {}));
+      const wrong = fv.map((v: Any, i: number) => (v.ok ? "" : `${fine[i]}=${v.reason}`)).filter(Boolean);
+      const expectOk = app === "https://shark.in.th";
+      chk(`R.F2[${app ?? "unset"}]`, expectOk ? wrong.length === 0 : fv.every((v: Any) => !v.ok && v.reason !== "REDIRECTOR"),
+        `non-redirector paths on the platform host are not REDIRECTOR (allowed when APP_URL is the platform; otherwise HOST_NOT_ALLOWED as before) → ${expectOk ? wrong.join(" ") || "all OK" : fv.map((v: Any) => v.reason).join(",")}`);
+      const ip6 = reasons(["http://[::ffff:1.2.3.4]/t/c/x", "http://[2001:db8::1]/l/x"], {});
+      chk(`R.F3[${app ?? "unset"}]`, ip6.every((r) => r === "IP"), `IPv6 / IPv4-mapped host forms are refused before the path test → ${ip6.join(",")}`);
+    });
+  }
+  // deep encoding the server will not decode into /t either (INFO) + residual hosts that also serve the same app routes
+  const deep = withAppUrl("https://shark.in.th", () => V("https://shark.in.th/%25252574/c/x", {}));
+  console.log(`  ℹ️  [R.F4-INFO] 4×-encoded /%25252574/c → ${deep.ok ? "OK" : deep.reason} (a server decodes at most once ⇒ never routes to /t/c)`);
+  const alias = withAppUrl("https://shark.in.th", () => reasons(["https://shark-in-th.vercel.app/t/c/x", "https://shop.example.com/t/c/x"], { crm: { tracking: { linkHosts: ["shark-in-th.vercel.app"], web: { domains: ["shop.example.com"] } } } }));
+  console.log(`  ℹ️  [R.F5-INFO] the same /t/c route on a host that is NOT shark.in.th but may serve the app (deployment alias declared exactly · a tenant custom domain in web.domains) → ${alias.join(",")}`);
+});
+
 // ═════════ R.D / R.E · DB ═════════
 const IP = `198.51.100.${(Number.parseInt(rand.slice(0, 2), 36) % 200) + 20}`;
 RATE_KEYS.push(`crm:l:${String(TR.ipHashFor(IP, new Date())).slice(0, 32)}`);
@@ -269,6 +300,69 @@ try {
     chk("R.E2", pa.blockedActiveLinks === 1 && pb.blockedActiveLinks === 1, `preview counts only the caller's own system (A sees its 1 link, B its 1) → A=${pa.blockedActiveLinks} B=${pb.blockedActiveLinks}`);
     const aud = await P.auditLog.findMany({ where: { action: "crm.tracking.link.hosts", tenantId: { in: [A.T, B.T] } }, select: { tenantId: true } });
     chk("R.E3", aud.length >= 3 && aud.every((a: Any) => a.tenantId === A.T || a.tenantId === B.T), `audit rows written under the acting tenant only → ${aud.length}`);
+  });
+
+  // ═════════ R.G · round 2: e-mail wrap — unwrapped failing links render exactly as written · legacy-link count gap ═════════
+  await sub("R.G", async () => {
+    const EM = (await import("@/lib/modules/crm/emails" as string)) as Any;
+    const RC = (await import(pathToFileURL(resolve("src/app/t/c/[token]/route.ts")).href)) as Any;
+    await P.$executeRawUnsafe(
+      `UPDATE "AppSystem" SET "settings" = jsonb_set("settings", '{crm,email}', (CASE WHEN jsonb_typeof("settings"->'crm'->'email') = 'object' THEN "settings"->'crm'->'email' ELSE '{}'::jsonb END) || $1::jsonb, true) WHERE "id" = $2`,
+      JSON.stringify({ trackOpens: false, trackClicks: true, fromMode: "SHARK", replyToMode: "SHARK", copyMode: "NONE" }),
+      A.S,
+    );
+    const email = `c61r-${rand}@qc.invalid`;
+    const party = await P.party.create({ data: { tenantId: A.T, name: `ลูกค้า ${TAG}`, kind: "PERSON", email } });
+    const ct = await P.crmContact.create({ data: { tenantId: A.T, systemId: A.S, name: `ลูกค้า ${TAG}`, firstName: "ลูกค้า", email, partyId: party.id, ownerUserId: uA } });
+    await P.crmContactConsent.create({ data: { tenantId: A.T, systemId: A.S, contactId: ct.id, channel: "EMAIL", granted: true, source: "STAFF" } });
+    const SENT: Any[] = [];
+    const transport = async (m: Any) => {
+      SENT.push(m);
+      return { ok: true, providerId: `re_qc_${TAG}_${SENT.length}` };
+    };
+    const D = `mail-${rand}.example.org`;
+    const body =
+      `<p>สวัสดี ${TAG}</p>` +
+      `<p><a class="btn" href="http://10.0.0.1/a?x=1&amp;y=2" target="_blank" style="color:red">IP ลิงก์</a></p>` +
+      `<p><a href="https://u:p@${D}/x?q=&quot;1&quot;" title="t">ผู้ใช้</a> · <a href="http://localhost:3000/z">local</a></p>` +
+      `<p><a href="https://${D}/ok?a=1&amp;b=2" data-x="1">ปกติ</a> <a href="https://shark.in.th/l/abcdef">ลิงก์สั้น</a></p>` +
+      `<table><tr><td><a href="http://0x7f.1/q">hex</a></td></tr></table>`;
+    const r = await call(() => EM.sendEmail({ tenantId: A.T, systemId: A.S, actorUserId: uA }, ownerA, { contactId: ct.id, subject: `ทดสอบ ${TAG}`, bodyHtml: body }, { transport }));
+    const html = String(SENT[0]?.html ?? "");
+    const row = r.ok ? await P.crmEmailMessage.findFirst({ where: { id: r.v?.emailId } }) : null;
+    // compare against the STORED (already sanitised by the pre-existing C2.5 sanitizer) body — the wrap step must change nothing but passing hrefs
+    const stored = String(row?.bodyHtml ?? "");
+    const PH = "__WRAPPED__";
+    const normSent = html.replace(/href="[^"]*\/t\/c\/[^"]+"/g, `href="${PH}"`);
+    const expected = stored.replace(`href="https://${D}/ok?a=1&amp;b=2"`, `href="${PH}"`).replace(`href="https://shark.in.th/l/abcdef"`, `href="${PH}"`);
+    const wrappedN = (html.match(/\/t\/c\//g) ?? []).length;
+    const failing = ["http://10.0.0.1/a?x=1&amp;y=2", `https://u:p@${D}/x?q=&quot;1&quot;`, "http://localhost:3000/z", "http://0x7f.1/q"].map((h) => stored.includes(`href="${h}"`) && html.includes(`href="${h}"`));
+    chk("R.G1", r.ok && normSent.startsWith(expected) && wrappedN === 2 && failing.every(Boolean),
+      `sent HTML = stored HTML byte for byte except the 2 passing hrefs (entities, link text, other attributes intact) · the 4 failing hrefs present in stored AND sent exactly as written (none dropped) · then the unsubscribe footer → send=${r.ok ? "ok" : r.msg} wrapped=${wrappedN} failingKept=${failing.join(",")} prefixMatch=${normSent.startsWith(expected)}`);
+    if (!normSent.startsWith(expected)) console.log(`     expected: ${expected.slice(0, 600)}\n     got:      ${normSent.slice(0, 600)}`);
+    console.log(`  ℹ️  [R.G1-INFO] pre-existing sanitizer (not this card) rewrote the input: class/style/title/data-* dropped, rel/target added, <table> unwrapped — stored=${stored.length}B input=${body.length}B`);
+    // legacy (wrapped before r2) failing link: answer = unknown token, but is it counted / does it emit crm.email.clicked?
+    const { createHash } = await import("node:crypto");
+    const tk = `${row?.id}~legacyrv${rand}`;
+    const links = ((row?.routing as Any)?.links ?? []) as Any[];
+    await P.crmEmailMessage.update({ where: { id: row.id }, data: { routing: { ...(row.routing as Any), links: [...links, { h: createHash("sha256").update(`crm.email.c:${tk}`).digest("hex"), url: "http://10.9.8.7/x" }] } } });
+    const before = await P.crmEmailMessage.findFirst({ where: { id: row.id }, select: { clickCount: true } });
+    const evB = await P.crmEmailEvent.count({ where: { emailId: row.id, kind: "CLICK" } });
+    const obB = await P.outboxEvent.count({ where: { tenantId: A.T, type: "crm.email.clicked" } });
+    const get = async (t: string) => {
+      const res: Response = await RC.GET(new Request(`http://qc.invalid/t/c/${encodeURIComponent(t)}`, { headers: { "x-forwarded-for": IP, "user-agent": "Mozilla/5.0 qc-c61r" } }), { params: Promise.resolve({ token: t }) });
+      const h: Record<string, string> = {};
+      res.headers.forEach((v, k) => (h[k] = v));
+      return { status: res.status, headers: h };
+    };
+    for (const t of [tk, `${row?.id}~nosuch${rand}`]) for (const k of EM.trackRateKeys("c", { ip: IP, token: t })) RATE_KEYS.push(k);
+    const leg = await get(tk);
+    const unk = await get(`${row?.id}~nosuch${rand}`);
+    const after = await P.crmEmailMessage.findFirst({ where: { id: row.id }, select: { clickCount: true } });
+    const evA = await P.crmEmailEvent.count({ where: { emailId: row.id, kind: "CLICK" } });
+    const obA = await P.outboxEvent.count({ where: { tenantId: A.T, type: "crm.email.clicked" } });
+    chk("R.G2", j(leg) === j(unk) && !String(leg.headers.location).includes("10.9.8.7"), `legacy failing link → byte-identical unknown-token answer, never Location to it → ${leg.status} ${leg.headers.location}`);
+    console.log(`  ℹ️  [R.G3-INFO] declared gap, measured: legacy failing click → clickCount ${before?.clickCount}→${after?.clickCount} · CLICK events ${evB}→${evA} · OutboxEvent crm.email.clicked ${obB}→${obA}`);
   });
 } finally {
   for (const k of RATE_KEYS) await P.chatRateBucket.deleteMany({ where: { key: k } }).catch(() => undefined);

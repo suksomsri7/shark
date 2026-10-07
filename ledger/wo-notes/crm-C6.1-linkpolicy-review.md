@@ -124,3 +124,84 @@ Then run the 3 new inventory rows for owner and manager at both viewports.
 - Red-before of either probe on the base tree.
 
 VERDICT: MERGEABLE AFTER RV-1, RV-2
+
+## Round 2 re-check · 7 Oct 2026 (builder tip `6b835e03`)
+
+I read `git diff 88c2f8c7..6b835e03 -- src` (emails.ts, tracking-shared.ts, tracking.ts).
+- The probe gained R.F (REDIRECTOR matcher) and R.G (e-mail wrap and the legacy gap).
+- R.C5, R.D1 and R.B6 now expect the fixed behaviour.
+
+### Fix status
+| ID | Status | Evidence |
+| --- | --- | --- |
+| RV-1 | **FIXED** | `updateLink` refuses a non-boolean `active` with VALIDATION (Thai), and one `turnOn` value now drives both the check and the write. R.D1: `true`, `1` and `"yes"` are all refused on a blocked link. Builder G.1 covers `"true"`, `null` and `{}`. |
+| RV-2 | **FIXED** | New reason `REDIRECTOR`: `/t/…` and `/l/…` on `shark.in.th` (the fixed `APP_PUBLIC_HOST`) plus the APP_URL host and all their subdomains are refused even when declared. The shared `linkHardVerdict` now also runs at `/t/c` wrap time and click time. R.C5: both are REDIRECTOR. R.F: see below. |
+| RV-3 | **FIXED** | Web domains go through `normalizeLinkHost("*.d")`. Broad ones are skipped for links only and logged once per process; `originAllowed` is untouched. R.B6: `co.th` and `github.io` web domains no longer exempt anything. |
+| RV-4 | **PARTIAL (accepted)** | There is now a fixed list of 25 shared-hosting suffixes. `*.github.io`, `*.vercel.app`, `*.blogspot.com`, `*.netlify.app`, `*.pages.dev`, `*.web.app`, `*.herokuapp.com`, `*.s3.amazonaws.com` and `*.workers.dev` are refused. ICANN second-level suffixes outside the 17-word list (`*.me.uk`, `*.id.au`) are still accepted. The full PSL remains debt. |
+| RV-5 | **FIXED** | An over-long entry gets its own length message quoting the entry. More than 500 tokens gives the count message. Builder G.6. |
+
+### REDIRECTOR matcher, adversarial (R.F, pure, run with APP_URL = `https://shark.in.th` / unset / `http://127.0.0.1:3215`)
+- **30 of 30 forms are REDIRECTOR under all three APP_URL values, even with `*.shark.in.th` declared**:
+  - case: `/T/c`, `/T/C`, `/L/`
+  - %-encoding: `/%74/c`, `/%2574/c`, `/%252574/c`, `/%6c/`
+  - slashes: `/t%2fc`, `/t%2Fc`, `/t%252fc`, `//t/c`, `///t//c`
+  - dot segments: `/x/../t/c`, `/x/%2e%2e/t/c`, `/x/..%2ft/c`, `/./t/c`
+  - query or fragment only: `/t/?q`, `/t/#f`, `/t?x`, bare `/t`
+  - `/l/` and `/l/<code>`
+  - host forms: ports `:8443` and `:443`, `http:`, `SHARK.IN.TH.` with a trailing dot, `www.`, `backoffice.`, deep subdomains
+- **Non-redirector paths are not caught**: `/tracking`, `/tl/x`, `/lx`, `/f/abc`, `/p/shop`, `/s/t/c`, `/` and `/%74racking` are OK when APP_URL is the platform, and HOST_NOT_ALLOWED as before otherwise. No over-blocking outside `/t` and `/l`.
+- **IPv6 and IPv4-mapped host forms** of any host are refused as IP before the path test.
+- **INFO, four-times encoding**: `/%25252574/c` is past the 3-decode loop and judged OK. A server decodes a path at most once, so this never routes to `/t/c`. Not a bypass.
+- **No other redirect routes**: I checked every `route.ts` that redirects. `/t/*` and `/l/*` are the only external redirectors. `logout` allows only `/p/<slug>`, `page-login` builds its target internally, and `webview-exchange`, `tenant/*` and the auth callbacks redirect to fixed internal paths.
+
+### E-mail wrap (R.G, QC2, real `sendEmail` with stub transport)
+- **R.G1, nothing dropped or broken**: the sent HTML is **byte-identical to the stored body except for the 2 passing hrefs**.
+  - The 4 failing hrefs (IP with `&amp;`, userinfo with `&quot;`, `localhost:3000`, `0x7f.1`) appear in the stored and the sent HTML exactly as written. Entities and link text are intact, and the unsubscribe footer follows.
+  - The wrap uses the decoded URL only for the verdict and returns the original match `m` untouched.
+  - The rewriting I saw comes from the **pre-existing** C2.5 sanitizer at save time, not this card: class/style/title/data-* dropped, `rel/target` added, `<table>` unwrapped.
+- **Shop `/l/` links in e-mails are still wrapped by design**: a `shark.in.th/l/<code>` href in an e-mail is wrapped by `/t/c` because `linkHardVerdict` has no REDIRECTOR step. That is correct: `/l` applies its own owner's policy at the next hop, so there is no bypass.
+- **R.G2**: a legacy (pre-r2) stored failing link gets a `/t/c` answer byte-identical to an unknown token, and never a Location to it.
+
+### Declared gap, measured (R.G3)
+A click on a legacy failing link does **more than "still counted"**. I measured all three:
+- `clickCount` 0→1
+- a `CrmEmailEvent` CLICK row 0→1
+- an **`OutboxEvent crm.email.clicked`** row 0→1
+
+The outbox event means automations, scoring and sequence rules keyed on "e-mail clicked" can fire for a link that went nowhere. The builder note (§ round 2, caveat (b)) should say so.
+- Scope is correct: only e-mails wrapped before r2 are affected, because the wrap step no longer stores such links.
+- Not verified here: the builder's "prod has no CRM v2 e-mails" claim.
+- Doc fix only, no code change needed.
+
+### New findings (round 2)
+| ID | Sev | Where | What | How to fix |
+| --- | --- | --- | --- | --- |
+| RV-12 | LOW | `tracking-shared.ts` `linkDestinationVerdict` (platformHosts) | REDIRECTOR covers only `shark.in.th` and the APP_URL host. The same `/t/c` and `/l` routes answer on **any host that serves the app**. A shop can declare such a host exactly, for example the Vercel deployment alias `shark-…vercel.app` (exact entries on shared hosting are allowed), or a tenant custom domain in `web.domains` once custom-domain serving is live (`proxy.ts` Stage A). It then links to `<that host>/t/c/<own token>` (R.F5: OK). Unlike round 1, the audit row names that host. Reachability depends on deployment, which I did not verify. | Follow-up, not blocking: have `/t/c` and `/l` answer only on the platform host (fallback answer otherwise), or add the known app aliases (`*.vercel.app` project alias, mapped custom domains) to the REDIRECTOR host set. |
+| RV-13 | INFO | builder note §round 2 caveat (b) | The gap text says "counted" but leaves out the `crm.email.clicked` outbox event (see above). | Amend the note. |
+
+### Shared-hosting list: **KEEP**
+- It is cheap, static and network-free, and it blocks the commonest `*.` accident on the hosts where it matters most. `nip.io` and `sslip.io` are good inclusions (they resolve to any IP).
+- Candidates to add when convenient: `webflow.io`, `framer.app`, `framer.website`, `notion.site`, `squarespace.com`, `weebly.com`, `carrd.co`, `wixstudio.io`, `godaddysites.com`, `mystrikingly.com`.
+- Replace it with the vendored PSL (ICANN + PRIVATE) when the debt card lands. That also closes `*.me.uk` / `*.id.au`.
+
+### Suites (QC2 · iso + gate lock · this re-check)
+| Suite | Result |
+| --- | --- |
+| reviewer probe `scripts/pending/c61l/review/probe-linkpolicy-review.mts` | **40/40** (round 1: 26/29 · +R.F ×9 · +R.G ×2; CLEAN ×2) |
+| builder probe `scripts/pending/c61l/probe-linkpolicy.mts` | **44/44** (QC2 INFO: 0 links failing in other tenants) |
+| `qc-crm-c2.5` (e-mail wrap path) | **105/105** |
+| `pnpm fitness` | **42/42** |
+| `pnpm typecheck` | clean (exit 0) |
+
+I did not re-run c2.6, c2.11 or c5.3 L4 in round 2: the r2 diff touches none of their fixtures, and the builder reports 87/87, 47/47 and 10/10. They were already green in my round 1.
+
+### Still not verified
+- c3.8 / c3.9 (QC3)
+- `qc-crm-buttons` (QC1). Round-1 point 7 still applies: fixture `linkHosts: ["*.example.com"]` plus a fill rule for `crm-track-linkhosts-input`.
+- c2.6-web
+- the visual check
+- the prod APP_URL value
+- the prod "no links / no CRM v2 e-mails" claims
+- whether the app is reachable on a Vercel alias or a tenant custom domain (RV-12)
+
+VERDICT: MERGEABLE
