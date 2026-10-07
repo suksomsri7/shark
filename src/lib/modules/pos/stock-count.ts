@@ -527,6 +527,46 @@ export async function listStockCounts(ctx: RegisterCtx, actor: RegisterActor, in
   });
 }
 
+// POS P1.14 U ▸ ตัวอ่านของหน้าจอ (อ่านอย่างเดียว · เพิ่มเติม) — คลังของสาขา · ที่เก็บ · หมวด · สิทธิ์ 5 ข้อ · รอบที่เปิดอยู่ล่าสุด ◂
+export type StockCountMeta = {
+  ok: true;
+  inventorySystemId: string;
+  locations: { id: string; name: string; isDefault: boolean }[];
+  categories: { id: string; name: string }[];
+  can: { count: boolean; confirm: boolean; receive: boolean; transfer: boolean; adjust: boolean };
+  openCount: StockCountView | null;
+  /** ชื่อผู้เปิดรอบ openCount (User.name · ไม่มีชื่อ = null) */
+  openedByName: string | null;
+};
+export type StockCountMetaResult = StockCountMeta | StockCountRefusal;
+
+/** ไม่มีสิทธิ์ใดเลยใน 5 ข้อ = PERMISSION_DENIED · สาขาไม่มีคลัง = NO_INVENTORY (ลำดับ: ขอบเขต → สิทธิ์ → คลัง) */
+export async function stockCountMeta(ctx: RegisterCtx, actor: RegisterActor, client?: Db): Promise<StockCountMetaResult> {
+  const db = client ?? prisma;
+  return guard("stockCountMeta", async (): Promise<StockCountMetaResult> => {
+    const s = await scopeOf(db, ctx, actor);
+    if (isRefusal(s)) return s;
+    const perms = {
+      count: canCount(s),
+      confirm: canAdjust(s),
+      receive: can(s, "inventory", "inventory.movement.receive"),
+      transfer: can(s, "inventory", "inventory.movement.transfer"),
+      adjust: canAdjust(s),
+    };
+    if (!perms.count && !perms.receive && !perms.transfer && !perms.adjust) return refuse("PERMISSION_DENIED");
+    if (!s.inventorySystemId) return refuse("NO_INVENTORY");
+    const invS = s.inventorySystemId;
+    const [locations, categories, open] = await Promise.all([
+      db.invLocation.findMany({ where: { tenantId: s.tenantId, systemId: invS, archivedAt: null }, select: { id: true, name: true, isDefault: true }, orderBy: [{ isDefault: "desc" }, { name: "asc" }] }),
+      db.invCategory.findMany({ where: { tenantId: s.tenantId, systemId: invS, kind: "PRODUCT" }, select: { id: true, name: true }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }] }),
+      perms.count ? listStockCounts(ctx, actor, { status: "OPEN", limit: 1 }, db) : Promise.resolve(null),
+    ]);
+    const openCount = open && open.ok ? (open.items[0] ?? null) : null;
+    const opener = openCount ? await db.user.findUnique({ where: { id: openCount.openedByUserId }, select: { name: true } }) : null;
+    return { ok: true, inventorySystemId: invS, locations, categories, can: perms, openCount, openedByName: opener?.name ?? null };
+  });
+}
+
 // ═══════════ ยืนยัน (R7 R10) ═══════════
 export type ConfirmStockCountResult =
   | { ok: true; count: StockCountView; adjustedLines: number; varianceValueSatang: number; duplicated?: true }
