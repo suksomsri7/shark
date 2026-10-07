@@ -185,16 +185,16 @@ function DailyBars({ rows, t, locale, lastIsToday }: { rows: DailyRow[]; t: T; l
   };
   const slot = "relative flex min-w-0 max-w-16 flex-1 justify-center";
   return (
-    <div className="flex min-w-0 gap-3 pt-6 sm:gap-5" role="img" aria-label={t("overview.chartTitle")} data-testid="pos-report-ov-chart-plot">
-      <div className={`flex h-[170px] w-14 shrink-0 flex-col justify-between text-right text-[11px] tabular-nums ${MUTED}`} aria-hidden="true">
+    <div className="flex min-w-0 gap-3 sm:gap-5" role="img" aria-label={t("overview.chartTitle")} data-testid="pos-report-ov-chart-plot">
+      <div className={`mt-6 flex h-[170px] w-14 shrink-0 flex-col justify-between text-right text-[11px] tabular-nums ${MUTED}`} aria-hidden="true">
         <span className="-translate-y-1/2">{formatBaht(top)}</span>
         <span className="-translate-y-1/2">{formatBaht(Math.round(top / 2))}</span>
         <span className="-translate-y-1/2">{formatBaht(0)}</span>
       </div>
-      {/* > 14 แท่งบนจอแคบ: เลื่อนแนวนอนในกรอบกราฟเอง (หน้าไม่ล้น) */}
-      <div className="min-w-0 flex-1 overflow-x-auto overflow-y-visible">
-        <div className={few ? "relative" : "relative min-w-[var(--chart-w)] sm:min-w-0"} style={few ? undefined : ({ "--chart-w": `${n * 12}px` } as React.CSSProperties)}>
-          <div className="pointer-events-none absolute inset-x-0 top-0 flex h-[170px] flex-col justify-between" aria-hidden="true">
+      {/* > 14 แท่งบนจอแคบ: เลื่อนแนวนอนในกรอบกราฟเอง (หน้าไม่ล้น) · pt-6 อยู่ในกรอบเลื่อน = ตัวเลขบนแท่งสูงสุดไม่ถูกตัด */}
+      <div className="min-w-0 flex-1 overflow-x-auto">
+        <div className={few ? "relative pt-6" : "relative min-w-[var(--chart-w)] pt-6 sm:min-w-0"} style={few ? undefined : ({ "--chart-w": `${n * 12}px` } as React.CSSProperties)}>
+          <div className="pointer-events-none absolute inset-x-0 top-6 flex h-[170px] flex-col justify-between" aria-hidden="true">
             <i className="block border-t border-dashed border-[color:var(--color-line)]" />
             <i className="block border-t border-dashed border-[color:var(--color-line)]" />
             <i className="block border-t border-[color:var(--color-line)]" />
