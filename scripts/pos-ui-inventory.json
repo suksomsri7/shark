@@ -2456,14 +2456,15 @@
       "testid": "pos-shift-unit",
       "kind": "select",
       "roles": [
-        "owner",
+        "owner"
+      ],
+      "hiddenFor": [
         "cashier"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "navigate",
         "target": "/app/sys/[id]/pos/shifts",
-        "note": "?unit=<สาขาที่เข้าได้> · แสดงเมื่อเข้าได้มากกว่า 1 สาขา"
+        "note": "?unit=<สาขาที่เข้าได้> · แสดงเมื่อเข้าได้มากกว่า 1 สาขา · แคชเชียร์ QC (มีแค่ pos.sale.create) เห็นการ์ดปฏิเสธ pos-shift-refusal แทนทั้งหน้า"
       },
       "wo": "P1.9",
       "oracle": "qc-pos-p1.9",
@@ -2475,15 +2476,16 @@
       "testid": "pos-shift-open-label",
       "kind": "input",
       "roles": [
-        "owner",
+        "owner"
+      ],
+      "hiddenFor": [
         "cashier"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-shift-open",
+        "target": "pos-shift-open-dialog",
         "state": "changes",
-        "note": "ชื่อเครื่อง ≤40 (ไม่บังคับ)"
+        "note": "ชื่อเครื่อง ≤40 (ไม่บังคับ) · เติมจากกะก่อนของเครื่องนี้ · แคชเชียร์ QC (มีแค่ pos.sale.create) เห็นการ์ดปฏิเสธ pos-shift-refusal แทนทั้งหน้า"
       },
       "wo": "P1.9",
       "oracle": "qc-pos-p1.9",
@@ -2495,15 +2497,16 @@
       "testid": "pos-shift-open-float",
       "kind": "input",
       "roles": [
-        "owner",
+        "owner"
+      ],
+      "hiddenFor": [
         "cashier"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-shift-open",
+        "target": "pos-shift-open-dialog",
         "state": "changes",
-        "note": "เงินทอนตั้งต้น (บาท → สตางค์)"
+        "note": "ช่อง 'รวม' เงินตั้งต้น (บาท) · กรอกนับแยกแบงก์แล้ว = อ่านอย่างเดียว แสดงยอดรวมของแบงก์ · แคชเชียร์ QC (มีแค่ pos.sale.create) เห็นการ์ดปฏิเสธ pos-shift-refusal แทนทั้งหน้า"
       },
       "wo": "P1.9",
       "oracle": "qc-pos-p1.9",
@@ -2515,15 +2518,16 @@
       "testid": "pos-shift-open-submit",
       "kind": "button",
       "roles": [
-        "owner",
+        "owner"
+      ],
+      "hiddenFor": [
         "cashier"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-shift-current",
         "state": "appears",
-        "note": "openShiftAction ของเครื่องนี้ (deviceId ใน localStorage) · มีกะอยู่แล้ว = รับกะนั้น"
+        "note": "openShiftAction ของเครื่องนี้ (deviceId ใน localStorage) + floatDetail เมื่อนับแยกแบงก์ · มีกะอยู่แล้ว = รับกะนั้น · แคชเชียร์ QC (มีแค่ pos.sale.create) เห็นการ์ดปฏิเสธ pos-shift-refusal แทนทั้งหน้า"
       },
       "wo": "P1.9",
       "oracle": "qc-pos-p1.9",
@@ -2535,15 +2539,16 @@
       "testid": "pos-shift-refresh",
       "kind": "button",
       "roles": [
-        "owner",
+        "owner"
+      ],
+      "hiddenFor": [
         "cashier"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-shift-current",
         "state": "changes",
-        "note": "โหลดกะ + รายงาน X ใหม่"
+        "note": "ข้อความ 'ข้อมูลถึง HH:MM' กดได้ = โหลดข้อมูลหน้าใหม่ (shiftsPageDataAction) · แคชเชียร์ QC (มีแค่ pos.sale.create) เห็นการ์ดปฏิเสธ pos-shift-refusal แทนทั้งหน้า"
       },
       "wo": "P1.9",
       "oracle": "qc-pos-p1.9",
@@ -2555,15 +2560,16 @@
       "testid": "pos-shift-move-amount",
       "kind": "input",
       "roles": [
-        "owner",
+        "owner"
+      ],
+      "hiddenFor": [
         "cashier"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-shift-current",
+        "target": "pos-shift-move-dialog",
         "state": "changes",
-        "note": "จำนวนเงินเข้า/ออก (บาท)"
+        "note": "จำนวนเงินเข้า/ออก (บาท) · แคชเชียร์ QC (มีแค่ pos.sale.create) เห็นการ์ดปฏิเสธ pos-shift-refusal แทนทั้งหน้า"
       },
       "wo": "P1.9",
       "oracle": "qc-pos-p1.9",
@@ -2575,15 +2581,16 @@
       "testid": "pos-shift-move-reason",
       "kind": "input",
       "roles": [
-        "owner",
+        "owner"
+      ],
+      "hiddenFor": [
         "cashier"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-shift-current",
+        "target": "pos-shift-move-dialog",
         "state": "changes",
-        "note": "เหตุผล 1–200 ตัว"
+        "note": "เหตุผล 1–200 ตัว · แคชเชียร์ QC (มีแค่ pos.sale.create) เห็นการ์ดปฏิเสธ pos-shift-refusal แทนทั้งหน้า"
       },
       "wo": "P1.9",
       "oracle": "qc-pos-p1.9",
@@ -2595,15 +2602,16 @@
       "testid": "pos-shift-cash-in",
       "kind": "button",
       "roles": [
-        "owner",
+        "owner"
+      ],
+      "hiddenFor": [
         "cashier"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-shift-current",
+        "target": "pos-shift-move-dialog",
         "state": "changes",
-        "note": "recordCashMovementAction IN → X อัปเดต"
+        "note": "เลือกชนิด 'นำเงินเข้า' (radio) — บันทึกด้วย pos-shift-move-submit · แคชเชียร์ QC (มีแค่ pos.sale.create) เห็นการ์ดปฏิเสธ pos-shift-refusal แทนทั้งหน้า"
       },
       "wo": "P1.9",
       "oracle": "qc-pos-p1.9",
@@ -2615,35 +2623,16 @@
       "testid": "pos-shift-cash-out",
       "kind": "button",
       "roles": [
-        "owner",
+        "owner"
+      ],
+      "hiddenFor": [
         "cashier"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "target": "pos-shift-current",
+        "target": "pos-shift-move-dialog",
         "state": "changes",
-        "note": "recordCashMovementAction OUT · เกินเงินที่ควรมี = errors.drawerInsufficient"
-      },
-      "wo": "P1.9",
-      "oracle": "qc-pos-p1.9",
-      "system": "POS",
-      "query": "unit=[unitId]"
-    },
-    {
-      "page": "/app/sys/[id]/pos/shifts",
-      "testid": "pos-shift-close-counted",
-      "kind": "input",
-      "roles": [
-        "owner",
-        "cashier"
-      ],
-      "hiddenFor": [],
-      "expect": {
-        "type": "ui",
-        "target": "pos-shift-current",
-        "state": "changes",
-        "note": "เงินที่นับได้ (บาท)"
+        "note": "เลือกชนิด 'นำเงินออก' (radio) — เกินเงินที่ควรมี = errors.drawerInsufficient ตอนบันทึก · แคชเชียร์ QC (มีแค่ pos.sale.create) เห็นการ์ดปฏิเสธ pos-shift-refusal แทนทั้งหน้า"
       },
       "wo": "P1.9",
       "oracle": "qc-pos-p1.9",
@@ -2655,15 +2644,15 @@
       "testid": "pos-shift-close-note",
       "kind": "input",
       "roles": [
-        "owner",
+        "owner"
+      ],
+      "hiddenFor": [
         "cashier"
       ],
-      "hiddenFor": [],
       "expect": {
-        "type": "ui",
-        "target": "pos-shift-current",
-        "state": "changes",
-        "note": "เหตุผลขาด/เกิน (บังคับเมื่อเกินเกณฑ์ · ปริยาย ฿100)"
+        "type": "inline-error",
+        "target": "pos-shift-close-reason-error",
+        "note": "เหตุผลขาด/เกิน · REASON_REQUIRED แสดงใต้ช่อง (เกณฑ์จาก settings · ปริยาย ฿100) · แคชเชียร์ QC (มีแค่ pos.sale.create) เห็นการ์ดปฏิเสธ pos-shift-refusal แทนทั้งหน้า"
       },
       "wo": "P1.9",
       "oracle": "qc-pos-p1.9",
@@ -2675,15 +2664,16 @@
       "testid": "pos-shift-close-submit",
       "kind": "button",
       "roles": [
-        "owner",
+        "owner"
+      ],
+      "hiddenFor": [
         "cashier"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-shift-z",
         "state": "appears",
-        "note": "closeShiftAction → แสดง Z · กะหายจาก 'กะปัจจุบัน'"
+        "note": "closeShiftAction (countedCashSatang = รวมแบงก์+เหรียญ · countDetail) → แผง Z + ปุ่มเปิดกะใหม่ · แคชเชียร์ QC (มีแค่ pos.sale.create) เห็นการ์ดปฏิเสธ pos-shift-refusal แทนทั้งหน้า"
       },
       "wo": "P1.9",
       "oracle": "qc-pos-p1.9",
@@ -2695,15 +2685,16 @@
       "testid": "pos-shift-z-view-*",
       "kind": "button",
       "roles": [
-        "owner",
+        "owner"
+      ],
+      "hiddenFor": [
         "cashier"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "pos-shift-z",
         "state": "appears",
-        "note": "zReportAction ของกะที่ปิดแล้ว (Z แช่แข็ง)"
+        "note": "ในรายการ 'ดูทั้งหมด' · zReportAction ของกะที่ปิดแล้ว (Z แช่แข็ง) · แคชเชียร์ QC (มีแค่ pos.sale.create) เห็นการ์ดปฏิเสธ pos-shift-refusal แทนทั้งหน้า"
       },
       "wo": "P1.9",
       "oracle": "qc-pos-p1.9",
@@ -2811,6 +2802,359 @@
       },
       "wo": "P1.9b",
       "oracle": "qc-pos-p1.9b",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/shifts",
+      "testid": "pos-shift-move-open",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "pos-shift-move-dialog",
+        "note": "หัวหน้า 'นำเงินเข้า/ออกลิ้นชัก' — แสดงเมื่อเครื่องนี้มีกะเปิด · แคชเชียร์ QC (มีแค่ pos.sale.create) เห็นการ์ดปฏิเสธ pos-shift-refusal แทนทั้งหน้า"
+      },
+      "wo": "P1.9U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/shifts",
+      "testid": "pos-shift-move-submit",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-shift-current",
+        "note": "recordCashMovementAction (คีย์กันซ้ำคงไว้จนสำเร็จ) → ปิดกล่อง · X + รายการเงินเข้า/ออกอัปเดต · แคชเชียร์ QC (มีแค่ pos.sale.create) เห็นการ์ดปฏิเสธ pos-shift-refusal แทนทั้งหน้า"
+      },
+      "wo": "P1.9U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/shifts",
+      "testid": "pos-shift-move-cancel",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-shift-move-dialog",
+        "state": "disappears",
+        "note": "ปิดกล่องโดยไม่บันทึก · แคชเชียร์ QC (มีแค่ pos.sale.create) เห็นการ์ดปฏิเสธ pos-shift-refusal แทนทั้งหน้า"
+      },
+      "wo": "P1.9U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/shifts",
+      "testid": "pos-shift-open-start",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "pos-shift-open-dialog",
+        "note": "การ์ด 'ยังไม่เปิดกะบนเครื่องนี้' → กล่องเปิดกะ (ภาพ 13A) · แคชเชียร์ QC (มีแค่ pos.sale.create) เห็นการ์ดปฏิเสธ pos-shift-refusal แทนทั้งหน้า"
+      },
+      "wo": "P1.9U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/shifts",
+      "testid": "pos-shift-open-close",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-shift-open-dialog",
+        "state": "disappears",
+        "note": "ปุ่ม × ปิดกล่องเปิดกะ · แคชเชียร์ QC (มีแค่ pos.sale.create) เห็นการ์ดปฏิเสธ pos-shift-refusal แทนทั้งหน้า"
+      },
+      "wo": "P1.9U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/shifts",
+      "testid": "pos-shift-open-cancel",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-shift-open-dialog",
+        "state": "disappears",
+        "note": "ย้อนกลับ · แคชเชียร์ QC (มีแค่ pos.sale.create) เห็นการ์ดปฏิเสธ pos-shift-refusal แทนทั้งหน้า"
+      },
+      "wo": "P1.9U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/shifts",
+      "testid": "pos-shift-open-denom-*",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-shift-open-float",
+        "state": "changes",
+        "note": "จำนวนแบงก์ ฿1000/500/100/50/20/10 + เหรียญ (ยอดบาท · id ...-coins) → ยอดรวมสด · แคชเชียร์ QC (มีแค่ pos.sale.create) เห็นการ์ดปฏิเสธ pos-shift-refusal แทนทั้งหน้า"
+      },
+      "wo": "P1.9U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/shifts",
+      "testid": "pos-shift-open-prev-z",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-shift-z",
+        "state": "appears",
+        "note": "แถบ 'กะก่อนหน้า Z#n' ของเครื่องนี้ → ปิดกล่อง แสดง Z · แคชเชียร์ QC (มีแค่ pos.sale.create) เห็นการ์ดปฏิเสธ pos-shift-refusal แทนทั้งหน้า"
+      },
+      "wo": "P1.9U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/shifts",
+      "testid": "pos-shift-close-denom-*",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-shift-close-counted",
+        "state": "changes",
+        "note": "จำนวนแบงก์ต่อชนิด (ภาพ 07) → นับได้/ผลต่างสด · แคชเชียร์ QC (มีแค่ pos.sale.create) เห็นการ์ดปฏิเสธ pos-shift-refusal แทนทั้งหน้า"
+      },
+      "wo": "P1.9U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/shifts",
+      "testid": "pos-shift-close-coins",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-shift-close-counted",
+        "state": "changes",
+        "note": "ยอดเหรียญ (บาท) → รวมยอดเหรียญ + นับได้ · แคชเชียร์ QC (มีแค่ pos.sale.create) เห็นการ์ดปฏิเสธ pos-shift-refusal แทนทั้งหน้า"
+      },
+      "wo": "P1.9U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/shifts",
+      "testid": "pos-shift-close-x",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-shift-x",
+        "state": "appears",
+        "note": "ดู/ซ่อนรายงาน X ใต้การ์ดปิดกะ (พิมพ์ = P1.10) · แคชเชียร์ QC (มีแค่ pos.sale.create) เห็นการ์ดปฏิเสธ pos-shift-refusal แทนทั้งหน้า"
+      },
+      "wo": "P1.9U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/shifts",
+      "testid": "pos-shift-close-blind",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-shift-close-blind",
+        "state": "unchanged",
+        "note": "อ่านอย่างเดียวจาก settings.pos.shift.blindClose (เปลี่ยนค่า = P1.18) · แคชเชียร์ QC (มีแค่ pos.sale.create) เห็นการ์ดปฏิเสธ pos-shift-refusal แทนทั้งหน้า"
+      },
+      "wo": "P1.9U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/shifts",
+      "testid": "pos-shift-z-new",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "pos-shift-open-dialog",
+        "note": "แผง Z หลังปิดกะ → เปิดกะใหม่ · แคชเชียร์ QC (มีแค่ pos.sale.create) เห็นการ์ดปฏิเสธ pos-shift-refusal แทนทั้งหน้า"
+      },
+      "wo": "P1.9U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/shifts",
+      "testid": "pos-shift-z-dismiss",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-shift-z",
+        "state": "disappears",
+        "note": "ปิดแผง Z · แคชเชียร์ QC (มีแค่ pos.sale.create) เห็นการ์ดปฏิเสธ pos-shift-refusal แทนทั้งหน้า"
+      },
+      "wo": "P1.9U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/shifts",
+      "testid": "pos-shift-closed-*",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-shift-z",
+        "state": "appears",
+        "note": "แถว Z ในการ์ด 'กะที่ปิดแล้ว (Z)' (4 กะล่าสุด) → แสดง Z · แคชเชียร์ QC (มีแค่ pos.sale.create) เห็นการ์ดปฏิเสธ pos-shift-refusal แทนทั้งหน้า"
+      },
+      "wo": "P1.9U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/shifts",
+      "testid": "pos-shift-closed-all",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-shift-history",
+        "state": "appears",
+        "note": "ดูทั้งหมด/ย่อ — รายการเต็มมีปุ่มดู Z + นับย้อนหลัง (P1.9b) · แคชเชียร์ QC (มีแค่ pos.sale.create) เห็นการ์ดปฏิเสธ pos-shift-refusal แทนทั้งหน้า"
+      },
+      "wo": "P1.9U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/shifts",
+      "testid": "pos-shift-offshift-toggle",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-shift-offshift-bills",
+        "state": "appears",
+        "note": "ดูบิลเงินสดนอกกะวันนี้ (เวลา · แหล่ง · ยอด) · manage เท่านั้น · แคชเชียร์ QC (มีแค่ pos.sale.create) เห็นการ์ดปฏิเสธ pos-shift-refusal แทนทั้งหน้า"
+      },
+      "wo": "P1.9U",
+      "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]"
     },

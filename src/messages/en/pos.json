@@ -366,7 +366,7 @@
     "unit": "Branch",
     "device": "This device",
     "deviceLabel": "Device name",
-    "noShift": "No open shift on this device",
+    "noShift": "No shift open on this device",
     "current": "Current shift",
     "shiftNo": "Shift {no}",
     "zNo": "Z #{no}",
@@ -409,7 +409,130 @@
       "at": "Counted at",
       "saved": "Recount saved",
       "invalid": "Enter the counted cash amount and a note"
-    }
+    },
+    "desc": "Shifts / cash drawer",
+    "pageTitle": "Shifts & cash drawer",
+    "pageSubtitle": "Every baht in the drawer has a source — the system computes what should be there, the cashier counts what is, and the difference is booked automatically",
+    "shiftHash": "Shift #{no}",
+    "zHash": "Z#{no}",
+    "pillOpen": "Open",
+    "openedBy": "Opened by",
+    "floatShort": "Float",
+    "elapsed": "open {h} h {m} min",
+    "xHeading": "Mid-shift summary (X)",
+    "dataAt": "Data as of {time} · does not close the shift, view any time",
+    "kpi": {
+      "sales": "Sales",
+      "bills": "Bills",
+      "avg": "Avg per bill",
+      "voids": "Voided",
+      "refunds": "Refunds"
+    },
+    "byMethodTitle": "By payment method",
+    "col": {
+      "method": "Method",
+      "bills": "Payments",
+      "amount": "Amount",
+      "status": "Money status"
+    },
+    "cashStatus": "In the drawer — counted at close",
+    "noSales": "No sales in this shift yet",
+    "drawerTitle": "Cash that should be in the drawer",
+    "drawer": {
+      "float": "Float",
+      "tendered": "Cash received",
+      "change": "Change",
+      "refunds": "Cash refunds",
+      "in": "Cash in",
+      "out": "Cash out",
+      "expected": "Expected"
+    },
+    "noMoves": "No cash in/out during this shift",
+    "movesTitle": "Cash in/out during the shift",
+    "blindHint": "Blind count (system figure hidden)",
+    "noShiftHint": "Open a shift before selling — count the float in the drawer and confirm",
+    "forcedNotice": "The stale shift of this device was closed by the system — see closed shifts",
+    "invalidAmount": "Enter a valid amount",
+    "moveInvalid": "Enter both an amount and a reason",
+    "countInvalid": "Note counts must be whole numbers, not negative · coins are an amount in baht",
+    "move": {
+      "open": "Cash in/out",
+      "title": "Cash in/out of drawer",
+      "note": "Record every time cash is taken out of or put into the drawer during the shift",
+      "reasonPlaceholder": "e.g. change notes · paid for ice"
+    },
+    "openDlg": {
+      "title": "Open shift",
+      "deviceHeading": "Selling device",
+      "deviceNote": "1 shift per device",
+      "thisDevice": "This device",
+      "unnamed": "Not named yet",
+      "otherOpen": "Shift #{no} · {name} open",
+      "staffHeading": "Staff opening the shift",
+      "staffNote": "Signed-in user",
+      "floatHeading": "Opening float in the drawer",
+      "floatNote": "count by denomination (optional)",
+      "total": "Total",
+      "lastFloat": "Last float on this device {amount} · if the count differs, the difference is recorded in this shift",
+      "prev": "Previous shift Z#{z} · closed {at} · difference {diff}",
+      "prevView": "View Z#{z}",
+      "back": "Back"
+    },
+    "closeCard": {
+      "title": "Close shift · count the cash",
+      "subtitle": "Enter note/coin counts and the system adds them up · the difference is booked to “cash over/short” automatically",
+      "coins": "Coins",
+      "coinsTotal": "Coins total",
+      "expected": "Expected (system)",
+      "counted": "Counted",
+      "diff": "Difference",
+      "reasonHint": "Required above {amount}",
+      "submit": "Close shift and issue Z report",
+      "viewX": "View X report",
+      "hideX": "Hide X report",
+      "blindToggle": "Blind count (system figure hidden) · set by a manager"
+    },
+    "closed": {
+      "title": "Closed shifts (Z)",
+      "viewAll": "View all",
+      "viewLess": "Show less",
+      "empty": "No closed shifts yet",
+      "diff": "Difference {amount}",
+      "noDiff": "Not counted",
+      "chipNote": "Has reason",
+      "chipForced": "Force-closed",
+      "billsN": "{n} bills",
+      "recountBrief": "Recounted {amount}"
+    },
+    "off": {
+      "title": "Off-shift cash today",
+      "text": "{n} bills took cash while no shift was open — the owner should check",
+      "view": "View bills",
+      "hide": "Hide bills"
+    },
+    "source": {
+      "POS": "Register",
+      "BOOKING": "Bookings",
+      "HOTEL": "Hotel",
+      "RESTAURANT": "Restaurant",
+      "TICKET": "Tickets",
+      "OTHER": "Other system"
+    },
+    "deviceCard": {
+      "title": "This device",
+      "name": "Device name",
+      "others": "Other devices",
+      "online": "Online",
+      "offline": "Offline",
+      "noOthers": "No open shift on other devices",
+      "otherLine": "{device} · shift #{no} · {name}"
+    },
+    "lineSoon": "Sending the shift summary to LINE comes in a later round",
+    "z": {
+      "new": "Open a new shift",
+      "dismiss": "Close report"
+    },
+    "savedReloadFailed": "Saved — reloading the page failed, try refreshing"
   },
   "report": {
     "title": "Sales reports",

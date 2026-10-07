@@ -909,3 +909,104 @@ export async function registerShiftStatus(
     required: st.requiredRegister,
   };
 }
+
+// ═══════════ POS P1.9 U ▸ ตัวอ่านหน้ากะ (ภาพ 07) — ประกอบจากฟังก์ชันเดิมฝั่งเซิร์ฟเวอร์ คำขอเดียวต่อการโหลดหน้า ◂ ═══════════
+// 🔴 อ่านอย่างเดียว · ไม่เปลี่ยนกติกาของฟังก์ชันเดิม: currentShift (อาจบังคับปิดกะค้าง S12) · xReport · listShifts · offShiftCash
+//    แต่ละส่วนคืนผล/คำปฏิเสธของตัวเอง · ไม่มีสิทธิ์กะเลย (operate/manage) = PERMISSION_DENIED ทั้งหน้า
+// 🔴 ชื่อผู้ใช้ resolve ที่นี่ (จอไม่แสดงรหัสดิบ) · รายการกะเติม billCount/ยอดขายจาก Z แช่แข็ง + มีเหตุผลไหม (ไม่แตะ viewOf)
+export type ShiftsPageShift = ShiftView & { openedByName: string };
+export type ShiftsPageMovement = CashMovementView & { byName: string };
+export type ShiftsPageItem = ShiftListItem & {
+  openedByName: string;
+  closedByName: string | null;
+  billCount: number | null;
+  salesTotalSatang: number | null;
+  hasNote: boolean;
+  recountByName: string | null;
+};
+export type ShiftsPageData =
+  | {
+      ok: true;
+      at: string;
+      deviceId: string | null;
+      operate: boolean;
+      manage: boolean;
+      settings: { blindClose: boolean; overShortReasonSatang: number };
+      current: { ok: true; shift: ShiftsPageShift | null; forceClosedShiftId?: string } | ShiftRefusal;
+      /** null = เครื่องนี้ไม่มีกะเปิด */
+      x: { ok: true; report: ShiftReport; movements: ShiftsPageMovement[] } | ShiftRefusal | null;
+      history: { ok: true; items: ShiftsPageItem[] } | ShiftRefusal;
+      offShift: OffShiftCashResult;
+    }
+  | ShiftRefusal;
+
+export async function shiftsPageData(ctx: RegisterCtx, actor: RegisterActor, input: { deviceId?: string } = {}, client?: Db): Promise<ShiftsPageData> {
+  return guard("shiftsPageData", async (): Promise<ShiftsPageData> => {
+    const db = client ?? prisma;
+    const s = await scopeOf(db, ctx, actor);
+    if (isRefusal(s)) return s;
+    if (!s.operate && !s.manage) return refuse("PERMISSION_DENIED");
+    const dev = isRecord(input) && isShiftDeviceId(input.deviceId) ? input.deviceId : null;
+    const c = (dev ? { ...ctx, deviceId: dev } : ctx) as RegisterCtx;
+    // currentShift ก่อน (อาจบังคับปิดกะค้าง ⇒ ประวัติต้องอ่านหลังจากนั้น)
+    const cur: CurrentShiftResult = dev ? await currentShift(c, actor, { deviceId: dev }, db) : { ok: true, shift: null };
+    const open = cur.ok ? cur.shift : null;
+    const [x, list, off] = await Promise.all([
+      open ? xReport(c, actor, { shiftId: open.id }, db) : Promise.resolve(null),
+      listShifts(c, actor, { limit: 50 }, db),
+      s.manage ? offShiftCash(c, actor, {}, db) : Promise.resolve(refuse("PERMISSION_DENIED") as OffShiftCashResult),
+    ]);
+    const items = list.ok ? list.items : [];
+    const ids = items.map((i) => i.id);
+    const [moves, frozen, recs] = await Promise.all([
+      open && x && x.ok ? db.posCashMovement.findMany({ where: { tenantId: s.tenantId, shiftId: open.id }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] }) : Promise.resolve([]),
+      ids.length ? db.posShift.findMany({ where: { tenantId: s.tenantId, id: { in: ids } }, select: { id: true, zReport: true, closeNote: true } }) : Promise.resolve([]),
+      ids.length ? db.posShiftRecount.findMany({ where: { tenantId: s.tenantId, shiftId: { in: ids } }, select: { shiftId: true, recountedByUserId: true } }) : Promise.resolve([]),
+    ]);
+    const userIds = new Set<string>();
+    if (open) userIds.add(open.openedByUserId);
+    for (const i of items) {
+      userIds.add(i.openedByUserId);
+      if (i.closedByUserId) userIds.add(i.closedByUserId);
+    }
+    for (const m of moves) userIds.add(m.byUserId);
+    for (const r of recs) userIds.add(r.recountedByUserId);
+    const users = userIds.size ? await db.user.findMany({ where: { id: { in: [...userIds] } }, select: { id: true, name: true, email: true } }) : [];
+    // R2 F3: ไม่มีชื่อ = "-" (ไม่แสดงอีเมลของคนอื่น) · ยกเว้นผู้ทำรายการเอง (อีเมลของตัวเอง)
+    const nameMap = new Map(users.map((u) => [u.id, u.name?.trim() || (u.id === s.actor.userId ? u.email : "") || "-"]));
+    const nameOf = (id: string) => nameMap.get(id) ?? "-";
+    const zOf = new Map(frozen.map((f) => [f.id, f]));
+    const recBy = new Map(recs.map((r) => [r.shiftId, r.recountedByUserId]));
+    const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
+    return {
+      ok: true,
+      at: new Date().toISOString(),
+      deviceId: dev,
+      operate: s.operate,
+      manage: s.manage,
+      settings: { blindClose: s.settings.blindClose, overShortReasonSatang: s.settings.overShortReasonSatang },
+      current: cur.ok ? { ...cur, shift: open ? { ...open, openedByName: nameOf(open.openedByUserId) } : null } : cur,
+      x: x === null ? null : x.ok ? { ok: true, report: x.report, movements: moves.map((m) => ({ ...moveView(m), byName: nameOf(m.byUserId) })) } : x,
+      history: list.ok
+        ? {
+            ok: true,
+            items: items.map((i) => {
+              const f = zOf.get(i.id);
+              const z = f && isRecord(f.zReport) ? f.zReport : null;
+              const rb = recBy.get(i.id);
+              return {
+                ...i,
+                openedByName: nameOf(i.openedByUserId),
+                closedByName: i.closedByUserId ? nameOf(i.closedByUserId) : null,
+                billCount: z ? num(z.billCount) : null,
+                salesTotalSatang: z ? num(z.salesTotalSatang) : null,
+                hasNote: !!f?.closeNote?.trim(),
+                recountByName: rb ? nameOf(rb) : null,
+              };
+            }),
+          }
+        : list,
+      offShift: off,
+    };
+  });
+}
