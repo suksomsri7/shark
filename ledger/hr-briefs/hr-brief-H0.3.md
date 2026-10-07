@@ -47,3 +47,14 @@ Q1 Should a refused on-behalf attempt show a message instead of a silent return?
 ## 7. Oracle writer additions (7 Oct · rulings requested; the oracle follows the defaults until answered)
 - OQ-1 = Q1 · OQ-2 = Q2 (60 s) · OQ-3 STAFF in S1.3 holds both `hr.attendance.clock` and `hr.employee.create` ("additionally") · OQ-4 "actor display name" = `User.name` (note must start with "ลงเวลาแทนโดย" and contain it) · OQ-5 S1.8 is a static heuristic (names listed in the notes) · OQ-6 "เพิ่งลงเวลา…" may be in `message` or `detail` · OQ-7 pool = pg default 10 (`POOL_MAX`). Details and the check list: `ledger/wo-notes/hr-H0.3.md`.
 - Finding (outside scope): the `qc-hf-hr-privacy` F2-3 pool probe leaves an "idle in transaction" connection in its process, so later writes in that run can be lost silently (measured on QC4). See the notes.
+
+## 8. Controller rulings on the oracle writer's open questions (7 Oct 2026)
+- **OQ-1** A refused on-behalf clock attempt writes **no row** AND returns a fixed Thai message `{ ok: false, reason: "ไม่มีสิทธิ์ลงเวลาแทนผู้อื่น ให้พนักงานลงเวลาด้วย PIN ของตนเอง" }` (never `e.message`). The oracle may stay at "no row"; the builder implements the message.
+- **OQ-2** Dedupe window = **60 s** per employee per direction (IN/OUT), enforced in the DB transaction under the row lock, not in memory.
+- **OQ-3** Accepted: the STAFF admin in S1.3 holds both keys (literal reading of R1).
+- **OQ-4** Accepted: the on-behalf note contains the actor's `User.name` ("ลงเวลาแทนโดย <name>").
+- **OQ-5** The builder reads S1.8's static pattern and uses exactly those variable names for the hidden on-behalf buttons; any other naming requires an ORACLE-EDIT by the controller (additive only), not a builder edit of the oracle.
+- **OQ-6** Accepted: the "เพิ่งลงเวลา…" text may be in `message` or `detail`.
+- **OQ-7** Accepted: pg default pool of 10 connections assumed; the builder must not raise the pool size as a "fix".
+- **Fail mode of `checkRateLimitDb`**: fail-OPEN on DB error (warn + allow) is accepted for kiosk availability; the builder documents it in `ledger/wo-notes/hr-H0.3.md` with the limiter numbers and the dedupe window (acceptance §5).
+- **Branch names**: `wip/pos-hr-h0.3-oracle` → `wip/pos-hr-h0.3` (VPS runner rule), replacing the `wip/hr-*` names in the header.
