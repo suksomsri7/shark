@@ -34,6 +34,8 @@ type StaffRep = Report<"staff", StaffRow, StaffTotals>;
 
 type Props = {
   systemId: string;
+  /** สาขาที่ดูรายงานได้ (จากหน้า) — < 2 = ไม่มีการ์ดเปรียบเทียบสาขาตั้งแต่แรก (R7 #1: ไม่วูบ/ไม่โชว์ลองใหม่ให้ร้านสาขาเดียว) */
+  unitCount: number;
   from: string;
   to: string;
   unitId: string;
@@ -247,7 +249,7 @@ function slotOf<R>(ov: ReportOverview | null, sec: OverviewSection, busy: Readon
 }
 const partSlot = <R,>(p: OverviewPart<R>): Slot<R> => (p.ok ? { s: "ok", v: p.data } : { s: "err", code: p.code });
 
-export function ReportsOverview({ systemId, from, to, unitId, today, locale, t, tc, refusalText, onGenerated, onSeeAll }: Props) {
+export function ReportsOverview({ systemId, unitCount, from, to, unitId, today, locale, t, tc, refusalText, onGenerated, onSeeAll }: Props) {
   const [ov, setOv] = useState<ReportOverview | null>(null);
   const [whole, setWhole] = useState<string | null>(null); // คำปฏิเสธทั้งก้อน (ช่วงผิด/สิทธิ์ระดับร้าน/ขัดข้อง)
   const [busy, setBusy] = useState<ReadonlySet<OverviewSection>>(() => new Set(ALL_SECTIONS));
@@ -258,11 +260,14 @@ export function ReportsOverview({ systemId, from, to, unitId, today, locale, t, 
   viewRef.current = viewKey;
 
   const fetchOverview = useCallback(
-    (only?: OverviewSection[]) =>
-      posReportOverviewAction({ systemId, from, to, ...(unitId ? { unitId } : {}), ...(only ? { only } : {}) }).catch(
+    (only?: OverviewSection[]) => {
+      // เห็นสาขาเดียว = ไม่ขอส่วนสาขาเลย (การ์ดไม่แสดงอยู่แล้ว)
+      const secs = only ?? (unitCount < 2 ? ALL_SECTIONS.filter((x) => x !== "branches") : undefined);
+      return posReportOverviewAction({ systemId, from, to, ...(unitId ? { unitId } : {}), ...(secs ? { only: secs } : {}) }).catch(
         () => ({ ok: false, code: "INTERNAL", message: "" }) as const,
-      ),
-    [systemId, from, to, unitId],
+      );
+    },
+    [systemId, unitCount, from, to, unitId],
   );
 
   // โหลดทั้งก้อน: ครั้งแรกทันที · เปลี่ยนช่วง/สาขา = หน่วง 300 ms (ยกเลิกถ้าเปลี่ยนอีกก่อนครบ)
@@ -431,9 +436,11 @@ export function ReportsOverview({ systemId, from, to, unitId, today, locale, t, 
   const TH_C = `whitespace-nowrap border-b bg-[color:var(--color-surface-2)] px-3 py-3 text-xs font-semibold ${MUTED}`;
   const TD_C = "border-b border-[color:var(--color-line)] px-3 py-4";
   const branchCard = (() => {
-    if (branches.s === "ok" && branches.v.rows.length < 2) return null; // สาขาเดียว = ไม่แสดงการ์ด (ไม่มีกล่องว่าง)
+    if (unitCount < 2) return null; // R7 #1: หน้ารู้อยู่แล้วว่าเห็นสาขาเดียว = ไม่มีการ์ด (ไม่รอผลเซิร์ฟเวอร์)
+    if (branches.s === "ok" && branches.v.rows.length < 2) return null; // ด่านเซิร์ฟเวอร์ยังคงไว้: สาขาเดียว = ไม่แสดงการ์ด (ไม่มีกล่องว่าง)
     const b = branches.s === "ok" ? branches.v : null;
-    const rowErr = !!b && (b.rows.some((r) => !r.daily.ok || !r.margin.ok) || !b.all || !b.all.daily.ok);
+    const rowErr = !!b && (b.rows.some((r) => !r.daily.ok || !r.margin.ok) || !b.all || !b.all.daily.ok || !b.all.margin.ok);
+    const allErr = b?.all ? (!b.all.daily.ok ? b.all.daily.code : !b.all.margin.ok ? b.all.margin.code : null) : null;
     const mPct = (s: Slot<MarginTotals>) => (s.s === "ok" && s.v.grossMarginBp !== null ? pctBp(s.v.grossMarginBp) : "—");
     const cells = (d: Slot<DailyTotals>) => (d.s === "ok" ? [baht(d.v.netSalesSatang), count(d.v.billCount), baht(d.v.avgBillSatang)] : ["—", "—", "—"]);
     const retryBranches = (
@@ -486,7 +493,7 @@ export function ReportsOverview({ systemId, from, to, unitId, today, locale, t, 
                 <tr className="bg-[color:var(--color-surface-2)] font-bold" data-testid="pos-report-ov-branch-total">
                   <td className="px-3 py-4">
                     {t("overview.allBranches")}
-                    {b!.all && !b!.all.daily.ok ? <span className="mt-1 block text-xs font-normal text-[color:var(--color-danger)]">{refusalText(b!.all.daily.code)}</span> : null}
+                    {allErr ? <span className="mt-1 block text-xs font-normal text-[color:var(--color-danger)]" data-testid="pos-report-ov-branch-total-error">{refusalText(allErr)}</span> : null}
                   </td>
                   {(b!.all ? cells(partSlot(b!.all.daily)) : ["—", "—", "—"]).map((v, i) => (
                     <td key={i} className={`px-3 py-4 ${NUM}`}>{v}</td>

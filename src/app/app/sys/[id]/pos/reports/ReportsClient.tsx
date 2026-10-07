@@ -567,6 +567,7 @@ export function ReportsClient({ systemId, units, initial, today, maxDays }: Prop
         ) : (
           <ReportsOverview
             systemId={systemId}
+            unitCount={units.length}
             from={view.from}
             to={view.to}
             unitId={view.unitId}

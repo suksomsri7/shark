@@ -84,8 +84,9 @@ const CHECKS: readonly Def[] = [
   D("I2", "X2", "ข้ามร้าน: เจ้าของร้าน QC อาหาร (ctx ร้านตัวเอง) กับ systemId ร้านกาแฟ → NOT_FOUND ทั้งรายวัน/ภาษี/CSV/การ์ด"),
   // ── OV ภาพรวมในคำขอเดียว (P1.17U R6 · ผู้คุมงานสั่งเพิ่ม) ──
   D("OV1", "X4", "ภาพรวม (เจ้าของ · ทุกสาขา · D1–D2): ทุกส่วน ok และตรงกับรายงานเดิมทีละตัว — daily/prev(09-12..09-13)/margin(5 แถวแรก = 5 แถวแรกของสินค้า: คีย์ ชื่อ จำนวน ยอด)/payments/staff · กราฟ = 14 วันจบที่ to (09-02..09-15) · สาขา u1/u2 = รายวัน/กำไรต่อสาขา · แถวรวม = ทุกสาขา"),
-  D("OV2", "X3", "ภาพรวม สิทธิ์: แคชเชียร์ (pos.sale.create อย่างเดียว / ไม่มีสิทธิ์) → ทุกส่วน PERMISSION_DENIED (ไม่ throw · ok:true ทั้งก้อน) · สาขาจำกัด u1 → daily = u1 · การ์ดสาขาว่าง (เห็น 1 สาขา) · ส่ง unitId u2 → ทุกส่วน NOT_FOUND · เจ้าของเลือก u2 → daily = u2 · สาขาเลือกขึ้นก่อน · แถวรวม = ทุกสาขา"),
-  D("OV3", "-", "ภาพรวม ปฏิเสธต่อส่วน: ช่วง 93 วัน → daily/prev/margin/payments/staff VALIDATION แต่กราฟ 14 วัน ok · only:[payments] → มีแค่ payments · only ไม่รู้จัก / ช่วงผิดรูป / from > to → VALIDATION ทั้งก้อน"),
+  D("OV2", "X3", "ภาพรวม สิทธิ์ (+R7: เรียก posReportOverviewAction จริงด้วย session ปลอมของ context.ts — แคชเชียร์ QC → PERMISSION_DENIED ทั้งก้อน · เจ้าของ → ok · ส่ง unitId ที่ไม่มีสิทธิ์ → ส่วนสาขาก็ NOT_FOUND): แคชเชียร์ (pos.sale.create อย่างเดียว / ไม่มีสิทธิ์) → ทุกส่วน PERMISSION_DENIED (ไม่ throw · ok:true ทั้งก้อน) · สาขาจำกัด u1 → daily = u1 · การ์ดสาขาว่าง (เห็น 1 สาขา) · ส่ง unitId u2 → ทุกส่วน NOT_FOUND · เจ้าของเลือก u2 → daily = u2 · สาขาเลือกขึ้นก่อน · แถวรวม = ทุกสาขา"),
+  D("OV4", "X2", "ภาพรวม เห็น 2 จาก 3 สาขา: สาขาชั่วคราวที่ 3 (ผูก POS นี้) · STAFF เห็น [u1, สาขาใหม่] → แถวสาขา = 2 สาขานั้น · totalUnits 2 · แถวรวม = ยอดของ u1 (ไม่รวม u2 ที่มีขาย) ≠ ยอดทุกสาขาของเจ้าของ · ลบสาขาชั่วคราวทันทีหลังข้อนี้"),
+  D("OV3", "-", "ภาพรวม ปฏิเสธต่อส่วน: ช่วง 93 วัน → daily/prev/margin/payments/staff/สาขา VALIDATION (ไม่กระจายต่อสาขา) แต่กราฟ 14 วัน ok · only:[payments] → มีแค่ payments · only ไม่รู้จัก / ช่วงผิดรูป / from > to → VALIDATION ทั้งก้อน"),
   D("SB1", "-", "ทางเขียนผู้ขาย: createSale({…, soldByUserId}) → แถว PosSale.soldByUserId ตรง · ไม่ส่ง = null (ผู้เรียกเดิมไม่กระทบ)"),
   D("R1", "-", "คำปฏิเสธของ reports.ts (VALIDATION · NOT_FOUND · PERMISSION_DENIED) ≥ 12 รายการ = คืน {ok:false, code, message} ไม่ throw"),
   // ── Z คืนสภาพ ──
@@ -475,6 +476,34 @@ const fpBefore = await fingerprint();
 // ═════════════════════════ 4. โหลดโมดูล ═════════════════════════
 const rep = existsSync(join(ROOT, REPORTS_FILE)) ? await tryImport("@/lib/modules/pos/reports") : null;
 const ovMod = existsSync(join(ROOT, OVERVIEW_FILE)) ? await tryImport("@/lib/modules/pos/report-overview") : null; // P1.17U R6
+// P1.17U R7 ▸ เรียก server action จริงโดยแทน context.ts (requireTenant) ด้วย session ปลอมที่ชี้สมาชิกจริงใน QC4 — แบบเดียวกับ qc-chat-staff-perms ◂
+type QcSession = { userId: string; tenantId: string; role: string; unitAccess: unknown; permissions: unknown };
+let QC_SESSION: QcSession | null = null;
+async function loadActionsWithFakeSession(): Promise<Any> {
+  const { createRequire } = await import("node:module");
+  const req = createRequire(join(ROOT, "package.json"));
+  const ctxFile = join(ROOT, "src/lib/core/context.ts");
+  const saved = req.cache[ctxFile];
+  const fake = {
+    requireTenant: async () => {
+      if (!QC_SESSION) throw new Error("[qc] ไม่มี session ปลอม");
+      return {
+        user: { id: QC_SESSION.userId, email: `${QC_SESSION.userId}@qc.local`, name: null },
+        memberships: [],
+        active: { tenantId: QC_SESSION.tenantId, tenant: { id: QC_SESSION.tenantId, status: "ACTIVE" }, role: QC_SESSION.role, unitAccess: QC_SESSION.unitAccess, permissions: QC_SESSION.permissions },
+      };
+    },
+    requireAuth: async () => ({ user: { id: QC_SESSION?.userId ?? "" }, memberships: [], active: null }),
+    requireMembership: async () => ({}),
+  };
+  req.cache[ctxFile] = { id: ctxFile, filename: ctxFile, path: join(ROOT, "src/lib/core"), loaded: true, exports: fake, children: [], paths: [] } as never;
+  try {
+    return await tryImport("@/lib/modules/pos/report-actions");
+  } finally {
+    if (saved) req.cache[ctxFile] = saved;
+    else delete req.cache[ctxFile];
+  }
+}
 const svc = await tryImport("@/lib/modules/pos/service");
 const sysSvc = await tryImport("@/lib/modules/system/service");
 
@@ -1332,7 +1361,22 @@ async function runDb() {
     else if (!(o1.overview.branches?.ok === true && o1.overview.branches.data.rows.length === 0 && o1.overview.branches.data.totalUnits === 1)) p.push(`u1 เท่านั้น สาขา ${short(o1.overview.branches, 60)}`);
     const o2 = await OV(ctx({ unitId: ID.u.u2 }), u1Only, RANGE);
     if (o2?.ok !== true) p.push(`u1 เท่านั้น ส่ง u2 → ทั้งก้อน ${codeOf(o2)}`);
-    else for (const k of SECS) if (!(o2.overview[k]?.ok === false && o2.overview[k].code === "NOT_FOUND")) p.push(`ส่ง u2 ${k} → ${codeOf(o2.overview[k])}`);
+    else for (const k of [...SECS, "branches"]) if (!(o2.overview[k]?.ok === false && o2.overview[k].code === "NOT_FOUND")) p.push(`ส่ง u2 ${k} → ${codeOf(o2.overview[k])}`);
+    // R7 (a): ผ่าน server action จริง (session → ctx/actor → assertCan → reportOverview)
+    const act = await loadActionsWithFakeSession();
+    if (typeof act?.posReportOverviewAction !== "function") p.push("โหลด posReportOverviewAction ไม่ได้");
+    else {
+      QC_SESSION = { userId: ID.user.B, tenantId: tid, role: mCash?.role ?? "STAFF", unitAccess: mCash?.unitAccess ?? [], permissions: mCash?.permissions ?? {} };
+      const ac = await call(act, "posReportOverviewAction", { systemId: ID.S, ...RANGE });
+      if (!(ac?.ok === false && ac.code === "PERMISSION_DENIED")) p.push(`action แคชเชียร์ QC → ${codeOf(ac)} ${short(ac, 60)}`);
+      QC_SESSION = { userId: PQC.coffee.users.owner.userId, tenantId: tid, role: mOwner?.role ?? "OWNER", unitAccess: mOwner?.unitAccess ?? [], permissions: mOwner?.permissions ?? {} };
+      const ao = await call(act, "posReportOverviewAction", { systemId: ID.S, ...RANGE });
+      const dd = await call(rep, "reportDailySales", ctx(), owner, RANGE);
+      if (ao?.ok !== true || ao.overview?.daily?.ok !== true || JSON.stringify(ao.overview.daily.data.totals) !== JSON.stringify(dd?.report?.totals)) p.push(`action เจ้าของ → ${codeOf(ao)} ${short(ao?.overview?.daily, 60)}`);
+      const ax = await call(act, "posReportOverviewAction", { systemId: ID.S, unitId: PQC.resto.units.main.id, ...RANGE });
+      if (ax?.ok !== true || ax.overview?.branches?.ok !== false || ax.overview.branches.code !== "NOT_FOUND") p.push(`action สาขาร้านอื่น ส่วนสาขา → ${short(ax?.overview?.branches, 60)}`);
+      QC_SESSION = null;
+    }
     const ow = await OV(ctx({ unitId: ID.u.u2 }), owner, RANGE);
     const d2 = await call(rep, "reportDailySales", ctx({ unitId: ID.u.u2 }), owner, RANGE);
     const all = await call(rep, "reportDailySales", ctx(), owner, RANGE);
@@ -1350,7 +1394,7 @@ async function runDb() {
     const long = await OV(ctx(), owner, { from: "2026-01-01", to: "2026-04-03" });
     if (long?.ok !== true) p.push(`93 วัน → ทั้งก้อน ${codeOf(long)}`);
     else {
-      for (const k of ["daily", "prev", "margin", "payments", "staff"]) if (!(long.overview[k]?.ok === false && long.overview[k].code === "VALIDATION")) p.push(`93 วัน ${k} → ${codeOf(long.overview[k])}`);
+      for (const k of ["daily", "prev", "margin", "payments", "staff", "branches"]) if (!(long.overview[k]?.ok === false && long.overview[k].code === "VALIDATION")) p.push(`93 วัน ${k} → ${codeOf(long.overview[k])}`);
       if (long.overview.chart?.ok !== true || long.overview.chart.data.rows.length !== 14) p.push(`93 วัน กราฟ → ${codeOf(long.overview.chart)} (ต้อง ok 14 แถว)`);
     }
     const only = await OV(ctx(), owner, { ...RANGE, only: ["payments"] });
@@ -1361,6 +1405,41 @@ async function runDb() {
       if (!(r?.ok === false && r.code === "VALIDATION")) p.push(`${n} → ${codeOf(r)}`);
     }
     chk("P1.17-OV3", p.length === 0, "93 วัน: 5 ส่วน VALIDATION + กราฟ ok · only · VALIDATION ทั้งก้อน", FX(lim(p)));
+  }
+
+  // ─── OV4 เห็น 2 จาก 3 สาขา (สาขาชั่วคราวที่ 3 ผูก POS S · ลบทันทีหลังข้อนี้ + อยู่ใน sb.unitIds กันหลุด) ───
+  {
+    const p: string[] = [];
+    const OV = (c: Any, a: Any, input: Any) => call(ovMod, "reportOverview", c, a, input);
+    let u4 = "";
+    try {
+      const u = await P.businessUnit.create({ data: { tenantId: tid, type: "SHOP", name: `${TAG} u4`, slug: `${TAG}-u4` } });
+      u4 = u.id;
+      sb.unitIds.push(u4);
+      await sysSvc.linkUnit(tid, ID.S, u4);
+      const two = actor(mCash, ID.user.B, "STAFF", { role: "STAFF", unitAccess: [ID.u.u1, u4], permissions: { "pos.report.view": true, "pos.sale.create": true } });
+      const o = await OV(ctx(), two, RANGE);
+      const b = o?.overview?.branches;
+      if (o?.ok !== true || b?.ok !== true) p.push(`ภาพรวม → ${codeOf(o)} สาขา ${short(b, 60)}`);
+      else {
+        const ids = b.data.rows.map((r: Any) => r.unitId).sort();
+        if (JSON.stringify(ids) !== JSON.stringify([ID.u.u1, u4].sort())) p.push(`แถวสาขา ${short(ids, 80)} (ต้อง u1 + สาขาใหม่ · ไม่มี u2)`);
+        if (b.data.totalUnits !== 2) p.push(`totalUnits ${b.data.totalUnits}`);
+        const u1d = await call(rep, "reportDailySales", ctx({ unitId: ID.u.u1 }), owner, RANGE);
+        const allOwner = await call(rep, "reportDailySales", ctx(), owner, RANGE);
+        const tot = b.data.all?.daily?.ok ? b.data.all.daily.data : null;
+        if (!tot || JSON.stringify(tot) !== JSON.stringify(u1d?.report?.totals)) p.push(`แถวรวม ${short(tot, 80)} ≠ ยอด u1 ${short(u1d?.report?.totals, 60)}`);
+        if (tot && JSON.stringify(tot) === JSON.stringify(allOwner?.report?.totals)) p.push("แถวรวมเท่ายอดทุกสาขาของเจ้าของ (u2 รั่ว)");
+      }
+    } catch (e) {
+      p.push(`สร้างสาขาชั่วคราวไม่ได้: ${(e as Error).message.slice(0, 100)}`);
+    } finally {
+      if (u4) {
+        await del("appSystemUnit", { unitId: u4 });
+        await del("businessUnit", { id: u4 });
+      }
+    }
+    chk("P1.17-OV4", p.length === 0, "2 จาก 3 สาขา · แถวรวมไม่รวมสาขาที่ไม่มีสิทธิ์", FX(lim(p)));
   }
 
   // ─── I ข้ามขอบเขต ───

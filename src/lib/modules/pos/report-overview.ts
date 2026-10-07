@@ -8,6 +8,7 @@ import type { PrismaClient } from "@prisma/client";
 import { prisma } from "./db";
 import { canAccessUnit, evaluate } from "@/lib/core/rbac";
 import {
+  REPORT_MAX_DAYS,
   REPORT_PERMISSION,
   reportDailySales,
   reportMargin,
@@ -36,6 +37,8 @@ export type OverviewSection = (typeof OVERVIEW_SECTIONS)[number];
 export const OVERVIEW_CHART_DAYS = 14;
 /** สาขาในการ์ดเปรียบเทียบสูงสุด (สาขาละ 2 รายงาน) */
 export const OVERVIEW_MAX_UNITS = 8;
+/** R7 #4 — สาขาที่คำนวณพร้อมกันสูงสุด (สาขาละ 2 รายงาน ⇒ ≤ 6 รายงานพร้อมกันในส่วนสาขา) */
+const BRANCH_CONCURRENCY = 3;
 /** สินค้าขายดีในภาพรวม (แถวของรายงานกำไร — คีย์/ลำดับ/ยอดเดียวกับรายงานสินค้า) */
 const TOP_ROWS = 5;
 
@@ -87,6 +90,20 @@ async function part<T, U = T>(name: string, p: Promise<AnyResult<T>>, pick?: (r:
   }
 }
 
+/** map แบบจำกัดจำนวนงานพร้อมกัน (คงลำดับผล) — ไม่เพิ่ม dependency */
+async function mapLimit<T, R>(items: readonly T[], limit: number, fn: (x: T) => Promise<R>): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const i = next++;
+      out[i] = await fn(items[i]!);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return out;
+}
+
 /** สาขาที่ผู้ใช้ดูรายงานได้ = สาขาที่ผูกกับ POS นี้ (ไม่ archived) ∩ เข้าได้ ∩ pos.report.view — ชุดเดียวกับหน้า /pos/reports */
 async function reportUnits(db: Db, tenantId: string, systemId: string, actor: RegisterActor): Promise<{ id: string; name: string }[]> {
   const links = await db.appSystemUnit.findMany({ where: { tenantId, systemId, type: "POS" }, select: { unitId: true } });
@@ -100,7 +117,7 @@ async function reportUnits(db: Db, tenantId: string, systemId: string, actor: Re
 }
 
 /**
- * ภาพรวมการขาย (ภาพ 08) — ทุกส่วนยิงพร้อมกัน
+ * ภาพรวมการขาย (ภาพ 08) — ทุกส่วนยิงพร้อมกัน (ส่วนสาขาจำกัดทีละ 3 สาขา)
  * ctx/actor = ชุดเดียวกับ posReportAction (ร้านจาก session · สิทธิ์/ขอบเขตตัดสินในฟังก์ชันรายงานแต่ละตัว)
  * input: from/to (ช่วงของ KPI) · only = โหลดเฉพาะบางส่วน (ปุ่มลองใหม่) · ไม่ส่ง = ทุกส่วน
  * ช่วงผิดรูป / only มีค่าที่ไม่รู้จัก = VALIDATION ทั้งก้อน (ยังไม่มีส่วนให้คำนวณ) · ที่เหลือปฏิเสธต่อส่วน
@@ -121,46 +138,57 @@ export async function reportOverview(ctx: ReportCtx, actor: RegisterActor, input
   const allCtx: ReportCtx = { tenantId: ctx.tenantId, systemId: ctx.systemId };
   const range = { from, to };
 
-  // รายงานหลัก (ขอบเขตที่เลือก) — ใช้ซ้ำกับกราฟ/แถวรวมเมื่อช่วง/ขอบเขตตรงกัน
-  const dailyP = want.has("daily") || (want.has("chart") && chartRange.from === from) || (want.has("branches") && !unitId) ? reportDailySales(scoped, actor, range, db) : null;
-  const marginP = want.has("margin") || (want.has("branches") && !unitId) ? reportMargin(scoped, actor, { ...range, limit: TOP_ROWS }, db) : null;
-
-  // ผลที่ใช้ซ้ำอาจไม่มีผู้รอ (เช่น เห็นสาขาเดียว) — กัน unhandled rejection โดยไม่กระทบผู้รอรายอื่น
-  void dailyP?.catch(() => undefined);
-  void marginP?.catch(() => undefined);
+  // รายงานหลัก (ขอบเขตที่เลือก) — เริ่มเมื่อมีผู้ใช้จริงเท่านั้น (R7 #6) แล้วใช้ซ้ำกับกราฟ/ด่านสาขา/แถวรวม
+  // ผลที่ใช้ซ้ำอาจถูกรอหลายที่ — catch เปล่ากัน unhandled rejection โดยไม่กระทบผู้รอรายอื่น
+  let dailyP: Promise<AnyResult<Report<"daily", DailyRow, DailyTotals>>> | null = null;
+  let marginP: Promise<AnyResult<Report<"margin", MarginRow, MarginTotals>>> | null = null;
+  const getDaily = () => {
+    if (!dailyP) void (dailyP = reportDailySales(scoped, actor, range, db)).catch(() => undefined);
+    return dailyP;
+  };
+  const getMargin = () => {
+    if (!marginP) void (marginP = reportMargin(scoped, actor, { ...range, limit: TOP_ROWS }, db)).catch(() => undefined);
+    return marginP;
+  };
   const out: ReportOverview = { from, to, unitId, prevRange, chartRange };
   const jobs: Promise<void>[] = [];
   const job = <K extends keyof ReportOverview>(k: K, p: Promise<ReportOverview[K]>) => jobs.push(p.then((v) => void (out[k] = v)));
 
-  if (want.has("daily") && dailyP) job("daily", part("daily", dailyP));
+  if (want.has("daily")) job("daily", part("daily", getDaily()));
   if (want.has("prev")) job("prev", part("prev", reportDailySales(scoped, actor, prevRange, db)));
-  if (want.has("margin") && marginP) job("margin", part("margin", marginP));
+  if (want.has("margin")) job("margin", part("margin", getMargin()));
   if (want.has("payments")) job("payments", part("payments", reportPayments(scoped, actor, range, db)));
   if (want.has("staff")) job("staff", part("staff", reportStaff(scoped, actor, range, db)));
-  if (want.has("chart")) job("chart", part("chart", chartRange.from === from && dailyP ? dailyP : reportDailySales(scoped, actor, chartRange, db)));
+  if (want.has("chart")) job("chart", part("chart", chartRange.from === from ? getDaily() : reportDailySales(scoped, actor, chartRange, db)));
   if (want.has("branches")) {
     job(
       "branches",
       (async (): Promise<OverviewPart<OverviewBranches>> => {
         try {
+          // R7 #3: ช่วงเกิน 92 วัน = ไม่กระจายต่อสาขาเลย (ส่วนอื่นก็ VALIDATION อยู่แล้ว · กราฟ 14 วันยังได้)
+          if (n > REPORT_MAX_DAYS) return { ok: false, code: "VALIDATION" };
+          // R7 #2: เลือกสาขา = ด่านเดียวกับส่วนอื่น (รายวันของสาขานั้น) · ไม่เทียบกับ reportUnits เพราะสาขา archived ยังเลือกได้
+          if (unitId) {
+            const gate = await part("branches gate", getDaily());
+            if (!gate.ok) return { ok: false, code: gate.code };
+          }
           const units = await reportUnits(db, ctx.tenantId, ctx.systemId, actor);
           if (units.length < 2) return { ok: true, data: { totalUnits: units.length, rows: [], all: null } };
           const picked = [...units.filter((u) => u.id === unitId), ...units.filter((u) => u.id !== unitId)].slice(0, OVERVIEW_MAX_UNITS);
           const totalsOfDaily = (r: Report<"daily", DailyRow, DailyTotals>) => r.totals;
           const totalsOfMargin = (r: Report<"margin", MarginRow, MarginTotals>) => r.totals;
           const [rows, allDaily, allMargin] = await Promise.all([
-            Promise.all(
-              picked.map(async (u) => {
-                const uc: ReportCtx = { tenantId: ctx.tenantId, systemId: ctx.systemId, unitId: u.id };
-                const [d, m] = await Promise.all([
-                  part(`branch daily ${u.id}`, reportDailySales(uc, actor, range, db), totalsOfDaily),
-                  part(`branch margin ${u.id}`, reportMargin(uc, actor, { ...range, limit: 1 }, db), totalsOfMargin),
-                ]);
-                return { unitId: u.id, name: u.name, daily: d, margin: m };
-              }),
-            ),
-            part("all daily", !unitId && dailyP ? dailyP : reportDailySales(allCtx, actor, range, db), totalsOfDaily),
-            part("all margin", !unitId && marginP ? marginP : reportMargin(allCtx, actor, { ...range, limit: 1 }, db), totalsOfMargin),
+            // R7 #4: ทีละ BRANCH_CONCURRENCY สาขา (สาขาละ 2 รายงาน) — ไม่ยิง 16 รายงานพร้อมกัน
+            mapLimit(picked, BRANCH_CONCURRENCY, async (u) => {
+              const uc: ReportCtx = { tenantId: ctx.tenantId, systemId: ctx.systemId, unitId: u.id };
+              const [d, m] = await Promise.all([
+                part(`branch daily ${u.id}`, reportDailySales(uc, actor, range, db), totalsOfDaily),
+                part(`branch margin ${u.id}`, reportMargin(uc, actor, { ...range, limit: 1 }, db), totalsOfMargin),
+              ]);
+              return { unitId: u.id, name: u.name, daily: d, margin: m };
+            }),
+            part("all daily", !unitId ? getDaily() : reportDailySales(allCtx, actor, range, db), totalsOfDaily),
+            part("all margin", !unitId ? getMargin() : reportMargin(allCtx, actor, { ...range, limit: 1 }, db), totalsOfMargin),
           ]);
           return { ok: true, data: { totalUnits: units.length, rows, all: { daily: allDaily, margin: allMargin } } };
         } catch (e) {
