@@ -174,7 +174,7 @@ function ReportBody({ rep, t, tc, locale }: { rep: Loaded; t: T; tc: T; locale: 
       const cols: Col<ProductRow>[] = [
         { key: "name", header: c("product"), cell: (r) => r.name },
         { key: "qty", header: c("qty"), num: true, cell: (r) => r.qty },
-        { key: "weight", header: c("weight"), num: true, cell: (r) => (r.weightGrams > 0 ? r.weightGrams.toLocaleString() : "—") },
+        { key: "weight", header: c("weight"), num: true, cell: (r) => (r.weightGrams > 0 ? r.weightGrams.toLocaleString("th-TH") : "—") },
         { key: "lines", header: c("lines"), num: true, cell: (r) => r.lineCount },
         { key: "bills", header: c("bills"), num: true, cell: (r) => r.billCount },
         { key: "gross", header: c("fullPrice"), num: true, cell: (r) => M(r.grossSatang) },
@@ -190,7 +190,7 @@ function ReportBody({ rep, t, tc, locale }: { rep: Loaded; t: T; tc: T; locale: 
             rows={x.rows}
             rowKey={(r) => r.key}
             minWidth={760}
-            total={[t("total"), tt.qty, tt.weightGrams > 0 ? tt.weightGrams.toLocaleString() : "—", tt.lineCount, tt.billCount, M(tt.grossSatang), M(tt.lineDiscountSatang), M(tt.salesSatang)]}
+            total={[t("total"), tt.qty, tt.weightGrams > 0 ? tt.weightGrams.toLocaleString("th-TH") : "—", tt.lineCount, tt.billCount, M(tt.grossSatang), M(tt.lineDiscountSatang), M(tt.salesSatang)]}
           />
           {limited(x.rows.length, tt.rowCount)}
         </div>
@@ -241,7 +241,7 @@ function ReportBody({ rep, t, tc, locale }: { rep: Loaded; t: T; tc: T; locale: 
             rows={x.rows}
             rowKey={(r) => r.type}
             minWidth={620}
-            total={[t("total"), x.rows.reduce((s, r) => s + r.count, 0), tt.billCount, M(tt.totalPaidSatang), "", ""]}
+            total={[t("total"), x.rows.reduce((s, r) => s + r.count, 0) /* R2 F3: แสดงผลอย่างเดียว — แถววิธีชำระไม่ถูกตัด (≤ 6 แถว) */, tt.billCount, M(tt.totalPaidSatang), "", ""]}
           />
           <p className="text-xs text-[color:var(--color-muted)] tabular-nums" data-testid="pos-report-summary">
             {t("summary.salesPlusTip", { sales: formatBaht(tt.salesSatang, { decimals: true }), tip: formatBaht(tt.tipSatang, { decimals: true }), paid: formatBaht(tt.totalPaidSatang, { decimals: true }) })}
@@ -291,8 +291,9 @@ function ReportBody({ rep, t, tc, locale }: { rep: Loaded; t: T; tc: T; locale: 
             rows={x.rows}
             rowKey={(r) => r.key}
             minWidth={860}
-            total={[t("total"), x.rows.reduce((s, r) => s + r.qty, 0), M(tt.revenueSatang), M(tt.costSatang), tt.estimatedCostSatang > 0 ? M(tt.estimatedCostSatang) : "—", tt.uncostedLineCount, M(tt.grossMarginSatang), pct(tt.grossMarginBp)]}
+            total={[t("total"), "—" /* R2 F2: ยอดรวมมาจากเซิร์ฟเวอร์เท่านั้น — แถวกำไรถูกตัดที่ 200 จึงไม่รวม qty ฝั่งจอ */, M(tt.revenueSatang), M(tt.costSatang), tt.estimatedCostSatang > 0 ? M(tt.estimatedCostSatang) : "—", tt.uncostedLineCount, M(tt.grossMarginSatang), pct(tt.grossMarginBp)]}
           />
+          {x.rows.length >= 200 ? <p className="text-xs text-[color:var(--color-muted)]" data-testid="pos-report-row-limit">{t("rowLimitAtLeast", { shown: 200 })}</p> : null}
           <div className="rounded-xl border p-3" data-testid="pos-report-summary">
             {line(t("summary.costedRevenue"), tt.costedRevenueSatang, "pos-report-margin-costed")}
             {line(t("summary.uncostedRevenue"), tt.uncostedRevenueSatang, "pos-report-margin-uncosted")}

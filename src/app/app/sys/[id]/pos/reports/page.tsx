@@ -16,7 +16,8 @@ import { ReportsClient } from "./ReportsClient";
 // 🔴 สิทธิ์/ขอบเขตจริงตัดสินใน reports.ts (pos.report.view ต่อสาขา) — หน้านี้แค่เลือกสาขาที่เข้าได้ + บอกจอว่าดูได้ไหม
 // 🔴 ไม่มีสิทธิ์รายงานที่สาขาใดเลย = แสดงการ์ดปฏิเสธ (ไม่ 500 · ไม่ redirect)
 // สถานะอยู่ใน URL: ?kind=&from=&to=&unit= (ภาพหน้าจอจาก URL เดียวกันได้มุมมองเดียวกัน)
-const isDate = (s: unknown): s is string => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s) && new Date(`${s}T00:00:00Z`).toISOString().slice(0, 10) === s;
+// R2 F1: Date.parse ก่อน toISOString — ค่าอย่าง 2026-13-01 ใน URL เคยโยน RangeError (หน้า 500) · ตอนนี้ตกเป็นค่าปริยาย
+const isDate = (s: unknown): s is string => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s) && Number.isFinite(Date.parse(`${s}T00:00:00Z`)) && new Date(`${s}T00:00:00Z`).toISOString().slice(0, 10) === s;
 const addDays = (date: string, n: number): string => new Date(Date.parse(`${date}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
 const one = (v: string | string[] | undefined): string | undefined => (Array.isArray(v) ? v[0] : v);
 
