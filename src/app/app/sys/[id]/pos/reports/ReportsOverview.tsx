@@ -1,16 +1,17 @@
 "use client";
 
-// ReportsOverview.tsx — POS P1.17U R4 ภาพรวมการขาย (ภาพ 08 · ค่าเริ่มของหน้ารายงาน)
-// 🔴 ตัวเลขทุกตัวมาจาก report-actions เดิม (daily · margin · payments · staff) — จอแค่จัดรูป/หารเป็น % ไม่สร้างตัวเลขใหม่
-// R5 (คำตัดสินผู้คุมงาน): สินค้าขายดีใช้แถวของ margin (คีย์/ลำดับ/ยอดเดียวกับ products: revenueSatang = Σ lineTotal) · กราฟ = 14 วันล่าสุดจบที่ `to` เสมอ
+// ReportsOverview.tsx — POS P1.17U ภาพรวมการขาย (ภาพ 08 · ค่าเริ่มของหน้ารายงาน)
+// 🔴 ตัวเลขทุกตัวมาจากรายงานเดิมของ reports.ts (daily · margin · payments · staff) — จอแค่จัดรูป/หารเป็น % ไม่สร้างตัวเลขใหม่
+// R5: สินค้าขายดีใช้แถวของ margin (คีย์/ลำดับ/ยอดเดียวกับ products) · กราฟ = 14 วันล่าสุดจบที่ `to` เสมอ
+// R6: เรียก posReportOverviewAction "ครั้งเดียว" ต่อการโหลด (Next 16 ส่ง Server Action จาก client ทีละตัว — ห้ามพึ่ง Promise.all ฝั่งจอ)
+//     · เปลี่ยนช่วง/สาขา = หน่วง 300 ms แล้วค่อยยิง · ผลของมุมมองเก่าทิ้งด้วยลำดับคำขอ · ลองใหม่ในการ์ด = only:[ส่วนของการ์ดนั้น]
 // 🔴 บล็อกที่ยังไม่มีข้อมูล (รายชั่วโมง P2.12 · ช่องทาง P2.11 · สมาชิก P1.12 · ผู้ช่วย AI P3 · PDF P2) = ไม่แสดง (ไม่ทำตัวเลขปลอม)
-// 🔴 การ์ดแต่ละใบโหลด/ถูกปฏิเสธแยกกัน — ใบที่ถูกปฏิเสธแสดงข้อความในใบเอง หน้าไม่ว่าง
-// จำนวนคำขอต่อการโหลด 1 ครั้ง (ยิงพร้อมกันทั้งหมด): 5 (daily · daily ช่วงก่อน · margin · payments · staff) + 1 กราฟ 14 วัน (ใช้ daily ซ้ำเมื่อช่วงตรงกัน)
-//   + 2 × สาขา (≤ 8 · เฉพาะเมื่อเห็น ≥ 2 สาขา) + 2 (ยอดรวมทุกสาขา — เฉพาะเมื่อเลือกสาขาเดียว · ดู ledger/wo-notes/pos-P1.17U-R4.md)
+// 🔴 แต่ละส่วนถูกปฏิเสธแยกกัน — การ์ดที่ถูกปฏิเสธแสดงข้อความในการ์ดเอง หน้าไม่ว่าง
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { formatBaht } from "@/lib/ui/money";
-import { posReportAction } from "@/lib/modules/pos/report-actions";
+import { posReportOverviewAction } from "@/lib/modules/pos/report-actions";
+import type { OverviewBranches, OverviewPart, OverviewSection, ReportOverview } from "@/lib/modules/pos/report-overview";
 import type {
   DailyRow,
   DailyTotals,
@@ -24,7 +25,6 @@ import type {
   StaffTotals,
 } from "@/lib/modules/pos/reports";
 
-type Unit = { id: string; name: string };
 type T = (key: string, values?: Record<string, string | number>) => string;
 type Slot<R> = { s: "loading" } | { s: "ok"; v: R } | { s: "err"; code: string };
 type DailyRep = Report<"daily", DailyRow, DailyTotals>;
@@ -34,7 +34,6 @@ type StaffRep = Report<"staff", StaffRow, StaffTotals>;
 
 type Props = {
   systemId: string;
-  units: Unit[];
   from: string;
   to: string;
   unitId: string;
@@ -82,10 +81,10 @@ const initialOf = (name: string) => Array.from(name.trim()).find((ch) => !/[เ�
 const HIGH_DISCOUNT_BP = 1500;
 /** ป้ายวิธีชำระที่มีคีย์ pos.shift.method.* (อื่น ๆ ใช้ป้ายจากเซิร์ฟเวอร์) — ชุดเดียวกับ ReportsClient */
 const METHOD_KEYS = new Set(["CASH", "CARD", "PROMPTPAY", "TRANSFER", "DEPOSIT", "ROOM_CHARGE"]);
-/** R5 — กราฟรายวันแสดง 14 วันล่าสุดจบที่วัน `to` เสมอ (ไม่ขึ้นกับ from ของ KPI) */
+/** R5 — กราฟรายวันแสดง 14 วันล่าสุดจบที่วัน `to` เสมอ (ช่วงจริงมาจากเซิร์ฟเวอร์: overview.chartRange) */
 const CHART_DAYS = 14;
-/** สาขาในการ์ดเปรียบเทียบสูงสุด (คำขอ 2 ใบต่อสาขา) */
-const MAX_UNITS = 8;
+/** R6 — หน่วงก่อนยิงเมื่อเปลี่ยนช่วง/สาขา (พิมพ์วันที่ทีละตัวไม่ยิงทุกครั้ง) */
+const DEBOUNCE_MS = 300;
 /** แกน Y ปัดขึ้นเป็นเลขกลม (บาท) — มาตราส่วนกราฟเท่านั้น ไม่ใช่ตัวเลขรายงาน */
 function niceCeilSatang(maxSatang: number): number {
   const v = maxSatang / 100;
@@ -137,11 +136,12 @@ function CardHead({ icon, title, right }: { icon: readonly string[]; title: stri
 function Loading({ t }: { t: T }) {
   return <p className={`py-6 text-center text-sm ${MUTED}`}>{t("loading")}</p>;
 }
-function Refused({ text, t, onRetry }: { text: string; t: T; onRetry: () => void }) {
+/** การ์ดที่ถูกปฏิเสธ/ขัดข้อง — testid ต่อท้ายด้วยชื่อการ์ด (R6 F6: ไม่ซ้ำกันในหน้า) · ลองใหม่ = โหลดเฉพาะส่วนของการ์ดนี้ (R6 F2) */
+function Refused({ id, text, t, onRetry }: { id: string; text: string; t: T; onRetry: () => void }) {
   return (
-    <div role="alert" className="flex flex-col items-start gap-2 rounded-xl border border-[color:var(--color-danger)] p-3 text-sm text-[color:var(--color-danger)]" data-testid="pos-report-ov-error">
+    <div role="alert" className="flex flex-col items-start gap-2 rounded-xl border border-[color:var(--color-danger)] p-3 text-sm text-[color:var(--color-danger)]" data-testid={`pos-report-ov-error-${id}`}>
       <span>{text}</span>
-      <button data-testid="pos-report-ov-retry" type="button" className="btn btn-ghost min-h-[44px] text-sm" onClick={onRetry}>
+      <button data-testid={`pos-report-ov-retry-${id}`} type="button" className="btn btn-ghost min-h-[44px] text-sm" onClick={onRetry}>
         {t("retry")}
       </button>
     </div>
@@ -158,7 +158,8 @@ function Kpi({ id, label, value, foot }: { id: string; label: string; value: Rea
   return (
     <div className={`${CARD} flex flex-col`} data-testid={`pos-report-ov-kpi-${id}`}>
       <span className={`text-sm ${MUTED}`}>{label}</span>
-      <span className="mt-3 truncate text-3xl font-bold tracking-tight tabular-nums">{value}</span>
+      {/* R6 F4: ห้าม truncate ซ่อนเงิน — ยาวเกินขึ้นบรรทัดใหม่ได้ */}
+      <span className="mt-3 break-words text-2xl font-bold tracking-tight tabular-nums xl:text-[28px]">{value}</span>
       <span className={`mt-2.5 text-[13px] ${MUTED}`}>{foot}</span>
     </div>
   );
@@ -177,13 +178,17 @@ function DailyBars({ rows, t, locale, lastIsToday }: { rows: DailyRow[]; t: T; l
   const gap = few ? "gap-1.5 sm:gap-4" : "gap-px sm:gap-[2px]";
   const dm = (s: string, withMonth: boolean) =>
     new Intl.DateTimeFormat(fmtLocale(locale), { timeZone: "UTC", day: "numeric", ...(withMonth ? { month: "short" } : {}) }).format(new Date(`${s}T12:00:00Z`));
-  // ป้ายแกน X: ≤ 14 วัน ทุกวัน (ใส่เดือนที่วันแรก/วันที่เดือนเปลี่ยน) · มากกว่านั้น แรก · กลาง · สุดท้าย
+  // ป้ายแกน X: จอ ≥ sm และ ≤ 14 วัน = ทุกวัน (ใส่เดือนที่วันแรก/วันที่ 1) · จอแคบ (< sm) หรือ > 14 วัน = แรก · กลาง · สุดท้าย (R6 F5)
   const mid = Math.floor((n - 1) / 2);
+  const key = (i: number) => i === 0 || i === mid || i === n - 1;
   const xLabel = (r: DailyRow, i: number) => {
-    if (few) return dm(r.businessDate, i === 0 || r.businessDate.slice(8) === "01");
-    return i === 0 || i === mid || i === n - 1 ? dm(r.businessDate, true) : "";
+    if (few) return <span className={key(i) ? undefined : "hidden sm:inline"}>{dm(r.businessDate, i === 0 || key(i) || r.businessDate.slice(8) === "01")}</span>;
+    return key(i) ? dm(r.businessDate, true) : "";
   };
-  const slot = "relative flex min-w-0 max-w-16 flex-1 justify-center";
+  const slot = "relative flex min-w-0 max-w-16 flex-1";
+  // R6 V1/V2: ป้ายที่กว้างกว่าแท่ง — ตัวแรกชิดซ้าย · ตัวสุดท้ายชิดขวา · ที่เหลือกึ่งกลาง (ไม่ล้นขอบกล่องจนถูกตัด)
+  const align = (i: number) => (n > 1 && i === 0 ? "justify-start" : n > 1 && i === n - 1 ? "justify-end" : "justify-center");
+  const valuePos = (i: number) => (n > 1 && i === 0 ? "left-0" : n > 1 && i === n - 1 ? "right-0" : "left-1/2 -translate-x-1/2");
   return (
     <div className="flex min-w-0 gap-3 sm:gap-5" role="img" aria-label={t("overview.chartTitle")} data-testid="pos-report-ov-chart-plot">
       <div className={`mt-6 flex h-[170px] w-14 shrink-0 flex-col justify-between text-right text-[11px] tabular-nums ${MUTED}`} aria-hidden="true">
@@ -191,8 +196,8 @@ function DailyBars({ rows, t, locale, lastIsToday }: { rows: DailyRow[]; t: T; l
         <span className="-translate-y-1/2">{formatBaht(Math.round(top / 2))}</span>
         <span className="-translate-y-1/2">{formatBaht(0)}</span>
       </div>
-      {/* > 14 แท่งบนจอแคบ: เลื่อนแนวนอนในกรอบกราฟเอง (หน้าไม่ล้น) · pt-6 อยู่ในกรอบเลื่อน = ตัวเลขบนแท่งสูงสุดไม่ถูกตัด */}
-      <div className="min-w-0 flex-1 overflow-x-auto">
+      {/* > 14 แท่งบนจอแคบ: เลื่อนแนวนอนในกรอบกราฟเอง (หน้าไม่ล้น) · ≤ 14 แท่ง = ไม่มีกรอบเลื่อน (ป้ายไม่ถูกตัด · R6 V1) */}
+      <div className={few ? "min-w-0 flex-1" : "min-w-0 flex-1 overflow-x-auto"}>
         <div className={few ? "relative pt-6" : "relative min-w-[var(--chart-w)] pt-6 sm:min-w-0"} style={few ? undefined : ({ "--chart-w": `${n * 12}px` } as React.CSSProperties)}>
           <div className="pointer-events-none absolute inset-x-0 top-6 flex h-[170px] flex-col justify-between" aria-hidden="true">
             <i className="block border-t border-dashed border-[color:var(--color-line)]" />
@@ -205,9 +210,9 @@ function DailyBars({ rows, t, locale, lastIsToday }: { rows: DailyRow[]; t: T; l
               const last = i === n - 1;
               const showValue = r.netSalesSatang > 0 && (i === maxIdx || last);
               return (
-                <div key={r.businessDate} className={`${slot} h-full items-end`} title={`${rangeLabel(r.businessDate, r.businessDate, locale)} · ${formatBaht(r.netSalesSatang, { decimals: true })}`}>
+                <div key={r.businessDate} className={`${slot} ${align(i)} h-full items-end`} title={`${rangeLabel(r.businessDate, r.businessDate, locale)} · ${formatBaht(r.netSalesSatang, { decimals: true })}`}>
                   {showValue ? (
-                    <span className="absolute left-1/2 -translate-x-1/2 whitespace-nowrap text-[11px] font-bold tabular-nums" style={{ bottom: `calc(${h}% + 4px)` }}>
+                    <span className={`absolute ${valuePos(i)} whitespace-nowrap text-[11px] font-bold tabular-nums`} style={{ bottom: `calc(${h}% + 4px)` }}>
                       {baht(r.netSalesSatang)}
                     </span>
                   ) : null}
@@ -218,7 +223,7 @@ function DailyBars({ rows, t, locale, lastIsToday }: { rows: DailyRow[]; t: T; l
           </div>
           <div className={`mt-2 flex justify-center ${gap}`} aria-hidden="true">
             {rows.map((r, i) => (
-              <span key={r.businessDate} className={`${slot} whitespace-nowrap text-[11px] tabular-nums ${i === n - 1 ? "font-bold text-[color:var(--color-ink)]" : MUTED}`}>
+              <span key={r.businessDate} className={`${slot} ${align(i)} whitespace-nowrap text-[11px] tabular-nums ${i === n - 1 ? "font-bold text-[color:var(--color-ink)]" : MUTED}`}>
                 {xLabel(r, i)}
               </span>
             ))}
@@ -231,77 +236,120 @@ function DailyBars({ rows, t, locale, lastIsToday }: { rows: DailyRow[]; t: T; l
 }
 
 // ═══════════ จอภาพรวม ═══════════
-export function ReportsOverview({ systemId, units, from, to, unitId, today, locale, t, tc, refusalText, onGenerated, onSeeAll }: Props) {
-  const [slots, setSlots] = useState<Record<string, Slot<unknown>>>({});
-  const [nonce, setNonce] = useState(0);
-  const seq = useRef(0);
+const ALL_SECTIONS: readonly OverviewSection[] = ["daily", "prev", "margin", "payments", "staff", "chart", "branches"];
+/** ส่วนของภาพรวม → ช่อง (ส่วนที่กำลังโหลดใหม่ = loading) */
+function slotOf<R>(ov: ReportOverview | null, sec: OverviewSection, busy: ReadonlySet<OverviewSection>, whole: string | null): Slot<R> {
+  if (busy.has(sec)) return { s: "loading" };
+  if (whole) return { s: "err", code: whole };
+  const p = ov?.[sec] as OverviewPart<R> | undefined;
+  if (!p) return { s: "loading" };
+  return p.ok ? { s: "ok", v: p.data } : { s: "err", code: p.code };
+}
+const partSlot = <R,>(p: OverviewPart<R>): Slot<R> => (p.ok ? { s: "ok", v: p.data } : { s: "err", code: p.code });
 
-  // สาขาในการ์ดเปรียบเทียบ: เห็น ≥ 2 สาขาเท่านั้น · สาขาที่เลือกขึ้นก่อน (ภาพ 08) · ไม่เกิน 8
-  const cmpUnits = units.length >= 2 ? [...units.filter((u) => u.id === unitId), ...units.filter((u) => u.id !== unitId)].slice(0, MAX_UNITS) : [];
-  const cmpKey = cmpUnits.map((u) => u.id).join("|");
+export function ReportsOverview({ systemId, from, to, unitId, today, locale, t, tc, refusalText, onGenerated, onSeeAll }: Props) {
+  const [ov, setOv] = useState<ReportOverview | null>(null);
+  const [whole, setWhole] = useState<string | null>(null); // คำปฏิเสธทั้งก้อน (ช่วงผิด/สิทธิ์ระดับร้าน/ขัดข้อง)
+  const [busy, setBusy] = useState<ReadonlySet<OverviewSection>>(() => new Set(ALL_SECTIONS));
+  const seq = useRef(0); // ลำดับการโหลดทั้งก้อน — ผลของมุมมองเก่าห้ามทับ
+  const first = useRef(true);
+  const viewKey = `${systemId}|${from}|${to}|${unitId}`;
+  const viewRef = useRef(viewKey);
+  viewRef.current = viewKey;
 
+  const fetchOverview = useCallback(
+    (only?: OverviewSection[]) =>
+      posReportOverviewAction({ systemId, from, to, ...(unitId ? { unitId } : {}), ...(only ? { only } : {}) }).catch(
+        () => ({ ok: false, code: "INTERNAL", message: "" }) as const,
+      ),
+    [systemId, from, to, unitId],
+  );
+
+  // โหลดทั้งก้อน: ครั้งแรกทันที · เปลี่ยนช่วง/สาขา = หน่วง 300 ms (ยกเลิกถ้าเปลี่ยนอีกก่อนครบ)
   useEffect(() => {
-    const my = ++seq.current; // ผลของมุมมองเก่าที่ตอบช้าห้ามทับ
-    setSlots({});
+    const my = ++seq.current;
+    setBusy(new Set(ALL_SECTIONS));
+    setWhole(null);
     onGenerated(null);
-    const base = { systemId, from, to };
-    const prev = prevRangeOf(from, to);
-    const scoped = unitId ? { unitId } : {};
-    const run = (key: string, args: Parameters<typeof posReportAction>[0], after?: (v: unknown) => void) => {
-      void posReportAction(args)
-        .then((r) => (r.ok ? ({ s: "ok", v: r.report } as const) : ({ s: "err", code: r.code } as const)))
-        .catch(() => ({ s: "err", code: "INTERNAL" }) as const)
-        .then((slot) => {
-          if (my !== seq.current) return;
-          setSlots((p) => ({ ...p, [key]: slot }));
-          if (slot.s === "ok" && after) after(slot.v);
-        });
-    };
-    run("daily", { ...base, ...scoped, kind: "daily" }, (v) => onGenerated((v as DailyRep).generatedAt));
-    run("prev", { ...base, ...scoped, ...prev, kind: "daily" });
-    run("margin", { ...base, ...scoped, kind: "margin", limit: 5 });
-    // กราฟ 14 วัน: ช่วง KPI ตรงกับ 14 วันพอดี = ใช้ผล daily เดิม (ไม่ยิงซ้ำ)
-    const chartFrom = addDays(to, -(CHART_DAYS - 1));
-    if (chartFrom !== from) run("chart", { systemId, from: chartFrom, to, ...scoped, kind: "daily" });
-    run("payments", { ...base, ...scoped, kind: "payments" });
-    run("staff", { ...base, ...scoped, kind: "staff" });
-    const ids = cmpKey ? cmpKey.split("|") : [];
-    for (const id of ids) {
-      run(`u:${id}:daily`, { ...base, unitId: id, kind: "daily" });
-      run(`u:${id}:margin`, { ...base, unitId: id, kind: "margin", limit: 1 });
-    }
-    // แถว "รวมทุกสาขา": ดูทุกสาขาอยู่แล้ว = ใช้ผลหลัก · เลือกสาขาเดียว = ขอยอดรวมทุกสาขาเพิ่ม 2 ใบ
-    if (ids.length > 0 && unitId) {
-      run("all:daily", { ...base, kind: "daily" });
-      run("all:margin", { ...base, kind: "margin", limit: 1 });
-    }
-  }, [systemId, from, to, unitId, cmpKey, nonce, onGenerated]);
+    const delay = first.current ? 0 : DEBOUNCE_MS;
+    first.current = false;
+    const timer = setTimeout(() => {
+      void fetchOverview().then((r) => {
+        if (my !== seq.current) return;
+        if (r.ok) {
+          setOv(r.overview);
+          const d = r.overview.daily;
+          onGenerated(d && d.ok ? d.data.generatedAt : null);
+        } else {
+          setOv(null);
+          setWhole(r.code);
+        }
+        setBusy(new Set());
+      });
+    }, delay);
+    return () => clearTimeout(timer);
+  }, [fetchOverview, onGenerated]);
 
-  const get = <R,>(k: string): Slot<R> => (slots[k] ?? { s: "loading" }) as Slot<R>;
-  const retry = () => setNonce((x) => x + 1);
-  const daily = get<DailyRep>("daily");
-  const prev = get<DailyRep>("prev");
-  const margin = get<MarginRep>("margin");
-  const chartFrom = addDays(to, -(CHART_DAYS - 1));
-  const chart = chartFrom === from ? daily : get<DailyRep>("chart");
-  // 14 ช่องเสมอ (วันไม่มียอด = แท่ง 0 · ไม่ข้ามวัน) — ตัวเลขต่อวันมาจากแถว daily ของเซิร์ฟเวอร์
-  const chartRows: DailyRow[] | null =
-    chart.s === "ok"
-      ? Array.from({ length: CHART_DAYS }, (_, i) => {
-          const d = addDays(chartFrom, i);
-          const hit = chart.v.rows.find((r) => r.businessDate === d);
-          return hit ?? { businessDate: d, billCount: 0, grossSatang: 0, discountSatang: 0, serviceChargeSatang: 0, netSalesSatang: 0, vatSatang: 0, netExVatSatang: 0, tipSatang: 0, voidCount: 0, voidTotalSatang: 0, refundCount: 0, refundTotalSatang: 0, avgBillSatang: 0 };
-        })
-      : null;
-  const payments = get<PaymentsRep>("payments");
-  const staff = get<StaffRep>("staff");
+  // ลองใหม่ในการ์ด = โหลดเฉพาะส่วนของการ์ดนั้น แล้วแทนที่เฉพาะส่วนนั้น (R6 F2)
+  const retry = (secs: OverviewSection[]) => {
+    const key = viewRef.current;
+    const wholeLoad = seq.current;
+    setBusy((b) => new Set([...b, ...secs]));
+    if (whole) {
+      // ทั้งก้อนเคยถูกปฏิเสธ = ไม่มีผลเดิมให้แทนที่ → โหลดทั้งก้อนใหม่
+      void fetchOverview().then((r) => {
+        if (key !== viewRef.current || wholeLoad !== seq.current) return;
+        if (r.ok) {
+          setWhole(null);
+          setOv(r.overview);
+          const d = r.overview.daily;
+          onGenerated(d && d.ok ? d.data.generatedAt : null);
+        } else setWhole(r.code);
+        setBusy(new Set());
+      });
+      return;
+    }
+    void fetchOverview(secs).then((r) => {
+      if (key !== viewRef.current || wholeLoad !== seq.current) return;
+      if (r.ok) {
+        setOv((prev) => {
+          const next = { ...(prev ?? r.overview) } as ReportOverview;
+          for (const s of secs) (next as Record<string, unknown>)[s] = r.overview[s];
+          return next;
+        });
+        if (secs.includes("daily")) {
+          const d = r.overview.daily;
+          onGenerated(d && d.ok ? d.data.generatedAt : null);
+        }
+      } else {
+        setOv((prev) => {
+          const next = { ...(prev ?? ({} as ReportOverview)) } as ReportOverview;
+          for (const s of secs) (next as Record<string, unknown>)[s] = { ok: false, code: r.code };
+          return next;
+        });
+      }
+      setBusy((b) => {
+        const n = new Set(b);
+        for (const s of secs) n.delete(s);
+        return n;
+      });
+    });
+  };
+
+  const daily = slotOf<DailyRep>(ov, "daily", busy, whole);
+  const prev = slotOf<DailyRep>(ov, "prev", busy, whole);
+  const margin = slotOf<MarginRep>(ov, "margin", busy, whole);
+  const payments = slotOf<PaymentsRep>(ov, "payments", busy, whole);
+  const staff = slotOf<StaffRep>(ov, "staff", busy, whole);
+  const chart = slotOf<DailyRep>(ov, "chart", busy, whole);
+  const branches = slotOf<OverviewBranches>(ov, "branches", busy, whole);
   const isTodayOnly = from === to && to === today;
   const vs = isTodayOnly ? t("overview.vsYesterday") : t("overview.vsPrev");
 
-  // ── แถว KPI ──
+  // ── แถว KPI (daily · prev · margin) ──
   const kpiRow = (() => {
     if (daily.s === "loading") return <div className={CARD}><Loading t={t} /></div>;
-    if (daily.s === "err") return <div className={CARD}><Refused text={refusalText(daily.code)} t={t} onRetry={retry} /></div>;
+    if (daily.s === "err") return <div className={CARD}><Refused id="kpis" text={refusalText(daily.code)} t={t} onRetry={() => retry(["daily", "prev", "margin"])} /></div>;
     const cur = daily.v.totals;
     const p = prev.s === "ok" ? prev.v.totals : null;
     const netBp = p ? shareBp(cur.netSalesSatang - p.netSalesSatang, p.netSalesSatang) : null;
@@ -309,24 +357,24 @@ export function ReportsOverview({ systemId, units, from, to, unitId, today, loca
     const m = margin.s === "ok" ? margin.v.totals : null;
     const costedBp = m ? shareBp(m.costedRevenueSatang, m.revenueSatang) : null;
     return (
-      <div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5 xl:gap-6" data-testid="pos-report-ov-kpis">
+      <div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 xl:gap-6" data-testid="pos-report-ov-kpis">
         <Kpi
           id="net"
           label={t("overview.kpi.net")}
           value={baht(cur.netSalesSatang)}
-          foot={netBp === null ? "—" : <><Delta d={netBp} text={pctBp(Math.abs(netBp))} /> {vs}</>}
+          foot={prev.s === "loading" ? "…" : netBp === null ? "—" : <><Delta d={netBp} text={pctBp(Math.abs(netBp))} /> {vs}</>}
         />
         <Kpi
           id="bills"
           label={t("overview.kpi.bills")}
           value={count(cur.billCount)}
-          foot={billDiff === null ? "—" : <><Delta d={billDiff} text={count(Math.abs(billDiff))} /> {t("overview.billsUnit")} {vs}</>}
+          foot={prev.s === "loading" ? "…" : billDiff === null ? "—" : <><Delta d={billDiff} text={count(Math.abs(billDiff))} /> {t("overview.billsUnit")} {vs}</>}
         />
         <Kpi
           id="avg"
           label={t("overview.kpi.avg")}
           value={baht(cur.avgBillSatang)}
-          foot={p ? t(isTodayOnly ? "overview.yesterdayAvg" : "overview.prevAvg", { amount: baht(p.avgBillSatang) }) : "—"}
+          foot={prev.s === "loading" ? "…" : p ? t(isTodayOnly ? "overview.yesterdayAvg" : "overview.prevAvg", { amount: baht(p.avgBillSatang) }) : "—"}
         />
         <Kpi
           id="margin"
@@ -341,9 +389,18 @@ export function ReportsOverview({ systemId, units, from, to, unitId, today, loca
     );
   })();
 
-  // ── กราฟรายวัน ──
+  // ── กราฟรายวัน 14 วันจบที่ `to` (ช่วงจากเซิร์ฟเวอร์ · วันไม่มียอด = แท่ง 0) ──
+  const chartFrom = ov?.chartRange.from ?? addDays(to, -(CHART_DAYS - 1));
+  const chartRows: DailyRow[] | null =
+    chart.s === "ok"
+      ? Array.from({ length: CHART_DAYS }, (_, i) => {
+          const d = addDays(chartFrom, i);
+          const hit = chart.v.rows.find((r) => r.businessDate === d);
+          return hit ?? { businessDate: d, billCount: 0, grossSatang: 0, discountSatang: 0, serviceChargeSatang: 0, netSalesSatang: 0, vatSatang: 0, netExVatSatang: 0, tipSatang: 0, voidCount: 0, voidTotalSatang: 0, refundCount: 0, refundTotalSatang: 0, avgBillSatang: 0 };
+        })
+      : null;
   const chartCard = (
-    <section className={`${CARD} xl:flex-[1.65]`} aria-busy={chart.s === "loading"} data-testid="pos-report-ov-chart">
+    <section className={`${CARD} xl:flex-[1.5]`} aria-busy={chart.s === "loading"} data-testid="pos-report-ov-chart">
       <CardHead
         icon={ICON.chart}
         title={t("overview.chartTitle")}
@@ -357,7 +414,7 @@ export function ReportsOverview({ systemId, units, from, to, unitId, today, loca
       {chart.s === "loading" ? (
         <Loading t={t} />
       ) : chart.s === "err" ? (
-        <Refused text={refusalText(chart.code)} t={t} onRetry={retry} />
+        <Refused id="chart" text={refusalText(chart.code)} t={t} onRetry={() => retry(["chart"])} />
       ) : !chartRows || chartRows.every((r) => r.netSalesSatang === 0) ? (
         <Empty t={t} />
       ) : (
@@ -369,72 +426,84 @@ export function ReportsOverview({ systemId, units, from, to, unitId, today, loca
     </section>
   );
 
-  // ── เปรียบเทียบสาขา (≥ 2 สาขา) ──
-  const branchCard = cmpUnits.length >= 2 ? (() => {
-    const allD = unitId ? get<DailyRep>("all:daily") : daily;
-    const allM = unitId ? get<MarginRep>("all:margin") : margin;
-    const rows = cmpUnits.map((u) => ({ u, d: get<DailyRep>(`u:${u.id}:daily`), m: get<MarginRep>(`u:${u.id}:margin`) }));
-    const busy = allD.s === "loading" || rows.some((r) => r.d.s === "loading" || r.m.s === "loading");
-    const mPct = (s: Slot<MarginRep>) => (s.s === "ok" && s.v.totals.grossMarginBp !== null ? pctBp(s.v.totals.grossMarginBp) : "—");
-    const cells = (d: Slot<DailyRep>) =>
-      d.s === "ok" ? [baht(d.v.totals.netSalesSatang), count(d.v.totals.billCount), baht(d.v.totals.avgBillSatang)] : ["—", "—", "—"];
+  // ── เปรียบเทียบสาขา (เซิร์ฟเวอร์คืนแถวเมื่อเห็น ≥ 2 สาขา) ──
+  // R6 V3: ตารางต้องพอดีการ์ด (คอลัมน์ "กำไร" เคยล้นที่ 1440) — ช่องแคบลง · ชื่อสาขาตัดบรรทัดได้ · ตัวเลขไม่ตัดบรรทัด
+  const TH_C = `whitespace-nowrap border-b bg-[color:var(--color-surface-2)] px-3 py-3 text-xs font-semibold ${MUTED}`;
+  const TD_C = "border-b border-[color:var(--color-line)] px-3 py-4";
+  const branchCard = (() => {
+    if (branches.s === "ok" && branches.v.rows.length < 2) return null; // สาขาเดียว = ไม่แสดงการ์ด (ไม่มีกล่องว่าง)
+    const b = branches.s === "ok" ? branches.v : null;
+    const rowErr = !!b && (b.rows.some((r) => !r.daily.ok || !r.margin.ok) || !b.all || !b.all.daily.ok);
+    const mPct = (s: Slot<MarginTotals>) => (s.s === "ok" && s.v.grossMarginBp !== null ? pctBp(s.v.grossMarginBp) : "—");
+    const cells = (d: Slot<DailyTotals>) => (d.s === "ok" ? [baht(d.v.netSalesSatang), count(d.v.billCount), baht(d.v.avgBillSatang)] : ["—", "—", "—"]);
+    const retryBranches = (
+      <button data-testid="pos-report-ov-retry-branch-rows" type="button" className="btn btn-ghost min-h-[44px] text-sm" onClick={() => retry(["branches"])}>
+        {t("retry")}
+      </button>
+    );
     return (
-      <section className={`${CARD_P0} xl:flex-1`} aria-busy={busy} data-testid="pos-report-ov-branches">
+      <section className={`${CARD_P0} xl:flex-1`} aria-busy={branches.s === "loading"} data-testid="pos-report-ov-branches">
         <div className="px-6 pt-6">
           <CardHead icon={ICON.shop} title={t("overview.branches")} right={<span className={`text-[13px] ${MUTED}`}>{rangeLabel(from, to, locale)}</span>} />
         </div>
-        {busy ? (
+        {branches.s === "loading" ? (
           <div className="px-6 pb-6"><Loading t={t} /></div>
-        ) : allD.s === "err" ? (
-          <div className="px-6 pb-6"><Refused text={refusalText(allD.code)} t={t} onRetry={retry} /></div>
+        ) : branches.s === "err" ? (
+          <div className="px-6 pb-6"><Refused id="branches" text={refusalText(branches.code)} t={t} onRetry={() => retry(["branches"])} /></div>
         ) : (
           <div className="w-full min-w-0 overflow-x-auto">
-            <table className="w-full min-w-[420px] border-collapse text-sm">
+            <table className="w-full min-w-[340px] border-collapse text-[13px] sm:text-sm">
               <thead>
                 <tr>
-                  <th scope="col" className={`${TH} text-left`}>{t("overview.cols.branch")}</th>
-                  <th scope="col" className={`${TH} text-right`}>{t("overview.cols.sales")}</th>
-                  <th scope="col" className={`${TH} text-right`}>{t("overview.cols.bills")}</th>
-                  <th scope="col" className={`${TH} text-right`}>{t("overview.cols.avg")}</th>
-                  <th scope="col" className={`${TH} text-right`}>{t("overview.cols.margin")}</th>
+                  <th scope="col" className={`${TH_C} text-left`}>{t("overview.cols.branch")}</th>
+                  <th scope="col" className={`${TH_C} text-right`}>{t("overview.cols.sales")}</th>
+                  <th scope="col" className={`${TH_C} text-right`}>{t("overview.cols.bills")}</th>
+                  <th scope="col" className={`${TH_C} text-right`}>{t("overview.cols.avg")}</th>
+                  <th scope="col" className={`${TH_C} text-right`}>{t("overview.cols.margin")}</th>
                 </tr>
               </thead>
               <tbody>
-                {rows.map(({ u, d, m }) => {
-                  const sel = u.id === unitId;
+                {b!.rows.map((r) => {
+                  const sel = r.unitId === unitId;
+                  const d = partSlot(r.daily);
                   const [net, bills, avgB] = cells(d);
+                  const err = !r.daily.ok ? r.daily.code : !r.margin.ok ? r.margin.code : null;
                   return (
-                    <tr key={u.id} className={sel ? "bg-[color:var(--color-surface-2)]" : undefined} data-testid="pos-report-ov-branch-row" title={d.s === "err" ? refusalText(d.code) : undefined}>
-                      <td className={TD}>
-                        {sel ? <b>{u.name}</b> : u.name}
+                    <tr key={r.unitId} className={sel ? "bg-[color:var(--color-surface-2)]" : undefined} data-testid="pos-report-ov-branch-row">
+                      <td className={TD_C}>
+                        {sel ? <b>{r.name}</b> : r.name}
                         {sel ? <span className={`ml-1 text-xs ${MUTED}`}>{t("overview.selected")}</span> : null}
+                        {/* R6 F3: แถวที่ถูกปฏิเสธบอกเหตุในแถว (ไม่ใช่ title อย่างเดียว) */}
+                        {err ? <span className="mt-1 block text-xs text-[color:var(--color-danger)]" data-testid="pos-report-ov-branch-error">{refusalText(err)}</span> : null}
                       </td>
-                      <td className={`${TD} ${NUM}`}><b>{net}</b></td>
-                      <td className={`${TD} ${NUM}`}>{bills}</td>
-                      <td className={`${TD} ${NUM}`}>{avgB}</td>
-                      <td className={`${TD} ${NUM}`}>{mPct(m)}</td>
+                      <td className={`${TD_C} ${NUM}`}><b>{net}</b></td>
+                      <td className={`${TD_C} ${NUM}`}>{bills}</td>
+                      <td className={`${TD_C} ${NUM}`}>{avgB}</td>
+                      <td className={`${TD_C} ${NUM}`}>{mPct(partSlot(r.margin))}</td>
                     </tr>
                   );
                 })}
                 <tr className="bg-[color:var(--color-surface-2)] font-bold" data-testid="pos-report-ov-branch-total">
-                  <td className="px-4 py-4">{t("overview.allBranches")}</td>
-                  {cells(allD).map((v, i) => (
-                    <td key={i} className={`px-4 py-4 ${NUM}`}>{v}</td>
+                  <td className="px-3 py-4">
+                    {t("overview.allBranches")}
+                    {b!.all && !b!.all.daily.ok ? <span className="mt-1 block text-xs font-normal text-[color:var(--color-danger)]">{refusalText(b!.all.daily.code)}</span> : null}
+                  </td>
+                  {(b!.all ? cells(partSlot(b!.all.daily)) : ["—", "—", "—"]).map((v, i) => (
+                    <td key={i} className={`px-3 py-4 ${NUM}`}>{v}</td>
                   ))}
-                  <td className={`px-4 py-4 ${NUM}`}>{allM.s === "loading" ? "…" : mPct(allM)}</td>
+                  <td className={`px-3 py-4 ${NUM}`}>{b!.all ? mPct(partSlot(b!.all.margin)) : "—"}</td>
                 </tr>
               </tbody>
             </table>
-            {units.length > cmpUnits.length ? (
-              <p className={`px-6 pb-4 pt-3 text-[13px] ${MUTED}`}>{t("overview.branchesCap", { shown: cmpUnits.length, total: units.length })}</p>
-            ) : null}
+            {b!.totalUnits > b!.rows.length ? <p className={`px-6 pt-3 text-[13px] ${MUTED}`}>{t("overview.branchesCap", { shown: b!.rows.length, total: b!.totalUnits })}</p> : null}
+            {rowErr ? <div className="px-6 pb-4 pt-3">{retryBranches}</div> : null}
           </div>
         )}
       </section>
     );
-  })() : null;
+  })();
 
-  // ── สินค้าขายดี 5 อันดับ ──
+  // ── สินค้าขายดี 5 อันดับ (แถวของรายงานกำไร) ──
   const productsAll = (
     <button data-testid="pos-report-ov-products-all" type="button" className={SEE_ALL} onClick={() => onSeeAll("products")}>
       {t("overview.seeAll")}
@@ -448,7 +517,7 @@ export function ReportsOverview({ systemId, units, from, to, unitId, today, loca
       {margin.s === "loading" ? (
         <div className="px-6 pb-6"><Loading t={t} /></div>
       ) : margin.s === "err" ? (
-        <div className="px-6 pb-6"><Refused text={refusalText(margin.code)} t={t} onRetry={retry} /></div>
+        <div className="px-6 pb-6"><Refused id="products" text={refusalText(margin.code)} t={t} onRetry={() => retry(["margin"])} /></div>
       ) : margin.v.rows.length === 0 ? (
         <div className="px-6 pb-6"><Empty t={t} /></div>
       ) : (
@@ -464,8 +533,7 @@ export function ReportsOverview({ systemId, units, from, to, unitId, today, loca
             </thead>
             <tbody>
               {margin.v.rows.slice(0, 5).map((r, i, all) => {
-                const last = i === all.length - 1;
-                const td = last ? "px-4 py-4" : TD;
+                const td = i === all.length - 1 ? "px-4 py-4" : TD;
                 return (
                   <tr key={r.key} data-testid="pos-report-ov-product-row">
                     <td className={td}>{`${i + 1} · ${r.name}`}</td>
@@ -489,7 +557,7 @@ export function ReportsOverview({ systemId, units, from, to, unitId, today, loca
       {payments.s === "loading" ? (
         <Loading t={t} />
       ) : payments.s === "err" ? (
-        <Refused text={refusalText(payments.code)} t={t} onRetry={retry} />
+        <Refused id="payments" text={refusalText(payments.code)} t={t} onRetry={() => retry(["payments"])} />
       ) : payments.v.rows.length === 0 ? (
         <Empty t={t} />
       ) : (
@@ -522,14 +590,14 @@ export function ReportsOverview({ systemId, units, from, to, unitId, today, loca
     </button>
   );
   const staffCard = (
-    <section className={`${CARD_P0}`} aria-busy={staff.s === "loading"} data-testid="pos-report-ov-staff">
+    <section className={CARD_P0} aria-busy={staff.s === "loading"} data-testid="pos-report-ov-staff">
       <div className="px-6 pt-6">
         <CardHead icon={ICON.users} title={t("overview.staff")} right={staffAll} />
       </div>
       {staff.s === "loading" ? (
         <div className="px-6 pb-6"><Loading t={t} /></div>
       ) : staff.s === "err" ? (
-        <div className="px-6 pb-6"><Refused text={refusalText(staff.code)} t={t} onRetry={retry} /></div>
+        <div className="px-6 pb-6"><Refused id="staff" text={refusalText(staff.code)} t={t} onRetry={() => retry(["staff"])} /></div>
       ) : staff.v.rows.length === 0 ? (
         <div className="px-6 pb-6"><Empty t={t} /></div>
       ) : (

@@ -493,21 +493,27 @@ export function ReportsClient({ systemId, units, initial, today, maxDays }: Prop
   const overview = view.kind === "overview";
   const seeAll = (k: ReportKind) => set({ kind: k }); // "ดูทั้งหมด" ในการ์ดภาพรวม → แท็บชนิดนั้น (ช่วง/สาขาเดิม)
   const prev = !rangeError ? prevRangeOf(view.from, view.to) : null;
-  const dateCls = "min-h-[44px] w-full min-w-0 bg-transparent text-sm font-semibold tabular-nums outline-none sm:w-[9.5rem]";
+  const dateCls = "min-h-[44px] w-full min-w-0 bg-transparent text-sm font-semibold tabular-nums outline-none sm:w-[8.75rem]";
+  const infoText = prev ? `${ovGeneratedAt ? `${t("overview.upToDate", { time: bkkHm(ovGeneratedAt, locale) })} · ` : ""}${t("overview.compare", { range: rangeLabel(prev.from, prev.to, locale) })}` : "";
 
   return (
     <div className="flex w-full min-w-0 flex-col gap-5" data-testid="pos-reports">
       {/* หัวหน้าแบบภาพ 08: ชื่อ · ช่วงวันที่ · สาขา · ข้อมูลถึง/เทียบกับ · ส่งออก CSV (ขวาสุด) */}
-      <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-center lg:gap-x-4" data-testid="pos-report-header">
-        <h2 className="text-2xl font-bold tracking-tight">{overview ? t("overview.title") : t("title")}</h2>
-        <div className="grid min-w-0 grid-cols-1 gap-3 sm:flex sm:flex-wrap sm:items-center sm:gap-4 lg:ml-2">
-          <div className="flex min-h-[48px] min-w-0 items-center gap-2 rounded-xl border bg-[color:var(--color-surface)] px-3" role="group" aria-label={t("overview.dateRange")}>
+      {/* R6 V4: ปุ่ม CSV อยู่แถวเดียวกับชื่อเสมอ (ภาพ 08) — ≥ xl ทุกอย่างแถวเดียว ข้อความสถานะตัดท้าย (title = เต็ม) · < xl ตัวกรอง + สถานะลงแถวถัดไป */}
+      <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-3" data-testid="pos-report-header">
+        <h2 className="order-1 text-2xl font-bold tracking-tight">{overview ? t("overview.title") : t("title")}</h2>
+        <button data-testid="pos-report-csv" type="button" className="btn btn-ghost order-2 ml-auto min-h-[44px] shrink-0 whitespace-nowrap text-sm xl:order-3" disabled={csvBusy || !!rangeError || (!overview && loading)} onClick={() => void downloadCsv()}>
+          <Icon d={I_OUT} className="h-[18px] w-[18px]" />
+          {csvBusy ? t("downloading") : t("overview.exportCsv")}
+        </button>
+        <div className="order-3 flex w-full min-w-0 flex-wrap items-center gap-3 sm:gap-4 xl:order-2 xl:ml-2 xl:w-auto xl:flex-1 xl:flex-nowrap">
+          <div className="flex min-h-[48px] w-full min-w-0 items-center gap-2 rounded-xl border bg-[color:var(--color-surface)] px-3 sm:w-auto xl:shrink-0" role="group" aria-label={t("overview.dateRange")}>
             <Icon d={I_CAL} className="h-[18px] w-[18px] text-[color:var(--color-muted)]" />
             <input data-testid="pos-report-from" type="date" aria-label={t("from")} className={dateCls} value={view.from} max={view.to || today} onChange={(e) => set({ from: e.target.value })} />
             <span className="text-[color:var(--color-muted)]" aria-hidden="true">–</span>
             <input data-testid="pos-report-to" type="date" aria-label={t("to")} className={dateCls} value={view.to} min={view.from || undefined} onChange={(e) => set({ to: e.target.value })} />
           </div>
-          <div className="flex min-h-[48px] min-w-0 items-center gap-2 rounded-xl border bg-[color:var(--color-surface)] px-3">
+          <div className="flex min-h-[48px] w-full min-w-0 items-center gap-2 rounded-xl border bg-[color:var(--color-surface)] px-3 sm:w-auto xl:shrink-0">
             <Icon d={I_SHOP} className="h-[18px] w-[18px] text-[color:var(--color-muted)]" />
             <select data-testid="pos-report-unit" aria-label={t("unit")} className="min-h-[44px] w-full min-w-0 bg-transparent text-sm font-semibold outline-none sm:w-auto" value={view.unitId} onChange={(e) => set({ unitId: e.target.value })}>
               <option value="">{t("allUnits")}</option>
@@ -519,16 +525,11 @@ export function ReportsClient({ systemId, units, initial, today, maxDays }: Prop
             </select>
           </div>
           {overview && prev ? (
-            <span className="text-[13px] text-[color:var(--color-muted)]" data-testid="pos-report-ov-info">
-              {ovGeneratedAt ? `${t("overview.upToDate", { time: bkkHm(ovGeneratedAt, locale) })} · ` : ""}
-              {t("overview.compare", { range: rangeLabel(prev.from, prev.to, locale) })}
+            <span className="min-w-0 basis-full text-[13px] text-[color:var(--color-muted)] sm:basis-auto xl:flex-1 xl:truncate" title={infoText} data-testid="pos-report-ov-info">
+              {infoText}
             </span>
           ) : null}
         </div>
-        <button data-testid="pos-report-csv" type="button" className="btn btn-ghost min-h-[44px] text-sm lg:ml-auto" disabled={csvBusy || !!rangeError || (!overview && loading)} onClick={() => void downloadCsv()}>
-          <Icon d={I_OUT} className="h-[18px] w-[18px]" />
-          {csvBusy ? t("downloading") : t("overview.exportCsv")}
-        </button>
       </div>
       {!overview ? <p className="-mt-2 text-xs text-[color:var(--color-muted)]">{t("rangeHint")}</p> : null}
 
@@ -566,7 +567,6 @@ export function ReportsClient({ systemId, units, initial, today, maxDays }: Prop
         ) : (
           <ReportsOverview
             systemId={systemId}
-            units={units}
             from={view.from}
             to={view.to}
             unitId={view.unitId}

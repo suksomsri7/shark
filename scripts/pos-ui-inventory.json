@@ -2489,7 +2489,7 @@
     },
     {
       "page": "/app/sys/[id]/pos/reports",
-      "testid": "pos-report-ov-retry",
+      "testid": "pos-report-ov-retry-*",
       "kind": "button",
       "roles": [
         "owner"
@@ -2500,7 +2500,26 @@
       "expect": {
         "type": "ui",
         "target": "pos-report-overview",
-        "note": "ภาพรวม (kind=overview): แสดงในการ์ดที่ถูกปฏิเสธ/ขัดข้อง (pos-report-ov-error) · โหลดการ์ดภาพรวมทั้งหมดซ้ำ"
+        "note": "R6: ต่อท้ายด้วยการ์ด (kpis · chart · branches · branch-rows · products · payments · staff) · แสดงในการ์ดที่ถูกปฏิเสธ/ขัดข้อง (pos-report-ov-error-<การ์ด>) หรือใต้ตารางสาขาเมื่อมีแถวถูกปฏิเสธ · posReportOverviewAction only:[ส่วนของการ์ด] แทนที่เฉพาะส่วนนั้น"
+      },
+      "wo": "P1.17U-R4",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/reports",
+      "testid": "pos-report-ov-retry-branch-rows",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-report-ov-branches",
+        "note": "R6 F3: ใต้ตารางเปรียบเทียบสาขาเมื่อมีแถวสาขา/แถวรวมถูกปฏิเสธ (ข้อความแดงในแถว pos-report-ov-branch-error) · posReportOverviewAction only:[branches]"
       },
       "wo": "P1.17U-R4",
       "oracle": "",
