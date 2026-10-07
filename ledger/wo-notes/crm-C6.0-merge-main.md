@@ -60,7 +60,7 @@ Final tree = 699800d6 (src identical to bad0e8c0). Run 1 on 8d1887ce gave the sa
 | qc-mobile-authz-hotfix | **12/12** | G1–G3 12/12 |
 | qc-automation-authz-hotfix | **12/12** | 12/12 |
 | qc-payment-authz-hotfix | **8/8** | 8/8 |
-| qc-hf-apiv1-scope | **137/141** — red HF-12.1 ×2, HF-12.2 ×2 (legacy + rotated legacy key) | origin/main on QC3: 141/141 · origin/session/crm (suite copied in, same QC3): the **same 4 ids red with identical actual values** |
+| qc-hf-apiv1-scope | **137/141** before the ORACLE-EDIT — red HF-12.1 ×2, HF-12.2 ×2 (legacy + rotated legacy key) · **143/143 after** (follow-up below) | origin/main on QC3: 141/141 · origin/session/crm (suite copied in, same QC3): **60/141** overall (that tree has no HF-APIV1 at all — 77 other reds: legacy data routes, chat secret mode, AI general-key gate); only HF-12.1/HF-12.2 are the same reds with identical actual values |
 | qc-chat-api-v1 · qc-chat-replies · qc-chat-business-hours | **89/89 · 60/60 · 73/73** | main 89 · 60 · 73 |
 | qc-mobile-chat | **29/29** | |
 | qc-ai-tools · qc-ai-tools2 · qc-ai-proposals | **18/18 · 8/8 · 16/16** | |
@@ -85,8 +85,20 @@ Proposed ORACLE-EDIT (not made — oracle edits go through the controller): HF-1
 - No QC3 reseed was needed (all suites run use throwaway tenants).
 
 ## Open points for the controller
-1. HF-12.1/12.2 ORACLE-EDIT (above) — or, if the owner wants general keys to keep `remember_fact`/`financial_summary` via the AI lane, that is a G1 policy change, not a merge fix.
+0. **R-1 release note (owner-visible, G1 policy — not a merge defect):** deploying this branch changes prod for **general** API keys on `/api/v1/ai/*`: they lose `remember_fact`, `forget_fact` (skill `memory` disappears), `support_open_case`, `financial_summary`, `record_expense` (and the other write-now / account-data hand tools); core tools shrink 8 → 6 (`list_systems, ask_clarify, propose_plan, open_system, kb_search, list_memories`). Before deploy: read-only prod check whether any general key uses the AI lane for these tools (same idea as HF-APIV1 D1).
+1. ~~HF-12.1/12.2 ORACLE-EDIT~~ done (follow-up below) — or, if the owner wants general keys to keep `remember_fact`/`financial_summary` via the AI lane, that is a G1 policy change, not a merge fix.
 2. Run `qc-hf-hr-privacy` (QC4) on this branch for the L-4 ORACLE-EDIT; also `qc-hf-pos-page-authz` / `qc-hf-o23` (QC4) if a full main-suite pass on the CRM branch is wanted.
 3. QC3 now has migrations 20261104000001/2/3 (RESUME's "QC3 owed" item is done).
 4. Prod deploy of this branch ships CRM migrations `20261103000000` + `20261104000001..3` together (register §7 Q8 — split or not).
-5. Base comparison worktrees `/root/projects/shark-crm-c60-base-crm` (origin/session/crm 921be011) and `/root/projects/shark-crm-c60-base-main` (origin/main f85f5455) were created by this lane; safe to remove.
+5. Base comparison worktrees `/root/projects/shark-crm-c60-base-crm` and `/root/projects/shark-crm-c60-base-main` — removed (follow-up).
+
+## Follow-up after review (crm-C6.0-merge-main-review.md: MERGEABLE · R-1 · R-2 · §6 ruling)
+- **ORACLE-EDIT (C6.0 · G1 rule · reviewer-approved with conditions)** in `scripts/qc-hf-apiv1-scope.mts`, comment cites C5.5-G1 + R-1:
+  - HF-12.1: skills ⊇ `sales`, `knowledge`; `memory` **absent**; core **== fixed literal** `list_systems, ask_clarify, propose_plan, open_system, kb_search, list_memories` (not derived from `toolVerdict` or any src helper).
+  - HF-12.2: `/skills/sales` ⊇ `sales_summary`, `sales_by_day`; `financial_summary` **absent**.
+  - new HF-12.2b (per legacy + rotated legacy key): `tools/remember_fact` and `tools/financial_summary` → **403 whose code/body is not `key_not_general`** (pins G1's refusal, not the hotfix gate over-blocking general keys).
+  - HF-12.3 (`tools/sales_summary` 200) unchanged = positive control.
+  - before → after: `ผ่าน 137/141` → **`143/143`** on QC3 (total +2 = the two HF-12.2b checks).
+- Typecheck rc=0 · fitness 42/42 (QC3 env) · 42/42 (no DB env).
+- R-2 wording fixed in the suite table; R-1 added as open point 0.
+- Comparison worktrees removed (`git worktree remove` ×2 + `git worktree prune`).
