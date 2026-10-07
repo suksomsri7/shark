@@ -18,6 +18,7 @@
 //   account facade applyExternalRefund · point.reversePartialEarn · member-bridges#onPosSaleRefunded · สิทธิ์ pos.sale.refund
 //   รหัส: NO_PERMISSION SALE_NOT_FOUND SALE_NOT_REFUNDABLE REFUND_EXCEEDS REFUND_EMPTY PAYMENT_MISMATCH REFUND_METHOD_INVALID
 //         SHIFT_REQUIRED REASON_REQUIRED IDEMPOTENCY_CONFLICT VALIDATION  (ข้อความ pos.refund.errors.<camel> th+en)
+//   มติผู้คุมงาน (brief §7 CD1): voidSale ของบิล SALE ที่ refundedSatang > 0 → โยน PosSaleError code HAS_REFUNDS (ทุกผู้เรียก)
 //
 // สูตรเงินที่ข้อสอบตรึง (มติ R5 · ข้อสอบคำนวณเองจากแถว DB ของบิลเดิม):
 //   ส่วนลดระดับบิล D = Σ lineTotal + serviceCharge − grandTotal (ท้ายบิล + คูปอง + สิทธิ์สมาชิก) → เกลี่ยลงบรรทัดแบบ largest remainder
@@ -59,7 +60,7 @@ const CHECKS: readonly Def[] = [
   D("S3", "S", "[R1 F15.2] migration เพิ่มล้วน: CREATE TYPE PosSaleDocType · CREATE TABLE PosDocCounter + unique (unitId,docType,period) · ADD COLUMN ที่ NOT NULL ต้องมี DEFAULT · ไม่มี DROP/RENAME/SET NOT NULL/ALTER TYPE ADD VALUE · ไม่มี FK และ index บน refSaleId/refLineId"),
   D("S4", "S", "[R5 Q2] core/permissions.ts โมดูล pos มี pos.sale.refund (คนละคีย์กับ pos.sale.void)"),
   D("S5", "S", "[R7 COMMON 4] outbox-consumers.ts ลงทะเบียน \"pos.sale.refunded\" ครอบ withAutomation · มี src/lib/modules/pos/refund-consumer.ts"),
-  D("S6", "S", "[R5 COMMON 6] ข้อความ pos.refund.errors.{noPermission saleNotFound saleNotRefundable refundExceeds refundEmpty paymentMismatch refundMethodInvalid shiftRequired reasonRequired idempotencyConflict validation} th (มีอักษรไทย) + en (ไม่มีอักษรไทย)"),
+  D("S6", "S", "[R5 COMMON 6 · §7 CD1] ข้อความ pos.refund.errors.{noPermission saleNotFound saleNotRefundable refundExceeds refundEmpty paymentMismatch refundMethodInvalid shiftRequired reasonRequired idempotencyConflict validation hasRefunds} th (มีอักษรไทย) + en (ไม่มีอักษรไทย)"),
   D("S7", "S", "[R9] refund-actions.ts: \"use server\" บรรทัดแรก · export เฉพาะ async function (ไม่มี export type/interface/const) · ไม่ throw · refundSaleAction เรียก refundSale + catch · saleForRefundAction เรียก saleForRefund + catch · revalidatePath · unstable_rethrow"),
   D("S8", "S", "[R5 R7 COMMON 2-3] refund.ts export refundSale + saleForRefund · มี FOR UPDATE · ไม่แตะ posReceiptCounter / invItem.onHand · account/index export applyExternalRefund · point/lots + point facade export reversePartialEarn · member-bridges export onPosSaleRefunded · ลายเซ็น createSale/voidSale เดิม"),
   D("S9", "S", "[R3] ไฟล์ตัวอ่านขั้นต่ำรู้จัก docType: pos/service.ts (daySummary/listSales/closeDaySummary) · pos/shift.ts (computeReport/offShiftCash) · pos/reports.ts"),
@@ -106,6 +107,7 @@ const CHECKS: readonly Def[] = [
   D("C8", "X5", "[R7.3] สแตมป์: คืนบางส่วนไม่แตะ (ไม่มี VOID) · คืนครบ → ตราของบิลถูก VOID"),
   D("C9", "X5", "[R7.4 O12] สต็อก restock:true → InvMovement IN คีย์ pos-refund-<refundSaleId>-<refundLineId>[-<invItemId>] ที่ต้นทุนของ OUT เดิม (ไม่ใช่ถัวเฉลี่ยปัจจุบัน) · ชุดคืนส่วนประกอบ · บรรทัดชั่งคืนกรัม · restock:false → ไม่มี movement · onHand ตาม"),
   D("C10", "X1", "[R7 COMMON 4] เล่น pos.sale.refunded ซ้ำ 2 รอบ: ไม่ throw · จำนวนเอกสาร/JV/แต้ม/ล็อต/movement/สแตมป์/ไทม์ไลน์/ยอดสะสม/outbox เท่าเดิม · ทุก event DONE"),
+  D("C12", "X5", "[brief §7 CD1] void บิลที่คืนบางส่วนแล้ว (คืน ฿85 จาก ฿620): voidSale → HAS_REFUNDS (ข้อความไทย) · บิลยัง PAID refundedSatang 8,500 · ไม่มี outbox pos.sale.voided · แต้ม/สต็อก/ยอดสะสม/JV ไม่ถูกย้อนซ้ำ"),
   D("C11", "X5", "[R6 spec :913] คูปอง: คืนบางส่วน → การใช้คูปองยัง REDEEMED · คืนครบ → RELEASED"),
   // ── Q read model ──
   D("Q1", "-", "[R9] saleForRefund: lines[].lineId/refundableQty (หลังคืนเสื้อ×1 หมวก×1 → 2/1/1) · refunds[].receiptNo/grandTotalSatang · payments · member.pointsEarned 62 · accounting.docNo = เลข ABB · id ไม่มี → SALE_NOT_FOUND"),
@@ -246,6 +248,7 @@ const REFUSAL_KEYS: [string, string][] = [
   ["REFUND_EXCEEDS", "refundExceeds"], ["REFUND_EMPTY", "refundEmpty"], ["PAYMENT_MISMATCH", "paymentMismatch"],
   ["REFUND_METHOD_INVALID", "refundMethodInvalid"], ["SHIFT_REQUIRED", "shiftRequired"], ["REASON_REQUIRED", "reasonRequired"],
   ["IDEMPOTENCY_CONFLICT", "idempotencyConflict"], ["VALIDATION", "validation"],
+  ["HAS_REFUNDS", "hasRefunds"], // brief §7 CD1 — voidSale ของบิลที่มีการคืนเงินแล้ว
 ];
 const schemaSrc = walk("prisma/schema", [], /\.prisma$/).map((f) => stripPrismaComments(rd(f))).join("\n");
 const refundSrc = stripComments(rd(REFUND_FILE));
@@ -1452,6 +1455,31 @@ async function runDb() {
       if (now !== onHand0[k]! + d) p.push(`onHand ${k} ${onHand0[k]}→${now} (คาด +${d})`);
     }
     chk("P1.8-C9", p.length === 0, "IN 4 รายการที่ต้นทุน OUT เดิม · restock:false ไม่มี · onHand ตาม", FX(p.join(" · ") || "ครบ"));
+  }
+
+  // ════════ C12 (§7 CD1) void บิลที่คืนบางส่วนแล้ว → HAS_REFUNDS ════════
+  {
+    const p: string[] = [];
+    const snap = async () => {
+      const w = { where: { tenantId: T } };
+      return JSON.stringify({
+        bal: await bal(C1), spend: await spend(C1), pl: await P.pointLedger.count(w).catch(() => -1), mv: await P.invMovement.count(w).catch(() => -1),
+        je: await P.accountJournalEntry.count(w).catch(() => -1), st: await P.stampEvent.count(w).catch(() => -1),
+      });
+    };
+    const before = await snap();
+    const v = M.id ? await call(svc, "voidSale", T, U.A, M.id) : { ok: false, code: "NO_SALE" };
+    await drain();
+    const s = await row(M.id);
+    if (!rm1) p.push(`ไม่มีการคืนบางส่วนก่อน (${codeOf(rm1r)})`);
+    if (!(v?.ok === false && v.code === "HAS_REFUNDS")) p.push(`voidSale → ${v === undefined ? "สำเร็จ (ไม่ปฏิเสธ)" : codeOf(v)}`);
+    else if (!THAI.test(String(v.message ?? ""))) p.push("ข้อความไม่ใช่ภาษาไทย");
+    if (!(s?.status === "PAID" && s?.refundedSatang === 8500)) p.push(`บิล ${s?.status} refunded ${s?.refundedSatang}`);
+    const ev = M.id ? await P.outboxEvent.count({ where: { tenantId: T, type: "pos.sale.voided", idempotencyKey: `PosSale#${M.id}#VOIDED` } }).catch(() => NaN) : NaN;
+    if (ev !== 0) p.push(`outbox pos.sale.voided ${ev}`);
+    const after = await snap();
+    if (after !== before) p.push(`ย้อนซ้ำ ${before} → ${after}`.slice(0, 220));
+    chk("P1.8-C12", p.length === 0, "HAS_REFUNDS · PAID 8,500 · ไม่มี voided · ไม่ย้อนซ้ำ", FX(p.join(" · ") || "ครบ"));
   }
 
   // ── คืนครบบิล M ──

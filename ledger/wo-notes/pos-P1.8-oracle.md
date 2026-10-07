@@ -7,6 +7,8 @@ Also: `--list` (no DB, 48 ids) · `--no-db` (static S1–S9 only).
 
 ## CONTROLLER-DECISION (read first)
 
+**Ruled 7 Oct (brief §7, session/pos 706116fb): CD1 → `voidSale` refuses a SALE doc with `refundedSatang > 0`, code `HAS_REFUNDS`, every caller (new check C12). CD2–CD7 accepted as written below. CD8: brief wins, builder updates the spec rows.** The table is kept as the record.
+
 | # | item | what the oracle does now | why it needs a ruling |
 |---|---|---|---|
 | CD1 | **voidSale of a partially refunded bill.** After a partial refund the bill is still `PAID`, so today's `voidSale` accepts it. It would then reverse the whole sale JV (`reverseFor("PosSale", saleId)`), all points (`releaseOnVoid`) and all stock, while the CN(s) stay posted. That double-reverses the refunded part. | **Not tested** (the brief has no ruling). | Suggest: `voidSale` refuses when `refundedSatang > 0` (the bill must be refunded instead). One extra check if ratified. |
@@ -18,7 +20,7 @@ Also: `--list` (no DB, 48 ids) · `--no-db` (static S1–S9 only).
 | CD7 | **REASON_REQUIRED vs VALIDATION.** | Missing `reasonCode` → `REASON_REQUIRED`. `OTHER` with an empty or blank `reason` → `REASON_REQUIRED`. An unknown `reasonCode` and `reason` > 200 chars → `VALIDATION`. | The brief lists the codes but not the mapping. |
 | CD8 | **Spec vs brief.** `14-pos.md:910` says CASH always needs an open shift, numbers are `CN2607-000004` (YYMM, 6 digits), and there is a status `PARTIALLY_REFUNDED`. | Follows the brief: SHIFT_REQUIRED only when `pos.shift.required.register`, `CN${YYYYMM}-NNNN`, and the bill stays `PAID` on a partial refund. | The spec rows should be updated after acceptance. |
 
-## Check list (48 · S=9 X1=3 X3=1 X4=15 X5=9 X6=2 functional=9)
+## Check list (49 · S=9 X1=3 X3=1 X4=15 X5=10 X6=2 functional=9)
 
 | id | X | what |
 |---|---|---|
@@ -27,7 +29,7 @@ Also: `--list` (no DB, 48 ids) · `--no-db` (static S1–S9 only).
 | S3 | S | Migration is additive only: CREATE TYPE, CREATE TABLE plus the unique index, and every NOT NULL column has a DEFAULT. No DROP, RENAME, SET NOT NULL or ADD VALUE. No FK or index on `refSaleId`/`refLineId`. |
 | S4 | S | `pos.sale.refund` is in the pos module of `permissions.ts`. |
 | S5 | S | `"pos.sale.refunded"` is registered in `outbox-consumers.ts` with `withAutomation` on the same line, and `pos/refund-consumer.ts` exists. |
-| S6 | S | 11 `pos.refund.errors.*` keys exist in th (Thai text) and en (no Thai). |
+| S6 | S | 12 `pos.refund.errors.*` keys (11 refund codes + `hasRefunds`) exist in th (Thai text) and en (no Thai). |
 | S7 | S | `refund-actions.ts`: "use server" is the first line, only async function exports, no throw. Both actions call their service and have a catch. Uses `revalidatePath` and `unstable_rethrow`. |
 | S8 | S | `refund.ts` exports both functions, uses FOR UPDATE, and does not touch `posReceiptCounter` or `InvItem.onHand`. The other new functions are exported: `applyExternalRefund`, `reversePartialEarn` (from lots and the point facade) and `onPosSaleRefunded`. The `createSale` and `voidSale` signatures are unchanged. |
 | S9 | S | The minimum readers mention `docType`: `daySummary`, `listSales`, `closeDaySummary`, `computeReport`, `offShiftCash` and `reports.ts`. |
@@ -66,6 +68,7 @@ Also: `--list` (no DB, 48 ids) · `--no-db` (static S1–S9 only).
 | C8 | X5 | Stamps: 0 VOID after the partial refund, 1 VOID after the full refund. |
 | C9 | X5 | IN movements use key `pos-refund-<refundSaleId>-<refundLineId>[-<invItemId>]` at the original OUT cost (the fixture changes the average cost after the sale). Bundle components are returned, and the weighed line returns 350 g. `restock:false` → no movement. onHand follows. |
 | C10 | X1 | Replaying every `pos.sale.refunded` event ×2 throws nothing and leaves 11 counters unchanged. All events are DONE. |
+| C12 | X5 | (§7 CD1) After the ฿85 partial refund of the ฿620 bill: `voidSale` → `HAS_REFUNDS` with a Thai message. The bill stays PAID with `refundedSatang` 8,500, there is no `pos.sale.voided` outbox row, and points, spend, stamps, stock movements and JV counts are unchanged. |
 | C11 | X5 | Coupon stays REDEEMED through the partial refunds and is RELEASED on the full refund. |
 | Q1 | - | `saleForRefund` returns `refundableQty` 2/1/1, refunds, payments, `member.pointsEarned` 62 and `accounting.docNo` = ABB number. An unknown id → `SALE_NOT_FOUND`. |
 | Z1 | - | QC tenants' row counts are equal before and after. The temp tenant has 0 rows in every `tenantId` table (312) and its Tenant row is gone. |
@@ -90,7 +93,7 @@ Also: `--list` (no DB, 48 ids) · `--no-db` (static S1–S9 only).
 
 **Cleanup** first checks the slug. It then runs `DELETE … WHERE "tenantId" = $1` over every base table with that column, in passes, and deletes the Tenant row last.
 
-## Names I had to invent (17 · builder must use exactly these)
+## Names I had to invent (18 · builder must use exactly these)
 
 | name | where | note |
 |---|---|---|
@@ -99,7 +102,7 @@ Also: `--list` (no DB, 48 ids) · `--no-db` (static S1–S9 only).
 | ok result `{ ok:true, refund:{ id, receiptNo, … }, sale:{ status, refundedSatang } }` | refund.ts | `refund.id` = refundSaleId. `duplicated` is optional and not asserted. |
 | `saleForRefund(ctx, actor, { saleId }, client?)` → `{ ok, lines:[{lineId, refundableQty, …}], payments:[…], refunds:[{receiptNo, grandTotalSatang, …}], member:{pointsEarned}|null, accounting:{docNo}|null }` | refund.ts | Read model R9. |
 | `refundSaleAction`, `saleForRefundAction` | `pos/refund-actions.ts` | As in the brief. |
-| message keys `pos.refund.errors.{noPermission saleNotFound saleNotRefundable refundExceeds refundEmpty paymentMismatch refundMethodInvalid shiftRequired reasonRequired idempotencyConflict validation}` | `src/messages/{th,en}/pos.json` → `refund.errors.*` | The namespace is my choice. Register refusals use `pos.register.errors.*`. |
+| message keys `pos.refund.errors.{noPermission saleNotFound saleNotRefundable refundExceeds refundEmpty paymentMismatch refundMethodInvalid shiftRequired reasonRequired idempotencyConflict validation hasRefunds}` | `src/messages/{th,en}/pos.json` → `refund.errors.*` | The namespace is my choice. Register refusals use `pos.register.errors.*`. |
 | `PosDocCounter.seq` (not spec `lastNo`), `period` = YYYYMM | schema | Brief R4. The spec sketch uses `lastNo` + YYMM. |
 | CN number `${prefix}${YYYYMM}-${seq 4d}`, prefix `settings.pos.receipt.refundPrefix` (default "CN") | refund.ts | `period` is taken from the sale `receiptNo` of the same unit in the oracle. |
 | refund document fields | REFUND PosSale row | `soldByUserId` = actor, `note` = reason, `reasonCode`, `tipSatang` 0, `serviceChargeSatang` = SC part. Invariant `subtotal − discount + SC = grand`. Lines: `qty` = refunded units, `lineTotalSatang` = refund amount, `unitPrice×qty − discount = lineTotal`, `refLineId`, `restock`. |
@@ -108,16 +111,18 @@ Also: `--list` (no DB, 48 ids) · `--no-db` (static S1–S9 only).
 | `applyExternalRefund({ tenantId, sourceSystemId, refId: refundSaleId, saleRefId, occurredAt, grossSatang, payMethods:[{channel, amountSatang}], lines, docNo })` → `{posted, reason?, docId?}` | `account/index.ts` | The oracle only calls it on an unlinked POS. Only the input field names above are fixed. |
 | CN document: `docType CREDIT_NOTE`, `refType "PosSale"`, `refId` = refundSaleId, `sourceDocId` = ABB id, `docNo` = POS CN number, `grandTotal`, `vatAmount` | account | JV location is flexible: the oracle reads entries with `(refType PosSale, refId refundSaleId)` OR `(refType AccountDocument, refId cnDocId)`. |
 | `reversePartialEarn(ctx, { refType:"PosSale", refId: saleId, amountSatang, grossSatang, idempotencyKey })` | `point/lots.ts` + point facade | `grossSatang` = original grandTotal (CD3). The C6 net-0 sum covers ledger rows with refId ∈ {saleId, refundSaleIds}. |
+| `HAS_REFUNDS` (`PosSaleErrorCode`) · message "บิลนี้มีการคืนเงินแล้ว — ยกเลิกทั้งใบไม่ได้ ใช้การคืนเงินส่วนที่เหลือแทน" · key `pos.refund.errors.hasRefunds` | `pos/service.ts` `voidSale` | Ruled §7 CD1. `voidSale` keeps its throw contract: `PosSaleError` with `.code` `HAS_REFUNDS`, before any write or outbox row. |
 | `onPosSaleRefunded` | `member-bridges.ts` | Exported. The handler signature is not asserted. |
 | stock keys `pos-refund-<refundSaleId>-<refundLineId>` (item/weighed line) and `pos-refund-<refundSaleId>-<refundLineId>-<invItemId>` (bundle component) | refund consumer | Mirrors `lineConsumption`. type IN, sourceModule "POS", `costSatang` = original OUT movement cost. |
 | ShiftReport additions `refundCount`, `refundSatang`, `byMethod[].refundCount`, `byMethod[].refundSatang` | `shift.ts` | Brief R8. `salesTotalSatang` stays gross sales. |
 
 ## Expected result on base (4aa1a286)
 
-- `--list`: exit 0, 48 ids. **Verified.**
+- `--list`: exit 0, 49 ids. **Verified.**
 - `--no-db`: 0/9, exit 1. Every static check is red for the missing schema, migration, permission, consumer, messages, actions, wiring or reader `docType`. **Verified.**
 - Unforced on QC4: **SKIPPED, exit 0**, with 9 reasons: 2 refund.ts exports, 6 columns (client ✗ DB ✗), and the `posDocCounter` delegate. **Verified.**
-- `QC_FORCE=1` on QC4: **exit 1, 2 green (Z1, Z2) / 46 red, no crash, cleanup clean** (312 tables, 0 rows left, Tenant gone). **Verified.**
+- `QC_FORCE=1` on QC4: **exit 1, 2 green (Z1, Z2) / 47 red, no crash, cleanup clean** (312 tables, 0 rows left, Tenant gone). **Verified** (re-run after C12).
+  - C12 on base: `voidSale` succeeds (bill VOIDED, `pos.sale.voided` row 1, points/JV reversed) — red for the right reason.
   - Every fixture works on base. Log line: `บิล X: grand 48217 · SC 4383 · D 3500 · net [26857,13891,3086] · tip 500`.
   - Second log line: `M แต้ม 62 ยอดสะสม 62000 ตรา 1 ABB 202610-0001 · B2 แต้มได้ 26 ยอด 326 ล็อตตั้งต้นเหลือ 300`.
   - The DB checks are red through `MISSING:refundSale`, `MISSING:saleForRefund` or `MISSING:applyExternalRefund`, or because the reader deltas are 0 or +30,000. Example: H1 expected 162,000 vs 153,500.
@@ -200,3 +205,8 @@ Facts the brief does not mention, all confirmed on this head:
 - `bash scripts/iso.sh bash scripts/qc4.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/qc-pos-p1.8.mts` → SKIPPED, exit 0
 - same with `env QC_FORCE=1` → 2/48, exit 1, no crash, residue clean (run twice; the first forced run found a BigInt fingerprint bug in Z2, which is now fixed)
 - `env NODE_OPTIONS=--max-old-space-size=5632 ISO_MEM=6500M bash scripts/iso.sh flock -w 3600 /tmp/pos-gate.lock pnpm typecheck` → exit 0
+
+## Update 7 Oct (controller rulings)
+- Added C12 (X5) and `hasRefunds` to the S6 key list.
+- Forced QC4 re-run → `===== qc-pos-p1.8 ===== ผ่าน 2/49 (QC_FORCE)`, exit 1, no crash, `ลบร้านชั่วคราว …: 312 ตาราง · เหลือ {} · Tenant 0`.
+- `pnpm typecheck` (POS lock) → exit 0.
