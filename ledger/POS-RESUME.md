@@ -567,3 +567,7 @@
 ## 2026-10-07T16:21:44Z · ผู้ตรวจ P1.17U R5: MERGEABLE-AFTER-FIXES → สั่ง R6
 - F1 Server Action ใน Next 16 ส่งทีละตัว (24 call เรียง) → อนุญาตแตะ server: action รวม `posReportOverviewAction` (Promise.all ฝั่งเซิร์ฟเวอร์ · refusal ต่อ section) + debounce 300ms + ข้อสอบใน qc-pos-p1.17 · F2 retry ต่อการ์ด · F3 แถวสาขาถูกปฏิเสธต้องเห็นเหตุผล · F4 KPI ห้าม truncate (text-2xl/xl:28px · grid sm2/lg3/xl5) · F5 ป้ายแกน X มือถือ 3 จุด · F6 testid error/retry ต่อการ์ด · F7 notes
 - ผู้ตรวจเลน 1 (P1.6U+P1.2U) กำลังอ่าน · unit pos-vis5-both กำลัง build 85f29b93
+
+## 2026-10-07T16:24:07Z · ผู้ตรวจ P1.6U+P1.2U: MERGEABLE-AFTER-FIXES → สั่ง P1.2U R3
+- F1 [M] บรรทัด options/ชั่ง fallback unit×qty ระหว่างรอ quote → แสดง pending · F2 [M] tryCart ข้ามตรวจเพดานส่วนลดทั้งตะกร้าเมื่อมีบรรทัด server-priced → ใช้ unit จาก quote line · F3 ตัวแปรเดียวหมด+BLOCK ถูก auto-select · F4 cart เต็ม/qty max เงียบ · F5 ป๊อปโอเวอร์ไม่จัดตำแหน่งใหม่เมื่อสูงขึ้น · F6 ราคาติดลบ "−฿5" · F7 signal handler ไม่ปิดกะ · F8 ล้าง note เมื่อตะกร้าว่าง (พักบิล = follow-up server)
+- ผู้ตรวจยืนยันผ่าน: ขอบเขต client/server · คีย์ th/en ครบ · F4/Esc · split payment · visual-pos finally
