@@ -609,3 +609,7 @@
 - ต้นไม้ที่ merge = ต้นไม้ที่ build ผ่านบน p11 (924cea2a, diff ว่าง) ⇒ type check ผ่านแล้ว
 - follow-up สะสม (ใน wo-notes P1.6U/P1.2U/P1.17U-R4): แถวล่างจอชำระ (ใบกำกับ toggle/ส่งใบเสร็จ/แต้ม/คูปอง/วิธีชำระอีก 4) · 02b (ใบกำกับย่อ/สถานะบัญชี/พิมพ์ซ้ำ/LINE/QR) · note หายตอนพักบิล (server) · ตัวแปรปิดที่สาขาใต้ allow-negative · rename InterimPayDialog→PayDialog + S5.20 · เทียบช่วงเวลาเดียวกัน · native date input · "กะ" tab ใน posTabs · P2.12 SQL
 - เลน 1/เลน 2 ปิดแล้ว → ต่อไป 1 เลน (ใบถัดไป: P1.14U ตามแผน)
+
+## 2026-10-07T17:50:31Z · brief P1.14U พร้อม (`pos-briefs/pos-brief-P1.14U.md`) → เปิด 1 เลน
+- ขอบเขต: ตรวจนับมือถือ (05ค) + หน้า /pos/stock แท็บ ตรวจนับ/รับของเข้า/โอน/ปรับ/ประวัติ (16 ในขอบเขต R13/R16: ไม่มีรับตาม PO · โอนภายในคลังเดียว · ไม่ลงบัญชีผลต่าง) · server action ใหม่ `stock-count-actions.ts` + read เพิ่ม `stockCountMeta` · แท็บ "สต็อก" ใน posTabs+childrenFor · visual-pos page `stock` + states
+- เลน: shark-pos-b · branch wip/pos-p1.14u · gate: p1.14 30/30 ×3 · p1.3/p1.2/p1.6/p1.9/p1.17/authz · pos-inventory + inventory · fitness · tsc ผ่าน pos-gate.lock
