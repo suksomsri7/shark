@@ -184,6 +184,10 @@ function useMedia(q: string): boolean | null {
 /** P1.2: บรรทัดที่ราคาคิดได้ที่เซิร์ฟเวอร์เท่านั้น (มีตัวเลือก · ป้ายเครื่องชั่ง · น้ำหนัก) */
 const isPricedByServer = (l: RegisterCartLine) =>
   l.kind === "product" && ((l.options?.length ?? 0) > 0 || l.weighedBarcode !== undefined || l.weightGrams !== undefined);
+/** R3 F1: ยอดรอ quote */
+const PENDING = "\u2014";
+/** ราคาประมาณของน้ำหนักที่พิมพ์เอง — ปัดครึ่งขึ้นของ กรัม × ราคาต่อกก. / 1000 (สูตรเดียวกับ WeighDialog / weighedPriceSatang) */
+const weighedEstimate = (grams: number, perKg: number) => Math.floor((2 * grams * perKg + 1000) / 2000);
 
 /** PERCENT ของตัวตรวจเพดาน (bp) → "10" สำหรับข้อความ {limit}% */
 const pctText = (bp: number) => String(Number((bp / 100).toFixed(2)));
@@ -222,7 +226,8 @@ export function RegisterScreen(props: RegisterScreenProps) {
   const [cartVer, setCartVer] = useState(0);
   const cartRef = useRef(cart);
   cartRef.current = cart;
-  const [quote, setQuote] = useState<{ ver: number; q: RegisterQuote } | null>(null);
+  /** keys = คีย์บรรทัดของตะกร้ารุ่นที่ quote นี้ตอบ (บรรทัดที่ i ของ quote ↔ keys[i]) — R3 F2 จับคู่ราคาบรรทัดตามคีย์ ไม่ใช่ตำแหน่ง */
+  const [quote, setQuote] = useState<{ ver: number; q: RegisterQuote; keys: string[] } | null>(null);
   const [quoteErr, setQuoteErr] = useState<{ ver: number; code: string } | null>(null);
   const [quoteSlow, setQuoteSlow] = useState(false);
   const quoteSeq = useRef(0);
@@ -389,7 +394,15 @@ export function RegisterScreen(props: RegisterScreenProps) {
     const id = setInterval(() => {
       if (document.visibilityState === "visible") void refreshStatus();
     }, 60_000);
-    return () => clearInterval(id);
+    // R3 V3: กลับมาที่แท็บ (เช่น หลังเปิดกะในหน้ากะ) ⇒ ถามสถานะใหม่ทันที — ชิปกะ/แถบเปิดกะ/ปุ่มชำระตามทัน
+    const onVis = () => {
+      if (document.visibilityState === "visible") void refreshStatus();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onVis);
+    };
   }, [refreshStatus]);
 
   // ── โหลดกริด: คำค้น (หน่วง 200ms) · หมวด (ทันที) · หน้าถัดไป ──
@@ -482,7 +495,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
         const r = await quoteRegisterCartAction({ systemId, unitId, cart: cartToQuoteInput(cart) });
         if (seq !== quoteSeq.current) return;
         if (r.ok) {
-          setQuote({ ver, q: r });
+          setQuote({ ver, q: r, keys: cart.lines.map((l) => l.key) });
           setQuoteErr(null);
           synced();
         } else {
@@ -503,12 +516,14 @@ export function RegisterScreen(props: RegisterScreenProps) {
 
   const quoteFresh = quote && quote.ver === cartVer ? quote.q : null;
   const quoteFailed = quoteErr && quoteErr.ver === cartVer ? quoteErr.code : null;
-  const shownTotals: CartTotalsModel | null = quoteFresh ?? (local ? { ...local } : quote?.q ?? null);
+  // R3 F1: ตะกร้าที่มีบรรทัดราคาฝั่งเซิร์ฟเวอร์ (ตัวเลือก/ชั่ง) และ quote ยังไม่ตรงรุ่น = ยอดรอ (—) — ห้ามโชว์ยอดของตะกร้าเก่าค้าง
+  const totalsPending = !quoteFresh && cart.lines.some(isPricedByServer);
+  const shownTotals: CartTotalsModel | null = totalsPending ? null : (quoteFresh ?? (local ? { ...local } : quote?.q ?? null));
   // POS P1.9 (S15): จุดขายบังคับเปิดกะ แต่เครื่องนี้ยังไม่มีกะ = ล็อกปุ่มชำระ + การ์ด "เปิดกะก่อนเริ่มขาย"
   const shiftBlocked = !!status?.shiftRequired && !status?.shift;
   const payEnabled = cart.lines.length > 0 && !!quoteFresh && online && limits.canSell && payPhase === "form" && !frozen && !shiftBlocked;
   const lastAmount = quoteFresh?.grandTotalSatang ?? local?.grandTotalSatang ?? quote?.q.grandTotalSatang ?? 0;
-  const payAmount = quoteSlow && !quoteFresh ? tc("loading") : moneyText(cart.lines.length ? lastAmount : 0);
+  const payAmount = quoteSlow && !quoteFresh ? tc("loading") : totalsPending ? PENDING : moneyText(cart.lines.length ? lastAmount : 0);
 
   // ข้อความใต้ยอด: ออฟไลน์ > ไม่มีสิทธิ์ > quote ล้ม
   const errorMsg: Msg | null = !online
@@ -541,7 +556,14 @@ export function RegisterScreen(props: RegisterScreenProps) {
     const ql = quoteFresh?.lines[i];
     const ll = local?.lines[i];
     const prod = l.kind === "product" ? known.current.get(l.productId) : undefined;
-    const unit = ql?.unitPriceSatang ?? ll?.unitPriceSatang ?? (l.kind === "custom" ? l.unitPriceSatang : (l.openPriceSatang ?? prod?.priceSatang ?? 0));
+    // R3 F1: บรรทัดราคาฝั่งเซิร์ฟเวอร์ที่ยังไม่มี quote สด = รอ (—) · ยกเว้นน้ำหนักที่พิมพ์เองไม่มีตัวเลือก = ประมาณด้วยสูตรเดียวกับ WeighDialog
+    const serverPriced = isPricedByServer(l);
+    const est =
+      serverPriced && !ql && l.kind === "product" && l.weightGrams !== undefined && !(l.options?.length ?? 0) && typeof prod?.priceSatang === "number"
+        ? weighedEstimate(l.weightGrams, prod.priceSatang)
+        : null;
+    const pending = serverPriced && !ql && est === null;
+    const unit = ql?.unitPriceSatang ?? est ?? ll?.unitPriceSatang ?? (l.kind === "custom" ? l.unitPriceSatang : (l.openPriceSatang ?? prod?.priceSatang ?? 0));
     const stockLeft = prod && prod.trackStock && prod.stockLeft !== null ? prod.stockLeft : null;
     const over = stockLeft !== null && l.qty > stockLeft;
     return {
@@ -553,6 +575,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
       discountSatang: ql?.discountSatang ?? ll?.discountSatang ?? 0,
       stockLeft,
       warn: over && warnAck[l.key] !== l.qty,
+      ...(pending ? { pending: true } : {}),
       ...(l.note ? { note: l.note } : {}),
       ...(lineDetail(l, ql) ? { detail: lineDetail(l, ql) } : {}),
     };
@@ -709,16 +732,29 @@ export function RegisterScreen(props: RegisterScreenProps) {
     if (o.soldByWeight) {
       return setLayers((s) => [...s.filter((l) => l.kind !== "options"), { kind: "weigh", product: o.product, options: o.options, ...(o.note ? { note: o.note } : {}) }]);
     }
-    if (cartRef.current.lines.length >= REGISTER_MAX_LINES && !cartRef.current.lines.some((l) => l.kind === "product" && l.productId === o.product.id)) {
-      return showToast({ key: "errors.tooManyLines", values: { max: REGISTER_MAX_LINES } });
-    }
     const key = newKey();
     // R2 ข้อ 2: คีย์รวม = สินค้า + ชุดตัวเลือก + หมายเหตุ (cartAddProduct) — ชิ้นละครั้งตามจำนวน
-    updateCart((prev) => {
+    const addAll = (prev: RegisterCart): { next: RegisterCart; added: number } => {
       let next = prev;
-      for (let i = 0; i < o.qty; i++) next = o.note ? cartAddProduct(next, o.product.id, key, o.options, o.note) : cartAddProduct(next, o.product.id, key, o.options);
-      return next;
-    });
+      let added = 0;
+      for (let i = 0; i < o.qty; i++) {
+        const n = o.note ? cartAddProduct(next, o.product.id, key, o.options, o.note) : cartAddProduct(next, o.product.id, key, o.options);
+        if (n === next) break;
+        next = n;
+        added++;
+      }
+      return { next, added };
+    };
+    // R3 F4: เทียบก่อน/หลังกับตะกร้าล่าสุดที่วาดแล้ว — เต็ม 200 บรรทัด / ชนเพดานจำนวน = บอกผู้ใช้ (เหมือน addProduct)
+    const cur = cartRef.current;
+    const trial = addAll(cur);
+    if (trial.added < o.qty) {
+      const full = trial.added === 0 && cur.lines.length >= REGISTER_MAX_LINES;
+      const merged = cur.lines.some((l) => l.kind === "product" && l.productId === o.product.id);
+      showToast(full && !merged ? { key: "errors.tooManyLines", values: { max: REGISTER_MAX_LINES } } : { key: "errors.qtyInvalid", values: { max: REGISTER_MAX_QTY } });
+      if (trial.added === 0) return;
+    }
+    updateCart((prev) => addAll(prev).next);
     setLayers((s) => s.filter((l) => l.kind !== "options"));
   };
   /** P1.2 U: บรรทัดชั่ง (ป้ายเครื่องชั่ง หรือน้ำหนักที่กรอก) — qty 1 ไม่รวมกับบรรทัดใด · ราคาจริงจาก quote */
@@ -817,8 +853,24 @@ export function RegisterScreen(props: RegisterScreenProps) {
   const lineIndex = (key: string) => cart.lines.findIndex((l) => l.key === key);
   /** ทดลองตะกร้าใหม่ด้วย priceCart ก่อนใช้จริง — ไม่ผ่าน = คืนข้อความ (กล่องค้าง ไม่ตัดเลขให้พอดี) */
   const tryCart = (next: RegisterCart): Msg | null => {
-    if (next.lines.some(isPricedByServer)) return null; // P1.2: ราคาจริงของบรรทัดตัวเลือก/ชั่งอยู่ที่ quote
-    const input = cartToPriceInput(next, known.current, vat, limits.maxDiscountBp);
+    // R3 F2: บรรทัดตัวเลือก/ชั่ง = ใช้ราคาต่อหน่วยจาก quote ล่าสุด (จับคู่ด้วยคีย์บรรทัด) แล้วตรวจเพดานส่วนลดทั้งตะกร้าตามเดิม ·
+    //   ข้ามเฉพาะเมื่อยังไม่มี quote ของบรรทัดนั้นเลย (ราคาไม่รู้ — ให้ quote ตัดสิน)
+    let priced = next;
+    if (next.lines.some(isPricedByServer)) {
+      const lines: RegisterCartLine[] = [];
+      for (const l of next.lines) {
+        if (!isPricedByServer(l)) {
+          lines.push(l);
+          continue;
+        }
+        const qi = quote ? quote.keys.indexOf(l.key) : -1;
+        const ql = qi >= 0 ? quote?.q.lines[qi] : undefined;
+        if (!ql) return null;
+        lines.push({ key: l.key, kind: "custom", name: "-", unitPriceSatang: ql.unitPriceSatang, qty: l.qty, ...(l.discount ? { discount: l.discount } : {}) });
+      }
+      priced = { ...next, lines };
+    }
+    const input = cartToPriceInput(priced, known.current, vat, limits.maxDiscountBp);
     if ("ok" in input) return null; // ราคายังไม่รู้ (สินค้าใหม่จากเซิร์ฟเวอร์) — ให้ quote ตัดสิน
     const r = priceCart(input);
     return r.ok ? null : errorFor(r.code);
@@ -837,7 +889,16 @@ export function RegisterScreen(props: RegisterScreenProps) {
     return null;
   };
   const removeLine = (key: string) => {
-    changeCart({ ...cart, lines: cart.lines.filter((l) => l.key !== key) });
+    const lines = cart.lines.filter((l) => l.key !== key);
+    // R3 F8: ลบบรรทัดสุดท้าย = บิลใหม่ ⇒ ล้างหมายเหตุบิล + ส่วนลดท้ายบิลด้วย (สมาชิกคงไว้)
+    if (!lines.length) {
+      const next: RegisterCart = { lines: [] };
+      if (cart.memberId) next.memberId = cart.memberId;
+      changeCart(next);
+      pop();
+      return;
+    }
+    changeCart({ ...cart, lines });
     pop();
   };
   const applyBillDiscount = (d: PriceDiscount | undefined): Msg | null => {
@@ -919,6 +980,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
         // ยอดสดจากคำตอบ (ไม่ต้อง quote ซ้ำ) — ผู้ใช้ต้องกดยืนยันใหม่กับยอดนี้
         setQuote({
           ver: cartVer,
+          keys: cart.lines.map((l) => l.key),
           q: {
             ok: true,
             subtotalSatang: r.subtotalSatang,
@@ -1153,6 +1215,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
       variant={variant}
       lines={lineModels}
       totals={cart.lines.length ? shownTotals : null}
+      totalsPending={totalsPending}
       payAmount={payAmount}
       payEnabled={payEnabled}
       error={errorMsg ? msgNode(errorMsg) : null}
@@ -1417,6 +1480,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
           online={online}
           lastSyncAt={lastSyncAt}
           user={status ? { name: status.user.name, role: status.user.role } : null}
+          shift={status?.shift ?? null}
           onCamera={openCamera}
         />
         <ModeTabsNav systemId={systemId} />

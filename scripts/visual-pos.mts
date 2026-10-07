@@ -25,10 +25,12 @@
 //     ชิป 2 กลุ่ม "M +10" "นมโอ๊ต +15" + จำนวน 2 · md+ = ป๊อปโอเวอร์ยึดการ์ด · 390 = แผ่นล่าง) · weigh (desktop/mobile · สินค้าชั่งชั่วคราว ฿350/กก.
 //     → กล่องน้ำหนัก · owner พิมพ์ 250 กรัม · cashier เห็นข้อความต้องมีสิทธิ์) — กลุ่ม/ตัวเลือก (MenuOptionGroup/Choice) ชั่วคราวลบใน finally ด้วย
 //     (ชื่อกลุ่มซ้ำกับของร้านในสาขาเดียวกัน ⇒ ต่อท้าย " (QC <pid>)") · การ์ดถูกหาด้วยคำค้น (ช่องค้นหาจึงมีคำค้นค้างในภาพ)
-//   P1.2 U R2 ข้อ 7 (กะ · P1.9): ธง registerV2 ⇒ บังคับเปิดกะ (required.register) — ก่อนทุกสถานะ ถ้ายังเห็นแถบ pos-reg-shift-required
-//     (หลังรอสถานะของเครื่องมา 5 วิ) ⇒ เปิดกะผ่าน UI จริง: ลิงก์ "เปิดกะ" → หน้า /pos/shifts · เงินทอนตั้งต้น 1,000 → ยืนยัน → กลับหน้าขาย
-//     1 กะต่อผู้ใช้ต่อรอบ (deviceId อยู่ใน localStorage ของ browser เดียวกันทุกแท็บ) · ปิดกะใน finally ด้วย closeShift ของบริการ (เจ้าของร้าน ·
-//     นับเงิน = ยอดคาด ⇒ ขาด/เกิน 0 ไม่ต้องเหตุผล) — ปิดไม่ได้ = บันทึกใน summary (shiftClose) ไม่โยน · ห้ามปิดธง required.register เพื่อเลี่ยง
+//   P1.2 U R2 ข้อ 7 + R3 V4 (กะ · P1.9): ธง registerV2 ⇒ บังคับเปิดกะ (required.register) — ก่อนถ่ายสถานะหน้าขาย สคริปต์ตั้งรหัสเครื่องคงที่
+//     `posqc-vis-dev-<pid>` (localStorage "shark.pos.deviceId" ผ่าน evaluateOnNewDocument ทุกแท็บ) แล้ว "เจ้าของร้าน" เปิดกะให้เครื่องนั้นผ่าน UI จริง
+//     ใน browser context แยก (หน้า /pos/shifts · เงินทอนตั้งต้น 1,000 · ยืนยัน) — แคชเชียร์ QC มีแค่ pos.sale.create เปิดกะเองไม่ได้ (สิทธิ์จริง ·
+//     ห้ามเพิ่มสิทธิ์) ⇒ ใช้เครื่องเดียวกับที่เจ้าของเปิดกะให้ · 1 กะต่อรอบ · ทุกสถานะตรวจว่าแถบ "เปิดกะก่อนเริ่มขาย" หายแล้ว (ไม่หาย = ขั้นตอนตก)
+//     ปิดกะใน finally/signal ด้วย closeShift ของบริการ (เจ้าของร้าน · นับเงิน = ยอดคาด ⇒ ขาด/เกิน 0 ไม่ต้องเหตุผล) — ปิดไม่ได้ = บันทึกใน summary
+//     (shiftClose) ไม่โยน · ห้ามปิดธง required.register เพื่อเลี่ยง
 //   ต้องเปิดธง settings.pos.registerV2 ของร้าน QC ก่อน (scripts/seed-pos-qc.mts) — ไม่งั้นได้หน้าขายเดิม = ขั้นตอนสถานะตก
 //   ขั้นตอนพัง = ภาพนั้นตก (บันทึก stepError) แต่ยังถ่ายหน้าจอ ณ จุดที่พังไว้ดู ◂
 //
@@ -295,6 +297,13 @@ for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
       } catch {
         /* ปิดไม่ได้ก็ลบโปรไฟล์ต่อ */
       }
+      // R3 F7: ปิดกะของรอบนี้ก่อนลบ session (เหมือน finally) — ผลอยู่ใน SHIFT.close · ไม่โยน
+      try {
+        await closeRunShift();
+        if (SHIFT.close) console.error(`${SHIFT.close.ok ? "🧹" : "⚠️"} ${SHIFT.close.detail}`);
+      } catch (e) {
+        console.error(`❌ ปิดกะไม่สำเร็จ: ${e instanceof Error ? e.message : e}`);
+      }
       try {
         const r = await cleanSessions();
         console.error(`🧹 ลบ session ${r.removed} (+ซาก ${r.stale})`);
@@ -406,8 +415,7 @@ const openCartOnMobile = async (page: Any, device: Device) => {
 };
 const clickPay = (page: Any, device: Device) => clickEl(page, tid(device === "mobile" ? "pos-reg-cart-bar-pay" : "pos-reg-pay"));
 // ── P1.2 U R2 ข้อ 7: กะของรอบนี้ (เปิดผ่าน UI ครั้งเดียว · ปิดใน finally) ──
-const RUN_STARTED = new Date();
-const SHIFT = { opened: false, id: "" as string, close: null as null | { ok: boolean; detail: string } };
+const SHIFT = { opened: false, id: "" as string, openError: null as string | null, close: null as null | { ok: boolean; detail: string } };
 /** แถบ "เปิดกะก่อนเริ่มขาย" ยังอยู่หลังสถานะของเครื่อง (deviceId) มาแล้ว = ยังไม่มีกะ */
 async function shiftBannerStays(page: Any): Promise<boolean> {
   const gone = await page
@@ -416,35 +424,63 @@ async function shiftBannerStays(page: Any): Promise<boolean> {
     .catch(() => false);
   return !gone;
 }
+/** R3 V4: ทุกสถานะ — แถบเปิดกะต้องหายแล้ว (เจ้าของเปิดกะให้เครื่องนี้ไว้ก่อนเริ่มถ่าย) */
 async function ensureShift(page: Any): Promise<void> {
   if (!(await shiftBannerStays(page))) return;
-  if (SHIFT.opened) throw new StepError("เปิดกะไปแล้วในรอบนี้แต่แถบเปิดกะยังอยู่ (deviceId ไม่ตรง?)");
-  await clickEl(page, tid("pos-reg-shift-open-link"));
-  await visibleEl(page, tid("pos-shift-open"), 0, 15_000).catch(() => {
-    throw new StepError("หน้ากะไม่ขึ้นกล่องเปิดกะ (pos-shift-open) — ผู้ใช้นี้มีสิทธิ์ pos.shift.operate หรือไม่?");
-  });
-  await typeInto(page, tid("pos-shift-open-float"), "1000");
-  await page
-    .waitForFunction(() => !(document.querySelector('[data-testid="pos-shift-open-submit"]') as HTMLButtonElement | null)?.disabled, { timeout: 10_000 })
-    .catch(() => undefined);
-  await clickEl(page, tid("pos-shift-open-submit"));
-  await visibleEl(page, tid("pos-shift-current"), 0, 15_000).catch(() => {
-    throw new StepError("เปิดกะไม่สำเร็จ (ไม่เห็น pos-shift-current)");
-  });
-  SHIFT.opened = true;
-  const row = await prisma.posShift.findFirst({
-    where: { tenantId: T.tenantId, unitId, systemId: SYS, openedByUserId: U.userId, status: "OPEN", openedAt: { gte: new Date(RUN_STARTED.getTime() - 60_000) } },
-    orderBy: { openedAt: "desc" },
-    select: { id: true },
-  });
-  SHIFT.id = row?.id ?? "";
-  await page.goto(`${BASE}${pathOf("register")}`, { waitUntil: "networkidle2", timeout: 60_000 });
-  await visibleEl(page, tid("pos-reg-root"), 0, 15_000);
-  if (await shiftBannerStays(page)) throw new StepError("เปิดกะแล้วแต่หน้าขายยังขึ้น \"เปิดกะก่อนเริ่มขาย\"");
+  throw new StepError(SHIFT.opened ? "เปิดกะให้เครื่องนี้แล้วแต่แถบ \"เปิดกะก่อนเริ่มขาย\" ยังอยู่ (deviceId ไม่ตรง?)" : `ไม่ได้เปิดกะ: ${SHIFT.openError ?? "?"}`);
+}
+/** รหัสเครื่องคงที่ของรอบนี้ — ทุกแท็บ (ทั้ง context ของผู้ใช้และของเจ้าของ) ใช้ค่าเดียวกัน = เครื่องเดียวกัน */
+const DEVICE_ID = `posqc-vis-dev-${process.pid}`;
+const DEVICE_KEY = "shark.pos.deviceId";
+async function pinDevice(page: Any): Promise<void> {
+  await page.evaluateOnNewDocument(
+    (k: string, v: string) => {
+      try {
+        window.localStorage.setItem(k, v);
+      } catch {
+        /* ไม่มี storage */
+      }
+    },
+    DEVICE_KEY,
+    DEVICE_ID,
+  );
+}
+/** R3 V4: เจ้าของร้านเปิดกะให้เครื่อง DEVICE_ID ผ่านหน้า /pos/shifts จริง (browser context แยก · session เจ้าของของรอบนี้) — พังไม่โยน (บันทึก openError) */
+async function openShiftAsOwner(browser: Any, ownerCookies: Any[], viewport: { width: number; height: number }): Promise<void> {
+  const ctx = typeof browser.createBrowserContext === "function" ? await browser.createBrowserContext() : await browser.createIncognitoBrowserContext();
+  try {
+    const page = await ctx.newPage();
+    await page.setViewport({ ...viewport, deviceScaleFactor: 1 });
+    await page.setCookie(...ownerCookies);
+    await pinDevice(page);
+    await page.goto(`${BASE}/app/sys/${SYS}/pos/shifts?unit=${encodeURIComponent(unitId)}`, { waitUntil: "networkidle2", timeout: 60_000 });
+    const current = await visibleEl(page, tid("pos-shift-current"), 0, 3_000).then(() => true).catch(() => false);
+    if (!current) {
+      await visibleEl(page, tid("pos-shift-open"), 0, 15_000).catch(() => {
+        throw new StepError("หน้ากะของเจ้าของไม่ขึ้นกล่องเปิดกะ (pos-shift-open)");
+      });
+      await typeInto(page, tid("pos-shift-open-float"), "1000");
+      await page
+        .waitForFunction(() => !(document.querySelector('[data-testid="pos-shift-open-submit"]') as HTMLButtonElement | null)?.disabled, { timeout: 10_000 })
+        .catch(() => undefined);
+      await clickEl(page, tid("pos-shift-open-submit"));
+      await visibleEl(page, tid("pos-shift-current"), 0, 15_000).catch(() => {
+        throw new StepError("เปิดกะไม่สำเร็จ (ไม่เห็น pos-shift-current)");
+      });
+    }
+    const row = await prisma.posShift.findFirst({ where: { tenantId: T.tenantId, unitId, systemId: SYS, deviceId: DEVICE_ID, status: "OPEN" }, orderBy: { openedAt: "desc" }, select: { id: true } });
+    if (!row) throw new StepError("เปิดกะผ่าน UI แล้วแต่ไม่พบแถวกะของเครื่องนี้ใน DB");
+    SHIFT.opened = true;
+    SHIFT.id = row.id;
+  } catch (e) {
+    SHIFT.openError = e instanceof Error ? e.message.slice(0, 200) : String(e);
+  } finally {
+    await ctx.close().catch(() => undefined);
+  }
 }
 /** finally: ปิดกะของรอบนี้แบบนับตรงยอด (closeShift ของบริการ · actor = เจ้าของร้าน QC) — ผลอยู่ใน summary ไม่โยน */
 async function closeRunShift(): Promise<void> {
-  if (!SHIFT.opened) return;
+  if (!SHIFT.opened || SHIFT.close) return; // เรียกซ้ำได้ (signal แล้ว finally)
   try {
     const { closeShift, computeReport } = await import("@/lib/modules/pos/shift");
     const sh = SHIFT.id ? await prisma.posShift.findFirst({ where: { id: SHIFT.id, tenantId: T.tenantId } }) : null;
@@ -609,6 +645,14 @@ try {
   // POS P1.3 ▸ ภาษาอังกฤษ (ภาพ 20B) — next-intl อ่าน locale จากคุกกี้ LOCALE ◂
   if (LOCALE_EN) cookies.push(https ? { name: "LOCALE", value: "en", url: BASE, path: "/", secure: true } : { name: "LOCALE", value: "en", domain: host, path: "/" });
   if (needFixtures) await makeFixtures();
+  // R3 V4: session ของเจ้าของร้าน (เปิดกะให้เครื่องของรอบนี้) — รอบ owner ใช้คุกกี้เดียวกัน · รอบ cashier mint เพิ่ม (ลบใน finally เหมือนกัน)
+  let ownerCookies: Any[] = cookies;
+  if (STATES_ON && pages.includes("register") && userKey !== "owner") {
+    const ownTok = "pos" + Math.random().toString(36).slice(2) + Date.now().toString(36);
+    const ownRow = await prisma.session.create({ data: { userId: T.users.owner.userId, tokenHash: sha256(ownTok), userAgent: UA, idleExpiresAt: ttl, expiresAt: ttl }, select: { id: true } });
+    MINE.push(ownRow.id);
+    ownerCookies = cookies.map((c: Any) => (/shark_session$/.test(c.name) ? { ...c, value: ownTok } : c));
+  }
   // ข้อมูลตายตัวของร้าน QC ที่ขั้นตอนสถานะใช้ (หาจากชื่อ — seed-pos-qc · ไม่ผูกสต็อก ยกเว้นครัวซองต์)
   if (STATES_ON) {
     const rows = await prisma.posProduct.findMany({ where: { tenantId: T.tenantId, systemId: SYS, archivedAt: null }, select: { id: true, name: true } });
@@ -626,11 +670,13 @@ try {
     args: ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu", `--user-data-dir=${PROFILE_DIRS[0]}`],
   }));
   try {
+    if (STATES_ON && jobs.some((j) => j.state)) await openShiftAsOwner(browser, ownerCookies, { width: 1440, height: 900 });
     for (const job of jobs) {
       {
         const p = job.page;
         const v = job.v;
         const page = await browser.newPage();
+        await pinDevice(page); // R3 V4: เครื่องเดียวกับที่เจ้าของเปิดกะให้
         await page.setViewport({ width: v.w, height: v.h, deviceScaleFactor: 2, isMobile: v.mobile, hasTouch: v.name !== "desktop" });
         await page.setCookie(...cookies);
         const consoleErrors: string[] = [];
@@ -721,9 +767,9 @@ try {
   }
   await prisma.$disconnect();
   cleanProfiles();
-  writeFileSync(`${OUT}/summary-${userKey}.json`, JSON.stringify({ wo: WO, user: userKey, tenant: tenantKey, base: BASE, at: new Date().toISOString(), shiftClose: SHIFT.close, shots }, null, 2));
+  writeFileSync(`${OUT}/summary-${userKey}.json`, JSON.stringify({ wo: WO, user: userKey, tenant: tenantKey, base: BASE, at: new Date().toISOString(), deviceId: DEVICE_ID, shiftOpenError: SHIFT.openError, shiftClose: SHIFT.close, shots }, null, 2));
   console.log(`\n🧹 ลบ session ของรอบนี้ ${removed}${stale ? ` (+ซากหมดอายุ ${stale})` : ""}${fixOut} · ลบโปรไฟล์ chromium ${PROFILE_DIRS[0]} · ภาพ ${shots.length} ใบใน ${OUT}`);
 }
 if (fatal) console.error(`❌ ${fatal}`);
-console.log(`JSON_SUMMARY ${JSON.stringify({ wo: WO, user: userKey, tenant: tenantKey, base: BASE, shiftClose: SHIFT.close, shots: shots.map(({ consoleErrors, httpErrors, ...s }) => ({ ...s, consoleErrors: consoleErrors.length, httpErrors: httpErrors.length })), failures, fatal: fatal || null })}`);
+console.log(`JSON_SUMMARY ${JSON.stringify({ wo: WO, user: userKey, tenant: tenantKey, base: BASE, shiftOpenError: SHIFT.openError, shiftClose: SHIFT.close, shots: shots.map(({ consoleErrors, httpErrors, ...s }) => ({ ...s, consoleErrors: consoleErrors.length, httpErrors: httpErrors.length })), failures, fatal: fatal || null })}`);
 process.exit(fatal ? 2 : failures > 0 ? 1 : 0);

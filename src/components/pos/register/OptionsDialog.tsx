@@ -87,9 +87,16 @@ export function OptionsDialog({ product, systemId, unitId, locale, weighedLabel 
         setData({ groups: r.groups, variants: r.variants });
         // isDefault = เลือกไว้ให้ก่อน (เฉพาะที่ยังมีของ · ไม่เกินเพดานของกลุ่ม)
         const init: Record<string, string[]> = {};
-        for (const g of r.groups) init[g.groupId] = g.choices.filter((c) => c.isDefault && !c.unavailable).map((c) => c.choiceId).slice(0, Math.max(g.maxSelect, 1));
+        for (const g of r.groups) {
+          const defs = g.choices.filter((c) => c.isDefault && !c.unavailable).map((c) => c.choiceId).slice(0, Math.max(g.maxSelect, 1));
+          // R3 V2 (มติผู้คุมงาน): กลุ่มบังคับเลือก 1 (min 1 · max 1) ที่ไม่มีค่าปริยาย = เลือกตัวแรกที่ยังมีให้ ⇒ ปุ่มเพิ่มลงตะกร้าพร้อมกดทันที (ภาพ 01)
+          const first = g.minSelect === 1 && g.maxSelect === 1 && !defs.length ? g.choices.find((c) => !c.unavailable) : undefined;
+          init[g.groupId] = first ? [first.choiceId] : defs;
+        }
         setPicked(init);
-        if (r.variants.length === 1) setVariantId(r.variants[0]!.id);
+        // R3 V2 + F3: ตัวแปร = เลือกตัวแรกที่ไม่หมดให้ก่อน · ไม่มีตัวที่ไม่หมด = ไม่เลือกให้ (หมด + BLOCK กดไม่ได้อยู่แล้ว · ALLOW_NEGATIVE ให้ผู้ขายเลือกเอง)
+        const firstOk = r.variants.find((v) => !v.soldOut);
+        if (firstOk) setVariantId(firstOk.id);
       })
       .catch(() => {
         if (alive) setLoadErr("errors.loadFailed");
@@ -97,7 +104,7 @@ export function OptionsDialog({ product, systemId, unitId, locale, weighedLabel 
     return () => {
       alive = false;
     };
-  }, [systemId, unitId, product.id]);
+  }, [systemId, unitId, product.id, allowNegative]);
 
   const toggle = (g: RegisterOptionGroup, choiceId: string) => {
     setHint(null);
@@ -163,23 +170,48 @@ export function OptionsDialog({ product, systemId, unitId, locale, weighedLabel 
   const [pos, setPos] = useState<{ left: number; top: number; maxH: number } | null>(null);
   useLayoutEffect(() => {
     if (!popover || !anchor) return;
+    // R3 F5: จัดตำแหน่งใหม่ทุกครั้งที่ความสูงของกล่องเปลี่ยน (ข้อความเตือน · โหลดเสร็จ · ฯลฯ) ผ่าน ResizeObserver + เมื่อหน้าต่างเปลี่ยนขนาด
+    // R3 V1 (ต้นเหตุ): กรอบการ์ดที่จำไว้ตอนแตะเป็นตำแหน่ง "ก่อน" กริดจัดเรียงใหม่ (เช่น ผลค้นหาที่หน่วง 200ms มาหลังแตะ ⇒ การ์ดย้ายจากคอลัมน์ 3
+    //   ไปคอลัมน์ 1 แต่ป๊อปโอเวอร์ยังยึดที่เดิม ห่างการ์ด ~300px) ⇒ วัดการ์ดตัวจริงสดทุกครั้ง (testid ของการ์ด) · ไม่พบการ์ด = ใช้กรอบที่จำไว้
+    const cardRect = () => {
+      const card = Array.from(document.querySelectorAll<HTMLElement>(`[data-testid="pos-reg-product-${product.id}"]`)).find((e) => e.getClientRects().length > 0);
+      if (!card) return anchor;
+      const r = card.getBoundingClientRect();
+      return { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
+    };
+    let last = "";
     const place = () => {
       const el = boxRef.current;
+      const a = cardRect();
       const vw = window.innerWidth;
       const vh = window.innerHeight;
       const w = Math.min(POPOVER_W, vw - 32);
       const h = el ? el.offsetHeight : 0;
-      let left = anchor.right - 2;
-      if (left + w > vw - 16) left = anchor.left - w + 2;
+      // ชิดขอบขวาการ์ด top เท่าการ์ด (ภาพ 01) · ล้นขวา = พลิกไปซ้ายของการ์ด · ยึดใน viewport ขอบ 16
+      let left = a.right - 2;
+      if (left + w > vw - 16) left = a.left - w + 2;
       left = Math.max(16, Math.min(left, vw - 16 - w));
-      let top = anchor.top - 30;
+      let top = a.top;
       top = Math.max(16, Math.min(top, vh - 16 - h));
+      const key = `${left}|${top}|${vh}`;
+      if (key === last) return;
+      last = key;
       setPos({ left, top, maxH: vh - 32 });
     };
     place();
     window.addEventListener("resize", place);
-    return () => window.removeEventListener("resize", place);
-  }, [popover, anchor, data, loadErr, hint, variantId]);
+    window.addEventListener("scroll", place, true);
+    const ro = typeof ResizeObserver === "function" && boxRef.current ? new ResizeObserver(() => place()) : null;
+    if (ro && boxRef.current) ro.observe(boxRef.current);
+    // การ์ดอาจย้ายที่ (กริดโหลดผลใหม่หลังแตะ) โดยไม่มีเหตุการณ์ให้ฟัง ⇒ ตรวจตำแหน่งการ์ดซ้ำทุก 250ms ระหว่างที่ป๊อปโอเวอร์เปิด (ตำแหน่งเดิม = ไม่ setState)
+    const tick = setInterval(place, 250);
+    return () => {
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+      ro?.disconnect();
+      clearInterval(tick);
+    };
+  }, [popover, anchor, product.id, data, loadErr, hint, variantId, noteOk]);
 
   const header = (
     <div className="flex items-center gap-4">
@@ -273,7 +305,7 @@ export function OptionsDialog({ product, systemId, unitId, locale, weighedLabel 
                     <small className="text-[11.5px] font-normal text-[color:var(--color-danger)]">{t("options.unavailable")}</small>
                   ) : c.priceDeltaSatang !== 0 ? (
                     <small className={`text-[11.5px] ${on ? "text-[color:var(--color-ink-soft)]" : "font-normal text-[color:var(--color-muted)]"}`}>
-                      {`${c.priceDeltaSatang > 0 ? "+" : ""}${moneyText(c.priceDeltaSatang).replace(/^\u0E3F/, "")}`}
+                      {`${c.priceDeltaSatang < 0 ? "\u2212" : "+"}${moneyText(Math.abs(c.priceDeltaSatang)).replace(/^\u0E3F/, "")}`}
                     </small>
                   ) : null}
                 </button>
@@ -337,9 +369,9 @@ export function OptionsDialog({ product, systemId, unitId, locale, weighedLabel 
         )}
         <button
           data-testid="pos-reg-options-confirm"
-          className="btn btn-primary h-11 flex-1 rounded-[11px] text-[14.5px] font-bold aria-disabled:opacity-60"
+          className="btn btn-primary h-11 flex-1 rounded-[11px] text-[14.5px] font-bold disabled:cursor-not-allowed disabled:border disabled:bg-[color:var(--color-surface-2)] disabled:text-[color:var(--color-muted)]"
           type="submit"
-          aria-disabled={!ready}
+          disabled={!ready}
         >
           {weighed && !weighedLabel ? t("weigh.next") : t("options.confirm", { amount: amount === null || weighedLabel ? "" : moneyText(amount) })}
         </button>

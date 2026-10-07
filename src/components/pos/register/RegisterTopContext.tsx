@@ -7,7 +7,8 @@
 //     T: ไม่มีเวลาซิงก์ · ชื่ออย่างเดียว · M: ซ่อนชิปกะและชื่อ (พื้นที่แถบบนไม่พอ — ไม่มีภาพของช่วงนี้)
 //   C (<768 · 05ก): หัวจอในหน้า — ชื่อสาขา 16 หนา ▾ · ชิปกะ 28 · ปุ่มกล้อง 44 (แบบ 36 — กติกา ≥44px) · ☰ เฉพาะในแอป (เว็บมี ☰ ที่แถบบนแล้ว)
 //   ออฟไลน์ (19ง): จุดกลวงขอบหมึก 1.5px + "ออฟไลน์"
-// 🔴 กะ = P1.9 (registerStatus.shift = null เสมอ) ⇒ ชิปเขียน "ยังไม่เปิดกะ" สี muted · ไม่มีกล่องบังคับเปิดกะ (19จ = P1.9)
+// P1.2 U R3 V3: ชิปกะอ่านสถานะเดียวกับ RegisterScreen (status.shift ของเครื่องนี้) — เปิดอยู่ = "กะ #N · เปิด HH:MM · <ชื่อเครื่อง>" หมึก (ภาพ 01/02) ·
+//   ยังไม่เปิด = "ยังไม่เปิดกะ" สี muted · สถานะรีเฟรชตามรอบของ RegisterScreen (ทุก 60 วิ · กลับมาที่แท็บ · หลังขาย)
 // 🔴 ชื่อร้าน/สาขา/ผู้ใช้ = ข้อมูล ไม่แปล · บทบาทแปลฝั่ง client จาก role (มติ Q23 — roleLabel ของเซิร์ฟเวอร์เป็นไทย)
 // 🔴 ปุ่มกล้องบนมือถืออยู่ไฟล์นี้ และไฟล์นี้ถูกอ่านก่อน SearchRow (ลำดับชื่อไฟล์) ⇒ แท็กนี้ต้องมีคลาส ≥44px (S5.9 · G4)
 
@@ -16,7 +17,7 @@ import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { formatThaiTime } from "@/lib/ui/date";
-import type { RegisterRole } from "@/lib/modules/pos/register-shared";
+import type { RegisterRole, RegisterShiftInfo } from "@/lib/modules/pos/register-shared";
 import { RegisterIcon } from "./RegisterIcon";
 
 type Unit = { id: string; name: string };
@@ -31,6 +32,8 @@ type Props = {
   online: boolean;
   lastSyncAt: Date | null;
   user: { name: string; role: RegisterRole } | null;
+  /** กะ OPEN ของเครื่องนี้ (registerStatus.shift) · null = ยังไม่เปิด/ยังไม่รู้ */
+  shift: RegisterShiftInfo | null;
   onCamera: () => void;
 };
 
@@ -118,10 +121,12 @@ export function RegisterTopContext(p: Props) {
   const shiftChip = (extra: string) => (
     <span
       data-testid="pos-reg-status-shift"
-      className={`h-7 shrink-0 items-center gap-[5px] whitespace-nowrap rounded-[8px] border px-[11px] text-[13px] text-[color:var(--color-muted)] ${extra}`}
+      className={`h-7 shrink-0 items-center gap-[5px] whitespace-nowrap rounded-[8px] border px-[11px] text-[13px] ${p.shift ? "text-[color:var(--color-ink-soft)]" : "text-[color:var(--color-muted)]"} ${extra}`}
     >
       <RegisterIcon name="clock" size={12} />
-      {t("status.noShift")}
+      {p.shift
+        ? `${t("status.shift", { no: p.shift.shiftNo, time: formatThaiTime(new Date(p.shift.openedAt)) })}${p.shift.deviceLabel ? ` · ${p.shift.deviceLabel}` : ""}`
+        : t("status.noShift")}
     </span>
   );
 
