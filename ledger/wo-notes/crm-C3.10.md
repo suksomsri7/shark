@@ -50,3 +50,8 @@ Owner of the fix: session/accounting (`scripts/seed-acc-v2-qc.mts` must pin its 
 
 ## Final table
 (pending — filled when the unit finishes)
+
+## Lane work (builder) — resumed 22:05 UTC after container restart (wip/crm-c310)
+Worktree `/root/projects/shark-crm-c310`, QC1 (`.env.qc` host `ep-plain-art`) only, runs via `/tmp/c310-logs/lane/run-suite.sh <log> <script>` (= QC1 host guard + `with-gate-lock.sh pnpm exec tsx …`, env `QC_ENV_FILE=.env.qc CRM_V2_SWITCH=all QC_BASE=http://127.0.0.1:3215 SHARK_AI_MOCK=1`). Server :3215 untouched (health 200). `scripts/crm-expected.json` = QC1 seed answer key copied from the main tree, kept LOCAL only (never committed).
+
+1. **c1.2b S8.2 — stale oracle FIXED.** Oracle now asserts: 0 WARN while ≤ 23 objects · exactly 1 `crm.limits` WARN at object 24 (80 % of 30, flag `crm.limits:<systemId>:objectsWarn:<month>:30` = `limits.ts warnOnce`) · ≥ 1 WARN after 35 · every WARN message Thai · `crm.limits` WARN count stays 1 after 35 (dedupe). `run-suite.sh c1.2b-rerun scripts/qc-crm-c1.2b.mts` · 22:08:34 UTC · **93/93** ✅ (`/tmp/c310-logs/lane/c1.2b-rerun.log`).
