@@ -626,3 +626,7 @@
 - โควตา session 70% → ส่ง R2 + ผู้ตรวจหลัง reset 20:30 UTC (ตั้งปลุก)
 
 ## 2026-10-07T20:35:30Z · โควตา reset (0%) → ส่ง P1.14U R2 (R1–R3 + คำตัดสิน 6 ข้อ) ให้เลน · เปิดผู้ตรวจ Opus อ่าน diff P1.14U คู่ขนาน
+
+## 2026-10-07T20:40:37Z · ผู้ตรวจ P1.14U (79aa3d59): MERGEABLE-AFTER-FIXES → F1–F6 รวมในรอบ R2/R3
+- F1 [HIGH] สแกนรหัสเดิมซ้ำขณะคำขอค้างใช้คีย์เดิม → duplicated → นับขาด · F2 รหัสคล้ายป้ายชั่งไม่มี PLU → VALIDATION · F3 visual เขียนลง count ที่ไม่ได้เปิดเอง · F4 ต้นทุน prefill ส่งเสมอ · F5 สาขา ARCHIVED ไม่ถูกปฏิเสธใน search/history · F6 รีเฟรชประวัติทุกแถว
+- ผ่าน: actions ใช้ session เท่านั้น · refusal data · use server เฉพาะ async · idempotency (ยกเว้น scan) · blind mode · SKIP/ZERO · keys th/en 138 · testids/inventory · visual cleanup · stock-count.ts เพิ่มแค่ stockCountMeta
