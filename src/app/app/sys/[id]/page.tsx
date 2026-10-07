@@ -1,10 +1,15 @@
 import Link from "next/link";
 import { headers } from "next/headers";
+import { getTranslations } from "next-intl/server";
 import { notFound, redirect } from "next/navigation";
 import { requireTenant } from "@/lib/core/context";
+import { canAccessUnit, evaluate } from "@/lib/core/rbac";
 import { prisma } from "@/lib/core/db";
 import { systemDef } from "@/lib/systems";
 import { closeDaySummary } from "@/lib/modules/pos/service";
+// POS P1.17 U ▸ การ์ดยอดวันนี้ (ตัวเลขจาก reports.ts · สิทธิ์การ์ด = pos.sale.create เท่าเดิม) + ลิงก์รายงาน ◂
+import { posDashboardCard, REPORT_PERMISSION, type DashboardCard } from "@/lib/modules/pos/reports";
+import { posUnits } from "@/lib/modules/pos/register";
 import { CouponHub } from "@/lib/modules/coupon/ui";
 import { MeetingHub } from "@/lib/modules/meeting/ui";
 import { KanbanHub } from "@/lib/modules/kanban/ui";
@@ -24,6 +29,7 @@ import { Section } from "@/components/ui/Section";
 import { DataList } from "@/components/ui/DataList";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { MoneyText } from "@/components/ui/MoneyText";
+import { formatBaht } from "@/lib/ui/money";
 import { posTabs } from "@/lib/modules/pos/tabs";
 import { posMembership, posSalesScope, posSaleWhere, posScopeUnitIds, type PosUnitScope } from "@/lib/modules/pos/access";
 import { POS_SALE_STATUS_LABEL } from "@/lib/ui/status-labels";
@@ -129,7 +135,11 @@ export default async function SystemPage({
 }
 
 async function PosContent({ systemId, tenantId, scope }: { systemId: string; tenantId: string; scope: PosUnitScope }) {
-  const [sales, paidAll, today] = await Promise.all([
+  // POS P1.17 U: ผู้ทำรายการจาก session (getAuth แคชต่อคำขอ) — การ์ดตัดสินสิทธิ์/สาขาเองใน reports.ts (CARD_PERMISSION)
+  const auth = await requireTenant();
+  const m = posMembership(auth.active);
+  const actor = { userId: auth.user.id, role: m.role, unitAccess: m.unitAccess, permissions: m.permissions };
+  const [sales, paidAll, cardRes, units, t] = await Promise.all([
     prisma.posSale.findMany({
       where: posSaleWhere(tenantId, systemId, scope),
       orderBy: { createdAt: "desc" },
@@ -140,8 +150,18 @@ async function PosContent({ systemId, tenantId, scope }: { systemId: string; ten
       _sum: { grandTotalSatang: true },
       _count: true,
     }),
-    closeDaySummary({ tenantId, systemId, unitIds: posScopeUnitIds(scope) }),
+    posDashboardCard({ tenantId, systemId }, actor).catch((e: unknown) => {
+      console.error("[sys/page] posDashboardCard", e);
+      return null;
+    }),
+    posUnits(tenantId, systemId),
+    getTranslations("pos.report.card"),
   ]);
+  const card = cardRes && cardRes.ok ? cardRes.card : null;
+  // การ์ดถูกปฏิเสธ/ขัดข้อง = สรุปแบบเดิม (ขอบเขตเดียวกับหน้าปิดวัน) — หน้าไม่ว่างเปล่า
+  const today = card ? null : await closeDaySummary({ tenantId, systemId, unitIds: posScopeUnitIds(scope) });
+  // ลิงก์รายงาน: มีสิทธิ์ pos.report.view อย่างน้อย 1 สาขาของ POS นี้ที่เข้าได้ (ตรงกับด่านของหน้า /pos/reports)
+  const canReport = units.some((u) => canAccessUnit(m, u.id) && evaluate(m, { module: "pos", action: REPORT_PERMISSION, unitId: u.id }));
   const total = paidAll._sum.grandTotalSatang ?? 0;
   return (
     <>
@@ -153,13 +173,26 @@ async function PosContent({ systemId, tenantId, scope }: { systemId: string; ten
         เปิดหน้าขาย
       </Link>
       <Section
-        title="ยอดวันนี้"
-        actions={<Link href={`/app/sys/${systemId}/pos/close`} className="text-sm text-[color:var(--color-accent)]">ปิดวัน →</Link>}
+        title={t("today")}
+        actions={
+          <span className="flex items-center gap-4">
+            {canReport && (
+              <Link href={`/app/sys/${systemId}/pos/reports`} className="text-sm text-[color:var(--color-accent)]" data-testid="pos-dashboard-reports">
+                {t("reports")}
+              </Link>
+            )}
+            <Link href={`/app/sys/${systemId}/pos/close`} className="text-sm text-[color:var(--color-accent)]">ปิดวัน →</Link>
+          </span>
+        }
       >
-        <div className="text-sm text-[color:var(--color-muted)]">
-          <MoneyText satang={today.netSalesSatang} /> · {today.billCount} บิล
-          {today.voidCount > 0 && ` · ยกเลิก ${today.voidCount}`}
-        </div>
+        {card ? (
+          <PosTodayCard card={card} t={t} />
+        ) : today ? (
+          <div className="text-sm text-[color:var(--color-muted)]">
+            <MoneyText satang={today.netSalesSatang} /> · {today.billCount} บิล
+            {today.voidCount > 0 && ` · ยกเลิก ${today.voidCount}`}
+          </div>
+        ) : null}
       </Section>
       <Section title="ยอดขายรวม">
         <div className="text-sm text-[color:var(--color-muted)]">
@@ -191,5 +224,55 @@ async function PosContent({ systemId, tenantId, scope }: { systemId: string; ten
         />
       </Section>
     </>
+  );
+}
+
+// POS P1.17 U ▸ การ์ดยอดวันนี้ (ภาพ 08 แถว KPI แบบย่อ) — ตัวเลขทั้งหมดมาจาก posDashboardCard (R16) จอไม่คำนวณเอง ◂
+// เทียบเมื่อวาน: ขึ้น = สีหมึก · ลง = สี danger · เมื่อวานไม่มียอด = "—" (deltaBp null)
+function PosTodayCard({ card, t }: { card: DashboardCard; t: (key: string, values?: Record<string, string | number>) => string }) {
+  const d = card.deltaBp;
+  const delta = d === null ? "—" : `${d > 0 ? "▲" : d < 0 ? "▼" : ""} ${(Math.abs(d) / 100).toFixed(1)}%`.trim();
+  const stat = (label: string, value: React.ReactNode, id: string) => (
+    <div className="flex flex-col gap-0.5 rounded-lg border p-3" data-testid={id}>
+      <span className="text-xs text-[color:var(--color-muted)]">{label}</span>
+      <span className="text-base font-semibold tabular-nums">{value}</span>
+    </div>
+  );
+  return (
+    <div className="card flex flex-col gap-4" data-testid="pos-dashboard-card">
+      <div className="flex flex-wrap items-end justify-between gap-2">
+        <div className="text-3xl font-semibold" data-testid="pos-dashboard-net">
+          <MoneyText satang={card.netSalesSatang} />
+        </div>
+        <div className="flex flex-col items-end text-xs text-[color:var(--color-muted)]" data-testid="pos-dashboard-delta">
+          <span>
+            <b className={d !== null && d < 0 ? "text-[color:var(--color-danger)]" : "text-[color:var(--color-ink)]"}>{delta}</b> {t("vsYesterday")}
+          </span>
+          <span className="tabular-nums">{t("yesterday", { amount: formatBaht(card.yesterdayNetSalesSatang) })}</span>
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        {stat(t("bills"), card.billCount, "pos-dashboard-bills")}
+        {stat(t("avgBill"), <MoneyText satang={card.avgBillSatang} />, "pos-dashboard-avg")}
+        {stat(t("openShifts"), card.openShiftCount, "pos-dashboard-open-shifts")}
+        {stat(t("voids"), card.voidCount, "pos-dashboard-voids")}
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-2 text-sm" data-testid="pos-dashboard-top">
+        <span className="text-[color:var(--color-muted)]">{t("topProduct")}</span>
+        {card.topProduct ? (
+          <span className="min-w-0 truncate">
+            {card.topProduct.name} · ×{card.topProduct.qty} · <MoneyText satang={card.topProduct.salesSatang} />
+          </span>
+        ) : (
+          <span className="text-[color:var(--color-muted)]">{t("noSales")}</span>
+        )}
+      </div>
+      {card.tipSatang > 0 && (
+        <div className="flex justify-between text-sm" data-testid="pos-dashboard-tip">
+          <span className="text-[color:var(--color-muted)]">{t("tip")}</span>
+          <MoneyText satang={card.tipSatang} />
+        </div>
+      )}
+    </div>
   );
 }
