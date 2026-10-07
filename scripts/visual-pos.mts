@@ -40,6 +40,13 @@
 //   🔴 ไม่เขียนอะไรนอกจากรอบนับของรอบนี้: ไม่กดรับเข้า/บันทึกการปรับ · finally/signal ยกเลิกรอบที่รอบนี้เปิด (cancelStockCount · เหตุผล "visual-pos")
 //      รอบ OPEN ที่มีอยู่ก่อน (ไม่ใช่ของรอบนี้) = ใช้ถ่ายแต่ไม่ยกเลิก (บันทึกใน summary.stockCount) ◂
 //
+// POS P1.9 U ▸ หน้า shifts + `--states` (เฉพาะร้าน coffee · --page shifts หรือ wo p1.9*): ใช้รหัสเครื่องแยก `posqc-vis-shdev-<pid>` (ไม่ชนกะของหน้าขาย)
+//   shifts-noshift (การ์ดยังไม่เปิดกะ + กล่องเปิดกะ 13A เปิดค้าง ไม่กดยืนยัน) · shifts-current (เปิดกะผ่านกล่อง เงินตั้งต้น ฿2,000 แยกแบงก์
+//   1000×1 · 500×1 · 100×4 · 20×5 → ขายเงินสด 1 บิลผ่านหน้าขายของเครื่องเดียวกัน (อเมริกาโน่×2 + ลาเต้ แบบ sale-done) → นำเงินเข้า ฿100 "แลกแบงก์" ผ่านกล่อง)
+//   shifts-close (กรอกแบงก์/เหรียญ = ยอดคาด − ฿15 + เหตุผล · ไม่กดปิด) · shifts-z (กดปิดกะ → แผง Z + รายการกะที่ปิดแล้ว · ขนาดถัดไปเปิด Z จากแถวในรายการ)
+//   🔴 เขียน: กะ 1 กะ + บิลขาย PAID เงินสด 1 ใบ + เงินเข้า 1 รายการ (ของรอบนี้ · ร้าน QC) · finally/signal ปิดกะนี้ถ้ายังเปิด (นับ = ยอดคาด)
+//   แคชเชียร์ QC ไม่มี pos.shift.operate ⇒ ทุกสถานะ = การ์ดปฏิเสธ pos-shift-refusal (หน้า 200) · ไม่เขียนอะไร ◂
+//
 // 🔴 ไม่มีค่าปริยายของ base — ไม่ส่ง `--base`/`QC_BASE` = exit 2 · ต่อไม่ได้ = exit 2 · `:3215` = exit 2
 //    (พอร์ต 3215 เป็นของเซิร์ฟเวอร์ CRM RUN — LANE-RULES ข้อ 4 · ตั้ง POS_VISUAL_ALLOW_3215=1 เมื่อ CRM ปิดแล้วเท่านั้น)
 // 🔴 ชื่อไฟล์จงใจไม่ขึ้นต้น qc- (ต้องมีเซิร์ฟเวอร์ + chromium — ไม่เข้า qc:all)
@@ -96,10 +103,12 @@ const PAGE_EXPECT: Record<PosPage, Record<UserKey, number | "record">> = {
   reports: { owner: 200, cashier: 200 },
   // POS P1.14 U ▸ แคชเชียร์ QC ไม่มี pos.stock.count / สิทธิ์คลัง ⇒ หน้า 200 + การ์ดปฏิเสธ (pos-stock-refusal) ◂
   stock: { owner: 200, cashier: 200 },
+  // POS P1.9 U ▸ แคชเชียร์ QC ไม่มี pos.shift.operate/manage ⇒ หน้า 200 + การ์ดปฏิเสธ (pos-shift-refusal) ◂
+  shifts: { owner: 200, cashier: 200 },
 };
 // POS P1.17 U ▸ wo ขึ้นต้น p1.17: REPORT_QUERY (env) ต่อท้ายหน้า reports เช่น "kind=daily&from=2026-10-01&to=2026-10-07" (ภาพจาก URL เดียวกันได้มุมมองเดียวกัน) ◂
 const REPORT_QUERY = /^p1\.17/i.test(WO) && /^[A-Za-z0-9=&_.-]+$/.test(process.env.REPORT_QUERY ?? "") ? `?${process.env.REPORT_QUERY}` : "";
-const pathOf = (p: PosPage) => `/app/sys/${SYS}/pos/${p}${p === "register" || p === "stock" ? `?unit=${unitId}` : p === "reports" ? REPORT_QUERY : ""}`;
+const pathOf = (p: PosPage) => `/app/sys/${SYS}/pos/${p}${p === "register" || p === "stock" || p === "shifts" ? `?unit=${unitId}` : p === "reports" ? REPORT_QUERY : ""}`;
 const OUT = `${PQC.shotsDir}/${WO}`;
 const fileOf = (p: PosPage, w: number, h: number) => `${OUT}/${p}-${userKey}-${w}x${h}.png`;
 
@@ -107,7 +116,7 @@ const fileOf = (p: PosPage, w: number, h: number) => `${OUT}/${p}-${userKey}-${w
 const STATES_ON = /^p1\.3/i.test(WO) || argv.includes("--states");
 const LOCALE_EN = process.env.LOCALE === "en";
 type Device = (typeof POS_VIEWPORTS)[number]["name"];
-type StateKey = "default" | "cart3" | "cart4-01" | "line-editor" | "bill-discount" | "custom-item" | "paydlg-cash" | "sale-done" | "search-empty" | "stock-warn" | "offline" | "mobile-sheet" | "options-popover" | "weigh" | StockStateKey;
+type StateKey = "default" | "cart3" | "cart4-01" | "line-editor" | "bill-discount" | "custom-item" | "paydlg-cash" | "sale-done" | "search-empty" | "stock-warn" | "offline" | "mobile-sheet" | "options-popover" | "weigh" | StockStateKey | ShiftsStateKey;
 const STATE_PLAN: { key: StateKey; devices: readonly Device[]; note: string }[] = [
   { key: "default", devices: ["desktop", "ipad", "mobile"], note: "เปิดหน้า (ตะกร้าว่าง) — การ์ดเหลือน้อย/หมด/ปิดขายของ fixture อยู่ในกริด" },
   { key: "cart3", devices: ["desktop", "ipad", "mobile"], note: "อเมริกาโน่×2 · ลาเต้ (ลด ฿10) · ครัวซองต์ (สต็อก N → N−1)" },
@@ -138,12 +147,30 @@ const STOCK_STATE_PLAN: { key: StockStateKey; tab: string | null; devices: reado
   { key: "stock-receive", tab: "receive", devices: ["desktop", "ipad", "mobile"], note: "การ์ดรับของเข้า + คิว 2 แถว (ไม่กดรับเข้าคลัง)" },
   { key: "stock-adjust", tab: "adjust", devices: ["desktop", "ipad", "mobile"], note: "การ์ดปรับสต็อก: เลือกสินค้า + −2 (ไม่กดบันทึก)" },
 ];
+// POS P1.9 U ▸ สถานะของหน้ากะ (ลำดับสำคัญ: noshift ก่อนเปิดกะ · current เปิดกะ+ขาย+เงินเข้า ครั้งแรก · close กรอกนับ · z ปิดกะครั้งแรก) ◂
+type ShiftsStateKey = "shifts-noshift" | "shifts-current" | "shifts-close" | "shifts-z";
+const SHIFTS_STATE_PLAN: { key: ShiftsStateKey; devices: readonly Device[]; note: string }[] = [
+  { key: "shifts-noshift", devices: ["desktop", "ipad", "mobile"], note: "ยังไม่เปิดกะบนเครื่องนี้ + กล่องเปิดกะ 13A (ไม่กดยืนยัน)" },
+  { key: "shifts-current", devices: ["desktop", "ipad", "mobile"], note: "กะเปิด (฿2,000 แยกแบงก์) + ขายเงินสด 1 บิล + นำเงินเข้า ฿100 แลกแบงก์ → X" },
+  { key: "shifts-close", devices: ["desktop", "ipad", "mobile"], note: "การ์ดปิดกะ: แบงก์/เหรียญ = ยอดคาด − ฿15 + เหตุผล (ไม่กดปิด)" },
+  { key: "shifts-z", devices: ["desktop", "ipad", "mobile"], note: "ปิดกะ → แผง Z + กะที่ปิดแล้ว (ขนาดถัดไป = เปิด Z จากแถวในรายการ)" },
+];
+/** รหัสเครื่องของสถานะหน้ากะ — แยกจาก DEVICE_ID ของหน้าขาย (กะของหน้าขายเปิดค้างทั้งรอบ) */
+const SHIFTS_DEVICE_ID = `posqc-vis-shdev-${process.pid}`;
 type Job = { page: PosPage; v: (typeof POS_VIEWPORTS)[number]; state: StateKey | null; file: string; path?: string };
 const viewports = LOCALE_EN ? POS_VIEWPORTS.filter((v) => v.name === "desktop") : [...POS_VIEWPORTS];
 // สถานะหน้าสต็อกเฉพาะ --page stock หรือ wo p1.14* (รอบ p1.3/p1.2 --states ทุกหน้าเดิมไม่เปลี่ยน · ไม่เปิดรอบนับเพิ่ม)
 const stockStatesOn = STATES_ON && tenantKey === "coffee" && (onlyPage === "stock" || /^p1\.14/i.test(WO));
+// สถานะหน้ากะเฉพาะ --page shifts หรือ wo p1.9* (รอบ --states ทุกหน้าเดิมไม่เปิดกะ/ไม่ขายเพิ่ม)
+const shiftsStatesOn = STATES_ON && tenantKey === "coffee" && (onlyPage === "shifts" || /^p1\.9/i.test(WO));
 const jobs: Job[] = pages.flatMap((p: PosPage): Job[] =>
-  stockStatesOn && p === "stock"
+  shiftsStatesOn && p === "shifts"
+    ? SHIFTS_STATE_PLAN.flatMap((st): Job[] =>
+        viewports
+          .filter((v) => st.devices.includes(v.name))
+          .map((v): Job => ({ page: p, v, state: st.key, file: `${OUT}/${p}-${st.key.replace(/^shifts-/, "")}-${userKey}-${v.w}x${v.h}${LOCALE_EN ? "-en" : ""}.png` })),
+      )
+    : stockStatesOn && p === "stock"
     ? STOCK_STATE_PLAN.flatMap((st): Job[] =>
         viewports
           .filter((v) => st.devices.includes(v.name))
@@ -176,6 +203,11 @@ if (DRY) {
       console.log(`สถานะหน้าสต็อก P1.14 U${userKey === "cashier" ? " (แคชเชียร์ = การ์ดปฏิเสธทุกสถานะ)" : ""}:`);
       for (const st of STOCK_STATE_PLAN) console.log(`  · ${st.key.padEnd(19)} ${st.devices.join("/").padEnd(20)} ${st.note}`);
       if (userKey === "owner") console.log("  เขียน: รอบตรวจนับ 1 รอบ (OPEN → ยกเลิกใน finally · เหตุผล visual-pos) + 2 รายการนับในรอบนั้น · ไม่รับเข้า/ไม่ปรับสต็อก");
+    }
+    if (shiftsStatesOn && pages.includes("shifts")) {
+      console.log(`สถานะหน้ากะ P1.9 U${userKey === "cashier" ? " (แคชเชียร์ = การ์ดปฏิเสธทุกสถานะ)" : ""} · เครื่อง ${SHIFTS_DEVICE_ID}:`);
+      for (const st of SHIFTS_STATE_PLAN) console.log(`  · ${st.key.padEnd(19)} ${st.devices.join("/").padEnd(20)} ${st.note}`);
+      if (userKey === "owner") console.log("  เขียน: กะ 1 กะ (เปิดผ่าน UI → ปิดผ่าน UI ใน shifts-z · ค้าง = ปิดใน finally นับ = ยอดคาด) + บิลขายเงินสด 1 ใบ + นำเงินเข้า ฿100 1 รายการ");
     }
     if (needFixtures) console.log(`  fixture: สินค้าชั่วคราว 11 ตัว (เหลือ 2 · หมดสต็อก · ปิดขาย + 4 ตัวของภาพ 01 + ลาเต้มีตัวแปร 1+2 + สินค้าชั่ง 1) + กลุ่มตัวเลือก 4 กลุ่ม ที่สาขา ${unitKey} — ลบใน finally`);
   }
@@ -333,6 +365,13 @@ for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
       } catch {
         /* ปิดไม่ได้ก็ลบโปรไฟล์ต่อ */
       }
+      // POS P1.9 U: ปิดกะของสถานะหน้ากะ (เหมือน finally)
+      try {
+        await closeShiftsStateShift();
+        if (SHIFTS.close) console.error(`${SHIFTS.close.ok ? "🧹" : "⚠️"} ${SHIFTS.close.detail}`);
+      } catch (e) {
+        console.error(`❌ ปิดกะของหน้ากะไม่สำเร็จ: ${e instanceof Error ? e.message : e}`);
+      }
       // POS P1.14 U: ยกเลิกรอบนับของรอบนี้ (เหมือน finally)
       try {
         await cancelRunCount();
@@ -475,7 +514,7 @@ async function ensureShift(page: Any): Promise<void> {
 /** รหัสเครื่องคงที่ของรอบนี้ — ทุกแท็บ (ทั้ง context ของผู้ใช้และของเจ้าของ) ใช้ค่าเดียวกัน = เครื่องเดียวกัน */
 const DEVICE_ID = `posqc-vis-dev-${process.pid}`;
 const DEVICE_KEY = "shark.pos.deviceId";
-async function pinDevice(page: Any): Promise<void> {
+async function pinDevice(page: Any, device: string = DEVICE_ID): Promise<void> {
   await page.evaluateOnNewDocument(
     (k: string, v: string) => {
       try {
@@ -485,7 +524,7 @@ async function pinDevice(page: Any): Promise<void> {
       }
     },
     DEVICE_KEY,
-    DEVICE_ID,
+    device,
   );
 }
 /** R3 V4: เจ้าของร้านเปิดกะให้เครื่อง DEVICE_ID ผ่านหน้า /pos/shifts จริง (browser context แยก · session เจ้าของของรอบนี้) — พังไม่โยน (บันทึก openError) */
@@ -500,8 +539,11 @@ async function openShiftAsOwner(browser: Any, ownerCookies: Any[], viewport: { w
     const current = await visibleEl(page, tid("pos-shift-current"), 0, 3_000).then(() => true).catch(() => false);
     if (!current) {
       await visibleEl(page, tid("pos-shift-open"), 0, 15_000).catch(() => {
-        throw new StepError("หน้ากะของเจ้าของไม่ขึ้นกล่องเปิดกะ (pos-shift-open)");
+        throw new StepError("หน้ากะของเจ้าของไม่ขึ้นการ์ดเปิดกะ (pos-shift-open)");
       });
+      // P1.9 U: การ์ด "ยังไม่เปิดกะ" → ปุ่มเปิดกะ → กล่องเปิดกะ (ภาพ 13A) · ช่อง "รวม" = pos-shift-open-float
+      await clickEl(page, tid("pos-shift-open-start"));
+      await visibleEl(page, tid("pos-shift-open-dialog"), 0, 10_000);
       await typeInto(page, tid("pos-shift-open-float"), "1000");
       await page
         .waitForFunction(() => !(document.querySelector('[data-testid="pos-shift-open-submit"]') as HTMLButtonElement | null)?.disabled, { timeout: 10_000 })
@@ -524,39 +566,35 @@ async function openShiftAsOwner(browser: Any, ownerCookies: Any[], viewport: { w
 /** finally: ปิดกะของรอบนี้แบบนับตรงยอด (closeShift ของบริการ · actor = เจ้าของร้าน QC) — ผลอยู่ใน summary ไม่โยน */
 async function closeRunShift(): Promise<void> {
   if (!SHIFT.opened || SHIFT.close) return; // เรียกซ้ำได้ (signal แล้ว finally)
+  SHIFT.close = await closeShiftAsOwner(SHIFT.id, "close");
+}
+/** ปิดกะตาม id แบบนับตรงยอด (closeShift ของบริการ · actor = เจ้าของร้าน QC) — คืนผล ไม่โยน (POS P1.9 U: ใช้ร่วมกับกะของสถานะหน้ากะ) */
+async function closeShiftAsOwner(shiftId: string, keyTag: string): Promise<{ ok: boolean; detail: string }> {
   try {
     const { closeShift, computeReport } = await import("@/lib/modules/pos/shift");
-    const sh = SHIFT.id ? await prisma.posShift.findFirst({ where: { id: SHIFT.id, tenantId: T.tenantId } }) : null;
-    if (!sh) {
-      SHIFT.close = { ok: false, detail: "หาแถวกะของรอบนี้ไม่เจอ (เปิดผ่าน UI แล้วแต่ไม่พบใน DB)" };
-      return;
-    }
-    if (sh.status !== "OPEN") {
-      SHIFT.close = { ok: true, detail: `กะ ${sh.id} สถานะ ${sh.status} อยู่แล้ว` };
-      return;
-    }
+    const sh = shiftId ? await prisma.posShift.findFirst({ where: { id: shiftId, tenantId: T.tenantId } }) : null;
+    if (!sh) return { ok: false, detail: "หาแถวกะของรอบนี้ไม่เจอ (เปิดผ่าน UI แล้วแต่ไม่พบใน DB)" };
+    if (sh.status !== "OPEN") return { ok: true, detail: `กะ ${sh.id} สถานะ ${sh.status} อยู่แล้ว` };
     const expected = (await computeReport(prisma, sh)).expectedCashSatang;
     const own = T.users.owner;
     const mb = await prisma.membership.findUnique({ where: { id: own.membershipId }, select: { role: true, unitAccess: true, permissions: true } });
-    if (expected === null || !mb) {
-      SHIFT.close = { ok: false, detail: `คำนวณยอดคาดไม่ได้ (${expected}) หรือไม่พบ membership เจ้าของร้าน` };
-      return;
-    }
+    if (expected === null || !mb) return { ok: false, detail: `คำนวณยอดคาดไม่ได้ (${expected}) หรือไม่พบ membership เจ้าของร้าน` };
     const actor = {
       userId: own.userId,
       role: mb.role as "OWNER" | "MANAGER" | "STAFF",
       unitAccess: Array.isArray(mb.unitAccess) ? (mb.unitAccess as unknown[]).filter((u): u is string => typeof u === "string") : [],
       permissions: mb.permissions && typeof mb.permissions === "object" ? (mb.permissions as Record<string, unknown>) : {},
     };
-    const r = await closeShift({ tenantId: T.tenantId, systemId: SYS, unitId }, actor, { shiftId: sh.id, countedCashSatang: expected, idempotencyKey: `${FIX.prefix}${process.pid}-close` });
-    SHIFT.close = r.ok ? { ok: true, detail: `ปิดกะ ${sh.id} (ยอดคาด = ยอดนับ ${expected})` } : { ok: false, detail: `ปิดกะไม่สำเร็จ: ${r.code}` };
+    const r = await closeShift({ tenantId: T.tenantId, systemId: SYS, unitId }, actor, { shiftId: sh.id, countedCashSatang: expected, idempotencyKey: `${FIX.prefix}${process.pid}-${keyTag}` });
+    return r.ok ? { ok: true, detail: `ปิดกะ ${sh.id} (ยอดคาด = ยอดนับ ${expected})` } : { ok: false, detail: `ปิดกะไม่สำเร็จ: ${r.code}` };
   } catch (e) {
-    SHIFT.close = { ok: false, detail: `ปิดกะล้ม: ${e instanceof Error ? e.message.slice(0, 160) : String(e)}` };
+    return { ok: false, detail: `ปิดกะล้ม: ${e instanceof Error ? e.message.slice(0, 160) : String(e)}` };
   }
 }
 
 async function runState(page: Any, state: StateKey, device: Device): Promise<void> {
   if (state.startsWith("stock-")) return runStockState(page, state as StockStateKey); // POS P1.14 U
+  if (state.startsWith("shifts-")) return runShiftsState(page, state as ShiftsStateKey); // POS P1.9 U
   await visibleEl(page, tid("pos-reg-root"), 0, 15_000).catch(() => {
     throw new StepError("หน้าขายใหม่ไม่ขึ้น (pos-reg-root) — ธง settings.pos.registerV2 ของร้าน QC เปิดหรือยัง? (seed-pos-qc)");
   });
@@ -806,6 +844,147 @@ async function cancelRunCount(): Promise<void> {
 }
 // ◂
 
+// ═══════════════════ POS P1.9 U ▸ ขั้นตอนของหน้ากะ (เครื่อง SHIFTS_DEVICE_ID · เจ้าของร้าน) ═══════════════════
+const SHIFTS = { id: "", opened: false, seeded: false, zNumber: 0, close: null as null | { ok: boolean; detail: string } };
+let USER_COOKIES: Any[] = [];
+const FLOAT_2000: [number, string][] = [[100000, "1"], [50000, "1"], [10000, "4"], [2000, "5"]];
+const COUNT_DENOMS = [100000, 50000, 10000, 5000, 2000, 1000];
+async function shiftsRow(): Promise<{ id: string; status: string; zNumber: number | null } | null> {
+  return prisma.posShift.findFirst({ where: { tenantId: T.tenantId, unitId, systemId: SYS, deviceId: SHIFTS_DEVICE_ID }, orderBy: { openedAt: "desc" }, select: { id: true, status: true, zNumber: true } });
+}
+/** กะของเครื่องนี้เปิดอยู่ (เปิดผ่านกล่อง 13A ถ้ายังไม่มี · ฿2,000 แยกแบงก์) */
+async function ensureShiftsOpen(page: Any): Promise<void> {
+  const cur = await visibleEl(page, tid("pos-shift-current"), 0, 4_000).then(() => true).catch(() => false);
+  if (!cur) {
+    if (SHIFTS.opened) throw new StepError("กะของรอบนี้ถูกปิดไปแล้ว — ลำดับสถานะผิด (current/close ต้องมาก่อน z)");
+    await clickEl(page, tid("pos-shift-open-start"));
+    await visibleEl(page, tid("pos-shift-open-dialog"), 0, 10_000);
+    for (const [d, n] of FLOAT_2000) await typeInto(page, tid(`pos-shift-open-denom-${d}`), n);
+    const total = await page.$eval(tid("pos-shift-open-float"), (e: Element) => (e as HTMLInputElement).value).catch(() => "");
+    if (total !== "2000") throw new StepError(`ยอดรวมเงินตั้งต้นในกล่องไม่ใช่ 2000 (ได้ "${total}")`);
+    await clickEl(page, tid("pos-shift-open-submit"));
+    await visibleEl(page, tid("pos-shift-current"), 0, 15_000).catch(() => {
+      throw new StepError("เปิดกะผ่านกล่องไม่สำเร็จ (ไม่เห็น pos-shift-current)");
+    });
+  }
+  const row = await shiftsRow();
+  if (!row || row.status !== "OPEN") throw new StepError("ไม่พบกะ OPEN ของเครื่องสถานะหน้ากะใน DB");
+  SHIFTS.id = row.id;
+  SHIFTS.opened = true;
+}
+/** ขายเงินสด 1 บิลผ่านหน้าขายของเครื่องเดียวกัน (แท็บแยก 1440 · ขั้นตอนเดียวกับ sale-done) */
+async function shiftsSale(page: Any): Promise<void> {
+  if (!QC_IDS.amer || !QC_IDS.latte) throw new StepError("ไม่พบสินค้าตายตัวของร้าน QC (อเมริกาโน่เย็น/ลาเต้ร้อน)");
+  const reg = await page.browser().newPage();
+  try {
+    await pinDevice(reg, SHIFTS_DEVICE_ID);
+    await reg.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1 });
+    await reg.setCookie(...USER_COOKIES);
+    await reg.goto(`${BASE}${pathOf("register")}`, { waitUntil: "networkidle2", timeout: 60_000 });
+    await visibleEl(reg, tid("pos-reg-root"), 0, 15_000).catch(() => {
+      throw new StepError("หน้าขายใหม่ไม่ขึ้น (pos-reg-root) ระหว่างขายบิลของกะ");
+    });
+    if (await shiftBannerStays(reg)) throw new StepError("หน้าขายของเครื่องสถานะหน้ากะยังขึ้นแถบเปิดกะ (deviceId ไม่ตรง?)");
+    for (const id of [QC_IDS.amer, QC_IDS.amer, QC_IDS.latte]) await clickEl(reg, tid(`pos-reg-product-${id}`));
+    await expectLines(reg, 2);
+    await waitPayReady(reg);
+    await clickPay(reg, "desktop");
+    await clickEl(reg, tid("pos-reg-paydlg-quick-exact"));
+    await clickEl(reg, tid("pos-reg-paydlg-confirm"));
+    await visibleEl(reg, tid("pos-reg-done"), 0, 20_000);
+  } finally {
+    await reg.close().catch(() => undefined);
+  }
+}
+/** ครั้งแรก: ขาย 1 บิล + นำเงินเข้า ฿100 "แลกแบงก์" ผ่านกล่อง · ครั้งถัดไป: ไม่เขียนเพิ่ม */
+async function seedShiftOnce(page: Any): Promise<void> {
+  if (SHIFTS.seeded) return;
+  await shiftsSale(page);
+  await page.reload({ waitUntil: "networkidle2", timeout: 60_000 });
+  await visibleEl(page, tid("pos-shift-current"), 0, 15_000);
+  await clickEl(page, tid("pos-shift-move-open"));
+  await visibleEl(page, tid("pos-shift-move-dialog"), 0, 10_000);
+  await clickEl(page, tid("pos-shift-cash-in"));
+  await typeInto(page, tid("pos-shift-move-amount"), "100");
+  await typeInto(page, tid("pos-shift-move-reason"), "แลกแบงก์");
+  await clickEl(page, tid("pos-shift-move-submit"));
+  await visibleEl(page, tid("pos-shift-moves"), 0, 15_000).catch(() => {
+    throw new StepError("นำเงินเข้า ฿100 แล้วไม่เห็นรายการเงินเข้า/ออก (pos-shift-moves)");
+  });
+  SHIFTS.seeded = true;
+}
+/** กรอกการ์ดปิดกะ = ยอดคาด − ฿15 (แบงก์มากไปน้อย · เศษเป็นเหรียญ) + เหตุผล — ไม่กดปิด */
+async function fillCloseCard(page: Any): Promise<void> {
+  const { computeReport } = await import("@/lib/modules/pos/shift");
+  const sh = await prisma.posShift.findFirst({ where: { id: SHIFTS.id, tenantId: T.tenantId } });
+  if (!sh || sh.status !== "OPEN") throw new StepError("กะของสถานะหน้ากะไม่ได้เปิดอยู่");
+  const expected = (await computeReport(prisma, sh)).expectedCashSatang;
+  if (expected === null || expected < 1500) throw new StepError(`ยอดคาดใช้ไม่ได้ (${expected})`);
+  let rest = expected - 1500;
+  await visibleEl(page, tid("pos-shift-close"), 0, 10_000);
+  for (const d of COUNT_DENOMS) {
+    const n = Math.floor(rest / d);
+    rest -= n * d;
+    if (n > 0) await typeInto(page, tid(`pos-shift-close-denom-${d}`), String(n));
+  }
+  if (rest > 0) await typeInto(page, tid("pos-shift-close-coins"), (rest / 100).toFixed(rest % 100 ? 2 : 0));
+  await typeInto(page, tid("pos-shift-close-note"), "ทอนเกินให้ลูกค้า 1 บิล");
+  await sleep(300);
+}
+async function runShiftsState(page: Any, state: ShiftsStateKey): Promise<void> {
+  if (userKey !== "owner") {
+    await visibleEl(page, tid("pos-shift-refusal"), 0, 15_000).catch(() => {
+      throw new StepError("แคชเชียร์ไม่เห็นการ์ดปฏิเสธ pos-shift-refusal");
+    });
+    return;
+  }
+  await visibleEl(page, `${tid("pos-shift-open")},${tid("pos-shift-current")}`, 0, 15_000).catch(() => {
+    throw new StepError("หน้ากะไม่ขึ้น (pos-shift-open / pos-shift-current)");
+  });
+  switch (state) {
+    case "shifts-noshift":
+      if (SHIFTS.opened) throw new StepError("เครื่องสถานะหน้ากะมีกะเปิดแล้ว — noshift ต้องมาก่อน");
+      await clickEl(page, tid("pos-shift-open-start"));
+      await visibleEl(page, tid("pos-shift-open-dialog"), 0, 10_000);
+      return;
+    case "shifts-current":
+      await ensureShiftsOpen(page);
+      await seedShiftOnce(page);
+      return;
+    case "shifts-close":
+      await ensureShiftsOpen(page);
+      await seedShiftOnce(page);
+      await fillCloseCard(page);
+      return;
+    case "shifts-z": {
+      const row = SHIFTS.id ? await prisma.posShift.findFirst({ where: { id: SHIFTS.id, tenantId: T.tenantId }, select: { status: true, zNumber: true } }) : null;
+      if (!row || row.status === "OPEN") {
+        await ensureShiftsOpen(page);
+        await seedShiftOnce(page);
+        await fillCloseCard(page);
+        await clickEl(page, tid("pos-shift-close-submit"));
+        await visibleEl(page, tid("pos-shift-z"), 0, 20_000).catch(() => {
+          throw new StepError("กดปิดกะแล้วไม่เห็นแผง Z (pos-shift-z)");
+        });
+        const after = await prisma.posShift.findFirst({ where: { id: SHIFTS.id, tenantId: T.tenantId }, select: { status: true, zNumber: true } });
+        SHIFTS.zNumber = after?.zNumber ?? 0;
+        SHIFTS.close = { ok: after?.status === "CLOSED", detail: `ปิดกะ ${SHIFTS.id} ผ่าน UI (สถานะ ${after?.status ?? "?"} · Z#${SHIFTS.zNumber})` };
+        return;
+      }
+      SHIFTS.zNumber = SHIFTS.zNumber || (row.zNumber ?? 0);
+      await clickEl(page, tid(`pos-shift-closed-${SHIFTS.zNumber}`));
+      await visibleEl(page, tid("pos-shift-z"), 0, 15_000);
+      return;
+    }
+  }
+}
+/** finally/signal: ปิดกะของสถานะหน้ากะถ้ายังเปิด (นับ = ยอดคาด · ผลใน summary ไม่โยน) */
+async function closeShiftsStateShift(): Promise<void> {
+  if (!SHIFTS.opened || (SHIFTS.close && SHIFTS.close.ok)) return;
+  SHIFTS.close = await closeShiftAsOwner(SHIFTS.id, "shifts-close");
+}
+// ◂
+
 type Shot = { page: string; state: string | null; stepError: string | null; viewport: string; file: string; status: number; expect: number | "record"; http5xx: number; finalUrl: string; redirectedToLogin: boolean; overflow: boolean; overflowEl: string | null; consoleErrors: string[]; httpErrors: string[]; ok: boolean };
 const shots: Shot[] = [];
 let failures = 0;
@@ -828,6 +1007,7 @@ try {
     : [{ name: "shark_session", value: token, domain: host, path: "/" }, { name: "shark_tenant", value: T.tenantId, domain: host, path: "/" }];
   // POS P1.3 ▸ ภาษาอังกฤษ (ภาพ 20B) — next-intl อ่าน locale จากคุกกี้ LOCALE ◂
   if (LOCALE_EN) cookies.push(https ? { name: "LOCALE", value: "en", url: BASE, path: "/", secure: true } : { name: "LOCALE", value: "en", domain: host, path: "/" });
+  USER_COOKIES = cookies; // POS P1.9 U: แท็บขายของสถานะหน้ากะ
   if (needFixtures) await makeFixtures();
   // R3 V4: session ของเจ้าของร้าน (เปิดกะให้เครื่องของรอบนี้) — รอบ owner ใช้คุกกี้เดียวกัน · รอบ cashier mint เพิ่ม (ลบใน finally เหมือนกัน)
   let ownerCookies: Any[] = cookies;
@@ -860,7 +1040,7 @@ try {
         const p = job.page;
         const v = job.v;
         const page = await browser.newPage();
-        await pinDevice(page); // R3 V4: เครื่องเดียวกับที่เจ้าของเปิดกะให้
+        await pinDevice(page, p === "shifts" && job.state ? SHIFTS_DEVICE_ID : DEVICE_ID); // R3 V4: เครื่องเดียวกับที่เจ้าของเปิดกะให้ · P1.9 U: สถานะหน้ากะใช้เครื่องแยก
         await page.setViewport({ width: v.w, height: v.h, deviceScaleFactor: 2, isMobile: v.mobile, hasTouch: v.name !== "desktop" });
         await page.setCookie(...cookies);
         const consoleErrors: string[] = [];
@@ -940,6 +1120,9 @@ try {
 } finally {
   await closeRunShift();
   if (SHIFT.close && !SHIFT.close.ok) console.error(`⚠️ ${SHIFT.close.detail}`);
+  await closeShiftsStateShift(); // POS P1.9 U
+  if (SHIFTS.close) console.error(`${SHIFTS.close.ok ? "🧹" : "⚠️"} ${SHIFTS.close.detail}`);
+  if (SHIFTS.opened && SHIFTS.close && !SHIFTS.close.ok) failures++;
   await cancelRunCount(); // POS P1.14 U
   if (STOCK.cancel) console.error(`${STOCK.cancel.ok ? "🧹" : "⚠️"} ${STOCK.cancel.detail}`);
   if (STOCK.cancel && !STOCK.cancel.ok) failures++;
@@ -954,9 +1137,9 @@ try {
   }
   await prisma.$disconnect();
   cleanProfiles();
-  writeFileSync(`${OUT}/summary-${userKey}.json`, JSON.stringify({ wo: WO, user: userKey, tenant: tenantKey, base: BASE, at: new Date().toISOString(), deviceId: DEVICE_ID, shiftOpenError: SHIFT.openError, shiftClose: SHIFT.close, stockCount: STOCK, shots }, null, 2));
+  writeFileSync(`${OUT}/summary-${userKey}.json`, JSON.stringify({ wo: WO, user: userKey, tenant: tenantKey, base: BASE, at: new Date().toISOString(), deviceId: DEVICE_ID, shiftOpenError: SHIFT.openError, shiftClose: SHIFT.close, stockCount: STOCK, shiftsState: SHIFTS, shots }, null, 2));
   console.log(`\n🧹 ลบ session ของรอบนี้ ${removed}${stale ? ` (+ซากหมดอายุ ${stale})` : ""}${fixOut} · ลบโปรไฟล์ chromium ${PROFILE_DIRS[0]} · ภาพ ${shots.length} ใบใน ${OUT}`);
 }
 if (fatal) console.error(`❌ ${fatal}`);
-console.log(`JSON_SUMMARY ${JSON.stringify({ wo: WO, user: userKey, tenant: tenantKey, base: BASE, shiftOpenError: SHIFT.openError, shiftClose: SHIFT.close, stockCount: STOCK, shots: shots.map(({ consoleErrors, httpErrors, ...s }) => ({ ...s, consoleErrors: consoleErrors.length, httpErrors: httpErrors.length })), failures, fatal: fatal || null })}`);
+console.log(`JSON_SUMMARY ${JSON.stringify({ wo: WO, user: userKey, tenant: tenantKey, base: BASE, shiftOpenError: SHIFT.openError, shiftClose: SHIFT.close, stockCount: STOCK, shiftsState: SHIFTS, shots: shots.map(({ consoleErrors, httpErrors, ...s }) => ({ ...s, consoleErrors: consoleErrors.length, httpErrors: httpErrors.length })), failures, fatal: fatal || null })}`);
 process.exit(fatal ? 2 : failures > 0 ? 1 : 0);
