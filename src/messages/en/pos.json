@@ -368,8 +368,7 @@
       "tip": "Tips",
       "reports": "Reports →",
       "noSales": "No sales yet today",
-      "yesterday": "Yesterday {amount}",
-      "fallback": "Today's summary (short)"
+      "yesterday": "Yesterday {amount}"
     },
     "desc": "Sales, margin, staff and tax reports",
     "unit": "Branch",

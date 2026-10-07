@@ -471,7 +471,10 @@ export function ReportsClient({ systemId, units, initial, today, maxDays }: Prop
     }
   };
 
-  const set = (patch: Partial<View>) => setView((v) => ({ ...v, ...patch }));
+  const set = (patch: Partial<View>) => {
+    setCsvErrorCode(null); // ข้อความ CSV เป็นของมุมมองเดิม
+    setView((v) => ({ ...v, ...patch }));
+  };
   const shownError = rangeError ? t(rangeError) : errorCode ? t(refusalKey(errorCode)) : null;
 
   return (
