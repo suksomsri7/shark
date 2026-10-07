@@ -43,3 +43,16 @@ Brief `ledger/pos-briefs/pos-brief-P1.17U.md`. Server = P1.17 S (accepted 12813b
 | `qc-pos-p1.17` unforced | 35/35 exit 0 |
 | `qc-hf-pos-page-authz` unforced | 56/56 exit 0 |
 | `qc-pos-p1.9` unforced | 53/53 exit 0 |
+| `qc-pos-p1.3` unforced | 128/128 exit 0 |
+| forced (`bash scripts/iso.sh env QC_FORCE=1 bash scripts/qc4.sh bash scripts/with-gate-lock.sh pnpm exec tsx …`) `qc-pos-p1.17` | 35/35 exit 0 (Z1/Z2 QC4 restored) |
+| forced `qc-hf-pos-page-authz` | 56/56 exit 0 |
+| forced `qc-pos-p1.9` | 53/53 exit 0 |
+| forced `qc-pos-p1.3` | 128/128 exit 0 |
+
+Residue: every suite printed its own cleanup ("ลบแล้ว …"); p1.17 Z1/Z2 green; no `.qc-shots`, no untracked files. `git diff --name-only origin/session/pos...HEAD` = 12 files, none under `src/components/pos/register/**`, `src/lib/modules/pos/register*.ts`, `reports.ts`, `report-actions.ts`, `prisma/`.
+
+## Open questions (CONTROLLER)
+1. `scripts/qc-pos-catalog.mts` named in the brief does not exist. Tab parity is checked by `qc-nav-functions.mts` S5 (static, run: same single pre-existing red `/pos/shifts` missing from `childrenFor("POS")` / `posTabs` — not added here, out of scope) and `qc-hr-roster.mts` NM-2 (DB suite, not run). Add "กะ" to the tabs in a later card?
+2. The new register's own tab strip (`pos-reg-tab-*`, inventory note) still shows "รายงาน" as a coming-soon span "until P1.17". Wiring it to `/pos/reports` is a register-file change (P1.6U lane / controller).
+3. `src/components/module-tabs.tsx` got an optional `data-testid` prop (shared component, additive) — needed for F15.3a in a new POS file.
+4. Report page unit select lists POS-linked units with `pos.report.view`; "all units" = server scope (all tenant units the actor may read, incl. archived/unlinked, R13). Same as the brief, noted in case the controller wants the select to say so.
