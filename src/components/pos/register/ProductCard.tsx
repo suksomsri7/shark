@@ -5,6 +5,7 @@
 //   T: มุม 15 padding 11 · รูป 84 mb 6 · ชื่อ 15 · ราคา 15 mt 2 · C: มุม 18 padding 12 สูงขั้นต่ำ 120 · รูป 80
 //   ป้ายขวา 12.5 muted ("สต็อก N" / "บริการ") · ใกล้หมด "เหลือ N" ink-soft หนา · หมด = จาง 45% + " · หมด" สีอันตรายต่อท้ายชื่อ
 //   มือถือ (05ก): การ์ดที่อยู่ในตะกร้า = ขอบหมึก 1px + inset 1px + ป้ายจำนวนมุมขวาบน (ภาพ 01 ไม่วาดป้ายนี้ ⇒ < md เท่านั้น)
+// P1.2 U: มีตัวแปร = ป้าย "N แบบ" · ขายตามน้ำหนัก = ราคาต่อ กก. (ราคาใน priceSatang คือราคาต่อกิโลกรัม — R9)
 // 🔴 การแตะทุกแบบไปตัดสินที่ RegisterScreen.pick (ปิดขาย = เตือน · ตัวเลือกบังคับ = เตือน · ไม่มีราคา = ราคาเปิด/เตือน) — จุดต่อ P1.2 (onPick)
 // 🔴 ชื่อสินค้าเป็นข้อมูล (อังกฤษ = nameEn ถ้ามี) · เงินผ่าน moneyText เท่านั้น (ห้ามพิมพ์สัญลักษณ์บาทในไฟล์นี้ — ข้อสอบ S5.3)
 
@@ -18,14 +19,16 @@ export function ProductCard({ product, inCartQty, onPick }: { product: RegisterP
   const out = product.soldOut;
   const low = product.stockLeft !== null && product.stockLeft > 0 && product.stockLeft <= REGISTER_LOW_STOCK;
   const side =
-    product.stockLeft !== null && product.stockLeft > 0
+    product.variantCount > 0
+      ? t("product.variants", { count: product.variantCount })
+      : product.stockLeft !== null && product.stockLeft > 0
       ? low
         ? t("product.left", { count: product.stockLeft })
         : t("product.stock", { count: product.stockLeft })
       : product.kind === "SERVICE" && product.stockLeft === null
         ? t("product.service")
         : null;
-  const price = product.priceSatang === null ? null : moneyText(product.priceSatang);
+  const price = product.priceSatang === null ? null : product.soldByWeight ? t("weigh.perKg", { price: moneyText(product.priceSatang) }) : moneyText(product.priceSatang);
   const label = [name, price ?? t("product.noPrice"), out ? t("product.soldOut") : null].filter(Boolean).join(" · ");
   const inCart = inCartQty > 0;
   return (

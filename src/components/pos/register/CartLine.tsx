@@ -25,6 +25,8 @@ export type CartLineModel = {
   warn: boolean;
   /** P1.6 U: หมายเหตุรายการ (ไม่มี = undefined) */
   note?: string;
+  /** P1.2 U: ตัวเลือกที่เลือก + น้ำหนัก ("M · นมโอ๊ต · 250 กรัม") — ภาพ 01 บรรทัดรองใต้ชื่อ */
+  detail?: string;
 };
 
 type Props = {
@@ -75,6 +77,11 @@ export function CartLine({ line, frozen, onOpen, onKeep, onReduce }: Props) {
         >
           <span className="min-w-0 flex-1">
             <span className="block break-words text-[15px] font-semibold [overflow-wrap:anywhere] xl:text-[16px]">{line.name}</span>
+            {line.detail && (
+              <span data-testid={`pos-reg-line-detail-${line.key}`} className="mt-px block break-words text-[12.5px] text-[color:var(--color-muted)] [overflow-wrap:anywhere] xl:mt-1 xl:text-[13.5px]">
+                {line.detail}
+              </span>
+            )}
             {sub && <span className="mt-px block text-[12.5px] text-[color:var(--color-muted)] xl:mt-1 xl:text-[13.5px]">{sub}</span>}
             {line.note && (
               <span data-testid={`pos-reg-line-note-text-${line.key}`} className="mt-px flex items-start gap-1 text-[12.5px] text-[color:var(--color-ink-soft)] xl:text-[13px]">

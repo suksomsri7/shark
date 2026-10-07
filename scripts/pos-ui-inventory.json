@@ -2000,6 +2000,247 @@
     },
     {
       "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-options-close",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-options-dialog",
+        "state": "disappears"
+      },
+      "wo": "P1.2U",
+      "oracle": "qc-pos-p1.2",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-options-form",
+      "kind": "form",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-lines",
+        "state": "changes",
+        "note": "Enter = ยืนยัน (เพิ่มลงตะกร้า หรือไปกล่องน้ำหนักเมื่อเป็นสินค้าชั่ง)"
+      },
+      "wo": "P1.2U",
+      "oracle": "qc-pos-p1.2",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-variant-*",
+      "kind": "toggle",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-options-dialog",
+        "state": "changes",
+        "note": "ตัวแปร (แถว PosProduct ลูก) — ต้องเลือก 1 เมื่อสินค้ามีตัวแปร"
+      },
+      "wo": "P1.2U",
+      "oracle": "qc-pos-p1.2",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-option-*",
+      "kind": "toggle",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-options-confirm",
+        "state": "changes",
+        "note": "ชิปตัวเลือก (+ส่วนต่าง) · maxSelect 1 = แทนตัวเดิม · หมด (86) = กดไม่ได้"
+      },
+      "wo": "P1.2U",
+      "oracle": "qc-pos-p1.2",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-options-note",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-options-dialog",
+        "state": "changes",
+        "note": "หมายเหตุรายการ (≤500) — มีหมายเหตุ = บรรทัดใหม่"
+      },
+      "wo": "P1.2U",
+      "oracle": "qc-pos-p1.2",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-options-qty-dec",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-options-confirm",
+        "state": "changes"
+      },
+      "wo": "P1.2U",
+      "oracle": "qc-pos-p1.2",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-options-qty-inc",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-options-confirm",
+        "state": "changes"
+      },
+      "wo": "P1.2U",
+      "oracle": "qc-pos-p1.2",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-options-confirm",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-lines",
+        "state": "changes",
+        "anyOf": [
+          {
+            "type": "inline-error",
+            "target": "pos-reg-options-hint"
+          }
+        ],
+        "note": "ยังไม่ครบ minSelect / ยังไม่เลือกตัวแปร = ข้อความใต้กล่อง · ครบ = cartAddProduct(…, choiceIds)"
+      },
+      "wo": "P1.2U",
+      "oracle": "qc-pos-p1.2",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-weigh-close",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-weigh-dialog",
+        "state": "disappears"
+      },
+      "wo": "P1.2U",
+      "oracle": "qc-pos-p1.2",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-weigh-form",
+      "kind": "form",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-lines",
+        "state": "changes",
+        "note": "น้ำหนักที่กรอก → cartAddWeighed(weightGrams) — เฉพาะผู้มี pos.sale.priceOverride"
+      },
+      "wo": "P1.2U",
+      "oracle": "qc-pos-p1.2",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-weigh-grams",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-weigh-estimate",
+        "state": "changes",
+        "note": "กรัม 1–99,999"
+      },
+      "wo": "P1.2U",
+      "oracle": "qc-pos-p1.2",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-weigh-add",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-lines",
+        "state": "changes"
+      },
+      "wo": "P1.2U",
+      "oracle": "qc-pos-p1.2",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
       "testid": "pos-reg-done-next",
       "kind": "button",
       "roles": [

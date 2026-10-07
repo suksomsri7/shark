@@ -59,7 +59,9 @@
       "stock": "Stock {count}",
       "service": "Service",
       "sizes": "{count} sizes",
-      "noPrice": "No price set"
+      "noPrice": "No price set",
+      "variants": "{count} variants",
+      "byWeight": "per kg"
     },
     "cart": {
       "title": "Cart",
@@ -87,7 +89,9 @@
       "unitTimesQty": "{price} × {qty}",
       "keepSelling": "Keep selling",
       "reduceTo": "Reduce to {count}",
-      "aria": "{qty} × {name} {amount} — tap to edit"
+      "aria": "{qty} × {name} {amount} — tap to edit",
+      "grams": "{grams} g",
+      "label": "Scale label"
     },
     "totals": {
       "subtotal": "Subtotal",
@@ -316,6 +320,28 @@
       "clear": "Clear note",
       "tooLong": "A note can be at most {max} characters",
       "has": "Has a note"
+    },
+    "options": {
+      "title": "Choose options",
+      "required": "Pick {count}",
+      "optional": "Optional",
+      "pickUpTo": "Up to {count}",
+      "confirm": "Add to cart {amount}",
+      "unavailable": "Out"
+    },
+    "variants": {
+      "title": "Choose a variant"
+    },
+    "weigh": {
+      "title": "Sold by weight",
+      "perKg": "{price}/kg",
+      "scanHint": "Scan the scale label on the register (close this box first), or type the weight below",
+      "grams": "Weight (grams)",
+      "estimate": "Approx. price",
+      "invalid": "Weight must be a whole number from 1 to {max} grams",
+      "add": "Add to cart",
+      "next": "Next: enter weight",
+      "qtyOne": "Weighed items sell one line at a time — add a new line instead"
     }
   },
   "shift": {
