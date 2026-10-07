@@ -117,6 +117,8 @@ export type VerifiedApiKey = {
   createdById?: string | null;
   /** [] = คีย์รุ่นเดิม (ผู้เรียกเดิมไม่เคยอ่านฟิลด์นี้ → พฤติกรรมเดิมไม่เปลี่ยน) */
   scopes: string[];
+  /** HF-APIV1 ▸ scopesJson ในแถวไม่ใช่ array ของ string (แถวเสีย/แก้มือ) — `scopes` ถูกกรองเหลือ [] แต่ห้ามนับเป็นคีย์รุ่นเดิม ◂ */
+  scopesMalformed?: boolean;
   systemId: string | null;
   expiresAt: Date | null;
 };
@@ -156,6 +158,7 @@ export async function verifyApiKeyDetailed(rawKey: unknown): Promise<ApiKeyVerif
       tenantId: row.tenantId,
       keyId: row.id,
       scopes: parseScopes(row.scopesJson),
+      scopesMalformed: !Array.isArray(row.scopesJson) || row.scopesJson.some((v) => typeof v !== "string"), // HF-APIV1
       systemId: row.systemId,
       expiresAt: row.expiresAt,
       createdById: row.createdById,
@@ -172,6 +175,7 @@ export async function verifyApiKey(rawKey: unknown): Promise<VerifiedApiKey | nu
     tenantId: v.key.tenantId,
     keyId: v.key.keyId,
     scopes: v.key.scopes,
+    scopesMalformed: v.key.scopesMalformed, // HF-APIV1
     systemId: v.key.systemId,
     expiresAt: v.key.expiresAt,
     createdById: v.key.createdById,
@@ -198,6 +202,10 @@ export async function rotateApiKey(
     });
     if (claimed.count !== 1) throw new Error("ไม่พบคีย์หรือถูกเพิกถอนแล้ว");
     const old = await tx.apiKey.findUniqueOrThrow({ where: { id: keyId } });
+    // HF-APIV1 ▸ scopesJson เสีย ⇒ ไม่หมุน (ไม่งั้น parseScopes ล้างให้เป็น [] = ได้ "คีย์กลาง" สะอาดใบใหม่) · throw ใน tx = คืนการเพิกถอนข้างบน ◂
+    if (!Array.isArray(old.scopesJson) || old.scopesJson.some((v) => typeof v !== "string")) {
+      throw new Error("ข้อมูลสิทธิ์ของคีย์นี้ในระบบไม่สมบูรณ์ จึงหมุนคีย์ให้ไม่ได้ — เพิกถอนคีย์นี้แล้วสร้างคีย์ใหม่แทน");
+    }
     // วันหมดอายุเดิมยังไม่ถึง → ใช้ต่อ (หมุนคีย์ไม่ใช่การต่ออายุ) · ไม่มี/เลยแล้ว → ตั้งใหม่ตามค่าปริยาย
     const expiresAt =
       old.expiresAt && old.expiresAt.getTime() > now.getTime()

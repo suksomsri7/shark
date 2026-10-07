@@ -122,6 +122,16 @@ export async function createPo(ctx: Ctx, input: CreatePoInput): Promise<{ id: st
   const db = tenantDb(ctx);
   const note = input.note?.trim() || null;
 
+  // 🔴 HF-INV-0: supplierId / itemId มาจากฟอร์ม — ต้องเป็นของระบบคลังนี้ (สินค้าต้องเป็น PRODUCT ที่มีสต็อก)
+  //    เดิมไม่ตรวจ ⇒ PO ของผู้ขายผี/สินค้าระบบอื่น/บริการ แล้วไปพังกลาง receivePo หลังพลิกสถานะไปแล้ว
+  const sup = await db.supplier.findFirst({ where: { id: input.supplierId }, select: { id: true } });
+  if (!sup) throw new Error("ไม่พบซัพพลายเออร์ที่เลือก — รีเฟรชหน้าแล้วเลือกใหม่อีกครั้ง");
+  const itemIds = [...new Set(lines.map((l) => l.itemId))];
+  const found = await db.invItem.count({ where: { id: { in: itemIds }, kind: "PRODUCT" } });
+  if (found !== itemIds.length) {
+    throw new Error("มีรายการในใบสั่งซื้อที่ไม่ใช่สินค้าในคลังนี้ — รีเฟรชหน้าแล้วเลือกสินค้าใหม่อีกครั้ง");
+  }
+
   for (let attempt = 0; attempt < 6; attempt++) {
     const count = await db.purchaseOrder.count();
     const code = `PO-${String(count + 1).padStart(4, "0")}`;
@@ -220,6 +230,12 @@ export async function pendingApprovalPoIds(ctx: Ctx): Promise<Set<string>> {
 //   - invSvc.receive idempotencyKey `po-<lineId>` → ต่อให้เรียกซ้ำก็ไม่เบิ้ลสต็อก
 // opts.locationId = คลังปลายทางที่รับของเข้า (ไม่ส่ง = คลังหลัก) — WO-0037
 export async function receivePo(ctx: Ctx, poId: string, opts?: { locationId?: string }): Promise<{ ok: boolean; note: string }> {
+  // 🔴 HF-INV-0: locationId มาจากฟอร์ม — ตรวจ "ก่อน" พลิกสถานะ (เดิมไปพังใน receive ทีหลัง ⇒ PO ค้าง RECEIVED ไม่มีของเข้า รับใหม่ไม่ได้)
+  const locId = opts?.locationId?.trim();
+  if (locId) {
+    const loc = await tenantDb(ctx).invLocation.findFirst({ where: { id: locId }, select: { id: true } });
+    if (!loc) return { ok: false, note: "ไม่พบคลังที่เลือก — รีเฟรชหน้าแล้วเลือกคลังใหม่อีกครั้ง" };
+  }
   const flipped = await tenantDb(ctx).purchaseOrder.updateMany({
     where: { id: poId, status: "ORDERED" },
     data: { status: "RECEIVED", receivedAt: new Date() },

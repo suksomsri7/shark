@@ -1,0 +1,248 @@
+<style>
+.rail{width:56px;flex:none;border-right:1px solid var(--line);background:var(--sf2);
+  padding:10px 0;display:flex;flex-direction:column;align-items:center;gap:5px;color:var(--mut2)}
+.rail .ri{width:36px;height:36px;border-radius:9px;display:grid;place-items:center}
+.rail .ri.on{background:var(--sf);border:1px solid var(--line);color:var(--ink)}
+.top .biz{display:inline-flex;align-items:center;gap:12px;height:32px;padding:0 10px;border:1px solid var(--line);
+  border-radius:8px;font-size:13px;color:var(--ink2)}
+.top .dot{width:8px;height:8px;border-radius:50%;background:var(--ink);display:inline-block}
+.top .st{display:inline-flex;align-items:center;gap:13px;font-size:12.5px;color:var(--mut)}
+.top .who{display:inline-flex;align-items:center;gap:13px;font-size:12.5px;color:var(--ink2)}
+.amenu .am .pill{height:20px;min-width:20px;font-size:12px}
+.ph .d{font-size:13.5px;color:var(--mut);margin-top:4px}
+</style>
+<style>
+/* 02 สินค้าและวัตถุดิบ */
+.pmain{flex:1;min-width:0;display:flex;flex-direction:column}
+.pmain .ph{align-items:flex-start}
+.itabs{padding:0 8px}
+.itabs.tabs{gap:0!important}
+.itabs .tab{padding:13px 11px!important;font-size:14px!important}
+.itb{font-size:13.5px!important}
+.card.p0 .itb th{padding:12px 7px!important;font-size:12px!important;white-space:normal;line-height:1.3;vertical-align:bottom}
+.card.p0 .itb td{padding:14px 7px!important}
+.card.p0 .itb th:first-child,.card.p0 .itb td:first-child{padding-left:16px!important}
+.card.p0 .itb th:last-child,.card.p0 .itb td:last-child{padding-right:14px!important}
+.itb .nmc{display:flex;align-items:center;gap:12px}
+.itb .thumb{width:36px;height:36px;border-radius:9px}
+.itb .nmc b{font-weight:600;display:block;line-height:1.3;white-space:nowrap}
+.itb small{display:block;color:var(--mut);line-height:1.35;white-space:nowrap;font-weight:400}
+.itb td.num small{text-align:right}
+.itb .stk{font-weight:700}
+.itb .un{white-space:nowrap}
+.itb tr.hov td{background:var(--acc-bg)!important}
+.itb tr.hov td:first-child{box-shadow:inset 3px 0 0 var(--acc)}
+.idr{width:460px;flex:none;border-left:1px solid var(--line);display:flex;flex-direction:column;background:var(--sf);box-shadow:-8px 0 24px rgba(10,10,10,.06)}
+.idr .hd{display:flex;align-items:center;gap:14px;padding:20px 22px 12px}
+.idr .hd h2{font-size:18px;font-weight:700;letter-spacing:-.01em}
+.idr .tabs{padding:0 10px;gap:0!important;flex-wrap:wrap}
+.idr .tab{padding:11px 9px!important;font-size:13.5px!important}
+.idr .bd{flex:1;padding:22px 22px 26px;display:flex;flex-direction:column;gap:30px}
+.sec h3{font-size:15px;font-weight:700;display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.sec h3 .sp{flex:1}
+.sec h3 .lnk{font-size:13.5px}
+.ut{border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.ut .r{display:flex;align-items:center;gap:12px;padding:12px 14px;border-top:1px solid var(--line);font-size:14px}
+.ut .r:first-child{border-top:0}
+.ut .r .k{width:96px;flex:none;color:var(--mut)}
+.ut .r .v{flex:1;min-width:0}
+.ut .r .v b{font-weight:700}
+.ut .r .v small{display:block;color:var(--mut)}
+.ut .r .e{color:var(--mut2)}
+.bc{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border:1px solid var(--line);border-radius:8px;font-size:13px;background:var(--sf2);font-variant-numeric:tabular-nums;white-space:nowrap}
+.sup{border:1px solid var(--line);border-radius:14px;padding:13px 14px;display:flex;flex-direction:column;gap:6px}
+.sup+.sup{margin-top:10px}
+.sup.main{border-color:var(--ink)}
+.sup .h{display:flex;align-items:center;gap:10px;font-weight:600;font-size:14.5px}
+.sup .h .sp{flex:1}
+.sup .h .pr{font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+.sup .m{font-size:13px;color:var(--mut);display:flex;gap:8px;flex-wrap:wrap}
+.rp{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.rp .c{border:1px solid var(--line);border-radius:12px;padding:11px 13px}
+.rp .c b{display:block;font-weight:700;font-size:14px}
+.rp .c .l{display:flex;justify-content:space-between;font-size:13px;color:var(--ink2);margin-top:4px;font-variant-numeric:tabular-nums}
+.rp .c .l span:first-child{color:var(--mut)}
+.fc{display:flex;align-items:flex-start;gap:12px;margin-top:12px;border:1px solid var(--acc);background:var(--acc-bg);border-radius:12px;padding:11px 13px;font-size:13.5px;color:var(--ink2);line-height:1.5}
+.fc b{color:var(--acc)}
+.fc .i{color:var(--acc);margin-top:2px}
+.lt{width:100%;border-collapse:collapse;font-size:14px}
+.lt td{padding:10px 2px;border-bottom:1px solid var(--line)}
+.lt tr:last-child td{border-bottom:0}
+.lt td.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;font-weight:700}
+.lt td small{display:block;color:var(--mut)}
+.idr .ft{display:flex;align-items:center;gap:12px;padding:16px 22px;border-top:1px solid var(--line)}
+.idr .ft .sp{flex:1}
+.salel{display:flex;align-items:center;gap:8px;padding:0 22px 16px;font-size:13.5px;color:var(--mut)}
+</style>
+<body><div class="wrap">
+<div>
+<p class="cap">02 · สินค้าและวัตถุดิบ + ลิ้นชัก <span>— ทะเบียนเดียว: คงเหลือต่อสาขา · จอง/ว่าง · จุดสั่งซื้อ · ซัพหลัก · มูลค่า · ลิ้นชักรายการ: หน่วยนับหลายชั้น + บาร์โค้ดต่อหน่วย · ซัพพลายเออร์+ราคา · จุดสั่งซื้อต่อสาขา + พยากรณ์ · ล็อต</span></p>
+<div class="frame" style="height:1150px">
+
+ <div class="top"><svg class="i lg"><use href="#i-menu"/></svg><span class="brand">SHARK</span>
+  <span class="biz"><svg class="i sm"><use href="#i-shop"/></svg>บ้านกาแฟสวนผึ้ง · ทุกสาขา<svg class="i xs"><use href="#i-cv"/></svg></span>
+  <span class="sp"></span>
+  <span class="st"><i class="dot"></i>ออนไลน์ · พฤ. 1 ต.ค. 2569 · 06:25</span>
+  <span class="who"><span class="av">ก</span>พี่เก่ง · ผู้จัดการ</span>
+ </div>
+
+ <div class="appbody" style="flex:1;min-height:0">
+  <div class="rail">
+   <div class="ri"><svg class="i sm"><use href="#i-home"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-shop"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-users"/></svg></div>
+   <div class="ri on"><svg class="i sm"><use href="#i-box"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-book"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-grid"/></svg></div>
+   <span style="flex:1"></span>
+   <div class="ri"><svg class="i sm"><use href="#i-gear"/></svg></div>
+  </div>
+
+  <div class="mod">
+   <div class="amenu">
+    <div class="am"><svg class="i sm"><use href="#i-home"/></svg>ภาพรวม</div>
+    <div class="am on"><svg class="i sm"><use href="#i-box"/></svg>สินค้าและวัตถุดิบ</div>
+    <div class="am"><svg class="i sm"><use href="#i-in"/></svg>รับ/ตัด/ปรับ</div>
+    <div class="am"><svg class="i sm"><use href="#i-list"/></svg>ตรวจนับ<span class="pill">1</span></div>
+    <div class="am"><svg class="i sm"><use href="#i-swap"/></svg>โอนสาขา</div>
+    <div class="am"><svg class="i sm"><use href="#i-truck"/></svg>จัดซื้อ</div>
+    <div class="am"><svg class="i sm"><use href="#i-tree"/></svg>สูตร/ผลิต</div>
+    <div class="am"><svg class="i sm"><use href="#i-chart"/></svg>รายงาน</div>
+    <div class="am"><svg class="i sm"><use href="#i-gear"/></svg>ตั้งค่า</div>
+   </div>
+
+   <div style="display:flex;flex:1;min-height:0">
+    <!-- ── ฝั่งรายการ ── -->
+    <div class="pmain">
+     <div class="ph">
+      <div><h1>สินค้าและวัตถุดิบ</h1><div class="d">ทะเบียนเดียวของทุกสิ่งที่นับสต็อก — ราคาขายแก้ที่ระบบขาย</div></div>
+      <span class="sp"></span>
+      <div class="btn gh sm"><svg class="i sm"><use href="#i-import"/></svg>นำเข้า CSV</div>
+      <div class="btn pri sm"><svg class="i sm"><use href="#i-plus"/></svg>เพิ่ม</div>
+     </div>
+
+     <div class="pg" style="gap:22px!important">
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+       <div class="inp gro" style="min-width:100%"><svg class="i sm"><use href="#i-search"/></svg>ค้นชื่อ · SKU · สแกนบาร์โค้ด</div>
+       <div class="inp">หมวด<svg class="i xs cv"><use href="#i-cv"/></svg></div>
+       <div class="inp">สาขา: <b>ทุกสาขา</b><svg class="i xs cv"><use href="#i-cv"/></svg></div>
+       <div class="inp">สถานะ<svg class="i xs cv"><use href="#i-cv"/></svg></div>
+       <div class="inp">ซัพพลายเออร์<svg class="i xs cv"><use href="#i-cv"/></svg></div>
+      </div>
+
+      <div class="card p0">
+       <div class="tabs itabs">
+        <div class="tab on">ทั้งหมด<span class="n">212</span></div>
+        <div class="tab">สินค้า<span class="n">96</span></div>
+        <div class="tab">วัตถุดิบ<span class="n">84</span></div>
+        <div class="tab">บรรจุภัณฑ์<span class="n">19</span></div>
+        <div class="tab">บริการ<span class="n">4</span></div>
+        <div class="tab">คิท<span class="n">6</span></div>
+        <div class="tab">ผลิตได้<span class="n">3</span></div>
+        <div class="tab">เก็บถาวร<span class="n">9</span></div>
+       </div>
+       <table class="tbl itb">
+        <thead><tr><th>รายการ</th><th>หน่วย</th><th class="rt">หัวหิน</th><th class="rt">สวนผึ้ง</th><th class="rt">จอง</th><th class="rt">ว่าง</th><th class="rt">จุดสั่ง</th><th class="rt">ต้นทุน/หน่วย<br>ซัพหลัก</th><th class="rt">มูลค่า</th><th>สถานะ</th></tr></thead>
+        <tbody>
+         <tr class="hov"><td><div class="nmc"><div class="thumb"><svg class="i sm"><use href="#i-box"/></svg></div><span><b>เมล็ดกาแฟคั่วกลาง</b><small>RM-001 · วัตถุดิบ</small></span></div></td>
+          <td class="un">กรัม<small>ซื้อเป็น กก.</small></td>
+          <td class="num stk">12.4<small>กก.</small></td><td class="num stk">6.0<small>กก.</small></td><td class="num">0.4</td><td class="num stk">18.0</td><td class="num">8 · 4<small>กก.</small></td>
+          <td class="num">฿418/กก.<small>ดอยช้าง</small></td><td class="num">฿7,691</td><td><span class="chip">ปกติ</span></td></tr>
+         <tr><td><div class="nmc"><div class="thumb"><svg class="i sm"><use href="#i-box"/></svg></div><span><b>นมสด</b><small>RM-014 · วัตถุดิบ · ล็อต</small></span></div></td>
+          <td class="un">มล.<small>ซื้อเป็น ล.</small></td>
+          <td class="num stk">24<small>ล.</small></td><td class="num"><span class="dgt">0</span><small style="color:var(--dg)">หมด</small></td><td class="num">0</td><td class="num stk">24</td><td class="num">20 · 12<small>ล.</small></td>
+          <td class="num">฿48/ล.<small>ฟาร์มนมเขาใหญ่</small></td><td class="num">฿1,152</td><td><span class="chip dg">หมด</span><small>ที่สวนผึ้ง</small></td></tr>
+         <tr><td><div class="nmc"><div class="thumb"><svg class="i sm"><use href="#i-box"/></svg></div><span><b>แก้ว 12 oz</b><small>PK-003 · บรรจุภัณฑ์</small></span></div></td>
+          <td class="un">ใบ<small>ซื้อเป็น แพ็ก 50</small></td>
+          <td class="num stk">480</td><td class="num stk">120</td><td class="num">12</td><td class="num stk">588</td><td class="num">300 · 100</td>
+          <td class="num">฿2.80<small>แพ็กเกจจิ้งไทย</small></td><td class="num">฿1,680</td><td><span class="chip">ปกติ</span></td></tr>
+         <tr><td><div class="nmc"><div class="thumb"><svg class="i sm"><use href="#i-box"/></svg></div><span><b>ฝาแก้ว</b><small>PK-004 · บรรจุภัณฑ์</small></span></div></td>
+          <td class="un">ชิ้น<small>ซื้อเป็น แพ็ก 100</small></td>
+          <td class="num stk">460</td><td class="num stk">120</td><td class="num">12</td><td class="num stk">568</td><td class="num">300 · 100</td>
+          <td class="num">฿1.20<small>ดอยช้าง</small></td><td class="num">฿696</td><td><span class="chip dg"><svg class="i xs"><use href="#i-flag"/></svg>ติดธง</span><small>ขายเกิน −20</small></td></tr>
+         <tr><td><div class="nmc"><div class="thumb"><svg class="i sm"><use href="#i-tree"/></svg></div><span><b>ไซรัปวานิลลา</b><small>MF-002 · ผลิตได้</small></span></div></td>
+          <td class="un">มล.<small>ขวด 750 มล.</small></td>
+          <td class="num stk">6<small>ขวด</small></td><td class="num stk">3<small>ขวด</small></td><td class="num">0</td><td class="num stk">9</td><td class="num">ผลิตเมื่อ<small>ต่ำกว่า 4</small></td>
+          <td class="num">฿38/ขวด<small>ตามสูตร</small></td><td class="num">฿342</td><td><span class="chip">ปกติ</span></td></tr>
+         <tr><td><div class="nmc"><div class="thumb"><svg class="i sm"><use href="#i-box"/></svg></div><span><b>น้ำตาลทราย</b><small>RM-020 · วัตถุดิบ</small></span></div></td>
+          <td class="un">กรัม<small>ซื้อเป็น ถุง 1 กก.</small></td>
+          <td class="num stk">18<small>กก.</small></td><td class="num stk">7<small>กก.</small></td><td class="num">0</td><td class="num stk">25</td><td class="num">10 · 5<small>กก.</small></td>
+          <td class="num">฿26/กก.<small>แม็คโคร</small></td><td class="num">฿650</td><td><span class="chip">ปกติ</span></td></tr>
+         <tr><td><div class="nmc"><div class="thumb"><svg class="i sm"><use href="#i-tag"/></svg></div><span><b>บราวนี่</b><small>FG-007 · สินค้า</small></span></div></td>
+          <td class="un">ชิ้น</td>
+          <td class="num stk">8</td><td class="num"><span class="stk">2</span><small>จุดสั่ง 5</small></td><td class="num">1</td><td class="num stk">9</td><td class="num">5 · 5</td>
+          <td class="num">฿21<small>เบเกอรีบ้านขนม</small></td><td class="num">฿210</td><td><span class="chip ink">ใกล้หมด</span><small>ที่สวนผึ้ง</small></td></tr>
+         <tr><td><div class="nmc"><div class="thumb"><svg class="i sm"><use href="#i-grid"/></svg></div><span><b>เซ็ตอาหารเช้า</b><small>KT-003 · คิท 3 รายการ</small></span></div></td>
+          <td class="un">ชุด</td>
+          <td class="num mu" colspan="4" style="text-align:center">ตามรายการในชุด · ทำได้อีก 14 ชุด</td><td class="num mu">—</td>
+          <td class="num">฿58<small>รวมในชุด</small></td><td class="num mu">—</td><td><span class="chip">ปกติ</span></td></tr>
+         <tr><td><div class="nmc"><div class="thumb"><svg class="i sm"><use href="#i-users"/></svg></div><span><b>ค่าเวิร์กช็อปชงกาแฟ</b><small>SV-001 · บริการ</small></span></div></td>
+          <td class="un">ครั้ง</td>
+          <td class="num mu" colspan="5" style="text-align:center">ไม่นับสต็อก</td>
+          <td class="num mu">—</td><td class="num mu">—</td><td><span class="chip">ปกติ</span></td></tr>
+        </tbody>
+       </table>
+       <div class="tfoot">แสดง 1–9 จาก 212 รายการ · มูลค่ารวม ฿186,420<span class="sp"></span><div class="pgr"><div class="pb"><svg class="i xs"><use href="#i-back"/></svg></div><div class="pb" style="border-color:var(--ink);color:var(--ink);font-weight:700;font-size:12px">1</div><div class="pb" style="font-size:12px">2</div><div class="pb"><svg class="i xs"><use href="#i-ar"/></svg></div></div></div>
+      </div>
+
+      <div class="bulk" style="font-size:14px;padding:13px 16px;border-radius:13px"><svg class="i sm"><use href="#i-edit"/></svg>แก้แบบกลุ่ม: เลือกหลายรายการแล้วปรับราคาซื้อ · จุดสั่งซื้อ · ซัพหลัก พร้อมกัน<span class="sp"></span><span class="lnk">ส่งออก CSV</span></div>
+     </div>
+    </div>
+
+    <!-- ── ลิ้นชักรายการ ── -->
+    <div class="idr">
+     <div class="hd"><div class="thumb" style="width:46px;height:46px"><svg class="i"><use href="#i-box"/></svg></div>
+      <div style="flex:1;min-width:0"><h2>เมล็ดกาแฟคั่วกลาง · RM-001</h2><div class="sub" style="font-size:13px">วัตถุดิบ · หมวด กาแฟ · ใช้ใน 14 เมนู · มี 2 สาขา</div></div>
+      <svg class="i mu"><use href="#i-x"/></svg></div>
+     <div class="tabs">
+      <div class="tab">ทั่วไป</div><div class="tab on">หน่วยนับ</div><div class="tab">ซัพพลายเออร์</div><div class="tab">จุดสั่งซื้อ</div><div class="tab">ล็อต</div><div class="tab">สูตรที่ใช้</div><div class="tab">ประวัติ</div>
+     </div>
+     <div class="bd">
+
+      <div class="sec">
+       <h3><svg class="i sm"><use href="#i-list"/></svg>หน่วยนับ<span class="sp"></span><span class="lnk">+ เพิ่มหน่วย</span></h3>
+       <div class="ut">
+        <div class="r"><span class="k">หน่วยฐาน</span><span class="v"><b>กรัม (ก.)</b><small>ขาย/ตัดสูตรเป็น กรัม · ลาเต้ 1 แก้ว = 18 ก.</small></span></div>
+        <div class="r"><span class="k">หน่วยซื้อ</span><span class="v"><b>กิโลกรัม</b> = 1,000 ก.<small>ใบสั่งซื้อและรับของใช้หน่วยนี้</small></span><svg class="i sm e"><use href="#i-edit"/></svg></div>
+        <div class="r"><span class="k">บาร์โค้ด</span><span class="v"><span class="bc"><svg class="i xs"><use href="#i-qr"/></svg>885001</span> <span class="mu">ต่อ 1 กก.</span></span><span class="lnk" style="font-size:13px">+ เพิ่ม</span></div>
+       </div>
+      </div>
+
+      <div class="sec">
+       <h3><svg class="i sm"><use href="#i-truck"/></svg>ซัพพลายเออร์<span class="sp"></span><span class="lnk">+ เพิ่ม</span></h3>
+       <div class="sup main">
+        <div class="h">บริษัท กาแฟดอยช้าง จำกัด<span class="chip ink">หลัก</span><span class="sp"></span><span class="pr">฿420/กก.</span></div>
+        <div class="m"><span>ราคาล่าสุด 28 ก.ย.</span>·<span>ส่งของใน 3 วัน</span>·<span>สั่งขั้นต่ำ 5 กก.</span></div>
+       </div>
+       <div class="sup">
+        <div class="h">โรงคั่วบ้านไร่<span class="chip">สำรอง</span><span class="sp"></span><span class="pr">฿445/กก.</span></div>
+        <div class="m"><span>ราคาล่าสุด 2 ส.ค.</span>·<span>ส่งของใน 5 วัน</span>·<span>แพงกว่า 6%</span></div>
+       </div>
+      </div>
+
+      <div class="sec">
+       <h3><svg class="i sm"><use href="#i-flag"/></svg>จุดสั่งซื้อต่อสาขา<span class="sp"></span><span class="lnk">แก้</span></h3>
+       <div class="rp">
+        <div class="c"><b>สาขาหัวหิน</b><div class="l"><span>มีอยู่</span><span>12.4 กก.</span></div><div class="l"><span>จุดสั่ง</span><span>8 กก.</span></div><div class="l"><span>สั่งครั้งละ</span><span>10 กก.</span></div></div>
+        <div class="c"><b>สาขาสวนผึ้ง</b><div class="l"><span>มีอยู่</span><span>6.0 กก.</span></div><div class="l"><span>จุดสั่ง</span><span>4 กก.</span></div><div class="l"><span>สั่งครั้งละ</span><span>5 กก.</span></div></div>
+       </div>
+       <div class="fc"><svg class="i sm"><use href="#i-spark"/></svg><span>พยากรณ์หัวหิน: ใช้ <b>2.1 กก./วัน</b> → ถึงจุดสั่งซื้อใน <b>2 วัน</b> · หมดใน <b>6 วัน</b> ถ้าไม่สั่ง<br><span class="mu">อยู่ในร่างใบสั่งซื้อที่ระบบแนะนำแล้ว (ดอยช้าง)</span></span></div>
+      </div>
+
+      <div class="sec">
+       <h3><svg class="i sm"><use href="#i-tag"/></svg>ล็อต · สาขาหัวหิน<span class="sp"></span><span class="sub">ตัดล็อตเก่าก่อน</span></h3>
+       <table class="lt">
+        <tr><td><b>DC-2609</b><small>รับ 20 ก.ย. · GR-2609-0016</small></td><td class="n">6.4 กก.</td></tr>
+        <tr><td><b>DC-2608</b> <span class="chip" style="margin-left:6px">ใช้ก่อน</span><small>รับ 28 ส.ค. · GR-2608-0019</small></td><td class="n">6.0 กก.</td></tr>
+       </table>
+      </div>
+     </div>
+     <div class="salel"><svg class="i sm"><use href="#i-link"/></svg>ราคาขาย/ช่องทาง <span class="lnk">→ ระบบขาย</span></div>
+     <div class="ft"><div class="btn pri">บันทึก</div><div class="btn gh"><svg class="i sm"><use href="#i-copy"/></svg>ทำสำเนา</div><span class="sp"></span><div class="btn gh"><svg class="i sm"><use href="#i-folder"/></svg>เก็บถาวร</div></div>
+    </div>
+   </div>
+  </div>
+ </div>
+</div>
+</div>
+</div>

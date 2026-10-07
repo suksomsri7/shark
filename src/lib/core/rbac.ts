@@ -51,6 +51,18 @@ export function canViewPayroll(m: MembershipCtx | null): boolean {
 }
 
 /**
+ * HF-INV-0 — ดูข้อมูลคลังสินค้า (สต็อก/ต้นทุน) ได้ไหม: OWNER/MANAGER ตาม evaluate · STAFF ต้องมี
+ * `inventory.item.read` | `inventory.*` | คีย์ `inventory.<x>` ตัวใดก็ได้ (สิทธิ์เขียน ⇒ อ่านได้)
+ * อยู่ที่ core (แบบ canViewPayroll) เพราะโมดูลอื่น (รายงาน) ต้องใช้ตัดสินโดยไม่ import ข้ามโมดูล
+ */
+export function canReadInventory(m: MembershipCtx | null): boolean {
+  if (!m) return false;
+  if (evaluate(m, { module: "inventory", action: "inventory.item.read" })) return true;
+  if (m.role !== "STAFF") return false;
+  return Object.entries(m.permissions ?? {}).some(([k, v]) => v === true && k.startsWith("inventory."));
+}
+
+/**
  * กรอง unitId ให้เหลือเฉพาะที่ membership เข้าถึงได้ (ใช้ในหน้ารวมข้ามสาขา เช่น ปฏิทิน)
  * OWNER / unitAccess=["*"] → เห็นทุกสาขา · อื่น ๆ → เฉพาะสาขาที่อยู่ใน unitAccess
  */

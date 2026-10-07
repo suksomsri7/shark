@@ -1,0 +1,82 @@
+[env] qc-hf-apiv1-scope · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech
+(node:847100) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ [HF-1.sales] /api/v1/sales คีย์รุ่นเดิม → 200 data array มีแถวของร้าน A
+  ❌ [HF-2.sales.1] /api/v1/sales scope อย่างเดียว (kanban-read) → 403 ไม่มีข้อมูล — exp 403 no data | act 200 {"data":[{"id":"cmup8rhb80007mkkzhnxp7rox","receiptNo":"qc-hf-apiv1-z7hbxx-R-A","grandTotalSatang":1
+  ❌ [HF-2.sales.2] /api/v1/sales ผูกสมุดบัญชี scopes [] → 403 ไม่มีข้อมูล — exp 403 no data | act 200 {"data":[{"id":"cmup8rhb80007mkkzhnxp7rox","receiptNo":"qc-hf-apiv1-z7hbxx-R-A","grandTotalSatang":1
+  ❌ [HF-2.sales.3] /api/v1/sales scope + ผูกสมุดบัญชี (read-only) → 403 ไม่มีข้อมูล — exp 403 no data | act 200 {"data":[{"id":"cmup8rhb80007mkkzhnxp7rox","receiptNo":"qc-hf-apiv1-z7hbxx-R-A","grandTotalSatang":1
+  ❌ [HF-2.sales.4] /api/v1/sales scope + ผูกบอร์ดงาน (kanban-read) → 403 ไม่มีข้อมูล — exp 403 no data | act 200 {"data":[{"id":"cmup8rhb80007mkkzhnxp7rox","receiptNo":"qc-hf-apiv1-z7hbxx-R-A","grandTotalSatang":1
+  ✅ [HF-3.sales] /api/v1/sales หมดอายุ/เพิกถอน → 401 (เดิม)
+  ✅ [HF-4.sales] /api/v1/sales คีย์รุ่นเดิมร้าน B → 200 ไม่เห็นข้อมูลร้าน A
+  ❌ [HF-5.sales] /api/v1/sales คีย์ scope ร้าน B → 403 เหมือนร้าน A — exp 403 | act 200
+  ✅ [HF-1.customers] /api/v1/customers คีย์รุ่นเดิม → 200 data array มีแถวของร้าน A
+  ❌ [HF-2.customers.1] /api/v1/customers scope อย่างเดียว (kanban-read) → 403 ไม่มีข้อมูล — exp 403 no data | act 200 {"data":[{"id":"cmup8rhbq0008mkkz76k6jqcm","memberCode":null,"name":"qc-hf-apiv1-z7hbxx-ลูกค้า-A","p
+  ❌ [HF-2.customers.2] /api/v1/customers ผูกสมุดบัญชี scopes [] → 403 ไม่มีข้อมูล — exp 403 no data | act 200 {"data":[{"id":"cmup8rhbq0008mkkz76k6jqcm","memberCode":null,"name":"qc-hf-apiv1-z7hbxx-ลูกค้า-A","p
+  ❌ [HF-2.customers.3] /api/v1/customers scope + ผูกสมุดบัญชี (read-only) → 403 ไม่มีข้อมูล — exp 403 no data | act 200 {"data":[{"id":"cmup8rhbq0008mkkz76k6jqcm","memberCode":null,"name":"qc-hf-apiv1-z7hbxx-ลูกค้า-A","p
+  ❌ [HF-2.customers.4] /api/v1/customers scope + ผูกบอร์ดงาน (kanban-read) → 403 ไม่มีข้อมูล — exp 403 no data | act 200 {"data":[{"id":"cmup8rhbq0008mkkz76k6jqcm","memberCode":null,"name":"qc-hf-apiv1-z7hbxx-ลูกค้า-A","p
+  ✅ [HF-3.customers] /api/v1/customers หมดอายุ/เพิกถอน → 401 (เดิม)
+  ✅ [HF-4.customers] /api/v1/customers คีย์รุ่นเดิมร้าน B → 200 ไม่เห็นข้อมูลร้าน A
+  ❌ [HF-5.customers] /api/v1/customers คีย์ scope ร้าน B → 403 เหมือนร้าน A — exp 403 | act 200
+  ✅ [HF-1.inventory] /api/v1/inventory/items คีย์รุ่นเดิม → 200 data array มีแถวของร้าน A
+  ❌ [HF-2.inventory.1] /api/v1/inventory/items scope อย่างเดียว (kanban-read) → 403 ไม่มีข้อมูล — exp 403 no data | act 200 {"data":[{"id":"cmup8rhce0009mkkztsa6ppw6","sku":"qc-hf-apiv1-z7hbxx-A","barcode":null,"name":"qc-hf
+  ❌ [HF-2.inventory.2] /api/v1/inventory/items ผูกสมุดบัญชี scopes [] → 403 ไม่มีข้อมูล — exp 403 no data | act 200 {"data":[{"id":"cmup8rhce0009mkkztsa6ppw6","sku":"qc-hf-apiv1-z7hbxx-A","barcode":null,"name":"qc-hf
+  ❌ [HF-2.inventory.3] /api/v1/inventory/items scope + ผูกสมุดบัญชี (read-only) → 403 ไม่มีข้อมูล — exp 403 no data | act 200 {"data":[{"id":"cmup8rhce0009mkkztsa6ppw6","sku":"qc-hf-apiv1-z7hbxx-A","barcode":null,"name":"qc-hf
+  ❌ [HF-2.inventory.4] /api/v1/inventory/items scope + ผูกบอร์ดงาน (kanban-read) → 403 ไม่มีข้อมูล — exp 403 no data | act 200 {"data":[{"id":"cmup8rhce0009mkkztsa6ppw6","sku":"qc-hf-apiv1-z7hbxx-A","barcode":null,"name":"qc-hf
+  ✅ [HF-3.inventory] /api/v1/inventory/items หมดอายุ/เพิกถอน → 401 (เดิม)
+  ✅ [HF-4.inventory] /api/v1/inventory/items คีย์รุ่นเดิมร้าน B → 200 ไม่เห็นข้อมูลร้าน A
+  ❌ [HF-5.inventory] /api/v1/inventory/items คีย์ scope ร้าน B → 403 เหมือนร้าน A — exp 403 | act 200
+  ✅ [HF-1.appointments] /api/v1/appointments คีย์รุ่นเดิม → 200 data array
+  ❌ [HF-2.appointments.1] /api/v1/appointments scope อย่างเดียว (kanban-read) → 403 ไม่มีข้อมูล — exp 403 no data | act 200 {"data":[]}
+  ❌ [HF-2.appointments.2] /api/v1/appointments ผูกสมุดบัญชี scopes [] → 403 ไม่มีข้อมูล — exp 403 no data | act 200 {"data":[]}
+  ❌ [HF-2.appointments.3] /api/v1/appointments scope + ผูกสมุดบัญชี (read-only) → 403 ไม่มีข้อมูล — exp 403 no data | act 200 {"data":[]}
+  ❌ [HF-2.appointments.4] /api/v1/appointments scope + ผูกบอร์ดงาน (kanban-read) → 403 ไม่มีข้อมูล — exp 403 no data | act 200 {"data":[]}
+  ✅ [HF-3.appointments] /api/v1/appointments หมดอายุ/เพิกถอน → 401 (เดิม)
+  ✅ [HF-4.appointments] /api/v1/appointments คีย์รุ่นเดิมร้าน B → 200 ไม่เห็นข้อมูลร้าน A
+  ❌ [HF-5.appointments] /api/v1/appointments คีย์ scope ร้าน B → 403 เหมือนร้าน A — exp 403 | act 200
+  ✅ [HF-1.queue] /api/v1/queue/tickets คีย์รุ่นเดิม → 200 data array
+  ❌ [HF-2.queue.1] /api/v1/queue/tickets scope อย่างเดียว (kanban-read) → 403 ไม่มีข้อมูล — exp 403 no data | act 200 {"data":[],"date":"2026-10-01"}
+  ❌ [HF-2.queue.2] /api/v1/queue/tickets ผูกสมุดบัญชี scopes [] → 403 ไม่มีข้อมูล — exp 403 no data | act 200 {"data":[],"date":"2026-10-01"}
+  ❌ [HF-2.queue.3] /api/v1/queue/tickets scope + ผูกสมุดบัญชี (read-only) → 403 ไม่มีข้อมูล — exp 403 no data | act 200 {"data":[],"date":"2026-10-01"}
+  ❌ [HF-2.queue.4] /api/v1/queue/tickets scope + ผูกบอร์ดงาน (kanban-read) → 403 ไม่มีข้อมูล — exp 403 no data | act 200 {"data":[],"date":"2026-10-01"}
+  ✅ [HF-3.queue] /api/v1/queue/tickets หมดอายุ/เพิกถอน → 401 (เดิม)
+  ✅ [HF-4.queue] /api/v1/queue/tickets คีย์รุ่นเดิมร้าน B → 200 ไม่เห็นข้อมูลร้าน A
+  ❌ [HF-5.queue] /api/v1/queue/tickets คีย์ scope ร้าน B → 403 เหมือนร้าน A — exp 403 | act 200
+  ✅ [HF-1.reservations] /api/v1/reservations คีย์รุ่นเดิม → 200 data array
+  ❌ [HF-2.reservations.1] /api/v1/reservations scope อย่างเดียว (kanban-read) → 403 ไม่มีข้อมูล — exp 403 no data | act 200 {"data":[]}
+  ❌ [HF-2.reservations.2] /api/v1/reservations ผูกสมุดบัญชี scopes [] → 403 ไม่มีข้อมูล — exp 403 no data | act 200 {"data":[]}
+  ❌ [HF-2.reservations.3] /api/v1/reservations scope + ผูกสมุดบัญชี (read-only) → 403 ไม่มีข้อมูล — exp 403 no data | act 200 {"data":[]}
+  ❌ [HF-2.reservations.4] /api/v1/reservations scope + ผูกบอร์ดงาน (kanban-read) → 403 ไม่มีข้อมูล — exp 403 no data | act 200 {"data":[]}
+  ✅ [HF-3.reservations] /api/v1/reservations หมดอายุ/เพิกถอน → 401 (เดิม)
+  ✅ [HF-4.reservations] /api/v1/reservations คีย์รุ่นเดิมร้าน B → 200 ไม่เห็นข้อมูลร้าน A
+  ❌ [HF-5.reservations] /api/v1/reservations คีย์ scope ร้าน B → 403 เหมือนร้าน A — exp 403 | act 200
+  ✅ [HF-1.shop] /api/v1/shop/orders คีย์รุ่นเดิม → 200 data array มีแถวของร้าน A
+  ❌ [HF-2.shop.1] /api/v1/shop/orders scope อย่างเดียว (kanban-read) → 403 ไม่มีข้อมูล — exp 403 no data | act 200 {"data":[{"id":"cmup8rhcu000amkkzd2wy4c4v","unitId":"cmup8rh8s0001mkkz456t83vt","code":"qc-hf-apiv1-
+  ❌ [HF-2.shop.2] /api/v1/shop/orders ผูกสมุดบัญชี scopes [] → 403 ไม่มีข้อมูล — exp 403 no data | act 200 {"data":[{"id":"cmup8rhcu000amkkzd2wy4c4v","unitId":"cmup8rh8s0001mkkz456t83vt","code":"qc-hf-apiv1-
+  ❌ [HF-2.shop.3] /api/v1/shop/orders scope + ผูกสมุดบัญชี (read-only) → 403 ไม่มีข้อมูล — exp 403 no data | act 200 {"data":[{"id":"cmup8rhcu000amkkzd2wy4c4v","unitId":"cmup8rh8s0001mkkz456t83vt","code":"qc-hf-apiv1-
+  ❌ [HF-2.shop.4] /api/v1/shop/orders scope + ผูกบอร์ดงาน (kanban-read) → 403 ไม่มีข้อมูล — exp 403 no data | act 200 {"data":[{"id":"cmup8rhcu000amkkzd2wy4c4v","unitId":"cmup8rh8s0001mkkz456t83vt","code":"qc-hf-apiv1-
+  ✅ [HF-3.shop] /api/v1/shop/orders หมดอายุ/เพิกถอน → 401 (เดิม)
+  ✅ [HF-4.shop] /api/v1/shop/orders คีย์รุ่นเดิมร้าน B → 200 ไม่เห็นข้อมูลร้าน A
+  ❌ [HF-5.shop] /api/v1/shop/orders คีย์ scope ร้าน B → 403 เหมือนร้าน A — exp 403 | act 200
+  ✅ [HF-1.tickets] /api/v1/tickets/orders คีย์รุ่นเดิม → 200 data array
+  ❌ [HF-2.tickets.1] /api/v1/tickets/orders scope อย่างเดียว (kanban-read) → 403 ไม่มีข้อมูล — exp 403 no data | act 200 {"data":[]}
+  ❌ [HF-2.tickets.2] /api/v1/tickets/orders ผูกสมุดบัญชี scopes [] → 403 ไม่มีข้อมูล — exp 403 no data | act 200 {"data":[]}
+  ❌ [HF-2.tickets.3] /api/v1/tickets/orders scope + ผูกสมุดบัญชี (read-only) → 403 ไม่มีข้อมูล — exp 403 no data | act 200 {"data":[]}
+  ❌ [HF-2.tickets.4] /api/v1/tickets/orders scope + ผูกบอร์ดงาน (kanban-read) → 403 ไม่มีข้อมูล — exp 403 no data | act 200 {"data":[]}
+  ✅ [HF-3.tickets] /api/v1/tickets/orders หมดอายุ/เพิกถอน → 401 (เดิม)
+  ✅ [HF-4.tickets] /api/v1/tickets/orders คีย์รุ่นเดิมร้าน B → 200 ไม่เห็นข้อมูลร้าน A
+  ❌ [HF-5.tickets] /api/v1/tickets/orders คีย์ scope ร้าน B → 403 เหมือนร้าน A — exp 403 | act 200
+  ❌ [HF-5.0] body 403 เหมือนกันทุก route ทุกคีย์ทุกร้าน (ไม่บอกใบ้ว่ามีข้อมูลหรือไม่) — exp 1 แบบ | act 0 แบบ: 
+  ✅ [HF-6.1] /me คีย์ที่ใช้ได้ทุกแบบ → 200 { tenant: {id,name,slug} } ของร้าน A เท่านั้น
+  ✅ [HF-6.2] /me หมดอายุ/เพิกถอน → 401
+
+===== QC HF-APIV1 scope =====
+ผ่าน 26/67
+FINDINGS: CRITICAL 41 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":67,"passed":26,"findings":["HF-2.sales.1","HF-2.sales.2","HF-2.sales.3","HF-2.sales.4","HF-5.sales","HF-2.customers.1","HF-2.customers.2","HF-2.customers.3","HF-2.customers.4","HF-5.customers","HF-2.inventory.1","HF-2.inventory.2","HF-2.inventory.3","HF-2.inventory.4","HF-5.inventory","HF-2.appointments.1","HF-2.appointments.2","HF-2.appointments.3","HF-2.appointments.4","HF-5.appointments","HF-2.queue.1","HF-2.queue.2","HF-2.queue.3","HF-2.queue.4","HF-5.queue","HF-2.reservations.1","HF-2.reservations.2","HF-2.reservations.3","HF-2.reservations.4","HF-5.reservations","HF-2.shop.1","HF-2.shop.2","HF-2.shop.3","HF-2.shop.4","HF-5.shop","HF-2.tickets.1","HF-2.tickets.2","HF-2.tickets.3","HF-2.tickets.4","HF-5.tickets","HF-5.0"]}

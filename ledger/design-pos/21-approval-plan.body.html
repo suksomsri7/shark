@@ -1,0 +1,441 @@
+<style>
+.rail{width:56px;flex:none;border-right:1px solid var(--line);background:var(--sf2);
+  padding:10px 0;display:flex;flex-direction:column;align-items:center;gap:5px;color:var(--mut2)}
+.rail .ri{width:36px;height:36px;border-radius:9px;display:grid;place-items:center}
+.rail .ri.on{background:var(--sf);border:1px solid var(--line);color:var(--ink)}
+.top .biz{display:inline-flex;align-items:center;gap:12px;height:32px;padding:0 10px;border:1px solid var(--line);
+  border-radius:8px;font-size:13px;color:var(--ink2)}
+.top .dot{width:8px;height:8px;border-radius:50%;background:var(--ink);display:inline-block}
+.top .st{display:inline-flex;align-items:center;gap:13px;font-size:12.5px;color:var(--mut)}
+.top .who{display:inline-flex;align-items:center;gap:13px;font-size:12.5px;color:var(--ink2)}
+.amenu .am .pill{height:18px;min-width:18px;font-size:10.5px}
+.srow{display:flex;gap:16px;padding:14px 18px 0;align-items:center}
+.srow .inp{height:42px;font-size:13.5px}
+.kbd{display:inline-grid;place-items:center;min-width:24px;height:20px;padding:0 5px;border:1px solid var(--line2);
+  border-radius:5px;font-size:11px;font-weight:700;color:var(--ink2);background:var(--sf)}
+.pgrid{gap:23px;padding:14px 18px}
+.pitem{min-height:160px}
+.pitem .img{height:104px}
+.pitem.sel{border-color:var(--acc);box-shadow:inset 0 0 0 1px var(--acc)}
+.pitem .pr small.lo{color:var(--ink2);font-weight:700}
+.pop{position:absolute;left:214px;top:122px;width:360px;background:var(--sf);border:1px solid var(--line);
+  border-radius:14px;box-shadow:0 18px 44px rgba(10,10,10,.18);padding:16px;z-index:30;display:flex;flex-direction:column;gap:23px}
+.pop .ph2{display:flex;align-items:center;gap:16px}
+.pop .ph2 b{font-size:16px}
+.pop .ph2 .sp{flex:1}
+.og .lb{font-size:11.5px;font-weight:700;color:var(--mut);margin-bottom:6px;display:flex;gap:12px}
+.og .lb span{font-weight:400;color:var(--mut2)}
+.opts{display:flex;flex-wrap:wrap;gap:12px}
+.opt{height:32px;padding:0 11px;border:1px solid var(--line);border-radius:8px;display:inline-flex;align-items:center;
+  gap:5px;font-size:13px;color:var(--ink2);white-space:nowrap}
+.opt small{font-size:11.5px;color:var(--mut)}
+.opt.on{border-color:var(--ink);background:var(--sf2);color:var(--ink);font-weight:700;box-shadow:inset 0 0 0 1px var(--ink)}
+.opt.on small{color:var(--ink2)}
+.qty{display:inline-flex;align-items:center;border:1px solid var(--line);border-radius:9px;height:40px;overflow:hidden}
+.qty span{width:40px;height:100%;display:grid;place-items:center;font-size:17px;color:var(--ink2)}
+.qty b{width:40px;text-align:center;font-size:15px;border-left:1px solid var(--line);border-right:1px solid var(--line);
+  height:100%;display:grid;place-items:center}
+.cart .chd{display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--line)}
+.cart .chd .chip{height:31px;font-size:12.5px;padding:0 10px}
+.mem{margin:12px 16px 4px;border:1px solid var(--line);border-radius:10px;padding:10px 12px;display:flex;gap:19px;align-items:center;background:var(--sf2)}
+.mem .av{width:34px;height:34px;border-radius:9px;font-size:13px;background:var(--sf)}
+.mem .t{flex:1;min-width:0}
+.mem .t b{font-size:13.5px;display:block}
+.mem .t span{font-size:11.5px;color:var(--mut)}
+.mem .x{font-size:12px;color:var(--mut);text-decoration:underline}
+.lines{flex:1;min-height:0}
+.cline .t span.dg{color:var(--dg)}
+.tot .r .lnk{font-size:12px;margin-left:6px;font-weight:600}
+.tot .r.vat{font-size:12px;color:var(--mut)}
+.tot .r .n{font-variant-numeric:tabular-nums}
+.sec3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;padding:0 16px}
+.paybtn .k{font-size:12px;font-weight:600;opacity:.7;margin-left:10px}
+.sbar{height:34px;flex:none;display:flex;align-items:center;gap:26px;padding:0 18px;border-top:1px solid var(--line);
+  background:var(--sf2);font-size:12px;color:var(--mut)}
+.sbar .sp{flex:1}
+.sbar .kbd{height:18px;min-width:22px;font-size:10.5px}
+.sbar i.dt{width:7px;height:7px;border-radius:50%;background:var(--ink);display:inline-block}
+/* ══ 21A · มือถือผู้จัดการ ══ */
+.mrowx{display:flex;gap:48px;align-items:flex-start}
+.mob .sb .ic{display:flex;gap:12px;align-items:center;font-size:12px}
+.mob .sb .bat{width:22px;height:11px;border:1.5px solid var(--ink);border-radius:3px;position:relative}
+.mob .sb .bat::after{content:"";position:absolute;inset:1.5px;right:5px;background:var(--ink);border-radius:1px}
+.mob .mh .sp{flex:1}
+.msub{font-size:13px;color:var(--mut);padding:0 22px 12px;margin-top:-6px}
+.rq{border:1px solid var(--line);border-radius:18px;padding:16px;display:flex;flex-direction:column;gap:10px;background:var(--sf);margin-bottom:14px}
+.rq.sel{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
+.rq .h{display:flex;align-items:center;gap:10px}
+.rq .h b{font-size:16px;flex:1;min-width:0}
+.rq .h .amt{font-size:17px;font-weight:700;font-variant-numeric:tabular-nums}
+.rq .m{font-size:13px!important;color:var(--mut);line-height:1.5}
+.rq .why{font-size:13.5px;color:var(--ink2);background:var(--sf2);border-radius:10px;padding:8px 11px}
+.rq .bt{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:2px}
+.rq .bt .btn{height:44px!important}
+.mtabs{margin:0 0 14px}
+.mtab{height:36px;padding:0 14px;font-size:13.5px}
+.dt-amt{font-size:40px;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums;line-height:1.1}
+.dsec2{border:1px solid var(--line);border-radius:16px;padding:6px 14px;margin-top:14px}
+.dsec2 .kv{font-size:13.5px;padding:9px 0}
+.dsec2 .kv .k{width:84px}
+.dl{display:flex;gap:10px;padding:10px 0;border-top:1px solid var(--line);font-size:14px}
+.dl:first-child{border-top:0}
+.dl .sp{flex:1}
+.dl small{display:block;color:var(--mut);font-size:12.5px}
+.pol{display:flex;gap:10px;align-items:flex-start;margin-top:14px;padding:11px 13px;border-radius:12px;background:var(--acc-bg);color:var(--acc);font-size:13.5px;font-weight:600;line-height:1.5}
+.mob .bb .btn{height:56px!important;font-size:16px!important}
+.mfoot{font-size:12.5px;color:var(--mut);text-align:center;margin-top:12px}
+/* ══ 21B · รอผู้จัดการอนุมัติ ══ */
+.apv{position:absolute;left:calc(50% - 310px);top:150px;width:620px;background:var(--sf);border-radius:22px;
+  box-shadow:0 24px 60px rgba(10,10,10,.28);z-index:45;padding:30px 32px 28px;display:flex;flex-direction:column;gap:18px}
+.apv .hh{display:flex;align-items:center;gap:12px}
+.apv .hh h2{font-size:22px;font-weight:700;flex:1}
+.apv .ib{width:46px;height:46px;border-radius:14px;background:var(--sf2);border:1px solid var(--line);display:grid;place-items:center}
+.apv p{font-size:15px;color:var(--ink2);line-height:1.6}
+.apv .who2{display:flex;align-items:center;gap:12px;border:1px solid var(--line);border-radius:14px;padding:12px 14px}
+.apv .who2 .av{width:38px;height:38px;font-size:15px;border-radius:11px}
+.apv .who2 .t{flex:1}
+.apv .who2 .t b{display:block;font-size:15px}
+.apv .who2 .t span{font-size:13px;color:var(--mut)}
+.wait{display:flex;align-items:center;gap:14px;font-size:15px;color:var(--acc);font-weight:700}
+.wait i{width:11px;height:11px;border-radius:50%;background:var(--acc);box-shadow:0 0 0 5px var(--acc-bg),0 0 0 6px var(--acc);display:block}
+.wait .tm{margin-left:auto;font-variant-numeric:tabular-nums;font-size:20px;color:var(--ink)}
+.orl{display:flex;align-items:center;gap:14px;color:var(--mut);font-size:13.5px}
+.orl::before,.orl::after{content:"";flex:1;height:1px;background:var(--line)}
+.pinr{display:flex;gap:20px;align-items:flex-start}
+.pinr .l{flex:1;display:flex;flex-direction:column;gap:12px}
+.pinr .l b{font-size:15px}
+.pinr .l span.mu{font-size:13px}
+.dots{display:flex;gap:12px}
+.dots i{width:44px;height:52px;border:1px solid var(--line);border-radius:12px;display:grid;place-items:center;font-style:normal;font-size:22px}
+.dots i.f{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
+.dots i.f::after{content:"";width:12px;height:12px;border-radius:50%;background:var(--ink)}
+.apv .numpad{width:250px;gap:8px!important}
+.apv .numpad div{height:46px!important;font-size:18px!important;border-radius:11px!important}
+.apv .ft{display:flex;align-items:center;gap:12px;border-top:1px solid var(--line);padding-top:18px}
+.apv .ft .mu{font-size:13px;flex:1}
+/* ══ 21C · แพ็กสมาชิก ══ */
+.lscrim{position:absolute;inset:0;background:rgba(10,10,10,.22);z-index:40}
+.psheet{position:absolute;top:0;right:0;bottom:0;width:580px;background:var(--sf);z-index:41;border-left:1px solid var(--line);
+  box-shadow:-10px 0 34px rgba(10,10,10,.14);display:flex;flex-direction:column}
+.psheet .sh{display:flex;align-items:center;gap:12px;padding:22px 26px;border-bottom:1px solid var(--line)}
+.psheet .sh h2{font-size:20px;font-weight:700}
+.psheet .sh .sp{flex:1}
+.psheet .sbd{padding:24px 26px;display:flex;flex-direction:column;gap:18px}
+.pk{border:1px solid var(--line);border-radius:18px;padding:20px;display:flex;flex-direction:column;gap:10px}
+.pk.rn{border-color:var(--acc);background:var(--acc-bg)}
+.pk .h{display:flex;align-items:flex-start;gap:12px}
+.pk .h .t{flex:1;min-width:0}
+.pk .h .t b{display:block;font-size:17px}
+.pk .h .t span{font-size:13.5px;color:var(--mut)}
+.pk .h .pr{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+.pk .ft{display:flex;align-items:center;gap:12px;margin-top:4px}
+.pk .ft .sp{flex:1}
+.pk.rn .h .t span{color:var(--acc)}
+.prog2{height:8px;border-radius:4px;background:var(--sf);border:1px solid var(--line);overflow:hidden}
+.prog2 i{display:block;height:100%;width:20%;background:var(--acc)}
+.kind{display:inline-flex;align-items:center;height:22px;padding:0 8px;border-radius:7px;background:var(--ink);color:var(--sf);font-size:12.5px;font-weight:700;margin-right:6px;vertical-align:2px}
+.cline .t span.acct{color:var(--acc)}
+.cline .t b span.kind{display:inline-flex!important;margin-top:0!important;font-size:12.5px!important;color:var(--sf)!important}
+</style>
+<div class="wrap">
+
+<div>
+<p class="cap">21A · คำขออนุมัติบนมือถือผู้จัดการ (390×844 ×2) <span>— รายการรออนุมัติ · รายละเอียดคำขอพร้อมนโยบายที่เกี่ยวข้อง · อนุมัติ/ปฏิเสธพร้อมเหตุผล · ตอบจาก LINE ได้ด้วย</span></p>
+<div class="mrowx">
+
+<div>
+<p class="cap">ก · คำขออนุมัติ · ผู้จัดการ</p>
+<div class="mob">
+ <div class="sb"><span>10:43</span><span class="ic">5G<span class="bat"></span></span></div>
+ <div class="mh"><h1>คำขออนุมัติ</h1><span class="sp"></span><span class="chip ink">รอ 3 · วันนี้อนุมัติ 7</span></div>
+ <div class="msub">บ้านกาแฟสวนผึ้ง · สาขาหัวหิน · พี่เก่ง (ผู้จัดการ)</div>
+ <div class="mb">
+  <div class="mtabs"><span class="mtab on">รอ 3</span><span class="mtab">อนุมัติแล้ว 7</span><span class="mtab">ปฏิเสธ 1</span></div>
+
+  <div class="rq sel">
+   <div class="h"><svg class="i"><use href="#i-x"/></svg><b>ยกเลิกบิล R2609-000366</b><span class="amt">฿160</span></div>
+   <div class="m">น้ำฝน · เคาน์เตอร์ 1 · 2 นาทีที่แล้ว</div>
+   <div class="why">เหตุผล: ลูกค้าเปลี่ยนใจ</div>
+   <div class="bt"><span class="btn pri">อนุมัติ</span><span class="btn gh">ปฏิเสธ</span></div>
+  </div>
+
+  <div class="rq">
+   <div class="h"><svg class="i"><use href="#i-pct"/></svg><b>ส่วนลด 25% · บิล ฿1,120</b><span class="amt">−฿280</span></div>
+   <div class="m">แพร · เคาน์เตอร์ 2 · 5 นาทีที่แล้ว</div>
+   <div><span class="chip dg">เกินเพดาน 10% ของแคชเชียร์</span></div>
+   <div class="bt"><span class="btn pri">อนุมัติ</span><span class="btn gh">ปฏิเสธ</span></div>
+  </div>
+
+  <div class="rq">
+   <div class="h"><svg class="i"><use href="#i-swap"/></svg><b>คืนเงิน ฿85 · R2609-000312</b></div>
+   <div class="m">น้ำฝน · เคาน์เตอร์ 1 · 12 นาทีที่แล้ว</div>
+   <div class="why">เหตุผล: สินค้ามีปัญหา</div>
+   <div class="bt"><span class="btn pri">อนุมัติ</span><span class="btn gh">ปฏิเสธ</span></div>
+  </div>
+  <div class="mfoot">ส่งจากระบบอนุมัติของ SHARK · ตอบจาก LINE ก็ได้</div>
+ </div>
+</div>
+</div>
+
+<div>
+<p class="cap">ข · รายละเอียดคำขอ</p>
+<div class="mob">
+ <div class="sb"><span>10:43</span><span class="ic">5G<span class="bat"></span></span></div>
+ <div class="mh"><svg class="i"><use href="#i-back"/></svg><h1>ยกเลิกบิล</h1><span class="sp"></span><span class="chip acc">รอตัดสิน</span></div>
+ <div class="mb">
+  <div class="sub" style="font-size:13px">R2609-000366 · ซื้อกลับ · ชำระเงินสดแล้ว 10:35</div>
+  <div class="dt-amt" style="margin-top:6px">฿160</div>
+  <div class="dsec2">
+   <div class="dl"><span>1×</span><div class="sp">ลาเต้<small>M · นมปกติ</small></div><b>฿85</b></div>
+   <div class="dl"><span>1×</span><div class="sp">อเมริกาโน่<small>M</small></div><b>฿75</b></div>
+  </div>
+  <div class="dsec2">
+   <div class="kv"><span class="k">ผู้ขอ</span><span class="v">น้ำฝน · แคชเชียร์</span></div>
+   <div class="kv"><span class="k">เครื่อง</span><span class="v">เคาน์เตอร์ 1 · กะ #12</span></div>
+   <div class="kv"><span class="k">เวลา</span><span class="v">10:41 (2 นาทีที่แล้ว)</span></div>
+   <div class="kv"><span class="k">เหตุผล</span><span class="v">ลูกค้าเปลี่ยนใจ</span></div>
+   <div class="kv"><span class="k">ถ้าอนุมัติ</span><span class="v">คืนเงินสด ฿160 · คืนสต็อก · ใบลดหนี้</span></div>
+  </div>
+  <div class="pol"><svg class="i sm" style="margin-top:3px"><use href="#i-lock"/></svg>นโยบาย: ยกเลิกบิล &gt; ฿100 ต้องผู้จัดการ</div>
+  <span class="inp" style="width:100%;margin-top:14px"><svg class="i sm"><use href="#i-edit"/></svg>เหตุผลที่ปฏิเสธ (ถ้าปฏิเสธ)</span>
+ </div>
+ <div class="bb">
+  <div style="display:grid;grid-template-columns:1fr 1.4fr;gap:12px"><span class="btn gh">ปฏิเสธ</span><span class="btn pri"><svg class="i sm"><use href="#i-check"/></svg>อนุมัติ</span></div>
+  <div class="mfoot">ส่งจากระบบอนุมัติของ SHARK · ตอบจาก LINE ก็ได้</div>
+ </div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div>
+<p class="cap">21B · รอผู้จัดการอนุมัติ (1440×900) <span>— แคชเชียร์ส่งคำขอยกเลิกบิลแล้ว · รอผู้จัดการกดจากมือถือ หรือให้ผู้จัดการใส่ PIN ที่เครื่องนี้แทน</span></p>
+<div class="frame" style="height:900px">
+ <div class="top"><svg class="i lg"><use href="#i-menu"/></svg><span class="brand">SHARK</span>
+  <span class="biz"><svg class="i sm"><use href="#i-shop"/></svg>บ้านกาแฟสวนผึ้ง · สาขาหัวหิน<svg class="i xs"><use href="#i-cv"/></svg></span>
+  <span class="sp"></span>
+  <span class="st"><i class="dot"></i>ออนไลน์ · ซิงก์ล่าสุด 10:41</span>
+  <span class="chip"><svg class="i xs"><use href="#i-clock"/></svg>กะ #12 · เปิด 09:02 · เคาน์เตอร์ 1</span>
+  <span class="who"><span class="av">น</span>น้ำฝน · แคชเชียร์</span>
+ </div>
+ <div class="appbody" style="flex:1;min-height:0">
+  <div class="rail">
+   <div class="ri"><svg class="i sm"><use href="#i-home"/></svg></div>
+   <div class="ri on"><svg class="i sm"><use href="#i-shop"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-users"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-box"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-book"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-grid"/></svg></div>
+   <span style="flex:1"></span>
+   <div class="ri"><svg class="i sm"><use href="#i-gear"/></svg></div>
+  </div>
+  <div class="mod">
+   <div class="amenu">
+    <div class="am on"><svg class="i sm"><use href="#i-cash"/></svg>หน้าขาย</div>
+    <div class="am"><svg class="i sm"><use href="#i-grid"/></svg>โต๊ะ</div>
+    <div class="am"><svg class="i sm"><use href="#i-truck"/></svg>ออเดอร์ออนไลน์<span class="pill">3</span></div>
+    <div class="am"><svg class="i sm"><use href="#i-doc"/></svg>บิลวันนี้</div>
+    <div class="am"><svg class="i sm"><use href="#i-clock"/></svg>กะ</div>
+    <div class="am"><svg class="i sm"><use href="#i-tag"/></svg>สินค้า</div>
+    <div class="am"><svg class="i sm"><use href="#i-chart"/></svg>รายงาน</div>
+    <div class="am"><svg class="i sm"><use href="#i-gear"/></svg>ตั้งค่า</div>
+   </div>
+   <div class="pos">
+    <div class="left" style="position:relative">
+     <div class="srow">
+      <span class="inp gro"><svg class="i sm"><use href="#i-search"/></svg>ค้นหาชื่อ / SKU หรือสแกนบาร์โค้ด (F2)<span class="kbd" style="margin-left:auto">F2</span></span>
+      <span class="btn gh" style="height:42px"><svg class="i sm"><use href="#i-plus"/></svg>รายการกำหนดเอง</span>
+      <span class="btn gh" style="height:42px"><svg class="i sm"><use href="#i-cam"/></svg>สแกนด้วยกล้อง</span>
+     </div>
+     <div class="cats">
+      <span class="c">ทั้งหมด</span><span class="c on">กาแฟ</span><span class="c">ชาและนม</span><span class="c">ขนม</span>
+      <span class="c">อาหาร</span><span class="c">เมล็ดกาแฟและของฝาก</span><span class="c">บริการ</span>
+     </div>
+     <div class="pgrid">
+      <div class="pitem"><div class="img"></div><div class="nm">ลาเต้</div><div class="pr">฿75<small>3 ขนาด</small></div></div>
+      <div class="pitem"><div class="img"></div><div class="nm">อเมริกาโน่</div><div class="pr">฿65<small>3 ขนาด</small></div></div>
+      <div class="pitem"><div class="img"></div><div class="nm">คาปูชิโน่</div><div class="pr">฿75<small>3 ขนาด</small></div></div>
+      <div class="pitem"><div class="img"></div><div class="nm">มอคค่า</div><div class="pr">฿85<small>3 ขนาด</small></div></div>
+      <div class="pitem"><div class="img"></div><div class="nm">เอสเพรสโซ</div><div class="pr">฿55</div></div>
+      <div class="pitem"><div class="img"></div><div class="nm">ชาไทย</div><div class="pr">฿60</div></div>
+      <div class="pitem"><div class="img"></div><div class="nm">มัทฉะลาเต้</div><div class="pr">฿90</div></div>
+      <div class="pitem"><div class="img"></div><div class="nm">โกโก้</div><div class="pr">฿70</div></div>
+      <div class="pitem oos"><div class="img"></div><div class="nm">ครัวซองต์อัลมอนด์</div><div class="pr">฿95</div></div>
+      <div class="pitem"><div class="img"></div><div class="nm">บราวนี่</div><div class="pr">฿65<small class="lo">เหลือ 2</small></div></div>
+      <div class="pitem"><div class="img"></div><div class="nm">ข้าวกะเพราไก่</div><div class="pr">฿89</div></div>
+      <div class="pitem"><div class="img"></div><div class="nm">ผัดไทย</div><div class="pr">฿99</div></div>
+     </div>
+    </div>
+    <div class="cart">
+     <div class="chd">
+      <span class="chip ink">R2609-000366 · ชำระแล้ว 10:35</span>
+      <span class="sp" style="flex:1"></span>
+      <span class="btn gh sm"><svg class="i sm"><use href="#i-print"/></svg>พิมพ์ซ้ำ</span>
+     </div>
+     <div class="lines">
+      <div class="cline"><span class="q">1</span><div class="t"><b>ลาเต้</b><span>M · นมปกติ</span></div><div class="a">฿85</div></div>
+      <div class="cline"><span class="q">1</span><div class="t"><b>อเมริกาโน่</b><span>M</span></div><div class="a">฿75</div></div>
+     </div>
+     <div class="tot">
+      <div class="r"><span>รวม</span><span class="n">฿160</span></div>
+      <div class="r vat"><span>VAT 7% (รวมในราคา)</span><span class="n">฿10.47</span></div>
+      <div class="r"><span>ชำระด้วย</span><span class="n">เงินสด ฿160</span></div>
+      <div class="r g"><span>ยอดสุทธิ</span><span class="n">฿160</span></div>
+     </div>
+     <div class="paybtn" style="background:var(--sf2);color:var(--mut);border:1px solid var(--line)"><span>ยกเลิกบิล</span><span>รออนุมัติ…</span></div>
+    </div>
+   </div>
+   <div class="sbar">
+    <span>แป้นลัด</span>
+    <span><span class="kbd">F2</span> ค้นหา</span><span><span class="kbd">F4</span> ชำระ</span>
+    <span><span class="kbd">F8</span> พักบิล</span><span><span class="kbd">Esc</span> ล้าง</span>
+    <span class="sp"></span>
+    <span>รอตัดสต็อก 0</span><span>·</span><span>รอซิงก์ 0</span><span>·</span>
+    <span style="display:inline-flex;align-items:center;gap:6px"><svg class="i xs"><use href="#i-print"/></svg>เครื่องพิมพ์ 80 มม. พร้อม</span>
+   </div>
+  </div>
+ </div>
+ <div class="scrim"></div>
+ <div class="apv">
+  <div class="hh"><span class="ib"><svg class="i"><use href="#i-lock"/></svg></span><h2>รอผู้จัดการอนุมัติ</h2><svg class="i mu"><use href="#i-x"/></svg></div>
+  <p>ส่งคำขอ<b>ยกเลิกบิล R2609-000366 · ฿160</b> แล้ว 10:41 · เหตุผล: ลูกค้าเปลี่ยนใจ</p>
+  <div class="who2"><span class="av">ก</span><div class="t"><b>ผู้อนุมัติ: พี่เก่ง</b><span>ผู้จัดการ · มือถือ · ออนไลน์ · แจ้งทางแอปและ LINE แล้ว</span></div><span class="chip acc">ส่งแล้ว</span></div>
+  <div class="wait"><i></i>กำลังรอ…<span class="tm">0:42</span></div>
+  <div class="orl">หรือ</div>
+  <div class="pinr">
+   <div class="l">
+    <b>ใส่ PIN ผู้จัดการที่เครื่องนี้</b>
+    <span class="mu">ผู้จัดการอยู่ที่ร้าน ให้กด PIN 4 หลักแทนได้เลย ระบบบันทึกว่าใครอนุมัติ</span>
+    <div class="dots"><i class="f"></i><i class="f"></i><i></i><i></i></div>
+   </div>
+   <div class="numpad">
+    <div>1</div><div>2</div><div>3</div><div>4</div><div>5</div><div>6</div><div>7</div><div>8</div><div>9</div><div class="k">ล้าง</div><div>0</div><div class="k">⌫</div>
+   </div>
+  </div>
+  <div class="ft"><span class="mu">ถ้าไม่มีใครตอบใน 5 นาที คำขอจะหมดอายุ บิลยังอยู่ตามเดิม</span><span class="btn gh">ยกเลิกคำขอ</span></div>
+ </div>
+</div>
+</div>
+
+<div>
+<p class="cap">21C · ขายแพ็กสมาชิก (1440×900) <span>— แผงขวาจากระบบแพ็กเกจ · ขายแพ็กใหม่ / ต่ออายุให้สมาชิกที่เลือกอยู่ · แพ็กลงตะกร้าเป็นรายการชนิด "แพ็ก" · สิทธิ์ถูกตัดอัตโนมัติ</span></p>
+<div class="frame" style="height:900px">
+ <div class="top"><svg class="i lg"><use href="#i-menu"/></svg><span class="brand">SHARK</span>
+  <span class="biz"><svg class="i sm"><use href="#i-shop"/></svg>บ้านกาแฟสวนผึ้ง · สาขาหัวหิน<svg class="i xs"><use href="#i-cv"/></svg></span>
+  <span class="sp"></span>
+  <span class="st"><i class="dot"></i>ออนไลน์ · ซิงก์ล่าสุด 10:41</span>
+  <span class="chip"><svg class="i xs"><use href="#i-clock"/></svg>กะ #12 · เปิด 09:02 · เคาน์เตอร์ 1</span>
+  <span class="who"><span class="av">น</span>น้ำฝน · แคชเชียร์</span>
+ </div>
+ <div class="appbody" style="flex:1;min-height:0">
+  <div class="rail">
+   <div class="ri"><svg class="i sm"><use href="#i-home"/></svg></div>
+   <div class="ri on"><svg class="i sm"><use href="#i-shop"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-users"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-box"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-book"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-grid"/></svg></div>
+   <span style="flex:1"></span>
+   <div class="ri"><svg class="i sm"><use href="#i-gear"/></svg></div>
+  </div>
+  <div class="mod">
+   <div class="amenu">
+    <div class="am on"><svg class="i sm"><use href="#i-cash"/></svg>หน้าขาย</div>
+    <div class="am"><svg class="i sm"><use href="#i-grid"/></svg>โต๊ะ</div>
+    <div class="am"><svg class="i sm"><use href="#i-truck"/></svg>ออเดอร์ออนไลน์<span class="pill">3</span></div>
+    <div class="am"><svg class="i sm"><use href="#i-doc"/></svg>บิลวันนี้</div>
+    <div class="am"><svg class="i sm"><use href="#i-clock"/></svg>กะ</div>
+    <div class="am"><svg class="i sm"><use href="#i-tag"/></svg>สินค้า</div>
+    <div class="am"><svg class="i sm"><use href="#i-chart"/></svg>รายงาน</div>
+    <div class="am"><svg class="i sm"><use href="#i-gear"/></svg>ตั้งค่า</div>
+   </div>
+   <div class="pos">
+    <div class="left" style="position:relative">
+     <div class="srow">
+      <span class="inp gro"><svg class="i sm"><use href="#i-search"/></svg>ค้นหาชื่อ / SKU หรือสแกนบาร์โค้ด (F2)<span class="kbd" style="margin-left:auto">F2</span></span>
+      <span class="btn gh" style="height:42px"><svg class="i sm"><use href="#i-plus"/></svg>รายการกำหนดเอง</span>
+      <span class="btn gh" style="height:42px"><svg class="i sm"><use href="#i-cam"/></svg>สแกนด้วยกล้อง</span>
+     </div>
+     <div class="cats">
+      <span class="c">ทั้งหมด</span><span class="c on">กาแฟ</span><span class="c">ชาและนม</span><span class="c">ขนม</span>
+      <span class="c">อาหาร</span><span class="c">เมล็ดกาแฟและของฝาก</span><span class="c">บริการ</span>
+     </div>
+     <div class="pgrid">
+      <div class="pitem"><div class="img"></div><div class="nm">ลาเต้</div><div class="pr">฿75<small>3 ขนาด</small></div></div>
+      <div class="pitem"><div class="img"></div><div class="nm">อเมริกาโน่</div><div class="pr">฿65<small>3 ขนาด</small></div></div>
+      <div class="pitem"><div class="img"></div><div class="nm">คาปูชิโน่</div><div class="pr">฿75<small>3 ขนาด</small></div></div>
+      <div class="pitem"><div class="img"></div><div class="nm">มอคค่า</div><div class="pr">฿85<small>3 ขนาด</small></div></div>
+      <div class="pitem"><div class="img"></div><div class="nm">เอสเพรสโซ</div><div class="pr">฿55</div></div>
+      <div class="pitem"><div class="img"></div><div class="nm">ชาไทย</div><div class="pr">฿60</div></div>
+      <div class="pitem"><div class="img"></div><div class="nm">มัทฉะลาเต้</div><div class="pr">฿90</div></div>
+      <div class="pitem"><div class="img"></div><div class="nm">โกโก้</div><div class="pr">฿70</div></div>
+      <div class="pitem oos"><div class="img"></div><div class="nm">ครัวซองต์อัลมอนด์</div><div class="pr">฿95</div></div>
+      <div class="pitem"><div class="img"></div><div class="nm">บราวนี่</div><div class="pr">฿65<small class="lo">เหลือ 2</small></div></div>
+      <div class="pitem"><div class="img"></div><div class="nm">ข้าวกะเพราไก่</div><div class="pr">฿89</div></div>
+      <div class="pitem"><div class="img"></div><div class="nm">ผัดไทย</div><div class="pr">฿99</div></div>
+     </div>
+     <div class="lscrim"></div>
+     <div class="psheet">
+      <div class="sh"><svg class="i"><use href="#i-box"/></svg><h2>แพ็กสมาชิก</h2><span class="chip">ระบบแพ็กเกจ</span><span class="sp"></span><svg class="i mu"><use href="#i-x"/></svg></div>
+      <div class="sbd">
+       <div class="pk rn">
+        <div class="h"><div class="t"><b>ต่ออายุให้คุณสมชาย</b><span>แพ็กกาแฟรายเดือน หมด 15 ต.ค. · เหลือ 6 แก้ว</span></div><span class="pr">฿1,990</span></div>
+        <div class="prog2"><i></i></div>
+        <div class="ft"><span class="mu" style="font-size:13px">ใช้ไป 24 / 30 แก้ว · แก้วที่เหลือยกไปรอบใหม่ไม่ได้</span><span class="sp"></span><span class="btn pri">ต่ออายุ ฿1,990</span></div>
+       </div>
+       <div class="pk">
+        <div class="h"><div class="t"><b>แพ็กกาแฟรายเดือน</b><span>30 แก้ว · ใช้ได้ 30 วัน · กาแฟทุกเมนูขนาด M</span></div><span class="pr">฿1,990</span></div>
+        <div class="ft"><span class="chip acc">ประหยัด 25%</span><span class="sp"></span><span class="btn gh"><svg class="i sm"><use href="#i-plus"/></svg>เพิ่มลงตะกร้า</span></div>
+       </div>
+       <div class="pk">
+        <div class="h"><div class="t"><b>แพ็กเวิร์กช็อปชงกาแฟ 4 ครั้ง</b><span>จองรอบผ่านระบบจอง · ใช้ได้ 90 วัน</span></div><span class="pr">฿4,900</span></div>
+        <div class="ft"><span class="chip">ปกติครั้งละ ฿1,500</span><span class="sp"></span><span class="btn gh"><svg class="i sm"><use href="#i-plus"/></svg>เพิ่มลงตะกร้า</span></div>
+       </div>
+       <span class="note">สิทธิ์แพ็กถูกใช้อัตโนมัติเมื่อสั่งกาแฟครั้งถัดไป — แคชเชียร์ไม่ต้องกดอะไรเพิ่ม</span>
+      </div>
+     </div>
+    </div>
+    <div class="cart">
+     <div class="chd">
+      <span class="chip ink">บิลใหม่ · ทานที่ร้าน<svg class="i xs"><use href="#i-cv"/></svg></span>
+      <span class="sp" style="flex:1"></span>
+      <span class="btn gh sm"><svg class="i sm"><use href="#i-clock"/></svg>พักบิล</span>
+     </div>
+     <div class="mem">
+      <span class="av">ส</span>
+      <div class="t"><b>คุณสมชาย ใจดี</b><span>Gold · 1,240 แต้ม · แพ็กกาแฟเหลือ 6 แก้ว</span></div>
+      <span class="x">ถอด</span>
+     </div>
+     <div class="lines">
+      <div class="cline"><span class="q">1</span><div class="t"><b><span class="kind">แพ็ก</span>แพ็กกาแฟรายเดือน (ต่ออายุ)</b><span>เริ่ม 16 ต.ค. · หมด 14 พ.ย. · 30 แก้ว</span></div><div class="a">฿1,990</div></div>
+      <div class="cline"><span class="q">1</span><div class="t"><b>ลาเต้</b><span class="acct">M · ใช้สิทธิ์แพ็ก (เหลือ 5 แก้ว)</span></div><div class="a">฿85<small class="dgt" style="font-weight:600">−฿85</small></div></div>
+     </div>
+     <div class="tot">
+      <div class="r"><span>รวม</span><span class="n">฿2,075</span></div>
+      <div class="r"><span>สิทธิ์แพ็กกาแฟ</span><span class="n dg">−฿85</span></div>
+      <div class="r vat"><span>VAT 7% (รวมในราคา)</span><span class="n">฿130.19</span></div>
+      <div class="r g"><span>ยอดสุทธิ</span><span class="n">฿1,990</span></div>
+     </div>
+     <div class="sec3">
+      <span class="btn gh sm"><svg class="i xs"><use href="#i-pct"/></svg>ส่วนลดท้ายบิล</span>
+      <span class="btn gh sm"><svg class="i xs"><use href="#i-edit"/></svg>หมายเหตุ</span>
+      <span class="btn gh sm"><svg class="i xs"><use href="#i-doc"/></svg>ใบกำกับเต็มรูป</span>
+     </div>
+     <div class="paybtn"><span>ชำระเงิน</span><span>฿1,990<span class="k">(F4)</span></span></div>
+    </div>
+   </div>
+   <div class="sbar">
+    <span>แป้นลัด</span>
+    <span><span class="kbd">F2</span> ค้นหา</span><span><span class="kbd">F4</span> ชำระ</span>
+    <span><span class="kbd">F8</span> พักบิล</span><span><span class="kbd">Esc</span> ล้าง</span>
+    <span class="sp"></span>
+    <span>รอตัดสต็อก 0</span><span>·</span><span>รอซิงก์ 0</span><span>·</span>
+    <span style="display:inline-flex;align-items:center;gap:6px"><svg class="i xs"><use href="#i-print"/></svg>เครื่องพิมพ์ 80 มม. พร้อม</span>
+   </div>
+  </div>
+ </div>
+</div>
+</div>
+
+</div>

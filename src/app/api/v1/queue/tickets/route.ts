@@ -1,6 +1,6 @@
 // GET /api/v1/queue/tickets?date=&take= — บัตรคิวตามวัน (ค่าเริ่มต้น=วันนี้ตามเวลาไทย) ทุกกิจการ (Wave6-D)
 import { tenantDb } from "@/lib/core/db";
-import { apiJson, authenticateApiRequest } from "@/lib/api-keys/route-auth";
+import { apiJson, authenticateApiRequest, requireLegacyFullAccessKey } from "@/lib/api-keys/route-auth";
 import { businessDateOf } from "@/lib/modules/queue/service";
 
 function parseTake(url: string): number {
@@ -12,6 +12,8 @@ function parseTake(url: string): number {
 export async function GET(req: Request): Promise<Response> {
   const auth = await authenticateApiRequest(req);
   if (!auth.ok) return auth.response;
+  const denied = requireLegacyFullAccessKey(auth); // HF-APIV1: คีย์ที่มี scope/ผูกระบบ ใช้ route ข้อมูลรุ่นเดิมไม่ได้
+  if (denied) return denied;
   const take = parseTake(req.url);
   // date=YYYY-MM-DD (business date ตามโซนร้าน) — ไม่ส่ง → วันนี้
   const dateParam = new URL(req.url).searchParams.get("date")?.trim();

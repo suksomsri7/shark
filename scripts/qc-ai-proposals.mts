@@ -81,7 +81,7 @@ try {
 
     // 6) hr_decide_leave + marketing_create_campaign
     const p4 = await pr.createProposal(ctx, { conversationId: conv.id, kind: "hr_decide_leave", summary: "อนุมัติลาพนักงานพี", payload: { leaveId: leave.id, decision: "APPROVED" } });
-    const ex4 = await pr.executeProposal(OWNER, ctx, p4.id);
+    const ex4 = await pr.executeProposal(OWNER, ctx, p4.id, { userId: "qc-r4-confirmer" }); // HF-HR-0 รอบ 4 (C6): ผู้กดยืนยัน = ผู้ตัดสินจริง (OWNER ไม่ใช่เจ้าของใบลา)
     chk("PZ-6.1", "อนุมัติใบลาผ่าน proposal → APPROVED", ex4.ok === true && (await prisma.hrLeave.findUnique({ where: { id: leave.id } }))?.status === "APPROVED", "APPROVED", "?");
     const p5 = await pr.createProposal(ctx, { conversationId: conv.id, kind: "marketing_create_campaign", summary: "สร้างแคมเปญ", payload: { name: "โปรหน้าฝน", channel: "LINE" } });
     const ex5 = await pr.executeProposal(OWNER, ctx, p5.id);

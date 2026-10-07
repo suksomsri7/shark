@@ -1,0 +1,88 @@
+[env] qc-hf-hr-privacy · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech
+(node:1112145) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+── [P] สลิปเงินเดือน (D3) ──
+  ✅ [P-0] มีตัวโหลดสลิปที่ตรวจสิทธิ์ (privacy.loadPayslipForViewer)
+  ✅ [P-1] เจ้าของร้าน เปิดสลิปของเพื่อนร่วมงานได้
+  ✅ [P-2] ผู้มีสิทธิ์ดูเงินเดือน (hr.payroll.read) เปิดได้
+  ✅ [P-3] 🔴 เจ้าหน้าที่ HR ที่ไม่มี hr.payroll.read → ไม่พบ
+  ✅ [P-4] 🔴 MANAGER (ไม่มี hr.payroll.read) → ไม่พบ
+  ✅ [P-5] 🔴 พนักงานทั่วไปที่มี runId+employeeId → ไม่พบ
+  ✅ [P-6] 🔴 ตัวเองเปิดสลิปของเพื่อนร่วมงาน → ไม่พบ
+  ✅ [P-7] ตัวเอง + รอบยังเป็นร่าง → ยังไม่เห็น (ตัวเลขร่างยังเปลี่ยนได้)
+  ✅ [P-8] ตัวเอง + รอบอนุมัติแล้ว → เปิดสลิปของตัวเองได้
+  ✅ [P-9] ตัวเอง + รอบจ่ายแล้ว → เปิดได้
+  ✅ [P-10] 🔴 เจ้าของร้านอื่น (ถือ id ของร้านนี้) → ไม่พบ
+  ✅ [P-11] id พนักงานที่ไม่มีในรอบ → ไม่พบ
+── [Pr] โปรไฟล์พนักงาน (D4) ──
+  ✅ [Pr-0] มีตัวโหลดโปรไฟล์ที่ตรวจสิทธิ์ + whitelist ช่อง
+  ✅ [Pr-1] เจ้าของร้าน: เห็นช่องอ่อนไหว + เอกสาร
+  ✅ [Pr-2] ผู้มี hr.payroll.read: เห็นช่องอ่อนไหว + เอกสาร
+  ✅ [Pr-3] 🔴 เจ้าหน้าที่ HR ไม่มีสิทธิ์เงินเดือน: เปิดได้ แต่ไม่มีช่องอ่อนไหวสักช่อง + ไม่มีเอกสาร
+  ✅ [Pr-4] 🔴 MANAGER: เปิดได้ แต่ไม่มีช่องอ่อนไหว/เอกสาร
+  ✅ [Pr-5] 🔴 พนักงานทั่วไป (ไม่มีคีย์ HR) → ไม่พบ
+  ✅ [Pr-6] ตัวพนักงานเอง (ไม่มีคีย์ HR) → ไม่พบ (ยังไม่มีหน้าโปรไฟล์ของตัวเอง)
+  ✅ [Pr-7] 🔴 เจ้าของร้านอื่น → ไม่พบ
+  ✅ [Pr-8] 🔴 PIN / linkedUserId / partyId / tenantId / docs ไม่อยู่ใน DTO ใดเลย
+  ✅ [Pr-9] PIN แสดงเป็น 'ตั้งแล้ว/ยังไม่ตั้ง' (hasPin) เท่านั้น
+  ✅ [Pr-10] ทุกช่องใน DTO อยู่ใน whitelist
+  ✅ [Pr-11] 🔴 ข้อมูลดิบของ DTO (JSON) ของผู้ไม่มีสิทธิ์ ไม่มีเลขบัตร/บัญชี/PIN/URL เอกสาร
+── [L] เหตุผลการลา (D9) ──
+  ✅ [L-1] ผู้มี hr.leave.read เห็นเหตุผลการลา
+  ✅ [L-2] 🔴 พนักงานทั่วไป: รายการใบลาไม่มีเหตุผล
+  ✅ [L-3] MANAGER (ผ่าน evaluate) เห็นเหตุผล
+  ✅ [L-4] 🔴 AI pending_leaves ไม่คืนเหตุผลการลา (ไม่รู้ว่าใครถาม ⇒ ปิดไว้)
+  ✅ [L-5] AI pending_leaves ยังบอกชื่อ/ประเภท/วันได้ตามเดิม
+── [N] ตั้ง PIN ซ้ำ (D8) ──
+  ✅ [N-1] PIN ซ้ำ → ไม่บันทึก
+  ✅ [N-2] 🔴 ข้อความไม่บอกชื่อคนที่ใช้ PIN นั้นอยู่
+  ✅ [N-3] ข้อความกลางภาษาไทย 'PIN นี้ใช้ไม่ได้ กรุณาเลือก PIN อื่น'
+  ✅ [N-4] PIN ของ e2 ไม่เปลี่ยน
+  ✅ [N-5] PIN ไม่ซ้ำ → บันทึกได้ตามเดิม
+── [D] ตัดสินใบลา (D10) ──
+  ✅ [D-1] PENDING → APPROVED ตามปกติ (ผู้ตัดสินไม่ใช่เจ้าของใบลา)
+  ✅ [D-1b] decidedById ถูกบันทึก
+  ✅ [D-2] 🔴 ใบลาที่อนุมัติแล้ว อนุมัติซ้ำไม่ได้ (APPROVED→APPROVED ปฏิเสธ · decidedById เดิม)
+  ✅ [D-2b] ข้อความปฏิเสธเป็นภาษาไทย
+  ✅ [D-3] 🔴 ใบลาที่ยกเลิกแล้ว ห้ามอนุมัติ
+  ✅ [D-4] 🔴 อนุมัติใบลาของตัวเองไม่ได้
+  ✅ [D-4b] คนอื่นอนุมัติใบเดียวกันได้ตามปกติ
+  ✅ [D-4c] ทางที่ไม่มีผู้ตัดสิน (ข้อเสนอ AI · decidedById null) ยังตัดสิน PENDING ได้
+  ✅ [D-5] 🔴 ตัดสินพร้อมกัน 2 ทาง → สำเร็จทางเดียว และสถานะตรงกับผู้ชนะ (3/3 รอบ)
+  ✅ [R-0] fixture: วันลาอนุมัติแล้ว → วันนั้นไม่ว่าง
+  ❌ [R-1] ถอนอนุมัติโดยคนที่ไม่ใช่เจ้าของใบลา → REJECTED + decidedById ใหม่ — expected REJECTED | actual APPROVED ใบลานี้อนุมัติแล้ว — เปลี่ยนผลไม่ได้
+  ❌ [R-1b] ผลข้างเคียงเหมือนเดิม: ถอนแล้ววันนั้นกลับมาว่าง — expected true | actual false
+  ❌ [R-2] 🔴 ถอนซ้ำครั้งที่สอง → ปฏิเสธ (REJECTED→REJECTED) · decidedById ไม่เปลี่ยน — expected ปฏิเสธ | actual err=ใบลานี้อนุมัติแล้ว — เปลี่ยนผลไม่ได้
+  ❌ [R-3] 🔴 ใบลาที่ไม่อนุมัติแล้ว กลับไปอนุมัติไม่ได้ (REJECTED→APPROVED) — expected ปฏิเสธ | actual APPROVED err=ใบลานี้อนุมัติแล้ว — เปลี่ยนผลไม่ได้
+  ✅ [R-4] 🔴 ถอนอนุมัติใบลาของตัวเองไม่ได้
+  ❌ [R-5] 🔴 ถอนอนุมัติพร้อมกัน → สำเร็จทางเดียว (3/3 รอบ · รอบที่ 3 = ถอน vs อนุมัติซ้ำ) — expected 3/3 | actual 0:APPROVED:false 0:APPROVED:false 0:APPROVED:false
+  ✅ [R-6] 🔴 ปุ่มจากรายการ 'รออนุมัติ' (from PENDING) ไม่ถอนใบที่เพิ่งถูกอนุมัติไปก่อน
+  ❌ [R-7] bulkDecideLeaveAction (หน้ารายการรออนุมัติ) ส่ง from PENDING — expected ใช่ | actual ไม่ใช่
+  ✅ [D-6] bulk: ใบที่อนุมัติแล้วไม่ถูกอนุมัติซ้ำ (done 1 · failed 1) + เหตุผลไทย
+  ✅ [D-7] ร้านอื่นตัดสินใบลาของร้านนี้ไม่ได้
+  ✅ [D-8.0] fixture: ใบลาเข้าสายอนุมัติ (ApprovalRequest PENDING)
+  ✅ [D-8] 🔴 ใบลาที่รอสายอนุมัติ ห้ามตัดสินทางตรง (ใบลาคง PENDING · คำขอคง PENDING)
+  ✅ [D-8b] ข้อความชี้ไปที่สายอนุมัติ (ภาษาไทย)
+
+[cleanup] ลบร้านทดสอบเรียบร้อย
+── [S] static ──
+  ✅ [S-1] หน้าสลิปเรียก loadPayslipForViewer และไม่เรียก payslipData ตรง
+  ✅ [S-2] หน้าโปรไฟล์เรียก loadEmployeeProfileForViewer · ไม่เรียก getEmployee ตรง · ไม่ส่ง emp={emp} (แถวดิบ) ให้ฟอร์ม
+  ✅ [S-3] ฟอร์มโปรไฟล์ (client) ใช้ type จาก privacy-shared และไม่รู้จัก pinCode
+  ✅ [S-4] privacy-shared.ts ไม่ import โมดูลที่ถึง prisma (client import ได้)
+  ✅ [S-5] ส่วนจอใบลาใช้ leaveItemsForViewer และไม่อ่าน .reason ตรง
+  ✅ [S-6] AI pending_leaves ไม่อ่าน l.reason
+  ✅ [S-7] รายการช่องอ่อนไหวของ DTO ตรงกับ SENSITIVE_EMPLOYEE_FIELDS ของ service
+
+===== QC: HF-HR-0 ข้อมูลพนักงาน/สลิป/ใบลา =====
+ผ่าน 58/64
+FINDINGS: CRITICAL 6 · MAJOR 0 · MINOR 0
+
+JSON_SUMMARY {"total":64,"passed":58,"findings":[{"id":"R-1","sev":"CRITICAL"},{"id":"R-1b","sev":"CRITICAL"},{"id":"R-2","sev":"CRITICAL"},{"id":"R-3","sev":"CRITICAL"},{"id":"R-5","sev":"CRITICAL"},{"id":"R-7","sev":"CRITICAL"}]}

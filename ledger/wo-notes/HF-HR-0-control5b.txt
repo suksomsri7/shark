@@ -1,0 +1,51 @@
+# HF-HR-0 round 5b — control runs: each fix reverted ALONE (H2/H3/H4 = files restored to dc9e04c9 · H1/H5 = only that hunk of payroll.ts removed), oracle run, fix restored (cmp-verified)
+
+## control H1
+## start 18:21:27 UTC
+  ❌ [PA-1] 🔴 ผู้อนุมัติเงินเดือน (STAFF + hr.payroll.read · ผูกกับแถวพนักงานของตัวเอง) อนุมัติโบนัส 50,000 บาทที่ผู้จัดการยื่นให้แถวของตัวเองไม่ได้ — คง PENDING · ไม่มีผู้ตัดสิน — expected ปฏิเสธ · PENDING | actual {"ok":true} row=APPROVED/u-hrmgr-1790878890762
+  ❌ [PA-1b] เหตุผล = 'อนุมัติรายการของตัวเองไม่ได้ — ให้ผู้อนุมัติคนอื่นหรือเจ้าของร้านตัดสิน' — expected อนุมัติรายการของตัวเองไม่ได้ — ให้ผู้อนุมัติคนอื่นหรือเจ้าของร้านตัดสิน | actual undefined
+  ❌ [PA-4] 🔴 หลายรายการ (ของตัวเอง + ของคนอื่น) → ของตัวเองถูกปฏิเสธ (เหตุผลเดียวกัน · คง PENDING) · ของคนอื่นอนุมัติได้ — expected ของตัวเองปฏิเสธ · ของคนอื่น APPROVED | actual [{"ok":true},{"ok":true}] own=APPROVED other=APPROVED
+  ❌ [PA-5] ปฏิเสธรายการของตัวเองได้ (ไม่มีใครเสียประโยชน์) → REJECTED · ผู้ตัดสินถูกบันทึก — expected REJECTED | actual {"ok":false,"reason":"รายการนี้ตัดสินไปแล้ว"} APPROVED
+  ❌ [PA-6] 🔴 ไม่รู้ตัวผู้อนุมัติ (userId ว่าง) และไม่ใช่เจ้าของร้าน → อนุมัติไม่ได้ (ตรวจ 'ของตัวเอง' ไม่ได้ = ปิดไว้ก่อน) · คง PENDING — expected ปฏิเสธ | actual {"ok":true} APPROVED
+  ❌ [PA-7] 🔴 รอบจ่ายของงวด: แถวเงินเดือนของผู้อนุมัติไม่มีโบนัสที่ตัวเองอนุมัติ (add 0 · โบนัส 50,000 บาทไม่ไหลเข้า) · ของเพื่อนร่วมงานไหลเข้าตามที่อนุมัติ — expected ผู้อนุมัติ add 0 · เพื่อน add ≥ 5,000 บาท | actual run=true own.add=5300000 col.add=1000000 ownRun=cmupv3voz007j41kzzkp2dwzd
+ผ่าน 167/173
+FINDINGS: CRITICAL 3 · MAJOR 3 · MINOR 0
+JSON_SUMMARY {"total":173,"passed":167,"findings":[{"id":"PA-1","sev":"CRITICAL"},{"id":"PA-1b","sev":"MAJOR"},{"id":"PA-4","sev":"CRITICAL"},{"id":"PA-5","sev":"MAJOR"},{"id":"PA-6","sev":"MAJOR"},{"id":"PA-7","sev":"CRITICAL"}]}
+## end 18:23:45 UTC rc=1
+
+## control H2
+## start 18:23:49 UTC
+  ❌ [CH-1] 🔴 สายปฏิเสธแล้ว (effect ยังไม่เขียน) + ทางตรงอนุมัติ → ปฏิเสธ · ใบลาคง PENDING — expected ปฏิเสธ · PENDING | actual APPROVED err=null
+  ❌ [CH-1b] ข้อความไทยชี้ไปหน้า “อนุมัติ” — expected ชี้หน้าอนุมัติ | actual null
+  ❌ [CH-1c] effect ของสายมาทีหลัง → ใบลา = ผลของสาย (REJECTED) ไม่ขัดกัน — expected REJECTED | actual APPROVED
+  ❌ [CH-2] 🔴 สายอนุมัติแล้ว (effect ยังไม่เขียน) + ทางตรงปฏิเสธ → ปฏิเสธ · ใบลาคง PENDING — expected ปฏิเสธ · PENDING | actual REJECTED err=null
+  ❌ [CH-3] 🔴 ทางหลายใบ (bulk) ก็ตัดสินใบที่สายตัดสินแล้วไม่ได้ (failed + เหตุผลไทย · คง PENDING) — expected done 0 | actual {"done":1,"failed":[]} APPROVED
+ผ่าน 168/173
+FINDINGS: CRITICAL 3 · MAJOR 2 · MINOR 0
+JSON_SUMMARY {"total":173,"passed":168,"findings":[{"id":"CH-1","sev":"CRITICAL"},{"id":"CH-1b","sev":"MAJOR"},{"id":"CH-1c","sev":"MAJOR"},{"id":"CH-2","sev":"CRITICAL"},{"id":"CH-3","sev":"CRITICAL"}]}
+## end 18:26:08 UTC rc=1
+
+## control H3
+## start 18:26:12 UTC
+  ❌ [UI-1] decideAction (ตัดสินรายใบ) คืนผลเป็นข้อมูล { ok, reason } — ไม่ใช่ void · ไม่ throw เหตุผลที่ปฏิเสธ — expected คืนข้อมูล | actual export async function decideAction(formData: FormData): Promise<void> {
+  ❌ [UI-2] หน้า “อนุมัติ”: เหตุผลที่ถูกปฏิเสธแสดงในแถวของคำขอนั้น (อ่าน reason จากผลตามรหัสแถว) — รายใบ (เลือก 1) และหลายใบ — expected มี | actual {items.map((i) => (
+ผ่าน 171/173
+FINDINGS: CRITICAL 0 · MAJOR 2 · MINOR 0
+JSON_SUMMARY {"total":173,"passed":171,"findings":[{"id":"UI-1","sev":"MAJOR"},{"id":"UI-2","sev":"MAJOR"}]}
+## end 18:28:34 UTC rc=0
+
+## control H4
+## start 18:28:38 UTC
+  ❌ [OT-7] ฟอร์ม OT: ช่องชั่วโมง step any · min 0 · max 744 (ไม่บล็อกค่าที่ server รับจากผู้ดูเงินเดือน — กติกาจริงอยู่ฝั่ง server) + คำแนะนำ 'กรอกทีละ 0.25 ชม.' — expected มี | actual <input name="hours" type="number" step="0.25" min="0.25" inputMode="decimal" placeholder="เช่น 6" className="input w-24" />
+ผ่าน 172/173
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 1
+JSON_SUMMARY {"total":173,"passed":172,"findings":[{"id":"OT-7","sev":"MINOR"}]}
+## end 18:34:39 UTC rc=0
+
+## control H5
+## start 18:34:44 UTC
+  ❌ [OT-8] 🔴 ผู้ดูเงินเดือนยื่น OT 1,000,000 ชม. / 745 ชม. → ปฏิเสธด้วยข้อความไทยที่บอกเพดาน 744 ชม. (ไม่ใช่ error ดิบของฐานข้อมูล) · ไม่มีแถวใหม่ — expected ปฏิเสธ · 744 | actual [{"ok":false,"reason":"THROW \nInvalid `tenantDb(ctx).hrPayAdjustment.create()` invocation in\n/root/projects/shark-hf3/src/lib/modules/hr/payroll.ts:1"},{"ok":true,"id":"cmupvkxg9007ah9kzwxzovqxn","amountSatang":11640625}] rows 0→1
+ผ่าน 172/173
+FINDINGS: CRITICAL 0 · MAJOR 1 · MINOR 0
+JSON_SUMMARY {"total":173,"passed":172,"findings":[{"id":"OT-8","sev":"MAJOR"}]}
+## end 18:37:00 UTC rc=0

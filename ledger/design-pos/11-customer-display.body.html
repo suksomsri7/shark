@@ -1,0 +1,184 @@
+<style>
+.row3{display:flex;gap:42px;align-items:flex-start}
+/* A · จอลูกค้า */
+.cd{display:flex;height:100%}
+.cd .l{width:60%;display:flex;flex-direction:column;padding:34px 40px 0;border-right:1px solid var(--line)}
+.cd .r{flex:1;background:var(--sf2);padding:34px 36px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:26px}
+.shop{display:flex;align-items:center;gap:23px}
+.shop .lg{width:46px;height:46px;border-radius:12px;background:var(--ink);color:var(--sf);display:grid;place-items:center;font-size:19px;font-weight:700}
+.shop b{font-size:21px;display:block;line-height:1.25}
+.shop span{font-size:13px;color:var(--mut)}
+.hi{margin-top:31px;font-size:26px;font-weight:700;letter-spacing:-.01em}
+.hi small{display:block;font-size:14px;font-weight:400;color:var(--mut);margin-top:2px}
+.bl{margin-top:31px;flex:1;min-height:0}
+.bl .ln{display:flex;align-items:baseline;gap:26px;padding:13px 0;border-top:1px solid var(--line);font-size:19px}
+.bl .ln:first-child{border-top:0}
+.bl .ln .q{width:36px;color:var(--mut);font-variant-numeric:tabular-nums}
+.bl .ln .t{flex:1;min-width:0}
+.bl .ln .t small{display:block;font-size:13.5px;color:var(--mut)}
+.bl .ln .a{font-weight:700;font-variant-numeric:tabular-nums}
+.bl .ln .a small{display:block;text-align:right;font-size:13.5px;color:var(--dg);font-weight:600}
+.bl .sm{display:flex;justify-content:space-between;font-size:15px;color:var(--ink2);padding:4px 0}
+.bl .sm .dg{color:var(--dg)}
+.stamp{margin:0 -40px;padding:18px 40px;border-top:1px solid var(--line);display:flex;align-items:center;gap:31px;background:var(--sf)}
+.stamp .tx{flex:1;font-size:14px;color:var(--ink2)}
+.stamp .tx b{display:block;font-size:15.5px;color:var(--ink)}
+.stamp .dots{display:flex;gap:13px}
+.stamp .dots i{width:22px;height:22px;border-radius:50%;border:1.5px solid var(--line2);display:block}
+.stamp .dots i.on{background:var(--ink);border-color:var(--ink)}
+.paycard{width:100%;background:var(--sf);border:1px solid var(--line);border-radius:18px;padding:28px 24px;display:flex;flex-direction:column;align-items:center;gap:23px}
+.paycard .lbl{font-size:15px;color:var(--mut)}
+.paycard .big{font-size:64px;line-height:1.05}
+.paycard .pp{font-size:15px;color:var(--ink2);font-variant-numeric:tabular-nums}
+.paycard .pp b{color:var(--acc)}
+.paycard .qr{width:200px;height:200px;margin-top:6px}
+.paycard .sc{font-size:17px;font-weight:700}
+.paycard .tp{font-size:12.5px;color:var(--mut)}
+/* B · ใบเสร็จ */
+.rcpt{font-size:12px}
+.rcpt .t2{font-size:15px}
+.rcpt .mu2{color:var(--mut)}
+.rcpt .r.g{font-size:15px;font-weight:700}
+.rcpt .r .dg{color:var(--dg)}
+.rcpt .sub3{padding-left:10px;color:var(--mut)}
+.rqr{width:84px;height:84px;margin:6px auto 4px;border:1px solid var(--line);border-radius:6px;background:
+ repeating-linear-gradient(90deg,var(--ink) 0 4px,transparent 4px 8px),repeating-linear-gradient(0deg,var(--ink) 0 4px,var(--sf) 4px 8px);
+ background-blend-mode:multiply}
+/* C · ใบเสร็จออนไลน์ */
+.url{margin:0 14px 8px;height:34px;border-radius:10px;background:var(--sf2);border:1px solid var(--line);display:flex;align-items:center;
+  justify-content:center;gap:12px;font-size:12px;color:var(--mut);flex:none}
+.oh{display:flex;align-items:center;gap:19px;padding:10px 0 12px}
+.oh .lg{width:40px;height:40px;border-radius:11px;background:var(--ink);color:var(--sf);display:grid;place-items:center;font-weight:700}
+.oh .t{flex:1;min-width:0}
+.oh .t b{display:block;font-size:15px}
+.oh .t span{font-size:12px;color:var(--mut)}
+.osum{border:1px solid var(--line);border-radius:12px;padding:12px 14px;font-size:13px}
+.osum .r{display:flex;justify-content:space-between;padding:3px 0;color:var(--ink2);font-variant-numeric:tabular-nums}
+.osum .r .dg{color:var(--dg)}
+.osum .r.g{font-size:18px;font-weight:700;color:var(--ink);padding-top:6px}
+.osum .hr{margin:7px 0}
+.osum .mt{font-size:11.5px;color:var(--mut)}
+.obtn{display:flex;flex-direction:column;gap:16px;margin-top:17px}
+.obtn .btn{height:42px;justify-content:flex-start}
+.obtn .btn .ar{margin-left:auto;color:var(--mut2)}
+.stars{letter-spacing:1px;color:var(--ink)}
+</style>
+<div class="wrap">
+<p class="cap" style="margin:0">11 · จอลูกค้า + ใบเสร็จ <span>— (A) จอที่สองหันหาลูกค้า · (B) ใบกำกับภาษีอย่างย่อ 80 มม. · (C) ใบเสร็จออนไลน์ผ่านลิงก์สาธารณะ</span></p>
+<div class="row3">
+
+<!-- ═══ A · จอลูกค้า ═══ -->
+<div>
+<p class="cap">A · จอลูกค้า (จอที่สอง 1280×800)</p>
+<div class="frame" style="width:1280px;height:800px">
+ <div class="cd">
+  <div class="l">
+   <div class="shop"><span class="lg">บ</span><div><b>บ้านกาแฟสวนผึ้ง</b><span>สาขาหัวหิน · เคาน์เตอร์ 1</span></div></div>
+   <div class="hi">สวัสดีคุณสมชาย<small>Gold · 1,240 แต้ม</small></div>
+   <div class="bl">
+    <div class="ln"><span class="q">2×</span><div class="t">ลาเต้<small>M · นมโอ๊ต · หวานน้อย</small></div><span class="a">฿200</span></div>
+    <div class="ln"><span class="q">1×</span><div class="t">อเมริกาโน่<small>L</small></div><span class="a">฿70</span></div>
+    <div class="ln"><span class="q">1×</span><div class="t">ครัวซองต์อัลมอนด์<small>ลด ฿10 · ของช่วงบ่าย</small></div><span class="a">฿95<small>−฿10</small></span></div>
+    <div class="ln"><span class="q">1×</span><div class="t">เมล็ดกาแฟ 250 g</div><span class="a">฿320</span></div>
+    <div style="border-top:1px solid var(--line);padding-top:10px;margin-top:2px">
+     <div class="sm"><span>รวม</span><span>฿685</span></div>
+     <div class="sm"><span>ส่วนลดรายการ</span><span class="dg">−฿10</span></div>
+     <div class="sm"><span>คูปอง WELCOME50</span><span class="dg">−฿50</span></div>
+    </div>
+   </div>
+   <div class="stamp">
+    <div class="tx"><b>สะสมครบ 10 แก้ว ฟรี 1 แก้ว</b>แก้วที่ 7/10 · อีก 3 แก้วรับฟรี</div>
+    <div class="dots"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i><i></i></div>
+   </div>
+  </div>
+  <div class="r">
+   <div class="paycard">
+    <div class="lbl">ยอดสุทธิ</div>
+    <div class="big">฿625</div>
+    <div class="pp">ชำระแล้ว ฿300 · คงเหลือ <b>฿325</b></div>
+    <div class="qr"></div>
+    <div class="sc">สแกนเพื่อจ่ายด้วย PromptPay</div>
+    <div class="tp">หรือแตะบัตรที่เครื่อง</div>
+   </div>
+  </div>
+ </div>
+</div>
+</div>
+
+<!-- ═══ B · ใบเสร็จ 80 มม. ═══ -->
+<div>
+<p class="cap">B · ใบกำกับภาษีอย่างย่อ (80 มม.)</p>
+<div class="rcpt">
+ <div class="c b t2">บ้านกาแฟสวนผึ้ง</div>
+ <div class="c">สาขาหัวหิน</div>
+ <div class="c mu2">88/8 ถ.เพชรเกษม ต.หัวหิน อ.หัวหิน<br>จ.ประจวบคีรีขันธ์ 77110 · โทร 032-512-345</div>
+ <div class="c mu2">เลขประจำตัวผู้เสียภาษี 0105561234567<br>สาขา 00001 · เลขเครื่อง POS001</div>
+ <hr>
+ <div class="c b">ใบกำกับภาษีอย่างย่อ</div>
+ <div class="r"><span>เลขที่</span><span>R2609-000318</span></div>
+ <div class="r"><span>วันที่</span><span>30/09/2569 09:41</span></div>
+ <div class="r"><span>แคชเชียร์</span><span>น้ำฝน</span></div>
+ <hr>
+ <div class="r"><span>ลาเต้ M</span><span>200.00</span></div>
+ <div class="sub3">นมโอ๊ต · หวานน้อย · 2 × 100.00</div>
+ <div class="r"><span>อเมริกาโน่ L</span><span>70.00</span></div>
+ <div class="r"><span>ครัวซองต์อัลมอนด์</span><span>95.00</span></div>
+ <div class="r sub3"><span>ส่วนลด ของช่วงบ่าย</span><span>−10.00</span></div>
+ <div class="r"><span>เมล็ดกาแฟ 250 g</span><span>320.00</span></div>
+ <hr>
+ <div class="r"><span>รวม 5 ชิ้น</span><span>685.00</span></div>
+ <div class="r"><span>ส่วนลด</span><span>−10.00</span></div>
+ <div class="r"><span>คูปอง WELCOME50</span><span>−50.00</span></div>
+ <div class="r g"><span>ยอดสุทธิ</span><span>฿625.00</span></div>
+ <div class="r mu2"><span>มูลค่าสินค้าก่อน VAT</span><span>584.11</span></div>
+ <div class="r mu2"><span>VAT 7% รวมในราคา</span><span>40.89</span></div>
+ <hr>
+ <div class="b">ชำระ</div>
+ <div class="r"><span>เงินสด</span><span>300.00</span></div>
+ <div class="sub3">รับ 500.00 · ทอน 200.00</div>
+ <div class="r"><span>PromptPay</span><span>325.00</span></div>
+ <hr>
+ <div class="r"><span>สมาชิก</span><span>สมชาย · Gold</span></div>
+ <div class="r"><span>ได้รับ</span><span>62 แต้ม</span></div>
+ <div class="r"><span>คงเหลือ</span><span>802 แต้ม</span></div>
+ <hr>
+ <div class="c b">ขอบคุณที่อุดหนุนค่ะ</div>
+ <div class="rqr"></div>
+ <div class="c mu2">QR ใบเสร็จออนไลน์<br>ขอใบกำกับเต็มรูปได้ภายใน 7 วัน</div>
+</div>
+</div>
+
+<!-- ═══ C · ใบเสร็จออนไลน์ ═══ -->
+<div>
+<p class="cap">C · ใบเสร็จออนไลน์ (ลิงก์สาธารณะ /r/…)</p>
+<div class="mob">
+ <div class="sb"><span>09:42</span><span style="font-size:12px">5G</span></div>
+ <div class="url"><svg class="i xs"><use href="#i-lock"/></svg>shark.in.th/r/8KQ2XM</div>
+ <div class="mb">
+  <div class="oh"><span class="lg">บ</span><div class="t"><b>บ้านกาแฟสวนผึ้ง</b><span>สาขาหัวหิน · 30 ก.ย. 2569 09:41</span></div><span class="chip ink"><svg class="i xs"><use href="#i-check"/></svg>ชำระแล้ว</span></div>
+  <div class="osum">
+   <div class="mt">ใบเสร็จ R2609-000318 · ใบกำกับอย่างย่อ ABB-2609-000318</div>
+   <div class="hr"></div>
+   <div class="r"><span>ลาเต้ M × 2</span><span>฿200</span></div>
+   <div class="r"><span>อเมริกาโน่ L</span><span>฿70</span></div>
+   <div class="r"><span>ครัวซองต์อัลมอนด์</span><span>฿95</span></div>
+   <div class="r"><span>เมล็ดกาแฟ 250 g</span><span>฿320</span></div>
+   <div class="hr"></div>
+   <div class="r"><span>ส่วนลด + คูปอง</span><span class="dg">−฿60</span></div>
+   <div class="r"><span>VAT 7% รวมในราคา</span><span>฿40.89</span></div>
+   <div class="r g"><span>ยอดสุทธิ</span><span>฿625</span></div>
+   <div class="mt">เงินสด ฿300 · PromptPay ฿325</div>
+  </div>
+  <div class="obtn">
+   <span class="btn pri"><svg class="i sm"><use href="#i-doc"/></svg>ขอใบกำกับภาษีเต็มรูป<svg class="i sm ar" style="color:var(--sf);opacity:.6"><use href="#i-ar"/></svg></span>
+   <span class="btn gh"><svg class="i sm"><use href="#i-pig"/></svg>ดูแต้มของฉัน (802)<svg class="i sm ar"><use href="#i-ar"/></svg></span>
+   <span class="btn gh"><svg class="i sm"><use href="#i-flag"/></svg>ให้คะแนนร้าน <span class="stars">★★★★★</span><svg class="i sm ar"><use href="#i-ar"/></svg></span>
+   <span class="btn gh"><svg class="i sm"><use href="#i-warn"/></svg>แจ้งปัญหาบิลนี้<svg class="i sm ar"><use href="#i-ar"/></svg></span>
+  </div>
+ </div>
+ <div class="bb" style="text-align:center;font-size:11.5px;color:var(--mut);border-top:0">ส่งโดย SHARK · ไม่มีข้อมูลส่วนตัวอื่นในหน้านี้</div>
+</div>
+</div>
+
+</div>
+</div>

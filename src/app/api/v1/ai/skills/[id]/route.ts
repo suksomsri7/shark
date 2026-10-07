@@ -13,6 +13,7 @@ import { toolRegistry } from "@/lib/ai/tools";
 import { crmApi } from "@/lib/modules/crm";
 import { aiApiKeyActor } from "@/lib/ai/actor";
 import { toolVerdict } from "@/lib/ai/tool-access";
+import { generalToolGate } from "../../general-key-gate";
 
 export async function GET(
   req: Request,
@@ -34,8 +35,11 @@ export async function GET(
   // CRM C1.10 ▸ ร้าน CRM รุ่นเดิม: `crm_create_lead` ยังเปิดให้ทุกคีย์เหมือนก่อน C1.10 ◂
   const crmLegacyLead = id === "crm" && (await crmApi.crmLegacyLeadOpen(auth.tenantId, auth.systemId ?? req.headers.get("x-shark-system")?.trim() ?? null));
   // CRM C5.5-G1 r2 (F4) ▸ + ด่านเดียวกับ executor — ไม่โฆษณาเครื่องมือที่คีย์ใบนี้เรียกแล้วโดนปฏิเสธ ◂
-  const actor = aiApiKeyActor({ tenantId: auth.tenantId, keyId: auth.keyId, scopes: auth.scopes, systemId: auth.systemId });
-  const allowed = skillToolsForApiKey(skill, auth.scopes, { crmLegacyLead }).filter((n) => toolVerdict(actor, n, { crmLegacyLead }).ok);
+  // C6.0 merge ▸ ทั้งสองด่าน: HF-APIV1 `generalToolGate` (เครื่องมือนอก 4 โมดูล = คีย์กลางเท่านั้น) และ `toolVerdict` ของ CRM G1 ◂
+  const actor = aiApiKeyActor({ tenantId: auth.tenantId, keyId: auth.keyId, scopes: auth.scopes, systemId: auth.systemId, scopesMalformed: auth.scopesMalformed });
+  const allowed = skillToolsForApiKey(skill, auth.scopes, { crmLegacyLead }).filter(
+    (n) => generalToolGate(n, auth) && toolVerdict(actor, n, { crmLegacyLead }).ok, // HF-APIV1 + CRM G1
+  );
   if (!skillsForTenant(systems.map((s) => s.type)).some((s) => s.id === id) || allowed.length === 0) {
     return apiJson({ error: "ร้านนี้ยังไม่ได้เปิดระบบที่รองรับสกิลนี้" }, 404);
   }

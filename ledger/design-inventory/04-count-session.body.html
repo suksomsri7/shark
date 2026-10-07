@@ -1,0 +1,237 @@
+<style>
+.rail{width:56px;flex:none;border-right:1px solid var(--line);background:var(--sf2);
+  padding:10px 0;display:flex;flex-direction:column;align-items:center;gap:5px;color:var(--mut2)}
+.rail .ri{width:36px;height:36px;border-radius:9px;display:grid;place-items:center}
+.rail .ri.on{background:var(--sf);border:1px solid var(--line);color:var(--ink)}
+.top .biz{display:inline-flex;align-items:center;gap:12px;height:32px;padding:0 10px;border:1px solid var(--line);
+  border-radius:8px;font-size:13px;color:var(--ink2)}
+.top .dot{width:8px;height:8px;border-radius:50%;background:var(--ink);display:inline-block}
+.top .st{display:inline-flex;align-items:center;gap:13px;font-size:12.5px;color:var(--mut)}
+.top .who{display:inline-flex;align-items:center;gap:13px;font-size:12.5px;color:var(--ink2)}
+.amenu .am .pill{height:20px;min-width:20px;font-size:12px}
+.ph .d{font-size:13.5px;color:var(--mut);margin-top:4px}
+</style>
+<style>
+/* 04 ตรวจนับเป็นรอบ */
+.ph .ttl{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.stabs{padding:0 36px;margin-top:-8px}
+.gl{flex:1;min-width:0;display:flex;flex-direction:column;gap:30px}
+.gr{width:380px;flex:none;display:flex;flex-direction:column;gap:28px}
+.cht{display:flex;align-items:center;gap:12px;margin-bottom:16px}
+.cht h2{font-size:18px;font-weight:700;letter-spacing:-.01em}
+.cht .sp{flex:1}
+.ovp{height:10px;margin-top:20px}
+.zs{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.zc{border:1px solid var(--line);border-radius:16px;padding:16px 18px;background:var(--sf)}
+.zc.ok{border-color:var(--ink)}
+.zc .h{display:flex;align-items:center;gap:8px;font-weight:700;font-size:15px}
+.zc .h .sp{flex:1}
+.zc .w{display:flex;align-items:center;gap:8px;margin-top:8px;font-size:14px;color:var(--ink2)}
+.zc .w .sp{flex:1}
+.zc .w b{font-variant-numeric:tabular-nums;font-size:16px}
+.zc .mtr{margin-top:12px;height:8px}
+.ok-ic{width:22px;height:22px;border-radius:50%;background:var(--ink);color:var(--sf);display:grid;place-items:center}
+.ctb{font-size:14px!important}
+.card.p0 .ctb th{padding:12px 8px!important;white-space:normal;line-height:1.3;vertical-align:bottom}
+.card.p0 .ctb td{padding:15px 8px!important}
+.card.p0 .ctb th:first-child,.card.p0 .ctb td:first-child{padding-left:18px!important}
+.card.p0 .ctb th:last-child,.card.p0 .ctb td:last-child{padding-right:16px!important}
+.ctb .pn b{display:block;font-weight:600;white-space:nowrap}
+.ctb .pn small{display:block;color:var(--mut);white-space:nowrap}
+.ctb td small{display:block;color:var(--mut);font-weight:400}
+.ctb .dif{font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+.ctb .dif.dg{color:var(--dg)}
+.ctb .dif.pl{color:var(--ink)}
+.ctb .ok{color:var(--mut);white-space:nowrap}
+.ctb tr.hl td{background:var(--sf2)}
+.ctb tr.hl td:first-child{box-shadow:inset 3px 0 0 var(--dg)}
+.ctb tr.eq td{color:var(--mut)}
+.ctb tr.eq .pn b{color:var(--ink2)}
+.ctb .who{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.ctb .nt{font-size:13px;color:var(--ink2);line-height:1.4;display:flex;align-items:center;gap:8px}
+.ctb .nt .i{color:var(--mut)}
+.pic{width:34px;height:34px;border-radius:8px;border:1px solid var(--line);background:repeating-linear-gradient(45deg,var(--line) 0 3px,var(--sf2) 3px 8px);flex:none}
+.ztag{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:7px;border:1px solid var(--line2);font-weight:700;font-size:13px;color:var(--ink2);background:var(--sf)}
+.ftabs{display:flex;gap:8px}
+.ftabs .f{height:34px;padding:0 13px;border-radius:10px;border:1px solid var(--line);display:inline-flex;align-items:center;gap:6px;font-size:13.5px;color:var(--mut);white-space:nowrap}
+.ftabs .f.on{background:var(--ink);color:var(--sf);border-color:var(--ink);font-weight:700}
+.apv{display:flex;gap:18px;align-items:flex-start}
+.apv .ic{width:44px;height:44px;border-radius:13px;border:1px solid var(--acc);background:var(--acc-bg);color:var(--acc);display:grid;place-items:center;flex:none}
+.apv .t{flex:1;min-width:0}
+.apv .t b{font-size:16px;font-weight:700;display:block;line-height:1.45}
+.apv .t .dgt{font-size:16px}
+.apv .t p{font-size:14px;color:var(--ink2);margin-top:6px;line-height:1.55}
+.apv .t p small{color:var(--mut)}
+.apv .wait{display:flex;align-items:center;gap:10px;margin-top:12px;font-size:14px;color:var(--acc);font-weight:600}
+.apv .acts{display:flex;gap:12px;margin-top:20px;align-items:center}
+.btn.off{background:var(--sf2)!important;color:var(--mut2)!important;border-color:var(--line)!important}
+.mh2{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+.mh2 h2{font-size:16.5px;font-weight:700}
+.mh2 .sp{flex:1}
+.mh2 .lnk{font-size:13.5px}
+.hl2 .li{gap:12px;padding:13px 0;font-size:14.5px;align-items:center}
+.hl2 .no{width:38px;height:30px;border-radius:9px;border:1px solid var(--line);display:grid;place-items:center;font-weight:700;font-size:13.5px;flex:none;font-variant-numeric:tabular-nums}
+.hl2 .t b{display:block;font-weight:600}
+.hl2 .t small{display:block;color:var(--mut)}
+.hl2 .q{font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+.hl2 .q.dg{color:var(--dg)}
+.hbr{display:flex;align-items:center;gap:12px;font-size:14px;padding:8px 0}
+.hbr .nm{width:64px;flex:none;color:var(--ink2);font-weight:600}
+.hbr .tr{flex:1;height:10px;background:var(--sf2);border-radius:5px;overflow:hidden}
+.hbr .tr i{display:block;height:100%;background:var(--ink);border-radius:5px}
+.hbr .tr i.l{background:var(--mut2)}
+.hbr .pc{width:56px;text-align:right;font-weight:700;font-variant-numeric:tabular-nums}
+.sch .r{display:flex;align-items:flex-start;gap:12px;padding:12px 0;border-top:1px solid var(--line);font-size:14px}
+.sch .r:first-of-type{border-top:0;padding-top:0}
+.sch .r .t{flex:1;min-width:0}
+.sch .r .t b{display:block;font-weight:600}
+.sch .r .t small{display:block;color:var(--mut)}
+.sch .r .sw{margin-top:2px}
+</style>
+<body><div class="wrap">
+<div>
+<p class="cap">04 · ตรวจนับเป็นรอบ <span>— ล็อกยอดระบบตอนเปิดรอบ · มอบหมาย 3 คนตามโซน · ขายระหว่างนับบวกกลับอัตโนมัติ · ตารางผลต่าง (ชิ้น/มูลค่า) · เกินเกณฑ์ต้องอนุมัติ · ประวัติรอบ + ความแม่นยำต่อคน · นับประจำ</span></p>
+<div class="frame" style="height:1100px">
+
+ <div class="top"><svg class="i lg"><use href="#i-menu"/></svg><span class="brand">SHARK</span>
+  <span class="biz"><svg class="i sm"><use href="#i-shop"/></svg>บ้านกาแฟสวนผึ้ง · สาขาหัวหิน<svg class="i xs"><use href="#i-cv"/></svg></span>
+  <span class="sp"></span>
+  <span class="st"><i class="dot"></i>ออนไลน์ · พฤ. 1 ต.ค. 2569 · 07:50</span>
+  <span class="who"><span class="av">พ</span>แพร · พนักงานคลัง</span>
+ </div>
+
+ <div class="appbody" style="flex:1;min-height:0">
+  <div class="rail">
+   <div class="ri"><svg class="i sm"><use href="#i-home"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-shop"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-users"/></svg></div>
+   <div class="ri on"><svg class="i sm"><use href="#i-box"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-book"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-grid"/></svg></div>
+   <span style="flex:1"></span>
+   <div class="ri"><svg class="i sm"><use href="#i-gear"/></svg></div>
+  </div>
+
+  <div class="mod">
+   <div class="amenu">
+    <div class="am"><svg class="i sm"><use href="#i-home"/></svg>ภาพรวม</div>
+    <div class="am"><svg class="i sm"><use href="#i-box"/></svg>สินค้าและวัตถุดิบ</div>
+    <div class="am"><svg class="i sm"><use href="#i-in"/></svg>รับ/ตัด/ปรับ</div>
+    <div class="am on"><svg class="i sm"><use href="#i-list"/></svg>ตรวจนับ<span class="pill">1</span></div>
+    <div class="am"><svg class="i sm"><use href="#i-swap"/></svg>โอนสาขา</div>
+    <div class="am"><svg class="i sm"><use href="#i-truck"/></svg>จัดซื้อ</div>
+    <div class="am"><svg class="i sm"><use href="#i-tree"/></svg>สูตร/ผลิต</div>
+    <div class="am"><svg class="i sm"><use href="#i-chart"/></svg>รายงาน</div>
+    <div class="am"><svg class="i sm"><use href="#i-gear"/></svg>ตั้งค่า</div>
+   </div>
+
+   <div class="ph" style="align-items:flex-start">
+    <div>
+     <div class="ttl"><h1>ตรวจนับ #8 · วัตถุดิบ + เบเกอรี · สาขาหัวหิน</h1><span class="chip acc"><svg class="i xs"><use href="#i-clock"/></svg>กำลังนับ · เปิด 06:30 โดย พี่เก่ง</span></div>
+     <div class="d">ยอดระบบถูกล็อกไว้ ณ 06:30 · ของที่ขายระหว่างนับระบบบวกกลับให้อัตโนมัติ — ไม่ต้องปิดร้านนับ</div>
+    </div>
+    <span class="sp"></span>
+    <div class="btn gh sm"><svg class="i sm"><use href="#i-print"/></svg>พิมพ์ใบนับ</div>
+    <div class="btn pri sm"><svg class="i sm"><use href="#i-lock"/></svg>ปิดรอบ</div>
+   </div>
+
+   <div class="tabs stabs">
+    <div class="tab on"><svg class="i sm"><use href="#i-list"/></svg>รอบที่เปิดอยู่<span class="n">1</span></div>
+    <div class="tab"><svg class="i sm"><use href="#i-clock"/></svg>ทุกรอบ<span class="n">8</span></div>
+    <div class="tab"><svg class="i sm"><use href="#i-cal"/></svg>นับประจำ</div>
+   </div>
+
+   <div class="pg" style="flex-direction:row;align-items:flex-start;padding-top:32px!important">
+    <div class="gl">
+     <div class="card">
+      <div class="stat">
+       <div class="b"><div class="k">รายการในรอบ</div><div class="v">64</div></div>
+       <div class="b"><div class="k">นับแล้ว</div><div class="v">51 <span style="font-size:15px;color:var(--mut);font-weight:600">(80%)</span></div></div>
+       <div class="b"><div class="k">มีผลต่าง</div><div class="v">6</div></div>
+       <div class="b"><div class="k">ผลต่างสุทธิ</div><div class="v dg">−฿420</div><div class="d">ขาด ฿458 · เกิน ฿38</div></div>
+       <div class="b"><div class="k">ผู้นับ</div><div class="v">3 <span style="font-size:15px;color:var(--mut);font-weight:600">คน</span></div></div>
+      </div>
+      <div class="mtr ovp"><i class="sw-ink" style="width:79.7%"></i></div>
+     </div>
+
+     <div class="zs">
+      <div class="zc"><div class="h">โซน A ครัว<span class="sp"></span><span class="ztag">A</span></div>
+       <div class="w"><span class="av">ต</span>ต้น<span class="sp"></span><b>20/22</b></div><div class="mtr"><i class="sw-ink" style="width:90.9%"></i></div></div>
+      <div class="zc ok"><div class="h">โซน B บาร์<span class="sp"></span><span class="ok-ic"><svg class="i xs"><use href="#i-check"/></svg></span></div>
+       <div class="w"><span class="av">พ</span>แพร<span class="sp"></span><b>18/18</b></div><div class="mtr"><i class="sw-ink" style="width:100%"></i></div></div>
+      <div class="zc"><div class="h">โซน C เบเกอรี/ของแห้ง<span class="sp"></span><span class="ztag">C</span></div>
+       <div class="w"><span class="av">ก</span>พี่เก่ง<span class="sp"></span><b>13/24</b></div><div class="mtr"><i class="sw-ink" style="width:54.2%"></i></div></div>
+     </div>
+
+     <div class="card p0">
+      <div style="display:flex;align-items:center;gap:12px;padding:20px 20px 16px">
+       <h2 style="font-size:18px;font-weight:700">ผลต่าง</h2><span class="sp" style="flex:1"></span>
+       <div class="ftabs"><span class="f on">มีผลต่าง 6</span><span class="f">ตรงกัน 45</span><span class="f">ยังไม่นับ 13</span></div>
+      </div>
+      <table class="tbl ctb">
+       <thead><tr><th>สินค้า</th><th>โซน</th><th class="rt">ระบบ<br>(06:30)</th><th class="rt">ขายระหว่าง<br>นับ (บวกกลับ)</th><th class="rt">นับได้</th><th class="rt">ผลต่าง</th><th class="rt">มูลค่า</th><th>ผู้นับ</th><th>รูป/หมายเหตุ</th></tr></thead>
+       <tbody>
+        <tr><td class="pn"><b>เมล็ดคั่วกลาง</b><small>RM-001 · กรัม</small></td><td><span class="ztag">A</span></td><td class="num">12,400</td><td class="num">−180<small>10 แก้ว</small></td><td class="num"><b>11,845</b></td><td class="num"><span class="dif dg">−375 ก.</span></td><td class="num"><span class="dif dg">−฿157</span></td><td><span class="who"><span class="av">ต</span>ต้น</span></td><td><span class="nt">ตักหก + ทิ้งตอนตั้งเครื่องบด</span></td></tr>
+        <tr><td class="pn"><b>นมสด</b><small>RM-014 · ลิตร</small></td><td><span class="ztag">B</span></td><td class="num">24</td><td class="num">−3</td><td class="num"><b>16</b></td><td class="num"><span class="dif dg">−5 ล.</span></td><td class="num"><span class="dif dg">−฿240</span></td><td><span class="who"><span class="av">พ</span>แพร</span></td><td><span class="nt"><span class="pic"></span>กล่องบวม ทิ้งไป 5 กล่อง ไม่ได้บันทึก</span></td></tr>
+        <tr><td class="pn"><b>บราวนี่</b><small>FG-007 · ชิ้น</small></td><td><span class="ztag">C</span></td><td class="num">8</td><td class="num">−2</td><td class="num"><b>5</b></td><td class="num"><span class="dif dg">−1</span></td><td class="num"><span class="dif dg">−฿21</span></td><td><span class="who"><span class="av">ก</span>พี่เก่ง</span></td><td><span class="nt"><span class="pic"></span>รูป 1</span></td></tr>
+        <tr><td class="pn"><b>แก้ว 12 oz</b><small>PK-003 · ใบ</small></td><td><span class="ztag">B</span></td><td class="num">480</td><td class="num">−36</td><td class="num"><b>440</b></td><td class="num"><span class="dif dg">−4</span></td><td class="num"><span class="dif dg">−฿11</span></td><td><span class="who"><span class="av">พ</span>แพร</span></td><td class="mu">—</td></tr>
+        <tr><td class="pn"><b>ไซรัปวานิลลา</b><small>MF-002 · ขวด</small></td><td><span class="ztag">A</span></td><td class="num">6</td><td class="num">0</td><td class="num"><b>7</b></td><td class="num"><span class="dif pl">+1</span></td><td class="num"><span class="dif pl">+฿38</span></td><td><span class="who"><span class="av">ต</span>ต้น</span></td><td><span class="nt"><svg class="i sm" style="color:var(--acc)"><use href="#i-spark"/></svg>ลืมบันทึกผลิต?</span></td></tr>
+        <tr class="hl"><td class="pn"><b>ฝาแก้ว</b><small>PK-004 · ชิ้น · ติดธง</small></td><td><span class="ztag">B</span></td><td class="num">460</td><td class="num">−36</td><td class="num"><b>400</b></td><td class="num"><span class="dif dg">−24</span></td><td class="num"><span class="dif dg">−฿29</span></td><td><span class="who"><span class="av">พ</span>แพร</span></td><td><span class="nt" style="color:var(--dg);font-weight:600"><svg class="i sm" style="color:var(--dg)"><use href="#i-warn"/></svg>หายบ่อย — ตั้งนับทุกสัปดาห์</span></td></tr>
+        <tr class="eq"><td class="pn"><b>น้ำตาลทราย</b><small>RM-020 · กรัม</small></td><td><span class="ztag">C</span></td><td class="num">18,000</td><td class="num">0</td><td class="num">18,000</td><td class="num"><span class="ok">ตรงกัน ✓</span></td><td class="num">฿0</td><td><span class="who"><span class="av">ก</span>พี่เก่ง</span></td><td class="mu">—</td></tr>
+        <tr class="eq"><td class="pn"><b>ผงโกโก้</b><small>RM-031 · กรัม</small></td><td><span class="ztag">A</span></td><td class="num">2,400</td><td class="num">−60</td><td class="num">2,340</td><td class="num"><span class="ok">ตรงกัน ✓</span></td><td class="num">฿0</td><td><span class="who"><span class="av">ต</span>ต้น</span></td><td class="mu">—</td></tr>
+       </tbody>
+      </table>
+      <div class="tfoot">แสดงรายการที่ต่าง 6 + ตัวอย่างที่ตรงกัน 2 · ผลต่างคิดจาก นับได้ − (ระบบ − ขายระหว่างนับ)<span class="sp"></span><span class="lnk">ดูทั้ง 64 รายการ</span></div>
+     </div>
+
+     <div class="card" style="border-color:var(--acc)">
+      <div class="apv">
+       <span class="ic"><svg class="i"><use href="#i-lock"/></svg></span>
+       <div class="t">
+        <b>ยืนยันผลต่าง 6 รายการ <span class="dgt">−฿420</span> → ปรับสต็อก + ลงบัญชี “ผลต่างสินค้าคงเหลือ”</b>
+        <p>ผลต่างเกิน ฿300 ต้องผู้จัดการอนุมัติ (ระบบอนุมัติ) <small>· เกณฑ์ตั้งได้ที่ ตั้งค่า → ตรวจนับ</small></p>
+        <div class="wait"><svg class="i sm"><use href="#i-clock"/></svg>ส่งคำขอแล้ว 07:42 — รอ พี่เก่ง</div>
+        <div class="acts">
+         <div class="btn off"><svg class="i sm"><use href="#i-check"/></svg>ยืนยันหลังอนุมัติ</div>
+         <div class="btn gh"><svg class="i sm"><use href="#i-swap"/></svg>นับซ้ำรายการที่ต่าง</div>
+        </div>
+       </div>
+      </div>
+     </div>
+    </div>
+
+    <!-- ═══ ขวา ═══ -->
+    <div class="gr">
+     <div class="card">
+      <div class="mh2"><svg class="i"><use href="#i-clock"/></svg><h2>ประวัติรอบ</h2><span class="sp"></span><span class="lnk">ทั้งหมด</span></div>
+      <div class="lst hl2">
+       <div class="li"><span class="no">#7</span><span class="sp t"><b>24 ก.ย.</b><small>วัตถุดิบ + เบเกอรี · 62 รายการ</small></span><span class="q dg">−฿120</span></div>
+       <div class="li"><span class="no">#6</span><span class="sp t"><b>17 ก.ย.</b><small>โซน B บาร์ · 18 รายการ</small></span><span class="q">฿0</span></div>
+       <div class="li"><span class="no">#5</span><span class="sp t"><b>10 ก.ย.</b><small>วัตถุดิบ + เบเกอรี · อนุมัติ พี่เก่ง</small></span><span class="q dg">−฿610</span></div>
+      </div>
+     </div>
+
+     <div class="card">
+      <div class="mh2"><svg class="i"><use href="#i-users"/></svg><h2>ความแม่นยำต่อคน</h2></div>
+      <div class="sub" style="font-size:13px;margin:-6px 0 10px">นับซ้ำแล้วตรงกับครั้งแรก · 3 เดือนล่าสุด</div>
+      <div class="hbr"><span class="nm">แพร</span><span class="tr"><i style="width:99.2%"></i></span><span class="pc">99.2%</span></div>
+      <div class="hbr"><span class="nm">พี่เก่ง</span><span class="tr"><i style="width:98.5%"></i></span><span class="pc">98.5%</span></div>
+      <div class="hbr"><span class="nm">ต้น</span><span class="tr"><i class="l" style="width:97.8%"></i></span><span class="pc">97.8%</span></div>
+     </div>
+
+     <div class="card">
+      <div class="mh2"><svg class="i"><use href="#i-cal"/></svg><h2>นับประจำ</h2><span class="sp"></span><span class="lnk">+ ตั้งตาราง</span></div>
+      <div class="sch">
+       <div class="r"><span class="sw"></span><span class="t"><b>โซน B บาร์ · ทุกสัปดาห์ (จันทร์)</b><small>ครั้งถัดไป จ. 5 ต.ค. · แพร</small></span></div>
+       <div class="r"><span class="sw"></span><span class="t"><b>วัตถุดิบ + เบเกอรี · ทุกพฤหัส 06:30</b><small>รอบนี้ (#8) เปิดจากตารางนี้</small></span></div>
+       <div class="r"><span class="sw"></span><span class="t"><b>ทั้งคลัง · ทุกสิ้นเดือน</b><small>ครั้งถัดไป ส. 31 ต.ค. · ทุกคน</small></span></div>
+       <div class="r"><span class="sw off"></span><span class="t"><b>ฝาแก้ว · ทุกสัปดาห์</b><small style="color:var(--acc)">ระบบแนะนำ — ผลต่าง 3 รอบติด</small></span></div>
+      </div>
+     </div>
+    </div>
+   </div>
+  </div>
+ </div>
+</div>
+</div>
+</div>

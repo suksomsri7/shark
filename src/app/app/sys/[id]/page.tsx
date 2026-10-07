@@ -25,6 +25,7 @@ import { DataList } from "@/components/ui/DataList";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { MoneyText } from "@/components/ui/MoneyText";
 import { posTabs } from "@/lib/modules/pos/tabs";
+import { posMembership, posSalesScope, posSaleWhere, posScopeUnitIds, type PosUnitScope } from "@/lib/modules/pos/access";
 import { POS_SALE_STATUS_LABEL } from "@/lib/ui/status-labels";
 import { ModuleTabs } from "@/components/module-tabs";
 
@@ -61,6 +62,8 @@ export default async function SystemPage({
   // ซ่อนกล่องแชทให้คนที่ไม่มีสิทธิ์อ่าน แล้วบอกตรง ๆ ว่าต้องทำอะไรต่อ
   // (ด่านจริงยังอยู่ที่ `requireChatRead()` ใน ChatInboxSection — ตรงนี้แค่ทำให้ข้อความเป็นภาษาคน)
   const mayReadChat = isChat && canReadChat(auth);
+  // HF-POS-PAGES: ยอด/บิลของ POS เฉพาะคนที่ขายได้ และเฉพาะสาขาที่เข้าได้ (เดิมสมาชิกทุกคนเห็นทุกสาขา) · null = ไม่แสดงส่วนยอดขาย
+  const posScope = sys.type === "POS" ? posSalesScope(posMembership(auth.active)) : null;
 
   // เชื่อมระบบย้ายไปจัดการรวมที่ /app/settings/connections แล้ว
   // สาขาเดียว = ซ่อนทั้งหมด (createSystemAutoLink เชื่อมให้แล้ว) · หลายสาขา = โชว์ลิงก์เล็ก ๆ
@@ -93,7 +96,7 @@ export default async function SystemPage({
       {/* เนื้อหาตามประเภท */}
       {sys.type === "MEMBER" && <MemberHub systemId={id} />}
       {sys.type === "POINT" && <PointHub systemId={id} />}
-      {sys.type === "POS" && <PosContent systemId={id} tenantId={tenantId} />}
+      {sys.type === "POS" && posScope && <PosContent systemId={id} tenantId={tenantId} scope={posScope} />}
       {sys.type === "REWARD" && <RewardHub systemId={id} tenantId={tenantId} />}
       {sys.type === "COUPON" && <CouponHub systemId={id} tenantId={tenantId} />}
       {sys.type === "MEETING" && <MeetingHub systemId={id} tenantId={tenantId} />}
@@ -125,19 +128,19 @@ export default async function SystemPage({
   );
 }
 
-async function PosContent({ systemId, tenantId }: { systemId: string; tenantId: string }) {
+async function PosContent({ systemId, tenantId, scope }: { systemId: string; tenantId: string; scope: PosUnitScope }) {
   const [sales, paidAll, today] = await Promise.all([
     prisma.posSale.findMany({
-      where: { tenantId, systemId },
+      where: posSaleWhere(tenantId, systemId, scope),
       orderBy: { createdAt: "desc" },
       take: 10,
     }),
     prisma.posSale.aggregate({
-      where: { tenantId, systemId, status: "PAID" },
+      where: { ...posSaleWhere(tenantId, systemId, scope), status: "PAID" },
       _sum: { grandTotalSatang: true },
       _count: true,
     }),
-    closeDaySummary({ tenantId, systemId }),
+    closeDaySummary({ tenantId, systemId, unitIds: posScopeUnitIds(scope) }),
   ]);
   const total = paidAll._sum.grandTotalSatang ?? 0;
   return (

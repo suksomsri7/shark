@@ -10,6 +10,7 @@ import {
 
 // เครื่องมือสร้างรายงานฝั่ง client — ประกอบ config (dataset/filters/groupBy/metric)
 // แล้วเรียก server action รัน/ดาวน์โหลด/บันทึก · inline error ไม่ใช้ alert (UI_STANDARD)
+// HF-INV-1 R3c (C4): การปฏิเสธที่คาดไว้มากับผลเป็น `.error` (ข้อความที่ throw ถูก Next ปิดบังใน production) — catch เหลือไว้รับ error ที่ไม่คาดไว้
 
 export type ColType = "string" | "number" | "date";
 export type Column = { key: string; label: string; type: ColType };
@@ -99,7 +100,13 @@ export function ReportBuilder({
     setError("");
     start(async () => {
       try {
-        setResult(await runReportAction(buildConfig()));
+        const r = await runReportAction(buildConfig());
+        if (r.error) {
+          setResult(null);
+          setError(r.error);
+          return;
+        }
+        setResult(r);
       } catch (e) {
         setResult(null);
         setError(e instanceof Error ? e.message : "รันรายงานไม่สำเร็จ");
@@ -111,8 +118,12 @@ export function ReportBuilder({
     setError("");
     start(async () => {
       try {
-        const csv = await exportReportCsvAction(buildConfig());
-        const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+        const r = await exportReportCsvAction(buildConfig());
+        if (!r.ok) {
+          setError(r.error);
+          return;
+        }
+        const blob = new Blob([r.csv], { type: "text/csv;charset=utf-8" });
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
@@ -133,7 +144,11 @@ export function ReportBuilder({
     }
     start(async () => {
       try {
-        await saveReportAction({ name: saveName.trim(), config: buildConfig() });
+        const r = await saveReportAction({ name: saveName.trim(), config: buildConfig() });
+        if (r.error) {
+          setError(r.error);
+          return;
+        }
         setSaveName("");
         // โหลดรายการล่าสุดโดยเพิ่มด้านบน (id จริงจะได้ตอน reload) — ดึงใหม่ให้ตรง
         const { listReportsAction } = await import("@/lib/modules/reports/actions");
@@ -165,8 +180,12 @@ export function ReportBuilder({
   const remove = (id: string) => {
     start(async () => {
       try {
-        await deleteReportAction(id);
-        setSaved((s) => s.filter((r) => r.id !== id));
+        const r = await deleteReportAction(id);
+        if (r.error) {
+          setError(r.error);
+          return;
+        }
+        setSaved((s) => s.filter((x) => x.id !== id));
       } catch (e) {
         setError(e instanceof Error ? e.message : "ลบไม่สำเร็จ");
       }

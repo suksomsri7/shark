@@ -21,6 +21,7 @@ import {
   updateEmployee,
   type Ctx,
 } from "./service";
+import { employeeProfileInputFromForm, hrViewerOf } from "./privacy";
 
 // ตรวจสิทธิ์โมดูล HR (system-scoped) — OWNER/MANAGER ผ่าน · STAFF ตาม permission
 // convention action = "hr.<entity>.<verb>" (F6 ratchet บังคับให้ไฟล์นี้เรียก assertCan)
@@ -128,43 +129,12 @@ export async function saveEmployeeProfileAction(
 ): Promise<ProfileState> {
   const auth = await requireTenant();
   assertHrCan(auth, "hr.employee.create");
-  const f = (k: string) => (formData.has(k) ? String(formData.get(k) ?? "") : undefined);
-  const sensitive = canSeeSensitive(auth);
-  const res = await saveEmployeeProfile({ tenantId: auth.active.tenantId, systemId }, employeeId, {
-    name: f("name"),
-    nickname: f("nickname"),
-    code: f("code"),
-    phone: f("phone"),
-    email: f("email"),
-    gender: (f("gender") || null) as "MALE" | null,
-    birthDate: f("birthDate"),
-    maritalStatus: (f("maritalStatus") || null) as "SINGLE" | null,
-    position: f("position"),
-    department: f("department"),
-    employmentType: (f("employmentType") || null) as "FULL_TIME" | null,
-    startDate: f("startDate"),
-    endDate: f("endDate"),
-    addressLine: f("addressLine"),
-    subdistrict: f("subdistrict"),
-    district: f("district"),
-    province: f("province"),
-    postcode: f("postcode"),
-    emergencyName: f("emergencyName"),
-    emergencyPhone: f("emergencyPhone"),
-    emergencyRelation: f("emergencyRelation"),
-    note: f("note"),
-    // ช่องอ่อนไหว: ไม่มีสิทธิ์ = ไม่ส่งเข้า service เลย (ค่าเดิมคงอยู่ ไม่ถูกล้าง)
-    ...(sensitive
-      ? {
-          nationalId: f("nationalId"),
-          ssoNumber: f("ssoNumber"),
-          houseRegAddress: f("houseRegAddress"),
-          bankName: f("bankName"),
-          bankAccountNo: f("bankAccountNo"),
-          bankAccountName: f("bankAccountName"),
-        }
-      : {}),
-  });
+  // HF-HR-0: ช่องอ่อนไหวผ่านเข้า service เฉพาะผู้ดูเงินเดือน — ตัวกรองกลางอยู่ที่ privacy.ts (oracle เรียกตัวเดียวกัน)
+  const res = await saveEmployeeProfile(
+    { tenantId: auth.active.tenantId, systemId },
+    employeeId,
+    employeeProfileInputFromForm(formData, hrViewerOf(auth)),
+  );
   if (!res.ok) return { status: "error", message: res.reason ?? "บันทึกไม่ได้" };
   revalidatePath(`/app/sys/${systemId}/hr/employees/${employeeId}`);
   revalidatePath(`/app/sys/${systemId}/hr/employees`);
@@ -284,7 +254,9 @@ export async function decideLeaveAction(formData: FormData) {
   const rawStatus = String(formData.get("status") ?? "");
   if (!systemId || !leaveId || (rawStatus !== "APPROVED" && rawStatus !== "REJECTED")) return;
   const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
-  await decideLeave(ctx, leaveId, rawStatus, auth.active.userId);
+  // HF-HR-0: สถานะที่ผู้ใช้เห็นบนจอ (ไม่ส่ง = รายการรออนุมัติ) — จอค้างแล้วสถานะเปลี่ยน = ปฏิเสธ ไม่เปลี่ยนผลเงียบ ๆ
+  const from = String(formData.get("from") ?? "") === "APPROVED" ? "APPROVED" : "PENDING";
+  await decideLeave(ctx, leaveId, rawStatus, auth.active.userId, { from });
   revalidate(systemId);
 }
 
@@ -310,7 +282,8 @@ export async function bulkDecideLeaveAction(
   }
   if (leaveIds.length === 0) return { status: "error", message: "กรุณาเลือกอย่างน้อย 1 ใบลา" };
   const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
-  const res = await bulkDecideLeave(ctx, leaveIds, rawStatus, auth.active.userId);
+  // HF-HR-0: ปุ่มนี้อยู่บนรายการ "รออนุมัติ" ⇒ ตัดสินเฉพาะใบที่ยังรอ (ไม่ถอนใบที่มีคนอนุมัติไปก่อนแบบเงียบ ๆ)
+  const res = await bulkDecideLeave(ctx, leaveIds, rawStatus, auth.active.userId, { from: "PENDING" });
   revalidate(systemId);
   return { status: "done", done: res.done, failed: res.failed };
 }

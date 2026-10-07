@@ -1,0 +1,205 @@
+<style>
+.rail{width:56px;flex:none;border-right:1px solid var(--line);background:var(--sf2);
+  padding:10px 0;display:flex;flex-direction:column;align-items:center;gap:5px;color:var(--mut2)}
+.rail .ri{width:36px;height:36px;border-radius:9px;display:grid;place-items:center}
+.rail .ri.on{background:var(--sf);border:1px solid var(--line);color:var(--ink)}
+.top .biz{display:inline-flex;align-items:center;gap:12px;height:32px;padding:0 10px;border:1px solid var(--line);
+  border-radius:8px;font-size:13px;color:var(--ink2)}
+.top .dot{width:8px;height:8px;border-radius:50%;background:var(--ink);display:inline-block}
+.top .st{display:inline-flex;align-items:center;gap:13px;font-size:12.5px;color:var(--mut)}
+.top .who{display:inline-flex;align-items:center;gap:13px;font-size:12.5px;color:var(--ink2)}
+.amenu .am .pill{height:18px;min-width:18px;font-size:10.5px}
+</style>
+<style>
+.ph .d{font-size:12.5px;color:var(--mut);margin-top:3px}
+.shl{flex:1;min-width:0;display:flex;flex-direction:column;gap:29px}
+.shr{width:430px;flex:none;display:flex;flex-direction:column;gap:29px}
+.sh-h{display:flex;align-items:center;gap:19px}
+.sh-h h2{font-size:15px;font-weight:700}
+.sh-h .sub{font-size:12px}
+.sec-t{font-size:12px;font-weight:700;color:var(--ink2);margin:12px 0 8px;display:flex;align-items:center;gap:13px}
+.sec-t .sp{flex:1}
+.eq{display:flex;align-items:center;gap:16px;flex-wrap:wrap;background:var(--sf2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:12.5px;color:var(--ink2)}
+.eq .t{display:flex;flex-direction:column;line-height:1.25}
+.eq .t small{font-size:10.5px;color:var(--mut)}
+.eq .t b{font-variant-numeric:tabular-nums;font-size:13.5px;color:var(--ink)}
+.eq .o{color:var(--mut);font-size:15px}
+.eq .res b{font-size:17px}
+.den{display:grid;grid-template-columns:1fr 1fr;gap:12px 26px}
+.dr{display:flex;align-items:center;gap:17px;font-size:13px;height:36px;border-bottom:1px solid var(--line)}
+.dr .dv{width:62px;font-weight:700;font-variant-numeric:tabular-nums}
+.dr .x{color:var(--mut2)}
+.dr .box{width:64px;height:30px;border:1px solid var(--line2);border-radius:7px;display:grid;place-items:center;font-weight:700;font-variant-numeric:tabular-nums;background:var(--sf)}
+.dr .box.w{width:100px}
+.dr .eqs{color:var(--mut2)}
+.dr .am2{margin-left:auto;font-variant-numeric:tabular-nums;font-weight:600}
+.tot2{display:flex;align-items:stretch;gap:23px;margin-top:17px}
+.tot2 .bx{flex:1;border:1px solid var(--line);border-radius:10px;padding:8px 12px}
+.tot2 .bx .k{font-size:11.5px;color:var(--mut)}
+.tot2 .bx .v{font-size:21px;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums;margin-top:2px}
+.tot2 .bx.dgb{border-color:var(--dg)}
+.tot2 .bx.dgb .v{color:var(--dg)}
+.rsn{margin-top:17px;display:flex;align-items:center;gap:23px}
+.rsn label{font-size:12px;color:var(--ink2);font-weight:600;width:120px;flex:none;line-height:1.3}
+.rsn .inp{flex:1;height:38px}
+.blind{display:flex;align-items:center;gap:17px;font-size:12px;color:var(--mut)}
+.acts{display:flex;gap:16px;margin-top:20px;align-items:center}
+.zl .li{align-items:flex-start}
+.zl .zn{width:48px;flex:none;font-weight:700;font-variant-numeric:tabular-nums}
+.zl .rt2{text-align:right;font-variant-numeric:tabular-nums}
+.zl .rt2 small{display:block;font-size:11px;color:var(--mut);font-weight:400}
+.tg{display:flex;align-items:center;gap:19px;padding:9px 0;border-top:1px solid var(--line);font-size:13px}
+.tg:first-of-type{border-top:0}
+.tg .sp{flex:1}
+.dev .kv .k{width:120px}
+.ptab td{padding:7px 10px}
+.ptab th{padding:7px 10px}
+</style>
+<div class="wrap">
+<div>
+<p class="cap">07 · กะและลิ้นชักเงิน <span>— สรุประหว่างกะ (X) · นับเงินจริงตามแบงก์/เหรียญ · ผลต่างต้องมีเหตุผล · ปิดกะออกรายงาน Z · เงินสดนอกกะ</span></p>
+<div class="frame" style="height:1130px">
+
+ <div class="top"><svg class="i lg"><use href="#i-menu"/></svg><span class="brand">SHARK</span>
+  <span class="biz"><svg class="i sm"><use href="#i-shop"/></svg>บ้านกาแฟสวนผึ้ง · สาขาหัวหิน<svg class="i xs"><use href="#i-cv"/></svg></span>
+  <span class="sp"></span>
+  <span class="st"><i class="dot"></i>ออนไลน์ · พ. 30 ก.ย. 2569</span>
+  <span class="chip"><svg class="i xs"><use href="#i-clock"/></svg>กะ #12 · เปิด 09:02 · เคาน์เตอร์ 1</span>
+  <span class="who"><span class="av">น</span>น้ำฝน · แคชเชียร์</span>
+ </div>
+
+ <div class="appbody" style="flex:1;min-height:0">
+  <div class="rail">
+   <div class="ri"><svg class="i sm"><use href="#i-home"/></svg></div>
+   <div class="ri on"><svg class="i sm"><use href="#i-shop"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-users"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-box"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-book"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-grid"/></svg></div>
+   <span style="flex:1"></span>
+   <div class="ri"><svg class="i sm"><use href="#i-gear"/></svg></div>
+  </div>
+
+  <div class="mod">
+   <div class="amenu">
+    <div class="am"><svg class="i sm"><use href="#i-cash"/></svg>หน้าขาย</div>
+    <div class="am"><svg class="i sm"><use href="#i-grid"/></svg>โต๊ะ</div>
+    <div class="am"><svg class="i sm"><use href="#i-truck"/></svg>ออเดอร์ออนไลน์<span class="pill">3</span></div>
+    <div class="am"><svg class="i sm"><use href="#i-doc"/></svg>บิลวันนี้</div>
+    <div class="am on"><svg class="i sm"><use href="#i-clock"/></svg>กะ</div>
+    <div class="am"><svg class="i sm"><use href="#i-tag"/></svg>สินค้า</div>
+    <div class="am"><svg class="i sm"><use href="#i-chart"/></svg>รายงาน</div>
+    <div class="am"><svg class="i sm"><use href="#i-gear"/></svg>ตั้งค่า</div>
+   </div>
+
+   <div class="ph" style="align-items:flex-start;padding-top:16px">
+    <div><h1>กะและลิ้นชักเงิน</h1><div class="d">เงินทุกบาทในลิ้นชักต้องมีที่มา — ระบบคำนวณยอดที่ควรมี แคชเชียร์นับของจริง ผลต่างลงบัญชีอัตโนมัติ</div></div>
+    <span class="sp"></span>
+    <div class="btn gh sm"><svg class="i sm"><use href="#i-swap"/></svg>นำเงินเข้า/ออกลิ้นชัก</div>
+    <div class="btn gh sm"><svg class="i sm"><use href="#i-cash"/></svg>เปิดลิ้นชัก</div>
+   </div>
+
+   <div class="pg" style="flex-direction:row;align-items:flex-start">
+    <!-- ═══ ซ้าย ═══ -->
+    <div class="shl">
+     <div class="card">
+      <div class="sh-h"><svg class="i"><use href="#i-clock"/></svg><h2>กะ #12 · เคาน์เตอร์ 1</h2><span class="chip acc">กำลังเปิด</span><span class="sp" style="flex:1"></span>
+       <span class="sub">เปิดโดย <b style="color:var(--ink2)">น้ำฝน</b> · 09:02 · เงินตั้งต้น <b style="color:var(--ink2)">฿2,000</b> · เปิดมาแล้ว 3 ชม. 38 นาที</span></div>
+
+      <div class="sec-t">สรุประหว่างกะ (X)<span class="sp"></span><span class="sub" style="font-weight:400">ข้อมูลถึง 12:40 · ไม่ปิดกะ ดูซ้ำได้ไม่จำกัด</span></div>
+      <div class="stat">
+       <div class="b"><div class="k">ยอดขาย</div><div class="v">฿18,450</div></div>
+       <div class="b"><div class="k">บิล</div><div class="v">62</div></div>
+       <div class="b"><div class="k">เฉลี่ยต่อบิล</div><div class="v">฿298</div></div>
+       <div class="b"><div class="k">ยกเลิก</div><div class="v">1</div><div class="d">฿120 · อนุมัติโดย พี่เก่ง</div></div>
+       <div class="b"><div class="k">คืนเงิน</div><div class="v">1</div><div class="d">฿85 · คืนเข้า PromptPay</div></div>
+      </div>
+
+      <div class="sec-t">แยกตามวิธีชำระ</div>
+      <div style="border:1px solid var(--line);border-radius:10px;overflow:hidden">
+      <table class="tbl ptab">
+       <thead><tr><th>วิธีชำระ</th><th class="rt">บิล</th><th class="rt">ยอด</th><th>สถานะเงิน</th></tr></thead>
+       <tbody>
+        <tr><td><div style="display:flex;align-items:center;gap:8px"><svg class="i sm mu"><use href="#i-cash"/></svg>เงินสด</div></td><td class="num">21</td><td class="num"><b>฿6,200</b></td><td class="mu">อยู่ในลิ้นชัก — นับตอนปิดกะ</td></tr>
+        <tr><td><div style="display:flex;align-items:center;gap:8px"><svg class="i sm mu"><use href="#i-qr"/></svg>PromptPay</div></td><td class="num">33</td><td class="num"><b>฿9,850</b></td><td>ยืนยันเงินเข้าแล้ว 33/33</td></tr>
+        <tr><td><div style="display:flex;align-items:center;gap:8px"><svg class="i sm mu"><use href="#i-wallet"/></svg>บัตร</div></td><td class="num">4</td><td class="num"><b>฿1,400</b></td><td class="mu">เข้าบัญชีรอบถัดไปของ Beam</td></tr>
+        <tr><td><div style="display:flex;align-items:center;gap:8px"><svg class="i sm mu"><use href="#i-truck"/></svg>แพลตฟอร์ม (LINE MAN/Grab)</div></td><td class="num">4</td><td class="num"><b>฿1,000</b></td><td class="mu">LINE MAN 3 · Grab 1 · รอแพลตฟอร์มโอน</td></tr>
+        <tr><td><div style="display:flex;align-items:center;gap:8px"><svg class="i sm mu"><use href="#i-tag"/></svg>ว่อชเชอร์</div></td><td class="num">0</td><td class="num">฿0</td><td class="mu">—</td></tr>
+       </tbody>
+      </table>
+      </div>
+
+      <div class="sec-t">เงินสดที่ควรมีในลิ้นชัก</div>
+      <div class="eq">
+       <div class="t"><small>ตั้งต้น</small><b>฿2,000</b></div><span class="o">+</span>
+       <div class="t"><small>รับเงินสด</small><b>฿6,200</b></div><span class="o">−</span>
+       <div class="t"><small>เงินทอน</small><b>฿95</b></div><span class="o">−</span>
+       <div class="t"><small>คืนเงินสด</small><b>฿0</b></div><span class="o">=</span>
+       <div class="t res"><small>ควรมี</small><b>฿8,105</b></div>
+       <span style="flex:1"></span><span class="sub">ไม่มีการนำเงินเข้า/ออกระหว่างกะ</span>
+      </div>
+     </div>
+
+     <div class="card">
+      <div class="sh-h"><svg class="i"><use href="#i-lock"/></svg><h2>ปิดกะ · นับเงินจริง</h2><span class="sp" style="flex:1"></span><span class="sub">กรอกจำนวนแบงก์/เหรียญ ระบบรวมให้ · ผลต่างลงบัญชี “เงินขาด/เกินบัญชี” อัตโนมัติ</span></div>
+      <div class="den" style="margin-top:12px">
+       <div class="dr"><span class="dv">฿1,000</span><span class="x">×</span><span class="box">5</span><span class="eqs">=</span><span class="am2">฿5,000</span></div>
+       <div class="dr"><span class="dv">฿50</span><span class="x">×</span><span class="box">2</span><span class="eqs">=</span><span class="am2">฿100</span></div>
+       <div class="dr"><span class="dv">฿500</span><span class="x">×</span><span class="box">4</span><span class="eqs">=</span><span class="am2">฿2,000</span></div>
+       <div class="dr"><span class="dv">฿20</span><span class="x">×</span><span class="box">4</span><span class="eqs">=</span><span class="am2">฿80</span></div>
+       <div class="dr"><span class="dv">฿100</span><span class="x">×</span><span class="box">9</span><span class="eqs">=</span><span class="am2">฿900</span></div>
+       <div class="dr"><span class="dv">฿10</span><span class="x">×</span><span class="box">1</span><span class="eqs">=</span><span class="am2">฿10</span></div>
+       <div class="dr" style="border-bottom:0"></div>
+       <div class="dr" style="border-bottom:0"><span class="dv">เหรียญ</span><span class="x" style="visibility:hidden">×</span><span class="box w">฿0</span><span class="sub">รวมยอดเหรียญ</span><span class="am2">฿0</span></div>
+      </div>
+      <div class="tot2">
+       <div class="bx"><div class="k">ควรมี (ตามระบบ)</div><div class="v">฿8,105</div></div>
+       <div class="bx"><div class="k">นับได้</div><div class="v">฿8,090</div></div>
+       <div class="bx dgb"><div class="k">ผลต่าง</div><div class="v">−฿15</div></div>
+      </div>
+      <div class="rsn"><label>เหตุผล<br><span class="mu" style="font-weight:400">บังคับเมื่อเกิน ฿10</span></label>
+       <div class="inp"><b>ทอนเกินให้ลูกค้า 1 บิล</b></div></div>
+      <div class="acts"><div class="btn pri"><svg class="i sm"><use href="#i-lock"/></svg>ปิดกะและออกรายงาน Z</div><div class="btn gh"><svg class="i sm"><use href="#i-print"/></svg>พิมพ์ X report</div>
+       <span style="flex:1"></span><span class="blind"><span class="sw off"></span>นับแบบไม่เห็นยอดระบบ (blind) · เปิดโดยผู้จัดการ</span></div>
+     </div>
+    </div>
+
+    <!-- ═══ ขวา ═══ -->
+    <div class="shr">
+     <div class="card">
+      <div class="ch"><svg class="i sm"><use href="#i-report"/></svg><h2>กะที่ปิดแล้ว (Z)</h2><span class="sp"></span><span class="lnk" style="font-size:12px">ดูทั้งหมด</span></div>
+      <div class="lst zl">
+       <div class="li"><span class="zn">Z#11</span><span class="sp">29 ก.ย. · พี่เก่ง<div class="sub">เคาน์เตอร์ 1 · 71 บิล</div></span><span class="rt2"><b>฿21,300</b><small>ผลต่าง ฿0</small></span></div>
+       <div class="li"><span class="zn">Z#10</span><span class="sp">28 ก.ย. · น้ำฝน<div class="sub">เคาน์เตอร์ 1 · 60 บิล</div></span><span class="rt2"><b>฿17,880</b><small>ผลต่าง +฿20</small></span></div>
+       <div class="li"><span class="zn">Z#9</span><span class="sp">27 ก.ย. · ต้น<div class="sub">เคาน์เตอร์ 2 · 64 บิล · <span class="chip" style="height:19px">มีเหตุผล</span></div></span><span class="rt2"><b>฿19,020</b><small style="color:var(--dg);font-weight:700">ผลต่าง −฿120</small></span></div>
+       <div class="li"><span class="zn">Z#8</span><span class="sp">26 ก.ย. · แพร<div class="sub">เคาน์เตอร์ 2 · 55 บิล</div></span><span class="rt2"><b>฿16,540</b><small>ผลต่าง ฿0</small></span></div>
+      </div>
+     </div>
+
+     <div class="card" style="border-color:var(--dg)">
+      <div class="ch"><svg class="i sm" style="color:var(--dg)"><use href="#i-warn"/></svg><h2>เงินสดนอกกะ วันนี้ <span class="dgt">฿450</span></h2></div>
+      <div style="font-size:12.5px;color:var(--ink2)">บิลจากระบบจอง 2 ใบรับเงินสดตอนไม่มีกะเปิด — เจ้าของควรตรวจ</div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:10px"><div class="btn gh sm"><svg class="i sm"><use href="#i-doc"/></svg>ดูบิล</div><span class="sub">07:40 ฿250 · 08:15 ฿200</span></div>
+     </div>
+
+     <div class="card">
+      <div class="ch"><svg class="i sm"><use href="#i-mail"/></svg><h2>ส่งสรุปกะ</h2><span class="sp"></span><span class="sub">ทุกครั้งที่ปิดกะ</span></div>
+      <div class="tg"><span class="sp">ส่งเข้า LINE เจ้าของ</span><span class="sw"></span></div>
+      <div class="tg"><span class="sp">ส่งเข้าห้องประชุมทีม</span><span class="sw"></span></div>
+      <div class="tg"><span class="sp">แนบ PDF</span><span class="sw off"></span></div>
+     </div>
+
+     <div class="card dev">
+      <div class="ch"><svg class="i sm"><use href="#i-print"/></svg><h2>เครื่องนี้</h2><span class="sp"></span><span class="chip ink">ออนไลน์</span></div>
+      <div class="kv"><span class="k">ชื่อเครื่อง</span><span class="v">เคาน์เตอร์ 1</span></div>
+      <div class="kv"><span class="k">เครื่องพิมพ์</span><span class="v">ใบเสร็จ 80 มม. · พร้อม</span></div>
+      <div class="kv"><span class="k">ลิ้นชักเงิน</span><span class="v"><span class="cbx on"></span> เปิดอัตโนมัติเมื่อรับเงินสด</span></div>
+      <div class="kv"><span class="k">เครื่องอื่น</span><span class="v">เคาน์เตอร์ 2 · กะ #13 · แพร</span></div>
+     </div>
+    </div>
+   </div>
+  </div>
+ </div>
+</div>
+</div>
+</div>

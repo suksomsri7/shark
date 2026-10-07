@@ -1,0 +1,48 @@
+[env] qc-hf-inventory-authz · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech
+(node:1070730) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ❌ [HF-1.0] guard.ts export inventoryCanRead — exp มี | act ยังไม่มี
+  ❌ [HF-2.0] guard.ts export requireInventoryPage — exp มี | act ยังไม่มี
+  ❌ [HF-3.1] [static] ทุกหน้าใต้ /inventory (7) เรียก requireInventoryPage — exp 0 หน้าหลุด | act /count/page.tsx,/items/page.tsx,/locations/page.tsx,/movements/page.tsx,/procurement/page.tsx,/services/page.tsx,/settings/page.tsx
+  ❌ [HF-3.2] [static] InvHub (หน้าภาพรวมใน /app/sys/[id]) เรียก requireInventoryPage ก่อนอ่าน/เขียน — exp เรียกก่อน ensureDefaultLocation | act export async function InvHub({ systemId }: { systemId: string }) { const auth = await requireTenant(); const ctx: Ctx = { tenantId: auth.active.tenantId, sy
+  ❌ [HF-3.3] [static] actions.ts: ไม่มี ctx จาก systemId ดิบ · ทุก action resolve ระบบ INVENTORY (19 action) — exp raw 0 · resolve ≥ 19 | act raw 19 · resolve 0
+  ❌ [HF-3.4] [static] procurement-actions.ts: ไม่มี ctx จาก systemId ดิบ · ทุก action resolve ระบบ INVENTORY (7 action) — exp raw 0 · resolve ≥ 7 | act raw 7 · resolve 0
+  ❌ [HF-4.1] action สร้างของด้วย systemId POS ร้านเดียวกัน → ไม่มีแถวเกิดใต้ระบบนั้น (7 action) — exp 0 แถว | act 7 แถว · createItemAction:null createServiceAction:null createLocationAction:null saveCategoryAction:null saveSettingsAction:null createSupplierAction:null importItemsAction:{"created":1,"skipped":0,"erro
+  ❌ [HF-4.2] action สร้างของด้วย systemId คลังร้านอื่น → ไม่มีแถวเกิดใต้ระบบนั้น (7 action) — exp 2 แถว | act 9 แถว · createItemAction:null createServiceAction:null createLocationAction:null saveCategoryAction:null saveSettingsAction:null createSupplierAction:null importItemsAction:{"created":1,"skipped":0,"erro
+  ✅ [HF-4.3] receiveAction ด้วย systemId+itemId ของร้านอื่น → สต็อกร้านอื่นไม่ขยับ
+  ❌ [HF-4.4] bulkCountAction ด้วย id ระบบ POS → ไม่สำเร็จ + สต็อกคง 10 — exp error/10 | act {"status":"done","done":0,"failed":[{"itemId":"cmupdzpzu000b6ikzjxjf56nb","reaso · 10
+  ✅ [HF-4.5] itemLotsAction (read) ด้วย systemId ร้านอื่น → ไม่คืนข้อมูล
+  ✅ [HF-4.6] คู่บวก: createItemAction ระบบคลังจริง → สร้างได้
+  ✅ [HF-4.7] STAFF ไม่มี inventory.movement.transfer → ปฏิเสธ + สต็อกคง
+  ❌ [HF-5.1] transfer ต้นทาง = id มั่ว → throw · ไม่มีแถวสต็อกผี · สาขา 2 ไม่ได้ของ — exp throw/0/0/10 | act ไม่ throw · phantom 1 · br 3
+  ❌ [HF-5.2] transfer ต้นทาง = คลังของระบบคลังอื่นในร้านเดียวกัน → throw · ไม่มีแถวสต็อกผี · สาขา 2 ไม่ได้ของ — exp throw/0/0/10 | act ไม่ throw · phantom 1 · br 6
+  ❌ [HF-5.3] transfer ต้นทาง = คลังของร้านอื่น → throw · ไม่มีแถวสต็อกผี · สาขา 2 ไม่ได้ของ — exp throw/0/0/10 | act ไม่ throw · phantom 1 · br 9
+  ❌ [HF-5.4] transfer ต้นทาง = คลังที่ปิดแล้ว (archived) → throw · ไม่มีแถวสต็อกผี · สาขา 2 ไม่ได้ของ — exp throw/0/0/10 | act ไม่ throw · phantom 1 · br 12
+  ❌ [HF-5.5] transfer ปลายทาง = id มั่ว → throw · ต้นทางไม่ลด — exp throw/10 | act ไม่ throw · 7
+  ❌ [HF-5.6] transferAction (ฟอร์ม) ต้นทางมั่ว → throw · สาขา 2 ไม่ได้ของ — exp throw/0 | act ไม่ throw · 16
+  ❌ [HF-5.7] transferAction ด้วย id ระบบ POS → throw · ไม่ขยับ — exp throw/10 | act Error: ไม่พบสินค้าในคลัง · 7
+  ❌ [HF-5.8] คู่บวก: โอน 4 คลังหลัก→สาขา 2 → 6/4 รวม 10 — exp 6/4/10 | act ไม่ throw · 3/20
+  ❌ [HF-5.9] คู่บวก: โอนเกินยอด → ยอม (นโยบายเดิม) สาขา 2 = -5 + needsReview — exp -5/review | act ไม่ throw · 11
+  ❌ [HF-5.10] คู่บวก: transferAction ฟอร์มจริง → สาขา 2 กลับเป็น 0 — exp 0/10 | act ไม่ throw · 16
+  ✅ [HF-5.11] receive/consume คลังร้านอื่น/มั่ว → throw ทั้งคู่ (กันถอยหลัง)
+  ❌ [HF-6.1] createPo ผู้ขาย id มั่ว → throw · ไม่มี PO เกิด — exp throw/0 | act ไม่ throw · 1
+  ❌ [HF-6.2] createPo ผู้ขายของระบบคลังอื่น → throw · ไม่มี PO เกิด — exp throw/0 | act ไม่ throw · 2
+  ❌ [HF-6.3] createPo สินค้าของระบบคลังอื่น → throw · ไม่มี PO เกิด — exp throw/0 | act ไม่ throw · 3
+  ❌ [HF-6.4] createPo สินค้าของร้านอื่น → throw · ไม่มี PO เกิด — exp throw/0 | act ไม่ throw · 4
+  ❌ [HF-6.5] createPo รายการเป็นบริการ (ไม่มีสต็อก) → throw · ไม่มี PO เกิด — exp throw/0 | act ไม่ throw · 5
+  ❌ [HF-6.6] createPoAction (ฟอร์ม) ผู้ขายมั่ว → ไม่มี PO เกิด — exp 0 | act 6 · ไม่ throw
+  ❌ [HF-6.7] คู่บวก: createPo ผู้ขาย+สินค้าจริง → สร้างได้ — exp 1 | act ไม่ throw
+  ❌ [HF-6.8] receivePo คลังของร้านอื่น → PO ยัง ORDERED (รับใหม่ได้) · สต็อกไม่ขยับ — exp ORDERED/10 | act RECEIVED · 10 · Error: ไม่พบคลังสินค้าที่เลือก
+  ❌ [HF-6.9] คู่บวก: receivePo คลังจริง → RECEIVED + สาขา 2 ได้ 2 · รวม 12 — exp RECEIVED/2/12 | act RECEIVED · 16 · 10 · ไม่ throw
+
+===== QC HF-INV-0 inventory authz =====
+ผ่าน 5/33
+FINDINGS: CRITICAL 28 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":33,"passed":5,"findings":["HF-1.0","HF-2.0","HF-3.1","HF-3.2","HF-3.3","HF-3.4","HF-4.1","HF-4.2","HF-4.4","HF-5.1","HF-5.2","HF-5.3","HF-5.4","HF-5.5","HF-5.6","HF-5.7","HF-5.8","HF-5.9","HF-5.10","HF-6.1","HF-6.2","HF-6.3","HF-6.4","HF-6.5","HF-6.6","HF-6.7","HF-6.8","HF-6.9"]}

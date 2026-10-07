@@ -1,0 +1,46 @@
+# HF-INV-1 round 3c — controls · QC4 · 1 Oct 2026 · 18:16Z–18:32Z · each = one fix reverted in the working tree, everything else final; restored + cmp-verified after each run
+
+===== CONTROL C1 — clinic/service.ts = 7e9d70fc (read-modify-write dispenseJson) · qc-hf-inventory-atomic =====
+  ❌ [AT-22.10] [X5] ∥ [Y3] ใน visit เดียว (X รอล็อกอยู่ขณะ Y จบ) ⇒ ทั้งคู่สำเร็จ · dispenseJson บันทึกครบ 2 รายการ (X และ Y) · ตัด X 95 / Y 97 — X ok · Y ok · json [X] · X/Y 95/97
+  ❌ [AT-22.11] หลังจากนั้นจ่าย [Y3] จริงอีกครั้ง ⇒ ตัดจริง: Y 94 · OUT ของ Y 2 แถว · dispenseJson 3 (เดิม: รายการ Y หาย ⇒ ใช้คีย์ซ้ำ ⇒ ตอบ ok แต่ไม่ตัด) — ok · Y 97 · OUT Y 1 · json 2
+  ❌ [AT-22.12] จ่ายยา 5 ตัว (คนละตัว ตัวละคำขอ) พร้อมกันใน visit เดียว ⇒ สำเร็จ 5 · dispenseJson 5 รายการ (ครบทุกตัว) · ตัด 5 ครั้ง (ทุกตัว 95) — ok 5/5  · json 1 · OUT 5 · 95/95/95/95/95
+ผ่าน 140/143
+JSON_SUMMARY {"total":143,"passed":140,"findings":["AT-22.10","AT-22.11","AT-22.12"]}
+
+===== CONTROL C2 — reports/service.ts esc() = old local escaper · qc-hf-reports-authz =====
+  ❌ [RP-7.1] CSV รายงาน (OWNER): ชื่อ/เบอร์ที่ขึ้นต้นด้วย = + - @ tab CR ถูกกันสูตรตรงกับ exportMembers ทุกตัวอักษร · ไม่มีช่องไหนเป็นสูตร — exp 0 ต่าง · 0 สูตร | act ไม่ throw · 7 แถว · 1 ชื่อ "=HYPERLIN
+  ❌ [RP-7.4] CSV แบบจัดกลุ่มตามชื่อ: ค่ากลุ่มถูกกันสูตรเหมือนกัน — exp 0 สูตร | act ไม่ throw · 7 แถว · สูตร 6 · ตรง false
+ผ่าน 77/79
+JSON_SUMMARY {"total":79,"passed":77,"findings":["RP-7.1","RP-7.4"]}
+
+===== CONTROL C3 — listReportsAction without the canRunNow filter · qc-hf-reports-authz =====
+  ❌ [RP-8.2] STAFF ทุกสาขา + member.customer.read (เบอร์ปิดบัง) → รายการรายงานที่บันทึกไว้ = เฉพาะที่รันได้ตอนนี้ [S2] · ไม่เห็นค่าตัวกรองเบอร์ของคนอื่น — exp S2 | act ไม่ throw · [S5,S4,S3,S2,S1] · 
+  ❌ [RP-8.3] STAFF สาขา B1 + member.customer.export + pos.sale.create → รายการรายงานที่บันทึกไว้ = เฉพาะที่รันได้ตอนนี้ [S1,S2,S4,S5] — exp S1,S2,S4,S5 | act ไม่ throw · [S5,S4,S3,S2,S1] · leak false
+  ❌ [RP-8.4] STAFF มีแค่ reports.report.run → รายการรายงานที่บันทึกไว้ = เฉพาะที่รันได้ตอนนี้ [] · ไม่เห็นค่าตัวกรองเบอร์ของคนอื่น — exp  | act ไม่ throw · [S5,S4,S3,S2,S1] · leak true
+ผ่าน 76/79
+JSON_SUMMARY {"total":79,"passed":76,"findings":["RP-8.2","RP-8.3","RP-8.4"]}
+
+===== CONTROL C4a — actions refusalOf() → null (refusals throw again) · qc-hf-reports-authz =====
+  ❌ [RP-9.1] จอ/groupBy: การปฏิเสธที่คาดไว้ 7 แบบ (สิทธิ์ · คอลัมน์ปิดบัง · ตรวจค่า) → คืน { error } ไทย ไม่ throw · ไม่มีแถว — exp data ×7 | act สิทธิ์: ไม่มีคีย์สมาชิก: throw ReportRefusal: บัญชีนี้
+  ❌ [RP-9.2] CSV: การปฏิเสธ (สิทธิ์ · คอลัมน์ปิดบัง · ตรวจค่า) → คืน { error } ไทย ไม่ throw · ไม่มีข้อความ CSV — exp data ×3 | act สิทธิ์: throw ReportRefusal: บัญชีนี้ยังไม่มีสิทธิ์ดูข้อมูลสมาชิ
+  ❌ [RP-9.4] action: metric 5 · ตัวกรองไม่มี op → คืน { error } ไทยเป็นข้อมูล — exp data ×2 | act throw ReportRefusal: ตัวชี้วัดไม่ถูกต้อง — เลือก “นับจำน | throw ReportRefusal: ตัวกรองแต่ละข้อต้องเลือกเงื่อนไ�
+  ❌ [RP-9.5] บันทึก/ลบรายงาน: ไม่มีสิทธิ์ reports.report.save · ชื่อว่าง → คืน { error } ไทย ไม่ throw · ไม่มีอะไรถูกบันทึก — exp data ×3 · 0 | act throw ForbiddenError: ไม่มีสิทธิ์: reports.report.save | {"error":"กรุณาตั้งชื
+ผ่าน 75/79
+JSON_SUMMARY {"total":79,"passed":75,"findings":["RP-9.1","RP-9.2","RP-9.4","RP-9.5"]}
+
+===== CONTROL C4b — metric type check + opClause no-op text reverted · qc-hf-reports-authz =====
+  ❌ [RP-9.3] runReport: metric ไม่ใช่ข้อความ (5 · {} · ["count"]) และตัวกรองไม่มี op → ข้อความไทย (ไม่ใช่ TypeError · ไม่มี undefined) · metric null = count — exp ไทย ×4 | act TypeError: metric.startsWith is not a fu | TypeError: metric.startsWith is not a fu | TypeError: metric.start
+  ❌ [RP-9.4] action: metric 5 · ตัวกรองไม่มี op → คืน { error } ไทยเป็นข้อมูล — exp data ×2 | act throw TypeError: metric.startsWith is not a function | {"columns":[],"rows":[],"error":"เงื่อนไข \"undefined\" ไม่รองรับ"}
+ผ่าน 77/79
+JSON_SUMMARY {"total":79,"passed":77,"findings":["RP-9.3","RP-9.4"]}
+
+===== CONTROL C4c — ReportBuilder.tsx = 7e9d70fc · qc-hf-reports-authz =====
+  ❌ [RP-9.8] [static] หน้าจอ ReportBuilder อ่าน .error จากผลของ action (จอ · CSV · บันทึก · ลบ) แทนการรอ throw · ไม่ setResult ผลดิบตรง ๆ — exp อ่าน .error ≥4 | act .error ×0 · setResult(await …) true
+ผ่าน 78/79
+JSON_SUMMARY {"total":79,"passed":78,"findings":["RP-9.8"]}
+
+===== CONTROL C4d — procurement-actions.ts = 7e9d70fc · qc-hf-inventory-authz =====
+  ❌ [HF-12.5] R3c: STAFF ไม่มีสิทธิ์รับของ (inventory.po.receive) → คืน { status:"error", message ไทย } ไม่ throw · ไม่รับของ — exp error ไทย/ไม่รับ | act threw ForbiddenError: ไม่มีสิทธิ์: inventory.po.receive · IN 0
+  ❌ [HF-12.6] R3c: systemId เป็นระบบ POS (ไม่ใช่คลังของร้าน) → คืน { status:"error", message ไทย } ไม่ throw · ไม่รับของ — exp error ไทย/ไม่รับ | act threw Error: ไม่พบระบบสินค้า/บริการนี้ในกิจการ — รีเฟรชหน
+ผ่าน 116/118
+JSON_SUMMARY {"total":118,"passed":116,"findings":["HF-12.5","HF-12.6"]}

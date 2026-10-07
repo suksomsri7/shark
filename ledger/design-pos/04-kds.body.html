@@ -1,0 +1,152 @@
+<style>
+.kds{flex:1;min-height:0;display:flex;flex-direction:column;background:var(--stage)}
+.kh{display:flex;align-items:center;gap:23px;padding:0 20px;background:var(--sf);border-bottom:1px solid var(--line);flex:none}
+.kh .tabs{border-bottom:0}
+.kh .tab{padding:14px 14px 12px;font-size:14px}
+.kh .tab .pill{height:19px}
+.kh .sp{flex:1}
+.kh .avg{display:flex;align-items:baseline;gap:12px;font-size:12.5px;color:var(--mut);padding-right:6px}
+.kh .avg b{font-size:18px;color:var(--ink);font-variant-numeric:tabular-nums}
+.kh .tg{display:flex;align-items:center;gap:16px;font-size:12.5px;color:var(--ink2);border-left:1px solid var(--line);padding-left:14px;height:30px}
+.kcols{flex:1;min-height:0;display:grid;grid-template-columns:1fr 2fr 1fr;gap:26px;padding:14px 20px}
+.kc{display:flex;flex-direction:column;min-height:0}
+.kc .hd{display:flex;align-items:center;gap:16px;font-size:14px;font-weight:700;padding:0 2px 10px}
+.kc .hd .pill{height:20px}
+.kc .hd .sp{flex:1}
+.kc .hd small{font-size:11.5px;font-weight:400;color:var(--mut)}
+.kc .ts{display:flex;flex-direction:column;gap:19px}
+.kc .ts.two{display:grid;grid-template-columns:1fr 1fr;gap:19px;align-items:start}
+.ticket .h{gap:16px}
+.ticket .h .ttl{display:flex;align-items:center;gap:13px;min-width:0}
+.ticket .h .chip{height:20px;font-size:10.5px;padding:0 6px}
+.ticket .h .tm{font-size:14px}
+.ticket .l{font-size:14px;align-items:flex-start}
+.ticket .l b{font-size:15px}
+.ticket .l small{font-size:12px}
+.ticket .l small.nt{color:var(--ink);font-weight:700}
+.ticket .l.done small{text-decoration:line-through}
+.ticket .f{display:flex;align-items:center;gap:16px;padding:8px 12px;border-top:0;background:var(--sf2);font-size:11.5px;color:var(--mut)}
+.ticket .f .sp{flex:1}
+.ticket .f .dgt{font-size:12px}
+.ticket.late{border-color:var(--ink)}
+.ticket.rdy{border-color:var(--ink)}
+.kbot{flex:none;margin:0 20px 16px;display:flex;align-items:center;gap:31px;font-size:13px}
+.kbot .card{padding:12px 16px;display:flex;align-items:center;gap:31px;width:100%}
+.kbot .blk{display:flex;align-items:center;gap:16px;min-width:0}
+.kbot .blk b{white-space:nowrap}
+.kbot .vl{width:1px;height:28px;background:var(--line);flex:none}
+.kbot .dgt{white-space:nowrap}
+.kbot .mu{font-size:12px}
+</style>
+<div class="wrap"><div>
+<p class="cap">04 · จอครัว (KDS) <span>— โหมดเต็มจอบนแท็บเล็ตครัว · แยกสถานี · 3 คอลัมน์ ใหม่/กำลังทำ/พร้อมเสิร์ฟ · ออเดอร์ทุกช่องทางเข้าที่เดียว · เวลาเทียบเป้า · ของหมดแจ้งกลับหน้าขาย</span></p>
+<div class="frame" style="height:900px">
+
+ <div class="top"><svg class="i lg"><use href="#i-back"/></svg><span class="brand">บ้านกาแฟสวนผึ้ง</span><span class="chip">สาขาหัวหิน</span>
+  <span class="chip">จอครัว · แท็บเล็ตครัวร้อน</span>
+  <span class="sp"></span><span style="font-size:13px;color:var(--ink2);font-weight:700">12:10</span>
+  <span class="chip ink"><svg class="i xs"><use href="#i-clock"/></svg>กะ #12 · เคาน์เตอร์ 1</span><div class="av">พ</div></div>
+
+ <div class="kds">
+  <div class="kh">
+   <div class="tabs">
+    <div class="tab on">ครัวร้อน <span class="pill">8</span></div>
+    <div class="tab">เครื่องดื่ม <span class="n">5</span></div>
+    <div class="tab">ขนม <span class="n">2</span></div>
+    <div class="tab">รวมเสิร์ฟ (Expo)</div>
+   </div>
+   <span class="sp"></span>
+   <div class="avg"><span>เวลาเฉลี่ย</span><b>8 นาที</b><span>· เป้า 10</span></div>
+   <div class="tg"><span class="sw off"></span>หยุดรับออเดอร์ครัว</div>
+   <div class="btn gh sm"><svg class="i sm"><use href="#i-print"/></svg>พิมพ์ใบครัว</div>
+  </div>
+
+  <div class="kcols">
+   <!-- ใหม่ -->
+   <div class="kc">
+    <div class="hd">ใหม่ <span class="pill gh">3</span><span class="sp"></span><small>แตะใบเพื่อเริ่มทำ</small></div>
+    <div class="ts">
+     <div class="ticket">
+      <div class="h"><span class="ttl">#16 · โต๊ะ A2</span><span class="tm">00:40</span></div>
+      <div class="l"><b>1</b><div>กะเพราหมูกรอบ<small class="nt">ไม่ใส่ถั่ว</small><small>เผ็ดกลาง · ไข่ดาว</small></div></div>
+      <div class="l"><b>2</b><div>ผัดไทยกุ้ง<small>เส้นจันท์</small></div></div>
+      <div class="f">ต้นรับที่โต๊ะ<span class="sp"></span><div class="btn gh sm">เสร็จ</div></div>
+     </div>
+     <div class="ticket">
+      <div class="h"><span class="ttl">#17 <span class="chip ink">LINE MAN</span></span><span class="tm">01:10</span></div>
+      <div class="l"><b>1</b><div>ข้าวผัดปู<small>ใส่กล่อง</small></div></div>
+      <div class="l"><b>2</b><div>ต้มยำกุ้งน้ำข้น<small class="nt">แยกน้ำ · ไม่ใส่ผักชี</small></div></div>
+      <div class="l"><b>1</b><div>ไข่เจียวหมูสับ</div></div>
+      <div class="f">LM-48205 · ไรเดอร์ยังไม่รับงาน<span class="sp"></span><div class="btn gh sm">เสร็จ</div></div>
+     </div>
+     <div class="ticket">
+      <div class="h"><span class="ttl">#18 · QR โต๊ะ B2</span><span class="tm">00:15</span></div>
+      <div class="l"><b>1</b><div>ปีกไก่ทอดน้ำปลา</div></div>
+      <div class="l"><b>1</b><div>ข้าวสวย</div></div>
+      <div class="f">ลูกค้าสั่งเองผ่าน QR<span class="sp"></span><div class="btn gh sm">เสร็จ</div></div>
+     </div>
+    </div>
+   </div>
+
+   <!-- กำลังทำ -->
+   <div class="kc">
+    <div class="hd">กำลังทำ <span class="pill gh">4</span><span class="sp"></span><small>เรียงตามเวลาที่เหลือก่อนเลยเป้า</small></div>
+    <div class="ts two">
+     <div class="ticket late">
+      <div class="h"><span class="ttl">#9 · LINE MAN <span class="chip dg">เร่ง</span></span><span class="tm">11:05</span></div>
+      <div class="l"><b>1</b><div>ผัดไทยกุ้ง<small>ใส่กล่อง · แยกถั่วงอก</small></div></div>
+      <div class="l"><b>2</b><div>กะเพราหมูสับ<small class="nt">เผ็ดน้อย</small></div></div>
+      <div class="l"><b>1</b><div>ไข่ดาว</div></div>
+      <div class="f"><span class="dgt">เลยเป้า 1 นาที</span>· ไรเดอร์รออยู่<span class="sp"></span><div class="btn pri sm">เสร็จ</div></div>
+     </div>
+     <div class="ticket warn">
+      <div class="h"><span class="ttl">#11 · Grab</span><span class="tm">07:50</span></div>
+      <div class="l"><b>2</b><div>ข้าวผัดกุ้ง<small>ใส่กล่อง · ขอพริกน้ำปลา</small></div></div>
+      <div class="l"><b>1</b><div>ไข่เจียวหมูสับ</div></div>
+      <div class="f">เหลือ 2 นาทีก่อนเลยเป้า<span class="sp"></span><div class="btn gh sm">เสร็จ</div></div>
+     </div>
+     <div class="ticket">
+      <div class="h"><span class="ttl">#12 · โต๊ะ A5</span><span class="tm">04:32</span></div>
+      <div class="l done"><b>1</b><div>ต้มยำกุ้ง<small>น้ำข้น · เผ็ดกลาง</small></div></div>
+      <div class="l"><b>2</b><div>กะเพราไก่ไข่ดาว<small class="nt">ไข่ดาวไม่สุก 1 จาน</small></div></div>
+      <div class="f">เสร็จ 1/2 · ต้น<span class="sp"></span><div class="btn gh sm">เสร็จ</div></div>
+     </div>
+     <div class="ticket">
+      <div class="h"><span class="ttl">#14 · ซื้อกลับ</span><span class="tm">03:20</span></div>
+      <div class="l"><b>1</b><div>กะเพราไก่<small>ใส่กล่อง · ไข่ดาวแยก</small></div></div>
+      <div class="l"><b>1</b><div>ต้มยำกุ้งน้ำใส<small>ใส่ถุง</small></div></div>
+      <div class="f">รอหน้าร้าน · คิว 14<span class="sp"></span><div class="btn gh sm">เสร็จ</div></div>
+     </div>
+    </div>
+   </div>
+
+   <!-- พร้อมเสิร์ฟ -->
+   <div class="kc">
+    <div class="hd">พร้อมเสิร์ฟ <span class="pill gh">1</span><span class="sp"></span><small>แจ้งพนักงานเสิร์ฟแล้ว</small></div>
+    <div class="ts">
+     <div class="ticket rdy">
+      <div class="h"><span class="ttl">#8 · โต๊ะ C3</span><span class="tm">พร้อม 2 นาที</span></div>
+      <div class="l"><b>1</b><div>ผัดผักรวมน้ำมันหอย</div></div>
+      <div class="l"><b>1</b><div>แกงเขียวหวานไก่<small>ใส่ถ้วยแยก</small></div></div>
+      <div class="f">ผู้เสิร์ฟ ต้น<span class="sp"></span><div class="btn pri sm"><svg class="i xs"><use href="#i-check"/></svg>เสิร์ฟแล้ว</div></div>
+     </div>
+     <div class="dashed" style="flex-direction:column;align-items:flex-start;gap:4px">
+      <b style="color:var(--ink2)">เสิร์ฟแล้ววันนี้ 41 ใบ</b>
+      <span>ล่าสุด #7 · โต๊ะ A4 · 11:58 — แตะเพื่อเรียกใบกลับมาแก้</span>
+     </div>
+    </div>
+   </div>
+  </div>
+
+  <div class="kbot">
+   <div class="card">
+    <div class="blk"><b>ค้างทำวันนี้:</b><span>กะเพรา ×12 · ผัดไทย ×7 · ต้มยำ ×4 · ข้าวผัด ×3</span></div>
+    <span class="vl"></span>
+    <div class="blk"><span class="dgt">ของหมด (86):</span><span>ครัวซองต์ · ปลากะพง</span><span class="mu">— แจ้งหน้าขายและช่องทางออนไลน์แล้ว</span></div>
+    <span class="sp" style="flex:1"></span>
+    <div class="btn gh sm">แจ้งของหมด</div>
+   </div>
+  </div>
+ </div>
+</div>
+</div></div>

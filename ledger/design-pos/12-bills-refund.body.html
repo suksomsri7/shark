@@ -1,0 +1,265 @@
+<style>
+.rail{width:56px;flex:none;border-right:1px solid var(--line);background:var(--sf2);
+  padding:10px 0;display:flex;flex-direction:column;align-items:center;gap:5px;color:var(--mut2)}
+.rail .ri{width:36px;height:36px;border-radius:9px;display:grid;place-items:center}
+.rail .ri.on{background:var(--sf);border:1px solid var(--line);color:var(--ink)}
+.am .pill{height:18px;min-width:18px;font-size:10.5px}
+.b12{display:flex;flex:1;min-height:0}
+.bl{flex:1;min-width:0;display:flex;flex-direction:column;padding:14px 20px 0;gap:23px}
+.tb{display:flex;align-items:center;gap:16px}
+.tb .inp.gro{max-width:300px}
+.tb .sp{flex:1}
+.fc{display:flex;gap:12px;flex-wrap:wrap}
+.fc .f{height:30px;padding:0 11px;border-radius:8px;border:1px solid var(--line);display:inline-flex;align-items:center;gap:12px;font-size:12.5px;color:var(--ink2);background:var(--sf)}
+.fc .f b{font-variant-numeric:tabular-nums;color:var(--mut);font-weight:600}
+.fc .f.on{background:var(--ink);color:var(--sf);border-color:var(--ink);font-weight:700}
+.fc .f.on b{color:var(--sf)}
+.fc .f.dg{color:var(--dg);border-color:var(--dg)}
+.fc .f.dg b{color:var(--dg)}
+.sr{display:flex;gap:19px}
+.sr .card{padding:10px 14px;flex:1}
+.sr .k{font-size:11.5px;color:var(--mut)}
+.sr .v{font-size:19px;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums;margin-top:2px}
+.sr .d{font-size:11px;color:var(--mut)}
+.bl .card.p0{overflow:hidden}
+.bl .tbl{font-size:12.5px}
+.bl .tbl td{padding:8px 9px}
+.bl .tbl th{padding:8px 9px}
+.bl .tbl .chip{height:20px;font-size:10.5px;padding:0 6px}
+.bl .tbl td small{display:block;color:var(--mut);font-size:11px}
+.bl .tbl tr.void td{color:var(--mut2)}
+.bl .tbl tr.void td .no{text-decoration:line-through}
+.bl .tbl tr.hov td:first-child{box-shadow:inset 3px 0 0 var(--acc)}
+.bl .tbl .no{font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+.drw{width:420px;flex:none;border-left:1px solid var(--line);background:var(--sf);display:flex;flex-direction:column;min-height:0}
+.drw .dh{padding:14px 18px 12px;border-bottom:1px solid var(--line)}
+.drw .dh .t{display:flex;align-items:center;gap:16px}
+.drw .dh h2{font-size:16px;font-weight:700;font-variant-numeric:tabular-nums}
+.drw .dh .sp{flex:1}
+.drw .dh .m{font-size:12px;color:var(--mut);margin-top:4px}
+.drw .sc{padding:10px 18px;border-bottom:1px solid var(--line);font-size:12.5px}
+.drw .sc h3{font-size:11.5px;font-weight:700;color:var(--mut);margin-bottom:5px}
+.drw .ln{display:flex;gap:16px;padding:3px 0;align-items:baseline}
+.drw .ln .q{width:24px;font-weight:700;flex:none}
+.drw .ln .nm{flex:1;min-width:0;font-size:13px}
+.drw .ln .a{font-variant-numeric:tabular-nums;font-weight:600}
+.drw .kv3{display:flex;justify-content:space-between;padding:2px 0;color:var(--ink2);font-variant-numeric:tabular-nums}
+.drw .kv3.g{font-weight:700;color:var(--ink);font-size:15px;padding-top:4px}
+.drw .kv3 .mu{font-size:11.5px}
+.drw .lk{display:flex;align-items:center;gap:16px;padding:4px 0;color:var(--ink2)}
+.drw .lk .sp{flex:1}
+.drw .ft{margin-top:auto;padding:12px 18px 14px;display:flex;flex-direction:column;gap:16px;border-top:1px solid var(--line)}
+.drw .ft .r3{display:grid;grid-template-columns:1fr 1fr;gap:13px}
+.drw .ft .hint{font-size:11px;color:var(--mut);text-align:center;margin-top:-3px}
+.drw .hs{display:flex;gap:19px;padding:3px 0;font-size:12px;color:var(--ink2)}
+.drw .hs .tm{width:36px;color:var(--mut);font-variant-numeric:tabular-nums;flex:none}
+/* modal */
+.mdl{position:absolute;left:50%;top:118px;transform:translateX(-50%);width:620px;background:var(--sf);border-radius:14px;
+  box-shadow:0 24px 60px rgba(10,10,10,.28);z-index:42;display:flex;flex-direction:column}
+.mdl .mh{display:flex;align-items:center;gap:19px;padding:16px 20px 12px;border-bottom:1px solid var(--line)}
+.mdl .mh h2{font-size:17px;font-weight:700}
+.mdl .mh .sp{flex:1}
+.mdl .mh .mu{font-size:12.5px}
+.mdl .mb{padding:12px 20px 4px;display:flex;flex-direction:column;gap:23px}
+.mdl .lb{font-size:12px;font-weight:700;color:var(--ink2);margin-bottom:6px}
+.rl{border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.rl .r{display:flex;align-items:center;gap:19px;padding:8px 12px;border-top:1px solid var(--line);font-size:13px}
+.rl .r:first-child{border-top:0}
+.rl .r.on{background:var(--sf2)}
+.rl .r .nm{flex:1;min-width:0}
+.rl .r .nm small{color:var(--mut);font-size:11.5px;margin-left:6px}
+.rl .r.off .nm{color:var(--ink2)}
+.stp{display:flex;align-items:center;border:1px solid var(--line);border-radius:7px;height:28px;font-size:12.5px;background:var(--sf)}
+.stp span{width:26px;text-align:center;color:var(--mut)}
+.stp b{width:28px;text-align:center;border-left:1px solid var(--line);border-right:1px solid var(--line);line-height:26px;font-variant-numeric:tabular-nums}
+.stp.dim b{color:var(--mut2);font-weight:400}
+.rl .r .of{font-size:11.5px;color:var(--mut);width:34px}
+.rl .r .a{width:52px;text-align:right;font-weight:600;font-variant-numeric:tabular-nums}
+.rl .r.off .a{color:var(--mut)}
+.g2m{display:flex;flex-direction:column;gap:23px}
+.g2m .inp{max-width:280px}
+.rm{display:grid;grid-template-columns:repeat(3,1fr);gap:13px}
+.rm div{height:52px;border:1px solid var(--line);border-radius:9px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;font-size:12.5px;font-weight:600;text-align:center;line-height:1.3}
+.rm div small{font-size:10.5px;color:var(--mut);font-weight:400}
+.rm div.on{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink);background:var(--sf2)}
+.smy{border:1px solid var(--acc);background:var(--acc-bg);border-radius:10px;padding:10px 14px;font-size:12.5px;color:var(--ink2)}
+.smy .h{font-size:15px;font-weight:700;color:var(--ink);margin-bottom:4px}
+.smy ul{list-style:none;display:grid;grid-template-columns:1fr 1fr;gap:3px 16px}
+.smy li{display:flex;align-items:center;gap:12px}
+.smy li svg{color:var(--acc)}
+.mdl .mf{display:flex;align-items:center;gap:16px;padding:12px 20px 16px}
+.mdl .mf .sp{flex:1}
+.mdl .mf .au{font-size:11px;color:var(--mut);display:flex;align-items:center;gap:5px}
+</style>
+<div class="wrap"><div>
+<p class="cap">12 · บิลวันนี้ · ยกเลิก/คืนเงิน <span>— ค้นบิลทุกช่องทาง · ตัวกรองสถานะ · แผงรายละเอียดบิล (ลงบัญชี/ใบกำกับ/แต้ม) · หน้าต่างคืนเงินบางส่วน: เลือกรายการ · วิธีคืน · ผลที่ระบบทำให้อัตโนมัติ</span></p>
+<div class="frame" style="height:900px">
+
+ <div class="top"><svg class="i lg"><use href="#i-menu"/></svg><span class="brand">บ้านกาแฟสวนผึ้ง</span><span class="chip">สาขาหัวหิน</span>
+  <span class="sp"></span><span class="chip ink"><svg class="i xs"><use href="#i-clock"/></svg>กะ #12 · เคาน์เตอร์ 1</span><svg class="i"><use href="#i-search"/></svg><div class="av">น</div></div>
+
+ <div class="appbody" style="flex:1;min-height:0">
+  <div class="rail">
+   <div class="ri"><svg class="i sm"><use href="#i-home"/></svg></div>
+   <div class="ri on"><svg class="i sm"><use href="#i-shop"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-users"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-book"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-box"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-grid"/></svg></div>
+   <span style="flex:1"></span>
+   <div class="ri"><svg class="i sm"><use href="#i-gear"/></svg></div>
+  </div>
+
+  <div class="mod">
+   <div class="amenu">
+    <div class="am"><svg class="i sm"><use href="#i-shop"/></svg>หน้าขาย</div>
+    <div class="am"><svg class="i sm"><use href="#i-grid"/></svg>โต๊ะ</div>
+    <div class="am"><svg class="i sm"><use href="#i-truck"/></svg>ออเดอร์ออนไลน์<span class="pill">3</span></div>
+    <div class="am on"><svg class="i sm"><use href="#i-doc"/></svg>บิลวันนี้</div>
+    <div class="am"><svg class="i sm"><use href="#i-clock"/></svg>กะ</div>
+    <div class="am"><svg class="i sm"><use href="#i-box"/></svg>สินค้า</div>
+    <div class="am"><svg class="i sm"><use href="#i-chart"/></svg>รายงาน</div>
+    <div class="am"><svg class="i sm"><use href="#i-gear"/></svg>ตั้งค่า</div>
+   </div>
+
+   <div class="b12">
+    <div class="bl">
+     <div class="tb">
+      <div class="inp"><svg class="i sm"><use href="#i-cal"/></svg><b>30 ก.ย. 2569</b><svg class="i xs cv"><use href="#i-cv"/></svg></div>
+      <div class="inp gro"><svg class="i sm"><use href="#i-search"/></svg>เลขที่บิล / ลูกค้า</div>
+      <div class="inp">ทุกช่องทาง<svg class="i xs cv"><use href="#i-cv"/></svg></div>
+      <div class="inp">พนักงานทุกคน<svg class="i xs cv"><use href="#i-cv"/></svg></div>
+      <span class="sp"></span>
+      <div class="btn gh sm"><svg class="i sm"><use href="#i-out"/></svg>ส่งออก</div>
+     </div>
+     <div class="fc">
+      <span class="f on">ทั้งหมด <b>62</b></span>
+      <span class="f">ชำระแล้ว <b>58</b></span>
+      <span class="f">รอเงินเข้า <b>1</b></span>
+      <span class="f dg">ยกเลิก <b>1</b></span>
+      <span class="f">คืนเงิน <b>2</b></span>
+      <span class="f">เงินสดนอกกะ <b>1</b></span>
+     </div>
+     <div class="sr">
+      <div class="card"><div class="k">ยอดสุทธิ</div><div class="v">฿18,450</div><div class="d">หลังหักคืนเงินและยกเลิก</div></div>
+      <div class="card"><div class="k">บิล</div><div class="v">62</div><div class="d">หน้าร้าน 41 · ออนไลน์ 21</div></div>
+      <div class="card"><div class="k">เฉลี่ยต่อบิล</div><div class="v">฿298</div><div class="d">เมื่อวาน ฿284</div></div>
+     </div>
+
+     <div class="card p0">
+      <table class="tbl">
+       <thead><tr><th>เลขที่</th><th>เวลา</th><th>ช่องทาง</th><th>ลูกค้า</th><th>วิธีชำระ</th><th>พนักงาน</th><th class="rt">ยอด</th><th>สถานะ</th><th></th></tr></thead>
+       <tbody>
+        <tr><td class="no">R2609-000380</td><td>12:08</td><td><span class="chip">หน้าร้าน</span></td><td class="mu">ลูกค้าทั่วไป</td><td>PromptPay</td><td>น้ำฝน</td><td class="num">฿245</td><td><span class="chip ink">ชำระแล้ว</span></td><td class="mu"><svg class="i sm"><use href="#i-more"/></svg></td></tr>
+        <tr><td class="no">R2609-000379</td><td>12:02</td><td><span class="chip">เว็บร้าน</span></td><td>คุณภัทรา<small>SW-1043</small></td><td>โอน PromptPay</td><td class="mu">ระบบ</td><td class="num">฿520</td><td><span class="chip acc">รอเงินเข้า</span></td><td class="mu"><svg class="i sm"><use href="#i-more"/></svg></td></tr>
+        <tr><td class="no">R2609-000378</td><td>11:58</td><td><span class="chip">QR โต๊ะ</span></td><td>โต๊ะ A4<small>2 คน · สั่งเอง 2 รอบ</small></td><td>เงินสด + PromptPay</td><td>ต้น</td><td class="num">฿455</td><td><span class="chip ink">ชำระแล้ว</span></td><td class="mu"><svg class="i sm"><use href="#i-more"/></svg></td></tr>
+        <tr><td class="no">R2609-000376</td><td>11:52</td><td><span class="chip ink">LINE MAN</span></td><td>LM-48152</td><td>แพลตฟอร์ม</td><td class="mu">ระบบ</td><td class="num">฿385</td><td><span class="chip ink">ชำระแล้ว</span></td><td class="mu"><svg class="i sm"><use href="#i-more"/></svg></td></tr>
+        <tr><td class="no">R2609-000371</td><td>11:30</td><td><span class="chip">หน้าร้าน</span></td><td>คุณวิภา · Silver</td><td>บัตรเครดิต</td><td>น้ำฝน</td><td class="num">฿680<small>คืน ฿90</small></td><td><span class="chip">คืนบางส่วน</span></td><td class="mu"><svg class="i sm"><use href="#i-more"/></svg></td></tr>
+        <tr class="void"><td class="no">R2609-000366</td><td>11:12</td><td><span class="chip">หน้าร้าน</span></td><td>ลูกค้าทั่วไป</td><td>เงินสด</td><td>น้ำฝน<small>อนุมัติ พี่เก่ง</small></td><td class="num">฿160</td><td><span class="chip dg">ยกเลิก</span></td><td class="mu"><svg class="i sm"><use href="#i-more"/></svg></td></tr>
+        <tr><td class="no">R2609-000352</td><td>10:40</td><td><span class="chip"><svg class="i xs"><use href="#i-cal"/></svg>ระบบจอง</span></td><td>คุณอรทัย<small>มัดจำโต๊ะ 19:00</small></td><td>เงินสดนอกกะ</td><td>พี่เก่ง</td><td class="num">฿500</td><td><span class="chip ink">ชำระแล้ว</span></td><td class="mu"><svg class="i sm"><use href="#i-more"/></svg></td></tr>
+        <tr><td class="no">R2609-000331</td><td>10:15</td><td><span class="chip">เว็บร้าน</span></td><td>คุณโบว์<small>SW-1039</small></td><td>บัตรเครดิต</td><td class="mu">ระบบ</td><td class="num">฿260</td><td><span class="chip ink">ชำระแล้ว</span></td><td class="mu"><svg class="i sm"><use href="#i-more"/></svg></td></tr>
+        <tr class="hov"><td class="no">R2609-000312</td><td>09:41</td><td><span class="chip">หน้าร้าน</span></td><td>สมชาย<small>สมาชิก</small></td><td>เงินสด + PromptPay</td><td>น้ำฝน</td><td class="num">฿620</td><td><span class="chip ink">ชำระแล้ว</span></td><td class="mu"><svg class="i sm"><use href="#i-more"/></svg></td></tr>
+        <tr><td class="no">R2609-000301</td><td>09:02</td><td><span class="chip ink">Grab</span></td><td>GF-7610</td><td>แพลตฟอร์ม</td><td class="mu">ระบบ</td><td class="num">฿290<small>คืน ฿290</small></td><td><span class="chip">คืนเงินแล้ว</span></td><td class="mu"><svg class="i sm"><use href="#i-more"/></svg></td></tr>
+       </tbody>
+      </table>
+      <div class="tfoot">แสดง 10 จาก 62 บิล<span class="sp"></span><div class="pgr"><span class="pb"><svg class="i xs"><use href="#i-back"/></svg></span><span class="pb" style="font-weight:700">1</span><span class="pb">2</span><span class="pb">…</span><span class="pb">7</span><span class="pb"><svg class="i xs"><use href="#i-ar"/></svg></span></div></div>
+     </div>
+    </div>
+
+    <!-- แผงบิล -->
+    <div class="drw">
+     <div class="dh">
+      <div class="t"><h2>R2609-000312</h2><span class="chip ink">ชำระแล้ว</span><span class="sp"></span><svg class="i sm mu"><use href="#i-x"/></svg></div>
+      <div class="m">09:41 · น้ำฝน · เคาน์เตอร์ 1 · หน้าร้าน · กะ #12</div>
+     </div>
+     <div class="sc">
+      <h3>รายการ</h3>
+      <div class="ln"><span class="q">1</span><span class="nm">ครัวซองต์อัลมอนด์</span><span class="a">฿85</span></div>
+      <div class="ln"><span class="q">2</span><span class="nm">ลาเต้เย็น</span><span class="a">฿150</span></div>
+      <div class="ln"><span class="q">1</span><span class="nm">อเมริกาโน่ร้อน</span><span class="a">฿65</span></div>
+      <div class="ln"><span class="q">2</span><span class="nm">แซนด์วิชแฮมชีส</span><span class="a">฿190</span></div>
+      <div class="ln"><span class="q">2</span><span class="nm">บราวนี่</span><span class="a">฿130</span></div>
+      <div class="kv3 g" style="border-top:1px solid var(--line);margin-top:6px;padding-top:7px"><span>ยอดสุทธิ</span><span>฿620</span></div>
+      <div class="kv3"><span class="mu">รวมภาษีมูลค่าเพิ่ม 7%</span><span class="mu">฿40.56</span></div>
+     </div>
+     <div class="sc">
+      <h3>การชำระ</h3>
+      <div class="kv3"><span>เงินสด <span class="mu">· รับ ฿500 ทอน ฿200</span></span><span>฿300</span></div>
+      <div class="kv3"><span>PromptPay <span class="mu">· ยืนยันจากธนาคาร 09:41</span></span><span>฿320</span></div>
+     </div>
+     <div class="sc">
+      <div class="lk"><svg class="i sm"><use href="#i-users"/></svg>สมาชิก <b>สมชาย</b> · +62 แต้ม<span class="sp"></span><span class="lnk">ดูสมาชิก</span></div>
+      <div class="lk"><svg class="i sm"><use href="#i-book"/></svg>ลงบัญชีแล้ว ·<span class="lnk">JV-2609-0406</span><span class="sp"></span></div>
+      <div class="lk"><svg class="i sm"><use href="#i-doc"/></svg>ใบกำกับอย่างย่อ <b>ABB-2609-000312</b><span class="sp"></span><span class="lnk">ขอใบเต็มรูป</span></div>
+     </div>
+     <div class="sc" style="border-bottom:0">
+      <h3>ประวัติบิล</h3>
+      <div class="hs"><span class="tm">09:41</span>เปิดบิลและชำระครบ · น้ำฝน</div>
+      <div class="hs"><span class="tm">09:41</span>ลงบัญชีอัตโนมัติ JV-2609-0406 · ให้แต้มสมาชิก</div>
+      <div class="hs"><span class="tm">09:42</span>ส่งใบเสร็จทาง LINE ให้ลูกค้าแล้ว</div>
+      <div class="hs"><span class="tm">12:10</span>น้ำฝนกำลังทำรายการคืนเงิน</div>
+     </div>
+     <div class="ft">
+      <div class="r3">
+       <div class="btn gh sm"><svg class="i xs"><use href="#i-print"/></svg>พิมพ์ซ้ำ (สำเนา)</div>
+       <div class="btn gh sm"><svg class="i xs"><use href="#i-mail"/></svg>ส่ง LINE</div>
+      </div>
+      <div class="r3">
+       <div class="btn gh"><svg class="i sm"><use href="#i-x"/></svg>ยกเลิกบิล</div>
+       <div class="btn pri">คืนเงิน</div>
+      </div>
+      <div class="hint">ยกเลิกบิล: ต้องมีสิทธิ์ผู้จัดการ · ทำได้ก่อนปิดกะ</div>
+     </div>
+    </div>
+   </div>
+  </div>
+ </div>
+
+ <!-- หน้าต่างคืนเงิน -->
+ <div class="scrim"></div>
+ <div class="mdl">
+  <div class="mh"><h2>คืนเงินบางส่วน</h2><span class="mu">R2609-000312 · ฿620 · สมชาย</span><span class="sp"></span><svg class="i mu"><use href="#i-x"/></svg></div>
+  <div class="mb">
+   <div>
+    <div class="lb">เลือกรายการที่คืน</div>
+    <div class="rl">
+     <div class="r on"><span class="cbx on"></span><span class="nm">ครัวซองต์อัลมอนด์<small>฿85 / ชิ้น</small></span><span class="stp"><span>−</span><b>1</b><span>+</span></span><span class="of">จาก 1</span><span class="a">฿85</span></div>
+     <div class="r off"><span class="cbx"></span><span class="nm">ลาเต้เย็น<small>฿75 / แก้ว</small></span><span class="stp dim"><span>−</span><b>0</b><span>+</span></span><span class="of">จาก 2</span><span class="a">฿0</span></div>
+     <div class="r off"><span class="cbx"></span><span class="nm">อเมริกาโน่ร้อน<small>฿65 / แก้ว</small></span><span class="stp dim"><span>−</span><b>0</b><span>+</span></span><span class="of">จาก 1</span><span class="a">฿0</span></div>
+     <div class="r off"><span class="cbx"></span><span class="nm">แซนด์วิชแฮมชีส<small>฿95 / ชิ้น</small></span><span class="stp dim"><span>−</span><b>0</b><span>+</span></span><span class="of">จาก 2</span><span class="a">฿0</span></div>
+     <div class="r off"><span class="cbx"></span><span class="nm">บราวนี่<small>฿65 / ชิ้น</small></span><span class="stp dim"><span>−</span><b>0</b><span>+</span></span><span class="of">จาก 2</span><span class="a">฿0</span></div>
+    </div>
+   </div>
+   <div class="g2m">
+    <div>
+     <div class="lb">เหตุผล</div>
+     <div class="inp" style="width:100%"><b>สินค้ามีปัญหา</b><svg class="i xs cv"><use href="#i-cv"/></svg></div>
+    </div>
+    <div>
+     <div class="lb">คืนเงินด้วย</div>
+     <div class="rm">
+      <div class="on"><span>เงินสด</span><small>จากลิ้นชักกะ #12</small></div>
+      <div><span>คืนเข้า PromptPay เดิม</span><small>บัญชีที่โอนมา</small></div>
+      <div><span>เครดิตร้าน</span><small>เข้ากระเป๋าสมาชิก</small></div>
+     </div>
+    </div>
+   </div>
+   <div class="smy">
+    <div class="h">คืน ฿85</div>
+    <ul>
+     <li><svg class="i xs"><use href="#i-check"/></svg>หักแต้มคืน 8 แต้ม</li>
+     <li><svg class="i xs"><use href="#i-check"/></svg>คืนสต็อก 1 ชิ้น</li>
+     <li><svg class="i xs"><use href="#i-check"/></svg>ออกใบลดหนี้ CN2609-000004</li>
+     <li><svg class="i xs"><use href="#i-check"/></svg>กลับรายการบัญชีอัตโนมัติ</li>
+    </ul>
+   </div>
+  </div>
+  <div class="mf">
+   <span class="au"><svg class="i xs"><use href="#i-lock"/></svg>บันทึกผู้ทำรายการและเหตุผลลงประวัติการตรวจสอบ</span>
+   <span class="sp"></span>
+   <div class="btn gh">ยกเลิก</div>
+   <div class="btn pri">ยืนยันคืนเงิน ฿85</div>
+  </div>
+ </div>
+</div>
+</div></div>

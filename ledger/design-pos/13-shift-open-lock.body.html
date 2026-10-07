@@ -1,0 +1,242 @@
+<style>
+.rail{width:56px;flex:none;border-right:1px solid var(--line);background:var(--sf2);
+  padding:10px 0;display:flex;flex-direction:column;align-items:center;gap:5px;color:var(--mut2)}
+.rail .ri{width:36px;height:36px;border-radius:9px;display:grid;place-items:center}
+.rail .ri.on{background:var(--sf);border:1px solid var(--line);color:var(--ink)}
+.top .biz{display:inline-flex;align-items:center;gap:12px;height:32px;padding:0 10px;border:1px solid var(--line);
+  border-radius:8px;font-size:13px;color:var(--ink2)}
+.top .dot{width:8px;height:8px;border-radius:50%;background:var(--ink);display:inline-block}
+.top .st{display:inline-flex;align-items:center;gap:13px;font-size:12.5px;color:var(--mut)}
+.top .who{display:inline-flex;align-items:center;gap:13px;font-size:12.5px;color:var(--ink2)}
+.amenu .am .pill{height:18px;min-width:18px;font-size:10.5px}
+.cart .empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;color:var(--mut)}
+/* โมดัลเปิดกะ */
+.mdl{position:absolute;left:50%;top:92px;transform:translateX(-50%);width:760px;background:var(--sf);border-radius:20px;
+  box-shadow:0 24px 60px rgba(10,10,10,.28);z-index:45;display:flex;flex-direction:column;overflow:hidden}
+.mdl .mh2{display:flex;align-items:center;gap:14px;padding:20px 28px;border-bottom:1px solid var(--line)}
+.mdl .mh2 h2{font-size:20px;font-weight:700;letter-spacing:-.01em}
+.mdl .mh2 .sp{flex:1}
+.mdl .mb2{padding:24px 28px;display:flex;flex-direction:column;gap:26px}
+.mdl .mf2{display:flex;align-items:center;gap:14px;padding:18px 28px;border-top:1px solid var(--line);background:var(--sf2)}
+.mdl .mf2 .sp{flex:1}
+.sl{font-size:14px;font-weight:700;color:var(--ink2);margin-bottom:12px;display:flex;align-items:center;gap:10px}
+.sl span{font-weight:400;color:var(--mut);font-size:13px}
+.g2c{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.g3c{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.pick{border:1px solid var(--line);border-radius:16px;padding:14px 16px;display:flex;align-items:center;gap:14px;background:var(--sf);min-height:74px}
+.pick .tx{flex:1;min-width:0}
+.pick .tx b{display:block;font-size:15.5px}
+.pick .tx span{display:block;font-size:13px;color:var(--mut);margin-top:2px}
+.pick.on{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink);background:var(--sf2)}
+.pick.off{background:var(--sf2);color:var(--mut2)}
+.pick.off .tx b,.pick.off .tx span{color:var(--mut2)}
+.pick .ok{width:26px;height:26px;border-radius:50%;background:var(--ink);color:var(--sf);display:grid;place-items:center;flex:none}
+.pick .ok svg{width:14px;height:14px;stroke-width:2.6}
+.pick .av{width:38px;height:38px;border-radius:11px;font-size:15px}
+.pick.off .av{color:var(--mut2)}
+.cashrow{display:flex;gap:18px;align-items:stretch}
+.bigin{width:250px;flex:none;height:72px;border:1px solid var(--ink);box-shadow:inset 0 0 0 1px var(--ink);border-radius:16px;
+  display:flex;align-items:center;justify-content:space-between;padding:0 20px}
+.bigin span{font-size:13px;color:var(--mut)}
+.bigin b{font-size:32px;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.dens{flex:1;display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.dn{border:1px solid var(--line);border-radius:14px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;background:var(--sf)}
+.dn b{font-size:15px;font-variant-numeric:tabular-nums}
+.dn span{font-size:13px;color:var(--mut);font-variant-numeric:tabular-nums}
+.dnote{font-size:13px;color:var(--mut);margin-top:10px}
+.prev{display:flex;align-items:center;gap:12px;border:1px solid var(--line);border-radius:14px;padding:13px 16px;background:var(--sf2);font-size:14px;color:var(--ink2)}
+.prev .sp{flex:1}
+.prev b{font-variant-numeric:tabular-nums}
+.ck2{display:inline-flex;align-items:center;gap:10px;font-size:14.5px;color:var(--ink2)}
+.ck2 .cbx{width:20px;height:20px;border-radius:6px}
+.ck2 .cbx.on::after{left:6px;top:2px;width:5px;height:10px;border-width:0 2px 2px 0}
+
+/* ล็อกหน้าจอ */
+.lk{flex:1;display:flex;min-height:0}
+.lk .pad{width:60%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;padding:40px 0}
+.lk .side2{flex:1;border-left:1px solid var(--line);background:var(--sf2);padding:40px 44px;display:flex;flex-direction:column;gap:22px}
+.lkic{width:68px;height:68px;border-radius:22px;background:var(--sf2);border:1px solid var(--line);display:grid;place-items:center;color:var(--ink)}
+.lkic svg{width:30px;height:30px;stroke-width:1.8}
+.lk h1{font-size:30px;font-weight:700;letter-spacing:-.02em;text-align:center}
+.lk .who2{display:flex;align-items:center;gap:10px;font-size:15px;color:var(--ink2)}
+.lk .who2 .av{width:30px;height:30px;font-size:13px;border-radius:9px}
+.dots{display:flex;gap:18px;margin:6px 0 4px}
+.dots i{width:18px;height:18px;border-radius:50%;border:2px solid var(--line2);display:block}
+.dots i.on{background:var(--ink);border-color:var(--ink)}
+.lk .numpad{width:390px}
+.lk .numpad div{height:72px!important;font-size:24px!important}
+.lk .numpad div.k{font-size:16px!important;color:var(--ink2)}
+.lk .hint{font-size:13.5px;color:var(--mut)}
+.lk .side2 h2{font-size:18px;font-weight:700}
+.ppl{display:flex;flex-direction:column;gap:12px}
+.pp{display:flex;align-items:center;gap:14px;border:1px solid var(--line);border-radius:16px;padding:14px 16px;background:var(--sf)}
+.pp .av{width:44px;height:44px;border-radius:13px;font-size:17px}
+.pp .tx{flex:1;min-width:0}
+.pp .tx b{display:block;font-size:16px}
+.pp .tx span{display:block;font-size:13px;color:var(--mut);margin-top:2px}
+.pp.on{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
+.pp.on .av{background:var(--ink);color:var(--sf);border-color:var(--ink)}
+.pp.off{background:transparent;color:var(--mut2)}
+.pp.off .tx b,.pp.off .tx span,.pp.off .av{color:var(--mut2)}
+.hold{border:1px solid var(--line);border-radius:16px;padding:16px 18px;background:var(--sf);display:flex;align-items:center;gap:14px}
+.hold .tx{flex:1;min-width:0}
+.hold .tx b{display:block;font-size:16px}
+.hold .tx span{display:block;font-size:13px;color:var(--mut);margin-top:3px}
+.hold .amt{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums}
+.lkfoot{margin-top:auto;font-size:13.5px;color:var(--mut);line-height:1.7;border-top:1px solid var(--line);padding-top:18px;display:flex;gap:10px}
+.lkfoot svg{margin-top:4px}
+.ltop{height:66px;display:flex;align-items:center;gap:14px;padding:0 28px;border-bottom:1px solid var(--line);flex:none;color:var(--ink2)}
+.ltop .brand{font-size:16px;font-weight:700}
+.ltop .sp{flex:1}
+.ltop .clk{font-size:15px;font-weight:700;font-variant-numeric:tabular-nums}
+.ltop .dot{width:8px;height:8px;border-radius:50%;background:var(--ink);display:inline-block}
+</style>
+<div class="wrap">
+<div>
+<p class="cap">13A · เปิดกะ (1440×900) <span>— ก่อนขายบิลแรกของวัน · เลือกเครื่อง · พนักงานจากตารางงาน HR วันนี้ · เงินตั้งต้นในลิ้นชัก (นับแยกแบงก์ได้) · อ้างอิงกะก่อนหน้า</span></p>
+<div class="frame" style="height:900px">
+
+ <div class="top"><svg class="i lg"><use href="#i-menu"/></svg><span class="brand">SHARK</span>
+  <span class="biz"><svg class="i sm"><use href="#i-shop"/></svg>บ้านกาแฟสวนผึ้ง · สาขาหัวหิน<svg class="i xs"><use href="#i-cv"/></svg></span>
+  <span class="sp"></span>
+  <span class="st"><i class="dot"></i>ออนไลน์ · พ. 30 ก.ย. 2569 · 09:01</span>
+  <span class="chip"><svg class="i xs"><use href="#i-clock"/></svg>ยังไม่เปิดกะ · เคาน์เตอร์ 1</span>
+  <span class="who"><span class="av">น</span>น้ำฝน · แคชเชียร์</span>
+ </div>
+
+ <div class="appbody" style="flex:1;min-height:0">
+  <div class="rail">
+   <div class="ri"><svg class="i sm"><use href="#i-home"/></svg></div>
+   <div class="ri on"><svg class="i sm"><use href="#i-shop"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-users"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-box"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-book"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-grid"/></svg></div>
+   <span style="flex:1"></span>
+   <div class="ri"><svg class="i sm"><use href="#i-gear"/></svg></div>
+  </div>
+  <div class="mod">
+   <div class="amenu">
+    <div class="am on"><svg class="i sm"><use href="#i-cash"/></svg>หน้าขาย</div>
+    <div class="am"><svg class="i sm"><use href="#i-grid"/></svg>โต๊ะ</div>
+    <div class="am"><svg class="i sm"><use href="#i-truck"/></svg>ออเดอร์ออนไลน์</div>
+    <div class="am"><svg class="i sm"><use href="#i-doc"/></svg>บิลวันนี้</div>
+    <div class="am"><svg class="i sm"><use href="#i-clock"/></svg>กะ</div>
+    <div class="am"><svg class="i sm"><use href="#i-tag"/></svg>สินค้า</div>
+    <div class="am"><svg class="i sm"><use href="#i-chart"/></svg>รายงาน</div>
+    <div class="am"><svg class="i sm"><use href="#i-gear"/></svg>ตั้งค่า</div>
+   </div>
+   <div class="pos">
+    <div class="left">
+     <div class="cats"><span class="c">ทั้งหมด</span><span class="c on">กาแฟ</span><span class="c">ชาและนม</span><span class="c">ขนม</span><span class="c">อาหาร</span><span class="c">เมล็ดกาแฟและของฝาก</span></div>
+     <div class="pgrid">
+      <div class="pitem"><div class="img"></div><div class="nm">ลาเต้</div><div class="pr">฿75<small>3 ขนาด</small></div></div>
+      <div class="pitem"><div class="img"></div><div class="nm">อเมริกาโน่</div><div class="pr">฿65<small>3 ขนาด</small></div></div>
+      <div class="pitem"><div class="img"></div><div class="nm">คาปูชิโน่</div><div class="pr">฿75<small>3 ขนาด</small></div></div>
+      <div class="pitem"><div class="img"></div><div class="nm">มอคค่า</div><div class="pr">฿85<small>3 ขนาด</small></div></div>
+      <div class="pitem"><div class="img"></div><div class="nm">เอสเพรสโซ</div><div class="pr">฿55</div></div>
+      <div class="pitem"><div class="img"></div><div class="nm">ชาไทย</div><div class="pr">฿60</div></div>
+      <div class="pitem"><div class="img"></div><div class="nm">มัทฉะลาเต้</div><div class="pr">฿90</div></div>
+      <div class="pitem"><div class="img"></div><div class="nm">โกโก้</div><div class="pr">฿70</div></div>
+     </div>
+    </div>
+    <div class="cart">
+     <div class="empty"><svg class="i lg"><use href="#i-lock"/></svg><span>เปิดกะก่อนเริ่มขาย</span></div>
+     <div class="paybtn" style="opacity:.35"><span>ชำระเงิน</span><span>฿0</span></div>
+    </div>
+   </div>
+  </div>
+ </div>
+
+ <div class="scrim"></div>
+
+ <div class="mdl">
+  <div class="mh2">
+   <svg class="i lg"><use href="#i-clock"/></svg><h2>เปิดกะ</h2>
+   <span class="chip ink">กะ #12</span><span class="chip">พ. 30 ก.ย. 2569 · 09:01</span>
+   <span class="sp"></span><svg class="i mu"><use href="#i-x"/></svg>
+  </div>
+  <div class="mb2">
+   <div>
+    <div class="sl">เครื่องที่ใช้ขาย <span>· 1 กะต่อ 1 เครื่อง</span></div>
+    <div class="g2c">
+     <div class="pick on"><svg class="i lg"><use href="#i-cash"/></svg><div class="tx"><b>เคาน์เตอร์ 1</b><span>เครื่องนี้ · ลิ้นชักเงิน · เครื่องพิมพ์ 80 มม.</span></div><span class="ok"><svg class="i"><use href="#i-check"/></svg></span></div>
+     <div class="pick off"><svg class="i lg"><use href="#i-cash"/></svg><div class="tx"><b>เคาน์เตอร์ 2</b><span>กะ #13 · แพร เปิดอยู่</span></div><svg class="i sm"><use href="#i-lock"/></svg></div>
+    </div>
+   </div>
+   <div>
+    <div class="sl">พนักงานที่เปิดกะ <span>· จากตารางงาน HR วันนี้</span></div>
+    <div class="g3c">
+     <div class="pick on"><span class="av">น</span><div class="tx"><b>น้ำฝน</b><span>09:00–17:00</span></div><span class="ok"><svg class="i"><use href="#i-check"/></svg></span></div>
+     <div class="pick"><span class="av">พ</span><div class="tx"><b>แพร</b><span>12:00–20:00</span></div></div>
+     <div class="pick off"><span class="av">ต</span><div class="tx"><b>ต้น</b><span>ลาวันนี้</span></div></div>
+    </div>
+   </div>
+   <div>
+    <div class="sl">เงินตั้งต้นในลิ้นชัก <span>· นับแยกแบงก์ (ไม่บังคับ)</span></div>
+    <div class="cashrow">
+     <div class="bigin"><span>รวม</span><b>฿2,000</b></div>
+     <div class="dens">
+      <div class="dn"><b>฿1,000</b><span>× 1</span></div>
+      <div class="dn"><b>฿500</b><span>× 1</span></div>
+      <div class="dn"><b>฿100</b><span>× 4</span></div>
+      <div class="dn"><b>฿20</b><span>× 5</span></div>
+     </div>
+    </div>
+    <div class="dnote">ค่าตั้งต้นของเครื่องนี้ ฿2,000 · ถ้านับได้ไม่ตรง ระบบจะบันทึกผลต่างไว้ในกะนี้</div>
+   </div>
+   <div class="prev"><svg class="i"><use href="#i-doc"/></svg><span>กะก่อนหน้า <b>Z#11</b> · ปิด 29 ก.ย. 21:05 · ผลต่าง <b>฿0</b></span><span class="sp"></span><span class="lnk">ดูรายงาน Z#11</span></div>
+  </div>
+  <div class="mf2">
+   <span class="ck2"><span class="cbx on"></span>พิมพ์ใบเปิดกะ</span>
+   <span class="sp"></span>
+   <span class="btn gh">ย้อนกลับ</span>
+   <span class="btn pri" style="min-width:220px">เปิดกะและเริ่มขาย</span>
+  </div>
+ </div>
+</div>
+</div>
+
+<div>
+<p class="cap">13B · ล็อกหน้าจอด้วย PIN (1440×900) <span>— ล็อกเองเมื่อไม่ได้ใช้ 2 นาที หรือกดล็อกตอนลุกจากเคาน์เตอร์ · สลับพนักงานได้โดยไม่ต้องปิดกะ · บิลที่พักยังอยู่</span></p>
+<div class="frame" style="height:900px">
+ <div class="ltop">
+  <span class="brand">SHARK</span><span class="mu">บ้านกาแฟสวนผึ้ง · สาขาหัวหิน · เคาน์เตอร์ 1</span>
+  <span class="sp"></span>
+  <span class="chip ink"><svg class="i xs"><use href="#i-clock"/></svg>กะ #12 · เปิด 09:02</span>
+  <span class="chip"><i class="dot"></i>ออนไลน์</span>
+  <span class="clk">14:32</span><span class="mu">พ. 30 ก.ย. 2569</span>
+ </div>
+ <div class="lk">
+  <div class="pad">
+   <div class="lkic"><svg class="i"><use href="#i-lock"/></svg></div>
+   <h1>ใส่ PIN เพื่อปลดล็อก</h1>
+   <div class="who2"><span class="av">น</span>น้ำฝน · แคชเชียร์ · ล็อกเมื่อ 14:30</div>
+   <div class="dots"><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i><i></i></div>
+   <div class="numpad">
+    <div>1</div><div>2</div><div>3</div>
+    <div>4</div><div>5</div><div>6</div>
+    <div>7</div><div>8</div><div>9</div>
+    <div class="k">ลืม PIN</div><div>0</div><div class="k">⌫</div>
+   </div>
+   <div class="hint">PIN 6 หลัก · ใส่ผิด 5 ครั้ง ต้องให้ผู้จัดการปลดล็อก</div>
+  </div>
+  <div class="side2">
+   <h2>ใครกำลังใช้เครื่องนี้</h2>
+   <div class="ppl">
+    <div class="pp on"><span class="av">น</span><div class="tx"><b>น้ำฝน</b><span>เจ้าของกะ #12 · 09:00–17:00</span></div><span class="chip ink">ใช้งานอยู่</span></div>
+    <div class="pp"><span class="av">พ</span><div class="tx"><b>แพร</b><span>เข้างาน 12:00–20:00 · ขายในกะนี้ได้</span></div></div>
+    <div class="pp off"><span class="av">ต</span><div class="tx"><b>ต้น</b><span>ลาวันนี้</span></div></div>
+   </div>
+   <span class="btn gh blk"><svg class="i sm"><use href="#i-swap"/></svg>สลับพนักงาน</span>
+   <div class="hold">
+    <svg class="i lg"><use href="#i-clock"/></svg>
+    <div class="tx"><b>บิลที่พักไว้ 1 ใบ</b><span>พี่แว่น · 3 รายการ · พัก 10:12 โดยน้ำฝน</span></div>
+    <span class="amt">฿285</span>
+   </div>
+   <div class="lkfoot"><svg class="i sm"><use href="#i-lock"/></svg><span>ล็อกอัตโนมัติหลังไม่ใช้งาน 2 นาที · ผู้จัดการปลดล็อกด้วย PIN ผู้จัดการได้</span></div>
+  </div>
+ </div>
+</div>
+</div>
+</div>
