@@ -53,3 +53,9 @@ totals.serviceCharge · totals.tip · pay.{escClose, back, splitTitle, remaining
 1. File name: keep `InterimPayDialog.tsx` (pinned by qc-pos-p1.3 S5.20) or approve a path-only ORACLE-EDIT so it can be `git mv`'d to `PayDialog.tsx`?
 2. Done screen auto-advances after 5 s (mockup 02b). OK for cashiers who still need the change figure? (Enter / button also advance.)
 3. Tip: switch is shown disabled with the P1.6b reason; the input path (tip > 0, Σpay = grand + tip) is built but untestable in UI until `TIP_POSTING_READY`.
+
+## Controller rulings (7 Oct, after env fix) + Q2 fix
+- Q1: keep `InterimPayDialog.tsx` (no ORACLE-EDIT, no rename in this card) — **follow-up**: rename to `PayDialog.tsx` together with a path-only edit of qc-pos-p1.3 S5.20.
+- Q2: done screen auto-advances after 5 s **only when change = 0**; with change > 0 it stays until Enter / "ขายต่อ" — done in `PayDone.tsx` (countdown text hidden when change > 0).
+- Q3: tip as built accepted.
+- QC4 env fixed by the controller (`.env.qc*` now `neondb_owner`). DB gates re-run below on the P1.6 U head that includes the Q2 fix (only `PayDone.tsx` differs from 518c5262; no server file, no other register file).
