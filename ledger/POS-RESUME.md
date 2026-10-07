@@ -655,3 +655,5 @@
 - ตามเซิร์ฟเวอร์: QC cashier ไม่มีสิทธิ์กะ = refusal card · byMethod.count = จำนวน payment · refund count ไม่มีใน ShiftReport (P1.8) · คำถาม: operate เห็นเครื่องอื่นไหม (ตาม listShifts = ไม่) · เหรียญใน countDetail ฿1×n + 25 สต. · คอลัมน์ "บิล" = payments
 - 1024 เมนูเต็ม = คอลัมน์เดียว (เหลือ ~690px) · เมนูย่อ = 2 คอลัมน์ (container query)
 - unit `pos-vis11-shifts` 21:50 UTC
+
+## 2026-10-07T21:55:13Z · ผู้ตรวจ P1.9U: MERGEABLE-AFTER-FIXES → R2 (F1 id ใน title · F2 visual ทิ้งกะเปิดค้าง · F3 email fallback · F4 moveKey · F5 ข้อความหลัง load ล้ม · F6 รวมฟังก์ชัน sale) + คำตัดสิน Q1–Q4 (เหรียญห้ามปลอมเป็น ฿1 · หัวคอลัมน์ "รายการ")
