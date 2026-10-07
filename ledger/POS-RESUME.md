@@ -563,3 +563,7 @@
 - เลน 1 R2: ป๊อปโอเวอร์ยึดการ์ด 360px (ชิป 44px ตามกฎ ≥44 — ต่างภาพ 01 ที่ 32/40) · merge key product+options+note · ตัวแปรหมด disabled เมื่อ oversell=BLOCK · state ใหม่ options-popover/weigh + เปิดกะผ่าน UI (ปิดใน finally) · gate เขียว (p1.2 55/55 ×3 · p1.6 48 · p1.3 128 · fitness · tsc) · follow-up: ตัวแปรที่ปิดที่สาขาใต้ allow-negative ยังกดได้ (server) · note หายตอนพักบิล (server)
 - p11: merge ทดลอง c69fcd78 + 06cea612 = 85f29b93 (สะอาด 22 ไฟล์) · unit `pos-vis5-both` 16:16 UTC: build ใต้ pos-gate.lock (CI=1) → start นอกล็อก → reports overview 4 ชุด (owner/cashier/EN/14 วัน) + register --states owner/cashier/EN · ผล /root/pos-runs/both-vis-*/
 - ถัดไป: เทียบภาพ 08 (reports) และ 01/02/02b/05ข (register/pay/options) → รับ/ส่งแก้ → merge ทั้งคู่เข้า session/pos → เหลือ 1 เลน
+
+## 2026-10-07T16:21:44Z · ผู้ตรวจ P1.17U R5: MERGEABLE-AFTER-FIXES → สั่ง R6
+- F1 Server Action ใน Next 16 ส่งทีละตัว (24 call เรียง) → อนุญาตแตะ server: action รวม `posReportOverviewAction` (Promise.all ฝั่งเซิร์ฟเวอร์ · refusal ต่อ section) + debounce 300ms + ข้อสอบใน qc-pos-p1.17 · F2 retry ต่อการ์ด · F3 แถวสาขาถูกปฏิเสธต้องเห็นเหตุผล · F4 KPI ห้าม truncate (text-2xl/xl:28px · grid sm2/lg3/xl5) · F5 ป้ายแกน X มือถือ 3 จุด · F6 testid error/retry ต่อการ์ด · F7 notes
+- ผู้ตรวจเลน 1 (P1.6U+P1.2U) กำลังอ่าน · unit pos-vis5-both กำลัง build 85f29b93
