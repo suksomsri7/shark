@@ -18,6 +18,7 @@ import {
   openShift,
   recordCashMovement,
   recountShift,
+  shiftsPageData,
   xReport,
   zReport,
   type CashMovementInput,
@@ -33,6 +34,7 @@ import {
   type RecountShiftResult,
   type ShiftRefusal,
   type ShiftReportResult,
+  type ShiftsPageData,
 } from "./shift";
 import type { RegisterActor, RegisterCtx } from "./register-shared";
 
@@ -206,5 +208,18 @@ export async function recountShiftAction(args: Target & { recount: RecountShiftI
     return r;
   } catch (e) {
     return unexpected("recountShiftAction", e);
+  }
+}
+
+/** POS P1.9 U — ข้อมูลทั้งหน้ากะ (ภาพ 07) ในคำขอเดียว: กะของเครื่องนี้ · X + เงินเข้า/ออก · ประวัติ · เงินสดนอกกะ (Server Action เรียงคิวต่อ client) */
+export async function shiftsPageDataAction(args: Target): Promise<ShiftsPageData> {
+  const auth = await session("shiftsPageDataAction");
+  if ("ok" in auth) return auth;
+  try {
+    const s = scopeOf(auth, args);
+    if ("ok" in s) return s;
+    return await shiftsPageData(s.ctx, s.actor, s.ctx.deviceId !== undefined ? { deviceId: s.ctx.deviceId } : {});
+  } catch (e) {
+    return unexpected("shiftsPageDataAction", e);
   }
 }
