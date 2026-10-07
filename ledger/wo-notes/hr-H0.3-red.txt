@@ -1,0 +1,51 @@
+[env] qc-hr-h0.3 · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech
+[qc-hr-h0.3] DB host = ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+⚠️  QC_FORCE=1 — ข้ามด่าน SKIP ทั้งที่ยังขาด: ยังไม่มีของ H0.3 (hr/actions.ts ไม่มี checkRateLimitDb · service.ts ไม่มี hr:clock: · tools.ts ไม่มี รหัสใบลา: l.id) (คาด: แดงตามเหตุผล ไม่ crash)
+  ❌ [H0.3-S1.8] [static] หน้าลงเวลา (HrAttendanceSection): ฟอร์ม clockAction อยู่หลังเงื่อนไขสิทธิ์จัดการพนักงาน (hr.employee.create / ตัวแปรสิทธิ์) — expected อ้างสิทธิ์ก่อนฟอร์ม clockAction + เงื่อนไข | actual right=ไม่มี@-1 form@1580
+  ❌ [H0.3-S4.9] [static] clock: tenantDb(ctx).$transaction + pg_advisory_xact_lock(hashtextextended('hr:clock:…')) · CLOCK_DEDUPE_SEC = 60 — expected tx + lock hr:clock: + CLOCK_DEDUPE_SEC = 60 | actual {"tx":false,"lock":false,"dedupe":false}
+  ✅ [H0.3-S6.1] [static] clockInDetail + judgeClockIn ไม่เปลี่ยน (sha256 เทียบฐาน afcb9bc3)
+  ✅ [H0.3-S6.2] [static] pending_leaves ยังมีความเห็น HF-HR-0 ▸ ไม่คืนเหตุผลการลา · ไม่อ่าน l.reason
+  ❌ [H0.3-S6.3] [static] map ของ pending_leaves = พนักงาน/ประเภท/ตั้งแต่/ถึง/รหัสใบลา เท่านั้น · บรรทัด รหัสใบลา: l.id มีเครื่องหมาย HR H0.3 ▸ — expected ตั้งแต่,ถึง,ประเภท,พนักงาน,รหัสใบลา | actual keys=ตั้งแต่,ถึง,ประเภท,พนักงาน idLine=ไม่มี marker=false
+  ❌ [H0.3-S6.4] [static] hr/actions.ts ไม่มี checkRateLimit (in-memory) · kiosk ใช้ checkRateLimitDb hr-kiosk:emp: + hr-kiosk:sys: ก่อน clockWithPin · setPinAction hr-setpin: ก่อน setPin — expected {inMem:false,db:true,kioskOrder:true,setpinOrder:true} | actual {"inMem":true,"db":false,"kioskOrder":false,"setpinOrder":false}
+  ❌ [H0.3-S6.5] [static] clockAction ตรวจ "hr.employee.create" (และยังตรวจ "hr.attendance.clock") ก่อน await clock( — expected hr.employee.create ก่อน clock( | actual employee.create@-1 clock@464 attendance.clock=true
+
+
+── [S1] ลงเวลาแทน (clockAction) ──
+  ✅ [H0.3-S1.1] [action] OWNER ลงเวลาแทน (clockAction IN) → 1 แถวในระบบนี้
+  ✅ [H0.3-S1.2] [action] MANAGER ลงเวลาแทน → 1 แถว
+  ✅ [H0.3-S1.3] [action] STAFF ที่มี hr.employee.create (+ hr.attendance.clock) ลงเวลาแทน → 1 แถว
+  ❌ [H0.3-S1.4] [action] 🔴 บัญชี kiosk (STAFF มีแต่ hr.attendance.clock) ลงเวลาแทน → ไม่มีแถว — expected 0 แถว | actual 1 แถว · returned
+  ✅ [H0.3-S1.5] [action] สมาชิกทั่วไป (ไม่มีคีย์ HR) ลงเวลาแทน → ไม่มีแถว
+  ❌ [H0.3-S1.6] [action] แถวที่ลงแทน (S1.1–S1.3) มี note "ลงเวลาแทนโดย <ชื่อผู้กด>" — expected "ลงเวลาแทนโดย <ชื่อ>" ×3 | actual [null,null,null]
+  ❌ [H0.3-S1.7] [action] พนักงานที่พ้นสภาพ (active=false) → ปฏิเสธ ไม่มีแถว — expected 0 แถว | actual 1 แถว · returned
+── [X2] พนักงานของอีกระบบ HR ในร้านเดียวกัน ──
+  ❌ [H0.3-X2.1] [action] OWNER clockAction(ระบบ A, พนักงานของระบบ B) → ไม่มีแถว — expected 0 แถว | actual 1 แถว · returned
+  ❌ [H0.3-X2.2] [service] clock(ctx ระบบ A, พนักงานของระบบ B) → ปฏิเสธ (throw/ไม่มี id) ไม่มีแถว — expected ปฏิเสธ · +0 แถว | actual +1 แถว · คืน id cmuyh840
+  ✅ [H0.3-X2.3] [action] kioskClockAction(ระบบ A, พนักงานของระบบ B, PIN ถูก) → error ไม่มีแถว
+── [S2] ตัวจำกัดเดา PIN บนจอ kiosk ──
+  ✅ [H0.3-S2.1] [action] kiosk: PIN ผิด 5 ครั้ง → ครั้งที่ 6 (PIN ถูก) ถูกปฏิเสธด้วย "ลองใหม่ในอีก N วินาที" ก่อนเทียบ PIN · ไม่มีแถว
+  ❌ [H0.3-S2.2] [db] ถังอยู่ใน ChatRateBucket: key hr-kiosk:emp:<tenantId>:<employeeId> (count ≥ 5) + hr-kiosk:sys:<tenantId>:<systemId> — expected emp count ≥ 5 · sys มี | actual emp=ไม่มี sys=ไม่มี แถวที่มี tenantId=0
+  ❌ [H0.3-S2.3] [action] หลังหน้าต่างหมด (windowStart ของถังถูกย้อน 61 s) → PIN ถูกผ่าน · IN 1 แถว — expected ok · IN 1 แถว | actual ย้อน 0 ถัง · {"status":"error","message":"ลองใหม่ในอีก 60 วินาที"} · 0 แถว
+  ❌ [H0.3-S2.4] [action] 🔴 ข้าม process: แม่ 3 ครั้ง + ลูก (tsx process แยก) 3 ครั้ง (ครั้งสุดท้าย PIN ถูก) → ผ่านตัวจำกัดรวม 5 · ครั้งที่ 6 ถูกปฏิเสธ · ไม่มีแถว — expected ผ่านตัวจำกัดรวม 5 · ลูกครั้งที่ 3 ลองใหม่ · 0 แถว | actual allowed=6 parent=["PIN ไม่ถูกต้อง","PIN ไม่ถูกต้อง","PIN ไม่ถูกต้อง"] child=["PIN ไม่ถูกต้อง","PIN ไม่ถูกต้อง","kiosk-2 1791399860783kx1r · เข้างาน 02:04"] · 1 แถว
+  ❌ [H0.3-S2.5] [action] 🔴 ถังระบบ: 60 ครั้งกระจาย 60 คน (ระบบ C) แล้วคนที่ 61 PIN ถูก → ถูกปฏิเสธ · ไม่มีแถว · ทั้งหมดภายใน 50 s — expected 60 ครั้งผ่านตัวจำกัด · คนที่ 61 ลองใหม่ · 0 แถว · < 50 s | actual emps=61 lim60=0 61={"status":"ok","message":"C-060 1791399860783kx1r · เข้างาน 02:04","detail":"ยังไม่ได้ตั้ง · 1 แถว · 484 ms
+── [S3] ตัวจำกัดตั้ง PIN ──
+  ❌ [H0.3-S3.1] [action] setPinAction ผู้กดคนเดียว 10 ครั้งผ่าน · ครั้งที่ 11 ถูกปฏิเสธ (status error · PIN ใน DB = ค่าครั้งที่ 10) — expected 10× ok · ครั้งที่ 11 error · PIN 80010 | actual ok,ok,ok,ok,ok,ok,ok,ok,ok,ok,ok · 11=ตั้ง PIN แล้ว · pin=80011
+  ✅ [H0.3-S3.2] [action] ผู้กดอีกคน (OWNER) ทันทีหลัง S3.1 → ตั้ง PIN ได้ (ไม่โดนถังของคนอื่น)
+  ❌ [H0.3-S3.3] [db] ถัง hr-setpin:<tenantId>:<actorUserId> อยู่ใน ChatRateBucket (count ≥ 10) — expected count ≥ 10 | actual count=ไม่มีแถว
+── [S4] แตะรัว / กันซ้ำ ──
+  ✅ [H0.3-S4.1] [service] clockWithPin PIN ถูก 10 ครั้งพร้อมกัน × 3 รอบ → ทุกครั้งสำเร็จ · ไม่มีครั้งไหนตอบ OUT
+  ❌ [H0.3-S4.2] [service] 🔴 หลัง S4.1 แต่ละรอบมี IN แถวเดียว (ไม่มี IN ซ้ำ ไม่มี OUT) — expected 1 IN ต่อรอบ | actual IN+IN+IN+IN+IN+IN+IN+IN+IN+IN · IN+IN+IN+IN+IN+IN+IN+IN+IN+IN · IN+IN+IN+IN+IN+IN+IN+IN+IN+IN
+  ❌ [H0.3-S4.4] [action] kiosk แตะซ้ำ 2 ครั้ง → ครั้งที่ 2 สำเร็จพร้อม "เพิ่งลงเวลาเข้า…" · แถวเดียว (ไม่กลายเป็น OUT) — expected ok · ok "เพิ่งลงเวลาเข้า…" · IN 1 แถว | actual 1=แตะซ้ำ 1791399860783kx1r · เข้างาน 02:04 · 2=แตะซ้ำ 1791399860783kx1r · ออกงาน 02:04 |  · IN+OUT
+  ✅ [H0.3-S4.5] [service] พ้นหน้าต่างกันซ้ำ (แถวย้อน 61 s) → แตะอีกครั้งบันทึก OUT
+  ❌ [H0.3-S4.6] [action] ทางตรง clockAction IN 10 ครั้งพร้อมกัน → IN แถวเดียว — expected IN 1 แถว | actual 10 แถว · ["returned"]
+  ✅ [H0.3-S4.7] [action] ทางตรง IN แล้ว OUT ภายใน 60 s → บันทึกทั้งคู่ (ผู้จัดการแก้ได้)
+  ❌ [H0.3-S4.3] [service] 🔴 ข้าม process: 2 process × 5 ครั้งพร้อมกัน (นัดเวลาเดียวกัน) → แถวเดียว · ไม่มีใครตอบ OUT — expected 2 process ตรงเวลา · 10/10 ok IN · 1 แถว | actual ["late=false INININININ","late=false INININININ"] · 10 แถว
+  ✅ [H0.3-S4.8] [service] process ลูก: pool ถูกจับไว้ 9/10 เส้น → clockWithPin ยังเสร็จใน 3 s และ commit จริง (ทุกคำสั่งในธุรกรรมใช้ tx client)
+── [S5] AI pending_leaves → hr_decide_leave ──
+  ❌ [H0.3-S5.1] [ai] pending_leaves: ทุกแถวมี รหัสใบลา = id ของใบลาที่รอ · ไม่มีเหตุผลการลา (คีย์/ข้อความ) — expected รหัสใบลา = [l1,l2] · ไม่มีเหตุผล | actual rows=2 ids=0/2 match=false reasonText=false reasonKey=false · {"ใบลารออนุมัติ":[{"พนักงาน":"ลาทดสอบ 1791399860783kx1r","ประเภท":"SICK","ตั้งแต่":"2027-03-01","ถึง":"2027-03-02"},{"พนักงาน":"ลาทดสอบ 1791
+  ❌ [H0.3-S5.2] [ai] ป้อน รหัสใบลา จาก pending_leaves ให้ hr_decide_leave → ข้อเสนอ (AiProposal) ของใบนั้น · summary มีชื่อพนักงาน — expected ข้อเสนอ hr_decide_leave ของใบนั้น · summary มีชื่อ | actual fed=undefined · {"error":"ต้องระบุรหัสใบลา"} · prop=null
+RESIDUE none (tenant=สร้างแล้ว users=5)
+  ✅ [H0.3-Z1] คืนสภาพ: ร้าน qc-hr-h0.3-* ถูกลบ · ไม่เหลือ HrAttendance/HrEmployee/HrLeave/AiProposal ของร้าน · ไม่เหลือ ChatRateBucket ที่ key มี id ของเรา · ผู้ใช้/session ชั่วคราวถูกลบ
+
+===== qc-hr-h0.3 ===== ผ่าน 14/36 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-hr-h0.3","total":36,"passed":14,"failed":["H0.3-S1.8","H0.3-S4.9","H0.3-S6.3","H0.3-S6.4","H0.3-S6.5","H0.3-S1.4","H0.3-S1.6","H0.3-S1.7","H0.3-X2.1","H0.3-X2.2","H0.3-S2.2","H0.3-S2.3","H0.3-S2.4","H0.3-S2.5","H0.3-S3.1","H0.3-S3.3","H0.3-S4.2","H0.3-S4.4","H0.3-S4.6","H0.3-S4.3","H0.3-S5.1","H0.3-S5.2"],"findings":[{"id":"H0.3-S1.8","sev":"MAJOR"},{"id":"H0.3-S4.9","sev":"MAJOR"},{"id":"H0.3-S6.3","sev":"MAJOR"},{"id":"H0.3-S6.4","sev":"MAJOR"},{"id":"H0.3-S6.5","sev":"MAJOR"},{"id":"H0.3-S1.4","sev":"CRITICAL"},{"id":"H0.3-S1.6","sev":"MAJOR"},{"id":"H0.3-S1.7","sev":"MAJOR"},{"id":"H0.3-X2.1","sev":"CRITICAL"},{"id":"H0.3-X2.2","sev":"CRITICAL"},{"id":"H0.3-S2.2","sev":"CRITICAL"},{"id":"H0.3-S2.3","sev":"MAJOR"},{"id":"H0.3-S2.4","sev":"CRITICAL"},{"id":"H0.3-S2.5","sev":"CRITICAL"},{"id":"H0.3-S3.1","sev":"CRITICAL"},{"id":"H0.3-S3.3","sev":"MAJOR"},{"id":"H0.3-S4.2","sev":"CRITICAL"},{"id":"H0.3-S4.4","sev":"CRITICAL"},{"id":"H0.3-S4.6","sev":"CRITICAL"},{"id":"H0.3-S4.3","sev":"CRITICAL"},{"id":"H0.3-S5.1","sev":"CRITICAL"},{"id":"H0.3-S5.2","sev":"CRITICAL"}],"skipped":false,"forced":true,"crashed":false,"missing":["ยังไม่มีของ H0.3 (hr/actions.ts ไม่มี checkRateLimitDb · service.ts ไม่มี hr:clock: · tools.ts ไม่มี รหัสใบลา: l.id)"]}

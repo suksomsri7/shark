@@ -43,3 +43,7 @@ Keep the kiosk UX: `KioskClock.tsx` unchanged unless the "เพิ่งลง�
 
 ## 6. Questions (controller answers)
 Q1 Should a refused on-behalf attempt show a message instead of a silent return? Default: yes if cheap (the attendance form becomes a state form), otherwise silent + hidden button. Q2 Dedupe window 60 s or 120 s? Default 60 s (a real IN→OUT within a minute is unlikely; managers use the explicit path).
+
+## 7. Oracle writer additions (7 Oct · rulings requested; the oracle follows the defaults until answered)
+- OQ-1 = Q1 · OQ-2 = Q2 (60 s) · OQ-3 STAFF in S1.3 holds both `hr.attendance.clock` and `hr.employee.create` ("additionally") · OQ-4 "actor display name" = `User.name` (note must start with "ลงเวลาแทนโดย" and contain it) · OQ-5 S1.8 is a static heuristic (names listed in the notes) · OQ-6 "เพิ่งลงเวลา…" may be in `message` or `detail` · OQ-7 pool = pg default 10 (`POOL_MAX`). Details and the check list: `ledger/wo-notes/hr-H0.3.md`.
+- Finding (outside scope): the `qc-hf-hr-privacy` F2-3 pool probe leaves an "idle in transaction" connection in its process, so later writes in that run can be lost silently (measured on QC4). See the notes.
