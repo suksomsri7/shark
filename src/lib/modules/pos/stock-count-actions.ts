@@ -87,67 +87,134 @@ function scopeOf(auth: Session, args: unknown): { ctx: RegisterCtx; actor: Regis
     m,
   };
 }
-/** ห่อทุก action ด้วยลำดับเดียวกัน: session → ขอบเขต → ฟังก์ชันโมดูล · โยน = INTERNAL */
-async function run<R>(where: string, args: unknown, body: (ctx: RegisterCtx, actor: RegisterActor) => Promise<R>): Promise<R | StockCountRefusal> {
-  const auth = await session(where);
+/** ตัวอ่านของหน้าสต็อก (คลัง · ที่เก็บ · หมวด · สิทธิ์ · รอบที่เปิดอยู่) */
+export async function posStockMetaAction(args: Target): Promise<StockCountMetaResult> {
+  const auth = await session("posStockMetaAction");
   if ("ok" in auth) return auth;
   try {
     const s = scopeOf(auth, args);
     if ("ok" in s) return s;
-    return await body(s.ctx, s.actor);
+    return await stockCountMeta(s.ctx, s.actor);
   } catch (e) {
-    return unexpected(where, e);
+    return unexpected("posStockMetaAction", e);
   }
-}
-
-/** ตัวอ่านของหน้าสต็อก (คลัง · ที่เก็บ · หมวด · สิทธิ์ · รอบที่เปิดอยู่) */
-export async function posStockMetaAction(args: Target): Promise<StockCountMetaResult> {
-  return run("posStockMetaAction", args, (ctx, actor) => stockCountMeta(ctx, actor));
 }
 
 /** เปิดรอบตรวจนับ (R4) */
 export async function posStockCountOpenAction(args: Target & { input: OpenStockCountInput }): Promise<OpenStockCountResult> {
-  return run("posStockCountOpenAction", args, (ctx, actor) => openStockCount(ctx, actor, args.input));
+  const auth = await session("posStockCountOpenAction");
+  if ("ok" in auth) return auth;
+  try {
+    const s = scopeOf(auth, args);
+    if ("ok" in s) return s;
+    return await openStockCount(s.ctx, s.actor, args.input);
+  } catch (e) {
+    return unexpected("posStockCountOpenAction", e);
+  }
 }
 
 /** บันทึกการนับ 1 รายการ (R5 · SET จากช่องกรอก · ADD จากการสแกน) */
 export async function posStockCountRecordAction(args: Target & { input: RecordStockCountInput }): Promise<RecordStockCountResult> {
-  return run("posStockCountRecordAction", args, (ctx, actor) => recordStockCount(ctx, actor, args.input));
+  const auth = await session("posStockCountRecordAction");
+  if ("ok" in auth) return auth;
+  try {
+    const s = scopeOf(auth, args);
+    if ("ok" in s) return s;
+    return await recordStockCount(s.ctx, s.actor, args.input);
+  } catch (e) {
+    return unexpected("posStockCountRecordAction", e);
+  }
 }
 
 /** อ่านรอบ + บรรทัด + สรุป (R11) */
 export async function posStockCountGetAction(args: Target & { input: { countId: string; filter?: StockCountFilter } }): Promise<GetStockCountResult> {
-  return run("posStockCountGetAction", args, (ctx, actor) => getStockCount(ctx, actor, args.input));
+  const auth = await session("posStockCountGetAction");
+  if ("ok" in auth) return auth;
+  try {
+    const s = scopeOf(auth, args);
+    if ("ok" in s) return s;
+    return await getStockCount(s.ctx, s.actor, args.input);
+  } catch (e) {
+    return unexpected("posStockCountGetAction", e);
+  }
 }
 
 /** รอบของสาขา ใหม่สุดก่อน (R11) */
 export async function posStockCountListAction(args: Target & { input?: { status?: StockCountStatus; limit?: number } }): Promise<ListStockCountsResult> {
-  return run("posStockCountListAction", args, (ctx, actor) => listStockCounts(ctx, actor, args.input ?? {}));
+  const auth = await session("posStockCountListAction");
+  if ("ok" in auth) return auth;
+  try {
+    const s = scopeOf(auth, args);
+    if ("ok" in s) return s;
+    return await listStockCounts(s.ctx, s.actor, args.input ?? {});
+  } catch (e) {
+    return unexpected("posStockCountListAction", e);
+  }
 }
 
 /** ยืนยันผลต่าง (R7) */
 export async function posStockCountConfirmAction(args: Target & { input: { countId: string; uncounted?: "SKIP" | "ZERO"; idempotencyKey: string } }): Promise<ConfirmStockCountResult> {
-  return run("posStockCountConfirmAction", args, (ctx, actor) => confirmStockCount(ctx, actor, args.input));
+  const auth = await session("posStockCountConfirmAction");
+  if ("ok" in auth) return auth;
+  try {
+    const s = scopeOf(auth, args);
+    if ("ok" in s) return s;
+    return await confirmStockCount(s.ctx, s.actor, args.input);
+  } catch (e) {
+    return unexpected("posStockCountConfirmAction", e);
+  }
 }
 
 /** ยกเลิกรอบ (R9) */
 export async function posStockCountCancelAction(args: Target & { input: { countId: string; reason: string; idempotencyKey: string } }): Promise<CancelStockCountResult> {
-  return run("posStockCountCancelAction", args, (ctx, actor) => cancelStockCount(ctx, actor, args.input));
+  const auth = await session("posStockCountCancelAction");
+  if ("ok" in auth) return auth;
+  try {
+    const s = scopeOf(auth, args);
+    if ("ok" in s) return s;
+    return await cancelStockCount(s.ctx, s.actor, args.input);
+  } catch (e) {
+    return unexpected("posStockCountCancelAction", e);
+  }
 }
 
 /** ทางลัดรับของเข้า (รับอิสระเท่านั้น — มติเจ้าของ Q1: รับตามใบสั่งซื้อทำที่ระบบคลัง) */
 export async function posStockReceiveAction(args: Target & { input: PosReceiveStockInput }): Promise<ShortcutResult> {
-  return run("posStockReceiveAction", args, (ctx, actor) => posReceiveStock(ctx, actor, args.input));
+  const auth = await session("posStockReceiveAction");
+  if ("ok" in auth) return auth;
+  try {
+    const s = scopeOf(auth, args);
+    if ("ok" in s) return s;
+    return await posReceiveStock(s.ctx, s.actor, args.input);
+  } catch (e) {
+    return unexpected("posStockReceiveAction", e);
+  }
 }
 
 /** ทางลัดโอนระหว่างที่เก็บของคลังเดียวกัน (R16) */
 export async function posStockTransferAction(args: Target & { input: PosTransferStockInput }): Promise<TransferShortcutResult> {
-  return run("posStockTransferAction", args, (ctx, actor) => posTransferStock(ctx, actor, args.input));
+  const auth = await session("posStockTransferAction");
+  if ("ok" in auth) return auth;
+  try {
+    const s = scopeOf(auth, args);
+    if ("ok" in s) return s;
+    return await posTransferStock(s.ctx, s.actor, args.input);
+  } catch (e) {
+    return unexpected("posStockTransferAction", e);
+  }
 }
 
 /** ทางลัดปรับสต็อก (delta ≠ 0 + เหตุผล · ไม่ลงบัญชี — มติเจ้าของ Q2) */
 export async function posStockAdjustAction(args: Target & { input: PosAdjustStockInput }): Promise<ShortcutResult> {
-  return run("posStockAdjustAction", args, (ctx, actor) => posAdjustStock(ctx, actor, args.input));
+  const auth = await session("posStockAdjustAction");
+  if ("ok" in auth) return auth;
+  try {
+    const s = scopeOf(auth, args);
+    if ("ok" in s) return s;
+    return await posAdjustStock(s.ctx, s.actor, args.input);
+  } catch (e) {
+    return unexpected("posStockAdjustAction", e);
+  }
 }
 
 // ═══════════ ตัวอ่านเสริมของหน้าจอ (ค้นสินค้า · ประวัติล่าสุด) — อ่านอย่างเดียว ═══════════
