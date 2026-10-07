@@ -4,7 +4,9 @@
 //   วงกลมหมึก + ถูก · "ชำระแล้ว ฿X" 30 หนา · กล่องตัวเลข (เงินทอน · เลขใบเสร็จ · วิธีชำระ) · ปุ่ม "ขายต่อ (อัตโนมัติ 5 วินาที)"
 //   ช่องที่ภาพมีแต่ยังไม่มีงานรองรับ: แต้มที่ได้ (P1.12) · ใบกำกับอย่างย่อ (P1.13) · สถานะลงบัญชี · พิมพ์ซ้ำ/LINE/QR ใบเสร็จ (P1.10) — ไม่แสดง
 //   "สำเร็จ" = หมึกตัวหนา + ไอคอนถูก (ไม่ใช่สีเขียว — UI_STANDARD §0.1) · ปุ่มถัดไปโฟกัสรอ (Enter = ขายต่อ)
-// 🔴 duplicated:true ก็คือขายสำเร็จบิลเดิม · นับถอยหลัง 5 วินาทีแล้วไปบิลถัดไปเอง (ภาพ 02b) · ปิดด้วยม่าน/Esc ไม่ได้
+// 🔴 duplicated:true ก็คือขายสำเร็จบิลเดิม · ปิดด้วยม่าน/Esc ไม่ได้
+// 🔴 มติผู้คุมงาน (7 ต.ค. Q2): นับถอยหลัง 5 วินาทีแล้วไปบิลถัดไปเอง (ภาพ 02b) เฉพาะเมื่อไม่มีเงินทอน (ทอน 0) ·
+//    มีเงินทอน = จอค้างจนกด Enter/ปุ่ม "ขายต่อ" (แคชเชียร์ต้องอ่านยอดทอนให้ทัน)
 
 import { useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
@@ -19,16 +21,18 @@ type Props = { receiptNo: string | null; totalSatang: number; changeSatang: numb
 
 export function PayDone({ receiptNo, totalSatang, changeSatang, payMethods, onNext }: Props) {
   const t = useTranslations("pos.register");
+  const auto = changeSatang === 0;
   const [left, setLeft] = useState(AUTO_SECONDS);
   const nextRef = useRef(onNext);
   nextRef.current = onNext;
   useEffect(() => {
+    if (!auto) return;
     const id = setInterval(() => setLeft((s) => s - 1), 1000);
     return () => clearInterval(id);
-  }, []);
+  }, [auto]);
   useEffect(() => {
-    if (left <= 0) nextRef.current();
-  }, [left]);
+    if (auto && left <= 0) nextRef.current();
+  }, [auto, left]);
   const paidBy = payMethods.map((m) => `${t(PAY_LABEL[m.type])} ${moneyText(m.amountSatang)}`).join(" · ");
   const cell = "flex min-w-[150px] flex-col gap-[3px] px-5 py-[11px] max-md:border-t max-md:first:border-t-0 md:border-l md:first:border-l-0";
   return (
@@ -73,7 +77,7 @@ export function PayDone({ receiptNo, totalSatang, changeSatang, payMethods, onNe
           onClick={onNext}
         >
           {t("done.nextShort")}
-          <span className="font-normal opacity-70">{t("done.auto", { sec: Math.max(left, 0) })}</span>
+          {auto && <span className="font-normal opacity-70">{t("done.auto", { sec: Math.max(left, 0) })}</span>}
         </button>
       </div>
     </RegisterDialog>
