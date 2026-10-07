@@ -323,11 +323,13 @@
     },
     "options": {
       "title": "เลือกตัวเลือก",
-      "required": "ต้องเลือก {count}",
+      "required": "เลือก {count}",
       "optional": "ไม่บังคับ",
       "pickUpTo": "เลือกได้ไม่เกิน {count}",
       "confirm": "เพิ่มลงตะกร้า {amount}",
-      "unavailable": "หมด"
+      "unavailable": "หมด",
+      "multi": "เลือกได้หลายอย่าง",
+      "note": "หมายเหตุถึงบาร์"
     },
     "variants": {
       "title": "เลือกแบบ"

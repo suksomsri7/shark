@@ -12,7 +12,7 @@ import { useEffect, useRef } from "react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import type { RegisterProduct } from "@/lib/modules/pos/register-shared";
-import { ProductCard } from "./ProductCard";
+import { ProductCard, type PickAnchor } from "./ProductCard";
 import { RegisterIcon } from "./RegisterIcon";
 
 type Props = {
@@ -25,12 +25,15 @@ type Props = {
   catalogueEmpty: boolean;
   hasMore: boolean;
   productsHref: string;
-  onPick: (p: RegisterProduct) => void;
+  /** P1.2 U R2: anchor = กรอบการ์ดที่แตะ (ป๊อปโอเวอร์ตัวเลือกยึดกับการ์ด — ภาพ 01) */
+  onPick: (p: RegisterProduct, anchor?: PickAnchor) => void;
+  /** P1.2 U R2: การ์ดที่ป๊อปโอเวอร์ตัวเลือกเปิดอยู่ (ขอบไฮไลต์ · ภาพ 01 .pitem.sel) */
+  selectedId?: string | null;
   onMore: () => void;
   onClearSearch: () => void;
 };
 
-export function ProductGrid({ products, inCart, pending, q, categoryId, catalogueEmpty, hasMore, productsHref, onPick, onMore, onClearSearch }: Props) {
+export function ProductGrid({ products, inCart, pending, q, categoryId, catalogueEmpty, hasMore, productsHref, onPick, selectedId = null, onMore, onClearSearch }: Props) {
   const t = useTranslations("pos.register");
   const moreRef = useRef<HTMLButtonElement>(null);
   // เลื่อนถึงปุ่ม "แสดงเพิ่ม" = โหลดหน้าถัดไปเอง (ครั้งเดียวต่อการเห็น — ระหว่างโหลดไม่ยิงซ้ำ)
@@ -90,7 +93,7 @@ export function ProductGrid({ products, inCart, pending, q, categoryId, catalogu
         aria-label={categoryId ? undefined : t("category.all")}
       >
         {products.map((p) => (
-          <ProductCard key={p.id} product={p} inCartQty={inCart.get(p.id) ?? 0} onPick={onPick} />
+          <ProductCard key={p.id} product={p} inCartQty={inCart.get(p.id) ?? 0} selected={selectedId === p.id} onPick={onPick} />
         ))}
       </div>
       {hasMore && (

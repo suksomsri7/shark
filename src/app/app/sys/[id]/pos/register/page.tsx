@@ -9,6 +9,7 @@ import { PosRegister } from "@/lib/modules/pos/register-ui";
 import { PosLegacyRegisterFrame, PosRegisterUnlinked } from "@/lib/modules/pos/register-legacy-page";
 import { posRegisterV2On } from "@/lib/modules/pos/register-shared";
 import { parsePosPaymentSettings } from "@/lib/modules/pos/payment-settings";
+import { unitOversellPolicy } from "@/lib/modules/pos/service";
 import { posTabs } from "@/lib/modules/pos/tabs";
 import { posMembership, posRegisterView } from "@/lib/modules/pos/access";
 import { RegisterScreen } from "@/components/pos/register/RegisterScreen";
@@ -61,11 +62,13 @@ export default async function PosRegisterPage({
   if (v2) {
     const actor = { userId: auth.user.id, ...posMembership(auth.active) };
     const ctx = { tenantId, systemId: id, unitId: active.id };
-    const [catalog, status, vat, profile] = await Promise.all([
+    const [catalog, status, vat, profile, oversell] = await Promise.all([
       registerCatalog(ctx, actor),
       registerStatus(ctx, actor),
       registerVatConfig(ctx),
       getPaymentProfile({ tenantId }),
+      // P1.2 U R2: นโยบายขายเกินสต็อกของสาขา (ตัวอ่านเดียว · service.ts) — ตัวแปรที่หมดเลือกได้เฉพาะเมื่ออนุญาตติดลบ
+      unitOversellPolicy(prisma, tenantId, active.id),
     ]);
     const limits = registerSellerLimits(actor, active.id);
     const ppId = profile?.promptpayId && isValidPromptPayId(profile.promptpayId) ? profile.promptpayId : null;
@@ -83,6 +86,7 @@ export default async function PosRegisterPage({
         limits={limits}
         promptpayId={ppId}
         tipEnabled={parsePosPaymentSettings(sys.settings).tip.enabled}
+        oversellBlock={oversell === "BLOCK"}
       />
     );
   }

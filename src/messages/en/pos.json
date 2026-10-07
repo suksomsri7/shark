@@ -327,7 +327,9 @@
       "optional": "Optional",
       "pickUpTo": "Up to {count}",
       "confirm": "Add to cart {amount}",
-      "unavailable": "Out"
+      "unavailable": "Out",
+      "multi": "Pick any",
+      "note": "Note to the bar"
     },
     "variants": {
       "title": "Choose a variant"

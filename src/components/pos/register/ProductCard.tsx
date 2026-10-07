@@ -12,7 +12,20 @@
 import { useLocale, useTranslations } from "next-intl";
 import { displayName, moneyText, REGISTER_LOW_STOCK, type RegisterProduct } from "@/lib/modules/pos/register-shared";
 
-export function ProductCard({ product, inCartQty, onPick }: { product: RegisterProduct; inCartQty: number; onPick: (p: RegisterProduct) => void }) {
+/** P1.2 U R2: กรอบการ์ดที่แตะ (พิกัด viewport) — ป๊อปโอเวอร์ตัวเลือกยึดกับกรอบนี้ */
+export type PickAnchor = { left: number; top: number; right: number; bottom: number };
+
+export function ProductCard({
+  product,
+  inCartQty,
+  selected = false,
+  onPick,
+}: {
+  product: RegisterProduct;
+  inCartQty: number;
+  selected?: boolean;
+  onPick: (p: RegisterProduct, anchor?: PickAnchor) => void;
+}) {
   const t = useTranslations("pos.register");
   const locale = useLocale();
   const name = displayName(product, locale);
@@ -36,12 +49,17 @@ export function ProductCard({ product, inCartQty, onPick }: { product: RegisterP
       data-testid={`pos-reg-product-${product.id}`}
       className={`relative flex min-h-[120px] min-w-0 flex-col justify-between rounded-[18px] border bg-[color:var(--color-surface)] p-3 text-left transition-colors hover:border-[color:var(--color-ink-soft)] md:min-h-0 md:rounded-[15px] md:p-[11px] xl:min-h-[170px] xl:rounded-[18px] xl:p-4 ${
         out ? "opacity-45" : ""
-      } ${inCart ? "max-md:border-[color:var(--color-ink)] max-md:shadow-[inset_0_0_0_1px_var(--color-ink)]" : ""}`}
+      } ${inCart ? "max-md:border-[color:var(--color-ink)] max-md:shadow-[inset_0_0_0_1px_var(--color-ink)]" : ""} ${
+        selected ? "md:border-[color:var(--color-accent)] md:shadow-[inset_0_0_0_1px_var(--color-accent)]" : ""
+      }`}
       type="button"
       title={name}
       aria-label={label}
       aria-disabled={product.soldOutReason === "UNAVAILABLE" ? true : undefined}
-      onClick={() => onPick(product)}
+      onClick={(e) => {
+        const r = e.currentTarget.getBoundingClientRect();
+        onPick(product, { left: r.left, top: r.top, right: r.right, bottom: r.bottom });
+      }}
     >
       {inCart && (
         <span className="absolute right-1.5 top-1.5 z-[1] grid h-[22px] min-w-[22px] place-items-center rounded-[7px] bg-[color:var(--color-ink)] px-1.5 text-[11.5px] font-bold text-[color:var(--color-surface)] md:hidden">

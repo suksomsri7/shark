@@ -90,6 +90,7 @@ import { MobileCartSheet as CartSheetFrame } from "./MobileCartSheet";
 import { OpenPriceDialog } from "./OpenPriceDialog";
 import { OptionsDialog, type OptionsPick } from "./OptionsDialog";
 import { ProductGrid } from "./ProductGrid";
+import type { PickAnchor } from "./ProductCard";
 import { RegisterModeTabs as ModeTabsNav } from "./RegisterModeTabs";
 import { RegisterIcon } from "./RegisterIcon";
 import { RegisterStatusBar } from "./RegisterStatusBar";
@@ -118,6 +119,8 @@ export type RegisterScreenProps = {
   promptpayId: string | null;
   /** P1.6 R4/F5: ระบบนี้เปิดรับทิป (parsePosPaymentSettings · วันนี้ false เสมอจนกว่า P1.6b) */
   tipEnabled?: boolean;
+  /** P1.2 U R2: สาขานี้ตั้งนโยบาย BLOCK (ห้ามขายเกินสต็อก) ⇒ ตัวแปรที่หมดเลือกไม่ได้ · ไม่ตั้ง/ALLOW_NEGATIVE = เลือกได้ */
+  oversellBlock?: boolean;
 };
 
 type Msg = { key: string; values?: Record<string, string | number> };
@@ -137,7 +140,7 @@ type Layer =
   | { kind: "done"; result: RegisterSubmitOk; payMethods: RegisterPayMethod[] }
   | { kind: "note" }
   // P1.2 U: กล่องตัวเลือก/ตัวแปร (weighedBarcode = มาจากป้ายเครื่องชั่งที่สแกน) · กล่องน้ำหนัก (options = ที่เลือกมาก่อน)
-  | { kind: "options"; product: RegisterProduct; weighedBarcode?: string }
+  | { kind: "options"; product: RegisterProduct; weighedBarcode?: string; anchor?: PickAnchor }
   | { kind: "weigh"; product: RegisterProduct; options: string[]; note?: string }
   | { kind: "scanChoose"; products: RegisterProduct[] }
   | { kind: "camera" }
@@ -680,12 +683,12 @@ export function RegisterScreen(props: RegisterScreenProps) {
     focusSearch();
   };
   /** แตะการ์ด (P1.2 จะเปิดป๊อปโอเวอร์ตัวเลือกตรงนี้เมื่อ optionGroupCount > 0) */
-  const pick = (p: RegisterProduct) => {
+  const pick = (p: RegisterProduct, anchor?: PickAnchor) => {
     known.current.set(p.id, p);
     if (frozenRef.current) return;
     if (p.soldOutReason === "UNAVAILABLE") return showToast({ key: "errors.productUnavailable" });
     // P1.2 R16: มีกลุ่มตัวเลือก (optionGroupCount) หรือตัวแปร (variantCount) ⇒ กล่องเลือก · สินค้าชั่ง ⇒ กล่องน้ำหนัก
-    if (p.optionGroupCount > 0 || p.variantCount > 0) return push({ kind: "options", product: p });
+    if (p.optionGroupCount > 0 || p.variantCount > 0) return push({ kind: "options", product: p, ...(anchor ? { anchor } : {}) });
     if (p.soldByWeight) return push({ kind: "weigh", product: p, options: [] });
     if (p.priceSatang === null) {
       if (!limits.canOverridePrice) return showToast({ key: "errors.priceNotSet" });
@@ -710,10 +713,10 @@ export function RegisterScreen(props: RegisterScreenProps) {
       return showToast({ key: "errors.tooManyLines", values: { max: REGISTER_MAX_LINES } });
     }
     const key = newKey();
+    // R2 ข้อ 2: คีย์รวม = สินค้า + ชุดตัวเลือก + หมายเหตุ (cartAddProduct) — ชิ้นละครั้งตามจำนวน
     updateCart((prev) => {
-      if (o.note) return appendTo(prev, { kind: "product", productId: o.product.id, qty: o.qty, ...(o.options.length ? { options: [...o.options] } : {}), note: o.note }, key);
       let next = prev;
-      for (let i = 0; i < o.qty; i++) next = cartAddProduct(next, o.product.id, key, o.options);
+      for (let i = 0; i < o.qty; i++) next = o.note ? cartAddProduct(next, o.product.id, key, o.options, o.note) : cartAddProduct(next, o.product.id, key, o.options);
       return next;
     });
     setLayers((s) => s.filter((l) => l.kind !== "options"));
@@ -1355,6 +1358,8 @@ export function RegisterScreen(props: RegisterScreenProps) {
             unitId={unitId}
             locale={locale}
             weighedLabel={l.weighedBarcode !== undefined}
+            anchor={l.anchor}
+            allowNegative={!props.oversellBlock}
             onAdd={(o) => addPicked(o, l.weighedBarcode)}
             onClose={pop}
           />
@@ -1464,6 +1469,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
                 hasMore={!!nextCursor}
                 productsHref={`${base}/pos/products`}
                 onPick={pick}
+                selectedId={top?.kind === "options" && top.anchor ? top.product.id : null}
                 onMore={loadMore}
                 onClearSearch={() => {
                   setQ("");

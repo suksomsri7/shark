@@ -21,6 +21,14 @@
 //   ไฟล์: `<wo>/register-<state>-<user>-<w>x<h>[-en].png` · LOCALE=en (env) = ถ่ายเฉพาะ 1440 + คุกกี้ LOCALE=en (ภาพ 20B)
 //   การ์ดเหลือน้อย/หมด/ปิดขาย: สร้างสินค้าชั่วคราว 3 ตัว (+ InvItem 2 ตัว) ที่สาขาของรอบนี้ ลบทิ้งใน finally/signal เสมอ
 //     (id `posqc-vis-<pid>-*` · ซากที่ค้างเกิน 1 ชม. ถูกกวาดตอนเริ่ม) — ร้าน QC POS เท่านั้น (`--tenant coffee`)
+//   P1.2 U R2: options-popover (desktop/ipad/mobile · สินค้าชั่วคราวมีตัวแปร 2 ตัว + กลุ่มตัวเลือก 4 กลุ่มเท่าภาพ 01 → เลือกตัวแปร +
+//     ชิป 2 กลุ่ม "M +10" "นมโอ๊ต +15" + จำนวน 2 · md+ = ป๊อปโอเวอร์ยึดการ์ด · 390 = แผ่นล่าง) · weigh (desktop/mobile · สินค้าชั่งชั่วคราว ฿350/กก.
+//     → กล่องน้ำหนัก · owner พิมพ์ 250 กรัม · cashier เห็นข้อความต้องมีสิทธิ์) — กลุ่ม/ตัวเลือก (MenuOptionGroup/Choice) ชั่วคราวลบใน finally ด้วย
+//     (ชื่อกลุ่มซ้ำกับของร้านในสาขาเดียวกัน ⇒ ต่อท้าย " (QC <pid>)") · การ์ดถูกหาด้วยคำค้น (ช่องค้นหาจึงมีคำค้นค้างในภาพ)
+//   P1.2 U R2 ข้อ 7 (กะ · P1.9): ธง registerV2 ⇒ บังคับเปิดกะ (required.register) — ก่อนทุกสถานะ ถ้ายังเห็นแถบ pos-reg-shift-required
+//     (หลังรอสถานะของเครื่องมา 5 วิ) ⇒ เปิดกะผ่าน UI จริง: ลิงก์ "เปิดกะ" → หน้า /pos/shifts · เงินทอนตั้งต้น 1,000 → ยืนยัน → กลับหน้าขาย
+//     1 กะต่อผู้ใช้ต่อรอบ (deviceId อยู่ใน localStorage ของ browser เดียวกันทุกแท็บ) · ปิดกะใน finally ด้วย closeShift ของบริการ (เจ้าของร้าน ·
+//     นับเงิน = ยอดคาด ⇒ ขาด/เกิน 0 ไม่ต้องเหตุผล) — ปิดไม่ได้ = บันทึกใน summary (shiftClose) ไม่โยน · ห้ามปิดธง required.register เพื่อเลี่ยง
 //   ต้องเปิดธง settings.pos.registerV2 ของร้าน QC ก่อน (scripts/seed-pos-qc.mts) — ไม่งั้นได้หน้าขายเดิม = ขั้นตอนสถานะตก
 //   ขั้นตอนพัง = ภาพนั้นตก (บันทึก stepError) แต่ยังถ่ายหน้าจอ ณ จุดที่พังไว้ดู ◂
 //
@@ -85,7 +93,7 @@ const fileOf = (p: PosPage, w: number, h: number) => `${OUT}/${p}-${userKey}-${w
 const STATES_ON = /^p1\.3/i.test(WO) || argv.includes("--states");
 const LOCALE_EN = process.env.LOCALE === "en";
 type Device = (typeof POS_VIEWPORTS)[number]["name"];
-type StateKey = "default" | "cart3" | "cart4-01" | "line-editor" | "bill-discount" | "custom-item" | "paydlg-cash" | "sale-done" | "search-empty" | "stock-warn" | "offline" | "mobile-sheet";
+type StateKey = "default" | "cart3" | "cart4-01" | "line-editor" | "bill-discount" | "custom-item" | "paydlg-cash" | "sale-done" | "search-empty" | "stock-warn" | "offline" | "mobile-sheet" | "options-popover" | "weigh";
 const STATE_PLAN: { key: StateKey; devices: readonly Device[]; note: string }[] = [
   { key: "default", devices: ["desktop", "ipad", "mobile"], note: "เปิดหน้า (ตะกร้าว่าง) — การ์ดเหลือน้อย/หมด/ปิดขายของ fixture อยู่ในกริด" },
   { key: "cart3", devices: ["desktop", "ipad", "mobile"], note: "อเมริกาโน่×2 · ลาเต้ (ลด ฿10) · ครัวซองต์ (สต็อก N → N−1)" },
@@ -103,6 +111,9 @@ const STATE_PLAN: { key: StateKey; devices: readonly Device[]; note: string }[] 
   //   ข้าม "แคตตาล็อกว่าง" (19): ต้องมีสาขา POS ที่ไม่มีสินค้า/หมวดเลย — ร้าน QC มีแคตตาล็อกเต็ม สร้างสาขาชั่วคราว (BusinessUnit + ผูก POS) เกินขอบเขตสคริปต์ภาพ
   { key: "offline", devices: ["desktop", "ipad", "mobile"], note: "cart3 แล้วตัดเน็ต (setOfflineMode) → แถบออฟไลน์ + ชำระปิด" },
   { key: "mobile-sheet", devices: ["mobile"], note: "cart3 + แผ่นตะกร้าเปิด" },
+  // P1.2 U R2 (ภาพ 01 ป๊อปโอเวอร์): สินค้าชั่วคราวมีตัวแปร + 4 กลุ่ม → เลือกตัวแปร · M +10 · นมโอ๊ต +15 · จำนวน 2
+  { key: "options-popover", devices: ["desktop", "ipad", "mobile"], note: "ตัวเลือก/ตัวแปร: ป๊อปโอเวอร์ยึดการ์ด (390 = แผ่นล่าง) · เลือก 2 กลุ่ม + จำนวน 2" },
+  { key: "weigh", devices: ["desktop", "mobile"], note: "สินค้าชั่ง ฿350/กก. → กล่องน้ำหนัก (owner พิมพ์ 250 กรัม · cashier = ต้องมีสิทธิ์)" },
 ];
 type Job = { page: PosPage; v: (typeof POS_VIEWPORTS)[number]; state: StateKey | null; file: string };
 const viewports = LOCALE_EN ? POS_VIEWPORTS.filter((v) => v.name === "desktop") : [...POS_VIEWPORTS];
@@ -128,7 +139,7 @@ if (DRY) {
   if (STATES_ON) {
     console.log(`สถานะหน้าขาย P1.3${LOCALE_EN ? " (LOCALE=en · 1440 เท่านั้น)" : ""}:`);
     for (const st of STATE_PLAN) console.log(`  · ${st.key.padEnd(13)} ${st.devices.join("/").padEnd(20)} ${st.note}`);
-    if (needFixtures) console.log(`  fixture: สินค้าชั่วคราว 7 ตัว (เหลือ 2 · หมดสต็อก · ปิดขาย + 4 ตัวของภาพ 01) ที่สาขา ${unitKey} — ลบใน finally`);
+    if (needFixtures) console.log(`  fixture: สินค้าชั่วคราว 11 ตัว (เหลือ 2 · หมดสต็อก · ปิดขาย + 4 ตัวของภาพ 01 + ลาเต้มีตัวแปร 1+2 + สินค้าชั่ง 1) + กลุ่มตัวเลือก 4 กลุ่ม ที่สาขา ${unitKey} — ลบใน finally`);
   }
   console.log(`รวม ${plan.length} ภาพ (${pages.length} หน้า × ${viewports.length} ขนาด${STATES_ON ? " · หน้าขายแยกตามสถานะ" : ""} × 1 ผู้ใช้)`);
   console.log(`JSON_SUMMARY ${JSON.stringify({ wo: WO, user: userKey, tenant: tenantKey, dry: true, locale: LOCALE_EN ? "en" : "th", states: STATES_ON, pages: pages.length, viewports: viewports.length, shots: plan.length, plan })}`);
@@ -183,11 +194,17 @@ async function cleanSessions(): Promise<{ removed: number; stale: number }> {
 }
 // POS P1.3 ▸ สินค้าชั่วคราวของภาพสถานะ (การ์ดเหลือน้อย/หมด/ปิดขาย) — เขียนตรงด้วย prisma ได้เพราะเป็นสคริปต์ (F15.1 สแกนเฉพาะ src/)
 //   id ของรอบนี้เท่านั้น · ลบซ้ำได้ · ซากของรอบที่ถูก kill -9 (เกิน 1 ชม.) ถูกกวาดก่อนสร้างใหม่ ◂
-const FIX = { prefix: "posqc-vis-", products: [] as string[], items: [] as string[] };
+const FIX = { prefix: "posqc-vis-", products: [] as string[], items: [] as string[], groups: [] as string[] };
 let fixturesCleaned = false;
 async function cleanFixtures(): Promise<{ products: number; items: number }> {
   if (fixturesCleaned) return { products: 0, items: 0 };
   fixturesCleaned = true;
+  // P1.2 U: ลิงก์กลุ่ม (PosProductOptionGroup) ตามสินค้า (cascade) · ตัวเลือก → กลุ่ม ลบเอง
+  if (FIX.groups.length) {
+    await prisma.posProductOptionGroup.deleteMany({ where: { tenantId: T.tenantId, groupId: { in: FIX.groups } } });
+    await prisma.menuOptionChoice.deleteMany({ where: { tenantId: T.tenantId, groupId: { in: FIX.groups } } });
+    await prisma.menuOptionGroup.deleteMany({ where: { tenantId: T.tenantId, id: { in: FIX.groups } } });
+  }
   const products = FIX.products.length ? (await prisma.posProduct.deleteMany({ where: { tenantId: T.tenantId, id: { in: FIX.products } } })).count : 0;
   const items = FIX.items.length ? (await prisma.invItem.deleteMany({ where: { tenantId: T.tenantId, id: { in: FIX.items } } })).count : 0;
   return { products, items };
@@ -196,6 +213,12 @@ async function makeFixtures(): Promise<void> {
   const old = new Date(Date.now() - 60 * 60 * 1000);
   await prisma.posProduct.deleteMany({ where: { tenantId: T.tenantId, id: { startsWith: FIX.prefix }, createdAt: { lt: old } } });
   await prisma.invItem.deleteMany({ where: { tenantId: T.tenantId, id: { startsWith: FIX.prefix }, createdAt: { lt: old } } });
+  const oldGroups = (await prisma.menuOptionGroup.findMany({ where: { tenantId: T.tenantId, id: { startsWith: FIX.prefix }, createdAt: { lt: old } }, select: { id: true } })).map((g) => g.id);
+  if (oldGroups.length) {
+    await prisma.posProductOptionGroup.deleteMany({ where: { tenantId: T.tenantId, groupId: { in: oldGroups } } });
+    await prisma.menuOptionChoice.deleteMany({ where: { tenantId: T.tenantId, groupId: { in: oldGroups } } });
+    await prisma.menuOptionGroup.deleteMany({ where: { tenantId: T.tenantId, id: { in: oldGroups } } });
+  }
   const inv = (T.systems as Record<string, { id: string }>).INVENTORY!.id;
   const tag = `${FIX.prefix}${process.pid}`;
   const mk = async (key: string, name: string, nameEn: string, price: number, onHand: number | null, off: boolean) => {
@@ -220,10 +243,47 @@ async function makeFixtures(): Promise<void> {
   FIXTURE_IDS.m01amer = await mk("m01amer", M01.amer, "Americano", 7000, null, false);
   FIXTURE_IDS.m01crois = await mk("m01crois", M01.crois, "Almond croissant", 9500, null, false);
   FIXTURE_IDS.m01beans = await mk("m01beans", M01.beans, "Coffee beans 250 g", 32000, 11, false);
+  // P1.2 U R2: ลาเต้มีตัวแปร (ร้อน/เย็น · ลูกใช้ราคาแม่) + 4 กลุ่มของภาพ 01 ผูกที่แม่ · สินค้าชั่ง ฿350/กก.
+  FIXTURE_IDS.optParent = await mk("optp", M01.optName, "Latte (QC options)", 7500, null, false);
+  for (const [k, nm, en] of [["optv1", "ร้อน", "Hot"], ["optv2", "เย็น", "Iced"]] as const) {
+    const id = `${tag}-${k}`;
+    FIX.products.unshift(id); // ลูกก่อนแม่ตอนลบ
+    await prisma.posProduct.create({ data: { id, tenantId: T.tenantId, systemId: SYS, unitId, kind: "PRODUCT", name: `${M01.optName} ${nm}`, nameEn: `Latte ${en}`, basePriceSatang: null, parentId: FIXTURE_IDS.optParent } });
+  }
+  const groups: [string, string, number, number, [string, string, number][]][] = [
+    ["size", "ขนาด", 1, 1, [["S", "S", 0], ["M", "M", 1000], ["L", "L", 2000]]],
+    ["milk", "นม", 1, 1, [["ปกติ", "Regular", 0], ["นมโอ๊ต", "Oat milk", 1500], ["นมอัลมอนด์", "Almond milk", 1500]]],
+    ["sweet", "ความหวาน", 1, 1, [["ปกติ", "Regular", 0], ["น้อย", "Less", 0], ["ไม่หวาน", "None", 0]]],
+    ["top", "ท็อปปิ้ง", 0, 2, [["วิปครีม", "Whipped cream", 1000], ["ช็อตเพิ่ม", "Extra shot", 2000]]],
+  ];
+  let order = 0;
+  for (const [gk, gname, min, max, choices] of groups) {
+    const gid = `${tag}-g-${gk}`;
+    const make = (name: string) => prisma.menuOptionGroup.create({ data: { id: gid, tenantId: T.tenantId, unitId, name, minSelect: min, maxSelect: max } });
+    try {
+      await make(gname);
+    } catch {
+      await make(`${gname} (QC ${process.pid})`); // ชื่อกลุ่มซ้ำของร้านในสาขาเดียวกัน (@@unique unitId+name)
+    }
+    FIX.groups.push(gid);
+    let co = 0;
+    for (const [cn, cen, delta] of choices) {
+      const cid = `${gid}-c${co}`;
+      await prisma.menuOptionChoice.create({ data: { id: cid, tenantId: T.tenantId, unitId, groupId: gid, name: cn, nameEn: cen, priceDelta: delta, sortOrder: co++ } });
+      if (gk === "size" && cn === "M") FIXTURE_IDS.optSizeM = cid;
+      if (gk === "milk" && cn === "นมโอ๊ต") FIXTURE_IDS.optOat = cid;
+    }
+    await prisma.posProductOptionGroup.create({ data: { tenantId: T.tenantId, productId: FIXTURE_IDS.optParent, groupId: gid, sortOrder: order++ } });
+  }
+  FIXTURE_IDS.weighed = `${tag}-weigh`;
+  FIX.products.push(FIXTURE_IDS.weighed);
+  await prisma.posProduct.create({
+    data: { id: FIXTURE_IDS.weighed, tenantId: T.tenantId, systemId: SYS, unitId, kind: "PRODUCT", name: M01.weighName, nameEn: "Roasted beans by weight (QC)", basePriceSatang: 35000, soldByWeight: true },
+  });
 }
-const FIXTURE_IDS = { low: "", out: "", off: "", m01latte: "", m01amer: "", m01crois: "", m01beans: "" };
+const FIXTURE_IDS = { low: "", out: "", off: "", m01latte: "", m01amer: "", m01crois: "", m01beans: "", optParent: "", optSizeM: "", optOat: "", weighed: "" };
 /** ชื่อบรรทัดของภาพ 01 — ใช้เป็นคำค้นด้วย (ชื่อซ้ำกับสินค้าจริงของร้าน QC ได้ ⇒ แตะด้วย testid ของ fixture เสมอ) */
-const M01 = { latte: "ลาเต้", amer: "อเมริกาโน่", crois: "ครัวซองต์อัลมอนด์", beans: "เมล็ดกาแฟ 250 g" };
+const M01 = { latte: "ลาเต้", amer: "อเมริกาโน่", crois: "ครัวซองต์อัลมอนด์", beans: "เมล็ดกาแฟ 250 g", optName: "ลาเต้ตัวเลือก QC", weighName: "เมล็ดคั่วชั่งกิโล QC" };
 // ถูก Ctrl-C/kill/ปิดเทอร์มินัล: ทำความสะอาดแบบเดียวกับ finally (ปิด chromium · ลบ session ของรอบนี้ · ลบโปรไฟล์) แล้วค่อยออก
 process.on("exit", cleanProfiles);
 for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
@@ -345,10 +405,83 @@ const openCartOnMobile = async (page: Any, device: Device) => {
   if (device === "mobile") await clickEl(page, tid("pos-reg-cart-view"));
 };
 const clickPay = (page: Any, device: Device) => clickEl(page, tid(device === "mobile" ? "pos-reg-cart-bar-pay" : "pos-reg-pay"));
+// ── P1.2 U R2 ข้อ 7: กะของรอบนี้ (เปิดผ่าน UI ครั้งเดียว · ปิดใน finally) ──
+const RUN_STARTED = new Date();
+const SHIFT = { opened: false, id: "" as string, close: null as null | { ok: boolean; detail: string } };
+/** แถบ "เปิดกะก่อนเริ่มขาย" ยังอยู่หลังสถานะของเครื่อง (deviceId) มาแล้ว = ยังไม่มีกะ */
+async function shiftBannerStays(page: Any): Promise<boolean> {
+  const gone = await page
+    .waitForFunction(() => !Array.from(document.querySelectorAll('[data-testid="pos-reg-shift-required"]')).some((e) => e.getClientRects().length > 0), { timeout: 5_000 })
+    .then(() => true)
+    .catch(() => false);
+  return !gone;
+}
+async function ensureShift(page: Any): Promise<void> {
+  if (!(await shiftBannerStays(page))) return;
+  if (SHIFT.opened) throw new StepError("เปิดกะไปแล้วในรอบนี้แต่แถบเปิดกะยังอยู่ (deviceId ไม่ตรง?)");
+  await clickEl(page, tid("pos-reg-shift-open-link"));
+  await visibleEl(page, tid("pos-shift-open"), 0, 15_000).catch(() => {
+    throw new StepError("หน้ากะไม่ขึ้นกล่องเปิดกะ (pos-shift-open) — ผู้ใช้นี้มีสิทธิ์ pos.shift.operate หรือไม่?");
+  });
+  await typeInto(page, tid("pos-shift-open-float"), "1000");
+  await page
+    .waitForFunction(() => !(document.querySelector('[data-testid="pos-shift-open-submit"]') as HTMLButtonElement | null)?.disabled, { timeout: 10_000 })
+    .catch(() => undefined);
+  await clickEl(page, tid("pos-shift-open-submit"));
+  await visibleEl(page, tid("pos-shift-current"), 0, 15_000).catch(() => {
+    throw new StepError("เปิดกะไม่สำเร็จ (ไม่เห็น pos-shift-current)");
+  });
+  SHIFT.opened = true;
+  const row = await prisma.posShift.findFirst({
+    where: { tenantId: T.tenantId, unitId, systemId: SYS, openedByUserId: U.userId, status: "OPEN", openedAt: { gte: new Date(RUN_STARTED.getTime() - 60_000) } },
+    orderBy: { openedAt: "desc" },
+    select: { id: true },
+  });
+  SHIFT.id = row?.id ?? "";
+  await page.goto(`${BASE}${pathOf("register")}`, { waitUntil: "networkidle2", timeout: 60_000 });
+  await visibleEl(page, tid("pos-reg-root"), 0, 15_000);
+  if (await shiftBannerStays(page)) throw new StepError("เปิดกะแล้วแต่หน้าขายยังขึ้น \"เปิดกะก่อนเริ่มขาย\"");
+}
+/** finally: ปิดกะของรอบนี้แบบนับตรงยอด (closeShift ของบริการ · actor = เจ้าของร้าน QC) — ผลอยู่ใน summary ไม่โยน */
+async function closeRunShift(): Promise<void> {
+  if (!SHIFT.opened) return;
+  try {
+    const { closeShift, computeReport } = await import("@/lib/modules/pos/shift");
+    const sh = SHIFT.id ? await prisma.posShift.findFirst({ where: { id: SHIFT.id, tenantId: T.tenantId } }) : null;
+    if (!sh) {
+      SHIFT.close = { ok: false, detail: "หาแถวกะของรอบนี้ไม่เจอ (เปิดผ่าน UI แล้วแต่ไม่พบใน DB)" };
+      return;
+    }
+    if (sh.status !== "OPEN") {
+      SHIFT.close = { ok: true, detail: `กะ ${sh.id} สถานะ ${sh.status} อยู่แล้ว` };
+      return;
+    }
+    const expected = (await computeReport(prisma, sh)).expectedCashSatang;
+    const own = T.users.owner;
+    const mb = await prisma.membership.findUnique({ where: { id: own.membershipId }, select: { role: true, unitAccess: true, permissions: true } });
+    if (expected === null || !mb) {
+      SHIFT.close = { ok: false, detail: `คำนวณยอดคาดไม่ได้ (${expected}) หรือไม่พบ membership เจ้าของร้าน` };
+      return;
+    }
+    const actor = {
+      userId: own.userId,
+      role: mb.role as "OWNER" | "MANAGER" | "STAFF",
+      unitAccess: Array.isArray(mb.unitAccess) ? (mb.unitAccess as unknown[]).filter((u): u is string => typeof u === "string") : [],
+      permissions: mb.permissions && typeof mb.permissions === "object" ? (mb.permissions as Record<string, unknown>) : {},
+    };
+    const r = await closeShift({ tenantId: T.tenantId, systemId: SYS, unitId }, actor, { shiftId: sh.id, countedCashSatang: expected, idempotencyKey: `${FIX.prefix}${process.pid}-close` });
+    SHIFT.close = r.ok ? { ok: true, detail: `ปิดกะ ${sh.id} (ยอดคาด = ยอดนับ ${expected})` } : { ok: false, detail: `ปิดกะไม่สำเร็จ: ${r.code}` };
+  } catch (e) {
+    SHIFT.close = { ok: false, detail: `ปิดกะล้ม: ${e instanceof Error ? e.message.slice(0, 160) : String(e)}` };
+  }
+}
+
 async function runState(page: Any, state: StateKey, device: Device): Promise<void> {
   await visibleEl(page, tid("pos-reg-root"), 0, 15_000).catch(() => {
     throw new StepError("หน้าขายใหม่ไม่ขึ้น (pos-reg-root) — ธง settings.pos.registerV2 ของร้าน QC เปิดหรือยัง? (seed-pos-qc)");
   });
+  // ข้อ 7: ร้าน QC บังคับเปิดกะ (P1.9) — เปิดผ่าน UI ครั้งเดียวต่อรอบ ภาพจึงมีหัว "กะ #… · เปิด …" เหมือนภาพ 01
+  await ensureShift(page);
   switch (state) {
     case "default":
       return;
@@ -428,6 +561,26 @@ async function runState(page: Any, state: StateKey, device: Device): Promise<voi
       await addCart3(page, device);
       await clickEl(page, tid("pos-reg-cart-view"));
       await visibleEl(page, tid("pos-reg-cart-sheet"));
+      return;
+    case "options-popover": {
+      const f = FIXTURE_IDS;
+      if (!f.optParent || !f.optSizeM || !f.optOat) throw new StepError("ไม่มีสินค้าชั่วคราวที่มีตัวเลือก — ถ่ายสถานะนี้ได้เฉพาะ --tenant coffee");
+      // คำค้นค้างในช่อง (Esc จะปิดป๊อปโอเวอร์) — การ์ดอาจอยู่นอกหน้าแรกของกริด
+      await typeInto(page, tid("pos-reg-search"), M01.optName);
+      await clickEl(page, tid(`pos-reg-product-${f.optParent}`));
+      await visibleEl(page, tid("pos-reg-options-dialog"), 0, 10_000);
+      await clickEl(page, tidPrefix("pos-reg-variant-"));
+      await clickEl(page, tid(`pos-reg-option-${f.optSizeM}`));
+      await clickEl(page, tid(`pos-reg-option-${f.optOat}`));
+      await clickEl(page, tid("pos-reg-options-qty-inc"));
+      return;
+    }
+    case "weigh":
+      if (!FIXTURE_IDS.weighed) throw new StepError("ไม่มีสินค้าชั่งชั่วคราว — ถ่ายสถานะนี้ได้เฉพาะ --tenant coffee");
+      await typeInto(page, tid("pos-reg-search"), M01.weighName);
+      await clickEl(page, tid(`pos-reg-product-${FIXTURE_IDS.weighed}`));
+      await visibleEl(page, tid("pos-reg-weigh-dialog"), 0, 10_000);
+      if (userKey === "owner") await typeInto(page, tid("pos-reg-weigh-grams"), "250");
       return;
   }
 }
@@ -555,6 +708,8 @@ try {
 } catch (e) {
   fatal = e instanceof Fatal ? e.message : `ผิดพลาดกลางคัน — ${e instanceof Error ? (e.stack ?? e.message).slice(0, 400) : String(e)}`;
 } finally {
+  await closeRunShift();
+  if (SHIFT.close && !SHIFT.close.ok) console.error(`⚠️ ${SHIFT.close.detail}`);
   const { removed, stale } = await cleanSessions();
   let fixOut = "";
   try {
@@ -566,9 +721,9 @@ try {
   }
   await prisma.$disconnect();
   cleanProfiles();
-  writeFileSync(`${OUT}/summary-${userKey}.json`, JSON.stringify({ wo: WO, user: userKey, tenant: tenantKey, base: BASE, at: new Date().toISOString(), shots }, null, 2));
+  writeFileSync(`${OUT}/summary-${userKey}.json`, JSON.stringify({ wo: WO, user: userKey, tenant: tenantKey, base: BASE, at: new Date().toISOString(), shiftClose: SHIFT.close, shots }, null, 2));
   console.log(`\n🧹 ลบ session ของรอบนี้ ${removed}${stale ? ` (+ซากหมดอายุ ${stale})` : ""}${fixOut} · ลบโปรไฟล์ chromium ${PROFILE_DIRS[0]} · ภาพ ${shots.length} ใบใน ${OUT}`);
 }
 if (fatal) console.error(`❌ ${fatal}`);
-console.log(`JSON_SUMMARY ${JSON.stringify({ wo: WO, user: userKey, tenant: tenantKey, base: BASE, shots: shots.map(({ consoleErrors, httpErrors, ...s }) => ({ ...s, consoleErrors: consoleErrors.length, httpErrors: httpErrors.length })), failures, fatal: fatal || null })}`);
+console.log(`JSON_SUMMARY ${JSON.stringify({ wo: WO, user: userKey, tenant: tenantKey, base: BASE, shiftClose: SHIFT.close, shots: shots.map(({ consoleErrors, httpErrors, ...s }) => ({ ...s, consoleErrors: consoleErrors.length, httpErrors: httpErrors.length })), failures, fatal: fatal || null })}`);
 process.exit(fatal ? 2 : failures > 0 ? 1 : 0);

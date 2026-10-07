@@ -322,18 +322,31 @@ const isWeighedLine = (l: RegisterCartLine): boolean => l.kind === "product" && 
  *   ไม่แก้ตะกร้าที่ส่งเข้า (คง billDiscount/memberId)
  * P1.2 R13: options = choiceId ที่เลือกจากป๊อปโอเวอร์ — +1 เฉพาะบรรทัดที่ "ชุดตัวเลือกเดียวกัน" (ไม่ขึ้นกับลำดับ · undefined ≡ []) ·
  *   บรรทัดชั่งไม่เป็นเป้า +1 เสมอ (ใช้ cartAddWeighed)
+ * P1.2 U R2 (มติผู้คุมงาน ข้อ 2): คีย์รวมบรรทัด = สินค้า (ตัวแปร = productId ของลูก) + ชุดตัวเลือก + หมายเหตุ — แตะการ์ดธรรมดา (ไม่มี note)
+ *   รวมได้เฉพาะบรรทัดที่ไม่มีหมายเหตุ · note = หมายเหตุรายการจากป๊อปโอเวอร์ (ว่าง ≡ ไม่มี) · บรรทัดใหม่เก็บ note ด้วย
  */
-export function cartAddProduct(cart: RegisterCart, productId: string, newLineKey: string, options?: string[]): RegisterCart {
+export function cartAddProduct(cart: RegisterCart, productId: string, newLineKey: string, options?: string[], note?: string): RegisterCart {
   const want = optionSetKey(options);
+  const wantNote = note && note.trim() ? note : "";
   const same = cart.lines.findIndex(
-    (l) => l.kind === "product" && l.productId === productId && !l.discount && l.openPriceSatang === undefined && !isWeighedLine(l) && optionSetKey(l.options) === want,
+    (l) =>
+      l.kind === "product" &&
+      l.productId === productId &&
+      !l.discount &&
+      l.openPriceSatang === undefined &&
+      !isWeighedLine(l) &&
+      optionSetKey(l.options) === want &&
+      (l.note && l.note.trim() ? l.note : "") === wantNote,
   );
   if (same >= 0) {
     if (cart.lines[same]!.qty >= REGISTER_MAX_QTY) return cart;
     return { ...cart, lines: cart.lines.map((l, i) => (i === same ? { ...l, qty: Math.min(REGISTER_MAX_QTY, l.qty + 1) } : l)) };
   }
   if (cart.lines.length >= REGISTER_MAX_LINES) return cart;
-  return { ...cart, lines: [...cart.lines, { key: newLineKey, kind: "product", productId, qty: 1, ...(options && options.length ? { options: [...options] } : {}) }] };
+  return {
+    ...cart,
+    lines: [...cart.lines, { key: newLineKey, kind: "product", productId, qty: 1, ...(options && options.length ? { options: [...options] } : {}), ...(wantNote ? { note: wantNote } : {}) }],
+  };
 }
 
 /**
