@@ -36,7 +36,7 @@ Brief `ledger/pos-briefs/pos-brief-P1.17U.md`. Server = P1.17 S (accepted 12813b
 | same after tab | 10/11 · same single gap; POS 6/7 (`/pos/reports` covered) |
 | `HF_STATIC_ONLY=1 … qc-hf-pos-page-authz.mts` after card | 8/8 static (O-1, O-2 green) |
 | `env -u DATABASE_URL -u DIRECT_URL pnpm exec tsx scripts/fitness-pos.mts` | 8/8 exit 0 (first commit attempt: F15.3a red → inventory rows + ModuleTabs testid + retry testid) |
-| typecheck (`env NODE_OPTIONS=--max-old-space-size=5632 ISO_MEM=6500M bash scripts/iso.sh bash scripts/with-gate-lock.sh pnpm typecheck`) | exit 0 (11:15→11:23 UTC) |
+| typecheck (`env NODE_OPTIONS=--max-old-space-size=5632 ISO_MEM=6500M bash scripts/iso.sh bash scripts/with-gate-lock.sh pnpm typecheck`) | exit 0 (11:15→11:23 UTC, c394b45c) · exit 0 again on c0ab3a0c (11:41→11:43 UTC) |
 | `bash scripts/iso.sh env -u DATABASE_URL -u DIRECT_URL pnpm fitness` | 41/41 exit 0 |
 | `bash scripts/iso.sh bash scripts/qc4.sh pnpm fitness` | 41/41 exit 0 |
 | `… qc4.sh … with-gate-lock.sh pnpm exec tsx scripts/fitness-pos.mts` | 8/8 exit 0 |
