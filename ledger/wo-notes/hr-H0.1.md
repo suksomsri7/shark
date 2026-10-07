@@ -96,3 +96,24 @@ Code commit c3a9155a. Oracle not edited. CR9 respected (cancelAdjustment / rever
 3. `approveRun` gained an additive `code` field (`ApproveFailCode`) so the action picks fixed texts without matching note strings; `note` unchanged for all callers.
 4. A stale/refused approve still revalidates the page, so the row shows the new figures next to the reason.
 5. Round-1 decision 3 (stale approve not shown inline) is now resolved by CR12.
+
+## Oracle round 2 (7 Oct 2026, oracle writer, on 65a45626) — additive only
+`scripts/qc-hr-h0.1.mts`: the 50 round-1 checks are unchanged (same ids, same order). 10 new checks are registered before Z1 and run at the end of `runDb` in their own HR systems (`HR round2`, `HR round2 gross`) of the same throwaway tenant, so Z1's sweep covers them. No production code touched.
+| id | what it checks |
+|---|---|
+| S7.1 | source: RunRowActions recompute trigger "ดึงข้อมูลใหม่" + dialog "คำนวณใหม่" · delete "ลบร่าง" (danger) · op routing to the 3 actions |
+| S7.2 | service: net+count+gross ok → OK · gross+1 → STALE (code STALE, DRAFT, no JV) · no gross → OK. Form via real `approvePayrollRunAction` (request scope, OWNER; `approveExpectFromForm` is not exported): expectGross missing / "abc" / "12.5" → OK · gross+1 → STALE text · expectNet "abc" → STALE (fail closed, controller ruling) · no net+items → legacy OK |
+| S7.3 | gross up while net + count stay equal: base 12,500→13,000 + an APPROVED DEDUCTION equal to the net gain (47,500), recompute → net 3,112,500 = before, gross 3,250,000→3,252,500 · stale approve refused, fresh approve APPROVED + JV |
+| S7.4 | JV throws (AccountPeriod 2034-01 CLOSED): approveRun → code POST_FAILED, DRAFT, no journalEntryId, no JV · action returns the fixed POST_FAILED text (no raw error) · then recompute + delete ok, 1 audit row each, adjustment unbound APPROVED |
+| S7.5 | bound APPROVED rows: cancelAdjustment (with/without actor) refused with the exact text "รายการนี้เข้ารอบจ่ายแล้ว ลบไม่ได้ (ใช้กลับรายการรอบจ่ายแทน)" · CRM withdraw/move → false · rows stay bound · recompute totals identical, Σ ok |
+| S7.6 | CR13: 5 viewers (reader-no-create, MANAGER no payroll, STAFF HR keys, plain member, employee self) × approve/recompute/delete actions → `{ok:false, reason:"คุณไม่มีสิทธิ์ทำรายการนี้"}` (no throw), run untouched · source: requireTenant before try, `instanceof ForbiddenError` → Thai constant, `throw e`, no e.message |
+| S7.7 | source: approve action signature, error span shows `state.reason`, approve fields expectNet/expectItems/expectGross from row props (ConfirmDialog renders them hidden) |
+| S7.8 | source: `bkkParts` import, bkkStamp uses it, no +7 h by hand in the H0.1 block / approveRun · runtime: note stamp = Bangkok clock (Intl Asia/Bangkok) of the call |
+| X7.1 | recompute ∥ recompute in-process ×3: no throw, ≥1 ok, Σ = totals, 1 run row, audit rows = ok count, rows bound |
+| X7.2 | delete ∥ approve(fresh expect) in-process ×3 (start order varied: delete first · approve first · approve +400 ms): exactly one ok, loser {ok:false}, final state consistent. Winners: approve, approve, del |
+
+Results (wrapper `iso.sh → qc4.sh → with-gate-lock.sh`): forced run A `passed 60/60 (QC_FORCE)` exit 0 · forced run B `passed 60/60 (QC_FORCE)` exit 0 · unforced `passed 60/60` exit 0 · Z1 green every run (residue 0) · scoped `tsc -p <scratch tsconfig: this file + next-env.d.ts>` through iso.sh exit 0.
+Observations for the controller (no check red):
+1. The brief's S7.3 recipe (BONUS +X and DEDUCTION +X) cannot change gross: gross = base + add − deduct (`payroll-rules.ts:148-154`) and SSO/WHT use the base only (`payroll.ts` computeItem). So the check uses a base raise plus a compensating deduction instead. The case BONUS +X / DEDUCTION +X (net, count and gross unchanged, only add/deduct totals move) is still approved with the old expectation. That is by design of CR11, but the approver did not see that change.
+2. The cancelAdjustment refusal for a row bound to a DRAFT says "(ใช้กลับรายการรอบจ่ายแทน)", but reverseRun refuses DRAFT runs. The real ways out are "ลบร่าง" / "ดึงข้อมูลใหม่". The text is frozen by CR9, so this is for H0.2 OQ-1.
+3. In S7.2(h), a present but unreadable expectNet is refused as STALE (fail closed) as the controller ruled. The round-2 task's "assert undefined" variant is not applicable because `approveExpectFromForm` is not exported.

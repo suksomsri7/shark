@@ -105,6 +105,17 @@ const CHECKS: readonly Def[] = [
   D("X6.4", "X6", "delete ∥ create same period ×3: delete ok once · ≤1 run at the end (= creates ok) · adjustments bound to the surviving run or all unbound"),
   D("X6.5", "X6", "recompute ∥ decideAdjustment(APPROVED) of 5 PENDING rows ×3: every row APPROVED and either in the run (item sums match) or unbound — never lost"),
   D("X6.6", "X6", "global: no adjustment of the tenant points at a missing run · every run's totals = Σ items · each item's add/deduct = Σ its bound adjustments · no bound row without an item"),
+  // ── oracle round 2 (7 Oct 2026 · head 65a45626 · CR10–CR15) — additive; ids above unchanged ──
+  D("S7.1", "-", "[source] RunRowActions: recompute trigger \"ดึงข้อมูลใหม่\" (CR10) and its dialog still says \"คำนวณใหม่\" · delete trigger \"ลบร่าง\" · op routing approve/delete/recompute → the three actions"),
+  D("S7.2", "-", "approve expect with gross (CR11): service net+count+gross right → OK · gross off by 1 → STALE (DRAFT, no JV) · no gross → round-1 behaviour · form: expectGross missing/\"abc\"/\"12.5\" omitted (OK) · wrong gross → STALE · expectNet \"abc\" → STALE (fail closed) · no net+items → legacy"),
+  D("S7.3", "-", "gross changed while net + count stay equal (base raise + compensating deduction, recompute) → stale approve with old net/count/gross refused (DRAFT, no JV) · fresh figures → APPROVED + JV"),
+  D("S7.4", "-", "JV throws (ACCOUNT period CLOSED): approveRun → {ok:false, code POST_FAILED} · DRAFT · no journalEntryId · no JV · action reason = fixed Thai (no raw error) · then recompute + delete both {ok:true} with audit rows"),
+  D("S7.5", "-", "APPROVED adjustment bound to a DRAFT: cancelAdjustment refused with the fixed Thai text · CRM withdraw/move refused · rows still bound · recompute keeps totals = before = Σ items"),
+  D("S7.6", "X2", "CR13: Forbidden is inline — 5 viewers without the right (reader-no-create · MANAGER no payroll · STAFF HR keys · plain member · employee self) × approve/recompute/delete actions → {ok:false, reason \"คุณไม่มีสิทธิ์ทำรายการนี้\"} (no throw) · run untouched · [source] try/catch instanceof ForbiddenError, no e.message"),
+  D("S7.7", "-", "[source] approvePayrollRunAction returns Promise<{ ok: boolean; reason?: string }> · RunRowActions renders the reason in hr-payroll-run-${periodKey}-error · approve hidden fields expectNet/expectItems/expectGross from row props"),
+  D("S7.8", "-", "[source+runtime] payroll.ts H0.1 block uses bkkParts for the recompute note, no hand-rolled +7 h offset · note stamp = Bangkok wall clock of the call (Intl Asia/Bangkok)"),
+  D("X7.1", "X6", "recompute ∥ recompute on one run ×3 (in-process): no throw · ≥1 ok · refusals Thai · Σ items = totals · one run row · audit rows = ok count · approved adjustments bound"),
+  D("X7.2", "X6", "delete ∥ approve(fresh expect) on one run ×3 (in-process): exactly one ok · loser {ok:false} (no throw) · final = run gone (rows unbound) or APPROVED with balanced JV (rows bound)"),
   D("Z1", "-", "residue: throwaway tenants, every tenantId row, users/sessions are gone"),
 ];
 
@@ -879,6 +890,269 @@ async function runDb(): Promise<void> {
     if (orphan.length) g.push(`run ${r.id.slice(-6)}: ${orphan.length} bound row(s) without an item`);
   }
   chk("X6.6", dangling.length === 0 && g.length === 0, "0 dangling · 0 mismatches", `dangling=${dangling.length} ${g.slice(0, 4).join(" · ")}`);
+
+  // ═════════════════════════ S7 / X7 — oracle round 2 (CR10–CR15 on 65a45626 · additive) ═════════════════════════
+  //   own HR systems in the same tenant (H7 · H7G) so nothing above changes · periods 2034-01… / 2035-0x are used by nobody else
+  console.log("── S7 round 2 ──");
+  const H7 = (await sys.createSystem(T, "HR", "HR round2")).id as string;
+  const H7G = (await sys.createSystem(T, "HR", "HR round2 gross")).id as string;
+  const c7: Ctx = { tenantId: T, systemId: H7 };
+  const c7g: Ctx = { tenantId: T, systemId: H7G };
+  const RRA_FILE = "src/lib/modules/hr/RunRowActions.tsx";
+  const RRA = rd(RRA_FILE);
+  const ACT_SRC = rd(ACT_FILE);
+  const UI_SRC = rd(UI_FILE);
+  const CD_SRC = rd("src/components/ui/ConfirmDialog.tsx");
+  const STALE_TH = "ตัวเลขของรอบนี้เปลี่ยนไปแล้ว กรุณาดูยอดใหม่แล้วกดอนุมัติอีกครั้ง"; // CR12 (action text)
+  const POST_FAILED_TH = "ลงบัญชีไม่สำเร็จ รอบนี้ยังเป็นร่าง — ลองอนุมัติอีกครั้ง หรือให้ผู้ดูแลบัญชีตรวจสอบ"; // CR12
+  const FORBIDDEN_TH = "คุณไม่มีสิทธิ์ทำรายการนี้"; // CR13
+  const CANCEL_BOUND_TH = "รายการนี้เข้ารอบจ่ายแล้ว ลบไม่ได้ (ใช้กลับรายการรอบจ่ายแทน)"; // cancelAdjustment (CR9: untouched in H0.1)
+  const fullExpect = async (runId: string) => {
+    const r = await runRow(runId);
+    return { totalNetSatang: Number(r?.totalNetSatang ?? 0), itemCount: (await P.hrPayrollItem.count({ where: { runId } })) as number, totalGrossSatang: Number(r?.totalGrossSatang ?? 0) };
+  };
+  const fieldsOf = (sys7: string, runId: string, e: { totalNetSatang: number; itemCount: number; totalGrossSatang: number }) => ({ systemId: sys7, runId, expectNet: String(e.totalNetSatang), expectItems: String(e.itemCount), expectGross: String(e.totalGrossSatang) });
+  const draftNoJv = async (runId: string) => { const r = await runRow(runId); return !!r && r.status === "DRAFT" && !r.journalEntryId; };
+  const approvedJv = async (runId: string) => { const r = await runRow(runId); return !!r && r.status === "APPROVED" && (await jvBalanced(r.journalEntryId)).ok; };
+  /** every `<ConfirmDialog … />` element of a source file */
+  const dialogs = (src: string) => [...src.matchAll(/<ConfirmDialog\b[\s\S]*?\n\s*\/>/g)].map((m) => m[0]);
+  const e71 = await emp(c7, "รอบสอง หนึ่ง", 30_000);
+  const e72 = await emp(c7, "รอบสอง สอง", 18_000);
+
+  // S7.1 (source) — CR10 wording · delete label · routing
+  {
+    const ds = dialogs(RRA);
+    const recD = ds.find((d) => /op:\s*"recompute"/.test(d)) ?? "";
+    const delD = ds.find((d) => /op:\s*"delete"/.test(d)) ?? "";
+    const recOk = /triggerLabel="ดึงข้อมูลใหม่"/.test(recD) && recD.includes("คำนวณใหม่");
+    const delOk = /triggerLabel="ลบร่าง"/.test(delD) && /\bdanger\b/.test(delD);
+    const route = /op === "approve"\s*\?\s*await approvePayrollRunAction\(formData\)/.test(RRA) && /op === "delete"\s*\?\s*await deleteDraftRunAction\(formData\)/.test(RRA) && /await recomputeDraftRunAction\(formData\)/.test(RRA);
+    chk("S7.1", recOk && delOk && route, "recompute \"ดึงข้อมูลใหม่\" + dialog คำนวณใหม่ · delete \"ลบร่าง\" (danger) · routing", `dialogs=${ds.length} rec=${recOk} del=${delOk} route=${route}`, "MINOR");
+  }
+
+  // S7.7 (source) — approve action shape · inline reason · hidden fields from row props
+  {
+    const apBody = squash(fnBody(ACT_SRC, "approvePayrollRunAction"));
+    const sig = apBody.startsWith("export async function approvePayrollRunAction(formData: FormData): Promise<{ ok: boolean; reason?: string }> {");
+    const errSpan = /data-testid=\{`hr-payroll-run-\$\{periodKey\}-error`\}[\s\S]{0,240}\{state\.reason\}/.test(RRA);
+    const apD = dialogs(RRA).find((d) => /op:\s*"approve"/.test(d)) ?? "";
+    const hidden = /expectNet:\s*String\(totalNetSatang\)/.test(apD) && /expectItems:\s*String\(itemCount\)/.test(apD) && /expectGross:\s*String\(totalGrossSatang\)/.test(apD)
+      && /testId=\{`hr-payroll-run-\$\{periodKey\}-approve`\}/.test(apD) && /triggerLabel="อนุมัติ"/.test(apD);
+    const cdHidden = /type="hidden"\s+name=\{k\}\s+value=\{v\}/.test(CD_SRC);
+    const props = /totalNetSatang=\{r\.totalNetSatang\}/.test(UI_SRC) && /totalGrossSatang=\{r\.totalGrossSatang\}/.test(UI_SRC) && /itemCount=\{r\.items\.length\}/.test(UI_SRC);
+    chk("S7.7", sig && errSpan && hidden && cdHidden && props, "signature · error span shows state.reason · 3 hidden fields from row props", `sig=${sig} errSpan=${errSpan} approveFields=${hidden} confirmDialogHidden=${cdHidden} uiProps=${props}`, "MAJOR");
+  }
+
+  // S7.2 — approve expect incl. gross: service + form parsing (approveExpectFromForm is not exported ⇒ via the real action in a request scope)
+  {
+    const bad: string[] = [];
+    const jvA = await jvCount();
+    const ra = await mkRun(c7, "2034-02");
+    const sa = await call(PAY.approveRun, c7, ra, await fullExpect(ra));
+    if (!(sa.kind === "OK" && (await approvedJv(ra)))) bad.push(`(a) full expect ${rs(sa)}`);
+    const rb = await mkRun(c7, "2034-03");
+    const eb = await fullExpect(rb);
+    const jvB = await jvCount();
+    const sb = await call(PAY.approveRun, c7, rb, { ...eb, totalGrossSatang: eb.totalGrossSatang + 1 });
+    if (!(refusedThai(sb, STALE) && sb.v?.code === "STALE" && (await draftNoJv(rb)) && (await jvCount()) === jvB)) bad.push(`(b) gross+1 ${rs(sb)} code=${sb.v?.code}`);
+    const sc = await call(PAY.approveRun, c7, rb, { totalNetSatang: eb.totalNetSatang, itemCount: eb.itemCount });
+    if (!(sc.kind === "OK" && (await approvedJv(rb)))) bad.push(`(c) no gross ${rs(sc)}`);
+    // form
+    const formCase = async (period: string, tag: string, mut: (f: Record<string, string>) => Record<string, string>, want: "OK" | "STALE") => {
+      const r = await mkRun(c7, period);
+      const f = mut(fieldsOf(H7, r, await fullExpect(r)));
+      const res = await act(owner, "approvePayrollRunAction", f);
+      const ok = want === "OK" ? res.kind === "OK" && (await approvedJv(r)) : res.kind === "NO" && res.msg === STALE_TH && (await draftNoJv(r));
+      if (!ok) bad.push(`(${tag}) ${rs(res)} want ${want}`);
+      return r;
+    };
+    await formCase("2034-04", "d gross missing", (f) => { const { expectGross: _g, ...rest } = f; return rest; }, "OK");
+    await formCase("2034-05", "e gross abc", (f) => ({ ...f, expectGross: "abc" }), "OK");
+    await formCase("2034-06", "f gross 12.5", (f) => ({ ...f, expectGross: "12.5" }), "OK");
+    const r7 = await formCase("2034-07", "g gross+1", (f) => ({ ...f, expectGross: String(Number(f.expectGross) + 1) }), "STALE");
+    // (h) expectNet unreadable ⇒ fail closed (controller ruling 7 Oct: present but non-integer = STALE) — same run, still DRAFT
+    const e7 = await fullExpect(r7);
+    const rh = await act(owner, "approvePayrollRunAction", { ...fieldsOf(H7, r7, e7), expectNet: "abc" });
+    if (!(rh.kind === "NO" && rh.msg === STALE_TH && (await draftNoJv(r7)))) bad.push(`(h) net abc ${rs(rh)}`);
+    // (i) neither expectNet nor expectItems ⇒ undefined ⇒ legacy approve (gross alone is ignored)
+    const ri = await act(owner, "approvePayrollRunAction", { systemId: H7, runId: r7, expectGross: String(e7.totalGrossSatang + 1) });
+    if (!(ri.kind === "OK" && (await approvedJv(r7)))) bad.push(`(i) no net/items ${rs(ri)}`);
+    chk("S7.2", bad.length === 0, "a OK · b STALE · c OK · d/e/f OK · g STALE · h STALE · i legacy OK", `${bad.join(" · ") || "-"} jv+${(await jvCount()) - jvA}`);
+  }
+
+  // S7.3 — gross changes, net + count stay equal
+  {
+    const g1 = await emp(c7g, "ยอดรวม หนึ่ง", 12_500);
+    await emp(c7g, "ยอดรวม สอง", 20_000);
+    const rg = await mkRun(c7g, "2034-02");
+    const eOld = await fullExpect(rg);
+    await PAY.setSalaryProfile(c7g, { employeeId: g1, baseSalarySatang: B(13_000), ssoEligible: true });
+    const rc1 = await rec(c7g, rg);
+    const dNet = Number((await runRow(rg))?.totalNetSatang ?? 0) - eOld.totalNetSatang; // net gained by the raise
+    let rc2: Res = { kind: "NO", msg: "not run (raise did not raise net)" };
+    if (rc1.kind === "OK" && dNet > 0) {
+      await adjApproved(c7g, g1, "2034-02", "DEDUCTION", dNet);
+      rc2 = await rec(c7g, rg);
+    }
+    const eNew = await fullExpect(rg);
+    const pre = rc1.kind === "OK" && rc2.kind === "OK" && eNew.totalNetSatang === eOld.totalNetSatang && eNew.itemCount === eOld.itemCount && eNew.totalGrossSatang > eOld.totalGrossSatang;
+    const jvG = await jvCount();
+    const stale = await call(PAY.approveRun, c7g, rg, eOld);
+    const staleOk = refusedThai(stale, STALE) && (await draftNoJv(rg)) && (await jvCount()) === jvG;
+    const fresh = await call(PAY.approveRun, c7g, rg, eNew);
+    const freshOk = fresh.kind === "OK" && (await approvedJv(rg)) && Number((await runRow(rg))?.totalGrossSatang) === eNew.totalGrossSatang;
+    console.log(`     S7.3 net ${eOld.totalNetSatang}→${eNew.totalNetSatang} · items ${eOld.itemCount}→${eNew.itemCount} · gross ${eOld.totalGrossSatang}→${eNew.totalGrossSatang} (compensating deduction ${dNet})`);
+    chk("S7.3", pre && staleOk && freshOk, "precondition net/count equal, gross up · stale refused · fresh APPROVED", `pre=${pre} net ${eOld.totalNetSatang}→${eNew.totalNetSatang} gross ${eOld.totalGrossSatang}→${eNew.totalGrossSatang} items ${eOld.itemCount}→${eNew.itemCount} · stale ${rs(stale)} · fresh ${rs(fresh)}`);
+  }
+
+  // S7.4 + S7.8 runtime — JV step throws (ACCOUNT period of the pay date CLOSED) → DRAFT → recompute → delete
+  const bkkClock = (at: number) => {
+    const p = Object.fromEntries(new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date(at)).map((x) => [x.type, x.value]));
+    return `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}`;
+  };
+  let noteStampOk = false;
+  let noteSeen = "";
+  {
+    const adj4 = await adjApproved(c7, e71, "2034-01", "BONUS", B(700));
+    const r4 = await mkRun(c7, "2034-01");
+    await P.accountPeriod.create({ data: { tenantId: T, systemId: ACC, periodKey: "2034-01", status: "CLOSED" } });
+    const jv4 = await jvCount();
+    const sv = await call(PAY.approveRun, c7, r4, await fullExpect(r4));
+    const svOk = sv.kind === "NO" && sv.v?.code === "POST_FAILED" && (await draftNoJv(r4)) && (await jvCount()) === jv4;
+    const av = await act(owner, "approvePayrollRunAction", fieldsOf(H7, r4, await fullExpect(r4)));
+    const avOk = av.kind === "NO" && av.msg === POST_FAILED_TH && !/ปิดแล้ว|2034-01/.test(av.msg) && (await draftNoJv(r4)) && (await jvCount()) === jv4;
+    const t0 = Date.now();
+    const rc = await rec(c7, r4);
+    const t1 = Date.now();
+    noteSeen = String((await runRow(r4))?.note ?? "");
+    const stamp = /^คำนวณใหม่ (\d{4}-\d{2}-\d{2} \d{2}:\d{2})/.exec(noteSeen)?.[1] ?? "";
+    noteStampOk = rc.kind === "OK" && !!stamp && (stamp === bkkClock(t0) || stamp === bkkClock(t1));
+    const auR = await P.auditLog.count({ where: { tenantId: T, action: "hr.payroll.recompute", targetId: r4 } });
+    const recOk = rc.kind === "OK" && (await draftNoJv(r4)) && (await sumOk(r4)).ok && auR === 1;
+    const dl = await del(c7, r4);
+    const auD = await P.auditLog.count({ where: { tenantId: T, action: "hr.payroll.delete_draft", targetId: r4 } });
+    const a4 = await P.hrPayAdjustment.findUnique({ where: { id: adj4 } });
+    const delOk = dl.kind === "OK" && !(await runRow(r4)) && auD === 1 && a4?.runId === null && a4?.status === "APPROVED";
+    chk("S7.4", svOk && avOk && recOk && delOk, "service POST_FAILED DRAFT no JV · action fixed text · recompute ok + audit · delete ok + audit, row unbound", `service ${rs(sv)} code=${sv.v?.code} ok=${svOk} · action ${rs(av)} ok=${avOk} · rec ${rs(rc)} audit=${auR} ok=${recOk} · del ${rs(dl)} audit=${auD} ok=${delOk}`);
+  }
+
+  // S7.8 — bkkParts, no hand-rolled offset in the H0.1 block (+ the runtime stamp above)
+  {
+    const h01 = seg(PAY_SRC, "// ─────────── H0.1 ▸ วงจรรอบร่าง", "// ◂ H0.1", true);
+    const imp = /import \{ bkkParts \} from "\.\/service";/.test(PAY_SRC);
+    const stampFn = seg(h01, "function bkkStamp(", "\n}\n", true);
+    const usesParts = /bkkParts\(/.test(stampFn) && /คำนวณใหม่ \$\{bkkStamp\(new Date\(\)\)\}/.test(fnBody(PAY_SRC, "recomputeDraftRun"));
+    const hand = /7\s*\*\s*60\s*\*\s*60\s*\*\s*1000|7\s*\*\s*3_?600\s*\*\s*1_?000|25_?200_?000|getUTCHours\(\)\s*\+\s*7|\.getHours\(|\.getDate\(|\.getDay\(/;
+    const clean = !!h01 && !hand.test(h01) && !hand.test(fnBody(PAY_SRC, "approveRun"));
+    chk("S7.8", imp && usesParts && clean && noteStampOk, "import bkkParts · bkkStamp uses it · no +7 h by hand · note = Bangkok clock", `import=${imp} usesParts=${usesParts} noHandOffset=${clean} block=${h01.length}ch note="${noteSeen}" stampOk=${noteStampOk}`, "MINOR");
+  }
+
+  // S7.5 — APPROVED adjustment bound to a DRAFT cannot be cancelled / moved away under the run
+  {
+    const cid = `qch01${rand}r2`;
+    await P.crmCommission.create({ data: { id: cid, tenantId: T, systemId: `qc-h01-crm-${rand}`, dealId: `qc-h01-deal-r2`, ruleId: `qc-h01-rule-${rand}`, userId: `qc-h01-seller-${rand}`, amountSatang: BigInt(40_000), basisSatang: BigInt(400_000), basis: "PAID", status: "APPROVED", periodKey: "2034-08" } });
+    const aC = await adjApproved(c7, e71, "2034-08", "COMMISSION", 40_000, { crmCommissionId: cid });
+    await P.crmCommission.update({ where: { id: cid }, data: { hrPayAdjustmentId: aC } });
+    const aB = await adjApproved(c7, e72, "2034-08", "BONUS", 25_000);
+    const r5 = await mkRun(c7, "2034-08");
+    const before = await runRow(r5);
+    const bTot = TOTALS.map(([t]) => Number(before?.[t]));
+    const cu1 = await call(PAY.cancelAdjustment, c7, aB, { userId: OWNER_UID, isOwner: true });
+    const cu2 = await call(PAY.cancelAdjustment, c7, aB);
+    const wd = await PAY.withdrawCommissionAdjustment(c7, { adjustmentId: aC, crmCommissionId: cid, statuses: ["PENDING", "APPROVED"] }).catch((e: unknown) => `THROW ${errText(e)}`);
+    const mv = await PAY.moveCommissionAdjustmentPeriod(c7, { adjustmentId: aC, crmCommissionId: cid, periodKey: "2036-01" }).catch((e: unknown) => `THROW ${errText(e)}`);
+    const rows1 = await P.hrPayAdjustment.findMany({ where: { id: { in: [aB, aC] } } });
+    const stillBound = rows1.length === 2 && rows1.every((r: Any) => r.runId === r5 && r.status === "APPROVED" && r.periodKey === "2034-08");
+    const rc5 = await rec(c7, r5);
+    const after = await runRow(r5);
+    const aTot = TOTALS.map(([t]) => Number(after?.[t]));
+    const rows2 = await P.hrPayAdjustment.findMany({ where: { id: { in: [aB, aC] } } });
+    const ok = cu1.kind === "NO" && cu1.msg === CANCEL_BOUND_TH && cu2.kind === "NO" && cu2.msg === CANCEL_BOUND_TH && wd === false && mv === false && stillBound
+      && rc5.kind === "OK" && stable(aTot) === stable(bTot) && (await sumOk(r5)).ok && rows2.every((r: Any) => r.runId === r5);
+    chk("S7.5", ok, "cancel ×2 refused (fixed text) · withdraw/move false · bound · recompute totals unchanged · Σ ok", `cancel ${rs(cu1)} / ${rs(cu2)} · withdraw=${wd} move=${mv} bound=${stillBound} · rec ${rs(rc5)} totals ${short(bTot)}→${short(aTot)}`);
+  }
+
+  // S7.6 — CR13 Forbidden inline, runtime + source
+  {
+    const r6 = await mkRun(c7, "2034-09");
+    await PAY.setSalaryProfile(c7, { employeeId: e72, baseSalarySatang: B(18_750), ssoEligible: true }); // a recompute would show
+    const s6 = await runState(r6);
+    const e6 = await fullExpect(r6);
+    const who = refusedViewers.filter((v) => v.tag !== "other-tenant-owner");
+    const out: string[] = [];
+    let allOk = true;
+    for (const v of who) {
+      for (const [name, f] of [["approvePayrollRunAction", fieldsOf(H7, r6, e6)], ["recomputeDraftRunAction", { systemId: H7, runId: r6 }], ["deleteDraftRunAction", { systemId: H7, runId: r6 }]] as [string, Record<string, string>][]) {
+        const r = await act(v, name, f);
+        const good = r.kind === "NO" && r.msg === FORBIDDEN_TH;
+        if (!good) { allOk = false; out.push(`${v.tag}/${name.replace("Action", "")}=${rs(r).slice(0, 70)}`); }
+      }
+    }
+    const untouched = s6 === (await runState(r6));
+    const constTh = (body: string) => {
+      const m = /instanceof ForbiddenError\)\s*return \{ ok: false, reason: (\w+|"[^"]*") \}/.exec(body);
+      if (!m) return false;
+      const lit = m[1]!.startsWith('"') ? m[1]! : (new RegExp(`const ${m[1]} = ("[^"]*")`).exec(ACT_SRC)?.[1] ?? "");
+      return THAI.test(lit);
+    };
+    const src = ["approvePayrollRunAction", "recomputeDraftRunAction", "deleteDraftRunAction"].map((n) => {
+      const b = fnBody(ACT_SRC, n);
+      const iReq = b.indexOf("await requireTenant()");
+      const iTry = b.indexOf("try {");
+      return { n, ok: !!b && iReq >= 0 && iTry > iReq && constTh(b) && /throw e;/.test(b) && !/e\.message|err\.message/.test(b) };
+    });
+    chk("S7.6", allOk && untouched && src.every((x) => x.ok), `${who.length}×3 → {ok:false, ${FORBIDDEN_TH}} · untouched · source ok`, `${out.join(" · ") || "runtime ok"} · untouched=${untouched} · src=${short(src)}`);
+  }
+
+  // X7.1 — recompute ∥ recompute (in-process, same run)
+  {
+    const bad: string[] = [];
+    for (const [i, period] of ["2034-10", "2034-11", "2034-12"].entries()) {
+      await adjApproved(c7, e71, period, "BONUS", B(100 + i));
+      const r = await mkRun(c7, period);
+      await PAY.setSalaryProfile(c7, { employeeId: e72, baseSalarySatang: B(19_000 + 250 * i), ssoEligible: true });
+      const au0 = await P.auditLog.count({ where: { tenantId: T, action: "hr.payroll.recompute", targetId: r } });
+      const res = await Promise.all([rec(c7, r), rec(c7, r)]);
+      const okN = res.filter((x) => x.kind === "OK").length;
+      const clean = res.every((x) => x.kind === "OK" || refusedThai(x));
+      const runs = await P.hrPayrollRun.findMany({ where: { systemId: H7, periodKey: period }, select: { id: true } });
+      const au1 = await P.auditLog.count({ where: { tenantId: T, action: "hr.payroll.recompute", targetId: r } });
+      const adj = (await P.hrPayAdjustment.findMany({ where: { systemId: H7, periodKey: period } })).filter((a: Any) => a.status === "APPROVED");
+      const so = await sumOk(r);
+      const it2 = (await itemsOf(r)).find((x: Any) => x.employeeId === e72);
+      const fine = clean && okN >= 1 && so.ok && runs.length === 1 && runs[0].id === r && au1 - au0 === okN && adj.every((a: Any) => a.runId === r) && (await draftNoJv(r)) && (it2?.snapshotJson as Any)?.baseSalarySatang === B(19_000 + 250 * i);
+      if (!fine) bad.push(`${period}: ${res.map(rs).join(" | ")} Σ=${so.ok} runs=${runs.length} audit+${au1 - au0}/${okN} bound=${adj.filter((a: Any) => a.runId === r).length}/${adj.length}`);
+    }
+    chk("X7.1", bad.length === 0, "3/3 rounds clean", bad.join(" · "));
+  }
+
+  // X7.2 — delete ∥ approve(fresh expect) (in-process, same run)
+  {
+    const bad: string[] = [];
+    const wins: string[] = [];
+    for (const [i, period] of ["2035-01", "2035-02", "2035-03"].entries()) {
+      await adjApproved(c7, e71, period, "BONUS", B(200 + i));
+      const r = await mkRun(c7, period);
+      const e = await fullExpect(r);
+      // start order per round: delete first · approve first · approve 400 ms late (so the "delete wins" branch is exercised too) — same judge
+      let d: Res;
+      let a: Res;
+      if (i === 1) [a, d] = await Promise.all([call(PAY.approveRun, c7, r, e), del(c7, r)]);
+      else [d, a] = await Promise.all([del(c7, r), (i === 2 ? sleep(400) : Promise.resolve()).then(() => call(PAY.approveRun, c7, r, e))]);
+      const run = await runRow(r);
+      const adj = await P.hrPayAdjustment.findMany({ where: { systemId: H7, periodKey: period } });
+      const noThrow = d.kind !== "THROW" && a.kind !== "THROW";
+      const one = [d, a].filter((x) => x.kind === "OK").length === 1;
+      let final = false;
+      if (d.kind === "OK") final = !run && adj.every((x: Any) => x.runId === null) && a.kind === "NO";
+      else if (a.kind === "OK") final = !!run && run.status === "APPROVED" && (await jvBalanced(run.journalEntryId)).ok && adj.every((x: Any) => x.runId === r) && refusedThai(d);
+      const neverBad = !(run && run.status === "DRAFT" && run.journalEntryId);
+      wins.push(d.kind === "OK" ? "del" : a.kind === "OK" ? "approve" : "none");
+      if (!(noThrow && one && final && neverBad)) bad.push(`${period}: del ${rs(d)} | approve ${rs(a)} | run=${run ? `${run.status}/${run.journalEntryId ? "JV" : "-"}` : "gone"}`);
+    }
+    chk("X7.2", bad.length === 0, "3/3 rounds: one winner · loser {ok:false} · consistent final state", bad.join(" · ") || `winners ${wins.join(",")}`);
+    if (bad.length === 0) console.log(`     X7.2 winners: ${wins.join(", ")}`);
+  }
 }
 
 // ═════════════════════════ cleanup + residue ═════════════════════════
