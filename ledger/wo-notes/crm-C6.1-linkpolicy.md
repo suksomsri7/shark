@@ -61,3 +61,37 @@ Settings service (key `crm.tracking.manage` — the key the page and the other t
 2. Should verified **sending** domains (`EmailDomain`, DNS-verified) also count as always allowed? Today only web-tracking domains + the platform host do. (default: no — the shop adds them once)
 3. The e-mail click redirector `/t/c/<token>` (C2.5) also sends people from shark.in.th to arbitrary hosts found in the shop's own e-mails. Apply the same policy there (with unknown hosts = plain link, not tracked)? (default: out of scope for this card)
 4. Should switching the policy apply only after a grace period (e.g. warn for 7 days before blocked links stop)? Today the change is immediate, with the "would break N" preview. (default: immediate)
+
+## Round 2 (7 Oct 2026 · after review 88c2f8c7 · MERGEABLE AFTER RV-1, RV-2) — commit 57bc6aec
+- **RV-1** `updateLink`: `active` that is not a real boolean (`1`, `"yes"`, `"true"`, `null`, `{}`) ⇒ VALIDATION "สถานะของลิงก์ต้องเป็นเปิดหรือปิดเท่านั้น — ลองกดสวิตช์อีกครั้ง", nothing written. One `turnOn` drives both the destination check and the write.
+- **RV-2** new reason `REDIRECTOR`. On `shark.in.th` (always), the APP_URL host, and their subdomains, a path under `/t/` or `/l/` is refused **whichever list matched**, including an explicit `shark.in.th` / `*.shark.in.th` entry.
+  - The path is judged on the parsed URL's pathname (`isPlatformRedirectorPath`): `%xx` decoded up to 3 times, `\`→`/`, `//` collapsed, `.`/`..` resolved, lowercased, then `^/(t|l)(/|$)`. Other platform paths (`/f/…`, `/s/…`, `/tx`, `/lab`) are still allowed.
+  - Thai text: "ลิงก์ติดตามชี้ไปที่ลิงก์ติดตามหรือลิงก์นับคลิกอีกตัวของ <host> ไม่ได้ (ลิงก์ซ้อนลิงก์) — ใช้ลิงก์ของหน้าปลายทางจริงแทน".
+  - `/t/c` uses the same hard judge (`linkHardVerdict` in tracking-shared: scheme · userinfo · IP · localhost/.local/.internal · blocklist hook). It is the first stage of `linkDestinationVerdict`, so there is one judge. It is applied:
+    - (a) in `emails.composeOutgoing`: an href that fails is **not wrapped** (it stays as written in the shop's mail, and shark.in.th never redirects there);
+    - (b) in `emails.trackClick`: an href that fails returns `url: null`, which is the unknown-token answer (302 home).
+  - The per-shop allow-list is NOT applied to `/t/c` (owner Q3 stays open).
+  - Caveat (b): for a legacy row the click is still counted, because the URL lives in the counting statement and judging it first would add a round trip on the hot path. Only e-mails wrapped before this card are affected, and prod has no CRM v2 e-mails.
+  - `isDestinationBlocklisted` moved to tracking-shared (pure, so emails.ts can use it without importing tracking.ts) and is re-exported from tracking.ts. It is still the only Safe Browsing hook.
+- **RV-3** always-allowed web-tracking domains pass `normalizeLinkHost("*.<d>")`. A public-suffix-like or shared-hosting name gives no link exemption; this is logged once per process with `console.warn` and does not change `originAllowed`/web tracking. To make the reviewer's R.B6 (`github.io`) pass without the PSL, the heuristic gained a short static list of shared-hosting suffixes refused under `*.`: github.io, gitlab.io, vercel.app, netlify.app, pages.dev, workers.dev, web.app, firebaseapp.com, herokuapp.com, blogspot.com, wordpress.com, wixsite.com, myshopify.com, s3.amazonaws.com, cloudfront.net, azurewebsites.net, appspot.com, onrender.com, fly.dev, glitch.me, ngrok.io, ngrok-free.app, trycloudflare.com, nip.io, sslip.io. Exact hosts (`myshop.github.io`) are still accepted. The full PSL stays debt (RV-4).
+- **RV-5** an entry over 253 characters (the `*.` prefix not counted) gets its own message quoting the first 60 characters: "… ยาวเกินไปสำหรับชื่อโดเมน (ไม่เกิน 253 ตัวอักษร) — ตรวจว่าวางมาเฉพาะชื่อเว็บ ไม่ได้วางทั้งลิงก์". More than 500 raw tokens gives "ไม่เกิน 50 รายการ (ตอนนี้ N)". The bad-entry message now also names `*.github.io`.
+
+### Proof (QC2 · iso + gate lock)
+- Builder probe `scripts/pending/c61l/probe-linkpolicy.mts`, extended with G.1 (RV-1), G.2–G.4 (RV-2 verdict: 12 path spellings + subdomain + declared, QC APP_URL, create refusal), G.5 (RV-3 incl. github.io), G.6 (RV-5), H.1 (`/t/c` wrap time through a real `sendEmail` with a fake transport) and H.2 (`/t/c` hit time on legacy stored links vs an unknown token):
+  - **red-before** on the round-1 source (tracking/tracking-shared/emails at 88c2f8c7, swapped in temporarily): 36/44, all 8 new checks ❌. The output showed `1`/`"yes"`/`{}` ACCEPTED with active=true, `/t/c` paths OK, IP/userinfo/localhost hrefs wrapped (6 of 6) and redirected at hit time.
+  - **green-after: 44/44**.
+- Reviewer probe `scripts/pending/c61l/review/probe-linkpolicy-review.mts`: **29/29**. It was 28/29 until github.io was added to the shared-hosting list.
+- Suites:
+
+  | Suite | Result |
+  | --- | --- |
+  | `qc-crm-c2.6` | 87/87 |
+  | `qc-crm-c2.11` | 47/47 |
+  | `qc-crm-c5.3 --only=L4` | 10/10 |
+  | `qc-crm-c2.5` | 105/105 (`/t/c` wrapping unchanged for normal hrefs) |
+
+- Fitness 42/42 without env and with QC2 env. Typecheck clean. No op or docs change (the API docs are unaffected).
+
+### Still not verified / debt (unchanged from round 1 unless noted)
+- c3.8 / c3.9 (QC3), qc-crm-buttons (QC1, C4.2 lane fixture + `linkhosts-input` fill rule, see the review's Point 7), c2.6-web, visual check.
+- RV-4 full PSL, RV-6..RV-11 INFO: recorded as debt by the controller. RV-6 is open: `REDIRECTOR`/`HOST_NOT_ALLOWED` messages still show punycode for Thai IDN.
