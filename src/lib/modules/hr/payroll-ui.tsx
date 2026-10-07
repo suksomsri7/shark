@@ -9,6 +9,7 @@ import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { formatBaht } from "@/lib/ui/money";
 import { listEmployees, monthlyAttendance, employeesWithSchedule, bkkParts, type Ctx } from "./service";
 import { listSalaryProfiles, listRuns, listAdjustments } from "./payroll";
+import { payrollItemsDigest } from "./payroll-digest"; // H0.1 ▸ CR16: ลายนิ้วมือแถวพนักงาน คำนวณฝั่ง server ตอนแสดงแถว ◂
 import PayAdjustForm from "./PayAdjustForm";
 import PayAdjustRowActions from "./PayAdjustRowActions"; // HF-HR-0 ▸ รอบ 5c (F5): ปุ่มของรายการ + เหตุผลที่ถูกปฏิเสธในแถว ◂
 import RunRowActions from "./RunRowActions"; // H0.1 ▸ R6 · CR12: "อนุมัติ" / "ดึงข้อมูลใหม่" (คำนวณใหม่) / "ลบร่าง" ของรอบร่าง + เหตุผลที่ถูกปฏิเสธในแถว ◂
@@ -284,6 +285,7 @@ export async function PayrollSection({ systemId }: { systemId: string }) {
                     totalNetSatang={r.totalNetSatang}
                     totalGrossSatang={r.totalGrossSatang}
                     itemCount={r.items.length}
+                    itemsDigest={payrollItemsDigest(r.items)}
                     approveDetail={`จ่ายสุทธิรวม ${formatBaht(r.totalNetSatang)} · ${r.items.length} คน · เงินเดือนรวม ${formatBaht(r.totalGrossSatang)} · ประกันสังคม ${formatBaht(r.totalSsoEmployeeSatang + r.totalSsoEmployerSatang)} · ภาษีหัก ณ ที่จ่าย ${formatBaht(r.totalWhtSatang)} — จะลงบัญชีอัตโนมัติถ้าเปิดระบบบัญชีไว้`}
                   />
                 )}

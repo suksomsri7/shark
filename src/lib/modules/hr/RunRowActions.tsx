@@ -10,6 +10,8 @@ import { approvePayrollRunAction, deleteDraftRunAction, recomputeDraftRunAction 
 //   ทุกปุ่มผ่าน ConfirmDialog · `key` เปลี่ยนเมื่อทำรายการเสร็จ ⇒ กล่องยืนยันปิดเอง · ไม่ใช่ร่าง = ไม่แสดงอะไรเลย ◂
 // H0.1 ▸ CR12: ปุ่ม "อนุมัติ" ย้ายมาอยู่ที่นี่ ⇒ อนุมัติไม่สำเร็จ (ตัวเลขเปลี่ยน · ไม่ใช่ร่างแล้ว · ลงบัญชีล้ม) เห็นเหตุผลในแถวเดียวกัน ·
 //   ช่องซ่อนของตัวเลขที่ผู้อนุมัติเห็น (expectNet · expectItems · expectGross — CR3/CR11) มาจาก props ของแถวที่แสดงอยู่ ◂
+// ปุ่มของร่างมีเฉพาะรอบที่ยังเป็นร่าง — อนุมัติแล้ว/จ่าย/กลับรายการ ใช้ทางของสถานะนั้น
+// H0.1 ▸ CR16: + `expectDigest` = ลายนิ้วมือแถวพนักงานที่หน้า (server component) คำนวณมาให้ทาง prop `itemsDigest` — ไฟล์นี้ไม่คำนวณเอง ◂
 type Op = "approve" | "recompute" | "delete";
 type Res = { ok: boolean; reason?: string; op: Op; n: number } | null;
 
@@ -25,6 +27,7 @@ export default function RunRowActions({
   totalNetSatang,
   totalGrossSatang,
   itemCount,
+  itemsDigest,
   approveDetail,
 }: {
   systemId: string;
@@ -34,6 +37,7 @@ export default function RunRowActions({
   totalNetSatang: number;
   totalGrossSatang: number;
   itemCount: number;
+  itemsDigest: string;
   approveDetail: string;
 }) {
   const [state, run] = useActionState<Res, FormData>(async (prev, formData) => {
@@ -42,15 +46,14 @@ export default function RunRowActions({
     return { ok: r.ok, reason: r.reason, op, n: (prev?.n ?? 0) + 1 };
   }, null);
 
-  // ปุ่มของร่างมีเฉพาะรอบที่ยังเป็นร่าง — อนุมัติแล้ว/จ่าย/กลับรายการ ใช้ทางของสถานะนั้น
-  if (status !== "DRAFT") return null;
+  if (status !== "DRAFT") return null; // ปุ่มของร่างเท่านั้น
 
   const n = state?.n ?? 0;
   return (
     <>
       <ConfirmDialog
         key={`approve-${n}`}
-        fields={{ systemId, runId, op: "approve", expectNet: String(totalNetSatang), expectItems: String(itemCount), expectGross: String(totalGrossSatang) }}
+        fields={{ systemId, runId, op: "approve", expectNet: String(totalNetSatang), expectItems: String(itemCount), expectGross: String(totalGrossSatang), expectDigest: itemsDigest }}
         triggerLabel="อนุมัติ"
         triggerClassName="rounded-full border px-3 py-1.5 text-xs hover:bg-[color:var(--color-surface-2)]"
         title={`อนุมัติรอบจ่ายงวด ${periodKey}?`}

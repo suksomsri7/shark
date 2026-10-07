@@ -5,6 +5,7 @@ import { emitOutbox } from "@/lib/core/outbox";
 import { postPayrollJV, reverseEntry } from "@/lib/modules/account";
 import { writeAudit } from "@/lib/core/audit"; // HF-HR-0 ▸ รอบ 5c (F1): ประวัติการลบรายการเงิน (ตัวเดียวกับ hr/service.ts) ◂
 import { bkkParts } from "./service"; // H0.1 ▸ CR14: เวลาไทยจากตัวช่วยกลางของ HR (ไม่บวก +7 เองซ้ำ) ◂
+import { payrollItemsDigest, PAYROLL_DIGEST_SELECT } from "./payroll-digest"; // H0.1 ▸ CR16: ลายนิ้วมือแถวพนักงาน (โมดูลกลาง ไม่ใช่ "use server") ◂
 import {
   ssoContribution,
   monthlyWhtSatang,
@@ -507,6 +508,30 @@ async function lockRunRow(tx: Prisma.TransactionClient, ctx: Ctx, runId: string)
   return r ? { ...r, totalGrossSatang: Number(r.totalGrossSatang), totalAddSatang: Number(r.totalAddSatang), totalDeductSatang: Number(r.totalDeductSatang), totalNetSatang: Number(r.totalNetSatang) } : null;
 }
 
+// H0.1 ▸ CR19: คำปฏิเสธ (อนุมัติ · ลบร่าง · คำนวณใหม่) ลงประวัติพร้อมตัวเลข — `seen` = ตัวเลขที่ผู้กดส่งมา (ไม่มี = null) ·
+//   `actual` = ตัวเลขจริงของรอบ อ่านใต้ล็อกแถวรอบใน tx เดียวกับการตัดสิน (ยอดสุทธิ · จำนวนคน · เงินเดือนรวม · ลายนิ้วมือ) ·
+//   ผู้ทำ = ผู้ใช้ใน session ที่ action ส่งมา (สคริปต์/ทางเดิมที่ไม่ส่ง actor = actorId null) ◂
+type RunActual = { net: number; items: number; gross: number; digest: string };
+type RunSeen = { net: number; items: number; gross?: number; digest?: string } | null;
+type RunRefused = { code: "NOT_DRAFT" | "DRAFT_HAS_JV" | "STALE"; actual: RunActual };
+
+async function runActual(tx: Prisma.TransactionClient, ctx: Ctx, cur: LockedRun): Promise<RunActual> {
+  const items = await tx.hrPayrollItem.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, runId: cur.id }, select: PAYROLL_DIGEST_SELECT });
+  return { net: cur.totalNetSatang, items: items.length, gross: cur.totalGrossSatang, digest: payrollItemsDigest(items) };
+}
+
+async function auditRefusal(ctx: Ctx, actor: PayrollActor | undefined, action: string, runId: string, refused: RunRefused, seen: RunSeen): Promise<void> {
+  await writeAudit({
+    tenantId: ctx.tenantId,
+    actorType: "USER",
+    actorId: actor?.userId ?? null,
+    action,
+    targetType: "HrPayrollRun",
+    targetId: runId,
+    after: { code: refused.code, seen, actual: refused.actual },
+  });
+}
+
 /** เวลาไทย รูปแบบ "YYYY-MM-DD HH:mm น." — H0.1 ▸ CR14: ใช้ bkkParts (hr/service.ts) ตัวกลางของ HR ◂ */
 function bkkStamp(at: Date): string {
   const { dateStr, minOfDay } = bkkParts(at);
@@ -524,7 +549,7 @@ export async function deleteDraftRun(ctx: Ctx, runId: string, actor: PayrollActo
   if (!id) return { ok: false, reason: RUN_NOT_FOUND };
   const scope = { tenantId: ctx.tenantId, systemId: ctx.systemId };
   type Before = { periodKey: string; totalAddSatang: number; totalDeductSatang: number; totalNetSatang: number; itemCount: number; adjustmentIds: string[] };
-  let res: { ok: true; before: Before } | { ok: false; reason: string };
+  let res: { ok: true; before: Before } | { ok: false; reason: string; refused?: RunRefused };
   try {
     res = await tenantDb(ctx).$transaction(async (t) => {
       const tx = t as unknown as Prisma.TransactionClient;
@@ -533,8 +558,8 @@ export async function deleteDraftRun(ctx: Ctx, runId: string, actor: PayrollActo
       await lockRunPeriod(tx, ctx, pre.periodKey);
       const cur = await lockRunRow(tx, ctx, id);
       if (!cur || cur.periodKey !== pre.periodKey) return { ok: false as const, reason: RUN_CHANGED };
-      if (cur.status !== "DRAFT") return { ok: false as const, reason: DELETE_ONLY_DRAFT };
-      if (cur.journalEntryId) return { ok: false as const, reason: DRAFT_HAS_JV };
+      if (cur.status !== "DRAFT") return { ok: false as const, reason: DELETE_ONLY_DRAFT, refused: { code: "NOT_DRAFT" as const, actual: await runActual(tx, ctx, cur) } };
+      if (cur.journalEntryId) return { ok: false as const, reason: DRAFT_HAS_JV, refused: { code: "DRAFT_HAS_JV" as const, actual: await runActual(tx, ctx, cur) } };
 
       const itemCount = await tx.hrPayrollItem.count({ where: { ...scope, runId: id } });
       const bound = await tx.hrPayAdjustment.findMany({ where: { ...scope, runId: id }, select: { id: true }, orderBy: { id: "asc" } });
@@ -555,7 +580,10 @@ export async function deleteDraftRun(ctx: Ctx, runId: string, actor: PayrollActo
     if (e instanceof RunRefusal) return { ok: false, reason: e.message };
     throw e;
   }
-  if (!res.ok) return res;
+  if (!res.ok) {
+    if (res.refused) await auditRefusal(ctx, actor, "hr.payroll.delete_draft.refused", id, res.refused, null); // CR19
+    return { ok: false, reason: res.reason };
+  }
   await writeAudit({
     tenantId: ctx.tenantId,
     actorType: "USER",
@@ -578,7 +606,7 @@ export async function recomputeDraftRun(ctx: Ctx, runId: string, actor: PayrollA
   if (!id) return { ok: false, reason: RUN_NOT_FOUND };
   const scope = { tenantId: ctx.tenantId, systemId: ctx.systemId };
   type Snap = { totalAddSatang: number; totalDeductSatang: number; totalNetSatang: number; itemCount: number };
-  let res: { ok: true; note: string; before: Snap; after: Snap } | { ok: false; reason: string };
+  let res: { ok: true; note: string; before: Snap; after: Snap } | { ok: false; reason: string; refused?: RunRefused };
   try {
     res = await tenantDb(ctx).$transaction(async (t) => {
       const tx = t as unknown as Prisma.TransactionClient;
@@ -587,8 +615,8 @@ export async function recomputeDraftRun(ctx: Ctx, runId: string, actor: PayrollA
       await lockRunPeriod(tx, ctx, pre.periodKey);
       const cur = await lockRunRow(tx, ctx, id);
       if (!cur || cur.periodKey !== pre.periodKey) return { ok: false as const, reason: RUN_CHANGED };
-      if (cur.status !== "DRAFT") return { ok: false as const, reason: RECOMPUTE_ONLY_DRAFT };
-      if (cur.journalEntryId) return { ok: false as const, reason: DRAFT_HAS_JV };
+      if (cur.status !== "DRAFT") return { ok: false as const, reason: RECOMPUTE_ONLY_DRAFT, refused: { code: "NOT_DRAFT" as const, actual: await runActual(tx, ctx, cur) } };
+      if (cur.journalEntryId) return { ok: false as const, reason: DRAFT_HAS_JV, refused: { code: "DRAFT_HAS_JV" as const, actual: await runActual(tx, ctx, cur) } };
 
       const itemCountBefore = await tx.hrPayrollItem.count({ where: { ...scope, runId: id } });
       // ปลดรายการทั้งหมดของรอบ (แถวถูกล็อกด้วย UPDATE นี้จน commit) → buildRunRows เห็นมันเป็น "ยังไม่เข้ารอบ" ใน tx เดียวกัน
@@ -621,7 +649,10 @@ export async function recomputeDraftRun(ctx: Ctx, runId: string, actor: PayrollA
     if (e instanceof RunRefusal) return { ok: false, reason: e.message };
     throw e;
   }
-  if (!res.ok) return res;
+  if (!res.ok) {
+    if (res.refused) await auditRefusal(ctx, actor, "hr.payroll.recompute.refused", id, res.refused, null); // CR19
+    return { ok: false, reason: res.reason };
+  }
   await writeAudit({
     tenantId: ctx.tenantId,
     actorType: "USER",
@@ -636,8 +667,10 @@ export async function recomputeDraftRun(ctx: Ctx, runId: string, actor: PayrollA
 }
 const APPROVE_STALE = "ตัวเลขของรอบนี้เปลี่ยนไปแล้ว (มีการคำนวณใหม่) — กรุณาเปิดดูและอนุมัติอีกครั้ง";
 const APPROVE_NOT_DRAFT = "รอบนี้อนุมัติหรือจ่ายไปแล้ว";
-/** H0.1 ▸ CR12: เหตุที่อนุมัติไม่สำเร็จ (ให้ approvePayrollRunAction เลือกข้อความคงที่ — POST_FAILED = ลงบัญชีล้ม รอบกลับเป็นร่าง) ◂ */
-export type ApproveFailCode = "NOT_FOUND" | "NOT_DRAFT" | "STALE" | "POST_FAILED";
+const APPROVE_DRAFT_HAS_JV = "รอบนี้มีเอกสารบัญชีค้างอยู่ ต้องให้ผู้ดูแลตรวจสอบก่อน"; // H0.1 ▸ CR17 ◂
+/** H0.1 ▸ CR12: เหตุที่อนุมัติไม่สำเร็จ (ให้ approvePayrollRunAction เลือกข้อความคงที่ — POST_FAILED = ลงบัญชีล้ม รอบกลับเป็นร่าง) ◂
+ *  H0.1 ▸ CR17: DRAFT_HAS_JV = ร่างที่มี journalEntryId ค้าง (ลงบัญชีไปแล้วแต่สถานะถูกคืนเป็นร่าง) ⇒ ไม่ลงบัญชีซ้ำ ◂ */
+export type ApproveFailCode = "NOT_FOUND" | "NOT_DRAFT" | "STALE" | "POST_FAILED" | "DRAFT_HAS_JV";
 
 /**
  * H0.1 R4 · R5 — claim DRAFT→APPROVED เฉพาะเมื่อรอบ "ยังเป็นตัวเลขที่ผู้อนุมัติเห็น" (ยอดจ่ายสุทธิรวม + จำนวนคน) แบบอะตอมมิก:
@@ -646,25 +679,43 @@ export type ApproveFailCode = "NOT_FOUND" | "NOT_DRAFT" | "STALE" | "POST_FAILED
  */
 //   H0.1 ▸ CR11: ส่ง totalGrossSatang (เงินเดือนรวมที่เห็น) มาด้วย ⇒ ต้องตรงด้วย (เช็กใต้ล็อก + อยู่ใน where ของ UPDATE) · ไม่ส่ง = ไม่เช็ก ·
 //   ส่งมาแต่ไม่ใช่จำนวนเต็ม = ถือว่าตัวเลขเปลี่ยน (ไม่อนุมัติแบบเดา — แบบเดียวกับยอดสุทธิ/จำนวนคน) ◂
-export type ApproveExpect = { totalNetSatang: number; itemCount: number; totalGrossSatang?: number };
-async function claimApproveExpected(ctx: Ctx, runId: string, expect: ApproveExpect): Promise<"OK" | "NOT_FOUND" | "NOT_DRAFT" | "STALE"> {
-  if (!Number.isSafeInteger(expect?.totalNetSatang) || !Number.isSafeInteger(expect?.itemCount)) return "STALE";
-  const gross = expect.totalGrossSatang;
-  if (gross !== undefined && !Number.isSafeInteger(gross)) return "STALE";
+//   H0.1 ▸ CR16: `itemsDigest` (ลายนิ้วมือแถวพนักงานที่เห็น · payroll-digest.ts) ⇒ คำนวณใหม่จากแถวที่อ่านใต้ล็อกเดียวกัน ไม่ตรง = STALE ·
+//   ส่งมาแต่ไม่ใช่ sha256 hex 64 ตัว = STALE · ไม่ส่ง = ไม่เช็ก (ผู้เรียกเก่า) ◂
+//   H0.1 ▸ CR17: ทั้งทางที่มี expect และไม่มี — ใต้ล็อกต้องเป็น DRAFT ที่ `journalEntryId` ว่าง และ where ของ UPDATE มี `journalEntryId: null` ด้วย ◂
+//   H0.1 ▸ CR19: คำปฏิเสธคืนตัวเลขจริงที่อ่านใต้ล็อก (actual) ให้ approveRun ลงประวัติ ◂
+export type ApproveExpect = { totalNetSatang: number; itemCount: number; totalGrossSatang?: number; itemsDigest?: string };
+const DIGEST_RE = /^[0-9a-f]{64}$/;
+type ClaimResult = { code: "OK" } | { code: "NOT_FOUND" } | RunRefused;
+async function claimApproveExpected(ctx: Ctx, runId: string, expect: ApproveExpect | undefined): Promise<ClaimResult> {
   const scope = { tenantId: ctx.tenantId, systemId: ctx.systemId };
-  return tenantDb(ctx).$transaction(async (t) => {
+  return tenantDb(ctx).$transaction(async (t): Promise<ClaimResult> => {
     const tx = t as unknown as Prisma.TransactionClient;
     const cur = await lockRunRow(tx, ctx, runId);
-    if (!cur) return "NOT_FOUND" as const;
-    if (cur.status !== "DRAFT") return "NOT_DRAFT" as const;
-    const itemCount = await tx.hrPayrollItem.count({ where: { ...scope, runId } });
-    if (cur.totalNetSatang !== expect.totalNetSatang || itemCount !== expect.itemCount) return "STALE" as const;
-    if (gross !== undefined && cur.totalGrossSatang !== gross) return "STALE" as const;
+    if (!cur) return { code: "NOT_FOUND" };
+    if (cur.status !== "DRAFT") return { code: "NOT_DRAFT", actual: await runActual(tx, ctx, cur) };
+    if (cur.journalEntryId) return { code: "DRAFT_HAS_JV", actual: await runActual(tx, ctx, cur) };
+    let guard: { totalNetSatang?: number; totalGrossSatang?: number } = {};
+    if (expect !== undefined) {
+      const actual = await runActual(tx, ctx, cur);
+      const gross = expect.totalGrossSatang;
+      const digest = expect.itemsDigest;
+      const stale =
+        !Number.isSafeInteger(expect.totalNetSatang) ||
+        !Number.isSafeInteger(expect.itemCount) ||
+        (gross !== undefined && !Number.isSafeInteger(gross)) ||
+        (digest !== undefined && !(typeof digest === "string" && DIGEST_RE.test(digest))) ||
+        actual.net !== expect.totalNetSatang ||
+        actual.items !== expect.itemCount ||
+        (gross !== undefined && actual.gross !== gross) ||
+        (digest !== undefined && actual.digest !== digest);
+      if (stale) return { code: "STALE", actual };
+      guard = { totalNetSatang: expect.totalNetSatang, ...(gross !== undefined ? { totalGrossSatang: gross } : {}) };
+    }
     const claim = await tx.hrPayrollRun.updateMany({
-      where: { ...scope, id: runId, status: "DRAFT", totalNetSatang: expect.totalNetSatang, ...(gross !== undefined ? { totalGrossSatang: gross } : {}) },
+      where: { ...scope, id: runId, status: "DRAFT", journalEntryId: null, ...guard },
       data: { status: "APPROVED" },
     });
-    return claim.count === 1 ? ("OK" as const) : ("NOT_DRAFT" as const);
+    return claim.count === 1 ? { code: "OK" } : { code: "NOT_DRAFT", actual: await runActual(tx, ctx, cur) };
   }, { maxWait: 20_000, timeout: 60_000 });
 }
 // ◂ H0.1
@@ -673,23 +724,32 @@ async function claimApproveExpected(ctx: Ctx, runId: string, expect: ApproveExpe
 export async function approveRun(
   ctx: Ctx,
   runId: string,
-  // H0.1 ▸ R4: "อนุมัติเฉพาะตัวเลขที่เห็น" — หน้าเว็บส่งยอดจ่ายสุทธิรวม + จำนวนคน (+ เงินเดือนรวม · CR11) ของแถวที่แสดงมาเสมอ ·
+  // H0.1 ▸ R4: "อนุมัติเฉพาะตัวเลขที่เห็น" — หน้าเว็บส่งยอดจ่ายสุทธิรวม + จำนวนคน (+ เงินเดือนรวม · CR11 · ลายนิ้วมือ · CR16) ของแถวที่แสดงมาเสมอ ·
   //   ไม่ส่ง = ทางเดิม (ผู้เรียกเก่า/สคริปต์) · `code` = เหตุที่ไม่สำเร็จแบบอ่านด้วยโปรแกรม ⇒ action แปลงเป็นข้อความคงที่ (CR12 — ไม่ส่ง note ดิบถึงจอ) ◂
   expect?: ApproveExpect,
+  // H0.1 ▸ CR19: ผู้กดใน session — ใช้ลงประวัติคำปฏิเสธ `hr.payroll.approve.refused` (ไม่ส่ง = actorId null) ◂
+  actor?: PayrollActor,
 ): Promise<{ ok: boolean; note: string; code?: ApproveFailCode }> {
   const db = tenantDb(ctx);
-  if (expect !== undefined) {
-    const claimed = await claimApproveExpected(ctx, runId, expect);
-    if (claimed === "NOT_FOUND") return { ok: false, note: RUN_NOT_FOUND, code: "NOT_FOUND" };
-    if (claimed === "NOT_DRAFT") return { ok: false, note: APPROVE_NOT_DRAFT, code: "NOT_DRAFT" };
-    if (claimed === "STALE") return { ok: false, note: APPROVE_STALE, code: "STALE" };
-  } else {
-    // claim อะตอมมิก DRAFT→APPROVED — กันอนุมัติซ้ำ/ลงบัญชีเบิ้ล
-    const claim = await db.hrPayrollRun.updateMany({
-      where: { id: runId, status: "DRAFT" },
-      data: { status: "APPROVED" },
-    });
-    if (claim.count === 0) return { ok: false, note: APPROVE_NOT_DRAFT, code: "NOT_DRAFT" };
+  const claimed = await claimApproveExpected(ctx, runId, expect);
+  if (claimed.code === "NOT_FOUND") {
+    // ทางเดิม (ไม่มี expect) ตอบแบบเดิม: หาไม่เจอ = "ไม่ใช่ร่าง"
+    return expect !== undefined ? { ok: false, note: RUN_NOT_FOUND, code: "NOT_FOUND" } : { ok: false, note: APPROVE_NOT_DRAFT, code: "NOT_DRAFT" };
+  }
+  if (claimed.code !== "OK") {
+    const seen: RunSeen =
+      expect === undefined
+        ? null
+        : {
+            net: expect.totalNetSatang,
+            items: expect.itemCount,
+            ...(expect.totalGrossSatang !== undefined ? { gross: expect.totalGrossSatang } : {}),
+            ...(expect.itemsDigest !== undefined ? { digest: expect.itemsDigest } : {}),
+          };
+    await auditRefusal(ctx, actor, "hr.payroll.approve.refused", runId, claimed, seen); // CR19
+    if (claimed.code === "STALE") return { ok: false, note: APPROVE_STALE, code: "STALE" };
+    if (claimed.code === "DRAFT_HAS_JV") return { ok: false, note: APPROVE_DRAFT_HAS_JV, code: "DRAFT_HAS_JV" };
+    return { ok: false, note: APPROVE_NOT_DRAFT, code: "NOT_DRAFT" };
   }
 
   const run = await db.hrPayrollRun.findFirst({ where: { id: runId } });
@@ -816,7 +876,8 @@ export function listRuns(ctx: Ctx, take = 50) {
     take,
     include: {
       items: {
-        select: { id: true, employeeId: true, grossSatang: true, netSatang: true },
+        // H0.1 ▸ CR16: + คอลัมน์ของลายนิ้วมือ (เพิ่ม/หัก/ปสส. 2 ช่อง/ภาษี) ⇒ หน้ารอบจ่ายคำนวณ itemsDigest ฝั่ง server ส่งไปกับปุ่มอนุมัติ ◂
+        select: { id: true, ...PAYROLL_DIGEST_SELECT },
         orderBy: { id: "asc" },
       },
     },
