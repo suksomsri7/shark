@@ -140,8 +140,8 @@ export function ReceiveCard({ target, meta, onMove, locationId, me, invHref }: S
           )}
           <ItemPicker target={target} kind="receive" data-testid="pos-stock-receive-picker" placeholder={t("receive.searchPlaceholder")} onPick={add} />
           {rows.length > 0 ? (
-            <div className="rounded-[12px] border" data-testid="pos-stock-receive-rows">
-              <div className="hidden md:grid-cols-[minmax(0,1fr)_80px_120px_100px_200px_44px] gap-3 border-b bg-[color:var(--color-surface-2)] px-4 py-2.5 text-[11.5px] font-semibold text-[color:var(--color-muted)] md:grid">
+            <div className="@container w-full min-w-0 rounded-[12px] border" data-testid="pos-stock-receive-rows">
+              <div className="hidden @min-[608px]:grid-cols-[minmax(140px,1fr)_56px_84px_72px_150px_40px] gap-2 border-b bg-[color:var(--color-surface-2)] px-3 py-2.5 text-[11.5px] font-semibold text-[color:var(--color-muted)] @min-[608px]:grid">
                 <span>{t("receive.colItem")}</span>
                 <span className="text-center">{t("receive.colQty")}</span>
                 <span className="text-right">{t("receive.colCost")}</span>
@@ -152,8 +152,8 @@ export function ReceiveCard({ target, meta, onMove, locationId, me, invHref }: S
               {rows.map((r) => {
                 const lt = lineTotal(r);
                 return (
-                  <div key={r.rid} className="grid grid-cols-2 gap-2 border-b px-4 py-3 last:border-0 md:grid-cols-[minmax(0,1fr)_80px_120px_100px_200px_44px] md:items-center md:gap-3" data-testid={`pos-stock-receive-row-${r.item.id}`}>
-                    <div className="col-span-2 flex min-w-0 flex-col gap-0.5 overflow-hidden md:col-span-1">
+                  <div key={r.rid} className="grid w-full min-w-0 grid-cols-2 gap-2 border-b px-3 py-3 last:border-0 @min-[608px]:grid-cols-[minmax(140px,1fr)_56px_84px_72px_150px_40px] @min-[608px]:items-center" data-testid={`pos-stock-receive-row-${r.item.id}`}>
+                    <div className="col-span-2 flex min-w-0 flex-col gap-0.5 overflow-hidden @min-[608px]:col-span-1">
                       <span className="block min-w-0">
                         <b className="block truncate text-sm font-semibold">{r.item.name}</b>
                         <span className="block truncate text-[11.5px] text-[color:var(--color-muted)]">
@@ -162,15 +162,15 @@ export function ReceiveCard({ target, meta, onMove, locationId, me, invHref }: S
                       </span>
                       <input
                         data-testid={`pos-stock-receive-note-${r.item.id}`}
-                        className="hidden w-full bg-transparent text-[11.5px] outline-none placeholder:text-[color:var(--color-muted)] md:block"
+                        className="hidden w-full bg-transparent text-[11.5px] outline-none placeholder:text-[color:var(--color-muted)] @min-[608px]:block"
                         placeholder={t("receive.notePlaceholder")}
                         maxLength={STOCK_COUNT_NOTE_MAX}
                         value={r.note}
                         onChange={(e) => patch(r.rid, { note: e.target.value })}
                       />
                     </div>
-                    <label className="flex flex-col gap-1 text-[11px] text-[color:var(--color-muted)] md:block">
-                      <span className="md:hidden">{t("receive.colQty")}</span>
+                    <label className="flex flex-col gap-1 text-[11px] text-[color:var(--color-muted)] @min-[608px]:block">
+                      <span className="@min-[608px]:hidden">{t("receive.colQty")}</span>
                       <input
                         data-testid={`pos-stock-receive-qty-${r.item.id}`}
                         inputMode="numeric"
@@ -179,8 +179,8 @@ export function ReceiveCard({ target, meta, onMove, locationId, me, invHref }: S
                         onChange={(e) => patch(r.rid, { qty: e.target.value })}
                       />
                     </label>
-                    <label className="flex flex-col gap-1 text-[11px] text-[color:var(--color-muted)] md:block">
-                      <span className="md:hidden">{t("receive.colCost")}</span>
+                    <label className="flex flex-col gap-1 text-[11px] text-[color:var(--color-muted)] @min-[608px]:block">
+                      <span className="@min-[608px]:hidden">{t("receive.colCost")}</span>
                       <input
                         data-testid={`pos-stock-receive-cost-${r.item.id}`}
                         inputMode="decimal"
@@ -190,11 +190,11 @@ export function ReceiveCard({ target, meta, onMove, locationId, me, invHref }: S
                         onChange={(e) => patch(r.rid, { cost: e.target.value })}
                       />
                     </label>
-                    <span className="hidden text-right text-sm font-semibold tabular-nums md:block">{lt !== null ? formatBaht(lt) : "—"}</span>
-                    <div className="col-span-2 grid grid-cols-2 gap-2 md:col-span-1 md:grid-cols-1 md:gap-1">
+                    <span className="hidden text-right text-sm font-semibold tabular-nums @min-[608px]:block">{lt !== null ? formatBaht(lt) : "—"}</span>
+                    <div className="col-span-2 grid grid-cols-2 gap-2 @min-[608px]:col-span-1 @min-[608px]:grid-cols-1 @min-[608px]:gap-1">
                       <input
                         data-testid={`pos-stock-receive-lot-${r.item.id}`}
-                        className="input h-11 md:h-9"
+                        className="input h-11 @min-[608px]:h-9"
                         placeholder={t("receive.lotPlaceholder")}
                         maxLength={64}
                         value={r.lot}
@@ -204,14 +204,14 @@ export function ReceiveCard({ target, meta, onMove, locationId, me, invHref }: S
                         data-testid={`pos-stock-receive-expiry-${r.item.id}`}
                         type="date"
                         aria-label={t("receive.expiry")}
-                        className="input h-11 md:h-9"
+                        className="input h-11 @min-[608px]:h-9"
                         value={r.expiry}
                         onChange={(e) => patch(r.rid, { expiry: e.target.value })}
                       />
                     </div>
                     <input
                       data-testid={`pos-stock-receive-mnote-${r.item.id}`}
-                      className="input col-span-2 h-11 md:hidden"
+                      className="input col-span-2 h-11 @min-[608px]:hidden"
                       placeholder={t("receive.notePlaceholder")}
                       maxLength={STOCK_COUNT_NOTE_MAX}
                       value={r.note}
@@ -222,13 +222,13 @@ export function ReceiveCard({ target, meta, onMove, locationId, me, invHref }: S
                       data-testid={`pos-stock-receive-remove-${r.item.id}`}
                       aria-label={t("remove")}
                       disabled={r.saving}
-                      className="col-span-2 grid h-11 place-items-center rounded-[10px] border text-[color:var(--color-muted)] md:col-span-1 md:w-11"
+                      className="col-span-2 grid h-11 place-items-center rounded-[10px] border text-[color:var(--color-muted)] @min-[608px]:col-span-1 @min-[608px]:w-10"
                       onClick={() => setRows((rs) => rs.filter((x) => x.rid !== r.rid))}
                     >
                       <StockIcon name="trash" size={16} />
                     </button>
                     {r.error && (
-                      <p role="alert" data-testid={`pos-stock-receive-error-${r.item.id}`} className="col-span-2 text-xs font-semibold text-[color:var(--color-danger)] md:col-span-6">
+                      <p role="alert" data-testid={`pos-stock-receive-error-${r.item.id}`} className="col-span-2 text-xs font-semibold text-[color:var(--color-danger)] @min-[608px]:col-span-6">
                         {r.error}
                       </p>
                     )}
