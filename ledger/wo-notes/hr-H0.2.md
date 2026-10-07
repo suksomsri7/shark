@@ -1,0 +1,63 @@
+# H0.2 — builder notes (run integrity: leavers · closed periods · negative net · bogus periods)
+
+Worktree `/root/projects/shark-hr-b` · branch `wip/pos-hr-h0.2` = `origin/session/hr` 934e91e0 (contains H0.1 843bde83 + H0.3 ea6616c3; the SHA 1a0ad7a1 named in the task does not exist on origin — 934e91e0 is the tip) + merge of `origin/wip/pos-hr-h0.2-oracle` 6984b9f1 (no conflict). DB = QC4 (`ep-frosty-lab`, `grep -c` = 2) via `iso.sh → qc4.sh → with-gate-lock.sh` only. `scripts/qc-hr-h0.2.mts` not edited. No schema change. Brief: §8 controller rulings appended verbatim to `ledger/hr-briefs/hr-brief-H0.2.md`.
+
+## Status
+- [x] base check: oracle forced on session/hr before any change = 18/52 (red for the brief's reasons)
+- [x] build (one pass) → oracle forced 52/52 ×2 + unforced 52/52 · regressions = baseline · fitness ×2 · typecheck 0
+- [x] H0.1 oracle: red beyond S7.5 because of the H0.2 contract → ORACLE-EDIT request below (proved with a scratch copy: 66/67, only S7.5 red)
+- next: controller re-run → ORACLE-EDITs on `qc-hr-h0.1.mts` (S7.5 + 3 fixtures) → reviewer/hunter → CONTROLLER-RUN screenshot
+
+## Rule → file:line (on this branch)
+| rule | where | how |
+|---|---|---|
+| R1 who is in a run (D1) | `payroll.ts:366-428` (`periodBounds` :376, `periodMembership` :384, `withRunFlags` :422) · `buildRunRows` :432 | period = calendar month of periodKey, `YYYY-MM-DD` string compare against `@db.Date` columns (no time zone). In iff (a) start ≤ lastDay, (b) end ≥ firstDay, (c) active or end set. Excluded ⇒ no item and their adjustments are not bound (filtered like H4). Start > firstDay or end < lastDay ⇒ full month + `snapshot.flags=["PARTIAL_MONTH"]`. No flag ⇒ no `flags` key (unflagged items byte-identical to before). Profile without an employee row ⇒ included as before |
+| R1 reader | `runExclusions` `payroll.ts:1106` | same `periodMembership` over this system's profiles, scoped tenant + system; invalid period ⇒ `[]` |
+| R1 create/recompute agree | `buildRunRows` used by `createPayrollRun` :547 and `rebuildDraftRun` :733 | all profiles excluded ⇒ create throws / recompute refuses "ไม่มีพนักงานที่ต้องจ่ายในงวด … ออกก่อนงวดหรือเริ่มงานหลังงวด" (not the misleading "no profile") |
+| R2 manual PERIOD_CLOSED (D5) | `requestAdjustment` `payroll.ts:135-141` | after the employee check, before any salary-dependent read: run of any status in that period ⇒ `{ok:false, code:"PERIOD_CLOSED"}`, text byte-identical to the CRM path |
+| R2 move on approve | `decideAdjustment` `payroll.ts:198-232` | generalised to every row (manual + CRM). APPROVED now runs in one tx under the period advisory lock (same key as create), re-reads runs under it, moves to `nextRunlessPeriod`, locks the destination period too (always later ⇒ ascending order, no cycle) and re-checks it has no run. Same `movedFrom/movedTo` + reason; the action's audit (`hr.payadjust.approve` before/after periodKey) unchanged. REJECTED path unchanged (no lock, no move) |
+| R2 stranded reader | `strandedAdjustments` `payroll.ts:1131` | manual + CRM, PENDING/APPROVED, `runId NULL`, period has a run (any status); `strandedCommissionAdjustments` untouched (hash S5.3 green) |
+| R2 move action (builder proposal) | `moveStrandedAdjustment` `payroll.ts:1150` · `moveStrandedAdjustmentAction` `payroll-actions.ts:366` | sibling of `moveCommissionAdjustmentPeriod` for **manual rows only** (CRM rows are moved by the CRM sweeper; UI says so). tx: lock source period → re-read runs → next run-less → lock destination → re-check → guarded `updateMany` (runId null · crmCommissionId null · source period · PENDING/APPROVED, count 1). Non-owner cannot move a row of the employee linked to themselves (same rule as delete). Audit `hr.payadjust.move` before/after periodKey. Permission `hr.payadjust.approve` + `canViewPayroll` |
+| R3 flag (D6) | `withRunFlags` `payroll.ts:422` | `netSatang < 0` ⇒ `"NEGATIVE_NET"`; `computeItem` untouched (S5.1 hash green) |
+| R3 approve refusal | `claimApproveExpected` `payroll.ts:905-916` · text `approveNegativeNetText` :867 · `approveRun` | inside the existing guarded claim tx, after NOT_DRAFT / DRAFT_HAS_JV / STALE: count items with net < 0 under the run row lock ⇒ `{ok:false, code:"NEGATIVE_NET", note:"มีพนักงาน N คนที่ยอดสุทธิติดลบ (รายการหักมากกว่าเงินได้) — แก้รายการหักแล้วกด 'คำนวณใหม่'"}`, with and without expect. The claim `updateMany` also carries `items: { none: { netSatang: { lt: 0 } } }`. Refusal audited `hr.payroll.approve.refused` (CR19 shape + `negative`). Action passes this fixed text through (`payroll-actions.ts:161`) |
+| R4 periods/dates (D12) | `createPayrollRun` `payroll.ts:547-552` · `PayrollInputError` :531 · `PERIOD_RE` exported :90 · `createPayrollRunAction` `payroll-actions.ts:74-102` | service: trimmed `PERIOD_RE` + finite `payDate` before the tx (Thai `PayrollInputError`, no row). Duplicate/no-member errors are `PayrollInputError` too (message unchanged ⇒ X6.4, qc-payroll dup check). Action `(prev, formData) → {ok, reason}`: `PERIOD_RE`, real calendar date (`2026-02-31`, `abc` refused), `ForbiddenError` → Thai, `PayrollInputError` → its fixed message, anything else rethrows (no raw error text) |
+| CR-H0.2-1 cancel in DRAFT | `cancelAdjustment` `payroll.ts:250-277` · `cancelBoundDraftAdjustment` :767 · `rebuildDraftRun` :733 (shared with `recomputeDraftRun` :819) | bound to APPROVED/PAID/REVERSED (or DRAFT with JV) ⇒ new text "รายการนี้อยู่ในรอบจ่ายที่อนุมัติแล้ว ลบไม่ได้ (ใช้กลับรายการรอบจ่ายแทน)". Bound to a clean DRAFT + actor ⇒ self-row rules as before, then one tx: period lock → run `FOR UPDATE` still DRAFT/no JV → guarded `deleteMany` (id · runId · status, count 1) → the recompute internals (unbind → delete items → `buildRunRows` → items → totals + note `คำนวณใหม่ <bkk time>` → rebind with count). Audits `hr.payadjust.delete` (+runId) and `hr.payroll.recompute` (before/after + cause) |
+| UI | `payroll-ui.tsx:53-66` labels/texts · :111-117 reads (after the `canViewPayroll` return) · :253 delete shown for DRAFT-bound rows · :268 `<CreateRunForm>` · :275-318 exclusion banner per DRAFT run + stranded list · :322-340 run row flag lines · :398-412 slip chips red "ติดลบ" / "ต้องตรวจ" · `RunRowActions.tsx:103-155` `CreateRunForm`, `StrandedMoveButton` | tokens only (border, `--color-surface-2`, `--color-danger`, `--color-muted`), 44 px move button, testIds `hr-payroll-run-<p>-exclusions/-negative/-partial`, `hr-payroll-stranded`, `hr-payroll-stranded-<id>-move`, `hr-payroll-create(-error)`, `hr-payroll-item-<emp>-negative`. `listRuns` items now also select `snapshotJson` (`payroll.ts:1082`, server only) |
+
+## Results (from /root/projects/shark-hr-b, wrapper `iso.sh → qc4.sh → with-gate-lock.sh`)
+- base (session/hr, before build) forced: `ผ่าน 18/52 (QC_FORCE)` exit 1
+- `qc-hr-h0.2` forced run 1: `ผ่าน 52/52 (QC_FORCE)` exit 0 · forced run 2: `52/52 (QC_FORCE)` exit 0 · unforced: `ผ่าน 52/52` `failed []` exit 0 (→ `hr-H0.2-green.txt`) · Z1 residue green every run
+- `qc-hr-h0.1` forced ×1: `passed 52/67` exit 1 — see ORACLE-EDIT (S7.3 fixture throws PERIOD_CLOSED ⇒ harness crash, so S7.3/S7.4/S7.5/S7.6/S7.8/X7.1/X7.2/S8.1–S8.6/X8.1 "not reached"; X6.5 `rows []`). Z1 green
+- scratch copy of `qc-hr-h0.1` with the 3 fixture edits below (not committed, deleted): `passed 66/67` — only S7.5 red, exactly as CR-H0.2-1 expects: `cancel OK / NO:ไม่พบรายการ · withdraw=false move=false bound=false · rec OK … totals [4865000,…]→[4840000,…]` (the BONUS 25,000 left the draft and it was recomputed)
+- regressions (QC_FORCE, exit 0 each) = baseline: qc-hr 9/9 · qc-hr-attendance 31/31 · qc-hr-roster 24/24 · qc-hr-leave-booking 14/14 · qc-hr-payadjust 27/27 · qc-payroll 19/19 · qc-payroll-reverse 14/14 · qc-booking-hours-hr 13/13 · qc-crm-c3.3 90/90 · qc-approval 16/16 · qc-approval-wiring 7/7 · qc-hf-hr-privacy (last, alone) 194/194
+- fitness: `bash scripts/iso.sh pnpm fitness` → `{"total":33,"passed":33}` exit 0 · `env -u DATABASE_URL` → same, exit 0
+- typecheck: `timeout -k 10 1200 env NODE_OPTIONS=--max-old-space-size=5632 ISO_MEM=6500M bash scripts/iso.sh bash scripts/with-gate-lock.sh pnpm typecheck` 23:08–23:18 UTC → exit 0 (one attempt)
+- static guards: computeItem / payroll-rules.ts / strandedCommissionAdjustments hashes = base; CRM C3.3 entry block + markPaid block hashes unchanged vs session/hr
+
+## ORACLE-EDIT requests (`scripts/qc-hr-h0.1.mts`, controller)
+1. **S7.5** — as CR-H0.2-1 announces (DRAFT-bound cancel with actor succeeds + recompute; APPROVED-bound refused with the new text). Note decision 1: the *no-actor* call (`cu2`) on a DRAFT-bound row is refused with "รายการนี้อยู่ในรอบจ่ายร่าง — ลบได้จากหน้าเงินเดือนเท่านั้น (ระบบจะคำนวณรอบร่างใหม่ให้)".
+2. **Fixtures that add rows to a period that already has a run** — impossible through the product after H0.2 R2 (S2.1 of the H0.2 oracle requires the refusal for a DRAFT period). Hunks (proved: 66/67):
+   - add next to `adjApproved` (:326): `async function adjApprovedDirect(ctx, employeeId, periodKey, kind, satang)` = `P.hrPayAdjustment.create({ data: { tenantId: ctx.tenantId, systemId: ctx.systemId, employeeId, periodKey, kind, amountSatang: satang, status: "APPROVED", decidedById: OWNER_UID, decidedAt: new Date(), requestedById: "qc-h01-requester" } })` (same pattern as the S2 "late" row at :566)
+   - S7.3 :1007 and S8.2 :1245-1246: `adjApproved(` → `adjApprovedDirect(`
+   - X6 setup :760-767: move `const runId = await mkRun(cHX, period);` below the `if (s === 4) { … requestAdjustment … }` loop (PENDING rows filed before the run; deciding them now moves them to the next run-less period — `runId` null, so X6.5 holds)
+
+## Decisions for the controller
+1. **System-path cancel stays unbound-only** (deviation from the letter of CR-H0.2-1): `cancelAdjustment` without `actor` (hr facade / CRM) refuses DRAFT-bound rows. Reasons: the facade contract (`hr/index.ts`: "ลบรายการที่ยังไม่เข้ารอบจ่าย") and no user to attribute the recompute to; and the literal ruling turns `qc-hr-payadjust` RN-8 red (it cancels a DRAFT-bound row with no actor and expects `ok:false`), which would break the 27/27 baseline. The UI path always sends the actor, so the owner flow "แก้รายการหักแล้วกด 'คำนวณใหม่'" works. To follow the letter instead: drop the `if (!actor)` line at `payroll.ts:266` and ORACLE-EDIT RN-8.
+2. DRAFT with an orphan `journalEntryId`: bound rows are refused with the "อนุมัติแล้ว" text (no recompute with a JV).
+3. Non-payroll viewers who hit PERIOD_CLOSED get the existing generic refusal (`adjustmentReplyForViewer` hides any reason containing "เงินเดือน"); payroll viewers see the CRM text. `privacy.ts` not touched.
+4. Approve refusal order under the lock: NOT_FOUND → NOT_DRAFT → DRAFT_HAS_JV → STALE → NEGATIVE_NET.
+5. `PayrollInputError.message` is returned by `createPayrollRunAction` — always a fixed Thai text written in `payroll.ts` (never a DB error).
+6. Exclusion banner is shown for DRAFT runs only (for APPROVED/PAID runs it would describe today's employee data, not the run's).
+7. `strandedAdjustments` / `runExclusions` / `moveStrandedAdjustment` are not exported from `hr/index.ts` (brief default).
+
+## Who drops out of runs now (R1), who moves, texts
+- Excluded from a period's run (no item, adjustments stay unbound, listed above the DRAFT run): `ENDED_BEFORE` endDate < first day · `STARTS_AFTER` startDate > last day · `REMOVED_NO_END_DATE` active=false with no endDate. Included but flagged `PARTIAL_MONTH` (full month, no proration — HQ6): start after the 1st or end before the last day.
+- Rows that move automatically: any PENDING row (manual or CRM) approved after its period got a run of any status → next run-less month (`movedFrom/movedTo`, audit). REJECTED never moves. Stranded manual rows can be moved by hand ("ย้ายไปงวดถัดไป").
+- Approve refusal text: `มีพนักงาน N คนที่ยอดสุทธิติดลบ (รายการหักมากกว่าเงินได้) — แก้รายการหักแล้วกด 'คำนวณใหม่'`.
+- Access: nobody gains access to data. New action `moveStrandedAdjustmentAction` = same audience as approving an adjustment. Deleting an adjustment in a DRAFT run = same audience as before for unbound rows (hr.payadjust.approve + payroll viewer, self-row rule).
+
+## DEFERRED
+- CONTROLLER-RUN screenshot: a DRAFT run with the exclusion banner + a NEGATIVE_NET row (1440 / 390).
+
+## Temp data left
+- none (Z1 green on every oracle run; scratch oracle copy deleted, not committed).

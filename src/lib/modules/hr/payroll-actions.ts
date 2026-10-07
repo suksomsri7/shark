@@ -14,6 +14,9 @@ import {
   deleteDraftRun,
   recomputeDraftRun,
   markPaid,
+  moveStrandedAdjustment,
+  PayrollInputError,
+  PERIOD_RE,
   requestAdjustment,
   reverseRun,
   setSalaryProfile,
@@ -63,17 +66,36 @@ export async function setSalaryProfileAction(formData: FormData) {
 }
 
 // ── สร้างรอบจ่าย ──
-export async function createPayrollRunAction(formData: FormData) {
+// H0.2 ▸ R4 (D12): งวดตรวจด้วย PERIOD_RE ตัวเดียวกับ service (เดือน 01–12) · วันที่จ่ายต้องเป็นวันจริงตามปฏิทิน (2026-02-31 ไม่ปัดเป็น 3 มี.ค.) ·
+//   คืน { ok, reason } ให้ฟอร์ม (CreateRunForm) แสดงเหตุผล — งวดผิด/วันผิด/งวดซ้ำ/ไม่มีใครต้องจ่าย ไม่เป็นหน้า error อีก ·
+//   reason = ข้อความคงที่ของไฟล์นี้หรือของ PayrollInputError (ข้อความไทยที่ service เขียนเอง) เท่านั้น · ไม่มีสิทธิ์ = ข้อความในฟอร์ม ◂
+const PERIOD_INVALID_FORM_TH = "เลือกงวด (ปี-เดือน) ให้ถูกต้อง — เดือนต้องอยู่ระหว่าง 01–12";
+const PAYDATE_INVALID_FORM_TH = "วันที่จ่ายไม่ถูกต้อง — เลือกวันที่จ่ายใหม่";
+function payDateFromForm(v: string): Date | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return null;
+  const d = new Date(`${v}T00:00:00Z`);
+  return Number.isFinite(d.getTime()) && d.toISOString().slice(0, 10) === v ? d : null;
+}
+export async function createPayrollRunAction(_prev: { ok: boolean; reason?: string } | null, formData: FormData): Promise<{ ok: boolean; reason?: string }> {
   const auth = await requireTenant();
-  assertHrCan(auth, "hr.payroll.create");
-  const systemId = String(formData.get("systemId") ?? "");
-  const periodKey = String(formData.get("periodKey") ?? "").trim();
-  const payDateStr = String(formData.get("payDate") ?? "").trim();
-  if (!systemId || !/^\d{4}-\d{2}$/.test(periodKey) || !payDateStr) return;
-
-  const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
-  await createPayrollRun(ctx, { periodKey, payDate: new Date(`${payDateStr}T00:00:00Z`) });
-  revalidate(systemId);
+  try {
+    assertHrCan(auth, "hr.payroll.create");
+    const systemId = String(formData.get("systemId") ?? "");
+    const periodKey = String(formData.get("periodKey") ?? "").trim();
+    const payDateStr = String(formData.get("payDate") ?? "").trim();
+    if (!systemId) return { ok: false, reason: BAD_REQUEST_TH };
+    if (!PERIOD_RE.test(periodKey)) return { ok: false, reason: PERIOD_INVALID_FORM_TH };
+    const payDate = payDateFromForm(payDateStr);
+    if (!payDate) return { ok: false, reason: PAYDATE_INVALID_FORM_TH };
+    const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
+    await createPayrollRun(ctx, { periodKey, payDate });
+    revalidate(systemId);
+    return { ok: true };
+  } catch (e) {
+    if (e instanceof ForbiddenError) return { ok: false, reason: FORBIDDEN_TH };
+    if (e instanceof PayrollInputError) return { ok: false, reason: e.message };
+    throw e;
+  }
 }
 
 // H0.1 ▸ CR3: ตัวเลขที่ผู้อนุมัติเห็นในแถว (hidden `expectNet` = ยอดจ่ายสุทธิรวม · `expectItems` = จำนวนคน) ◂
@@ -136,7 +158,9 @@ export async function approvePayrollRunAction(formData: FormData): Promise<{ ok:
           ? APPROVE_POST_FAILED_TH
           : res.code === "DRAFT_HAS_JV"
             ? APPROVE_DRAFT_HAS_JV_TH
-            : APPROVE_NOT_DRAFT_TH;
+            : res.code === "NEGATIVE_NET"
+              ? res.note // H0.2 ▸ R3: ข้อความคงที่ของ service (approveNegativeNetText · N คน) — ไม่ใช่ข้อความดิบของ error ◂
+              : APPROVE_NOT_DRAFT_TH;
     return { ok: false, reason };
   } catch (e) {
     if (e instanceof ForbiddenError) return { ok: false, reason: FORBIDDEN_TH };
@@ -330,6 +354,25 @@ export async function recomputeDraftRunAction(formData: FormData): Promise<{ ok:
     const res = await recomputeDraftRun({ tenantId: auth.active.tenantId, systemId }, runId, { userId: auth.active.userId, isOwner: auth.active.role === "OWNER" });
     revalidate(systemId);
     return res.ok ? { ok: true } : { ok: false, reason: res.reason };
+  } catch (e) {
+    if (e instanceof ForbiddenError) return { ok: false, reason: FORBIDDEN_TH };
+    throw e;
+  }
+}
+
+// ─────────── H0.2 ▸ R2: "ย้ายไปงวดถัดไป" ของรายการค้าง (งวดมีรอบจ่ายแล้ว · รายการปกติ) ───────────
+//   สิทธิ์เดียวกับอนุมัติรายการ (hr.payadjust.approve + ด่าน canViewPayroll) · ผู้ทำ = ผู้ใช้ใน session · คืน { ok, reason } ให้แถวแสดง ·
+//   ประวัติ `hr.payadjust.move` เขียนใน service · ไม่มีสิทธิ์ = ข้อความในแถว · ข้อผิดพลาดอื่น throw (ไม่คืนข้อความดิบ) ◂
+export async function moveStrandedAdjustmentAction(formData: FormData): Promise<{ ok: boolean; reason?: string }> {
+  const auth = await requireTenant();
+  try {
+    assertHrCan(auth, "hr.payadjust.approve");
+    const systemId = String(formData.get("systemId") ?? "");
+    const id = String(formData.get("id") ?? "");
+    if (!systemId || !id) return { ok: false, reason: BAD_REQUEST_TH };
+    const res = await moveStrandedAdjustment({ tenantId: auth.active.tenantId, systemId }, id, { userId: auth.active.userId, isOwner: auth.active.role === "OWNER" });
+    revalidatePath(`/app/sys/${systemId}/hr/payroll`);
+    return res.ok ? { ok: true, reason: `ย้ายไปงวด ${res.movedTo} แล้ว` } : { ok: false, reason: res.reason };
   } catch (e) {
     if (e instanceof ForbiddenError) return { ok: false, reason: FORBIDDEN_TH };
     throw e;
