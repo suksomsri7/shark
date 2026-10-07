@@ -12,7 +12,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Any = any;
 import { AsyncLocalStorage } from "node:async_hooks";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -257,6 +257,111 @@ try {
     const r = await call(() => TR.saveLinkHosts({ tenantId: T, systemId: v1, actorUserId: uO }, owner, { hosts: DOM_L }));
     const v1crm = await crmOf(v1);
     chk("F.3", !r.ok && /CrmV2Disabled/.test(String(r.err?.name ?? "")) && v1crm?.tracking?.linkHosts === undefined, `uiVersion-1 system refuses (CrmV2DisabledError), nothing written → ${r.err?.name ?? r.code}`);
+  });
+
+  // ═════════ G · round 2 (review RV-1 · RV-2 · RV-3 · RV-5) ═════════
+  await sub("G", async () => {
+    // RV-1 — a non-boolean `active` must never switch a blocked link on
+    await TR.saveLinkHosts(ctx, owner, { hosts: DOM_L });
+    const g = await TR.createLink(ctx, owner, { url: `https://${DOM_L}/g`, name: "g", code: `c61g1${rand}` });
+    await TR.saveLinkHosts(ctx, owner, { hosts: "" });
+    const tries: string[] = [];
+    let rv1ok = true;
+    for (const v of [1, "yes", "true", null, {}]) {
+      await P.crmTrackedLink.update({ where: { id: g.id }, data: { active: false } });
+      const r = await call(() => TR.updateLink(ctx, owner, g.id, { active: v as Any }));
+      const row = await P.crmTrackedLink.findFirst({ where: { id: g.id }, select: { active: true } });
+      if (r.ok || r.code !== "VALIDATION" || !isThai(r.msg) || row?.active !== false) rv1ok = false;
+      tries.push(`${j(v)}:${r.ok ? "ACCEPTED" : r.code} active=${row?.active}`);
+    }
+    const tTrue = await call(() => TR.updateLink(ctx, owner, g.id, { active: true }));
+    const tFalse = await call(() => TR.updateLink(ctx, owner, g.id, { active: false }));
+    chk("G.1", rv1ok && !tTrue.ok && tTrue.code === "VALIDATION" && tFalse.ok, `RV-1: active 1/"yes"/"true"/null/{} refused (VALIDATION, Thai, row stays off) · true on a blocked link refused · false allowed → ${tries.join(" · ")} · true:${tTrue.ok ? "ok" : tTrue.code} false:${tFalse.ok ? "ok" : tFalse.code}`);
+
+    // RV-2 — the platform's own redirectors are never destinations (any list, any spelling)
+    const prev = process.env.APP_URL;
+    try {
+      process.env.APP_URL = "https://shark.in.th";
+      const redir = ["/t/c/abc~tok", "/T/C/abc", "/%74/c/abc", "/%2574/c/abc", "//t//c/abc", "/a/../t/c/abc", "/x/%2e%2e/t/o/a.gif", "/l/othercode", "/L/OTHER", "/t", "/l", "/t/s/key.js"];
+      const rr = redir.map((p0) => TR.linkDestinationCheck(`https://shark.in.th${p0}`, {}));
+      const rs = TR.linkDestinationCheck("https://shop1.shark.in.th/t/c/x", {});
+      const okPaths = ["/f/abc", "/tx/c", "/lab", "/x/t/c", "/", "/s/shop?t=/t/c"];
+      const ro = okPaths.map((p0) => TR.linkDestinationCheck(`https://shark.in.th${p0}`, {}));
+      const declared = TR.linkDestinationCheck("https://shark.in.th/t/c/abc", { crm: { tracking: { linkHosts: ["shark.in.th", "*.shark.in.th"] } } });
+      chk("G.2", rr.every((v: Any) => !v.ok && v.reason === "REDIRECTOR") && !rs.ok && rs.reason === "REDIRECTOR" && ro.every((v: Any) => v.ok) && !declared.ok && declared.reason === "REDIRECTOR",
+        `RV-2: platform /t/ and /l/ (case · %-encoded · double-encoded · // · dot-segments · subdomain) = REDIRECTOR even when declared · other platform paths OK → ${rr.map((v: Any) => v.reason).join(",")} | sub:${rs.reason} | ok:${ro.map((v: Any) => (v.ok ? "OK" : v.reason)).join(",")} | declared:${declared.reason}`);
+      process.env.APP_URL = "http://127.0.0.1:3215";
+      const qc = TR.linkDestinationCheck("https://shark.in.th/t/c/abc", { crm: { tracking: { linkHosts: ["shark.in.th"] } } });
+      const qcOk = TR.linkDestinationCheck("https://shark.in.th/f/abc", { crm: { tracking: { linkHosts: ["shark.in.th"] } } });
+      chk("G.3", !qc.ok && qc.reason === "REDIRECTOR" && qcOk.ok, `RV-2: shark.in.th redirectors refused even when APP_URL is another host (QC/dev) · declared shark.in.th/f still OK → ${qc.reason}|${qcOk.ok}`);
+    } finally {
+      if (prev === undefined) delete process.env.APP_URL;
+      else process.env.APP_URL = prev;
+    }
+    await TR.saveLinkHosts(ctx, owner, { hosts: "shark.in.th" });
+    const cr = await call(() => TR.createLink(ctx, owner, { url: "https://shark.in.th/t/c/abc~tok", name: "chain" }));
+    console.log(`     redirector refusal: ${cr.msg}`);
+    chk("G.4", !cr.ok && cr.code === "VALIDATION" && isThai(cr.msg) && cr.msg.includes("shark.in.th"), `RV-2: createLink → shark.in.th/t/c/… refused at create (VALIDATION, Thai, names the host)`);
+
+    // RV-3 — web-tracking domains go through the public-suffix guard (for links only)
+    const wPub = TR.linkDestinationCheck("https://anyshop.co.th/x", { crm: { tracking: { web: { domains: ["co.th", "in.th"] } } } });
+    const wPub2 = TR.linkDestinationCheck("https://x.in.th/", { crm: { tracking: { web: { domains: ["co.th", "in.th"] } } } });
+    const wGh = TR.linkDestinationCheck("https://stranger.github.io/", { crm: { tracking: { web: { domains: ["github.io"] } } } });
+    const ghExact = SH.normalizeLinkHost("myshop.github.io") === "myshop.github.io" && SH.normalizeLinkHost("*.github.io") === null;
+    const wOk = TR.linkDestinationCheck(`https://www.${DOM_W}/`, { crm: { tracking: { web: { domains: ["co.th", DOM_W] } } } });
+    const webStill = SH.originAllowed("https://anyshop.co.th", ["co.th"]);
+    chk("G.5", !wPub.ok && wPub.reason === "HOST_NOT_ALLOWED" && !wPub2.ok && !wGh.ok && ghExact && wOk.ok && webStill === true, `RV-3: web domain co.th / in.th / github.io gives NO link exemption (and *.github.io is refused as an entry, myshop.github.io accepted) · a normal web domain still does · web tracking (originAllowed) unchanged → ${wPub.reason},${wPub2.reason},${wGh.ok ? "OK" : wGh.reason},exact=${ghExact},${wOk.ok},origin=${webStill}`);
+
+    // RV-5 — an over-long entry gets the length message, not "max 50"
+    const long = `${"a".repeat(250)}.example.com`;
+    const rl = await call(() => TR.saveLinkHosts(ctx, owner, { hosts: `${DOM_L}\n${long}` }));
+    chk("G.6", !rl.ok && rl.code === "VALIDATION" && /253/.test(rl.msg) && rl.msg.includes(long.slice(0, 60)) && !/50 รายการ/.test(rl.msg), `RV-5: entry of ${long.length} chars → length message quoting it → ${String(rl.msg).slice(0, 40)}…${String(rl.msg).slice(-70)}`);
+  });
+
+  // ═════════ H · /t/c — hard refusals at wrap time and at hit time (RV-2, same judge) ═════════
+  await sub("H", async () => {
+    const EM = (await import("@/lib/modules/crm/emails" as string)) as Any;
+    const RC = (await import(pathToFileURL(resolve("src/app/t/c/[token]/route.ts")).href)) as Any;
+    await P.$executeRawUnsafe(
+      `UPDATE "AppSystem" SET "settings" = jsonb_set("settings", '{crm,email}', (CASE WHEN jsonb_typeof("settings"->'crm'->'email') = 'object' THEN "settings"->'crm'->'email' ELSE '{}'::jsonb END) || $1::jsonb, true) WHERE "id" = $2`,
+      JSON.stringify({ trackOpens: true, trackClicks: true, fromMode: "SHARK", replyToMode: "SHARK", copyMode: "NONE" }),
+      S,
+    );
+    const email = `c61l-${rand}@qc.invalid`;
+    const party = await P.party.create({ data: { tenantId: T, name: `ลูกค้า ${TAG}`, kind: "PERSON", email } });
+    const ct = await P.crmContact.create({ data: { tenantId: T, systemId: S, name: `ลูกค้า ${TAG}`, firstName: "ลูกค้า", email, partyId: party.id, ownerUserId: uO } });
+    await P.crmContactConsent.create({ data: { tenantId: T, systemId: S, contactId: ct.id, channel: "EMAIL", granted: true, source: "STAFF" } });
+    const SENT: Any[] = [];
+    const transport = async (m: Any) => {
+      SENT.push(m);
+      return { ok: true, providerId: `re_qc_${TAG}_${SENT.length}` };
+    };
+    const hrefs = [`https://${DOM_X}/ok`, "http://10.0.0.1/admin", `https://user@${DOM_X}/x`, "http://localhost:3000/x", "https://printer.local/x", "http://2130706433/x"];
+    const body = `<p>สวัสดี ${TAG}</p>${hrefs.map((h, i) => `<p><a href="${h}">ลิงก์ ${i}</a></p>`).join("")}`;
+    const r = await call(() => EM.sendEmail(ctx, owner, { contactId: ct.id, subject: `ทดสอบ ${TAG}`, bodyHtml: body }, { transport }));
+    const html = String(SENT[0]?.html ?? "");
+    const raw = hrefs.slice(1).map((h) => html.includes(`href="${h}"`));
+    const wrapped = (html.match(/\/t\/c\/[^"]+/g) ?? []) as string[];
+    const row = r.ok ? await P.crmEmailMessage.findFirst({ where: { id: r.v?.emailId } }) : null;
+    const links = (row?.routing as Any)?.links ?? [];
+    chk("H.1", r.ok && wrapped.length === 1 && !html.includes(`href="https://${DOM_X}/ok"`) && raw.every(Boolean) && links.length === 1,
+      `wrap time: only the https host link is wrapped in /t/c · IP / userinfo / localhost / .local / dword-IP hrefs stay as written (shark.in.th never redirects there) → send=${r.ok ? "ok" : r.msg} wrapped=${wrapped.length} raw=${raw.join(",")} storedLinks=${links.length}`);
+    const tokOk = wrapped[0] ? decodeURIComponent(wrapped[0].slice("/t/c/".length)) : "";
+    const getC = async (tok: string) => {
+      const res: Response = await RC.GET(new Request(`http://qc.invalid/t/c/${encodeURIComponent(tok)}`, { headers: { "x-forwarded-for": IP, "user-agent": "Mozilla/5.0 qc-c61l" } }), { params: Promise.resolve({ token: tok }) });
+      return { status: res.status, loc: res.headers.get("location") ?? "" };
+    };
+    const okHit = tokOk ? await getC(tokOk) : { status: 0, loc: "" };
+    // a legacy e-mail (wrapped before this card) whose stored link is an IP / userinfo URL
+    const legacy = [`http://10.9.8.7/x`, `https://user:pw@${DOM_X}/y`, "http://localhost/z"];
+    const toks = legacy.map((_, i) => `${row?.id}~legacy${i}${rand}`);
+    const extra = toks.map((tk, i) => ({ h: createHash("sha256").update(`crm.email.c:${tk}`).digest("hex"), url: legacy[i] }));
+    await P.crmEmailMessage.update({ where: { id: row.id }, data: { routing: { ...(row.routing as Any), links: [...links, ...extra] } } });
+    const legHits = [];
+    for (const tk of toks) legHits.push(await getC(tk));
+    const unknown = await getC(`${row?.id}~nosuchtoken${rand}`);
+    chk("H.2", okHit.status === 302 && okHit.loc === `https://${DOM_X}/ok` && legHits.every((h) => h.status === unknown.status && h.loc === unknown.loc) && !legHits.some((h) => /10\.9\.8\.7|localhost\/z|user:pw/.test(h.loc)),
+      `hit time: allowed link → 302 to it · legacy IP / userinfo / localhost links → the unknown-token answer (${unknown.status} ${unknown.loc}) → ok=${okHit.status} ${okHit.loc} | ${legHits.map((h) => h.loc).join(" | ")}`);
   });
 
   // ═════════ INFO · QC2-wide count of active links failing the policy (informational, not a check) ═════════

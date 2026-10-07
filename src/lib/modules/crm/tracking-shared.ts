@@ -277,9 +277,20 @@ export function normalizeLinkHost(input: unknown): string | null {
 
 /** ชื่อที่ "ใส่ดอกจันแล้วเท่ากับทั้งโดเมนสาธารณะ" — เช่น co.th · in.th · com.au (ป้องกันพลาดแบบ `*.co.th`) */
 const SECOND_LEVEL_PUBLIC = new Set(["co", "com", "net", "org", "or", "ac", "go", "gov", "edu", "mi", "in", "ne", "gr", "lg", "ltd", "plc", "nic"]);
+/**
+ * โดเมนของบริการฝากเว็บ/แพลตฟอร์มที่ "ทุกคนเปิดเว็บย่อยได้" (ส่วน PRIVATE ของ Public Suffix List ที่พบบ่อย · รายการคงที่ ไม่ยิงเครือข่าย)
+ * — `*.github.io` = เว็บของคนแปลกหน้านับล้าน ⇒ ห้ามใส่ดอกจัน (ชื่อเต็มอย่าง `myshop.github.io` ยังใส่ได้)
+ * CRM C6.1-LINKPOLICY รอบ 2 (RV-3/RV-4): ยังเป็นรายการสั้น ไม่ใช่ PSL เต็ม — PSL ทั้งชุดเป็นหนี้ที่ผู้คุมงานจดไว้
+ */
+const SHARED_HOSTING_SUFFIXES = new Set([
+  "github.io", "gitlab.io", "vercel.app", "netlify.app", "pages.dev", "workers.dev", "web.app", "firebaseapp.com", "herokuapp.com",
+  "blogspot.com", "wordpress.com", "wixsite.com", "myshopify.com", "s3.amazonaws.com", "cloudfront.net", "azurewebsites.net",
+  "appspot.com", "onrender.com", "fly.dev", "glitch.me", "ngrok.io", "ngrok-free.app", "trycloudflare.com", "nip.io", "sslip.io",
+]);
 function isPublicSuffixLike(dom: string): boolean {
   const parts = dom.split(".");
   if (parts.length < 2) return true;
+  if (SHARED_HOSTING_SUFFIXES.has(dom)) return true;
   return parts.length === 2 && SECOND_LEVEL_PUBLIC.has(parts[0]!);
 }
 
@@ -295,14 +306,29 @@ export function linkHostMatches(host: string, entry: string): boolean {
   return h === e;
 }
 
-export type LinkDestinationReason = "PARSE" | "SCHEME" | "USERINFO" | "IP" | "LOCAL" | "BLOCKLISTED" | "HOST_NOT_ALLOWED";
+export type LinkDestinationReason = "PARSE" | "SCHEME" | "USERINFO" | "IP" | "LOCAL" | "BLOCKLISTED" | "REDIRECTOR" | "HOST_NOT_ALLOWED";
 export type LinkDestinationVerdict = { ok: true; host: string } | { ok: false; reason: LinkDestinationReason; host: string };
 
 /**
- * ตัวตัดสินบริสุทธิ์ (ไม่แตะฐาน ไม่แตะ env ไม่มี async) — `entries` = รายการอนุญาตทั้งหมดในรูปมาตรฐาน (`a.com` / `*.a.com`)
- * `blocklisted` = จุดเสียบรายการต้องห้าม (ค่าเริ่มต้น "ไม่มี" — ดู `isDestinationBlocklisted` ใน tracking.ts)
+ * TODO(หนี้ C6.1-LINKPOLICY · Safe Browsing): จุดเสียบ "รายการเว็บอันตราย" ของปลายทางลิงก์ — **ตอนนี้ไม่มีรายการ (คืน false เสมอ)**
+ * มติเจ้าของ P11/Q15 ข้อ (ข) ให้มีการตรวจ Safe Browsing แต่ใบนี้ **ไม่เรียกบริการภายนอก** (ต้องมีคีย์ · ค่าใช้จ่าย · ความหน่วงบนทางร้อน
+ * `/l` และ `/t/c`) — ใบที่ทำต้องเป็นฟังก์ชัน sync/แคช (ห้ามยิงเครือข่ายตอนพาลูกค้าไป) และเสียบที่นี่ที่เดียว: ตัวตัดสินทุกจุด
+ * (`/l` · `/t/c` · สร้าง/แก้ลิงก์ · ห่อลิงก์ในอีเมล) เรียกผ่านที่นี่ (re-export จาก tracking.ts)
+ * (รอบ 2: ย้ายมาไว้ในไฟล์บริสุทธิ์นี้ เพื่อให้ `emails.ts` ใช้ตัวเดียวกันได้โดยไม่ต้องลาก tracking.ts)
  */
-export function linkDestinationVerdict(url: unknown, entries: readonly string[], blocklisted: (host: string) => boolean = () => false): LinkDestinationVerdict {
+export function isDestinationBlocklisted(_host: string): boolean {
+  return false;
+}
+
+/**
+ * ด่าน "ห้ามเด็ดขาด" ของปลายทางที่แพลตฟอร์มพาลูกค้าไป (ไม่ขึ้นกับรายการอนุญาตของร้าน) — ใช้ร่วมกันโดย `/l/<code>` (ผ่าน
+ * `linkDestinationVerdict`) และ `/t/c/<token>` ของอีเมล (ตอนห่อลิงก์ + ตอนกด · CRM C6.1-LINKPOLICY รอบ 2 · RV-2)
+ * ไม่ผ่าน = `{ ok:false, reason }` · ผ่าน = `{ ok:true, host, url }` (url ที่แปลงแล้ว ให้ด่านถัดไปใช้ต่อ)
+ */
+export function linkHardVerdict(
+  url: unknown,
+  blocklisted: (host: string) => boolean = isDestinationBlocklisted,
+): { ok: true; host: string; url: URL } | { ok: false; reason: LinkDestinationReason; host: string } {
   const s = typeof url === "string" ? url.trim() : "";
   let u: URL;
   try {
@@ -318,6 +344,56 @@ export function linkDestinationVerdict(url: unknown, entries: readonly string[],
   if (isIpLiteralHost(host)) return { ok: false, reason: "IP", host };
   if (isLocalOnlyHost(host)) return { ok: false, reason: "LOCAL", host };
   if (blocklisted(host)) return { ok: false, reason: "BLOCKLISTED", host };
+  return { ok: true, host, url: u };
+}
+
+/** host สาธารณะของแพลตฟอร์มที่รู้จักเสมอ (ทางพาไปของ `/t/` `/l/` บน host นี้ห้ามเป็นปลายทางของลิงก์ แม้ APP_URL ของเครื่องจะเป็นอย่างอื่น) */
+export const APP_PUBLIC_HOST = new URL(APP_PUBLIC_ORIGIN).hostname;
+
+/**
+ * ทางเดินนี้เป็น "ตัวพาไปที่อื่น" ของแพลตฟอร์มไหม (`/t/…` = ตัวนับคลิก/พิกเซล/สคริปต์ของอีเมลและเว็บ · `/l/…` = ลิงก์สั้น)
+ * 🔴 ตัดสินจาก pathname ของ URL ที่แปลงแล้ว (ไม่ใช่ค้นสตริง) — ถอด `%xx` ซ้ำ (สูงสุด 3 ชั้น) · `\` → `/` · ยุบ `//` · แก้ `.`/`..` ·
+ *    ตัวพิมพ์ไม่มีผล ⇒ `/T/C/x` `/%74/c/x` `//t//c` `/a/../t/c` `/l` ถือเป็นตัวพาไปทั้งหมด
+ */
+export function isPlatformRedirectorPath(pathname: string): boolean {
+  let p = typeof pathname === "string" ? pathname : "";
+  for (let i = 0; i < 3; i += 1) {
+    try {
+      const d = decodeURIComponent(p);
+      if (d === p) break;
+      p = d;
+    } catch {
+      break;
+    }
+  }
+  p = `/${p.replace(/\\/g, "/")}`.replace(/\/{2,}/g, "/");
+  try {
+    p = new URL(p, "http://x.invalid").pathname; // แก้ . / .. (สแลชถูกยุบแล้ว ⇒ ไม่มีทางกลายเป็น //host)
+  } catch {
+    /* ใช้ค่าที่ยุบแล้ว */
+  }
+  p = p.replace(/\/{2,}/g, "/").toLowerCase();
+  return /^\/(t|l)(\/|$)/.test(p);
+}
+
+/**
+ * ตัวตัดสินบริสุทธิ์ (ไม่แตะฐาน ไม่แตะ env ไม่มี async) — `entries` = รายการอนุญาตทั้งหมดในรูปมาตรฐาน (`a.com` / `*.a.com`)
+ * `blocklisted` = จุดเสียบรายการต้องห้าม (`isDestinationBlocklisted`) · `platformHosts` = host ของแพลตฟอร์ม (apex) — ทางเดิน `/t/` `/l/`
+ * บน host เหล่านี้ (และโดเมนย่อย) = REDIRECTOR **เสมอ** ไม่ว่ารายการไหนจะครอบคลุม (รอบ 2 · RV-2: ลิงก์ → `/t/c/<token>` ของอีเมลตัวเอง →
+ * เว็บไหนก็ได้ = อ้อมรายการ)
+ */
+export function linkDestinationVerdict(
+  url: unknown,
+  entries: readonly string[],
+  blocklisted: (host: string) => boolean = isDestinationBlocklisted,
+  platformHosts: readonly string[] = [APP_PUBLIC_HOST],
+): LinkDestinationVerdict {
+  const hard = linkHardVerdict(url, blocklisted);
+  if (!hard.ok) return hard;
+  const host = hard.host;
+  if (platformHosts.some((ph) => !!ph && linkHostMatches(host, `*.${ph.toLowerCase()}`)) && isPlatformRedirectorPath(hard.url.pathname)) {
+    return { ok: false, reason: "REDIRECTOR", host };
+  }
   if (!entries.some((e) => typeof e === "string" && linkHostMatches(host, e))) return { ok: false, reason: "HOST_NOT_ALLOWED", host };
   return { ok: true, host };
 }

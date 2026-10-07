@@ -54,6 +54,8 @@ import {
   cleanTrackedUrl,
   isBotUserAgent,
   isIdentifyBy,
+  APP_PUBLIC_HOST,
+  isDestinationBlocklisted,
   isVisitorId,
   jsLiteral,
   LINK_HOSTS_MAX,
@@ -397,9 +399,40 @@ function platformLinkEntries(): string[] {
   }
 }
 
-/** รายการที่ร้าน "ไม่ต้องตั้งก็ใช้ได้" (เว็บของร้านในส่วนติดตามเว็บ + แพลตฟอร์ม) — รูป `*.host` */
+/**
+ * host ของแพลตฟอร์มที่ทางเดิน `/t/` `/l/` เป็น "ตัวพาไปที่อื่น" (รอบ 2 · RV-2) — shark.in.th เสมอ + host ของ APP_URL (ถ้าเป็นชื่อเว็บ)
+ * ปลายทางลิงก์ที่ชี้ไปที่ทางเดินเหล่านี้ = REDIRECTOR ไม่ว่ารายการไหนจะครอบคลุม (กันลิงก์ → `/t/c/<token>` ของอีเมลตัวเอง → เว็บไหนก็ได้)
+ */
+function platformRedirectorHosts(): string[] {
+  const out = [APP_PUBLIC_HOST];
+  for (const e of platformLinkEntries()) {
+    const h = e.slice(2);
+    if (!out.includes(h)) out.push(h);
+  }
+  return out;
+}
+
+/** web domain ที่ถูกตัดสิทธิ์ "ใช้ได้เสมอ" แล้ว — บันทึกครั้งเดียวต่อโปรเซส (ไม่ให้ log ท่วมทางร้อน `/l`) */
+const SKIPPED_WEB_DOMAINS = new Set<string>();
+
+/**
+ * รายการที่ร้าน "ไม่ต้องตั้งก็ใช้ได้" (เว็บของร้านในส่วนติดตามเว็บ + แพลตฟอร์ม) — รูป `*.host`
+ * 🔴 รอบ 2 · RV-3: web domain ผ่านด่านเดียวกับรายการ `*.` ของร้าน (`normalizeLinkHost`) — ชื่อแบบโดเมนสาธารณะ (`co.th`, `in.th`, `co.uk` …)
+ *    ไม่ได้สิทธิ์ใช้ได้เสมอสำหรับลิงก์ (ไม่งั้น `co.th` = ทุกเว็บ .co.th) · ไม่แตะพฤติกรรมการติดตามเว็บ (`originAllowed`) เลย
+ */
 function alwaysAllowedLinkEntries(settings: unknown): string[] {
-  const out = webSettingsOf(settings).domains.map((d) => `*.${d}`);
+  const out: string[] = [];
+  for (const d of webSettingsOf(settings).domains) {
+    const n = normalizeLinkHost(`*.${d}`);
+    if (!n) {
+      if (!SKIPPED_WEB_DOMAINS.has(d)) {
+        SKIPPED_WEB_DOMAINS.add(d);
+        console.warn(`[crm.tracking] โดเมนเว็บ "${d}" กว้างเท่าโดเมนสาธารณะ — ไม่นับเป็นปลายทางลิงก์ที่ใช้ได้เสมอ (การติดตามเว็บไม่เปลี่ยน)`);
+      }
+      continue;
+    }
+    if (!out.includes(n)) out.push(n);
+  }
   for (const p of platformLinkEntries()) if (!out.includes(p)) out.push(p);
   return out;
 }
@@ -409,18 +442,12 @@ export function linkPolicyEntries(settings: unknown, linkHosts: readonly string[
   return [...linkHosts, ...alwaysAllowedLinkEntries(settings)];
 }
 
-/**
- * TODO(หนี้ C6.1-LINKPOLICY · Safe Browsing): จุดเสียบ "รายการเว็บอันตราย" ของปลายทางลิงก์ — **ตอนนี้ไม่มีรายการ (คืน false เสมอ)**
- * มติเจ้าของ P11/Q15 ข้อ (ข) ให้มีการตรวจ Safe Browsing แต่ใบนี้ **ไม่เรียกบริการภายนอก** (ต้องมีคีย์ · ค่าใช้จ่าย · ความหน่วงบนทางร้อน `/l`)
- * — ใบที่ทำต้องเป็นฟังก์ชัน sync/แคช (ห้ามยิงเครือข่ายใน `resolveLinkHit`) และเสียบที่นี่ที่เดียว (ตัวตัดสินทุกจุดเรียกผ่านที่นี่)
- */
-export function isDestinationBlocklisted(_host: string): boolean {
-  return false;
-}
+/** จุดเสียบ Safe Browsing (หนี้) — ตัวจริงอยู่ใน tracking-shared (รอบ 2: ใช้ร่วมกับ `/t/c` ของ emails.ts) · re-export ให้ผู้เรียกเดิม */
+export { isDestinationBlocklisted };
 
 /** ตัวตัดสินปลายทาง (บริสุทธิ์ · sync · ไม่แตะฐาน) — `settings` = `AppSystem.settings` ดิบของระบบ CRM เจ้าของลิงก์ */
 export function linkDestinationCheck(url: unknown, settings: unknown, linkHosts?: readonly string[]): LinkDestinationVerdict {
-  return linkDestinationVerdict(url, linkPolicyEntries(settings, linkHosts ?? linkHostsOf(settings)), isDestinationBlocklisted);
+  return linkDestinationVerdict(url, linkPolicyEntries(settings, linkHosts ?? linkHostsOf(settings)), isDestinationBlocklisted, platformRedirectorHosts());
 }
 
 /** ปลายทางนี้ใช้ได้ไหม (true/false) — ตัวเดียวกับที่ตอนสร้าง/แก้ลิงก์และ `/l/<code>` ใช้ */
@@ -442,6 +469,8 @@ function linkDestinationMessage(v: Exclude<LinkDestinationVerdict, { ok: true }>
       return "ลิงก์ปลายทางมีชื่อผู้ใช้หรือรหัสผ่านฝังอยู่หน้าชื่อเว็บ (ส่วนก่อนเครื่องหมาย @) ซึ่งลิงก์ติดตามใช้ไม่ได้ — คัดลอกลิงก์จากแถบที่อยู่ของเบราว์เซอร์อีกครั้ง";
     case "BLOCKLISTED":
       return `ปลายทาง ${host} อยู่ในรายการเว็บไซต์ที่ไม่ปลอดภัย ระบบจึงสร้างลิงก์ติดตามไปที่นี่ไม่ได้`;
+    case "REDIRECTOR":
+      return `ลิงก์ติดตามชี้ไปที่ลิงก์ติดตามหรือลิงก์นับคลิกอีกตัวของ ${host} ไม่ได้ (ลิงก์ซ้อนลิงก์) — ใช้ลิงก์ของหน้าปลายทางจริงแทน`;
     default:
       return "รับเฉพาะลิงก์ที่ขึ้นต้นด้วย https:// หรือ http:// และต้องมีชื่อเว็บไซต์";
   }
@@ -495,19 +524,23 @@ async function linkPolicyOf(ctx: TrackingCtx, settings: unknown, linkHosts: stri
  */
 export function cleanLinkHostsInput(input: unknown): string[] {
   const raw: unknown[] = Array.isArray(input) ? input : typeof input === "string" ? input.split(/[\s,;]+/) : [];
-  if (raw.length > 500 || raw.some((x) => typeof x === "string" && x.length > 300)) {
-    throw fail("VALIDATION", `ใส่โดเมนปลายทางได้ไม่เกิน ${LINK_HOSTS_MAX} รายการ — ลบรายการที่ไม่ใช้ออกก่อน`);
+  if (raw.length > 500) {
+    throw fail("VALIDATION", `ใส่โดเมนปลายทางได้ไม่เกิน ${LINK_HOSTS_MAX} รายการ (ตอนนี้ ${raw.length}) — ลบรายการที่ไม่ใช้ออกก่อน`);
   }
   const out: string[] = [];
   for (const item of raw) {
     const t = typeof item === "string" ? item.trim() : "";
     if (!t) continue;
+    // รอบ 2 · RV-5: ชื่อยาวเกิน = ข้อความเรื่องความยาว (ไม่ใช่ "เกิน 50 รายการ") · `*.` นำหน้าไม่นับ
+    if ((t.startsWith("*.") ? t.length - 2 : t.length) > 253) {
+      throw fail("VALIDATION", `"${t.slice(0, 60)}…" ยาวเกินไปสำหรับชื่อโดเมน (ไม่เกิน 253 ตัวอักษร) — ตรวจว่าวางมาเฉพาะชื่อเว็บ ไม่ได้วางทั้งลิงก์`);
+    }
     const n = normalizeLinkHost(t);
     if (!n) {
       const shown = t.length > 60 ? `${t.slice(0, 60)}…` : t;
       throw fail(
         "VALIDATION",
-        `"${shown}" ใช้เป็นโดเมนปลายทางไม่ได้ — ใส่ชื่อเว็บล้วน ๆ บรรทัดละหนึ่งชื่อ เช่น shop.example.com หรือ *.example.com (รวมโดเมนย่อย) · ไม่ต้องมี https:// พอร์ต หรือเส้นทาง · ไม่รับเลข IP ชื่อเครื่องภายใน หรือ *.co.th ทั้งโดเมน`,
+        `"${shown}" ใช้เป็นโดเมนปลายทางไม่ได้ — ใส่ชื่อเว็บล้วน ๆ บรรทัดละหนึ่งชื่อ เช่น shop.example.com หรือ *.example.com (รวมโดเมนย่อย) · ไม่ต้องมี https:// พอร์ต หรือเส้นทาง · ไม่รับเลข IP ชื่อเครื่องภายใน หรือดอกจันครอบโดเมนสาธารณะ/บริการฝากเว็บทั้งหมด เช่น *.co.th *.github.io`,
       );
     }
     if (!out.includes(n)) out.push(n);
@@ -678,10 +711,14 @@ export async function updateLink(ctx: TrackingCtx, actor: MemberActor, id: strin
   if (patch?.url !== undefined) data.url = cleanLinkUrl(patch.url);
   // CRM C6.1-LINKPOLICY ▸ เปลี่ยนปลายทาง หรือ "เปิด" ลิงก์ = ปลายทาง (ใหม่หรือเดิม) ต้องผ่านนโยบาย · แก้ชื่อ/ช่องทาง/ปิดลิงก์ทำได้เสมอ
   //   (ลิงก์ที่โดเมนถูกถอดออกจากรายการยังเปลี่ยนชื่อหรือปิดได้ — แต่เปิดกลับต้องเพิ่มโดเมนก่อน ไม่งั้นเปิดแล้วก็พาไปไม่ได้อยู่ดี) ◂
-  if (patch?.url !== undefined || patch?.active === true) assertLinkDestination(typeof data.url === "string" ? data.url : row.url, sys.settings);
+  // รอบ 2 · RV-1: `active` ต้องเป็น true/false จริง ๆ (server action รับ JSON จากหน้าจอ — `1`/`"yes"` เคยเปิดลิงก์ที่ถูกกันได้โดยไม่ผ่านด่าน)
+  //   ⇒ ค่า "เปิด" ตัดสินครั้งเดียว แล้วใช้ทั้งกับด่านและกับค่าที่เขียน
+  if (patch?.active !== undefined && typeof patch.active !== "boolean") throw fail("VALIDATION", "สถานะของลิงก์ต้องเป็นเปิดหรือปิดเท่านั้น — ลองกดสวิตช์อีกครั้ง");
+  const turnOn = patch?.active === true;
+  if (patch?.url !== undefined || turnOn) assertLinkDestination(typeof data.url === "string" ? data.url : row.url, sys.settings);
   if (patch?.name !== undefined) data.name = str(patch.name).slice(0, 120) || null;
   if (patch?.channel !== undefined) data.channel = str(patch.channel).slice(0, 40) || null;
-  if (patch?.active !== undefined) data.active = !!patch.active;
+  if (patch?.active !== undefined) data.active = turnOn;
   const next = await prisma.crmTrackedLink.update({
     where: { id: row.id },
     data,
