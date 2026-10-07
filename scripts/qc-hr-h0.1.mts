@@ -13,6 +13,9 @@
 //                                            ("ตัวเลขของรอบนี้เปลี่ยนไปแล้ว (มีการคำนวณใหม่) — กรุณาเปิดดูและอนุมัติอีกครั้ง") · no expect = legacy
 //   src/lib/modules/hr/payroll-actions.ts  deleteDraftRunAction / recomputeDraftRunAction (hr.payroll.create + canViewPayroll) → { ok, reason }
 //   src/lib/modules/hr/payroll-ui.tsx      DRAFT rows: "คำนวณใหม่" + "ลบร่าง" · the approve form posts expect
+//   oracle round 3 (CR16–CR19, hunter findings): expect gains itemsDigest = payrollItemsDigest(items) (hidden `expectDigest`) · a DRAFT with a
+//                                            journalEntryId is refused DRAFT_HAS_JV · the action refuses a POST without expectNet/expectItems ·
+//                                            refused approve/delete/recompute write `*.refused` audit rows {code, seen, actual}
 //   FREEZE: payroll-rules.ts · computeItem · the CRM C3.3 blocks of payroll.ts · prisma/schema/payroll.prisma (no schema in this WO)
 //
 // Groups: S1 delete · X2 cross-scope · S2 recompute · S3 approve guard · S4 static · S5 CRM C3.3 regression · S6 viewer matrix (actions)
@@ -107,7 +110,7 @@ const CHECKS: readonly Def[] = [
   D("X6.6", "X6", "global: no adjustment of the tenant points at a missing run · every run's totals = Σ items · each item's add/deduct = Σ its bound adjustments · no bound row without an item"),
   // ── oracle round 2 (7 Oct 2026 · head 65a45626 · CR10–CR15) — additive; ids above unchanged ──
   D("S7.1", "-", "[source] RunRowActions: recompute trigger \"ดึงข้อมูลใหม่\" (CR10) and its dialog still says \"คำนวณใหม่\" · delete trigger \"ลบร่าง\" · op routing approve/delete/recompute → the three actions"),
-  D("S7.2", "-", "approve expect with gross (CR11): service net+count+gross right → OK · gross off by 1 → STALE (DRAFT, no JV) · no gross → round-1 behaviour · form: expectGross missing/\"abc\"/\"12.5\" omitted (OK) · wrong gross → STALE · expectNet \"abc\" → STALE (fail closed) · no net+items → legacy"),
+  D("S7.2", "-", "approve expect with gross (CR11): service net+count+gross right → OK · gross off by 1 → STALE (DRAFT, no JV) · no gross → round-1 behaviour · form: expectGross missing/\"abc\"/\"12.5\" omitted (OK) · wrong gross → STALE · expectNet \"abc\" → refused (fail closed · CR18 text) · no net+items → refused (CR18, oracle round 3)"),
   D("S7.3", "-", "gross changed while net + count stay equal (base raise + compensating deduction, recompute) → stale approve with old net/count/gross refused (DRAFT, no JV) · fresh figures → APPROVED + JV"),
   D("S7.4", "-", "JV throws (ACCOUNT period CLOSED): approveRun → {ok:false, code POST_FAILED} · DRAFT · no journalEntryId · no JV · action reason = fixed Thai (no raw error) · then recompute + delete both {ok:true} with audit rows"),
   D("S7.5", "-", "APPROVED adjustment bound to a DRAFT: cancelAdjustment refused with the fixed Thai text · CRM withdraw/move refused · rows still bound · recompute keeps totals = before = Σ items"),
@@ -116,6 +119,14 @@ const CHECKS: readonly Def[] = [
   D("S7.8", "-", "[source+runtime] payroll.ts H0.1 block uses bkkParts for the recompute note, no hand-rolled +7 h offset · note stamp = Bangkok wall clock of the call (Intl Asia/Bangkok)"),
   D("X7.1", "X6", "recompute ∥ recompute on one run ×3 (in-process): no throw · ≥1 ok · refusals Thai · Σ items = totals · one run row · audit rows = ok count · approved adjustments bound"),
   D("X7.2", "X6", "delete ∥ approve(fresh expect) on one run ×3 (in-process): exactly one ok · loser {ok:false} (no throw) · final = run gone (rows unbound) or APPROVED with balanced JV (rows bound)"),
+  // ── oracle round 3 (7 Oct 2026 · head 987d3abd · hunter findings · CR16–CR19) — additive; ids above unchanged (S7.2 sub-cases h/i follow CR18) ──
+  D("S8.1", "-", "employee swap with equal pay (hunter P1): A's profile removed, C added at A's base, recompute → net/count/gross equal · approve with the OLD expect (incl. digest) STALE (DRAFT, 0 new JV) · fresh expect incl. new digest → APPROVED + exactly one balanced JV"),
+  D("S8.2", "-", "shift between two people (hunter P1b): BONUS 5,000 for A + DEDUCTION 5,000 for B, recompute → old expect STALE (DRAFT, no JV) · fresh expect → APPROVED + one balanced JV"),
+  D("S8.3", "-", "payrollItemsDigest (non-\"use server\" module): pure · sha256 hex · order-independent · changes with each of the 7 item numbers and employeeId · hidden field expectDigest rendered (computed server-side in payroll-ui.tsx) and parsed by the action · foreign digest → STALE"),
+  D("S8.4", "-", "DRAFT that carries a journalEntryId (hunter Q1): approveRun(expect) and approveRun() → {ok:false, code DRAFT_HAS_JV} · action → fixed Thai text · status DRAFT · journalEntryId unchanged · 0 new JV"),
+  D("S8.5", "-", "approvePayrollRunAction without expectNet/expectItems (none · only net · only items) → {ok:false} fixed Thai text (CR18) · run DRAFT · no JV"),
+  D("S8.6", "-", "refusal audits (CR19): hr.payroll.approve.refused (STALE · DRAFT_HAS_JV · NOT_DRAFT) · hr.payroll.delete_draft.refused · hr.payroll.recompute.refused — one row each, actor = session user, seen = posted (null when none), actual net/items/gross/digest = DB"),
+  D("X8.1", "X6", "approve(old expect) ∥ recompute (same-totals swap) ×3 (in-process): never two JVs · APPROVED only if the digest equals the committed items (recompute refused) · otherwise DRAFT with new items, approve STALE, no JV"),
   D("Z1", "-", "residue: throwaway tenants, every tenantId row, users/sessions are gone"),
 ];
 
@@ -906,6 +917,7 @@ async function runDb(): Promise<void> {
   const STALE_TH = "ตัวเลขของรอบนี้เปลี่ยนไปแล้ว กรุณาดูยอดใหม่แล้วกดอนุมัติอีกครั้ง"; // CR12 (action text)
   const POST_FAILED_TH = "ลงบัญชีไม่สำเร็จ รอบนี้ยังเป็นร่าง — ลองอนุมัติอีกครั้ง หรือให้ผู้ดูแลบัญชีตรวจสอบ"; // CR12
   const FORBIDDEN_TH = "คุณไม่มีสิทธิ์ทำรายการนี้"; // CR13
+  const MISSING_TH = "ไม่พบตัวเลขที่คุณเห็นบนหน้าจอ กรุณาโหลดหน้าใหม่แล้วกดอนุมัติอีกครั้ง"; // CR18 (oracle round 3)
   const CANCEL_BOUND_TH = "รายการนี้เข้ารอบจ่ายแล้ว ลบไม่ได้ (ใช้กลับรายการรอบจ่ายแทน)"; // cancelAdjustment (CR9: untouched in H0.1)
   const fullExpect = async (runId: string) => {
     const r = await runRow(runId);
@@ -970,14 +982,15 @@ async function runDb(): Promise<void> {
     await formCase("2034-05", "e gross abc", (f) => ({ ...f, expectGross: "abc" }), "OK");
     await formCase("2034-06", "f gross 12.5", (f) => ({ ...f, expectGross: "12.5" }), "OK");
     const r7 = await formCase("2034-07", "g gross+1", (f) => ({ ...f, expectGross: String(Number(f.expectGross) + 1) }), "STALE");
-    // (h) expectNet unreadable ⇒ fail closed (controller ruling 7 Oct: present but non-integer = STALE) — same run, still DRAFT
+    // (h) expectNet unreadable ⇒ fail closed — oracle round 3 (CR18 "missing/non-integer"): refused with the CR18 text (was STALE) — same run, still DRAFT
     const e7 = await fullExpect(r7);
     const rh = await act(owner, "approvePayrollRunAction", { ...fieldsOf(H7, r7, e7), expectNet: "abc" });
-    if (!(rh.kind === "NO" && rh.msg === STALE_TH && (await draftNoJv(r7)))) bad.push(`(h) net abc ${rs(rh)}`);
-    // (i) neither expectNet nor expectItems ⇒ undefined ⇒ legacy approve (gross alone is ignored)
+    if (!(rh.kind === "NO" && rh.msg === MISSING_TH && (await draftNoJv(r7)))) bad.push(`(h) net abc ${rs(rh)} (want CR18 text)`);
+    // (i) neither expectNet nor expectItems — oracle round 3 (CR18 flips the round-2 "legacy approve"): refused with the CR18 text · DRAFT · no JV
+    const jvI = await jvCount();
     const ri = await act(owner, "approvePayrollRunAction", { systemId: H7, runId: r7, expectGross: String(e7.totalGrossSatang + 1) });
-    if (!(ri.kind === "OK" && (await approvedJv(r7)))) bad.push(`(i) no net/items ${rs(ri)}`);
-    chk("S7.2", bad.length === 0, "a OK · b STALE · c OK · d/e/f OK · g STALE · h STALE · i legacy OK", `${bad.join(" · ") || "-"} jv+${(await jvCount()) - jvA}`);
+    if (!(ri.kind === "NO" && ri.msg === MISSING_TH && (await draftNoJv(r7)) && (await jvCount()) === jvI)) bad.push(`(i) no net/items ${rs(ri)} → ${(await runRow(r7))?.status} (want CR18 refusal)`);
+    chk("S7.2", bad.length === 0, "a OK · b STALE · c OK · d/e/f OK · g STALE · h refused (CR18) · i refused (CR18)", `${bad.join(" · ") || "-"} jv+${(await jvCount()) - jvA}`);
   }
 
   // S7.3 — gross changes, net + count stay equal
@@ -1152,6 +1165,252 @@ async function runDb(): Promise<void> {
     }
     chk("X7.2", bad.length === 0, "3/3 rounds: one winner · loser {ok:false} · consistent final state", bad.join(" · ") || `winners ${wins.join(",")}`);
     if (bad.length === 0) console.log(`     X7.2 winners: ${wins.join(", ")}`);
+  }
+  // ═════════════════════════ S8 / X8 — oracle round 3 (hunter findings · CR16–CR19 on 987d3abd · additive) ═════════════════════════
+  //   own HR systems (H8A swap · H8B shift · H8C misc · H8X race) in the same tenant · periods 2036-xx are used by nobody else
+  //   digest: the builder's `payrollItemsDigest` (found by grep in src/lib/modules/hr/*.ts, non-"use server") when present ·
+  //   until then a local stand-in over the 7 item columns that make the 7 run totals (only used to post a digest the base ignores)
+  console.log("── S8 round 3 ──");
+  const DRAFT_HAS_JV_TH = "รอบนี้มีเอกสารบัญชีค้างอยู่ ต้องให้ผู้ดูแลตรวจสอบก่อน"; // CR17
+  const DIG7 = ["grossSatang", "addSatang", "deductSatang", "ssoEmployeeSatang", "ssoEmployerSatang", "whtSatang", "netSatang"];
+  const digestLocal = (items: Any[]) => sha([...items].sort((a, b) => (String(a.employeeId) < String(b.employeeId) ? -1 : String(a.employeeId) > String(b.employeeId) ? 1 : 0)).map((i) => [i.employeeId, ...DIG7.map((f) => Number(i[f]))].join(":")).join("\n"));
+  const hrDir8 = join(ROOT, "src/lib/modules/hr");
+  const digFile = (existsSync(hrDir8) ? readdirSync(hrDir8) : []).filter((f: string) => /\.ts$/.test(f) && !f.endsWith(".d.ts")).map((f: string) => `src/lib/modules/hr/${f}`)
+    .find((f: string) => /export (?:async )?function payrollItemsDigest\b|export const payrollItemsDigest\b/.test(rd(f))) ?? "";
+  const digUseServer = !!digFile && /^\s*["']use server["']/.test(rd(digFile));
+  let digFn: Any = null;
+  let digErr = digFile ? "" : "payrollItemsDigest not exported by any src/lib/modules/hr/*.ts";
+  if (digFile) {
+    try {
+      digFn = ((await import(`@/lib/modules/hr/${digFile.split("/").pop()!.replace(/\.ts$/, "")}` as string)) as Any).payrollItemsDigest;
+      if (typeof digFn !== "function") { digErr = `${digFile}: payrollItemsDigest is not a function`; digFn = null; }
+    } catch (e) {
+      digErr = `import ${digFile}: ${errText(e)}`;
+    }
+  }
+  const digestOf = async (items: Any[]): Promise<string> => (digFn ? String(await digFn(items)) : digestLocal(items));
+  type Expect8 = { totalNetSatang: number; itemCount: number; totalGrossSatang: number; itemsDigest: string };
+  const expect8 = async (runId: string): Promise<Expect8> => ({ ...(await fullExpect(runId)), itemsDigest: await digestOf(await itemsOf(runId)) });
+  const fields8 = (sys8: string, runId: string, e: Expect8) => ({ ...fieldsOf(sys8, runId, e), expectDigest: e.itemsDigest });
+  const sameTotals = (a: Expect8, b: Expect8) => a.totalNetSatang === b.totalNetSatang && a.itemCount === b.itemCount && a.totalGrossSatang === b.totalGrossSatang;
+  const H8A = (await sys.createSystem(T, "HR", "HR round3 swap")).id as string;
+  const H8B = (await sys.createSystem(T, "HR", "HR round3 shift")).id as string;
+  const H8C = (await sys.createSystem(T, "HR", "HR round3 misc")).id as string;
+  const H8X = (await sys.createSystem(T, "HR", "HR round3 race")).id as string;
+  const c8a: Ctx = { tenantId: T, systemId: H8A };
+  const c8b: Ctx = { tenantId: T, systemId: H8B };
+  const c8c: Ctx = { tenantId: T, systemId: H8C };
+  const c8x: Ctx = { tenantId: T, systemId: H8X };
+  /** stale approve must be refused STALE (DRAFT, no JV, 0 new JV) · fresh expect (incl. the new digest) → APPROVED + exactly one balanced JV */
+  const staleThenFresh = async (ctx: Ctx, runId: string, eOld: Expect8) => {
+    const jv0 = await jvCount();
+    const stale = await call(PAY.approveRun, ctx, runId, eOld);
+    const jvS = await jvCount();
+    const staleOk = stale.kind === "NO" && stale.v?.code === "STALE" && THAI.test(stale.msg) && (await draftNoJv(runId)) && jvS === jv0;
+    let fresh: Res = { kind: "NO", msg: "not run (stale approve already changed the run)" };
+    let freshOk = false;
+    if (await draftNoJv(runId)) {
+      const eNew = await expect8(runId);
+      fresh = await call(PAY.approveRun, ctx, runId, eNew);
+      freshOk = fresh.kind === "OK" && (await approvedJv(runId)) && (await jvCount()) === jvS + 1;
+    }
+    return { staleOk, freshOk, why: `stale ${rs(stale)} code=${stale.v?.code ?? "-"} jv+${jvS - jv0} · fresh ${rs(fresh)}` };
+  };
+
+  // S8.1 — employee swap with equal pay (hunter P1): A leaves, C joins at A's base → net/count/gross equal, items differ
+  {
+    const a = await emp(c8a, "สลับ ก", 22_000);
+    await emp(c8a, "สลับ ข", 17_000);
+    const c = (await hrSvc.createEmployee(c8a, { name: "สลับ ค" })).id as string;
+    const r = await mkRun(c8a, "2036-01");
+    const eOld = await expect8(r);
+    await P.hrSalaryProfile.deleteMany({ where: { systemId: H8A, employeeId: a } });
+    await PAY.setSalaryProfile(c8a, { employeeId: c, baseSalarySatang: B(22_000), ssoEligible: true });
+    const rc = await rec(c8a, r);
+    const eMid = await expect8(r);
+    const emps = (await itemsOf(r)).map((i: Any) => i.employeeId);
+    const pre = rc.kind === "OK" && sameTotals(eOld, eMid) && eMid.itemsDigest !== eOld.itemsDigest && emps.includes(c) && !emps.includes(a);
+    const sf = await staleThenFresh(c8a, r, eOld);
+    console.log(`     S8.1 net ${eOld.totalNetSatang}→${eMid.totalNetSatang} · items ${eOld.itemCount}→${eMid.itemCount} · gross ${eOld.totalGrossSatang}→${eMid.totalGrossSatang} · digest ${eOld.itemsDigest.slice(0, 8)}→${eMid.itemsDigest.slice(0, 8)} (${digFn ? "builder helper" : "local stand-in"})`);
+    chk("S8.1", pre && sf.staleOk && sf.freshOk, "precondition (recompute ok · totals equal · digest differs · A out, C in) · old expect STALE · fresh APPROVED + 1 JV", `pre=${pre} rec ${rs(rc)} · ${sf.why}`);
+  }
+
+  // S8.2 — shift between two people (hunter P1b): BONUS 5,000 for A + DEDUCTION 5,000 for B → gross/net/count equal
+  {
+    const a = await emp(c8b, "โยก ก", 21_000);
+    const b = await emp(c8b, "โยก ข", 19_000);
+    const r = await mkRun(c8b, "2036-01");
+    const eOld = await expect8(r);
+    const before = await runRow(r);
+    await adjApproved(c8b, a, "2036-01", "BONUS", B(5_000));
+    await adjApproved(c8b, b, "2036-01", "DEDUCTION", B(5_000));
+    const rc = await rec(c8b, r);
+    const eMid = await expect8(r);
+    const after = await runRow(r);
+    const pre = rc.kind === "OK" && sameTotals(eOld, eMid) && eMid.itemsDigest !== eOld.itemsDigest && Number(after?.totalAddSatang) === Number(before?.totalAddSatang) + B(5_000) && Number(after?.totalDeductSatang) === Number(before?.totalDeductSatang) + B(5_000);
+    const sf = await staleThenFresh(c8b, r, eOld);
+    chk("S8.2", pre && sf.staleOk && sf.freshOk, "precondition (recompute ok · net/count/gross equal · add/deduct +5,000 · digest differs) · old expect STALE · fresh APPROVED + 1 JV", `pre=${pre} rec ${rs(rc)} · ${sf.why}`);
+  }
+
+  // S8.3 — the digest helper (pure · order-independent · sensitive) + hidden field rendered + parsed by the action
+  {
+    const bad: string[] = [];
+    if (!digFn) bad.push(`MISSING helper (${digErr})`);
+    if (digUseServer) bad.push(`${digFile} is "use server"`);
+    if (digFn) {
+      const mk = (id: string, k: number) => ({ id: `it-${id}`, runId: "run-x", employeeId: id, grossSatang: 2_000_000 + k, addSatang: 10_000 + k, deductSatang: 5_000 + k, ssoBaseSatang: 1_500_000, ssoEmployeeSatang: 75_000 + k, ssoEmployerSatang: 76_000 + k, whtSatang: 12_000 + k, netSatang: 1_900_000 + k });
+      const set = [mk("emp-b", 2), mk("emp-a", 1), mk("emp-c", 3)];
+      const frozen = stable(set);
+      const d1 = String(await digFn(set));
+      const d2 = String(await digFn(set));
+      const dRev = String(await digFn([...set].reverse()));
+      const dSorted = String(await digFn([...set].sort((x, y) => (x.employeeId < y.employeeId ? -1 : 1))));
+      if (!/^[0-9a-f]{64}$/.test(d1)) bad.push(`not sha256 hex: ${d1.slice(0, 70)}`);
+      if (d1 !== d2) bad.push("not deterministic");
+      if (stable(set) !== frozen) bad.push("mutates its input");
+      if (d1 !== dRev || d1 !== dSorted) bad.push("order-dependent");
+      for (const f of [...DIG7, "employeeId"]) {
+        const m = set.map((x) => ({ ...x }));
+        (m[1] as Any)[f] = f === "employeeId" ? "emp-z" : Number((m[1] as Any)[f]) + 1;
+        if (String(await digFn(m)) === d1) bad.push(`blind to ${f}`);
+      }
+    }
+    // source: hidden field `expectDigest` on the approve dialog, digest computed server-side (payroll-ui.tsx), parsed by the action
+    const apD = dialogs(RRA).find((d) => /op:\s*"approve"/.test(d)) ?? "";
+    const rendered = /expectDigest\s*:/.test(apD) || /name="expectDigest"/.test(RRA + UI_SRC);
+    const serverSide = /payrollItemsDigest\(/.test(UI_SRC) && !/payrollItemsDigest\(/.test(RRA);
+    const parsed = /\.get\(\s*["']expectDigest["']\s*\)/.test(ACT_SRC);
+    if (!rendered || !serverSide || !parsed) bad.push(`source rendered=${rendered} serverSide=${serverSide} parsed=${parsed}`);
+    // runtime: right net/items/gross but a foreign digest through the real action → STALE text, DRAFT, no JV
+    await emp(c8c, "ย่อย ก", 24_000);
+    await emp(c8c, "ย่อย ข", 16_000);
+    const r = await mkRun(c8c, "2036-02");
+    const jv0 = await jvCount();
+    const wrong = await act(owner, "approvePayrollRunAction", { ...fields8(H8C, r, await expect8(r)), expectDigest: "0".repeat(64) });
+    if (!(wrong.kind === "NO" && wrong.msg === STALE_TH && (await draftNoJv(r)) && (await jvCount()) === jv0)) bad.push(`action foreign digest ${rs(wrong)} (want STALE text, DRAFT, no JV)`);
+    chk("S8.3", bad.length === 0, "helper pure/hex/order-free/sensitive to 7 numbers + employeeId · non-\"use server\" · expectDigest rendered + server-side + parsed · foreign digest → STALE", `${bad.join(" · ")} · file=${digFile || "-"}`);
+  }
+
+  // S8.4 — DRAFT that already carries a journalEntryId (hunter Q1): never a second JV
+  let s84: { runId: string; posted: Record<string, string> } | null = null;
+  {
+    const bad: string[] = [];
+    const r = await mkRun(c8c, "2036-03");
+    const ap = await call(PAY.approveRun, c8c, r);
+    const jv1 = (await runRow(r))?.journalEntryId as string | null;
+    if (!(ap.kind === "OK" && jv1 && (await jvBalanced(jv1)).ok)) bad.push(`precondition approve ${rs(ap)} je=${jv1}`);
+    const force = () => P.hrPayrollRun.update({ where: { id: r }, data: { status: "DRAFT", journalEntryId: jv1 } });
+    await force();
+    const judge = async (tag: string, f: () => Promise<Res>, wantText?: string) => {
+      const n0 = await jvCount();
+      const res = await f();
+      const row = await runRow(r);
+      const n1 = await jvCount();
+      const ok = res.kind === "NO" && (wantText ? res.msg === wantText : res.v?.code === "DRAFT_HAS_JV" && THAI.test(res.msg)) && row?.status === "DRAFT" && row?.journalEntryId === jv1 && n1 === n0;
+      if (!ok) bad.push(`${tag} ${rs(res)} code=${res.v?.code ?? "-"} → ${row?.status}/${row?.journalEntryId === jv1 ? "same JV" : "JV changed"} jv+${n1 - n0}`);
+      if (row?.status !== "DRAFT" || row?.journalEntryId !== jv1) await force(); // keep the precondition for the next sub-case
+    };
+    await judge("approveRun(expect)", async () => call(PAY.approveRun, c8c, r, await expect8(r)));
+    await judge("approveRun()", () => call(PAY.approveRun, c8c, r));
+    const posted = fields8(H8C, r, await expect8(r));
+    s84 = { runId: r, posted };
+    await judge("action", () => act(owner, "approvePayrollRunAction", posted), DRAFT_HAS_JV_TH);
+    chk("S8.4", bad.length === 0, "approveRun(expect) + approveRun() → {ok:false, code DRAFT_HAS_JV} · action → fixed Thai · DRAFT · same journalEntryId · 0 new JV", bad.join(" · "));
+  }
+
+  // S8.5 — the action always carries an expectation (CR18)
+  {
+    const bad: string[] = [];
+    for (const [i, [tag, pick]] of ([["none", [] as string[]], ["net only", ["expectNet"]], ["items only", ["expectItems"]]] as [string, string[]][]).entries()) {
+      const r = await mkRun(c8c, `2036-0${4 + i}`);
+      const full = fields8(H8C, r, await expect8(r)) as Record<string, string>;
+      const f: Record<string, string> = { systemId: H8C, runId: r };
+      for (const k of pick) f[k] = full[k]!;
+      const jv0 = await jvCount();
+      const res = await act(owner, "approvePayrollRunAction", f);
+      if (!(res.kind === "NO" && res.msg === MISSING_TH && (await draftNoJv(r)) && (await jvCount()) === jv0)) bad.push(`${tag}: ${rs(res)} → ${(await runRow(r))?.status}`);
+    }
+    chk("S8.5", bad.length === 0, `no expectNet/expectItems · only one of them → {ok:false, "${MISSING_TH}"} · DRAFT · no JV`, bad.join(" · "));
+  }
+
+  // S8.6 — refusal audits with figures (CR19): STALE · DRAFT_HAS_JV (S8.4) · NOT_DRAFT approve · delete + recompute of an APPROVED run
+  {
+    const bad: string[] = [];
+    const rS = await mkRun(c8c, "2036-07");
+    const eS = await expect8(rS);
+    const postedS = { ...fields8(H8C, rS, eS), expectNet: String(eS.totalNetSatang + 1) };
+    const st = await act(owner, "approvePayrollRunAction", postedS);
+    if (!(st.kind === "NO" && st.msg === STALE_TH)) bad.push(`STALE approve ${rs(st)}`);
+    const rA = await mkRun(c8c, "2036-08");
+    await PAY.approveRun(c8c, rA, await expect8(rA));
+    const postedA = fields8(H8C, rA, await expect8(rA));
+    const nd = await act(owner, "approvePayrollRunAction", postedA);
+    const dl = await act(owner, "deleteDraftRunAction", { systemId: H8C, runId: rA });
+    const rc = await act(owner, "recomputeDraftRunAction", { systemId: H8C, runId: rA });
+    if (!(nd.kind === "NO" && dl.kind === "NO" && rc.kind === "NO")) bad.push(`APPROVED run: approve ${rs(nd)} · delete ${rs(dl)} · recompute ${rs(rc)}`);
+    const audit = async (tag: string, action: string, runId: string, code: string | null, posted: Record<string, string> | null) => {
+      const rows = await P.auditLog.findMany({ where: { tenantId: T, action, targetId: runId } });
+      const mine = rows.filter((x: Any) => x.actorId === owner.uid);
+      if (mine.length !== 1) return bad.push(`${tag}: ${action} rows=${rows.length} byActor=${mine.length}`);
+      const pl = [mine[0].after, mine[0].before].find((x: Any) => x && typeof x === "object" && "code" in x) as Any;
+      if (!pl) return bad.push(`${tag}: no {code, seen, actual} payload (${short({ b: mine[0].before, a: mine[0].after }, 120)})`);
+      const why: string[] = [];
+      if (code ? pl.code !== code : !(typeof pl.code === "string" && pl.code)) why.push(`code=${pl.code}`);
+      if (posted === null) {
+        if (pl.seen !== null) why.push(`seen=${short(pl.seen, 60)} want null`);
+      } else {
+        const s = pl.seen ?? {};
+        if (Number(s.net) !== Number(posted.expectNet) || Number(s.items) !== Number(posted.expectItems)) why.push(`seen net/items ${s.net}/${s.items} want ${posted.expectNet}/${posted.expectItems}`);
+        if (posted.expectGross !== undefined && Number(s.gross) !== Number(posted.expectGross)) why.push(`seen gross ${s.gross}`);
+        if (posted.expectDigest !== undefined && s.digest !== posted.expectDigest) why.push(`seen digest ${String(s.digest).slice(0, 10)}`);
+      }
+      const db = await runRow(runId);
+      const items = await itemsOf(runId);
+      const a = pl.actual ?? {};
+      if (Number(a.net) !== Number(db?.totalNetSatang) || Number(a.items) !== items.length || Number(a.gross) !== Number(db?.totalGrossSatang) || a.digest !== (await digestOf(items))) why.push(`actual ${short(a, 120)} ≠ DB ${db?.totalNetSatang}/${items.length}/${db?.totalGrossSatang}`);
+      if (why.length) bad.push(`${tag}: ${why.join(", ")}`);
+    };
+    await audit("STALE", "hr.payroll.approve.refused", rS, "STALE", postedS);
+    if (s84) await audit("DRAFT_HAS_JV", "hr.payroll.approve.refused", s84.runId, "DRAFT_HAS_JV", s84.posted);
+    await audit("NOT_DRAFT", "hr.payroll.approve.refused", rA, "NOT_DRAFT", postedA);
+    await audit("delete", "hr.payroll.delete_draft.refused", rA, null, null);
+    await audit("recompute", "hr.payroll.recompute.refused", rA, null, null);
+    chk("S8.6", bad.length === 0, "5 *.refused rows (1 each) · actor = session user · code · seen = posted (null for delete/recompute) · actual net/items/gross/digest = DB", bad.join(" · "));
+  }
+
+  // X8.1 — approve(old expect) ∥ recompute (same-totals swap) ×3 (in-process)
+  {
+    const bad: string[] = [];
+    const wins: string[] = [];
+    const a = await emp(c8x, "แข่งสลับ ก", 20_000);
+    await emp(c8x, "แข่งสลับ ข", 16_000);
+    const c = (await hrSvc.createEmployee(c8x, { name: "แข่งสลับ ค" })).id as string;
+    for (const [i, period] of ["2036-09", "2036-10", "2036-11"].entries()) {
+      await PAY.setSalaryProfile(c8x, { employeeId: a, baseSalarySatang: B(20_000), ssoEligible: true });
+      await P.hrSalaryProfile.deleteMany({ where: { systemId: H8X, employeeId: c } });
+      const r = await mkRun(c8x, period);
+      const eOld = await expect8(r);
+      await P.hrSalaryProfile.deleteMany({ where: { systemId: H8X, employeeId: a } });
+      await PAY.setSalaryProfile(c8x, { employeeId: c, baseSalarySatang: B(20_000), ssoEligible: true });
+      const n0 = await jvCount();
+      // start order per round: recompute first · approve first · approve 400 ms late (recompute should have committed)
+      let ap: Res;
+      let rc: Res;
+      if (i === 1) [ap, rc] = await Promise.all([call(PAY.approveRun, c8x, r, eOld), rec(c8x, r)]);
+      else [rc, ap] = await Promise.all([rec(c8x, r), (i === 2 ? sleep(400) : Promise.resolve()).then(() => call(PAY.approveRun, c8x, r, eOld))]);
+      const run = await runRow(r);
+      const items = await itemsOf(r);
+      const dig = await digestOf(items);
+      const dJv = (await jvCount()) - n0;
+      const noThrow = ap.kind !== "THROW" && rc.kind !== "THROW";
+      let fine = false;
+      if (run?.status === "APPROVED") fine = ap.kind === "OK" && rc.kind === "NO" && dig === eOld.itemsDigest && dJv === 1 && (await jvBalanced(run.journalEntryId)).ok;
+      else fine = run?.status === "DRAFT" && !run?.journalEntryId && rc.kind === "OK" && ap.kind === "NO" && ap.v?.code === "STALE" && dig !== eOld.itemsDigest && dJv === 0;
+      wins.push(run?.status === "APPROVED" ? "approve" : "recompute");
+      if (!(noThrow && fine && dJv <= 1)) bad.push(`${period}: approve ${rs(ap)} | rec ${rs(rc)} | ${run?.status} jv+${dJv} digest ${dig === eOld.itemsDigest ? "= old" : "≠ old"}`);
+    }
+    chk("X8.1", bad.length === 0, "3/3 rounds: ≤1 JV · APPROVED only with the old items (digest = seen, recompute refused) · else DRAFT, new items, approve STALE, 0 JV", bad.join(" · ") || `winners ${wins.join(",")}`);
+    if (bad.length === 0) console.log(`     X8.1 winners: ${wins.join(", ")}`);
   }
 }
 
