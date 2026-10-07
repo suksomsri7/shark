@@ -81,7 +81,8 @@
 //            that the snapshot lacks · every snapshot/restore/purge (and the whole non-dry run) refuses to start unless
 //            an ancestor process is scripts/with-gate-lock.sh's `flock /tmp/shark-gate*.lock` · controls in wo-notes §12.
 // FIXTURES   (ruling §9/§11) set BEFORE the snapshot, reverted in CLEAN, originals in .qc-shots/c42/fixture-originals.json
-//            (a crashed run is healed by the next start): portal enabled (level-by-level JSON merge) · the representative
+//            (a crashed run is healed by the next start): portal enabled (level-by-level JSON merge) · allowed link hosts
+//            settings.crm.tracking.linkHosts = ["*.example.com"] (whole original tracking object put back) · the representative
 //            company's tax id → 0105599000001 (valid check digit) · AUDIT-STATE rows (state read back from AuditLog, which is
 //            never deleted): contact-privacy-erase / -reason / -confirm / -submit / -cancel run on a runner-owned throwaway
 //            contact per user×viewport (deleted in CLEAN). Known residual: crm.deal.reassign audit rows feed a daily
@@ -1402,8 +1403,12 @@ const SWEEP: { model: string; field: string; scope: "systemId" | "tenantId" }[] 
 //    and company-edit-submit can never save. The representative company gets a VALID id for the run: 0105599000001
 //    (check digit computed — not used by any seed row); company-new-duplicate-link types the same value.
 // 2. the QC1 seed has the customer portal OFF ⇒ invites are refused and the customer role cannot log in — enabled for the run.
+// 3. C4.2-fix-linkhosts (C6.1-LINKPOLICY review Point 7): a tracked link needs its destination host on the shop's allowed
+//    list ⇒ settings.crm.tracking.linkHosts = ["*.example.com"] for the run (crm-link-create types https://qc-btn-<u>.example.com).
+//    The exact original settings.crm.tracking object (null = absent) is kept in FIXTURE_FILE and put back by healFixtures.
 const FIXTURE_FILE = ".qc-shots/c42/fixture-originals.json";
 const FIX_TAX_ID = "0105599000001";
+const FIX_LINK_HOSTS = ["*.example.com"];
 async function applyFixtures(ctx: Ctx): Promise<void> {
   try {
     const sys = await P.appSystem.findUnique({ where: { id: SYS }, select: { settings: true } });
@@ -1413,27 +1418,40 @@ async function applyFixtures(ctx: Ctx): Promise<void> {
     const origPortal = (sys?.settings as Any)?.crm?.portal ?? null; // exact original object (null = key absent)
     // it5 (RV-9 content checksums, dbg11): the heal must also put updatedAt back — restoring only taxId left company0 and its
     //   Party with a new updatedAt after every run (counts equal, content not)
-    const orig = { systemId: SYS, portalEnabled: portalOn, portal: origPortal, companyId: co?.id ?? null, taxId: co?.taxId ?? null, partyId: co?.partyId ?? null, partyTaxId: party?.taxId ?? null, companyUpdatedAt: co?.updatedAt ?? null, partyUpdatedAt: party?.updatedAt ?? null };
+    const origTracking = (sys?.settings as Any)?.crm?.tracking ?? null; // exact original object (null = key absent)
+    const orig = { systemId: SYS, portalEnabled: portalOn, portal: origPortal, companyId: co?.id ?? null, taxId: co?.taxId ?? null, partyId: co?.partyId ?? null, partyTaxId: party?.taxId ?? null, companyUpdatedAt: co?.updatedAt ?? null, partyUpdatedAt: party?.updatedAt ?? null, trackingTouched: true, tracking: origTracking };
     writeFileSync(FIXTURE_FILE, JSON.stringify(orig, null, 1));
     // 🔴 it2 (27 Sep): jsonb_set(…, '{crm,portal,enabled}', …, true) is a NO-OP when settings.crm.portal does not exist yet
     //    (create_missing only adds the LAST key) — the portal stayed off. Merge the object level by level instead.
     if (!portalOn) await P.$executeRawUnsafe(`UPDATE "AppSystem" SET settings = jsonb_set(coalesce(settings,'{}'::jsonb), '{crm}', coalesce(settings->'crm','{}'::jsonb) || jsonb_build_object('portal', coalesce(settings->'crm'->'portal','{}'::jsonb) || '{"enabled":true}'::jsonb), true) WHERE id = $1`, SYS);
     const check = await P.appSystem.findUnique({ where: { id: SYS }, select: { settings: true } });
     if ((check?.settings as Any)?.crm?.portal?.enabled !== true) console.log("  ⚠️ fixture: เปิดพอร์ทัลไม่สำเร็จ (settings.crm.portal.enabled ไม่เป็น true)");
+    // 3. allowed link hosts — merged level by level (crm → tracking → linkHosts), the same shape saveLinkHosts writes;
+    //    tracking.web and every other key survive
+    await P.$executeRawUnsafe(`UPDATE "AppSystem" SET settings = jsonb_set(coalesce(settings,'{}'::jsonb), '{crm}', coalesce(settings->'crm','{}'::jsonb) || jsonb_build_object('tracking', (CASE WHEN jsonb_typeof(settings->'crm'->'tracking') = 'object' THEN settings->'crm'->'tracking' ELSE '{}'::jsonb END) || jsonb_build_object('linkHosts', $2::jsonb)), true) WHERE id = $1`, SYS, JSON.stringify(FIX_LINK_HOSTS));
+    const lh = await P.appSystem.findUnique({ where: { id: SYS }, select: { settings: true } });
+    if (stable((lh?.settings as Any)?.crm?.tracking?.linkHosts) !== stable(FIX_LINK_HOSTS)) console.log("  ⚠️ fixture: ตั้งโดเมนปลายทางของลิงก์ติดตามไม่สำเร็จ (settings.crm.tracking.linkHosts)");
     if (co && co.taxId !== FIX_TAX_ID) {
       await P.crmCompany.update({ where: { id: co.id }, data: { taxId: FIX_TAX_ID } });
       if (co.partyId && party) await P.party.update({ where: { id: co.partyId }, data: { taxId: FIX_TAX_ID } }).catch(() => {});
     }
-    console.log(`🧩 fixtures: portal ${portalOn ? "เปิดอยู่แล้ว" : "เปิดชั่วคราว"} · เลขภาษีบริษัทตัวแทน ${co?.taxId ?? "-"} → ${FIX_TAX_ID} (คืนตอนจบ)`);
+    console.log(`🧩 fixtures: portal ${portalOn ? "เปิดอยู่แล้ว" : "เปิดชั่วคราว"} · เลขภาษีบริษัทตัวแทน ${co?.taxId ?? "-"} → ${FIX_TAX_ID} · โดเมนปลายทางลิงก์ ${stable(origTracking?.linkHosts ?? null)} → ${stable(FIX_LINK_HOSTS)} (คืนตอนจบ)`);
   } catch (e) { console.log(`  ⚠️ ตั้ง fixture ไม่สำเร็จ — ${e instanceof Error ? e.message : e}`); }
 }
 async function healFixtures(): Promise<void> {
   if (!existsSync(FIXTURE_FILE)) return;
   try {
-    const o = JSON.parse(readFileSync(FIXTURE_FILE, "utf8")) as { systemId: string; portalEnabled: boolean; portal?: unknown; companyId: string | null; taxId: string | null; partyId: string | null; partyTaxId: string | null; companyUpdatedAt?: string | null; partyUpdatedAt?: string | null };
+    const o = JSON.parse(readFileSync(FIXTURE_FILE, "utf8")) as { systemId: string; portalEnabled: boolean; portal?: unknown; companyId: string | null; taxId: string | null; partyId: string | null; partyTaxId: string | null; companyUpdatedAt?: string | null; partyUpdatedAt?: string | null; trackingTouched?: boolean; tracking?: unknown };
     if (o.systemId !== SYS) { console.log(`  ⚠️ ${FIXTURE_FILE} เป็นของระบบอื่น (${o.systemId}) — ไม่แตะ`); return; }
     if (o.portal === null || o.portal === undefined) await P.$executeRawUnsafe(`UPDATE "AppSystem" SET settings = settings #- '{crm,portal}' WHERE id = $1`, SYS);
     else await P.$executeRawUnsafe(`UPDATE "AppSystem" SET settings = jsonb_set(coalesce(settings,'{}'::jsonb), '{crm,portal}', $2::jsonb, true) WHERE id = $1`, SYS, JSON.stringify(o.portal));
+    // C4.2-fix-linkhosts: the whole original settings.crm.tracking object back (an older file without trackingTouched = untouched)
+    if (o.trackingTouched) {
+      if (o.tracking === null || o.tracking === undefined) await P.$executeRawUnsafe(`UPDATE "AppSystem" SET settings = settings #- '{crm,tracking}' WHERE id = $1`, SYS);
+      else await P.$executeRawUnsafe(`UPDATE "AppSystem" SET settings = jsonb_set(coalesce(settings,'{}'::jsonb), '{crm,tracking}', $2::jsonb, true) WHERE id = $1`, SYS, JSON.stringify(o.tracking));
+      const back = await P.appSystem.findUnique({ where: { id: SYS }, select: { settings: true } });
+      if (stable((back?.settings as Any)?.crm?.tracking ?? null) !== stable(o.tracking ?? null)) cleanupFailures.push("settings.crm.tracking ไม่ตรงต้นฉบับหลังคืน fixture");
+    }
     if (o.companyId) await P.crmCompany.update({ where: { id: o.companyId }, data: { taxId: o.taxId, ...(o.companyUpdatedAt ? { updatedAt: new Date(o.companyUpdatedAt) } : {}) } }).catch(() => {});
     if (o.partyId) await P.party.update({ where: { id: o.partyId }, data: { taxId: o.partyTaxId, ...(o.partyUpdatedAt ? { updatedAt: new Date(o.partyUpdatedAt) } : {}) } }).catch(() => {});
     (await import("node:fs")).rmSync(FIXTURE_FILE, { force: true });
@@ -1689,6 +1707,10 @@ function fillValueFor(testid: string, inputType: string): string {
   if (inputType === "tel" || /phone/.test(t)) return `08${String(Math.floor(Math.random() * 1e8)).padStart(8, "0")}`; // random — a fixed number made the 2nd create a "duplicate"
   if (/taxid$/.test(t)) return thaiTaxId(); // 13 digits + mod-11 check digit (companies-shared.ts taxIdProblem)
   if (/branchcode$/.test(t)) return "00000";
+  // C4.2-fix-linkhosts: the allowed-hosts box (split on whitespace) — keeps the run fixture *.example.com (crm-link-create
+  //   needs it) and adds one unique exact host so the value CHANGES (the box already shows the fixture ⇒ a bare
+  //   "*.example.com" would be bumped by differ() to "*.example.com2", which the save would then store instead)
+  if (/linkhosts-input$/.test(t)) return `${FIX_LINK_HOSTS.join(" ")} qc-btn-${u}.example.com`;
   if (inputType === "url" || /(url|website|domain)$/.test(t) || /domain-input$/.test(t)) return /domain/.test(t) ? `qc-btn-${u}.example.com` : `https://qc-btn-${u}.example.com`;
   if (/digest-hour$/.test(t)) return "8";
   if (/lower-text$/.test(t)) return "ลดอายุเก็บ"; // the retention "type this word to confirm lowering" box

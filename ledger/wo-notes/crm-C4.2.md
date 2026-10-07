@@ -793,3 +793,68 @@ TOTAL pressed 7821 · passed 7793 (incl. WAIVED 56) · LOCKOUT-PAIRED 190 (41 ro
 - whether servers before run5 had a mail key (60 e-mailed staff notifications to `shark.local` personas);
 - pre-flight reads DB state only: LIFF / Bunny / AI keys in the server env are not checked (env not read); automation actions that the RUNNER creates mid-run are NOTIFY_STAFF/CREATE_ACTIVITY only (registry openers), not re-audited for future registry edits;
 - `cleanup-it7-leftovers.mts --apply` never run (controller decides).
+
+## C4.2-fix-linkhosts
+
+7 Oct 2026, runner lane (c42b, `wip/crm-c42b`). Follows C6.1-LINKPOLICY review Point 7 and the round-2 re-check: tracked links `/l/<code>` now need their destination host on `settings.crm.tracking.linkHosts`.
+
+**Merge.** `origin/session/crm` was merged into `wip/crm-c42b` as `86724927`, an ordinary merge. There were **no conflicts**. After the merge, `scripts/qc-crm-buttons.mts` and `scripts/crm-ui-inventory.json` are byte-equal to `origin/session/crm`, the accepted it7 copy plus the 3 C6.1 registry rows.
+
+**Runner change** (`scripts/qc-crm-buttons.mts`, about 30 lines, no other file touched):
+1. **Fixture 3, in `applyFixtures`, before the snapshot.**
+   - It sets `settings.crm.tracking.linkHosts = ["*.example.com"]` (`FIX_LINK_HOSTS`).
+   - The merge goes level by level, crm → tracking → linkHosts, with the same jsonb shape that `saveLinkHosts` writes. `tracking.web` and every sibling key survive.
+   - It reads the value back and warns if it is not equal.
+   - It writes the **exact original `settings.crm.tracking` object** (null when absent) to `FIXTURE_FILE` before writing to the DB.
+   - AppSystem is in SNAP_MODELS, so every mid-run restore keeps the fixture.
+2. **`healFixtures` (CLEAN and crash-heal).**
+   - It puts the whole original tracking object back, or removes `{crm,tracking}` when it was absent.
+   - It re-reads the object and pushes a `cleanupFailures` entry if it differs from the original.
+   - An older fixture file without `trackingTouched` leaves tracking alone.
+3. **Fill rule** `/linkhosts-input$/` → `"*.example.com qc-btn-<u>.example.com"`. This is a deliberate refinement of the ruling's bare `*.example.com`:
+   - The textarea already shows the fixture `*.example.com`, so a bare value is bumped by `differ()` to `*.example.com2`.
+   - The save row would then store `*.example.com2`, and the later `crm-link-create` in the same group would be refused.
+   - The server splits the box on whitespace, so the value keeps the fixture wildcard and adds one unique exact host. The field changes, the save is accepted, and `crm-link-create` still matches `*.example.com`.
+   - PREFILL never touches the box because it is not empty.
+
+**QC1 server rebuild.**
+- `scripts/pending/run-rebuild-3215-c60.sh` is a copy of fix15, run from this worktree. `.env.qc` here is byte-equal to the controller's (`cmp -s`, not read).
+- Unit `crm-rebuild-3215-c60`: `MemoryMax=7G` (the fix15 unit's real value; the build peaked at the 7.0G cap with swap), `KillMode=process`.
+- The old server (pid 3533344, 2f5e411b) was started from the controller's checkout. The script adopts that pid into this worktree's pid file so `acc-v2-serve.sh stop` stops it.
+- The script refuses to continue if :3215 is still listening, and proves the new listener's pgid is the new server.
+- The build ran through `with-gate-lock.sh` (inside `acc-v2-serve.sh`).
+- `BUILD-STATE` (this worktree) = `READY 11:19 86724927 port=3215 ai=mock webhook-private=on cwd=shark-crm-c42b`. The server log is `shark-crm-c42b/.qc-shots/acc-v2/server.log`.
+- ⚠️ From now on, :3215's pid file, BUILD-STATE and server log live in **`/root/projects/shark-crm-c42b/.qc-shots/`**, not the controller's checkout. The controller's `server.pid` (3533344) is stale.
+
+**run7** (`scripts/pending/c42b/run7.sh` · unit `crm-c42b-run7` · seed 2026100711, recorded; there is no random draw).
+- Scope: chunk `re:^/settings/tracking$` × owner, manager, nok and thana × desktop and mobile. `crm-link-create` and all 3 C6.1 rows live on this page, which has no customer rows.
+- Chunk runner: `/tmp/c42b-logs/run-chunks.run7.sh` is the it7 `run-chunks.sh` with only `BS=` pointed at this worktree. Logs: `/tmp/c42b-logs/run7-*`.
+
+Results:
+
+| role | pressed | passed | dead | wrongExpect | hiddenLeak | VACUOUS | dbVerified |
+|---|---|---|---|---|---|---|---|
+| owner | 46 | 46 | 0 | 0 | 0 | 0 | 10 |
+| manager | 46 | 46 | 0 | 0 | 0 | 0 | 10 |
+| nok | 46 | 46 | 0 | 0 | 0 | 0 | 0 |
+| thana | 46 | 46 | 0 | 0 | 0 | 0 | 0 |
+
+- **TOTAL** pressed 184 · passed 184 · **VERDICT PASS**.
+- Combined with the run6 pages that run7 did not touch: 4399/4399, **VERDICT PASS**.
+- **Owner and manager, both viewports:**
+  - `crm-track-linkhosts-input`, `-check` and `-save` plus `crm-link-create` were all found and passed.
+  - dbVerified: `crm-link-create` → `CrmTrackedLink` + `AuditLog crm.tracking.link.create`, and `crm-track-linkhosts-save` → `AuditLog crm.tracking.link.hosts`.
+  - The dependents of `crm-link-create` (`crm-link-toggle-*`, `crm-link-delete-yes-*`) also passed with DB checks.
+- **nok and thana:** the rows are hidden as the registry says, and owner and manager presence pairs them.
+- **Restore and tripwire:**
+  - Fixture log: `โดเมนปลายทางลิงก์ null → ["*.example.com"]`, then healed.
+  - `verify` after CLEAN: all 75 tables match the snapshot.
+  - Counts before = after, including the `sum:AppSystem` content checksum. This is the restore proof of the fixture.
+  - Tripwire CLEAN: 0 server-log `[email`/`⨯` lines.
+  - window-leftovers: only `AuditLog: 36`.
+
+**Not verified:**
+- The other registry pages on the new build (only `/settings/tracking` ran; the combined verdict borrows run6 for the rest, run on 2f5e411b).
+- The customer role (no customer rows on this page).
+- A crash between the fixture write and the snapshot (heal path reasoned, not exercised).
+- `pnpm typecheck` / fitness separately: `next build` compiled the tree, and the pre-commit fitness ran at commit.
