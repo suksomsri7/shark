@@ -157,6 +157,10 @@ const SHIFTS_STATE_PLAN: { key: ShiftsStateKey; devices: readonly Device[]; note
 ];
 /** รหัสเครื่องของสถานะหน้ากะ — แยกจาก DEVICE_ID ของหน้าขาย (กะของหน้าขายเปิดค้างทั้งรอบ) */
 const SHIFTS_DEVICE_ID = `posqc-vis-shdev-${process.pid}`;
+const STOCK_STATE_KEYS: ReadonlySet<string> = new Set(STOCK_STATE_PLAN.map((s) => s.key));
+const SHIFTS_STATE_KEYS: ReadonlySet<string> = new Set(SHIFTS_STATE_PLAN.map((s) => s.key));
+const isStockState = (k: StateKey): k is StockStateKey => STOCK_STATE_KEYS.has(k);
+const isShiftsState = (k: StateKey): k is ShiftsStateKey => SHIFTS_STATE_KEYS.has(k);
 type Job = { page: PosPage; v: (typeof POS_VIEWPORTS)[number]; state: StateKey | null; file: string; path?: string };
 const viewports = LOCALE_EN ? POS_VIEWPORTS.filter((v) => v.name === "desktop") : [...POS_VIEWPORTS];
 // สถานะหน้าสต็อกเฉพาะ --page stock หรือ wo p1.14* (รอบ p1.3/p1.2 --states ทุกหน้าเดิมไม่เปลี่ยน · ไม่เปิดรอบนับเพิ่ม)
@@ -604,8 +608,9 @@ async function closeShiftAsOwner(shiftId: string, keyTag: string): Promise<{ ok:
 }
 
 async function runState(page: Any, state: StateKey, device: Device): Promise<void> {
-  if (state.startsWith("stock-")) return runStockState(page, state as StockStateKey); // POS P1.14 U
-  if (state.startsWith("shifts-")) return runShiftsState(page, state as ShiftsStateKey); // POS P1.9 U
+  // R3: แยกด้วยสมาชิกชุดที่แน่นอน ไม่ใช่คำนำหน้า — สถานะหน้าขาย "stock-warn" ขึ้นต้น "stock-" แต่ไม่ใช่สถานะหน้าสต็อก
+  if (isStockState(state)) return runStockState(page, state); // POS P1.14 U
+  if (isShiftsState(state)) return runShiftsState(page, state); // POS P1.9 U
   await visibleEl(page, tid("pos-reg-root"), 0, 15_000).catch(() => {
     throw new StepError("หน้าขายใหม่ไม่ขึ้น (pos-reg-root) — ธง settings.pos.registerV2 ของร้าน QC เปิดหรือยัง? (seed-pos-qc)");
   });
