@@ -1,0 +1,260 @@
+<style>
+.rail{width:56px;flex:none;border-right:1px solid var(--line);background:var(--sf2);
+  padding:10px 0;display:flex;flex-direction:column;align-items:center;gap:5px;color:var(--mut2)}
+.rail .ri{width:36px;height:36px;border-radius:9px;display:grid;place-items:center}
+.rail .ri.on{background:var(--sf);border:1px solid var(--line);color:var(--ink)}
+.top .biz{display:inline-flex;align-items:center;gap:12px;height:34px;padding:0 12px;border:1px solid var(--line);
+  border-radius:10px;font-size:13.5px;color:var(--ink2)}
+.top .dt{width:8px;height:8px;border-radius:50%;background:var(--ink);display:inline-block}
+.top .ol{display:inline-flex;align-items:center;gap:10px;font-size:13px;color:var(--mut)}
+.top .who{display:inline-flex;align-items:center;gap:10px;font-size:13px;color:var(--ink2)}
+.frame .amenu .am{padding:18px 15px 16px!important;font-size:14.5px!important}
+.amenu .am .pill{height:20px;min-width:20px;font-size:11px}
+.ph .d{font-size:13.5px;color:var(--mut);margin-top:4px}
+.rtabs{padding:0 36px;margin-top:-6px}
+.rtabs .tab .n{margin-left:2px}
+.cols{display:flex;gap:32px;align-items:flex-start}
+.mc{flex:2;min-width:0;display:flex;flex-direction:column;gap:32px}
+.sc{flex:1;min-width:0;display:flex;flex-direction:column;gap:32px}
+.cht{display:flex;align-items:center;gap:12px;margin-bottom:20px}
+.cht h2{font-size:19px;font-weight:700;letter-spacing:-.01em}
+.cht .sp{flex:1}
+.cht .tg{font-size:13px;color:var(--mut)}
+/* BOM */
+.bom{border:1px solid var(--line);border-radius:16px;overflow:hidden}
+.bom .hr2,.bom .r{display:grid;grid-template-columns:1fr 150px 130px 120px;align-items:center;gap:12px;padding:0 20px}
+.bom .hr2{height:46px;background:var(--sf2);border-bottom:1px solid var(--line);font-size:12.5px;font-weight:700;color:var(--mut)}
+.bom .hr2 span:not(:first-child),.bom .r span:not(:first-child){text-align:right}
+.bom .r{min-height:58px;border-top:1px solid var(--line);font-size:14.5px;font-variant-numeric:tabular-nums}
+.bom .r:nth-child(2){border-top:0}
+.bom .r .nm{display:flex;align-items:center;gap:10px;min-width:0}
+.bom .r .nm b{font-weight:600}
+.bom .r .nm small{color:var(--mut)}
+.bom .r .q{color:var(--ink2)}
+.bom .r .c{font-weight:700}
+.bom .r .u{color:var(--mut);font-size:13px}
+.bom .r.sub{background:var(--sf2);min-height:50px;font-size:14px}
+.bom .r.sub .nm{padding-left:34px;position:relative}
+.bom .r.sub .nm::before{content:"";position:absolute;left:12px;top:-16px;width:14px;height:26px;border-left:1.5px solid var(--line2);border-bottom:1.5px solid var(--line2);border-radius:0 0 0 6px}
+.bom .r.sub .c{font-weight:600;color:var(--ink2)}
+.bom .r.sub.tot2{font-weight:700}
+.bom .r.sub.tot2 .nm b{font-weight:700}
+.bom .r.mk{background:var(--sf)}
+.tw{width:22px;height:22px;border-radius:6px;border:1px solid var(--line2);display:grid;place-items:center;color:var(--ink2);flex:none;font-size:12px;background:var(--sf)}
+.mkchip{display:inline-flex;align-items:center;gap:5px;height:24px;padding:0 9px;border-radius:7px;background:var(--acc-bg);color:var(--acc);font-size:12.5px;font-weight:700;white-space:nowrap}
+.sumb{display:grid;grid-template-columns:1fr 1fr 1.3fr;gap:16px;margin-top:20px}
+.sumb .b{border:1px solid var(--line);border-radius:16px;padding:16px 18px}
+.sumb .b .k{font-size:13px;color:var(--mut)}
+.sumb .b .v{font-size:26px;font-weight:700;letter-spacing:-.02em;margin-top:4px;font-variant-numeric:tabular-nums}
+.sumb .b .d{font-size:12.5px;color:var(--mut);margin-top:3px}
+.sumb .b.ink{background:var(--ink);border-color:var(--ink);color:var(--sf)}
+.sumb .b.ink .k,.sumb .b.ink .d{color:var(--line2)}
+.mg{height:8px;border-radius:4px;background:var(--ink2);overflow:hidden;margin-top:10px;display:flex}
+.mg i{display:block;height:100%;background:var(--sf)}
+.cap2{display:flex;align-items:center;gap:16px;margin-top:20px;padding:16px 18px;border-radius:16px;border:1px solid var(--acc);background:var(--acc-bg);color:var(--acc)}
+.cap2 .n{font-size:30px;font-weight:700;letter-spacing:-.02em;line-height:1;font-variant-numeric:tabular-nums}
+.cap2 .t{flex:1;min-width:0;font-size:14px;line-height:1.55}
+.cap2 .t b{font-weight:700}
+.cap2 .sw{flex:none}
+/* PD */
+.pdg{display:grid;grid-template-columns:1fr 46px 1fr;gap:0;align-items:stretch}
+.pdc{border:1px solid var(--line);border-radius:16px;padding:16px 18px}
+.pdc h3{font-size:13.5px;font-weight:700;color:var(--mut);margin-bottom:6px;display:flex;align-items:center;gap:8px}
+.pdc .l{display:flex;justify-content:space-between;align-items:baseline;padding:9px 0;border-top:1px solid var(--line);font-size:14.5px;font-variant-numeric:tabular-nums;gap:10px}
+.pdc .l:first-of-type{border-top:0}
+.pdc .l b{font-weight:600}
+.pdc .l .a{color:var(--ink2);white-space:nowrap}
+.pdc .l.t2{font-weight:700;border-top:1.5px solid var(--ink)}
+.pdc .l.t2 .a{color:var(--ink)}
+.pdc.out{border-color:var(--ink)}
+.pdc .big2{font-size:24px;font-weight:700;letter-spacing:-.02em}
+.pdc .kvs{display:flex;flex-direction:column;gap:0;margin-top:8px}
+.pdc .kvs .l span{color:var(--mut)}
+.pdc .l .dgt{white-space:nowrap}
+.pda{display:grid;place-items:center;color:var(--mut)}
+.pdm{display:flex;align-items:center;gap:26px;margin-top:20px;flex-wrap:wrap}
+.pdm .kv3{display:flex;flex-direction:column;gap:2px}
+.pdm .kv3 small{color:var(--mut)}
+.pdm .kv3 b{font-size:14.5px;font-weight:600}
+.pdm .sp{flex:1}
+/* AI */
+.ai{border-color:var(--acc)!important}
+.ai .aih{display:flex;align-items:center;gap:12px;margin-bottom:16px}
+.ai .aih .ic{width:36px;height:36px;border-radius:11px;background:var(--acc-bg);color:var(--acc);display:grid;place-items:center;flex:none}
+.ai .aih h2{font-size:17px;font-weight:700}
+.ai .aih .sp{flex:1}
+.ins{display:flex;flex-direction:column;gap:12px}
+.ins .it{display:flex;gap:12px;font-size:14px;color:var(--ink2);line-height:1.55;padding:13px 14px;border:1px solid var(--line);border-radius:14px}
+.ins .it .dt{width:8px;height:8px;border-radius:50%;background:var(--ink);flex:none;margin-top:8px}
+.ins .it.dgi .dt{background:var(--dg)}
+.ins .it b{color:var(--ink)}
+.ins .it .tg2{display:inline-flex;align-items:center;gap:5px;margin-top:6px;font-size:12.5px;font-weight:700;color:var(--acc);background:var(--acc-bg);border-radius:7px;padding:2px 8px}
+.aib{display:flex;gap:10px;margin-top:16px;flex-wrap:wrap}
+.fct{width:100%;border-collapse:collapse;font-size:14px;font-variant-numeric:tabular-nums}
+.fct th{font-size:12.5px;color:var(--mut);font-weight:700;text-align:right;padding:8px 4px;border-bottom:1px solid var(--line);white-space:nowrap}
+.fct th:first-child{text-align:left}
+.fct td{padding:12px 4px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap}
+.fct tr:last-child td{border-bottom:0}
+.fct td:first-child{text-align:left;font-weight:600}
+.fct td .s2{display:block;font-size:12px;color:var(--mut);font-weight:400}
+.fct td.dg{color:var(--dg);font-weight:700}
+.fct td.rc b{display:block}
+</style>
+<div class="wrap">
+<div>
+<p class="cap">08 · สูตร/ผลิต + ผู้ช่วย AI <span>— สูตรหลายชั้น (ไซรัปทำเอง = สูตรซ้อน) · ต้นทุนตามสูตรสด · “ทำได้อีกกี่แก้ว” → ปิดขายอัตโนมัติ · ใบเตรียมของ/ผลิต ตัดวัตถุดิบ + รับเข้าล็อตใหม่ · AI เสนอ คนยืนยัน</span></p>
+<div class="frame" style="height:1100px">
+
+ <div class="top"><svg class="i lg"><use href="#i-menu"/></svg><span class="brand">SHARK</span>
+  <span class="biz"><svg class="i sm"><use href="#i-shop"/></svg>บ้านกาแฟสวนผึ้ง · สาขาสวนผึ้ง<svg class="i xs"><use href="#i-cv"/></svg></span>
+  <span class="sp"></span>
+  <span class="ol"><i class="dt"></i>ออนไลน์ · พฤ. 1 ต.ค. 2569</span>
+  <svg class="i"><use href="#i-search"/></svg>
+  <span class="who"><span class="av">ก</span>พี่เก่ง · ผู้จัดการ</span>
+ </div>
+
+ <div class="appbody" style="flex:1;min-height:0">
+  <div class="rail">
+   <div class="ri"><svg class="i sm"><use href="#i-home"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-shop"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-users"/></svg></div>
+   <div class="ri on"><svg class="i sm"><use href="#i-box"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-book"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-grid"/></svg></div>
+   <span style="flex:1"></span>
+   <div class="ri"><svg class="i sm"><use href="#i-gear"/></svg></div>
+  </div>
+
+  <div class="mod">
+   <div class="amenu">
+    <div class="am"><svg class="i sm"><use href="#i-home"/></svg>ภาพรวม</div>
+    <div class="am"><svg class="i sm"><use href="#i-box"/></svg>สินค้าและวัตถุดิบ</div>
+    <div class="am"><svg class="i sm"><use href="#i-in"/></svg>รับ/ตัด/ปรับ</div>
+    <div class="am"><svg class="i sm"><use href="#i-list"/></svg>ตรวจนับ</div>
+    <div class="am"><svg class="i sm"><use href="#i-swap"/></svg>โอนสาขา</div>
+    <div class="am"><svg class="i sm"><use href="#i-truck"/></svg>จัดซื้อ</div>
+    <div class="am on"><svg class="i sm"><use href="#i-tree"/></svg>สูตร/ผลิต</div>
+    <div class="am"><svg class="i sm"><use href="#i-chart"/></svg>รายงาน</div>
+    <div class="am"><svg class="i sm"><use href="#i-gear"/></svg>ตั้งค่า</div>
+   </div>
+
+   <div class="ph" style="align-items:flex-start">
+    <div><h1>สูตรและการผลิต</h1><div class="d">ขาย 1 แก้ว ระบบตัดวัตถุดิบตามสูตรให้เอง ทุกช่องทาง (หน้าร้าน · ครัว · LINE MAN · Grab · เว็บร้าน)</div></div>
+    <span class="sp"></span>
+    <div class="btn gh"><svg class="i sm"><use href="#i-doc"/></svg>ใบเตรียมของ/ผลิต</div>
+    <div class="btn pri"><svg class="i sm"><use href="#i-plus"/></svg>สร้างสูตร</div>
+   </div>
+
+   <div class="tabs rtabs">
+    <div class="tab on">สูตรเมนู<span class="n">38</span></div>
+    <div class="tab">ของที่ผลิตเอง<span class="n">5</span></div>
+    <div class="tab">ใบเตรียมของ/ผลิต<span class="bdg">1</span></div>
+    <div class="tab">ชุดสินค้า (คิท)<span class="n">3</span></div>
+   </div>
+
+   <div class="pg" style="padding-top:30px!important">
+    <div class="cols">
+     <!-- ═══ ซ้าย 2/3 ═══ -->
+     <div class="mc">
+      <div class="card">
+       <div class="cht"><svg class="i"><use href="#i-tree"/></svg><h2>สูตร: ลาเต้ (ขนาด M)</h2><span class="chip">เมนูขาย · กาแฟ</span><span class="sp"></span><span class="tg">ต้นทุนสด อัปเดต 09:40 หลังรับของ</span><div class="btn gh sm"><svg class="i sm"><use href="#i-edit"/></svg>แก้สูตร</div></div>
+
+       <div class="bom">
+        <div class="hr2"><span>ส่วนประกอบ</span><span>ปริมาณต่อแก้ว</span><span>ราคาต่อหน่วย</span><span>ต้นทุน</span></div>
+        <div class="r"><span class="nm"><span class="tw">1</span><b>เมล็ดกาแฟคั่วกลาง</b></span><span class="q">18 ก.</span><span class="u">฿420/กก.</span><span class="c">฿7.56</span></div>
+        <div class="r"><span class="nm"><span class="tw">2</span><b>นมสด</b></span><span class="q">150 มล.</span><span class="u">฿48/ล.</span><span class="c">฿7.20</span></div>
+        <div class="r mk"><span class="nm"><span class="tw">3</span><b>ไซรัปวานิลลา</b><span class="mkchip"><svg class="i xs"><use href="#i-tree"/></svg>ผลิตได้ · สูตรซ้อน</span></span><span class="q">10 มล.</span><span class="u">฿55/ขวด 500 มล.</span><span class="c">฿1.10</span></div>
+        <div class="r sub"><span class="nm"><b>น้ำตาลทราย</b></span><span class="q">400 ก.</span><span class="u">฿30/กก.</span><span class="c">฿12.00</span></div>
+        <div class="r sub"><span class="nm"><b>น้ำ</b></span><span class="q">400 มล.</span><span class="u">—</span><span class="c">฿0.00</span></div>
+        <div class="r sub"><span class="nm"><b>วานิลลาสกัด</b></span><span class="q">20 มล.</span><span class="u">฿1.90/มล.</span><span class="c">฿38.00</span></div>
+        <div class="r sub"><span class="nm"><b>ขวดแก้ว 500 มล.</b></span><span class="q">1 ใบ</span><span class="u">฿5/ใบ</span><span class="c">฿5.00</span></div>
+        <div class="r sub tot2"><span class="nm"><b>ได้ไซรัป 1 ขวด 500 มล. · ต้นทุน/ขวด</b></span><span class="q"></span><span class="u"></span><span class="c">฿55.00</span></div>
+        <div class="r"><span class="nm"><span class="tw">4</span><b>แก้ว 12 oz</b></span><span class="q">1 ใบ</span><span class="u">฿2.80/ใบ</span><span class="c">฿2.80</span></div>
+        <div class="r"><span class="nm"><span class="tw">5</span><b>ฝาแก้ว</b></span><span class="q">1 ชิ้น</span><span class="u">฿1.20/ชิ้น</span><span class="c">฿1.20</span></div>
+       </div>
+
+       <div class="sumb">
+        <div class="b"><div class="k">ต้นทุนตามสูตร</div><div class="v">฿19.86</div><div class="d">ต่อแก้ว · ถัวเฉลี่ยล่าสุด</div></div>
+        <div class="b"><div class="k">ราคาขาย</div><div class="v">฿85</div><div class="d">หน้าร้าน · เดลิเวอรีบวกตามช่องทาง</div></div>
+        <div class="b ink"><div class="k">กำไรขั้นต้น</div><div class="v">76.6%</div><div class="mg"><i style="width:76.6%"></i></div><div class="d">฿65.14 ต่อแก้ว</div></div>
+       </div>
+
+       <div class="cap2">
+        <span class="n">42</span>
+        <span class="t"><b>ทำได้อีก 42 แก้ว จากวัตถุดิบที่เหลือ (สาขาสวนผึ้ง)</b><br>จำกัดโดย <b>นมสด (6.3 ล.)</b> → ปิดขาย (86) อัตโนมัติเมื่อหมด ทุกช่องทาง</span>
+        <span class="sw"></span>
+       </div>
+      </div>
+
+      <div class="card">
+       <div class="cht"><svg class="i"><use href="#i-doc"/></svg><h2>ใบเตรียมของ/ผลิต PD-0005</h2><span class="chip acc">รอบันทึกผล</span><span class="sp"></span><span class="tg">สาขาสวนผึ้ง · วันนี้ 13:00</span></div>
+       <div class="pdg">
+        <div class="pdc">
+         <h3><svg class="i sm"><use href="#i-out"/></svg>ตัดวัตถุดิบออก</h3>
+         <div class="l"><b>น้ำตาลทราย</b><span class="a">4 กก. · ฿120</span></div>
+         <div class="l"><b>วานิลลาสกัด</b><span class="a">200 มล. · ฿380</span></div>
+         <div class="l"><b>น้ำ</b><span class="a">4 ล. · ฿0</span></div>
+         <div class="l"><b>ขวดแก้ว 500 มล.</b><span class="a">10 ใบ · ฿50</span></div>
+         <div class="l t2"><span>รวมต้นทุนผลิต</span><span class="a">฿550</span></div>
+        </div>
+        <div class="pda"><svg class="i lg"><use href="#i-ar"/></svg></div>
+        <div class="pdc out">
+         <h3><svg class="i sm"><use href="#i-in"/></svg>รับเข้าผลิตภัณฑ์</h3>
+         <div class="big2">ไซรัปวานิลลา 10 ขวด</div>
+         <div class="kvs">
+          <div class="l"><span>ล็อต</span><b>SY-2610</b></div>
+          <div class="l"><span>หมดอายุ</span><b>1 พ.ย. 2569</b></div>
+          <div class="l"><span>ต้นทุน/ขวด</span><b>฿55.00</b></div>
+          <div class="l"><span>ของเสียจากการผลิต</span><b class="dgt">0.5 ขวด</b></div>
+         </div>
+         <div class="sub" style="margin-top:8px">ได้จริง 10.5 ขวด · บรรจุ 10 · เศษ 0.5 ลงของเสีย</div>
+        </div>
+       </div>
+       <div class="pdm">
+        <div class="kv3"><small>สั่งผลิต</small><b>ไซรัปวานิลลา 10 ขวด</b></div>
+        <div class="kv3"><small>ผู้ผลิต</small><b>แพร</b></div>
+        <div class="kv3"><small>หลังผลิต คงเหลือ</small><b>3 → 13 ขวด</b></div>
+        <span class="sp"></span>
+        <div class="btn gh"><svg class="i sm"><use href="#i-print"/></svg>พิมพ์ใบเตรียมของ</div>
+        <div class="btn pri"><svg class="i sm"><use href="#i-check"/></svg>บันทึกผลิต</div>
+       </div>
+      </div>
+     </div>
+
+     <!-- ═══ ขวา 1/3 ═══ -->
+     <div class="sc">
+      <div class="card ai">
+       <div class="aih"><span class="ic"><svg class="i sm"><use href="#i-spark"/></svg></span><h2>ผู้ช่วย AI ของ SHARK</h2><span class="sp"></span><span class="sub">วิเคราะห์ 06:00</span></div>
+       <div class="ins">
+        <div class="it dgi"><span class="dt"></span><span><b>นมสดจะหมดใน 2 วัน</b> (ขาย 9.4 ล./วัน ทุกช่องทาง) → ร่าง PO ฟาร์มนม 48 ล. แล้ว<br><span class="tg2"><svg class="i xs"><use href="#i-doc"/></svg>ร่าง ฿2,304 รอคุณยืนยัน</span></span></div>
+        <div class="it"><span class="dt"></span><span><b>ฝาแก้วหายเฉลี่ย 24 ชิ้น/สัปดาห์</b> ติดต่อกัน 3 รอบนับ → เสนอตั้งนับประจำทุกสัปดาห์ + ตรวจกล้องช่วงปิดร้าน</span></div>
+        <div class="it"><span class="dt"></span><span><b>บราวนี่ขายไม่ออก 60 วัน</b> ที่สวนผึ้ง 9 ชิ้น → เสนอโอนมาหัวหิน (ขายวันละ 6) หรือจัดโปรคู่กาแฟ</span></div>
+       </div>
+       <div class="aib">
+        <div class="btn pri sm"><svg class="i sm"><use href="#i-doc"/></svg>สร้าง PO (ร่าง)</div>
+        <div class="btn gh sm"><svg class="i sm"><use href="#i-grid"/></svg>สร้างงานในบอร์ด</div>
+        <div class="btn gh sm"><svg class="i sm"><use href="#i-spark"/></svg>ถามต่อ</div>
+       </div>
+       <div class="note" style="margin-top:14px;display:block">AI เสนอเท่านั้น — ทุกการเขียนต้องมีคนยืนยัน</div>
+      </div>
+
+      <div class="card">
+       <div class="ch"><svg class="i sm"><use href="#i-chart"/></svg><h2>พยากรณ์ 7 วัน</h2><span class="sp"></span><span class="sub">ทุกสาขา</span></div>
+       <table class="fct">
+        <thead><tr><th>สินค้า</th><th>เหลือ</th><th>ใช้/วัน</th><th>หมดใน</th><th>แนะนำสั่ง</th></tr></thead>
+        <tbody>
+         <tr><td>นมสด</td><td>18.8 ล.</td><td>9.4</td><td class="dg">2 วัน</td><td class="rc"><b>48 ล.</b><span class="s2">ร่างแล้ว</span></td></tr>
+         <tr><td>เมล็ดคั่วกลาง</td><td>8.5 กก.</td><td>2.8</td><td class="dg">3 วัน</td><td class="rc"><b>10 กก.</b><span class="s2">ดอยช้าง</span></td></tr>
+         <tr><td>ฝาแก้ว</td><td>1,180</td><td>150</td><td>8 วัน</td><td class="rc"><b>1,000</b><span class="s2">แพ็กเกจจิ้งไทย</span></td></tr>
+         <tr><td>ไซรัปวานิลลา</td><td>13 ขวด</td><td>1.2</td><td>11 วัน</td><td class="rc"><b>—</b><span class="s2">ผลิตเอง</span></td></tr>
+        </tbody>
+       </table>
+      </div>
+     </div>
+    </div>
+   </div>
+  </div>
+ </div>
+</div>
+</div>
+</div>

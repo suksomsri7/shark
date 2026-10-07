@@ -2606,7 +2606,7 @@ export async function resolveChatSystemId(
     const sys = await prisma.appSystem.findFirst({
       where: { id: want, tenantId, type: "CHAT", active: true },
     });
-    return sys?.id ?? null; // ระบบของร้านอื่น/ไม่ใช่ CHAT → null (ผู้เรียกตอบ 403)
+    return sys?.id ?? null; // ระบบของร้านอื่น/ไม่ใช่ CHAT/ปิดใช้งาน → null (ผู้เรียก: คีย์กลาง → 404 · คีย์ผูกระบบ → 403)
   }
   const first = await prisma.appSystem.findFirst({
     where: { tenantId, type: "CHAT", active: true },

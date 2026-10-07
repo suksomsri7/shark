@@ -1,0 +1,19 @@
+[env] qc-connections · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech
+(node:1099407) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ [CN-1.1] กิจการ 1 สาขา → ระบบใหม่เชื่อมสาขาให้อัตโนมัติ
+  ✅ [CN-1.2] กิจการ 2 สาขา → ไม่เชื่อมเอง (เจ้าของเลือกที่หน้ารวม)
+  ✅ [CN-2.1] หน้า /app/sys/[id] ไม่ใช้ linkUnitAction/unlinkUnitAction แล้ว
+  ✅ [CN-2.2] หลายสาขา → มีลิงก์ไป /app/settings/connections (สาขาเดียว = ไม่มีอะไรเลย)
+  ✅ [CN-3.1] reuse linkUnitAction/unlinkUnitAction เดิม (ห้าม fork/แตะ prisma ใน page เกินอ่าน)
+  ✅ [CN-3.2] เป็นตารางสาขา × ระบบ (มีทั้ง units และ systems)
+  ✅ [CN-4.1] NavDrawer หมวดตั้งค่า มี 'สาขาและการเชื่อมระบบ'
+
+qc-connections: 7/7 ผ่าน · CRITICAL fail 0

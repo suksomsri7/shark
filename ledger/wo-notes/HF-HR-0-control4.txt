@@ -1,0 +1,35 @@
+# HF-HR-0 round 4 — control proof: each fix reverted ALONE in the working tree (other fixes kept), oracle re-run on QC4, fixed files restored after each run (md5 verified)
+# oracle scripts/qc-hf-hr-privacy.mts (119 checks) · base = merge 83989a1e + round-4 working tree
+
+## control r41a — R4.1a — proposals.ts hr_decide_leave guard removed (file = HEAD). Expected: A-1b + S-13 red; A-1/A-2/A-3 stay green because R4.2 (service) still refuses a null decider = defence in depth
+  ❌ [A-1b] ข้อความไทยชี้ไปหน้าระบบพนักงาน (ไม่โทษผู้ใช้) — expected ชี้ทาง | actual ระบบไม่ทราบผู้ตัดสินใบลานี้ จึงยังบันทึกผลไม่ได้ — กรุณาอนุมัติใบลาในหน้าระบบพนักงาน
+  ❌ [S-13] proposals: hr_decide_leave ไม่มี userId → throw ก่อนเรียก decideLeave (R4.1a) — expected ใช่ | actual ไม่ใช่
+ผ่าน 117/119
+FINDINGS: CRITICAL 1 · MAJOR 1 · MINOR 0
+
+## control r42 — R4.2 — hr/service.ts decideLeave empty-decider guard removed (file = HEAD)
+  ❌ [A-4] 🔴 service: ผู้ตัดสิน null → ไม่อนุมัติ — expected ปฏิเสธ · PENDING | actual APPROVED err=null
+  ❌ [A-4b] ข้อความปฏิเสธเป็นภาษาไทย — expected ไทย | actual null
+  ❌ [A-5] 🔴 service: ผู้ตัดสินเป็นสตริงว่าง → ไม่อนุมัติ — expected ปฏิเสธ · PENDING | actual APPROVED err=null
+  ❌ [A-6] 🔴 service: ผู้ตัดสิน null ถอนอนุมัติไม่ได้ (แม้บอก from APPROVED) — expected ปฏิเสธ · APPROVED | actual REJECTED err=null
+  ❌ [A-7] 🔴 bulk ไม่มีผู้ตัดสิน → ไม่อนุมัติสักใบ (failed + เหตุผลไทย) — expected done 0 | actual {"done":1,"failed":[]} APPROVED
+ผ่าน 114/119
+FINDINGS: CRITICAL 4 · MAJOR 1 · MINOR 0
+
+## control r43 — R4.3 — staff/service.ts conditional link (OR linkedUserId null/same) + count check replaced by the old unconditional updateMany
+  ❌ [GR-1] 🔴 ให้สิทธิ์พนักงานคนเดียวพร้อมกัน 2 บัญชี (คนละ process) → ผูกได้ทางเดียว และผูกกับบัญชีของผู้ชนะ (4/4 รอบ) — expected 4/4 | actual ok/ok:false ok/ok:false ok/ok:false ok/ok:false late=false/false
+  ❌ [GR-2] ผู้แพ้ไม่มีสมาชิกภาพค้างในร้าน (ย้อนทั้งธุรกรรม) — expected 4/4 | actual 0
+  ❌ [S-16] grantStaffAccess ผูกด้วย updateMany ที่มีเงื่อนไข linkedUserId (null หรือบัญชีเดิม) + ตรวจ count === 1 — expected ใช่ | actual ไม่ใช่
+ผ่าน 116/119
+FINDINGS: CRITICAL 2 · MAJOR 1 · MINOR 0
+
+## control r44 — R4.4 — staff/service.ts self-link rule back to every actor (no canViewPayroll exemption)
+  ❌ [G-7] 🔴 เจ้าของร้าน (ผู้ดูเงินเดือน) ผูกแถวพนักงานของตัวเอง (มีเงินเดือน) เข้าบัญชีตัวเองได้ — expected ok · ผูก | actual {"ok":false,"reason":"ผูกพนักงานเข้ากับบัญชีของผู้ทำรายการเองไม่ได้ — กรุณาใช้อีเมลของพนักงานคนนั้น หรือให้ผู้ดูแลคนอื่นเป็นผู้ให้สิทธิ์"} link=null
+ผ่าน 118/119
+FINDINGS: CRITICAL 1 · MAJOR 0 · MINOR 0
+
+## control r46 — R4.6 — hr/privacy.ts + hr/payroll-actions.ts back to HEAD (no byHours)
+  ❌ [Q-6] 🔴 ไม่ใช่ผู้ดูเงินเดือน: คำปฏิเสธ OT ตามชั่วโมงเหมือนกันทุกไบต์ (ชั่วโมงต่างกัน/มีเงินเดือนหรือไม่) — expected 1 ข้อความ | actual ["ระบุจำนวนเงิน (หรือชั่วโมง OT) ให้มากกว่า 0","ยื่นรายการนี้ไม่ได้ในตอนนี้ — กรุณาแจ้งผู้ดูแลงานบุคคลให้ตรวจข้อมูลพนักงานคนนี้","ยื่นรายการนี้ไม่ได้ในตอนนี้ — กรุณาแจ้งผู้ดูแลงานบุคคลให้ตรวจข้อมูลพนักงานคนนี้"]
+  ❌ [S-15] requestAdjustmentAction บอกว่าเป็น OT ตามชั่วโมง (byHours) ให้ตัวสร้างคำตอบ — expected ใช่ | actual ไม่ใช่
+ผ่าน 117/119
+FINDINGS: CRITICAL 2 · MAJOR 0 · MINOR 0

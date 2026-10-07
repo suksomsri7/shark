@@ -1,0 +1,40 @@
+
+═══ QC CRM v1 regression — หน้า v1 3 หน้า + CrmHub · action v1 6 ตัว · ข้อมูลข้ามกับ v2 ═══
+[env] DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech · tag qc-crmv1-fvbgqq
+
+(node:1101728) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+── S0 · structure ──
+  ✅ [V1-S0.1] crm/actions.ts ยังมี action v1 ครบ 6 ตัว · หน้า contacts/deals/activities + CrmHub มีอยู่ · ร้านใหม่ = uiVersion 1 (ค่าเริ่มต้น)
+  ✅ [V1-S0.2] [harness control] request scope ทำงาน (หน้า v2 ล้วน /crm/companies ของร้าน uiVersion 1 → 404 ผ่านตัวตรวจ notFound)
+
+── S1 · v1 pages ──
+  ✅ [V1-S1.1] ทางเข้าโมดูล /app/sys/[id] ของร้าน uiVersion 1 = CrmHub เดิม (แท็บ v1 4 แท็บ ไม่มี "บริษัท") · ไม่มีหน้าแรก v2 (crm-home) · ไม่มีตัวเลือกเทมเพลต
+  ✅ [V1-S1.2] หน้า /crm/contacts = ContactsV1Page (CrmContactsSection) พร้อมฟอร์มเพิ่มผู้ติดต่อ v1 (createContactAction)
+  ✅ [V1-S1.3] หน้า /crm/deals = DealsV1Page (CrmDealsSection · กระดานไปป์ไลน์ v1)
+  ✅ [V1-S1.4] หน้า /crm/activities = ActivitiesV1Page (CrmActivitiesSection)
+
+── S2 · v1 actions ──
+  ✅ [V1-S2.1] createContactAction(FormData) → CrmContact 1 แถว (ชื่อ · เบอร์) ในระบบนี้
+  ✅ [V1-S2.2] createDealAction(FormData) → CrmDeal ขั้นแรก · มูลค่า 1,520.50 บาท = 152,050 สตางค์ · ผูกผู้ติดต่อ
+  ✅ [V1-S2.3] moveDealAction(FormData) → ดีลย้ายไปขั้นที่เลือก + แถวประวัติขั้น
+  ✅ [V1-S2.4] addActivityAction(FormData) → CrmActivity CALL ค้าง (doneAt null) มีกำหนด · ผูกผู้ติดต่อ+ดีล
+  ✅ [V1-S2.5] completeActivityAction(FormData) → doneAt ถูกตั้ง
+  ✅ [V1-S2.6] issueQuotationAction(FormData) บนร้านที่ยังไม่มีสมุดบัญชี → ไม่ล่ม (ไม่ throw) และไม่มีเอกสารถูกสร้าง (พฤติกรรม v1 เดิม: ผล ok:false ถูกกลืน · DealsError พากลับด้วย ?notice=)
+  ✅ [V1-S2.7] หน้าดีล v1 แสดงข้อความ ?notice= (ผลของ withDealNotice) เหนือหน้า v1 เดิม · ไม่มี param = ไม่มีแถบข้อความ (หน้า v1 เดิม)
+
+── S3 · cross data ──
+  ✅ [V1-S3.1] ผู้ติดต่อที่สร้างผ่านบริการ v2 (contacts.createContact) โผล่ในหน้าผู้ติดต่อ v1 · ดีลที่สร้างผ่าน action v1 โผล่ในกระดาน v1
+  ✅ [V1-S3.2] ข้อมูลของ action v1 อยู่ในบริการ/หน้า v2: listContacts (v2) เจอผู้ติดต่อ · สลับเป็น 2 แล้วหน้า contacts/deals เป็น v2 (ไม่มี section v1) และแสดงผู้ติดต่อ/ดีลเดิม · ทางเข้าเป็นหน้าแรก v2
+  ✅ [V1-S3.3] สลับกลับเป็น 1: หน้า v1 กลับมา (CrmContactsSection) และยังเห็นทุกคน · action v2 ถูกปฏิเสธ (FORBIDDEN) อีกครั้ง · ไม่มีอะไรถูกลบ (บริษัทที่สร้างตอนเป็น 2 ยังอยู่)
+  ✅ [V1-CLEAN] ร้านทิ้ง + ทุกแถวของร้าน + ผู้ใช้/session ทิ้ง ถูกลบหมด (ฐาน QC กลับเหมือนเดิม)
+
+🟢 CRM v1: 17/17
+JSON_SUMMARY {"total":17,"passed":17,"findings":[]}

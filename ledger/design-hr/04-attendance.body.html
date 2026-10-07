@@ -1,0 +1,238 @@
+<style>
+.rail{width:56px;flex:none;border-right:1px solid var(--line);background:var(--sf2);
+  padding:10px 0;display:flex;flex-direction:column;align-items:center;gap:5px;color:var(--mut2)}
+.rail .ri{width:36px;height:36px;border-radius:9px;display:grid;place-items:center}
+.rail .ri.on{background:var(--sf);border:1px solid var(--line);color:var(--ink)}
+.top .biz{display:inline-flex;align-items:center;gap:12px;height:32px;padding:0 10px;border:1px solid var(--line);
+  border-radius:8px;font-size:13px;color:var(--ink2)}
+.top .dot{width:8px;height:8px;border-radius:50%;background:var(--ink);display:inline-block}
+.top .st{display:inline-flex;align-items:center;gap:13px;font-size:12.5px;color:var(--mut)}
+.top .who{display:inline-flex;align-items:center;gap:13px;font-size:12.5px;color:var(--ink2)}
+.amenu .am .pill{height:18px;min-width:18px;font-size:10.5px}
+</style>
+<style>
+.ph .fl{display:flex;align-items:center;gap:14px;margin-left:16px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:13px;padding:4px;gap:4px;background:var(--sf2)}
+.seg span{display:inline-flex;align-items:center;gap:8px;height:38px;padding:0 16px;border-radius:10px;font-size:14.5px;color:var(--mut)}
+.seg span.on{background:var(--sf);color:var(--ink);font-weight:700;box-shadow:0 1px 3px rgba(10,10,10,.1)}
+.alrt{display:flex;align-items:center;gap:14px;border:1.5px solid var(--dg);border-radius:14px;padding:14px 18px;font-size:14.5px;color:var(--ink2);background:var(--sf)}
+.alrt .ic{color:var(--dg)}
+.alrt b{color:var(--dg)}
+.alrt .sp{flex:1}
+.card.p0 .tbl.atb{font-size:14px!important}
+.card.p0 .tbl.atb th{padding:13px 10px!important}
+.card.p0 .tbl.atb td{padding:12px 10px!important}
+.card.p0 .tbl.atb th:first-child,.card.p0 .tbl.atb td:first-child{padding-left:20px!important}
+.card.p0 .tbl.atb th:last-child,.card.p0 .tbl.atb td:last-child{padding-right:20px!important}
+.atb td{white-space:nowrap}
+.atb .nmc{display:flex;align-items:center;gap:10px}
+.atb .nmc .av{width:32px;height:32px;border-radius:10px;font-size:13px}
+.atb .nmc b{display:block;font-weight:600}
+.atb small{display:block;color:var(--mut)}
+.atb .tm{font-variant-numeric:tabular-nums}
+.atb b.tm{display:block;font-weight:700}
+.atb .mt{display:flex;align-items:center;gap:4px;font-size:12.5px;color:var(--mut)}
+.atb tr.mut td{color:var(--mut)}
+.atb tr.late td{background:var(--sf2)}
+.atb tr.late td:first-child{box-shadow:inset 3px 0 0 var(--dg)}
+.kio{display:flex;flex-direction:column;gap:14px}
+.kio .bg{display:flex;align-items:center;gap:12px}
+.kio .bg .ic{width:44px;height:44px;border-radius:12px;border:1px solid var(--line);display:grid;place-items:center;background:var(--sf2);flex:none}
+.kio .bg b{display:block;font-size:15.5px}
+.kio .bg small{display:block;color:var(--mut)}
+.on2{display:inline-flex;align-items:center;gap:6px;font-weight:700;color:var(--ink)}
+.on2::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--ink)}
+/* ── ปฏิทิน ── */
+.calx{width:100%;border-collapse:collapse;table-layout:fixed}
+.calx th{font-size:13px;color:var(--mut);font-weight:700;padding:10px 0;text-align:center;background:var(--sf2);border-bottom:1px solid var(--line)}
+.calx td{border:1px solid var(--line);height:92px;vertical-align:top;padding:8px 10px;background:var(--sf)}
+.calx tr td:first-child{border-left:0}.calx tr td:last-child{border-right:0}
+.calx tr:last-child td{border-bottom:0}
+.calx .d{display:block;font-size:13px;color:var(--mut);font-weight:700;font-variant-numeric:tabular-nums}
+.calx .tg{display:flex;align-items:center;gap:6px;margin-top:6px;font-size:14px;font-weight:700;font-variant-numeric:tabular-nums}
+.calx .tt{display:block;margin-top:3px;font-size:12.5px;color:var(--mut);font-variant-numeric:tabular-nums}
+.calx .dk{width:8px;height:8px;border-radius:50%;background:var(--ink);display:inline-block}
+.calx td.off{background:var(--sf2)}
+.calx td.off .tg{font-weight:400}
+.calx td.lv{background:repeating-linear-gradient(135deg,var(--sf) 0 8px,var(--sf2) 8px 16px)}
+.calx td.fix{box-shadow:inset 0 0 0 2px var(--dg)}
+.calx td.ot2{background:var(--stage)}
+.calx td.ot2 .d{color:var(--mut2);font-weight:400}
+.calx .acc2{color:var(--acc)}
+.calx .dgt{color:var(--dg)}
+.sumr{display:flex;align-items:center;gap:36px;padding:20px 24px;border-top:1px solid var(--line);flex-wrap:wrap}
+.sumr .b .k{font-size:13px;color:var(--mut)}
+.sumr .b .v{font-size:22px;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums;margin-top:2px}
+.sumr .b .v.dg{color:var(--dg)}
+.sumr .b .v small{font-size:14px;font-weight:600}
+.pay{margin-left:auto;display:flex;align-items:center;gap:12px;border:1px solid var(--acc);background:var(--acc-bg);border-radius:14px;padding:12px 16px;font-size:14px;color:var(--ink2)}
+.pay b{color:var(--ink)}
+.pay .lnk{white-space:nowrap}
+.lgc{display:flex;gap:18px;font-size:13px;color:var(--ink2);align-items:center}
+.lgc span{display:inline-flex;align-items:center;gap:6px}
+.lgc i{width:16px;height:12px;border-radius:3px;border:1px solid var(--line);display:inline-block}
+</style>
+<div class="wrap">
+<div>
+<p class="cap">04A · ลงเวลา — ทีมรายวัน <span>— ตัดสถานะอัตโนมัติจากกะที่จัด (ปกติ/สาย/ยังไม่มา/ลา/หยุด) · วิธีลงเวลา มือถือ GPS / kiosk PIN · แก้มือต้องมีเหตุผล+อนุมัติ · ยังไม่มา 10 นาที → แจ้งผู้จัดการ</span></p>
+<div class="frame" style="height:900px">
+ <div class="top"><svg class="i lg"><use href="#i-menu"/></svg><span class="brand">SHARK</span>
+  <span class="biz"><svg class="i sm"><use href="#i-shop"/></svg>บ้านกาแฟสวนผึ้ง · สาขาหัวหิน<svg class="i xs"><use href="#i-cv"/></svg></span>
+  <span class="sp"></span>
+  <span class="st"><i class="dot"></i>ออนไลน์ · พฤ. 1 ต.ค. 2569 · 12:20</span>
+  <span class="who"><span class="av">ก</span>พี่เก่ง · ผู้จัดการ</span>
+ </div>
+ <div class="appbody" style="flex:1;min-height:0">
+  <div class="rail">
+   <div class="ri"><svg class="i sm"><use href="#i-home"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-shop"/></svg></div>
+   <div class="ri on"><svg class="i sm"><use href="#i-users"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-box"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-book"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-grid"/></svg></div>
+   <span style="flex:1"></span>
+   <div class="ri"><svg class="i sm"><use href="#i-gear"/></svg></div>
+  </div>
+  <div class="mod">
+   <div class="amenu">
+    <div class="am"><svg class="i sm"><use href="#i-home"/></svg>ภาพรวมทีม</div>
+    <div class="am"><svg class="i sm"><use href="#i-users"/></svg>พนักงาน</div>
+    <div class="am"><svg class="i sm"><use href="#i-cal"/></svg>ตารางกะ</div>
+    <div class="am on"><svg class="i sm"><use href="#i-clock"/></svg>ลงเวลา</div>
+    <div class="am"><svg class="i sm"><use href="#i-doc"/></svg>ลา/OT/คำขอ<span class="pill">5</span></div>
+    <div class="am"><svg class="i sm"><use href="#i-wallet"/></svg>เงินเดือน</div>
+    <div class="am"><svg class="i sm"><use href="#i-report"/></svg>รายงาน</div>
+    <div class="am"><svg class="i sm"><use href="#i-gear"/></svg>ตั้งค่า</div>
+   </div>
+
+   <div class="ph" style="padding-top:22px">
+    <h1>ลงเวลา</h1>
+    <div class="fl"><div class="seg"><span class="on"><svg class="i sm"><use href="#i-users"/></svg>ทีมรายวัน</span><span class=""><svg class="i sm"><use href="#i-cal"/></svg>ปฏิทินรายคน</span></div>
+     <div class="inp"><svg class="i sm"><use href="#i-cal"/></svg><b>วันนี้ พฤ. 1 ต.ค.</b><svg class="i xs cv"><use href="#i-cv"/></svg></div>
+    </div>
+    <span class="sp"></span>
+    <div class="btn gh sm"><svg class="i sm"><use href="#i-plus"/></svg>ลงเวลาแทน</div>
+    <div class="btn gh sm"><svg class="i sm"><use href="#i-out"/></svg>ส่งออก CSV</div>
+   </div>
+   <div class="pg">
+    <div class="alrt"><svg class="i ic"><use href="#i-warn"/></svg><span><b>ยังไม่ลงเวลาเข้าหลังกะเริ่ม 10 นาที</b> → แจ้งผู้จัดการแล้ว: <b>เจ</b> (กะบ่าย 12:00) · ส่ง LINE ถึงเจ 12:10</span><span class="sp"></span><div class="btn sm gh">โทรหาเจ</div><div class="btn sm gh">หาคนแทน</div></div>
+    <div class="row" style="align-items:flex-start">
+     <div class="card p0" style="flex:1">
+      <table class="tbl atb">
+       <thead><tr><th>พนักงาน</th><th>กะ</th><th>เข้า · วิธี</th><th>ออก</th><th>พัก</th><th>สถานะ</th><th class="rt">ชม.จริง</th><th class="rt">OT</th><th class="rt">การกระทำ</th></tr></thead>
+       <tbody>
+<tr class=""><td><div class="nmc"><span class="av">น</span><div><b>น้ำฝน</b><small>แคชเชียร์</small></div></div></td><td>เช้า 07–15</td><td><b class="tm">07:12</b><span class="mt">kiosk PIN</span></td><td class="tm">—</td><td class="tm">10:00–10:30</td><td><span class="chip dg">สาย 12 นาที</span></td><td class="num">4:38</td><td class="num">—</td><td class="rt"><span class="btn sm gh">แก้เวลา</span></td></tr>
+<tr class=""><td><div class="nmc"><span class="av">พ</span><div><b>แพร</b><small>แคชเชียร์</small></div></div></td><td>เช้า 07–15</td><td><b class="tm">06:54</b><span class="mt"><svg class="i xs"><use href="#i-check"/></svg>มือถือ GPS</span></td><td class="tm">—</td><td class="tm">10:30–11:00</td><td><span class="chip ink">ปกติ</span></td><td class="num">4:50</td><td class="num">—</td><td class="rt"><span class="btn sm gh">แก้เวลา</span></td></tr>
+<tr class=""><td><div class="nmc"><span class="av">บ</span><div><b>โบว์</b><small>บาริสต้า</small></div></div></td><td>เช้า 07–15</td><td><b class="tm">06:58</b><span class="mt">kiosk PIN</span></td><td class="tm">—</td><td class="tm">11:00–11:30</td><td><span class="chip ink">ปกติ</span></td><td class="num">4:50</td><td class="num">—</td><td class="rt"><span class="btn sm gh">แก้เวลา</span></td></tr>
+<tr class=""><td><div class="nmc"><span class="av">ป</span><div><b>ปอ</b><small>ครัว</small></div></div></td><td>เช้า 07–15</td><td><b class="tm">06:50</b><span class="mt">kiosk PIN</span></td><td class="tm">—</td><td class="tm">11:30–12:00</td><td><span class="chip ink">ปกติ</span></td><td class="num">4:50</td><td class="num">—</td><td class="rt"><span class="btn sm gh">แก้เวลา</span></td></tr>
+<tr class="mut"><td><div class="nmc"><span class="av">ต</span><div><b>ต้น</b><small>ครัว</small></div></div></td><td>เช้า 07–15</td><td><b class="tm">—</b></td><td class="tm">—</td><td class="tm">—</td><td><span class="chip">ลาป่วย</span></td><td class="num">—</td><td class="num">—</td><td class="rt"><span class="btn sm gh">ดูใบลา</span></td></tr>
+<tr class=""><td><div class="nmc"><span class="av">น</span><div><b>นัท</b><small>บาริสต้า</small></div></div></td><td>บ่าย 12–20</td><td><b class="tm">11:52</b><span class="mt"><svg class="i xs"><use href="#i-check"/></svg>มือถือ GPS</span></td><td class="tm">—</td><td class="tm">—</td><td><span class="chip ink">ปกติ</span></td><td class="num">0:20</td><td class="num">—</td><td class="rt"><span class="btn sm gh">แก้เวลา</span></td></tr>
+<tr class="late"><td><div class="nmc"><span class="av">จ</span><div><b>เจ</b><small>พาร์ทไทม์ · ยืมตัว</small></div></div></td><td>บ่าย 12–20</td><td><b class="tm"><span class="dgt">ยังไม่ลง</span></b><span class="mt dgt">แจ้งผู้จัดการ 12:10</span></td><td class="tm">—</td><td class="tm">—</td><td><span class="chip dg">ยังไม่มา</span></td><td class="num">—</td><td class="num">—</td><td class="rt"><span class="btn sm gh">โทรหา</span></td></tr>
+<tr class="mut"><td><div class="nmc"><span class="av">ม</span><div><b>มิ้นท์</b><small>เสิร์ฟ · รายวัน</small></div></div></td><td>ปิดร้าน 15–23</td><td><b class="tm">—</b></td><td class="tm">—</td><td class="tm">—</td><td><span class="chip">ยังไม่ถึงเวลา</span></td><td class="num">—</td><td class="num">—</td><td class="rt"><span class="mu">—</span></td></tr>
+<tr class="mut"><td><div class="nmc"><span class="av">ก</span><div><b>กิ๊ฟ</b><small>เสิร์ฟ · รายวัน</small></div></div></td><td>—</td><td><b class="tm">—</b></td><td class="tm">—</td><td class="tm">—</td><td><span class="chip">หยุด</span></td><td class="num">—</td><td class="num">—</td><td class="rt"><span class="mu">—</span></td></tr>
+       </tbody>
+      </table>
+      <div class="tfoot"><span>ทำงานแล้วรวม 19 ชม. 28 น. (หักพัก) · ชม.จริงนับถึง 12:20 · แก้เวลาทุกครั้งเก็บประวัติ + เหตุผล</span></div>
+     </div>
+     <div style="width:310px;flex:none;display:flex;flex-direction:column;gap:26px">
+      <div class="card kio">
+       <div class="bg"><span class="ic"><svg class="i"><use href="#i-grid"/></svg></span><div><b>Kiosk เคาน์เตอร์ 1</b><small>iPad หน้าร้าน · PIN 4 หลัก</small></div></div>
+       <div class="kv" style="border-top:1px solid var(--line)"><span class="k" style="width:120px">สถานะ</span><span class="v"><span class="on2">ออนไลน์</span></span></div>
+       <div class="kv"><span class="k" style="width:120px">ลงเวลาวันนี้</span><span class="v"><b>9 ครั้ง</b> <span class="mu">(เข้า 3 · พัก 6)</span></span></div>
+       <div class="kv"><span class="k" style="width:120px">ล่าสุด</span><span class="v">ปอ · กลับจากพัก 12:00</span></div>
+      </div>
+      <div class="card kio">
+       <div class="bg"><span class="ic"><svg class="i"><use href="#i-flag"/></svg></span><div><b>มือถือพนักงาน</b><small>หน้า “ของฉัน” · ลงเวลา 2 คนวันนี้</small></div></div>
+       <div class="kv" style="border-top:1px solid var(--line)"><span class="k" style="width:120px">GPS รัศมี</span><span class="v"><b>150 ม.</b> จากร้าน</span></div>
+       <div class="kv"><span class="k" style="width:120px">ถ่ายรูป</span><span class="v"><span class="on2">เปิด</span></span></div>
+       <div class="kv"><span class="k" style="width:120px">ออฟไลน์</span><span class="v">เก็บไว้แล้วซิงก์</span></div>
+       <span class="lnk" style="font-size:13.5px">ตั้งค่าการลงเวลา</span>
+      </div>
+     </div>
+    </div>
+   </div>
+   </div>
+ </div>
+
+</div>
+</div>
+
+<div>
+<p class="cap">04B · ลงเวลา — ปฏิทินรายคน <span>— ปฏิทินเดือนต่อคน: ปกติ · สาย (+นาที) · OT · ลา · หยุด · ลืมลงเวลา · สรุปส่งเข้าเงินเดือน (หักสาย/OT) พร้อมที่มา</span></p>
+<div class="frame" style="height:900px">
+ <div class="top"><svg class="i lg"><use href="#i-menu"/></svg><span class="brand">SHARK</span>
+  <span class="biz"><svg class="i sm"><use href="#i-shop"/></svg>บ้านกาแฟสวนผึ้ง · สาขาหัวหิน<svg class="i xs"><use href="#i-cv"/></svg></span>
+  <span class="sp"></span>
+  <span class="st"><i class="dot"></i>ออนไลน์ · พฤ. 1 ต.ค. 2569 · 12:20</span>
+  <span class="who"><span class="av">ก</span>พี่เก่ง · ผู้จัดการ</span>
+ </div>
+ <div class="appbody" style="flex:1;min-height:0">
+  <div class="rail">
+   <div class="ri"><svg class="i sm"><use href="#i-home"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-shop"/></svg></div>
+   <div class="ri on"><svg class="i sm"><use href="#i-users"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-box"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-book"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-grid"/></svg></div>
+   <span style="flex:1"></span>
+   <div class="ri"><svg class="i sm"><use href="#i-gear"/></svg></div>
+  </div>
+  <div class="mod">
+   <div class="amenu">
+    <div class="am"><svg class="i sm"><use href="#i-home"/></svg>ภาพรวมทีม</div>
+    <div class="am"><svg class="i sm"><use href="#i-users"/></svg>พนักงาน</div>
+    <div class="am"><svg class="i sm"><use href="#i-cal"/></svg>ตารางกะ</div>
+    <div class="am on"><svg class="i sm"><use href="#i-clock"/></svg>ลงเวลา</div>
+    <div class="am"><svg class="i sm"><use href="#i-doc"/></svg>ลา/OT/คำขอ<span class="pill">5</span></div>
+    <div class="am"><svg class="i sm"><use href="#i-wallet"/></svg>เงินเดือน</div>
+    <div class="am"><svg class="i sm"><use href="#i-report"/></svg>รายงาน</div>
+    <div class="am"><svg class="i sm"><use href="#i-gear"/></svg>ตั้งค่า</div>
+   </div>
+
+   <div class="ph" style="padding-top:22px">
+    <h1>ปฏิทิน ก.ย. 2569 · น้ำฝน</h1>
+    <div class="fl"><div class="seg"><span class=""><svg class="i sm"><use href="#i-users"/></svg>ทีมรายวัน</span><span class="on"><svg class="i sm"><use href="#i-cal"/></svg>ปฏิทินรายคน</span></div>
+     <div class="inp"><span class="av" style="width:24px;height:24px">น</span><b>น้ำฝน · แคชเชียร์</b><svg class="i xs cv"><use href="#i-cv"/></svg></div>
+     <div class="inp"><svg class="i sm"><use href="#i-back"/></svg><b>ก.ย. 2569</b><svg class="i sm"><use href="#i-ar"/></svg></div>
+    </div>
+    <span class="sp"></span>
+    <div class="btn gh sm"><svg class="i sm"><use href="#i-edit"/></svg>ขอแก้เวลา</div>
+    <div class="btn gh sm"><svg class="i sm"><use href="#i-out"/></svg>ส่งออก CSV</div>
+   </div>
+   <div class="pg">
+    <div class="lgc">
+     <span><i class="dk" style="width:8px;height:8px;border-radius:50%;background:var(--ink);border:0"></i>ปกติ</span>
+     <span><b class="dgt">+12</b>สาย (นาที)</span>
+     <span><b>OT +2 ชม.</b></span>
+     <span><i style="background:repeating-linear-gradient(135deg,var(--sf) 0 3px,var(--line2) 3px 5px)"></i>ลา</span>
+     <span><i style="background:var(--sf2)"></i>หยุด</span>
+     <span><i style="border:2px solid var(--dg)"></i>ลืมลงเวลา รอแก้</span>
+     <span class="mu" style="margin-left:auto">กะประจำ: เช้า 07:00–15:00 · หยุดประจำ วันจันทร์</span>
+    </div>
+    <div class="card p0">
+     <table class="calx">
+      <thead><tr><th>จ.</th><th>อ.</th><th>พ.</th><th>พฤ.</th><th>ศ.</th><th>ส.</th><th>อา.</th></tr></thead>
+      <tbody>
+<tr><td class="ot2"><span class="d">31</span></td><td><span class="d">1</span><span class="tg"><i class="dk"></i>ปกติ</span><span class="tt">06:54 – 15:01</span></td><td><span class="d">2</span><span class="tg"><i class="dk"></i>ปกติ</span><span class="tt">06:55 – 15:02</span></td><td><span class="d">3</span><span class="tg dgt">+12</span><span class="tt">07:12 – 15:04</span></td><td><span class="d">4</span><span class="tg"><i class="dk"></i>ปกติ</span><span class="tt">06:57 – 15:04</span></td><td><span class="d">5</span><span class="tg"><i class="dk"></i>ปกติ</span><span class="tt">06:53 – 15:00</span></td><td><span class="d">6</span><span class="tg"><b>OT +2 ชม.</b></span><span class="tt">06:55 – 17:04</span></td></tr>
+<tr><td class="off"><span class="d">7</span><span class="tg mu">หยุด</span></td><td><span class="d">8</span><span class="tg"><i class="dk"></i>ปกติ</span><span class="tt">06:56 – 15:03</span></td><td><span class="d">9</span><span class="tg dgt">+8</span><span class="tt">07:08 – 15:02</span></td><td class="lv"><span class="d">10</span><span class="tg">ลากิจ</span><span class="tt">อนุมัติ 8 ก.ย.</span></td><td><span class="d">11</span><span class="tg"><i class="dk"></i>ปกติ</span><span class="tt">06:54 – 15:01</span></td><td><span class="d">12</span><span class="tg"><i class="dk"></i>ปกติ</span><span class="tt">06:55 – 15:02</span></td><td><span class="d">13</span><span class="tg"><i class="dk"></i>ปกติ</span><span class="tt">06:56 – 15:03</span></td></tr>
+<tr><td class="off"><span class="d">14</span><span class="tg mu">หยุด</span></td><td><span class="d">15</span><span class="tg"><i class="dk"></i>ปกติ</span><span class="tt">06:53 – 15:00</span></td><td><span class="d">16</span><span class="tg dgt">+15</span><span class="tt">07:15 – 15:01</span></td><td><span class="d">17</span><span class="tg"><i class="dk"></i>ปกติ</span><span class="tt">06:55 – 15:02</span></td><td><span class="d">18</span><span class="tg dgt">+5</span><span class="tt">07:05 – 15:03</span></td><td class="off"><span class="d">19</span><span class="tg mu">หยุด</span></td><td><span class="d">20</span><span class="tg"><b>OT +2 ชม.</b></span><span class="tt">06:54 – 17:02</span></td></tr>
+<tr><td class="off"><span class="d">21</span><span class="tg mu">หยุด</span></td><td><span class="d">22</span><span class="tg"><i class="dk"></i>ปกติ</span><span class="tt">06:55 – 15:02</span></td><td><span class="d">23</span><span class="tg"><i class="dk"></i>ปกติ</span><span class="tt">06:56 – 15:03</span></td><td><span class="d">24</span><span class="tg dgt">+11</span><span class="tt">07:11 – 15:01</span></td><td><span class="d">25</span><span class="tg"><i class="dk"></i>ปกติ</span><span class="tt">06:53 – 15:00</span></td><td><span class="d">26</span><span class="tg"><i class="dk"></i>ปกติ</span><span class="tt">06:54 – 15:01</span></td><td><span class="d">27</span><span class="tg"><b>OT +2 ชม.</b></span><span class="tt">06:56 – 17:05</span></td></tr>
+<tr><td class="off"><span class="d">28</span><span class="tg mu">หยุด</span></td><td><span class="d">29</span><span class="tg dgt">+7</span><span class="tt">07:07 – 15:02</span></td><td class="fix"><span class="d">30</span><span class="tg dgt">ไม่มีเวลาออก</span><span class="tt">06:57 – ? · ขอแก้แล้ว</span></td><td class="ot2"><span class="d">1 ต.ค.</span><span class="tg acc2">วันนี้</span></td><td class="ot2"><span class="d">2 ต.ค.</span></td><td class="ot2"><span class="d">3 ต.ค.</span></td><td class="ot2"><span class="d">4 ต.ค.</span></td></tr>
+      </tbody>
+     </table>
+     <div class="sumr">
+      <div class="b"><div class="k">ทำงาน</div><div class="v">24 <small>วัน</small></div></div>
+      <div class="b"><div class="k">สาย</div><div class="v dg">6 <small>ครั้ง · 58 นาที</small></div></div>
+      <div class="b"><div class="k">ขาด</div><div class="v">0</div></div>
+      <div class="b"><div class="k">OT</div><div class="v">6 <small>ชม.</small></div></div>
+      <div class="b"><div class="k">ลา</div><div class="v">1 <small>วัน (กิจ)</small></div></div>
+      <div class="pay"><svg class="i sm" style="color:var(--acc)"><use href="#i-wallet"/></svg><span>→ หักสาย <b>฿150</b> <span class="mu">(เกิน 15 นาที 3 ครั้ง × ฿50)</span> · OT <b>฿600</b> <span class="mu">(6 ชม. × ฿100)</span><br><span class="mu">เข้าเงินเดือน ก.ย. · รอแก้เวลา 30 ก.ย. ก่อนปิดรอบ</span></span><span class="lnk">ดูรอบจ่าย</span></div>
+     </div>
+    </div>
+   </div>
+   </div>
+ </div>
+
+</div>
+</div>
+</div>

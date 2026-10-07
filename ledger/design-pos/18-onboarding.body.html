@@ -1,0 +1,227 @@
+<style>
+.top .biz{display:inline-flex;align-items:center;gap:12px;height:32px;padding:0 10px;border:1px solid var(--line);
+  border-radius:8px;font-size:13px;color:var(--ink2)}
+.top .who{display:inline-flex;align-items:center;gap:13px;font-size:12.5px;color:var(--ink2)}
+</style>
+<style>
+/* ── stepper ── */
+.stp{display:flex;align-items:center;gap:0;padding:26px 56px;border-bottom:1px solid var(--line);background:var(--sf2)}
+.stp .s{display:flex;align-items:center;gap:12px;font-size:15px;color:var(--mut);white-space:nowrap}
+.stp .s .d{width:36px;height:36px;border-radius:50%;border:1.5px solid var(--line2);display:grid;place-items:center;font-weight:700;font-size:15px;background:var(--sf);color:var(--mut);flex:none}
+.stp .s.done{color:var(--ink2)}
+.stp .s.done .d{background:var(--ink);border-color:var(--ink);color:var(--sf)}
+.stp .s.cur{color:var(--ink);font-weight:700}
+.stp .s.cur .d{background:var(--acc);border-color:var(--acc);color:var(--sf);box-shadow:0 0 0 5px var(--acc-bg)}
+.stp .ln{flex:1;height:2px;background:var(--line2);margin:0 18px;min-width:30px}
+.stp .ln.done{background:var(--ink)}
+.stp .eta{margin-left:32px;display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 14px;border-radius:11px;border:1px solid var(--line);background:var(--sf);font-size:14px;color:var(--ink2);white-space:nowrap}
+/* ── เนื้อหา A ── */
+.ob{display:flex;gap:56px;padding:44px 56px 40px;align-items:flex-start;flex:1}
+.ob .l{flex:1;min-width:0;display:flex;flex-direction:column;gap:22px}
+.ob h1{font-size:32px;font-weight:700;letter-spacing:-.02em;line-height:1.25}
+.ob .lead{font-size:16px;color:var(--mut);margin-top:-10px;margin-bottom:8px}
+.opt{border:1px solid var(--line);border-radius:20px;padding:24px 26px;display:flex;gap:20px;align-items:flex-start;background:var(--sf)}
+.opt.on{border-color:var(--acc);box-shadow:inset 0 0 0 1.5px var(--acc);background:var(--sf)}
+.opt .rd{width:24px;height:24px;border-radius:50%;border:2px solid var(--line2);flex:none;margin-top:12px;position:relative}
+.opt.on .rd{border-color:var(--acc)}
+.opt.on .rd::after{content:"";position:absolute;inset:4px;border-radius:50%;background:var(--acc)}
+.opt .ic{width:52px;height:52px;border-radius:15px;border:1px solid var(--line);background:var(--sf2);display:grid;place-items:center;color:var(--ink2);flex:none}
+.opt.on .ic{background:var(--acc-bg);border-color:var(--acc-bg);color:var(--acc)}
+.opt .ic svg.i{width:24px;height:24px}
+.opt .t{flex:1;min-width:0}
+.opt .t b{display:block;font-size:18px;font-weight:700}
+.opt .t p{color:var(--mut);margin-top:4px}
+.opt .cs{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}
+.opt .cs span{display:inline-flex;align-items:center;gap:7px;height:42px;padding:0 18px;border-radius:12px;border:1px solid var(--line);font-size:15px;color:var(--ink2);background:var(--sf)}
+.opt .cs span.on{background:var(--ink);border-color:var(--ink);color:var(--sf);font-weight:700}
+.opt .rec{display:inline-flex;margin-left:10px;font-size:12.5px;font-weight:700;color:var(--acc);background:var(--acc-bg);border-radius:7px;padding:2px 9px;vertical-align:3px}
+.opt .act{flex:none;align-self:center}
+.kit{border:1.5px dashed var(--line2);border-radius:18px;padding:20px 24px;background:var(--sf2);display:flex;flex-direction:column;gap:12px;margin-top:4px}
+.kit .h{display:flex;align-items:center;gap:8px;font-weight:700;color:var(--ink2)}
+.kit .g{display:flex;gap:10px;flex-wrap:wrap}
+.kit .g span{display:inline-flex;align-items:center;gap:8px;height:38px;padding:0 14px;border-radius:11px;border:1px solid var(--line);background:var(--sf);font-size:14.5px;color:var(--ink2)}
+.kit .g b{color:var(--ink);font-variant-numeric:tabular-nums}
+/* ── มือถือพรีวิว (ใช้คลาสของตัวเอง เลี่ยงกฎ airy ของกริดหน้าขาย) ── */
+.pvw{flex:none;width:390px;display:flex;flex-direction:column;gap:14px}
+.pvw .lb{display:flex;align-items:center;gap:8px;font-size:13.5px;font-weight:700;color:var(--ink2)}
+.pvw .lb .sp{flex:1}
+.frame .mob.pv{min-height:0!important;box-shadow:0 18px 40px rgba(10,10,10,.10)}
+.mob .sb .ic{display:flex;gap:12px;align-items:center;font-size:12px}
+.mob .sb .bat{width:22px;height:11px;border:1.5px solid var(--ink);border-radius:3px;position:relative}
+.mob .sb .bat::after{content:"";position:absolute;inset:1.5px;right:5px;background:var(--ink);border-radius:1px}
+.pv .mh2{display:flex;align-items:center;gap:10px;padding:4px 20px 12px}
+.pv .mh2 b{font-size:17px;font-weight:700}
+.pv .mh2 .sp{flex:1}
+.pv .srch{margin:0 20px;height:42px;border:1px solid var(--line);border-radius:12px;display:flex;align-items:center;gap:8px;padding:0 14px;color:var(--mut);font-size:13.5px}
+.pv .pc{display:flex;gap:8px;padding:12px 20px 0;overflow:hidden}
+.pv .pc span{height:34px;padding:0 13px;border-radius:10px;border:1px solid var(--line);display:inline-flex;align-items:center;font-size:13.5px;color:var(--ink2);white-space:nowrap}
+.pv .pc span.on{background:var(--ink);color:var(--sf);border-color:var(--ink);font-weight:700}
+.pv .pgd{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;padding:14px 20px}
+.pv .it{border:1px solid var(--line);border-radius:14px;padding:8px;display:flex;flex-direction:column;gap:6px;position:relative}
+.pv .it .im{height:62px;border-radius:9px;background:var(--stage);display:grid;place-items:center;color:var(--mut2)}
+.pv .it b{font-size:13.5px;font-weight:600;line-height:1.3}
+.pv .it span{font-size:13.5px;color:var(--ink2);font-variant-numeric:tabular-nums}
+.pv .it .smp{position:absolute;left:8px;top:8px;font-size:11.5px!important;font-weight:700;color:var(--acc)!important;background:var(--acc-bg);border-radius:6px;padding:1px 6px}
+.pv .bb2{border-top:1px solid var(--line);padding:14px 20px 24px;display:flex;align-items:center;gap:12px}
+.pv .bb2 .t{flex:1}
+.pv .bb2 .t small{display:block;color:var(--mut)}
+.pv .bb2 .t b{font-size:19px;font-variant-numeric:tabular-nums}
+.pv .bb2 .pb{height:46px;padding:0 20px;border-radius:13px;background:var(--line2);color:var(--sf);display:grid;place-items:center;font-weight:700}
+/* ── แถบล่าง ── */
+.obf{display:flex;align-items:center;gap:16px;padding:22px 56px;border-top:1px solid var(--line);background:var(--sf)}
+.obf .sp{flex:1}
+.obf .btn{height:52px!important;padding:0 26px!important;font-size:16px!important}
+/* ── B ── */
+.dn{display:flex;flex-direction:column;align-items:center;padding:52px 56px 52px;gap:0}
+.dn .ok{width:104px;height:104px;border-radius:50%;background:var(--ink);color:var(--sf);display:grid;place-items:center;box-shadow:0 0 0 12px var(--sf2),0 0 0 13px var(--line)}
+.dn .ok svg.i{width:52px;height:52px;stroke-width:2.4}
+.dn h1{font-size:34px;font-weight:700;letter-spacing:-.02em;margin-top:34px}
+.dn .lead{font-size:16px;color:var(--mut);margin-top:6px}
+.dn .ck{display:flex;gap:32px;margin-top:38px;width:1040px;align-items:stretch}
+.dn .ck .card{flex:1}
+.dn .ck h3{font-size:15px;font-weight:700;display:flex;align-items:center;gap:10px;margin-bottom:8px;color:var(--ink2)}
+.dn .ck h3 .sub{font-weight:400;font-size:13px}
+.cr{display:flex;align-items:center;gap:14px;padding:13px 0;border-top:1px solid var(--line);font-size:15.5px}
+.cr:first-of-type{border-top:0}
+.cr .y{width:28px;height:28px;border-radius:50%;background:var(--ink);color:var(--sf);display:grid;place-items:center;flex:none}
+.cr .y svg.i{width:14px;height:14px;stroke-width:2.6}
+.cr .o{width:28px;height:28px;border-radius:50%;border:1.5px dashed var(--line2);flex:none}
+.cr .t{flex:1;min-width:0}
+.cr .t small{display:block;color:var(--mut)}
+.cr .lnk{font-size:14.5px}
+.dn .acts{display:flex;gap:16px;margin-top:38px}
+.dn .acts .btn{height:56px!important;padding:0 30px!important;font-size:16.5px!important}
+</style>
+<div class="wrap">
+
+<div>
+<p class="cap">18A · ตั้งร้านครั้งแรก — ขั้นที่ 2 สินค้า <span>— ครั้งแรกยังไม่มีเมนูโหมด POS · 5 ขั้น ~10 นาที · เริ่มจากชุดตัวอย่างตามประเภทร้าน เห็นหน้าขายจริงทันทีทางขวา</span></p>
+<div class="frame" style="height:900px">
+ <div class="top"><svg class="i lg"><use href="#i-menu"/></svg><span class="brand">SHARK</span>
+  <span class="biz"><svg class="i sm"><use href="#i-shop"/></svg>บ้านกาแฟสวนผึ้ง · สาขาหัวหิน</span>
+  <span class="chip acc">ตั้งร้านครั้งแรก</span>
+  <span class="sp"></span>
+  <span class="sub" style="font-size:13px">บันทึกอัตโนมัติ · กลับมาทำต่อได้</span>
+  <span class="who"><span class="av">ก</span>พี่เก่ง · เจ้าของ</span>
+ </div>
+
+ <div class="stp">
+  <div class="s done"><span class="d"><svg class="i sm"><use href="#i-check"/></svg></span>ร้านของคุณ</div><span class="ln done"></span>
+  <div class="s cur"><span class="d">2</span>สินค้า</div><span class="ln"></span>
+  <div class="s"><span class="d">3</span>รับเงิน</div><span class="ln"></span>
+  <div class="s"><span class="d">4</span>เครื่องพิมพ์</div><span class="ln"></span>
+  <div class="s"><span class="d">5</span>ขายบิลแรก</div>
+  <span class="eta"><svg class="i sm"><use href="#i-clock"/></svg>เหลืออีกประมาณ 6 นาที</span>
+ </div>
+
+ <div class="ob">
+  <div class="l">
+   <h1>ใส่สินค้าให้ร้าน</h1>
+   <div class="lead">เลือกวิธีที่สะดวก — ทุกอย่างแก้ทีหลังได้ที่เมนู “สินค้า”</div>
+
+   <div class="opt on">
+    <span class="rd"></span>
+    <span class="ic"><svg class="i"><use href="#i-grid"/></svg></span>
+    <div class="t"><b>เริ่มจากชุดตัวอย่าง<span class="rec">แนะนำ · เร็วที่สุด</span></b>
+     <p>ใส่ 24 รายการพร้อมรูปและราคา แก้ทีหลังได้</p>
+     <div class="cs"><span class="on"><svg class="i xs"><use href="#i-check"/></svg>คาเฟ่</span><span>ร้านอาหาร</span><span>ร้านค้าปลีก</span><span>ร้านบริการ</span></div>
+    </div>
+   </div>
+
+   <div class="opt">
+    <span class="rd"></span>
+    <span class="ic"><svg class="i"><use href="#i-import"/></svg></span>
+    <div class="t"><b>นำเข้าจาก Excel/CSV</b><p>มีรายการสินค้าอยู่แล้ว · ย้ายจากระบบเดิมได้ทีเดียวทั้งร้าน</p></div>
+    <div class="btn gh act"><svg class="i sm"><use href="#i-file"/></svg>ดาวน์โหลดแม่แบบ</div>
+   </div>
+
+   <div class="opt">
+    <span class="rd"></span>
+    <span class="ic"><svg class="i"><use href="#i-edit"/></svg></span>
+    <div class="t"><b>พิมพ์เองทีละรายการ</b><p>ชื่อ · ราคา · รูป (ไม่บังคับ) — เหมาะกับร้านที่มีไม่กี่รายการ</p></div>
+   </div>
+
+   <div class="kit">
+    <div class="h"><svg class="i sm"><use href="#i-list"/></svg>ในชุดคาเฟ่มีอะไรบ้าง</div>
+    <div class="g"><span>กาแฟ <b>8</b></span><span>ชาและนม <b>6</b></span><span>เบเกอรี <b>6</b></span><span>อาหาร <b>4</b></span></div>
+    <div class="sub" style="font-size:13.5px">มีตัวเลือกขนาด S/M/L · นม · ความหวาน ให้แล้ว · ต้นทุนและสูตรวัตถุดิบใส่ทีหลังได้</div>
+   </div>
+  </div>
+
+  <div class="pvw">
+   <div class="lb"><svg class="i sm"><use href="#i-eye"/></svg>หน้าขายของร้านคุณ<span class="sp"></span><span class="sub" style="font-weight:400">ตัวอย่างสด</span></div>
+   <div class="mob pv">
+    <div class="sb"><span>09:41</span><span class="ic">5G<span class="bat"></span></span></div>
+    <div class="mh2"><b>บ้านกาแฟสวนผึ้ง</b><span class="sp"></span><span class="chip">24 รายการ</span></div>
+    <div class="srch"><svg class="i sm"><use href="#i-search"/></svg>ค้นหาชื่อ หรือสแกน</div>
+    <div class="pc"><span>ทั้งหมด</span><span class="on">กาแฟ</span><span>ชาและนม</span><span>เบเกอรี</span></div>
+    <div class="pgd">
+     <div class="it"><div class="im"><svg class="i"><use href="#i-box"/></svg></div><b>ลาเต้</b><span>฿75</span></div>
+     <div class="it"><div class="im"><svg class="i"><use href="#i-box"/></svg></div><b>อเมริกาโน่</b><span>฿60</span></div>
+     <div class="it"><div class="im"><svg class="i"><use href="#i-box"/></svg></div><b>คาปูชิโน่</b><span>฿75</span></div>
+     <div class="it"><div class="im"><svg class="i"><use href="#i-box"/></svg></div><b>มอคค่า</b><span>฿85</span></div>
+     <div class="it"><div class="im"><svg class="i"><use href="#i-box"/></svg></div><b>เอสเพรสโซ</b><span>฿55</span></div>
+     <div class="it"><div class="im"><svg class="i"><use href="#i-box"/></svg></div><b>ชาไทย</b><span>฿60</span></div>
+     <div class="it"><div class="im"><svg class="i"><use href="#i-box"/></svg></div><b>มัทฉะลาเต้</b><span>฿90</span></div>
+     <div class="it"><div class="im"><svg class="i"><use href="#i-box"/></svg></div><b>โกโก้</b><span>฿70</span></div>
+     <div class="it"><div class="im"><svg class="i"><use href="#i-box"/></svg></div><b>ครัวซองต์</b><span>฿85</span></div>
+    </div>
+    <div class="bb2"><span class="t"><small>ยังไม่มีรายการ</small><b>฿0</b></span><span class="pb">ชำระ</span></div>
+   </div>
+  </div>
+ </div>
+
+ <div class="obf">
+  <div class="btn gh">ข้ามไปก่อน</div>
+  <span class="sub" style="font-size:13.5px">ข้ามได้ — ขายด้วย “ราคาเปิด” ไปก่อน แล้วค่อยใส่สินค้า</span>
+  <span class="sp"></span>
+  <div class="btn gh"><svg class="i sm"><use href="#i-back"/></svg>ย้อนกลับ</div>
+  <div class="btn pri">ถัดไป: วิธีรับเงิน<svg class="i sm"><use href="#i-ar"/></svg></div>
+ </div>
+</div>
+</div>
+
+<div>
+<p class="cap">18B · ตั้งร้านครั้งแรก — เสร็จแล้ว <span>— สรุปสิ่งที่พร้อม · ระบบ SHARK ที่ยังไม่เชื่อมบอกไว้ชัด ๆ ว่าทำทีหลังได้ · ไปหน้าขายหรือลองขายบิลทดลอง</span></p>
+<div class="frame" style="height:620px">
+ <div class="top"><svg class="i lg"><use href="#i-menu"/></svg><span class="brand">SHARK</span>
+  <span class="biz"><svg class="i sm"><use href="#i-shop"/></svg>บ้านกาแฟสวนผึ้ง · สาขาหัวหิน</span>
+  <span class="sp"></span>
+  <span class="who"><span class="av">ก</span>พี่เก่ง · เจ้าของ</span>
+ </div>
+ <div class="stp">
+  <div class="s done"><span class="d"><svg class="i sm"><use href="#i-check"/></svg></span>ร้านของคุณ</div><span class="ln done"></span>
+  <div class="s done"><span class="d"><svg class="i sm"><use href="#i-check"/></svg></span>สินค้า</div><span class="ln done"></span>
+  <div class="s done"><span class="d"><svg class="i sm"><use href="#i-check"/></svg></span>รับเงิน</div><span class="ln done"></span>
+  <div class="s done"><span class="d"><svg class="i sm"><use href="#i-check"/></svg></span>เครื่องพิมพ์</div><span class="ln done"></span>
+  <div class="s done"><span class="d"><svg class="i sm"><use href="#i-check"/></svg></span>ขายบิลแรก</div>
+  <span class="eta"><svg class="i sm"><use href="#i-clock"/></svg>ใช้เวลา 9 นาที</span>
+ </div>
+ <div class="dn">
+  <div class="ok"><svg class="i"><use href="#i-check"/></svg></div>
+  <h1>ร้านพร้อมขายแล้ว</h1>
+  <div class="lead">บ้านกาแฟสวนผึ้ง · สาขาหัวหิน · เคาน์เตอร์ 1</div>
+  <div class="ck">
+   <div class="card">
+    <h3><svg class="i sm"><use href="#i-check"/></svg>พร้อมแล้ว</h3>
+    <div class="cr"><span class="y"><svg class="i"><use href="#i-check"/></svg></span><span class="t">สินค้า 24 รายการ<small>ชุดตัวอย่างคาเฟ่</small></span></div>
+    <div class="cr"><span class="y"><svg class="i"><use href="#i-check"/></svg></span><span class="t">PromptPay 089-123-4567<small>ยืนยันเงินเข้าอัตโนมัติ</small></span></div>
+    <div class="cr"><span class="y"><svg class="i"><use href="#i-check"/></svg></span><span class="t">เครื่องพิมพ์ Bluetooth ทดสอบแล้ว<small>Xprinter XP-80 · กระดาษ 80 มม.</small></span></div>
+    <div class="cr"><span class="y"><svg class="i"><use href="#i-check"/></svg></span><span class="t">กะเปิดแล้ว (เงินตั้งต้น ฿2,000)<small>กะ #1 · น้ำฝน</small></span></div>
+   </div>
+   <div class="card">
+    <h3><svg class="i sm"><use href="#i-link"/></svg>ยังไม่เชื่อม <span class="sub">(ทำทีหลังได้)</span></h3>
+    <div class="cr"><span class="o"></span><span class="t">สมาชิก/แต้ม<small>ลูกค้าสะสมแต้มทุกบิล</small></span><span class="lnk">เชื่อม</span></div>
+    <div class="cr"><span class="o"></span><span class="t">บัญชี<small>ลงบัญชีและออกใบกำกับอัตโนมัติ</small></span><span class="lnk">เชื่อม</span></div>
+    <div class="cr"><span class="o"></span><span class="t">LINE MAN<small>รับออเดอร์เดลิเวอรีเข้าจอเดียว</small></span><span class="lnk">เชื่อม</span></div>
+   </div>
+  </div>
+  <div class="acts">
+   <div class="btn pri"><svg class="i sm"><use href="#i-cash"/></svg>ไปหน้าขาย</div>
+   <div class="btn gh">ขายบิลทดลอง 1 ใบ</div>
+  </div>
+ </div>
+</div>
+</div>
+
+</div>

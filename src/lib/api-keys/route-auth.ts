@@ -21,6 +21,8 @@ export type ApiAuth =
       scopes: string[];
       /** ระบบที่คีย์ผูกไว้ — null = คีย์ระดับร้าน */
       systemId: string | null;
+      /** HF-APIV1 ▸ scopesJson ในแถวเสีย (ไม่ใช่ array ของ string) ⇒ ไม่นับเป็นคีย์กลาง ◂ */
+      scopesMalformed?: boolean;
       expiresAt: Date | null;
     }
   | { ok: false; response: Response };
@@ -60,7 +62,37 @@ export async function authenticateApiRequest(req: Request): Promise<ApiAuth> {
     tenantId: v.tenantId,
     keyId: v.keyId,
     scopes: v.scopes,
+    scopesMalformed: v.scopesMalformed, // HF-APIV1
     systemId: v.systemId,
     expiresAt: v.expiresAt,
   };
 }
+
+// HF-APIV1 ▸ "คีย์กลาง" = คีย์รุ่นเดิมระดับร้าน: scopes [] และไม่ผูกระบบ (service.ts: `[] = คีย์อ่านรุ่นเดิมของ /api/v1/*`)
+//   ออกจากหน้า ตั้งค่า › API สำหรับนักพัฒนา (และคีย์ที่หมุนจากมัน) · คีย์ของโมดูล (บัญชี/บอร์ดงาน/สมาชิก/CRM) มี scope และ/หรือผูกระบบเสมอ
+//   ทางเดินที่สร้างมาให้คีย์กลางเท่านั้น: route ข้อมูลรุ่นเดิม 8 เส้น · แชทโหมด secret · เครื่องมือ AI นอก 4 โมดูล
+//   🔴 ปิดไว้ก่อน (fail closed): scopesJson เสีย = ไม่ใช่คีย์กลาง · ไม่ใช่คีย์กลาง = 403 body เดียวกันทุกเส้น ไม่บอกว่ามีข้อมูลหรือไม่
+export function isGeneralApiKey(key: { scopes: readonly string[]; systemId: string | null; scopesMalformed?: boolean }): boolean {
+  return key.scopes.length === 0 && key.systemId === null && key.scopesMalformed !== true;
+}
+
+/** 403 ของทางเดินคีย์กลาง — body ตายตัว (ไม่ขึ้นกับคีย์/ร้าน/ข้อมูล) */
+export function keyNotGeneralResponse(headers?: Record<string, string>): Response {
+  return apiJson(
+    {
+      error:
+        "คีย์นี้ออกให้ใช้กับ API ของระบบที่กำหนดไว้ตอนสร้างคีย์เท่านั้น จึงเรียกใช้ส่วนนี้ไม่ได้ — หากต้องการใช้ส่วนนี้ ใช้คีย์ API กลางของร้าน (สร้างได้ที่ ตั้งค่า › API สำหรับนักพัฒนา)",
+      error_en:
+        "This API key is limited to the system API it was issued for and cannot use this endpoint. Use a general shop API key (Settings › API for developers).",
+      code: "key_not_general",
+    },
+    403,
+    headers,
+  );
+}
+
+/** เรียกหลัง authenticateApiRequest() ผ่านแล้ว: `const denied = requireLegacyFullAccessKey(auth); if (denied) return denied;` */
+export function requireLegacyFullAccessKey(auth: Extract<ApiAuth, { ok: true }>): Response | null {
+  return isGeneralApiKey(auth) ? null : keyNotGeneralResponse();
+}
+// ◂ HF-APIV1

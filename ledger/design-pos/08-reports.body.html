@@ -1,0 +1,200 @@
+<style>
+.rail{width:56px;flex:none;border-right:1px solid var(--line);background:var(--sf2);
+  padding:10px 0;display:flex;flex-direction:column;align-items:center;gap:5px;color:var(--mut2)}
+.rail .ri{width:36px;height:36px;border-radius:9px;display:grid;place-items:center}
+.rail .ri.on{background:var(--sf);border:1px solid var(--line);color:var(--ink)}
+.top .biz{display:inline-flex;align-items:center;gap:12px;height:32px;padding:0 10px;border:1px solid var(--line);
+  border-radius:8px;font-size:13px;color:var(--ink2)}
+.top .dot{width:8px;height:8px;border-radius:50%;background:var(--ink);display:inline-block}
+.top .st{display:inline-flex;align-items:center;gap:13px;font-size:12.5px;color:var(--mut)}
+.top .who{display:inline-flex;align-items:center;gap:13px;font-size:12.5px;color:var(--ink2)}
+.amenu .am .pill{height:18px;min-width:18px;font-size:10.5px}
+</style>
+<style>
+.g5{display:grid;grid-template-columns:repeat(5,1fr);gap:29px}
+.ph .fl{display:flex;align-items:center;gap:16px;margin-left:14px}
+.ph .fl .inp{height:32px}
+.chart{position:relative;display:flex;gap:19px}
+.yax{display:flex;flex-direction:column;justify-content:space-between;height:170px;font-size:10.5px;color:var(--mut2);text-align:right;width:42px;flex:none;font-variant-numeric:tabular-nums}
+.plot{flex:1;min-width:0;position:relative}
+.plot .grid{position:absolute;inset:0 0 auto 0;height:170px;display:flex;flex-direction:column;justify-content:space-between;pointer-events:none}
+.plot .grid i{display:block;border-top:1px dashed var(--line)}
+.plot .bar{height:170px;gap:16px;position:relative}
+.plot .bar i.fc{background:var(--sf);border:1.5px dashed var(--line2);border-bottom:0}
+.xl{display:flex;gap:16px;margin-top:6px}
+.xl span{flex:1;text-align:center;font-size:10.5px;color:var(--mut);font-variant-numeric:tabular-nums}
+.xl span.acc{color:var(--acc);font-weight:700}
+.bv{position:absolute;font-size:10.5px;font-weight:700;transform:translateX(-50%);white-space:nowrap;font-variant-numeric:tabular-nums}
+.lgd .fcs{width:9px;height:9px;border:1.5px dashed var(--line2);border-radius:2px;display:inline-block;margin-right:6px;background:var(--sf)}
+.ctb td,.ctb th{padding:8px 9px}
+.ctb tr.sum td{background:var(--sf2);font-weight:700}
+.hbr{display:flex;align-items:center;gap:19px;font-size:12.5px;padding:6px 0}
+.hbr .nm{width:78px;flex:none;color:var(--ink2)}
+.hbr .tr{flex:1;height:10px;background:var(--sf2);border-radius:5px;overflow:hidden}
+.hbr .tr i{display:block;height:100%;background:var(--ink);border-radius:5px}
+.hbr .tr i.l{background:var(--mut2)}
+.hbr .pc{width:38px;text-align:right;font-weight:700;font-variant-numeric:tabular-nums}
+.hbr .am2{width:62px;text-align:right;color:var(--mut);font-variant-numeric:tabular-nums;font-size:12px}
+.ai{border-color:var(--acc)}
+.ai .aih{display:flex;align-items:center;gap:17px;margin-bottom:10px}
+.ai .aih .ic{width:30px;height:30px;border-radius:8px;background:var(--acc-bg);color:var(--acc);display:grid;place-items:center}
+.ai .aih h2{font-size:13.5px;font-weight:700}
+.ins{display:flex;flex-direction:column;gap:16px}
+.ins .it{display:flex;gap:17px;font-size:12.5px;color:var(--ink2);line-height:1.5;padding:9px 11px;border:1px solid var(--line);border-radius:9px}
+.ins .it .dt{width:6px;height:6px;border-radius:50%;background:var(--ink);flex:none;margin-top:7px}
+.ins .it.dgi .dt{background:var(--dg)}
+.ins .it b{color:var(--ink)}
+.stb td,.stb th{padding:9px 10px}
+</style>
+<div class="wrap">
+<div>
+<p class="cap">08 · รายงานและภาพรวม <span>— ยอดวันนี้ · รายชั่วโมง · เทียบสาขา · สินค้าขายดี · ช่องทาง/วิธีชำระ · พนักงาน · ผู้ช่วย AI เสนอ คนยืนยัน</span></p>
+<div class="frame" style="height:1178px">
+
+ <div class="top"><svg class="i lg"><use href="#i-menu"/></svg><span class="brand">SHARK</span>
+  <span class="biz"><svg class="i sm"><use href="#i-shop"/></svg>บ้านกาแฟสวนผึ้ง · สาขาหัวหิน<svg class="i xs"><use href="#i-cv"/></svg></span>
+  <span class="sp"></span>
+  <span class="st"><i class="dot"></i>ออนไลน์ · พ. 30 ก.ย. 2569</span>
+  <span class="chip"><svg class="i xs"><use href="#i-clock"/></svg>กะ #12 · เปิด 09:02 · เคาน์เตอร์ 1</span>
+  <span class="who"><span class="av">ก</span>พี่เก่ง · ผู้จัดการ</span>
+ </div>
+
+ <div class="appbody" style="flex:1;min-height:0">
+  <div class="rail">
+   <div class="ri"><svg class="i sm"><use href="#i-home"/></svg></div>
+   <div class="ri on"><svg class="i sm"><use href="#i-shop"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-users"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-box"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-book"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-grid"/></svg></div>
+   <span style="flex:1"></span>
+   <div class="ri"><svg class="i sm"><use href="#i-gear"/></svg></div>
+  </div>
+
+  <div class="mod">
+   <div class="amenu">
+    <div class="am"><svg class="i sm"><use href="#i-cash"/></svg>หน้าขาย</div>
+    <div class="am"><svg class="i sm"><use href="#i-grid"/></svg>โต๊ะ</div>
+    <div class="am"><svg class="i sm"><use href="#i-truck"/></svg>ออเดอร์ออนไลน์<span class="pill">3</span></div>
+    <div class="am"><svg class="i sm"><use href="#i-doc"/></svg>บิลวันนี้</div>
+    <div class="am"><svg class="i sm"><use href="#i-clock"/></svg>กะ</div>
+    <div class="am"><svg class="i sm"><use href="#i-tag"/></svg>สินค้า</div>
+    <div class="am on"><svg class="i sm"><use href="#i-chart"/></svg>รายงาน</div>
+    <div class="am"><svg class="i sm"><use href="#i-gear"/></svg>ตั้งค่า</div>
+   </div>
+
+   <div class="ph" style="padding-top:16px">
+    <h1>ภาพรวมการขาย</h1>
+    <div class="fl">
+     <div class="inp"><svg class="i sm"><use href="#i-cal"/></svg><b>วันนี้ 30 ก.ย. 2569</b><svg class="i xs cv"><use href="#i-cv"/></svg></div>
+     <div class="inp"><svg class="i sm"><use href="#i-shop"/></svg><b>สาขาหัวหิน</b><svg class="i xs cv"><use href="#i-cv"/></svg></div>
+     <span class="sub">ข้อมูลถึง 12:40 · เทียบกับ อ. 29 ก.ย. ช่วงเวลาเดียวกัน</span>
+    </div>
+    <span class="sp"></span>
+    <div class="btn gh sm"><svg class="i sm"><use href="#i-out"/></svg>ส่งออก CSV</div>
+    <div class="btn gh sm"><svg class="i sm"><use href="#i-file"/></svg>PDF</div>
+   </div>
+
+   <div class="pg">
+    <div class="g5">
+     <div class="card kpi"><div class="lbl">ยอดขายสุทธิ</div><div class="val">฿18,450</div><div class="fo"><b style="color:var(--ink)">▲ 12%</b> เทียบเมื่อวาน</div></div>
+     <div class="card kpi"><div class="lbl">บิล</div><div class="val">62</div><div class="fo"><b style="color:var(--ink)">▲ 4</b> บิล เทียบเมื่อวาน</div></div>
+     <div class="card kpi"><div class="lbl">เฉลี่ยต่อบิล</div><div class="val">฿298</div><div class="fo">เมื่อวาน ฿276</div></div>
+     <div class="card kpi"><div class="lbl">กำไรขั้นต้น</div><div class="val">61%</div><div class="fo">มีต้นทุน 88% ของยอด</div></div>
+     <div class="card kpi"><div class="lbl">ลูกค้าสมาชิก</div><div class="val">38%</div><div class="fo">24 บิล · แต้มแจก 1,120</div></div>
+    </div>
+
+    <div class="row">
+     <div class="card" style="flex:1.65">
+      <div class="ch"><svg class="i sm"><use href="#i-chart"/></svg><h2>ยอดขายรายชั่วโมง</h2><span class="sp"></span>
+       <div class="lgd"><span><i class="sw-l2"></i>ยอดจริง</span><span><i class="sw-ink"></i>ช่วงขายดี</span><span><i class="sw-acc"></i>ชั่วโมงนี้</span><span><span class="fcs"></span>คาดการณ์ (เฉลี่ย 4 สัปดาห์)</span></div></div>
+      <div class="chart">
+       <div class="yax"><span>฿6,000</span><span>฿4,000</span><span>฿2,000</span><span>฿0</span></div>
+       <div class="plot">
+        <div class="grid"><i></i><i></i><i></i><i></i></div>
+        <div class="bar">
+         <i style="height:35%"></i><i class="on" style="height:77%"></i><i style="height:58%"></i><i style="height:51%"></i><i class="acc" style="height:87%"></i>
+         <i class="fc" style="height:55%"></i><i class="fc" style="height:34%"></i><i class="fc" style="height:38%"></i><i class="fc" style="height:44%"></i><i class="fc" style="height:40%"></i><i class="fc" style="height:30%"></i><i class="fc" style="height:33%"></i><i class="fc" style="height:22%"></i><i class="fc" style="height:12%"></i>
+        </div>
+        <span class="bv" style="left:10.7%;top:20px">฿4,600</span>
+        <span class="bv" style="left:32.1%;top:2px;color:var(--acc)">฿5,200 · ยังไม่จบชั่วโมง</span>
+        <div class="xl"><span>08</span><span>09</span><span>10</span><span>11</span><span class="acc">12</span><span>13</span><span>14</span><span>15</span><span>16</span><span>17</span><span>18</span><span>19</span><span>20</span><span>21</span></div>
+       </div>
+      </div>
+     </div>
+     <div class="card p0" style="flex:1">
+      <div style="padding:16px 16px 0"><div class="ch"><svg class="i sm"><use href="#i-shop"/></svg><h2>เปรียบเทียบสาขา</h2><span class="sp"></span><span class="sub">วันนี้ถึง 12:40</span></div></div>
+      <table class="tbl ctb">
+       <thead><tr><th>สาขา</th><th class="rt">ยอด</th><th class="rt">บิล</th><th class="rt">เฉลี่ย</th><th class="rt">กำไร</th></tr></thead>
+       <tbody>
+        <tr class="hov"><td><b>หัวหิน</b> <span class="sub">(ที่เลือก)</span></td><td class="num"><b>฿18,450</b></td><td class="num">62</td><td class="num">฿298</td><td class="num">61%</td></tr>
+        <tr><td>สวนผึ้ง</td><td class="num"><b>฿9,120</b></td><td class="num">41</td><td class="num">฿222</td><td class="num">58%</td></tr>
+        <tr class="sum"><td>รวมทุกสาขา</td><td class="num">฿27,570</td><td class="num">103</td><td class="num">฿268</td><td class="num">60%</td></tr>
+       </tbody>
+      </table>
+      <div style="padding:10px 16px 14px" class="sub">สวนผึ้งเฉลี่ยต่อบิลต่ำกว่า ฿76 — ขายเครื่องดื่มเดี่ยวเป็นหลัก ชุดอาหารเช้าขายได้ 3 ชุด</div>
+     </div>
+    </div>
+
+    <div class="row">
+     <div class="card p0" style="flex:1.25">
+      <div style="padding:16px 16px 0"><div class="ch"><svg class="i sm"><use href="#i-tag"/></svg><h2>สินค้าขายดี</h2><span class="sp"></span><span class="lnk" style="font-size:12px">ดูทั้งหมด</span></div></div>
+      <table class="tbl ctb">
+       <thead><tr><th>สินค้า</th><th class="rt">จำนวน</th><th class="rt">ยอด</th><th class="rt">กำไร</th></tr></thead>
+       <tbody>
+        <tr><td>1 · ลาเต้</td><td class="num">48</td><td class="num">฿3,840</td><td class="num">69%</td></tr>
+        <tr><td>2 · อเมริกาโน่</td><td class="num">41</td><td class="num">฿2,460</td><td class="num">77%</td></tr>
+        <tr><td>3 · ข้าวกะเพราไก่</td><td class="num">27</td><td class="num">฿2,403</td><td class="num">65%</td></tr>
+        <tr><td>4 · ผัดไทยกุ้ง</td><td class="num">19</td><td class="num">฿2,090</td><td class="num">58%</td></tr>
+        <tr><td>5 · ครัวซองต์อัลมอนด์<div class="sub" style="color:var(--dg);font-weight:700">หมดตั้งแต่ 11:00</div></td><td class="num">15</td><td class="num">฿1,275</td><td class="num">62%</td></tr>
+       </tbody>
+      </table>
+     </div>
+     <div class="card" style="flex:1">
+      <div class="ch"><svg class="i sm"><use href="#i-truck"/></svg><h2>ช่องทางการขาย</h2><span class="sp"></span><span class="sub">% ของยอด</span></div>
+      <div class="hbr"><span class="nm">หน้าร้าน</span><span class="tr"><i style="width:64%"></i></span><span class="pc">64%</span></div>
+      <div class="hbr"><span class="nm">LINE MAN</span><span class="tr"><i style="width:18%"></i></span><span class="pc">18%</span></div>
+      <div class="hbr"><span class="nm">Grab</span><span class="tr"><i style="width:9%"></i></span><span class="pc">9%</span></div>
+      <div class="hbr"><span class="nm">เว็บร้าน</span><span class="tr"><i style="width:5%"></i></span><span class="pc">5%</span></div>
+      <div class="hbr"><span class="nm">QR โต๊ะ</span><span class="tr"><i style="width:4%"></i></span><span class="pc">4%</span></div>
+      <div class="sub" style="margin-top:8px">ยอดแพลตฟอร์มหักค่าคอมมิชชันแล้วในกำไรขั้นต้น</div>
+     </div>
+     <div class="card" style="flex:1">
+      <div class="ch"><svg class="i sm"><use href="#i-wallet"/></svg><h2>วิธีชำระ</h2><span class="sp"></span><span class="sub">% ของยอด</span></div>
+      <div class="hbr"><span class="nm">PromptPay</span><span class="tr"><i style="width:53%"></i></span><span class="pc">53%</span><span class="am2">฿9,850</span></div>
+      <div class="hbr"><span class="nm">เงินสด</span><span class="tr"><i style="width:34%"></i></span><span class="pc">34%</span><span class="am2">฿6,200</span></div>
+      <div class="hbr"><span class="nm">บัตร</span><span class="tr"><i style="width:8%"></i></span><span class="pc">8%</span><span class="am2">฿1,400</span></div>
+      <div class="hbr"><span class="nm">แพลตฟอร์ม</span><span class="tr"><i style="width:5%"></i></span><span class="pc">5%</span><span class="am2">฿1,000</span></div>
+      <div class="sub" style="margin-top:8px">PromptPay ยืนยันเงินเข้าครบ 33/33 บิล</div>
+     </div>
+    </div>
+
+    <div class="row" style="align-items:flex-start">
+     <div class="card p0" style="flex:1.25">
+      <div style="padding:16px 16px 0"><div class="ch"><svg class="i sm"><use href="#i-users"/></svg><h2>พนักงาน</h2><span class="sp"></span><span class="sub">ดึงจากระบบพนักงาน (HR) · ใช้คำนวณค่าคอมมิชชัน</span></div></div>
+      <table class="tbl stb">
+       <thead><tr><th>ชื่อ</th><th class="rt">บิล</th><th class="rt">ยอด</th><th class="rt">ส่วนลดที่ให้</th><th class="rt">ยกเลิก</th><th>หมายเหตุ</th></tr></thead>
+       <tbody>
+        <tr><td><div style="display:flex;align-items:center;gap:8px"><span class="av">น</span>น้ำฝน</div></td><td class="num">38</td><td class="num">฿11,200</td><td class="num">฿310</td><td class="num">1</td><td class="mu">ยกเลิก 1 บิล ผู้จัดการอนุมัติ</td></tr>
+        <tr><td><div style="display:flex;align-items:center;gap:8px"><span class="av">พ</span>แพร</div></td><td class="num">24</td><td class="num">฿7,250</td><td class="num dgt">฿1,180</td><td class="num">0</td><td><span class="chip dg">ส่วนลดสูงผิดปกติ</span></td></tr>
+        <tr><td><div style="display:flex;align-items:center;gap:8px"><span class="av">ต</span>ต้น</div></td><td class="num">0</td><td class="num mu">—</td><td class="num mu">—</td><td class="num">0</td><td class="mu">ครัว · ทำอาหาร 46 จาน</td></tr>
+       </tbody>
+      </table>
+     </div>
+     <div class="card ai" style="flex:1">
+      <div class="aih"><span class="ic"><svg class="i sm"><use href="#i-spark"/></svg></span><h2>ผู้ช่วย AI ของ SHARK</h2><span class="sp" style="flex:1"></span><span class="sub">วิเคราะห์เมื่อ 12:35</span></div>
+      <div class="ins">
+       <div class="it"><span class="dt"></span><span>ขายดีช่วง <b>08–10 น.</b> และ <b>12–13 น.</b> · ครัวซองต์หมดตั้งแต่ 11:00 → เสนออบเพิ่ม <b>20 ชิ้น</b> พรุ่งนี้</span></div>
+       <div class="it"><span class="dt"></span><span>เมล็ดกาแฟจะหมดใน <b>3 วัน</b> ตามอัตราขาย → ร่างใบสั่งซื้อ <b>10 กก.</b> จากซัพพลายเออร์เดิม</span></div>
+       <div class="it dgi"><span class="dt"></span><span>แพร ให้ส่วนลดรวม <b class="dgt">฿1,180</b> (16% ของยอด) สูงกว่าค่าเฉลี่ย 4 เท่า</span></div>
+      </div>
+      <div style="display:flex;gap:7px;margin-top:12px;flex-wrap:wrap"><div class="btn pri sm"><svg class="i sm"><use href="#i-doc"/></svg>สร้างใบสั่งซื้อ (ร่าง)</div><div class="btn gh sm"><svg class="i sm"><use href="#i-grid"/></svg>สร้างงานในบอร์ด</div><div class="btn gh sm"><svg class="i sm"><use href="#i-spark"/></svg>ถามต่อ</div></div>
+      <div class="note" style="margin-top:10px">AI เสนอเท่านั้น — ทุกการเขียนต้องมีคนกดยืนยัน</div>
+     </div>
+    </div>
+   </div>
+  </div>
+ </div>
+</div>
+</div>
+</div>

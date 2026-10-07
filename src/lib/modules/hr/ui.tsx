@@ -12,7 +12,6 @@ import {
   listEmployees,
   listRemovedEmployees,
   getSchedule,
-  listLeaves,
   pendingLeaves,
   monthlyAttendance,
   employeesWithSchedule,
@@ -31,6 +30,7 @@ import {
 } from "./actions";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import BulkLeaveApprovals from "./BulkLeaveApprovals";
+import { hrViewerOf, leaveItemsForViewer } from "./privacy"; // HF-HR-0 (D9) ▸ เหตุผลการลาเฉพาะ hr.leave.read ◂
 import PinField from "./PinField";
 import KioskClock from "./KioskClock";
 
@@ -219,10 +219,10 @@ export async function HrLeaveSection({ systemId }: { systemId: string }) {
   const auth = await requireTenant();
   const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
 
-  const [employees, pending, leaves] = await Promise.all([
+  // HF-HR-0 (D9): เหตุผลการลา (ลาป่วย = ข้อมูลสุขภาพ) ไปถึงหน้าจอเฉพาะผู้มี hr.leave.read — ตัดสินที่ privacy.ts
+  const [employees, { pending, history: leaves }] = await Promise.all([
     listEmployees(ctx),
-    pendingLeaves(ctx),
-    listLeaves(ctx),
+    leaveItemsForViewer(ctx, hrViewerOf(auth)),
   ]);
 
   return (
@@ -234,10 +234,10 @@ export async function HrLeaveSection({ systemId }: { systemId: string }) {
         ) : (
           <BulkLeaveApprovals
             systemId={systemId}
-            items={pending.map((l) => ({
-              id: l.id,
-              label: `${l.employee.name} · ${LEAVE_TYPE_LABEL[l.type] ?? l.type}`,
-              meta: [dateRange(l.fromDate, l.toDate), l.reason].filter(Boolean).join(" · "),
+            items={pending.map((it) => ({
+              id: it.id,
+              label: `${it.employeeName} · ${LEAVE_TYPE_LABEL[it.type] ?? it.type}`,
+              meta: [dateRange(it.fromDate, it.toDate), it.reason].filter(Boolean).join(" · "),
             }))}
           />
         )}
@@ -290,7 +290,7 @@ export async function HrLeaveSection({ systemId }: { systemId: string }) {
         <DataList
           items={leaves.map((l) => ({
             key: l.id,
-            primary: `${l.employee.name} · ${LEAVE_TYPE_LABEL[l.type] ?? l.type}`,
+            primary: `${l.employeeName} · ${LEAVE_TYPE_LABEL[l.type] ?? l.type}`,
             secondary: dateRange(l.fromDate, l.toDate),
             trailing: (
               <StatusChip value={l.status} map={LEAVE_STATUS_LABEL} tone={leaveTone(l.status)} />

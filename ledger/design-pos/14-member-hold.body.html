@@ -1,0 +1,274 @@
+<style>
+.rail{width:56px;flex:none;border-right:1px solid var(--line);background:var(--sf2);
+  padding:10px 0;display:flex;flex-direction:column;align-items:center;gap:5px;color:var(--mut2)}
+.rail .ri{width:36px;height:36px;border-radius:9px;display:grid;place-items:center}
+.rail .ri.on{background:var(--sf);border:1px solid var(--line);color:var(--ink)}
+.top .biz{display:inline-flex;align-items:center;gap:12px;height:32px;padding:0 10px;border:1px solid var(--line);
+  border-radius:8px;font-size:13px;color:var(--ink2)}
+.top .dot{width:8px;height:8px;border-radius:50%;background:var(--ink);display:inline-block}
+.top .st{display:inline-flex;align-items:center;gap:13px;font-size:12.5px;color:var(--mut)}
+.top .who{display:inline-flex;align-items:center;gap:13px;font-size:12.5px;color:var(--ink2)}
+.amenu .am .pill{height:18px;min-width:18px;font-size:10.5px}
+.cart .empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;color:var(--mut)}
+
+.pitem .pr small.lo{color:var(--ink2);font-weight:700}
+.cart .chd{display:flex;align-items:center;gap:12px;padding:14px 24px;border-bottom:1px solid var(--line)}
+.lines{flex:1;min-height:0}
+/* แผ่นด้านขวา */
+.rs{position:absolute;right:0;top:66px;bottom:0;width:500px;background:var(--sf);z-index:45;border-left:1px solid var(--line);
+  box-shadow:-14px 0 40px rgba(10,10,10,.18);display:flex;flex-direction:column}
+.rs .rh{display:flex;align-items:center;gap:12px;padding:18px 26px;border-bottom:1px solid var(--line);flex:none}
+.rs .rh h2{font-size:20px;font-weight:700;letter-spacing:-.01em}
+.rs .rh .sp{flex:1}
+.rs .rb{flex:1;min-height:0;padding:20px 26px;display:flex;flex-direction:column;gap:16px}
+.srch{display:flex;gap:12px}
+.srch .inp{flex:1;border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink);color:var(--ink)}
+.srch .inp b{font-size:16px}
+.srch .inp .car{width:1.5px;height:22px;background:var(--acc);display:inline-block;margin-left:-5px}
+.srch .inp .ph3{color:var(--mut2);font-size:14px;margin-left:auto}
+.res{border:1px solid var(--line);border-radius:16px;overflow:hidden}
+.rr{display:flex;align-items:center;gap:13px;padding:11px 16px;border-top:1px solid var(--line)}
+.rr:first-child{border-top:0}
+.rr .av{width:40px;height:40px;border-radius:12px;font-size:15px}
+.rr .tx{flex:1;min-width:0}
+.rr .tx b{display:block;font-size:15.5px}
+.rr .tx span{display:block;font-size:13px;color:var(--mut);margin-top:1px;white-space:nowrap}
+.rr .pt{text-align:right;font-variant-numeric:tabular-nums;font-weight:700;font-size:15px;white-space:nowrap}
+.rr .pt small{display:block;font-weight:400}
+.rr.on{background:var(--acc-bg);box-shadow:inset 3px 0 0 var(--acc)}
+.rr.on .av{background:var(--sf);border-color:var(--acc);color:var(--acc)}
+.dvd{display:flex;align-items:center;gap:12px;font-size:13.5px;color:var(--mut);font-weight:600}
+.dvd::before,.dvd::after{content:"";flex:1;height:1px;background:var(--line)}
+.fg{display:grid;grid-template-columns:1fr 1fr;gap:12px 14px}
+.fl{display:flex;flex-direction:column;gap:6px}
+.fl label{font-size:13px;color:var(--ink2);font-weight:600}
+.fl label span{font-weight:400;color:var(--mut)}
+.fl .inp{width:100%}
+.fl .inp.v{color:var(--ink)}
+.ck2{display:inline-flex;align-items:center;gap:10px;font-size:14px;color:var(--ink2)}
+.ck2 .cbx{width:20px;height:20px;border-radius:6px;flex:none}
+.ck2 .cbx.on::after{left:6px;top:2px;width:5px;height:10px;border-width:0 2px 2px 0}
+.srcs{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.srcs .k{font-size:13px;color:var(--ink2);font-weight:600;margin-right:4px}
+.sc{height:38px;padding:0 14px;border:1px solid var(--line);border-radius:11px;display:inline-flex;align-items:center;font-size:14px;color:var(--ink2)}
+.sc.on{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink);font-weight:700;color:var(--ink);background:var(--sf2)}
+.rnote{font-size:13px;color:var(--mut);display:flex;gap:8px;align-items:center;justify-content:center}
+/* บิลที่พัก */
+.hc{border:1px solid var(--line);border-radius:18px;padding:18px 20px;display:flex;flex-direction:column;gap:12px;background:var(--sf)}
+.hc.on{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
+.hc .h{display:flex;align-items:center;gap:12px}
+.hc .h b{font-size:17px}
+.hc .h .sp{flex:1}
+.hc .h .amt{font-size:24px;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.hc .meta{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:13.5px;color:var(--mut)}
+.hc .meta span{display:inline-flex;align-items:center;gap:6px}
+.hc .its{font-size:14px;color:var(--ink2);background:var(--sf2);border-radius:12px;padding:10px 14px;line-height:1.7}
+.hc .acts{display:flex;gap:10px}
+.hc .acts .btn.pri{flex:1}
+.hnote{font-size:13.5px;color:var(--mut);border:1px dashed var(--line2);border-radius:14px;padding:12px 16px;line-height:1.6;display:flex;gap:10px}
+.hnote svg{margin-top:3px}
+.scrim2{position:absolute;inset:0;background:rgba(10,10,10,.22);z-index:50}
+.cf{position:absolute;left:240px;top:250px;width:500px;background:var(--sf);border-radius:20px;box-shadow:0 24px 60px rgba(10,10,10,.32);
+  z-index:55;padding:26px 28px;display:flex;flex-direction:column;gap:16px}
+.cf h3{font-size:20px;font-weight:700;letter-spacing:-.01em}
+.cf p{font-size:14.5px;color:var(--ink2);line-height:1.6}
+.cf .cur{border:1px solid var(--line);border-radius:14px;padding:4px 16px;background:var(--sf2)}
+.cf .cur .l{display:flex;justify-content:space-between;padding:9px 0;font-size:14.5px;border-top:1px solid var(--line);font-variant-numeric:tabular-nums}
+.cf .cur .l:first-child{border-top:0}
+.cf .cur .l.t{font-weight:700}
+.cf .bt{display:flex;flex-direction:column;gap:10px;margin-top:4px}
+.cf .bt .btn{width:100%;height:52px!important}
+.cf .bt .btn.dgb{color:var(--dg);border-color:var(--line)}
+</style>
+<div class="wrap">
+<div>
+<p class="cap">14A · แผ่นสมาชิก (1440×900) <span>— ช่องค้น "เบอร์โทร / ชื่อ / รหัส" หรือสแกน QR · เลือกแล้วผูกกับบิล · ไม่พบก็สมัครใหม่ได้ในแผ่นเดียว (เบอร์ · ชื่อ · วันเกิด · ยินยอม PDPA · ที่มา)</span></p>
+<div class="frame" style="height:900px">
+
+ <div class="top"><svg class="i lg"><use href="#i-menu"/></svg><span class="brand">SHARK</span>
+  <span class="biz"><svg class="i sm"><use href="#i-shop"/></svg>บ้านกาแฟสวนผึ้ง · สาขาหัวหิน<svg class="i xs"><use href="#i-cv"/></svg></span>
+  <span class="sp"></span>
+  <span class="st"><i class="dot"></i>ออนไลน์ · ซิงก์ล่าสุด 10:24</span>
+  <span class="chip"><svg class="i xs"><use href="#i-clock"/></svg>กะ #12 · เปิด 09:02 · เคาน์เตอร์ 1</span>
+  <span class="who"><span class="av">น</span>น้ำฝน · แคชเชียร์</span>
+ </div>
+ <div class="appbody" style="flex:1;min-height:0">
+  <div class="rail">
+   <div class="ri"><svg class="i sm"><use href="#i-home"/></svg></div>
+   <div class="ri on"><svg class="i sm"><use href="#i-shop"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-users"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-box"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-book"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-grid"/></svg></div>
+   <span style="flex:1"></span>
+   <div class="ri"><svg class="i sm"><use href="#i-gear"/></svg></div>
+  </div>
+  <div class="mod">
+   <div class="amenu">
+    <div class="am on"><svg class="i sm"><use href="#i-cash"/></svg>หน้าขาย</div>
+    <div class="am"><svg class="i sm"><use href="#i-grid"/></svg>โต๊ะ</div>
+    <div class="am"><svg class="i sm"><use href="#i-truck"/></svg>ออเดอร์ออนไลน์<span class="pill">3</span></div>
+    <div class="am"><svg class="i sm"><use href="#i-doc"/></svg>บิลวันนี้</div>
+    <div class="am"><svg class="i sm"><use href="#i-clock"/></svg>กะ</div>
+    <div class="am"><svg class="i sm"><use href="#i-tag"/></svg>สินค้า</div>
+    <div class="am"><svg class="i sm"><use href="#i-chart"/></svg>รายงาน</div>
+    <div class="am"><svg class="i sm"><use href="#i-gear"/></svg>ตั้งค่า</div>
+   </div>
+   <div class="pos">
+    <div class="left">
+     <div class="cats"><span class="c">ทั้งหมด</span><span class="c on">กาแฟ</span><span class="c">ชาและนม</span><span class="c">ขนม</span><span class="c">อาหาร</span><span class="c">เมล็ดกาแฟและของฝาก</span></div>
+     <div class="pgrid">
+      <div class="pitem"><div class="img"></div><div class="nm">ลาเต้</div><div class="pr">฿75<small>3 ขนาด</small></div></div>
+      <div class="pitem"><div class="img"></div><div class="nm">อเมริกาโน่</div><div class="pr">฿65<small>3 ขนาด</small></div></div>
+      <div class="pitem"><div class="img"></div><div class="nm">คาปูชิโน่</div><div class="pr">฿75<small>3 ขนาด</small></div></div>
+      <div class="pitem"><div class="img"></div><div class="nm">มอคค่า</div><div class="pr">฿85<small>3 ขนาด</small></div></div>
+      <div class="pitem"><div class="img"></div><div class="nm">เอสเพรสโซ</div><div class="pr">฿55</div></div>
+      <div class="pitem"><div class="img"></div><div class="nm">ชาไทย</div><div class="pr">฿60</div></div>
+      <div class="pitem"><div class="img"></div><div class="nm">มัทฉะลาเต้</div><div class="pr">฿90</div></div>
+      <div class="pitem"><div class="img"></div><div class="nm">โกโก้</div><div class="pr">฿70</div></div>
+      <div class="pitem"><div class="img"></div><div class="nm">บราวนี่</div><div class="pr">฿65<small class="lo">เหลือ 2</small></div></div>
+      <div class="pitem"><div class="img"></div><div class="nm">ข้าวกะเพราไก่</div><div class="pr">฿89</div></div>
+      <div class="pitem"><div class="img"></div><div class="nm">ผัดไทย</div><div class="pr">฿99</div></div>
+      <div class="pitem"><div class="img"></div><div class="nm">เมล็ดกาแฟ 250 g</div><div class="pr">฿320<small>สต็อก 11</small></div></div>
+     </div>
+    </div>
+    <div class="cart">
+     <div class="chd"><span class="chip ink">บิลใหม่ · ซื้อกลับ</span><span style="flex:1"></span><span class="btn gh sm">พักบิล</span></div>
+     <div class="lines">
+      <div class="cline"><span class="q">2</span><div class="t"><b>ลาเต้</b><span>M · นมโอ๊ต · หวานน้อย</span></div><div class="a">฿200</div></div>
+      <div class="cline"><span class="q">1</span><div class="t"><b>อเมริกาโน่</b><span>L</span></div><div class="a">฿70</div></div>
+     </div>
+     <div class="paybtn"><span>ชำระเงิน</span><span>฿270</span></div>
+    </div>
+   </div>
+  </div>
+ </div>
+
+ <div class="scrim"></div>
+ <div class="rs">
+  <div class="rh"><svg class="i lg"><use href="#i-users"/></svg><h2>สมาชิก</h2><span class="mu">ผูกกับบิลนี้</span><span class="sp"></span><svg class="i mu"><use href="#i-x"/></svg></div>
+  <div class="rb">
+   <div class="srch">
+    <span class="inp"><svg class="i sm"><use href="#i-search"/></svg><b>089</b><span class="car"></span><span class="ph3">พบ 3 รายชื่อ</span></span>
+    <span class="btn gh"><svg class="i sm"><use href="#i-qr"/></svg>สแกน QR สมาชิก</span>
+   </div>
+   <div class="res">
+    <div class="rr on"><span class="av">ส</span><div class="tx"><b>คุณสมชาย ใจดี</b><span>089-214-5521 · ซื้อล่าสุด 3 วันก่อน</span></div><span class="chip acc">Gold</span><div class="pt">1,240<small class="mu">แต้ม</small></div></div>
+    <div class="rr"><span class="av">ส</span><div class="tx"><b>คุณสมหญิง รักสงบ</b><span>089-730-1186 · ซื้อล่าสุด 2 สัปดาห์ก่อน</span></div><span class="chip">Silver</span><div class="pt">320<small class="mu">แต้ม</small></div></div>
+    <div class="rr"><span class="av">ส</span><div class="tx"><b>คุณสมพร แสงทอง</b><span>089-402-9970 · ซื้อล่าสุด 4 เดือนก่อน</span></div><span class="chip">ทั่วไป</span><div class="pt">40<small class="mu">แต้ม</small></div></div>
+   </div>
+   <div class="dvd">ไม่พบ? สมัครใหม่ใช้เวลา 20 วินาที</div>
+   <div class="fg">
+    <div class="fl"><label>เบอร์โทร</label><span class="inp v">089</span></div>
+    <div class="fl"><label>ชื่อ</label><span class="inp">ชื่อเล่นหรือชื่อจริง</span></div>
+    <div class="fl"><label>วันเกิด <span>(ไม่บังคับ)</span></label><span class="inp">วว / ดด / ปปปป<svg class="i sm cv"><use href="#i-cal"/></svg></span></div>
+    <div class="fl" style="justify-content:flex-end;padding-bottom:12px"><span class="ck2"><span class="cbx"></span>ยินยอมรับข่าวสาร (PDPA)</span></div>
+   </div>
+   <div class="srcs"><span class="k">ที่มา</span><span class="sc on">หน้าร้าน</span><span class="sc">LINE</span><span class="sc">บอกต่อ</span><span class="sc">โฆษณา</span></div>
+   <span class="btn pri blk" style="height:52px!important"><svg class="i sm"><use href="#i-plus"/></svg>สมัครและผูกกับบิลนี้</span>
+   <div class="rnote"><svg class="i sm"><use href="#i-link"/></svg>ข้อมูลไปที่ระบบสมาชิก · แต้มเริ่มสะสมบิลนี้</div>
+  </div>
+ </div>
+</div>
+</div>
+
+<div>
+<p class="cap">14B · บิลที่พัก (1440×900) <span>— เห็นบิลที่พักของทุกเครื่องในสาขา · เรียกคืนเมื่อตะกร้ามีของ ระบบถามก่อนว่าจะพักตะกร้าเดิมหรือทิ้ง</span></p>
+<div class="frame" style="height:900px">
+
+ <div class="top"><svg class="i lg"><use href="#i-menu"/></svg><span class="brand">SHARK</span>
+  <span class="biz"><svg class="i sm"><use href="#i-shop"/></svg>บ้านกาแฟสวนผึ้ง · สาขาหัวหิน<svg class="i xs"><use href="#i-cv"/></svg></span>
+  <span class="sp"></span>
+  <span class="st"><i class="dot"></i>ออนไลน์ · ซิงก์ล่าสุด 10:31</span>
+  <span class="chip"><svg class="i xs"><use href="#i-clock"/></svg>กะ #12 · เปิด 09:02 · เคาน์เตอร์ 1</span>
+  <span class="who"><span class="av">น</span>น้ำฝน · แคชเชียร์</span>
+ </div>
+ <div class="appbody" style="flex:1;min-height:0">
+  <div class="rail">
+   <div class="ri"><svg class="i sm"><use href="#i-home"/></svg></div>
+   <div class="ri on"><svg class="i sm"><use href="#i-shop"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-users"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-box"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-book"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-grid"/></svg></div>
+   <span style="flex:1"></span>
+   <div class="ri"><svg class="i sm"><use href="#i-gear"/></svg></div>
+  </div>
+  <div class="mod">
+   <div class="amenu">
+    <div class="am on"><svg class="i sm"><use href="#i-cash"/></svg>หน้าขาย</div>
+    <div class="am"><svg class="i sm"><use href="#i-grid"/></svg>โต๊ะ</div>
+    <div class="am"><svg class="i sm"><use href="#i-truck"/></svg>ออเดอร์ออนไลน์<span class="pill">3</span></div>
+    <div class="am"><svg class="i sm"><use href="#i-doc"/></svg>บิลวันนี้</div>
+    <div class="am"><svg class="i sm"><use href="#i-clock"/></svg>กะ</div>
+    <div class="am"><svg class="i sm"><use href="#i-tag"/></svg>สินค้า</div>
+    <div class="am"><svg class="i sm"><use href="#i-chart"/></svg>รายงาน</div>
+    <div class="am"><svg class="i sm"><use href="#i-gear"/></svg>ตั้งค่า</div>
+   </div>
+   <div class="pos">
+    <div class="left">
+     <div class="cats"><span class="c">ทั้งหมด</span><span class="c on">กาแฟ</span><span class="c">ชาและนม</span><span class="c">ขนม</span><span class="c">อาหาร</span><span class="c">เมล็ดกาแฟและของฝาก</span></div>
+     <div class="pgrid">
+      <div class="pitem"><div class="img"></div><div class="nm">ลาเต้</div><div class="pr">฿75<small>3 ขนาด</small></div></div>
+      <div class="pitem"><div class="img"></div><div class="nm">อเมริกาโน่</div><div class="pr">฿65<small>3 ขนาด</small></div></div>
+      <div class="pitem"><div class="img"></div><div class="nm">คาปูชิโน่</div><div class="pr">฿75<small>3 ขนาด</small></div></div>
+      <div class="pitem"><div class="img"></div><div class="nm">มอคค่า</div><div class="pr">฿85<small>3 ขนาด</small></div></div>
+      <div class="pitem"><div class="img"></div><div class="nm">เอสเพรสโซ</div><div class="pr">฿55</div></div>
+      <div class="pitem"><div class="img"></div><div class="nm">ชาไทย</div><div class="pr">฿60</div></div>
+      <div class="pitem"><div class="img"></div><div class="nm">มัทฉะลาเต้</div><div class="pr">฿90</div></div>
+      <div class="pitem"><div class="img"></div><div class="nm">โกโก้</div><div class="pr">฿70</div></div>
+      <div class="pitem"><div class="img"></div><div class="nm">บราวนี่</div><div class="pr">฿65<small class="lo">เหลือ 2</small></div></div>
+      <div class="pitem"><div class="img"></div><div class="nm">ข้าวกะเพราไก่</div><div class="pr">฿89</div></div>
+      <div class="pitem"><div class="img"></div><div class="nm">ผัดไทย</div><div class="pr">฿99</div></div>
+      <div class="pitem"><div class="img"></div><div class="nm">เมล็ดกาแฟ 250 g</div><div class="pr">฿320<small>สต็อก 11</small></div></div>
+     </div>
+    </div>
+    <div class="cart">
+     <div class="chd"><span class="chip ink">บิลใหม่ · ซื้อกลับ</span><span style="flex:1"></span><span class="btn gh sm">บิลที่พัก<span class="pill gh">2</span></span></div>
+     <div class="lines">
+      <div class="cline"><span class="q">1</span><div class="t"><b>อเมริกาโน่</b><span>M · ร้อน</span></div><div class="a">฿65</div></div>
+      <div class="cline"><span class="q">1</span><div class="t"><b>บราวนี่</b><span>อุ่นร้อน</span></div><div class="a">฿65</div></div>
+     </div>
+     <div class="paybtn"><span>ชำระเงิน</span><span>฿130</span></div>
+    </div>
+   </div>
+  </div>
+ </div>
+
+ <div class="scrim"></div>
+ <div class="rs">
+  <div class="rh"><svg class="i lg"><use href="#i-clock"/></svg><h2>บิลที่พัก (2)</h2><span class="mu">ทั้งสาขา</span><span class="sp"></span><svg class="i mu"><use href="#i-x"/></svg></div>
+  <div class="rb">
+   <div class="hc on">
+    <div class="h"><b>พี่แว่น</b><span class="chip">เครื่องนี้</span><span class="sp"></span><span class="amt">฿285</span></div>
+    <div class="meta"><span>3 รายการ</span><span>· พัก 10:12</span><span>· น้ำฝน</span><span>· เครื่อง 1</span></div>
+    <div class="its">ลาเต้ M นมโอ๊ต ×2 · มอคค่า</div>
+    <div class="acts"><span class="btn pri"><svg class="i sm"><use href="#i-back"/></svg>เรียกคืน</span><span class="btn gh"><svg class="i sm"><use href="#i-trash"/></svg>ทิ้ง</span></div>
+   </div>
+   <div class="hc">
+    <div class="h"><b>โต๊ะหน้าร้าน</b><span class="sp"></span><span class="amt">฿1,120</span></div>
+    <div class="meta"><span>6 รายการ</span><span>· พัก 09:58</span><span>· แพร</span><span>· เครื่อง 2</span></div>
+    <div class="its">แก้วเก็บความเย็น ×2 · มอคค่า ×4</div>
+    <div class="acts"><span class="btn pri"><svg class="i sm"><use href="#i-back"/></svg>เรียกคืน</span><span class="btn gh"><svg class="i sm"><use href="#i-trash"/></svg>ทิ้ง</span></div>
+   </div>
+   <div class="hnote"><svg class="i sm"><use href="#i-warn"/></svg><span>หมดอายุสิ้นวัน · ราคาและคูปองถูกตรวจใหม่ตอนเรียกคืน</span></div>
+  </div>
+ </div>
+ <div class="scrim2"></div>
+ <div class="cf">
+  <h3>เรียกคืนบิล "พี่แว่น" ฿285</h3>
+  <p>ตะกร้าปัจจุบันมี 2 รายการ — จะทำอย่างไรกับตะกร้านี้?</p>
+  <div class="cur">
+   <div class="l"><span>อเมริกาโน่ M</span><span>฿65</span></div>
+   <div class="l"><span>บราวนี่</span><span>฿65</span></div>
+   <div class="l t"><span>รวม</span><span>฿130</span></div>
+  </div>
+  <div class="bt">
+   <span class="btn pri">พักตะกร้านี้ก่อน</span>
+   <span class="btn gh dgb">ทิ้งแล้วเรียกคืน</span>
+   <span class="btn gh">ยกเลิก</span>
+  </div>
+ </div>
+</div>
+</div>
+</div>

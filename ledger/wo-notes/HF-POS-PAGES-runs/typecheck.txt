@@ -1,0 +1,4 @@
+
+> shark-in-th@0.1.0 typecheck /root/projects/shark-hf2
+> tsc --noEmit
+

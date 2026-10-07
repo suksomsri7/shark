@@ -1,0 +1,48 @@
+# HF-INV-1 round 3b — control proof (QC4 · 1 Oct 2026): each fix reverted alone in the working tree → only its own checks red; files restored after each run (byte-compare vs snapshot = OK)
+
+===== CONTROL B1 — customers row scope + phone mask + side-channel refusal reverted (reports/actions.ts = 13ac174c · customers dataset without baseWhere/unitScope/masks; B4 kept) · oracle qc-hf-reports-authz =====
+  ❌ [RP-5.1.1] OWNER · จอ: แถว = 6 คน (ทั้งร้าน · ไม่มี MERGED) = แถวของ listMembers ของ actor เดียวกัน — exp 6 = list 6 | act ไม่ throw · report 7 [1,2,3,4,5,6,7] · list 6
+  ❌ [RP-5.1.2] OWNER · จอ: เบอร์เต็ม = เบอร์ใน exportMembers (ผ่านด่านส่งออก) — exp raw · export ok | act 5: ≠ export undefined · member export ok
+  ❌ [RP-5.1.3] OWNER · CSV: 6 แถว · เบอร์เต็มเฉพาะคนที่เห็น — exp 6 · leak 0 | act ไม่ throw · 7 แถว · leak [0855555555] · shown true
+  ❌ [RP-5.1.4] OWNER · groupBy: tier นับได้ 6 · groupBy phone = เบอร์ของคนที่เห็นเท่านั้น — exp 6 · groups | act tier ไม่ throw Σ7 · phone [,0855555555,0844444444,0833333333,082222222
+  ❌ [RP-5.2.1] MANAGER ทุกสาขา · จอ: แถว = 6 คน (ทั้งร้าน · ไม่มี MERGED) = แถวของ listMembers ของ actor เดียวกัน — exp 6 = list 6 | act ไม่ throw · report 7 [
+  ❌ [RP-5.2.2] MANAGER ทุกสาขา · จอ: เบอร์เต็ม = เบอร์ใน exportMembers (ผ่านด่านส่งออก) — exp raw · export ok | act 5: ≠ export undefined · member export ok
+  ❌ [RP-5.2.3] MANAGER ทุกสาขา · CSV: 6 แถว · เบอร์เต็มเฉพาะคนที่เห็น — exp 6 · leak 0 | act ไม่ throw · 7 แถว · leak [0855555555] · shown true
+  ❌ [RP-5.2.4] MANAGER ทุกสาขา · groupBy: tier นับได้ 6 · groupBy phone = เบอร์ของคนที่เห็นเท่านั้น — exp 6 · groups | act tier ไม่ throw Σ7 · phone [,0855555555,0844444
+  ❌ [RP-5.3.1] MANAGER เฉพาะสาขา B1 · จอ: แถว = 3 คน (สาขา B1 หรือเคยมาใช้บริการที่ B1 · ไม่มี MERGED) = แถวของ listMembers ของ actor เดีย
+  ❌ [RP-5.3.2] MANAGER เฉพาะสาขา B1 · จอ: เบอร์เต็ม = เบอร์ใน exportMembers (ผ่านด่านส่งออก) — exp raw · export ok | act 6: ≠ export undefined | 5: ≠ export undefined |
+  ❌ [RP-5.3.3] MANAGER เฉพาะสาขา B1 · CSV: 3 แถว · เบอร์เต็มเฉพาะคนที่เห็น — exp 3 · leak 0 | act ไม่ throw · 7 แถว · leak [0822222222,0844444444,0855555555] · shown tr
+  ❌ [RP-5.3.4] MANAGER เฉพาะสาขา B1 · groupBy: tier นับได้ 3 · groupBy phone = เบอร์ของคนที่เห็นเท่านั้น — exp 3 · groups | act tier ไม่ throw Σ7 · phone [,085555555
+  ❌ [RP-5.3.6] MANAGER เฉพาะสาขา B1 · ตัวกรอง 11 แบบ (eq/contains/gte/lte · ทุกคอลัมน์) ไม่ได้สมาชิกนอกขอบเขตแม้แต่คนเดียว · ต�
+  ❌ [RP-5.4.1] STAFF สาขา B1 + member.customer.read · จอ: แถว = 3 คน (สาขา B1 หรือเคยมาใช้บริการที่ B1 · ไม่มี MERGED) = แถวของ listMembers ของ actor เด
+  ❌ [RP-5.4.2] STAFF สาขา B1 + member.customer.read · จอ: เบอร์ปิดบัง = phoneMasked ของ listMembers (ไม่ผ่านด่านส่งออก) — exp masked · export refused | act 6: null ≠ mask xxx-xxx
+  ❌ [RP-5.4.3] STAFF สาขา B1 + member.customer.read · CSV: 3 แถว · เบอร์ปิดบังเหมือนจอ (ไม่มีเลขเต็มของใครเลย) — exp 3 · leak 0 | act ไม่ throw · 7 แ�
+  ❌ [RP-5.4.4] STAFF สาขา B1 + member.customer.read · groupBy: tier นับได้ 3 · groupBy phone ถูกปฏิเสธ (ไทย) — exp 3 · refused | act tier ไม่ throw Σ7 · phone [,0855555555,0844444444,0833333333,0822222
+  ❌ [RP-5.4.5] STAFF สาขา B1 + member.customer.read · ทางอ้อม: กรองด้วยเบอร์ (contains/eq/gte/lte) · รวมค่า sum:phone · CSV + ตัวกรองเบอร์ ⇒ ปฏิเสธเป็�
+  ❌ [RP-5.4.6] STAFF สาขา B1 + member.customer.read · ตัวกรอง 9 แบบ (eq/contains/gte/lte · ทุกคอลัมน์) ไม่ได้สมาชิกนอกขอบเขตแม้แต่คนเดียว ·
+  ❌ [RP-5.5.1] STAFF สาขา B1 + member.loyalty.stamp อย่างเดียว · จอ: แถว = 3 คน (สาขา B1 หรือเคยมาใช้บริการที่ B1 · ไม่มี MERGED) = แถวของ lis
+  ❌ [RP-5.5.2] STAFF สาขา B1 + member.loyalty.stamp อย่างเดียว · จอ: เบอร์ปิดบัง = phoneMasked ของ listMembers (ไม่ผ่านด่านส่งออก) — exp masked · export refused
+  ❌ [RP-5.5.3] STAFF สาขา B1 + member.loyalty.stamp อย่างเดียว · CSV: 3 แถว · เบอร์ปิดบังเหมือนจอ (ไม่มีเลขเต็มของใครเลย) — exp 3 · leak 0 
+  ❌ [RP-5.5.4] STAFF สาขา B1 + member.loyalty.stamp อย่างเดียว · groupBy: tier นับได้ 3 · groupBy phone ถูกปฏิเสธ (ไทย) — exp 3 · refused | act tier ไม่ throw Σ7 · phone [,085555555
+  ❌ [RP-5.5.5] STAFF สาขา B1 + member.loyalty.stamp อย่างเดียว · ทางอ้อม: กรองด้วยเบอร์ (contains/eq/gte/lte) · รวมค่า sum:phone · CSV + ตัวกรองเบอร์ �
+  ❌ [RP-5.5.6] STAFF สาขา B1 + member.loyalty.stamp อย่างเดียว · ตัวกรอง 9 แบบ (eq/contains/gte/lte · ทุกคอลัมน์) ไม่ได้สมาชิกนอกขอบเขตแม้�
+  ❌ [RP-5.6.1] STAFF สาขา B1 + member.customer.export · จอ: แถว = 3 คน (สาขา B1 หรือเคยมาใช้บริการที่ B1 · ไม่มี MERGED) = แถวของ listMembers ของ actor เ�
+  ❌ [RP-5.6.2] STAFF สาขา B1 + member.customer.export · จอ: เบอร์เต็ม = เบอร์ใน exportMembers (ผ่านด่านส่งออก) — exp raw · export ok | act 6: ≠ export undefined | 5: ≠ export und
+  ❌ [RP-5.6.3] STAFF สาขา B1 + member.customer.export · CSV: 3 แถว · เบอร์เต็มเฉพาะคนที่เห็น — exp 3 · leak 0 | act ไม่ throw · 7 แถว · leak [0822222222,0844444444,0855555555] · 
+  ❌ [RP-5.6.4] STAFF สาขา B1 + member.customer.export · groupBy: tier นับได้ 3 · groupBy phone = เบอร์ของคนที่เห็นเท่านั้น — exp 3 · groups | act tier ไม่ throw Σ7 · phone [,0
+  ❌ [RP-5.6.6] STAFF สาขา B1 + member.customer.export · ตัวกรอง 11 แบบ (eq/contains/gte/lte · ทุกคอลัมน์) ไม่ได้สมาชิกนอกขอบเขตแม้แต่คนเดียว
+  ❌ [RP-5.8] STAFF เบอร์ปิดบัง + คีย์เรียงตามเบอร์ (sort/orderBy/sortBy) → ไม่มีผล (ลำดับเท่าค่าปริยาย · เบอร์ยังปิดบัง) 
+ผ่าน 26/57
+
+===== CONTROL B4 — filters shape validation removed (B1 kept) · oracle qc-hf-reports-authz =====
+  ❌ [RP-6.1] runReport: filters ไม่ใช่รายการ / สมาชิกไม่ใช่ object ({} · 5 · "phone" · [null] · [5] · object เดี่ยว) → ข้อความไทยเรื่องตัวกรอง (�
+  ❌ [RP-6.2] action (จอ {} · CSV [null]) → ข้อความไทยเรื่องตัวกรองเหมือนกัน — exp ไทย ×2 | act TypeError: filters is not iterable | TypeError: Cannot read properties of null (rea
+ผ่าน 55/57
+
+===== CONTROL B2 — clinic/service.ts = 13ac174c (position key clinic-<visit>-<pos>-<item>) · oracle qc-hf-inventory-atomic =====
+  ❌ [AT-22.4] [A5,B5] ล้มกลางทาง (ตัด A แล้ว) → retry สลับลำดับ [B5,A5] ⇒ A ไม่ตัดซ้ำ: A/B 95/95 · OUT 2 · dispenseJson 2 — first Error::"QC AT224B" เป็นบริการ 
+  ❌ [AT-22.5] [A5,B5] ล้มกลางทาง → retry แทรกยาอื่นไว้ข้างหน้า [C5,A5,B5] ⇒ A ไม่ตัดซ้ำ: A/B/C 95/95/95 · OUT 3 · dispenseJson 3 — first failed · retry ok · A/B/C 90/95
+  ❌ [AT-22.7] [A5,A3,B5] ล้มที่ B (ตัด A สองครั้งแล้ว) → retry [B5,A5,A3] ⇒ A ไม่ตัดซ้ำ: A/B 92/95 · OUT 3 · dispenseJson 3 — first failed · retry StockKeyConflictError:INV_IDEMPOTENCY_CONF
+ผ่าน 136/139
+
+B3 (PoReceiveForm.tsx) has no oracle (needs a browser) — CONTROLLER-RUN owed.

@@ -1,0 +1,344 @@
+===== CONTROL 1: fix with the two account multi-item pre-locks (product.ts applyGoodsDocInTx + bundle.ts) commented out — oracle before AT-10 existed =====
+[env] qc-hf-inventory-atomic · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech
+(node:1159383) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+AT-1 ตัดสต็อกสินค้าตัวเดียว 10 รายการพร้อมกัน × 5 รอบ (5 ตัวห่อ + 5 InTx คนละ client)
+  ✅ [AT-1.1] รอบ 1: cache = ledger = Σคลัง · สาย balanceAfter ต่อกัน · onHand = 480
+  ✅ [AT-1.2] รอบ 2: cache = ledger = Σคลัง · สาย balanceAfter ต่อกัน · onHand = 462
+  ✅ [AT-1.3] รอบ 3: cache = ledger = Σคลัง · สาย balanceAfter ต่อกัน · onHand = 443
+  ✅ [AT-1.4] รอบ 4: cache = ledger = Σคลัง · สาย balanceAfter ต่อกัน · onHand = 422
+  ✅ [AT-1.5] รอบ 5: cache = ledger = Σคลัง · สาย balanceAfter ต่อกัน · onHand = 401
+
+AT-2 รับเข้าพร้อมกัน 10 รายการ คนละต้นทุน × 5 รอบ (ค่าเฉลี่ยตรงตามกติกาถึงสตางค์)
+  ✅ [AT-2.1] รอบ 1: ไม่มีรับเข้าหาย (onHand = 58) · ค่าเฉลี่ยถัว = replay ตามลำดับจริง
+  ✅ [AT-2.2] รอบ 2: ไม่มีรับเข้าหาย (onHand = 108) · ค่าเฉลี่ยถัว = replay ตามลำดับจริง
+  ✅ [AT-2.3] รอบ 3: ไม่มีรับเข้าหาย (onHand = 174) · ค่าเฉลี่ยถัว = replay ตามลำดับจริง
+  ✅ [AT-2.4] รอบ 4: ไม่มีรับเข้าหาย (onHand = 228) · ค่าเฉลี่ยถัว = replay ตามลำดับจริง
+  ✅ [AT-2.5] รอบ 5: ไม่มีรับเข้าหาย (onHand = 258) · ค่าเฉลี่ยถัว = replay ตามลำดับจริง
+
+AT-3 รับเข้า + ตัด ปนกัน 10 รายการ × 5 รอบ (ครึ่งหนึ่งระบุ lot)
+  ✅ [AT-3.1] รอบ 1: cache = ledger = Σคลัง · lot = Σ movement ของ lot · ค่าเฉลี่ยตรง · onHand = 96
+  ✅ [AT-3.2] รอบ 2: cache = ledger = Σคลัง · lot = Σ movement ของ lot · ค่าเฉลี่ยตรง · onHand = 98
+  ✅ [AT-3.3] รอบ 3: cache = ledger = Σคลัง · lot = Σ movement ของ lot · ค่าเฉลี่ยตรง · onHand = 96
+  ✅ [AT-3.4] รอบ 4: cache = ledger = Σคลัง · lot = Σ movement ของ lot · ค่าเฉลี่ยตรง · onHand = 106
+  ✅ [AT-3.5] รอบ 5: cache = ledger = Σคลัง · lot = Σ movement ของ lot · ค่าเฉลี่ยตรง · onHand = 104
+
+AT-4 โอนคลังหลัก→สาขา 2 และกลับ พร้อมกัน 10 รายการ × 5 รอบ
+  ✅ [AT-4.1] รอบ 1: Σคลัง = 200 = onHand · แถวคลัง = Σ movement ของคลัง · สายยอดต่อคลังต่อกัน
+  ✅ [AT-4.2] รอบ 2: Σคลัง = 200 = onHand · แถวคลัง = Σ movement ของคลัง · สายยอดต่อคลังต่อกัน
+  ✅ [AT-4.3] รอบ 3: Σคลัง = 200 = onHand · แถวคลัง = Σ movement ของคลัง · สายยอดต่อคลังต่อกัน
+  ✅ [AT-4.4] รอบ 4: Σคลัง = 200 = onHand · แถวคลัง = Σ movement ของคลัง · สายยอดต่อคลังต่อกัน
+  ✅ [AT-4.5] รอบ 5: Σคลัง = 200 = onHand · แถวคลัง = Σ movement ของคลัง · สายยอดต่อคลังต่อกัน
+
+AT-5 ปรับยอดนับ (adjust) ×2 แข่งกับตัด ×8 × 5 รอบ
+  ✅ [AT-5.1] รอบ 1: ปรับยอดกับตัดเรียงกัน — qtyDelta ของ ADJUST = ยอดนับ − ยอดก่อนหน้าจริง · สายต่อกัน
+  ✅ [AT-5.2] รอบ 2: ปรับยอดกับตัดเรียงกัน — qtyDelta ของ ADJUST = ยอดนับ − ยอดก่อนหน้าจริง · สายต่อกัน
+  ✅ [AT-5.3] รอบ 3: ปรับยอดกับตัดเรียงกัน — qtyDelta ของ ADJUST = ยอดนับ − ยอดก่อนหน้าจริง · สายต่อกัน
+  ✅ [AT-5.4] รอบ 4: ปรับยอดกับตัดเรียงกัน — qtyDelta ของ ADJUST = ยอดนับ − ยอดก่อนหน้าจริง · สายต่อกัน
+  ✅ [AT-5.5] รอบ 5: ปรับยอดกับตัดเรียงกัน — qtyDelta ของ ADJUST = ยอดนับ − ยอดก่อนหน้าจริง · สายต่อกัน
+
+AT-6 คีย์เดียวกันยิงพร้อมกัน 10 ครั้ง × 5 รอบ → movement เดียว · ตัดครั้งเดียว
+  ✅ [AT-6.1a] รอบ 1: movement ของคีย์นี้ = 1 · onHand = 98 (ตัดครั้งเดียว)
+  ✅ [AT-6.1b] รอบ 1: ทั้ง 10 ครั้งคืนรายการเดิม ไม่มี error ถึงผู้เรียก
+  ✅ [AT-6.2a] รอบ 2: movement ของคีย์นี้ = 1 · onHand = 96 (ตัดครั้งเดียว)
+  ✅ [AT-6.2b] รอบ 2: ทั้ง 10 ครั้งคืนรายการเดิม ไม่มี error ถึงผู้เรียก
+  ✅ [AT-6.3a] รอบ 3: movement ของคีย์นี้ = 1 · onHand = 94 (ตัดครั้งเดียว)
+  ✅ [AT-6.3b] รอบ 3: ทั้ง 10 ครั้งคืนรายการเดิม ไม่มี error ถึงผู้เรียก
+  ✅ [AT-6.4a] รอบ 4: movement ของคีย์นี้ = 1 · onHand = 92 (ตัดครั้งเดียว)
+  ✅ [AT-6.4b] รอบ 4: ทั้ง 10 ครั้งคืนรายการเดิม ไม่มี error ถึงผู้เรียก
+  ✅ [AT-6.5a] รอบ 5: movement ของคีย์นี้ = 1 · onHand = 90 (ตัดครั้งเดียว)
+  ✅ [AT-6.5b] รอบ 5: ทั้ง 10 ครั้งคืนรายการเดิม ไม่มี error ถึงผู้เรียก
+  ✅ [AT-6.z] หลัง 5 รอบ: invariant ครบ
+
+AT-8 POS ขายสินค้าตัวเดียว 10 บิลพร้อมกัน × 5 รอบ (ตัดสต็อกหลังบิล commit)
+  ✅ [AT-8.1] รอบ 1: 10 บิล → OUT 10 แถว · onHand = 382 · invariant ครบ
+  ✅ [AT-8.2] รอบ 2: 10 บิล → OUT 10 แถว · onHand = 363 · invariant ครบ
+  ✅ [AT-8.3] รอบ 3: 10 บิล → OUT 10 แถว · onHand = 335 · invariant ครบ
+  ✅ [AT-8.4] รอบ 4: 10 บิล → OUT 10 แถว · onHand = 320 · invariant ครบ
+  ✅ [AT-8.5] รอบ 5: 10 บิล → OUT 10 แถว · onHand = 298 · invariant ครบ
+
+AT-9 รับของตาม PO 10 ใบพร้อมกัน แต่ละใบกด 2 ครั้ง × 5 รอบ (คนละต้นทุน)
+  ✅ [AT-9.1] รอบ 1: รับสำเร็จ 10/20 ครั้ง (ใบละครั้ง) · onHand = 40 · ค่าเฉลี่ยตรง
+  ✅ [AT-9.2] รอบ 2: รับสำเร็จ 10/20 ครั้ง (ใบละครั้ง) · onHand = 84 · ค่าเฉลี่ยตรง
+  ✅ [AT-9.3] รอบ 3: รับสำเร็จ 10/20 ครั้ง (ใบละครั้ง) · onHand = 132 · ค่าเฉลี่ยตรง
+  ✅ [AT-9.4] รอบ 4: รับสำเร็จ 10/20 ครั้ง (ใบละครั้ง) · onHand = 196 · ค่าเฉลี่ยตรง
+  ✅ [AT-9.5] รอบ 5: รับสำเร็จ 10/20 ครั้ง (ใบละครั้ง) · onHand = 235 · ค่าเฉลี่ยตรง
+
+AT-7 ผู้เรียกหลายสินค้าใน tx เดียว สลับลำดับ (ใบเบิก [A,B]/[B,A] + ตัดส่วนประกอบชุด [A,B]/[B,A]) × 5 รอบ
+[account/bundle] consume component failed: 
+Invalid `prisma.$queryRaw()` invocation:
+
+
+Raw query failed. Code: `40P01`. Message: `deadlock detected`
+[account/bundle] consume component failed: 
+Invalid `prisma.$queryRaw()` invocation:
+
+
+Raw query failed. Code: `40P01`. Message: `deadlock detected`
+[account/bundle] consume component failed: 
+Invalid `prisma.$queryRaw()` invocation:
+
+
+Raw query failed. Code: `40P01`. Message: `deadlock detected`
+[account/bundle] consume component failed: current transaction is aborted, commands ignored until end of transaction block
+[account/bundle] consume component failed: current transaction is aborted, commands ignored until end of transaction block
+[account/bundle] consume component failed: current transaction is aborted, commands ignored until end of transaction block
+[account/bundle] consume component failed: 
+Invalid `prisma.$queryRaw()` invocation:
+
+
+Raw query failed. Code: `40P01`. Message: `deadlock detected`
+[account/bundle] consume component failed: current transaction is aborted, commands ignored until end of transaction block
+[account/bundle] consume component failed: 
+Invalid `prisma.$queryRaw()` invocation:
+
+
+Raw query failed. Code: `40P01`. Message: `deadlock detected`
+[account/bundle] consume component failed: 
+Invalid `prisma.$queryRaw()` invocation:
+
+
+Raw query failed. Code: `40P01`. Message: `deadlock detected`
+  ❌ [AT-7.1] รอบ 1: 10 tx หลายสินค้าสลับลำดับ สำเร็จครบ ไม่มี deadlock · invariant A,B ครบ — 7 call(s) threw: Error::goods issue: บันทึกเอกสารเบิกไม่สำเร็จ | Error::bundle consumed 0/2 ()
+[account/bundle] consume component failed: 
+Invalid `prisma.$queryRaw()` invocation:
+
+
+Raw query failed. Code: `40P01`. Message: `deadlock detected`
+[account/bundle] consume component failed: 
+Invalid `prisma.$queryRaw()` invocation:
+
+
+Raw query failed. Code: `40P01`. Message: `deadlock detected`
+[account/bundle] consume component failed: current transaction is aborted, commands ignored until end of transaction block
+[account/bundle] consume component failed: current transaction is aborted, commands ignored until end of transaction block
+[account/bundle] consume component failed: 
+Invalid `prisma.$queryRaw()` invocation:
+
+
+Raw query failed. Code: `40P01`. Message: `deadlock detected`
+[account/bundle] consume component failed: 
+Invalid `prisma.$queryRaw()` invocation:
+
+
+Raw query failed. Code: `40P01`. Message: `deadlock detected`
+[account/bundle] consume component failed: 
+Invalid `prisma.$queryRaw()` invocation:
+
+
+Raw query failed. Code: `40P01`. Message: `deadlock detected`
+[account/bundle] consume component failed: 
+Invalid `prisma.$queryRaw()` invocation:
+
+
+Raw query failed. Code: `40P01`. Message: `deadlock detected`
+  ❌ [AT-7.2] รอบ 2: 10 tx หลายสินค้าสลับลำดับ สำเร็จครบ ไม่มี deadlock · invariant A,B ครบ — 7 call(s) threw: Error::goods issue: บันทึกเอกสารเบิกไม่สำเร็จ | Error::bundle consumed 1/2 ()
+[account/bundle] consume component failed: 
+Invalid `prisma.$queryRaw()` invocation:
+
+
+Raw query failed. Code: `40P01`. Message: `deadlock detected`
+[account/bundle] consume component failed: 
+Invalid `prisma.$queryRaw()` invocation:
+
+
+Raw query failed. Code: `40P01`. Message: `deadlock detected`
+[account/bundle] consume component failed: current transaction is aborted, commands ignored until end of transaction block
+[account/bundle] consume component failed: current transaction is aborted, commands ignored until end of transaction block
+[account/bundle] consume component failed: 
+Invalid `prisma.$queryRaw()` invocation:
+
+
+Raw query failed. Code: `40P01`. Message: `deadlock detected`
+[account/bundle] consume component failed: 
+Invalid `prisma.$queryRaw()` invocation:
+
+
+Raw query failed. Code: `40P01`. Message: `deadlock detected`
+[account/bundle] consume component failed: current transaction is aborted, commands ignored until end of transaction block
+[account/bundle] consume component failed: 
+Invalid `prisma.$queryRaw()` invocation:
+
+
+Raw query failed. Code: `40P01`. Message: `deadlock detected`
+[account/bundle] consume component failed: 
+Invalid `prisma.$queryRaw()` invocation:
+
+
+Raw query failed. Code: `40P01`. Message: `deadlock detected`
+  ❌ [AT-7.3] รอบ 3: 10 tx หลายสินค้าสลับลำดับ สำเร็จครบ ไม่มี deadlock · invariant A,B ครบ — 7 call(s) threw: Error::goods issue: บันทึกเอกสารเบิกไม่สำเร็จ | Error::bundle consumed 0/2 ()
+[account/bundle] consume component failed: 
+Invalid `prisma.$queryRaw()` invocation:
+
+
+Raw query failed. Code: `40P01`. Message: `deadlock detected`
+[account/bundle] consume component failed: 
+Invalid `prisma.$queryRaw()` invocation:
+
+
+Raw query failed. Code: `40P01`. Message: `deadlock detected`
+[account/bundle] consume component failed: current transaction is aborted, commands ignored until end of transaction block
+[account/bundle] consume component failed: current transaction is aborted, commands ignored until end of transaction block
+[account/bundle] consume component failed: 
+Invalid `prisma.$queryRaw()` invocation:
+
+
+Raw query failed. Code: `40P01`. Message: `deadlock detected`
+[account/bundle] consume component failed: 
+Invalid `prisma.$queryRaw()` invocation:
+
+
+Raw query failed. Code: `40P01`. Message: `deadlock detected`
+[account/bundle] consume component failed: current transaction is aborted, commands ignored until end of transaction block
+[account/bundle] consume component failed: 
+Invalid `prisma.$queryRaw()` invocation:
+
+
+Raw query failed. Code: `40P01`. Message: `deadlock detected`
+[account/bundle] consume component failed: 
+Invalid `prisma.$queryRaw()` invocation:
+
+
+Raw query failed. Code: `40P01`. Message: `deadlock detected`
+  ❌ [AT-7.4] รอบ 4: 10 tx หลายสินค้าสลับลำดับ สำเร็จครบ ไม่มี deadlock · invariant A,B ครบ — 7 call(s) threw: Error::goods issue: บันทึกเอกสารเบิกไม่สำเร็จ | Error::bundle consumed 0/2 ()
+[account/bundle] consume component failed: 
+Invalid `prisma.$queryRaw()` invocation:
+
+
+Raw query failed. Code: `40P01`. Message: `deadlock detected`
+[account/bundle] consume component failed: 
+Invalid `prisma.$queryRaw()` invocation:
+
+
+Raw query failed. Code: `40P01`. Message: `deadlock detected`
+[account/bundle] consume component failed: current transaction is aborted, commands ignored until end of transaction block
+[account/bundle] consume component failed: current transaction is aborted, commands ignored until end of transaction block
+[account/bundle] consume component failed: 
+Invalid `prisma.$queryRaw()` invocation:
+
+
+Raw query failed. Code: `40P01`. Message: `deadlock detected`
+[account/bundle] consume component failed: 
+Invalid `prisma.$queryRaw()` invocation:
+
+
+Raw query failed. Code: `40P01`. Message: `deadlock detected`
+[account/bundle] consume component failed: current transaction is aborted, commands ignored until end of transaction block
+[account/bundle] consume component failed: 
+Invalid `prisma.$queryRaw()` invocation:
+
+
+Raw query failed. Code: `40P01`. Message: `deadlock detected`
+  ❌ [AT-7.5] รอบ 5: 10 tx หลายสินค้าสลับลำดับ สำเร็จครบ ไม่มี deadlock · invariant A,B ครบ — 6 call(s) threw: Error::goods issue: บันทึกเอกสารเบิกไม่สำเร็จ | Error::bundle consumed 0/2 ()
+  ✅ [AT-Z] ปิดท้าย: 10 สินค้าทั้งหมด invariant ครบ
+
+TIMING per round (wall, 10 parallel): AT-1 1.0/0.8/0.8/0.8/0.8s · AT-2 0.8/0.8/0.8/0.8/0.8s · AT-3 0.9/0.9/0.9/0.9/0.9s · AT-4 1.2/1.2/1.2/1.2/1.2s · AT-5 0.8/0.8/0.8/0.8/0.8s · AT-6 0.3/0.3/0.3/0.3/0.3s · AT-8 1.1/1.0/1.0/1.0/1.0s · AT-9 0.9/0.9/0.9/0.9/0.9s · AT-7 4.4/5.3/4.3/4.5/3.5s
+
+===== QC HF-INV-1 inventory atomic =====
+ผ่าน 47/52
+FINDINGS: CRITICAL 5 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":52,"passed":47,"findings":["AT-7.1","AT-7.2","AT-7.3","AT-7.4","AT-7.5"]}
+
+===== CONTROL 2: fix with only the createCostAdjustment lock commented out (oracle as of that run = 57 checks, before AT-11 (6 checks) was added — final round-1 oracle = 63; label corrected in round 2, N6) =====
+[env] qc-hf-inventory-atomic · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech
+(node:1180881) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+AT-1 ตัดสต็อกสินค้าตัวเดียว 10 รายการพร้อมกัน × 5 รอบ (5 ตัวห่อ + 5 InTx คนละ client)
+  ✅ [AT-1.1] รอบ 1: cache = ledger = Σคลัง · สาย balanceAfter ต่อกัน · onHand = 480
+  ✅ [AT-1.2] รอบ 2: cache = ledger = Σคลัง · สาย balanceAfter ต่อกัน · onHand = 462
+  ✅ [AT-1.3] รอบ 3: cache = ledger = Σคลัง · สาย balanceAfter ต่อกัน · onHand = 443
+  ✅ [AT-1.4] รอบ 4: cache = ledger = Σคลัง · สาย balanceAfter ต่อกัน · onHand = 422
+  ✅ [AT-1.5] รอบ 5: cache = ledger = Σคลัง · สาย balanceAfter ต่อกัน · onHand = 401
+
+AT-2 รับเข้าพร้อมกัน 10 รายการ คนละต้นทุน × 5 รอบ (ค่าเฉลี่ยตรงตามกติกาถึงสตางค์)
+  ✅ [AT-2.1] รอบ 1: ไม่มีรับเข้าหาย (onHand = 58) · ค่าเฉลี่ยถัว = replay ตามลำดับจริง
+  ✅ [AT-2.2] รอบ 2: ไม่มีรับเข้าหาย (onHand = 108) · ค่าเฉลี่ยถัว = replay ตามลำดับจริง
+  ✅ [AT-2.3] รอบ 3: ไม่มีรับเข้าหาย (onHand = 174) · ค่าเฉลี่ยถัว = replay ตามลำดับจริง
+  ✅ [AT-2.4] รอบ 4: ไม่มีรับเข้าหาย (onHand = 228) · ค่าเฉลี่ยถัว = replay ตามลำดับจริง
+  ✅ [AT-2.5] รอบ 5: ไม่มีรับเข้าหาย (onHand = 258) · ค่าเฉลี่ยถัว = replay ตามลำดับจริง
+
+AT-3 รับเข้า + ตัด ปนกัน 10 รายการ × 5 รอบ (ครึ่งหนึ่งระบุ lot)
+  ✅ [AT-3.1] รอบ 1: cache = ledger = Σคลัง · lot = Σ movement ของ lot · ค่าเฉลี่ยตรง · onHand = 96
+  ✅ [AT-3.2] รอบ 2: cache = ledger = Σคลัง · lot = Σ movement ของ lot · ค่าเฉลี่ยตรง · onHand = 98
+  ✅ [AT-3.3] รอบ 3: cache = ledger = Σคลัง · lot = Σ movement ของ lot · ค่าเฉลี่ยตรง · onHand = 96
+  ✅ [AT-3.4] รอบ 4: cache = ledger = Σคลัง · lot = Σ movement ของ lot · ค่าเฉลี่ยตรง · onHand = 106
+  ✅ [AT-3.5] รอบ 5: cache = ledger = Σคลัง · lot = Σ movement ของ lot · ค่าเฉลี่ยตรง · onHand = 104
+
+AT-4 โอนคลังหลัก→สาขา 2 และกลับ พร้อมกัน 10 รายการ × 5 รอบ
+  ✅ [AT-4.1] รอบ 1: Σคลัง = 200 = onHand · แถวคลัง = Σ movement ของคลัง · สายยอดต่อคลังต่อกัน
+  ✅ [AT-4.2] รอบ 2: Σคลัง = 200 = onHand · แถวคลัง = Σ movement ของคลัง · สายยอดต่อคลังต่อกัน
+  ✅ [AT-4.3] รอบ 3: Σคลัง = 200 = onHand · แถวคลัง = Σ movement ของคลัง · สายยอดต่อคลังต่อกัน
+  ✅ [AT-4.4] รอบ 4: Σคลัง = 200 = onHand · แถวคลัง = Σ movement ของคลัง · สายยอดต่อคลังต่อกัน
+  ✅ [AT-4.5] รอบ 5: Σคลัง = 200 = onHand · แถวคลัง = Σ movement ของคลัง · สายยอดต่อคลังต่อกัน
+
+AT-5 ปรับยอดนับ (adjust) ×2 แข่งกับตัด ×8 × 5 รอบ
+  ✅ [AT-5.1] รอบ 1: ปรับยอดกับตัดเรียงกัน — qtyDelta ของ ADJUST = ยอดนับ − ยอดก่อนหน้าจริง · สายต่อกัน
+  ✅ [AT-5.2] รอบ 2: ปรับยอดกับตัดเรียงกัน — qtyDelta ของ ADJUST = ยอดนับ − ยอดก่อนหน้าจริง · สายต่อกัน
+  ✅ [AT-5.3] รอบ 3: ปรับยอดกับตัดเรียงกัน — qtyDelta ของ ADJUST = ยอดนับ − ยอดก่อนหน้าจริง · สายต่อกัน
+  ✅ [AT-5.4] รอบ 4: ปรับยอดกับตัดเรียงกัน — qtyDelta ของ ADJUST = ยอดนับ − ยอดก่อนหน้าจริง · สายต่อกัน
+  ✅ [AT-5.5] รอบ 5: ปรับยอดกับตัดเรียงกัน — qtyDelta ของ ADJUST = ยอดนับ − ยอดก่อนหน้าจริง · สายต่อกัน
+
+AT-6 คีย์เดียวกันยิงพร้อมกัน 10 ครั้ง × 5 รอบ → movement เดียว · ตัดครั้งเดียว
+  ✅ [AT-6.1a] รอบ 1: movement ของคีย์นี้ = 1 · onHand = 98 (ตัดครั้งเดียว)
+  ✅ [AT-6.1b] รอบ 1: ทั้ง 10 ครั้งคืนรายการเดิม ไม่มี error ถึงผู้เรียก
+  ✅ [AT-6.2a] รอบ 2: movement ของคีย์นี้ = 1 · onHand = 96 (ตัดครั้งเดียว)
+  ✅ [AT-6.2b] รอบ 2: ทั้ง 10 ครั้งคืนรายการเดิม ไม่มี error ถึงผู้เรียก
+  ✅ [AT-6.3a] รอบ 3: movement ของคีย์นี้ = 1 · onHand = 94 (ตัดครั้งเดียว)
+  ✅ [AT-6.3b] รอบ 3: ทั้ง 10 ครั้งคืนรายการเดิม ไม่มี error ถึงผู้เรียก
+  ✅ [AT-6.4a] รอบ 4: movement ของคีย์นี้ = 1 · onHand = 92 (ตัดครั้งเดียว)
+  ✅ [AT-6.4b] รอบ 4: ทั้ง 10 ครั้งคืนรายการเดิม ไม่มี error ถึงผู้เรียก
+  ✅ [AT-6.5a] รอบ 5: movement ของคีย์นี้ = 1 · onHand = 90 (ตัดครั้งเดียว)
+  ✅ [AT-6.5b] รอบ 5: ทั้ง 10 ครั้งคืนรายการเดิม ไม่มี error ถึงผู้เรียก
+  ✅ [AT-6.z] หลัง 5 รอบ: invariant ครบ
+
+AT-8 POS ขายสินค้าตัวเดียว 10 บิลพร้อมกัน × 5 รอบ (ตัดสต็อกหลังบิล commit)
+  ✅ [AT-8.1] รอบ 1: 10 บิล → OUT 10 แถว · onHand = 382 · invariant ครบ
+  ✅ [AT-8.2] รอบ 2: 10 บิล → OUT 10 แถว · onHand = 363 · invariant ครบ
+  ✅ [AT-8.3] รอบ 3: 10 บิล → OUT 10 แถว · onHand = 335 · invariant ครบ
+  ✅ [AT-8.4] รอบ 4: 10 บิล → OUT 10 แถว · onHand = 320 · invariant ครบ
+  ✅ [AT-8.5] รอบ 5: 10 บิล → OUT 10 แถว · onHand = 298 · invariant ครบ
+
+AT-9 รับของตาม PO 10 ใบพร้อมกัน แต่ละใบกด 2 ครั้ง × 5 รอบ (คนละต้นทุน)
+  ✅ [AT-9.1] รอบ 1: รับสำเร็จ 10/20 ครั้ง (ใบละครั้ง) · onHand = 40 · ค่าเฉลี่ยตรง
+  ✅ [AT-9.2] รอบ 2: รับสำเร็จ 10/20 ครั้ง (ใบละครั้ง) · onHand = 84 · ค่าเฉลี่ยตรง
+  ✅ [AT-9.3] รอบ 3: รับสำเร็จ 10/20 ครั้ง (ใบละครั้ง) · onHand = 132 · ค่าเฉลี่ยตรง
+  ✅ [AT-9.4] รอบ 4: รับสำเร็จ 10/20 ครั้ง (ใบละครั้ง) · onHand = 196 · ค่าเฉลี่ยตรง
+  ✅ [AT-9.5] รอบ 5: รับสำเร็จ 10/20 ครั้ง (ใบละครั้ง) · onHand = 235 · ค่าเฉลี่ยตรง
+
+AT-7 ผู้เรียกหลายสินค้าใน tx เดียว สลับลำดับ (ใบเบิก [A,B]/[B,A] + ตัดส่วนประกอบชุด [A,B]/[B,A]) × 5 รอบ
+  ✅ [AT-7.1] รอบ 1: 10 tx หลายสินค้าสลับลำดับ สำเร็จครบ ไม่มี deadlock · invariant A,B ครบ
+  ✅ [AT-7.2] รอบ 2: 10 tx หลายสินค้าสลับลำดับ สำเร็จครบ ไม่มี deadlock · invariant A,B ครบ
+  ✅ [AT-7.3] รอบ 3: 10 tx หลายสินค้าสลับลำดับ สำเร็จครบ ไม่มี deadlock · invariant A,B ครบ
+  ✅ [AT-7.4] รอบ 4: 10 tx หลายสินค้าสลับลำดับ สำเร็จครบ ไม่มี deadlock · invariant A,B ครบ
+  ✅ [AT-7.5] รอบ 5: 10 tx หลายสินค้าสลับลำดับ สำเร็จครบ ไม่มี deadlock · invariant A,B ครบ
+
+AT-10 ใบปรับต้นทุนสินค้า ×1 แข่งกับรับเข้า ×9 × 5 รอบ (ต้นทุน/ยอดที่ใบใช้ = ค่า ณ จุดหนึ่งในสายจริง)
+  ❌ [AT-10.1] รอบ 1: ใบปรับต้นทุน + รับเข้าเรียงคิวกัน — ยอด/ต้นทุนเดิมบนใบตรงกับจุดหนึ่งในสาย · ค่าเฉลี่ยสุดท้ายตรง — balanceAfter/avg-cost chain broken (n=11 cache onHand=5045 cost=1287 · last balances 5014,5015,5023,5030,5031,5037,5045,5000)
+  ❌ [AT-10.2] รอบ 2: ใบปรับต้นทุน + รับเข้าเรียงคิวกัน — ยอด/ต้นทุนเดิมบนใบตรงกับจุดหนึ่งในสาย · ค่าเฉลี่ยสุดท้ายตรง — balanceAfter/avg-cost chain broken (n=21 cache onHand=5087 cost=2777 · last balances 5065,5073,5080,5081,5084,5087,5000,5045)
+  ❌ [AT-10.3] รอบ 3: ใบปรับต้นทุน + รับเข้าเรียงคิวกัน — ยอด/ต้นทุนเดิมบนใบตรงกับจุดหนึ่งในสาย · ค่าเฉลี่ยสุดท้ายตรง — balanceAfter/avg-cost chain broken (n=31 cache onHand=5128 cost=5848 · last balances 5116,5117,5120,5123,5128,5000,5045,5087)
+  ❌ [AT-10.4] รอบ 4: ใบปรับต้นทุน + รับเข้าเรียงคิวกัน — ยอด/ต้นทุนเดิมบนใบตรงกับจุดหนึ่งในสาย · ค่าเฉลี่ยสุดท้ายตรง — balanceAfter/avg-cost chain broken (n=40 cache onHand=5178 cost=5831 · last balances 5149,5155,5164,5172,5178,5000,5045,5087) · 1 call(s) threw: Error::cost adjustment: บันทึกใบปรับต้นทุนไม่สำเร็จ
+  ❌ [AT-10.5] รอบ 5: ใบปรับต้นทุน + รับเข้าเรียงคิวกัน — ยอด/ต้นทุนเดิมบนใบตรงกับจุดหนึ่งในสาย · ค่าเฉลี่ยสุดท้ายตรง — balanceAfter/avg-cost chain broken (n=50 cache onHand=5217 cost=3130 · last balances 5202,5210,5215,5217,5000,5045,5087,5178)
+  ❌ [AT-Z] ปิดท้าย: 11 สินค้าทั้งหมด invariant ครบ — balanceAfter/avg-cost chain broken (n=50 cache onHand=5217 cost=3130 · last balances 5202,5210,5215,5217,5000,5045,5087,5178)
+
+TIMING per round (wall, 10 parallel): AT-1 1.7/1.0/1.9/0.9/0.8s · AT-2 0.9/0.8/0.9/0.8/0.8s · AT-3 1.0/0.9/0.9/0.9/0.9s · AT-4 1.2/1.1/1.2/1.1/1.1s · AT-5 0.8/0.8/0.8/0.8/0.8s · AT-6 0.3/0.3/0.3/0.3/0.3s · AT-8 1.0/0.9/0.9/0.9/0.9s · AT-9 0.9/0.9/1.3/0.9/0.9s · AT-7 2.9/3.0/3.0/3.1/3.0s · AT-10 0.9/1.1/0.9/1.0/1.1s
+
+===== QC HF-INV-1 inventory atomic =====
+ผ่าน 51/57
+FINDINGS: CRITICAL 6 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":57,"passed":51,"findings":["AT-10.1","AT-10.2","AT-10.3","AT-10.4","AT-10.5","AT-Z"]}

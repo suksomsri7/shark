@@ -1,0 +1,74 @@
+# HF-INV-1 round 3 — RED on the pre-fix code (2a759a8e = bf5482d9 + merge origin/main 929c39ce) · QC4 · 1 Oct 2026
+# oracle files = final round-3 oracles (working tree) · src = 2a759a8e unchanged
+
+===== qc-hf-inventory-atomic =====
+  ❌ [AT-18.1] หลังได้ล็อกใน tx เดียวกัน lock_timeout = ค่าก่อนหน้า (0) (consumeInTx: 5s · lockItemsInTx: 5s) · ผู้เรียกตั้ง SET LOCAL 3s ไว้ → ยังเป็น 3s (5s) — got 5s/5s/5s base 0
+  ❌ [AT-18.7a] ผู้ถือล็อกสินค้า 6 วิ ⇒ ใบเบิกบัญชีรอแล้วสำเร็จ (งบ 15 วิ · ได้ 5.3 วิ) — ok false (บันทึกเอกสารเบิกไม่สำเร็จ) after 5271 ms · docs +0 · onHand 0
+  ❌ [AT-18.7b] ผู้ถือล็อกสินค้า 20 วิ ⇒ ใบเบิกล้มทั้งใบใน ≈15 วิ (14–18) — ไม่มีเอกสาร ไม่แตะสต็อก (ได้ 5.1 วิ) — ok false after 5111 ms · docs +0 · onHand 0
+  ❌ [AT-18.9] หลังได้ล็อกสต็อก คำสั่งถัดไปใน tx เดียวกันรอแถวอื่น (ถือ 7 วิ) ได้จนสำเร็จ — ไม่ถูกตัดที่ 5/15 วิ (ได้ 5.1 วิ) — PrismaClientKnownRequestError:P2010: Invalid `prisma.$queryRaw()` invocation: Raw query failed. Code: `55P03`. Message: `canceling statement due to lock timeout` after 5095 ms
+  ❌ [AT-19.1] รอบ 1: ตัดชุด (ถือ X ก่อน) และใบเบิก [U,X] สำเร็จทั้งคู่ · deadlock ที่ PG นับได้ +0 · U ลด 2 — goods issue บันทึกเอกสารเบิกไม่สำเร็จ · pg deadlocks +1 · U qty 100000→99999 (want −2)
+  ❌ [AT-19.2] รอบ 2: ตัดชุด (ถือ X ก่อน) และใบเบิก [U,X] สำเร็จทั้งคู่ · deadlock ที่ PG นับได้ +0 · U ลด 2 — goods issue บันทึกเอกสารเบิกไม่สำเร็จ · pg deadlocks +1 · U qty 99999→99998 (want −2)
+  ❌ [AT-19.s1] พายุ รอบ 1: ใบเบิก [U,X] ×5 ∥ ตัดชุด [U,X] ×5 สำเร็จครบ · deadlock +0 · U ลด 10 · invariant X ครบ — 5 call(s) threw: PrismaClientKnownRequestError:P2010: Invalid `prisma.$queryRaw()` invocation: Raw query failed. Code: `40P01`. Message: `deadlock detected` · pg deadlocks +5 · U 99998→99993
+  ❌ [AT-19.s2] พายุ รอบ 2: ใบเบิก [U,X] ×5 ∥ ตัดชุด [U,X] ×5 สำเร็จครบ · deadlock +0 · U ลด 10 · invariant X ครบ — 7 call(s) threw: Error::goods issue: บันทึกเอกสารเบิกไม่สำเร็จ | PrismaClientKnownRequestError:P2010: Invalid `prisma.$queryRaw()` invocation: Raw query failed. Code: `40P01`. Message: `deadlock detected` · pg deadlocks +7 · U 99993→99990
+  ❌ [AT-19.s3] พายุ รอบ 3: ใบเบิก [U,X] ×5 ∥ ตัดชุด [U,X] ×5 สำเร็จครบ · deadlock +0 · U ลด 10 · invariant X ครบ — 7 call(s) threw: Error::goods issue: บันทึกเอกสารเบิกไม่สำเร็จ | PrismaClientKnownRequestError:P2010: Invalid `prisma.$queryRaw()` invocation: Raw query failed. Code: `40P01`. Message: `deadlock detected` · pg deadlocks +7 · U 99990→99987
+  ❌ [AT-19.s4] พายุ รอบ 4: ใบเบิก [U,X] ×5 ∥ ตัดชุด [U,X] ×5 สำเร็จครบ · deadlock +0 · U ลด 10 · invariant X ครบ — 7 call(s) threw: Error::goods issue: บันทึกเอกสารเบิกไม่สำเร็จ | PrismaClientKnownRequestError:P2010: Invalid `prisma.$queryRaw()` invocation: Raw query failed. Code: `40P01`. Message: `deadlock detected` · pg deadlocks +7 · U 99987→99984
+  ❌ [AT-19.s5] พายุ รอบ 5: ใบเบิก [U,X] ×5 ∥ ตัดชุด [U,X] ×5 สำเร็จครบ · deadlock +0 · U ลด 10 · invariant X ครบ — 7 call(s) threw: Error::goods issue: บันทึกเอกสารเบิกไม่สำเร็จ | PrismaClientKnownRequestError:P2010: Invalid `prisma.$queryRaw()` invocation: Raw query failed. Code: `40P01`. Message: `deadlock detected` · pg deadlocks +7 · U 99984→99981
+  ❌ [AT-20.1] ผู้ถือเปลี่ยนราคาซื้อ 100→200 ค้างไว้ ⇒ ใบปรับเป็น 300 ใช้ต้นทุนเดิม 200 · ส่วนต่าง GL = (300−200)×10 = 1000 — {"ok":true,"id":"cmupmgheq0b69obkzejk0znlb","docNo":"CA-202502-0001","oldCost":100,"newCost":300,"qty":10,"delta":2000}
+  ❌ [AT-20.2] รอบ 1: ปรับ 100→200 ∥ 100→300 ที่คงเหลือ 10 ⇒ Σ ส่วนต่าง GL = (ราคาสุดท้าย−100)×10 · ต้นทุนเดิมต่อกันเป็นสาย — Σ GL delta 3000 ≠ real book change 1000 · old costs 100→200, 100→300 do not chain
+  ❌ [AT-20.3] รอบ 2: ปรับ 100→200 ∥ 100→300 ที่คงเหลือ 10 ⇒ Σ ส่วนต่าง GL = (ราคาสุดท้าย−100)×10 · ต้นทุนเดิมต่อกันเป็นสาย — Σ GL delta 3000 ≠ real book change 1000 · old costs 100→200, 100→300 do not chain
+  ❌ [AT-20.4] รอบ 3: ปรับ 100→200 ∥ 100→300 ที่คงเหลือ 10 ⇒ Σ ส่วนต่าง GL = (ราคาสุดท้าย−100)×10 · ต้นทุนเดิมต่อกันเป็นสาย — Σ GL delta 3000 ≠ real book change 2000 · old costs 100→200, 100→300 do not chain
+  ❌ [AT-20.5] รอบ 1: ปรับต้นทุน→300 ∥ เบิก 3 จาก 10 ⇒ เรียงกันได้จริง (ปรับก่อน: ยอดบนใบ 10 + ต้นทุนเบิก 300 · เบิกก่อน: 7 + 100) · คงเหลือ 7 — ca {"ok":true,"id":"cmupmgj4b0bmmobkz2dnp9tap","docNo":"CA-202510-0001","oldCost":100,"newCost":300,"qty":10,"delta":2000} · issue unitCost 100 () · qty 7
+  ❌ [AT-20.6] รอบ 2: ปรับต้นทุน→300 ∥ เบิก 3 จาก 10 ⇒ เรียงกันได้จริง (ปรับก่อน: ยอดบนใบ 10 + ต้นทุนเบิก 300 · เบิกก่อน: 7 + 100) · คงเหลือ 7 — ca {"ok":true,"id":"cmupmgjfh0brbobkzus3u3cpg","docNo":"CA-202511-0001","oldCost":100,"newCost":300,"qty":10,"delta":2000} · issue unitCost 100 () · qty 7
+  ❌ [AT-20.7] รอบ 3: ปรับต้นทุน→300 ∥ เบิก 3 จาก 10 ⇒ เรียงกันได้จริง (ปรับก่อน: ยอดบนใบ 10 + ต้นทุนเบิก 300 · เบิกก่อน: 7 + 100) · คงเหลือ 7 — ca {"ok":true,"id":"cmupmgjqh0bvyobkzixq0s11n","docNo":"CA-202512-0001","oldCost":100,"newCost":300,"qty":10,"delta":2000} · issue unitCost 100 () · qty 7
+  ❌ [AT-21.1] คีย์เดิม สินค้าเดิม จำนวนต่าง (3 แทน 2) ⇒ error ชนิดเฉพาะ (code INV_IDEMPOTENCY_CONFLICT · ไทย · ไม่ใช่ P2002) ไม่คืนรายการแรกเหมือนสำเร็จ — returned {"id":"cmupmgkbh0c0qobkzfkxvuzf2"} as if written
+  ❌ [AT-21.2] คีย์เดิม คนละสินค้า ⇒ error ชนิดเฉพาะ (code INV_IDEMPOTENCY_CONFLICT · ไทย · ไม่ใช่ P2002) ไม่คืนรายการแรกเหมือนสำเร็จ — returned {"id":"cmupmgkbh0c0qobkzfkxvuzf2"} as if written
+  ❌ [AT-21.3] คีย์เดิม คนละทิศ (รับเข้าแทนตัดออก) ⇒ error ชนิดเฉพาะ (code INV_IDEMPOTENCY_CONFLICT · ไทย · ไม่ใช่ P2002) ไม่คืนรายการแรกเหมือนสำเร็จ — returned {"id":"cmupmgkbh0c0qobkzfkxvuzf2"} as if written
+  ❌ [AT-21.4] คีย์เดิม จำนวนต่าง ผ่าน InTx (tx ของผู้เรียก) ⇒ error ชนิดเฉพาะ (code INV_IDEMPOTENCY_CONFLICT · ไทย · ไม่ใช่ P2002) ไม่คืนรายการแรกเหมือนสำเร็จ — returned {"id":"cmupmgkbh0c0qobkzfkxvuzf2","tenantId":"cmupmcf5p0000obkzoo7xnstl","system as if written
+  ❌ [AT-21.6] ปรับยอด: คีย์เดิม ยอดนับต่าง (80 แทน 90) ⇒ error ชนิดเฉพาะ · ยอดคง 90 — returned as if written
+  ❌ [AT-21.7] รอบ 1: คีย์เดียวกันพร้อมกันบน 2 สินค้า (ตัวห่อ+InTx) ⇒ movement 1 · ฝั่งที่ชนได้ error ชนิดเฉพาะ (ไม่ใช่ P2002 ดิบ) · ตัดครั้งเดียว — other-item calls: returned as if written | PrismaClientKnownRequestError:P2002: Invalid `tx.invMovement.create()` invocation in /root/projects/shark-hf5/src/lib/modules/inventory/service.ts:652:27 649 let lotNegative = false; 650 if (lotCo
+  ❌ [AT-21.8] รอบ 2: คีย์เดียวกันพร้อมกันบน 2 สินค้า (ตัวห่อ+InTx) ⇒ movement 1 · ฝั่งที่ชนได้ error ชนิดเฉพาะ (ไม่ใช่ P2002 ดิบ) · ตัดครั้งเดียว — other-item calls: PrismaClientKnownRequestError:P2002: Invalid `tx.invMovement.create()` invocation in /root/projects/shark-hf5/src/lib/modules/inventory/service.ts:652:27 649 let lotNegative = false; 650 if (lotCo | returned as if written
+  ❌ [AT-21.9] รอบ 3: คีย์เดียวกันพร้อมกันบน 2 สินค้า (ตัวห่อ+InTx) ⇒ movement 1 · ฝั่งที่ชนได้ error ชนิดเฉพาะ (ไม่ใช่ P2002 ดิบ) · ตัดครั้งเดียว — other-item calls: PrismaClientKnownRequestError:P2002: Invalid `tx.invMovement.create()` invocation in /root/projects/shark-hf5/src/lib/modules/inventory/service.ts:652:27 649 let lotNegative = false; 650 if (lotCo | returned as if written
+  ❌ [AT-22.1] จ่ายยาตัวเดิม 10 สองครั้ง (คนละครั้ง) ⇒ ตัด 2 ครั้ง: คงเหลือ 80 · OUT 2 แถว — onHand 90 · OUT 1
+  ❌ [AT-22.2] retry ของครั้งเดิม (ล้มกลางทาง → กดใหม่ด้วยรายการเดิม) ⇒ ยาตัวแรกไม่ตัดซ้ำ: 75 · ยาตัวที่สอง 95 · dispenseJson 4 รายการ — first Error::สินค้านี้กำลังถูกบันทึกสต็อกจากหลายรายการพร้อมกัน — ร · retry ok · 90/95 · json 4
+  ❌ [AT-22.3] คืนเงิน visit ⇒ คืนยาทุกครั้งที่ตัด: ยา 100/100 · IN = OUT (4) — bill true refund {"ok":true} · 100/100 · IN 2 OUT 2
+  ❌ [AT-23.1] คืนอ้างอิงใบเบิกที่ถูกยกเลิก ⇒ ปฏิเสธพร้อมเหตุชัดเจน · สต็อกไม่ขยับ — void {"ok":true} · return {"ok":true,"id":"cmupmgvzp0c3xobkzu7cjzjnj","docNo":"RPR-202610-0007"} · onHand 4924→4926
+  ❌ [AT-23.2] คืนอ้างอิงใบเบิกที่ยังเป็นร่าง ⇒ ปฏิเสธพร้อมเหตุชัดเจน · สต็อกไม่ขยับ — return {"ok":true,"id":"cmupmgwcn0c6dobkz4e3jf7fv","docNo":"RPR-202610-0008"} · qty 1000→1002
+  ❌ [AT-23.3] ผูกคลัง: เบิก 5 → คืน 5 → ยกเลิกใบคืน (สต็อกไม่ถูกกลับ) → คืน 5 อีกครั้ง ⇒ ปฏิเสธ "เกินจำนวนที่เบิกไว้" · สต็อก +5 ครั้งเดียว — ret1 true void true ret2 {"ok":true,"id":"cmupmgxak0cdlobkz7x3rfx2o","docNo":"RPR-202610-0010"} · stock +10
+  ❌ [AT-23.4] ไม่ผูกคลัง: เบิก 5 → คืน 5 → ยกเลิกใบคืน (สต็อกไม่ถูกกลับ) → คืน 5 อีกครั้ง ⇒ ปฏิเสธ "เกินจำนวนที่เบิกไว้" · สต็อก +5 ครั้งเดียว — ret1 true void true ret2 {"ok":true,"id":"cmupmgy5l0cksobkz39wd2cux","docNo":"RPR-202610-0012"} · stock +10
+  ❌ [AT-23.5] ตัวควบคุม: เบิก 5 → คืน 3 → ยกเลิกใบคืน ⇒ คืนได้อีก 2 (ผ่าน) · คืนเพิ่มอีก 1 ⇒ ปฏิเสธ — ret1 true · ret 2 {"ok":true,"id":"cmupmgz4q0cs0obkzfj0lzy2i","docNo":"RPR-202610-0014"} · ret 1 {"ok":true,"id":"cmupmgzg50cueobkzci9z8fy6","docNo":"RPR-202610-0015"}
+  ❌ [AT-24.1] บิลชำระแล้วแต่ตัดสต็อกล้ม ⇒ console.error 1 บรรทัด "[pos] stock cut failed — sale committed without stock movement" + { saleId, itemId, qty, code } เท่านั้น (ได้ 0) — []
+  ❌ [AT-24.2] void บิลแต่คืนสต็อกล้ม ⇒ console.error 1 บรรทัด "[pos] stock restore failed — void committed without stock movement" + { saleId, itemId, qty, code } (ได้ 0) — []
+  ❌ [AT-25.1] ด่าน prod ของ audit: ตัวพิมพ์ใหญ่ / percent-encode / host-less + ?host= / PGHOST ⇒ exit 4 ทุกแบบ (ไม่ต่อฐานข้อมูล) — ตัวพิมพ์ใหญ่: 1 Node.js v20.20.2 | percent-encoded: 1 Node.js v20.20.2 | ไม่มี host ใน URL + ?host=: 4  | ไม่มี host ใน URL + PGHOST: 1 Node.js v20.20.2
+  ❌ [AT-25.2] ร้าน 1 (มี AT-1..AT-24 ที่แข่งกันจริง + ของเสียจงใจ 2 ตัว) ⇒ E 1 · F 1 · A/B/C/D 0 · สินค้าเพี้ยน 2 — exit 0 · {"tenants":1,"driftedTenants":0,"items":17,"drifted":0,"a":0,"b":0,"c":0,"d":0,"deltaUnits":0,"exposureSatang":0} · 
+  ❌ [AT-25.3] ร้าน 2 (ใบปรับต้นทุน · ใบเบิก/คืน · ตัดชุด แข่งกัน) ⇒ ไม่มีสินค้าเพี้ยน (F ไม่เตือนหลอกเมื่อมีใบปรับต้นทุน) — exit 0 · {"tenants":1,"driftedTenants":0,"items":4,"drifted":0,"a":0,"b":0,"c":0,"d":0,"deltaUnits":0,"exposureSatang":0} · 
+TIMING per round (wall, 10 parallel): AT-1 1.2/0.8/0.8/0.8/0.8s · AT-2 0.8/0.7/0.8/0.9/0.8s · AT-3 0.8/0.9/0.9/0.9/0.9s · AT-4 1.1/1.1/1.1/1.1/1.1s · AT-5 0.7/0.7/0.8/0.8/0.7s · AT-6 0.3/0.3/0.2/0.3/0.3s · AT-8 1.0/1.0/0.9/0.8/0.8s · AT-9 0.8/0.8/0.8/0.9/0.8s · AT-7 3.0/2.9/3.0/2.9/3.0s · AT-10 0.9/0.9/0.9/0.9/0.9s · AT-12 2.1/2.0/1.9s · AT-13 1.7/2.8/1.7s · AT-14 0.4/0.3/0.3s · AT-15 2.4/2.4/2.4s · AT-16 0.6/0.6/0.6s · AT-17 0.5/0.5/0.4/0.4/0.5/0.5s · AT-19 6.1/5.0/5.0/1.5/5.0s · AT-20 0.4/0.4/0.4s
+ผ่าน 94/133
+FINDINGS: CRITICAL 36 · MAJOR 3 · MINOR 0
+
+===== qc-hf-inventory-authz =====
+  ❌ [HF-10.1] S3 + R3.8: receivePoAction คลังผิด → คืน { status: "error", message ไทย } (ไม่ throw · ไม่เงียบ) · PO ยัง ORDERED · สต็อกไม่ขยับ — exp error ไทย/ORDERED | act threw Error: ไม่พบคลังที่เลือก — รีเฟรชหน้าแล้วเลือกคลังใหม่อีกครั้ง · ORDERED
+  ❌ [HF-12.1] R3.8: รับของสำเร็จ → คืน { status: "ok", message ไทย } · RECEIVED · สต็อก +2 — exp ok/RECEIVED/+2 | act undefined · RECEIVED · 12→14
+  ❌ [HF-12.2] R3.8: กดรับซ้ำหลังรับแล้ว → ไม่ขึ้น error (status ok) · ไม่รับซ้ำ (IN 1 แถว · สต็อกคงเดิม) — exp ok/1 | act threw Error: รับของได้เฉพาะใบสั่งซื้อที่สถานะ “สั่งซื้อแล้ว” เท่านั้น · IN 1
+  ❌ [HF-12.3] R3.8: ดับเบิลคลิก (2 คำขอพร้อมกัน) → ทั้งคู่ไม่ขึ้น error · รับครั้งเดียว (IN 2 แถว = 2 บรรทัด · สต็อก +7) — exp ok,ok/2/+7 | act threw:Error: รับของได้เฉพาะใบสั่งซื้อที่สถานะ “สั่งซื้อแล้ว” เท่านั้น, · IN 2 · 14→21
+  ❌ [HF-12.4] [static] R3.8: หน้าจัดซื้อไม่ผูก receivePoAction เป็น form action ตรง ๆ (ผลถูกทิ้ง) — ใช้ PoReceiveForm (useActionState + แสดงข้อความ) — exp PoReceiveForm | act ui direct=true · form false
+ผ่าน 111/116
+FINDINGS: CRITICAL 5 · MAJOR 0 · MINOR 0
+
+===== qc-hf-reports-authz =====
+  ❌ [RP-1.1] STAFF มีแค่ reports.report.run → customers (ชื่อ/เบอร์สมาชิก) บนจอถูกปฏิเสธ · ข้อความไทย — exp throw ไทย | act 2 แถว
+  ❌ [RP-1.2] STAFF มีแค่ reports.report.run → customers CSV ถูกปฏิเสธ — exp throw ไทย | act CSV 2 แถว
+  ❌ [RP-1.3] STAFF มีแค่ reports.report.run → customers groupBy phone (เบอร์ทุกคน) ถูกปฏิเสธ — exp throw ไทย | act [{"group":"0822222222","value":1},{"group":"0811111111","value":1}]
+  ❌ [RP-1.4] STAFF มีแค่ reports.report.run (ไม่มีสิทธิ์ขาย POS) → sales ถูกปฏิเสธ — exp throw ไทย | act 3 แถว
+  ❌ [RP-2.5] STAFF member.customer.read=false (มีแต่คีย์ POS) → customers ถูกปฏิเสธ — exp throw ไทย | act 2 แถว
+  ❌ [RP-3.1] STAFF pos.sale.create เฉพาะสาขา 1 → sales เห็น 2 แถว ของสาขา 1 เท่านั้น — exp 2 แถว u1 | act ไม่ throw · ["cmupm5ef40004yhkzrljrzn0n","cmupm5ef40004yhkzrljrzn0n","cmupm5eff0005yhkzradz8637"]
+  ❌ [RP-3.2] เดียวกัน → CSV 2 แถว (ไม่มีสาขา 2) — exp 2 | act ไม่ throw · 3
+  ❌ [RP-3.3] เดียวกัน → groupBy unitId มีกลุ่มเดียว (สาขา 1 = 300) — exp [u1:300] | act ไม่ throw · [{"group":"cmupm5ef40004yhkzrljrzn0n","value":300},{"group":"cmupm5eff0005yhkzradz8637","value":400}]
+  ❌ [RP-3.4] เดียวกัน + ตัวกรอง unitId = สาขา 2 → 0 แถว (ตัวกรองผู้ใช้หลุดขอบเขตไม่ได้) — exp 0 | act ไม่ throw · 1
+  ❌ [RP-3.5] MANAGER ดูแลสาขา 2 → sales 1 แถวของสาขา 2 — exp 1 u2 | act ไม่ throw · ["cmupm5ef40004yhkzrljrzn0n","cmupm5ef40004yhkzrljrzn0n","cmupm5eff0005yhkzradz8637"]
+  ❌ [RP-3.7] STAFF pos.sale.create แต่ไม่มีสาขาใดเลย → ปฏิเสธ — exp throw ไทย | act 3 แถว
+  ❌ [RP-4.1] ตัวกรอง eq ค่าที่เป็น object ตัวดำเนินการ / array → ปฏิเสธ (ไทย) ทุกแบบ — exp throw ×3 | act { not }: 2 แถว | { in: [...] }: 2 แถว | array: 0 แถว
+  ❌ [RP-4.3] ชื่อชุดข้อมูล constructor/__proto__/toString/hasOwnProperty → ปฏิเสธเป็นข้อความไทย (ทั้ง action และ service) — exp throw ไทย ×8 | act constructor:ไม่ throw | __proto__:ไม่ throw | toString:ไม่ throw | hasOwnProperty:ไม่ throw | constructor:ไม่ throw | __proto__:ไม่ throw | toString:ไม่ throw | hasOwnProperty:ไม่ throw
+  ❌ [RP-4.4] groupBy มีเพดานแถวเหมือนทางแถวดิบ: take 1 → นับได้ 1 + truncated — exp 1/truncated | act ไม่ throw · Σ 2 · truncated undefined
+  ❌ [RP-4.6] ชุดข้อมูลที่ไม่อยู่ในตารางสิทธิ์ → ปฏิเสธ (OWNER ก็ไม่ได้) — exp throw ไทย | act 3 แถว
+ผ่าน 8/23
+FINDINGS: CRITICAL 15 · MAJOR 0 · MINOR 0

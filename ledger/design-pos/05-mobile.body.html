@@ -1,0 +1,156 @@
+<style>
+.mrowx{display:flex;gap:42px;align-items:flex-start}
+.mob .sb .ic{display:flex;gap:12px;align-items:center;font-size:12px}
+.mob .sb .bat{width:22px;height:11px;border:1.5px solid var(--ink);border-radius:3px;position:relative}
+.mob .sb .bat::after{content:"";position:absolute;inset:1.5px;right:5px;background:var(--ink);border-radius:1px}
+.mob .mh .brn{display:inline-flex;align-items:center;gap:5px;font-size:16px;font-weight:700}
+.mob .mh .sp{flex:1}
+.mob .mh .ib{width:36px;height:36px;border:1px solid var(--line);border-radius:10px;display:grid;place-items:center;color:var(--ink2)}
+.mob .inp{width:100%;height:40px;font-size:13px}
+.mob .cats{padding:10px 0 0}
+.mob .cats .c{height:30px;font-size:12.5px;padding:0 10px}
+.mob .pitem .img{height:80px}
+.peek{display:flex;align-items:center;gap:16px;font-size:12px;color:var(--ink2);padding:0 0 10px;margin-bottom:10px;border-bottom:1px solid var(--line)}
+.peek .sp{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mob .pitem .nm{font-size:12.5px}
+.mob .pitem .pr{font-size:12.5px}
+.mob .pitem.cnt{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink);position:relative}
+.mob .pitem .qb{position:absolute;right:6px;top:6px;min-width:22px;height:22px;border-radius:7px;background:var(--ink);color:var(--sf);
+  font-size:11.5px;font-weight:700;display:grid;place-items:center;padding:0 6px}
+.bbr{display:flex;align-items:center;gap:19px}
+.bbr .t{flex:1;min-width:0}
+.bbr .t .k{font-size:12px;color:var(--mut)}
+.bbr .t .v{font-size:20px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.2}
+.bbr .btn{height:48px;padding:0 22px;font-size:15px}
+/* ข */
+.mob .big{font-size:40px}
+.mob .paym{grid-template-columns:repeat(3,1fr)}
+.mob .paym div{height:56px;font-size:12.5px}
+.paid{display:flex;align-items:center;gap:16px;font-size:12.5px;padding:9px 12px;border:1px solid var(--line);border-radius:10px}
+.paid .sp{flex:1}
+.paid.rem{background:var(--acc-bg);border-color:var(--acc);color:var(--acc);font-weight:700}
+.qrbox{border:1px solid var(--line);border-radius:12px;padding:14px;display:flex;flex-direction:column;align-items:center;gap:16px;background:var(--sf2)}
+.qrbox .qr{width:170px;height:170px}
+.pulse{display:flex;align-items:center;gap:16px;font-size:12.5px;color:var(--acc);font-weight:700}
+.pulse i{width:9px;height:9px;border-radius:50%;background:var(--acc);box-shadow:0 0 0 4px var(--acc-bg),0 0 0 5px var(--acc);display:block}
+.ptrow{display:flex;align-items:center;gap:16px;font-size:12.5px;padding:10px 12px;border:1px dashed var(--line2);border-radius:10px}
+.ptrow .sp{flex:1}
+/* ค */
+.prog{height:6px;border-radius:3px;background:var(--sf2);overflow:hidden;border:1px solid var(--line)}
+.prog i{display:block;height:100%;width:30%;background:var(--ink)}
+.cr{display:flex;align-items:center;gap:19px;padding:11px 0;border-top:1px solid var(--line)}
+.cr:first-child{border-top:0}
+.cr .t{flex:1;min-width:0}
+.cr .t b{font-size:13.5px;font-weight:600;display:block}
+.cr .t span{font-size:11.5px;color:var(--mut)}
+.cr .sys{font-size:12px;color:var(--mut);width:48px;text-align:right;font-variant-numeric:tabular-nums}
+.cr .cin{width:54px;height:36px;border:1px solid var(--line);border-radius:8px;display:grid;place-items:center;font-size:15px;font-weight:700;font-variant-numeric:tabular-nums}
+.cr .cin.act{border-color:var(--acc);box-shadow:inset 0 0 0 1px var(--acc)}
+.cr .cin.em{color:var(--mut2);font-weight:400;font-size:12px}
+.cr .df{width:30px;text-align:right;font-size:13px;font-weight:700;font-variant-numeric:tabular-nums}
+.cr .df.dg{color:var(--dg)}
+.cr.todo .t b{color:var(--ink2)}
+</style>
+<div class="wrap">
+<p class="cap" style="margin:0">05 · มือถือ 390×844 <span>— (ก) หน้าขายบนมือถือ · (ข) ชำระเงินแบบแยกจ่าย + PromptPay · (ค) ตรวจนับสต็อกด้วยการสแกน</span></p>
+<div class="mrowx">
+
+<!-- ═══ (ก) หน้าขาย ═══ -->
+<div>
+<p class="cap">ก · หน้าขาย · มือถือ</p>
+<div class="mob">
+ <div class="sb"><span>09:41</span><span class="ic">5G<span class="bat"></span></span></div>
+ <div class="mh">
+  <span class="brn">สาขาหัวหิน<svg class="i xs"><use href="#i-cv"/></svg></span>
+  <span class="chip">กะ #12</span>
+  <span class="sp"></span>
+  <span class="ib"><svg class="i sm"><use href="#i-cam"/></svg></span>
+  <span class="ib"><svg class="i sm"><use href="#i-menu"/></svg></span>
+ </div>
+ <div class="mb">
+  <span class="inp"><svg class="i sm"><use href="#i-search"/></svg>ค้นหาชื่อ / SKU หรือสแกน</span>
+  <div class="cats"><span class="c">ทั้งหมด</span><span class="c on">กาแฟ</span><span class="c">ชาและนม</span><span class="c">ขนม</span><span class="c">อาหาร</span></div>
+  <div class="pgrid">
+   <div class="pitem cnt"><span class="qb">2</span><div class="img"></div><div class="nm">ลาเต้</div><div class="pr">฿75</div></div>
+   <div class="pitem cnt"><span class="qb">1</span><div class="img"></div><div class="nm">อเมริกาโน่</div><div class="pr">฿65</div></div>
+   <div class="pitem"><div class="img"></div><div class="nm">คาปูชิโน่</div><div class="pr">฿75</div></div>
+   <div class="pitem"><div class="img"></div><div class="nm">มอคค่า</div><div class="pr">฿85</div></div>
+   <div class="pitem"><div class="img"></div><div class="nm">เอสเพรสโซ</div><div class="pr">฿55</div></div>
+   <div class="pitem"><div class="img"></div><div class="nm">ชาไทย</div><div class="pr">฿60</div></div>
+   <div class="pitem"><div class="img"></div><div class="nm">มัทฉะลาเต้</div><div class="pr">฿90</div></div>
+   <div class="pitem"><div class="img"></div><div class="nm">โกโก้</div><div class="pr">฿70</div></div>
+   <div class="pitem"><div class="img"></div><div class="nm">บราวนี่</div><div class="pr">฿65<small style="color:var(--ink2);font-weight:700">เหลือ 2</small></div></div>
+  </div>
+ </div>
+ <div class="bb">
+  <div class="peek"><svg class="i sm"><use href="#i-list"/></svg><span class="sp">ลาเต้ ×2 · อเมริกาโน่ · ครัวซองต์ · เมล็ดกาแฟ</span><span class="lnk" style="font-size:12px">ดูตะกร้า</span></div>
+  <div class="bbr">
+   <div class="t"><div class="k">4 รายการ · คุณสมชาย</div><div class="v">฿625</div></div>
+   <span class="btn pri">ชำระ ›</span>
+  </div>
+ </div>
+</div>
+</div>
+
+<!-- ═══ (ข) ชำระเงิน ═══ -->
+<div>
+<p class="cap">ข · ชำระเงิน · มือถือ</p>
+<div class="mob">
+ <div class="sb"><span>09:41</span><span class="ic">5G<span class="bat"></span></span></div>
+ <div class="mh"><svg class="i"><use href="#i-back"/></svg><h1>ชำระเงิน</h1><span class="sp" style="flex:1"></span><span class="chip">4 รายการ</span></div>
+ <div class="mb" style="display:flex;flex-direction:column;gap:10px">
+  <div><div class="sub">ยอดที่ต้องชำระ</div><div class="big">฿625</div></div>
+  <div class="paid"><svg class="i sm"><use href="#i-cash"/></svg>เงินสด <b>฿300</b><svg class="i xs"><use href="#i-check"/></svg><span class="sp"></span><span class="mu">ทอน ฿200</span></div>
+  <div class="paid rem"><span>คงเหลือ</span><span class="sp"></span><span>฿325</span></div>
+  <div class="paym">
+   <div><span>เงินสด</span><small>✓ ฿300</small></div>
+   <div class="on"><span>PromptPay</span></div>
+   <div><span>โอน</span></div>
+   <div><span>บัตร</span><small>Beam</small></div>
+   <div><span>ว่อชเชอร์</span></div>
+   <div><span>มัดจำ</span></div>
+  </div>
+  <div class="qrbox">
+   <div class="qr"></div>
+   <div style="font-size:20px;font-weight:700">฿325</div>
+   <div class="pulse"><i></i>รอเงินเข้า… (Beam)</div>
+  </div>
+  <div class="ptrow"><svg class="i sm"><use href="#i-pig"/></svg>ใช้แต้ม <b>500</b><svg class="i xs mu"><use href="#i-ar"/></svg><b class="dgt">−฿50</b><span class="sp"></span><span class="lnk" style="font-size:12px">แก้</span></div>
+ </div>
+ <div class="bb"><span class="btn pri blk" style="height:50px;font-size:15px">ยืนยันรับเงิน ฿325</span></div>
+</div>
+</div>
+
+<!-- ═══ (ค) ตรวจนับสต็อก ═══ -->
+<div>
+<p class="cap">ค · ตรวจนับสต็อก · มือถือ</p>
+<div class="mob">
+ <div class="sb"><span>09:41</span><span class="ic">5G<span class="bat"></span></span></div>
+ <div class="mh" style="flex-direction:column;align-items:stretch;gap:7px">
+  <div style="display:flex;align-items:center;gap:10px"><svg class="i"><use href="#i-back"/></svg><h1>ตรวจนับ #7</h1><span class="sp" style="flex:1"></span><span class="chip ink">นับแล้ว 12/40</span></div>
+  <div class="sub">เมล็ดกาแฟและของฝาก · สาขาหัวหิน · เริ่ม 08:30 โดยพี่เก่ง</div>
+  <div class="prog"><i></i></div>
+ </div>
+ <div class="mb" style="display:flex;flex-direction:column;gap:10px">
+  <span class="inp"><svg class="i sm"><use href="#i-qr"/></svg>สแกนหรือค้นหา<svg class="i sm" style="margin-left:auto"><use href="#i-cam"/></svg></span>
+  <div class="mtabs"><span class="mtab on">ทั้งหมด 40</span><span class="mtab">ยังไม่นับ 28</span><span class="mtab">มีผลต่าง 3</span></div>
+  <div>
+   <div class="cr"><div class="t"><b>เมล็ดกาแฟ 250 g</b><span>BN-250 · คั่วกลาง</span></div><span class="sys">ระบบ 11</span><span class="cin act">10</span><span class="df dg">−1</span></div>
+   <div class="cr"><div class="t"><b>ดริปแบก 10 ซอง</b><span>DB-10</span></div><span class="sys">ระบบ 24</span><span class="cin">24</span><span class="df"><svg class="i sm"><use href="#i-check"/></svg></span></div>
+   <div class="cr"><div class="t"><b>เมล็ดกาแฟ 500 g</b><span>BN-500 · คั่วเข้ม</span></div><span class="sys">ระบบ 6</span><span class="cin">5</span><span class="df dg">−1</span></div>
+   <div class="cr"><div class="t"><b>ถุงผ้าบ้านกาแฟ</b><span>BG-01</span></div><span class="sys">ระบบ 15</span><span class="cin">14</span><span class="df dg">−1</span></div>
+   <div class="cr todo"><div class="t"><b>แก้วเก็บความเย็น</b><span>TM-01 · ยังไม่นับ</span></div><span class="sys">ระบบ 8</span><span class="cin em">นับ</span><span class="df"></span></div>
+   <div class="cr todo"><div class="t"><b>ดริปแบก 5 ซอง</b><span>DB-05 · ยังไม่นับ</span></div><span class="sys">ระบบ 18</span><span class="cin em">นับ</span><span class="df"></span></div>
+   <div class="cr todo"><div class="t"><b>กาต้มน้ำคอห่าน</b><span>KT-01 · ยังไม่นับ</span></div><span class="sys">ระบบ 3</span><span class="cin em">นับ</span><span class="df"></span></div>
+  </div>
+  <span class="note"><svg class="i xs" style="vertical-align:-2px"><use href="#i-clock"/></svg> ยอดขายระหว่างนับจะถูกบวกกลับให้อัตโนมัติ</span>
+ </div>
+ <div class="bb" style="display:flex;gap:8px">
+  <span class="btn gh" style="height:48px">พักไว้ก่อน</span>
+  <span class="btn pri" style="flex:1;height:48px">ยืนยันผลต่าง 3 รายการ</span>
+ </div>
+</div>
+</div>
+
+</div>
+</div>

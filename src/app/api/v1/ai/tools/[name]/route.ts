@@ -5,7 +5,7 @@
 // - เครื่องมือ "เขียน" (action=true) → **ไม่ทำทันที** สร้างข้อเสนอผูกห้องแชท แล้วเจ้าของต้องกดยืนยันในแอป/เว็บ
 //   AI ภายนอกจึงเปลี่ยนข้อมูลร้านเองไม่ได้เลย แม้จะถือ API key
 // - tenantId มาจากคีย์เสมอ (ไม่รับจาก body) — กันข้ามร้าน
-import { apiJson, authenticateApiRequest } from "@/lib/api-keys/route-auth";
+import { apiJson, authenticateApiRequest, keyNotGeneralResponse } from "@/lib/api-keys/route-auth";
 import { runTool, toolRegistry } from "@/lib/ai/tools";
 import { skillOfTool, toolAllowedForApiKey } from "@/lib/ai/skills";
 import { accountToolScope } from "@/lib/ai/account-ops";
@@ -15,6 +15,7 @@ import { aiApiKeyActor } from "@/lib/ai/actor";
 import { toolVerdict } from "@/lib/ai/tool-access";
 import { newConversationId } from "@/lib/ai/conversation-owner";
 import { findVisibleConversation } from "@/lib/ai/conversations";
+import { generalToolGate } from "../../general-key-gate";
 
 const HEADER_SYSTEM = "x-shark-system";
 
@@ -44,6 +45,9 @@ export async function POST(
       403,
     );
   }
+
+  // HF-APIV1 ▸ เครื่องมือนอก 4 โมดูล (ขาย POS · การเงิน · ความจำ · คลังความรู้ · แชท …) = คีย์กลางเท่านั้น ◂
+  if (!generalToolGate(name, auth)) return keyNotGeneralResponse();
 
   // ── สมุดบัญชีที่จะทำงานด้วย ────────────────────────────────────────────────
   // คีย์ที่ผูกเล่มไว้ = ผูกตายตัว · ส่งหัวมาต่างจากที่ผูก = ปฏิเสธ (กติกาเดียวกับ REST require.ts)

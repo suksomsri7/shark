@@ -1,0 +1,249 @@
+<style>
+.rail{width:56px;flex:none;border-right:1px solid var(--line);background:var(--sf2);
+  padding:10px 0;display:flex;flex-direction:column;align-items:center;gap:5px;color:var(--mut2)}
+.rail .ri{width:36px;height:36px;border-radius:9px;display:grid;place-items:center}
+.rail .ri.on{background:var(--sf);border:1px solid var(--line);color:var(--ink)}
+.am .pill{height:18px;min-width:18px;font-size:10.5px}
+.t03{display:flex;flex:1;min-height:0}
+.flr{flex:1;min-width:0;display:flex;flex-direction:column;border-right:1px solid var(--line);background:var(--sf)}
+.fh{display:flex;align-items:flex-end;gap:19px;padding:10px 20px 0;border-bottom:1px solid var(--line)}
+.fh .tabs{border-bottom:0}
+.fh .sp{flex:1}
+.fh .acts{display:flex;align-items:center;gap:16px;padding-bottom:8px}
+.fsum{display:flex;align-items:center;gap:35px;padding:12px 20px 0;font-size:12.5px;color:var(--mut)}
+.fsum b{color:var(--ink);font-variant-numeric:tabular-nums}
+.fsum .sp{flex:1}
+.tgrid{display:grid;grid-template-columns:repeat(6,1fr);gap:23px;padding:14px 20px 0}
+.tgrid .tbl-card{min-height:142px;gap:12px}
+.tbl-card .tt{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.tbl-card .st{font-size:11.5px;color:var(--mut)}
+.tbl-card.busy .st{color:var(--ink);font-weight:700}
+.tbl-card.bill .st{color:var(--acc);font-weight:700}
+.tbl-card .md{font-size:12px;color:var(--ink2);line-height:1.4}
+.tbl-card .md.mu{color:var(--mut)}
+.tbl-card .m b{color:var(--ink);font-size:13px;font-variant-numeric:tabular-nums}
+.tbl-card.bill .m b{color:var(--acc)}
+.tbl-card.sel{box-shadow:0 0 0 2px var(--acc)}
+.tbl-card .wn{display:flex;align-items:center;gap:5px;font-size:11.5px;color:var(--dg);font-weight:700}
+.tbl-card.free .n{color:var(--ink2)}
+.tbl-card.free .md{color:var(--mut)}
+.tbl-card .chip{height:20px;font-size:10.5px;padding:0 6px}
+.entr{margin:14px 20px 0;height:34px;border:1.5px dashed var(--line2);border-radius:9px;display:flex;
+  align-items:center;justify-content:center;gap:54px;font-size:12px;color:var(--mut)}
+.lgd2{display:flex;align-items:center;gap:35px;padding:14px 20px;font-size:12px;color:var(--ink2);flex-wrap:wrap}
+.lgd2 .it{display:flex;align-items:center;gap:13px}
+.lgd2 .sq{width:16px;height:12px;border-radius:4px;border:1px solid var(--line);background:var(--sf)}
+.lgd2 .sq.busy{background:var(--sf2);border-color:var(--ink)}
+.lgd2 .sq.bill{background:var(--acc-bg);border-color:var(--acc)}
+.lgd2 .sq.dirty{border-style:dashed;border-color:var(--line2)}
+.lgd2 .sq.sel{box-shadow:0 0 0 2px var(--acc);border-color:var(--ink);background:var(--sf2)}
+.qst{margin:14px 20px 0;border:1px solid var(--line);border-radius:12px;padding:11px 12px}
+.qh{display:flex;align-items:center;gap:19px;font-size:12.5px;margin-bottom:9px}
+.qh .sp{flex:1}
+.qrow{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+.qc{border:1px solid var(--line);border-radius:9px;padding:8px 10px;display:flex;align-items:center;gap:16px;font-size:12px;color:var(--mut)}
+.qc b{color:var(--ink);font-size:13px;font-variant-numeric:tabular-nums}
+.qc .chip{margin-left:auto}
+.qc.on{border-color:var(--acc)}
+.side{width:380px;flex:none;display:flex;flex-direction:column;background:var(--sf);min-height:0}
+.sd-h{padding:14px 16px 12px;border-bottom:1px solid var(--line)}
+.sd-h .t{display:flex;align-items:center;gap:16px}
+.sd-h h2{font-size:18px;font-weight:700;letter-spacing:-.01em}
+.sd-h .sp{flex:1}
+.sd-h .meta{font-size:12px;color:var(--mut);margin-top:5px;line-height:1.5}
+.sd-h .meta b{color:var(--ink2);font-weight:600}
+.og{padding:9px 16px 4px;display:flex;align-items:center;gap:16px;font-size:12px;font-weight:700;color:var(--ink2)}
+.og span{font-weight:400;color:var(--mut)}
+.ol{display:flex;align-items:center;gap:17px;padding:6px 16px;font-size:13px}
+.ol .q{font-weight:700;width:24px;flex:none;font-variant-numeric:tabular-nums}
+.ol .nm{flex:1;min-width:0}
+.ol .nm small{display:block;font-size:11px;color:var(--mut)}
+.ol .a{width:52px;text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
+.ol .chip{height:20px;font-size:10.5px;width:62px;justify-content:center;padding:0 4px}
+.sd-tot{padding:9px 16px;border-top:1px solid var(--line);margin-top:6px;font-size:12.5px}
+.sd-tot .r{display:flex;justify-content:space-between;padding:2px 0;color:var(--ink2);font-variant-numeric:tabular-nums}
+.sd-tot .r.g{font-size:17px;font-weight:700;color:var(--ink);padding-top:5px}
+.sd-act{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;padding:0 16px}
+.sd-act .btn{padding:0 6px}
+.sd-act .w2{grid-column:span 2}
+.sd-pay{flex:none;margin:10px 16px 0;height:50px;border-radius:11px;background:var(--ink);color:var(--sf);display:flex;
+  align-items:center;justify-content:space-between;padding:0 16px;font-size:15px;font-weight:700}
+.alr{margin:0 16px;border:1px solid var(--line);border-radius:10px;padding:9px 10px 9px 12px;display:flex;
+  align-items:center;gap:17px;font-size:12.5px;background:var(--sf)}
+.alr.acc{border-color:var(--acc);background:var(--acc-bg)}
+.alr .tx{flex:1;min-width:0}
+.alr .tx b{display:block;font-size:13px}
+.alr .tx span{color:var(--mut);font-size:11.5px}
+.ol.more{color:var(--mut);font-size:12px;padding:5px 16px 6px}
+.ol.more .nm{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ol.more .a{color:var(--ink2)}
+.alrs{display:flex;flex-direction:column;gap:13px;margin-top:auto;padding:10px 0 14px;border-top:1px solid var(--line)}
+.alrs .hd{padding:0 16px;font-size:11.5px;font-weight:700;color:var(--mut)}
+</style>
+<div class="wrap"><div>
+<p class="cap">03 · โต๊ะและผังร้าน <span>— ผังโต๊ะโซนในร้าน · สถานะโต๊ะ 5 แบบ · คิวและการจองจากระบบอื่น · แผงโต๊ะ A5 (ออเดอร์แยกรอบ + สถานะครัว) · แจ้งเตือนเรียกพนักงาน</span></p>
+<div class="frame" style="height:900px">
+
+ <div class="top"><svg class="i lg"><use href="#i-menu"/></svg><span class="brand">บ้านกาแฟสวนผึ้ง</span><span class="chip">สาขาหัวหิน</span>
+  <span class="sp"></span><span class="chip ink"><svg class="i xs"><use href="#i-clock"/></svg>กะ #12 · เคาน์เตอร์ 1</span><svg class="i"><use href="#i-search"/></svg><div class="av">น</div></div>
+
+ <div class="appbody" style="flex:1;min-height:0">
+  <div class="rail">
+   <div class="ri"><svg class="i sm"><use href="#i-home"/></svg></div>
+   <div class="ri on"><svg class="i sm"><use href="#i-shop"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-users"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-book"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-box"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-grid"/></svg></div>
+   <span style="flex:1"></span>
+   <div class="ri"><svg class="i sm"><use href="#i-gear"/></svg></div>
+  </div>
+
+  <div class="mod">
+   <div class="amenu">
+    <div class="am"><svg class="i sm"><use href="#i-shop"/></svg>หน้าขาย</div>
+    <div class="am on"><svg class="i sm"><use href="#i-grid"/></svg>โต๊ะ</div>
+    <div class="am"><svg class="i sm"><use href="#i-truck"/></svg>ออเดอร์ออนไลน์<span class="pill">3</span></div>
+    <div class="am"><svg class="i sm"><use href="#i-doc"/></svg>บิลวันนี้</div>
+    <div class="am"><svg class="i sm"><use href="#i-clock"/></svg>กะ</div>
+    <div class="am"><svg class="i sm"><use href="#i-box"/></svg>สินค้า</div>
+    <div class="am"><svg class="i sm"><use href="#i-chart"/></svg>รายงาน</div>
+    <div class="am"><svg class="i sm"><use href="#i-gear"/></svg>ตั้งค่า</div>
+   </div>
+
+   <div class="t03">
+    <!-- ผังร้าน -->
+    <div class="flr">
+     <div class="fh">
+      <div class="tabs">
+       <div class="tab on">ในร้าน <span class="n">(12)</span></div>
+       <div class="tab">ระเบียง <span class="n">(6)</span></div>
+       <div class="tab">ห้อง VIP <span class="n">(2)</span></div>
+      </div>
+      <span class="sp"></span>
+      <div class="acts">
+       <span class="chip acc"><svg class="i xs"><use href="#i-users"/></svg>คิวรอหน้าร้าน 4 · จากระบบคิว</span>
+       <div class="btn gh sm"><svg class="i sm"><use href="#i-ar"/></svg>เรียกคิวถัดไป</div>
+       <div class="btn gh sm"><svg class="i sm"><use href="#i-cal"/></svg>จองโต๊ะวันนี้ 3</div>
+      </div>
+     </div>
+
+     <div class="fsum">
+      <span>ใช้อยู่ <b>12</b> จาก 18 โต๊ะ</span><span>ลูกค้าในร้าน <b>35</b> คน</span><span>นั่งเฉลี่ย <b>48</b> นาที</span>
+      <span>ยอดบนโต๊ะตอนนี้ <b>฿8,930</b></span>
+      <span class="sp"></span><span>แตะโต๊ะเพื่อเปิด · ลากโต๊ะเพื่อย้าย/รวม</span>
+     </div>
+
+     <div class="tgrid">
+      <!-- แถว A -->
+      <div class="tbl-card busy"><div class="tt"><span class="n">A1</span><span class="st">กำลังทาน</span></div>
+       <div class="md">2 คน</div><div class="m"><span>12 นาที</span><b>฿310</b></div></div>
+      <div class="tbl-card busy"><div class="tt"><span class="n">A2</span><span class="st">กำลังทาน</span></div>
+       <div class="md">3 คน · ส่งครัวแล้ว 12:09</div><div class="m"><span>8 นาที</span><b>฿520</b></div></div>
+      <div class="tbl-card free"><div class="tt"><span class="n">A3</span><span class="st">ว่าง</span></div>
+       <div class="md">4 ที่นั่ง</div><div class="m"><span></span><span class="lnk">เปิดโต๊ะ</span></div></div>
+      <div class="tbl-card busy"><div class="tt"><span class="n">A4</span><span class="st">กำลังทาน</span></div>
+       <div class="md">2 คน</div><div class="m"><span>31 นาที</span><b>฿455</b></div></div>
+      <div class="tbl-card busy sel"><div class="tt"><span class="n">A5</span><span class="st">กำลังทาน</span></div>
+       <div class="md">4 คน · คุณวิภา · Silver</div><div class="m"><span>45 นาที</span><b>฿1,240</b></div></div>
+      <div class="tbl-card dirty"><div class="tt"><span class="n">A6</span><span class="st">ต้องเก็บโต๊ะ</span></div>
+       <div class="md mu">ยังไม่เก็บ · 3 นาที</div><div class="m"><span>4 ที่นั่ง</span><span class="lnk">เก็บแล้ว</span></div></div>
+      <!-- แถว B -->
+      <div class="tbl-card busy"><div class="tt"><span class="n">B1</span><span class="st">กำลังทาน</span></div>
+       <div class="md">4 คน</div><div class="m"><span>22 นาที</span><b>฿980</b></div></div>
+      <div class="tbl-card bill"><div class="tt"><span class="n">B2</span><span class="st">ขอเช็คบิล</span></div>
+       <div class="md">2 คน · ขอผ่าน QR 2 นาที</div><div class="m"><span>52 นาที</span><b>฿860</b></div></div>
+      <div class="tbl-card free"><div class="tt"><span class="n">B3</span><span class="st">ว่าง</span></div>
+       <div class="md">4 ที่นั่ง</div><div class="m"><span></span><span class="lnk">เปิดโต๊ะ</span></div></div>
+      <div class="tbl-card busy"><div class="tt"><span class="n">B4</span><span class="st">กำลังทาน</span></div>
+       <div class="wn"><svg class="i xs"><use href="#i-warn"/></svg>ยังไม่ส่งครัว 2 รายการ</div><div class="m"><span>6 นาที · 3 คน</span><b>฿395</b></div></div>
+      <div class="tbl-card"><div class="tt"><span class="n">B5</span><span class="st">จองไว้</span></div>
+       <div class="md">จอง 19:00 · คุณอรทัย<br>6 คน · กันโต๊ะ 18:45</div><div class="m"><span class="chip"><svg class="i xs"><use href="#i-cal"/></svg>จากระบบจอง</span><span></span></div></div>
+      <div class="tbl-card busy"><div class="tt"><span class="n">B6</span><span class="st">กำลังทาน</span></div>
+       <div class="md">2 คน</div><div class="m"><span>17 นาที</span><b>฿265</b></div></div>
+      <!-- แถว C -->
+      <div class="tbl-card bill"><div class="tt"><span class="n">C1</span><span class="st">ขอเช็คบิล</span></div>
+       <div class="md">4 คน · เรียกที่โต๊ะ</div><div class="m"><span>1 ชม. 5 นาที</span><b>฿1,480</b></div></div>
+      <div class="tbl-card free"><div class="tt"><span class="n">C2</span><span class="st">ว่าง</span></div>
+       <div class="md">2 ที่นั่ง</div><div class="m"><span></span><span class="lnk">เปิดโต๊ะ</span></div></div>
+      <div class="tbl-card busy"><div class="tt"><span class="n">C3</span><span class="st">กำลังทาน</span></div>
+       <div class="md">3 คน · อาหารพร้อมเสิร์ฟ 1</div><div class="m"><span>28 นาที</span><b>฿740</b></div></div>
+      <div class="tbl-card busy"><div class="tt"><span class="n">C4</span><span class="st">กำลังทาน</span></div>
+       <div class="md">4 คน</div><div class="m"><span>39 นาที</span><b>฿1,120</b></div></div>
+      <div class="tbl-card busy"><div class="tt"><span class="n">C5</span><span class="st">กำลังทาน</span></div>
+       <div class="md">2 คน</div><div class="m"><span>4 นาที</span><b>฿565</b></div></div>
+      <div class="tbl-card dirty"><div class="tt"><span class="n">C6</span><span class="st">ต้องเก็บโต๊ะ</span></div>
+       <div class="md mu">ยังไม่เก็บ · 1 นาที</div><div class="m"><span>6 ที่นั่ง</span><span class="lnk">เก็บแล้ว</span></div></div>
+     </div>
+
+     <div class="entr"><span>ทางเข้าหน้าร้าน</span><span>·</span><span>เคาน์เตอร์ 1</span><span>·</span><span>ครัว (ด้านหลัง)</span></div>
+
+     <div class="qst">
+      <div class="qh"><b>คิวรอหน้าร้าน</b><span class="mu">จากระบบคิว · รับบัตรคิวผ่าน LINE ได้</span><span class="sp"></span><span class="mu">ระบบแนะนำโต๊ะที่ขนาดพอดีให้อัตโนมัติ</span></div>
+      <div class="qrow">
+       <div class="qc on"><b>Q-041</b><span>2 คน · รอ 14 นาที</span><span class="chip acc">แนะนำ C2</span></div>
+       <div class="qc"><b>Q-042</b><span>4 คน · รอ 9 นาที</span><span class="chip">รอ A6 เก็บ</span></div>
+       <div class="qc"><b>Q-043</b><span>2 คน · รอ 5 นาที</span><span class="chip">แนะนำ B3</span></div>
+       <div class="qc"><b>Q-044</b><span>6 คน · รอ 2 นาที</span><span class="chip">รอ C6 เก็บ</span></div>
+      </div>
+     </div>
+
+     <div class="lgd2">
+      <span class="it"><i class="sq"></i>ว่าง 3</span>
+      <span class="it"><i class="sq busy"></i>กำลังทาน 10</span>
+      <span class="it"><i class="sq bill"></i>ขอเช็คบิล 2</span>
+      <span class="it"><i class="sq dirty"></i>ต้องเก็บโต๊ะ 2</span>
+      <span class="it"><i class="sq"></i>จองไว้ 1</span>
+      <span class="it"><i class="sq sel"></i>โต๊ะที่เลือก</span>
+      <span class="it" style="color:var(--dg)"><svg class="i xs"><use href="#i-warn"/></svg>มีรายการยังไม่ส่งครัว</span>
+     </div>
+    </div>
+
+    <!-- แผงโต๊ะที่เลือก -->
+    <div class="side">
+     <div class="sd-h">
+      <div class="t"><h2>โต๊ะ A5</h2><span class="chip ink">กำลังทาน</span><span class="sp"></span>
+       <div class="btn gh sm" style="padding:0 7px"><svg class="i sm"><use href="#i-more"/></svg></div></div>
+      <div class="meta">เปิด 11:25 · 45 นาที · 4 คน · พนักงาน ต้น<br>สมาชิก <b>คุณวิภา · Silver</b> · แต้มสะสม 1,284</div>
+     </div>
+
+     <div class="og">ออเดอร์ #12 <span>(11:27) · ต้นรับที่โต๊ะ</span></div>
+     <div class="ol"><span class="q">×1</span><span class="nm">ต้มยำกุ้ง<small>น้ำข้น · เผ็ดกลาง</small></span><span class="chip ink">เสิร์ฟแล้ว</span><span class="a">฿180</span></div>
+     <div class="ol"><span class="q">×2</span><span class="nm">กะเพราไก่ไข่ดาว<small>ไข่ดาวไม่สุก 1 จาน</small></span><span class="chip acc">กำลังทำ</span><span class="a">฿198</span></div>
+     <div class="ol"><span class="q">×4</span><span class="nm">ข้าวสวย</span><span class="chip ink">เสิร์ฟแล้ว</span><span class="a">฿60</span></div>
+     <div class="ol more"><svg class="i xs"><use href="#i-cv"/></svg><span class="nm">เสิร์ฟแล้วอีก 3 รายการ · ปลาหมึกผัดไข่เค็ม · ยำวุ้นเส้น · ชาไทยเย็น ×3</span><span class="a">฿587</span></div>
+
+     <div class="og">ออเดอร์ #15 <span>(11:58) · สั่งเองผ่าน QR</span></div>
+     <div class="ol"><span class="q">×2</span><span class="nm">ลาเต้เย็น<small>หวานน้อย</small></span><span class="chip">รอ</span><span class="a">฿150</span></div>
+     <div class="ol"><span class="q">×1</span><span class="nm">บราวนี่</span><span class="chip">รอ</span><span class="a">฿65</span></div>
+
+     <div class="sd-tot">
+      <div class="r"><span>รวม</span><span>฿1,240</span></div>
+      <div class="r"><span>ค่าบริการ 10%</span><span>฿124</span></div>
+      <div class="r g"><span>ยอดสุทธิ</span><span>฿1,364</span></div>
+     </div>
+
+     <div class="sd-act">
+      <div class="btn gh sm"><svg class="i xs"><use href="#i-plus"/></svg>สั่งเพิ่ม</div>
+      <div class="btn gh sm"><svg class="i xs"><use href="#i-swap"/></svg>ย้ายโต๊ะ</div>
+      <div class="btn gh sm"><svg class="i xs"><use href="#i-link"/></svg>รวมโต๊ะ</div>
+      <div class="btn gh sm"><svg class="i xs"><use href="#i-copy"/></svg>แยกบิล</div>
+      <div class="btn gh sm w2"><svg class="i xs"><use href="#i-print"/></svg>พิมพ์ใบรายการ</div>
+     </div>
+     <div class="sd-pay"><span>เช็คบิล</span><span>฿1,364</span></div>
+
+     <div class="alrs">
+      <div class="hd">แจ้งเตือนจากโต๊ะ</div>
+      <div class="alr acc"><svg class="i sm" style="color:var(--acc)"><use href="#i-flag"/></svg>
+       <div class="tx"><b>โต๊ะ B2 เรียกพนักงาน</b><span>กดจาก QR ที่โต๊ะ · 1 นาที</span></div>
+       <div class="btn pri sm">รับทราบ</div></div>
+      <div class="alr"><svg class="i sm"><use href="#i-wallet"/></svg>
+       <div class="tx"><b>โต๊ะ C1 ขอเช็คบิล</b><span>ยอด ฿1,480 · 3 นาที</span></div>
+       <div class="btn gh sm">เปิดโต๊ะ</div></div>
+     </div>
+    </div>
+   </div>
+  </div>
+ </div>
+</div>
+</div></div>

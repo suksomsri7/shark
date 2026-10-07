@@ -7,6 +7,7 @@ import { getPaymentProfile } from "@/lib/payment/service";
 import { posUnits, resolvePosLinks, posCatalog, posMembers, posServices } from "@/lib/modules/pos/register";
 import { PosRegister } from "@/lib/modules/pos/register-ui";
 import { posTabs } from "@/lib/modules/pos/tabs";
+import { posMembership, posRegisterView } from "@/lib/modules/pos/access";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Section } from "@/components/ui/Section";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -31,10 +32,14 @@ export default async function PosRegisterPage({
 
   const tabs = posTabs(id);
 
-  const units = await posUnits(tenantId, id);
+  // HF-POS-PAGES: เดิมไม่ตรวจสิทธิ์ + ?unit= ของสาขาอื่นก็เปิดได้ (โหลดสมาชิก/สินค้าของสาขานั้น)
+  //   ตอนนี้: ต้องขายได้ · รายการสาขาเหลือเฉพาะที่เข้าได้ · ขอสาขาที่เข้าไม่ได้ = notFound
+  const view = posRegisterView(posMembership(auth.active), await posUnits(tenantId, id), unitParam);
+  if (!view.ok) notFound();
+  const units = view.units;
 
   // ยังไม่ผูก POS กับกิจการใด → ขายไม่ได้ (createSale ต้องมี unit) → ชี้ไปเชื่อม
-  if (units.length === 0) {
+  if (units.length === 0 || !view.active) {
     return (
       <div className="flex max-w-2xl flex-col gap-5">
         <PageHeader title={`${def?.icon ?? ""} ${sys.name}`.trim()} desc="หน้าขาย" />
@@ -47,8 +52,8 @@ export default async function PosRegisterPage({
     );
   }
 
-  // เลือก unit ที่จะขาย: จาก ?unit= ถ้าถูกต้อง ไม่งั้นตัวแรก
-  const active = units.find((u) => u.id === unitParam) ?? units[0];
+  // เลือก unit ที่จะขาย: จาก ?unit= ถ้าถูกต้อง ไม่งั้นตัวแรกที่เข้าได้ (posRegisterView)
+  const active = view.active;
 
   const [links, profile] = await Promise.all([resolvePosLinks(tenantId, active.id), getPaymentProfile({ tenantId })]);
   const [catalog, members, services] = await Promise.all([

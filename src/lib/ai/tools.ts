@@ -237,7 +237,7 @@ const pendingLeaves: AiTool = {
         ประเภท: l.type,
         ตั้งแต่: safeDate(l.fromDate),
         ถึง: safeDate(l.toDate),
-        เหตุผล: l.reason ?? null,
+        // HF-HR-0 ▸ ไม่คืนเหตุผลการลา (ลาป่วย = ข้อมูลสุขภาพ · ต้องมี hr.leave.read แต่ ToolCtx ไม่รู้ว่าใครถาม ⇒ ปิดไว้เสมอ) ◂
       })),
     });
   },
