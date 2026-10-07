@@ -1056,7 +1056,9 @@ try {
   await section("L4", ["C5.3-L4-M3"], {}, async () => {
     await sub("C5.3-L4-M3", async () => {
       const RT = (await import(pathToFileURL(resolve("src/app/l/[code]/route.ts")).href)) as Any;
-      const c = await mkCrm("L4-M3");
+      // ORACLE-EDIT (C6.1-LINKPOLICY · owner P11/Q15 (ข)): a destination must be on the shop's allowed list — the abusive shop declares its
+      //   own phishing host (the policy cannot stop a shop that lies; the platform kill-switch below is what this check pins)
+      const c = await mkCrm("L4-M3", { tracking: { linkHosts: [`phish-${rand}.example`] } });
       const code = `QcL${rand}`;
       const lk = await call(CRM.tracking.createLink, c.ctx, owner.actor, { url: `https://phish-${rand}.example/login`, name: `abuse ${TAG}`, code });
       const hit = async () => {

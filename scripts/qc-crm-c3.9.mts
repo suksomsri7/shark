@@ -195,7 +195,9 @@ try {
   const SB = (await sysSvc.createSystem(TB, "CRM", `CRM B ${TAG}`)).id as string;
   const M = (await sysSvc.createSystem(T, "MEMBER", `สมาชิก ${TAG}`)).id as string;
   await setCrm(S, { uiVersion: 2, bridgesEnabled: true, portal: { enabled: true, loginMethods: ["EMAIL_OTP"], showDeals: true, allowIssue: true, issueBoardId: null },
-    email: { retentionDays: 30 }, retention: { recordingDays: 30, exportDays: 7, leadMonths: 3 }, tracking: { web: { enabled: true, domains: ["qc.invalid"], retentionDays: 30, consentVersion: 1, consentText: "ยินยอม", siteKey: `qcsite${rand}${rand}` } } });
+    email: { retentionDays: 30 }, retention: { recordingDays: 30, exportDays: 7, leadMonths: 3 }, tracking: { web: { enabled: true, domains: ["qc.invalid"], retentionDays: 30, consentVersion: 1, consentText: "ยินยอม", siteKey: `qcsite${rand}${rand}` },
+      // ORACLE-EDIT (C6.1-LINKPOLICY · owner P11/Q15 (ข)): the trackedLinks cap driver links to example.invalid — declare it as an allowed destination
+      linkHosts: ["example.invalid"] } });
   await setCrm(S2, { uiVersion: 2 });
   await setCrm(SB, { uiVersion: 2 });
   const owner = { userId: uOwner, role: "OWNER", unitAccess: ["*"], permissions: {} as Record<string, unknown> };
