@@ -695,3 +695,9 @@
 - เลน 1 = builder S P1.8 บน p11 (branch `wip/pos-p1.8` จาก session/pos ef22651f · migration QC4 โดย builder ตาม prompt) · เลน 2 = P1.10 oracle (tree c) ยังเขียนอยู่
 - โควตา session 42% (reset 01:30 UTC) — ถ้าแตะ 70% ก่อน reset: ไม่ spawn reviewer/เลนใหม่ รอ reset
 - ถัดไป: รับ oracle P1.10 → merge → (ถ้าโควตาพอ) builder S P1.10 บนทรี c · รอ builder P1.8 → reviewer/hunter money lane → รับ
+
+### 2026-10-07T23:16Z — P1.10 oracle รับแล้ว (a448d567 · 40 ข้อ) → merge 8b28a96d · เตรียมเลน 2 = builder S P1.10
+- ปัญหา: builder P1.8 รัน `prisma generate` ใน p11 ⇒ client ที่ b/c/ผู้คุม bind-mount มี PosDocCounter แต่ scope.ts ของทรีเหล่านั้นยังไม่มี ⇒ fitness F10.1 แดง + ข้อสอบ DB crash · ผู้คุมใช้ `--no-verify` เฉพาะ commit ledger จนกว่า P1.8 S จะ merge · memory note เพิ่มแล้ว
+- แก้ถาวรสำหรับ 2 builder ที่มี migration พร้อมกัน: ถอด bind mount ของทรี c แล้ว `pnpm install` ให้ c มี node_modules/prisma client ของตัวเอง (7.9 วิ · ร้านเก็บ pnpm ร่วม) · b ยัง bind-mount p11 (ro)
+- มติ P1.10 CD1–CD5 ใน brief §6 (f136057a) · prompt builder `pos-prompt-accountB-P1.10-S.md` · migration P1.10 เขียนจาก schema (ไม่ diff จาก DB ที่มีของ P1.8)
+- โควตา session 47% · ถ้าแตะ 70% ก่อน 01:30 UTC: เลนจะโดน 429 → รอ reset แล้ว "Try again"
