@@ -11,3 +11,5 @@ qc-booking-hours-hr exit=0 JSON_SUMMARY {"total":13,"passed":13,"findings":[]}
 qc-crm-c3.3 exit=0 JSON_SUMMARY {"total":90,"passed":90,"findings":[]}
 qc-approval exit=0 JSON_SUMMARY {"total":16,"passed":16,"findings":[]}
 qc-approval-wiring exit=0 JSON_SUMMARY {"total":7,"passed":7,"findings":[]}
+qc-ai-tools exit=0 JSON_SUMMARY {"total":18,"passed":18,"findings":[]} (H0.3 §E addition, 2026-10-07T18:49:46Z)
+qc-ai-proposals exit=0 JSON_SUMMARY {"total":16,"passed":16,"findings":[]} (H0.3 §E addition, 2026-10-07T18:49:50Z)
