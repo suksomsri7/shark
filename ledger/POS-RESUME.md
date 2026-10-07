@@ -671,3 +671,11 @@
 - เลน (subagent) หายไปพร้อมคอนเทนเนอร์ · branch `wip/pos-p1.9u` ยังอยู่ที่ R2 102d7ea7 · diff R3 (Set ของ StockStateKey/ShiftsStateKey แทน startsWith) ค้างอยู่ในทรี b ครบแล้ว ⇒ ผู้คุมทำต่อเอง: --dry ผ่าน (37 ภาพ, stock-warn อยู่ใต้หน้าขาย) · typecheck กำลังรันใต้ /tmp/pos-gate.lock
 - build ยืนยัน R2 บน p11 (unit pos-vis12-shifts) รอดเพราะเป็น systemd: shifts owner **12/12** ✅ (F2 cleanup ปิดกะ Z#9 ผ่าน UI) · register owner กำลังถ่าย (คาด stock-warn แดงจนกว่าจะใช้สคริปต์ R3)
 - โควตา B session 22% (reset 01:29 UTC) · ถัดไป: typecheck → commit R3 → ถ่าย register stock-warn ด้วยสคริปต์ R3 บน p11 → merge → 13/55
+
+### 2026-10-07T22:27Z — ✅ รับ P1.9U → **13/55** (24%) · merge 0a7b555f
+- R3 (645c9828) ผู้คุมทำต่อจากเลนที่หลุด: typecheck ผ่าน · ถ่ายซ้ำบน p11 ด้วยสคริปต์ R3: หน้าขาย owner **37/37** (stock-warn กลับมา) · หน้ากะ owner (R2) **12/12** · ภาพตรง 07/13A ตามบันทึกก่อนหน้า
+- บทเรียนซ้ำ: เซิร์ฟเวอร์ :3225 สืบทอด fd 9 ของ runner lock `/tmp/pos-vps-run-p1.3.lock` จากสคริปต์ vis12 ⇒ vis13 ค้างรอ (หยุดแล้ว) · vis14 รันโดยไม่จับ runner lock · เซิร์ฟเวอร์ปิดแล้ว ล็อกว่าง · memory note อัปเดต (start เซิร์ฟเวอร์ด้วย `9>&-`)
+- merged tree == built tree (`git diff --stat HEAD 645c9828 -- src scripts prisma` ว่าง) · ไม่มี commit โค้ดบน session/pos ที่ branch ขาด
+- ติดตาม (ไม่บล็อก · จาก wo-notes P1.9U): คีย์ `coins` ใน denomDetail · จำนวนบิล/คืนเงินต่อวิธีใน ShiftReport → ลงใบ P1.8 R8 แล้ว
+- **brief ใบ S ถัดไป เขียนแล้ว**: `ledger/pos-briefs/pos-brief-P1.8.md` (คืนเงินบางส่วน/CN · docType REFUND · PosDocCounter CN · facade applyExternalRefund · point.reversePartialEarn · consumer pos.sale.refunded · R3 ผู้อ่าน PosSale ทุกจุดต้องรู้ docType · คำถามเจ้าของ Q1–Q6 มีค่าปริยาย) · 🔔 ต้องสรุป O2 (เลข CN แยกชุด) ให้เจ้าของก่อนเริ่ม builder
+- ถัดไป (1 เลน): oracle writer `qc-pos-p1.8.mts` → base run → builder S → reviewer/hunter → รับ → P1.16U
