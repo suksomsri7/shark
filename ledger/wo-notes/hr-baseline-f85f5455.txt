@@ -1,0 +1,13 @@
+# HR regression baseline on origin/main f85f5455 · QC4 · role neondb_owner · 2026-10-07T11:11:39Z
+qc-hf-hr-privacy exit=0 JSON_SUMMARY {"total":194,"passed":194,"findings":[]}
+qc-hr exit=0 JSON_SUMMARY {"total":9,"passed":9,"findings":[]}
+qc-hr-attendance exit=0 JSON_SUMMARY {"total":31,"passed":31,"findings":[]}
+qc-hr-roster exit=0 JSON_SUMMARY {"total":24,"passed":24,"findings":[]}
+qc-hr-leave-booking exit=0 JSON_SUMMARY {"total":14,"passed":14,"findings":[]}
+qc-hr-payadjust exit=0 JSON_SUMMARY {"total":27,"passed":27,"findings":[]}
+qc-payroll exit=0 JSON_SUMMARY {"total":19,"passed":19,"findings":[]}
+qc-payroll-reverse exit=0 (no JSON_SUMMARY line) ✅ PASS — 14/14
+qc-booking-hours-hr exit=0 JSON_SUMMARY {"total":13,"passed":13,"findings":[]}
+qc-crm-c3.3 exit=0 JSON_SUMMARY {"total":90,"passed":90,"findings":[]}
+qc-approval exit=0 JSON_SUMMARY {"total":16,"passed":16,"findings":[]}
+qc-approval-wiring exit=0 JSON_SUMMARY {"total":7,"passed":7,"findings":[]}
