@@ -594,3 +594,7 @@
 
 ## 2026-10-07T17:07:42Z · ผู้ตรวจส่วนต่าง R6: MERGEABLE-AFTER-FIXES → สั่ง R7
 - authz/scope ของ action รวม = posReportAction ทุก section (ผ่าน) · แก้: การ์ดสาขาต้องซ่อนตั้งแต่ต้นเมื่อ units<2 [M] · branches ต้องปฏิเสธ unitId ที่ไม่มีสิทธิ์ · ข้าม fan-out เมื่อ >92 วัน · limiter 4–6 · แถวรวมเช็ก all.margin · ข้อสอบเพิ่ม (ผ่าน action จริง · 2 จาก 3 สาขา · unitId ไม่มีสิทธิ์) + p1.9 forced
+
+## 2026-10-07T17:20:39Z · เลน 2 ส่ง R7 (3faf7ff3 · โค้ด f81eb68f) · build R7 บน p11 ถ่าย reports ซ้ำ
+- R7: การ์ดสาขาซ่อนตั้งแต่ต้นเมื่อ <2 สาขา · branches ปฏิเสธ unitId ไม่มีสิทธิ์ · >92 วันข้าม fan-out · limiter 3 สาขา/ครั้ง · แถวรวมเช็ก margin · ข้อสอบ OV2 ผ่าน action จริง + OV4 (2 จาก 3 สาขา) → p1.17 40/40 ×3 · authz 56 ×2 · p1.9 53 · fitness 41 ×2 · fitness-pos 8/8 · tsc 0
+- unit `pos-vis6-p117u` 17:20 UTC (p11 @ 3faf7ff3) → ภาพ reports owner/cashier/EN/14 วัน → ถ้าตรง 08 (V1–V4 หาย) = รับ P1.17U R7 → merge → 10/55
