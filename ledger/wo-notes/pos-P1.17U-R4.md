@@ -5,6 +5,7 @@ Brief `ledger/pos-briefs/pos-brief-P1.17U-R4-PARITY.md`. Server untouched (`repo
 
 ## Status
 - done: overview dashboard + keys + page default + inventory rows (17de4550) · chart label fix (56694a98) · all gates green on 56694a98 (below)
+- R5 (controller verdict on R4 Q1–Q3): products call removed — top 5 + margin % from the `reportMargin` rows (limit 5; same keys/order/revenue as products) · daily chart = always the last 14 days ending at `to` (+1 daily call, reused when from = to−13), 14 slots (missing day = 0 bar), `to` bar black, value on max + last bar, line `overview.chartRange` "14 วันล่าสุด ถึง <date>" under the chart · keys: +`chartRange`, `legendLast` → "วันสุดท้าย"/"Last day" · same-time-window comparison accepted as whole-day (follow-up below)
 - next: CONTROLLER-RUN — build · visual-pos `p1.17u` with `REPORT_QUERY=kind=overview&from=2026-10-04&to=2026-10-04` owner/cashier 1440/1024/390 + `LOCALE=en` · side by side with 08-reports.png
 
 ## What changed
@@ -19,7 +20,7 @@ Brief `ledger/pos-briefs/pos-brief-P1.17U-R4-PARITY.md`. Server untouched (`repo
   6. "พนักงาน" top 5 rows: avatar initial (skips leading Thai vowels, as 08) · ชื่อ (`unknownSeller` for null) · บิล · ยอด · ส่วนลดที่ให้ · ยกเลิก · หมายเหตุ = "ส่วนลดสูงผิดปกติ" chip only if discount > 15 % of net (title = on-screen hint) · "ดูทั้งหมด" → `kind=staff`. Staff card is full width (the AI card next to it in 08 is left out).
   - Each card loads and refuses on its own (text from `report.errors.*` + retry `pos-report-ov-retry` that reloads the overview); stale responses dropped (sequence ref).
 - Left out (no data, not faked): hourly (P2.12) · channels (P2.11) · members KPI (P1.12) · AI assistant (P3) · PDF (P2) · 08's footnotes under branch/payment cards (they are AI/derived prose).
-- Calls per overview load (all parallel): 6 (daily · daily prev range · margin limit 50 · products limit 5 · payments · staff) + 2 per unit (daily + margin limit 1, ≤ 8 units, only when ≥ 2 units) + 2 (all-units daily + margin) only when a single unit is selected. Brief §2 says "2 + 2 + 2×units": KPI/products/payments/staff need 6 base calls with the existing actions — see open question 1.
+- Calls per overview load (all parallel) — R5: 5 (daily · daily prev range · margin limit 5 · payments · staff) + 1 chart (14 days to `to`, skipped when the range is exactly those 14 days). R4 had 6 (daily · daily prev range · margin limit 50 · products limit 5 · payments · staff) + 2 per unit (daily + margin limit 1, ≤ 8 units, only when ≥ 2 units) + 2 (all-units daily + margin) only when a single unit is selected. Brief §2 says "2 + 2 + 2×units": KPI/products/payments/staff need 6 base calls with the existing actions — see open question 1.
 
 ## Keys added (`src/messages/{th,en}/pos.json`, `report.overview.*`, append-only)
 `tab · title · dateRange · exportCsv · upToDate · compare · vsPrev · vsYesterday · billsUnit · prevAvg · yesterdayAvg · costed · noCost · voidTotal · kpi.{net,bills,avg,margin,voids} · comingSoon · chartTitle · legendActual · legendToday · legendLast · branches · selected · allBranches · branchesCap · topProducts · payMethods · pctOfTotal · tip · staff · seeAll · highDiscount · highDiscountHint · cols.{branch,sales,bills,avg,margin,product,qty,name,discount,voids,note}`
@@ -56,3 +57,14 @@ Residue: each suite printed its own cleanup ("ลบแล้ว …"); p1.17 Z1
 3. Deltas compare with the whole previous day/range, not "the same time window" as 08 says ("ช่วงเวลาเดียวกัน") — the info line therefore says only "เทียบกับ <date>". Same-time comparison would need a server change (from/to times).
 4. Staff card is full width (08 puts the AI card next to it); products + payments share a row (channels card left out).
 5. `/tmp/shark-gate.lock` stuck since 12:38 UTC (CRM session) — not touched.
+
+## R5 gates (after the verdict)
+| command | result |
+|---|---|
+| `env -u DATABASE_URL -u DIRECT_URL pnpm exec tsx scripts/fitness-pos.mts` | 8/8 exit 0 |
+| `bash scripts/iso.sh env -u DATABASE_URL -u DIRECT_URL pnpm fitness` | 41/41 exit 0 |
+| `bash scripts/iso.sh bash scripts/qc4.sh pnpm fitness` | 41/41 exit 0 |
+| `qc-pos-p1.17` unforced / forced / forced (QC4 wrappers) | 35/35 · 35/35 · 35/35, exit 0 ×3 (15:50 UTC) |
+
+## Follow-ups
+- F1 (controller verdict R4 Q3): KPI deltas compare with the whole previous day/range; mockup 08 says "same time window" (ช่วงเวลาเดียวกัน). A same-time comparison needs `from`/`to` with times in `reports.ts` (server change) — later card.

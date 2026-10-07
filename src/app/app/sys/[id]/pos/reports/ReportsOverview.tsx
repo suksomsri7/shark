@@ -1,10 +1,11 @@
 "use client";
 
 // ReportsOverview.tsx — POS P1.17U R4 ภาพรวมการขาย (ภาพ 08 · ค่าเริ่มของหน้ารายงาน)
-// 🔴 ตัวเลขทุกตัวมาจาก report-actions เดิม (daily · margin · products · payments · staff) — จอแค่จัดรูป/หารเป็น % ไม่สร้างตัวเลขใหม่
+// 🔴 ตัวเลขทุกตัวมาจาก report-actions เดิม (daily · margin · payments · staff) — จอแค่จัดรูป/หารเป็น % ไม่สร้างตัวเลขใหม่
+// R5 (คำตัดสินผู้คุมงาน): สินค้าขายดีใช้แถวของ margin (คีย์/ลำดับ/ยอดเดียวกับ products: revenueSatang = Σ lineTotal) · กราฟ = 14 วันล่าสุดจบที่ `to` เสมอ
 // 🔴 บล็อกที่ยังไม่มีข้อมูล (รายชั่วโมง P2.12 · ช่องทาง P2.11 · สมาชิก P1.12 · ผู้ช่วย AI P3 · PDF P2) = ไม่แสดง (ไม่ทำตัวเลขปลอม)
 // 🔴 การ์ดแต่ละใบโหลด/ถูกปฏิเสธแยกกัน — ใบที่ถูกปฏิเสธแสดงข้อความในใบเอง หน้าไม่ว่าง
-// จำนวนคำขอต่อการโหลด 1 ครั้ง (ยิงพร้อมกันทั้งหมด): 6 (daily · daily ช่วงก่อน · margin · products · payments · staff)
+// จำนวนคำขอต่อการโหลด 1 ครั้ง (ยิงพร้อมกันทั้งหมด): 5 (daily · daily ช่วงก่อน · margin · payments · staff) + 1 กราฟ 14 วัน (ใช้ daily ซ้ำเมื่อช่วงตรงกัน)
 //   + 2 × สาขา (≤ 8 · เฉพาะเมื่อเห็น ≥ 2 สาขา) + 2 (ยอดรวมทุกสาขา — เฉพาะเมื่อเลือกสาขาเดียว · ดู ledger/wo-notes/pos-P1.17U-R4.md)
 
 import { useEffect, useRef, useState } from "react";
@@ -17,8 +18,6 @@ import type {
   MarginTotals,
   PaymentRow,
   PaymentTotals,
-  ProductRow,
-  ProductTotals,
   Report,
   ReportKind,
   StaffRow,
@@ -30,7 +29,6 @@ type T = (key: string, values?: Record<string, string | number>) => string;
 type Slot<R> = { s: "loading" } | { s: "ok"; v: R } | { s: "err"; code: string };
 type DailyRep = Report<"daily", DailyRow, DailyTotals>;
 type MarginRep = Report<"margin", MarginRow, MarginTotals>;
-type ProductsRep = Report<"products", ProductRow, ProductTotals>;
 type PaymentsRep = Report<"payments", PaymentRow, PaymentTotals>;
 type StaffRep = Report<"staff", StaffRow, StaffTotals>;
 
@@ -84,6 +82,8 @@ const initialOf = (name: string) => Array.from(name.trim()).find((ch) => !/[เ�
 const HIGH_DISCOUNT_BP = 1500;
 /** ป้ายวิธีชำระที่มีคีย์ pos.shift.method.* (อื่น ๆ ใช้ป้ายจากเซิร์ฟเวอร์) — ชุดเดียวกับ ReportsClient */
 const METHOD_KEYS = new Set(["CASH", "CARD", "PROMPTPAY", "TRANSFER", "DEPOSIT", "ROOM_CHARGE"]);
+/** R5 — กราฟรายวันแสดง 14 วันล่าสุดจบที่วัน `to` เสมอ (ไม่ขึ้นกับ from ของ KPI) */
+const CHART_DAYS = 14;
 /** สาขาในการ์ดเปรียบเทียบสูงสุด (คำขอ 2 ใบต่อสาขา) */
 const MAX_UNITS = 8;
 /** แกน Y ปัดขึ้นเป็นเลขกลม (บาท) — มาตราส่วนกราฟเท่านั้น ไม่ใช่ตัวเลขรายงาน */
@@ -259,8 +259,10 @@ export function ReportsOverview({ systemId, units, from, to, unitId, today, loca
     };
     run("daily", { ...base, ...scoped, kind: "daily" }, (v) => onGenerated((v as DailyRep).generatedAt));
     run("prev", { ...base, ...scoped, ...prev, kind: "daily" });
-    run("margin", { ...base, ...scoped, kind: "margin", limit: 50 });
-    run("products", { ...base, ...scoped, kind: "products", limit: 5 });
+    run("margin", { ...base, ...scoped, kind: "margin", limit: 5 });
+    // กราฟ 14 วัน: ช่วง KPI ตรงกับ 14 วันพอดี = ใช้ผล daily เดิม (ไม่ยิงซ้ำ)
+    const chartFrom = addDays(to, -(CHART_DAYS - 1));
+    if (chartFrom !== from) run("chart", { systemId, from: chartFrom, to, ...scoped, kind: "daily" });
     run("payments", { ...base, ...scoped, kind: "payments" });
     run("staff", { ...base, ...scoped, kind: "staff" });
     const ids = cmpKey ? cmpKey.split("|") : [];
@@ -280,7 +282,17 @@ export function ReportsOverview({ systemId, units, from, to, unitId, today, loca
   const daily = get<DailyRep>("daily");
   const prev = get<DailyRep>("prev");
   const margin = get<MarginRep>("margin");
-  const products = get<ProductsRep>("products");
+  const chartFrom = addDays(to, -(CHART_DAYS - 1));
+  const chart = chartFrom === from ? daily : get<DailyRep>("chart");
+  // 14 ช่องเสมอ (วันไม่มียอด = แท่ง 0 · ไม่ข้ามวัน) — ตัวเลขต่อวันมาจากแถว daily ของเซิร์ฟเวอร์
+  const chartRows: DailyRow[] | null =
+    chart.s === "ok"
+      ? Array.from({ length: CHART_DAYS }, (_, i) => {
+          const d = addDays(chartFrom, i);
+          const hit = chart.v.rows.find((r) => r.businessDate === d);
+          return hit ?? { businessDate: d, billCount: 0, grossSatang: 0, discountSatang: 0, serviceChargeSatang: 0, netSalesSatang: 0, vatSatang: 0, netExVatSatang: 0, tipSatang: 0, voidCount: 0, voidTotalSatang: 0, refundCount: 0, refundTotalSatang: 0, avgBillSatang: 0 };
+        })
+      : null;
   const payments = get<PaymentsRep>("payments");
   const staff = get<StaffRep>("staff");
   const isTodayOnly = from === to && to === today;
@@ -331,7 +343,7 @@ export function ReportsOverview({ systemId, units, from, to, unitId, today, loca
 
   // ── กราฟรายวัน ──
   const chartCard = (
-    <section className={`${CARD} xl:flex-[1.65]`} aria-busy={daily.s === "loading"} data-testid="pos-report-ov-chart">
+    <section className={`${CARD} xl:flex-[1.65]`} aria-busy={chart.s === "loading"} data-testid="pos-report-ov-chart">
       <CardHead
         icon={ICON.chart}
         title={t("overview.chartTitle")}
@@ -342,15 +354,18 @@ export function ReportsOverview({ systemId, units, from, to, unitId, today, loca
           </span>
         }
       />
-      {daily.s === "loading" ? (
+      {chart.s === "loading" ? (
         <Loading t={t} />
-      ) : daily.s === "err" ? (
-        <Refused text={refusalText(daily.code)} t={t} onRetry={retry} />
-      ) : daily.v.totals.billCount === 0 && daily.v.rows.every((r) => r.netSalesSatang === 0) ? (
+      ) : chart.s === "err" ? (
+        <Refused text={refusalText(chart.code)} t={t} onRetry={retry} />
+      ) : !chartRows || chartRows.every((r) => r.netSalesSatang === 0) ? (
         <Empty t={t} />
       ) : (
-        <DailyBars rows={daily.v.rows} t={t} locale={locale} lastIsToday={to === today} />
+        <DailyBars rows={chartRows} t={t} locale={locale} lastIsToday={to === today} />
       )}
+      <p className={`mt-3 text-[13px] ${MUTED}`} data-testid="pos-report-ov-chart-range">
+        {t("overview.chartRange", { days: CHART_DAYS, date: rangeLabel(to, to, locale) })}
+      </p>
     </section>
   );
 
@@ -426,15 +441,15 @@ export function ReportsOverview({ systemId, units, from, to, unitId, today, loca
     </button>
   );
   const productsCard = (
-    <section className={`${CARD_P0} xl:flex-[1.25]`} aria-busy={products.s === "loading"} data-testid="pos-report-ov-products">
+    <section className={`${CARD_P0} xl:flex-[1.25]`} aria-busy={margin.s === "loading"} data-testid="pos-report-ov-products">
       <div className="px-6 pt-6">
         <CardHead icon={ICON.tag} title={t("overview.topProducts")} right={productsAll} />
       </div>
-      {products.s === "loading" ? (
+      {margin.s === "loading" ? (
         <div className="px-6 pb-6"><Loading t={t} /></div>
-      ) : products.s === "err" ? (
-        <div className="px-6 pb-6"><Refused text={refusalText(products.code)} t={t} onRetry={retry} /></div>
-      ) : products.v.rows.length === 0 ? (
+      ) : margin.s === "err" ? (
+        <div className="px-6 pb-6"><Refused text={refusalText(margin.code)} t={t} onRetry={retry} /></div>
+      ) : margin.v.rows.length === 0 ? (
         <div className="px-6 pb-6"><Empty t={t} /></div>
       ) : (
         <div className="w-full min-w-0 overflow-x-auto">
@@ -448,16 +463,15 @@ export function ReportsOverview({ systemId, units, from, to, unitId, today, loca
               </tr>
             </thead>
             <tbody>
-              {products.v.rows.slice(0, 5).map((r, i, all) => {
-                const mr = margin.s === "ok" ? margin.v.rows.find((x) => x.key === r.key) : undefined;
+              {margin.v.rows.slice(0, 5).map((r, i, all) => {
                 const last = i === all.length - 1;
                 const td = last ? "px-4 py-4" : TD;
                 return (
                   <tr key={r.key} data-testid="pos-report-ov-product-row">
                     <td className={td}>{`${i + 1} · ${r.name}`}</td>
                     <td className={`${td} ${NUM}`}>{count(r.qty)}</td>
-                    <td className={`${td} ${NUM}`}>{baht(r.salesSatang)}</td>
-                    <td className={`${td} ${NUM}`}>{mr && mr.marginBp !== null ? pctBp(mr.marginBp) : "—"}</td>
+                    <td className={`${td} ${NUM}`}>{baht(r.revenueSatang)}</td>
+                    <td className={`${td} ${NUM}`}>{r.marginBp !== null ? pctBp(r.marginBp) : "—"}</td>
                   </tr>
                 );
               })}
