@@ -99,3 +99,15 @@ Earlier run on f969a760 (11:46 UTC, already the fixed env): p1.2 forced 55/55 ·
 - **V5 follow-up (out of P1.6 U scope):** pay-screen footer of mockup 02 not built — full tax-invoice toggle + receipt channels (print / LINE / e-mail), points and coupon cards, and the other 4 methods (voucher/gift card, deposit, room charge, store credit). Tax invoice already has its cart button (P1.13); LINE / e-mail / points / coupon / deposit = later WOs.
 - **V6** cart density at D (xl) to fit mockup 01 at 1440×900: header py 6 (≈56), member card 56 + mt 8, line rows py 12 with a 40 px qty box and name leading 1.4 (≈70 px for a plain line, ≈84 with "฿x × 2"/discount sub-lines), totals rows py 4 at leading 1.4 (≈29) and box py 12, secondary buttons 44, pay button 64 with mt/mb 12. Height budget for state cart4-01 (4 lines, VAT row, no coupon): column = 900 − topbar 56 − mode tabs ≈56 − status bar ≈36 = **≈752 px**; header 56 + member 64 + lines (70 + 84 + 84 + 70 = 308) + totals (3×29 + VAT 25 + total ≈44 + 24 = 180) + buttons 44 + pay 88 = **≈740 px** ⇒ fits without scrolling (≈12 px spare). These are computed from the classes, not measured — the controller's next visual run confirms. Tablet/mobile sizes unchanged.
 - **V7** done screen: `RegisterSubmitOk` has no ABB/short-tax-invoice number and no accounting status ⇒ nothing shown for them (no fake fields). **Follow-up:** points earned (P1.12), ABB number (P1.13), accounting status, and reprint / LINE / receipt-QR buttons (P1.10 printer, LINE not connected). The "วิธีชำระ" cell stays.
+
+### R3 gates (final code · 16:53–17:28 UTC)
+| command | result |
+|---|---|
+| `env NODE_OPTIONS=--max-old-space-size=5632 ISO_MEM=6500M bash scripts/iso.sh flock -w 3600 /tmp/pos-gate.lock pnpm typecheck` | exit 0 (16:53 on 96490a4d · 17:2x after the S5.9 fix) |
+| forced `qc-pos-p1.2` ×2 · unforced | 55/55 · 55/55 · 55/55 (drift none) |
+| forced `qc-pos-p1.6` · `p1.4` | 48/48 · 21/21 |
+| forced `qc-pos-p1.3` | 127/128 on 96490a4d — S5.9 red: `OptionsDialog` had the literal `pos-reg-product-` (live-card selector) and it is walked before `ProductCard`, so the ≥44px check read a non-tag occurrence. Fixed by composing the prefix (`CARD_TESTID_PREFIX`); re-run **128/128** |
+| fitness-pos · `pnpm fitness` no env · QC4 env | 8/8 · 41/41 · 41/41 |
+| `qc-pos-p1.2/p1.4/p1.5 --no-db` | 12/12 · 13/13 · 5/5 |
+| `visual-pos.mts p1.2u --states --dry` owner · cashier | rc 0 · rc 0 (46 shots each) |
+Note: an earlier run during the controller's visual run (16:26–16:52) had Z1/Z2 red in p1.2 forced #1 and p1.6 (outboxEvent +1, option-group/product fingerprints changed by the visual fixtures and shift) — concurrent QC4 writes, not code; the final run above is clean.

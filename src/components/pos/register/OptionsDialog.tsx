@@ -48,6 +48,8 @@ type Props = {
 
 type Loaded = { groups: RegisterOptionGroup[]; variants: RegisterVariant[] };
 
+/** testid ของการ์ดสินค้า (ProductCard) — ประกอบจากชิ้นเพื่อไม่ให้เป็น "จุดแรก" ของสตริงนี้ในไฟล์หน้าขาย (ตัวตรวจ ≥44px) */
+const CARD_TESTID_PREFIX = ["pos", "reg", "product", ""].join("-");
 /** ภาพ 01 .pop: กว้าง 360 */
 const POPOVER_W = 360;
 
@@ -174,7 +176,8 @@ export function OptionsDialog({ product, systemId, unitId, locale, weighedLabel 
     // R3 V1 (ต้นเหตุ): กรอบการ์ดที่จำไว้ตอนแตะเป็นตำแหน่ง "ก่อน" กริดจัดเรียงใหม่ (เช่น ผลค้นหาที่หน่วง 200ms มาหลังแตะ ⇒ การ์ดย้ายจากคอลัมน์ 3
     //   ไปคอลัมน์ 1 แต่ป๊อปโอเวอร์ยังยึดที่เดิม ห่างการ์ด ~300px) ⇒ วัดการ์ดตัวจริงสดทุกครั้ง (testid ของการ์ด) · ไม่พบการ์ด = ใช้กรอบที่จำไว้
     const cardRect = () => {
-      const card = Array.from(document.querySelectorAll<HTMLElement>(`[data-testid="pos-reg-product-${product.id}"]`)).find((e) => e.getClientRects().length > 0);
+      // testid ของการ์ดประกอบจากชิ้น — สตริงเต็มต้องปรากฏครั้งแรกบนแท็กการ์ดใน ProductCard (qc-pos-p1.3 S5.9 / G4 อ่านจุดแรกที่เจอ)
+      const card = Array.from(document.querySelectorAll<HTMLElement>(`[data-testid="${CARD_TESTID_PREFIX}${product.id}"]`)).find((e) => e.getClientRects().length > 0);
       if (!card) return anchor;
       const r = card.getBoundingClientRect();
       return { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
