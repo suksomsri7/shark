@@ -558,3 +558,8 @@
 - R5: ตัด call products (ใช้ margin top 5) · กราฟ 14 วันถึงวัน to เสมอ + วันไม่มียอด = แท่ง 0 + บรรทัด "14 วันล่าสุด ถึง …" · follow-up F1 เทียบช่วงเวลาเดียวกัน · gate: p1.17 35/35 ×3 · fitness-pos 8/8 · fitness 41/41 ×2 · tsc รอล็อก
 - 🔴 บทเรียน: `flock /tmp/pos-gate.lock … acc-v2-serve.sh` → next start (setsid) สืบทอด fd ของ flock ⇒ ถือล็อกตลอดที่เซิร์ฟเวอร์เปิด · ครั้งหน้า build ใต้ล็อกแยกจาก start: `CI=1 flock /tmp/pos-gate.lock env … pnpm exec next build` แล้ว `acc-v2-serve.sh start` นอกล็อก
 - ปิด :3225 16:15 UTC → tsc เลน 2 รันแล้ว · เลน 1 ต่อคิว · ถัดไป: รอ R2 เลน 1 → build p11 หัว P1.2U ถ่าย register ทั้งชุด · build หัว R5 ถ่าย reports overview เทียบภาพ 08
+
+## 2026-10-07T16:16:31Z · ทั้ง 2 เลนส่งครบ: เลน 1 P1.2U R2 (06cea612) · เลน 2 P1.17U R5 (c69fcd78) → ผู้คุมงาน build รวม + ถ่ายภาพรอบเดียว
+- เลน 1 R2: ป๊อปโอเวอร์ยึดการ์ด 360px (ชิป 44px ตามกฎ ≥44 — ต่างภาพ 01 ที่ 32/40) · merge key product+options+note · ตัวแปรหมด disabled เมื่อ oversell=BLOCK · state ใหม่ options-popover/weigh + เปิดกะผ่าน UI (ปิดใน finally) · gate เขียว (p1.2 55/55 ×3 · p1.6 48 · p1.3 128 · fitness · tsc) · follow-up: ตัวแปรที่ปิดที่สาขาใต้ allow-negative ยังกดได้ (server) · note หายตอนพักบิล (server)
+- p11: merge ทดลอง c69fcd78 + 06cea612 = 85f29b93 (สะอาด 22 ไฟล์) · unit `pos-vis5-both` 16:16 UTC: build ใต้ pos-gate.lock (CI=1) → start นอกล็อก → reports overview 4 ชุด (owner/cashier/EN/14 วัน) + register --states owner/cashier/EN · ผล /root/pos-runs/both-vis-*/
+- ถัดไป: เทียบภาพ 08 (reports) และ 01/02/02b/05ข (register/pay/options) → รับ/ส่งแก้ → merge ทั้งคู่เข้า session/pos → เหลือ 1 เลน
