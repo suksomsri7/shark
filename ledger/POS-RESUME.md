@@ -553,3 +553,8 @@
 - build p11 @ 4aace797 ผ่าน (:3225 ยังเปิด) · state default ผ่าน 9 ภาพ · state ที่ใส่ตะกร้า/ชำระตก "ปุ่มชำระไม่เปิดภายใน 15 วิ" — ภาพจริงมีแถบ "เปิดกะก่อนเริ่มขาย" (parseShiftSettings: required.register ปริยาย = ธง registerV2 · status ไม่มี deviceId ⇒ shift null) · ไม่ใช่บั๊ก P1.6U
 - สั่งเลน 1 (ข้อ 7 ของ P1.2U R2): visual-pos เปิดกะผ่าน UI ก่อน state แรกที่ขาย (ตรงภาพ 01 หัว "กะ #12 · เปิด 09:02") · ปิดกะใน finally · ห้ามปิด required.register
 - หลังเลน 1 ส่ง R2: build p11 ที่หัว P1.2U (มี P1.6U ด้วย) ครั้งเดียว → ถ่าย register states ทั้งชุด + options-popover/weigh → เทียบ 01/02/02b/05ข
+
+## 2026-10-07T16:12:18Z · เลน 2 ส่ง R5 (944b5098) · pos-gate.lock ถูกเซิร์ฟเวอร์ :3225 ถือค้าง → ปิดเซิร์ฟเวอร์
+- R5: ตัด call products (ใช้ margin top 5) · กราฟ 14 วันถึงวัน to เสมอ + วันไม่มียอด = แท่ง 0 + บรรทัด "14 วันล่าสุด ถึง …" · follow-up F1 เทียบช่วงเวลาเดียวกัน · gate: p1.17 35/35 ×3 · fitness-pos 8/8 · fitness 41/41 ×2 · tsc รอล็อก
+- 🔴 บทเรียน: `flock /tmp/pos-gate.lock … acc-v2-serve.sh` → next start (setsid) สืบทอด fd ของ flock ⇒ ถือล็อกตลอดที่เซิร์ฟเวอร์เปิด · ครั้งหน้า build ใต้ล็อกแยกจาก start: `CI=1 flock /tmp/pos-gate.lock env … pnpm exec next build` แล้ว `acc-v2-serve.sh start` นอกล็อก
+- ปิด :3225 16:15 UTC → tsc เลน 2 รันแล้ว · เลน 1 ต่อคิว · ถัดไป: รอ R2 เลน 1 → build p11 หัว P1.2U ถ่าย register ทั้งชุด · build หัว R5 ถ่าย reports overview เทียบภาพ 08
