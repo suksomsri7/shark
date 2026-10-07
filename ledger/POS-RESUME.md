@@ -542,3 +542,9 @@
 - build ภาพ P1.6U รอบแรก (unit pos-vis-p16u) ล้ม: `/tmp/shark-gate.lock` ถูก unit ของ CRM ถือ (`/tmp/c310-logs/run-qcall-c310b.sh` → qc-all → qc-crm-buttons นิ่งตั้งแต่ 12:38 UTC, CPU 0, chrome ค้าง 14 โปรเซส) → flock รอครบ 1 ชม. แล้วหมดเวลา · ไม่ฆ่า (ของ session อื่น) แจ้งเจ้าของแล้ว
 - ทางเลี่ยงชั่วคราว: งานหนักของ POS คิวผ่าน `/tmp/pos-gate.lock` แทน (tsc 2 เลน + build ผู้คุมงาน) · build ใช้ `CI=1` ให้ with-gate-lock วิ่งตรง (เงื่อนไขในสคริปต์เอง) · ⚠️ ถ้า CRM กลับมารัน build/tsc พร้อมกันจะไม่ได้ต่อคิวกัน — เลิกใช้ทางเลี่ยงทันทีที่ unit CRM จบ
 - unit ใหม่ `pos-vis3-p16u` (สคริปต์ vis3-p16u.sh, p11 @ 4aace797) เริ่ม 15:33 UTC → ผล /root/pos-runs/p16u-vis-20261007T153335Z/
+
+## 2026-10-07T15:44:11Z · เลน 1 ส่ง P1.6U (4aace797) + P1.2U (c46c34a5) · เลน 2 ส่ง R4 (87c610f4) · ผู้คุมงานสั่งแก้ทั้งคู่ก่อนถ่ายภาพ
+- เลน 1: gate เขียวทั้งหมด (p1.6 48/48 ×3 · p1.2 55/55 ×3 · p1.3/4/5/9 · fitness · tsc) · คำตัดสิน P1.2U R2: (1) ตัวเลือกสินค้า = ป๊อปโอเวอร์ยึดการ์ดตามภาพ 01 (มือถือ = sheet) (2) บรรทัดมี note/options ห้ามถูก +1 จากการ์ดธรรมดา (3) สแกนขณะกล่องชั่งเปิด = ข้าม รับ (4) ชิปตัวแปร "หมด" = disabled ตามตรรกะการ์ด (5) พักบิลแล้ว note หาย = follow-up server (6) เพิ่ม state visual `options-popover`, `weigh`
+- เลน 2: gate เขียว (p1.17 35/35 ×3 · authz 56 · p1.9 53 · p1.3 128 · fitness · fitness-pos 8/8 · tsc) · คำตัดสิน R5: ตัด call products (ใช้ margin) · กราฟ = 14 วันล่าสุดถึงวัน to เสมอ (ภาพ 08) · เทียบทั้งวัน = รับ + follow-up
+- ภาพ P1.6U: unit pos-vis3-p16u กำลัง build (p11 @ 4aace797) → ถ่าย register states owner/cashier/EN → เทียบ 02/02b/05ข
+- ตามสั่ง: 2 เลนนี้จบ (รวมรอบแก้) แล้วเหลือ 1 เลน
