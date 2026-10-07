@@ -492,6 +492,17 @@ async function addCart3(page: Any, device: Device) {
   }
   await waitPayReady(page);
 }
+/** ขายจริง 1 บิล (อเมริกาโน่×2 + ลาเต้ · เงินสดรับพอดี) → ขายสำเร็จ — ใช้ร่วม: สถานะ sale-done + บิลของสถานะหน้ากะ (P1.9 U) */
+async function cashSaleAmerLatte(page: Any, device: Device): Promise<void> {
+  if (!QC_IDS.amer || !QC_IDS.latte) throw new StepError("ไม่พบสินค้าตายตัวของร้าน QC");
+  for (const id of [QC_IDS.amer, QC_IDS.amer, QC_IDS.latte]) await clickEl(page, tid(`pos-reg-product-${id}`));
+  await expectLines(page, 2);
+  await waitPayReady(page);
+  await clickPay(page, device);
+  await clickEl(page, tid("pos-reg-paydlg-quick-exact"));
+  await clickEl(page, tid("pos-reg-paydlg-confirm"));
+  await visibleEl(page, tid("pos-reg-done"), 0, 20_000);
+}
 const openCartOnMobile = async (page: Any, device: Device) => {
   if (device === "mobile") await clickEl(page, tid("pos-reg-cart-view"));
 };
@@ -654,15 +665,7 @@ async function runState(page: Any, state: StateKey, device: Device): Promise<voi
       await visibleEl(page, tid("pos-reg-paydlg-change"));
       return;
     case "sale-done":
-      if (!QC_IDS.amer || !QC_IDS.latte) throw new StepError("ไม่พบสินค้าตายตัวของร้าน QC");
-      for (const id of [QC_IDS.amer, QC_IDS.amer, QC_IDS.latte]) await clickEl(page, tid(`pos-reg-product-${id}`));
-      await expectLines(page, 2);
-      await waitPayReady(page);
-      await clickPay(page, device);
-      await clickEl(page, tid("pos-reg-paydlg-quick-exact"));
-      await clickEl(page, tid("pos-reg-paydlg-confirm"));
-      await visibleEl(page, tid("pos-reg-done"), 0, 20_000);
-      return;
+      return cashSaleAmerLatte(page, device);
     case "search-empty":
       await typeInto(page, tid("pos-reg-search"), "zz-no-such-item-qc");
       await visibleEl(page, tid("pos-reg-search-empty"), 0, 10_000);
@@ -885,13 +888,7 @@ async function shiftsSale(page: Any): Promise<void> {
       throw new StepError("หน้าขายใหม่ไม่ขึ้น (pos-reg-root) ระหว่างขายบิลของกะ");
     });
     if (await shiftBannerStays(reg)) throw new StepError("หน้าขายของเครื่องสถานะหน้ากะยังขึ้นแถบเปิดกะ (deviceId ไม่ตรง?)");
-    for (const id of [QC_IDS.amer, QC_IDS.amer, QC_IDS.latte]) await clickEl(reg, tid(`pos-reg-product-${id}`));
-    await expectLines(reg, 2);
-    await waitPayReady(reg);
-    await clickPay(reg, "desktop");
-    await clickEl(reg, tid("pos-reg-paydlg-quick-exact"));
-    await clickEl(reg, tid("pos-reg-paydlg-confirm"));
-    await visibleEl(reg, tid("pos-reg-done"), 0, 20_000);
+    await cashSaleAmerLatte(reg, "desktop"); // R2 F6: ขั้นตอนเดียวกับสถานะ sale-done
   } finally {
     await reg.close().catch(() => undefined);
   }
@@ -979,9 +976,14 @@ async function runShiftsState(page: Any, state: ShiftsStateKey): Promise<void> {
   }
 }
 /** finally/signal: ปิดกะของสถานะหน้ากะถ้ายังเปิด (นับ = ยอดคาด · ผลใน summary ไม่โยน) */
+/** R2 F2: หาจาก DB เสมอ (ไม่พึ่ง SHIFTS.opened/id) — ขั้นตอนพังหลังกดเปิด/ปิดกะแต่ก่อนบันทึก state ก็ยังปิดได้ · เรียกซ้ำได้ */
 async function closeShiftsStateShift(): Promise<void> {
-  if (!SHIFTS.opened || (SHIFTS.close && SHIFTS.close.ok)) return;
-  SHIFTS.close = await closeShiftAsOwner(SHIFTS.id, "shifts-close");
+  if (!shiftsStatesOn) return;
+  const open = await prisma.posShift.findFirst({ where: { tenantId: T.tenantId, unitId, systemId: SYS, deviceId: SHIFTS_DEVICE_ID, status: "OPEN" }, orderBy: { openedAt: "desc" }, select: { id: true } });
+  if (!open) return; // ไม่มีกะค้าง (ไม่เคยเปิด หรือปิดผ่าน UI แล้ว)
+  SHIFTS.opened = true;
+  SHIFTS.id = open.id;
+  SHIFTS.close = await closeShiftAsOwner(open.id, "shifts-close");
 }
 // ◂
 

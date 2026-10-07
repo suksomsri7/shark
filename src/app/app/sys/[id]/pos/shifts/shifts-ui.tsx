@@ -28,8 +28,9 @@ export function parseCount(v: string): number | null {
 }
 
 /**
- * ยอดรวมจากช่องธนบัตร + ช่องเหรียญ (บาท) → { total, detail } · detail ตามคีย์ SHIFT_DENOMS ของเซิร์ฟเวอร์
- * เหรียญ (ยอดเงิน ไม่ใช่จำนวนเหรียญ) ลงเป็น ฿1 × n + 25 สต. × m — เศษที่ไม่ลง 25 สต. = ไม่ส่ง detail (ส่งแค่ยอดรวม)
+ * ยอดรวมจากช่องธนบัตร + ช่องเหรียญ (บาท) → { total, detail } · detail = เฉพาะธนบัตรที่กรอกจริง (คีย์ SHIFT_DENOMS ของเซิร์ฟเวอร์)
+ * R2 Q3: ห้ามแปลงยอดเหรียญเป็นจำนวนเหรียญปลอม · เซิร์ฟเวอร์ (denomDetail) ยังไม่รับคีย์ "coins" และบังคับ Σ detail = ยอด
+ *   ⇒ มีเหรียญ = ไม่ส่ง detail (ส่งแค่ยอดรวม) · ไม่มีเหรียญ = ส่ง detail ธนบัตร (Σ = ยอดพอดี) — follow-up: เซิร์ฟเวอร์เพิ่มคีย์ coins
  * ไม่ได้กรอกช่องใดเลย = used:false · ช่องผิดรูป = null
  */
 export function denomTotal(counts: Record<string, string>, coins: string): { total: number; detail: Record<string, number> | null; used: boolean } | null {
@@ -50,17 +51,7 @@ export function denomTotal(counts: Record<string, string>, coins: string): { tot
   if (c === null) return null;
   if (coins.trim()) used = true;
   total += c;
-  let detailOk = true;
-  if (c > 0) {
-    const baht = Math.floor(c / 100);
-    const rest = c % 100;
-    if (rest % 25 !== 0) detailOk = false;
-    else {
-      if (baht > 0) detail["100"] = (detail["100"] ?? 0) + baht;
-      if (rest > 0) detail["25"] = rest / 25;
-    }
-  }
-  return { total, detail: detailOk && Object.keys(detail).length ? detail : null, used };
+  return { total, detail: c === 0 && Object.keys(detail).length ? detail : null, used };
 }
 
 export const money = (satang: number) => moneyText(satang);

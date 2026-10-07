@@ -104,7 +104,7 @@ function RecountBlock({ recount, byName, t, locale }: { recount: RecountView; by
       {line(t("recount.counted"), money(recount.countedCashSatang))}
       {line(t("recount.variance"), signedMoney(recount.varianceSatang))}
       {line(t("recount.note"), recount.note)}
-      {line(t("recount.by"), <span title={recount.recountedByUserId}>{byName ?? "—"}</span>)}
+      {line(t("recount.by"), <span>{byName ?? "—"}</span>)}
       {line(t("recount.at"), `${bkkDay(recount.recountedAt, locale)} ${bkkHm(recount.recountedAt, locale)}`)}
     </div>
   );
@@ -158,6 +158,8 @@ export function ShiftsClient({ systemId, units, unitId, canManage, meName }: Pro
   const [moveReason, setMoveReason] = useState("");
   // R2 F6: คีย์กันซ้ำเงินเข้า/ออก คงไว้จนสำเร็จ (แบบ closeKey) — กดซ้ำหลังเน็ตหลุด = รายการเดิม ไม่บันทึกสองครั้ง
   const [moveKey, setMoveKey] = useState(newKey);
+  // R2 F4: คีย์ผูกกับกะ — เปิดกล่องของกะอื่น = คีย์ใหม่ (กะเดิม = คีย์เดิมจนสำเร็จ)
+  const [moveKeyShift, setMoveKeyShift] = useState<string | null>(null);
   // ปิดกะ (07)
   const [countDen, setCountDen] = useState<Record<string, string>>(emptyDen);
   const [countCoins, setCountCoins] = useState("");
@@ -216,10 +218,13 @@ export function ShiftsClient({ systemId, units, unitId, canManage, meName }: Pro
     setBusy(true);
     setError(null);
     setNotice(null);
+    let done = false;
     try {
-      if (await fn()) await load(deviceId);
+      done = await fn();
+      if (done) await load(deviceId);
     } catch {
-      setError(te("errors.unknown"));
+      // R2 F5: บันทึกสำเร็จแล้วแต่โหลดหน้าใหม่ล้ม ≠ บันทึกไม่สำเร็จ
+      setError(done ? t("savedReloadFailed") : te("errors.unknown"));
     } finally {
       setBusy(false);
     }
@@ -267,6 +272,8 @@ export function ShiftsClient({ systemId, units, unitId, canManage, meName }: Pro
       }
       const r = await recordCashMovementAction({ ...base, movement: { shiftId: shift.id, kind: moveKind, amountSatang: a, reason: moveReason.trim(), idempotencyKey: moveKey } });
       if (!r.ok) {
+        // R2 F4: คีย์นี้มีรายการอื่นอยู่แล้ว (payload ต่าง) = หมุนคีย์ ให้กดบันทึกใหม่ได้
+        if (r.code === "IDEMPOTENCY_CONFLICT") setMoveKey(newKey());
         fail(r);
         return false;
       }
@@ -425,6 +432,10 @@ export function ShiftsClient({ systemId, units, unitId, canManage, meName }: Pro
             disabled={busy}
             onClick={() => {
               setError(null);
+              if (moveKeyShift !== shift.id) {
+                setMoveKey(newKey());
+                setMoveKeyShift(shift.id);
+              }
               setMoveDlg(true);
             }}
           >
@@ -486,7 +497,7 @@ export function ShiftsClient({ systemId, units, unitId, canManage, meName }: Pro
         </div>
         <p className="text-[12px] text-[color:var(--color-muted)]">
           {t("openedBy")}{" "}
-          <b className="text-[color:var(--color-ink)]" title={shift.openedByUserId}>
+          <b className="text-[color:var(--color-ink)]">
             {shift.openedByName}
           </b>{" "}
           · {bkkHm(shift.openedAt, locale)} · {t("floatShort")} <b className="text-[color:var(--color-ink)] tabular-nums">{money(shift.floatSatang)}</b> · {t("elapsed", el)}
@@ -589,7 +600,7 @@ export function ShiftsClient({ systemId, units, unitId, canManage, meName }: Pro
                     </span>
                     <span className="flex items-center gap-2 text-[12px] text-[color:var(--color-muted)]">
                       <b className="text-[13px] text-[color:var(--color-ink)] tabular-nums">{money(m.amountSatang)}</b>
-                      <span title={m.byUserId}>{m.byName}</span> · {bkkHm(m.createdAt, locale)}
+                      <span>{m.byName}</span> · {bkkHm(m.createdAt, locale)}
                     </span>
                   </li>
                 ))}
@@ -758,7 +769,7 @@ export function ShiftsClient({ systemId, units, unitId, canManage, meName }: Pro
         <b className="w-12 shrink-0 pt-0.5 text-[13px] tabular-nums">{t("zHash", { no: h.zNumber ?? 0 })}</b>
         <span className="flex min-w-0 flex-1 flex-col gap-0.5">
           <span className="truncate text-[13px]">
-            {bkkDay(h.closedAt ?? h.openedAt, locale)} · <span title={h.closedByUserId ?? h.openedByUserId}>{h.closedByName ?? h.openedByName}</span>
+            {bkkDay(h.closedAt ?? h.openedAt, locale)} · <span>{h.closedByName ?? h.openedByName}</span>
           </span>
           <span className="flex min-w-0 flex-wrap items-center gap-1.5 text-[12px] text-[color:var(--color-muted)]">
             <span className="truncate">
@@ -909,7 +920,7 @@ export function ShiftsClient({ systemId, units, unitId, canManage, meName }: Pro
             <span className="text-[color:var(--color-muted)]">{t("deviceCard.noOthers")}</span>
           ) : (
             others.map((o) => (
-              <span key={o.id} className="truncate" title={o.openedByUserId}>
+              <span key={o.id} className="truncate">
                 {t("deviceCard.otherLine", { device: o.deviceLabel ?? t("openDlg.unnamed"), no: o.shiftNo, name: o.openedByName })}
               </span>
             ))
@@ -977,7 +988,7 @@ export function ShiftsClient({ systemId, units, unitId, canManage, meName }: Pro
               </span>
             </div>
             {others.slice(0, 3).map((o) => (
-              <div key={o.id} className="flex items-center gap-3 rounded-xl border bg-[color:var(--color-surface-2)] px-4 py-3 text-[color:var(--color-muted)]" title={o.openedByUserId}>
+              <div key={o.id} className="flex items-center gap-3 rounded-xl border bg-[color:var(--color-surface-2)] px-4 py-3 text-[color:var(--color-muted)]">
                 <RegisterIcon name="cash" size={16} />
                 <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                   <b className="truncate text-[15px]">{o.deviceLabel ?? t("openDlg.unnamed")}</b>

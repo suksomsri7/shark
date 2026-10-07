@@ -972,7 +972,8 @@ export async function shiftsPageData(ctx: RegisterCtx, actor: RegisterActor, inp
     for (const m of moves) userIds.add(m.byUserId);
     for (const r of recs) userIds.add(r.recountedByUserId);
     const users = userIds.size ? await db.user.findMany({ where: { id: { in: [...userIds] } }, select: { id: true, name: true, email: true } }) : [];
-    const nameMap = new Map(users.map((u) => [u.id, u.name?.trim() || u.email || "-"]));
+    // R2 F3: ไม่มีชื่อ = "-" (ไม่แสดงอีเมลของคนอื่น) · ยกเว้นผู้ทำรายการเอง (อีเมลของตัวเอง)
+    const nameMap = new Map(users.map((u) => [u.id, u.name?.trim() || (u.id === s.actor.userId ? u.email : "") || "-"]));
     const nameOf = (id: string) => nameMap.get(id) ?? "-";
     const zOf = new Map(frozen.map((f) => [f.id, f]));
     const recBy = new Map(recs.map((r) => [r.shiftId, r.recountedByUserId]));

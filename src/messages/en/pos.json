@@ -431,7 +431,7 @@
     "byMethodTitle": "By payment method",
     "col": {
       "method": "Method",
-      "bills": "Bills",
+      "bills": "Payments",
       "amount": "Amount",
       "status": "Money status"
     },
@@ -531,7 +531,8 @@
     "z": {
       "new": "Open a new shift",
       "dismiss": "Close report"
-    }
+    },
+    "savedReloadFailed": "Saved — reloading the page failed, try refreshing"
   },
   "report": {
     "title": "Sales reports",
