@@ -1,0 +1,111 @@
+
+═══ QC CRM v2 · C1.11 — responsive · chat panel · 16 templates · import/duplicates/merge UI · v1→v2 switch ═══
+[env] DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech · tag qc-c111-prqxza
+[discover] switch page src/app/app/sys/[id]/crm/settings/page.tsx · chat panel src/components/chat/crm/ChatCrmPanel.tsx · action files 31 · actions 204
+[FLAG] qc-member-m1.1 S3.1 (appointments 40 / members 7 exact) is red whenever the CRM seed is present — decide before the phase-C1 qc:all (not asserted here)
+
+(node:1110261) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[setup] T cmupeqro60000olkz7pmm853s (S cmupeqs2y0011olkz3oqliep2 · S2 cmupeqs3z0012olkzt1kpo47n · S3 cmupeqs500013olkzz4k8s9dd · S4 cmupeqs600014olkzcztc1ydz · S5 cmupeqs710015olkz45glu7ex · M cmupeqs830016olkzvn5erd6q · C cmupeqs980017olkz893d4uzv) · TV cmupeqrrd0001olkzexpdh0pl (SV cmupeqsa90018olkzz78oakdc v1) · TB cmupeqrrq0002olkzs85fa7yn · TW cmupeqrs10003olkz5iiz0t3l (SW cmupeqsdc001bolkznu0025y4) · clinic true
+
+── S0 · structure ──
+  ✅ [C1.11-S0.1] C1.11 artefacts exist: pages contacts/import · contacts/duplicates · companies/duplicates · the switch page · 16 template data files + BUSINESS_TEMPLATES (16) + applyBusinessTemplate · the chat CRM panel component · every action of the contract (switch · template · chat panel/lead/activity · merge ×2 · import) · top-level `briefFor` in the crm facade · scripts/qc-crm-v1.mts
+  ✅ [C1.11-S0.2] [prerequisite] fixtures (4 tenants · 5 CRM systems in T with S first · chat rooms · deals · tasks · duplicate pairs · clinic row) · ui-version gate + settings writer · C1.8 bridges (onChatMessage) · contacts.briefFor/leadFromBridge
+  ✅ [C1.11-S0.3] [harness control] the request-scope renderer works on the existing C1.3 company 360: owner → 200 with the name · thana → 200 on phuket / 404 on krabi (per-request identity is real, notFound detected)
+
+── S1 · responsive ──
+  ✅ [C1.11-S1.1] no CRM page/component (+ the chat CRM panel) sets an unprefixed width/min-width > 390 px (Tailwind w-/min-w-[…px|rem] or inline width) unless the file wraps it in an overflow-x-auto scroller [static — overflow itself is measured on the controller's 390 screenshots]
+  ✅ [C1.11-S1.2] tables → cards: every CRM file with a <table> offers a card alternative below md (…:hidden + hidden …:block|table) — list pages MUST (contacts · companies · deals table · activities · import preview · duplicates); detail tables at least sit in an overflow-x-auto scroller or drop columns below sm (hidden sm:table-cell) [static]
+  ✅ [C1.11-S1.3] board = swipe per stage at 390: the deal board scroller is `snap-x snap-mandatory` (unprefixed) with `snap-start|snap-center` columns and no unprefixed column width > 390 [static]
+  ✅ [C1.11-S1.4] 360 right rail → stacked/sheet at 390: no unprefixed rail grid with ≥ 240 px of fixed columns (grid-cols-[…px…]) in contact/company/deal 360 files (label/value grids like [110px_1fr] are fine) — the rail column only exists from md:/lg: up [static]
+  ✅ [C1.11-S1.5] mockup 13(a) "ดีลของฉัน" on the v2 home (thana, S): crm-home + crm-home-my-deals with thana's OPEN deals as cards (title · company) · the 21-days-stalled deal carries a stale badge /นิ่ง N วัน/ · a stage chip filter names the pipeline stages · the WON deal is not a "my deal"
+  ✅ [C1.11-S1.6] files NEW in C1.11 (pages, CRM components, the chat CRM panel) carry no unprefixed fixed width > 390 at all (not even inside a scroller) — the D7 pages list is in the report [static]
+
+── S2 · chat panel ──
+  ✅ [C1.11-S2.1] getChatCrmPanelAction (owner, room of kP's Party): data of the FIRST CRM system S — contact name · company · the 2 OPEN deals (not the WON one) · score slot · no phone/e-mail of the contact anywhere in the result
+  ✅ [C1.11-S2.2] buttons: "บันทึกกิจกรรม" (logActivityFromChatAction) writes ONE CrmActivity on the room's contact in S (type NOTE) · "เปิดดีล" links to /crm/deals/new?contactId=… (crm-panel-open-deal) [static part]
+  ✅ [C1.11-S2.3] "สร้าง lead จากแชท" (createLeadFromChatAction, chatToLead OFF): new Party → ONE LEAD in S (sourceKind CHAT · partyId of the room · created:true) · second click → same contactId, created:false, still one row · a room whose Party already has a contact → created:false, no new row
+  ✅ [C1.11-S2.4] structure: the panel is mounted in ONE slot of chat/context-panel.tsx (imported + used once, next to ChatMemberPanel) · testids crm-chat-panel + the 3 buttons · 'use client' without a value path to prisma · `briefFor` exported by the crm facade index.ts · "chat→crm" in ALLOWED_EDGES [static]
+
+── S3 · business templates ──
+  ✅ [C1.11-S3.1] BUSINESS_TEMPLATES = 16 data templates with unique keys + Thai labels, each with the 6 parts (pipeline+stages with probability · staleDays on OPEN · requireFields that resolve to a system key or the template's own deal field · lost reasons ≥ 5 · score rules · default sequence · custom objects (general none, others ≥ 1, valid key/parent/title field) · extra contact/company/deal fields) · "general" = DEFAULT_PIPELINE's 5 stages
+  ✅ [C1.11-S3.2] dive answer key (blueprint §10 row 1): stages ผู้สนใจ → คุยความต้องการ → เสนอราคา → เจรจา → มัดจำ → ชนะ in order (last WON · probabilities strictly rising · WON 100; a trailing LOST stage allowed) · object ทริป/กรุ๊ป bound to COMPANY · deal fields จำนวนคน · วันที่เดินทาง · ระดับใบรับรอง · lost reasons ≥ 5 · the central score rules (≥ 8) · a sequence for review / next trip
+  ✅ [C1.11-S3.3] applyBusinessTemplateAction(S3, dive) by the owner: pipeline + stages exactly as the data (name · kind · probability · staleDays · requireFields) · every lost-reason key · every contact/company/deal field · every custom object + its fields · settings.crm.businessTemplate.key = dive (score rules / sequence stored for C2.8 / C2.2) while chatToLead survives · audit crm.template.*
+  ✅ [C1.11-S3.4] idempotent: re-apply through the action AND the service → S3 byte-identical (pipelines/stages · lost reasons · sections · fields · objects) · a system that already has an object with the template's key keeps the shop's object (label/parent untouched, no duplicate) and the apply still succeeds
+  ✅ [C1.11-S3.6] picker on first open: the v2 home of S3 shows crm-template-picker with all 16 labels to the OWNER before any template, not to STAFF thana, and not any more after dive was applied · the action refuses STAFF (FORBIDDEN) and an unknown key (Thai, VALIDATION|NOT_FOUND) without writing
+  ✅ [C1.11-X3.1] applyBusinessTemplate(S4, dive) ×10 in parallel, 2 rounds → every call resolves and S4 holds exactly ONE set — equal to S3 after a single apply (one template pipeline · no duplicate stage/lost reason/section/field/object)
+  ✅ [C1.11-S3.5] each apply stays inside its own system: after the applies on S3 · S4 · S5 the other CRM system S2, the fixture system S, the MEMBER system M and tenant B's system are unchanged (pipelines · lost reasons · sections · fields · objects · contacts · deals) — [control] the dive pipeline did land in S3
+
+── S4 · import · duplicates · merge ──
+  ✅ [C1.11-S4.1] import page (owner, S): 200 with the column mapping incl. the company target and the 3 onDuplicate modes (Thai labels) · one file of contacts + companies: 2 created + 1 updated (duplicate phone, mode update — still one row with that phone) · ONE company created with both new contacts linked
+  ✅ [C1.11-S4.2] duplicates pages (owner, S): contacts page lists the phone pair (both names) with a merge entry carrying both ids · companies page lists the ทะเลใส pair (both names) with a merge entry carrying both ids
+  ✅ [C1.11-X9.1] merge contacts from the UI without confirm, or with a reason shorter than 5 → refused (Thai) and nothing merged
+  ✅ [C1.11-X9.2] merge companies from the UI without confirm, or with a reason shorter than 5 → refused (Thai) and nothing merged
+  ✅ [C1.11-X1.4] visibility on duplicates/merge: thana's duplicates page lists his phuket pair but NOT the krabi pair (names or ids) · merging the krabi pair → NOT_FOUND, nothing merged
+  ✅ [C1.11-S4.3] merge with a field-by-field choice: contacts keep kD1 but take kD2's jobTitle (fieldChoices.jobTitle = merge) and kD2 is merged into kD1 · companies keep coD1 but take coD2's industry and coD2 is merged/closed
+
+── X6 · import input ──
+  ✅ [C1.11-X6.1] 50,001 rows → the UI action refuses politely (Thai, no write) and the service states the 50,000-row ceiling · 0 contacts created
+  ✅ [C1.11-X6.2] a file above 10 MB → refused politely (Thai message naming 10 MB), nothing written
+  ✅ [C1.11-X6.3] 5,001 rows → the inline cap (5,000 — job mode is C2.0/C2.x) refuses politely with a Thai message naming 5,000, nothing written
+  ✅ [C1.11-X6.4] formula cells stay inert: =CMD… +CMD… @CMD… -CMD… are stored as typed text (4 rows) and the CSV export prefixes each with ' (csvRow)
+  ✅ [C1.11-X6.5] the import UI measures size and row count BEFORE sending (references CONTACT_IMPORT_MAX_BYTES + CONTACT_IMPORT_INLINE_MAX_ROWS from contacts-shared) [static]
+
+── X1 · scope ──
+  ✅ [C1.11-X1.1] chat panel respects visibility: thana opening the room of a krabi contact's Party gets NOTHING of it (no name · company · deal title · contact id) · [positive control] nok (krabi lead) sees the contact and its deal
+  ✅ [C1.11-X1.2] "create lead" by thana in the krabi Party's room: no duplicate contact is created and the result leaks neither the krabi contact's id nor its name
+  ✅ [C1.11-X1.3] a chat user without any crm.* key gets no CRM data for kP's room · a conversation id of ANOTHER tenant → no data (refused or null) and create-lead writes nothing in either tenant
+  ✅ [C1.11-X1.5] tenant B's system id from tenant A's session: import · apply template · merge · switch → all refused (NOT_FOUND|FORBIDDEN), tenant B unchanged (uiVersion still 2)
+  ✅ [C1.11-X3.2] createLeadFromChatAction ×10 in parallel for one new Party → exactly ONE contact · every call answers with that id · exactly one says created:true
+
+── S6 · the switch ──
+  ❌ [C1.11-S6.1] switch page at uiVersion 1: OWNER → 200 with a Thai explanation, "switch back any time" wording and crm-uiversion-toggle · MANAGER (with crm.settings.manage) → 404 · STAFF → 404 · another tenant's system → 404 — exp owner only | act owner=404 back=false toggle=false mgr=404 staff=404 foreign=404
+  ✅ [C1.11-S6.2] the switch action refuses MANAGER and STAFF (FORBIDDEN|NOT_FOUND), a value other than 1|2 (VALIDATION) and another tenant's system (NOT_FOUND|FORBIDDEN) — settings.crm of SW and of the foreign SV unchanged
+  ❌ [C1.11-S6.3] OWNER flips 1 → 2: { ok } · settings.crm.uiVersion = 2 written in place (chatToLead set earlier survives) · an audit row crm.settings.* mentioning uiVersion · the v1 action worked while at 1 and the v2 action was refused at 1 — exp flipped | act v1create=ok v2At1=FORBIDDEN:ระบบ CRM ใหม่ยังไม่เปิดให้ร้านนี้ — ใช้หน้าจอ CRM เดิมไปก่อน หรือให้เจ้าของร้านเปิดใช้ CRM… flip=FORBIDDEN:ร้านนี้ยังไม่เปิดให้สลับไปใช้ CRM ใหม่ — ใช้หน้าจอ CRM เดิมได้ตามปกติ settings={"chatToLead":true} audit=0
+  ❌ [C1.11-S6.4] at 2: the contacts page renders v2 (no CrmContactsSection) and lists the contact the v1 action created · /crm/companies → 200 · the v2 action createCompanyAction works — exp v2 | act contacts=200 v1Section=true lists=true company=FORBIDDEN:ระบบ CRM ใหม่ยังไม่เปิดให้ร้านนี้ — ใช้หน้าจอ CRM เดิมไปก่อน หรือให้เจ้าของร้านเปิดใช้ CRM… list=404
+  ❌ [C1.11-S6.5] OWNER flips 2 → 1: the contacts page is v1 again (CrmContactsSection) and lists the contact the v2 bridge created while at 2 · /crm/companies → 404 · the v2 action is FORBIDDEN again · NOTHING deleted (contacts · companies · deals · pipelines · activities · settings keys identical to the moment before the flip) — exp rows kept | act flip=ok contacts=200 v1Section=true lists=false companies=404 v2action=FORBIDDEN:ระบบ CRM ใหม่ยังไม่เปิดให้ร้านนี้ — ใช้หน้าจอ CRM เดิมไปก่อน หรือให้เจ้าของร้านเปิดใช้ CRM… same=true
+  ❌ [C1.11-S6.6] 1 → 2 again: v2 resumes with the data intact — the company created at 2 is listed again · the switch page still opens (with the way back) at 2 — exp resumed | act flip=FORBIDDEN:ร้านนี้ยังไม่เปิดให้สลับไปใช้ CRM ใหม่ — ใช้หน้าจอ CRM เดิมได้ตามปกติ companies=404 listed=false switchPage=404
+  ❌ [C1.11-S6.7] REST ops follow the switch (C1.10 route, key bound to SW): GET /contacts → 409 crm_v2_disabled at 1 · 200 at 2 · 409 again after switching back — exp 409 · 200 · 409 | act at1=409/crm_v2_disabled at2=409/crm_v2_disabled back=409/crm_v2_disabled
+  ❌ [C1.11-S6.8] bridges follow the switch (chatToLead on): chat message at 1 → no lead · at 2 → ONE lead · back at 1 → no lead · the SAME event replayed after switching to 2 again → its lead appears (resume) — exp skip · run · skip · resume | act ran=true/true/true/true leads=0/0/0/0
+  ❌ [C1.11-S6.9] entry points: at 1 the module entry is the v1 CrmHub (no crm-home) and the OWNER can reach the switch page (hub link, not shown to MANAGER — or an OWNER-gated drawer entry) · at 2 the module entry is the v2 home (crm-home) — exp v1 hub · v2 home | act hub=200 crmHub=true ownerLink=false mgrLink=false drawer=false home2=200/false
+  ✅ [C1.11-S6.10] PERMANENT RULE, whole surface [static]: every crm page.tsx except the 3 dual pages + the switch page calls requireCrmV2Page · every "use server" CRM/chat-CRM file except crm/actions.ts (v1) and a switch-only file reads the gate · every crm-bridges on* handler reads the gate · every registered crm.* minute job except crm.heartbeat reads it
+  ✅ [C1.11-X3.3] 10 parallel switch calls racing a parallel settings write: settings.crm stays one valid object — uiVersion ∈ {1,2}, chatToLead still true, bridgesEnabled true, no other key lost
+
+── S7 · uiVersion 1 ──
+  ❌ [C1.11-S7.1] a v1 CRM (TV): import · contacts duplicates · companies duplicates → 404 for its OWNER (a real duplicate pair exists) · the switch page is the one C1.11 page that opens (200) — exp 3× 404 + switch 200 | act 404 404 404 404
+  ✅ [C1.11-S7.2] C1.11 actions on the v1 CRM (template · import · merge) → FORBIDDEN (CrmV2DisabledError, Thai) and TV's data byte-equal
+  ✅ [C1.11-S7.3] chat panel on a shop whose (first) CRM is uiVersion 1: no CRM data even for a Party WITH a contact (data null) · create lead and log activity refused (Thai) · 0 contacts, 0 activities written
+  ✅ [C1.11-S7.4] party page of a v1 shop has no party-crm block (and no v1 contact data added) · the v1 module entry has no crm-home and no template picker
+  ✅ [C1.11-S7.5] [positive control for S7.1/S7.3/S7.4] the same TV flipped to 2 → import page 200 · chat panel shows the contact · party page shows party-crm — so the v1 results above are the gate, not broken code (flag restored to 1)
+
+── S8 · debts ──
+  ✅ [C1.11-S8.1] R-A minimal v2 home: thana's "my tasks" (crm-home-my-tasks) lists his pending task, his deals are his only — nok's task/deal/contact never appear · nok's home shows nok's task + deal and none of thana's
+  ✅ [C1.11-S8.2] R-A CRM block on /app/party/[partyId]: owner sees party-crm with kP · its company · its OPEN deals (not the WON one) · thana sees it for his phuket Party · for the krabi Party thana gets no krabi contact/company/deal anywhere on the page
+  ✅ [C1.11-S8.3] debt crm-C1.1 (health data): a clinic visit on the SAME Party as kP never reaches the CRM surfaces — thana (crm keys, no clinic rights) sees neither its symptom on the party page (whose party-crm block IS rendered) nor in the chat panel (which DOES show kP) · [control] the visit row exists on that Party
+
+── X8 · X9 ──
+  ✅ [C1.11-X8.1] PDPA: the panel result for the new lead's room has no phone/e-mail · no crm.* outbox payload of our tenants carries a phone, e-mail or full name · [control] the chat lead's crm.contact.created exists
+  ✅ [C1.11-X9.3] merge UI (contacts AND companies): the component that calls the merge action sends fieldChoices + confirm: true + reason and renders a reason input whose testid names merge + reason [static]
+  ✅ [C1.11-X9.4] every C1.11 mutation leaves an audit row: contact merge · company merge · import · template apply · switch · chat lead · chat activity
+
+── S9 · static ──
+  ✅ [C1.11-S9.1] every button/input/select/textarea/link/form in the files NEW in C1.11 (pages · CRM components · the chat CRM panel) has a data-testid [static]
+  ✅ [C1.11-S9.2] D8 inventory: rows (wo C1.11) for /contacts/import (≥ 3) · /contacts/duplicates (≥ 1) · /companies/duplicates (≥ 1) · the 3 chat panel buttons · the switch toggle — every testid present in the sources (no ghost row) [static]
+  ✅ [C1.11-S9.3] 'use client' files new in C1.11 (+ the chat panel) never reach prisma through value imports · the 16 template data files are pure (no prisma/next import) — [resolver control] contacts.ts does reach prisma [static]
+  ✅ [C1.11-S9.4] nav: CRM_DEEP_NAV lists /crm/contacts/import · /crm/contacts/duplicates · /crm/companies/duplicates as "ready" and the drawer lists them only after the crmV2 gate (qc-nav-functions + probe-uiversion-gate V2.3 stay green) [static]
+
+── S5 · qc-crm-v1 ──
+  ✅ [C1.11-S5.1] scripts/qc-crm-v1.mts exists with the house shape: `// requires: crm-seed` · JSON_SUMMARY · the three v1 pages (ContactsV1Page/DealsV1Page/ActivitiesV1Page or their sections) + CrmHub · the six v1 actions by name · uiVersion 1 [static]
+  ✅ [C1.11-S5.3] data crosses both ways on a uiVersion-1 shop: a contact created through the v2 contacts service is listed by the v1 contacts page (CrmContactsSection) · a contact created by the v1 createContactAction is found by the v2 listContacts
+  ✅ [C1.11-S5.2] running scripts/qc-crm-v1.mts (child process, same gate lock) → exit 0 · JSON_SUMMARY not skipped · total ≥ 12 · passed = total
+  ✅ [C1.11-CLEAN] the oracle gives the QC database back exactly as found — the four throwaway tenants and every row they owned (contacts, companies, deals, templates, chat rooms, clinic rows, audit, outbox), the throwaway users + sessions + API-key rate buckets are gone
+
+🔴 C1.11: 57/66
+JSON_SUMMARY {"total":66,"passed":57,"findings":[{"id":"C1.11-S6.1","sev":"CRITICAL"},{"id":"C1.11-S6.3","sev":"CRITICAL"},{"id":"C1.11-S6.4","sev":"CRITICAL"},{"id":"C1.11-S6.5","sev":"CRITICAL"},{"id":"C1.11-S6.6","sev":"CRITICAL"},{"id":"C1.11-S6.7","sev":"CRITICAL"},{"id":"C1.11-S6.8","sev":"CRITICAL"},{"id":"C1.11-S6.9","sev":"MAJOR"},{"id":"C1.11-S7.1","sev":"CRITICAL"}]}

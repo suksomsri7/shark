@@ -189,7 +189,13 @@ export function PaymentPanel({
                       <span className="tabular-nums">
                         <MoneyText satang={p.amount + p.whtAmount} decimals />
                       </span>
-                      {!p.voidedAt && (
+                      {/* CRM C5.4-C ▸ (round 7 · มติ B2c) รับเป็นเช็ค = กลับรายการที่ทะเบียนเช็ค (เด้ง/ยกเลิก) — ไม่มีปุ่มยกเลิกที่นี่ บอกทางแทน ◂ */}
+                      {!p.voidedAt && p.chequeNo && (
+                        <span className="text-xs text-[color:var(--color-muted)]" data-testid={`pay-void-cheque-hint-${i + 1}`}>
+                          รับเป็นเช็ค — ยกเลิก/บันทึกเด้งที่ทะเบียนเช็ค
+                        </span>
+                      )}
+                      {!p.voidedAt && !p.chequeNo && (
                         <button
                           type="button"
                           className="text-xs text-[color:var(--color-danger)] underline"

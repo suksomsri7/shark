@@ -4,7 +4,7 @@ import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
 import { systemDef } from "@/lib/systems";
 import { toMemberActor } from "@/lib/modules/member";
-import { crmCan } from "@/lib/modules/crm/access";
+import { crmCan, crmCanLinkCompany } from "@/lib/modules/crm/access";
 import { customFieldLayout, ownerOptions } from "@/lib/modules/crm/contacts";
 import { crmNavItems } from "@/lib/modules/crm/nav";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -35,7 +35,7 @@ export default async function NewContactPage({ params }: { params: Promise<{ id:
         desc="เพิ่มผู้ติดต่อ — ระบบตรวจเบอร์/อีเมลซ้ำในระบบนี้ให้ก่อนบันทึก"
       />
       <ModuleTabs items={crmNavItems(id)} />
-      <NewContactForm systemId={id} owners={owners} defaultOwner={auth.user.id} customFields={customFields} />
+      <NewContactForm systemId={id} owners={owners} defaultOwner={auth.user.id} customFields={customFields} canPickCompany={crmCanLinkCompany(actor)} />
     </div>
   );
 }

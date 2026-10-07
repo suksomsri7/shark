@@ -1,10 +1,10 @@
 import { notFound } from "next/navigation";
 import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
-import { assertCan } from "@/lib/core/rbac";
 import { systemDef } from "@/lib/systems";
 import { closeDaySummary, closeDayBills, bkkToday } from "@/lib/modules/pos/service";
 import { posTabs } from "@/lib/modules/pos/tabs";
+import { posMembership, posSalesScope, posScopeUnitIds } from "@/lib/modules/pos/access";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Section } from "@/components/ui/Section";
 import { MoneyText } from "@/components/ui/MoneyText";
@@ -30,21 +30,17 @@ export default async function PosCloseDayPage({
 
   const sys = await prisma.appSystem.findFirst({ where: { id, tenantId, type: "POS" } });
   if (!sys) notFound();
-  assertCan(
-    {
-      role: auth.active.role,
-      unitAccess: auth.active.unitAccess as string[],
-      permissions: auth.active.permissions as Record<string, unknown>,
-    },
-    { module: "pos", action: "pos.sale.create" },
-  );
+  // HF-POS-PAGES: เดิม assertCan ไม่ส่ง unit ⇒ คนสาขา A เห็นยอด/เงินสด/บิลของสาขา B — ตอนนี้กรองเฉพาะสาขาที่เข้าได้
+  const scope = posSalesScope(posMembership(auth.active));
+  if (!scope) notFound();
+  const unitIds = posScopeUnitIds(scope);
   const def = systemDef(sys.type);
 
   const today = bkkToday();
   const businessDate = dateParam && isDate(dateParam) ? dateParam : today;
   const [summary, bills] = await Promise.all([
-    closeDaySummary({ tenantId, systemId: id }, businessDate),
-    closeDayBills({ tenantId, systemId: id }, businessDate),
+    closeDaySummary({ tenantId, systemId: id, unitIds }, businessDate),
+    closeDayBills({ tenantId, systemId: id, unitIds }, businessDate),
   ]);
 
   return (

@@ -50,7 +50,7 @@ export function CompanyImportButton({ systemId }: { systemId: string }) {
   const [open, setOpen] = useState(false);
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<{ created: number; skipped: number; errors: { row: number; reason: string }[] } | null>(null);
+  const [result, setResult] = useState<{ created: number; skipped: number; errors: { row: number; reason: string }[]; warnings: { row: number; reason: string }[] } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const maxMb = Math.round(COMPANY_IMPORT_MAX_BYTES / 1024 / 1024);
 
@@ -73,7 +73,7 @@ export function CompanyImportButton({ systemId }: { systemId: string }) {
         setError(r.error);
         return;
       }
-      setResult({ created: r.created, skipped: r.skipped, errors: r.errors });
+      setResult({ created: r.created, skipped: r.skipped, errors: r.errors, warnings: r.warnings ?? [] }); // CRM C5.4-E r2 ▸ คำเตือนรายแถว ◂
       router.refresh();
     });
 
@@ -116,6 +116,15 @@ export function CompanyImportButton({ systemId }: { systemId: string }) {
                     {result.errors.slice(0, 50).map((e) => (
                       <li key={e.row}>
                         แถว {e.row}: {e.reason}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {result.warnings.length > 0 && (
+                  <ul className="mt-2 flex max-h-40 flex-col gap-1 overflow-y-auto text-xs text-[color:var(--color-muted)]" data-testid="companies-import-warnings">
+                    {result.warnings.slice(0, 50).map((w) => (
+                      <li key={`w-${w.row}`}>
+                        แถว {w.row}: {w.reason}
                       </li>
                     ))}
                   </ul>

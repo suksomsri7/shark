@@ -26,6 +26,7 @@ export function NewDealForm({
   company,
   companyContacts,
   contact = null,
+  canPickCompany,
 }: {
   systemId: string;
   pipelines: PipelineDto[];
@@ -38,6 +39,8 @@ export function NewDealForm({
   companyContacts: Opt[];
   // CRM C1.11 ▸ ผู้ติดต่อตั้งต้น (resolve ฝั่งเซิร์ฟเวอร์จาก ?contactId= ผ่านการมองเห็น) — เลือกไว้ให้ก่อน ◂
   contact?: Opt | null;
+  // CRM C5.5-fix6 ▸ F3: crm.company.read — ไม่มี = รายการบริษัทว่างเสมอ ⇒ ไม่มีช่องเลือก (§15(b)) · บริการใช้บริษัทหลักของผู้ติดต่อเหมือนเดิม ◂
+  canPickCompany: boolean;
 }) {
   const router = useRouter();
   const [title, setTitle] = useState("");
@@ -78,7 +81,7 @@ export function NewDealForm({
 
   // บริษัทของผู้ติดต่อที่เลือก
   useEffect(() => {
-    if (!contactId) return;
+    if (!contactId || !canPickCompany) return;
     let alive = true;
     void contactCompaniesAction(systemId, contactId).then((r) => {
       if (!alive || !r.ok) return;
@@ -88,7 +91,7 @@ export function NewDealForm({
     return () => {
       alive = false;
     };
-  }, [contactId, systemId]);
+  }, [contactId, systemId, canPickCompany]);
 
   const submit = async () => {
     const e: Partial<Record<(typeof DEAL_FIELDS)[number], string>> = {};
@@ -106,7 +109,7 @@ export function NewDealForm({
       stageId: stageId || null,
       title: title.trim(),
       contactId,
-      companyId: companyId || null,
+      companyId: canPickCompany ? companyId || null : null,
       valueSatang: v,
       expectedCloseAt: close || null,
       ownerUserId: owner || null,
@@ -153,19 +156,22 @@ export function NewDealForm({
           </select>
           {err("contact")}
         </div>
-        <label className="flex min-w-0 flex-col gap-1 text-sm">
-          <span>บริษัท</span>
-          <select value={companyId} onChange={(e) => setCompanyId(e.target.value)} className="input text-sm" data-testid="deal-new-company">
-            <option value="">ไม่ผูกบริษัท</option>
-            {companies.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-                {c.primary ? " (หลัก)" : ""}
-              </option>
-            ))}
-          </select>
-          <span className="text-xs text-[color:var(--color-muted)]">เลือกได้เฉพาะบริษัทที่ผู้ติดต่อคนนี้อยู่</span>
-        </label>
+        {canPickCompany && (
+          <label className="flex min-w-0 flex-col gap-1 text-sm">
+            <span>บริษัท</span>
+            <select value={companyId} onChange={(e) => setCompanyId(e.target.value)} className="input text-sm" data-testid="deal-new-company">
+              {/* CRM C5.5-fix7 ▸ F6-6: ค่าว่าง = บริการใช้บริษัทหลักของผู้ติดต่อ (createDeal) — ป้ายเดิม "ไม่ผูกบริษัท" ไม่ตรงกับสิ่งที่เกิดขึ้น ◂ */}
+              <option value="">ตามบริษัทหลักของผู้ติดต่อ (ถ้ามี)</option>
+              {companies.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                  {c.primary ? " (หลัก)" : ""}
+                </option>
+              ))}
+            </select>
+            <span className="text-xs text-[color:var(--color-muted)]">เลือกได้เฉพาะบริษัทที่ผู้ติดต่อคนนี้อยู่</span>
+          </label>
+        )}
         <label className="flex min-w-0 flex-col gap-1 text-sm">
           <span>pipeline</span>
           <select

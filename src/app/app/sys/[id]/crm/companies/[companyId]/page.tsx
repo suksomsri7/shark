@@ -17,7 +17,7 @@ import {
   type CompanyDealRow,
   type CompanyDocRow,
 } from "@/lib/modules/crm/companies-shared";
-import { AddContactButton, CompanyContactsTable, CompanyMenu } from "../_components/Company360Actions";
+import { AddContactButton, CompanyContactsTable, CompanyLifecycleCorrect, CompanyMenu } from "../_components/Company360Actions";
 // CRM C1.6 ▸ บล็อกกิจกรรม/โน้ต + ไฟล์แนบ (คอมโพเนนต์ฝั่งเซิร์ฟเวอร์ · ใบ C1.6 เป็นเจ้าของ) ◂
 import { CrmActivityBlock } from "@/components/crm/activity/CrmActivityBlock";
 import { CrmFilesBlock } from "@/components/crm/files/CrmFilesBlock";
@@ -61,6 +61,8 @@ export default async function Company360Page({
   // CRM uiVersion gate ▸ route นี้มีเฉพาะ CRM v2 — ระบบที่ยังไม่เปิด (settings.crm.uiVersion ≠ 2) = 404 ◂
   await requireCrmV2Page({ tenantId: tenantId, systemId: id });
   const actor = toMemberActor(auth.user.id, auth.active);
+  // CRM C5.5-fix2 ▸ it4 F1: คีย์อ่านบริษัทตรวจที่หน้าเองด้วย (เดิมพึ่ง companyWhere ว่างอย่างเดียว) ◂
+  if (!crmCan(actor, "crm.company.read")) notFound();
   const ctx = { tenantId, systemId: id, actorUserId: auth.user.id };
 
   const data = await getCompany360(ctx, actor, companyId).catch((e: unknown) => {
@@ -171,7 +173,9 @@ export default async function Company360Page({
                     <span className="rounded-md border px-1.5 py-0.5 text-xs font-semibold" style={{ color: "var(--color-accent)", borderColor: "var(--color-accent)" }}>
                       {COMPANY_LIFECYCLE_LABEL[c.lifecycleStage]}
                     </span>
-                    <span className="rounded-md border px-1.5 py-0.5 text-xs text-[color:var(--color-muted)]">คะแนน {c.score.toLocaleString("th-TH")}</span>
+                    {/* CRM C5.4-E r2 ▸ มติผู้คุมงาน: ผู้จัดการ/เจ้าของร้านแก้ "ลูกค้า" → "มีโอกาส" ได้ (ปิดดีลชนะผิด) ◂ */}
+                    {live && canUpdate && (actor.role === "OWNER" || actor.role === "MANAGER") && c.lifecycleStage === "CUSTOMER" && <CompanyLifecycleCorrect systemId={id} companyId={c.id} />}
+                    {/* CRM C5.4-E ▸ L6-M5: "คะแนนบริษัท" ยังไม่มีนิยาม/ตัวเขียน (ทุกบริษัท = 0 ตลอด) ⇒ ซ่อนไว้จนกว่าเจ้าของจะกำหนด (ขั้นของบริษัทคำนวณจากดีลแล้ว) ◂ */}
                   </div>
                   <span className="text-xs text-[color:var(--color-muted)]">{subline.join(" · ")}</span>
                 </div>
@@ -240,6 +244,12 @@ export default async function Company360Page({
                       </span>
                       <div className="flex min-w-0 flex-col">
                         <span className="break-words text-sm">{t.title}</span>
+                        {/* CRM C5.5-fix3b r2 ▸ รีวิว RV-1: ป้ายเดียวกับบล็อกกิจกรรม/หน้าเธรด — จดหมายขาเข้าฉบับนี้ระบบยืนยันไม่ได้ว่ามาจากที่อยู่ที่แสดงจริง ◂ */}
+                        {t.unverifiedFrom && (
+                          <span className="w-fit rounded-full border border-amber-500 px-2 py-0.5 text-[11px] font-medium text-amber-700" title="ระบบยืนยันไม่ได้ว่าจดหมายนี้มาจากที่อยู่ที่แสดงจริง — ตรวจกับลูกค้าทางช่องทางอื่นก่อนทำตามคำขอเรื่องเงินหรือบัญชี">
+                            ไม่ยืนยันผู้ส่ง
+                          </span>
+                        )}
                         <span className="text-xs text-[color:var(--color-muted)]">
                           {relativeThai(t.at, now)}
                           {t.contactName ? ` · ${t.contactName}` : ""}

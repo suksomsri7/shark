@@ -4,6 +4,7 @@
 // ห้ามรับ tenantId จาก client (กัน cross-tenant)
 
 import { requireTenant } from "@/lib/core/context";
+import { assertCan } from "@/lib/core/rbac";
 import { ZDnaFacts } from "./schema";
 import type { BlueprintPlan, DnaFacts } from "./schema";
 import { finalizeFacts } from "./questions";
@@ -80,10 +81,26 @@ export async function proposeAction(): Promise<{ blueprintId: string; plan: Blue
   return proposeBlueprint(auth.active.tenantId);
 }
 
+/**
+ * 🔴 HOTFIX 2026-10-01 (Item 4c): การประกอบพิมพ์เขียวสร้างระบบ/สาขาจริง ⇒ ต้องมีสิทธิ์เดียวกับประตู "เพิ่มระบบ"
+ *    (lib/actions/systems.ts addSystemAction → `systems.system.create`) · เดิมสมาชิกทุกคนกดได้
+ */
+function assertSystemCreate(auth: Awaited<ReturnType<typeof requireTenant>>): void {
+  assertCan(
+    {
+      role: auth.active.role,
+      unitAccess: auth.active.unitAccess as string[],
+      permissions: auth.active.permissions as Record<string, unknown>,
+    },
+    { module: "systems", action: "systems.system.create" },
+  );
+}
+
 // ประกอบระบบทีละขั้น — UI เรียกซ้ำจนกว่า finished เพื่อวาดแถบความคืบหน้าตามจริง
 // (ขั้นเดียวต่อ 1 request → เห็นคืบหน้าจริง + ไม่ค้างยาวจน request timeout)
 export async function applyStepAction(blueprintId: string): Promise<ApplyProgress> {
   const auth = await requireTenant();
+  assertSystemCreate(auth); // systems.system.create
   return applyBlueprintStep(auth.active.tenantId, blueprintId);
 }
 
@@ -92,5 +109,6 @@ export async function applyAction(
   blueprintId: string,
 ): Promise<{ ok: boolean; results: { step: number; ok: boolean; createdId?: string; error?: string }[] }> {
   const auth = await requireTenant();
+  assertSystemCreate(auth); // systems.system.create
   return applyBlueprint(auth.active.tenantId, blueprintId);
 }

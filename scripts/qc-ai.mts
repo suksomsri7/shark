@@ -3,6 +3,8 @@
 process.env.SHARK_AI_MOCK = "1";
 import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
 loadLegacyQcEnv("qc-ai"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
+// ORACLE-EDIT C5.5-G1: runTool/sendMessage now take a required actor (no actor = refusal) — these checks always meant "the shop OWNER asks"
+const qcOwner = (t: string) => ({ kind: "member" as const, tenantId: t, userId: "qc-owner", membership: { role: "OWNER" as const, unitAccess: ["*"], permissions: {} } });
 const { prisma } = await import("@/lib/core/db");
 const rules = await import("@/lib/ai/rules");
 const prov = await import("@/lib/ai/provider");
@@ -26,7 +28,7 @@ let tid = ""; let tid2 = "";
 try {
   const svc = await import("@/lib/ai/service");
   const t = await prisma.tenant.create({ data: { name: "QC AI", slug: `qc-ai-${Date.now()}` } }); tid = t.id;
-  const ctx = { tenantId: tid };
+  const ctx = { tenantId: tid, actor: qcOwner(tid) };
 
   chk("AI-0.1", "aiEnabled = true (mock)", svc.aiEnabled() === true, "true", String(svc.aiEnabled()));
 
@@ -55,8 +57,9 @@ try {
 
   // kernel guard: tenant อื่นมองไม่เห็นบทสนทนา
   const t2 = await prisma.tenant.create({ data: { name: "QC AI 2", slug: `qc-ai2-${Date.now()}` } }); tid2 = t2.id;
-  chk("AI-5.1", "tenant อื่นไม่เห็นบทสนทนา (kernel guard)", (await svc.latestConversation({ tenantId: tid2 })) === null, "null", "?");
-  chk("AI-5.2", "tenant อื่นอ่านข้อความ conv นี้ไม่ได้", (await svc.listMessages({ tenantId: tid2 }, convId)).length === 0, "0", "?");
+  // ORACLE-EDIT C5.5-G2: latestConversation/listMessages take the viewer (ctx.actor) — "another shop" is now that shop's OWNER
+  chk("AI-5.1", "tenant อื่นไม่เห็นบทสนทนา (kernel guard)", (await svc.latestConversation({ tenantId: tid2, actor: qcOwner(tid2) })) === null, "null", "?");
+  chk("AI-5.2", "tenant อื่นอ่านข้อความ conv นี้ไม่ได้", (await svc.listMessages({ tenantId: tid2, actor: qcOwner(tid2) }, convId)).length === 0, "0", "?");
 } catch (e) { chk("CRASH", "จบ", false, "จบ", e instanceof Error ? e.message.slice(0, 160) : String(e)); }
 finally {
   const d = async (f: () => Promise<unknown>) => { try { await f(); } catch {} };

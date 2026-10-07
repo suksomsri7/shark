@@ -29,7 +29,7 @@ A key is normally bound to one accounting book. If it is not, every call must ca
 
 - **Money is satang.** Every amount is an integer number of satang (1 baht = 100 satang) and the field name ends with `Satang`. 1,250.50 baht is `125050`. Decimals are rejected, never rounded.
 - **Dates are `YYYY-MM-DD`.** A date field means a Thai calendar day (UTC+7), not an instant. Fields that really are instants are ISO-8601 UTC strings and are named `*At`.
-- **Idempotency.** Every write (POST, PATCH, PUT, DELETE) requires an `Idempotency-Key` header, unique per logical attempt. Retrying with the same key and the same body replays the stored response and adds `Idempotent-Replayed: true`; the same key with a different body fails with 409 `idempotency_conflict`. Records are kept 24 hours.
+- **Idempotency.** Every write (POST, PATCH, PUT, DELETE) requires an `Idempotency-Key` header, unique per logical attempt. Retrying with the same key and the same body replays the stored response and adds `Idempotent-Replayed: true`; the same key with a different body fails with 409 `idempotency_conflict`. Records are kept 24 hours. Error answers raised by the operation are stored and replayed too (only `idempotency_*` answers and `rate_limited` are not: the per-key limit, and the per-book limits of `import.run` and `reports.email`, so a same-key retry after the wait runs for real), so after fixing the cause send a new key. If a write is cut by a temporary database or network failure after it started, every try with that key answers 409 `idempotency_outcome_unknown`: check whether the record exists, then use a NEW key.
 - **`X-Shark-System`.** Selects the accounting book when the key is not bound to one. When the key is bound, the header may be sent only if it matches.
 - **Danger operations.** `confirm: true` plus a `reason` of at least 5 characters. The reason is stored in the audit log next to the key name.
 - **Envelope.** Success is `{ data, page?, requestId }`. Failure is `{ error: { code, message_th, message_en, hint?, details? }, requestId }`. `requestId` is also the `X-Request-Id` header; quote it in support tickets.
@@ -65,6 +65,7 @@ Branch on `error.code`, never on the message text.
 | `forbidden` | 403 | The operation is refused by a business rule, not by the scope check. | Read `message_en`; this usually needs a settings change by the shop owner. |
 | `unprocessable` | 422 | The request was understood but cannot be completed as asked. | Read `message_en` and `message_th`; the Thai message is safe to show to the shop owner. |
 | `upstream_unavailable` | 503 | An external service this operation depends on (for example the DBD company registry lookup) is not configured or not reachable right now. | Retry later, or ask the shop owner to finish configuring the integration; this is not caused by the request itself. |
+| `idempotency_outcome_unknown` | 409 | A temporary database or network failure hit the request after it had started, so it is unknown whether it took effect. The key is kept in this state until it expires (24 h); retries with the same key return this answer and never run the request again. | Check whether the record exists (read or list it). If it does not, send the request again with a NEW `Idempotency-Key`; never reuse this key for a retry. |
 
 ## Operations
 
@@ -1793,7 +1794,7 @@ Path parameters: `id` (required).
 | `discountSatang` | integer | no | Discount on the whole document in satang (integer). · min 0 |
 | `note` | one of several shapes | no | Note printed on the document. |
 | `adjustReason` | one of several shapes | no | Reason required by the Revenue Department on credit and debit notes. |
-| `sourceDocId` | one of several shapes | no | Id of the document this one refers to (credit and debit notes). |
+| `sourceDocId` | one of several shapes | no | Id of the document this one refers to: a QUOTATION of this book for INVOICE; an invoice, receipt or tax invoice for credit and debit notes; any document of this book otherwise. An INVOICE pointing at anything but a QUOTATION is rejected with 422 `validation`. |
 | `tags` | array of string | no | Labels for grouping documents. At most 10 tags, each at most 30 characters. |
 | `lines` | array of object | no | Replaces every line of the draft when sent. Omit to keep the current lines. |
 
@@ -1822,7 +1823,7 @@ curl -sS -X PATCH "https://shark.in.th/api/v1/account/documents/123" \
 | `discountSatang` | integer | no | Discount on the whole document in satang (integer). · min 0 |
 | `note` | one of several shapes | no | Note printed on the document. |
 | `adjustReason` | one of several shapes | no | Reason required by the Revenue Department on credit and debit notes. |
-| `sourceDocId` | one of several shapes | no | Id of the document this one refers to (credit and debit notes). |
+| `sourceDocId` | one of several shapes | no | Id of the document this one refers to: a QUOTATION of this book for INVOICE; an invoice, receipt or tax invoice for credit and debit notes; any document of this book otherwise. An INVOICE pointing at anything but a QUOTATION is rejected with 422 `validation`. |
 | `tags` | array of string | no | Labels for grouping documents. At most 10 tags, each at most 30 characters. |
 | `refType` | string | no | Name of the record in your own system this document belongs to, for example `Booking`. · min length 1 · max length 60 |
 | `refId` | string | no | Id of that record. Sending the same pair twice returns 409 `duplicate` with the existing id in `hint`. · min length 1 · max length 60 |
@@ -3124,13 +3125,13 @@ curl -sS -X POST "https://shark.in.th/api/v1/account/units" \
 
 #### `webhooks.test`
 
-**POST /webhooks/{id}/test** - Send one test delivery to this endpoint with a fake payload of the given event type, regardless of its subscription list. · scope: `account.settings.manage` · write
+**POST /webhooks/{id}/test** - Send one test delivery to this endpoint with a fake payload of the given account event type (account.* only), regardless of its subscription list. · scope: `account.settings.manage` · write
 
 Path parameters: `id` (required).
 
 | Field | Type | Required | Rules |
 | --- | --- | --- | --- |
-| `event` | string | yes | Event type to simulate. Must be a known event type. |
+| `event` | string | yes | Account event type to simulate (account.*). Must be a known event type. |
 
 ```bash
 curl -sS -X POST "https://shark.in.th/api/v1/account/webhooks/123/test" \

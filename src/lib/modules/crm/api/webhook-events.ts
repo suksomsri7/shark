@@ -5,11 +5,12 @@
 // 🔴 การส่งทุกครั้งลงลายเซ็น 2 แบบของบริการฮุคกลาง (`X-Shark-Signature` = HMAC(body) · `X-Shark-Signature-V2` = HMAC(`ts.body`))
 // ไฟล์นี้ไม่ import ทะเบียน op (กันวงกลม registry → ops → openapi → registry)
 
-import { WEBHOOK_EVENTS } from "@/lib/webhooks/labels";
+import { WEBHOOK_EVENTS, WEBHOOK_GUARDED_FAMILIES } from "@/lib/webhooks/labels";
 import { isLoopbackHostname, privateTargetsAllowed } from "@/lib/webhooks/private-targets"; // C4.4-fix I3 ◂
 
-/** คำนำหน้าของเหตุการณ์ที่ CRM เป็นเจ้าของ: ของ CRM · รายการวัตถุกำหนดเอง (C1.2b) · ทีมขาย (core · C1.1) */
-export const CRM_EVENT_PREFIXES = ["crm.", "custom.record.", "team."] as const;
+/** คำนำหน้าของเหตุการณ์ที่ CRM เป็นเจ้าของ: ของ CRM · รายการวัตถุกำหนดเอง (C1.2b) · ทีมขาย (core · C1.1)
+ *  CRM C5.5 ▸ (fix3b · F4) = ครอบครัว "crm" ของแพลตฟอร์ม (`WEBHOOK_GUARDED_FAMILIES`) — รายการเดียวที่ตัวกันเหตุการณ์ของบริการ webhook ใช้ตัดสิน ◂ */
+export const CRM_EVENT_PREFIXES = WEBHOOK_GUARDED_FAMILIES.crm;
 
 // CRM C3.8 ▸ event ของ CRM ที่ "มี consumer แต่ไม่เปิดให้ร้านสมัครเว็บฮุค" โดยเจตนา (ธงภายในล้วน — ไม่มีความหมายต่อระบบภายนอก)
 //   กติกา (ข้อสอบ C3.8-S6.1): consumer ทุกตัวที่ขึ้นต้นด้วย CRM_EVENT_PREFIXES ต้อง **อยู่ในรายการเว็บฮุค หรืออยู่ในรายการนี้** — ไม่มีทางที่สาม

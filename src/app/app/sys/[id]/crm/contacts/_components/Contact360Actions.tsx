@@ -8,6 +8,7 @@
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
+  CONTACT_PRIMARY_COMPANY_HIDDEN_MSG,
   CONTACT_REASON_MIN,
   // CRM C1.11 ▸ เลือกค่าต่อฟิลด์ตอนรวม ◂
   MERGE_CHOICE_FIELDS,
@@ -91,6 +92,7 @@ export function ConvertButton({
   companyName,
   jobTitle,
   converted,
+  canPickCompany,
 }: {
   systemId: string;
   contactId: string;
@@ -100,6 +102,8 @@ export function ConvertButton({
   companyName: string | null;
   jobTitle: string | null;
   converted: boolean;
+  /** CRM C5.5-fix6 ▸ F3: crm.company.read — ไม่มี = ไม่มีตัวเลือก "ผูกบริษัทที่มีอยู่" (ตัวค้นหาว่างเสมอ) · "สร้างบริษัทใหม่" คงเดิม ◂ */
+  canPickCompany: boolean;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -219,10 +223,12 @@ export function ConvertButton({
                     <input type="radio" name="convert-company-mode" checked={companyMode === "new"} onChange={() => setCompanyMode("new")} data-testid="contact-convert-company-mode-new" />
                     สร้างบริษัทใหม่
                   </label>
-                  <label className="flex items-center gap-1.5">
-                    <input type="radio" name="convert-company-mode" checked={companyMode === "pick"} onChange={() => setCompanyMode("pick")} data-testid="contact-convert-company-mode-pick" />
-                    ผูกบริษัทที่มีอยู่
-                  </label>
+                  {canPickCompany && (
+                    <label className="flex items-center gap-1.5">
+                      <input type="radio" name="convert-company-mode" checked={companyMode === "pick"} onChange={() => setCompanyMode("pick")} data-testid="contact-convert-company-mode-pick" />
+                      ผูกบริษัทที่มีอยู่
+                    </label>
+                  )}
                 </div>
                 {companyMode === "new" ? (
                   <div className="grid gap-2 sm:grid-cols-2">
@@ -369,11 +375,19 @@ type MenuContact = {
   tags: string[];
   archived: boolean;
   companyId: string | null;
+  /** CRM C5.5-fix6 ▸ F3: ชื่อบริษัทหลักที่ผู้ดูมองเห็น (getContact360().company — ผ่าน companyWhere) · มองไม่เห็น = null (ไม่แสดงชื่อ) ◂ */
+  companyName?: string | null;
+  /** CRM C5.5-fix6 r2 ▸ F6-4: บริษัทที่แสดงคือบริษัทหลักจริงไหม (getContact360 ใช้ลิงก์อื่นที่มองเห็นแทนเมื่อบริษัทหลักมองไม่เห็น) ◂ */
+  companyIsPrimary?: boolean;
+  /** CRM C5.5-fix7 ▸ R2F-1: ผู้ดูผูกบริษัทได้ แต่บริษัทหลักปัจจุบันอยู่นอกการมองเห็น ⇒ ไม่มีช่องเลือก (ทุกการเลือกถูกปฏิเสธ) · แสดงบรรทัดอธิบายแทน ◂ */
+  companyLocked?: boolean;
 };
 
 // CRM C4.2-fix ▸ `can` = คีย์เดียวกับ server action ของแต่ละเมนู (หน้าคำนวณด้วย crmCan · C1.7) — ไม่มีสิทธิ์ = ไม่มีเมนูนั้น ·
 //   ไม่มีเมนูที่ทำได้เลย = ไม่มีปุ่ม "…" (ไม่เปิดเมนูว่าง) ◂
-export type ContactMenuCan = { update: boolean; assign: boolean; merge: boolean; archive: boolean };
+// CRM C5.5-fix6 ▸ F3: `company` = crmCanLinkCompany (อ่าน + แก้บริษัท) — ไม่ผ่าน = แผ่นแก้ไขไม่มีช่องย้ายบริษัท (แสดงชื่อเดิมแบบอ่านอย่างเดียว
+//   เฉพาะเมื่อผู้ดูมองเห็นบริษัทนั้น) · บันทึกไม่ส่ง companyId ⇒ บริษัทเดิมคงอยู่ ◂
+export type ContactMenuCan = { update: boolean; assign: boolean; merge: boolean; archive: boolean; company: boolean };
 
 export function ContactMenu({ systemId, contact, owners, can }: { systemId: string; contact: MenuContact; owners: Opt[]; can: ContactMenuCan }) {
   const router = useRouter();
@@ -506,8 +520,18 @@ export function ContactMenu({ systemId, contact, owners, can }: { systemId: stri
               </label>
             ))}
           </div>
-          <ContactPicker kind="edit-company" label="ย้ายไปบริษัทหลัก (ไม่เลือก = คงเดิม)" placeholder="พิมพ์ชื่อบริษัท" emptyLabel="— คงบริษัทเดิม —" value={companyId} onChange={setCompanyId} search={(q) => searchCompaniesAction(systemId, q)} />
-          {companyId && contact.companyId && (
+          {can.company ? (
+            <ContactPicker kind="edit-company" label="ย้ายไปบริษัทหลัก (ไม่เลือก = คงเดิม)" placeholder="พิมพ์ชื่อบริษัท" emptyLabel="— คงบริษัทเดิม —" value={companyId} onChange={setCompanyId} search={(q) => searchCompaniesAction(systemId, q)} />
+          ) : contact.companyLocked ? (
+            <p className="text-xs text-[color:var(--color-muted)]" data-testid="contact-edit-company-locked">
+              {CONTACT_PRIMARY_COMPANY_HIDDEN_MSG}
+            </p>
+          ) : contact.companyName ? (
+            <p className="text-xs text-[color:var(--color-muted)]" data-testid="contact-edit-company-readonly">
+              {contact.companyIsPrimary ? "บริษัทหลัก" : "บริษัท"}: {contact.companyName} (ย้ายบริษัทได้เฉพาะบัญชีที่มีสิทธิ์แก้ไขบริษัท)
+            </p>
+          ) : null}
+          {can.company && companyId && contact.companyId && (
             <label className="flex items-center gap-2 text-sm">
               <input type="checkbox" checked={moveDeals} onChange={(e) => setMoveDeals(e.target.checked)} data-testid="contact-edit-move-deals" />
               ย้ายดีลที่ยังเปิดของบริษัทเดิมไปบริษัทใหม่ด้วย
@@ -524,7 +548,7 @@ export function ContactMenu({ systemId, contact, owners, can }: { systemId: stri
                 phone: edit.phone || null,
                 email: edit.email || null,
                 jobTitle: edit.jobTitle || null,
-                ...(companyId ? { companyId, moveOpenDeals: moveDeals } : {}),
+                ...(can.company && companyId ? { companyId, moveOpenDeals: moveDeals } : {}),
               }),
             );
           })}
@@ -665,6 +689,11 @@ export function ConsentBlock({
       if (!r.ok) return setError(r.error);
       router.refresh();
     });
+  // CRM C5.4-E ▸ E4: ปุ่มยินยอม/ไม่ยินยอมที่ล็อก (ผูกสมาชิก + ไม่มีสิทธิ์ · ไม่มีสิทธิ์แก้) เดิม disabled แต่หน้าตาเหมือนกดได้ (`.btn-ghost`
+  //   ไม่มีสไตล์ตอน disabled) ⇒ จางลง + เคอร์เซอร์ห้าม + คำอธิบายเมื่อชี้ · สถานะที่เลือกอยู่ยังเห็นสีเดิม (แค่จางลง) · เฉพาะบล็อกนี้ (ไม่แตะ CSS กลาง — หน้า v1 เท่าเดิม) ◂
+  const channelLocked = disabled || memberConsentLocked;
+  const lockedLook = channelLocked ? " cursor-not-allowed opacity-50" : "";
+  const lockedTitle = memberConsentLocked ? "ความยินยอมของผู้ติดต่อนี้เก็บที่ระบบสมาชิก — ต้องมีสิทธิ์แก้ไขข้อมูลสมาชิก" : undefined;
   return (
     <section className="card flex flex-col gap-3 p-4" data-testid="contact-consent">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -708,8 +737,10 @@ export function ConsentBlock({
             <span className="flex gap-1">
               <button
                 type="button"
-                className="btn btn-ghost px-2 py-1 text-xs"
+                className={`btn btn-ghost px-2 py-1 text-xs${lockedLook}`}
                 style={c.granted === true ? { borderColor: "var(--color-accent)", color: "var(--color-accent)", fontWeight: 600 } : undefined}
+                title={lockedTitle}
+                aria-disabled={channelLocked || undefined}
                 disabled={disabled || memberConsentLocked || pending || c.granted === true}
                 onClick={() => run(() => setConsentAction(systemId, contactId, c.channel, true))}
                 data-testid="contact-consent-grant"
@@ -718,8 +749,10 @@ export function ConsentBlock({
               </button>
               <button
                 type="button"
-                className="btn btn-ghost px-2 py-1 text-xs"
+                className={`btn btn-ghost px-2 py-1 text-xs${lockedLook}`}
                 style={c.granted === false ? { borderColor: "var(--color-danger)", color: "var(--color-danger)", fontWeight: 600 } : undefined}
+                title={lockedTitle}
+                aria-disabled={channelLocked || undefined}
                 disabled={disabled || memberConsentLocked || pending || c.granted === false}
                 onClick={() => run(() => setConsentAction(systemId, contactId, c.channel, false))}
                 data-testid="contact-consent-revoke"

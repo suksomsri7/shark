@@ -20,10 +20,11 @@ import { setCardLabels } from "./labels";
 import { sanitizeDescription } from "./sanitize";
 import { createCard } from "./service";
 import { LINK_TYPES, targetExists } from "./link-resolvers";
-import type { KanbanCardSourceType, Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
+import type { KanbanCardSourceType } from "@prisma/client";
 import type { KanbanActor, KanbanCtx, KanbanLinkKind, KanbanLinkRole } from "./types";
 // CRM C1.6 ▸ ด่านการมองเห็นบอร์ดของโมดูลนี้เอง (visibleBoardOptions ท้ายไฟล์) · +KanbanActor ในบรรทัดบน ◂
-import { visibleBoardsWhere } from "./access";
+import { visibleBoardsWhere, KanbanForbiddenError, KanbanNotFoundError } from "./access";
 
 // ── ทางเข้าเดียว: ผู้เรียกทุกคน import จาก `@/lib/modules/kanban/links` ──
 export {
@@ -448,54 +449,178 @@ export async function visibleBoardOptions(
 }
 // ◂ CRM C1.6
 
+// CRM C5.5 ▸ H55-2 (กฎอัตโนมัติ CRM "ทำอัตโนมัติได้เฉพาะที่ทำเองด้วยมือได้"): ผู้ใช้คนนี้ "เปิดการ์ดในบอร์ดนี้ด้วยมือ" ได้ไหม —
+//   ด่านเดียวกับประตูมือ (`crm/activities.openTaskCard`): บอร์ดต้องอยู่ใน `visibleBoardOptions` ของเขา **และ** บทบาทบนบอร์ด ≥ EDITOR
+//   (`assertBoardRole` ที่ `createCardFromExternal` ใช้เมื่อมี actor) · อ่านอย่างเดียว · ไม่เห็น/ไม่มี/ดูได้อย่างเดียว = false
+export async function canOpenCardOnBoard(tenantId: string, actor: KanbanActor, boardId: string): Promise<boolean> {
+  const [board] = await visibleBoardOptions(tenantId, actor, { boardId });
+  if (!board) return false;
+  try {
+    await assertBoardRole({ tenantId, systemId: board.systemId, actorUserId: actor.userId, actor }, board.id, "EDITOR");
+    return true;
+  } catch (e) {
+    if (e instanceof KanbanNotFoundError || e instanceof KanbanForbiddenError) return false;
+    throw e;
+  }
+}
+// ◂ CRM C5.5
+
 // CRM C3.9-fix ▸ H4 (ล่าความปลอดภัย B4): ลบข้อมูลส่วนบุคคลตาม PDPA — การ์ดที่ผูกกับของที่ถูกลบ (เช่น ผู้ติดต่อ CRM) ถูกปิดคำระบุตัว
 //   ทั้งหัวการ์ด · รายละเอียด · ความเห็น (KanbanComment.body) · ประวัติการ์ด (KanbanActivity.data — เช่น CARD_CREATED เก็บหัวการ์ดตอนสร้าง)
 //   ตัวเขียนตารางบอร์ดงานอยู่ในโมดูลนี้เท่านั้น (ผู้เรียกส่งตัวปิดข้อความมา — บอร์ดงานไม่รู้ว่าคำไหนระบุตัวใคร) · ใน tx ของผู้เรียก
 //   รวมลิงก์ที่ถอดไปแล้วด้วย (การ์ดเคยผูก = ข้อความอาจเอ่ยถึงคนนั้น) · แถวคงอยู่ทั้งหมด (ลำดับงาน/ตัวนับของบอร์ดไม่เปลี่ยน)
-const MASK_CARDS_MAX = 2_000;
+// CRM C5.5-fix9 ▸ hunt-3 H3-3: ไม่มีเพดานที่ตัดเงียบอีกแล้ว — ทุกชุด (ลิงก์ · การ์ด · ความเห็น · ประวัติ · รายการ id/prefix ที่ผู้เรียกส่งมา) อ่านทีละหน้า
+//   (keyset ตาม id) จนหน้าสั้น ⇒ หน่วยความจำต่อหน้า ≤ `batch` แถว · ทุกขั้น idempotent (ปิดคำซ้ำ = ไม่เปลี่ยน) ⇒ tx ของผู้เรียกล้ม = rollback ทั้งก้อน
+//   แล้วลบซ้ำได้ครบ · `batch` = ขนาดหน้า (ค่าเริ่มต้น 2,000 = เพดานเดิม · ข้อสอบส่งค่าเล็กเพื่อพิสูจน์การวนหน้า) ◂
+const MASK_CARDS_BATCH = 2_000;
+const MASK_PREFIX_CHUNK = 500;
+/** ขนาดหน้าของตัวปิดคำ (ผู้เรียก/ข้อสอบกำหนดได้ · 1..2,000) */
+export type MaskBatchOpts = { batch?: number | null };
+const batchOf = (o?: MaskBatchOpts | null): number => {
+  const n = Math.floor(Number(o?.batch ?? MASK_CARDS_BATCH));
+  return Number.isFinite(n) && n >= 1 ? Math.min(n, MASK_CARDS_BATCH) : MASK_CARDS_BATCH;
+};
+type MaskCounts = { cards: number; comments: number; activities: number };
+const addCounts = (a: MaskCounts, b: MaskCounts) => {
+  a.cards += b.cards;
+  a.comments += b.comments;
+  a.activities += b.activities;
+};
+
 export async function maskCardsLinkedInTx(
   tx: Prisma.TransactionClient,
   tenantId: string,
   linkType: KanbanLinkKind,
   linkIds: readonly string[],
   mask: (text: string) => string,
-): Promise<{ cards: number; comments: number; activities: number }> {
+  opts?: MaskBatchOpts | null,
+): Promise<MaskCounts> {
+  const out: MaskCounts = { cards: 0, comments: 0, activities: 0 };
   const ids = [...new Set(linkIds.filter((x) => typeof x === "string" && !!x))];
-  if (!tenantId || ids.length === 0) return { cards: 0, comments: 0, activities: 0 };
-  const cardIds = [...new Set((await tx.kanbanCardLink.findMany({ where: { tenantId, linkType, linkId: { in: ids } }, select: { cardId: true }, take: MASK_CARDS_MAX })).map((l) => l.cardId))];
-  return maskCardsInTx(tx, tenantId, { id: { in: cardIds } }, mask, null);
+  if (!tenantId || ids.length === 0) return out;
+  const batch = batchOf(opts);
+  const seen = new Set<string>();
+  // ลิงก์ทีละหน้า (id ขึ้น) → การ์ดของหน้านั้นที่ยังไม่เคยปิด → ปิดทีละหน้า
+  for (let cursor: string | null = null; ; ) {
+    const page: { id: string; cardId: string }[] = await tx.kanbanCardLink.findMany({
+      where: { tenantId, linkType, linkId: { in: ids }, ...(cursor ? { id: { gt: cursor } } : {}) },
+      select: { id: true, cardId: true },
+      orderBy: { id: "asc" },
+      take: batch,
+    });
+    const fresh = [...new Set(page.map((l) => l.cardId))].filter((c) => !seen.has(c));
+    for (const c of fresh) seen.add(c);
+    if (fresh.length) addCounts(out, await maskCardsInTx(tx, tenantId, { id: { in: fresh } }, mask, null, batch));
+    if (page.length < batch) break;
+    cursor = page[page.length - 1]!.id;
+  }
+  return out;
 }
 
 /**
  * รีวิว C3.9-fix S1: การ์ดที่ **โมดูลอื่นเปิดเอง** (เช่น คำขอจากพอร์ทัล CRM · `sourceKey` ขึ้นต้นด้วย prefix ของผู้เรียก) — หัวการ์ด = ป้ายที่ผู้เรียกให้ ·
  * รายละเอียดว่าง · ความเห็น + ประวัติการ์ดถูกปิดคำด้วยตัวปิดของผู้เรียก และข้อความหัว/รายละเอียดเดิมถูกแทนด้วยป้าย (CARD_CREATED เก็บหัวเดิมไว้)
  * sourceKey คงไว้ (กันเปิดการ์ดซ้ำ) · ตารางบอร์ดงานเขียนที่นี่ที่เดียว (ผู้เรียกไม่เขียน `kanbanCard` ตรง)
+ * C5.5-fix9: รายการ id ยาวเท่าไรก็ได้ (ทีละ `batch` · ไม่ตัดที่ 2,000)
  */
 export async function redactCardsInTx(
   tx: Prisma.TransactionClient,
   tenantId: string,
   cardIds: readonly string[],
-  opts: { title: string; sourceKeyPrefix: string; mask?: ((text: string) => string) | null },
-): Promise<{ cards: number; comments: number; activities: number }> {
-  const ids = [...new Set(cardIds.filter((x) => typeof x === "string" && !!x))].slice(0, MASK_CARDS_MAX);
-  if (!tenantId || ids.length === 0 || !opts.sourceKeyPrefix) return { cards: 0, comments: 0, activities: 0 };
-  return maskCardsInTx(tx, tenantId, { id: { in: ids }, sourceKey: { startsWith: opts.sourceKeyPrefix } }, opts.mask ?? ((x) => x), opts.title);
+  opts: { title: string; sourceKeyPrefix: string; mask?: ((text: string) => string) | null; batch?: number | null },
+): Promise<MaskCounts> {
+  const out: MaskCounts = { cards: 0, comments: 0, activities: 0 };
+  const ids = [...new Set(cardIds.filter((x) => typeof x === "string" && !!x))];
+  if (!tenantId || ids.length === 0 || !opts.sourceKeyPrefix) return out;
+  const batch = batchOf(opts);
+  const scope = (part: string[]): Prisma.KanbanCardWhereInput => ({ id: { in: part }, sourceKey: { startsWith: opts.sourceKeyPrefix } });
+  // หัว/รายละเอียดเดิมของ **ทุก** การ์ดในชุด (ความเห็นของการ์ดหนึ่งอาจยกหัวของอีกใบ) — อ่านก่อนเขียน ทีละหน้า
+  const old = new Set<string>();
+  for (let i = 0; i < ids.length; i += batch) {
+    for (const c of await tx.kanbanCard.findMany({ where: { ...scope(ids.slice(i, i + batch)), tenantId }, select: { title: true, description: true } })) {
+      for (const x of [c.title, c.description ?? ""]) if (x.trim().length >= 4 && x.trim() !== opts.title) old.add(x.trim());
+    }
+  }
+  const oldList = [...old].sort((x, y) => y.length - x.length);
+  for (let i = 0; i < ids.length; i += batch) {
+    addCounts(out, await maskCardsInTx(tx, tenantId, scope(ids.slice(i, i + batch)), opts.mask ?? ((x) => x), opts.title, batch, oldList));
+  }
+  return out;
 }
 
 /**
  * CRM C5.4-B ▸ L5-M2: การ์ดที่โมดูลอื่นเปิดจาก "รอบการทำงาน" (เช่น กฎอัตโนมัติ CRM `crm-rule:<runId>:<i>`) ที่เกิดก่อนมีลิงก์ผูกผู้ติดต่อ —
  * หาด้วย prefix ของ sourceKey (ผู้เรียกให้ชุด prefix ที่รู้ว่าเป็นของคนที่ถูกลบ) แล้ว **ปิดคำระบุตัว** แบบเดียวกับการ์ดที่ผูกลิงก์
  * (หัว · รายละเอียด · ความเห็น · ประวัติการ์ด) · prefix ต้องยาวพอ (≥ 12) กันกวาดทั้งร้าน · ใน tx ของผู้เรียก ◂
+ * C5.5-fix9: prefix ยาวเท่าไรก็ได้ (ทีละ 500 prefix ต่อคำสั่ง · การ์ดทีละ `batch` · ไม่ตัดที่ 2,000)
  */
 export async function maskCardsBySourcePrefixInTx(
   tx: Prisma.TransactionClient,
   tenantId: string,
   prefixes: readonly string[],
   mask: (text: string) => string,
-): Promise<{ cards: number; comments: number; activities: number }> {
-  const list = [...new Set(prefixes.filter((x) => typeof x === "string" && x.length >= 12))].slice(0, MASK_CARDS_MAX);
-  if (!tenantId || list.length === 0) return { cards: 0, comments: 0, activities: 0 };
-  return maskCardsInTx(tx, tenantId, { OR: list.map((p) => ({ sourceKey: { startsWith: p } })) }, mask, null);
+  opts?: MaskBatchOpts | null,
+): Promise<MaskCounts> {
+  const out: MaskCounts = { cards: 0, comments: 0, activities: 0 };
+  const list = [...new Set(prefixes.filter((x) => typeof x === "string" && x.length >= 12))];
+  if (!tenantId || list.length === 0) return out;
+  const batch = batchOf(opts);
+  for (let i = 0; i < list.length; i += MASK_PREFIX_CHUNK) {
+    const part = list.slice(i, i + MASK_PREFIX_CHUNK);
+    addCounts(out, await maskCardsInTx(tx, tenantId, { OR: part.map((p) => ({ sourceKey: { startsWith: p } })) }, mask, null, batch));
+  }
+  return out;
+}
+
+/** แถวของตารางลูก (ความเห็น/ประวัติ) ของชุดการ์ดหนึ่งหน้า — ทีละ `batch` แถวตาม id */
+async function eachChildPage<R extends { id: string }>(read: (cursor: string | null, take: number) => Promise<R[]>, batch: number, fn: (rows: R[]) => Promise<void>): Promise<void> {
+  for (let cursor: string | null = null; ; ) {
+    const page = await read(cursor, batch);
+    if (page.length) await fn(page);
+    if (page.length < batch) return;
+    cursor = page[page.length - 1]!.id;
+  }
+}
+
+// C5.5-fix11: ตัวเขียนแบบชุดของตัวปิดคำ — หนึ่งคำสั่งต่อ ≤ 1,000 แถว (unnest ของพารามิเตอร์อาร์เรย์ · ไม่มี SQL จากข้อมูล) ·
+//   KanbanCard.updatedAt ตั้งในคำสั่ง (Prisma `update` เดิมตั้งให้) · ความเห็น/ประวัติไม่มี @updatedAt
+const MASK_WRITE_PAGE = 1_000;
+const nowSql = () => Prisma.sql`(${new Date().toISOString()}::timestamptz AT TIME ZONE 'UTC')`;
+async function writeCardsInTx(tx: Prisma.TransactionClient, tenantId: string, rows: readonly { id: string; title: string; description: string | null }[]): Promise<number> {
+  let n = 0;
+  for (let i = 0; i < rows.length; i += MASK_WRITE_PAGE) {
+    const p = rows.slice(i, i + MASK_WRITE_PAGE);
+    n += Number(
+      await tx.$executeRaw`UPDATE "KanbanCard" c SET "title" = v."title", "description" = v."description", "updatedAt" = ${nowSql()}
+        FROM unnest(${p.map((r) => r.id)}::text[], ${p.map((r) => r.title)}::text[], ${p.map((r) => r.description)}::text[]) AS v("id", "title", "description")
+        WHERE c."id" = v."id" AND c."tenantId" = ${tenantId}`,
+    );
+  }
+  return n;
+}
+async function writeCommentsInTx(tx: Prisma.TransactionClient, tenantId: string, rows: readonly { id: string; body: string }[]): Promise<number> {
+  let n = 0;
+  for (let i = 0; i < rows.length; i += MASK_WRITE_PAGE) {
+    const p = rows.slice(i, i + MASK_WRITE_PAGE);
+    n += Number(
+      await tx.$executeRaw`UPDATE "KanbanComment" c SET "body" = v."body"
+        FROM unnest(${p.map((r) => r.id)}::text[], ${p.map((r) => r.body)}::text[]) AS v("id", "body")
+        WHERE c."id" = v."id" AND c."tenantId" = ${tenantId}`,
+    );
+  }
+  return n;
+}
+async function writeActivitiesInTx(tx: Prisma.TransactionClient, tenantId: string, rows: readonly { id: string; data: unknown }[]): Promise<number> {
+  let n = 0;
+  for (let i = 0; i < rows.length; i += MASK_WRITE_PAGE) {
+    const p = rows.slice(i, i + MASK_WRITE_PAGE);
+    n += Number(
+      await tx.$executeRaw`UPDATE "KanbanActivity" a SET "data" = v."data"
+        FROM unnest(${p.map((r) => r.id)}::text[], ${p.map((r) => JSON.stringify(r.data ?? null))}::jsonb[]) AS v("id", "data")
+        WHERE a."id" = v."id" AND a."tenantId" = ${tenantId}`,
+    );
+  }
+  return n;
 }
 
 async function maskCardsInTx(
@@ -504,45 +629,67 @@ async function maskCardsInTx(
   where: Prisma.KanbanCardWhereInput,
   mask: (text: string) => string,
   redactTitle: string | null,
-): Promise<{ cards: number; comments: number; activities: number }> {
-  const out = { cards: 0, comments: 0, activities: 0 };
-  const cards = await tx.kanbanCard.findMany({ where: { ...where, tenantId }, select: { id: true, title: true, description: true }, take: MASK_CARDS_MAX });
-  if (cards.length === 0) return out;
-  const cardIds = cards.map((c) => c.id);
+  batch: number,
+  oldTexts?: readonly string[],
+): Promise<MaskCounts> {
+  const out: MaskCounts = { cards: 0, comments: 0, activities: 0 };
   // หัว/รายละเอียดเดิมของการ์ดที่ถูกแทนด้วยป้าย (ยาว ≥ 4) ถูกแทนในความเห็น/ประวัติด้วย — ประวัติ CARD_CREATED/UPDATED พกข้อความเดิม
-  const old = redactTitle === null ? [] : cards.flatMap((c) => [c.title, c.description ?? ""]).map((x) => x.trim()).filter((x) => x.length >= 4 && x !== redactTitle).sort((x, y) => y.length - x.length);
-  const text = (v: string): string => {
+  //   (ผู้เรียก redact ส่งชุดของทั้งรายการมาแล้ว · ไม่ส่ง = ชุดของหน้านี้)
+  const text = (old: readonly string[]) => (v: string): string => {
     let r = v;
     for (const o of old) if (r.includes(o)) r = r.split(o).join(redactTitle as string);
     return mask(r);
   };
-  const deep = (v: unknown): unknown => {
-    if (typeof v === "string") return text(v);
-    if (Array.isArray(v)) return v.map(deep);
-    if (v && typeof v === "object") return Object.fromEntries(Object.entries(v as Record<string, unknown>).map(([k, x]) => [k, deep(x)]));
-    return v;
+  const deep = (t: (v: string) => string) => {
+    const d = (v: unknown): unknown => {
+      if (typeof v === "string") return t(v);
+      if (Array.isArray(v)) return v.map(d);
+      if (v && typeof v === "object") return Object.fromEntries(Object.entries(v as Record<string, unknown>).map(([k, x]) => [k, d(x)]));
+      return v;
+    };
+    return d;
   };
-  for (const c of cards) {
-    const title = redactTitle ?? mask(c.title);
-    const description = redactTitle !== null ? null : c.description === null ? null : mask(c.description);
-    if (title !== c.title || description !== c.description) {
-      await tx.kanbanCard.update({ where: { id: c.id }, data: { title, description } });
-      out.cards += 1;
+  for (let cursor: string | null = null; ; ) {
+    const cards: { id: string; title: string; description: string | null }[] = await tx.kanbanCard.findMany({
+      where: { AND: [where, { tenantId }, ...(cursor ? [{ id: { gt: cursor } }] : [])] },
+      select: { id: true, title: true, description: true },
+      orderBy: { id: "asc" },
+      take: batch,
+    });
+    if (cards.length === 0) break;
+    const cardIds = cards.map((c) => c.id);
+    const old =
+      redactTitle === null
+        ? []
+        : (oldTexts ?? cards.flatMap((c) => [c.title, c.description ?? ""]).map((x) => x.trim()).filter((x) => x.length >= 4 && x !== redactTitle).sort((x, y) => y.length - x.length));
+    const t = text(old);
+    const dj = deep(t);
+    // C5.5-fix11 (review fix9-r2 R2-1): แถวที่เปลี่ยนของหน้านี้เขียนด้วยคำสั่งเดียวต่อตาราง (ค่าใหม่คำนวณใน JS เหมือนเดิม) — เดิมหนึ่งคำสั่งต่อแถว
+    const cardRows: { id: string; title: string; description: string | null }[] = [];
+    for (const c of cards) {
+      const title = redactTitle ?? mask(c.title);
+      const description = redactTitle !== null ? null : c.description === null ? null : mask(c.description);
+      if (title !== c.title || description !== c.description) cardRows.push({ id: c.id, title, description });
     }
-  }
-  for (const r of await tx.kanbanComment.findMany({ where: { tenantId, cardId: { in: cardIds } }, select: { id: true, body: true } })) {
-    const body = text(r.body);
-    if (body !== r.body) {
-      await tx.kanbanComment.update({ where: { id: r.id }, data: { body } });
-      out.comments += 1;
-    }
-  }
-  for (const r of await tx.kanbanActivity.findMany({ where: { tenantId, cardId: { in: cardIds } }, select: { id: true, data: true } })) {
-    const data = deep(r.data);
-    if (JSON.stringify(data) !== JSON.stringify(r.data)) {
-      await tx.kanbanActivity.update({ where: { id: r.id }, data: { data: data as Prisma.InputJsonValue } });
-      out.activities += 1;
-    }
+    out.cards += await writeCardsInTx(tx, tenantId, cardRows);
+    await eachChildPage(
+      (cur, take) => tx.kanbanComment.findMany({ where: { tenantId, cardId: { in: cardIds }, ...(cur ? { id: { gt: cur } } : {}) }, select: { id: true, body: true }, orderBy: { id: "asc" }, take }),
+      batch,
+      async (rows) => {
+        const changed = rows.map((r) => ({ id: r.id, body: t(r.body), was: r.body })).filter((r) => r.body !== r.was);
+        out.comments += await writeCommentsInTx(tx, tenantId, changed);
+      },
+    );
+    await eachChildPage(
+      (cur, take) => tx.kanbanActivity.findMany({ where: { tenantId, cardId: { in: cardIds }, ...(cur ? { id: { gt: cur } } : {}) }, select: { id: true, data: true }, orderBy: { id: "asc" }, take }),
+      batch,
+      async (rows) => {
+        const changed = rows.map((r) => ({ id: r.id, data: dj(r.data), was: r.data })).filter((r) => JSON.stringify(r.data) !== JSON.stringify(r.was));
+        out.activities += await writeActivitiesInTx(tx, tenantId, changed);
+      },
+    );
+    if (cards.length < batch) break;
+    cursor = cards[cards.length - 1]!.id;
   }
   return out;
 }

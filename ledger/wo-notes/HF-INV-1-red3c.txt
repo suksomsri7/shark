@@ -1,0 +1,34 @@
+# HF-INV-1 round 3c — RED on the pre-fix code (7e9d70fc) · QC4 · 1 Oct 2026 · runs 17:48Z–17:53Z
+# oracle files = round-3c oracles (working tree) · src = 7e9d70fc unchanged
+# green-on-RED by design: AT-22.13 (refund walks movements) · RP-5.* C5 fixture/actor (product already mirrors the member module) · RP-7.2/7.3 (numbers + Thai labels were safe) · RP-8.1 (OWNER) · RP-8.5 (delete never returned config) · RP-9.6 (unexpected errors throw) · RP-9.7 (positive)
+
+===== qc-hf-inventory-atomic =====
+  ❌ [AT-22.10] [X5] ∥ [Y3] ใน visit เดียว (X รอล็อกอยู่ขณะ Y จบ) ⇒ ทั้งคู่สำเร็จ · dispenseJson บันทึกครบ 2 รายการ (X และ Y) · ตัด X 95 / Y 97 — X ok · Y ok · json [X] · X/Y 95/97
+  ❌ [AT-22.11] หลังจากนั้นจ่าย [Y3] จริงอีกครั้ง ⇒ ตัดจริง: Y 94 · OUT ของ Y 2 แถว · dispenseJson 3 (เดิม: รายการ Y หาย ⇒ ใช้คีย์ซ้ำ ⇒ ตอบ ok แต่ไม่ตัด) — ok · Y 97 · OUT Y 1 · json 2
+  ❌ [AT-22.12] จ่ายยา 5 ตัว (คนละตัว ตัวละคำขอ) พร้อมกันใน visit เดียว ⇒ สำเร็จ 5 · dispenseJson 5 รายการ (ครบทุกตัว) · ตัด 5 ครั้ง (ทุกตัว 95) — ok 5/5  · json 1 · OUT 5 · 95/95/95/95/95
+ผ่าน 140/143
+FINDINGS: CRITICAL 3 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":143,"passed":140,"findings":["AT-22.10","AT-22.11","AT-22.12"]}
+
+===== qc-hf-inventory-authz =====
+  ❌ [HF-12.5] R3c: STAFF ไม่มีสิทธิ์รับของ (inventory.po.receive) → คืน { status:"error", message ไทย } ไม่ throw · ไม่รับของ — exp error ไทย/ไม่รับ | act threw ForbiddenError: ไม่มีสิทธิ์: inventory.po.receive · IN 0
+  ❌ [HF-12.6] R3c: systemId เป็นระบบ POS (ไม่ใช่คลังของร้าน) → คืน { status:"error", message ไทย } ไม่ throw · ไม่รับของ — exp error ไทย/ไม่รับ | act threw Error: ไม่พบระบบสินค้า/บริการนี้ในกิจการ — รีเฟรชหน้าแล้วลองใหม่อีกครั้ง · IN 0
+ผ่าน 116/118
+FINDINGS: CRITICAL 0 · MAJOR 2 · MINOR 0
+JSON_SUMMARY {"total":118,"passed":116,"findings":["HF-12.5","HF-12.6"]}
+
+===== qc-hf-reports-authz =====
+  ❌ [RP-7.1] CSV รายงาน (OWNER): ชื่อ/เบอร์ที่ขึ้นต้นด้วย = + - @ tab CR ถูกกันสูตรตรงกับ exportMembers ทุกตัวอักษร · ไม่มีช่องไหนเป็นสูตร — exp 0 ต่าง · 0 สูตร | act ไม่ throw · 7 แถว · 1 ชื่อ "=HYPERLINK(\"http://evil.example/x\",\"คลิก\")" ≠ export "'=HYPERLINK(\"http://evil.example/x\",\"คลิก\")" | 1 เบอร์ "+66811111111" ≠ export "'+66811111111" | 1 ชื่อ ≠ neutralizeFormula · สูตร ["=2+2","\t=1+1","@SUM(A1:A2)","-2+3+cmd|' /C calc'!A0"]
+  ❌ [RP-7.4] CSV แบบจัดกลุ่มตามชื่อ: ค่ากลุ่มถูกกันสูตรเหมือนกัน — exp 0 สูตร | act ไม่ throw · 7 แถว · สูตร 6 · ตรง false
+  ❌ [RP-8.2] STAFF ทุกสาขา + member.customer.read (เบอร์ปิดบัง) → รายการรายงานที่บันทึกไว้ = เฉพาะที่รันได้ตอนนี้ [S2] · ไม่เห็นค่าตัวกรองเบอร์ของคนอื่น — exp S2 | act ไม่ throw · [S5,S4,S3,S2,S1] · leak true
+  ❌ [RP-8.3] STAFF สาขา B1 + member.customer.export + pos.sale.create → รายการรายงานที่บันทึกไว้ = เฉพาะที่รันได้ตอนนี้ [S1,S2,S4,S5] — exp S1,S2,S4,S5 | act ไม่ throw · [S5,S4,S3,S2,S1] · leak false
+  ❌ [RP-8.4] STAFF มีแค่ reports.report.run → รายการรายงานที่บันทึกไว้ = เฉพาะที่รันได้ตอนนี้ [] · ไม่เห็นค่าตัวกรองเบอร์ของคนอื่น — exp  | act ไม่ throw · [S5,S4,S3,S2,S1] · leak true
+  ❌ [RP-9.1] จอ/groupBy: การปฏิเสธที่คาดไว้ 7 แบบ (สิทธิ์ · คอลัมน์ปิดบัง · ตรวจค่า) → คืน { error } ไทย ไม่ throw · ไม่มีแถว — exp data ×7 | act สิทธิ์: ไม่มีคีย์สมาชิก: throw Error: บัญชีนี้ยังไม่มีสิทธิ์ดูข้อมูลสมาชิก — ขอสิ | สิทธิ์: ไม่มี reports.report.run: throw ForbiddenError: ไม่มีสิทธิ์: reports.report.run | คอลัมน์ปิดบัง: กรองด้วยเบอร์: throw Error: บัญชีนี้เห็น "เบอร์โทร" แบบปิดบังบางส่วน —  | คอลัมน์ปิดบัง: groupBy เบอร์: throw E
+  ❌ [RP-9.2] CSV: การปฏิเสธ (สิทธิ์ · คอลัมน์ปิดบัง · ตรวจค่า) → คืน { error } ไทย ไม่ throw · ไม่มีข้อความ CSV — exp data ×3 | act สิทธิ์: throw Error: บัญชีนี้ยังไม่มีสิทธิ์ดูข้อมูลสมาชิก — ขอสิ | คอลัมน์ปิดบัง: throw Error: บัญชีนี้เห็น "เบอร์โทร" แบบปิดบังบางส่วน —  | ตรวจค่า: throw Error: รูปแบบตัวกรองไม่ถูกต้อง — ตัวกรองแต่ละข้อต้
+  ❌ [RP-9.3] runReport: metric ไม่ใช่ข้อความ (5 · {} · ["count"]) และตัวกรองไม่มี op → ข้อความไทย (ไม่ใช่ TypeError · ไม่มี undefined) · metric null = count — exp ไทย ×4 | act TypeError: metric.startsWith is not a fu | TypeError: metric.startsWith is not a fu | TypeError: metric.startsWith is not a fu | ไม่ throw · noOp Error: เงื่อนไข "undefined" ไม่รองรับ
+  ❌ [RP-9.4] action: metric 5 · ตัวกรองไม่มี op → คืน { error } ไทยเป็นข้อมูล — exp data ×2 | act throw TypeError: metric.startsWith is not a function | throw Error: เงื่อนไข "undefined" ไม่รองรับ
+  ❌ [RP-9.5] บันทึก/ลบรายงาน: ไม่มีสิทธิ์ reports.report.save · ชื่อว่าง → คืน { error } ไทย ไม่ throw · ไม่มีอะไรถูกบันทึก — exp data ×3 · 0 | act throw ForbiddenError: ไม่มีสิทธิ์: reports.report.save | throw Error: กรุณาตั้งชื่อรายงาน | throw ForbiddenError: ไม่มีสิทธิ์: reports.report.save · saved 0
+  ❌ [RP-9.8] [static] หน้าจอ ReportBuilder อ่าน .error จากผลของ action (จอ · CSV · บันทึก · ลบ) แทนการรอ throw · ไม่ setResult ผลดิบตรง ๆ — exp อ่าน .error ≥4 | act .error ×0 · setResult(await …) true
+ผ่าน 68/79
+FINDINGS: CRITICAL 5 · MAJOR 6 · MINOR 0
+JSON_SUMMARY {"total":79,"passed":68,"findings":["RP-7.1","RP-7.4","RP-8.2","RP-8.3","RP-8.4","RP-9.1","RP-9.2","RP-9.3","RP-9.4","RP-9.5","RP-9.8"]}

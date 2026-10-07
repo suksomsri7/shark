@@ -1,0 +1,494 @@
+<style>
+.rail{width:56px;flex:none;border-right:1px solid var(--line);background:var(--sf2);
+  padding:10px 0;display:flex;flex-direction:column;align-items:center;gap:5px;color:var(--mut2)}
+.rail .ri{width:36px;height:36px;border-radius:9px;display:grid;place-items:center}
+.rail .ri.on{background:var(--sf);border:1px solid var(--line);color:var(--ink)}
+.top .biz{display:inline-flex;align-items:center;gap:12px;height:32px;padding:0 10px;border:1px solid var(--line);
+  border-radius:8px;font-size:13px;color:var(--ink2)}
+.top .dot{width:8px;height:8px;border-radius:50%;background:var(--ink);display:inline-block}
+.top .st{display:inline-flex;align-items:center;gap:13px;font-size:12.5px;color:var(--mut)}
+.top .who{display:inline-flex;align-items:center;gap:13px;font-size:12.5px;color:var(--ink2)}
+.amenu .am .pill{height:18px;min-width:18px;font-size:10.5px}
+</style>
+<style>
+.snav{width:240px;flex:none;border-right:1px solid var(--line);padding:14px 11px;background:var(--sf2)}
+.snav .acc-i{border-radius:0 7px 7px 0}
+.smain{flex:1;min-width:0;padding:22px 32px 40px;display:flex;flex-direction:column;gap:32px}
+.shd{display:flex;align-items:flex-start;gap:20px}
+.shd h1{font-size:26px;font-weight:700;letter-spacing:-.02em;line-height:1.25}
+.shd .d{font-size:13px;color:var(--mut);margin-top:4px}
+.shd .sp{flex:1}
+.cols{display:flex;gap:32px;align-items:flex-start}
+.cols .cl{flex:1;min-width:0;display:flex;flex-direction:column;gap:28px}
+.cols .cr{flex:none;display:flex;flex-direction:column;gap:28px}
+.cht{display:flex;align-items:center;gap:12px;margin-bottom:20px}
+.cht h2{font-size:17px;font-weight:700;letter-spacing:-.01em}
+.cht .sp{flex:1}
+.fgrid{display:grid;grid-template-columns:1fr 1fr;gap:18px 22px}
+.fl{display:flex;flex-direction:column;gap:8px;min-width:0}
+.fl.w2{grid-column:span 2}
+.fl>label{font-size:13px;font-weight:600;color:var(--ink2)}
+.fl .inp{width:100%}
+.inp .vv{color:var(--ink)}
+.ta{min-height:76px;border:1px solid var(--line);border-radius:13px;padding:13px 16px;font-size:15px;color:var(--ink);background:var(--sf)}
+.logo{display:flex;align-items:center;gap:18px}
+.logo .lg{width:76px;height:76px;border-radius:14px;border:1px solid var(--line);display:grid;place-items:center;background:var(--sf);flex:none}
+.logo .lg b{width:50px;height:50px;border-radius:50%;border:3px solid var(--ink);display:grid;place-items:center;font-size:20px;font-weight:700}
+.logo .t{flex:1;min-width:0}
+.logo .t b{display:block;font-weight:600}
+.logo .t small{display:block;color:var(--mut)}
+.trow{display:flex;align-items:center;gap:16px;padding:14px 0;border-top:1px solid var(--line);font-size:15px}
+.trow:first-child{border-top:0}
+.trow .t{flex:1;min-width:0}
+.trow .t b{display:block;font-weight:600}
+.trow .t small{display:block;color:var(--mut)}
+.ro{background:var(--sf2);border:1px solid var(--line);border-radius:14px;padding:16px 20px}
+.ro .h{display:flex;align-items:center;gap:10px;font-weight:700;margin-bottom:10px}
+.ro .h .lnk{margin-left:auto;font-size:14px}
+.ro .kv{font-size:14.5px;border-color:var(--line)}
+.ro .kv .k{width:170px}
+.taxro .kv{flex-direction:column;gap:2px}.taxro .kv .k{width:auto}
+.code{font-family:ui-monospace,Menlo,monospace;font-size:14px;color:var(--ink);font-weight:600}
+.smp{display:inline-flex;align-items:center;gap:8px;height:34px;padding:0 12px;border-radius:9px;background:var(--acc-bg);color:var(--acc);font-weight:700;font-variant-numeric:tabular-nums}
+.ckr{display:flex;align-items:center;gap:10px;font-size:14.5px}
+.ckr .cbx{width:20px;height:20px;border-radius:6px}
+.ckr .cbx.on::after{left:6px;top:2px;width:5px;height:10px}
+.devr{display:flex;align-items:center;gap:14px;padding:12px 0;border-top:1px solid var(--line);font-size:14.5px}
+.devr:first-child{border-top:0}
+.devr .t{flex:1}
+.prv{position:relative}
+.prv .lb{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;color:var(--ink2);margin-bottom:12px}
+.prv .lb .sp{flex:1}
+.prv .paper{background:var(--stage);border-radius:18px;padding:22px;display:flex;justify-content:center}
+.rcpt{font-size:12.5px;width:320px}
+.rcpt .t2{font-size:15px}
+.rcpt .mu2{color:var(--mut)}
+.rcpt .r.g{font-size:15px;font-weight:700}
+.rcpt .sub3{padding-left:10px;color:var(--mut)}
+.rcpt .rlg{width:44px;height:44px;border-radius:50%;border:2.5px solid var(--ink);margin:0 auto 6px;display:grid;place-items:center;font-weight:700;font-size:17px}
+.rcpt .hl{background:var(--acc-bg);outline:1.5px dashed var(--acc);outline-offset:2px;border-radius:3px}
+.rqr{width:78px;height:78px;margin:8px auto 4px;border:1px solid var(--line);border-radius:6px;background:
+ repeating-linear-gradient(90deg,var(--ink) 0 4px,transparent 4px 8px),repeating-linear-gradient(0deg,var(--ink) 0 4px,var(--sf) 4px 8px);
+ background-blend-mode:multiply}
+/* B */
+.dev{border:1px solid var(--line);border-radius:18px;padding:22px 24px;display:flex;flex-direction:column;gap:14px;background:var(--sf)}
+.dev.sel{border-color:var(--acc);box-shadow:inset 0 0 0 1px var(--acc)}
+.dev .h{display:flex;align-items:center;gap:14px}
+.dev .h .ic{width:44px;height:44px;border-radius:12px;border:1px solid var(--line);background:var(--sf2);display:grid;place-items:center;color:var(--ink2);flex:none}
+.dev .h .t{flex:1;min-width:0}
+.dev .h .t b{display:block;font-size:16.5px;font-weight:700}
+.dev .h .t small{display:block;color:var(--mut)}
+.dev .on2{display:inline-flex;align-items:center;gap:7px;font-size:13.5px;font-weight:700}
+.dev .on2 i{width:9px;height:9px;border-radius:50%;background:var(--ink);display:inline-block}
+.dev .on2.off{color:var(--mut);font-weight:400}.dev .on2.off i{background:var(--line2)}
+.dev .ft{display:flex;flex-wrap:wrap;gap:10px}
+.pk{display:inline-flex;align-items:center;gap:7px;height:34px;padding:0 12px;border:1px solid var(--line);border-radius:10px;font-size:14px;color:var(--ink2);background:var(--sf2);white-space:nowrap}
+.pk .ok{color:var(--ink)}
+.pk.mu{color:var(--mut)}
+.dgrid{display:grid;grid-template-columns:1fr;gap:22px}
+.addd{border:1.5px dashed var(--line2);border-radius:18px;display:flex;align-items:center;justify-content:center;gap:10px;min-height:76px;color:var(--ink2);font-weight:600;background:var(--sf2);}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:13px;padding:4px;gap:4px;background:var(--sf2)}
+.seg span{height:40px;padding:0 18px;border-radius:10px;display:inline-flex;align-items:center;gap:7px;font-size:14.5px;color:var(--ink2);white-space:nowrap}
+.seg span.on{background:var(--ink);color:var(--sf);font-weight:700}
+.fsec{display:flex;flex-direction:column;gap:10px;padding:18px 0;border-top:1px solid var(--line)}
+.fsec>label{font-size:13px;font-weight:600;color:var(--ink2)}
+.pacts{display:flex;gap:12px;align-items:center;margin-top:8px}
+.pacts .sp{flex:1}
+.btn.dgx{color:var(--dg);border-color:var(--line)}
+/* C */
+.mx{width:100%;border-collapse:separate;border-spacing:0;font-size:14.5px}
+.mx th{text-align:center;font-size:13px;font-weight:700;color:var(--ink2);padding:14px 12px;border-bottom:1px solid var(--line);background:var(--sf2)}
+.mx th:first-child{text-align:left}
+.mx th small{display:block;font-weight:400;color:var(--mut)}
+.mx td{padding:13px 12px;border-bottom:1px solid var(--line);text-align:center;font-variant-numeric:tabular-nums}
+.mx td:first-child{text-align:left;color:var(--ink)}
+.mx td:first-child small{display:block;color:var(--mut)}
+.mx tr:last-child td{border-bottom:0}
+.mx .y{display:inline-grid;place-items:center;width:28px;height:28px;border-radius:8px;background:var(--ink);color:var(--sf)}
+.mx .y.ap{background:var(--acc-bg);color:var(--acc)}
+.mx .n{color:var(--mut2);font-size:17px}
+.mx .v{font-weight:700}
+.mx td.own{background:var(--sf2)}
+.lgd2{display:flex;gap:22px;align-items:center;font-size:13.5px;color:var(--ink2)}
+.lgd2 .y{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:7px;background:var(--ink);color:var(--sf);margin-right:6px;vertical-align:-5px}
+.lgd2 .y.ap{background:var(--acc-bg);color:var(--acc)}
+.pol .trow .k{display:flex;align-items:center;gap:10px}
+.pol .arr{color:var(--mut)}
+.stf .trow .av{width:40px;height:40px;border-radius:12px;font-size:15px}
+.stf .chip{flex:none}
+</style>
+<div class="wrap">
+<div>
+<p class="cap">17A · ตั้งค่า: ใบเสร็จและภาษี <span>— หัว/ท้ายใบเสร็จ · ภาษีอ่านจากระบบบัญชี · เลขเครื่อง POS · เลขรันเอกสาร · e-Tax · ตัวอย่างสดด้านขวา</span></p>
+<div class="frame" style="height:950px">
+
+ <div class="top"><svg class="i lg"><use href="#i-menu"/></svg><span class="brand">SHARK</span>
+  <span class="biz"><svg class="i sm"><use href="#i-shop"/></svg>บ้านกาแฟสวนผึ้ง · สาขาหัวหิน<svg class="i xs"><use href="#i-cv"/></svg></span>
+  <span class="sp"></span>
+  <span class="st"><i class="dot"></i>ออนไลน์ · พ. 30 ก.ย. 2569</span>
+  <span class="chip"><svg class="i xs"><use href="#i-clock"/></svg>กะ #12 · เปิด 09:02 · เคาน์เตอร์ 1</span>
+  <span class="who"><span class="av">ก</span>พี่เก่ง · ผู้จัดการ</span>
+ </div>
+
+ <div class="appbody" style="flex:1;min-height:0">
+  <div class="rail">
+   <div class="ri"><svg class="i sm"><use href="#i-home"/></svg></div>
+   <div class="ri on"><svg class="i sm"><use href="#i-shop"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-users"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-box"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-book"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-grid"/></svg></div>
+   <span style="flex:1"></span>
+   <div class="ri"><svg class="i sm"><use href="#i-gear"/></svg></div>
+  </div>
+
+  <div class="mod">
+   <div class="amenu">
+    <div class="am"><svg class="i sm"><use href="#i-cash"/></svg>หน้าขาย</div>
+    <div class="am"><svg class="i sm"><use href="#i-grid"/></svg>โต๊ะ</div>
+    <div class="am"><svg class="i sm"><use href="#i-truck"/></svg>ออเดอร์ออนไลน์<span class="pill">3</span></div>
+    <div class="am"><svg class="i sm"><use href="#i-doc"/></svg>บิลวันนี้</div>
+    <div class="am"><svg class="i sm"><use href="#i-clock"/></svg>กะ</div>
+    <div class="am"><svg class="i sm"><use href="#i-tag"/></svg>สินค้า</div>
+    <div class="am"><svg class="i sm"><use href="#i-chart"/></svg>รายงาน</div>
+    <div class="am on"><svg class="i sm"><use href="#i-gear"/></svg>ตั้งค่า</div>
+   </div>
+
+   <div style="display:flex;flex:1;min-height:0">
+    <div class="snav">
+     <div class="dsec" style="color:var(--mut)">ตั้งค่าหน้าขาย</div>
+     <div class="acc-i"><svg class="i sm"><use href="#i-gear"/></svg>ทั่วไป</div>
+     <div class="acc-i on"><svg class="i sm"><use href="#i-doc"/></svg>ใบเสร็จและภาษี</div>
+     <div class="acc-i"><svg class="i sm"><use href="#i-wallet"/></svg>วิธีรับเงิน</div>
+     <div class="acc-i"><svg class="i sm"><use href="#i-print"/></svg>เครื่องและเครื่องพิมพ์</div>
+     <div class="acc-i"><svg class="i sm"><use href="#i-users"/></svg>พนักงานและสิทธิ์</div>
+     <div class="acc-i"><svg class="i sm"><use href="#i-link"/></svg>การเชื่อมต่อระบบ SHARK</div>
+     <div class="acc-i"><svg class="i sm"><use href="#i-truck"/></svg>ช่องทางขายภายนอก</div>
+     <div class="acc-i"><svg class="i sm"><use href="#i-swap"/></svg>ออฟไลน์และการซิงก์</div>
+     <div class="ddsep" style="margin:12px 9px"></div>
+     <div class="sub" style="padding:0 11px;line-height:1.55">ตั้งค่าเป็นรายสาขา — สาขาหัวหิน · คัดลอกไปสาขาสวนผึ้งได้จากเมนู “ทั่วไป”</div>
+    </div>
+
+    <div class="smain">
+     <div class="shd">
+      <div><h1>ใบเสร็จและภาษี</h1><div class="d">หน้าตาใบเสร็จ · เลขเครื่อง · เลขรันเอกสาร — ข้อมูลภาษีดึงจากระบบบัญชี ไม่ต้องกรอกซ้ำ</div></div>
+      <span class="sp"></span><div class="btn gh sm"><svg class="i sm"><use href="#i-print"/></svg>พิมพ์ตัวอย่าง</div><div class="btn pri sm">บันทึก</div>
+     </div>
+     <div class="cols">
+      <div class="cl">
+       <div class="card">
+        <div class="cht"><svg class="i"><use href="#i-doc"/></svg><h2>หัวใบเสร็จ</h2></div>
+        <div class="logo" style="margin-bottom:20px"><div class="lg"><b>บ</b></div><div class="t"><b>โลโก้ขาวดำ</b><small>PNG พื้นขาว กว้าง 384 px ขึ้นไป · ระบบแปลงเป็นขาวดำให้เครื่องพิมพ์ความร้อน</small></div><div class="btn gh sm"><svg class="i sm"><use href="#i-upload"/></svg>เปลี่ยนรูป</div></div>
+        <div class="fgrid">
+         <div class="fl"><label>ชื่อร้าน</label><div class="inp"><span class="vv">บ้านกาแฟสวนผึ้ง</span></div></div>
+         <div class="fl"><label>โทร</label><div class="inp"><span class="vv">032-512-345</span></div></div>
+         <div class="fl w2"><label>ที่อยู่</label><div class="inp"><span class="vv">88/8 ถ.เพชรเกษม ต.หัวหิน อ.หัวหิน จ.ประจวบคีรีขันธ์ 77110</span></div></div>
+        </div>
+       </div>
+
+       <div class="card">
+        <div class="cht"><svg class="i"><use href="#i-list"/></svg><h2>ท้ายใบเสร็จ</h2></div>
+        <div class="ta">ขอบคุณที่อุดหนุนค่ะ</div>
+        <div style="margin-top:10px">
+         <div class="trow"><span class="t"><b>แสดงแต้มคงเหลือ</b><small>เฉพาะบิลที่มีสมาชิก · ต้องเปิดระบบแต้มสะสม</small></span><span class="sw"></span></div>
+         <div class="trow"><span class="t"><b>QR ใบเสร็จออนไลน์</b><small>ลูกค้าสแกนขอใบกำกับเต็มรูป · ให้คะแนนรีวิว</small></span><span class="sw"></span></div>
+         <div class="trow"><span class="t"><b>แสดงชื่อแคชเชียร์</b></span><span class="sw"></span></div>
+        </div>
+       </div>
+
+       <div class="card">
+        <div class="cht"><svg class="i"><use href="#i-tag"/></svg><h2>เลขเครื่องและเลขเอกสาร</h2></div>
+        <div class="fl"><label>เลขเครื่อง POS ต่อเครื่อง</label>
+         <div style="border:1px solid var(--line);border-radius:14px;padding:4px 18px">
+          <div class="devr"><svg class="i sm mu"><use href="#i-print"/></svg><span class="t">เคาน์เตอร์ 1</span><span class="code">POS001</span></div>
+          <div class="devr"><svg class="i sm mu"><use href="#i-print"/></svg><span class="t">เคาน์เตอร์ 2</span><span class="code">POS002</span></div>
+         </div>
+        </div>
+        <div class="fgrid" style="margin-top:22px">
+         <div class="fl"><label>เลขรันใบเสร็จ</label><div class="inp"><span class="code">R{YY}{MM}-{000000}</span></div></div>
+         <div class="fl"><label>ตัวอย่างสด</label><div style="display:flex;align-items:center;gap:14px;height:48px"><span class="smp">R2610-000001</span><span class="sub">ใบแรกของ ต.ค.</span></div></div>
+         <div class="fl"><label>ใบลดหนี้</label><div class="inp"><span class="code">CN{YY}{MM}-{000000}</span></div></div>
+         <div class="fl"><label>&nbsp;</label><div style="display:flex;align-items:center;height:48px"><span class="ckr"><span class="cbx on"></span>รีเซ็ตเลขรันรายเดือน</span></div></div>
+        </div>
+        <div class="trow" style="margin-top:18px;border-top:1px solid var(--line);padding-top:18px"><span class="t"><b>e-Tax Invoice by Email</b><small>ส่งใบกำกับภาษีอิเล็กทรอนิกส์ทางอีเมลผ่านผู้ให้บริการที่สรรพากรรับรอง</small></span><span class="chip">รอผู้ให้บริการ</span><div class="btn gh sm">สมัคร</div></div>
+       </div>
+      </div>
+
+      <div class="cr prv" style="width:380px">
+       <div class="lb"><svg class="i sm"><use href="#i-eye"/></svg>ตัวอย่างสด · กระดาษ 80 มม.<span class="sp"></span><span class="sub" style="font-weight:400">เปลี่ยนตามที่แก้ทันที</span></div>
+       <div class="paper">
+        <div class="rcpt">
+         <div class="rlg">บ</div>
+         <div class="c b t2">บ้านกาแฟสวนผึ้ง</div>
+         <div class="c">สาขาหัวหิน · โทร 032-512-345</div>
+         <div class="c mu2">88/8 ถ.เพชรเกษม ต.หัวหิน อ.หัวหิน<br>จ.ประจวบคีรีขันธ์ 77110</div>
+         <div class="c mu2">เลขประจำตัวผู้เสียภาษี 0105561234567<br>สาขา 00001 · เลขเครื่อง POS001</div>
+         <hr>
+         <div class="c b">ใบกำกับภาษีอย่างย่อ</div>
+         <div class="r"><span>เลขที่</span><span class="hl">R2610-000001</span></div>
+         <div class="r"><span>วันที่</span><span>01/10/2569 08:05</span></div>
+         <div class="r"><span>แคชเชียร์</span><span>น้ำฝน</span></div>
+         <hr>
+         <div class="r"><span>ลาเต้ M</span><span>85.00</span></div>
+         <div class="sub3">นมโอ๊ต · หวานน้อย</div>
+         <div class="r"><span>ครัวซองต์อัลมอนด์</span><span>85.00</span></div>
+         <hr>
+         <div class="r g"><span>ยอดสุทธิ</span><span>฿170.00</span></div>
+         <div class="r mu2"><span>มูลค่าก่อน VAT</span><span>158.88</span></div>
+         <div class="r mu2"><span>VAT 7% รวมในราคา</span><span>11.12</span></div>
+         <hr>
+         <div class="r"><span>PromptPay</span><span>170.00</span></div>
+         <div class="r"><span>สมาชิก · คงเหลือ</span><span>819 แต้ม</span></div>
+         <hr>
+         <div class="rqr"></div>
+         <div class="c mu2">สแกนดูใบเสร็จออนไลน์ / ขอใบกำกับเต็มรูป</div>
+         <div class="c b" style="margin-top:6px">ขอบคุณที่อุดหนุนค่ะ</div>
+        </div>
+       </div>
+       <div class="card">
+        <div class="cht"><svg class="i"><use href="#i-pct"/></svg><h2>ภาษี</h2><span class="sp"></span><span class="chip"><svg class="i xs"><use href="#i-lock"/></svg>อ่านอย่างเดียว</span></div>
+        <div class="ro taxro">
+         <div class="kv"><span class="k">ภาษีมูลค่าเพิ่ม</span><span class="v">จด VAT · ราคารวม VAT</span></div>
+         <div class="kv"><span class="k">เลขผู้เสียภาษี</span><span class="v">0105561234567 · สาขา 00001</span></div>
+         <div class="kv" style="justify-content:flex-end"><span class="lnk" style="font-size:14px">ตั้งค่าที่ระบบบัญชี →</span></div>
+        </div>
+       </div>
+
+      </div>
+     </div>
+    </div>
+   </div>
+  </div>
+ </div>
+</div>
+</div>
+<div>
+<p class="cap">17B · ตั้งค่า: เครื่องและเครื่องพิมพ์ <span>— ทุกเครื่องของร้านในที่เดียว · เครื่องพิมพ์/ลิ้นชัก/จอลูกค้าต่อเครื่อง · ทดสอบพิมพ์ · เพิกถอนเครื่องที่หาย</span></p>
+<div class="frame" style="height:950px">
+
+ <div class="top"><svg class="i lg"><use href="#i-menu"/></svg><span class="brand">SHARK</span>
+  <span class="biz"><svg class="i sm"><use href="#i-shop"/></svg>บ้านกาแฟสวนผึ้ง · สาขาหัวหิน<svg class="i xs"><use href="#i-cv"/></svg></span>
+  <span class="sp"></span>
+  <span class="st"><i class="dot"></i>ออนไลน์ · พ. 30 ก.ย. 2569</span>
+  <span class="chip"><svg class="i xs"><use href="#i-clock"/></svg>กะ #12 · เปิด 09:02 · เคาน์เตอร์ 1</span>
+  <span class="who"><span class="av">ก</span>พี่เก่ง · ผู้จัดการ</span>
+ </div>
+
+ <div class="appbody" style="flex:1;min-height:0">
+  <div class="rail">
+   <div class="ri"><svg class="i sm"><use href="#i-home"/></svg></div>
+   <div class="ri on"><svg class="i sm"><use href="#i-shop"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-users"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-box"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-book"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-grid"/></svg></div>
+   <span style="flex:1"></span>
+   <div class="ri"><svg class="i sm"><use href="#i-gear"/></svg></div>
+  </div>
+
+  <div class="mod">
+   <div class="amenu">
+    <div class="am"><svg class="i sm"><use href="#i-cash"/></svg>หน้าขาย</div>
+    <div class="am"><svg class="i sm"><use href="#i-grid"/></svg>โต๊ะ</div>
+    <div class="am"><svg class="i sm"><use href="#i-truck"/></svg>ออเดอร์ออนไลน์<span class="pill">3</span></div>
+    <div class="am"><svg class="i sm"><use href="#i-doc"/></svg>บิลวันนี้</div>
+    <div class="am"><svg class="i sm"><use href="#i-clock"/></svg>กะ</div>
+    <div class="am"><svg class="i sm"><use href="#i-tag"/></svg>สินค้า</div>
+    <div class="am"><svg class="i sm"><use href="#i-chart"/></svg>รายงาน</div>
+    <div class="am on"><svg class="i sm"><use href="#i-gear"/></svg>ตั้งค่า</div>
+   </div>
+
+   <div style="display:flex;flex:1;min-height:0">
+    <div class="snav">
+     <div class="dsec" style="color:var(--mut)">ตั้งค่าหน้าขาย</div>
+     <div class="acc-i"><svg class="i sm"><use href="#i-gear"/></svg>ทั่วไป</div>
+     <div class="acc-i"><svg class="i sm"><use href="#i-doc"/></svg>ใบเสร็จและภาษี</div>
+     <div class="acc-i"><svg class="i sm"><use href="#i-wallet"/></svg>วิธีรับเงิน</div>
+     <div class="acc-i on"><svg class="i sm"><use href="#i-print"/></svg>เครื่องและเครื่องพิมพ์</div>
+     <div class="acc-i"><svg class="i sm"><use href="#i-users"/></svg>พนักงานและสิทธิ์</div>
+     <div class="acc-i"><svg class="i sm"><use href="#i-link"/></svg>การเชื่อมต่อระบบ SHARK</div>
+     <div class="acc-i"><svg class="i sm"><use href="#i-truck"/></svg>ช่องทางขายภายนอก</div>
+     <div class="acc-i"><svg class="i sm"><use href="#i-swap"/></svg>ออฟไลน์และการซิงก์</div>
+     <div class="ddsep" style="margin:12px 9px"></div>
+     <div class="sub" style="padding:0 11px;line-height:1.55">ตั้งค่าเป็นรายสาขา — สาขาหัวหิน · คัดลอกไปสาขาสวนผึ้งได้จากเมนู “ทั่วไป”</div>
+    </div>
+
+    <div class="smain">
+     <div class="shd">
+      <div><h1>เครื่องและเครื่องพิมพ์</h1><div class="d">ทุกเครื่องที่ลงทะเบียนเข้าร้าน · เครื่องพิมพ์ · ลิ้นชัก · จอลูกค้า — ตั้งค่าแยกรายเครื่อง</div></div>
+      <span class="sp"></span><div class="btn pri sm"><svg class="i sm"><use href="#i-plus"/></svg>ลงทะเบียนเครื่องนี้</div>
+     </div>
+     <div class="cols">
+      <div class="cl">
+       <div class="dgrid">
+        <div class="dev sel">
+         <div class="h"><span class="ic"><svg class="i"><use href="#i-cash"/></svg></span><span class="t"><b>เคาน์เตอร์ 1</b><small>POS001 · แท็บเล็ต Android</small></span><span class="on2"><i></i>ออนไลน์</span></div>
+         <div class="sub" style="font-size:13.5px">กะ #12 · น้ำฝน · เปิด 09:02</div>
+         <div class="ft">
+          <span class="pk"><svg class="i sm ok"><use href="#i-print"/></svg>Xprinter XP-80 Bluetooth<svg class="i xs ok"><use href="#i-check"/></svg></span>
+          <span class="pk"><svg class="i sm ok"><use href="#i-cash"/></svg>ลิ้นชัก<svg class="i xs ok"><use href="#i-check"/></svg></span>
+          <span class="pk"><svg class="i sm ok"><use href="#i-eye"/></svg>จอลูกค้า: แท็บเล็ตเก่า (เชื่อมอยู่)</span>
+         </div>
+        </div>
+        <div class="dev">
+         <div class="h"><span class="ic"><svg class="i"><use href="#i-cash"/></svg></span><span class="t"><b>เคาน์เตอร์ 2</b><small>POS002 · คอมพิวเตอร์ Windows</small></span><span class="on2"><i></i>ออนไลน์</span></div>
+         <div class="sub" style="font-size:13.5px">กะ #13 · แพร · เปิด 10:30</div>
+         <div class="ft">
+          <span class="pk"><svg class="i sm ok"><use href="#i-print"/></svg>เครื่องพิมพ์ USB<svg class="i xs ok"><use href="#i-check"/></svg></span>
+          <span class="pk mu"><svg class="i sm"><use href="#i-cash"/></svg>ไม่มีลิ้นชัก</span>
+         </div>
+        </div>
+        <div class="dev">
+         <div class="h"><span class="ic"><svg class="i"><use href="#i-list"/></svg></span><span class="t"><b>iPad ครัว</b><small>จอครัว · สถานีบาร์และครัว</small></span><span class="on2"><i></i>ออนไลน์</span></div>
+         <div class="sub" style="font-size:13.5px">ไม่ขาย · แสดงตั๋วครัวอย่างเดียว</div>
+         <div class="ft"><span class="pk mu"><svg class="i sm"><use href="#i-print"/></svg>ไม่มีเครื่องพิมพ์</span></div>
+        </div>
+        <div class="dev">
+         <div class="h"><span class="ic"><svg class="i"><use href="#i-chart"/></svg></span><span class="t"><b>มือถือ พี่เก่ง</b><small>ผู้จัดการ · iPhone</small></span><span class="on2 off"><i></i>ใช้ล่าสุด 08:47</span></div>
+         <div class="sub" style="font-size:13.5px">ดูรายงาน · อนุมัติคำขอ · ไม่ขาย</div>
+         <div class="ft"><span class="pk mu">ไม่มีอุปกรณ์ต่อพ่วง</span></div>
+        </div>
+        <div class="addd"><svg class="i"><use href="#i-plus"/></svg>ลงทะเบียนเครื่องนี้ — เปิด shark.in.th/pos บนเครื่องใหม่ แล้วสแกน QR ของร้าน</div>
+       </div>
+      </div>
+
+      <div class="cr" style="width:430px">
+       <div class="card">
+        <div class="cht" style="margin-bottom:6px"><svg class="i"><use href="#i-print"/></svg><h2>ตั้งค่า · เคาน์เตอร์ 1</h2><span class="sp"></span><span class="chip ink">POS001</span></div>
+        <div class="fsec" style="border-top:0">
+         <label>ขนาดกระดาษ</label>
+         <div class="seg"><span>58 มม.</span><span class="on">80 มม.</span></div>
+        </div>
+        <div class="fsec">
+         <label>วิธีเชื่อมเครื่องพิมพ์</label>
+         <div class="seg"><span class="on">Bluetooth</span><span>USB</span><span>เบราว์เซอร์</span></div>
+         <div class="sub" style="font-size:13px">Xprinter XP-80 · จับคู่แล้ว · แบตเครื่อง 100%</div>
+        </div>
+        <div class="fsec" style="gap:0;padding:6px 0">
+         <div class="trow"><span class="t"><b>พิมพ์อัตโนมัติหลังขาย</b></span><span class="sw"></span></div>
+         <div class="trow"><span class="t"><b>เปิดลิ้นชักเมื่อรับเงินสด</b></span><span class="sw"></span></div>
+         <div class="trow"><span class="t"><b>พิมพ์สำเนาให้ร้าน</b><small>ใบที่ 2 สำหรับเก็บกับลิ้นชัก</small></span><span class="sw off"></span></div>
+        </div>
+        <div class="fsec">
+         <label>ใบครัวพิมพ์ที่</label>
+         <div class="inp" style="width:100%"><svg class="i sm"><use href="#i-print"/></svg><span class="vv">เครื่องพิมพ์ครัว (LAN 192.168.1.50)</span><svg class="i xs cv"><use href="#i-cv"/></svg></div>
+        </div>
+        <div class="pacts">
+         <div class="btn gh"><svg class="i sm"><use href="#i-print"/></svg>ทดสอบพิมพ์</div>
+         <span class="sp"></span>
+         <div class="btn gh dgx">เพิกถอนเครื่อง</div>
+        </div>
+       </div>
+      </div>
+     </div>
+    </div>
+   </div>
+  </div>
+ </div>
+</div>
+</div>
+<div>
+<p class="cap">17C · ตั้งค่า: พนักงานและสิทธิ์ <span>— ตารางสิทธิ์ตามบทบาท · เพดานส่วนลด · งานเสี่ยงส่งระบบอนุมัติ · PIN เข้ากะ ดึงรายชื่อจาก HR</span></p>
+<div class="frame" style="height:950px">
+
+ <div class="top"><svg class="i lg"><use href="#i-menu"/></svg><span class="brand">SHARK</span>
+  <span class="biz"><svg class="i sm"><use href="#i-shop"/></svg>บ้านกาแฟสวนผึ้ง · สาขาหัวหิน<svg class="i xs"><use href="#i-cv"/></svg></span>
+  <span class="sp"></span>
+  <span class="st"><i class="dot"></i>ออนไลน์ · พ. 30 ก.ย. 2569</span>
+  <span class="chip"><svg class="i xs"><use href="#i-clock"/></svg>กะ #12 · เปิด 09:02 · เคาน์เตอร์ 1</span>
+  <span class="who"><span class="av">ก</span>พี่เก่ง · ผู้จัดการ</span>
+ </div>
+
+ <div class="appbody" style="flex:1;min-height:0">
+  <div class="rail">
+   <div class="ri"><svg class="i sm"><use href="#i-home"/></svg></div>
+   <div class="ri on"><svg class="i sm"><use href="#i-shop"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-users"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-box"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-book"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-grid"/></svg></div>
+   <span style="flex:1"></span>
+   <div class="ri"><svg class="i sm"><use href="#i-gear"/></svg></div>
+  </div>
+
+  <div class="mod">
+   <div class="amenu">
+    <div class="am"><svg class="i sm"><use href="#i-cash"/></svg>หน้าขาย</div>
+    <div class="am"><svg class="i sm"><use href="#i-grid"/></svg>โต๊ะ</div>
+    <div class="am"><svg class="i sm"><use href="#i-truck"/></svg>ออเดอร์ออนไลน์<span class="pill">3</span></div>
+    <div class="am"><svg class="i sm"><use href="#i-doc"/></svg>บิลวันนี้</div>
+    <div class="am"><svg class="i sm"><use href="#i-clock"/></svg>กะ</div>
+    <div class="am"><svg class="i sm"><use href="#i-tag"/></svg>สินค้า</div>
+    <div class="am"><svg class="i sm"><use href="#i-chart"/></svg>รายงาน</div>
+    <div class="am on"><svg class="i sm"><use href="#i-gear"/></svg>ตั้งค่า</div>
+   </div>
+
+   <div style="display:flex;flex:1;min-height:0">
+    <div class="snav">
+     <div class="dsec" style="color:var(--mut)">ตั้งค่าหน้าขาย</div>
+     <div class="acc-i"><svg class="i sm"><use href="#i-gear"/></svg>ทั่วไป</div>
+     <div class="acc-i"><svg class="i sm"><use href="#i-doc"/></svg>ใบเสร็จและภาษี</div>
+     <div class="acc-i"><svg class="i sm"><use href="#i-wallet"/></svg>วิธีรับเงิน</div>
+     <div class="acc-i"><svg class="i sm"><use href="#i-print"/></svg>เครื่องและเครื่องพิมพ์</div>
+     <div class="acc-i on"><svg class="i sm"><use href="#i-users"/></svg>พนักงานและสิทธิ์</div>
+     <div class="acc-i"><svg class="i sm"><use href="#i-link"/></svg>การเชื่อมต่อระบบ SHARK</div>
+     <div class="acc-i"><svg class="i sm"><use href="#i-truck"/></svg>ช่องทางขายภายนอก</div>
+     <div class="acc-i"><svg class="i sm"><use href="#i-swap"/></svg>ออฟไลน์และการซิงก์</div>
+     <div class="ddsep" style="margin:12px 9px"></div>
+     <div class="sub" style="padding:0 11px;line-height:1.55">ตั้งค่าเป็นรายสาขา — สาขาหัวหิน · คัดลอกไปสาขาสวนผึ้งได้จากเมนู “ทั่วไป”</div>
+    </div>
+
+    <div class="smain">
+     <div class="shd">
+      <div><h1>พนักงานและสิทธิ์</h1><div class="d">สิทธิ์ตามบทบาท · งานเสี่ยงต้องขออนุมัติ · เข้ากะด้วย PIN 4 หลัก</div></div>
+      <span class="sp"></span><div class="btn gh sm"><svg class="i sm"><use href="#i-plus"/></svg>เพิ่มบทบาท</div><div class="btn pri sm">บันทึก</div>
+     </div>
+     <div class="cols">
+      <div class="cl" style="flex:1.25">
+       <div class="card p0">
+        <div class="cht" style="padding:22px 24px 0;margin-bottom:16px"><svg class="i"><use href="#i-lock"/></svg><h2>สิทธิ์ตามบทบาท</h2><span class="sp"></span>
+         <span class="lgd2"><span><span class="y"><svg class="i xs"><use href="#i-check"/></svg></span>ทำได้</span><span><span class="y ap"><svg class="i xs"><use href="#i-check"/></svg></span>ต้องอนุมัติ</span></span></div>
+        <table class="mx">
+         <thead><tr><th>งาน</th><th>เจ้าของ<small>1 คน</small></th><th>ผู้จัดการ<small>1 คน</small></th><th>แคชเชียร์<small>2 คน</small></th><th>ครัว<small>1 คน</small></th></tr></thead>
+         <tbody>
+          <tr><td><b style="font-weight:600">ขาย</b></td><td class="own"><span class="y"><svg class="i xs"><use href="#i-check"/></svg></span></td><td><span class="y"><svg class="i xs"><use href="#i-check"/></svg></span></td><td><span class="y"><svg class="i xs"><use href="#i-check"/></svg></span></td><td><span class="n">—</span></td></tr>
+          <tr><td><b style="font-weight:600">ส่วนลด (เพดาน)</b><small>ต่อบิล</small></td><td class="own"><span class="v">ไม่จำกัด</span></td><td><span class="v">30%</span></td><td><span class="v">10%</span></td><td><span class="n">—</span></td></tr>
+          <tr><td><b style="font-weight:600">ราคาเปิด</b><small>กรอกราคาเองที่หน้าขาย</small></td><td class="own"><span class="y"><svg class="i xs"><use href="#i-check"/></svg></span></td><td><span class="y"><svg class="i xs"><use href="#i-check"/></svg></span></td><td><span class="y ap"><svg class="i xs"><use href="#i-check"/></svg></span></td><td><span class="n">—</span></td></tr>
+          <tr><td><b style="font-weight:600">ยกเลิกบิล</b></td><td class="own"><span class="y"><svg class="i xs"><use href="#i-check"/></svg></span></td><td><span class="y"><svg class="i xs"><use href="#i-check"/></svg></span></td><td><span class="y ap"><svg class="i xs"><use href="#i-check"/></svg></span></td><td><span class="n">—</span></td></tr>
+          <tr><td><b style="font-weight:600">คืนเงิน</b></td><td class="own"><span class="y"><svg class="i xs"><use href="#i-check"/></svg></span></td><td><span class="y"><svg class="i xs"><use href="#i-check"/></svg></span></td><td><span class="y ap"><svg class="i xs"><use href="#i-check"/></svg></span></td><td><span class="n">—</span></td></tr>
+          <tr><td><b style="font-weight:600">เปิด/ปิดกะ</b></td><td class="own"><span class="y"><svg class="i xs"><use href="#i-check"/></svg></span></td><td><span class="y"><svg class="i xs"><use href="#i-check"/></svg></span></td><td><span class="y"><svg class="i xs"><use href="#i-check"/></svg></span></td><td><span class="n">—</span></td></tr>
+          <tr><td><b style="font-weight:600">ดูประวัติกะ/Z</b></td><td class="own"><span class="y"><svg class="i xs"><use href="#i-check"/></svg></span></td><td><span class="y"><svg class="i xs"><use href="#i-check"/></svg></span></td><td><span class="n">—</span></td><td><span class="n">—</span></td></tr>
+          <tr><td><b style="font-weight:600">จัดการสินค้า</b></td><td class="own"><span class="y"><svg class="i xs"><use href="#i-check"/></svg></span></td><td><span class="y"><svg class="i xs"><use href="#i-check"/></svg></span></td><td><span class="n">—</span></td><td><span class="n">—</span></td></tr>
+          <tr><td><b style="font-weight:600">รับของ/ปรับสต็อก</b></td><td class="own"><span class="y"><svg class="i xs"><use href="#i-check"/></svg></span></td><td><span class="y"><svg class="i xs"><use href="#i-check"/></svg></span></td><td><span class="n">—</span></td><td><span class="n">—</span></td></tr>
+          <tr><td><b style="font-weight:600">รายงาน</b></td><td class="own"><span class="y"><svg class="i xs"><use href="#i-check"/></svg></span></td><td><span class="y"><svg class="i xs"><use href="#i-check"/></svg></span></td><td><span class="n">—</span></td><td><span class="n">—</span></td></tr>
+          <tr><td><b style="font-weight:600">ตั้งค่า</b></td><td class="own"><span class="y"><svg class="i xs"><use href="#i-check"/></svg></span></td><td><span class="n">—</span></td><td><span class="n">—</span></td><td><span class="n">—</span></td></tr>
+          <tr><td><b style="font-weight:600">รับ/ปฏิเสธออเดอร์</b><small>ออเดอร์ออนไลน์ทุกช่องทาง</small></td><td class="own"><span class="y"><svg class="i xs"><use href="#i-check"/></svg></span></td><td><span class="y"><svg class="i xs"><use href="#i-check"/></svg></span></td><td><span class="y"><svg class="i xs"><use href="#i-check"/></svg></span></td><td><span class="y"><svg class="i xs"><use href="#i-check"/></svg></span></td></tr>
+         </tbody>
+        </table>
+       </div>
+      </div>
+      <div class="cr" style="flex:1;min-width:0">
+       <div class="card pol">
+        <div class="cht" style="margin-bottom:8px"><svg class="i"><use href="#i-flag"/></svg><h2>นโยบายอนุมัติ</h2><span class="sp"></span><span class="sub">ผ่านระบบอนุมัติ</span></div>
+        <div class="trow"><span class="t k"><b>ยกเลิกบิล &gt; ฿500</b><span class="arr">→</span>ผู้จัดการ</span><span class="sw"></span></div>
+        <div class="trow"><span class="t k"><b>คืนเงินทุกกรณี</b><span class="arr">→</span>ผู้จัดการ</span><span class="sw"></span></div>
+        <div class="trow"><span class="t k"><b>ส่วนลดเกินเพดาน</b><span class="arr">→</span>ผู้จัดการ</span><span class="sw"></span></div>
+        <div class="note" style="margin-top:12px;display:block">ผู้จัดการอนุมัติได้ทั้งที่เครื่อง (ใส่ PIN) และจากมือถือ</div>
+       </div>
+       <div class="card stf">
+        <div class="cht" style="margin-bottom:8px"><svg class="i"><use href="#i-users"/></svg><h2>พนักงานและ PIN</h2></div>
+        <div class="trow"><span class="av">น</span><span class="t"><b>น้ำฝน</b><small>แคชเชียร์ · PIN ตั้งแล้ว</small></span><span class="chip">จาก HR <svg class="i xs"><use href="#i-check"/></svg></span></div>
+        <div class="trow"><span class="av">พ</span><span class="t"><b>แพร</b><small>แคชเชียร์ · PIN ตั้งแล้ว</small></span><span class="chip">จาก HR <svg class="i xs"><use href="#i-check"/></svg></span></div>
+        <div class="trow"><span class="av">ต</span><span class="t"><b>ต้น</b><small style="color:var(--dg)!important">ครัว · ยังไม่ตั้ง PIN</small></span><div class="btn gh sm">ตั้ง PIN</div></div>
+        <div class="trow"><span class="av">ก</span><span class="t"><b>พี่เก่ง</b><small>ผู้จัดการ · PIN ตั้งแล้ว</small></span><span class="chip">จาก HR <svg class="i xs"><use href="#i-check"/></svg></span></div>
+        <div class="trow" style="margin-top:6px;background:var(--sf2);border:1px solid var(--line);border-radius:14px;padding:14px 16px"><span class="t"><b>ดึงรายชื่อและตารางงานจากระบบพนักงาน (HR)</b><small>คนลา/ไม่มีกะวันนี้ ไม่ขึ้นในตัวเลือกเข้ากะ</small></span><span class="sw"></span></div>
+       </div>
+      </div>
+     </div>
+    </div>
+   </div>
+  </div>
+ </div>
+</div>
+</div>
+</div>

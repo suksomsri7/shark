@@ -103,6 +103,8 @@ export default async function Deal360Page({
   const base = `/app/sys/${id}/crm/deals`;
   const stage = data.stages.find((s) => s.current);
   const fieldLabels = Object.fromEntries(layout.map((x) => [x.key, x.label]));
+  // CRM C5.4-E ▸ L6-M1: ชนิด/ตัวเลือกของฟิลด์กำหนดเอง → ช่องตามชนิดในหน้าต่างเงื่อนไขก่อนเข้าขั้น ◂
+  const fieldInputs = Object.fromEntries(layout.filter((x) => !x.isSystem).map((x) => [x.key, { type: x.type, choices: x.choices }]));
   const kindBadge = d.kind === "WON" ? { t: "ชนะ", c: "var(--color-accent)" } : d.kind === "LOST" ? { t: "แพ้", c: "var(--color-danger)" } : null;
 
   const linesTable = (
@@ -229,6 +231,7 @@ export default async function Deal360Page({
               stages={data.stages.map((s) => ({ id: s.id, name: s.name, kind: s.kind, probability: s.probability }))}
               lostReasons={lostReasons}
               fieldLabels={fieldLabels}
+              fieldInputs={fieldInputs}
               canReopen={canManage}
               daysInStage={data.daysInStage}
               canMove={canMove}

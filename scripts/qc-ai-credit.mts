@@ -14,6 +14,8 @@
 process.env.SHARK_AI_MOCK = "1"; // ไม่ยิง LLM จริง — ข้อสอบห้ามเผาเงิน
 import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
 loadLegacyQcEnv("qc-ai-credit"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
+// ORACLE-EDIT C5.5-G1: runTool/sendMessage now take a required actor (no actor = refusal) — these checks always meant "the shop OWNER asks"
+const qcOwner = (t: string) => ({ kind: "member" as const, tenantId: t, userId: "qc-owner", membership: { role: "OWNER" as const, unitAccess: ["*"], permissions: {} } });
 
 const { prisma } = await import("@/lib/core/db");
 const pricing = await import("@/lib/ai/pricing");
@@ -124,13 +126,13 @@ try {
 
   let providerCalls = 0;
   const spy = { chat: async () => { providerCalls++; return { text: "ไม่ควรถูกเรียก", tokensIn: 1, tokensOut: 1, model: "mock" }; } };
-  const blocked = await svc.sendMessage({ tenantId }, { text: "ยอดขายวันนี้เท่าไหร่" }, { provider: spy });
+  const blocked = await svc.sendMessage({ tenantId, actor: qcOwner(tenantId) }, { text: "ยอดขายวันนี้เท่าไหร่" }, { provider: spy });
   chk("BL-4.2", "เครดิตหมด → over_budget scope=credit **โดยไม่เรียก provider เลย**",
     blocked.ok === false && blocked.error === "over_budget" && blocked.scope === "credit" && providerCalls === 0,
     "over_budget/credit/0 call", JSON.stringify({ r: blocked, calls: providerCalls }));
 
   await credit.topUp(tenantId, 2 * M, { ref: "refill-after-block" });
-  const okRes = await svc.sendMessage({ tenantId }, { text: "สวัสดี" }, { provider: spy });
+  const okRes = await svc.sendMessage({ tenantId, actor: qcOwner(tenantId) }, { text: "สวัสดี" }, { provider: spy });
   chk("BL-4.3", "เติมแล้วคุยต่อได้ทันที (ไม่ต้องรอรอบใหม่)", okRes.ok === true && providerCalls === 1,
     "ok/1 call", JSON.stringify({ ok: okRes.ok, calls: providerCalls }));
   const chatTxn = await prisma.aiCreditTxn.findFirst({

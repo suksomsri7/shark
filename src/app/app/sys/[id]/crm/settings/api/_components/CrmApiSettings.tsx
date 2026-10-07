@@ -159,12 +159,13 @@ export function CrmApiSettings(p: Props) {
       } else if (!hookFe.show(r.fieldErrors)) setHookMsg({ ok: false, text: r.reason });
     });
   };
-  const hookAction = (fn: (fd: FormData) => Promise<CrmActionResult>, id: string, extra: Record<string, string> = {}) => {
+  // CRM C5.5-fix15 ▸ RVR-6: ข้อความสำเร็จตามการกระทำ (ลบ = "ลบปลายทางแล้ว" — เดิมขึ้น "บันทึกแล้ว" หลังลบ) ◂
+  const hookAction = (fn: (fd: FormData) => Promise<CrmActionResult>, id: string, extra: Record<string, string> = {}, okText = "บันทึกแล้ว") => {
     const fd = new FormData();
     fd.set("systemId", p.systemId);
     fd.set("endpointId", id);
     for (const [k, v] of Object.entries(extra)) fd.set(k, v);
-    run(() => fn(fd), (r) => setHookMsg(r.ok ? { ok: true, text: "บันทึกแล้ว" } : { ok: false, text: r.reason }));
+    run(() => fn(fd), (r) => setHookMsg(r.ok ? { ok: true, text: okText } : { ok: false, text: r.reason }));
   };
 
   return (
@@ -385,7 +386,7 @@ export function CrmApiSettings(p: Props) {
           </form>
         ) : null}
         {hookMsg ? (
-          <p className={`text-sm ${hookMsg.ok ? "" : "text-[color:var(--color-danger)]"}`} role="status" data-testid="crm-api-hook-msg">
+          <p className={`text-sm ${hookMsg.ok ? "" : "text-[color:var(--color-danger)]"}`} role={hookMsg.ok ? "status" : "alert"} data-testid="crm-api-hook-msg">
             {hookMsg.text}
           </p>
         ) : null}
@@ -423,7 +424,7 @@ export function CrmApiSettings(p: Props) {
                         <button type="button" className={btn} disabled={pending} onClick={() => hookAction(p.toggleWebhook, w.id, { active: w.active ? "false" : "true" })} data-testid={`crm-api-hook-toggle-${w.id}`}>
                           {w.active ? "พักไว้" : "เปิดใช้"}
                         </button>
-                        <button type="button" className={btn} disabled={pending} onClick={() => hookAction(p.deleteWebhook, w.id)} data-testid={`crm-api-hook-delete-${w.id}`} aria-label={`ลบปลายทาง ${w.url}`}>
+                        <button type="button" className={btn} disabled={pending} onClick={() => hookAction(p.deleteWebhook, w.id, {}, "ลบปลายทางแล้ว")} data-testid={`crm-api-hook-delete-${w.id}`} aria-label={`ลบปลายทาง ${w.url}`}>
                           ลบ
                         </button>
                       </div>

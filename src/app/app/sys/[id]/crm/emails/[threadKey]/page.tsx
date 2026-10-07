@@ -5,8 +5,9 @@ import { prisma } from "@/lib/core/db";
 import { systemDef } from "@/lib/systems";
 import { toMemberActor } from "@/lib/modules/member";
 import { crmCan } from "@/lib/modules/crm/access";
-import { getThread, listTemplates } from "@/lib/modules/crm/emails";
-import { CRM_EMAIL_ATTACH_MAX_BYTES, CRM_EMAIL_ATTACH_MAX_COUNT, CRM_EMAIL_BODY_MAX_BYTES, CRM_EMAIL_BODY_TOO_LONG_MSG, CRM_EMAIL_COMPOSER_ATTACH_MAX_BYTES, CRM_EMAIL_SUBJECT_MAX, renderInboundHtml } from "@/lib/modules/crm/emails-shared";
+import { canUseUnmatchedInbox, getThread, listTemplates } from "@/lib/modules/crm/emails";
+import { companyTextsForViewer } from "@/lib/modules/crm/contacts"; // CRM C5.5-fix10 ◂
+import { CRM_EMAIL_ATTACH_MAX_BYTES, CRM_EMAIL_ATTACH_MAX_COUNT, CRM_EMAIL_BODY_MAX_BYTES, CRM_EMAIL_BODY_TOO_LONG_MSG, CRM_EMAIL_COMPOSER_ATTACH_MAX_BYTES, CRM_EMAIL_SUBJECT_MAX, hasRemoteImages, renderInboundHtml } from "@/lib/modules/crm/emails-shared";
 import { crmNavItems } from "@/lib/modules/crm/nav";
 import { thaiDateLabel, thaiTimeLabel } from "@/lib/modules/crm/activities-shared";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -21,8 +22,6 @@ import type { CrmEmailMessageView, CrmEmailThreadData } from "@/components/crm/e
 //    ตัวตัดชุดเดียวกับตอนเก็บ ⇒ ไม่มีวันที่หน้าจอแสดงของที่ตัวเก็บถือว่าอันตราย · หน้าไคลเอนต์แค่เลือกว่าจะใส่รูปไหน
 //    ลงใน `<iframe sandbox="">` (ค่าว่าง = ไม่ปลดสิทธิ์ใดให้เอกสารข้างในเลย)
 // 🔴 AUDIT-CLASS X10: ไม่มี URL ของไฟล์แนบติดมากับหน้า — มีแต่ `fileId`/ชื่อ/ขนาด (ลิงก์ออกตอนกดผ่าน action)
-
-const REMOTE_IMG_RE = /<img[^>]+src="https?:/i;
 
 export default async function CrmEmailThreadPage({ params }: { params: Promise<{ id: string; threadKey: string }> }) {
   const { id, threadKey } = await params;
@@ -43,7 +42,9 @@ export default async function CrmEmailThreadPage({ params }: { params: Promise<{
   const first = thread.messages[0];
   const last = thread.messages[thread.messages.length - 1];
   const contactId = thread.messages.map((m) => m.contactId ?? null).find((x): x is string => !!x) ?? null;
-  const contact = contactId ? await prisma.crmContact.findFirst({ where: { id: contactId, tenantId, systemId: id }, select: { name: true, email: true, company: true } }) : null;
+  const contact = contactId ? await prisma.crmContact.findFirst({ where: { id: contactId, tenantId, systemId: id }, select: { id: true, name: true, email: true, company: true, companyId: true } }) : null;
+  // CRM C5.5-fix10 ▸ (sweep FX7-1) ข้อความบริษัทตามการมองเห็นบริษัทของผู้ดู ◂
+  const contactCompany = contact ? ((await companyTextsForViewer(ctx, actor, [contact])).get(contact.id) ?? null) : null;
 
   const messages: CrmEmailMessageView[] = thread.messages.map((m) => {
     const at = m.sentAt ?? m.receivedAt;
@@ -57,7 +58,7 @@ export default async function CrmEmailThreadPage({ params }: { params: Promise<{
       bodyText: m.bodyText,
       safeHtmlNoImages: raw ? renderInboundHtml(raw, { showImages: false }) : null,
       safeHtmlWithImages: raw ? renderInboundHtml(raw, { showImages: true }) : null,
-      hasRemoteImages: REMOTE_IMG_RE.test(raw),
+      hasRemoteImages: hasRemoteImages(raw), // CRM C5.5-fix5 ▸ เดิม regex n² บน `<img` ที่ไม่ปิด ◂
       attachments: m.attachments,
       statusLabel: STATUS_TH[m.status] ?? m.status,
       atLabel: at ? `${thaiDateLabel(new Date(at).getTime())} ${thaiTimeLabel(new Date(at).getTime())}` : "—",
@@ -65,6 +66,7 @@ export default async function CrmEmailThreadPage({ params }: { params: Promise<{
       clickCount: m.clickCount,
       repliedAtLabel: m.repliedAt ? thaiDateLabel(new Date(m.repliedAt).getTime()) : null,
       purged: m.purged,
+      unverifiedFrom: m.unverifiedFrom, // CRM C5.5-fix2 ▸ 2a-2 ◂
     };
   });
 
@@ -77,10 +79,11 @@ export default async function CrmEmailThreadPage({ params }: { params: Promise<{
     contactId,
     contactName: contact?.name ?? null,
     contactEmail: contact?.email ?? null,
-    companyName: contact?.company ?? null,
+    companyName: contactCompany,
     messages,
     canSend,
-    canAttach: !contactId,
+    // CRM C5.5-fix15 ▸ P-it6-1: ด่านเดียวกับ `attachToContact` (`canUseUnmatchedInbox` = ตัวตัดสินของ assertUnmatchedGate) ◂
+    canAttach: !contactId && (await canUseUnmatchedInbox(ctx, actor)),
     replyToEmailId: last?.id ?? null,
     templates: templates.filter((t) => t.active).map((t) => ({ value: t.id, label: t.name })),
     attachMaxBytes: CRM_EMAIL_ATTACH_MAX_BYTES,

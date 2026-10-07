@@ -10,6 +10,7 @@ export {
   failBody,
   mapError,
   newRequestId,
+  nothingWritten, // CRM C5.5 ▸ fix3a: ธง "ยังไม่ได้เขียนอะไร" ของ RV-2 (import.run / reports.email 429) ◂
   ok,
   okBody,
   paged,

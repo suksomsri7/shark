@@ -25,6 +25,7 @@ import {
   visibleCompaniesByIds,
   removeContact,
   restoreCompany,
+  setCompanyLifecycle,
   setOwner,
   setParent,
   setPrimary,
@@ -123,6 +124,18 @@ export async function archiveCompanyAction(systemId: string, companyId: string, 
     const { ctx, actor } = await session(systemId, "crm.company.delete") /* CRM C4.2-fix r2 ▸ SF-3: เดิม "crm.company.archive" (ไม่มีในทะเบียน) · บริการตรวจ crm.company.delete (companies.ts:894/922) ◂ */;
     await archiveCompany(ctx, actor, companyId, { confirm, reason });
     revalidateAndWake(base(systemId));
+    revalidateAndWake(`${base(systemId)}/${companyId}`);
+    return { ok: true };
+  } catch (e) {
+    return failOf(e);
+  }
+}
+
+/** CRM C5.4-E r2 ▸ มติผู้คุมงาน: ผู้จัดการ/เจ้าของร้านแก้ขั้นบริษัท ลูกค้า → มีโอกาส (ปิดดีลเป็นชนะผิด) — บริการตรวจบทบาท/ทางที่อนุญาตเอง ◂ */
+export async function setCompanyLifecycleAction(systemId: string, companyId: string, stage: string): Promise<{ ok: true } | Fail> {
+  try {
+    const { ctx, actor } = await session(systemId, "crm.company.update");
+    await setCompanyLifecycle(ctx, actor, companyId, stage);
     revalidateAndWake(`${base(systemId)}/${companyId}`);
     return { ok: true };
   } catch (e) {

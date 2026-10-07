@@ -2,10 +2,10 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
-import { canViewPayroll } from "@/lib/core/rbac";
 import { systemDef } from "@/lib/systems";
 import { hrTabs } from "@/lib/modules/hr/ui";
-import { getEmployee } from "@/lib/modules/hr/service";
+// HF-HR-0 (D4): ด่านสิทธิ์ + DTO รายช่อง — ห้ามส่งแถว HrEmployee ดิบให้ client component
+import { hrViewerOf, loadEmployeeProfileForViewer } from "@/lib/modules/hr/privacy";
 import { addEmployeeDocAction, removeEmployeeDocAction } from "@/lib/modules/hr/actions";
 import EmployeeProfileForm from "@/lib/modules/hr/EmployeeProfileForm";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -36,14 +36,17 @@ export default async function HrEmployeeProfilePage({
     where: { id, tenantId: auth.active.tenantId, type: "HR" },
   });
   if (!sys) notFound();
-  const emp = await getEmployee({ tenantId: auth.active.tenantId, systemId: id }, employeeId);
-  if (!emp) notFound();
+  // ไม่มีสิทธิ์ดูข้อมูลพนักงาน/ไม่พบ/ข้ามร้าน = 404 (ไม่บอกว่ามีคนนี้อยู่)
+  const view = await loadEmployeeProfileForViewer(
+    { tenantId: auth.active.tenantId, systemId: id },
+    hrViewerOf(auth),
+    employeeId,
+  );
+  if (!view) notFound();
+  const emp = view.profile;
+  const docs = view.docs;
   const def = systemDef(sys.type);
-  const sensitive = canViewPayroll({
-    role: auth.active.role,
-    unitAccess: auth.active.unitAccess as string[],
-    permissions: auth.active.permissions as Record<string, unknown>,
-  });
+  const sensitive = view.canSeeSensitive;
   const muted = "text-[color:var(--color-muted)]";
 
   return (
@@ -61,16 +64,19 @@ export default async function HrEmployeeProfilePage({
       )}
 
       <Section title="ข้อมูลพนักงาน">
-        <EmployeeProfileForm systemId={id} emp={emp} canSeeSensitive={sensitive} />
+        <EmployeeProfileForm systemId={id} emp={view.profile} canSeeSensitive={sensitive} />
+        <p className={`mt-2 text-xs ${muted}`}>
+          PIN ลงเวลา: {emp.hasPin ? "ตั้งแล้ว" : "ยังไม่ตั้ง"} (ตั้ง/เปลี่ยนได้ที่หน้าพนักงานทั้งหมด)
+        </p>
       </Section>
 
       {sensitive ? (
         <Section title="🔒 เอกสารแนบ">
           <div className="flex flex-col gap-2">
-            {emp.docs.length === 0 && (
+            {docs.length === 0 && (
               <p className={`text-xs ${muted}`}>ยังไม่มีเอกสาร — แนบสำเนาบัตร/ทะเบียนบ้าน/สัญญาจ้างได้ที่ฟอร์มด้านล่าง</p>
             )}
-            {emp.docs.map((doc) => (
+            {docs.map((doc) => (
               <div key={doc.id} className="flex items-center justify-between gap-2 rounded-lg border px-3 py-2">
                 <span className="min-w-0">
                   <span className="block truncate text-sm">{doc.title}</span>

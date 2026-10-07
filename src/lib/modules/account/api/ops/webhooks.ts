@@ -18,6 +18,7 @@ import {
   setEndpointActive,
   setEndpointEvents,
   testEndpoint,
+  webhookAuthorOfApi, // CRM C5.5 ▸ ผู้ทำของคำขอ REST ◂
 } from "@/lib/webhooks/service";
 import { WEBHOOK_EVENTS } from "@/lib/webhooks/labels";
 import { defineOp, type ApiOp } from "../op";
@@ -33,6 +34,15 @@ function notFound(message_th: string): ApiError {
 function unknownEvent(event: string): ApiError {
   return new ApiError(422, "validation", `ไม่รู้จักเหตุการณ์ "${event}"`, `Unknown event "${event}".`, undefined, [
     { path: "events", message: `ไม่รู้จักเหตุการณ์ "${event}"` },
+  ]);
+}
+
+// CRM C5.5-fix8 ▸ (รีวิว authz-sweep F5 — คู่ REST ของ S2) ยิงทดสอบจากที่นี่ได้เฉพาะเหตุการณ์ของระบบบัญชี (`account.*` ที่มีในทะเบียน) —
+//   เดิมรับทุกเหตุการณ์ที่รู้จัก ⇒ คีย์บัญชีที่ถือ `account.settings.manage` ยิง `crm.deal.won` / `member.*` (ประทับ test) ใส่ปลายทางของ
+//   CRM/สมาชิกได้ · เหตุการณ์ที่ไม่รู้จักยังตอบ 422 ข้อความเดิม ◂
+function notAccountEvent(event: string): ApiError {
+  return new ApiError(422, "validation", "ยิงทดสอบได้เฉพาะเหตุการณ์ของระบบบัญชี", `Only account events (account.*) can be tested here; "${event}" belongs to another system.`, undefined, [
+    { path: "event", message: "ยิงทดสอบได้เฉพาะเหตุการณ์ของระบบบัญชี" },
   ]);
 }
 
@@ -102,7 +112,7 @@ const webhooksCreate = defineOp({
   input: webhooksCreateInput,
   test: "D4-S6.1",
   async handler({ actor, input }) {
-    const res = await createEndpoint({ tenantId: actor.tenantId }, { url: input.url.trim(), events: input.events });
+    const res = await createEndpoint({ tenantId: actor.tenantId }, { url: input.url.trim(), events: input.events, by: webhookAuthorOfApi(actor) }); // CRM C5.5 ▸ by: ตัวกันเหตุการณ์กลาง (เหตุการณ์ CRM/ทุกเหตุการณ์) ◂
     return { id: res.id, url: input.url.trim(), events: input.events, active: true, secret: res.secret };
   },
 });
@@ -131,9 +141,9 @@ const webhooksUpdate = defineOp({
     await requireEndpoint(actor.tenantId, id);
     if (input.events !== undefined) {
       for (const e of input.events) if (!EVENT_VALUES.has(e)) throw unknownEvent(e);
-      await setEndpointEvents({ tenantId: actor.tenantId }, id, input.events);
+      await setEndpointEvents({ tenantId: actor.tenantId }, id, input.events, webhookAuthorOfApi(actor)); // CRM C5.5 ▸ by ◂
     }
-    if (input.active !== undefined) await setEndpointActive({ tenantId: actor.tenantId }, id, input.active);
+    if (input.active !== undefined) await setEndpointActive({ tenantId: actor.tenantId }, id, input.active, webhookAuthorOfApi(actor)); // CRM C5.5 ▸ by ◂
     const fresh = await requireEndpoint(actor.tenantId, id);
     return endpointView(fresh);
   },
@@ -161,7 +171,7 @@ const webhooksDelete = defineOp({
 
 // ═══════════════════════════ test / deliveries ═══════════════════════════
 
-const webhooksTestInput = z.object({ event: z.string().describe("Event type to simulate. Must be a known event type.") }).strict();
+const webhooksTestInput = z.object({ event: z.string().describe("Account event type to simulate (account.*). Must be a known event type.") }).strict();
 
 const webhooksTest = defineOp({
   id: "webhooks.test",
@@ -169,12 +179,13 @@ const webhooksTest = defineOp({
   path: "/webhooks/{id}/test",
   kind: "write",
   action: "account.settings.manage",
-  summary: "Send one test delivery to this endpoint with a fake payload of the given event type, regardless of its subscription list.",
+  summary: "Send one test delivery to this endpoint with a fake payload of the given account event type (account.* only), regardless of its subscription list.",
   label: "ทดสอบ webhook",
   input: webhooksTestInput,
   test: "D4-S6.6",
   async handler({ actor, params, input }) {
     if (!EVENT_VALUES.has(input.event)) throw unknownEvent(input.event);
+    if (!input.event.startsWith("account.")) throw notAccountEvent(input.event); // CRM C5.5-fix8 ◂
     const id = params.id ?? "";
     await requireEndpoint(actor.tenantId, id);
     const res = await testEndpoint({ tenantId: actor.tenantId }, id, input.event);

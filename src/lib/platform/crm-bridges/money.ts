@@ -60,6 +60,8 @@ export async function onInvoicePaid(evt: BridgeEvent): Promise<void> {
   const info = await (await accountFacade()).docLinkInfo(evt.tenantId, documentId);
   if (!info) return;
   for (const systemId of systems) await crm.payments.onInvoiceFullyPaid({ tenantId: evt.tenantId, systemId }, { documentId: info.docId });
+  // CRM C5.4-E ▸ L6-M4: แจ้งผู้ดูแลดีลที่ผูกใบนี้ (invoice.paid) — หลังงานเงินเสร็จ · ล้ม = ไม่พาสะพานเงินล้ม ◂
+  for (const systemId of systems) await crm.notifySenders.dealDocumentSettled({ tenantId: evt.tenantId, systemId }, info.docId).catch(() => undefined);
 }
 
 /**
@@ -99,6 +101,8 @@ export async function onDocumentVoided(evt: BridgeEvent): Promise<void> {
     return;
   }
   for (const systemId of systems) await crm.payments.flagDocumentVoided({ tenantId: evt.tenantId, systemId }, { documentId: info.docId, reason: str(p.reason) ?? undefined });
+  // CRM C5.4-E ▸ L6-M4: เทมเพลต invoice.paid ครอบ "เอกสารถูกยกเลิก" ด้วย (ป้ายของเทมเพลต) ◂
+  for (const systemId of systems) await crm.notifySenders.dealDocumentSettled({ tenantId: evt.tenantId, systemId }, info.docId).catch(() => undefined);
 }
 
 /**

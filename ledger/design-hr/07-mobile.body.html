@@ -1,0 +1,207 @@
+<style>
+.mrowx{display:flex;gap:44px;align-items:flex-start}
+.mob .sb .ic{display:flex;gap:12px;align-items:center;font-size:12px}
+.mob .sb .bat{width:22px;height:11px;border:1.5px solid var(--ink);border-radius:3px;position:relative}
+.mob .sb .bat::after{content:"";position:absolute;inset:1.5px;right:5px;background:var(--ink);border-radius:1px}
+.mob .mh .sp{flex:1}
+.mob .mh .ib{width:40px;height:40px;border:1px solid var(--line);border-radius:12px;display:grid;place-items:center;color:var(--ink2);position:relative}
+.mob .mh .ib .bd{position:absolute;top:-4px;right:-4px;min-width:18px;height:18px;border-radius:9px;background:var(--dg);color:var(--sf);font-size:11px;font-weight:700;display:grid;place-items:center;padding:0 4px}
+.mob .mb{display:flex;flex-direction:column;gap:12px;padding-bottom:14px!important;flex:1 0 auto!important;overflow:visible!important}
+.hi{font-size:13.5px;color:var(--mut)}
+.shc{border:1px solid var(--line);border-radius:20px;padding:16px 18px;display:flex;flex-direction:column;gap:10px}
+.shc .r{display:flex;align-items:center;gap:10px}
+.shc .r .sp{flex:1}
+.shc .tm{font-size:26px;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.inbtn{height:60px;border-radius:18px;background:var(--ink);color:var(--sf);display:flex;align-items:center;justify-content:center;gap:12px;font-size:19px;font-weight:700}
+.gps{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink2)}
+.gps i{width:9px;height:9px;border-radius:50%;background:var(--acc);box-shadow:0 0 0 4px var(--acc-bg);display:block;flex:none}
+.avs{display:flex;align-items:center}
+.avs .av{width:30px;height:30px;border-radius:50%;margin-left:-8px;border:2px solid var(--sf);background:var(--sf2);font-size:12px}
+.avs .av:first-child{margin-left:0}
+.wk{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+.wk div{border:1px solid var(--line);border-radius:12px;padding:5px 0 6px;text-align:center;font-size:12.5px;color:var(--mut);display:flex;flex-direction:column;gap:2px}
+.wk div b{font-size:15px;color:var(--ink)}
+.wk div.on{background:var(--ink);border-color:var(--ink);color:var(--sf)}
+.wk div.on b{color:var(--sf)}
+.wk div.off{background:var(--sf2);color:var(--mut2)}
+.wk div.off b{color:var(--mut2)}
+.qa{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.qa div{border:1px solid var(--line);border-radius:16px;height:62px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;font-size:13.5px;font-weight:600}
+.qa div svg{color:var(--ink2)}
+.lb{display:grid;grid-template-columns:repeat(3,1fr);border:1px solid var(--line);border-radius:16px;overflow:hidden}
+.lb div{padding:8px 0;text-align:center;border-left:1px solid var(--line)}
+.lb div:first-child{border-left:0}
+.lb div b{display:block;font-size:22px;font-variant-numeric:tabular-nums}
+.lb div span{font-size:12.5px;color:var(--mut)}
+.nt{display:flex;align-items:flex-start;gap:10px;padding:12px 14px;border-radius:14px;background:var(--acc-bg);color:var(--acc);font-size:13.5px;line-height:1.5}
+.nt.gh{background:var(--sf2);color:var(--ink2)}
+.nt svg{margin-top:2px}
+.nt small{display:block;color:var(--mut);font-size:12.5px}
+.tbar{display:flex;justify-content:space-around;border-top:1px solid var(--line);padding:10px 8px 24px;flex:none}
+.tbar div{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:12px;color:var(--mut)}
+.tbar div.on{color:var(--ink);font-weight:700}
+/* ข */
+.fl{font-size:13.5px;font-weight:700;color:var(--ink2);margin-bottom:8px}
+.tchips{display:flex;flex-wrap:nowrap;gap:7px}
+.tchips span{height:40px;padding:0 11px;border-radius:12px;border:1px solid var(--line);display:inline-flex;align-items:center;font-size:14px;color:var(--ink2)}
+.tchips span.on{background:var(--ink);border-color:var(--ink);color:var(--sf);font-weight:700}
+.tchips span small{font-size:12px;color:var(--mut2);margin-left:5px}
+.tchips span.on small{color:var(--line2)}
+.dd2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.dbox{border:1px solid var(--line);border-radius:14px;padding:10px 14px}
+.dbox span{font-size:12.5px;color:var(--mut)}
+.dbox b{display:block;font-size:16px;margin-top:2px}
+.dbox.on{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
+.trow{display:flex;align-items:center;gap:10px;font-size:14.5px;padding:2px 0}
+.trow .sp{flex:1}
+.ta{border:1px solid var(--line);border-radius:14px;padding:12px 14px;font-size:14.5px;min-height:64px}
+.att{border:1.5px dashed var(--line2);border-radius:14px;height:52px;display:flex;align-items:center;justify-content:center;gap:8px;font-size:14px;color:var(--mut);background:var(--sf2)}
+.impm{border-radius:14px;padding:12px 14px;background:var(--acc-bg);color:var(--acc);font-size:13.5px;line-height:1.55;display:flex;gap:10px}
+.impm svg{margin-top:2px}
+.bal{display:flex;align-items:center;gap:12px;border:1px solid var(--line);border-radius:14px;padding:12px 14px}
+.bal .n{font-size:28px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1}
+.bal .t{font-size:13px;color:var(--mut);line-height:1.45}
+.bal .t b{color:var(--ink)}
+/* ค */
+.slh{border-radius:20px;background:var(--ink);color:var(--sf);padding:18px 20px}
+.slh .k{font-size:13px;color:var(--line2)}
+.slh .v{font-size:38px;font-weight:700;letter-spacing:-.03em;font-variant-numeric:tabular-nums;margin-top:2px}
+.slh .f{font-size:12.5px;color:var(--line2);margin-top:4px}
+.sl .h{font-size:12.5px;font-weight:700;color:var(--mut);margin:2px 0 4px}
+.sl .r{display:flex;align-items:baseline;gap:8px;padding:7px 0;font-size:14.5px;font-variant-numeric:tabular-nums}
+.sl .r .sp{flex:1}
+.sl .r small{font-size:12.5px;color:var(--mut)}
+.sl .r b{font-weight:600}
+.sl .r b.dg{color:var(--dg)}
+.sl .r.t{border-top:1.5px solid var(--ink);font-weight:700;margin-top:2px}
+.sl .r.t b{font-weight:700}
+.hist .r{display:flex;align-items:center;gap:10px;padding:11px 0;border-top:1px solid var(--line);font-size:14.5px;font-variant-numeric:tabular-nums}
+.hist .r:first-child{border-top:0}
+.hist .r .sp{flex:1}
+.hist .r small{color:var(--mut);font-size:12.5px}
+.mob .mb>:last-child{margin-bottom:16px}
+</style>
+<div class="wrap">
+<p class="cap" style="margin:0">07 · มือถือพนักงาน 390×844 <span>— (ก) หน้า “ของฉัน” ลงเวลาด้วย GPS · (ข) ยื่นลา เห็นผลกระทบกะ+ยอดคงเหลือก่อนส่ง · (ค) สลิปเงินเดือน ตัวเลขตรงกับรอบจ่าย (จอ 06)</span></p>
+<div class="mrowx">
+
+<!-- ═══ (ก) ของฉัน ═══ -->
+<div>
+<p class="cap">ก · ของฉัน · น้ำฝน</p>
+<div class="mob">
+ <div class="sb"><span>08:52</span><span class="ic">5G<span class="bat"></span></span></div>
+ <div class="mh"><div><div class="hi">พฤ. 1 ต.ค. 2569 · สาขาหัวหิน</div><h1>สวัสดี น้ำฝน</h1></div><span class="sp"></span><span class="ib"><svg class="i sm"><use href="#i-mail"/></svg><span class="bd">2</span></span></div>
+ <div class="mb">
+  <div class="shc">
+   <div class="r"><span class="chip ink">วันนี้ · กะเช้า</span><span class="sp"></span><span class="mu" style="font-size:13px">พัก 60 นาที</span></div>
+   <div class="tm">09:00 – 17:00</div>
+   <div class="inbtn"><svg class="i lg"><use href="#i-in"/></svg>ลงเวลาเข้า</div>
+   <div class="gps"><i></i>GPS ✓ ในรัศมีร้าน (ห่าง 35 ม. · รัศมี 100 ม.)</div>
+   <div class="r" style="border-top:1px solid var(--line);padding-top:12px"><span class="mu" style="font-size:13px">เพื่อนร่วมกะ</span><span class="avs"><span class="av">ป</span><span class="av">ก</span><span class="av">ม</span></span><span style="font-size:13px">ปุ้ย · ก้อง · มิ้นท์</span></div>
+  </div>
+  <div>
+   <div class="fl" style="display:flex">สัปดาห์นี้<span style="flex:1"></span><span class="lnk" style="font-size:13px">ตารางทั้งหมด</span></div>
+   <div class="wk">
+    <div><span>จ.</span><b>28</b><span>เช้า</span></div>
+    <div><span>อ.</span><b>29</b><span>เช้า</span></div>
+    <div><span>พ.</span><b>30</b><span>เช้า</span></div>
+    <div class="on"><span>พฤ.</span><b>1</b><span>เช้า</span></div>
+    <div class="off"><span>ศ.</span><b>2</b><span>หยุด</span></div>
+    <div><span>ส.</span><b>3</b><span>บ่าย</span></div>
+    <div><span>อา.</span><b>4</b><span>บ่าย</span></div>
+   </div>
+  </div>
+  <div class="qa">
+   <div><svg class="i"><use href="#i-cal"/></svg>ยื่นลา</div>
+   <div><svg class="i"><use href="#i-clock"/></svg>ขอ OT</div>
+   <div><svg class="i"><use href="#i-swap"/></svg>ขอเปลี่ยนกะ</div>
+   <div><svg class="i"><use href="#i-edit"/></svg>แก้เวลา</div>
+   <div><svg class="i"><use href="#i-cash"/></svg>เบิกล่วงหน้า</div>
+   <div><svg class="i"><use href="#i-doc"/></svg>สลิป</div>
+  </div>
+  <div class="lb" style="grid-template-columns:1.3fr 1fr 1fr 1fr"><div style="display:flex;flex-direction:column;justify-content:center;text-align:left;padding-left:14px"><span style="color:var(--ink2);font-weight:700;font-size:13.5px">ลาคงเหลือ</span><span>ปี 2569</span></div><div><b>26</b><span>ป่วย</span></div><div><b>2</b><span>กิจ</span></div><div><b>3</b><span>พักร้อน</span></div></div>
+  <div class="nt"><svg class="i sm"><use href="#i-check"/></svg><span><b>คำขอ OT 29 ก.ย. อนุมัติแล้ว</b><small>2 ชม. · ฿200 · เข้าเงินเดือน ก.ย. · อีก 1 คำขอรออนุมัติ</small></span></div>
+ </div>
+ <div class="tbar">
+  <div class="on"><svg class="i"><use href="#i-home"/></svg>วันนี้</div>
+  <div><svg class="i"><use href="#i-cal"/></svg>ตาราง</div>
+  <div><svg class="i"><use href="#i-flag"/></svg>คำขอ</div>
+  <div><svg class="i"><use href="#i-wallet"/></svg>เงินเดือน</div>
+  <div><svg class="i"><use href="#i-users"/></svg>ฉัน</div>
+ </div>
+</div>
+</div>
+
+<!-- ═══ (ข) ยื่นลา ═══ -->
+<div>
+<p class="cap">ข · ยื่นลา · แพร</p>
+<div class="mob">
+ <div class="sb"><span>14:18</span><span class="ic">5G<span class="bat"></span></span></div>
+ <div class="mh"><svg class="i"><use href="#i-back"/></svg><h1>ยื่นลา</h1></div>
+ <div class="mb">
+  <div>
+   <div class="fl">ประเภทการลา</div>
+   <div class="tchips"><span>ลาป่วย<small>28</small></span><span>ลากิจ<small>2</small></span><span class="on">ลาพักร้อน<small>6</small></span><span>อื่น ๆ</span></div>
+  </div>
+  <div>
+   <div class="fl">วันที่</div>
+   <div class="dd2"><div class="dbox on"><span>ตั้งแต่</span><b>ส. 10 ต.ค.</b></div><div class="dbox on"><span>ถึง</span><b>อา. 11 ต.ค.</b></div></div>
+   <div class="trow" style="margin-top:12px"><span>ลาครึ่งวัน</span><span class="sp"></span><span class="sw off"></span></div>
+   <div class="sub" style="margin-top:4px;font-size:13px">รวม 2 วัน · ไม่ตรงวันหยุดร้าน/ราชการ</div>
+  </div>
+  <div>
+   <div class="fl">เหตุผล</div>
+   <div class="ta">ไปงานแต่งพี่สาวที่เชียงใหม่</div>
+  </div>
+  <div class="att"><svg class="i sm"><use href="#i-upload"/></svg>แนบไฟล์ (ไม่บังคับ)</div>
+  <div class="impm"><svg class="i sm"><use href="#i-warn"/></svg><span><b>กระทบกะ: ส. บ่าย · อา. บ่าย</b><br>ผู้จัดการจะเห็น และหาคนแทนให้ — เราไม่ต้องหาเอง</span></div>
+  <div class="bal"><span class="n">4</span><span class="t">วัน · <b>คงเหลือหลังลา</b><br>พักร้อน 6 · ใช้แล้ว 0 · ครั้งนี้ 2</span></div>
+ </div>
+ <div class="bb"><span class="btn pri blk" style="height:56px!important;font-size:17px!important">ส่งคำขอ</span>
+  <div class="sub" style="text-align:center;margin-top:10px;font-size:12.5px">แจ้งผลทาง LINE และแอป · ยกเลิกได้ก่อนอนุมัติ</div></div>
+</div>
+</div>
+
+<!-- ═══ (ค) สลิป ═══ -->
+<div>
+<p class="cap">ค · สลิป ก.ย. 2569 · น้ำฝน</p>
+<div class="mob">
+ <div class="sb"><span>10:05</span><span class="ic">5G<span class="bat"></span></span></div>
+ <div class="mh"><svg class="i"><use href="#i-back"/></svg><h1>สลิป ก.ย. 2569</h1><span class="sp"></span><span class="chip">จ่ายแล้ว</span></div>
+ <div class="mb">
+  <div class="slh"><div class="k">รับสุทธิ</div><div class="v">฿16,900</div><div class="f">โอนเข้า KBank •••4321 · 2 ต.ค. 2569</div></div>
+  <div class="sl">
+   <div class="h">รายได้</div>
+   <div class="r"><span>เงินเดือน</span><span class="sp"></span><b>16,000</b></div>
+   <div class="r"><span>OT</span><small>6 ชม. × ฿66.67 × 1.5</small><span class="sp"></span><b>600</b></div>
+   <div class="r"><span>ค่าคอมฯ</span><small>เวิร์กช็อป 2 ครั้ง</small><span class="sp"></span><b>1,200</b></div>
+   <div class="r t"><span>รวมรับ</span><span class="sp"></span><b>17,800</b></div>
+   <div class="h" style="margin-top:10px">รายการหัก</div>
+   <div class="r"><span>หักสาย</span><small>3 ครั้ง × ฿50</small><span class="sp"></span><b class="dg">−150</b></div>
+   <div class="r"><span>ประกันสังคม</span><small>5% เพดาน ฿15,000</small><span class="sp"></span><b class="dg">−750</b></div>
+   <div class="r"><span>ภาษี ภงด.1</span><small>ไม่ถึงเกณฑ์</small><span class="sp"></span><b>0</b></div>
+   <div class="r t"><span>รวมหัก</span><span class="sp"></span><b>−900</b></div>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+   <span class="btn gh" style="padding:0 10px!important;font-size:14px!important"><svg class="i sm"><use href="#i-import"/></svg>ดาวน์โหลด PDF</span>
+   <span class="btn gh" style="padding:0 10px!important;font-size:14px!important"><svg class="i sm"><use href="#i-doc"/></svg>หนังสือรับรอง</span>
+  </div>
+  <div class="hist">
+   <div class="fl" style="margin-bottom:2px">ย้อนหลัง</div>
+   <div class="r"><span>ส.ค. 2569</span><span class="sp"></span><b>฿16,420</b><svg class="i xs mu"><use href="#i-ar"/></svg></div>
+   <div class="r"><span>ก.ค. 2569</span><span class="sp"></span><b>฿15,980</b><svg class="i xs mu"><use href="#i-ar"/></svg></div>
+   <div class="r"><span>มิ.ย. 2569</span><span class="sp"></span><b>฿16,150</b><svg class="i xs mu"><use href="#i-ar"/></svg></div>
+  </div>
+ </div>
+ <div class="tbar">
+  <div><svg class="i"><use href="#i-home"/></svg>วันนี้</div>
+  <div><svg class="i"><use href="#i-cal"/></svg>ตาราง</div>
+  <div><svg class="i"><use href="#i-flag"/></svg>คำขอ</div>
+  <div class="on"><svg class="i"><use href="#i-wallet"/></svg>เงินเดือน</div>
+  <div><svg class="i"><use href="#i-users"/></svg>ฉัน</div>
+ </div>
+</div>
+</div>
+
+</div>
+</div>

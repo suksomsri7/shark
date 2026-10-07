@@ -28,6 +28,7 @@ import {
   canGrantPermission,
   canGrantPermissionValue,
   canGrantUnitAccess,
+  canViewPayroll,
   evaluate,
   type MembershipCtx,
 } from "@/lib/core/rbac";
@@ -353,7 +354,7 @@ export async function grantStaffAccess(input: GrantStaffAccessInput): Promise<St
   if (!input.employeeId) return fail("กรุณาเลือกพนักงานจากทะเบียนก่อน");
 
   try {
-    const out = await prisma.$transaction(async (tx) => {
+    const attempt = () => prisma.$transaction(async (tx) => {
       // 1) พนักงานต้องอยู่ในร้านนี้จริง (กันส่ง employeeId ของร้านอื่นมาจากฟอร์ม)
       const employee = await tx.hrEmployee.findFirst({
         where: { id: input.employeeId, tenantId: input.tenantId },
@@ -372,10 +373,33 @@ export async function grantStaffAccess(input: GrantStaffAccessInput): Promise<St
         update: {},
         create: { email, name: employee.name },
       });
+      // HF-HR-0 ▸ รอบ 5 (R5.3): ให้สิทธิ์ "บัญชีเดียวกัน" หลายรายการพร้อมกัน ต่อคิวกันต่อ (ร้าน, บัญชี) ด้วยล็อกระดับธุรกรรม — ก่อนตรวจ
+      //   "บัญชีนี้ผูกกับพนักงานอื่นแล้ว" ⇒ รายการที่สองเห็นผลของรายการแรกเสมอ (ไม่มี schema ใหม่ · ด่านแถวของ R4.3 ยังอยู่ข้างล่าง)
+      //   ลำดับล็อก: แถว User (upsert ข้างบน) → advisory คีย์นี้ → แถว HrEmployee/Membership · คีย์ `staff-link:*` ไม่มีที่อื่นถือ ⇒ ไม่มีวงล็อกกลับด้าน ◂
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`staff-link:${input.tenantId}:${user.id}`}, 0))`;
 
       if (employee.linkedUserId && employee.linkedUserId !== user.id) {
         throw new StaffRuleError(`“${employee.name}” ผูกกับบัญชีผู้ใช้อื่นไปแล้ว — ถ้าต้องการเปลี่ยนอีเมล ให้แก้ที่หน้าผู้ใช้งานคนนั้นแทน`);
       }
+      // HF-HR-0 ▸ การผูกบัญชี = สิทธิ์ "ตัวพนักงานเอง" (เช่นเปิดสลิปเงินเดือนของตัวเอง) ⇒ ห้ามเป็นทางลัด:
+      //   (ก) ห้ามผูกเข้าบัญชีของผู้ทำรายการเอง · (ข) 1 บัญชี ↔ พนักงาน 1 คนต่อร้าน ·
+      //   (ค) พนักงานที่มีโปรไฟล์เงินเดือน ต้องผูกโดยผู้ดูเงินเดือน (OWNER / hr.payroll.read)
+      // HF-HR-0 ▸ รอบ 4 (R4.4): (ก) ใช้กับผู้ที่ไม่ใช่ผู้ดูเงินเดือนเท่านั้น — เจ้าของร้านคนเดียวต้องผูกแถวพนักงานของตัวเองได้ ◂
+      if (user.id === input.actorUserId && !canViewPayroll(actor.ctx)) {
+        throw new StaffRuleError("ผูกพนักงานเข้ากับบัญชีของผู้ทำรายการเองไม่ได้ — กรุณาใช้อีเมลของพนักงานคนนั้น หรือให้ผู้ดูแลคนอื่นเป็นผู้ให้สิทธิ์");
+      }
+      const otherLink = await tx.hrEmployee.findFirst({
+        where: { tenantId: input.tenantId, linkedUserId: user.id, NOT: { id: employee.id } },
+        select: { id: true },
+      });
+      if (otherLink) {
+        throw new StaffRuleError("บัญชีนี้ผูกกับพนักงานอีกคนในกิจการนี้อยู่แล้ว (1 บัญชีผูกได้กับพนักงาน 1 คน) — กรุณาใช้อีเมลอื่น");
+      }
+      const hasSalary = await tx.hrSalaryProfile.count({ where: { tenantId: input.tenantId, employeeId: employee.id } });
+      if (hasSalary > 0 && !canViewPayroll(actor.ctx)) {
+        throw new StaffRuleError("พนักงานคนนี้มีข้อมูลเงินเดือน — การผูกบัญชีต้องทำโดยเจ้าของกิจการหรือผู้มีสิทธิ์ดูเงินเดือน");
+      }
+      // ◂ HF-HR-0
 
       // 3) Membership — มีอยู่แล้วในร้านนี้ใช้ตัวเดิม (@@unique([userId, tenantId]))
       const existing = await tx.membership.findFirst({
@@ -409,12 +433,23 @@ export async function grantStaffAccess(input: GrantStaffAccessInput): Promise<St
       }
 
       // 4) ปิดหนี้ G7 — ผูกทะเบียนพนักงานเข้ากับบัญชีที่ล็อกอินได้
-      await tx.hrEmployee.updateMany({
-        where: { id: employee.id, tenantId: input.tenantId },
+      // HF-HR-0 ▸ รอบ 4 (R4.3): ผูกแบบมีเงื่อนไขในคำสั่งเดียว (ยังว่าง หรือเป็นบัญชีเดิม) — ให้สิทธิ์พร้อมกัน 2 บัญชีได้ผลทางเดียว
+      //   ทางที่แพ้ได้ 0 แถว ⇒ โยน ⇒ ธุรกรรมทั้งก้อน (รวมสมาชิกภาพที่เพิ่งสร้าง) ถูกย้อน ◂
+      const linked = await tx.hrEmployee.updateMany({
+        where: { id: employee.id, tenantId: input.tenantId, OR: [{ linkedUserId: null }, { linkedUserId: user.id }] },
         data: { linkedUserId: user.id },
       });
+      if (linked.count !== 1) {
+        throw new StaffRuleError(`“${employee.name}” เพิ่งถูกผูกกับบัญชีผู้ใช้อื่น — กรุณารีเฟรชหน้าแล้วตรวจอีกครั้ง`);
+      }
 
       return { userId: user.id, membershipId, createdNew, employeeName: employee.name };
+    });
+    // HF-HR-0 ▸ รอบ 5 (R5.3): ชน unique (อีเมลบัญชี / สมาชิกภาพ) เพราะอีกรายการเพิ่งสร้างแถวเดียวกัน ⇒ ลองใหม่ 1 ครั้ง
+    //   ให้ด่านปกติใต้ล็อกตอบเหตุผลที่ชัด (เช่น "1 บัญชีผูกได้กับพนักงาน 1 คน") แทน "ระบบขัดข้องชั่วคราว" ◂
+    const out = await attempt().catch((e: unknown) => {
+      if ((e as { code?: unknown } | null)?.code === "P2002") return attempt();
+      throw e;
     });
 
     await writeStaffAudit({

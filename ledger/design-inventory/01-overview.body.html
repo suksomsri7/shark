@@ -1,0 +1,239 @@
+<style>
+.rail{width:56px;flex:none;border-right:1px solid var(--line);background:var(--sf2);
+  padding:10px 0;display:flex;flex-direction:column;align-items:center;gap:5px;color:var(--mut2)}
+.rail .ri{width:36px;height:36px;border-radius:9px;display:grid;place-items:center}
+.rail .ri.on{background:var(--sf);border:1px solid var(--line);color:var(--ink)}
+.top .biz{display:inline-flex;align-items:center;gap:12px;height:32px;padding:0 10px;border:1px solid var(--line);
+  border-radius:8px;font-size:13px;color:var(--ink2)}
+.top .dot{width:8px;height:8px;border-radius:50%;background:var(--ink);display:inline-block}
+.top .st{display:inline-flex;align-items:center;gap:13px;font-size:12.5px;color:var(--mut)}
+.top .who{display:inline-flex;align-items:center;gap:13px;font-size:12.5px;color:var(--ink2)}
+.amenu .am .pill{height:20px;min-width:20px;font-size:12px}
+.ph .d{font-size:13.5px;color:var(--mut);margin-top:4px}
+</style>
+<style>
+/* 01 ภาพรวมคลัง */
+.ph .hb{display:flex;align-items:center;gap:12px}
+.ph .inp{height:44px!important}
+.kpi{position:relative}
+.kpi .lbl .ic{width:30px;height:30px;border-radius:9px;border:1px solid var(--line);background:var(--sf2);display:grid;place-items:center;color:var(--ink2)}
+.kpi .lbl .ar{margin-left:auto;color:var(--mut2)}
+.kpi .val small{font-size:15px!important;font-weight:600;color:var(--mut);letter-spacing:0;margin-left:6px}
+.kpi .fo b{color:var(--ink2);font-weight:700}
+.kpi .fo .up{color:var(--ink);font-weight:700}
+.kpi.dgk{border-color:var(--dg)}
+.kpi.dgk .lbl .ic{color:var(--dg);border-color:var(--dg);background:var(--sf)}
+.r2{display:grid;grid-template-columns:1.55fr 1fr;gap:32px;align-items:start}
+.cht2{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+.cht2 h2{font-size:18px;font-weight:700;letter-spacing:-.01em}
+.cht2 .sp{flex:1}
+.cht2 .lnk{font-size:14px}
+.todo .li{gap:16px;padding:16px 0;font-size:15px;align-items:center}
+.todo .ic{width:40px;height:40px;border-radius:12px;border:1px solid var(--line);background:var(--sf2);display:grid;place-items:center;color:var(--ink2);flex:none}
+.todo .ic.acc{border-color:var(--acc);background:var(--acc-bg);color:var(--acc)}
+.todo .ic.dg{border-color:var(--dg);color:var(--dg);background:var(--sf)}
+.todo .t b{display:block;font-weight:600;line-height:1.4}
+.todo .t small{display:block;color:var(--mut);margin-top:3px;line-height:1.45}
+.todo .amt{font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+.todo .amt.dg{color:var(--dg)}
+.brc{border:1px solid var(--line);border-radius:14px;padding:16px 18px;display:flex;flex-direction:column;gap:10px}
+.brc+.brc{margin-top:16px}
+.brc .h{display:flex;align-items:center;gap:10px;font-weight:700;font-size:15px}
+.brc .h .sp{flex:1}
+.brc .h .v{font-size:20px;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.brc .m2{display:flex;gap:10px;flex-wrap:wrap}
+.brc .mtr{height:8px}
+.share{display:flex;height:12px;border-radius:6px;overflow:hidden;gap:3px;margin:4px 0 18px}
+.share i{display:block;height:100%}
+.share-l{display:flex;justify-content:space-between;font-size:13px;color:var(--mut);margin-top:-10px;margin-bottom:18px}
+.chart{display:flex;gap:14px}
+.yax{display:flex;flex-direction:column;justify-content:space-between;height:240px;font-size:12.5px;color:var(--mut2);text-align:right;width:52px;flex:none;font-variant-numeric:tabular-nums}
+.yax span{line-height:0;display:block;height:0}
+.plot{flex:1;min-width:0;position:relative}
+.plot .grid{position:absolute;left:0;right:0;top:0;height:240px;display:flex;flex-direction:column;justify-content:space-between;pointer-events:none}
+.plot .grid i{display:block;height:1px;background:var(--line)}
+.plot .bar{height:240px!important;gap:14px!important;position:relative}
+.plot .bar i{border-radius:4px 4px 0 0}
+.xl{display:flex;gap:14px;margin-top:10px}
+.xl span{flex:1;text-align:center;font-size:12.5px;color:var(--mut);font-variant-numeric:tabular-nums;white-space:nowrap}
+.xl span.on{color:var(--ink);font-weight:700}
+.bv{position:absolute;font-size:12.5px;font-weight:700;transform:translateX(-50%);white-space:nowrap;font-variant-numeric:tabular-nums}
+.tov{display:flex;gap:16px;margin-top:22px}
+.tov .bx{flex:1;border:1px solid var(--line);border-radius:14px;padding:14px 16px}
+.tov .bx .k{font-size:13px;color:var(--mut)}
+.tov .bx .v{font-size:22px;font-weight:700;letter-spacing:-.02em;margin-top:4px;font-variant-numeric:tabular-nums}
+.tov .bx .v small{font-size:14px;font-weight:600;color:var(--mut);margin-left:4px}
+.tov .bx .d{font-size:13px;color:var(--mut);margin-top:2px}
+.mv h3{font-size:14.5px;font-weight:700;display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.mv h3 .sp{flex:1}
+.mv h3 .sub{font-weight:400}
+.mv .li{gap:12px;padding:11px 0;font-size:14.5px}
+.mv .rk{width:22px;color:var(--mut);font-variant-numeric:tabular-nums;flex:none}
+.mv .t b{display:block;font-weight:600}
+.mv .t small{display:block;color:var(--mut)}
+.mv .q{font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap;text-align:right}
+.mv .q small{display:block;font-weight:400;color:var(--mut);text-align:right}
+.mv+.mv{margin-top:22px;padding-top:20px;border-top:1px solid var(--line)}
+</style>
+<body><div class="wrap">
+<div>
+<p class="cap">01 · ภาพรวมคลัง <span>— หน้าแรกของระบบคลัง: การ์ด 8 ตัว (ทุกตัวกดเจาะได้) · งานที่ต้องทำวันนี้ · มูลค่าสต็อก 12 สัปดาห์ · ขายดี/ไม่เคลื่อนไหวจากยอดขายทุกช่องทาง · เทียบสาขา</span></p>
+<div class="frame" style="height:1100px">
+
+ <div class="top"><svg class="i lg"><use href="#i-menu"/></svg><span class="brand">SHARK</span>
+  <span class="biz"><svg class="i sm"><use href="#i-shop"/></svg>บ้านกาแฟสวนผึ้ง · ทุกสาขา<svg class="i xs"><use href="#i-cv"/></svg></span>
+  <span class="sp"></span>
+  <span class="st"><i class="dot"></i>ออนไลน์ · พฤ. 1 ต.ค. 2569 · 08:15</span>
+  <span class="who"><span class="av">ก</span>พี่เก่ง · ผู้จัดการ</span>
+ </div>
+
+ <div class="appbody" style="flex:1;min-height:0">
+  <div class="rail">
+   <div class="ri"><svg class="i sm"><use href="#i-home"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-shop"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-users"/></svg></div>
+   <div class="ri on"><svg class="i sm"><use href="#i-box"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-book"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-grid"/></svg></div>
+   <span style="flex:1"></span>
+   <div class="ri"><svg class="i sm"><use href="#i-gear"/></svg></div>
+  </div>
+
+  <div class="mod">
+   <div class="amenu">
+    <div class="am on"><svg class="i sm"><use href="#i-home"/></svg>ภาพรวม</div>
+    <div class="am"><svg class="i sm"><use href="#i-box"/></svg>สินค้าและวัตถุดิบ</div>
+    <div class="am"><svg class="i sm"><use href="#i-in"/></svg>รับ/ตัด/ปรับ</div>
+    <div class="am"><svg class="i sm"><use href="#i-list"/></svg>ตรวจนับ<span class="pill">1</span></div>
+    <div class="am"><svg class="i sm"><use href="#i-swap"/></svg>โอนสาขา</div>
+    <div class="am"><svg class="i sm"><use href="#i-truck"/></svg>จัดซื้อ</div>
+    <div class="am"><svg class="i sm"><use href="#i-tree"/></svg>สูตร/ผลิต</div>
+    <div class="am"><svg class="i sm"><use href="#i-chart"/></svg>รายงาน</div>
+    <div class="am"><svg class="i sm"><use href="#i-gear"/></svg>ตั้งค่า</div>
+   </div>
+
+   <div class="ph" style="align-items:flex-start">
+    <div><h1>ภาพรวมคลัง</h1><div class="d">ตัวเลขจากทุกช่องทางขาย · คลัง 2 สาขา · อัปเดตล่าสุด 08:15 — กดตัวเลขไหนก็เจาะดูรายการได้</div></div>
+    <span class="sp"></span>
+    <div class="hb">
+     <div class="inp"><svg class="i sm"><use href="#i-shop"/></svg><b>ทุกสาขา</b><svg class="i xs cv"><use href="#i-cv"/></svg></div>
+     <div class="inp"><svg class="i sm"><use href="#i-cal"/></svg><b>1 ต.ค. 2569</b><svg class="i xs cv"><use href="#i-cv"/></svg></div>
+     <div class="btn gh"><svg class="i sm"><use href="#i-upload"/></svg>ส่งออก</div>
+     <div class="btn pri"><svg class="i sm"><use href="#i-plus"/></svg>รับของ</div>
+    </div>
+   </div>
+
+   <div class="pg">
+    <!-- KPI แถว 1 -->
+    <div class="g4" style="gap:24px">
+     <div class="card kpi"><div class="lbl"><span class="ic"><svg class="i sm"><use href="#i-wallet"/></svg></span>มูลค่าสต็อก<svg class="i xs ar"><use href="#i-ar"/></svg></div>
+      <div class="val">฿186,420</div><div class="fo">ต้นทุนถัวเฉลี่ย · <span class="up">▲2.1%</span> จากเดือนก่อน</div></div>
+     <div class="card kpi"><div class="lbl"><span class="ic"><svg class="i sm"><use href="#i-warn"/></svg></span>ใกล้หมด<svg class="i xs ar"><use href="#i-ar"/></svg></div>
+      <div class="val">6<small>รายการ</small></div><div class="fo">ต่ำกว่าจุดสั่งซื้อ · หัวหิน <b>4</b> · สวนผึ้ง <b>2</b></div></div>
+     <div class="card kpi dgk"><div class="lbl"><span class="ic"><svg class="i sm"><use href="#i-x"/></svg></span>หมด<svg class="i xs ar"><use href="#i-ar"/></svg></div>
+      <div class="val dg">2<small>รายการ</small></div><div class="fo">นมสด (สวนผึ้ง) · แก้วเก็บความเย็น (สวนผึ้ง)</div></div>
+     <div class="card kpi"><div class="lbl"><span class="ic"><svg class="i sm"><use href="#i-cal"/></svg></span>ใกล้หมดอายุ 7 วัน<svg class="i xs ar"><use href="#i-ar"/></svg></div>
+      <div class="val">3<small>รายการ</small></div><div class="fo">มูลค่า <b>฿612</b> · ภายใน 30 วัน 9 รายการ</div></div>
+    </div>
+    <!-- KPI แถว 2 -->
+    <div class="g4" style="gap:24px;margin-top:-10px">
+     <div class="card kpi"><div class="lbl"><span class="ic"><svg class="i sm"><use href="#i-clock"/></svg></span>ค้างนาน &gt;60 วัน<svg class="i xs ar"><use href="#i-ar"/></svg></div>
+      <div class="val">11<small>รายการ</small></div><div class="fo">ทุนจมอยู่ <b>฿12,300</b> · 6.6% ของสต็อก</div></div>
+     <div class="card kpi"><div class="lbl"><span class="ic"><svg class="i sm"><use href="#i-truck"/></svg></span>รอรับของ<svg class="i xs ar"><use href="#i-ar"/></svg></div>
+      <div class="val">3<small>ใบสั่งซื้อ</small></div><div class="fo">มูลค่า <b>฿18,900</b> · นัดส่งวันนี้ 1 ใบ</div></div>
+     <div class="card kpi"><div class="lbl"><span class="ic"><svg class="i sm"><use href="#i-swap"/></svg></span>โอนระหว่างทาง<svg class="i xs ar"><use href="#i-ar"/></svg></div>
+      <div class="val">1<small>ใบ</small></div><div class="fo">TR-0009 หัวหิน → สวนผึ้ง · <b>฿1,850</b></div></div>
+     <div class="card kpi dgk"><div class="lbl"><span class="ic"><svg class="i sm"><use href="#i-flag"/></svg></span>ธงตรวจ (ติดลบ)<svg class="i xs ar"><use href="#i-ar"/></svg></div>
+      <div class="val dg">2<small>รายการ</small></div><div class="fo">ฝาแก้ว −20 · หลอดกระดาษ −15 (หัวหิน)</div></div>
+    </div>
+
+    <div class="r2">
+     <!-- ต้องทำวันนี้ -->
+     <div class="card">
+      <div class="cht2"><svg class="i"><use href="#i-check"/></svg><h2>ต้องทำวันนี้</h2><span class="pill">4</span><span class="sp"></span><span class="sub">เรียงตามความเร่ง</span></div>
+      <div class="lst todo">
+       <div class="li"><span class="ic acc"><svg class="i"><use href="#i-spark"/></svg></span>
+        <span class="sp t"><b>ร่างใบสั่งซื้อที่ระบบแนะนำ 2 ใบ</b><small>บริษัท กาแฟดอยช้าง จำกัด ฿6,500 · ฟาร์มนมสดเขาใหญ่ ฿2,304 — คิดจากจุดสั่งซื้อ + ยอดใช้ 14 วันล่าสุด</small></span>
+        <span class="amt">฿8,804</span><div class="btn pri sm">ดู<svg class="i xs"><use href="#i-ar"/></svg></div></div>
+       <div class="li"><span class="ic dg"><svg class="i"><use href="#i-cal"/></svg></span>
+        <span class="sp t"><b>นมสด ล็อต MK-2609 หมดอายุ 3 ต.ค. — 6 ลิตร</b><small>สาขาหัวหิน · ระบบตัดล็อตนี้ก่อนอัตโนมัติ (หมดก่อน ใช้ก่อน) · เหลือ 2 วัน</small></span>
+        <span class="amt">฿288</span><div class="btn gh sm">จัดการ</div></div>
+       <div class="li"><span class="ic"><svg class="i"><use href="#i-list"/></svg></span>
+        <span class="sp t"><b>ผลต่างตรวจนับ #8 รอยืนยัน</b><small>สาขาหัวหิน · 6 รายการ · เกินเกณฑ์ ฿300 ต้องผู้จัดการอนุมัติ — รอคุณ</small></span>
+        <span class="amt dg">−฿420</span><div class="btn gh sm">ตรวจ</div></div>
+       <div class="li"><span class="ic"><svg class="i"><use href="#i-swap"/></svg></span>
+        <span class="sp t"><b>โอน TR-0009 ไปสวนผึ้ง รอรับ 2 วัน</b><small>ส่ง 29 ก.ย. โดย ต้น · 3 รายการ · สวนผึ้งยังไม่กดรับ</small></span>
+        <span class="amt">฿1,850</span><div class="btn gh sm">เตือนสาขา</div></div>
+      </div>
+     </div>
+
+     <!-- สาขา -->
+     <div class="card">
+      <div class="cht2"><svg class="i"><use href="#i-shop"/></svg><h2>สาขา</h2><span class="sp"></span><span class="lnk">เทียบละเอียด</span></div>
+      <div class="share"><i class="sw-ink" style="width:63.4%"></i><i class="sw-l2" style="width:36.6%"></i></div>
+      <div class="share-l"><span>หัวหิน 63%</span><span>สวนผึ้ง 37%</span></div>
+      <div class="brc">
+       <div class="h"><span class="dot" style="width:10px;height:10px;border-radius:3px;background:var(--ink)"></span>สาขาหัวหิน<span class="sp"></span><span class="v">฿118,200</span></div>
+       <div class="m2"><span class="chip ink">ใกล้หมด 4</span><span class="chip">หมด 0</span><span class="chip">ใกล้หมดอายุ 3</span><span class="chip dg">ติดธง 2</span></div>
+      </div>
+      <div class="brc">
+       <div class="h"><span class="dot" style="width:10px;height:10px;border-radius:3px;background:var(--line2)"></span>สาขาสวนผึ้ง<span class="sp"></span><span class="v">฿68,220</span></div>
+       <div class="m2"><span class="chip ink">ใกล้หมด 2</span><span class="chip dg">หมด 2</span><span class="chip">ใกล้หมดอายุ 0</span><span class="chip">ติดธง 0</span></div>
+      </div>
+      <div class="note" style="margin-top:18px;display:block">ของระหว่างทาง (TR-0009 ฿1,850) หักออกจากหัวหินแล้ว · ยังไม่เข้าสวนผึ้งจนกว่าจะกดรับ</div>
+     </div>
+    </div>
+
+    <div class="r2">
+     <!-- กราฟ -->
+     <div class="card">
+      <div class="cht2"><svg class="i"><use href="#i-chart"/></svg><h2>มูลค่าสต็อก 12 สัปดาห์</h2><span class="sp"></span><span class="sub">ทุกสาขา · ณ สิ้นสัปดาห์ · ต้นทุนถัวเฉลี่ย</span></div>
+      <div class="chart" style="margin-top:34px">
+       <div class="yax"><span>฿200k</span><span>฿150k</span><span>฿100k</span><span>฿50k</span><span>฿0</span></div>
+       <div class="plot">
+        <div class="grid"><i></i><i></i><i></i><i></i><i></i></div>
+        <div class="bar">
+         <i style="height:84.2%"></i><i style="height:85.6%"></i><i style="height:87.4%"></i><i style="height:86.1%"></i><i style="height:88.9%"></i><i style="height:90.1%"></i><i style="height:87.8%"></i><i style="height:91.3%"></i><i style="height:89.4%"></i><i style="height:91.5%"></i><i style="height:91.3%"></i><i class="on" style="height:93.2%"></i>
+        </div>
+        <span class="bv" style="left:4.2%;top:14px">฿168,300</span>
+        <span class="bv" style="left:95.8%;top:-6px">฿186,420</span>
+        <div class="xl"><span>13 ก.ค.</span><span>20</span><span>27</span><span>3 ส.ค.</span><span>10</span><span>17</span><span>24</span><span>31</span><span>7 ก.ย.</span><span>14</span><span>21</span><span class="on">28</span></div>
+       </div>
+      </div>
+      <div class="tov">
+       <div class="bx"><div class="k">อัตราหมุนเวียน</div><div class="v">4.2<small>รอบ/เดือน</small></div><div class="d">ของอยู่ในร้านเฉลี่ย 7 วัน</div></div>
+       <div class="bx"><div class="k">ใช้/ขายไป 30 วัน (ต้นทุน)</div><div class="v">฿782,900</div><div class="d">จากหน้าร้าน · LINE MAN · Grab · เว็บ</div></div>
+       <div class="bx"><div class="k">ตัดเป็นของเสีย 30 วัน</div><div class="v">฿3,140</div><div class="d">0.4% ของที่ใช้ · เป้า &lt; 1%</div></div>
+      </div>
+     </div>
+
+     <!-- ขายดี vs ไม่เคลื่อนไหว -->
+     <div class="card">
+      <div class="cht2"><svg class="i"><use href="#i-report"/></svg><h2>ขายดี vs ไม่เคลื่อนไหว</h2></div>
+      <div class="sub" style="margin:-6px 0 14px">จากยอดขายทุกช่องทาง · 30 วันล่าสุด</div>
+      <div class="mv">
+       <h3>ใช้มากสุด<span class="sp"></span><span class="sub">ปริมาณ 30 วัน</span></h3>
+       <div class="lst">
+        <div class="li"><span class="rk">1</span><span class="sp t"><b>เมล็ดกาแฟคั่วกลาง</b></span><span class="q">93 กก.</span></div>
+        <div class="li"><span class="rk">2</span><span class="sp t"><b>นมสด</b></span><span class="q">612 ล.</span></div>
+        <div class="li"><span class="rk">3</span><span class="sp t"><b>แก้ว 12 oz</b></span><span class="q">3,840 ใบ</span></div>
+        <div class="li"><span class="rk">4</span><span class="sp t"><b>บราวนี่</b></span><span class="q">410 ชิ้น</span></div>
+       </div>
+      </div>
+      <div class="mv">
+       <h3>ไม่เคลื่อนไหว &gt;60 วัน<span class="sp"></span><span class="lnk" style="font-size:13.5px">ทำโปรล้างสต็อก</span></h3>
+       <div class="lst">
+        <div class="li"><span class="sp t"><b>แก้วเซรามิกลายสงกรานต์</b><small>14 ใบ · ขายล่าสุด 9 ก.ค.</small></span><span class="q">฿2,940</span></div>
+        <div class="li"><span class="sp t"><b>ถุงผ้าโลโก้ร้าน</b><small>40 ใบ · ขายล่าสุด 2 ก.ค.</small></span><span class="q">฿2,400</span></div>
+        <div class="li"><span class="sp t"><b>ผงชาไทย (สูตรเดิม)</b><small>8 ถุง · ไม่ได้ใช้ตั้งแต่เปลี่ยนสูตร</small></span><span class="q">฿1,880</span></div>
+        <div class="li"><span class="sp t"><b>อีก 8 รายการ</b></span><span class="q">฿5,080</span></div>
+       </div>
+      </div>
+     </div>
+    </div>
+   </div>
+  </div>
+ </div>
+</div>
+</div>
+</div>

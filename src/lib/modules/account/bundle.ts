@@ -82,6 +82,24 @@ export async function consumeBundleComponentsInTx(
   const needsInv = components.some((c) => c.invItemId);
   const invSystemId = needsInv ? await inventorySystemId(ctx.tenantId) : null;
   const invCtx = invSystemId ? { tenantId: ctx.tenantId, systemId: invSystemId } : null;
+  // 🔴 HF-INV-1: ล็อกส่วนประกอบที่ผูกคลังทุกตัวตามลำดับ id "ก่อน" ตัดตัวแรก — ชุดที่สูตรเรียงต่างกัน (A,B กับ B,A)
+  //    หรือใบเบิกที่แตะสินค้าเดียวกันพร้อมกัน จะไม่วงล็อกกัน (ล็อกตัวที่ไม่ได้ตัดจริงในใบนี้ = ไม่มีผลเสีย แค่รอคิว)
+  if (invCtx) {
+    await inventory.lockItemsInTx(tx, invCtx, components.filter((c) => c.invItemId && c.type !== "SERVICE").map((c) => c.invItemId as string));
+  }
+
+  // 🔴 HF-INV-1 R2.1: ส่วนประกอบที่ไม่ผูกคลัง — ล็อกแถวสินค้าตามลำดับ id ก่อนตัดตัวแรก (ชุด [A,B] กับ [B,A]
+  //    หรือใบเบิกที่แตะสินค้าเดียวกันพร้อมกัน ไม่วงล็อกกัน) แล้วลดยอดในคำสั่งเดียวด้านล่าง
+  //    HF-INV-1 ▸ R3.1: FOR NO KEY UPDATE — FOR UPDATE ชนกับ FOR KEY SHARE ของใบเบิกที่เพิ่งแทรกบรรทัดอ้างสินค้านี้ แล้วรอสินค้าที่เราถือ
+  //       = deadlock (40P01 · ทาง POS→บัญชีไม่ตัดซ้ำให้) · NO KEY UPDATE ยังเรียงคิวผู้ลดยอดด้วยกันเหมือนเดิม ◂
+  const unlinkedIds = [...new Set(components.filter((c) => !c.invItemId && c.type !== "SERVICE").map((c) => c.id))].sort();
+  if (unlinkedIds.length > 0) {
+    await tx.$queryRaw`
+      SELECT "id" FROM "AccountProduct"
+      WHERE "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId} AND "id" = ANY(${unlinkedIds}::text[])
+      ORDER BY "id" COLLATE "C"
+      FOR NO KEY UPDATE`;
+  }
 
   let consumed = 0;
   for (const line of lines) {
@@ -117,12 +135,9 @@ export async function consumeBundleComponentsInTx(
           continue;
         }
       } else {
-        await tx.accountProduct.update({
-          where: { id: comp.id },
-          data: { qtyOnHand: Number(comp.qtyOnHand) - qty },
-        });
-        // อัปเดตในหน่วยความจำด้วย เผื่อชุดเดียวกันโผล่หลายบรรทัดในใบเดียว
-        compById.set(comp.id, { ...comp, qtyOnHand: (Number(comp.qtyOnHand) - qty) as unknown as typeof comp.qtyOnHand });
+        // HF-INV-1 R2.1: ลดในคำสั่งเดียว (เดิมเขียนค่าที่คิดจากยอดที่อ่านก่อนล็อก = ยอดหายเมื่อขายพร้อมกัน)
+        //   ชุดเดียวกันหลายบรรทัดในใบเดียวก็ลดต่อกันถูกเอง ไม่ต้องจำยอดในหน่วยความจำอีก
+        await tx.accountProduct.update({ where: { id: comp.id }, data: { qtyOnHand: { decrement: qty } } });
         consumed += 1;
       }
     }

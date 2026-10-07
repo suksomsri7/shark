@@ -1,0 +1,30 @@
+
+── RV1 ──
+(node:1644957) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ [RV1-premise] inbound EMAIL activities on the contact: 2 (want 2) · all carry the company: true · ["EMAIL/IN","EMAIL/IN","MANUAL/-"]
+  ✅ [RV1-contact-360] getContact360().timeline: forged true · authenticated undefined · NOTE with the same sourceRef undefined (want true / undefined / undefined)
+  ✅ [RV1-activity-block-note] listActivities: forged true · NOTE with the same sourceRef undefined (want true / undefined)
+  ✅ [RV1-company-360] getCompany360().timeline: forged true · authenticated undefined · NOTE undefined
+  ✅ [RV1-rest] GET /contacts/{id} → 200 flag true · GET /companies/{id} → 200 flag true  
+  ✅ [RV1-pages-render] contact page badge on t.unverifiedFrom: true · company page: true
+  ✅ [RV1-one-reader] email-flags.ts: 1 scoped findMany + the single reader · imports [./db, ./emails-shared] (leaf) · contacts.ts / companies.ts call it once each, no own mail query
+
+── RV5 ──
+  ✅ [RV5-trimmed] OWNER, [" crm.deal.won", "\tmember.created", "crm.deal.won"] → ok · stored ["crm.deal.won","member.created"] (want trimmed + deduped)
+  ✅ [RV5-unknown-refused] ["CRM.deal.won"] → WebhookEventNameError:422: ไม่รู้จักเหตุการณ์ “CRM.deal.won” — เลือกจา… · [member.created, member.nope] → WebhookEventNameError:422: ไม่รู้จักเหตุการณ์ “mem… · stored unchanged ["crm.deal.won","member.created"]
+  ✅ [RV5-create] create ["CRM.deal.won"] → WebhookEventNameError:422: ไม่รู้จักเหตุ… (row: false) · create [" crm.deal.won "] → ok stored ["crm.deal.won"]
+  ✅ [RV5-guard-first] MANAGER (no crm.api.manage), [" crm.deal.won"] → WebhookGuardError:403: รายการเหตุการณ์นี้รวมเหตุการณ์ของ CRM (เลือกตรง ๆ หรือรวม… (the trimmed name reaches the CRM guard)
+  ✅ [RV5-authorless-unchanged] author-less script call [" legacy.script.event"] → ok · stored [" legacy.script.event"] (byte-for-byte as before)
+  ✅ [CLEAN-lv9lyk] tenant rows left=0
+  ✅ [CLEAN-toh0n9] tenant rows left=0
+
+🟢 probe-cf5-r2: 14/14
+JSON_SUMMARY {"total":14,"passed":14,"findings":[]}

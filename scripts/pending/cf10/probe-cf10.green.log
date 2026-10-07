@@ -1,0 +1,61 @@
+(node:2127114) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ [P-premise] keys: linker can link · ro/noCo cannot · coHidden invisible to linker, visible to owner · coLink visible to linker
+
+── F1 · R2F-1 ──
+  ✅ [F1-ui-no-dead-picker] linker, primary hidden: picker shown=false · locked line=true "บริษัทหลักปัจจุบันของผู้ติดต่อนี้อยู่นอกขอบเขตที่บัญชีนี้มองเห็น จึงย้ายหรือถอดบริษัทหลักจ…" · hidden name in html=false (want no picker · explanatory line · no hidden name)
+  ✅ [F1-srv-own-text] linker promotes its visible secondary, primary hidden → NOT_FOUND "บริษัทหลักปัจจุบันของผู้ติดต่อนี้อยู่นอกขอบเขตที่บัญชีนี้มองเห็น จึงย้ายหรือถอดบริษัทหลักจากบัญชีนี้ไม่ได้ — ใ…" · writes: none (want NOT_FOUND · own text about visibility, no "refresh" · no hidden name · none)
+  ✅ [F1-oracle-same-text] hidden live (move) / hidden archived (move) / hidden archived (clear) → NOT_FOUND / NOT_FOUND / NOT_FOUND · same text=true
+  ✅ [F1-control-linker-visible] linker, primary visible → picker, no locked line
+  ✅ [F1-control-owner] owner on the same contact → picker=true · promote secondary OK → primary=coLink
+  ✅ [F1-control-readonly-line] read-only role keeps the fix6 r2 read-only line ('บริษัท: <visible secondary>'), no locked line, no hidden name
+  ✅ [F1-control-noread] no company read → no picker, no line (unchanged)
+  ✅ [F1-wiring] page computes primaryCompanyHidden via contacts.isCurrentCompanyHidden and passes can.company / companyLocked from it
+
+── F2 · R2F-2 ──
+  ✅ [F2-archived-clear-atomic] clear an ARCHIVED (visible) current company + firstName → VALIDATION "บริษัทนี้ถูกเก็บถาวรแล้ว จึงแก้ไขไม่ได้ — กู้คืนก่อนถ้าต้องการใช้งานต่อ" · writes: none (want VALIDATION · none — refused before any write)
+  ✅ [F2-control-move-off] move off the archived company → OK · now coFull=true
+  ✅ [F2-control-restore-then-clear] restore OK → clear OK · companyId=null · link ended=true
+  ✅ [F2-control-real-archive] archiveCompany (service) → contact cache null (want null) · clear afterwards OK
+  ✅ [F2-control-live-clear] clear a live visible company → OK · companyId=null
+
+── F5 · F6-5 ──
+  ✅ [F5-echo-invisible-ro] ro (company read) echoes its contact's current INVISIBLE company + jobTitle → OK "" · jobTitle saved=true · company kept=true · audit keys ["jobTitle"] (want OK · ["jobTitle"])
+  ✅ [F5-echo-invisible-linker] linker (company read) echoes its contact's current INVISIBLE company + jobTitle → OK "" · jobTitle saved=true · company kept=true · audit keys ["jobTitle"] (want OK · ["jobTitle"])
+  ✅ [F5-race-no-false-audit] read user echoes the OLD company while another writer moved it in between → OK "" · audit keys ["jobTitle"] · event keys ["jobTitle"] (want no "companyId")
+  ✅ [F5-control-real-change-refused] read-only user REALLY changes the company → FORBIDDEN · writes: none
+  ✅ [F5-control-upper-not-echo] no-read user sends UPPER(current id) → FORBIDDEN (not an echo)
+
+── F6 · F6-6 ──
+  ✅ [F6-default-kept] no-read creator, contact at a company they cannot see → OK · deal company = contact's (true) · company openDealCount 0→1 (roll-up)
+  ✅ [F6-no-name-back] create returns no company name (keys: companyId) · deal 360 company=null · hidden name anywhere=false
+  ℹ️  [F6-board-card] listDeals card for the creator → companyName "บริษัทลับ xufcfxef" (pre-existing deal-wide rule: deal cards/CSV name the deal's company via system scope — owner question)
+  ✅ [F6-label] deal form's empty company option says it uses the contact's primary company (it never meant 'no company')
+
+── DT · RV-3 ──
+  ✅ [DT-360-thai] contact 360 DATETIME display "9 ต.ค. 2569 00:30" · staff record page "9 ต.ค. 2569 00:30" (want equal, Thai time)
+  ℹ️  [DT-360-date] contact 360 DATE display "2026-10-09" (unchanged; the staff page shows "9 ต.ค. 2569")
+  ✅ [DT-export-iso-th] export DATETIME cell "2026-10-09T00:30:00+07:00" (want "2026-10-09T00:30:00+07:00" — Thai wall time with its own offset)
+  ✅ [DT-export-date-unchanged] export DATE cell "2026-10-09" (want "2026-10-09", unchanged)
+  ✅ [DT-roundtrip-thai-server] TZ premise true · import exported "2026-10-09T00:30:00+07:00" with TZ=Asia/Bangkok → OK errors [] · stored 2026-10-08T17:30:00.000Z (want 2026-10-08T17:30:00.000Z)
+  ✅ [DT-one-helper] portal.ts, contacts.ts and the staff record page take formatThaiDateTimeFull from lib/ui/date (no copied format options)
+  ✅ [DT-control-portal-equal] old portal format options = shared helper text on 4 instants
+
+── IM · R2F-3 ──
+  ℹ️  [IM-shape] OK created=55 failed=5 entries=60 · first entry {"row":56,"message":"แถวนี้ว่าง (ไม่มีชื่อ เบอร์ หรืออีเมล) — ระบบข้ามให้แล้ว","kind":"error"} · kinds ["error","note"]
+  ✅ [IM-kind] every entry has kind · errors=5 (=failed 5) · notes=55 (want 55)
+  ✅ [IM-failures-first] all 5 real failures inside the first 50 entries the UI shows → rows [56,57,58,59,60] (positions [0,1,2,3,4])
+  ✅ [IM-compat] entries still carry row + message (additive change)
+  ✅ [IM-job-failures-kept] getImportJob (audit keeps the first 50) still lists the 5 failures with kind "error" → [[56,"error"],[57,"error"],[58,"error"],[59,"error"],[60,"error"]]
+  ✅ [IM-ui-label] both import result lists label notes apart from failures
+  ✅ [CLEAN-isp48o] tenant rows left=0
+
+🟢 probe-cf10: 34/34
+JSON_SUMMARY {"total":34,"passed":34,"findings":[]}

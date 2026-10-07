@@ -47,6 +47,7 @@ import { crmStaleDaysDefaultOf } from "./settings";
 // CRM C1.6 ▸ การ์ดบอร์ดงานของดีลใน getDeal360 ◂
 import { auditSystemActivity, dealKanbanCards, recordSystemActivityInTx, type DealKanbanCard } from "./activities";
 import {
+  HIDDEN_CONTACT_NAME, // CRM C5.5-fix10 ◂
   DEAL_BOARD_CARDS_MAX,
   DEAL_BULK_MAX,
   DEAL_COLLABORATORS_MAX,
@@ -164,7 +165,9 @@ export type SetLinesInput = { lines: DealLineInput[]; discountBp?: number | null
 export type SetLinesResult =
   | { status: "APPLIED"; deal: DealDto }
   | { status: "APPROVAL_REQUIRED"; approvalRequestId: string; deal: DealDto };
-export type BulkResult = { ok: number; failed: { id: string; error: string }[] };
+// CRM C5.5-fix15 ▸ O-it6-a: `unchanged` = ดีลที่อยู่ขั้นปลายทางอยู่แล้ว (moveCore `changed:false` — ไม่มีประวัติ/event) · `ok` นับเฉพาะที่ย้ายจริง
+//   (เดิมนับรวม ⇒ ปุ่มบอก "ย้ายขั้นสำเร็จ N ดีล" ทั้งที่ไม่มีอะไรย้าย) · ใส่เฉพาะ bulkMove ◂
+export type BulkResult = { ok: number; failed: { id: string; error: string }[]; unchanged?: number };
 
 // ───────────────────────── ตัวช่วยพื้นฐาน ─────────────────────────
 
@@ -558,6 +561,75 @@ function splitRequireValues(values: Record<string, unknown>): { columns: Prisma.
   return { columns, custom };
 }
 
+const THAI_DIGITS = "๐๑๒๓๔๕๖๗๘๙";
+const TRUE_WORDS = new Set(["ใช่", "true", "1", "yes", "y", "on", "มี"]);
+const FALSE_WORDS = new Set(["ไม่", "ไม่ใช่", "false", "0", "no", "n", "off", "ไม่มี"]);
+type ChoiceOpt = { value: string; label: string };
+
+/**
+ * CRM C5.4-E ▸ L6-M1: ค่าจากหน้าต่างเงื่อนไขก่อนเข้าขั้นเป็น "ข้อความที่คนพิมพ์" (ตัวเลขมีจุลภาค · ป้ายของตัวเลือก · ใช่/ไม่ใช่)
+ * ⇒ แปลงตามชนิดของฟิลด์ก่อนส่งให้ engine (ตัวตรวจชนิดจริงยังเป็นของ engine ตัวเดียว — ที่นี่แค่แปลงรูปที่เห็นได้ชัด) ·
+ * ค่าที่แปลงไม่ได้ส่งต่อตามเดิม ⇒ engine ตอบข้อความไทยเดิม · ค่าที่เป็นชนิดถูกอยู่แล้ว (REST ส่ง number/boolean) ไม่แตะ
+ * ใช้กับทางย้ายขั้นเท่านั้น (API สร้าง/แก้ดีลยังรับค่าชนิดตรงตามสัญญา) ◂
+ */
+function coerceRequireValue(type: string, choices: ChoiceOpt[], v: unknown): unknown {
+  const text = (x: string) => x.trim().replace(/[๐-๙]/g, (d) => String(THAI_DIGITS.indexOf(d)));
+  const pick = (x: string): string => {
+    const t = x.trim();
+    if (choices.some((c) => c.value === t)) return t;
+    const low = t.toLowerCase();
+    return choices.find((c) => c.label.trim().toLowerCase() === low)?.value ?? t;
+  };
+  switch (type) {
+    case "NUMBER":
+    case "MONEY": {
+      if (typeof v !== "string") return v;
+      const t = text(v).replace(/[,\s฿]/g, "");
+      if (t === "") return null;
+      const n = Number(t);
+      return Number.isFinite(n) ? n : v;
+    }
+    case "BOOLEAN": {
+      if (typeof v !== "string") return v;
+      const t = text(v).toLowerCase();
+      if (t === "") return null;
+      return TRUE_WORDS.has(t) ? true : FALSE_WORDS.has(t) ? false : v;
+    }
+    case "SELECT":
+      return typeof v === "string" ? pick(v) : v;
+    case "MULTI_SELECT": {
+      const list = typeof v === "string" ? v.split(",") : Array.isArray(v) ? v : null;
+      if (!list) return v;
+      return list.filter((x): x is string => typeof x === "string" && x.trim() !== "").map(pick);
+    }
+    case "DATE": {
+      // วว/ดด/ปปปป (ค.ศ.) → ปปปป-ดด-วว · ปี พ.ศ. ส่งต่อให้ engine ตอบข้อความ "ใส่ปีเป็น พ.ศ." ของมันเอง (ไม่แปลงเงียบ ๆ)
+      if (typeof v !== "string") return v;
+      const m = /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/.exec(text(v));
+      return m ? `${m[3]}-${m[2]!.padStart(2, "0")}-${m[1]!.padStart(2, "0")}` : text(v);
+    }
+    default:
+      return v;
+  }
+}
+
+async function coerceRequireValues(tx: Tx, ctx: DealsCtx, custom: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const keys = Object.keys(custom);
+  if (keys.length === 0) return custom;
+  const defs = await tx.memberField.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, objectKey: "deal", key: { in: keys } }, select: { key: true, type: true, options: true } });
+  const byKey = new Map(defs.map((d) => [d.key, d]));
+  const out: Record<string, unknown> = {};
+  for (const k of keys) {
+    const d = byKey.get(k);
+    const opts = isObj(d?.options) ? (d.options as Record<string, unknown>) : {};
+    const choices = Array.isArray(opts.choices)
+      ? opts.choices.filter((c): c is ChoiceOpt => isObj(c) && typeof c.value === "string" && typeof c.label === "string")
+      : [];
+    out[k] = d ? coerceRequireValue(String(d.type), choices, custom[k]) : custom[k];
+  }
+  return out;
+}
+
 /** key ที่ยังขาดของขั้นปลายทาง (ฟิลด์ระบบ/ฟิลด์กำหนดเอง + "LINES" + "QUOTATION") — อ่านใน tx เดียวกับการย้าย */
 async function missingFor(tx: Tx, ctx: DealsCtx, who: Who, deal: CrmDeal, stage: CrmStage): Promise<string[]> {
   const missing: string[] = [];
@@ -573,10 +645,16 @@ async function missingFor(tx: Tx, ctx: DealsCtx, who: Who, deal: CrmDeal, stage:
           : (deal as unknown as Record<string, unknown>)[key];
     if (blank(v)) missing.push(key);
   }
-  if (customKeys.length > 0) {
+  // CRM C5.4-E ▸ L6-M2: ฟิลด์ที่ถูกเก็บเข้าคลัง/ลบไปแล้ว **ไม่บังคับ** (engine อ่านค่าของมันไม่ได้และเขียนไม่ได้ ⇒ เดิมขั้นนั้นล็อกทุกดีล
+  //   แม้ดีลที่มีค่าอยู่แล้ว) · key ยังอยู่ในขั้น ⇒ กู้คืนฟิลด์เมื่อไร เงื่อนไขกลับมาเอง ◂
+  const liveKeys = customKeys.length > 0
+    ? new Set((await tx.memberField.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, objectKey: "deal", key: { in: customKeys }, archivedAt: null }, select: { key: true } })).map((f) => f.key))
+    : new Set<string>();
+  const enforced = customKeys.filter((k) => liveKeys.has(k));
+  if (enforced.length > 0) {
     const vals = await (await engine()).getFieldValues(fctx(ctx, who), [deal.id], tx);
     const bag = vals[deal.id] ?? {};
-    for (const key of customKeys) if (blank(bag[key])) missing.push(key);
+    for (const key of enforced) if (blank(bag[key])) missing.push(key);
   }
   if (stage.requireLines && (await tx.crmDealLine.count({ where: { dealId: deal.id } })) === 0) missing.push("LINES");
   if (stage.requireQuotation && !deal.quotationDocId) missing.push("QUOTATION");
@@ -644,6 +722,10 @@ async function createCore(ctx: DealsCtx, who: Who, input: CreateDealInput, opts:
     if (!co) throw fail("NOT_FOUND", "ไม่พบบริษัทที่เลือกในระบบ CRM นี้ (อาจถูกเก็บถาวรหรือรวมไปแล้ว) — เลือกใหม่จากรายการ");
     companyId = co.id;
   } else {
+    // CRM C5.5-fix7 ▸ F6-6 (ตัดสินแล้ว · ไม่เปลี่ยนพฤติกรรม): ไม่ระบุ = บริษัทหลักของผู้ติดต่อ **ไม่ขึ้นกับว่าผู้สร้างมองเห็นบริษัทนั้นไหม** —
+    //   พิมพ์เขียว §4.4 (docs/modules/20-crm-v2.md) บอกแค่ "บริษัทที่ผู้ติดต่อหลักสังกัด หรือ null" · STAFF ค่าเริ่มต้นไม่มีคีย์บริษัทเลย ⇒ ถ้าตัดตาม
+    //   การมองเห็นของผู้สร้าง ดีลของพนักงานแทบทั้งหมดจะไม่มีบริษัท (ยอดรวม/ดีลในบริษัท 360 ของเจ้าของบริษัทหาย) · ผู้สร้างไม่ได้ชื่อบริษัทกลับไป
+    //   (ผลลัพธ์มีแค่ companyId ซึ่งเท่ากับ companyId ใน DTO ผู้ติดต่อที่เขาอ่านได้อยู่แล้ว · ดีล 360 ไม่แสดงชื่อบริษัทที่มองไม่เห็น) ◂
     companyId = contact.companyId ?? null;
   }
   const owner = str(input?.ownerUserId) ?? actorIdOf(ctx) ?? (who && who.userId ? who.userId : null);
@@ -832,7 +914,7 @@ async function moveCore(ctx: DealsCtx, who: Who, id: string, input: MoveDealInpu
     const intoLost = target.kind === "LOST" && deal.kind !== "LOST";
     let working = deal;
     if (Object.keys(split.columns).length > 0) working = await tx.crmDeal.update({ where: { id: deal.id }, data: split.columns });
-    if (hasCustom) await (await engine()).setFieldValues(fctx(ctx, who), deal.id, split.custom, { via: "STAFF", byUserId: actorIdOf(ctx) }, tx);
+    if (hasCustom) await (await engine()).setFieldValues(fctx(ctx, who), deal.id, await coerceRequireValues(tx, ctx, split.custom), { via: "STAFF", byUserId: actorIdOf(ctx) }, tx);
     const missing = await missingFor(tx, ctx, who, working, target);
     if (missing.length > 0) throw fail("STAGE_REQUIREMENTS", await missingMessage(ctx, who, target, missing), { missing });
 
@@ -1556,16 +1638,20 @@ export async function bulkMove(ctx: DealsCtx, actor: MemberActor, input: { ids: 
   const ids = bulkIds(input?.ids);
   const a = await enter(ctx, actor);
   need(a, "crm.deal.move");
-  const res: BulkResult = { ok: 0, failed: [] };
+  const res: BulkResult = { ok: 0, failed: [], unchanged: 0 };
   for (const id of ids) {
     try {
-      await moveCore(ctx, a, id, { stageId: input.stageId, note: reason }, {});
-      res.ok += 1;
+      const o = await moveCore(ctx, a, id, { stageId: input.stageId, note: reason }, {});
+      if (o.changed) res.ok += 1;
+      else res.unchanged = (res.unchanged ?? 0) + 1;
     } catch (e) {
       res.failed.push({ id, error: e instanceof DealsError ? e.message : "ย้ายดีลนี้ไม่สำเร็จ ลองใหม่อีกครั้ง" });
     }
   }
-  await writeAudit({ tenantId: ctx.tenantId, actorId: actorIdOf(ctx), action: "crm.deal.bulk_move", targetType: "CrmDeal", after: { reason, stageId: input.stageId, ids, ok: res.ok, failed: res.failed.length } });
+  // CRM C5.5-fix15 ▸ RVR-5 (มติผู้คุมงาน): ไม่มีอะไรเปลี่ยนเลย (ทุกดีลอยู่ขั้นปลายทางอยู่แล้ว ไม่มีที่ล้ม) = ไม่เขียนแถว "ย้าย" ใน audit ◂
+  if (res.ok > 0 || res.failed.length > 0) {
+    await writeAudit({ tenantId: ctx.tenantId, actorId: actorIdOf(ctx), action: "crm.deal.bulk_move", targetType: "CrmDeal", after: { reason, stageId: input.stageId, ids, ok: res.ok, unchanged: res.unchanged ?? 0, failed: res.failed.length } });
+  }
   return res;
 }
 
@@ -1785,28 +1871,44 @@ async function userNames(ctx: DealsCtx, ids: (string | null | undefined)[]): Pro
   return new Map(rows.map((r) => [r.id, r.name ?? r.email ?? "ผู้ใช้"]));
 }
 
-async function companyNames(ctx: DealsCtx, ids: (string | null | undefined)[]): Promise<Map<string, string>> {
+// CRM C5.5-fix10 ▸ FX7-1: ชื่อบริษัท/ผู้ติดต่อบนพื้นผิวของดีล = ตามการมองเห็นของ **ผู้ดู** (กติกาเดียวกับดีล 360 · getDeal360):
+//   บริษัทผ่าน `companies.companyRefsInTx(…, ผู้ดู, …)` (companyWhere) · ผู้ติดต่อผ่าน contactWhere · มองไม่เห็น = ไม่มีชื่อ
+//   (บริษัท → null/"" = แสดงแบบ "ไม่ผูกบริษัท" · ผู้ติดต่อ → HIDDEN_CONTACT_NAME แบบดีล 360 · คะแนน 0) — ไม่มีข้อความที่ได้จาก id ·
+//   เดิมอ่านชื่อในขอบเขตระบบ ⇒ การ์ด/กระดาน/CSV บอกชื่อบริษัทที่ผู้ดูมองไม่เห็น (ตั้งแต่ C1.5) · ดีลยังถือ companyId เดิม
+//   (ยอดรวมของบริษัทไม่เปลี่ยน — เปลี่ยนเฉพาะสิ่งที่ "แสดง" ให้ผู้ดูคนนี้) · ต่อหน้า: การมองเห็น 1 ชุดต่อเอนทิตี (ไม่มี N+1) ◂
+async function companyNames(ctx: DealsCtx, viewer: MemberActor, ids: (string | null | undefined)[]): Promise<Map<string, string>> {
   const uniq = [...new Set(ids.filter((x): x is string => !!x))];
   if (uniq.length === 0) return new Map();
-  const rows = await companies.companyRefsInTx(prisma, coCtx(ctx), null, uniq);
+  const rows = await companies.companyRefsInTx(prisma, coCtx(ctx), viewer, uniq);
   return new Map(rows.map((r) => [r.id, r.name]));
 }
+/** id ผู้ติดต่อ (ของดีลในหน้านี้) ที่ผู้ดูมองเห็น — คิวรีเดียว */
+async function visibleContactIds(ctx: DealsCtx, viewer: MemberActor, ids: (string | null | undefined)[]): Promise<Set<string>> {
+  const uniq = [...new Set(ids.filter((x): x is string => !!x))];
+  if (uniq.length === 0) return new Set();
+  const rows = await prisma.crmContact.findMany({ where: { AND: [await contactWhere(ctx, viewer), { id: { in: uniq } }] }, select: { id: true } });
+  return new Set(rows.map((r) => r.id));
+}
 
-async function toCards(ctx: DealsCtx, rows: CardRow[]): Promise<DealCardDto[]> {
-  const [owners, cos] = await Promise.all([userNames(ctx, rows.map((r) => r.ownerUserId)), companyNames(ctx, rows.map((r) => r.companyId))]);
+async function toCards(ctx: DealsCtx, viewer: MemberActor, rows: CardRow[]): Promise<DealCardDto[]> {
+  const [owners, cos, seen] = await Promise.all([
+    userNames(ctx, rows.map((r) => r.ownerUserId)),
+    companyNames(ctx, viewer, rows.map((r) => r.companyId)),
+    visibleContactIds(ctx, viewer, rows.map((r) => r.contactId)),
+  ]);
   return rows.map((r) => ({
     id: r.id,
     title: r.title,
     companyId: r.companyId,
     companyName: r.companyId ? (cos.get(r.companyId) ?? null) : null,
-    contactName: r.contact?.name ?? "",
+    contactName: seen.has(r.contactId) ? (r.contact?.name ?? "") : HIDDEN_CONTACT_NAME,
     valueSatang: r.valueSatang,
     ownerUserId: r.ownerUserId,
     ownerName: r.ownerUserId ? (owners.get(r.ownerUserId) ?? null) : null,
     expectedCloseAt: dayKey(r.expectedCloseAt),
     stale: !!r.stalledAt,
     stalledAt: iso(r.stalledAt),
-    score: r.contact?.score ?? 0,
+    score: seen.has(r.contactId) ? (r.contact?.score ?? 0) : 0,
     nextActivityAt: iso(r.nextActivityAt),
     nextStep: r.nextStep,
     kind: r.kind as DealKind,
@@ -1857,14 +1959,14 @@ export async function listDeals(ctx: DealsCtx, actor: MemberActor, input: DealLi
     }
     const more = rows.length > pageSize;
     const page = more ? rows.slice(0, pageSize) : rows;
-    const cards = await toCards(ctx, page);
+    const cards = await toCards(ctx, a, page);
     const items: DealListRow[] = cards.map((c, i) => ({ ...c, pipelineId: page[i]!.pipelineId, stageName: page[i]!.stage?.name ?? "", forecastCategory: page[i]!.forecastCategory as ForecastCategory }));
     return { items, nextCursor: more ? (page[page.length - 1]?.id ?? null) : null };
   });
 }
 
 type BoardCardSqlRow = {
-  id: string; title: string; companyId: string | null; contactName: string | null; contactScore: number | null; valueSatang: number;
+  id: string; title: string; companyId: string | null; contactId: string; contactName: string | null; contactScore: number | null; valueSatang: number;
   ownerUserId: string | null; expectedCloseAt: Date | null; stalledAt: Date | null; nextActivityAt: Date | null; nextStep: string | null;
   kind: string; stageId: string; probabilityOverride: number | null; stageName: string | null; stageProbability: number | null; tags: string[];
 };
@@ -1905,7 +2007,7 @@ export async function getBoard(ctx: DealsCtx, actor: MemberActor, input: DealLis
                 FROM "CrmDeal" d
                WHERE ${where} AND d."stageId" = ANY(${stageIds}::text[])
             )
-            SELECT d."id", d."title", d."companyId", c."name" AS "contactName", c."score" AS "contactScore", d."valueSatang",
+            SELECT d."id", d."title", d."companyId", d."contactId", c."name" AS "contactName", c."score" AS "contactScore", d."valueSatang",
                    d."ownerUserId", d."expectedCloseAt", d."stalledAt", d."nextActivityAt", d."nextStep", d."kind"::text AS "kind",
                    d."stageId", d."probabilityOverride", st."name" AS "stageName", st."probability" AS "stageProbability", d."tags"
               FROM ranked r
@@ -1924,7 +2026,7 @@ export async function getBoard(ctx: DealsCtx, actor: MemberActor, input: DealLis
         contact: r.contactName === null ? null : { name: r.contactName, score: r.contactScore ?? 0 },
         stage: r.stageName === null ? null : { name: r.stageName, probability: r.stageProbability ?? 0 },
       }) as unknown as CardRow;
-    const cards = await toCards(ctx, cardRows.map(asCard));
+    const cards = await toCards(ctx, a, cardRows.map(asCard));
     const byId = new Map(cards.map((c) => [c.id, c]));
     const byStage = new Map<string, DealCardDto[]>();
     for (const r of cardRows) {
@@ -2086,7 +2188,7 @@ export async function getDeal360(ctx: DealsCtx, actor: MemberActor, id: string):
       discountSatang: totals.discountSatang,
       history,
       company: company ? { id: company.id, name: company.name } : null,
-      contact: { id: deal.contactId, name: contact?.name ?? "ผู้ติดต่อที่มองไม่เห็น" },
+      contact: { id: deal.contactId, name: contact?.name ?? HIDDEN_CONTACT_NAME },
       owner: deal.ownerUserId ? { id: deal.ownerUserId, name: people.get(deal.ownerUserId) ?? "ผู้ใช้" } : null,
       collaborators: deal.collaboratorUserIds.map((u) => ({ id: u, name: people.get(u) ?? "ผู้ใช้" })),
       lostReason: lostReason ? { id: lostReason.id, label: lostReason.label } : null,
@@ -2106,6 +2208,11 @@ export async function getDeal360(ctx: DealsCtx, actor: MemberActor, id: string):
 
 /** ส่งออก CSV (AUDIT-CLASS X6: ทุกบรรทัดผ่าน `csvRow` — เซลล์ขึ้นต้น = + - @ ถูกทำให้เป็นกลาง) · ≤ DEAL_EXPORT_MAX_ROWS */
 export async function exportDeals(ctx: DealsCtx, actor: MemberActor, filters: DealListInput = {}): Promise<string> {
+  // CRM C5.5-fix12 ▸ RV10-4: ครอบขอบเขต memo ต่อการเรียก (crmScope) — ภาพการมองเห็นของผู้ส่งออกคิดครั้งเดียว (เดิม listWhere/dealWhere ·
+  //   companyRefsInTx · contactWhere ต่างคนต่างคิด) · ทางอ่าน (บันทึกแค่ audit) ⇒ ครอบได้ตามกติกาของ request-scope ◂
+  return crmScope(() => exportDealsIn(ctx, actor, filters));
+}
+async function exportDealsIn(ctx: DealsCtx, actor: MemberActor, filters: DealListInput): Promise<string> {
   const a = await enter(ctx, actor);
   // CRM C5.1-fix ▸ F1/F3: listWhere มี dealWhere อยู่แล้ว (ไม่ AND ซ้ำ) · มีตัวกรองฟิลด์ = นับ/เลือก id ด้วย SQL (≤ 5,000 id) ◂
   const eff = await effectiveListInput(ctx, a, { ...(filters ?? {}), cursor: null });
@@ -2120,7 +2227,12 @@ export async function exportDeals(ctx: DealsCtx, actor: MemberActor, filters: De
         return ids.length ? inOrder(ids, await prisma.crmDeal.findMany({ where: { id: { in: ids } }, include })) : [];
       })()
     : await prisma.crmDeal.findMany({ where, include, orderBy: [{ createdAt: "asc" }, { id: "asc" }], take: DEAL_EXPORT_MAX_ROWS });
-  const [owners, cos] = await Promise.all([userNames(ctx, rows.map((r) => r.ownerUserId)), companyNames(ctx, rows.map((r) => r.companyId))]);
+  // CRM C5.5-fix10 ▸ FX7-1: ชื่อตามการมองเห็นของผู้ส่งออก (เหมือนการ์ด/ดีล 360) · บริษัทที่มองไม่เห็น = ช่องว่าง (เหมือนไม่ผูกบริษัท) ◂
+  const [owners, cos, seen] = await Promise.all([
+    userNames(ctx, rows.map((r) => r.ownerUserId)),
+    companyNames(ctx, a, rows.map((r) => r.companyId)),
+    visibleContactIds(ctx, a, rows.map((r) => r.contactId)),
+  ]);
   const header = ["ชื่อดีล", "บริษัท", "ผู้ติดต่อ", "pipeline", "ขั้น", "สถานะ", "มูลค่า (บาท)", "หมวดพยากรณ์", "โอกาสปิด (%)", "วันที่คาดว่าจะปิด", "ผู้ดูแล", "แท็ก", "เพิ่มเมื่อ"];
   const out = [csvRow(header)];
   for (const r of rows) {
@@ -2128,7 +2240,7 @@ export async function exportDeals(ctx: DealsCtx, actor: MemberActor, filters: De
       csvRow([
         r.title,
         r.companyId ? (cos.get(r.companyId) ?? "") : "",
-        r.contact?.name ?? "",
+        seen.has(r.contactId) ? (r.contact?.name ?? "") : HIDDEN_CONTACT_NAME,
         r.pipeline?.name ?? "",
         r.stage?.name ?? "",
         DEAL_KIND_LABEL[r.kind as DealKind],
@@ -2208,11 +2320,21 @@ export async function savedViewOptions(ctx: DealsCtx, actor: MemberActor): Promi
 }
 
 /** ฟิลด์กำหนดเองของดีล (โมดัลเงื่อนไขก่อนเข้าขั้น · ตัวกรอง f.<key>) */
-export async function dealFieldLayout(ctx: DealsCtx, actor: MemberActor): Promise<{ key: string; label: string; type: string; filterable: boolean; isSystem: boolean }[]> {
+export async function dealFieldLayout(ctx: DealsCtx, actor: MemberActor): Promise<{ key: string; label: string; type: string; filterable: boolean; isSystem: boolean; choices: { value: string; label: string }[] }[]> {
   const a = await enter(ctx, actor);
   try {
     const layout = await (await engine()).listLayout(fctx(ctx, a));
-    return layout.sections.flatMap((s) => s.fields.map((f) => ({ key: f.key, label: f.label, type: String(f.type), filterable: !!f.filterable, isSystem: !!f.isSystem })));
+    // CRM C5.4-E ▸ L6-M1: + ตัวเลือก (value/label) — หน้าต่างเงื่อนไขก่อนเข้าขั้นแสดงช่องตามชนิดฟิลด์ ◂
+    return layout.sections.flatMap((s) =>
+      s.fields.map((f) => ({
+        key: f.key,
+        label: f.label,
+        type: String(f.type),
+        filterable: !!f.filterable,
+        isSystem: !!f.isSystem,
+        choices: (f.options?.choices ?? []).map((c) => ({ value: c.value, label: c.label })),
+      })),
+    );
   } catch {
     return [];
   }
@@ -2273,14 +2395,19 @@ export async function applyQuotationResponse(ctx: { tenantId: string; systemId: 
   await resolveSystem(c);
   const rows = await prisma.crmDeal.findMany({
     where: { ...identityScope(c), quotationDocId: docId, kind: "OPEN" },
-    select: { id: true, pipeline: { select: { stageOnQuoteAcceptedId: true, stageOnQuoteRejectedId: true } } },
+    select: { id: true, ownerUserId: true, collaboratorUserIds: true, pipeline: { select: { stageOnQuoteAcceptedId: true, stageOnQuoteRejectedId: true } } },
     orderBy: { id: "asc" },
   });
   let moved = 0;
   let firstError: unknown = null;
   for (const d of rows) {
     const stageId = input.accepted ? d.pipeline.stageOnQuoteAcceptedId : d.pipeline.stageOnQuoteRejectedId;
-    if (!stageId) continue;
+    // CRM C5.4-E ▸ L6-M4: ลูกค้าตอบใบเสนอราคาแต่ไม่มีการย้ายอัตโนมัติ (ไม่ได้ตั้งขั้นปลายทาง) ⇒ ยังต้องบอกผู้ดูแล "ลูกค้าตอบกลับ"
+    //   (เดิมเงียบ — แจ้งเฉพาะตอนดีลถูกย้าย) · ย้ายได้ = ข้อความเดิมของ C2.7 ด้านล่าง ◂
+    if (!stageId) {
+      await (await import("./notify-senders")).customerRepliedOnDeal(c, d);
+      continue;
+    }
     const flag: BridgeMoveFlag = {
       ref: `account.quotation.responded#${docId}#${input.accepted ? "A" : "R"}`,
       title: input.accepted ? "ลูกค้าตอบรับใบเสนอราคา — ย้ายดีลตามขั้นที่ตั้งไว้" : "ลูกค้าปฏิเสธใบเสนอราคา — ย้ายดีลตามขั้นที่ตั้งไว้",
@@ -2298,6 +2425,7 @@ export async function applyQuotationResponse(ctx: { tenantId: string; systemId: 
       // เงื่อนไขของขั้นปลายทางไม่ครบ = ส่งซ้ำก็ไม่ผ่าน ⇒ บันทึก WARN (id ล้วน · AUDIT-CLASS X8) แล้วไปดีลถัดไป — ไม่ใช่ความล้มชั่วคราว
       if (e instanceof DealsError && (e.code === "STAGE_REQUIREMENTS" || e.code === "VALIDATION" || e.code === "NOT_FOUND")) {
         await logOps("WARN", "crm", `ย้ายดีลตามคำตอบใบเสนอราคาไม่ได้ (${e.code}) — ดีล ${d.id} · เอกสาร ${docId} · ขั้น ${stageId}`, { tenantId: c.tenantId });
+        await (await import("./notify-senders")).customerRepliedOnDeal(c, d); // CRM C5.4-E ▸ ย้ายไม่ได้ก็ต้องบอกผู้ดูแลว่าลูกค้าตอบแล้ว ◂
         continue;
       }
       firstError ??= e;

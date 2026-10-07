@@ -8,8 +8,10 @@
 // AUDIT-CLASS X6: เพดานเนื้อความ/ไฟล์แนบ + บัญชีขาวชนิดไฟล์ (ชุดย่อยของ storage ลบ SVG/HTML/JS) ประกาศที่นี่ที่เดียว
 
 import { sanitizeHtml } from "@/lib/core/sanitize";
-import { bareEmail } from "@/lib/core/inbound-address";
+import { bareEmail, trailingAngleAddr } from "@/lib/core/inbound-address";
+import { stripTags, trimEndBlanks } from "@/lib/core/linear-text"; // CRM C5.5-fix5 ▸ ตัวตัดแท็ก/ช่องว่างแบบเชิงเส้น (รีวิว RV-1/RV-2) ◂
 import { CRM_FILE_MIME_ALLOWLIST } from "./activities-shared";
+import { FREE_MAIL_DOMAINS } from "./companies-shared"; // CRM C5.5-fix8 r4 ▸ (รีวิว RV-9) รายการโดเมนสาธารณะรายการเดียวของ CRM ◂
 
 // ───────────────────────── เพดาน (AUDIT-CLASS X6) ─────────────────────────
 
@@ -30,6 +32,17 @@ export const CRM_EMAIL_ATTACH_MAX_COUNT = 20;
 export const CRM_EMAIL_COMPOSER_ATTACH_MAX_BYTES = 8 * 1024 * 1024;
 /** หัวข้อจดหมาย */
 export const CRM_EMAIL_SUBJECT_MAX = 300;
+/**
+ * ลายเซ็นของพนักงาน — เพดานของ **ค่าที่เก็บ** (HTML หลัง sanitize) · CRM C5.5-fix5 r2 (รีวิว RV5-1)
+ * 🔴 นับหลัง sanitize ไม่ใช่ที่ข้อความเข้า: sanitize ทำให้ยาวขึ้นได้ (`&` → `&amp;` · ลิงก์ได้ rel/target เพิ่ม ≈ +50%) แต่ sanitize ซ้ำ
+ *    กับค่าที่เก็บแล้วได้ค่าเดิม (idempotent) ⇒ ค่าใดที่ระบบเคยเก็บ ส่งกลับมาบันทึกซ้ำ (การ์ด "การส่งของฉัน" ส่งกลับทุกครั้ง · REST อ่านแล้วเขียน)
+ *    ผ่านเสมอ · เดิม (รอบแรก) นับที่ข้อความเข้า 4,000 ⇒ ลายเซ็นที่เก็บ 5,975 ตัวถูกปฏิเสธตอนบันทึกการ์ดครั้งถัดไป ช่องอื่นหายไปด้วย
+ */
+export const CRM_EMAIL_SIGNATURE_MAX = 8000;
+/** เพดานข้อความเข้า (ก่อน sanitize — กันงานเกินจำเป็น) = 2 เท่าของเพดานที่เก็บ · หน้าจอ (maxLength) และ REST (`optText`) ใช้ค่านี้ตัวเดียว */
+export const CRM_EMAIL_SIGNATURE_INPUT_MAX = 2 * CRM_EMAIL_SIGNATURE_MAX;
+/** ข้อความเดียวทุกทาง (บริการ · REST · การ์ด) */
+export const CRM_EMAIL_SIGNATURE_TOO_LONG_MSG = `ลายเซ็นยาวเกิน ${CRM_EMAIL_SIGNATURE_MAX.toLocaleString("en-US")} ตัวอักษร (นับรวมรูปแบบ/ลิงก์ที่ระบบจัดให้) — ย่อให้สั้นลงแล้วบันทึกอีกครั้ง`;
 
 /**
  * ชนิดไฟล์แนบของอีเมล = ชุดเดียวกับไฟล์แนบ CRM (ชุดย่อยของ `ALLOWED_UPLOAD_TYPES` ลบ SVG)
@@ -117,6 +130,58 @@ export const CRM_TRACK_RATE_LIMITS: Readonly<{
   perToken: { limit: 12, windowMs: 60 * 60_000 },
 });
 
+// CRM C5.5-fix2 ▸ hunter 2a-7: เพดานจดหมายขาเข้าต่อระบบ + ต่อผู้ส่ง (ต่อชั่วโมง · ถังเดียวของระบบ `checkRateLimitDb`)
+//   เกินเพดาน = รับแล้วทิ้ง (route ตอบ 200 เหมือนเดิม · ไม่เด้งกลับ) + audit 1 บรรทัดต่อหน้าต่าง ◂
+// CRM C5.5-fix8 r3 ▸ (รีวิว RV-2 → RV-6 · มติผู้คุมงาน) ถังแยกตาม "ความแข็งของหลักฐาน" — จดหมายแต่ละฉบับอยู่ในชั้นเดียวและถูกทิ้งได้
+//   เฉพาะโดยถังของชั้นตัวเอง ⇒ การถล่มในชั้นที่หลักฐานอ่อนกว่า (D/T/U) ไม่มีทางทิ้งคำตอบที่ยืนยันได้ทั้งสองทาง (V)
+//   V = DMARC (A-R ของ MTA เรา) **และ** หลักฐานของเธรด · D = DMARC อย่างเดียว · T = หลักฐานของเธรดอย่างเดียว (ปลอมได้ถ้าเห็นผู้รับ) ·
+//   U = ไม่มีหลักฐาน (กุญแจ/เพดานเดิมของ fix2) · กุญแจผู้ส่งทุกชั้น = กล่องจดหมายตัวพิมพ์เล็กที่ตัด `+tag` ออก (เฉพาะกุญแจถัง)
+//   ตัวเลขและเหตุผล: ledger/wo-notes/crm-C5.5-fix8.md รอบ 3 ◂
+const INBOUND_HOUR_MS = 60 * 60_000;
+export const CRM_INBOUND_RATE_LIMITS: Readonly<{
+  perSender: { limit: number; windowMs: number };
+  perSystem: { limit: number; windowMs: number };
+  verified: { perSender: { limit: number; windowMs: number }; perDomain: { limit: number; windowMs: number }; perSystem: { limit: number; windowMs: number } };
+  dmarc: { perSender: { limit: number; windowMs: number }; perDomain: { limit: number; windowMs: number }; perSystem: { limit: number; windowMs: number } };
+  thread: { perSender: { limit: number; windowMs: number }; perMessage: { limit: number; windowMs: number }; perSystem: { limit: number; windowMs: number } };
+}> = Object.freeze({
+  // U — ไม่มีหลักฐาน (fix2 · ไม่เปลี่ยน)
+  perSender: { limit: 100, windowMs: INBOUND_HOUR_MS },
+  perSystem: { limit: 1_000, windowMs: INBOUND_HOUR_MS },
+  verified: { perSender: { limit: 100, windowMs: INBOUND_HOUR_MS }, perDomain: { limit: 300, windowMs: INBOUND_HOUR_MS }, perSystem: { limit: 2_000, windowMs: INBOUND_HOUR_MS } }, // r4: +perDomain (RV-8)
+  dmarc: { perSender: { limit: 100, windowMs: INBOUND_HOUR_MS }, perDomain: { limit: 300, windowMs: INBOUND_HOUR_MS }, perSystem: { limit: 1_000, windowMs: INBOUND_HOUR_MS } },
+  thread: { perSender: { limit: 100, windowMs: INBOUND_HOUR_MS }, perMessage: { limit: 100, windowMs: INBOUND_HOUR_MS }, perSystem: { limit: 1_000, windowMs: INBOUND_HOUR_MS } },
+});
+
+/** โดเมนอีเมลสาธารณะ — ไม่มีถังต่อโดเมนของชั้น V/D (ผู้ใช้ร่วมโดเมนเป็นล้านคน ถังต่อกล่องจดหมายพอ)
+ *  CRM C5.5-fix8 r4 ▸ (รีวิว RV-9) = `FREE_MAIL_DOMAINS` ของ companies-shared (รายการเดียวของทั้ง CRM — เดิมรายการแยกขาด hotmail.co.th ฯลฯ) ◂ */
+export const CRM_INBOUND_FREE_MAIL_DOMAINS: ReadonlySet<string> = FREE_MAIL_DOMAINS;
+
+/** CRM C5.5-fix8 r4 ▸ ช่องทางผู้ส่งเบา (รีวิว RV-8 · มติผู้คุมงาน) — ชั้น V/T: ฉบับที่ 1–N ของผู้ส่งในชั่วโมงนั้นถูกนับในถังทั้งระบบของชั้น
+ *  แต่ถังทั้งระบบทิ้งไม่ได้ (ลูกค้าจริงที่ตอบ ≤ N ฉบับ/ชม. ไม่มีวันถูกถังรวมทิ้ง) ◂ */
+export const CRM_INBOUND_LIGHT_SENDER_PER_HOUR = 10;
+
+/** โดเมนที่ไม่สนจุดใน local part (Gmail: `j.o.h.n@` = `john@`) — ใช้กับกุญแจถังเท่านั้น */
+const DOTLESS_LOCAL_DOMAINS: ReadonlySet<string> = new Set(["gmail.com", "googlemail.com"]);
+
+/** กุญแจผู้ส่งของถังเพดาน: ตัวพิมพ์เล็ก · ตัด `+tag` ของ local part (`a+x@d` = `a@d`) · r4: ตัดจุดใน local part ของ gmail.com/googlemail.com
+ *  — ใช้กับกุญแจถังเท่านั้น ไม่ใช้กับการจับคู่/การผูกผู้ติดต่อ/ที่อยู่ที่เก็บ */
+export function inboundSenderBucketAddr(addr: string): string {
+  const a = String(addr ?? "").trim().toLowerCase();
+  const at = a.lastIndexOf("@");
+  if (at <= 0) return a;
+  const domain = a.slice(at + 1);
+  let local = a.slice(0, at);
+  const plus = local.indexOf("+");
+  if (plus > 0) local = local.slice(0, plus);
+  if (DOTLESS_LOCAL_DOMAINS.has(domain)) local = local.replace(/\./g, "") || local;
+  return `${local}@${domain}`;
+}
+
+// CRM C5.5-fix2 ▸ hunter 2a-1: หัวกันวนของสำเนาที่ระบบส่งออกเอง — จดหมายขาเข้าที่มีหัวนี้ = ของเราเองวนกลับ ⇒ ทิ้ง ◂
+export const CRM_LOOP_HEADER = "X-SHARK-Loop";
+export const CRM_COPY_IN_SUBJECT_PREFIX = "[สำเนาจดหมายเข้า]";
+
 // ───────────────────────── ตัวช่วยบริสุทธิ์ ─────────────────────────
 
 /** ที่อยู่อีเมลรูปเดียว (ไม่รับชื่อนำหน้า ไม่รับ CR/LF) — ตัวตรวจตัวเดียวของทั้งใบ */
@@ -128,11 +193,24 @@ export function hasLineBreak(v: unknown): boolean {
 }
 
 
-/** ชื่อที่แสดงจาก `"สมชาย ใจดี" <addr>` (ไม่มี = ว่าง) */
+const LINE_TERMINATOR_RE = /[\n\r\u2028\u2029]/;
+
+/**
+ * ชื่อที่แสดงจาก `"สมชาย ใจดี" <addr>` (ไม่มี = ว่าง)
+ * CRM C5.5-fix5 ▸ รีวิว RV-2: เดิม `/^\s*(.*?)\s*<[^>]*>\s*$/` = n² (หัว From `<` ล้วน 40,000 ตัว ≈ 1.3 วินาที × 3 ครั้งต่อจดหมาย) ·
+ *   ตอนนี้: ชื่อ = ข้อความก่อน `<` ตัวที่เปิดคู่วงเล็บมุมท้ายสตริง (ตัวเดียวกับ `bareEmail`) ตัดช่องว่างหน้า `<` ออก ·
+ *   ชื่อที่มีตัวขึ้นบรรทัด = ไม่มีชื่อ (เหมือน `.` ของ regex เดิม) — ผลตรงกับ regex เดิมทุกไบต์ (probe-cf6-linear RV2.displayName) ◂
+ */
 export function displayNameOf(raw: unknown): string {
   const s = typeof raw === "string" ? raw.trim() : "";
-  const m = s.match(/^\s*(.*?)\s*<[^>]*>\s*$/);
-  const name = m ? (m[1] ?? "") : "";
+  let name = "";
+  const inner = trailingAngleAddr(s);
+  if (inner !== null) {
+    let k = s.length - inner.length - 2; // ตำแหน่ง `<` (s ถูก trim แล้ว ⇒ `>` คือตัวสุดท้าย)
+    while (k > 0 && /\s/.test(s[k - 1] as string)) k--;
+    const cand = s.slice(0, k);
+    if (!LINE_TERMINATOR_RE.test(cand)) name = cand;
+  }
   return name.replace(/^["']|["']$/g, "").trim();
 }
 
@@ -213,9 +291,28 @@ export function renderInboundHtml(html: string | null | undefined, opts: { showI
   return sanitizeHtml(html, { allowImages: opts?.showImages === true });
 }
 
+/**
+ * จดหมายนี้มีรูปจากภายนอก (`<img … src="http(s):…`) ไหม — หน้าเธรดใช้ตัดสินว่าจะโชว์ปุ่ม "แสดงรูป"
+ * CRM C5.5-fix5 ▸ ≡ `/<img[^>]+src="https?:/i.test(html)` เดิมของหน้าเธรด (ผลตรงทุกกรณี) แต่เชิงเส้น: `<img` ที่อยู่ในช่วงของ
+ *   `<img` ตัวก่อน (ยังไม่เจอ `>`) ไม่ต้องสแกนซ้ำ — ช่วงของมันเป็นส่วนหนึ่งของช่วงที่ตรวจแล้ว (เดิม `<img` ×n ไม่มี `>` = n²) ◂
+ */
+export function hasRemoteImages(html: string | null | undefined): boolean {
+  const lower = String(html ?? "").replace(/[A-Z]+/g, (m) => m.toLowerCase()); // ASCII เท่านั้น = flag `i` ของ regex เดิม (ความยาวเท่าเดิม)
+  let from = 0;
+  for (;;) {
+    const at = lower.indexOf("<img", from);
+    if (at < 0) return false;
+    const gt = lower.indexOf(">", at + 4);
+    const end = gt < 0 ? lower.length : gt; // `[^>]+` วิ่งได้ถึงก่อน `>` ตัวแรกเท่านั้น
+    if (at + 5 < end && /src="https?:/.test(lower.slice(at + 5, end))) return true;
+    if (gt < 0) return false;
+    from = gt + 1; // `<img` ที่อยู่ในช่วงนี้มีช่วงย่อยของช่วงที่เพิ่งตรวจ ⇒ ข้าม
+  }
+}
+
 /** ข้อความย่อของจดหมาย (ใช้ในรายการเธรด) — ตัดแท็กทิ้ง เหลือข้อความล้วน */
 export function emailSnippet(text: string | null | undefined, html: string | null | undefined, max = 200): string {
-  const base = (text ?? "").trim() || sanitizeHtml(html).replace(/<[^>]*>/g, " ");
+  const base = (text ?? "").trim() || stripTags(sanitizeHtml(html), " "); // CRM C5.5-fix5 ▸ ตัวตัดเชิงเส้น (ผลเท่าเดิม) ◂
   return base.replace(/\s+/g, " ").trim().slice(0, max);
 }
 
@@ -446,7 +543,7 @@ export function crmEmailHtmlToComposerText(html: string | null | undefined): str
   closeLink();
   return out
     .split("\n")
-    .map((l) => decodeEntities(l).replace(/[ \t]+$/g, ""))
+    .map((l) => trimEndBlanks(decodeEntities(l))) // CRM C5.5-fix5 ▸ เดิม `/[ \t]+$/g` = n² บนบรรทัดช่องว่างยาว (ผลเท่าเดิม) ◂
     .join("\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
@@ -485,4 +582,13 @@ export function crmEmailFailText(code: string | null | undefined): string {
     return `ผู้ให้บริการส่งอีเมลไม่รับจดหมายฉบับนี้ (รหัส ${n}) — ${retry} ตรวจที่อยู่ผู้รับและโดเมนผู้ส่งในหน้าตั้งค่าอีเมล แล้วลองอีกครั้ง`;
   }
   return `ส่งจดหมายไม่สำเร็จ — ${retry} ลองกดส่งอีกครั้ง`;
+}
+
+// CRM C5.5 ▸ (fix3b · รีวิว R2b-3) ธง "ไม่ยืนยันผู้ส่ง" ของจดหมาย 1 ฉบับ อ่านจาก `CrmEmailMessage.routing` (fix2 เป็นผู้เขียน:
+//   `unverifiedFrom` = From ของลูกค้าไม่มีหลักฐาน · `unverifiedShopFrom` = อ้างที่อยู่พนักงาน/โดเมนร้านโดยไม่มีหลักฐาน) —
+//   ตัวอ่านเดียวของหน้าเธรด (`getThread`) และแถวกิจกรรม EMAIL บนไทม์ไลน์ (`activities.enrich`) · รายการเธรดอ่านคีย์เดียวกันใน SQL ◂
+export function emailRoutingUnverified(routing: unknown): boolean {
+  if (!routing || typeof routing !== "object" || Array.isArray(routing)) return false;
+  const r = routing as Record<string, unknown>;
+  return r.unverifiedFrom === true || r.unverifiedShopFrom === true;
 }

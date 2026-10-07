@@ -8,6 +8,7 @@
 //      (คีย์ admin = ตามนโยบาย D8 ของร้านที่ engine ฟิลด์ตัดสินแล้ว)
 
 import type { ApiActor } from "@/lib/api/actor";
+import { replaceEmailsInText } from "@/lib/core/linear-text"; // CRM C5.5-fix5 ◂
 
 const HIDDEN_KEYS = new Set(["tenantId"]);
 /** ชื่อช่องที่เป็นข้อมูลติดต่อโดยตรง */
@@ -60,12 +61,13 @@ function collectPii(v: unknown, out: Set<string>): void {
 
 // มติผู้คุมงาน C1.10 S4: นอกจากช่องที่ชื่อบอกว่าเป็นเบอร์/อีเมล ต้องปิดรูปแบบเบอร์ไทย/อีเมลที่โผล่ใน **ข้อความใดก็ได้**
 //   (ฟิลด์ TEXT ที่ร้านสร้างเอง · หัวข้อ/โน้ตของกิจกรรม · ไทม์ไลน์) — เบอร์ไทย 0XXXXXXXX(X) หรือ +66 มีขีด/เว้นวรรคคั่นได้ · อีเมลทุกรูป
-const EMAIL_IN_TEXT = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
 const TH_PHONE_IN_TEXT = /(?<![\w+])(?:\+66[\s-]?|0)\d(?:[\s.-]?\d){7,8}(?!\w)/g;
 
 /** ปิดรูปแบบเบอร์ไทย/อีเมลในข้อความ 1 ก้อน */
 export function maskPiiPatterns(text: string): string {
-  return text.replace(EMAIL_IN_TEXT, (m) => maskContactValue(m)).replace(TH_PHONE_IN_TEXT, (m) => maskContactValue(m));
+  // CRM C5.5-fix5 ▸ อีเมลในข้อความ: เดิม `/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g` = n² บนกลุ่มตัวอักษรยาวที่ไม่มี `@`
+  //   (ตัวนี้วิ่งบนเนื้อจดหมายขาเข้าที่คนนอกเขียน ทุกครั้งที่คีย์ READONLY/ผู้ช่วย AI อ่านเธรด) · ตัวเชิงเส้นของ core ผลเท่าเดิมทุกไบต์ ◂
+  return replaceEmailsInText(text, (m) => maskContactValue(m)).replace(TH_PHONE_IN_TEXT, (m) => maskContactValue(m));
 }
 
 function replacePii(v: unknown, pii: readonly string[]): unknown {

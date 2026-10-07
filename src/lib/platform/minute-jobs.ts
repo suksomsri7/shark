@@ -281,8 +281,10 @@ registerMinuteJob({
   everyMinutes: 60,
   cadence: "hourly",
   run: async (now, _budgetMs, ctrl) => {
-    const { activities } = await import("@/lib/modules/crm");
+    const { activities, notifySenders } = await import("@/lib/modules/crm");
     await activities.overdueSweep(now, { deadline: ctrl.deadline, signal: ctrl.signal });
+    // CRM C5.4-E ▸ L6-M4: สรุป "งานวันนี้" (tasks.today) 1 ใบ/คน/วัน หลังชั่วโมงสรุปของร้าน — งานรายชั่วโมงตัวเดิม (ไม่เพิ่มชื่องานใหม่ในทะเบียน) ◂
+    await notifySenders.tasksTodayDigest(now, { deadline: ctrl.deadline, signal: ctrl.signal });
   },
 });
 // 🔴 ชื่อคู่ของ C2.4: งานเตือนงาน/นัดถูกลงทะเบียนไว้แล้วในชื่อ `crm.activity.remind` (บล็อก C2.4 ข้างบน) —

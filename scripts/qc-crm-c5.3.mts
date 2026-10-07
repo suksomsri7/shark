@@ -752,7 +752,7 @@ try {
         `registry=${!!reg} run=${j(outcomes)} tailRan=${tailRan}`);
     });
 
-    // ── L3-m1 · REST idempotency: abandoned claim sticks 24 h · transient 5xx replayed 24 h ──
+    // ── L3-m1 · REST idempotency: abandoned claim → 409 outcome-unknown after 6 min (never re-run) · transient 5xx not stored ──
     await sub("C5.3-L3-m1", async () => {
       const IDEM = (await import("@/lib/api/idempotency" as string)) as Any;
       const actor = { kind: "apikey", tenantId: T, keyId: `${TAG}-idem`, module: "crm" };
@@ -765,15 +765,19 @@ try {
       const aged = await P.apiIdempotency.updateMany({ where: { tenantId: T, idemKey: kA }, data: { createdAt: new Date(Date.now() - 10 * 60_000) } });
       let ranA = 0;
       const resA: Response = await IDEM.withIdempotency(actor, reqOf(kA), op, "{}", "rq-a2", {}, async () => { ranA += 1; return { status: 200, body: { ok: true } }; });
+      // ORACLE-EDIT (C5.5-fix1 RV-1, controller ruling): a stale claim is NOT taken over — outcome unknown ⇒ stored 409, the handler never runs
+      const codeA = ((await resA.clone().json().catch(() => null)) as Any)?.error?.code;
+      const resA2: Response = await IDEM.withIdempotency(actor, reqOf(kA), op, "{}", "rq-a3", {}, async () => { ranA += 1; return { status: 200, body: { ok: true } }; });
+      const rowA = await P.apiIdempotency.findFirst({ where: { tenantId: T, idemKey: kA }, select: { status: true } });
       // (b) a transient 503 must not be replayed as final
       const kB = `${TAG}-b`;
       let ranB = 0;
       const b1: Response = await IDEM.withIdempotency(actor, reqOf(kB), op, "{}", "rq-b1", {}, async () => { ranB += 1; return { status: 503, body: { error: { code: "unavailable" } } }; });
       const b2: Response = await IDEM.withIdempotency(actor, reqOf(kB), op, "{}", "rq-b2", {}, async () => { ranB += 1; return { status: 200, body: { ok: true } }; });
-      chk("C5.3-L3-m1", "REST idempotency recovers: a NULL-status claim older than ~2 min is taken over (the retry runs), and a transient 5xx/429 is not stored — the retry with the same key runs again",
-        aged.count === 1 && resA.status === 200 && ranA === 1 && b1.status === 503 && b2.status === 200 && ranB === 2,
-        "fixture: abandoned claim aged 10 min · retry ⇒ 200 and run() executed once · 503 then retry ⇒ 200 and run() executed twice",
-        `aged=${aged.count} · retryA=${resA.status} ran=${ranA} · b1=${b1.status} b2=${b2.status}${b2.headers.get("idempotent-replayed") ? " (REPLAYED)" : ""} ranB=${ranB}`, "MINOR");
+      chk("C5.3-L3-m1", "REST idempotency never double-runs: a NULL-status claim older than 6 min is settled as 409 idempotency_outcome_unknown (stored, replayed, the handler never runs — the caller checks and retries with a NEW key), and a transient 5xx/429 is not stored — the retry with the same key runs again",
+        aged.count === 1 && resA.status === 409 && codeA === "idempotency_outcome_unknown" && resA2.status === 409 && resA2.headers.get("idempotent-replayed") === "true" && rowA?.status === 409 && ranA === 0 && b1.status === 503 && b2.status === 200 && ranB === 2,
+        "fixture: abandoned claim aged 10 min · retry ⇒ 409 idempotency_outcome_unknown, run() never executed · second same-key retry ⇒ 409 with Idempotent-Replayed: true · stored row status 409 · 503 then retry ⇒ 200 and run() executed twice",
+        `aged=${aged.count} · retryA=${resA.status} code=${codeA} · retryA2=${resA2.status} replayed=${resA2.headers.get("idempotent-replayed")} row=${rowA?.status} ran=${ranA} · b1=${b1.status} b2=${b2.status}${b2.headers.get("idempotent-replayed") ? " (REPLAYED)" : ""} ranB=${ranB}`, "MINOR");
     });
 
     // ── L3-m2 · complaint webhook: after-commit steps lost for good on replay ──
@@ -1052,7 +1056,9 @@ try {
   await section("L4", ["C5.3-L4-M3"], {}, async () => {
     await sub("C5.3-L4-M3", async () => {
       const RT = (await import(pathToFileURL(resolve("src/app/l/[code]/route.ts")).href)) as Any;
-      const c = await mkCrm("L4-M3");
+      // ORACLE-EDIT (C6.1-LINKPOLICY · owner P11/Q15 (ข)): a destination must be on the shop's allowed list — the abusive shop declares its
+      //   own phishing host (the policy cannot stop a shop that lies; the platform kill-switch below is what this check pins)
+      const c = await mkCrm("L4-M3", { tracking: { linkHosts: [`phish-${rand}.example`] } });
       const code = `QcL${rand}`;
       const lk = await call(CRM.tracking.createLink, c.ctx, owner.actor, { url: `https://phish-${rand}.example/login`, name: `abuse ${TAG}`, code });
       const hit = async () => {

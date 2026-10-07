@@ -2,6 +2,7 @@
 import { requireMobile, mobileError } from "@/lib/mobile/auth";
 import { rejectProposal } from "@/lib/ai/proposals";
 import { aiBridges } from "@/lib/modules/crm";
+import { mobileAiCtx } from "@/lib/mobile/guard";
 
 export async function POST(req: Request) {
   const g = await requireMobile(req);
@@ -22,6 +23,6 @@ export async function POST(req: Request) {
     id,
   );
   if (crm.handled) return Response.json({ ok: crm.ok, ...(crm.ok ? {} : { error: crm.note }) });
-  const ok = await rejectProposal(g.ctx, id);
+  const ok = await rejectProposal(mobileAiCtx(g), id); // CRM C5.5-G2: proposals of own rooms only
   return Response.json({ ok });
 }

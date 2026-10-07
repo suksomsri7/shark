@@ -346,6 +346,15 @@ async function channelsOf(tenantId: string, contact: ContactConsentSubject): Pro
 export async function current(ctx: ConsentsCtx, actor: MemberActor, contactId: string): Promise<ConsentView> {
   const contact = await loadContact(ctx, actor, contactId);
   const { memberLinked, channels } = await channelsOf(ctx.tenantId, contact);
+  // CRM C5.5-fix14 r4 (รีวิว RV14-13) ▸ ผู้ติดต่อที่ผูกสมาชิก + ผู้ดูที่โมดูลสมาชิกไม่ให้เห็นสมาชิกคนนั้น: คง `granted` (ตัดสินการส่ง) และ `memberLinked`
+  //   (ล็อกการแก้) ไว้ แต่ตัดที่มา/เวลาของความยินยอมฝั่งสมาชิก (`source`/`at` = ข้อมูลของสมาชิก ไม่จำเป็นต่อการติดต่อ) ·
+  //   ผู้ดูที่เห็นสมาชิก/งานระบบ (OWNER) = เดิมทุกไบต์ · ธง `memberLinked` ที่เหลือ = คำถามเจ้าของ (Q4) ◂
+  if (memberLinked && contact.memberCustomerId) {
+    const seen = await (await memberFacade()).memberIdsVisibleTo(ctx.tenantId, actor, [contact.memberCustomerId]);
+    if (!seen.has(contact.memberCustomerId)) {
+      return { memberLinked, optOut: contact.marketingOptOut, emailBounced: !!contact.emailBouncedAt, trackingOptOut: contact.trackingOptOut === true, channels: channels.map((c) => ({ ...c, source: null, at: null })) };
+    }
+  }
   return { memberLinked, optOut: contact.marketingOptOut, emailBounced: !!contact.emailBouncedAt, trackingOptOut: contact.trackingOptOut === true, channels };
 }
 

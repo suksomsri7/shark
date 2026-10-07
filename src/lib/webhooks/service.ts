@@ -17,6 +17,7 @@ import type { LookupAddress } from "node:dns";
 import type { Prisma } from "@prisma/client";
 import { prisma, tenantDb } from "@/lib/core/db";
 import { privateTargetsAllowed } from "./private-targets";
+import { WEBHOOK_EVENTS, WEBHOOK_GUARDED_FAMILIES, type WebhookGuardedFamily } from "./labels"; // CRM C5.5-fix3b ▸ F4 · r2 RV-5 ◂
 
 export type Ctx = { tenantId: string };
 /**
@@ -359,12 +360,127 @@ export function retryDueAt(row: { attempts: number; updatedAt: Date }): Date {
 const eventsOf = (eventsJson: unknown): string[] =>
   Array.isArray(eventsJson) ? eventsJson.filter((x): x is string => typeof x === "string") : [];
 
+// ── CRM C5.5 ▸ (fix1 r2 · มติผู้คุมงานข้อ 5) จุดเดียวที่ทุกประตูเขียนปลายทาง webhook ต้องผ่าน ─────────────────────────────────
+//   ตัวเขียน 3 ตัว (`createEndpoint` · `setEndpointActive` ตอนเปิด (ตรวจ event ที่บันทึกไว้) · `setEndpointEvents`) รับ "ผู้ทำ" (`by`) เป็นพารามิเตอร์
+//   บังคับในชนิด ⇒ tsc ชี้ทุกประตู (หน้า CRM · หน้า webhook กลาง · สมาชิก UI/REST · บัญชี UI/REST) · ข้างในรัน "ตัวกันเหตุการณ์" ที่โมดูลลงทะเบียน
+//   (CRM: เหตุการณ์ CRM / ทุกเหตุการณ์ ต้องผ่านกติกา "เห็นข้อมูล CRM ทั้งร้าน") — ลงทะเบียนที่ composition root `src/lib/webhook-guards.ts`
+//   (แพลตฟอร์มไม่ import โมดูล CRM เอง · RV-8) · ร้านที่ไม่มี CRM v2 = ตัวกันคืน null ⇒ เหมือนเดิมทุกอย่าง
+//   ผู้เรียกที่ไม่มีชนิด (สคริปต์/ข้อสอบเก่าที่เรียกบริการตรง) ไม่ส่ง `by` ⇒ ไม่ตรวจ (โค้ดใน src/ ส่งเสมอ — tsc บังคับ)
+export type WebhookAuthorActor = { userId: string; role: string; unitAccess: string[]; permissions: Record<string, unknown> };
+/** ผู้ทำ: actor ของ session · ผู้ใช้ (อ่าน Membership ใหม่) · คีย์ API (ผู้สร้างคีย์ — แบบเดียวกับ key-guard ของ CRM C5.4-B) */
+export type WebhookAuthor = { actor: WebhookAuthorActor } | { userId: string | null } | { apiKeyId: string | null };
+export type WebhookEventGuard = (tenantId: string, author: WebhookAuthorActor | null, events: readonly string[]) => Promise<string | null>;
+const EVENT_GUARDS = new Map<string, WebhookEventGuard>();
+/**
+ * โมดูลลงทะเบียนตัวกันเหตุการณ์ของตัวเอง (ชื่อซ้ำ = แทนที่) — คืน null = ผ่าน · ข้อความไทย = ปฏิเสธ
+ * CRM C5.5 ▸ (fix3b · F4) ชื่อ = ครอบครัวเหตุการณ์ที่ตัวกันนี้รับผิดชอบ (`WEBHOOK_GUARDED_FAMILIES` ใน ./labels) — บริการปฏิเสธปลายทางที่แตะ
+ *   ครอบครัวที่ "ไม่มีตัวกันในชื่อนั้น" แม้ตัวกันของครอบครัวอื่นจะลงทะเบียนอยู่ (เดิมปิดเฉพาะตอนทะเบียนว่างทั้งหมด) ◂
+ */
+export function registerWebhookEventGuard(family: WebhookGuardedFamily, guard: WebhookEventGuard): void {
+  EVENT_GUARDS.set(family, guard);
+}
+/** ปฏิเสธโดยตัวกันเหตุการณ์ (403 ข้อความไทย — `mapError` ของ REST แปลงเป็น 403 forbidden) */
+export class WebhookGuardError extends Error {
+  readonly status = 403;
+  constructor(message: string) {
+    super(message);
+    this.name = "WebhookGuardError";
+  }
+}
+async function membershipActor(tenantId: string, userId: string | null | undefined): Promise<WebhookAuthorActor | null> {
+  if (!userId) return null;
+  const m = await prisma.membership.findFirst({ where: { tenantId, userId, acceptedAt: { not: null } }, select: { role: true, unitAccess: true, permissions: true } });
+  if (!m) return null;
+  return {
+    userId,
+    role: m.role,
+    unitAccess: Array.isArray(m.unitAccess) ? (m.unitAccess as string[]) : [],
+    permissions: (m.permissions && typeof m.permissions === "object" && !Array.isArray(m.permissions) ? m.permissions : {}) as Record<string, unknown>,
+  };
+}
+async function authorActor(tenantId: string, by: WebhookAuthor): Promise<WebhookAuthorActor | null> {
+  if ("actor" in by) return by.actor;
+  if ("userId" in by) return membershipActor(tenantId, by.userId);
+  if (!by.apiKeyId) return null;
+  const key = await prisma.apiKey.findFirst({ where: { id: by.apiKeyId, tenantId }, select: { createdById: true } });
+  return membershipActor(tenantId, key?.createdById ?? null);
+}
+/** ผู้ทำของคำขอ REST (คีย์ = ผู้สร้างคีย์ · คนกดยืนยันข้อเสนอ = ตัวเขา) */
+export function webhookAuthorOfApi(actor: { kind: string; keyId?: string; userId?: string | null }): WebhookAuthor {
+  return actor.kind === "apikey" ? { apiKeyId: actor.keyId ?? null } : { userId: actor.userId ?? null };
+}
+// CRM C5.5 ▸ (fix3a · R2-2 → fix3b · F4) ตัวกันของครอบครัวที่ปลายทางแตะ "ไม่อยู่ในทะเบียน" หลังโหลด composition root = root ถูกแก้/ย้ายจน
+//   ไม่ลงทะเบียนครอบครัวนั้น (สภาพผิดปกติเสมอ — ทุกเส้นทางที่มี `by` ผ่านบรรทัด import ด้านล่างก่อน ไม่ว่าคำขอจะมาจาก route / server action /
+//   REST / ข้อเสนอ AI / สคริปต์) ⇒ ปิด (fail closed) **ต่อครอบครัว** — เดิม (fix3a) ปิดเฉพาะตอนทะเบียนว่างทั้งหมด ⇒ ถ้า root ลงทะเบียนตัวกันของ
+//   โมดูลอื่นไว้แต่ตัวกัน CRM หาย ปลายทาง CRM / ทุกเหตุการณ์ ผ่านโดยไม่มีใครตรวจ · ตัดสินจากชื่อเหตุการณ์ล้วน (ไม่ import โมดูล CRM · RV-8)
+//   ปลายทางที่รับเฉพาะเหตุการณ์นอกทุกครอบครัว (สมาชิก · บัญชี · …) ผ่านตามเดิม · ผู้เรียกที่ไม่มี `by` (สคริปต์/ข้อสอบเก่า) ไม่ตรวจเหมือนเดิม ◂
+export const WEBHOOK_GUARDS_MISSING = "ระบบตรวจสิทธิ์เหตุการณ์ของ webhook ยังไม่พร้อม — ยังสมัครรับเหตุการณ์ CRM หรือทุกเหตุการณ์ไม่ได้ ลองใหม่ภายหลังหรือแจ้งผู้ดูแลระบบ";
+/** คำนำหน้าของทุกครอบครัวที่ต้องมีตัวกัน (มาจาก `WEBHOOK_GUARDED_FAMILIES` — ไม่ใช่สำเนา) · คงชื่อเดิมไว้ให้ผู้อ่านเดิม (probe-cf3 R22) */
+export const WEBHOOK_GUARDED_EVENT_PREFIXES: readonly string[] = Object.values(WEBHOOK_GUARDED_FAMILIES).flat();
+const GUARDED_FAMILY_NAMES = Object.keys(WEBHOOK_GUARDED_FAMILIES) as WebhookGuardedFamily[];
+/** ครอบครัวที่ปลายทางนี้แตะ: รายการว่าง (= ทุกเหตุการณ์) ⇒ ทุกครอบครัว · ไม่งั้นครอบครัวที่มีคำนำหน้าตรงกับเหตุการณ์ใดเหตุการณ์หนึ่ง */
+export function webhookGuardedFamiliesOf(events: readonly string[]): WebhookGuardedFamily[] {
+  if (events.length === 0) return [...GUARDED_FAMILY_NAMES];
+  return GUARDED_FAMILY_NAMES.filter((f) => events.some((e) => WEBHOOK_GUARDED_FAMILIES[f].some((p) => e.startsWith(p))));
+}
+/** ปลายทางนี้ต้องมีตัวกันเหตุการณ์ไหม: แตะครอบครัวที่ต้องมีตัวกันอย่างน้อยหนึ่งครอบครัว */
+export function webhookEventsNeedGuard(events: readonly string[]): boolean {
+  return webhookGuardedFamiliesOf(events).length > 0;
+}
+// CRM C5.5 ▸ (fix3b r2 · รีวิว RV-5) ชื่อเหตุการณ์ที่ "ผู้ทำ" ส่งมา (`by` มีค่า = ทุกประตูใน src/) ต้องเป็นชื่อจริงในทะเบียน `WEBHOOK_EVENTS` ตรงตัว
+//   หลังตัดช่องว่างหัวท้าย — เดิมเก็บ " crm.deal.won" / "CRM.deal.won" / "\tcrm.deal.won" ตามที่ส่งมา (พ้นตัวกันครอบครัว แต่ไม่มีวันได้รับอะไร
+//   เพราะตัวส่งเทียบชื่อตรงตัว = แถวตาย) · ประตูเดิมกรอง/ตอบ 422 ก่อนถึงบริการอยู่แล้ว ⇒ นี่คือด่านสุดท้ายของบริการ (422 ข้อความไทย)
+//   · ลำดับ: ตัดช่องว่าง → ตัวกันเหตุการณ์ (ครอบครัวที่ขาดตัวกัน = ปิดก่อน เหมือน fix3a/F4) → ชื่อต้องรู้จัก
+//   · ผู้เรียกที่ไม่มี `by` (สคริปต์/ข้อสอบเก่า) เก็บตามเดิมทุกไบต์ ◂
+const KNOWN_WEBHOOK_EVENTS = new Set(WEBHOOK_EVENTS.map((e) => e.value));
+export class WebhookEventNameError extends Error {
+  readonly status = 422;
+  constructor(message: string) {
+    super(message);
+    this.name = "WebhookEventNameError";
+  }
+}
+function cleanEventList(events: readonly unknown[], by: WebhookAuthor | undefined): string[] {
+  const raw = events.filter((e): e is string => typeof e === "string" && e.trim() !== "");
+  if (by === undefined) return raw;
+  return [...new Set(raw.map((e) => e.trim()))];
+}
+function assertKnownEvents(events: readonly string[], by: WebhookAuthor | undefined): void {
+  if (by === undefined) return;
+  const bad = events.find((e) => !KNOWN_WEBHOOK_EVENTS.has(e));
+  if (bad !== undefined) throw new WebhookEventNameError(`ไม่รู้จักเหตุการณ์ “${bad.slice(0, 60)}” — เลือกจากรายการเหตุการณ์ของระบบ (ชื่อต้องตรงตัว ตัวพิมพ์เล็ก)`);
+}
+async function runEventGuards(tenantId: string, by: WebhookAuthor | undefined, events: readonly string[]): Promise<void> {
+  if (by === undefined) return;
+  await import("@/lib/webhook-guards");
+  // CRM C5.5 ▸ fix3b F4: ทุกครอบครัวที่แตะต้องมีตัวกันในชื่อของมัน — ขาดครอบครัวเดียว = ปฏิเสธ (ก่อนรันตัวกันใด ๆ) ◂
+  if (webhookGuardedFamiliesOf(events).some((f) => !EVENT_GUARDS.has(f))) throw new WebhookGuardError(WEBHOOK_GUARDS_MISSING);
+  if (EVENT_GUARDS.size === 0) return;
+  let actor: WebhookAuthorActor | null | undefined;
+  for (const guard of EVENT_GUARDS.values()) {
+    if (actor === undefined) actor = await authorActor(tenantId, by);
+    const problem = await guard(tenantId, actor, events);
+    if (problem) throw new WebhookGuardError(problem);
+  }
+}
+// ◂ CRM C5.5
+
 // ── CRUD ปลายทาง (tenant-scoped) ──────────────────────────────────────────
 
 // สร้าง endpoint — url ต้อง http(s) เท่านั้น · secret สุ่มให้ (48 hex ≥24) · events ว่าง = ทุก event
+// CRM C5.5 ▸ ลายเซ็นแรก (`by` บังคับ) = ของโค้ดใน src/ ทุกที่ · ลายเซ็นที่สอง (@deprecated ไม่มี `by` = ไม่ตรวจตัวกัน) มีไว้เพราะ
+//   ข้อสอบเดิม `scripts/qc-acc-v2-permissions.mts:768` (ห้ามแก้) และ seed เรียกแบบมีชนิดโดยไม่มีผู้ทำ — ห้ามใช้ใน src/
+//   (ด่าน: probe-fix1 WB-static ตรวจทุกจุดเรียกใน src/ ว่าส่ง `by`) · ถอดลายเซ็นที่สองได้เมื่อผู้คุมงานแก้ข้อสอบนั้น (ORACLE-EDIT) ◂
 export async function createEndpoint(
   ctx: Ctx,
-  input: { url: string; events?: string[] },
+  input: { url: string; events?: string[]; by: WebhookAuthor },
+  deps?: WebhookDeps,
+): Promise<{ id: string; secret: string }>;
+/** @deprecated สคริปต์/ข้อสอบเก่าเท่านั้น — ไม่มีผู้ทำ = ไม่ตรวจตัวกันเหตุการณ์ (ห้ามใช้ใน src/) */
+export async function createEndpoint(ctx: Ctx, input: { url: string; events?: string[] }, deps?: WebhookDeps): Promise<{ id: string; secret: string }>;
+export async function createEndpoint(
+  ctx: Ctx,
+  input: { url: string; events?: string[]; by?: WebhookAuthor },
   deps?: WebhookDeps,
 ): Promise<{ id: string; secret: string }> {
   const url = input.url.trim();
@@ -375,9 +491,9 @@ export async function createEndpoint(
   const problem = await webhookSaveProblem(url, deps);
   if (problem) throw new Error(problem);
   const secret = randomBytes(24).toString("hex"); // 48 ตัวอักษร
-  const events = Array.isArray(input.events)
-    ? input.events.filter((e) => typeof e === "string" && e.trim() !== "")
-    : [];
+  const events = Array.isArray(input.events) ? cleanEventList(input.events, input.by) : []; // CRM C5.5-fix3b r2 ▸ RV-5 ◂
+  await runEventGuards(ctx.tenantId, input.by, events); // CRM C5.5 ▸ ตัวกันเหตุการณ์ (รายการว่าง = ทุกเหตุการณ์) ◂
+  assertKnownEvents(events, input.by); // CRM C5.5-fix3b r2 ▸ RV-5 ◂
   const ep = await tenantDb(ctx).webhookEndpoint.create({
     data: { tenantId: ctx.tenantId, url, secret, eventsJson: events as Prisma.InputJsonValue },
   });
@@ -390,7 +506,12 @@ export async function listEndpoints(ctx: Ctx) {
 }
 
 // เปิด/ปิด endpoint (ปิดแล้ว dispatch ข้าม)
-export async function setEndpointActive(ctx: Ctx, id: string, active: boolean) {
+export async function setEndpointActive(ctx: Ctx, id: string, active: boolean, by: WebhookAuthor) {
+  // CRM C5.5 ▸ เปิดใช้ = ปลายทางกลับมารับเหตุการณ์ที่บันทึกไว้ ⇒ ตัวกันเหตุการณ์ตรวจรายการนั้น (ปิดได้เสมอ) ◂
+  if (active) {
+    const row = await tenantDb(ctx).webhookEndpoint.findFirst({ where: { id }, select: { eventsJson: true } });
+    if (row) await runEventGuards(ctx.tenantId, by, eventsOf(row.eventsJson));
+  }
   return tenantDb(ctx).webhookEndpoint.update({ where: { id }, data: { active } });
 }
 
@@ -402,8 +523,10 @@ export async function setEndpointActive(ctx: Ctx, id: string, active: boolean) {
  *    (เจ้าของเจอเองตอนต้องเพิ่ม `chat.conversation.read` — 30 ส.ค. 2026)
  * รายการว่าง = รับทุกเหตุการณ์ (กติกาเดียวกับตอนสร้าง · ดู dispatchWebhooks)
  */
-export async function setEndpointEvents(ctx: Ctx, id: string, events: string[]) {
-  const clean = events.filter((e) => typeof e === "string" && e.trim() !== "");
+export async function setEndpointEvents(ctx: Ctx, id: string, events: string[], by: WebhookAuthor) {
+  const clean = cleanEventList(Array.isArray(events) ? events : [], by); // CRM C5.5-fix3b r2 ▸ RV-5 ◂
+  await runEventGuards(ctx.tenantId, by, clean); // CRM C5.5 ▸ ตัวกันเหตุการณ์ ◂
+  assertKnownEvents(clean, by); // CRM C5.5-fix3b r2 ▸ RV-5 ◂
   return tenantDb(ctx).webhookEndpoint.update({
     where: { id },
     data: { eventsJson: clean as Prisma.InputJsonValue },

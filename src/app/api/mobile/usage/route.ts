@@ -7,10 +7,13 @@
 import { requireMobile, mobileError } from "@/lib/mobile/auth";
 import { prisma } from "@/lib/core/db";
 import { ensureWallet } from "@/lib/ai/credit";
+import { mobileDenied, AI_CHAT } from "@/lib/mobile/guard";
 
 export async function GET(req: Request): Promise<Response> {
   const g = await requireMobile(req);
   if (!g.ok) return mobileError(g);
+  const denied = mobileDenied(g, AI_CHAT); // C5.5-authz-sweep: same key as the web door (lib/ai/actions.ts loadAiQuotaAction — the chat quota bar)
+  if (denied) return denied;
 
   const wallet = await ensureWallet(g.ctx.tenantId);
   // ก้อนอ้างอิงล่าสุดที่เงินเข้ากระเป๋า — ใช้เป็นตัวหารของ % ที่แถบในแอปวาด

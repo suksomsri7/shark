@@ -82,6 +82,8 @@ export {
 };
 
 import { ERASED_CONTACT_WRITE_MSG, erasedContactIds, isErasedContact } from "./erased"; // CRM C3.9-fix ▸ H7 ◂
+import { emailRoutingUnverified } from "./emails-shared"; // CRM C5.5-fix3b ▸ R2b-3 ◂
+import { isInboundEmailActivity } from "./email-flags"; // CRM C5.5-fix3b r2 ▸ ธงเฉพาะแถว EMAIL ขาเข้า ◂
 import { crmSystemRow } from "./visibility"; // CRM C5.1-fix ▸ ระบบ CRM ผ่านด่านรวมคำสั่งเดียว (memo ต่อคำขอ) ◂
 const kanbanLinks = () => import("@/lib/modules/kanban/links");
 const memberFacade = () => import("@/lib/modules/member");
@@ -751,7 +753,9 @@ function assertEditor(a: MemberActor, row: CrmActivity, what: string): void {
 export async function rescheduleActivity(ctx: ActivitiesCtx, actor: MemberActor, id: string, input: RescheduleInput): Promise<ActivityDto> {
   const { a } = await enter(ctx, actor);
   const row = await loadActivity(ctx, a, id);
-  need(a, "crm.activity.create");
+  // CRM C5.5 ▸ L55-3: คีย์เดียวทุกประตู (หน้าจอ · REST · บริการ) = `crm.activity.complete` ตามพิมพ์เขียว §5.5
+  //   (แถว completeActivity · rescheduleActivity → crm.activity.complete) — เดิมบริการ/REST ใช้ create แต่หน้าจอใช้ complete ◂
+  need(a, "crm.activity.complete");
   assertEditor(a, row, "เลื่อนนัด/กำหนดส่ง");
   const data: Prisma.CrmActivityUpdateManyMutationInput = {};
   if (input && "dueAt" in input) data.dueAt = toDate(input.dueAt, "วันครบกำหนด");
@@ -853,12 +857,17 @@ async function enrich(ctx: ActivitiesCtx, a: MemberActor, rows: CrmActivity[]): 
   const dealIds = [...new Set(rows.map((r) => r.dealId).filter((x): x is string => !!x))];
   const contactIds = [...new Set(rows.map((r) => r.contactId).filter((x): x is string => !!x))];
   const companyIds = [...new Set(rows.map((r) => r.companyId).filter((x): x is string => !!x))];
-  const [deals, contacts, cos, people] = await Promise.all([
+  // CRM C5.5 ▸ (fix3b · รีวิว R2b-3) กิจกรรม EMAIL ขาเข้าที่ระบบเขียน (sourceRef = id ของ CrmEmailMessage) ⇒ อ่านธง "ไม่ยืนยันผู้ส่ง" จากจดหมายฉบับนั้น
+  //   (fix2 เก็บไว้ที่ `routing` — ไม่มีคอลัมน์ใหม่) · จำกัดร้าน/ระบบเดียวกับแถวกิจกรรม · คืนแค่ธงของแถวที่ผู้ดูเห็นอยู่แล้ว ◂
+  const emailIds = [...new Set(rows.filter(isInboundEmailActivity).map((r) => r.sourceRef!))];
+  const [deals, contacts, cos, people, mails] = await Promise.all([
     dealIds.length ? prisma.crmDeal.findMany({ where: { AND: [await dealWhere(ctx, a), { id: { in: dealIds } }] }, select: { id: true, title: true } }) : Promise.resolve([]),
     contactIds.length ? prisma.crmContact.findMany({ where: { AND: [await contactWhere(ctx, a), { id: { in: contactIds } }] }, select: { id: true, name: true } }) : Promise.resolve([]),
     companyIds.length ? companies.companyRefsInTx(prisma, coCtx(ctx), a, companyIds) : Promise.resolve([]),
     userNames(ctx, rows.map((r) => r.ownerUserId)),
+    emailIds.length ? prisma.crmEmailMessage.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, id: { in: emailIds } }, select: { id: true, routing: true } }) : Promise.resolve([]),
   ]);
+  const unverified = new Set(mails.filter((m) => emailRoutingUnverified(m.routing)).map((m) => m.id));
   const dm = new Map(deals.map((d) => [d.id, d.title]));
   const km = new Map(contacts.map((k) => [k.id, k.name]));
   const cm = new Map(cos.map((c) => [c.id, c.name]));
@@ -868,6 +877,7 @@ async function enrich(ctx: ActivitiesCtx, a: MemberActor, rows: CrmActivity[]): 
     contactName: r.contactId ? (km.get(r.contactId) ?? null) : null,
     companyName: r.companyId ? (cm.get(r.companyId) ?? null) : null,
     ownerName: r.ownerUserId ? (people.get(r.ownerUserId) ?? null) : null,
+    ...(isInboundEmailActivity(r) && unverified.has(r.sourceRef!) ? { unverifiedFrom: true as const } : {}), // r2: แถวอื่นที่ sourceRef ตรงกันไม่ได้ธง
   }));
 }
 
@@ -885,7 +895,14 @@ function targetFilter(input: { contactId?: unknown; companyId?: unknown; dealId?
   return w;
 }
 
-/** ช่วงสถานะตามเวลาไทย (+07:00): today = วันปฏิทินไทยของตอนนี้ · week = [วันนี้ 00:00 ไทย, +7 วัน) (มติผู้คุมงาน C1.6 ข้อ 1) */
+/**
+ * ช่วงสถานะตามเวลาไทย (+07:00): today = วันปฏิทินไทยของตอนนี้ · week = [วันนี้ 00:00 ไทย, +7 วัน) (มติผู้คุมงาน C1.6 ข้อ 1)
+ * CRM C5.4-E ▸ L6-m1: overdue = ก่อน 00:00 ไทยของวันนี้ (`isActivityOverdue` ใน activities-shared) — ตัวนี้คือนิยามเดียวที่แอปมือถือ
+ *   (mobile.todayTasks) และวิดเจ็ต (widgets.todayTasks) ใช้นับด้วย ◂
+ */
+export function activityStatusWhere(status: ActivityStatus | null, nowMs: number): Prisma.CrmActivityWhereInput {
+  return statusFilter(status, nowMs);
+}
 function statusFilter(status: ActivityStatus | null, nowMs: number): Prisma.CrmActivityWhereInput {
   const d0 = new Date(thaiDayStartMs(nowMs));
   // มติผู้คุมงาน C1.6 S3: โน้ตไม่ใช่งาน (ไม่อยู่ในสถานะค้าง/วันนี้/สัปดาห์/เลยกำหนด) · เวลาอ้างอิง = COALESCE(dueAt, startAt)
@@ -895,7 +912,7 @@ function statusFilter(status: ActivityStatus | null, nowMs: number): Prisma.CrmA
     case "pending":
       return open;
     case "overdue":
-      return { AND: [open, when({ lt: new Date(nowMs) })] };
+      return { AND: [open, when({ lt: d0 })] }; // CRM C5.4-E ▸ L6-m1 (เดิม lt: ตอนนี้) ◂
     case "today":
       return { AND: [open, when({ gte: d0, lt: new Date(d0.getTime() + DAY_MS) })] };
     case "week":

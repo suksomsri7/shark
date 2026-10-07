@@ -100,8 +100,9 @@ function groupClientKey(keyId: string, idempotencyKey: string | null, requestId:
 
 const chequeInput = z
   .object({
-    chequeNo: z.string().min(1).max(40).describe("Cheque number as printed on the cheque."),
-    bankName: z.string().min(1).max(80).describe("Name of the bank that issued the cheque."),
+    // CRM C5.4-C ▸ round 10 · มติ B (R9-5): ช่องว่างล้วน ("  ") ถูกปฏิเสธที่ schema — ไม่ไปถึงการบันทึกงวด ◂
+    chequeNo: z.string().trim().min(1).max(40).describe("Cheque number as printed on the cheque."),
+    bankName: z.string().trim().min(1).max(80).describe("Name of the bank that issued the cheque."),
     chequeDate: ymdField("chequeDate"),
   })
   .strict()

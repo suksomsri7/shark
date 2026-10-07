@@ -1,0 +1,174 @@
+<style>
+.rail{width:56px;flex:none;border-right:1px solid var(--line);background:var(--sf2);
+  padding:10px 0;display:flex;flex-direction:column;align-items:center;gap:5px;color:var(--mut2)}
+.rail .ri{width:36px;height:36px;border-radius:9px;display:grid;place-items:center}
+.rail .ri.on{background:var(--sf);border:1px solid var(--line);color:var(--ink)}
+.top .biz{display:inline-flex;align-items:center;gap:12px;height:32px;padding:0 10px;border:1px solid var(--line);
+  border-radius:8px;font-size:13px;color:var(--ink2)}
+.top .dot{width:8px;height:8px;border-radius:50%;background:var(--ink);display:inline-block}
+.top .st{display:inline-flex;align-items:center;gap:13px;font-size:12.5px;color:var(--mut)}
+.top .who{display:inline-flex;align-items:center;gap:13px;font-size:12.5px;color:var(--ink2)}
+.amenu .am .pill{height:18px;min-width:18px;font-size:10.5px}
+</style>
+<style>
+.snav{width:240px;flex:none;border-right:1px solid var(--line);padding:14px 11px;background:var(--sf2)}
+.snav .acc-i{border-radius:0 7px 7px 0}
+.smain{flex:1;min-width:0;padding:16px 22px 22px;display:flex;flex-direction:column;gap:26px}
+.shd{display:flex;align-items:flex-start;gap:23px}
+.shd h1{font-size:22px;font-weight:700;letter-spacing:-.02em;line-height:1.25}
+.shd .d{font-size:12.5px;color:var(--mut);margin-top:3px}
+.shd .sp{flex:1}
+.sgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:23px}
+.sysc{padding:12px 14px;gap:12px}
+.sysc .h .ic{width:26px;height:26px;border-radius:7px;border:1px solid var(--line);background:var(--sf2);display:grid;place-items:center;color:var(--ink2);flex:none}
+.sysc ul{line-height:1.55}
+.sysc.off .h{color:var(--mut)}
+.sysc.off p,.sysc.off ul{color:var(--mut2)}
+.sysc .ft{margin-top:auto;display:flex;align-items:center;gap:12px;font-size:11.5px;color:var(--mut)}
+.sysc .ft .lnk{margin-left:auto;font-size:11.5px}
+.sysc .kv{padding:5px 0;font-size:12px}
+.sysc .kv .k{width:136px;flex:none}
+.sec2{display:flex;align-items:center;gap:16px;font-size:14px;font-weight:700;margin-top:4px}
+.sec2 .sub{font-weight:400}
+.lrow{display:flex;align-items:center;gap:22px;padding:8px 14px;border-top:1px solid var(--line);font-size:13px}
+.lrow:first-child{border-top:0}
+.lrow .ic{width:30px;height:30px;border-radius:8px;border:1px solid var(--line);background:var(--sf2);display:grid;place-items:center;color:var(--ink2);flex:none;font-size:11px;font-weight:700}
+.lrow .t{flex:1;min-width:0}
+.lrow .t b{font-weight:600;display:block}
+.lrow .t span{font-size:11.5px;color:var(--mut);display:block}
+.offbig{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+</style>
+<div class="wrap">
+<div>
+<p class="cap">10 · ตั้งค่าและการเชื่อมต่อ <span>— POS เชื่อมกับทุกระบบของ SHARK แบบเปิด/ปิดทีละระบบ · ช่องทางขายภายนอก · วิธีรับเงิน · ใบเสร็จและภาษี · ออฟไลน์</span></p>
+<div class="frame" style="height:1244px">
+
+ <div class="top"><svg class="i lg"><use href="#i-menu"/></svg><span class="brand">SHARK</span>
+  <span class="biz"><svg class="i sm"><use href="#i-shop"/></svg>บ้านกาแฟสวนผึ้ง · สาขาหัวหิน<svg class="i xs"><use href="#i-cv"/></svg></span>
+  <span class="sp"></span>
+  <span class="st"><i class="dot"></i>ออนไลน์ · พ. 30 ก.ย. 2569</span>
+  <span class="chip"><svg class="i xs"><use href="#i-clock"/></svg>กะ #12 · เปิด 09:02 · เคาน์เตอร์ 1</span>
+  <span class="who"><span class="av">ก</span>พี่เก่ง · ผู้จัดการ</span>
+ </div>
+
+ <div class="appbody" style="flex:1;min-height:0">
+  <div class="rail">
+   <div class="ri"><svg class="i sm"><use href="#i-home"/></svg></div>
+   <div class="ri on"><svg class="i sm"><use href="#i-shop"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-users"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-box"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-book"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-grid"/></svg></div>
+   <span style="flex:1"></span>
+   <div class="ri"><svg class="i sm"><use href="#i-gear"/></svg></div>
+  </div>
+
+  <div class="mod">
+   <div class="amenu">
+    <div class="am"><svg class="i sm"><use href="#i-cash"/></svg>หน้าขาย</div>
+    <div class="am"><svg class="i sm"><use href="#i-grid"/></svg>โต๊ะ</div>
+    <div class="am"><svg class="i sm"><use href="#i-truck"/></svg>ออเดอร์ออนไลน์<span class="pill">3</span></div>
+    <div class="am"><svg class="i sm"><use href="#i-doc"/></svg>บิลวันนี้</div>
+    <div class="am"><svg class="i sm"><use href="#i-clock"/></svg>กะ</div>
+    <div class="am"><svg class="i sm"><use href="#i-tag"/></svg>สินค้า</div>
+    <div class="am"><svg class="i sm"><use href="#i-chart"/></svg>รายงาน</div>
+    <div class="am on"><svg class="i sm"><use href="#i-gear"/></svg>ตั้งค่า</div>
+   </div>
+
+   <div style="display:flex;flex:1;min-height:0">
+    <div class="snav">
+     <div class="dsec" style="color:var(--mut)">ตั้งค่าหน้าขาย</div>
+     <div class="acc-i"><svg class="i sm"><use href="#i-gear"/></svg>ทั่วไป</div>
+     <div class="acc-i"><svg class="i sm"><use href="#i-doc"/></svg>ใบเสร็จและภาษี</div>
+     <div class="acc-i"><svg class="i sm"><use href="#i-wallet"/></svg>วิธีรับเงิน</div>
+     <div class="acc-i"><svg class="i sm"><use href="#i-print"/></svg>เครื่องและเครื่องพิมพ์</div>
+     <div class="acc-i"><svg class="i sm"><use href="#i-users"/></svg>พนักงานและสิทธิ์</div>
+     <div class="acc-i on"><svg class="i sm"><use href="#i-link"/></svg>การเชื่อมต่อระบบ SHARK</div>
+     <div class="acc-i"><svg class="i sm"><use href="#i-truck"/></svg>ช่องทางขายภายนอก</div>
+     <div class="acc-i"><svg class="i sm"><use href="#i-swap"/></svg>ออฟไลน์และการซิงก์</div>
+     <div class="ddsep" style="margin:12px 9px"></div>
+     <div class="sub" style="padding:0 11px;line-height:1.55">ตั้งค่าเป็นรายสาขา — สาขาหัวหิน · คัดลอกไปสาขาสวนผึ้งได้จากเมนู “ทั่วไป”</div>
+    </div>
+
+    <div class="smain">
+     <div class="shd">
+      <div><h1>การเชื่อมต่อระบบ SHARK</h1><div class="d">เชื่อมเป็นรายระบบ · ไม่เชื่อมก็ขายได้ปกติ · ทุกการเชื่อมเปิด/ปิดได้ทันที</div></div>
+      <span class="sp"></span><span class="chip ink">เชื่อมอยู่ 12 จาก 13 ระบบ</span><div class="btn gh sm"><svg class="i sm"><use href="#i-clock"/></svg>ประวัติการเปลี่ยน</div>
+     </div>
+
+     <div class="sgrid">
+      <div class="sysc"><div class="h"><span class="ic"><svg class="i sm"><use href="#i-users"/></svg></span>สมาชิก<span class="sw"></span></div>
+       <ul><li>ค้นหาด้วยเบอร์/QR ที่หน้าขาย</li><li>บันทึกยอดซื้อเข้าโปรไฟล์</li><li>สมัครสมาชิกจากหน้าขายได้</li></ul></div>
+      <div class="sysc"><div class="h"><span class="ic"><svg class="i sm"><use href="#i-pig"/></svg></span>แต้มสะสม<span class="sw"></span></div>
+       <ul><li>10 บาท = 1 แต้ม</li><li>ใช้แต้มเป็นส่วนลดที่จอชำระ</li><li>ยกเลิกบิล = ดึงแต้มคืน</li></ul></div>
+      <div class="sysc"><div class="h"><span class="ic"><svg class="i sm"><use href="#i-tag"/></svg></span>คูปองและว่อชเชอร์<span class="sw"></span></div>
+       <ul><li>รับโค้ด/QR ที่หน้าขาย</li><li>ว่อชเชอร์เป็นวิธีชำระ</li><li>จำกัดสาขาได้</li></ul></div>
+
+      <div class="sysc"><div class="h"><span class="ic"><svg class="i sm"><use href="#i-flag"/></svg></span>รางวัล<span class="sw"></span></div>
+       <ul><li>แลกของรางวัลที่หน้าขาย</li><li>แสดง “ใกล้ได้รางวัล” บนจอลูกค้า</li></ul></div>
+      <div class="sysc"><div class="h"><span class="ic"><svg class="i sm"><use href="#i-book"/></svg></span>บัญชี<span class="sw"></span></div>
+       <ul><li>ลงบัญชีอัตโนมัติทุกบิล</li><li>ออกใบกำกับอย่างย่อ/เต็มรูป</li><li>ค่าคอมฯ แพลตฟอร์มเป็นค่าใช้จ่าย</li><li>กระทบยอด PromptPay อัตโนมัติ</li></ul></div>
+      <div class="sysc"><div class="h"><span class="ic"><svg class="i sm"><use href="#i-box"/></svg></span>คลังสินค้า<span class="sw"></span></div>
+       <ul><li>ตัดสต็อกตอนขาย (ตามสูตร BOM)</li><li>ติดลบ: อนุญาต + ตั้งธง</li><li>ใกล้หมด → แจ้ง + ร่างใบสั่งซื้อ</li></ul></div>
+
+      <div class="sysc"><div class="h"><span class="ic"><svg class="i sm"><use href="#i-clock"/></svg></span>พนักงาน (HR)<span class="sw"></span></div>
+       <ul><li>เข้ากะด้วย PIN ตามตารางงาน</li><li>ยอดขายต่อคน → ค่าคอมมิชชัน</li><li>ลา = ไม่ขึ้นในตัวเลือกกะ</li></ul></div>
+      <div class="sysc off"><div class="h"><span class="ic"><svg class="i sm"><use href="#i-chart"/></svg></span>CRM<span class="sw off"></span></div>
+       <ul><li>บิลเกิน ฿5,000 → สร้างดีล</li><li>ลูกค้าองค์กร → ใบแจ้งหนี้/เครดิตร้าน</li></ul>
+       <div class="ft">ปิดอยู่ · บิลไม่ถูกส่งเข้า CRM<span class="lnk">เปิดใช้</span></div></div>
+      <div class="sysc"><div class="h"><span class="ic"><svg class="i sm"><use href="#i-mail"/></svg></span>แชท<span class="sw"></span></div>
+       <ul><li>ส่งใบเสร็จทาง LINE</li><li>รับออเดอร์จากแชท</li><li>ลูกค้าถามสถานะออเดอร์ตอบอัตโนมัติ</li></ul></div>
+
+      <div class="sysc"><div class="h"><span class="ic"><svg class="i sm"><use href="#i-grid"/></svg></span>บอร์ดงาน<span class="sw"></span></div>
+       <ul><li>ของหมด/ผลต่างกะ → การ์ดงาน</li><li>ปิดกะแล้วสร้างงาน “ตรวจเงิน” ให้ผู้จัดการ</li></ul></div>
+      <div class="sysc"><div class="h"><span class="ic"><svg class="i sm"><use href="#i-pct"/></svg></span>การตลาด<span class="sw"></span></div>
+       <ul><li>แคมเปญ happy hour ตั้งราคาอัตโนมัติ</li><li>แจกคูปองหลังซื้อครบ</li></ul></div>
+      <div class="sysc"><div class="h"><span class="ic"><svg class="i sm"><use href="#i-cal"/></svg></span>จองคิวและระบบคิว<span class="sw"></span></div>
+       <ul><li>โต๊ะจองแสดงบนผัง</li><li>เรียกคิวจากหน้าโต๊ะ</li><li>จองล่วงหน้าออกบิลที่ POS</li></ul></div>
+
+      <div class="sysc"><div class="h"><span class="ic" style="color:var(--acc);background:var(--acc-bg);border-color:var(--acc-bg)"><svg class="i sm"><use href="#i-spark"/></svg></span>พนักงาน AI<span class="sw"></span></div>
+       <ul><li>สรุปกะ/วัน</li><li>เสนอสั่งซื้อ</li><li>ตรวจจับส่วนลด/ยกเลิกผิดปกติ</li></ul>
+       <div class="note">เขียนได้เฉพาะแบบร่าง ต้องคนยืนยัน</div></div>
+
+      <div class="sysc"><div class="h"><span class="ic"><svg class="i sm"><use href="#i-doc"/></svg></span>ใบเสร็จและภาษี<span class="lnk" style="margin-left:auto;font-size:11.5px">แก้ไข</span></div>
+       <div>
+        <div class="kv"><span class="k">ภาษีมูลค่าเพิ่ม</span><span class="v"><span class="cbx on"></span> จด VAT · ราคารวม VAT</span></div>
+        <div class="kv"><span class="k">เลขผู้เสียภาษี</span><span class="v">0105561234567 · สาขา 00001</span></div>
+        <div class="kv"><span class="k">เลขเครื่อง POS</span><span class="v">POS001 · หัว/ท้ายใบเสร็จ ตั้งแล้ว</span></div>
+        <div class="kv"><span class="k">e-Tax Invoice by Email</span><span class="v" style="display:flex;align-items:center;gap:6px"><span class="chip">รอผู้ให้บริการ</span><span class="btn gh sm" style="height:24px;margin-left:auto">สมัคร</span></span></div>
+       </div></div>
+
+      <div class="sysc"><div class="h"><span class="ic"><svg class="i sm"><use href="#i-swap"/></svg></span>ออฟไลน์<span class="sw"></span></div>
+       <ul><li>ขายต่อได้เมื่อเน็ตหลุด</li><li>ออกเลขชั่วคราว <b>OFF-C1-0007</b></li><li>ซิงก์และออกเลขจริงเมื่อกลับมาออนไลน์</li></ul>
+       <div class="ft" style="border-top:1px solid var(--line);padding-top:7px">รายการรอซิงก์<span class="offbig" style="margin-left:auto;font-size:17px;color:var(--ink)">0</span></div></div>
+     </div>
+
+     <div class="row" style="gap:12px;align-items:flex-start">
+      <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:8px">
+       <div class="sec2"><svg class="i sm"><use href="#i-truck"/></svg>ช่องทางขายภายนอก<span class="sub">ออเดอร์เข้าหน้า “ออเดอร์ออนไลน์” · ราคาตาม “ราคาตามช่องทาง”</span></div>
+       <div class="card p0">
+        <div class="lrow"><span class="ic">LM</span><span class="t"><b>LINE MAN</b><span>รับออเดอร์อัตโนมัติ · ซิงก์เมนูและของหมด</span></span><span class="chip ink">เชื่อมแล้ว</span><span class="sw"></span></div>
+        <div class="lrow"><span class="ic">G</span><span class="t"><b>Grab</b><span>รับออเดอร์อัตโนมัติ · ซิงก์เมนู</span></span><span class="chip ink">เชื่อมแล้ว</span><span class="sw"></span></div>
+        <div class="lrow"><span class="ic">S</span><span class="t"><b>Shopee</b><span>ส่งเอกสารร้านแล้ว 28 ก.ย.</span></span><span class="chip">รอยืนยันบัญชี</span><span class="sw off"></span></div>
+        <div class="lrow"><span class="ic">fp</span><span class="t"><b>foodpanda</b><span>ยังไม่เชื่อม</span></span><div class="btn gh sm">เชื่อมต่อ</div></div>
+        <div class="lrow"><span class="ic"><svg class="i sm"><use href="#i-shop"/></svg></span><span class="t"><b>เว็บร้าน SHARK Shop</b><span>shop.baankafae.in.th</span></span><span class="chip ink">เปิดอยู่</span><span class="sw"></span></div>
+       </div>
+      </div>
+      <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:8px">
+       <div class="sec2"><svg class="i sm"><use href="#i-wallet"/></svg>วิธีรับเงิน<span class="sub">เรียงตามลำดับบนจอชำระ</span></div>
+       <div class="card p0">
+        <div class="lrow"><span class="ic"><svg class="i sm"><use href="#i-qr"/></svg></span><span class="t"><b>PromptPay 089-123-4567</b><span>ยืนยันเงินเข้าอัตโนมัติผ่าน Beam <svg class="i xs" style="vertical-align:-2px;color:var(--ink)"><use href="#i-check"/></svg></span></span><span class="sw"></span></div>
+        <div class="lrow"><span class="ic"><svg class="i sm"><use href="#i-wallet"/></svg></span><span class="t"><b>บัตรเครดิต/เดบิต</b><span>ผ่าน Beam · ค่าธรรมเนียม 1.95%</span></span><span class="sw"></span></div>
+        <div class="lrow"><span class="ic"><svg class="i sm"><use href="#i-bank"/></svg></span><span class="t"><b>โอนธนาคาร</b><span>แนบสลิป · ตรวจสลิปอัตโนมัติ</span></span><span class="sw"></span></div>
+        <div class="lrow"><span class="ic"><svg class="i sm"><use href="#i-tag"/></svg></span><span class="t"><b>ว่อชเชอร์/บัตรของขวัญ</b><span>ใช้ร่วมกับระบบสมาชิก</span></span><span class="sw"></span></div>
+        <div class="lrow"><span class="ic"><svg class="i sm"><use href="#i-cheque"/></svg></span><span class="t"><b>เครดิตร้าน</b><span>เฉพาะลูกค้าประจำ · กำหนดวงเงินรายคน</span></span><span class="sw off"></span></div>
+       </div>
+      </div>
+     </div>
+    </div>
+   </div>
+  </div>
+ </div>
+</div>
+</div>
+</div>

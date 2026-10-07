@@ -1,0 +1,9 @@
+  ✅ [RV3-A-boundary-residual] INFO REPRODUCED · floor 1601 · healer(copy, 600 ms window) → FAILED P2002 · cashier(deployed, starts +200 ms, walks ≤1000 path lock-free) → 1602 in 105 ms · sequence last_value after 1602
+  ✅ [RV3-B-control-slow-path-serialised] floor 1602 · healer(copy) → 1603 · cashier(deployed, +200 ms, gap > 1000) → 1604 after 993 ms (want both > floor, distinct, cashier waited for the healer's commit)
+  ✅ [RV3-C-fast-path-not-serialised] healer → 1605 (lock held while it holds its transaction: 1) · free-number allocation on the same book during that hold → 1606 in 11 ms (want lock held = 1, < 300 ms)
+  ✅ [RV3-D-deployed-equals-file] prosrc == 000002 body true · config ["search_path=pg_catalog, public"] · volatile v · secdef false · returns bigint · args (p_system text, p_book text, p_prefix text, p_width integer) · owner neondb_owner (sibling neondb_owner) · acl {=X/neondb_owner,neondb_owner=X/neondb_owner,authenticated=X/neondb_owner} (sibling {=X/neondb_owner,neondb_owner=X/neondb_owner,authenticated=X/neondb_owner})
+  ✅ [RV3-E-migrations] INFO QC2 rows ≥ 20261103: 20261103000000@09-27T23:40 · 20261104000000@10-01T05:06 · 20261104000001@10-01T07:54 · 20261104000002@10-01T13:30 · names after 000002: 0
+  ✅ [RV3-CLEAN] copies left 0 · journal sequences left 0 · deployed account_alloc_journal_no still == 000002 file: true
+  ✅ [CLEAN-32j4z2] tenant rows left=0
+🟢 rv3-jno: 7/7
+JSON_SUMMARY {"total":7,"passed":7,"findings":[]}

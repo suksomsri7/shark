@@ -1,0 +1,247 @@
+<style>
+.rail{width:56px;flex:none;border-right:1px solid var(--line);background:var(--sf2);
+  padding:10px 0;display:flex;flex-direction:column;align-items:center;gap:5px;color:var(--mut2)}
+.rail .ri{width:36px;height:36px;border-radius:9px;display:grid;place-items:center}
+.rail .ri.on{background:var(--sf);border:1px solid var(--line);color:var(--ink)}
+.top .biz{display:inline-flex;align-items:center;gap:12px;height:32px;padding:0 10px;border:1px solid var(--line);
+  border-radius:8px;font-size:13px;color:var(--ink2)}
+.top .dot{width:8px;height:8px;border-radius:50%;background:var(--ink);display:inline-block}
+.top .st{display:inline-flex;align-items:center;gap:13px;font-size:12.5px;color:var(--mut)}
+.top .who{display:inline-flex;align-items:center;gap:13px;font-size:12.5px;color:var(--ink2)}
+.amenu .am .pill{height:18px;min-width:18px;font-size:10.5px}
+</style>
+<style>
+.ph .d{font-size:12.5px;color:var(--mut);margin-top:3px}
+.stabs{padding:0 36px;margin-top:-8px}
+.stabs .tab .n{margin-left:2px}
+.sol{flex:1;min-width:0;display:flex;flex-direction:column;gap:32px}
+.sor{width:430px;flex:none;display:flex;flex-direction:column;gap:32px}
+.cht{display:flex;align-items:center;gap:14px;margin-bottom:22px}
+.cht h2{font-size:18px;font-weight:700;letter-spacing:-.01em}
+.cht .sp{flex:1}
+.fgrid{display:grid;grid-template-columns:1fr 1fr;gap:20px 24px}
+.fl{display:flex;flex-direction:column;gap:8px;min-width:0}
+.fl>label{font-size:13px;font-weight:600;color:var(--ink2)}
+.fl .inp{width:100%}
+.inp .vv{color:var(--ink);font-weight:600}
+.poc{display:flex;align-items:center;gap:12px;height:48px;padding:0 16px;border-radius:13px;border:1px solid var(--acc);background:var(--acc-bg);color:var(--acc);font-size:14px}
+.poc b{font-weight:700}
+.poc .sp{flex:1}
+.scan{margin-top:22px;display:flex;gap:14px}
+.ltb{margin-top:22px;border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.ltb .tbl td{vertical-align:middle}
+.ltb .pn b{display:block;font-weight:600;white-space:nowrap}
+.ltb .pn small{display:block;color:var(--mut);margin-top:3px}
+.qb{display:inline-grid;place-items:center;min-width:64px;height:40px;padding:0 10px;border:1px solid var(--line2);border-radius:10px;font-weight:700;font-variant-numeric:tabular-nums;background:var(--sf)}
+.qb.short{border-color:var(--dg);color:var(--dg)}
+.lot{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 10px;border:1px solid var(--line);border-radius:8px;font-size:13px;color:var(--ink2);background:var(--sf2);white-space:nowrap}
+.shortn{display:block;margin-top:6px;color:var(--dg)!important;font-weight:600;white-space:nowrap}
+.tots{display:flex;gap:28px;align-items:flex-end;margin-top:24px}
+.tots .left{flex:1;min-width:0;display:flex;flex-direction:column;gap:16px}
+.tots .box{width:330px;flex:none;border:1px solid var(--line);border-radius:14px;padding:16px 20px;font-variant-numeric:tabular-nums}
+.tots .box .r{display:flex;justify-content:space-between;padding:5px 0;color:var(--ink2)}
+.tots .box .r.g{border-top:1px solid var(--line);margin-top:6px;padding-top:12px;font-size:22px;font-weight:700;color:var(--ink)}
+.ckr{display:flex;align-items:flex-start;gap:12px;font-size:14.5px;line-height:1.5}
+.ckr .cbx{width:20px;height:20px;border-radius:6px;margin-top:2px;flex:none}
+.ckr .cbx.on::after{left:6px;top:2px;width:5px;height:10px}
+.ckr small{display:block;color:var(--mut)}
+.att{display:flex;align-items:center;gap:14px}
+.att .ph2{width:64px;height:64px;border-radius:12px;border:1px solid var(--line);background:
+ repeating-linear-gradient(0deg,var(--line) 0 2px,var(--sf2) 2px 9px);position:relative;flex:none}
+.att .ph2::after{content:"";position:absolute;left:10px;right:22px;top:10px;height:6px;background:var(--line2);border-radius:2px}
+.att .t b{display:block;font-weight:600}
+.att .t small{display:block;color:var(--mut)}
+.acts{display:flex;gap:14px;margin-top:26px;padding-top:24px;border-top:1px solid var(--line);align-items:center}
+.acts .sp{flex:1}
+.mh2{display:flex;align-items:center;gap:12px;margin-bottom:18px}
+.mh2 h2{font-size:16.5px;font-weight:700}
+.mh2 .sp{flex:1}
+.route{display:flex;align-items:center;gap:12px}
+.route .br{flex:1;min-width:0;border:1px solid var(--line);border-radius:12px;padding:10px 14px}
+.route .br small{display:block;color:var(--mut)}
+.route .br b{display:block;font-weight:700}
+.route .ar{color:var(--mut)}
+.tl2{margin-top:16px;border-top:1px solid var(--line)}
+.tl2 .r{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--line);font-size:14.5px}
+.tl2 .r .sp{flex:1}
+.tl2 .r b{font-variant-numeric:tabular-nums}
+.adj{display:flex;align-items:center;gap:14px;border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.adj .t{flex:1;min-width:0}
+.adj .t b{display:block;font-weight:600}
+.adj .t small{display:block;color:var(--mut)}
+.adj .n{font-size:20px;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+.adj .n .a{color:var(--mut);font-weight:400;margin:0 6px}
+.adj .n .z{color:var(--dg)}
+.cam{width:48px;height:48px;border-radius:13px;border:1.5px dashed var(--line2);display:grid;place-items:center;color:var(--mut);flex:none;background:var(--sf2)}
+.pol .li{gap:16px;padding:14px 0;font-size:14.5px}
+.pol .t b{display:block;font-weight:600}
+.pol .t small{display:block;color:var(--mut)}
+.pol .amt{font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+.hl .li{gap:14px;padding:13px 0;font-size:14.5px}
+.hl .ic{width:34px;height:34px;border-radius:10px;border:1px solid var(--line);background:var(--sf2);display:grid;place-items:center;color:var(--ink2);flex:none}
+.hl .t b{display:block;font-weight:600}
+.hl .t small{display:block;color:var(--mut)}
+.hl .q{font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+.hl .q.dg{color:var(--dg)}
+</style>
+<div class="wrap">
+<div>
+<p class="cap">16 · รับของเข้า · โอนสาขา · ปรับสต็อก <span>— ทางลัดจากหน้าขาย: รับของตามใบสั่งซื้อ (ลงบิลซื้อในบัญชีให้) · โอนระหว่างสาขา · ปรับสต็อกพร้อมเหตุผล · ประวัติทุกการเคลื่อนไหว</span></p>
+<div class="frame" style="height:1050px">
+
+ <div class="top"><svg class="i lg"><use href="#i-menu"/></svg><span class="brand">SHARK</span>
+  <span class="biz"><svg class="i sm"><use href="#i-shop"/></svg>บ้านกาแฟสวนผึ้ง · สาขาหัวหิน<svg class="i xs"><use href="#i-cv"/></svg></span>
+  <span class="sp"></span>
+  <span class="st"><i class="dot"></i>ออนไลน์ · พ. 30 ก.ย. 2569</span>
+  <span class="chip"><svg class="i xs"><use href="#i-clock"/></svg>กะ #12 · เปิด 09:02 · เคาน์เตอร์ 1</span>
+  <span class="who"><span class="av">ก</span>พี่เก่ง · ผู้จัดการ</span>
+ </div>
+
+ <div class="appbody" style="flex:1;min-height:0">
+  <div class="rail">
+   <div class="ri"><svg class="i sm"><use href="#i-home"/></svg></div>
+   <div class="ri on"><svg class="i sm"><use href="#i-shop"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-users"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-box"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-book"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-grid"/></svg></div>
+   <span style="flex:1"></span>
+   <div class="ri"><svg class="i sm"><use href="#i-gear"/></svg></div>
+  </div>
+
+  <div class="mod">
+   <div class="amenu">
+    <div class="am"><svg class="i sm"><use href="#i-cash"/></svg>หน้าขาย</div>
+    <div class="am"><svg class="i sm"><use href="#i-grid"/></svg>โต๊ะ</div>
+    <div class="am"><svg class="i sm"><use href="#i-truck"/></svg>ออเดอร์ออนไลน์<span class="pill">3</span></div>
+    <div class="am"><svg class="i sm"><use href="#i-doc"/></svg>บิลวันนี้</div>
+    <div class="am"><svg class="i sm"><use href="#i-clock"/></svg>กะ</div>
+    <div class="am on"><svg class="i sm"><use href="#i-tag"/></svg>สินค้า</div>
+    <div class="am"><svg class="i sm"><use href="#i-chart"/></svg>รายงาน</div>
+    <div class="am"><svg class="i sm"><use href="#i-gear"/></svg>ตั้งค่า</div>
+   </div>
+
+   <div class="ph" style="align-items:flex-start;padding-top:16px">
+    <div><h1>สต็อก</h1><div class="d">คลังเดียวกับระบบคลังสินค้า — ทำที่นี่หรือที่ระบบคลังก็ได้ ตัวเลขตรงกันทันที</div></div>
+    <span class="sp"></span>
+    <div class="inp">คลัง: <b>สาขาหัวหิน</b><svg class="i xs cv"><use href="#i-cv"/></svg></div>
+    <div class="btn gh sm"><svg class="i sm"><use href="#i-box"/></svg>เปิดในระบบคลังสินค้า</div>
+   </div>
+
+   <div class="tabs stabs">
+    <div class="tab on"><svg class="i sm"><use href="#i-in"/></svg>รับของเข้า<span class="n">1 ร่าง</span></div>
+    <div class="tab"><svg class="i sm"><use href="#i-swap"/></svg>โอนระหว่างสาขา<span class="n">1 รอรับ</span></div>
+    <div class="tab"><svg class="i sm"><use href="#i-edit"/></svg>ปรับสต็อก</div>
+    <div class="tab"><svg class="i sm"><use href="#i-clock"/></svg>ประวัติ</div>
+   </div>
+
+   <div class="pg" style="flex-direction:row;align-items:flex-start;padding-top:32px!important">
+    <!-- ═══ ซ้าย: ฟอร์มรับของเข้า ═══ -->
+    <div class="sol">
+     <div class="card">
+      <div class="cht"><svg class="i"><use href="#i-in"/></svg><h2>รับของเข้า · คลัง: สาขาหัวหิน</h2><span class="sp"></span><span class="sub">พ. 30 ก.ย. 2569 · ผู้รับ พี่เก่ง</span></div>
+
+      <div class="fgrid">
+       <div class="fl"><label>ซัพพลายเออร์</label>
+        <div class="inp"><svg class="i sm"><use href="#i-truck"/></svg><span class="vv">บริษัท กาแฟดอยช้าง จำกัด</span><svg class="i xs cv"><use href="#i-cv"/></svg></div></div>
+       <div class="fl"><label>อ้างใบสั่งซื้อ</label>
+        <div class="poc"><svg class="i sm"><use href="#i-check"/></svg><span><b>PO-0012</b> (สั่ง 28 ก.ย.) — ดึงรายการมาแล้ว</span><span class="sp"></span><svg class="i xs"><use href="#i-x"/></svg></div></div>
+      </div>
+
+      <div class="scan">
+       <div class="inp gro"><svg class="i sm"><use href="#i-search"/></svg>สแกนบาร์โค้ด หรือค้นชื่อสินค้าเพื่อเพิ่มรายการที่ไม่อยู่ในใบสั่งซื้อ</div>
+       <div class="btn gh"><svg class="i sm"><use href="#i-cam"/></svg>สแกนด้วยกล้อง</div>
+      </div>
+
+      <div class="ltb">
+       <table class="tbl">
+        <thead><tr><th>สินค้า</th><th class="rt">สั่ง</th><th class="rt">รับจริง</th><th class="rt">ราคา/หน่วย</th><th class="rt">รวม</th><th>ล็อต / หมดอายุ</th></tr></thead>
+        <tbody>
+         <tr><td class="pn"><b>เมล็ดกาแฟคั่วกลาง 1 กก.</b><small>วัตถุดิบ · ถุง</small></td><td class="num">10</td><td class="num"><span class="qb">10</span></td><td class="num">@฿420</td><td class="num"><b>฿4,200</b></td><td><span class="lot">ล็อต DC-2609</span></td></tr>
+         <tr><td class="pn"><b>นมสด 1 ล.</b><small>วัตถุดิบ · กล่อง</small></td><td class="num">24</td><td class="num"><span class="qb">24</span></td><td class="num">@฿48</td><td class="num"><b>฿1,152</b></td><td><span class="lot"><svg class="i xs"><use href="#i-cal"/></svg>หมดอายุ 12 ต.ค. 2569</span></td></tr>
+         <tr><td class="pn"><b>แก้ว 12 oz</b><small>บรรจุภัณฑ์ · ใบ</small></td><td class="num">500</td><td class="num"><span class="qb">500</span></td><td class="num">@฿2.80</td><td class="num"><b>฿1,400</b></td><td class="mu">—</td></tr>
+         <tr><td class="pn"><b>ฝาแก้ว</b><small>บรรจุภัณฑ์ · ชิ้น</small></td><td class="num">500</td><td class="num"><span class="qb short">480</span><small class="shortn">ขาด 20 — แจ้งซัพพลายเออร์</small></td><td class="num">@฿1.20</td><td class="num"><b>฿576</b></td><td class="mu">—</td></tr>
+        </tbody>
+       </table>
+      </div>
+
+      <div class="tots">
+       <div class="left">
+        <div class="ckr"><span class="cbx on"></span><span>บันทึกเป็นบิลซื้อในระบบบัญชี (เจ้าหนี้ 30 วัน)<small>ครบกำหนดจ่าย 30 ต.ค. 2569 · ภาษีซื้อ ฿512.96 ใช้เครดิตได้</small></span></div>
+        <div class="att"><div class="ph2"></div><div class="t"><b>ใบส่งของ DC-INV-88213.jpg</b><small>แนบรูปใบส่งของแล้ว 1 รูป · แตะเพื่อถ่ายเพิ่ม</small></div></div>
+       </div>
+       <div class="box">
+        <div class="r"><span>รวม 4 รายการ</span><span>฿7,328.00</span></div>
+        <div class="r"><span>VAT 7%</span><span>฿512.96</span></div>
+        <div class="r g"><span>ยอดสุทธิ</span><span>฿7,840.96</span></div>
+       </div>
+      </div>
+
+      <div class="acts">
+       <div class="btn pri"><svg class="i sm"><use href="#i-in"/></svg>รับเข้าคลัง</div>
+       <div class="btn gh">บันทึกร่าง</div>
+       <span class="sp"></span>
+       <span class="sub">รับเข้าแล้ว สต็อกหัวหินเพิ่มทันที · ใบสั่งซื้อ PO-0012 เปลี่ยนเป็น “รับบางส่วน”</span>
+      </div>
+     </div>
+
+     <div class="card">
+      <div class="cht" style="margin-bottom:10px"><svg class="i"><use href="#i-doc"/></svg><h2>ใบสั่งซื้อที่รอรับ · สาขาหัวหิน</h2><span class="sp"></span><span class="sub">จากระบบคลังสินค้า · แตะเพื่อเริ่มรับ</span></div>
+      <div class="lst pol">
+       <div class="li"><span class="chip ink">PO-0012</span><span class="sp t"><b>บริษัท กาแฟดอยช้าง จำกัด</b><small>สั่ง 28 ก.ย. · 4 รายการ · กำลังรับ</small></span><span class="amt">฿7,840.96</span><span class="chip acc">กำลังรับ</span></div>
+       <div class="li"><span class="chip">PO-0013</span><span class="sp t"><b>เบเกอรีบ้านขนม</b><small>สั่ง 29 ก.ย. · 3 รายการ · นัดส่ง 1 ต.ค.</small></span><span class="amt">฿1,860.00</span><div class="btn gh sm">เริ่มรับ</div></div>
+       <div class="li"><span class="chip">PO-0014</span><span class="sp t"><b>แม็คโคร สาขาหัวหิน</b><small>สั่ง 30 ก.ย. · 9 รายการ · ไปรับเอง</small></span><span class="amt">฿3,215.50</span><div class="btn gh sm">เริ่มรับ</div></div>
+      </div>
+     </div>
+    </div>
+
+    <!-- ═══ ขวา: ทางลัด ═══ -->
+    <div class="sor">
+     <div class="card">
+      <div class="mh2"><svg class="i"><use href="#i-swap"/></svg><h2>โอนระหว่างสาขา (ด่วน)</h2><span class="sp"></span><span class="chip acc">รอรับที่ปลายทาง</span></div>
+      <div class="route">
+       <div class="br"><small>จาก</small><b>สาขาหัวหิน</b></div>
+       <svg class="i ar"><use href="#i-ar"/></svg>
+       <div class="br"><small>ไป</small><b>สาขาสวนผึ้ง</b></div>
+      </div>
+      <div class="tl2">
+       <div class="r"><span>เมล็ดกาแฟ 250 g</span><span class="sp"></span><b>×10</b></div>
+       <div class="r"><span>บราวนี่</span><span class="sp"></span><b>×6</b></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:14px;margin-top:20px">
+       <div class="btn pri"><svg class="i sm"><use href="#i-truck"/></svg>ส่งโอน</div>
+       <span class="sub">ปลายทางกด “รับแล้ว” สต็อกจึงย้าย</span>
+      </div>
+     </div>
+
+     <div class="card">
+      <div class="mh2"><svg class="i"><use href="#i-edit"/></svg><h2>ปรับสต็อก</h2></div>
+      <div class="adj">
+       <div class="t"><b>บราวนี่</b><small>BK-007 · สาขาหัวหิน</small></div>
+       <div class="n">2<span class="a">→</span><span class="z">0</span></div>
+      </div>
+      <div style="display:flex;gap:12px;margin-top:16px">
+       <div class="inp gro">เหตุผล: <b>ของเสีย/หมดอายุ</b><svg class="i xs cv"><use href="#i-cv"/></svg></div>
+       <div class="cam"><svg class="i"><use href="#i-cam"/></svg></div>
+      </div>
+      <div class="note" style="margin-top:16px;display:block">ผลต่างลงบัญชีเป็นค่าใช้จ่ายอัตโนมัติ (฿42 ตามต้นทุน)</div>
+      <div class="btn gh" style="margin-top:18px">บันทึกการปรับ</div>
+     </div>
+
+     <div class="card">
+      <div class="mh2"><svg class="i"><use href="#i-clock"/></svg><h2>ประวัติล่าสุด</h2><span class="sp"></span><span class="lnk" style="font-size:13.5px">ดูทั้งหมด</span></div>
+      <div class="lst hl">
+       <div class="li"><span class="ic"><svg class="i sm"><use href="#i-in"/></svg></span><span class="sp t"><b>รับเข้า PO-0011</b><small>กาแฟดอยช้าง · 29 ก.ย. · พี่เก่ง</small></span><span class="q">+6 รายการ</span></div>
+       <div class="li"><span class="ic"><svg class="i sm"><use href="#i-out"/></svg></span><span class="sp t"><b>โอนออก → สวนผึ้ง</b><small>29 ก.ย. · รับแล้ว</small></span><span class="q">−18</span></div>
+       <div class="li"><span class="ic"><svg class="i sm"><use href="#i-edit"/></svg></span><span class="sp t"><b>ปรับ −1 แก้ว</b><small>แก้วเก็บความเย็น · แตก · แพร</small></span><span class="q dg">−1</span></div>
+       <div class="li"><span class="ic"><svg class="i sm"><use href="#i-list"/></svg></span><span class="sp t"><b>ตรวจนับ #7</b><small>28 ก.ย. · ผลต่าง 2 รายการ</small></span><span class="q">−฿96</span></div>
+       <div class="li"><span class="ic"><svg class="i sm"><use href="#i-in"/></svg></span><span class="sp t"><b>รับเข้า เบเกอรีบ้านขนม</b><small>27 ก.ย. · ไม่มีใบสั่งซื้อ</small></span><span class="q">+4 รายการ</span></div>
+      </div>
+     </div>
+    </div>
+   </div>
+  </div>
+ </div>
+</div>
+</div>
+</div>

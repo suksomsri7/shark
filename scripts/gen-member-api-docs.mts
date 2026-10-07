@@ -96,6 +96,11 @@ const ERROR_CODE_DOCS: Record<ApiErrorCode, CodeDoc> = {
     meaning: "A request with this key is still running.",
     action: "Wait a moment and retry with the same key; you will get the original response.",
   },
+  idempotency_outcome_unknown: {
+    status: 409,
+    meaning: "A temporary database or network failure hit the request after it had started, so it is unknown whether it took effect. The key is kept in this state until it expires (24 h); retries with the same key return this answer and never run the request again.",
+    action: "Check whether the record exists (read or list it). If it does not, send the request again with a NEW `Idempotency-Key`; never reuse this key for a retry.",
+  },
   confirm_required: {
     status: 409,
     meaning: "A danger operation was called without `confirm: true`.",

@@ -9,6 +9,7 @@
 // proxy จะเรียก resolveTenantByHost() เพื่อ map host → ร้าน (เฉพาะ ACTIVE เท่านั้น)
 
 import { prisma } from "@/lib/core/db";
+import { trimEndRun } from "@/lib/core/linear-text"; // CRM C5.5-fix5 ◂
 
 export type VercelDomainClient = {
   addDomain(domain: string): Promise<void>;
@@ -29,7 +30,7 @@ const DNS_TARGET = "cname.vercel-dns.com";
 
 // normalize host: ตัดช่องว่าง, ทำตัวเล็ก, ตัดจุดท้าย (FQDN trailing dot) ออก
 function normalizeHost(host: string): string {
-  return (host ?? "").trim().toLowerCase().replace(/\.+$/, "");
+  return trimEndRun((host ?? "").trim().toLowerCase(), "."); // CRM C5.5-fix5 ▸ เดิม `/\.+$/` = n² บน Host `....x` (หัวคำขอ) · ผลเท่าเดิม ◂
 }
 
 // hostname ถูกต้องไหม: a-z0-9.- เท่านั้น, มีจุด, ทุก label ถูกต้อง, ไม่ใช่ *.shark.in.th

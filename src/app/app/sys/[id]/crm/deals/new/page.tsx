@@ -78,6 +78,7 @@ export default async function NewDealPage({
           company={company}
           companyContacts={companyContacts}
           contact={contact}
+          canPickCompany={crmCan(actor, "crm.company.read")}
         />
       )}
     </div>

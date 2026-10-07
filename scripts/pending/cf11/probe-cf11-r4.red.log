@@ -1,0 +1,34 @@
+(node:2423429) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+── B reviewer R3B.1 — P14 unset, 10 attacker pairs × 100 thread-only replies ──
+  ❌ [B.1] attacker 10 pairs × 100 → 1000/1000 stored · T system bucket 1011 · customer's replies 1..10 → 0/10 stored (1st rate_limited, 10th rate_limited) · 11th → rate_limited (system bucket full ⇒ only senders above 10/h are dropped)
+  ✅ [B.2] bound: an attacker mailbox above its sender cap → rate_limited (attacker volume ≤ system cap + 10·k)
+
+── A reviewer R3A.1 — P14 set, 20 mailboxes on one attacker DMARC domain × 100 V mails ──
+  ❌ [A.1] 20 attacker mailboxes × 100 V mails on one DMARC domain → 2000/2000 stored (V domain bucket 300) · customer's V reply → rate_limited
+
+── L light-lane boundary + sender-key variants ──
+  ❌ [L.1] T system bucket full: a fresh sender's mails 1..10 → 0/10 stored · 11th → rate_limited
+  ❌ [L.2] Gmail dot / +tag / case variants → 3 sender key(s) ["john.smithuevudccf@gmail.com","johnsmithuevudccf@gmail.com","j.o.h.n.s.m.i.t.huevudccf@gmail.com"] · with the T system bucket full: first 10 across the variants → 0/10 stored, 11th → rate_limited (one light-lane allowance per mailbox)
+  ❌ [L.3] dots are stripped only for gmail.com/googlemail.com: outlook → a.b@outlook.com · googlemail → a.b@googlemail.com
+
+── F free-mail parity · D/U no light lane · notices · pre-bucket cost ──
+  ❌ [F.1] CRM_INBOUND_FREE_MAIL_DOMAINS is the module list FREE_MAIL_DOMAINS (same object: false) · has hotmail.co.th/msn.com/mac.com/aol.com/gmx.com: false,false,false,false,false
+  ❌ [F.2] DMARC-passing hotmail.co.th sender (D) → rate_limited · no per-domain bucket touched
+  ✅ [F.3] D and U have no light lane: a fresh sender's 1st mail with the class system bucket full → D rate_limited · U rate_limited
+  ✅ [F.4] two heavy senders dropped by the full T system bucket → owner notices 1 (want 1) · system-t audit lines 1 (want 1 per window)
+  ✅ [F.5] dropped mail with 20 references → rate_limited · CrmEmailMessage reads before the drop: ["findFirst:[\"id\"]","findMany:[\"messageId\",\"toAddrs\",\"ccAddrs\"]"] (want the dup check + one narrow proof query)
+  ✅ [CLEAN-buckets] rate buckets of the throwaway system removed
+  ✅ [CLEAN-i0kvb2] tenant rows left=0
+  ✅ [CLEAN-users] users left=0
+
+🔴 probe-cf11-r4: 7/14
+JSON_SUMMARY {"total":14,"passed":7,"findings":["B.1","A.1","L.1","L.2","L.3","F.1","F.2"]}

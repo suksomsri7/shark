@@ -1,7 +1,8 @@
 import { notFound } from "next/navigation";
 import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
-import { payslipData } from "@/lib/modules/hr/payroll";
+// HF-HR-0 (D3): สลิป = ผู้ดูเงินเดือน หรือตัวพนักงานเอง (รอบอนุมัติ/จ่ายแล้ว) เท่านั้น
+import { hrViewerOf, loadPayslipForViewer } from "@/lib/modules/hr/privacy";
 import { formatBaht } from "@/lib/ui/money";
 import { formatThaiDateLong as fmtDate } from "@/lib/ui/date";
 
@@ -18,11 +19,10 @@ export default async function PayslipPage({
   const sys = await prisma.appSystem.findFirst({ where: { id, tenantId } });
   if (!sys || sys.type !== "HR") notFound();
 
-  const [{ run, item, employee }, tenant] = await Promise.all([
-    payslipData({ tenantId, systemId: id }, runId, employeeId),
-    prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true } }),
-  ]);
-  if (!run || !item || !employee) notFound();
+  const slip = await loadPayslipForViewer({ tenantId, systemId: id }, hrViewerOf(auth), runId, employeeId);
+  if (!slip) notFound(); // ไม่มีสิทธิ์/ไม่พบ/ข้ามร้าน = 404
+  const { run, item, employee } = slip;
+  const tenant = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true } });
 
   const Row = ({ label, value, bold }: { label: string; value: string; bold?: boolean }) => (
     <div className={`flex justify-between py-1.5 ${bold ? "font-semibold" : ""}`}>

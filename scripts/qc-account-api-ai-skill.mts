@@ -7,6 +7,8 @@ import { readFileSync } from "node:fs";
 const accEnv = (await import("./acc-v2-env.mts" as string)) as { loadQcEnv: () => { host: string }; QC: { expectedPath: string } };
 const { loadQcEnv, QC } = accEnv;
 loadQcEnv();
+// ORACLE-EDIT C5.5-G1: runTool/sendMessage now take a required actor (no actor = refusal) — these checks always meant "the shop OWNER asks"
+const qcOwner = (t: string) => ({ kind: "member" as const, tenantId: t, userId: "qc-owner", membership: { role: "OWNER" as const, unitAccess: ["*"], permissions: {} } });
 // ⏭️ WO ยังไม่สร้าง → ข้ามแบบเห็นชัด (exit 0) ไม่ทำ qc:all/CI แดงค้าง (บทเรียน WO 0.7) — ด่านนี้หายไปเองเมื่อ WO ลงจริง
 if (!((await import("@/lib/ai/skills" as string)) as { SKILLS: { id: string }[] }).SKILLS.some((x) => x.id === "account")) {
   console.log("⚠️  SKIPPED — WO ยังไม่สร้าง (account)");
@@ -56,7 +58,7 @@ try {
   chk("E1-K1.8", "skillsForTenant([\"POS\"]) ไม่เห็น account · ([\"ACCOUNT\"]) เห็น", !(skills.skillsForTenant(["POS"]) as Any[]).some((s) => s.id === "account") && (skills.skillsForTenant(["ACCOUNT"]) as Any[]).some((s) => s.id === "account"), "กรองตามระบบ", "?");
 
   // ═══ K2 อ่าน (seed) ═══
-  const seedCtx = { tenantId: E.tenantId as string };
+  const seedCtx = { tenantId: E.tenantId as string, actor: qcOwner(E.tenantId as string) };
   const dash = parse(await tools.runTool(seedCtx, "account_dashboard", {}));
   const dashStr = JSON.stringify(dash);
   chk("E1-K2.1", "account_dashboard → JSON ไม่ error · มียอดค้างรับ (บาท) = เฉลย", !dash.error && dashStr.includes(String(E.receivable / 100)) , `${E.receivable / 100}`, dashStr.slice(0, 200));
@@ -69,7 +71,7 @@ try {
   chk("E1-K2.5", "account_report {kind:profit-loss} → มีกำไรสุทธิ/รายได้ (ตัวเลขจาก GL จริง)", !rep.error && /กำไร|รายได้/.test(JSON.stringify(rep)), "มี", JSON.stringify(rep).slice(0, 200));
   const aging = parse(await tools.runTool(seedCtx, "account_report", { kind: "aging", direction: "AR" }));
   chk("E1-K2.6", "account_report {kind:aging} → ยอดรวม = เฉลย receivable (บาท)", !aging.error && JSON.stringify(aging).includes(String(E.receivable / 100)), `${E.receivable / 100}`, JSON.stringify(aging).slice(0, 160));
-  const noSys = parse(await tools.runTool({ tenantId: "no-such-tenant" }, "account_dashboard", {}));
+  const noSys = parse(await tools.runTool({ tenantId: "no-such-tenant", actor: qcOwner("no-such-tenant") }, "account_dashboard", {}));
   chk("E1-K2.7", "ร้านที่ไม่มีระบบบัญชี → {error: 'ยังไม่ได้เปิดระบบบัญชี'} ไทย", typeof noSys.error === "string" && /[ก-๙]/.test(noSys.error), "error ไทย", JSON.stringify(noSys).slice(0, 120));
   const contacts = parse(await tools.runTool(seedCtx, "account_search_contacts", { q: "ณัฐพล" }));
   chk("E1-K2.8", "account_search_contacts {q} → เจอ ณัฐพล", !contacts.error && /ณัฐพล/.test(JSON.stringify(contacts)), "เจอ", JSON.stringify(contacts).slice(0, 160));
@@ -84,7 +86,7 @@ try {
   const customer = await acc.createContact({ tenantId: tid, systemId: SYS, kind: "CUSTOMER", name: "ณัฐพล ทดสอบ" });
   const cash = await fin.createFinanceAccount({ tenantId: tid, systemId: SYS, type: "CASH", name: "เงินสด" });
   const conv = await prisma.aiConversation.create({ data: { tenantId: tid, title: "QC E1" } });
-  const ctx = { tenantId: tid, conversationId: conv.id };
+  const ctx = { tenantId: tid, actor: qcOwner(tid), conversationId: conv.id };
   const owner: Any = { role: "OWNER", unitAccess: ["*"], permissions: {} };
   const staffNoPerm: Any = { role: "STAFF", unitAccess: ["*"], permissions: {} };
 
@@ -95,7 +97,9 @@ try {
   const prop = await prisma.aiProposal.findUnique({ where: { id: created.proposalId } });
   chk("E1-K3.3", "AiProposal kind=account.documents.create · risk NORMAL · summary มีชื่อลูกค้า+ยอดบาท", prop?.kind === "account.documents.create" && prop?.risk === "NORMAL" && /ณัฐพล/.test(prop?.summary ?? "") && /1,070,000|10,700/.test(prop?.summary ?? ""), "NORMAL + สรุป", `${prop?.kind} ${prop?.risk} ${prop?.summary}`);
   const denied = await proposals.executeProposal(staffNoPerm, { tenantId: tid }, created.proposalId);
-  chk("E1-K3.4", "STAFF ไม่มีสิทธิ์กดยืนยัน → ok:false note ไทย 'ไม่มีสิทธิ์' · proposal ยัง PENDING", denied?.ok === false && /สิทธิ์/.test(denied?.note ?? "") && (await prisma.aiProposal.findUnique({ where: { id: created.proposalId } }))?.status === "PENDING", "PENDING", JSON.stringify(denied));
+  // ORACLE-EDIT C5.5-G2: the proposal sits in a conversation of somebody else (a room written without a creator = the OWNER's), so a
+  //   STAFF confirmer is now answered "not found" before the key check — still refused, row still PENDING
+  chk("E1-K3.4", "STAFF ไม่มีสิทธิ์กดยืนยัน → ok:false note ไทย 'ไม่มีสิทธิ์' (หรือ 'ไม่พบข้อเสนอ' — ห้องของคนอื่น) · proposal ยัง PENDING", denied?.ok === false && /สิทธิ์|ไม่พบข้อเสนอ/.test(denied?.note ?? "") && (await prisma.aiProposal.findUnique({ where: { id: created.proposalId } }))?.status === "PENDING", "PENDING", JSON.stringify(denied));
   const exec = await proposals.executeProposal(owner, { tenantId: tid }, created.proposalId);
   const doc = await prisma.accountDocument.findFirst({ where: { systemId: SYS }, select: { id: true, status: true, grandTotal: true, source: true } });
   chk("E1-K3.5", "OWNER ยืนยัน → ok:true · เอกสาร DRAFT 1,070,000 source AI · note ไทยบอกผล", exec?.ok === true && doc?.status === "DRAFT" && doc?.grandTotal === 1_070_000 && doc?.source === "AI" && /[ก-๙]/.test(exec?.note ?? ""), "DRAFT", `${JSON.stringify(exec)} ${JSON.stringify(doc)}`);

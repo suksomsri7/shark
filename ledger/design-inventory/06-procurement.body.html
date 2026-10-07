@@ -1,0 +1,255 @@
+<style>
+.rail{width:56px;flex:none;border-right:1px solid var(--line);background:var(--sf2);
+  padding:10px 0;display:flex;flex-direction:column;align-items:center;gap:5px;color:var(--mut2)}
+.rail .ri{width:36px;height:36px;border-radius:9px;display:grid;place-items:center}
+.rail .ri.on{background:var(--sf);border:1px solid var(--line);color:var(--ink)}
+.top .biz{display:inline-flex;align-items:center;gap:12px;height:34px;padding:0 12px;border:1px solid var(--line);
+  border-radius:10px;font-size:13.5px;color:var(--ink2)}
+.top .dt{width:8px;height:8px;border-radius:50%;background:var(--ink);display:inline-block}
+.top .ol{display:inline-flex;align-items:center;gap:10px;font-size:13px;color:var(--mut)}
+.top .who{display:inline-flex;align-items:center;gap:10px;font-size:13px;color:var(--ink2)}
+.frame .amenu .am{padding:18px 15px 16px!important;font-size:14.5px!important}
+.amenu .am .pill{height:20px;min-width:20px;font-size:11px}
+.ph .d{font-size:13.5px;color:var(--mut);margin-top:4px}
+/* แถบสถิติ */
+.ks{display:grid;grid-template-columns:repeat(5,1fr);gap:20px}
+.ks .k{border:1px solid var(--line);border-radius:18px;padding:18px 20px;background:var(--sf)}
+.ks .k .l{font-size:13.5px;color:var(--mut);display:flex;align-items:center;gap:8px}
+.ks .k .v{font-size:28px;font-weight:700;letter-spacing:-.02em;margin-top:8px;font-variant-numeric:tabular-nums;display:flex;align-items:baseline;gap:8px}
+.ks .k .v small{font-size:15px!important;font-weight:600;color:var(--ink2)}
+.ks .k .f{font-size:12.5px;color:var(--mut);margin-top:6px}
+.ks .k.hl{border-color:var(--acc);background:var(--acc-bg)}
+.ks .k.hl .v,.ks .k.hl .l{color:var(--acc)}
+.cols{display:flex;gap:32px;align-items:flex-start}
+.mc{flex:1;min-width:0;display:flex;flex-direction:column;gap:32px}
+.sc{width:470px;flex:none;display:flex;flex-direction:column;gap:32px}
+.sh2{display:flex;align-items:center;gap:12px;margin-bottom:18px}
+.sh2 h2{font-size:18px;font-weight:700}
+.sh2 .sp{flex:1}
+/* ร่าง PO แนะนำ */
+.sg{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.sgc{border:1px solid var(--line);border-radius:18px;padding:20px;display:flex;flex-direction:column;gap:12px;background:var(--sf)}
+.sgc .h{display:flex;align-items:center;gap:10px}
+.sgc .h b{font-size:15.5px}
+.sgc .h .sp{flex:1}
+.sgc .ln{display:flex;align-items:flex-start;gap:10px;font-size:14.5px;padding:10px 0;border-top:1px solid var(--line)}
+.sgc .ln .t{flex:1;min-width:0}
+.sgc .ln .t b{display:block;font-weight:600}
+.sgc .ln .t small{display:block;color:var(--mut);margin-top:2px}
+.sgc .ln .t small.dg{color:var(--dg);font-weight:600}
+.sgc .ln .q{font-weight:700;white-space:nowrap;font-variant-numeric:tabular-nums}
+.sgc .tt{display:flex;align-items:center;gap:10px;border-top:1px solid var(--line);padding-top:14px}
+.sgc .tt .a{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums}
+.sgc .tt .m2{font-size:13px;color:var(--mut)}
+.sgc .tt .sp{flex:1}
+.sgc .why{font-size:12.5px;color:var(--acc);background:var(--acc-bg);border-radius:10px;padding:8px 12px;line-height:1.5}
+/* ตาราง PO */
+.pot .no b{display:block;white-space:nowrap}
+.pot .no small{display:block;color:var(--mut);margin-top:3px;white-space:nowrap}
+.pot td.sup b{display:block;font-weight:600;white-space:nowrap}
+.pot td.sup small{display:block;color:var(--mut);margin-top:3px}
+.pot .stc{display:flex;flex-direction:column;gap:5px;align-items:flex-start}
+.pot .stc small{white-space:nowrap}
+.pot .stc small.acc{color:var(--acc);font-weight:600}
+.pot tr.sel td{background:var(--acc-bg)}
+.pot tr.sel td:first-child{box-shadow:inset 3px 0 0 var(--acc)}
+.prt{display:flex;align-items:center;gap:6px;white-space:nowrap}
+.prt .mt{width:56px;height:6px;border-radius:3px;background:var(--line);overflow:hidden;display:inline-flex}
+.prt .mt i{display:block;height:100%;background:var(--ink)}
+/* ไทม์ไลน์ */
+.tlh{display:flex;align-items:flex-start;gap:12px}
+.tlh .t{flex:1;min-width:0}
+.tlh h2{font-size:20px;font-weight:700;display:flex;align-items:center;gap:10px}
+.tlh .ln{font-size:13.5px;color:var(--mut);margin-top:5px;line-height:1.5}
+.tlh .ln b{color:var(--ink2);font-weight:600}
+.tlv{margin-top:22px;display:flex;flex-direction:column}
+.tlv .e{display:flex;gap:14px;position:relative;padding-bottom:20px}
+.tlv .e::before{content:"";position:absolute;left:15px;top:32px;bottom:0;width:2px;background:var(--line)}
+.tlv .e:last-child{padding-bottom:0}
+.tlv .e:last-child::before{display:none}
+.tlv .e .ic{width:32px;height:32px;border-radius:50%;border:1.5px solid var(--ink);display:grid;place-items:center;flex:none;background:var(--sf);color:var(--ink)}
+.tlv .e.part .ic{border-style:dashed}
+.tlv .e.acc .ic{background:var(--acc);border-color:var(--acc);color:var(--sf)}
+.tlv .e .b{flex:1;min-width:0;padding-top:4px}
+.tlv .e .b .r{display:flex;align-items:baseline;gap:10px}
+.tlv .e .b .r b{font-size:14.5px}
+.tlv .e .b .r .sp{flex:1}
+.tlv .e .b .r .a{font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap;font-size:14.5px}
+.tlv .e .b .s{font-size:13px;color:var(--mut);margin-top:3px;line-height:1.5}
+.tlv .e .b .s .dgt{font-weight:600}
+.tlv .e .b .s .ok{color:var(--ink2);font-weight:600}
+.mbox{margin-top:8px;border:1px solid var(--acc);background:var(--acc-bg);border-radius:12px;padding:10px 12px;font-size:13px;color:var(--acc);line-height:1.6}
+.mbox b{color:var(--acc)}
+.abox{margin-top:8px;border:1px solid var(--line);background:var(--sf2);border-radius:12px;padding:10px 12px;font-size:13px;color:var(--ink2);line-height:1.7}
+.abox .r2{display:flex;justify-content:space-between;font-variant-numeric:tabular-nums}
+.abox .r2 b{color:var(--ink)}
+.tacts{display:flex;gap:12px;margin-top:22px;padding-top:20px;border-top:1px solid var(--line)}
+.tacts .btn{flex:1}
+/* ซัพ */
+.spc .kvx{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-top:1px solid var(--line);font-size:14px}
+.spc .kvx:first-of-type{border-top:0}
+.spc .kvx span{color:var(--mut)}
+.spc .kvx b{font-variant-numeric:tabular-nums}
+.spark{display:flex;align-items:flex-end;gap:4px;height:28px}
+.spark i{width:9px;background:var(--line2);border-radius:2px 2px 0 0;display:block}
+.spark i.on{background:var(--ink)}
+</style>
+<div class="wrap">
+<div>
+<p class="cap">06 · จัดซื้อครบวงจร PR → PO → GR → บิล <span>— ร่างใบสั่งซื้อที่ระบบแนะนำ (จุดสั่งซื้อ + พยากรณ์) · อนุมัติตามเกณฑ์มูลค่า · ส่ง PO ทาง LINE · รับหลายรอบ · จับคู่บิลซัพ · ลงบัญชีเจ้าหนี้เอง</span></p>
+<div class="frame" style="height:1150px">
+
+ <div class="top"><svg class="i lg"><use href="#i-menu"/></svg><span class="brand">SHARK</span>
+  <span class="biz"><svg class="i sm"><use href="#i-shop"/></svg>บ้านกาแฟสวนผึ้ง · ทุกสาขา<svg class="i xs"><use href="#i-cv"/></svg></span>
+  <span class="sp"></span>
+  <span class="ol"><i class="dt"></i>ออนไลน์ · พฤ. 1 ต.ค. 2569</span>
+  <svg class="i"><use href="#i-search"/></svg>
+  <span class="who"><span class="av">ก</span>พี่เก่ง · ผู้จัดการ</span>
+ </div>
+
+ <div class="appbody" style="flex:1;min-height:0">
+  <div class="rail">
+   <div class="ri"><svg class="i sm"><use href="#i-home"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-shop"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-users"/></svg></div>
+   <div class="ri on"><svg class="i sm"><use href="#i-box"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-book"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-grid"/></svg></div>
+   <span style="flex:1"></span>
+   <div class="ri"><svg class="i sm"><use href="#i-gear"/></svg></div>
+  </div>
+
+  <div class="mod">
+   <div class="amenu">
+    <div class="am"><svg class="i sm"><use href="#i-home"/></svg>ภาพรวม</div>
+    <div class="am"><svg class="i sm"><use href="#i-box"/></svg>สินค้าและวัตถุดิบ</div>
+    <div class="am"><svg class="i sm"><use href="#i-in"/></svg>รับ/ตัด/ปรับ</div>
+    <div class="am"><svg class="i sm"><use href="#i-list"/></svg>ตรวจนับ</div>
+    <div class="am"><svg class="i sm"><use href="#i-swap"/></svg>โอนสาขา</div>
+    <div class="am on"><svg class="i sm"><use href="#i-truck"/></svg>จัดซื้อ<span class="pill">2</span></div>
+    <div class="am"><svg class="i sm"><use href="#i-tree"/></svg>สูตร/ผลิต</div>
+    <div class="am"><svg class="i sm"><use href="#i-chart"/></svg>รายงาน</div>
+    <div class="am"><svg class="i sm"><use href="#i-gear"/></svg>ตั้งค่า</div>
+   </div>
+
+   <div class="ph" style="align-items:flex-start">
+    <div><h1>จัดซื้อ</h1><div class="d">ขอซื้อ → อนุมัติ → สั่งซื้อ → รับของ → จับคู่บิล → ลงบัญชี ในเส้นเดียว ทุกเอกสารมีเลขและพิมพ์ได้</div></div>
+    <span class="sp"></span>
+    <div class="btn gh"><svg class="i sm"><use href="#i-users"/></svg>ซัพพลายเออร์ 3</div>
+    <div class="btn gh"><svg class="i sm"><use href="#i-doc"/></svg>ขอซื้อ (PR)</div>
+    <div class="btn pri"><svg class="i sm"><use href="#i-plus"/></svg>สร้างใบสั่งซื้อ</div>
+   </div>
+
+   <div class="pg">
+    <div class="ks">
+     <div class="k hl"><div class="l"><svg class="i sm"><use href="#i-flag"/></svg>PR รออนุมัติ</div><div class="v">2<small>ใบ</small></div><div class="f">รอพี่เก่ง · เกิน ฿5,000 ต้องอนุมัติ</div></div>
+     <div class="k"><div class="l"><svg class="i sm"><use href="#i-doc"/></svg>PO เปิด</div><div class="v">3<small>฿18,900</small></div><div class="f">นัดส่งวันนี้ 1 ใบ</div></div>
+     <div class="k"><div class="l"><svg class="i sm"><use href="#i-truck"/></svg>ค้างรับ</div><div class="v">2<small>ใบ</small></div><div class="f">PO-0013 ทั้งใบ · PO-0012 ถุง 20</div></div>
+     <div class="k"><div class="l"><svg class="i sm"><use href="#i-link"/></svg>บิลรอจับคู่</div><div class="v">1<small>ใบ</small></div><div class="f">แพ็กเกจจิ้งไทย · PO-0011</div></div>
+     <div class="k"><div class="l"><svg class="i sm"><use href="#i-wallet"/></svg>เจ้าหนี้ครบใน 7 วัน</div><div class="v">฿5,324</div><div class="f">2 ใบ · ครบเร็วสุด 4 ต.ค.</div></div>
+    </div>
+
+    <div class="cols">
+     <div class="mc">
+      <!-- ร่าง PO แนะนำ -->
+      <div>
+       <div class="sh2"><svg class="i"><use href="#i-spark"/></svg><h2>ร่างใบสั่งซื้อที่ระบบแนะนำ</h2><span class="sub">(จุดสั่งซื้อ + พยากรณ์)</span><span class="sp"></span><span class="sub">คำนวณเมื่อ 06:00 · ยอดใช้ 14 วันล่าสุด</span></div>
+       <div class="sg">
+        <div class="sgc">
+         <div class="h"><svg class="i sm"><use href="#i-truck"/></svg><b>บริษัท กาแฟดอยช้าง จำกัด</b><span class="sp"></span><span class="chip">ส่งถึง หัวหิน</span></div>
+         <div class="ln"><div class="t"><b>เมล็ดคั่วกลาง</b><small class="dg">เหลือ 6 กก. · จุดสั่ง 8 · หมดใน 3 วัน</small></div><span class="q">10 กก.</span></div>
+         <div class="ln"><div class="t"><b>เมล็ดคั่วเข้ม</b><small>เหลือ 3 กก. · จุดสั่ง 3 · หมดใน 5 วัน</small></div><span class="q">5 กก.</span></div>
+         <div class="why">ซัพใช้เวลาส่ง 3 วัน → สั่งวันนี้ของถึง 4 ต.ค. ก่อนหมด</div>
+         <div class="tt"><span class="a">฿6,500</span><span class="m2">lead time 3 วัน</span><span class="sp"></span><div class="btn gh sm">แก้</div><div class="btn pri sm">สร้าง PO</div></div>
+        </div>
+        <div class="sgc">
+         <div class="h"><svg class="i sm"><use href="#i-truck"/></svg><b>ฟาร์มนมสดเขาใหญ่</b><span class="sp"></span><span class="chip">ส่งถึง 2 สาขา</span></div>
+         <div class="ln"><div class="t"><b>นมสด 1 ล.</b><small class="dg">ทั้ง 2 สาขาเหลือ 18.8 ล. · ใช้ 9.4 ล./วัน</small></div><span class="q">48 ล.</span></div>
+         <div class="ln"><div class="t"><b>แบ่งส่ง</b><small>หัวหิน 30 ล. · สวนผึ้ง 18 ล.</small></div><span class="q mu">@฿48</span></div>
+         <div class="why">ส่งทุกอังคาร · รอบถัดไป 6 ต.ค.</div>
+         <div class="tt"><span class="a">฿2,304</span><span class="m2">lead time 1 วัน</span><span class="sp"></span><div class="btn gh sm">แก้</div><div class="btn pri sm">สร้าง PO</div></div>
+        </div>
+       </div>
+      </div>
+
+      <!-- ตาราง PO -->
+      <div class="card p0">
+       <div class="sh2" style="padding:22px 24px 4px;margin:0"><svg class="i"><use href="#i-doc"/></svg><h2>ใบสั่งซื้อ</h2><span class="sp"></span>
+        <div class="inp" style="height:40px!important"><svg class="i sm"><use href="#i-search"/></svg>ค้นเลขที่ / ซัพ</div>
+        <div class="btn gh sm"><svg class="i sm"><use href="#i-filter"/></svg>ทุกสถานะ</div></div>
+       <table class="tbl pot" style="margin-top:14px">
+        <thead><tr><th>เลขที่</th><th>ซัพพลายเออร์</th><th>ส่งถึง</th><th>กำหนดส่ง</th><th class="rt">ยอด</th><th>สถานะ</th><th></th></tr></thead>
+        <tbody>
+         <tr><td class="no"><b class="lnk">PO-0014</b><small>จาก PR-0009</small></td><td class="sup"><b>ดอยช้าง</b><small>2 รายการ</small></td><td>หัวหิน</td><td class="nw">3 ต.ค.</td><td class="num"><b>฿6,500</b></td>
+          <td><div class="stc"><span class="chip acc">รออนุมัติ</span><small>มูลค่า &gt; ฿5,000</small></div></td><td class="rt"><div class="btn pri sm">อนุมัติ</div></td></tr>
+         <tr><td class="no"><b class="lnk">PO-0013</b><small>29 ก.ย.</small></td><td class="sup"><b>ฟาร์มนมเขาใหญ่</b><small>1 รายการ</small></td><td>2 สาขา</td><td class="nw">1 ต.ค.</td><td class="num"><b>฿2,304</b></td>
+          <td><div class="stc"><span class="chip ink">ส่งแล้ว (LINE)</span><small class="acc">09:10 ซัพตอบ “ส่งพรุ่งนี้”</small></div></td><td class="rt"><div class="btn gh sm">แชท</div></td></tr>
+         <tr class="sel"><td class="no"><b class="lnk">PO-0012</b><small>26 ก.ย.</small></td><td class="sup"><b>ดอยช้าง</b><small>4 รายการ</small></td><td>หัวหิน</td><td class="nw">29 ก.ย.</td><td class="num"><b>฿7,700</b></td>
+          <td><div class="stc"><span class="chip ink">รับบางส่วน 1/2</span><span class="prt"><span class="mt"><i style="width:99%"></i></span><small>ค้าง ถุง 20</small></span></div></td><td class="rt"><div class="btn gh sm">รับต่อ</div></td></tr>
+         <tr><td class="no"><b class="lnk">PO-0011</b><small>24 ก.ย.</small></td><td class="sup"><b>แพ็กเกจจิ้งไทย</b><small>4 รายการ</small></td><td>2 สาขา</td><td class="nw">28 ก.ย.</td><td class="num"><b>฿8,896</b></td>
+          <td><div class="stc"><span class="chip ink">รับครบ</span><small class="acc">บิลรอจับคู่</small></div></td><td class="rt"><div class="btn gh sm">จับคู่บิล</div></td></tr>
+         <tr><td class="no"><b class="lnk">PO-0010</b><small>22 ก.ย.</small></td><td class="sup"><b>ฟาร์มนมเขาใหญ่</b><small>1 รายการ</small></td><td>2 สาขา</td><td class="nw">23 ก.ย.</td><td class="num"><b>฿2,304</b></td>
+          <td><div class="stc"><span class="chip">ปิด</span><small>จ่ายแล้ว 30 ก.ย.</small></div></td><td class="rt"><svg class="i sm mu"><use href="#i-more"/></svg></td></tr>
+        </tbody>
+       </table>
+       <div class="tfoot"><span>แสดง 5 จาก 14 ใบ · ก.ย.–ต.ค. 2569</span><span class="sp"></span><span>ซื้อรวมเดือน ก.ย. <b style="color:var(--ink)">฿41,880</b></span></div>
+      </div>
+     </div>
+
+     <!-- ═══ ขวา: ไทม์ไลน์ PO-0012 ═══ -->
+     <div class="sc">
+      <div class="card">
+       <div class="tlh">
+        <div class="t"><h2>PO-0012 <span class="chip ink">รับบางส่วน 1/2</span></h2>
+         <div class="ln"><b>บริษัท กาแฟดอยช้าง จำกัด</b> → สาขาหัวหิน<br>คั่วกลาง 10 กก. · คั่วเข้ม 5 กก. · ถุงกระดาษ 500 · ฝาแก้ว 500 · <b>฿7,700</b></div></div>
+        <div class="btn gh sm"><svg class="i sm"><use href="#i-print"/></svg></div>
+       </div>
+       <div class="tlv">
+        <div class="e"><span class="ic"><svg class="i sm"><use href="#i-doc"/></svg></span><div class="b">
+         <div class="r"><b>ขอซื้อ PR-0007</b><span class="sp"></span><span class="mu" style="font-size:13px">25 ก.ย. 14:20</span></div>
+         <div class="s">ต้น ขอ · “เมล็ดใกล้ถึงจุดสั่งซื้อ”</div></div></div>
+        <div class="e"><span class="ic"><svg class="i sm"><use href="#i-check"/></svg></span><div class="b">
+         <div class="r"><b>อนุมัติ · พี่เก่ง</b><span class="sp"></span><span class="mu" style="font-size:13px">26 ก.ย. 09:40</span></div>
+         <div class="s">ผ่านระบบอนุมัติ · มูลค่าเกิน ฿5,000</div></div></div>
+        <div class="e"><span class="ic"><svg class="i sm"><use href="#i-mail"/></svg></span><div class="b">
+         <div class="r"><b>ส่ง PO ทาง LINE</b><span class="sp"></span><span class="mu" style="font-size:13px">26 ก.ย. 10:02</span></div>
+         <div class="s"><span class="ok">✓ อ่านแล้ว</span> · แนบ PDF · ซัพยืนยันส่ง 2 รอบ</div></div></div>
+        <div class="e"><span class="ic"><svg class="i sm"><use href="#i-in"/></svg></span><div class="b">
+         <div class="r"><b>GR-2609-0021</b><span class="sp"></span><span class="a">฿2,700</span></div>
+         <div class="s">รับ 27 ก.ย. · คั่วกลาง 5 กก. · ฝาแก้ว 500 · ต้น</div></div></div>
+        <div class="e part"><span class="ic"><svg class="i sm"><use href="#i-in"/></svg></span><div class="b">
+         <div class="r"><b>GR-2610-0003</b><span class="sp"></span><span class="a">฿4,976</span></div>
+         <div class="s">รับ 1 ต.ค. 09:40 · คั่วกลาง 5 · คั่วเข้ม 5 · ถุง 480 · <span class="dgt">ค้าง ถุง 20</span></div></div></div>
+        <div class="e acc"><span class="ic"><svg class="i sm"><use href="#i-link"/></svg></span><div class="b">
+         <div class="r"><b>บิลซัพ INV-DC-7741</b><span class="sp"></span><span class="a">฿8,213.32</span></div>
+         <div class="mbox"><b>จับคู่: ตรง GR 2 ใบ</b> (฿7,676 + VAT)<br>ผลต่างค่าขนส่ง <b>+฿300</b> ✓ บิลผู้ขนส่งแยก · กระจายเข้าต้นทุนแล้ว</div></div></div>
+        <div class="e"><span class="ic"><svg class="i sm"><use href="#i-book"/></svg></span><div class="b">
+         <div class="r"><b>บัญชี · ลงให้อัตโนมัติ</b></div>
+         <div class="abox">
+          <div class="r2"><span>บันทึกซื้อ (สินค้าคงเหลือ)</span><b>฿7,676.00</b></div>
+          <div class="r2"><span>ภาษีซื้อ 7%</span><b>฿537.32</b></div>
+          <div class="r2"><span>เจ้าหนี้ ดอยช้าง · ครบ 31 ต.ค.</span><b>฿8,213.32</b></div>
+         </div></div></div>
+       </div>
+       <div class="tacts">
+        <div class="btn gh sm"><svg class="i sm"><use href="#i-mail"/></svg>ส่งซัพซ้ำ</div>
+        <div class="btn gh sm"><svg class="i sm"><use href="#i-lock"/></svg>ปิด PO (ค้าง 20 ใบยกเลิก)</div>
+       </div>
+      </div>
+
+      <div class="card spc">
+       <div class="ch"><svg class="i sm"><use href="#i-truck"/></svg><h2>ซัพพลายเออร์ ดอยช้าง</h2><span class="sp"></span><span class="lnk" style="font-size:13.5px">ดูประวัติ</span></div>
+       <div class="kvx"><span>เงื่อนไขชำระ</span><b>เครดิต 30 วัน</b></div>
+       <div class="kvx"><span>ส่งของ (lead time)</span><b>3 วัน</b></div>
+       <div class="kvx"><span>ส่งตรงเวลา</span><b>92% · 12 จาก 13 รอบ</b></div>
+       <div class="kvx"><span>ราคาคั่วกลาง 6 เดือน</span><span style="display:flex;align-items:center;gap:12px"><span class="spark"><i style="height:80%"></i><i style="height:80%"></i><i style="height:82%"></i><i style="height:82%"></i><i style="height:84%"></i><i class="on" style="height:92%"></i></span><b style="color:var(--dg)">+3%</b></span></div>
+       <div class="kvx"><span>ติดต่อ</span><b>LINE ✓ · เชื่อมระบบแชทแล้ว</b></div>
+      </div>
+     </div>
+    </div>
+   </div>
+  </div>
+ </div>
+</div>
+</div>
+</div>

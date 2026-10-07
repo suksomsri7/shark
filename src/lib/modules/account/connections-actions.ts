@@ -11,11 +11,12 @@ import { safeReason } from "./errors";
 import type { AccountLinkedKind } from "@prisma/client";
 import { assertCan } from "@/lib/core/rbac";
 import { createApiKey, revokeApiKey, rotateApiKey } from "@/lib/api-keys/service";
-import { DEFAULT_KEY_TTL_DAYS, expandBundles, isApiScope } from "@/lib/api-keys/scopes";
+import { ACCOUNT_SCOPE_KEYS, DEFAULT_KEY_TTL_DAYS, expandBundles, isApiScope } from "@/lib/api-keys/scopes";
 import { createEndpoint, deleteEndpoint, dispatchWebhooks, setEndpointActive } from "@/lib/webhooks/service";
+import { WEBHOOK_EVENTS } from "@/lib/webhooks/labels"; // CRM C5.5 ▸ กรองเหตุการณ์ ◂
 import { loadAccountSystem } from "./guard";
 import { assertAccountCan, mc, writeAudit } from "./access";
-import { accountManagedKey, connect, disconnect, setLinkOptions, type LinkConfig, type ToggleKey } from "./connections";
+import { accountKeyRotationProblem, accountManagedKey, connect, disconnect, setLinkOptions, type LinkConfig, type ToggleKey } from "./connections"; // CRM C5.5-fix8 ▸ +accountKeyRotationProblem ◂
 
 const PATH = (systemId: string) => `/app/sys/${systemId}/account/settings/connections`;
 
@@ -114,6 +115,18 @@ export async function createApiKeyAction(
   }
   for (const sc of scopes) {
     if (!isApiScope(sc)) return { ok: false, reason: `สิทธิ์ "${sc}" ใช้เป็นขอบเขตของคีย์ไม่ได้` };
+    // C5.5-authz-sweep ▸ หน้านี้ออกคีย์ได้เฉพาะสิทธิ์ของระบบบัญชี (ที่หน้าจอมีให้ติ๊ก = ACCOUNT_SCOPE_KEYS / ชุด account) — เดิมรับ `crm.*`/`member.*`
+    //   ที่ส่งมาเอง ⇒ ผู้จัดการบัญชีออกคีย์ที่ REST บัญชีแปลงเป็นผู้ดู CRM/สมาชิก (`crmViewerOfApi`) โดยไม่ผ่านด่านออกคีย์ของ CRM
+    //   (`crm.api.manage` + `crmKeyWiderThanCreator`) หรือของสมาชิก (`member.api.manage`) · สิทธิ์ของระบบอื่นออกที่หน้า API ของระบบนั้น ◂
+    if (!ACCOUNT_SCOPE_KEYS.includes(sc)) {
+      return { ok: false, reason: `หน้านี้ออกคีย์ได้เฉพาะสิทธิ์ของระบบบัญชี — สิทธิ์ "${sc}" ต้องออกที่หน้าตั้งค่า API ของระบบนั้น` };
+    }
+  }
+  // CRM C5.5-fix8 ▸ (รีวิว authz-sweep F2) ฟอร์มที่ยิงเองโดยไม่ติ๊กสิทธิ์และไม่เลือกชุดเคยได้คีย์ `[]` ("คีย์รุ่นเดิม" — ป้ายในหน้า
+  //   "อ่าน API กลาง") ที่ REST บัญชีปฏิเสธทุก op แต่ทางเดิน `/api/v1/*` รุ่นเดิมรับทุกคีย์ของร้าน (F1) · หน้าจอไม่เคยส่งแบบนี้
+  //   (มีชุดสิทธิ์ติดมาเสมอ) ⇒ คีย์จากหน้านี้ต้องมีสิทธิ์ของระบบบัญชี ≥ 1 รายการ · คีย์กลางของร้านออกที่ ตั้งค่า › API สำหรับนักพัฒนา ◂
+  if (scopes.length === 0) {
+    return { ok: false, reason: "เลือกสิทธิ์ของคีย์อย่างน้อย 1 รายการ (หรือเลือกชุดสิทธิ์) — คีย์จากหน้านี้ต้องมีสิทธิ์ของระบบบัญชี" };
   }
   const ttlRaw = s(fd, "ttlDays");
   const ttlDays = ttlRaw === "" ? DEFAULT_KEY_TTL_DAYS : Number(ttlRaw);
@@ -138,7 +151,8 @@ export async function createApiKeyAction(
 // CRM C5.4-B ▸ hunter H2: หน้านี้จัดการได้เฉพาะคีย์ "ของบัญชี" — คีย์ที่ผูกระบบบัญชี (สมุดใดก็ได้ของร้าน — หน้านี้แสดงคีย์ทุกเล่ม · WO A2)
 //   หรือคีย์ไม่ผูกระบบที่ไม่มี scope ของโมดูลอื่น · คีย์ของ CRM/สมาชิก/บอร์ดงาน = "ไม่พบ" (จัดการจากหน้าตั้งค่า API ของโมดูลนั้นเท่านั้น —
 //   เดิมพนักงานบัญชีหมุนคีย์ crm.admin ของเจ้าของได้: คีย์เดิมถูกเพิกถอน + ได้คีย์ใหม่ที่ข้ามด่านออกคีย์ของ CRM)
-const KEY_NOT_HERE = "ไม่พบคีย์นี้ในหน้าการเชื่อมต่อของบัญชี — คีย์ของระบบอื่นจัดการได้จากหน้าตั้งค่า API ของระบบนั้น";
+// CRM C5.5-fix8 r2 ▸ (RV-5 · Q2) + คีย์ไม่ผูกระบบ (คีย์กลางของร้าน) และคีย์ที่ถือสิทธิ์นอกระบบบัญชี = "ไม่พบ" เช่นกัน (กติกาใน accountManagedKey) ◂
+const KEY_NOT_HERE = "ไม่พบคีย์นี้ในหน้าการเชื่อมต่อของบัญชี — คีย์กลางของร้านจัดการได้ที่ ตั้งค่า › API สำหรับนักพัฒนา และคีย์ของระบบอื่นจัดการได้จากหน้าตั้งค่า API ของระบบนั้น";
 
 /** เพิกถอนคีย์ API */
 export async function revokeApiKeyAction(fd: FormData): Promise<ConnResult> {
@@ -164,6 +178,9 @@ export async function rotateApiKeyAction(
   const id = s(fd, "id");
   if (!id) return { ok: false, reason: "ไม่รู้ว่าจะหมุนคีย์ไหน" };
   if (!(await accountManagedKey(tenantId, id))) return { ok: false, reason: KEY_NOT_HERE };
+  // CRM C5.5-fix8 ▸ (รีวิว authz-sweep F3) สิทธิ์ของคีย์เดิมต้องผ่านกติกาเดียวกับตอนออกคีย์ — ไม่ผ่าน = ไม่หมุน (คีย์เดิมไม่ถูกแตะ) ◂
+  const problem = await accountKeyRotationProblem(tenantId, id);
+  if (problem) return { ok: false, reason: problem };
   try {
     const { rawKey } = await rotateApiKey({ tenantId }, id, { createdById: userId });
     await writeAudit({ tenantId, actorId: userId, action: "account.settings.manage", targetType: "ApiKey", targetId: id, after: { rotated: true } });
@@ -181,9 +198,20 @@ export async function createWebhookAction(fd: FormData): Promise<ConnResult> {
   assertCan(mc(auth), { module: "webhook", action: "webhook.endpoint.create" });
   const url = s(fd, "url");
   if (!/^https?:\/\//i.test(url)) return { ok: false, reason: "ที่อยู่ปลายทางต้องขึ้นต้นด้วย http:// หรือ https://" };
-  const events = fd.getAll("events").map((e) => String(e));
+  // CRM C5.5 ▸ (fix1 r2 · มติผู้คุมงานข้อ 5) หน้านี้เลือกได้เฉพาะเหตุการณ์บัญชี ⇒ กรองให้เหลือ account.* ที่มีในทะเบียนจริง (เดิมรับทุกค่าที่ส่งมา)
+  //   · ผู้ทำ = ผู้ใช้ที่ล็อกอิน (ตัวกันเหตุการณ์กลาง — รายการว่าง = ทุกเหตุการณ์ ต้องผ่านกติกา CRM เมื่อร้านมี CRM v2) ◂
+  const named = fd
+    .getAll("events")
+    .map((e) => String(e).trim())
+    .filter((e) => e !== "");
+  const events = named.filter((e) => e.startsWith("account.") && WEBHOOK_EVENTS.some((w) => w.value === e));
+  // CRM C5.5 ▸ (fix3a · R2-1) ฟอร์มระบุเหตุการณ์มา ≥1 แต่ไม่มีตัวไหนเป็นเหตุการณ์บัญชีเลย ⇒ ปฏิเสธ (เดิมกรองจนเหลือ [] = "ทุกเหตุการณ์ของร้าน"
+  //   ทั้ง CRM/สมาชิก/แชท — ตรงข้ามกับที่ผู้ใช้ขอ) · ไม่ส่งเหตุการณ์มาเลย = ทุกเหตุการณ์ ตามที่หน้าบอกไว้ (ตัวกันเหตุการณ์กลางตรวจต่อ) ◂
+  if (named.length > 0 && events.length === 0) {
+    return { ok: false, reason: "หน้านี้เลือกได้เฉพาะเหตุการณ์ของระบบบัญชี — เหตุการณ์ของระบบอื่นตั้งที่หน้า ตั้งค่า › Webhooks ของร้าน" };
+  }
   try {
-    await createEndpoint({ tenantId }, { url, events });
+    await createEndpoint({ tenantId }, { url, events, by: { userId } });
   } catch (e) {
     return { ok: false, reason: safeReason(e, "เพิ่มปลายทางไม่สำเร็จ") };
   }
@@ -204,7 +232,12 @@ export async function updateWebhookAction(fd: FormData): Promise<ConnResult> {
     await deleteEndpoint({ tenantId }, id);
   } else {
     assertCan(mc(auth), { module: "webhook", action: "webhook.endpoint.update" });
-    await setEndpointActive({ tenantId }, id, op === "on");
+    // CRM C5.5 ▸ (fix3a · R2-3) ตัวกันเหตุการณ์ปฏิเสธการเปิด ⇒ คืนเหตุผลไทยทางช่องปกติของหน้า (เดิมโยนออกไปหน้า error) ◂
+    try {
+      await setEndpointActive({ tenantId }, id, op === "on", { userId }); // CRM C5.5 ▸ by: เปิด = ตัวกันเหตุการณ์ตรวจ ◂
+    } catch (e) {
+      return { ok: false, reason: safeReason(e, "แก้ปลายทางไม่สำเร็จ") };
+    }
   }
   await writeAudit({ tenantId, actorId: userId, action: "account.settings.manage", targetType: "WebhookEndpoint", targetId: id, after: { op } });
   revalidatePath(PATH(systemId));
@@ -216,7 +249,13 @@ export async function testWebhookAction(fd: FormData): Promise<ConnResult> {
   const systemId = s(fd, "systemId");
   const { auth, tenantId, userId } = await gate(systemId);
   assertCan(mc(auth), { module: "webhook", action: "webhook.endpoint.update" });
-  const type = s(fd, "type") || "account.document.approved";
+  // C5.5-authz-sweep ▸ ยิงทดสอบได้เฉพาะเหตุการณ์ของระบบบัญชีที่มีในทะเบียน (เดิมส่ง `type` ดิบของ client ไปทุกปลายทางของร้าน ⇒ ปลอม
+  //   `crm.deal.won`/`member.*` ใส่ระบบเชื่อมต่อของ CRM/สมาชิกได้) — REST บัญชี `webhooks.test` ก็รับเฉพาะเหตุการณ์ที่รู้จัก ·
+  //   ปุ่มในหน้าส่ง "ป้ายไทย" ของเหตุการณ์มา ⇒ แปลงป้ายกลับเป็นค่าก่อน ◂
+  const asked = s(fd, "type") || "account.document.approved";
+  const ev = WEBHOOK_EVENTS.find((w) => w.value.startsWith("account.") && (w.value === asked || w.label === asked));
+  if (!ev) return { ok: false, reason: "ยิงทดสอบได้เฉพาะเหตุการณ์ของระบบบัญชี" };
+  const type = ev.value;
   const n = await dispatchWebhooks({ tenantId, type, payload: { test: true, at: new Date().toISOString() } });
   await writeAudit({ tenantId, actorId: userId, action: "account.settings.manage", targetType: "WebhookEndpoint", after: { test: type, sent: n } });
   revalidatePath(PATH(systemId));

@@ -13,6 +13,7 @@ import { createHmac } from "node:crypto";
 import { otpCode, randomToken, sha256 } from "@/lib/core/hash";
 import { checkRateLimitDb, resetRateLimitDb } from "@/lib/core/rate-limit-db";
 import { prisma } from "./db";
+import type { Prisma } from "@prisma/client";
 import type { MemberActor } from "./access";
 import { appRequiresSecureCookies } from "./customer-cookie";
 import type { MemberCtx } from "./profile";
@@ -671,6 +672,9 @@ async function portalAccessUsable(accessId: string): Promise<UsableAccess | null
 export async function mintPortalSession(
   portalAccessId: string,
   meta: { userAgent?: string | null; ip?: string | null } = {},
+  // CRM C5.5-fix2 ▸ รีวิว R2b-1: ผู้เรียก (CRM `switchCompany`) ต้องทำ "ล็อกผู้ติดต่อ → ตรวจ session ต้นทางซ้ำ" ในธุรกรรมเดียวกับ
+  //   การสร้าง session ใหม่ — throw ในนี้ = ยกเลิกทั้งธุรกรรม (ไม่มีแถว session) · ไม่ส่ง = เหมือนเดิมทุกไบต์ ◂
+  opts: { inTx?: (tx: Prisma.TransactionClient) => Promise<void> } = {},
 ): Promise<PortalSessionToken> {
   if (!portalSecretReady()) throw new CustomerAuthError(PORTAL_NOT_READY);
   const a = await portalAccessUsable(portalAccessId);
@@ -680,6 +684,7 @@ export async function mintPortalSession(
   const expiresAt = new Date(now.getTime() + PORTAL_SESSION_TTL_MS);
   const ipHash = portalIpHash(meta?.ip);
   const row = await prisma.$transaction(async (tx) => {
+    if (opts.inTx) await opts.inTx(tx);
     const s = await tx.portalSession.create({
       data: {
         tenantId: a.tenantId,

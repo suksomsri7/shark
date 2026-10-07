@@ -26,13 +26,17 @@ import { getSettings } from "../../service";
 import { dashboardSnapshot } from "../../dashboard";
 import { composeAccountReport } from "../../email-report";
 import { defineOp, type ApiOp } from "../op";
-import { ApiError } from "../respond";
+import { ApiError, nothingWritten } from "../respond"; // CRM C5.5 ▸ fix3a +nothingWritten ◂
 
 const importKindField = z.enum(["documents_revenue", "documents_expense", "contacts", "products", "chart_of_accounts"]);
 const mappingField = z.record(z.string(), z.number().int()).optional().describe("Column index per field key. Omit to auto-match from the header row.");
 
+// CRM C5.5 ▸ (fix3a · ข้อ 3(a) ของรีวิว fix1 r2) 429 จากเพดานต่อสมุด (`import.run` นำเข้า 20/ชม. · `reports.email`) เกิด **ก่อนเขียนอะไร**:
+//   `accountRateGuard` เป็นคำสั่งแรกของ handler ทั้งสองตัว และสิ่งเดียวที่มันเขียนคือตัวนับของถังเพดานเอง (`ChatRateBucket` — ไม่ใช่ข้อมูล
+//   ของร้าน · หน้าต่างรีเซ็ตตามเวลา ไม่ตามจำนวนครั้งที่ถูกปฏิเสธ) ⇒ ติดธง nothingWritten ให้ `withIdempotency` ปล่อยการจอง — ส่งซ้ำด้วยคีย์เดิม
+//   หลังหน้าต่างหมดได้ทำงานจริง (เดิมเก็บ 429 ไว้ตอบซ้ำ 24 ชม.) ◂
 function rateLimited(reason: string): never {
-  throw new ApiError(429, "rate_limited", reason, "Rate limit exceeded.");
+  throw nothingWritten(new ApiError(429, "rate_limited", reason, "Rate limit exceeded."));
 }
 
 // ── import.preview ───────────────────────────────────────────────────────

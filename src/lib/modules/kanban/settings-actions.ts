@@ -14,7 +14,7 @@ import { assertCan } from "@/lib/core/rbac";
 import { requireTenant } from "@/lib/core/context";
 import { writeAudit } from "@/lib/core/audit";
 import { createApiKey, revokeApiKey } from "@/lib/api-keys/service";
-import { DEFAULT_KEY_TTL_DAYS, expandBundles, isApiScope } from "@/lib/api-keys/scopes";
+import { DEFAULT_KEY_TTL_DAYS, expandBundles, isApiScope, KANBAN_SCOPE_KEYS } from "@/lib/api-keys/scopes";
 import { safeReason } from "@/lib/core/errors";
 import { prisma } from "./db";
 
@@ -24,6 +24,11 @@ export type KanbanActionResult = { ok: true } | { ok: false; reason: string };
 const PATH = (systemId: string) => `/app/sys/${systemId}/kanban/settings`;
 
 const s = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
+
+// CRM C5.5-fix8 ▸ (รีวิว authz-sweep F4) ชุดสิทธิ์ที่หน้านี้ออกให้ได้ — นอกรายการนี้ = ปฏิเสธ (เดิมรับทุกชุด ⇒ ผู้ดูแลบอร์ดออกคีย์ผูกบอร์ดงาน
+//   ที่ถือ `crm.admin` / `member-admin` / ชุดของบัญชีได้ โดยไม่ผ่านด่านออกคีย์ของ CRM (`crm.api.manage`) หรือสมาชิก (`member.api.manage`))
+//   แบบเดียวกับ MEMBER_BUNDLE_IDS ของหน้าสมาชิก และ BUNDLES ของหน้า CRM ◂
+const KANBAN_BUNDLE_IDS = new Set(["kanban-read", "kanban-edit", "kanban-admin"]);
 
 /** ด่านของทุก action ที่นี่ — คืน tenantId/userId เมื่อผ่าน · ระบบต้องเป็น KANBAN ของร้านนี้จริง */
 async function gate(systemId: string, platformAction: string) {
@@ -56,6 +61,7 @@ export async function createKanbanApiKeyAction(fd: FormData): Promise<KanbanKeyR
   const name = s(fd, "name");
   if (!name) return { ok: false, reason: "กรุณาตั้งชื่อคีย์ให้จำง่าย เช่น ระบบแจ้งงานของช่าง" };
   const bundle = s(fd, "bundle") || "kanban-read";
+  if (!KANBAN_BUNDLE_IDS.has(bundle)) return { ok: false, reason: "ชุดสิทธิ์ที่เลือกไม่ใช่ชุดของบอร์ดงาน — สิทธิ์ของระบบอื่นออกที่หน้าตั้งค่า API ของระบบนั้น" }; // CRM C5.5-fix8 ◂
   let scopes: string[];
   try {
     scopes = expandBundles([bundle]);
@@ -64,6 +70,8 @@ export async function createKanbanApiKeyAction(fd: FormData): Promise<KanbanKeyR
   }
   for (const sc of scopes) {
     if (!isApiScope(sc)) return { ok: false, reason: `สิทธิ์ "${sc}" ใช้เป็นขอบเขตของคีย์ไม่ได้` };
+    // CRM C5.5-fix8 ▸ ชั้นที่สอง (ทะเบียนชุดเปลี่ยนในอนาคต): ทุกสิทธิ์ต้องเป็นของบอร์ดงาน ◂
+    if (!KANBAN_SCOPE_KEYS.includes(sc)) return { ok: false, reason: `หน้านี้ออกคีย์ได้เฉพาะสิทธิ์ของบอร์ดงาน — สิทธิ์ "${sc}" ต้องออกที่หน้าตั้งค่า API ของระบบนั้น` };
   }
   const ttlRaw = s(fd, "ttlDays");
   const ttlDays = ttlRaw === "" ? DEFAULT_KEY_TTL_DAYS : Number(ttlRaw);
@@ -91,6 +99,10 @@ export async function revokeKanbanApiKeyAction(fd: FormData): Promise<KanbanActi
   const { tenantId, userId } = await gate(systemId, "api.key.revoke");
   const keyId = s(fd, "keyId");
   if (!keyId) return { ok: false, reason: "ไม่พบคีย์ที่จะเพิกถอน" };
+  // HF-APIV1 ▸ (แบบเดียวกับ AUDIT L9 ของระบบสมาชิก) เพิกถอนได้เฉพาะคีย์ที่ผูก **ระบบบอร์ดงานนี้** —
+  //   เดิมส่ง keyId ตรง ๆ ⇒ หน้านี้เพิกถอนคีย์กลางของร้าน/คีย์ของระบบอื่นในร้านเดียวกันได้ ◂
+  const owned = await prisma.apiKey.findFirst({ where: { id: keyId, tenantId, systemId }, select: { id: true } });
+  if (!owned) return { ok: false, reason: "ไม่พบคีย์นี้ในระบบบอร์ดงานนี้ — รีเฟรชหน้าแล้วลองใหม่อีกครั้ง" };
   try {
     await revokeApiKey({ tenantId }, keyId);
     await writeAudit({

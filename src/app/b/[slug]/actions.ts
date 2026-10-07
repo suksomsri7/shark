@@ -7,7 +7,9 @@
 // 🔴 คุกกี้ตั้งผ่าน `customerCookieOptions` ชุดเดียวกับลูกค้า (Secure ตามโปรโตคอล/สภาพแวดล้อม · ไม่ตั้ง flag เอง — X10.2)
 // 🔴 ข้อความ error ไม่โทษผู้ใช้ · error ที่ไม่รู้จัก = ข้อความกลาง (ไม่ส่งข้อความเทคนิคออกไป)
 import { cookies, headers } from "next/headers";
-import { portal, portalPath } from "@/lib/modules/crm";
+import { portal, portalPath, wakeOutbox } from "@/lib/modules/crm";
+// CRM C5.4-D2 ▸ F6 (รีวิว C5.4-D รอบ 1 N5): งานเขียนของลูกค้า (ตอบใบเสนอราคา — อาจย้ายดีลเป็นชนะ · แนบสลิป · ส่งเรื่อง · ขอแก้ข้อมูล) ปลุกคิว outbox
+//   หลังงานเขียนสำเร็จ (เดิม event รอตัวระบายของคนอื่น/cron) — งานที่ถูกปฏิเสธไม่ปลุก ◂
 import { customerCookieOptions } from "@/lib/modules/member/session-facade";
 
 type Result<T> = ({ ok: true } & T) | { ok: false; error: string; code?: string };
@@ -95,6 +97,7 @@ export async function portalRespondQuotationAction(docId: string, input: { accep
   try {
     const { meta: m } = await meta();
     const r = await portal.respondQuotation(await token(), String(docId ?? ""), { accept: input?.accept === true, reason: input?.reason ?? null, signerName: String(input?.signerName ?? "") }, m);
+    wakeOutbox();
     return { ok: true, status: r.status };
   } catch (e) {
     return failOf(e, "บันทึกคำตอบไม่สำเร็จ — ลองใหม่อีกครั้ง");
@@ -117,6 +120,7 @@ export async function portalUploadSlipAction(form: FormData): Promise<Result<{ n
     if (!(file instanceof File) || file.size === 0) return { ok: false, error: "เลือกไฟล์สลิปก่อนกดแนบ" };
     const data = new Uint8Array(await file.arrayBuffer());
     const r = await portal.uploadSlip(await token(), { invoiceId, filename: file.name, contentType: file.type, data });
+    wakeOutbox();
     return { ok: true, name: r.name };
   } catch (e) {
     return failOf(e, "แนบสลิปไม่สำเร็จ — ลองใหม่อีกครั้ง");
@@ -126,6 +130,7 @@ export async function portalUploadSlipAction(form: FormData): Promise<Result<{ n
 export async function portalCreateRequestAction(input: { kind: string; title: string; body?: string }): Promise<Result<{ id: string }>> {
   try {
     const r = await portal.createRequest(await token(), { kind: String(input?.kind ?? ""), title: String(input?.title ?? ""), body: input?.body ?? null });
+    wakeOutbox();
     return { ok: true, id: r.id };
   } catch (e) {
     return failOf(e, "ส่งเรื่องไม่สำเร็จ — ลองใหม่อีกครั้ง");
@@ -135,6 +140,7 @@ export async function portalCreateRequestAction(input: { kind: string; title: st
 export async function portalRecordChangeAction(recordId: string, input: { fieldKey: string; value: string }): Promise<Result<{ requestId: string }>> {
   try {
     const r = await portal.requestRecordChange(await token(), String(recordId ?? ""), { fieldKey: String(input?.fieldKey ?? ""), value: String(input?.value ?? "") });
+    wakeOutbox();
     return { ok: true, requestId: r.requestId };
   } catch (e) {
     return failOf(e, "ส่งคำขอแก้ข้อมูลไม่สำเร็จ — ลองใหม่อีกครั้ง");

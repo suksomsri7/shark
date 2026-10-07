@@ -126,7 +126,9 @@ async function cleanRequireFields(ctx: PipelinesCtx, actor: MemberActor, v: unkn
   if (custom.length > 0) {
     let known = new Set<string>();
     try {
-      const layout = await (await memberFacade()).fields.listLayout({ tenantId: ctx.tenantId, systemId: ctx.systemId, actorUserId: ctx.actorUserId ?? null, objectKey: "deal", actor });
+      // CRM C5.4-E ▸ L6-M2: ฟิลด์ที่เก็บเข้าคลังยังเป็น key ที่รู้จัก — บันทึกขั้นพร้อมรายการเดิมได้ (เดิมตอบ "ไม่พบฟิลด์…") ·
+      //   ระหว่างเก็บเข้าคลัง deals.missingFor ไม่บังคับ key นั้น · กู้คืนฟิลด์ = บังคับอีกครั้ง ◂
+      const layout = await (await memberFacade()).fields.listLayout({ tenantId: ctx.tenantId, systemId: ctx.systemId, actorUserId: ctx.actorUserId ?? null, objectKey: "deal", actor }, { includeArchived: true });
       known = new Set(layout.sections.flatMap((s) => s.fields.filter((f) => !f.isSystem).map((f) => f.key)));
     } catch {
       known = new Set();

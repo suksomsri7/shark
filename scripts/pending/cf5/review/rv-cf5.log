@@ -1,0 +1,54 @@
+
+── F5 ──
+  ✅ [F5r-pure-oracle] thaiDayKey(now+7d) and thaiToday vs ICU Asia/Bangkok over 5000 random + 1462 midnight±1ms instants: 0 mismatches 
+(node:1608827) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ [F5r-stored-shape] expectedCloseAt stored ["2026-12-24T00:00:00.000Z","2026-12-31T00:00:00.000Z","2027-01-01T00:00:00.000Z","2027-01-02T00:00:00.000Z"]
+  ✅ [F5r-boundaries-rollover] month=2027-01 (L=PIPELINE_LATE_MONTH, O=CLOSE_OVERDUE vs ICU oracle / DealBoard rule): TH 24 Dec 23:59:59.999 → 12-24:L- 12-31:L- 01-01:-- 01-02:-- | TH 25 Dec 00:00:00.000 → 12-24:LO 12-31:L- 01-01:L- 01-02:-- | TH 31 Dec 23:59:59.999 → 12-24:LO 12-31:L- 01-01:L- 01-02:L- | TH 1 Jan 00:00 → 12-24:LO 12-31:LO 01-01:L- 01-02:L-
+  ✅ [F5r-null-close] deal without expectedCloseAt: "not listed"
+
+── H24 ──
+  ✅ [H24r-date-key-pure] old key (UTC slice) vs new key (thaiYmd) for every engine-stored DATE 1900-01-01..2100-12-31: 0 differ 
+  ✅ [H24r-engine-shape] engine wrote DATE 2026-10-08T00:00:00.000Z · DATETIME 00:00 TH 2026-10-07T17:00:00.000Z
+  ✅ [H24r-d7-edges] d=7 @10:00 TH 1 Oct → [in8end,in8start,inToday0] (want in8end,in8start,inToday0 — catch-up floor = TH today 00:00; TH 9 Oct 00:00 and TH 30 Sep 23:59:59.999 out)
+  ✅ [H24r-d0-edges] d=0 @TH 1 Oct 23:59:59.999 → [inToday0] · @TH 2 Oct 00:00 → [none] (want inToday0 then not)
+  ✅ [H24r-year-rollover] d=7 @TH 25 Dec 00:00 → 1 Jan 2027 00:00 true · 2 Jan false (want true/false)
+  ✅ [H24r-date-key-bytes] DATE key from cron "custom.record.field_due#lease.dueOn#7#cmups60v1001udnkz32cqahf3#2026-10-08" vs old formula "custom.record.field_due#lease.dueOn#7#cmups60v1001udnkz32cqahf3#2026-10-08" (byte-equal: true)
+  ✅ [H24r-datetime-keys] DATETIME keys: 2026-10-01,2026-10-08,2026-10-08,2026-10-08 (want 2026-10-01, 2026-10-08 ×2; nothing for TH 9 Oct 00:00)
+  ✅ [INFO-H24r-transition] old-key run present (#2026-10-08) → next cron day created 1 more main run(s): #2026-10-08,#2026-10-09 (2 total = the admitted one-time double fire)
+  ✅ [H24r-date-no-refire] DATE record main runs after 3 cron days: 1 (want 1)
+
+── H25 ──
+  ✅ [H25r-equal-staff] 2026-10-08T17:00:00.000Z → "9 ต.ค. 2569 00:00" | staff "9 ต.ค. 2569 00:00" · 2026-10-09T16:59:59.999Z → "9 ต.ค. 2569 23:59" | staff "9 ต.ค. 2569 23:59" · 2026-10-09T05:00:00.000Z → "9 ต.ค. 2569 12:00" | staff "9 ต.ค. 2569 12:00" · 2026-12-31T17:00:00.000Z → "1 ม.ค. 2570 00:00" | staff "1 ม.ค. 2570 00:00" · 2027-01-01T05:00:00.000Z → "1 ม.ค. 2570 12:00" | staff "1 ม.ค. 2570 12:00"
+  ✅ [H25r-edit-flow] DATETIME editable=true: seed now "9 ต.ค. 2569 00:00" → refused: ค่าของฟิลด์ "ช่อง t0" ต้องเป็นวันที่และเวลารูปแบบ ISO เช่น 2026-03-15T09:30:00+07:00 · old seed "2026-10-08" → refused: ค่าของฟิลด์ "ช่อง t0" ต้องเป็นวันที่และเวลารูปแบบ ISO เช่น 2026-03-15T09:30:00+07:00 · typed ISO → ok request created · DATE seed "2026-10-09" → ok request created (no regression iff old seed was ALSO refused)
+
+── R23 ──
+  ✅ [R23r-premise] forged mails stored flagged: A true · same-tenant S2 true · tenant B true
+  ✅ [R23r-scope] own forged row flag=true · row → other system's flagged mail flag=undefined · row → other tenant's flagged mail flag=undefined (want true/undefined/undefined)
+  ❌ [R23r-360-timeline] getContact360().timeline row for the forged mail: {"id":"cmups64fz0047dnkz4x18k4f7","at":"2026-10-01T17:00:49.489Z","type":"EMAIL","title":"ปลอม qc-cf5-rv-rbyxyvas","source":"EMAIL","done":true} — keys id,at,type,title,source,done (this list renders as the "🕒 ไทม์ไลน์" card on the contact page / "ไทม์ไลน์รวม" on the company page, and is returned by REST contacts.get360)
+  ✅ [R23r-one-query] activities.ts crmEmailMessage.findMany sites: 1 (one batched query per page, scoped tenantId+systemId)
+  ✅ [R23r-client-safe] emails-shared imports: @/lib/core/sanitize, @/lib/core/inbound-address, ./activities-shared
+
+── F4 ──
+  ✅ [F4r-wrong-name-fails-closed] guard registered (JS, bypassing the type) under "CRM" only: [] → WebhookGuardError: ระบบตรวจสิทธิ์เหตุการณ์ของ webhook ยังไม่พร้อม — ยังสมัครรับเหตุการณ์ CRM หรือทุกเหตุการณ์ไม่ได้ ลองใหม่ภายหลังหรือแจ้งผ · [crm.deal.won] → WebhookGuardError: ระบบตรวจสิทธิ์เหตุการณ์ของ webhook ยังไม่พร้อม — ยังสมัครรับเหตุการณ์ CRM หรือทุกเหตุการณ์ไม่ได้ ลองใหม่ภายหลังหรือแจ้งผ · [crm.nope.unknown] → WebhookGuardError: ระบบตรวจสิทธิ์เหตุการณ์ของ webhook ยังไม่พร้อม — ยังสมัครรับเหตุการณ์ CRM หรือทุกเหตุการณ์ไม่ได้ ลองใหม่ภายหลังหรือแจ้งผ · toggle-on [] → WebhookGuardError: ระบบตรวจสิทธิ์เหตุการณ์ของ webhook ยังไม่พร้อม — ยังสมัครรับเหตุการณ์ CRM หรือทุกเหตุการณ์ไม่ได้ ลองใหม่ภายหลังหรือแจ้งผ · [member.created, team.updated] → WebhookGuardError: ระบบตรวจสิทธิ์เหตุการณ์ของ webhook ยังไม่พร้อม — ยังสมัครรับเหตุการณ์ CRM หรือทุกเหตุการณ์ไม่ได้ ลองใหม่ภายหลังหรือแจ้งผ · guard ran 0×
+  ✅ [F4r-crm-plus-other] guards under "member" AND "crm": [] → ok · crm → ok · guard ran 10× (both run)
+  ✅ [F4r-real-root-refuses] real root, actor null, v2 shop: [crm.deal.won] → รายการเหตุการณ์นี้รวมเหตุการณ์ของ CRM (เลือกตรง ๆ หรือรวมอยู · events omitted (= all) → รายการเหตุการณ์นี้รวมเหตุการณ์ของ CRM (เลือกตรง ๆ หรือรวมอยู
+  ✅ [F4r-variants-never-delivered] variants stored: lead=stored upper=stored trail=refused tab=stored · dispatch crm.deal.won delivered 0 · deliveries to the variant endpoints: 0 (want 0 — dispatch matches exact strings)
+  ✅ [F4r-single-registrar] register call sites: src/lib/webhook-guards.ts:10:registerWebhookEventGuard("crm", crmPlatformWebhookProblem);
+  ✅ [F4r-labels-client-safe] labels.ts imports [@/lib/automation/labels] · automation/labels.ts imports: none
+  ✅ [CLEAN-89rsxc] tenant rows left=0
+  ✅ [CLEAN-m5ua4i] tenant rows left=0
+  ✅ [CLEAN-4atyh7] tenant rows left=0
+  ✅ [CLEAN-2sywq8] tenant rows left=0
+  ✅ [CLEAN-gkvo36] tenant rows left=0
+  ✅ [CLEAN-t2arjh] tenant rows left=0
+
+🔴 rv-cf5: 31/32
+JSON_SUMMARY {"total":32,"passed":31,"findings":["R23r-360-timeline"]}

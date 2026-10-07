@@ -9,8 +9,9 @@
 //    cursor = ตำแหน่งของแถว cursor (subquery ด้วย id) + OFFSET 1 (skip: 1) · เทียบผลกับ Prisma: scripts/qc-crm-c51fix-equiv.mts
 
 import { Prisma } from "@prisma/client";
+import { THAI_COLLATION } from "./thai-text";
 
-export type SqlSortCol = { col: string; dir: "asc" | "desc"; nulls?: "first" | "last" };
+export type SqlSortCol = { col: string; dir: "asc" | "desc"; nulls?: "first" | "last"; collate?: typeof THAI_COLLATION };
 
 const IDENT = /^[A-Za-z][A-Za-z0-9_]{0,62}$/;
 const ALIAS = /^[a-z][a-z0-9_]{0,15}$/;
@@ -40,10 +41,19 @@ export function sqlSortOf(orderBy: readonly Record<string, unknown>[]): SqlSortC
   return out;
 }
 
-/** ORDER BY แบบที่ Prisma เขียน (`"col" DESC` · `"col" ASC NULLS LAST`) */
+/**
+ * CRM C5.4-E ▸ L6-m3: คอลัมน์ในชุด `cols` เรียงด้วย collation ภาษาไทย (ICU) — Prisma ตั้ง collation ใน orderBy ไม่ได้ ⇒ รายการที่เรียงตามชื่อ
+ * เดินทาง SQL นี้ · ชื่อ collation มาจากค่าคงที่เท่านั้น (ไม่รับจากผู้เรียก) ◂
+ */
+export function withThaiCollation(sort: readonly SqlSortCol[], cols: readonly string[]): SqlSortCol[] {
+  return sort.map((s) => (cols.includes(s.col) ? { ...s, collate: THAI_COLLATION } : s));
+}
+const collateSql = (s: SqlSortCol): string => (s.collate === THAI_COLLATION ? ` COLLATE "${THAI_COLLATION}"` : "");
+
+/** ORDER BY แบบที่ Prisma เขียน (`"col" DESC` · `"col" ASC NULLS LAST`) — + COLLATE เมื่อคอลัมน์ตั้ง collate (C5.4-E) */
 export function orderBySql(a: string, sort: readonly SqlSortCol[]): Prisma.Sql {
   const A = alias(a);
-  return Prisma.raw(sort.map((s) => `${A}."${ident(s.col)}" ${s.dir === "asc" ? "ASC" : "DESC"}${s.nulls ? ` NULLS ${s.nulls === "first" ? "FIRST" : "LAST"}` : ""}`).join(", "));
+  return Prisma.raw(sort.map((s) => `${A}."${ident(s.col)}"${collateSql(s)} ${s.dir === "asc" ? "ASC" : "DESC"}${s.nulls ? ` NULLS ${s.nulls === "first" ? "FIRST" : "LAST"}` : ""}`).join(", "));
 }
 
 /**
@@ -55,9 +65,9 @@ export function cursorSql(a: string, table: string, sort: readonly SqlSortCol[],
   if (!TABLE.test(table)) throw new Error("list-sql: ตารางไม่ถูกต้อง");
   if (sort.length !== 2 || sort[1]!.col !== "id") throw new Error("list-sql: cursor รองรับลำดับ [คอลัมน์, id] เท่านั้น");
   const [c, idc] = sort as [SqlSortCol, SqlSortCol];
-  const col = Prisma.raw(`${A}."${ident(c.col)}"`);
+  const col = Prisma.raw(`${A}."${ident(c.col)}"${collateSql(c)}`);
   const id = Prisma.raw(`${A}."id"`);
-  const cur = Prisma.sql`(SELECT x."${Prisma.raw(ident(c.col))}" FROM "${Prisma.raw(table)}" x WHERE x."id" = ${cursorId})`;
+  const cur = Prisma.sql`(SELECT x."${Prisma.raw(ident(c.col))}"${Prisma.raw(collateSql(c))} FROM "${Prisma.raw(table)}" x WHERE x."id" = ${cursorId})`;
   const curId = Prisma.sql`(SELECT x."id" FROM "${Prisma.raw(table)}" x WHERE x."id" = ${cursorId})`;
   const op = Prisma.raw(c.dir === "desc" ? "<" : ">");
   const idOp = Prisma.raw(idc.dir === "desc" ? "<=" : ">=");

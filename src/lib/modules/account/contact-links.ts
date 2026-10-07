@@ -36,7 +36,9 @@ export type Ctx = { tenantId: string; systemId: string };
 export function crmViewerOfSession(userId: string, membership: { role: MemberActor["role"]; unitAccess: unknown; permissions: unknown }): CrmViewer {
   return toMemberActor(userId, membership as Parameters<typeof toMemberActor>[1]);
 }
-export function crmViewerOfApi(actor: Pick<ApiActor, "kind" | "userId" | "scopes" | "membership" | "keyId">): CrmViewer | null {
+export function crmViewerOfApi(actor: Pick<ApiActor, "kind" | "userId" | "scopes" | "membership" | "keyId" | "asker">): CrmViewer | null {
+  // CRM C5.5-fix14 r3 (RV14-2): ผู้ช่วย AI = ผู้ถามตัวจริงที่ตัวห่อเครื่องมือส่งมา (ไม่มี = ปิด) — เดิมได้ null เสมอ ⇒ "ไม่ใช่สมาชิก" แม้เจ้าของร้านถาม
+  if (actor.kind === "assistant") return actor.asker ? (actor.asker as CrmViewer) : null;
   if (actor.kind === "apikey") {
     return {
       userId: "",

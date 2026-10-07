@@ -1103,10 +1103,14 @@ try {
   }
   {
     const accSrc = read(ACC_SVC);
-    const rp = /export async function recordPayment\([\s\S]*?\n}\n/.exec(accSrc)?.[0] ?? "";
-    const vp = /export async function voidPayment\([\s\S]*?\n}\n/.exec(accSrc)?.[0] ?? "";
+    // ORACLE-EDIT (controller, 30 Sep · C5.4-C round 10): the transaction bodies were extracted into `recordPaymentInTx` /
+    //   `voidPaymentInTx` / `unwindPaymentInTx` (group payments run them in ONE tx) — the contract is unchanged, so the check
+    //   reads the wrapper AND the in-tx bodies. Old: wrapper text only.
+    const fnOf = (name: string) => new RegExp(`export async function ${name}\\([\\s\\S]*?\\n}\\n`).exec(accSrc)?.[0] ?? "";
+    const rp = fnOf("recordPayment") + fnOf("recordPaymentInTx");
+    const vp = fnOf("voidPayment") + fnOf("voidPaymentInTx") + fnOf("unwindPaymentInTx");
     chk("C2.7-S7.2", "account transactions are untouched: `recordPayment` / `voidPayment` contain no CRM call (CRM only listens to their events) and still emit `account.payment.recorded` / `account.payment.voided` inside the transaction [static]",
-      rp.length > 0 && vp.length > 0 && !/modules\/crm/.test(rp) && !/modules\/crm/.test(vp) && /account\.payment\.recorded/.test(rp),
+      fnOf("recordPayment").length > 0 && fnOf("recordPaymentInTx").length > 0 && fnOf("voidPayment").length > 0 && fnOf("unwindPaymentInTx").length > 0 && !/modules\/crm/.test(rp) && !/modules\/crm/.test(vp) && /account\.payment\.recorded/.test(fnOf("recordPaymentInTx")) && /emitPaymentVoided/.test(fnOf("unwindPaymentInTx")),
       "no CRM inside", `recordPayment=${rp.length > 0}/${/modules\/crm/.test(rp)} voidPayment=${vp.length > 0}/${/modules\/crm/.test(vp)}`);
   }
   {

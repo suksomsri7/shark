@@ -87,6 +87,14 @@ export function crmParam(actor: ActorLike, key: string): number | undefined {
   return typeof v === "number" && Number.isFinite(v) ? v : undefined;
 }
 
+// CRM C5.5-fix6 ▸ F3 (C4.2 run3): ผูก/ย้าย/ถอดบริษัทหลักของผู้ติดต่อ = ต้อง "เห็นบริษัท" (ตัวค้นหาอ่านผ่าน companyWhere) และ
+//   "แก้บริษัท" (บริการบริษัท addContact/removeContact ตรวจ crm.company.update) — ช่องเลือกบริษัทของฟอร์มผู้ติดต่อแสดงเมื่อผ่านทั้งสอง
+//   (ไม่ผ่าน = ซ่อน ตามมติ §15(b)) · บริการผู้ติดต่อใช้คีย์ชุดเดียวกันปฏิเสธก่อนเขียน ◂
+/** actor นี้ผูกผู้ติดต่อกับบริษัท (เลือก/ย้าย/ถอดบริษัทหลัก) ได้ไหม */
+export function crmCanLinkCompany(actor: ActorLike): boolean {
+  return crmCan(actor, "crm.company.read") && crmCan(actor, "crm.company.update");
+}
+
 /** ข้อความไทยของ "เห็นแต่ไม่มีคีย์" — บอกว่าขาดสิทธิ์อะไรและต้องทำอะไรต่อ ไม่โทษผู้ใช้ ไม่สะท้อนข้อมูลของระเบียน */
 export function crmForbiddenMessage(key: string): string {
   const label = permissionLabel(key);

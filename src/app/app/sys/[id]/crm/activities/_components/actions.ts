@@ -127,7 +127,8 @@ export async function setPinnedAction(systemId: string, id: string, pinned: bool
 
 export async function deleteActivityAction(systemId: string, id: string, input: { confirm: boolean; reason: string }): Promise<{ ok: true } | Fail> {
   try {
-    const { ctx, actor } = await session(systemId, "crm.activity.create");
+    // CRM C5.5 ▸ L55-3: คีย์เดียวกับบริการและ REST (`crm.activity.delete` — พิมพ์เขียว §5.5) · เดิมด่านหน้าใช้ create ◂
+    const { ctx, actor } = await session(systemId, "crm.activity.delete");
     await deleteActivity(ctx, actor, id, input);
     touch(systemId);
     return { ok: true };

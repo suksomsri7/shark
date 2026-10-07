@@ -1,0 +1,313 @@
+<style>
+.rail{width:56px;flex:none;border-right:1px solid var(--line);background:var(--sf2);
+  padding:10px 0;display:flex;flex-direction:column;align-items:center;gap:5px;color:var(--mut2)}
+.rail .ri{width:36px;height:36px;border-radius:9px;display:grid;place-items:center}
+.rail .ri.on{background:var(--sf);border:1px solid var(--line);color:var(--ink)}
+.top .biz{display:inline-flex;align-items:center;gap:12px;height:32px;padding:0 10px;border:1px solid var(--line);
+  border-radius:8px;font-size:13px;color:var(--ink2)}
+.top .dot{width:8px;height:8px;border-radius:50%;background:var(--ink);display:inline-block}
+.top .st{display:inline-flex;align-items:center;gap:13px;font-size:12.5px;color:var(--mut)}
+.top .who{display:inline-flex;align-items:center;gap:13px;font-size:12.5px;color:var(--ink2)}
+.amenu .am .pill{height:18px;min-width:18px;font-size:10.5px}
+</style>
+<style>
+.g5{display:grid;grid-template-columns:repeat(5,1fr);gap:26px}
+.ph .fl{display:flex;align-items:center;gap:14px;margin-left:16px}
+.kpi .fo b{color:var(--ink)}
+.kpi .fo .dgt{color:var(--dg)}
+/* ── timeline กะวันนี้ ── */
+.tlx{display:flex;flex-direction:column}
+.tlx .ax{display:flex;margin-left:168px;margin-right:150px;position:relative;height:22px;font-size:12.5px;color:var(--mut);font-variant-numeric:tabular-nums}
+.tlx .ax span{position:absolute;transform:translateX(-50%)}
+.tlx .r{display:flex;align-items:center;height:56px;border-top:1px solid var(--line)}
+.tlx .r .nm{width:168px;flex:none;display:flex;align-items:center;gap:10px}
+.tlx .r .nm b{display:block;font-size:14.5px;font-weight:600;line-height:1.25}
+.tlx .r .nm small{display:block;color:var(--mut)}
+.tlx .r .tr{flex:1;position:relative;height:100%;
+  background:repeating-linear-gradient(90deg,transparent 0 calc(25% - 1px),var(--line) calc(25% - 1px) 25%)}
+.tlx .r .sv{width:150px;flex:none;padding-left:16px;display:flex;align-items:center;gap:8px;font-size:13.5px;white-space:nowrap}
+.sb{position:absolute;z-index:1;top:12px;height:32px;border-radius:9px;display:flex;align-items:center;padding:0 12px;font-size:13px;white-space:nowrap;overflow:hidden;font-variant-numeric:tabular-nums}
+.sb.m{border:1.5px solid var(--ink);background:var(--sf);color:var(--ink)}
+.sb.a{background:var(--line2);color:var(--ink)}
+.sb.c{background:var(--ink);color:var(--sf)}
+.sb.lv{border:1.5px dashed var(--line2);background:var(--sf2);color:var(--mut)}
+.sb .wk{position:absolute;left:0;top:0;bottom:0;background:var(--sf2);border-right:2px solid var(--ink);z-index:0}
+.sb span{position:relative;z-index:1}
+.now{position:absolute;top:-22px;bottom:0;width:0;border-left:2px solid var(--acc);z-index:0}
+.now em{position:absolute;top:0;left:6px;font-style:normal;font-size:12.5px;font-weight:700;color:var(--acc);white-space:nowrap;background:var(--sf);padding:0 3px}
+.dt{width:10px;height:10px;border-radius:50%;display:inline-block;flex:none}
+.dt.ok{background:var(--ink)}
+.dt.late{background:var(--dg)}
+.dt.wait{border:2px solid var(--mut2);background:var(--sf)}
+.dt.lv{background:var(--line2)}
+.tlx .lg{display:flex;gap:22px;flex-wrap:wrap;font-size:13px;color:var(--ink2);padding-top:16px;border-top:1px solid var(--line)}
+.tlx .lg span{display:inline-flex;align-items:center;gap:8px}
+.tlx .lg .sw2{width:22px;height:12px;border-radius:4px;display:inline-block}
+/* ── คำขอ ── */
+.rq{display:flex;gap:14px;padding:16px 0;border-top:1px solid var(--line);align-items:flex-start}
+.rq:first-of-type{border-top:0;padding-top:4px}
+.rq .cbx{margin-top:4px;flex:none}
+.rq .tx{flex:1;min-width:0}
+.rq .tx .ty{font-size:12.5px;color:var(--mut);font-weight:600;display:flex;align-items:center;gap:6px}
+.rq .tx b{display:block;font-size:15px;margin-top:3px}
+.rq .tx small{display:block;color:var(--mut);margin-top:3px;line-height:1.45}
+.rq .ac{display:flex;gap:8px;flex:none}
+.rqf{display:flex;align-items:center;gap:12px;padding-top:16px;border-top:1px solid var(--line)}
+.rqf .sp{flex:1}
+/* ── labor chart ── */
+.lc{display:flex;gap:16px}
+.lc .yax{display:flex;flex-direction:column;justify-content:space-between;height:170px;font-size:12.5px;color:var(--mut2);text-align:right;width:52px;flex:none;font-variant-numeric:tabular-nums}
+.lc .pl{flex:1;min-width:0;position:relative}
+.lc .gd{position:absolute;inset:0 0 auto 0;height:170px;display:flex;flex-direction:column;justify-content:space-between}
+.lc .gd i{display:block;border-top:1px dashed var(--line)}
+.lc .bs{height:170px;display:flex;align-items:flex-end;gap:10px;position:relative}
+.lc .hg{flex:1;display:flex;align-items:flex-end;gap:3px;height:100%}
+.lc .hg i{flex:1;display:block;border-radius:3px 3px 0 0}
+.lc .hg i.s{background:var(--line2)}
+.lc .hg i.s.fc{background:var(--sf);border:1.5px dashed var(--line2);border-bottom:0}
+.lc .hg i.s.cur{background:var(--acc)}
+.lc .hg i.l{background:var(--ink)}
+.lc .hg.gap{position:relative}
+.lc .hg.gap::before{content:"";position:absolute;inset:-6px -5px 0;border:1.5px solid var(--dg);border-radius:8px;border-bottom:0}
+.lc .xl{display:flex;gap:10px;margin-top:8px}
+.lc .xl span{flex:1;text-align:center;font-size:12.5px;color:var(--mut);font-variant-numeric:tabular-nums}
+.lc .xl span.acc{color:var(--acc);font-weight:700}
+.lp{display:flex;align-items:flex-end;gap:14px}
+.lp .big{font-size:52px!important;line-height:1}
+.lp .tg{font-size:14px;color:var(--mut);padding-bottom:8px}
+.lp .tg b{color:var(--ink)}
+.mtrw{position:relative;height:12px;border-radius:6px;background:var(--sf2);border:1px solid var(--line);margin-top:16px}
+.mtrw i{position:absolute;left:0;top:0;bottom:0;background:var(--ink);border-radius:6px}
+.mtrw em{position:absolute;top:-6px;bottom:-6px;width:0;border-left:2px dashed var(--dg)}
+.mtrl{display:flex;justify-content:space-between;font-size:12.5px;color:var(--mut);margin-top:8px;font-variant-numeric:tabular-nums}
+.aib{display:flex;align-items:center;gap:14px;border:1px solid var(--acc);background:var(--acc-bg);border-radius:14px;padding:14px 16px;font-size:14px;color:var(--ink2)}
+.aib .ic{width:34px;height:34px;border-radius:10px;background:var(--sf);color:var(--acc);display:grid;place-items:center;flex:none}
+.aib b{color:var(--ink)}
+.aib .sp{flex:1}
+.sft{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.sft div{border:1px solid var(--line);border-radius:12px;padding:12px 14px;font-size:13px;color:var(--mut)}
+.sft div b{display:block;font-size:20px;color:var(--ink);font-variant-numeric:tabular-nums;margin-top:4px}
+.sft div b.dgt{color:var(--dg)}
+/* ── เดือน / ใกล้ครบกำหนด ── */
+.mg{display:grid;grid-template-columns:1fr 1fr;gap:20px 24px}
+.mg .k{font-size:13px;color:var(--mut)}
+.mg .v{font-size:24px;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums;margin-top:4px}
+.mg .v.dg{color:var(--dg)}
+.mg .d{font-size:12.5px;color:var(--mut);margin-top:2px}
+.mg .w2{grid-column:span 2;border-top:1px solid var(--line);padding-top:18px}
+.due{display:flex;align-items:center;gap:14px;padding:14px 0;border-top:1px solid var(--line)}
+.duer{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}
+.duer .due{border:1px solid var(--line);border-radius:14px;padding:14px 16px}
+.due .dd2{width:54px;height:54px;flex:none;border:1px solid var(--line);border-radius:12px;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.1}
+.due .dd2 b{font-size:19px;font-variant-numeric:tabular-nums}
+.due .dd2 small{color:var(--mut)}
+.due .tx{flex:1;min-width:0}
+.due .tx b{display:block;font-size:14.5px}
+.due .tx small{display:block;color:var(--mut)}
+</style>
+<div class="wrap">
+<div>
+<p class="cap">01 · ภาพรวมทีม (ผู้จัดการ) <span>— วันนี้ใครอยู่กะ/มาแล้ว/สาย/ยังไม่มา/ลา · คำขอรออนุมัติอนุมัติเป็นชุด · ค่าแรงต่อยอดขาย (labor %) จาก POS · สรุปเดือน · ใกล้ครบกำหนด</span></p>
+<div class="frame" style="height:1150px">
+
+ <div class="top"><svg class="i lg"><use href="#i-menu"/></svg><span class="brand">SHARK</span>
+  <span class="biz"><svg class="i sm"><use href="#i-shop"/></svg>บ้านกาแฟสวนผึ้ง · สาขาหัวหิน<svg class="i xs"><use href="#i-cv"/></svg></span>
+  <span class="sp"></span>
+  <span class="st"><i class="dot"></i>ออนไลน์ · พฤ. 1 ต.ค. 2569 · 12:20</span>
+  <span class="who"><span class="av">ก</span>พี่เก่ง · ผู้จัดการ</span>
+ </div>
+
+ <div class="appbody" style="flex:1;min-height:0">
+  <div class="rail">
+   <div class="ri"><svg class="i sm"><use href="#i-home"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-shop"/></svg></div>
+   <div class="ri on"><svg class="i sm"><use href="#i-users"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-box"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-book"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-grid"/></svg></div>
+   <span style="flex:1"></span>
+   <div class="ri"><svg class="i sm"><use href="#i-gear"/></svg></div>
+  </div>
+
+  <div class="mod">
+   <div class="amenu">
+    <div class="am on"><svg class="i sm"><use href="#i-home"/></svg>ภาพรวมทีม</div>
+    <div class="am"><svg class="i sm"><use href="#i-users"/></svg>พนักงาน</div>
+    <div class="am"><svg class="i sm"><use href="#i-cal"/></svg>ตารางกะ</div>
+    <div class="am"><svg class="i sm"><use href="#i-clock"/></svg>ลงเวลา</div>
+    <div class="am"><svg class="i sm"><use href="#i-doc"/></svg>ลา/OT/คำขอ<span class="pill">5</span></div>
+    <div class="am"><svg class="i sm"><use href="#i-wallet"/></svg>เงินเดือน</div>
+    <div class="am"><svg class="i sm"><use href="#i-report"/></svg>รายงาน</div>
+    <div class="am"><svg class="i sm"><use href="#i-gear"/></svg>ตั้งค่า</div>
+   </div>
+
+   <div class="ph" style="padding-top:22px">
+    <h1>ทีมวันนี้ · สาขาหัวหิน</h1>
+    <div class="fl">
+     <div class="inp"><svg class="i sm"><use href="#i-shop"/></svg><b>สาขาหัวหิน</b><svg class="i xs cv"><use href="#i-cv"/></svg></div>
+     <div class="inp"><svg class="i sm"><use href="#i-cal"/></svg><b>พฤ. 1 ต.ค. 2569</b><svg class="i xs cv"><use href="#i-cv"/></svg></div>
+    </div>
+    <span class="sp"></span>
+    <div class="btn gh"><svg class="i sm"><use href="#i-cal"/></svg>จัดกะสัปดาห์หน้า</div>
+    <div class="btn pri"><svg class="i sm"><use href="#i-plus"/></svg>พนักงาน</div>
+   </div>
+
+   <div class="pg">
+    <div class="g5">
+     <div class="card kpi"><div class="lbl">อยู่กะวันนี้</div><div class="val">7</div><div class="fo">จาก 9 คน · ลา 1 · หยุด 1</div></div>
+     <div class="card kpi"><div class="lbl">มาแล้ว</div><div class="val">5</div><div class="fo">กะเช้า 4 · กะบ่าย 1</div></div>
+     <div class="card kpi"><div class="lbl">สาย</div><div class="val dg">1</div><div class="fo"><span class="dgt">น้ำฝน 12 นาที</span> · เข้า 07:12</div></div>
+     <div class="card kpi"><div class="lbl">ยังไม่มา</div><div class="val dg">1</div><div class="fo"><b>เจ</b> กะบ่าย เริ่ม 12:00 · แจ้งแล้ว</div></div>
+     <div class="card kpi"><div class="lbl">ลา</div><div class="val">1</div><div class="fo"><b>ต้น</b> ลาป่วย · กะเช้า</div></div>
+    </div>
+
+    <div class="row">
+     <!-- กะวันนี้ -->
+     <div class="card" style="flex:1.62">
+      <div class="ch"><svg class="i sm"><use href="#i-clock"/></svg><h2>กะวันนี้</h2><span class="sub">ลงเวลาจริงทับบนกะที่จัด · อัปเดต 12:20</span><span class="sp"></span><span class="lnk" style="font-size:13.5px">ดูตารางลงเวลา</span></div>
+      <div class="tlx">
+       <div class="ax"><span style="left:0%">07:00</span><span style="left:25%">11:00</span><span style="left:50%">15:00</span><span style="left:75%">19:00</span><span style="left:100%">23:00</span></div>
+       <div class="r"><div class="nm"><span class="av">น</span><div><b>น้ำฝน</b><small>แคชเชียร์</small></div></div>
+        <div class="tr"><div class="sb m" style="left:0;width:50%"><span>เช้า 07:00–15:00 · เข้า 07:12</span></div><div class="now" style="left:33.33%"><em>12:20</em></div></div>
+        <div class="sv"><i class="dt late"></i><span class="dgt">สาย 12 นาที</span></div></div>
+       <div class="r"><div class="nm"><span class="av">พ</span><div><b>แพร</b><small>แคชเชียร์</small></div></div>
+        <div class="tr"><div class="sb m" style="left:0;width:50%"><span>เช้า 07:00–15:00 · เข้า 06:54</span></div><div class="now" style="left:33.33%;top:0"></div></div>
+        <div class="sv"><i class="dt ok"></i>มาแล้ว</div></div>
+       <div class="r"><div class="nm"><span class="av">บ</span><div><b>โบว์</b><small>บาริสต้า · ทดลองงาน</small></div></div>
+        <div class="tr"><div class="sb m" style="left:0;width:50%"><span>เช้า 07:00–15:00 · เข้า 06:58</span></div><div class="now" style="left:33.33%;top:0"></div></div>
+        <div class="sv"><i class="dt ok"></i>มาแล้ว</div></div>
+       <div class="r"><div class="nm"><span class="av">ป</span><div><b>ปอ</b><small>ครัว</small></div></div>
+        <div class="tr"><div class="sb m" style="left:0;width:50%"><span>เช้า 07:00–15:00 · เข้า 06:50</span></div><div class="now" style="left:33.33%;top:0"></div></div>
+        <div class="sv"><i class="dt ok"></i>มาแล้ว</div></div>
+       <div class="r"><div class="nm"><span class="av">ต</span><div><b>ต้น</b><small>ครัว</small></div></div>
+        <div class="tr"><div class="sb lv" style="left:0;width:50%"><span>เช้า · ลาป่วย</span></div><div class="now" style="left:33.33%;top:0"></div></div>
+        <div class="sv"><i class="dt lv"></i><span class="mu">ลาป่วย</span></div></div>
+       <div class="r"><div class="nm"><span class="av">น</span><div><b>นัท</b><small>บาริสต้า</small></div></div>
+        <div class="tr"><div class="sb a" style="left:31.25%;width:50%"><span>บ่าย 12:00–20:00 · เข้า 11:52</span></div><div class="now" style="left:33.33%;top:0"></div></div>
+        <div class="sv"><i class="dt ok"></i>มาแล้ว</div></div>
+       <div class="r"><div class="nm"><span class="av">จ</span><div><b>เจ</b><small>พาร์ทไทม์ · ยืมจากสวนผึ้ง</small></div></div>
+        <div class="tr"><div class="sb a" style="left:31.25%;width:50%;box-shadow:inset 0 0 0 1.5px var(--dg)"><span>บ่าย 12:00–20:00 · ยังไม่ลงเวลา</span></div><div class="now" style="left:33.33%;top:0"></div></div>
+        <div class="sv"><i class="dt late"></i><span class="dgt">ยังไม่มา</span></div></div>
+       <div class="r"><div class="nm"><span class="av">ม</span><div><b>มิ้นท์</b><small>เสิร์ฟ · รายวัน</small></div></div>
+        <div class="tr"><div class="sb c" style="left:50%;width:50%"><span>ปิดร้าน 15:00–23:00</span></div><div class="now" style="left:33.33%;top:0"></div></div>
+        <div class="sv"><i class="dt wait"></i><span class="mu">ยังไม่ถึงเวลา</span></div></div>
+       <div class="lg">
+        <span><i class="sw2" style="border:1.5px solid var(--ink)"></i>กะเช้า</span>
+        <span><i class="sw2" style="background:var(--line2)"></i>กะบ่าย</span>
+        <span><i class="sw2" style="background:var(--ink)"></i>กะปิดร้าน</span>
+        <span><i class="sw2" style="border:1.5px dashed var(--line2);background:var(--sf2)"></i>ลา</span>
+        <span style="margin-left:auto;color:var(--mut)">หยุดวันนี้: กิ๊ฟ (เสิร์ฟ)</span>
+       </div>
+       <div class="stat" style="margin-top:20px">
+        <div class="b"><div class="k">ชั่วโมงตามกะวันนี้</div><div class="v">56 ชม.</div><div class="d">7 คน × 8 ชม.</div></div>
+        <div class="b"><div class="k">ทำแล้วถึง 12:20</div><div class="v">19 ชม. 28 น.</div><div class="d">ลงเวลาจริง 5 คน · หักพักแล้ว</div></div>
+        <div class="b"><div class="k">ช่วงคนน้อยสุด</div><div class="v dg">20:00–23:00</div><div class="d">อยู่ร้าน 1 คน (มิ้นท์)</div></div>
+        <div class="b"><div class="k">ลงเวลาจาก</div><div class="v">มือถือ 2 · kiosk 3</div><div class="d">GPS ในรัศมี 150 ม.</div></div>
+       </div>
+      </div>
+     </div>
+
+     <!-- คำขอรออนุมัติ -->
+     <div class="card" style="flex:1;display:flex;flex-direction:column">
+      <div class="ch"><svg class="i sm"><use href="#i-doc"/></svg><h2>คำขอรออนุมัติ</h2><span class="pill">5</span><span class="sp"></span><span class="lnk" style="font-size:13.5px">ดูทั้งหมด</span></div>
+      <div class="rq"><i class="cbx on"></i><div class="tx"><div class="ty"><svg class="i xs"><use href="#i-cal"/></svg>ลาพักร้อน</div><b>แพร · 10–11 ต.ค. (2 วัน)</b><small>คงเหลือหลังอนุมัติ 4 วัน · ส.–อา. ต้องหาคนแทน 1</small></div>
+       <div class="ac"><div class="btn sm pri">อนุมัติ</div><div class="btn sm gh">ปฏิเสธ</div></div></div>
+      <div class="rq"><i class="cbx on"></i><div class="tx"><div class="ty"><svg class="i xs"><use href="#i-clock"/></svg>OT</div><b>โบว์ · 30 ก.ย. · 2 ชม.</b><small>วันทำงาน ×1.5 = ฿175 · ตรงกับเวลาออกจริง 17:04</small></div>
+       <div class="ac"><div class="btn sm pri">อนุมัติ</div><div class="btn sm gh">ปฏิเสธ</div></div></div>
+      <div class="rq"><i class="cbx on"></i><div class="tx"><div class="ty"><svg class="i xs"><use href="#i-swap"/></svg>สลับกะ</div><b>มิ้นท์ ↔ เจ · ส. 3 ต.ค.</b><small>มิ้นท์ กะบ่าย ↔ เจ หยุด · เจ ตอบรับแล้ว</small></div>
+       <div class="ac"><div class="btn sm pri">อนุมัติ</div><div class="btn sm gh">ปฏิเสธ</div></div></div>
+      <div class="rq"><i class="cbx"></i><div class="tx"><div class="ty"><svg class="i xs"><use href="#i-edit"/></svg>แก้เวลา</div><b>น้ำฝน · 30 ก.ย.</b><small>“ลืมลงเวลาออก” · ขอเป็น 15:05 · กล้อง POS ปิดกะ 15:03</small></div>
+       <div class="ac"><div class="btn sm pri">อนุมัติ</div><div class="btn sm gh">ปฏิเสธ</div></div></div>
+      <div class="rq"><i class="cbx"></i><div class="tx"><div class="ty"><svg class="i xs"><use href="#i-cash"/></svg>เบิกล่วงหน้า</div><b>ต้น · ฿2,000</b><small>หักคืนงวด ต.ค. 1 งวด · ยังไม่เคยเบิกปีนี้</small></div>
+       <div class="ac"><div class="btn sm pri">อนุมัติ</div><div class="btn sm gh">ปฏิเสธ</div></div></div>
+      <span style="flex:1"></span>
+      <div class="rqf"><span class="sub">เลือกไว้ 3 รายการ</span><span class="sp"></span><div class="btn pri"><svg class="i sm"><use href="#i-check"/></svg>อนุมัติทั้งหมดที่เลือก (3)</div></div>
+     </div>
+    </div>
+
+    <div class="row">
+     <!-- labor % -->
+     <div class="card" style="flex:1.62">
+      <div class="ch"><svg class="i sm"><use href="#i-pct"/></svg><h2>ค่าแรงต่อยอดขาย (labor %) วันนี้</h2><span class="sp"></span>
+       <div class="lgd"><span><i class="sw-ink"></i>ค่าแรง</span><span><i class="sw-l2"></i>ยอดขาย POS</span><span><i class="sw-acc"></i>ชั่วโมงนี้</span><span><i style="border:1.5px dashed var(--line2);background:var(--sf)"></i>คาดการณ์</span></div></div>
+      <div style="display:flex;gap:32px;align-items:flex-start">
+       <div style="width:250px;flex:none">
+        <div class="lp"><span class="big">24.8%</span><span class="tg">เป้า <b>≤ 28%</b></span></div>
+        <div class="mtrw"><i style="width:62%"></i><em style="left:70%"></em></div>
+        <div class="mtrl"><span>0%</span><span style="margin-left:auto;margin-right:14%">28%</span><span>40%</span></div>
+        <div class="kv" style="margin-top:18px"><span class="k" style="width:120px">ค่าแรงวันนี้</span><b class="v" style="text-align:right">฿7,740</b></div>
+        <div class="kv"><span class="k" style="width:120px">ยอดขายคาด</span><b class="v" style="text-align:right">฿31,200</b></div>
+        <div class="kv"><span class="k" style="width:120px">ขายแล้ว 12:20</span><b class="v" style="text-align:right">฿14,350</b></div>
+       </div>
+       <div style="flex:1;min-width:0">
+        <div class="lc">
+         <div class="yax"><span>฿4,500</span><span>฿3,000</span><span>฿1,500</span><span>฿0</span></div>
+         <div class="pl">
+          <div class="gd"><i></i><i></i><i></i><i></i></div>
+          <div class="bs">
+           <div class="hg"><i class="s" style="height:21%"></i><i class="l" style="height:13%"></i></div>
+           <div class="hg"><i class="s" style="height:54%"></i><i class="l" style="height:13%"></i></div>
+           <div class="hg"><i class="s" style="height:81%"></i><i class="l" style="height:13%"></i></div>
+           <div class="hg"><i class="s" style="height:61%"></i><i class="l" style="height:13%"></i></div>
+           <div class="hg"><i class="s" style="height:54%"></i><i class="l" style="height:13%"></i></div>
+           <div class="hg gap"><i class="s cur" style="height:91%"></i><i class="l" style="height:14%"></i></div>
+           <div class="hg"><i class="s fc" style="height:58%"></i><i class="l" style="height:14%"></i></div>
+           <div class="hg"><i class="s fc" style="height:37%"></i><i class="l" style="height:14%"></i></div>
+           <div class="hg"><i class="s fc" style="height:40%"></i><i class="l" style="height:9%"></i></div>
+           <div class="hg"><i class="s fc" style="height:46%"></i><i class="l" style="height:9%"></i></div>
+           <div class="hg"><i class="s fc" style="height:42%"></i><i class="l" style="height:9%"></i></div>
+           <div class="hg"><i class="s fc" style="height:31%"></i><i class="l" style="height:9%"></i></div>
+           <div class="hg"><i class="s fc" style="height:36%"></i><i class="l" style="height:9%"></i></div>
+           <div class="hg"><i class="s fc" style="height:22%"></i><i class="l" style="height:9%"></i></div>
+           <div class="hg"><i class="s fc" style="height:12%"></i><i class="l" style="height:5%"></i></div>
+           <div class="hg"><i class="s fc" style="height:6%"></i><i class="l" style="height:5%"></i></div>
+          </div>
+          <div class="xl"><span>07</span><span>08</span><span>09</span><span>10</span><span>11</span><span class="acc">12</span><span>13</span><span>14</span><span>15</span><span>16</span><span>17</span><span>18</span><span>19</span><span>20</span><span>21</span><span>22</span></div>
+         </div>
+        </div>
+       </div>
+      </div>
+      <div class="sft" style="margin-top:22px">
+       <div>กะเช้า 07–15<b>22.1%</b></div>
+       <div>กะบ่าย 12–20<b>26.4%</b></div>
+       <div>กะปิดร้าน 15–23<b class="dgt">31.0%</b></div>
+      </div>
+      <div class="aib" style="margin-top:18px"><span class="ic"><svg class="i sm"><use href="#i-spark"/></svg></span>
+       <div><b>12–13 น. ยอดขายพีค คนขาด 1</b> (เจ ยังไม่มา) → AI เสนอเพิ่มกะบ่าย: เรียก <b>กิ๊ฟ</b> (หยุดวันนี้ · ยินดีรับ OT) 12:30–17:00</div>
+       <span class="sp"></span><div class="btn sm gh">ดูข้อเสนอ</div></div>
+     </div>
+
+     <!-- เดือน ก.ย. -->
+     <div class="card" style="flex:1">
+       <div class="ch"><svg class="i sm"><use href="#i-chart"/></svg><h2>เดือน ก.ย. 2569</h2><span class="sub">ปิดรอบเมื่อวาน · สาขาหัวหิน</span><span class="sp"></span><span class="lnk" style="font-size:13.5px">รายงาน</span></div>
+       <div class="mg">
+        <div><div class="k">สาย</div><div class="v dg">14 ครั้ง</div><div class="d">น้ำฝน 6 · มิ้นท์ 4 · อื่น 4</div></div>
+        <div><div class="k">ขาด</div><div class="v dg">1 วัน</div><div class="d">มิ้นท์ 22 ก.ย. ไม่แจ้ง</div></div>
+        <div><div class="k">OT</div><div class="v">38 ชม.</div><div class="d">อนุมัติแล้ว 36 · รอ 2</div></div>
+        <div><div class="k">ลา</div><div class="v">9 วัน</div><div class="d">ป่วย 4 · กิจ 2 · พักร้อน 3</div></div>
+        <div class="w2"><div class="k">ค่าแรงประมาณ ก.ย. (รวม OT · ปสส. ส่วนนายจ้าง)</div><div class="v">฿186,400</div><div class="d">labor % ทั้งเดือน 25.6% · ส.ค. 26.9%</div></div>
+       </div>
+       <div style="margin-top:20px;border-top:1px solid var(--line);padding-top:16px">
+        <div class="k" style="font-size:13px;color:var(--mut);margin-bottom:6px">ควรคุยรายคน</div>
+        <div class="lst">
+         <div class="li"><span class="av">น</span><span class="sp"><b>น้ำฝน</b> <span class="mu">· สาย 6 ครั้ง รวม 58 นาที</span></span><span class="lnk" style="font-size:13.5px">ดูปฏิทิน</span></div>
+         <div class="li"><span class="av">ม</span><span class="sp"><b>มิ้นท์</b> <span class="mu">· สาย 4 · ขาด 1 · ไม่มีวันหยุด 2 สัปดาห์</span></span><span class="lnk" style="font-size:13.5px">ดูปฏิทิน</span></div>
+        </div>
+       </div>
+      </div>
+    </div>
+    <!-- ใกล้ครบกำหนด -->
+    <div class="card">
+     <div class="ch"><svg class="i sm"><use href="#i-flag"/></svg><h2>ใกล้ครบกำหนด</h2><span class="sub">แจ้งเตือนผู้จัดการ + สร้างการ์ดในบอร์ดงานอัตโนมัติ</span></div>
+     <div class="duer">
+      <div class="due"><div class="dd2"><b>15</b><small>ต.ค.</small></div><div class="tx"><b>โบว์ · ทดลองงานครบ</b><small>อีก 14 วัน · ประเมินก่อนบรรจุ</small></div><div class="btn sm gh">ประเมิน</div></div>
+      <div class="due"><div class="dd2"><b>15</b><small>ต.ค.</small></div><div class="tx"><b>ส่งเงินสมทบ ปสส. ก.ย.</b><small>สปส.1-10 · 14 คน · ทั้ง 2 สาขา</small></div><div class="btn sm gh">เตรียมไฟล์</div></div>
+      <div class="due"><div class="dd2"><b>31</b><small>ต.ค.</small></div><div class="tx"><b>เจ · สัญญาพาร์ทไทม์หมด</b><small>อีก 30 วัน · สาขาสวนผึ้ง</small></div><div class="btn sm gh">ต่อสัญญา</div></div>
+     </div>
+    </div>
+   </div>
+  </div>
+ </div>
+</div>
+</div>
+</div>

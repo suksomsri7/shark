@@ -1,7 +1,7 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 import { emailInboundSecret } from "@/lib/env";
-import { isCrmInboundAddress } from "@/lib/core/inbound-address";
+import { capInboundEnvelope, isCrmInboundAddress } from "@/lib/core/inbound-address";
 import { ingestInboundEmail, type InboundEmailAttachment, type InboundEmailPayload } from "@/lib/platform/kanban-email-in";
 
 // POST /api/email/inbound — อีเมลเข้าบอร์ดงาน (K3.9 · สัญญา `ledger/KANBAN-RUN.md` §K3.9)
@@ -74,19 +74,25 @@ function normalizeProviderPayload(raw: unknown): InboundEmailPayload | null {
   const data = root.data && typeof root.data === "object" ? (root.data as Record<string, unknown>) : root;
   const headers = data.headers && typeof data.headers === "object" ? (data.headers as Record<string, unknown>) : {};
 
-  const messageId =
-    asString(data.messageId) ||
-    asString(data.message_id) ||
-    asString(headers["message-id"]) ||
-    asString(headers["Message-ID"]);
-  const to = toRecipients(data.to ?? data.recipients ?? data.envelope_to);
-  if (!messageId || to.length === 0) return null;
-
-  return {
-    messageId,
-    to,
+  // CRM C5.5-fix5 ▸ RV-2: เพดานหัวจดหมาย (ที่อยู่/Message-ID ≤ 998 · หัวข้อ ≤ 16 KiB) ก่อนตัวแกะใด ๆ — ทั้งทางบอร์ดงานและทาง CRM ·
+  //   ยาวเกิน = ทิ้ง (ไม่ตัด) · จดหมายปกติได้ค่าเดิมทุกช่อง (`capInboundEnvelope`) ◂
+  const env = capInboundEnvelope({
+    messageId:
+      asString(data.messageId) ||
+      asString(data.message_id) ||
+      asString(headers["message-id"]) ||
+      asString(headers["Message-ID"]),
+    to: toRecipients(data.to ?? data.recipients ?? data.envelope_to),
     from: asString(data.from) || asString(data.sender) || asString(data.envelope_from),
     subject: asString(data.subject) || null,
+  });
+  if (!env.messageId || env.to.length === 0) return null;
+
+  return {
+    messageId: env.messageId,
+    to: env.to,
+    from: env.from,
+    subject: env.subject,
     text: asString(data.text) || asString(data.plain) || null,
     html: asString(data.html) || null,
     attachments: toAttachments(data.attachments),
@@ -107,7 +113,9 @@ function crmExtras(raw: unknown): { cc: string[]; headers: Record<string, string
     const key = k.trim().toLowerCase();
     headers[key] = key in headers ? `${headers[key]}\n${String(v)}` : String(v);
   }
-  return { cc: toRecipients(data.cc ?? data.Cc), headers };
+  // CRM C5.5-fix5 ▸ RV-2: Cc ≤ 998 ต่อรายการ · หัวที่ยาวเกิน 16 KiB (หลังต่อหัวชื่อซ้ำแล้ว) ทิ้งทั้งหัว ◂
+  const capped = capInboundEnvelope({ cc: toRecipients(data.cc ?? data.Cc), headers });
+  return { cc: capped.cc, headers: capped.headers };
 }
 
 // CRM C2.5 ▸ "ที่อยู่นี้ควรเข้าทาง CRM ไหม" — ตัดสิน **ก่อนแตะโมดูล CRM เลย**
@@ -169,11 +177,12 @@ export async function POST(req: Request): Promise<Response> {
     let crmOk = false;
     let crmHandled = false;
     try {
-      const { emails } = await import("@/lib/modules/crm");
+      const { emails, wakeOutbox } = await import("@/lib/modules/crm");
       const extras = crmExtras(parsed);
       const crmRes = await emails.ingestInbound({ ...payload, to: payload.to, cc: extras.cc, headers: extras.headers });
       crmOk = crmRes.ok;
       crmHandled = crmRes.handled;
+      if (crmRes.handled) wakeOutbox(); // CRM C5.5-fix13 ▸ P-it5-2 sweep: event crm.email.received/replied ของจดหมายเข้า (commit แล้ว) ◂
     } catch {
       crmOk = false;
     }

@@ -1,0 +1,17 @@
+baseline copy: exit 0 passed 8/8
+M1 sales: drop branch filter: exit 1 red=['S-8'] ✓
+M2 sales: drop notFound on null scope: exit 1 red=['S-8'] ✓
+M3 close: summary without unitIds: exit 1 red=['C-8'] ✓
+M4 close: bills without unitIds: exit 1 red=['C-8'] ✓
+M5 close: drop notFound: exit 1 red=['C-8'] ✓
+M6 csv: no unitIds: exit 1 red=['C-9'] ✓
+M7 csv: drop refusal: exit 1 red=['C-9'] ✓
+M8 price: drop refusal: exit 1 red=['P-8'] ✓
+M9 price: POS units only: exit 1 red=['P-8'] ✓
+M10 products: drop guard: exit 1 red=['P-7'] ✓
+M11 register: drop notFound: exit 1 red=['R-11'] ✓
+M12 register: unfiltered units: exit 1 red=['R-11'] ✓
+M13 overview: render without scope: exit 1 red=['O-1'] ✓
+M14 overview: recent bills unfiltered: exit 1 red=['O-2'] ✓
+M15 overview: total unfiltered: exit 1 red=['O-2'] ✓
+M16 overview: today without unitIds: exit 1 red=['O-2'] ✓

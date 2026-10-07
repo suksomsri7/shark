@@ -15,6 +15,8 @@ import { crmCan } from "../access";
 import { crmScope } from "../request-scope";
 import { crmAccess, resolve } from "../visibility";
 import { CRM_VIS_RANK, type CrmVisEntity } from "../visibility-shared";
+import { parseCrmSettings } from "../settings"; // CRM C5.5 ▸ r1b ◂
+import { CRM_EVENT_PREFIXES, crmWebhookEvents } from "./webhook-events"; // CRM C5.5 ▸ r1b ◂
 
 const ENTITIES: readonly CrmVisEntity[] = ["CONTACT", "COMPANY", "DEAL", "ACTIVITY", "REPORT"];
 
@@ -91,3 +93,73 @@ async function entitled(input: { tenantId: string; systemId: string; scopes: rea
   };
   return (await crmKeyWiderThanCreator({ tenantId: input.tenantId, systemId: input.systemId }, creator, input.scopes)) === null;
 }
+
+// CRM C5.5 ▸ L55-4 + H55-2 (มติผู้คุมงาน) — กติกาเดียวกับคีย์ API ที่ไม่มีตัวกรอง ใช้กับทางออกอีกสองทาง
+//   (1) ปลายทาง webhook ของ CRM (สร้าง/เปิดใช้): ได้ event ของทุกระเบียนทุกทีมในร้าน ⇒ คนเพิ่ม/เปิดต้องเห็น ALL ทั้งร้านเหมือนคนออกคีย์ไม่กรอง
+//   (2) กฎอัตโนมัติ (`automation.ts`): กฎทำงานกับระเบียนใดก็ได้ของระบบ ⇒ ผู้ตั้งกฎต้องเห็นเอนทิตีที่การกระทำแตะ "ทั้งหมด" ทั้งร้าน
+export const CRM_WEBHOOK_WIDER_TH =
+  "ปลายทาง webhook ของ CRM ได้รับเหตุการณ์ของทุกรายการในทุกทีมของร้าน แต่บัญชีนี้ยังมองเห็นข้อมูล CRM ไม่ครบทั้งร้าน — ให้เจ้าของร้าน (หรือผู้ที่เห็นข้อมูล CRM ทั้งร้าน) เป็นผู้เพิ่มหรือเปิดใช้ปลายทางนี้";
+
+/** เหตุผล (ไทย) ที่ `creator` เพิ่ม/เปิดปลายทาง webhook ของ CRM ไม่ได้ — `null` = ได้ (ด่านเดียวกับคีย์ไม่มีตัวกรอง: `crmKeyWiderThanCreator(…, [])`) */
+export async function crmWebhookWiderThanCreator(ctx: { tenantId: string; systemId: string }, creator: MemberActor): Promise<string | null> {
+  return (await crmKeyWiderThanCreator(ctx, creator, [])) === null ? null : CRM_WEBHOOK_WIDER_TH;
+}
+
+/**
+ * `actor` เห็น "ทุกรายการ" ของเอนทิตีเหล่านี้ทั้งร้านไหม (ระดับ ALL + ไม่ถูกจำกัดสาขา) — ตรรกะเดียวกับ `crmKeyWiderThanCreator`
+ * DEAL: ระบุ `pipelineId` = ตรวจระดับของไปป์ไลน์นั้น · ไม่ระบุ = ระดับฐาน + ทุกไปป์ไลน์ที่มี policy ของตัวเอง
+ */
+export async function crmSeesAllOf(
+  ctx: { tenantId: string; systemId: string },
+  actor: MemberActor,
+  entities: readonly CrmVisEntity[],
+  opts: { pipelineId?: string | null } = {},
+): Promise<boolean> {
+  if (actor.role === "OWNER") return true;
+  if (!wholeShop(actor)) return false;
+  if (entities.length === 0) return true;
+  return crmScope(async () => {
+    const vctx = { tenantId: ctx.tenantId, systemId: ctx.systemId, actorUserId: actor.userId };
+    const pipelineId = opts.pipelineId ?? null;
+    let extra: string[] = [];
+    if (entities.includes("DEAL") && !pipelineId) {
+      const access = await crmAccess(ctx, actor.userId);
+      extra = [...new Set(access.policies.filter((p) => p.entity === "DEAL" && !!p.pipelineId).map((p) => p.pipelineId as string))];
+    }
+    const levels = await Promise.all([
+      ...entities.map((e) => resolve(vctx, actor, e, e === "DEAL" && pipelineId ? { pipelineId } : {})),
+      ...extra.map((p) => resolve(vctx, actor, "DEAL", { pipelineId: p })),
+    ]);
+    return levels.every((l) => l === "ALL");
+  });
+}
+
+// CRM C5.5 ▸ r1b (มติผู้คุมงาน ข้อ 1): หน้าตั้งค่า webhook กลางของร้าน (`src/lib/webhooks/actions.ts` — ไม่ใช่หน้าของ CRM) ก็สมัคร event ของ CRM ได้
+//   ทั้งแบบเลือกตรง ๆ (crm.* · custom.record.* · team.*) และแบบ "ทุกเหตุการณ์" (รายการว่าง) ⇒ กติกาเดียวกับหน้าของ CRM ต่อ **ทุก** ระบบ CRM v2 ของร้าน
+//   ร้านที่ไม่มีระบบ CRM v2 = ไม่มีอะไรเปลี่ยน (คืน null ทันทีหลังอ่านรายการระบบ) · event ที่ไม่ใช่ของ CRM ล้วน = ไม่อ่านฐานเลย
+export const CRM_PLATFORM_WEBHOOK_TH =
+  "รายการเหตุการณ์นี้รวมเหตุการณ์ของ CRM (เลือกตรง ๆ หรือรวมอยู่ใน \"ทุกเหตุการณ์\") ซึ่งส่งข้อมูลของทุกทีมในร้าน แต่บัญชีนี้ยังมองเห็นข้อมูล CRM ไม่ครบทั้งร้าน — เลือกเฉพาะเหตุการณ์ที่ไม่ใช่ของ CRM หรือให้เจ้าของร้าน (หรือผู้ที่เห็นข้อมูล CRM ทั้งร้าน) เป็นผู้ตั้งปลายทางนี้";
+
+/**
+ * ปลายทาง webhook ของร้านที่รับ `events` (ว่าง = ทุกเหตุการณ์) ตั้งโดย `actor` ได้ไหม — `null` = ได้
+ * r2: ลงทะเบียนเป็นตัวกันเหตุการณ์ของ `webhooks/service.ts` (ทุกประตู) · `actor` null = ระบุผู้ทำไม่ได้ (คีย์ไม่มีผู้สร้าง/ผู้สร้างออกจากร้าน)
+ *   ⇒ ร้านที่มี CRM v2 ปฏิเสธเมื่อรายการแตะเหตุการณ์ CRM
+ */
+export async function crmPlatformWebhookProblem(
+  tenantId: string,
+  actor: { userId: string; role: string; unitAccess: string[]; permissions: Record<string, unknown> } | null,
+  events: readonly string[],
+): Promise<string | null> {
+  const crmSet = new Set(crmWebhookEvents());
+  const touchesCrm = events.length === 0 || events.some((e) => crmSet.has(e) || CRM_EVENT_PREFIXES.some((p) => e.startsWith(p)));
+  if (!touchesCrm) return null;
+  const systems = await prisma.appSystem.findMany({ where: { tenantId, type: "CRM" }, select: { id: true, settings: true } });
+  for (const sys of systems) {
+    if (parseCrmSettings(sys.settings).uiVersion !== 2) continue;
+    if (!actor) return CRM_PLATFORM_WEBHOOK_TH;
+    // บทบาทมาจาก Membership จริง (OWNER/MANAGER/STAFF) — รูปเดียวกับ MemberActor
+    if (await crmWebhookWiderThanCreator({ tenantId, systemId: sys.id }, actor as MemberActor)) return CRM_PLATFORM_WEBHOOK_TH;
+  }
+  return null;
+}
+// ◂ CRM C5.5
