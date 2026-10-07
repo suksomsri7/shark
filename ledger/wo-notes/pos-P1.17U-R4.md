@@ -65,6 +65,7 @@ Residue: each suite printed its own cleanup ("ลบแล้ว …"); p1.17 Z1
 | `bash scripts/iso.sh env -u DATABASE_URL -u DIRECT_URL pnpm fitness` | 41/41 exit 0 |
 | `bash scripts/iso.sh bash scripts/qc4.sh pnpm fitness` | 41/41 exit 0 |
 | `qc-pos-p1.17` unforced / forced / forced (QC4 wrappers) | 35/35 · 35/35 · 35/35, exit 0 ×3 (15:50 UTC) |
+| typecheck `env NODE_OPTIONS=--max-old-space-size=5632 ISO_MEM=6500M bash scripts/iso.sh flock -w 3600 /tmp/pos-gate.lock pnpm typecheck` on 944b5098 | `tsc --noEmit` exit 0 (queued 15:37:57, waited for the lock held by p11 `next start -p 3225`, finished 16:11:53 UTC) |
 
 ## Follow-ups
 - F1 (controller verdict R4 Q3): KPI deltas compare with the whole previous day/range; mockup 08 says "same time window" (ช่วงเวลาเดียวกัน). A same-time comparison needs `from`/`to` with times in `reports.ts` (server change) — later card.
