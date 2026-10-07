@@ -152,13 +152,14 @@ export const POS_MODELS = {
   posProductOptionGroup: { model: "PosProductOptionGroup", file: "pos.prisma", role: "ผูกสินค้า↔MenuOptionGroup เดิม" },
   recipeLine: { model: "RecipeLine", file: "pos.prisma", role: "สูตร/BOM (P1.1a: เมนูที่มี MenuItem.invItemId → 1 แถว qty 1)" },
   posHeldCart: { model: "PosHeldCart", file: "pos.prisma", role: "บิลที่พักไว้ (P1.5 · HELD/RECALLED/DISCARDED · ต่อสาขา)" },
+  posDevice: { model: "PosDevice", file: "pos.prisma", role: "ทะเบียนเครื่องขาย (P1.10 · ACTIVE/REVOKED · deviceCode = รหัสเครื่องของ P1.9 · printerConfig)" },
 } as const;
 export type PosModelKey = keyof typeof POS_MODELS;
 
 /** ตารางที่แผน POS จะสร้าง (POS-MIGRATION-PLAN §1) — **ยังไม่มี** ณ P0.1 · ใบที่สร้างย้ายเข้า POS_MODELS */
 export const POS_FUTURE_MODELS = [
-  "PosVariant", "SalesChannel", "PosProductChannelPrice", // P1.1a ย้าย PosProduct/PosCategory/RecipeLine/PosProductOptionGroup ไป POS_MODELS แล้ว
-  "ExternalOrder", "ExternalOrderEvent", "PosShift", "PosDevice", "PosPaymentIntent", "PosReceiptToken",
+  "PosVariant", "SalesChannel", "PosProductChannelPrice", // P1.10 ย้าย PosDevice ไป POS_MODELS แล้ว · P1.1a ย้าย PosProduct/PosCategory/RecipeLine/PosProductOptionGroup ไป POS_MODELS แล้ว
+  "ExternalOrder", "ExternalOrderEvent", "PosShift", "PosPaymentIntent", "PosReceiptToken",
   "PosStockCount", "PosStockCountLine", "PosStaffPin", "PosDocCounter",
 ] as const;
 

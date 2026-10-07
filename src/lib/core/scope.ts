@@ -59,6 +59,8 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   PosStockCount: sys(),
   PosStockCountLine: tenant,
   PosStockCountEntry: tenant,
+  // POS P1.10 — ทะเบียนเครื่องขาย (ผู้เขียนเดียว = pos/device.ts · ทุกคำสั่งกรอง tenantId + unitId (+ systemId ของ POS))
+  PosDevice: sys(),
   // Outbox (kernel — side effects post-commit · WO-0002)
   OutboxEvent: tenant,
   // Party (WO 3.1) — ตัวตนกลางระดับ tenant ข้ามทุกระบบ (ตรงข้าม AccountContact ที่ scope ต่อ systemId)
