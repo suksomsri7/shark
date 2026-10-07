@@ -11,11 +11,14 @@ import {
   cancelAdjustment,
   createPayrollRun,
   decideAdjustment,
+  deleteDraftRun,
+  recomputeDraftRun,
   markPaid,
   requestAdjustment,
   reverseRun,
   setSalaryProfile,
   type AdjustKind,
+  type ApproveExpect,
   type Ctx,
 } from "./payroll";
 import { adjustmentReplyForViewer, screenOtHoursForViewer } from "./privacy";
@@ -73,24 +76,72 @@ export async function createPayrollRunAction(formData: FormData) {
   revalidate(systemId);
 }
 
+// H0.1 ▸ CR3: ตัวเลขที่ผู้อนุมัติเห็นในแถว (hidden `expectNet` = ยอดจ่ายสุทธิรวม · `expectItems` = จำนวนคน) ◂
+// H0.1 ▸ CR11: `expectGross` (เงินเดือนรวมที่เห็น) ไม่บังคับ — เป็นจำนวนเต็มเท่านั้นจึงส่งต่อ · ไม่มี/อ่านไม่ได้ = ไม่ใส่ (ไม่ปฏิเสธเพราะช่องนี้) ◂
+// H0.1 ▸ CR16: `expectDigest` (ลายนิ้วมือแถวพนักงานที่หน้าคำนวณฝั่ง server) — sha256 hex 64 ตัวเท่านั้นจึงส่งต่อ · ไม่มี/รูปแบบผิด = ไม่ใส่ ◂
+// H0.1 ▸ CR18: `expectNet` หรือ `expectItems` ไม่มี/ไม่ใช่จำนวนเต็ม = undefined ⇒ action ปฏิเสธ (ไม่อนุมัติแบบไม่มีตัวเลขที่เห็นเด็ดขาด) ◂
+function approveExpectFromForm(formData: FormData): ApproveExpect | undefined {
+  const int = (v: FormDataEntryValue | null) => {
+    const n = typeof v === "string" && /^-?\d+$/.test(v.trim()) ? Number(v.trim()) : Number.NaN;
+    return Number.isSafeInteger(n) ? n : undefined;
+  };
+  const net = int(formData.get("expectNet"));
+  const items = int(formData.get("expectItems"));
+  if (net === undefined || items === undefined) return undefined;
+  const gross = int(formData.get("expectGross"));
+  const digestRaw = formData.get("expectDigest");
+  const digest = typeof digestRaw === "string" && /^[0-9a-f]{64}$/.test(digestRaw.trim()) ? digestRaw.trim() : undefined;
+  return { totalNetSatang: net, itemCount: items, ...(gross !== undefined ? { totalGrossSatang: gross } : {}), ...(digest !== undefined ? { itemsDigest: digest } : {}) };
+}
+
+// H0.1 ▸ CR12 · CR13: ข้อความคงที่ที่แถวแสดง (ไม่ส่ง note/e.message ดิบถึงจอ) ◂
+const FORBIDDEN_TH = "คุณไม่มีสิทธิ์ทำรายการนี้";
+const BAD_REQUEST_TH = "คำสั่งไม่ถูกต้อง";
+const APPROVE_STALE_TH = "ตัวเลขของรอบนี้เปลี่ยนไปแล้ว กรุณาดูยอดใหม่แล้วกดอนุมัติอีกครั้ง";
+const APPROVE_NOT_DRAFT_TH = "รอบนี้ไม่ใช่ร่างแล้ว";
+const APPROVE_POST_FAILED_TH = "ลงบัญชีไม่สำเร็จ รอบนี้ยังเป็นร่าง — ลองอนุมัติอีกครั้ง หรือให้ผู้ดูแลบัญชีตรวจสอบ";
+const APPROVE_DRAFT_HAS_JV_TH = "รอบนี้มีเอกสารบัญชีค้างอยู่ ต้องให้ผู้ดูแลตรวจสอบก่อน"; // CR17
+const APPROVE_MISSING_EXPECT_TH = "ไม่พบตัวเลขที่คุณเห็นบนหน้าจอ กรุณาโหลดหน้าใหม่แล้วกดอนุมัติอีกครั้ง"; // CR18
+
 // ── อนุมัติรอบ (+ลงบัญชี) ──
-export async function approvePayrollRunAction(formData: FormData) {
+//   H0.1 ▸ CR12: คืน { ok, reason } ให้แถว (RunRowActions) แสดงเหตุผลเมื่อไม่สำเร็จ (ตัวเลขเปลี่ยน · ไม่ใช่ร่างแล้ว · ลงบัญชีล้ม) ·
+//   CR13: ไม่มีสิทธิ์ = คืนข้อความในแถว · ข้อผิดพลาดอื่น throw ตามเดิม (หน้า error) ◂
+export async function approvePayrollRunAction(formData: FormData): Promise<{ ok: boolean; reason?: string }> {
   const auth = await requireTenant();
-  assertHrCan(auth, "hr.payroll.approve");
-  const systemId = String(formData.get("systemId") ?? "");
-  const runId = String(formData.get("runId") ?? "");
-  if (!systemId || !runId) return;
-  const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
-  const res = await approveRun(ctx, runId);
-  await writeAudit({
-    tenantId: auth.active.tenantId,
-    actorId: auth.user.id,
-    action: "hr.payroll.approve",
-    targetType: "HrPayrollRun",
-    targetId: runId,
-    after: { ok: res.ok, note: res.note },
-  });
-  revalidate(systemId);
+  try {
+    assertHrCan(auth, "hr.payroll.approve");
+    const systemId = String(formData.get("systemId") ?? "");
+    const runId = String(formData.get("runId") ?? "");
+    if (!systemId || !runId) return { ok: false, reason: BAD_REQUEST_TH };
+    const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
+    const expect = approveExpectFromForm(formData);
+    // CR18: ไม่มีตัวเลขที่ผู้กดเห็น = ไม่เรียก approveRun เลย (service ที่ไม่มี expect มีไว้ให้สคริปต์/ข้อสอบเท่านั้น)
+    if (expect === undefined) return { ok: false, reason: APPROVE_MISSING_EXPECT_TH };
+    // CR19: ส่งผู้ใช้ใน session ⇒ service ลงประวัติคำปฏิเสธ (hr.payroll.approve.refused) พร้อมตัวเลขที่เห็น/ตัวเลขจริง
+    const res = await approveRun(ctx, runId, expect, { userId: auth.active.userId, isOwner: auth.active.role === "OWNER" });
+    await writeAudit({
+      tenantId: auth.active.tenantId,
+      actorId: auth.user.id,
+      action: "hr.payroll.approve",
+      targetType: "HrPayrollRun",
+      targetId: runId,
+      after: { ok: res.ok, note: res.note },
+    });
+    revalidate(systemId);
+    if (res.ok) return { ok: true };
+    const reason =
+      res.code === "STALE"
+        ? APPROVE_STALE_TH
+        : res.code === "POST_FAILED"
+          ? APPROVE_POST_FAILED_TH
+          : res.code === "DRAFT_HAS_JV"
+            ? APPROVE_DRAFT_HAS_JV_TH
+            : APPROVE_NOT_DRAFT_TH;
+    return { ok: false, reason };
+  } catch (e) {
+    if (e instanceof ForbiddenError) return { ok: false, reason: FORBIDDEN_TH };
+    throw e;
+  }
 }
 
 // ── กลับรายการเงินเดือน (APPROVED/PAID → REVERSED + กลับ JV) — WO Wave2-K ──
@@ -245,5 +296,42 @@ export async function cancelAdjustmentAction(formData: FormData): Promise<{ ok: 
   } catch (e) {
     console.error("[hr.payadjust.delete]", e);
     return { ok: false, reason: UNEXPECTED_TH };
+  }
+}
+
+// ─────────── H0.1 ▸ R6: ลบร่าง / คำนวณใหม่ ของรอบจ่ายที่ยังเป็นร่าง (DRAFT) ───────────
+//   สิทธิ์ hr.payroll.create (คนสร้างรอบได้ = แก้ร่างได้) + ด่าน canViewPayroll ใน assertHrCan (OWNER หรือผู้ดูเงินเดือน) ·
+//   ผู้ทำ = ผู้ใช้ใน session เท่านั้น · คืน { ok, reason } ให้แถว (RunRowActions) แสดงเหตุผล · ประวัติเขียนใน service
+//   (hr.payroll.delete_draft / hr.payroll.recompute) · CR13: ไม่มีสิทธิ์ (ForbiddenError) = คืนข้อความในแถว · ข้อผิดพลาดอื่น throw (หน้า error)
+//   — ไม่มีทางไหนคืนข้อความดิบของ error ◂
+export async function deleteDraftRunAction(formData: FormData): Promise<{ ok: boolean; reason?: string }> {
+  const auth = await requireTenant();
+  try {
+    assertHrCan(auth, "hr.payroll.create");
+    const systemId = String(formData.get("systemId") ?? "");
+    const runId = String(formData.get("runId") ?? "");
+    if (!systemId || !runId) return { ok: false, reason: BAD_REQUEST_TH };
+    const res = await deleteDraftRun({ tenantId: auth.active.tenantId, systemId }, runId, { userId: auth.active.userId, isOwner: auth.active.role === "OWNER" });
+    revalidate(systemId);
+    return res.ok ? { ok: true } : { ok: false, reason: res.reason };
+  } catch (e) {
+    if (e instanceof ForbiddenError) return { ok: false, reason: FORBIDDEN_TH };
+    throw e;
+  }
+}
+
+export async function recomputeDraftRunAction(formData: FormData): Promise<{ ok: boolean; reason?: string }> {
+  const auth = await requireTenant();
+  try {
+    assertHrCan(auth, "hr.payroll.create");
+    const systemId = String(formData.get("systemId") ?? "");
+    const runId = String(formData.get("runId") ?? "");
+    if (!systemId || !runId) return { ok: false, reason: BAD_REQUEST_TH };
+    const res = await recomputeDraftRun({ tenantId: auth.active.tenantId, systemId }, runId, { userId: auth.active.userId, isOwner: auth.active.role === "OWNER" });
+    revalidate(systemId);
+    return res.ok ? { ok: true } : { ok: false, reason: res.reason };
+  } catch (e) {
+    if (e instanceof ForbiddenError) return { ok: false, reason: FORBIDDEN_TH };
+    throw e;
   }
 }

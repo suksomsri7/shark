@@ -9,10 +9,11 @@ import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { formatBaht } from "@/lib/ui/money";
 import { listEmployees, monthlyAttendance, employeesWithSchedule, bkkParts, type Ctx } from "./service";
 import { listSalaryProfiles, listRuns, listAdjustments } from "./payroll";
+import { payrollItemsDigest } from "./payroll-digest"; // H0.1 ▸ CR16: ลายนิ้วมือแถวพนักงาน คำนวณฝั่ง server ตอนแสดงแถว ◂
 import PayAdjustForm from "./PayAdjustForm";
 import PayAdjustRowActions from "./PayAdjustRowActions"; // HF-HR-0 ▸ รอบ 5c (F5): ปุ่มของรายการ + เหตุผลที่ถูกปฏิเสธในแถว ◂
+import RunRowActions from "./RunRowActions"; // H0.1 ▸ R6 · CR12: "อนุมัติ" / "ดึงข้อมูลใหม่" (คำนวณใหม่) / "ลบร่าง" ของรอบร่าง + เหตุผลที่ถูกปฏิเสธในแถว ◂
 import {
-  approvePayrollRunAction,
   createPayrollRunAction,
   markPaidAction,
   reverseRunAction,
@@ -271,17 +272,21 @@ export async function PayrollSection({ systemId }: { systemId: string }) {
             ),
             secondary: `${r.items.length} คน · เงินเดือนรวม ${formatBaht(r.totalGrossSatang)} · ปสส. ${formatBaht(r.totalSsoEmployeeSatang)} · ภาษี ${formatBaht(r.totalWhtSatang)}`,
             trailing: (
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center justify-end gap-2">
                 <StatusChip value={r.status} map={RUN_STATUS_LABEL} tone={runTone(r.status)} />
                 {r.status === "DRAFT" && (
-                  <ConfirmDialog
-                    triggerLabel="อนุมัติ"
-                    triggerClassName="rounded-full border px-3 py-1.5 text-xs hover:bg-[color:var(--color-surface-2)]"
-                    title={`อนุมัติรอบจ่ายงวด ${r.periodKey}?`}
-                    detail={`จ่ายสุทธิรวม ${formatBaht(r.totalNetSatang)} · เงินเดือนรวม ${formatBaht(r.totalGrossSatang)} · ประกันสังคม ${formatBaht(r.totalSsoEmployeeSatang + r.totalSsoEmployerSatang)} · ภาษีหัก ณ ที่จ่าย ${formatBaht(r.totalWhtSatang)} — จะลงบัญชีอัตโนมัติถ้าเปิดระบบบัญชีไว้`}
-                    confirmLabel="ยืนยันอนุมัติ"
-                    action={approvePayrollRunAction}
-                    fields={{ systemId, runId: r.id }}
+                  // H0.1 ▸ CR12: ปุ่มอนุมัติ/ดึงข้อมูลใหม่/ลบร่าง อยู่ใน RunRowActions — ส่งตัวเลขที่เห็นในแถวนี้ (ยอดสุทธิ · จำนวนคน · เงินเดือนรวม)
+                  //   ไปเป็นช่องซ่อนของการอนุมัติ ⇒ ถ้ามีการคำนวณใหม่ก่อนกดยืนยัน ระบบไม่อนุมัติ และบอกเหตุผลในแถว ◂
+                  <RunRowActions
+                    systemId={systemId}
+                    runId={r.id}
+                    periodKey={r.periodKey}
+                    status={r.status}
+                    totalNetSatang={r.totalNetSatang}
+                    totalGrossSatang={r.totalGrossSatang}
+                    itemCount={r.items.length}
+                    itemsDigest={payrollItemsDigest(r.items)}
+                    approveDetail={`จ่ายสุทธิรวม ${formatBaht(r.totalNetSatang)} · ${r.items.length} คน · เงินเดือนรวม ${formatBaht(r.totalGrossSatang)} · ประกันสังคม ${formatBaht(r.totalSsoEmployeeSatang + r.totalSsoEmployerSatang)} · ภาษีหัก ณ ที่จ่าย ${formatBaht(r.totalWhtSatang)} — จะลงบัญชีอัตโนมัติถ้าเปิดระบบบัญชีไว้`}
                   />
                 )}
                 {r.status === "APPROVED" && (
