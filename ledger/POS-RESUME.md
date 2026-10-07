@@ -591,3 +591,6 @@
 - R6: action รวม `posReportOverviewAction` + `report-overview.ts` (Promise.all ฝั่งเซิร์ฟเวอร์ · refusal ต่อ section) · browser 1 call/โหลด + debounce 300ms · retry ต่อการ์ด · KPI ไม่ truncate · ป้ายกราฟไม่ถูกตัด · ตารางสาขา min 340px · CSV อยู่แถวหัวเสมอ · qc-pos-p1.17 35→39 (ST7/OV1/OV2/OV3) 39/39 ×3 · authz 56/56 ×2 · fitness 41 ×2 · fitness-pos 8/8 · tsc 0
 - GitHub push ล้มชั่วคราว ~10 นาที (commit_refs) แล้วผ่าน
 - รอ: R3 เลน 1 → build รวม + ถ่ายซ้ำ
+
+## 2026-10-07T17:07:42Z · ผู้ตรวจส่วนต่าง R6: MERGEABLE-AFTER-FIXES → สั่ง R7
+- authz/scope ของ action รวม = posReportAction ทุก section (ผ่าน) · แก้: การ์ดสาขาต้องซ่อนตั้งแต่ต้นเมื่อ units<2 [M] · branches ต้องปฏิเสธ unitId ที่ไม่มีสิทธิ์ · ข้าม fan-out เมื่อ >92 วัน · limiter 4–6 · แถวรวมเช็ก all.margin · ข้อสอบเพิ่ม (ผ่าน action จริง · 2 จาก 3 สาขา · unitId ไม่มีสิทธิ์) + p1.9 forced
