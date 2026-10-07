@@ -337,7 +337,8 @@ function CountScreen({
   const [menu, setMenu] = useState(false);
   const [dialog, setDialog] = useState<"confirm" | "cancel" | null>(null);
   const pending = useRef<Record<string, Pending>>({});
-  const scanPending = useRef<{ code: string; key: string } | null>(null);
+  /** คำขอสแกนล่าสุดที่ไม่ได้ผลกลับมา (r === null) — Enter รหัสเดิมอีกครั้ง = ลองใหม่ด้วยคีย์เดิม */
+  const scanFailed = useRef<{ code: string; key: string; withQty: boolean } | null>(null);
   const queue = useRef<Promise<unknown>>(Promise.resolve());
 
   const isOpener = count.openedByUserId === me.id;
@@ -407,25 +408,39 @@ function CountScreen({
     });
   };
 
+  /**
+   * สแกน = ADD ทุกครั้ง · F1: คีย์ใหม่ทุกการสแกน (สแกนรหัสเดิมสองครั้ง = บวก 2 · เดิมใช้คีย์ซ้ำขณะคำขอแรกค้าง ⇒ duplicated = นับขาด)
+   * คีย์เดิมใช้ซ้ำเฉพาะ "ลองใหม่" ของคำขอที่ไม่ได้ผลกลับมาเลย (เน็ต/ขัดข้อง r === null) ด้วยรหัสเดียวกัน — เซิร์ฟเวอร์อาจบันทึกไปแล้ว คีย์เดิมกันบวกซ้ำ
+   * F2: รหัสหน้าตาเหมือนป้ายเครื่องชั่งแต่ไม่มี PLU ในระบบ → เซิร์ฟเวอร์ตกไปหาเป็นบาร์โค้ดแล้วตอบ VALIDATION (ไม่มี qty) ⇒ ส่งซ้ำ 1 ครั้งด้วย qty 1 + คีย์ใหม่
+   */
   const scan = (rawCode: string) => {
     const code = rawCode.trim();
     if (!code) return;
     const label = parseWeighedBarcode(code, weighed);
-    if (scanPending.current?.code !== code) scanPending.current = { code, key: newKey() };
-    const key = scanPending.current.key;
+    const retry = scanFailed.current && scanFailed.current.code === code ? scanFailed.current : null;
+    scanFailed.current = null;
+    const first = { key: retry?.key ?? newKey(), withQty: retry?.withQty ?? !label };
     void enqueue(async () => {
-      const r = await posStockCountRecordAction({ ...target, input: { countId: count.id, code, mode: "ADD", ...(label ? {} : { qty: 1 }), idempotencyKey: key } }).catch(() => null);
+      const send = (a: { key: string; withQty: boolean }) =>
+        posStockCountRecordAction({ ...target, input: { countId: count.id, code, mode: "ADD", ...(a.withQty ? { qty: 1 } : {}), idempotencyKey: a.key } }).catch(() => null);
+      let attempt = first;
+      let r = await send(attempt);
+      if (r && !r.ok && r.code === "VALIDATION" && !attempt.withQty) {
+        attempt = { key: newKey(), withQty: true };
+        r = await send(attempt);
+      }
       if (r && r.ok) {
-        if (scanPending.current?.key === key) scanPending.current = null;
         onLine(r.line);
         setQ((cur) => (cur.trim() === code ? "" : cur));
         setScanMsg({ ok: true, text: t("count.scanned", { name: r.line.name, qty: fmtQty(r.line.countedQty ?? 0, r.line.weighed, locale) }) });
         reload();
       } else {
+        if (!r) scanFailed.current = { code, ...attempt }; // ไม่รู้ผล — ลองใหม่ด้วยคีย์เดิม
         setScanMsg({ ok: false, text: refusal(r ? r.code : "INTERNAL") });
       }
     });
   };
+
 
   const chips: { key: Chip; label: string; n: number }[] = [
     { key: "ALL", label: t("count.chipAll"), n: summary.total },

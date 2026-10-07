@@ -222,11 +222,13 @@ const MOVE_ACTIONS = ["inventory.movement.receive", "inventory.movement.transfer
 /** ระบบ POS นี้ผูกสาขานี้ (live) + คลังของสาขา (live) — ไม่ผ่าน = คำปฏิเสธ (ลำดับเดียวกับ stock-count.ts: ขอบเขต → สิทธิ์ → คลัง) */
 async function unitInventory(ctx: RegisterCtx, gate: () => boolean): Promise<{ id: string } | StockCountRefusal> {
   const { tenantId, systemId, unitId } = ctx;
-  const [sys, link] = await Promise.all([
+  // F5: สาขาต้องยังไม่ ARCHIVED — เหมือน scopeOf ของ stock-count.ts
+  const [sys, link, unit] = await Promise.all([
     prisma.appSystem.findFirst({ where: { id: systemId, tenantId, type: "POS", active: true }, select: { id: true } }),
     prisma.appSystemUnit.findUnique({ where: { tenantId_unitId_type: { tenantId, unitId, type: "POS" } }, select: { systemId: true } }),
+    prisma.businessUnit.findFirst({ where: { id: unitId, tenantId, status: { not: "ARCHIVED" } }, select: { id: true } }),
   ]);
-  if (!sys || link?.systemId !== systemId) return refusal("NOT_FOUND");
+  if (!sys || link?.systemId !== systemId || !unit) return refusal("NOT_FOUND");
   if (!gate()) return refusal("PERMISSION_DENIED");
   const invId = await systemForUnit(tenantId, unitId, "INVENTORY");
   const inv = invId ? await prisma.appSystem.findFirst({ where: { id: invId, tenantId, type: "INVENTORY", active: true }, select: { id: true } }) : null;

@@ -133,7 +133,7 @@ const STATE_PLAN: { key: StateKey; devices: readonly Device[]; note: string }[] 
 type StockStateKey = "stock-default" | "stock-count-open" | "stock-count-confirm" | "stock-receive" | "stock-adjust";
 const STOCK_STATE_PLAN: { key: StockStateKey; tab: string | null; devices: readonly Device[]; note: string }[] = [
   { key: "stock-default", tab: null, devices: ["desktop", "ipad", "mobile"], note: "เปิดหน้า (ไม่ส่ง tab) — มือถือ = ตรวจนับ · md+ = รับของเข้า (ภาพ 16)" },
-  { key: "stock-count-open", tab: "count", devices: ["desktop", "ipad", "mobile"], note: "ภาพ 05ค: รอบ ALL ที่ที่เก็บหลัก (เปิดผ่าน UI ครั้งแรก) + SET 1 รายการ + สแกน ADD 1 รายการ" },
+  { key: "stock-count-open", tab: "count", devices: ["desktop", "ipad", "mobile"], note: "ภาพ 05ค: รอบ ALL ที่ที่เก็บหลัก (เปิดผ่าน UI ครั้งแรก) + SET 3 รายการแรก + สแกนรายการที่สอง 2 ครั้งติดกัน (ต้องได้ 2 — F1)" },
   { key: "stock-count-confirm", tab: "count", devices: ["desktop", "ipad", "mobile"], note: "กล่องยืนยันผลต่าง (ไม่กดยืนยัน)" },
   { key: "stock-receive", tab: "receive", devices: ["desktop", "ipad", "mobile"], note: "การ์ดรับของเข้า + คิว 2 แถว (ไม่กดรับเข้าคลัง)" },
   { key: "stock-adjust", tab: "adjust", devices: ["desktop", "ipad", "mobile"], note: "การ์ดปรับสต็อก: เลือกสินค้า + −2 (ไม่กดบันทึก)" },
@@ -702,9 +702,11 @@ async function ensureCountOpen(page: Any): Promise<void> {
     STOCK.ours = !!row && row.openedByUserId === T.users.owner.userId && row.createdAt >= RUN_STARTED;
   }
 }
-/** บันทึก 2 รายการผ่าน UI (ครั้งเดียวต่อรอบ): แถวแรกที่ยังไม่นับ = SET 3 · แถวที่สองที่ยังไม่นับ = สแกนรหัส (ADD 1) */
+/** บันทึก 2 รายการผ่าน UI (ครั้งเดียวต่อรอบ): แถวแรกที่ยังไม่นับ = SET 3 · แถวที่สองที่ยังไม่นับ = สแกนรหัส 2 ครั้งติดกัน (ADD 1 + ADD 1 = 2) */
 async function recordTwoLines(page: Any): Promise<void> {
   if (STOCK.recorded) return;
+  // F3: ไม่เขียนลงรอบที่สคริปต์ไม่ได้เปิดเอง (รอบนั้นไม่ถูกยกเลิกใน finally) — ถ่ายตามที่เป็นอยู่
+  if (!STOCK.ours) throw new StepError(`รอบ ${STOCK.countId} เปิดอยู่ก่อนรอบนี้ — ไม่บันทึกรายการลงรอบของคนอื่น (ยกเลิกรอบนั้นก่อนถ่าย)`);
   const lines = await prisma.posStockCountLine.findMany({ where: { countId: STOCK.countId, tenantId: T.tenantId, countedQty: null }, select: { itemId: true }, take: 50 });
   const items = await prisma.invItem.findMany({ where: { tenantId: T.tenantId, id: { in: lines.map((l) => l.itemId) } }, select: { id: true, sku: true, barcode: true, name: true }, orderBy: { name: "asc" } });
   const codeOf = (i: { barcode: string | null; sku: string }) => i.barcode?.trim() || i.sku.trim();
@@ -721,9 +723,18 @@ async function recordTwoLines(page: Any): Promise<void> {
     if (Date.now() > until) throw new StepError(`บันทึก SET ของ ${a.name} ไม่ถึงฐานใน 15 วิ`);
     await sleep(300);
   }
+  // F1: สแกนรหัสเดียวกันสองครั้งติดกัน (Enter ซ้ำก่อนผลแรกกลับ) ต้องรวมเป็น 2 — คีย์ใหม่ทุกการสแกน
   await typeInto(page, tid("pos-stock-scan"), codeOf(b));
   await page.keyboard.press("Enter");
+  await page.keyboard.press("Enter");
   await visibleEl(page, tid("pos-stock-scan-result"), 0, 15_000);
+  const untilB = Date.now() + 15_000;
+  for (;;) {
+    const l = await prisma.posStockCountLine.findFirst({ where: { countId: STOCK.countId, itemId: b.id }, select: { countedQty: true } });
+    if (l?.countedQty === 2) break;
+    if (Date.now() > untilB) throw new StepError(`สแกน ${b.name} สองครั้งติดกันได้ยอด ${l?.countedQty ?? "null"} (ต้องเป็น 2 — F1)`);
+    await sleep(300);
+  }
   STOCK.recorded = true;
   await sleep(800); // get สรุปหลังบันทึก
 }

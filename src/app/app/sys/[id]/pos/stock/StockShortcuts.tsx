@@ -67,13 +67,14 @@ export function ReceiveCard({ target, meta, onMove, locationId, me, invHref }: S
     setRows((rs) => {
       const same = rs.find((r) => r.item.id === item.id && !r.saving);
       if (same) return rs.map((r) => (r === same ? { ...r, qty: String((parseCount(r.qty) ?? 0) + 1), error: undefined } : r));
-      // R2: ต้นทุนเฉลี่ยปัจจุบันเป็นค่าเริ่ม (แก้ได้ · ลบทิ้ง = ไม่ส่ง costSatang ⇒ เซิร์ฟเวอร์ใช้ต้นทุนเฉลี่ย)
-      return [...rs, { rid: newKey(), item, qty: "1", cost: (item.costSatang / 100).toFixed(2), lot: "", expiry: "", note: "" }];
+      // F4: ช่องต้นทุนว่าง = แสดงต้นทุนเฉลี่ยเป็น placeholder และใช้คำนวณรวม/มูลค่า · ส่ง costSatang เฉพาะเมื่อผู้ใช้กรอก (ค่า prefill เคยทับ moving average)
+      return [...rs, { rid: newKey(), item, qty: "1", cost: "", lot: "", expiry: "", note: "" }];
     });
 
   const lineTotal = (r: RecvRow) => {
     const q = parseCount(r.qty);
-    const c = bahtToSatang(r.cost);
+    const typed = bahtToSatang(r.cost);
+    const c = typed === undefined ? r.item.costSatang : typed;
     return q !== null && typeof c === "number" ? q * c : null;
   };
   const total = rows.reduce((s, r) => s + (lineTotal(r) ?? 0), 0);
@@ -81,6 +82,7 @@ export function ReceiveCard({ target, meta, onMove, locationId, me, invHref }: S
   const submit = async () => {
     if (busy) return;
     setBusy(true);
+    let last: SessionMove | null = null;
     for (const r0 of rowsRef.current) {
       const r = rowsRef.current.find((x) => x.rid === r0.rid);
       if (!r) continue;
@@ -111,11 +113,12 @@ export function ReceiveCard({ target, meta, onMove, locationId, me, invHref }: S
       const res = await posStockReceiveAction({ ...target, input: { ...input, idempotencyKey: sent.key } }).catch(() => null);
       if (res && res.ok) {
         setRows((rs) => rs.filter((x) => x.rid !== r.rid));
-        onMove({ id: res.movementId, kind: "receive", name: r.item.name, qty, at: new Date().toISOString(), detail: defaultLoc?.name ?? t("defaultLocation") });
+        last = { id: res.movementId, kind: "receive", name: r.item.name, qty, at: new Date().toISOString(), detail: defaultLoc?.name ?? t("defaultLocation") };
       } else {
         patch(r.rid, { saving: false, error: refusal(res ? res.code : "INTERNAL") });
       }
     }
+    if (last) onMove(last); // F6: ประวัติโหลดใหม่ครั้งเดียวหลังส่งครบทุกแถว
     setBusy(false);
   };
 
@@ -182,7 +185,7 @@ export function ReceiveCard({ target, meta, onMove, locationId, me, invHref }: S
                         data-testid={`pos-stock-receive-cost-${r.item.id}`}
                         inputMode="decimal"
                         className="input h-11 text-right tabular-nums text-[color:var(--color-ink)]"
-                        placeholder="฿"
+                        placeholder={(r.item.costSatang / 100).toFixed(2)}
                         value={r.cost}
                         onChange={(e) => patch(r.rid, { cost: e.target.value })}
                       />
@@ -286,6 +289,7 @@ export function TransferCard({ target, meta, locationId, locName, onMove, compac
   const submit = async () => {
     if (busy || single || !from || !to || from === to) return;
     setBusy(true);
+    let last: SessionMove | null = null;
     for (const r0 of rowsRef.current) {
       const r = rowsRef.current.find((x) => x.rid === r0.rid);
       if (!r) continue;
@@ -300,11 +304,12 @@ export function TransferCard({ target, meta, locationId, locName, onMove, compac
       const res = await posStockTransferAction({ ...target, input: { ...input, idempotencyKey: sent.key } }).catch(() => null);
       if (res && res.ok) {
         setRows((rs) => rs.filter((x) => x.rid !== r.rid));
-        onMove({ id: res.movementIds[0], kind: "transfer", name: r.item.name, qty, at: new Date().toISOString(), detail: `${locName(from)} → ${locName(to)}` });
+        last = { id: res.movementIds[0], kind: "transfer", name: r.item.name, qty, at: new Date().toISOString(), detail: `${locName(from)} → ${locName(to)}` };
       } else {
         patch(r.rid, { saving: false, error: refusal(res ? res.code : "INTERNAL") });
       }
     }
+    if (last) onMove(last); // F6: ประวัติโหลดใหม่ครั้งเดียวหลังส่งครบทุกแถว
     setBusy(false);
   };
   const sfx = compact ? "-c" : "";
