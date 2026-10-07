@@ -1,0 +1,5 @@
+# post-merge sanity on session/hr c8b8c867 2026-10-07T22:33:05Z
+qc-hr-h0.1 exit=0 {"suite":"qc-hr-h0.1","total":67,"passed":67,"failed":[],"findings":[],"skipped":false,"forced":t
+qc-hr-h0.3 exit=0 {"suite":"qc-hr-h0.3","total":36,"passed":36,"failed":[],"findings":[],"skipped":false,"forced":t
+qc-payroll exit=0 {"total":19,"passed":19,"findings":[]}
+qc-hr-attendance exit=0 {"total":31,"passed":31,"findings":[]}
