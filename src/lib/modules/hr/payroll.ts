@@ -4,6 +4,7 @@ import type { Prisma } from "@prisma/client";
 import { emitOutbox } from "@/lib/core/outbox";
 import { postPayrollJV, reverseEntry } from "@/lib/modules/account";
 import { writeAudit } from "@/lib/core/audit"; // HF-HR-0 ▸ รอบ 5c (F1): ประวัติการลบรายการเงิน (ตัวเดียวกับ hr/service.ts) ◂
+import { bkkParts } from "./service"; // H0.1 ▸ CR14: เวลาไทยจากตัวช่วยกลางของ HR (ไม่บวก +7 เองซ้ำ) ◂
 import {
   ssoContribution,
   monthlyWhtSatang,
@@ -322,6 +323,8 @@ function computeItem(profile: {
 type RunItemRow = ReturnType<typeof computeItem>;
 type RunTotals = { gross: number; ssoEmployee: number; ssoEmployer: number; wht: number; net: number; add: number; deduct: number };
 
+// H0.1 ▸ CR15 (ความเป็นส่วนตัว): รอบที่มีพนักงานเข้ารอบคนเดียว ยอดรวมของรอบ = เงินเดือนของคนนั้น (เห็นได้จากรายการรอบ)
+//   ยอมรับได้ เพราะทุกคนที่เห็นรายการรอบจ่ายผ่าน canViewPayroll อยู่แล้ว (OWNER หรือ hr.payroll.read) — ไม่เปลี่ยนพฤติกรรม ◂
 async function buildRunRows(
   tx: Prisma.TransactionClient,
   ctx: Ctx,
@@ -481,6 +484,7 @@ type LockedRun = {
   periodKey: string;
   status: string;
   journalEntryId: string | null;
+  totalGrossSatang: number;
   totalAddSatang: number;
   totalDeductSatang: number;
   totalNetSatang: number;
@@ -495,18 +499,20 @@ async function lockRunPeriod(tx: Prisma.TransactionClient, ctx: Ctx, periodKey: 
 async function lockRunRow(tx: Prisma.TransactionClient, ctx: Ctx, runId: string): Promise<LockedRun | null> {
   const rows = await tx.$queryRaw<LockedRun[]>`
     SELECT "id", "periodKey", "status"::text AS "status", "journalEntryId",
-           "totalAddSatang", "totalDeductSatang", "totalNetSatang"
+           "totalGrossSatang", "totalAddSatang", "totalDeductSatang", "totalNetSatang"
     FROM "HrPayrollRun"
     WHERE "id" = ${runId} AND "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId}
     FOR UPDATE`;
   const r = rows[0];
-  return r ? { ...r, totalAddSatang: Number(r.totalAddSatang), totalDeductSatang: Number(r.totalDeductSatang), totalNetSatang: Number(r.totalNetSatang) } : null;
+  return r ? { ...r, totalGrossSatang: Number(r.totalGrossSatang), totalAddSatang: Number(r.totalAddSatang), totalDeductSatang: Number(r.totalDeductSatang), totalNetSatang: Number(r.totalNetSatang) } : null;
 }
 
-/** เวลาไทย (UTC+07:00 คงที่ — ไทยไม่มีเวลาออมแสง) รูปแบบ "YYYY-MM-DD HH:mm น." */
+/** เวลาไทย รูปแบบ "YYYY-MM-DD HH:mm น." — H0.1 ▸ CR14: ใช้ bkkParts (hr/service.ts) ตัวกลางของ HR ◂ */
 function bkkStamp(at: Date): string {
-  const iso = new Date(at.getTime() + 7 * 3_600_000).toISOString();
-  return `${iso.slice(0, 10)} ${iso.slice(11, 16)} น.`;
+  const { dateStr, minOfDay } = bkkParts(at);
+  const hh = String(Math.floor(minOfDay / 60)).padStart(2, "0");
+  const mm = String(minOfDay % 60).padStart(2, "0");
+  return `${dateStr} ${hh}:${mm} น.`;
 }
 
 /**
@@ -630,14 +636,21 @@ export async function recomputeDraftRun(ctx: Ctx, runId: string, actor: PayrollA
 }
 const APPROVE_STALE = "ตัวเลขของรอบนี้เปลี่ยนไปแล้ว (มีการคำนวณใหม่) — กรุณาเปิดดูและอนุมัติอีกครั้ง";
 const APPROVE_NOT_DRAFT = "รอบนี้อนุมัติหรือจ่ายไปแล้ว";
+/** H0.1 ▸ CR12: เหตุที่อนุมัติไม่สำเร็จ (ให้ approvePayrollRunAction เลือกข้อความคงที่ — POST_FAILED = ลงบัญชีล้ม รอบกลับเป็นร่าง) ◂ */
+export type ApproveFailCode = "NOT_FOUND" | "NOT_DRAFT" | "STALE" | "POST_FAILED";
 
 /**
  * H0.1 R4 · R5 — claim DRAFT→APPROVED เฉพาะเมื่อรอบ "ยังเป็นตัวเลขที่ผู้อนุมัติเห็น" (ยอดจ่ายสุทธิรวม + จำนวนคน) แบบอะตอมมิก:
  *   ล็อกแถวรอบ `FOR UPDATE` (ตัวเดียวกับที่ลบ/คำนวณใหม่ถือตลอด tx ⇒ ไม่มีการคำนวณใหม่ค้างกลางทาง) → นับแถวพนักงานใต้ล็อกนั้น →
  *   UPDATE เดียวที่ guard `status = DRAFT AND totalNetSatang = ที่เห็น` ⇒ อนุมัติที่รอคิวอยู่หลังการคำนวณใหม่ เห็นตัวเลขใหม่แล้วปฏิเสธ
  */
-async function claimApproveExpected(ctx: Ctx, runId: string, expect: { totalNetSatang: number; itemCount: number }): Promise<"OK" | "NOT_FOUND" | "NOT_DRAFT" | "STALE"> {
+//   H0.1 ▸ CR11: ส่ง totalGrossSatang (เงินเดือนรวมที่เห็น) มาด้วย ⇒ ต้องตรงด้วย (เช็กใต้ล็อก + อยู่ใน where ของ UPDATE) · ไม่ส่ง = ไม่เช็ก ·
+//   ส่งมาแต่ไม่ใช่จำนวนเต็ม = ถือว่าตัวเลขเปลี่ยน (ไม่อนุมัติแบบเดา — แบบเดียวกับยอดสุทธิ/จำนวนคน) ◂
+export type ApproveExpect = { totalNetSatang: number; itemCount: number; totalGrossSatang?: number };
+async function claimApproveExpected(ctx: Ctx, runId: string, expect: ApproveExpect): Promise<"OK" | "NOT_FOUND" | "NOT_DRAFT" | "STALE"> {
   if (!Number.isSafeInteger(expect?.totalNetSatang) || !Number.isSafeInteger(expect?.itemCount)) return "STALE";
+  const gross = expect.totalGrossSatang;
+  if (gross !== undefined && !Number.isSafeInteger(gross)) return "STALE";
   const scope = { tenantId: ctx.tenantId, systemId: ctx.systemId };
   return tenantDb(ctx).$transaction(async (t) => {
     const tx = t as unknown as Prisma.TransactionClient;
@@ -646,8 +659,9 @@ async function claimApproveExpected(ctx: Ctx, runId: string, expect: { totalNetS
     if (cur.status !== "DRAFT") return "NOT_DRAFT" as const;
     const itemCount = await tx.hrPayrollItem.count({ where: { ...scope, runId } });
     if (cur.totalNetSatang !== expect.totalNetSatang || itemCount !== expect.itemCount) return "STALE" as const;
+    if (gross !== undefined && cur.totalGrossSatang !== gross) return "STALE" as const;
     const claim = await tx.hrPayrollRun.updateMany({
-      where: { ...scope, id: runId, status: "DRAFT", totalNetSatang: expect.totalNetSatang },
+      where: { ...scope, id: runId, status: "DRAFT", totalNetSatang: expect.totalNetSatang, ...(gross !== undefined ? { totalGrossSatang: gross } : {}) },
       data: { status: "APPROVED" },
     });
     return claim.count === 1 ? ("OK" as const) : ("NOT_DRAFT" as const);
@@ -659,26 +673,27 @@ async function claimApproveExpected(ctx: Ctx, runId: string, expect: { totalNetS
 export async function approveRun(
   ctx: Ctx,
   runId: string,
-  // H0.1 ▸ R4: "อนุมัติเฉพาะตัวเลขที่เห็น" — หน้าเว็บส่งยอดจ่ายสุทธิรวม + จำนวนคนของแถวที่แสดงมาเสมอ · ไม่ส่ง = ทางเดิม (ผู้เรียกเก่า/สคริปต์) ◂
-  expect?: { totalNetSatang: number; itemCount: number },
-): Promise<{ ok: boolean; note: string }> {
+  // H0.1 ▸ R4: "อนุมัติเฉพาะตัวเลขที่เห็น" — หน้าเว็บส่งยอดจ่ายสุทธิรวม + จำนวนคน (+ เงินเดือนรวม · CR11) ของแถวที่แสดงมาเสมอ ·
+  //   ไม่ส่ง = ทางเดิม (ผู้เรียกเก่า/สคริปต์) · `code` = เหตุที่ไม่สำเร็จแบบอ่านด้วยโปรแกรม ⇒ action แปลงเป็นข้อความคงที่ (CR12 — ไม่ส่ง note ดิบถึงจอ) ◂
+  expect?: ApproveExpect,
+): Promise<{ ok: boolean; note: string; code?: ApproveFailCode }> {
   const db = tenantDb(ctx);
   if (expect !== undefined) {
     const claimed = await claimApproveExpected(ctx, runId, expect);
-    if (claimed === "NOT_FOUND") return { ok: false, note: RUN_NOT_FOUND };
-    if (claimed === "NOT_DRAFT") return { ok: false, note: APPROVE_NOT_DRAFT };
-    if (claimed === "STALE") return { ok: false, note: APPROVE_STALE };
+    if (claimed === "NOT_FOUND") return { ok: false, note: RUN_NOT_FOUND, code: "NOT_FOUND" };
+    if (claimed === "NOT_DRAFT") return { ok: false, note: APPROVE_NOT_DRAFT, code: "NOT_DRAFT" };
+    if (claimed === "STALE") return { ok: false, note: APPROVE_STALE, code: "STALE" };
   } else {
     // claim อะตอมมิก DRAFT→APPROVED — กันอนุมัติซ้ำ/ลงบัญชีเบิ้ล
     const claim = await db.hrPayrollRun.updateMany({
       where: { id: runId, status: "DRAFT" },
       data: { status: "APPROVED" },
     });
-    if (claim.count === 0) return { ok: false, note: APPROVE_NOT_DRAFT };
+    if (claim.count === 0) return { ok: false, note: APPROVE_NOT_DRAFT, code: "NOT_DRAFT" };
   }
 
   const run = await db.hrPayrollRun.findFirst({ where: { id: runId } });
-  if (!run) return { ok: false, note: "ไม่พบรอบจ่าย" };
+  if (!run) return { ok: false, note: "ไม่พบรอบจ่าย", code: "NOT_FOUND" };
 
   // ระบบบัญชีของกิจการ (type ACCOUNT) — ไม่มี = อนุมัติเฉย ๆ ไม่ลงบัญชี
   const acct = await db.appSystem.findFirst({ where: { type: "ACCOUNT" }, select: { id: true } });
@@ -715,7 +730,7 @@ export async function approveRun(
       where: { id: runId, status: "APPROVED", journalEntryId: null },
       data: { status: "DRAFT" },
     });
-    return { ok: false, note: e instanceof Error ? e.message : "ลงบัญชีไม่สำเร็จ" };
+    return { ok: false, note: e instanceof Error ? e.message : "ลงบัญชีไม่สำเร็จ", code: "POST_FAILED" };
   }
 }
 

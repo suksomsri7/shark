@@ -2,40 +2,63 @@
 
 import { useActionState } from "react";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
-import { deleteDraftRunAction, recomputeDraftRunAction } from "./payroll-actions";
+import { approvePayrollRunAction, deleteDraftRunAction, recomputeDraftRunAction } from "./payroll-actions";
 
 // H0.1 ▸ R6: ปุ่ม "ดึงข้อมูลใหม่" (= คำนวณใหม่ · ถ้อยคำตามแบบ design-hr/06 — CR10) / "ลบร่าง" ของรอบจ่ายที่ยังเป็นร่าง (DRAFT) 1 แถว
 //   — server action คืน { ok, reason } · ปุ่มใช้ token ชุดเดียวกับปุ่มเดิมของแถว (border · surface-2 · danger สำหรับลบ) ไม่มีสีใหม่
-//   ⇒ เหตุผลที่ถูกปฏิเสธ (รอบเปลี่ยนไปแล้ว · ไม่ใช่ร่าง · ระบบขัดข้อง) แสดงในแถวนี้ (แบบเดียวกับ PayAdjustRowActions)
+//   ⇒ เหตุผลที่ถูกปฏิเสธ (รอบเปลี่ยนไปแล้ว · ไม่ใช่ร่าง · ไม่มีสิทธิ์) แสดงในแถวนี้ (แบบเดียวกับ PayAdjustRowActions)
 //   ทุกปุ่มผ่าน ConfirmDialog · `key` เปลี่ยนเมื่อทำรายการเสร็จ ⇒ กล่องยืนยันปิดเอง · ไม่ใช่ร่าง = ไม่แสดงอะไรเลย ◂
-type Op = "recompute" | "delete";
+// H0.1 ▸ CR12: ปุ่ม "อนุมัติ" ย้ายมาอยู่ที่นี่ ⇒ อนุมัติไม่สำเร็จ (ตัวเลขเปลี่ยน · ไม่ใช่ร่างแล้ว · ลงบัญชีล้ม) เห็นเหตุผลในแถวเดียวกัน ·
+//   ช่องซ่อนของตัวเลขที่ผู้อนุมัติเห็น (expectNet · expectItems · expectGross — CR3/CR11) มาจาก props ของแถวที่แสดงอยู่ ◂
+type Op = "approve" | "recompute" | "delete";
 type Res = { ok: boolean; reason?: string; op: Op; n: number } | null;
 
 const triggerBase = "min-h-[44px] rounded-full border px-3 text-xs hover:bg-[color:var(--color-surface-2)]";
+
+const opOf = (v: FormDataEntryValue | null): Op => (v === "approve" ? "approve" : v === "delete" ? "delete" : "recompute");
 
 export default function RunRowActions({
   systemId,
   runId,
   periodKey,
   status,
+  totalNetSatang,
+  totalGrossSatang,
+  itemCount,
+  approveDetail,
 }: {
   systemId: string;
   runId: string;
   periodKey: string;
   status: string;
+  totalNetSatang: number;
+  totalGrossSatang: number;
+  itemCount: number;
+  approveDetail: string;
 }) {
   const [state, run] = useActionState<Res, FormData>(async (prev, formData) => {
-    const op: Op = formData.get("op") === "delete" ? "delete" : "recompute";
-    const r = op === "delete" ? await deleteDraftRunAction(formData) : await recomputeDraftRunAction(formData);
+    const op = opOf(formData.get("op"));
+    const r = op === "approve" ? await approvePayrollRunAction(formData) : op === "delete" ? await deleteDraftRunAction(formData) : await recomputeDraftRunAction(formData);
     return { ok: r.ok, reason: r.reason, op, n: (prev?.n ?? 0) + 1 };
   }, null);
 
-  // ปุ่มแก้ร่างมีเฉพาะรอบที่ยังเป็นร่าง — อนุมัติ/จ่าย/กลับรายการแล้ว ใช้ทางของสถานะนั้น
+  // ปุ่มของร่างมีเฉพาะรอบที่ยังเป็นร่าง — อนุมัติแล้ว/จ่าย/กลับรายการ ใช้ทางของสถานะนั้น
   if (status !== "DRAFT") return null;
 
   const n = state?.n ?? 0;
   return (
     <>
+      <ConfirmDialog
+        key={`approve-${n}`}
+        fields={{ systemId, runId, op: "approve", expectNet: String(totalNetSatang), expectItems: String(itemCount), expectGross: String(totalGrossSatang) }}
+        triggerLabel="อนุมัติ"
+        triggerClassName="rounded-full border px-3 py-1.5 text-xs hover:bg-[color:var(--color-surface-2)]"
+        title={`อนุมัติรอบจ่ายงวด ${periodKey}?`}
+        detail={approveDetail}
+        confirmLabel="ยืนยันอนุมัติ"
+        action={run}
+        testId={`hr-payroll-run-${periodKey}-approve`}
+      />
       <ConfirmDialog
         key={`recompute-${n}`}
         triggerLabel="ดึงข้อมูลใหม่"
