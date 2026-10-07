@@ -1,0 +1,60 @@
+# H0.3 — clock-in and kiosk integrity: no PIN-less clocking for others, DB-backed PIN limits, one event per tap, AI leave id (D7a · D7b · D13a · D14 · D8 interim) · brief for oracle writer → builder
+
+> Status: READY for the oracle writer. No schema. It needs no owner answer: it applies the recommended default of HQ5(a) (only people who administer employees may clock for someone else without a PIN), which **narrows** access. The owner can widen it later with the key split in H2.4.
+> Base: a commit that contains afcb9bc3. Line numbers are on afcb9bc3. Lane A (independent of H0.1/H0.2, may run in parallel in the second lane). Oracle `scripts/qc-hr-h0.3.mts`. Notes `ledger/wo-notes/hr-H0.3.md`. Branches `wip/hr-h0.3-oracle` → `wip/hr-h0.3`.
+> Read first: hr-brief-COMMON (§C.8 transactions, §C.9 rate limits) · REVIEW §3.3 (clock rows), §4.1 (`clockAction`, `kioskClockAction`, `setPinAction`), §6 #16, §8 D7 D8 D13 D14 · mockup `design-hr/04-attendance.body.html` (kiosk card: "PIN 4 หลัก").
+
+## 1. Facts as built (verify)
+- **D7a** `hr/actions.ts:62-73` `clockAction(formData)`: `requireTenant` → `assertHrCan(auth, "hr.attendance.clock")` → `clock(ctx, {employeeId, kind})` for **any** `employeeId` from the form, with **no PIN**. The kiosk (`kioskClockAction` :195) uses the **same key**, so the logged-in tablet session can clock anyone in or out without a PIN (buddy punching). The forms that call `clockAction` are on the attendance page `hr/ui.tsx:133,139`. The key's label is "ลงเวลาเข้า-ออกแทนพนักงาน" (`core/permissions.ts:497` on HEAD).
+- **D7b** `kioskClockAction` (:195-225): PIN 4–6 digits; limiter `checkRateLimit('hr-kiosk:<employeeId>', 5/60 s)` (:202) is **in-memory per server instance** (`core/rate-limit.ts:23`) and keyed per employee only, so it does not hold across instances and does not stop spraying across employees. The DB limiter exists: `checkRateLimitDb(key, {limit, windowMs})` (`core/rate-limit-db.ts:37`, single-statement upsert on `ChatRateBucket`).
+- **D8 interim** `setPinAction` (:175) → `setPin` (`service.ts:324-340`): the duplicate check now answers a generic text, but it still reveals that a PIN is taken, and there is **no rate limit**, so a holder of `hr.employee.create` can probe 10,000 PINs. Hashing and uniqueness come in H0.5; this WO adds the limiter only.
+- **D13a** `clock` (`service.ts:292-322`) inserts with no lock or uniqueness (`HrAttendance` has no unique, `hr.prisma:140-155`). `clockWithPin` (:362-370) computes `nextClockKind` (:343-352, the last event since Bangkok 00:00) and then inserts. Two fast taps can produce IN+IN (explicit path) or **IN then OUT** (kiosk path: the second tap reads the first IN and records OUT). Overnight shifts (D13b) are **out of scope** (they need the roster, H2.4).
+- **X2** `clock` does not check that `employeeId` belongs to this HR system (`tenantDb` scopes the new row to `ctx.systemId`, but the FK accepts an employee of another HR system of the same tenant — REVIEW §2.1).
+- **D14** AI tool `pending_leaves` (`src/lib/ai/tools.ts:151-171`, mapping at :162-170) returns name/type/dates without the leave **id**, while `hr_decide_leave` (:447-474, text at :452) tells the model to take `leaveId` from `pending_leaves`. So AI leave approval only works by luck. The hotfix comment at :168 (no reason, ever) must stay.
+
+## 2. Contract (controller rulings)
+R1 **On-behalf clocking (D7a)** — `clockAction` additionally requires the employee-admin right: `assertHrCan(auth, "hr.employee.create")` (OWNER and MANAGER pass by role, `rbac.ts:35-37`; STAFF need the key). It refuses quietly for others (the form action returns, nothing written, `ForbiddenError` as other HR actions do). The attendance page hides the two on-behalf buttons from viewers without that right. Every on-behalf event stores `note` = "ลงเวลาแทนโดย <actor display name>" unless a note was given (no schema: `note` exists, `hr.prisma:148`). **No new permission key in this WO** (permissions.ts is shared; the split `hr.attendance.clock_for` is H2.4's job).
+R2 **Kiosk limits (D7b)** — replace the in-memory limiter with `checkRateLimitDb` on two buckets: `hr-kiosk:emp:<tenantId>:<employeeId>` = 5 per 60 s, and `hr-kiosk:sys:<tenantId>:<systemId>` = 60 per 60 s. Check both **before** the PIN compare. Refusal text unchanged in style ("ลองใหม่ในอีก N วินาที"). The kiosk must keep working when the limiter's DB call fails: `checkRateLimitDb`'s own fail mode decides; read it and state it in the notes.
+R3 **Set-PIN limit (D8 interim)** — `setPinAction` gets `checkRateLimitDb('hr-setpin:<tenantId>:<actorUserId>', 10 per 10 min)` before calling `setPin`.
+R4 **One event per tap (D13a)** — `clock` runs in one `tenantDb(ctx).$transaction` with `pg_advisory_xact_lock(hashtextextended('hr:clock:<employeeId>',0))`, re-reads this employee's last event inside the lock, and applies a dedupe window `CLOCK_DEDUPE_SEC = 60`:
+  - kiosk / PIN path (`clockWithPin`, kind decided by `nextClockKind`): if the last event is younger than 60 s (any kind), **no new row**. Return the last event as success with the message "เพิ่งลงเวลา<เข้า/ออก>ไปเมื่อ hh:mm" (so a double tap never turns into OUT). `nextClockKind` is evaluated inside the same lock.
+  - explicit path (`clockAction`): if the last event has the **same kind** and is younger than 60 s, no new row. The opposite kind is allowed (a manager correcting).
+  - every statement inside the tx uses the tx client (HF-HR-0 round 5d lesson).
+R5 **Employee must belong to this HR system (X2)** — `clock` and `clockWithPin` load the employee through `tenantDb(ctx)` scoped to `ctx.systemId` and refuse otherwise ("ไม่พบพนักงาน"); `clockAction` also requires `active`.
+R6 **AI leave id (D14)** — `pending_leaves` adds `รหัสใบลา: l.id` to each row (one marked line `// HR H0.3 ▸ … ◂` inside the existing map; nothing else in `tools.ts`). Never add the reason.
+R7 **Out of scope:** PIN hashing/uniqueness/`verifyPin` (H0.5) · overnight / roster-aware kind (H2.4) · GPS/mobile clock (H2.4) · new permission keys · any change to judgement rules (`clockInDetail`, `judgeClockIn`).
+
+## 3. Oracle — `scripts/qc-hr-h0.3.mts` (~30 checks, ids `H0.3-S<g>.<n>` / `-X<k>.<n>`)
+Temp tenant `qc-hr-h0.3-<rand>` with 2 HR systems. Actions are called in-process with a mocked session, following `qc-hf-hr-privacy.mts` (hotfix) for how it drives server actions with different memberships; if an action cannot be driven, test the exported decision function + a `[static]` check that the action calls it.
+- S1 on-behalf: OWNER ok · MANAGER ok · STAFF with `hr.employee.create` ok · STAFF with only `hr.attendance.clock` (kiosk account) → nothing written · plain member → nothing · the on-behalf row has the "ลงเวลาแทนโดย" note · employee of the other HR system → refused, no row (X2) · inactive employee → refused · `[static]` attendance page renders the on-behalf forms only for viewers with the right.
+- S2 kiosk limiter: 6 wrong PINs for one employee in 60 s → the 6th refused **before** compare (a correct PIN on the 6th try is still refused); the buckets live in the DB (`ChatRateBucket` rows with the two key prefixes); 2 separate Node processes sharing the DB together get at most 5 tries (this proves the cross-instance case; spawn a child `tsx` process); 61 tries spread over 61 employees in 60 s → the 61st refused (system bucket); after the window, ok again (simulate with the `now` parameter of `checkRateLimitDb` if the action allows injecting time, else wait-free check on the bucket row).
+- S3 set-PIN limiter: the 11th `setPinAction` in 10 min by one actor is refused; another actor is not affected.
+- S4 double tap: 10 parallel `clockWithPin` with the right PIN (separate connections) → exactly 1 IN, all 10 return success, none records OUT; repeat ×3 rounds; tap again after the dedupe window (fixture: backdate the last row's `at` by 61 s) → OUT recorded; explicit `clockAction` IN ×10 parallel → 1 IN; explicit IN then OUT within 60 s → both recorded.
+- S5 AI: `pending_leaves` output rows contain `รหัสใบลา` equal to the leave ids and no reason key; feeding that id to the `hr_decide_leave` tool yields a proposal for that leave.
+- S6 static/regression guards: `clockInDetail`/`judgeClockIn` unchanged (hash); the hotfix comment in `pending_leaves` still present; no import of `checkRateLimit` left in `hr/actions.ts`.
+RED on the base: S1 kiosk-account case, S2 cross-process/system bucket, S3, S4 (two rows / IN+OUT), S5 id → RED.
+
+## 4. Builder
+Files: `src/lib/modules/hr/actions.ts`, `src/lib/modules/hr/service.ts` (only `clock`, `clockWithPin`, `nextClockKind` + a small private helper), `src/lib/modules/hr/ui.tsx` (hide on-behalf forms), `src/lib/ai/tools.ts` (one marked line), notes. Nothing else.
+Keep the kiosk UX: `KioskClock.tsx` unchanged unless the "เพิ่งลงเวลา…" message needs a new state (prefer reusing `status: "ok"` with `detail`).
+
+## 5. Acceptance
+`qc-hr-h0.3` green ×2, no residue (including the `ChatRateBucket` rows it created) · COMMON §E (`qc-hr`, `qc-hr-attendance` — judgement snapshots unchanged — `qc-hf-hr-privacy`, `qc-ai-tools`, `qc-ai-proposals`) identical · fitness both modes · typecheck · notes: who loses on-behalf clocking (kiosk-only STAFF accounts, staff with only `hr.attendance.clock`), the limiter numbers, the dedupe window, the fail mode of `checkRateLimitDb`.
+
+## 6. Questions (controller answers)
+Q1 Should a refused on-behalf attempt show a message instead of a silent return? Default: yes if cheap (the attendance form becomes a state form), otherwise silent + hidden button. Q2 Dedupe window 60 s or 120 s? Default 60 s (a real IN→OUT within a minute is unlikely; managers use the explicit path).
+
+## 7. Oracle writer additions (7 Oct · rulings requested; the oracle follows the defaults until answered)
+- OQ-1 = Q1 · OQ-2 = Q2 (60 s) · OQ-3 STAFF in S1.3 holds both `hr.attendance.clock` and `hr.employee.create` ("additionally") · OQ-4 "actor display name" = `User.name` (note must start with "ลงเวลาแทนโดย" and contain it) · OQ-5 S1.8 is a static heuristic (names listed in the notes) · OQ-6 "เพิ่งลงเวลา…" may be in `message` or `detail` · OQ-7 pool = pg default 10 (`POOL_MAX`). Details and the check list: `ledger/wo-notes/hr-H0.3.md`.
+- Finding (outside scope): the `qc-hf-hr-privacy` F2-3 pool probe leaves an "idle in transaction" connection in its process, so later writes in that run can be lost silently (measured on QC4). See the notes.
+
+## 8. Controller rulings on the oracle writer's open questions (7 Oct 2026)
+- **OQ-1** A refused on-behalf clock attempt writes **no row** AND returns a fixed Thai message `{ ok: false, reason: "ไม่มีสิทธิ์ลงเวลาแทนผู้อื่น ให้พนักงานลงเวลาด้วย PIN ของตนเอง" }` (never `e.message`). The oracle may stay at "no row"; the builder implements the message.
+- **OQ-2** Dedupe window = **60 s** per employee per direction (IN/OUT), enforced in the DB transaction under the row lock, not in memory.
+- **OQ-3** Accepted: the STAFF admin in S1.3 holds both keys (literal reading of R1).
+- **OQ-4** Accepted: the on-behalf note contains the actor's `User.name` ("ลงเวลาแทนโดย <name>").
+- **OQ-5** The builder reads S1.8's static pattern and uses exactly those variable names for the hidden on-behalf buttons; any other naming requires an ORACLE-EDIT by the controller (additive only), not a builder edit of the oracle.
+- **OQ-6** Accepted: the "เพิ่งลงเวลา…" text may be in `message` or `detail`.
+- **OQ-7** Accepted: pg default pool of 10 connections assumed; the builder must not raise the pool size as a "fix".
+- **Fail mode of `checkRateLimitDb`**: fail-OPEN on DB error (warn + allow) is accepted for kiosk availability; the builder documents it in `ledger/wo-notes/hr-H0.3.md` with the limiter numbers and the dedupe window (acceptance §5).
+- **Branch names**: `wip/pos-hr-h0.3-oracle` → `wip/pos-hr-h0.3` (VPS runner rule), replacing the `wip/hr-*` names in the header.

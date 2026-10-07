@@ -165,6 +165,7 @@ const pendingLeaves: AiTool = {
         ประเภท: l.type,
         ตั้งแต่: safeDate(l.fromDate),
         ถึง: safeDate(l.toDate),
+        รหัสใบลา: l.id, // HR H0.3 ▸ D14: ให้ hr_decide_leave ใช้ leaveId จากรายการนี้ได้ (เดิมไม่คืน id ⇒ AI อนุมัติใบลาได้แค่ฟลุ๊ก) ◂
         // HF-HR-0 ▸ ไม่คืนเหตุผลการลา (ลาป่วย = ข้อมูลสุขภาพ · ต้องมี hr.leave.read แต่ ToolCtx ไม่รู้ว่าใครถาม ⇒ ปิดไว้เสมอ) ◂
       })),
     });

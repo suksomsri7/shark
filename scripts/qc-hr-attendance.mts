@@ -172,9 +172,11 @@ try {
   const kIn = await hr.clockWithPin(ctx, kio.id, "2468");
   chk("KI-6", "PIN ถูก → ครั้งแรกของวัน = เข้างาน + ตัดสินตามตาราง",
     kIn.ok === true && kIn.kind === "IN" && kIn.judgement != null, "IN + มีคำตัดสิน", JSON.stringify(kIn));
+  await prisma.hrAttendance.updateMany({ where: { employeeId: kio.id }, data: { at: new Date(Date.now() - 180_000) } }); // ORACLE-EDIT H0.3 OE-1: พ้นหน้าต่างกันแตะซ้ำ 60 วิ (R4) — แตะซ้ำทันทีต้องไม่เกิดแถวใหม่
   const kOut = await hr.clockWithPin(ctx, kio.id, "2468");
   chk("KI-7", "กดอีกครั้ง = ออกงาน (พนักงานไม่ต้องเลือกเข้า/ออกเอง)",
     kOut.ok === true && kOut.kind === "OUT", "OUT", JSON.stringify(kOut));
+  await prisma.hrAttendance.updateMany({ where: { employeeId: kio.id, kind: "OUT" }, data: { at: new Date(Date.now() - 90_000) } }); // ORACLE-EDIT H0.3 OE-1
   const kOut2 = await hr.clockWithPin(ctx, kio.id, "2468");
   chk("KI-8", "กดครั้งที่สาม = เข้างานอีกรอบ (พักเที่ยงกลับมา)",
     kOut2.ok === true && kOut2.kind === "IN", "IN", JSON.stringify(kOut2));
@@ -183,7 +185,7 @@ try {
     roster.find((r) => r.id === kio.id)?.hasPin === true && roster.find((r) => r.id === noPinEmp.id)?.hasPin === false,
     "true/false", JSON.stringify(roster.map((r) => r.hasPin)));
   chk("KI-10", "🔴 action kiosk มีด่านกันเดา PIN (rate limit)",
-    /checkRateLimit\(\s*`hr-kiosk:/.test(readFileSync("src/lib/modules/hr/actions.ts", "utf8")), "มี", "ไม่มี");
+    /checkRateLimitDb\(\s*`hr-kiosk:emp:/.test(readFileSync("src/lib/modules/hr/actions.ts", "utf8")), "มี", "ไม่มี");
   chk("KI-11", "มีหน้าจอลงเวลา + แท็บในเมนู",
     existsSync("src/app/app/sys/[id]/hr/kiosk/page.tsx") && /hr\/kiosk/.test(readFileSync("src/app/app/layout.tsx", "utf8")),
     "มีทั้งคู่", "ขาด", "MAJOR");

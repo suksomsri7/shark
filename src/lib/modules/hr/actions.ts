@@ -2,12 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 import { requireTenant } from "@/lib/core/context";
-import { assertCan, canViewPayroll } from "@/lib/core/rbac";
+import { assertCan, canViewPayroll, evaluate } from "@/lib/core/rbac";
 import type { HrAttendanceKind, HrLeaveType } from "@prisma/client";
-import { checkRateLimit } from "@/lib/core/rate-limit";
+import { checkRateLimitDb } from "@/lib/core/rate-limit-db"; // HR H0.3 ▸ ตัวจำกัดบน DB (ข้าม instance) แทน in-memory ◂
 import {
   addEmployeeDoc,
   clock,
+  ClockRefusedError,
   clockWithPin,
   createEmployee,
   decideLeave,
@@ -58,17 +59,39 @@ export async function createEmployeeAction(formData: FormData) {
   revalidate(systemId);
 }
 
-// ── ลงเวลา (เข้า/ออก) ──
-export async function clockAction(formData: FormData) {
+// ── ลงเวลา (เข้า/ออก) "แทน" พนักงาน (ไม่มี PIN) ──
+// HR H0.3 ▸ D7a: ลงเวลาแทนคนอื่นต้องมีสิทธิ์จัดการพนักงาน (hr.employee.create) เพิ่มจาก hr.attendance.clock
+//   เดิมคีย์ hr.attendance.clock คีย์เดียว = บัญชีแท็บเล็ต kiosk ลงเวลาให้ใครก็ได้โดยไม่ใส่ PIN (ตอกบัตรแทนกัน)
+//   คนที่มีแต่ hr.attendance.clock ยังใช้จอ kiosk (PIN ของพนักงานเอง) ได้ตามเดิม
+//   ตอบข้อความไทยคงที่ ไม่ throw ข้อความระบบ · แถวที่ลงแทนมี note "ลงเวลาแทนโดย <ชื่อผู้กด>" (ไม่มี schema ใหม่)
+//   พนักงานต้องเป็นของระบบนี้และยังไม่พ้นสภาพ (X2/R5) · กันกดซ้ำชนิดเดียวกันใน 60 วินาที อยู่ใน clock() ◂
+export type ClockActionResult = { ok: true; deduped: boolean } | { ok: false; reason: string };
+export async function clockAction(formData: FormData): Promise<ClockActionResult> {
   const auth = await requireTenant();
   assertHrCan(auth, "hr.attendance.clock");
+  const member = {
+    role: auth.active.role,
+    unitAccess: auth.active.unitAccess as string[],
+    permissions: auth.active.permissions as Record<string, unknown>,
+  };
+  if (!evaluate(member, { module: "hr", action: "hr.employee.create" })) {
+    return { ok: false, reason: "ไม่มีสิทธิ์ลงเวลาแทนผู้อื่น ให้พนักงานลงเวลาด้วย PIN ของตนเอง" };
+  }
   const systemId = String(formData.get("systemId") ?? "");
   const employeeId = String(formData.get("employeeId") ?? "");
   const rawKind = String(formData.get("kind") ?? "");
-  if (!systemId || !employeeId || !KINDS.has(rawKind as HrAttendanceKind)) return;
+  if (!systemId || !employeeId || !KINDS.has(rawKind as HrAttendanceKind)) return { ok: false, reason: "ข้อมูลไม่ครบ" };
   const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
-  await clock(ctx, { employeeId, kind: rawKind as HrAttendanceKind });
+  const note = String(formData.get("note") ?? "").trim() || `ลงเวลาแทนโดย ${auth.user.name ?? auth.user.email}`;
+  let res: Awaited<ReturnType<typeof clock>>;
+  try {
+    res = await clock(ctx, { employeeId, kind: rawKind as HrAttendanceKind, note, requireActive: true });
+  } catch (e) {
+    if (e instanceof ClockRefusedError) return { ok: false, reason: "ไม่พบพนักงาน" };
+    throw e;
+  }
   revalidate(systemId);
+  return { ok: true, deduped: res.deduped };
 }
 
 // ── แก้ข้อมูลพนักงาน / ลบ (soft) / กู้คืน ──
@@ -176,6 +199,9 @@ export async function setPinAction(systemId: string, employeeId: string, _prev: 
   const auth = await requireTenant();
   assertHrCan(auth, "hr.employee.create");
   const pin = String(formData.get("pin") ?? "");
+  // HR H0.3 ▸ D8 (ชั่วคราวก่อน H0.5): ข้อความ "PIN นี้ใช้ไม่ได้" ยังบอกได้ว่ามีคนใช้ PIN นั้น ⇒ จำกัด 10 ครั้ง/10 นาที ต่อผู้กด (ถังบน DB) ◂
+  const gate = await checkRateLimitDb(`hr-setpin:${auth.active.tenantId}:${auth.user.id}`, { limit: 10, windowMs: 10 * 60_000 });
+  if (!gate.ok) return { status: "error", message: `ตั้ง PIN บ่อยเกินไป ลองใหม่ในอีก ${gate.retryAfterSec ?? 60} วินาที` };
   const res = await setPin({ tenantId: auth.active.tenantId, systemId }, employeeId, pin);
   if (!res.ok) return { status: "error", message: res.reason ?? "บันทึกไม่ได้" };
   revalidatePath(`/app/sys/${systemId}/hr/employees`);
@@ -189,8 +215,10 @@ export type KioskState =
 
 /**
  * พนักงานกดลงเวลาเองบนจอ kiosk (หน้านี้เปิดค้างด้วยเซสชันของร้าน)
- * 🔴 กันเดา PIN: 5 ครั้ง/นาที ต่อพนักงาน 1 คน (ยิงรัวไม่ได้) — limiter เป็น in-memory ต่อ instance
- *    ตามข้อจำกัดเดิมของ core/rate-limit · PIN 4 หลักจึงถูกจำกัดที่ชั้นนี้ ไม่ใช่ที่ความยาว PIN
+ * 🔴 กันเดา PIN: PIN 4 หลักจึงถูกจำกัดที่ชั้นนี้ ไม่ใช่ที่ความยาว PIN
+ * HR H0.3 ▸ D7b: ตัวจำกัดบน DB (ChatRateBucket · ทุก instance เห็นตัวเลขเดียวกัน) 2 ถัง ตรวจ "ก่อน" เทียบ PIN —
+ *   hr-kiosk:emp:<tenantId>:<employeeId> 5 ครั้ง/60 วินาที (เดาคนเดียว) · hr-kiosk:sys:<tenantId>:<systemId> 60 ครั้ง/60 วินาที (ไล่เดาหลายคน)
+ *   ตัวจำกัดล่ม (DB error) = checkRateLimitDb ปล่อยผ่าน (fail-open + logOps WARN) ⇒ จอ kiosk ยังลงเวลาได้ ◂
  */
 export async function kioskClockAction(systemId: string, _prev: KioskState, formData: FormData): Promise<KioskState> {
   const auth = await requireTenant();
@@ -199,13 +227,24 @@ export async function kioskClockAction(systemId: string, _prev: KioskState, form
   const pin = String(formData.get("pin") ?? "");
   if (!employeeId) return { status: "error", message: "เลือกชื่อของคุณก่อน" };
   if (!/^\d{4,6}$/.test(pin.trim())) return { status: "error", message: "ใส่ PIN 4-6 หลัก" };
-  const gate = checkRateLimit(`hr-kiosk:${employeeId}`, { limit: 5, windowMs: 60_000 });
-  if (!gate.ok) return { status: "error", message: `ลองใหม่ในอีก ${gate.retryAfterSec} วินาที` };
+  const tenantId = auth.active.tenantId;
+  const gateEmp = await checkRateLimitDb(`hr-kiosk:emp:${tenantId}:${employeeId}`, { limit: 5, windowMs: 60_000 });
+  if (!gateEmp.ok) return { status: "error", message: `ลองใหม่ในอีก ${gateEmp.retryAfterSec ?? 60} วินาที` };
+  const gateSys = await checkRateLimitDb(`hr-kiosk:sys:${tenantId}:${systemId}`, { limit: 60, windowMs: 60_000 });
+  if (!gateSys.ok) return { status: "error", message: `ลองใหม่ในอีก ${gateSys.retryAfterSec ?? 60} วินาที` };
 
   const res = await clockWithPin({ tenantId: auth.active.tenantId, systemId }, employeeId, pin);
   if (!res.ok) return { status: "error", message: res.reason };
   revalidatePath(`/app/sys/${systemId}/hr/attendance`);
   const time = new Intl.DateTimeFormat("th-TH", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Bangkok" }).format(res.at);
+  // HR H0.3 ▸ แตะซ้ำภายใน 60 วินาที = ไม่บันทึกเพิ่ม · บอกว่าลงไว้แล้ว (ไม่กลายเป็นออกงาน) ◂
+  if (res.deduped) {
+    return {
+      status: "ok",
+      message: `${res.employeeName} · เพิ่งลงเวลา${res.kind === "IN" ? "เข้า" : "ออก"}ไปเมื่อ ${time}`,
+      detail: "บันทึกไว้แล้ว ไม่ต้องกดซ้ำ",
+    };
+  }
   const detail =
     res.judgement === "LATE"
       ? `สาย ${res.lateMin} นาที`

@@ -20,7 +20,7 @@ import {
   type Ctx,
 } from "./service";
 import {
-  clockAction,
+  clockAction as clockActionWithResult,
   createEmployeeAction,
   setWorkScheduleAction,
   requestLeaveAction,
@@ -33,6 +33,11 @@ import BulkLeaveApprovals from "./BulkLeaveApprovals";
 import { hrViewerOf, leaveItemsForViewer } from "./privacy"; // HF-HR-0 (D9) ▸ เหตุผลการลาเฉพาะ hr.leave.read ◂
 import PinField from "./PinField";
 import KioskClock from "./KioskClock";
+import { evaluate } from "@/lib/core/rbac";
+
+// HR H0.3 ▸ clockAction คืน { ok, reason } (ข้อความปฏิเสธคงที่ สำหรับผู้เรียกที่อ่านผล) — ฟอร์มธรรมดาไม่อ่านค่าที่คืน
+//   (ปุ่มถูกซ่อนจากคนที่จะถูกปฏิเสธอยู่แล้ว) ⇒ แคบชนิดให้เข้ากับ <form action> · ตัวฟังก์ชันคือ server action ตัวเดิม ◂
+const clockAction = clockActionWithResult as unknown as (formData: FormData) => Promise<void>;
 
 const muted = "text-[color:var(--color-muted)]";
 
@@ -98,6 +103,15 @@ export function hrTabs(systemId: string): { href: string; label: string }[] {
 export async function HrAttendanceSection({ systemId }: { systemId: string }) {
   const auth = await requireTenant();
   const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
+  // HR H0.3 ▸ D7a: ปุ่มลงเวลาแทน (ไม่มี PIN) เฉพาะผู้มีสิทธิ์จัดการพนักงาน — ตรงกับด่านใน clockAction · คนอื่นใช้จอ kiosk ◂
+  const canClockForOthers = evaluate(
+    {
+      role: auth.active.role,
+      unitAccess: auth.active.unitAccess as string[],
+      permissions: auth.active.permissions as Record<string, unknown>,
+    },
+    { module: "hr", action: "hr.employee.create" },
+  );
 
   const [employees, attendance, scheduled] = await Promise.all([
     listEmployees(ctx),
@@ -129,20 +143,24 @@ export async function HrAttendanceSection({ systemId }: { systemId: string }) {
                   <div className="truncate text-sm font-medium">{e.name}</div>
                   {e.position && <div className={`truncate text-xs ${muted}`}>{e.position}</div>}
                 </div>
-                <div className="flex items-center gap-2">
-                  <form action={clockAction}>
-                    <input type="hidden" name="systemId" value={systemId} />
-                    <input type="hidden" name="employeeId" value={e.id} />
-                    <input type="hidden" name="kind" value="IN" />
-                    <SubmitButton variant="primary">เข้างาน</SubmitButton>
-                  </form>
-                  <form action={clockAction}>
-                    <input type="hidden" name="systemId" value={systemId} />
-                    <input type="hidden" name="employeeId" value={e.id} />
-                    <input type="hidden" name="kind" value="OUT" />
-                    <SubmitButton variant="ghost">ออกงาน</SubmitButton>
-                  </form>
-                </div>
+                {canClockForOthers ? (
+                  <div className="flex items-center gap-2">
+                    <form action={clockAction}>
+                      <input type="hidden" name="systemId" value={systemId} />
+                      <input type="hidden" name="employeeId" value={e.id} />
+                      <input type="hidden" name="kind" value="IN" />
+                      <SubmitButton variant="primary">เข้างาน</SubmitButton>
+                    </form>
+                    <form action={clockAction}>
+                      <input type="hidden" name="systemId" value={systemId} />
+                      <input type="hidden" name="employeeId" value={e.id} />
+                      <input type="hidden" name="kind" value="OUT" />
+                      <SubmitButton variant="ghost">ออกงาน</SubmitButton>
+                    </form>
+                  </div>
+                ) : (
+                  <span className={`shrink-0 text-xs ${muted}`}>ลงเวลาด้วย PIN ที่จอ kiosk</span>
+                )}
               </div>
             ))}
           </div>
