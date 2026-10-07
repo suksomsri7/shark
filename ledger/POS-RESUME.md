@@ -649,3 +649,9 @@
 ## 2026-10-07T21:16:27Z · ใบถัดไป (1 เลน) = **P1.9U** หน้ากะ/ลิ้นชักตรงภาพ 07 + dialog เปิดกะ 13A + recount P1.9b + แท็บ "กะ" + visual page shifts (`pos-briefs/pos-brief-P1.9U.md`)
 - เหตุผล: คำสั่งเจ้าของ "P1.14U → เช็ก UI ของ P1.9b → ใบ S ถัดไป" — UI กะตอนนี้เป็น minimal (P1.9 step 4) ยังไม่ตรง 07 และ visual-pos ไม่มีหน้า shifts ⇒ เช็ก P1.9b ได้จริงต้องทำ P1.9U ก่อน · ใบ S ถัดไปหลังจากนั้น = P1.8 คืนเงิน/CN (ปลดล็อก P1.16 · ไม่ต้องรอ creds Beam ต่างจาก P1.7)
 - ตัดออกจาก 07 (มีคำตัดสินใน brief): เปิดลิ้นชัก/เครื่องพิมพ์ (P1.10) · ส่งสรุปกะ LINE/PDF (P3) · สถานะ PromptPay/Beam ในตารางวิธีชำระ (P1.7) · คืนเงิน = 0 จนกว่า P1.8
+
+## 2026-10-07T21:50:58Z · เลนส่ง P1.9U (f223da01 · โค้ด ef7ba422) gate เขียวครบ → build p11 ถ่าย shifts owner/cashier/EN + register owner · ผู้ตรวจ Opus คู่ขนาน
+- gate: tsc 0 · fitness 41 ×2 · fitness-pos 8/8 · p1.9 53 ×3 · p1.9b 22 ×2 · p1.3 128 · p1.6 48 · p1.17 40 · authz 56 · nav-functions 11/11 (S5 เขียวแล้ว) · visual --dry shifts 12 ภาพ/ผู้ใช้ · register 37
+- ตามเซิร์ฟเวอร์: QC cashier ไม่มีสิทธิ์กะ = refusal card · byMethod.count = จำนวน payment · refund count ไม่มีใน ShiftReport (P1.8) · คำถาม: operate เห็นเครื่องอื่นไหม (ตาม listShifts = ไม่) · เหรียญใน countDetail ฿1×n + 25 สต. · คอลัมน์ "บิล" = payments
+- 1024 เมนูเต็ม = คอลัมน์เดียว (เหลือ ~690px) · เมนูย่อ = 2 คอลัมน์ (container query)
+- unit `pos-vis11-shifts` 21:50 UTC
