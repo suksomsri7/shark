@@ -274,7 +274,13 @@ try {
   chk("L-2", "🔴 พนักงานทั่วไป: รายการใบลาไม่มีเหตุผล", !!iMember && !hasReason(iMember) && iMember.canReadReason === false, "ไม่มีเหตุผล", iMember ? JSON.stringify(iMember).slice(0, 160) : "NO-MODULE");
   const iMgr = await items("manager");
   chk("L-3", "MANAGER (ผ่าน evaluate) เห็นเหตุผล", hasReason(iMgr), "เห็น", "ไม่เห็น", "MAJOR");
-  const ai = await tools.runTool({ tenantId: tid }, "pending_leaves", {});
+  // ORACLE-EDIT C6.0 (merge of main into session/crm): CRM C5.5-G1 made ToolCtx.actor required (no actor = typecheck red).
+  //   The strongest viewer (shop OWNER) is used, so "no reason" still means "never returned, whoever asks" — the D9 promise.
+  const ai = await tools.runTool(
+    { tenantId: tid, actor: { kind: "member" as const, tenantId: tid, userId: U.owner, membership: { role: "OWNER" as const, unitAccess: ["*"], permissions: {} } } },
+    "pending_leaves",
+    {},
+  );
   chk("L-4", "🔴 AI pending_leaves ไม่คืนเหตุผลการลา (ไม่รู้ว่าใครถาม ⇒ ปิดไว้)", !ai.includes(REASON) && !ai.includes("เหตุผล"), "ไม่มี", ai.slice(0, 200));
   chk("L-5", "AI pending_leaves ยังบอกชื่อ/ประเภท/วันได้ตามเดิม", ai.includes(`เพื่อนร่วมงาน ${ts}`) && ai.includes("SICK"), "มีชื่อ+ประเภท", ai.slice(0, 160), "MAJOR");
 
