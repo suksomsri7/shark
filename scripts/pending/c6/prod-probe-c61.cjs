@@ -13,7 +13,8 @@ for (const line of fs.readFileSync(path.join(__dirname, "../../../.env"), "utf8"
   env[m[1]] = v;
 }
 const useDirect = process.argv.includes("--direct");
-const url = useDirect ? env.DIRECT_URL : env.DATABASE_URL;
+// --url-from-env: take the URL from the process env instead of .env (used by neon-rehearse-migrations.cjs against a throw-away branch)
+const url = process.argv.includes("--url-from-env") ? (useDirect ? process.env.DIRECT_URL : process.env.DATABASE_URL) : useDirect ? env.DIRECT_URL : env.DATABASE_URL;
 if (!url) { console.error("no url in .env for", useDirect ? "DIRECT_URL" : "DATABASE_URL"); process.exit(1); }
 let host = "?"; try { host = new URL(url).host.replace(/^[^.]*/, (h) => h.slice(0, 12) + "…"); } catch {}
 const Q = [

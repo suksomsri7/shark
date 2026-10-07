@@ -22,3 +22,11 @@ Not checked here (needs the owner / other access): env parity VPS ↔ Vercel (SE
 ## 2. Still to do in C6.1
 - Migration rehearsal (`prisma migrate deploy` + `migrate status` + `pnpm drift`) on a fresh Neon branch of prod from the C6.0 merge commit — after C6.0 lands.
 - crontab (register 1.1/1.2): install together with the first deploy that carries `scripts/crm-cron.mts` (it is not on main yet); VPS checkout `/root/projects/shark-in-th` must be at the deployed commit.
+
+## 3. Migration rehearsal on a throw-away Neon branch of prod — 2026-10-07 11:06 UTC ✅ GREEN
+Script `scripts/pending/c6/neon-rehearse-migrations.cjs` (Neon API key/project from `.env` in-process; branch of the **production default branch** `br-wispy-glitter-ao4p8ijv`, role `neondb_owner`, branch deleted at the end — also on error). Log `.qc-shots/crm/neon-rehearse-2.log` (run 1 failed only because the script picked the passwordless `anonymous` role; fixed).
+- `migrate status` before: 151 migrations, 4 not applied (`20261103000000_crm_perf_indexes`, `20261104000001/2/3_account_journal_no_*`) — exactly the set expected.
+- `migrate deploy`: all 4 applied, **2.6 s** on the prod copy (114 journal rows / 52 active systems → 260 `acc_jno_*` sequences pre-created = 52 × 5, as designed).
+- `migrate status` after: up to date · `pnpm drift`: No difference detected (first migration with standalone sequences/functions — register §7 Q3 answered: drift stays clean).
+- Post-checks on the branch: `acc_jno_%` = 260, N migration rows = 3, docNo shapes 0/0, uiVersion unset for both CRM systems, no duplicate AccountContact / multi-primary.
+⇒ register R4 step 5 ("CI migrate on a prod-size branch") satisfied by this rehearsal; Q5 (rehearse on a Neon branch) = yes, done. Deploy-time migrate on prod is expected to take seconds; the Vercel build (migrate → tsc → next build) is the long part.
