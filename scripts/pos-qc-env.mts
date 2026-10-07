@@ -259,7 +259,7 @@ export const PQC_RESTO_MENU = {
 } as const;
 
 /** หน้าที่มีอยู่จริงของ POS วันนี้ (src/app/app/sys/[id]/pos/*) — visual-pos ถ่ายชุดนี้ */
-export const POS_PAGES = ["register", "sales", "products", "close"] as const;
+export const POS_PAGES = ["register", "sales", "products", "close", "reports"] as const; // POS P1.17 U ▸ + reports ◂
 export type PosPage = (typeof POS_PAGES)[number];
 
 /** 3 ขนาดจอ (POS-MASTER-PLAN §1) */
