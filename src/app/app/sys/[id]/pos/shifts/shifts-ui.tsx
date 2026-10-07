@@ -166,4 +166,5 @@ export function FigureBox({ label, value, danger, testid }: { label: string; val
   );
 }
 
-export const CARD = "card min-w-0 rounded-2xl p-5 sm:p-7";
+/** การ์ดของหน้า — @container: ส่วนในตัดสินเลย์เอาต์จากความกว้างการ์ด (คอลัมน์ซ้ายแคบที่ 1024) ไม่ใช่ความกว้างจอ */
+export const CARD = "@container card min-w-0 rounded-2xl p-5 sm:p-7";

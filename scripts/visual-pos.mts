@@ -861,7 +861,7 @@ async function ensureShiftsOpen(page: Any): Promise<void> {
     await visibleEl(page, tid("pos-shift-open-dialog"), 0, 10_000);
     for (const [d, n] of FLOAT_2000) await typeInto(page, tid(`pos-shift-open-denom-${d}`), n);
     const total = await page.$eval(tid("pos-shift-open-float"), (e: Element) => (e as HTMLInputElement).value).catch(() => "");
-    if (total !== "2000") throw new StepError(`ยอดรวมเงินตั้งต้นในกล่องไม่ใช่ 2000 (ได้ "${total}")`);
+    if (total.replace(/[^\d.]/g, "") !== "2000") throw new StepError(`ยอดรวมเงินตั้งต้นในกล่องไม่ใช่ ฿2,000 (ได้ "${total}")`);
     await clickEl(page, tid("pos-shift-open-submit"));
     await visibleEl(page, tid("pos-shift-current"), 0, 15_000).catch(() => {
       throw new StepError("เปิดกะผ่านกล่องไม่สำเร็จ (ไม่เห็น pos-shift-current)");

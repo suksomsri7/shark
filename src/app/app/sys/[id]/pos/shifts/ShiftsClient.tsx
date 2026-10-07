@@ -473,7 +473,7 @@ export function ShiftsClient({ systemId, units, unitId, canManage, meName }: Pro
     </section>
   ) : (
     <section className={`${CARD} flex flex-col gap-5`} data-testid="pos-shift-current">
-      <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+      <div className="flex flex-col gap-2 @2xl:flex-row @2xl:items-center @2xl:justify-between">
         <div className="flex min-w-0 flex-wrap items-center gap-2.5">
           <ShiftIcon name="clock" size={18} />
           <h3 className="text-[17px] font-bold">
@@ -493,9 +493,9 @@ export function ShiftsClient({ systemId, units, unitId, canManage, meName }: Pro
         </p>
       </div>
 
-      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-1 @md:flex-row @md:items-center @md:justify-between">
         <h4 className="text-[13px] font-bold">{t("xHeading")}</h4>
-        <button data-testid="pos-shift-refresh" type="button" className="min-h-11 text-left text-[12px] text-[color:var(--color-muted)] sm:text-right" disabled={busy} onClick={() => run(async () => true)}>
+        <button data-testid="pos-shift-refresh" type="button" className="min-h-11 text-left text-[12px] text-[color:var(--color-muted)] @md:text-right" disabled={busy} onClick={() => run(async () => true)}>
           {t("dataAt", { time: bkkHm(at, locale) })}
         </button>
       </div>
@@ -506,7 +506,7 @@ export function ShiftsClient({ systemId, units, unitId, canManage, meName }: Pro
         </p>
       ) : r ? (
         <>
-          <div className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3 xl:grid-cols-5" data-testid="pos-shift-kpis">
+          <div className="grid grid-cols-2 gap-x-6 gap-y-4 @md:grid-cols-3 @2xl:grid-cols-5" data-testid="pos-shift-kpis">
             <Kpi testid="pos-shift-kpi-sales" label={t("kpi.sales")} value={money(r.salesTotalSatang)} />
             <Kpi testid="pos-shift-kpi-bills" label={t("kpi.bills")} value={String(r.billCount)} />
             <Kpi testid="pos-shift-kpi-avg" label={t("kpi.avg")} value={r.billCount > 0 ? money(Math.round(r.salesTotalSatang / r.billCount)) : "—"} />
@@ -517,29 +517,29 @@ export function ShiftsClient({ systemId, units, unitId, canManage, meName }: Pro
           <div className="flex flex-col gap-2">
             <h4 className="text-[13px] font-bold">{t("byMethodTitle")}</h4>
             <div className="overflow-hidden rounded-xl border" data-testid="pos-shift-methods">
-              <div className="grid grid-cols-[minmax(0,1fr)_56px_minmax(0,96px)] items-center gap-3 border-b bg-[color:var(--color-surface-2)] px-4 py-3 text-[12px] font-semibold text-[color:var(--color-muted)] sm:grid-cols-[minmax(0,1.3fr)_56px_minmax(0,100px)_minmax(0,1.6fr)]">
+              <div className="grid grid-cols-[minmax(0,1fr)_56px_minmax(0,96px)] items-center gap-3 border-b bg-[color:var(--color-surface-2)] px-4 py-3 text-[12px] font-semibold text-[color:var(--color-muted)] @lg:grid-cols-[minmax(0,1.3fr)_56px_minmax(0,100px)_minmax(0,1.6fr)]">
                 <span>{t("col.method")}</span>
                 <span className="text-right">{t("col.bills")}</span>
                 <span className="text-right">{t("col.amount")}</span>
-                <span className="hidden sm:block">{t("col.status")}</span>
+                <span className="hidden @lg:block">{t("col.status")}</span>
               </div>
               {r.byMethod.length === 0 ? <div className="px-4 py-4 text-sm text-[color:var(--color-muted)]">{t("noSales")}</div> : null}
               {r.byMethod.map((m) => (
                 <div
                   key={m.type}
                   data-testid={`pos-shift-method-${m.type}`}
-                  className="grid min-h-14 grid-cols-[minmax(0,1fr)_56px_minmax(0,96px)] items-center gap-3 border-b px-4 py-2.5 text-sm last:border-0 sm:grid-cols-[minmax(0,1.3fr)_56px_minmax(0,100px)_minmax(0,1.6fr)]"
+                  className="grid min-h-14 grid-cols-[minmax(0,1fr)_56px_minmax(0,96px)] items-center gap-3 border-b px-4 py-2.5 text-sm last:border-0 @lg:grid-cols-[minmax(0,1.3fr)_56px_minmax(0,100px)_minmax(0,1.6fr)]"
                 >
                   <span className="flex min-w-0 flex-col">
                     <span className="flex min-w-0 items-center gap-2">
                       <RegisterIcon name={METHOD_ICON[m.type] ?? "wallet"} size={14} className="text-[color:var(--color-muted)]" />
                       <span className="truncate">{METHOD_KEYS.has(m.type) ? t(`method.${m.type}`) : m.type}</span>
                     </span>
-                    <span className="text-[11px] text-[color:var(--color-muted)] sm:hidden">{m.type === "CASH" ? t("cashStatus") : ""}</span>
+                    <span className="text-[11px] text-[color:var(--color-muted)] @lg:hidden">{m.type === "CASH" ? t("cashStatus") : ""}</span>
                   </span>
                   <span className="text-right tabular-nums">{m.count}</span>
                   <span className="text-right font-semibold tabular-nums">{money(m.amountSatang)}</span>
-                  <span className="hidden text-[13px] text-[color:var(--color-ink-soft)] sm:block">{m.type === "CASH" ? t("cashStatus") : "—"}</span>
+                  <span className="hidden text-[13px] text-[color:var(--color-ink-soft)] @lg:block">{m.type === "CASH" ? t("cashStatus") : "—"}</span>
                 </div>
               ))}
             </div>
@@ -547,7 +547,7 @@ export function ShiftsClient({ systemId, units, unitId, canManage, meName }: Pro
 
           <div className="flex flex-col gap-2">
             <h4 className="text-[13px] font-bold">{t("drawerTitle")}</h4>
-            <div className="flex flex-col gap-3 rounded-xl border bg-[color:var(--color-surface-2)] px-4 py-3 lg:flex-row lg:items-center lg:justify-between" data-testid="pos-shift-drawer">
+            <div className="flex flex-col gap-3 rounded-xl border bg-[color:var(--color-surface-2)] px-4 py-3 @2xl:flex-row @2xl:items-center @2xl:justify-between" data-testid="pos-shift-drawer">
               <div className="flex flex-wrap items-end gap-x-3 gap-y-2">
                 {(
                   [
@@ -626,14 +626,14 @@ export function ShiftsClient({ systemId, units, unitId, canManage, meName }: Pro
   const coinsSatang = bahtToSatang(countCoins, true);
   const closeCard = shift ? (
     <section className={`${CARD} flex flex-col gap-5`} data-testid="pos-shift-close">
-      <div className="flex flex-col gap-1 lg:flex-row lg:items-center lg:justify-between">
+      <div className="flex flex-col gap-1 @2xl:flex-row @2xl:items-center @2xl:justify-between">
         <div className="flex items-center gap-2.5">
           <ShiftIcon name="lock" size={18} />
           <h3 className="text-[17px] font-bold">{t("closeCard.title")}</h3>
         </div>
         <p className="text-[12px] text-[color:var(--color-muted)]">{t("closeCard.subtitle")}</p>
       </div>
-      <div className="grid grid-cols-1 gap-x-8 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-x-8 @lg:grid-cols-2">
         <div className="flex flex-col">{NOTE_DENOMS.slice(0, 3).map(denRow)}</div>
         <div className="flex flex-col">
           {NOTE_DENOMS.slice(3).map(denRow)}
@@ -655,13 +655,13 @@ export function ShiftsClient({ systemId, units, unitId, canManage, meName }: Pro
           </div>
         </div>
       </div>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 @md:grid-cols-3">
         <FigureBox testid="pos-shift-close-expected" label={t("closeCard.expected")} value={expected === null ? "—" : money(expected)} />
         <FigureBox testid="pos-shift-close-counted" label={t("closeCard.counted")} value={countCalc ? money(countCalc.total) : "—"} />
         <FigureBox testid="pos-shift-close-diff" label={t("closeCard.diff")} value={diff === null ? "—" : signedMoney(diff)} danger={diff !== null && diff !== 0} />
       </div>
       {blindHidden ? <p className="-mt-2 text-[12px] text-[color:var(--color-muted)]">{t("blindHint")}</p> : null}
-      <div className="grid grid-cols-1 items-start gap-2 sm:grid-cols-[140px_minmax(0,1fr)] sm:gap-4">
+      <div className="grid grid-cols-1 items-start gap-2 @md:grid-cols-[140px_minmax(0,1fr)] @md:gap-4">
         <label htmlFor="pos-shift-close-note" className="flex flex-col pt-1">
           <b className="text-[13px]">{t("reason")}</b>
           <span className="text-[11px] text-[color:var(--color-muted)]">{t("closeCard.reasonHint", { amount: money(settings.overShortReasonSatang) })}</span>
@@ -685,7 +685,7 @@ export function ShiftsClient({ systemId, units, unitId, canManage, meName }: Pro
           ) : null}
         </div>
       </div>
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+      <div className="flex flex-col gap-3 @2xl:flex-row @2xl:items-center @2xl:justify-between">
         <div className="flex flex-wrap gap-3">
           <button data-testid="pos-shift-close-submit" type="button" className="btn btn-primary h-12 rounded-[12px] px-6" disabled={busy || !countCalc} onClick={doClose}>
             <ShiftIcon name="lock" />
@@ -1013,7 +1013,7 @@ export function ShiftsClient({ systemId, units, unitId, canManage, meName }: Pro
                 className="h-12 min-w-0 flex-1 border-0 bg-transparent text-right text-[28px] font-bold tabular-nums outline-none"
                 inputMode="decimal"
                 readOnly={floatByDen}
-                value={floatByDen ? String(floatCalc.total / 100) : floatB}
+                value={floatByDen ? money(floatCalc.total) : floatB}
                 onChange={(e) => setFloatB(e.target.value)}
               />
             </label>
@@ -1162,22 +1162,24 @@ export function ShiftsClient({ systemId, units, unitId, canManage, meName }: Pro
         </div>
       ) : null}
       {!anyDialog && errorBox}
-      <div className="flex min-w-0 flex-col gap-5 lg:grid lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start xl:grid-cols-[minmax(0,1fr)_400px]">
-        <div className="contents lg:flex lg:min-w-0 lg:flex-col lg:gap-5">
-          <div className="order-1 min-w-0 lg:order-none">{currentCard}</div>
-          {closeCard ? <div className="order-6 min-w-0 lg:order-none">{closeCard}</div> : null}
-          {zPanel ? <div className="order-2 min-w-0 lg:order-none">{zPanel}</div> : null}
+      <div className="@container w-full min-w-0">
+      <div className="flex min-w-0 flex-col gap-5 @4xl:grid @4xl:grid-cols-[minmax(0,1fr)_340px] @4xl:items-start @6xl:grid-cols-[minmax(0,1fr)_400px]">
+        <div className="contents @4xl:flex @4xl:min-w-0 @4xl:flex-col @4xl:gap-5">
+          <div className="order-1 min-w-0 @4xl:order-none">{currentCard}</div>
+          {closeCard ? <div className="order-6 min-w-0 @4xl:order-none">{closeCard}</div> : null}
+          {zPanel ? <div className="order-2 min-w-0 @4xl:order-none">{zPanel}</div> : null}
         </div>
-        <div className="contents lg:flex lg:min-w-0 lg:flex-col lg:gap-5">
-          <div className="order-3 min-w-0 lg:order-none">{closedCard}</div>
-          {offCard ? <div className="order-4 min-w-0 lg:order-none">{offCard}</div> : null}
-          <div className="order-5 flex min-w-0 flex-col gap-3 lg:order-none">
+        <div className="contents @4xl:flex @4xl:min-w-0 @4xl:flex-col @4xl:gap-5">
+          <div className="order-3 min-w-0 @4xl:order-none">{closedCard}</div>
+          {offCard ? <div className="order-4 min-w-0 @4xl:order-none">{offCard}</div> : null}
+          <div className="order-5 flex min-w-0 flex-col gap-3 @4xl:order-none">
             {deviceCard}
             <p className="px-1 text-[12px] text-[color:var(--color-muted)]" data-testid="pos-shift-line-soon">
               {t("lineSoon")}
             </p>
           </div>
         </div>
+      </div>
       </div>
       {openDialog}
       {moveDialog}
