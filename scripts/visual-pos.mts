@@ -6,7 +6,7 @@
 //   ฐานข้อมูลของ "เซิร์ฟเวอร์" ต้องเป็นฐานเดียวกับที่สคริปต์นี้ mint session (ระหว่าง CRM RUN = QC4):
 //   bash scripts/iso.sh bash scripts/qc4.sh pnpm exec tsx scripts/visual-pos.mts all --user owner --base http://127.0.0.1:<port>
 //
-// ถ่ายอะไร: หน้าที่มีจริงวันนี้ `/app/sys/[id]/pos/{register,sales,products,close,reports}` (POS_PAGES) ×
+// ถ่ายอะไร: หน้าที่มีจริงวันนี้ `/app/sys/[id]/pos/{register,sales,products,close,reports,stock}` (POS_PAGES) ×
 //   1440×900 · 1024×768 (iPad แนวนอน) · 390×844 → `.qc-shots/pos/<wo>/<page>-<user>-<w>x<h>.png`
 //   บันทึกต่อภาพ: HTTP status เทียบ PAGE_EXPECT (owner 200 · cashier บันทึกอย่างเดียว) · URL ปลายทาง (เด้งไป /login = mint ไม่ติด) ·
 //   console error · ล้นแนวนอนที่ html/body/main (scrollWidth > clientWidth) · คำขอย่อย 5xx = ตก (4xx บันทึกอย่างเดียว)
@@ -33,6 +33,12 @@
 //     (shiftClose) ไม่โยน · ห้ามปิดธง required.register เพื่อเลี่ยง
 //   ต้องเปิดธง settings.pos.registerV2 ของร้าน QC ก่อน (scripts/seed-pos-qc.mts) — ไม่งั้นได้หน้าขายเดิม = ขั้นตอนสถานะตก
 //   ขั้นตอนพัง = ภาพนั้นตก (บันทึก stepError) แต่ยังถ่ายหน้าจอ ณ จุดที่พังไว้ดู ◂
+//
+// POS P1.14 U ▸ หน้า stock + `--states` (เฉพาะร้าน coffee): stock-default (ไม่ส่ง tab) · stock-count-open (ภาพ 05ค: เปิดรอบ ALL ที่ที่เก็บหลักผ่าน UI
+//   ครั้งแรก + บันทึก 2 รายการ — SET ด้วยช่องจำนวน 1 · สแกน ADD ด้วยรหัสสินค้า 1) · stock-count-confirm (กล่องยืนยัน) · stock-receive (คิวรับ 2 แถว ไม่กดรับ) ·
+//   stock-adjust (เลือกสินค้า + −2 ไม่กดบันทึก) — 3 ขนาด · แคชเชียร์ QC ไม่มี pos.stock.count ⇒ ทุกสถานะ = การ์ดปฏิเสธ pos-stock-refusal (หน้า 200)
+//   🔴 ไม่เขียนอะไรนอกจากรอบนับของรอบนี้: ไม่กดรับเข้า/บันทึกการปรับ · finally/signal ยกเลิกรอบที่รอบนี้เปิด (cancelStockCount · เหตุผล "visual-pos")
+//      รอบ OPEN ที่มีอยู่ก่อน (ไม่ใช่ของรอบนี้) = ใช้ถ่ายแต่ไม่ยกเลิก (บันทึกใน summary.stockCount) ◂
 //
 // 🔴 ไม่มีค่าปริยายของ base — ไม่ส่ง `--base`/`QC_BASE` = exit 2 · ต่อไม่ได้ = exit 2 · `:3215` = exit 2
 //    (พอร์ต 3215 เป็นของเซิร์ฟเวอร์ CRM RUN — LANE-RULES ข้อ 4 · ตั้ง POS_VISUAL_ALLOW_3215=1 เมื่อ CRM ปิดแล้วเท่านั้น)
@@ -88,10 +94,12 @@ const PAGE_EXPECT: Record<PosPage, Record<UserKey, number | "record">> = {
   close: { owner: 200, cashier: "record" },
   // POS P1.17 U ▸ แคชเชียร์ QC ไม่มี pos.report.view ⇒ หน้า 200 + การ์ดปฏิเสธ (pos-report-refusal) · ไม่ 404/500 ◂
   reports: { owner: 200, cashier: 200 },
+  // POS P1.14 U ▸ แคชเชียร์ QC ไม่มี pos.stock.count / สิทธิ์คลัง ⇒ หน้า 200 + การ์ดปฏิเสธ (pos-stock-refusal) ◂
+  stock: { owner: 200, cashier: 200 },
 };
 // POS P1.17 U ▸ wo ขึ้นต้น p1.17: REPORT_QUERY (env) ต่อท้ายหน้า reports เช่น "kind=daily&from=2026-10-01&to=2026-10-07" (ภาพจาก URL เดียวกันได้มุมมองเดียวกัน) ◂
 const REPORT_QUERY = /^p1\.17/i.test(WO) && /^[A-Za-z0-9=&_.-]+$/.test(process.env.REPORT_QUERY ?? "") ? `?${process.env.REPORT_QUERY}` : "";
-const pathOf = (p: PosPage) => `/app/sys/${SYS}/pos/${p}${p === "register" ? `?unit=${unitId}` : p === "reports" ? REPORT_QUERY : ""}`;
+const pathOf = (p: PosPage) => `/app/sys/${SYS}/pos/${p}${p === "register" || p === "stock" ? `?unit=${unitId}` : p === "reports" ? REPORT_QUERY : ""}`;
 const OUT = `${PQC.shotsDir}/${WO}`;
 const fileOf = (p: PosPage, w: number, h: number) => `${OUT}/${p}-${userKey}-${w}x${h}.png`;
 
@@ -99,7 +107,7 @@ const fileOf = (p: PosPage, w: number, h: number) => `${OUT}/${p}-${userKey}-${w
 const STATES_ON = /^p1\.3/i.test(WO) || argv.includes("--states");
 const LOCALE_EN = process.env.LOCALE === "en";
 type Device = (typeof POS_VIEWPORTS)[number]["name"];
-type StateKey = "default" | "cart3" | "cart4-01" | "line-editor" | "bill-discount" | "custom-item" | "paydlg-cash" | "sale-done" | "search-empty" | "stock-warn" | "offline" | "mobile-sheet" | "options-popover" | "weigh";
+type StateKey = "default" | "cart3" | "cart4-01" | "line-editor" | "bill-discount" | "custom-item" | "paydlg-cash" | "sale-done" | "search-empty" | "stock-warn" | "offline" | "mobile-sheet" | "options-popover" | "weigh" | StockStateKey;
 const STATE_PLAN: { key: StateKey; devices: readonly Device[]; note: string }[] = [
   { key: "default", devices: ["desktop", "ipad", "mobile"], note: "เปิดหน้า (ตะกร้าว่าง) — การ์ดเหลือน้อย/หมด/ปิดขายของ fixture อยู่ในกริด" },
   { key: "cart3", devices: ["desktop", "ipad", "mobile"], note: "อเมริกาโน่×2 · ลาเต้ (ลด ฿10) · ครัวซองต์ (สต็อก N → N−1)" },
@@ -121,10 +129,27 @@ const STATE_PLAN: { key: StateKey; devices: readonly Device[]; note: string }[] 
   { key: "options-popover", devices: ["desktop", "ipad", "mobile"], note: "ตัวเลือก/ตัวแปร: ป๊อปโอเวอร์ยึดการ์ด (390 = แผ่นล่าง) · เลือก 2 กลุ่ม + จำนวน 2" },
   { key: "weigh", devices: ["desktop", "mobile"], note: "สินค้าชั่ง ฿350/กก. → กล่องน้ำหนัก (owner พิมพ์ 250 กรัม · cashier = ต้องมีสิทธิ์)" },
 ];
-type Job = { page: PosPage; v: (typeof POS_VIEWPORTS)[number]; state: StateKey | null; file: string };
+// POS P1.14 U ▸ สถานะของหน้าสต็อก (ลำดับสำคัญ: default ก่อนเปิดรอบ · count-open รอบแรกเปิด+บันทึก · ที่เหลือใช้รอบเดิม) ◂
+type StockStateKey = "stock-default" | "stock-count-open" | "stock-count-confirm" | "stock-receive" | "stock-adjust";
+const STOCK_STATE_PLAN: { key: StockStateKey; tab: string | null; devices: readonly Device[]; note: string }[] = [
+  { key: "stock-default", tab: null, devices: ["desktop", "ipad", "mobile"], note: "เปิดหน้า (ไม่ส่ง tab) — มือถือ = ตรวจนับ · md+ = รับของเข้า (ภาพ 16)" },
+  { key: "stock-count-open", tab: "count", devices: ["desktop", "ipad", "mobile"], note: "ภาพ 05ค: รอบ ALL ที่ที่เก็บหลัก (เปิดผ่าน UI ครั้งแรก) + SET 1 รายการ + สแกน ADD 1 รายการ" },
+  { key: "stock-count-confirm", tab: "count", devices: ["desktop", "ipad", "mobile"], note: "กล่องยืนยันผลต่าง (ไม่กดยืนยัน)" },
+  { key: "stock-receive", tab: "receive", devices: ["desktop", "ipad", "mobile"], note: "การ์ดรับของเข้า + คิว 2 แถว (ไม่กดรับเข้าคลัง)" },
+  { key: "stock-adjust", tab: "adjust", devices: ["desktop", "ipad", "mobile"], note: "การ์ดปรับสต็อก: เลือกสินค้า + −2 (ไม่กดบันทึก)" },
+];
+type Job = { page: PosPage; v: (typeof POS_VIEWPORTS)[number]; state: StateKey | null; file: string; path?: string };
 const viewports = LOCALE_EN ? POS_VIEWPORTS.filter((v) => v.name === "desktop") : [...POS_VIEWPORTS];
+// สถานะหน้าสต็อกเฉพาะ --page stock หรือ wo p1.14* (รอบ p1.3/p1.2 --states ทุกหน้าเดิมไม่เปลี่ยน · ไม่เปิดรอบนับเพิ่ม)
+const stockStatesOn = STATES_ON && tenantKey === "coffee" && (onlyPage === "stock" || /^p1\.14/i.test(WO));
 const jobs: Job[] = pages.flatMap((p: PosPage): Job[] =>
-  STATES_ON && p === "register"
+  stockStatesOn && p === "stock"
+    ? STOCK_STATE_PLAN.flatMap((st): Job[] =>
+        viewports
+          .filter((v) => st.devices.includes(v.name))
+          .map((v): Job => ({ page: p, v, state: st.key, path: `${pathOf(p)}${st.tab ? `&tab=${st.tab}` : ""}`, file: `${OUT}/${p}-${st.key.replace(/^stock-/, "")}-${userKey}-${v.w}x${v.h}${LOCALE_EN ? "-en" : ""}.png` })),
+      )
+    : STATES_ON && p === "register"
     ? STATE_PLAN.flatMap((st): Job[] =>
         viewports
           .filter((v) => st.devices.includes(v.name))
@@ -132,19 +157,26 @@ const jobs: Job[] = pages.flatMap((p: PosPage): Job[] =>
       )
     : viewports.map((v): Job => ({ page: p, v, state: null, file: LOCALE_EN ? fileOf(p, v.w, v.h).replace(/\.png$/, "-en.png") : fileOf(p, v.w, v.h) })),
 );
-const needFixtures = STATES_ON && tenantKey === "coffee" && jobs.some((j) => j.state);
+const needFixtures = STATES_ON && tenantKey === "coffee" && jobs.some((j) => j.state && j.page === "register");
 if (STATES_ON && tenantKey !== "coffee" && pages.includes("register")) die("สถานะหน้าขาย P1.3 ถ่ายได้เฉพาะ --tenant coffee (มี PromptPay + สินค้าตายตัวที่ขั้นตอนใช้)");
 // ◂
 
 // ═══════════════════ 2. --dry: แผนการถ่าย (ไม่แตะอะไรเลย) ═══════════════════
 const BASE_RAW = flag("--base") ?? process.env.QC_BASE ?? "";
 if (DRY) {
-  const plan = jobs.map((j) => ({ page: j.page, state: j.state, viewport: `${j.v.w}x${j.v.h}`, device: j.v.name, path: pathOf(j.page), file: j.file, expect: PAGE_EXPECT[j.page][userKey] }));
+  const plan = jobs.map((j) => ({ page: j.page, state: j.state, viewport: `${j.v.w}x${j.v.h}`, device: j.v.name, path: j.path ?? pathOf(j.page), file: j.file, expect: PAGE_EXPECT[j.page][userKey] }));
   console.log(`แผนการถ่าย POS · wo ${WO} · ผู้ใช้ ${userKey} (${U.email}) · ร้าน ${T.slug} · สาขา ${unitKey} · base ${BASE_RAW || "(ยังไม่ระบุ — รันจริงต้องมี --base)"}`);
-  for (const s of plan) console.log(`  ${s.page.padEnd(9)} ${(s.state ?? "-").padEnd(13)} ${s.viewport.padEnd(9)} ${s.device.padEnd(8)} คาด ${String(s.expect).padEnd(6)} ${s.path} → ${s.file}`);
+  for (const s of plan) console.log(`  ${s.page.padEnd(9)} ${(s.state ?? "-").padEnd(19)} ${s.viewport.padEnd(9)} ${s.device.padEnd(8)} คาด ${String(s.expect).padEnd(6)} ${s.path} → ${s.file}`);
   if (STATES_ON) {
-    console.log(`สถานะหน้าขาย P1.3${LOCALE_EN ? " (LOCALE=en · 1440 เท่านั้น)" : ""}:`);
-    for (const st of STATE_PLAN) console.log(`  · ${st.key.padEnd(13)} ${st.devices.join("/").padEnd(20)} ${st.note}`);
+    if (pages.includes("register")) {
+      console.log(`สถานะหน้าขาย P1.3${LOCALE_EN ? " (LOCALE=en · 1440 เท่านั้น)" : ""}:`);
+      for (const st of STATE_PLAN) console.log(`  · ${st.key.padEnd(13)} ${st.devices.join("/").padEnd(20)} ${st.note}`);
+    }
+    if (stockStatesOn && pages.includes("stock")) {
+      console.log(`สถานะหน้าสต็อก P1.14 U${userKey === "cashier" ? " (แคชเชียร์ = การ์ดปฏิเสธทุกสถานะ)" : ""}:`);
+      for (const st of STOCK_STATE_PLAN) console.log(`  · ${st.key.padEnd(19)} ${st.devices.join("/").padEnd(20)} ${st.note}`);
+      if (userKey === "owner") console.log("  เขียน: รอบตรวจนับ 1 รอบ (OPEN → ยกเลิกใน finally · เหตุผล visual-pos) + 2 รายการนับในรอบนั้น · ไม่รับเข้า/ไม่ปรับสต็อก");
+    }
     if (needFixtures) console.log(`  fixture: สินค้าชั่วคราว 11 ตัว (เหลือ 2 · หมดสต็อก · ปิดขาย + 4 ตัวของภาพ 01 + ลาเต้มีตัวแปร 1+2 + สินค้าชั่ง 1) + กลุ่มตัวเลือก 4 กลุ่ม ที่สาขา ${unitKey} — ลบใน finally`);
   }
   console.log(`รวม ${plan.length} ภาพ (${pages.length} หน้า × ${viewports.length} ขนาด${STATES_ON ? " · หน้าขายแยกตามสถานะ" : ""} × 1 ผู้ใช้)`);
@@ -300,6 +332,13 @@ for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
         await BROWSER?.close();
       } catch {
         /* ปิดไม่ได้ก็ลบโปรไฟล์ต่อ */
+      }
+      // POS P1.14 U: ยกเลิกรอบนับของรอบนี้ (เหมือน finally)
+      try {
+        await cancelRunCount();
+        if (STOCK.cancel) console.error(`${STOCK.cancel.ok ? "🧹" : "⚠️"} ${STOCK.cancel.detail}`);
+      } catch (e) {
+        console.error(`❌ ยกเลิกรอบนับไม่สำเร็จ: ${e instanceof Error ? e.message : e}`);
       }
       // R3 F7: ปิดกะของรอบนี้ก่อนลบ session (เหมือน finally) — ผลอยู่ใน SHIFT.close · ไม่โยน
       try {
@@ -517,6 +556,7 @@ async function closeRunShift(): Promise<void> {
 }
 
 async function runState(page: Any, state: StateKey, device: Device): Promise<void> {
+  if (state.startsWith("stock-")) return runStockState(page, state as StockStateKey); // POS P1.14 U
   await visibleEl(page, tid("pos-reg-root"), 0, 15_000).catch(() => {
     throw new StepError("หน้าขายใหม่ไม่ขึ้น (pos-reg-root) — ธง settings.pos.registerV2 ของร้าน QC เปิดหรือยัง? (seed-pos-qc)");
   });
@@ -626,6 +666,135 @@ async function runState(page: Any, state: StateKey, device: Device): Promise<voi
 }
 // ◂
 
+// ═══════════════════ POS P1.14 U ▸ ขั้นตอนของหน้าสต็อก ═══════════════════
+const RUN_STARTED = new Date();
+const STOCK = { countId: "", ours: false, recorded: false, cancel: null as null | { ok: boolean; detail: string } };
+/** สินค้าในคลังของร้าน QC 2 ตัว (PRODUCT · ไม่เก็บถาวร · ไม่ใช่ fixture) สำหรับคิวรับ/ปรับ */
+async function stockItems(): Promise<{ id: string; sku: string; name: string }[]> {
+  const inv = (T.systems as Record<string, { id: string }>).INVENTORY!.id;
+  const rows = await prisma.invItem.findMany({
+    where: { tenantId: T.tenantId, systemId: inv, kind: "PRODUCT", archivedAt: null, NOT: { id: { startsWith: FIX.prefix } } },
+    select: { id: true, sku: true, name: true },
+    orderBy: { name: "asc" },
+    take: 10,
+  });
+  const ok = rows.filter((r) => r.sku && r.sku.trim().length >= 2);
+  if (ok.length < 2) throw new StepError("คลังของร้าน QC มีสินค้าที่มี SKU ไม่ถึง 2 ตัว — seed-pos-qc ก่อน");
+  return ok.slice(0, 2);
+}
+/** ตัวเลือกสินค้า: พิมพ์ SKU → รอผล → แตะผลของสินค้านั้น */
+async function pickStockItem(page: Any, kind: string, item: { id: string; sku: string }) {
+  await typeInto(page, tid(`pos-stock-${kind}-search`), item.sku);
+  await clickEl(page, tid(`pos-stock-${kind}-search-hit-${item.id}`));
+}
+/** รอบนี้: เปิดรอบผ่าน UI ถ้ายังไม่มี (การ์ดเริ่ม) แล้วจำ id · เป็นของรอบนี้ = เปิดโดยเจ้าของ QC หลังเริ่มรัน */
+async function ensureCountOpen(page: Any): Promise<void> {
+  const start = await visibleEl(page, tid("pos-stock-start"), 0, 4_000).then(() => true).catch(() => false);
+  if (start) await clickEl(page, tid("pos-stock-start-submit"));
+  const el = await visibleEl(page, tid("pos-stock-count"), 0, 20_000).catch(() => {
+    throw new StepError("ไม่ขึ้นจอนับ (pos-stock-count) หลังเริ่มตรวจนับ");
+  });
+  const id = String(await el.evaluate((e: Element) => e.getAttribute("data-count-id") ?? ""));
+  if (!id) throw new StepError("จอนับไม่มี data-count-id");
+  if (STOCK.countId !== id) {
+    STOCK.countId = id;
+    const row = await prisma.posStockCount.findFirst({ where: { id, tenantId: T.tenantId }, select: { openedByUserId: true, createdAt: true } });
+    STOCK.ours = !!row && row.openedByUserId === T.users.owner.userId && row.createdAt >= RUN_STARTED;
+  }
+}
+/** บันทึก 2 รายการผ่าน UI (ครั้งเดียวต่อรอบ): แถวแรกที่ยังไม่นับ = SET 3 · แถวที่สองที่ยังไม่นับ = สแกนรหัส (ADD 1) */
+async function recordTwoLines(page: Any): Promise<void> {
+  if (STOCK.recorded) return;
+  const lines = await prisma.posStockCountLine.findMany({ where: { countId: STOCK.countId, tenantId: T.tenantId, countedQty: null }, select: { itemId: true }, take: 50 });
+  const items = await prisma.invItem.findMany({ where: { tenantId: T.tenantId, id: { in: lines.map((l) => l.itemId) } }, select: { id: true, sku: true, barcode: true, name: true }, orderBy: { name: "asc" } });
+  const codeOf = (i: { barcode: string | null; sku: string }) => i.barcode?.trim() || i.sku.trim();
+  const withCode = items.filter((i) => codeOf(i).length > 0);
+  if (withCode.length < 2) throw new StepError("รอบนับมีรายการที่ยังไม่นับ (มีรหัส) ไม่ถึง 2 รายการ");
+  const [a, b] = [withCode[0]!, withCode[1]!];
+  await clickEl(page, tid(`pos-stock-qty-${a.id}`)); // ปุ่ม "นับ" → ช่องกรอก (โฟกัสเอง)
+  await typeInto(page, tid(`pos-stock-qty-${a.id}`), "3");
+  await page.keyboard.press("Enter");
+  const until = Date.now() + 15_000;
+  for (;;) {
+    const l = await prisma.posStockCountLine.findFirst({ where: { countId: STOCK.countId, itemId: a.id }, select: { countedQty: true } });
+    if (l?.countedQty === 3) break;
+    if (Date.now() > until) throw new StepError(`บันทึก SET ของ ${a.name} ไม่ถึงฐานใน 15 วิ`);
+    await sleep(300);
+  }
+  await typeInto(page, tid("pos-stock-scan"), codeOf(b));
+  await page.keyboard.press("Enter");
+  await visibleEl(page, tid("pos-stock-scan-result"), 0, 15_000);
+  STOCK.recorded = true;
+  await sleep(800); // get สรุปหลังบันทึก
+}
+async function runStockState(page: Any, state: StockStateKey): Promise<void> {
+  if (userKey !== "owner") {
+    await visibleEl(page, tid("pos-stock-refusal"), 0, 15_000).catch(() => {
+      throw new StepError("แคชเชียร์ไม่เห็นการ์ดปฏิเสธ pos-stock-refusal");
+    });
+    return;
+  }
+  await visibleEl(page, tid("pos-stock-root"), 0, 15_000).catch(() => {
+    throw new StepError("หน้าสต็อกไม่ขึ้น (pos-stock-root) — ร้าน QC ผูกคลังหรือยัง?");
+  });
+  switch (state) {
+    case "stock-default":
+      return;
+    case "stock-count-open":
+      await ensureCountOpen(page);
+      await recordTwoLines(page);
+      return;
+    case "stock-count-confirm":
+      await ensureCountOpen(page);
+      await clickEl(page, tid("pos-stock-count-confirm"));
+      await visibleEl(page, tid("pos-stock-confirm-dialog"), 0, 10_000);
+      return;
+    case "stock-receive": {
+      const [a, b] = await stockItems();
+      await pickStockItem(page, "receive", a!);
+      await pickStockItem(page, "receive", b!);
+      await visibleEl(page, tid(`pos-stock-receive-row-${b!.id}`), 0, 5_000);
+      return;
+    }
+    case "stock-adjust": {
+      const [a] = await stockItems();
+      await pickStockItem(page, "adjust", a!);
+      await visibleEl(page, tid("pos-stock-adjust-item"), 0, 5_000);
+      await clickEl(page, tid("pos-stock-adjust-minus"));
+      await clickEl(page, tid("pos-stock-adjust-minus"));
+      return;
+    }
+  }
+}
+/** finally/signal: ยกเลิกรอบที่รอบนี้เปิด (cancelStockCount ของบริการ · เจ้าของร้าน QC) — ผลอยู่ใน summary ไม่โยน · เรียกซ้ำได้ */
+async function cancelRunCount(): Promise<void> {
+  if (!STOCK.countId || STOCK.cancel) return;
+  if (!STOCK.ours) {
+    STOCK.cancel = { ok: true, detail: `รอบ ${STOCK.countId} มีอยู่ก่อนรอบนี้ — ไม่ยกเลิก` };
+    return;
+  }
+  try {
+    const { cancelStockCount } = await import("@/lib/modules/pos/stock-count");
+    const own = T.users.owner;
+    const mb = await prisma.membership.findUnique({ where: { id: own.membershipId }, select: { role: true, unitAccess: true, permissions: true } });
+    if (!mb) {
+      STOCK.cancel = { ok: false, detail: "ไม่พบ membership เจ้าของร้าน" };
+      return;
+    }
+    const actor = {
+      userId: own.userId,
+      role: mb.role as "OWNER" | "MANAGER" | "STAFF",
+      unitAccess: Array.isArray(mb.unitAccess) ? (mb.unitAccess as unknown[]).filter((u): u is string => typeof u === "string") : [],
+      permissions: mb.permissions && typeof mb.permissions === "object" ? (mb.permissions as Record<string, unknown>) : {},
+    };
+    const r = await cancelStockCount({ tenantId: T.tenantId, systemId: SYS, unitId }, actor, { countId: STOCK.countId, reason: "visual-pos", idempotencyKey: `${FIX.prefix}${process.pid}-cancel` });
+    STOCK.cancel = r.ok ? { ok: true, detail: `ยกเลิกรอบนับ ${STOCK.countId}` } : r.code === "COUNT_NOT_OPEN" ? { ok: true, detail: `รอบ ${STOCK.countId} ปิดไปแล้ว` } : { ok: false, detail: `ยกเลิกรอบนับไม่สำเร็จ: ${r.code}` };
+  } catch (e) {
+    STOCK.cancel = { ok: false, detail: `ยกเลิกรอบนับล้ม: ${e instanceof Error ? e.message.slice(0, 160) : String(e)}` };
+  }
+}
+// ◂
+
 type Shot = { page: string; state: string | null; stepError: string | null; viewport: string; file: string; status: number; expect: number | "record"; http5xx: number; finalUrl: string; redirectedToLogin: boolean; overflow: boolean; overflowEl: string | null; consoleErrors: string[]; httpErrors: string[]; ok: boolean };
 const shots: Shot[] = [];
 let failures = 0;
@@ -674,7 +843,7 @@ try {
     args: ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu", `--user-data-dir=${PROFILE_DIRS[0]}`],
   }));
   try {
-    if (STATES_ON && jobs.some((j) => j.state)) await openShiftAsOwner(browser, ownerCookies, { width: 1440, height: 900 });
+    if (STATES_ON && jobs.some((j) => j.state && j.page === "register")) await openShiftAsOwner(browser, ownerCookies, { width: 1440, height: 900 });
     for (const job of jobs) {
       {
         const p = job.page;
@@ -699,7 +868,7 @@ try {
             /* ignore */
           }
         });
-        const resp = await page.goto(`${BASE}${pathOf(p)}`, { waitUntil: "networkidle2", timeout: 60_000 }).catch(() => null);
+        const resp = await page.goto(`${BASE}${job.path ?? pathOf(p)}`, { waitUntil: "networkidle2", timeout: 60_000 }).catch(() => null);
         await new Promise((r) => setTimeout(r, 800));
         // POS P1.3 ▸ ขั้นตอนของสถานะ (พัง = บันทึก stepError แล้วถ่าย ณ จุดนั้น) ◂
         let stepError: string | null = null;
@@ -760,6 +929,9 @@ try {
 } finally {
   await closeRunShift();
   if (SHIFT.close && !SHIFT.close.ok) console.error(`⚠️ ${SHIFT.close.detail}`);
+  await cancelRunCount(); // POS P1.14 U
+  if (STOCK.cancel) console.error(`${STOCK.cancel.ok ? "🧹" : "⚠️"} ${STOCK.cancel.detail}`);
+  if (STOCK.cancel && !STOCK.cancel.ok) failures++;
   const { removed, stale } = await cleanSessions();
   let fixOut = "";
   try {
@@ -771,9 +943,9 @@ try {
   }
   await prisma.$disconnect();
   cleanProfiles();
-  writeFileSync(`${OUT}/summary-${userKey}.json`, JSON.stringify({ wo: WO, user: userKey, tenant: tenantKey, base: BASE, at: new Date().toISOString(), deviceId: DEVICE_ID, shiftOpenError: SHIFT.openError, shiftClose: SHIFT.close, shots }, null, 2));
+  writeFileSync(`${OUT}/summary-${userKey}.json`, JSON.stringify({ wo: WO, user: userKey, tenant: tenantKey, base: BASE, at: new Date().toISOString(), deviceId: DEVICE_ID, shiftOpenError: SHIFT.openError, shiftClose: SHIFT.close, stockCount: STOCK, shots }, null, 2));
   console.log(`\n🧹 ลบ session ของรอบนี้ ${removed}${stale ? ` (+ซากหมดอายุ ${stale})` : ""}${fixOut} · ลบโปรไฟล์ chromium ${PROFILE_DIRS[0]} · ภาพ ${shots.length} ใบใน ${OUT}`);
 }
 if (fatal) console.error(`❌ ${fatal}`);
-console.log(`JSON_SUMMARY ${JSON.stringify({ wo: WO, user: userKey, tenant: tenantKey, base: BASE, shiftOpenError: SHIFT.openError, shiftClose: SHIFT.close, shots: shots.map(({ consoleErrors, httpErrors, ...s }) => ({ ...s, consoleErrors: consoleErrors.length, httpErrors: httpErrors.length })), failures, fatal: fatal || null })}`);
+console.log(`JSON_SUMMARY ${JSON.stringify({ wo: WO, user: userKey, tenant: tenantKey, base: BASE, shiftOpenError: SHIFT.openError, shiftClose: SHIFT.close, stockCount: STOCK, shots: shots.map(({ consoleErrors, httpErrors, ...s }) => ({ ...s, consoleErrors: consoleErrors.length, httpErrors: httpErrors.length })), failures, fatal: fatal || null })}`);
 process.exit(fatal ? 2 : failures > 0 ? 1 : 0);
