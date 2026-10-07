@@ -536,3 +536,9 @@
 - ผู้คุมงานหยุด spawn/ตรวจชั่วคราว · เลน 1 (P1.2U) + เลน 2 (P1.17U R4) ยังรันอยู่ ถ้าโดน 429 ให้รอ reset แล้วทำต่อ (WIP อยู่ใน wip/pos-p1.2u, wip/pos-p1.17u-r4)
 - unit `pos-vis-p16u` (build :3225 + ภาพ P1.6U) วิ่งต่อบนเครื่อง ไม่กินโควตา · ผลที่ /root/pos-runs/p16u-vis-20261007T141113Z/SUMMARY.txt
 - หลัง reset: ดูภาพ P1.6U เทียบ 02/02b/05ข → รับ/ส่งแก้ → รอรายงาน 2 เลน → เหลือ 1 เลน
+
+## 2026-10-07T15:33:56Z · โควตา reset แล้ว · ปลุก 2 เลนต่อ · gate lock ร่วมถูก CRM ถือค้าง
+- 2 เลนโดน 429 ตอน 15:1x UTC (เลน 1 กำลัง typecheck P1.2U · เลน 2 รอ typecheck+suites R4) → ปลุกต่อ 15:31 ให้รัน gate ใหม่ทั้งชุด
+- build ภาพ P1.6U รอบแรก (unit pos-vis-p16u) ล้ม: `/tmp/shark-gate.lock` ถูก unit ของ CRM ถือ (`/tmp/c310-logs/run-qcall-c310b.sh` → qc-all → qc-crm-buttons นิ่งตั้งแต่ 12:38 UTC, CPU 0, chrome ค้าง 14 โปรเซส) → flock รอครบ 1 ชม. แล้วหมดเวลา · ไม่ฆ่า (ของ session อื่น) แจ้งเจ้าของแล้ว
+- ทางเลี่ยงชั่วคราว: งานหนักของ POS คิวผ่าน `/tmp/pos-gate.lock` แทน (tsc 2 เลน + build ผู้คุมงาน) · build ใช้ `CI=1` ให้ with-gate-lock วิ่งตรง (เงื่อนไขในสคริปต์เอง) · ⚠️ ถ้า CRM กลับมารัน build/tsc พร้อมกันจะไม่ได้ต่อคิวกัน — เลิกใช้ทางเลี่ยงทันทีที่ unit CRM จบ
+- unit ใหม่ `pos-vis3-p16u` (สคริปต์ vis3-p16u.sh, p11 @ 4aace797) เริ่ม 15:33 UTC → ผล /root/pos-runs/p16u-vis-20261007T153335Z/
