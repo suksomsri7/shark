@@ -1,0 +1,5 @@
+# controller re-run H0.1 oracle R2 (60 checks) @987d3abd 2026-10-07T16:54:51Z
+oracle forced#1 exit=0 60 60 [] None
+oracle forced#2 exit=0 60 60 [] None
+oracle unforced exit=0 60 60 [] None
+residue tenants=0 (checked separately)
