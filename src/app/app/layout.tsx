@@ -123,6 +123,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           { href: `${s}/pos/products`, label: "สินค้า/บริการ" },
           { href: `${s}/pos/sales`, label: "ประวัติบิล" },
           { href: `${s}/pos/close`, label: "ปิดวัน" },
+          { href: `${s}/pos/reports`, label: "รายงาน" }, // POS P1.17 U ▸ ต้องตรงกับ posTabs ◂
         ];
       case "ACCOUNT":
         // เจ้าของสั่ง 6 ก.ย. 2569: ไม่เอาเมนูย่อยของบัญชีในแถบเมนู — หมวดทั้ง 9 อยู่ในหน้าหลักของระบบบัญชีแล้ว

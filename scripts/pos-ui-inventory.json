@@ -2351,6 +2351,141 @@
       "oracle": "qc-pos-p1.9",
       "system": "POS",
       "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/reports",
+      "testid": "pos-report-module-tabs",
+      "kind": "tab",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]/pos/*",
+        "anyOf": [
+          "/app/sys/[id]"
+        ],
+        "note": "แท็บโมดูล (posTabs) · รายงาน = แท็บปัจจุบัน"
+      },
+      "wo": "P1.17U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/reports",
+      "testid": "pos-report-kind-*",
+      "kind": "tab",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-report-table",
+        "note": "daily · products · staff · payments · margin · shifts · tax → ?kind= (history.replaceState) + โหลดรายงานใหม่ · แคชเชียร์ไม่มี pos.report.view = การ์ดปฏิเสธ pos-report-refusal"
+      },
+      "wo": "P1.17U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/reports",
+      "testid": "pos-report-from",
+      "kind": "filter",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-report-table",
+        "note": "?from=YYYY-MM-DD · ช่วงเกิน 92 วัน/กลับหัว = ข้อความผิดพลาดที่จอ (pos-report-error) ไม่เรียกเซิร์ฟเวอร์"
+      },
+      "wo": "P1.17U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/reports",
+      "testid": "pos-report-to",
+      "kind": "filter",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-report-table",
+        "note": "?to=YYYY-MM-DD"
+      },
+      "wo": "P1.17U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/reports",
+      "testid": "pos-report-unit",
+      "kind": "select",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-report-table",
+        "note": "ทุกสาขา (ไม่ส่ง unitId) หรือสาขาที่มี pos.report.view → ?unit="
+      },
+      "wo": "P1.17U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/reports",
+      "testid": "pos-report-csv",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "download",
+        "target": "pos-<kind>-<from>_<to>.csv",
+        "note": "posReportCsvAction → Blob (BOM มาจากเซิร์ฟเวอร์ ไม่เติมซ้ำ) · ถูกปฏิเสธ = pos-report-csv-error"
+      },
+      "wo": "P1.17U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/reports",
+      "testid": "pos-report-retry",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-report-table",
+        "note": "แสดงเฉพาะเมื่อเซิร์ฟเวอร์ปฏิเสธ/ขัดข้อง (pos-report-error) · โหลดมุมมองเดิมซ้ำ"
+      },
+      "wo": "P1.17U",
+      "oracle": "",
+      "system": "POS"
     }
   ],
   "$roles": "roles/hiddenFor ที่อนุญาต: owner · manager · cashier · kind/expect.type ชุดเดียวกับทะเบียน CRM (F15.3b ตรวจ)"

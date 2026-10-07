@@ -5,10 +5,11 @@ import { usePathname } from "next/navigation";
 
 // แท็บฟังก์ชันย่อยในหน้าโมดูล (ต้นแบบแตกหน้า) — สลับไปมาโดยไม่ต้องเปิดเมนูแฮมเบอร์เกอร์
 // active = path ตรงตัว (หน้า hub ใช้ exact เพื่อไม่ค้างสว่างตอนอยู่หน้าย่อย)
-export function ModuleTabs({ items }: { items: { href: string; label: string }[] }) {
+// POS P1.17 U ▸ data-testid (ไม่บังคับ) ส่งต่อไปที่กรอบแท็บ — ทะเบียนปุ่ม POS (F15.3) ต้องการ testid ของแท็บในหน้าใหม่ ◂
+export function ModuleTabs({ items, "data-testid": testId }: { items: { href: string; label: string }[]; "data-testid"?: string }) {
   const pathname = usePathname();
   return (
-    <div className="-mx-1 flex gap-1 overflow-x-auto border-b pb-px">
+    <div className="-mx-1 flex gap-1 overflow-x-auto border-b pb-px" data-testid={testId}>
       {items.map((it) => {
         const active = pathname === it.href;
         return (
