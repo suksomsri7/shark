@@ -3043,6 +3043,1179 @@
       "wo": "P1.17U-R4",
       "oracle": "",
       "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/stock",
+      "testid": "pos-stock-module-tabs",
+      "kind": "tab",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]/pos/*",
+        "note": "แท็บโมดูล (posTabs) · สต็อก = แท็บปัจจุบัน · แคชเชียร์ QC (ไม่มี pos.stock.count) เห็นแท็บ + การ์ดปฏิเสธ pos-stock-refusal"
+      },
+      "wo": "P1.14U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/stock",
+      "testid": "pos-stock-unit",
+      "kind": "select",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]/pos/stock",
+        "note": "?unit=<สาขาที่เข้าได้> · แสดงเมื่อเข้าได้มากกว่า 1 สาขา (โหลดหน้าใหม่ — ตัวอ่านตั้งต้นฝั่งเซิร์ฟเวอร์)"
+      },
+      "wo": "P1.14U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/stock",
+      "testid": "pos-stock-location",
+      "kind": "select",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-stock-root",
+        "note": "\"คลัง: <ที่เก็บ>\" (ภาพ 16) · ค่าเริ่ม = ที่เก็บหลัก · ใช้เป็นค่าเริ่มของเริ่มตรวจนับ / โอนจาก / ปรับที่ · รับของเข้าลงที่เก็บหลักเสมอ (เซิร์ฟเวอร์)"
+      },
+      "wo": "P1.14U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/stock",
+      "testid": "pos-stock-open-inventory",
+      "kind": "link",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]",
+        "note": "เปิดในระบบคลังสินค้า → /app/sys/<inventorySystemId>"
+      },
+      "wo": "P1.14U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/stock",
+      "testid": "pos-stock-tab-*",
+      "kind": "tab",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-stock-root",
+        "note": "count · receive · transfer · adjust · history → ?tab= (history.replaceState) · ไม่ส่ง tab = มือถือเปิดตรวจนับ / md+ เปิดรับของเข้า (ภาพ 16) · badge pos-stock-tab-count-badge เมื่อมีรอบ OPEN"
+      },
+      "wo": "P1.14U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/stock",
+      "testid": "pos-stock-start-scope-*",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-stock-start",
+        "note": "radio ทั้งหมด (all) / เลือกหมวด (category) → ชิปหมวด pos-stock-start-cat-*"
+      },
+      "wo": "P1.14U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/stock",
+      "testid": "pos-stock-start-cat-*",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-stock-start",
+        "note": "เลือกหมวด (1–50 · หมวดสินค้าของคลังสาขา)"
+      },
+      "wo": "P1.14U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/stock",
+      "testid": "pos-stock-start-location",
+      "kind": "select",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-stock-start",
+        "note": "ที่เก็บของรอบนับ (ค่าเริ่มจาก pos-stock-location)"
+      },
+      "wo": "P1.14U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/stock",
+      "testid": "pos-stock-start-blind",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-stock-start",
+        "note": "นับแบบไม่เห็นยอดระบบ (blind) — คนไม่มี inventory.movement.adjust ไม่เห็นยอดระบบ/ผลต่าง"
+      },
+      "wo": "P1.14U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/stock",
+      "testid": "pos-stock-start-note",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-stock-start",
+        "note": "หมายเหตุ ≤ 200"
+      },
+      "wo": "P1.14U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/stock",
+      "testid": "pos-stock-start-submit",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-stock-count",
+        "note": "posStockCountOpenAction → จอนับ pos-stock-count · COUNT_ALREADY_OPEN = เข้ารอบที่เปิดอยู่ (countId ของคำปฏิเสธ) · คำปฏิเสธอื่น = pos-stock-start-error"
+      },
+      "wo": "P1.14U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/stock",
+      "testid": "pos-stock-count-back",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-stock-history",
+        "note": "ลูกศรกลับ (ภาพ 05ค) → แท็บประวัติ (รอบยัง OPEN · นับต่อที่ pos-stock-history-resume)"
+      },
+      "wo": "P1.14U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/stock",
+      "testid": "pos-stock-count-menu",
+      "kind": "menu",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-stock-count-cancel",
+        "note": "⋯ → ยกเลิกการนับ (เฉพาะผู้เปิดรอบ หรือมีสิทธิ์ยืนยัน)"
+      },
+      "wo": "P1.14U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/stock",
+      "testid": "pos-stock-count-cancel",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "pos-stock-cancel-dialog",
+        "note": "เปิดกล่องยกเลิกการนับ"
+      },
+      "wo": "P1.14U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/stock",
+      "testid": "pos-stock-scan",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-stock-scan-result",
+        "note": "สแกนหรือค้นหา: พิมพ์ = กรองแถวในจอ · Enter = posStockCountRecordAction {code, mode:ADD} (qty 1 · ป้ายเครื่องชั่ง = ไม่ส่ง qty) → pos-stock-scan-result"
+      },
+      "wo": "P1.14U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/stock",
+      "testid": "pos-stock-scan-camera",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "pos-reg-scan-sheet",
+        "note": "สแกนด้วยกล้อง (ScanCameraDialog ของหน้าขาย) → ผลเข้าทางเดียวกับ Enter"
+      },
+      "wo": "P1.14U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/stock",
+      "testid": "pos-stock-chip-*",
+      "kind": "filter",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-stock-lines",
+        "note": "ทั้งหมด · ยังไม่นับ · มีผลต่าง (ซ่อนเมื่อ blind) — กรองในจอ (ไม่เรียกเซิร์ฟเวอร์)"
+      },
+      "wo": "P1.14U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/stock",
+      "testid": "pos-stock-qty-*",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-stock-lines",
+        "note": "ช่องจำนวนต่อแถว (44 px) · ยังไม่นับ = ปุ่ม \"นับ\" → ช่องกรอก · blur/Enter = posStockCountRecordAction {itemId, qty, mode:SET} → แถวใหม่ + get สรุป · คำปฏิเสธ = pos-stock-line-error-*"
+      },
+      "wo": "P1.14U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/stock",
+      "testid": "pos-stock-count-retry",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-stock-count",
+        "note": "โหลดรอบไม่ได้ → ลองอีกครั้ง (posStockCountGetAction)"
+      },
+      "wo": "P1.14U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/stock",
+      "testid": "pos-stock-count-pause",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-stock-history",
+        "note": "พักไว้ก่อน → แท็บประวัติ (รอบยัง OPEN)"
+      },
+      "wo": "P1.14U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/stock",
+      "testid": "pos-stock-count-confirm",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "pos-stock-confirm-dialog",
+        "note": "ยืนยันผลต่าง N รายการ → กล่องยืนยัน · ไม่มี inventory.movement.adjust = ปุ่ม \"ส่งให้ผู้จัดการยืนยัน\" ปิดไว้ + ข้อความสิทธิ์"
+      },
+      "wo": "P1.14U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/stock",
+      "testid": "pos-stock-confirm-uncounted-*",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-stock-confirm-dialog",
+        "note": "รายการที่ไม่นับ: skip = ข้าม (คงยอดเดิม · ค่าเริ่ม) / zero = นับเป็น 0"
+      },
+      "wo": "P1.14U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/stock",
+      "testid": "pos-stock-confirm-close",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-stock-count",
+        "note": "ปิดกล่องยืนยัน"
+      },
+      "wo": "P1.14U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/stock",
+      "testid": "pos-stock-confirm-submit",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-stock-done",
+        "note": "posStockCountConfirmAction {countId, uncounted} → จอผล pos-stock-done (ปรับ n รายการ · มูลค่าผลต่าง) · คำปฏิเสธ = pos-stock-confirm-error"
+      },
+      "wo": "P1.14U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/stock",
+      "testid": "pos-stock-cancel-reason",
+      "kind": "textarea",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-stock-cancel-dialog",
+        "note": "เหตุผลยกเลิก 1–200"
+      },
+      "wo": "P1.14U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/stock",
+      "testid": "pos-stock-cancel-close",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-stock-count",
+        "note": "ปิดกล่องยกเลิก"
+      },
+      "wo": "P1.14U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/stock",
+      "testid": "pos-stock-cancel-submit",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-stock-start",
+        "note": "posStockCountCancelAction {countId, reason} → การ์ดเริ่มตรวจนับ · คำปฏิเสธ = pos-stock-cancel-error"
+      },
+      "wo": "P1.14U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/stock",
+      "testid": "pos-stock-done-back",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-stock-history",
+        "note": "จอผล → แท็บประวัติ"
+      },
+      "wo": "P1.14U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/stock",
+      "testid": "pos-stock-done-new",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-stock-start",
+        "note": "จอผล → การ์ดเริ่มตรวจนับ"
+      },
+      "wo": "P1.14U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/stock",
+      "testid": "pos-stock-*-search",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-stock-*-search-hit-*",
+        "note": "ตัวเลือกสินค้า (receive · transfer · transfer-c · adjust · adjust-c): พิมพ์ ≥ 2 ตัว = posStockItemSearchAction (หน่วง 300 ms) · Enter = รหัสตรงตัวตัวแรก · ไม่พบ = pos-stock-*-search-error"
+      },
+      "wo": "P1.14U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/stock",
+      "testid": "pos-stock-*-search-camera",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "pos-reg-scan-sheet",
+        "note": "สแกนด้วยกล้อง → ค้นด้วยรหัส → เลือกผลตรงตัว"
+      },
+      "wo": "P1.14U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/stock",
+      "testid": "pos-stock-*-search-hit-*",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "เลือกสินค้า → เพิ่มแถว (รับ/โอน: ซ้ำ = +1) / เลือกสินค้าที่จะปรับ"
+      },
+      "wo": "P1.14U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/stock",
+      "testid": "pos-stock-receive-qty-*",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-stock-receive-rows",
+        "note": "จำนวนรับจริง (≥ 1)"
+      },
+      "wo": "P1.14U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/stock",
+      "testid": "pos-stock-receive-cost-*",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-stock-receive-rows",
+        "note": "ราคา/หน่วย ฿ (ไม่บังคับ — ว่าง = ต้นทุนเฉลี่ยเดิม)"
+      },
+      "wo": "P1.14U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/stock",
+      "testid": "pos-stock-receive-lot-*",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-stock-receive-rows",
+        "note": "เลขล็อต (ไม่บังคับ ≤ 64)"
+      },
+      "wo": "P1.14U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/stock",
+      "testid": "pos-stock-receive-expiry-*",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-stock-receive-rows",
+        "note": "วันหมดอายุ (ต้องมีเลขล็อต)"
+      },
+      "wo": "P1.14U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/stock",
+      "testid": "pos-stock-receive-note-*",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-stock-receive-rows",
+        "note": "หมายเหตุของแถว (md+ ใต้ชื่อสินค้า)"
+      },
+      "wo": "P1.14U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/stock",
+      "testid": "pos-stock-receive-mnote-*",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-stock-receive-rows",
+        "note": "หมายเหตุของแถว (มือถือ)"
+      },
+      "wo": "P1.14U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/stock",
+      "testid": "pos-stock-receive-remove-*",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-stock-receive-rows",
+        "note": "เอาแถวออกจากคิว"
+      },
+      "wo": "P1.14U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/stock",
+      "testid": "pos-stock-receive-submit",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-stock-history",
+        "note": "รับเข้าคลัง: posStockReceiveAction ทีละแถวตามลำดับ (คีย์ต่อแถว) · สำเร็จ = แถวหาย + ลงประวัติในหน้า · คำปฏิเสธ = pos-stock-receive-error-*"
+      },
+      "wo": "P1.14U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/stock",
+      "testid": "pos-stock-receive-clear",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-stock-receive-card",
+        "note": "ล้างคิวรับเข้า (ไม่มีร่างฝั่งเซิร์ฟเวอร์)"
+      },
+      "wo": "P1.14U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/stock",
+      "testid": "pos-stock-receive-po-link",
+      "kind": "link",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]",
+        "note": "รับตามใบสั่งซื้อทำที่ระบบคลังสินค้า → (มติเจ้าของ Q1)"
+      },
+      "wo": "P1.14U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/stock",
+      "testid": "pos-stock-transfer*-from",
+      "kind": "select",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-stock-transfer*-card",
+        "note": "ต้นทาง (ค่าเริ่ม = pos-stock-location) · -c = การ์ดย่อยคอลัมน์ขวา (xl)"
+      },
+      "wo": "P1.14U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/stock",
+      "testid": "pos-stock-transfer*-to",
+      "kind": "select",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-stock-transfer*-card",
+        "note": "ปลายทาง (ที่เก็บอื่นของคลังเดียวกัน)"
+      },
+      "wo": "P1.14U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/stock",
+      "testid": "pos-stock-transfer*-qty-*",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-stock-transfer*-rows",
+        "note": "จำนวนที่โอน (≥ 1)"
+      },
+      "wo": "P1.14U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/stock",
+      "testid": "pos-stock-transfer*-remove-*",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-stock-transfer*-rows",
+        "note": "เอาแถวออก"
+      },
+      "wo": "P1.14U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/stock",
+      "testid": "pos-stock-transfer*-submit",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-stock-history",
+        "note": "โอน: posStockTransferAction ทีละแถว (ทันที · ไม่มีรอรับปลายทาง) · คำปฏิเสธ = pos-stock-transfer*-error-* · คลังมีที่เก็บเดียว = การ์ด pos-stock-transfer*-single"
+      },
+      "wo": "P1.14U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/stock",
+      "testid": "pos-stock-adjust*-clear",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-stock-adjust*-card",
+        "note": "เปลี่ยนสินค้าที่จะปรับ"
+      },
+      "wo": "P1.14U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/stock",
+      "testid": "pos-stock-adjust*-minus",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-stock-adjust*-delta",
+        "note": "delta −1"
+      },
+      "wo": "P1.14U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/stock",
+      "testid": "pos-stock-adjust*-plus",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-stock-adjust*-delta",
+        "note": "delta +1"
+      },
+      "wo": "P1.14U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/stock",
+      "testid": "pos-stock-adjust*-delta",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-stock-adjust*-item",
+        "note": "จำนวนที่ปรับ ±N (≠ 0) · กล่องสินค้าแสดง คงเหลือรวม → หลังปรับ"
+      },
+      "wo": "P1.14U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/stock",
+      "testid": "pos-stock-adjust*-reason",
+      "kind": "select",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-stock-adjust*-card",
+        "note": "เหตุผล: ของเสีย/หมดอายุ · แตก/เสียหาย · นับผิด · ใช้ภายใน · อื่น ๆ (reason ที่เก็บ = \"<ป้าย> · <ข้อความ>\")"
+      },
+      "wo": "P1.14U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/stock",
+      "testid": "pos-stock-adjust*-text",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-stock-adjust*-card",
+        "note": "รายละเอียดเพิ่มเติม (รวมกับป้าย ≤ 200)"
+      },
+      "wo": "P1.14U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/stock",
+      "testid": "pos-stock-adjust*-location",
+      "kind": "select",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-stock-adjust*-card",
+        "note": "ที่เก็บที่ปรับ (ค่าเริ่ม = pos-stock-location)"
+      },
+      "wo": "P1.14U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/stock",
+      "testid": "pos-stock-adjust*-submit",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-stock-history",
+        "note": "บันทึกการปรับ: posStockAdjustAction {itemId, deltaQty, reason, locationId} · ไม่ลงบัญชี (มติ Q2) · สำเร็จ = pos-stock-adjust*-ok + ประวัติ · คำปฏิเสธ = pos-stock-adjust*-error"
+      },
+      "wo": "P1.14U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/stock",
+      "testid": "pos-stock-history-all",
+      "kind": "link",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]",
+        "note": "ดูทั้งหมด → ระบบคลังสินค้า (ยังไม่มีตัวอ่านประวัติการเคลื่อนไหวทั้งระบบในสิทธิ์ POS)"
+      },
+      "wo": "P1.14U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/stock",
+      "testid": "pos-stock-history-resume",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-stock-count",
+        "note": "รอบ OPEN → นับต่อ (แท็บตรวจนับ)"
+      },
+      "wo": "P1.14U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/stock",
+      "testid": "pos-stock-history-retry",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-stock-history",
+        "note": "โหลดรายการรอบไม่ได้ → ลองอีกครั้ง (posStockCountListAction)"
+      },
+      "wo": "P1.14U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-products-stock-link",
+      "kind": "link",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]/pos/stock",
+        "note": "ปุ่ม \"สต็อก / ตรวจนับ\" บนหัวหน้าสินค้า → /pos/stock"
+      },
+      "wo": "P1.14U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/stock",
+      "testid": "pos-stock-receive-picker",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "กรอบตัวเลือกสินค้าของการ์ดรับของเข้า (ช่อง/กล้อง/ผล = pos-stock-receive-search*)"
+      },
+      "wo": "P1.14U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/stock",
+      "testid": "pos-stock-transfer*-picker",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "กรอบตัวเลือกสินค้าของการ์ดโอน (ช่อง/กล้อง/ผล = pos-stock-transfer*-search*)"
+      },
+      "wo": "P1.14U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/stock",
+      "testid": "pos-stock-adjust*-picker",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "กรอบตัวเลือกสินค้าของการ์ดปรับสต็อก (ช่อง/กล้อง/ผล = pos-stock-adjust*-search*)"
+      },
+      "wo": "P1.14U",
+      "oracle": "",
+      "system": "POS"
     }
   ],
   "$roles": "roles/hiddenFor ที่อนุญาต: owner · manager · cashier · kind/expect.type ชุดเดียวกับทะเบียน CRM (F15.3b ตรวจ)"
