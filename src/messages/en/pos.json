@@ -739,7 +739,7 @@
       "resume": "Continue",
       "empty": "No history yet",
       "out": "Out {name}",
-      "scopeNote": "Latest entries of this inventory (every branch that shares it). See the inventory system for the full history."
+      "scopeNote": "History of this inventory (every branch that shares it)"
     }
   }
 }

@@ -67,7 +67,8 @@ export function ReceiveCard({ target, meta, onMove, locationId, me, invHref }: S
     setRows((rs) => {
       const same = rs.find((r) => r.item.id === item.id && !r.saving);
       if (same) return rs.map((r) => (r === same ? { ...r, qty: String((parseCount(r.qty) ?? 0) + 1), error: undefined } : r));
-      return [...rs, { rid: newKey(), item, qty: "1", cost: "", lot: "", expiry: "", note: "" }];
+      // R2: ต้นทุนเฉลี่ยปัจจุบันเป็นค่าเริ่ม (แก้ได้ · ลบทิ้ง = ไม่ส่ง costSatang ⇒ เซิร์ฟเวอร์ใช้ต้นทุนเฉลี่ย)
+      return [...rs, { rid: newKey(), item, qty: "1", cost: (item.costSatang / 100).toFixed(2), lot: "", expiry: "", note: "" }];
     });
 
   const lineTotal = (r: RecvRow) => {
@@ -137,7 +138,7 @@ export function ReceiveCard({ target, meta, onMove, locationId, me, invHref }: S
           <ItemPicker target={target} kind="receive" data-testid="pos-stock-receive-picker" placeholder={t("receive.searchPlaceholder")} onPick={add} />
           {rows.length > 0 ? (
             <div className="rounded-[12px] border" data-testid="pos-stock-receive-rows">
-              <div className="hidden grid-cols-[minmax(0,1fr)_76px_104px_96px_minmax(0,170px)_44px] gap-3 border-b bg-[color:var(--color-surface-2)] px-4 py-2.5 text-[11.5px] font-semibold text-[color:var(--color-muted)] md:grid">
+              <div className="hidden md:grid-cols-[minmax(0,1fr)_80px_120px_100px_200px_44px] gap-3 border-b bg-[color:var(--color-surface-2)] px-4 py-2.5 text-[11.5px] font-semibold text-[color:var(--color-muted)] md:grid">
                 <span>{t("receive.colItem")}</span>
                 <span className="text-center">{t("receive.colQty")}</span>
                 <span className="text-right">{t("receive.colCost")}</span>
@@ -148,9 +149,9 @@ export function ReceiveCard({ target, meta, onMove, locationId, me, invHref }: S
               {rows.map((r) => {
                 const lt = lineTotal(r);
                 return (
-                  <div key={r.rid} className="grid grid-cols-2 gap-2 border-b px-4 py-3 last:border-0 md:grid-cols-[minmax(0,1fr)_76px_104px_96px_minmax(0,170px)_44px] md:items-center md:gap-3" data-testid={`pos-stock-receive-row-${r.item.id}`}>
-                    <div className="col-span-2 flex min-w-0 items-start gap-2 md:col-span-1 md:flex-col md:gap-0.5">
-                      <span className="min-w-0 flex-1">
+                  <div key={r.rid} className="grid grid-cols-2 gap-2 border-b px-4 py-3 last:border-0 md:grid-cols-[minmax(0,1fr)_80px_120px_100px_200px_44px] md:items-center md:gap-3" data-testid={`pos-stock-receive-row-${r.item.id}`}>
+                    <div className="col-span-2 flex min-w-0 flex-col gap-0.5 overflow-hidden md:col-span-1">
+                      <span className="block min-w-0">
                         <b className="block truncate text-sm font-semibold">{r.item.name}</b>
                         <span className="block truncate text-[11.5px] text-[color:var(--color-muted)]">
                           {r.item.sku} · {r.item.unitLabel}
@@ -181,7 +182,7 @@ export function ReceiveCard({ target, meta, onMove, locationId, me, invHref }: S
                         data-testid={`pos-stock-receive-cost-${r.item.id}`}
                         inputMode="decimal"
                         className="input h-11 text-right tabular-nums text-[color:var(--color-ink)]"
-                        placeholder={`@${formatBaht(r.item.costSatang, { decimals: true })}`}
+                        placeholder="฿"
                         value={r.cost}
                         onChange={(e) => patch(r.rid, { cost: e.target.value })}
                       />
@@ -585,6 +586,10 @@ export function HistoryPanel({
   return (
     <section className={`card flex flex-col gap-3 ${full ? "" : "p-6"}`} data-testid="pos-stock-history">
       <CardHead icon="history" title={t("history.title")} right={seeAll} />
+      {/* ผู้คุมงาน R2 (4): บอกขอบเขต — คลังที่หลายสาขาใช้ร่วมเห็นของทุกสาขา */}
+      <p data-testid="pos-stock-history-scope" className="-mt-1 text-xs text-[color:var(--color-muted)]">
+        {t("history.scopeNote")}
+      </p>
       <ul className="flex flex-col">
         {!data && !error && <li className="py-3 text-sm text-[color:var(--color-muted)]">{t("loading")}</li>}
         {entries.map(({ move: m, count: c }) =>
@@ -634,7 +639,6 @@ export function HistoryPanel({
           </button>
         </div>
       )}
-      {full && <p className="text-xs text-[color:var(--color-muted)]">{t("history.scopeNote")}</p>}
     </section>
   );
 }

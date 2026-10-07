@@ -604,13 +604,12 @@ function CountScreen({
           );
         })}
       </ul>
-      <p className="mt-3 self-start rounded-[10px] border border-dashed px-3 py-2 text-[12.5px] text-[color:var(--color-muted)]">
-        <RegisterIcon name="clock" size={12} className="mr-1 inline-block align-[-2px]" />
-        {t("count.addBackNote")}
-      </p>
-
-      {/* ── แถบล่าง (ติดล่างจอ) ── */}
-      <div className="sticky bottom-0 z-10 mt-4 border-t bg-[color:var(--color-surface)] pb-[max(14px,env(safe-area-inset-bottom))] pt-3">
+      {/* ── แถบล่าง (ติดล่างจอ) · R2 R3: โน้ตบวกกลับอยู่ในแถบเหนือปุ่ม — เดิมอยู่ท้ายลิสต์แล้วถูกแถบ sticky บัง ── */}
+      <div className="sticky bottom-0 z-10 mt-4 flex flex-col gap-2.5 border-t bg-[color:var(--color-surface)] pb-[max(14px,env(safe-area-inset-bottom))] pt-3">
+        <p data-testid="pos-stock-count-addback" className="self-start rounded-[10px] border border-dashed px-3 py-1.5 text-[12.5px] text-[color:var(--color-muted)]">
+          <RegisterIcon name="clock" size={12} className="mr-1 inline-block align-[-2px]" />
+          {t("count.addBackNote")}
+        </p>
         {meta.can.confirm ? (
           <div className="flex gap-2">
             <button type="button" data-testid="pos-stock-count-pause" className="btn btn-ghost h-12 rounded-[12px] px-5 text-[15px]" onClick={onExit}>
