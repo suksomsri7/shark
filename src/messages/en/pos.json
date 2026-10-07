@@ -738,7 +738,8 @@
       },
       "resume": "Continue",
       "empty": "No history yet",
-      "sessionNote": "Receipts, transfers and adjustments listed are the ones made on this page. See the inventory system for the full history."
+      "out": "Out {name}",
+      "scopeNote": "Latest entries of this inventory (every branch that shares it). See the inventory system for the full history."
     }
   }
 }

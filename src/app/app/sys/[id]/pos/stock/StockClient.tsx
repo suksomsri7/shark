@@ -42,7 +42,6 @@ export function StockClient({ systemId, units, unitId, meta, initialTab, me, wei
   const defaultLoc = meta.locations.find((l) => l.isDefault) ?? meta.locations[0] ?? null;
   const [locationId, setLocationId] = useState<string>(defaultLoc?.id ?? "");
   const [openCount, setOpenCount] = useState<{ id: string } | null>(meta.openCount);
-  const [moves, setMoves] = useState<SessionMove[]>([]);
   /** หน้าจอนับเต็มจอ (มือถือ) — ซ่อนหัวหน้า/แถบย่อยให้ตรงภาพ 05ค */
   const [counting, setCounting] = useState(false);
   /** รอบที่ยืนยันในหน้านี้ — ประวัติแสดง "ผลต่าง n รายการ" ได้ (list ของเซิร์ฟเวอร์ไม่มีตัวเลขนี้) */
@@ -66,7 +65,8 @@ export function StockClient({ systemId, units, unitId, meta, initialTab, me, wei
     }
   }, []);
 
-  const addMove = useCallback((m: SessionMove) => setMoves((xs) => [m, ...xs].slice(0, 50)), []);
+  /** ทางลัดสำเร็จ = โหลดประวัติใหม่ (คำขอเดียว · หลังผลของคำขอก่อนหน้า) */
+  const addMove = useCallback((_m: SessionMove) => setHistoryKey((k) => k + 1), []);
   const invHref = `/app/sys/${meta.inventorySystemId}`;
   const locName = (id: string) => meta.locations.find((l) => l.id === id)?.name ?? t("defaultLocation");
   const shared = { target, meta, locationId, locName, onMove: addMove };
@@ -98,7 +98,6 @@ export function StockClient({ systemId, units, unitId, meta, initialTab, me, wei
       target={target}
       meta={meta}
       full={full}
-      moves={moves}
       confirmedHere={confirmedHere}
       invHref={invHref}
       onResume={() => setTab("count")}
@@ -116,7 +115,7 @@ export function StockClient({ systemId, units, unitId, meta, initialTab, me, wei
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {units.length > 1 && (
-              <label className="flex h-11 items-center gap-1 rounded-[10px] border px-3 text-sm">
+              <label className="flex h-12 items-center gap-1.5 rounded-[12px] border px-3.5 text-sm">
                 <span className="text-[color:var(--color-muted)]">{t("unit")}:</span>
                 <select
                   data-testid="pos-stock-unit"
@@ -132,7 +131,7 @@ export function StockClient({ systemId, units, unitId, meta, initialTab, me, wei
                 </select>
               </label>
             )}
-            <label className="flex h-11 items-center gap-1 rounded-[10px] border px-3 text-sm">
+            <label className="flex h-12 items-center gap-1.5 rounded-[12px] border px-3.5 text-sm">
               <span className="text-[color:var(--color-muted)]">{t("location")}:</span>
               <select data-testid="pos-stock-location" className="max-w-[180px] bg-transparent font-semibold outline-none" value={locationId} onChange={(e) => setLocationId(e.target.value)}>
                 {meta.locations.length === 0 && <option value="">{t("defaultLocation")}</option>}
@@ -143,7 +142,7 @@ export function StockClient({ systemId, units, unitId, meta, initialTab, me, wei
                 ))}
               </select>
             </label>
-            <a data-testid="pos-stock-open-inventory" href={invHref} className="btn btn-ghost h-11 rounded-[10px]">
+            <a data-testid="pos-stock-open-inventory" href={invHref} className="btn btn-ghost h-12 rounded-[12px]">
               <RegisterBox />
               {t("openInventory")}
             </a>
@@ -160,13 +159,13 @@ export function StockClient({ systemId, units, unitId, meta, initialTab, me, wei
                 role="tab"
                 aria-selected={on}
                 data-testid={`pos-stock-tab-${key}`}
-                className={`-mb-px flex min-h-11 shrink-0 items-center gap-1.5 border-b-2 px-3 text-sm ${on ? "border-[color:var(--color-ink)] font-semibold" : "border-transparent text-[color:var(--color-muted)]"}`}
+                className={`-mb-px flex min-h-12 shrink-0 items-center gap-1.5 border-b-2 px-3.5 text-sm ${on ? "border-[color:var(--color-accent)] font-semibold text-[color:var(--color-ink)]" : "border-transparent text-[color:var(--color-muted)]"}`}
                 onClick={() => setTab(key)}
               >
                 <StockIcon name={icon} size={14} />
                 {t(`tabs.${key}`)}
                 {key === "count" && openCount && (
-                  <span data-testid="pos-stock-tab-count-badge" className="rounded-full bg-[color:var(--color-ink)] px-1.5 text-[10.5px] font-semibold text-[color:var(--color-surface)]">
+                  <span data-testid="pos-stock-tab-count-badge" className={`ml-0.5 text-[11px] font-semibold ${on ? "text-[color:var(--color-ink)]" : "text-[color:var(--color-muted)]"}`}>
                     {t("tabs.countOpen")}
                   </span>
                 )}

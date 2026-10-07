@@ -12,7 +12,7 @@ import { RegisterIcon } from "@/components/pos/register/RegisterIcon";
 import { formatBaht } from "@/lib/ui/money";
 import type { StockCountMeta } from "@/lib/modules/pos/stock-count";
 import { STOCK_COUNT_NOTE_MAX, STOCK_COUNT_REASON_MAX, type StockCountView } from "@/lib/modules/pos/stock-count-shared";
-import { posStockAdjustAction, posStockCountListAction, posStockReceiveAction, posStockTransferAction } from "@/lib/modules/pos/stock-count-actions";
+import { posStockAdjustAction, posStockHistoryAction, posStockReceiveAction, posStockTransferAction } from "@/lib/modules/pos/stock-count-actions";
 import { bkkDayHm, fmtDelta, fmtInt, ItemPicker, newKey, parseCount, parseSigned, StockIcon, useRefusalText, type ItemHit, type T, type Target } from "./stock-ui";
 
 /** การเคลื่อนไหวที่ทำในหน้านี้ (เก็บใน state พร้อม id ของ movement) */
@@ -523,11 +523,17 @@ export function AdjustCard({ target, meta, locationId, locName, onMove, compact 
 }
 
 // ═══════════ ประวัติล่าสุด ═══════════
+type HistoryOk = Extract<Awaited<ReturnType<typeof posStockHistoryAction>>, { ok: true }>;
+type Move = NonNullable<HistoryOk["movements"]>[number];
+type Entry = { at: string; move?: Move; count?: StockCountView };
+const MOVE_ICON = { IN: "receive", OUT: "out", ADJUST: "adjust", TRANSFER: "transfer" } as const;
+const MOVE_KEY = { IN: "receive", OUT: "out", ADJUST: "adjust", TRANSFER: "transfer" } as const;
+
+/** รอบตรวจนับของสาขา + การเคลื่อนไหวล่าสุดของคลัง (posStockHistoryAction — คำขอเดียว) เรียงใหม่สุดก่อน */
 export function HistoryPanel({
   target,
   meta,
   full,
-  moves,
   confirmedHere,
   invHref,
   onResume,
@@ -535,7 +541,6 @@ export function HistoryPanel({
   target: Target;
   meta: StockCountMeta;
   full: boolean;
-  moves: SessionMove[];
   confirmedHere: Record<string, number>;
   invHref: string;
   onResume: () => void;
@@ -543,77 +548,81 @@ export function HistoryPanel({
   const t = useTranslations("pos.stock") as T;
   const locale = useLocale();
   const refusal = useRefusalText();
-  const [counts, setCounts] = useState<StockCountView[] | null>(null);
+  const [data, setData] = useState<HistoryOk | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
+  const limit = full ? 50 : 6;
   useEffect(() => {
-    if (!meta.can.count) {
-      setCounts([]);
-      return;
-    }
     let live = true;
-    void posStockCountListAction({ ...target, input: { limit: full ? 50 : 5 } })
+    void posStockHistoryAction({ ...target, limit })
       .catch(() => null)
       .then((r) => {
         if (!live) return;
         if (r && r.ok) {
           setError(null);
-          setCounts(r.items);
+          setData(r);
         } else setError(refusal(r ? r.code : "INTERNAL"));
       });
     return () => {
       live = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [target.systemId, target.unitId, full, tick, meta.can.count]);
-  const icon = { receive: "receive", transfer: "transfer", adjust: "adjust" } as const;
+  }, [target.systemId, target.unitId, limit, tick]);
+  const locName = (id: string | null) => meta.locations.find((l) => l.id === id)?.name ?? t("defaultLocation");
+  const entries: Entry[] = data
+    ? [
+        ...(data.movements ?? []).map((m): Entry => ({ at: m.createdAt, move: m })),
+        ...(data.counts ?? []).map((c): Entry => ({ at: c.confirmedAt ?? c.cancelledAt ?? c.snapshotAt, count: c })),
+      ]
+        .sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0))
+        .slice(0, limit)
+    : [];
   const seeAll = (
     <a data-testid="pos-stock-history-all" href={invHref} className="shrink-0 text-sm font-semibold text-[color:var(--color-accent)]">
       {t("history.all")}
     </a>
   );
-  const shownMoves = full ? moves : moves.slice(0, 5);
   return (
     <section className={`card flex flex-col gap-3 ${full ? "" : "p-6"}`} data-testid="pos-stock-history">
       <CardHead icon="history" title={t("history.title")} right={seeAll} />
       <ul className="flex flex-col">
-        {shownMoves.map((m) => (
-          <li key={`${m.kind}-${m.id}`} className="flex items-center gap-3 border-b py-3 last:border-0" data-testid={`pos-stock-history-move-${m.id}`}>
-            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-[10px] border text-[color:var(--color-ink-soft)]">
-              <StockIcon name={icon[m.kind]} size={15} />
-            </span>
-            <span className="min-w-0 flex-1">
-              <b className="block truncate text-sm font-semibold">{t(`history.${m.kind}`, { name: m.name })}</b>
-              <span className="block truncate text-xs text-[color:var(--color-muted)]">
-                {bkkDayHm(m.at, locale)} · {m.detail}
+        {!data && !error && <li className="py-3 text-sm text-[color:var(--color-muted)]">{t("loading")}</li>}
+        {entries.map(({ move: m, count: c }) =>
+          m ? (
+            <li key={`m-${m.id}`} className="flex items-center gap-3 border-b py-3 last:border-0" data-testid={`pos-stock-history-move-${m.id}`}>
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-[10px] border text-[color:var(--color-ink-soft)]">
+                <StockIcon name={MOVE_ICON[m.type]} size={15} />
               </span>
-            </span>
-            <b className={`shrink-0 text-sm tabular-nums ${m.kind === "adjust" && m.qty < 0 ? "text-[color:var(--color-danger)]" : ""}`}>
-              {m.kind === "transfer" ? `×${fmtInt(m.qty, locale)}` : fmtDelta(m.qty, false, locale)}
-            </b>
-          </li>
-        ))}
-        {counts === null && !error && <li className="py-3 text-sm text-[color:var(--color-muted)]">{t("loading")}</li>}
-        {counts?.map((c) => (
-          <li key={c.id} className="flex items-center gap-3 border-b py-3 last:border-0" data-testid={`pos-stock-history-count-${c.id}`}>
-            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-[10px] border text-[color:var(--color-ink-soft)]">
-              <StockIcon name="count" size={15} />
-            </span>
-            <span className="min-w-0 flex-1">
-              <b className="block truncate text-sm font-semibold">{t("history.count", { no: c.countNo })}</b>
-              <span className="block truncate text-xs text-[color:var(--color-muted)]">
-                {bkkDayHm(c.confirmedAt ?? c.cancelledAt ?? c.snapshotAt, locale)} · {t(`history.status.${c.status}`)}
-                {c.status === "CONFIRMED" && confirmedHere[c.id] !== undefined ? ` · ${t("history.adjusted", { n: confirmedHere[c.id]! })}` : ""}
+              <span className="min-w-0 flex-1">
+                <b className="block truncate text-sm font-semibold">{t(`history.${MOVE_KEY[m.type]}`, { name: m.itemName })}</b>
+                <span className="block truncate text-xs text-[color:var(--color-muted)]">
+                  {bkkDayHm(m.createdAt, locale)} · {locName(m.locationId)}
+                  {m.note ? ` · ${m.note}` : ""}
+                </span>
               </span>
-            </span>
-            {c.status === "OPEN" ? (
-              <button type="button" data-testid="pos-stock-history-resume" className="btn btn-ghost h-11 shrink-0 rounded-[10px] px-3" onClick={onResume}>
-                {t("history.resume")}
-              </button>
-            ) : null}
-          </li>
-        ))}
-        {counts && counts.length === 0 && moves.length === 0 && <li className="py-3 text-sm text-[color:var(--color-muted)]">{t("history.empty")}</li>}
+              <b className={`shrink-0 text-sm tabular-nums ${m.qtyDelta < 0 ? "text-[color:var(--color-danger)]" : ""}`}>{fmtDelta(m.qtyDelta, false, locale)}</b>
+            </li>
+          ) : c ? (
+            <li key={`c-${c.id}`} className="flex items-center gap-3 border-b py-3 last:border-0" data-testid={`pos-stock-history-count-${c.id}`}>
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-[10px] border text-[color:var(--color-ink-soft)]">
+                <StockIcon name="count" size={15} />
+              </span>
+              <span className="min-w-0 flex-1">
+                <b className="block truncate text-sm font-semibold">{t("history.count", { no: c.countNo })}</b>
+                <span className="block truncate text-xs text-[color:var(--color-muted)]">
+                  {bkkDayHm(c.confirmedAt ?? c.cancelledAt ?? c.snapshotAt, locale)} · {locName(c.locationId)} · {t(`history.status.${c.status}`)}
+                  {c.status === "CONFIRMED" && confirmedHere[c.id] !== undefined ? ` · ${t("history.adjusted", { n: confirmedHere[c.id]! })}` : ""}
+                </span>
+              </span>
+              {c.status === "OPEN" && meta.can.count ? (
+                <button type="button" data-testid="pos-stock-history-resume" className="btn btn-ghost h-11 shrink-0 rounded-[10px] px-3" onClick={onResume}>
+                  {t("history.resume")}
+                </button>
+              ) : null}
+            </li>
+          ) : null,
+        )}
+        {data && entries.length === 0 && <li className="py-3 text-sm text-[color:var(--color-muted)]">{t("history.empty")}</li>}
       </ul>
       {error && (
         <div className="flex items-center gap-2">
@@ -625,7 +634,7 @@ export function HistoryPanel({
           </button>
         </div>
       )}
-      {full && <p className="text-xs text-[color:var(--color-muted)]">{t("history.sessionNote")}</p>}
+      {full && <p className="text-xs text-[color:var(--color-muted)]">{t("history.scopeNote")}</p>}
     </section>
   );
 }
