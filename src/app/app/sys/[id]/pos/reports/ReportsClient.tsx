@@ -110,10 +110,12 @@ function DailyChart({ rows, t, locale }: { rows: DailyRow[]; t: T; locale: strin
         <h2 className="text-sm font-medium">{t("chartTitle")}</h2>
         <span className="text-xs text-[color:var(--color-muted)] tabular-nums">{formatBaht(max)}</span>
       </div>
-      <div className="flex h-40 items-end gap-px border-b border-[color:var(--color-line)]" role="img" aria-label={t("chartTitle")}>
+      {/* R2 (ภาพจริง): แท่งกว้างสุด 64px + ช่องว่าง — ช่วง 1–3 วันเคยเป็นก้อนดำเต็มกรอบ · ≤ 14 แท่งโชว์ตัวเลขบนหัวแท่งเหมือนภาพ 08 */}
+      <div className={`flex h-40 items-end gap-1 border-b border-[color:var(--color-line)] ${rows.length <= 14 ? "gap-2" : "gap-px"}`} role="img" aria-label={t("chartTitle")}>
         {rows.map((r) => (
-          <div key={r.businessDate} className="flex h-full min-w-0 flex-1 items-end" title={`${shortDate(r.businessDate, locale)} · ${formatBaht(r.netSalesSatang, { decimals: true })}`}>
-            <div className="w-full rounded-t-sm bg-[color:var(--color-ink)]" style={{ height: max > 0 ? `${(r.netSalesSatang / max) * 100}%` : 0 }} />
+          <div key={r.businessDate} className="flex h-full min-w-0 max-w-16 flex-1 flex-col items-center justify-end" title={`${shortDate(r.businessDate, locale)} · ${formatBaht(r.netSalesSatang, { decimals: true })}`}>
+            {rows.length <= 14 && r.netSalesSatang > 0 ? <span className="mb-1 text-[10px] font-semibold tabular-nums">{formatBaht(r.netSalesSatang)}</span> : null}
+            <div className="w-full rounded-t-sm bg-[color:var(--color-ink)]" style={{ height: max > 0 ? `${Math.max(2, (r.netSalesSatang / max) * (rows.length <= 14 ? 80 : 100))}%` : 0 }} />
           </div>
         ))}
       </div>
