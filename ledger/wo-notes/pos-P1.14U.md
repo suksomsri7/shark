@@ -84,3 +84,12 @@ module-tabs · unit · location · open-inventory · tab-* · start-scope-* · s
 | `--no-db` p1.14 · p1.17 · p1.2 · p1.4 · p1.5 · p1.9 · p1.9b | 7/7 · 7/7 · 12/12 · 13/13 · 5/5 · 13/13 · 8/8 |
 
 Found + fixed on the way: pre-commit fitness F5.1 (raw prisma → `./db`) and F6.1 (coarse `assertCan` gate); `qc-pos-p1.6` R2 static rule (each POS action body needs its own catch) failed on 64b378c4 → fixed in 388ec312.
+
+## R2 (controller review of the p11 shots · 35 shots 200, no overflow/console)
+Rulings on the open questions: (1) back/pause → `?tab=history` accepted · (2) variance on history rows = server follow-up (`listStockCounts` needs adjustedLines/varianceValueSatang) · (3) authz suite not page-enumerating — accepted · (4) history shows the whole shared inventory — accepted, card now says "ประวัติของคลังนี้ (ทุกสาขาที่ใช้คลังร่วม)" (`pos-stock-history-scope`, both compact and full) · (5) item search gated on movement permissions — correct · (6) move item search into `stock-count.ts` = follow-up.
+Fixes:
+- R1 receive table at 1440: one fixed grid for header and rows `minmax(0,1fr) 80px 120px 100px 200px 44px` (name+sku+note · received · cost/unit · total · lot over expiry · remove). Root cause of the overlap: the name cell was `flex-col items-start`, so its lines shrank to content width and never truncated → now a stretched column with `overflow-hidden` + `truncate`. 390 keeps the stacked fields.
+- R2 cost/unit pre-filled with the item's current average cost (`costSatang` already returned by `posStockItemSearchAction`), editable; "รวม" = qty × cost and the footer "รวม N รายการ · มูลค่า ฿x" are real numbers; `costSatang` is sent only while the field holds a value (cleared = omitted → server keeps the average).
+- R3 count screen at 390: the add-back note moved into the sticky bottom bar above the buttons (`pos-stock-count-addback`), so the bar can no longer cover it.
+Follow-ups (later cards): full-screen count mode on mobile (hide page header + module tabs — needs the app layout) · native `<input type=date>` for expiry (shows mm/dd/yyyy in the Chromium shots).
+R2 gates — code head 79aa3d59 · ~20:30–20:40 UTC: typecheck (pos-gate lock) exit 0 · `qc-pos-p1.14` forced 30/30 · forced 30/30 · unforced 30/30 (cleanup line each run, a5 drift none) · `qc-pos-p1.3` forced 128/128 · fitness-pos 8/8 · `pnpm fitness` no env 41/41 · QC4 41/41 · visual-pos `--page stock --states --dry` owner rc 0 / cashier rc 0 (15 shots each). No build, no shots (controller).
