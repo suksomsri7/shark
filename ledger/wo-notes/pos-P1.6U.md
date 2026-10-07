@@ -59,3 +59,17 @@ totals.serviceCharge · totals.tip · pay.{escClose, back, splitTitle, remaining
 - Q2: done screen auto-advances after 5 s **only when change = 0**; with change > 0 it stays until Enter / "ขายต่อ" — done in `PayDone.tsx` (countdown text hidden when change > 0).
 - Q3: tip as built accepted.
 - QC4 env fixed by the controller (`.env.qc*` now `neondb_owner`). DB gates re-run below on the P1.6 U head that includes the Q2 fix (only `PayDone.tsx` differs from 518c5262; no server file, no other register file).
+
+## Gate results after the env fix (head e01bbfa7 = 518c5262 + PayDone Q2 fix + notes · run 12:00–13:14 UTC)
+| command | result |
+|---|---|
+| `bash scripts/iso.sh env QC_FORCE=1 bash scripts/qc4.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/qc-pos-p1.6.mts` ×2 | rc 0 · **48/48** · rc 0 · **48/48** (a5 drift none) |
+| `bash scripts/iso.sh bash scripts/qc4.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/qc-pos-p1.6.mts` (unforced) | rc 0 · **48/48** |
+| forced `qc-pos-p1.3` | rc 0 · 128/128 |
+| forced `qc-pos-p1.4` · `p1.5` · `p1.9` | rc 0 · 21/21 · 21/21 · 53/53 |
+| forced `qc-pos-p1.2` | rc 1 · 53/55 — only S1 S2 red (UI = P1.2 U, expected) |
+| `env -u DATABASE_URL -u DIRECT_URL pnpm exec tsx scripts/fitness-pos.mts` | rc 0 · 8/8 |
+| `env -u DATABASE_URL -u DIRECT_URL pnpm fitness` | rc 0 · 41/41 |
+| `bash scripts/iso.sh bash scripts/qc4.sh bash scripts/with-gate-lock.sh pnpm fitness` | rc 0 · 41/41 |
+| typecheck (gate lock) | exit 0 on 518c5262 (11:2x UTC). On e01bbfa7 the run **timed out waiting for the machine lock** (flock -w 3600; another lane's `qc-all` held `/tmp/shark-gate.lock` > 1 h) — no tsc output. The only code change since 518c5262 is `PayDone.tsx`; it is typechecked as part of the P1.2 U head (which contains it). |
+Residue: every suite's a5 drift = none; Z1/Z2 green in p1.4/p1.5/p1.6/p1.9 (p1.3 has no Z group).
