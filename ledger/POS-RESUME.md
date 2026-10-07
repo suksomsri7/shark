@@ -630,3 +630,7 @@
 ## 2026-10-07T20:40:37Z · ผู้ตรวจ P1.14U (79aa3d59): MERGEABLE-AFTER-FIXES → F1–F6 รวมในรอบ R2/R3
 - F1 [HIGH] สแกนรหัสเดิมซ้ำขณะคำขอค้างใช้คีย์เดิม → duplicated → นับขาด · F2 รหัสคล้ายป้ายชั่งไม่มี PLU → VALIDATION · F3 visual เขียนลง count ที่ไม่ได้เปิดเอง · F4 ต้นทุน prefill ส่งเสมอ · F5 สาขา ARCHIVED ไม่ถูกปฏิเสธใน search/history · F6 รีเฟรชประวัติทุกแถว
 - ผ่าน: actions ใช้ session เท่านั้น · refusal data · use server เฉพาะ async · idempotency (ยกเว้น scan) · blind mode · SKIP/ZERO · keys th/en 138 · testids/inventory · visual cleanup · stock-count.ts เพิ่มแค่ stockCountMeta
+
+## 2026-10-07T20:48:56Z · เลนส่ง P1.14U R2+R3 (1cd7953d · โค้ด a7d74b87) gate เขียว → build p11 ถ่ายหน้าสต็อกซ้ำ
+- R2: grid ตารางรับของ · รวม/มูลค่าคำนวณ · โน้ตบวกกลับในแถบ · R3: คีย์ใหม่ทุก scan (+ visual เช็กสแกนซ้ำ = 2) · label→VALIDATION ส่งซ้ำ qty 1 · visual ไม่เขียน count คนอื่น · ต้นทุน = placeholder ส่งเฉพาะที่พิมพ์ · ปฏิเสธสาขา ARCHIVED · รีเฟรชประวัติครั้งเดียว · gate: tsc 0 · p1.14 30/30 ×3 · p1.3 128 · fitness ×3
+- unit `pos-vis9-stock` 20:48 UTC → ภาพ p1.14u-r3* → ตรง 05ค/16 (R1–R3 หาย) = รับ → merge → 12/55
