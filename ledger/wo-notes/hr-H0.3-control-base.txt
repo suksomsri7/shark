@@ -1,0 +1,4 @@
+# controller re-run H0.3 oracle on base @38d0c229 2026-10-07T19:37:52Z
+unforced exit=0 0 0 0 None True
+forced exit=1 36 14 22 False False
+RESIDUE tenants=0
