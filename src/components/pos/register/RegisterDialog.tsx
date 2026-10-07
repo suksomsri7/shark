@@ -5,6 +5,7 @@
 //   ตัวกล่อง (พร้อม data-testid ของมันเอง) เขียนในไฟล์ของแต่ละกล่อง แล้วส่งเป็น children — testid ต้องเป็นตัวอักษรตรงบนแท็ก (G1)
 // 🔴 ปิดด้วย Esc อยู่ที่ตัวจับแป้นเดียวของ RegisterScreen (สเปก §3.6 — ปิดชั้นบนสุดก่อน) · ที่นี่ปิดได้แค่แตะม่าน
 // 🔴 locked = กำลังส่งบิล/ผลยังไม่แน่ใจ — แตะม่านไม่ปิด (สเปก §3.4 ข้อ 3, 6)
+// P1.2 U R2: bare = ม่านใส ไม่จัดกลาง (ป๊อปโอเวอร์ตัวเลือกวางตำแหน่งเองด้วย fixed — ภาพ 01 ไม่มีม่านทึบ) · แตะนอกกล่องยังปิดได้ · กักโฟกัสเหมือนเดิม
 
 import { useEffect, useRef } from "react";
 
@@ -21,7 +22,7 @@ export function SheetGrab() {
 //   ชั้นที่ไม่ใช่บนสุดอยู่ใต้ [inert] ⇒ ตัวกักของมันหยุดทำงานเอง (ตัวบนสุดเป็นเจ้าของโฟกัสคนเดียว)
 const FOCUSABLE = 'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
 
-export function RegisterDialog({ onDismiss, locked = false, children }: { onDismiss: () => void; locked?: boolean; children: React.ReactNode }) {
+export function RegisterDialog({ onDismiss, locked = false, bare = false, children }: { onDismiss: () => void; locked?: boolean; bare?: boolean; children: React.ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const el = ref.current;
@@ -63,7 +64,7 @@ export function RegisterDialog({ onDismiss, locked = false, children }: { onDism
       ref={ref}
       data-testid="pos-reg-scrim"
       tabIndex={-1}
-      className="fixed inset-0 z-50 flex items-end justify-center bg-[color:var(--color-ink)]/30 outline-none md:items-center md:p-4"
+      className={bare ? "fixed inset-0 z-50 outline-none" : "fixed inset-0 z-50 flex items-end justify-center bg-[color:var(--color-ink)]/30 outline-none md:items-center md:p-4"}
       onClick={(e) => {
         // แตะที่ม่านเท่านั้น (ไม่ใช่ในกล่อง) — ไม่ต้อง stopPropagation ในกล่อง
         if (e.target === e.currentTarget && !locked) onDismiss();

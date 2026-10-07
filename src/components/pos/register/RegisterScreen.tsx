@@ -19,8 +19,11 @@
 // P1.4 (บาร์โค้ด): ตัวจับ keydown ทั้งหน้า (capture) แยกเครื่องสแกนด้วย classifyScanBurst → onScannedCode = ทางสแกนทางเดียว
 //   (ไม่ผ่านหน่วงค้นหา 200ms · Enter ของช่องค้นหาไม่ถึงเมื่อเป็นการสแกน) · สแกนซ้ำ = +1 (cartAddProduct) · choose = ScanChooserDialog ·
 //   none = toast + "เพิ่มเป็นรายการกำหนดเอง?" เฉพาะผู้มีสิทธิ์ราคาเปิด · กล้อง = ScanCameraDialog
-// จุดต่อของใบหลัง (สเปก §1.3): onHold/onOpenHeld (P1.5) · InterimPayDialog + SaleDone (P1.6 แทนทั้งไฟล์)
-//   memberSlot ของ CartPanel (P1.12) · onNeedsApproval (P1.15 PIN) · ProductCard.onPick → pick (P1.2 ป๊อปโอเวอร์ตัวเลือก)
+// จุดต่อของใบหลัง (สเปก §1.3): onHold/onOpenHeld (P1.5) · จอชำระ P1.6 U = PayDialog (ไฟล์ InterimPayDialog.tsx) + PayDone
+//   (แยกจ่าย ≤10 · เงินรับ/ทอนบนแถวเงินสด · บัตร/โอนมีเลขอ้างอิง · ทิปนอกยอดบิล) · หมายเหตุบิล (BillNoteDialog) + หมายเหตุรายการ (LineEditor)
+//   memberSlot ของ CartPanel (P1.12) · onNeedsApproval (P1.15 PIN)
+// P1.2 U: pick → OptionsDialog เมื่อ optionGroupCount/variantCount > 0 (cartAddProduct พร้อม choiceId) · สินค้าชั่ง → WeighDialog
+//   (cartAddWeighed น้ำหนักที่กรอก — ต้องมีสิทธิ์ราคาเปิด) · สแกนป้ายเครื่องชั่ง (weighed) → cartAddWeighed ด้วยป้าย · บรรทัดแสดงตัวเลือก/น้ำหนัก
 // 🔴 ไฟล์ "use client": import จากโมดูล POS ได้แค่ register-shared · pricing-shared · scan-shared · register-actions (G9 · S5.17)
 // 🔴 ไม่มีข้อความไทยนอกคอมเมนต์ (S5.3) · testid เขียนตรงบนแท็กเสมอ (G1)
 
@@ -31,6 +34,7 @@ import { useInApp } from "@/lib/ui/use-in-app";
 import { priceCart, type PriceDiscount } from "@/lib/modules/pos/pricing-shared";
 import {
   cartAddProduct,
+  cartAddWeighed,
   cartToPriceInput,
   cartToQuoteInput,
   cartToSubmitInput,
@@ -40,6 +44,7 @@ import {
   quoteInputToCart,
   refusalMessageKey,
   REGISTER_MAX_LINES,
+  REGISTER_MAX_PAY_METHODS,
   REGISTER_MAX_QTY,
   type HeldCartNoticeCode,
   type HeldCartSummary,
@@ -68,6 +73,7 @@ import {
   submitRegisterSaleAction,
 } from "@/lib/modules/pos/register-actions";
 import { BillDiscountDialog } from "./BillDiscountDialog";
+import { BillNoteDialog } from "./BillNoteDialog";
 import { CartPanel, type CartTotalsModel } from "./CartPanel";
 import type { CartLineModel } from "./CartLine";
 import { CategoryChips } from "./CategoryChips";
@@ -76,21 +82,24 @@ import { CouponDialog } from "./CouponDialog";
 import { CustomItemDialog } from "./CustomItemDialog";
 import { HeldBillsDialog } from "./HeldBillsDrawer";
 import { HeldRecallConfirmDialog, HoldLabelDialog } from "./HeldDialogs";
-import { InterimPayDialog, type PayChoice, type PayError, type PayPhase } from "./InterimPayDialog";
+import { PayDialog, type PayChoice, type PayError, type PayPhase } from "./InterimPayDialog";
 import { LineEditor, type LineEditResult } from "./LineEditor";
 import { MobileCartBar } from "./MobileCartBar";
 // ชื่อลงท้าย Sheet/Tabs = ตัวสแกนปุ่ม (F15.3) นับเป็น "คอมโพเนนต์กดได้" ⇒ ใช้ชื่อแฝงตอนวาง (ตัวที่กดได้จริงข้างในมี testid ครบแล้ว)
 import { MobileCartSheet as CartSheetFrame } from "./MobileCartSheet";
 import { OpenPriceDialog } from "./OpenPriceDialog";
+import { OptionsDialog, type OptionsPick } from "./OptionsDialog";
 import { ProductGrid } from "./ProductGrid";
+import type { PickAnchor } from "./ProductCard";
 import { RegisterModeTabs as ModeTabsNav } from "./RegisterModeTabs";
 import { RegisterIcon } from "./RegisterIcon";
 import { RegisterStatusBar } from "./RegisterStatusBar";
 import { RegisterTopContext } from "./RegisterTopContext";
-import { SaleDone } from "./SaleDone";
+import { PayDone } from "./PayDone";
 import { ScanCameraDialog } from "./ScanCameraDialog";
 import { ScanChooserDialog } from "./ScanChooserDialog";
 import { SearchRow } from "./SearchRow";
+import { WeighDialog } from "./WeighDialog";
 // POS P1.9 ▸ รหัสเครื่อง → กะของเครื่อง (ผูกบิล · ล็อกปุ่มชำระเมื่อบังคับเปิดกะ) ◂
 import { getPosDeviceId } from "@/lib/modules/pos/device-id";
 
@@ -108,6 +117,10 @@ export type RegisterScreenProps = {
   limits: { canSell: boolean; canOverridePrice: boolean; maxDiscountBp: number | null };
   /** PromptPay ID ของร้าน (ใช้วาด QR ล็อกยอด) · null = ยังไม่ตั้ง */
   promptpayId: string | null;
+  /** P1.6 R4/F5: ระบบนี้เปิดรับทิป (parsePosPaymentSettings · วันนี้ false เสมอจนกว่า P1.6b) */
+  tipEnabled?: boolean;
+  /** P1.2 U R2: สาขานี้ตั้งนโยบาย BLOCK (ห้ามขายเกินสต็อก) ⇒ ตัวแปรที่หมดเลือกไม่ได้ · ไม่ตั้ง/ALLOW_NEGATIVE = เลือกได้ */
+  oversellBlock?: boolean;
 };
 
 type Msg = { key: string; values?: Record<string, string | number> };
@@ -124,7 +137,11 @@ type Layer =
   | { kind: "openPrice"; productId: string }
   | { kind: "clear" }
   | { kind: "pay" }
-  | { kind: "done"; result: RegisterSubmitOk }
+  | { kind: "done"; result: RegisterSubmitOk; payMethods: RegisterPayMethod[] }
+  | { kind: "note" }
+  // P1.2 U: กล่องตัวเลือก/ตัวแปร (weighedBarcode = มาจากป้ายเครื่องชั่งที่สแกน) · กล่องน้ำหนัก (options = ที่เลือกมาก่อน)
+  | { kind: "options"; product: RegisterProduct; weighedBarcode?: string; anchor?: PickAnchor }
+  | { kind: "weigh"; product: RegisterProduct; options: string[]; note?: string }
   | { kind: "scanChoose"; products: RegisterProduct[] }
   | { kind: "camera" }
   // P1.5: ลิ้นชักบิลที่พัก · กล่องตั้งป้ายก่อนพัก · ถาม "พักตะกร้านี้ก่อน?" เมื่อเรียกคืนทับตะกร้าที่มีของ
@@ -164,6 +181,14 @@ function useMedia(q: string): boolean | null {
   return v;
 }
 
+/** P1.2: บรรทัดที่ราคาคิดได้ที่เซิร์ฟเวอร์เท่านั้น (มีตัวเลือก · ป้ายเครื่องชั่ง · น้ำหนัก) */
+const isPricedByServer = (l: RegisterCartLine) =>
+  l.kind === "product" && ((l.options?.length ?? 0) > 0 || l.weighedBarcode !== undefined || l.weightGrams !== undefined);
+/** R3 F1: ยอดรอ quote */
+const PENDING = "\u2014";
+/** ราคาประมาณของน้ำหนักที่พิมพ์เอง — ปัดครึ่งขึ้นของ กรัม × ราคาต่อกก. / 1000 (สูตรเดียวกับ WeighDialog / weighedPriceSatang) */
+const weighedEstimate = (grams: number, perKg: number) => Math.floor((2 * grams * perKg + 1000) / 2000);
+
 /** PERCENT ของตัวตรวจเพดาน (bp) → "10" สำหรับข้อความ {limit}% */
 const pctText = (bp: number) => String(Number((bp / 100).toFixed(2)));
 
@@ -192,6 +217,8 @@ export function RegisterScreen(props: RegisterScreenProps) {
   /** ทุกสินค้าที่เคยเห็น — บรรทัดตะกร้ายังแสดงได้แม้กริดเปลี่ยนหมวด/คำค้น */
   const known = useRef(new Map<string, RegisterProduct>((props.initialCatalog?.products ?? []).map((p) => [p.id, p])));
   const remember = (list: RegisterProduct[]) => list.forEach((p) => known.current.set(p.id, p));
+  /** P1.2 U: choiceId → ชื่อตัวเลือกตามภาษาจอ (จากกล่องตัวเลือก) — บรรทัดตะกร้าวาดได้ก่อน quote มา */
+  const optionNames = useRef(new Map<string, string>());
   const catalogueEmpty = !!props.initialCatalog && products.length === 0 && !q.trim() && categoryId === null && categories.length === 0 && !catalogPending;
 
   // ═══════ ตะกร้า + ยอด ═══════
@@ -199,7 +226,8 @@ export function RegisterScreen(props: RegisterScreenProps) {
   const [cartVer, setCartVer] = useState(0);
   const cartRef = useRef(cart);
   cartRef.current = cart;
-  const [quote, setQuote] = useState<{ ver: number; q: RegisterQuote } | null>(null);
+  /** keys = คีย์บรรทัดของตะกร้ารุ่นที่ quote นี้ตอบ (บรรทัดที่ i ของ quote ↔ keys[i]) — R3 F2 จับคู่ราคาบรรทัดตามคีย์ ไม่ใช่ตำแหน่ง */
+  const [quote, setQuote] = useState<{ ver: number; q: RegisterQuote; keys: string[] } | null>(null);
   const [quoteErr, setQuoteErr] = useState<{ ver: number; code: string } | null>(null);
   const [quoteSlow, setQuoteSlow] = useState(false);
   const quoteSeq = useRef(0);
@@ -366,7 +394,15 @@ export function RegisterScreen(props: RegisterScreenProps) {
     const id = setInterval(() => {
       if (document.visibilityState === "visible") void refreshStatus();
     }, 60_000);
-    return () => clearInterval(id);
+    // R3 V3: กลับมาที่แท็บ (เช่น หลังเปิดกะในหน้ากะ) ⇒ ถามสถานะใหม่ทันที — ชิปกะ/แถบเปิดกะ/ปุ่มชำระตามทัน
+    const onVis = () => {
+      if (document.visibilityState === "visible") void refreshStatus();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onVis);
+    };
   }, [refreshStatus]);
 
   // ── โหลดกริด: คำค้น (หน่วง 200ms) · หมวด (ทันที) · หน้าถัดไป ──
@@ -422,6 +458,8 @@ export function RegisterScreen(props: RegisterScreenProps) {
   // ═══════ ราคา: ทันใจ (priceCart) แล้ว quote ของเซิร์ฟเวอร์ทับ ═══════
   const local = useMemo(() => {
     if (!cart.lines.length) return null;
+    // P1.2: ส่วนต่างของตัวเลือก/ราคาตามน้ำหนักอยู่ที่เซิร์ฟเวอร์เท่านั้น ⇒ ตะกร้าที่มีบรรทัดแบบนั้นใช้ quote (ไม่เดายอด)
+    if (cart.lines.some(isPricedByServer)) return null;
     const input = cartToPriceInput(cart, known.current, vat, limits.maxDiscountBp);
     if ("ok" in input) return null; // สินค้าไม่รู้จัก/ไม่มีราคา — รอ quote ของเซิร์ฟเวอร์ตัดสิน
     const r = priceCart(input);
@@ -457,7 +495,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
         const r = await quoteRegisterCartAction({ systemId, unitId, cart: cartToQuoteInput(cart) });
         if (seq !== quoteSeq.current) return;
         if (r.ok) {
-          setQuote({ ver, q: r });
+          setQuote({ ver, q: r, keys: cart.lines.map((l) => l.key) });
           setQuoteErr(null);
           synced();
         } else {
@@ -478,12 +516,14 @@ export function RegisterScreen(props: RegisterScreenProps) {
 
   const quoteFresh = quote && quote.ver === cartVer ? quote.q : null;
   const quoteFailed = quoteErr && quoteErr.ver === cartVer ? quoteErr.code : null;
-  const shownTotals: CartTotalsModel | null = quoteFresh ?? (local ? { ...local } : quote?.q ?? null);
+  // R3 F1: ตะกร้าที่มีบรรทัดราคาฝั่งเซิร์ฟเวอร์ (ตัวเลือก/ชั่ง) และ quote ยังไม่ตรงรุ่น = ยอดรอ (—) — ห้ามโชว์ยอดของตะกร้าเก่าค้าง
+  const totalsPending = !quoteFresh && cart.lines.some(isPricedByServer);
+  const shownTotals: CartTotalsModel | null = totalsPending ? null : (quoteFresh ?? (local ? { ...local } : quote?.q ?? null));
   // POS P1.9 (S15): จุดขายบังคับเปิดกะ แต่เครื่องนี้ยังไม่มีกะ = ล็อกปุ่มชำระ + การ์ด "เปิดกะก่อนเริ่มขาย"
   const shiftBlocked = !!status?.shiftRequired && !status?.shift;
   const payEnabled = cart.lines.length > 0 && !!quoteFresh && online && limits.canSell && payPhase === "form" && !frozen && !shiftBlocked;
   const lastAmount = quoteFresh?.grandTotalSatang ?? local?.grandTotalSatang ?? quote?.q.grandTotalSatang ?? 0;
-  const payAmount = quoteSlow && !quoteFresh ? tc("loading") : moneyText(cart.lines.length ? lastAmount : 0);
+  const payAmount = quoteSlow && !quoteFresh ? tc("loading") : totalsPending ? PENDING : moneyText(cart.lines.length ? lastAmount : 0);
 
   // ข้อความใต้ยอด: ออฟไลน์ > ไม่มีสิทธิ์ > quote ล้ม
   const errorMsg: Msg | null = !online
@@ -504,11 +544,26 @@ export function RegisterScreen(props: RegisterScreenProps) {
   const msgNode = (m: Msg) => t.rich(m.key, { ...(m.values ?? {}), b: (c) => <b>{c}</b> });
 
   // ── แบบจำลองบรรทัดสำหรับวาด (ราคาเซิร์ฟเวอร์ทับราคากริดเมื่อ quote ตรงตะกร้า — มติ Q22) ──
+  /** P1.2 U: บรรทัดรองของตัวเลือก/น้ำหนัก — ชื่อตามภาษาจอจากกล่องตัวเลือกก่อน แล้วค่อยชื่อจาก quote · น้ำหนักจาก quote (ป้าย) หรือที่กรอก */
+  const lineDetail = (l: RegisterCartLine, ql: RegisterQuote["lines"][number] | undefined): string => {
+    if (l.kind !== "product") return "";
+    const opts = (l.options ?? []).map((id) => optionNames.current.get(id) ?? ql?.options.find((o) => o.choiceId === id)?.name ?? "").filter(Boolean);
+    const grams = ql?.weightGrams ?? l.weightGrams ?? null;
+    const w = grams !== null ? t("line.grams", { grams: grams.toLocaleString("th-TH") }) : l.weighedBarcode !== undefined ? t("line.label") : "";
+    return [...opts, w].filter(Boolean).join(" · ");
+  };
   const lineModels: CartLineModel[] = cart.lines.map((l, i) => {
     const ql = quoteFresh?.lines[i];
     const ll = local?.lines[i];
     const prod = l.kind === "product" ? known.current.get(l.productId) : undefined;
-    const unit = ql?.unitPriceSatang ?? ll?.unitPriceSatang ?? (l.kind === "custom" ? l.unitPriceSatang : (l.openPriceSatang ?? prod?.priceSatang ?? 0));
+    // R3 F1: บรรทัดราคาฝั่งเซิร์ฟเวอร์ที่ยังไม่มี quote สด = รอ (—) · ยกเว้นน้ำหนักที่พิมพ์เองไม่มีตัวเลือก = ประมาณด้วยสูตรเดียวกับ WeighDialog
+    const serverPriced = isPricedByServer(l);
+    const est =
+      serverPriced && !ql && l.kind === "product" && l.weightGrams !== undefined && !(l.options?.length ?? 0) && typeof prod?.priceSatang === "number"
+        ? weighedEstimate(l.weightGrams, prod.priceSatang)
+        : null;
+    const pending = serverPriced && !ql && est === null;
+    const unit = ql?.unitPriceSatang ?? est ?? ll?.unitPriceSatang ?? (l.kind === "custom" ? l.unitPriceSatang : (l.openPriceSatang ?? prod?.priceSatang ?? 0));
     const stockLeft = prod && prod.trackStock && prod.stockLeft !== null ? prod.stockLeft : null;
     const over = stockLeft !== null && l.qty > stockLeft;
     return {
@@ -520,6 +575,9 @@ export function RegisterScreen(props: RegisterScreenProps) {
       discountSatang: ql?.discountSatang ?? ll?.discountSatang ?? 0,
       stockLeft,
       warn: over && warnAck[l.key] !== l.qty,
+      ...(pending ? { pending: true } : {}),
+      ...(l.note ? { note: l.note } : {}),
+      ...(lineDetail(l, ql) ? { detail: lineDetail(l, ql) } : {}),
     };
   });
   const inCart = useMemo(() => {
@@ -648,11 +706,13 @@ export function RegisterScreen(props: RegisterScreenProps) {
     focusSearch();
   };
   /** แตะการ์ด (P1.2 จะเปิดป๊อปโอเวอร์ตัวเลือกตรงนี้เมื่อ optionGroupCount > 0) */
-  const pick = (p: RegisterProduct) => {
+  const pick = (p: RegisterProduct, anchor?: PickAnchor) => {
     known.current.set(p.id, p);
     if (frozenRef.current) return;
     if (p.soldOutReason === "UNAVAILABLE") return showToast({ key: "errors.productUnavailable" });
-    if (p.requiredOptionGroupCount > 0) return showToast({ key: "errors.optionsRequired" });
+    // P1.2 R16: มีกลุ่มตัวเลือก (optionGroupCount) หรือตัวแปร (variantCount) ⇒ กล่องเลือก · สินค้าชั่ง ⇒ กล่องน้ำหนัก
+    if (p.optionGroupCount > 0 || p.variantCount > 0) return push({ kind: "options", product: p, ...(anchor ? { anchor } : {}) });
+    if (p.soldByWeight) return push({ kind: "weigh", product: p, options: [] });
     if (p.priceSatang === null) {
       if (!limits.canOverridePrice) return showToast({ key: "errors.priceNotSet" });
       return push({ kind: "openPrice", productId: p.id });
@@ -660,11 +720,69 @@ export function RegisterScreen(props: RegisterScreenProps) {
     addProduct(p);
   };
 
+  /** P1.2 U: ผลของกล่องตัวเลือก — สินค้าชั่ง (ยังไม่มีป้าย) ⇒ ต่อกล่องน้ำหนัก · มีหมายเหตุ ⇒ บรรทัดใหม่เสมอ · อื่น ๆ = cartAddProduct ทีละชิ้น (+1 รวมชุดเดียวกัน) */
+  const addPicked = (o: OptionsPick, weighedBarcode?: string) => {
+    if (frozenRef.current) return;
+    known.current.set(o.product.id, o.product);
+    for (const [id, nm] of Object.entries(o.names)) optionNames.current.set(id, nm);
+    if (weighedBarcode !== undefined) {
+      setLayers((s) => s.filter((l) => l.kind !== "options"));
+      return addWeighed(o.product, { weighedBarcode }, o.options, o.note);
+    }
+    if (o.soldByWeight) {
+      return setLayers((s) => [...s.filter((l) => l.kind !== "options"), { kind: "weigh", product: o.product, options: o.options, ...(o.note ? { note: o.note } : {}) }]);
+    }
+    const key = newKey();
+    // R2 ข้อ 2: คีย์รวม = สินค้า + ชุดตัวเลือก + หมายเหตุ (cartAddProduct) — ชิ้นละครั้งตามจำนวน
+    const addAll = (prev: RegisterCart): { next: RegisterCart; added: number } => {
+      let next = prev;
+      let added = 0;
+      for (let i = 0; i < o.qty; i++) {
+        const n = o.note ? cartAddProduct(next, o.product.id, key, o.options, o.note) : cartAddProduct(next, o.product.id, key, o.options);
+        if (n === next) break;
+        next = n;
+        added++;
+      }
+      return { next, added };
+    };
+    // R3 F4: เทียบก่อน/หลังกับตะกร้าล่าสุดที่วาดแล้ว — เต็ม 200 บรรทัด / ชนเพดานจำนวน = บอกผู้ใช้ (เหมือน addProduct)
+    const cur = cartRef.current;
+    const trial = addAll(cur);
+    if (trial.added < o.qty) {
+      const full = trial.added === 0 && cur.lines.length >= REGISTER_MAX_LINES;
+      const merged = cur.lines.some((l) => l.kind === "product" && l.productId === o.product.id);
+      showToast(full && !merged ? { key: "errors.tooManyLines", values: { max: REGISTER_MAX_LINES } } : { key: "errors.qtyInvalid", values: { max: REGISTER_MAX_QTY } });
+      if (trial.added === 0) return;
+    }
+    updateCart((prev) => addAll(prev).next);
+    setLayers((s) => s.filter((l) => l.kind !== "options"));
+  };
+  /** P1.2 U: บรรทัดชั่ง (ป้ายเครื่องชั่ง หรือน้ำหนักที่กรอก) — qty 1 ไม่รวมกับบรรทัดใด · ราคาจริงจาก quote */
+  const addWeighed = (p: RegisterProduct, weight: { weighedBarcode: string } | { weightGrams: number }, options: string[], note?: string) => {
+    if (frozenRef.current) return;
+    if (cartRef.current.lines.length >= REGISTER_MAX_LINES) return showToast({ key: "errors.tooManyLines", values: { max: REGISTER_MAX_LINES } });
+    known.current.set(p.id, p);
+    const key = newKey();
+    updateCart((prev) => {
+      const next = cartAddWeighed(prev, p.id, key, weight, options);
+      return note ? { ...next, lines: next.lines.map((l) => (l.key === key ? { ...l, note } : l)) } : next;
+    });
+    focusSearch();
+  };
+
   // ═══════ บาร์โค้ด (P1.4) ═══════
   /** เวลา (event.timeStamp) ของการสแกนล่าสุดที่ตัวจับแป้นรับไป — Enter ของช่องค้นหาในช่วงนี้ = ของการสแกน ห้ามเพิ่มซ้ำ (มติผู้คุมงาน 3) */
   const lastScanAt = useRef(-Infinity);
   /** ผลของ registerScan → ทำตาม scanOutcome (ทางเดียวทั้งเครื่องสแกน กล้อง และ Enter ในช่องค้นหา) */
   const applyScan = (r: RegisterScanResult, code: string, from: "scan" | "search") => {
+    // P1.2 R11: ป้ายเครื่องชั่ง (one + weighed) ⇒ บรรทัดชั่งด้วยป้ายนั้น · สินค้ามีตัวเลือก/ตัวแปร ⇒ เลือกก่อนแล้วใช้ป้ายเดิม
+    if (r.ok && r.match === "one" && r.weighed) {
+      const wp = r.product;
+      remember([wp]);
+      if (wp.soldOutReason === "UNAVAILABLE") return showToast({ key: "errors.productUnavailable" });
+      if (wp.optionGroupCount > 0) return push({ kind: "options", product: wp, weighedBarcode: r.weighed.code });
+      return addWeighed(wp, { weighedBarcode: r.weighed.code }, []);
+    }
     const o = scanOutcome(r, { canOverridePrice: limits.canOverridePrice });
     if (o.action === "error") return showToast(errorFor(o.code));
     if (o.action === "add") return pick(o.product);
@@ -735,7 +853,24 @@ export function RegisterScreen(props: RegisterScreenProps) {
   const lineIndex = (key: string) => cart.lines.findIndex((l) => l.key === key);
   /** ทดลองตะกร้าใหม่ด้วย priceCart ก่อนใช้จริง — ไม่ผ่าน = คืนข้อความ (กล่องค้าง ไม่ตัดเลขให้พอดี) */
   const tryCart = (next: RegisterCart): Msg | null => {
-    const input = cartToPriceInput(next, known.current, vat, limits.maxDiscountBp);
+    // R3 F2: บรรทัดตัวเลือก/ชั่ง = ใช้ราคาต่อหน่วยจาก quote ล่าสุด (จับคู่ด้วยคีย์บรรทัด) แล้วตรวจเพดานส่วนลดทั้งตะกร้าตามเดิม ·
+    //   ข้ามเฉพาะเมื่อยังไม่มี quote ของบรรทัดนั้นเลย (ราคาไม่รู้ — ให้ quote ตัดสิน)
+    let priced = next;
+    if (next.lines.some(isPricedByServer)) {
+      const lines: RegisterCartLine[] = [];
+      for (const l of next.lines) {
+        if (!isPricedByServer(l)) {
+          lines.push(l);
+          continue;
+        }
+        const qi = quote ? quote.keys.indexOf(l.key) : -1;
+        const ql = qi >= 0 ? quote?.q.lines[qi] : undefined;
+        if (!ql) return null;
+        lines.push({ key: l.key, kind: "custom", name: "-", unitPriceSatang: ql.unitPriceSatang, qty: l.qty, ...(l.discount ? { discount: l.discount } : {}) });
+      }
+      priced = { ...next, lines };
+    }
+    const input = cartToPriceInput(priced, known.current, vat, limits.maxDiscountBp);
     if ("ok" in input) return null; // ราคายังไม่รู้ (สินค้าใหม่จากเซิร์ฟเวอร์) — ให้ quote ตัดสิน
     const r = priceCart(input);
     return r.ok ? null : errorFor(r.code);
@@ -743,7 +878,9 @@ export function RegisterScreen(props: RegisterScreenProps) {
   const applyLine = (key: string, r: LineEditResult): Msg | null => {
     const i = lineIndex(key);
     if (i < 0) return null;
-    const lines = cart.lines.map((l, j) => (j === i ? ({ ...l, qty: r.qty, discount: r.discount } as RegisterCartLine) : l));
+    const cur = cart.lines[i]!;
+    if (cur.kind === "product" && (cur.weighedBarcode !== undefined || cur.weightGrams !== undefined) && r.qty !== 1) return { key: "weigh.qtyOne" };
+    const lines = cart.lines.map((l, j) => (j === i ? ({ ...l, qty: r.qty, discount: r.discount, note: r.note } as RegisterCartLine) : l));
     const next = { ...cart, lines };
     const err = tryCart(next);
     if (err) return err;
@@ -752,7 +889,16 @@ export function RegisterScreen(props: RegisterScreenProps) {
     return null;
   };
   const removeLine = (key: string) => {
-    changeCart({ ...cart, lines: cart.lines.filter((l) => l.key !== key) });
+    const lines = cart.lines.filter((l) => l.key !== key);
+    // R3 F8: ลบบรรทัดสุดท้าย = บิลใหม่ ⇒ ล้างหมายเหตุบิล + ส่วนลดท้ายบิลด้วย (สมาชิกคงไว้)
+    if (!lines.length) {
+      const next: RegisterCart = { lines: [] };
+      if (cart.memberId) next.memberId = cart.memberId;
+      changeCart(next);
+      pop();
+      return;
+    }
+    changeCart({ ...cart, lines });
     pop();
   };
   const applyBillDiscount = (d: PriceDiscount | undefined): Msg | null => {
@@ -808,7 +954,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
         pendingSubmit.current = null;
         clearPending();
         setPayPhase("form");
-        setLayers((s) => [...s.filter((l) => l.kind !== "pay" && l.kind !== "sheet"), { kind: "done", result: r }]);
+        setLayers((s) => [...s.filter((l) => l.kind !== "pay" && l.kind !== "sheet"), { kind: "done", result: r, payMethods: sale.payMethods }]);
         void refreshStatus();
         return;
       }
@@ -834,6 +980,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
         // ยอดสดจากคำตอบ (ไม่ต้อง quote ซ้ำ) — ผู้ใช้ต้องกดยืนยันใหม่กับยอดนี้
         setQuote({
           ver: cartVer,
+          keys: cart.lines.map((l) => l.key),
           q: {
             ok: true,
             subtotalSatang: r.subtotalSatang,
@@ -862,13 +1009,18 @@ export function RegisterScreen(props: RegisterScreenProps) {
   const confirmPay = (c: PayChoice) => {
     if (!quoteFresh || sendingRef.current || payPhase !== "form") return;
     const due = quoteFresh.grandTotalSatang;
-    // ทุกช่องจ่าย ≥ 1 สตางค์ · บิล 0 บาท = payMethods [] (Addendum 2 · B1.1 ข้อ 4)
-    const payMethods: RegisterPayMethod[] = due === 0 || c.method === "NONE" ? [] : [{ type: c.method, amountSatang: due }];
-    if (c.method === "CASH" && (c.receivedSatang ?? 0) < due) return;
+    // P1.6: Σ วิธีจ่าย = ยอดบิล + ทิป · ทุกแถว ≥ 1 สตางค์ · ≤ 10 แถว · บิล 0 บาท (ไม่มีทิป) = payMethods [] — ตรวจซ้ำก่อนส่ง (กล่องคิดมาแล้ว)
+    const tip = props.tipEnabled ? c.tipSatang : 0;
+    const sum = c.payMethods.reduce((s, m) => s + m.amountSatang, 0);
+    if (sum !== due + tip || c.payMethods.some((m) => m.amountSatang <= 0) || c.payMethods.length > REGISTER_MAX_PAY_METHODS) return;
+    const cash = c.payMethods.find((m) => m.type === "CASH");
+    if (cash && (c.cashReceivedSatang ?? 0) < cash.amountSatang) return;
     const sale = cartToSubmitInput(cart, {
       idempotencyKey: idemKey,
-      payMethods,
-      ...(c.method === "CASH" && due > 0 ? { cashReceivedSatang: c.receivedSatang } : {}),
+      payMethods: c.payMethods,
+      ...(cash ? { cashReceivedSatang: c.cashReceivedSatang } : {}),
+      ...(tip > 0 ? { tipSatang: tip } : {}),
+      ...(cart.note ? { note: cart.note } : {}),
       expectedGrandTotalSatang: due,
     });
     void send(sale);
@@ -1063,12 +1215,17 @@ export function RegisterScreen(props: RegisterScreenProps) {
       variant={variant}
       lines={lineModels}
       totals={cart.lines.length ? shownTotals : null}
+      totalsPending={totalsPending}
       payAmount={payAmount}
       payEnabled={payEnabled}
       error={errorMsg ? msgNode(errorMsg) : null}
       frozen={frozen}
       onPay={openPay}
       onSoon={soon}
+      onNote={() => {
+        if (!frozenRef.current && cart.lines.length) push({ kind: "note" });
+      }}
+      hasNote={!!cart.note}
       onHold={() => {
         if (!frozenRef.current && cart.lines.length) push({ kind: "holdLabel" });
       }}
@@ -1109,6 +1266,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
             name={nm}
             qty={line.qty}
             discount={line.discount}
+            note={line.note}
             focus={l.focus}
             onApply={(r) => applyLine(l.key, r)}
             onRemove={() => removeLine(l.key)}
@@ -1160,9 +1318,12 @@ export function RegisterScreen(props: RegisterScreenProps) {
         );
       case "pay":
         return (
-          <InterimPayDialog
+          <PayDialog
             key={k}
             dueSatang={quoteFresh?.grandTotalSatang ?? quote?.q.grandTotalSatang ?? pendingSubmit.current?.expectedGrandTotalSatang ?? 0}
+            breakdown={quoteFresh ?? quote?.q ?? null}
+            tipEnabled={!!props.tipEnabled}
+            billNote={cart.note ?? null}
             quotePending={!quoteFresh && !quoteFailed}
             quoteError={quoteFailed ? { code: quoteFailed, ...errorFor(quoteFailed) } : null}
             itemCount={cart.lines.length || (pendingSubmit.current?.lines.length ?? 0)}
@@ -1242,12 +1403,60 @@ export function RegisterScreen(props: RegisterScreenProps) {
         );
       case "done":
         return (
-          <SaleDone
+          <PayDone
             key={k}
             receiptNo={l.result.receiptNo}
-            totalSatang={l.result.grandTotalSatang}
+            totalSatang={l.payMethods.reduce((s, m) => s + m.amountSatang, 0) || l.result.grandTotalSatang}
             changeSatang={l.result.changeSatang}
+            payMethods={l.payMethods}
             onNext={nextSale}
+          />
+        );
+      case "options":
+        return (
+          <OptionsDialog
+            key={k}
+            product={l.product}
+            systemId={systemId}
+            unitId={unitId}
+            locale={locale}
+            weighedLabel={l.weighedBarcode !== undefined}
+            anchor={l.anchor}
+            allowNegative={!props.oversellBlock}
+            onAdd={(o) => addPicked(o, l.weighedBarcode)}
+            onClose={pop}
+          />
+        );
+      case "weigh":
+        return (
+          <WeighDialog
+            key={k}
+            product={l.product}
+            locale={locale}
+            canOverridePrice={limits.canOverridePrice}
+            onAdd={(grams) => {
+              setLayers((s) => s.filter((x) => x.kind !== "weigh"));
+              addWeighed(l.product, { weightGrams: grams }, l.options, l.note);
+            }}
+            onClose={pop}
+          />
+        );
+      case "note":
+        return (
+          <BillNoteDialog
+            key={k}
+            current={cart.note}
+            onSave={(note) => {
+              // หมายเหตุไม่กระทบราคา ⇒ ไม่เพิ่มรุ่นตะกร้า (quote ปัจจุบันยังใช้ได้)
+              setCart((c) => {
+                const next = { ...c };
+                if (note) next.note = note;
+                else delete next.note;
+                return next;
+              });
+              pop();
+            }}
+            onClose={pop}
           />
         );
     }
@@ -1271,6 +1480,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
           online={online}
           lastSyncAt={lastSyncAt}
           user={status ? { name: status.user.name, role: status.user.role } : null}
+          shift={status?.shift ?? null}
           onCamera={openCamera}
         />
         <ModeTabsNav systemId={systemId} />
@@ -1323,6 +1533,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
                 hasMore={!!nextCursor}
                 productsHref={`${base}/pos/products`}
                 onPick={pick}
+                selectedId={top?.kind === "options" && top.anchor ? top.product.id : null}
                 onMore={loadMore}
                 onClearSearch={() => {
                   setQ("");

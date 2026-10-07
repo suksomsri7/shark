@@ -1,7 +1,7 @@
 "use client";
 
 // CartLine.tsx — บรรทัดในตะกร้า (สเปก §2.1 / §2.2 · §4.4 · §5 · ภาพ 01 / 20A / 19ฉ)
-//   D: padding 18/24 ช่องไฟ 16 · กล่องจำนวน 34×34 มุม 10 ตัว 15 หนา (ห่อด้วยปุ่ม 44×44 — S5.9) · ชื่อ 16 หนา 600 ·
+//   D (P1.2 U R3 V6 · ภาพ 01 ความหนาแน่น): padding 12/24 ช่องไฟ 16 · กล่องจำนวน 40×40 มุม 10 ตัว 15 หนา (ห่อด้วยปุ่ม 44×44 — S5.9) · ชื่อ 16 หนา 600 ·
 //      บรรทัดรอง 13.5 muted mt 4 · ยอด 16 หนา 600 ชิดขวา · ใต้ยอด "฿100 × 2" 12.5 muted (qty > 1) · "−฿10" สีอันตราย 600
 //   T/M/C: padding 8/16 ช่องไฟ 12 · กล่อง 30×30 ตัว 14 · ชื่อ 15 · รอง 12.5 mt 1 · ยอด 15 · ไม่มี "฿100 × 2"
 //   เตือนสต็อก (19ฉ · นโยบายปริยาย = ขายติดลบได้ ไม่บล็อก): ขอบซ้าย 3px สีอันตราย + กล่องเตือนพื้น surface-2 มุม 14
@@ -23,6 +23,12 @@ export type CartLineModel = {
   stockLeft: number | null;
   /** แสดงกล่องเตือนสต็อก (qty > คงเหลือ และยังไม่กด "ขายต่อ") */
   warn: boolean;
+  /** P1.6 U: หมายเหตุรายการ (ไม่มี = undefined) */
+  note?: string;
+  /** P1.2 U R3 F1: ราคาบรรทัดรอ quote ของเซิร์ฟเวอร์ (ตัวเลือก/ชั่ง) — ยอดแสดง "—" ไม่เดาจากราคาฐาน */
+  pending?: boolean;
+  /** P1.2 U: ตัวเลือกที่เลือก + น้ำหนัก ("M · นมโอ๊ต · 250 กรัม") — ภาพ 01 บรรทัดรองใต้ชื่อ */
+  detail?: string;
 };
 
 type Props = {
@@ -42,23 +48,23 @@ export function CartLine({ line, frozen, onOpen, onKeep, onReduce }: Props) {
         ? t("line.stockMove", { from: line.stockLeft.toLocaleString("th-TH"), to: (line.stockLeft - line.qty).toLocaleString("th-TH") })
         : null;
   const left = Math.max(line.stockLeft ?? 0, 0);
-  const amount = moneyText(line.grossSatang);
+  const amount = line.pending ? "\u2014" : moneyText(line.grossSatang);
   return (
     <div
-      className={`flex items-start gap-3 border-b px-4 py-2 xl:gap-4 xl:px-6 xl:py-[18px] ${
+      className={`flex items-start gap-3 border-b px-4 py-2 xl:gap-4 xl:px-6 xl:py-3 ${
         line.warn ? "border-l-[3px] border-l-[color:var(--color-danger)] pl-[13px] xl:pl-[21px]" : ""
       }`}
       role="listitem"
     >
       <button
         data-testid={`pos-reg-line-qty-${line.key}`}
-        className="-m-[7px] flex size-11 shrink-0 items-center justify-center rounded-[12px] disabled:opacity-60 xl:-m-[5px]"
+        className="-m-[7px] flex size-11 shrink-0 items-center justify-center rounded-[12px] disabled:opacity-60 xl:-m-[2px]"
         type="button"
         disabled={frozen}
         aria-label={`${t("editor.qty")} ${line.qty.toLocaleString("th-TH")}`}
         onClick={() => onOpen(line.key, "qty")}
       >
-        <span className="grid size-[30px] place-items-center rounded-[10px] border text-[14px] font-bold tabular-nums xl:size-[34px] xl:text-[15px]">
+        <span className="grid size-[30px] place-items-center rounded-[10px] border text-[14px] font-bold tabular-nums xl:size-10 xl:text-[15px]">
           {line.qty.toLocaleString("th-TH")}
         </span>
       </button>
@@ -72,12 +78,23 @@ export function CartLine({ line, frozen, onOpen, onKeep, onReduce }: Props) {
           onClick={() => onOpen(line.key, "discount")}
         >
           <span className="min-w-0 flex-1">
-            <span className="block break-words text-[15px] font-semibold [overflow-wrap:anywhere] xl:text-[16px]">{line.name}</span>
+            <span className="block break-words text-[15px] font-semibold [overflow-wrap:anywhere] xl:text-[16px] xl:leading-[1.4]">{line.name}</span>
+            {line.detail && (
+              <span data-testid={`pos-reg-line-detail-${line.key}`} className="mt-px block break-words text-[12.5px] text-[color:var(--color-muted)] [overflow-wrap:anywhere] xl:mt-1 xl:text-[13.5px]">
+                {line.detail}
+              </span>
+            )}
             {sub && <span className="mt-px block text-[12.5px] text-[color:var(--color-muted)] xl:mt-1 xl:text-[13.5px]">{sub}</span>}
+            {line.note && (
+              <span data-testid={`pos-reg-line-note-text-${line.key}`} className="mt-px flex items-start gap-1 text-[12.5px] text-[color:var(--color-ink-soft)] xl:text-[13px]">
+                <RegisterIcon name="edit" size={12} className="mt-[3px]" />
+                <span className="min-w-0 break-words [overflow-wrap:anywhere]">{line.note}</span>
+              </span>
+            )}
           </span>
           <span className="shrink-0 whitespace-nowrap text-right text-[15px] font-semibold tabular-nums xl:text-[16px]">
             {amount}
-            {line.qty > 1 && (
+            {line.qty > 1 && !line.pending && (
               <small className="hidden text-[12.5px] font-normal text-[color:var(--color-muted)] xl:block">
                 {t("line.unitTimesQty", { price: moneyText(line.unitPriceSatang), qty: line.qty.toLocaleString("th-TH") })}
               </small>
