@@ -689,3 +689,9 @@
 - เลือก P1.10 (เครื่อง/เครื่องพิมพ์/ใบเสร็จ 58-80/ใบกำกับอย่างย่อ) เพราะพึ่ง P1.9 ที่รับแล้ว ไม่ชนไฟล์ P1.8 (ไม่แตะ service.ts/account/point/outbox) และปลดล็อก P1.11 · brief `pos-brief-P1.10.md` 921b6541 (S = server + renderer บริสุทธิ์ · ฮาร์ดแวร์/หน้า 17A-17B = P1.10U · Q1–Q4 มีค่าปริยาย · เลขใบเสร็จตาม O2 ไม่ใช่ R{YY}{MM} ในภาพ 17A)
 - เลน 1: P1.8 oracle (tree b · `wip/pos-p1.8-oracle`) · เลน 2: P1.10 oracle (tree c · `wip/pos-p1.10-oracle` จาก 921b6541 · fixture prefix posqc-p110-) · ทั้งคู่ใช้ QC4 ร่วม
 - ถัดไป: รับ oracle ทั้งสอง → merge เข้า session/pos → builder S P1.8 บน p11 (migration) · builder S P1.10 บนทรี b/c (migration ของ P1.10 = ตารางใหม่ล้วน ผู้คุม deploy QC4 ทีละใบ)
+
+### 2026-10-07T23:07Z — P1.8 oracle รับแล้ว (f09cb335 · 49 ข้อ · base SKIP/forced RED ไม่ crash) → merge ef22651f · builder S เริ่ม
+- มติ CD1–CD8 อยู่ใน brief §7 · prompt builder `pos-prompt-accountB-P1.8-S.md` (oracle sha ใส่แล้ว 7c479596)
+- เลน 1 = builder S P1.8 บน p11 (branch `wip/pos-p1.8` จาก session/pos ef22651f · migration QC4 โดย builder ตาม prompt) · เลน 2 = P1.10 oracle (tree c) ยังเขียนอยู่
+- โควตา session 42% (reset 01:30 UTC) — ถ้าแตะ 70% ก่อน reset: ไม่ spawn reviewer/เลนใหม่ รอ reset
+- ถัดไป: รับ oracle P1.10 → merge → (ถ้าโควตาพอ) builder S P1.10 บนทรี c · รอ builder P1.8 → reviewer/hunter money lane → รับ
