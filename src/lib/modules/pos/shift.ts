@@ -13,6 +13,7 @@ import { canAccessUnit, evaluate } from "@/lib/core/rbac";
 import { emitOutbox } from "@/lib/core/outbox";
 import { scheduleDrain } from "@/lib/outbox-consumers";
 import { posRegisterV2On, type RegisterActor, type RegisterCtx } from "./register-shared";
+import { posDeviceRevoked } from "./device"; // POS P1.10 ▸ การ์ดเครื่องที่ถูกเพิกถอน ◂
 
 type Db = PrismaClient;
 type Tx = Prisma.TransactionClient;
@@ -72,7 +73,9 @@ export type ShiftRefusalCode =
   | "INTERNAL"
   // P1.9b (R14) — นับย้อนหลังกะที่บังคับปิด
   | "SHIFT_NOT_FORCED"
-  | "ALREADY_RECOUNTED";
+  | "ALREADY_RECOUNTED"
+  // P1.10 (R2) — เครื่องที่ถูกเพิกถอนเปิดกะไม่ได้
+  | "DEVICE_REVOKED";
 export type ShiftRefusal = { ok: false; code: ShiftRefusalCode; message: string; shiftId?: string; recountId?: string };
 
 export type ShiftView = {
@@ -157,6 +160,7 @@ const MSG: Record<ShiftRefusalCode, string> = {
   INTERNAL: "ระบบกะขัดข้องชั่วคราว — ลองอีกครั้ง",
   SHIFT_NOT_FORCED: "นับย้อนหลังได้เฉพาะกะที่ระบบบังคับปิด",
   ALREADY_RECOUNTED: "กะนี้ถูกนับย้อนหลังไปแล้ว — นับได้ครั้งเดียว",
+  DEVICE_REVOKED: "เครื่องนี้ถูกเพิกถอนแล้ว — เปิดกะไม่ได้ ติดต่อผู้จัดการ",
 };
 const refuse = (code: ShiftRefusalCode, message?: string, extra?: { shiftId?: string; recountId?: string }): ShiftRefusal => ({ ok: false, code, message: message ?? MSG[code], ...(extra ?? {}) });
 const isRefusal = (v: unknown): v is ShiftRefusal => !!v && typeof v === "object" && (v as { ok?: unknown }).ok === false;
@@ -482,6 +486,11 @@ export async function openShift(ctx: RegisterCtx, actor: RegisterActor, input: O
     const detail = denomDetail(input.floatDetail, input.floatSatang);
     if (detail === false) return refuse("VALIDATION", "จำนวนธนบัตร/เหรียญรวมไม่เท่าเงินทอนตั้งต้น");
     const deviceId = input.deviceId;
+    // POS P1.10 ▸ R2 + มติ CD2: เครื่องที่ถูกเพิกถอนของสาขานี้เปิดกะไม่ได้ — ตรวจทั้ง input.deviceId และ ctx.deviceId (ไม่ลงทะเบียน = เปิดได้) ◂
+    const ctxDevice = isRecord(ctx) && isShiftDeviceId(ctx.deviceId) ? ctx.deviceId : null;
+    for (const code of new Set([deviceId, ...(ctxDevice ? [ctxDevice] : [])])) {
+      if (await posDeviceRevoked(db, s.tenantId, s.unitId, code)) return refuse("DEVICE_REVOKED");
+    }
 
     const cur = await openShiftOfDevice(db, s, deviceId, s.settings.forceCloseAfterHours);
     if (cur.shift) return refuse("SHIFT_ALREADY_OPEN", undefined, { shiftId: cur.shift.id });

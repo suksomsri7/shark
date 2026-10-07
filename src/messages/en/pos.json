@@ -284,7 +284,10 @@
       "variantRequired": "Choose a size or style for this item first",
       "weightRequired": "This item is sold by weight — scan the scale label or enter the weight first",
       "shiftNotForced": "Only shifts closed by the system can be recounted",
-      "alreadyRecounted": "This shift has already been recounted"
+      "alreadyRecounted": "This shift has already been recounted",
+      "deviceRevoked": "This device has been revoked — contact a manager",
+      "deviceLimit": "Device limit reached — revoke an unused device first",
+      "deviceNotFound": "Device not found at this branch"
     },
     "held": {
       "title": "Held bills",
@@ -864,5 +867,27 @@
       "out": "Out {name}",
       "scopeNote": "History of this inventory (every branch that shares it)"
     }
+  },
+  "device": {
+    "title": "Devices and printers",
+    "register": "Register this device",
+    "revoke": "Revoke device",
+    "online": "Online",
+    "offline": "Offline",
+    "printer": "Receipt printer",
+    "name": "Device name",
+    "posRegNo": "POS registration no.",
+    "revoked": "Revoked",
+    "unregistered": "Not registered",
+    "limit": "{used} of {limit} devices used"
+  },
+  "receipt": {
+    "title": "Receipt",
+    "taxInvoiceAbb": "Abbreviated tax invoice",
+    "copy": "Copy",
+    "reprint": "Reprint receipt",
+    "footerDefault": "Thank you for your purchase",
+    "print": "Print receipt",
+    "settings": "Receipt and tax"
   }
 }

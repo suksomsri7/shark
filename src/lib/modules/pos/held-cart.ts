@@ -13,6 +13,7 @@
 import { prisma } from "@/lib/core/db";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { quoteRegisterCart, registerCanonicalCart, registerProductsByIds, registerScopeCheck } from "./register";
+import { posDeviceRevoked } from "./device"; // POS P1.10 ▸ การ์ดเครื่องที่ถูกเพิกถอน ◂
 import {
   HELD_CART_EXPIRE_DAYS,
   HELD_CART_LABEL_MAX,
@@ -42,6 +43,7 @@ const MSG: Partial<Record<RegisterRefusalCode, string>> = {
   VALIDATION: "ข้อมูลบิลที่พักไม่ถูกต้อง — ยังไม่ได้บันทึกอะไร",
   ALREADY_RECALLED: "บิลที่พักนี้ถูกเรียกคืนไปแล้ว (อาจจากอีกเครื่อง)",
   INTERNAL: "ระบบพักบิลขัดข้องชั่วคราว — ลองอีกครั้ง",
+  DEVICE_REVOKED: "เครื่องนี้ถูกเพิกถอนแล้ว — พัก/เรียกคืนบิลไม่ได้ ติดต่อผู้จัดการ",
 };
 const refuse = (code: RegisterRefusalCode, message?: string): RegisterRefusal => ({ ok: false, code, message: message ?? MSG[code] ?? "ทำรายการไม่ได้" });
 const isRefusal = (v: unknown): v is RegisterRefusal => !!v && typeof v === "object" && (v as { ok?: unknown }).ok === false;
@@ -59,6 +61,11 @@ async function guard<T>(name: string, body: () => Promise<T>): Promise<T | Regis
 async function scope(db: Db, ctx: RegisterCtx, actor: RegisterActor): Promise<Scoped | RegisterRefusal> {
   const s = await registerScopeCheck(ctx, actor, db);
   return s.ok ? { ctx: s.ctx, actor: s.actor } : s;
+}
+/** POS P1.10 ▸ R2: ctx.deviceId (ดิบ — registerScopeCheck ไม่ส่งต่อ) เป็นเครื่องที่ถูกเพิกถอนของสาขานี้ = DEVICE_REVOKED · ไม่ส่ง/ไม่ลงทะเบียน = ผ่าน ◂ */
+async function revokedDevice(db: Db, ctx: unknown, s: Scoped): Promise<RegisterRefusal | null> {
+  const code = isRecord(ctx) ? ctx.deviceId : undefined;
+  return (await posDeviceRevoked(db, s.ctx.tenantId, s.ctx.unitId, code)) ? refuse("DEVICE_REVOKED") : null;
 }
 const rowWhere = (s: Scoped) => ({ tenantId: s.ctx.tenantId, systemId: s.ctx.systemId, unitId: s.ctx.unitId });
 
@@ -114,6 +121,8 @@ export async function holdRegisterCart(ctx: RegisterCtx, actor: RegisterActor, i
     const db: Db = client ?? prisma;
     const s = await scope(db, ctx, actor);
     if (isRefusal(s)) return s;
+    const revoked = await revokedDevice(db, ctx, s);
+    if (revoked) return revoked;
     if (!isRecord(input)) return refuse("VALIDATION");
     const label = cleanLabel(input.label);
     if (label === undefined) return refuse("VALIDATION", `ป้ายบิลต้องเป็นข้อความไม่เกิน ${HELD_CART_LABEL_MAX} ตัวอักษร`);
@@ -184,6 +193,8 @@ export async function recallHeldCart(ctx: RegisterCtx, actor: RegisterActor, inp
     const db: Db = client ?? prisma;
     const s = await scope(db, ctx, actor);
     if (isRefusal(s)) return s;
+    const revoked = await revokedDevice(db, ctx, s);
+    if (revoked) return revoked;
     const id = idOf(input);
     if (!id) return refuse("NOT_FOUND");
     const row = await db.posHeldCart.findFirst({ where: { id, ...rowWhere(s) }, select: { status: true, createdAt: true, cartJson: true } });
