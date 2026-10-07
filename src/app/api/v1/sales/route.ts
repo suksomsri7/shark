@@ -31,7 +31,7 @@ export async function GET(req: Request): Promise<Response> {
     await Promise.all(
       posSystems.map((s) =>
         tenantDb({ tenantId: auth.tenantId, systemId: s.id }).posSale.findMany({
-          where: { status: "PAID" },
+          where: { status: "PAID", docType: "SALE" }, // POS P1.8 ▸ R3: บิลขายเท่านั้น (ใบคืนเงินไม่ใช่ยอดขาย · API คืนเงิน = follow-up HF-APIV1) ◂
           orderBy: { createdAt: "desc" },
           take,
           select: sel,

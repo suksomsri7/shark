@@ -214,7 +214,8 @@ export async function overview(ctx: MemberCtx, actor: MemberActor, opts: { month
     `,
     billsByMember(ctx, ids, from, now),
     billsByMember(ctx, ids, d90, now),
-    prisma.posSale.aggregate({ where: { tenantId: ctx.tenantId, status: "PAID", createdAt: { gte: from, lte: now } }, _sum: { grandTotalSatang: true } }),
+    // POS P1.8 ▸ R3: ยอดขายทั้งร้าน = บิลขาย (ไม่ใช่ใบคืนเงิน) ◂
+    prisma.posSale.aggregate({ where: { tenantId: ctx.tenantId, status: "PAID", docType: "SALE", createdAt: { gte: from, lte: now } }, _sum: { grandTotalSatang: true } }),
     outstandingOf(ctx, actor),
     burnRateOf(ctx.tenantId),
     prisma.voucher.findMany({

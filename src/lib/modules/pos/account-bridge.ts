@@ -4,7 +4,8 @@
 // WO-0002: map ประเภทการชำระของ POS → ช่องทางเงินฝั่งบัญชี แล้วส่งให้ facade
 
 import type { PosPayType } from "@prisma/client";
-import { applyExternalSale, reverseExternalSale } from "@/lib/modules/account";
+import { applyExternalRefund, applyExternalSale, reverseExternalSale } from "@/lib/modules/account";
+import { allocateBillDiscount } from "./refund-math";
 
 // PosPayType → ช่องทางเงินฝั่งบัญชี (passthrough — WO-0040a เลิกยุบ DEPOSIT/ROOM_CHARGE)
 //   CASH → เงินสด (1000) · PROMPTPAY/TRANSFER → ธนาคาร (1010)
@@ -59,16 +60,7 @@ export type SaleCustomerForBridge = {
 // เกลี่ย "ส่วนลดท้ายบิล/คูปอง" ลงบรรทัดตามสัดส่วนยอดบรรทัด (largest remainder — ผลรวมตรงเป๊ะ)
 // 🔴 ทำไมต้องเกลี่ย: บัญชีรับบรรทัดได้ก็ต่อเมื่อ Σ บรรทัด = ยอดบิลเป๊ะ · PosSale เก็บส่วนลดท้ายบิลไว้ที่หัวบิล
 //    ถ้าส่งดิบ ๆ บิลที่มีส่วนลด/คูปองจะถูกปฏิเสธทั้งใบ (เงินยังเข้า GL แต่ไม่มีเอกสาร = รายงานสินค้าโหว่)
-function allocateBillDiscount(weights: number[], total: number): number[] {
-  const sumW = weights.reduce((a, b) => a + b, 0);
-  if (total <= 0 || sumW <= 0) return weights.map(() => 0);
-  const raw = weights.map((w) => (total * w) / sumW);
-  const out = raw.map((r) => Math.floor(r));
-  let rem = total - out.reduce((a, b) => a + b, 0);
-  const order = raw.map((r, i) => ({ i, frac: r - Math.floor(r) })).sort((a, b) => b.frac - a.frac);
-  for (let k = 0; rem > 0 && order.length > 0; k++, rem--) out[order[k % order.length].i] += 1;
-  return out;
-}
+// POS P1.8 ▸ ตัวเกลี่ยย้ายไป refund-math.ts (ตัวเดียวกับยอดคืนเงิน) — พฤติกรรมเดิมทุกไบต์ ◂
 
 /**
  * POS P1.6 — ทิปอยู่ในเงินที่รับ (Σจ่าย = ยอดบิล + ทิป) แต่ไม่ใช่รายได้: หักทิปออกจากแถวจ่ายจากท้ายขึ้นมา ⇒ ขา Dr = ยอดบิลเป๊ะ
@@ -150,5 +142,32 @@ export async function bridgePosSaleVoided(sale: {
     tenantId: sale.tenantId,
     sourceSystemId: sale.systemId,
     refId: sale.id,
+  });
+}
+
+// POS P1.8 ▸ ใบคืนเงิน (docType REFUND) → ใบลดหนี้ + กลับรายการตามสัดส่วน (ผ่าน facade · REVIEW #6) ◂
+//   บรรทัดของใบคืนมียอด "หลังเกลี่ยส่วนลดแล้ว" อยู่แล้ว (unitPrice × qty − discount = lineTotal) + บรรทัดค่าบริการของใบคืน
+//   ⇒ Σ บรรทัด = grandTotal ของใบคืนเป๊ะ · ยอดบริการ = บรรทัดที่บรรทัดเดิมเป็นบริการ (กลับ 4030 ตามสัดส่วน)
+export async function bridgePosSaleRefunded(
+  refund: { id: string; tenantId: string; systemId: string; grandTotalSatang: number; serviceChargeSatang: number; paidAt: Date | null; createdAt: Date; receiptNo: string | null; note: string | null },
+  saleId: string,
+  lines: SaleLineForBridge[],
+  payments: { type: PosPayType; amountSatang: number }[],
+  serviceGrossSatang: number,
+): Promise<{ posted: boolean; reason?: string; docId?: string }> {
+  const sc = Math.max(0, refund.serviceChargeSatang);
+  const src: SaleLineForBridge[] = sc > 0 ? [...lines, { name: "ค่าบริการ", qty: 1, unitPriceSatang: sc, discountSatang: 0, lineTotalSatang: sc, itemId: null }] : lines;
+  return applyExternalRefund({
+    tenantId: refund.tenantId,
+    sourceSystemId: refund.systemId,
+    refId: refund.id,
+    saleRefId: saleId,
+    occurredAt: refund.paidAt ?? refund.createdAt,
+    grossSatang: refund.grandTotalSatang,
+    serviceGrossSatang: Math.min(Math.max(0, serviceGrossSatang), refund.grandTotalSatang),
+    payMethods: payments.map((p) => ({ channel: channelOf(p.type), amountSatang: p.amountSatang })),
+    lines: src.map((l) => ({ itemId: l.itemId, name: l.name, qty: l.qty, unitPriceSatang: l.unitPriceSatang, discountSatang: l.discountSatang })),
+    docNo: refund.receiptNo,
+    reason: refund.note,
   });
 }

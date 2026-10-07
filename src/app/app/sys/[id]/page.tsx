@@ -145,8 +145,9 @@ async function PosContent({ systemId, tenantId, scope }: { systemId: string; ten
       orderBy: { createdAt: "desc" },
       take: 10,
     }),
+    // POS P1.8 ▸ R3: บิลขายที่นับยอด (PAID + คืนครบ) — ใบคืนเงินหักด้านล่าง ◂
     prisma.posSale.aggregate({
-      where: { ...posSaleWhere(tenantId, systemId, scope), status: "PAID" },
+      where: { ...posSaleWhere(tenantId, systemId, scope), docType: "SALE", status: { in: ["PAID", "REFUNDED"] } },
       _sum: { grandTotalSatang: true },
       _count: true,
     }),
@@ -162,7 +163,8 @@ async function PosContent({ systemId, tenantId, scope }: { systemId: string; ten
   const today = card ? null : await closeDaySummary({ tenantId, systemId, unitIds: posScopeUnitIds(scope) });
   // ลิงก์รายงาน: มีสิทธิ์ pos.report.view อย่างน้อย 1 สาขาของ POS นี้ที่เข้าได้ (ตรงกับด่านของหน้า /pos/reports)
   const canReport = units.some((u) => canAccessUnit(m, u.id) && evaluate(m, { module: "pos", action: REPORT_PERMISSION, unitId: u.id }));
-  const total = paidAll._sum.grandTotalSatang ?? 0;
+  const refundAll = await prisma.posSale.aggregate({ where: { ...posSaleWhere(tenantId, systemId, scope), docType: "REFUND" }, _sum: { grandTotalSatang: true } });
+  const total = (paidAll._sum.grandTotalSatang ?? 0) - (refundAll._sum.grandTotalSatang ?? 0);
   return (
     <>
       <ModuleTabs items={posTabs(systemId)} />
@@ -208,13 +210,13 @@ async function PosContent({ systemId, tenantId, scope }: { systemId: string; ten
             key: s.id,
             primary: (
               <span>
-                {s.receiptNo} · <MoneyText satang={s.grandTotalSatang} />
+                {s.receiptNo} · <MoneyText satang={s.docType === "REFUND" ? -s.grandTotalSatang : s.grandTotalSatang} />
               </span>
             ),
             trailing: (
               <span className="flex items-center gap-2">
-                {s.status !== "PAID" && (
-                  <StatusChip value={s.status} map={POS_SALE_STATUS_LABEL} tone="danger" />
+                {(s.status !== "PAID" || s.docType === "REFUND") && (
+                  <StatusChip value={s.docType === "REFUND" ? "REFUND" : s.status} map={POS_SALE_STATUS_LABEL} tone="danger" />
                 )}
                 <span className="text-xs text-[color:var(--color-muted)]">{fmt(s.createdAt)}</span>
               </span>

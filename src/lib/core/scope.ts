@@ -58,6 +58,8 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   // POS P1.14 — ตรวจนับสต็อกจากหน้าขาย (ผู้เขียนเดียว = pos/stock-count.ts · ทุกคำสั่งกรอง tenantId (+ systemId/unitId ของรอบ))
   PosStockCount: sys(),
   PosStockCountLine: tenant,
+  // POS P1.8 — เลขใบคืนเงิน (CN) ต่อสาขา/ชนิด/เดือน (ผู้เขียนเดียว = pos/refund.ts) · วางหัวทะเบียนด้วยเหตุผลเดียวกับ PosShift
+  PosDocCounter: unit,
   PosStockCountEntry: tenant,
   // Outbox (kernel — side effects post-commit · WO-0002)
   OutboxEvent: tenant,
@@ -310,7 +312,6 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   PosSaleLineOption: tenant, // POS P1.2 — ตัวเลือกบนบรรทัดบิล (สำเนา ณ เวลาขาย)
   PosPayment: unit,
   PosReceiptCounter: unit,
-  PosDocCounter: unit, // POS P1.8 — เลขใบคืนเงิน (CN) ต่อสาขา/ชนิด/เดือน (ผู้เขียนเดียว = pos/refund.ts)
   // POS P1.1a — แคตตาล็อกเดียว (ผู้เขียนเดียว = pos/catalog.ts) · ลูกของ PosProduct มี tenantId ของตัวเอง
   PosProduct: sys(),
   PosCategory: sys(),

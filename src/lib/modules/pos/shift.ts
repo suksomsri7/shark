@@ -92,7 +92,8 @@ export type ShiftView = {
   countedCashSatang: number | null;
   overShortSatang: number | null;
 };
-export type ShiftMethodLine = { type: string; count: number; amountSatang: number; countedSatang?: number; diffSatang?: number };
+// POS P1.8 ▸ refundCount/refundSatang = ใบคืนเงินของวิธีนั้นที่ผูกกะนี้ (มีเฉพาะเมื่อมีการคืน · count/amountSatang = ฝั่งขายเดิม) ◂
+export type ShiftMethodLine = { type: string; count: number; amountSatang: number; countedSatang?: number; diffSatang?: number; refundCount?: number; refundSatang?: number };
 export type ShiftReport = {
   shiftId: string;
   shiftNo: number;
@@ -116,6 +117,9 @@ export type ShiftReport = {
   cashInSatang: number;
   cashOutSatang: number;
   cashRefundsSatang: number;
+  /** POS P1.8 (R8) — ใบคืนเงินที่ผูกกะนี้ (จำนวนใบ · ยอดรวม) · salesTotalSatang ยังเป็นยอดขายเต็ม */
+  refundCount: number;
+  refundSatang: number;
   expectedCashSatang: number | null;
   // เฉพาะ Z
   countedCashSatang?: number | null;
@@ -309,13 +313,16 @@ async function bumpCounter(tx: Tx, tenantId: string, unitId: string, field: "shi
 // ═══════════ รายงาน (S7/S9) — คำนวณสด อ่านอย่างเดียว ═══════════
 // POS P1.17 ▸ export ให้ reports.ts คำนวณแถวกะที่ยัง OPEN (R9) — อ่านอย่างเดียว · กะที่ปิดแล้วอ่าน Z แช่แข็งเสมอ ◂
 export async function computeReport(db: Db | Tx, r: PosShift): Promise<ShiftReport> {
-  const sales = await db.posSale.findMany({
+  const docs = await db.posSale.findMany({
     // R2 F1: createdAt >= openedAt ⇒ ใช้ดัชนี (tenantId, unitId, createdAt) ขณะถือล็อกแถวกะ (ไม่สแกนทั้งสาขา)
     where: { tenantId: r.tenantId, unitId: r.unitId, createdAt: { gte: new Date(r.openedAt.getTime() - SALE_CLOCK_SLACK_MS) }, shiftId: r.id },
-    select: { id: true, status: true, grandTotalSatang: true, tipSatang: true },
+    select: { id: true, status: true, grandTotalSatang: true, tipSatang: true, docType: true },
     orderBy: { id: "asc" },
   });
-  // P1.8 (ใบคืนเงิน) ยังไม่มี docType ⇒ cashRefunds = 0 · P1.8 ต้องผูกใบคืนกับกะของเครื่องที่คืน แล้วหักที่นี่
+  // POS P1.8 ▸ R8: บิลขาย (docType SALE) = ยอดขายของกะ (คืนครบทีหลัง REFUNDED ยังเป็นการขายของกะนี้) ·
+  //   ใบคืนเงิน (REFUND) ที่ผูกกะนี้ = เงินออก — cashRefunds = Σ แถว CASH ของใบคืน · expected หักออก ◂
+  const sales = docs.filter((x) => x.docType === "SALE");
+  const refundDocs = docs.filter((x) => x.docType === "REFUND");
   const live = sales.filter((x) => x.status !== "VOIDED");
   const voided = sales.filter((x) => x.status === "VOIDED");
   const pays = live.length
@@ -342,7 +349,18 @@ export async function computeReport(db: Db | Tx, r: PosShift): Promise<ShiftRepo
   }
   const cashIn = moves.filter((m) => m.kind === "IN").reduce((t, m) => t + m.amountSatang, 0);
   const cashOut = moves.filter((m) => m.kind === "OUT").reduce((t, m) => t + m.amountSatang, 0);
-  const refunds = 0;
+  const rpays = refundDocs.length
+    ? await db.posPayment.findMany({ where: { tenantId: r.tenantId, saleId: { in: refundDocs.map((x) => x.id) } }, select: { type: true, amountSatang: true } })
+    : [];
+  const rby = new Map<string, { count: number; amount: number }>();
+  for (const p of rpays) {
+    const b = rby.get(p.type) ?? { count: 0, amount: 0 };
+    b.count += 1;
+    b.amount += p.amountSatang;
+    rby.set(p.type, b);
+    if (!by.has(p.type)) by.set(p.type, { count: 0, amount: 0 });
+  }
+  const refunds = rby.get("CASH")?.amount ?? 0;
   const types = [...by.keys()].sort((a, b) => (METHOD_ORDER.indexOf(a) + 1 || 99) - (METHOD_ORDER.indexOf(b) + 1 || 99) || a.localeCompare(b));
   return {
     shiftId: r.id,
@@ -359,7 +377,12 @@ export async function computeReport(db: Db | Tx, r: PosShift): Promise<ShiftRepo
     salesTotalSatang: live.reduce((t, x) => t + x.grandTotalSatang, 0),
     voidCount: voided.length,
     voidTotalSatang: voided.reduce((t, x) => t + x.grandTotalSatang, 0),
-    byMethod: types.map((t) => ({ type: t, count: by.get(t)!.count, amountSatang: by.get(t)!.amount })),
+    byMethod: types.map((t) => ({
+      type: t,
+      count: by.get(t)!.count,
+      amountSatang: by.get(t)!.amount,
+      ...(rby.has(t) ? { refundCount: rby.get(t)!.count, refundSatang: rby.get(t)!.amount } : {}),
+    })),
     cashSalesSatang: cashSales,
     cashTenderedSatang: tendered,
     changeSatang: change,
@@ -367,6 +390,8 @@ export async function computeReport(db: Db | Tx, r: PosShift): Promise<ShiftRepo
     cashInSatang: cashIn,
     cashOutSatang: cashOut,
     cashRefundsSatang: refunds,
+    refundCount: refundDocs.length,
+    refundSatang: refundDocs.reduce((t, x) => t + x.grandTotalSatang, 0),
     // S7: float + รับ − ทอน + เข้า − ออก − คืน (= float + ขายเงินสด + เข้า − ออก − คืน)
     expectedCashSatang: r.floatSatang + tendered - change + cashIn - cashOut - refunds,
   };
@@ -831,13 +856,20 @@ export async function offShiftCash(ctx: RegisterCtx, actor: RegisterActor, input
     if (typeof bd !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(bd) || Number.isNaN(Date.parse(`${bd}T00:00:00Z`))) return refuse("VALIDATION", "วันที่ไม่ถูกต้อง");
     const start = new Date(Date.parse(`${bd}T00:00:00Z`) - 7 * HOUR_MS);
     const end = new Date(start.getTime() + 24 * HOUR_MS);
+    // POS P1.8 ▸ R8: ใบคืนเงินนอกกะ (docType REFUND · ไม่บังคับกะ) = แถวติดลบ · บิลขายคืนครบ (REFUNDED) ยังนับเงินที่รับไว้ ◂
     const sales = await db.posSale.findMany({
       where: { tenantId: s.tenantId, unitId: s.unitId, shiftId: null, status: { not: "VOIDED" }, createdAt: { gte: start, lt: end } },
-      select: { id: true, receiptNo: true, sourceModule: true, createdAt: true, payments: { where: { type: "CASH" }, select: { amountSatang: true } } },
+      select: { id: true, receiptNo: true, sourceModule: true, createdAt: true, docType: true, payments: { where: { type: "CASH" }, select: { amountSatang: true } } },
       orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     });
     const bills = sales
-      .map((x) => ({ saleId: x.id, receiptNo: x.receiptNo, sourceModule: x.sourceModule, cashSatang: x.payments.reduce((t, p) => t + p.amountSatang, 0), createdAt: x.createdAt.toISOString() }))
+      .map((x) => ({
+        saleId: x.id,
+        receiptNo: x.receiptNo,
+        sourceModule: x.sourceModule,
+        cashSatang: (x.docType === "REFUND" ? -1 : 1) * x.payments.reduce((t, p) => t + p.amountSatang, 0),
+        createdAt: x.createdAt.toISOString(),
+      }))
       .filter((b) => b.cashSatang !== 0);
     return { ok: true, businessDate: bd, totalSatang: bills.reduce((t, b) => t + b.cashSatang, 0), bills };
   });

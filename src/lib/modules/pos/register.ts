@@ -1634,7 +1634,8 @@ export async function submitRegisterSale(ctx: RegisterCtx, actor: RegisterActor,
             const row = await regLoadSale(db, s.tenantId, req.idempotencyKey);
             return row ? regDuplicate(s, req, row, true) : regRefuse("IDEMPOTENCY_CONFLICT");
           }
-          return regRefuse(e.code, e.code === "STOCK_INSUFFICIENT" ? e.message : undefined);
+          // POS P1.8: HAS_REFUNDS มาจาก voidSale เท่านั้น (createSale ไม่โยน) — กันชนิดไว้เป็น VALIDATION
+          return regRefuse(e.code === "HAS_REFUNDS" ? "VALIDATION" : e.code, e.code === "STOCK_INSUFFICIENT" ? e.message : undefined);
         }
         // createSale ตรวจยอดอีกชั้น (เช่น ส่วนลดอัตโนมัติของระดับสมาชิกที่ P1.3 ยังไม่คิด · P1.12) — ไม่มีบิลเกิด
         if (e instanceof Error && e.message.startsWith("PAYMENT_MISMATCH")) return regRefuse("PAYMENT_MISMATCH");
@@ -1665,10 +1666,11 @@ export async function registerStatus(ctx: RegisterCtx, actor: RegisterActor, cli
     const bkk = new Date(Date.now() + 7 * 3600000).toISOString().slice(0, 10);
     const dayStart = new Date(new Date(`${bkk}T00:00:00Z`).getTime() - 7 * 3600000);
     // คีย์ตัดสต็อกต่อบรรทัดของ createSale = `pos-consume-<saleId>-<lineId>` (service.ts consumeSaleInventory) — ใช้ unique (tenantId, idempotencyKey)
+    // POS P1.8 ▸ R3: เฉพาะบิลขาย (docType SALE) — บรรทัดใบคืนถือ itemId ของบรรทัดเดิมแต่ไม่มีการตัดสต็อก ◂
     // P1.2 R8: บรรทัดชุดนับจนกว่าคีย์ของ "ทุก" ส่วนประกอบ `pos-consume-<saleId>-<lineId>-<invItemId>` จะมีครบ
     const pend = await db.$queryRaw<{ n: number }[]>`
       SELECT count(DISTINCT s.id)::int AS n FROM "PosSale" s JOIN "PosSaleLine" l ON l."saleId" = s.id
-      WHERE s."tenantId" = ${s.tenantId} AND s."unitId" = ${s.unitId} AND s.status = 'PAID' AND s."createdAt" >= ${dayStart}
+      WHERE s."tenantId" = ${s.tenantId} AND s."unitId" = ${s.unitId} AND s.status = 'PAID' AND s."docType" = 'SALE' AND s."createdAt" >= ${dayStart}
         AND (
           (l."itemId" IS NOT NULL
             AND NOT EXISTS (SELECT 1 FROM "InvMovement" m WHERE m."tenantId" = ${s.tenantId} AND m."idempotencyKey" = 'pos-consume-' || s.id || '-' || l.id))

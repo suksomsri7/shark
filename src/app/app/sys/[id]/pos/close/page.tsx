@@ -169,10 +169,12 @@ export default async function PosCloseDayPage({
                       {b.status === "VOIDED" && (
                         <span className="ml-1 text-xs text-[color:var(--color-danger)]">(ยกเลิก)</span>
                       )}
+                      {/* POS P1.8 ▸ ใบคืนเงิน = เงินออก (ติดลบ) ◂ */}
+                      {b.docType === "REFUND" && <span className="ml-1 text-xs text-[color:var(--color-danger)]">(คืนเงิน)</span>}
                     </td>
                     <td className="px-3 py-2 tabular-nums">{fmtTime(b.createdAt)}</td>
                     <td className="px-3 py-2 text-right">
-                      <MoneyText satang={b.grandTotalSatang} decimals />
+                      <MoneyText satang={b.docType === "REFUND" ? -b.grandTotalSatang : b.grandTotalSatang} decimals />
                     </td>
                     <td className="px-3 py-2">{b.methodLabel}</td>
                   </tr>

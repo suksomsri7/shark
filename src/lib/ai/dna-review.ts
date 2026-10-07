@@ -92,7 +92,7 @@ export async function gatherDnaDrift(ctx: DnaReviewCtx): Promise<{ drifts: DnaDr
 
   // ── sellsGoods: ตั้งว่าไม่ได้ขายสินค้าหน้าร้าน แต่มีบิลขายชำระแล้ว > 10 ──
   if (facts.sellsGoods === false) {
-    const paidLive = await sumOverSystems(tenantId, "POS", (db) => db.posSale.count({ where: { status: "PAID" } }));
+    const paidLive = await sumOverSystems(tenantId, "POS", (db) => db.posSale.count({ where: { status: "PAID", docType: "SALE" } }));
     if (paidLive > 10) {
       drifts.push({
         key: "sellsGoods",
