@@ -6,7 +6,8 @@ Worktree `/root/projects/shark-hr` · branch `wip/pos-hr-h0.1` (cut from `wip/po
 - [x] 1. R1 `buildRunRows` extracted → oracle forced 11/50 (= base) · qc-payroll 19/19 · qc-crm-c3.3 90/90 → commit 2e88580f
 - [x] 2. R2 `deleteDraftRun` + R3 `recomputeDraftRun` + audits + CR8 hint → oracle forced 40/50 → commit d340da79
 - [x] 3. R4 `approveRun(ctx, runId, expect?)` + R5 → oracle forced 43/50, X6.0–X6.6 green → commit e74c23dd
-- [x] 4. R6 actions + UI (CR3/CR4) → oracle forced ×2 50/50 + unforced 50/50 → regressions → typecheck → fitness ×2 → commit (this one)
+- [x] 4. R6 actions + UI (CR3/CR4) → oracle forced ×2 50/50 + unforced 50/50 → regressions → fitness ×2 → commit 6b491b77
+- [x] 5. CR10 (controller addendum): recompute trigger label "ดึงข้อมูลใหม่" (mockup `design-hr/06` wording), dialog body "คำนวณรอบจ่ายใหม่จากข้อมูลปัจจุบัน…", confirm "ยืนยันคำนวณใหม่"; run note still `คำนวณใหม่ …` → oracle forced 50/50 + unforced 50/50 (green file refreshed)
 
 ## Acceptance items → files:lines → how → result
 | item | files:lines | how | result |
@@ -17,7 +18,7 @@ Worktree `/root/projects/shark-hr` · branch `wip/pos-hr-h0.1` (cut from `wip/po
 | R4 approve expect | `payroll.ts:631-655` (`claimApproveExpected`) · `approveRun` :659-680 | with `expect`: tx → run row `FOR UPDATE` → status DRAFT → item count under that lock → claim `updateMany` where `status DRAFT AND totalNetSatang = expect` (count 1). Non-integer expect = stale. Without `expect`: the old claim, untouched | S3.1–S3.6 green |
 | R5 races | same | create/delete/recompute serialise on the period advisory lock; delete/recompute/approve(expect) serialise on the run row lock (recompute holds it for the whole rewrite ⇒ an approve queued behind it reads the new totals/count and refuses); `decideAdjustment` never touches bound rows and an approve after the recompute's `FOR UPDATE` select is simply left unbound. Lock order advisory → run row → adjustment rows everywhere; approve takes only the run row ⇒ no cycle | X6.0–X6.6 green ×3 runs (2 worker processes, 15 rounds × 10 lanes) |
 | R6 actions | `payroll-actions.ts:78-97` (`approveExpectFromForm` + approve passes `expect`) · `deleteDraftRunAction` :268-282 · `recomputeDraftRunAction` :284-298 | `assertHrCan(auth, "hr.payroll.create")`, return type `Promise<{ ok: boolean; reason?: string }>`, actor `{userId: auth.active.userId, isOwner: role === OWNER}`, unexpected error ⇒ `console.error` + `UNEXPECTED_TH` (no `e.message`); audit is written by the service | S4.5, S4.6, S6.1–S6.4 green |
-| R6 UI | `payroll-ui.tsx:14` import · :275 trailing wraps (`flex-wrap`) · :277-291 DRAFT branch: approve `fields` + `expectNet`/`expectItems`, `<RunRowActions>` · new `RunRowActions.tsx` | client component, `useActionState` wrapper (pattern `PayAdjustRowActions`); returns null unless `status === "DRAFT"`; "คำนวณใหม่" + "ลบร่าง" (danger) each in `ConfirmDialog`, triggers `min-h-[44px]`, testIds `hr-payroll-run-<period>-recompute|delete(-trigger/-sheet)` + `-error`; dialog `key` bumps after each result so it closes; reason shown inline (`role=alert`) | S4.4 green |
+| R6 UI (+CR10) | `payroll-ui.tsx:14` import · :275 trailing wraps (`flex-wrap`) · :277-291 DRAFT branch: approve `fields` + `expectNet`/`expectItems`, `<RunRowActions>` · new `RunRowActions.tsx` | client component, `useActionState` wrapper (pattern `PayAdjustRowActions`); returns null unless `status === "DRAFT"`; "ดึงข้อมูลใหม่" (= recompute, CR10 wording from the mockup) + "ลบร่าง" (danger) each in `ConfirmDialog`, same tokens as the row's existing buttons (border · `--color-surface-2` hover · `--color-danger` text for delete; no new colours; mockup's ghost-small button style ≈ existing row trigger), triggers `min-h-[44px]`, testIds `hr-payroll-run-<period>-recompute|delete(-trigger/-sheet)` + `-error`; dialog `key` bumps after each result so it closes; reason shown inline (`role=alert`) | S4.4 green |
 | CR8 hint | `payroll.ts:735` | `reverseRun` without JV: `… (รอบที่ยังเป็นร่าง ยกเลิกได้ด้วยปุ่ม "ลบร่าง")` — one text for DRAFT and for APPROVED-without-ACCOUNT (both true; old "(ลบร่างได้เลย)" was wrong for both) | S4.7 green |
 | CR6 audits | `payroll.ts:552-561`, `:618-628` | `hr.payroll.delete_draft` before `{periodKey, totalAddSatang, totalDeductSatang, totalNetSatang, itemCount, adjustmentIds}`; `hr.payroll.recompute` before/after `{totalAddSatang, totalDeductSatang, totalNetSatang, itemCount}`; targetType `HrPayrollRun`, targetId = run id, actorType USER, actorId = actor.userId | S1.9, S2.9 green |
 
@@ -25,7 +26,8 @@ Worktree `/root/projects/shark-hr` · branch `wip/pos-hr-h0.1` (cut from `wip/po
 - oracle forced: `bash scripts/iso.sh bash scripts/qc4.sh bash scripts/with-gate-lock.sh env QC_FORCE=1 pnpm exec tsx scripts/qc-hr-h0.1.mts`
   - run 1: `===== qc-hr-h0.1 ===== passed 50/50 (QC_FORCE)` · exit 0 · Z1 green
   - run 2: `===== qc-hr-h0.1 ===== passed 50/50 (QC_FORCE)` · exit 0 · Z1 green
-- oracle unforced (same without `env QC_FORCE=1`): `===== qc-hr-h0.1 ===== passed 50/50` · exit 0 · Z1 green → `hr-H0.1-green.txt`
+- oracle unforced (same without `env QC_FORCE=1`): `===== qc-hr-h0.1 ===== passed 50/50` · exit 0 · Z1 green
+- after CR10: forced `===== qc-hr-h0.1 ===== passed 50/50 (QC_FORCE)` exit 0 · unforced `===== qc-hr-h0.1 ===== passed 50/50` exit 0 → `hr-H0.1-green.txt` (regressions/fitness unaffected: CR10 changes only strings in a client component)
 - regressions (each `bash scripts/iso.sh bash scripts/qc4.sh bash scripts/with-gate-lock.sh env QC_FORCE=1 pnpm exec tsx scripts/<suite>.mts`):
   - `qc-hf-hr-privacy` → `JSON_SUMMARY {"total":194,"passed":194,"findings":[]}` · exit 0 (baseline 194/194 — identical)
   - `qc-hr` → `JSON_SUMMARY {"total":9,"passed":9,"findings":[]}` · exit 0 (baseline 9/9 — identical)
@@ -39,7 +41,7 @@ Worktree `/root/projects/shark-hr` · branch `wip/pos-hr-h0.1` (cut from `wip/po
   - `qc-crm-c3.3` → `JSON_SUMMARY {"total":90,"passed":90,"findings":[]}` · exit 0 (baseline 90/90 — identical)
   - `qc-approval` → `JSON_SUMMARY {"total":16,"passed":16,"findings":[]}` · exit 0 (baseline 16/16 — identical)
   - `qc-approval-wiring` → `JSON_SUMMARY {"total":7,"passed":7,"findings":[]}` · exit 0 (baseline 7/7 — identical)
-- typecheck: `env NODE_OPTIONS=--max-old-space-size=5632 ISO_MEM=6500M bash scripts/iso.sh bash scripts/with-gate-lock.sh pnpm typecheck` → TYPECHECK_LINE (queued behind the shared machine lock — CRM `qc-all` held it from 12:19 UTC; scoped `tsc -p` over payroll.ts, payroll-actions.ts, payroll-ui.tsx, RunRowActions.tsx = 0 errors)
+- typecheck: `env NODE_OPTIONS=--max-old-space-size=5632 ISO_MEM=6500M bash scripts/iso.sh bash scripts/with-gate-lock.sh pnpm typecheck` → **NOT RUN (DEFERRED)**: both attempts (12:25 and 13:28 UTC) waited the full `flock -w 3600` on `/tmp/shark-gate.lock` and exited 1 without starting tsc — the lock was held from 12:19 UTC by CRM's `scripts/qc-all.mts` (`/root/projects/shark-crm`, pid 970499, ~0% CPU for 2 h, looks stalled; not touched/killed). Substitute evidence: scoped `tsc -p <scratch tsconfig extending tsconfig.json, include payroll.ts + payroll-actions.ts + payroll-ui.tsx + RunRowActions.tsx + next-env.d.ts>` through `iso.sh` = exit 0, no errors (final tree incl. CR10). **Controller: run the full typecheck once the lock is free.**
 - fitness: `bash scripts/iso.sh pnpm fitness` → `JSON_SUMMARY {"total":33,"passed":33,"findings":[]}` exit 0 · `bash scripts/iso.sh env -u DATABASE_URL pnpm fitness` → same, exit 0
 - pre-commit hook (fitness) passed on every commit — no `--no-verify`.
 
@@ -47,6 +49,10 @@ Worktree `/root/projects/shark-hr` · branch `wip/pos-hr-h0.1` (cut from `wip/po
 - **Delete / recompute a DRAFT run:** OWNER, and any member who passes `assertHrCan(…, "hr.payroll.create")` = holds `hr.payroll.create` **and** `canViewPayroll` (OWNER or `hr.payroll.read`). Same people who could already create a run. Refused (S6.2/S6.4): payroll reader without create, MANAGER without payroll, STAFF with other HR keys, plain member, the employee himself, other tenant's OWNER.
 - **Approve:** unchanged audience (`hr.payroll.approve` + payroll viewer); the web form now refuses when the numbers changed since the page was rendered.
 - Nobody loses access.
+
+## DEFERRED
+- full `pnpm typecheck` (machine lock held by CRM qc-all, see Commands) — controller to run.
+- CONTROLLER-RUN screenshots of the DRAFT row at 1440 / 390.
 
 ## ORACLE-EDIT requests
 - none.

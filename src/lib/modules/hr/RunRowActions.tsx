@@ -4,7 +4,8 @@ import { useActionState } from "react";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { deleteDraftRunAction, recomputeDraftRunAction } from "./payroll-actions";
 
-// H0.1 ▸ R6: ปุ่ม "คำนวณใหม่" / "ลบร่าง" ของรอบจ่ายที่ยังเป็นร่าง (DRAFT) 1 แถว — server action คืน { ok, reason }
+// H0.1 ▸ R6: ปุ่ม "ดึงข้อมูลใหม่" (= คำนวณใหม่ · ถ้อยคำตามแบบ design-hr/06 — CR10) / "ลบร่าง" ของรอบจ่ายที่ยังเป็นร่าง (DRAFT) 1 แถว
+//   — server action คืน { ok, reason } · ปุ่มใช้ token ชุดเดียวกับปุ่มเดิมของแถว (border · surface-2 · danger สำหรับลบ) ไม่มีสีใหม่
 //   ⇒ เหตุผลที่ถูกปฏิเสธ (รอบเปลี่ยนไปแล้ว · ไม่ใช่ร่าง · ระบบขัดข้อง) แสดงในแถวนี้ (แบบเดียวกับ PayAdjustRowActions)
 //   ทุกปุ่มผ่าน ConfirmDialog · `key` เปลี่ยนเมื่อทำรายการเสร็จ ⇒ กล่องยืนยันปิดเอง · ไม่ใช่ร่าง = ไม่แสดงอะไรเลย ◂
 type Op = "recompute" | "delete";
@@ -37,10 +38,10 @@ export default function RunRowActions({
     <>
       <ConfirmDialog
         key={`recompute-${n}`}
-        triggerLabel="คำนวณใหม่"
+        triggerLabel="ดึงข้อมูลใหม่"
         triggerClassName={triggerBase}
-        title={`คำนวณรอบจ่ายงวด ${periodKey} ใหม่?`}
-        detail="ระบบจะคำนวณเงินเดือน ประกันสังคม และภาษีของรอบนี้ใหม่ จากเงินเดือนปัจจุบันและรายการเพิ่ม/หักที่อนุมัติแล้วของงวด — ตัวเลขอาจเปลี่ยน กรุณาตรวจอีกครั้งก่อนอนุมัติ"
+        title={`ดึงข้อมูลใหม่ของรอบจ่ายงวด ${periodKey}?`}
+        detail="คำนวณรอบจ่ายใหม่จากข้อมูลปัจจุบัน — เงินเดือน ประกันสังคม และภาษีของทุกคนที่มีโปรไฟล์เงินเดือน รวมรายการเพิ่ม/หักที่อนุมัติแล้วของงวด · ตัวเลขอาจเปลี่ยน กรุณาตรวจอีกครั้งก่อนอนุมัติ"
         confirmLabel="ยืนยันคำนวณใหม่"
         action={run}
         fields={{ systemId, runId, op: "recompute" }}

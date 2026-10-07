@@ -11,7 +11,7 @@ import { listEmployees, monthlyAttendance, employeesWithSchedule, bkkParts, type
 import { listSalaryProfiles, listRuns, listAdjustments } from "./payroll";
 import PayAdjustForm from "./PayAdjustForm";
 import PayAdjustRowActions from "./PayAdjustRowActions"; // HF-HR-0 ▸ รอบ 5c (F5): ปุ่มของรายการ + เหตุผลที่ถูกปฏิเสธในแถว ◂
-import RunRowActions from "./RunRowActions"; // H0.1 ▸ R6: "คำนวณใหม่" / "ลบร่าง" ของรอบร่าง + เหตุผลที่ถูกปฏิเสธในแถว ◂
+import RunRowActions from "./RunRowActions"; // H0.1 ▸ R6: "ดึงข้อมูลใหม่" (คำนวณใหม่) / "ลบร่าง" ของรอบร่าง + เหตุผลที่ถูกปฏิเสธในแถว ◂
 import {
   approvePayrollRunAction,
   createPayrollRunAction,
