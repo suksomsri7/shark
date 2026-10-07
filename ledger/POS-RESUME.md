@@ -598,3 +598,8 @@
 ## 2026-10-07T17:20:39Z · เลน 2 ส่ง R7 (3faf7ff3 · โค้ด f81eb68f) · build R7 บน p11 ถ่าย reports ซ้ำ
 - R7: การ์ดสาขาซ่อนตั้งแต่ต้นเมื่อ <2 สาขา · branches ปฏิเสธ unitId ไม่มีสิทธิ์ · >92 วันข้าม fan-out · limiter 3 สาขา/ครั้ง · แถวรวมเช็ก margin · ข้อสอบ OV2 ผ่าน action จริง + OV4 (2 จาก 3 สาขา) → p1.17 40/40 ×3 · authz 56 ×2 · p1.9 53 · fitness 41 ×2 · fitness-pos 8/8 · tsc 0
 - unit `pos-vis6-p117u` 17:20 UTC (p11 @ 3faf7ff3) → ภาพ reports owner/cashier/EN/14 วัน → ถ้าตรง 08 (V1–V4 หาย) = รับ P1.17U R7 → merge → 10/55
+
+## 2026-10-07T17:29:47Z · ✅ รับ P1.17U R7 → merge 3435767e → **10/55** · เลน 1 ส่ง P1.2U R3 (28ff35eb) → build ถ่าย register ซ้ำ
+- ภาพ R7 ตรง 08: ป้าย ฿1,140 เต็ม · แกน X ครบ · คอลัมน์กำไรพอดี (th/en) · CSV แถวหัวทุกขนาด · 10 ภาพ 200 ไม่มี overflow/console
+- R3 เลน 1: F1–F8 + V1–V7 ครบ (V1 root cause: วัดการ์ดตอนแตะก่อนผลค้นหามา re-layout → วัดสด · V2 pre-select · V3 ชิปกะ · V4 owner เปิดกะให้ device เดียวกัน · V6 ตะกร้า ~740/752px · V7 ไม่มีเลขใบกำกับย่อ/สถานะบัญชีใน submit result = follow-up) · gate: p1.2 55/55 ×3 · p1.6 48 · p1.4 21 · p1.3 128 · fitness ×3 · tsc 0
+- p11: origin/session/pos + 28ff35eb = 924cea2a (สะอาด 23 ไฟล์) · unit `pos-vis7-reg` 17:29 UTC → register owner/cashier/EN → เทียบ 01/02/05ข (ป๊อปโอเวอร์ชิดการ์ด, ชิปกะ, cashier ผ่าน, ตะกร้า 4 บรรทัด) → รับ → merge → 11/55 → เหลือ 1 เลน
