@@ -105,6 +105,8 @@ C2.4 (ข้อสอบ 78 · `CRM_ASSIST` พร้อมใช้จาก C2
 
 > **23:15 UTC — lane checkpoint pushed `284614a6` on wip/crm-c310** (block "Lane status at hand-over" in `wo-notes/crm-C3.10.md`): runner cookie isolation FIXED and PROVEN (customer standalone 🔒 94/94; 5 roles one browser: fixed 2/2 vs old runner 0/2 ⇒ the 28 hiddenLeak were the runner, no portal→staff leak) · registry edited (auto-rule-toggle manager = inline-error; auto-action-field needs data) but fitness not run · evidence in `ledger/evidence/c310/` · still open: fitness, re-checks 5a–5d (5a unit `iso-1667823` may still be running → result `.qc-shots/crm/buttons-c310/5a/summary.json`; if missing, run a short runner pass to restore fixtures and check QC1 for `qc-btn-` leftovers), c2.1, 390-px evidence + c3.7, final table. `scripts/qc-crm-buttons-prefix-c310.mts` = old-runner copy for the comparison, delete at close.
 
+> **✅ 23:2x UTC — C6.3 redeploy LIVE: shark.in.th home page serves `dpl_7tGsv841PgskzDmW32zRPQ6mwzQC` (READY; same commit f132ce21, `CRM_V2_SWITCH_TENANTS` now in the runtime env). Owner can toggle v2 on SIAM DIVE CENTER → CRM system `cmtdvo8h1000004l1d5tl5ej5` → settings. Next session: wait for "เปิดแล้ว" → 5-role walk-through.**
+
 > **Rules learned this run (keep):** never run Bash calls in parallel when one of them changes directory (three ledger commits landed on agent branches); guard ledger writes with pwd + branch + non-empty line number; merge patches from agent worktrees exclude `ledger/CRM-RESUME.md` and `ledger/CRM-C6-REGISTER-DRAFT.md`; every commit ends with `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`; typecheck through `scripts/iso.sh`.
 
 #### A. In flight right now
