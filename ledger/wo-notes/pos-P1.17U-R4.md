@@ -93,3 +93,21 @@ Residue: each suite printed its own cleanup ("ลบแล้ว …"); p1.17 Z1
 | `qc-hf-pos-page-authz` unforced / forced | 56/56 · 56/56, exit 0 |
 | `pnpm fitness` no DB / QC4 | 41/41 · 41/41, exit 0 |
 | `env -u DATABASE_URL -u DIRECT_URL pnpm exec tsx scripts/fitness-pos.mts` | 8/8 exit 0 (first R6 run: F15.3a red — `pos-report-ov-retry-branch-rows` needed its own row; added) |
+
+## R7 (reviewer diff of R6 — MERGEABLE-AFTER-FIXES) · head f81eb68f
+- #1 `ReportsOverview` gets `unitCount` (page's permitted units): < 2 → no branch card from the first render (no flash, no error/retry for one-branch shops or cashiers) and the client does not request the `branches` section; the server-side `rows < 2` check stays.
+- #2 `branches` with `unitId`: first awaits the scoped daily report (shared with the daily section) — its refusal (NOT_FOUND / PERMISSION_DENIED / VALIDATION) becomes the branches refusal (not checked against `reportUnits`, so archived units stay selectable).
+- #3 range > `REPORT_MAX_DAYS` → `branches` = VALIDATION without any per-branch call (14-day chart still ok).
+- #4 per-branch fan-out through a small `mapLimit` (3 units at a time = ≤ 6 report calls) in `report-overview.ts`; no dependency.
+- #5 total row: margin refusal counts as a row error (red text in the total row `pos-report-ov-branch-total-error` + retry button).
+- #6 main daily/margin are started lazily (`getDaily`/`getMargin`) — `only:["branches"]` with < 2 units runs no daily/margin.
+- #7 oracle: OV2 calls `posReportOverviewAction` for real with a fake `context.ts` session (require-cache swap, restored after; same technique as `qc-chat-staff-perms`) — QC cashier membership → whole-call PERMISSION_DENIED · owner → ok, daily = `reportDailySales` · other shop's unitId → `branches` NOT_FOUND; restricted actor + unitId u2 → `branches` NOT_FOUND too · OV3 93 days → `branches` VALIDATION · new OV4: temporary 3rd unit linked to the POS (named `qc-p1.17-<rand> u4`, the suite's tag, in `sb.unitIds` + deleted right after the check) — STAFF seeing [u1, u4] gets rows u1/u4 only, totalUnits 2, total row = u1's totals ≠ owner's all-units totals. Suite 39 → 40.
+
+| command (R7, head f81eb68f) | result |
+|---|---|
+| typecheck via `flock -w 3600 /tmp/pos-gate.lock` | `tsc --noEmit` exit 0 (17:14:45 → 17:15:16 UTC) |
+| `qc-pos-p1.17` forced (trial) · unforced · forced · forced | 40/40 ×4, exit 0 (Z1/Z2 green each) |
+| `qc-hf-pos-page-authz` unforced / forced | 56/56 · 56/56 exit 0 |
+| `qc-pos-p1.9` forced | 53/53 exit 0 |
+| `pnpm fitness` no DB / QC4 | 41/41 · 41/41 exit 0 |
+| `fitness-pos.mts` | 8/8 exit 0 |
