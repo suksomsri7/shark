@@ -613,3 +613,8 @@
 ## 2026-10-07T17:50:31Z · brief P1.14U พร้อม (`pos-briefs/pos-brief-P1.14U.md`) → เปิด 1 เลน
 - ขอบเขต: ตรวจนับมือถือ (05ค) + หน้า /pos/stock แท็บ ตรวจนับ/รับของเข้า/โอน/ปรับ/ประวัติ (16 ในขอบเขต R13/R16: ไม่มีรับตาม PO · โอนภายในคลังเดียว · ไม่ลงบัญชีผลต่าง) · server action ใหม่ `stock-count-actions.ts` + read เพิ่ม `stockCountMeta` · แท็บ "สต็อก" ใน posTabs+childrenFor · visual-pos page `stock` + states
 - เลน: shark-pos-b · branch wip/pos-p1.14u · gate: p1.14 30/30 ×3 · p1.3/p1.2/p1.6/p1.9/p1.17/authz · pos-inventory + inventory · fitness · tsc ผ่าน pos-gate.lock
+
+## 2026-10-07T18:24:45Z · เลนส่ง P1.14U (588890c2) gate เขียวครบ → build p11 ถ่ายหน้าสต็อก · โควตา 68% ⇒ ชะลอผู้ตรวจ
+- gate: tsc 0 · fitness 41 ×2 · fitness-pos 8/8 · p1.14 30/30 ×3 · p1.3 128 · p1.2 55 · p1.6 48 · p1.9 53 · p1.17 40 · authz 56 · pos-inventory 25 · inventory 12 · visual --dry owner/cashier 15 ภาพ
+- คำตัดสิน 6 ข้อ: (1) ปุ่มย้อนกลับ/พักไว้ก่อน → ?tab=history รับ (2) ผลต่างในประวัติ = follow-up server (listStockCounts เพิ่มฟิลด์) (3) authz suite ไม่ระบุหน้า รับ (4) ประวัติเห็นทั้งคลังที่แชร์ รับ + หมายเหตุใน notes (5) ค้นสินค้า gate ด้วยสิทธิ์เคลื่อนไหว ถูกต้อง (6) ย้าย item search เข้า stock-count.ts = follow-up
+- unit `pos-vis8-stock` 18:24 UTC (p11 @ 588890c2) → stock states owner/cashier/EN → เทียบ 05ค/16 · ผู้ตรวจ Opus รอโควตา (<70% หรือหลัง reset ~20:30 UTC)
