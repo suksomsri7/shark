@@ -284,34 +284,99 @@ export async function setEmployeeActive(
   return { ok: true, name: emp.name };
 }
 
+// HR H0.3 ▸ หน้าต่างกันแตะซ้ำ (วินาที) ต่อพนักงาน — ดู clock() ◂
+export const CLOCK_DEDUPE_SEC = 60;
+
+/** ปฏิเสธการลงเวลา — ข้อความไทยคงที่ (action ส่งต่อให้ผู้ใช้ได้โดยไม่ต้องอ่าน e.message ของระบบอื่น) */
+export class ClockRefusedError extends Error {
+  constructor(readonly reason: "ไม่พบพนักงาน") {
+    super(reason);
+    this.name = "ClockRefusedError";
+  }
+}
+
+export type ClockOutcome = {
+  id: string;
+  kind: HrAttendanceKind;
+  at: Date;
+  judgement: AttendanceJudgement | null;
+  lateMin: number | null;
+  /** true = แตะซ้ำภายใน CLOCK_DEDUPE_SEC ⇒ ไม่เพิ่มแถว · id/kind/at คือของแถวล่าสุดที่มีอยู่แล้ว */
+  deduped: boolean;
+  employeeName: string;
+};
+
 // ── ลงเวลา (IN/OUT) ──
 // เข้างาน = ตัดสินทันทีเทียบกับตารางของวันนั้น แล้ว **เก็บคำตัดสินติดแถวไว้** (snapshot)
 //   ทำไมไม่คิดสดตอนอ่าน: ร้านแก้ตารางเดือนหน้า ไม่ควรย้อนไปเปลี่ยนว่าเมื่อวานใครสาย
 //   (บทเรียนเดียวกับ Appointment.priceSatang — ประวัติต้องนิ่ง)
 // ออกงาน = ไม่ตัดสิน (judgement null) — "ออกก่อนเวลา" ยังไม่ใช่สัญญาที่เจ้าของสั่ง
+//
+// HR H0.3 ▸ แตะครั้งเดียว = แถวเดียว (D13a) + พนักงานต้องเป็นของระบบ HR นี้ (X2)
+//   ทั้งฟังก์ชันอยู่ในธุรกรรมเดียวของ tenantDb · ล็อกต่อพนักงานด้วย pg_advisory_xact_lock('hr:clock:<employeeId>') ⇒ แตะพร้อมกัน
+//   (ข้าม instance ได้ เพราะล็อกอยู่ที่ฐาน) ต่อคิวกัน แล้วอ่านแถวล่าสุดของคนนี้ "ใต้ล็อก" ก่อนตัดสินใจ:
+//   · kind "NEXT" (kiosk/PIN): แถวล่าสุดอายุ < CLOCK_DEDUPE_SEC (ชนิดใดก็ได้) = ไม่เพิ่มแถว คืนแถวนั้น (deduped) ⇒ แตะเบิ้ลไม่กลายเป็นออกงาน
+//     ไม่งั้นเลือกเข้า/ออกจากแถวล่าสุดตั้งแต่ 00:00 เวลาไทย (กติกาเดียวกับ nextClockKind — ตัดสินใต้ล็อกเดียวกัน)
+//   · kind IN/OUT (ทางตรง): ชนิดเดียวกันอายุ < CLOCK_DEDUPE_SEC = ไม่เพิ่มแถว · ชนิดตรงข้ามบันทึกได้ (ผู้จัดการแก้)
+//   🔴 ทุกคำสั่งในธุรกรรมใช้ tx (บทเรียน HF-HR-0 รอบ 5d: connection ที่สองระหว่างถือล็อก = pool ตัน) — ตารางงานจึงอ่านผ่าน tx ไม่ใช่ getSchedule
+//   ปฏิเสธ (ไม่พบพนักงานในระบบนี้ / พ้นสภาพเมื่อ requireActive) = throw ClockRefusedError ข้อความไทยคงที่ ⇒ ไม่มีแถว ◂
 export async function clock(
   ctx: Ctx,
-  input: { employeeId: string; kind: HrAttendanceKind; note?: string | null },
-): Promise<{ id: string; judgement: AttendanceJudgement | null; lateMin: number | null }> {
-  const at = new Date();
-  const detail =
-    input.kind === "IN"
-      ? clockInDetail(at, (await getSchedule(ctx, input.employeeId))[bkkParts(at).weekday] ?? null)
-      : null;
-  const a = await tenantDb(ctx).hrAttendance.create({
-    data: {
-      tenantId: ctx.tenantId,
-      systemId: ctx.systemId,
-      employeeId: input.employeeId,
-      kind: input.kind,
-      at,
-      note: input.note?.trim() || null,
-      judgement: detail?.judgement ?? null,
-      dueMin: detail?.dueMin ?? null,
-      lateMin: detail?.lateMin ?? null,
+  input: { employeeId: string; kind: HrAttendanceKind | "NEXT"; note?: string | null; requireActive?: boolean },
+): Promise<ClockOutcome> {
+  const scope = { tenantId: ctx.tenantId, systemId: ctx.systemId };
+  return tenantDb(ctx).$transaction(
+    async (t) => {
+      const tx = t as unknown as Prisma.TransactionClient;
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`hr:clock:${input.employeeId}`}, 0))`;
+      const emp = await tx.hrEmployee.findFirst({
+        where: { ...scope, id: input.employeeId, ...(input.requireActive ? { active: true } : {}) },
+        select: { id: true, name: true },
+      });
+      if (!emp) throw new ClockRefusedError("ไม่พบพนักงาน");
+      const at = new Date();
+      const last = await tx.hrAttendance.findFirst({
+        where: { ...scope, employeeId: emp.id },
+        orderBy: { at: "desc" },
+        select: { id: true, kind: true, at: true, judgement: true, lateMin: true },
+      });
+      const fresh = !!last && at.getTime() - last.at.getTime() < CLOCK_DEDUPE_SEC * 1000;
+      if (last && fresh && (input.kind === "NEXT" || input.kind === last.kind)) {
+        return { id: last.id, kind: last.kind, at: last.at, judgement: last.judgement, lateMin: last.lateMin, deduped: true, employeeName: emp.name };
+      }
+      const kind: HrAttendanceKind = input.kind === "NEXT" ? kindAfter(last, at) : input.kind;
+      let detail: ClockInDetail | null = null;
+      if (kind === "IN") {
+        const w = bkkParts(at).weekday;
+        const r = await tx.hrWorkSchedule.findFirst({
+          where: { ...scope, employeeId: emp.id, weekday: w },
+          select: { weekday: true, dayOff: true, startMin: true, endMin: true, graceMin: true },
+        });
+        detail = clockInDetail(at, r ?? null);
+      }
+      const a = await tx.hrAttendance.create({
+        data: {
+          ...scope,
+          employeeId: emp.id,
+          kind,
+          at,
+          note: input.note?.trim() || null,
+          judgement: detail?.judgement ?? null,
+          dueMin: detail?.dueMin ?? null,
+          lateMin: detail?.lateMin ?? null,
+        },
+        select: { id: true },
+      });
+      return { id: a.id, kind, at, judgement: detail?.judgement ?? null, lateMin: detail?.lateMin ?? null, deduped: false, employeeName: emp.name };
     },
-  });
-  return { id: a.id, judgement: detail?.judgement ?? null, lateMin: detail?.lateMin ?? null };
+    { maxWait: 5_000, timeout: 10_000 },
+  );
+}
+
+/** ครั้งถัดไปควรเป็นเข้าหรือออก จากแถวล่าสุด — มีแถว IN ตั้งแต่ 00:00 เวลาไทยของวันนี้ = ออก · นอกนั้น = เข้า */
+function kindAfter(last: { kind: HrAttendanceKind; at: Date } | null, now: Date): HrAttendanceKind {
+  const dayStart = new Date(`${bkkParts(now).dateStr}T00:00:00+07:00`);
+  return last && last.at >= dayStart && last.kind === "IN" ? "OUT" : "IN";
 }
 
 // ─────────────────── kiosk: พนักงานกดลงเวลาเองด้วย PIN (13 ส.ค. 2026) ───────────────────
@@ -339,20 +404,29 @@ export async function setPin(ctx: Ctx, employeeId: string, pin: string): Promise
   return { ok: true };
 }
 
-/** ครั้งถัดไปของวันนี้ (เวลาไทย) ควรเป็นเข้าหรือออก — พนักงานไม่ต้องเลือกเอง */
+/** ครั้งถัดไปของวันนี้ (เวลาไทย) ควรเป็นเข้าหรือออก — พนักงานไม่ต้องเลือกเอง
+ *  HR H0.3 ▸ ใช้แสดงผลเท่านั้น · การลงเวลาจริงตัดสินซ้ำใต้ล็อกใน clock(kind "NEXT") ด้วย kindAfter ตัวเดียวกัน ◂ */
 export async function nextClockKind(ctx: Ctx, employeeId: string): Promise<HrAttendanceKind> {
-  const { dateStr } = bkkParts(new Date());
-  const dayStart = new Date(`${dateStr}T00:00:00+07:00`);
+  const now = new Date();
   const last = await tenantDb(ctx).hrAttendance.findFirst({
-    where: { employeeId, at: { gte: dayStart } },
+    where: { employeeId },
     orderBy: { at: "desc" },
-    select: { kind: true },
+    select: { kind: true, at: true },
   });
-  return last?.kind === "IN" ? "OUT" : "IN";
+  return kindAfter(last, now);
 }
 
 export type KioskClockResult =
-  | { ok: true; employeeName: string; kind: HrAttendanceKind; at: Date; judgement: AttendanceJudgement | null; lateMin: number | null }
+  | {
+      ok: true;
+      employeeName: string;
+      kind: HrAttendanceKind;
+      at: Date;
+      judgement: AttendanceJudgement | null;
+      lateMin: number | null;
+      /** HR H0.3 ▸ แตะซ้ำภายใน CLOCK_DEDUPE_SEC — ไม่มีแถวใหม่ kind/at = ของแถวที่ลงไว้แล้ว ◂ */
+      deduped: boolean;
+    }
   | { ok: false; reason: string };
 
 /**
@@ -364,9 +438,15 @@ export async function clockWithPin(ctx: Ctx, employeeId: string, pin: string): P
   if (!emp) return { ok: false, reason: "ไม่พบพนักงาน" };
   if (!emp.pinCode) return { ok: false, reason: `${emp.name} ยังไม่มี PIN — ให้เจ้าของตั้งที่หน้าพนักงาน` };
   if (emp.pinCode !== pin.trim()) return { ok: false, reason: "PIN ไม่ถูกต้อง" };
-  const kind = await nextClockKind(ctx, employeeId);
-  const res = await clock(ctx, { employeeId, kind });
-  return { ok: true, employeeName: emp.name, kind, at: new Date(), judgement: res.judgement, lateMin: res.lateMin };
+  // HR H0.3 ▸ เลือกเข้า/ออก + กันแตะซ้ำ ใต้ล็อกเดียวกันใน clock (เดิมอ่าน nextClockKind แล้วค่อยเขียน ⇒ แตะเบิ้ล = เข้า+ออก) ◂
+  let res: ClockOutcome;
+  try {
+    res = await clock(ctx, { employeeId: emp.id, kind: "NEXT", requireActive: true });
+  } catch (e) {
+    if (e instanceof ClockRefusedError) return { ok: false, reason: "ไม่พบพนักงาน" };
+    throw e;
+  }
+  return { ok: true, employeeName: emp.name, kind: res.kind, at: res.at, judgement: res.judgement, lateMin: res.lateMin, deduped: res.deduped };
 }
 
 /** รายชื่อสำหรับจอ kiosk — บอกด้วยว่าใครยังไม่ได้ตั้ง PIN (เจ้าของจะรู้ว่าต้องไปตั้ง) */

@@ -105,3 +105,61 @@ Final summary line, forced #2:
 - **Who loses on-behalf clocking (R1):** STAFF accounts with `hr.attendance.clock` but no `hr.employee.create`. These are typically the shop-tablet or kiosk accounts and staff who were only given "ลงเวลาเข้า-ออกแทนพนักงาน". They keep `kioskClockAction` (PIN).
 - Limiter numbers: kiosk 5 per 60 s per employee and 60 per 60 s per system. Set-PIN: 10 per 10 min per actor. All keys are tenant-prefixed exactly as R2/R3; S2.2/S3.3 read those exact keys. Dedupe = 60 s.
 - Regression note: `qc-hr-attendance` AT-1..3 call `clock` IN → OUT → IN within seconds. That is the opposite kind each time, so R4 allows it. `qc-hr` :25-26 is IN → OUT. `qc-hr-roster` :112 is a single IN.
+
+---
+
+## Builder (lane A · branch `wip/pos-hr-h0.3` cut from oracle head `5725cde0`)
+
+### Status / checkpoint
+- DONE: R1–R6 + controller rulings §8 (OQ-1..7). No schema change. Oracle not edited. `KioskClock.tsx` unchanged (dedupe reuses `status: "ok"` + `detail`).
+- BLOCKED on the controller: 3 ORACLE-EDIT requests below (2 in the regression `qc-hr-attendance`, 1 typecheck error inside `qc-hr-h0.3.mts`).
+
+### What changed (file:line on the builder head)
+| Rule | Where | How |
+|---|---|---|
+| R1 D7a on-behalf | `hr/actions.ts:69-95` `clockAction` | still `assertHrCan("hr.attendance.clock")` (plain member = `ForbiddenError` as before), then `evaluate(…,"hr.employee.create")` (:77) — no right ⇒ returns `{ ok:false, reason:"ไม่มีสิทธิ์ลงเวลาแทนผู้อื่น ให้พนักงานลงเวลาด้วย PIN ของตนเอง" }`, nothing written (OQ-1). Note = form `note` or `"ลงเวลาแทนโดย " + User.name` (fallback e-mail) (:85, OQ-4). Returns `ClockActionResult` (`{ok:true,deduped}` / `{ok:false,reason}`), fixed Thai texts only, never `e.message`. |
+| R1 UI | `hr/ui.tsx:107-115, 146-163` | `canClockForOthers = evaluate(…, "hr.employee.create")` (OQ-5 naming); the two on-behalf forms render only when true, otherwise a muted line "ลงเวลาด้วย PIN ที่จอ kiosk". `ui.tsx:23,40`: `clockAction` is imported as `clockActionWithResult` and narrowed to `(fd) => Promise<void>` because React's `<form action>` type rejects a function that returns an object (checked with tsc); same server-action function at runtime. |
+| R2 D7b kiosk | `hr/actions.ts:228-234` | in-memory `checkRateLimit` import removed; `checkRateLimitDb` on `hr-kiosk:emp:<tenantId>:<employeeId>` 5/60 s, then `hr-kiosk:sys:<tenantId>:<systemId>` 60/60 s, both before `clockWithPin` (= before the PIN compare). Refusal text unchanged: "ลองใหม่ในอีก N วินาที". |
+| R3 D8 interim | `hr/actions.ts:202-204` | `checkRateLimitDb('hr-setpin:<tenantId>:<actorUserId>', 10 / 10 min)` before `setPin`; refusal "ตั้ง PIN บ่อยเกินไป ลองใหม่ในอีก N วินาที". |
+| R4 D13a | `hr/service.ts:288` `CLOCK_DEDUPE_SEC = 60`; `:323-374` `clock` | one `tenantDb(ctx).$transaction` (maxWait 5 s, timeout 10 s) → `pg_advisory_xact_lock(hashtextextended('hr:clock:<employeeId>',0))` (:331) → employee read (scoped) → last event read → dedupe → schedule read → insert. Every statement uses `tx` (the schedule is read through `tx.hrWorkSchedule`, not `getSchedule`, so no second connection while holding the lock — S4.8 green). `kind: "NEXT"` (kiosk) dedupes any kind < 60 s and otherwise decides IN/OUT with `kindAfter` (:377) under the same lock; explicit IN/OUT dedupes the same kind only. A dedupe returns the existing row with `deduped: true`. |
+| R4 kiosk | `hr/service.ts:436-450` `clockWithPin`; `hr/actions.ts:241-247` | `clockWithPin` → `clock(kind:"NEXT", requireActive)`; `KioskClockResult.ok` carries `deduped`. The action answers `status:"ok"`, message "<ชื่อ> · เพิ่งลงเวลาเข้า/ออกไปเมื่อ hh:mm", detail "บันทึกไว้แล้ว ไม่ต้องกดซ้ำ". `nextClockKind` (:409) kept for display, same rule via `kindAfter` (latest row; IN since Bangkok 00:00 ⇒ OUT). |
+| R5 X2 | `hr/service.ts:332-336`, `:291` | the employee is loaded inside the tx with `tenantId + systemId` (+ `active` when `requireActive`); otherwise `throw new ClockRefusedError("ไม่พบพนักงาน")`, no row. `clockAction` passes `requireActive: true` and maps the error to `{ok:false, reason:"ไม่พบพนักงาน"}`. Service callers without `requireActive` (qc-hr, qc-hr-attendance, qc-hr-roster) behave as before. |
+| R6 D14 | `ai/tools.ts:168` | one marked line `รหัสใบลา: l.id, // HR H0.3 ▸ … ◂` in the existing map; HF-HR-0 comment kept, no reason. |
+
+### Acceptance §5 facts
+- **Who loses on-behalf clocking:** STAFF accounts that hold `hr.attendance.clock` but not `hr.employee.create` — typically the shop tablet / kiosk login and staff who were only given "ลงเวลาเข้า-ออกแทนพนักงาน". They no longer see the เข้างาน/ออกงาน buttons on the attendance page, and a direct call gets the fixed refusal. They keep the kiosk (`kioskClockAction`, each employee's own PIN). OWNER, MANAGER (by role) and STAFF with both keys keep it. Nobody gains access.
+- **Limiter numbers:** kiosk 5 tries / 60 s per employee + 60 tries / 60 s per HR system (both checked before the PIN compare, both counted on every try); set-PIN 10 / 10 min per acting user. All DB-backed in `ChatRateBucket` (fixed window, one-statement upsert), so they hold across server instances (S2.4 proves it with a child process). Rows are swept by the existing daily cron (`sweepRateBuckets`).
+- **Dedupe window:** `CLOCK_DEDUPE_SEC = 60` per employee, enforced in the DB transaction under the advisory lock. Kiosk: any kind within 60 s ⇒ no new row. Explicit: same kind within 60 s ⇒ no new row; opposite kind allowed.
+- **Fail mode of `checkRateLimitDb`** (`core/rate-limit-db.ts:77-83`): **fail-OPEN.** A DB error is caught, logged with `logOps("WARN","rate-limit-db",…)` and the call returns `{ ok: true }`. If the limiter's DB call fails, the kiosk and set-PIN keep working without a limit (accepted by the controller for kiosk availability). If the DB is really down, `clockWithPin` fails anyway.
+
+### Decisions (for the controller)
+1. Refusal for "no employee-admin right" is a returned message, not a throw (OQ-1). A plain member without `hr.attendance.clock` still gets `ForbiddenError` from `assertHrCan`, like every other HR action.
+2. `clock()` refuses by throwing `ClockRefusedError` (fixed text) so its success type stays `{ id, judgement, lateMin, … }` for existing callers; actions map it to a fixed message.
+3. Tx options `maxWait 5 s / timeout 10 s` (default 2 s / 5 s) so 10 simultaneous taps queue on the lock instead of failing; the pool size is unchanged (OQ-7).
+4. The UI cast in `ui.tsx:40` (type only) — alternative would be a client state form; not needed because the button is hidden from people who would be refused.
+
+### ORACLE-EDIT requests (controller)
+- **OE-1 `qc-hr-attendance` KI-7** (`scripts/qc-hr-attendance.mts:175`): taps IN then immediately again and expects OUT. Under R4 (kiosk: any kind < 60 s ⇒ no new row) that second tap is a dedupe and correctly returns IN. Proposed hunk: before `const kOut = …` add `await prisma.hrAttendance.updateMany({ where: { employeeId: kio.id }, data: { at: new Date(Date.now() - 180_000) } }); // fixture: พ้นหน้าต่างกันแตะซ้ำ (H0.3 R4)` and before `const kOut2 = …` add `await prisma.hrAttendance.updateMany({ where: { employeeId: kio.id, kind: "OUT" }, data: { at: new Date(Date.now() - 90_000) } });`. KI-8 is green today only because the dedupe also returns IN; with the hunk it tests a real third tap again. (Backdating 3 min can cross Bangkok midnight if the suite runs at 00:00–00:03.)
+- **OE-2 `qc-hr-attendance` KI-10** (`scripts/qc-hr-attendance.mts:185-186`): regex `/checkRateLimit\(\s*\`hr-kiosk:/` requires the in-memory limiter, which R2 + `qc-hr-h0.3` S6.4 forbid (mutually exclusive). Proposed: `/checkRateLimitDb\(\s*\`hr-kiosk:emp:/`.
+- **OE-3 `qc-hr-h0.3.mts:536`** typecheck error `TS7006: Parameter 'id' implicitly has an 'any' type` (`cEmps` is `any` because `P` is `any`). `pnpm typecheck` covers `scripts/*.mts` (and `next build` type-checks them), so this blocks typecheck = 0 and would break a production build after merge. Proposed: `.map((id: string) => kioskCall(…))` (or `const cEmps: string[] = …` at :532).
+
+### Runs (QC4 `ep-frosty-lab`, through iso.sh + qc4.sh + with-gate-lock.sh)
+| run | result | residue |
+|---|---|---|
+| `qc-hr-h0.3` forced #1 | 36/36 · failed [] · exit 0 | none |
+| `qc-hr-h0.3` forced #2 | 36/36 · failed [] · exit 0 (`hr-H0.3-green.txt`) | none |
+| `qc-hr-h0.3` unforced | 36/36 · `skipped:false` · exit 0 | none |
+
+| regression | expected | got |
+|---|---|---|
+| qc-hr | 9/9 | 9/9 |
+| qc-hr-attendance | 31/31 | **29/31** — KI-7, KI-10 (OE-1, OE-2); all AT-* judgement checks green |
+| qc-ai-tools | 18/18 | 18/18 |
+| qc-ai-proposals | 16/16 | 16/16 |
+| qc-hr-roster | 24/24 | 24/24 |
+| qc-hr-leave-booking | 14/14 | 14/14 |
+| qc-booking-hours-hr | 13/13 | 13/13 |
+| qc-hf-hr-privacy (last, alone) | 194/194 | 194/194 |
+
+- Fitness: `scripts/fitness.mts` 33/33 with env (qc4.sh) and with `env -u DATABASE_URL`.
+- Typecheck (1 attempt, machine lock): exit 2, single error = OE-3 in the oracle file; no error in product code.
