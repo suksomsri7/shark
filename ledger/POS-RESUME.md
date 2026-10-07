@@ -548,3 +548,8 @@
 - เลน 2: gate เขียว (p1.17 35/35 ×3 · authz 56 · p1.9 53 · p1.3 128 · fitness · fitness-pos 8/8 · tsc) · คำตัดสิน R5: ตัด call products (ใช้ margin) · กราฟ = 14 วันล่าสุดถึงวัน to เสมอ (ภาพ 08) · เทียบทั้งวัน = รับ + follow-up
 - ภาพ P1.6U: unit pos-vis3-p16u กำลัง build (p11 @ 4aace797) → ถ่าย register states owner/cashier/EN → เทียบ 02/02b/05ข
 - ตามสั่ง: 2 เลนนี้จบ (รวมรอบแก้) แล้วเหลือ 1 เลน
+
+## 2026-10-07T16:04:50Z · ภาพ P1.6U ถ่ายแล้ว 32 ภาพ แต่ 23 ตก: ร้าน QC ต้อง "เปิดกะ" ก่อนขาย (P1.9) · visual-pos ยังไม่มีขั้นเปิดกะ
+- build p11 @ 4aace797 ผ่าน (:3225 ยังเปิด) · state default ผ่าน 9 ภาพ · state ที่ใส่ตะกร้า/ชำระตก "ปุ่มชำระไม่เปิดภายใน 15 วิ" — ภาพจริงมีแถบ "เปิดกะก่อนเริ่มขาย" (parseShiftSettings: required.register ปริยาย = ธง registerV2 · status ไม่มี deviceId ⇒ shift null) · ไม่ใช่บั๊ก P1.6U
+- สั่งเลน 1 (ข้อ 7 ของ P1.2U R2): visual-pos เปิดกะผ่าน UI ก่อน state แรกที่ขาย (ตรงภาพ 01 หัว "กะ #12 · เปิด 09:02") · ปิดกะใน finally · ห้ามปิด required.register
+- หลังเลน 1 ส่ง R2: build p11 ที่หัว P1.2U (มี P1.6U ด้วย) ครั้งเดียว → ถ่าย register states ทั้งชุด + options-popover/weigh → เทียบ 01/02/02b/05ข
