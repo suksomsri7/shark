@@ -212,6 +212,116 @@ export function headerSafeLocation(url: string): string {
   return encodeURI(url);
 }
 
+// ───────────────────────── นโยบายปลายทางของลิงก์ติดตาม (CRM C6.1-LINKPOLICY · มติเจ้าของ P11/Q15 ข้อ (ข)) ─────────────────────────
+//
+// 🔴 ทำไมต้องมี: `shark.in.th/l/<code>` เป็นตัวพาไปที่อื่นบนโดเมนของแพลตฟอร์ม — ร้านเดียวที่เอาไปพาคนเข้าเว็บหลอก/มัลแวร์
+//    = โดเมน shark.in.th ทั้งโดเมนติดบัญชีดำ ⇒ อีเมล CRM ของ **ทุกร้าน** ตกสแปม · ปลายทางจึงต้องอยู่ในรายการที่ร้านประกาศไว้
+// 🔴 กติกา (ตัวเดียวทั้งระบบ — ตอนสร้าง/แก้ลิงก์ · ตอน `/l/<code>` พาไป · ตัวนับ "ลิงก์ที่จะใช้ไม่ได้" ของหน้าตั้งค่า):
+//    1. scheme ต้องเป็น http: / https: · ไม่มี userinfo (`https://ร้าน.com@evil.test`)
+//    2. host ต้องไม่ใช่ IP (v4/v6 — ตัวแปลง URL ยุบ `0x7f.1`/`2130706433` เป็นรูป a.b.c.d ให้แล้ว) · ไม่ใช่ `localhost`/`*.local`/`*.internal`
+//       (และ `*.localhost` · `*.home.arpa`)
+//    3. host ต้องตรงกับรายการอนุญาต: รายการ `a.com` = ตรงตัวเท่านั้น · `*.a.com` = a.com และโดเมนย่อยทุกชั้น (เทียบที่ขอบจุด —
+//       `xa.com` / `a.com.evil.test` ไม่ผ่าน)
+
+/** จำนวนโดเมนปลายทางที่ร้านประกาศได้ต่อระบบ CRM (สูงสุด) */
+export const LINK_HOSTS_MAX = 50;
+
+/** host ที่ไม่มีวันเป็นปลายทางของลิงก์สาธารณะได้ (เครื่องในบ้าน/เครือข่ายภายใน) */
+export function isLocalOnlyHost(host: string): boolean {
+  const h = host.toLowerCase();
+  return (
+    h === "localhost" ||
+    h === "local" ||
+    h === "internal" ||
+    h.endsWith(".localhost") ||
+    h.endsWith(".local") ||
+    h.endsWith(".internal") ||
+    h === "home.arpa" ||
+    h.endsWith(".home.arpa")
+  );
+}
+
+/** host เป็น IP ล้วน ๆ ไหม (หลังผ่านตัวแปลง URL แล้ว: IPv6 = `[…]` · IPv4 = a.b.c.d) */
+export function isIpLiteralHost(host: string): boolean {
+  return host.startsWith("[") || /^\d{1,3}(\.\d{1,3}){3}$/.test(host) || /^[0-9.]+$/.test(host);
+}
+
+/**
+ * รายการหนึ่งบรรทัดของ "โดเมนปลายทางที่อนุญาต" → รูปมาตรฐาน (ตัวพิมพ์เล็ก · punycode · `*.` นำหน้าได้ครั้งเดียว) — ผิดแบบ = null
+ * ชื่อภาษาไทย (`ร้าน.com`) แปลงเป็น punycode แบบเดียวกับที่เบราว์เซอร์ทำ ⇒ เทียบกับ host ของลิงก์ได้ตรง
+ * 🔴 ไม่รับ: scheme/path/port · `*` ตรงกลาง/ท้าย · `*.` บนชื่อที่มีจุดเดียวแบบโดเมนสาธารณะ (`*.co.th` `*.com` = ทั้งประเทศ/ทั้งโลก) ·
+ *    IP · localhost/.local/.internal
+ */
+export function normalizeLinkHost(input: unknown): string | null {
+  let s = typeof input === "string" ? input.trim().toLowerCase() : "";
+  if (!s || s.length > 253) return null;
+  const wild = s.startsWith("*.");
+  if (wild) s = s.slice(2);
+  if (s.endsWith(".")) s = s.slice(0, -1);
+  if (!s || s.includes("*")) return null;
+  // eslint-disable-next-line no-control-regex
+  if (/[^\x00-\x7f]/.test(s)) {
+    // ชื่อโดเมนภาษาอื่น → punycode (ตัวแปลง URL ของ WHATWG — ใช้ได้ทั้งเบราว์เซอร์และ Node)
+    if (/[\s/\\:?#@]/.test(s)) return null;
+    try {
+      s = new URL(`http://${s}/`).hostname;
+    } catch {
+      return null;
+    }
+  }
+  const dom = normalizeDomain(s);
+  if (!dom || isLocalOnlyHost(dom) || isIpLiteralHost(dom)) return null;
+  if (wild && isPublicSuffixLike(dom)) return null;
+  return wild ? `*.${dom}` : dom;
+}
+
+/** ชื่อที่ "ใส่ดอกจันแล้วเท่ากับทั้งโดเมนสาธารณะ" — เช่น co.th · in.th · com.au (ป้องกันพลาดแบบ `*.co.th`) */
+const SECOND_LEVEL_PUBLIC = new Set(["co", "com", "net", "org", "or", "ac", "go", "gov", "edu", "mi", "in", "ne", "gr", "lg", "ltd", "plc", "nic"]);
+function isPublicSuffixLike(dom: string): boolean {
+  const parts = dom.split(".");
+  if (parts.length < 2) return true;
+  return parts.length === 2 && SECOND_LEVEL_PUBLIC.has(parts[0]!);
+}
+
+/** host นี้ตรงกับรายการหนึ่งรายการไหม (`a.com` = ตรงตัว · `*.a.com` = a.com + โดเมนย่อย · เทียบที่ขอบจุดเท่านั้น) */
+export function linkHostMatches(host: string, entry: string): boolean {
+  const h = host.toLowerCase();
+  const e = entry.toLowerCase();
+  if (!e) return false;
+  if (e.startsWith("*.")) {
+    const base = e.slice(2);
+    return !!base && (h === base || h.endsWith(`.${base}`));
+  }
+  return h === e;
+}
+
+export type LinkDestinationReason = "PARSE" | "SCHEME" | "USERINFO" | "IP" | "LOCAL" | "BLOCKLISTED" | "HOST_NOT_ALLOWED";
+export type LinkDestinationVerdict = { ok: true; host: string } | { ok: false; reason: LinkDestinationReason; host: string };
+
+/**
+ * ตัวตัดสินบริสุทธิ์ (ไม่แตะฐาน ไม่แตะ env ไม่มี async) — `entries` = รายการอนุญาตทั้งหมดในรูปมาตรฐาน (`a.com` / `*.a.com`)
+ * `blocklisted` = จุดเสียบรายการต้องห้าม (ค่าเริ่มต้น "ไม่มี" — ดู `isDestinationBlocklisted` ใน tracking.ts)
+ */
+export function linkDestinationVerdict(url: unknown, entries: readonly string[], blocklisted: (host: string) => boolean = () => false): LinkDestinationVerdict {
+  const s = typeof url === "string" ? url.trim() : "";
+  let u: URL;
+  try {
+    u = new URL(s);
+  } catch {
+    return { ok: false, reason: "PARSE", host: "" };
+  }
+  let host = u.hostname.toLowerCase();
+  if (host.endsWith(".")) host = host.slice(0, -1); // `a.com.` = a.com (ชื่อเดียวกันใน DNS)
+  if (u.protocol !== "http:" && u.protocol !== "https:") return { ok: false, reason: "SCHEME", host };
+  if (!host) return { ok: false, reason: "PARSE", host };
+  if (u.username || u.password) return { ok: false, reason: "USERINFO", host };
+  if (isIpLiteralHost(host)) return { ok: false, reason: "IP", host };
+  if (isLocalOnlyHost(host)) return { ok: false, reason: "LOCAL", host };
+  if (blocklisted(host)) return { ok: false, reason: "BLOCKLISTED", host };
+  if (!entries.some((e) => typeof e === "string" && linkHostMatches(host, e))) return { ok: false, reason: "HOST_NOT_ALLOWED", host };
+  return { ok: true, host };
+}
+
 /** ที่อยู่สาธารณะของแอปที่สคริปต์บนเว็บร้านจะยิงกลับ — ต้องเป็น https เสมอ (http://127.0.0.1 ของเครื่องทดสอบ = ใช้ค่าสาธารณะ) */
 export function publicAppOrigin(appUrl: unknown): string {
   const s = typeof appUrl === "string" ? appUrl.trim().replace(/\/+$/, "") : "";

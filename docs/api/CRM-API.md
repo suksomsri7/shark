@@ -1409,7 +1409,7 @@ Body:
 | Operation | Method and path | Kind | Scope | Summary |
 | --- | --- | --- | --- | --- |
 | `tracking.links.list` | `GET /tracking/links` | read | `crm.tracking.manage` | The shop's tracked short links (newest first): code, destination, name, channel, whether it is on, total clicks and unique clicks. |
-| `tracking.links.create` | `POST /tracking/links` | write | `crm.tracking.manage` | Make a tracked short link to an http or https address. A code of 6-32 letters, digits, - and _ can be asked for; otherwise one is generated. Clicks are counted per link and, when the visitor is known, land on the contact's timeline. |
+| `tracking.links.create` | `POST /tracking/links` | write | `crm.tracking.manage` | Make a tracked short link to an http or https address. A code of 6-32 letters, digits, - and _ can be asked for; otherwise one is generated. Clicks are counted per link and, when the visitor is known, land on the contact's timeline. The destination host must be on the shop's allowed destination list (Settings > Tracked links: exact hosts or *.domain), one of the shop's web-tracking domains, or the SHARK host itself; IP addresses, local/internal hosts and URLs with a user name are refused (422 validation). A link whose host is later removed from the list stops redirecting. |
 | `tracking.links.stats` | `GET /tracking/links/{id}/stats` | read | `crm.tracking.manage` | Clicks of one tracked link: the totals and the clicks per day (Thai calendar day) over the last `days` days (1-365, 30 by default). |
 
 #### `GET /tracking/links` — tracking.links.list
@@ -1425,7 +1425,7 @@ Query:
 
 #### `POST /tracking/links` — tracking.links.create
 
-Make a tracked short link to an http or https address. A code of 6-32 letters, digits, - and _ can be asked for; otherwise one is generated. Clicks are counted per link and, when the visitor is known, land on the contact's timeline. (สร้างลิงก์ติดตาม)
+Make a tracked short link to an http or https address. A code of 6-32 letters, digits, - and _ can be asked for; otherwise one is generated. Clicks are counted per link and, when the visitor is known, land on the contact's timeline. The destination host must be on the shop's allowed destination list (Settings > Tracked links: exact hosts or *.domain), one of the shop's web-tracking domains, or the SHARK host itself; IP addresses, local/internal hosts and URLs with a user name are refused (422 validation). A link whose host is later removed from the list stops redirecting. (สร้างลิงก์ติดตาม)
 
 Body:
 

@@ -9,6 +9,8 @@
 //    — ไม่มีเครื่องมือเดารหัสลิงก์/siteKey/token ของร้านอื่น
 // 🔴 AUDIT-CLASS X6: ปลายทางของ `/l/<code>` มาจากแถวในฐานเท่านั้น (พารามิเตอร์ในคำขอไม่มีทางเปลี่ยนได้) และ url ที่รับ
 //    ตอนสร้างต้องเป็น http/https จริง ๆ (javascript:/data:/`//host`/backslash ถูกปฏิเสธ)
+//    + CRM C6.1-LINKPOLICY (มติเจ้าของ P11/Q15 ข้อ ข): host ปลายทางต้องอยู่ใน "โดเมนปลายทางที่อนุญาต" ของร้าน
+//    (`settings.crm.tracking.linkHosts`) หรือเว็บของร้านในส่วนติดตามเว็บ หรือโดเมนของแพลตฟอร์มเอง — ตรวจตอนสร้าง/แก้ และตอนพาไปทุกครั้ง
 // 🔴 AUDIT-CLASS X3: ตัวนับทุกตัว (clicks · uniqueClicks · pageViews) จบใน **คำสั่ง SQL เดียว** พร้อมแถวเหตุการณ์
 //    (CTE) — ยิงพร้อมกันพันครั้งต้องได้พันพอดี
 // 🔴 AUDIT-CLASS X4: ระบุตัวตนซ้ำ/ขนานกัน = ผูกครั้งเดียว · กิจกรรม WEB 1 รายการต่อ "วันไทย" · event 1 ใบ
@@ -54,7 +56,10 @@ import {
   isIdentifyBy,
   isVisitorId,
   jsLiteral,
+  LINK_HOSTS_MAX,
+  linkDestinationVerdict,
   normalizeDomain,
+  normalizeLinkHost,
   originAllowed,
   publicAppOrigin,
   thaiDayKey,
@@ -62,6 +67,7 @@ import {
   urlHostAllowed,
   utmOf,
   type IdentifyBy,
+  type LinkDestinationVerdict,
 } from "./tracking-shared";
 
 // ค่าคงที่ที่ route สาธารณะต้องใช้ — route แตะโมดูลได้ทางเดียวคือ facade (`@/lib/modules/crm`) ตามด่าน F2.3
@@ -355,6 +361,199 @@ const audit = (ctx: TrackingCtx, action: string, targetType: string, targetId: s
     after: after ?? undefined,
   });
 
+// ───────────────────────── นโยบายปลายทางของลิงก์ติดตาม (CRM C6.1-LINKPOLICY · มติเจ้าของ P11/Q15 ข้อ ข) ─────────────────────────
+//
+// รายการอนุญาตของระบบ CRM หนึ่งระบบ = (1) `settings.crm.tracking.linkHosts` ที่ร้านประกาศเอง (สูงสุด 50 · `a.com` ตรงตัว · `*.a.com`
+//   รวมโดเมนย่อย · ค่าเริ่มต้น = ว่าง) + (2) เว็บของร้านในส่วนติดตามเว็บ `settings.crm.tracking.web.domains` (รายการเดียวกับที่ใบ C2.6/J3
+//   ใช้ — ไม่มีรายการที่สอง · รวมโดเมนย่อยแบบเดียวกับ `originAllowed`) + (3) host ของแพลตฟอร์มเอง (`APP_URL`) และโดเมนย่อย
+// 🔴 ตัวตัดสินตัวเดียว (`linkDestinationVerdict` ใน tracking-shared) ใช้ทั้งตอนสร้าง/แก้ลิงก์ · ตอน `/l/<code>` พาไป · ตัวนับ "ลิงก์ที่จะใช้ไม่ได้"
+//    ⇒ สามจุดนี้ไม่มีวันตัดสินไม่ตรงกัน · ลบโดเมนออกจากรายการภายหลัง = ลิงก์ที่ชี้ไปที่นั่นหยุดพาไปทันที (คำตอบเดียวกับรหัสที่ไม่รู้จัก)
+
+/** ข้อความ "ไปเพิ่มที่ไหน" — หน้าตั้งค่าเดียวที่แก้รายการนี้ได้ */
+const LINK_HOSTS_WHERE = "เพิ่มโดเมนปลายทางที่ ตั้งค่า › ลิงก์ติดตาม";
+
+/** โดเมนปลายทางที่ร้านประกาศ (`settings.crm.tracking.linkHosts`) — ค่าเพี้ยน/ไม่ได้ตั้ง = ว่าง · รายการผิดรูปถูกทิ้ง (ไม่ throw) */
+export function linkHostsOf(raw: unknown): string[] {
+  const crm = isObj(raw) && isObj((raw as Record<string, unknown>).crm) ? ((raw as Record<string, unknown>).crm as Record<string, unknown>) : {};
+  const tr = isObj(crm.tracking) ? (crm.tracking as Record<string, unknown>) : {};
+  const list = Array.isArray(tr.linkHosts) ? tr.linkHosts : [];
+  const out: string[] = [];
+  for (const h of list) {
+    const n = normalizeLinkHost(h);
+    if (n && !out.includes(n)) out.push(n);
+    if (out.length >= LINK_HOSTS_MAX) break;
+  }
+  return out;
+}
+
+/** host ของแพลตฟอร์ม (จาก `APP_URL`) ในรูปรายการ `*.host` — APP_URL ที่เป็น IP/localhost (เครื่อง dev/QC) = ไม่มี */
+function platformLinkEntries(): string[] {
+  try {
+    const host = new URL(appUrl()).hostname.toLowerCase();
+    const n = normalizeLinkHost(`*.${host}`);
+    return n ? [n] : [];
+  } catch {
+    return [];
+  }
+}
+
+/** รายการที่ร้าน "ไม่ต้องตั้งก็ใช้ได้" (เว็บของร้านในส่วนติดตามเว็บ + แพลตฟอร์ม) — รูป `*.host` */
+function alwaysAllowedLinkEntries(settings: unknown): string[] {
+  const out = webSettingsOf(settings).domains.map((d) => `*.${d}`);
+  for (const p of platformLinkEntries()) if (!out.includes(p)) out.push(p);
+  return out;
+}
+
+/** รายการอนุญาตทั้งหมดของระบบนี้ (ที่ร้านประกาศ + ที่ใช้ได้เสมอ) */
+export function linkPolicyEntries(settings: unknown, linkHosts: readonly string[] = linkHostsOf(settings)): string[] {
+  return [...linkHosts, ...alwaysAllowedLinkEntries(settings)];
+}
+
+/**
+ * TODO(หนี้ C6.1-LINKPOLICY · Safe Browsing): จุดเสียบ "รายการเว็บอันตราย" ของปลายทางลิงก์ — **ตอนนี้ไม่มีรายการ (คืน false เสมอ)**
+ * มติเจ้าของ P11/Q15 ข้อ (ข) ให้มีการตรวจ Safe Browsing แต่ใบนี้ **ไม่เรียกบริการภายนอก** (ต้องมีคีย์ · ค่าใช้จ่าย · ความหน่วงบนทางร้อน `/l`)
+ * — ใบที่ทำต้องเป็นฟังก์ชัน sync/แคช (ห้ามยิงเครือข่ายใน `resolveLinkHit`) และเสียบที่นี่ที่เดียว (ตัวตัดสินทุกจุดเรียกผ่านที่นี่)
+ */
+export function isDestinationBlocklisted(_host: string): boolean {
+  return false;
+}
+
+/** ตัวตัดสินปลายทาง (บริสุทธิ์ · sync · ไม่แตะฐาน) — `settings` = `AppSystem.settings` ดิบของระบบ CRM เจ้าของลิงก์ */
+export function linkDestinationCheck(url: unknown, settings: unknown, linkHosts?: readonly string[]): LinkDestinationVerdict {
+  return linkDestinationVerdict(url, linkPolicyEntries(settings, linkHosts ?? linkHostsOf(settings)), isDestinationBlocklisted);
+}
+
+/** ปลายทางนี้ใช้ได้ไหม (true/false) — ตัวเดียวกับที่ตอนสร้าง/แก้ลิงก์และ `/l/<code>` ใช้ */
+export function linkDestinationAllowed(url: unknown, settings: unknown): boolean {
+  return linkDestinationCheck(url, settings).ok;
+}
+
+/** ข้อความไทยของคำตัดสินที่ไม่ผ่าน — บอกชื่อเว็บและบอกว่าแก้ที่ไหน (ไม่โทษผู้ใช้) */
+function linkDestinationMessage(v: Exclude<LinkDestinationVerdict, { ok: true }>): string {
+  const host = v.host.length > 80 ? `${v.host.slice(0, 80)}…` : v.host;
+  switch (v.reason) {
+    case "HOST_NOT_ALLOWED":
+      return `ปลายทาง ${host} ยังไม่อยู่ในรายการโดเมนปลายทางที่อนุญาตของร้าน — ${LINK_HOSTS_WHERE} แล้วลองอีกครั้ง`;
+    case "IP":
+      return `ลิงก์ติดตามพาไปที่เลข IP (${host}) ไม่ได้ — ใช้ลิงก์ที่เป็นชื่อเว็บไซต์ แล้ว${LINK_HOSTS_WHERE}`;
+    case "LOCAL":
+      return `ปลายทาง ${host} เป็นชื่อเครื่องในเครือข่ายภายในซึ่งลูกค้าเปิดไม่ได้ — ใช้ลิงก์ของเว็บไซต์ที่เปิดได้จากอินเทอร์เน็ต`;
+    case "USERINFO":
+      return "ลิงก์ปลายทางมีชื่อผู้ใช้หรือรหัสผ่านฝังอยู่หน้าชื่อเว็บ (ส่วนก่อนเครื่องหมาย @) ซึ่งลิงก์ติดตามใช้ไม่ได้ — คัดลอกลิงก์จากแถบที่อยู่ของเบราว์เซอร์อีกครั้ง";
+    case "BLOCKLISTED":
+      return `ปลายทาง ${host} อยู่ในรายการเว็บไซต์ที่ไม่ปลอดภัย ระบบจึงสร้างลิงก์ติดตามไปที่นี่ไม่ได้`;
+    default:
+      return "รับเฉพาะลิงก์ที่ขึ้นต้นด้วย https:// หรือ http:// และต้องมีชื่อเว็บไซต์";
+  }
+}
+
+/** ด่านตอนสร้าง/แก้ลิงก์ — ไม่ผ่าน = VALIDATION พร้อมข้อความไทย (ไม่เขียนอะไร) */
+function assertLinkDestination(url: string, settings: unknown): void {
+  const v = linkDestinationCheck(url, settings);
+  if (!v.ok) throw fail("VALIDATION", linkDestinationMessage(v));
+}
+
+export type LinkPolicyDto = {
+  /** รายการที่ร้านประกาศ (รูปมาตรฐาน) */
+  linkHosts: string[];
+  /** ที่ใช้ได้เสมอโดยไม่ต้องตั้ง (เว็บของร้านในส่วนติดตามเว็บ + แพลตฟอร์ม) — รูป `*.host` */
+  alwaysAllowed: string[];
+  /** ลิงก์ที่เปิดอยู่ (active · ยังไม่หมดอายุ) ที่ปลายทางไม่ผ่านนโยบายภายใต้รายการนี้ */
+  blockedActiveLinks: number;
+  /** id ของลิงก์ข้างบน (สูงสุด 200 — หน้าตั้งค่าใช้ติดป้าย) */
+  blockedLinkIds: string[];
+  /** host ปลายทางของลิงก์ข้างบน (ไม่ซ้ำ · สูงสุด 10) */
+  blockedHosts: string[];
+  max: number;
+};
+
+/**
+ * ลิงก์ที่เปิดอยู่ของระบบนี้ที่ "จะใช้ไม่ได้" ภายใต้รายการ `linkHosts` — อ่านฐาน **คำสั่งเดียว** (url ของลิงก์ที่เปิดอยู่) แล้วตัดสินด้วยตัวตัดสินตัวเดียวกับ `/l`
+ * (ไม่เขียนกติกาชุดที่สองเป็น SQL — สองชุดที่วันหนึ่งไม่ตรงกัน = ตัวเลขบนหน้าจอโกหก)
+ */
+async function linkPolicyOf(ctx: TrackingCtx, settings: unknown, linkHosts: string[], now: Date = new Date()): Promise<LinkPolicyDto> {
+  const rows = await prisma.$queryRaw<{ id: string; url: string }[]>`
+    SELECT "id", "url" FROM "CrmTrackedLink"
+     WHERE "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId} AND "active" = true
+       AND ("expiresAt" IS NULL OR "expiresAt" > ${now})`;
+  const ids: string[] = [];
+  const hosts: string[] = [];
+  let n = 0;
+  for (const r of rows) {
+    const v = linkDestinationCheck(r.url, settings, linkHosts);
+    if (v.ok) continue;
+    n += 1;
+    if (ids.length < 200) ids.push(r.id);
+    if (v.host && hosts.length < 10 && !hosts.includes(v.host)) hosts.push(v.host);
+  }
+  return { linkHosts: [...linkHosts], alwaysAllowed: alwaysAllowedLinkEntries(settings), blockedActiveLinks: n, blockedLinkIds: ids, blockedHosts: hosts, max: LINK_HOSTS_MAX };
+}
+
+/**
+ * ข้อความจากช่องกรอก (บรรทัด/จุลภาค/ช่องว่างคั่น) หรืออาร์เรย์ → รายการมาตรฐาน (ตัวพิมพ์เล็ก · ไม่ซ้ำ · ≤ 50)
+ * 🔴 รายการผิดรูปแม้แต่รายการเดียว = ปฏิเสธทั้งชุดพร้อมบอกว่ารายการไหน (ไม่ทิ้งเงียบ ๆ — เจ้าของร้านจะคิดว่าบันทึกแล้ว)
+ */
+export function cleanLinkHostsInput(input: unknown): string[] {
+  const raw: unknown[] = Array.isArray(input) ? input : typeof input === "string" ? input.split(/[\s,;]+/) : [];
+  if (raw.length > 500 || raw.some((x) => typeof x === "string" && x.length > 300)) {
+    throw fail("VALIDATION", `ใส่โดเมนปลายทางได้ไม่เกิน ${LINK_HOSTS_MAX} รายการ — ลบรายการที่ไม่ใช้ออกก่อน`);
+  }
+  const out: string[] = [];
+  for (const item of raw) {
+    const t = typeof item === "string" ? item.trim() : "";
+    if (!t) continue;
+    const n = normalizeLinkHost(t);
+    if (!n) {
+      const shown = t.length > 60 ? `${t.slice(0, 60)}…` : t;
+      throw fail(
+        "VALIDATION",
+        `"${shown}" ใช้เป็นโดเมนปลายทางไม่ได้ — ใส่ชื่อเว็บล้วน ๆ บรรทัดละหนึ่งชื่อ เช่น shop.example.com หรือ *.example.com (รวมโดเมนย่อย) · ไม่ต้องมี https:// พอร์ต หรือเส้นทาง · ไม่รับเลข IP ชื่อเครื่องภายใน หรือ *.co.th ทั้งโดเมน`,
+      );
+    }
+    if (!out.includes(n)) out.push(n);
+  }
+  if (out.length > LINK_HOSTS_MAX) throw fail("VALIDATION", `ใส่โดเมนปลายทางได้ไม่เกิน ${LINK_HOSTS_MAX} รายการ (ตอนนี้ ${out.length}) — ลบรายการที่ไม่ใช้ออก หรือใช้ *.โดเมน แทนการใส่โดเมนย่อยทีละชื่อ`);
+  return out;
+}
+
+/** นโยบายปลายทางปัจจุบัน + จำนวนลิงก์ที่เปิดอยู่แต่ใช้ไม่ได้ (คีย์ `crm.tracking.manage` — เดียวกับการตั้งค่าติดตามอื่น) */
+export async function getLinkPolicy(ctx: TrackingCtx, actor: MemberActor): Promise<LinkPolicyDto> {
+  const sys = await enter(ctx, actor);
+  return linkPolicyOf(ctx, sys.settings, linkHostsOf(sys.settings));
+}
+
+/** "ถ้าบันทึกรายการนี้ จะมีลิงก์ที่เปิดอยู่ใช้ไม่ได้กี่ลิงก์" — ไม่เขียนอะไร (ตรวจรูปแบบเหมือนตอนบันทึกทุกข้อ) */
+export async function previewLinkHosts(ctx: TrackingCtx, actor: MemberActor, input: { hosts: unknown }): Promise<LinkPolicyDto> {
+  const sys = await enter(ctx, actor);
+  return linkPolicyOf(ctx, sys.settings, cleanLinkHostsInput(input?.hosts));
+}
+
+/**
+ * บันทึก `settings.crm.tracking.linkHosts` ด้วย **คำสั่งเดียว** (jsonb ซ้อนสองชั้น — คีย์อื่นของ `crm` และของ `tracking` เช่น `web` รอดเสมอ)
+ * แล้วคืนนโยบายใหม่ + จำนวนลิงก์ที่เปิดอยู่ที่ใช้ไม่ได้ภายใต้รายการใหม่ · AuditLog `crm.tracking.link.hosts`
+ */
+export async function saveLinkHosts(ctx: TrackingCtx, actor: MemberActor, input: { hosts: unknown }): Promise<LinkPolicyDto> {
+  await enter(ctx, actor);
+  const hosts = cleanLinkHostsInput(input?.hosts);
+  const json = JSON.stringify(hosts);
+  const n = await prisma.$executeRaw`
+    UPDATE "AppSystem"
+    SET "settings" = jsonb_set(
+      CASE WHEN jsonb_typeof("settings") = 'object' THEN "settings" ELSE '{}'::jsonb END,
+      '{crm}',
+      (CASE WHEN jsonb_typeof("settings"->'crm') = 'object' THEN "settings"->'crm' ELSE '{}'::jsonb END)
+        || jsonb_build_object('tracking',
+             (CASE WHEN jsonb_typeof("settings"->'crm'->'tracking') = 'object' THEN "settings"->'crm'->'tracking' ELSE '{}'::jsonb END)
+               || jsonb_build_object('linkHosts', ${json}::jsonb)),
+      true)
+    WHERE "id" = ${ctx.systemId} AND "tenantId" = ${ctx.tenantId} AND "type" = 'CRM'`;
+  if (n === 0) throw fail("NOT_FOUND", "ไม่พบระบบ CRM นี้ในร้าน — ลองเปิดจากเมนูของระบบอีกครั้ง");
+  const after = await resolveSystem(ctx);
+  const policy = await linkPolicyOf(ctx, after.settings, linkHostsOf(after.settings));
+  await audit(ctx, "crm.tracking.link.hosts", "AppSystem", ctx.systemId, { linkHosts: policy.linkHosts, blockedActiveLinks: policy.blockedActiveLinks });
+  return policy;
+}
+
 // ───────────────────────── ลิงก์ติดตาม ─────────────────────────
 
 export type LinkDto = {
@@ -425,8 +624,9 @@ function cleanCode(raw: unknown): string | null {
 }
 
 export async function createLink(ctx: TrackingCtx, actor: MemberActor, input: { url: string; name?: string | null; channel?: string | null; code?: string | null }): Promise<LinkDto> {
-  await enter(ctx, actor);
+  const sys = await enter(ctx, actor);
   const url = cleanLinkUrl(input?.url);
+  assertLinkDestination(url, sys.settings); // CRM C6.1-LINKPOLICY ▸ ปลายทางต้องอยู่ในรายการอนุญาตของร้าน ◂
   const custom = cleanCode(input?.code);
   const name = str(input?.name).slice(0, 120) || null;
   const channel = str(input?.channel).slice(0, 40) || null;
@@ -472,10 +672,13 @@ async function ownLink(ctx: TrackingCtx, id: string): Promise<LinkRow> {
 }
 
 export async function updateLink(ctx: TrackingCtx, actor: MemberActor, id: string, patch: { name?: string | null; url?: string; active?: boolean; channel?: string | null }): Promise<LinkDto> {
-  await enter(ctx, actor);
+  const sys = await enter(ctx, actor);
   const row = await ownLink(ctx, id);
   const data: Prisma.CrmTrackedLinkUpdateInput = {};
   if (patch?.url !== undefined) data.url = cleanLinkUrl(patch.url);
+  // CRM C6.1-LINKPOLICY ▸ เปลี่ยนปลายทาง หรือ "เปิด" ลิงก์ = ปลายทาง (ใหม่หรือเดิม) ต้องผ่านนโยบาย · แก้ชื่อ/ช่องทาง/ปิดลิงก์ทำได้เสมอ
+  //   (ลิงก์ที่โดเมนถูกถอดออกจากรายการยังเปลี่ยนชื่อหรือปิดได้ — แต่เปิดกลับต้องเพิ่มโดเมนก่อน ไม่งั้นเปิดแล้วก็พาไปไม่ได้อยู่ดี) ◂
+  if (patch?.url !== undefined || patch?.active === true) assertLinkDestination(typeof data.url === "string" ? data.url : row.url, sys.settings);
   if (patch?.name !== undefined) data.name = str(patch.name).slice(0, 120) || null;
   if (patch?.channel !== undefined) data.channel = str(patch.channel).slice(0, 40) || null;
   if (patch?.active !== undefined) data.active = !!patch.active;
@@ -1497,14 +1700,6 @@ function linkTenantMayRedirect(status: string | null): boolean {
   return !!status && LINK_TENANT_OK.has(status);
 }
 
-/**
- * TODO(OWNER Q15 · L4-M3): จุดเสียบ "นโยบายปลายทาง" ของลิงก์ติดตาม (โดเมนที่ร้านประกาศ/ยืนยัน · Safe Browsing · โดเมนแยก)
- * ยังไม่ตัดสิน ⇒ ตอนนี้อนุญาตทุก url ที่ผ่าน `cleanLinkUrl` แล้ว (พฤติกรรมเดิม)
- */
-function linkDestinationAllowed(_url: string, _tenantId: string): boolean {
-  return true;
-}
-
 export async function resolveLinkHit(code: unknown, meta: { ip: string; userAgent: string; hasUniqueCookie: boolean }, now: Date = new Date()): Promise<LinkHit> {
   const c = str(code);
   if (!c || c.length > 64) return null;
@@ -1523,9 +1718,10 @@ export async function resolveLinkHit(code: unknown, meta: { ip: string; userAgen
   // CRM C5.4-F ▸ L4-M3: สวิตช์ปิดของแพลตฟอร์ม — ร้านที่ไม่ได้ ACTIVE/PENDING (ระงับ/ปิด/รอลบ) ใช้ `shark.in.th/l/<code>` พาคนไปที่ไหนไม่ได้อีก
   //   (คำตอบเดียวกับรหัสที่ไม่รู้จัก · ไม่นับคลิก) ◂
   if (!linkTenantMayRedirect(link.tenantStatus)) return null;
-  // TODO(OWNER Q15 · L4-M3 นโยบายปลายทาง): ตัวเลือก (ข) = นโยบายปลายทาง + Safe Browsing ยังไม่อยู่ในใบนี้ — เสียบที่
-  //   `linkDestinationAllowed` (ตอนนี้ผ่านทุก url ที่ผ่าน `cleanLinkUrl` ตอนสร้าง) แล้วเรียกทั้งที่นี่และตอน create/update
-  if (!linkDestinationAllowed(link.url, link.tenantId)) return null;
+  // CRM C6.1-LINKPOLICY ▸ มติเจ้าของ P11/Q15 ข้อ (ข): ปลายทางต้องผ่านนโยบายของระบบเจ้าของลิงก์ **ตอนนี้** (settings มากับคำสั่งเดียวกันแล้ว
+  //   ไม่เพิ่มรอบไปกลับ) — โดเมนที่ถูกถอดออกจากรายการภายหลัง / ลิงก์เก่าก่อนมีนโยบาย = คำตอบเดียวกับรหัสที่ไม่รู้จัก ไม่นับคลิก ·
+  //   Safe Browsing = จุดเสียบ `isDestinationBlocklisted` (ยังไม่มีรายการ — หนี้) ◂
+  if (!linkDestinationAllowed(link.url, link.settings)) return null;
   try {
     const v2 = link.sys && parseCrmSettings(link.settings as Prisma.JsonValue).uiVersion === 2;
     if (v2 && !isBotUserAgent(meta?.userAgent)) {

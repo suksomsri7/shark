@@ -5,7 +5,7 @@ import { prisma } from "@/lib/core/db";
 import { systemDef } from "@/lib/systems";
 import { toMemberActor } from "@/lib/modules/member";
 import { crmCan } from "@/lib/modules/crm/access";
-import { getWebSettings, listLinks, webStats } from "@/lib/modules/crm/tracking";
+import { getLinkPolicy, getWebSettings, listLinks, webStats } from "@/lib/modules/crm/tracking";
 import { RETENTION_MAX_DAYS, RETENTION_MIN_DAYS, TRACKING_MAX_DOMAINS, CONSENT_TEXT_MAX } from "@/lib/modules/crm/tracking-shared";
 import { crmNavItems } from "@/lib/modules/crm/nav";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -32,10 +32,11 @@ export default async function CrmTrackingSettingsPage({ params }: { params: Prom
   if (!crmCan(actor, "crm.tracking.manage")) notFound();
   const ctx = { tenantId, systemId: id, actorUserId: auth.user.id };
 
-  const [settings, links, stats] = await Promise.all([
+  const [settings, links, stats, linkPolicy] = await Promise.all([
     getWebSettings(ctx, actor),
     listLinks(ctx, actor),
     webStats(ctx, actor, { days: 30 }).catch(() => ({ sessions: 0, consented: 0, identified: 0, webLeads: 0 })),
+    getLinkPolicy(ctx, actor), // CRM C6.1-LINKPOLICY ▸ รายการโดเมนปลายทาง + ลิงก์ที่เปิดอยู่แต่ใช้ไม่ได้ (อ่านอย่างเดียว) ◂
   ]);
   const data: CrmTrackingPageData = {
     systemId: id,
@@ -54,6 +55,7 @@ export default async function CrmTrackingSettingsPage({ params }: { params: Prom
       createdAtLabel: new Date(l.createdAt).toISOString().slice(0, 10),
     })),
     limits: { retentionMin: RETENTION_MIN_DAYS, retentionMax: RETENTION_MAX_DAYS, maxDomains: TRACKING_MAX_DOMAINS, consentTextMax: CONSENT_TEXT_MAX },
+    linkPolicy,
   };
 
   const def = systemDef(sys.type);
@@ -62,7 +64,7 @@ export default async function CrmTrackingSettingsPage({ params }: { params: Prom
       <PageHeader
         title={`${def?.icon ?? ""} ${sys.name}`.trim()}
         back={{ href: `/app/sys/${id}/crm/settings`, label: "ตั้งค่า CRM" }}
-        desc="ตั้งค่า — ติดตามเว็บและลิงก์ติดตาม: โดเมนที่อนุญาต · cookie consent + เวอร์ชัน · อายุการเก็บ · โค้ดฝัง · ลิงก์ติดตาม + QR"
+        desc="ตั้งค่า — ติดตามเว็บและลิงก์ติดตาม: โดเมนที่อนุญาต · cookie consent + เวอร์ชัน · อายุการเก็บ · โค้ดฝัง · โดเมนปลายทางของลิงก์ · ลิงก์ติดตาม + QR"
       />
       <ModuleTabs items={crmNavItems(id)} />
       <TrackingSettingsForm data={data} />

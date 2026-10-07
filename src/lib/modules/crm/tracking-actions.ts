@@ -20,7 +20,7 @@ import { assertCanCrm } from "./access";
 import { assertCrmV2, CrmV2DisabledError } from "./ui-version";
 import * as tracking from "./tracking";
 import { TrackingError } from "./tracking";
-import type { CrmTrackingResult, CrmTrackFormTargetRow, CrmTrackLinkRow, CrmTrackWebSettings } from "@/components/crm/tracking/types";
+import type { CrmTrackingResult, CrmTrackFormTargetRow, CrmTrackLinkPolicy, CrmTrackLinkRow, CrmTrackWebSettings } from "@/components/crm/tracking/types";
 import { CrmLimitError } from "./limits-shared"; // CRM C3.9 ◂
 
 type Ctx = { tenantId: string; systemId: string; actorUserId: string };
@@ -69,6 +69,27 @@ export async function saveCrmTrackingWebAction(
   try {
     const { ctx, actor } = await session(systemId);
     const next = await tracking.saveWebSettings(ctx, actor, patch ?? {});
+    touch(ctx.systemId);
+    return { ok: true, data: next };
+  } catch (e) {
+    return failOf(e);
+  }
+}
+
+// CRM C6.1-LINKPOLICY ▸ โดเมนปลายทางที่อนุญาตของลิงก์ติดตาม — คีย์เดียวกับการตั้งค่าติดตามอื่น (`crm.tracking.manage`) ไม่มีคีย์ใหม่ ◂
+export async function previewCrmLinkHostsAction(systemId: string, hosts: string): Promise<CrmTrackingResult<CrmTrackLinkPolicy>> {
+  try {
+    const { ctx, actor } = await session(systemId);
+    return { ok: true, data: await tracking.previewLinkHosts(ctx, actor, { hosts: String(hosts ?? "") }) };
+  } catch (e) {
+    return failOf(e);
+  }
+}
+
+export async function saveCrmLinkHostsAction(systemId: string, hosts: string): Promise<CrmTrackingResult<CrmTrackLinkPolicy>> {
+  try {
+    const { ctx, actor } = await session(systemId);
+    const next = await tracking.saveLinkHosts(ctx, actor, { hosts: String(hosts ?? "") });
     touch(ctx.systemId);
     return { ok: true, data: next };
   } catch (e) {

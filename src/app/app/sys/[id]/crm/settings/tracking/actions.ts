@@ -14,6 +14,8 @@ import {
   createCrmTrackedLinkAction as createLinkImpl,
   crmTrackedLinkQrAction as qrImpl,
   deleteCrmTrackedLinkAction as deleteLinkImpl,
+  previewCrmLinkHostsAction as previewLinkHostsImpl,
+  saveCrmLinkHostsAction as saveLinkHostsImpl,
   saveCrmFormTargetAction as saveFormTargetImpl,
   saveCrmTrackingWebAction as saveWebImpl,
   updateCrmTrackedLinkAction as updateLinkImpl,
@@ -37,6 +39,15 @@ async function gate(systemId: string): Promise<{ ok: false; error: string; code:
 
 export async function saveTrackingWeb(systemId: string, patch: Parameters<typeof saveWebImpl>[1]) {
   return (await gate(systemId)) ?? saveWebImpl(systemId, patch);
+}
+
+// CRM C6.1-LINKPOLICY ▸ โดเมนปลายทางที่อนุญาต (ตรวจผลกระทบ = ไม่เขียน · บันทึก) ◂
+export async function previewLinkHosts(systemId: string, hosts: string) {
+  return (await gate(systemId)) ?? previewLinkHostsImpl(systemId, hosts);
+}
+
+export async function saveLinkHosts(systemId: string, hosts: string) {
+  return (await gate(systemId)) ?? saveLinkHostsImpl(systemId, hosts);
 }
 
 export async function createTrackedLink(systemId: string, input: Parameters<typeof createLinkImpl>[1]) {

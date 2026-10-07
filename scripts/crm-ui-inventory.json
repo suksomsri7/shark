@@ -17274,6 +17274,68 @@
     },
     {
       "page": "/settings/tracking",
+      "testid": "crm-track-linkhosts-input",
+      "kind": "textarea",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "inline-error",
+        "target": "crm-track-linkhosts-error",
+        "note": "บรรทัดละหนึ่งโดเมน · *.โดเมน = รวมโดเมนย่อย · รายการผิดรูป/เกิน 50 = ข้อความไทยบอกรายการที่ผิด (ไม่เขียนอะไร)"
+      },
+      "wo": "C6.1-LINKPOLICY",
+      "oracle": "scripts/pending/c61l/probe-linkpolicy.mts"
+    },
+    {
+      "page": "/settings/tracking",
+      "testid": "crm-track-linkhosts-check",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "crm-track-linkhosts-impact",
+        "state": "appears",
+        "note": "ตรวจผลกระทบ = นับลิงก์ที่เปิดอยู่ที่จะใช้ไม่ได้ภายใต้รายการในช่อง (ไม่เขียนฐาน)"
+      },
+      "wo": "C6.1-LINKPOLICY",
+      "oracle": "scripts/pending/c61l/probe-linkpolicy.mts"
+    },
+    {
+      "page": "/settings/tracking",
+      "testid": "crm-track-linkhosts-save",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "action:saveLinkHosts",
+        "resultTarget": "crm-track-linkhosts-impact",
+        "db": "settings.crm.tracking.linkHosts (jsonb_set คำสั่งเดียว · ตัวพิมพ์เล็ก ไม่ซ้ำ ≤ 50) · AuditLog crm.tracking.link.hosts"
+      },
+      "wo": "C6.1-LINKPOLICY",
+      "oracle": "scripts/pending/c61l/probe-linkpolicy.mts"
+    },
+    {
+      "page": "/settings/tracking",
       "testid": "crm-link-url",
       "kind": "input",
       "roles": [
