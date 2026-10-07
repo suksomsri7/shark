@@ -679,3 +679,8 @@
 - ติดตาม (ไม่บล็อก · จาก wo-notes P1.9U): คีย์ `coins` ใน denomDetail · จำนวนบิล/คืนเงินต่อวิธีใน ShiftReport → ลงใบ P1.8 R8 แล้ว
 - **brief ใบ S ถัดไป เขียนแล้ว**: `ledger/pos-briefs/pos-brief-P1.8.md` (คืนเงินบางส่วน/CN · docType REFUND · PosDocCounter CN · facade applyExternalRefund · point.reversePartialEarn · consumer pos.sale.refunded · R3 ผู้อ่าน PosSale ทุกจุดต้องรู้ docType · คำถามเจ้าของ Q1–Q6 มีค่าปริยาย) · 🔔 ต้องสรุป O2 (เลข CN แยกชุด) ให้เจ้าของก่อนเริ่ม builder
 - ถัดไป (1 เลน): oracle writer `qc-pos-p1.8.mts` → base run → builder S → reviewer/hunter → รับ → P1.16U
+
+### 2026-10-07T22:29Z — เริ่ม P1.8: oracle writer (เลนเดียว · tree b · branch `wip/pos-p1.8-oracle` จาก 4aa1a286)
+- ส่ง tg รายงาน 24% + สรุป O2/คำถาม Q1–Q6 ให้เจ้าของ (ค่าปริยายในใบ · ไม่บล็อก) · memory อัปเดต 13/55
+- รอผล: `scripts/qc-pos-p1.8.mts` + `ledger/wo-notes/pos-P1.8-oracle.md` · base run SKIP/RED · typecheck → ผู้คุม merge oracle เข้า session/pos → builder S บน p11 (migration QC4 โดยผู้คุม)
+- p11 ทรีอยู่ที่ 0a7b555f สะอาด · เซิร์ฟเวอร์ :3225 ปิด · ล็อก runner/pos-gate ว่าง · shark-gate ยังถูก CRM ถือ
