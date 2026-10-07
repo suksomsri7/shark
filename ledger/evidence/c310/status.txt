@@ -1,0 +1,33 @@
+2026-10-07T11:34:10Z step-start C3.10 reading docs
+2026-10-07T11:35:26Z step0 stopped :3215 server pgid 886900 (cwd shark-crm-c42b, build 86724927); c42b acc-v2/server.pid 3533344 was stale/dead; gate locks free; no crm-* units active
+2026-10-07T11:35:38Z step0 counts snapshot -> /tmp/c310-logs/counts-before.json (Customer 67, CrmContact 92, CrmDeal 70, CrmCommission 6, OutboxEvent 10412)
+2026-10-07T11:36:26Z step1 migrate status: 151 migrations, DB up to date, no orphan → deploy not needed
+2026-10-07T11:36:26Z step2 reseed unit crm-reseed-c310 started (log /tmp/c310-logs/reseed.log)
+2026-10-07T11:39:03Z step2 seed member rc=0
+2026-10-07T11:42:45Z step2 qc-member-m1.1 rc=0
+2026-10-07T11:44:11Z step2 seed crm #1 rc=0
+2026-10-07T11:45:15Z step2 seed crm #2 rc=0
+2026-10-07T11:48:04Z step2 seed acc-v2 rc=1
+2026-10-07T11:56:27Z step2 oracle dashboard rc=0
+2026-10-07T11:57:05Z step2 oracle contacts rc=0
+2026-10-07T11:57:08Z step2 oracle contact-profile rc=1
+2026-10-07T11:57:28Z step2 DRAIN rc=0
+2026-10-07T11:57:28Z step2 backup qc1-expected rc=0
+2026-10-07T11:58:27Z step2 NOTE acc-v2 seed fails at real clock (time bomb: 2 invoices due 2026-09-30 20:00/21:00+07 now overdue → 13,640,000≠12,840,000); re-running acc-v2 seed only with JS clock shifted to 2026-09-30T09:00+07 (unit crm-reseed-accv2-c310b)
+2026-10-07T11:59:49Z step2b seed acc-v2 (JS clock 2026-09-30T09:00+07) rc=0
+2026-10-07T11:59:51Z step2b oracle dashboard rc=0
+2026-10-07T11:59:52Z step2b oracle contacts rc=0
+2026-10-07T11:59:54Z step2b oracle contact-profile rc=0
+2026-10-07T12:00:13Z step2b DRAIN rc=0
+2026-10-07T12:00:13Z step2b backup qc1-expected rc=0
+2026-10-07T12:00:25Z step2b acc-v2 seed OK under shifted JS clock (tenant cmungjwz5…, overdue 12,840,000/4); oracles dashboard/contacts/contact-profile rc=0; DRAIN rc=0; .qc-shots/qc1-expected refreshed
+2026-10-07T12:00:25Z step3 rebuild unit crm-rebuild-3215-c310 started (HEAD 725f0e0a)
+2026-10-07T12:10:38Z step3 BUILD READY 12:10 HEAD 725f0e0a (src identical to 02bfa7cb; only ledger/CRM-RESUME.md differs) · server pid 959209/listener 959241 cwd shark-crm
+2026-10-07T12:10:38Z step4 qc:all started
+2026-10-07T12:11:23Z step4 attempt1 self-deadlocked (I wrapped with-gate-lock around pnpm qc:all, which already wraps it) — killed own unit after 1 min, relaunching as crm-qc-all-c310b
+2026-10-07T12:11:23Z step4 qc:all started
+2026-10-07T12:45:47Z step4 qc:all progress 152/380 · reds so far 34
+2026-10-07T13:17:02Z step4 qc:all at 152/380; crm-buttons (full 5 users × 2 viewports runner, est. 7.5–8.5 h per crm-C4.2.md:630) running since ~12:37
+2026-10-07T14:15:06Z step4 still in crm-buttons (152/380 done)
+2026-10-07T14:53:45Z step4 qc:all still running in systemd unit crm-qc-all-c310b (152/380 at last check); lane agent exited on QUOTA STOP — resume by reading /tmp/c310-logs/*.log + unit status, do not re-launch qc:all
+2026-10-07T19:51:47Z step4 qc:all finished rc=1

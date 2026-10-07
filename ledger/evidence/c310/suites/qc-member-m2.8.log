@@ -1,0 +1,42 @@
+  ✅ [M2.8-S1.1] createSale + memberChoices (voucher ฿300 · 1,000 แต้ม · gift ฿1,000): grandTotal 269,500 (455,000 − ระดับ 45,500 − 30,000 − 10,000 − 100,000) · discountSatang 185,500 · tierDiscountSatang 45,500 · voucherUseIds [v1] · giftCardTxnId · payment CASH 269,500 · pointEarned 0 ตอน commit · ยังไม่มี ledger EARN (ก่อน drain)
+  ✅ [M2.8-S1.2] ใน tx เดียวกัน: voucher USED usedRef.saleId · ledger BURN −1000 refType PosSale refId saleId (balance 0) · gift card balance 0 (DEPLETED) · GiftCardTxn = PosSale.giftCardTxnId
+  ✅ [M2.8-S1.3] หลัง drain (consumer member-bridges): ledger EARN refType PosSale refId saleId idempotencyKey pos-earn-<saleId> = computeEarn(net 269,500 · ไม่นับส่วนที่จ่ายด้วย voucher/แต้ม/gift) · PointLot สร้าง · PosSale.pointEarned = แต้มนั้น · balance = แต้มที่ได้
+  ✅ [M2.8-S1.4] consumer: สแตมป์ +1 (StampEvent refType SALE refId saleId · PosSale.stampEventIds) · MemberActivity PURCHASE 1 แถว (module pos · refId saleId · summary ไทย) · recordSpend: totalSpentSatang +269,500 · attribution first purchase (sourceDetail.firstPurchaseSaleId = saleId)
+  ✅ [M2.8-S1.5] tier evaluate ใน consumer: สมาชิกใหม่ Y ซื้อ ฿31,000 (≥ เกณฑ์ gold ฿30,000) → หลัง drain tierDefId = gold · MemberTierHistory → gold · Customer.tier (legacy) = GOLD
+  ✅ [M2.8-S1.6] ล้ม = ไม่สร้างบิล: ส่วนลดระดับทำให้ยอด 409,500 แต่จ่าย 455,000 → throw PAYMENT_MISMATCH · voucher ของคนอื่น → throw ไทย · แต้มเกิน balance → throw · ไม่มี PosSale ของ idempotencyKey เหล่านั้น · voucher ของ Y ยัง ACTIVE
+  ✅ [M2.8-S1.7] บิลไม่มีสมาชิก (walk-in): สร้างได้ grandTotal 20,000 · ไม่มี member columns (tierDiscount 0 · voucherUseIds [] · giftCardTxnId null · pointEarned 0) · ไม่มี ledger/activity · event pos.sale.paid DONE (consumer ไม่ล้ม)
+  ✅ [M2.8-S1.8] คูปอง: voucher (stackWithCoupon false) + คูปอง → throw ไทย ไม่สร้างบิล (v3 ยัง ACTIVE) · คูปองอย่างเดียว → ระดับ 45,500 + คูปอง 5% ของ 409,500 = 20,000 (cap) → grandTotal 389,500 · CouponRedemption REDEEMED · แต้มจาก consumer = computeEarn(389,500)
+  ✅ [M2.8-S2.1] voidSale บิล s1: status VOIDED · voucher v1 กลับ ACTIVE · gift card คืน 100,000 ACTIVE (Txn REFUND) · แต้มที่เผา 1,000 คืน (ledger REVERSE ของ BURN)
+  ✅ [M2.8-S2.2] void ย้อนแต้มที่ได้: ledger REVERSE −แต้มที่ได้ (refType PosSale refId s1) · ล็อต remaining −แต้ม · balance = ก่อน void + 1,000 (เผาคืน) − แต้มที่ได้
+  ✅ [M2.8-S2.3] void ย้อนสแตมป์ (VOID event · progress 2 → 1 — X มีบิลเข้าเกณฑ์ 2 ใบ s1+sC · void s1 เหลือ 1) · recordSpend −269,500 · MemberActivity VOID 1 แถว refId saleId
+  ✅ [M2.8-S2.4] void idempotent: drain ซ้ำ 3 รอบ → ยัง REVERSE 1 · REFUND 1 · VOID activity 1 · balance เท่าเดิม
+  ✅ [M2.8-S2.5] void บิล walk-in และบิลคูปอง: สถานะ VOIDED · คูปอง RELEASED (usedCount คืน) · event pos.sale.voided DONE ทั้งคู่ · ไม่มี error
+  ✅ [M2.8-S2.6] void บิลใหญ่ของ Y: totalSpentSatang −3,100,000 · consumer เรียก evaluateAndApply อีกครั้ง (โค้ด) · Y ไม่ถูกลดระดับทันที (grace/keep ตามกฎ M1.9 — ยัง gold หรือมี history เท่านั้น ไม่ throw)
+  ✅ [M2.8-S3.1] drain ×3 บิล s3: EARN 1 · StampEvent SALE 1 · PURCHASE activity 1 · pointEarned = แต้ม
+  ✅ [M2.8-S3.2] ยิง event pos.sale.paid ซ้ำ (idempotencyKey ใหม่) → consumer ไม่ให้แต้ม/สแตมป์/กิจกรรมซ้ำ (ยัง 1/1/1) · event DONE
+  ✅ [M2.8-S4.1] member bridge พัง (memberId ชี้ลูกค้าที่ไม่มี) → event pos.sale.paid ยัง DONE (บิล/บัญชีไม่ล้ม) · ไม่มี ledger ของบิลนั้น · มี log WARN เพิ่ม (OpsLog) หรือโค้ดครอบ try/catch + logOps
+  ✅ [M2.8-S4.2] โค้ด: createSale ไม่มี point.earn( / recordSpend( / logActivity( ใน tx อีก · ยังยิง pos.sale.paid · เรียก applyOnSale ผ่าน facade member · consumer pos.sale.paid/voided ครอบ member bridge ด้วย try/catch + logOps WARN · member-bridges.ts import เฉพาะ facade (index) · ไม่มี any
+  ✅ [M2.8-S5.1] input เดิม (memberId · ไม่มี memberChoices/memberSystemId): ระบบ resolve ระบบสมาชิกจาก unit เอง → ส่วนลดระดับ 10% ใช้อัตโนมัติ (225,000) · pointEarned 0 ตอน commit → หลัง drain = computeEarn(225,000) · เส้นทางเดิมไม่พัง
+  ✅ [M2.8-S5.2] UI/actions: posQuoteAction รับ memberChoices และคืน member {lines, conflicts, pointsToEarn, stampsToAdd, netSatang} (ผ่าน member.quoteApply) · registerSaleAction ส่ง memberChoices+memberSystemId เข้า createSale · register-ui testid 12 · ป้ายภาพ 06 ครบ · ไม่มีอีโมจิ/hex
+  ❌ [M2.8-S6.1] ภาพ 06: pos-register-member-owner desktop+mobile 200 ไม่ล้น (เลือกสมาชิก 1 + หยิบสินค้า → แผงสิทธิ์ครบ testid) · pos-register-owner (ไม่เลือกสมาชิก) 200 — exp 200 ×3 | act undefined/undefined/ovf=undefined plain=undefined missing=undefined
+  ✅ [M2.8-S6.2] 🔴 parity ภาพ 06 — Fable ตรวจด้วยตา · wo-notes/member-M2.8.md มี 'PARITY: ผ่าน'
+  ❌ [M2.8-S7.1] regression qc-acc-v2-pos-lines: log /tmp/claude-0/qc-all/qc-acc-v2-pos-lines.log ใหม่กว่า 24 ชม. + เขียวเต็ม (builder รัน qc-all กับชุดนี้หลังแก้ POS) — exp เขียว + ใหม่ | act exists=true fresh=true 65/79
+  ✅ [M2.8-S7.2] regression qc-kanban-k3.3: log /tmp/claude-0/qc-all/qc-kanban-k3.3.log ใหม่กว่า 24 ชม. + เขียวเต็ม (builder รัน qc-all กับชุดนี้หลังแก้ POS)
+  ❌ [M2.8-S7.3] regression qc-point: log /tmp/claude-0/qc-all/qc-point.log ใหม่กว่า 24 ชม. + เขียวเต็ม (builder รัน qc-all กับชุดนี้หลังแก้ POS) — exp เขียว + ใหม่ | act exists=false fresh=false ไม่มี log
+  ❌ [M2.8-S7.4] regression qc-reward: log /tmp/claude-0/qc-all/qc-reward.log ใหม่กว่า 24 ชม. + เขียวเต็ม (builder รัน qc-all กับชุดนี้หลังแก้ POS) — exp เขียว + ใหม่ | act exists=false fresh=false ไม่มี log
+  ✅ [M2.8-S7.5] regression qc-chat-member-autolink: log /tmp/claude-0/qc-all/qc-chat-member-autolink.log ใหม่กว่า 24 ชม. + เขียวเต็ม (builder รัน qc-all กับชุดนี้หลังแก้ POS)
+  ❌ [M2.8-S7.6] regression qc-member-m1.5: log /tmp/claude-0/qc-all/qc-member-m1.5.log ใหม่กว่า 24 ชม. + เขียวเต็ม (builder รัน qc-all กับชุดนี้หลังแก้ POS) — exp เขียว + ใหม่ | act exists=true fresh=true 18/20
+  ✅ [M2.8-S7.7] regression qc-member-m2.1: log /tmp/claude-0/qc-all/qc-member-m2.1.log ใหม่กว่า 24 ชม. + เขียวเต็ม (builder รัน qc-all กับชุดนี้หลังแก้ POS)
+  ❌ [M2.8-S7.8] regression qc-member-m2.7: log /tmp/claude-0/qc-all/qc-member-m2.7.log ใหม่กว่า 24 ชม. + เขียวเต็ม (builder รัน qc-all กับชุดนี้หลังแก้ POS) — exp เขียว + ใหม่ | act exists=true fresh=true 21/22
+
+🔴 M2.8: 24/30
+JSON_SUMMARY {"total":30,"passed":24,"findings":[{"id":"M2.8-S6.1","sev":"CRITICAL"},{"id":"M2.8-S7.1","sev":"CRITICAL"},{"id":"M2.8-S7.3","sev":"CRITICAL"},{"id":"M2.8-S7.4","sev":"CRITICAL"},{"id":"M2.8-S7.6","sev":"CRITICAL"},{"id":"M2.8-S7.8","sev":"CRITICAL"}]}
+(node:1480546) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)

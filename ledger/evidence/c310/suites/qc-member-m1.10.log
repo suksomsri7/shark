@@ -1,0 +1,24 @@
+  ✅ [M1.10-S1.1] tiers-actions.ts: 'use server' · export เฉพาะ *Action ≥ 9 (createTierDef/updateTierDef/reorderTierDefs/archiveTierDef/setBenefits/setTierRules/dryRun/setManualTier/reviewNow) · gate เดียว = requireTenant + ระบบ MEMBER + hasMemberPerm(member.tier.manage) (setManual → member.tier.setManual) · เรียก tiers.ts เท่านั้น (ไม่แตะ prisma.memberTier* ตรง) · revalidatePath · safeReason
+  ✅ [M1.10-S1.2] access.ts: hasMemberPerm(actor, 'member.tier.manage') — OWNER ✓ · MANAGER ✓ (ไม่อยู่ใน 4 คีย์ยกเว้น) · STAFF ✗ เว้นมีคีย์ · hasMemberPerm(actor,'member.tier.setManual') — STAFF ✗ · canReadTiers/หน้า tiers ใช้ member.tier.read (read-โดยนัย)
+  ✅ [M1.10-S1.3] page.tsx: requireTenant · ระบบ MEMBER · canReadMember + สิทธิ์ member.tier.read (ไม่มี = notFound) · โหลด listTierDefs + getTierRules + ประวัติล่าสุด (MemberTierHistory 20 แถว) + MemberPlan (แบบเสียเงิน) · ปุ่มแก้แสดงเฉพาะเมื่อ hasMemberPerm tier.manage (STAFF อ่านอย่างเดียว)
+  ✅ [M1.10-S1.4] testid ครบ 15 · ไม่มีอีโมจิ · ไม่มี hex สีใน tsx · MemberTabs + PageHeader · nav.ts tiers = ready
+  ✅ [M1.10-S2.1] ตัวสร้างกฎ: reuse AutomationBuilder (import จาก components/kanban/AutomationBuilder + prop scope) หรือ TierRuleBuilder ที่ใช้ชุดฟิลด์ 7 (spent12m spent visits12m tierPoints memberDays paidPlan referrals · ป้ายไทย) + match ALL/ANY + windowMonths · เก็บผ่าน setTierRulesAction · แยก upgrade/keep · rอบประเมิน (cron) / graceDays / notifyBeforeDays แก้ได้
+  ✅ [M1.10-S2.2] benefits editor (ภาพ 15): ชนิดครบ 10 (ป้ายไทยจาก registry ไม่ฮาร์ดโค้ดใน JSX) · ฟอร์ม config ต่อชนิด (pct/maxSatang · x · daysAhead · templateId (M2.5 stub เลือกไม่ได้ = ป้าย 'มีในใบ M2.5') · itemIds) · สวิตช์ active · บันทึกทั้งชุดผ่าน setBenefitsAction
+  ✅ [M1.10-S2.3] ทดลองรัน: ปุ่ม tiers-dryrun-run → dryRunAction (runTierReview dryRun ทั้งระบบ) → ตาราง tiers-dryrun-result (จะเลื่อน n / จะลด n / คง n / ใกล้ลด n + รายชื่อ 20 แรกพร้อม evidence) · ปุ่ม 'ประเมินทั้งร้านตอนนี้' (reviewNowAction) มีการยืนยัน (ConfirmDialog) · ประวัติ: ตาราง tiers-history (วันที่ · สมาชิก · จาก→ไป · เหตุผลไทย · หลักฐาน)
+  ✅ [M1.10-S2.4] บันได: ระดับเรียง sortOrder พร้อมสี (TagColor → โทเคน) · จำนวนคน · ปุ่มเพิ่มระดับ (tiers-add · เพดาน 10 จาก MEMBER_LIMITS) · ลากเรียง/ปุ่มเลื่อน (reorderTierDefsAction) · archive มี ConfirmDialog + เลือกระดับปลายทาง (moveToTierId) · การ์ดแบบเสียเงิน (tiers-paid-plan · เชื่อม MemberPlan/paidPlanId) · ตัวอย่างบัตร LINE (tiers-card-preview · ชื่อระดับ+สี+สิทธิ์ 3 ข้อแรก)
+  ❌ [M1.10-S3.1] ภาพ 04: tiers-owner desktop+mobile 200 ไม่มี console error · tiers-dryrun-result-desktop (หลังกดทดลองรัน) มีผล — exp 200 ×3 | act shots=
+  ❌ [M1.10-S3.2] ภาพ 15: tiers-benefits-owner-desktop 200 (หน้า /tiers/{gold}) testid tiers-benefits + tiers-benefit-DISCOUNT_PCT — exp 200 | act undefined
+  ❌ [M1.10-S3.3] thana (STAFF ไม่มี member.tier.read โดยตรง แต่ read-โดยนัยจากคีย์ member.*) → 200 อ่านอย่างเดียว (ไม่มีปุ่มแก้ · tiers-add ไม่ปรากฏ) · noperm → 404 — exp 200/404 | act undefined/undefined
+  ✅ [M1.10-S3.4] 🔴 parity ภาพ 04 + 15 — Fable ตรวจด้วยตา · wo-notes/member-M1.10.md มี 'PARITY: ผ่าน'
+
+🔴 M1.10: 9/12
+JSON_SUMMARY {"total":12,"passed":9,"findings":[{"id":"M1.10-S3.1","sev":"MAJOR"},{"id":"M1.10-S3.2","sev":"MAJOR"},{"id":"M1.10-S3.3","sev":"MAJOR"}]}
+(node:1475609) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)

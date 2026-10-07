@@ -1,0 +1,30 @@
+  ✅ [M3.8-S1.1] overview: members.total = สมาชิกในระบบ (60) · sales.satang = Σ บิล PAID 12 เดือน [now−365, now] · billCount ตรง · perMemberSatang = satang ÷ ผู้ซื้อ · retentionPct = ผู้ซื้อ ≥ 2 ใบ ÷ ผู้ซื้อ × 100 · pointsOutstanding = Σ PointBalance · promoCostMonthSatang ≥ 0
+  ✅ [M3.8-S1.2] newPerMonth 12 เดือนไทย เก่า→ใหม่ · count ต่อเดือน = สมาชิกที่ createdAt ในเดือนนั้น · newThisMonth = เดือนล่าสุด · active90d = ผู้ซื้อ/มี activity 90 วัน (≤ total) · เรียกซ้ำ now เดียวกัน = ผลเท่ากันเป๊ะ
+  ✅ [M3.8-S2.1] rfm: segments 9 ตัวเรียงตามภาพ 25 · label · Σ count = total = สมาชิกที่มีบิลในช่วง · scores ยาว = total · ทุก score r/f/m ∈ 1..5 · count ต่อ segment = จำนวน scores ที่ segment นั้น
+  ✅ [M3.8-S2.2] จัดกลุ่มตรงกติกาสัญญาทุกคน (r/f/m/frequency → segment)
+  ✅ [M3.8-S2.3] raw ตรง DB (recencyDays/frequency/monetarySatang) · คะแนน monotonic: ค่าน้อยกว่าไม่ได้คะแนนสูงกว่า · ค่าเท่ากันคะแนนเท่ากัน (seed ทุกคน 2 บิล ⇒ f เท่ากันหมด) · ช่วง r ใช้ครบ ≥ 3 ระดับ
+  ✅ [M3.8-S3.1] tiers: แถวต่อระดับ (≥ 4) · count ต่อ tierDefId ตรง groupBy · Σ = total = 60 · avgSpend12mSatang/pointsOutstanding เป็นตัวเลข ≥ 0 · Σ pointsOutstanding = outstanding รวม
+  ✅ [M3.8-S4.1] points: monthly 6 เดือนไทย เก่า→ใหม่ (earned = Σ delta>0 ไม่ใช่ EXPIRE · burned = −Σ delta<0 ไม่ใช่ EXPIRE · expired = −Σ EXPIRE) ตรง ledger · totals = Σ monthly · outstanding = Σ balance · burnRateSatang = PointSettings · liabilitySatang = outstanding × burnRateSatang
+  ✅ [M3.8-S5.1] promotions: journeys.length = AutomationRule MEMBER_JOURNEY ของระบบ · campaigns.length = MktCampaign ของระบบ · แต่ละแถว { id, name, used, saleSatang, costSatang, roi (number|null), upliftPct } · totals.costSatang = Σ cost · totals.saleSatang = Σ sale · totals.roi = sale/cost (cost 0 → null)
+  ✅ [M3.8-S6.1] sources 90 วัน: rows เรียง count desc · count ต่อ source ตรง groupBy(createdAt ในช่วง) · total = Σ · label ไทย · firstPurchases ≤ count · costPerMemberSatang ≥ 0
+  ✅ [M3.8-S7.1] cohort 6 เดือน: rows เก่า→ใหม่ month/size ตรงจำนวนสมาชิกที่สมัครเดือนนั้น · retained[k] = % ที่มีบิลในเดือน (สมัคร+k) เฉพาะเดือน ≤ now · ยาวไม่เกินเดือนที่ผ่านมาแล้ว
+  ✅ [M3.8-S8.1] exportCsv(rfm): filename member-report-rfm-<วันไทย>.csv · BOM · header ไทย · 9 แถวข้อมูล (key/label/count) · ตัวเลขรวม = total · tab ไม่รู้จัก → throw ไทย
+  ✅ [M3.8-S8.2] exportCsv(overview): มี KPI 6 (สมาชิกทั้งหมด · ยอดขาย · เฉลี่ย/คน · อัตรารักษา · แต้มคงค้าง · ต้นทุนโปรโมชัน) + สมาชิกใหม่ต่อเดือน 12 แถว · ค่าที่มี , ถูกครอบด้วย " · ไม่มี undefined/NaN
+  ✅ [M3.8-S9.1] schedule ปริยาย {enabled false, emails [], hour 6, tabs [overview, rfm, points], lastSentDate null} · อีเมลผิด/hour 25/tab แปลก → throw ไทย · thana → throw · set แล้วอ่านกลับ
+  ✅ [M3.8-S9.2] runScheduledReports: 05:30 ไทย (ก่อน hour 6) → ไม่ส่ง · 07:10 → ส่ง 1 ฉบับ (to 2 อีเมล · subject ไทยมีวันที่ · attachments CSV 2 ไฟล์ overview+rfm หรือ text มี KPI) · lastSentDate = วันไทย · เรียกซ้ำวันเดียวกัน → skipped ไม่ส่งซ้ำ · cron.ts มี step memberReportsEmail
+  ✅ [M3.8-S10.1] ไม่มี member.report.view → overview/rfm throw ไทย · perf 60 คน: overview < 800ms · rfm < 800ms · cohort < 800ms · facade export overview/rfm/tiers/points/promotions/sources/cohort/exportCsv/getReportSchedule/setReportSchedule/runScheduledReports (ชื่อ report* ก็ได้) · reports.ts ใช้ groupBy/aggregate (ไม่วน findMany ต่อสมาชิก) · ไม่มี any
+  ✅ [M3.8-S11.1] หน้า /member/reports มีจริง requireTenant + report.view · actions 'use server' · testid 16 · ป้ายภาพ 25 ครบ · nav มีทางเข้า reports · กราฟเป็น div (ไม่ import ไลบรารีกราฟ/canvas/svg chart) · ไม่มีอีโมจิ/hex
+  ❌ [M3.8-S11.2] ภาพ 25: reports-owner desktop+mobile 200 ไม่ล้น (แท็บ 7 · KPI 6 · กราฟ 12 แท่ง · RFM 3×3 · การ์ดระดับ/แต้ม/โปรโมชัน) · reports-rfm-owner desktop (tab=rfm) · reports-cohort-owner desktop · reports-schedule-owner (เปิดโมดัลตั้งเวลา) · noperm 404 — exp 200 ×5 · 404 | act /// mobile=undefined/ovf=undefined noperm=undefined missing=undefined
+  ✅ [M3.8-S11.3] 🔴 parity ภาพ 25 — Fable ตรวจด้วยตา · wo-notes/member-M3.8.md มี 'PARITY: ผ่าน'
+
+🔴 M3.8: 17/18
+JSON_SUMMARY {"total":18,"passed":17,"findings":[{"id":"M3.8-S11.2","sev":"CRITICAL"}]}
+(node:1484464) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)

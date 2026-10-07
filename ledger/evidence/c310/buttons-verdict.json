@@ -1,0 +1,1944 @@
+{
+ "perRole": {
+  "owner,manager,nok,thana,customer": {
+   "pressed": 7771,
+   "passed": 7455,
+   "dead": 8,
+   "wrongExpect": 8,
+   "hiddenLeak": 28,
+   "vacuous": 0,
+   "disabled": 0,
+   "consoleErrors": 8,
+   "overflow": 0,
+   "skippedNeeds": 590,
+   "skippedSafety": 88,
+   "postChecked": 88,
+   "dbVerified": 558,
+   "VACUOUS": 272
+  }
+ },
+ "total": {
+  "pressed": 7771,
+  "passed": 7455,
+  "dead": 8,
+  "wrongExpect": 8,
+  "hiddenLeak": 28,
+  "vacuous": 0,
+  "disabled": 0,
+  "consoleErrors": 8,
+  "overflow": 0,
+  "skippedNeeds": 590,
+  "skippedSafety": 88,
+  "postChecked": 88,
+  "dbVerified": 558,
+  "VACUOUS": 272
+ },
+ "hard": {},
+ "vacuous": [
+  {
+   "page": "/deals",
+   "testid": "deals-empty-create-pipeline",
+   "user": "manager",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/deals",
+   "testid": "deals-empty-create-pipeline",
+   "user": "manager",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/deals/new",
+   "testid": "deal-new-create-pipeline",
+   "user": "manager",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/deals/new",
+   "testid": "deal-new-create-pipeline",
+   "user": "manager",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/stages",
+   "testid": "settings-stages-create-link",
+   "user": "manager",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/stages",
+   "testid": "settings-stages-create-link",
+   "user": "manager",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/app/settings/teams",
+   "testid": "team-restore",
+   "user": "manager",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/app/settings/teams",
+   "testid": "team-restore",
+   "user": "manager",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/objects",
+   "testid": "objects-index-settings-link",
+   "user": "manager",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/objects",
+   "testid": "objects-index-settings-link",
+   "user": "manager",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings",
+   "testid": "crm-export-download",
+   "user": "manager",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings",
+   "testid": "crm-settings-team-room",
+   "user": "manager",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings",
+   "testid": "crm-settings-team-room-team",
+   "user": "manager",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings",
+   "testid": "crm-settings-team-room-channel",
+   "user": "manager",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings",
+   "testid": "crm-settings-team-room-save",
+   "user": "manager",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings",
+   "testid": "crm-settings-team-room-remove-*",
+   "user": "manager",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings",
+   "testid": "crm-export-download",
+   "user": "manager",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings",
+   "testid": "crm-settings-team-room",
+   "user": "manager",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings",
+   "testid": "crm-settings-team-room-team",
+   "user": "manager",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings",
+   "testid": "crm-settings-team-room-channel",
+   "user": "manager",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings",
+   "testid": "crm-settings-team-room-save",
+   "user": "manager",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings",
+   "testid": "crm-settings-team-room-remove-*",
+   "user": "manager",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/app/sys/[id]",
+   "testid": "crm-hub-switch-link",
+   "user": "manager",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/app/sys/[id]",
+   "testid": "crm-hub-switch-link",
+   "user": "manager",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/companies",
+   "testid": "companies-page-prev",
+   "user": "nok",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/companies",
+   "testid": "companies-page-next",
+   "user": "nok",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/companies",
+   "testid": "companies-page-prev",
+   "user": "nok",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/companies",
+   "testid": "companies-page-next",
+   "user": "nok",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/companies/new",
+   "testid": "company-new-field-select",
+   "user": "nok",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/companies/new",
+   "testid": "company-new-field-bool",
+   "user": "nok",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/companies/new",
+   "testid": "company-new-field-textarea",
+   "user": "nok",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/companies/new",
+   "testid": "company-new-field-input",
+   "user": "nok",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/companies/new",
+   "testid": "company-new-restore-reason",
+   "user": "nok",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/companies/new",
+   "testid": "company-new-restore-confirm",
+   "user": "nok",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/companies/new",
+   "testid": "company-new-restore-submit",
+   "user": "nok",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/companies/new",
+   "testid": "company-new-field-select",
+   "user": "nok",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/companies/new",
+   "testid": "company-new-field-bool",
+   "user": "nok",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/companies/new",
+   "testid": "company-new-field-textarea",
+   "user": "nok",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/companies/new",
+   "testid": "company-new-field-input",
+   "user": "nok",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/companies/new",
+   "testid": "company-new-restore-reason",
+   "user": "nok",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/companies/new",
+   "testid": "company-new-restore-confirm",
+   "user": "nok",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/companies/new",
+   "testid": "company-new-restore-submit",
+   "user": "nok",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/companies/[companyId]",
+   "testid": "company-merged-link",
+   "user": "nok",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/companies/[companyId]",
+   "testid": "company-parent-link",
+   "user": "nok",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/companies/[companyId]",
+   "testid": "company-subsidiary-link",
+   "user": "nok",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/companies/[companyId]",
+   "testid": "company-outstanding-alert",
+   "user": "nok",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/companies/[companyId]",
+   "testid": "company-merged-link",
+   "user": "nok",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/companies/[companyId]",
+   "testid": "company-parent-link",
+   "user": "nok",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/companies/[companyId]",
+   "testid": "company-subsidiary-link",
+   "user": "nok",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/companies/[companyId]",
+   "testid": "company-outstanding-alert",
+   "user": "nok",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/companies/[companyId]",
+   "testid": "company-doc-link",
+   "user": "nok",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/companies/[companyId]",
+   "testid": "company-doc-link",
+   "user": "nok",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/contacts/[contactId]",
+   "testid": "crm-object-tab-obj-*",
+   "user": "nok",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/contacts/[contactId]",
+   "testid": "crm-object-tab-obj-*",
+   "user": "nok",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/deals",
+   "testid": "deals-empty-create-pipeline",
+   "user": "nok",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/deals",
+   "testid": "deals-empty-create-pipeline",
+   "user": "nok",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/deals/new",
+   "testid": "deal-new-create-pipeline",
+   "user": "nok",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/deals/new",
+   "testid": "deal-new-create-pipeline",
+   "user": "nok",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/stages",
+   "testid": "settings-stages-create-link",
+   "user": "nok",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/stages",
+   "testid": "settings-stages-create-link",
+   "user": "nok",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/app/settings/teams",
+   "testid": "team-restore",
+   "user": "nok",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/app/settings/teams",
+   "testid": "team-restore",
+   "user": "nok",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/objects/[key]",
+   "testid": "object-page-prev",
+   "user": "nok",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/objects/[key]",
+   "testid": "object-page-next",
+   "user": "nok",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/objects/[key]",
+   "testid": "object-record-new-btn",
+   "user": "nok",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/objects/[key]",
+   "testid": "object-record-form",
+   "user": "nok",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/objects/[key]",
+   "testid": "object-record-field-*",
+   "user": "nok",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/objects/[key]",
+   "testid": "object-record-cancel",
+   "user": "nok",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/objects/[key]",
+   "testid": "object-record-save",
+   "user": "nok",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/objects/[key]",
+   "testid": "object-page-prev",
+   "user": "nok",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/objects/[key]",
+   "testid": "object-page-next",
+   "user": "nok",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/objects/[key]",
+   "testid": "object-record-new-btn",
+   "user": "nok",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/objects/[key]",
+   "testid": "object-record-form",
+   "user": "nok",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/objects/[key]",
+   "testid": "object-record-field-*",
+   "user": "nok",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/objects/[key]",
+   "testid": "object-record-cancel",
+   "user": "nok",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/objects/[key]",
+   "testid": "object-record-save",
+   "user": "nok",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/objects/[key]",
+   "testid": "object-view-delete",
+   "user": "nok",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/objects/[key]",
+   "testid": "object-view-delete",
+   "user": "nok",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/objects",
+   "testid": "objects-index-settings-link",
+   "user": "nok",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/objects",
+   "testid": "objects-index-settings-link",
+   "user": "nok",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings",
+   "testid": "crm-export-download",
+   "user": "nok",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings",
+   "testid": "crm-settings-team-room",
+   "user": "nok",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings",
+   "testid": "crm-settings-team-room-team",
+   "user": "nok",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings",
+   "testid": "crm-settings-team-room-channel",
+   "user": "nok",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings",
+   "testid": "crm-settings-team-room-save",
+   "user": "nok",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings",
+   "testid": "crm-settings-team-room-remove-*",
+   "user": "nok",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings",
+   "testid": "crm-export-download",
+   "user": "nok",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings",
+   "testid": "crm-settings-team-room",
+   "user": "nok",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings",
+   "testid": "crm-settings-team-room-team",
+   "user": "nok",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings",
+   "testid": "crm-settings-team-room-channel",
+   "user": "nok",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings",
+   "testid": "crm-settings-team-room-save",
+   "user": "nok",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings",
+   "testid": "crm-settings-team-room-remove-*",
+   "user": "nok",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/app/sys/[id]",
+   "testid": "crm-hub-switch-link",
+   "user": "nok",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/app/sys/[id]",
+   "testid": "crm-home-stale-banner",
+   "user": "nok",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/app/sys/[id]",
+   "testid": "crm-home-unowned-contact-*",
+   "user": "nok",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/app/sys/[id]",
+   "testid": "crm-ai-proposal-next-step-input",
+   "user": "nok",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/app/sys/[id]",
+   "testid": "crm-ai-proposal-deal-*",
+   "user": "nok",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/app/sys/[id]",
+   "testid": "crm-hub-switch-link",
+   "user": "nok",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/app/sys/[id]",
+   "testid": "crm-home-stale-banner",
+   "user": "nok",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/app/sys/[id]",
+   "testid": "crm-home-unowned-contact-*",
+   "user": "nok",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/app/sys/[id]",
+   "testid": "crm-ai-proposal-next-step-input",
+   "user": "nok",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/app/sys/[id]",
+   "testid": "crm-ai-proposal-deal-*",
+   "user": "nok",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/app/sys/[id]",
+   "testid": "crm-panel-deal",
+   "user": "nok",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/app/sys/[id]",
+   "testid": "crm-panel-retry",
+   "user": "nok",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/assignment",
+   "testid": "crm-assign-sim-field",
+   "user": "nok",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/assignment",
+   "testid": "crm-assign-sim-field-value",
+   "user": "nok",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/assignment",
+   "testid": "crm-assign-sim-field",
+   "user": "nok",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/assignment",
+   "testid": "crm-assign-sim-field-value",
+   "user": "nok",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/emails/[threadKey]",
+   "testid": "crm-email-show-images",
+   "user": "nok",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/emails/[threadKey]",
+   "testid": "crm-email-attachment",
+   "user": "nok",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/emails/[threadKey]",
+   "testid": "crm-email-show-images",
+   "user": "nok",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/emails/[threadKey]",
+   "testid": "crm-email-attachment",
+   "user": "nok",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/email",
+   "testid": "crm-email-domain-refresh",
+   "user": "nok",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/email",
+   "testid": "crm-email-domain-refresh",
+   "user": "nok",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/forms",
+   "testid": "crm-forms-system-*",
+   "user": "nok",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/forms",
+   "testid": "crm-forms-assign-*",
+   "user": "nok",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/forms",
+   "testid": "crm-forms-score-*",
+   "user": "nok",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/forms",
+   "testid": "crm-forms-company-*",
+   "user": "nok",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/forms",
+   "testid": "crm-forms-spam-*",
+   "user": "nok",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/forms",
+   "testid": "crm-forms-utm-*",
+   "user": "nok",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/forms",
+   "testid": "crm-forms-embed-*",
+   "user": "nok",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/forms",
+   "testid": "crm-forms-refresh-*",
+   "user": "nok",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/forms",
+   "testid": "crm-forms-system-*",
+   "user": "nok",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/forms",
+   "testid": "crm-forms-assign-*",
+   "user": "nok",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/forms",
+   "testid": "crm-forms-score-*",
+   "user": "nok",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/forms",
+   "testid": "crm-forms-company-*",
+   "user": "nok",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/forms",
+   "testid": "crm-forms-spam-*",
+   "user": "nok",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/forms",
+   "testid": "crm-forms-utm-*",
+   "user": "nok",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/forms",
+   "testid": "crm-forms-embed-*",
+   "user": "nok",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/forms",
+   "testid": "crm-forms-refresh-*",
+   "user": "nok",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/app/sys/[id]/pos/register",
+   "testid": "pos-deal-select",
+   "user": "nok",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/app/sys/[id]/pos/register",
+   "testid": "pos-deal-select",
+   "user": "nok",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/app/sys/[id]/member/members",
+   "testid": "member-view-team",
+   "user": "nok",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/app/sys/[id]/member/members",
+   "testid": "member-view-team",
+   "user": "nok",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/commissions",
+   "testid": "crm-commission-select-all",
+   "user": "nok",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/commissions",
+   "testid": "crm-commission-select-*",
+   "user": "nok",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/commissions",
+   "testid": "crm-commission-approve-selected",
+   "user": "nok",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/commissions",
+   "testid": "crm-commission-reject-*",
+   "user": "nok",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/commissions",
+   "testid": "crm-commission-reject-reason",
+   "user": "nok",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/commissions",
+   "testid": "crm-commission-reject-confirm",
+   "user": "nok",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/commissions",
+   "testid": "crm-commission-reject-cancel",
+   "user": "nok",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/commissions",
+   "testid": "crm-commission-select-all",
+   "user": "nok",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/commissions",
+   "testid": "crm-commission-select-*",
+   "user": "nok",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/commissions",
+   "testid": "crm-commission-approve-selected",
+   "user": "nok",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/commissions",
+   "testid": "crm-commission-reject-*",
+   "user": "nok",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/commissions",
+   "testid": "crm-commission-reject-reason",
+   "user": "nok",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/commissions",
+   "testid": "crm-commission-reject-confirm",
+   "user": "nok",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/commissions",
+   "testid": "crm-commission-reject-cancel",
+   "user": "nok",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/companies",
+   "testid": "companies-page-prev",
+   "user": "thana",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/companies",
+   "testid": "companies-page-next",
+   "user": "thana",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/companies",
+   "testid": "companies-page-prev",
+   "user": "thana",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/companies",
+   "testid": "companies-page-next",
+   "user": "thana",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/companies/new",
+   "testid": "company-new-field-select",
+   "user": "thana",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/companies/new",
+   "testid": "company-new-field-bool",
+   "user": "thana",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/companies/new",
+   "testid": "company-new-field-textarea",
+   "user": "thana",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/companies/new",
+   "testid": "company-new-field-input",
+   "user": "thana",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/companies/new",
+   "testid": "company-new-restore-reason",
+   "user": "thana",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/companies/new",
+   "testid": "company-new-restore-confirm",
+   "user": "thana",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/companies/new",
+   "testid": "company-new-restore-submit",
+   "user": "thana",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/companies/new",
+   "testid": "company-new-field-select",
+   "user": "thana",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/companies/new",
+   "testid": "company-new-field-bool",
+   "user": "thana",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/companies/new",
+   "testid": "company-new-field-textarea",
+   "user": "thana",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/companies/new",
+   "testid": "company-new-field-input",
+   "user": "thana",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/companies/new",
+   "testid": "company-new-restore-reason",
+   "user": "thana",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/companies/new",
+   "testid": "company-new-restore-confirm",
+   "user": "thana",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/companies/new",
+   "testid": "company-new-restore-submit",
+   "user": "thana",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/companies/[companyId]",
+   "testid": "company-merged-link",
+   "user": "thana",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/companies/[companyId]",
+   "testid": "company-parent-link",
+   "user": "thana",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/companies/[companyId]",
+   "testid": "company-subsidiary-link",
+   "user": "thana",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/companies/[companyId]",
+   "testid": "company-outstanding-alert",
+   "user": "thana",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/companies/[companyId]",
+   "testid": "company-merged-link",
+   "user": "thana",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/companies/[companyId]",
+   "testid": "company-parent-link",
+   "user": "thana",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/companies/[companyId]",
+   "testid": "company-subsidiary-link",
+   "user": "thana",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/companies/[companyId]",
+   "testid": "company-outstanding-alert",
+   "user": "thana",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/companies/[companyId]",
+   "testid": "company-doc-link",
+   "user": "thana",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/companies/[companyId]",
+   "testid": "company-doc-link",
+   "user": "thana",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/contacts/[contactId]",
+   "testid": "crm-object-tab-obj-*",
+   "user": "thana",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/contacts/[contactId]",
+   "testid": "crm-object-tab-obj-*",
+   "user": "thana",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/deals",
+   "testid": "deals-empty-create-pipeline",
+   "user": "thana",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/deals",
+   "testid": "deals-empty-create-pipeline",
+   "user": "thana",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/deals/new",
+   "testid": "deal-new-create-pipeline",
+   "user": "thana",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/deals/new",
+   "testid": "deal-new-create-pipeline",
+   "user": "thana",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/stages",
+   "testid": "settings-stages-create-link",
+   "user": "thana",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/stages",
+   "testid": "settings-stages-create-link",
+   "user": "thana",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/app/settings/teams",
+   "testid": "team-restore",
+   "user": "thana",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/app/settings/teams",
+   "testid": "team-restore",
+   "user": "thana",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/objects/[key]",
+   "testid": "object-page-prev",
+   "user": "thana",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/objects/[key]",
+   "testid": "object-page-next",
+   "user": "thana",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/objects/[key]",
+   "testid": "object-record-new-btn",
+   "user": "thana",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/objects/[key]",
+   "testid": "object-record-form",
+   "user": "thana",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/objects/[key]",
+   "testid": "object-record-field-*",
+   "user": "thana",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/objects/[key]",
+   "testid": "object-record-cancel",
+   "user": "thana",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/objects/[key]",
+   "testid": "object-record-save",
+   "user": "thana",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/objects/[key]",
+   "testid": "object-page-prev",
+   "user": "thana",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/objects/[key]",
+   "testid": "object-page-next",
+   "user": "thana",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/objects/[key]",
+   "testid": "object-record-new-btn",
+   "user": "thana",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/objects/[key]",
+   "testid": "object-record-form",
+   "user": "thana",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/objects/[key]",
+   "testid": "object-record-field-*",
+   "user": "thana",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/objects/[key]",
+   "testid": "object-record-cancel",
+   "user": "thana",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/objects/[key]",
+   "testid": "object-record-save",
+   "user": "thana",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/objects/[key]",
+   "testid": "object-view-delete",
+   "user": "thana",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/objects/[key]",
+   "testid": "object-view-delete",
+   "user": "thana",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/objects",
+   "testid": "objects-index-settings-link",
+   "user": "thana",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/objects",
+   "testid": "objects-index-settings-link",
+   "user": "thana",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings",
+   "testid": "crm-export-download",
+   "user": "thana",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings",
+   "testid": "crm-settings-team-room",
+   "user": "thana",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings",
+   "testid": "crm-settings-team-room-team",
+   "user": "thana",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings",
+   "testid": "crm-settings-team-room-channel",
+   "user": "thana",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings",
+   "testid": "crm-settings-team-room-save",
+   "user": "thana",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings",
+   "testid": "crm-settings-team-room-remove-*",
+   "user": "thana",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings",
+   "testid": "crm-export-download",
+   "user": "thana",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings",
+   "testid": "crm-settings-team-room",
+   "user": "thana",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings",
+   "testid": "crm-settings-team-room-team",
+   "user": "thana",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings",
+   "testid": "crm-settings-team-room-channel",
+   "user": "thana",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings",
+   "testid": "crm-settings-team-room-save",
+   "user": "thana",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings",
+   "testid": "crm-settings-team-room-remove-*",
+   "user": "thana",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/app/sys/[id]",
+   "testid": "crm-hub-switch-link",
+   "user": "thana",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/app/sys/[id]",
+   "testid": "crm-home-stale-banner",
+   "user": "thana",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/app/sys/[id]",
+   "testid": "crm-home-unowned-contact-*",
+   "user": "thana",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/app/sys/[id]",
+   "testid": "crm-ai-proposal-next-step-input",
+   "user": "thana",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/app/sys/[id]",
+   "testid": "crm-ai-proposal-deal-*",
+   "user": "thana",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/app/sys/[id]",
+   "testid": "crm-hub-switch-link",
+   "user": "thana",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/app/sys/[id]",
+   "testid": "crm-home-stale-banner",
+   "user": "thana",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/app/sys/[id]",
+   "testid": "crm-home-unowned-contact-*",
+   "user": "thana",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/app/sys/[id]",
+   "testid": "crm-ai-proposal-next-step-input",
+   "user": "thana",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/app/sys/[id]",
+   "testid": "crm-ai-proposal-deal-*",
+   "user": "thana",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/app/sys/[id]",
+   "testid": "crm-panel-deal",
+   "user": "thana",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/app/sys/[id]",
+   "testid": "crm-panel-retry",
+   "user": "thana",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/assignment",
+   "testid": "crm-assign-sim-field",
+   "user": "thana",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/assignment",
+   "testid": "crm-assign-sim-field-value",
+   "user": "thana",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/assignment",
+   "testid": "crm-assign-sim-field",
+   "user": "thana",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/assignment",
+   "testid": "crm-assign-sim-field-value",
+   "user": "thana",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/emails/[threadKey]",
+   "testid": "crm-email-show-images",
+   "user": "thana",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/emails/[threadKey]",
+   "testid": "crm-email-attachment",
+   "user": "thana",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/emails/[threadKey]",
+   "testid": "crm-email-show-images",
+   "user": "thana",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/emails/[threadKey]",
+   "testid": "crm-email-attachment",
+   "user": "thana",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/email",
+   "testid": "crm-email-domain-refresh",
+   "user": "thana",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/email",
+   "testid": "crm-email-domain-refresh",
+   "user": "thana",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/forms",
+   "testid": "crm-forms-system-*",
+   "user": "thana",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/forms",
+   "testid": "crm-forms-assign-*",
+   "user": "thana",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/forms",
+   "testid": "crm-forms-score-*",
+   "user": "thana",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/forms",
+   "testid": "crm-forms-company-*",
+   "user": "thana",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/forms",
+   "testid": "crm-forms-spam-*",
+   "user": "thana",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/forms",
+   "testid": "crm-forms-utm-*",
+   "user": "thana",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/forms",
+   "testid": "crm-forms-embed-*",
+   "user": "thana",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/forms",
+   "testid": "crm-forms-refresh-*",
+   "user": "thana",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/forms",
+   "testid": "crm-forms-system-*",
+   "user": "thana",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/forms",
+   "testid": "crm-forms-assign-*",
+   "user": "thana",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/forms",
+   "testid": "crm-forms-score-*",
+   "user": "thana",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/forms",
+   "testid": "crm-forms-company-*",
+   "user": "thana",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/forms",
+   "testid": "crm-forms-spam-*",
+   "user": "thana",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/forms",
+   "testid": "crm-forms-utm-*",
+   "user": "thana",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/forms",
+   "testid": "crm-forms-embed-*",
+   "user": "thana",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/forms",
+   "testid": "crm-forms-refresh-*",
+   "user": "thana",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/app/sys/[id]/pos/register",
+   "testid": "pos-deal-select",
+   "user": "thana",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/app/sys/[id]/pos/register",
+   "testid": "pos-deal-select",
+   "user": "thana",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/app/sys/[id]/member/members",
+   "testid": "member-view-team",
+   "user": "thana",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/app/sys/[id]/member/members",
+   "testid": "member-view-team",
+   "user": "thana",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/commissions",
+   "testid": "crm-commission-select-all",
+   "user": "thana",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/commissions",
+   "testid": "crm-commission-select-*",
+   "user": "thana",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/commissions",
+   "testid": "crm-commission-approve-selected",
+   "user": "thana",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/commissions",
+   "testid": "crm-commission-reject-*",
+   "user": "thana",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/commissions",
+   "testid": "crm-commission-reject-reason",
+   "user": "thana",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/commissions",
+   "testid": "crm-commission-reject-confirm",
+   "user": "thana",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/commissions",
+   "testid": "crm-commission-reject-cancel",
+   "user": "thana",
+   "device": "desktop",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/commissions",
+   "testid": "crm-commission-select-all",
+   "user": "thana",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/commissions",
+   "testid": "crm-commission-select-*",
+   "user": "thana",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/commissions",
+   "testid": "crm-commission-approve-selected",
+   "user": "thana",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/commissions",
+   "testid": "crm-commission-reject-*",
+   "user": "thana",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/commissions",
+   "testid": "crm-commission-reject-reason",
+   "user": "thana",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/commissions",
+   "testid": "crm-commission-reject-confirm",
+   "user": "thana",
+   "device": "mobile",
+   "summary": "summary.json"
+  },
+  {
+   "page": "/settings/commissions",
+   "testid": "crm-commission-reject-cancel",
+   "user": "thana",
+   "device": "mobile",
+   "summary": "summary.json"
+  }
+ ],
+ "verdict": "FAIL"
+}

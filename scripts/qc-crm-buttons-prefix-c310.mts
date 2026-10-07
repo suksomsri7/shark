@@ -1506,19 +1506,6 @@ async function ensurePortalFixture(ctx: Ctx): Promise<{ accessId: string } | nul
   }
 }
 
-// C3.10 (runner fix): every role shares the ONE default browser context (downloads + new-tab tracking are bound to it), so the
-//   previous role's cookies stayed in the jar — `mintSession("customer")` only ADDS the portal cookie ⇒ the previous staff
-//   role's shark_session still rode along and customer lock-out pages were served as staff (7 Oct qc:all: 28 false hiddenLeak).
-//   Empty the jar before each role mints, and prove it is empty (positive control) — a non-empty jar is fatal, not a warning.
-async function clearCookieJar(browser: Any, why: string): Promise<void> {
-  const s = await browser.target().createCDPSession();
-  try {
-    await s.send("Storage.clearCookies");
-    const left = ((await s.send("Storage.getCookies")) as Any)?.cookies ?? [];
-    if (left.length) throw new Fatal(`ล้างคุกกี้ก่อน ${why} ไม่หมด — ค้าง ${left.length} (${left.map((c: Any) => c.name).slice(0, 5).join(",")})`);
-  } finally { await s.detach().catch(() => {}); }
-}
-
 async function mintSession(user: UserKey, ctx: Ctx): Promise<Any[]> {
   const https = BASE.startsWith("https:");
   const host = new URL(BASE).hostname;
@@ -2188,7 +2175,6 @@ async function uiSnapshot(page: Any, testid: string): Promise<string | null> {
 
 async function runUser(browser: Any, user: UserKey, ctx: Ctx, items: PlanItem[]): Promise<void> {
   let cookies: Any[];
-  await clearCookieJar(browser, `บทบาท ${user}`);
   try { cookies = await mintSession(user, ctx); }
   catch (e) { console.log(`  ⚠️ ข้ามบทบาท ${user}: ${e instanceof Error ? e.message : e}`); return; }
   const base = user.startsWith("customer") ? "customer" : user;
@@ -2717,7 +2703,6 @@ async function runUser(browser: Any, user: UserKey, ctx: Ctx, items: PlanItem[])
 const LOCKOUT: { page: string; path: string; device: string; status: number; finalPath: string; visible: string[]; ok: boolean }[] = [];
 async function customerLockout(browser: Any, user: UserKey, ctx: Ctx): Promise<void> {
   let cookies: Any[];
-  await clearCookieJar(browser, `customer lock-out ${user}`);
   try { cookies = await mintSession(user, ctx); } catch (e) { console.log(`  ⚠️ ข้ามการตรวจ customer lock-out: ${e instanceof Error ? e.message : e}`); return; }
   const pages = new Map<string, Row>();
   for (const r of ROWS) if (!/^\/(b|p|u)\//.test(r.page) && pageSelected(r.page) && !pages.has(r.page)) pages.set(r.page, r);
@@ -2767,7 +2752,6 @@ const matchesTestid = (pattern: string, t: string) => (pattern.includes("*") ? g
 async function discover(browser: Any, ctx: Ctx, items: PlanItem[]): Promise<void> {
   for (const user of userKeys) {
     let cookies: Any[];
-    await clearCookieJar(browser, `discover ${user}`);
     try { cookies = await mintSession(user, ctx); } catch (e) { console.log(`  ⚠️ ข้าม ${user}: ${e instanceof Error ? e.message : e}`); continue; }
     const out: Any[] = [];
     const groups = new Map<string, PlanItem[]>();

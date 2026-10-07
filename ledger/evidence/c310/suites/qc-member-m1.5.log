@@ -1,0 +1,32 @@
+  ✅ [M1.5-S1.1] listMembers ปริยาย → {items 50 (take ปริยาย 50), total 60, page 1, take 50} · แถวมีคีย์ครบ 12 · tier {key,name,color} · points เป็น number (จาก PointBalance) · เรียง -lastActivityAt (null ท้าย) · ไม่มีเบอร์เต็ม (phoneMasked มี x/*)
+  ✅ [M1.5-S1.2] q: ชื่อบางส่วน → มีสมาชิก 5 · เบอร์เต็ม → 1 (สมาชิก 7) · รหัสสมาชิก → 1 · เลขท้ายเบอร์ 4 หลัก → มีสมาชิก 7 (ค้นด้วยเบอร์บางส่วนได้)
+  ✅ [M1.5-S1.3] tier=gold (key) → 10 · tier=<tierDefId> → 10 · status=SUSPENDED → 0 → ระงับ 1 คน → 1 · รายการปริยาย (ไม่ส่ง status) ยังนับคนที่ระงับ (total 60) แต่ไม่นับ MERGED
+  ✅ [M1.5-S1.4] unit=patong → 40 · kata → 20 · unit scope: thana (STAFF ป่าตอง) เห็น total = สมาชิกบ้านป่าตอง ∪ เคยมีกิจกรรมที่ป่าตอง (นับจาก DB) · STAFF กะตะ ส่ง unit=patong → 0 (ไม่ใช่ error · ไม่รั่ว)
+  ✅ [M1.5-S1.5] tag=vipqc → 3 (Customer.tags Json) · source=WALK_IN → 60 (seed backfill) · source=LIFF → 0 · tag ไม่มี → 0
+  ✅ [M1.5-S1.6] f.certLevel=Open Water → 11 (ตรง DB) · f.diveCount=10..20 → 4 · f + tier = AND (0) · ฟิลด์ไม่ filterable (certNo) → throw ไทย
+  ✅ [M1.5-S1.7] sort=-spent12m → แถวแรก = ยอดสูงสุด · sort=name เรียงไทย (localeCompare th) · take=10 page 1/2 ไม่ซ้อนกัน (memberCode ต่อเนื่อง) · take > 100 → throw
+  ✅ [M1.5-S1.8] listFields: ฟิลด์ที่ showInList (certLevel) มีค่า display ในแถว (ป้าย label ไม่ใช่ value ดิบก็ได้) · viewId → ใช้ filters/sort ของมุมมองที่บันทึก (= tier gold ∧ certLevel Open Water)
+  ✅ [M1.5-S2.1] bulkSetTags 5 คน → {updated 5, skipped 0} · tag=bulkqc → 5 · STAFF กะตะ bulk รวมสมาชิกป่าตอง 2 คน → updated 1 skipped 2 (มองไม่เห็น = ข้าม ไม่แตะ ไม่ throw) · AuditLog 1 แถวต่อ bulk (ไม่ใช่ต่อคน)
+  ✅ [M1.5-S2.2] exportMembers(tier gold, 5 คอลัมน์) → csv มี BOM · header ป้ายไทย 5 ช่อง · 10 แถว · เบอร์เต็ม (ส่งออกได้เพราะมีสิทธิ์ export) · rows 10 · thana (ไม่มี member.customer.export) → throw · AuditLog member.export
+  ✅ [M1.5-S2.3] มุมมองบันทึก: PRIVATE ของธนา — owner ไม่เห็น · ธนาเห็นทั้ง PRIVATE ของตน + TEAM · STAFF สร้าง TEAM → throw (MANAGER+) · update โดยคนอื่น → throw · delete ของตัวเองได้
+  ✅ [M1.5-S3.1] getMemberKpis(owner) → {total 60 (ไม่นับ MERGED · นับ SUSPENDED), newThisMonth (เดือนไทยปัจจุบัน), active90d (lastActivityAt ≥ 90 วัน), pointsOutstanding (Σ PointBalance), vouchersUnused 0 (ยังไม่มีตาราง), reviewAvg null} · thana → total ตาม unit scope
+  ✅ [M1.5-S3.2] 360 DTO ครบสำหรับหน้า: stats 6 ตัว {spent12mSatang visits12m points vouchers lastActivityAt reviewAvg} · tier {current{key,name,color}, next: null|{key,name,shortfall}} · connections {chat crm account kanbanCards} · profile.homeUnit{name} · profile.owner{name}|null · createdAt
+  ✅ [M1.5-S3.3] nav.ts: members status ready · path /member/members · หน้าเดิม /member/customers → redirect ไปหน้าใหม่ (ไม่ทิ้ง 2 หน้ารายชื่อ) · /member/members/[memberId] มีจริง (Next ห้ามใช้ชื่อ segment [id] ซ้ำใน route เดียว — builder M1.5 แย้งถูก)
+  ✅ [M1.5-S3.4] ประสิทธิภาพ: listMembers 5 ตัวกรอง (รวมกำหนดเอง 2) ≤ 800 ms บน seed (§12 ตั้ง 400 ms p95 บน 50,000 — QC ยอม 800 บน Neon ไกล)
+  ✅ [M1.5-S4.1] หน้ารวม page.tsx: requireTenant · canReadMember (ไม่มี = notFound) · listMembers + getMemberKpis + listSavedViews จาก URL state (?q=&tier=&unit=&tag=&f.{key}=&view=&sort=&page=) · testid ครบ 8 · ตัวกรองฟิลด์ filterable วนจาก layout (ไม่ฮาร์ดโค้ด certLevel) · ไม่มีอีโมจิ · MemberTabs + PageHeader
+  ✅ [M1.5-S4.2] หน้า 360 [memberId]/page.tsx: getMember360 (404 เมื่อ throw ไม่พบ) · แท็บ 5 (profile/wallet/history/reviews/referrals — แท็บอื่นเป็น placeholder 'เร็ว ๆ นี้') · ส่วนอ่อนไหวที่ซ่อน render testid member-360-section-hidden + คำว่า 'ซ่อน' (ไม่ render ค่า) · แถบขวา AI(stub)/การเชื่อมต่อ/PDPA/ระดับถัดไป · testid ครบ 7
+  ❌ [M1.5-S4.3] ภาพ owner: members-home-owner (desktop+mobile) · member-360-owner (desktop+mobile) · HTTP 200 · testid ครบ · ไม่มี console error — exp 4 ใบ · 200 | act shots=
+  ❌ [M1.5-S4.4] ภาพ thana: members-home-thana 200 (เห็นเฉพาะสาขาป่าตอง) · member-360-thana 200 + มี [data-testid=member-360-section-hidden] (ส่วนสุขภาพ 'ซ่อน') · noperm → 404 — exp 200/200/404 | act undefined/undefined/undefined
+  ✅ [M1.5-S4.5] 🔴 parity ภาพ 01 + 02 — Fable ตรวจด้วยตา · wo-notes/member-M1.5.md มี 'PARITY: ผ่าน'
+
+🔴 M1.5: 18/20
+JSON_SUMMARY {"total":20,"passed":18,"findings":[{"id":"M1.5-S4.3","sev":"MAJOR"},{"id":"M1.5-S4.4","sev":"MAJOR"}]}
+(node:1476783) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)

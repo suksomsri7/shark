@@ -1,0 +1,75 @@
+
+===== QC WO 5.3 · กระทบยอดธนาคาร =====
+[env] DB ep-plain-art-ao3djg4u-pooler.c-2.ap-southeast-1.aws.neon.tech
+
+RC1 ตัวอ่าน CSV กสิกรไทย (fixture จริงของ seed):
+  ✅ RC1.1 จำนวนแถว = เฉลย
+  ✅ RC1.2 ไม่มีแถวอ่านไม่ออก
+  ✅ RC1.3 ยอดคงเหลือปลายงวดจากไฟล์ = เฉลย
+  ✅ RC1.4 ยอดยกมาที่คำนวณจากไฟล์ = เฉลย
+  ✅ RC1.5 Σ ทุกแถว = ปลายงวด − ต้นงวด
+  ✅ RC1.6 ตัด BOM หัวไฟล์ (คอลัมน์แรกชื่อ 'วันที่')
+  ✅ RC1.7 แถวค่าธรรมเนียม −250.00 อ่านได้เป็นเงินออก
+  ✅ RC1.8 แถวดอกเบี้ย +12.35 อ่านได้เป็น 1235 สตางค์ (ไม่ปัดเพี้ยน)
+  ✅ RC1.9 fingerprint ไม่ซ้ำกันเองในไฟล์
+  ✅ RC1.10 อ่านไฟล์เดิมซ้ำได้ fingerprint ชุดเดิม (deterministic)
+
+RC2 ตัวอ่าน CSV ไทยพาณิชย์ (วงเล็บ=ติดลบ · วันที่ 4 แบบ):
+  ✅ RC2.1 อ่านได้ 4 แถว ไม่มี error
+  ✅ RC2.2 ยอดทั้ง 4 แถว (+5000 / −35 / −1000 / +12.35 บาท)
+  ✅ RC2.3 วันที่ทั้ง 4 แบบ (พ.ศ.4หลัก · ค.ศ. · เดือนไทย · พ.ศ.2หลัก) → 1–4 ก.ย. 2026
+
+RC3 ตัวอ่าน CSV กรุงไทย · กรุงเทพ · รูปแบบทั่วไป:
+  ✅ RC3.1 KTB: 2 แถว ยอด −2,500 / +1,000
+  ✅ RC3.2 KTB: อ่านเลขที่เช็คเป็น refNo
+  ✅ RC3.3 BBL (หัวอังกฤษ): 2 แถว ยอด +3,000 / −25
+  ✅ RC3.4 GENERIC (คอลัมน์เดียวมีเครื่องหมาย): +1,500 / −750.25
+  ✅ RC3.5 detectBankSource: หัว SCB → SCB
+  ✅ RC3.6 detectBankSource: หัว KTB → KTB
+  ✅ RC3.7 เลือก GENERIC แล้วไฟล์เป็น KBank → เดาเป็น KBANK ให้
+
+RC4 อ่านจำนวนเงิน/วันที่ รายกรณี:
+  ✅ RC4.1 '1,234.56' → 123456
+  ✅ RC4.2 '(250.00)' → −25000 (วงเล็บ = ติดลบตามธรรมเนียมบัญชี)
+  ✅ RC4.3 '−250' (unicode minus) → −25000
+  ✅ RC4.4 '12.35' → 1235 (ไม่ปัดเพี้ยนแบบ float)
+  ✅ RC4.5 '250.00 DR' → −25000
+  ✅ RC4.6 ช่องว่าง/'-' → 0
+  ✅ RC4.7 'ยอดยกมา' (อ่านไม่ออก) → null ไม่ใช่ 0
+  ✅ RC4.8 '฿ 1 234.50' (มีสัญลักษณ์+ช่องว่างคั่นพัน) → 123450
+  ✅ RC4.9 '01/09/2569' (พ.ศ.) → 2026-09-01
+  ✅ RC4.10 '01/09/2026' (ค.ศ.) → 2026-09-01
+  ✅ RC4.11 '01/09/69' (พ.ศ. 2 หลัก) → 2026-09-01
+  ✅ RC4.12 '2026-09-01' (ISO) → 2026-09-01
+  ✅ RC4.13 '3 ก.ย. 2569' → 2026-09-03
+  ✅ RC4.14 '3 กันยายน 2569' → 2026-09-03
+  ✅ RC4.15 '01/09/2569 10:23' (มีเวลาต่อท้าย) → 2026-09-01
+  ✅ RC4.16 '31/02/2569' (วันที่ไม่มีจริง) → null
+  ✅ RC4.17 'ยอดยกมา' → null
+
+RC5 แถวเสียในไฟล์ (ต้องรายงานเป็นราย ๆ ไม่ล้มทั้งไฟล์):
+  ✅ RC5.1 อ่านแถวดีได้ 1 แถว
+  ✅ RC5.2 รายงานแถวเสีย 3 แถว (วันที่ · จำนวนเงิน · ยอด 0)
+  ✅ RC5.3 error มีเลขบรรทัดจริงของไฟล์
+  ✅ RC5.4 ไฟล์ไม่มีคอลัมน์จำนวนเงิน = บอกเหตุพร้อมชื่อหัวที่พบ
+
+RC6 สรุปกระทบยอดของ seed (ร้านจริง · อ่านอย่างเดียว) เทียบเฉลยอิสระ:
+  ❌ CRASH — summary ล้ม: ไม่พบช่องทางการเงินนี้ (หรือยังไม่ได้ผูกบัญชีแยกประเภท)
+    at <anonymous> (/root/projects/shark-crm/scripts/qc-acc-v2-reconcile.mts:207:27)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+
+===== QC WO 5.3 · กระทบยอดธนาคาร สรุป =====
+ผ่าน 41 · ตก 1
+  - CRASH — summary ล้ม: ไม่พบช่องทางการเงินนี้ (หรือยังไม่ได้ผูกบัญชีแยกประเภท)
+    at <anonymous> (/root/projects/shark-crm/scripts/qc-acc-v2-reconcile.mts:207:27)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+JSON_SUMMARY {"total":42,"passed":41,"findings":["CRASH — summary ล้ม: ไม่พบช่องทางการเงินนี้ (หรือยังไม่ได้ผูกบัญชีแยกประเภท)\n    at <anonymous> (/root/projects/shark-crm/scripts/qc-acc-v2-reconcile.mts:207:27)\n    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)"]}
+(node:982229) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
