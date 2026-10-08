@@ -1,0 +1,86 @@
+# T0.2 oracle on the base (session/ai-team 71a1f363) — 2026-10-08T05:49Z — oracle writer run
+
+## 1. FORCED — bash scripts/iso.sh bash scripts/qc4.sh bash scripts/with-gate-lock.sh env QC_FORCE=1 SHARK_AI_MOCK=1 pnpm exec tsx scripts/qc-ai-t0.2.mts   → exit 1
+
+⚠️  QC_FORCE=1 — running although 3 deliverable(s) are missing (expected: RED for that reason, no crash): scripts/ai-team-qc-env.mts, scripts/seed-ai-team-qc.mts, scripts/fitness-ai-team.mts
+QC T0.2 — AI TEAM data contract · API spec · QC seed · env loader · fitness · host ep-frosty-lab-aoylqlv8-pooler · tag qc-ai-t0.2-zei0kt · QC_FORCE
+(node:2215443) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+── S5 docs [static] ──
+  ❌ [T0.2-S5.1] [static] the Screen→Routes table of the API doc has exactly one row per screen A1–A8 B1–B8 C1–C8 D1–D8 E1–E4, each with ≥ 1 route or a client-only note — exp docs/api/AI-TEAM-MOBILE-API.md exists | act file missing
+  ❌ [T0.2-S5.2] [static] every route named in that table has its own section, and every section is complete (Auth helper · Permission · Request · Response · Errors · Rate limit · zod block) — exp docs/api/AI-TEAM-MOBILE-API.md exists | act file missing
+  ❌ [T0.2-S5.3] [static] the doc has a section for every T1.10 route, the later-WO route families, /me (uiVersion) and /usage (frozen shape); inbox uses requireMobileUser — exp docs/api/AI-TEAM-MOBILE-API.md exists | act file missing
+  ❌ [T0.2-X10.3] [static] outside /api/mobile/usage no schema in the API doc carries micro-dollar fields or systemPrompt — exp docs/api/AI-TEAM-MOBILE-API.md exists | act file missing
+  ❌ [T0.2-S5.4] [static] docs/modules/30-ai-team.md covers M1–M9, the 18 team files and the 8 refusal codes — exp M1–M9 headings · 18 files · 8 refusal codes · AiTask · ai.flow.triggered | act file missing
+  ❌ [T0.2-S5.5] [static] apps/mobile/qc/fixtures/ai-team/README.md describes the fixture format — exp README > 200 chars naming the keys (me, employees, … by route pattern) | act file missing
+
+── S6 fitness F16 [static] ──
+  ❌ [T0.2-S6.1] fitness-ai-team runs green on the repo and reports F16.1, F16.2 and F16.3 with a JSON_SUMMARY — exp scripts/fitness-ai-team.mts exists | act file missing
+  ❌ [T0.2-S6.2] F16.1 turns red (exit ≠ 0, finding names the file) when a temp src/messages/th/ai-team.json contains "token" — exp scripts/fitness-ai-team.mts exists | act file missing
+  ❌ [T0.2-S6.3] F16.1 turns red for each other forbidden word and each scanned location (โทเคน · บาทต่องาน · ค่าแรง · wage · mobile i18n · API schema) — exp scripts/fitness-ai-team.mts exists | act file missing
+  ❌ [T0.2-S6.4] negative control: clean temp files in all three locations stay green, and an empty root passes (ratchet) — exp scripts/fitness-ai-team.mts exists | act file missing
+
+── S7 prisma draft ──
+  ❌ [T0.2-S7.1] the ai_team.prisma draft passes `prisma validate` together with the existing schema (a deliberately broken control file fails) — exp draft at prisma/schema/ai_team.prisma or prisma/drafts/ai_team.prisma | act file missing
+  ❌ [T0.2-S7.2] [static] the draft declares the 15 models and 5 enums of MASTER-PLAN §6 T1.1 with the keys of the brief — exp draft at prisma/schema/ai_team.prisma or prisma/drafts/ai_team.prisma | act file missing
+
+── X10 / S1 static ──
+  ❌ [T0.2-X10.1] [static] docs, seed, loader, fitness and draft contain no credential, no connection URL, no live secret of this environment, and never read `.env` — exp 7 deliverables present and clean | act missing: docs/api/AI-TEAM-MOBILE-API.md, docs/modules/30-ai-team.md, apps/mobile/qc/fixtures/ai-team/README.md, scripts/seed-ai-team-qc.mts, scripts/ai-team-qc-env.mts, scripts/fitness-ai-team.mts, prisma/schema/ai_team.prisma · clean
+  ❌ [T0.2-S1.6] [static] the seed writes only under slug prefix qc-ai-team- / @qc.shark and has no unscoped delete — exp only qc-ai-team-* slugs and @qc.shark e-mails · no unscoped delete | act file missing
+  ❌ [T0.2-S1.7] [static] scripts/qc-all.mts registers the marker `requires: ai-team-seed` → seed-ai-team-qc.mts — exp scripts/qc-all.mts contains the marker and the seed file name | act marker false · seed file false
+
+── S4 env loader ──
+  ❌ [T0.2-S4.1] env loader refuses a production host (spawned with a fake URL): exit code 4 — exp exit 4 | act production host: exit 3 (MISSING)
+  ❌ [T0.2-S4.2] env loader refuses QC1, an unknown host, a URL that only mentions ep-frosty-lab outside the hostname, and a bad DIRECT_URL alone: exit code 4 each — exp exit 4 ×4 | act QC1 host: exit 3 (MISSING) · unknown host: exit 3 (MISSING) · ep-frosty-lab outside the hostname: exit 3 (MISSING) · good DATABASE_URL + production DIRECT_URL: exit 3 (MISSING)
+  ❌ [T0.2-S4.3] no refusal prints the URL, the user, the password or the database name — exp the loader ran, refused before returning, and printed no URL/user/password/database | act loader not runnable (MISSING) · leaks: none · returned instead of refusing: none
+  ❌ [T0.2-S4.4] positive control: on the real QC4 env the loader returns (exit 0) and the module exports loadAiTeamQcEnv, atIds, withInjectedNow — exp exit 0 · exports loadAiTeamQcEnv, atIds, withInjectedNow · nothing secret printed | act real QC4 env: exit 3 (MISSING) · exports - · leaks none
+
+── S1 seed ×2 ──
+  ❌ [T0.2-S1.1] the seed runs twice, both exit 0, and exactly the three tenants qc-ai-team-at1|at2|atx carry the prefix — exp both runs exit 0 · tenants with the prefix = qc-ai-team-at1,qc-ai-team-at2,qc-ai-team-atx | act run 1 exit -1 · run 2 exit -1 · prefixed tenants: none · scripts/seed-ai-team-qc.mts missing
+  ❌ [T0.2-S1.2] second seed run: the row count of EVERY table (tenantId column) of AT-1/AT-2/AT-X is unchanged — exp 314 tables × 3 tenants: equal counts after run 2 | act the seed did not run twice
+  ❌ [T0.2-S1.3] second seed run replaces nothing: atIds() has the contract shape, matches the DB by slug/e-mail, and the id sets of the seeded tables are identical — exp atIds() = 7 ids matching the DB · same ids and same id sets after run 2 | act the seed did not run twice · atIds(): scripts/ai-team-qc-env.mts missing · at1: no row in the DB (slug lookup) · at2: no row in the DB (slug lookup) · atx: no row in the DB (slug lookup) · ownerUserId: no row in the DB (e-mail lookup) · approverUserId: no row in the DB (e-mail lookup) · staffUserId: no row in the DB (e-mail lookup) · otherOwnerUserId: no row in the DB (e-mail lookup)
+  ❌ [T0.2-S1.4] other lanes' seed tenants (up to 3, picked at runtime) keep their row counts across the two seed runs — exp unchanged: siam-dive-kanban-qc, siam-dive-member-qc, siam-dive-qc | act the seed did not run twice (nothing measured)
+  ❌ [T0.2-S1.5] a quiet canary tenant + user created by this oracle (same e-mail domain) is byte-for-byte untouched by the two seed runs — exp canary tenant, its rows, its user and memberships identical | act the seed did not run twice (nothing measured)
+
+── S2 AT-1 content ──
+  ❌ [T0.2-S2.1] AT-1, AT-2 and AT-X each have an active AppSystem of every type ACCOUNT/CRM/CHAT/MEMBER/KANBAN — exp 5 system types × 3 tenants | act tenant qc-ai-team-at1 not found · tenant qc-ai-team-at2 not found · tenant qc-ai-team-atx not found
+  ❌ [T0.2-S2.2] AT-1 has exactly 3 accepted members: at-owner OWNER · at-nid MANAGER · at-staff STAFF — exp 3 accepted members OWNER/MANAGER/STAFF | act tenant qc-ai-team-at1 not found · user at-owner@qc.shark not found · user at-nid@qc.shark not found · user at-staff@qc.shark not found · AT-1 has 0 members (want 3)
+  ❌ [T0.2-S2.3] AT-1 has ≥ 20 customers (CrmContact, not archived, in AT-1's CRM system) — exp ≥ 20 | act tenant qc-ai-team-at1 not found (member Customer rows: 0)
+  ❌ [T0.2-S2.4] AT-1 has ≥ 5 deals (CrmDeal in AT-1's CRM system) — exp ≥ 5 | act tenant qc-ai-team-at1 not found (kind OPEN: 0)
+  ❌ [T0.2-S2.5] AT-1 has ≥ 3 open invoices (INVOICE · OUT · numbered · AWAITING_PAYMENT|PARTIAL · balance > 0) — exp ≥ 3 | act tenant qc-ai-team-at1 not found (INVOICE rows of any status: 0)
+  ❌ [T0.2-S2.6] AT-1 has ≥ 3 customer chat threads waiting for a reply (OPEN · last message IN · real IN message row) — exp ≥ 3 | act tenant qc-ai-team-at1 not found (threads of any state: 0)
+  ❌ [T0.2-S2.7] AT-1 has ≥ 3 active knowledge-base articles over ≥ 2 categories — exp ≥ 3 articles · ≥ 2 categories | act tenant qc-ai-team-at1 not found · 0 categories
+  ❌ [T0.2-S2.8] AT-1 has an active ApprovalPolicy for AccountDocument, threshold 2,000,000 satang (20,000 baht), ≥ 1 step — exp an active policy with thresholdSatang 2000000 and ≥ 1 step | act tenant qc-ai-team-at1 not found: -
+  ❌ [T0.2-S2.9] permission keys: at-nid may approve account + CRM · at-staff has ai.chat.send + ai.employee.use — exp the 4 keys are true in Membership.permissions | act at-nid lacks account.doc.approve · at-nid lacks crm.commission.approve · at-staff lacks ai.chat.send · at-staff lacks ai.employee.use
+
+── S3 owners ──
+  ❌ [T0.2-S3.1] AT-2 has the same single OWNER as AT-1 (at-owner@qc.shark) — exp AT-1 owner = AT-2 owner = at-owner@qc.shark (one accepted OWNER each) | act tenant qc-ai-team-at1 not found AT-1: none · AT-2: none
+  ❌ [T0.2-S3.2] AT-X has a different single OWNER (ax-owner@qc.shark) and the two owners share no tenant — exp AT-X owner = ax-owner@qc.shark ≠ at-owner · no shared tenant | act tenant qc-ai-team-atx not found AT-X: none · shared tenants: none
+
+── X1 isolation ──
+  ❌ [T0.2-X1.1] seed users belong only to their own seed tenants (owner: AT-1+AT-2 · other owner: AT-X · approver/staff: AT-1) and to no foreign tenant — exp owner {AT-1,AT-2} · other owner {AT-X} · approver {AT-1} · staff {AT-1} | act seed tenants/users incomplete · at-owner: user not found · ax-owner: user not found · at-nid: user not found · at-staff: user not found
+  ❌ [T0.2-X1.2] seed tenants contain only seed users (AT-1: 3 · AT-2: 1 · AT-X: 1) — no foreign account can enter them — exp AT-1 {owner,nid,staff} · AT-2 {owner} · AT-X {other owner} | act seed tenants/users incomplete · AT-1: tenant not found · AT-2: tenant not found · AT-X: tenant not found
+  ❌ [T0.2-X1.3] no seeded row crosses a tenant: every systemId / owner / assignee of an AT-* row belongs to the same tenant — exp 0 cross-tenant references over ≥ 10 probed columns | act only 0/3 seed tenants exist
+
+── X10 runtime ──
+  ❌ [T0.2-X10.2] the seed (2 runs) and the env loader print no connection URL and no secret — exp seed ran twice + loader ran, and none of their output carries a URL/secret | act seed did not run twice (exit -1/-1) · loader did not run · leaks: none (6 outputs scanned)
+
+── S8 residue ──
+  ✅ [T0.2-S8.1] no row tagged qc-ai-t0.2-* is left in the database (canary tenant, its rows, its user)
+  ✅ [T0.2-S8.2] no temp directory is left and the worktree paths scanned by fitness/prisma are exactly as before the run
+
+🔴 T0.2: 2/41 (QC_FORCE) · missing deliverables: scripts/ai-team-qc-env.mts, scripts/seed-ai-team-qc.mts, scripts/fitness-ai-team.mts · residue tag qc-ai-t0.2-zei0kt
+JSON_SUMMARY {"total":41,"passed":2,"findings":[{"id":"T0.2-S5.1","sev":"CRITICAL"},{"id":"T0.2-S5.2","sev":"CRITICAL"},{"id":"T0.2-S5.3","sev":"CRITICAL"},{"id":"T0.2-X10.3","sev":"CRITICAL"},{"id":"T0.2-S5.4","sev":"MAJOR"},{"id":"T0.2-S5.5","sev":"MINOR"},{"id":"T0.2-S6.1","sev":"CRITICAL"},{"id":"T0.2-S6.2","sev":"CRITICAL"},{"id":"T0.2-S6.3","sev":"MAJOR"},{"id":"T0.2-S6.4","sev":"CRITICAL"},{"id":"T0.2-S7.1","sev":"CRITICAL"},{"id":"T0.2-S7.2","sev":"CRITICAL"},{"id":"T0.2-X10.1","sev":"CRITICAL"},{"id":"T0.2-S1.6","sev":"CRITICAL"},{"id":"T0.2-S1.7","sev":"MAJOR"},{"id":"T0.2-S4.1","sev":"CRITICAL"},{"id":"T0.2-S4.2","sev":"CRITICAL"},{"id":"T0.2-S4.3","sev":"CRITICAL"},{"id":"T0.2-S4.4","sev":"CRITICAL"},{"id":"T0.2-S1.1","sev":"CRITICAL"},{"id":"T0.2-S1.2","sev":"CRITICAL"},{"id":"T0.2-S1.3","sev":"CRITICAL"},{"id":"T0.2-S1.4","sev":"CRITICAL"},{"id":"T0.2-S1.5","sev":"CRITICAL"},{"id":"T0.2-S2.1","sev":"CRITICAL"},{"id":"T0.2-S2.2","sev":"CRITICAL"},{"id":"T0.2-S2.3","sev":"CRITICAL"},{"id":"T0.2-S2.4","sev":"CRITICAL"},{"id":"T0.2-S2.5","sev":"CRITICAL"},{"id":"T0.2-S2.6","sev":"CRITICAL"},{"id":"T0.2-S2.7","sev":"MAJOR"},{"id":"T0.2-S2.8","sev":"MAJOR"},{"id":"T0.2-S2.9","sev":"MAJOR"},{"id":"T0.2-S3.1","sev":"CRITICAL"},{"id":"T0.2-S3.2","sev":"CRITICAL"},{"id":"T0.2-X1.1","sev":"CRITICAL"},{"id":"T0.2-X1.2","sev":"CRITICAL"},{"id":"T0.2-X1.3","sev":"CRITICAL"},{"id":"T0.2-X10.2","sev":"CRITICAL"}]}
+
+## 2. UNFORCED — bash scripts/iso.sh bash scripts/qc4.sh bash scripts/with-gate-lock.sh env SHARK_AI_MOCK=1 pnpm exec tsx scripts/qc-ai-t0.2.mts   → exit 0
+
+⚠️  SKIPPED — WO T0.2 not built yet (missing: scripts/ai-team-qc-env.mts, scripts/seed-ai-team-qc.mts, scripts/fitness-ai-team.mts)
+JSON_SUMMARY {"total":0,"passed":0,"findings":[],"skipped":true}

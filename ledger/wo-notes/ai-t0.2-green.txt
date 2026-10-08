@@ -1,0 +1,324 @@
+# T0.2 — green output (builder runs · QC4 · 2026-10-08 UTC) · oracle scripts/qc-ai-t0.2.mts (not edited)
+# wrapper: bash scripts/iso.sh bash scripts/qc4.sh bash scripts/with-gate-lock.sh env QC_FORCE=1 SHARK_AI_MOCK=1 pnpm exec tsx scripts/qc-ai-t0.2.mts
+# (the pg-connection-string SSL-mode warning lines of node were removed from this copy; nothing else)
+
+## 0. seed alone, first ever run (07:28Z) → exit 0
+🌱 AI-team QC seed on ep-frosty-lab (file) — tenants qc-ai-team-at1, qc-ai-team-at2, qc-ai-team-atx
+   AT-1: contacts 24 · deals 6 · openInvoices 3 · waitingChats 3 · members 6 · kbArticles 5 · policies 1
+   rows created this run: 111 (user at-owner@qc.shark, user at-nid@qc.shark, user at-staff@qc.shark, user ax-owner@qc.shark, tenant qc-ai-team-at1, unit main, membership OWNER, membership MANAGER, membership STAFF, system ACCOUNT, link ACCOUNT, system CRM, …) · 162.6s
+AI_TEAM_SEED=created
+
+## 1. FORCED run 1 (started 07:39Z, ran 07:49–07:53Z)
+QC T0.2 — AI TEAM data contract · API spec · QC seed · env loader · fitness · host ep-frosty-lab · tag qc-ai-t0.2-0njb9v · QC_FORCE
+
+── S5 docs [static] ──
+  ✅ [T0.2-S5.1] [static] the Screen→Routes table of the API doc has exactly one row per screen A1–A8 B1–B8 C1–C8 D1–D8 E1–E4, each with ≥ 1 route or a client-only note
+  ✅ [T0.2-S5.2] [static] every route named in that table has its own section, and every section is complete (Auth helper · Permission · Request · Response · Errors · Rate limit · zod block)
+  ✅ [T0.2-S5.3] [static] the doc has a section for every T1.10 route, the later-WO route families, /me (uiVersion) and /usage (frozen shape); inbox uses requireMobileUser
+  ✅ [T0.2-X10.3] [static] outside /api/mobile/usage no schema in the API doc carries micro-dollar fields or systemPrompt
+  ✅ [T0.2-S5.4] [static] docs/modules/30-ai-team.md covers M1–M9, the 18 team files and the 8 refusal codes
+  ✅ [T0.2-S5.5] [static] apps/mobile/qc/fixtures/ai-team/README.md describes the fixture format
+
+── S6 fitness F16 [static] ──
+  ✅ [T0.2-S6.1] fitness-ai-team runs green on the repo and reports F16.1, F16.2 and F16.3 with a JSON_SUMMARY
+  ✅ [T0.2-S6.2] F16.1 turns red (exit ≠ 0, finding names the file) when a temp src/messages/th/ai-team.json contains "token"
+  ✅ [T0.2-S6.3] F16.1 turns red for each other forbidden word and each scanned location (โทเคน · บาทต่องาน · ค่าแรง · wage · mobile i18n · API schema)
+  ✅ [T0.2-S6.4] negative control: clean temp files in all three locations stay green, and an empty root passes (ratchet)
+
+── S7 prisma draft ──
+  ✅ [T0.2-S7.1] the ai_team.prisma draft passes `prisma validate` together with the existing schema (a deliberately broken control file fails)
+  ✅ [T0.2-S7.2] [static] the draft declares the 15 models and 5 enums of MASTER-PLAN §6 T1.1 with the keys of the brief
+
+── X10 / S1 static ──
+  ✅ [T0.2-X10.1] [static] docs, seed, loader, fitness and draft contain no credential, no connection URL, no live secret of this environment, and never read `.env`
+  ✅ [T0.2-S1.6] [static] the seed writes only under slug prefix qc-ai-team- / @qc.shark and has no unscoped delete
+  ✅ [T0.2-S1.7] [static] scripts/qc-all.mts registers the marker `requires: ai-team-seed` → seed-ai-team-qc.mts
+
+── S4 env loader ──
+  ✅ [T0.2-S4.1] env loader refuses a production host (spawned with a fake URL): exit code 4
+  ✅ [T0.2-S4.2] env loader refuses QC1, an unknown host, a URL that only mentions ep-frosty-lab outside the hostname, and a bad DIRECT_URL alone: exit code 4 each
+  ✅ [T0.2-S4.3] no refusal prints the URL, the user, the password or the database name
+  ✅ [T0.2-S4.4] positive control: on the real QC4 env the loader returns (exit 0) and the module exports loadAiTeamQcEnv, atIds, withInjectedNow
+
+── S1 seed ×2 ──
+  · seed run 1: exit 0 in 97.3s — rows created this run: 0 · 29.7s / AI_TEAM_SEED=unchanged
+  · seed run 2: exit 0 in 85.5s — rows created this run: 0 · 34.9s / AI_TEAM_SEED=unchanged
+  ✅ [T0.2-S1.1] the seed runs twice, both exit 0, and exactly the three tenants qc-ai-team-at1|at2|atx carry the prefix
+  ✅ [T0.2-S1.2] second seed run: the row count of EVERY table (tenantId column) of AT-1/AT-2/AT-X is unchanged
+  ✅ [T0.2-S1.3] second seed run replaces nothing: atIds() has the contract shape, matches the DB by slug/e-mail, and the id sets of the seeded tables are identical
+  ✅ [T0.2-S1.4] other lanes' seed tenants (up to 3, picked at runtime) keep their row counts across the two seed runs
+  ✅ [T0.2-S1.5] a quiet canary tenant + user created by this oracle (same e-mail domain) is byte-for-byte untouched by the two seed runs
+
+── S2 AT-1 content ──
+  ✅ [T0.2-S2.1] AT-1, AT-2 and AT-X each have an active AppSystem of every type ACCOUNT/CRM/CHAT/MEMBER/KANBAN
+  ✅ [T0.2-S2.2] AT-1 has exactly 3 accepted members: at-owner OWNER · at-nid MANAGER · at-staff STAFF
+  ✅ [T0.2-S2.3] AT-1 has ≥ 20 customers (CrmContact, not archived, in AT-1's CRM system)
+  ✅ [T0.2-S2.4] AT-1 has ≥ 5 deals (CrmDeal in AT-1's CRM system)
+  ✅ [T0.2-S2.5] AT-1 has ≥ 3 open invoices (INVOICE · OUT · numbered · AWAITING_PAYMENT|PARTIAL · balance > 0)
+  ✅ [T0.2-S2.6] AT-1 has ≥ 3 customer chat threads waiting for a reply (OPEN · last message IN · real IN message row)
+  ✅ [T0.2-S2.7] AT-1 has ≥ 3 active knowledge-base articles over ≥ 2 categories
+  ✅ [T0.2-S2.8] AT-1 has an active ApprovalPolicy for AccountDocument, threshold 2,000,000 satang (20,000 baht), ≥ 1 step
+  ✅ [T0.2-S2.9] permission keys: at-nid may approve account + CRM · at-staff has ai.chat.send + ai.employee.use
+
+── S3 owners ──
+  ✅ [T0.2-S3.1] AT-2 has the same single OWNER as AT-1 (at-owner@qc.shark)
+  ✅ [T0.2-S3.2] AT-X has a different single OWNER (ax-owner@qc.shark) and the two owners share no tenant
+
+── X1 isolation ──
+  ✅ [T0.2-X1.1] seed users belong only to their own seed tenants (owner: AT-1+AT-2 · other owner: AT-X · approver/staff: AT-1) and to no foreign tenant
+  ✅ [T0.2-X1.2] seed tenants contain only seed users (AT-1: 3 · AT-2: 1 · AT-X: 1) — no foreign account can enter them
+  ✅ [T0.2-X1.3] no seeded row crosses a tenant: every systemId / owner / assignee of an AT-* row belongs to the same tenant
+
+── X10 runtime ──
+  ✅ [T0.2-X10.2] the seed (2 runs) and the env loader print no connection URL and no secret
+
+── S8 residue ──
+  ✅ [T0.2-S8.1] no row tagged qc-ai-t0.2-* is left in the database (canary tenant, its rows, its user)
+  ✅ [T0.2-S8.2] no temp directory is left and the worktree paths scanned by fitness/prisma are exactly as before the run
+
+🟢 T0.2: 41/41 (QC_FORCE) · missing deliverables: none · residue tag qc-ai-t0.2-0njb9v
+JSON_SUMMARY {"total":41,"passed":41,"findings":[]}
+exit=0
+
+## 2. FORCED run 2 (queued 09:09Z, finished 09:46Z; no deliverable changed between run 1 and run 2)
+09:10:54Z
+QC T0.2 — AI TEAM data contract · API spec · QC seed · env loader · fitness · host ep-frosty-lab · tag qc-ai-t0.2-yv65kb · QC_FORCE
+
+── S5 docs [static] ──
+  ✅ [T0.2-S5.1] [static] the Screen→Routes table of the API doc has exactly one row per screen A1–A8 B1–B8 C1–C8 D1–D8 E1–E4, each with ≥ 1 route or a client-only note
+  ✅ [T0.2-S5.2] [static] every route named in that table has its own section, and every section is complete (Auth helper · Permission · Request · Response · Errors · Rate limit · zod block)
+  ✅ [T0.2-S5.3] [static] the doc has a section for every T1.10 route, the later-WO route families, /me (uiVersion) and /usage (frozen shape); inbox uses requireMobileUser
+  ✅ [T0.2-X10.3] [static] outside /api/mobile/usage no schema in the API doc carries micro-dollar fields or systemPrompt
+  ✅ [T0.2-S5.4] [static] docs/modules/30-ai-team.md covers M1–M9, the 18 team files and the 8 refusal codes
+  ✅ [T0.2-S5.5] [static] apps/mobile/qc/fixtures/ai-team/README.md describes the fixture format
+
+── S6 fitness F16 [static] ──
+  ✅ [T0.2-S6.1] fitness-ai-team runs green on the repo and reports F16.1, F16.2 and F16.3 with a JSON_SUMMARY
+  ✅ [T0.2-S6.2] F16.1 turns red (exit ≠ 0, finding names the file) when a temp src/messages/th/ai-team.json contains "token"
+  ✅ [T0.2-S6.3] F16.1 turns red for each other forbidden word and each scanned location (โทเคน · บาทต่องาน · ค่าแรง · wage · mobile i18n · API schema)
+  ✅ [T0.2-S6.4] negative control: clean temp files in all three locations stay green, and an empty root passes (ratchet)
+
+── S7 prisma draft ──
+  ✅ [T0.2-S7.1] the ai_team.prisma draft passes `prisma validate` together with the existing schema (a deliberately broken control file fails)
+  ✅ [T0.2-S7.2] [static] the draft declares the 15 models and 5 enums of MASTER-PLAN §6 T1.1 with the keys of the brief
+
+── X10 / S1 static ──
+  ✅ [T0.2-X10.1] [static] docs, seed, loader, fitness and draft contain no credential, no connection URL, no live secret of this environment, and never read `.env`
+  ✅ [T0.2-S1.6] [static] the seed writes only under slug prefix qc-ai-team- / @qc.shark and has no unscoped delete
+  ✅ [T0.2-S1.7] [static] scripts/qc-all.mts registers the marker `requires: ai-team-seed` → seed-ai-team-qc.mts
+
+── S4 env loader ──
+  ✅ [T0.2-S4.1] env loader refuses a production host (spawned with a fake URL): exit code 4
+  ✅ [T0.2-S4.2] env loader refuses QC1, an unknown host, a URL that only mentions ep-frosty-lab outside the hostname, and a bad DIRECT_URL alone: exit code 4 each
+  ✅ [T0.2-S4.3] no refusal prints the URL, the user, the password or the database name
+  ✅ [T0.2-S4.4] positive control: on the real QC4 env the loader returns (exit 0) and the module exports loadAiTeamQcEnv, atIds, withInjectedNow
+
+── S1 seed ×2 ──
+  · seed run 1: exit 0 in 105.0s — rows created this run: 0 · 35.3s / AI_TEAM_SEED=unchanged
+  · seed run 2: exit 0 in 90.6s — rows created this run: 0 · 28.5s / AI_TEAM_SEED=unchanged
+  ✅ [T0.2-S1.1] the seed runs twice, both exit 0, and exactly the three tenants qc-ai-team-at1|at2|atx carry the prefix
+  ✅ [T0.2-S1.2] second seed run: the row count of EVERY table (tenantId column) of AT-1/AT-2/AT-X is unchanged
+  ✅ [T0.2-S1.3] second seed run replaces nothing: atIds() has the contract shape, matches the DB by slug/e-mail, and the id sets of the seeded tables are identical
+  ✅ [T0.2-S1.4] other lanes' seed tenants (up to 3, picked at runtime) keep their row counts across the two seed runs
+  ✅ [T0.2-S1.5] a quiet canary tenant + user created by this oracle (same e-mail domain) is byte-for-byte untouched by the two seed runs
+
+── S2 AT-1 content ──
+  ✅ [T0.2-S2.1] AT-1, AT-2 and AT-X each have an active AppSystem of every type ACCOUNT/CRM/CHAT/MEMBER/KANBAN
+  ✅ [T0.2-S2.2] AT-1 has exactly 3 accepted members: at-owner OWNER · at-nid MANAGER · at-staff STAFF
+  ✅ [T0.2-S2.3] AT-1 has ≥ 20 customers (CrmContact, not archived, in AT-1's CRM system)
+  ✅ [T0.2-S2.4] AT-1 has ≥ 5 deals (CrmDeal in AT-1's CRM system)
+  ✅ [T0.2-S2.5] AT-1 has ≥ 3 open invoices (INVOICE · OUT · numbered · AWAITING_PAYMENT|PARTIAL · balance > 0)
+  ✅ [T0.2-S2.6] AT-1 has ≥ 3 customer chat threads waiting for a reply (OPEN · last message IN · real IN message row)
+  ✅ [T0.2-S2.7] AT-1 has ≥ 3 active knowledge-base articles over ≥ 2 categories
+  ✅ [T0.2-S2.8] AT-1 has an active ApprovalPolicy for AccountDocument, threshold 2,000,000 satang (20,000 baht), ≥ 1 step
+  ✅ [T0.2-S2.9] permission keys: at-nid may approve account + CRM · at-staff has ai.chat.send + ai.employee.use
+
+── S3 owners ──
+  ✅ [T0.2-S3.1] AT-2 has the same single OWNER as AT-1 (at-owner@qc.shark)
+  ✅ [T0.2-S3.2] AT-X has a different single OWNER (ax-owner@qc.shark) and the two owners share no tenant
+
+── X1 isolation ──
+  ✅ [T0.2-X1.1] seed users belong only to their own seed tenants (owner: AT-1+AT-2 · other owner: AT-X · approver/staff: AT-1) and to no foreign tenant
+  ✅ [T0.2-X1.2] seed tenants contain only seed users (AT-1: 3 · AT-2: 1 · AT-X: 1) — no foreign account can enter them
+  ✅ [T0.2-X1.3] no seeded row crosses a tenant: every systemId / owner / assignee of an AT-* row belongs to the same tenant
+
+── X10 runtime ──
+  ✅ [T0.2-X10.2] the seed (2 runs) and the env loader print no connection URL and no secret
+
+── S8 residue ──
+  ✅ [T0.2-S8.1] no row tagged qc-ai-t0.2-* is left in the database (canary tenant, its rows, its user)
+  ✅ [T0.2-S8.2] no temp directory is left and the worktree paths scanned by fitness/prisma are exactly as before the run
+
+🟢 T0.2: 41/41 (QC_FORCE) · missing deliverables: none · residue tag qc-ai-t0.2-yv65kb
+JSON_SUMMARY {"total":41,"passed":41,"findings":[]}
+exit=0
+09:46:55Z
+
+## 3. fitness (scripts/fitness.mts) — without DATABASE_URL: bash scripts/iso.sh env -u DATABASE_URL -u DIRECT_URL pnpm exec tsx scripts/fitness.mts
+ผ่าน 42/42
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+
+JSON_SUMMARY {"total":42,"passed":42,"findings":[]}
+exit=0
+
+## 4. fitness — with QC4 env exported: bash scripts/iso.sh bash scripts/qc4.sh pnpm exec tsx scripts/fitness.mts
+ผ่าน 42/42
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+
+JSON_SUMMARY {"total":42,"passed":42,"findings":[]}
+exit=0
+
+## 5. fitness-ai-team on the repo: bash scripts/iso.sh pnpm exec tsx scripts/fitness-ai-team.mts → exit 0
+JSON_SUMMARY {"total":3,"passed":3,"findings":[]}
+
+## 6. typecheck — INCONCLUSIVE (see ai-t0.2.md): the wrapper shell was stopped by the agent harness after 30 min (machine load ≈ 60); tsc itself ran on to 10:19Z, its exit code was not captured. tsconfig.tsbuildinfo (TS 5.9.3, 3691 files incl. the 4 scripts of this WO) records 0 files with semantic diagnostics. Controller to re-run.
+
+## 7. UNFORCED run (started 10:55:18Z) — same wrapper without QC_FORCE
+QC T0.2 — AI TEAM data contract · API spec · QC seed · env loader · fitness · host ep-frosty-lab · tag qc-ai-t0.2-jvmpxm
+
+
+
+── S5 docs [static] ──
+  ✅ [T0.2-S5.1] [static] the Screen→Routes table of the API doc has exactly one row per screen A1–A8 B1–B8 C1–C8 D1–D8 E1–E4, each with ≥ 1 route or a client-only note
+  ✅ [T0.2-S5.2] [static] every route named in that table has its own section, and every section is complete (Auth helper · Permission · Request · Response · Errors · Rate limit · zod block)
+  ✅ [T0.2-S5.3] [static] the doc has a section for every T1.10 route, the later-WO route families, /me (uiVersion) and /usage (frozen shape); inbox uses requireMobileUser
+  ✅ [T0.2-X10.3] [static] outside /api/mobile/usage no schema in the API doc carries micro-dollar fields or systemPrompt
+  ✅ [T0.2-S5.4] [static] docs/modules/30-ai-team.md covers M1–M9, the 18 team files and the 8 refusal codes
+  ✅ [T0.2-S5.5] [static] apps/mobile/qc/fixtures/ai-team/README.md describes the fixture format
+
+── S6 fitness F16 [static] ──
+  ✅ [T0.2-S6.1] fitness-ai-team runs green on the repo and reports F16.1, F16.2 and F16.3 with a JSON_SUMMARY
+  ✅ [T0.2-S6.2] F16.1 turns red (exit ≠ 0, finding names the file) when a temp src/messages/th/ai-team.json contains "token"
+  ✅ [T0.2-S6.3] F16.1 turns red for each other forbidden word and each scanned location (โทเคน · บาทต่องาน · ค่าแรง · wage · mobile i18n · API schema)
+  ✅ [T0.2-S6.4] negative control: clean temp files in all three locations stay green, and an empty root passes (ratchet)
+
+── S7 prisma draft ──
+  ✅ [T0.2-S7.1] the ai_team.prisma draft passes `prisma validate` together with the existing schema (a deliberately broken control file fails)
+  ✅ [T0.2-S7.2] [static] the draft declares the 15 models and 5 enums of MASTER-PLAN §6 T1.1 with the keys of the brief
+
+── X10 / S1 static ──
+  ✅ [T0.2-X10.1] [static] docs, seed, loader, fitness and draft contain no credential, no connection URL, no live secret of this environment, and never read `.env`
+  ✅ [T0.2-S1.6] [static] the seed writes only under slug prefix qc-ai-team- / @qc.shark and has no unscoped delete
+  ✅ [T0.2-S1.7] [static] scripts/qc-all.mts registers the marker `requires: ai-team-seed` → seed-ai-team-qc.mts
+
+── S4 env loader ──
+  ✅ [T0.2-S4.1] env loader refuses a production host (spawned with a fake URL): exit code 4
+  ✅ [T0.2-S4.2] env loader refuses QC1, an unknown host, a URL that only mentions ep-frosty-lab outside the hostname, and a bad DIRECT_URL alone: exit code 4 each
+  ✅ [T0.2-S4.3] no refusal prints the URL, the user, the password or the database name
+  ✅ [T0.2-S4.4] positive control: on the real QC4 env the loader returns (exit 0) and the module exports loadAiTeamQcEnv, atIds, withInjectedNow
+
+── S1 seed ×2 ──
+  · seed run 1: exit 0 in 117.8s — rows created this run: 0 · 39.8s / AI_TEAM_SEED=unchanged
+  · seed run 2: exit 0 in 91.5s — rows created this run: 0 · 30.5s / AI_TEAM_SEED=unchanged
+  ✅ [T0.2-S1.1] the seed runs twice, both exit 0, and exactly the three tenants qc-ai-team-at1|at2|atx carry the prefix
+  ✅ [T0.2-S1.2] second seed run: the row count of EVERY table (tenantId column) of AT-1/AT-2/AT-X is unchanged
+  ✅ [T0.2-S1.3] second seed run replaces nothing: atIds() has the contract shape, matches the DB by slug/e-mail, and the id sets of the seeded tables are identical
+  ✅ [T0.2-S1.4] other lanes' seed tenants (up to 3, picked at runtime) keep their row counts across the two seed runs
+  ✅ [T0.2-S1.5] a quiet canary tenant + user created by this oracle (same e-mail domain) is byte-for-byte untouched by the two seed runs
+
+── S2 AT-1 content ──
+  ✅ [T0.2-S2.1] AT-1, AT-2 and AT-X each have an active AppSystem of every type ACCOUNT/CRM/CHAT/MEMBER/KANBAN
+  ✅ [T0.2-S2.2] AT-1 has exactly 3 accepted members: at-owner OWNER · at-nid MANAGER · at-staff STAFF
+  ✅ [T0.2-S2.3] AT-1 has ≥ 20 customers (CrmContact, not archived, in AT-1's CRM system)
+  ✅ [T0.2-S2.4] AT-1 has ≥ 5 deals (CrmDeal in AT-1's CRM system)
+  ✅ [T0.2-S2.5] AT-1 has ≥ 3 open invoices (INVOICE · OUT · numbered · AWAITING_PAYMENT|PARTIAL · balance > 0)
+  ✅ [T0.2-S2.6] AT-1 has ≥ 3 customer chat threads waiting for a reply (OPEN · last message IN · real IN message row)
+  ✅ [T0.2-S2.7] AT-1 has ≥ 3 active knowledge-base articles over ≥ 2 categories
+  ✅ [T0.2-S2.8] AT-1 has an active ApprovalPolicy for AccountDocument, threshold 2,000,000 satang (20,000 baht), ≥ 1 step
+  ✅ [T0.2-S2.9] permission keys: at-nid may approve account + CRM · at-staff has ai.chat.send + ai.employee.use
+
+── S3 owners ──
+  ✅ [T0.2-S3.1] AT-2 has the same single OWNER as AT-1 (at-owner@qc.shark)
+  ✅ [T0.2-S3.2] AT-X has a different single OWNER (ax-owner@qc.shark) and the two owners share no tenant
+
+── X1 isolation ──
+  ✅ [T0.2-X1.1] seed users belong only to their own seed tenants (owner: AT-1+AT-2 · other owner: AT-X · approver/staff: AT-1) and to no foreign tenant
+  ✅ [T0.2-X1.2] seed tenants contain only seed users (AT-1: 3 · AT-2: 1 · AT-X: 1) — no foreign account can enter them
+  ✅ [T0.2-X1.3] no seeded row crosses a tenant: every systemId / owner / assignee of an AT-* row belongs to the same tenant
+
+── X10 runtime ──
+  ✅ [T0.2-X10.2] the seed (2 runs) and the env loader print no connection URL and no secret
+
+── S8 residue ──
+  ✅ [T0.2-S8.1] no row tagged qc-ai-t0.2-* is left in the database (canary tenant, its rows, its user)
+  ✅ [T0.2-S8.2] no temp directory is left and the worktree paths scanned by fitness/prisma are exactly as before the run
+
+🟢 T0.2: 41/41 · missing deliverables: none · residue tag qc-ai-t0.2-jvmpxm
+JSON_SUMMARY {"total":41,"passed":41,"findings":[]}
+exit=0
+
+# ═══════════ ROUND 2 (after review · controller rulings 5cf3a05b) ═══════════
+# host label in this file is shown as ep-frosty-lab only (endpoint suffix stripped, also in the round-1 output above)
+
+## R2.1 FORCED run after the round-2 fixes (started 12:58:43Z)
+QC T0.2 — AI TEAM data contract · API spec · QC seed · env loader · fitness · host ep-frosty-lab · tag qc-ai-t0.2-d5nynl · QC_FORCE
+
+── S5 docs [static] ──
+  ✅ [T0.2-S5.1] [static] the Screen→Routes table of the API doc has exactly one row per screen A1–A8 B1–B8 C1–C8 D1–D8 E1–E4, each with ≥ 1 route or a client-only note
+  ✅ [T0.2-S5.2] [static] every route named in that table has its own section, and every section is complete (Auth helper · Permission · Request · Response · Errors · Rate limit · zod block)
+  ✅ [T0.2-S5.3] [static] the doc has a section for every T1.10 route, the later-WO route families, /me (uiVersion) and /usage (frozen shape); inbox uses requireMobileUser
+  ✅ [T0.2-X10.3] [static] outside /api/mobile/usage no schema in the API doc carries micro-dollar fields or systemPrompt
+  ✅ [T0.2-S5.4] [static] docs/modules/30-ai-team.md covers M1–M9, the 18 team files and the 8 refusal codes
+  ✅ [T0.2-S5.5] [static] apps/mobile/qc/fixtures/ai-team/README.md describes the fixture format
+
+── S6 fitness F16 [static] ──
+  ✅ [T0.2-S6.1] fitness-ai-team runs green on the repo and reports F16.1, F16.2 and F16.3 with a JSON_SUMMARY
+  ✅ [T0.2-S6.2] F16.1 turns red (exit ≠ 0, finding names the file) when a temp src/messages/th/ai-team.json contains "token"
+  ✅ [T0.2-S6.3] F16.1 turns red for each other forbidden word and each scanned location (โทเคน · บาทต่องาน · ค่าแรง · wage · mobile i18n · API schema)
+  ✅ [T0.2-S6.4] negative control: clean temp files in all three locations stay green, and an empty root passes (ratchet)
+
+── S7 prisma draft ──
+  ✅ [T0.2-S7.1] the ai_team.prisma draft passes `prisma validate` together with the existing schema (a deliberately broken control file fails)
+  ✅ [T0.2-S7.2] [static] the draft declares the 15 models and 5 enums of MASTER-PLAN §6 T1.1 with the keys of the brief
+
+── X10 / S1 static ──
+  ✅ [T0.2-X10.1] [static] docs, seed, loader, fitness and draft contain no credential, no connection URL, no live secret of this environment, and never read `.env`
+  ✅ [T0.2-S1.6] [static] the seed writes only under slug prefix qc-ai-team- / @qc.shark and has no unscoped delete
+  ✅ [T0.2-S1.7] [static] scripts/qc-all.mts registers the marker `requires: ai-team-seed` → seed-ai-team-qc.mts
+
+── S4 env loader ──
+  ✅ [T0.2-S4.1] env loader refuses a production host (spawned with a fake URL): exit code 4
+  ✅ [T0.2-S4.2] env loader refuses QC1, an unknown host, a URL that only mentions ep-frosty-lab outside the hostname, and a bad DIRECT_URL alone: exit code 4 each
+  ✅ [T0.2-S4.3] no refusal prints the URL, the user, the password or the database name
+  ✅ [T0.2-S4.4] positive control: on the real QC4 env the loader returns (exit 0) and the module exports loadAiTeamQcEnv, atIds, withInjectedNow
+
+── S1 seed ×2 ──
+  · seed run 1: exit 0 in 102.8s — rows created this run: 0 · repaired: 0 · 38.9s / AI_TEAM_SEED=unchanged
+  · seed run 2: exit 0 in 112.2s — rows created this run: 0 · repaired: 0 · 37.0s / AI_TEAM_SEED=unchanged
+  ✅ [T0.2-S1.1] the seed runs twice, both exit 0, and exactly the three tenants qc-ai-team-at1|at2|atx carry the prefix
+  ✅ [T0.2-S1.2] second seed run: the row count of EVERY table (tenantId column) of AT-1/AT-2/AT-X is unchanged
+  ✅ [T0.2-S1.3] second seed run replaces nothing: atIds() has the contract shape, matches the DB by slug/e-mail, and the id sets of the seeded tables are identical
+  ✅ [T0.2-S1.4] other lanes' seed tenants (up to 3, picked at runtime) keep their row counts across the two seed runs
+  ✅ [T0.2-S1.5] a quiet canary tenant + user created by this oracle (same e-mail domain) is byte-for-byte untouched by the two seed runs
+
+── S2 AT-1 content ──
+  ✅ [T0.2-S2.1] AT-1, AT-2 and AT-X each have an active AppSystem of every type ACCOUNT/CRM/CHAT/MEMBER/KANBAN
+  ✅ [T0.2-S2.2] AT-1 has exactly 3 accepted members: at-owner OWNER · at-nid MANAGER · at-staff STAFF
+  ✅ [T0.2-S2.3] AT-1 has ≥ 20 customers (CrmContact, not archived, in AT-1's CRM system)
+  ✅ [T0.2-S2.4] AT-1 has ≥ 5 deals (CrmDeal in AT-1's CRM system)
+  ✅ [T0.2-S2.5] AT-1 has ≥ 3 open invoices (INVOICE · OUT · numbered · AWAITING_PAYMENT|PARTIAL · balance > 0)
+  ✅ [T0.2-S2.6] AT-1 has ≥ 3 customer chat threads waiting for a reply (OPEN · last message IN · real IN message row)
+  ✅ [T0.2-S2.7] AT-1 has ≥ 3 active knowledge-base articles over ≥ 2 categories
+  ✅ [T0.2-S2.8] AT-1 has an active ApprovalPolicy for AccountDocument, threshold 2,000,000 satang (20,000 baht), ≥ 1 step
+  ✅ [T0.2-S2.9] permission keys: at-nid may approve account + CRM · at-staff has ai.chat.send + ai.employee.use
+
+── S3 owners ──
+  ✅ [T0.2-S3.1] AT-2 has the same single OWNER as AT-1 (at-owner@qc.shark)
+  ✅ [T0.2-S3.2] AT-X has a different single OWNER (ax-owner@qc.shark) and the two owners share no tenant
+
+── X1 isolation ──
+  ✅ [T0.2-X1.1] seed users belong only to their own seed tenants (owner: AT-1+AT-2 · other owner: AT-X · approver/staff: AT-1) and to no foreign tenant
+  ✅ [T0.2-X1.2] seed tenants contain only seed users (AT-1: 3 · AT-2: 1 · AT-X: 1) — no foreign account can enter them
+  ✅ [T0.2-X1.3] no seeded row crosses a tenant: every systemId / owner / assignee of an AT-* row belongs to the same tenant
+
+── X10 runtime ──
+  ✅ [T0.2-X10.2] the seed (2 runs) and the env loader print no connection URL and no secret
+
+── S8 residue ──
+  ✅ [T0.2-S8.1] no row tagged qc-ai-t0.2-* is left in the database (canary tenant, its rows, its user)
+  ✅ [T0.2-S8.2] no temp directory is left and the worktree paths scanned by fitness/prisma are exactly as before the run
+
+🟢 T0.2: 41/41 (QC_FORCE) · missing deliverables: none · residue tag qc-ai-t0.2-d5nynl
+JSON_SUMMARY {"total":41,"passed":41,"findings":[]}
+exit=0
+13:12:36Z
