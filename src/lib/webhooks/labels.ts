@@ -86,6 +86,7 @@ export const WEBHOOK_EVENTS: AutomationEventDef[] = [
   // CRM C3.3 ▸ คอมมิชชัน → เงินเดือน — ประกาศที่นี่ที่เดียว (ไม่ใส่ `AUTOMATION_EVENTS`: ทะเบียนนั้นผูกกับ `CRM_RULE_TRIGGERS` ของ C2.1
   //   ทั้งก้อน · `hr.payroll.paid` ไม่ใช่ทริกเกอร์ของตัวสร้างกฎ CRM) · consumer อยู่ใน outbox-consumers.ts บล็อก C3.3 · payload id ล้วน
   { value: "hr.payroll.paid", label: "เมื่อบันทึกจ่ายเงินเดือนของงวดแล้ว (HR)" },
+  { value: "hr.payroll.reversed", label: "เมื่อกลับรายการรอบจ่ายเงินเดือน (HR)" }, // HR H0.6 ▸ ยิงใน tx ของ reverseRun · payload id ล้วน · consumer ใน outbox-consumers.ts ◂
   { value: "crm.commission.created", label: "เมื่อเกิดรายการคอมมิชชันใหม่ (CRM)" },
   { value: "crm.commission.approved", label: "เมื่ออนุมัติคอมมิชชันแล้ว (CRM)" },
   { value: "crm.commission.reversed", label: "เมื่อถอนคืนคอมมิชชัน (CRM)" },

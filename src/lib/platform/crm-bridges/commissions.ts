@@ -70,3 +70,13 @@ export async function onCommissionReversed(evt: BridgeEvent): Promise<void> {
   await guarded(evt, "หักคืนคอมมิชชันในเงินเดือน", () => crm.commissions.advanceById({ tenantId: evt.tenantId, commissionId: str(p.commissionId) }));
   await notifyOwner(evt);
 }
+
+// HR H0.6 ▸ `hr.payroll.reversed {runId, periodKey, adjustmentIds}` (ยิงใน tx ของ `hr.reverseRun`) → คอมมิชชัน PAID ของรายการที่ถูกปลดจากรอบ
+//   กลับเป็น APPROVED ครั้งเดียว (`crm.commissions.onPayrollReversed`) · อ่านประตูแต่ไม่ให้ประตูกลืน (ถอนสถานะของที่มีอยู่แล้ว แบบ onPayrollPaid) ◂
+export async function onPayrollReversed(evt: BridgeEvent): Promise<void> {
+  const p = payloadOf(evt.payload);
+  if ((await crmGates(evt.tenantId)).length === 0) return;
+  await guarded(evt, "คืนสถานะคอมมิชชันของรอบจ่ายที่กลับรายการ", () =>
+    crm.commissions.onPayrollReversed({ tenantId: evt.tenantId, hrSystemId: str(evt.systemId), runId: str(p.runId), adjustmentIds: Array.isArray(p.adjustmentIds) ? p.adjustmentIds : [] }),
+  );
+}

@@ -2116,3 +2116,53 @@ async function toDtos(ctx: Scope, rows: CrmCommission[]): Promise<CommissionDto[
     };
   });
 }
+
+// HR H0.6 ▸ `hr.payroll.reversed {runId, periodKey, adjustmentIds}` (ยิงใน tx ของ `hr.reverseRun` · id ล้วน) — รอบจ่ายที่กลับรายการแล้ว
+//   ⇒ คอมมิชชัน PAID ของรายการที่ถูกปลดจากรอบนั้น กลับเป็น APPROVED (ยังไม่ได้จ่ายจริง) แล้วรอบใหม่ของงวดเดิมจ่ายให้อีกครั้ง (`onPayrollPaid`)
+//   กติกาคู่เดียวกับ onPayrollPaid: { id = HrPayAdjustment.crmCommissionId, hrPayAdjustmentId = HrPayAdjustment.id } · reversedOfId IS NULL ·
+//   รายการอ่านผ่าน HR facade `adjustmentsByIds` (ผูกร้าน + ระบบ HR ของ event) · รอบต้องเป็น REVERSED จริง (event ปลอม/ข้ามร้าน = 0 แถว)
+//   OQ-3 (ตัวกันส่งซ้ำ): ข้ามรายการที่ตอนนี้ผูกกับรอบที่ **จ่ายแล้ว (PAID)** — event ที่มาช้าหลังรอบใหม่จ่ายแล้ว ห้ามถอน PAID ของรอบใหม่
+//   (รายการที่ยังไม่เข้ารอบ หรือเข้ารอบร่าง/อนุมัติแล้วแต่ยังไม่จ่าย = ถอนเป็น APPROVED · รอบนั้นจ่ายเมื่อไร onPayrollPaid ปิด PAID ให้) ·
+//   UPDATE … RETURNING ทีละ 500 ⇒ แถวที่เปลี่ยนจริงเท่านั้นได้ประวัติ `crm.commission.unpaid` (ส่งซ้ำ/พร้อมกัน = 0 แถว 0 ประวัติ) ·
+//   แถวถอนคืน (REVERSED · ใบ C3.3) ไม่ถูกแตะ — DEDUCTION ของมันถูก HR ปลดและเข้ารอบใหม่เองเหมือนรายการอื่น (R5)
+export async function onPayrollReversed(input: { tenantId: string; hrSystemId: string | null; runId: string | null; adjustmentIds?: unknown }): Promise<{ unpaid: number }> {
+  const tenantId = str(input?.tenantId);
+  const systemId = str(input?.hrSystemId);
+  const runId = str(input?.runId);
+  const ids = Array.isArray(input?.adjustmentIds) ? [...new Set(input.adjustmentIds.map(str).filter((x): x is string => !!x))] : [];
+  if (!tenantId || !systemId || !runId || ids.length === 0) return { unpaid: 0 };
+  const hr = await hrFacade();
+  const run = await hr.adjustmentsOfRun({ tenantId, systemId }, runId);
+  if (run.status !== "REVERSED") return { unpaid: 0 };
+  const rows = await hr.adjustmentsByIds({ tenantId, systemId }, ids);
+  const pairs: { id: string; hrPayAdjustmentId: string }[] = [];
+  const skipped: string[] = [];
+  for (const r of rows) {
+    if (!r.crmCommissionId) continue;
+    if (r.runId && r.runStatus === "PAID") {
+      skipped.push(r.id);
+      continue;
+    }
+    pairs.push({ id: r.crmCommissionId, hrPayAdjustmentId: r.id });
+  }
+  if (skipped.length > 0) {
+    await logOps("WARN", "crm", "คอมมิชชัน: event กลับรายการรอบจ่ายมาหลังรายการเข้ารอบใหม่ที่จ่ายแล้ว — ไม่ถอนสถานะจ่าย", {
+      tenantId,
+      detail: `hrSystemId=${systemId} runId=${runId} skipped=${skipped.length} adjustmentIds=${skipped.slice(0, 20).join(",")}`,
+    }).catch(() => undefined);
+  }
+  let unpaid = 0;
+  for (let i = 0; i < pairs.length; i += 500) {
+    const changed = await prisma.crmCommission.updateManyAndReturn({
+      where: { tenantId, status: "PAID", reversedOfId: null, OR: pairs.slice(i, i + 500) },
+      data: { status: "APPROVED" },
+      select: { id: true, systemId: true },
+    });
+    for (const c of changed) {
+      await audit({ tenantId, systemId: c.systemId }, "crm.commission.unpaid", "CrmCommission", c.id, { before: { status: "PAID" }, after: { status: "APPROVED", via: "PAYROLL_REVERSED", runId } }, null);
+    }
+    unpaid += changed.length;
+  }
+  return { unpaid };
+}
+// ◂ HR H0.6
