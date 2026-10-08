@@ -709,3 +709,5 @@
 - ถัดไป (หลัง reset): reviewer Opus 2 ใบ (money lane สำหรับ P1.8) → merge P1.8 ก่อน (ปลดล็อก scope/client ของทุกทรี) → merge P1.10 (คาด conflict เล็ก: scope.ts · permissions.ts · pos.prisma · pos-qc-env · th/en json) → prisma generate ใน p11 → build+gates บน p11 → 15/55
 
 - 2026-10-08T00:54Z ✅ ยืนยันข้อสอบหลัง ORACLE-EDIT: P1.8 **49/49** (forced+unforced บน p11) · P1.10 **40/40** (forced+unforced บนทรี c) · โควตา 78% รอ reset 01:30 → reviewer
+
+### 2026-10-08T01:13Z — เจ้าของ: "ทำงานต่อเลย · โควต้า session 90% ค่อยเริ่มหยุด" ⇒ เพดาน spawn = 90% · spawn reviewer 2 ใบทันที (P1.8 money lane บน p11 · P1.10 บนทรี c · read-only) · โควตา 78%
