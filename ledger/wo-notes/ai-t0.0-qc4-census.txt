@@ -1,0 +1,17 @@
+# QC4 census · 2026-10-08T12:47Z · read-only · scripts/ai-team-qc4-census.mts
+(node:2547546) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+tenants=24 aiConversation=20 aiProposal=12
+barbershop	conv=3	prop=0
+demo-review-1787213513937	conv=3	prop=0
+qc-c39-qqkocq-a	conv=0	prop=1
+shop	conv=1	prop=0
+siam-dive-center	conv=1	prop=0
+siamdive	conv=1	prop=0
