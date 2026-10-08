@@ -911,5 +911,17 @@
       "permissionDenied": "This account can't view bills or print receipts yet — ask the owner for access",
       "internal": "Receipts are temporarily unavailable — please try again"
     }
+  },
+  "bills": {
+    "errors": {
+      "noPermission": "This account is not allowed to do this — ask the owner or a manager",
+      "saleNotFound": "This bill was not found in this branch",
+      "saleNotVoidable": "This bill cannot be voided (already voided, fully refunded, a refund document, or a bill from another system)",
+      "hasRefunds": "This bill already has refunds — it cannot be voided; refund the remaining items instead",
+      "shiftClosed": "This bill's shift is closed — it cannot be voided; use a refund instead",
+      "reasonRequired": "Enter a reason for voiding (up to 200 characters)",
+      "validation": "The request is not valid",
+      "unknown": "Something went wrong — please try again"
+    }
   }
 }

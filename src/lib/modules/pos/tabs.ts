@@ -8,7 +8,7 @@ export function posTabs(systemId: string): { href: string; label: string }[] {
     { href: `${s}/pos/register`, label: "ขายหน้าร้าน" },
     { href: `${s}/pos/products`, label: "สินค้า/บริการ" },
     { href: `${s}/pos/stock`, label: "สต็อก" }, // POS P1.14 U ▸ ตรวจนับ + รับ/โอน/ปรับ ◂
-    { href: `${s}/pos/sales`, label: "ประวัติบิล" },
+    { href: `${s}/pos/sales`, label: "บิลวันนี้" },
     { href: `${s}/pos/shifts`, label: "กะ" }, // POS P1.9 U ▸ กะและลิ้นชักเงิน (ภาพ 07) ◂
     { href: `${s}/pos/close`, label: "ปิดวัน" },
     { href: `${s}/pos/reports`, label: "รายงาน" }, // POS P1.17 U ▸ รายงาน 7 ชุด ◂
