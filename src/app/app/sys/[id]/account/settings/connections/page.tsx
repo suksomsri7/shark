@@ -17,6 +17,7 @@ import {
   updateWebhookAction,
 } from "@/lib/modules/account/connections-actions";
 import { listApiKeys } from "@/lib/api-keys/service";
+import { ACCOUNT_SCOPE_KEYS } from "@/lib/api-keys/scopes"; // CRM C5.5-fix8 r2 ◂
 import { listDeliveries, listEndpoints } from "@/lib/webhooks/service";
 import { WEBHOOK_EVENTS, webhookEventLabel } from "@/lib/webhooks/labels";
 import { SettingsNav } from "@/components/account-v2/SettingsNav";
@@ -65,10 +66,20 @@ export default async function AccountConnectionsSettingsPage({
 
   // อ่านเฉพาะที่หัวข้อนั้นใช้จริง (คีย์/ฮุคเป็น query ของแพลตฟอร์ม — ไม่ควรจ่ายทุกครั้งที่เปิดหน้าการ์ด)
   const cards = sub === "shark" ? await buildConnectionCards(ctx, new Date()) : [];
-  const [keys, endpoints, deliveries] =
+  const [keysAll, endpoints, deliveries] =
     sub === "api"
       ? await Promise.all([listApiKeys({ tenantId }), listEndpoints({ tenantId }), listDeliveries({ tenantId }, 10)])
       : [[], [], []];
+  // CRM C5.4-B ▸ hunter H2: แสดง/จัดการเฉพาะคีย์ของบัญชี (ผูกระบบบัญชีเล่มใดก็ได้) —
+  //   คีย์ของโมดูลอื่นจัดการจากหน้าตั้งค่า API ของโมดูลนั้น (action ก็ปฏิเสธซ้ำ — accountManagedKey)
+  const accountSystemIds = new Set(
+    keysAll.some((k) => !!k.systemId)
+      ? (await prisma.appSystem.findMany({ where: { tenantId, type: "ACCOUNT" }, select: { id: true } })).map((x) => x.id)
+      : [],
+  );
+  // CRM C5.5-fix8 r2 ▸ (RV-5 · Q2) กติกาเดียวกับ accountManagedKey: ผูกระบบบัญชี และทุกสิทธิ์อยู่ใน ACCOUNT_SCOPE_KEYS — คีย์กลางของร้าน
+  //   (ไม่ผูกระบบ) และคีย์ที่ถือสิทธิ์ของระบบอื่นไม่แสดงที่นี่แล้ว (ปุ่มหมุน/เพิกถอนจะถูกปฏิเสธอยู่ดี) ◂
+  const keys = keysAll.filter((k) => !!k.systemId && accountSystemIds.has(k.systemId) && k.scopes.every((sc) => ACCOUNT_SCOPE_KEYS.includes(sc)));
 
   // ป้ายชื่อสมุดบัญชีต่อคีย์ (WO A2) — คีย์ของทั้ง tenant อาจผูกสมุดอื่นนอกจากเล่มนี้ด้วย
   const otherSystemIds = Array.from(

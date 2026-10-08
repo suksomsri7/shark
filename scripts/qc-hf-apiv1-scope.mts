@@ -269,9 +269,23 @@ try {
   for (const k of [{ label: "รุ่นเดิม", key: legacy.rawKey }, { label: "รุ่นเดิมที่หมุนแล้ว", key: rotated.rawKey }]) {
     const L = await listSkills(k.key);
     const ids = ((L.body.skills as { id: string }[] | undefined) ?? []).map((s) => s.id);
-    chk(`HF-12.1.${k.label}`, `AI /skills คีย์${k.label} → มีสกิล sales/knowledge/memory + core 8 ตัว (เดิม)`, L.status === 200 && ["sales", "knowledge", "memory"].every((i) => ids.includes(i)) && ((L.body.core as { tools?: string[] })?.tools ?? []).length === 8, "ครบ", `${L.status} ${ids.join(",")}`);
+    // ORACLE-EDIT (C6.0 · G1 rule · reviewer-approved with conditions) — ledger/wo-notes/crm-C6.0-merge-main-review.md §6 · R-1
+    //   CRM C5.5-G1 (tool-access.ts): no API key — the general key included — gets AI tools that write immediately
+    //   (remember_fact · forget_fact · support_open_case) or hand tools over account data (financial_summary · record_expense).
+    //   Owner-visible change for general keys on /api/v1/ai/* (R-1): skill `memory` disappears, core 8 → 6.
+    //   before: skills ⊇ sales/knowledge/memory · core length 8 · /skills/sales ⊇ sales_summary + financial_summary
+    //   after : skills ⊇ sales/knowledge, memory absent · core == FIXED literal below (never derived from src) ·
+    //           /skills/sales ⊇ sales_summary + sales_by_day, financial_summary absent · + HF-12.2b (G1 refusal ≠ key_not_general)
+    const CORE_FOR_GENERAL_KEY = ["list_systems", "ask_clarify", "propose_plan", "open_system", "kb_search", "list_memories"];
+    const core = ((L.body.core as { tools?: string[] })?.tools ?? []).slice().sort();
+    const coreOk = JSON.stringify(core) === JSON.stringify(CORE_FOR_GENERAL_KEY.slice().sort());
+    chk(`HF-12.1.${k.label}`, `AI /skills คีย์${k.label} → มีสกิล sales/knowledge · ไม่มี memory · core = 6 ตัวตามรายการตายตัว (G1)`, L.status === 200 && ["sales", "knowledge"].every((i) => ids.includes(i)) && !ids.includes("memory") && coreOk, "ครบ", `${L.status} skills=${ids.join(",")} core=${core.join(",")}`);
     const S = await oneSkill(k.key, "sales");
-    chk(`HF-12.2.${k.label}`, `AI /skills/sales คีย์${k.label} → 200 มี sales_summary + financial_summary`, S.status === 200 && ["sales_summary", "financial_summary"].every((n) => toolNamesIn(S).includes(n)), "200", `${S.status} ${toolNamesIn(S).join(",")}`);
+    chk(`HF-12.2.${k.label}`, `AI /skills/sales คีย์${k.label} → 200 มี sales_summary + sales_by_day · ไม่มี financial_summary (G1)`, S.status === 200 && ["sales_summary", "sales_by_day"].every((n) => toolNamesIn(S).includes(n)) && !toolNamesIn(S).includes("financial_summary"), "200", `${S.status} ${toolNamesIn(S).join(",")}`);
+    // G1 refusal pins: the general key is refused by G1's executor policy (403, reason ≠ key_not_general) — not by the hotfix gate over-blocking general keys
+    const g1Refused = await Promise.all(["remember_fact", "financial_summary"].map(async (n) => [n, await runTool(k.key, n, n === "remember_fact" ? { fact: `qc-hf-apiv1-${n}` } : {})] as const));
+    const g1Bad = g1Refused.filter(([, r]) => !(r.status === 403 && r.body.code !== "key_not_general" && !r.text.includes("key_not_general")));
+    chk(`HF-12.2b.${k.label}`, `AI tools/remember_fact|financial_summary คีย์${k.label} → 403 ของ G1 (ไม่ใช่ key_not_general)`, g1Bad.length === 0, "403×2 ≠ key_not_general", g1Refused.map(([n, r]) => `${n}=${r.status} ${r.text.slice(0, 60)}`).join(" | "));
     const T = await runTool(k.key, "sales_summary", {});
     chk(`HF-12.3.${k.label}`, `AI tools/sales_summary คีย์${k.label} → 200 ทำงาน`, T.status === 200 && T.body.tool === "sales_summary" && "result" in T.body, "200", `${T.status} ${T.text.slice(0, 80)}`);
   }

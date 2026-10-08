@@ -18,6 +18,8 @@
 //   marketing_create_campaign: { name, channel, segment? }  (DRAFT เสมอ — ส่งจริง user กดใน UI เอง)
 import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
 loadLegacyQcEnv("qc-ai-proposals"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
+// ORACLE-EDIT C5.5-G1: runTool/sendMessage now take a required actor (no actor = refusal) — these checks always meant "the shop OWNER asks"
+const qcOwner = (t: string) => ({ kind: "member" as const, tenantId: t, userId: "qc-owner", membership: { role: "OWNER" as const, unitAccess: ["*"], permissions: {} } });
 process.env.SHARK_AI_MOCK = "1";
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");
@@ -48,9 +50,10 @@ try {
     const p1 = await pr.createProposal(ctx, { conversationId: conv.id, kind: "inventory_receive", summary: "รับครีมนวดเข้า 10 ชิ้น", payload: { sku: "PP-1", qty: 10, costSatang: 5000 } });
     const row1 = await prisma.aiProposal.findUnique({ where: { id: p1.id } });
     chk("PZ-1.1", "createProposal → PENDING + หมดอายุอนาคต", row1?.status === "PENDING" && (row1?.expiresAt?.getTime() ?? 0) > Date.now(), "PENDING", String(row1?.status));
-    chk("PZ-1.2", "listPending เห็นข้อเสนอ", (await pr.listPendingProposals(ctx, conv.id)).some((x: { id: string }) => x.id === p1.id), "เห็น", "?");
+    // ORACLE-EDIT C5.5-G2: listPendingProposals/rejectProposal take the viewer (ctx.actor) — the shop OWNER, on a conversation written without a creator
+    chk("PZ-1.2", "listPending เห็นข้อเสนอ", (await pr.listPendingProposals({ ...ctx, actor: qcOwner(tid) }, conv.id)).some((x: { id: string }) => x.id === p1.id), "เห็น", "?");
     const t2 = await prisma.tenant.create({ data: { name: "QC PP2", slug: `qc-pp2-${Date.now()}` } }); tid2 = t2.id;
-    chk("PZ-1.3", "tenant อื่นไม่เห็น (kernel guard)", (await pr.listPendingProposals({ tenantId: tid2 }, conv.id)).length === 0, "0", "?");
+    chk("PZ-1.3", "tenant อื่นไม่เห็น (kernel guard)", (await pr.listPendingProposals({ tenantId: tid2, actor: qcOwner(tid2) }, conv.id)).length === 0, "0", "?");
 
     // 2) execute สำเร็จ (OWNER) — สต็อกเพิ่มจริง + idempotencyKey ai-<id>
     const ex1 = await pr.executeProposal(OWNER, ctx, p1.id);
@@ -67,8 +70,8 @@ try {
     chk("PZ-3.1", "STAFF ไม่มีสิทธิ์ → ok:false + PENDING คงเดิม", ex2.ok === false && (await prisma.aiProposal.findUnique({ where: { id: p2.id } }))?.status === "PENDING", "false+PENDING", `${ex2.ok}/?`);
 
     // 4) reject
-    chk("PZ-4.1", "reject PENDING → true + REJECTED", (await pr.rejectProposal(ctx, p2.id)) === true && (await prisma.aiProposal.findUnique({ where: { id: p2.id } }))?.status === "REJECTED", "true", "?");
-    chk("PZ-4.2", "reject ซ้ำ → false", (await pr.rejectProposal(ctx, p2.id)) === false, "false", "?");
+    chk("PZ-4.1", "reject PENDING → true + REJECTED", (await pr.rejectProposal({ ...ctx, actor: qcOwner(tid) }, p2.id)) === true && (await prisma.aiProposal.findUnique({ where: { id: p2.id } }))?.status === "REJECTED", "true", "?");
+    chk("PZ-4.2", "reject ซ้ำ → false", (await pr.rejectProposal({ ...ctx, actor: qcOwner(tid) }, p2.id)) === false, "false", "?");
 
     // 5) หมดอายุ
     const p3 = await pr.createProposal(ctx, { conversationId: conv.id, kind: "inventory_receive", summary: "หมดอายุ", payload: { sku: "PP-1", qty: 1 } });
@@ -94,7 +97,7 @@ try {
     const before = await prisma.invItem.findUnique({ where: { id: item.id } });
     // ctx ขยาย (conversationId) เป็นสัญญาของ WO-0020 — cast กัน typecheck แดงบน main ก่อน Builder merge
     const runToolWide = tools.runTool as unknown as (c: unknown, n: string, a: unknown) => Promise<string>;
-    const toolOut = await runToolWide({ tenantId: tid, conversationId: conv.id }, "inventory_receive", { sku: "PP-1", qty: 99 });
+    const toolOut = await runToolWide({ tenantId: tid, actor: qcOwner(tid), conversationId: conv.id }, "inventory_receive", { sku: "PP-1", qty: 99 });
     const madeProposal = await prisma.aiProposal.findFirst({ where: { tenantId: tid, status: "PENDING", kind: "inventory_receive" }, orderBy: { createdAt: "desc" } });
     chk("PZ-8.1", "action-tool สร้าง proposal + ไม่แตะสต็อก", !!madeProposal && toolOut.includes(madeProposal.id) && (await prisma.invItem.findUnique({ where: { id: item.id } }))?.onHand === before?.onHand, "proposal+สต็อกนิ่ง", toolOut.slice(0, 60));
     chk("PZ-8.2", "registry มี action tools 3 ตัวแรกครบ (จำนวนรวมคุมโดย oracle รุ่นล่าสุด)", tools.toolRegistry().length >= 8, "≥8", String(tools.toolRegistry().length));

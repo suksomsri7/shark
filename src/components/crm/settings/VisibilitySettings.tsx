@@ -9,12 +9,13 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { removeVisibilityPolicyAction, setVisibilityPolicyAction } from "@/app/app/sys/[id]/crm/settings/visibility/actions";
+import { FieldError, useFieldErrors } from "@/components/crm/form/field-errors";
 
 type Opt = { value: string; label: string };
 export type MatrixCell = { entity: string; level: string; source: "policy" | "settings" | "default"; policyId: string | null };
 export type MatrixRow = { key: string; label: string; editable: boolean; cells: MatrixCell[] };
 export type OverrideRow = { id: string; team: string; pipeline: string; role: string; entity: string; level: string };
-type Result = { ok: true } | { ok: false; error: string };
+type Result = { ok: true } | { ok: false; error: string; fieldErrors?: Record<string, string> };
 
 const SOURCE_LABEL: Record<MatrixCell["source"], string> = { policy: "ตั้งไว้", settings: "ค่าของร้าน", default: "ค่าเริ่มต้น" };
 
@@ -44,6 +45,8 @@ export function VisibilitySettings({
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({ teamId: "", pipelineId: "", role: "", entity: "DEAL", visibility: "ALL" });
   const entityLabel = new Map(entities.map((e) => [e.value, e.label]));
+  // C4.3-fix part 2 ▸ ฟอร์มตั้งทับ: ข้อความใต้ช่องที่ต้องแก้ (ทีม/ชนิดข้อมูล) + โฟกัส — visibility-msg อยู่ท้ายหน้า ไกลจากฟอร์ม ◂
+  const fe = useFieldErrors(["teamId", "pipelineId", "role", "entity", "visibility"] as const);
 
   const run = async (f: () => Promise<Result>, okText: string): Promise<boolean> => {
     setBusy(true);
@@ -170,15 +173,37 @@ export function VisibilitySettings({
           className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-3"
           onSubmit={(e) => {
             e.preventDefault();
-            if (!form.teamId && !form.pipelineId) return setMsg({ ok: false, text: "เลือกทีม หรือ pipeline อย่างน้อยหนึ่งอย่าง (ค่าต่อบทบาทแก้ในตารางด้านบน)" });
-            if (form.pipelineId && form.entity !== "DEAL") return setMsg({ ok: false, text: "การตั้งทับต่อ pipeline ใช้ได้กับดีลเท่านั้น — เลือกชนิดข้อมูลเป็นดีล" });
-            void run(() => setVisibilityPolicyAction(systemId, form), "เพิ่มการตั้งทับแล้ว");
+            setMsg(null);
+            if (
+              fe.show({
+                teamId: !form.teamId && !form.pipelineId ? "เลือกทีม หรือ pipeline อย่างน้อยหนึ่งอย่าง (ค่าต่อบทบาทแก้ในตารางด้านบน)" : undefined,
+                entity: form.pipelineId && form.entity !== "DEAL" ? "การตั้งทับต่อ pipeline ใช้ได้กับดีลเท่านั้น — เลือกชนิดข้อมูลเป็นดีล" : undefined,
+              })
+            )
+              return;
+            setBusy(true);
+            void setVisibilityPolicyAction(systemId, form).then((r) => {
+              setBusy(false);
+              if (r.ok) {
+                setMsg({ ok: true, text: "เพิ่มการตั้งทับแล้ว" });
+                router.refresh();
+              } else if (!fe.show(r.fieldErrors)) setMsg({ ok: false, text: r.error });
+            });
           }}
           data-testid="visibility-override-form"
         >
           <label className="flex min-w-0 flex-col gap-1 text-xs text-[color:var(--color-muted)]">
             <span>ทีม</span>
-            <select className="input text-sm" value={form.teamId} onChange={(e) => setForm((f) => ({ ...f, teamId: e.target.value }))} data-testid="visibility-override-team">
+            <select
+              {...fe.field("teamId")}
+              className="input text-sm"
+              value={form.teamId}
+              onChange={(e) => {
+                setForm((f) => ({ ...f, teamId: e.target.value }));
+                fe.clear("teamId");
+              }}
+              data-testid="visibility-override-team"
+            >
               <option value="">ทุกทีม</option>
               {teams.map((t) => (
                 <option key={t.value} value={t.value}>
@@ -186,10 +211,21 @@ export function VisibilitySettings({
                 </option>
               ))}
             </select>
+            <FieldError id={fe.errorId("teamId")} message={fe.errors.teamId} testid="visibility-override-team-error" />
           </label>
           <label className="flex min-w-0 flex-col gap-1 text-xs text-[color:var(--color-muted)]">
             <span>pipeline (เฉพาะดีล)</span>
-            <select className="input text-sm" value={form.pipelineId} onChange={(e) => setForm((f) => ({ ...f, pipelineId: e.target.value }))} data-testid="visibility-override-pipeline">
+            <select
+              {...fe.field("pipelineId")}
+              className="input text-sm"
+              value={form.pipelineId}
+              onChange={(e) => {
+                setForm((f) => ({ ...f, pipelineId: e.target.value }));
+                fe.clear("teamId");
+                fe.clear("entity");
+              }}
+              data-testid="visibility-override-pipeline"
+            >
               <option value="">ทุก pipeline</option>
               {pipelines.map((p) => (
                 <option key={p.value} value={p.value}>
@@ -211,13 +247,23 @@ export function VisibilitySettings({
           </label>
           <label className="flex min-w-0 flex-col gap-1 text-xs text-[color:var(--color-muted)]">
             <span>ชนิดข้อมูล</span>
-            <select className="input text-sm" value={form.entity} onChange={(e) => setForm((f) => ({ ...f, entity: e.target.value }))} data-testid="visibility-override-entity">
+            <select
+              {...fe.field("entity")}
+              className="input text-sm"
+              value={form.entity}
+              onChange={(e) => {
+                setForm((f) => ({ ...f, entity: e.target.value }));
+                fe.clear("entity");
+              }}
+              data-testid="visibility-override-entity"
+            >
               {entities.map((x) => (
                 <option key={x.value} value={x.value}>
                   {x.label}
                 </option>
               ))}
             </select>
+            <FieldError id={fe.errorId("entity")} message={fe.errors.entity} testid="visibility-override-entity-error" />
           </label>
           <label className="flex min-w-0 flex-col gap-1 text-xs text-[color:var(--color-muted)]">
             <span>ระดับ</span>

@@ -493,6 +493,9 @@ try {
   }
   {
     const list = await api("GET", "/tracking/links?take=5", kAD);
+    // ORACLE-EDIT (C6.1-LINKPOLICY · owner P11/Q15 (ข)): a tracked link's destination must be on the shop's allowed list — the fixture declares
+    //   example.invalid first (settings.crm.tracking.linkHosts) so the create still proves the REST path, not the policy
+    await setCrm(S, { tracking: { linkHosts: ["example.invalid"] } });
     const create = await api("POST", "/tracking/links", kAD, { url: "https://example.invalid/promo", label: `ลิงก์ ${TAG}` });
     const linkId = String(dat(create)?.id ?? dat(create)?.linkId ?? "");
     const stats = linkId ? await api("GET", `/tracking/links/${linkId}/stats`, kAD) : { status: 0, body: {}, text: "" } as Resp;

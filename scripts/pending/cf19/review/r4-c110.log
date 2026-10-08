@@ -1,0 +1,3 @@
+[env] DB ep-cool-shadow-ao99n36e-pooler.c-2.ap-southeast-1.aws.neon.tech · tag qc-c110-lwgtlq
+  ❌ [C1.10-H.1] HTTP on :3215: /api/v1/crm/openapi.json (no key) lists every registry op · GET /api/v1/crm/ping with the readonly key → 200 · without a key → 401 — exp 200/200/401 | act oa=200 ops=123/123 ping=401 noKey=401
+JSON_SUMMARY {"total":67,"passed":66,"findings":[{"id":"C1.10-H.1","sev":"MAJOR"}]}

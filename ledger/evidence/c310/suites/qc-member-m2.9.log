@@ -1,0 +1,41 @@
+  ✅ [M2.9-S1.1] migration member_v2_f2: CustomerSession {customerId tokenHash userAgent expiresAt revokedAt} unique(tokenHash) index(customerId) · CustomerOtp {target channel codeHash attempts expiresAt usedAt customerId} index(tenantId,target,createdAt) · Customer +cardTokenHash +cardTokenExpiresAt · additive · applied · diff = empty · ไม่แตะ PlatformAuthToken/PlatformSession (backoffice)
+
+┌─ [email:dev] ────────────────────────────────
+│ to:      mb-member-02@example.com
+│ subject: รหัสเข้าสู่ระบบสมาชิก SIAM DIVE MEMBER QC
+│ รหัสยืนยันของคุณคือ 606842 (ใช้ได้ 5 นาที)
+└──────────────────────────────────────────────
+
+  ✅ [M2.9-S1.2] requestOtp(เบอร์สมาชิก 1) → {otpId, expiresAt ≈ 5 นาที, maskedTo (ปิดบัง), devOtp 6 หลัก (QC)} · CustomerOtp codeHash = sha256(otpId:code) attempts 0 channel PHONE · เบอร์ที่ไม่มีสมาชิก → ตอบสำเร็จเหมือนกัน (ไม่เผย) · อีเมลสมาชิก 2 → ได้ (channel EMAIL) · ร้านไม่มี → throw ไทย
+  ✅ [M2.9-S1.3] verifyOtp: ผิด 5 ครั้ง → throw ไทยทุกครั้ง · ครั้งที่ 6 รหัสถูก → ยัง throw (ใช้ไม่ได้แล้ว) · OTP ของเบอร์ที่ไม่มีสมาชิก → ไม่มีวันผ่าน · OTP ใหม่ + รหัสถูก → {token, cookieName shark_customer, customerId สมาชิก 1, tenantId, expiresAt ≈ 30 วัน} · CustomerSession tokenHash sha256(token) userAgent · getCustomerSession(token) → {customerId, tenantId, memberSystemId} · OTP ใช้แล้วใช้ซ้ำ → throw
+  ✅ [M2.9-S1.4] loginWithLine: lineUserId ที่ผูก MemberChannelIdentity LINE → session ของลูกค้าคนนั้น · ไม่รู้จัก → {needsJoin true, joinUrl /m/<slug>/join…} ไม่มี token · mintCustomerSession(สมาชิก 3) → token ใช้ได้ · revoke → getCustomerSession null · route auth/line ตรวจ id_token กับ LINE (api.line.me … verify)
+  ✅ [M2.9-S1.5] ตรวจเจ้าของ: session สมาชิก 1 เรียก meGet(สมาชิก 2) → throw ไทย · getWallet ของคนอื่น → throw · actor พนักงานเรียก me.* → throw (เส้นทางลูกค้าเท่านั้น) · session หมดอายุ → null · token มั่ว → null
+  ✅ [M2.9-S2.1] meCard(สมาชิก 1) → {memberCode, displayName, tierName, points, qr{content 'SHARK-MC:<token 32+>', dataUrl data:image/png}, expiresAt ≈ 24 ชม.} · Customer.cardTokenHash = sha256(token) (ไม่เก็บ token ดิบ) · เรียกซ้ำ → token เดิม
+  ✅ [M2.9-S2.2] rotateCardToken → token ใหม่ (≠ เดิม) · ของเก่า resolve → null · ใหม่ resolve → MemberBrief สมาชิก 1 · เรียก rotate ให้คนอื่น → throw
+  ✅ [M2.9-S2.3] พนักงาน lookup: resolveCardToken(tenant, token สมาชิก 2) → MemberBrief {id, memberCode, displayName, tier, points} (ไม่มีเบอร์เต็ม) · หมดอายุ (24 ชม.) → null · meCard หลังหมดอายุ → ออก token ใหม่อัตโนมัติ · token ของร้านอื่น → null
+  ✅ [M2.9-S2.4] ทางเข้าพนักงาน: มี action lookupCardTokenAction ("use server" · gate member.customer.read · เรียก resolveCardToken) สำหรับแอปพนักงาน/POS สแกน QR · me-actions.ts ทุก action อ่าน session ลูกค้า (getCustomerSession/requireCustomer) ไม่ใช่ requireTenant
+  ✅ [M2.9-S3.1] meGet(สมาชิก 1): member {customerId, memberCode, displayName, tier{name,color}, points, memberSince} · sections[] ตาม listLayout audience customer · ฟิลด์ nickname customerEditable true (label ไทย) · consents[] 15 ช่องทาง (channel/label/granted/canConsent) · policy (null หรือ {version, acceptedAt})
+  ✅ [M2.9-S3.2] meUpdate: nickname (customerEditable) → {updated ['nickname']} · meGet เห็นค่าใหม่ · certLevel (ไม่ editable) → throw ไทย ระบุคีย์ · คีย์ไม่มี → throw · phone (ฟิลด์ระบบที่ร้านยืนยัน) → throw
+  ✅ [M2.9-S3.3] ค่าผิดกติกา fields engine (ยาวเกิน) → throw ไทย ไม่บันทึก · AuditLog action member.me.update targetId สมาชิก 1 (actorType ไม่ใช่ USER พนักงาน)
+  ✅ [M2.9-S4.1] consent จากลูกค้า: setConsent(LINE สลับค่า · source LIFF) → เปลี่ยนจริง · event member.consent.changed · ลูกค้าคนอื่นตั้งให้ → throw
+  ✅ [M2.9-S4.2] PDPA จากลูกค้า: requestExport(LIFF) → {requestId, bundle} (ข้อมูลตัวเอง) · requestErase(LIFF) → คำขอ PENDING type ERASE requestedVia LIFF (ไม่ลบทันที · สมาชิกยังอยู่) · ลูกค้าคนอื่นขอแทน → throw
+  ✅ [M2.9-S4.3] acceptPolicy(เวอร์ชันปัจจุบัน · via LIFF) → {version, acceptedAt} · meGet.policy.version = เวอร์ชันนั้น + acceptedAt (ไม่มีนโยบาย = policy null ยอมรับได้)
+  ✅ [M2.9-S5.1] หน้า /m/[slug]/{login,card,wallet,profile,history} + layout (แถบล่าง 4) มีจริง · card/wallet/profile/history ใช้ requireCustomer (ไม่ใช้ requireTenant ของพนักงาน) · testid 19 · ป้ายภาพ 09 ครบ · ไม่มีอีโมจิ/hex · viewport มือถือ (meta viewport / max-w)
+  ❌ [M2.9-S5.2] ภาพ 09 (--user customer:<รหัสสมาชิก 1> · มือถือ 390): m-card · m-wallet · m-profile · m-history 200 ไม่ล้น · m-login (ไม่มี session) 200 · ไม่มี session เปิด /card → redirect login (302/200 ที่หน้า login) — exp 200 ×6 | act card=undefined wallet=undefined profile=undefined history=undefined login=undefined nosession=undefined/undefined
+  ✅ [M2.9-S5.3] 🔴 parity ภาพ 09 (3 จอ) — Fable ตรวจด้วยตา · wo-notes/member-M2.9.md มี 'PARITY: ผ่าน'
+  ✅ [M2.9-S6.1] perf: meCard + getWallet + meGet ขนานกัน ≤ 1500ms บน QC (หน้า /m เปิดในไลน์ต้องไว)
+  ✅ [M2.9-S7.1] rate limit ต่อเป้าหมาย: เบอร์เดียวกันขอ OTP 3 ครั้งได้ · ครั้งที่ 4 ใน 10 นาที → throw ไทย (code RATE_LIMITED · มี 'ลองใหม่')
+  ✅ [M2.9-S7.2] rate limit ต่อ ip: 10 ครั้ง/10 นาที (เบอร์ต่างกัน) ได้ · ครั้งที่ 11 → throw RATE_LIMITED · ip อื่นยังขอได้
+  ✅ [M2.9-S7.3] OTP หมดอายุ → throw ไทย · otpId ไม่มี → throw ไทย (ไม่บอกว่าไม่มี — ข้อความเดียวกับรหัสผิด) · โค้ดไม่ log OTP ดิบ (ไม่มี console.log(otp/code)) · ใช้ checkRateLimit กลาง
+
+🔴 M2.9: 21/22
+JSON_SUMMARY {"total":22,"passed":21,"findings":[{"id":"M2.9-S5.2","sev":"CRITICAL"}]}
+(node:1480889) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)

@@ -48,7 +48,7 @@
 //   S3  `f.{key}` filters on records: TEXT · NUMBER · DATE · SELECT · LOOKUP · BOOLEAN (CRM-RUN S3, records half)
 //   S5  tabsFor(CONTACT/COMPANY, id) — showAsTab objects of that parent type with live counts (CRM-RUN S5)
 //   S6  archive object with records ⇒ must type the key · restore brings everything back (CRM-RUN S6)
-//   S8  no hard cap: 35 objects → no error, OpsEvent WARN past 30 (CRM-RUN S8)
+//   S8  no hard cap: 35 objects → no error · OpsEvent WARN once at 80 % of the 30-object soft limit (object 24 · C3.9 §11.9 / X8; C3.10 oracle fix)
 //   S9  immutability: key / parentType frozen once records exist · reserved/duplicate keys (brief + §11.2)
 //   S10 partyId inherited from the parent (CONTACT/COMPANY/CUSTOMER/NONE) · recordCount cache (brief)
 //   S11 the 8 templates as data + one disabled "date field due" starter rule each; create-from-template materialises fields (brief + R-A)
@@ -631,23 +631,33 @@ try {
   chk("C1.2b-S6.4", "an EMPTY object is archived without typing the key (the confirmation guards data, not the click)", oldArch.ok, "ok", oldArch.err, "MAJOR");
 
   // ═════════════════════════════════════════════════════════════════════════════
-  // S8 — no hard cap on objects: 35 → no error, OpsEvent WARN past 30
+  // S8 — no hard cap on objects: 35 → no error, OpsEvent WARN once at 80 % (object 24)
   // ═════════════════════════════════════════════════════════════════════════════
   console.log("\n── S8 · no hard cap ──");
   {
+    // C3.10 ORACLE-FIX: since C3.9 (§11.9 objectsWarn · AUDIT-CLASS X8, src/lib/modules/crm/limits.ts warnOnce) the product warns
+    //   ONCE when usage crosses 80 % of the 30-object soft limit ⇒ the first WARN is at object 24 (24/30 = 0.8), not past 30.
+    //   The dedupe flag (`crm.limits:<systemId>:objectsWarn:<thai month>:30` in OpsEvent.detail) makes it exactly one crm.limits
+    //   WARN for this system; the older crm.objects "เกิน 30" perf WARN (objects.ts warnObjectCount, at 31) may also appear.
     const errs: string[] = [];
-    let warnAt29 = -1;
+    let warnAt23 = -1;
+    let limAt24 = -1;
     const tS8 = new Date(Date.now() - 500);
+    const limWhere = () => ({ tenantId: tidA, level: "WARN", source: "crm.limits", createdAt: { gte: tS8 }, detail: { contains: `"flag":"crm.limits:${crmA3}:objectsWarn:` } });
     for (let i = 1; i <= 35; i += 1) {
       const r = await call(OBJ.create, cA3, actor, { key: `obj${i}`, label: `วัตถุ ${i}`, labelPlural: `วัตถุ ${i}`, parentType: "NONE", titleFieldKey: "name" });
       if (!r.ok) errs.push(`#${i}: ${r.err}`);
-      if (i === 29) warnAt29 = await P.opsEvent.count({ where: { tenantId: tidA, level: "WARN", createdAt: { gte: tS8 } } });
+      if (i === 23) warnAt23 = await P.opsEvent.count({ where: { tenantId: tidA, level: "WARN", createdAt: { gte: tS8 } } });
+      if (i === 24) limAt24 = await P.opsEvent.count({ where: limWhere() });
     }
     const rows = await P.customObject.count({ where: { systemId: crmA3 } });
     chk("C1.2b-S8.1", "35 objects in one CRM system are all created — there is NO hard cap (decision C8)", errs.length === 0 && rows === 35, "35 · 0 errors", `${rows} · ${errs.slice(0, 2).join(" | ") || "-"}`);
     const warns = (await P.opsEvent.findMany({ where: { tenantId: tidA, level: "WARN", createdAt: { gte: tS8 } } })) as Any[];
-    chk("C1.2b-S8.2", "…but past 30 objects an OpsEvent WARN (tenant-tagged, Thai) is written — none while the system still had ≤ 29",
-      warnAt29 === 0 && warns.length >= 1 && warns.some((w) => thai(w.message)), "0 at 29 · ≥1 after 35", `at29=${warnAt29} after=${warns.length} ${cut(warns.map((w) => w.message).join(" | "), 160)}`);
+    const limWarns = await P.opsEvent.count({ where: limWhere() });
+    chk("C1.2b-S8.2", "…but an OpsEvent WARN (tenant-tagged, Thai) is written once usage crosses 80 % of the 30-object soft limit — none while the system had ≤ 23, the first at object 24, and the 80 % warning is written exactly ONCE (dedupe flag)",
+      warnAt23 === 0 && limAt24 === 1 && warns.length >= 1 && warns.every((w) => thai(w.message)) && limWarns === 1,
+      "0 at ≤23 · 1 crm.limits at 24 · ≥1 after 35 · all Thai · crm.limits ×1",
+      `at23=${warnAt23} lim@24=${limAt24} after=${warns.length} lim=${limWarns} ${cut(warns.map((w) => w.message).join(" | "), 160)}`);
   }
   {
     // > 200,000 records/object: the cache says so (seeded directly — nobody creates 200k rows in an oracle)

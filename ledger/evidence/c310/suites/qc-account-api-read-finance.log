@@ -1,0 +1,15 @@
+  ❌ [CRASH] จบ — exp จบ | act ไม่พบระบบที่จะผูกคีย์ในร้านนี้
+
+===== QC Account API READ finance (B3) =====
+ผ่าน 0/1
+FINDINGS: CRITICAL 1 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":1,"passed":0,"findings":["CRASH"]}
+(node:985204) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)

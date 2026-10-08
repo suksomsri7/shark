@@ -37,6 +37,13 @@ export async function setCrmUiVersionAction(
     const ctx = { tenantId, systemId: sys.id };
     const before = (await getCrmSettings(ctx)).uiVersion;
     const after = (await setCrmSettingsKey(ctx, "uiVersion", uiVersion)).uiVersion;
+    // CRM C5.4-E ▸ L6-m6: เปิด CRM ใหม่ครั้งแรกในระบบที่ยังไม่มีเหตุผลที่แพ้ ⇒ ใส่ชุดกลาง (ไม่งั้นปิดดีลเป็น "แพ้" ไม่ได้) ·
+    //   มีแล้ว = ไม่ทำอะไร · ล้ม = WARN (สวิตช์สำเร็จแล้ว — เจ้าของร้านเพิ่มเหตุผลเองได้ที่หน้าตั้งค่า) ◂
+    if (after === 2 && before !== 2) {
+      await (await import("./templates")).ensureLostReasons({ tenantId, systemId: sys.id, actorUserId: auth.user.id }).catch((e) => {
+        console.warn(`[crm.switch] ใส่เหตุผลที่แพ้ชุดกลางไม่สำเร็จ — ${e instanceof Error ? e.name : "unknown"}`);
+      });
+    }
     await writeAudit({
       tenantId,
       actorId: auth.user.id,

@@ -17,7 +17,7 @@ import {
   type CompanyDealRow,
   type CompanyDocRow,
 } from "@/lib/modules/crm/companies-shared";
-import { AddContactButton, CompanyContactsTable, CompanyMenu } from "../_components/Company360Actions";
+import { AddContactButton, CompanyContactsTable, CompanyLifecycleCorrect, CompanyMenu } from "../_components/Company360Actions";
 // CRM C1.6 ▸ บล็อกกิจกรรม/โน้ต + ไฟล์แนบ (คอมโพเนนต์ฝั่งเซิร์ฟเวอร์ · ใบ C1.6 เป็นเจ้าของ) ◂
 import { CrmActivityBlock } from "@/components/crm/activity/CrmActivityBlock";
 import { CrmFilesBlock } from "@/components/crm/files/CrmFilesBlock";
@@ -61,6 +61,8 @@ export default async function Company360Page({
   // CRM uiVersion gate ▸ route นี้มีเฉพาะ CRM v2 — ระบบที่ยังไม่เปิด (settings.crm.uiVersion ≠ 2) = 404 ◂
   await requireCrmV2Page({ tenantId: tenantId, systemId: id });
   const actor = toMemberActor(auth.user.id, auth.active);
+  // CRM C5.5-fix2 ▸ it4 F1: คีย์อ่านบริษัทตรวจที่หน้าเองด้วย (เดิมพึ่ง companyWhere ว่างอย่างเดียว) ◂
+  if (!crmCan(actor, "crm.company.read")) notFound();
   const ctx = { tenantId, systemId: id, actorUserId: auth.user.id };
 
   const data = await getCompany360(ctx, actor, companyId).catch((e: unknown) => {
@@ -71,6 +73,13 @@ export default async function Company360Page({
 
   const c = data.company;
   const live = !c.archivedAt && !c.mergedIntoId;
+  // CRM C4.2-fix ▸ คีย์ของ server action แต่ละปุ่ม (companies-actions.ts) · เก็บถาวร = crm.company.delete (action + บริการ · r2 SF-3) ◂
+  const canUpdate = crmCan(actor, "crm.company.update");
+  const menuCan = {
+    update: canUpdate,
+    merge: crmCan(actor, "crm.company.merge"),
+    archive: crmCan(actor, "crm.company.delete"), // r2 SF-3: action + บริการตรวจ crm.company.delete
+  };
   const owners = live ? await ownerOptions(ctx, actor) : [];
   const mergedFlag = sp.merged === "1";
   const acctFlag = typeof sp.acct === "string" ? sp.acct : "";
@@ -116,7 +125,7 @@ export default async function Company360Page({
           </Link>
           <h1 className="min-w-0 truncate text-lg font-semibold sm:text-xl">บริษัท 360 — {c.name}</h1>
         </div>
-        {live && <CompanyMenu systemId={id} company={c} owners={owners} parent={data.parent} />}
+        {live && <CompanyMenu systemId={id} company={c} owners={owners} parent={data.parent} can={menuCan} />}
       </div>
 
       {mergedFlag && (
@@ -164,16 +173,20 @@ export default async function Company360Page({
                     <span className="rounded-md border px-1.5 py-0.5 text-xs font-semibold" style={{ color: "var(--color-accent)", borderColor: "var(--color-accent)" }}>
                       {COMPANY_LIFECYCLE_LABEL[c.lifecycleStage]}
                     </span>
-                    <span className="rounded-md border px-1.5 py-0.5 text-xs text-[color:var(--color-muted)]">คะแนน {c.score.toLocaleString("th-TH")}</span>
+                    {/* CRM C5.4-E r2 ▸ มติผู้คุมงาน: ผู้จัดการ/เจ้าของร้านแก้ "ลูกค้า" → "มีโอกาส" ได้ (ปิดดีลชนะผิด) ◂ */}
+                    {live && canUpdate && (actor.role === "OWNER" || actor.role === "MANAGER") && c.lifecycleStage === "CUSTOMER" && <CompanyLifecycleCorrect systemId={id} companyId={c.id} />}
+                    {/* CRM C5.4-E ▸ L6-M5: "คะแนนบริษัท" ยังไม่มีนิยาม/ตัวเขียน (ทุกบริษัท = 0 ตลอด) ⇒ ซ่อนไว้จนกว่าเจ้าของจะกำหนด (ขั้นของบริษัทคำนวณจากดีลแล้ว) ◂ */}
                   </div>
                   <span className="text-xs text-[color:var(--color-muted)]">{subline.join(" · ")}</span>
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <AddContactButton systemId={id} companyId={c.id} disabled={!live} />
-                <Link href={`/app/sys/${id}/crm/deals?companyId=${encodeURIComponent(c.id)}`} className="btn btn-primary text-sm" data-testid="company-new-deal-btn">
-                  เปิดดีลใหม่
-                </Link>
+                {canUpdate && <AddContactButton systemId={id} companyId={c.id} disabled={!live} />}
+                {crmCan(actor, "crm.deal.create") && (
+                  <Link href={`/app/sys/${id}/crm/deals?companyId=${encodeURIComponent(c.id)}`} className="btn btn-primary text-sm" data-testid="company-new-deal-btn">
+                    เปิดดีลใหม่
+                  </Link>
+                )}
               </div>
             </div>
             <div className="grid gap-3 border-t pt-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))" }} data-testid="company-360-kpis">
@@ -201,7 +214,7 @@ export default async function Company360Page({
             ))}
           </nav>
 
-          {(tab === "overview" || tab === "contacts") && <ContactsCard data={data} systemId={id} live={live} />}
+          {(tab === "overview" || tab === "contacts") && <ContactsCard data={data} systemId={id} live={live && canUpdate} />}
           {tab === "overview" && (
             <div className="grid gap-4 xl:grid-cols-2">
               <DealsCard deals={data.deals} open={openDeals} won={wonDeals} />
@@ -231,6 +244,12 @@ export default async function Company360Page({
                       </span>
                       <div className="flex min-w-0 flex-col">
                         <span className="break-words text-sm">{t.title}</span>
+                        {/* CRM C5.5-fix3b r2 ▸ รีวิว RV-1: ป้ายเดียวกับบล็อกกิจกรรม/หน้าเธรด — จดหมายขาเข้าฉบับนี้ระบบยืนยันไม่ได้ว่ามาจากที่อยู่ที่แสดงจริง ◂ */}
+                        {t.unverifiedFrom && (
+                          <span className="w-fit rounded-full border border-amber-500 px-2 py-0.5 text-[11px] font-medium text-amber-700" title="ระบบยืนยันไม่ได้ว่าจดหมายนี้มาจากที่อยู่ที่แสดงจริง — ตรวจกับลูกค้าทางช่องทางอื่นก่อนทำตามคำขอเรื่องเงินหรือบัญชี">
+                            ไม่ยืนยันผู้ส่ง
+                          </span>
+                        )}
                         <span className="text-xs text-[color:var(--color-muted)]">
                           {relativeThai(t.at, now)}
                           {t.contactName ? ` · ${t.contactName}` : ""}
@@ -321,7 +340,10 @@ function ContactsCard({ data, systemId, live }: { data: Company360; systemId: st
         ผู้ติดต่อ <span className="text-xs font-normal text-[color:var(--color-muted)]">{data.contacts.length.toLocaleString("th-TH")} คน</span>
       </h2>
       {data.contacts.length === 0 ? (
-        <p className="px-4 pb-4 text-sm text-[color:var(--color-muted)]">ยังไม่มีผู้ติดต่อในบริษัทนี้ — กด &quot;+ เพิ่มผู้ติดต่อ&quot; ด้านบน</p>
+        <p className="px-4 pb-4 text-sm text-[color:var(--color-muted)]">
+          {/* r2 (รีวิว addendum 2e): ชวนกดปุ่มเฉพาะเมื่อปุ่มนั้นอยู่จริง (live = บริษัทยังใช้งาน + มีคีย์ crm.company.update) ◂ */}
+          {live ? <>ยังไม่มีผู้ติดต่อในบริษัทนี้ — กด &quot;+ เพิ่มผู้ติดต่อ&quot; ด้านบน</> : "ยังไม่มีผู้ติดต่อในบริษัทนี้"}
+        </p>
       ) : (
         <CompanyContactsTable
           systemId={systemId}

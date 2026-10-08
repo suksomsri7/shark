@@ -27,6 +27,16 @@ export type CrmTrackLinkRow = {
   createdAtLabel: string;
 };
 
+/** CRM C6.1-LINKPOLICY ▸ นโยบายปลายทางของลิงก์ติดตาม (รูปเดียวกับ `LinkPolicyDto` ของ tracking.ts) ◂ */
+export type CrmTrackLinkPolicy = {
+  linkHosts: string[];
+  alwaysAllowed: string[];
+  blockedActiveLinks: number;
+  blockedLinkIds: string[];
+  blockedHosts: string[];
+  max: number;
+};
+
 export type CrmTrackStats = { sessions: number; consented: number; identified: number; webLeads: number };
 
 export type CrmTrackFormTargetRow = {
@@ -55,6 +65,8 @@ export type CrmTrackingPageData = {
   stats: CrmTrackStats;
   links: CrmTrackLinkRow[];
   limits: { retentionMin: number; retentionMax: number; maxDomains: number; consentTextMax: number };
+  /** CRM C6.1-LINKPOLICY ◂ */
+  linkPolicy: CrmTrackLinkPolicy;
 };
 
 export type CrmFormsPageData = {

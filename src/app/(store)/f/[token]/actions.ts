@@ -34,6 +34,8 @@ export async function submitFormAction(
     referrer?: string | null;
     utm?: Record<string, string> | null;
     turnstileToken?: string | null;
+    /** CRM C4.4-fix3 ▸ ตั๋วผู้เข้าชมที่ผนึกโดยเซิร์ฟเวอร์ (มาจากสคริปต์ติดตามของเว็บที่ฝังฟอร์ม) — ไม่ใช่รหัสผู้เข้าชม ◂ */
+    vt?: string | null;
   },
 ): Promise<PublicFormActionResult> {
   const h = await headers();
@@ -53,6 +55,9 @@ export async function submitFormAction(
       referrer: input?.referrer ?? null,
       utm: input?.utm ?? null,
       visitorId: visitorFromCookie(h.get("cookie")),
+      // CRM C4.4-fix3 ▸ (J3) ตั๋วทึบแสงที่เซิร์ฟเวอร์เป็นคนผนึก/ตรวจ/เผา (`tracking.redeemVisitorTicket`) — ค่าที่ไม่ได้ผนึก (เช่น
+      //   รหัสผู้เข้าชมดิบ) ผ่านไม่ได้ ⇒ กติกา "ไม่รับรหัสผู้เข้าชมจากผู้เรียก" (S1 · C2.6-S9.2) ยังอยู่ครบ · ใช้เมื่อทางคุกกี้ไม่ให้ผลเท่านั้น ◂
+      visitorTicket: typeof input?.vt === "string" ? input.vt.slice(0, 2048) : null,
     },
   );
   // honeypot ⇒ `{ ok: true, id: null }` (หน้าจอขึ้น "ขอบคุณ" เหมือนกัน — ไม่บอกบอตว่าโดนจับ)

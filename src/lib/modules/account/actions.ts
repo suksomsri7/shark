@@ -512,10 +512,11 @@ export async function suggestContactLinksAction(
   systemId: string,
   input: { phone?: string; email?: string; taxId?: string; partyId?: string },
 ): Promise<LinkSuggestions> {
-  const { auth, tenantId } = await loadAccountSystem(systemId);
+  const { auth, tenantId, userId } = await loadAccountSystem(systemId);
   assertAccountCan(auth, "account.contact.manage");
-  const { suggestLinks } = await import("./contact-links");
-  return suggestLinks({ tenantId, systemId }, input);
+  const { suggestLinks, crmViewerOfSession } = await import("./contact-links");
+  // C5.4 (L1-M3): แถว CRM ตามสิทธิ์ CRM ของคนนี้ (ไม่มีคีย์อ่าน/มองไม่เห็น = ไม่มีแถว)
+  return suggestLinks({ tenantId, systemId }, input, crmViewerOfSession(userId, auth.active));
 }
 
 /** ปุ่ม "ใช่ คนเดียวกัน" — ผูก Party เดียวกันให้ผู้ติดต่อบัญชี + สมาชิก/CRM */
@@ -525,8 +526,9 @@ export async function linkContactAction(
 ): Promise<LinkResult> {
   const { auth, tenantId, userId } = await loadAccountSystem(systemId);
   assertAccountCan(auth, "account.contact.manage");
-  const { linkContactTo } = await import("./contact-links");
-  const res = await linkContactTo({ tenantId, systemId }, input);
+  const { linkContactTo, crmViewerOfSession } = await import("./contact-links");
+  // C5.4 (L1-M3): ผูกฝั่ง CRM ต้องมีคีย์แก้ผู้ติดต่อ CRM + มองเห็นรายนั้น (ด่านของ CRM เอง ไม่ใช่คีย์บัญชี)
+  const res = await linkContactTo({ tenantId, systemId }, input, crmViewerOfSession(userId, auth.active));
   await writeAudit({
     tenantId,
     actorId: userId,
@@ -790,10 +792,12 @@ export async function loadContactProfileAction(
   contactId: string,
   opts?: { tab?: ProfileTab; docType?: AccountDocType | null; status?: AccountDocStatus | null; page?: number },
 ): Promise<ContactProfile | null> {
-  const { auth, tenantId } = await loadAccountSystem(systemId);
+  const { auth, tenantId, userId } = await loadAccountSystem(systemId);
   assertAccountCan(auth, "account.contact.manage");
   const { contactProfile } = await import("./contact-profile");
+  const { crmViewerOfSession } = await import("./contact-links");
   return contactProfile({ tenantId, systemId }, contactId, {
+    crmViewer: crmViewerOfSession(userId, auth.active),
     base: `/app/sys/${systemId}/account`,
     tab: opts?.tab,
     docType: opts?.docType ?? null,

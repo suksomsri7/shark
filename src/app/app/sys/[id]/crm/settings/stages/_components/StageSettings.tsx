@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { addStageAction, deleteStageAction, reorderStagesAction, updateStageAction } from "@/lib/modules/crm/pipelines-actions";
 import { DEAL_KIND_LABEL, STAGE_REQUIRABLE_LABEL, STAGE_REQUIRABLE_SYSTEM_KEYS, type DealKind, type PipelineDto, type StageDto } from "@/lib/modules/crm/deals-shared";
+import { FieldError, useFieldErrors } from "@/components/crm/form/field-errors";
 
 type Draft = { name: string; kind: DealKind; probability: string; staleDays: string; requireFields: string[]; requireLines: boolean; requireQuotation: boolean };
 const toDraft = (s: StageDto): Draft => ({ name: s.name, kind: s.kind, probability: String(s.probability), staleDays: s.staleDays === null ? "" : String(s.staleDays), requireFields: s.requireFields, requireLines: s.requireLines, requireQuotation: s.requireQuotation });
@@ -31,6 +32,8 @@ export function StageSettings({
   const [newName, setNewName] = useState("");
   const [newKind, setNewKind] = useState<DealKind>("OPEN");
   const [newProb, setNewProb] = useState("20");
+  // C4.3-fix part 2 ▸ ฟอร์มเพิ่มขั้น: ชื่อ/โอกาสปิดที่ใช้ไม่ได้บอกใต้ช่องตัวเอง + โฟกัสช่องแรก (st-new-msg เหลือไว้บอกผลสำเร็จ/ข้อความที่ไม่ใช่ของช่อง) ◂
+  const fe = useFieldErrors(["name", "probability"] as const);
   const requirable = [...STAGE_REQUIRABLE_SYSTEM_KEYS.map((k) => ({ key: k as string, label: STAGE_REQUIRABLE_LABEL[k] })), ...customFields];
 
   const set = (id: string, patch: Partial<Draft>) => setDrafts((d) => ({ ...d, [id]: { ...d[id]!, ...patch } }));
@@ -117,6 +120,12 @@ export function StageSettings({
                     ออกใบเสนอราคาแล้ว
                   </label>
                 </div>
+                {/* CRM C5.4-E ▸ L6-M2: key ที่ยังอยู่ในขั้นแต่ฟิลด์ถูกเก็บเข้าคลังแล้ว — ไม่บังคับจนกว่าจะกู้คืนฟิลด์ (บอกให้รู้ ไม่ใช่เงียบ) ◂ */}
+                {d.requireFields.some((k) => !requirable.some((f) => f.key === k)) && (
+                  <p className="text-xs text-[color:var(--color-muted)]" data-testid={`st-req-archived-${s.id}`}>
+                    ฟิลด์ที่ถูกเก็บเข้าคลังแล้ว ({d.requireFields.filter((k) => !requirable.some((f) => f.key === k)).join(", ")}) ยังไม่บังคับตอนนี้ — กู้คืนฟิลด์ที่หน้าตั้งค่าฟิลด์ของดีลเมื่อไร ขั้นนี้จะกลับมาบังคับเอง
+                  </p>
+                )}
               </fieldset>
               <div className="flex flex-wrap items-center gap-2">
                 <button
@@ -158,10 +167,22 @@ export function StageSettings({
         onSubmit={(e) => {
           e.preventDefault();
           const prob = Number(newProb);
-          if (!newName.trim()) return say("new", false, "ใส่ชื่อขั้นก่อน");
-          if (!Number.isInteger(prob) || prob < 0 || prob > 100) return say("new", false, "โอกาสปิดต้องเป็นจำนวนเต็ม 0–100");
-          void run("new", () => addStageAction(systemId, pipeline.id, { name: newName.trim(), kind: newKind, probability: prob }), "เพิ่มขั้นแล้ว").then((ok) => {
-            if (ok) setNewName("");
+          setMsgs(({ new: _drop, ...rest }) => rest);
+          if (
+            fe.show({
+              name: !newName.trim() ? "ใส่ชื่อขั้นก่อน" : undefined,
+              probability: !Number.isInteger(prob) || prob < 0 || prob > 100 ? "โอกาสปิดต้องเป็นจำนวนเต็ม 0–100" : undefined,
+            })
+          )
+            return;
+          setBusy(true);
+          void addStageAction(systemId, pipeline.id, { name: newName.trim(), kind: newKind, probability: prob }).then((r) => {
+            setBusy(false);
+            if (r.ok) {
+              setNewName("");
+              say("new", true, "เพิ่มขั้นแล้ว");
+              router.refresh();
+            } else if (!fe.show(r.fieldErrors)) say("new", false, r.error);
           });
         }}
         data-testid="st-new-form"
@@ -170,7 +191,17 @@ export function StageSettings({
         <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_120px_90px]">
           <label className="flex min-w-0 flex-col gap-1 text-xs text-[color:var(--color-muted)]">
             <span>ชื่อขั้น</span>
-            <input value={newName} onChange={(e) => setNewName(e.target.value)} className="input text-sm" data-testid="st-new-name" />
+            <input
+              {...fe.field("name")}
+              value={newName}
+              onChange={(e) => {
+                setNewName(e.target.value);
+                fe.clear("name");
+              }}
+              className="input text-sm"
+              data-testid="st-new-name"
+            />
+            <FieldError id={fe.errorId("name")} message={fe.errors.name} testid="st-new-name-error" />
           </label>
           <label className="flex flex-col gap-1 text-xs text-[color:var(--color-muted)]">
             <span>ชนิด</span>
@@ -184,7 +215,18 @@ export function StageSettings({
           </label>
           <label className="flex flex-col gap-1 text-xs text-[color:var(--color-muted)]">
             <span>โอกาสปิด %</span>
-            <input value={newProb} onChange={(e) => setNewProb(e.target.value)} inputMode="numeric" className="input text-sm" data-testid="st-new-prob" />
+            <input
+              {...fe.field("probability")}
+              value={newProb}
+              onChange={(e) => {
+                setNewProb(e.target.value);
+                fe.clear("probability");
+              }}
+              inputMode="numeric"
+              className="input text-sm"
+              data-testid="st-new-prob"
+            />
+            <FieldError id={fe.errorId("probability")} message={fe.errors.probability} testid="st-new-prob-error" />
           </label>
         </div>
         <div className="flex items-center justify-end gap-2">

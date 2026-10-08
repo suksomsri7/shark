@@ -1,0 +1,35 @@
+  ✅ [M3.4-S1.1] migration member_v2_h: MemberReview {customerId systemId unitId refType refId serviceId staffEmployeeId rating body photoFileIds status replyBody repliedById repliedAt kanbanCardId requestSentAt requestTokenHash submittedAt hiddenReason source} unique(tenantId,refType,refId) index(systemId,rating) · ReviewStatus 5 (มี REQUESTED) · KanbanCardSourceType +REVIEW · settings ปริยาย {askAfterHours 2, channel LINE, rewardPoints 50, escalateBelow 2, escalateAssigneeRole MANAGER, googleReviewUrl null} · escalateBelow 9 → throw ไทย · บอร์ดไม่มี → throw · thana → throw · set แล้วอ่านกลับ escalateBoardId
+  ✅ [M3.4-S2.1] requestReview(X · PosSale) → {reviewId, token ≥ 32, url /m/<slug>/review/<token>, sent true (LINE ผ่าน deps · X มี LINE+ยินยอม)} · MemberReview status REQUESTED rating 0 requestSentAt requestTokenHash = sha256(token) · MemberActivity REVIEW_REQUESTED
+  ✅ [M3.4-S2.2] ขอซ้ำ ref เดิม → {alreadyRequested true, reviewId เดิม} ไม่ส่ง LINE ซ้ำ (deps 0) · ลูกค้าไม่มี LINE identity → sent false แต่ยังได้ token (พนักงานส่งลิงก์เองได้)
+  ✅ [M3.4-S2.3] submitReview: rating 6 → throw ไทย · รูป 4 → throw · token ไม่มี → throw · ถูกต้อง (5 ดาว + 2 รูป) → {reviewId, pointsEarned 50, escalated false} · status NEW submittedAt body photoFileIds 2 · requestTokenHash ล้าง · event review.received {customerId, reviewId, rating 5, refType, refId}
+  ✅ [M3.4-S2.4] token ใช้ซ้ำ → throw ไทย (1 รีวิวต่อ ref) · rating ยัง 5 · แต้ม +50 ครั้งเดียว (ledger EARN refType REVIEW refId reviewId)
+  ✅ [M3.4-S3.1] settings.rewardPoints 0 → submit ได้แต่ pointsEarned 0 · ไม่มี ledger REVIEW
+  ✅ [M3.4-S3.2] settings.rewardPoints 30 → pointsEarned 30 · balance +30 · rating 3 (> escalateBelow 2) ไม่ escalate
+  ✅ [M3.4-S4.1] 2 ดาว (≤ escalateBelow 2) → escalated true · status ESCALATED · kanbanCardId → KanbanCard ในบอร์ด escalateBoardId sourceType REVIEW sourceKey review:<id> · title มี 'รีวิว 2 ดาว' + ชื่อ · description = ข้อความรีวิว · มอบหมายผู้จัดการ (role MANAGER · manager ป่าตอง)
+  ✅ [M3.4-S4.2] escalate ซ้ำ → การ์ดเดิม (sourceKey idempotent · created false) · kanbanCardId เท่าเดิม · ไม่มีการ์ดเพิ่มในบอร์ด
+  ✅ [M3.4-S4.3] ไม่มีบอร์ดใช้ได้ (escalateBoardId null + บอร์ดถูกเก็บ) → status ESCALATED kanbanCardId null + AppNotification แจ้งผู้จัดการ +1 (title ไทย) · ไม่ throw ให้ลูกค้า (submit สำเร็จ)
+  ✅ [M3.4-S5.1] reply: body ว่าง → throw ไทย · thana ไม่มี review.reply → throw · thana (มีสิทธิ์) ตอบรีวิว ESCALATED → REPLIED replyBody repliedById repliedAt · ส่ง LINE ให้ลูกค้า (deps 1) · event review.replied · ตอบซ้ำข้อความเดิม → idempotent (event 1 · LINE ไม่ส่งซ้ำ)
+  ✅ [M3.4-S5.2] unit scope: พนักงานกะตะ (มีสิทธิ์ตอบ) ตอบรีวิวของสาขาป่าตอง → throw ไม่พบ · hide(รีวิว 1 ดาว) → HIDDEN hiddenReason · reviewStats 30 วัน ไม่นับ HIDDEN/REQUESTED: count 4 (5,4,3,2) avg 3.5 · repliedPct 25 (1/4) · lowCount 1 (≤ 2) · distribution {5:1,4:1,3:1,2:1,1:0}
+  ✅ [M3.4-S5.3] listReviews: ไม่รวม REQUESTED (Y) และ HIDDEN → 4 · items มี customer{name, memberCode} rating body status kanbanCardNo (รีวิว 2 ดาว มี) · rating 2 → 1 · unreplied → 3 · includeHidden → 5 · thana (ป่าตอง) เห็นเฉพาะรีวิว unit ป่าตอง/ไม่ระบุ
+  ✅ [M3.4-S5.4] unhide → กลับ ESCALATED (ไม่มี reply) · reviewsForMember(X) = 1 รายการ 5 ดาว · shopSummaryFor360 {avg, count 5, distribution} · getMember360(X).counters.reviewAvg = 5 (ไม่ใช่ null อีกต่อไป) · MemberKpis.reviewAvg เป็นตัวเลข
+  ✅ [M3.4-S6.1] summarize (SHARK_AI_MOCK=1): ครั้งแรก cached false · {strengths, frequent, trend} เป็นข้อความ · generatedAt · เก็บใน AppSystem.settings.member.reviewSummary[เดือน] · ครั้งที่ 2 วันเดียวกัน → cached true ผลเดิม
+  ✅ [M3.4-S6.2] draftReply → {text} ไม่ว่าง (mock 'รับทราบ…') · prompt เป็นอังกฤษ + ไม่ส่งชื่อ/เบอร์ลูกค้า (โค้ดไม่ใส่ customer.name/phone ลง prompt · มี 'English' หรือ prompt ภาษาอังกฤษ) · summarize {force} → cached false ใหม่
+  ✅ [M3.4-S7.1] review.received / review.replied (+ review.requested) ลง 3 ทะเบียน + consumer · drain แล้ว DONE ทั้งหมด
+  ✅ [M3.4-S7.2] journey action REQUEST_REVIEW เรียก reviews.requestReview จริง (ไม่ใช่ stub MemberActivity) · facade member/index.ts export requestReview/submitReview/reply/hide/unhide/escalate/listReviews/reviewStats/reviewsForMember/shopSummaryFor360/summarize/draftReply/getReviewSettings/setReviewSettings · reviews.ts import kanban ผ่าน @/lib/modules/kanban/links เท่านั้น (เส้น member→kanban) · ไม่มี any
+  ✅ [M3.4-S8.1] หน้า /member/reviews + LIFF /m/[slug]/review/[token] มีจริง · inbox requireTenant + review.read (read-โดยนัย) · LIFF ไม่ต้อง session (token) · actions 'use server' gate review.reply/settings.manage · testid 18 · ป้ายภาพ 23/08 ครบ · nav มีทางเข้า reviews · ไม่มีอีโมจิ/hex (ดาวใช้ MemberIcon/SVG)
+  ❌ [M3.4-S8.2] ภาพ 23: reviews-owner desktop+mobile 200 ไม่ล้น (KPI 4 · ตัวกรอง · รายการ ≥ 3 รวมใบ 2 ดาวที่มีป้ายเปิดการ์ด · AI สรุป · ตั้งค่า) · ภาพ 08 ขวา: member-reviews-owner 200 (แท็บรีวิวใน 360 · กล่องรีวิวร้าน) — exp 200 ×3 | act undefined/undefined/undefined missing=undefined
+  ✅ [M3.4-S8.3] 🔴 parity ภาพ 23 + 08 (ขวา) — Fable ตรวจด้วยตา · wo-notes/member-M3.4.md มี 'PARITY: ผ่าน'
+  ❌ [M3.4-S9.1] LIFF: m-review (--user customer:<สมาชิก 1> · token จาก TMP34) mobile 200 (ดาว 5 · ข้อความ · รูป ≤ 3 · ปุ่มส่ง) · m-review-thanks 200 หลังส่ง (ขอบคุณ + แต้มที่ได้) — exp 200 ×2 | act undefined/undefined missing=undefined
+  ❌ [M3.4-S9.2] LIFF token ใช้แล้ว (หลังถ่าย thanks) เปิดซ้ำ → หน้าแจ้ง 'รีวิวไปแล้ว' (m-review-done) ไม่ crash · token มั่ว → 404/ข้อความไทย (m-review-invalid) — exp ปลอดภัย | act undefined invalid=undefined
+
+🔴 M3.4: 20/23
+JSON_SUMMARY {"total":23,"passed":20,"findings":[{"id":"M3.4-S8.2","sev":"CRITICAL"},{"id":"M3.4-S9.1","sev":"CRITICAL"},{"id":"M3.4-S9.2","sev":"MAJOR"}]}
+(node:1483156) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)

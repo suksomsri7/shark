@@ -48,6 +48,13 @@ export type ListActivityResult = {
 
 const MAX_TAKE = 100;
 
+/**
+ * C5.4 (L1-m5): โมดูลที่เป็น **ข้อมูลภายในร้าน** — ไม่แสดงในไทม์ไลน์ที่ลูกค้าเปิดดูเอง (`/m/[slug]/history` · actor CUSTOMER)
+ * แถว CRM เขียนชื่อดีล · มูลค่า · ชื่อขั้นการขาย · ชื่อระเบียนกำหนดเอง (สะพาน `onCrmDealWon` · crm-bridges · objects) — เป็นข้อมูลการขาย
+ * ของร้าน ไม่ใช่ประวัติของลูกค้า (พอร์ทัลบริษัทก็ซ่อนดีลจากลูกค้าเหมือนกัน `showDeals=false`) · พนักงานยังเห็นครบในหน้า 360 เหมือนเดิม
+ */
+export const STAFF_ONLY_MODULES: readonly string[] = ["crm", "crm.object"];
+
 function objectOf(v: unknown): Record<string, unknown> | null {
   return typeof v === "object" && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
 }
@@ -77,11 +84,13 @@ export async function listActivity(
   if (opts.from) createdAt.gte = opts.from;
   if (opts.to) createdAt.lte = opts.to;
 
+  const customerView = actor.role === "CUSTOMER";
+  if (customerView && opts.module && STAFF_ONLY_MODULES.includes(opts.module)) return { items: [], nextCursor: null };
   const rows = await prisma.memberActivity.findMany({
     where: {
       tenantId: ctx.tenantId,
       customerId,
-      ...(opts.module ? { module: opts.module } : {}),
+      ...(opts.module ? { module: opts.module } : customerView ? { module: { notIn: [...STAFF_ONLY_MODULES] } } : {}),
       ...(opts.type ? { type: opts.type } : {}),
       ...(opts.unitId ? { unitId: opts.unitId } : {}),
       ...(createdAt.gte || createdAt.lte ? { createdAt } : {}),

@@ -1,0 +1,39 @@
+  ✅ [B-OWNER] OWNER: briefFor true (want true) · visibleCustomerIds true
+  ✅ [B-MANAGER no keys] MANAGER no keys: briefFor true (want true) · visibleCustomerIds true
+  ✅ [B-STAFF stamp-only] STAFF stamp-only: briefFor true (want true) · visibleCustomerIds true
+  ✅ [B-STAFF promo.issue-only] STAFF promo.issue-only: briefFor true (want true) · visibleCustomerIds true
+  ✅ [B-STAFF member.*] STAFF member.*: briefFor true (want true) · visibleCustomerIds true
+  ✅ [B-STAFF [UB] member read (home A)] STAFF [UB] member read (home A): briefFor false (want false) · visibleCustomerIds false
+  ✅ [B-STAFF crm-only] STAFF crm-only: briefFor false (want false) · visibleCustomerIds false
+  ✅ [B-STAFF no keys] STAFF no keys: briefFor false (want false) · visibleCustomerIds false
+  ✅ [B-CUSTOMER self] CUSTOMER self: briefFor true (want true) · visibleCustomerIds true
+  ✅ [B-CUSTOMER other] CUSTOMER other: briefFor false (want false) · visibleCustomerIds false
+  ✅ [B-member key member.customer.read] member key member.customer.read: briefFor true (want true) · visibleCustomerIds true
+  ✅ [B-member key member.loyalty.stamp] member key member.loyalty.stamp: briefFor true (want true) · visibleCustomerIds true
+  ✅ [B-key account-only] key account-only: briefFor false (want false) · visibleCustomerIds false
+  ✅ [B-voucher-gate-implies-read] actors passing voucher.issue's gate but failing canReadMember: []
+  ✅ [Q-360-fixed] 360 member block null · contact.memberCustomerId null (round-3 fix)
+  ✅ [Q4-consent] consent block (ruled rule: source/at null · granted+memberLinked kept) linked {"memberLinked":true,"ch0":{"channel":"LINE","label":"ไลน์","granted":true,"source":null,"at":null}} · unlinked {"memberLinked":false,"ch0":{"channel":"LINE","label":"ไลน์","granted":null,"source":null,"at":null}}
+  ℹ️  Q4 residual (owner question): memberLinked linked=true vs unlinked=false
+  ✅ [Q5-list-dto] CRM list DTO memberCustomerId linked null vs unlinked null (web list renders badge "สมาชิก" from it)  [red = Q5]
+  ✅ [Q5-csv] CSV row linked "คุณคิวห้า qc-cf19r3-wvutuuxf,,0866660001,,,,ผู้สนใจ (lead),ใหม่,QC blind qc-cf19r3-wvutuuxf,,เพิ่มใน CRM,,,2026-10-02\r" · unlinked "คุณคิวห้า qc-cf19r3-wvutuuxf,,0866660001,,,,ผู้สนใจ (lead),ใหม่,QC blind qc-cf19r3-wvutuuxf,,เพิ่มใน CRM,,,2026-10-02\r"  [red = Q5]
+  ℹ️  Q · member-module verdict for this viewer: visibleCustomerIds 0
+  ✅ [A-member OWNER] member OWNER: links.member true (want true)
+  ✅ [A-member STAFF acc+member read] member STAFF acc+member read: links.member true (want true)
+  ✅ [A-member STAFF acc only] member STAFF acc only: links.member false (want false)
+  ✅ [A-apiKey acc only] apiKey acc only: links.member false (want false)
+  ✅ [A-apiKey acc+member.customer.read] apiKey acc+member.customer.read: links.member true (want true)
+  ✅ [A-system scheduled-task] system scheduled-task: links.member "ERR ผู้ช่วยไม่มีสิทธิ์อ่านข้อมูลส่วนนี้" (want "ERR-or-false")
+  ✅ [A-forged-system] hand-written system actor: "ERR ไม่ทราบว่าใครเป็นผู้ใช้เครื่องมือนี้ จึงยังทำรายการให้ไม่ได้"
+  ✅ [A-args-smuggle] blind STAFF passing an OWNER 'asker' in tool args: "ERR ข้อมูลที่ส่งมาไม่ครบหรือผิดรูปแบบ — Unrecognized key: \"asker"
+  ✅ [A-runAccountTool-args] runAccountTool with asker inside args (no opts.asker): mode error {"mode":"error","error":"ข้อมูลที่ส่งมาไม่ครบหรือผิดรูปแบบ — Unrecognized key: \"asker\""}
+  ✅ [F-injection-shaped-id] fromPartyId "cmuqze83c001759kzk1ftzt5d' OR '1'='1" moved 0 rows
+  ✅ [F-wrong-tenant-arg] called with tenant T2: moved 1 (only T2's own row may move)
+  ✅ [F-moves] moved 2: active→keep true · MERGED row stays on the dropped Party true
+  ✅ [F-per-system] system M2: the survivor's only member is CLOSED ⇒ the dropped ACTIVE member moves true
+  ✅ [F-tenant-isolation] other tenant's row with the same partyId untouched true
+  ✅ [F-crm-ref] CRM contact.memberCustomerId still → same member row
+  ℹ️  F · survivor card now: {"id":"cmuqze83v001959kz4vfn85px","memberCode":"M-R3002","name":"m2 qc-cf19r3-wvutuuxf","tier":"GOLD","totalSpentSatang":0,"visitCount":0} (oldest row on the survivor Party after the move; the MERGED row moved along with it)
+  ✅ [CLEAN-tenants] rows left=0 over 2 tenants
+  ✅ [CLEAN-users] users left 0
+JSON_SUMMARY {"total":35,"passed":35,"findings":[]}

@@ -1,0 +1,4634 @@
+{
+  "at": "2026-10-07T23:14:00.833Z",
+  "users": [
+    "owner",
+    "manager",
+    "nok",
+    "thana",
+    "customer"
+  ],
+  "devices": [
+    "desktop",
+    "mobile"
+  ],
+  "pageFilter": "/deals",
+  "total": 288,
+  "passed": 288,
+  "dead": [],
+  "wrongExpect": [],
+  "hiddenLeak": [],
+  "vacuous": [],
+  "disabled": [],
+  "consoleErrors": [],
+  "overflow": [],
+  "picks": [
+    {
+      "user": "owner",
+      "entity": "deal",
+      "id": "cmuyef7ps00e1v5kze5t0qxhn",
+      "why": "ของกลาง (shared pick) · ผ่าน dealWhere() ของ product · owner=thana team=cmuyeerz30002v5kzawz2jb5b"
+    },
+    {
+      "user": "owner",
+      "entity": "contact",
+      "id": "cmuyeesmi001tv5kzqqrzt4wo",
+      "why": "ของกลาง (shared pick) · ผ่าน contactWhere() ของ product · owner=thana team=cmuyeerz30002v5kzawz2jb5b"
+    },
+    {
+      "user": "owner",
+      "entity": "company",
+      "id": "cmuyees7l000qv5kztjyrykgo",
+      "why": "ของกลาง (shared pick) · ผ่าน companyWhere() ของ product · owner=thana team=cmuyeerz30002v5kzawz2jb5b"
+    },
+    {
+      "user": "manager",
+      "entity": "deal",
+      "id": "cmuyef7ps00e1v5kze5t0qxhn",
+      "why": "ของกลาง (shared pick) · ผ่าน dealWhere() ของ product · owner=thana team=cmuyeerz30002v5kzawz2jb5b"
+    },
+    {
+      "user": "manager",
+      "entity": "contact",
+      "id": "cmuyeesmi001tv5kzqqrzt4wo",
+      "why": "ของกลาง (shared pick) · ผ่าน contactWhere() ของ product · owner=thana team=cmuyeerz30002v5kzawz2jb5b"
+    },
+    {
+      "user": "manager",
+      "entity": "company",
+      "id": "cmuyees7l000qv5kztjyrykgo",
+      "why": "ของกลาง (shared pick) · ผ่าน companyWhere() ของ product · owner=thana team=cmuyeerz30002v5kzawz2jb5b"
+    },
+    {
+      "user": "nok",
+      "entity": "deal",
+      "id": "cmuyefbav00gtv5kzj6ukodzk",
+      "why": "ของตัวเอง (ownerUserId = ผู้ใช้) · ผ่าน dealWhere() ของ product · owner=nok team=cmuyees0e0006v5kz0ttc8zc0"
+    },
+    {
+      "user": "nok",
+      "entity": "contact",
+      "id": "cmuyeez6t007dv5kz8isnqhih",
+      "why": "ของตัวเอง (ownerUserId = ผู้ใช้) · ผ่าน contactWhere() ของ product · owner=nok team=cmuyees0e0006v5kz0ttc8zc0"
+    },
+    {
+      "user": "nok",
+      "entity": "company",
+      "id": "cmuyeesd9001av5kzsgu5v9wk",
+      "why": "ไม่มีคีย์ crm.company.read (companyWhere ว่าง) ⇒ ใช้ของตัวเอง owner=nok — หน้าต้อง 404 ตามคีย์ (registry hiddenFor)"
+    },
+    {
+      "user": "thana",
+      "entity": "deal",
+      "id": "cmuyef7ps00e1v5kze5t0qxhn",
+      "why": "ของตัวเอง (ownerUserId = ผู้ใช้) · ผ่าน dealWhere() ของ product · owner=thana team=cmuyeerz30002v5kzawz2jb5b"
+    },
+    {
+      "user": "thana",
+      "entity": "contact",
+      "id": "cmuyeesmi001tv5kzqqrzt4wo",
+      "why": "ของตัวเอง (ownerUserId = ผู้ใช้) · ผ่าน contactWhere() ของ product · owner=thana team=cmuyeerz30002v5kzawz2jb5b"
+    },
+    {
+      "user": "thana",
+      "entity": "company",
+      "id": "cmuyees7l000qv5kztjyrykgo",
+      "why": "ไม่มีคีย์ crm.company.read (companyWhere ว่าง) ⇒ ใช้ของตัวเอง owner=thana — หน้าต้อง 404 ตามคีย์ (registry hiddenFor)"
+    }
+  ],
+  "pageStatus": [
+    {
+      "page": "/deals",
+      "path": "/app/sys/cmuy1gmlm0000jikz45h7xblz/crm/deals",
+      "user": "owner",
+      "device": "desktop",
+      "status": 200,
+      "rows": 23,
+      "hiddenRows": 0
+    },
+    {
+      "page": "/deals",
+      "path": "/app/sys/cmuy1gmlm0000jikz45h7xblz/crm/deals",
+      "user": "owner",
+      "device": "mobile",
+      "status": 200,
+      "rows": 24,
+      "hiddenRows": 0
+    },
+    {
+      "page": "/deals",
+      "path": "/app/sys/cmuy1gmlm0000jikz45h7xblz/crm/deals?view=table",
+      "user": "owner",
+      "device": "desktop",
+      "status": 200,
+      "rows": 16,
+      "hiddenRows": 0
+    },
+    {
+      "page": "/deals",
+      "path": "/app/sys/cmuy1gmlm0000jikz45h7xblz/crm/deals?view=table",
+      "user": "owner",
+      "device": "mobile",
+      "status": 200,
+      "rows": 15,
+      "hiddenRows": 0
+    },
+    {
+      "page": "/deals",
+      "path": "/app/sys/cmuy1gmlm0000jikz45h7xblz/crm/deals?q=qc-btn-view",
+      "user": "owner",
+      "device": "desktop",
+      "status": 200,
+      "rows": 1,
+      "hiddenRows": 0
+    },
+    {
+      "page": "/deals",
+      "path": "/app/sys/cmuy1gmlm0000jikz45h7xblz/crm/deals?q=qc-btn-view",
+      "user": "owner",
+      "device": "mobile",
+      "status": 200,
+      "rows": 1,
+      "hiddenRows": 0
+    },
+    {
+      "page": "/deals",
+      "path": "/app/sys/cmuy1gmlm0000jikz45h7xblz/crm/deals?q=qc-btn-none",
+      "user": "owner",
+      "device": "desktop",
+      "status": 200,
+      "rows": 1,
+      "hiddenRows": 0
+    },
+    {
+      "page": "/deals",
+      "path": "/app/sys/cmuy1gmlm0000jikz45h7xblz/crm/deals?q=qc-btn-none",
+      "user": "owner",
+      "device": "mobile",
+      "status": 200,
+      "rows": 1,
+      "hiddenRows": 0
+    },
+    {
+      "page": "/deals",
+      "path": "/app/sys/cmuy1gmlm0000jikz45h7xblz/crm/deals?view=forecast",
+      "user": "owner",
+      "device": "desktop",
+      "status": 200,
+      "rows": 3,
+      "hiddenRows": 0
+    },
+    {
+      "page": "/deals",
+      "path": "/app/sys/cmuy1gmlm0000jikz45h7xblz/crm/deals?view=forecast",
+      "user": "owner",
+      "device": "mobile",
+      "status": 200,
+      "rows": 3,
+      "hiddenRows": 0
+    },
+    {
+      "page": "/deals",
+      "path": "/app/sys/cmuy1gmlm0000jikz45h7xblz/crm/deals",
+      "user": "manager",
+      "device": "desktop",
+      "status": 200,
+      "rows": 23,
+      "hiddenRows": 1
+    },
+    {
+      "page": "/deals",
+      "path": "/app/sys/cmuy1gmlm0000jikz45h7xblz/crm/deals",
+      "user": "manager",
+      "device": "mobile",
+      "status": 200,
+      "rows": 24,
+      "hiddenRows": 1
+    },
+    {
+      "page": "/deals",
+      "path": "/app/sys/cmuy1gmlm0000jikz45h7xblz/crm/deals?view=table",
+      "user": "manager",
+      "device": "desktop",
+      "status": 200,
+      "rows": 16,
+      "hiddenRows": 0
+    },
+    {
+      "page": "/deals",
+      "path": "/app/sys/cmuy1gmlm0000jikz45h7xblz/crm/deals?view=table",
+      "user": "manager",
+      "device": "mobile",
+      "status": 200,
+      "rows": 15,
+      "hiddenRows": 0
+    },
+    {
+      "page": "/deals",
+      "path": "/app/sys/cmuy1gmlm0000jikz45h7xblz/crm/deals?q=qc-btn-view",
+      "user": "manager",
+      "device": "desktop",
+      "status": 200,
+      "rows": 1,
+      "hiddenRows": 0
+    },
+    {
+      "page": "/deals",
+      "path": "/app/sys/cmuy1gmlm0000jikz45h7xblz/crm/deals?q=qc-btn-view",
+      "user": "manager",
+      "device": "mobile",
+      "status": 200,
+      "rows": 1,
+      "hiddenRows": 0
+    },
+    {
+      "page": "/deals",
+      "path": "/app/sys/cmuy1gmlm0000jikz45h7xblz/crm/deals?q=qc-btn-none",
+      "user": "manager",
+      "device": "desktop",
+      "status": 200,
+      "rows": 1,
+      "hiddenRows": 0
+    },
+    {
+      "page": "/deals",
+      "path": "/app/sys/cmuy1gmlm0000jikz45h7xblz/crm/deals?q=qc-btn-none",
+      "user": "manager",
+      "device": "mobile",
+      "status": 200,
+      "rows": 1,
+      "hiddenRows": 0
+    },
+    {
+      "page": "/deals",
+      "path": "/app/sys/cmuy1gmlm0000jikz45h7xblz/crm/deals?view=forecast",
+      "user": "manager",
+      "device": "desktop",
+      "status": 200,
+      "rows": 3,
+      "hiddenRows": 0
+    },
+    {
+      "page": "/deals",
+      "path": "/app/sys/cmuy1gmlm0000jikz45h7xblz/crm/deals?view=forecast",
+      "user": "manager",
+      "device": "mobile",
+      "status": 200,
+      "rows": 3,
+      "hiddenRows": 0
+    },
+    {
+      "page": "/deals",
+      "path": "/app/sys/cmuy1gmlm0000jikz45h7xblz/crm/deals",
+      "user": "nok",
+      "device": "desktop",
+      "status": 200,
+      "rows": 23,
+      "hiddenRows": 1
+    },
+    {
+      "page": "/deals",
+      "path": "/app/sys/cmuy1gmlm0000jikz45h7xblz/crm/deals",
+      "user": "nok",
+      "device": "mobile",
+      "status": 200,
+      "rows": 24,
+      "hiddenRows": 1
+    },
+    {
+      "page": "/deals",
+      "path": "/app/sys/cmuy1gmlm0000jikz45h7xblz/crm/deals?view=table",
+      "user": "nok",
+      "device": "desktop",
+      "status": 200,
+      "rows": 16,
+      "hiddenRows": 5
+    },
+    {
+      "page": "/deals",
+      "path": "/app/sys/cmuy1gmlm0000jikz45h7xblz/crm/deals?view=table",
+      "user": "nok",
+      "device": "mobile",
+      "status": 200,
+      "rows": 15,
+      "hiddenRows": 5
+    },
+    {
+      "page": "/deals",
+      "path": "/app/sys/cmuy1gmlm0000jikz45h7xblz/crm/deals?q=qc-btn-view",
+      "user": "nok",
+      "device": "desktop",
+      "status": 200,
+      "rows": 1,
+      "hiddenRows": 0
+    },
+    {
+      "page": "/deals",
+      "path": "/app/sys/cmuy1gmlm0000jikz45h7xblz/crm/deals?q=qc-btn-view",
+      "user": "nok",
+      "device": "mobile",
+      "status": 200,
+      "rows": 1,
+      "hiddenRows": 0
+    },
+    {
+      "page": "/deals",
+      "path": "/app/sys/cmuy1gmlm0000jikz45h7xblz/crm/deals?q=qc-btn-none",
+      "user": "nok",
+      "device": "desktop",
+      "status": 200,
+      "rows": 1,
+      "hiddenRows": 0
+    },
+    {
+      "page": "/deals",
+      "path": "/app/sys/cmuy1gmlm0000jikz45h7xblz/crm/deals?q=qc-btn-none",
+      "user": "nok",
+      "device": "mobile",
+      "status": 200,
+      "rows": 1,
+      "hiddenRows": 0
+    },
+    {
+      "page": "/deals",
+      "path": "/app/sys/cmuy1gmlm0000jikz45h7xblz/crm/deals?view=forecast",
+      "user": "nok",
+      "device": "desktop",
+      "status": 200,
+      "rows": 3,
+      "hiddenRows": 0
+    },
+    {
+      "page": "/deals",
+      "path": "/app/sys/cmuy1gmlm0000jikz45h7xblz/crm/deals?view=forecast",
+      "user": "nok",
+      "device": "mobile",
+      "status": 200,
+      "rows": 3,
+      "hiddenRows": 0
+    },
+    {
+      "page": "/deals",
+      "path": "/app/sys/cmuy1gmlm0000jikz45h7xblz/crm/deals",
+      "user": "thana",
+      "device": "desktop",
+      "status": 200,
+      "rows": 23,
+      "hiddenRows": 1
+    },
+    {
+      "page": "/deals",
+      "path": "/app/sys/cmuy1gmlm0000jikz45h7xblz/crm/deals",
+      "user": "thana",
+      "device": "mobile",
+      "status": 200,
+      "rows": 24,
+      "hiddenRows": 1
+    },
+    {
+      "page": "/deals",
+      "path": "/app/sys/cmuy1gmlm0000jikz45h7xblz/crm/deals?view=table",
+      "user": "thana",
+      "device": "desktop",
+      "status": 200,
+      "rows": 16,
+      "hiddenRows": 5
+    },
+    {
+      "page": "/deals",
+      "path": "/app/sys/cmuy1gmlm0000jikz45h7xblz/crm/deals?view=table",
+      "user": "thana",
+      "device": "mobile",
+      "status": 200,
+      "rows": 15,
+      "hiddenRows": 5
+    },
+    {
+      "page": "/deals",
+      "path": "/app/sys/cmuy1gmlm0000jikz45h7xblz/crm/deals?q=qc-btn-view",
+      "user": "thana",
+      "device": "desktop",
+      "status": 200,
+      "rows": 1,
+      "hiddenRows": 0
+    },
+    {
+      "page": "/deals",
+      "path": "/app/sys/cmuy1gmlm0000jikz45h7xblz/crm/deals?q=qc-btn-view",
+      "user": "thana",
+      "device": "mobile",
+      "status": 200,
+      "rows": 1,
+      "hiddenRows": 0
+    },
+    {
+      "page": "/deals",
+      "path": "/app/sys/cmuy1gmlm0000jikz45h7xblz/crm/deals?q=qc-btn-none",
+      "user": "thana",
+      "device": "desktop",
+      "status": 200,
+      "rows": 1,
+      "hiddenRows": 0
+    },
+    {
+      "page": "/deals",
+      "path": "/app/sys/cmuy1gmlm0000jikz45h7xblz/crm/deals?q=qc-btn-none",
+      "user": "thana",
+      "device": "mobile",
+      "status": 200,
+      "rows": 1,
+      "hiddenRows": 0
+    },
+    {
+      "page": "/deals",
+      "path": "/app/sys/cmuy1gmlm0000jikz45h7xblz/crm/deals?view=forecast",
+      "user": "thana",
+      "device": "desktop",
+      "status": 200,
+      "rows": 3,
+      "hiddenRows": 0
+    },
+    {
+      "page": "/deals",
+      "path": "/app/sys/cmuy1gmlm0000jikz45h7xblz/crm/deals?view=forecast",
+      "user": "thana",
+      "device": "mobile",
+      "status": 200,
+      "rows": 3,
+      "hiddenRows": 0
+    }
+  ],
+  "skippedNeeds": [
+    {
+      "page": "/deals",
+      "testid": "deals-empty-create-pipeline",
+      "user": "owner",
+      "device": "desktop",
+      "needs": "ระบบ CRM ที่ยังไม่มี pipeline เลย (หน้าว่าง) — ซีดมี 2 pipeline",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": "R4-2G: R4 ruling 2 — ACCEPTABLE GAP (LOW)"
+    },
+    {
+      "page": "/deals",
+      "testid": "deals-filter-f-*",
+      "user": "owner",
+      "device": "desktop",
+      "needs": "ฟิลด์กำหนดเองของดีลที่ตั้งให้กรองได้ — ขึ้นกับซีด",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": "R5-REC: R5 — RECOMMEND cheap fixture (not blocking · C4.2-fix)"
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-column-more-*",
+      "user": "owner",
+      "device": "desktop",
+      "needs": "ขั้นที่มีดีลมากกว่าจำนวนการ์ดที่บอร์ดแสดงต่อคอลัมน์ — ขึ้นกับจำนวนดีลต่อขั้นในซีด",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": "R5-ACC: R5 — ACCEPT seed / AI-data gap (C6)"
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-req-field-*",
+      "user": "owner",
+      "device": "desktop",
+      "needs": "ขั้นที่บังคับกรอกช่องก่อนย้าย (requiredFields ของขั้น) + การย้ายดีลเข้าไปขั้นนั้น — ซีดไม่ตั้งขั้นบังคับช่อง",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": "R5-REC: R5 — RECOMMEND cheap fixture (not blocking · C4.2-fix)"
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-req-open-link",
+      "user": "owner",
+      "device": "desktop",
+      "needs": "ขั้นที่บังคับกรอกช่องก่อนย้าย (requiredFields ของขั้น) + การย้ายดีลเข้าไปขั้นนั้น — ซีดไม่ตั้งขั้นบังคับช่อง",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": "R5-REC: R5 — RECOMMEND cheap fixture (not blocking · C4.2-fix)"
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-req-cancel",
+      "user": "owner",
+      "device": "desktop",
+      "needs": "ขั้นที่บังคับกรอกช่องก่อนย้าย (requiredFields ของขั้น) + การย้ายดีลเข้าไปขั้นนั้น — ซีดไม่ตั้งขั้นบังคับช่อง",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": "R5-REC: R5 — RECOMMEND cheap fixture (not blocking · C4.2-fix)"
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-move-toast-close",
+      "user": "owner",
+      "device": "desktop",
+      "needs": "ข้อความหลังย้ายขั้นสำเร็จ (โผล่ชั่วคราวหลังลากการ์ด — แถวลากทำให้หน้าโหลดใหม่ก่อนถึงแถวนี้)",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": "R5-ACC: R5 — ACCEPT seed / AI-data gap (C6)"
+    },
+    {
+      "page": "/deals",
+      "testid": "deals-empty-create-pipeline",
+      "user": "owner",
+      "device": "mobile",
+      "needs": "ระบบ CRM ที่ยังไม่มี pipeline เลย (หน้าว่าง) — ซีดมี 2 pipeline",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": "R4-2G: R4 ruling 2 — ACCEPTABLE GAP (LOW)"
+    },
+    {
+      "page": "/deals",
+      "testid": "deals-filter-f-*",
+      "user": "owner",
+      "device": "mobile",
+      "needs": "ฟิลด์กำหนดเองของดีลที่ตั้งให้กรองได้ — ขึ้นกับซีด",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": "R5-REC: R5 — RECOMMEND cheap fixture (not blocking · C4.2-fix)"
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-column-more-*",
+      "user": "owner",
+      "device": "mobile",
+      "needs": "ขั้นที่มีดีลมากกว่าจำนวนการ์ดที่บอร์ดแสดงต่อคอลัมน์ — ขึ้นกับจำนวนดีลต่อขั้นในซีด",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": "R5-ACC: R5 — ACCEPT seed / AI-data gap (C6)"
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-req-field-*",
+      "user": "owner",
+      "device": "mobile",
+      "needs": "ขั้นที่บังคับกรอกช่องก่อนย้าย (requiredFields ของขั้น) + การย้ายดีลเข้าไปขั้นนั้น — ซีดไม่ตั้งขั้นบังคับช่อง",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": "R5-REC: R5 — RECOMMEND cheap fixture (not blocking · C4.2-fix)"
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-req-open-link",
+      "user": "owner",
+      "device": "mobile",
+      "needs": "ขั้นที่บังคับกรอกช่องก่อนย้าย (requiredFields ของขั้น) + การย้ายดีลเข้าไปขั้นนั้น — ซีดไม่ตั้งขั้นบังคับช่อง",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": "R5-REC: R5 — RECOMMEND cheap fixture (not blocking · C4.2-fix)"
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-req-cancel",
+      "user": "owner",
+      "device": "mobile",
+      "needs": "ขั้นที่บังคับกรอกช่องก่อนย้าย (requiredFields ของขั้น) + การย้ายดีลเข้าไปขั้นนั้น — ซีดไม่ตั้งขั้นบังคับช่อง",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": "R5-REC: R5 — RECOMMEND cheap fixture (not blocking · C4.2-fix)"
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-move-toast-close",
+      "user": "owner",
+      "device": "mobile",
+      "needs": "ข้อความหลังย้ายขั้นสำเร็จ (โผล่ชั่วคราวหลังลากการ์ด — แถวลากทำให้หน้าโหลดใหม่ก่อนถึงแถวนี้)",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": "R5-ACC: R5 — ACCEPT seed / AI-data gap (C6)"
+    },
+    {
+      "page": "/deals",
+      "testid": "deals-first-page",
+      "user": "owner",
+      "device": "desktop",
+      "needs": "ดีลที่มองเห็นได้ > 50 ดีลในมุมมองตาราง (ขนาดหน้า 50) — ซีดมี 60: owner/manager ถึง · nok/thana อาจไม่ถึง",
+      "detail": "ตัวเปิด deals-next-page หาไม่พบ/มองไม่เห็น (ลำดับ deals-next-page)",
+      "shot": "/root/projects/shark-crm-c310/.qc-shots/crm/buttons-c310/5a-all/fail/_deals~deals-first-page~owner~desktop.png",
+      "probe": "false",
+      "waiver": null
+    },
+    {
+      "page": "/deals",
+      "testid": "deals-next-page",
+      "user": "owner",
+      "device": "desktop",
+      "needs": "ดีลที่มองเห็นได้ > 50 ดีลในมุมมองตาราง (ขนาดหน้า 50) — ซีดมี 60: owner/manager ถึง · nok/thana อาจไม่ถึง",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "false",
+      "waiver": null
+    },
+    {
+      "page": "/deals",
+      "testid": "deals-first-page",
+      "user": "owner",
+      "device": "mobile",
+      "needs": "ดีลที่มองเห็นได้ > 50 ดีลในมุมมองตาราง (ขนาดหน้า 50) — ซีดมี 60: owner/manager ถึง · nok/thana อาจไม่ถึง",
+      "detail": "ตัวเปิด deals-next-page หาไม่พบ/มองไม่เห็น (ลำดับ deals-next-page)",
+      "shot": "/root/projects/shark-crm-c310/.qc-shots/crm/buttons-c310/5a-all/fail/_deals~deals-first-page~owner~mobile.png",
+      "probe": "false",
+      "waiver": null
+    },
+    {
+      "page": "/deals",
+      "testid": "deals-next-page",
+      "user": "owner",
+      "device": "mobile",
+      "needs": "ดีลที่มองเห็นได้ > 50 ดีลในมุมมองตาราง (ขนาดหน้า 50) — ซีดมี 60: owner/manager ถึง · nok/thana อาจไม่ถึง",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "false",
+      "waiver": null
+    },
+    {
+      "page": "/deals",
+      "testid": "deals-filter-f-*",
+      "user": "manager",
+      "device": "desktop",
+      "needs": "ฟิลด์กำหนดเองของดีลที่ตั้งให้กรองได้ — ขึ้นกับซีด",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": "R5-REC: R5 — RECOMMEND cheap fixture (not blocking · C4.2-fix)"
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-column-more-*",
+      "user": "manager",
+      "device": "desktop",
+      "needs": "ขั้นที่มีดีลมากกว่าจำนวนการ์ดที่บอร์ดแสดงต่อคอลัมน์ — ขึ้นกับจำนวนดีลต่อขั้นในซีด",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": "R5-ACC: R5 — ACCEPT seed / AI-data gap (C6)"
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-req-field-*",
+      "user": "manager",
+      "device": "desktop",
+      "needs": "ขั้นที่บังคับกรอกช่องก่อนย้าย (requiredFields ของขั้น) + การย้ายดีลเข้าไปขั้นนั้น — ซีดไม่ตั้งขั้นบังคับช่อง",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": "R5-REC: R5 — RECOMMEND cheap fixture (not blocking · C4.2-fix)"
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-req-open-link",
+      "user": "manager",
+      "device": "desktop",
+      "needs": "ขั้นที่บังคับกรอกช่องก่อนย้าย (requiredFields ของขั้น) + การย้ายดีลเข้าไปขั้นนั้น — ซีดไม่ตั้งขั้นบังคับช่อง",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": "R5-REC: R5 — RECOMMEND cheap fixture (not blocking · C4.2-fix)"
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-req-cancel",
+      "user": "manager",
+      "device": "desktop",
+      "needs": "ขั้นที่บังคับกรอกช่องก่อนย้าย (requiredFields ของขั้น) + การย้ายดีลเข้าไปขั้นนั้น — ซีดไม่ตั้งขั้นบังคับช่อง",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": "R5-REC: R5 — RECOMMEND cheap fixture (not blocking · C4.2-fix)"
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-move-toast-close",
+      "user": "manager",
+      "device": "desktop",
+      "needs": "ข้อความหลังย้ายขั้นสำเร็จ (โผล่ชั่วคราวหลังลากการ์ด — แถวลากทำให้หน้าโหลดใหม่ก่อนถึงแถวนี้)",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": "R5-ACC: R5 — ACCEPT seed / AI-data gap (C6)"
+    },
+    {
+      "page": "/deals",
+      "testid": "deals-filter-f-*",
+      "user": "manager",
+      "device": "mobile",
+      "needs": "ฟิลด์กำหนดเองของดีลที่ตั้งให้กรองได้ — ขึ้นกับซีด",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": "R5-REC: R5 — RECOMMEND cheap fixture (not blocking · C4.2-fix)"
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-column-more-*",
+      "user": "manager",
+      "device": "mobile",
+      "needs": "ขั้นที่มีดีลมากกว่าจำนวนการ์ดที่บอร์ดแสดงต่อคอลัมน์ — ขึ้นกับจำนวนดีลต่อขั้นในซีด",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": "R5-ACC: R5 — ACCEPT seed / AI-data gap (C6)"
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-req-field-*",
+      "user": "manager",
+      "device": "mobile",
+      "needs": "ขั้นที่บังคับกรอกช่องก่อนย้าย (requiredFields ของขั้น) + การย้ายดีลเข้าไปขั้นนั้น — ซีดไม่ตั้งขั้นบังคับช่อง",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": "R5-REC: R5 — RECOMMEND cheap fixture (not blocking · C4.2-fix)"
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-req-open-link",
+      "user": "manager",
+      "device": "mobile",
+      "needs": "ขั้นที่บังคับกรอกช่องก่อนย้าย (requiredFields ของขั้น) + การย้ายดีลเข้าไปขั้นนั้น — ซีดไม่ตั้งขั้นบังคับช่อง",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": "R5-REC: R5 — RECOMMEND cheap fixture (not blocking · C4.2-fix)"
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-req-cancel",
+      "user": "manager",
+      "device": "mobile",
+      "needs": "ขั้นที่บังคับกรอกช่องก่อนย้าย (requiredFields ของขั้น) + การย้ายดีลเข้าไปขั้นนั้น — ซีดไม่ตั้งขั้นบังคับช่อง",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": "R5-REC: R5 — RECOMMEND cheap fixture (not blocking · C4.2-fix)"
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-move-toast-close",
+      "user": "manager",
+      "device": "mobile",
+      "needs": "ข้อความหลังย้ายขั้นสำเร็จ (โผล่ชั่วคราวหลังลากการ์ด — แถวลากทำให้หน้าโหลดใหม่ก่อนถึงแถวนี้)",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": "R5-ACC: R5 — ACCEPT seed / AI-data gap (C6)"
+    },
+    {
+      "page": "/deals",
+      "testid": "deals-first-page",
+      "user": "manager",
+      "device": "desktop",
+      "needs": "ดีลที่มองเห็นได้ > 50 ดีลในมุมมองตาราง (ขนาดหน้า 50) — ซีดมี 60: owner/manager ถึง · nok/thana อาจไม่ถึง",
+      "detail": "ตัวเปิด deals-next-page หาไม่พบ/มองไม่เห็น (ลำดับ deals-next-page)",
+      "shot": "/root/projects/shark-crm-c310/.qc-shots/crm/buttons-c310/5a-all/fail/_deals~deals-first-page~manager~desktop.png",
+      "probe": "none",
+      "waiver": null
+    },
+    {
+      "page": "/deals",
+      "testid": "deals-next-page",
+      "user": "manager",
+      "device": "desktop",
+      "needs": "ดีลที่มองเห็นได้ > 50 ดีลในมุมมองตาราง (ขนาดหน้า 50) — ซีดมี 60: owner/manager ถึง · nok/thana อาจไม่ถึง",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": null
+    },
+    {
+      "page": "/deals",
+      "testid": "deals-first-page",
+      "user": "manager",
+      "device": "mobile",
+      "needs": "ดีลที่มองเห็นได้ > 50 ดีลในมุมมองตาราง (ขนาดหน้า 50) — ซีดมี 60: owner/manager ถึง · nok/thana อาจไม่ถึง",
+      "detail": "ตัวเปิด deals-next-page หาไม่พบ/มองไม่เห็น (ลำดับ deals-next-page)",
+      "shot": "/root/projects/shark-crm-c310/.qc-shots/crm/buttons-c310/5a-all/fail/_deals~deals-first-page~manager~mobile.png",
+      "probe": "none",
+      "waiver": null
+    },
+    {
+      "page": "/deals",
+      "testid": "deals-next-page",
+      "user": "manager",
+      "device": "mobile",
+      "needs": "ดีลที่มองเห็นได้ > 50 ดีลในมุมมองตาราง (ขนาดหน้า 50) — ซีดมี 60: owner/manager ถึง · nok/thana อาจไม่ถึง",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": null
+    },
+    {
+      "page": "/deals",
+      "testid": "deals-filter-f-*",
+      "user": "nok",
+      "device": "desktop",
+      "needs": "ฟิลด์กำหนดเองของดีลที่ตั้งให้กรองได้ — ขึ้นกับซีด",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": "R5-REC: R5 — RECOMMEND cheap fixture (not blocking · C4.2-fix)"
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-column-more-*",
+      "user": "nok",
+      "device": "desktop",
+      "needs": "ขั้นที่มีดีลมากกว่าจำนวนการ์ดที่บอร์ดแสดงต่อคอลัมน์ — ขึ้นกับจำนวนดีลต่อขั้นในซีด",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": "R5-ACC: R5 — ACCEPT seed / AI-data gap (C6)"
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-req-field-*",
+      "user": "nok",
+      "device": "desktop",
+      "needs": "ขั้นที่บังคับกรอกช่องก่อนย้าย (requiredFields ของขั้น) + การย้ายดีลเข้าไปขั้นนั้น — ซีดไม่ตั้งขั้นบังคับช่อง",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": "R5-REC: R5 — RECOMMEND cheap fixture (not blocking · C4.2-fix)"
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-req-open-link",
+      "user": "nok",
+      "device": "desktop",
+      "needs": "ขั้นที่บังคับกรอกช่องก่อนย้าย (requiredFields ของขั้น) + การย้ายดีลเข้าไปขั้นนั้น — ซีดไม่ตั้งขั้นบังคับช่อง",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": "R5-REC: R5 — RECOMMEND cheap fixture (not blocking · C4.2-fix)"
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-req-cancel",
+      "user": "nok",
+      "device": "desktop",
+      "needs": "ขั้นที่บังคับกรอกช่องก่อนย้าย (requiredFields ของขั้น) + การย้ายดีลเข้าไปขั้นนั้น — ซีดไม่ตั้งขั้นบังคับช่อง",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": "R5-REC: R5 — RECOMMEND cheap fixture (not blocking · C4.2-fix)"
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-move-toast-close",
+      "user": "nok",
+      "device": "desktop",
+      "needs": "ข้อความหลังย้ายขั้นสำเร็จ (โผล่ชั่วคราวหลังลากการ์ด — แถวลากทำให้หน้าโหลดใหม่ก่อนถึงแถวนี้)",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": "R5-ACC: R5 — ACCEPT seed / AI-data gap (C6)"
+    },
+    {
+      "page": "/deals",
+      "testid": "deals-filter-f-*",
+      "user": "nok",
+      "device": "mobile",
+      "needs": "ฟิลด์กำหนดเองของดีลที่ตั้งให้กรองได้ — ขึ้นกับซีด",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": "R5-REC: R5 — RECOMMEND cheap fixture (not blocking · C4.2-fix)"
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-column-more-*",
+      "user": "nok",
+      "device": "mobile",
+      "needs": "ขั้นที่มีดีลมากกว่าจำนวนการ์ดที่บอร์ดแสดงต่อคอลัมน์ — ขึ้นกับจำนวนดีลต่อขั้นในซีด",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": "R5-ACC: R5 — ACCEPT seed / AI-data gap (C6)"
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-req-field-*",
+      "user": "nok",
+      "device": "mobile",
+      "needs": "ขั้นที่บังคับกรอกช่องก่อนย้าย (requiredFields ของขั้น) + การย้ายดีลเข้าไปขั้นนั้น — ซีดไม่ตั้งขั้นบังคับช่อง",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": "R5-REC: R5 — RECOMMEND cheap fixture (not blocking · C4.2-fix)"
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-req-open-link",
+      "user": "nok",
+      "device": "mobile",
+      "needs": "ขั้นที่บังคับกรอกช่องก่อนย้าย (requiredFields ของขั้น) + การย้ายดีลเข้าไปขั้นนั้น — ซีดไม่ตั้งขั้นบังคับช่อง",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": "R5-REC: R5 — RECOMMEND cheap fixture (not blocking · C4.2-fix)"
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-req-cancel",
+      "user": "nok",
+      "device": "mobile",
+      "needs": "ขั้นที่บังคับกรอกช่องก่อนย้าย (requiredFields ของขั้น) + การย้ายดีลเข้าไปขั้นนั้น — ซีดไม่ตั้งขั้นบังคับช่อง",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": "R5-REC: R5 — RECOMMEND cheap fixture (not blocking · C4.2-fix)"
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-move-toast-close",
+      "user": "nok",
+      "device": "mobile",
+      "needs": "ข้อความหลังย้ายขั้นสำเร็จ (โผล่ชั่วคราวหลังลากการ์ด — แถวลากทำให้หน้าโหลดใหม่ก่อนถึงแถวนี้)",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": "R5-ACC: R5 — ACCEPT seed / AI-data gap (C6)"
+    },
+    {
+      "page": "/deals",
+      "testid": "deals-first-page",
+      "user": "nok",
+      "device": "desktop",
+      "needs": "ดีลที่มองเห็นได้ > 50 ดีลในมุมมองตาราง (ขนาดหน้า 50) — ซีดมี 60: owner/manager ถึง · nok/thana อาจไม่ถึง",
+      "detail": "ตัวเปิด deals-next-page หาไม่พบ/มองไม่เห็น (ลำดับ deals-next-page)",
+      "shot": "/root/projects/shark-crm-c310/.qc-shots/crm/buttons-c310/5a-all/fail/_deals~deals-first-page~nok~desktop.png",
+      "probe": "none",
+      "waiver": null
+    },
+    {
+      "page": "/deals",
+      "testid": "deals-next-page",
+      "user": "nok",
+      "device": "desktop",
+      "needs": "ดีลที่มองเห็นได้ > 50 ดีลในมุมมองตาราง (ขนาดหน้า 50) — ซีดมี 60: owner/manager ถึง · nok/thana อาจไม่ถึง",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": null
+    },
+    {
+      "page": "/deals",
+      "testid": "deals-first-page",
+      "user": "nok",
+      "device": "mobile",
+      "needs": "ดีลที่มองเห็นได้ > 50 ดีลในมุมมองตาราง (ขนาดหน้า 50) — ซีดมี 60: owner/manager ถึง · nok/thana อาจไม่ถึง",
+      "detail": "ตัวเปิด deals-next-page หาไม่พบ/มองไม่เห็น (ลำดับ deals-next-page)",
+      "shot": "/root/projects/shark-crm-c310/.qc-shots/crm/buttons-c310/5a-all/fail/_deals~deals-first-page~nok~mobile.png",
+      "probe": "none",
+      "waiver": null
+    },
+    {
+      "page": "/deals",
+      "testid": "deals-next-page",
+      "user": "nok",
+      "device": "mobile",
+      "needs": "ดีลที่มองเห็นได้ > 50 ดีลในมุมมองตาราง (ขนาดหน้า 50) — ซีดมี 60: owner/manager ถึง · nok/thana อาจไม่ถึง",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": null
+    },
+    {
+      "page": "/deals",
+      "testid": "deals-filter-f-*",
+      "user": "thana",
+      "device": "desktop",
+      "needs": "ฟิลด์กำหนดเองของดีลที่ตั้งให้กรองได้ — ขึ้นกับซีด",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": "R5-REC: R5 — RECOMMEND cheap fixture (not blocking · C4.2-fix)"
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-column-more-*",
+      "user": "thana",
+      "device": "desktop",
+      "needs": "ขั้นที่มีดีลมากกว่าจำนวนการ์ดที่บอร์ดแสดงต่อคอลัมน์ — ขึ้นกับจำนวนดีลต่อขั้นในซีด",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": "R5-ACC: R5 — ACCEPT seed / AI-data gap (C6)"
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-req-field-*",
+      "user": "thana",
+      "device": "desktop",
+      "needs": "ขั้นที่บังคับกรอกช่องก่อนย้าย (requiredFields ของขั้น) + การย้ายดีลเข้าไปขั้นนั้น — ซีดไม่ตั้งขั้นบังคับช่อง",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": "R5-REC: R5 — RECOMMEND cheap fixture (not blocking · C4.2-fix)"
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-req-open-link",
+      "user": "thana",
+      "device": "desktop",
+      "needs": "ขั้นที่บังคับกรอกช่องก่อนย้าย (requiredFields ของขั้น) + การย้ายดีลเข้าไปขั้นนั้น — ซีดไม่ตั้งขั้นบังคับช่อง",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": "R5-REC: R5 — RECOMMEND cheap fixture (not blocking · C4.2-fix)"
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-req-cancel",
+      "user": "thana",
+      "device": "desktop",
+      "needs": "ขั้นที่บังคับกรอกช่องก่อนย้าย (requiredFields ของขั้น) + การย้ายดีลเข้าไปขั้นนั้น — ซีดไม่ตั้งขั้นบังคับช่อง",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": "R5-REC: R5 — RECOMMEND cheap fixture (not blocking · C4.2-fix)"
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-move-toast-close",
+      "user": "thana",
+      "device": "desktop",
+      "needs": "ข้อความหลังย้ายขั้นสำเร็จ (โผล่ชั่วคราวหลังลากการ์ด — แถวลากทำให้หน้าโหลดใหม่ก่อนถึงแถวนี้)",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": "R5-ACC: R5 — ACCEPT seed / AI-data gap (C6)"
+    },
+    {
+      "page": "/deals",
+      "testid": "deals-filter-f-*",
+      "user": "thana",
+      "device": "mobile",
+      "needs": "ฟิลด์กำหนดเองของดีลที่ตั้งให้กรองได้ — ขึ้นกับซีด",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": "R5-REC: R5 — RECOMMEND cheap fixture (not blocking · C4.2-fix)"
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-column-more-*",
+      "user": "thana",
+      "device": "mobile",
+      "needs": "ขั้นที่มีดีลมากกว่าจำนวนการ์ดที่บอร์ดแสดงต่อคอลัมน์ — ขึ้นกับจำนวนดีลต่อขั้นในซีด",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": "R5-ACC: R5 — ACCEPT seed / AI-data gap (C6)"
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-req-field-*",
+      "user": "thana",
+      "device": "mobile",
+      "needs": "ขั้นที่บังคับกรอกช่องก่อนย้าย (requiredFields ของขั้น) + การย้ายดีลเข้าไปขั้นนั้น — ซีดไม่ตั้งขั้นบังคับช่อง",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": "R5-REC: R5 — RECOMMEND cheap fixture (not blocking · C4.2-fix)"
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-req-open-link",
+      "user": "thana",
+      "device": "mobile",
+      "needs": "ขั้นที่บังคับกรอกช่องก่อนย้าย (requiredFields ของขั้น) + การย้ายดีลเข้าไปขั้นนั้น — ซีดไม่ตั้งขั้นบังคับช่อง",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": "R5-REC: R5 — RECOMMEND cheap fixture (not blocking · C4.2-fix)"
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-req-cancel",
+      "user": "thana",
+      "device": "mobile",
+      "needs": "ขั้นที่บังคับกรอกช่องก่อนย้าย (requiredFields ของขั้น) + การย้ายดีลเข้าไปขั้นนั้น — ซีดไม่ตั้งขั้นบังคับช่อง",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": "R5-REC: R5 — RECOMMEND cheap fixture (not blocking · C4.2-fix)"
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-move-toast-close",
+      "user": "thana",
+      "device": "mobile",
+      "needs": "ข้อความหลังย้ายขั้นสำเร็จ (โผล่ชั่วคราวหลังลากการ์ด — แถวลากทำให้หน้าโหลดใหม่ก่อนถึงแถวนี้)",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": "R5-ACC: R5 — ACCEPT seed / AI-data gap (C6)"
+    },
+    {
+      "page": "/deals",
+      "testid": "deals-first-page",
+      "user": "thana",
+      "device": "desktop",
+      "needs": "ดีลที่มองเห็นได้ > 50 ดีลในมุมมองตาราง (ขนาดหน้า 50) — ซีดมี 60: owner/manager ถึง · nok/thana อาจไม่ถึง",
+      "detail": "ตัวเปิด deals-next-page หาไม่พบ/มองไม่เห็น (ลำดับ deals-next-page)",
+      "shot": "/root/projects/shark-crm-c310/.qc-shots/crm/buttons-c310/5a-all/fail/_deals~deals-first-page~thana~desktop.png",
+      "probe": "none",
+      "waiver": null
+    },
+    {
+      "page": "/deals",
+      "testid": "deals-next-page",
+      "user": "thana",
+      "device": "desktop",
+      "needs": "ดีลที่มองเห็นได้ > 50 ดีลในมุมมองตาราง (ขนาดหน้า 50) — ซีดมี 60: owner/manager ถึง · nok/thana อาจไม่ถึง",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": null
+    },
+    {
+      "page": "/deals",
+      "testid": "deals-first-page",
+      "user": "thana",
+      "device": "mobile",
+      "needs": "ดีลที่มองเห็นได้ > 50 ดีลในมุมมองตาราง (ขนาดหน้า 50) — ซีดมี 60: owner/manager ถึง · nok/thana อาจไม่ถึง",
+      "detail": "ตัวเปิด deals-next-page หาไม่พบ/มองไม่เห็น (ลำดับ deals-next-page)",
+      "shot": "/root/projects/shark-crm-c310/.qc-shots/crm/buttons-c310/5a-all/fail/_deals~deals-first-page~thana~mobile.png",
+      "probe": "none",
+      "waiver": null
+    },
+    {
+      "page": "/deals",
+      "testid": "deals-next-page",
+      "user": "thana",
+      "device": "mobile",
+      "needs": "ดีลที่มองเห็นได้ > 50 ดีลในมุมมองตาราง (ขนาดหน้า 50) — ซีดมี 60: owner/manager ถึง · nok/thana อาจไม่ถึง",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": null
+    }
+  ],
+  "skippedSafety": [],
+  "restores": [
+    {
+      "label": "/deals#deal-card-* desktop (ซ่อมข้อมูลซีด)",
+      "deleted": 0,
+      "updated": 2,
+      "recreated": 0,
+      "failed": []
+    },
+    {
+      "label": "/deals desktop",
+      "deleted": 1,
+      "updated": 0,
+      "recreated": 0,
+      "failed": []
+    },
+    {
+      "label": "/deals#deal-card-* mobile (ซ่อมข้อมูลซีด)",
+      "deleted": 0,
+      "updated": 2,
+      "recreated": 0,
+      "failed": []
+    },
+    {
+      "label": "/deals mobile",
+      "deleted": 1,
+      "updated": 0,
+      "recreated": 0,
+      "failed": []
+    },
+    {
+      "label": "/deals#deal-bulk-move desktop (ซ่อมข้อมูลซีด)",
+      "deleted": 0,
+      "updated": 2,
+      "recreated": 0,
+      "failed": []
+    },
+    {
+      "label": "/deals#deal-bulk-reassign desktop (ซ่อมข้อมูลซีด)",
+      "deleted": 0,
+      "updated": 1,
+      "recreated": 0,
+      "failed": []
+    },
+    {
+      "label": "/deals#deal-bulk-tag desktop (ซ่อมข้อมูลซีด)",
+      "deleted": 0,
+      "updated": 1,
+      "recreated": 0,
+      "failed": []
+    },
+    {
+      "label": "/deals desktop",
+      "deleted": 1,
+      "updated": 0,
+      "recreated": 0,
+      "failed": []
+    },
+    {
+      "label": "/deals#deal-bulk-move mobile (ซ่อมข้อมูลซีด)",
+      "deleted": 0,
+      "updated": 2,
+      "recreated": 0,
+      "failed": []
+    },
+    {
+      "label": "/deals#deal-bulk-reassign mobile (ซ่อมข้อมูลซีด)",
+      "deleted": 0,
+      "updated": 1,
+      "recreated": 0,
+      "failed": []
+    },
+    {
+      "label": "/deals#deal-bulk-tag mobile (ซ่อมข้อมูลซีด)",
+      "deleted": 0,
+      "updated": 1,
+      "recreated": 0,
+      "failed": []
+    },
+    {
+      "label": "/deals mobile",
+      "deleted": 1,
+      "updated": 0,
+      "recreated": 0,
+      "failed": []
+    },
+    {
+      "label": "/deals#deal-card-* desktop (ซ่อมข้อมูลซีด)",
+      "deleted": 0,
+      "updated": 2,
+      "recreated": 0,
+      "failed": []
+    },
+    {
+      "label": "/deals desktop",
+      "deleted": 2,
+      "updated": 0,
+      "recreated": 0,
+      "failed": []
+    },
+    {
+      "label": "/deals#deal-card-* mobile (ซ่อมข้อมูลซีด)",
+      "deleted": 0,
+      "updated": 2,
+      "recreated": 0,
+      "failed": []
+    },
+    {
+      "label": "/deals mobile",
+      "deleted": 1,
+      "updated": 0,
+      "recreated": 0,
+      "failed": []
+    },
+    {
+      "label": "/deals#deal-bulk-move desktop (ซ่อมข้อมูลซีด)",
+      "deleted": 0,
+      "updated": 2,
+      "recreated": 0,
+      "failed": []
+    },
+    {
+      "label": "/deals#deal-bulk-reassign desktop (ซ่อมข้อมูลซีด)",
+      "deleted": 0,
+      "updated": 1,
+      "recreated": 0,
+      "failed": []
+    },
+    {
+      "label": "/deals#deal-bulk-tag desktop (ซ่อมข้อมูลซีด)",
+      "deleted": 0,
+      "updated": 1,
+      "recreated": 0,
+      "failed": []
+    },
+    {
+      "label": "/deals desktop",
+      "deleted": 1,
+      "updated": 0,
+      "recreated": 0,
+      "failed": []
+    },
+    {
+      "label": "/deals#deal-bulk-move mobile (ซ่อมข้อมูลซีด)",
+      "deleted": 0,
+      "updated": 2,
+      "recreated": 0,
+      "failed": []
+    },
+    {
+      "label": "/deals#deal-bulk-reassign mobile (ซ่อมข้อมูลซีด)",
+      "deleted": 0,
+      "updated": 1,
+      "recreated": 0,
+      "failed": []
+    },
+    {
+      "label": "/deals#deal-bulk-tag mobile (ซ่อมข้อมูลซีด)",
+      "deleted": 0,
+      "updated": 1,
+      "recreated": 0,
+      "failed": []
+    },
+    {
+      "label": "/deals mobile",
+      "deleted": 1,
+      "updated": 0,
+      "recreated": 0,
+      "failed": []
+    },
+    {
+      "label": "/deals#deal-card-* desktop (ซ่อมข้อมูลซีด)",
+      "deleted": 0,
+      "updated": 2,
+      "recreated": 0,
+      "failed": []
+    },
+    {
+      "label": "/deals desktop",
+      "deleted": 2,
+      "updated": 0,
+      "recreated": 0,
+      "failed": []
+    },
+    {
+      "label": "/deals#deal-card-* mobile (ซ่อมข้อมูลซีด)",
+      "deleted": 0,
+      "updated": 2,
+      "recreated": 0,
+      "failed": []
+    },
+    {
+      "label": "/deals mobile",
+      "deleted": 1,
+      "updated": 0,
+      "recreated": 0,
+      "failed": []
+    },
+    {
+      "label": "/deals#deal-bulk-move desktop (ซ่อมข้อมูลซีด)",
+      "deleted": 0,
+      "updated": 2,
+      "recreated": 0,
+      "failed": []
+    },
+    {
+      "label": "/deals desktop",
+      "deleted": 1,
+      "updated": 0,
+      "recreated": 0,
+      "failed": []
+    },
+    {
+      "label": "/deals#deal-bulk-move mobile (ซ่อมข้อมูลซีด)",
+      "deleted": 0,
+      "updated": 2,
+      "recreated": 0,
+      "failed": []
+    },
+    {
+      "label": "/deals mobile",
+      "deleted": 1,
+      "updated": 0,
+      "recreated": 0,
+      "failed": []
+    },
+    {
+      "label": "/deals#deal-card-* desktop (ซ่อมข้อมูลซีด)",
+      "deleted": 0,
+      "updated": 2,
+      "recreated": 0,
+      "failed": []
+    },
+    {
+      "label": "/deals desktop",
+      "deleted": 2,
+      "updated": 0,
+      "recreated": 0,
+      "failed": []
+    },
+    {
+      "label": "/deals#deal-card-* mobile (ซ่อมข้อมูลซีด)",
+      "deleted": 0,
+      "updated": 2,
+      "recreated": 0,
+      "failed": []
+    },
+    {
+      "label": "/deals mobile",
+      "deleted": 1,
+      "updated": 0,
+      "recreated": 0,
+      "failed": []
+    },
+    {
+      "label": "/deals#deal-bulk-move desktop (ซ่อมข้อมูลซีด)",
+      "deleted": 0,
+      "updated": 2,
+      "recreated": 0,
+      "failed": []
+    },
+    {
+      "label": "/deals desktop",
+      "deleted": 1,
+      "updated": 0,
+      "recreated": 0,
+      "failed": []
+    },
+    {
+      "label": "/deals#deal-bulk-move mobile (ซ่อมข้อมูลซีด)",
+      "deleted": 0,
+      "updated": 2,
+      "recreated": 0,
+      "failed": []
+    },
+    {
+      "label": "/deals mobile",
+      "deleted": 1,
+      "updated": 0,
+      "recreated": 0,
+      "failed": []
+    },
+    {
+      "label": "CLEAN (จบรอบ)",
+      "deleted": 3,
+      "updated": 1,
+      "recreated": 0,
+      "failed": []
+    }
+  ],
+  "dbCheckUnparsed": {
+    "/deals#deal-card-*": [
+      "CrmDeal.stageId=<ขั้นปลายทาง>"
+    ],
+    "/deals#deal-bulk-move": [
+      "CrmDeal.stageId=<ขั้น> ×n",
+      "AuditLog crm.deal.bulk_move"
+    ],
+    "/deals#deal-bulk-reassign": [
+      "CrmDeal.ownerUserId=<ผู้ใช้> ×n"
+    ],
+    "/deals#deal-bulk-tag": [
+      "CrmDeal.tags ∋ <แท็ก>"
+    ]
+  },
+  "fatal": null,
+  "cleanupFailures": [],
+  "outboxUnsettled": [],
+  "verifyFailures": [],
+  "postChecked": [
+    {
+      "page": "/deals",
+      "testid": "deal-bulk-move",
+      "user": "owner",
+      "device": "desktop"
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-bulk-move",
+      "user": "owner",
+      "device": "mobile"
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-bulk-move",
+      "user": "manager",
+      "device": "desktop"
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-bulk-move",
+      "user": "manager",
+      "device": "mobile"
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-bulk-move",
+      "user": "nok",
+      "device": "desktop"
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-bulk-move",
+      "user": "nok",
+      "device": "mobile"
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-bulk-move",
+      "user": "thana",
+      "device": "desktop"
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-bulk-move",
+      "user": "thana",
+      "device": "mobile"
+    }
+  ],
+  "dbVerified": [
+    {
+      "page": "/deals",
+      "testid": "deal-card-*",
+      "user": "owner",
+      "device": "desktop",
+      "models": [
+        "CrmDeal"
+      ]
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-card-*",
+      "user": "owner",
+      "device": "mobile",
+      "models": [
+        "CrmDeal"
+      ]
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-bulk-move",
+      "user": "owner",
+      "device": "desktop",
+      "models": [
+        "CrmDeal",
+        "AuditLog crm.deal.bulk_move"
+      ]
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-bulk-reassign",
+      "user": "owner",
+      "device": "desktop",
+      "models": [
+        "CrmDeal"
+      ]
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-bulk-tag",
+      "user": "owner",
+      "device": "desktop",
+      "models": [
+        "CrmDeal"
+      ]
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-bulk-move",
+      "user": "owner",
+      "device": "mobile",
+      "models": [
+        "CrmDeal",
+        "AuditLog crm.deal.bulk_move"
+      ]
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-bulk-reassign",
+      "user": "owner",
+      "device": "mobile",
+      "models": [
+        "CrmDeal"
+      ]
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-bulk-tag",
+      "user": "owner",
+      "device": "mobile",
+      "models": [
+        "CrmDeal"
+      ]
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-card-*",
+      "user": "manager",
+      "device": "desktop",
+      "models": [
+        "CrmDeal"
+      ]
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-card-*",
+      "user": "manager",
+      "device": "mobile",
+      "models": [
+        "CrmDeal"
+      ]
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-bulk-move",
+      "user": "manager",
+      "device": "desktop",
+      "models": [
+        "CrmDeal",
+        "AuditLog crm.deal.bulk_move"
+      ]
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-bulk-reassign",
+      "user": "manager",
+      "device": "desktop",
+      "models": [
+        "CrmDeal"
+      ]
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-bulk-tag",
+      "user": "manager",
+      "device": "desktop",
+      "models": [
+        "CrmDeal"
+      ]
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-bulk-move",
+      "user": "manager",
+      "device": "mobile",
+      "models": [
+        "CrmDeal",
+        "AuditLog crm.deal.bulk_move"
+      ]
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-bulk-reassign",
+      "user": "manager",
+      "device": "mobile",
+      "models": [
+        "CrmDeal"
+      ]
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-bulk-tag",
+      "user": "manager",
+      "device": "mobile",
+      "models": [
+        "CrmDeal"
+      ]
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-card-*",
+      "user": "nok",
+      "device": "desktop",
+      "models": [
+        "CrmDeal"
+      ]
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-card-*",
+      "user": "nok",
+      "device": "mobile",
+      "models": [
+        "CrmDeal"
+      ]
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-bulk-move",
+      "user": "nok",
+      "device": "desktop",
+      "models": [
+        "CrmDeal",
+        "AuditLog crm.deal.bulk_move"
+      ]
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-bulk-move",
+      "user": "nok",
+      "device": "mobile",
+      "models": [
+        "CrmDeal",
+        "AuditLog crm.deal.bulk_move"
+      ]
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-card-*",
+      "user": "thana",
+      "device": "desktop",
+      "models": [
+        "CrmDeal"
+      ]
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-card-*",
+      "user": "thana",
+      "device": "mobile",
+      "models": [
+        "CrmDeal"
+      ]
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-bulk-move",
+      "user": "thana",
+      "device": "desktop",
+      "models": [
+        "CrmDeal",
+        "AuditLog crm.deal.bulk_move"
+      ]
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-bulk-move",
+      "user": "thana",
+      "device": "mobile",
+      "models": [
+        "CrmDeal",
+        "AuditLog crm.deal.bulk_move"
+      ]
+    }
+  ],
+  "presence": [
+    {
+      "p": "/deals",
+      "t": "deals-pipelines-link",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-new-btn",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-view-*",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-form",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-pipeline",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-q",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-owner",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-close-from",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-close-to",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-tag",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-stale",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-submit",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-card-*",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-card-link-*",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-column-add-*",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-column-collapse-*",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-empty-create-pipeline",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-f-*",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deal-column-more-*",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deal-req-field-*",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deal-req-open-link",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deal-req-cancel",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deal-move-toast-close",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deals-pipelines-link",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-new-btn",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-view-*",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-form",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-pipeline",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-q",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-owner",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-close-from",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-close-to",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-tag",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-stale",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-submit",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-card-*",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-card-link-*",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-stage-tab-*",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-column-add-*",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-column-collapse-*",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-empty-create-pipeline",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-f-*",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deal-column-more-*",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deal-req-field-*",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deal-req-open-link",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deal-req-cancel",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deal-move-toast-close",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-stage",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-sort",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-export-btn",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-stage",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-owner",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-reason",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-confirm",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-move",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-reassign",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-tag-input",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-tag",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-check-all",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-row-check-*",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-row-link-*",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-first-page",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deals-next-page",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-stage",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-sort",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-export-btn",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-stage",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-owner",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-reason",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-confirm",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-move",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-reassign",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-tag-input",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-tag",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-row-check-*",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-row-link-*",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-first-page",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deals-next-page",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-saved",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-saved",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-clear",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-clear",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-forecast-group-*",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-forecast-category-all",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-forecast-category-*",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-forecast-group-*",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-forecast-category-all",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-forecast-category-*",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-pipelines-link",
+      "d": "desktop",
+      "u": "manager",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-new-btn",
+      "d": "desktop",
+      "u": "manager",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-view-*",
+      "d": "desktop",
+      "u": "manager",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-form",
+      "d": "desktop",
+      "u": "manager",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-pipeline",
+      "d": "desktop",
+      "u": "manager",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-q",
+      "d": "desktop",
+      "u": "manager",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-owner",
+      "d": "desktop",
+      "u": "manager",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-close-from",
+      "d": "desktop",
+      "u": "manager",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-close-to",
+      "d": "desktop",
+      "u": "manager",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-tag",
+      "d": "desktop",
+      "u": "manager",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-stale",
+      "d": "desktop",
+      "u": "manager",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-submit",
+      "d": "desktop",
+      "u": "manager",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-card-*",
+      "d": "desktop",
+      "u": "manager",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-card-link-*",
+      "d": "desktop",
+      "u": "manager",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-column-add-*",
+      "d": "desktop",
+      "u": "manager",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-column-collapse-*",
+      "d": "desktop",
+      "u": "manager",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-empty-create-pipeline",
+      "d": "desktop",
+      "u": "manager",
+      "h": true,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-f-*",
+      "d": "desktop",
+      "u": "manager",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deal-column-more-*",
+      "d": "desktop",
+      "u": "manager",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deal-req-field-*",
+      "d": "desktop",
+      "u": "manager",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deal-req-open-link",
+      "d": "desktop",
+      "u": "manager",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deal-req-cancel",
+      "d": "desktop",
+      "u": "manager",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deal-move-toast-close",
+      "d": "desktop",
+      "u": "manager",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deals-pipelines-link",
+      "d": "mobile",
+      "u": "manager",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-new-btn",
+      "d": "mobile",
+      "u": "manager",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-view-*",
+      "d": "mobile",
+      "u": "manager",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-form",
+      "d": "mobile",
+      "u": "manager",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-pipeline",
+      "d": "mobile",
+      "u": "manager",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-q",
+      "d": "mobile",
+      "u": "manager",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-owner",
+      "d": "mobile",
+      "u": "manager",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-close-from",
+      "d": "mobile",
+      "u": "manager",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-close-to",
+      "d": "mobile",
+      "u": "manager",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-tag",
+      "d": "mobile",
+      "u": "manager",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-stale",
+      "d": "mobile",
+      "u": "manager",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-submit",
+      "d": "mobile",
+      "u": "manager",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-card-*",
+      "d": "mobile",
+      "u": "manager",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-card-link-*",
+      "d": "mobile",
+      "u": "manager",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-stage-tab-*",
+      "d": "mobile",
+      "u": "manager",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-column-add-*",
+      "d": "mobile",
+      "u": "manager",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-column-collapse-*",
+      "d": "mobile",
+      "u": "manager",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-empty-create-pipeline",
+      "d": "mobile",
+      "u": "manager",
+      "h": true,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-f-*",
+      "d": "mobile",
+      "u": "manager",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deal-column-more-*",
+      "d": "mobile",
+      "u": "manager",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deal-req-field-*",
+      "d": "mobile",
+      "u": "manager",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deal-req-open-link",
+      "d": "mobile",
+      "u": "manager",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deal-req-cancel",
+      "d": "mobile",
+      "u": "manager",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deal-move-toast-close",
+      "d": "mobile",
+      "u": "manager",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-stage",
+      "d": "desktop",
+      "u": "manager",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-sort",
+      "d": "desktop",
+      "u": "manager",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-export-btn",
+      "d": "desktop",
+      "u": "manager",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-stage",
+      "d": "desktop",
+      "u": "manager",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-owner",
+      "d": "desktop",
+      "u": "manager",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-reason",
+      "d": "desktop",
+      "u": "manager",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-confirm",
+      "d": "desktop",
+      "u": "manager",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-move",
+      "d": "desktop",
+      "u": "manager",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-reassign",
+      "d": "desktop",
+      "u": "manager",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-tag-input",
+      "d": "desktop",
+      "u": "manager",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-tag",
+      "d": "desktop",
+      "u": "manager",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-check-all",
+      "d": "desktop",
+      "u": "manager",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-row-check-*",
+      "d": "desktop",
+      "u": "manager",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-row-link-*",
+      "d": "desktop",
+      "u": "manager",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-first-page",
+      "d": "desktop",
+      "u": "manager",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deals-next-page",
+      "d": "desktop",
+      "u": "manager",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-stage",
+      "d": "mobile",
+      "u": "manager",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-sort",
+      "d": "mobile",
+      "u": "manager",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-export-btn",
+      "d": "mobile",
+      "u": "manager",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-stage",
+      "d": "mobile",
+      "u": "manager",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-owner",
+      "d": "mobile",
+      "u": "manager",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-reason",
+      "d": "mobile",
+      "u": "manager",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-confirm",
+      "d": "mobile",
+      "u": "manager",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-move",
+      "d": "mobile",
+      "u": "manager",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-reassign",
+      "d": "mobile",
+      "u": "manager",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-tag-input",
+      "d": "mobile",
+      "u": "manager",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-tag",
+      "d": "mobile",
+      "u": "manager",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-row-check-*",
+      "d": "mobile",
+      "u": "manager",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-row-link-*",
+      "d": "mobile",
+      "u": "manager",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-first-page",
+      "d": "mobile",
+      "u": "manager",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deals-next-page",
+      "d": "mobile",
+      "u": "manager",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-saved",
+      "d": "desktop",
+      "u": "manager",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-saved",
+      "d": "mobile",
+      "u": "manager",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-clear",
+      "d": "desktop",
+      "u": "manager",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-clear",
+      "d": "mobile",
+      "u": "manager",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-forecast-group-*",
+      "d": "desktop",
+      "u": "manager",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-forecast-category-all",
+      "d": "desktop",
+      "u": "manager",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-forecast-category-*",
+      "d": "desktop",
+      "u": "manager",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-forecast-group-*",
+      "d": "mobile",
+      "u": "manager",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-forecast-category-all",
+      "d": "mobile",
+      "u": "manager",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-forecast-category-*",
+      "d": "mobile",
+      "u": "manager",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-pipelines-link",
+      "d": "desktop",
+      "u": "nok",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-new-btn",
+      "d": "desktop",
+      "u": "nok",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-view-*",
+      "d": "desktop",
+      "u": "nok",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-form",
+      "d": "desktop",
+      "u": "nok",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-pipeline",
+      "d": "desktop",
+      "u": "nok",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-q",
+      "d": "desktop",
+      "u": "nok",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-owner",
+      "d": "desktop",
+      "u": "nok",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-close-from",
+      "d": "desktop",
+      "u": "nok",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-close-to",
+      "d": "desktop",
+      "u": "nok",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-tag",
+      "d": "desktop",
+      "u": "nok",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-stale",
+      "d": "desktop",
+      "u": "nok",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-submit",
+      "d": "desktop",
+      "u": "nok",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-card-*",
+      "d": "desktop",
+      "u": "nok",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-card-link-*",
+      "d": "desktop",
+      "u": "nok",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-column-add-*",
+      "d": "desktop",
+      "u": "nok",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-column-collapse-*",
+      "d": "desktop",
+      "u": "nok",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-empty-create-pipeline",
+      "d": "desktop",
+      "u": "nok",
+      "h": true,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-f-*",
+      "d": "desktop",
+      "u": "nok",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deal-column-more-*",
+      "d": "desktop",
+      "u": "nok",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deal-req-field-*",
+      "d": "desktop",
+      "u": "nok",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deal-req-open-link",
+      "d": "desktop",
+      "u": "nok",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deal-req-cancel",
+      "d": "desktop",
+      "u": "nok",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deal-move-toast-close",
+      "d": "desktop",
+      "u": "nok",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deals-pipelines-link",
+      "d": "mobile",
+      "u": "nok",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-new-btn",
+      "d": "mobile",
+      "u": "nok",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-view-*",
+      "d": "mobile",
+      "u": "nok",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-form",
+      "d": "mobile",
+      "u": "nok",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-pipeline",
+      "d": "mobile",
+      "u": "nok",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-q",
+      "d": "mobile",
+      "u": "nok",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-owner",
+      "d": "mobile",
+      "u": "nok",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-close-from",
+      "d": "mobile",
+      "u": "nok",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-close-to",
+      "d": "mobile",
+      "u": "nok",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-tag",
+      "d": "mobile",
+      "u": "nok",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-stale",
+      "d": "mobile",
+      "u": "nok",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-submit",
+      "d": "mobile",
+      "u": "nok",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-card-*",
+      "d": "mobile",
+      "u": "nok",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-card-link-*",
+      "d": "mobile",
+      "u": "nok",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-stage-tab-*",
+      "d": "mobile",
+      "u": "nok",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-column-add-*",
+      "d": "mobile",
+      "u": "nok",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-column-collapse-*",
+      "d": "mobile",
+      "u": "nok",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-empty-create-pipeline",
+      "d": "mobile",
+      "u": "nok",
+      "h": true,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-f-*",
+      "d": "mobile",
+      "u": "nok",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deal-column-more-*",
+      "d": "mobile",
+      "u": "nok",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deal-req-field-*",
+      "d": "mobile",
+      "u": "nok",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deal-req-open-link",
+      "d": "mobile",
+      "u": "nok",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deal-req-cancel",
+      "d": "mobile",
+      "u": "nok",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deal-move-toast-close",
+      "d": "mobile",
+      "u": "nok",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-stage",
+      "d": "desktop",
+      "u": "nok",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-sort",
+      "d": "desktop",
+      "u": "nok",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-export-btn",
+      "d": "desktop",
+      "u": "nok",
+      "h": true,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-stage",
+      "d": "desktop",
+      "u": "nok",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-owner",
+      "d": "desktop",
+      "u": "nok",
+      "h": true,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-reason",
+      "d": "desktop",
+      "u": "nok",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-confirm",
+      "d": "desktop",
+      "u": "nok",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-move",
+      "d": "desktop",
+      "u": "nok",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-reassign",
+      "d": "desktop",
+      "u": "nok",
+      "h": true,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-tag-input",
+      "d": "desktop",
+      "u": "nok",
+      "h": true,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-tag",
+      "d": "desktop",
+      "u": "nok",
+      "h": true,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deal-check-all",
+      "d": "desktop",
+      "u": "nok",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-row-check-*",
+      "d": "desktop",
+      "u": "nok",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-row-link-*",
+      "d": "desktop",
+      "u": "nok",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-first-page",
+      "d": "desktop",
+      "u": "nok",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deals-next-page",
+      "d": "desktop",
+      "u": "nok",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-stage",
+      "d": "mobile",
+      "u": "nok",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-sort",
+      "d": "mobile",
+      "u": "nok",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-export-btn",
+      "d": "mobile",
+      "u": "nok",
+      "h": true,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-stage",
+      "d": "mobile",
+      "u": "nok",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-owner",
+      "d": "mobile",
+      "u": "nok",
+      "h": true,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-reason",
+      "d": "mobile",
+      "u": "nok",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-confirm",
+      "d": "mobile",
+      "u": "nok",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-move",
+      "d": "mobile",
+      "u": "nok",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-reassign",
+      "d": "mobile",
+      "u": "nok",
+      "h": true,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-tag-input",
+      "d": "mobile",
+      "u": "nok",
+      "h": true,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-tag",
+      "d": "mobile",
+      "u": "nok",
+      "h": true,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deal-row-check-*",
+      "d": "mobile",
+      "u": "nok",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-row-link-*",
+      "d": "mobile",
+      "u": "nok",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-first-page",
+      "d": "mobile",
+      "u": "nok",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deals-next-page",
+      "d": "mobile",
+      "u": "nok",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-saved",
+      "d": "desktop",
+      "u": "nok",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-saved",
+      "d": "mobile",
+      "u": "nok",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-clear",
+      "d": "desktop",
+      "u": "nok",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-clear",
+      "d": "mobile",
+      "u": "nok",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-forecast-group-*",
+      "d": "desktop",
+      "u": "nok",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-forecast-category-all",
+      "d": "desktop",
+      "u": "nok",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-forecast-category-*",
+      "d": "desktop",
+      "u": "nok",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-forecast-group-*",
+      "d": "mobile",
+      "u": "nok",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-forecast-category-all",
+      "d": "mobile",
+      "u": "nok",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-forecast-category-*",
+      "d": "mobile",
+      "u": "nok",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-pipelines-link",
+      "d": "desktop",
+      "u": "thana",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-new-btn",
+      "d": "desktop",
+      "u": "thana",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-view-*",
+      "d": "desktop",
+      "u": "thana",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-form",
+      "d": "desktop",
+      "u": "thana",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-pipeline",
+      "d": "desktop",
+      "u": "thana",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-q",
+      "d": "desktop",
+      "u": "thana",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-owner",
+      "d": "desktop",
+      "u": "thana",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-close-from",
+      "d": "desktop",
+      "u": "thana",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-close-to",
+      "d": "desktop",
+      "u": "thana",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-tag",
+      "d": "desktop",
+      "u": "thana",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-stale",
+      "d": "desktop",
+      "u": "thana",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-submit",
+      "d": "desktop",
+      "u": "thana",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-card-*",
+      "d": "desktop",
+      "u": "thana",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-card-link-*",
+      "d": "desktop",
+      "u": "thana",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-column-add-*",
+      "d": "desktop",
+      "u": "thana",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-column-collapse-*",
+      "d": "desktop",
+      "u": "thana",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-empty-create-pipeline",
+      "d": "desktop",
+      "u": "thana",
+      "h": true,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-f-*",
+      "d": "desktop",
+      "u": "thana",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deal-column-more-*",
+      "d": "desktop",
+      "u": "thana",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deal-req-field-*",
+      "d": "desktop",
+      "u": "thana",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deal-req-open-link",
+      "d": "desktop",
+      "u": "thana",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deal-req-cancel",
+      "d": "desktop",
+      "u": "thana",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deal-move-toast-close",
+      "d": "desktop",
+      "u": "thana",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deals-pipelines-link",
+      "d": "mobile",
+      "u": "thana",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-new-btn",
+      "d": "mobile",
+      "u": "thana",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-view-*",
+      "d": "mobile",
+      "u": "thana",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-form",
+      "d": "mobile",
+      "u": "thana",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-pipeline",
+      "d": "mobile",
+      "u": "thana",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-q",
+      "d": "mobile",
+      "u": "thana",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-owner",
+      "d": "mobile",
+      "u": "thana",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-close-from",
+      "d": "mobile",
+      "u": "thana",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-close-to",
+      "d": "mobile",
+      "u": "thana",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-tag",
+      "d": "mobile",
+      "u": "thana",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-stale",
+      "d": "mobile",
+      "u": "thana",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-submit",
+      "d": "mobile",
+      "u": "thana",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-card-*",
+      "d": "mobile",
+      "u": "thana",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-card-link-*",
+      "d": "mobile",
+      "u": "thana",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-stage-tab-*",
+      "d": "mobile",
+      "u": "thana",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-column-add-*",
+      "d": "mobile",
+      "u": "thana",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-column-collapse-*",
+      "d": "mobile",
+      "u": "thana",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-empty-create-pipeline",
+      "d": "mobile",
+      "u": "thana",
+      "h": true,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-f-*",
+      "d": "mobile",
+      "u": "thana",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deal-column-more-*",
+      "d": "mobile",
+      "u": "thana",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deal-req-field-*",
+      "d": "mobile",
+      "u": "thana",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deal-req-open-link",
+      "d": "mobile",
+      "u": "thana",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deal-req-cancel",
+      "d": "mobile",
+      "u": "thana",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deal-move-toast-close",
+      "d": "mobile",
+      "u": "thana",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-stage",
+      "d": "desktop",
+      "u": "thana",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-sort",
+      "d": "desktop",
+      "u": "thana",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-export-btn",
+      "d": "desktop",
+      "u": "thana",
+      "h": true,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-stage",
+      "d": "desktop",
+      "u": "thana",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-owner",
+      "d": "desktop",
+      "u": "thana",
+      "h": true,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-reason",
+      "d": "desktop",
+      "u": "thana",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-confirm",
+      "d": "desktop",
+      "u": "thana",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-move",
+      "d": "desktop",
+      "u": "thana",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-reassign",
+      "d": "desktop",
+      "u": "thana",
+      "h": true,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-tag-input",
+      "d": "desktop",
+      "u": "thana",
+      "h": true,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-tag",
+      "d": "desktop",
+      "u": "thana",
+      "h": true,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deal-check-all",
+      "d": "desktop",
+      "u": "thana",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-row-check-*",
+      "d": "desktop",
+      "u": "thana",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-row-link-*",
+      "d": "desktop",
+      "u": "thana",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-first-page",
+      "d": "desktop",
+      "u": "thana",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deals-next-page",
+      "d": "desktop",
+      "u": "thana",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-stage",
+      "d": "mobile",
+      "u": "thana",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-sort",
+      "d": "mobile",
+      "u": "thana",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-export-btn",
+      "d": "mobile",
+      "u": "thana",
+      "h": true,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-stage",
+      "d": "mobile",
+      "u": "thana",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-owner",
+      "d": "mobile",
+      "u": "thana",
+      "h": true,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-reason",
+      "d": "mobile",
+      "u": "thana",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-confirm",
+      "d": "mobile",
+      "u": "thana",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-move",
+      "d": "mobile",
+      "u": "thana",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-reassign",
+      "d": "mobile",
+      "u": "thana",
+      "h": true,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-tag-input",
+      "d": "mobile",
+      "u": "thana",
+      "h": true,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-tag",
+      "d": "mobile",
+      "u": "thana",
+      "h": true,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deal-row-check-*",
+      "d": "mobile",
+      "u": "thana",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-row-link-*",
+      "d": "mobile",
+      "u": "thana",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-first-page",
+      "d": "mobile",
+      "u": "thana",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deals-next-page",
+      "d": "mobile",
+      "u": "thana",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-saved",
+      "d": "desktop",
+      "u": "thana",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-saved",
+      "d": "mobile",
+      "u": "thana",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-clear",
+      "d": "desktop",
+      "u": "thana",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-clear",
+      "d": "mobile",
+      "u": "thana",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-forecast-group-*",
+      "d": "desktop",
+      "u": "thana",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-forecast-category-all",
+      "d": "desktop",
+      "u": "thana",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-forecast-category-*",
+      "d": "desktop",
+      "u": "thana",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-forecast-group-*",
+      "d": "mobile",
+      "u": "thana",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-forecast-category-all",
+      "d": "mobile",
+      "u": "thana",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-forecast-category-*",
+      "d": "mobile",
+      "u": "thana",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "(page)",
+      "d": "desktop",
+      "u": "customer",
+      "h": true,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "(page)",
+      "d": "mobile",
+      "u": "customer",
+      "h": true,
+      "f": false
+    }
+  ],
+  "customerLockout": [
+    {
+      "page": "/deals",
+      "path": "/app/sys/cmuy1gmlm0000jikz45h7xblz/crm/deals",
+      "device": "desktop",
+      "status": 200,
+      "finalPath": "/login",
+      "visible": [],
+      "ok": true
+    },
+    {
+      "page": "/deals",
+      "path": "/app/sys/cmuy1gmlm0000jikz45h7xblz/crm/deals",
+      "device": "mobile",
+      "status": 200,
+      "finalPath": "/login",
+      "visible": [],
+      "ok": true
+    }
+  ],
+  "pageErrors": [],
+  "tripwire": [],
+  "hiddenWait": {
+    "ms": 94065,
+    "rows": 26
+  },
+  "runStart": "2026-10-07T22:59:06.518Z"
+}

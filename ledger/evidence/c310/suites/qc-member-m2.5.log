@@ -1,0 +1,38 @@
+  ✅ [M2.5-S1.1] migration member_v2_e: VoucherTemplate {systemId name kind value config validDays origin active} index(systemId) · Voucher {templateId customerId code kind value config origin originRef issuedAt expiresAt status usedAt usedRef cancelledAt approvalRequestId idempotencyKey} unique(tenantId,code) unique(tenantId,idempotencyKey) index(customerId,status) index(systemId,expiresAt) · VoucherIssueBatch {systemId status input requestedById approvalRequestId} · enum VoucherKind 4 · VoucherOrigin 10 · VoucherStatus 4 · additive · applied · migrate diff = empty · MEMBER_LIMITS.voucherIssueApprovalOverSatang 1,000,000 · voucherStaffMaxSatang 50,000
+  ✅ [M2.5-S1.2] createTemplate: ชื่อว่าง/kind นอก enum/PERCENT 150/FIXED 0/validDays 0 → throw ไทย · thana (ไม่มี promo.manage) → throw · สร้าง 'ส่วนลด ฿300 คอร์ส' (minSatang ฿1,000 · หมวดคอร์ส · ไม่ซ้อนคูปอง · 30 วัน) · update ชื่อ · listTemplates มี · toggle off → active false · เพดาน MEMBER_LIMITS.voucherTemplates อ้างในโค้ด
+  ✅ [M2.5-S2.1] issue เทมเพลตให้ 2 คน → {issued 2, vouchers[2]{code V-xxxxxx, kind FIXED, value 30000, status ACTIVE, expiresAt ≈ +30 วัน}} · Voucher row templateId/customerId/origin MANUAL/originRef/config snapshot/idempotencyKey · event voucher.issued {customerId, voucherId, origin, code} · MemberActivity VOUCHER_ISSUED · ออกซ้ำ originRef เดิม → issued 0 skipped 2 (ยัง 2 ใบ) · คนใหม่ originRef เดิม → ออกได้ 1
+  ✅ [M2.5-S2.2] adhoc PERCENT 10% (cap ฿500 · 7 วัน · COMPENSATION) → 1 ใบ templateId null · adhoc PERCENT 150 → throw ไทย · customerIds ว่าง → throw · ไม่มี template/adhoc → throw · ลูกค้าไม่มีปนอยู่ → throw ไม่ออกให้ใครเลย (สมาชิก 5 ยังเท่าเดิม) · เทมเพลตปิดใช้งาน → throw
+  ✅ [M2.5-S2.3] journey ≤ 3 ใบ/คน/วัน: JOURNEY ×3 ออกได้ · ใบที่ 4 วันเดียวกัน → throw ไทย · MANUAL ใบที่ 4 ยังออกได้ (เพดานเฉพาะ journey)
+  ✅ [M2.5-S2.4] STAFF (promo.issue · ป่าตอง): ใบ ฿600 > เพดาน ฿500/ใบ → throw ไทย · ฿300 → ออกได้ · PERCENT cap ฿800 → throw · สมาชิกกะตะ (นอก unitAccess) → throw ไม่พบ · noPerm → throw
+  ✅ [M2.5-S2.5] MANAGER ออก 34 คน × ฿300 = ฿10,200 > เพดาน ฿10,000 → {pending true, approvalRequestId, batchId} · VoucherIssueBatch PENDING (input มี customerIds 34) · ApprovalRequest entityType member.voucher.issue amountSatang 1,020,000 PENDING · ยังไม่ออกใบเลย (0)
+  ✅ [M2.5-S2.6] อนุมัติ → approval-effects member.voucher.issue → issueApprovedBatch → batch ISSUED · ออก 34 ใบ (origin CAMPAIGN · originRef มี batchId+campaignId · approvalRequestId) · drain ซ้ำไม่ออกซ้ำ (34) · OWNER ออก 34 × ฿300 → ทันที issued 34 (ไม่ต้องอนุมัติ)
+  ✅ [M2.5-S2.7] ปฏิเสธ → batch REJECTED · ไม่ออกใบ (0) · ปิด policy → ไม่มีสายอนุมัติ = autoApproved → MANAGER เกินเพดานออกได้ทันที issued 34
+  ✅ [M2.5-S3.1] validate ok: ใบ ฿300 (ขั้นต่ำ ฿1,000 · หมวดคอร์ส) กับตะกร้า คอร์ส ฿1,500 + อุปกรณ์ ฿500 → {ok true, discountSatang 30000, voucherId} ทั้งด้วย code และ voucherId · ไม่เขียน (ยัง ACTIVE)
+  ✅ [M2.5-S3.2] ไม่ใช่ของลูกค้าคนนี้ → ok false reason ไทย · รหัสไม่มี → false · ใบ CANCELLED → false reason ไทย (ทั้ง 3 ไม่ throw)
+  ✅ [M2.5-S3.3] หมดอายุ (expiresAt ผ่าน) → false 'หมดอายุ' · ยอด ฿800 < ขั้นต่ำ ฿1,000 → false · ตะกร้ามีแต่อุปกรณ์ (ไม่มีหมวดคอร์ส) → false 'ไม่มีรายการที่เข้าเงื่อนไข'
+  ✅ [M2.5-S3.4] ซ้อนคูปอง: ใบ stackWithCoupon false + couponApplied → false ไทย · ใบ adhoc stackWithCoupon true + couponApplied → ok (10% ของ ฿2,000 = 20000) · unitIds [ป่าตอง]: cart unit กะตะ → false · ป่าตอง → ok 10000
+  ✅ [M2.5-S3.5] PERCENT 10% cap ฿500: ยอด ฿7,000 → 50000 (ชน cap) · ยอด ฿1,234.50 → 12345 (floor) · FIXED ฿300 กับหมวดคอร์สแค่ ฿200 (ยอดรวม ฿1,200 ผ่านขั้นต่ำ) → ส่วนลด 20000 (ไม่เกินยอดที่เข้าเกณฑ์)
+  ✅ [M2.5-S3.6] FREE_SERVICE (บริการป่าตอง): ตะกร้ามี line บริการนั้น qty 2 ฿5,000 → ส่วนลด 250000 (1 หน่วย) · ไม่มี line บริการ → false · FREE_ITEM item-mask qty 3 ฿900 → 30000 (1 หน่วย)
+  ✅ [M2.5-S4.1] redeem ATOMIC: ใบ ฿300 → USED usedAt usedRef {saleId, discountSatang 30000} · event voucher.used {customerId, voucherId, origin, saleId} · ใช้ซ้ำ → throw ไทย (conflict) · ยิงพร้อมกัน 2 ครั้งบนใบใหม่ → สำเร็จ 1 ล้ม 1 · customerId ผิด → throw · ใบ CANCELLED → throw · เรียกใน tx ได้
+  ✅ [M2.5-S4.2] release: USED → ACTIVE (usedAt/usedRef ล้าง) {ok, changed true} · release ซ้ำ → {changed false} · ใบที่หมดอายุระหว่างใช้ → ACTIVE + expiresAt = now + 7 วัน (§11.5)
+  ✅ [M2.5-S4.3] cancel: ใบ USED → throw ไทย · thana (ไม่มี promo.manage) → throw · ACTIVE → CANCELLED cancelledAt · ซ้ำ → idempotent ok
+  ✅ [M2.5-S4.4] listForCustomer(สมาชิก 1): ใบ ACTIVE ก่อน (expiresAt ใกล้สุดก่อน) · ไม่มี CANCELLED โดยปริยาย · status CANCELLED → มีใบที่ยกเลิก · listVouchers {status ACTIVE} rows มี name/customerName/origin/expiresAt + kpi {activeCount, activeValueSatang, usedThisMonth, usageRatePct} · q=code → 1 แถว · origin REDEEM → มีใบดำน้ำฟรี
+  ✅ [M2.5-S5.1] expireDue: ใบ expiresAt ผ่าน → EXPIRED + event voucher.expired {customerId, voucherId} · ใบสด (5 วัน) ยัง ACTIVE · คืน {expired ≥ 1}
+  ✅ [M2.5-S5.2] notifyExpiring: ใบเหลือ 7 วัน (วันไทย) → event voucher.expiring {customerId, voucherId, expiresAt, daysLeft 7} · ใบเหลือ 3 วัน ไม่แจ้ง · รันซ้ำวันเดียวกัน → ไม่ยิงซ้ำ (1) · cron.ts steps voucherExpire + voucherExpiring · summary voucherExpired/voucherExpiring
+  ✅ [M2.5-S6.1] merge hook: Y (1 ใบ) รวมเข้า X (1 ใบ) → X 2 ใบ · Y 0 · tier welcome hook (registerMemberHooks): gold มี WELCOME_VOUCHER {templateId} → applyTierChange(Z → gold) → 1 ใบ origin TIER originRef {tierDefId} · เปลี่ยนซ้ำ → ยัง 1 (idempotent) · stamp hook: การ์ด rewardKind VOUCHER ครบ → ใบ origin STAMP originRef {stampProgressId} + progress.rewardVoucherId + ผล addStamp มี rewardVoucherId
+  ✅ [M2.5-S6.2] voucher.issued/used/expiring/expired ลง 3 ทะเบียน + consumer · drain แล้ว DONE ทั้งหมด · approval-effects.ts มี member.voucher.issue → issueApprovedBatch · member-hooks.ts registerMemberHooks (idempotent · import จาก outbox-consumers.ts + cron.ts)
+  ✅ [M2.5-S7.1] หน้า promotions (hub) + vouchers + templates requireTenant + สิทธิ์ (read-โดยนัย · issue · manage) · actions 'use server' gate · testid 16 · nav promotions → ready · facade export 15 · service.ts ไม่ import โมดูลอื่นตรงนอก facade · ไม่มี any/อีโมจิ/hex · ป้ายภาพ 19 ครบ (โมดัล + KPI + ตาราง)
+  ❌ [M2.5-S7.2] ภาพ 19: vouchers-owner desktop+mobile 200 ไม่ล้น · vouchers-issue-modal-owner 200 (กดออก voucher → โมดัล · เลือกกลุ่ม → กล่องต้องอนุมัติ) · vouchers-templates-owner 200 · promotions-owner 200 · thana (read-โดยนัย) 200 ไม่มีปุ่มออก · noperm 404 — exp 200 ×6 · 404 | act /// mobile=undefined/ovf=undefined thana=undefined noperm=undefined
+  ✅ [M2.5-S7.3] 🔴 parity ภาพ 19 — Fable ตรวจด้วยตา · wo-notes/member-M2.5.md มี 'PARITY: ผ่าน'
+
+🔴 M2.5: 25/26
+JSON_SUMMARY {"total":26,"passed":25,"findings":[{"id":"M2.5-S7.2","sev":"CRITICAL"}]}
+(node:1479174) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)

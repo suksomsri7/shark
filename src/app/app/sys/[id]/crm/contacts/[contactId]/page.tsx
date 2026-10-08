@@ -3,8 +3,8 @@ import { notFound } from "next/navigation";
 import { requireCrmV2Page } from "@/lib/modules/crm/ui-version";
 import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
-import { toMemberActor } from "@/lib/modules/member";
-import { convertOptions, getContact360, ownerOptions } from "@/lib/modules/crm/contacts";
+import { hasMemberPerm, toMemberActor } from "@/lib/modules/member";
+import { convertOptions, getContact360, isCurrentCompanyHidden, ownerOptions } from "@/lib/modules/crm/contacts";
 import {
   CONTACT_SOURCE_LABEL,
   ContactsError,
@@ -45,7 +45,7 @@ import { CrmWebTimeline } from "@/components/crm/tracking/CrmWebTimeline";
 import type { CrmWebTimelineSession } from "@/components/crm/tracking/types";
 // CRM C3.9 ▸ PDPA: ส่งออกข้อมูลของผู้ติดต่อนี้ · ลบข้อมูลส่วนบุคคล (ปุ่มขึ้นตามคีย์ของผู้ดู — ไม่มีคีย์ = ไม่เห็นปุ่ม) ◂
 import { ContactPrivacyBlock } from "../_components/ContactPrivacyBlock";
-import { crmCan } from "@/lib/modules/crm/access";
+import { crmCan, crmCanLinkCompany } from "@/lib/modules/crm/access";
 import { isContactErased } from "@/lib/modules/crm/privacy";
 
 // ผู้ติดต่อ 360 + แปลง lead (CRM v2 · ใบ C1.4 · พิมพ์เขียว §3.5 · ภาพ 05) — `/app/sys/{id}/crm/contacts/{contactId}`
@@ -83,6 +83,9 @@ export default async function Contact360Page({
   const live = !c.archivedAt && !c.mergedIntoId;
   const noOptions: ConvertOptions = { memberSystems: [], pipelines: [] };
   const [owners, options]: [{ id: string; name: string }[], ConvertOptions] = live ? await Promise.all([ownerOptions(ctx, actor), convertOptions(ctx, actor)]) : [[], noOptions];
+  // CRM C5.5-fix7 ▸ R2F-1: คนที่ผูกบริษัทได้ แต่บริษัทหลักปัจจุบันของผู้ติดต่ออยู่นอกการมองเห็น — ทุกการเลือกถูกบริการปฏิเสธ ⇒ ไม่แสดงช่องเลือก
+  //   (แสดงบรรทัดอธิบายแทน · ไม่บอกชื่อ/รหัสบริษัท) · ด่านเดียวกับบริการ (contacts.isCurrentCompanyHidden) ◂
+  const primaryCompanyHidden = crmCanLinkCompany(actor) && live ? await isCurrentCompanyHidden(ctx, actor, c.companyId) : false;
   // CRM C2.2 ▸ ลำดับการติดตามของผู้ติดต่อคนนี้ (อ่านล้ม/ไม่มีคีย์ = ไม่แสดงบล็อก · หน้าไม่ล้ม)
   const [seqOptions, seqEnrollments] = await Promise.all([
     sequenceOptions(ctx, actor).catch(() => []),
@@ -165,6 +168,16 @@ export default async function Contact360Page({
         <ContactMenu
           systemId={id}
           owners={owners}
+          can={{
+            // CRM C4.2-fix ▸ คีย์ของ action = ของบริการ (r2 SF-3: โอน = crm.contact.update · เก็บถาวร/กู้คืน = crm.contact.delete) ◂
+            update: crmCan(actor, "crm.contact.update"),
+            assign: crmCan(actor, "crm.contact.update"),
+            merge: crmCan(actor, "crm.contact.merge"),
+            archive: crmCan(actor, "crm.contact.delete"),
+            // CRM C5.5-fix6 ▸ F3: ช่องย้ายบริษัทในแผ่นแก้ไข = ผูกบริษัทได้ (อ่าน + แก้บริษัท) — ไม่ได้ = ซ่อน (§15(b)) ◂
+            // CRM C5.5-fix7 ▸ R2F-1: + บริษัทหลักปัจจุบันต้องอยู่ในการมองเห็น (ไม่งั้นทุกการเลือกถูกปฏิเสธ) ◂
+            company: crmCanLinkCompany(actor) && !primaryCompanyHidden,
+          }}
           contact={{
             id: c.id,
             firstName: c.firstName ?? c.name,
@@ -177,7 +190,13 @@ export default async function Contact360Page({
             leadStatus: c.leadStatus,
             tags: c.tags,
             archived: !!c.archivedAt,
-            companyId: c.companyId,
+            // CRM C5.5-fix6 ▸ F3: id ของบริษัทใช้แค่ช่อง "ย้ายดีลตาม" ของคนที่ย้ายบริษัทได้ · ชื่อ = บริษัทที่ผู้ดูมองเห็น (companyWhere) เท่านั้น ◂
+            companyId: crmCanLinkCompany(actor) && !primaryCompanyHidden ? c.companyId : null,
+            companyName: data.company?.name ?? null,
+            // CRM C5.5-fix6 r2 ▸ F6-4: ป้าย "บริษัทหลัก" เฉพาะเมื่อบริษัทที่แสดงคือบริษัทหลักของผู้ติดต่อจริง (ไม่ใช่ลิงก์อื่นที่มองเห็นแทน) ◂
+            companyIsPrimary: !!data.company && data.company.id === c.companyId,
+            // CRM C5.5-fix7 ▸ R2F-1: บรรทัดอธิบายแทนช่องเลือก (เฉพาะคนที่ผูกบริษัทได้ — คนอื่นเห็นบรรทัดอ่านอย่างเดียวของ fix6 เหมือนเดิม) ◂
+            companyLocked: primaryCompanyHidden,
           }}
         />
       </div>
@@ -244,16 +263,26 @@ export default async function Contact360Page({
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 {/* CRM C2.4 ▸ กดโทรแล้วเปิดโมดัลบันทึกการโทรพร้อมกัน (แทนลิงก์ tel: เปล่า ๆ ของ C1.4 — ทำได้ทุกอย่างที่ตัวเดิมทำ และบันทึกผลสายต่อได้ทันที) ◂ */}
-                <CrmClickToCall
-                  systemId={id}
-                  target={{ contactId: c.id, companyId: c.companyId }}
-                  phone={c.phone}
-                  outcomes={callOutcomes}
-                  maxRecordingBytes={CRM_RECORDING_MAX_BYTES}
-                  aiState={callAi.state}
-                  aiMessage={callAi.message}
-                  page="contact"
-                />
+                {/* CRM C4.2-fix ▸ ปุ่มโทร/บันทึกสายเปิดฟอร์มบันทึกสาย = คีย์ crm.activity.create (calls.ts logCall) ◂ */}
+                {crmCan(actor, "crm.activity.create") && (
+                  <CrmClickToCall
+                    systemId={id}
+                    target={{ contactId: c.id, companyId: c.companyId }}
+                    phone={c.phone}
+                    outcomes={callOutcomes}
+                    maxRecordingBytes={CRM_RECORDING_MAX_BYTES}
+                    aiState={callAi.state}
+                    aiMessage={callAi.message}
+                    page="contact"
+                  />
+                )}
+                {/* CRM C4.2-fix r2 ▸ (รีวิว addendum 2b) ไม่มีคีย์บันทึกสาย = ยังโทรได้ด้วยลิงก์ tel: เปล่า ๆ (ไม่มีฟอร์มบันทึกสาย) —
+                    เดิมรอบ 1 ทำให้เบอร์กดโทรไม่ได้เลย ◂ */}
+                {!crmCan(actor, "crm.activity.create") && c.phone && c.phone.replace(/[^\d+]/g, "") && (
+                  <a href={`tel:${c.phone.replace(/[^\d+]/g, "")}`} className="btn btn-ghost text-sm" data-testid="contact-phone-tel">
+                    ☎ โทร
+                  </a>
+                )}
                 {bookingLink && (
                   <Link href={bookingLink.href} className="btn btn-ghost text-sm" data-testid="crm-book-via-booking">
                     📅 จองผ่านระบบจองคิว
@@ -264,7 +293,8 @@ export default async function Contact360Page({
                     ✉ ส่งอีเมล
                   </a>
                 )}
-                {live && (
+                {/* CRM C4.2-fix ▸ B5: แปลงเป็นลูกค้า = คีย์ crm.contact.convert (คีย์เดียวกับ convertContactAction + บริการ) ◂ */}
+                {live && crmCan(actor, "crm.contact.convert") && (
                   <ConvertButton
                     systemId={id}
                     contactId={c.id}
@@ -274,6 +304,7 @@ export default async function Contact360Page({
                     companyName={data.company?.name ?? c.companyText}
                     jobTitle={c.jobTitle}
                     converted={!!c.convertedAt}
+                    canPickCompany={crmCan(actor, "crm.company.read")}
                   />
                 )}
               </div>
@@ -341,6 +372,12 @@ export default async function Contact360Page({
                     </span>
                     <span className="flex min-w-0 flex-col">
                       <span className="break-words">{t.title}</span>
+                      {/* CRM C5.5-fix3b r2 ▸ รีวิว RV-1: ป้ายเดียวกับบล็อกกิจกรรม/หน้าเธรด — จดหมายขาเข้าฉบับนี้ระบบยืนยันไม่ได้ว่ามาจากที่อยู่ที่แสดงจริง ◂ */}
+                      {t.unverifiedFrom && (
+                        <span className="w-fit rounded-full border border-amber-500 px-2 py-0.5 text-[11px] font-medium text-amber-700" title="ระบบยืนยันไม่ได้ว่าจดหมายนี้มาจากที่อยู่ที่แสดงจริง — ตรวจกับลูกค้าทางช่องทางอื่นก่อนทำตามคำขอเรื่องเงินหรือบัญชี">
+                          ไม่ยืนยันผู้ส่ง
+                        </span>
+                      )}
                       <span className="text-xs text-[color:var(--color-muted)]">
                         {relativeThai(t.at, now)}
                         {t.done ? " · เสร็จแล้ว" : ""}
@@ -446,7 +483,14 @@ export default async function Contact360Page({
           {/* ◂ CRM C2.2 */}
           {/* CRM C2.6 ▸ การเข้าชมเว็บ (คุกกี้ที่ลูกค้ายอมรับ) ◂ */}
           <CrmWebTimeline sessions={webSessions} />
-          <ConsentBlock systemId={id} contactId={c.id} consent={data.consent} disabled={!live} />
+          <ConsentBlock
+            systemId={id}
+            contactId={c.id}
+            consent={data.consent}
+            disabled={!live || !crmCan(actor, "crm.contact.update")}
+            // CRM C4.2-fix r2 ▸ (รีวิว addendum 2c) ผู้ติดต่อที่ผูกสมาชิก: ยินยอม/ไม่ยินยอมเขียนลงระบบสมาชิก (member/privacy.ts ต้องมี member.customer.update) ◂
+            memberConsentLocked={data.consent.memberLinked && !hasMemberPerm(actor, "member.customer.update")}
+          />
           {/* CRM C3.9 ▸ PDPA ◂ */}
           <ContactPrivacyBlock
             systemId={id}

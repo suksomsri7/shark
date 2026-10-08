@@ -12,7 +12,7 @@
 // 🔴 ชนิดข้อมูลของ marketing ไม่ข้ามมาที่นี่ (import type ก็นับเป็นเส้น) — ผลลัพธ์เป็น `unknown` ที่ผ่าน
 //    `jsonSafe` ที่ชั้น op · ข้อมูลขาเข้าเป็นรูปของสัญญา REST เอง (`CampaignPortInput`)
 
-import { ApiError } from "@/lib/api/respond";
+import { ApiError, nothingWritten } from "@/lib/api/respond"; // CRM C5.5 ▸ RV-2 +nothingWritten ◂
 import type { MemberActor } from "../access";
 
 export type CampaignPortCtx = {
@@ -64,11 +64,14 @@ export async function campaignPort(): Promise<MemberCampaignPort> {
     root.registerMemberApiPorts();
   }
   if (!port) {
-    throw new ApiError(
-      503,
-      "upstream_unavailable",
-      "ระบบแคมเปญยังไม่พร้อมให้บริการในตอนนี้ — ลองใหม่อีกครั้งในอีกสักครู่",
-      "The campaign module is not wired into the member API on this server.",
+    // CRM C5.5 ▸ RV-2: ยังไม่ได้เริ่มงานใด (ไม่มีตัวแคมเปญให้เรียก) ⇒ ติดธงให้การจอง idempotency ถูกปล่อย ◂
+    throw nothingWritten(
+      new ApiError(
+        503,
+        "upstream_unavailable",
+        "ระบบแคมเปญยังไม่พร้อมให้บริการในตอนนี้ — ลองใหม่อีกครั้งในอีกสักครู่",
+        "The campaign module is not wired into the member API on this server.",
+      ),
     );
   }
   return port;

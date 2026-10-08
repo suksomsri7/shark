@@ -6,7 +6,7 @@
 //   ห่อการเรียกบริการด้วย `as400()` ที่นี่ที่เดียว — ข้อความไทยของบริการส่งต่อถึงผู้เรียกครบทุกตัวอักษร
 // 🔴 ไม่แตะแกนกลาง: การเปลี่ยนความหมายของ 400 ที่ `mapError` จะเปลี่ยนคำตอบของบัญชี/บอร์ดงานไปด้วย
 
-import { ApiError, type ApiErrorDetail } from "@/lib/api/respond";
+import { ApiError, nothingWritten, type ApiErrorDetail } from "@/lib/api/respond"; // CRM C5.5 ▸ RV-2 +nothingWritten ◂
 
 /** 400 `validation` พร้อมข้อความไทยที่ไม่โทษผู้ใช้ */
 export function badRequest(th: string, en: string, details?: ApiErrorDetail[]): ApiError {
@@ -35,7 +35,8 @@ export async function as400<T>(fn: () => Promise<T>, en = "The request could not
     const status = declaredStatus(e);
     const th = thaiMessage(e);
     if (status === 400 && th) throw badRequest(th, en);
-    if (status === 429 && th) throw new ApiError(429, "rate_limited", th, "Too many attempts. Wait a few minutes and try again.");
+    // CRM C5.5 ▸ RV-2: ตัวจำกัดอัตราของบริการปฏิเสธ "ก่อน" ทำงาน ⇒ ติดธงให้การจอง idempotency ถูกปล่อย (ลองคีย์เดิมได้เมื่อพ้นเวลา) ◂
+    if (status === 429 && th) throw nothingWritten(new ApiError(429, "rate_limited", th, "Too many attempts. Wait a few minutes and try again."));
     throw e;
   }
 }

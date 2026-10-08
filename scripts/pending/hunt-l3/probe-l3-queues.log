@@ -1,0 +1,190 @@
+(node:605429) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+{
+  "db": "ep-cool-shadow-ao99n36e-pooler.c-2.ap-southeast-1.aws.neon.tech",
+  "tag": "qc-hunt-l3-qdcqqfaq",
+  "L3_A": {
+    "run1": {
+      "claimed": 2,
+      "executed": 1,
+      "deferred": 0,
+      "finished": 1,
+      "failed": 1,
+      "batches": 2,
+      "cutOff": false
+    },
+    "afterRun1": {
+      "status": "DONE",
+      "stepIndex": 2,
+      "log": [
+        {
+          "index": 0,
+          "outcome": "FAILED",
+          "reason": "ส่งอีเมลไม่สำเร็จ — ระบบจะลองขั้นนี้อีกครั้งในรอบถัดไป"
+        },
+        {
+          "index": 1,
+          "outcome": "FAILED",
+          "reason": "ส่งอีเมลไม่สำเร็จ — ระบบจะลองขั้นนี้อีกครั้งในรอบถัดไป"
+        }
+      ]
+    },
+    "run2": {
+      "claimed": 0,
+      "executed": 0,
+      "deferred": 0,
+      "finished": 0,
+      "failed": 0,
+      "batches": 0,
+      "cutOff": false
+    },
+    "afterRun2": {
+      "status": "DONE",
+      "stepIndex": 2,
+      "log": [
+        {
+          "index": 0,
+          "outcome": "FAILED",
+          "reason": "ส่งอีเมลไม่สำเร็จ — ระบบจะลองขั้นนี้อีกครั้งในรอบถัดไป"
+        },
+        {
+          "index": 1,
+          "outcome": "FAILED",
+          "reason": "ส่งอีเมลไม่สำเร็จ — ระบบจะลองขั้นนี้อีกครั้งในรอบถัดไป"
+        }
+      ]
+    },
+    "senderCalls": [
+      {
+        "ch": "EMAIL"
+      },
+      {
+        "ch": "EMAIL"
+      }
+    ]
+  },
+  "L3_A_verdict": "BUG-REPRODUCED (step 0 FAILED once, never retried; enrollment moved on)",
+  "L3_B": {
+    "bridgesEnabled": true,
+    "move": "ok",
+    "dealKind": "WON",
+    "wonEventStatusAtSend": "PENDING",
+    "bridgeRan": "not-run",
+    "run": {
+      "claimed": 2,
+      "executed": 2,
+      "deferred": 0,
+      "finished": 1,
+      "failed": 0,
+      "batches": 2,
+      "cutOff": false
+    },
+    "sentToWonDealContact": 2,
+    "enrollment": {
+      "status": "DONE",
+      "stepIndex": 2,
+      "stoppedReason": null
+    }
+  },
+  "L3_B_verdict": "BUG-REPRODUCED (sequence e-mail sent after the deal was WON)",
+  "L3_C": {
+    "bridgesEnabled": false,
+    "move": "ok",
+    "dealKind": "WON",
+    "wonEventStatusAtSend": "PENDING",
+    "bridgeRan": "ok",
+    "run": {
+      "claimed": 2,
+      "executed": 2,
+      "deferred": 0,
+      "finished": 1,
+      "failed": 0,
+      "batches": 2,
+      "cutOff": false
+    },
+    "sentToWonDealContact": 2,
+    "enrollment": {
+      "status": "DONE",
+      "stepIndex": 2,
+      "stoppedReason": null
+    }
+  },
+  "L3_C_verdict": "BUG-REPRODUCED (sequence e-mail sent after the deal was WON)",
+  "L3_D": {
+    "realDailyJobsInRegistrationOrder": [
+      "crm.heartbeat",
+      "crm.automation.waits",
+      "crm.automation.cron",
+      "crm.sequences",
+      "crm.activity.remind",
+      "crm.email.scheduled",
+      "crm.scoring.decay",
+      "crm.money.reconcile",
+      "crm.deals.stale",
+      "crm.notify.fanout",
+      "crm.activities.overdue",
+      "crm.companies.cache",
+      "crm.purge.web",
+      "crm.purge.email",
+      "crm.reports.scheduled",
+      "crm.commissions.payroll",
+      "crm.reports.exports",
+      "crm.reports.sweep",
+      "crm.portal.sessions.sweep",
+      "crm.teamroom.stale",
+      "crm.teamroom.stale.sweep",
+      "crm.purge.exports",
+      "crm.retention.leads"
+    ],
+    "run1": [
+      {
+        "name": "qc-hunt-l3-qdcqqfaq-slow",
+        "outcome": "cut-off"
+      },
+      {
+        "name": "qc-hunt-l3-qdcqqfaq-tail",
+        "outcome": "no-budget"
+      }
+    ],
+    "tailRanAfterRun1": 0,
+    "tailRanAfterRun2": 1,
+    "status": [
+      {
+        "name": "<tag>-slow",
+        "lastRunAt": "2026-09-27T23:09:56.065Z",
+        "lastOkAt": null
+      },
+      {
+        "name": "<tag>-tail",
+        "lastRunAt": null,
+        "lastOkAt": null
+      }
+    ],
+    "hypotheticalSecondRunSameDay": [
+      {
+        "name": "<tag>-slow",
+        "outcome": "not-due"
+      },
+      {
+        "name": "<tag>-tail",
+        "outcome": "ok"
+      }
+    ]
+  },
+  "L3_D_verdict": "BUG-REPRODUCED (tail daily job skipped; cut-off job marked as run for the day)",
+  "cleanup": {
+    "tenantsLeft": 0,
+    "usersLeft": 0,
+    "outboxLeft": 0,
+    "enrollmentsLeft": 0,
+    "jobStateLeft": 0,
+    "opsEventsLeft": 0
+  }
+}

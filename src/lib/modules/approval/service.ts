@@ -419,6 +419,23 @@ export async function listMyRequests(ctx: Ctx, userId: string): Promise<MyReques
   });
 }
 
+// CRM C5.5-fix9 r2 (review M3): ยกเลิกหลายคำขอในคราวเดียว — semantics เดียวกับ cancelRequest (สถานะ PENDING→CANCELLED เท่านั้น ·
+//   ไม่มี event/แจ้งเตือนเพิ่ม) แต่คำสั่งละ ≤ 1,000 id · เฉพาะแถวที่ยัง PENDING ⇒ ทำซ้ำ/ทำต่อได้ (idempotent) · คืนจำนวนที่เพิ่งยกเลิก
+const CANCEL_CHUNK = 1_000;
+export async function cancelRequests(ctx: Ctx, requestIds: readonly string[]): Promise<number> {
+  const ids = [...new Set(requestIds.filter((x) => typeof x === "string" && !!x))];
+  let n = 0;
+  const at = new Date();
+  for (let i = 0; i < ids.length; i += CANCEL_CHUNK) {
+    const res = await tenantDb(ctx).approvalRequest.updateMany({
+      where: { id: { in: ids.slice(i, i + CANCEL_CHUNK) }, status: "PENDING" },
+      data: { status: "CANCELLED", decidedAt: at },
+    });
+    n += res.count;
+  }
+  return n;
+}
+
 // ต้นทางยกเลิก entity → PENDING→CANCELLED (สถานะอื่น/ไม่พบ → false)
 export async function cancelRequest(ctx: Ctx, requestId: string): Promise<boolean> {
   const res = await tenantDb(ctx).approvalRequest.updateMany({

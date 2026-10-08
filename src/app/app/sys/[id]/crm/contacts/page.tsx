@@ -33,7 +33,7 @@ import { CrmCardScanButton } from "@/components/crm/call/CrmCardScanButton";
 import { crmCan } from "@/lib/modules/crm/access";
 import { CRM_CARD_MAX_BYTES } from "@/lib/modules/crm/calls-shared";
 // CRM C3.2 ▸ บันทึก/ลบมุมมองของรายชื่อผู้ติดต่อ (objectKey "contact" · ทีมจริง) ◂
-import { viewOptions, viewTeamOptions } from "@/lib/modules/crm/views";
+import { viewOptions, viewSkippedFilters, viewTeamOptions } from "@/lib/modules/crm/views";
 import { createCrmViewAction, deleteCrmViewAction } from "@/lib/modules/crm/views-actions";
 import { SavedViewControls } from "@/components/crm/views/SavedViewControls";
 
@@ -58,6 +58,14 @@ export default async function ContactsPage({
   if (!sys) notFound();
   if (pickCrmPage(await crmUiVersion({ tenantId, systemId: id })) === "v1") return <ContactsV1Page params={params} />;
   const actor = toMemberActor(auth.user.id, auth.active);
+  // CRM C4.2-fix ▸ ปุ่มของหน้านี้ใช้คีย์เดียวกับ server action ที่มันเรียก (contacts-actions.ts · crmCan ตัวเดียวของ C1.7)
+  //   โอนผู้ดูแล: action + บริการตรวจ `crm.contact.update` (r2 SF-3: ถอดคีย์ผี crm.contact.assign ออกจาก action แล้ว) ◂
+  const can = {
+    create: crmCan(actor, "crm.contact.create"),
+    importCsv: crmCan(actor, "crm.contact.import"),
+    exportCsv: crmCan(actor, "crm.contact.export"),
+    assign: crmCan(actor, "crm.contact.update"),
+  };
   const ctx = { tenantId, systemId: id, actorUserId: auth.user.id };
   const one = (k: string) => (typeof sp[k] === "string" ? (sp[k] as string) : "");
   const pick = <T extends string>(k: string, list: readonly T[]): T | "" => ((list as readonly string[]).includes(one(k)) ? (one(k) as T) : "");
@@ -108,6 +116,7 @@ export default async function ContactsPage({
     throw e;
   });
   const listError = failed.message;
+  const viewSkipped = view ? await viewSkippedFilters(ctx, actor, "contact", view).catch(() => [] as string[]) : []; // CRM C5.4-E ▸ L6-m11 ◂
   const def = systemDef(sys.type);
   const base = `/app/sys/${id}/crm/contacts`;
   const qs = (extra: Record<string, string>) => {
@@ -150,13 +159,16 @@ export default async function ContactsPage({
         desc="ผู้ติดต่อ — lead และลูกค้าทุกคนของทีมขาย พร้อมสถานะ ผู้ดูแล และที่มา"
         actions={
           <>
-            <ContactImportButton systemId={id} customFields={customFields.map((f) => ({ id: f.key, name: f.label }))} />
-            <ContactExportButton systemId={id} filters={filters} />
+            {/* CRM C4.2-fix ▸ B1: ปุ่มนำเข้า/ส่งออกแสดงเฉพาะคนที่ถือคีย์เดียวกับที่ server action ตรวจ (crmCan · C1.7) ◂ */}
+            {can.importCsv && <ContactImportButton systemId={id} customFields={customFields.map((f) => ({ id: f.key, name: f.label }))} />}
+            {can.exportCsv && <ContactExportButton systemId={id} filters={filters} />}
             {/* CRM C2.2 ▸ ใส่เข้าลำดับการติดตามเป็นกลุ่ม (bulkEnroll — ยืนยัน + เหตุผล ในตัวคอมโพเนนต์) */}
             <SequenceBulkEnroll systemId={id} sequences={seqOptions} contactIds={rows.map((r) => r.id)} />
-            <Link href={`${base}/new`} className="btn btn-primary text-sm" data-testid="contacts-new-btn">
-              + เพิ่มผู้ติดต่อ
-            </Link>
+            {can.create && (
+              <Link href={`${base}/new`} className="btn btn-primary text-sm" data-testid="contacts-new-btn">
+                + เพิ่มผู้ติดต่อ
+              </Link>
+            )}
           </>
         }
       />
@@ -285,19 +297,34 @@ export default async function ContactsPage({
           {listError}
         </div>
       )}
+      {/* CRM C5.4-E ▸ L6-m11: ตัวกรองของมุมมองที่ฟิลด์ถูกเก็บเข้าคลัง/ปิดการกรอง = ข้าม (รายการยังขึ้น) + บอกให้รู้ ◂ */}
+      {viewSkipped.length > 0 && (
+        <p className="card p-3 text-sm text-[color:var(--color-muted)]" data-testid="contacts-view-skipped">
+          ตัวกรองบางตัวของมุมมองนี้ถูกข้าม เพราะฟิลด์ถูกเก็บเข้าคลังหรือปิดการกรองไปแล้ว: {viewSkipped.join(" · ")} — รายการด้านล่างกรองด้วยตัวกรองที่เหลือ
+        </p>
+      )}
 
       {rows.length === 0 ? (
         <div className="card py-10 text-center" data-testid="contacts-empty">
           <p className="text-sm text-[color:var(--color-muted)]">
-            {anyFilter ? "ไม่พบผู้ติดต่อที่ตรงกับตัวกรองนี้ — ลองล้างตัวกรองหรือค้นด้วยคำอื่น" : "ยังไม่มีผู้ติดต่อในระบบนี้ — เริ่มจากเพิ่มผู้ติดต่อคนแรก หรือนำเข้าจากไฟล์ CSV"}
+            {/* r2 (รีวิว addendum 2e): ไม่ชวนกดปุ่มที่คนนี้ไม่เห็น ◂ */}
+            {anyFilter
+              ? "ไม่พบผู้ติดต่อที่ตรงกับตัวกรองนี้ — ลองล้างตัวกรองหรือค้นด้วยคำอื่น"
+              : can.create && can.importCsv
+                ? "ยังไม่มีผู้ติดต่อในระบบนี้ — เริ่มจากเพิ่มผู้ติดต่อคนแรก หรือนำเข้าจากไฟล์ CSV"
+                : can.create
+                  ? "ยังไม่มีผู้ติดต่อในระบบนี้ — เริ่มจากเพิ่มผู้ติดต่อคนแรก"
+                  : "ยังไม่มีผู้ติดต่อที่บัญชีนี้มองเห็นในระบบนี้"}
           </p>
-          <Link href={`${base}/new`} className="btn btn-ghost mt-3 text-sm" data-testid="contacts-empty-new">
-            + เพิ่มผู้ติดต่อ
-          </Link>
+          {can.create && (
+            <Link href={`${base}/new`} className="btn btn-ghost mt-3 text-sm" data-testid="contacts-empty-new">
+              + เพิ่มผู้ติดต่อ
+            </Link>
+          )}
         </div>
       ) : (
         <>
-          <ContactTable systemId={id} rows={rows} owners={owners} />
+          <ContactTable systemId={id} rows={rows} owners={owners} canAssign={can.assign} />
           <nav className="flex items-center justify-center gap-3 text-sm" aria-label="เปลี่ยนหน้า">
             {cursor ? (
               <Link href={qs({})} className="btn btn-ghost text-sm" data-testid="contacts-page-first">

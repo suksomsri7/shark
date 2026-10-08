@@ -21,6 +21,7 @@
 import { randomToken } from "@/lib/core/hash";
 import { canReadMember, type MemberActor } from "@/lib/modules/member/access";
 import * as approval from "@/lib/modules/approval/service";
+import { resolvePolicy } from "@/lib/modules/approval"; // CRM C5.5 ▸ RV-6 (facade อ่านล้วน) ◂
 import {
   addMonths,
   balanceIn,
@@ -34,6 +35,7 @@ import {
   type PointCtx,
 } from "./internal";
 import type { LotUse } from "./lots";
+import { resolvePointSystemIds } from "./service"; // CRM C5.5 ▸ RV-6 ◂
 
 export type { PointCtx };
 
@@ -156,6 +158,35 @@ export async function applyPointAdjust(
  * MANAGER เกินเพดาน → เข้าสายอนุมัติกลาง (`member.point.adjust` · ไม่มีนโยบาย = autoApproved)
  * STAFF เกินเพดาน → throw (§6.2: ช่อง STAFF มีแค่ "≤ เพดาน" ไม่มีช่องขออนุมัติ)
  */
+// CRM C5.5 ▸ H55-2 r1b (มติผู้คุมงาน — เพดานอนุมัติของ "ของมีมูลค่า"): คำตัดสินของประตูมือ "ปรับแต้มมือ" ตัวเดียว
+//   ใช้ทั้งใน `adjustWithApproval` (ด้านล่าง) และให้กฎอัตโนมัติ CRM ตรวจตอนบันทึก (ผ่าน facade point → member) — ห้ามก๊อปเพดาน/บทบาทไปไว้ที่อื่น
+//   DIRECT = ทำได้ทันที · APPROVAL = ต้องเข้าสายอนุมัติ (MANAGER เกินเพดาน) · REFUSED = ทำเองไม่ได้ (STAFF เกินเพดาน)
+export type ManualAdjustVerdict = "DIRECT" | "APPROVAL" | "REFUSED";
+function adjustVerdictOf(cap: number | null, actor: MemberActor, delta: number): ManualAdjustVerdict {
+  if (actor.role === "OWNER" || cap === null || Math.abs(delta) <= cap) return "DIRECT";
+  return actor.role === "STAFF" ? "REFUSED" : "APPROVAL";
+}
+/**
+ * คำตัดสินของประตูมือสำหรับ `delta` แต้ม ตามการตั้งค่าแต้มปัจจุบันของร้าน (อ่านอย่างเดียว)
+ * CRM C5.5 ▸ RV-6: APPROVAL ⇒ ถามนโยบายแบบเดียวกับที่ `adjustWithApproval` ยื่น (entityType member.point.adjust · systemId = ระบบแต้ม
+ *   ของระบบสมาชิก · ไม่มี unit/ยอด) — ไม่มีนโยบายไหนจับ = ประตูมือ autoApprove ทันที ⇒ DIRECT · ระบบสมาชิกใดก็ได้ของร้าน
+ *   (กฎ CRM ให้แต้มกับสมาชิกของระบบใดก็ได้) จับ ⇒ APPROVAL · ไม่มีระบบแต้มเลย ⇒ ถามเฉพาะนโยบายทั้งร้าน ◂
+ */
+export async function manualAdjustVerdict(tenantId: string, actor: MemberActor, delta: number): Promise<ManualAdjustVerdict> {
+  const settings = await getSettings(prisma, tenantId);
+  const v = adjustVerdictOf(settings.adjustApprovalOver, actor, delta);
+  if (v !== "APPROVAL") return v;
+  const members = await prisma.appSystem.findMany({ where: { tenantId, type: "MEMBER" }, select: { id: true } });
+  const pointSystems = [...new Set((await Promise.all(members.map(async (m) => (await resolvePointSystemIds(tenantId, m.id))[0] ?? null))).filter((x): x is string => !!x))];
+  // ยังไม่มีระบบแต้มที่ผูกกับระบบสมาชิกใด (กฎให้แต้มจะถูกข้ามตอนทำงานอยู่แล้ว) ⇒ ถามเฉพาะนโยบายทั้งร้าน (systemId null)
+  const candidates: (string | null)[] = pointSystems.length ? pointSystems : [null];
+  const hits = await Promise.all(
+    candidates.map((systemId) => resolvePolicy({ tenantId }, { entityType: "member.point.adjust", systemId, unitId: null, amountSatang: null })),
+  );
+  return hits.some(Boolean) ? "APPROVAL" : "DIRECT";
+}
+// ◂ CRM C5.5
+
 export async function adjustWithApproval(
   ctx: PointCtx,
   actor: MemberActor,
@@ -172,11 +203,11 @@ export async function adjustWithApproval(
 
   const settings = await getSettings(prisma, ctx.tenantId);
   const cap = settings.adjustApprovalOver;
-  const withinCap = cap === null || Math.abs(input.delta) <= cap;
+  const verdict = adjustVerdictOf(cap, actor, input.delta); // CRM C5.5 ▸ ตัวตัดสินเดียวกับกฎอัตโนมัติ CRM ◂
   const actorUserId = ctx.actorUserId ?? actor.userId;
   const idempotencyKey = input.idempotencyKey ?? `point.adjust:${ctx.systemId}:${input.customerId}:${randomToken(9)}`;
 
-  if (actor.role === "OWNER" || withinCap) {
+  if (verdict === "DIRECT") {
     const r = await applyPointAdjust(
       ctx,
       { customerId: input.customerId, delta: input.delta, reason, expiresAt: input.expiresAt, idempotencyKey, actorUserId },
@@ -185,7 +216,7 @@ export async function adjustWithApproval(
     return { applied: true, ledgerId: r.ledgerId, balance: r.balance };
   }
 
-  if (actor.role === "STAFF") {
+  if (verdict === "REFUSED") {
     throw pointError(`พนักงานปรับแต้มได้ไม่เกิน ${cap} แต้มต่อครั้ง — เกินกว่านี้ต้องให้ผู้จัดการหรือเจ้าของร้านดำเนินการ`);
   }
 

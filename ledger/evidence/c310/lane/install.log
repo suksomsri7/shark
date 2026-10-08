@@ -1,0 +1,50 @@
+Lockfile is up to date, resolution step is skipped
+Progress: resolved 1, reused 0, downloaded 0, added 0
+Packages: +255
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+Progress: resolved 255, reused 255, downloaded 0, added 187
+Progress: resolved 255, reused 255, downloaded 0, added 255, done
+
+dependencies:
++ @dnd-kit/core 6.3.1
++ @dnd-kit/sortable 8.0.0
++ @dnd-kit/utilities 3.2.2
++ @prisma/adapter-pg 7.8.0
++ @prisma/client 7.8.0
++ ably 2.28.0
++ fractional-indexing 4.0.0
++ jose 6.2.4
++ next 16.2.11
++ next-intl 4.13.2
++ pg 8.22.0
++ qrcode 1.5.4
++ react 19.2.4
++ react-dom 19.2.4
++ zod 4.4.3
+
+devDependencies:
++ @tailwindcss/postcss 4.3.2
++ @types/node 20.19.43
++ @types/pg 8.20.0
++ @types/qrcode 1.5.6
++ @types/react 19.2.17
++ @types/react-dom 19.2.3
++ prisma 7.8.0
++ tailwindcss 4.3.2
++ tsx 4.23.0
++ typescript 5.9.3
+
+. postinstall$ prisma generate
+. postinstall: Loaded Prisma config from prisma.config.ts.
+. postinstall: Prisma schema loaded from prisma/schema.
+. postinstall: ✔ Generated Prisma Client (v7.8.0) to ./node_modules/.pnpm/@prisma+client@7.8.0_prisma@7.8.0_@types+react-dom@19.2.3_@types+react@19.2.17__@types+_12a6afd4e8168cdd815b06207f03ccf9/node_modules/@prisma/client in 3.44s
+. postinstall: Start by importing your Prisma Client (See: https://pris.ly/d/importing-client)
+. postinstall: Done
+╭ Warning ─────────────────────────────────────────────────────────────────────╮
+│                                                                              │
+│   Ignored build scripts: @parcel/watcher@2.5.6, @swc/core@1.15.43.           │
+│   Run "pnpm approve-builds" to pick which dependencies should be allowed     │
+│   to run scripts.                                                            │
+│                                                                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+Done in 8.7s using pnpm v10.33.0

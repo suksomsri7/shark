@@ -3,6 +3,7 @@
 import type { ActorType, Membership, Tenant } from "@prisma/client";
 import { prisma } from "@/lib/core/db";
 import { assertCan, evaluate, type MembershipCtx } from "@/lib/core/rbac";
+import { likeStartsWith } from "@/lib/core/ci-equals"; // CRM C5.5-fix8 ▸ คำค้นไม่มี wildcard รั่ว ◂
 
 type ActiveAuth = { user: { id: string }; active: Membership & { tenant: Tenant } };
 
@@ -245,7 +246,7 @@ export async function listAuditLogs(input: ListAuditLogsInput): Promise<AuditLog
   const logs = await prisma.auditLog.findMany({
     where: {
       tenantId: input.tenantId, // ← scope ร้าน (บังคับทุกครั้ง)
-      ...(input.action ? { action: { startsWith: input.action } } : {}),
+      ...(input.action ? { action: likeStartsWith(input.action) } : {}), // CRM C5.5-fix8 ▸ ตัวกรองจาก URL/REST — `_`/`%` เป็นตัวอักษร ◂
       ...(input.actorId ? { actorId: input.actorId } : {}),
       ...(input.targetType ? { targetType: input.targetType } : {}),
       ...(input.targetId ? { targetId: input.targetId } : {}),

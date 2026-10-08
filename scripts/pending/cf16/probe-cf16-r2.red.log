@@ -1,0 +1,25 @@
+(node:2642355) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+── RL ──
+  ❌ [R2-RL-service] bucket at 120: person create with a phone → LIMIT retryAfterSec=undefined "เพิ่มหรือแก้เบอร์โทร/อีเมลของผู้ติดต่อถี่เกินไป — รอ 10 นาทีแล้วลองใหม่ (ถ้าต้องเพิ่มทีละมาก ๆ ใช้ "นำเข้าไฟล์")" · rows with that phone 0
+  ❌ [R2-RL-rest-shape] toCrmApiError → 409 state_conflict nothingWritten=false hint=null en="This CRM system reached one of its limits, so nothing was saved."
+  ❌ [R2-RL-mobile] mobileErrorOf → 500 error "ระบบ CRM ขัดข้องชั่วคราว (ข้อมูลไม่เปลี่ยน) — ลองใหม่อีกครั้…"
+  ❌ [R2-RL-idem-retry] limited: 409 state_conflict "เพิ่มหรือแก้เบอร์โทร/อีเมลของผู้ติดต่อถี่เกินไป — รอ 10 นาที…" · stored for replay=1 · same key after the window: 409 replayed=true created=state_conflict · rows 0
+  ❌ [R2-RL-ai-message] AI confirmation while the bucket is full → Error "เพิ่มหรือแก้เบอร์โทร/อีเมลของผู้ติดต่อถี่เกินไป — รอ 10 นาทีแล้วลองใหม่ (ถ้าต้องเพิ่มทีละมาก ๆ ใช้ "นำเข้าไฟล์")"
+  ✅ [R2-RL-plan-cap-control] plan-cap LIMIT → 409 state_conflict nothingWritten=false
+
+── JB ──
+  ❌ [R2-JB-scope] runner + OWNER read · others get the answer of a non-existent id (NOT_FOUND "ไม่พบงานนำเข้านี้ในระบบ CRM นี้") · owner→own OK · s1→own OK · owner→s1's OK · s2→owner's OK · s2→s1's OK · s1→owner's OK · manager→s1's OK · key(of s2)→s1's OK · BAD s2→owner's: OK READ {"created":1,"updated":0,"skipped":0,"candidates":0,"failed":1,"errors":[{"row": | s2→s1's: OK READ {"created":1,"updated":0,"skipped":0,"candidates":0,"failed":1,"errors":[{"row": | s1→owner's: OK READ {"created":1,"updated":0,"skipped":0,"candidates":0,"failed":1,"errors":[{"row": | manager→s1's: OK READ {"created":1,"updated":0,"skipped":0,"candidates":0,"failed":1,"errors":[{"row": | key(of s2)→s1's: OK READ {"created":1,"updated":0,"skipped":0,"candidates":0,"failed":1,"errors":[{"row":
+  ✅ [CLEAN-7sw150] tenant rows left=0
+
+🔴 probe-cf16-r2: 2/8
+JSON_SUMMARY {"total":8,"passed":2,"findings":["R2-RL-service","R2-RL-rest-shape","R2-RL-mobile","R2-RL-idem-retry","R2-RL-ai-message","R2-JB-scope"]}
+exit=1 2026-10-02T07:16:06Z

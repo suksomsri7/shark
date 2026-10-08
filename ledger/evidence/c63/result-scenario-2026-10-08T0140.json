@@ -1,0 +1,101 @@
+{
+ "stage": "scenario",
+ "startedAt": "2026-10-08T01:40:11.576Z",
+ "pages": [],
+ "steps": [
+  {
+   "code": "S01",
+   "role": "owner",
+   "what": "create company qc-prod-Andaman Corporate Travel (no tax id, no phone/e-mail)",
+   "at": "2026-10-08T01:40:13.160Z",
+   "ok": true,
+   "db": {
+    "partyId": "cmuyvd8y9000d05jy8j5o95ns",
+    "pname": "qc-prod-Andaman Corporate Travel",
+    "accountContactId": null
+   },
+   "end": "2026-10-08T01:40:17.450Z"
+  },
+  {
+   "code": "S02",
+   "role": "owner",
+   "what": "create contact qc-prod-Wanna Buyer (e-mail @qc-prod.invalid, no phone) linked to the company, owner = owner",
+   "at": "2026-10-08T01:40:17.649Z",
+   "ok": true,
+   "db": {
+    "links": 1,
+    "member": null
+   },
+   "end": "2026-10-08T01:40:22.647Z"
+  },
+  {
+   "code": "S03",
+   "role": "manager",
+   "what": "create lead qc-prod-Somchai Lead (NO phone, NO e-mail) and assign it to the staff user",
+   "at": "2026-10-08T01:40:22.860Z",
+   "ok": true,
+   "db": {
+    "ownerUserId": "qcprode04f51fe031dd38ee54",
+    "phone": null,
+    "email": null
+   },
+   "end": "2026-10-08T01:40:27.766Z"
+  },
+  {
+   "code": "S04",
+   "role": "staff",
+   "what": "visibility: sees S03 lead (own) · GET of the S02 contact ⇒ 404 (owner's record, policy STAFF=TEAM)",
+   "at": "2026-10-08T01:40:28.197Z",
+   "ok": true,
+   "http": {
+    "own": 200,
+    "ownersRecord": 404
+   },
+   "end": "2026-10-08T01:40:32.055Z"
+  },
+  {
+   "code": "S05",
+   "role": "staff",
+   "what": "open deal qc-prod-Corporate dive trip 20 pax (180,000 ฿) on the S03 lead",
+   "at": "2026-10-08T01:40:32.398Z",
+   "ok": false,
+   "error": "Waiting failed: 30000ms exceeded",
+   "domIds": [
+    "report-issue",
+    "ai-orb",
+    "nav-collapse",
+    "deal-new-page",
+    "deal-new-form",
+    "deal-new-title",
+    "deal-new-contact-q",
+    "deal-new-contact",
+    "deal-new-pipeline",
+    "deal-new-stage",
+    "deal-new-value",
+    "deal-new-close",
+    "deal-new-owner",
+    "deal-new-category",
+    "deal-new-next-step",
+    "deal-new-cancel",
+    "deal-new-submit"
+   ],
+   "url": "/app/sys/cmtdvoopr000004jpf1vaply9/crm/deals/new?contactId=cmuyvdg7t000106jpdhunpdx6",
+   "end": "2026-10-08T01:41:06.184Z"
+  }
+ ],
+ "findings": [],
+ "aborted": "Waiting failed: 30000ms exceeded",
+ "finishedAt": "2026-10-08T01:41:06.211Z",
+ "sideEffectsStart": {
+  "emails": 0,
+  "customers": 0,
+  "documents": 0,
+  "account_contacts": 0,
+  "cards": 0,
+  "crm_webhooks": 0,
+  "automation_runs": 0,
+  "ai_txns": 1,
+  "enrollments": 0,
+  "owner_notifications": 0
+ }
+}

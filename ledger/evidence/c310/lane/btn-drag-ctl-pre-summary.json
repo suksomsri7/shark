@@ -1,0 +1,2701 @@
+{
+  "at": "2026-10-07T23:26:54.517Z",
+  "users": [
+    "owner"
+  ],
+  "devices": [
+    "desktop",
+    "mobile"
+  ],
+  "pageFilter": "re:^(/app/sys/.id.|/deals)(?!/)",
+  "total": 157,
+  "passed": 155,
+  "dead": [],
+  "wrongExpect": [
+    {
+      "page": "/deals",
+      "testid": "deal-card-*",
+      "user": "owner",
+      "device": "desktop",
+      "detail": "ไม่มี request เขียน (POST/server action) ระหว่างกด",
+      "shot": "/root/projects/shark-crm-c310/.qc-shots/crm/buttons-c310/drag-ctl-pre/fail/_deals~deal-card-_~owner~desktop.png"
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-card-*",
+      "user": "owner",
+      "device": "mobile",
+      "detail": "ไม่มี request เขียน (POST/server action) ระหว่างกด",
+      "shot": "/root/projects/shark-crm-c310/.qc-shots/crm/buttons-c310/drag-ctl-pre/fail/_deals~deal-card-_~owner~mobile.png"
+    }
+  ],
+  "hiddenLeak": [],
+  "vacuous": [],
+  "disabled": [],
+  "consoleErrors": [],
+  "overflow": [],
+  "picks": [
+    {
+      "user": "owner",
+      "entity": "deal",
+      "id": "cmuyef7ps00e1v5kze5t0qxhn",
+      "why": "ของกลาง (shared pick) · ผ่าน dealWhere() ของ product · owner=thana team=cmuyeerz30002v5kzawz2jb5b"
+    },
+    {
+      "user": "owner",
+      "entity": "contact",
+      "id": "cmuyeesmi001tv5kzqqrzt4wo",
+      "why": "ของกลาง (shared pick) · ผ่าน contactWhere() ของ product · owner=thana team=cmuyeerz30002v5kzawz2jb5b"
+    },
+    {
+      "user": "owner",
+      "entity": "company",
+      "id": "cmuyees7l000qv5kztjyrykgo",
+      "why": "ของกลาง (shared pick) · ผ่าน companyWhere() ของ product · owner=thana team=cmuyeerz30002v5kzawz2jb5b"
+    },
+    {
+      "user": "manager",
+      "entity": "deal",
+      "id": "cmuyef7ps00e1v5kze5t0qxhn",
+      "why": "ของกลาง (shared pick) · ผ่าน dealWhere() ของ product · owner=thana team=cmuyeerz30002v5kzawz2jb5b"
+    },
+    {
+      "user": "manager",
+      "entity": "contact",
+      "id": "cmuyeesmi001tv5kzqqrzt4wo",
+      "why": "ของกลาง (shared pick) · ผ่าน contactWhere() ของ product · owner=thana team=cmuyeerz30002v5kzawz2jb5b"
+    },
+    {
+      "user": "manager",
+      "entity": "company",
+      "id": "cmuyees7l000qv5kztjyrykgo",
+      "why": "ของกลาง (shared pick) · ผ่าน companyWhere() ของ product · owner=thana team=cmuyeerz30002v5kzawz2jb5b"
+    },
+    {
+      "user": "nok",
+      "entity": "deal",
+      "id": "cmuyefbav00gtv5kzj6ukodzk",
+      "why": "ของตัวเอง (ownerUserId = ผู้ใช้) · ผ่าน dealWhere() ของ product · owner=nok team=cmuyees0e0006v5kz0ttc8zc0"
+    },
+    {
+      "user": "nok",
+      "entity": "contact",
+      "id": "cmuyeez6t007dv5kz8isnqhih",
+      "why": "ของตัวเอง (ownerUserId = ผู้ใช้) · ผ่าน contactWhere() ของ product · owner=nok team=cmuyees0e0006v5kz0ttc8zc0"
+    },
+    {
+      "user": "nok",
+      "entity": "company",
+      "id": "cmuyeesd9001av5kzsgu5v9wk",
+      "why": "ไม่มีคีย์ crm.company.read (companyWhere ว่าง) ⇒ ใช้ของตัวเอง owner=nok — หน้าต้อง 404 ตามคีย์ (registry hiddenFor)"
+    },
+    {
+      "user": "thana",
+      "entity": "deal",
+      "id": "cmuyef7ps00e1v5kze5t0qxhn",
+      "why": "ของตัวเอง (ownerUserId = ผู้ใช้) · ผ่าน dealWhere() ของ product · owner=thana team=cmuyeerz30002v5kzawz2jb5b"
+    },
+    {
+      "user": "thana",
+      "entity": "contact",
+      "id": "cmuyeesmi001tv5kzqqrzt4wo",
+      "why": "ของตัวเอง (ownerUserId = ผู้ใช้) · ผ่าน contactWhere() ของ product · owner=thana team=cmuyeerz30002v5kzawz2jb5b"
+    },
+    {
+      "user": "thana",
+      "entity": "company",
+      "id": "cmuyees7l000qv5kztjyrykgo",
+      "why": "ไม่มีคีย์ crm.company.read (companyWhere ว่าง) ⇒ ใช้ของตัวเอง owner=thana — หน้าต้อง 404 ตามคีย์ (registry hiddenFor)"
+    },
+    {
+      "user": "*",
+      "entity": "leadNow",
+      "id": "cmuyqaph700002rkzu8wrk4x7",
+      "why": "ผู้ติดต่อที่สร้างตอนนี้ (qc-btn-lead-) — กล่องที่มา lead นับเฉพาะงวดปัจจุบัน"
+    },
+    {
+      "user": "owner",
+      "entity": "dealView",
+      "id": "cmuyqaphi00012rkzy9vbcnw6",
+      "why": "มุมมองดีลส่วนตัวของบทบาทนี้ (qc-btn-view-) — ซีดมี 0"
+    },
+    {
+      "user": "owner",
+      "entity": "chatRoom",
+      "id": "cmuyqapii00032rkz65uz4dwq",
+      "why": "ห้องแชทของตัวกด ผูกปาร์ตี้ของผู้ติดต่อ cmuyeesmi001tv5kzqqrzt4wo (briefFor ของ product เห็นผู้ติดต่อตามสิทธิ์ของบทบาท)"
+    },
+    {
+      "user": "owner",
+      "entity": "unownedDeal",
+      "id": "cmuyqapkm00042rkz5bfmnc2q",
+      "why": "ดีลเปิดไม่มีผู้ดูแลของตัวกด (qc-btn-unowned-) ทีมเดียวกับ cmuyef7ps00e1v5kze5t0qxhn · dealWhere ของ product ยอมรับ"
+    }
+  ],
+  "pageStatus": [
+    {
+      "page": "/deals",
+      "path": "/app/sys/cmuy1gmlm0000jikz45h7xblz/crm/deals",
+      "user": "owner",
+      "device": "desktop",
+      "status": 200,
+      "rows": 23,
+      "hiddenRows": 0
+    },
+    {
+      "page": "/deals",
+      "path": "/app/sys/cmuy1gmlm0000jikz45h7xblz/crm/deals",
+      "user": "owner",
+      "device": "mobile",
+      "status": 200,
+      "rows": 24,
+      "hiddenRows": 0
+    },
+    {
+      "page": "/deals",
+      "path": "/app/sys/cmuy1gmlm0000jikz45h7xblz/crm/deals?view=table",
+      "user": "owner",
+      "device": "desktop",
+      "status": 200,
+      "rows": 16,
+      "hiddenRows": 0
+    },
+    {
+      "page": "/deals",
+      "path": "/app/sys/cmuy1gmlm0000jikz45h7xblz/crm/deals?view=table",
+      "user": "owner",
+      "device": "mobile",
+      "status": 200,
+      "rows": 15,
+      "hiddenRows": 0
+    },
+    {
+      "page": "/deals",
+      "path": "/app/sys/cmuy1gmlm0000jikz45h7xblz/crm/deals?q=qc-btn-view",
+      "user": "owner",
+      "device": "desktop",
+      "status": 200,
+      "rows": 1,
+      "hiddenRows": 0
+    },
+    {
+      "page": "/deals",
+      "path": "/app/sys/cmuy1gmlm0000jikz45h7xblz/crm/deals?q=qc-btn-view",
+      "user": "owner",
+      "device": "mobile",
+      "status": 200,
+      "rows": 1,
+      "hiddenRows": 0
+    },
+    {
+      "page": "/deals",
+      "path": "/app/sys/cmuy1gmlm0000jikz45h7xblz/crm/deals?q=qc-btn-none",
+      "user": "owner",
+      "device": "desktop",
+      "status": 200,
+      "rows": 1,
+      "hiddenRows": 0
+    },
+    {
+      "page": "/deals",
+      "path": "/app/sys/cmuy1gmlm0000jikz45h7xblz/crm/deals?q=qc-btn-none",
+      "user": "owner",
+      "device": "mobile",
+      "status": 200,
+      "rows": 1,
+      "hiddenRows": 0
+    },
+    {
+      "page": "/deals",
+      "path": "/app/sys/cmuy1gmlm0000jikz45h7xblz/crm/deals?view=forecast",
+      "user": "owner",
+      "device": "desktop",
+      "status": 200,
+      "rows": 3,
+      "hiddenRows": 0
+    },
+    {
+      "page": "/deals",
+      "path": "/app/sys/cmuy1gmlm0000jikz45h7xblz/crm/deals?view=forecast",
+      "user": "owner",
+      "device": "mobile",
+      "status": 200,
+      "rows": 3,
+      "hiddenRows": 0
+    },
+    {
+      "page": "/app/sys/[id]",
+      "path": "/app/sys/cmuy1gmlm0000jikz45h7xblz",
+      "user": "owner",
+      "device": "desktop",
+      "status": 200,
+      "rows": 49,
+      "hiddenRows": 0
+    },
+    {
+      "page": "/app/sys/[id]",
+      "path": "/app/sys/cmuy1gmlm0000jikz45h7xblz",
+      "user": "owner",
+      "device": "mobile",
+      "status": 200,
+      "rows": 49,
+      "hiddenRows": 0
+    },
+    {
+      "page": "/app/sys/[id]",
+      "path": "/app/sys/cmuy1cvxu000lpgkzinyk79mm?c=cmuyqapii00032rkz65uz4dwq",
+      "user": "owner",
+      "device": "desktop",
+      "status": 200,
+      "rows": 8,
+      "hiddenRows": 0
+    },
+    {
+      "page": "/app/sys/[id]",
+      "path": "/app/sys/cmuy1cvxu000lpgkzinyk79mm?c=cmuy1do7r00ukpgkzg4n85cie",
+      "user": "owner",
+      "device": "desktop",
+      "status": 200,
+      "rows": 1,
+      "hiddenRows": 0
+    },
+    {
+      "page": "/app/sys/[id]",
+      "path": "/app/sys/cmuy1cw11000opgkz8yk8xca6",
+      "user": "owner",
+      "device": "desktop",
+      "status": 200,
+      "rows": 1,
+      "hiddenRows": 0
+    },
+    {
+      "page": "/app/sys/[id]",
+      "path": "/app/sys/cmuy1cw11000opgkz8yk8xca6",
+      "user": "owner",
+      "device": "mobile",
+      "status": 200,
+      "rows": 1,
+      "hiddenRows": 0
+    }
+  ],
+  "skippedNeeds": [
+    {
+      "page": "/deals",
+      "testid": "deals-empty-create-pipeline",
+      "user": "owner",
+      "device": "desktop",
+      "needs": "ระบบ CRM ที่ยังไม่มี pipeline เลย (หน้าว่าง) — ซีดมี 2 pipeline",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": "R4-2G: R4 ruling 2 — ACCEPTABLE GAP (LOW)"
+    },
+    {
+      "page": "/deals",
+      "testid": "deals-filter-f-*",
+      "user": "owner",
+      "device": "desktop",
+      "needs": "ฟิลด์กำหนดเองของดีลที่ตั้งให้กรองได้ — ขึ้นกับซีด",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": "R5-REC: R5 — RECOMMEND cheap fixture (not blocking · C4.2-fix)"
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-column-more-*",
+      "user": "owner",
+      "device": "desktop",
+      "needs": "ขั้นที่มีดีลมากกว่าจำนวนการ์ดที่บอร์ดแสดงต่อคอลัมน์ — ขึ้นกับจำนวนดีลต่อขั้นในซีด",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": "R5-ACC: R5 — ACCEPT seed / AI-data gap (C6)"
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-req-field-*",
+      "user": "owner",
+      "device": "desktop",
+      "needs": "ขั้นที่บังคับกรอกช่องก่อนย้าย (requiredFields ของขั้น) + การย้ายดีลเข้าไปขั้นนั้น — ซีดไม่ตั้งขั้นบังคับช่อง",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": "R5-REC: R5 — RECOMMEND cheap fixture (not blocking · C4.2-fix)"
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-req-open-link",
+      "user": "owner",
+      "device": "desktop",
+      "needs": "ขั้นที่บังคับกรอกช่องก่อนย้าย (requiredFields ของขั้น) + การย้ายดีลเข้าไปขั้นนั้น — ซีดไม่ตั้งขั้นบังคับช่อง",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": "R5-REC: R5 — RECOMMEND cheap fixture (not blocking · C4.2-fix)"
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-req-cancel",
+      "user": "owner",
+      "device": "desktop",
+      "needs": "ขั้นที่บังคับกรอกช่องก่อนย้าย (requiredFields ของขั้น) + การย้ายดีลเข้าไปขั้นนั้น — ซีดไม่ตั้งขั้นบังคับช่อง",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": "R5-REC: R5 — RECOMMEND cheap fixture (not blocking · C4.2-fix)"
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-move-toast-close",
+      "user": "owner",
+      "device": "desktop",
+      "needs": "ข้อความหลังย้ายขั้นสำเร็จ (โผล่ชั่วคราวหลังลากการ์ด — แถวลากทำให้หน้าโหลดใหม่ก่อนถึงแถวนี้)",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": "R5-ACC: R5 — ACCEPT seed / AI-data gap (C6)"
+    },
+    {
+      "page": "/deals",
+      "testid": "deals-empty-create-pipeline",
+      "user": "owner",
+      "device": "mobile",
+      "needs": "ระบบ CRM ที่ยังไม่มี pipeline เลย (หน้าว่าง) — ซีดมี 2 pipeline",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": "R4-2G: R4 ruling 2 — ACCEPTABLE GAP (LOW)"
+    },
+    {
+      "page": "/deals",
+      "testid": "deals-filter-f-*",
+      "user": "owner",
+      "device": "mobile",
+      "needs": "ฟิลด์กำหนดเองของดีลที่ตั้งให้กรองได้ — ขึ้นกับซีด",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": "R5-REC: R5 — RECOMMEND cheap fixture (not blocking · C4.2-fix)"
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-column-more-*",
+      "user": "owner",
+      "device": "mobile",
+      "needs": "ขั้นที่มีดีลมากกว่าจำนวนการ์ดที่บอร์ดแสดงต่อคอลัมน์ — ขึ้นกับจำนวนดีลต่อขั้นในซีด",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": "R5-ACC: R5 — ACCEPT seed / AI-data gap (C6)"
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-req-field-*",
+      "user": "owner",
+      "device": "mobile",
+      "needs": "ขั้นที่บังคับกรอกช่องก่อนย้าย (requiredFields ของขั้น) + การย้ายดีลเข้าไปขั้นนั้น — ซีดไม่ตั้งขั้นบังคับช่อง",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": "R5-REC: R5 — RECOMMEND cheap fixture (not blocking · C4.2-fix)"
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-req-open-link",
+      "user": "owner",
+      "device": "mobile",
+      "needs": "ขั้นที่บังคับกรอกช่องก่อนย้าย (requiredFields ของขั้น) + การย้ายดีลเข้าไปขั้นนั้น — ซีดไม่ตั้งขั้นบังคับช่อง",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": "R5-REC: R5 — RECOMMEND cheap fixture (not blocking · C4.2-fix)"
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-req-cancel",
+      "user": "owner",
+      "device": "mobile",
+      "needs": "ขั้นที่บังคับกรอกช่องก่อนย้าย (requiredFields ของขั้น) + การย้ายดีลเข้าไปขั้นนั้น — ซีดไม่ตั้งขั้นบังคับช่อง",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": "R5-REC: R5 — RECOMMEND cheap fixture (not blocking · C4.2-fix)"
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-move-toast-close",
+      "user": "owner",
+      "device": "mobile",
+      "needs": "ข้อความหลังย้ายขั้นสำเร็จ (โผล่ชั่วคราวหลังลากการ์ด — แถวลากทำให้หน้าโหลดใหม่ก่อนถึงแถวนี้)",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": "R5-ACC: R5 — ACCEPT seed / AI-data gap (C6)"
+    },
+    {
+      "page": "/deals",
+      "testid": "deals-first-page",
+      "user": "owner",
+      "device": "desktop",
+      "needs": "ดีลที่มองเห็นได้ > 50 ดีลในมุมมองตาราง (ขนาดหน้า 50) — ซีดมี 60: owner/manager ถึง · nok/thana อาจไม่ถึง",
+      "detail": "ตัวเปิด deals-next-page หาไม่พบ/มองไม่เห็น (ลำดับ deals-next-page)",
+      "shot": "/root/projects/shark-crm-c310/.qc-shots/crm/buttons-c310/drag-ctl-pre/fail/_deals~deals-first-page~owner~desktop.png",
+      "probe": "false",
+      "waiver": null
+    },
+    {
+      "page": "/deals",
+      "testid": "deals-next-page",
+      "user": "owner",
+      "device": "desktop",
+      "needs": "ดีลที่มองเห็นได้ > 50 ดีลในมุมมองตาราง (ขนาดหน้า 50) — ซีดมี 60: owner/manager ถึง · nok/thana อาจไม่ถึง",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "false",
+      "waiver": null
+    },
+    {
+      "page": "/deals",
+      "testid": "deals-first-page",
+      "user": "owner",
+      "device": "mobile",
+      "needs": "ดีลที่มองเห็นได้ > 50 ดีลในมุมมองตาราง (ขนาดหน้า 50) — ซีดมี 60: owner/manager ถึง · nok/thana อาจไม่ถึง",
+      "detail": "ตัวเปิด deals-next-page หาไม่พบ/มองไม่เห็น (ลำดับ deals-next-page)",
+      "shot": "/root/projects/shark-crm-c310/.qc-shots/crm/buttons-c310/drag-ctl-pre/fail/_deals~deals-first-page~owner~mobile.png",
+      "probe": "false",
+      "waiver": null
+    },
+    {
+      "page": "/deals",
+      "testid": "deals-next-page",
+      "user": "owner",
+      "device": "mobile",
+      "needs": "ดีลที่มองเห็นได้ > 50 ดีลในมุมมองตาราง (ขนาดหน้า 50) — ซีดมี 60: owner/manager ถึง · nok/thana อาจไม่ถึง",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "false",
+      "waiver": null
+    },
+    {
+      "page": "/app/sys/[id]",
+      "testid": "crm-home-stage-all",
+      "user": "owner",
+      "device": "desktop",
+      "needs": "ดีลที่ผู้ใช้คนนี้เป็นผู้ดูแล (หน้าแรก 'ดีลของฉัน'/ดีลนิ่ง) — ซีดให้ดีลทั้งหมดกับ thana/nok ⇒ owner/manager มี 0",
+      "detail": "ตัวเปิด crm-home-stage-chip=on หาไม่พบ/มองไม่เห็น (ลำดับ crm-home-stage-chip=on)",
+      "shot": "/root/projects/shark-crm-c310/.qc-shots/crm/buttons-c310/drag-ctl-pre/fail/_app_sys_id_~crm-home-stage-all~owner~desktop.png",
+      "probe": "none",
+      "waiver": null
+    },
+    {
+      "page": "/app/sys/[id]",
+      "testid": "crm-home-stage-chip",
+      "user": "owner",
+      "device": "desktop",
+      "needs": "ดีลที่ผู้ใช้คนนี้เป็นผู้ดูแล (หน้าแรก 'ดีลของฉัน'/ดีลนิ่ง) — ซีดให้ดีลทั้งหมดกับ thana/nok ⇒ owner/manager มี 0",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": null
+    },
+    {
+      "page": "/app/sys/[id]",
+      "testid": "crm-home-deal-card",
+      "user": "owner",
+      "device": "desktop",
+      "needs": "ดีลที่ผู้ใช้คนนี้เป็นผู้ดูแล (หน้าแรก 'ดีลของฉัน'/ดีลนิ่ง) — ซีดให้ดีลทั้งหมดกับ thana/nok ⇒ owner/manager มี 0",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": null
+    },
+    {
+      "page": "/app/sys/[id]",
+      "testid": "crm-hub-switch-link",
+      "user": "owner",
+      "device": "desktop",
+      "needs": "ระบบ CRM ที่ยังใช้หน้าจอรุ่นเดิม v1 (ลิงก์อยู่บน CrmHub ของ v1 · เจ้าของร้าน · CRM_V2_SWITCH) — ซีดเป็น v2",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": "R4-2G: R4 ruling 2 — ACCEPTABLE GAP (LOW)"
+    },
+    {
+      "page": "/app/sys/[id]",
+      "testid": "crm-home-stale-row-*",
+      "user": "owner",
+      "device": "desktop",
+      "needs": "ดีลที่ผู้ใช้คนนี้เป็นผู้ดูแล (หน้าแรก 'ดีลของฉัน'/ดีลนิ่ง) — ซีดให้ดีลทั้งหมดกับ thana/nok ⇒ owner/manager มี 0",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": "R4-2G: R4 ruling 2 — ACCEPTABLE GAP (LOW)"
+    },
+    {
+      "page": "/app/sys/[id]",
+      "testid": "crm-home-stale-row-view-*",
+      "user": "owner",
+      "device": "desktop",
+      "needs": "ดีลที่ผู้ใช้คนนี้เป็นผู้ดูแล (หน้าแรก 'ดีลของฉัน'/ดีลนิ่ง) — ซีดให้ดีลทั้งหมดกับ thana/nok ⇒ owner/manager มี 0",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": "R4-2G: R4 ruling 2 — ACCEPTABLE GAP (LOW)"
+    },
+    {
+      "page": "/app/sys/[id]",
+      "testid": "crm-home-stale-banner",
+      "user": "owner",
+      "device": "desktop",
+      "needs": "ดีลที่ผู้ใช้คนนี้เป็นผู้ดูแล (หน้าแรก 'ดีลของฉัน'/ดีลนิ่ง) — ซีดให้ดีลทั้งหมดกับ thana/nok ⇒ owner/manager มี 0",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": "R4-2G: R4 ruling 2 — ACCEPTABLE GAP (LOW)"
+    },
+    {
+      "page": "/app/sys/[id]",
+      "testid": "crm-home-unowned-contact-*",
+      "user": "owner",
+      "device": "desktop",
+      "needs": "ดีลเปิด/ผู้ติดต่อที่ไม่มีผู้ดูแล (ownerUserId ว่างหรือผู้ดูแลออกจากร้านแล้ว) — ขึ้นกับซีด",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": null
+    },
+    {
+      "page": "/app/sys/[id]",
+      "testid": "crm-ai-proposal-next-step-input",
+      "user": "owner",
+      "device": "desktop",
+      "needs": "ข้อเสนอ AI ที่รออนุมัติ (AiProposal PENDING kind crm.assist.tasks) — ซีดมี 0 · ตัวเปิด crm-ai-home-at-risk สร้างให้ (กดได้เฉพาะเมื่อ SHARK_AI_MOCK=1)",
+      "detail": "กด crm-ai-home-at-risk → crm-ai-proposal-edit แล้วยังไม่เห็น crm-ai-proposal-next-step-input",
+      "shot": "/root/projects/shark-crm-c310/.qc-shots/crm/buttons-c310/drag-ctl-pre/fail/_app_sys_id_~crm-ai-proposal-next-step-input~owner~desktop.png",
+      "probe": "none",
+      "waiver": "R4-2W: R4 ruling 2 — WAIVE (shown transitively / service oracle)"
+    },
+    {
+      "page": "/app/sys/[id]",
+      "testid": "crm-ai-proposal-deal-*",
+      "user": "owner",
+      "device": "desktop",
+      "needs": "ข้อเสนอ AI ที่รออนุมัติ (AiProposal PENDING kind crm.assist.tasks) — ซีดมี 0 · ตัวเปิด crm-ai-home-at-risk สร้างให้ (กดได้เฉพาะเมื่อ SHARK_AI_MOCK=1)",
+      "detail": "กด crm-ai-home-at-risk แล้วยังไม่เห็น crm-ai-proposal-deal-*",
+      "shot": "/root/projects/shark-crm-c310/.qc-shots/crm/buttons-c310/drag-ctl-pre/fail/_app_sys_id_~crm-ai-proposal-deal-_~owner~desktop.png",
+      "probe": "none",
+      "waiver": "R4-2W: R4 ruling 2 — WAIVE (shown transitively / service oracle)"
+    },
+    {
+      "page": "/app/sys/[id]",
+      "testid": "crm-home-stage-all",
+      "user": "owner",
+      "device": "mobile",
+      "needs": "ดีลที่ผู้ใช้คนนี้เป็นผู้ดูแล (หน้าแรก 'ดีลของฉัน'/ดีลนิ่ง) — ซีดให้ดีลทั้งหมดกับ thana/nok ⇒ owner/manager มี 0",
+      "detail": "ตัวเปิด crm-home-stage-chip=on หาไม่พบ/มองไม่เห็น (ลำดับ crm-home-stage-chip=on)",
+      "shot": "/root/projects/shark-crm-c310/.qc-shots/crm/buttons-c310/drag-ctl-pre/fail/_app_sys_id_~crm-home-stage-all~owner~mobile.png",
+      "probe": "none",
+      "waiver": null
+    },
+    {
+      "page": "/app/sys/[id]",
+      "testid": "crm-home-stage-chip",
+      "user": "owner",
+      "device": "mobile",
+      "needs": "ดีลที่ผู้ใช้คนนี้เป็นผู้ดูแล (หน้าแรก 'ดีลของฉัน'/ดีลนิ่ง) — ซีดให้ดีลทั้งหมดกับ thana/nok ⇒ owner/manager มี 0",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": null
+    },
+    {
+      "page": "/app/sys/[id]",
+      "testid": "crm-home-deal-card",
+      "user": "owner",
+      "device": "mobile",
+      "needs": "ดีลที่ผู้ใช้คนนี้เป็นผู้ดูแล (หน้าแรก 'ดีลของฉัน'/ดีลนิ่ง) — ซีดให้ดีลทั้งหมดกับ thana/nok ⇒ owner/manager มี 0",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": null
+    },
+    {
+      "page": "/app/sys/[id]",
+      "testid": "crm-hub-switch-link",
+      "user": "owner",
+      "device": "mobile",
+      "needs": "ระบบ CRM ที่ยังใช้หน้าจอรุ่นเดิม v1 (ลิงก์อยู่บน CrmHub ของ v1 · เจ้าของร้าน · CRM_V2_SWITCH) — ซีดเป็น v2",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": "R4-2G: R4 ruling 2 — ACCEPTABLE GAP (LOW)"
+    },
+    {
+      "page": "/app/sys/[id]",
+      "testid": "crm-home-stale-row-*",
+      "user": "owner",
+      "device": "mobile",
+      "needs": "ดีลที่ผู้ใช้คนนี้เป็นผู้ดูแล (หน้าแรก 'ดีลของฉัน'/ดีลนิ่ง) — ซีดให้ดีลทั้งหมดกับ thana/nok ⇒ owner/manager มี 0",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": "R4-2G: R4 ruling 2 — ACCEPTABLE GAP (LOW)"
+    },
+    {
+      "page": "/app/sys/[id]",
+      "testid": "crm-home-stale-row-view-*",
+      "user": "owner",
+      "device": "mobile",
+      "needs": "ดีลที่ผู้ใช้คนนี้เป็นผู้ดูแล (หน้าแรก 'ดีลของฉัน'/ดีลนิ่ง) — ซีดให้ดีลทั้งหมดกับ thana/nok ⇒ owner/manager มี 0",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": "R4-2G: R4 ruling 2 — ACCEPTABLE GAP (LOW)"
+    },
+    {
+      "page": "/app/sys/[id]",
+      "testid": "crm-home-stale-banner",
+      "user": "owner",
+      "device": "mobile",
+      "needs": "ดีลที่ผู้ใช้คนนี้เป็นผู้ดูแล (หน้าแรก 'ดีลของฉัน'/ดีลนิ่ง) — ซีดให้ดีลทั้งหมดกับ thana/nok ⇒ owner/manager มี 0",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": "R4-2G: R4 ruling 2 — ACCEPTABLE GAP (LOW)"
+    },
+    {
+      "page": "/app/sys/[id]",
+      "testid": "crm-home-unowned-contact-*",
+      "user": "owner",
+      "device": "mobile",
+      "needs": "ดีลเปิด/ผู้ติดต่อที่ไม่มีผู้ดูแล (ownerUserId ว่างหรือผู้ดูแลออกจากร้านแล้ว) — ขึ้นกับซีด",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": null
+    },
+    {
+      "page": "/app/sys/[id]",
+      "testid": "crm-ai-proposal-next-step-input",
+      "user": "owner",
+      "device": "mobile",
+      "needs": "ข้อเสนอ AI ที่รออนุมัติ (AiProposal PENDING kind crm.assist.tasks) — ซีดมี 0 · ตัวเปิด crm-ai-home-at-risk สร้างให้ (กดได้เฉพาะเมื่อ SHARK_AI_MOCK=1)",
+      "detail": "กด crm-ai-home-at-risk → crm-ai-proposal-edit แล้วยังไม่เห็น crm-ai-proposal-next-step-input",
+      "shot": "/root/projects/shark-crm-c310/.qc-shots/crm/buttons-c310/drag-ctl-pre/fail/_app_sys_id_~crm-ai-proposal-next-step-input~owner~mobile.png",
+      "probe": "none",
+      "waiver": "R4-2W: R4 ruling 2 — WAIVE (shown transitively / service oracle)"
+    },
+    {
+      "page": "/app/sys/[id]",
+      "testid": "crm-ai-proposal-deal-*",
+      "user": "owner",
+      "device": "mobile",
+      "needs": "ข้อเสนอ AI ที่รออนุมัติ (AiProposal PENDING kind crm.assist.tasks) — ซีดมี 0 · ตัวเปิด crm-ai-home-at-risk สร้างให้ (กดได้เฉพาะเมื่อ SHARK_AI_MOCK=1)",
+      "detail": "กด crm-ai-home-at-risk แล้วยังไม่เห็น crm-ai-proposal-deal-*",
+      "shot": "/root/projects/shark-crm-c310/.qc-shots/crm/buttons-c310/drag-ctl-pre/fail/_app_sys_id_~crm-ai-proposal-deal-_~owner~mobile.png",
+      "probe": "none",
+      "waiver": "R4-2W: R4 ruling 2 — WAIVE (shown transitively / service oracle)"
+    },
+    {
+      "page": "/app/sys/[id]",
+      "testid": "crm-panel-deal",
+      "user": "owner",
+      "device": "desktop",
+      "needs": "ห้องแชท [conversationId] ที่ผูกกับผู้ติดต่อ CRM แล้ว (ห้องที่ยังไม่ผูกแสดงปุ่มสร้าง lead แทน) + ผู้ติดต่อมีดีลเปิด",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": "R4-2G: R4 ruling 2 — ACCEPTABLE GAP (LOW)"
+    },
+    {
+      "page": "/app/sys/[id]",
+      "testid": "crm-panel-retry",
+      "user": "owner",
+      "device": "desktop",
+      "needs": "แผง CRM ในแชทโหลดข้อมูลล้ม (สถานะ error) — สร้างจากซีดไม่ได้",
+      "detail": "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น",
+      "shot": "",
+      "probe": "none",
+      "waiver": "R4-2G: R4 ruling 2 — ACCEPTABLE GAP (LOW)"
+    }
+  ],
+  "skippedSafety": [],
+  "restores": [
+    {
+      "label": "/deals#deal-bulk-move desktop (ซ่อมข้อมูลซีด)",
+      "deleted": 0,
+      "updated": 2,
+      "recreated": 0,
+      "failed": []
+    },
+    {
+      "label": "/deals#deal-bulk-reassign desktop (ซ่อมข้อมูลซีด)",
+      "deleted": 0,
+      "updated": 1,
+      "recreated": 0,
+      "failed": []
+    },
+    {
+      "label": "/deals#deal-bulk-tag desktop (ซ่อมข้อมูลซีด)",
+      "deleted": 0,
+      "updated": 1,
+      "recreated": 0,
+      "failed": []
+    },
+    {
+      "label": "/deals desktop",
+      "deleted": 1,
+      "updated": 0,
+      "recreated": 0,
+      "failed": []
+    },
+    {
+      "label": "/deals#deal-bulk-move mobile (ซ่อมข้อมูลซีด)",
+      "deleted": 0,
+      "updated": 2,
+      "recreated": 0,
+      "failed": []
+    },
+    {
+      "label": "/deals#deal-bulk-reassign mobile (ซ่อมข้อมูลซีด)",
+      "deleted": 0,
+      "updated": 1,
+      "recreated": 0,
+      "failed": []
+    },
+    {
+      "label": "/deals#deal-bulk-tag mobile (ซ่อมข้อมูลซีด)",
+      "deleted": 0,
+      "updated": 1,
+      "recreated": 0,
+      "failed": []
+    },
+    {
+      "label": "/deals mobile",
+      "deleted": 1,
+      "updated": 0,
+      "recreated": 0,
+      "failed": []
+    },
+    {
+      "label": "/app/sys/[id]#crm-template-apply desktop (ซ่อมข้อมูลซีด)",
+      "deleted": 0,
+      "updated": 2,
+      "recreated": 0,
+      "failed": []
+    },
+    {
+      "label": "/app/sys/[id]#crm-template-none desktop (ซ่อมข้อมูลซีด)",
+      "deleted": 0,
+      "updated": 1,
+      "recreated": 0,
+      "failed": []
+    },
+    {
+      "label": "/app/sys/[id]#crm-home-unowned-submit desktop (ซ่อมข้อมูลซีด)",
+      "deleted": 0,
+      "updated": 1,
+      "recreated": 0,
+      "failed": []
+    },
+    {
+      "label": "/app/sys/[id] desktop",
+      "deleted": 47,
+      "updated": 43,
+      "recreated": 0,
+      "failed": []
+    },
+    {
+      "label": "/app/sys/[id]#crm-template-apply mobile (ซ่อมข้อมูลซีด)",
+      "deleted": 0,
+      "updated": 2,
+      "recreated": 0,
+      "failed": []
+    },
+    {
+      "label": "/app/sys/[id]#crm-template-none mobile (ซ่อมข้อมูลซีด)",
+      "deleted": 0,
+      "updated": 1,
+      "recreated": 0,
+      "failed": []
+    },
+    {
+      "label": "/app/sys/[id]#crm-home-unowned-submit mobile (ซ่อมข้อมูลซีด)",
+      "deleted": 0,
+      "updated": 1,
+      "recreated": 0,
+      "failed": []
+    },
+    {
+      "label": "/app/sys/[id] mobile",
+      "deleted": 47,
+      "updated": 43,
+      "recreated": 0,
+      "failed": []
+    },
+    {
+      "label": "/app/sys/[id] desktop",
+      "deleted": 2,
+      "updated": 2,
+      "recreated": 0,
+      "failed": []
+    },
+    {
+      "label": "/app/sys/[id] desktop",
+      "deleted": 2,
+      "updated": 0,
+      "recreated": 0,
+      "failed": []
+    }
+  ],
+  "dbCheckUnparsed": {
+    "/deals#deal-card-*": [
+      "CrmDeal.stageId=<ขั้นปลายทาง>"
+    ],
+    "/deals#deal-bulk-move": [
+      "CrmDeal.stageId=<ขั้น> ×n",
+      "AuditLog crm.deal.bulk_move"
+    ],
+    "/deals#deal-bulk-reassign": [
+      "CrmDeal.ownerUserId=<ผู้ใช้> ×n"
+    ],
+    "/deals#deal-bulk-tag": [
+      "CrmDeal.tags ∋ <แท็ก>"
+    ],
+    "/app/sys/[id]#crm-ai-home-at-risk": [
+      "AiProposal kind crm.assist.tasks status PENDING 1 ใบต่อ (ระบบ·คนกด·เดือนไทย)",
+      "กดซ้ำ = ใบเดิม",
+      "AiCreditTxn CRM_ASSIST +1"
+    ],
+    "/app/sys/[id]#crm-template-apply": [
+      "CrmPipeline/CrmStage/CrmLostReason/MemberField/CustomObject ตามเทมเพลต (วัตถุต้องมี crm.object.manage)",
+      "AppSystem.settings.crm.businessTemplate.key",
+      "AuditLog crm.template.apply"
+    ],
+    "/app/sys/[id]#crm-template-none": [
+      "AppSystem.settings.crm.businessTemplate=\"none\"",
+      "AuditLog crm.template.skip"
+    ],
+    "/app/sys/[id]#crm-home-unowned-submit": [
+      "CrmDeal.ownerUserId=ผู้ดูแลใหม่ (ทุกดีลในรายการ",
+      "deals.bulkReassign เดิม)",
+      "AuditLog crm.deal.bulk_reassign (reason)"
+    ],
+    "/app/sys/[id]#crm-ai-proposal-confirm": [
+      "AiProposal PENDING→EXECUTED (ครั้งเดียว)",
+      "crm.assist.tasks = CrmActivity TASK 1 แถวต่อดีล (ผู้ดูแลดีล",
+      "พรุ่งนี้ 09:00)",
+      "crm.deals.nextStep.set = CrmDeal.nextStep"
+    ],
+    "/app/sys/[id]#crm-ai-proposal-cancel": [
+      "AiProposal PENDING→REJECTED — ได้เฉพาะคนที่ยืนยันได้ (คีย์ของ kind + มองเห็นทุกดีลในข้อเสนอ)"
+    ],
+    "/app/sys/[id]#crm-panel-activity-submit": [
+      "AuditLog crm.activity.*"
+    ],
+    "/app/sys/[id]#crm-panel-create-lead": [
+      "CrmContact LEAD",
+      "sourceKind CHAT",
+      "partyId ของห้อง (มีแล้ว = ไม่สร้างซ้ำ)",
+      "AuditLog crm.contact.create"
+    ]
+  },
+  "fatal": null,
+  "cleanupFailures": [],
+  "outboxUnsettled": [],
+  "verifyFailures": [],
+  "postChecked": [
+    {
+      "page": "/deals",
+      "testid": "deal-bulk-move",
+      "user": "owner",
+      "device": "desktop"
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-bulk-move",
+      "user": "owner",
+      "device": "mobile"
+    },
+    {
+      "page": "/app/sys/[id]",
+      "testid": "crm-home-unowned-submit",
+      "user": "owner",
+      "device": "desktop"
+    },
+    {
+      "page": "/app/sys/[id]",
+      "testid": "crm-ai-proposal-confirm",
+      "user": "owner",
+      "device": "desktop"
+    },
+    {
+      "page": "/app/sys/[id]",
+      "testid": "crm-ai-proposal-cancel",
+      "user": "owner",
+      "device": "desktop"
+    },
+    {
+      "page": "/app/sys/[id]",
+      "testid": "crm-home-unowned-submit",
+      "user": "owner",
+      "device": "mobile"
+    },
+    {
+      "page": "/app/sys/[id]",
+      "testid": "crm-ai-proposal-confirm",
+      "user": "owner",
+      "device": "mobile"
+    },
+    {
+      "page": "/app/sys/[id]",
+      "testid": "crm-ai-proposal-cancel",
+      "user": "owner",
+      "device": "mobile"
+    }
+  ],
+  "dbVerified": [
+    {
+      "page": "/deals",
+      "testid": "deal-bulk-move",
+      "user": "owner",
+      "device": "desktop",
+      "models": [
+        "CrmDeal",
+        "AuditLog crm.deal.bulk_move"
+      ]
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-bulk-reassign",
+      "user": "owner",
+      "device": "desktop",
+      "models": [
+        "CrmDeal"
+      ]
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-bulk-tag",
+      "user": "owner",
+      "device": "desktop",
+      "models": [
+        "CrmDeal"
+      ]
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-bulk-move",
+      "user": "owner",
+      "device": "mobile",
+      "models": [
+        "CrmDeal",
+        "AuditLog crm.deal.bulk_move"
+      ]
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-bulk-reassign",
+      "user": "owner",
+      "device": "mobile",
+      "models": [
+        "CrmDeal"
+      ]
+    },
+    {
+      "page": "/deals",
+      "testid": "deal-bulk-tag",
+      "user": "owner",
+      "device": "mobile",
+      "models": [
+        "CrmDeal"
+      ]
+    },
+    {
+      "page": "/app/sys/[id]",
+      "testid": "crm-ai-home-at-risk",
+      "user": "owner",
+      "device": "desktop",
+      "models": [
+        "AiProposal",
+        "AiCreditTxn"
+      ]
+    },
+    {
+      "page": "/app/sys/[id]",
+      "testid": "crm-template-apply",
+      "user": "owner",
+      "device": "desktop",
+      "models": [
+        "AppSystem",
+        "AuditLog crm.template.apply"
+      ]
+    },
+    {
+      "page": "/app/sys/[id]",
+      "testid": "crm-template-none",
+      "user": "owner",
+      "device": "desktop",
+      "models": [
+        "AppSystem",
+        "AuditLog crm.template.skip"
+      ]
+    },
+    {
+      "page": "/app/sys/[id]",
+      "testid": "crm-home-unowned-submit",
+      "user": "owner",
+      "device": "desktop",
+      "models": [
+        "CrmDeal",
+        "AuditLog crm.deal.bulk_reassign"
+      ]
+    },
+    {
+      "page": "/app/sys/[id]",
+      "testid": "crm-ai-home-at-risk",
+      "user": "owner",
+      "device": "mobile",
+      "models": [
+        "AiProposal",
+        "AiCreditTxn"
+      ]
+    },
+    {
+      "page": "/app/sys/[id]",
+      "testid": "crm-template-apply",
+      "user": "owner",
+      "device": "mobile",
+      "models": [
+        "AppSystem",
+        "AuditLog crm.template.apply"
+      ]
+    },
+    {
+      "page": "/app/sys/[id]",
+      "testid": "crm-template-none",
+      "user": "owner",
+      "device": "mobile",
+      "models": [
+        "AppSystem",
+        "AuditLog crm.template.skip"
+      ]
+    },
+    {
+      "page": "/app/sys/[id]",
+      "testid": "crm-home-unowned-submit",
+      "user": "owner",
+      "device": "mobile",
+      "models": [
+        "CrmDeal",
+        "AuditLog crm.deal.bulk_reassign"
+      ]
+    },
+    {
+      "page": "/app/sys/[id]",
+      "testid": "crm-panel-activity-submit",
+      "user": "owner",
+      "device": "desktop",
+      "models": [
+        "AuditLog crm.activity"
+      ]
+    },
+    {
+      "page": "/app/sys/[id]",
+      "testid": "crm-panel-create-lead",
+      "user": "owner",
+      "device": "desktop",
+      "models": [
+        "CrmContact",
+        "AuditLog crm.contact.create"
+      ]
+    }
+  ],
+  "presence": [
+    {
+      "p": "/deals",
+      "t": "deals-pipelines-link",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-new-btn",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-view-*",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-form",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-pipeline",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-q",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-owner",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-close-from",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-close-to",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-tag",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-stale",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-submit",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-card-*",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-card-link-*",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-column-add-*",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-column-collapse-*",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-empty-create-pipeline",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-f-*",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deal-column-more-*",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deal-req-field-*",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deal-req-open-link",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deal-req-cancel",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deal-move-toast-close",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deals-pipelines-link",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-new-btn",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-view-*",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-form",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-pipeline",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-q",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-owner",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-close-from",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-close-to",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-tag",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-stale",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-submit",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-card-*",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-card-link-*",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-stage-tab-*",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-column-add-*",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-column-collapse-*",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-empty-create-pipeline",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-f-*",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deal-column-more-*",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deal-req-field-*",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deal-req-open-link",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deal-req-cancel",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deal-move-toast-close",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-stage",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-sort",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-export-btn",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-stage",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-owner",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-reason",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-confirm",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-move",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-reassign",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-tag-input",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-tag",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-check-all",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-row-check-*",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-row-link-*",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-first-page",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deals-next-page",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-stage",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-sort",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-export-btn",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-stage",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-owner",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-reason",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-confirm",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-move",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-reassign",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-tag-input",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-bulk-tag",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-row-check-*",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deal-row-link-*",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-first-page",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deals-next-page",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-saved",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-saved",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-clear",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-filter-clear",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-forecast-group-*",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-forecast-category-all",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-forecast-category-*",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-forecast-group-*",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-forecast-category-all",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/deals",
+      "t": "deals-forecast-category-*",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-home-all-deals",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-home-all-tasks",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-home-stale-all",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-home-kpi-open",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-home-kpi-weighted",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-home-kpi-won",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-home-kpi-winrate",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-home-kpi-stale",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-home-kpi-hot",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-home-search",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-home-filter-pipeline",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-home-filter-owner",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-home-filter-range",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-home-filter-apply",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-home-filter-reset",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-home-leaderboard-link-*",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-home-source-row-*",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-home-ai-draft",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-home-ai-summary",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-home-import",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-home-new-deal",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-home-search-form",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-home-filter-form",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-home-ai-risk",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-ai-home-at-risk",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-template-option",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-template-apply",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-template-none",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-home-stage-all",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-home-stage-chip",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-home-deal-card",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-hub-switch-link",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-home-stale-row-*",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-home-stale-row-view-*",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-home-saved-view",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-home-saved-view-item-*",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-home-stale-banner",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-home-unowned-deal-*",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-home-unowned-contact-*",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-home-unowned-owner",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-home-unowned-reason",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-home-unowned-confirm",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-home-unowned-submit",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-ai-at-risk-deal-*",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-ai-proposal-confirm",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-ai-proposal-edit",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-ai-proposal-cancel",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-ai-proposal-next-step-input",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-ai-proposal-deal-*",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-home-all-deals",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-home-all-tasks",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-home-stale-all",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-home-kpi-open",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-home-kpi-weighted",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-home-kpi-won",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-home-kpi-winrate",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-home-kpi-stale",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-home-kpi-hot",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-home-search",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-home-filter-pipeline",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-home-filter-owner",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-home-filter-range",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-home-filter-apply",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-home-filter-reset",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-home-leaderboard-link-*",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-home-source-row-*",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-home-ai-draft",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-home-ai-summary",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-home-import",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-home-new-deal",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-home-search-form",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-home-filter-form",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-home-ai-risk",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-ai-home-at-risk",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-template-option",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-template-apply",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-template-none",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-home-stage-all",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-home-stage-chip",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-home-deal-card",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-hub-switch-link",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-home-stale-row-*",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-home-stale-row-view-*",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-home-saved-view",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-home-saved-view-item-*",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-home-stale-banner",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-home-unowned-deal-*",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-home-unowned-contact-*",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-home-unowned-owner",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-home-unowned-reason",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-home-unowned-confirm",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-home-unowned-submit",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-ai-at-risk-deal-*",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-ai-proposal-confirm",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-ai-proposal-edit",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-ai-proposal-cancel",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-ai-proposal-next-step-input",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-ai-proposal-deal-*",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-panel-log-activity",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-panel-activity-type",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-panel-activity-title",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-panel-activity-submit",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-panel-contact",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-panel-deal",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-panel-open-deal",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-panel-retry",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": false
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "crm-panel-create-lead",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "hr-link-sales-teams",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/app/sys/[id]",
+      "t": "hr-link-sales-teams",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    }
+  ],
+  "customerLockout": [],
+  "pageErrors": [],
+  "tripwire": [],
+  "hiddenWait": {
+    "ms": 0,
+    "rows": 0
+  },
+  "runStart": "2026-10-07T23:18:13.769Z"
+}

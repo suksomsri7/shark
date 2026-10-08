@@ -9,6 +9,10 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { contactCompaniesAction, createDealAction, searchDealContactsAction } from "@/lib/modules/crm/deals-actions";
 import { DEAL_TITLE_MAX, FORECAST_CATEGORIES, FORECAST_CATEGORY_LABEL, bahtTextToSatang, type PipelineDto } from "@/lib/modules/crm/deals-shared";
+import { FieldError, useFieldErrors } from "@/components/crm/form/field-errors";
+
+// C4.3-fix part 2 ▸ ลำดับช่องบนจอ (โฟกัสช่องแรกที่ผิด) ◂
+const DEAL_FIELDS = ["title", "contact", "pipeline", "value", "nextStep"] as const;
 
 type Opt = { id: string; name: string };
 
@@ -22,6 +26,7 @@ export function NewDealForm({
   company,
   companyContacts,
   contact = null,
+  canPickCompany,
 }: {
   systemId: string;
   pipelines: PipelineDto[];
@@ -34,6 +39,8 @@ export function NewDealForm({
   companyContacts: Opt[];
   // CRM C1.11 ▸ ผู้ติดต่อตั้งต้น (resolve ฝั่งเซิร์ฟเวอร์จาก ?contactId= ผ่านการมองเห็น) — เลือกไว้ให้ก่อน ◂
   contact?: Opt | null;
+  // CRM C5.5-fix6 ▸ F3: crm.company.read — ไม่มี = รายการบริษัทว่างเสมอ ⇒ ไม่มีช่องเลือก (§15(b)) · บริการใช้บริษัทหลักของผู้ติดต่อเหมือนเดิม ◂
+  canPickCompany: boolean;
 }) {
   const router = useRouter();
   const [title, setTitle] = useState("");
@@ -51,11 +58,22 @@ export function NewDealForm({
   const [owner, setOwner] = useState(defaultOwner);
   const [category, setCategory] = useState<string>("PIPELINE");
   const [nextStep, setNextStep] = useState("");
-  const [errors, setErrors] = useState<Record<string, string>>({});
+  const fe = useFieldErrors(DEAL_FIELDS);
   const [serverError, setServerError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const seq = useRef(0);
   const skipFirst = useRef(companyContacts.length > 0);
+  // PARITY-fix C1 (8 ต.ค. · พบจากการเดินจริงบน prod) ▸ กันดีลซ้ำ + กันหน้าค้างหลังบันทึก:
+  //   (1) `sending` — กดส่งได้ครั้งเดียวต่อการบันทึก และ "ไม่ปลดล็อกปุ่มเมื่อสำเร็จ" (เดิมปุ่มกลับมากดได้ระหว่างรอเปลี่ยนหน้า ⇒ กดซ้ำ = ดีลซ้ำ)
+  //   (2) ระหว่างส่ง ไม่ยิงค้นผู้ติดต่อ — server action ที่เข้าคิวตามหลัง createDealAction ทำให้ router.push ถูกกลืน (ดีลถูกสร้างแต่หน้าไม่ไป)
+  //   (3) ตาข่าย: ถ้าเปลี่ยนหน้าแบบ client ไม่สำเร็จใน 4 วิ ⇒ ไปด้วยการโหลดหน้าเต็ม
+  const sending = useRef(false);
+  const searchSkipped = useRef(false);
+  const [searchTick, setSearchTick] = useState(0);
+  const navFallback = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (navFallback.current) clearTimeout(navFallback.current); }, []);
+  const contactIdRef = useRef(contactId);
+  useEffect(() => { contactIdRef.current = contactId; }, [contactId]);
 
   // ค้นผู้ติดต่อฝั่งเซิร์ฟเวอร์
   useEffect(() => {
@@ -65,16 +83,21 @@ export function NewDealForm({
     }
     const my = ++seq.current;
     const t = setTimeout(async () => {
+      if (sending.current) {
+        searchSkipped.current = true;
+        return;
+      }
       const r = await searchDealContactsAction(systemId, q);
       if (my !== seq.current) return;
-      if (r.ok) setContacts(r.items);
+      // ผู้ติดต่อที่เลือกอยู่ต้องยังอยู่ในรายการ — เดิมผลค้นทับรายการ ⇒ ช่องแสดง "— เลือก —" ทั้งที่ยังส่ง contactId เดิม (เช่น มาจาก ?contactId=)
+      if (r.ok) setContacts((prev) => { const sel = prev.find((c) => c.id === contactIdRef.current); return sel && !r.items.some((c) => c.id === sel.id) ? [sel, ...r.items] : r.items; });
     }, 250);
     return () => clearTimeout(t);
-  }, [q, systemId]);
+  }, [q, systemId, searchTick]);
 
   // บริษัทของผู้ติดต่อที่เลือก
   useEffect(() => {
-    if (!contactId) return;
+    if (!contactId || !canPickCompany) return;
     let alive = true;
     void contactCompaniesAction(systemId, contactId).then((r) => {
       if (!alive || !r.ok) return;
@@ -84,18 +107,19 @@ export function NewDealForm({
     return () => {
       alive = false;
     };
-  }, [contactId, systemId]);
+  }, [contactId, systemId, canPickCompany]);
 
   const submit = async () => {
-    const e: Record<string, string> = {};
+    const e: Partial<Record<(typeof DEAL_FIELDS)[number], string>> = {};
     if (!title.trim()) e.title = "ใส่ชื่อดีลก่อน";
     if (title.trim().length > DEAL_TITLE_MAX) e.title = `ชื่อดีลยาวเกิน ${DEAL_TITLE_MAX} ตัวอักษร`;
     if (!contactId) e.contact = "เลือกผู้ติดต่อก่อน";
     if (!pipe) e.pipeline = "ยังไม่มี pipeline — สร้างที่หน้าตั้งค่า pipeline ก่อน";
     const v = bahtTextToSatang(value);
     if (v === null) e.value = "มูลค่าต้องเป็นตัวเลข (บาท) ทศนิยมไม่เกิน 2 ตำแหน่ง";
-    setErrors(e);
-    if (Object.keys(e).length > 0 || !pipe || v === null) return;
+    if (fe.show(e) || !pipe || v === null) return;
+    if (sending.current) return;
+    sending.current = true;
     setBusy(true);
     setServerError(null);
     const r = await createDealAction(systemId, {
@@ -103,19 +127,27 @@ export function NewDealForm({
       stageId: stageId || null,
       title: title.trim(),
       contactId,
-      companyId: companyId || null,
+      companyId: canPickCompany ? companyId || null : null,
       valueSatang: v,
       expectedCloseAt: close || null,
       ownerUserId: owner || null,
       forecastCategory: category,
       nextStep: nextStep.trim() || null,
     });
-    setBusy(false);
-    if (!r.ok) return setServerError(r.error);
-    router.push(`/app/sys/${systemId}/crm/deals/${r.id}`);
+    if (!r.ok) {
+      sending.current = false;
+      setBusy(false);
+      if (searchSkipped.current) { searchSkipped.current = false; setSearchTick((n) => n + 1); }
+      if (!fe.show(r.fieldErrors)) setServerError(r.error);
+      return;
+    }
+    // สำเร็จ: ปุ่มค้าง "กำลังบันทึก…" จนเปลี่ยนหน้า (ไม่ปลดล็อก — กันกดซ้ำ)
+    const href = `/app/sys/${systemId}/crm/deals/${r.id}`;
+    router.push(href);
+    navFallback.current = setTimeout(() => { if (window.location.pathname.endsWith("/crm/deals/new")) window.location.assign(href); }, 4000);
   };
 
-  const err = (k: string) => (errors[k] ? <span className="text-xs text-[color:var(--color-danger)]">{errors[k]}</span> : null);
+  const err = (k: (typeof DEAL_FIELDS)[number]) => <FieldError id={fe.errorId(k)} message={fe.errors[k]} testid={`deal-new-${k}-error`} />;
 
   return (
     <form
@@ -128,7 +160,7 @@ export function NewDealForm({
     >
       <label className="flex flex-col gap-1 text-sm">
         <span>ชื่อดีล</span>
-        <input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={DEAL_TITLE_MAX + 20} className="input text-sm" placeholder='เช่น "คอร์สดำน้ำพนักงาน 10 คน"' data-testid="deal-new-title" />
+        <input {...fe.field("title")} value={title} onChange={(e) => { setTitle(e.target.value); fe.clear("title"); }} maxLength={DEAL_TITLE_MAX + 20} className="input text-sm" placeholder='เช่น "คอร์สดำน้ำพนักงาน 10 คน"' data-testid="deal-new-title" />
         {err("title")}
       </label>
       <div className="grid gap-3 sm:grid-cols-2">
@@ -137,7 +169,7 @@ export function NewDealForm({
             <span>ค้นหาผู้ติดต่อ</span>
             <input value={q} onChange={(e) => setQ(e.target.value)} className="input text-sm" placeholder="ชื่อ · เบอร์ · อีเมล" data-testid="deal-new-contact-q" />
           </label>
-          <select aria-label="ผู้ติดต่อหลัก" value={contactId} onChange={(e) => setContactId(e.target.value)} className="input text-sm" data-testid="deal-new-contact">
+          <select {...fe.field("contact")} aria-label="ผู้ติดต่อหลัก" value={contactId} onChange={(e) => { setContactId(e.target.value); fe.clear("contact"); }} className="input text-sm" data-testid="deal-new-contact">
             <option value="">— เลือกผู้ติดต่อหลัก —</option>
             {contacts.map((c) => (
               <option key={c.id} value={c.id}>
@@ -147,22 +179,26 @@ export function NewDealForm({
           </select>
           {err("contact")}
         </div>
-        <label className="flex min-w-0 flex-col gap-1 text-sm">
-          <span>บริษัท</span>
-          <select value={companyId} onChange={(e) => setCompanyId(e.target.value)} className="input text-sm" data-testid="deal-new-company">
-            <option value="">ไม่ผูกบริษัท</option>
-            {companies.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-                {c.primary ? " (หลัก)" : ""}
-              </option>
-            ))}
-          </select>
-          <span className="text-xs text-[color:var(--color-muted)]">เลือกได้เฉพาะบริษัทที่ผู้ติดต่อคนนี้อยู่</span>
-        </label>
+        {canPickCompany && (
+          <label className="flex min-w-0 flex-col gap-1 text-sm">
+            <span>บริษัท</span>
+            <select value={companyId} onChange={(e) => setCompanyId(e.target.value)} className="input text-sm" data-testid="deal-new-company">
+              {/* CRM C5.5-fix7 ▸ F6-6: ค่าว่าง = บริการใช้บริษัทหลักของผู้ติดต่อ (createDeal) — ป้ายเดิม "ไม่ผูกบริษัท" ไม่ตรงกับสิ่งที่เกิดขึ้น ◂ */}
+              <option value="">ตามบริษัทหลักของผู้ติดต่อ (ถ้ามี)</option>
+              {companies.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                  {c.primary ? " (หลัก)" : ""}
+                </option>
+              ))}
+            </select>
+            <span className="text-xs text-[color:var(--color-muted)]">เลือกได้เฉพาะบริษัทที่ผู้ติดต่อคนนี้อยู่</span>
+          </label>
+        )}
         <label className="flex min-w-0 flex-col gap-1 text-sm">
           <span>pipeline</span>
           <select
+            {...fe.field("pipeline")}
             value={pipelineId}
             onChange={(e) => {
               setPipelineId(e.target.value);
@@ -192,7 +228,7 @@ export function NewDealForm({
         </label>
         <label className="flex min-w-0 flex-col gap-1 text-sm">
           <span>มูลค่า (บาท · ก่อน VAT)</span>
-          <input value={value} onChange={(e) => setValue(e.target.value)} inputMode="decimal" className="input text-sm" placeholder="0" data-testid="deal-new-value" />
+          <input {...fe.field("value")} value={value} onChange={(e) => { setValue(e.target.value); fe.clear("value"); }} inputMode="decimal" className="input text-sm" placeholder="0" data-testid="deal-new-value" />
           {err("value")}
           <span className="text-xs text-[color:var(--color-muted)]">เพิ่มรายการสินค้าได้ที่หน้าดีล — มูลค่าจะคิดจากรายการอัตโนมัติ</span>
         </label>
@@ -223,7 +259,8 @@ export function NewDealForm({
       </div>
       <label className="flex flex-col gap-1 text-sm">
         <span>ขั้นถัดไป (ไม่บังคับ)</span>
-        <input value={nextStep} onChange={(e) => setNextStep(e.target.value)} className="input text-sm" placeholder="เช่น โทรนัดสาธิตวันพฤหัส" data-testid="deal-new-next-step" />
+        <input {...fe.field("nextStep")} value={nextStep} onChange={(e) => { setNextStep(e.target.value); fe.clear("nextStep"); }} className="input text-sm" placeholder="เช่น โทรนัดสาธิตวันพฤหัส" data-testid="deal-new-next-step" />
+        {err("nextStep")}
       </label>
       {serverError && (
         <p className="text-sm text-[color:var(--color-danger)]" role="alert" data-testid="deal-new-error">

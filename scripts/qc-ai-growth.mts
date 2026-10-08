@@ -14,6 +14,8 @@
 // registry รวม = 13 (11 + 2)
 import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
 loadLegacyQcEnv("qc-ai-growth"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
+// ORACLE-EDIT C5.5-G1: runTool/sendMessage now take a required actor (no actor = refusal) — these checks always meant "the shop OWNER asks"
+const qcOwner = (t: string) => ({ kind: "member" as const, tenantId: t, userId: "qc-owner", membership: { role: "OWNER" as const, unitAccess: ["*"], permissions: {} } });
 process.env.SHARK_AI_MOCK = "1";
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");
@@ -37,13 +39,13 @@ try {
   const conv = await prisma.aiConversation.create({ data: { tenantId: tid, title: "qc" } });
   const rt = tools.runTool as unknown as (c: unknown, n: string, a: unknown) => Promise<string>;
 
-  const rec = await rt({ tenantId: tid }, "growth_recommendations", {});
+  const rec = await rt({ tenantId: tid, actor: qcOwner(tid) }, "growth_recommendations", {});
   chk("GR-1.1", "ลูกค้า 25 + ไม่มี MARKETING → แนะนำ MARKETING", rec.includes("MARKETING"), "มี", rec.slice(0, 100));
   chk("GR-1.2", "CRM เปิดแล้ว → ห้ามแนะนำ CRM", !rec.includes("\"CRM\""), "ไม่มี", rec.slice(0, 100));
   chk("GR-1.3", "บิล POS ไม่ถึงเกณฑ์ → ไม่แนะนำ INVENTORY", !rec.includes("INVENTORY"), "ไม่มี", "?");
 
   const before = await prisma.appSystem.count({ where: { tenantId: tid } });
-  const out = await rt({ tenantId: tid, conversationId: conv.id }, "open_system", { type: "MARKETING" });
+  const out = await rt({ tenantId: tid, actor: qcOwner(tid), conversationId: conv.id }, "open_system", { type: "MARKETING" });
   const prop = await prisma.aiProposal.findFirst({ where: { tenantId: tid, kind: "open_system", status: "PENDING" }, orderBy: { createdAt: "desc" } });
   chk("GR-2.1", "open_system → proposal PENDING ไม่เปิดทันที", !!prop && out.includes(prop.id) && (await prisma.appSystem.count({ where: { tenantId: tid } })) === before, "proposal+นิ่ง", out.slice(0, 60));
   const ex = await pr.executeProposal(OWNER, { tenantId: tid }, prop!.id);
@@ -53,7 +55,7 @@ try {
   const ex2 = await pr.executeProposal(OWNER, { tenantId: tid }, p2.id);
   chk("GR-2.3", "เปิดซ้ำ type เดิม → FAILED 'เปิดอยู่แล้ว'", ex2.ok === false && (await prisma.aiProposal.findUnique({ where: { id: p2.id } }))?.status === "FAILED", "FAILED", ex2.note.slice(0, 50));
 
-  const rec2 = await rt({ tenantId: tid }, "growth_recommendations", {});
+  const rec2 = await rt({ tenantId: tid, actor: qcOwner(tid) }, "growth_recommendations", {});
   chk("GR-3.1", "หลังเปิด MARKETING แล้ว → ไม่แนะนำซ้ำ", !rec2.includes("MARKETING"), "ไม่มี", rec2.slice(0, 80));
 } catch (e) { chk("CRASH", "จบ", false, "จบ", e instanceof Error ? e.message.slice(0, 160) : String(e)); }
 finally {

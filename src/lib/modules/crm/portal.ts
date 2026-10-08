@@ -41,13 +41,16 @@ import {
   type PortalSessionToken,
 } from "@/lib/modules/member/session-facade";
 import { emitOutboxMany } from "@/lib/core/outbox";
+import { wakeOutbox } from "./outbox-wake"; // CRM C5.5-fix13 ▸ P-it5-2 ◂
 import { privateFileUrl, uploadFile, normalizeUploadType, type UploadDeps } from "@/lib/storage/service";
 import { prisma } from "./db";
 import { crmCan, crmForbiddenMessage } from "./access";
 import * as companies from "./companies";
 import { bindPortalLineUserIdInTx } from "./contacts";
 import { thaiDayStartMs } from "./activities-shared";
+import { formatThaiDateTimeFull } from "@/lib/ui/date"; // CRM C5.5-fix7 ▸ RV-3 ◂
 import { checkRateLimitDb } from "@/lib/core/rate-limit-db";
+import { ciEquals } from "@/lib/core/ci-equals"; // CRM C5.5-fix2 ◂
 import { logOps } from "@/lib/core/ops";
 import {
   PORTAL_APPROVAL_ENTITY,
@@ -219,20 +222,24 @@ async function accessesOfContacts(tenantId: string, systemId: string, contactIds
     select: { id: true, companyId: true, contactId: true, lastLoginAt: true, acceptedAt: true, invitedAt: true },
     take: 50,
   });
-  const primary = new Set(
-    (await prisma.crmCompanyContact.findMany({ where: { tenantId, contactId: { in: contactIds }, isPrimary: true }, select: { companyId: true, contactId: true }, take: 100 })).map((r) => `${r.contactId}:${r.companyId}`),
-  );
+  // CRM C5.4-B ▸ L1-M2: เฉพาะบริษัทที่ผู้ติดต่อยังอยู่ (ลิงก์ endedAt null) — ข้อมูลเก่าที่ถอดออกก่อนแก้นี้ก็ไม่ได้ OTP/LINE
+  const links = await prisma.crmCompanyContact.findMany({ where: { tenantId, contactId: { in: contactIds }, endedAt: null }, select: { companyId: true, contactId: true, isPrimary: true }, take: 200 });
+  const live = new Set(links.map((r) => `${r.contactId}:${r.companyId}`));
+  const primary = new Set(links.filter((r) => r.isPrimary).map((r) => `${r.contactId}:${r.companyId}`));
+  const liveRows = rows.filter((r) => live.has(`${r.contactId}:${r.companyId}`));
   const t = (d: Date | null) => (d ? d.getTime() : 0);
-  rows.sort((a, b) => t(b.lastLoginAt) - t(a.lastLoginAt) || Number(primary.has(`${b.contactId}:${b.companyId}`)) - Number(primary.has(`${a.contactId}:${a.companyId}`)) || t(b.acceptedAt) - t(a.acceptedAt) || t(a.invitedAt) - t(b.invitedAt));
-  return rows.map((r) => r.id);
+  liveRows.sort((a, b) => t(b.lastLoginAt) - t(a.lastLoginAt) || Number(primary.has(`${b.contactId}:${b.companyId}`)) - Number(primary.has(`${a.contactId}:${a.companyId}`)) || t(b.acceptedAt) - t(a.acceptedAt) || t(a.invitedAt) - t(b.invitedAt));
+  return liveRows.map((r) => r.id);
 }
 
 /** ผู้ติดต่อของปลายทางนี้ในระบบ (อีเมลไม่สนตัวพิมพ์ · เบอร์ตัวเลขล้วน) — ไม่รวมที่ถูกเก็บ/ถูกรวม */
 async function contactsByTarget(tenantId: string, systemId: string, channel: "PHONE" | "EMAIL", target: string): Promise<string[]> {
   if (!target) return [];
   if (channel === "EMAIL") {
-    const rows = await prisma.crmContact.findMany({ where: { tenantId, systemId, archivedAt: null, mergedIntoId: null, email: { equals: target, mode: "insensitive" } }, select: { id: true }, take: 20 });
-    return rows.map((r) => r.id);
+    // CRM C5.5-fix2 ▸ hunter 2a-6: `equals … insensitive` = ILIKE ⇒ `somchai_k@` เคย "เท่ากับ" `somchai.k@` (OTP ของกล่องที่หน้าตาคล้าย
+    //   ออก session ของเหยื่อ) — ciEquals (escape wildcard) + ตรวจซ้ำว่าอีเมลของแถว = ปลายทางทุกตัวอักษร (ไม่พึ่ง SQL ที่ Prisma ปล่อย) ◂
+    const rows = await prisma.crmContact.findMany({ where: { tenantId, systemId, archivedAt: null, mergedIntoId: null, email: ciEquals(target) }, select: { id: true, email: true }, take: 20 });
+    return rows.filter((r) => normEmail(r.email) === normEmail(target)).map((r) => r.id);
   }
   const rows = await prisma.crmContact.findMany({ where: { tenantId, systemId, archivedAt: null, mergedIntoId: null, phone: { contains: target.slice(-9) } }, select: { id: true, phone: true }, take: 50 });
   return rows.filter((r) => normPhone(r.phone) === target).map((r) => r.id);
@@ -335,9 +342,12 @@ export async function loginWithLine(
   }
 
   // ไม่มีคำเชิญ: ผู้ติดต่อที่ตรงกับตัวตน LINE และมีสิทธิ์ที่ยอมรับ LINE
-  const or: { lineUserId?: string; email?: { equals: string; mode: "insensitive" } }[] = [{ lineUserId }];
-  if (email) or.push({ email: { equals: email, mode: "insensitive" } });
-  let ids = (await prisma.crmContact.findMany({ where: { tenantId: shop.tenantId, systemId: shop.systemId, archivedAt: null, mergedIntoId: null, OR: or }, select: { id: true }, take: 20 })).map((r) => r.id);
+  // CRM C5.5-fix2 ▸ hunter 2a-6 (ทาง LINE): อีเมล LINE ที่หน้าตาคล้าย (`_`/`%`) ห้ามจับคู่ผู้ติดต่อคนอื่น — ciEquals + ตรวจซ้ำทุกแถว ◂
+  const or: { lineUserId?: string; email?: ReturnType<typeof ciEquals> }[] = [{ lineUserId }];
+  if (email) or.push({ email: ciEquals(email) });
+  let ids = (await prisma.crmContact.findMany({ where: { tenantId: shop.tenantId, systemId: shop.systemId, archivedAt: null, mergedIntoId: null, OR: or }, select: { id: true, email: true, lineUserId: true }, take: 20 }))
+    .filter((r) => r.lineUserId === lineUserId || (!!email && normEmail(r.email) === email))
+    .map((r) => r.id);
   if (phone) ids = [...new Set([...ids, ...(await contactsByTarget(shop.tenantId, shop.systemId, "PHONE", phone))])];
   const accessId = (await accessesOfContacts(shop.tenantId, shop.systemId, ids, "LINE"))[0];
   if (!accessId) throw new CustomerAuthError("ยังไม่พบสิทธิ์พอร์ทัลที่ตรงกับบัญชี LINE นี้ — เปิดลิงก์เชิญจากร้าน หรือเข้าด้วยอีเมลแทน");
@@ -368,7 +378,16 @@ export async function switchCompany(token: string, companyId: string, meta: Meta
   if (!target) throw nf();
   let next: PortalSessionToken;
   try {
-    next = await mintPortalSession(target.id, meta);
+    // รีวิว R2b-1 (TOCTOU): `session(token)` ข้างบนตรวจก่อน mint — การเชิญซ้ำที่ฆ่า session ทุกใบของผู้ติดต่อ (READ COMMITTED) ไม่เห็น
+    //   แถวที่ mint ทีหลัง ⇒ เครื่องที่หายสลับบริษัทหนีการเชิญซ้ำได้ · แก้: ในธุรกรรมของการ mint ล็อกผู้ติดต่อ (กุญแจเดียวกับ `invite`)
+    //   แล้วตรวจ session ต้นทางซ้ำ — ลำดับล็อก: advisory ของผู้ติดต่อ → แถว session/สิทธิ์ (เหมือน `invite`) ⇒ ไม่มีวงล็อกตาย ◂
+    next = await mintPortalSession(target.id, meta, {
+      inTx: async (tx) => {
+        await lockPortalContactInTx(tx, s.tenantId, s.crmContactId);
+        const live = await tx.portalSession.findFirst({ where: { tokenHash: sha(str(token)), revokedAt: null, expiresAt: { gt: new Date() } }, select: { id: true } });
+        if (!live) throw nf();
+      },
+    });
   } catch {
     throw nf();
   }
@@ -497,7 +516,8 @@ function quotationDto(d: DocRow, role: string, now = new Date()): PortalQuotatio
 }
 
 function invoiceDto(d: DocRow, role: string): PortalInvoiceDto {
-  const outstanding = OPEN_INVOICE.has(d.status) ? Math.max(0, d.grandTotal - d.paidTotal) : 0;
+  // CRM C5.4-C ▸ (cross-lane ACCOUNT) ยอดค้างหักใบลดหนี้ที่ยังมีผล — เดิมลูกค้าเห็นยอดใบลดหนี้เป็นหนี้ค้าง และลิงก์จ่ายขอยอดเต็ม ◂
+  const outstanding = OPEN_INVOICE.has(d.status) ? Math.max(0, d.grandTotal - d.paidTotal - Math.max(0, d.creditNoteTotal ?? 0)) : 0;
   return {
     id: d.id,
     docNo: d.docNo,
@@ -516,7 +536,7 @@ function invoiceDto(d: DocRow, role: string): PortalInvoiceDto {
 async function markViewed(s: PortalSessionInfo): Promise<void> {
   const day = portalViewDay();
   try {
-    await emitOutboxMany(prisma, [
+    const added = await emitOutboxMany(prisma, [
       {
         tenantId: s.tenantId,
         systemId: s.crmSystemId,
@@ -525,6 +545,9 @@ async function markViewed(s: PortalSessionInfo): Promise<void> {
         payload: { companyId: s.companyId, contactId: s.crmContactId, accessId: s.portalAccessId, day },
       },
     ]);
+    // CRM C5.5-fix13 ▸ P-it5-2: event ใหม่ของวันนี้ (ครั้งแรกต่อ access ต่อวัน) ⇒ ปลุกคิว outbox (กลไกเดียวกับทางเขียนอื่นของ CRM · แถวนี้ commit แล้ว —
+    //   ไม่ใช่ธุรกรรม) · เปิดซ้ำวันเดียวกัน = ไม่มีแถวใหม่ = ไม่ปลุก · ระบายหลังตอบหน้าแล้ว (after) ⇒ หน้าไม่ช้าลง ◂
+    if (added > 0) wakeOutbox();
   } catch {
     // ตัวนับการเปิดดูเป็นของแถม — ห้ามทำให้ลูกค้าเปิดหน้าไม่ได้
   }
@@ -535,11 +558,18 @@ export async function myCompanies(token: string): Promise<{ current: string; ite
   const s = await session(token);
   const rows = await prisma.crmPortalAccess.findMany({
     where: { tenantId: s.tenantId, systemId: s.crmSystemId, contactId: s.crmContactId, revokedAt: null, company: { archivedAt: null, mergedIntoId: null }, ...usableAccessWhere() },
-    select: { companyId: true, company: { select: { name: true } } },
+    select: { companyId: true, acceptedAt: true, invitedAt: true, company: { select: { name: true } } },
     orderBy: { invitedAt: "asc" },
     take: 50,
   });
-  return { current: s.companyId, items: rows.map((r) => ({ id: r.companyId, name: r.company.name })) };
+  // CRM C5.4-B ▸ hunter H6: บริษัทที่ออกแล้ว (ลิงก์จบ) หรือสิทธิ์รอบเก่า (ก่อนลิงก์รอบปัจจุบันเริ่ม) ไม่โผล่ในตัวสลับ — กติกาเดียวกับ portalAccessUsable
+  const links = await prisma.crmCompanyContact.findMany({
+    where: { tenantId: s.tenantId, contactId: s.crmContactId, endedAt: null, companyId: { in: rows.map((r) => r.companyId) } },
+    select: { companyId: true, startedAt: true },
+  });
+  const since = new Map(links.map((l) => [l.companyId, l.startedAt ? l.startedAt.getTime() : 0]));
+  const usable = rows.filter((r) => since.has(r.companyId) && Math.max(r.acceptedAt?.getTime() ?? 0, r.invitedAt?.getTime() ?? 0) >= (since.get(r.companyId) ?? 0));
+  return { current: s.companyId, items: usable.map((r) => ({ id: r.companyId, name: r.company.name })) };
 }
 
 /** หน้าแรกของบริษัท: ค้างชำระ · ใบเสนอราคารอตอบ · กิจกรรมล่าสุด (+ จำนวนดีลเปิด เฉพาะร้านที่ตั้ง showDeals) */
@@ -786,10 +816,15 @@ export async function listDocuments(token: string): Promise<{ items: PortalDocum
   return { items: recs.map((r) => ({ id: r.id, objectKey: r.object.key, objectLabel: r.object.label, title: r.title, updatedAt: r.updatedAt, files: files.get(r.id) ?? [] })) };
 }
 
-function valueText(v: { valueText: string | null; valueNumber: { toString(): string } | null; valueDate: Date | null; valueBool: boolean | null; valueOptions: string[] } | undefined): string {
+// CRM C5.5 ▸ (fix3b · H2b-5) ฟิลด์ DATETIME เก็บเป็นขณะจริง ⇒ แสดงเป็นวันเวลาไทย รูปแบบเดียวกับหน้าระเบียนของพนักงาน
+//   ("9 ต.ค. 2569 00:30") · เดิมตัดเป็นวันที่ UTC (00:00–06:59 น. = วันก่อนหน้า · ไม่มีเวลา)
+//   DATE เก็บเป็นเที่ยงคืน UTC ของวันในปฏิทิน ⇒ ตัดสตริงแบบเดิม (ค่าที่ลูกค้าเห็นและใช้ตั้งต้นช่อง "ขอแก้ข้อมูล" ไม่เปลี่ยน) ◂
+// CRM C5.5-fix7 ▸ RV-3: ตัวจัดรูปตัวเดียวกับหน้าระเบียนของพนักงานและหน้าผู้ติดต่อ 360 (`formatThaiDateTimeFull` · lib/ui/date) — เลิกคัดลอกตัวเลือกรูปแบบ ◂
+function valueText(v: { valueText: string | null; valueNumber: { toString(): string } | null; valueDate: Date | null; valueBool: boolean | null; valueOptions: string[] } | undefined, type?: string): string {
   if (!v) return "";
   if (v.valueText !== null && v.valueText !== undefined) return v.valueText;
   if (v.valueNumber !== null && v.valueNumber !== undefined) return v.valueNumber.toString();
+  if (v.valueDate && type === "DATETIME") return formatThaiDateTimeFull(v.valueDate);
   if (v.valueDate) return v.valueDate.toISOString().slice(0, 10);
   if (v.valueBool !== null && v.valueBool !== undefined) return v.valueBool ? "ใช่" : "ไม่ใช่";
   return v.valueOptions.join(", ");
@@ -822,7 +857,7 @@ export async function getRecord(token: string, recordId: string): Promise<Portal
     objectLabel: rec.object.label,
     title: rec.title,
     // editable = ฟิลด์เปิดให้ขอแก้ **และ** บทบาทขอแก้ข้อมูลได้ (ตารางสิทธิ์รอบ 4 — APPROVE ขึ้นไป)
-    fields: fields.map((f) => ({ key: f.key, label: f.label, value: valueText(byField.get(f.id)), editable: f.portalEditable && f.type !== "FILE" && f.type !== "LOOKUP" && portalCanChangeData(sc.role) })),
+    fields: fields.map((f) => ({ key: f.key, label: f.label, value: valueText(byField.get(f.id), f.type), editable: f.portalEditable && f.type !== "FILE" && f.type !== "LOOKUP" && portalCanChangeData(sc.role) })),
     files: files.get(rec.id) ?? [],
     updatedAt: rec.updatedAt,
   };
@@ -1004,7 +1039,8 @@ export async function getRequest(token: string, requestId: string): Promise<Port
 export async function listContacts(token: string): Promise<{ items: PortalContactDto[] }> {
   const sc = await scope(token);
   const links = await prisma.crmCompanyContact.findMany({
-    where: { tenantId: sc.tenantId, companyId: sc.companyId, contact: { archivedAt: null, mergedIntoId: null, tenantId: sc.tenantId, systemId: sc.crmSystemId } },
+    // CRM C5.4-B ▸ L1-M2: เฉพาะคนที่ยังอยู่ในบริษัท (endedAt null) — อดีตพนักงานไม่โผล่ให้คนในพอร์ทัลเห็น
+    where: { tenantId: sc.tenantId, companyId: sc.companyId, endedAt: null, contact: { archivedAt: null, mergedIntoId: null, tenantId: sc.tenantId, systemId: sc.crmSystemId } },
     select: { isPrimary: true, jobTitle: true, contact: { select: { id: true, name: true, email: true, phone: true } } },
     take: 200,
   });
@@ -1050,6 +1086,15 @@ async function visibleCompany(ctx: PortalStaffCtx, actor: MemberActor, companyId
   return { id: co.id, name: co.name, live };
 }
 
+/**
+ * CRM C5.5-fix2 ▸ รีวิว R2b-1 — ล็อกระดับธุรกรรมต่อ (ร้าน, ผู้ติดต่อ) ของพอร์ทัล: `invite` (เชิญซ้ำ → ฆ่า session ทุกใบ) กับ `switchCompany`
+ * (ตรวจ session ต้นทาง → mint) วิ่งทีละตัว · ต้องเป็นสิ่งแรกที่ธุรกรรมทำ (ก่อนล็อกแถวใด) ทั้งสองฝั่ง · namespace `crm.portal.contact:`
+ * ไม่ชนกับล็อกของ event พอร์ทัล (`<tenant>:<sourceRef>` ใน onPortalEvent) ซึ่งไม่เคยถูกถือพร้อมกับล็อกนี้
+ */
+async function lockPortalContactInTx(tx: Prisma.TransactionClient, tenantId: string, contactId: string): Promise<void> {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`crm.portal.contact:${tenantId}:${contactId}`}))`;
+}
+
 function appBase(): string {
   return (process.env.APP_URL || "http://localhost:3000").replace(/\/+$/, "");
 }
@@ -1073,7 +1118,7 @@ export async function invite(
   if (!co.live) throw new PortalError("VALIDATION", "บริษัทนี้ถูกเก็บหรือถูกรวมไปแล้ว จึงเชิญเข้าพอร์ทัลไม่ได้");
   const contactId = str(input?.contactId);
   const link = contactId
-    ? await prisma.crmCompanyContact.findFirst({ where: { tenantId: ctx.tenantId, companyId: co.id, contactId, contact: { tenantId: ctx.tenantId, systemId: ctx.systemId } }, select: { contact: { select: { id: true, name: true, email: true, archivedAt: true, mergedIntoId: true } } } })
+    ? await prisma.crmCompanyContact.findFirst({ where: { tenantId: ctx.tenantId, companyId: co.id, contactId, endedAt: null /* C5.4-B L1-M2 */, contact: { tenantId: ctx.tenantId, systemId: ctx.systemId } }, select: { contact: { select: { id: true, name: true, email: true, archivedAt: true, mergedIntoId: true } } } })
     : null;
   if (!link) throw new PortalError("NOT_FOUND", "ผู้ติดต่อคนนี้ไม่ได้อยู่ในบริษัทนี้ — เพิ่มเข้าบริษัทก่อนแล้วค่อยเชิญ");
   if (link.contact.archivedAt || link.contact.mergedIntoId) throw new PortalError("VALIDATION", "ผู้ติดต่อคนนี้ถูกเก็บหรือถูกรวมไปแล้ว จึงเชิญเข้าพอร์ทัลไม่ได้");
@@ -1087,6 +1132,11 @@ export async function invite(
   const tenant = await prisma.tenant.findUnique({ where: { id: ctx.tenantId }, select: { slug: true, name: true } });
   if (!tenant) throw new PortalError("NOT_FOUND", "ไม่พบร้านที่เปิดอยู่ — รีเฟรชหน้าแล้วลองใหม่");
   const access = await prisma.$transaction(async (tx) => {
+    // รีวิว R2b-1: ล็อกผู้ติดต่อก่อนอย่างอื่นในธุรกรรม (กุญแจ/ลำดับเดียวกับ `switchCompany`) ⇒ การสลับบริษัทที่วิ่งชนกัน
+    //   จบก่อน (session ใหม่ถูก commit แล้วโดนฆ่าข้างล่าง) หรือหลัง (เห็น session ต้นทางถูกฆ่าแล้ว ⇒ ปฏิเสธ) — ไม่มีทางรอด ◂
+    await lockPortalContactInTx(tx, ctx.tenantId, contactId);
+    // รีวิว RV2-5: "เชิญซ้ำ" = มีสิทธิ์ของ (บริษัท, ผู้ติดต่อ) นี้อยู่แล้ว — เชิญครั้งแรกเข้าบริษัทใหม่ไม่ใช่เหตุให้ออกจากบริษัทอื่น ◂
+    const reinvite = !!(await tx.crmPortalAccess.findUnique({ where: { companyId_contactId: { companyId: co.id, contactId } }, select: { id: true } }));
     const row = await tx.crmPortalAccess.upsert({
       where: { companyId_contactId: { companyId: co.id, contactId } },
       create: { tenantId: ctx.tenantId, systemId: ctx.systemId, companyId: co.id, contactId, role, loginMethods: methods, invitedById: a.userId || null, invitedAt: now, inviteTokenHash: sha(token), inviteExpiresAt: expiresAt },
@@ -1094,7 +1144,15 @@ export async function invite(
       select: { id: true, tenantId: true, systemId: true },
     });
     if (row.tenantId !== ctx.tenantId || row.systemId !== ctx.systemId) throw new PortalError("NOT_FOUND", "ไม่พบบริษัทนี้ในระบบ CRM ที่เปิดอยู่ — รีเฟรชหน้าแล้วลองใหม่");
-    await tx.auditLog.create({ data: { tenantId: ctx.tenantId, actorType: "USER", actorId: a.userId || null, action: "crm.portal.invite", targetType: "CrmPortalAccess", targetId: row.id, after: { companyId: co.id, contactId, role, loginMethods: methods, expiresAt: expiresAt.toISOString() } } });
+    // CRM C5.5-fix2 ▸ hunter 2a-8: เชิญซ้ำ = เริ่มสิทธิ์ใหม่ ⇒ session ที่ยังเปิดอยู่ของสิทธิ์นี้ตายทันที (พนักงาน "ส่งคำเชิญใหม่" หลังลูกค้า
+    //   แจ้งมือถือหาย/กล่องจดหมายถูกเจาะ ⇒ เครื่องเก่าต้องหลุด — เดิมอยู่ต่อจนหมดอายุ session) · ในธุรกรรมเดียวกับการหมุน hash ◂
+    // รีวิว RV2-5: ผู้ติดต่อที่มีสิทธิ์หลายบริษัท — เครื่องที่หายถือ session ของบริษัทอื่นแล้ว `switchCompany` กลับมาบริษัทนี้ได้
+    //   ⇒ ฆ่า session ที่ยังเปิดอยู่ **ทุกใบของผู้ติดต่อคนนี้** (ทุกบริษัทในร้านนี้) แบบเดียวกับ portal-identity เมื่อตัวตนเปลี่ยน ◂
+    //   (เฉพาะการเชิญซ้ำ — เชิญครั้งแรกของบริษัทใหม่ไม่ฆ่า session ที่ผู้ติดต่อใช้อยู่กับบริษัทอื่น)
+    const killed = reinvite
+      ? await tx.portalSession.updateMany({ where: { tenantId: ctx.tenantId, crmContactId: contactId, revokedAt: null }, data: { revokedAt: now } })
+      : { count: 0 };
+    await tx.auditLog.create({ data: { tenantId: ctx.tenantId, actorType: "USER", actorId: a.userId || null, action: "crm.portal.invite", targetType: "CrmPortalAccess", targetId: row.id, after: { companyId: co.id, contactId, role, loginMethods: methods, expiresAt: expiresAt.toISOString(), sessionsRevoked: killed.count } } });
     return row;
   });
   const inviteUrl = `${appBase()}${portalPath(tenant.slug, "invite", token)}`;
@@ -1360,7 +1418,19 @@ export async function eraseContact(ctx: PortalStaffCtx, contactId: string): Prom
   const id = str(contactId);
   const sys = ctx?.tenantId && ctx?.systemId ? await prisma.appSystem.findFirst({ where: { id: ctx.systemId, tenantId: ctx.tenantId, type: "CRM" }, select: { id: true } }) : null;
   if (!sys || !id) throw new PortalError("NOT_FOUND", "ไม่พบระบบ CRM หรือผู้ติดต่อนี้ในร้านที่เปิดอยู่");
-  const reqs = await prisma.crmPortalRequest.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, contactId: id }, select: { id: true, approvalRequestId: true, kanbanCardId: true }, take: 5_000 });
+  // CRM C5.5-fix9 ▸ hunt-3 H3-3: ทุกคำขอ (ทีละหน้า · ไม่ตัดที่ 5,000) ◂
+  const reqs: { id: string; approvalRequestId: string | null; kanbanCardId: string | null }[] = [];
+  for (let cursor: string | null = null; ; ) {
+    const page: { id: string; approvalRequestId: string | null; kanbanCardId: string | null }[] = await prisma.crmPortalRequest.findMany({
+      where: { tenantId: ctx.tenantId, systemId: ctx.systemId, contactId: id, ...(cursor ? { id: { gt: cursor } } : {}) },
+      select: { id: true, approvalRequestId: true, kanbanCardId: true },
+      orderBy: { id: "asc" },
+      take: ERASE_PAGE,
+    });
+    reqs.push(...page);
+    if (page.length < ERASE_PAGE) break;
+    cursor = page[page.length - 1]!.id;
+  }
   let approvalsCancelled = 0;
   const ap = await approvalFacade();
   for (const r of reqs) {
@@ -1371,8 +1441,7 @@ export async function eraseContact(ctx: PortalStaffCtx, contactId: string): Prom
   return prisma.$transaction(async (tx) => {
     // รีวิว C3.9-fix S1: การ์ดของคำขอถูกล้างผ่าน facade บอร์ดงาน (หัว · รายละเอียด · ความเห็น · ประวัติ) — portal.ts ไม่เขียนตารางบอร์ดงานเอง
     const cards = { count: cardIds.length ? (await kb.redactCardsInTx(tx, ctx.tenantId, cardIds, { title: PORTAL_CARD_ERASED_TITLE, sourceKeyPrefix: PORTAL_CARD_SOURCE_PREFIX })).cards : 0 };
-    const accessIds = (await tx.crmPortalAccess.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, contactId: id }, select: { id: true }, take: 1_000 })).map((r) => r.id);
-    const sessions = accessIds.length ? await tx.portalSession.deleteMany({ where: { tenantId: ctx.tenantId, portalAccessId: { in: accessIds } } }) : { count: 0 };
+    const sessions = await tx.portalSession.deleteMany({ where: { tenantId: ctx.tenantId, portalAccess: { tenantId: ctx.tenantId, systemId: ctx.systemId, contactId: id } } });
     const requests = await tx.crmPortalRequest.deleteMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, contactId: id } });
     const accesses = await tx.crmPortalAccess.deleteMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, contactId: id } });
     await tx.auditLog.create({ data: { tenantId: ctx.tenantId, actorType: ctx.actorUserId ? "USER" : "SYSTEM", actorId: ctx.actorUserId ?? null, action: "crm.portal.erase", targetType: "CrmContact", targetId: id, after: { accesses: accesses.count, sessions: sessions.count, requests: requests.count, approvalsCancelled, cardsRedacted: cards.count } } });
@@ -1392,34 +1461,51 @@ export async function eraseContactInTx(
   tx: Prisma.TransactionClient,
   ctx: { tenantId: string; systemId: string },
   contactIds: readonly string[],
-  opts?: { mask?: ((text: string) => string) | null },
+  opts?: { mask?: ((text: string) => string) | null; batch?: number | null },
 ): Promise<{ accesses: number; sessions: number; requests: number; cardsRedacted: number; approvalRequestIds: string[] }> {
   const ids = [...new Set(contactIds.filter(Boolean))];
   if (ids.length === 0) return { accesses: 0, sessions: 0, requests: 0, cardsRedacted: 0, approvalRequestIds: [] };
-  const reqs = await tx.crmPortalRequest.findMany({ where: { tenantId: ctx.tenantId, contactId: { in: ids } }, select: { approvalRequestId: true, kanbanCardId: true }, take: 5_000 });
-  const cardIds = reqs.map((r) => r.kanbanCardId).filter((x): x is string => !!x);
-  // รีวิว C3.9-fix S1: ผ่าน facade บอร์ดงาน · `mask` = ตัวปิดคำระบุตัวของการลบ (privacy.ts) ⇒ ความเห็น/ประวัติของการ์ดคำขอถูกปิดด้วยคำชุดเดียวกัน
-  const cards = { count: cardIds.length ? (await (await kanbanLinks()).redactCardsInTx(tx, ctx.tenantId, cardIds, { title: PORTAL_CARD_ERASED_TITLE, sourceKeyPrefix: PORTAL_CARD_SOURCE_PREFIX, mask: opts?.mask ?? null })).cards : 0 };
-  const accessIds = (await tx.crmPortalAccess.findMany({ where: { tenantId: ctx.tenantId, contactId: { in: ids } }, select: { id: true }, take: 1_000 })).map((r) => r.id);
-  const sessions = await tx.portalSession.deleteMany({ where: { tenantId: ctx.tenantId, OR: [{ crmContactId: { in: ids } }, ...(accessIds.length ? [{ portalAccessId: { in: accessIds } }] : [])] } });
+  // CRM C5.5-fix9 ▸ hunt-3 H3-3: คำขอทุกแถว (ทีละหน้า keyset ตาม id · ไม่ตัดที่ 5,000) — การ์ดของคำขอถูกล้างก่อนแถวคำขอหาย (ลิงก์ไม่หลุด) ◂
+  const batch = erasePageOf(opts?.batch);
+  const kb = await kanbanLinks();
+  const approvalRequestIds: string[] = [];
+  let cardsRedacted = 0;
+  for (let cursor: string | null = null; ; ) {
+    const page: { id: string; approvalRequestId: string | null; kanbanCardId: string | null }[] = await tx.crmPortalRequest.findMany({
+      where: { tenantId: ctx.tenantId, contactId: { in: ids }, ...(cursor ? { id: { gt: cursor } } : {}) },
+      select: { id: true, approvalRequestId: true, kanbanCardId: true },
+      orderBy: { id: "asc" },
+      take: batch,
+    });
+    for (const r of page) if (r.approvalRequestId) approvalRequestIds.push(r.approvalRequestId);
+    const cardIds = page.map((r) => r.kanbanCardId).filter((x): x is string => !!x);
+    // รีวิว C3.9-fix S1: ผ่าน facade บอร์ดงาน · `mask` = ตัวปิดคำระบุตัวของการลบ (privacy.ts) ⇒ ความเห็น/ประวัติของการ์ดคำขอถูกปิดด้วยคำชุดเดียวกัน
+    if (cardIds.length) {
+      cardsRedacted += (await kb.redactCardsInTx(tx, ctx.tenantId, cardIds, { title: PORTAL_CARD_ERASED_TITLE, sourceKeyPrefix: PORTAL_CARD_SOURCE_PREFIX, mask: opts?.mask ?? null, batch: opts?.batch ?? null })).cards;
+    }
+    if (page.length < batch) break;
+    cursor = page[page.length - 1]!.id;
+  }
+  // session ของทุกสิทธิ์ของคนนี้ (ผ่านความสัมพันธ์ — ไม่มีรายการ id ที่ต้องตัด) + session ที่ผูกผู้ติดต่อตรง
+  const sessions = await tx.portalSession.deleteMany({ where: { tenantId: ctx.tenantId, OR: [{ crmContactId: { in: ids } }, { portalAccess: { tenantId: ctx.tenantId, contactId: { in: ids } } }] } });
   const requests = await tx.crmPortalRequest.deleteMany({ where: { tenantId: ctx.tenantId, contactId: { in: ids } } });
   const accesses = await tx.crmPortalAccess.deleteMany({ where: { tenantId: ctx.tenantId, contactId: { in: ids } } });
-  return {
-    accesses: accesses.count,
-    sessions: sessions.count,
-    requests: requests.count,
-    cardsRedacted: cards.count,
-    approvalRequestIds: reqs.map((r) => r.approvalRequestId).filter((x): x is string => !!x),
-  };
+  return { accesses: accesses.count, sessions: sessions.count, requests: requests.count, cardsRedacted, approvalRequestIds };
 }
+
+/** ขนาดหน้าของการลบ (ค่าเริ่มต้น 5,000 = เพดานเดิม · ข้อสอบส่งค่าเล็กเพื่อพิสูจน์การวนหน้า) */
+const ERASE_PAGE = 5_000;
+const erasePageOf = (b?: number | null): number => {
+  const n = Math.floor(Number(b ?? ERASE_PAGE));
+  return Number.isFinite(n) && n >= 1 ? Math.min(n, ERASE_PAGE) : ERASE_PAGE;
+};
 
 /** ยกเลิกคำขออนุมัติของคำขอพอร์ทัลที่ถูกลบ (ขั้นหลัง commit ของการลบ PDPA) — คำขอที่ปิดไปแล้ว = ข้าม (idempotent) */
 export async function cancelErasedApprovals(tenantId: string, approvalRequestIds: readonly string[]): Promise<number> {
   if (!approvalRequestIds.length) return 0;
-  const ap = await approvalFacade();
-  let n = 0;
-  for (const id of approvalRequestIds) if (await ap.cancelRequest({ tenantId }, id)) n += 1; // ล้ม = โยนต่อ ⇒ event ถูกส่งใหม่
-  return n;
+  // CRM C5.5-fix9 r2 (review M3): เป็นชุด (คำสั่งละ ≤ 1,000 · เฉพาะที่ยัง PENDING) แทนทีละ id — ส่งใหม่ = ทำต่อได้ ไม่เริ่มจ่ายใหม่ทั้งหมด ·
+  //   ล้ม = โยนต่อ ⇒ event ถูกส่งใหม่ ◂
+  return (await approvalFacade()).cancelRequests({ tenantId }, approvalRequestIds);
 }
 // ◂ CRM C3.9
 

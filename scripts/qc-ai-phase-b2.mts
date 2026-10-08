@@ -13,6 +13,8 @@
 // read ใหม่: approvals_pending (คำขอรอฉันอนุมัติ) · rental_active (สัญญาเช่าค้างคืน)
 import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
 loadLegacyQcEnv("qc-ai-phase-b2"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
+// ORACLE-EDIT C5.5-G1: runTool/sendMessage now take a required actor (no actor = refusal) — these checks always meant "the shop OWNER asks"
+const qcOwner = (t: string) => ({ kind: "member" as const, tenantId: t, userId: "qc-owner", membership: { role: "OWNER" as const, unitAccess: ["*"], permissions: {} } });
 process.env.SHARK_AI_MOCK = "1";
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");
@@ -75,12 +77,12 @@ try {
   await invSvc.receive({ tenantId: tid, systemId: invS.id }, { itemId: item.id, qty: 10, costSatang: 100, idempotencyKey: "b2rc" });
   const r8 = await run("inventory_consume", { sku: "B2-1", qty: 4, note: "เบิกใช้" });
   chk("B2-7.1", "inventory_consume → สต็อก 10→6", r8?.ok === true && (await prisma.invItem.findUnique({ where: { id: item.id as string } }))?.onHand === 6);
-  const bad = await tools.runTool({ tenantId: tid, conversationId: conv.id }, "inventory_consume", { sku: "B2-1", qty: -2 });
+  const bad = await tools.runTool({ tenantId: tid, actor: qcOwner(tid), conversationId: conv.id }, "inventory_consume", { sku: "B2-1", qty: -2 });
   let bp: any = {}; try { bp = JSON.parse(bad); } catch {}
   chk("B2-7.2", "ตัด qty ติดลบ → error ไม่สร้าง proposal", !!bp.error, "MAJOR");
 
   // read tools
-  const rp = await tools.runTool({ tenantId: tid }, "approvals_pending", {});
+  const rp = await tools.runTool({ tenantId: tid, actor: qcOwner(tid) }, "approvals_pending", {});
   chk("B2-8", "approvals_pending ตอบไม่ error", !String(rp).includes('"error"'), "MAJOR");
 } catch (e) { chk("CRASH", "จบ: " + (e instanceof Error ? e.message.slice(0, 140) : String(e)), false); }
 finally {

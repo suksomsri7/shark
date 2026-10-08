@@ -13,7 +13,7 @@ import { CrmActivityBlock } from "@/components/crm/activity/CrmActivityBlock";
 import { CrmFilesBlock } from "@/components/crm/files/CrmFilesBlock";
 import { ArchiveRecordButton, EditRecordToggle } from "../../_components/RecordForm";
 import { displayValue } from "@/components/crm/objects/types";
-import { customerLinks, formFieldsOf, sensitivePresence } from "@/components/crm/objects/server";
+import { formFieldsOf, parentLinks, sensitivePresence } from "@/components/crm/objects/server";
 
 // รายการเดี่ยวของวัตถุกำหนดเอง (CRM v2 · ใบ C1.9 · พิมพ์เขียว §3.6) — `/app/sys/{id}/crm/objects/{key}/{recordId}`
 // เลย์เอาต์: ชื่อรายการ · ทุกส่วน (ป้ายฟิลด์ + ค่า — ค่าอ่อนไหวถูกบริการตัดทิ้งถ้าผู้ดูไม่มีสิทธิ์ D8) · ไทม์ไลน์ (`timelineFor`) ·
@@ -21,7 +21,6 @@ import { customerLinks, formFieldsOf, sensitivePresence } from "@/components/crm
 // 🔴 404-not-403: ระบบไม่ใช่ CRM ของร้านนี้ · ยังไม่เปิด CRM v2 · ไม่มีคีย์ crm.record.read · วัตถุ/รายการของระบบอื่น/ร้านอื่น ·
 //    วัตถุที่เก็บถาวร · รายการที่แม่มองไม่เห็น (C1.7) = notFound() — ไม่ใช่หน้าพัง · หน้า GET ไม่เขียน
 
-const PARENT_PATH: Record<string, string> = { CONTACT: "contacts", COMPANY: "companies", DEAL: "deals" };
 const thaiDateTime = (d: Date) => new Date(d).toLocaleString("th-TH", { day: "numeric", month: "short", year: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Bangkok" });
 
 export default async function ObjectRecordPage({ params }: { params: Promise<{ id: string; key: string; recordId: string }> }) {
@@ -56,7 +55,8 @@ export default async function ObjectRecordPage({ params }: { params: Promise<{ i
   ]);
   const accessOf = new Map(formFields.map((f) => [f.key, f]));
   const present = await sensitivePresence(tenantId, [rec.id], formFields.filter((f) => f.hidden).map((f) => f.fieldId));
-  const custHref = rec.parentType === "CUSTOMER" && rec.parentId ? (await customerLinks(tenantId, actor, [rec.parentId])).get(rec.parentId) ?? null : null;
+  // CRM C4.2-fix ▸ B4: ลิงก์แม่เฉพาะเมื่อผู้ดูเปิดหน้าแม่ได้จริง (parentLinks — การมองเห็น + คีย์อ่านของแม่) · เปิดไม่ได้ = ไม่มีลิงก์ ◂
+  const parentHref = rec.parentId ? ((await parentLinks(ctx, actor, [{ parentType: rec.parentType, parentId: rec.parentId }])).get(`${rec.parentType}:${rec.parentId}`) ?? null) : null;
   const sections = layout.sections
     .map((s) => ({ ...s, fields: s.fields.filter((f) => !f.isSystem && !f.archivedAt) }))
     .filter((s) => s.fields.length > 0);
@@ -64,7 +64,6 @@ export default async function ObjectRecordPage({ params }: { params: Promise<{ i
   const canEdit = live && crmCan(actor, "crm.record.update");
   const canArchive = live && crmCan(actor, "crm.record.delete");
   const listHref = `/app/sys/${id}/crm/objects/${obj.key}`;
-  const parentHref = rec.parentId && PARENT_PATH[rec.parentType] ? `/app/sys/${id}/crm/${PARENT_PATH[rec.parentType]}/${rec.parentId}` : custHref;
 
   return (
     <div className="flex min-w-0 flex-col gap-4" data-testid="object-record-page">

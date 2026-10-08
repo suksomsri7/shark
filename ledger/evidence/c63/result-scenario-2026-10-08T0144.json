@@ -1,0 +1,127 @@
+{
+ "stage": "scenario",
+ "startedAt": "2026-10-08T01:44:48.835Z",
+ "pages": [],
+ "steps": [
+  {
+   "code": "S12",
+   "role": "owner",
+   "got": [
+    200,
+    200,
+    200,
+    200,
+    200,
+    200
+   ],
+   "want": [
+    200,
+    200,
+    200,
+    200,
+    200,
+    200
+   ],
+   "ok": true
+  },
+  {
+   "code": "S12",
+   "role": "manager",
+   "got": [
+    200,
+    200,
+    200,
+    200,
+    200,
+    200
+   ],
+   "want": [
+    200,
+    200,
+    200,
+    200,
+    200,
+    200
+   ],
+   "ok": true
+  },
+  {
+   "code": "S12",
+   "role": "lead",
+   "got": [
+    200,
+    200,
+    404,
+    404,
+    200,
+    404
+   ],
+   "want": [
+    200,
+    200,
+    404,
+    404,
+    200,
+    404
+   ],
+   "ok": true
+  },
+  {
+   "code": "S12",
+   "role": "staff",
+   "got": [
+    200,
+    200,
+    404,
+    404,
+    200,
+    404
+   ],
+   "want": [
+    200,
+    200,
+    404,
+    404,
+    200,
+    404
+   ],
+   "ok": true
+  },
+  {
+   "code": "S13",
+   "db": {
+    "won": "18000000",
+    "lost": 1,
+    "open": 1
+   },
+   "ok": true
+  },
+  {
+   "code": "S21",
+   "role": "manager",
+   "what": "2b: custom object qcprodcontract (not bound) + one record by the manager",
+   "at": "2026-10-08T01:45:00.416Z",
+   "ok": true,
+   "note": "object has no fields yet (field designer not exercised) — saving an empty record",
+   "db": {
+    "record": "cmuyvje46000806l5kohmg8mb"
+   },
+   "end": "2026-10-08T01:45:06.067Z"
+  }
+ ],
+ "findings": [],
+ "aborted": null,
+ "finishedAt": "2026-10-08T01:45:06.141Z",
+ "sideEffectsStart": {
+  "emails": 0,
+  "customers": 0,
+  "documents": 0,
+  "account_contacts": 0,
+  "cards": 0,
+  "crm_webhooks": 0,
+  "automation_runs": 0,
+  "ai_txns": 1,
+  "enrollments": 0,
+  "owner_notifications": 0
+ }
+}

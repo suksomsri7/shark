@@ -634,10 +634,27 @@ export async function onCrmDealWon(evt: BridgeEvent): Promise<void> {
   const ctx: MemberCtxLite = { tenantId: evt.tenantId, systemId: memberSystemId, actorUserId: null };
 
   const alive = { tenantId: evt.tenantId, memberSystemId, status: { not: "MERGED" as const } };
+  // 🔴 C5.4 (L1-M3): ห้ามเดินตามลิงก์ที่ขัดกันเอง — สมาชิกที่ `memberCustomerId` ชี้ไป ต้องเป็น Party เดียวกับผู้ติดต่อ CRM
+  //    (ตามสายการรวม Party) · ไม่ตรง = ลิงก์ใดลิงก์หนึ่งผิด (เช่น Party ของผู้ติดต่อถูกผูกใหม่จากโมดูลอื่น) ⇒ ไม่เขียนไทม์ไลน์ของใครเลย
+  //    ดีกว่าเขียนยอดดีลลงประวัติของลูกค้าผิดคน (บันทึก WARN ให้ทีมตามแก้)
+  const samePerson = async (a: string | null, b: string | null): Promise<boolean> => {
+    if (!a || !b || a === b) return true;
+    const { resolveCanonical } = await import("@/lib/modules/party");
+    return (await resolveCanonical(evt.tenantId, a)) === (await resolveCanonical(evt.tenantId, b));
+  };
+  const linked = contact.memberCustomerId
+    ? await prisma.customer.findFirst({ where: { ...alive, id: contact.memberCustomerId }, select: { id: true, partyId: true } })
+    : null;
+  if (linked && !(await samePerson(linked.partyId, contact.partyId))) {
+    const { logOps } = await import("@/lib/core/ops");
+    await logOps("WARN", "member-bridge", "ปิดดีล CRM: สมาชิกที่ผูกไว้เป็นคนละ Party กับผู้ติดต่อ — ไม่เขียนไทม์ไลน์", {
+      tenantId: evt.tenantId,
+      detail: `crmContactId=${contact.id} customerId=${linked.id} dealId=${deal.id}`,
+    });
+    return;
+  }
   let customer =
-    (contact.memberCustomerId
-      ? await prisma.customer.findFirst({ where: { ...alive, id: contact.memberCustomerId }, select: { id: true, partyId: true } })
-      : null) ??
+    linked ??
     (contact.partyId ? await prisma.customer.findFirst({ where: { ...alive, partyId: contact.partyId }, select: { id: true, partyId: true } }) : null);
   if (!customer && (str(contact.phone) || str(contact.email))) {
     const r = await member.createMember(ctx, SYSTEM_MEMBER_ACTOR, {

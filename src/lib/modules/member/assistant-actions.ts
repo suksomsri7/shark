@@ -14,6 +14,7 @@ import { assertCan } from "@/lib/core/rbac";
 import { requireTenant } from "@/lib/core/context";
 import { safeReason } from "@/lib/core/errors";
 import { sendMessage } from "@/lib/ai/service";
+import { aiMemberActor } from "@/lib/ai/actor";
 import { executeProposal, rejectProposal } from "@/lib/ai/proposals";
 import { prisma } from "./db";
 import { canReadMember, toMemberActor } from "./access";
@@ -33,7 +34,14 @@ async function gate(systemId: string) {
   }
   const system = await prisma.appSystem.findFirst({ where: { id: systemId, tenantId, type: "MEMBER" }, select: { id: true } });
   if (!system) throw new Error("ไม่พบระบบสมาชิกนี้ในร้านนี้ — รีเฟรชหน้าแล้วลองใหม่");
-  return { tenantId, userId: auth.user.id, mc, viewer: { systemId, actor, userId: auth.user.id } };
+  return {
+    tenantId,
+    userId: auth.user.id,
+    mc,
+    viewer: { systemId, actor, userId: auth.user.id },
+    // CRM C5.5-G1 ▸ ผู้กระทำของผู้ช่วย = คนที่เปิดหน้านี้ (เครื่องมือทุกสกิลรันด้วยสิทธิ์ของเขา ไม่ใช่ทั้งร้าน) ◂
+    aiActor: aiMemberActor(tenantId, auth.user.id, auth.active),
+  };
 }
 
 const DISABLED = "ผู้ช่วย AI ยังไม่เปิดให้ใช้ในร้านนี้ — ติดต่อผู้ดูแลระบบเพื่อเปิดใช้งาน";
@@ -47,14 +55,14 @@ export async function sendMemberAssistantAction(
   text: string,
 ): Promise<AssistantActionResult<AssistantStateDto>> {
   try {
-    const { tenantId, viewer } = await gate(systemId);
+    const { tenantId, viewer, aiActor } = await gate(systemId);
     const body = String(text ?? "").trim();
     if (!body) return { ok: false, reason: "พิมพ์คำถามก่อนกดส่ง" };
     if (body.length > TEXT_MAX) return { ok: false, reason: `คำถามยาวได้ไม่เกิน ${TEXT_MAX.toLocaleString("th-TH")} ตัวอักษร` };
-    const current = conversationId ? await assistantState(tenantId, conversationId) : null;
+    const current = conversationId ? await assistantState(tenantId, conversationId, aiActor) : null;
     const used: string[] = [];
     const res = await sendMessage(
-      { tenantId },
+      { tenantId, actor: aiActor },
       { text: body, ...(current?.conversationId ? { conversationId: current.conversationId } : {}) },
       { source: "MEMBER_ASSIST", onToolCall: (name) => used.push(name) },
     );
@@ -62,7 +70,7 @@ export async function sendMemberAssistantAction(
       return { ok: false, reason: res.error === "ai_disabled" ? DISABLED : res.error === "over_budget" ? (res.scope === "day" ? OVER_DAY : OVER_CREDIT) : "พิมพ์คำถามก่อนกดส่ง" };
     }
     await appendToolsLine(tenantId, res.conversationId, used);
-    return { ok: true, data: await assistantState(tenantId, res.conversationId, viewer) };
+    return { ok: true, data: await assistantState(tenantId, res.conversationId, aiActor, viewer) };
   } catch (e) {
     return { ok: false, reason: safeReason(e, "ผู้ช่วยตอบไม่สำเร็จในตอนนี้ — ลองถามใหม่อีกครั้ง") };
   }
@@ -76,9 +84,10 @@ export async function confirmMemberProposalAction(
   confirm2x: boolean,
 ): Promise<AssistantConfirmResult> {
   try {
-    const { tenantId, userId, mc, viewer } = await gate(systemId);
+    const { tenantId, userId, mc, viewer, aiActor } = await gate(systemId);
+    // CRM C5.5-G2 ▸ ข้อเสนอต้องอยู่ในบทสนทนาของคนกด — executeProposal ตรวจซ้ำด้วย userId ของคนกด ◂
     const res = await executeProposal(mc, { tenantId }, String(proposalId ?? ""), { confirm2x: confirm2x === true, userId });
-    return { ok: res.ok, note: res.note, ...(res.needsSecondConfirm ? { needsSecondConfirm: true } : {}), state: await assistantState(tenantId, conversationId, viewer) };
+    return { ok: res.ok, note: res.note, ...(res.needsSecondConfirm ? { needsSecondConfirm: true } : {}), state: await assistantState(tenantId, conversationId, aiActor, viewer) };
   } catch (e) {
     return {
       ok: false,
@@ -95,12 +104,12 @@ export async function cancelMemberProposalAction(
   proposalId: string,
 ): Promise<AssistantActionResult<AssistantStateDto>> {
   try {
-    const { tenantId, mc, viewer } = await gate(systemId);
+    const { tenantId, mc, viewer, aiActor } = await gate(systemId);
     // 🔴 AUDIT L10: ยกเลิกได้เฉพาะข้อเสนอของบทสนทนาที่เปิดอยู่ + ระบบสมาชิกใบนี้ + ต้องมีสิทธิ์
     //    ชุดเดียวกับตอนกดยืนยัน (ไม่งั้นคนที่มีแค่สิทธิ์อ่านปิดงานของคนอื่นทิ้งได้ทั้งร้าน)
-    await assertProposalInScope({ tenantId, systemId, conversationId, proposalId: String(proposalId ?? "") }, mc);
-    await rejectProposal({ tenantId }, String(proposalId ?? ""));
-    return { ok: true, data: await assistantState(tenantId, conversationId, viewer) };
+    await assertProposalInScope({ tenantId, systemId, conversationId, proposalId: String(proposalId ?? "") }, mc, aiActor);
+    await rejectProposal({ tenantId, actor: aiActor }, String(proposalId ?? ""));
+    return { ok: true, data: await assistantState(tenantId, conversationId, aiActor, viewer) };
   } catch (e) {
     return { ok: false, reason: safeReason(e, "ยกเลิกไม่สำเร็จในตอนนี้ — ลองใหม่อีกครั้ง") };
   }

@@ -30,6 +30,18 @@ const { prisma } = await import("@/lib/core/db");
 const { sha256 } = await import("@/lib/core/hash");
 
 const argv = process.argv.slice(2);
+// CRM C4.4 ▸ `--journey USn|all [--dry] [--clean]` = scripted end-to-end user journeys (US1–US10 · blueprint §1.4),
+//   crossing pages and roles, asserting the final DB state each story names. Fully self-contained in
+//   `scripts/crm-journeys/` (owned by C4.4) — resolves every id LIVE against the active DB instead of trusting
+//   `scripts/crm-expected.json` (which belongs to whichever QC branch last ran seed-crm-qc.mts here, not necessarily
+//   the one DATABASE_URL points at right now). Exits before any of the WO/INVENTORY code below runs.
+if (argv.includes("--journey") || argv.includes("--clean")) {
+  const { runJourneyCli } = (await import("./crm-journeys/lib.mts" as string)) as { runJourneyCli: (argv: string[], opts: { prisma: unknown; BASE: string }) => Promise<number> };
+  const code = await runJourneyCli(argv, { prisma, BASE: process.env.QC_BASE ?? "http://127.0.0.1:3215" });
+  await prisma.$disconnect();
+  process.exit(code);
+}
+// ◂ CRM C4.4
 // CRM C4.1 ▸ `--inventory` = โหมดไล่ทะเบียนปุ่ม (ดูบล็อก "INVENTORY" ท้ายไฟล์) · ไม่ส่ง --user = ไล่ทุกบทบาท ◂
 const INVENTORY = argv.includes("--inventory");
 const WO = INVENTORY ? "inventory" : (argv[0] ?? "0.1");

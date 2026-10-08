@@ -1,0 +1,47 @@
+(node:2404544) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ [P-premise] the owner sees the hidden contact; manager (unit u-a), own-records staff, TEAM staff and the filtered API key do not
+
+── DU · duplicates of a contact the caller cannot see ──
+  ✅ [DU-hidden-mgr] create (phone · e-mail, with and without force) and update → DUPLICATE with the neutral text only, nothing written
+  ✅ [DU-hidden-staff] create (phone · e-mail, with and without force) and update → DUPLICATE with the neutral text only, nothing written
+  ✅ [DU-hidden-teamer] create (phone · e-mail, with and without force) and update → DUPLICATE with the neutral text only, nothing written
+  ✅ [DU-hidden-apikey] create (phone · e-mail, with and without force) and update → DUPLICATE with the neutral text only, nothing written
+  ✅ [DU-rest-create] REST contacts.create (key filtered to staff) with the hidden phone → duplicate A conflicting CRM record already exists. {"status":409,"code":"duplicate","message_th":"มีผู้ติดต่อที่ใช้เบอร์โทรหรืออีเมลนี้อยู่แล้ว แต่อยู่นอกขอบเขตที่บัญชีนี้มองเห็น จึงสร้างหรือบันทึกซ้ำไม่ได้ — ขอให้หัวหน้าทีมหรือเจ้าของร้านตรวจ/มอบผู้ติดต่อนั้นให้","mess · leaks []
+  ✅ [DU-mixed] visible + hidden duplicate · no force → OK returns the visible one only (duplicates=["เห็นร่วม"]) · force → DUPLICATE neutral (cannot verify the hidden one) · rows with that phone 2
+  ✅ [DU-visible-unchanged] duplicates the caller can see: create → created:false + that contact + duplicates[name] · force → created · update → old DUPLICATE text + duplicates · owner same · mgr same · staff same · teamer same · apikey same
+  ✅ [DU-owner-sees] owner duplicate of kH → OK created=false contact=kH true companyText kept=true
+  ✅ [DU-company-tax] staff + hidden tax id → DUPLICATE "มีบริษัทนี้ (เลขผู้เสียภาษี/ข้อมูลเดียวกัน) อยู่ในระบบแล้ว แ" leaks [] rows 1 · staff + visible tax id → OK duplicateOf=visible true · owner + hidden → duplicateOf true
+  ✅ [DU-import-update] import onDuplicate=update with the hidden phone → updated 0 · row message "มีผู้ติดต่อที่ใช้เบอร์โทรหรืออีเมลนี้อยู่แล้ว แต่อยู่นอกขอบเขตที่บัญชีนี้มองเห็น จึงสร้างหรือบันทึกซ้ำไม่ได้ — ขอให้หัวหน้าทีมหรือเจ้าของร้านตรวจ/มอบผู้ติดต่อนั้นให้" · leaks []
+
+── RT ──
+  ✅ [RT-person-limited] bucket at 120: person create with a phone → LIMIT "เพิ่มหรือแก้เบอร์โทร/อีเมลของผู้ติดต่อถี่เกินไป — รอ 10 นาทีแล้วลองใหม" · without phone/e-mail → OK · API key (REST bucket) → OK
+
+── WE ──
+  ✅ [WE-masked] owner sees company=true · mgr sees company=false · staff sees company=false · teamer sees company=false
+
+── KB ──
+  ✅ [KB-subtitle] OK · owner: OK hidden-link subtitle="บริษัทลับ cdrrsczr" own-text subtitle="พิมพ์เอง cdrrsczr" (sees company true) · teamer: OK hidden-link subtitle=null own-text subtitle="พิมพ์เอง cdrrsczr" (sees company false)
+
+── EX ──
+  ✅ [EX-visibility-once] exportDeals as TEAM staff → OK · access-snapshot queries 1 (want 1 per export)
+
+── SW · other doors ──
+  ✅ [SW-company-update-tax] staff → DUPLICATE "มีบริษัทนี้ (เลขผู้เสียภาษี/ข้อมูลเดียวกัน) อยู่ใน" duplicateOf=null leaks [] · owner (sees it) → DUPLICATE duplicateOf = that company true
+  ✅ [SW-company-restore] manager restore → DUPLICATE "มีบริษัทนี้ (เลขผู้เสียภาษี/ข้อมูลเดียวกัน) อยู่ใน" duplicateOf=null leaks [] · still archived true
+  ✅ [SW-company-merge] manager merge → DUPLICATE "มีบริษัทนี้ (เลขผู้เสียภาษี/ข้อมูลเดียวกัน) อยู่ใน" duplicateOf=null
+  ✅ [SW-import-modes] skip: created 0 skipped 1 candidates 0 failed 1 · row1 "มีผู้ติดต่อที่ใช้เบอร์โทรหรืออีเมลนี้อยู" · rows +0 · leaks [] · candidate: created 1 skipped 0 candidates 1 failed 1 · row1 "มีผู้ติดต่อที่ใช้เบอร์โทรหรืออีเมลนี้อยู" · rows +1 · leaks []
+  ✅ [SW-card-scan] accept scanned card with the hidden phone → DUPLICATE "มีผู้ติดต่อที่ใช้เบอร์โทรหรืออีเมลนี้อยู่แล้ว แต่อ" · proposal PENDING note "มีผู้ติดต่อที่ใช้เบอร์โทรหรืออีเมลนี้อยู" · leaks [] (was: a duplicate of the hidden contact was created)
+  ✅ [DU-control-vs-red] visible-duplicate responses (create · force · update) per persona byte-identical to the RED run (ids/timestamps normalised; companyText of these contacts is null so RV10-2 masking cannot differ) · differing: []
+  ✅ [CLEAN-4erzgb] tenant rows left=0
+
+🟢 probe-cf16: 22/22
+JSON_SUMMARY {"total":22,"passed":22,"findings":[]}
+exit=0 2026-10-02T03:33:33Z

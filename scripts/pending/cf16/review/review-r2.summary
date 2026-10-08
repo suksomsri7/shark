@@ -1,0 +1,11 @@
+start 2026-10-02T07:57:58Z
+probe-cf16-review-r2 exit=0 40s · 🟢 probe-cf16-review-r2: 6/6 JSON_SUMMARY {"total":6,"passed":6,"findings":[]} 
+probe-cf16-review exit=0 38s · 🟢 probe-cf16-review: 10/10 JSON_SUMMARY {"total":10,"passed":10,"findings":[]} 
+probe-cf16-r2 exit=0 18s · 🟢 probe-cf16-r2: 8/8 JSON_SUMMARY {"total":8,"passed":8,"findings":[]} 
+probe-cf16-vs-red3 exit=0 34s · 🟢 probe-cf16: 22/22 JSON_SUMMARY {"total":22,"passed":22,"findings":[]} 
+qc-crm-c1.4 exit=0 187s · 🟢 C1.4: 110/110 JSON_SUMMARY {"total":110,"passed":110,"findings":[]} 
+qc-crm-c1.11 exit=0 78s · 🟢 C1.11: 66/66 JSON_SUMMARY {"total":66,"passed":66,"findings":[]} 
+qc-crm-c2.4 exit=0 75s · 🟢 C2.4: 91/91 · outbound fetch stubbed 0× JSON_SUMMARY {"total":91,"passed":91,"findings":[]} 
+typecheck exit=0 35s · 
+fitness exit=0 4s · ผ่าน 36/36 JSON_SUMMARY {"total":36,"passed":36,"findings":[]} 
+ALLDONE 2026-10-02T08:06:27Z

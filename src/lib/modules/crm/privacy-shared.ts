@@ -69,7 +69,19 @@ export const CRM_ERASE_AUDIT_ACTION = "crm.contact.erase";
 
 export type ContactExportBundle = {
   exportedAt: string;
+  /** CRM C5.5-fix9 (hunt-3 H3-2 · r2 M1): true = ทุกแถวของทุกตารางของคนนี้ (รวมสายที่ถูกรวม) อยู่ในไฟล์ · false = มีตารางถูกตัดที่เพดานขนาดไฟล์
+   *  (`truncated`) หรือมีแถว/ค่าที่ผู้ขอมองไม่เห็น (`scope.limitedByRequesterVisibility`) หรือสายที่ถูกรวมยาวเกินเพดาน */
+  complete: boolean;
+  /** เฉพาะเมื่อไม่ครบ: ตารางที่ถูกตัด → จำนวนที่อยู่ในไฟล์ (แถวใหม่สุด) และยอดจริงของเขาในระบบ */
+  truncated?: Record<string, { exported: number; total: number }>;
+  /**
+   * C5.5-fix9 r2 (review M1) — มีเมื่อขอบเขตของไฟล์ไม่ใช่ "ผู้ติดต่อคนนี้คนเดียว ทุกแถว":
+   *   `mergedContactIds` = ผู้ติดต่อที่ถูกรวมเข้ามาในคนนี้ (ไฟล์รวมข้อมูลของพวกเขาแล้ว — ขอบเขตเดียวกับการลบ) · `mergedChainIncomplete` = สายยาวเกินเพดาน ·
+   *   `limitedByRequesterVisibility` + `withheldTables` = ผู้ขอมองไม่เห็นบางแถว/บางค่า (ไม่อยู่ในไฟล์ · จำนวนอยู่ในแถว audit เท่านั้น)
+   */
+  scope?: { mergedContactIds?: string[]; mergedChainIncomplete?: true; limitedByRequesterVisibility?: true; withheldTables?: string[] };
   contact: Record<string, unknown>;
+  /** แต่ละตารางเรียงคงที่ (ส่วนใหญ่ id ใหม่→เก่า · ความยินยอมเรียงตามเวลา) — ส่งออกซ้ำได้ไฟล์เดียวกัน */
   tables: Record<string, Record<string, unknown>[]>;
 };
 
@@ -88,7 +100,20 @@ export type CrmExportDto = {
 
 export type PurgeSummary = { emails: number; recordings: number; webSessions: number; exports: number; leadsErased: number; leadsWarned: number };
 
-export type PrivacyErrorCode = "NOT_FOUND" | "FORBIDDEN" | "VALIDATION" | "CONFIRM_REQUIRED";
+/** TOO_LARGE (C5.5-fix9 r2): การลบไม่เสร็จภายในเวลาของธุรกรรมเดียว — ยกเลิกทั้งหมด (ไม่มีอะไรถูกลบ) · OpsEvent ERROR + audit แถวล้มเหลวแล้ว */
+export type PrivacyErrorCode = "NOT_FOUND" | "FORBIDDEN" | "VALIDATION" | "CONFIRM_REQUIRED" | "TOO_LARGE";
+/**
+ * C5.5-fix11 (review fix9-r2 R2-3): ธุรกรรม interactive ของ Prisma **หมดเวลา** เท่านั้น — P2028 ที่ข้อความเป็น "… cannot be executed on an expired
+ * transaction" (คำสั่งหรือ commit หลังหมดเวลา · ข้อความของ transaction manager ใน @prisma/client runtime) · P2028 แบบอื่น (Transaction not found ·
+ * rolled back · committed · ภายใน · "Unable to start a transaction" = รอ pool) ไม่ใช่ "ข้อมูลใหญ่เกิน" ⇒ false (ผู้เรียกโยนต่อเป็นความขัดข้องทั่วไป)
+ * ตรวจแบบ duck-type (ไฟล์นี้บริสุทธิ์ — ไม่ import Prisma)
+ */
+export function isExpiredTransactionError(e: unknown): boolean {
+  const code = e && typeof e === "object" && "code" in e ? (e as { code?: unknown }).code : null;
+  const msg = e instanceof Error ? e.message : "";
+  return code === "P2028" && /cannot be executed on an expired transaction/i.test(msg);
+}
+
 export class PrivacyError extends Error {
   readonly code: PrivacyErrorCode;
   constructor(code: PrivacyErrorCode, message: string) {

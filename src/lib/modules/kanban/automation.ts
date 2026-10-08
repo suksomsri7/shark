@@ -31,7 +31,7 @@ import { logOps } from "@/lib/core/ops";
 // 🔴 เส้น `kanban→approval` — Fable อนุมัติล่วงหน้าใน ledger/KANBAN-RUN.md (ท้าย §K3.2) สำหรับ K2.9
 //    (การกระทำ `open_approval`) · อยู่ใน `ALLOWED_EDGES` ของ `scripts/fitness.mts` แล้ว
 import { submitForApproval } from "@/lib/modules/approval/service";
-import { webhookTargetProblem } from "@/lib/webhooks/service";
+import { outboundFetch, redirectWarning, webhookSaveProblem } from "@/lib/webhooks/service";
 import { KanbanForbiddenError, KanbanNotFoundError } from "./access";
 import { logActivity } from "./activity-log";
 import { archiveCard, setCardAssignees, updateCardFields } from "./cards";
@@ -834,15 +834,11 @@ const SYSTEM_ACTOR: KanbanActor = { userId: "", role: "OWNER", unitAccess: ["*"]
 
 export type AutomationDepsK = { post?: (url: string, body: unknown) => Promise<void> };
 
+// C5.4 (L4-M2): ยิงผ่าน `outboundFetch` ตัวเดียวของแพลตฟอร์ม (ตรวจปลายทาง · ตรึง IP ตอนต่อ · ไม่ตาม 3xx)
 async function postWebhook(url: string, body: unknown): Promise<void> {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 5000);
-  try {
-    const res = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal: ctrl.signal });
-    if (!res.ok) throw new Error(`ปลายทางตอบรหัส ${res.status}`);
-  } finally {
-    clearTimeout(timer);
-  }
+  const res = await outboundFetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), timeoutMs: 5000, maxBytes: 65_536 });
+  if (redirectWarning(res.status)) return; // C5.4 รอบ 2: 3xx = ส่งถึงแล้ว (ไม่ตาม · ไม่ลองซ้ำ)
+  if (!res.ok) throw new Error(`ปลายทางตอบรหัส ${res.status}`);
 }
 
 type RunScope = {
@@ -1087,7 +1083,8 @@ async function runAction(action: KanbanRuleAction, scope: RunScope, card: RuleCa
       //    ⇒ ผ่านด่านเดียวกัน (`webhookTargetProblem` — บล็อก loopback/เครือข่ายภายใน/metadata ·
       //    ช่องทดสอบ `WEBHOOK_ALLOW_PRIVATE=1` + APP_ENV ≠ production) · โยนเป็นความล้มเหลวของ
       //    "การกระทำที่ k" ตามกติกา D21 ⇒ ขึ้น AutomationRun FAILED พร้อมเหตุผลไทยให้เจ้าของกฎเห็น
-      const unsafe = await webhookTargetProblem(action.params.url);
+      //    C5.4 (L4-M2): ด่านตอนบันทึก/ก่อนยิง — ตัวส่งจริงผ่าน outboundFetch (ตรวจซ้ำตอนต่อ + ตรึง IP + ไม่ตาม 3xx)
+      const unsafe = await webhookSaveProblem(action.params.url);
       if (unsafe) throw new Error(unsafe);
       const post = deps?.post ?? postWebhook;
       await post(action.params.url, {

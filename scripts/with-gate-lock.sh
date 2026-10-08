@@ -14,8 +14,13 @@ if command -v flock >/dev/null 2>&1 && [ -z "${CI:-}${VERCEL:-}" ]; then
     *" typecheck "*|*"next build"*|*" build "*|*acc-v2-serve*|*" tsc "*)
       # heavy: hold BOTH locks so neither QC lane runs suites during it (19 Sep: global OOM killed next build twice
       #   while QC2 suites ran beside it on a 7 GB box)
-      exec flock -w 3600 /tmp/shark-gate.lock flock -w 3600 /tmp/shark-gate-qc2.lock flock -w 3600 /tmp/shark-gate-qc3.lock "$@" ;;
+      # C4.4 SHOULD-FIX (28 Sep, controller): export a marker the wrapped command's children can check to PROVE
+      #   they were actually launched under this lock (an unlocked script that merely sees the lock held by some
+      #   UNRELATED lane would otherwise wrongly conclude "I'm inside a locked run" — see
+      #   scripts/crm-journeys/lib.mts assertGateLockHeld()). `env` sets this in the environment flock inherits and
+      #   then execs "$@" into, so it survives to the actual wrapped command.
+      exec env SHARK_GATE_LOCK_MARKER=1 flock -w 3600 /tmp/shark-gate.lock flock -w 3600 /tmp/shark-gate-qc2.lock flock -w 3600 /tmp/shark-gate-qc3.lock "$@" ;;
   esac
-  exec flock -w 1800 "$LOCK" "$@"
+  exec env SHARK_GATE_LOCK_MARKER=1 flock -w 1800 "$LOCK" "$@"
 fi
 exec "$@"

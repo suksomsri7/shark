@@ -2,7 +2,7 @@
 // ลำดับ: status "กำลังคิด" → await sendMessage → done (มี conversationId) · error → yield error
 // จบสำเร็จ = set lastReadAt ของห้อง (คนส่งกำลังอ่านคำตอบอยู่แล้ว ไม่ต้องขึ้น unread เอง)
 
-import { sendMessage, type Ctx, type SendResult } from "@/lib/ai/service";
+import { sendMessage, type SendCtx, type SendResult } from "@/lib/ai/service";
 import { quotaMessage } from "@/lib/ai/usage";
 import { tenantDb } from "@/lib/core/db";
 
@@ -13,7 +13,7 @@ export type ChatEvent =
   | { type: "error"; error: string };
 
 export async function* sendMobileChat(
-  ctx: Ctx,
+  ctx: SendCtx,
   input: ChatInput,
   deps?: Parameters<typeof sendMessage>[2],
 ): AsyncGenerator<ChatEvent> {
@@ -61,7 +61,7 @@ export async function* sendMobileChat(
 }
 
 // ตั้งชื่อห้องจากคำถามแรก — ทำเฉพาะห้องที่ยังไม่มีชื่อ (title ว่าง) · ชื่อ ≤40 ตัวอักษร
-async function autoTitle(ctx: Ctx, conversationId: string, firstText: string): Promise<void> {
+async function autoTitle(ctx: SendCtx, conversationId: string, firstText: string): Promise<void> {
   const db = tenantDb(ctx);
   const conv = await db.aiConversation.findFirst({ where: { id: conversationId } });
   if (!conv || conv.title.trim() !== "") return;

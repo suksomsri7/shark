@@ -1,0 +1,2 @@
+🔴 C5.3 runs on QC2 only (ep-cool-shadow) — got ep-plain-art-ao3djg4u-pooler.c-2.ap-southeast-1.aws.neon.tech
+JSON_SUMMARY {"total":1,"passed":0,"findings":[{"id":"C5.3-ENV","sev":"CRITICAL"}]}

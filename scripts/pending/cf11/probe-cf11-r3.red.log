@@ -1,0 +1,42 @@
+(node:2284154) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+── A reviewer R2A.1 — attacker DMARC domain, 20 plus-variants × 100 ──
+  ❌ [A.1] attacker 20 plus-variants × 100 (class D) → 2000/2000 stored in 281 s (one normalised sender bucket) · then the customer's V reply → rate_limited · thread-only reply → rate_limited
+
+── B reviewer R2B.1 — one sender bucket per mailbox ──
+  ❌ [B.1] D sender bucket of x@ full ⇒ x+0 → stored · x+1 → stored · X+Promo@UPPER → stored · control y@ → stored · U class: z+9 with z@'s bucket full → stored
+
+── C D per-domain bucket 300/h · free-mail exempt ──
+  ❌ [C.1] 4 mailboxes × 80 on one DMARC domain → 320/320 stored (want 300) · domain bucket 0
+  ✅ [C.2] free-mail domain (gmail.com) has no per-domain bucket: a DMARC-passing gmail sender → stored (preset gmail domain bucket untouched)
+
+── E T per-Message-ID bucket shared by every From citing it ──
+  ❌ [E.1] 30 visible recipients × 4 thread-only replies citing one OUT mail → 120/120 stored (want 100) · msg bucket 0 · then a V reply to the same id → stored · a T reply citing another OUT mail → stored
+
+── F class exclusivity ──
+  ❌ [F.1] keys counted per class: {"V":["crm.email.in.from.proven.<h>","crm.email.in.sys.proven"],"D":["crm.email.in.from.proven.<h>","crm.email.in.sys.proven"],"T":["crm.email.in.from.proven.<h>","crm.email.in.sys.proven"],"U":["crm.email.in.from.<h>","crm.email.in.sys"]}
+  ❌ [F.2] D/T/U system buckets full ⇒ V → stored · V system bucket full ⇒ D stored · T stored · U stored · and V itself → stored
+
+── G H3-1 + unproven flood ──
+  ✅ [G.1] forged unproven flood in the customer's name (U buckets full): forged → rate_limited · customer's T reply → stored · V reply → stored
+  ❌ [G.2] unproven flood from one mailbox (plus/case variants) → 102/102 stored (want 100)
+
+── H owner notices ──
+  ❌ [H.1] D sender + D domain + D system trips → notices 0 (want 1) · V system trip → 0 (want 2, V text) · U system trip → 1 (want 3, unchanged text) · audits ["system-proven","sender","system"] · no address in any notice
+
+── I P14 unset ⇒ only T and U ──
+  ❌ [I.1] CRM_INBOUND_AUTHSERV_ID unset: perfect A-R + thread → class ["crm.email.in.from.proven.<h>","crm.email.in.sys.proven"] (want T) · perfect A-R, no thread → ["crm.email.in.from.<h>","crm.email.in.sys"] (want U)
+  ✅ [CLEAN-buckets] rate buckets of the throwaway system removed
+  ✅ [CLEAN-jwuz1g] tenant rows left=0
+  ✅ [CLEAN-users] users left=0
+
+🔴 probe-cf11-r3: 5/14
+JSON_SUMMARY {"total":14,"passed":5,"findings":["A.1","B.1","C.1","E.1","F.1","F.2","G.2","H.1","I.1"]}

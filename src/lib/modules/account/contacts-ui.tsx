@@ -74,9 +74,12 @@ export async function ContactsPage({
   systemId,
   id,
   searchParams,
+  crmViewer,
 }: {
   tenantId: string;
   systemId: string;
+  /** C5.4 (L1-M3): ผู้ดูในสายตาของ CRM (ป้าย "CRM" ตามสิทธิ์) */
+  crmViewer?: import("@/lib/modules/member").MemberActor | null;
   id: string; // systemId ของ URL (`/app/sys/<id>/...`)
   searchParams: SP;
 }) {
@@ -84,7 +87,7 @@ export async function ContactsPage({
   const pathname = `${base}/contacts`;
   const ctx = { tenantId, systemId };
 
-  const [sidebar, mergeCount] = await Promise.all([loadContactsSidebar(ctx), countOpenMergeCandidates(ctx)]);
+  const [sidebar, mergeCount] = await Promise.all([loadContactsSidebar(ctx, undefined, crmViewer), countOpenMergeCandidates(ctx)]);
   const group = (searchParams.group as ContactGroupKey | undefined) ?? "all";
   const legalType = searchParams.legalType === "COMPANY" || searchParams.legalType === "PERSON" ? searchParams.legalType : undefined;
   const result = await listContactsPage(

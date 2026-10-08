@@ -15,6 +15,8 @@
 // หมายเหตุ: support_reply_case เลื่อนเป็น 0045b (ต้องส่ง actor userId เข้า execute — แตะ signature กลาง)
 import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
 loadLegacyQcEnv("qc-ai-actions"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
+// ORACLE-EDIT C5.5-G1: runTool/sendMessage now take a required actor (no actor = refusal) — these checks always meant "the shop OWNER asks"
+const qcOwner = (t: string) => ({ kind: "member" as const, tenantId: t, userId: "qc-owner", membership: { role: "OWNER" as const, unitAccess: ["*"], permissions: {} } });
 process.env.SHARK_AI_MOCK = "1";
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");
@@ -41,7 +43,7 @@ try {
   const kanban = await sys.createSystem(tid, "KANBAN", "บอร์ด");
   const conv = await prisma.aiConversation.create({ data: { tenantId: tid, title: "qc" } });
   const rt = tools.runTool as unknown as (c: unknown, n: string, a: unknown) => Promise<string>;
-  const cx = { tenantId: tid, conversationId: conv.id };
+  const cx = { tenantId: tid, actor: qcOwner(tid), conversationId: conv.id };
   const lastProp = async (kind: string) => prisma.aiProposal.findFirst({ where: { tenantId: tid, kind, status: "PENDING" }, orderBy: { createdAt: "desc" } });
 
   // 1) inventory_create_item

@@ -34,9 +34,12 @@ function chk(id: string, name: string, ok: boolean, detail: string, sev: Sev = "
 function walk(dir: string, filter: (p: string) => boolean, out: string[] = []): string[] {
   if (!existsSync(dir)) return out;
   for (const e of readdirSync(dir)) {
-    if (e === "node_modules" || e === ".next" || e === ".git") continue;
+    // .qc-shots = evidence/browser profiles written by running QC suites (a live chromium profile can vanish mid-walk → ENOENT crash · 28 Sep)
+    if (e === "node_modules" || e === ".next" || e === ".git" || e === ".qc-shots") continue;
     const p = join(dir, e);
-    if (statSync(p).isDirectory()) walk(p, filter, out);
+    let isDir = false;
+    try { isDir = statSync(p).isDirectory(); } catch { continue; } // file removed between readdir and stat
+    if (isDir) walk(p, filter, out);
     else if (filter(p)) out.push(p);
   }
   return out;
@@ -818,6 +821,120 @@ console.log("\n── F12: cookie ทุกตัวตั้ง secure (ห้�
   }
   chk("F12.1", "ทุกจุดที่ตั้ง cookie ระบุ secure", bad.length === 0,
     bad.length ? `ขาด secure ที่: ${bad.join(" · ")}` : "ครบทุกจุด");
+}
+
+// ─────────────────── F15: เท่ากันแบบไม่สนตัวพิมพ์ต้องผ่าน ciEquals (CRM C5.5-fix2 · hunter 2a-5/2a-6 · รีวิว RV2-6) ───────────────────
+// Prisma `{ equals: x, mode: "insensitive" }` = `ILIKE $1` ไม่ escape ⇒ `_`/`%`/`\` ของผู้ใช้เป็น wildcard
+// (`somchai_k@` "เท่ากับ" `somchai.k@` → OTP พอร์ทัลออก session ของเหยื่อ) ⇒ ทุกจุดต้องใช้ `ciEquals()` ของ core/ci-equals.ts
+// ตัวสแกน `scripts/lib/ci-equals-scan.mjs` จับทุกรูปที่เขียนได้ (shorthand · สลับลำดับ · '…' · QueryMode · หลายบรรทัด · ตัวแปร · spread …)
+// OWED: จุดใน account/** เป็นของเลนบัญชี — ผูกด้วย ไฟล์ + ข้อความบรรทัดเป๊ะ + จำนวน (จุดใหม่ในไฟล์เดียวกัน/บรรทัดซ้ำ = แดง)
+//   แก้แล้วต้องลบออกจากรายการ (F15.2 · ratchet) · ห้ามเพิ่มรายการ
+console.log("\n── F15: equals แบบ insensitive ต้องผ่าน ciEquals (ไม่มี wildcard รั่ว) ──");
+{
+  const { findRawInsensitive, F15_SELF_TEST } = await import("./lib/ci-equals-scan.mjs");
+  // CRM C5.5-fix4 ▸ หนี้ 4 จุดของ account/** (product.ts ×2 · service.ts ×2) แก้เป็น ciEquals แล้ว ⇒ รายการว่าง (ratchet: ห้ามเพิ่ม) ◂
+  const OWED: { file: string; snippet: string; count: number }[] = [];
+  const selfMiss = Object.entries(F15_SELF_TEST.mustHit).filter(([, src]) => findRawInsensitive(src).length !== 1).map(([k]) => k);
+  const selfFalse = Object.entries(F15_SELF_TEST.mustNotHit).filter(([, src]) => findRawInsensitive(src).length !== 0).map(([k]) => k);
+  chk("F15.0", "ตัวสแกนจับครบทุกรูป (shorthand · สลับลำดับ · '…' · comma ในค่า · key ในเครื่องหมายคำพูด · QueryMode · วัตถุในตัวแปร · spread · // ในสตริง · หลายบรรทัด · ตัวแปร mode) และไม่จับการค้นหา/คอมเมนต์/สตริง/ชนิดข้อมูล",
+    selfMiss.length === 0 && selfFalse.length === 0, `ไม่จับ: ${selfMiss.join(", ") || "-"} · จับผิด: ${selfFalse.join(", ") || "-"}`);
+  const bad: string[] = [];
+  const seen = new Map<string, number>();
+  for (const p of walk(join(ROOT, "src"), (f) => /\.tsx?$/.test(f))) {
+    const r = rel(p);
+    if (r === "src/lib/core/ci-equals.ts") continue;
+    const src = readFileSync(p, "utf8");
+    if (!/insensitive/.test(src)) continue;
+    for (const h of findRawInsensitive(src)) {
+      const owed = OWED.find((o) => o.file === r && o.snippet === h.snippet);
+      if (owed) {
+        const k = `${owed.file}::${owed.snippet}`;
+        seen.set(k, (seen.get(k) ?? 0) + 1);
+        if ((seen.get(k) ?? 0) > owed.count) bad.push(`${r}:${h.line} (${h.field} · เกินจำนวนหนี้)`);
+      } else bad.push(`${r}:${h.line} (${h.field})`);
+    }
+  }
+  chk("F15.1", "ไม่มี equals แบบ insensitive ดิบนอก core/ci-equals.ts (ยกเว้นหนี้ของเลนบัญชีที่ระบุ ไฟล์ + บรรทัด + จำนวน)", bad.length === 0,
+    bad.length ? `ใช้ ciEquals() แทน: ${bad.join(" · ")}` : "ครบ");
+  const fixed = OWED.filter((o) => (seen.get(`${o.file}::${o.snippet}`) ?? 0) < o.count).map((o) => `${o.file} «${o.snippet}»`);
+  chk("F15.2", "รายการหนี้ (OWED) ไม่มีของที่แก้แล้ว — แก้แล้วต้องลบออกจากรายการ (ratchet)", fixed.length === 0, `แก้แล้วแต่ยังอยู่ในรายการ: ${fixed.join(" · ")}`);
+
+  // CRM C5.5-fix8 ▸ การค้นหา `contains`/`startsWith`/`endsWith` ของ account/** ต้องผ่าน `ciContains()`/`likeContains()` (escape `%` `_` `\`)
+  //   ขอบเขต = ไฟล์ใต้ src/lib/modules/account/ และหน้า src/app/**/account/** เท่านั้น — โมดูลอื่นยังมีคำค้นดิบอีกมาก (รายการใน
+  //   ledger/wo-notes/crm-C5.5-fix8.md) ⇒ ขยายขอบเขตทีละโมดูลเมื่อแก้แล้ว · ALLOW = คีย์ที่ประกอบในเซิร์ฟเวอร์ (ไม่ใช่คำค้นของผู้ใช้)
+  //   ผูกด้วย ไฟล์ + ข้อความบรรทัดเป๊ะ + จำนวน (เพิ่มในไฟล์เดิม = แดง · แก้แล้วต้องลบ = F15.5) ◂
+  const { findRawSearch, F15_SEARCH_SELF_TEST } = await import("./lib/ci-equals-scan.mjs");
+  const ALLOW_SEARCH: { file: string; snippet: string; count: number }[] = [
+    // คำนำหน้าคงที่จากตาราง/ตัวอักษรในโค้ด (ผู้ใช้ส่งค่าเข้ามาไม่ได้)
+    { file: "src/lib/modules/account/doc-settings.ts", snippet: 'where: { key: { startsWith: "DOC:" } },', count: 1 },
+    { file: "src/lib/modules/account/expense.ts", snippet: 'where: { systemId, archivedAt: null, type: "ASSET", code: { startsWith: "16" } },', count: 1 },
+    { file: "src/lib/modules/account/finance.ts", snippet: "where: { systemId, code: { startsWith: prefix } },", count: 1 }, // CODE_PREFIX[...]
+    { file: "src/lib/modules/account/finance.ts", snippet: "const siblings = await prisma.accountLedger.count({ where: { systemId, code: { startsWith: `${parentCode}-` } } });", count: 1 }, // PARENT_CODE[...]
+    { file: "src/lib/modules/account/finance.ts", snippet: "where: { systemId: ctx.systemId, code: { startsWith: `${parentCode}-` } },", count: 1 },
+    // เครื่องหมายกันซ้ำที่ระบบประกอบเอง (id ของระบบ + งวด/ชนิดรายงาน)
+    { file: "src/lib/modules/account/period-sweep.ts", snippet: "body: { contains: `[${sys.id}] ${periodKey}` },", count: 1 },
+    { file: "src/lib/modules/account/service.ts", snippet: "where: { tenantId: row.tenantId, title: REPORT_MARKER_TITLE, body: { contains: key } },", count: 1 },
+  ];
+  const sMiss = Object.entries(F15_SEARCH_SELF_TEST.mustHit).filter(([, src]) => findRawSearch(src).length !== 1).map(([k]) => k);
+  const sFalse = Object.entries(F15_SEARCH_SELF_TEST.mustNotHit).filter(([, src]) => findRawSearch(src).length !== 0).map(([k]) => k);
+  chk("F15.3", "ตัวสแกนคำค้นจับทุกรูป (insensitive · as const · case-sensitive · startsWith · endsWith · key ในเครื่องหมายคำพูด · หลายบรรทัด · shorthand · วัตถุในตัวแปร) และไม่จับ helper/คอมเมนต์/สตริง/เมธอด/ternary/ชนิดข้อมูล",
+    sMiss.length === 0 && sFalse.length === 0, `ไม่จับ: ${sMiss.join(", ") || "-"} · จับผิด: ${sFalse.join(", ") || "-"}`);
+  const sBad: string[] = [];
+  const sSeen = new Map<string, number>();
+  for (const p of walk(join(ROOT, "src"), (f) => /\.tsx?$/.test(f))) {
+    const r = rel(p);
+    if (!r.startsWith("src/lib/modules/account/") && !/^src\/app\/.*\/account\//.test(r)) continue;
+    const src = readFileSync(p, "utf8");
+    if (!/contains|startsWith|endsWith/.test(src)) continue;
+    for (const h of findRawSearch(src)) {
+      const ok = ALLOW_SEARCH.find((o) => o.file === r && o.snippet === h.snippet);
+      if (ok) {
+        const k = `${ok.file}::${ok.snippet}`;
+        sSeen.set(k, (sSeen.get(k) ?? 0) + 1);
+        if ((sSeen.get(k) ?? 0) > ok.count) sBad.push(`${r}:${h.line} (${h.key} · เกินจำนวนที่อนุญาต)`);
+      } else sBad.push(`${r}:${h.line} (${h.key})`);
+    }
+  }
+  chk("F15.4", "account/**: คำค้น contains/startsWith/endsWith ผ่าน ciContains()/likeContains() (ไม่มี wildcard รั่ว) — ยกเว้นคีย์ที่ประกอบในเซิร์ฟเวอร์ที่ระบุ",
+    sBad.length === 0, sBad.length ? `ใช้ ciContains()/likeContains() แทน: ${sBad.join(" · ")}` : "ครบ");
+  const sGone = ALLOW_SEARCH.filter((o) => (sSeen.get(`${o.file}::${o.snippet}`) ?? 0) < o.count).map((o) => `${o.file} «${o.snippet}»`);
+  chk("F15.5", "รายการยกเว้นคำค้น (ALLOW_SEARCH) ไม่มีของที่หายไปแล้ว — ต้องลบออกจากรายการ (ratchet)", sGone.length === 0, `ไม่พบแล้วแต่ยังอยู่ในรายการ: ${sGone.join(" · ")}`);
+}
+
+// ─────────────────── F16: ห้าม regex ตัดแท็ก/แกะวงเล็บมุม (CRM C5.5-fix5 · รีวิว C5.5-fix4 RV-1/RV-2/RV-9) ───────────────────
+// `/<[^>]*>/g` · `<li[^>]*>` · `<([^>]+)>` · `<.*?>` … ย้อนรอยกำลังสองใน V8 บน `<` ที่ไม่ปิด (`<` 40,000 ตัว = 1.5 วินาที · 1 MB ≈ 16 นาที
+//   ต่อการเรียกครั้งเดียว — server action รับ body 12 MB · route อีเมลขาเข้ารับ 10 MB) ⇒ ใช้ตัวเชิงเส้นของ core/linear-text.ts /
+//   core/inbound-address.ts หรือ htmlToText ของ engine กลาง · ตัวสแกน `scripts/lib/tag-strip-scan.mjs` (TS AST — คอมเมนต์/สตริงไม่นับ)
+// ALLOW: จุดที่พิสูจน์แล้วว่าข้อความเข้า "ถูกจำกัดรูป" — ผูกด้วย ไฟล์ + literal + จำนวน (เพิ่มในไฟล์เดิม = แดง · แก้แล้วต้องลบ = F16.2)
+console.log("\n── F16: ห้าม regex ตัดแท็ก/แกะวงเล็บมุม (n² บน `<` ที่ไม่ปิด) ──");
+{
+  const { findTagStripRegex, F16_SELF_TEST } = await import("./lib/tag-strip-scan.mjs");
+  const ALLOW: { file: string; text: string; count: number; why: string }[] = [
+    // htmlToText: regex นี้เห็นแต่ผลของ sanitizeHtml — `<` ทุกตัวในผลเป็นแท็กที่ engine สร้างใหม่และปิดเอง (`<` ดิบถูก escape เป็น &lt;)
+    //   ⇒ แต่ละจุดเริ่มวิ่งแค่ถึง `>` ของแท็กตัวเอง (probe-cf6-linear CTL.htmlToText: `<`×80 000 ราว 6 ms เชิงเส้น)
+    { file: "src/lib/core/sanitize.ts", text: "/<[^>]*>/g", count: 1, why: "engine output only" },
+  ];
+  const selfMiss = Object.entries(F16_SELF_TEST.mustHit).filter(([, src]) => findTagStripRegex(src).length !== 1).map(([k]) => k);
+  const selfFalse = Object.entries(F16_SELF_TEST.mustNotHit).filter(([, src]) => findTagStripRegex(src).length !== 0).map(([k]) => k);
+  chk("F16.0", "ตัวสแกนจับครบทุกรูป (`[^>]*` · `[^>]+` · `<ชื่อ[^>]*>` · `<img[^>]+` · กลุ่ม `<([^>]*)>` · `<.*?>` · `<[\\s\\S]*?>` · `new RegExp`/`RegExp()` · `<a\\s+[^>]*` · `</…` · `<!…` · `<[a-z]…` · `<\\w+…` · `<(?:p|div)…` · `<\\S+`) และไม่จับคอมเมนต์/สตริง/เทมเพลต/`[^<>]*`/แท็กตายตัว/lookbehind",
+    selfMiss.length === 0 && selfFalse.length === 0, `ไม่จับ: ${selfMiss.join(", ") || "-"} · จับผิด: ${selfFalse.join(", ") || "-"}`);
+  const bad: string[] = [];
+  const seen = new Map<string, number>();
+  for (const p of walk(join(ROOT, "src"), (f) => /\.(tsx?|mts)$/.test(f) && !f.endsWith(".d.ts"))) {
+    const r = rel(p);
+    for (const h of findTagStripRegex(readFileSync(p, "utf8"), r)) {
+      const a = ALLOW.find((x) => x.file === r && x.text === h.text);
+      if (a) {
+        const k = `${a.file}::${a.text}`;
+        seen.set(k, (seen.get(k) ?? 0) + 1);
+        if ((seen.get(k) ?? 0) > a.count) bad.push(`${r}:${h.line} ${h.text} (เกินจำนวนที่อนุญาต)`);
+      } else bad.push(`${r}:${h.line} ${h.text}`);
+    }
+  }
+  chk("F16.1", "ไม่มี regex ตัดแท็ก/แกะวงเล็บมุมใน src/ (ยกเว้นจุดที่พิสูจน์ว่าข้อความเข้าถูกจำกัดรูป — ผูก ไฟล์ + literal + จำนวน)", bad.length === 0,
+    bad.length ? `ใช้ core/linear-text.ts · core/inbound-address.ts หรือ htmlToText แทน: ${bad.join(" · ")}` : "ครบ");
+  const healed = ALLOW.filter((a) => (seen.get(`${a.file}::${a.text}`) ?? 0) < a.count).map((a) => `${a.file} «${a.text}»`);
+  chk("F16.2", "รายการอนุญาต (ALLOW) ไม่มีของที่หายไปแล้ว — แก้แล้วต้องลบออกจากรายการ (ratchet)", healed.length === 0, `ไม่พบแล้วแต่ยังอยู่ในรายการ: ${healed.join(" · ")}`);
 }
 
 // ─────────────────── F13: ทะเบียน API (บัญชี + บอร์ดงาน) ───────────────────

@@ -8,6 +8,7 @@
 import { z } from "zod";
 import * as contacts from "../../contacts";
 import { CONSENT_SOURCES, CONTACT_SORTS, CONTACT_SOURCES, IMPORT_DUPLICATE_MODES, LEAD_STATUSES, LIFECYCLE_STAGES, MERGE_CHOICE_FIELDS, SCORE_BANDS } from "../../contacts-shared";
+import { COMPANY_CONTACT_ROLES, type CompanyContactRole } from "../../companies-shared";
 import { crmActorOf, crmCtxOf } from "../actor";
 import { crmApiError } from "../http-errors";
 import { assertNoTeamFilter, assertOwnerInFilter } from "../filters";
@@ -112,7 +113,7 @@ const get = defineCrmOp({
   path: "/contacts/{id}",
   kind: "read",
   action: "crm.contact.read",
-  summary: "One contact in full: details, owner, company, deals, custom fields, recent timeline and consent.",
+  summary: "One contact in full: details, owner, company, deals, custom fields, recent timeline and consent. A timeline row with unverifiedFrom = true is inbound mail whose sender the system could not authenticate (the From can be forged).",
   label: "ผู้ติดต่อ 360",
   tool: { name: "crm_contact_360", hint: "Use after crm_search to read everything about one contact before answering." },
   test: "C1.10-X8.3",
@@ -148,7 +149,7 @@ const create = defineCrmOp({
   path: "/contacts",
   kind: "write",
   action: "crm.contact.create",
-  summary: "Create a contact (lead). A matching phone or e-mail returns the existing contact with created: false unless force is true.",
+  summary: "Create a contact (lead). A matching phone or e-mail returns the existing contact with created: false unless force is true. A match the caller cannot see is refused (409 duplicate) without any detail of it, even with force.",
   label: "เพิ่มผู้ติดต่อ (lead)",
   input: createInput,
   tool: { name: "crm_create_lead", hint: "Use when the user wants to save a new lead or contact; give at least the first name." },
@@ -157,7 +158,8 @@ const create = defineCrmOp({
     // AUDIT-CLASS X2: คีย์ที่มีตัวกรอง — ผู้ติดต่อใหม่ต้องลงในขอบเขตของคีย์
     assertNoTeamFilter(actor, "ผู้ติดต่อ");
     assertOwnerInFilter(actor, input.ownerUserId ?? actor.userId ?? null);
-    const r = await contacts.createContact(crmCtxOf(actor), crmActorOf(actor), { ...input, sourceKind: input.sourceKind ?? "API" });
+    // C4.3-fix part 2 · round 2 ▸ ผู้เรียก API = คนกรอก ⇒ ฟิลด์กำหนดเองที่ต้องกรอกบังคับเหมือนหน้าจอ ◂
+    const r = await contacts.createContact(crmCtxOf(actor), crmActorOf(actor), { ...input, sourceKind: input.sourceKind ?? "API" }, { requireCustom: true });
     return { contactId: r.contact.id, created: r.created, contact: r.contact, duplicates: r.duplicates.map((d) => ({ contactId: d.contactId, reason: d.reason })), warnings: r.warnings };
   },
 });
@@ -268,6 +270,23 @@ const setOptOut = defineCrmOp({
   },
 });
 
+// CRM C5.4-B ▸ L5-M4: ลูกค้าขอไม่ให้ติดตามการเปิดอ่าน/คลิก (trackingOptOut · พิมพ์เขียว §11.4) ◂
+const setTrackingOptOut = defineCrmOp({
+  id: "contacts.setTrackingOptOut",
+  method: "PUT",
+  path: "/contacts/{id}/tracking-opt-out",
+  kind: "write",
+  action: "crm.contact.update",
+  summary: "Record that the contact does (true) or no longer does (false) refuse e-mail open/click and web tracking. E-mail can still be sent under the existing consent.",
+  label: "ตั้งไม่ให้ติดตาม",
+  input: z.object({ optOut: z.boolean(), source: z.enum(CONSENT_SOURCES).optional() }).strict(),
+  test: "C3.8-S8.1", // smoke of every op · behaviour = C5.3-L5-M4 (service writer + merge)
+  async handler({ actor, params, input }) {
+    const contact = await contacts.setTrackingOptOut(crmCtxOf(actor), crmActorOf(actor), params.id ?? "", { optOut: input.optOut, source: input.source ?? "API" });
+    return { contactId: contact.id, trackingOptOut: contact.trackingOptOut };
+  },
+});
+
 const archive = defineCrmOp({
   id: "contacts.archive",
   method: "POST",
@@ -288,7 +307,14 @@ const archive = defineCrmOp({
 const convertInput = z
   .object({
     member: z.object({ systemId: idStr }).strict().nullable().optional(),
-    company: z.union([z.object({ id: idStr }).strict(), z.object({ new: z.object({ name: text(200).min(1) }).strict() }).strict()]).nullable().optional(),
+    // C4.4-fix ▸ US2: บริษัทใหม่ใส่เลขภาษีได้ (บริการตรวจ checksum) · `role` = บทบาทของผู้ติดต่อในบริษัท (ทั้งเลือกบริษัทเดิมและสร้างใหม่) ◂
+    company: z
+      .union([
+        z.object({ id: idStr, role: z.enum(COMPANY_CONTACT_ROLES as unknown as [CompanyContactRole, ...CompanyContactRole[]]).nullable().optional() }).strict(),
+        z.object({ new: z.object({ name: text(200).min(1), taxId: text(40).nullable().optional() }).strict(), role: z.enum(COMPANY_CONTACT_ROLES as unknown as [CompanyContactRole, ...CompanyContactRole[]]).nullable().optional() }).strict(),
+      ])
+      .nullable()
+      .optional(),
     deal: z
       .object({ pipelineId: idStr, stageId: optId, title: text(200).min(1), valueSatang: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).nullable().optional() })
       .strict()
@@ -423,6 +449,7 @@ export const CONTACTS_OPS: ApiOp[] = [
   assign,
   setTags,
   setOptOut,
+  setTrackingOptOut,
   archive,
   convert,
   merge,

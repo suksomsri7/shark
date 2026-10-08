@@ -1,0 +1,30 @@
+tree 53d88b71 + diff:  M docs/api/ACCOUNT-API.md  M scripts/fitness.mts  M scripts/lib/ci-equals-scan.mjs  M src/lib/core/ci-equals.ts  M src/lib/modules/account/access.ts  M src/lib/modules/account/api/ops/webhooks.ts  M src/lib/modules/account/attachment.ts  M src/lib/modules/account/connections-actions.ts  M src/lib/modules/account/connections.ts  M src/lib/modules/account/contacts-list.ts  M src/lib/modules/account/expense.ts  M src/lib/modules/account/group-batch.ts  M src/lib/modules/account/journal-v2.ts  M src/lib/modules/account/product.ts  M src/lib/modules/account/service.ts  M src/lib/modules/crm/emails.ts  M src/lib/modules/kanban/settings-actions.ts 
+typecheck exit=0 782s 
+pending/cf11/probe-cf11-keys exit=0 31s JSON_SUMMARY {"total":14,"passed":14,"findings":[]}
+pending/cf11/probe-cf11-contains exit=0 17s JSON_SUMMARY {"total":12,"passed":12,"findings":[]}
+pending/cf11/probe-cf11-mail exit=0 53s JSON_SUMMARY {"total":24,"passed":24,"findings":[]}
+pending/cf8/probe-cf8-mobile exit=0 40s JSON_SUMMARY {"total":8,"passed":8,"findings":[]}
+pending/cf8/probe-cf8-actions exit=0 29s JSON_SUMMARY {"total":9,"passed":9,"findings":[]}
+pending/cf8/review/probe-cf8-review exit=1 35s JSON_SUMMARY {"total":19,"passed":17,"failed":["X1.1","X2"]}
+pending/cf4/probe-cf4-ci exit=0 3s JSON_SUMMARY {"total":12,"passed":12,"findings":[]}
+pending/cf4/probe-cf4-contains exit=0 2s 
+qc2:pending/cf5/probe-cf5 exit=0 427s JSON_SUMMARY {"total":22,"passed":22,"findings":[]}
+qc2:pending/cf5/probe-cf5-r2 exit=0 235s JSON_SUMMARY {"total":14,"passed":14,"findings":[]}
+qc2:pending/cf5/review/rv-cf5 exit=0 328s JSON_SUMMARY {"total":32,"passed":32,"findings":[]}
+qc2:pending/cf5/review/rv-cf5-r2 exit=0 204s JSON_SUMMARY {"total":16,"passed":16,"findings":[]}
+qc-crm-c2.5 exit=0 71s JSON_SUMMARY {"total":105,"passed":105,"findings":[]}
+qc-crm-c2.6 exit=0 142s JSON_SUMMARY {"total":87,"passed":87,"findings":[]}
+qc-crm-c1.6 exit=0 183s JSON_SUMMARY {"total":79,"passed":79,"findings":[],"skippedChecks":[]}
+qc-webhook exit=0 3s JSON_SUMMARY {"total":15,"passed":15,"findings":[]}
+qc-acc-v2-contact-modal exit=0 6s สรุป: ผ่าน 96 · ไม่ผ่าน 0
+qc-acc-v2-import exit=0 11s ===== สรุป WO 1.8: ผ่าน 114 · ไม่ผ่าน 0 =====
+qc2:qc-account-api-webhooks exit=0 183s JSON_SUMMARY {"total":22,"passed":22,"findings":[]}
+qc2:qc-account-api-write-settings exit=0 297s JSON_SUMMARY {"total":39,"passed":39,"findings":[]}
+docs-crm exit=0 31s ✅ docs/api/CRM-API.md ตรงกับทะเบียน (123 op)
+docs-member exit=0 228s ✅ docs/api/MEMBER-API.md + skill endpoints.md ตรงกับทะเบียน (212 op)
+docs-kanban exit=0 79s ✅ docs/api/KANBAN-API.md + skill endpoints.md ตรงกับทะเบียน (88 op)
+docs-account exit=0 112s ✅ docs/api/ACCOUNT-API.md + skill endpoints.md ตรงกับทะเบียน (199 op)
+tracked diff after docs:  M docs/api/ACCOUNT-API.md  M scripts/fitness.mts  M scripts/lib/ci-equals-scan.mjs  M src/lib/core/ci-equals.ts  M src/lib/modules/account/access.ts  M src/lib/modules/account/api/ops/webhooks.ts  M src/lib/modules/account/attachment.ts  M src/lib/modules/account/connections-actions.ts  M src/lib/modules/account/connections.ts  M src/lib/modules/account/contacts-list.ts  M src/lib/modules/account/expense.ts  M src/lib/modules/account/group-batch.ts  M src/lib/modules/account/journal-v2.ts  M src/lib/modules/account/product.ts  M src/lib/modules/account/service.ts  M src/lib/modules/crm/emails.ts  M src/lib/modules/kanban/settings-actions.ts 
+fitness exit=0 109s JSON_SUMMARY {"total":42,"passed":42,"findings":[]}
+fitness-noenv exit=0 132s JSON_SUMMARY {"total":42,"passed":42,"findings":[]}
+ALLDONE

@@ -29,7 +29,7 @@ A key is normally bound to one accounting book. If it is not, every call must ca
 
 - **Money is satang.** Every amount is an integer number of satang (1 baht = 100 satang) and the field name ends with `Satang`. 1,250.50 baht is `125050`. Decimals are rejected, never rounded.
 - **Dates are `YYYY-MM-DD`.** A date field means a Thai calendar day (UTC+7), not an instant. Fields that really are instants are ISO-8601 UTC strings and are named `*At`.
-- **Idempotency.** Every write (POST, PATCH, PUT, DELETE) requires an `Idempotency-Key` header, unique per logical attempt. Retrying with the same key and the same body replays the stored response and adds `Idempotent-Replayed: true`; the same key with a different body fails with 409 `idempotency_conflict`. Records are kept 24 hours.
+- **Idempotency.** Every write (POST, PATCH, PUT, DELETE) requires an `Idempotency-Key` header, unique per logical attempt. Retrying with the same key and the same body replays the stored response and adds `Idempotent-Replayed: true`; the same key with a different body fails with 409 `idempotency_conflict`. Records are kept 24 hours. Error answers raised by the operation are stored and replayed too (only `idempotency_*` answers and `rate_limited` are not: the per-key limit, and the per-book limits of `import.run` and `reports.email`, so a same-key retry after the wait runs for real), so after fixing the cause send a new key. If a write is cut by a temporary database or network failure after it started, every try with that key answers 409 `idempotency_outcome_unknown`: check whether the record exists, then use a NEW key.
 - **`X-Shark-System`.** Selects the accounting book when the key is not bound to one. When the key is bound, the header may be sent only if it matches.
 - **Danger operations.** `confirm: true` plus a `reason` of at least 5 characters. The reason is stored in the audit log next to the key name.
 - **Envelope.** Success is `{ data, page?, requestId }`. Failure is `{ error: { code, message_th, message_en, hint?, details? }, requestId }`. `requestId` is also the `X-Request-Id` header; quote it in support tickets.
@@ -65,6 +65,7 @@ Branch on `error.code`, never on the message text.
 | `forbidden` | 403 | The operation is refused by a business rule, not by the scope check. | Read `message_en`; this usually needs a settings change by the shop owner. |
 | `unprocessable` | 422 | The request was understood but cannot be completed as asked. | Read `message_en` and `message_th`; the Thai message is safe to show to the shop owner. |
 | `upstream_unavailable` | 503 | An external service this operation depends on (for example the DBD company registry lookup) is not configured or not reachable right now. | Retry later, or ask the shop owner to finish configuring the integration; this is not caused by the request itself. |
+| `idempotency_outcome_unknown` | 409 | A temporary database or network failure hit the request after it had started, so it is unknown whether it took effect. The key is kept in this state until it expires (24 h); retries with the same key return this answer and never run the request again. | Check whether the record exists (read or list it). If it does not, send the request again with a NEW `Idempotency-Key`; never reuse this key for a retry. |
 
 ## Operations
 
@@ -1793,7 +1794,7 @@ Path parameters: `id` (required).
 | `discountSatang` | integer | no | Discount on the whole document in satang (integer). · min 0 |
 | `note` | one of several shapes | no | Note printed on the document. |
 | `adjustReason` | one of several shapes | no | Reason required by the Revenue Department on credit and debit notes. |
-| `sourceDocId` | one of several shapes | no | Id of the document this one refers to (credit and debit notes). |
+| `sourceDocId` | one of several shapes | no | Id of the document this one refers to: a QUOTATION of this book for INVOICE; an invoice, receipt or tax invoice for credit and debit notes; any document of this book otherwise. An INVOICE pointing at anything but a QUOTATION is rejected with 422 `validation`. |
 | `tags` | array of string | no | Labels for grouping documents. At most 10 tags, each at most 30 characters. |
 | `lines` | array of object | no | Replaces every line of the draft when sent. Omit to keep the current lines. |
 
@@ -1822,7 +1823,7 @@ curl -sS -X PATCH "https://shark.in.th/api/v1/account/documents/123" \
 | `discountSatang` | integer | no | Discount on the whole document in satang (integer). · min 0 |
 | `note` | one of several shapes | no | Note printed on the document. |
 | `adjustReason` | one of several shapes | no | Reason required by the Revenue Department on credit and debit notes. |
-| `sourceDocId` | one of several shapes | no | Id of the document this one refers to (credit and debit notes). |
+| `sourceDocId` | one of several shapes | no | Id of the document this one refers to: a QUOTATION of this book for INVOICE; an invoice, receipt or tax invoice for credit and debit notes; any document of this book otherwise. An INVOICE pointing at anything but a QUOTATION is rejected with 422 `validation`. |
 | `tags` | array of string | no | Labels for grouping documents. At most 10 tags, each at most 30 characters. |
 | `refType` | string | no | Name of the record in your own system this document belongs to, for example `Booking`. · min length 1 · max length 60 |
 | `refId` | string | no | Id of that record. Sending the same pair twice returns 409 `duplicate` with the existing id in `hint`. · min length 1 · max length 60 |
@@ -3124,13 +3125,13 @@ curl -sS -X POST "https://shark.in.th/api/v1/account/units" \
 
 #### `webhooks.test`
 
-**POST /webhooks/{id}/test** - Send one test delivery to this endpoint with a fake payload of the given event type, regardless of its subscription list. · scope: `account.settings.manage` · write
+**POST /webhooks/{id}/test** - Send one test delivery to this endpoint with a fake payload of the given account event type (account.* only), regardless of its subscription list. · scope: `account.settings.manage` · write
 
 Path parameters: `id` (required).
 
 | Field | Type | Required | Rules |
 | --- | --- | --- | --- |
-| `event` | string | yes | Event type to simulate. Must be a known event type. |
+| `event` | string | yes | Account event type to simulate (account.*). Must be a known event type. |
 
 ```bash
 curl -sS -X POST "https://shark.in.th/api/v1/account/webhooks/123/test" \
@@ -3645,11 +3646,13 @@ Delivery is at least once and ordered by the moment the change was committed. Ev
 | --- | --- |
 | `X-Shark-Event` | The event type, for example `account.document.issued`. |
 | `X-Shark-Signature` | `HMAC-SHA256(secret, raw request body)` as lowercase hex. |
+| `X-Shark-Event-Id` | The event id (same as `id` in the body). It stays the same on every retry of that event - store it and drop duplicates. |
 
-The body is always the same three fields:
+The body is always the same four fields (`id` = the event id, see `X-Shark-Event-Id`):
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "account.document.issued",
   "payload": {
     "documentId": "cmf1doc0001"
@@ -3677,7 +3680,7 @@ export function handleSharkWebhook(rawBody: Buffer, headers: Record<string, stri
   if (got.length !== expected.length || !timingSafeEqual(Buffer.from(got), Buffer.from(expected))) {
     return { status: 401 };
   }
-  const event = JSON.parse(rawBody.toString("utf8")) as { type: string; payload: unknown; sentAt: string };
+  const event = JSON.parse(rawBody.toString("utf8")) as { id: string; type: string; payload: unknown; sentAt: string };
   // Answer 2xx fast, then do the work. Anything else is retried up to 5 times.
   void enqueue(event);
   return { status: 200 };
@@ -3690,7 +3693,7 @@ export function handleSharkWebhook(rawBody: Buffer, headers: Record<string, stri
 | --- | --- |
 | `account.document.approved` | A purchase order was approved. |
 | `account.payment.recorded` | A receipt or a vendor payment was recorded against a document. |
-| `account.invoice.paid` | An invoice reached fully paid. |
+| `account.invoice.paid` | An invoice reached fully paid: payments (incl. withholding tax) plus live credit notes cover the grand total and some money was received. `paidTotalSatang` and `creditNoteSatang` show the split. |
 | `account.period.closed` | An accounting period was closed. |
 | `account.document.issued` | A document left draft and got its real document number (sales, purchase, purchase order sent for approval, approved stock issue). |
 | `account.document.voided` | A document was cancelled (draft) or voided (already posted, journal reversed). |
@@ -3716,6 +3719,7 @@ A purchase order was approved.
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "account.document.approved",
   "payload": {
     "documentId": "cmf1doc0002",
@@ -3732,6 +3736,7 @@ A receipt or a vendor payment was recorded against a document.
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "account.payment.recorded",
   "payload": {
     "documentId": "cmf1doc0001",
@@ -3745,15 +3750,18 @@ A receipt or a vendor payment was recorded against a document.
 
 #### `account.invoice.paid`
 
-An invoice reached fully paid.
+An invoice reached fully paid: payments (incl. withholding tax) plus live credit notes cover the grand total and some money was received. `paidTotalSatang` and `creditNoteSatang` show the split.
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "account.invoice.paid",
   "payload": {
     "documentId": "cmf1doc0001",
     "docNo": "IV-202609-0007",
-    "grandTotalSatang": 107000
+    "grandTotalSatang": 107000,
+    "paidTotalSatang": 96300,
+    "creditNoteSatang": 10700
   },
   "sentAt": "2026-09-05T09:15:00.000Z"
 }
@@ -3765,6 +3773,7 @@ An accounting period was closed.
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "account.period.closed",
   "payload": {
     "periodKey": "2026-08",
@@ -3780,6 +3789,7 @@ A document left draft and got its real document number (sales, purchase, purchas
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "account.document.issued",
   "payload": {
     "documentId": "cmf1doc0001",
@@ -3801,6 +3811,7 @@ A document was cancelled (draft) or voided (already posted, journal reversed).
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "account.document.voided",
   "payload": {
     "documentId": "cmf1doc0001",
@@ -3818,6 +3829,7 @@ A quotation was accepted or rejected. The idempotency key carries the answer, so
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "account.quotation.responded",
   "payload": {
     "documentId": "cmf1doc0003",
@@ -3834,6 +3846,7 @@ A recorded payment was voided (journal reversed, document goes back to unpaid or
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "account.payment.voided",
   "payload": {
     "paymentId": "cmf1pay0001",
@@ -3852,6 +3865,7 @@ A PromptPay payment link was paid - either confirmed by the provider webhook or 
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "account.payment_request.paid",
   "payload": {
     "requestId": "cmf1req0001",
@@ -3871,6 +3885,7 @@ A payment link passed its expiry date and was closed by the hourly job.
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "account.payment_request.expired",
   "payload": {
     "requestId": "cmf1req0002",
@@ -3888,6 +3903,7 @@ A contact (customer or supplier) was created.
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "account.contact.created",
   "payload": {
     "contactId": "cmf1con0001",
@@ -3908,6 +3924,7 @@ A contact was edited. The idempotency key includes the row `updatedAt` in millis
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "account.contact.updated",
   "payload": {
     "contactId": "cmf1con0001",
@@ -3928,6 +3945,7 @@ Two duplicate contacts were merged. Stop using `mergedId`: every document now po
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "account.contact.merged",
   "payload": {
     "keepId": "cmf1con0001",
@@ -3949,6 +3967,7 @@ A product or service was created.
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "account.product.created",
   "payload": {
     "productId": "cmf1prd0001",
@@ -3968,6 +3987,7 @@ A product or service was edited. Same `updatedAt` rule as `account.contact.updat
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "account.product.updated",
   "payload": {
     "productId": "cmf1prd0001",
@@ -3987,6 +4007,7 @@ A cheque's status changed: deposited, cleared, bounced or voided. Fires once per
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "account.cheque.changed",
   "payload": {
     "chequeId": "cmf1chq0001",
@@ -4005,6 +4026,7 @@ A month of bank reconciliation for one channel was confirmed.
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "account.reconcile.confirmed",
   "payload": {
     "financeId": "cmf1fin0001",
@@ -4022,6 +4044,7 @@ A closed accounting period was reopened.
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "account.period.reopened",
   "payload": {
     "periodKey": "2026-08",
@@ -4038,6 +4061,7 @@ Monthly depreciation was posted for one fixed asset.
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "account.asset.depreciated",
   "payload": {
     "assetId": "cmf1ast0001",
@@ -4055,6 +4079,7 @@ A fixed asset was sold or written off.
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "account.asset.disposed",
   "payload": {
     "assetId": "cmf1ast0001",
@@ -4074,6 +4099,7 @@ A recurring document rule produced its document for the period (draft or auto-is
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "account.recurring.ran",
   "payload": {
     "ruleId": "cmf1rec0001",

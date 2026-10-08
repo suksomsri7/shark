@@ -61,7 +61,7 @@ const get = defineCrmOp({
   path: "/companies/{id}",
   kind: "read",
   action: "crm.company.read",
-  summary: "One company in full: details, contacts and their roles, deals, documents, custom fields and timeline.",
+  summary: "One company in full: details, contacts and their roles, deals, documents, custom fields and timeline. A timeline row with unverifiedFrom = true is inbound mail whose sender the system could not authenticate (the From can be forged).",
   label: "บริษัท 360",
   tool: { name: "crm_company_360", hint: "Use to read everything about one company (people, open deals, money owed) before answering." },
   test: "C1.10-X1.1",
@@ -90,7 +90,7 @@ const create = defineCrmOp({
   path: "/companies",
   kind: "write",
   action: "crm.company.create",
-  summary: "Create a company. A company with the same tax id, e-mail domain or a very similar name comes back as created: false with candidates.",
+  summary: "Create a company. A company with the same tax id, e-mail domain or a very similar name comes back as created: false with candidates. A same-tax-id company the caller cannot see is refused (409 duplicate) without any detail of it.",
   label: "เพิ่มบริษัท",
   input: z.object({ name: text(200).min(1), ...body, ownerUserId: optId, teamId: optId, parentCompanyId: optId }).strict(),
   tool: { name: "crm_create_company", hint: "Use when the user wants to add a business customer; give the company name and the tax id if known." },
@@ -99,7 +99,8 @@ const create = defineCrmOp({
     // AUDIT-CLASS X2: บริษัทใหม่ต้องลงในขอบเขตของคีย์ (ผู้ดูแล · ทีม — ตัวกรองทีมเดียว = ใช้ทีมนั้นให้)
     assertOwnerInFilter(actor, input.ownerUserId ?? actor.userId ?? null);
     const teamId = teamInFilter(actor, input.teamId ?? null);
-    const r = await companies.createCompany(crmCtxOf(actor), crmActorOf(actor), { ...input, ...(teamId !== undefined ? { teamId } : {}) });
+    // C4.3-fix part 2 · round 2 ▸ ผู้เรียก API = คนกรอก ⇒ ฟิลด์กำหนดเองที่ต้องกรอกบังคับเหมือนหน้าจอ ◂
+    const r = await companies.createCompany(crmCtxOf(actor), crmActorOf(actor), { ...input, ...(teamId !== undefined ? { teamId } : {}) }, { requireCustom: true });
     return { companyId: r.company.id, created: r.created, company: r.company, duplicateOf: r.duplicateOf, candidates: r.candidates.map((c) => ({ companyId: c.companyId, reason: c.reason })) };
   },
 });

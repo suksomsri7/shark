@@ -31,7 +31,9 @@ const STAFF_DEFAULT: readonly string[] = [
 const ALL_KEYS: readonly string[] = [
   "crm.contact.read", "crm.contact.create", "crm.contact.update", "crm.contact.delete", "crm.contact.convert", "crm.contact.import", "crm.contact.export", "crm.contact.merge",
   "crm.company.read", "crm.company.create", "crm.company.update", "crm.company.delete", "crm.company.merge",
+  "crm.company.import", "crm.company.export", // CRM C4.2-fix r2 ▸ SF-3 (ค่าเริ่มต้นเท่า contact.import/export) ◂
   "crm.deal.read", "crm.deal.create", "crm.deal.update", "crm.deal.move", "crm.deal.delete", "crm.deal.quote", "crm.deal.reassign", "crm.deal.lines", "crm.deal.forecast",
+  "crm.deal.export", // CRM C4.2-fix r2 ▸ SF-3 (ค่าเริ่มต้นเท่า contact.export) ◂
   "crm.activity.read", "crm.activity.create", "crm.activity.complete", "crm.activity.delete",
   "crm.email.read", "crm.email.send", "crm.email.settings",
   "crm.sequence.manage", "crm.sequence.enroll", "crm.automation.manage", "crm.score.manage", "crm.assignment.manage",
@@ -83,6 +85,14 @@ export function crmCan(actor: ActorLike, key: string): boolean {
 export function crmParam(actor: ActorLike, key: string): number | undefined {
   const v = actor?.permissions?.[key];
   return typeof v === "number" && Number.isFinite(v) ? v : undefined;
+}
+
+// CRM C5.5-fix6 ▸ F3 (C4.2 run3): ผูก/ย้าย/ถอดบริษัทหลักของผู้ติดต่อ = ต้อง "เห็นบริษัท" (ตัวค้นหาอ่านผ่าน companyWhere) และ
+//   "แก้บริษัท" (บริการบริษัท addContact/removeContact ตรวจ crm.company.update) — ช่องเลือกบริษัทของฟอร์มผู้ติดต่อแสดงเมื่อผ่านทั้งสอง
+//   (ไม่ผ่าน = ซ่อน ตามมติ §15(b)) · บริการผู้ติดต่อใช้คีย์ชุดเดียวกันปฏิเสธก่อนเขียน ◂
+/** actor นี้ผูกผู้ติดต่อกับบริษัท (เลือก/ย้าย/ถอดบริษัทหลัก) ได้ไหม */
+export function crmCanLinkCompany(actor: ActorLike): boolean {
+  return crmCan(actor, "crm.company.read") && crmCan(actor, "crm.company.update");
 }
 
 /** ข้อความไทยของ "เห็นแต่ไม่มีคีย์" — บอกว่าขาดสิทธิ์อะไรและต้องทำอะไรต่อ ไม่โทษผู้ใช้ ไม่สะท้อนข้อมูลของระเบียน */

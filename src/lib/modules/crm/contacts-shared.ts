@@ -4,7 +4,7 @@
 //    ตัวตรวจชุดเดียวกันใช้ทั้งฝั่งฟอร์ม (ตรวจก่อนส่ง) และฝั่งบริการ (ตัดสินจริง) — ข้อความไทยตรงกันสองฝั่ง
 // 🔴 เพดาน (CONTRACT BLOCK ของข้อสอบ): นำเข้า 50,000 แถว / 10 MB · bulk ≤ 500 · เหตุผล ≥ 5 · แท็ก ≤ 50 (ตัวละ ≤ 64) · ชื่อ ≤ 200
 
-import { emailProblem, phoneProblem } from "./companies-shared";
+import { emailProblem, phoneProblem, type CompanyContactRole } from "./companies-shared";
 import { CRM_HARD_CAPS } from "./limits-shared"; // CRM C3.9 ▸ เพดานตายตัวของโค้ดอยู่ที่เดียว ◂
 
 export { emailProblem, phoneProblem };
@@ -24,6 +24,27 @@ export const CONTACT_IMPORT_INLINE_MAX_ROWS = 5_000;
 export const CONTACT_IMPORT_BATCH = 200;
 /** แถวผิดที่รายงานกลับได้สูงสุด (ที่เหลือนับใน failed) */
 export const CONTACT_IMPORT_ERRORS_MAX = 500;
+/**
+ * CRM C5.5-fix7 ▸ R2F-1: บริษัทหลักปัจจุบันของผู้ติดต่ออยู่นอกการมองเห็นของผู้แก้ — ข้อความเดียวทั้งบรรทัดอธิบายในแผ่นแก้ไข (แทนช่องเลือกที่
+ *   กดอะไรก็ถูกปฏิเสธ) และคำปฏิเสธของบริการ (เดิม "ไม่พบบริษัทนี้ … รีเฟรชหน้า" ซึ่งรีเฟรชแล้วก็ไม่หาย) · ไม่บอกชื่อ/รหัสบริษัท ·
+ *   "มีบริษัทหลักที่มองไม่เห็น" ผู้ใช้รู้อยู่แล้วจาก companyId ใน DTO ของผู้ติดต่อ ◂
+ */
+export const CONTACT_PRIMARY_COMPANY_HIDDEN_MSG =
+  "บริษัทหลักปัจจุบันของผู้ติดต่อนี้อยู่นอกขอบเขตที่บัญชีนี้มองเห็น จึงย้ายหรือถอดบริษัทหลักจากบัญชีนี้ไม่ได้ — ให้หัวหน้าทีมหรือเจ้าของร้านย้ายให้";
+/**
+ * CRM C5.5-fix12 ▸ RV10-1: เบอร์/อีเมลที่กรอกตรงกับผู้ติดต่อที่ "ผู้สร้าง/ผู้แก้มองไม่เห็น" — ยังกันตัวซ้ำ (พิมพ์เขียว C1.4: ตัวซ้ำจับด้วยเบอร์/อีเมล)
+ *   แต่ไม่บอกอะไรของคนนั้น (ไม่มีชื่อ · รหัส · เบอร์ · บริษัท) · ส่ง force มาก็ไม่สร้างซ้ำ (ผู้ใช้ตรวจไม่ได้ว่าเป็นคนเดียวกันไหม) ◂
+ */
+export const CONTACT_DUPLICATE_HIDDEN_MSG =
+  "มีผู้ติดต่อที่ใช้เบอร์โทรหรืออีเมลนี้อยู่แล้ว แต่อยู่นอกขอบเขตที่บัญชีนี้มองเห็น จึงสร้างหรือบันทึกซ้ำไม่ได้ — ขอให้หัวหน้าทีมหรือเจ้าของร้านตรวจ/มอบผู้ติดต่อนั้นให้";
+/** CRM C5.5-fix12 ▸ RV10-1: เพดานการกรอกเบอร์/อีเมลของ "คน" (หน้าจอ · ผู้ช่วย AI) ต่อร้าน — คีย์ API ใช้ถัง write ของ REST (300/นาที) อยู่แล้ว ◂ */
+export const CONTACT_IDENT_RATE = { limit: 120, windowMs: 10 * 60_000 } as const;
+/**
+ * CRM C5.5-fix12 r2 ▸ RV12-1: ข้อความของ "ขอถี่" (รหัส RATE_LIMITED — คนละเรื่องกับเพดานของระบบ LIMIT) · บอกว่ายังไม่ได้บันทึก +
+ *   รอกี่นาที · ไม่โทษผู้ใช้ · REST = 429 rate_limited (ไม่เก็บไว้ตอบซ้ำ ⇒ ลองคีย์เดิมได้เมื่อพ้นเวลา) ◂
+ */
+export const CONTACT_IDENT_RATE_MSG = (retryAfterSec?: number) =>
+  `มีการเพิ่มหรือแก้เบอร์โทร/อีเมลของผู้ติดต่อหลายครั้งในเวลาสั้น ๆ ระบบจึงพักรายการนี้ไว้ก่อน (ยังไม่ได้บันทึก) — รออีก${retryAfterSec ? `ประมาณ ${Math.max(1, Math.ceil(retryAfterSec / 60))} นาที` : "สักครู่"}แล้วลองใหม่ได้เลย (ถ้าต้องเพิ่มทีละมาก ๆ ใช้ "นำเข้าไฟล์")`;
 export const CONTACT_BULK_MAX = CRM_HARD_CAPS.contactBulk; // CRM C3.9 ▸ ค่าเดิม 500 ◂
 export const CONTACT_REASON_MIN = 5;
 export const CONTACT_TAGS_MAX = 50;
@@ -131,19 +152,39 @@ export type ContactSort = (typeof CONTACT_SORTS)[number];
 
 // ───────────────────────── error ─────────────────────────
 
-export type ContactsErrorCode = "NOT_FOUND" | "VALIDATION" | "DUPLICATE" | "CONFIRM_REQUIRED" | "CONFLICT" | "FORBIDDEN" | "LIMIT"; // CRM C3.9 ▸ LIMIT = เกินเพดาน (ถาวร · retry ไม่ช่วย) ◂
+// CRM C3.9 ▸ LIMIT = เกินเพดาน (ถาวร · retry ไม่ช่วย) ◂ · CRM C5.5-fix12 r2 ▸ RV12-1: RATE_LIMITED = ขอถี่ (ชั่วคราว · ยังไม่ได้เขียน · retryAfterSec) ◂
+export type ContactsErrorCode = "NOT_FOUND" | "VALIDATION" | "DUPLICATE" | "CONFIRM_REQUIRED" | "CONFLICT" | "FORBIDDEN" | "LIMIT" | "RATE_LIMITED";
 export type DuplicateHit = { contactId: string; name: string; reason: "PHONE" | "EMAIL" };
 
 /** error ของบริการผู้ติดต่อ — ข้อความไทยที่ไม่โทษผู้ใช้ · `.code` ตาม CONTRACT BLOCK · ไม่มีข้อมูลของร้าน/ระบบอื่นในข้อความ */
 export class ContactsError extends Error {
   readonly code: ContactsErrorCode;
   readonly duplicates?: DuplicateHit[];
-  constructor(code: ContactsErrorCode, message: string, extra: { duplicates?: DuplicateHit[] } = {}) {
+  /** C4.3-fix part 2 ▸ ช่องที่ข้อความเป็นของ (fieldErrors key เช่น `cf:<fieldKey>`) ◂ */
+  readonly field?: string;
+  /** CRM C5.5-fix12 r2 ▸ RV12-1: RATE_LIMITED — กี่วินาทีจึงลองใหม่ได้ (ถ้าตัวจำกัดบอก) ◂ */
+  readonly retryAfterSec?: number;
+  constructor(code: ContactsErrorCode, message: string, extra: { duplicates?: DuplicateHit[]; field?: string; retryAfterSec?: number } = {}) {
     super(message);
     this.name = "ContactsError";
     this.code = code;
     if (extra.duplicates) this.duplicates = extra.duplicates;
+    if (extra.field) this.field = extra.field;
+    if (typeof extra.retryAfterSec === "number" && Number.isFinite(extra.retryAfterSec)) this.retryAfterSec = extra.retryAfterSec;
   }
+}
+
+/**
+ * CRM C5.5-fix12 r3 ▸ RV12r-1/2: ข้อปฏิเสธของบริการผู้ติดต่อที่ต้อง "บอกผู้ใช้ตรง ๆ" (ไม่ใช่ระบบขัดข้อง · กดซ้ำไม่ช่วย) สำหรับทางที่ปกติ
+ *   ซ่อน error ไว้หลังข้อความกลาง (กดรับนามบัตร: action เว็บ `calls-actions.ts` · แอป `mobile.ts mobileErrorOf`):
+ *   DUPLICATE = ข้อความกลางของตัวซ้ำที่มองไม่เห็น (ไม่มีชื่อ/รหัส/เบอร์/อีเมล/บริษัท) → 409 · LIMIT = เพดานของระบบ → 409 ·
+ *   RATE_LIMITED = ขอถี่ → 429 · คืนเฉพาะรหัส + ข้อความไทย — **ไม่ส่ง `duplicates[]` ต่อ** · อื่น ๆ = null (ผู้เรียกใช้ทางเดิม) ◂
+ */
+export function contactRefusalOf(e: unknown): { code: "DUPLICATE" | "LIMIT" | "RATE_LIMITED"; status: 409 | 429; message: string } | null {
+  if (!(e instanceof ContactsError) || !/[ก-๙]/.test(e.message)) return null;
+  if (e.code === "DUPLICATE" || e.code === "LIMIT") return { code: e.code, status: 409, message: e.message };
+  if (e.code === "RATE_LIMITED") return { code: e.code, status: 429, message: e.message };
+  return null;
 }
 
 // ───────────────────────── ชนิด DTO ─────────────────────────
@@ -176,6 +217,8 @@ export type ContactDto = {
   sourceChannel: string | null;
   marketingOptOut: boolean;
   emailOptOut: boolean;
+  /** C5.4-B L5-M4: ลูกค้าขอ "ไม่ให้ติดตามการเปิดอ่าน/คลิก" (pixel + ห่อลิงก์ + web tracking) — ยังรับอีเมลได้ */
+  trackingOptOut: boolean;
   emailBouncedAt: Date | null;
   memberCustomerId: string | null;
   convertedAt: Date | null;
@@ -212,14 +255,23 @@ export type CreateContactResult = { contact: ContactDto; created: boolean; dupli
 
 export type ConsentState = { channel: string; label: string; granted: boolean | null; source: string | null; at: Date | null };
 export type ConsentHistoryRow = { id: string; channel: string; granted: boolean; source: string; note: string | null; createdAt: Date; createdById: string | null };
-export type ConsentView = { memberLinked: boolean; optOut: boolean; emailBounced: boolean; channels: ConsentState[] };
+export type ConsentView = { memberLinked: boolean; optOut: boolean; emailBounced: boolean; /** C5.4-B L5-M4 */ trackingOptOut: boolean; channels: ConsentState[] };
 
 export type Contact360Field = { key: string; label: string; type: string; value: unknown; display: string; hidden: boolean };
 export type Contact360Section = { key: string; label: string; sensitive: boolean; isSystem: boolean; fields: Contact360Field[] };
 export type Contact360Member = { customerId: string; systemId: string | null; memberCode: string | null; name: string | null; tierName: string | null; phoneMasked: string | null };
 export type Contact360Company = { id: string; name: string; role: string; jobTitle: string | null; isPrimary: boolean; current: boolean };
 export type Contact360Deal = { id: string; title: string; stageName: string; kind: "OPEN" | "WON" | "LOST"; valueSatang: number; expectedCloseAt: Date | null; pipelineName: string };
-export type Contact360TimelineItem = { id: string; at: Date; type: string; title: string; source: string; done: boolean };
+export type Contact360TimelineItem = {
+  id: string;
+  at: Date;
+  type: string;
+  title: string;
+  source: string;
+  done: boolean;
+  /** CRM C5.5 ▸ (fix3b r2 · RV-1) มีเฉพาะกิจกรรม EMAIL ขาเข้าที่ระบบยืนยันผู้ส่งไม่ได้ ⇒ ป้าย "ไม่ยืนยันผู้ส่ง" ◂ */
+  unverifiedFrom?: true;
+};
 
 export type Contact360 = {
   contact: ContactDto;
@@ -239,10 +291,13 @@ export type Contact360 = {
 export type ConvertInput = {
   idempotencyKey: string;
   member?: { systemId: string } | null;
-  company?: { id: string } | { new: { name: string } } | null;
+  // C4.4-fix ▸ US2: บริษัทใหม่ใส่เลขภาษีได้ (ตัวตรวจชุดเดียวกับ companies.createCompany) · `role` = บทบาทของผู้ติดต่อในบริษัท
+  //   (เช่น DECISION_MAKER · ไม่ส่ง = ค่าเดิมของลิงก์ / OTHER) ใช้ได้ทั้งบริษัทใหม่และบริษัทที่เลือก ◂
+  company?: (({ id: string } | { new: { name: string; taxId?: string | null } }) & { role?: CompanyContactRole | null }) | null;
   deal?: { pipelineId: string; stageId?: string | null; title: string; valueSatang?: number | null } | null;
 };
-export type ConvertResult = { contactId: string; customerId: string | null; companyId: string | null; dealId: string | null; replayed: boolean };
+// C4.4-fix รอบ 2 (S2) ▸ `reusedCompany` = ขอ "สร้างบริษัทใหม่" แต่เลขภาษีตรงกับบริษัทที่มีอยู่ (ที่ผู้กดมองเห็น) ⇒ ใช้บริษัทนั้นแทน — บอกชื่อให้ผู้ใช้เห็น ◂
+export type ConvertResult = { contactId: string; customerId: string | null; companyId: string | null; dealId: string | null; replayed: boolean; reusedCompany?: { id: string; name: string } | null };
 export type ConvertOptions = {
   memberSystems: { id: string; name: string }[];
   pipelines: { id: string; name: string; isDefault: boolean; stages: { id: string; name: string }[] }[];
@@ -261,8 +316,13 @@ export type ImportContactsResult = {
   skipped: number;
   candidates: number;
   failed: number;
-  errors: { row: number; message: string }[];
+  /**
+   * CRM C5.5-fix7 ▸ R2F-3: `kind` แยกแถวที่ล้มจริง ("error" · นับใน failed) ออกจากหมายเหตุของแถวที่บันทึกแล้ว ("note" · เช่น ผูกบริษัทไม่ได้)
+   *   แถวที่ล้มจริงเรียงก่อนเสมอ (เพดาน CONTACT_IMPORT_ERRORS_MAX และหน้าจอที่แสดง 50 แถวแรกจึงไม่ดันมันหาย) · เพิ่มช่องอย่างเดียว (row/message เดิม) ◂
+   */
+  errors: ImportResultEntry[];
 };
+export type ImportResultEntry = { row: number; message: string; kind: "error" | "note" };
 export type ImportJobStatus = "PENDING" | "RUNNING" | "DONE" | "FAILED";
 export type ImportJob = { jobId: string; status: ImportJobStatus; result: ImportContactsResult };
 
@@ -342,6 +402,20 @@ export function nameProblem(raw: unknown, label: string, required: boolean): str
 }
 
 /** เบอร์โทร: รูปแบบตัวอักษร (ตัวตรวจเดียวกับบริษัท) + จำนวนหลัก 9–15 */
+/**
+ * C5.4 (L6-m7 · มติผู้คุมงานรอบ 2): เบอร์ที่ฟอร์ม v1/ฟอร์มสาธารณะรับมาแต่รูปแบบไม่ผ่าน (เช่นมีเบอร์ต่อ "… ต่อ 12" หรือไม่ครบหลัก)
+ * **ไม่เข้าคอลัมน์ `phone`** (คอลัมน์นั้นต้องเป็นเบอร์ที่ถูกต้องเสมอ — สะพาน/ตัวจับซ้ำ/หน้าแก้ไข v2 พึ่งมัน) แต่เก็บตามที่กรอกไว้ในโน้ต
+ * ด้วยหัวข้อนี้ ⇒ จอ v1 (`CrmContactsSection`) อ่านกลับมาแสดงแทน/ข้างเบอร์ เหมือนก่อนมี C1.x
+ */
+export const LEGACY_NOTE_PREFIX = "ข้อมูลติดต่อจากฟอร์มที่รูปแบบยังไม่ถูกต้อง (เก็บตามที่กรอก) — ";
+export function legacyTypedPhone(note: string | null | undefined): string | null {
+  // hunter H5: พนักงานเขียนโน้ตต่อท้ายได้ (บรรทัดใหม่) ⇒ อ่านเฉพาะบรรทัดแรกที่ระบบเขียนไว้
+  const n = String(note ?? "").split(/\r?\n/, 1)[0] ?? "";
+  if (!n.startsWith(LEGACY_NOTE_PREFIX)) return null;
+  const m = /(?:^|\s)เบอร์: (.+?)(?: · อีเมล: |$)/.exec(n.slice(LEGACY_NOTE_PREFIX.length));
+  return m?.[1]?.trim() || null;
+}
+
 export function contactPhoneProblem(raw: string | null | undefined): string | null {
   const p = String(raw ?? "").trim();
   if (!p) return null;
@@ -362,7 +436,9 @@ export function contactLabel(c: { name?: string | null; firstName?: string | nul
  */
 export function maskPii(text: string | null | undefined): string {
   return String(text ?? "")
-    .replace(/[^\s@"'<>]+@([^\s@"'<>]+)/g, (_m, d: string) => `x…@${d}`)
+    // CRM C5.5-fix5 ▸ `(?<![^\s@"'<>])` = เริ่มที่ต้นกลุ่มอักขระเท่านั้น (เดิมลองทุกตัวกลางกลุ่มที่ไม่มี `@` = n²) — ผลเท่าเดิมทุกกรณี:
+    //   ส่วนโดเมนกินถึงขอบกลุ่มเสมอ จึงไม่มีการจับที่จบกลางกลุ่ม (probe-cf6-linear SW.maskPii) ◂
+    .replace(/(?<![^\s@"'<>])[^\s@"'<>]+@([^\s@"'<>]+)/g, (_m, d: string) => `x…@${d}`)
     .replace(/\+?\d[\d\s-]{3,}\d/g, (m) => {
       const digits = m.replace(/\D/g, "");
       return digits.length >= 5 ? `${"x".repeat(Math.max(0, digits.length - 2))}${digits.slice(-2)}` : m;

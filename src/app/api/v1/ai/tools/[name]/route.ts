@@ -11,6 +11,10 @@ import { skillOfTool, toolAllowedForApiKey } from "@/lib/ai/skills";
 import { accountToolScope } from "@/lib/ai/account-ops";
 import { prisma } from "@/lib/core/db";
 import { crmApi } from "@/lib/modules/crm";
+import { aiApiKeyActor } from "@/lib/ai/actor";
+import { toolVerdict } from "@/lib/ai/tool-access";
+import { newConversationId } from "@/lib/ai/conversation-owner";
+import { findVisibleConversation } from "@/lib/ai/conversations";
 import { generalToolGate } from "../../general-key-gate";
 
 const HEADER_SYSTEM = "x-shark-system";
@@ -53,6 +57,12 @@ export async function POST(
   }
   const systemId = auth.systemId ?? headerSystem;
 
+  // CRM C5.5-G1 r2 (F4) ▸ ด่านเดียวกับ executor (tool-access) ก่อนแตะอะไร — ไม่ผ่าน = 403 แบบเดียวกับการปฏิเสธอื่นของ route นี้
+  //   (เดิม 200 + error ข้างใน · และไม่เปิดห้องแชทเปล่าให้คำขอที่ทำไม่ได้) ◂
+  const actor = aiApiKeyActor({ tenantId: auth.tenantId, keyId: auth.keyId, scopes: auth.scopes, systemId: auth.systemId, scopesMalformed: auth.scopesMalformed });
+  const verdict = toolVerdict(actor, name, { crmLegacyLead });
+  if (!verdict.ok) return apiJson({ error: verdict.reason }, 403);
+
   let body: { args?: unknown; conversationId?: string };
   try {
     body = (await req.json()) as typeof body;
@@ -62,17 +72,24 @@ export async function POST(
 
   // เครื่องมือเขียนต้องผูกห้องแชท เพราะข้อเสนอจะไปโผล่ให้เจ้าของกดยืนยันในห้องนั้น
   // ไม่ได้ระบุมา → เปิดห้องให้อัตโนมัติ เจ้าของจะเห็นเป็นบทสนทนาใหม่พร้อมการ์ดยืนยัน
-  let conversationId = body.conversationId;
+  // CRM C5.5-G2 ▸ ระบุมา = ต้องเป็นห้องที่ **คีย์ใบนี้** เปิดเอง (ห้องของคน/คีย์อื่น/ห้องเดิม = 404 เหมือนไม่มีอยู่ — ไม่หย่อนการ์ดเข้าห้องคนอื่น)
+  //   ห้องใหม่ = รหัสฝังคีย์ผู้สร้าง ⇒ คีย์ใบนี้ต่อได้ · เจ้าของร้านเห็นและกดยืนยันได้ (ห้องที่ไม่ได้สร้างโดยคนในร้าน) · พนักงานคนอื่นไม่เห็น ◂
+  let conversationId = typeof body.conversationId === "string" && body.conversationId.trim() ? body.conversationId.trim() : undefined;
+  if (conversationId && !(await findVisibleConversation({ tenantId: auth.tenantId, actor }, conversationId))) {
+    return apiJson({ error: "ไม่พบบทสนทนานี้", code: "conversation_not_found" }, 404);
+  }
   if (tool.action && !conversationId) {
     const conv = await prisma.aiConversation.create({
-      data: { tenantId: auth.tenantId, title: "คำขอจากผู้ช่วยภายนอก" },
+      data: { id: newConversationId({ tenantId: auth.tenantId, actor }), tenantId: auth.tenantId, title: "คำขอจากผู้ช่วยภายนอก" },
     });
     conversationId = conv.id;
   }
 
+  // CRM C5.5-G1 ▸ ผู้กระทำ = คีย์ใบนี้ (scope + ระบบที่ผูก) · runTool ตรวจซ้ำด้วยกติกาคีย์ของ tool-access (ชั้นที่สองหลังด่านข้างบน) ◂
   const result = await runTool(
     {
       tenantId: auth.tenantId,
+      actor,
       ...(conversationId ? { conversationId } : {}),
       ...(systemId ? { systemId } : {}),
     },

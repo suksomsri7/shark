@@ -38,10 +38,30 @@ export async function requireCrmV2Page(ctx: { tenantId: string; systemId: string
   if ((await crmUiVersion(ctx)) !== 2) notFound();
 }
 
-/** server action ของหน้า v2: ระบบที่ยังไม่เปิด v2 = ปฏิเสธ (action v1 ใน `actions.ts` ไม่เรียกตัวนี้) */
+/** server action ของหน้า v2: ระบบที่ยังไม่เปิด v2 = ปฏิเสธ (action v1 ใน `actions.ts` ใช้ `isCrmV1Closed` แทน) */
 export async function assertCrmV2(ctx: { tenantId: string; systemId: string }): Promise<void> {
   if ((await crmUiVersion(ctx)) !== 2) throw new CrmV2DisabledError();
 }
+
+// CRM C5.4-B ▸ L1-M1: ประตูกลับด้านของ action v1 (`actions.ts`) — ระบบที่เปิด v2 แล้วต้องไม่รับ action v1
+//   (action v1 ไม่มีการกรองการมองเห็น/กติกา v2 ⇒ ถ้ารับ = ทางลัดย้ายดีลที่มองไม่เห็น/ปิดงานของคนอื่น) · อ่านไม่ได้ = ปฏิเสธ (fail closed)
+export const CRM_V1_CLOSED_MSG = "ระบบ CRM นี้เปลี่ยนเป็นหน้าจอใหม่แล้ว — รีเฟรชหน้าแล้วทำรายการจากหน้าจอใหม่";
+
+/**
+ * ไม่ใช่ false = action v1 ต้องปฏิเสธ: "V2" ระบบนี้อยู่ uiVersion 2 · "UNREADABLE" อ่านค่าไม่ได้ (รีวิว C5.4-B note b — fail CLOSED:
+ * ฐานสะดุด/ระบบไม่ใช่ CRM ของร้านนี้ ต้องไม่เปิดทางลัด v1 · ต่างจาก `crmUiVersion` ที่อ่านไม่ได้ = 1 เพื่อปิดหน้า v2)
+ */
+export async function isCrmV1Closed(ctx: { tenantId: string; systemId: string }): Promise<false | "V2" | "UNREADABLE"> {
+  try {
+    return (await getCrmSettings(ctx)).uiVersion !== 1 ? "V2" : false;
+  } catch {
+    return "UNREADABLE";
+  }
+}
+
+/** ข้อความกลางเมื่ออ่านรุ่นหน้าจอไม่ได้ (ไม่บอกว่า "เปลี่ยนเป็นหน้าจอใหม่แล้ว" ในเมื่อไม่รู้ — รีวิว C5.4-B รอบ 2) */
+export const CRM_V1_UNREADABLE_MSG = "ระบบยังทำรายการนี้ไม่ได้ในขณะนี้ — รีเฟรชหน้าแล้วลองใหม่อีกครั้ง";
+// ◂ CRM C5.4-B
 
 // CRM C1.11 ▸ สวิตช์ v1↔v2 (มติ C23 · addendum ผู้คุมงาน C1.11 ข้อ 1) — ซ่อนจากร้านจริงโดยปริยาย
 //   ร้านจะเห็นหน้า/ลิงก์/ปุ่มสลับได้ก็ต่อเมื่อ env `CRM_V2_SWITCH=all` หรือ tenantId อยู่ใน `CRM_V2_SWITCH_TENANTS` (คั่นด้วย ,)

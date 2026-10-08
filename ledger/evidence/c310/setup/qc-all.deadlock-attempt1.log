@@ -1,0 +1,6 @@
+host ok: QC1 · HEAD 725f0e0a · READY 12:10 725f0e0a port=3215 ai=mock webhook-private=on cwd=shark-crm · start 2026-10-07T12:10:38Z
+
+> shark-in-th@0.1.0 qc:all /root/projects/shark-crm
+> bash scripts/with-gate-lock.sh tsx scripts/qc-all.mts
+
+ ELIFECYCLE  Command failed.

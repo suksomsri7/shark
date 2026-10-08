@@ -12,6 +12,8 @@ import { crmNavItems } from "@/lib/modules/crm/nav";
 import { CRM_OPS } from "@/lib/modules/crm/api/registry";
 import { crmToolInfos } from "@/lib/modules/crm/api/tools";
 import { crmWebhookEvents, isCrmWebhookEndpoint } from "@/lib/modules/crm/api/webhook-events";
+import { privateTargetsAllowed } from "@/lib/webhooks/private-targets"; // C4.4-fix I3 ▸ ช่องทดสอบ http://loopback (dev/QC เท่านั้น) ◂
+import { crmKeysRefusedByGuard } from "@/lib/modules/crm/api/key-guard";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { ModuleTabs } from "@/components/module-tabs";
 import { createCrmApiKeyAction, createCrmWebhookAction, deleteCrmWebhookAction, revokeCrmApiKeyAction, toggleCrmWebhookAction } from "./actions";
@@ -41,12 +43,14 @@ export default async function CrmApiSettingsPage({ params }: { params: Promise<{
     prisma.apiKey.findMany({
       where: { tenantId, systemId: id, revokedAt: null },
       orderBy: { createdAt: "desc" },
-      select: { id: true, name: true, prefix: true, scopesJson: true, expiresAt: true, lastUsedAt: true },
+      select: { id: true, name: true, prefix: true, scopesJson: true, expiresAt: true, lastUsedAt: true, createdById: true },
     }),
     listTeams({ tenantId }),
     listEndpoints({ tenantId }),
   ]);
   const teamName = new Map(teams.map((t) => [t.id, t.name]));
+  // C5.4-B (รีวิว note c): คีย์ที่ด่าน "คีย์ตายตามสิทธิ์ของผู้สร้าง" (Q16) ปฏิเสธ — ป้ายเตือนในรายการ
+  const refused = await crmKeysRefusedByGuard({ tenantId, systemId: id }, rows.map((k) => ({ id: k.id, createdById: k.createdById, scopes: scopesOf(k.scopesJson) })));
   const keys: CrmApiKeyRow[] = rows.map((k) => {
     const scopes = scopesOf(k.scopesJson);
     const f = crmFilterTargetsOf(scopes);
@@ -60,6 +64,7 @@ export default async function CrmApiSettingsPage({ params }: { params: Promise<{
       filterLabel,
       expiresLabel: k.expiresAt ? dayFmt.format(k.expiresAt) : "ไม่หมดอายุ",
       lastUsedLabel: k.lastUsedAt ? dayFmt.format(k.lastUsedAt) : "ยังไม่เคยใช้",
+      refused: refused.has(k.id),
     };
   });
 
@@ -120,6 +125,7 @@ export default async function CrmApiSettingsPage({ params }: { params: Promise<{
         events={events}
         webhooks={webhooks}
         deliveries={deliveries}
+        allowLoopbackHttp={privateTargetsAllowed()}
         createKey={createCrmApiKeyAction}
         revokeKey={revokeCrmApiKeyAction}
         createWebhook={createCrmWebhookAction}
