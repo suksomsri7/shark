@@ -1,0 +1,20 @@
+# controller re-run H0.4 R2 @fa79d4ad 2026-10-08T03:27:05Z
+fitness-hr env exit=0 5 5 []
+fitness-hr noenv exit=0 5 5 []
+fitness noenv exit=0 33 33 []
+counts before: COUNTS {"tenant":20,"hrEmployee":22,"hrPayrollRun":0,"customer":71,"posSale":224,"hrAttendance":0,"hrLeave":0,"hrPayAdjustment":0,"qcTempTenants":0}
+seed#1 exit=0 23 23 []
+seed#2 exit=0 23 23 []
+seed summaries identical
+counts after:  COUNTS {"tenant":20,"hrEmployee":22,"hrPayrollRun":0,"customer":71,"posSale":224,"hrAttendance":0,"hrLeave":0,"hrPayAdjustment":0,"qcTempTenants":0}
+expected links: {'namfon': 'staff', 'koy': 'payrollSelf'} 7
+gitignore: scripts/hr-expected.json
+literal dates in HQC/seed: scripts/hr-qc-env.mts:0 scripts/seed-hr-qc.mts:0 
+visual --dry exit=0 DRY_SUMMARY {"wo":"all","user":"owner","pages":7,"viewports":3,"shots":21}
+qc-hf-hr-privacy exit=0 194 194 []
+qc-hr-h0.1 exit=0 67 67 []
+qc-hr-h0.2 exit=0 58 58 None
+qc-hr-payadjust exit=0 27 27 []
+src diff vs base: 0 lines
+tracked hr expected: (none)
+done 2026-10-08T03:35:29Z
