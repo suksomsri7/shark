@@ -37,3 +37,8 @@ export { payrollEmployeeOfUser, payrollRunPeriods, adjustmentOfCommission, adjus
 //   รายการค้าง (PENDING/APPROVED) ในงวดที่มีรอบแล้ว
 export { withdrawCommissionAdjustment, activeLinkedUserIds, strandedCommissionAdjustments, moveCommissionAdjustmentPeriod } from "./payroll";
 // ◂ CRM C3.3
+// HR H0.6 ▸ กลับรายการรอบจ่าย → CRM (re-export ล้วน — ตรรกะอยู่ที่ `payroll.ts` บล็อก H0.6)
+//   adjustmentsByIds = รายการเพิ่ม/หักตาม id (ผูกร้าน + ระบบ HR · `runStatus` ของรอบที่ผูกอยู่) — ผู้บริโภค `hr.payroll.reversed`
+//   (`crm/commissions.ts#onPayrollReversed`: คอมมิชชัน PAID → APPROVED ครั้งเดียว ข้ามรายการที่เข้ารอบที่จ่ายแล้วอีกรอบ) ◂
+export type { PayAdjustmentRef } from "./payroll";
+export { adjustmentsByIds } from "./payroll";

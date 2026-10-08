@@ -3,6 +3,7 @@ import type { Prisma } from "@prisma/client";
 // CRM C3.3 ▸ `hr.payroll.paid` ยิงใน tx เดียวกับการปิดรอบ (markPaid) ◂
 import { emitOutbox } from "@/lib/core/outbox";
 import { postPayrollJV, reverseEntry } from "@/lib/modules/account";
+import { logOps } from "@/lib/core/ops"; // HR H0.6 ▸ OQ-8: กลับ JV ล้ม = WARN id + รหัสเท่านั้น ◂
 import { writeAudit } from "@/lib/core/audit"; // HF-HR-0 ▸ รอบ 5c (F1): ประวัติการลบรายการเงิน (ตัวเดียวกับ hr/service.ts) ◂
 import { bkkParts } from "./service"; // H0.1 ▸ CR14: เวลาไทยจากตัวช่วยกลางของ HR (ไม่บวก +7 เองซ้ำ) ◂
 import { payrollItemsDigest, PAYROLL_DIGEST_SELECT } from "./payroll-digest"; // H0.1 ▸ CR16: ลายนิ้วมือแถวพนักงาน (โมดูลกลาง ไม่ใช่ "use server") ◂
@@ -24,6 +25,14 @@ import {
 // การลงบัญชี: เรียก gl (ensureAccounting + postManualJV) อย่างเดียว — ไม่แตะ gl.ts/coa.ts
 
 export type Ctx = { tenantId: string; systemId: string };
+
+// HR H0.6 ▸ OQ-4: "งวดนี้มีรอบจ่ายแล้ว" = มีรอบที่ **ยังมีผล** (สถานะ ≠ REVERSED) — รอบที่กลับรายการแล้วไม่จองงวด
+//   (คู่กับ partial unique "HrPayrollRun_systemId_periodKey_live_key" ของ migration 20261202000000) ⇒ ใช้ตัวกรองนี้ทุกจุดที่ค้นรอบจากงวด
+//   (สร้างรอบ · ยื่น/อนุมัติ/ย้ายรายการ · ตัวกวาดรายการค้าง · ตัวอ่านงวดของ CRM) · ค้นรอบด้วย id (คำนวณใหม่/อนุมัติ/จ่าย) ไม่ใช้ตัวกรองนี้ ◂
+const LIVE_RUN_WHERE = { status: { not: "REVERSED" } } as const satisfies Prisma.HrPayrollRunWhereInput;
+function liveRunWhere(): typeof LIVE_RUN_WHERE {
+  return LIVE_RUN_WHERE;
+}
 
 // mapping ผังบัญชี (6000/1010/2100/2130) ย้ายไปอยู่ account/gl.ts postPayrollJV — hr ไม่ล้วง ledger เอง
 
@@ -136,7 +145,7 @@ export async function requestAdjustment(
   //   ข้อความเดียวกับทาง CRM ทุกตัวอักษร · ตรวจก่อนอ่านอะไรที่ขึ้นกับเงินเดือน (อัตรา OT) ⇒ ไม่เป็นช่องเดาเงินเดือน ◂
   {
     const p = input.periodKey.trim();
-    const closed = await tenantDb(ctx).hrPayrollRun.findFirst({ where: { systemId: ctx.systemId, periodKey: p }, select: { id: true } });
+    const closed = await tenantDb(ctx).hrPayrollRun.findFirst({ where: { systemId: ctx.systemId, periodKey: p, ...liveRunWhere() }, select: { id: true } }); // HR H0.6 ▸ OQ-4 ◂
     if (closed) return { ok: false, code: "PERIOD_CLOSED", reason: `งวด ${p} มีรอบจ่ายเงินเดือนแล้ว — ยื่นเข้างวดถัดไปแทน` };
   }
 
@@ -206,13 +215,13 @@ export async function decideAdjustment(
       const tx = t as unknown as Prisma.TransactionClient;
       const scope = { tenantId: ctx.tenantId, systemId: ctx.systemId };
       await lockRunPeriod(tx, ctx, row.periodKey);
-      const runs = new Set((await tx.hrPayrollRun.findMany({ where: scope, select: { periodKey: true }, take: 2_000 })).map((r) => r.periodKey));
+      const runs = new Set((await tx.hrPayrollRun.findMany({ where: { ...scope, ...liveRunWhere() }, select: { periodKey: true }, take: 2_000 })).map((r) => r.periodKey)); // HR H0.6 ▸ OQ-4 ◂
       let moveTo: string | null = null;
       if (runs.has(row.periodKey)) {
         moveTo = nextRunlessPeriod(row.periodKey, runs);
         if (!moveTo) return { ok: false, reason: `งวด ${row.periodKey} มีรอบจ่ายแล้ว และหางวดถัดไปที่ยังไม่มีรอบจ่ายไม่พบ — ตรวจรอบจ่ายเงินเดือน` };
         await lockRunPeriod(tx, ctx, moveTo);
-        const taken = await tx.hrPayrollRun.findFirst({ where: { ...scope, periodKey: moveTo }, select: { id: true } });
+        const taken = await tx.hrPayrollRun.findFirst({ where: { ...scope, periodKey: moveTo, ...liveRunWhere() }, select: { id: true } }); // HR H0.6 ▸ OQ-4 ◂
         if (taken) return { ok: false, reason: "รอบจ่ายเพิ่งเปลี่ยนระหว่างอนุมัติ — กรุณาลองอีกครั้ง" };
       }
       const claim = await tx.hrPayAdjustment.updateMany({
@@ -580,7 +589,8 @@ export async function createPayrollRun(
     const tx = t as unknown as Prisma.TransactionClient;
     // สองการสร้างรอบของงวดเดียวกันต่อคิวกัน (unique (systemId, periodKey) เป็นด่านสุดท้าย — ล็อกนี้ทำให้ได้ข้อความไทยแทน error ของฐาน)
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`hr:payroll:run:${ctx.systemId}:${periodKey}`}, 0))`;
-    const dup = await tx.hrPayrollRun.findFirst({ where: { ...scope, periodKey }, select: { id: true } });
+    // HR H0.6 ▸ R3 (D2b): รอบที่กลับรายการแล้ว (REVERSED) ไม่นับเป็นรอบซ้ำ ⇒ งวดที่กลับรายการแล้วสร้างรอบใหม่ได้ (ข้อความเดิมทุกตัวอักษร) ◂
+    const dup = await tx.hrPayrollRun.findFirst({ where: { ...scope, periodKey, ...liveRunWhere() }, select: { id: true } });
     if (dup) throw new PayrollInputError(`มีรอบจ่ายงวด ${periodKey} อยู่แล้ว — ลบหรือเลือกงวดอื่น`);
 
     // H0.1 ▸ R1: แถว + ยอดรวม + รายการที่ล็อกไว้ มาจาก buildRunRows (ตัวเดียวกับ recomputeDraftRun) — ผลลัพธ์เท่าเดิมทุกไบต์ ◂
@@ -1020,46 +1030,96 @@ export async function approveRun(
 // ── กลับรายการเงินเดือน (APPROVED/PAID → REVERSED) + กลับ JV — WO Wave2-K ──
 // immutable ledger: กลับ JV ด้วย reversal เท่านั้น (reverseEntry สร้าง entry ตรงข้าม + mark เดิม REVERSED)
 // DRAFT/ไม่มี JV → ok:false (ไม่มีอะไรกลับ) · H0.1 CR8: รอบร่างบอกชื่อปุ่มจริง "ลบร่าง" (deleteDraftRun)
+// HR H0.6 ▸ R2 — ธุรกรรมเดียว: ล็อกงวด (advisory คีย์เดียวกับสร้าง/คำนวณใหม่/ลบร่าง) → อ่านแถวรอบใหม่ใต้ FOR UPDATE → ด่านข้อความคงที่ →
+//   UPDATE ที่ guard (APPROVED/PAID + มี JV · count = 1) → REVERSED + reversedAt + reversedById → กลับ JV ด้วย tx เดียวกัน (ไม่มีระบบบัญชี = ข้าม ·
+//   รอบยัง REVERSED · OQ-9) → ปลดรายการเพิ่ม/หักทุกแถวของรอบ (runId → null · สถานะ APPROVED คงเดิม ⇒ เข้ารอบใหม่ของงวดเดิมได้) →
+//   `hr.payroll.reversed#<runId>` {runId, periodKey, adjustmentIds} (id ล้วน) → ประวัติ `hr.payroll.reverse` หลัง commit (แถวเดียว — OQ-5)
+//   กลับ JV ล้ม = ย้อนทั้ง tx (รอบ/รายการ/event คงเดิม) + ข้อความคงที่ (OQ-8) · คำปฏิเสธลงประวัติ `hr.payroll.reverse.refused` {runId, code}
+//   🔴 ตัวกรองของ tenantDb ทำงานใน tx ด้วย (AccountJournalEntry เป็น system-scoped) ⇒ เมื่อมีระบบบัญชี tx เปิดบนขอบเขตของ **ระบบบัญชี**
+//      (reverseEntry ค้น/สร้าง entry ของระบบนั้นได้) และแถวของ HR ในธุรกรรมนี้เขียนด้วย SQL ที่ผูก tenantId + systemId ของ HR เองทุกคำสั่ง ·
+//      ไม่มีระบบบัญชี = tx บนขอบเขตของระบบ HR (คำสั่งชุดเดียวกัน) ◂
 export async function reverseRun(
   ctx: Ctx,
   runId: string,
   reason?: string,
-): Promise<{ ok: boolean; note: string }> {
+  actor?: PayrollActor,
+): Promise<{ ok: boolean; note: string; code?: ReverseRefusalCode }> {
+  const id = typeof runId === "string" ? runId.trim() : "";
   const db = tenantDb(ctx);
-  const run = await db.hrPayrollRun.findFirst({ where: { id: runId, systemId: ctx.systemId } });
-  if (!run) return { ok: false, note: "ไม่พบรอบจ่าย" };
-  if (run.status === "REVERSED") return { ok: false, note: "รอบนี้กลับรายการไปแล้ว" };
-  if (!run.journalEntryId)
-    return { ok: false, note: "รอบนี้ยังไม่ได้ลงบัญชี — ไม่มีรายการให้กลับ (รอบที่ยังเป็นร่าง ยกเลิกได้ด้วยปุ่ม \"ลบร่าง\")" };
-
-  const prevStatus = run.status; // APPROVED | PAID (คืนสถานะถ้ากลับ JV ล้ม)
-  // claim อะตอมมิก → REVERSED — กันกลับซ้ำ/แข่งกัน (เฉพาะที่มี JV และยัง APPROVED/PAID)
-  const claim = await db.hrPayrollRun.updateMany({
-    where: {
-      id: runId,
-      systemId: ctx.systemId,
-      status: { in: ["APPROVED", "PAID"] },
-      journalEntryId: { not: null },
-    },
-    data: { status: "REVERSED" },
-  });
-  if (claim.count === 0) return { ok: false, note: "รอบนี้กลับรายการไปแล้ว หรือสถานะเปลี่ยน" };
-
+  const pre = id ? await db.hrPayrollRun.findFirst({ where: { id, systemId: ctx.systemId }, select: { periodKey: true } }) : null;
+  if (!pre) return reverseRefused(ctx, actor, id, "NOT_FOUND");
+  const periodKey = pre.periodKey;
+  // ระบบบัญชีของกิจการ (type ACCOUNT) — ตัวค้นเดียวกับ approveRun (ระบบที่ลง JV) · ตรวจซ้ำใน tx ก่อนกลับ JV
   const acct = await db.appSystem.findFirst({ where: { type: "ACCOUNT" }, select: { id: true } });
-  const why = reason?.trim() || `กลับรายการเงินเดือนงวด ${run.periodKey}`;
-  try {
-    // กลับ JV ผ่าน account facade (idempotent ต่อ entry — กลับซ้ำไม่เบิ้ล)
-    if (acct) await reverseEntry({ tenantId: ctx.tenantId, systemId: acct.id }, run.journalEntryId, why);
-    await db.hrPayrollRun.update({ where: { id: runId }, data: { note: `กลับรายการแล้ว: ${why}` } });
-    return { ok: true, note: "กลับรายการเงินเดือนเรียบร้อย — ลง JV กลับรายการในบัญชีแล้ว" };
-  } catch (e) {
-    // กลับ JV ล้ม → คืนสถานะเดิม (ยังไม่กลับจริง) ให้กดใหม่ได้ — ห้ามค้าง REVERSED ลอย
-    await db.hrPayrollRun.updateMany({
-      where: { id: runId, status: "REVERSED" },
-      data: { status: prevStatus },
+  const why = reason?.trim() || `กลับรายการเงินเดือนงวด ${periodKey}`;
+  const work = async (t: unknown): Promise<ReverseOutcome> => {
+    const tx = t as Prisma.TransactionClient;
+    await lockRunPeriod(tx, ctx, periodKey);
+    const cur = await lockRunRow(tx, ctx, id);
+    if (!cur || cur.periodKey !== periodKey) return { ok: false, code: "NOT_FOUND" };
+    if (cur.status === "REVERSED") return { ok: false, code: "ALREADY_REVERSED" };
+    if (!cur.journalEntryId) return { ok: false, code: "NO_JV" };
+    if (cur.status !== "APPROVED" && cur.status !== "PAID") return { ok: false, code: "BAD_STATUS" };
+    const claimed = await tx.$executeRaw`
+      UPDATE "HrPayrollRun"
+      SET "status" = 'REVERSED'::"PayrollRunStatus", "reversedAt" = (now() AT TIME ZONE 'UTC'), "reversedById" = ${actor?.userId ?? null},
+          "note" = ${`กลับรายการแล้ว: ${why}`}
+      WHERE "id" = ${id} AND "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId}
+        AND "status" IN ('APPROVED'::"PayrollRunStatus", 'PAID'::"PayrollRunStatus") AND "journalEntryId" IS NOT NULL`;
+    if (claimed !== 1) return { ok: false, code: "ALREADY_REVERSED" };
+    let reversalEntryId: string | null = null;
+    const liveAcct = acct ? await tx.appSystem.findFirst({ where: { id: acct.id, tenantId: ctx.tenantId, type: "ACCOUNT" }, select: { id: true } }) : null;
+    if (liveAcct) {
+      try {
+        const rv = await reverseEntry({ tenantId: ctx.tenantId, systemId: liveAcct.id }, cur.journalEntryId, why, tx);
+        reversalEntryId = "entryId" in rv ? rv.entryId : null;
+      } catch (e) {
+        throw new JvReverseFailed(e);
+      }
+    }
+    const bound = await tx.$queryRaw<{ id: string }[]>`
+      SELECT "id" FROM "HrPayAdjustment"
+      WHERE "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId} AND "runId" = ${id}
+      ORDER BY "id" FOR UPDATE`;
+    const adjustmentIds = bound.map((b) => b.id);
+    const unbound = await tx.$executeRaw`
+      UPDATE "HrPayAdjustment" SET "runId" = NULL
+      WHERE "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId} AND "runId" = ${id}`;
+    if (unbound !== adjustmentIds.length) throw new ReverseUnbindMismatch();
+    await emitOutbox(tx, {
+      tenantId: ctx.tenantId,
+      systemId: ctx.systemId,
+      type: "hr.payroll.reversed",
+      idempotencyKey: `hr.payroll.reversed#${id}`,
+      payload: { runId: id, periodKey, adjustmentIds },
     });
-    return { ok: false, note: e instanceof Error ? e.message : "กลับรายการไม่สำเร็จ" };
+    return { ok: true, prevStatus: cur.status, journalEntryId: cur.journalEntryId, reversalEntryId, jvReversed: reversalEntryId !== null, adjustmentIds };
+  };
+  let out: ReverseOutcome;
+  try {
+    out = acct
+      ? await tenantDb({ tenantId: ctx.tenantId, systemId: acct.id }).$transaction(work, REVERSE_TX_OPTS)
+      : await tenantDb(ctx).$transaction(work, REVERSE_TX_OPTS);
+  } catch (e) {
+    const code: ReverseRefusalCode = e instanceof JvReverseFailed ? "JV_REVERSE_FAILED" : "TX_FAILED";
+    await logOps("WARN", "hr-payroll", code === "JV_REVERSE_FAILED" ? "กลับรายการรอบจ่าย: กลับ JV ไม่สำเร็จ — ย้อนทั้งธุรกรรม" : "กลับรายการรอบจ่ายไม่สำเร็จ — ย้อนทั้งธุรกรรม", {
+      tenantId: ctx.tenantId,
+      detail: `runId=${id} systemId=${ctx.systemId} accountSystemId=${acct?.id ?? "-"} code=${code} error=${reverseErrorCode(e)}`,
+    }).catch(() => undefined);
+    return reverseRefused(ctx, actor, id, code);
   }
+  if (!out.ok) return reverseRefused(ctx, actor, id, out.code);
+  await writeAudit({
+    tenantId: ctx.tenantId,
+    actorType: actor?.userId ? "USER" : "SYSTEM",
+    actorId: actor?.userId ?? null,
+    action: "hr.payroll.reverse",
+    targetType: "HrPayrollRun",
+    targetId: id,
+    before: { status: out.prevStatus },
+    after: { status: "REVERSED", runId: id, periodKey, adjustmentCount: out.adjustmentIds.length, journalEntryId: out.journalEntryId, reversalEntryId: out.reversalEntryId, jvReversed: out.jvReversed },
+  });
+  return { ok: true, note: out.jvReversed ? REVERSE_OK : REVERSE_OK_NO_ACCOUNT };
 }
 
 // ── จ่ายแล้ว (APPROVED→PAID) ──
@@ -1153,7 +1213,7 @@ export type StrandedAdjustment = {
  */
 export async function strandedAdjustments(ctx: Ctx, limit = 200): Promise<StrandedAdjustment[]> {
   const db = tenantDb(ctx);
-  const runs = (await db.hrPayrollRun.findMany({ where: { systemId: ctx.systemId }, select: { periodKey: true }, take: 2_000 })).map((r) => r.periodKey);
+  const runs = (await db.hrPayrollRun.findMany({ where: { systemId: ctx.systemId, ...liveRunWhere() }, select: { periodKey: true }, take: 2_000 })).map((r) => r.periodKey); // HR H0.6 ▸ OQ-4 ◂
   if (runs.length === 0) return [];
   const rows = await db.hrPayAdjustment.findMany({
     where: { systemId: ctx.systemId, runId: null, status: { in: ["PENDING", "APPROVED"] }, periodKey: { in: runs } },
@@ -1185,12 +1245,12 @@ export async function moveStrandedAdjustment(ctx: Ctx, id: string, actor: Payrol
   const res = await tenantDb(ctx).$transaction(async (t) => {
     const tx = t as unknown as Prisma.TransactionClient;
     await lockRunPeriod(tx, ctx, row.periodKey);
-    const runs = new Set((await tx.hrPayrollRun.findMany({ where: scope, select: { periodKey: true }, take: 2_000 })).map((r) => r.periodKey));
+    const runs = new Set((await tx.hrPayrollRun.findMany({ where: { ...scope, ...liveRunWhere() }, select: { periodKey: true }, take: 2_000 })).map((r) => r.periodKey)); // HR H0.6 ▸ OQ-4 ◂
     if (!runs.has(row.periodKey)) return { ok: false as const, reason: "งวดของรายการนี้ยังไม่มีรอบจ่าย — ไม่ต้องย้าย" };
     const to = nextRunlessPeriod(row.periodKey, runs);
     if (!to) return { ok: false as const, reason: `หางวดถัดไปที่ยังไม่มีรอบจ่ายหลังงวด ${row.periodKey} ไม่พบ — ตรวจรอบจ่ายเงินเดือน` };
     await lockRunPeriod(tx, ctx, to);
-    if (await tx.hrPayrollRun.findFirst({ where: { ...scope, periodKey: to }, select: { id: true } })) return { ok: false as const, reason: "รอบจ่ายเพิ่งเปลี่ยน — กรุณาลองอีกครั้ง" };
+    if (await tx.hrPayrollRun.findFirst({ where: { ...scope, periodKey: to, ...liveRunWhere() }, select: { id: true } })) return { ok: false as const, reason: "รอบจ่ายเพิ่งเปลี่ยน — กรุณาลองอีกครั้ง" };
     const n = await tx.hrPayAdjustment.updateMany({
       where: { ...scope, id, runId: null, crmCommissionId: null, periodKey: row.periodKey, status: { in: ["PENDING", "APPROVED"] } },
       data: { periodKey: to },
@@ -1248,7 +1308,7 @@ async function requestCommissionAdjustment(
     const emp = await db.hrEmployee.findFirst({ where: { id: input.employeeId, ...scope }, select: { id: true } });
     if (!emp) return { ok: false, reason: "ไม่พบพนักงาน" };
     // มติผู้คุมงาน S4: งวดที่มีรอบจ่ายแล้ว (ทุกสถานะ) จะไม่ถูกดึงอีก ⇒ ห้ามยื่นเข้าไป (ผู้เรียกเลื่อนไปเดือนถัดไปที่ว่าง)
-    const closed = await db.hrPayrollRun.findFirst({ where: { ...scope, periodKey: data.periodKey }, select: { id: true } });
+    const closed = await db.hrPayrollRun.findFirst({ where: { ...scope, periodKey: data.periodKey, ...liveRunWhere() }, select: { id: true } }); // HR H0.6 ▸ OQ-4 ◂
     if (closed) return { ok: false, code: "PERIOD_CLOSED", reason: `งวด ${data.periodKey} มีรอบจ่ายเงินเดือนแล้ว — ยื่นเข้างวดถัดไปแทน` };
     const made = await db.hrPayAdjustment.createManyAndReturn({ data: [data], skipDuplicates: true, select: { id: true } });
     if (made.length === 0) return { ok: false, reason: "คอมมิชชันรายการนี้ถูกส่งเข้างวดเงินเดือนไปแล้ว (มีได้รายการเดียว)" };
@@ -1282,9 +1342,10 @@ export async function payrollEmployeeOfUser(tenantId: string, userId: string): P
   return null;
 }
 
-/** งวดที่มีรอบจ่ายแล้ว (ทุกสถานะ — `createPayrollRun` ดึงรายการของงวดได้ครั้งเดียว) ของระบบ HR นี้ · `tx` = อ่านใต้ล็อกของผู้เรียก */
+/** งวดที่มีรอบจ่ายแล้ว (`createPayrollRun` ดึงรายการของงวดได้ครั้งเดียว) ของระบบ HR นี้ · `tx` = อ่านใต้ล็อกของผู้เรียก
+ *  HR H0.6 ▸ R3: เฉพาะรอบที่ยังมีผล (≠ REVERSED) — งวดที่รอบถูกกลับรายการแล้วนับเป็น "ยังเปิด" (สร้างรอบใหม่ได้) ◂ */
 export async function payrollRunPeriods(ctx: Ctx, opts: { tx?: HrDb } = {}): Promise<string[]> {
-  const where = { tenantId: ctx.tenantId, systemId: ctx.systemId };
+  const where = { tenantId: ctx.tenantId, systemId: ctx.systemId, ...liveRunWhere() };
   const rows = opts.tx
     ? await opts.tx.hrPayrollRun.findMany({ where, select: { periodKey: true }, take: 2_000 })
     : await tenantDb(ctx).hrPayrollRun.findMany({ where, select: { periodKey: true }, take: 2_000 });
@@ -1388,8 +1449,8 @@ export async function moveCommissionAdjustmentPeriod(
   const scope = { tenantId: ctx.tenantId, systemId: ctx.systemId };
   const db = opts.tx;
   const closed = db
-    ? await db.hrPayrollRun.findFirst({ where: { ...scope, periodKey: input.periodKey }, select: { id: true } })
-    : await tenantDb(ctx).hrPayrollRun.findFirst({ where: { ...scope, periodKey: input.periodKey }, select: { id: true } });
+    ? await db.hrPayrollRun.findFirst({ where: { ...scope, periodKey: input.periodKey, ...liveRunWhere() }, select: { id: true } }) // HR H0.6 ▸ OQ-4 ◂
+    : await tenantDb(ctx).hrPayrollRun.findFirst({ where: { ...scope, periodKey: input.periodKey, ...liveRunWhere() }, select: { id: true } });
   if (closed) return false;
   const where = { id: input.adjustmentId, ...scope, crmCommissionId: input.crmCommissionId, runId: null, status: { in: ["PENDING", "APPROVED"] as ("PENDING" | "APPROVED")[] } };
   const n = db ? await db.hrPayAdjustment.updateMany({ where, data: { periodKey: input.periodKey } }) : await tenantDb(ctx).hrPayAdjustment.updateMany({ where, data: { periodKey: input.periodKey } });
@@ -1423,7 +1484,7 @@ export async function strandedCommissionAdjustments(tenantId: string, limit = 10
   const out: CommissionAdjustmentRef[] = [];
   for (const sys of systems) {
     const db = tenantDb({ tenantId, systemId: sys.id });
-    const runs = (await db.hrPayrollRun.findMany({ where: { systemId: sys.id }, select: { periodKey: true }, take: 2_000 })).map((r) => r.periodKey);
+    const runs = (await db.hrPayrollRun.findMany({ where: { systemId: sys.id, ...liveRunWhere() }, select: { periodKey: true }, take: 2_000 })).map((r) => r.periodKey); // HR H0.6 ▸ OQ-4 ◂
     if (runs.length === 0) continue;
     const rows = await db.hrPayAdjustment.findMany({
       // C3.3-fix H5 (แทนรีวิวรอบ 2 S-c): PENDING + APPROVED ที่ยังไม่เข้ารอบในงวดที่มีรอบแล้ว (runId IS NULL = ไม่เคยถูกจ่าย)
@@ -1438,3 +1499,94 @@ export async function strandedCommissionAdjustments(tenantId: string, limit = 10
   return out;
 }
 // ◂ CRM C3.3
+
+// ─────────── HR H0.6 ▸ กลับรายการรอบจ่าย: ข้อความคงที่ · ประวัติคำปฏิเสธ · ตัวอ่านของ CRM (ใบ H0.6 R2 · R4 · OQ-1/5/6/8) ───────────
+// ข้อความที่ reverseRun คืนถึงจอ = ชุดนี้เท่านั้น (ไม่มีข้อความดิบของ error) · ไม่มี JV = ข้อความเดิมทุกตัวอักษร (OQ-1)
+const REVERSE_ALREADY = "รอบนี้กลับรายการไปแล้ว";
+const REVERSE_NO_JV = "รอบนี้ยังไม่ได้ลงบัญชี — ไม่มีรายการให้กลับ (รอบที่ยังเป็นร่าง ยกเลิกได้ด้วยปุ่ม \"ลบร่าง\")";
+const REVERSE_BAD_STATUS = "รอบนี้กลับรายการไม่ได้ในสถานะปัจจุบัน";
+const REVERSE_JV_FAILED = "กลับรายการบัญชีไม่สำเร็จ — รอบจ่ายยังไม่ถูกกลับ";
+const REVERSE_TX_FAILED = "กลับรายการไม่สำเร็จ — รอบจ่ายยังไม่ถูกกลับ กรุณาลองอีกครั้ง";
+const REVERSE_OK = "กลับรายการเงินเดือนเรียบร้อย — ลง JV กลับรายการในบัญชีแล้ว";
+const REVERSE_OK_NO_ACCOUNT = "กลับรายการเงินเดือนเรียบร้อย — ไม่พบระบบบัญชี จึงไม่ได้ลง JV กลับรายการ (รายการบัญชีเดิมคงอยู่)";
+// รอคิวล็อกงวดได้ (10 คนกดพร้อมกัน = ต่อคิว) · เพดานกว้างกว่าทางอื่นเพราะกลับ JV อยู่ใน tx เดียวกัน
+const REVERSE_TX_OPTS = { maxWait: 20_000, timeout: 120_000 } as const;
+
+export type ReverseRefusalCode = "NOT_FOUND" | "ALREADY_REVERSED" | "NO_JV" | "BAD_STATUS" | "JV_REVERSE_FAILED" | "TX_FAILED";
+const REVERSE_TEXT: Record<ReverseRefusalCode, string> = {
+  NOT_FOUND: RUN_NOT_FOUND,
+  ALREADY_REVERSED: REVERSE_ALREADY,
+  NO_JV: REVERSE_NO_JV,
+  BAD_STATUS: REVERSE_BAD_STATUS,
+  JV_REVERSE_FAILED: REVERSE_JV_FAILED,
+  TX_FAILED: REVERSE_TX_FAILED,
+};
+
+type ReverseOutcome =
+  | { ok: false; code: ReverseRefusalCode }
+  | { ok: true; prevStatus: string; journalEntryId: string; reversalEntryId: string | null; jvReversed: boolean; adjustmentIds: string[] };
+
+/** กลับ JV ล้มใน tx — โยนเพื่อย้อนทั้ง tx แล้วแปลงเป็นข้อความคงที่ที่ reverseRun (OQ-8) · เก็บ error เดิมไว้อ่านชื่อ/รหัสเท่านั้น */
+class JvReverseFailed extends Error {
+  constructor(readonly inner: unknown) {
+    super("JV_REVERSE_FAILED");
+    this.name = "JvReverseFailed";
+  }
+}
+/** จำนวนแถวที่ปลดไม่ตรงกับที่ล็อกไว้ (ไม่ควรเกิดใต้ FOR UPDATE) — ย้อนทั้ง tx */
+class ReverseUnbindMismatch extends Error {
+  constructor() {
+    super("REVERSE_UNBIND_MISMATCH");
+    this.name = "ReverseUnbindMismatch";
+  }
+}
+/** ชื่อ + รหัสของ error สำหรับ log ops (ไม่มีข้อความดิบ — ข้อความของ Prisma พาค่าฟิลด์ติดมาได้ · X8) */
+function reverseErrorCode(e: unknown): string {
+  const inner = e instanceof JvReverseFailed ? e.inner : e;
+  const name = inner instanceof Error ? inner.name : typeof inner;
+  const code = inner && typeof inner === "object" && typeof (inner as { code?: unknown }).code === "string" ? (inner as { code: string }).code : "-";
+  return `${e instanceof JvReverseFailed ? "JvReverseFailed:" : ""}${name}/${code}`;
+}
+/** คำปฏิเสธของ reverseRun — ประวัติ `hr.payroll.reverse.refused` {runId, code} (ผู้ทำ = actor · ไม่มี = SYSTEM) + ข้อความคงที่ */
+async function reverseRefused(ctx: Ctx, actor: PayrollActor | undefined, runId: string, code: ReverseRefusalCode): Promise<{ ok: false; note: string; code: ReverseRefusalCode }> {
+  await writeAudit({
+    tenantId: ctx.tenantId,
+    actorType: actor?.userId ? "USER" : "SYSTEM",
+    actorId: actor?.userId ?? null,
+    action: "hr.payroll.reverse.refused",
+    targetType: "HrPayrollRun",
+    targetId: runId || undefined,
+    after: { runId: runId || null, code },
+  });
+  return { ok: false, note: REVERSE_TEXT[code], code };
+}
+
+export type PayAdjustmentRef = { id: string; runId: string | null; runStatus: string | null; crmCommissionId: string | null; status: string };
+/**
+ * R4 · OQ-6 — รายการเพิ่ม/หักตาม id (ผู้บริโภค `hr.payroll.reversed` ของ CRM) · ผูกร้าน + ระบบ HR (tenantDb) · id ของร้าน/ระบบอื่น = หายไปเงียบ ๆ ·
+ * อ่านทีละ 500 · `runStatus` = สถานะของรอบที่รายการผูกอยู่ตอนนี้ (null = ยังไม่เข้ารอบ) — ให้ CRM ข้ามรายการที่เข้ารอบที่ **จ่ายแล้ว**
+ * อีกรอบ (event กลับรายการที่มาช้า ห้ามถอนสถานะ PAID ของรอบใหม่ — OQ-3)
+ */
+export async function adjustmentsByIds(ctx: Ctx, ids: string[]): Promise<PayAdjustmentRef[]> {
+  if (!ctx?.tenantId || !ctx?.systemId || !Array.isArray(ids)) return [];
+  const list = [...new Set(ids.filter((x): x is string => typeof x === "string" && x.length > 0 && x.length <= 64))].sort();
+  if (list.length === 0) return [];
+  const db = tenantDb(ctx);
+  const rows: { id: string; runId: string | null; crmCommissionId: string | null; status: string }[] = [];
+  for (let i = 0; i < list.length; i += 500) {
+    const part = await db.hrPayAdjustment.findMany({
+      where: { systemId: ctx.systemId, id: { in: list.slice(i, i + 500) } },
+      select: { id: true, runId: true, crmCommissionId: true, status: true },
+      orderBy: { id: "asc" },
+    });
+    rows.push(...part.map((r) => ({ ...r, status: String(r.status) })));
+  }
+  const runIds = [...new Set(rows.flatMap((r) => (r.runId ? [r.runId] : [])))];
+  const runStatus = new Map<string, string>();
+  for (let i = 0; i < runIds.length; i += 500) {
+    const runs = await db.hrPayrollRun.findMany({ where: { systemId: ctx.systemId, id: { in: runIds.slice(i, i + 500) } }, select: { id: true, status: true } });
+    for (const r of runs) runStatus.set(r.id, String(r.status));
+  }
+  return rows.map((r) => ({ ...r, runStatus: r.runId ? (runStatus.get(r.runId) ?? null) : null }));
+}
+// ◂ HR H0.6
