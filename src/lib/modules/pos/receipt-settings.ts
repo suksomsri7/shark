@@ -82,10 +82,18 @@ export async function updatePosReceiptSettings(ctx: Ctx, actor: PosReceiptSettin
       const cur = receiptSettingsOf(sys.settings);
       const parsed = parseReceiptSettings(mergeReceiptSettings(cur, patch));
       if (!parsed.ok) return refuse("VALIDATION", parsed.message, parsed.field);
-      const base = isRecord(sys.settings) ? sys.settings : {};
-      const pos = isRecord(base.pos) ? base.pos : {};
-      const settings = { ...base, pos: { ...pos, receipt: parsed.settings } } as Prisma.InputJsonValue;
-      await tx.appSystem.update({ where: { id: sys.id }, data: { settings } });
+      // เขียนเฉพาะ settings.pos.receipt ในคำสั่งเดียว (jsonb_set แบบ member/reviews.ts) — คีย์อื่นของ settings/pos ที่ใบอื่นเป็นเจ้าของไม่ถูกทับ
+      const json = JSON.stringify(parsed.settings);
+      await tx.$executeRaw`
+        UPDATE "AppSystem"
+        SET "settings" = jsonb_set(
+          CASE WHEN jsonb_typeof("settings") = 'object' THEN "settings" ELSE '{}'::jsonb END,
+          '{pos}',
+          (CASE WHEN jsonb_typeof("settings"->'pos') = 'object' THEN "settings"->'pos' ELSE '{}'::jsonb END)
+            || jsonb_build_object('receipt', ${json}::jsonb),
+          true),
+          "updatedAt" = now()
+        WHERE "id" = ${sys.id} AND "tenantId" = ${ctx.tenantId} AND type = 'POS'`;
       return { ok: true, settings: parsed.settings };
     });
   } catch (e) {
