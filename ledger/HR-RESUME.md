@@ -148,3 +148,4 @@
 - 2026-10-08T22:49:10Z heartbeat: ⏸️ still PAUSED by owner — no spawn; lanes idle (H0.5 1517ad7f · H0.6 1083a96f); no HR process/unit; load ~50 (other sessions); quota session 12 %. No tg (no change).
 - 2026-10-08T23:03:30Z heartbeat: ⏸️ still PAUSED by owner — no spawn; lanes idle (H0.5 1517ad7f · H0.6 1083a96f); no HR process/unit; load 29 (easing); quota session 13 %. No tg (no change).
 - 2026-10-08T23:26:26Z heartbeat: ⏸️ still PAUSED by owner — no spawn; lanes idle (H0.5 1517ad7f · H0.6 1083a96f); no HR process/unit; load 47; quota session 15 %. No tg (no change).
+- 2026-10-08T23:47:50Z heartbeat: ⏸️ still PAUSED by owner — no spawn, no controller re-run (owner's pause is explicit). **Box is quiet now (load 3.8)** = the condition RESUME STEPS wants for the timing re-runs of h0.5 S3.2 / h0.3 / h0.1 / h0.2 + full typecheck on 1517ad7f; told the owner by tg. Lanes idle (H0.5 1517ad7f · H0.6 1083a96f); quota session 17 %.
