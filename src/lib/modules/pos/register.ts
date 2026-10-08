@@ -415,6 +415,7 @@ import { createSale, PosSaleError, type CreateSaleInput } from "./service";
 import { posPaymentSettings, type PosPaymentSettings } from "./payment-settings";
 // POS P1.9 ▸ กะของเครื่อง (S5/S6/S15) ◂
 import { isShiftDeviceId, registerShiftStatus, resolveRegisterShift } from "./shift";
+import { posDeviceRevoked, touchPosDevice } from "./device"; // POS P1.10 ▸ การ์ดเครื่องที่ถูกเพิกถอน + heartbeat ◂
 import { effectiveTrackStock, menuSoldOutIds, rowAvailable } from "./catalog";
 import { priceCart, roundHalfUp, PRICE_MAX_SATANG, type PriceDiscount } from "./pricing-shared";
 // POS P1.2 ▸ R10 ป้ายเครื่องชั่ง (ตัวถอดบริสุทธิ์ชุดเดียวกับจอ) ◂
@@ -497,6 +498,10 @@ const REG_MESSAGE: Record<RegisterRefusalCode, string> = {
   SHIFT_CLOSED: "กะนี้ปิดแล้ว",
   REASON_REQUIRED: "เงินขาด/เกินเกินเกณฑ์ — ใส่เหตุผลก่อนปิดกะ",
   DRAWER_INSUFFICIENT: "เงินในลิ้นชักไม่พอ",
+  // POS P1.10 ▸ ทะเบียนเครื่อง ◂
+  DEVICE_REVOKED: "เครื่องนี้ถูกเพิกถอนแล้ว — ใช้ขายไม่ได้ ติดต่อผู้จัดการ",
+  DEVICE_LIMIT: "ลงทะเบียนเครื่องครบจำนวนที่แพ็กเกจให้แล้ว",
+  DEVICE_NOT_FOUND: "ไม่พบเครื่องนี้ในสาขานี้",
 };
 const REG_ROLE_LABEL: Record<RegisterRole, string> = { OWNER: "เจ้าของร้าน", MANAGER: "ผู้จัดการ", STAFF: "แคชเชียร์" };
 
@@ -1562,6 +1567,8 @@ export async function submitRegisterSale(ctx: RegisterCtx, actor: RegisterActor,
     // ① คีย์เดิมก่อนคิดราคา (ลองซ้ำหลังราคาเปลี่ยนต้องได้บิลเดิม)
     const prior = await regLoadSale(db, s.tenantId, req.idempotencyKey);
     if (prior) return regDuplicate(s, req, prior, true);
+    // POS P1.10 ▸ R2: เครื่องที่ถูกเพิกถอนของสาขานี้ขายไม่ได้ (หลังคีย์ซ้ำ ⇒ ลองซ้ำบิลที่ commit ก่อนเพิกถอน = บิลเดิม) · ไม่ลงทะเบียน = ขายได้ (Q3) ◂
+    if (deviceId && (await posDeviceRevoked(db, s.tenantId, s.unitId, deviceId))) return regRefuse("DEVICE_REVOKED");
     // POS P1.9 ▸ S6: กะของเครื่อง (หลังคีย์ซ้ำ ⇒ ลองซ้ำบิลที่ commit ในกะที่ปิดแล้ว = บิลเดิม) · บังคับมีกะแต่ไม่มี = SHIFT_REQUIRED ไม่มีบิล ◂
     const shift = await resolveRegisterShift(db, s, deviceId);
     if (!shift.ok) return regRefuse("SHIFT_REQUIRED");
@@ -1663,6 +1670,17 @@ export async function registerStatus(ctx: RegisterCtx, actor: RegisterActor, cli
     if (isRegRefusal(s)) return s;
     const deviceId = regDeviceOf(ctx);
     if (deviceId === false) return regRefuse("VALIDATION", "รหัสเครื่องไม่ถูกต้อง");
+    // POS P1.10 ▸ R2: heartbeat ของเครื่องที่ลงทะเบียน (ในการอ่านสถานะเดิม · throttle 30 วิ · ไม่ได้ลงทะเบียน = ไม่สร้างแถว) — ล้มไม่ทำให้สถานะล้ม ◂
+    // แก้รอบ 1 F10: deviceStatus = สถานะทะเบียนของเครื่องนี้ (null = ไม่ส่ง deviceId / ไม่ได้ลงทะเบียน / heartbeat ล้ม) — ฟิลด์เสริม
+    let deviceStatus: "ACTIVE" | "REVOKED" | null = null;
+    if (deviceId) {
+      try {
+        const t = await touchPosDevice(db, s.tenantId, s.unitId, deviceId);
+        deviceStatus = t.row ? t.row.status : null;
+      } catch (e) {
+        console.error("[pos/register] registerStatus heartbeat", e);
+      }
+    }
     const sh = await registerShiftStatus(db, s, deviceId);
     const user = await db.user.findUnique({ where: { id: s.actor.userId }, select: { name: true, email: true } });
     const bkk = new Date(Date.now() + 7 * 3600000).toISOString().slice(0, 10);
@@ -1689,6 +1707,7 @@ export async function registerStatus(ctx: RegisterCtx, actor: RegisterActor, cli
       shiftRequired: sh.required,
       pendingStockCount: Number(pend[0]?.n ?? 0),
       pendingSyncCount: 0,
+      deviceStatus,
     };
   });
 }

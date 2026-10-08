@@ -41,6 +41,9 @@ export {
   createAccountProductWithSalePrice,
 } from "./service";
 
+// POS P1.10 ▸ ใบเสร็จ/ใบกำกับภาษีอย่างย่อของ POS: config VAT ของสมุดที่ผูก (อ่านล้วน · vatRegistered · vatRateBp · posAbbreviatedInvoice) ◂
+export { vatConfigOf } from "./service";
+
 // M3.7 (ระบบสมาชิก v2 · ไทม์ไลน์ประวัติ) — เอกสารขาออกของ party หนึ่ง (อ่านอย่างเดียว · read-through)
 //   ผู้เรียก: `member/history.ts` (dynamic import — account/index อยู่ในวงจรโหลดไฟล์ของโมดูลบัญชีเอง)
 export { listDocsByParty, type PartyDocRow } from "./service";

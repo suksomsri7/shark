@@ -416,6 +416,35 @@ model PosShiftRecount {
   @@index([tenantId, unitId, createdAt])
 }
 
+// POS P1.10 — ทะเบียนเครื่องขาย (มติ R1–R3 · ledger/pos-briefs/pos-brief-P1.10.md) · ผู้เขียนเดียว = pos/device.ts
+//   deviceCode = รหัสเครื่องของ P1.9 (localStorage · [A-Za-z0-9_-]{8,64}) ⇒ กะ/บิลที่ผูกรหัสนี้อยู่แล้วคงความหมายเดิม
+//   id หลวม ไม่มี FK (แบบ PosShift) · REVOKED = ขาย/เปิดกะ/พัก/เรียกคืนจากเครื่องนี้ไม่ได้ (สาขาเดียวกัน)
+//   printerConfig = ค่าที่ผ่าน parsePrinterConfig แล้วเท่านั้น (device-shared.ts)
+enum PosDeviceStatus {
+  ACTIVE
+  REVOKED
+}
+
+model PosDevice {
+  id                 String          @id @default(cuid())
+  tenantId           String
+  unitId             String // BusinessUnit.id
+  systemId           String // AppSystem.id (type POS)
+  name               String // 1–60
+  deviceCode         String // [A-Za-z0-9_-]{8,64} = PosShift.deviceId
+  status             PosDeviceStatus @default(ACTIVE)
+  registeredByUserId String
+  lastSeenAt         DateTime? // heartbeat (เขียนไม่ถี่กว่า 30 วินาที) · online = ภายใน 120 วินาที
+  posRegNo           String? // เลขประจำเครื่อง POS (กรมสรรพากร) — พิมพ์บนใบกำกับภาษีอย่างย่อ
+  printerConfig      Json? // { paper, mode, autoPrint, drawerKick, thaiText, copies }
+  revokedAt          DateTime?
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+
+  @@unique([unitId, deviceCode])
+  @@index([tenantId, unitId, status])
+}
+
 // POS P1.14 — ตรวจนับสต็อกจากหน้าขาย (มติ R1 · ledger/pos-briefs/pos-brief-P1.14.md) · ผู้เขียนเดียว = pos/stock-count.ts
 //   id หลวม ไม่มี FK (แบบ PosShift) · 1 รอบ OPEN ต่อ (คลัง × ที่เก็บ) = partial unique เขียนมือใน migration
 //   (PosStockCount_open_location_key ON ("inventorySystemId","locationId") WHERE status = 'OPEN' — prisma แสดง WHERE ไม่ได้)

@@ -284,7 +284,10 @@
       "variantRequired": "Choose a size or style for this item first",
       "weightRequired": "This item is sold by weight — scan the scale label or enter the weight first",
       "shiftNotForced": "Only shifts closed by the system can be recounted",
-      "alreadyRecounted": "This shift has already been recounted"
+      "alreadyRecounted": "This shift has already been recounted",
+      "deviceRevoked": "This device has been revoked — contact a manager",
+      "deviceLimit": "Device limit reached — revoke an unused device first",
+      "deviceNotFound": "Device not found at this branch"
     },
     "held": {
       "title": "Held bills",
@@ -880,6 +883,33 @@
       "validation": "The refund details are not valid",
       "hasRefunds": "This bill already has refunds — it cannot be voided; refund the rest instead",
       "unknown": "Something went wrong — try again"
+    }
+  },
+  "device": {
+    "title": "Devices and printers",
+    "register": "Register this device",
+    "revoke": "Revoke device",
+    "online": "Online",
+    "offline": "Offline",
+    "printer": "Receipt printer",
+    "name": "Device name",
+    "posRegNo": "POS registration no.",
+    "revoked": "Revoked",
+    "unregistered": "Not registered",
+    "limit": "{used} of {limit} devices used"
+  },
+  "receipt": {
+    "title": "Receipt",
+    "taxInvoiceAbb": "Abbreviated tax invoice",
+    "copy": "Copy",
+    "reprint": "Reprint receipt",
+    "footerDefault": "Thank you for your purchase",
+    "print": "Print receipt",
+    "settings": "Receipt and tax",
+    "errors": {
+      "saleNotFound": "This bill wasn't found, or it belongs to another branch",
+      "permissionDenied": "This account can't view bills or print receipts yet — ask the owner for access",
+      "internal": "Receipts are temporarily unavailable — please try again"
     }
   }
 }

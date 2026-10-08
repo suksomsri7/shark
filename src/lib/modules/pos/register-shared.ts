@@ -97,7 +97,11 @@ export type RegisterRefusalCode =
   | "OPTIONS_INVALID"
   | "OPTION_UNAVAILABLE"
   | "VARIANT_REQUIRED"
-  | "WEIGHT_REQUIRED";
+  | "WEIGHT_REQUIRED"
+  // POS P1.10: เครื่องที่ถูกเพิกถอน (ขาย/เปิดกะ/พัก/เรียกคืน) · ลงทะเบียนเกินเพดาน · ไม่พบเครื่องในสาขานี้
+  | "DEVICE_REVOKED"
+  | "DEVICE_LIMIT"
+  | "DEVICE_NOT_FOUND";
 
 /** คำปฏิเสธ — คืนค่า ไม่ throw · `lineIndex` = บรรทัดที่ผิด (ลำดับเดียวกับที่ส่งมา) ถ้าระบุได้ */
 export type RegisterRefusal = { ok: false; code: RegisterRefusalCode; message: string; lineIndex?: number };
@@ -250,6 +254,8 @@ export type RegisterStatus = {
   pendingStockCount: number;
   /** บิลออฟไลน์รอซิงก์ = P3 — วันนี้ 0 เสมอ */
   pendingSyncCount: number;
+  /** POS P1.10 (แก้รอบ 1 F10): สถานะทะเบียนของเครื่องนี้ — null = ไม่ส่ง deviceId / ไม่ได้ลงทะเบียน · REVOKED = จอควรล็อกการขาย */
+  deviceStatus?: "ACTIVE" | "REVOKED" | null;
 };
 export type RegisterStatusResult = RegisterStatus | RegisterRefusal;
 /** POS P1.9 (S15) — กะของเครื่องบนแถบสถานะ */
@@ -519,6 +525,10 @@ const REFUSAL_KEY: Readonly<Record<string, string>> = {
   // POS P1.9b ▸ นับย้อนหลังกะที่บังคับปิด ◂
   SHIFT_NOT_FORCED: "errors.shiftNotForced",
   ALREADY_RECOUNTED: "errors.alreadyRecounted",
+  // POS P1.10 ▸ ทะเบียนเครื่อง ◂
+  DEVICE_REVOKED: "errors.deviceRevoked",
+  DEVICE_LIMIT: "errors.deviceLimit",
+  DEVICE_NOT_FOUND: "errors.deviceNotFound",
 };
 
 /**
