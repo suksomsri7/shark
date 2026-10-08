@@ -400,7 +400,8 @@ async function runStatic(): Promise<void> {
     if (!exportsFn(stripComments(rd("src/lib/member-bridges.ts")), "onPosSaleRefunded")) p.push("member-bridges ไม่ export onPosSaleRefunded");
     const svc = stripComments(rd(SERVICE_FILE));
     if (!/export\s+async\s+function\s+createSale\s*\(\s*input:\s*CreateSaleInput\s*,\s*client:\s*Client\s*=\s*prisma\s*\)/.test(svc)) p.push("ลายเซ็น createSale เปลี่ยน");
-    if (!/export\s+async\s+function\s+voidSale\s*\(\s*tenantId:\s*string\s*,\s*unitId:\s*string\s*,\s*saleId:\s*string\s*\)/.test(svc)) p.push("ลายเซ็น voidSale เปลี่ยน");
+    // ORACLE-EDIT (controller · P1.16 R3/CD2): voidSale รับพารามิเตอร์ที่ 4 แบบ optional ได้ (audit) — 3 ตัวแรกต้องเดิม
+    if (!/export\s+async\s+function\s+voidSale\s*\(\s*tenantId:\s*string\s*,\s*unitId:\s*string\s*,\s*saleId:\s*string\s*(?:,\s*\w+\?:[^)]*)?\)/.test(svc)) p.push("ลายเซ็น voidSale เปลี่ยน");
     chk("P1.8-S8", p.length === 0, "refund.ts + facade + point + member + ลายเซ็นเดิม", p.join(" · ") || "ครบ");
   }
   // S9 readers
