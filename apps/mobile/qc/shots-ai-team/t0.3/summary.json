@@ -1,0 +1,170 @@
+{
+ "generatedAt": "2026-10-08T23:06:45.881Z",
+ "base": "http://127.0.0.1:4713",
+ "view": {
+  "tag": "iphone",
+  "w": 390,
+  "h": 844
+ },
+ "wo": "t0.3",
+ "mode": "dark",
+ "ok": true,
+ "fixture": {
+  "path": "apps/mobile/qc/fixtures/ai-team/t0.3.json",
+  "sha256": "247613503cc7c3013d15964e8922935db6722cb7578aa0c18c56aa5ff6416820"
+ },
+ "screens": [
+  {
+   "name": "team-gallery",
+   "route": "/team/_gallery",
+   "mode": "light",
+   "ok": true,
+   "errors": [],
+   "missing": [],
+   "overflow": false,
+   "expect": [
+    "team-gallery",
+    "gallery-glass-card",
+    "gallery-orb",
+    "gallery-avatar-stack",
+    "gallery-pill-tabs",
+    "gallery-stat-card",
+    "gallery-quota-ring",
+    "gallery-primary-button",
+    "gallery-bottom-sheet",
+    "gallery-segmented",
+    "gallery-search-field",
+    "gallery-list-row",
+    "gallery-section-title",
+    "gallery-empty-state",
+    "gallery-error-state",
+    "gallery-skeleton"
+   ],
+   "texts": "กิจการ\nSweet Studio\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nat-owner@qc.shark\nออกจากระบบ\nTeam components\nLiquid Glass · Airy · โหมด light\nSEGMENTED · โหมดสี (บังคับ / ตามเครื่อง)\nตามเครื่อง\nสว่าง\nมืด\nPILL TABS\nทั้งหมด\nรออนุมัติ\n3\nกำลังทำ\nเสร็จแล้ว\nSEARCH FIELD\n\nORB · 6 แผนก\nอ\nAVATAR STACK · คน + AI\nส\nธ\n+2\nSTAT CARD · QUOTA RING\n12\nงานวันนี้\n3\nรออนุมัติ\n62%\nโควตา\nGLASS CARD\nการ์ดแก้ว\nพื้นโปร่ง ขอบขาว เงานุ่ม · มี padding ในเสมอ\nSECTION TITLE · LIST ROW\nแอดมินตอบแชท\nแชทรอตอบ 12 ห้อง · ตอบช้าเฉลี่ย 2 ชม.\n\nผู้ช่วยบัญชี\nมีใบแจ้งหนี้ค้างส่ง 7 ใบ\n\nPRIMARY BUTTON\nดูตำแหน่งทั้งหมด\nปิดใช้งาน\nEMPTY STATE\nยังไม่มีพนักงาน AI\nจ้างคนแรกได้ใน 1 นาที · ไม่มีค่าจ้างเพิ่ม\nERROR STATE\nเชื่อมต่อไม่ได้ ตรวจอินเทอร์เน็ตแล้วลองใหม่\nลองใหม่\nSKELETON\nBOTTOM SHEET · ในกรอบตัวอย่าง\nเปิดแผ่นล่าง\nสลับกิจการ\nSweet Studio · แตะพื้นหลังเพื่อปิด",
+   "unmocked": [],
+   "requests": [
+    {
+     "method": "GET",
+     "path": "/api/mobile/me",
+     "tenant": ""
+    }
+   ],
+   "url": "/team/_gallery",
+   "file": "apps/mobile/qc/shots-ai-team/t0.3/team-gallery-light.png"
+  },
+  {
+   "name": "team-gallery-screen-a8",
+   "route": "/team/_gallery?screen=a8",
+   "mode": "light",
+   "ok": true,
+   "errors": [],
+   "missing": [],
+   "overflow": false,
+   "expect": [
+    "team-a8"
+   ],
+   "texts": "กิจการ\nSweet Studio\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nat-owner@qc.shark\nออกจากระบบ\n\nส\nSweet Studio\n\nยังไม่มีทีม AI · แพ็กฟรี\nยังไม่มีพนักงาน AI\nจ้างคนแรกได้ใน 1 นาที · ไม่มีค่าจ้างเพิ่ม\nจ้างได้ไม่จำกัด ใช้โควตาแพ็กของร้าน\nแนะนำสำหรับร้านคุณ\nแอดมินตอบแชท\nแชทรอตอบ 12 ห้อง · ตอบช้าเฉลี่ย 2 ชม.\n\nผู้ช่วยบัญชี\nมีใบแจ้งหนี้ค้างส่ง 7 ใบ\n\nคอนเทนต์ · โซเชียล\nเพจไม่ได้โพสต์มา 9 วัน\n\nดูตำแหน่งทั้งหมด",
+   "unmocked": [],
+   "requests": [
+    {
+     "method": "GET",
+     "path": "/api/mobile/team/summary",
+     "tenant": "t1"
+    },
+    {
+     "method": "GET",
+     "path": "/api/mobile/team/employees",
+     "tenant": "t1"
+    },
+    {
+     "method": "GET",
+     "path": "/api/mobile/team/positions/recommend",
+     "tenant": "t1"
+    },
+    {
+     "method": "GET",
+     "path": "/api/mobile/me",
+     "tenant": ""
+    }
+   ],
+   "url": "/team/_gallery?screen=a8",
+   "file": "apps/mobile/qc/shots-ai-team/t0.3/team-gallery-screen-a8-light.png"
+  },
+  {
+   "name": "team-gallery",
+   "route": "/team/_gallery",
+   "mode": "dark",
+   "ok": true,
+   "errors": [],
+   "missing": [],
+   "overflow": false,
+   "expect": [
+    "team-gallery",
+    "gallery-glass-card",
+    "gallery-orb",
+    "gallery-avatar-stack",
+    "gallery-pill-tabs",
+    "gallery-stat-card",
+    "gallery-quota-ring",
+    "gallery-primary-button",
+    "gallery-bottom-sheet",
+    "gallery-segmented",
+    "gallery-search-field",
+    "gallery-list-row",
+    "gallery-section-title",
+    "gallery-empty-state",
+    "gallery-error-state",
+    "gallery-skeleton"
+   ],
+   "texts": "กิจการ\nSweet Studio\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nat-owner@qc.shark\nออกจากระบบ\nTeam components\nLiquid Glass · Airy · โหมด dark\nSEGMENTED · โหมดสี (บังคับ / ตามเครื่อง)\nตามเครื่อง\nสว่าง\nมืด\nPILL TABS\nทั้งหมด\nรออนุมัติ\n3\nกำลังทำ\nเสร็จแล้ว\nSEARCH FIELD\n\nORB · 6 แผนก\nอ\nAVATAR STACK · คน + AI\nส\nธ\n+2\nSTAT CARD · QUOTA RING\n12\nงานวันนี้\n3\nรออนุมัติ\n62%\nโควตา\nGLASS CARD\nการ์ดแก้ว\nพื้นโปร่ง ขอบขาว เงานุ่ม · มี padding ในเสมอ\nSECTION TITLE · LIST ROW\nแอดมินตอบแชท\nแชทรอตอบ 12 ห้อง · ตอบช้าเฉลี่ย 2 ชม.\n\nผู้ช่วยบัญชี\nมีใบแจ้งหนี้ค้างส่ง 7 ใบ\n\nPRIMARY BUTTON\nดูตำแหน่งทั้งหมด\nปิดใช้งาน\nEMPTY STATE\nยังไม่มีพนักงาน AI\nจ้างคนแรกได้ใน 1 นาที · ไม่มีค่าจ้างเพิ่ม\nERROR STATE\nเชื่อมต่อไม่ได้ ตรวจอินเทอร์เน็ตแล้วลองใหม่\nลองใหม่\nSKELETON\nBOTTOM SHEET · ในกรอบตัวอย่าง\nเปิดแผ่นล่าง\nสลับกิจการ\nSweet Studio · แตะพื้นหลังเพื่อปิด",
+   "unmocked": [],
+   "requests": [
+    {
+     "method": "GET",
+     "path": "/api/mobile/me",
+     "tenant": ""
+    }
+   ],
+   "url": "/team/_gallery",
+   "file": "apps/mobile/qc/shots-ai-team/t0.3/team-gallery-dark.png"
+  },
+  {
+   "name": "team-gallery-screen-a8",
+   "route": "/team/_gallery?screen=a8",
+   "mode": "dark",
+   "ok": true,
+   "errors": [],
+   "missing": [],
+   "overflow": false,
+   "expect": [
+    "team-a8"
+   ],
+   "texts": "กิจการ\nSweet Studio\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nat-owner@qc.shark\nออกจากระบบ\n\nส\nSweet Studio\n\nยังไม่มีทีม AI · แพ็กฟรี\nยังไม่มีพนักงาน AI\nจ้างคนแรกได้ใน 1 นาที · ไม่มีค่าจ้างเพิ่ม\nจ้างได้ไม่จำกัด ใช้โควตาแพ็กของร้าน\nแนะนำสำหรับร้านคุณ\nแอดมินตอบแชท\nแชทรอตอบ 12 ห้อง · ตอบช้าเฉลี่ย 2 ชม.\n\nผู้ช่วยบัญชี\nมีใบแจ้งหนี้ค้างส่ง 7 ใบ\n\nคอนเทนต์ · โซเชียล\nเพจไม่ได้โพสต์มา 9 วัน\n\nดูตำแหน่งทั้งหมด",
+   "unmocked": [],
+   "requests": [
+    {
+     "method": "GET",
+     "path": "/api/mobile/team/summary",
+     "tenant": "t1"
+    },
+    {
+     "method": "GET",
+     "path": "/api/mobile/team/employees",
+     "tenant": "t1"
+    },
+    {
+     "method": "GET",
+     "path": "/api/mobile/team/positions/recommend",
+     "tenant": "t1"
+    },
+    {
+     "method": "GET",
+     "path": "/api/mobile/me",
+     "tenant": ""
+    }
+   ],
+   "url": "/team/_gallery?screen=a8",
+   "file": "apps/mobile/qc/shots-ai-team/t0.3/team-gallery-screen-a8-dark.png"
+  }
+ ]
+}

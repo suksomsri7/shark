@@ -4,7 +4,7 @@
 > Contract: header of `scripts/qc-ai-t0.3.mts` (rev 3, 39 checks, commit 39261c81 — not edited by the builder) + `ledger/ai-team-briefs/ai-brief-T0.3.md` (addendum + ruling 3)
 > Outputs: `ledger/wo-notes/ai-t0.3-green.txt` (static forced + unforced only — **NOT a green acceptance run**, see §5)
 
-## STATUS: static part done · heavy acceptance + A8 parity pairs DEFERRED (machine lock never obtained)
+## STATUS: static part done · first A8 pairs produced (2 open differences, not iterated) · heavy acceptance 39/39 NOT run
 
 ## STATE AT PAUSE (owner-ordered pause · 2026-10-08 ≈22:10 UTC · last commit of this branch = see `git log -1`)
 **Done + verified**
@@ -22,6 +22,25 @@
 - Cause: `/tmp/shark-gate.lock` held continuously by other lanes' `pnpm typecheck` from ≈18:15 UTC; 7 queued attempts (each `flock -w 1800`) never got it. Nothing was killed; no unlocked export was run.
 
 **Unit still running when the builder stopped (22:39 UTC):** attempt 7 of `shoot-all.sh` (unit `iso-2935067-1791495800`) obtained the lock at ≈22:13 and is inside the web export (the old `dist` of the QC copy was already removed by it). Left to finish on its own per the pause order; its log is `/tmp/ai-t0.3-build-mockups/shoot-run.log` (last lines: `SHOOT light exit N · dark exit N`, then `UNIT EXIT N`). If it succeeds, the shots + `a8-pair-{light,dark}.png` appear under `apps/mobile/qc/shots-ai-team/t0.3/` — uncommitted and NOT inspected by anyone.
+
+## ADDENDUM 23:10 UTC — the queued unit finished after the pause report (no new run was started)
+`shoot-all.sh` attempt 7: export OK (Inter resolved from `<QC_COPY>/src/node_modules`, 5 Inter ttf in the bundle) · `SHOOT light exit 0 · dark exit 0` · `UNIT EXIT 0`. summary.json: 4 screens ok, no errors / missing / overflow / unmocked; A8 made 4 requests (me + the 3 team routes).
+Pairs (committed, opened and looked at by the builder ONCE — no iteration done, pause order):
+- `apps/mobile/qc/shots-ai-team/t0.3/a8-pair-light.png` · `a8-pair-dark.png` (+ the 4 raw shots + summary.json)
+
+### Observed difference table (first pair, nothing fixed yet)
+| Element | Mockup | Render | Status |
+|---|---|---|---|
+| layout, title, subtitle, + button, avatar position, hero orbs cluster, hero title, section title, 3 rows, footer button | — | same place within ≈1–2 px @2x for the top half | matches |
+| fonts | Inter Latin/digits + Plex Thai | "Sweet Studio", "AI", "12", "2", "7", "9" render in Inter, Thai in Plex | matches (ruling 3 verified by eye) |
+| orbs (hero + row) | — | same colours, highlight, rim; light + dark | matches |
+| primary button | #16161c/white · dark #f2f2f7/#16161c | same fill, radius, height, label | matches |
+| **background blobs** | soft radial gradients | **visible straight edges / blocky patches** (pink blob has a hard right and bottom edge in light; rectangular zones in dark) — the huge-spread boxShadow renders as a square | **OPEN — must fix** (smaller spread + larger blur, or a rounded larger base element) |
+| **row block vertical rhythm** | row pitch ≈150 px @2x of the pair | ≈143 px: each row ≈3 pt shorter, so rows 2–3 sit 10–22 px higher; hero body + section title ≈4 px higher | **OPEN** — row sub-line line-height / margin and row padding to re-measure |
+| row glass in dark | bluish tint (blob shows through gradient glass) | neutral grey | OPEN — follows the blob fix; re-judge after |
+| highlighted row border | 2 px lilac | slightly thinner/paler | OPEN (minor) |
+| human avatar "ส" | linear gradient | flat colour | barely visible at this size; ruling needed only if the owner objects |
+| status bar / island | drawn | absent | platform (device chrome) |
 
 **Resume — exact commands (from the lane tree, one at a time, foreground)**
 1. `ISO_MEM=6500M bash scripts/iso.sh bash scripts/with-gate-lock.sh bash /tmp/ai-t0.3-build-mockups/shoot-all.sh` (if /tmp was cleaned, recreate it from §6a) → check `SHOOT light exit 0 · dark exit 0`, then OPEN `apps/mobile/qc/shots-ai-team/t0.3/a8-pair-light.png` and `a8-pair-dark.png`.
