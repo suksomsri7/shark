@@ -738,3 +738,4 @@
 ### 8 ต.ค. 03:08 UTC — oracle P1.16 รับแล้ว (merge f7134ed8 · 28 ข้อ · แดงตั้งต้น 3/28 · R5b จับบั๊กจริง: 2200 เหลือ +1 สตางค์ · saleStatusByKey คืน PAID ของใบคืน) → เปิด builder S+U (1 เลน)
 - ruling CD-O1–O13 = ตามที่ oracle เลือก (▶) + O3 ปัดครึ่งขึ้น · O7 ลำดับ NO_PERMISSION→NOT_POS→HAS_REFUNDS→SHIFT_CLOSED · O8 ส่ง VAT ใบคืน POS ไปเอกสาร CREDIT_NOTE ด้วย · O13 billDetail เฉพาะ SALE · prompt `pos-prompt-accountB-P1.16-SU.md` · builder ใน tree c สาขา `wip/pos-p1.16`
 - build บน p11: build17–19 ล้มเพราะ env ไม่ถึง unit (iso.sh ส่งเฉพาะ PATH/HOME/QC_ENV_FILE/NODE_OPTIONS — memory ใหม่ `reference_shark_iso_sh_drops_env_for_build`) · build20 โหลด .env.qc ในสคริปต์ชั้นใน กำลังรัน (`/root/pos-runs/build20-*/SUMMARY.txt`)
+- 03:17 UTC: build20 บน p11 (a1fa7514 · .env.qc ใน unit) = **build 0** · 129 หน้า ✓ — 15/55 ยืนยันครบทุกด่าน
