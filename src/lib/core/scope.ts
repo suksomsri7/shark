@@ -58,7 +58,11 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   // POS P1.14 — ตรวจนับสต็อกจากหน้าขาย (ผู้เขียนเดียว = pos/stock-count.ts · ทุกคำสั่งกรอง tenantId (+ systemId/unitId ของรอบ))
   PosStockCount: sys(),
   PosStockCountLine: tenant,
+  // POS P1.8 — เลขใบคืนเงิน (CN) ต่อสาขา/ชนิด/เดือน (ผู้เขียนเดียว = pos/refund.ts) · วางหัวทะเบียนด้วยเหตุผลเดียวกับ PosShift
+  PosDocCounter: unit,
   PosStockCountEntry: tenant,
+  // POS P1.10 — ทะเบียนเครื่องขาย (ผู้เขียนเดียว = pos/device.ts · ทุกคำสั่งกรอง tenantId + unitId (+ systemId ของ POS))
+  PosDevice: sys(),
   // Outbox (kernel — side effects post-commit · WO-0002)
   OutboxEvent: tenant,
   // Party (WO 3.1) — ตัวตนกลางระดับ tenant ข้ามทุกระบบ (ตรงข้าม AccountContact ที่ scope ต่อ systemId)

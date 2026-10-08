@@ -284,7 +284,10 @@
       "variantRequired": "Choose a size or style for this item first",
       "weightRequired": "This item is sold by weight — scan the scale label or enter the weight first",
       "shiftNotForced": "Only shifts closed by the system can be recounted",
-      "alreadyRecounted": "This shift has already been recounted"
+      "alreadyRecounted": "This shift has already been recounted",
+      "deviceRevoked": "This device has been revoked — contact a manager",
+      "deviceLimit": "Device limit reached — revoke an unused device first",
+      "deviceNotFound": "Device not found at this branch"
     },
     "held": {
       "title": "Held bills",
@@ -863,6 +866,50 @@
       "empty": "No history yet",
       "out": "Out {name}",
       "scopeNote": "History of this inventory (every branch that shares it)"
+    }
+  },
+  "refund": {
+    "errors": {
+      "noPermission": "This account cannot issue refunds — ask the owner or a manager",
+      "saleNotFound": "Bill not found in this branch",
+      "saleNotRefundable": "This bill cannot be refunded (voided, fully refunded or a gift card sale)",
+      "refundExceeds": "The quantity is more than what is left to refund on this line",
+      "refundEmpty": "Pick at least one line to refund",
+      "paymentMismatch": "The refund split does not add up to the refund amount",
+      "refundMethodInvalid": "Refunds cannot go to a deposit or a room bill — choose cash, transfer, PromptPay or card",
+      "shiftRequired": "Open a shift on this device before refunding cash",
+      "reasonRequired": "Give a reason for the refund",
+      "idempotencyConflict": "A refund with this key already exists with different lines or amounts — check the earlier refund",
+      "validation": "The refund details are not valid",
+      "hasRefunds": "This bill already has refunds — it cannot be voided; refund the rest instead",
+      "unknown": "Something went wrong — try again"
+    }
+  },
+  "device": {
+    "title": "Devices and printers",
+    "register": "Register this device",
+    "revoke": "Revoke device",
+    "online": "Online",
+    "offline": "Offline",
+    "printer": "Receipt printer",
+    "name": "Device name",
+    "posRegNo": "POS registration no.",
+    "revoked": "Revoked",
+    "unregistered": "Not registered",
+    "limit": "{used} of {limit} devices used"
+  },
+  "receipt": {
+    "title": "Receipt",
+    "taxInvoiceAbb": "Abbreviated tax invoice",
+    "copy": "Copy",
+    "reprint": "Reprint receipt",
+    "footerDefault": "Thank you for your purchase",
+    "print": "Print receipt",
+    "settings": "Receipt and tax",
+    "errors": {
+      "saleNotFound": "This bill wasn't found, or it belongs to another branch",
+      "permissionDenied": "This account can't view bills or print receipts yet — ask the owner for access",
+      "internal": "Receipts are temporarily unavailable — please try again"
     }
   }
 }

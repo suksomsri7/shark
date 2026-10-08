@@ -265,7 +265,8 @@ async function earnForSale(
 export async function onPosSalePaid(tenantId: string, saleId: string): Promise<void> {
   const sale = await loadSale(tenantId, saleId);
   if (!sale) return;
-  if (sale.status !== "PAID") return; // ถูก void ก่อนคิวมาถึง → ฝั่ง void จัดการเอง
+  // ถูก void ก่อนคิวมาถึง → ฝั่ง void จัดการเอง · POS P1.8 ▸ คืนครบ (REFUNDED) ก่อนคิวมาถึง = ยังเป็นการซื้อ (คิวคืนเงินวิ่งหลังคิวนี้เสมอแล้วหักให้) ◂
+  if (sale.status === "VOIDED") return;
   const { memberSystemId, pointSystemId } = await systemsOf(tenantId, sale.unitId);
   if (!memberSystemId) return; // สาขานี้ยังไม่ได้เปิดใช้ระบบสมาชิก
   await assertMemberAlive(tenantId, memberSystemId, sale);
@@ -306,7 +307,8 @@ export async function onPosSalePaid(tenantId: string, saleId: string): Promise<v
 /** บิลใบนี้ยังเป็น "ชำระแล้ว" อยู่ไหม ณ วินาทีนี้ (อ่านสด — ไม่ใช้ค่าที่อ่านไว้ตอนต้นคิว) */
 async function saleStillPaid(tenantId: string, saleId: string): Promise<boolean> {
   const row = await prisma.posSale.findFirst({ where: { id: saleId, tenantId }, select: { status: true } });
-  return row?.status === "PAID";
+  // POS P1.8 ▸ REFUNDED = ซื้อแล้วคืน (คิว pos.sale.refunded ย้อนของให้เอง) — ไม่ใช่การยกเลิก ห้ามเดินทาง void (หักยอดซ้ำ) ◂
+  return row?.status === "PAID" || row?.status === "REFUNDED";
 }
 
 /**
@@ -334,6 +336,74 @@ export async function onPosSaleVoided(tenantId: string, saleId: string): Promise
   if (!alive) return;
   await recordSpendOnce(ctx, sale, "VOID");
   // ประเมินระดับซ้ำหลังยอดสะสมลดลง (กฎ M1.9 = ไม่ลดระดับทันที · รอบทบทวนเป็นคนตัดสิน)
+  await member.evaluateAndApply(ctx, sale.memberId);
+}
+
+/**
+ * POS P1.8 (R7.2–R7.3) — คืนเงิน (`pos.sale.refunded`) → ย้อนของฝั่งสมาชิก "เฉพาะส่วนที่คืน"
+ *   แต้ม: คืนบางส่วน = `point.reversePartialEarn` (โมดูลแต้มคิดเอง จากยอดคืน/ยอดบิล · CD3) · BURN ไม่คืน
+ *         คืนครบทั้งบิล = `member.releaseOnVoid` ทางเดียวกับ void (voucher · แต้มที่ใช้ · บัตรกำนัล · EARN ที่เหลือ ⇒ แต้มของบิลสุทธิ 0 · CD2)
+ *   สแตมป์: คืนครบเท่านั้น (`voidStampsForSale`) · ยอดสะสม: −ยอดใบคืน (ธง `pos/REFUND` ต่อใบคืน) · แล้วประเมินระดับ
+ * 🔴 ทุกขั้น idempotent (คีย์ `pos-refund-<refundSaleId>` · ธงไทม์ไลน์ต่อใบคืน · คีย์ `pos-void-<saleId>`) ⇒ คิวเล่นซ้ำได้
+ * 🔴 ยอดสะสม: หักได้ต่อเมื่อขา PURCHASE ของบิลเคย "บวกจริง" (กติกาเดียวกับขา VOID · AUDIT M10)
+ */
+export async function onPosSaleRefunded(tenantId: string, refundSaleId: string, fullHint?: boolean): Promise<void> {
+  const refund = await prisma.posSale.findFirst({
+    where: { id: refundSaleId, tenantId, docType: "REFUND" },
+    select: { id: true, refSaleId: true, grandTotalSatang: true, receiptNo: true, unitId: true, soldByUserId: true },
+  });
+  if (!refund?.refSaleId) return;
+  const sale = await loadSale(tenantId, refund.refSaleId);
+  if (!sale) return; // walk-in / บิลขายบัตรกำนัล = ไม่มีอะไรให้ทำ
+  const { memberSystemId, pointSystemId } = await systemsOf(tenantId, sale.unitId);
+  if (!memberSystemId) return;
+  const ctx = { tenantId, systemId: memberSystemId, actorUserId: null };
+  const full = fullHint ?? sale.status === "REFUNDED";
+
+  if (full) {
+    // คืนครบ = ทางเดียวกับ void (reverseWithLots กลับเฉพาะส่วนที่ยังไม่ถูกหักบางส่วน)
+    await member.releaseOnVoid(ctx, { saleId: sale.id, unitId: sale.unitId });
+    await stamp.voidStampsForSale({ tenantId, systemId: memberSystemId }, { saleId: sale.id });
+  } else if (pointSystemId) {
+    await point.reversePartialEarn(
+      { tenantId, systemId: pointSystemId, memberSystemId, actorUserId: null },
+      {
+        refType: "PosSale",
+        refId: sale.id,
+        amountSatang: refund.grandTotalSatang,
+        grossSatang: sale.grandTotalSatang,
+        idempotencyKey: `pos-refund-${refund.id}`,
+        reason: `คืนเงินบางส่วน ${refund.receiptNo ?? ""} — หักแต้มตามสัดส่วน`.trim(),
+      },
+    );
+  }
+
+  const alive = await prisma.customer.findFirst({ where: { id: sale.memberId, tenantId, memberSystemId }, select: { id: true } });
+  if (!alive) return;
+  await prisma.$transaction(async (tx) => {
+    const purchased = await tx.memberActivity.findFirst({
+      where: { tenantId, customerId: sale.memberId, module: "pos", type: "PURCHASE", refType: "PosSale", refId: sale.id },
+      select: { id: true },
+    });
+    if (!purchased) return; // ยอดของบิลไม่เคยถูกบวก ⇒ ห้ามหัก
+    const flag = await member.recordOnce(
+      ctx,
+      {
+        customerId: sale.memberId,
+        unitId: refund.unitId,
+        module: "pos",
+        type: "REFUND",
+        refType: "PosSale",
+        refId: refund.id,
+        summary: `คืนเงิน ฿${baht(refund.grandTotalSatang)} (ใบคืน ${refund.receiptNo ?? "—"} · บิล ${sale.receiptNo ?? "—"})${full ? " — คืนครบทั้งบิล" : ""}`,
+        data: { netSatang: -refund.grandTotalSatang, receiptNo: refund.receiptNo, saleId: sale.id, saleReceiptNo: sale.receiptNo, full },
+        actorUserId: refund.soldByUserId ?? null,
+      },
+      tx,
+    );
+    if (!flag.created) return;
+    await member.recordSpend(tenantId, sale.memberId, -refund.grandTotalSatang, tx);
+  });
   await member.evaluateAndApply(ctx, sale.memberId);
 }
 

@@ -32,8 +32,9 @@ export default async function PosSalesPage({ params }: { params: Promise<{ id: s
     orderBy: { createdAt: "desc" },
     take: 100,
   });
-  const paid = sales.filter((s) => s.status === "PAID");
-  const total = paid.reduce((s, x) => s + x.grandTotalSatang, 0);
+  // POS P1.8 ▸ R3: บิลขายที่นับยอด (PAID + คืนครบ) − ใบคืนเงิน (docType REFUND) ในรายการเดียวกัน ◂
+  const paid = sales.filter((s) => s.docType === "SALE" && s.status !== "VOIDED");
+  const total = paid.reduce((s, x) => s + x.grandTotalSatang, 0) - sales.filter((s) => s.docType === "REFUND").reduce((s, x) => s + x.grandTotalSatang, 0);
 
   return (
     <div className="flex max-w-2xl flex-col gap-5">
@@ -51,13 +52,13 @@ export default async function PosSalesPage({ params }: { params: Promise<{ id: s
             key: s.id,
             primary: (
               <span>
-                {s.receiptNo} · <MoneyText satang={s.grandTotalSatang} />
+                {s.receiptNo} · <MoneyText satang={s.docType === "REFUND" ? -s.grandTotalSatang : s.grandTotalSatang} />
               </span>
             ),
             trailing: (
               <span className="flex items-center gap-2">
-                {s.status !== "PAID" && (
-                  <StatusChip value={s.status} map={POS_SALE_STATUS_LABEL} tone="danger" />
+                {(s.status !== "PAID" || s.docType === "REFUND") && (
+                  <StatusChip value={s.docType === "REFUND" ? "REFUND" : s.status} map={POS_SALE_STATUS_LABEL} tone="danger" />
                 )}
                 <span className="text-xs text-[color:var(--color-muted)]">{fmt(s.createdAt)}</span>
               </span>

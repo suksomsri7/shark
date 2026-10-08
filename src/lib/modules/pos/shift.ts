@@ -13,6 +13,7 @@ import { canAccessUnit, evaluate } from "@/lib/core/rbac";
 import { emitOutbox } from "@/lib/core/outbox";
 import { scheduleDrain } from "@/lib/outbox-consumers";
 import { posRegisterV2On, type RegisterActor, type RegisterCtx } from "./register-shared";
+import { posDeviceRevoked } from "./device"; // POS P1.10 ▸ การ์ดเครื่องที่ถูกเพิกถอน ◂
 
 type Db = PrismaClient;
 type Tx = Prisma.TransactionClient;
@@ -72,7 +73,9 @@ export type ShiftRefusalCode =
   | "INTERNAL"
   // P1.9b (R14) — นับย้อนหลังกะที่บังคับปิด
   | "SHIFT_NOT_FORCED"
-  | "ALREADY_RECOUNTED";
+  | "ALREADY_RECOUNTED"
+  // P1.10 (R2) — เครื่องที่ถูกเพิกถอนเปิดกะไม่ได้
+  | "DEVICE_REVOKED";
 export type ShiftRefusal = { ok: false; code: ShiftRefusalCode; message: string; shiftId?: string; recountId?: string };
 
 export type ShiftView = {
@@ -92,7 +95,8 @@ export type ShiftView = {
   countedCashSatang: number | null;
   overShortSatang: number | null;
 };
-export type ShiftMethodLine = { type: string; count: number; amountSatang: number; countedSatang?: number; diffSatang?: number };
+// POS P1.8 ▸ refundCount/refundSatang = ใบคืนเงินของวิธีนั้นที่ผูกกะนี้ (มีเฉพาะเมื่อมีการคืน · count/amountSatang = ฝั่งขายเดิม) ◂
+export type ShiftMethodLine = { type: string; count: number; amountSatang: number; countedSatang?: number; diffSatang?: number; refundCount?: number; refundSatang?: number };
 export type ShiftReport = {
   shiftId: string;
   shiftNo: number;
@@ -116,6 +120,9 @@ export type ShiftReport = {
   cashInSatang: number;
   cashOutSatang: number;
   cashRefundsSatang: number;
+  /** POS P1.8 (R8) — ใบคืนเงินที่ผูกกะนี้ (จำนวนใบ · ยอดรวม) · salesTotalSatang ยังเป็นยอดขายเต็ม */
+  refundCount: number;
+  refundSatang: number;
   expectedCashSatang: number | null;
   // เฉพาะ Z
   countedCashSatang?: number | null;
@@ -157,6 +164,7 @@ const MSG: Record<ShiftRefusalCode, string> = {
   INTERNAL: "ระบบกะขัดข้องชั่วคราว — ลองอีกครั้ง",
   SHIFT_NOT_FORCED: "นับย้อนหลังได้เฉพาะกะที่ระบบบังคับปิด",
   ALREADY_RECOUNTED: "กะนี้ถูกนับย้อนหลังไปแล้ว — นับได้ครั้งเดียว",
+  DEVICE_REVOKED: "เครื่องนี้ถูกเพิกถอนแล้ว — เปิดกะหรือนำเงินเข้า/ออกลิ้นชักไม่ได้ ติดต่อผู้จัดการ",
 };
 const refuse = (code: ShiftRefusalCode, message?: string, extra?: { shiftId?: string; recountId?: string }): ShiftRefusal => ({ ok: false, code, message: message ?? MSG[code], ...(extra ?? {}) });
 const isRefusal = (v: unknown): v is ShiftRefusal => !!v && typeof v === "object" && (v as { ok?: unknown }).ok === false;
@@ -309,13 +317,16 @@ async function bumpCounter(tx: Tx, tenantId: string, unitId: string, field: "shi
 // ═══════════ รายงาน (S7/S9) — คำนวณสด อ่านอย่างเดียว ═══════════
 // POS P1.17 ▸ export ให้ reports.ts คำนวณแถวกะที่ยัง OPEN (R9) — อ่านอย่างเดียว · กะที่ปิดแล้วอ่าน Z แช่แข็งเสมอ ◂
 export async function computeReport(db: Db | Tx, r: PosShift): Promise<ShiftReport> {
-  const sales = await db.posSale.findMany({
+  const docs = await db.posSale.findMany({
     // R2 F1: createdAt >= openedAt ⇒ ใช้ดัชนี (tenantId, unitId, createdAt) ขณะถือล็อกแถวกะ (ไม่สแกนทั้งสาขา)
     where: { tenantId: r.tenantId, unitId: r.unitId, createdAt: { gte: new Date(r.openedAt.getTime() - SALE_CLOCK_SLACK_MS) }, shiftId: r.id },
-    select: { id: true, status: true, grandTotalSatang: true, tipSatang: true },
+    select: { id: true, status: true, grandTotalSatang: true, tipSatang: true, docType: true },
     orderBy: { id: "asc" },
   });
-  // P1.8 (ใบคืนเงิน) ยังไม่มี docType ⇒ cashRefunds = 0 · P1.8 ต้องผูกใบคืนกับกะของเครื่องที่คืน แล้วหักที่นี่
+  // POS P1.8 ▸ R8: บิลขาย (docType SALE) = ยอดขายของกะ (คืนครบทีหลัง REFUNDED ยังเป็นการขายของกะนี้) ·
+  //   ใบคืนเงิน (REFUND) ที่ผูกกะนี้ = เงินออก — cashRefunds = Σ แถว CASH ของใบคืน · expected หักออก ◂
+  const sales = docs.filter((x) => x.docType === "SALE");
+  const refundDocs = docs.filter((x) => x.docType === "REFUND");
   const live = sales.filter((x) => x.status !== "VOIDED");
   const voided = sales.filter((x) => x.status === "VOIDED");
   const pays = live.length
@@ -342,7 +353,18 @@ export async function computeReport(db: Db | Tx, r: PosShift): Promise<ShiftRepo
   }
   const cashIn = moves.filter((m) => m.kind === "IN").reduce((t, m) => t + m.amountSatang, 0);
   const cashOut = moves.filter((m) => m.kind === "OUT").reduce((t, m) => t + m.amountSatang, 0);
-  const refunds = 0;
+  const rpays = refundDocs.length
+    ? await db.posPayment.findMany({ where: { tenantId: r.tenantId, saleId: { in: refundDocs.map((x) => x.id) } }, select: { type: true, amountSatang: true } })
+    : [];
+  const rby = new Map<string, { count: number; amount: number }>();
+  for (const p of rpays) {
+    const b = rby.get(p.type) ?? { count: 0, amount: 0 };
+    b.count += 1;
+    b.amount += p.amountSatang;
+    rby.set(p.type, b);
+    if (!by.has(p.type)) by.set(p.type, { count: 0, amount: 0 });
+  }
+  const refunds = rby.get("CASH")?.amount ?? 0;
   const types = [...by.keys()].sort((a, b) => (METHOD_ORDER.indexOf(a) + 1 || 99) - (METHOD_ORDER.indexOf(b) + 1 || 99) || a.localeCompare(b));
   return {
     shiftId: r.id,
@@ -359,7 +381,12 @@ export async function computeReport(db: Db | Tx, r: PosShift): Promise<ShiftRepo
     salesTotalSatang: live.reduce((t, x) => t + x.grandTotalSatang, 0),
     voidCount: voided.length,
     voidTotalSatang: voided.reduce((t, x) => t + x.grandTotalSatang, 0),
-    byMethod: types.map((t) => ({ type: t, count: by.get(t)!.count, amountSatang: by.get(t)!.amount })),
+    byMethod: types.map((t) => ({
+      type: t,
+      count: by.get(t)!.count,
+      amountSatang: by.get(t)!.amount,
+      ...(rby.has(t) ? { refundCount: rby.get(t)!.count, refundSatang: rby.get(t)!.amount } : {}),
+    })),
     cashSalesSatang: cashSales,
     cashTenderedSatang: tendered,
     changeSatang: change,
@@ -367,6 +394,8 @@ export async function computeReport(db: Db | Tx, r: PosShift): Promise<ShiftRepo
     cashInSatang: cashIn,
     cashOutSatang: cashOut,
     cashRefundsSatang: refunds,
+    refundCount: refundDocs.length,
+    refundSatang: refundDocs.reduce((t, x) => t + x.grandTotalSatang, 0),
     // S7: float + รับ − ทอน + เข้า − ออก − คืน (= float + ขายเงินสด + เข้า − ออก − คืน)
     expectedCashSatang: r.floatSatang + tendered - change + cashIn - cashOut - refunds,
   };
@@ -482,6 +511,11 @@ export async function openShift(ctx: RegisterCtx, actor: RegisterActor, input: O
     const detail = denomDetail(input.floatDetail, input.floatSatang);
     if (detail === false) return refuse("VALIDATION", "จำนวนธนบัตร/เหรียญรวมไม่เท่าเงินทอนตั้งต้น");
     const deviceId = input.deviceId;
+    // POS P1.10 ▸ R2 + มติ CD2: เครื่องที่ถูกเพิกถอนของสาขานี้เปิดกะไม่ได้ — ตรวจทั้ง input.deviceId และ ctx.deviceId (ไม่ลงทะเบียน = เปิดได้) ◂
+    const ctxDevice = isRecord(ctx) && isShiftDeviceId(ctx.deviceId) ? ctx.deviceId : null;
+    for (const code of new Set([deviceId, ...(ctxDevice ? [ctxDevice] : [])])) {
+      if (await posDeviceRevoked(db, s.tenantId, s.unitId, code)) return refuse("DEVICE_REVOKED");
+    }
 
     const cur = await openShiftOfDevice(db, s, deviceId, s.settings.forceCloseAfterHours);
     if (cur.shift) return refuse("SHIFT_ALREADY_OPEN", undefined, { shiftId: cur.shift.id });
@@ -671,6 +705,10 @@ export async function recordCashMovement(ctx: RegisterCtx, actor: RegisterActor,
     };
     const p0 = await prior();
     if (p0) return p0;
+    // POS P1.10 แก้รอบ 1 F10 ▸ เครื่องที่ถูกเพิกถอน (ctx.deviceId ของสาขานี้) ทำเงินเข้า/ออกไม่ได้ — หลังคีย์กันซ้ำ (ส่งซ้ำได้ผลเดิม · แบบ submitRegisterSale) ·
+    //   ปิดกะ/นับย้อนหลัง/ทิ้งบิลพัก ไม่กั้น (ผู้จัดการต้องปิดงานของเครื่องที่ถูกเพิกถอนได้) ◂
+    const ctxDevice = isRecord(ctx) && isShiftDeviceId(ctx.deviceId) ? ctx.deviceId : null;
+    if (ctxDevice && (await posDeviceRevoked(db, s.tenantId, s.unitId, ctxDevice))) return refuse("DEVICE_REVOKED");
     try {
       return await runTx(db, async (tx): Promise<CashMovementResult> => {
         const r = await lockShift(tx, s, shiftId);
@@ -831,13 +869,20 @@ export async function offShiftCash(ctx: RegisterCtx, actor: RegisterActor, input
     if (typeof bd !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(bd) || Number.isNaN(Date.parse(`${bd}T00:00:00Z`))) return refuse("VALIDATION", "วันที่ไม่ถูกต้อง");
     const start = new Date(Date.parse(`${bd}T00:00:00Z`) - 7 * HOUR_MS);
     const end = new Date(start.getTime() + 24 * HOUR_MS);
+    // POS P1.8 ▸ R8: ใบคืนเงินนอกกะ (docType REFUND · ไม่บังคับกะ) = แถวติดลบ · บิลขายคืนครบ (REFUNDED) ยังนับเงินที่รับไว้ ◂
     const sales = await db.posSale.findMany({
       where: { tenantId: s.tenantId, unitId: s.unitId, shiftId: null, status: { not: "VOIDED" }, createdAt: { gte: start, lt: end } },
-      select: { id: true, receiptNo: true, sourceModule: true, createdAt: true, payments: { where: { type: "CASH" }, select: { amountSatang: true } } },
+      select: { id: true, receiptNo: true, sourceModule: true, createdAt: true, docType: true, payments: { where: { type: "CASH" }, select: { amountSatang: true } } },
       orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     });
     const bills = sales
-      .map((x) => ({ saleId: x.id, receiptNo: x.receiptNo, sourceModule: x.sourceModule, cashSatang: x.payments.reduce((t, p) => t + p.amountSatang, 0), createdAt: x.createdAt.toISOString() }))
+      .map((x) => ({
+        saleId: x.id,
+        receiptNo: x.receiptNo,
+        sourceModule: x.sourceModule,
+        cashSatang: (x.docType === "REFUND" ? -1 : 1) * x.payments.reduce((t, p) => t + p.amountSatang, 0),
+        createdAt: x.createdAt.toISOString(),
+      }))
       .filter((b) => b.cashSatang !== 0);
     return { ok: true, businessDate: bd, totalSatang: bills.reduce((t, b) => t + b.cashSatang, 0), bills };
   });

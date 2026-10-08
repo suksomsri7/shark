@@ -70,6 +70,8 @@ export const CHANNEL_KIND_LABEL: Record<string, string> = {
 export const POS_SALE_STATUS_LABEL: Record<string, string> = {
   PAID: "ชำระแล้ว",
   VOIDED: "ยกเลิกแล้ว",
+  REFUNDED: "คืนเงินครบ", // POS P1.8
+  REFUND: "ใบคืนเงิน", // POS P1.8 — ป้ายของเอกสาร docType REFUND (สถานะของมันคือ PAID)
 };
 
 export const COUPON_STATUS_LABEL: Record<string, string> = {

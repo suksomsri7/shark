@@ -359,16 +359,22 @@ export async function reverseWithLots(
 
   const now = new Date();
   return withTx(client, async (tx) => {
+    // POS P1.8 ▸ เรียงคิวกับ reversePartialEarn ของ ref เดียวกัน (คืนเงินบางส่วน/ทั้งบิลพร้อมกัน) ◂
+    await lockPartialRef(tx, ctx.tenantId, input.refType, input.refId);
     let reversed = 0;
     for (const [i, entry] of entries.entries()) {
       if (legacyDone.has(legacyKeys[i] as string)) continue; // กลับไปแล้วด้วยคีย์รูปเดิม
       const key = `${input.idempotencyKey}:${entry.id}`;
+      // POS P1.8 (CD2) ▸ EARN ที่ถูกหักไปบางส่วนแล้ว (คืนเงินบางส่วน · reversePartialEarn) → กลับเฉพาะส่วนที่เหลือ ⇒ แต้มของบิลสุทธิ 0 ◂
+      const partial = entry.type === "EARN" ? (await reversalsOf(tx, ctx.tenantId, input.refType, input.refId, entry.id)).partial : 0;
+      const amount = entry.type === "EARN" ? entry.delta - partial : entry.delta;
+      if (entry.type === "EARN" && amount <= 0) continue;
       const led = await writeLedger(tx, {
         tenantId: ctx.tenantId,
         systemId: ctx.systemId,
         customerId: entry.customerId,
         unitId: entry.unitId,
-        delta: -entry.delta,
+        delta: -amount,
         type: "REVERSE",
         reason: input.reason ?? "กลับรายการ",
         refType: input.refType,
@@ -381,7 +387,7 @@ export async function reverseWithLots(
 
       if (entry.type === "EARN") {
         if (entry.lotId) {
-          await tx.pointLot.update({ where: { id: entry.lotId }, data: { remaining: { decrement: entry.delta } } });
+          await tx.pointLot.update({ where: { id: entry.lotId }, data: { remaining: { decrement: amount } } });
         }
         continue;
       }
@@ -408,6 +414,98 @@ export async function reverseWithLots(
       }
     }
     return { reversed };
+  });
+}
+
+// ───────────────────────── POS P1.8 — คืนเงินบางส่วน (D5: โมดูลแต้มคิดแต้มเอง · POS ส่งแค่ยอดเงิน) ─────────────────────────
+
+/** advisory lock ต่อ (ร้าน, ref) ใน tx — reversePartialEarn กับ reverseWithLots ของบิลเดียวกันวิ่งทีละตัว */
+async function lockPartialRef(tx: Client, tenantId: string, refType: string, refId: string): Promise<void> {
+  await tx.$queryRaw`SELECT 1 AS x FROM (SELECT pg_advisory_xact_lock(hashtext(${`point-reverse|${tenantId}|${refType}|${refId}`}::text))) l`;
+}
+
+/**
+ * แถว REVERSE ของ ref หนึ่งที่ผูกกับ EARN แถวหนึ่ง (คีย์ลงท้าย `:<earnId>`) แยกเป็น
+ *   partial = แต้มที่ถูกหักไปแล้วแบบบางส่วน (data.partialOf = earnId) · whole = มีการกลับทั้งก้อนแล้ว (void/คืนครบ)
+ */
+async function reversalsOf(tx: Client, tenantId: string, refType: string, refId: string, earnLedgerId: string): Promise<{ partial: number; whole: boolean }> {
+  const rows = await tx.pointLedger.findMany({
+    where: { tenantId, type: "REVERSE", refType, refId, idempotencyKey: { endsWith: `:${earnLedgerId}` } },
+    select: { delta: true, data: true },
+  });
+  let partial = 0;
+  let whole = false;
+  for (const r of rows) {
+    const d = r.data && typeof r.data === "object" && !Array.isArray(r.data) ? (r.data as Record<string, unknown>) : null;
+    if (d?.partialOf === earnLedgerId) partial -= r.delta;
+    else whole = true;
+  }
+  return { partial, whole };
+}
+
+export type ReversePartialEarnInput = {
+  refType: string;
+  refId: string;
+  /** ยอดเงินที่คืน (สตางค์) */
+  amountSatang: number;
+  /** ยอดของบิลเดิมทั้งใบ (สตางค์ · CD3 = PosSale.grandTotalSatang) */
+  grossSatang: number;
+  idempotencyKey: string;
+  reason?: string;
+};
+
+/**
+ * คืนเงินบางส่วน → หักแต้มที่บิลเคยให้ตามสัดส่วนยอดคืน: floor(แต้มที่ได้ × ยอดคืน / ยอดบิล) จากล็อตที่ EARN สร้าง
+ *   • ล็อต remaining ติดลบได้ (เหมือนการกลับทั้งก้อน — ลูกค้าใช้แต้มก้อนนั้นไปแล้ว)
+ *   • BURN (แต้มที่ใช้แลกส่วนลด) **ไม่คืน** — ส่วนลดถูกเกลี่ยเข้ายอดคืนแล้ว · คืนครบทั้งบิล = reverseWithLots (กลับเฉพาะส่วนที่เหลือ)
+ *   • idempotent ต่อ (คีย์, EARN แถวนั้น) · หักรวมไม่เกินแต้มที่ EARN ให้ไว้ (หักบางส่วน + ทั้งก้อนก่อนหน้า)
+ */
+export async function reversePartialEarn(
+  ctx: PointCtx,
+  input: ReversePartialEarnInput,
+  client: Client = prisma,
+): Promise<{ reversed: number; points: number }> {
+  const amount = Math.trunc(Number(input.amountSatang));
+  const gross = Math.trunc(Number(input.grossSatang));
+  if (!Number.isFinite(amount) || !Number.isFinite(gross) || amount <= 0 || gross <= 0) return { reversed: 0, points: 0 };
+  const earns = await client.pointLedger.findMany({
+    where: { tenantId: ctx.tenantId, systemId: ctx.systemId, refType: input.refType, refId: input.refId, type: "EARN" },
+    orderBy: { createdAt: "asc" },
+  });
+  if (earns.length === 0) return { reversed: 0, points: 0 };
+  return withTx(client, async (tx) => {
+    await lockPartialRef(tx, ctx.tenantId, input.refType, input.refId);
+    let reversed = 0;
+    let points = 0;
+    for (const e of earns) {
+      const key = `${input.idempotencyKey}:${e.id}`;
+      // ทั้งก้อนกลับไปแล้ว (void/คืนครบ) = ไม่มีอะไรให้หักอีก
+      const prior = await reversalsOf(tx, ctx.tenantId, input.refType, input.refId, e.id);
+      if (prior.whole) continue;
+      const done = prior.partial;
+      const want = Math.floor((e.delta * Math.min(amount, gross)) / gross);
+      const pts = Math.min(want, e.delta - done);
+      if (pts <= 0) continue;
+      const led = await writeLedger(tx, {
+        tenantId: ctx.tenantId,
+        systemId: ctx.systemId,
+        customerId: e.customerId,
+        unitId: e.unitId,
+        delta: -pts,
+        type: "REVERSE",
+        reason: input.reason ?? "คืนเงินบางส่วน — หักแต้มตามสัดส่วน",
+        refType: input.refType,
+        refId: input.refId,
+        idempotencyKey: key,
+        lotId: e.lotId,
+        data: { partialOf: e.id, amountSatang: amount, grossSatang: gross },
+      });
+      if (led.duplicated) continue;
+      if (e.lotId) await tx.pointLot.update({ where: { id: e.lotId }, data: { remaining: { decrement: pts } } });
+      reversed += 1;
+      points += pts;
+    }
+    return { reversed, points };
   });
 }
 
