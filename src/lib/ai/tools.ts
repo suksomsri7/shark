@@ -112,7 +112,7 @@ const salesSummary: AiTool = {
 
     const since = new Date(Date.now() - days * 86_400_000);
     const sales = await tenantDb({ tenantId: ctx.tenantId, systemId: pos.id }).posSale.findMany({
-      where: { status: "PAID", createdAt: { gte: since } },
+      where: { status: "PAID", docType: "SALE", createdAt: { gte: since } },
       select: { grandTotalSatang: true },
     });
     const totalSatang = sales.reduce((s, x) => s + (x.grandTotalSatang ?? 0), 0);
@@ -242,7 +242,7 @@ const salesByDay: AiTool = {
 
     const since = new Date(Date.now() - days * 86_400_000);
     const sales = await tenantDb({ tenantId: ctx.tenantId, systemId: pos.id }).posSale.findMany({
-      where: { status: "PAID", createdAt: { gte: since } },
+      where: { status: "PAID", docType: "SALE", createdAt: { gte: since } },
       select: { grandTotalSatang: true, createdAt: true },
     });
 
@@ -279,7 +279,7 @@ const growthRecommendations: AiTool = {
     // metric ระดับร้าน (รวมทุกระบบย่อย) — ใช้ตัดสินใจเชิงเติบโต · อ่านตรงแบบเดียวกับ resolveSystem ใน proposals
     const [customers, posPaid, systems] = await Promise.all([
       prisma.customer.count({ where: { tenantId } }),
-      prisma.posSale.count({ where: { tenantId, status: "PAID" } }),
+      prisma.posSale.count({ where: { tenantId, status: "PAID", docType: "SALE" } }),
       prisma.appSystem.findMany({ where: { tenantId }, select: { type: true } }),
     ]);
     const open = new Set<SystemType>(systems.map((s) => s.type));
@@ -1726,7 +1726,7 @@ const restaurantToday: AiTool = {
       prisma.restaurantOrder.count({ where: { tenantId: ctx.tenantId, bizDate: today, status: { not: "CANCELLED" } } }),
       prisma.tableSession.count({ where: { tenantId: ctx.tenantId, status: "OPEN" } }),
       prisma.posSale.aggregate({
-        where: { tenantId: ctx.tenantId, sourceModule: "RESTAURANT", status: "PAID", createdAt: { gte: dayStart } },
+        where: { tenantId: ctx.tenantId, sourceModule: "RESTAURANT", status: "PAID", docType: "SALE", createdAt: { gte: dayStart } },
         _sum: { grandTotalSatang: true },
       }),
     ]);
@@ -1816,7 +1816,7 @@ const financialSummary: AiTool = {
     const start = monthStartBkk();
     const [revAgg, expAgg] = await Promise.all([
       prisma.posSale.aggregate({
-        where: { tenantId: ctx.tenantId, status: "PAID", createdAt: { gte: start } },
+        where: { tenantId: ctx.tenantId, status: "PAID", docType: "SALE", createdAt: { gte: start } },
         _sum: { grandTotalSatang: true },
       }),
       prisma.accountDocument.aggregate({
