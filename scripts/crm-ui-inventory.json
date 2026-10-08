@@ -21235,6 +21235,18 @@
             "target": "crm-commission-rule-row-*",
             "state": "disabled",
             "db": "ไม่กด — มองเห็นแต่ disabled (canManage = crm.settings.manage · ผู้จัดการไม่มีคีย์ตั้งค่า)"
+          },
+          "needs": "กฎค่าคอม (CrmCommissionRule) อย่างน้อย 1 — ซีดมี 0 และผู้จัดการสร้างกฎเองไม่ได้ (C3.10: มีกฎแล้วแต่ไม่เห็นแถว = dead ตาม needsProbe)",
+          "needsProbe": {
+            "db": {
+              "model": "CrmCommissionRule",
+              "where": {
+                "systemId": "$SYS"
+              }
+            },
+            "roles": [
+              "manager"
+            ]
           }
         }
       ]
@@ -21671,7 +21683,19 @@
             "refusalText": "เกินวงเงิน",
             "db": "CrmCommission ไม่เปลี่ยน (ยอดเกินเพดาน crm._maxCommissionApproveSatang ของผู้กด — commissions.ts approve OVER_CAP_MSG)"
           },
-          "note": "C4.2 it5 RV-4: ผู้จัดการมีเพดาน 1,000 บาท (fixture ของตัวกด) · ค่าคม B 500,000 บาท ผูกคำขออนุมัติหลอก ⇒ ไม่แจ้งเจ้าของร้าน"
+          "note": "C4.2 it5 RV-4: ผู้จัดการมีเพดาน 1,000 บาท (fixture ของตัวกด) · ค่าคม B 500,000 บาท ผูกคำขออนุมัติหลอก ⇒ ไม่แจ้งเจ้าของร้าน",
+          "needs": "ค่าคอม PENDING B ของตัวกด — fixture สร้างได้เมื่อระบบมีกฎค่าคอม (CrmCommissionRule) อย่างน้อย 1 · ซีดมี 0 (C3.10: มีกฎแล้วแต่ไม่เห็นแถว = dead ตาม needsProbe)",
+          "needsProbe": {
+            "db": {
+              "model": "CrmCommissionRule",
+              "where": {
+                "systemId": "$SYS"
+              }
+            },
+            "roles": [
+              "manager"
+            ]
+          }
         }
       ]
     },

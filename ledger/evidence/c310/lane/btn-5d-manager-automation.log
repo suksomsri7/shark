@@ -1,9 +1,9 @@
-== btn-5a-owner-deals start 2026-10-07T22:38:24Z · HEAD 9e4fe9a9 · iso ISO_MEM=5G · cmd: pnpm exec tsx scripts/qc-crm-buttons.mts --page /deals --user owner
+== btn-5d-manager-automation start 2026-10-07T22:55:01Z · HEAD 284614a6 · iso ISO_MEM=5G · cmd: pnpm exec tsx scripts/qc-crm-buttons.mts --page /settings/automation --user manager
 
 ═══ QC CRM v2 · C4.2 — press everything (registry-driven) ═══
-[env] DB tenant cmuy1cvc60000pgkzbjdrbtdz · system cmuy1gmlm0000jikz45h7xblz · answer key /root/projects/shark-crm-c310/scripts/crm-expected.json · users owner · devices desktop,mobile · dry=false · discover=false · pageFilter=/deals
+[env] DB tenant cmuy1cvc60000pgkzbjdrbtdz · system cmuy1gmlm0000jikz45h7xblz · answer key /root/projects/shark-crm-c310/scripts/crm-expected.json · users manager · devices desktop,mobile · dry=false · discover=false · pageFilter=/settings/automation
 
-(node:1667873) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+(node:1687431) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
 In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
 
 To prepare for this change:
@@ -34,34 +34,15 @@ See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode de
   ✅ pre-flight: ไม่มี webhook ที่เปิด · กฎอัตโนมัติที่เปิดและส่งออกนอกระบบ · โดเมนส่ง · ผู้ให้บริการอีเมล · อุปกรณ์ push ของ persona · payrollLink · ai=mock
 🧩 fixtures: portal เปิดชั่วคราว · เลขภาษีบริษัทตัวแทน 0105500000001 → 0105599000001 · โดเมนปลายทางลิงก์ null → ["*.example.com"] (คืนตอนจบ)
 📸 snapshot 75 ตาราง · 2630 แถว (tenant cmuy1cvc60000pgkzbjdrbtdz)
-  ♻️  คืนฐาน (/deals#deal-card-* desktop (ซ่อมข้อมูลซีด)): ลบแถวใหม่ 0 · คืนค่า 2 · สร้างคืน 0
-  ♻️  คืนฐาน (/deals desktop): ลบแถวใหม่ 1 · คืนค่า 0 · สร้างคืน 0
-  [1/10] owner desktop /deals — 23/23 ok · 60 วิ
-  ♻️  คืนฐาน (/deals#deal-card-* mobile (ซ่อมข้อมูลซีด)): ลบแถวใหม่ 0 · คืนค่า 2 · สร้างคืน 0
-  ♻️  คืนฐาน (/deals mobile): ลบแถวใหม่ 1 · คืนค่า 0 · สร้างคืน 0
-  [2/10] owner mobile /deals — 24/24 ok · 46 วิ
-  ♻️  คืนฐาน (/deals#deal-bulk-move desktop (ซ่อมข้อมูลซีด)): ลบแถวใหม่ 0 · คืนค่า 2 · สร้างคืน 0
-  ♻️  คืนฐาน (/deals#deal-bulk-reassign desktop (ซ่อมข้อมูลซีด)): ลบแถวใหม่ 0 · คืนค่า 1 · สร้างคืน 0
-  ♻️  คืนฐาน (/deals#deal-bulk-tag desktop (ซ่อมข้อมูลซีด)): ลบแถวใหม่ 0 · คืนค่า 1 · สร้างคืน 0
-  ♻️  คืนฐาน (/deals desktop): ลบแถวใหม่ 1 · คืนค่า 0 · สร้างคืน 0
-  [3/10] owner desktop /deals — 16/16 ok · 42 วิ
-  ♻️  คืนฐาน (/deals#deal-bulk-move mobile (ซ่อมข้อมูลซีด)): ลบแถวใหม่ 0 · คืนค่า 2 · สร้างคืน 0
-  ♻️  คืนฐาน (/deals#deal-bulk-reassign mobile (ซ่อมข้อมูลซีด)): ลบแถวใหม่ 0 · คืนค่า 1 · สร้างคืน 0
-  ♻️  คืนฐาน (/deals#deal-bulk-tag mobile (ซ่อมข้อมูลซีด)): ลบแถวใหม่ 0 · คืนค่า 1 · สร้างคืน 0
-  ♻️  คืนฐาน (/deals mobile): ลบแถวใหม่ 1 · คืนค่า 0 · สร้างคืน 0
-  [4/10] owner mobile /deals — 15/15 ok · 37 วิ
-  [5/10] owner desktop /deals — 1/1 ok · 8 วิ
-  [6/10] owner mobile /deals — 1/1 ok · 2 วิ
-  [7/10] owner desktop /deals — 1/1 ok · 1 วิ
-  [8/10] owner mobile /deals — 1/1 ok · 1 วิ
-  [9/10] owner desktop /deals — 3/3 ok · 4 วิ
-  [10/10] owner mobile /deals — 3/3 ok · 4 วิ
-  ♻️  คืนฐาน (CLEAN (จบรอบ)): ลบแถวใหม่ 1 · คืนค่า 0 · สร้างคืน 0
+  ♻️  คืนฐาน (/settings/automation desktop): ลบแถวใหม่ 6 · คืนค่า 0 · สร้างคืน 0
+  [1/2] manager desktop /settings/automation — 50/50 ok · 127 วิ
+  ♻️  คืนฐาน (/settings/automation mobile): ลบแถวใหม่ 6 · คืนค่า 0 · สร้างคืน 0
+  [2/2] manager mobile /settings/automation — 50/50 ok · 116 วิ
   ✅ ตรวจซ้ำหลังคืนฐาน (CLEAN): ทุกตาราง (75) ตรง snapshot ทั้งเนื้อหา
 🧩 fixtures คืนค่าเดิมแล้ว (portal false · เลขภาษี 0105500000001)
 
-🧹 คืนฐานครั้งสุดท้าย: ลบ 1 · คืนค่า 0 · สร้างคืน 0 · ค้าง 0 · กวาดแท็ก/session 1
+🧹 คืนฐานครั้งสุดท้าย: ลบ 0 · คืนค่า 0 · สร้างคืน 0 · ค้าง 0 · กวาดแท็ก/session 1
 
-🟢 C4.2: 70/70 · cleanup 0 · outbox 0 · verify 0 · pageErrors 0 · tripwire 0 · hiddenWait 0 s/0 · dead 0 · wrongExpect 0 · hiddenLeak 0 · vacuous 0 · overflow 0 · skippedNeeds 18 · skippedSafety 0
-JSON_SUMMARY {"total":70,"passed":70,"disabled":0,"dead":0,"wrongExpect":0,"hiddenLeak":0,"vacuous":0,"consoleErrors":0,"overflow":0,"skippedNeeds":18,"skippedSafety":0,"restoreFailures":0,"cleanupFailures":0,"outboxUnsettled":0,"verifyFailures":0,"pageErrors":0,"tripwire":0,"fatal":null}
-== btn-5a-owner-deals end 2026-10-07T22:41:55Z rc=0
+🟢 C4.2: 94/94 · cleanup 0 · outbox 0 · verify 0 · pageErrors 0 · tripwire 0 · hiddenWait 0 s/0 · dead 0 · wrongExpect 0 · hiddenLeak 0 · vacuous 0 · overflow 0 · skippedNeeds 6 · skippedSafety 0
+JSON_SUMMARY {"total":94,"passed":94,"disabled":0,"dead":0,"wrongExpect":0,"hiddenLeak":0,"vacuous":0,"consoleErrors":0,"overflow":0,"skippedNeeds":6,"skippedSafety":0,"restoreFailures":0,"cleanupFailures":0,"outboxUnsettled":0,"verifyFailures":0,"pageErrors":0,"tripwire":0,"fatal":null}
+== btn-5d-manager-automation end 2026-10-07T22:59:10Z rc=0

@@ -160,7 +160,7 @@ type Row = {
     outcome?: "refusal"; refusalText?: string; // it5 (RV-3/RV-7): the expected result IS a server refusal (new alert matching refusalText)
     resultText?: string; // it7 (P-it6-3): regex the resultTarget's text must match (bulk move: "ย้ายขั้นสำเร็จ [1-9]" only when a deal moved)
   };
-  variants?: { name?: string; roles: string[]; opener?: string | string[]; expect: Row["expect"]; note?: string }[]; // it5 (RV-7)
+  variants?: { name?: string; roles: string[]; opener?: string | string[]; expect: Row["expect"]; note?: string; needs?: string; needsProbe?: Row["needsProbe"] }[]; // it5 (RV-7) · C3.10: a variant may declare ITS OWN data precondition (default none — a variant is never skipped implicitly)
   onlyHiddenFor?: Record<string, string[]>; // it5 (RV-11c): per-`only`-name extra hiddenFor (one menu, items gated by different keys)
   wo?: string;
   oracle?: string;
@@ -1120,7 +1120,7 @@ function buildPlan(ctx: Ctx): { items: PlanItem[]; skipped: SkipEntry[] } {
             items.push({
               user, device, w, h, page: row.page, path: itemPath, testid, kind: row.kind, roles: v.roles, hiddenFor: [],
               expect: v.expect, wo: row.wo ?? "", guard: guardOf(testid, v.expect), notList, opener: (v.opener == null ? [] : Array.isArray(v.opener) ? v.opener : [v.opener]).map((o) => resolveOpener(o, user)),
-              needs: null, idx: idx + 0.5 + vi / 10, variant: v.name ?? `v${vi}`,
+              needs: v.needs ?? null, needsProbe: v.needsProbe, idx: idx + 0.5 + vi / 10, variant: v.name ?? `v${vi}`,
             });
           }
         }
@@ -2375,6 +2375,12 @@ async function runUser(browser: Any, user: UserKey, ctx: Ctx, items: PlanItem[])
           }
           const to = drops[0] ?? null;
           if (!to) throw new Error(`ไม่พบปลายทางลาก ${it.expect.dropTarget}`);
+          // C3.10: bring the card INTO the viewport first — the runner prefers its own fixture card (the unowned-deal clone exists
+          // whenever the CRM home page is in the run) and that card sits far down a long column, below the fold: elementFromPoint
+          // found nothing, the pointer went down off-screen and no drag ever started (7 Oct qc:all: deal-card-* "no write" for
+          // owner/manager/thana; nok does not see that card and passed). Clicks already centre their control (clickEl).
+          await el.evaluate((e: HTMLElement) => e.scrollIntoView({ block: "center", inline: "nearest" })).catch(() => {});
+          await sleep(150);
           const a = (await el.boundingBox())!, b = (await to.boundingBox())!;
           // c42b: on 390 the next column of the snap scroller is mostly off-screen and the board hit-tests columns by their
           // rect (usePointerBoardDrag targetAt) — drop on the VISIBLE part of the target (run2: owner 390 deal-card-* no write)
@@ -2392,7 +2398,11 @@ async function runUser(browser: Any, user: UserKey, ctx: Ctx, items: PlanItem[])
             }
             return null;
           }).catch(() => null);
-          const sx = grab?.x ?? a.x + a.width / 2, sy = grab?.y ?? a.y + a.height / 2, tx = visR > visL + 8 ? (visL + visR) / 2 : b.x + b.width / 2, ty = b.y + 12;
+          const sx = grab?.x ?? a.x + a.width / 2, sy = grab?.y ?? a.y + a.height / 2, tx = visR > visL + 8 ? (visL + visR) / 2 : b.x + b.width / 2;
+          // C3.10: once the card is centred the target column's top can be ABOVE the viewport (`b.y + 12` off-screen). The board
+          // picks the column by x only (usePointerBoardDrag targetAt) and the slot by y ⇒ drop inside the VISIBLE part of the column.
+          const vh: number = await page.evaluate(() => window.innerHeight).catch(() => h);
+          const ty = Math.min(Math.max(b.y + 12, 96), Math.max(Math.min(b.y + b.height, vh) - 12, 96));
           await page.mouse.move(sx, sy); await page.mouse.down(); await sleep(300);
           for (let i = 1; i <= 14; i++) { await page.mouse.move(sx + ((tx - sx) * i) / 14, sy + ((ty - sy) * i) / 14); await sleep(30); }
           await page.mouse.up();
