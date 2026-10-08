@@ -888,6 +888,11 @@
     "reprint": "Reprint receipt",
     "footerDefault": "Thank you for your purchase",
     "print": "Print receipt",
-    "settings": "Receipt and tax"
+    "settings": "Receipt and tax",
+    "errors": {
+      "saleNotFound": "This bill wasn't found, or it belongs to another branch",
+      "permissionDenied": "This account can't view bills or print receipts yet — ask the owner for access",
+      "internal": "Receipts are temporarily unavailable — please try again"
+    }
   }
 }

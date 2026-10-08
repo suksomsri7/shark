@@ -5,6 +5,7 @@
 // 🔴 คำปฏิเสธ "คืน" เสมอ {ok:false, code, message} · ร้าน + ผู้ใช้มาจาก SESSION เท่านั้น · systemId/saleId ถูกตรวจซ้ำใน receipt.ts
 //    (บิลนอกขอบเขตสาขาของผู้ใช้ = SALE_NOT_FOUND) · สิทธิ์ pos.sale.read (pos.sale.create ได้โดยนัย · มติ CD3)
 // 🔴 พิมพ์ซ้ำ (reprintReceiptAction) = copy:true ⇒ ประทับ "สำเนา" + AuditLog pos.receipt.reprint ทุกครั้งที่เรียก
+// 🔴 จอแสดงคำปฏิเสธผ่าน receiptRefusalMessageKey(code) (receipt-render.ts) → pos.receipt.errors.* — ไม่แสดง message ไทยของเซิร์ฟเวอร์
 
 import { unstable_rethrow } from "next/navigation";
 import { requireTenant } from "@/lib/core/context";
@@ -30,7 +31,7 @@ function unexpected(where: string, e: unknown): ReceiptPayloadResult {
   return { ok: false, code: "INTERNAL", message: "เกิดข้อผิดพลาด — ลองอีกครั้ง" };
 }
 
-/** ข้อมูลใบเสร็จต้นฉบับ (หลังขาย · พรีวิว) — ไม่เขียน audit */
+/** ข้อมูลใบเสร็จต้นฉบับ (หลังขาย · พรีวิว) — ไม่เขียน audit · บิลเก่ากว่า 30 นาที บริการยกเป็นสำเนา + audit เอง (F3) */
 export async function receiptPayloadAction(args: { systemId: string; saleId: string }): Promise<ReceiptPayloadResult> {
   try {
     const auth = await requireTenant();

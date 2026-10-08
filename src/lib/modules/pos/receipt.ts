@@ -4,7 +4,12 @@
 // 🔴 อ่านอย่างเดียว — ไม่เขียนบิล ไม่มี event (R8) · copy:true = AuditLog "pos.receipt.reprint" 1 แถวต่อการเรียก (T8) · ปฏิเสธ = ไม่มี audit
 // 🔴 สิทธิ์ pos.sale.read (มติ CD3 — ผู้มี pos.sale.create ได้โดยนัย) · บิลต้องอยู่ในขอบเขตสาขาของผู้เรียก (posSaleWhere) ·
 //    บิลของสาขา/ระบบ/ร้านอื่น หรือ id มั่ว = SALE_NOT_FOUND (ไม่บอกว่ามีอยู่)
-// 🔴 kind = TAX_INVOICE_ABB เฉพาะเมื่อสมุดบัญชีที่ผูก POS จด VAT + เปิดใบกำกับอย่างย่อจาก POS + มีเลขผู้เสียภาษี (T2) · อื่น = RECEIPT
+// 🔴 kind = TAX_INVOICE_ABB เฉพาะเมื่อสมุดบัญชีที่ผูก POS จด VAT + เปิดใบกำกับอย่างย่อจาก POS + มีเลขผู้เสียภาษี (T2) + บิลมี VAT จริง
+//    (sale.vatSatang > 0 · แก้รอบ 1 F1 — บิลก่อนจด VAT / สินค้ายกเว้น VAT ห้ามออกเป็นใบกำกับ) · อื่น = RECEIPT · vatRateBp = อัตราของสมุด
+//    เฉพาะบิลที่มี VAT · อื่น = 0
+// 🔴 status = PosSale.status (PAID · VOIDED · REFUNDED — แก้รอบ 1 F2) · VOIDED = renderer ประทับ "ยกเลิก / VOID" · สถานะอื่น = SALE_NOT_FOUND
+// 🔴 ต้นฉบับ (copy:false) ออกได้เฉพาะภายใน 30 นาทีนับจาก sale.createdAt (แก้รอบ 1 F3) · เกินนั้น = ยกเป็นสำเนาเงียบ ๆ
+//    (copy:true + "สำเนา" + AuditLog pos.receipt.reprint) — ไม่ปฏิเสธ · ทั้งสอง action ได้กฎนี้เพราะอยู่ในบริการ
 //    ข้อมูลหัวใบ: ค่าตั้งใบเสร็จ (settings.pos.receipt.header) ก่อน · ว่าง = โปรไฟล์ของสมุด (orgName · address · phone · logoUrl) ·
 //    เลขผู้เสียภาษี/สาขา มาจากสมุดเสมอ (ไม่ใช่ค่าตั้ง)
 // 🔴 เงินทุกตัวเป็นสตางค์จำนวนเต็มจากแถว DB — subtotal − ส่วนลดรายการ − ส่วนลดท้ายบิล − คูปอง − ส่วนลดระดับ + ค่าบริการ = ยอดสุทธิ ·
@@ -15,7 +20,7 @@ import { canAccessUnit, evaluate } from "@/lib/core/rbac";
 import * as account from "@/lib/modules/account";
 import { posSaleWhere, type PosUnitScope } from "./access";
 import { prisma } from "./db";
-import { RECEIPT_LABELS, type ReceiptDocType, type ReceiptKind, type ReceiptPayload } from "./receipt-render";
+import { RECEIPT_LABELS, type ReceiptDocType, type ReceiptKind, type ReceiptPayload, type ReceiptSaleStatus } from "./receipt-render";
 import { receiptSettingsOf } from "./receipt-settings";
 import type { RegisterActor } from "./register-shared";
 
@@ -35,6 +40,8 @@ const refuse = (code: ReceiptRefusalCode, message?: string): ReceiptRefusal => (
 const isRecord = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
 const isId = (v: unknown): v is string => typeof v === "string" && v.length > 0 && v.length <= 200 && !v.includes("\u0000");
 const nonEmpty = (v: string | null | undefined): string | undefined => (typeof v === "string" && v.trim() ? v.trim() : undefined);
+/** ต้นฉบับออกได้ภายในกี่มิลลิวินาทีหลังสร้างบิล (F3) — เกิน = สำเนา */
+export const RECEIPT_ORIGINAL_WINDOW_MS = 30 * 60_000;
 
 function actorOf(a: unknown): RegisterActor | null {
   if (!isRecord(a) || !isId(a.userId)) return null;
@@ -71,7 +78,6 @@ export async function receiptPayload(ctx: ReceiptCtx, actor: RegisterActor, inpu
     if (!isRecord(input) || !Object.keys(input).every((k) => k === "saleId" || k === "copy")) return refuse("VALIDATION");
     if (input.copy !== undefined && typeof input.copy !== "boolean") return refuse("VALIDATION");
     if (!isId(input.saleId)) return refuse("SALE_NOT_FOUND");
-    const copy = input.copy === true;
     const { tenantId, systemId } = ctx;
 
     const sale = await db.posSale.findFirst({
@@ -79,6 +85,10 @@ export async function receiptPayload(ctx: ReceiptCtx, actor: RegisterActor, inpu
       include: { lines: { orderBy: { id: "asc" }, include: { options: { orderBy: { id: "asc" } } } }, payments: { orderBy: { id: "asc" } } },
     });
     if (!sale) return refuse("SALE_NOT_FOUND");
+    const status: ReceiptSaleStatus | null = sale.status === "PAID" || sale.status === "VOIDED" || sale.status === "REFUNDED" ? sale.status : null;
+    if (!status) return refuse("SALE_NOT_FOUND");
+    // F3: ต้นฉบับเฉพาะบิลสด (≤ 30 นาที) · เก่ากว่า = สำเนา + audit (ไม่ปฏิเสธ)
+    const copy = input.copy === true || Date.now() - sale.createdAt.getTime() > RECEIPT_ORIGINAL_WINDOW_MS;
 
     // ── ระบบ POS · สาขา · ค่าตั้งใบเสร็จ · สมุดบัญชีที่ผูก ──
     const [posSys, unit, tenant, bookId] = await Promise.all([
@@ -97,7 +107,8 @@ export async function receiptPayload(ctx: ReceiptCtx, actor: RegisterActor, inpu
       : null;
     const vat = bookId ? await account.vatConfigOf(bookId) : null;
     const taxId = nonEmpty(book?.taxId);
-    const kind: ReceiptKind = vat && vat.vatRegistered && vat.posAbbreviatedInvoice && taxId ? "TAX_INVOICE_ABB" : "RECEIPT";
+    const hasVat = sale.vatSatang > 0; // F1: บิลที่ไม่มี VAT จริงไม่ใช่ใบกำกับ
+    const kind: ReceiptKind = vat && vat.vatRegistered && vat.posAbbreviatedInvoice && taxId && hasVat ? "TAX_INVOICE_ABB" : "RECEIPT";
 
     // ── เครื่อง/กะ ของบิล (PosSale.shiftId → PosShift.deviceId → PosDevice ของสาขาเดียวกัน) ──
     const shift = sale.shiftId
@@ -135,7 +146,10 @@ export async function receiptPayload(ctx: ReceiptCtx, actor: RegisterActor, inpu
 
     const anySale = sale as unknown as Record<string, unknown>;
     const docType: ReceiptDocType = anySale.docType === "REFUND" ? "REFUND" : "SALE"; // P1.8 เพิ่มคอลัมน์ docType — ก่อนนั้น = SALE เสมอ
-    const refReceiptNo = docType === "REFUND" && typeof anySale.refReceiptNo === "string" ? anySale.refReceiptNo : undefined;
+    // F4: P1.8 เพิ่ม refSaleId (ยังไม่มีใน client ของต้นไม้นี้ ⇒ อ่านแบบไดนามิก) → เลขใบเสร็จของบิลต้นทาง (ร้าน + ระบบเดียวกัน)
+    const refSaleId = docType === "REFUND" && isId(anySale.refSaleId) ? anySale.refSaleId : undefined;
+    const refSale = refSaleId ? await db.posSale.findFirst({ where: { id: refSaleId, tenantId, systemId }, select: { receiptNo: true } }) : null;
+    const refReceiptNo = nonEmpty(refSale?.receiptNo);
 
     const shopName = nonEmpty(rs.header.name) ?? nonEmpty(book?.orgName) ?? nonEmpty(tenant?.name) ?? nonEmpty(unit?.name) ?? "-";
     const logoUrl = rs.header.logoUrl ?? nonEmpty(book?.logoUrl);
@@ -145,6 +159,7 @@ export async function receiptPayload(ctx: ReceiptCtx, actor: RegisterActor, inpu
     const payload: ReceiptPayload = {
       docType,
       kind,
+      status,
       copy,
       paper: null,
       shop: {
@@ -187,7 +202,7 @@ export async function receiptPayload(ctx: ReceiptCtx, actor: RegisterActor, inpu
         grandTotalSatang: sale.grandTotalSatang,
         vatBaseSatang: sale.grandTotalSatang - vatSatang,
         vatSatang,
-        vatRateBp: vat && vat.vatRegistered ? vat.vatRateBp : 0,
+        vatRateBp: hasVat && vat && vat.vatRegistered ? vat.vatRateBp : 0,
         tipSatang: sale.tipSatang,
       },
       payments: sale.payments.map((p) => ({
@@ -208,7 +223,7 @@ export async function receiptPayload(ctx: ReceiptCtx, actor: RegisterActor, inpu
             },
           }
         : {}),
-      footer: { text: rs.footer, qrEReceiptUrl: null, fullTaxInvoiceHint: kind === "TAX_INVOICE_ABB" },
+      footer: { text: rs.footer, qrEReceiptUrl: null, fullTaxInvoiceHint: kind === "TAX_INVOICE_ABB" && docType === "SALE" },
       labels: { th: RECEIPT_LABELS.th, en: RECEIPT_LABELS.en },
     };
 
@@ -219,7 +234,7 @@ export async function receiptPayload(ctx: ReceiptCtx, actor: RegisterActor, inpu
         action: "pos.receipt.reprint",
         targetType: "PosSale",
         targetId: sale.id,
-        after: { receiptNo: sale.receiptNo, kind, unitId: sale.unitId },
+        after: { receiptNo: sale.receiptNo, kind, unitId: sale.unitId, requestedCopy: input.copy === true },
       });
     }
     return { ok: true, payload };

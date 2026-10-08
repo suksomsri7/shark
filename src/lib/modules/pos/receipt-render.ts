@@ -9,6 +9,8 @@
 export type ReceiptDocType = "SALE" | "REFUND";
 export type ReceiptKind = "TAX_INVOICE_ABB" | "RECEIPT";
 export type ReceiptPayType = "CASH" | "TRANSFER" | "PROMPTPAY" | "DEPOSIT" | "ROOM_CHARGE" | "CARD";
+/** สถานะบิล (PosSale.status · แก้รอบ 1 F2) — VOIDED = ประทับ "ยกเลิก / VOID" · REFUNDED พิมพ์ปกติ (ใบลดหนี้แยก · P1.16) */
+export type ReceiptSaleStatus = "PAID" | "VOIDED" | "REFUNDED";
 
 export type ReceiptLabels = {
   receipt: string;
@@ -16,6 +18,7 @@ export type ReceiptLabels = {
   refund: string;
   vatIncluded: string;
   copy: string;
+  voided: string;
   taxId: string;
   branchNo: string;
   headOffice: string;
@@ -67,6 +70,7 @@ export type ReceiptPayment = { type: ReceiptPayType | string; amountSatang: numb
 export type ReceiptPayload = {
   docType: ReceiptDocType;
   kind: ReceiptKind;
+  status: ReceiptSaleStatus;
   copy: boolean;
   /** ขนาดกระดาษเลือกตอนเรนเดอร์ (ค่าตั้งของเครื่อง) — payload ไม่ผูก */
   paper: null;
@@ -103,6 +107,7 @@ export const RECEIPT_LABELS: { readonly th: ReceiptLabels; readonly en: ReceiptL
     refund: "ใบลดหนี้ / ใบคืนเงิน",
     vatIncluded: "ราคารวมภาษีมูลค่าเพิ่มแล้ว",
     copy: "สำเนา",
+    voided: "ยกเลิก / VOID",
     taxId: "เลขประจำตัวผู้เสียภาษี",
     branchNo: "สาขาที่",
     headOffice: "สำนักงานใหญ่",
@@ -143,6 +148,7 @@ export const RECEIPT_LABELS: { readonly th: ReceiptLabels; readonly en: ReceiptL
     refund: "CREDIT NOTE / REFUND",
     vatIncluded: "VAT included",
     copy: "COPY",
+    voided: "VOID",
     taxId: "Tax ID",
     branchNo: "Branch",
     headOffice: "Head office",
@@ -178,6 +184,19 @@ export const RECEIPT_LABELS: { readonly th: ReceiptLabels; readonly en: ReceiptL
     pay: { CASH: "Cash", TRANSFER: "Transfer", PROMPTPAY: "PromptPay", DEPOSIT: "Deposit", ROOM_CHARGE: "Room charge", CARD: "Card" },
   },
 };
+
+// ═══════════════════ ข้อความปฏิเสธของ receipt-actions (แก้รอบ 1 F11) ═══════════════════
+// คีย์อยู่ใต้ `pos.receipt` (ไม่ใช่ pos.register) — แยกจาก REFUSAL_KEY ของ register-shared เพราะที่นั่น INTERNAL = errors.unknown ของหน้าขาย
+// จอห้ามแสดง message ไทยของเซิร์ฟเวอร์ · รหัสที่ไม่รู้จัก = errors.internal
+const RECEIPT_REFUSAL_KEY: Readonly<Record<string, string>> = {
+  SALE_NOT_FOUND: "errors.saleNotFound",
+  PERMISSION_DENIED: "errors.permissionDenied",
+  INTERNAL: "errors.internal",
+};
+/** รหัสปฏิเสธของ receiptPayloadAction / reprintReceiptAction → คีย์ข้อความใต้ `pos.receipt` */
+export function receiptRefusalMessageKey(code: string): string {
+  return Object.prototype.hasOwnProperty.call(RECEIPT_REFUSAL_KEY, code) ? RECEIPT_REFUSAL_KEY[code]! : "errors.internal";
+}
 
 // ═══════════════════ ตัวช่วยร่วม (บริสุทธิ์) ═══════════════════
 type Locale = "th" | "en";
@@ -258,7 +277,9 @@ export function renderReceiptHtml(payload: ReceiptPayload, opts: RenderHtmlOptio
   const L = labelsOf(p, locale);
   const out: string[] = [];
   const css = [
-    `@page { size: ${paper}mm auto; margin: 0 }`,
+    // F5: @page size ต้องเป็นความยาวจริง (auto ใช้ไม่ได้) — ม้วนกระดาษ = ยาว 297 มม. · ความกว้างบังคับซ้ำใน @media print
+    `@page { size: ${paper}mm 297mm; margin: 0 }`,
+    `@media print { html, body { width: ${paper}mm } }`,
     `html, body { margin: 0; padding: 0; background: #fff; color: #000 }`,
     `body { width: ${paper}mm; font-family: system-ui, -apple-system, Sarabun, Tahoma, sans-serif; font-size: ${paper === "58" ? 11 : 12}px; line-height: 1.35 }`,
     `.receipt { box-sizing: border-box; width: ${paper}mm; padding: 3mm ${paper === "58" ? 2 : 3}mm; position: relative }`,
@@ -291,6 +312,7 @@ export function renderReceiptHtml(payload: ReceiptPayload, opts: RenderHtmlOptio
   // title
   const ti: string[] = [line(titleOf(p, L), "c b")];
   if (p.kind === "TAX_INVOICE_ABB") ti.push(line(L.vatIncluded, "c s"));
+  if (p.status === "VOIDED") ti.push(`<div class="c"><span class="stamp void">${esc(L.voided)}</span></div>`);
   if (p.copy) ti.push(`<div class="c"><span class="stamp">${esc(L.copy)}</span></div>`);
   out.push(`<section data-section="title">${ti.join("")}</section>`);
 
@@ -366,7 +388,8 @@ export type EscPosRasterSlot = { offset: number; length: number; text: string; c
 export type EscPosResult = { bytes: Uint8Array; rasterSlots: EscPosRasterSlot[] };
 
 const COLS: Record<"58" | "80", number> = { "58": 32, "80": 48 };
-const THAI_RE = /[ก-ฺเ-๛]/;
+// F6: ช่วงเต็ม U+0E01–U+0E5B (รวม ฿ U+0E3F) — อักษรนอก ASCII อื่น (ละตินมีเครื่องหมาย/CJK/อีโมจิ) ยังเป็น "?"
+const THAI_RE = /[ก-๛]/;
 /** สระบน/ล่าง วรรณยุกต์ (กว้าง 0 คอลัมน์ — พิมพ์ซ้อนตัวหน้า) */
 const isCombining = (cp: number) => cp === 0x0e31 || (cp >= 0x0e34 && cp <= 0x0e3a) || (cp >= 0x0e47 && cp <= 0x0e4e);
 /** ความกว้างคอลัมน์ของข้อความ (อักษรผสมไทย = 0) */
@@ -476,6 +499,7 @@ function layout(p: ReceiptPayload, L: ReceiptLabels, cols: number, locale: Local
   // title
   add(wrap(titleOf(p, L), cols), "center", true);
   if (p.kind === "TAX_INVOICE_ABB") add(wrap(L.vatIncluded, cols), "center");
+  if (p.status === "VOIDED") add(wrap(`*** ${L.voided} ***`, cols), "center", true);
   if (p.copy) add(wrap(`*** ${L.copy} ***`, cols), "center", true);
   rule();
   // doc
