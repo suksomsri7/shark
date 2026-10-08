@@ -711,3 +711,5 @@
 - 2026-10-08T00:54Z ✅ ยืนยันข้อสอบหลัง ORACLE-EDIT: P1.8 **49/49** (forced+unforced บน p11) · P1.10 **40/40** (forced+unforced บนทรี c) · โควตา 78% รอ reset 01:30 → reviewer
 
 ### 2026-10-08T01:13Z — เจ้าของ: "ทำงานต่อเลย · โควต้า session 90% ค่อยเริ่มหยุด" ⇒ เพดาน spawn = 90% · spawn reviewer 2 ใบทันที (P1.8 money lane บน p11 · P1.10 บนทรี c · read-only) · โควตา 78%
+
+- 2026-10-08T01:14Z merge ล่วงหน้าบนสาขาชั่วคราว `tmp/merge-p18-p110` = b0e5718d (P1.8 0f45ec5c → P1.10 · แก้ conflict pos-qc-env.mts + th/en pos.json) · รันด่านเต็มบน p11 (unit pos-gates15-merge: generate → typecheck → fitness ×3 → oracle p1.8/p1.10 forced×2+unforced → money set + ชุดเดิม) · ยังไม่แตะ session/pos จนกว่า reviewer จะตอบ
