@@ -129,3 +129,62 @@ Builder. The oracle's S6 fixture (tenant `…-bf`): 2 active duplicates (plain, 
 | `timeout -k 10 1200 env NODE_OPTIONS=--max-old-space-size=5632 ISO_MEM=6500M bash scripts/iso.sh bash scripts/with-gate-lock.sh pnpm typecheck` | `tsc --noEmit` (no errors) | 0 |
 
 RED on the base (8 pass / 50 fail): pass = S2.1 S2.2 X2.1 S5.5 S7.2 S7.3 S8.5 Z1 (the GREEN rows). Fail reasons: `module absent: hr/pin.ts` (S1.*), `facade missing` (S4.1–S4.8, X2.2, S5.1–S5.4, S5.7), plain-text behaviour (S2.3 `plain=SET hash=n/a`, S2.5 inactive accepted, S3.1 both ok, S3.2 `ok=10` per round, S3.3 `plain=10`, S7.4/S7.5 `pin` ignored, S7.7 no `pinCleared`), `script missing` (S6.*), no index (S3.6), statics (S4.9, S6.1, S8.1–S8.4, S8.6, S8.7).
+
+---
+
+# Builder (branch `wip/pos-hr-h0.5` from `09903de2` · started 2026-10-08T05:1xZ · builder: Claude Opus 5.5 · controller: Fable)
+
+## B0. Checkpoint
+- done: R1 schema + migration (applied to QC4) · R2 `hr/pin.ts` · R3 call sites · R4 reactivation · R5 env · R6 backfill · seed-review-shop · F16.5 baseline emptied · pre-approved ORACLE-EDITs (H0.3 S3.1/S3.2 · privacy N-4).
+- next: see B5 (regression set still running when this checkpoint was written — machine at load ~55, CPU steal ~90 %).
+- last command: see B5.
+
+## B1. Files → R-item (files:lines at head of this branch)
+| R | file:lines | how |
+|---|---|---|
+| R1 | `prisma/schema/hr.prisma:73-78` · `prisma/migrations/20261201000000_hr_pin_hash/migration.sql` | `pinHash String?` + `pinSetAt DateTime?` (pinCode kept, marked deprecated) · raw SQL `ADD COLUMN` ×2 + `CREATE UNIQUE INDEX "HrEmployee_tenantId_pinHash_active_key" … WHERE "active" = true AND "pinHash" IS NOT NULL` · Thai header (why partial, rollout) · applied to QC4 with `migrate deploy` through `qc4.sh` (status first: only `20261201000000_hr_pin_hash` pending; QC4-only folders `20261103000000_crm_perf_indexes`, POS `20261120…–20261128100000`, `20261104000001-3` — expected) |
+| R2 | `src/lib/modules/hr/pin.ts` (new, only reader/writer of pinCode/pinHash) | `hashPin` :57 = `createHmac("sha256", pepper).update(tenantId+"\u001f"+pin)` hex, key = pepper UTF-8 (OQ-4) · `PinNotConfiguredError` :43 fixed text · `setPin` :102 — format → hash → ONE `updateMany where {id, active:true}` (tenantDb ctx = systemId) writing `pinHash, pinSetAt, pinCode:null`; count≠1 ⇒ "ไม่พบพนักงาน"; P2002 ⇒ D8 text; no pre-check select; audit `hr.pin.set`/`hr.pin.clear` (after = `{systemId, pinSet}` only, optional `actorId`) · `verifyPin` :160 — tenant limiter `hr-verifypin:<tenantId>` 120/60 s first (also counts bad-format calls), format, hash, lists the tenant's HR systems (`appSystem` type HR, optional `systemId` filter — F-2) and runs ONE query per system `active AND (pinHash = h OR pinCode = pin)` (single snapshot ⇒ concurrent upgrade cannot make a call miss), `timingSafeEqual` on every row, `DUMMY_HASH` compare when no row (S4.9); legacy: exactly one plain row ⇒ guarded `updateMany where {id, pinCode: pin, active}` → hash, `pinCode:null`; count 0 ⇒ re-check by hash (OQ-7); P2002 ⇒ not verified; ≥2 plain rows ⇒ not verified. Returns exactly `{ok, employeeId, systemId, userId}` / `{ok:false, reason}` (OQ-8); `unitId` accepted, ignored (H1.1) · `verifyPinForEmployee` :234 (kiosk) — row of `ctx.systemId`, texts unchanged, compare by hash (legacy row: hash of its plain value, so every path is one `timingSafeEqual`), legacy match ⇒ try upgrade; P2002 ⇒ skip silently + `logOps WARN` (ids only in `detail`) and still verified (F-1(c)) · `hasPin` :75 · `PIN_SELECT` :79 · `PinInput`/`pinOfInput` :82-89 (`pin` or deprecated `pinCode` alias — F-1(b)) · no `server-only` (F-3) |
+| R3 | `hr/service.ts:12-13` (import + `export { setPin } from "./pin"`) · `:25-58` `createEmployee` (input `& PinInput`; create, then `setPin`; refusal ⇒ `{id, pinSet:false, reason}`) · `:439-445` `clockWithPin` → `verifyPinForEmployee` · `:455-461` `kioskRoster` `...PIN_SELECT` + `hasPin(e)` · `hr/actions.ts:57` form field `pin` · `:205` `setPin(…, { actorId })` · `hr/privacy.ts:12,79` `hasPin(row)` · `hr/ui.tsx:31,435` `hasPin(e)` · `hr/index.ts` tail: `export type { VerifyPinInput, VerifyPinResult, VerifyPinOk, VerifyPinFail }` + `export { verifyPin } from "./pin"` with C-8 comment · `scripts/seed-review-shop.mts:42-45` `pin:` (goes through createEmployee → setPin) | old `setPin` body removed from service.ts |
+| R4 | `hr/service.ts:289-305` `setEmployeeActive` · `pin.ts:276` `activateEmployeeKeepingPinUnique` | deactivate = plain `updateMany active:false` (hash kept; index frees it) · reactivate: `updateMany active:true`; P2002 ⇒ retry once `active:true, pinHash:null, pinSetAt:null` + audit `hr.pin.clear` `{reason:"REACTIVATE_DUPLICATE"}` ⇒ `{ok:true, pinCleared:true}`. Each attempt is one statement (atomic); not an interactive tx because a P2002 aborts the whole tx (a retry inside it would need a savepoint). Other `active` writers: booking creates new rows (no PIN), `staff/service.ts:438` only sets `linkedUserId` — no other reactivation path |
+| R5 | `src/lib/env.ts:25,35` | `HR_PIN_PEPPER: z.string().min(32).optional()` + `export const hasPinPepper` (two marked lines — the oracle S8.4 needs both). **`pin.ts` reads `process.env.HR_PIN_PEPPER` at call time instead of importing `env`**: `hr/service` → `ai/tools` → `pnpm fitness` runs without env, and `env.ts` parses the whole schema on import (repo precedent `storage/private-links.ts:61`, `point/transfer.ts:43`). Same rule (≥ 32 chars) |
+| R6 | `scripts/hr-backfill-pin-hash.mts` | dry-run default / `--apply` / `--tenant <id>` · env via `acc-v2-env.loadQcEnv` · prod only with `HR_BACKFILL_PROD=1` (+ `HR_BACKFILL_ENV_FILE=<file>`), host printed first, `ep-royal-night` without the flag ⇒ exit 3 · no pepper ⇒ exit 2 + fixed text · per tenant one tx + `pg_advisory_xact_lock('hr-pin-backfill:<tenant>')`; active collision groups counted (plain-to-hash + existing hashes) ⇒ duplicates get `pinCode:null, pinHash:null`; others hashed (inactive too); rows with both columns lose the plain copy; already-hashed untouched (OQ-14) · audit `hr.pin.backfill` (numbers only) when the tenant changed · `JSON_SUMMARY {mode, host, failed, tenants:[{tenantId, plain, duplicates:[ids], hashed, toUpdate, toUpdateInactive, changed}]}` (OQ-1) · prints ids + first letter of the name only |
+| R7 | — | no DTO/action/AI/event/log carries pinCode/pinHash/pepper; every refusal is a fixed Thai text; kiosk limiters unchanged (verifyPin's bucket is additional; the kiosk path does not go through `verifyPin`) |
+| F16.5 | `scripts/fitness-hr.mts` `F165_BASELINE` | all 5 entries deleted (ratchet only) — scan = 0 files |
+
+## B2. Prod rollout runbook (controller-run · brief §5)
+0. Owner sets `HR_PIN_PEPPER` (≥ 32 chars, e.g. 64 hex from `openssl rand -hex 32`) in Vercel for Production **and** Preview. Never rotate it afterwards without a reset plan (rotation = every PIN invalid). Without it: setting/verifying PINs answers "ระบบยังไม่ได้ตั้งค่าความปลอดภัยของ PIN — แจ้งผู้ดูแลระบบ" (kiosk stops working) — so step 0 is a hard prerequisite.
+1. Deploy (migration `20261201000000_hr_pin_hash` via the usual prod `migrate deploy` + code). Additive: old code ignores the new columns; new code verifies old plain rows through the legacy path (and upgrades them on first use).
+2. `HR_BACKFILL_PROD=1 HR_BACKFILL_ENV_FILE=<prod env file> HR_PIN_PEPPER=<same value as Vercel> pnpm exec tsx scripts/hr-backfill-pin-hash.mts` (dry-run; check printed host) → send the owner the duplicate list (employee ids + initial; the controller maps ids to names in the app) → same command with `--apply`.
+3. Verify: dry-run again ⇒ every tenant `plain 0`, `changed 0`; SQL `SELECT count(*) FROM "HrEmployee" WHERE "pinCode" IS NOT NULL` = 0.
+
+## B3. Who loses what
+- Employees whose plain PIN was shared with another **active** employee of the same tenant (any HR system): their PIN is cleared by the backfill; the owner must set a new one (they appear in the dry-run list). Until the backfill, the kiosk (name chosen on screen) still accepts them; `verifyPin` (POS, tenant-wide) does not.
+- An employee reactivated while someone else took their PIN: PIN cleared (`pinCleared:true`, audit `REACTIVATE_DUPLICATE`). The restore form action returns nothing today, so the UI cannot yet show "กลับมาทำงานแล้ว — ต้องตั้ง PIN ใหม่" (decision for the controller: no UI change in scope).
+- Owners lose the ability to read an employee's PIN anywhere (it never was shown in the UI; now it is not even in the DB). Forgotten PIN = set a new one.
+- New: the same PIN cannot be used by two active employees of one tenant (HQ3) — the second gets the D8 text.
+
+## B4. Limiters / legacy path
+- `verifyPin`: `hr-verifypin:<tenantId>` 120 / 60 s (fixed window, `checkRateLimitDb`, fail-open + logOps WARN). Kiosk (unchanged, H0.3): `hr-kiosk:emp:<t>:<e>` 5 / 60 s, `hr-kiosk:sys:<t>:<s>` 60 / 60 s. setPin action: `hr-setpin:<t>:<u>` 10 / 10 min.
+- Legacy path = `pinCode` branches in `verifyPin` / `verifyPinForEmployee` (pin.ts). It is dead once step 3 of the runbook shows 0 plain rows on prod; delete it together with the `pinCode` column (later RUN), plus `PinInput.pinCode` alias once `qc-hf-hr-privacy` no longer passes it.
+
+## B6. ORACLE-EDITs applied (controller pre-approved)
+```diff
+--- scripts/qc-hr-h0.3.mts (S3.1 / S3.2)
+-  const pin11 = (await P.hrEmployee.findUnique({ where: { id: eP }, select: { pinCode: true } }))?.pinCode;
++  // ORACLE-EDIT H0.5 (ผู้คุมงานอนุมัติ): หลัง H0.5 setPin เก็บเป็น hash — ตรวจว่าแถวเป็น hash (64 hex) และ pinCode = null แทนการอ่านตัวเปล่า
++  const hashed = (r: Any) => r?.pinCode === null && /^[0-9a-f]{64}$/.test(String(r?.pinHash ?? "")) ? "hashed" : "not-hashed";
++  const pin11 = hashed(await P.hrEmployee.findUnique({ where: { id: eP }, select: { pinCode: true, pinHash: true } }));
+-    … && pin11 === "80010",
+-    "10× ok · ครั้งที่ 11 error · PIN 80010",
++    … && pin11 === "hashed",
++    "10× ok · ครั้งที่ 11 error · PIN เป็น hash (pinCode null)",
+-  const pin12 = (await P.hrEmployee.findUnique({ where: { id: eP }, select: { pinCode: true } }))?.pinCode;
+-  chk("S3.2", sp2?.status === "ok" && pin12 === "80012", "ok · PIN 80012", …);
++  const pin12 = hashed(await P.hrEmployee.findUnique({ where: { id: eP }, select: { pinCode: true, pinHash: true } }));
++  chk("S3.2", sp2?.status === "ok" && pin12 === "hashed", "ok · PIN เป็น hash (pinCode null)", …);
+--- scripts/qc-hf-hr-privacy.mts (N-4)
++  const e2HashBefore = (await prisma.hrEmployee.findUnique({ where: { id: e2.id } }))?.pinHash ?? null; // ORACLE-EDIT H0.5: PIN เก็บเป็น hash
+   const dupPin = await hr.setPin(ctx, e2.id, "1234"); // 1234 = PIN ของ e1
+-  chk("N-4", "PIN ของ e2 ไม่เปลี่ยน", (…)?.pinCode === "5678", "5678", "เปลี่ยน");
++  chk("N-4", "PIN ของ e2 ไม่เปลี่ยน", !!e2HashBefore && (…)?.pinHash === e2HashBefore, "pinHash เดิม", "เปลี่ยน");
+```

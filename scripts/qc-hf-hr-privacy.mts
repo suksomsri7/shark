@@ -280,11 +280,12 @@ try {
 
   // ═══ [N] D8 PIN ซ้ำ ═══
   console.log("── [N] ตั้ง PIN ซ้ำ (D8) ──");
+  const e2HashBefore = (await prisma.hrEmployee.findUnique({ where: { id: e2.id } }))?.pinHash ?? null; // ORACLE-EDIT H0.5: PIN เก็บเป็น hash
   const dupPin = await hr.setPin(ctx, e2.id, "1234"); // 1234 = PIN ของ e1
   chk("N-1", "PIN ซ้ำ → ไม่บันทึก", dupPin.ok === false, "ok:false", JSON.stringify(dupPin));
   chk("N-2", "🔴 ข้อความไม่บอกชื่อคนที่ใช้ PIN นั้นอยู่", !String(dupPin.reason ?? "").includes(`ตัวเองทดสอบ ${ts}`) && !String(dupPin.reason ?? "").includes("ตัวเองทดสอบ"), "ไม่มีชื่อ", String(dupPin.reason));
   chk("N-3", "ข้อความกลางภาษาไทย 'PIN นี้ใช้ไม่ได้ กรุณาเลือก PIN อื่น'", String(dupPin.reason ?? "").includes("PIN นี้ใช้ไม่ได้ กรุณาเลือก PIN อื่น"), "ข้อความกลาง", String(dupPin.reason), "MAJOR");
-  chk("N-4", "PIN ของ e2 ไม่เปลี่ยน", (await prisma.hrEmployee.findUnique({ where: { id: e2.id } }))?.pinCode === "5678", "5678", "เปลี่ยน");
+  chk("N-4", "PIN ของ e2 ไม่เปลี่ยน", !!e2HashBefore && (await prisma.hrEmployee.findUnique({ where: { id: e2.id } }))?.pinHash === e2HashBefore, "pinHash เดิม", "เปลี่ยน");
   const okPin = await hr.setPin(ctx, e2.id, "9012");
   chk("N-5", "PIN ไม่ซ้ำ → บันทึกได้ตามเดิม", okPin.ok === true, "ok", JSON.stringify(okPin), "MAJOR");
 
