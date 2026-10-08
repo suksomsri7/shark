@@ -423,13 +423,8 @@ const F165_EXCLUDE = (rel: string) => /^scripts\/qc-[^/]*\.mts$/.test(rel) || re
  * ผู้แตะ pinCode เดิม (ratchet · ใช้เมื่อด่านเปิด) — "<ไฟล์>" → { n: จำนวนจุดแตะ, closes } · นับด้วย --print-pin-readers
  * ณ H0.4: ทั้งหมด "closes in H0.5" (ใบ H0.5 ย้ายเข้า hr/pin.ts แล้วถอดแถว · จำนวนลดแต่ไม่แก้ตัวเลข = แดง)
  */
-export const F165_BASELINE = new Map<string, { n: number; closes: string }>([
-  ["src/lib/modules/hr/actions.ts", { n: 2, closes: "closes in H0.5" }],
-  ["src/lib/modules/hr/privacy.ts", { n: 1, closes: "closes in H0.5" }],
-  ["src/lib/modules/hr/service.ts", { n: 8, closes: "closes in H0.5" }],
-  ["src/lib/modules/hr/ui.tsx", { n: 1, closes: "closes in H0.5" }],
-  ["scripts/seed-review-shop.mts", { n: 4, closes: "closes in H0.5" }],
-]);
+// HR H0.5 ▸ ปิดหนี้ครบ — ทุกจุดย้ายเข้า hr/pin.ts แล้ว (ratchet: ถอดแถวทั้งหมด · ห้ามเพิ่มกลับ) ◂
+export const F165_BASELINE = new Map<string, { n: number; closes: string }>([]);
 export function scanPinReaders(ROOT: string): Map<string, { line: number; how: string }[]> {
   const out = new Map<string, { line: number; how: string }[]>();
   const files = [

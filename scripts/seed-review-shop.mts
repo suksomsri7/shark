@@ -39,10 +39,10 @@ console.log(`ร้าน ${tenantId} · unit ${unit?.slug ?? "-"} · POS ${posI
 if (hrId) {
   const ctx = { tenantId, systemId: hrId };
   const EMPLOYEES = [
-    { name: "สมชาย ใจดี", position: "ช่างทำผมอาวุโส", phone: "0812345671", pinCode: "1101" },
-    { name: "นภา ศรีสุข", position: "ช่างทำสี", phone: "0812345672", pinCode: "1102" },
-    { name: "ปิยะ วงศ์ทอง", position: "ผู้ช่วยช่าง", phone: "0812345673", pinCode: "1103" },
-    { name: "มานี รักงาน", position: "แคชเชียร์ / ต้อนรับ", phone: "0812345674", pinCode: "1104" },
+    { name: "สมชาย ใจดี", position: "ช่างทำผมอาวุโส", phone: "0812345671", pin: "1101" },
+    { name: "นภา ศรีสุข", position: "ช่างทำสี", phone: "0812345672", pin: "1102" },
+    { name: "ปิยะ วงศ์ทอง", position: "ผู้ช่วยช่าง", phone: "0812345673", pin: "1103" },
+    { name: "มานี รักงาน", position: "แคชเชียร์ / ต้อนรับ", phone: "0812345674", pin: "1104" },
   ];
   const existing = await hr.listEmployees(ctx);
   const have = new Set(existing.map((e) => e.name));
