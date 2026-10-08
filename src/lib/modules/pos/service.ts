@@ -253,8 +253,10 @@ async function assertUnitOfSystem(tx: Client, input: CreateSaleInput): Promise<v
 
 /** R2 F2: สถานะของบิลที่ถือคีย์นี้ (null = ยังไม่มี) — ผู้เรียกใช้ตัดสินว่าจะออกคีย์ใหม่ไหม (เช่น ร้านอาหาร re-checkout หลัง void) */
 export async function saleStatusByKey(tenantId: string, idempotencyKey: string, db: Client = prisma): Promise<string | null> {
-  const s = await db.posSale.findUnique({ where: { tenantId_idempotencyKey: { tenantId, idempotencyKey } }, select: { status: true } });
-  return s?.status ?? null;
+  const s = await db.posSale.findUnique({ where: { tenantId_idempotencyKey: { tenantId, idempotencyKey } }, select: { status: true, docType: true } });
+  // POS P1.16 ▸ R5b(b): ใบคืนเงิน (docType REFUND) ไม่ใช่ "บิลขาย" ของโมดูลใด — ผู้เรียกต้องไม่เห็นใบคืนเป็นบิลของตัวเอง ◂
+  if (!s || s.docType === "REFUND") return null;
+  return s.status;
 }
 
 /**

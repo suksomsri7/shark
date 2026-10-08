@@ -305,6 +305,9 @@ export async function applyExternalRefund(input: {
   lines?: { itemId?: string | null; name: string; qty: number; unitPriceSatang: number; discountSatang?: number }[];
   docNo?: string | null; // เลขใบคืนของ POS
   reason?: string | null;
+  // POS P1.16 ▸ R5b(a): VAT ของใบคืน POS (PosSale.vatSatang) — ส่งมา = ใช้ตัวนี้ทั้ง JV และใบลดหนี้ (สมุดจด VAT)
+  //   ⇒ คืนครบหลายใบ Σ VAT = VAT ของบิลเป๊ะ · 2200 ของบิลสุทธิ 0 · ไม่ส่ง/ผิดรูป = ถอดจากยอดแบบเดิม ◂
+  vatSatang?: number;
 }): Promise<{ posted: boolean; reason?: string; docId?: string }> {
   // ไม่ผูก = จบเงียบ · ความล้มของ GL (งวดปิด/ผังไม่ครบ) โยนต่อแบบ applyExternalSale ⇒ คิวลองใหม่ ไม่ปิดเงียบ ๆ
   const link = await findAccountLinkForPos(input.tenantId, input.sourceSystemId);
@@ -322,7 +325,9 @@ export async function applyExternalRefund(input: {
     const sum = lines.reduce((n, l) => n + l.qty * l.unitPriceSatang - (l.discountSatang ?? 0), 0);
     if (sum !== gross) return { posted: false, reason: `ยอดรวมของบรรทัดใบคืน (${sum}) ไม่เท่ากับยอดคืน (${gross}) — ไม่บันทึกบัญชี` };
   }
-  const { baseSatang: base, vatSatang: vat } = vatRegistered ? splitIncludedVat(gross, vatRateBp) : { baseSatang: gross, vatSatang: 0 };
+  const explicitVat = vatRegistered && Number.isInteger(input.vatSatang) && input.vatSatang! >= 0 && input.vatSatang! <= gross ? input.vatSatang! : null;
+  const { baseSatang: base, vatSatang: vat } =
+    explicitVat !== null ? { baseSatang: gross - explicitVat, vatSatang: explicitVat } : vatRegistered ? splitIncludedVat(gross, vatRateBp) : { baseSatang: gross, vatSatang: 0 };
   const svcGross = Math.min(Math.max(0, Math.round(input.serviceGrossSatang ?? 0)), gross);
   const svcBase = Math.min(base, Math.round((base * svcGross) / gross));
   // คืนได้เฉพาะเงินสด/ธนาคาร (มัดจำ/ลงห้อง ถูกปฏิเสธตั้งแต่ POS — R5) · ที่เหลือ = ธนาคาร
@@ -355,6 +360,7 @@ export async function applyExternalRefund(input: {
     vatRegistered,
     vatRateBp,
     grandTotalSatang: gross,
+    ...(explicitVat !== null ? { vatSatang: explicitVat } : {}), // POS P1.16 ▸ CD-O8: เอกสาร = ใบคืน POS = JV ◂
     reason,
     note: input.docNo ? `คืนเงินหน้าร้าน POS · ใบคืน ${input.docNo}${abb?.docNo ? ` · อ้างใบเสร็จ ${abb.docNo}` : ""}` : "คืนเงินหน้าร้าน POS",
     lines: docLines,

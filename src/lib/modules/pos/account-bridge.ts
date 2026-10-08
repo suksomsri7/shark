@@ -149,7 +149,7 @@ export async function bridgePosSaleVoided(sale: {
 //   บรรทัดของใบคืนมียอด "หลังเกลี่ยส่วนลดแล้ว" อยู่แล้ว (unitPrice × qty − discount = lineTotal) + บรรทัดค่าบริการของใบคืน
 //   ⇒ Σ บรรทัด = grandTotal ของใบคืนเป๊ะ · ยอดบริการ = บรรทัดที่บรรทัดเดิมเป็นบริการ (กลับ 4030 ตามสัดส่วน)
 export async function bridgePosSaleRefunded(
-  refund: { id: string; tenantId: string; systemId: string; grandTotalSatang: number; serviceChargeSatang: number; paidAt: Date | null; createdAt: Date; receiptNo: string | null; note: string | null },
+  refund: { id: string; tenantId: string; systemId: string; grandTotalSatang: number; serviceChargeSatang: number; paidAt: Date | null; createdAt: Date; receiptNo: string | null; note: string | null; vatSatang?: number },
   saleId: string,
   lines: SaleLineForBridge[],
   payments: { type: PosPayType; amountSatang: number }[],
@@ -169,5 +169,7 @@ export async function bridgePosSaleRefunded(
     lines: src.map((l) => ({ itemId: l.itemId, name: l.name, qty: l.qty, unitPriceSatang: l.unitPriceSatang, discountSatang: l.discountSatang })),
     docNo: refund.receiptNo,
     reason: refund.note,
+    // POS P1.16 ▸ R5b(a): VAT ของใบคืน (P1.8 F6 · Σ ใบคืน = VAT บิล) ไปที่ JV + ใบลดหนี้ ไม่ถอดใหม่จากยอด ◂
+    ...(typeof refund.vatSatang === "number" ? { vatSatang: refund.vatSatang } : {}),
   });
 }
