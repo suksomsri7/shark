@@ -30,3 +30,10 @@ Owner order "ทำ parity" (7 Oct). Shots: `scripts/visual-crm.mts`, 26 spec se
 | 17 | integration map | ✅ | plus background-jobs panel |
 
 **PARITY: ผ่านแบบมีจุดต่างค้าง 2 จุด (หน้าแรก 01: ตัวเลข KPI ถูกตัด · แถบตัวกรองเรียงผิด) + แบบ 12 ฝั่งลูกค้ายังไม่ได้เทียบรอบนี้.** Fixing 01 needs a product change (src/) ⇒ a new deploy to prod — owner's decision.
+
+## Follow-up (8 Oct, lane `wip/crm-parity-fix`, merged into session/crm — NOT on main/prod yet)
+- **01 fixed** (`874a761d`): KPI number is container-sized and never truncated ("฿19.35M" readable at 1440; stress "฿999.99M" one line); filter bar is one row at 1440, 2 clean rows at 1280/1024/768, stacked at 390. Controller compared the BEFORE-over-AFTER crop by eye ✅. Residual nit: the owner select clips its label slightly ("ผู้ดูแล: ทั้งหม…") at 1440. Checks: typecheck rc=0 · fitness 42/42 · c3.2 47/47 · visual 3.2 owner 5/5.
+- **12 customer side shot** (portal prep on QC1, undone, 0 leftovers): 12/12 customer pages + login OK. Structure matches the mockup (login e-mail+OTP / LINE, home counters + lists, invoices, quotations, documents, requests, contacts) — compared in EMPTY state only (seed company has no documents; QR/PromptPay card, invoice table and accept/reject buttons not visible). Differences: 2 counters instead of 3 (`showDeals:false` in the prep), logout button instead of bell, one page per menu item on desktop. **Verdict 12: ✅ structure, data-filled states not compared in this pass (C3.5 record stands).**
+- **Prod-walk findings**: C1 new-deal form — REAL bug (re-click created up to 4 deals; navigation swallowed by the queued contact search at ~400 ms latency) fixed `abe1ad29` + regression check in `qc-crm-forms.mts` (red on the old build Δ4, green on the fix; deal-new-form 46/46; buttons /deals/new thana 30/30). C2 unmatched e-mail tab for MANAGER — NOT a bug: gate is scope-based (owner, or whole-shop member with CONTACT=ALL); registry note `2c35421c`.
+
+**PARITY (after follow-up): ผ่าน — ไม่มีจุดต่างค้างที่ต้องแก้ · รอ deploy เพื่อให้การแก้ 01 + C1 ถึง prod.**
