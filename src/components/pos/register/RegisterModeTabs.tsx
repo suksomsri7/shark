@@ -25,7 +25,7 @@ export function RegisterModeTabs({ systemId }: { systemId: string }) {
     { key: "shift", msg: "shift", icon: "clock", href: `${base}/pos/close` },
     { key: "products", msg: "products", icon: "tag", href: `${base}/pos/products` },
     { key: "reports", msg: "reports", icon: "chart", href: null },
-    { key: "settings", msg: "settings", icon: "gear", href: base },
+    { key: "settings", msg: "settings", icon: "gear", href: `${base}/pos/settings` }, // POS P1.10 U ▸ หน้าตั้งค่าหน้าขาย ◂
   ];
   const soon = new Set<TabKey>(["tables", "online-orders", "reports"]);
   // ขีดล่าง 2px ทับเส้นขอบของแถบพอดี (mb-[-1px]) · โครงเดียวกันทุกแท็บ ต่างแค่สี/น้ำหนัก

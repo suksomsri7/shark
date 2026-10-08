@@ -1241,7 +1241,6 @@
     "sent": "Sent to the printer",
     "retry": "Print again",
     "useBrowser": "Use system printing instead",
-    "autoFailed": "Automatic printing failed",
     "errors": {
       "NO_DEVICE": "No printer is paired or the printer cannot be found — pair it again in the device settings",
       "PERMISSION": "The browser did not allow access to the printer — allow it and try again",

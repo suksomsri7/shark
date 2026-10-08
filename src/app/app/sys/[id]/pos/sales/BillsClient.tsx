@@ -13,11 +13,13 @@ import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
 import { billDetailAction, billsPageDataAction, voidSaleAction } from "@/lib/modules/pos/bills-actions";
 import { BILLS_ERROR_KEYS, BILL_STATUS_FILTERS, VOID_REASON_MAX, addBillDays, type BillDetailResult, type BillRow, type BillStatusFilter, type BillsPageDataResult } from "@/lib/modules/pos/bills-shared";
-import { heartbeatAction } from "@/lib/modules/pos/device-actions";
 import { getPosDeviceId } from "@/lib/modules/pos/device-id";
-import { parsePrinterConfig, type PosPrinterPaper } from "@/lib/modules/pos/device-shared";
 import { reprintReceiptAction } from "@/lib/modules/pos/receipt-actions";
-import { receiptRefusalMessageKey, renderReceiptHtml } from "@/lib/modules/pos/receipt-render";
+import { receiptRefusalMessageKey } from "@/lib/modules/pos/receipt-render";
+// POS P1.10 U ▸ พิมพ์สำเนาผ่านโมดูลพิมพ์ (มติ CD4) — วิธีพิมพ์/กระดาษตามค่าตั้งเครื่องนี้ (heartbeat) ◂
+import { thisDevicePrinter, type ThisDevicePrinter } from "@/components/pos/print/device-printer";
+import { printReceipt } from "@/components/pos/print/printReceipt";
+import { printErrorKey } from "@/components/pos/print/types";
 import { refundSaleAction, saleForRefundAction } from "@/lib/modules/pos/refund-actions";
 import { refundLineAmount, refundServiceCharge } from "@/lib/modules/pos/refund-math";
 import { REFUND_ERROR_KEYS, REFUND_REASON_CODES, REFUND_REASON_MAX, type RefundPayType, type RefundReasonCode, type SaleForRefund } from "@/lib/modules/pos/refund-shared";
@@ -229,24 +231,11 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
     }
   };
 
-  // แก้รอบ 1 F3 (R5): ขนาดกระดาษ = printerConfig ของเครื่องนี้ (heartbeat ตัวเดียวกับหน้าขาย · อ่านครั้งแรกที่พิมพ์แล้วจำไว้) ?? "80"
-  const paperRef = useRef<PosPrinterPaper | null>(null);
-  const devicePaper = async (): Promise<PosPrinterPaper> => {
-    if (paperRef.current) return paperRef.current;
-    let paper: PosPrinterPaper = "80";
-    const deviceCode = getPosDeviceId();
-    if (deviceCode) {
-      const hb = await heartbeatAction({ systemId, unitId, deviceCode }).catch(() => null);
-      if (hb?.ok && hb.device) {
-        const cfg = parsePrinterConfig(hb.device.printerConfig);
-        if (cfg.ok) paper = cfg.config.paper ?? "80";
-      }
-    }
-    paperRef.current = paper;
-    return paper;
-  };
+  // แก้รอบ 1 F3 (R5) → P1.10 U: ค่าตั้งเครื่องพิมพ์ของเครื่องนี้ (heartbeat ตัวเดียวกับหน้าขาย · อ่านครั้งแรกที่พิมพ์แล้วจำไว้) ?? เบราว์เซอร์ 80 มม.
+  const printerRef = useRef<ThisDevicePrinter | null>(null);
+  const tp = useTranslations("pos.print") as T;
 
-  // ── พิมพ์สำเนา (พิมพ์ผ่านเบราว์เซอร์ใน iframe ซ่อน · มติ CD4 — เครื่องพิมพ์ ESC/POS เป็นของ P1.10U) ──
+  // ── พิมพ์สำเนา: printReceipt ตามวิธีพิมพ์ของเครื่องนี้ · พิมพ์ตรงไม่ได้ (ไม่รองรับ/ยังไม่จับคู่) = พิมพ์ผ่านเบราว์เซอร์แทน ──
   const reprint = async (saleId: string) => {
     if (reprintBusy) return;
     setReprintBusy(true);
@@ -258,20 +247,15 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
         setDrawerErr(trc(receiptRefusalMessageKey(r.code)));
         return;
       }
-      const html = renderReceiptHtml(r.payload, { paper: await devicePaper(), locale: locale.startsWith("en") ? "en" : "th" });
-      const frame = document.createElement("iframe");
-      frame.setAttribute("aria-hidden", "true");
-      frame.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden";
-      frame.onload = () => {
-        try {
-          frame.contentWindow?.focus();
-          frame.contentWindow?.print();
-        } finally {
-          setTimeout(() => frame.remove(), 60_000);
-        }
-      };
-      frame.srcdoc = html;
-      document.body.appendChild(frame);
+      printerRef.current ??= await thisDevicePrinter(systemId, unitId);
+      const dev = printerRef.current;
+      const lc = locale.startsWith("en") ? "en" : "th";
+      let res = await printReceipt(r.payload, dev.config, { locale: lc, deviceCode: dev.deviceCode });
+      if (!res.ok && res.via !== "browser" && (res.code === "UNSUPPORTED" || res.code === "NO_DEVICE")) res = await printReceipt(r.payload, { ...dev.config, mode: "browser" }, { locale: lc });
+      if (!res.ok) {
+        setDrawerErr(tp(printErrorKey(res.code)));
+        return;
+      }
       setToast(t("toastReprint"));
       if (selectedId === saleId) void loadDetail(saleId);
     } catch {

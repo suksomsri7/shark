@@ -102,6 +102,10 @@ import { SearchRow } from "./SearchRow";
 import { WeighDialog } from "./WeighDialog";
 // POS P1.9 ▸ รหัสเครื่อง → กะของเครื่อง (ผูกบิล · ล็อกปุ่มชำระเมื่อบังคับเปิดกะ) ◂
 import { getPosDeviceId } from "@/lib/modules/pos/device-id";
+// POS P1.10 U ▸ heartbeat ของเครื่องนี้ → ชื่อเครื่อง + printerConfig (พิมพ์ใบเสร็จ · ชิปแถบล่าง) · เครื่องถูกเพิกถอน = แถบแดงค้าง + ล็อกปุ่มชำระ ◂
+import { heartbeatAction } from "@/lib/modules/pos/device-actions";
+import { POS_PRINTER_DEFAULTS, parsePrinterConfig, type PosDeviceView } from "@/lib/modules/pos/device-shared";
+import { printerPaired } from "@/components/pos/print/printReceipt";
 
 export type RegisterScreenProps = {
   systemId: string;
@@ -373,6 +377,19 @@ export function RegisterScreen(props: RegisterScreenProps) {
     };
   }, []);
 
+  // ── POS P1.10 U ▸ เครื่องนี้ (heartbeat): undefined = ยังไม่รู้ · null = ยังไม่ลงทะเบียน ──
+  const [device, setDevice] = useState<PosDeviceView | null | undefined>(undefined);
+  const refreshDevice = useCallback(async () => {
+    const deviceCode = getPosDeviceId();
+    if (!deviceCode) return setDevice(null);
+    const hb = await heartbeatAction({ systemId, unitId, deviceCode }).catch(() => null);
+    if (hb?.ok) setDevice(hb.device);
+  }, [systemId, unitId]);
+  const printer = useMemo(() => {
+    const parsed = device && device.status === "ACTIVE" ? parsePrinterConfig(device.printerConfig) : null;
+    return { config: parsed?.ok ? parsed.config : { ...POS_PRINTER_DEFAULTS }, deviceCode: device?.deviceCode ?? getPosDeviceId() };
+  }, [device]);
+
   // ── แถบสถานะ: ทุก 60 วิ ขณะเห็นจอ + หลังขายเสร็จ ──
   const statusSeq = useRef(0);
   const refreshStatus = useCallback(async () => {
@@ -384,10 +401,11 @@ export function RegisterScreen(props: RegisterScreenProps) {
         setStatus(r);
         synced();
       }
+      void refreshDevice();
     } catch {
       /* เครือข่ายล้ม — ค่าเดิมค้างไว้ */
     }
-  }, [systemId, unitId]);
+  }, [systemId, unitId, refreshDevice]);
   useEffect(() => {
     // P1.9: สถานะจากเซิร์ฟเวอร์ตอนโหลดหน้าไม่รู้รหัสเครื่อง (localStorage) ⇒ ถามใหม่ทันทีพร้อม deviceId
     void refreshStatus();
@@ -521,7 +539,9 @@ export function RegisterScreen(props: RegisterScreenProps) {
   const shownTotals: CartTotalsModel | null = totalsPending ? null : (quoteFresh ?? (local ? { ...local } : quote?.q ?? null));
   // POS P1.9 (S15): จุดขายบังคับเปิดกะ แต่เครื่องนี้ยังไม่มีกะ = ล็อกปุ่มชำระ + การ์ด "เปิดกะก่อนเริ่มขาย"
   const shiftBlocked = !!status?.shiftRequired && !status?.shift;
-  const payEnabled = cart.lines.length > 0 && !!quoteFresh && online && limits.canSell && payPhase === "form" && !frozen && !shiftBlocked;
+  // POS P1.10 U ▸ เครื่องถูกเพิกถอน (registerStatus.deviceStatus) = ล็อกการขาย (เซิร์ฟเวอร์ปฏิเสธ DEVICE_REVOKED อยู่แล้ว — จอไม่ให้เริ่ม) ◂
+  const deviceRevoked = status?.deviceStatus === "REVOKED";
+  const payEnabled = cart.lines.length > 0 && !!quoteFresh && online && limits.canSell && payPhase === "form" && !frozen && !shiftBlocked && !deviceRevoked;
   const lastAmount = quoteFresh?.grandTotalSatang ?? local?.grandTotalSatang ?? quote?.q.grandTotalSatang ?? 0;
   const payAmount = quoteSlow && !quoteFresh ? tc("loading") : totalsPending ? PENDING : moneyText(cart.lines.length ? lastAmount : 0);
 
@@ -1410,6 +1430,10 @@ export function RegisterScreen(props: RegisterScreenProps) {
             changeSatang={l.result.changeSatang}
             payMethods={l.payMethods}
             onNext={nextSale}
+            systemId={systemId}
+            saleId={l.result.saleId}
+            printer={printer}
+            locale={locale.startsWith("en") ? "en" : "th"}
           />
         );
       case "options":
@@ -1491,6 +1515,12 @@ export function RegisterScreen(props: RegisterScreenProps) {
           </div>
         )}
 
+        {deviceRevoked && (
+          <div data-testid="pos-reg-device-revoked" className="flex shrink-0 items-center gap-3 bg-[color:var(--color-danger)] px-5 py-[11px] text-[14px] font-semibold leading-[1.5] text-white" role="alert">
+            <RegisterIcon name="warn" size={18} />
+            <span>{t("status.deviceRevoked")}</span>
+          </div>
+        )}
         {shiftBlocked && (
           <div data-testid="pos-reg-shift-required" className="flex shrink-0 flex-wrap items-center gap-3 border-b bg-[color:var(--color-surface-2)] px-5 py-[10px] text-[14px] text-[color:var(--color-ink)]" role="status">
             <RegisterIcon name="warn" size={18} />
@@ -1556,7 +1586,20 @@ export function RegisterScreen(props: RegisterScreenProps) {
           {wide !== false && <div className="hidden min-h-0 shrink-0 md:flex md:w-[340px] lg:w-[380px] xl:w-[480px]">{cartPanel("inline")}</div>}
         </div>
 
-        <RegisterStatusBar pendingStock={status?.pendingStockCount ?? 0} pendingSync={status?.pendingSyncCount ?? 0} />
+        <RegisterStatusBar
+          pendingStock={status?.pendingStockCount ?? 0}
+          pendingSync={status?.pendingSyncCount ?? 0}
+          device={
+            device === undefined
+              ? undefined
+              : {
+                  name: device && device.status === "ACTIVE" ? device.name : null,
+                  settingsHref: `${base}/pos/settings?tab=devices&unit=${encodeURIComponent(unitId)}`,
+                  printer: printer.config.mode === "browser" ? "browser" : printerPaired(printer.config.mode, printer.deviceCode) ? "ready" : "none",
+                  paper: printer.config.paper,
+                }
+          }
+        />
       </div>
 
       {/* ── ชั้นกล่อง (วาดตามลำดับ — ตัวท้ายอยู่บนสุด) · ชั้นที่ไม่ใช่บนสุด = inert (B2.2 S2) ── */}

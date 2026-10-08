@@ -6262,6 +6262,83 @@
       "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-print-receipt",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "print",
+        "note": "PayDone (02b): receiptPayloadAction (ต้นฉบับภายใน 30 นาที · จอเชื่อ payload.copy) → printReceipt ตามค่าตั้งเครื่องนี้ · autoPrint + จับคู่ USB/BT = พิมพ์เองครั้งเดียวต่อบิล · ปฏิเสธ = pos-print-error / pos-print-load-error + หยุดนับถอยหลัง"
+      },
+      "wo": "P1.10U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-print-copy",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "print",
+        "note": "PayDone: reprintReceiptAction (สำเนา + audit pos.receipt.reprint) → printReceipt"
+      },
+      "wo": "P1.10U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-status-device-link",
+      "kind": "link",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]/pos/settings",
+        "note": "แถบล่าง (≥1280) เมื่อเครื่องนี้ยังไม่ลงทะเบียน (heartbeat device null) → ?tab=devices&unit= · ลงทะเบียนแล้ว = pos-reg-status-device (ข้อความ)"
+      },
+      "wo": "P1.10U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/shifts",
+      "testid": "pos-print-drawer-open",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-print-drawer-opened",
+        "note": "การ์ดเครื่องนี้: แสดงเฉพาะ printerConfig.drawerKick + จับคู่ USB/BT ในเบราว์เซอร์นี้ · kickDrawer = ESC p 0 25 250 ล้วน · ไม่ลง audit (CD4) · แคชเชียร์ QC ไม่มี pos.shift.operate = การ์ดปฏิเสธทั้งหน้า"
+      },
+      "wo": "P1.10U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
     }
   ],
   "$roles": "roles/hiddenFor ที่อนุญาต: owner · manager · cashier · kind/expect.type ชุดเดียวกับทะเบียน CRM (F15.3b ตรวจ)"

@@ -2,7 +2,10 @@
 
 // PayDone.tsx — จอสำเร็จหลังชำระครบ (POS P1.6 U · ภาพ 02b) — แทน SaleDone ชั่วคราวของ P1.3
 //   วงกลมหมึก + ถูก · "ชำระแล้ว ฿X" 30 หนา · กล่องตัวเลข (เงินทอน · เลขใบเสร็จ · วิธีชำระ) · ปุ่ม "ขายต่อ (อัตโนมัติ 5 วินาที)"
-//   ช่องที่ภาพมีแต่ยังไม่มีงานรองรับ: แต้มที่ได้ (P1.12) · ใบกำกับอย่างย่อ (P1.13) · สถานะลงบัญชี · พิมพ์ซ้ำ/LINE/QR ใบเสร็จ (P1.10) — ไม่แสดง
+//   ช่องที่ภาพมีแต่ยังไม่มีงานรองรับ: แต้มที่ได้ (P1.12) · ใบกำกับอย่างย่อ (P1.13) · สถานะลงบัญชี · LINE/QR ใบเสร็จ (P1.11) — ไม่แสดง
+// POS P1.10 U ▸ ปุ่ม "พิมพ์ใบเสร็จ" (receiptPayloadAction — ต้นฉบับภายใน 30 นาที · จอเชื่อ payload.copy) + "พิมพ์สำเนา" (reprintReceiptAction · audit)
+//   ผ่าน printReceipt ตามค่าตั้งเครื่องนี้ (heartbeat) · autoPrint + จับคู่ USB/BT แล้ว = พิมพ์เองครั้งเดียวต่อบิล (กันด้วย saleId ใน ref) ·
+//   พิมพ์ไม่สำเร็จ = กล่องคำปฏิเสธ + "พิมพ์ซ้ำ" (+ "พิมพ์ผ่านระบบแทน") และหยุดนับถอยหลัง · ลิ้นชักเปิดใน encodeEscPos (เงินสด + drawerKick) ไม่มีปุ่มแยก ◂
 //   "สำเร็จ" = หมึกตัวหนา + ไอคอนถูก (ไม่ใช่สีเขียว — UI_STANDARD §0.1) · ปุ่มถัดไปโฟกัสรอ (Enter = ขายต่อ)
 // 🔴 duplicated:true ก็คือขายสำเร็จบิลเดิม · ปิดด้วยม่าน/Esc ไม่ได้
 // 🔴 มติผู้คุมงาน (7 ต.ค. Q2): นับถอยหลัง 5 วินาทีแล้วไปบิลถัดไปเอง (ภาพ 02b) เฉพาะเมื่อไม่มีเงินทอน (ทอน 0) ·
@@ -11,17 +14,72 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { moneyText, type RegisterPayMethod, type RegisterPayType } from "@/lib/modules/pos/register-shared";
+import type { PosPrinterConfig } from "@/lib/modules/pos/device-shared";
+import { receiptPayloadAction, reprintReceiptAction } from "@/lib/modules/pos/receipt-actions";
+import { receiptRefusalMessageKey } from "@/lib/modules/pos/receipt-render";
+import { PrintStatus } from "@/components/pos/print/PrintStatus";
+import { printReceipt, printerPaired } from "@/components/pos/print/printReceipt";
+import type { PrintResult } from "@/components/pos/print/types";
 import { RegisterDialog, SheetGrab } from "./RegisterDialog";
 import { RegisterIcon } from "./RegisterIcon";
 
 const AUTO_SECONDS = 5;
 const PAY_LABEL: Record<RegisterPayType, string> = { CASH: "pay.cash", PROMPTPAY: "pay.promptpay", TRANSFER: "pay.transfer", CARD: "pay.card" };
 
-type Props = { receiptNo: string | null; totalSatang: number; changeSatang: number; payMethods: RegisterPayMethod[]; onNext: () => void };
+type Props = {
+  receiptNo: string | null;
+  totalSatang: number;
+  changeSatang: number;
+  payMethods: RegisterPayMethod[];
+  onNext: () => void;
+  /** POS P1.10 U ▸ พิมพ์ใบเสร็จของบิลนี้ */
+  systemId: string;
+  saleId: string;
+  printer: { config: PosPrinterConfig; deviceCode: string | undefined };
+  locale: "th" | "en";
+};
 
-export function PayDone({ receiptNo, totalSatang, changeSatang, payMethods, onNext }: Props) {
+/** บิลที่พิมพ์อัตโนมัติไปแล้ว (ระดับโมดูล — จอสำเร็จถูกวาดใหม่/StrictMode ก็ไม่พิมพ์ซ้ำ) */
+const autoPrinted = new Set<string>();
+
+export function PayDone({ receiptNo, totalSatang, changeSatang, payMethods, onNext, systemId, saleId, printer, locale }: Props) {
   const t = useTranslations("pos.register");
-  const auto = changeSatang === 0;
+  const tp = useTranslations("pos.print");
+  const trc = useTranslations("pos.receipt");
+  const [printing, setPrinting] = useState<"receipt" | "copy" | null>(null);
+  const [printRes, setPrintRes] = useState<PrintResult | null>(null);
+  const [loadErr, setLoadErr] = useState<string | null>(null);
+  const [lastKind, setLastKind] = useState<"receipt" | "copy">("receipt");
+  const print = async (kind: "receipt" | "copy", forceBrowser = false) => {
+    if (printing) return;
+    setPrinting(kind);
+    setLastKind(kind);
+    setLoadErr(null);
+    setPrintRes(null);
+    try {
+      const r = kind === "copy" ? await reprintReceiptAction({ systemId, saleId }) : await receiptPayloadAction({ systemId, saleId });
+      if (!r.ok) {
+        setLoadErr(trc(receiptRefusalMessageKey(r.code)));
+        return;
+      }
+      const cfg = forceBrowser ? { ...printer.config, mode: "browser" as const } : printer.config;
+      setPrintRes(await printReceipt(r.payload, cfg, { locale, deviceCode: printer.deviceCode }));
+    } catch {
+      setLoadErr(trc("errors.internal"));
+    } finally {
+      setPrinting(null);
+    }
+  };
+  const printRef = useRef(print);
+  printRef.current = print;
+  useEffect(() => {
+    if (!saleId || autoPrinted.has(saleId)) return;
+    if (!printer.config.autoPrint || !printerPaired(printer.config.mode, printer.deviceCode)) return;
+    autoPrinted.add(saleId);
+    void printRef.current("receipt");
+  }, [saleId, printer.config.autoPrint, printer.config.mode, printer.deviceCode]);
+  const failed = !!loadErr || (!!printRes && !printRes.ok);
+  const auto = changeSatang === 0 && !failed && !printing;
   const [left, setLeft] = useState(AUTO_SECONDS);
   const nextRef = useRef(onNext);
   nextRef.current = onNext;
@@ -69,16 +127,44 @@ export function PayDone({ receiptNo, totalSatang, changeSatang, payMethods, onNe
             </div>
           )}
         </div>
-        <button
-          data-testid="pos-reg-done-next"
-          className="btn btn-primary h-14 w-full gap-2 rounded-[16px] px-6 text-[16px] font-bold md:h-12 md:w-auto md:min-w-[210px] md:rounded-[13px]"
-          type="button"
-          autoFocus
-          onClick={onNext}
-        >
-          {t("done.nextShort")}
-          {auto && <span className="font-normal opacity-70">{t("done.auto", { sec: Math.max(left, 0) })}</span>}
-        </button>
+        {loadErr && (
+          <p data-testid="pos-print-load-error" role="alert" className="w-full rounded-[13px] border-[1.5px] border-[color:var(--color-danger)] px-4 py-2 text-left text-[13.5px]">
+            {loadErr}
+          </p>
+        )}
+        {printRes && <PrintStatus result={printRes} onRetry={() => void print(lastKind)} onBrowser={() => void print(lastKind, true)} />}
+        <div className="flex w-full flex-col-reverse gap-[10px] md:w-auto md:flex-row md:items-center md:justify-center">
+          <button
+            data-testid="pos-print-receipt"
+            className="btn btn-ghost h-12 gap-2 rounded-[13px] px-5 text-[15px] disabled:opacity-60"
+            type="button"
+            disabled={!!printing}
+            onClick={() => void print("receipt")}
+          >
+            <RegisterIcon name="print" size={15} />
+            {printing === "receipt" ? tp("printing") : tp("receipt")}
+          </button>
+          <button
+            data-testid="pos-print-copy"
+            className="btn btn-ghost h-12 gap-2 rounded-[13px] px-5 text-[15px] disabled:opacity-60"
+            type="button"
+            disabled={!!printing}
+            onClick={() => void print("copy")}
+          >
+            <RegisterIcon name="doc" size={15} />
+            {printing === "copy" ? tp("printing") : tp("copy")}
+          </button>
+          <button
+            data-testid="pos-reg-done-next"
+            className="btn btn-primary h-14 w-full gap-2 rounded-[16px] px-6 text-[16px] font-bold md:h-12 md:w-auto md:min-w-[210px] md:rounded-[13px]"
+            type="button"
+            autoFocus
+            onClick={onNext}
+          >
+            {t("done.nextShort")}
+            {auto && <span className="font-normal opacity-70">{t("done.auto", { sec: Math.max(left, 0) })}</span>}
+          </button>
+        </div>
       </div>
     </RegisterDialog>
   );
