@@ -135,8 +135,8 @@ RED on the base (8 pass / 50 fail): pass = S2.1 S2.2 X2.1 S5.5 S7.2 S7.3 S8.5 Z1
 # Builder (branch `wip/pos-hr-h0.5` from `09903de2` · started 2026-10-08T05:1xZ · builder: Claude Opus 5.5 · controller: Fable)
 
 ## B0. Checkpoint
-- done: R1 schema + migration (applied to QC4) · R2 `hr/pin.ts` · R3 call sites · R4 reactivation · R5 env · R6 backfill · seed-review-shop · F16.5 baseline emptied · pre-approved ORACLE-EDITs (H0.3 S3.1/S3.2 · privacy N-4).
-- next: see B5 (regression set still running when this checkpoint was written — machine at load ~55, CPU steal ~90 %).
+- done: everything in B1 · oracle 57/58 ×5 (only S3.2 timing flag "LATE", race result itself correct) · regression set B5 · seed ×2 identical · fitness/fitness-hr both modes green.
+- open: (1) full `pnpm typecheck` never finished — both allowed runs hit the timeout under ~90 % CPU steal (B5); a targeted `tsc -p` over the changed files was run instead (B5). (2) Timing-only reds (H0.5 S3.2, H0.3 S2.4/S4.3/S4.8, H0.1 X6.0, H0.2 X6.1/X6.3/X9.1) need a controller re-run on a quiet machine.
 - last command: see B5.
 
 ## B1. Files → R-item (files:lines at head of this branch)
@@ -188,3 +188,32 @@ RED on the base (8 pass / 50 fail): pass = S2.1 S2.2 X2.1 S5.5 S7.2 S7.3 S8.5 Z1
 -  chk("N-4", "PIN ของ e2 ไม่เปลี่ยน", (…)?.pinCode === "5678", "5678", "เปลี่ยน");
 +  chk("N-4", "PIN ของ e2 ไม่เปลี่ยน", !!e2HashBefore && (…)?.pinHash === e2HashBefore, "pinHash เดิม", "เปลี่ยน");
 ```
+
+## B5. Results (final summary line · exit) — VPS at load 35–60, `vmstat` steal 88–91 % the whole session
+Every DB run: `bash scripts/iso.sh bash scripts/qc4.sh bash scripts/with-gate-lock.sh env QC_FORCE=1 pnpm exec tsx scripts/<suite>.mts` (logs kept in the builder scratchpad).
+| suite | result | exit | note |
+|---|---|---|---|
+| `qc-hr-h0.5` run 1 (05:4x) | `ผ่าน 57/58 (QC_FORCE)` · `RESIDUE tenants=0 none` | 1 | S3.2 only: `r0..r2: n=10 ok=1 d8=9 LATE` |
+| `qc-hr-h0.5` run 2 | `ผ่าน 57/58` · residue none | 1 | same |
+| `qc-hr-h0.5` run 3 (10:01) | `ผ่าน 57/58` · residue none | 1 | same |
+| `qc-hr-h0.5` run 4 / 5 (13:16 · 13:45) | `ผ่าน 57/58` · residue none | 1 / 1 | same — saved as `hr-H0.5-green.txt` (not fully green: S3.2 timing flag) |
+| `qc-hf-hr-privacy` | `JSON_SUMMARY {"total":194,"passed":194,"findings":[]}` | 0 | with ORACLE-EDIT N-4 |
+| `qc-hr` | 9/9 | 0 | |
+| `qc-hr-attendance` | 31/31 | 0 | |
+| `qc-hr-roster` | 24/24 | 0 | |
+| `qc-hr-leave-booking` | 14/14 | 0 | |
+| `qc-hr-payadjust` | 27/27 | 0 | |
+| `qc-payroll` | 19/19 | 0 | |
+| `qc-payroll-reverse` | `✅ PASS — 14/14` | 0 | |
+| `qc-booking-hours-hr` | 13/13 | 0 | |
+| `qc-crm-c3.3` | run 1 killed by my 3000 s timeout (exit 124) · run 2 `{"total":90,"passed":90}` | 0 | |
+| `qc-hr-h0.1` ×2 | `passed 66/67` | 1 | X6.0 control only: `maxSkew=26395ms` / `24594ms` (worker skew ≤ 2 s) — timing |
+| `qc-hr-h0.2` | run 1: gate-lock wait timed out (empty log) · run 2 `ผ่าน 55/58` | 1 | X6.1 / X6.3 / X9.1 all `late` (round start missed) — timing, payroll code untouched |
+| `qc-hr-h0.3` ×2 | `ผ่าน 33/36` | 1 | S2.4 `allowed=6` (child tsx process booted > 60 s after the parent's 3 tries ⇒ fixed window of `hr-kiosk:emp` had rolled over) · S4.3 `late=true` ×2 · S4.8 `TIMEOUT 3s` (ms 3006 / 3003, final ok, 1 row). S3.1/S3.2 (ORACLE-EDIT) and S4.1/S4.2 (F-1(c), three plain "5555") green |
+| `seed-hr-qc` ×2 | `ผ่าน 23/23` · `counts` byte-identical between run 1 and run 2 | 0 / 0 | QC tenant `qc-hr-v2`: `PINSTAT {"all":14,"plain":0,"hashed":12,"activeHashed":12}` — 12 PIN holders (HQC: 12 active with `pin`; ปุ้ย no PIN, ฝ้าย inactive without PIN — the brief's "13" counts one too many) |
+| `scripts/fitness-hr.mts` with env (`qc4.sh`) / `env -u DATABASE_URL -u DIRECT_URL` | `JSON_SUMMARY {"suite":"fitness-hr","total":5,"passed":5,"findings":[]}` ×2 · F16.5 active, baseline 0 | 0 / 0 | |
+| `pnpm fitness` with env / without | `JSON_SUMMARY {"total":33,"passed":33,"findings":[]}` ×2 | 0 / 0 | pre-commit hook also green on every commit (no `--no-verify`) |
+| `pnpm typecheck` (COMMON §A.9) | run 1 `timeout 1200` → exit 124 (tsc still running at 52 min; I stopped the orphaned iso unit) · run 2 `timeout 5400` → exit 124 (unit stopped) | 124 / 124 | **not completed** — see targeted check below |
+| targeted `tsc -p <scratch tsconfig extending tsconfig.json, files = changed files + their imports>` | no diagnostics (exit 0 after ~45 min) — covers pin.ts, service.ts, actions.ts, privacy.ts, ui.tsx, index.ts, env.ts, the backfill script, seed-review-shop, seed-hr-qc, fitness-hr and the three edited/new oracles (and everything they import) | 0 | third tsc invocation, but scoped; full `pnpm typecheck` still owed (CONTROLLER) |
+
+Timing reds: all are "late / skew / 3 s budget" flags of process-race harnesses (tsx child boot measured at 29 s for the HR import graph alone at this load); the functional outcome of every one of them is correct (H0.5 S3.2: exactly 1 winner + 9 D8 per round, S3.3 green). Request: controller re-runs `qc-hr-h0.5`, `qc-hr-h0.3`, `qc-hr-h0.1`, `qc-hr-h0.2` and the full typecheck when steal is back to normal.
