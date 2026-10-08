@@ -1,4 +1,4 @@
-# Prompt — P1.10U builder (settings 17A/17B · print module · PayDone print). Controller: P1.16 accepted into session/pos at `ACCEPT_SHA`; 1 lane.
+# Prompt — P1.10U builder (settings 17A/17B · print module · PayDone print). Controller: P1.16 accepted into session/pos at `a21c1d2a`; 1 lane.
 
 ---
 
