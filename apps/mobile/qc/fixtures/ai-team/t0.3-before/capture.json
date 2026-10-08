@@ -1,0 +1,16 @@
+{
+ "file": "sessions-light.png",
+ "sha256": "6d90f9bf64e462d3ab2343e9f81504b53a57d29f475b759ded5ac4c90bb56e15",
+ "capturedAt": "2026-10-08T15:45:54.478Z",
+ "baseCommit": "873c80ca5e0389449be5f079b02e6b320a5a0e62",
+ "view": {
+  "w": 390,
+  "h": 844,
+  "deviceScaleFactor": 1
+ },
+ "mode": "light",
+ "clock": "2026-10-08T05:00:00.000Z",
+ "repeatDiffPct": 0,
+ "by": "scripts/qc-ai-t0.3.mts --capture-before",
+ "texts": "กิจการ\nSweet Studio\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nat-owner@qc.shark\nออกจากระบบ\n‹\nผู้ช่วย AI\n＋\nใช้โควตาผู้ช่วย AI แล้ว 62%\nโควตาใหม่อีก 2 ชม.\nแก้ชื่อ\nลบ\nสรุปยอดขายสัปดาห์นี้\n1 ชม.\nแก้ชื่อ\nลบ\nตั้งค่าคิวลูกค้าหน้าร้าน\n5 ชม.\nแก้ชื่อ\nลบ\nแชทใหม่\n5/10"
+}
