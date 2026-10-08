@@ -1,6 +1,6 @@
 # POS P1.10 U — receipt & tax settings (17A) · devices & printers (17B) · print from PayDone (WebUSB / Web Bluetooth / browser) · `/pos/settings` shell
 
-Controller brief · 8 Oct 2026 · single builder lane (UI + client print module; no oracle — server P1.10 is accepted with its 40-check oracle; controller visual `--page settings --states` + reviewer). Acceptance SHA of P1.8+P1.10 in `session/pos`: `<fill>`. Report in English in `ledger/wo-notes/pos-P1.10U.md`.
+Controller brief · 8 Oct 2026 · single builder lane (UI + client print module; no oracle — server P1.10 is accepted with its 40-check oracle; controller visual `--page settings --states` + reviewer). P1.8+P1.10 accepted in `session/pos` at `a1fa7514`. Report in English in `ledger/wo-notes/pos-P1.10U.md`.
 
 ## Read first
 - `ledger/pos-briefs/pos-brief-COMMON.md`, `pos-brief-LANE-RULES.md`, `pos-spec-P1.3-register-ui.md` (refusals as data, Thai messages, ≥44 px, testids + `scripts/pos-ui-inventory.json`).

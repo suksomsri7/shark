@@ -1,6 +1,6 @@
 # POS P1.16 — bills page ("บิลวันนี้") · bill drawer · void dialog · partial-refund modal (mockup 12)
 
-Controller brief · 8 Oct 2026 · oracle-first (oracle writer → builder S+U in one lane → reviewer → controller visual). Depends on P1.8 (refund server, accepted into `session/pos` with P1.10 — the acceptance SHA goes here: `<fill>`). Reports in English in `ledger/wo-notes/pos-P1.16-oracle.md` / `pos-P1.16.md`.
+Controller brief · 8 Oct 2026 · oracle-first (oracle writer → builder S+U in one lane → reviewer → controller visual). Depends on P1.8 (refund server, accepted into `session/pos` with P1.10 — accepted in `session/pos` at `a1fa7514`). Reports in English in `ledger/wo-notes/pos-P1.16-oracle.md` / `pos-P1.16.md`.
 
 ## 0. Why one card, two halves
 P1.8 built `refundSale`/`saleForRefund` + actions; P1.10 built `receiptPayload`/`reprintReceiptAction` + pure `renderReceiptHtml`. What is missing for mockup 12 is (S) one composed page read, one bill-detail read, and a proper `voidSaleAction` (actor · reason · audit · refusals as data), and (U) the page itself. The oracle covers the S half (~22 checks); the U half is checked by the controller's visual run (`--page bills --states`) and the reviewer.
