@@ -120,3 +120,28 @@ Who gains / loses access after this WO: nobody (no product code). On QC4 only: f
 - The three seed tenants + four users are permanent by contract. A repeated seed creates 0 rows (S1.2 / S1.3).
 - Foreign tenants: S1.4 (three other lanes' seed tenants) + S1.5 (canary) unchanged across both seed runs.
 - Scratch on this machine: `/tmp/ai-t0.2-mockups` (generated mockup HTML + doc drafts) — my own directory, safe to delete; nothing else left in `/tmp` by the builder.
+
+## 10. Round 2 — after review (controller rulings: last section of `ledger/ai-team-briefs/ai-brief-T0.2.md`, commit 5cf3a05b)
+
+Files changed in round 2: `docs/api/AI-TEAM-MOBILE-API.md` · `docs/modules/30-ai-team.md` · `prisma/drafts/ai_team.prisma` · `scripts/ai-team-qc-env.mts` · `scripts/seed-ai-team-qc.mts` · `scripts/fitness-ai-team.mts` · these notes · `ai-t0.2-green.txt`. Not changed: `scripts/qc-all.mts`, the fixtures README, the oracle. No ORACLE-EDIT request.
+
+| Ruling | What changed |
+|---|---|
+| D1 uiVersion per tenant only | API `GET /api/mobile/me`: top-level `uiVersion` removed, `memberships[].uiVersion` stays; module doc §3 / M7; draft "T1.1 adds" lists `uiVersion Int @default(1)` as ruled |
+| D2 atomic hire, no DELETE | API: section `DELETE …/team/employees/[id]` removed; `POST …/team/employees` takes `access` + `manual` and is one transaction (note that T2.9 S6 changes); rows B5 / D3 of the screen table and the element table; `PUT access` / `POST manual` texts; module doc `createEmployee` |
+| D2 routes confirmed | `GET …/team/tasks/[id]` and `POST …/employees/[id]/manual/attach` lose their "proposed" warning |
+| D3 dedicated draft route | new section `POST /api/mobile/team/manual/draft` (positionKey + text, charged to the tenant); the `employees/[id]/manual/draft` section is for existing employees only (no reserved id); row B3; module doc `draftManualFromText` |
+| D6 default employee | module doc M1: created at first legacy-conversation read / first legacy chat; list never creates it |
+| D7 404 via wrapper | API §1.1 + error table: `requireTeamMobile` (T1.10) remaps "not a member" to 404; `requireMobile` untouched; module doc M7 / files list |
+| SF1 knowledge per item, fail-closed | draft `AiKnowledgeGrant` = (`itemKey`, `granteeKey`) + `@@unique([tenantId, itemKey, granteeKey])` and a corrected comment; API knowledge sections (`ZKnowledgeAudience` with employees + positions); module doc M5 |
+| SF2 use implies read | API permission table; module doc §5 M1 and §9 |
+| SF3 fitness never vacuous | `fitness-ai-team.mts`: F16.1(c) scans EVERY zod expression (any name, request or response, inline ones too) of the team route tree + `src/lib/mobile/team-*.ts`; existing-but-nothing-scanned ⇒ finding (json without strings, i18n file without literals, route tree without a zod expression, templates without a skill id, report file without a *Report* type / return type); F16.3 also scans function / arrow return types. Missing files and an empty root still pass. Probed by hand on bad / vacuous / clean / empty roots (outputs in the builder report) |
+| SF4 loader | `ai-team-qc-env.mts`: hostname must match `^ep-frosty-lab(-[a-z0-9]+)*(-pooler)?\.[a-z0-9.-]*neon\.tech$` (case-insensitive, no trailing dot); a comma in the authority or a `host` / `hostaddr` query parameter is refused; same rule on the post-load check |
+| SF5 seed ages | header comment in the seed + module doc §11 |
+| SF6 A1 search | new section `GET /api/mobile/team/search` (employees + visible tasks + CRM customer names only with the caller's CRM read; ids + names only), bucket `mobile-team-search`, A1 row + element row |
+| SF7 one code | `employee_terminated` removed from the API doc and the module doc; `employee_paused` covers PAUSED and TERMINATED |
+| NOTE host label | the seed prints `ep-frosty-lab` only; the endpoint suffix was stripped from every line of `ai-t0.2-green.txt` |
+| NOTE unchanged vs repaired | seed status = `created` / `repaired` / `unchanged`; `unchanged` only when zero writes happened; the summary line shows `repaired: n` |
+| NOTE repairable deal | a deal found without an owner (create succeeded, follow-up update did not) gets the follow-up update on the next run instead of being skipped |
+
+Round-2 oracle result: see "## R2.1" in `ai-t0.2-green.txt` and the builder report. Typecheck / fitness are run by the controller (ruling).

@@ -10,12 +10,14 @@
 //
 //   F16.1  owner decision 6/R-A8 + 9/R-A10: the user never sees "token" / "โทเคน" / "บาทต่องาน" / "ค่าแรง" / "wage".
 //          Scans (a) every string VALUE of src/messages/<locale>/ai-team.json, (b) every string literal of
-//          apps/mobile/src/i18n/team.ts, (c) every zod RESPONSE schema (keys included) of src/app/api/mobile/team/**.
-//          A response schema is a `const Z…Response = z.…` declaration (the naming rule of docs/api/AI-TEAM-MOBILE-API.md).
+//          apps/mobile/src/i18n/team.ts, (c) every zod expression (`z.…(…)`, keys included — request and response alike) of
+//          src/app/api/mobile/team/** and of the shared schema files src/lib/mobile/team-*.ts.
 //   F16.2  position templates (src/lib/ai/team/templates.ts) reference only skills that exist in src/lib/ai/skills.ts
 //          (read as text, like F13.3) — plus the virtual skill id "core" (RESOLUTIONS R-E C15).
 //   F16.3  the team report DTO (src/lib/ai/team/daily.ts + src/app/api/mobile/team/report/**) has no money key.
 //   Ratchet: a file that does not exist yet = pass with a note. F16.4/F16.5 (testID inventory) are added by T2.1, F16.6 by T3.1.
+//   Never vacuous: when a target file EXISTS but the scanner found nothing in it to scan (no string, no zod expression,
+//   no skill id, no report type) the check FAILS — a green that scanned nothing would be read as coverage.
 
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
@@ -90,6 +92,80 @@ function declarations(src: string, nameRe: RegExp): { name: string; body: string
   return out;
 }
 
+const stripComments = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/(^|[^:\\])\/\/[^\n]*/g, "$1");
+
+/** index just after the bracket that closes the one at `open` (strings skipped) · -1 when it never closes */
+function closeOf(src: string, open: number): number {
+  const pairs: Record<string, string> = { "(": ")", "{": "}", "[": "]" };
+  const stack: string[] = [];
+  let quote = "";
+  for (let i = open; i < src.length; i += 1) {
+    const c = src[i];
+    if (quote) {
+      if (c === "\\") i += 1;
+      else if (c === quote) quote = "";
+      continue;
+    }
+    if (c === '"' || c === "'" || c === "`") quote = c;
+    else if (pairs[c]) stack.push(pairs[c]);
+    else if (c === ")" || c === "}" || c === "]") {
+      if (stack.pop() !== c) return -1;
+      if (stack.length === 0) return i + 1;
+    }
+  }
+  return -1;
+}
+
+/** every top-level zod expression `z.<fn>( … )` (+ chained calls) of a source — schemas declared anywhere, named anything */
+function zodExpressions(source: string): string[] {
+  const src = stripComments(source);
+  const out: string[] = [];
+  const re = /(^|[^\w$.])z\s*\.\s*[A-Za-z_]\w*\s*\(/g;
+  let m: RegExpExecArray | null = re.exec(src);
+  while (m) {
+    const start = m.index + String(m[1]).length;
+    let end = closeOf(src, re.lastIndex - 1);
+    if (end < 0) break;
+    // chained calls: .optional() · .extend({ … }) · .refine(…)
+    for (;;) {
+      const chain = /^\s*\.\s*[A-Za-z_]\w*\s*\(/.exec(src.slice(end));
+      if (!chain) break;
+      const next = closeOf(src, end + chain[0].length - 1);
+      if (next < 0) break;
+      end = next;
+    }
+    out.push(src.slice(start, end));
+    re.lastIndex = end; // nested z.… calls are inside the expression already
+    m = re.exec(src);
+  }
+  return out;
+}
+
+/** return-type annotation of a function declaration / arrow function text ("" when it has none) */
+function returnTypeOf(decl: string): string {
+  const open = decl.indexOf("(");
+  if (open < 0) return "";
+  const afterParams = closeOf(decl, open);
+  if (afterParams < 0) return "";
+  const rest = decl.slice(afterParams);
+  const colon = /^\s*:/.exec(rest);
+  if (!colon) return "";
+  let depth = 0;
+  let seen = false;
+  let prev = ":";
+  for (let i = colon[0].length; i < rest.length; i += 1) {
+    const c = rest[i];
+    if (depth === 0 && seen && ((c === "{" && !"|&,:(<".includes(prev)) || (c === "=" && rest[i + 1] === ">"))) return rest.slice(colon[0].length, i);
+    if (c === "{" || c === "(" || c === "[" || c === "<") depth += 1;
+    else if (c === "}" || c === ")" || c === "]" || (c === ">" && rest[i - 1] !== "=")) depth -= 1;
+    if (!/\s/.test(c)) {
+      seen = true;
+      prev = c;
+    }
+  }
+  return "";
+}
+
 console.log(`── AI TEAM fitness (AT-F16.x) · root ${ROOT === REPO_ROOT ? "repo" : "FITNESS_AI_TEAM_ROOT"} ──`);
 
 // ─────────────────── F16.1: forbidden words in what the user reads ───────────────────
@@ -100,6 +176,7 @@ console.log(`── AI TEAM fitness (AT-F16.x) · root ${ROOT === REPO_ROOT ? "r
   const hits: string[] = [];
   const scanned: string[] = [];
   const absent: string[] = [];
+  const vacuous: string[] = []; // the target exists but nothing in it could be scanned
 
   // (a) web i18n: src/messages/<locale>/ai-team.json — string values
   const messagesDir = join(ROOT, "src", "messages");
@@ -118,6 +195,7 @@ console.log(`── AI TEAM fitness (AT-F16.x) · root ${ROOT === REPO_ROOT ? "r
     } catch {
       strings.push({ path: "(file is not valid JSON — scanned as text)", value: raw });
     }
+    if (strings.length === 0) vacuous.push(`${rel(f)} (no string value)`);
     for (const s of strings) if (FORBIDDEN.test(s.value)) hits.push(`${rel(f)} · ${cut(s.path)} · "${word(s.value)}"`);
   }
 
@@ -126,30 +204,38 @@ console.log(`── AI TEAM fitness (AT-F16.x) · root ${ROOT === REPO_ROOT ? "r
   if (!existsSync(appFile)) absent.push("apps/mobile/src/i18n/team.ts");
   else {
     scanned.push(rel(appFile));
-    for (const s of stringLiterals(read(appFile))) if (FORBIDDEN.test(s)) hits.push(`${rel(appFile)} · "${word(s)}" in «${cut(s, 40)}»`);
+    const literals = stringLiterals(read(appFile));
+    if (literals.length === 0) vacuous.push(`${rel(appFile)} (no string literal)`);
+    for (const s of literals) if (FORBIDDEN.test(s)) hits.push(`${rel(appFile)} · "${word(s)}" in «${cut(s, 40)}»`);
   }
 
-  // (c) mobile API: zod response schemas (keys + literals) of src/app/api/mobile/team/**
+  // (c) mobile API: every zod expression (keys + literals) of the team route tree and of the shared schema files
   const apiDir = join(ROOT, "src", "app", "api", "mobile", "team");
-  const apiFiles = walk(apiDir, (p) => /\.tsx?$/.test(p));
-  if (apiFiles.length === 0) absent.push("src/app/api/mobile/team/**");
+  const mobileLib = join(ROOT, "src", "lib", "mobile");
+  const sharedFiles = existsSync(mobileLib)
+    ? readdirSync(mobileLib)
+        .filter((f) => /^team-.*\.tsx?$/.test(f))
+        .map((f) => join(mobileLib, f))
+    : [];
+  const routeFiles = walk(apiDir, (p) => /\.tsx?$/.test(p));
+  if (routeFiles.length === 0) absent.push("src/app/api/mobile/team/**");
   let schemas = 0;
-  for (const f of apiFiles) {
+  for (const f of [...routeFiles, ...sharedFiles]) {
     scanned.push(rel(f));
-    for (const d of declarations(read(f), /Response$/)) {
-      if (!/\bz\s*\./.test(d.body)) continue;
+    for (const expr of zodExpressions(read(f))) {
       schemas += 1;
-      const body = d.body.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/(^|[^:\\])\/\/[^\n]*/g, "$1");
-      if (FORBIDDEN.test(body)) hits.push(`${rel(f)} · schema ${d.name} · "${word(body)}"`);
+      if (FORBIDDEN.test(expr)) hits.push(`${rel(f)} · zod schema «${cut(expr.replace(/\s+/g, " "), 40)}» · "${word(expr)}"`);
     }
   }
+  if (routeFiles.length > 0 && schemas === 0) vacuous.push(`src/app/api/mobile/team/** (${routeFiles.length} file(s), no zod expression found)`);
 
-  const note = `${scanned.length} file(s) scanned · ${schemas} response schema(s)${absent.length ? ` · not there yet (ratchet): ${absent.join(", ")}` : ""}`;
+  const note = `${scanned.length} file(s) scanned · ${schemas} zod expression(s)${absent.length ? ` · not there yet (ratchet): ${absent.join(", ")}` : ""}`;
+  const problems = [...hits, ...vacuous.map((v) => `nothing scanned in ${v}`)];
   chk(
     "F16.1",
-    'no "token" / "โทเคน" / "บาทต่องาน" / "ค่าแรง" / "wage" in team i18n strings and mobile team response schemas',
-    hits.length === 0,
-    hits.length ? `${hits.length} hit(s): ${hits.slice(0, 8).join(" | ")}${hits.length > 8 ? " …" : ""}` : note,
+    'no "token" / "โทเคน" / "บาทต่องาน" / "ค่าแรง" / "wage" in team i18n strings and mobile team zod schemas',
+    problems.length === 0,
+    problems.length ? `${problems.length} finding(s): ${problems.slice(0, 8).join(" | ")}${problems.length > 8 ? " …" : ""}` : note,
     "CRITICAL",
   );
 }
@@ -177,10 +263,12 @@ console.log(`── AI TEAM fitness (AT-F16.x) · root ${ROOT === REPO_ROOT ? "r
     chk(
       "F16.2",
       name,
-      unknown.length === 0 && known.size > 1,
+      unknown.length === 0 && known.size > 1 && used.size > 0,
       unknown.length
         ? `${rel(templatesFile)} names skill(s) that do not exist: ${unknown.join(", ")}`
-        : known.size <= 1
+        : used.size === 0
+          ? `${rel(templatesFile)} exists but no \`skillId: "…"\` was found in it — nothing was verified (template shape changed?)`
+          : known.size <= 1
           ? "could not read any skill id from skills.ts (registry shape changed?)"
           : `${used.size} skill id(s) used · ${known.size - 1} registered`,
     );
@@ -199,18 +287,22 @@ console.log(`── AI TEAM fitness (AT-F16.x) · root ${ROOT === REPO_ROOT ? "r
     const hits: string[] = [];
     let blocks = 0;
     for (const f of files) {
-      // the report DTO = every type / zod schema whose name contains "Report"
+      // the report DTO = every type / zod schema whose name contains "Report", and the RETURN TYPE of every function
+      // whose name contains "Report" (a function body is not a DTO: its local keys are not scanned)
       for (const d of declarations(read(f), /Report/)) {
-        if (/^(?:export\s+)?(?:async\s+)?function\b/.test(d.body)) continue; // a function body is not a DTO
+        const isFunction = /^(?:export\s+)?(?:async\s+)?function\b/.test(d.body);
+        const isArrow = /^(?:export\s+)?(?:const|let)\s+[\w$]+\s*=\s*(?:async\s*)?\(/.test(d.body);
+        const text = isFunction || isArrow ? returnTypeOf(stripComments(d.body)) : stripComments(d.body);
+        if (!text.trim()) continue;
         blocks += 1;
-        const body = d.body.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/(^|[^:\\])\/\/[^\n]*/g, "$1");
-        for (const m of body.matchAll(/(?:^|[{,;\s])["']?([A-Za-z_$\u0E00-\u0E7F][\w$\u0E00-\u0E7F]*)["']?\s*\??\s*:/g)) {
+        for (const m of text.matchAll(/(?:^|[{,;\s<(])["']?([A-Za-z_$\u0E00-\u0E7F][\w$\u0E00-\u0E7F]*)["']?\s*\??\s*:/g)) {
           const key = String(m[1]);
           if (MONEY_KEY.test(key)) hits.push(`${rel(f)} · ${d.name}.${key}`);
         }
       }
     }
-    chk("F16.3", name, hits.length === 0, hits.length ? `money key(s): ${[...new Set(hits)].slice(0, 8).join(" | ")}` : `${files.length} file(s) · ${blocks} report type(s)/schema(s)`, "CRITICAL");
+    if (blocks === 0) hits.push(`nothing scanned: ${files.map(rel).join(", ")} exist(s) but no type / schema / function return type named *Report* was found`);
+    chk("F16.3", name, hits.length === 0, hits.length ? `finding(s): ${[...new Set(hits)].slice(0, 8).join(" | ")}` : `${files.length} file(s) · ${blocks} report type(s)/schema(s)`, "CRITICAL");
   }
 }
 

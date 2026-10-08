@@ -28,8 +28,8 @@
 //                    outputMode String? (DRAFT|AUTO)  claimedAt DateTime? (15-minute lease)                                     (C12)
 //   AiCreditTxn      aiEmployeeId String?  subscriptionId String?                                                              (C6)
 //   AiSettings       defaultApproverUserId String?  undoWindowSec Int?  teamPausedUntil DateTime?                              (C25)
-//                    + uiVersion Int @default(1) — read by GET /api/mobile/me (AI-TEAM-RUN §2 T1.10); C25 does not list it,
-//                      the controller confirms it in the T1.1 brief (docs/api/AI-TEAM-MOBILE-API.md §GET /api/mobile/me)
+//                    uiVersion Int @default(1) — per tenant; GET /api/mobile/me exposes it per membership
+//                      (controller ruling 8 Oct, added to the C25 list)
 //   Raw SQL of T1.1 (prisma cannot express partial uniques):
 //     CREATE UNIQUE INDEX "AiSubscription_owner_free_key"  ON "AiSubscription" ("ownerUserId") WHERE "pack" = 'FREE' AND "ownerUserId" IS NOT NULL;
 //     CREATE UNIQUE INDEX "AiSubscription_tenant_key"      ON "AiSubscription" ("tenantId")    WHERE "tenantId" IS NOT NULL;
@@ -157,18 +157,21 @@ model AiEmployeeAccess {
   @@index([tenantId])
 }
 
-// no row for an employee = the employee sees every category (today's behaviour) · rows = allow-list
+// Knowledge audience — PER ITEM, fail-closed (reviewer SF1):
+//   an item with NO row here is usable by every employee (today's behaviour);
+//   an item with ≥ 1 row is usable ONLY by the granted employees / positions (a new hire does not see it until granted).
+// One row = one (item, grantee) pair; "everyone" is expressed by deleting the item's rows, never by a wildcard row.
 model AiKnowledgeGrant {
-  id           String     @id @default(cuid())
+  id           String      @id @default(cuid())
   tenantId     String
-  aiEmployeeId String
-  aiEmployee   AiEmployee @relation(fields: [aiEmployeeId], references: [id], onDelete: Cascade)
-  category     String? // KbArticle.category (C14)
-  sourceKey    String? // automatic source: products | hours
-  articleId    String? // a single KbArticle
+  itemKey      String // "category:<KbArticle.category>" | "article:<KbArticle.id>" | "source:products" | "source:hours"
+  granteeKey   String // "employee:<AiEmployee.id>" | "position:<positionKey>"
+  aiEmployeeId String? // set when the grantee is one employee (cascade on delete); null for a position grant
+  aiEmployee   AiEmployee? @relation(fields: [aiEmployeeId], references: [id], onDelete: Cascade)
   createdById  String
-  createdAt    DateTime   @default(now())
+  createdAt    DateTime    @default(now())
 
+  @@unique([tenantId, itemKey, granteeKey])
   @@index([tenantId, aiEmployeeId])
 }
 

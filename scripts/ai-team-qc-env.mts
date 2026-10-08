@@ -62,21 +62,35 @@ export type AtIds = {
 
 export type AiTeamQcEnv = { databaseUrl: string; host: string; source: string };
 
-const hostnameOf = (url: string | undefined): string => {
-  if (!url) return "";
+// the whole hostname must be a QC4 Neon endpoint: <mark>[-<id>…][-pooler].<region…>.neon.tech — case-insensitive, no trailing dot
+const QC4_HOSTNAME_RE = new RegExp(`^${QC4_HOST_MARK}(-[a-z0-9]+)*(-pooler)?\\.[a-z0-9.-]*neon\\.tech$`, "i");
+/**
+ * true only when the URL can reach nothing but QC4:
+ *  • hostname — not a substring of the whole URL (the mark as user / database / option is refused) — matches QC4_HOSTNAME_RE;
+ *  • no comma in the authority (libpq multi-host lists: `good-host,other-host`);
+ *  • no `host` / `hostaddr` query parameter (libpq lets them override the host of the authority).
+ */
+const isQc4 = (url: string | undefined): boolean => {
+  if (!url) return false;
+  const authority = /^[a-z][a-z0-9+.-]*:\/\/([^/?#]*)/i.exec(url)?.[1] ?? "";
+  if (!authority || authority.includes(",")) return false;
+  let parsed: URL;
   try {
-    return new URL(url).hostname;
+    parsed = new URL(url);
   } catch {
-    return "";
+    return false;
   }
+  for (const key of parsed.searchParams.keys()) {
+    const k = key.toLowerCase();
+    if (k === "host" || k === "hostaddr") return false;
+  }
+  return QC4_HOSTNAME_RE.test(parsed.hostname);
 };
-/** hostname — not a substring of the whole URL: a URL that mentions the mark as user / database / option is refused */
-const isQc4 = (url: string | undefined): boolean => hostnameOf(url).startsWith(QC4_HOST_MARK);
 
 /** exit 4 · names the variable only — never the value, the user, the password, the database or the host */
 function refuse(variable: string, where: string): never {
   console.error(
-    `🔴 ai-team-qc-env: ${variable} (${where}) does not point at the QC4 database (host must start with ${QC4_HOST_MARK}) — refusing to continue.\n` +
+    `🔴 ai-team-qc-env: ${variable} (${where}) does not point at the QC4 database (the host must be a ${QC4_HOST_MARK}… Neon endpoint, with no host/hostaddr override and no host list) — refusing to continue.\n` +
       `   Run through the wrapper: bash scripts/iso.sh bash scripts/qc4.sh bash scripts/with-gate-lock.sh env QC_FORCE=1 SHARK_AI_MOCK=1 pnpm exec tsx scripts/<file>.mts`,
   );
   process.exit(4);
@@ -123,7 +137,7 @@ export async function loadAiTeamQcEnv(): Promise<AiTeamQcEnv> {
   for (const variable of ["DATABASE_URL", "DIRECT_URL"] as const) {
     if (!isQc4(process.env[variable])) refuse(variable, "after load");
   }
-  if (!hostnameOf(env.databaseUrl).startsWith(QC4_HOST_MARK)) refuse("DATABASE_URL", "after load");
+  if (!isQc4(env.databaseUrl)) refuse("DATABASE_URL", "after load");
 
   loaded = { databaseUrl: env.databaseUrl, host: env.host, source: env.source };
   return loaded;

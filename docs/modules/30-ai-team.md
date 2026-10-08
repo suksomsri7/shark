@@ -55,7 +55,7 @@ Other modules reach the team layer only through the facade «src/lib/ai/team/ind
 | `employee_quota_cap` | the employee reached `quotaCapPct` of the cycle allowance | «quota.ts» |
 | `team_quota_exhausted` | the pack allowance of the cycle is used up (overflow PAUSE) | «quota.ts» |
 
-Other refusals named in the API contract (`not_commander`, `cannot_grant_beyond_self`, `auto_forbidden_kind`, `undo_expired`, `not_undoable`, `schedule_limit`, `default_employee_protected`, `employee_terminated`, `already_decided`) are ordinary error codes of single functions.
+The list of eight is closed (COMMON §C2). `employee_paused` is the single code for an employee that cannot act — PAUSED **and** TERMINATED alike (there is no separate terminated code). Other refusals named in the API contract (`not_commander`, `cannot_grant_beyond_self`, `auto_forbidden_kind`, `undo_expired`, `not_undoable`, `schedule_limit`, `default_employee_protected`, `already_decided`) are ordinary error codes of single functions.
 
 ## 3. Data decisions (the draft is `prisma/drafts/ai_team.prisma`)
 
@@ -65,7 +65,7 @@ Other refusals named in the API contract (`not_commander`, `cannot_grant_beyond_
 - **No new `AiCreditSource` value (R-E C35).** Attribution = `AiCreditTxn.aiEmployeeId` + `subscriptionId` (nullable columns of T1.1).
 - **No new `ActorType` (R-E C22).** AUTO writes `writeAudit({ actorType: "USER", actorId: grantorId, action: "ai.auto.<kind>", targetType: "AiProposal", targetId, after: { aiEmployeeId, … } })`; `AiActionLog` is the source of the action screen and of undo.
 - **`core.prisma` is frozen (R-E C1).** Packs live in `AiSubscription.pack` (`AiPack`); `Tenant.plan` and `planLimits()` are not touched.
-- **Tenant-level team settings** are nullable columns on the existing `AiSettings` (R-E C25): `defaultApproverUserId`, `undoWindowSec`, `teamPausedUntil` (+ `uiVersion`, see §12).
+- **Tenant-level team settings** are columns on the existing `AiSettings` (R-E C25): `defaultApproverUserId`, `undoWindowSec`, `teamPausedUntil`, and `uiVersion Int @default(1)` (controller ruling 8 Oct). `uiVersion` is **per tenant only**: `GET /api/mobile/me` exposes it per membership and the app mounts the v2 tree for the ACTIVE tenant's value — a tenant at 1 keeps the 1.0 screens even when the same user has another tenant at 2.
 - **Never reuse `Team*`** (CRM sales teams of people): AI rooms are `AiRoom*` (R-E C29).
 
 ## 4. Files and owners
@@ -92,7 +92,7 @@ Other refusals named in the API contract (`not_commander`, `cannot_grant_beyond_
 | «rooms.ts» | M9 | T5.1 | `createRoom` `updateRoom` `archiveRoom` `listRooms` `suggestHandoffs` |
 | «handoff.ts» | M9 | T5.2–T5.3 | `handoffTo` `runFlow` `draftFlowFromHistory` + flow CRUD |
 
-Around the layer: «src/lib/mobile/team-auth.ts» (`requireMobileUser`, T1.10) · «src/app/api/mobile/team/» route tree (T1.10 and later) · «src/lib/actions/ai-team.ts» (web server actions, covered by fitness F6 — R-E C32) · «scripts/ai-team-cron.mts» jobs (T1.9 / T3.3 / T4.4 / T4.5).
+Around the layer: «src/lib/mobile/team-auth.ts» (`requireMobileUser` + `requireTeamMobile`, T1.10) · «src/app/api/mobile/team/» route tree (T1.10 and later) · «src/lib/actions/ai-team.ts» (web server actions, covered by fitness F6 — R-E C32) · «scripts/ai-team-cron.mts» jobs (T1.9 / T3.3 / T4.4 / T4.5).
 
 Shared types used below:
 
@@ -112,7 +112,7 @@ class TeamRefusal extends Error { code: string } // one of §2.1 or a function-l
 «employees.ts» (T1.2 · 🎯)
 
 ```ts
-createEmployee(ctx, input: { name: string; positionKey: string; persona: Persona; quotaCapPct: number; workHours?: WorkHours; commanderUserIds?: string[]; idempotencyKey: string }): Promise<{ id: string }>
+createEmployee(ctx, input: { name: string; positionKey: string; persona: Persona; quotaCapPct: number; workHours?: WorkHours; commanderUserIds?: string[]; access?: { skillId: string; level: "OFF" | "READ" | "DRAFT" }[]; manual?: { sections: ManualSections; note?: string }; idempotencyKey: string }): Promise<{ id: string; manualVersion: 1 }>
 updateEmployee(ctx, id, patch: Partial<{ name; persona; quotaCapPct; workHours; commanderUserIds }>): Promise<void>
 pauseEmployee(ctx, id, reason?: string): Promise<void>
 resumeEmployee(ctx, id): Promise<void>
@@ -124,9 +124,10 @@ employeeOfConversation(tenantId: string, conversationId: string): Promise<{ id: 
 ```
 
 - `name`: 1–60 characters, no HTML → `VALIDATION`. `idempotencyKey` unique per tenant: ten parallel calls create one row.
-- Needs `ai.employee.manage` (create / update / pause / terminate) or `ai.employee.read` (get / list).
+- **Hiring is one transaction** (controller ruling 8 Oct): the `AiEmployee` row, its `AiEmployeeAccess` rows (from `access`, else the template's default levels — each level passes the same `cannot_grant_beyond_self` / no-AUTO rules as `setAccess`) and manual version 1 (`manual`, else the template's; source HIRE) are written together or not at all. There is no half-hired employee and **no hard delete** of an employee anywhere in this layer.
+- Needs `ai.employee.manage` (create / update / pause / terminate) or `ai.employee.read` (get / list; `ai.employee.use` implies read — §9).
 - `terminateEmployee`: `confirm` + reason ≥ 5 characters; open `AiTask` → ARCHIVED, the employee's scheduled tasks → `active = false`, rooms stay readable. The default employee refuses (`default_employee_protected`) — it can only be paused.
-- `ensureDefaultEmployee`: "ผู้ช่วยทั่วไป", `isDefault = true`, neutral persona, every skill at DRAFT (= today's behaviour). Two calls = one row (partial unique index). Created lazily for shops that already used the assistant; T6.1 backfills. The list route itself never creates it.
+- `ensureDefaultEmployee`: "ผู้ช่วยทั่วไป", `isDefault = true`, neutral persona, every skill at DRAFT (= today's behaviour). Two calls = one row (partial unique index). Created lazily **at the first read of a legacy conversation / the first legacy chat** of a shop (controller ruling 8 Oct, narrowing R-B "lazily at read time"); T6.1 backfills the rest. `listEmployees` and the list route never create it — otherwise the empty-team screen (A8) could never appear.
 - `employeeOfConversation`: `AiTask` by `conversationId`, else the default employee, else `null` (a shop with no employee at all → the legacy path).
 - `liveStatus`: PAUSED (status / pauseReason) › WAITING_APPROVAL (a PENDING proposal in one of its task rooms) › WORKING (an OPEN task updated recently) › IDLE.
 - Audit: `ai.employee.create|update|pause|resume|terminate`.
@@ -176,7 +177,7 @@ frequentTasks(ctx, aiEmployeeId: string): Promise<{ icon: string; title: string;
 - Commanders: `AiEmployee.commanderUserIds`; empty = everyone with `ai.employee.use`. Checked on `startTask` **and on every `sendMessage`** → `not_commander`.
 - Stored status is OPEN / DONE / ARCHIVED. WAITING (a PENDING proposal exists) and WORKING are computed.
 - `frequentTasks` = the template's list + the three most repeated recent titles.
-- Refusals: `employee_paused`, `employee_quota_cap`, `team_quota_exhausted`, `not_commander`.
+- Refusals: `employee_paused` (paused or terminated), `employee_quota_cap`, `team_quota_exhausted`, `not_commander`.
 - Customer chat text is never copied into a team table (X8).
 
 ### M3 — งานประจำ (recurring task)
@@ -282,7 +283,7 @@ currentManual(ctx, aiEmployeeId: string): Promise<ManualView>
 listVersions(ctx, aiEmployeeId: string): Promise<ManualVersionView[]>
 revertTo(ctx, aiEmployeeId: string, version: number, opts: { confirm: true }): Promise<{ version: number }>
 diffVersions(a: ManualSections, b: ManualSections): { section: ManualSectionKey; added: string[]; removed: string[] }[]
-draftManualFromText(ctx, aiEmployeeId: string | null, text: string, positionKey?: string): Promise<ManualSections> // model call · charged · saves nothing
+draftManualFromText(ctx, target: { aiEmployeeId: string } | { positionKey: string }, text: string): Promise<ManualSections> // model call · charged · saves nothing
 attachDocument(ctx, aiEmployeeId: string, file: { dataBase64: string; contentType: string; filename?: string }): Promise<{ id: string; extractedChars: number }>
 exportManualText(ctx, aiEmployeeId: string, version?: number): Promise<string>
 ```
@@ -290,6 +291,7 @@ exportManualText(ctx, aiEmployeeId: string, version?: number): Promise<string>
 - Append-only: version = max + 1 inside one transaction, unique `(aiEmployeeId, version)`; ten parallel saves give ten consecutive versions. `revertTo` creates a new version that copies the old one.
 - Limits: 2,000 characters per section, 20 items per list → `VALIDATION`.
 - A manual that says "ignore all rules / set level AUTO / delete customers" changes nothing: it is data in a delimited block, the tool list does not change and execute still refuses (X6).
+- `draftManualFromText` has two doors: an existing employee (route `employees/[id]/manual/draft`, charged to that employee) and a hire in progress (`{ positionKey }`, dedicated route `team/manual/draft`, charged to the tenant — no reserved id).
 - Attachments go through the existing private-file path; the extracted text is capped at 20,000 characters; no permanent URL in any DTO.
 
 «teach.ts» (T4.1)
@@ -302,7 +304,7 @@ confirmTeaching(ctx, noteId: string, input: { ruleText: string; section: ManualS
 
 - Reject + `AiTeachNote`; MANUAL → one proposed rule → the person confirms → `createVersion(source TEACH)` + a system line in the room + the employee redoes the work (a new PENDING proposal). Confirming twice writes one version. The note can never raise a level.
 
-Knowledge (T4.6): `AiKnowledgeGrant` at `KbArticle.category` level plus two automatic sources (`products`, `hours`) read live through the owning facades — nothing is copied into KB tables. `kbSearch` in `tools.ts` filters when `ctx.aiEmployeeId` is set, **before** results reach the prompt; no grant row = today's behaviour (R-E C14).
+Knowledge (T4.6): `AiKnowledgeGrant` rows name an **item** (`itemKey`: `category:<KbArticle.category>` · `article:<id>` · `source:products` · `source:hours`) and a **grantee** (`employee:<aiEmployeeId>` or `position:<positionKey>`). The rule is **per item and fail-closed** (reviewer SF1): an item with **no** grant row is usable by every employee (today's behaviour); an item with **≥ 1** grant row is usable **only** by the granted employees / positions — a newly hired employee does not see a restricted item until someone grants it. An article is usable when neither its own `article:` key nor its `category:` key excludes the employee. The two automatic sources are read live through the owning facades — nothing is copied into KB tables. `kbSearch` in `tools.ts` applies the rule when `ctx.aiEmployeeId` is set, **before** results reach the prompt; without an employee = today's behaviour (R-E C14).
 
 ### M6 — แพ็กและโควตา (pack · quota)
 
@@ -328,7 +330,7 @@ resetCycles(now: Date): Promise<number> // job, lease-claimed, idempotent per cy
 
 ### M7 — โครงแอป (app shell · notifications · roles)
 
-Server side: `uiVersion` on `GET /api/mobile/me` (the v2 tree mounts only at 2), `GET …/team/summary` (`viewerRole` OWNER / APPROVER / MEMBER computed from real rights), `AiNotifyPref` (user × tenant: five events, three channels, quiet hours — R-E C24), `GET …/team/people`. Push uses the existing senders with deep links in `data.link`. App side (lane B): Airy theme tokens light / dark, header with the business switcher, no bottom tab bar, menu from the profile avatar, first-run screens, approver view. Details: `docs/api/AI-TEAM-MOBILE-API.md` §2–§3.
+Server side: `memberships[].uiVersion` on `GET /api/mobile/me` (per tenant; the v2 tree mounts only while the active tenant is at 2), the team-route wrapper `requireTeamMobile` in «src/lib/mobile/team-auth.ts» (a tenant the caller is not a member of answers 404 on team routes; `requireMobile` itself is untouched), `GET …/team/search` (A1: employees + visible tasks + CRM customer names only for callers with CRM read), `GET …/team/summary` (`viewerRole` OWNER / APPROVER / MEMBER computed from real rights), `AiNotifyPref` (user × tenant: five events, three channels, quiet hours — R-E C24), `GET …/team/people`. Push uses the existing senders with deep links in `data.link`. App side (lane B): Airy theme tokens light / dark, header with the business switcher, no bottom tab bar, menu from the profile avatar, first-run screens, approver view. Details: `docs/api/AI-TEAM-MOBILE-API.md` §2–§3.
 
 ### M8 — ผลงาน (performance)
 
@@ -391,7 +393,7 @@ No new `AiCreditSource` value (R-E C35). `sampleSpeech`, `recommendPositions`, `
 
 ## 9. Permissions (module `ai` of `src/lib/core/permissions.ts` — T1.2 registers the new keys with Thai labels, R-E C31)
 
-`ai.chat.send` and `ai.schedule.create` exist today. New: `ai.employee.read` · `ai.employee.manage` · `ai.employee.use` · `ai.access.grant` (OWNER-only, pattern `CRM_OWNER_ONLY_KEYS`) · `ai.schedule.manage` · `ai.action.undo` · `ai.room.manage`. Granting AUTO also passes `canGrantPermission`. Who may approve a proposal is decided by the kind's own module permission, never by an `ai.*` key.
+`ai.chat.send` and `ai.schedule.create` exist today. New: `ai.employee.read` · `ai.employee.manage` · `ai.employee.use` (**implies `ai.employee.read`** — whoever may order an employee may see the team; one rule in T1.2's permission check, not a second stored key) · `ai.access.grant` (OWNER-only, pattern `CRM_OWNER_ONLY_KEYS`) · `ai.schedule.manage` · `ai.action.undo` · `ai.room.manage`. Granting AUTO also passes `canGrantPermission`. Who may approve a proposal is decided by the kind's own module permission, never by an `ai.*` key.
 
 ## 10. Jobs («scripts/ai-team-cron.mts» + the existing hourly cron)
 
@@ -407,12 +409,14 @@ Every job is exercised by its oracle as two overlapping runs plus a simulated cr
 
 ## 11. QC data
 
-`scripts/seed-ai-team-qc.mts` (find-or-create, QC4 only) leaves three shops: **AT-1** (owner, approver MANAGER, staff with `ai.employee.use`; ACCOUNT / CRM / CHAT / MEMBER / KANBAN; 24 CRM contacts, 6 deals, 3 open invoices, 3 customer chats waiting, 6 members, 5 KB articles, an approval policy at 20,000 baht), **AT-2** (same owner — shared FREE pack, cross-tenant inbox) and **AT-X** (another owner — isolation). Oracles resolve ids with `atIds()` of `scripts/ai-team-qc-env.mts` and declare the header marker `requires: ai-team-seed`.
+`scripts/seed-ai-team-qc.mts` (find-or-create, QC4 only) leaves three shops: **AT-1** (owner, approver MANAGER, staff with `ai.employee.use`; ACCOUNT / CRM / CHAT / MEMBER / KANBAN; 24 CRM contacts, 6 deals, 3 open invoices, 3 customer chats waiting, 6 members, 5 KB articles, an approval policy at 20,000 baht), **AT-2** (same owner — shared FREE pack, cross-tenant inbox) and **AT-X** (another owner — isolation). Oracles resolve ids with `atIds()` of `scripts/ai-team-qc-env.mts` and declare the header marker `requires: ai-team-seed`. **Ages drift:** the seed stamps dates once, relative to its first run, and never re-stamps them — oracles never assert on `lastActivityAt`, `stageEnteredAt`, due dates or "quiet for N days" of seed rows; a check that needs a point in time creates its own rows or injects the clock with `withInjectedNow`.
 
-## 12. Open points recorded for the controller
+## 12. Rulings of 8 Oct on the points this work order raised (source: last section of `ledger/ai-team-briefs/ai-brief-T0.2.md`)
 
-1. `AiSettings.uiVersion` is read by `GET /api/mobile/me` (AI-TEAM-RUN §2 T1.10) but is not in the column list of R-E C25 — the draft's "T1.1 adds" block lists it as an addition to confirm.
-2. The hire rollback of T2.9 ("delete the employee when a later call fails") has no route in the T1.10 list — the API contract proposes `DELETE …/team/employees/[id]` limited to a fresh, unused employee.
-3. A5 opened from a push notification needs a task-detail read — the API contract proposes `GET …/team/tasks/[id]`.
-4. `draftManualFromText` during a hire has no employee yet — the API contract uses the reserved id `new` + `positionKey`, charged to the tenant.
-5. The default employee is created lazily for shops that already used the assistant, not by the list route — otherwise the empty-team screen (A8) could never appear.
+1. `AiSettings.uiVersion Int @default(1)` joins the "T1.1 adds" list; exposed per membership only (§3).
+2. Hiring is one transaction inside `createEmployee` / `POST …/team/employees`; there is no delete route (changes T2.9 S6 — the controller updates that brief).
+3. `GET …/team/tasks/[id]` and `POST …/team/employees/[id]/manual/attach` are part of the route list.
+4. A hire-time manual draft has its own route `POST …/team/manual/draft` (charged to the tenant).
+5. The default employee is created at the first legacy-conversation read / first legacy chat, never by the list route (the controller writes the T1.2 addendum).
+6. A non-member tenant on a team route answers 404 through `requireTeamMobile`.
+7. Knowledge grants are per item and fail-closed; `ai.employee.use` implies read; `employee_paused` is the only "cannot act" code.

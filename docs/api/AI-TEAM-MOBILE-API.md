@@ -16,6 +16,7 @@
   - `mobileUser(req)` — same file — Bearer only (no tenant yet). Fails with `401 unauthorized`.
   - `requireMobileUser(req)` — **new in T1.10**, «src/lib/mobile/team-auth.ts» (RESOLUTIONS R-E C21) — Bearer + ALL accepted memberships of the user, no `X-Tenant-Id`. Used by the cross-tenant inbox only. Fails with `401 unauthorized`.
   - `mobileDenied(g, q)` / `mobileAiCtx(g)` — `src/lib/mobile/guard.ts` — permission gate (`evaluate`, the same function `assertCan` uses: OWNER and MANAGER pass, STAFF needs the key) and the `{ tenantId, actor }` context of the commanding user.
+- Every `/api/mobile/team/**` route (except the cross-tenant inbox) calls `requireMobile` through the wrapper `requireTeamMobile(req)` — **new in T1.10**, «src/lib/mobile/team-auth.ts» — which remaps one answer: a tenant the caller is **not a member of** (today `403 forbidden` from `requireMobile`) becomes `404 not_found` on team routes (controller ruling 8 Oct, D7). `requireMobile` itself is not changed; `401 unauthorized`, `403 missing_tenant` and `403 suspended` pass through. The `Auth:` line of each team section names the underlying helper.
 - Team routes follow the 404-not-403 pattern for anything addressed by id: an employee, task, schedule, room, flow, proposal or action that is not in the tenant of `X-Tenant-Id` — or that the caller may not see — answers `404 not_found`, exactly like an id that does not exist (X1). A missing permission key on a collection route answers `403 forbidden` (the shape `mobileDenied` returns today).
 
 ### 1.2 Permission keys
@@ -26,7 +27,7 @@ Module `ai` of `src/lib/core/permissions.ts`. Today it has `ai.chat.send` and `a
 |---|---|---|
 | `ai.employee.read` | see the team, profiles, quota, report | OWNER · MANAGER · STAFF with the key |
 | `ai.employee.manage` | hire, edit, pause, terminate, manual, access OFF/READ/DRAFT, knowledge | OWNER · MANAGER |
-| `ai.employee.use` | start a task and send orders (still limited by the employee's commander list) | OWNER · MANAGER · STAFF with the key |
+| `ai.employee.use` | start a task and send orders (still limited by the employee's commander list). **Implies `ai.employee.read`**: wherever this file says `ai.employee.read`, a member holding `ai.employee.use` passes too (implemented in T1.2) | OWNER · MANAGER · STAFF with the key |
 | `ai.access.grant` | grant AUTO (OWNER-only key, pattern `CRM_OWNER_ONLY_KEYS`) + `canGrantPermission` of the kind | OWNER |
 | `ai.schedule.manage` | create / edit / delete recurring tasks | OWNER · MANAGER |
 | `ai.action.undo` | undo an action inside the undo window | OWNER (+ named users) |
@@ -42,12 +43,12 @@ Every error is `{ "error": "<code>", "message"?: "<Thai, never blames the user>"
 |---|---|---|
 | 400 | `bad_json` · `validation` | body is not JSON · zod refused it (`fields` names the paths) |
 | 401 | `unauthorized` | no / expired Bearer |
-| 403 | `missing_tenant` · `forbidden` · `suspended` | from `requireMobile` / `mobileDenied` |
+| 403 | `missing_tenant` · `forbidden` · `suspended` | from `requireMobile` / `mobileDenied` (on team routes `forbidden` means "member, but lacks the permission key") |
 | 403 | `not_commander` | the user is not in the employee's (or room's) commander list |
 | 403 | `cannot_grant_beyond_self` | the caller tried to give an access level for a module he cannot use himself |
-| 404 | `not_found` | unknown id, id of another tenant, or not visible to the caller |
-| 409 | `employee_access_off` · `employee_access_read_only` · `employee_auto_not_granted` · `employee_auto_over_limit` · `employee_grantor_revoked` · `employee_paused` · `employee_quota_cap` · `team_quota_exhausted` | the eight stable refusal codes of the team layer (COMMON §C2) |
-| 409 | `employee_terminated` · `default_employee_protected` · `auto_forbidden_kind` · `undo_expired` · `not_undoable` · `schedule_limit` · `already_decided` · `needs_second_confirm` | state refusals named in the route sections |
+| 404 | `not_found` | unknown id, id of another tenant, not visible to the caller — and, on team routes, an `X-Tenant-Id` the caller is not a member of (`requireTeamMobile`) |
+| 409 | (`employee_paused` covers a PAUSED and a TERMINATED employee alike — the eight-code list is closed) `employee_access_off` · `employee_access_read_only` · `employee_auto_not_granted` · `employee_auto_over_limit` · `employee_grantor_revoked` · `employee_paused` · `employee_quota_cap` · `team_quota_exhausted` | the eight stable refusal codes of the team layer (COMMON §C2) |
+| 409 | `default_employee_protected` · `auto_forbidden_kind` · `undo_expired` · `not_undoable` · `schedule_limit` · `already_decided` · `needs_second_confirm` | state refusals named in the route sections |
 | 429 | `rate_limited` | `checkRateLimitDb` bucket full (`retryAfterSec`) |
 
 ### 1.4 Rate limit buckets (`checkRateLimitDb(key, { limit, windowMs })`, `src/lib/core/rate-limit-db.ts`)
@@ -57,7 +58,8 @@ Every error is `{ "error": "<code>", "message"?: "<Thai, never blames the user>"
 | `mobile-team:<userId>` | 120 / minute | default for every team route |
 | `mobile-team-task:<userId>` | 30 / minute | `POST …/employees/[id]/tasks` · `POST …/rooms/[id]/tasks` |
 | `mobile-team-speech:<userId>` | 30 / minute | `POST …/persona/sample-speech` |
-| `mobile-team-ai:<userId>` | 10 / minute | routes that call the model: `…/manual/draft` · `…/inbox/teach` · `…/flows/draft` |
+| `mobile-team-ai:<userId>` | 10 / minute | routes that call the model: `…/team/manual/draft` · `…/employees/[id]/manual/draft` · `…/inbox/teach` · `…/flows/draft` |
+| `mobile-team-search:<userId>` | 60 / minute | `GET …/team/search` |
 | `mobile-team-upload:<userId>` | 10 / minute | `…/manual/attach` · `…/knowledge/items` |
 | `mobile-team-notify:<userId>` | 10 / minute | `POST …/sale-notify` |
 
@@ -172,7 +174,7 @@ One row per screen. Every route named here has its own section below. Buttons ar
 
 | Screen | Routes | Notes |
 |---|---|---|
-| A1 · ทีม | `GET /api/mobile/team/summary` `GET /api/mobile/team/employees` | the search box and the four tabs filter the loaded list on the device; "ชม. ที่ประหยัด" is `null` (shown as "—") until T4.5 |
+| A1 · ทีม | `GET /api/mobile/team/summary` `GET /api/mobile/team/employees` `GET /api/mobile/team/search` | the search box ("ค้นหาพนักงาน งาน หรือลูกค้า") calls `search` (debounced); the four tabs filter the loaded list on the device; "ชม. ที่ประหยัด" is `null` (shown as "—") until T4.5 |
 | A2 · สลับกิจการ | `GET /api/mobile/me` `GET /api/mobile/team/summary` `GET /api/mobile/team/quota` `POST /api/mobile/tenants` | `summary` is called once per membership with that tenant's `X-Tenant-Id` (cached 60 s); switching uses the app's existing `switchTenant` |
 | A3 · งานของพนักงาน | `GET /api/mobile/team/employees/[id]` `GET /api/mobile/team/employees/[id]/tasks` `GET /api/mobile/team/schedules` | tabs งาน / งานประจำ / เก็บแล้ว = `filter` of the tasks route + the schedules route |
 | A4 · เริ่มงานใหม่ | `GET /api/mobile/team/employees/[id]` `POST /api/mobile/team/employees/[id]/tasks` `POST /api/mobile/chat/send` | greeting, "เข้าถึง …" and frequent tasks come from the employee detail; the microphone uses the device dictation |
@@ -182,9 +184,9 @@ One row per screen. Every route named here has its own section below. Buttons ar
 | A8 · ยังไม่มีทีม | `GET /api/mobile/team/summary` `GET /api/mobile/team/positions/recommend` `GET /api/mobile/team/positions` | shown when `employees` is empty |
 | B1 · จ้าง ขั้น 1 ตำแหน่ง | `GET /api/mobile/team/positions` `GET /api/mobile/team/positions/recommend` | search and category tabs filter on the device |
 | B2 · จ้าง ขั้น 2 ตัวตน | `POST /api/mobile/team/persona/sample-speech` | debounced; the hire draft lives on the device until "จ้าง" |
-| B3 · จ้าง ขั้น 3 คู่มือ | `GET /api/mobile/team/positions` `POST /api/mobile/team/employees/[id]/manual/draft` `POST /api/mobile/team/employees/[id]/manual/attach` | during a hire `[id]` is the reserved value `new` for `manual/draft`; attachments are uploaded after the employee exists |
+| B3 · จ้าง ขั้น 3 คู่มือ | `GET /api/mobile/team/positions` `POST /api/mobile/team/manual/draft` `POST /api/mobile/team/employees/[id]/manual/draft` `POST /api/mobile/team/employees/[id]/manual/attach` | during a hire (no employee yet) the draft comes from `team/manual/draft`; for an existing employee from `employees/[id]/manual/draft`; attachments are uploaded after the employee exists |
 | B4 · แก้หัวข้อ สิ่งที่ห้ามทำ | `GET /api/mobile/team/positions` `GET /api/mobile/team/employees/[id]/manual` `POST /api/mobile/team/employees/[id]/manual` | drag, delete and add edit the local draft; "แนะนำจากร้านแบบเดียวกัน" = `suggestions` of the position template |
-| B5 · จ้าง ขั้น 4 สิทธิ์ & โควตา | `GET /api/mobile/team/positions` `POST /api/mobile/team/employees` `PUT /api/mobile/team/employees/[id]/access` `POST /api/mobile/team/employees/[id]/manual` `GET /api/mobile/team/employees/[id]/access` `PATCH /api/mobile/team/employees/[id]` `DELETE /api/mobile/team/employees/[id]` | hire = create → access → manual, in that order; `DELETE` is the hire rollback only |
+| B5 · จ้าง ขั้น 4 สิทธิ์ & โควตา | `GET /api/mobile/team/positions` `POST /api/mobile/team/employees` `GET /api/mobile/team/employees/[id]/access` `PUT /api/mobile/team/employees/[id]/access` `PATCH /api/mobile/team/employees/[id]` | hire = ONE `POST employees` carrying persona, access and manual (one transaction); the access / patch routes are the edit mode opened from B7 |
 | B6 · จ้างสำเร็จ | `GET /api/mobile/team/employees/[id]` `POST /api/mobile/team/employees/[id]/tasks` | the three numbers and the three first-task shortcuts come from the employee detail |
 | B7 · โปรไฟล์พนักงาน | `GET /api/mobile/team/employees/[id]` `POST /api/mobile/team/employees/[id]/pause` `POST /api/mobile/team/employees/[id]/resume` `POST /api/mobile/team/employees/[id]/terminate` | the four rows navigate to B2 / B3 / B5 / C5 |
 | B8 · ประวัติคู่มือ | `GET /api/mobile/team/employees/[id]/manual/versions` `POST /api/mobile/team/employees/[id]/manual/revert` | "📈 หลังแก้" is `effect` (null until T4.7 has enough tasks) |
@@ -198,7 +200,7 @@ One row per screen. Every route named here has its own section below. Buttons ar
 | C8 · ผู้อนุมัติ & คนในทีม | `GET /api/mobile/team/people` `POST /api/mobile/webview-session` | rules are read-only; "+ เชิญคนในทีม" opens the web invite page in the existing webview |
 | D1 · เริ่มใช้ครั้งแรก | client-only | pre-login screen: three static selling points and the free-pack line from the app i18n (T0.4 — no task count, R-A5); the two buttons navigate to sign-up / login (T2.13, existing auth routes) |
 | D2 · สร้างกิจการ | `POST /api/mobile/tenants` `POST /api/mobile/dna/answers` `POST /api/mobile/webview-session` | the five type chips map to `industryHint` on the device; connect buttons open the web settings pages (R-C6); skippable |
-| D3 · จ้างคนแรก | `GET /api/mobile/team/positions/recommend` `GET /api/mobile/team/positions` `POST /api/mobile/team/employees` `PUT /api/mobile/team/employees/[id]/access` `POST /api/mobile/team/employees/[id]/manual` | quick hire = the same three calls with the template values |
+| D3 · จ้างคนแรก | `GET /api/mobile/team/positions/recommend` `GET /api/mobile/team/positions` `POST /api/mobile/team/employees` | quick hire = the same single call with the template values |
 | D4 · โควตาหมด | `GET /api/mobile/team/quota` `GET /api/mobile/team/packs` `POST /api/mobile/team/sale-notify` | shown when `state` is EXHAUSTED or PAUSED |
 | D5 · ตีกลับ + สอนงาน | `POST /api/mobile/team/inbox/teach` `POST /api/mobile/team/inbox/teach/confirm` | before T4.1 "ตีกลับ" is `inbox/decide` with REJECT + note |
 | D6 · เลื่อนขั้น ให้ทำเอง | `GET /api/mobile/team/promotions` `POST /api/mobile/team/promotions/[id]/accept` `POST /api/mobile/team/promotions/[id]/dismiss` | T4.4 |
@@ -217,7 +219,7 @@ Source: the HTML the generators in `ledger/design-ai-team/gen_*.py` emit (`ai-te
 |---|---|---|
 | all screens | business name ▾ in the header | nav → sheet A2 |
 | all screens | avatar stack (people + AI, +N) top right | nav → menu C4 (own avatar) · data from `summary.people` / employee detail `commanders` |
-| A1 | search box | client-only: filters the loaded employees by name, position and status line (task / customer search is not in 2.0) |
+| A1 | search box "ค้นหาพนักงาน งาน หรือลูกค้า" | `GET team/search?q=` (debounced, ≥ 2 characters): employees → A3 · tasks → A5 · customers → the employee picker to start a task about that customer |
 | A1 | card "งานเสร็จวันนี้" · "เวลาที่ประหยัด" | display (`summary.today`) |
 | A1 | card "รออนุมัติ ›" | nav → A7 |
 | A1 | quota bar "โควตาเดือนนี้ %" | nav → C1 (`summary.quotaPct`, `summary.cycleEndsAt`) |
@@ -261,14 +263,14 @@ Source: the HTML the generators in `ledger/design-ai-team/gen_*.py` emit (`ai-te
 | B1–B3 | "ถัดไป" | nav → next step |
 | B2 | name field · gender / tone / humour / length chips · language chips · "+ เพิ่ม" | client-only draft; each change → debounced `POST persona/sample-speech` |
 | B3 | section card (6) | nav → B4 for that section |
-| B3 | "🎙 พูดอธิบายเอง" | device dictation or typing → `POST employees/[id]/manual/draft` (returns a draft, saves nothing) |
+| B3 | "🎙 พูดอธิบายเอง" | device dictation or typing → `POST team/manual/draft` during a hire · `POST employees/[id]/manual/draft` for an existing employee (both return a draft, save nothing) |
 | B3 | "📎 แนบเอกสาร SOP" | file picker → queued → `POST employees/[id]/manual/attach` after the employee exists |
 | B4 | drag handle · "−" · "＋ เพิ่มข้อ" · suggestion chips | client-only draft |
 | B4 | reply text · "แจ้งคุณทันที" switch | client-only draft (`forbiddenReply`, `notifyOnForbidden`) |
 | B4 | "บันทึก" | hire flow: back to B3 (draft) · existing employee: `POST employees/[id]/manual` |
 | B5 | level chips per system (4 × n) | client-only draft; AUTO disabled with `autoHint` until T4.2 (R-C7) |
 | B5 | "เวลาทำงาน" · "ใช้โควตาได้สูงสุด" | client-only pickers (`workHours`, `quotaCapPct` 5–100) |
-| B5 | "จ้าง<ชื่อ>" | `POST employees` → `PUT employees/[id]/access` → `POST employees/[id]/manual`; a failure after the first call → `DELETE employees/[id]` |
+| B5 | "จ้าง<ชื่อ>" | one `POST employees` (employee + access + manual v1 in one transaction; a failure creates nothing) → queued SOP files → `POST employees/[id]/manual/attach` |
 | B6 | first-task shortcut (3) | `POST employees/[id]/tasks` + `POST /api/mobile/chat/send` |
 | B6 | "กลับหน้าทีม" / "สั่งงานแรก" | nav → A1 / A4 |
 | B7 | rows ตัวตน / คู่มือ / สิทธิ์ / ความรู้ | nav → B2 / B3 / B5 / C5 (edit mode: `PATCH employees/[id]`, `POST manual`, `PUT access`, `PUT knowledge`) |
@@ -303,7 +305,7 @@ Source: the HTML the generators in `ledger/design-ai-team/gen_*.py` emit (`ai-te
 | D2 | "ถัดไป" · "ข้ามได้" | nav → D3 |
 | D3 | "แก้" (3) · other position chips | nav → B2 / B3 / B5 · client-only: switches the template |
 | D3 | "ปรับละเอียด" | nav → B1 (four steps) |
-| D3 | "จ้างเลย" | the three hire calls with template values |
+| D3 | "จ้างเลย" | one `POST employees` with the template values |
 | D4 | "ตกลง · รอรอบใหม่" | nav → A1 |
 | D5 | category chips · note field · "เฉพาะงานนี้" / "จำเป็นกฎในคู่มือ" | client-only form; choosing MANUAL calls `POST inbox/teach` to get "💡 เข้าใจว่า" + the proposed rule |
 | D5 | "ส่งกลับให้แก้ + บันทึกกฎ" | `POST inbox/teach/confirm` |
@@ -364,6 +366,26 @@ const ZTeamSummaryResponse = z.object({
 });
 ```
 
+### GET /api/mobile/team/search
+
+The search box of the team screen (A1: "ค้นหาพนักงาน งาน หรือลูกค้า" — the screen must match the approved mockup; reviewer SF6). Route: T1.10 · screen: T2.2. Three groups, this tenant only: employees (name, position), tasks the caller may see (`canSeeTask`, by title), customers (`CrmContact` display name) — the customer group is returned **only when the caller himself has CRM read permission**, and carries ids and names only: no phone, no e-mail, no note (X8).
+
+- **Auth:** `requireMobile`
+- **Permission:** `ai.employee.read`; the `customers` group additionally needs the caller's own CRM contact read permission (else it is an empty list)
+- **Request:** query `q` (2–60 characters after trim) · `limit` per group (≤ 10, default 5)
+- **Response:** `200` `ZTeamSearchResponse`
+- **Errors:** common errors · `400 validation` (`q` too short / long)
+- **Rate limit:** `mobile-team-search:<userId>` 60 / minute
+
+```ts
+const ZTeamSearchResponse = z.object({
+  q: z.string(),
+  employees: z.array(ZEmployeeRef.extend({ liveStatus: ZLiveStatus })).max(10),
+  tasks: z.array(z.object({ id: ZId, conversationId: ZId, title: z.string(), state: ZTaskState, aiEmployee: ZEmployeeRef })).max(10),
+  customers: z.array(z.object({ id: ZId, name: z.string(), company: z.string().nullable() })).max(10), // CrmContact — display name only
+});
+```
+
 ### GET /api/mobile/team/quota
 
 Pack, cycle and per-employee use as percentages (C1 · A2 · D4). RESOLUTIONS R-E C19: the v2 app reads this route, `/api/mobile/usage` stays for the 1.0 app.
@@ -408,13 +430,13 @@ const ZEmployeesResponse = z.object({ employees: z.array(ZEmployeeCard) });
 
 ### POST /api/mobile/team/employees
 
-Hire an employee (B5 / D3). Step 1 of the hire sequence; idempotent by `idempotencyKey`.
+Hire an employee (B5 / D3) — **one call, one transaction**: the employee, its access rows and manual version 1 are created together or not at all (controller ruling 8 Oct, D2). There is no half-hired employee and no hard delete; a repeated `idempotencyKey` returns the same employee. ⚠ This replaces the three-call sequence + rollback that the T2.9 contract (S6) describes — the controller updates that brief.
 
 - **Auth:** `requireMobile`
 - **Permission:** `ai.employee.manage`
 - **Request:** `ZEmployeeCreateRequest`
 - **Response:** `200` `ZEmployeeCreateResponse` (the same id for a repeated `idempotencyKey`)
-- **Errors:** common errors · `400 validation` (empty name, > 60 characters, HTML, unknown `positionKey`, cap outside 5–100)
+- **Errors:** common errors · `400 validation` (empty name, > 60 characters, HTML, unknown `positionKey`, cap outside 5–100, a manual section over its limits) · `403 cannot_grant_beyond_self` · `409 employee_auto_not_granted` (a row with `level: "AUTO"`) — any of them creates nothing
 - **Rate limit:** `mobile-team:<userId>` 120 / minute
 
 ```ts
@@ -425,9 +447,12 @@ const ZEmployeeCreateRequest = z.object({
   quotaCapPct: z.number().int().min(5).max(100),
   workHours: ZWorkHours.default({ always: true }),
   commanderUserIds: z.array(ZId).max(50).default([]), // empty = everyone with ai.employee.use
+  // omitted = the template's default levels / the template's manual (quick hire D3 sends neither)
+  access: z.array(z.object({ skillId: z.string().min(1).max(40), level: z.enum(["OFF", "READ", "DRAFT"]) })).max(40).optional(),
+  manual: z.object({ sections: ZManualSections, note: z.string().trim().max(200).optional() }).optional(),
   idempotencyKey: z.string().min(8).max(80),
 });
-const ZEmployeeCreateResponse = z.object({ id: ZId });
+const ZEmployeeCreateResponse = z.object({ id: ZId, manualVersion: z.literal(1) });
 ```
 
 ### GET /api/mobile/team/employees/[id]
@@ -475,7 +500,7 @@ Edit name, persona, cap, working hours or the commander list (B7 → B2 / B5).
 - **Permission:** `ai.employee.manage`
 - **Request:** `ZEmployeePatchRequest` (at least one key)
 - **Response:** `200` `ZEmployeePatchResponse`
-- **Errors:** common errors · `400 validation` · `409 employee_terminated`
+- **Errors:** common errors · `400 validation` · `409 employee_paused`
 - **Rate limit:** `mobile-team:<userId>` 120 / minute
 
 ```ts
@@ -492,21 +517,6 @@ const ZEmployeePatchRequest = z
 const ZEmployeePatchResponse = z.object({ employee: ZEmployeeCard });
 ```
 
-### DELETE /api/mobile/team/employees/[id]
-
-Hire rollback only (B5 / D3): removes an employee that was created less than 10 minutes ago by the caller and has no task, no schedule and no charge. Anything else is "เลิกจ้าง" (`terminate`). ⚠ Not in the T1.10 list of AI-TEAM-RUN — needed by the T2.9 contract ("rollback ถ้าล้มกลางทาง = ลบพนักงาน"); see `ledger/wo-notes/ai-t0.2.md` §7.
-
-- **Auth:** `requireMobile`
-- **Permission:** `ai.employee.manage`
-- **Request:** no body
-- **Response:** `200` `ZEmployeeRollbackResponse`
-- **Errors:** common errors · `409 default_employee_protected` · `409 employee_terminated` (too old or already used — use terminate)
-- **Rate limit:** `mobile-team:<userId>` 120 / minute
-
-```ts
-const ZEmployeeRollbackResponse = z.object({ ok: z.literal(true) });
-```
-
 ### POST /api/mobile/team/employees/[id]/pause
 
 "พักงาน" (B7). Running tasks stop taking new turns; rooms stay readable.
@@ -515,7 +525,7 @@ const ZEmployeeRollbackResponse = z.object({ ok: z.literal(true) });
 - **Permission:** `ai.employee.manage`
 - **Request:** `ZEmployeePauseRequest`
 - **Response:** `200` `ZEmployeePauseResponse`
-- **Errors:** common errors · `409 employee_terminated`
+- **Errors:** common errors · `409 employee_paused`
 - **Rate limit:** `mobile-team:<userId>` 120 / minute
 
 ```ts
@@ -531,7 +541,7 @@ Back to work after a manual pause. A QUOTA_CAP / TEAM_QUOTA pause is lifted by t
 - **Permission:** `ai.employee.manage`
 - **Request:** `ZEmployeeResumeRequest` (empty object)
 - **Response:** `200` `ZEmployeeResumeResponse`
-- **Errors:** common errors · `409 employee_terminated` · `409 employee_quota_cap` · `409 team_quota_exhausted`
+- **Errors:** common errors · `409 employee_paused` · `409 employee_quota_cap` · `409 team_quota_exhausted`
 - **Rate limit:** `mobile-team:<userId>` 120 / minute
 
 ```ts
@@ -655,17 +665,17 @@ const ZManualVersionsResponse = z.object({
 
 ### POST /api/mobile/team/employees/[id]/manual
 
-Save a new manual version (append-only; version = max + 1 in one transaction). Step 3 of the hire sequence, and "บันทึก" of B4 for an existing employee.
+Save a new manual version (append-only; version = max + 1 in one transaction). "บันทึก" of B4 for an existing employee (manual version 1 is written by `POST employees`).
 
 - **Auth:** `requireMobile`
 - **Permission:** `ai.employee.manage`
 - **Request:** `ZManualSaveRequest`
 - **Response:** `200` `ZManualSaveResponse`
-- **Errors:** common errors · `400 validation` (a section over 2,000 characters or 20 items) · `409 employee_terminated`
+- **Errors:** common errors · `400 validation` (a section over 2,000 characters or 20 items) · `409 employee_paused`
 - **Rate limit:** `mobile-team:<userId>` 120 / minute
 
 ```ts
-const ZManualSaveRequest = z.object({ sections: ZManualSections, note: z.string().trim().max(200).optional(), source: z.enum(["HIRE", "EDIT"]).default("EDIT") });
+const ZManualSaveRequest = z.object({ sections: ZManualSections, note: z.string().trim().max(200).optional() }); // source is EDIT; HIRE is written only by POST employees
 const ZManualSaveResponse = z.object({ version: z.number().int() });
 ```
 
@@ -687,7 +697,7 @@ const ZManualRevertResponse = z.object({ version: z.number().int() });
 
 ### POST /api/mobile/team/employees/[id]/manual/draft
 
-"พูดอธิบายเอง" (B3): the model sorts free text into the six sections and returns a DRAFT. Saves nothing. Calls the model ⇒ charged through the one charging path (X11). During a hire the employee does not exist yet: `[id]` = the reserved value `new` and `positionKey` is required (the charge is attributed to the tenant).
+"พูดอธิบายเอง" (B3): the model sorts free text into the six sections and returns a DRAFT. Saves nothing. Calls the model ⇒ charged through the one charging path (X11). For an EXISTING employee only (charged to that employee); during a hire use `POST /api/mobile/team/manual/draft`.
 
 - **Auth:** `requireMobile`
 - **Permission:** `ai.employee.manage`
@@ -697,8 +707,24 @@ const ZManualRevertResponse = z.object({ version: z.number().int() });
 - **Rate limit:** `mobile-team-ai:<userId>` 10 / minute
 
 ```ts
-const ZManualDraftRequest = z.object({ text: z.string().trim().min(10).max(6000), positionKey: z.string().max(40).optional() });
+const ZManualDraftRequest = z.object({ text: z.string().trim().min(10).max(6000) });
 const ZManualDraftResponse = z.object({ sections: ZManualSections });
+```
+
+### POST /api/mobile/team/manual/draft
+
+"พูดอธิบายเอง" (B3) **during a hire**, when no employee exists yet (controller ruling 8 Oct, D3 — a dedicated route instead of a reserved id): the model sorts free text into the six sections of the chosen position and returns a DRAFT. Saves nothing. Calls the model ⇒ charged through the one charging path, attributed to the tenant (no employee yet) (X11).
+
+- **Auth:** `requireMobile`
+- **Permission:** `ai.employee.manage`
+- **Request:** `ZHireManualDraftRequest`
+- **Response:** `200` `ZHireManualDraftResponse`
+- **Errors:** common errors · `400 validation` (unknown `positionKey`, text too short / long) · `409 team_quota_exhausted`
+- **Rate limit:** `mobile-team-ai:<userId>` 10 / minute
+
+```ts
+const ZHireManualDraftRequest = z.object({ positionKey: z.string().min(1).max(40), text: z.string().trim().min(10).max(6000) });
+const ZHireManualDraftResponse = z.object({ sections: ZManualSections });
 ```
 
 ### GET /api/mobile/team/employees/[id]/access
@@ -721,13 +747,13 @@ const ZAccessResponse = z.object({
 
 ### PUT /api/mobile/team/employees/[id]/access
 
-Set levels (B5). Step 2 of the hire sequence. The caller cannot give a level for a module he cannot use himself; AUTO is refused until T4.2 and for DESTRUCTIVE kinds forever.
+Set levels of an existing employee (B7 → B5; the levels of a new hire travel inside `POST employees`). The caller cannot give a level for a module he cannot use himself; AUTO is refused until T4.2 and for DESTRUCTIVE kinds forever.
 
 - **Auth:** `requireMobile`
 - **Permission:** `ai.employee.manage`; a row with `level: "AUTO"` also needs `ai.access.grant` + `canGrantPermission` of the skill's module, plus `auto`
 - **Request:** `ZAccessPutRequest`
 - **Response:** `200` `ZAccessPutResponse`
-- **Errors:** common errors · `400 validation` · `403 cannot_grant_beyond_self` · `409 employee_auto_not_granted` · `409 auto_forbidden_kind` · `409 employee_terminated`
+- **Errors:** common errors · `400 validation` · `403 cannot_grant_beyond_self` · `409 employee_auto_not_granted` · `409 auto_forbidden_kind` · `409 employee_paused`
 - **Rate limit:** `mobile-team:<userId>` 120 / minute
 
 ```ts
@@ -784,7 +810,7 @@ Start a task (A4 "send", B6 shortcuts). Creates the `AiTask` + the conversation 
 - **Permission:** `ai.employee.use` + `ai.chat.send`, and the caller must be a commander of the employee
 - **Request:** `ZTaskStartRequest`
 - **Response:** `200` `ZTaskStartResponse` (the same task for a repeated `idempotencyKey`)
-- **Errors:** common errors · `403 not_commander` · `409 employee_paused` · `409 employee_terminated` · `409 employee_quota_cap` · `409 team_quota_exhausted`
+- **Errors:** common errors · `403 not_commander` · `409 employee_paused` · `409 employee_quota_cap` · `409 team_quota_exhausted`
 - **Rate limit:** `mobile-team-task:<userId>` 30 / minute
 
 ```ts
@@ -798,7 +824,7 @@ const ZTaskStartResponse = z.object({ taskId: ZId, conversationId: ZId });
 
 ### GET /api/mobile/team/tasks/[id]
 
-Header and pending cards of one task room (A5 / E2) — what a deep link `shark://team/tasks/<id>` needs. ⚠ Not in the T1.10 list of AI-TEAM-RUN; proposed here because A5 cannot be opened from a push notification without it (see `ledger/wo-notes/ai-t0.2.md` §7).
+Header and pending cards of one task room (A5 / E2) — what a deep link `shark://team/tasks/<id>` needs. Added to the T1.10 route list by the controller ruling of 8 Oct (D2): A5 cannot be opened from a push notification without it.
 
 - **Auth:** `requireMobile`
 - **Permission:** `canSeeTask` (starter ∪ commanders ∪ users who may confirm a pending kind) — otherwise `404`
@@ -893,7 +919,7 @@ Create a recurring task (A6 "บันทึก"). A run that has to write produ
 - **Permission:** `ai.schedule.manage` + commander of the employee
 - **Request:** `ZScheduleCreateRequest`
 - **Response:** `200` `ZScheduleCreateResponse`
-- **Errors:** common errors · `400 validation` (WEEKLY without a day, unknown channel) · `403 not_commander` · `409 schedule_limit` · `409 employee_auto_not_granted` (`outputMode: "AUTO"` without a grant) · `409 employee_terminated`
+- **Errors:** common errors · `400 validation` (WEEKLY without a day, unknown channel) · `403 not_commander` · `409 schedule_limit` · `409 employee_auto_not_granted` (`outputMode: "AUTO"` without a grant) · `409 employee_paused`
 - **Rate limit:** `mobile-team:<userId>` 120 / minute
 
 ```ts
@@ -1008,7 +1034,7 @@ const ZSampleSpeechResponse = z.object({ text: z.string() });
 
 ### GET /api/mobile/me
 
-Existing route (`src/app/api/mobile/me/route.ts`). T1.10 adds `uiVersion`; everything else keeps today's shape. The app mounts the v2 tree only when `uiVersion` is 2 (COMMON §C13) — the 1.0 screens stay untouched otherwise.
+Existing route (`src/app/api/mobile/me/route.ts`). T1.10 adds `memberships[].uiVersion` (per tenant, from `AiSettings.uiVersion`, default 1); everything else keeps today's shape. There is **no** top-level value: the app mounts the v2 tree only while the ACTIVE tenant's `uiVersion` is 2 and shows the 1.0 screens for every tenant that is still at 1 (COMMON §C13; controller ruling 8 Oct, D1).
 
 - **Auth:** `mobileUser` (Bearer only — no tenant chosen yet)
 - **Permission:** none (own identity and own accepted memberships)
@@ -1020,14 +1046,12 @@ Existing route (`src/app/api/mobile/me/route.ts`). T1.10 adds `uiVersion`; every
 ```ts
 const ZMeResponse = z.object({
   user: z.object({ id: ZId, email: z.string(), name: z.string().nullable() }),
-  // NEW: 2 when at least one accepted membership's tenant has AiSettings.uiVersion = 2, else 1 (default 1)
-  uiVersion: z.union([z.literal(1), z.literal(2)]),
   memberships: z.array(
     z.object({
       tenantId: ZId,
       name: z.string(),
       role: z.enum(["OWNER", "MANAGER", "STAFF"]),
-      uiVersion: z.union([z.literal(1), z.literal(2)]), // NEW: AiSettings.uiVersion of that tenant (default 1)
+      uiVersion: z.union([z.literal(1), z.literal(2)]), // NEW (T1.10): AiSettings.uiVersion of that tenant — default 1
       branding: z.object({ displayName: z.string().nullable(), logoUrl: z.string().nullable(), accent: z.string(), accentFg: z.string(), navTone: z.string() }).nullable(),
     }),
   ),
@@ -1063,13 +1087,13 @@ const ZUsageResponse = z.object({
 
 ### POST /api/mobile/team/employees/[id]/manual/attach
 
-"แนบเอกสาร SOP" (B3) — T1.5 `attachDocument`. The file is stored through the existing private-file path (never a public URL); the extracted text (≤ 20,000 characters) is injected into the prompt as a delimited data block, not as instructions (X6). ⚠ Not in the T1.10 list of AI-TEAM-RUN — proposed here so the B3 button has a route (see `ledger/wo-notes/ai-t0.2.md` §7).
+"แนบเอกสาร SOP" (B3) — T1.5 `attachDocument`. The file is stored through the existing private-file path (never a public URL); the extracted text (≤ 20,000 characters) is injected into the prompt as a delimited data block, not as instructions (X6). Added to the route list by the controller ruling of 8 Oct (D2) so the B3 button has a route.
 
 - **Auth:** `requireMobile`
 - **Permission:** `ai.employee.manage`
 - **Request:** `ZManualAttachRequest` (base64 body, the same pattern as the existing `crm/scan-card` route) — PDF, Word or image, ≤ 5 MB
 - **Response:** `200` `ZManualAttachResponse` — no file URL in the DTO
-- **Errors:** common errors · `400 validation` (type outside the allow-list, too large, unreadable) · `409 employee_terminated`
+- **Errors:** common errors · `400 validation` (type outside the allow-list, too large, unreadable) · `409 employee_paused`
 - **Rate limit:** `mobile-team-upload:<userId>` 10 / minute
 
 ```ts
@@ -1236,7 +1260,7 @@ const ZInboxTeachResponse = z.object({
 - **Permission:** the kind's own module permission + `ai.employee.manage` when a rule is written into the manual
 - **Request:** `ZInboxTeachConfirmRequest`
 - **Response:** `200` `ZInboxTeachConfirmResponse` (a second confirm of the same note returns the same version)
-- **Errors:** common errors · `400 validation` · `409 employee_terminated`
+- **Errors:** common errors · `400 validation` · `409 employee_paused`
 - **Rate limit:** `mobile-team:<userId>` 120 / minute
 
 ```ts
@@ -1389,7 +1413,7 @@ const ZTeamReportResponse = z.object({
 
 ### GET /api/mobile/team/knowledge
 
-"ความรู้ของร้าน" (C5) — T4.6: the two automatic sources (read live through the owning facades, never copied) and the shop's own items, each with who may use it.
+"ความรู้ของร้าน" (C5) — T4.6: the two automatic sources (read live through the owning facades, never copied) and the shop's own items, each with who may use it (per-item audience, fail-closed — see `PUT`).
 
 - **Auth:** `requireMobile`
 - **Permission:** `ai.employee.read`
@@ -1399,20 +1423,24 @@ const ZTeamReportResponse = z.object({
 - **Rate limit:** `mobile-team:<userId>` 120 / minute
 
 ```ts
+// Per ITEM, fail-closed: an item with NO grant row is usable by every employee; an item with ≥ 1 grant row is usable ONLY by
+// the granted employees / positions — an employee hired later does not see it until someone adds him.
+const ZKnowledgeAudienceView = z.union([z.literal("ALL"), z.object({ aiEmployees: z.array(ZEmployeeRef), positionKeys: z.array(z.string()) })]);
+const ZKnowledgeAudience = z.union([z.literal("ALL"), z.object({ aiEmployeeIds: z.array(ZId).max(50), positionKeys: z.array(z.string().max(40)).max(10) }).refine((v) => v.aiEmployeeIds.length + v.positionKeys.length > 0)]);
 const ZKnowledgeItem = z.object({
   key: z.string(), // "source:products" · "source:hours" · "category:<name>" · "article:<id>"
   group: z.enum(["AUTO", "OWN"]),
   icon: z.string(),
   title: z.string(),
   detail: z.string(), // "214 รายการ · ซิงก์ทุกชั่วโมง"
-  audience: z.union([z.literal("ALL"), z.array(ZEmployeeRef)]), // ALL = no grant row
+  audience: ZKnowledgeAudienceView, // ALL = the item has no grant row
 });
 const ZKnowledgeResponse = z.object({ count: z.number().int(), items: z.array(ZKnowledgeItem) });
 ```
 
 ### PUT /api/mobile/team/knowledge
 
-Choose which employees may use one item (C5 "ใครเห็น"). The grant is applied before search results reach a prompt (X8).
+Choose who may use one item (C5 "ใครเห็น") — replaces the item's whole grant set. Rule (reviewer SF1): **per item, fail-closed** — no grant row = every employee; ≥ 1 grant row = only the granted employees / positions. The grant is applied inside `kbSearch` before any result reaches a prompt (X8).
 
 - **Auth:** `requireMobile`
 - **Permission:** `ai.employee.manage`
@@ -1422,7 +1450,7 @@ Choose which employees may use one item (C5 "ใครเห็น"). The grant 
 - **Rate limit:** `mobile-team:<userId>` 120 / minute
 
 ```ts
-const ZKnowledgePutRequest = z.object({ key: z.string().min(3).max(120), audience: z.union([z.literal("ALL"), z.array(ZId).min(1).max(50)]) });
+const ZKnowledgePutRequest = z.object({ key: z.string().min(3).max(120), audience: ZKnowledgeAudience }); // "ALL" deletes the item's grant rows
 const ZKnowledgePutResponse = z.object({ item: ZKnowledgeItem });
 ```
 
@@ -1443,7 +1471,7 @@ const ZKnowledgeItemCreateRequest = z.object({
   category: z.string().trim().max(60).optional(),
   body: z.string().trim().max(20000).optional(),
   file: z.object({ dataBase64: z.string().min(1), contentType: z.string().max(120), filename: z.string().max(120).optional() }).optional(),
-  audience: z.union([z.literal("ALL"), z.array(ZId).min(1).max(50)]).default("ALL"),
+  audience: ZKnowledgeAudience.default("ALL"),
 }); // exactly one of body / file
 const ZKnowledgeItemCreateResponse = z.object({ item: ZKnowledgeItem });
 ```

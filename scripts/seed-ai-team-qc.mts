@@ -20,12 +20,19 @@
 //         · ApprovalPolicy AccountDocument ≥ 2,000,000 satang → OWNER
 //   AT-2  same owner, systems only (second shop of one owner: shared FREE pack, cross-tenant inbox)
 //   AT-X  another owner (ax-owner), systems only (isolation · no recommendation signal)
+//
+// ⏳ AGES DRIFT. Dates are stamped once, at creation, relative to that day (invoice due dates, deal stage / last-activity dates,
+//    chat message times) and are never re-stamped by a later run. Oracles must NOT assert on lastActivityAt, stageEnteredAt,
+//    dueDate, "overdue" or "quiet for N days" of seed rows — a check that needs a point in time creates its own rows or injects
+//    the clock (scripts/ai-team-qc-env.mts#withInjectedNow).
 
+/** printed instead of the real host: the branch label only, never the endpoint id / pooler suffix */
+const HOST_LABEL = "ep-frosty-lab";
 const PREFIX = "qc-ai-team-";
 const DOMAIN = "@qc.shark";
 
 type EnvModule = {
-  loadAiTeamQcEnv: () => Promise<{ host: string; source: string }>;
+  loadAiTeamQcEnv: () => Promise<{ source: string }>;
   AT: {
     tenants: Record<"at1" | "at2" | "atx", { slug: string; name: string }>;
     users: Record<"owner" | "approver" | "staff" | "otherOwner", { email: string; name: string }>;
@@ -64,11 +71,16 @@ type Delegate = {
 const P = prisma as unknown as Record<string, Delegate>;
 
 const t0 = Date.now();
-let created = 0;
+let created = 0; // rows created
+let repaired = 0; // writes that fixed an existing row (no new row)
 const made: string[] = [];
 const note = (what: string) => {
   created += 1;
   made.push(what);
+};
+const fixed = (what: string) => {
+  repaired += 1;
+  made.push(`${what} (repaired)`);
 };
 const DAY = 86_400_000;
 const now = new Date();
@@ -130,7 +142,7 @@ async function ensureMembership(tenantId: string, unitId: string, m: MemberSpec)
       where: { id: hit.id },
       data: { role: m.role, permissions: { ...have, ...m.permissions }, acceptedAt: hit.acceptedAt ?? new Date() },
     });
-    made.push(`membership ${m.role} repaired`);
+    fixed(`membership ${m.role}`);
   }
 }
 
@@ -161,7 +173,7 @@ async function ensureSystems(tenantId: string, unitId: string): Promise<Record<S
   const crmCtx = { tenantId, systemId: out.CRM };
   if ((await crmSettings.getCrmSettings(crmCtx)).uiVersion !== 2) {
     await crmSettings.setCrmSettingsKey(crmCtx, "uiVersion", 2);
-    made.push("crm uiVersion 2");
+    fixed("crm uiVersion 2");
   }
   return out;
 }
@@ -210,24 +222,34 @@ async function seedCrm(tenantId: string, systemId: string, owners: string[]): Pr
   ];
   for (let i = 0; i < DEALS.length; i += 1) {
     const d = DEALS[i];
-    if (await P.crmDeal.findFirst({ where: { tenantId, systemId, title: d.title } })) continue;
-    const first = openStages[0];
-    const deal = await crm.createDeal(ctx, {
-      contactId: contactIds[i],
-      pipelineId: pipeline.id,
-      stageId: first.id,
-      title: d.title,
-      valueSatang: d.baht * 100,
-      expectedCloseAt: new Date(now.getTime() + d.inDays * DAY),
-    });
+    // two steps (service create → state update): a run that stopped between them is finished here, not skipped —
+    // "created but never given an owner" is the mark of the half-done deal
+    const existing = await P.crmDeal.findFirst({ where: { tenantId, systemId, title: d.title } });
+    if (existing && existing.ownerUserId) continue;
+    let dealId = existing?.id ?? "";
+    if (!existing) {
+      const deal = await crm.createDeal(ctx, {
+        contactId: contactIds[i],
+        pipelineId: pipeline.id,
+        stageId: openStages[0].id,
+        title: d.title,
+        valueSatang: d.baht * 100,
+        expectedCloseAt: new Date(now.getTime() + d.inDays * DAY),
+      });
+      dealId = deal.id;
+    }
     // state only — no business event is faked here (moveDeal would emit crm.deal.* for other modules' consumers):
-    // an owner, and for every second deal a later OPEN stage. Deals 5 and 6 have been quiet for more than 7 days ("stale deals").
+    // an owner, and for every second deal a later OPEN stage. Deals 5 and 6 were quiet for 9 days on the day they were created.
     const stage = openStages[i % 2 === 1 ? Math.min(1, openStages.length - 1) : 0];
     const quiet = i >= 4 ? new Date(now.getTime() - 9 * DAY) : new Date(now.getTime() - DAY);
     await P.crmDeal.update({
-      where: { id: deal.id },
+      where: { id: dealId },
       data: { ownerUserId: owners[i % owners.length], stageId: stage.id, kind: "OPEN", stageEnteredAt: quiet, lastActivityAt: quiet },
     });
+    if (existing) {
+      fixed(`crm deal ${pad(i + 1)}`);
+      continue;
+    }
     note(`crm deal ${pad(i + 1)}`);
   }
 }
@@ -301,7 +323,7 @@ async function seedAccount(tenantId: string, systemId: string, createdById: stri
     }
     const issued = await accountSvc.issueDocument(tenantId, systemId, docId);
     if (!issued.ok) throw new Error(`invoice ${inv.key} could not be issued: ${issued.reason}`);
-    made.push(`invoice ${inv.key} issued`);
+    if (hit) fixed(`invoice ${inv.key} issued`);
   }
 }
 
@@ -457,10 +479,11 @@ try {
     kbArticles: await n("kbArticle", { tenantId: at1, active: true }),
     policies: await n("approvalPolicy", { tenantId: at1, entityType: "AccountDocument", active: true }),
   };
-  console.log(`🌱 AI-team QC seed on ${env.host.split(".")[0]} (${env.source}) — tenants ${Object.values(AT.tenants).map((t) => t.slug).join(", ")}`);
+  console.log(`🌱 AI-team QC seed on ${HOST_LABEL} (${env.source}) — tenants ${Object.values(AT.tenants).map((t) => t.slug).join(", ")}`);
   console.log(`   AT-1: ${Object.entries(summary).map(([k, v]) => `${k} ${v}`).join(" · ")}`);
-  console.log(`   rows created this run: ${created}${made.length ? ` (${made.slice(0, 12).join(", ")}${made.length > 12 ? ", …" : ""})` : ""} · ${((Date.now() - t0) / 1000).toFixed(1)}s`);
-  console.log(`AI_TEAM_SEED=${created === 0 ? "unchanged" : "created"}`);
+  console.log(`   rows created this run: ${created} · repaired: ${repaired}${made.length ? ` (${made.slice(0, 12).join(", ")}${made.length > 12 ? ", …" : ""})` : ""} · ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+  // unchanged = not a single write happened in this run
+  console.log(`AI_TEAM_SEED=${created > 0 ? "created" : repaired > 0 ? "repaired" : "unchanged"}`);
 } catch (e) {
   exitCode = 1;
   console.error(`❌ seed-ai-team-qc failed: ${safe(e)}`);
