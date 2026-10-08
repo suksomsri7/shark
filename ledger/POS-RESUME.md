@@ -701,3 +701,9 @@
 - แก้ถาวรสำหรับ 2 builder ที่มี migration พร้อมกัน: ถอด bind mount ของทรี c แล้ว `pnpm install` ให้ c มี node_modules/prisma client ของตัวเอง (7.9 วิ · ร้านเก็บ pnpm ร่วม) · b ยัง bind-mount p11 (ro)
 - มติ P1.10 CD1–CD5 ใน brief §6 (f136057a) · prompt builder `pos-prompt-accountB-P1.10-S.md` · migration P1.10 เขียนจาก schema (ไม่ diff จาก DB ที่มีของ P1.8)
 - โควตา session 47% · ถ้าแตะ 70% ก่อน 01:30 UTC: เลนจะโดน 429 → รอ reset แล้ว "Try again"
+
+### 2026-10-08T00:44Z — builder S ทั้งสองส่งแล้ว · โควตา 72% ⇒ หยุด spawn จน reset 01:30 UTC
+- **P1.8 S** `wip/pos-p1.8` @ 7bbeb3fc: oracle 48/49 (C2 docNo ชนข้ามสาขาในสมุดเดียว = กติกาเดิมของ ABB) · ORACLE-EDIT C2 ผู้คุมใส่แล้ว (1599ca50: ยอม docNo null เมื่อ CN ใบอื่นในสมุดถือเลขนั้น) · money set + ชุดเดิมเท่าเดิม · ผู้อ่าน PosSale 94 จุดมีตารางใน notes · ติดตาม: ai/tools.ts + CRM bridges (ไฟล์ร้อน CRM) ยังนับ REFUND เป็นขาย · ยอดสะสมสมาชิก 12 เดือน · บิลที่จ่ายด้วยบัตรกำนัลบางส่วน (ต้องเคาะ) · pos-sale-contract.json
+- **P1.10 S** `wip/pos-p1.10` @ 0bf1c6df: oracle 39/40 (P5 = fixture ของข้อสอบใส่ docConfig ผิดคีย์) · ORACLE-EDIT P5 ใส่แล้ว (85672dd4) · ชุดเดิมเท่าเดิม · เพิ่ม re-export vatConfigOf ใน account/index.ts (F ด่าน) · ติดตาม: พิมพ์ซ้ำบิล VOIDED ไม่มีตรา · ตัดคำไทยยาวบน ESC/POS
+- กำลังรันข้อสอบที่แก้แล้วซ้ำ (P1.8 บน p11 · P1.10 บนทรี c) เพื่อยืนยัน 49/49 · 40/40
+- ถัดไป (หลัง reset): reviewer Opus 2 ใบ (money lane สำหรับ P1.8) → merge P1.8 ก่อน (ปลดล็อก scope/client ของทุกทรี) → merge P1.10 (คาด conflict เล็ก: scope.ts · permissions.ts · pos.prisma · pos-qc-env · th/en json) → prisma generate ใน p11 → build+gates บน p11 → 15/55
