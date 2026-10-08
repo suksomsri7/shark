@@ -9,6 +9,7 @@
     "postinstall": "prisma generate",
     "typecheck": "tsc --noEmit",
     "fitness": "tsx scripts/fitness.mts",
+    "fitness:hr": "tsx scripts/fitness-hr.mts",
     "qc:account": "tsx scripts/qc-account-cpa.mts",
     "qc:account:qc7": "tsx scripts/qc-account-qc7.mts",
     "qc:payroll": "tsx scripts/qc-payroll.mts",

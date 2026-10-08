@@ -44,3 +44,6 @@ next-env.d.ts
 
 # ภาพหน้าจอจาก pnpm qc:visual (ของชั่วคราวสำหรับตรวจด้วยตา ไม่ต้องเก็บในรีโป)
 .qc-shots/
+
+# ไฟล์เฉลยของ seed-hr-qc (id เปลี่ยนทุกรอบ · ห้าม commit — hr-brief-COMMON) · RUN อื่นที่ track ไฟล์ของตัวเองอยู่แล้วคงเดิม
+scripts/hr-expected.json
