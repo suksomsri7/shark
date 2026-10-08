@@ -94,7 +94,7 @@ const CHECKS: readonly (readonly [string, string])[] = [
   ["S9.2", "CR-H0.2-3 · รายการ COMMISSION จาก CRM ที่ผูกรอบร่าง: ลบทั้งสองทาง → ข้อความ CRM · ยอดรวม/ลายนิ้วมือเดิม · Σ รายการ = ยอดรวม · ไม่มี audit hr.payadjust.delete"],
   ["S9.3", "CR-H0.2-3 · รายการหักคืน (DEDUCTION ของแถวถอนคืน CRM) ผูกรอบร่าง: ลบถูกปฏิเสธ · ทาง CRM (withdraw) เดิม: ผูกอยู่ = false · ลบร่างแล้ว = true · Σ = ยอดรวมทุกขั้น"],
   ["S9.4", "CR-H0.2-3 (source) · หน้าเงินเดือนแสดงปุ่มลบรายการเฉพาะแถวที่ไม่มี crmCommissionId"],
-  ["S9.5", "CR-H0.2-4 · payDate ต้องอยู่ใน [วันแรกของงวด − 31 วัน, วันสุดท้าย + 62 วัน]: ในช่วง ok ×3 · 1970-01-01 / 9999-12-31 / งวด+3 เดือน → PayrollInputError ข้อความตายตัว · action คืน reason ตรง · ไม่มีแถว"],
+  ["S9.5", "CR-H0.2-4 (amended ±1 ปี) · payDate ต้องอยู่ใน [วันแรกของงวด − 365 วัน, วันสุดท้าย + 365 วัน]: ในช่วง ok ×4 · 1970-01-01 / 9999-12-31 / งวด+13 เดือน → PayrollInputError ข้อความตายตัว · action คืน reason ตรง · ไม่มีแถว"],
   ["X9.1", "race · CRM withdraw ∥ คำนวณร่างใหม่ ∥ approve (expect สด) ×3 รอบ → ไม่มี JV ของรอบที่แถวเปลี่ยนใต้มือ · คอมมิชชันไม่ถูกนับซ้ำ · Σ = ยอดรวม"],
   ["Z1", "คืนสภาพ: ไม่เหลือแถวของร้านชั่วคราวในทุกตารางที่มี tenantId · ไม่เหลือ tenant/user ชั่วคราว"],
 ];
@@ -811,7 +811,7 @@ async function groupX6(): Promise<void> {
 // CR-H0.2-3: รายการที่มี crmCommissionId (คอมมิชชัน หรือหักคืน) ลบจาก HR ไม่ได้ ทุกสถานะ ทั้งทางมี/ไม่มี actor · ทาง CRM (withdraw/move) เดิม
 // CR-H0.2-4: payDate ต้องอยู่ใน [วันแรกของงวด − 31 วัน, วันสุดท้ายของงวด + 62 วัน]
 const CRM_CANCEL_MSG = "รายการนี้มาจาก CRM — ถอนหรือแก้ที่ CRM แล้วระบบจะถอนออกจากรอบจ่ายให้เอง";
-const PAYDATE_WINDOW_MSG = "วันที่จ่ายต้องอยู่ใกล้งวดนี้ (ก่อนงวดไม่เกิน 1 เดือน หรือหลังงวดไม่เกิน 2 เดือน)";
+const PAYDATE_WINDOW_MSG = "วันที่จ่ายต้องอยู่ภายใน 1 ปีของงวดนี้"; // CR-H0.2-4 amended by the controller: ±1 year
 const ADJ_ROWS_UI = "src/lib/modules/hr/PayAdjustRowActions.tsx";
 const digestMod = (await import("@/lib/modules/hr/payroll-digest" as string).catch(() => null)) as Any;
 /** ตัวเลขที่หน้าเว็บส่งตอนอนุมัติ (H0.1 CR11 · CR16) อ่านสด ณ ตอนนี้ */
@@ -1024,8 +1024,8 @@ async function groupS9(): Promise<void> {
         return { ok: false, err: msgOf(e), name: String((e as Error)?.name ?? ""), rows: await runsAt(p) };
       }
     };
-    const okCases: [string, string][] = [["2031-03", "2031-03-25"], ["2031-05", "2031-04-05"], ["2031-07", "2031-08-05"]];
-    const noCases: [string, string][] = [["2031-09", "1970-01-01"], ["2031-11", "9999-12-31"], ["2032-01", "2032-04-25"]];
+    const okCases: [string, string][] = [["2031-03", "2031-03-25"], ["2031-05", "2031-04-05"], ["2031-07", "2031-08-05"], ["2031-08", "2032-06-05"]]; // ORACLE-EDIT: +10 months still inside ±1 year
+    const noCases: [string, string][] = [["2031-09", "1970-01-01"], ["2031-11", "9999-12-31"], ["2032-01", "2033-02-25"]]; // ORACLE-EDIT: period + 13 months is outside ±1 year
     const bad: string[] = [];
     for (const [p, d] of okCases) {
       const r = await tryCreate(p, d);
@@ -1058,7 +1058,7 @@ async function groupS9(): Promise<void> {
       const n = await runsAt("2032-07");
       if (!(r?.ok === true && n === 1)) bad.push(`action OK? 2032-07@2032-07-25 → ${short(r, 120)} rows=${n}`);
     }
-    chk("S9.5", bad.length === 0, `ในช่วง ok ×3 (+action ok) · นอกช่วง ×3 → PayrollInputError "${PAYDATE_WINDOW_MSG}" 0 แถว · action ×2 → reason ตรง 0 แถว`, bad.join(" | ") || "—");
+    chk("S9.5", bad.length === 0, `ในช่วง ok ×4 (+action ok) · นอกช่วง ×3 → PayrollInputError "${PAYDATE_WINDOW_MSG}" 0 แถว · action ×2 → reason ตรง 0 แถว`, bad.join(" | ") || "—");
   }
 }
 
