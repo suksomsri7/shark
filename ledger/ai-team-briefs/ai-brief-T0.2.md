@@ -29,3 +29,11 @@ X1 seed tenants isolated · X10 no secrets in docs/seed.
 ## Decisions already made
 - No new `AiCreditSource` value (C35). No columns on `AiConversation` (C7). `AiSubscription` global axis (C2). Approvers may lack `ai.chat.send` (C33).
 - Reviewer of this WO reads docs against DESIGN §2 and the 36-screen HTML: every button in the HTML must have a route or a documented "client-only" note.
+
+## Controller addendum 2026-10-08
+- Base = `session/ai-team` 71a1f363 (= origin/main; contains f132ce21). REVIEW freshness: `git log 7411dfde..origin/main` over the AI/mobile/prisma paths is EMPTY ⇒ every line number in the review still holds.
+- Lane tree `/root/projects/shark-ai-b` · oracle branch `wip/pos-ai-t0.2-oracle` → builder branch `wip/pos-ai-t0.2` (cut from the oracle commit). Env = copy of `shark-pos/.env.qc4` (role neondb_owner) as `.env.qc4` + `.env.qc`.
+- Lane cap = 1 (owner 8 Oct): oracle writer, builder, reviewer run one after another.
+- The oracle reaches the seed through `scripts/ai-team-qc-env.mts` by dynamic import (`as string`), so it stays type-safe under `next build` before the file exists; missing file ⇒ unforced SKIP exit 0 / forced RED.
+- S1 "other tenants unchanged": snapshot = per-tenant row counts of `Tenant`, `Membership`, `AiConversation`, `AiProposal`, `Customer`-like tables for every tenant whose slug does NOT start with `qc-ai-team-`; POS/HR lanes write to QC4 concurrently, so compare only tenants whose slug matches the CRM/acc-v2 seed tenants plus assert the seed itself issues no write outside `qc-ai-team-*` (wrap the seed run and diff `xact`-independent counts for a fixed list of 3 foreign seed tenants chosen at runtime; a foreign count change is reported with the tenant slug so the controller can tell a concurrent lane from a leak).
+- Files owned (final): the 8 deliverables of this brief + oracle `scripts/qc-ai-t0.2.mts` + `ledger/wo-notes/ai-t0.2*.{md,txt}`. Hunk-only: `scripts/qc-all.mts`.
