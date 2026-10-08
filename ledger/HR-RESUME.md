@@ -62,3 +62,10 @@
 ## 2026-10-08T01:24Z — H0.2 CONTROLLER RE-RUN @19e5af93: ALL GREEN (control2.txt committed 1d3c1443)
 - H0.1 oracle 67/67 · H0.2 oracle 58/58 ×3 (forced ×2 + unforced) · 12 regression suites = baseline · residue 0 tenants.
 - Now: next build of shark-hr-b inside iso (ISO_MEM=7000M, full .env.qc) → serve :3226 → scripts/hr-shot-h0.2.mts → visual check → merge into session/hr.
+
+## 2026-10-08T01:44Z — H0.2 MERGED into session/hr (eef256f6) · H0.x 3/3 · H0.4 LANE OPENED
+- Build inside iso OK (full .env.qc) · shots /root/qc/hr-h0.2/{1440,390}-payroll-draft.png: exclusion banner (ก้อย ลาออก / นิว มาใหม่), stranded leaver BONUS + "ย้ายไปงวดถัดไป", negative-net red warning + chip "แพร สุขใจ · ติดลบ −฿750" ✓ (mobile run-row truncation = existing H3.4 item). `scripts/hr-shot-h0.2.mts` committed 00389fe1 (type-checked by the lane build).
+- Post-merge sanity `ledger/wo-notes/hr-postmerge-eef256f6.txt`: typecheck 0 · qc-hr-h0.1 67/67 · qc-hr-h0.2 58/58 · qc-payroll + qc-hr-payadjust running (push of session/hr after they finish).
+- Owner 8 Oct ~01:40Z: "เปิด 2 เลน" then corrected "ผมบอกผิด ยังแค่ 1 เลน" ⇒ LANE CAP = 1 stays.
+- Next WO = **H0.4 HR QC tooling** (only H0 WO with no migration and no pending owner answer; H0.5 waits HQ2–HQ4, H0.6 waits CRM-on-main, H0.7 waits H0.5). Brief `ledger/hr-briefs/hr-brief-H0.4.md` (d43bdcb8). Lane 1 worktree `/root/projects/shark-hr` on `wip/pos-hr-h0.4` @d43bdcb8; builder (Opus) spawned, prompt scratchpad `h04-builder.md`. No oracle writer (tooling WO): acceptance = fitness-hr both modes + negative proofs + seed ×2 + visual --dry; then reviewer; CONTROLLER-RUN of visual-hr on :3226 after.
+- shark-hr-b (lane 2) idle on wip/pos-hr-h0.2 @19e5af93 — keep for the next WO.
