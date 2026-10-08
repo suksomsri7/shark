@@ -14,7 +14,7 @@
 //   as child processes of this oracle: T0.3-S3.1 S3.2 S3.3 S3.4 · T0.3-S6.1 · T0.3-S7.3. Without the flag they are printed as SKIPPED-HEAVY:
 //   they stay in `total`, are NOT counted in `passed`, are listed in JSON_SUMMARY.skippedHeavy and do not change the exit code — so
 //   `qc:all` stays cheap, and "all green" exists only for a forced + heavy run (that is the run acceptance uses; expect 10–45 min).
-// The total is fixed (35) in every run · last line `JSON_SUMMARY {...}` · exit 1 iff a CRITICAL/MAJOR check fails.
+// The total is fixed (39) in every run · last line `JSON_SUMMARY {...}` · exit 1 iff a CRITICAL/MAJOR check fails.
 //
 // SOURCES: ledger/ai-team-briefs/ai-brief-T0.3.md · ai-brief-COMMON.md (§A8 §C12 §C13) · ai-brief-RESOLUTIONS.md (R-A7 · R-E C16 C17)
 //   · ledger/AI-TEAM-RUN.md §2 "T0.3" (S1 2 · S2 3 · S3 4 · S4 3 · S5 2 · S6 1 · S7 3 = 18 minimum) · ledger/AI-TEAM-MASTER-PLAN.md §3 D7 D8 · §4 X10
@@ -48,7 +48,33 @@
 //                  light.accent #16161c (gen_glass_airy.py:115 `.btn1{background:#16161c`) · light.accentFg #ffffff (gen_glass_airy.py:41 `color:#fff`)
 //                  dark.accent #f2f2f7 · dark.accentFg #16161c (gen_airy_dark.py:19 `.btn1,…{background:#f2f2f7 !important;color:#16161c !important`).
 //                  `accentSoft` stays a key (soft tint for chips/badges) without an anchor.
-//                FONTS (ruling OQ-6): all text stays IBM Plex Sans Thai through ui/text.tsx; Inter is not bundled and nothing here checks it.
+//                FONTS — ORACLE-EDIT T0.3-S2.6 + fonts (controller-ordered, owner order 8 Oct "the UI must follow the design"; reverses OQ-6):
+//                  the mockup CSS is `font-family:Inter,'IBM Plex Sans Thai'` (gen_glass_airy.py:2) ⇒ PER-GLYPH RULE: a character is drawn in
+//                  IBM Plex Sans Thai iff it is in the Thai block U+0E00–U+0E7F except ฿ U+0E3F; every other character (Latin, digits,
+//                  spaces, punctuation, symbols, ฿ — Inter has that glyph —, emoji → system fallback) belongs to the Inter run.
+//                  Weights used by the mockup CSS (table FONT_WEIGHT_SPEC, file:line): 300 · 400 (default) · 500 · 600 · 700.
+//                  (a) apps/mobile/package.json gains EXACTLY ONE dependency vs base f33dd2c1: `@expo-google-fonts/inter` (+ its one entry
+//                      `node_modules/@expo-google-fonts/inter` in package-lock.json). Nothing else changes in either file.
+//                  (b) apps/mobile/src/lib/fonts.ts (the file that calls `useFonts` today; app/_layout.tsx stays untouched) gets ONE block
+//                      that starts with a line containing `// AI TEAM T0.3 ▸` and ends with a line containing `◂`; the file minus that block
+//                      is byte-identical to the base. The block sits INSIDE the object passed to `useFonts({ … })` and adds exactly the keys
+//                      Inter_300Light · Inter_400Regular · Inter_500Medium · Inter_600SemiBold · Inter_700Bold, e.g.
+//                        `Inter_400Regular: require("@expo-google-fonts/inter/400Regular/Inter_400Regular.ttf"),`
+//                      (an `import` cannot live in the same block — per-weight require() keeps it to one hunk).
+//                  (c) apps/mobile/src/components/team/text-runs.ts — PURE module (no import at all), executed by the oracle:
+//                        export function splitRuns(text: string): { text: string; script: "latin" | "thai" }[]
+//                          maximal runs by the per-glyph rule · concatenation of the runs === the input · no empty run · "" → []
+//                        export function fontFor(script: "latin" | "thai", weight?: string | number): string
+//                          latin: 300 Inter_300Light · 400 Inter_400Regular · 500 Inter_500Medium · 600 Inter_600SemiBold · 700 Inter_700Bold
+//                          thai : 300 and 400 IBMPlexSansThai_400Regular (no Thai 300 is loaded) · 500 …_500Medium · 600 …_600SemiBold · 700 …_700Bold
+//                          "bold" = 700 · "normal" / undefined = 400 · numbers and numeric strings alike.
+//                      every tokens.type style uses one of those five weights (so each style resolves in both families).
+//                  (d) apps/mobile/src/components/team/TeamText.tsx — exports `TeamText` (props of ui/text's Text; string children are split
+//                      with splitRuns and rendered as nested <Text> spans with fontFamily = fontFor(run.script, weight)); it imports `Text`
+//                      from `@/src/components/ui/text`, imports splitRuns + fontFor from `./text-runs` and re-exports splitRuns.
+//                      EVERY other file of components/team renders text through <TeamText>: no import of `Text` from ui/text and no
+//                      <Text> element outside TeamText.tsx (`TextInput` from ui/text stays allowed for SearchField).
+//                  (e) the 1.0 screens do not pick Inter up: components/ui/text.tsx is unchanged vs base and S7.1/S7.3 stay as they were.
 //     index.ts   export { C, R, S }  — the legacy palette/radius/spacing of the 1.0 screens, values IDENTICAL to today (snapshot below)
 //                export { tokens, light, dark }
 //                export const THEME_STORAGE_KEY = "shark_theme"
@@ -141,7 +167,9 @@
 //
 // FILES THE BUILDER OWNS: apps/mobile/src/theme/** · apps/mobile/src/theme.ts (shim) · apps/mobile/src/components/team/** ·
 //   apps/mobile/app/(app)/team/_gallery.tsx · apps/mobile/qc/shoot-ai-team.mjs · scripts/parity-ai-team.sh ·
-//   apps/mobile/assets/team/orbs/** (12 PNG) · scripts/ai-team-render-orbs.mjs.   NOT: this oracle, the fixture, t0.3-before/**.
+//   apps/mobile/assets/team/orbs/** (12 PNG) · scripts/ai-team-render-orbs.mjs · components/team/TeamText.tsx + text-runs.ts ·
+//   apps/mobile/package.json + package-lock.json (ONLY the dependency `@expo-google-fonts/inter`) · the ONE marked hunk
+//   `// AI TEAM T0.3 ▸ … ◂` in apps/mobile/src/lib/fonts.ts.   NOT: this oracle, the fixture, t0.3-before/**.
 //
 // HOUSE RULES: SKIP guard first · temp files only in os.tmpdir() under the tag `qc-ai-t0.3-<rand>` (removed in `finally`, S7.4 asserts none
 //   left) · the QC copy /root/qc-shark-mobile-ai is the pipeline's working folder, not a temp file · child output is never echoed raw
@@ -209,6 +237,7 @@ const DEPS_TODAY = [
   "expo-image-picker", "expo-linking", "expo-notifications", "expo-router", "expo-secure-store", "expo-splash-screen", "expo-status-bar",
   "expo-updates", "expo-web-browser", "react", "react-dom", "react-native", "react-native-gesture-handler", "react-native-reanimated",
   "react-native-safe-area-context", "react-native-screens", "react-native-webview", "react-native-worklets",
+  "@expo-google-fonts/inter", // ORACLE-EDIT T0.3-S2.6 + fonts (controller-ordered, owner order 8 Oct) — the only new package of this WO
 ];
 
 const COMPONENTS: { name: string; required: string[] }[] = [
@@ -271,6 +300,48 @@ const TOKEN_SPEC: [string, string, number, string, number][] = [
 ];
 const TOUCH_MIN_PT = 44;
 
+// ─── fonts: Inter for Latin, IBM Plex Sans Thai for Thai (ORACLE-EDIT T0.3-S2.6 + fonts, controller-ordered, owner order 8 Oct) ───
+/** commit the builder's branch starts from; QC_AI_T03_BASE exists only for the oracle writer's scratch controls */
+const BASE_REF = process.env.QC_AI_T03_BASE ?? "f33dd2c1";
+const INTER_PKG = "@expo-google-fonts/inter";
+const PKG_JSON = `${MOBILE}/package.json`;
+const PKG_LOCK = `${MOBILE}/package-lock.json`;
+const FONTS_FILE = `${MOBILE}/src/lib/fonts.ts`;
+const UI_TEXT = `${MOBILE}/src/components/ui/text.tsx`;
+const TEAM_TEXT = `${TEAM_DIR}/TeamText.tsx`;
+const TEXT_RUNS = `${TEAM_DIR}/text-runs.ts`;
+const MARK_OPEN = "// AI TEAM T0.3 ▸";
+const MARK_CLOSE = "◂";
+const GEN_FILES = ["gen_glass_airy.py", "gen_airy_full.py", "gen_airy_d.py", "gen_airy_e.py", "gen_airy_dark.py"].map((f) => `ledger/design-ai-team/${f}`);
+/** [weight, generator file, line, CSS text on that line] — one witness per weight; the run also scans every `font-weight:` of the generators */
+const FONT_WEIGHT_SPEC: [string, string, number, string][] = [
+  ["300", GEN_FULL, 132, 'font-weight:300">−</span>'],
+  ["400", GEN_GLASS, 27, "font-weight:400"],
+  ["500", GEN_GLASS, 37, ".sec{font-size:13px;color:#8e8e93;font-weight:500"],
+  ["600", GEN_GLASS, 15, "font-weight:600"],
+  ["700", GEN_GLASS, 18, ".lt{font-size:36px;font-weight:700"],
+];
+const FONT_STACK_WITNESS: [string, number, string] = [GEN_GLASS, 2, "font-family:Inter,'IBM Plex Sans Thai'"];
+const INTER_NAMES: Record<string, string> = { "300": "Inter_300Light", "400": "Inter_400Regular", "500": "Inter_500Medium", "600": "Inter_600SemiBold", "700": "Inter_700Bold" };
+const THAI_NAMES: Record<string, string> = { "300": "IBMPlexSansThai_400Regular", "400": "IBMPlexSansThai_400Regular", "500": "IBMPlexSansThai_500Medium", "600": "IBMPlexSansThai_600SemiBold", "700": "IBMPlexSansThai_700Bold" };
+/** the oracle's own splitter (per-glyph rule of the header) */
+const isThaiCp = (cp: number) => cp >= 0x0e00 && cp <= 0x0e7f && cp !== 0x0e3f;
+const refSplit = (text: string): { text: string; script: "latin" | "thai" }[] => {
+  const out: { text: string; script: "latin" | "thai" }[] = [];
+  for (const ch of text) {
+    const script = isThaiCp(ch.codePointAt(0) ?? 0) ? "thai" : "latin";
+    const last = out[out.length - 1];
+    if (last && last.script === script) last.text += ch;
+    else out.push({ text: ch, script });
+  }
+  return out;
+};
+const SPLIT_CASES = [
+  "", "ก", "A", " ", "สวัสดี", "Hello, world! 123", "ไทยEnglishไทย", " นำหน้าและตามหลัง ",
+  "ใบเสนอราคา Q-0012 ส่งแล้ว 👍 12%", "แชทรอตอบ 12 ห้อง · ตอบช้าเฉลี่ย 2 ชม.", "ราคา ฿12,500.50 (VAT 7%)\nบรรทัดที่ 2",
+  "น้ำ ป่า กี่ ๆ ๑๒๓ ฯลฯ", "👩‍👩‍👧 ครอบครัว café e\u0301 — ‹ › ✓ ⚠", "Sweet Studio", "42 งานเสร็จวันนี้", "6.5 ชม.",
+];
+
 const kebab = (n: string) => n.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
 const GALLERY_IDS = COMPONENTS.map((c) => `gallery-${kebab(c.name)}`);
 const ROUTE_GALLERY = "/team/_gallery";
@@ -293,7 +364,7 @@ const SNAP_TMP = "/tmp/snap-private-tmp/snap.chromium/tmp";
 const STARTED = Date.now();
 
 // ═══ SKIP guard — nothing is spawned, nothing is written while the WO is not built ═══
-const DELIVERABLES = [...THEME_FILES, ...COMPONENTS.map((c) => `${TEAM_DIR}/${c.name}.tsx`), GALLERY, SHOOTER, PARITY, ORB_SCRIPT, ...ORB_FILES];
+const DELIVERABLES = [...THEME_FILES, ...COMPONENTS.map((c) => `${TEAM_DIR}/${c.name}.tsx`), TEAM_TEXT, TEXT_RUNS, GALLERY, SHOOTER, PARITY, ORB_SCRIPT, ...ORB_FILES];
 const MISSING = DELIVERABLES.filter((f) => !existsSync(f));
 if (!CAPTURE && MISSING.length > 0 && !FORCE) {
   console.log(`⚠️  SKIPPED — WO T0.3 not built yet (missing ${MISSING.length}/${DELIVERABLES.length}: ${MISSING.slice(0, 4).join(", ")}${MISSING.length > 4 ? ", …" : ""})`);
@@ -312,8 +383,10 @@ const CHECKS: Record<string, [string, Sev, boolean?]> = {
   "T0.3-S2.3": ["[static] tokens: every length = generator CSS px × 390/536 (±1, whole or half pt; 26 values read against gen_*.py file:line) · radii.full 999 · size.touchMin 44 · 9 type styles", "MAJOR"],
   "T0.3-S2.4": ["useTheme() follows the system scheme, obeys set/getThemeOverride (key shark_theme), and honours a stored override after a cold start on native and on web", "CRITICAL"],
   "T0.3-S2.5": ["[static] no colour literal (hex · rgb() · rgba() · hsl()) in any string of components/team (comments ignored — AST)", "CRITICAL"],
-  "T0.3-S2.6": ["[static] src/theme and components/team import only what the contract allows (no new native dependency, no AsyncStorage/svg/gradient/blur)", "MAJOR"],
+  "T0.3-S2.6": ["[static] src/theme and components/team import only what the contract allows (the only new package is @expo-google-fonts/inter; no AsyncStorage/svg/gradient/blur)", "MAJOR"],
   "T0.3-S2.7": ["[static] no numeric borderRadius literal in components/team (radii come from tokens / R)", "MAJOR"],
+  "T0.3-S2.10": ["[static] apps/mobile/package.json adds exactly one dependency vs the base — @expo-google-fonts/inter — and package-lock.json exactly its one entry; nothing else differs", "CRITICAL"],
+  "T0.3-S2.11": ["[static] Inter 300/400/500/600/700 (the weights of the mockup CSS, read from the generators) are loaded in src/lib/fonts.ts inside ONE `// AI TEAM T0.3 ▸ … ◂` block that is the file's only change vs the base", "CRITICAL"],
   "T0.3-S2.8": ["[static] the 12 orb PNGs exist under assets/team/orbs: PNG, square 300–1024 px, transparent corners + opaque centre, all different, department colours in the mockup's order", "CRITICAL"],
   "T0.3-S2.9": ["[static] Orb draws the PNGs with react-native Image (12 static require() calls in components/team), AvatarStack renders Orb/Image, no \"gradient\" string, and scripts/ai-team-render-orbs.mjs is committed", "CRITICAL"],
   "T0.3-S3.1": ["shoot-ai-team (QC_PREPARE=1, light) exits 0: summary.json mode light · ok · gallery + A8 ok, no overflow, nothing missing/unmocked · PNG 780×1688", "CRITICAL", true],
@@ -332,8 +405,10 @@ const CHECKS: Record<string, [string, Sev, boolean?]> = {
   "T0.3-S5.4": ["[static] team components take Text/TextInput from ui/text.tsx only and never use react-native Modal", "MAJOR"],
   "T0.3-S5.5": ["[static] the gallery route exists, is guarded by __DEV__ / EXPO_PUBLIC_TEAM_GALLERY, uses all 15 components and carries the gallery-* / team-gallery / team-a8 testIDs", "MAJOR"],
   "T0.3-S5.6": ["[static] touch target ≥ 44 pt: every Pressable/Touchable element in components/team has hitSlop or a style naming tokens' touchMin; PrimaryButton is pressable and uses colors.accent / accentFg", "MAJOR"],
+  "T0.3-S5.7": ["text-runs.ts is pure and, executed: splitRuns is lossless, maximal and classifies every character by the per-glyph rule (16 mixed strings); fontFor maps the five weights to both families; every type style uses one of them", "CRITICAL"],
+  "T0.3-S5.8": ["[static] TeamText is built on ui/text.tsx + text-runs (re-exports splitRuns, uses fontFor) and is the ONLY place of components/team that touches ui/text's Text; text-rendering components use <TeamText>", "CRITICAL"],
   "T0.3-S6.1": ["`npm run typecheck` in apps/mobile exits 0", "CRITICAL", true],
-  "T0.3-S7.1": ["[static] the 1.0 screens (sessions · chat · crm · member + their components) still import C/R/S from `@/src/theme` and nothing from the new theme/team code", "CRITICAL"],
+  "T0.3-S7.1": ["[static] the 1.0 screens (sessions · chat · crm · member + their components) still import C/R/S from `@/src/theme` and nothing from the new theme/team code; components/ui/text.tsx is byte-identical to the base (no Inter in 1.0)", "CRITICAL"],
   "T0.3-S7.2": ["the frozen \"before\" picture of the sessions screen exists (390×844 PNG, sha256 recorded in this oracle)", "MAJOR"],
   "T0.3-S7.3": ["sessions screen of the fresh export vs the \"before\" picture: differing pixels ≤ 0.5 % (control: a 64×64 change is detected)", "CRITICAL", true],
   "T0.3-S7.4": ["housekeeping: no temp file of this run is left and the oracle changed nothing in the worktree", "MAJOR"],
@@ -404,6 +479,8 @@ const run = (cmd: string, args: string[], opt: { cwd?: string; env?: Record<stri
         /* already gone */
       }
     }, opt.timeoutMs ?? 120_000);
+    child.stdout?.setEncoding("utf8"); // multi-byte text (Thai comments of `git show`) must not be cut at a chunk border
+    child.stderr?.setEncoding("utf8");
     child.stdout?.on("data", add);
     child.stderr?.on("data", add);
     child.on("error", (e) => {
@@ -1182,7 +1259,7 @@ try {
       for (const s of stringsOf(sf)) if (/gradient/i.test(s.text)) gradientHits.push(`${short}:${s.line}`);
       for (const s of stringsOf(sf)) {
         if (/#(?:[0-9a-f]{8}|[0-9a-f]{6}|[0-9a-f]{3,4})(?![0-9a-z_-])/i.test(s.text) || /\b(?:rgba?|hsla?)\s*\(/i.test(s.text)) colourHits.push(`${short}:${s.line} ${show(s.text.trim(), 30)}`);
-        if (s.kind === "jsx" ? /[A-Za-z฀-๿]/.test(s.text) : /[฀-๿]/.test(s.text)) textHits.push(`${short}:${s.line} ${show(s.text.trim(), 30)}`);
+        if (short !== "text-runs.ts" && (s.kind === "jsx" ? /[A-Za-z฀-๿]/.test(s.text) : /[฀-๿]/.test(s.text))) textHits.push(`${short}:${s.line} ${show(s.text.trim(), 30)}`);
       }
       walk(sf, (n) => {
         const K = TS.SyntaxKind;
@@ -1282,6 +1359,205 @@ try {
         if (!names.has("accent") || !names.has("accentFg")) tp2.push("PrimaryButton does not read colors.accent + colors.accentFg");
       }
       chk("T0.3-S5.6", have && tp2.length === 0, "every pressable has hitSlop or a touchMin style · PrimaryButton pressable with accent/accentFg", have ? `${tp2.length}: ${tp2.slice(0, 5).join(" · ")}` : "components/team is missing");
+    }
+
+    // ── fonts (ORACLE-EDIT T0.3-S2.6 + fonts, controller-ordered, owner order 8 Oct) ──
+    {
+      const baseFile = async (path: string): Promise<string | null> => {
+        const r = await run("git", ["show", `${BASE_REF}:${path}`], {});
+        return r.code === 0 ? r.out : null;
+      };
+      // S2.10 — package.json / package-lock.json
+      const pp: string[] = [];
+      const basePkgRaw = await baseFile(PKG_JSON);
+      const baseLockRaw = await baseFile(PKG_LOCK);
+      const j = (t: string | null): Any => {
+        try {
+          return t ? JSON.parse(t) : null;
+        } catch {
+          return null;
+        }
+      };
+      const basePkg = j(basePkgRaw);
+      const pkg = j(read(PKG_JSON));
+      if (!basePkg) pp.push(`base ${BASE_REF}:${PKG_JSON} not readable (git)`);
+      else if (!pkg) pp.push("package.json missing or not JSON");
+      else {
+        const deps = pkg.dependencies ?? {};
+        const baseDeps = basePkg.dependencies ?? {};
+        const added = Object.keys(deps).filter((k) => !(k in baseDeps));
+        const removed = Object.keys(baseDeps).filter((k) => !(k in deps));
+        const changed = Object.keys(baseDeps).filter((k) => k in deps && deps[k] !== baseDeps[k]);
+        if (JSON.stringify(added) !== JSON.stringify([INTER_PKG])) pp.push(`dependencies added [${added.join(", ")}] (want exactly ${INTER_PKG})`);
+        if (removed.length || changed.length) pp.push(`dependencies removed [${removed.join(", ")}] changed [${changed.join(", ")}]`);
+        if (typeof deps[INTER_PKG] === "string" && !/^[\^~]?\d+\.\d+\.\d+$/.test(deps[INTER_PKG])) pp.push(`${INTER_PKG} version ${show(deps[INTER_PKG], 30)} is not a plain semver range`);
+        if (!deepEq({ ...pkg, dependencies: null }, { ...basePkg, dependencies: null })) pp.push("something outside `dependencies` changed in package.json");
+      }
+      const baseLock = j(baseLockRaw);
+      const lock = j(read(PKG_LOCK));
+      if (!baseLock) pp.push(`base ${BASE_REF}:${PKG_LOCK} not readable (git)`);
+      else if (!lock) pp.push("package-lock.json missing or not JSON");
+      else {
+        const a = lock.packages ?? {};
+        const b = baseLock.packages ?? {};
+        const added = Object.keys(a).filter((k) => !(k in b));
+        const removed = Object.keys(b).filter((k) => !(k in a));
+        const changed = Object.keys(b).filter((k) => k !== "" && k in a && !deepEq(a[k], b[k]));
+        if (JSON.stringify(added) !== JSON.stringify([`node_modules/${INTER_PKG}`])) pp.push(`lock entries added [${added.slice(0, 4).join(", ")}${added.length > 4 ? ", …" : ""}] (want exactly node_modules/${INTER_PKG})`);
+        if (removed.length || changed.length) pp.push(`lock entries removed ${removed.length} changed ${changed.length} (${[...removed, ...changed].slice(0, 3).join(", ")})`);
+        const rootAdded = Object.keys(a[""]?.dependencies ?? {}).filter((k) => !(k in (b[""]?.dependencies ?? {})));
+        if (JSON.stringify(rootAdded) !== JSON.stringify([INTER_PKG])) pp.push(`lock root dependencies added [${rootAdded.join(", ")}]`);
+      }
+      chk("T0.3-S2.10", pp.length === 0, `dependencies + {${INTER_PKG}} and nothing else; lock + {node_modules/${INTER_PKG}} and nothing else (vs ${BASE_REF})`, pp.slice(0, 4).join(" · "));
+
+      // S2.11 — the weights of the mockup and the one marked hunk in fonts.ts
+      const fp: string[] = [];
+      const lines: Record<string, string[]> = {};
+      const lineHas = (file: string, line: number, needle: string) => ((lines[file] ??= read(file).split("\n"))[line - 1] ?? "").includes(needle);
+      for (const [w, file, line, needle] of FONT_WEIGHT_SPEC) if (!lineHas(file, line, needle)) fp.push(`GENERATOR MOVED (ORACLE-EDIT needed): ${file.split("/").pop()}:${line} no longer has the weight-${w} witness`);
+      if (!lineHas(...FONT_STACK_WITNESS)) fp.push("GENERATOR MOVED (ORACLE-EDIT needed): the font-family witness");
+      const seen = new Set<string>(["400"]);
+      for (const g of GEN_FILES) for (const m of read(g).matchAll(/font-weight:\s*([0-9a-z]+)/g)) seen.add(m[1]);
+      const wantWeights = FONT_WEIGHT_SPEC.map((x) => x[0]);
+      if (JSON.stringify([...seen].sort()) !== JSON.stringify([...wantWeights].sort())) fp.push(`GENERATOR MOVED (ORACLE-EDIT needed): font-weight values in the generators are now [${[...seen].sort().join(",")}]`);
+      const baseFonts = await baseFile(FONTS_FILE);
+      const fonts = read(FONTS_FILE);
+      if (baseFonts === null) fp.push(`base ${BASE_REF}:${FONTS_FILE} not readable (git)`);
+      else if (!fonts) fp.push("fonts.ts missing");
+      else {
+        const fl = fonts.split("\n");
+        const opens = fl.map((l, i) => (l.includes(MARK_OPEN) ? i : -1)).filter((i) => i >= 0);
+        if (opens.length !== 1) fp.push(`${opens.length} \`${MARK_OPEN}\` marker(s) (want exactly 1 block)`);
+        else {
+          const close = fl.findIndex((l, i) => i >= opens[0] && l.includes(MARK_CLOSE));
+          if (close < 0) fp.push(`the block has no closing \`${MARK_CLOSE}\``);
+          else {
+            const rest = [...fl.slice(0, opens[0]), ...fl.slice(close + 1)].join("\n");
+            if (rest !== baseFonts) fp.push("fonts.ts minus the marked block is not byte-identical to the base (something outside the block changed)");
+            const block = fl.slice(opens[0], close + 1).join("\n");
+            if (!block.includes(INTER_PKG)) fp.push(`the block does not load from ${INTER_PKG}`);
+          }
+        }
+        const sf = parse(FONTS_FILE);
+        const K = TS.SyntaxKind;
+        let keys: string[] | null = null;
+        let inBlock = true;
+        const openPos = fonts.indexOf(MARK_OPEN);
+        const closePos = openPos >= 0 ? fonts.indexOf(MARK_CLOSE, openPos) : -1;
+        walk(sf, (n) => {
+          if (n.kind === K.CallExpression && n.expression.getText(sf) === "useFonts" && n.arguments[0]?.kind === K.ObjectLiteralExpression) {
+            keys = [];
+            for (const pr of n.arguments[0].properties) {
+              const name = pr.name ? pr.name.getText(sf).replace(/^["']|["']$/g, "") : "";
+              if (!name.startsWith("Inter_")) continue;
+              keys.push(name);
+              if (!(pr.getStart(sf) > openPos && pr.getEnd() < closePos)) inBlock = false;
+            }
+          }
+        });
+        const wantKeys = wantWeights.map((w) => INTER_NAMES[w]).sort();
+        if (!keys) fp.push("no `useFonts({ … })` call with an object literal");
+        else if (JSON.stringify([...(keys as string[])].sort()) !== JSON.stringify(wantKeys)) fp.push(`Inter keys in useFonts [${(keys as string[]).join(", ")}] (want ${wantKeys.join(", ")})`);
+        else if (!inBlock) fp.push("an Inter key sits outside the marked block");
+      }
+      chk("T0.3-S2.11", fp.length === 0, "weights 300·400·500·600·700 witnessed in the generators · one marked block · rest of fonts.ts = base · 5 Inter keys inside useFonts, inside the block", fp.slice(0, 4).join(" · "));
+
+      // S5.7 — the pure splitter, executed
+      const sp: string[] = [];
+      if (!existsSync(TEXT_RUNS)) sp.push("text-runs.ts missing");
+      else {
+        const imps = importsOf(parse(TEXT_RUNS));
+        if (imps.length) sp.push(`text-runs.ts is not pure: imports ${imps.map((i) => i.from).join(", ")}`);
+        const dir = join(TMP, "eval-text");
+        mkdirSync(dir, { recursive: true });
+        cpSync(TEXT_RUNS, join(dir, "text-runs.ts"));
+        writeFileSync(join(dir, "package.json"), JSON.stringify({ name: "qc-ai-t03-text", private: true, type: "module" }));
+        writeFileSync(join(dir, "cases.json"), JSON.stringify(SPLIT_CASES));
+        writeFileSync(
+          join(dir, "run.mts"),
+          `import { readFileSync } from "node:fs";
+const out = { errors: [], runs: null, fonts: null };
+try {
+  const m = await import("./text-runs.ts");
+  const cases = JSON.parse(readFileSync("cases.json", "utf8"));
+  out.exports = Object.keys(m).sort();
+  out.runs = cases.map((c) => { try { return JSON.parse(JSON.stringify(m.splitRuns(c))); } catch (e) { return "THREW " + String(e).slice(0, 80); } });
+  out.again = JSON.stringify(m.splitRuns(cases[8])) === JSON.stringify(m.splitRuns(cases[8]));
+  const f = (s, w) => { try { return m.fontFor(s, w); } catch (e) { return "THREW " + String(e).slice(0, 60); } };
+  out.fonts = {};
+  for (const s of ["latin", "thai"]) for (const w of ["300", "400", "500", "600", "700", 300, 400, 500, 600, 700, "bold", "normal", undefined]) out.fonts[s + "|" + typeof w + "|" + String(w)] = f(s, w);
+} catch (e) { out.errors.push(String(e && e.message ? e.message : e).slice(0, 200)); }
+console.log("T03TEXT " + JSON.stringify(out));
+`,
+        );
+        const r = await run(TSX_BIN, ["run.mts"], { cwd: dir, env: { NODE_OPTIONS: "" }, timeoutMs: 180_000 });
+        const line = r.out.split("\n").filter((l) => l.startsWith("T03TEXT ")).pop();
+        let res: Any = null;
+        try {
+          res = line ? JSON.parse(line.slice(8)) : null;
+        } catch {
+          res = null;
+        }
+        if (!res) sp.push(`runner: exit ${r.code} ${show(r.out.split("\n").filter((l) => l.trim()).slice(-3).join(" "), 200)}`);
+        else {
+          if (res.errors.length) sp.push(`import: ${show(res.errors.join(" | "), 160)}`);
+          if (Array.isArray(res.runs)) {
+            SPLIT_CASES.forEach((c, i) => {
+              const got = res.runs[i];
+              const want = refSplit(c);
+              if (!Array.isArray(got)) return void sp.push(`splitRuns(${show(JSON.stringify(c), 30)}) → ${show(JSON.stringify(got), 60)}`);
+              const shape = got.every((g: Any) => g && typeof g.text === "string" && g.text.length > 0 && (g.script === "latin" || g.script === "thai") && Object.keys(g).sort().join() === "script,text");
+              const lossless = shape && got.map((g: Any) => g.text).join("") === c;
+              if (!shape) sp.push(`${show(JSON.stringify(c), 30)}: a run is not { text (non-empty), script }`);
+              else if (!lossless) sp.push(`${show(JSON.stringify(c), 30)}: runs do not concatenate to the input`);
+              else if (JSON.stringify(got) !== JSON.stringify(want)) sp.push(`${show(JSON.stringify(c), 30)}: ${show(JSON.stringify(got), 110)} (want ${want.length} runs: ${show(want.map((w) => `${w.script[0]}:${JSON.stringify(w.text)}`).join(" "), 110)})`);
+            });
+            if (res.again !== true) sp.push("splitRuns is not deterministic");
+          }
+          for (const [script, names] of [["latin", INTER_NAMES], ["thai", THAI_NAMES]] as const) {
+            for (const w of wantWeights) for (const t of ["string", "number"]) if (res.fonts?.[`${script}|${t}|${w}`] !== names[w]) sp.push(`fontFor(${script}, ${t === "string" ? `"${w}"` : w}) = ${show(JSON.stringify(res.fonts?.[`${script}|${t}|${w}`]), 40)} (want ${names[w]})`);
+            if (res.fonts?.[`${script}|string|bold`] !== names["700"]) sp.push(`fontFor(${script}, "bold") ≠ ${names["700"]}`);
+            if (res.fonts?.[`${script}|string|normal`] !== names["400"] || res.fonts?.[`${script}|undefined|undefined`] !== names["400"]) sp.push(`fontFor(${script}, "normal"/undefined) ≠ ${names["400"]}`);
+          }
+        }
+        const styles = Object.entries(ev.tokens?.type ?? {});
+        if (!styles.length) sp.push("tokens.type not evaluated");
+        for (const [name, st] of styles as [string, Any][]) if (!wantWeights.includes(String(st?.fontWeight))) sp.push(`tokens.type.${name}.fontWeight ${JSON.stringify(st?.fontWeight)} is not one of ${wantWeights.join("/")}`);
+      }
+      chk("T0.3-S5.7", sp.length === 0, `pure module · ${SPLIT_CASES.length} strings split exactly like the reference · 26 fontFor answers · type-style weights ⊆ {300,400,500,600,700}`, `${sp.length}: ${sp.slice(0, 4).join(" · ")}`);
+
+      // S5.8 — TeamText and its use
+      const tt: string[] = [];
+      if (!existsSync(TEAM_TEXT)) tt.push("TeamText.tsx missing");
+      else {
+        const sf = parse(TEAM_TEXT);
+        const imps = importsOf(sf);
+        const K = TS.SyntaxKind;
+        const fromUi = imps.find((i) => i.from === "@/src/components/ui/text" && i.names.includes("Text") && (sf.statements.find((st: Any) => st.kind === K.ImportDeclaration && st.moduleSpecifier.text === i.from)));
+        if (!fromUi) tt.push("TeamText.tsx does not import Text from @/src/components/ui/text");
+        const fromRuns = imps.filter((i) => i.from === "./text-runs").flatMap((i) => i.names);
+        if (!fromRuns.includes("splitRuns") || !fromRuns.includes("fontFor")) tt.push("TeamText.tsx does not import splitRuns + fontFor from ./text-runs");
+        const reexported = sf.statements.some((st: Any) => st.kind === K.ExportDeclaration && (st.exportClause?.elements ?? []).some((el: Any) => (el.propertyName ?? el.name).text === "splitRuns"));
+        if (!reexported) tt.push("TeamText.tsx does not re-export splitRuns (`export { splitRuns } …`)");
+        if (!componentOf(sf, "TeamText").found) tt.push("no exported component TeamText");
+        const calls = new Set<string>();
+        walk(sf, (n) => {
+          if (n.kind === K.CallExpression && n.expression.kind === K.Identifier) calls.add(n.expression.text);
+        });
+        if (!calls.has("splitRuns") || !calls.has("fontFor")) tt.push(`TeamText.tsx calls [${[...calls].filter((c) => c === "splitRuns" || c === "fontFor").join(",")}] (want splitRuns and fontFor)`);
+        if (!jsxTags["TeamText.tsx"]?.has("Text")) tt.push("TeamText.tsx renders no <Text>");
+      }
+      let users = 0;
+      for (const f of teamFiles) {
+        const short = f.slice(TEAM_DIR.length + 1);
+        if (short === "TeamText.tsx") continue;
+        for (const im of importsOf(parse(f))) if (/components\/ui\/text$/.test(im.from) && im.names.some((n) => n !== "TextInput")) tt.push(`${short}:${im.line} imports {${im.names.join(",")}} from ui/text (only TeamText.tsx may; TextInput is allowed)`);
+        if (jsxTags[short]?.has("Text")) tt.push(`${short} renders <Text> directly`);
+        if (jsxTags[short]?.has("TeamText")) users++;
+      }
+      for (const c of ["PrimaryButton", "StatCard", "ListRow", "SectionTitle", "EmptyState", "ErrorState", "PillTabs", "Segmented", "QuotaRing", "Orb"]) if (existsSync(`${TEAM_DIR}/${c}.tsx`) && !jsxTags[`${c}.tsx`]?.has("TeamText")) tt.push(`${c}.tsx shows text but renders no <TeamText>`);
+      if (teamFiles.length && users === 0) tt.push("no component renders <TeamText>");
+      chk("T0.3-S5.8", tt.length === 0, "TeamText on ui/text + text-runs · no other Text in components/team · the 10 text-bearing components render <TeamText>", `${tt.length}: ${tt.slice(0, 5).join(" · ")}`);
     }
 
     const notAccepting: string[] = [];
@@ -1510,7 +1786,13 @@ try {
       counts.push(`${zone} ${users}/${files.length}`);
       if (zone !== "auth+ui" && users === 0) bad.push(`${zone}: no file imports @/src/theme any more`);
     }
-    chk("T0.3-S7.1", bad.length === 0, "every 1.0 zone still imports only { C, R, S } from @/src/theme", `${bad.length}: ${bad.slice(0, 4).join(" · ")} (${counts.join(" · ")})`);
+    // the 1.0 text component must not pick Inter up (ruling 3): byte-identical to the base
+    {
+      const r = await run("git", ["show", `${BASE_REF}:${UI_TEXT}`], {});
+      if (r.code !== 0) bad.push(`base ${BASE_REF}:${UI_TEXT} not readable (git)`);
+      else if (r.out !== read(UI_TEXT)) bad.push("components/ui/text.tsx differs from the base");
+    }
+    chk("T0.3-S7.1", bad.length === 0, "every 1.0 zone still imports only { C, R, S } from @/src/theme · ui/text.tsx = base", `${bad.length}: ${bad.slice(0, 4).join(" · ")} (${counts.join(" · ")})`);
 
     const st: Any = existsSync(BEFORE_PNG) ? await py("stat", BEFORE_PNG) : null;
     const sum = existsSync(BEFORE_PNG) ? sha256(readFileSync(BEFORE_PNG)) : "";

@@ -1,6 +1,6 @@
 # T0.3 — oracle notes (oracle writer · 8 Oct 2026 · base 873c80ca · branch `wip/pos-ai-t0.3-oracle`)
 
-Oracle: `scripts/qc-ai-t0.3.mts` — **35 checks, fixed total** (contract minimum 18; 32 in revision 1, +3 in revision 2 after the controller rulings — see §0). No database, no env file.
+Oracle: `scripts/qc-ai-t0.3.mts` — **39 checks, fixed total** (contract minimum 18; 32 in revision 1, 35 in revision 2, 39 in revision 3 — see §0 and §0b). No database, no env file.
 Its header is the builder's contract (theme API, 15 components + props, gallery route, shooter CLI, parity CLI + grid, fixture, "before" picture).
 
 ## 0. Revision 2 — controller rulings of 8 Oct applied (brief "Controller addendum + rulings")
@@ -16,6 +16,31 @@ Controls for the new/changed checks (scratch tree outside the worktree, removed)
 
 Not precise (stated limits): (1) S5.6 proves the *declaration* of a 44 pt target (hitSlop present / `touchMin` named), not the rendered hit area — `hitSlop` is invisible in a web export, so no browser measurement is possible; a `hitSlop={1}` would pass. (2) S2.8 cannot prove the PNGs are the generator's orbs — only format, transparency, size, distinctness and relative colour order; fidelity is the controller's eye on the parity pair. (3) "rendered once by the committed script" is checked as "script exists and names folder + generator CSS", not by re-running it (that needs chromium = heavy).
 
+## 0b. Revision 3 — `ORACLE-EDIT T0.3-S2.6 + fonts (controller-ordered, owner order 8 Oct)` · total now **39**
+Source: brief "Controller ruling 3" (owner: "the UI must follow the design" ⇒ bundle Inter; reverses OQ-6). Only the oracle and these notes were edited (+ an appended run in `ai-t0.3-red.txt`).
+
+| Check | sev | What it proves |
+|---|---|---|
+| T0.3-S2.6 (edited) | MAJOR | allow-list gains `@expo-google-fonts/inter` (the only new package) |
+| **T0.3-S2.10** (new) | CRITICAL | `apps/mobile/package.json` vs `git show f33dd2c1:…`: dependencies added = exactly `@expo-google-fonts/inter`, none removed/changed, nothing outside `dependencies` changed; `package-lock.json`: `packages` added = exactly `node_modules/@expo-google-fonts/inter`, none removed/changed, root dependencies + that one |
+| **T0.3-S2.11** (new) | CRITICAL | weights of the mockup CSS = {300, 400, 500, 600, 700}: one witness per weight frozen with generator file:line (`FONT_WEIGHT_SPEC`) + the font-stack witness `gen_glass_airy.py:2`, and every `font-weight:` of the 5 generators is re-scanned (a new value ⇒ "GENERATOR MOVED"). `apps/mobile/src/lib/fonts.ts` (the real `useFonts` file; `app/_layout.tsx` untouched): exactly one `// AI TEAM T0.3 ▸ … ◂` block, the file minus the block is byte-identical to the base, the block names the package, and the `useFonts({…})` object holds exactly `Inter_300Light/400Regular/500Medium/600SemiBold/700Bold`, all inside the block |
+| **T0.3-S5.7** (new) | CRITICAL | `components/team/text-runs.ts` has no import and is executed in a child process: `splitRuns` on 16 strings (empty, one char, space only, Thai only, Latin only, Thai+digits+Latin, leading/trailing spaces, emoji incl. a ZWJ family, combining accent, ฿ amounts, newline, Thai digits/marks, symbols ‹ › ✓ ⚠) must equal the oracle's reference split exactly — lossless, maximal runs, no empty run, only `{text, script}`; deterministic. `fontFor` answers for 5 weights × string/number × 2 families + "bold"/"normal"/undefined (26). Every `tokens.type.*.fontWeight` is one of the five |
+| **T0.3-S5.8** (new) | CRITICAL | `TeamText.tsx`: imports `Text` from `@/src/components/ui/text`, imports `splitRuns` + `fontFor` from `./text-runs`, calls both, re-exports `splitRuns`, exports component `TeamText`, renders `<Text>`. No other file of components/team imports anything but `TextInput` from ui/text or renders `<Text>`; the 10 text-bearing components (PrimaryButton StatCard ListRow SectionTitle EmptyState ErrorState PillTabs Segmented QuotaRing Orb) render `<TeamText>` |
+| T0.3-S7.1 (extended, same intent) | CRITICAL | + `components/ui/text.tsx` byte-identical to the base (1.0 text never picks Inter up). `src/lib/fonts.ts` is not in any S7.1 zone, so the allowed hunk cannot turn S7.1 red; S7.3 (pixel diff) unchanged |
+
+Decisions in the contract (controller: overrule if wrong):
+- **Per-glyph rule** = what the browser's font stack does: Thai block U+0E00–U+0E7F → IBM Plex Sans Thai, **except ฿ U+0E3F**, which Inter carries (checked in the cmap of the Inter the mockups were rendered with, `/root/.fonts/Inter-3.ttf`: U+0E3F present, U+0E01 absent) → Inter. Spaces, digits, punctuation, symbols, emoji → the Inter run (emoji fall back to the system font inside it).
+- **Weight 300 is in the set** because of a single witness: `gen_airy_full.py:132` (`font-weight:300">−</span>`, a stepper minus). The controller said "read them from the generators", so `Inter_300Light` is required. No Thai 300 is loaded (the font file may only get the one hunk), so `fontFor("thai", 300)` = `IBMPlexSansThai_400Regular`.
+- **The splitter lives in a pure file `text-runs.ts`** and TeamText re-exports it, so the oracle can execute it without React Native.
+- **One hunk in fonts.ts ⇒ per-weight `require("@expo-google-fonts/inter/<weight>/Inter_<weight>.ttf")` inside the `useFonts` object** (an `import` cannot share the block). The oracle checks keys/block/package name, not the require form.
+- Base for the diffs is commit `f33dd2c1` (`QC_AI_T03_BASE` overrides it — used only for the scratch controls).
+
+Controls (scratch git tree outside the worktree, removed): reference implementation → S2.6 S2.10 S2.11 S5.3 S5.7 S5.8 green. Seeded defects → red with the right reason: a second new dependency + a changed script + a second lock entry (S2.10); `Inter_300Light` removed and a comment edited outside the block (S2.11); ฿ classified Thai, input trimmed, `600 → Inter_700Bold`, a type style with weight 800 (S5.7); re-export removed, StatCard on ui/text's `Text` (S5.8); a line appended to ui/text.tsx (S7.1). Single-file strict `tsc` exit 0.
+
+Run on the builder's tree mid-work (forced, static only; appended to `ai-t0.3-red.txt`): `🟡 T0.3: 33/39 (QC_FORCE) · failed 0 · skipped-heavy 6 · missing deliverables 0/37` · exit 0 — every static check already green; the 6 heavy checks were not run (no export, by order).
+
+Not precise: (1) S5.8's "text-bearing components" is a fixed list of 10; AvatarStack (initials / +N), GlassCard, BottomSheet, Skeleton, SearchField are only covered by "no `<Text>` outside TeamText". A component that draws text some third way (e.g. RN `Text` through a helper outside components/team) is caught by S5.4/S2.6 only if it imports it. (2) Nothing static proves the nested spans really get the Inter family at render time on native; on web the heavy probe does not inspect computed fonts either — font fidelity is seen in the parity pair. (3) S2.10/S2.11/S7.1 compare against f33dd2c1: a later WO that legitimately adds a dependency or edits fonts.ts / ui/text.tsx will need an ORACLE-EDIT. (4) That `@expo-google-fonts/inter` ships `<weight>/Inter_<weight>.ttf` was inferred from the installed sibling package (ibm-plex-sans-thai 0.4.1 has `400Regular/IBMPlexSansThai_400Regular.ttf`), not from the Inter package itself. (5) "Rendered lockfile is installable" is not checked (no `npm ci` here).
+
 ## Files written (nothing else touched)
 | File | What |
 |---|---|
@@ -29,11 +54,11 @@ Not precise (stated limits): (1) S5.6 proves the *declaration* of a 44 pt target
 ```
 bash scripts/iso.sh pnpm exec tsx scripts/qc-ai-t0.3.mts                                   # unforced → SKIP exit 0 while not built
 bash scripts/iso.sh env QC_FORCE=1 pnpm exec tsx scripts/qc-ai-t0.3.mts                    # forced, cheap part (29 checks run, 6 SKIPPED-HEAVY)
-ISO_MEM=6500M bash scripts/iso.sh bash scripts/with-gate-lock.sh env QC_FORCE=1 QC_AI_T03_HEAVY=1 pnpm exec tsx scripts/qc-ai-t0.3.mts   # ACCEPTANCE: all 35 — heavy steps MUST queue on the machine lock (no qc4.sh: no DB)
+ISO_MEM=6500M bash scripts/iso.sh bash scripts/with-gate-lock.sh env QC_FORCE=1 QC_AI_T03_HEAVY=1 pnpm exec tsx scripts/qc-ai-t0.3.mts   # ACCEPTANCE: all 39 — heavy steps MUST queue on the machine lock (no qc4.sh: no DB)
 ```
 `iso.sh` forwards only PATH/HOME/QC_ENV_FILE/NODE_OPTIONS, so the flags must sit behind `env` inside the wrapper (as shown).
 SKIPPED-HEAVY checks stay in `total`, are not in `passed`, are listed in `JSON_SUMMARY.skippedHeavy`, and do not change the exit code.
-"All green" (35/35) therefore exists only for forced + heavy. Heavy = one web export of the QC copy (`/root/qc-shark-mobile-ai`, port 4713, done by the
+"All green" (39/39) therefore exists only for forced + heavy. Heavy = one web export of the QC copy (`/root/qc-shark-mobile-ai`, port 4713, done by the
 builder's shooter), a second shooter run `--dark`, the oracle's own chromium probe of that export, and `npm run typecheck` in `apps/mobile`.
 
 ## 2. Check table
