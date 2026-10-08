@@ -8,12 +8,13 @@
 //   --apply      = ต่อร้าน 1 ธุรกรรม: ทุกแถว (ยังทำงาน/พ้นสภาพ) ที่มี pinCode แต่ไม่มี pinHash
 //                  · hash ชนกับคนที่ยังทำงานคนอื่นในร้าน (นับกลุ่มก่อน) ⇒ pinCode = null · pinHash = null (ต้องตั้ง PIN ใหม่ — อยู่ในรายการซ้ำ)
 //                  · ไม่ชน ⇒ pinHash = hash · pinSetAt = now · pinCode = null
+//                  · pinCode ที่ไม่ใช่ตัวเลข 4–6 หลัก (^\d{4,6}$ — ยืนยันไม่ได้อยู่แล้ว) ⇒ ล้างแบบเดียวกับซ้ำ (pinCode = null · ไม่มี hash) อยู่ในรายการ invalid
 //                  · คนพ้นสภาพก็ hash (ไม่อยู่ในดัชนี) — กลับมาทำงานแล้วชน = setEmployeeActive ล้าง PIN ให้ (R4)
 //                  · แถวที่มีทั้ง hash และตัวเปล่า (ไม่ควรมี) ⇒ ลบตัวเปล่าทิ้ง hash เดิมคงไว้
 //                  · แถวที่มี hash แล้ว ไม่แตะ (pinSetAt เดิม) · audit hr.pin.backfill 1 แถวต่อร้านที่มีการเปลี่ยน (ตัวเลขเท่านั้น)
 //                  รันซ้ำ = 0 แถว (idempotent) · ระหว่างรันมีคนตั้ง PIN ชนพอดี ⇒ ธุรกรรมของร้านนั้นย้อนทั้งก้อน รันใหม่ได้
 //   --tenant <id> = เฉพาะร้านนี้ (ข้อสอบใช้) · ไม่ใส่ = ทุกร้านที่ยังมี pinCode เหลือ
-// บรรทัดสุดท้าย: JSON_SUMMARY {"mode","host","tenants":[{tenantId,plain,duplicates:[ids],hashed,toUpdate,toUpdateInactive,changed}]}
+// บรรทัดสุดท้าย: JSON_SUMMARY {"mode","host","tenants":[{tenantId,plain,duplicates:[ids],invalid:[ids],hashed,toUpdate,toUpdateInactive,changed}]}
 //
 // env
 //   ค่าปริยาย: acc-v2-env.loadQcEnv() (.env.qc · env ที่ export มาก่อนชนะ — ใต้ scripts/qc4.sh = QC4) · ด่าน prod ของ loadQcEnv ทำงานเสมอ
@@ -85,13 +86,16 @@ const { hashPin } = (await import("@/lib/modules/hr/pin")) as Any;
 const P = prisma as Any;
 
 type Emp = { id: string; name: string; active: boolean; pinCode: string | null; pinHash: string | null };
-type Entry = { tenantId: string; plain: number; duplicates: string[]; hashed: number; toUpdate: number; toUpdateInactive: number; changed: number };
+type Entry = { tenantId: string; plain: number; duplicates: string[]; invalid: string[]; hashed: number; toUpdate: number; toUpdateInactive: number; changed: number };
 
+const PIN_RE = /^\d{4,6}$/; // กติกาเดียวกับ hr/pin.ts — ตัวที่ไม่ผ่านไม่ถูก hash (ยืนยันไม่ได้อยู่แล้ว)
 const initial = (name: string) => [...String(name ?? "").trim()][0] ?? "?";
 
 /** แผนของร้านหนึ่ง (ไม่เขียน) — คำนวณจากแถวที่อ่านใน tx เดียวกับที่จะเขียน */
 function plan(tenantId: string, rows: Emp[]) {
-  const plainRows = rows.filter((r) => r.pinCode !== null && r.pinHash === null);
+  const plainAll = rows.filter((r) => r.pinCode !== null && r.pinHash === null);
+  const invalidRows = plainAll.filter((r) => !PIN_RE.test(r.pinCode!)); // ล้างทิ้ง (เหมือนซ้ำ) — ห้ามพิมพ์ค่า
+  const plainRows = plainAll.filter((r) => PIN_RE.test(r.pinCode!));
   const residue = rows.filter((r) => r.pinCode !== null && r.pinHash !== null); // มีทั้งคู่ — ลบตัวเปล่า
   const hashedRows = rows.filter((r) => r.pinHash !== null);
   const hashOf = new Map(plainRows.map((r) => [r.id, String(hashPin(tenantId, r.pinCode!))]));
@@ -102,7 +106,7 @@ function plan(tenantId: string, rows: Emp[]) {
   const dups = plainRows.filter((r) => r.active && (group.get(hashOf.get(r.id)!) ?? 0) > 1);
   const dupIds = new Set(dups.map((r) => r.id));
   const toHash = plainRows.filter((r) => !dupIds.has(r.id));
-  return { plainRows, residue, hashedRows, hashOf, dups, toHash };
+  return { plainRows, invalidRows, residue, hashedRows, hashOf, dups, toHash };
 }
 
 // ── ร้านที่ต้องดู ──
@@ -126,17 +130,19 @@ for (const tenantId of tenantIds) {
         const p = plan(tenantId, rows);
         const e: Entry = {
           tenantId,
-          plain: p.plainRows.length + p.residue.length,
+          plain: p.plainRows.length + p.invalidRows.length + p.residue.length,
           duplicates: p.dups.map((r) => r.id),
+          invalid: p.invalidRows.map((r) => r.id),
           hashed: p.hashedRows.length,
           toUpdate: p.toHash.length,
           toUpdateInactive: p.toHash.filter((r) => !r.active).length,
           changed: 0,
         };
         console.log(
-          `ร้าน ${tenantId} · PIN ตัวเปล่า ${e.plain} · ซ้ำ ${e.duplicates.length} · มี hash แล้ว ${e.hashed} · จะ hash ${e.toUpdate} (พ้นสภาพ ${e.toUpdateInactive})${p.residue.length ? ` · ตัวเปล่าค้างคู่ hash ${p.residue.length}` : ""}`,
+          `ร้าน ${tenantId} · PIN ตัวเปล่า ${e.plain} · ซ้ำ ${e.duplicates.length} · รูปแบบผิด ${e.invalid.length} · มี hash แล้ว ${e.hashed} · จะ hash ${e.toUpdate} (พ้นสภาพ ${e.toUpdateInactive})${p.residue.length ? ` · ตัวเปล่าค้างคู่ hash ${p.residue.length}` : ""}`,
         );
         for (const r of p.dups) console.log(`   ซ้ำ → ต้องตั้ง PIN ใหม่: ${r.id} (${initial(r.name)}…)`);
+        for (const r of p.invalidRows) console.log(`   รูปแบบผิด → ต้องตั้ง PIN ใหม่: ${r.id} (${initial(r.name)}…)`);
         if (!APPLY) return e;
         const now = new Date();
         let changed = 0;
@@ -144,7 +150,7 @@ for (const tenantId of tenantIds) {
           const u = await tx.hrEmployee.updateMany({ where: { id: r.id, tenantId, pinCode: r.pinCode, pinHash: null }, data: { pinHash: p.hashOf.get(r.id), pinSetAt: now, pinCode: null } });
           changed += u.count;
         }
-        for (const r of p.dups) {
+        for (const r of [...p.dups, ...p.invalidRows]) {
           const u = await tx.hrEmployee.updateMany({ where: { id: r.id, tenantId, pinCode: r.pinCode, pinHash: null }, data: { pinCode: null, pinHash: null, pinSetAt: null } });
           changed += u.count;
         }
@@ -162,7 +168,7 @@ for (const tenantId of tenantIds) {
               targetType: "Tenant",
               targetId: tenantId,
               before: { plain: e.plain, hashed: e.hashed },
-              after: { hashedNow: p.toHash.length, inactiveHashed: e.toUpdateInactive, duplicatesCleared: p.dups.length, residueCleared: p.residue.length, changed },
+              after: { hashedNow: p.toHash.length, inactiveHashed: e.toUpdateInactive, duplicatesCleared: p.dups.length, invalidCleared: p.invalidRows.length, residueCleared: p.residue.length, changed },
             },
           });
         }
@@ -180,7 +186,7 @@ for (const tenantId of tenantIds) {
 
 const sum = (k: "plain" | "hashed" | "toUpdate" | "changed") => out.reduce((a, e) => a + e[k], 0);
 console.log(
-  `\nสรุป ${out.length} ร้าน · PIN ตัวเปล่า ${sum("plain")} · ซ้ำ ${out.reduce((a, e) => a + e.duplicates.length, 0)} · มี hash ${sum("hashed")} · จะ hash ${sum("toUpdate")} · เปลี่ยนจริง ${sum("changed")}${failed ? ` · ล้ม ${failed} ร้าน` : ""}${APPLY ? "" : " (dry-run — ไม่ได้เขียน · ใส่ --apply เพื่อเขียน)"}`,
+  `\nสรุป ${out.length} ร้าน · PIN ตัวเปล่า ${sum("plain")} · ซ้ำ ${out.reduce((a, e) => a + e.duplicates.length, 0)} · รูปแบบผิด ${out.reduce((a, e) => a + e.invalid.length, 0)} · มี hash ${sum("hashed")} · จะ hash ${sum("toUpdate")} · เปลี่ยนจริง ${sum("changed")}${failed ? ` · ล้ม ${failed} ร้าน` : ""}${APPLY ? "" : " (dry-run — ไม่ได้เขียน · ใส่ --apply เพื่อเขียน)"}`,
 );
 console.log(`JSON_SUMMARY ${JSON.stringify({ mode: APPLY ? "apply" : "dry-run", host, failed, tenants: out })}`);
 await P.$disconnect().catch(() => {});

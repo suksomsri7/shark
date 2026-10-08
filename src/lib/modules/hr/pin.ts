@@ -155,7 +155,9 @@ export type VerifyPinResult = VerifyPinOk | VerifyPinFail;
  * contract C-8 — "PIN นี้เป็นของพนักงานคนไหนในร้าน" (POS P1.15 เรียกผ่าน hr/index.ts)
  * คืน id เท่านั้น (ไม่มีชื่อ/ตำแหน่ง/hash) · ผิด / รูปแบบผิด / คนพ้นสภาพ / อีกร้าน = ข้อความเดียว "PIN ไม่ถูกต้อง"
  * จำกัด 120 ครั้ง/60 วินาที ต่อร้าน (ถัง hr-verifypin:<tenantId> · ตัวจำกัดล่ม = ปล่อยผ่าน เหมือน H0.3)
- * ทางเก่า: ไม่เจอด้วย hash แต่มีแถว pinCode ตรง **แถวเดียว** ในร้าน ⇒ ยืนยัน + อัปเกรดเป็น hash · ตรงหลายแถว = ไม่ยืนยัน (ต้องตั้งใหม่)
+ * ลำดับ: หาด้วย hash ก่อน (findFirst ต่อระบบ) · ไม่เจอเท่านั้นจึงลองทางเก่า
+ * ทางเก่า: แถว pinCode ตรง (ยังไม่มี hash) **แถวเดียว** ในร้าน ⇒ ยืนยัน + อัปเกรดเป็น hash · ตรงหลายแถว = ไม่ยืนยัน (ต้องตั้งใหม่)
+ * เฉพาะระบบ HR ที่ active (≤ 50) — ระบบที่ปิดแล้ว พนักงานในนั้นยืนยันระดับร้านไม่ได้ (kiosk ยังเป็นต่อระบบ ไม่กระทบ)
  */
 export async function verifyPin(input: VerifyPinInput): Promise<VerifyPinResult> {
   const wrong: VerifyPinFail = { ok: false, reason: PIN_TEXT.wrong };
@@ -177,32 +179,47 @@ export async function verifyPin(input: VerifyPinInput): Promise<VerifyPinResult>
   }
 
   // HrEmployee เป็น system-scoped ⇒ ไล่ระบบ HR ของร้านก่อน แล้ว query ผูก systemId (แบบ employeeOfUser — ห้าม prisma ดิบ · F5.1)
+  // เฉพาะระบบ HR ที่ยังเปิดอยู่ (active) · สูงสุด 50 ระบบ (แบบ payroll.ts payrollEmployeeOfUser) — ระบบที่ปิดแล้ว = พนักงานในนั้นยืนยันระดับร้านไม่ได้
   const systems = await tenantDb({ tenantId }).appSystem.findMany({
-    where: { tenantId, type: "HR", ...(input.systemId ? { id: input.systemId } : {}) },
+    where: { tenantId, type: "HR", active: true, ...(input.systemId ? { id: input.systemId } : {}) },
     select: { id: true },
-    orderBy: { createdAt: "asc" },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    take: 50,
   });
-  // คำสั่งเดียวต่อระบบ: แถวที่ hash ตรง หรือ (ทางเก่า) ตัวเปล่าตรง — ภาพเดียวกันของฐาน ⇒ ไม่พลาดตอนอีกคำขออัปเกรดแถวไปพร้อมกัน
   type Row = { id: string; systemId: string; linkedUserId: string | null; pinHash: string | null };
-  const rows: Row[] = [];
+  const sel = { id: true, systemId: true, linkedUserId: true, pinHash: true } as const;
+  // 1) hash ก่อน — partial unique ⇒ คนที่ยังทำงานถือ hash นี้ได้อย่างมากคนเดียวทั้งร้าน ⇒ เจอแล้วจบ (แถวตัวเปล่ากี่แถวก็บังไม่ได้)
+  const byHash = async (): Promise<Row | null> => {
+    for (const s of systems) {
+      const r: Row | null = await tenantDb({ tenantId, systemId: s.id }).hrEmployee.findFirst({ where: { active: true, pinHash: hash }, select: sel });
+      if (r && hashEquals(r.pinHash, hash)) return r;
+    }
+    return null;
+  };
+  const okOf = (r: Row): VerifyPinOk => ({ ok: true, employeeId: r.id, systemId: r.systemId, userId: r.linkedUserId ?? null });
+  const hit = await byHash();
+  if (hit) return okOf(hit);
+
+  // ── ทางเก่า (HQ4) ── ไม่เจอด้วย hash เท่านั้น: แถวตัวเปล่า (ยังไม่มี hash) ที่ตรง — อ่านแค่ 2 แถว (≥ 2 = ไม่ยืนยันอยู่แล้ว)
+  const plain: Row[] = [];
   for (const s of systems) {
-    rows.push(
-      ...(await tenantDb({ tenantId, systemId: s.id }).hrEmployee.findMany({
-        where: { active: true, OR: [{ pinHash: hash }, { pinCode: pin }] },
-        select: { id: true, systemId: true, linkedUserId: true, pinHash: true },
-        take: 3,
-      })),
+    if (plain.length >= 2) break;
+    plain.push(
+      ...((await tenantDb({ tenantId, systemId: s.id }).hrEmployee.findMany({
+        where: { active: true, pinHash: null, pinCode: pin },
+        select: sel,
+        take: 2,
+      })) as Row[]),
     );
   }
-  // เทียบทุกแถวแบบเวลาคงที่ (ไม่มีแถว = เทียบกับ dummy หนึ่งครั้ง)
-  let hit: Row | null = null;
-  if (rows.length === 0) hashEquals(null, hash);
-  for (const r of rows) if (hashEquals(r.pinHash, hash) && !hit) hit = r;
-  if (hit) return { ok: true, employeeId: hit.id, systemId: hit.systemId, userId: hit.linkedUserId ?? null };
-
-  // ── ทางเก่า (HQ4) ──
-  const plain = rows.filter((r) => r.pinHash === null);
-  if (plain.length !== 1) return wrong; // 0 = PIN ผิด · ≥2 = PIN ตัวเปล่าซ้ำในร้าน ⇒ ไม่ยืนยันใครเลย (backfill ล้างให้ตั้งใหม่)
+  if (plain.length === 0) {
+    // อีกคำขออาจเพิ่งอัปเกรดแถวตัวเปล่าแถวเดียวนี้เป็น hash ระหว่างสองคำสั่งข้างบน ⇒ ตรวจด้วย hash ซ้ำหนึ่งครั้ง (OQ-7) · ไม่เจอเลย = เทียบกับ dummy
+    const again = await byHash();
+    if (again) return okOf(again);
+    hashEquals(null, hash);
+    return wrong;
+  }
+  if (plain.length !== 1) return wrong; // ≥2 = PIN ตัวเปล่าซ้ำในร้าน ⇒ ไม่ยืนยันใครเลย (backfill ล้างให้ตั้งใหม่)
   const one = plain[0]!;
   const db = tenantDb({ tenantId, systemId: one.systemId });
   try {
@@ -219,7 +236,7 @@ export async function verifyPin(input: VerifyPinInput): Promise<VerifyPinResult>
     if (isUniqueViolation(e)) return wrong; // คนที่ยังทำงานอีกคนถือ PIN นี้เป็น hash แล้ว ⇒ ไม่ยืนยันแถวตัวเปล่า
     throw e;
   }
-  return { ok: true, employeeId: one.id, systemId: one.systemId, userId: one.linkedUserId ?? null };
+  return okOf(one);
 }
 
 export type VerifyForEmployeeResult = { ok: true; employeeId: string; name: string } | { ok: false; reason: string };
@@ -270,7 +287,7 @@ export async function verifyPinForEmployee(ctx: PinCtx, employeeId: string, pin:
 
 /**
  * กลับมาทำงาน (active = true) โดยไม่ล้มเพราะ PIN — คนพ้นสภาพไม่อยู่ในดัชนี ระหว่างนั้นคนอื่นอาจตั้ง PIN เดียวกันไปแล้ว
- * ลองเปิดตรง ๆ ก่อน · ชนดัชนี (P2002) ⇒ ลองใหม่ 1 ครั้งพร้อมล้าง PIN ของคนที่กลับมา (pinCleared) + audit hr.pin.clear เหตุผล REACTIVATE_DUPLICATE
+ * ลองเปิดตรง ๆ ก่อน · ชนดัชนี (P2002) ⇒ ลองใหม่ 1 ครั้งพร้อมล้าง PIN ของคนที่กลับมา (pinHash + pinCode ตัวเปล่าด้วย · pinCleared) + audit hr.pin.clear เหตุผล REACTIVATE_DUPLICATE
  * แต่ละครั้งเป็นคำสั่งเดียว (atomic ในตัว) — ไม่ห่อ interactive tx เพราะ P2002 ทำให้ tx ทั้งก้อนใช้ต่อไม่ได้ (ต้องเริ่มคำสั่งใหม่อยู่ดี)
  */
 export async function activateEmployeeKeepingPinUnique(
@@ -285,7 +302,7 @@ export async function activateEmployeeKeepingPinUnique(
   } catch (e) {
     if (!isUniqueViolation(e)) throw e;
   }
-  const r = await db.hrEmployee.updateMany({ where: { id: employeeId }, data: { active: true, pinHash: null, pinSetAt: null } });
+  const r = await db.hrEmployee.updateMany({ where: { id: employeeId }, data: { active: true, pinHash: null, pinSetAt: null, pinCode: null } });
   if (r.count === 1) {
     await writeAudit({
       tenantId: ctx.tenantId,
