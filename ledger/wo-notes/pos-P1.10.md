@@ -69,6 +69,54 @@ Pure (client-safe) — `receipt-render.ts`: `renderReceiptHtml(payload, {paper:"
 
 ## Follow-ups
 - P1.8 merge: `docType`/`refReceiptNo` are read dynamically from the PosSale row (`receipt.ts`); after P1.8 lands, replace with typed fields and fill `refReceiptNo` from the real column name.
-- Receipt of a VOIDED bill is still served (no void stamp) — decide in P1.10U/P1.16.
+- ~~Receipt of a VOIDED bill is still served (no void stamp)~~ — done in fix round 1 (F2).
 - Thai line breaking in ESC/POS is per character cluster (no dictionary); long Thai names without spaces break mid-word (leading vowels kept with their consonant).
 - QR e-receipt (P1.11) prints nothing while `qrEReceiptUrl` is null.
+- (fix round 1 · F6) Non-ASCII outside Thai (accented Latin, CJK, emoji) still prints "?" in both ESC/POS modes; only Thai incl. ฿ is rasterized / TIS-620 encoded.
+- (fix round 1 · F7, deferred to P1.16/P1.10U) points / voucher / gift-card deductions all print under "ส่วนลดท้ายบิล" (billDiscountSatang = PosSale.discountSatang − coupons − tier); split them once P1.16 owns the tender breakdown.
+
+## Fix round 1 (reviewer MERGEABLE-AFTER-FIXES on 0bf1c6df · controller rulings F1–F11)
+Base: `git pull --ff-only` (already at 0bf1c6df) + cherry-pick of controller oracle commit 85672dd4 (ORACLE-EDIT P5, `docConfig.docSettings.autoTaxInvoice`) as 9d333d3b — the tree had that exact change uncommitted; identical to `origin/session/pos`, so the merge is a no-op on the oracle. My earlier "ORACLE-EDIT? P5" section is resolved by it.
+- F1 `receipt.ts`: `kind = TAX_INVOICE_ABB` iff VAT book + posAbbreviatedInvoice + taxId + `sale.vatSatang > 0`; `vatRateBp` = book rate only when `vatSatang > 0`, else 0.
+- F2 payload `status: "PAID"|"VOIDED"|"REFUNDED"` from `PosSale.status` (other → SALE_NOT_FOUND); VOIDED stamps `labels.voided` ("ยกเลิก / VOID" / "VOID") in the title block of HTML (`.stamp`) and ESC/POS (`*** … ***`, bold), next to the copy stamp. REFUNDED prints normally.
+- F3 `receiptPayload`: original (`copy:false`) only while `now − sale.createdAt ≤ 30 min` (`RECEIPT_ORIGINAL_WINDOW_MS`); older = silently `copy:true` + "สำเนา" + `pos.receipt.reprint` audit (audit `after` gains `requestedCopy`). Both actions inherit it.
+- F4 `refReceiptNo` from dynamic `anySale.refSaleId` → `posSale.findFirst({id, tenantId, systemId}).receiptNo` (REFUND only); `fullTaxInvoiceHint` only for `docType SALE` + ABB.
+- F5 `@page { size: 58mm|80mm 297mm; margin: 0 }` + `@media print { html, body { width: …mm } }`.
+- F6 `THAI_RE = /[ก-๛]/` (adds ฿ U+0E3F); TIS-620 maps ฿ → 0xDF (verified: tis620 output contains 0xDF, raster mode makes a slot for a "฿" line).
+- F8 `updateDevice`: incoming printerConfig object is shallow-merged onto the stored (parsed) config before `parsePrinterConfig` — `{paper:"58"}` keeps `drawerKick`; corrupt stored = defaults; `null` = reset to defaults; non-object still VALIDATION.
+- F9 `updatePosReceiptSettings` (+ action doc): `pos.device.manage` required on every non-archived unit linked to the POS (OWNER / `*` pass; no linked unit = OWNER/`*` only) — same rule as `posCanSetTenantPrice`. Read unchanged.
+- F10 `recordCashMovement`: DEVICE_REVOKED guard on `ctx.deviceId` (after the idempotency replay, like submitRegisterSale). closeShift / recountShift / discardHeldCart stay unguarded. `registerStatus` gains optional `deviceStatus`. ShiftRefusal DEVICE_REVOKED message now covers cash in/out.
+- F11 `receipt-render.ts` `receiptRefusalMessageKey(code)` (own map, keys under `pos.receipt`): SALE_NOT_FOUND→`errors.saleNotFound` · PERMISSION_DENIED→`errors.permissionDenied` · INTERNAL/other→`errors.internal`; th+en added. Not put into register-shared `REFUSAL_KEY` because that map resolves under `pos.register` and maps INTERNAL→`errors.unknown` for the register screen (changing it would alter register behaviour).
+- F7 deferred (follow-up above).
+
+Commits: 9d333d3b (oracle cherry-pick) · 9380bcf5 (receipt F1–F6, F11) · cc6bea67 (F8–F10).
+Checks not covered by the oracle (F1 zero-VAT bill, F3 30-min upgrade, F4 refSaleId, F8, F9, F10) are verified by reading only plus the renderer scratch check below — no dedicated DB test was written.
+
+### Contract additions for P1.10U
+- `ReceiptPayload.status: "PAID"|"VOIDED"|"REFUNDED"` (new required field; type `ReceiptSaleStatus`); `labels.th/en.voided`.
+- 30-minute original rule: `receiptPayloadAction` may return `copy:true` for bills older than 30 min — the UI must render from `payload.copy`, not from which action it called.
+- `RegisterStatus.deviceStatus?: "ACTIVE"|"REVOKED"|null` (null = no deviceId / unregistered / heartbeat failed) — lock selling on REVOKED.
+- Receipt action refusals → `receiptRefusalMessageKey(code)` → `pos.receipt.errors.*` (never show the server message).
+- `rasterSlots[].offset` is pre-splice (offsets into the returned `bytes`); the client splices from the LAST slot backwards so earlier offsets stay valid.
+- Revoke limitation: the device id is client-supplied (brief Q3), so revoke stops honest clients only (a client can send another/no deviceId); guards are check-then-commit, so a sale/open-shift/cash movement already past the check when revoke commits still completes (small race).
+
+### Gates (fix round 1 · head cc6bea67)
+| command | result |
+|---|---|
+| typecheck (iso · flock /tmp/pos-gate.lock) | exit 0 (before push) |
+| renderer scratch (VOID stamp th/en · en no Thai · @page 58/80 297mm · ฿ raster slot · 0xDF in tis620 · refusal keys) — file deleted | all true |
+| `qc-pos-p1.10` QC_FORCE=1 run 1 | exit 0 · 40/40 · Z1/Z2 green |
+| `qc-pos-p1.10` QC_FORCE=1 run 2 | exit 0 · 40/40 · Z1/Z2 green |
+| `qc-pos-p1.10` QC_FORCE=1 run 3 | exit 0 · 40/40 · Z1/Z2 green |
+| `qc-pos-p1.10` unforced | exit 0 · 40/40 · Z1/Z2 green (not skipped) |
+| `qc-pos-p1.3` | exit 0 · 128/128 (unchanged) |
+| `qc-pos-p1.5` | exit 0 · 21/21 (unchanged) |
+| `qc-pos-p1.6` | exit 0 · 48/48 (unchanged) |
+| `qc-pos-p1.9` | exit 0 · 53/53 (unchanged) |
+| `qc-pos-p1.9b` | exit 0 · 22/22 (unchanged) |
+| `qc-hf-pos-page-authz` | exit 0 · 56/56 |
+| `env -u DATABASE_URL -u DIRECT_URL pnpm fitness` | exit 0 · 41/41 |
+| `bash scripts/qc4.sh pnpm fitness` | exit 0 · 41/41 |
+| `pnpm exec tsx scripts/fitness-pos.mts` | exit 0 · 8/8 |
+All QC runs: `iso → qc4.sh (.env.qc4 = ep-frosty-lab, QC4) → with-gate-lock`. Not run: next build, visual, qc-pos-p1.8 (other lane).
+
