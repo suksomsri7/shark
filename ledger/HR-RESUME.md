@@ -94,3 +94,4 @@
 - 2026-10-08T03:36Z heartbeat: no agent running · H0.1–H0.4 merged (session/hr a747f2a5) · next WOs blocked on owner (HQ2–HQ4 / CRM main / migration GO) · lanes idle · nothing spawned · tg already sent at 03:4xZ, no change
 - 2026-10-08T03:47Z heartbeat: idle · no agent · H0.1–H0.4 merged · waiting on owner (HQ2–HQ4 / CRM main / migration GO) · nothing spawned
 - 2026-10-08T04:01Z heartbeat: idle · no agent · waiting on owner (HQ2–HQ4 / CRM main / migration GO) · nothing spawned
+- 2026-10-08T04:24Z heartbeat: idle · no agent · waiting on owner (HQ2–HQ4 / CRM main / migration GO) · nothing spawned · tg hourly reminder sent
