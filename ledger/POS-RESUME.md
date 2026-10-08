@@ -707,3 +707,5 @@
 - **P1.10 S** `wip/pos-p1.10` @ 0bf1c6df: oracle 39/40 (P5 = fixture ของข้อสอบใส่ docConfig ผิดคีย์) · ORACLE-EDIT P5 ใส่แล้ว (85672dd4) · ชุดเดิมเท่าเดิม · เพิ่ม re-export vatConfigOf ใน account/index.ts (F ด่าน) · ติดตาม: พิมพ์ซ้ำบิล VOIDED ไม่มีตรา · ตัดคำไทยยาวบน ESC/POS
 - กำลังรันข้อสอบที่แก้แล้วซ้ำ (P1.8 บน p11 · P1.10 บนทรี c) เพื่อยืนยัน 49/49 · 40/40
 - ถัดไป (หลัง reset): reviewer Opus 2 ใบ (money lane สำหรับ P1.8) → merge P1.8 ก่อน (ปลดล็อก scope/client ของทุกทรี) → merge P1.10 (คาด conflict เล็ก: scope.ts · permissions.ts · pos.prisma · pos-qc-env · th/en json) → prisma generate ใน p11 → build+gates บน p11 → 15/55
+
+- 2026-10-08T00:54Z ✅ ยืนยันข้อสอบหลัง ORACLE-EDIT: P1.8 **49/49** (forced+unforced บน p11) · P1.10 **40/40** (forced+unforced บนทรี c) · โควตา 78% รอ reset 01:30 → reviewer
