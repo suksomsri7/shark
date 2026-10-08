@@ -37,3 +37,12 @@ X1 seed tenants isolated · X10 no secrets in docs/seed.
 - The oracle reaches the seed through `scripts/ai-team-qc-env.mts` by dynamic import (`as string`), so it stays type-safe under `next build` before the file exists; missing file ⇒ unforced SKIP exit 0 / forced RED.
 - S1 "other tenants unchanged": snapshot = per-tenant row counts of `Tenant`, `Membership`, `AiConversation`, `AiProposal`, `Customer`-like tables for every tenant whose slug does NOT start with `qc-ai-team-`; POS/HR lanes write to QC4 concurrently, so compare only tenants whose slug matches the CRM/acc-v2 seed tenants plus assert the seed itself issues no write outside `qc-ai-team-*` (wrap the seed run and diff `xact`-independent counts for a fixed list of 3 foreign seed tenants chosen at runtime; a foreign count change is reported with the tenant slug so the controller can tell a concurrent lane from a leak).
 - Files owned (final): the 8 deliverables of this brief + oracle `scripts/qc-ai-t0.2.mts` + `ledger/wo-notes/ai-t0.2*.{md,txt}`. Hunk-only: `scripts/qc-all.mts`.
+
+## Controller rulings on the oracle writer's questions (2026-10-08 · the oracle header [1]–[6] is the contract)
+- OQ-1 ✅ `fitness-ai-team.mts` honours `FITNESS_AI_TEAM_ROOT` (default repo root).
+- OQ-2 ✅ the draft lives at **`prisma/drafts/ai_team.prisma`** (NOT in `prisma/schema/` — it would turn fitness F1.1/F8.1 CRITICAL and enter `prisma generate`). T1.1 moves it into `prisma/schema/` together with scope.ts + migration.
+- OQ-3 ✅ "customers ≥ 20" = `CrmContact`. OQ-4 ✅ e-mails/membership sets as in the oracle (approver in AT-1 only; T1.9 will add its own cross-tenant fixture). OQ-5 ✅ store `ai.employee.use` in `Membership.permissions` as-is (T1.2 registers the key). OQ-6 ✅ 2,000,000 satang. OQ-7 ✅. OQ-9 ✅ strict doc format. OQ-10 ✅ F16.1 on API files = zod response schemas only.
+- OQ-8: loader exits 4 on any non-QC4 host; every AI-team oracle must SKIP (exit 0) unforced when the DB is not QC4 — a CI branch for these suites is decided at T6.1 (debt D-1).
+- Brief error 1 (id collision with fitness.mts F16.0–F16.2): ids stay F16.1–F16.3 **inside `fitness-ai-team.mts`**; every report writes them as `AT-F16.n` in prose. No renumbering.
+- Brief error 2: the fitness file is NOT auto-discovered; it is exercised by `qc-ai-t0.2` S6.1 on every `qc:all`. Do not touch `.githooks/` or `package.json`.
+- Brief error 5: the loader checks the hostname of the exported `DATABASE_URL`/`DIRECT_URL` (and of the file values when not exported) BEFORE calling `loadQcEnv()`.
