@@ -5477,6 +5477,253 @@
       "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-retry",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-receipt",
+        "note": "แสดงเมื่อ receiptSettingsPageDataAction ล้ม (pos-settings-load-error) · โหลดซ้ำ"
+      },
+      "wo": "P1.10U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-print-sample",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "print",
+        "note": "17A พิมพ์ตัวอย่าง: payload ตัวอย่างจากฟอร์ม (copy:true · เลข \"ตัวอย่าง\") → printReceipt ตามค่าตั้งเครื่องนี้ (heartbeat) · ไม่ลงทะเบียน = พิมพ์ผ่านเบราว์เซอร์ 80 มม."
+      },
+      "wo": "P1.10U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-save",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "updatePosReceiptSettingsAction",
+        "note": "patch header/footer/showPoints/showCashier · ปฏิเสธ VALIDATION+field = pos-settings-field-error ใต้ช่อง · อื่น = pos-settings-error · ผู้อ่านอย่างเดียว (แคชเชียร์) = ปุ่มปิด + pos-settings-readonly"
+      },
+      "wo": "P1.10U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-logo-url",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-preview",
+        "note": "ลิงก์ https เท่านั้น (เซิร์ฟเวอร์ตรวจ) · placeholder = โลโก้ของสมุดบัญชี · แคชเชียร์ = ช่องปิด"
+      },
+      "wo": "P1.10U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-name",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-preview",
+        "note": "ว่าง = ใช้ชื่อจากสมุดบัญชี (placeholder \"ใช้จากระบบบัญชี: …\") · ตัวอย่างสดเปลี่ยนทันที"
+      },
+      "wo": "P1.10U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-phone",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-preview",
+        "note": "ว่าง = ใช้จากสมุดบัญชี"
+      },
+      "wo": "P1.10U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-address",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-preview",
+        "note": "ว่าง = ใช้จากสมุดบัญชี"
+      },
+      "wo": "P1.10U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-footer",
+      "kind": "textarea",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-preview",
+        "note": "ข้อความท้ายใบ (ว่าง = ไม่พิมพ์)"
+      },
+      "wo": "P1.10U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-show-points",
+      "kind": "toggle",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-preview",
+        "note": "showPoints — ปิด = ไม่พิมพ์ส่วนสมาชิก/แต้ม"
+      },
+      "wo": "P1.10U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-qr-ereceipt",
+      "kind": "toggle",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-qr-ereceipt",
+        "note": "แสดงค่าที่เก็บแต่ปิดไว้ (disabled) — QR ใบเสร็จออนไลน์ยังไม่พิมพ์จนถึง P1.11"
+      },
+      "wo": "P1.10U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-show-cashier",
+      "kind": "toggle",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-preview",
+        "note": "showCashier — ปิด = ไม่พิมพ์ชื่อแคชเชียร์"
+      },
+      "wo": "P1.10U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-device-regno-*",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "updateDeviceAction",
+        "note": "เลขเครื่อง POS ต่อเครื่อง (posRegNo) แก้ในบรรทัด · blur/Enter = บันทึก · เครื่องที่เพิกถอน = ช่องปิด · แคชเชียร์ไม่เห็นรายการ (devicesHidden)"
+      },
+      "wo": "P1.10U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-account-link",
+      "kind": "link",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]/account/settings",
+        "note": "แสดงเมื่อ POS ผูกสมุดบัญชี · [id] = ระบบบัญชีที่ผูก"
+      },
+      "wo": "P1.10U",
+      "oracle": "",
+      "system": "POS"
     }
   ],
   "$roles": "roles/hiddenFor ที่อนุญาต: owner · manager · cashier · kind/expect.type ชุดเดียวกับทะเบียน CRM (F15.3b ตรวจ)"

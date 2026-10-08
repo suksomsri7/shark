@@ -11,6 +11,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { ModuleTabs } from "@/components/module-tabs";
 import { SettingsShell } from "@/components/pos/settings/SettingsShell";
 import { posSettingsTabOf } from "@/components/pos/settings/settings-tabs";
+import { ReceiptSettings } from "./ReceiptSettings";
 import { SettingsRefusal, SettingsSoon } from "./settings-ui";
 
 // POS P1.10 U — หน้าตั้งค่าหน้าขาย /pos/settings (ภาพ 17A ใบเสร็จและภาษี · 17B เครื่องและเครื่องพิมพ์) · โครง = SettingsShell + ทะเบียนแท็บ (มติ CD1)
@@ -40,7 +41,13 @@ export default async function PosSettingsPage({ params, searchParams }: { params
       <PageHeader title={`${def?.icon ?? ""} ${sys.name}`.trim()} desc={t("desc")} />
       <ModuleTabs items={posTabs(id)} data-testid="pos-settings-module-tabs" />
       <SettingsShell systemId={id} active={tab} units={units} unitId={unitId}>
-        {!canRead ? <SettingsRefusal message={t("refusal")} /> : <SettingsSoon tab={tab} canEdit={tab === "receipt" ? canEditReceipt : canManageDevices} />}
+        {!canRead ? (
+          <SettingsRefusal message={t("refusal")} />
+        ) : tab === "receipt" ? (
+          <ReceiptSettings systemId={id} unitId={unitId} branchName={units.find((u) => u.id === unitId)?.name ?? ""} canEdit={canEditReceipt} canManageDevices={canManageDevices} />
+        ) : (
+          <SettingsSoon tab={tab} canEdit={canManageDevices} />
+        )}
       </SettingsShell>
     </div>
   );

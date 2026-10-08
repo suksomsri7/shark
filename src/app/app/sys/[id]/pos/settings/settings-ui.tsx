@@ -31,15 +31,15 @@ export function CardHead({ icon, title, right }: { icon: RegisterIconName; title
   );
 }
 
-/** หัวหน้าแท็บ: ชื่อ 26 หนา + คำอธิบาย 13 + ปุ่มขวา */
-export function TabHead({ title, desc, actions }: { title: string; desc: string; actions?: ReactNode }) {
+/** หัวหน้าแท็บ: ชื่อ 26 หนา + คำอธิบาย 13 + ปุ่มขวา (children — ไม่รับปุ่มเป็น prop เพราะตัวสแกน F15.3 อ่านแท็กเปิดทั้งก้อน) */
+export function TabHead({ title, desc, children }: { title: string; desc: string; children?: ReactNode }) {
   return (
     <div className="flex flex-col gap-3 md:flex-row md:items-start md:gap-5">
       <div className="min-w-0 flex-1">
         <h2 className="text-[22px] font-bold leading-[1.25] tracking-[-0.02em] md:text-[26px]">{title}</h2>
         <p className="mt-1 text-[13px] text-[color:var(--color-muted)]">{desc}</p>
       </div>
-      {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
+      {children && <div className="flex flex-wrap items-center gap-2">{children}</div>}
     </div>
   );
 }
