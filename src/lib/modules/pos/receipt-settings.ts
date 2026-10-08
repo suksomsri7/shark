@@ -3,6 +3,8 @@
 // ที่เก็บ: `AppSystem(POS).settings.pos.receipt` · คีย์อื่นของ settings (serviceCharge/tip/shift/heldCart …) ไม่ถูกแตะ
 // 🔴 คำปฏิเสธ "คืน" เป็นข้อมูล {ok:false, code, message} เสมอ — ไม่โยน
 // 🔴 แก้ได้เมื่อมีสิทธิ์ pos.device.manage (OWNER/MANAGER ได้โดยปริยาย · STAFF ต้องได้รับเจาะจง) · ไม่มีสิทธิ์ = PERMISSION_DENIED
+// 🔴 ค่าตั้งใบเสร็จใช้ทุกสาขาของ POS นี้ ⇒ ต้องมี pos.device.manage ที่ "ทุกสาขา" ที่ผูก POS นี้ (แก้รอบ 1 F9 · แบบ posCanSetTenantPrice) ·
+//    OWNER / unitAccess "*" ผ่าน · POS ยังไม่ผูกสาขา = เฉพาะ OWNER / "*" · อ่านไม่เปลี่ยน
 // 🔴 ปฏิเสธ = ค่าเดิมไม่เปลี่ยนแม้แต่ฟิลด์เดียว (ตรวจทั้งก้อนก่อนเขียน · ล็อกแถวระบบ FOR UPDATE)
 import type { Prisma } from "@prisma/client";
 import { evaluate, type MembershipCtx } from "@/lib/core/rbac";
@@ -50,6 +52,16 @@ function membership(a: PosReceiptSettingsActor): MembershipCtx | null {
   };
 }
 
+/** F9: สิทธิ์ pos.device.manage ครบทุกสาขา (ไม่เก็บถาวร) ที่ผูก POS นี้ — แบบเดียวกับ posCanSetTenantPrice (access.ts) */
+async function canManageAllLinkedUnits(db: Db, ctx: Ctx, m: MembershipCtx): Promise<boolean> {
+  if (m.role === "OWNER" || m.unitAccess.includes("*")) return true;
+  const links = await db.appSystemUnit.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, type: "POS" }, select: { unitId: true } });
+  const live = links.length
+    ? await db.businessUnit.findMany({ where: { tenantId: ctx.tenantId, id: { in: links.map((l) => l.unitId) }, status: { not: "ARCHIVED" } }, select: { id: true } })
+    : [];
+  return live.length > 0 && live.every((u) => evaluate(m, { module: "pos", action: "pos.device.manage", unitId: u.id }));
+}
+
 async function loadPos(db: Db, ctx: Ctx) {
   return db.appSystem.findFirst({ where: { id: ctx.systemId, tenantId: ctx.tenantId, type: "POS" }, select: { id: true, settings: true } });
 }
@@ -73,6 +85,7 @@ export async function updatePosReceiptSettings(ctx: Ctx, actor: PosReceiptSettin
     if (!ctxOk(ctx)) return refuse("NOT_FOUND");
     const m = membership(actor);
     if (!m || !evaluate(m, { module: "pos", action: "pos.device.manage" })) return refuse("PERMISSION_DENIED");
+    if (!(await canManageAllLinkedUnits(prisma, ctx, m))) return refuse("PERMISSION_DENIED");
     if (!isRecord(patch)) return refuse("VALIDATION");
     return await prisma.$transaction(async (tx): Promise<PosReceiptSettingsResult> => {
       const locked = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM "AppSystem" WHERE id = ${ctx.systemId} AND "tenantId" = ${ctx.tenantId} AND type = 'POS' FOR UPDATE`;

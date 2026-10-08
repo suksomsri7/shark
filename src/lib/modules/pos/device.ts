@@ -258,7 +258,11 @@ export async function updateDevice(
       data.posRegNo = reg;
     }
     if (input.printerConfig !== undefined) {
-      const pc = parsePrinterConfig(input.printerConfig);
+      // F8: แก้บางช่อง = ทับลงบนค่าที่เก็บอยู่ (ตื้น) ก่อน parse — {paper:"58"} ต้องไม่ล้าง drawerKick เดิม ·
+      //     ค่าเก็บพัง = เริ่มจากค่าปริยาย · null = ล้างกลับค่าปริยาย · ไม่ใช่ออบเจกต์ = ให้ parse ปฏิเสธตามเดิม
+      const stored = parsePrinterConfig(row.printerConfig ?? undefined);
+      const merged = isRecord(input.printerConfig) ? { ...(stored.ok ? stored.config : {}), ...input.printerConfig } : input.printerConfig;
+      const pc = parsePrinterConfig(merged);
       if (!pc.ok) return refuse("VALIDATION", pc.message, pc.field ?? "printerConfig");
       data.printerConfig = pc.config as unknown as Prisma.InputJsonValue;
     }

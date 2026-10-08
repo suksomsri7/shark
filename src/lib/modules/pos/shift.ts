@@ -160,7 +160,7 @@ const MSG: Record<ShiftRefusalCode, string> = {
   INTERNAL: "ระบบกะขัดข้องชั่วคราว — ลองอีกครั้ง",
   SHIFT_NOT_FORCED: "นับย้อนหลังได้เฉพาะกะที่ระบบบังคับปิด",
   ALREADY_RECOUNTED: "กะนี้ถูกนับย้อนหลังไปแล้ว — นับได้ครั้งเดียว",
-  DEVICE_REVOKED: "เครื่องนี้ถูกเพิกถอนแล้ว — เปิดกะไม่ได้ ติดต่อผู้จัดการ",
+  DEVICE_REVOKED: "เครื่องนี้ถูกเพิกถอนแล้ว — เปิดกะหรือนำเงินเข้า/ออกลิ้นชักไม่ได้ ติดต่อผู้จัดการ",
 };
 const refuse = (code: ShiftRefusalCode, message?: string, extra?: { shiftId?: string; recountId?: string }): ShiftRefusal => ({ ok: false, code, message: message ?? MSG[code], ...(extra ?? {}) });
 const isRefusal = (v: unknown): v is ShiftRefusal => !!v && typeof v === "object" && (v as { ok?: unknown }).ok === false;
@@ -680,6 +680,10 @@ export async function recordCashMovement(ctx: RegisterCtx, actor: RegisterActor,
     };
     const p0 = await prior();
     if (p0) return p0;
+    // POS P1.10 แก้รอบ 1 F10 ▸ เครื่องที่ถูกเพิกถอน (ctx.deviceId ของสาขานี้) ทำเงินเข้า/ออกไม่ได้ — หลังคีย์กันซ้ำ (ส่งซ้ำได้ผลเดิม · แบบ submitRegisterSale) ·
+    //   ปิดกะ/นับย้อนหลัง/ทิ้งบิลพัก ไม่กั้น (ผู้จัดการต้องปิดงานของเครื่องที่ถูกเพิกถอนได้) ◂
+    const ctxDevice = isRecord(ctx) && isShiftDeviceId(ctx.deviceId) ? ctx.deviceId : null;
+    if (ctxDevice && (await posDeviceRevoked(db, s.tenantId, s.unitId, ctxDevice))) return refuse("DEVICE_REVOKED");
     try {
       return await runTx(db, async (tx): Promise<CashMovementResult> => {
         const r = await lockShift(tx, s, shiftId);

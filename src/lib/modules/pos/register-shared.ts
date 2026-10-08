@@ -254,6 +254,8 @@ export type RegisterStatus = {
   pendingStockCount: number;
   /** บิลออฟไลน์รอซิงก์ = P3 — วันนี้ 0 เสมอ */
   pendingSyncCount: number;
+  /** POS P1.10 (แก้รอบ 1 F10): สถานะทะเบียนของเครื่องนี้ — null = ไม่ส่ง deviceId / ไม่ได้ลงทะเบียน · REVOKED = จอควรล็อกการขาย */
+  deviceStatus?: "ACTIVE" | "REVOKED" | null;
 };
 export type RegisterStatusResult = RegisterStatus | RegisterRefusal;
 /** POS P1.9 (S15) — กะของเครื่องบนแถบสถานะ */

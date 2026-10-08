@@ -4,7 +4,8 @@
 // 🔴 ไฟล์ "use server" export ได้เฉพาะ async function — ชนิดข้อมูลอยู่ที่ receipt-settings-shared.ts
 // 🔴 คำปฏิเสธ "คืน" เสมอ {ok:false, code, message} (Next ปิดข้อความของ error ที่โยนออกจาก action ใน production)
 // 🔴 ร้าน + บทบาทมาจาก membership ของ SESSION เท่านั้น · systemId จากคำขอถูกตรวจซ้ำ (ระบบ POS ของร้านนี้) ใน receipt-settings.ts
-//    อ่าน = ใครก็ได้ที่ขายได้ (pos.sale.create — หน้าขายต้องรู้หัวใบเสร็จ) หรือมี pos.device.manage · แก้ = pos.device.manage (ตรวจใน service)
+//    อ่าน = ใครก็ได้ที่ขายได้ (pos.sale.create — หน้าขายต้องรู้หัวใบเสร็จ) หรือมี pos.device.manage ·
+//    แก้ = pos.device.manage ที่ทุกสาขาที่ผูก POS นี้ (F9 · ค่าตั้งใช้ทั้งระบบ · ตรวจใน service)
 
 import { unstable_rethrow } from "next/navigation";
 import { requireTenant } from "@/lib/core/context";
@@ -44,7 +45,7 @@ export async function posReceiptSettingsAction(args: { systemId: string }): Prom
   }
 }
 
-/** แก้ค่าตั้งใบเสร็จ — pos.device.manage (ตรวจใน updatePosReceiptSettings) */
+/** แก้ค่าตั้งใบเสร็จ — pos.device.manage ระดับร้านที่นี่ + ครบทุกสาขาที่ผูก POS นี้ (F9 · ตรวจใน updatePosReceiptSettings) */
 export async function updatePosReceiptSettingsAction(args: { systemId: string; patch: PosReceiptSettingsPatch }): Promise<PosReceiptSettingsResult> {
   try {
     const auth = await requireTenant();

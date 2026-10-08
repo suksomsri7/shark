@@ -1668,9 +1668,12 @@ export async function registerStatus(ctx: RegisterCtx, actor: RegisterActor, cli
     const deviceId = regDeviceOf(ctx);
     if (deviceId === false) return regRefuse("VALIDATION", "รหัสเครื่องไม่ถูกต้อง");
     // POS P1.10 ▸ R2: heartbeat ของเครื่องที่ลงทะเบียน (ในการอ่านสถานะเดิม · throttle 30 วิ · ไม่ได้ลงทะเบียน = ไม่สร้างแถว) — ล้มไม่ทำให้สถานะล้ม ◂
+    // แก้รอบ 1 F10: deviceStatus = สถานะทะเบียนของเครื่องนี้ (null = ไม่ส่ง deviceId / ไม่ได้ลงทะเบียน / heartbeat ล้ม) — ฟิลด์เสริม
+    let deviceStatus: "ACTIVE" | "REVOKED" | null = null;
     if (deviceId) {
       try {
-        await touchPosDevice(db, s.tenantId, s.unitId, deviceId);
+        const t = await touchPosDevice(db, s.tenantId, s.unitId, deviceId);
+        deviceStatus = t.row ? t.row.status : null;
       } catch (e) {
         console.error("[pos/register] registerStatus heartbeat", e);
       }
@@ -1700,6 +1703,7 @@ export async function registerStatus(ctx: RegisterCtx, actor: RegisterActor, cli
       shiftRequired: sh.required,
       pendingStockCount: Number(pend[0]?.n ?? 0),
       pendingSyncCount: 0,
+      deviceStatus,
     };
   });
 }
