@@ -23,7 +23,7 @@ import { currentShiftAction } from "@/lib/modules/pos/shift-actions";
 import { BillIcon, ChannelChip, StatusChip, SummaryCard, bkkHm, billsCsv, channelLabel, chipOf, dateLabel, methodLabel, money, payText, type T } from "./bills-ui";
 
 type Unit = { id: string; name: string };
-type Props = { systemId: string; units: Unit[]; unitId: string; today: string; hasAnyBill: boolean; accountSystemId: string | null };
+type Props = { systemId: string; units: Unit[]; unitId: string; today: string; initialDate: string; hasAnyBill: boolean; accountSystemId: string | null };
 type PageOk = Extract<BillsPageDataResult, { ok: true }>;
 type Detail = Extract<BillDetailResult, { ok: true }>["bill"];
 
@@ -75,7 +75,7 @@ function BillDialog({ labelledBy, testid, wide, onClose, children }: { labelledB
   );
 }
 
-export function BillsClient({ systemId, units, unitId, today, hasAnyBill, accountSystemId }: Props) {
+export function BillsClient({ systemId, units, unitId, today, initialDate, hasAnyBill, accountSystemId }: Props) {
   const t = useTranslations("pos.bills") as T;
   const ts = useTranslations("pos.shift") as T;
   const te = useTranslations("pos.bills.errors") as T;
@@ -84,7 +84,7 @@ export function BillsClient({ systemId, units, unitId, today, hasAnyBill, accoun
   const locale = useLocale();
 
   // ── ตัวกรอง ──
-  const [date, setDate] = useState(today);
+  const [date, setDate] = useState(initialDate);
   const [qInput, setQInput] = useState("");
   const [q, setQ] = useState("");
   const [channel, setChannel] = useState("");
@@ -685,6 +685,7 @@ export function BillsClient({ systemId, units, unitId, today, hasAnyBill, accoun
                         <tr
                           key={r.id}
                           data-testid="pos-bills-row"
+                          data-bill-id={r.id}
                           aria-selected={active}
                           onClick={() => openBill(r.id)}
                           className={`relative cursor-pointer border-b last:border-0 hover:bg-[color:var(--color-surface-2)] ${voided ? "text-[color:var(--color-muted)]" : ""} ${active ? "bg-[color:var(--color-surface-2)]" : ""}`}
@@ -730,7 +731,7 @@ export function BillsClient({ systemId, units, unitId, today, hasAnyBill, accoun
                   const voided = chip === "VOIDED";
                   return (
                     <li key={r.id} className={`relative border-b last:border-0 ${r.id === selectedId ? "shadow-[inset_3px_0_0_var(--color-accent)]" : ""}`}>
-                      <button type="button" data-testid="pos-bills-card" onClick={() => openBill(r.id)} className={`flex min-h-[64px] w-full flex-col gap-1 px-4 py-3 pr-14 text-left ${voided ? "text-[color:var(--color-muted)]" : ""}`}>
+                      <button type="button" data-testid="pos-bills-card" data-bill-id={r.id} onClick={() => openBill(r.id)} className={`flex min-h-[64px] w-full flex-col gap-1 px-4 py-3 pr-14 text-left ${voided ? "text-[color:var(--color-muted)]" : ""}`}>
                         <span className="flex w-full items-center gap-2">
                           <b className={`tabular-nums ${voided ? "line-through" : ""}`}>{r.receiptNo ?? "—"}</b>
                           <span className="text-[12px] tabular-nums text-[color:var(--color-muted)]">{bkkHm(r.time, locale)}</span>

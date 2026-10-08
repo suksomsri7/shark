@@ -7,7 +7,7 @@ import { systemDef } from "@/lib/systems";
 import { posTabs } from "@/lib/modules/pos/tabs";
 import { posMembership, posSalesScope, posSaleWhere } from "@/lib/modules/pos/access";
 import { posUnits } from "@/lib/modules/pos/register";
-import { bkkDateOf } from "@/lib/modules/pos/bills-shared";
+import { bkkDateOf, isBillDate } from "@/lib/modules/pos/bills-shared";
 import { posAccountSystemId } from "@/lib/modules/account";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { ModuleTabs } from "@/components/module-tabs";
@@ -16,9 +16,9 @@ import { BillsClient } from "./BillsClient";
 // POS P1.16 U — หน้า "บิลวันนี้" (ภาพ 12 · route เดิม /pos/sales · มติ CD1 แทนหน้าประวัติบิลเดิม)
 //   ข้อมูลทั้งหน้าโหลดจาก billsPageDataAction คำขอเดียว (client) · หน้านี้เลือกสาขาที่เข้าได้ + บอกว่าร้านเคยมีบิลไหม (ข้อความว่าง)
 // 🔴 HF-POS-PAGES: ต้องขายได้ที่สาขาใดสาขาหนึ่ง · คนจำกัดสาขาเห็นเฉพาะสาขาของตัวเอง — สิทธิ์จริงต่อบิลตัดสินใน bills.ts
-export default async function PosSalesPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ unit?: string }> }) {
+export default async function PosSalesPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ unit?: string; date?: string }> }) {
   const { id } = await params;
-  const { unit } = await searchParams;
+  const { unit, date } = await searchParams;
   const auth = await requireTenant();
   const tenantId = auth.active.tenantId;
   const sys = await prisma.appSystem.findFirst({ where: { id, tenantId, type: "POS" } });
@@ -39,13 +39,16 @@ export default async function PosSalesPage({ params, searchParams }: { params: P
     .filter((u) => canAccessUnit(m, u.id) && (scope.allUnits || scope.unitIds.includes(u.id)))
     .map((u) => ({ id: u.id, name: u.name }));
   const unitId = units.some((u) => u.id === unit) ? unit! : units[0]?.id;
+  // ?date=YYYY-MM-DD (ลิงก์ตรงไปวันที่ · ไม่เกินวันนี้) — ไม่ระบุ/ผิดรูป = วันนี้ตามเวลาไทย
+  const today = bkkDateOf();
+  const initialDate = isBillDate(date) && date <= today ? date : today;
 
   return (
     <div className="flex w-full min-w-0 max-w-[1600px] flex-col gap-5">
       <PageHeader title={`${def?.icon ?? ""} ${sys.name}`.trim()} desc={t("desc")} />
       <ModuleTabs items={posTabs(id)} />
       {unitId ? (
-        <BillsClient systemId={id} units={units} unitId={unitId} today={bkkDateOf()} hasAnyBill={!!anyBill} accountSystemId={accountSystemId} />
+        <BillsClient systemId={id} units={units} unitId={unitId} today={today} initialDate={initialDate} hasAnyBill={!!anyBill} accountSystemId={accountSystemId} />
       ) : (
         <div className="card text-sm text-[color:var(--color-muted)]" data-testid="pos-bills-no-unit">
           {t("noUnits")}
