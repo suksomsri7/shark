@@ -6144,6 +6144,124 @@
       "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-device-pair",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "pos-print-pair",
+        "note": "เฉพาะเครื่องของเบราว์เซอร์นี้ + mode USB/Bluetooth → กล่องเลือกเครื่องพิมพ์"
+      },
+      "wo": "P1.10U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-print-pair-find",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-print-pair-current",
+        "note": "navigator.usb/bluetooth.requestDevice (ต้องเป็นการกดของผู้ใช้) → เก็บรหัสใน localStorage ต่อรหัสเครื่อง (CD2) · ไม่มี API = ไม่แสดงปุ่ม (pos-print-pair-unsupported)"
+      },
+      "wo": "P1.10U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-print-pair-unpair",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-print-pair",
+        "note": "ลบข้อมูลจับคู่ของรหัสเครื่องนี้จาก localStorage"
+      },
+      "wo": "P1.10U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-print-pair-close",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-device-panel",
+        "note": "ปิดกล่อง (Esc ก็ได้)"
+      },
+      "wo": "P1.10U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-print-retry",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "print",
+        "note": "แสดงในกล่องคำปฏิเสธ pos-print-error · พิมพ์ซ้ำด้วยวิธีเดิม · โมดูลพิมพ์ src/components/pos/print/PrintStatus.tsx (ใช้ใน 17A/17B · PayDone · หน้ากะ)"
+      },
+      "wo": "P1.10U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-print-browser",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "print",
+        "note": "ทางสำรองเมื่อ UNSUPPORTED/NO_DEVICE ของ USB/Bluetooth (iOS Safari) → พิมพ์ผ่านเบราว์เซอร์ · โมดูลพิมพ์ src/components/pos/print/PrintStatus.tsx (ใช้ใน 17A/17B · PayDone · หน้ากะ)"
+      },
+      "wo": "P1.10U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
     }
   ],
   "$roles": "roles/hiddenFor ที่อนุญาต: owner · manager · cashier · kind/expect.type ชุดเดียวกับทะเบียน CRM (F15.3b ตรวจ)"

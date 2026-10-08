@@ -12,10 +12,12 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { RegisterIcon } from "@/components/pos/register/RegisterIcon";
-import { printViaBrowser } from "@/components/pos/print/browser";
 import { pairingMatches, readPairing } from "@/components/pos/print/pairing";
+import { PrinterPairDialog } from "@/components/pos/print/PrinterPairDialog";
+import { PrintStatus } from "@/components/pos/print/PrintStatus";
+import { printReceipt } from "@/components/pos/print/printReceipt";
 import { samplePayload } from "@/components/pos/print/sample-payload";
-import type { PrinterPairing } from "@/components/pos/print/types";
+import type { PrinterPairing, PrintResult } from "@/components/pos/print/types";
 import { listDevicesAction, registerDeviceAction, revokeDeviceAction, updateDeviceAction } from "@/lib/modules/pos/device-actions";
 import { getPosDeviceId } from "@/lib/modules/pos/device-id";
 import { POS_DEVICE_NAME_MAX, POS_REG_NO_MAX, type PosDeviceListItem, type PosPrinterConfig } from "@/lib/modules/pos/device-shared";
@@ -86,6 +88,8 @@ export function DeviceSettings({ systemId, unitId, shopName }: Props) {
   const [nameDraft, setNameDraft] = useState("");
   const [regNoDraft, setRegNoDraft] = useState("");
   const [pairing, setPairing] = useState<PrinterPairing | null>(null);
+  const [pairOpen, setPairOpen] = useState(false);
+  const [printRes, setPrintRes] = useState<PrintResult | null>(null);
 
   const load = useCallback(
     async (keepSel?: string | null) => {
@@ -185,8 +189,11 @@ export function DeviceSettings({ systemId, unitId, shopName }: Props) {
     }
   };
 
-  const testPrint = async () => {
+  const closePair = useCallback(() => setPairOpen(false), []);
+  // ทดสอบพิมพ์: ใบทดสอบผ่านวิธีพิมพ์ของเครื่องที่เลือก (ESC/POS ใช้ข้อมูลจับคู่ของรหัสเครื่องนั้นในเบราว์เซอร์นี้)
+  const testPrint = async (forceBrowser = false) => {
     if (!sel) return;
+    setPrintRes(null);
     const p = samplePayload({
       header: { name: shopName },
       footer: td("testPrint"),
@@ -199,7 +206,12 @@ export function DeviceSettings({ systemId, unitId, shopName }: Props) {
       copy: false,
       device: { name: sel.name, posRegNo: sel.posRegNo },
     });
-    await printViaBrowser(p, sel.printerConfig.paper, locale);
+    setBusy(true);
+    try {
+      setPrintRes(await printReceipt(p, forceBrowser ? { ...sel.printerConfig, mode: "browser" } : sel.printerConfig, { locale, deviceCode: sel.deviceCode }));
+    } finally {
+      setBusy(false);
+    }
   };
 
   if (loadErr)
@@ -287,6 +299,7 @@ export function DeviceSettings({ systemId, unitId, shopName }: Props) {
                   setSelId(d.id);
                   setErr(null);
                   setNote(null);
+                  setPrintRes(null);
                 }}
                 className={`flex w-full flex-col gap-[14px] rounded-[18px] border bg-[color:var(--color-surface)] px-5 py-5 text-left md:px-6 ${
                   on ? "border-[color:var(--color-accent)] shadow-[inset_0_0_0_1px_var(--color-accent)]" : ""
@@ -422,8 +435,15 @@ export function DeviceSettings({ systemId, unitId, shopName }: Props) {
                         {td("modeOptBrowser")}
                       </button>
                     </div>
-                    <span data-testid="pos-device-pair-line" className="text-[13.5px] text-[color:var(--color-muted)]">
-                      {pairLine()}
+                    <span className="flex flex-wrap items-center gap-2">
+                      <span data-testid="pos-device-pair-line" className="min-w-0 flex-1 text-[13.5px] text-[color:var(--color-muted)]">
+                        {pairLine()}
+                      </span>
+                      {isMine && sel.printerConfig.mode !== "browser" && (
+                        <button data-testid="pos-device-pair" type="button" className="btn btn-ghost h-11 rounded-[11px] px-4 text-[14px]" onClick={() => setPairOpen(true)}>
+                          {td("pair")}
+                        </button>
+                      )}
                     </span>
                     {sel.printerConfig.mode !== "browser" && (
                       <label className="mt-1 flex items-center gap-3">
@@ -466,6 +486,7 @@ export function DeviceSettings({ systemId, unitId, shopName }: Props) {
                     )}
                   </div>
 
+                  <PrintStatus result={printRes} onRetry={() => void testPrint()} onBrowser={() => void testPrint(true)} />
                   <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-5">
                     <button data-testid="pos-device-test-print" type="button" className="btn btn-ghost h-12 gap-2 rounded-[13px] px-5 text-[15px]" disabled={busy} onClick={() => void testPrint()}>
                       <RegisterIcon name="print" size={15} />
@@ -512,6 +533,9 @@ export function DeviceSettings({ systemId, unitId, shopName }: Props) {
             </button>
           </div>
         </DialogBox>
+      )}
+      {pairOpen && sel && (
+        <PrinterPairDialog mode={sel.printerConfig.mode} deviceCode={sel.deviceCode} onClose={closePair} onPaired={(p) => setPairing(p)} />
       )}
       {revokeOpen && sel && (
         <DialogBox testid="pos-device-revoke-dialog" labelledBy="pos-device-revoke-title" onClose={closeRevoke}>

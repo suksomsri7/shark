@@ -12,8 +12,11 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
 import { RegisterIcon } from "@/components/pos/register/RegisterIcon";
-import { printViaBrowser } from "@/components/pos/print/browser";
+import { thisDevicePrinter } from "@/components/pos/print/device-printer";
+import { PrintStatus } from "@/components/pos/print/PrintStatus";
+import { printReceipt } from "@/components/pos/print/printReceipt";
 import { samplePayload } from "@/components/pos/print/sample-payload";
+import type { PrintResult } from "@/components/pos/print/types";
 import { updateDeviceAction } from "@/lib/modules/pos/device-actions";
 import type { PosDeviceListItem } from "@/lib/modules/pos/device-shared";
 import { renderReceiptHtml } from "@/lib/modules/pos/receipt-render";
@@ -158,9 +161,19 @@ export function ReceiptSettings({ systemId, unitId, branchName, canEdit, canMana
     }
   };
 
-  const printSample = async () => {
+  // พิมพ์ตัวอย่าง: payload ตัวอย่าง (สำเนา · เลข "ตัวอย่าง") ผ่านวิธีพิมพ์ของเครื่องนี้ (ไม่ลงทะเบียน = เบราว์เซอร์ 80 มม.)
+  const [printRes, setPrintRes] = useState<PrintResult | null>(null);
+  const [printing, setPrinting] = useState(false);
+  const printSample = async (forceBrowser = false) => {
     const p = sample(true, tr("sampleNo"));
-    if (p) await printViaBrowser(p, "80", locale);
+    if (!p || printing) return;
+    setPrinting(true);
+    try {
+      const dev = await thisDevicePrinter(systemId, unitId);
+      setPrintRes(await printReceipt(p, forceBrowser ? { ...dev.config, mode: "browser" } : dev.config, { locale, deviceCode: dev.deviceCode }));
+    } finally {
+      setPrinting(false);
+    }
   };
 
   const saveRegNo = async (d: PosDeviceListItem) => {
@@ -212,7 +225,7 @@ export function ReceiptSettings({ systemId, unitId, branchName, canEdit, canMana
   return (
     <div data-testid="pos-settings-receipt" className="flex min-w-0 flex-col gap-6 md:gap-8">
       <TabHead title={tr("title")} desc={tr("subtitle")}>
-            <button data-testid="pos-settings-print-sample" type="button" className="btn btn-ghost h-11 gap-2 rounded-[11px] px-4 text-[14px]" onClick={() => void printSample()}>
+            <button data-testid="pos-settings-print-sample" type="button" className="btn btn-ghost h-11 gap-2 rounded-[11px] px-4 text-[14px]" disabled={printing} onClick={() => void printSample()}>
               <RegisterIcon name="print" size={15} />
               {tr("printSample")}
             </button>
@@ -237,6 +250,7 @@ export function ReceiptSettings({ systemId, unitId, branchName, canEdit, canMana
           {t(saveErr.key)}
         </InlineNote>
       )}
+      <PrintStatus result={printRes} onRetry={() => void printSample()} onBrowser={() => void printSample(true)} />
       {saved && (
         <InlineNote tone="ok" testid="pos-settings-saved">
           {t("saved")}
