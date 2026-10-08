@@ -63,6 +63,17 @@ export function NewDealForm({
   const [busy, setBusy] = useState(false);
   const seq = useRef(0);
   const skipFirst = useRef(companyContacts.length > 0);
+  // PARITY-fix C1 (8 ต.ค. · พบจากการเดินจริงบน prod) ▸ กันดีลซ้ำ + กันหน้าค้างหลังบันทึก:
+  //   (1) `sending` — กดส่งได้ครั้งเดียวต่อการบันทึก และ "ไม่ปลดล็อกปุ่มเมื่อสำเร็จ" (เดิมปุ่มกลับมากดได้ระหว่างรอเปลี่ยนหน้า ⇒ กดซ้ำ = ดีลซ้ำ)
+  //   (2) ระหว่างส่ง ไม่ยิงค้นผู้ติดต่อ — server action ที่เข้าคิวตามหลัง createDealAction ทำให้ router.push ถูกกลืน (ดีลถูกสร้างแต่หน้าไม่ไป)
+  //   (3) ตาข่าย: ถ้าเปลี่ยนหน้าแบบ client ไม่สำเร็จใน 4 วิ ⇒ ไปด้วยการโหลดหน้าเต็ม
+  const sending = useRef(false);
+  const searchSkipped = useRef(false);
+  const [searchTick, setSearchTick] = useState(0);
+  const navFallback = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (navFallback.current) clearTimeout(navFallback.current); }, []);
+  const contactIdRef = useRef(contactId);
+  useEffect(() => { contactIdRef.current = contactId; }, [contactId]);
 
   // ค้นผู้ติดต่อฝั่งเซิร์ฟเวอร์
   useEffect(() => {
@@ -72,12 +83,17 @@ export function NewDealForm({
     }
     const my = ++seq.current;
     const t = setTimeout(async () => {
+      if (sending.current) {
+        searchSkipped.current = true;
+        return;
+      }
       const r = await searchDealContactsAction(systemId, q);
       if (my !== seq.current) return;
-      if (r.ok) setContacts(r.items);
+      // ผู้ติดต่อที่เลือกอยู่ต้องยังอยู่ในรายการ — เดิมผลค้นทับรายการ ⇒ ช่องแสดง "— เลือก —" ทั้งที่ยังส่ง contactId เดิม (เช่น มาจาก ?contactId=)
+      if (r.ok) setContacts((prev) => { const sel = prev.find((c) => c.id === contactIdRef.current); return sel && !r.items.some((c) => c.id === sel.id) ? [sel, ...r.items] : r.items; });
     }, 250);
     return () => clearTimeout(t);
-  }, [q, systemId]);
+  }, [q, systemId, searchTick]);
 
   // บริษัทของผู้ติดต่อที่เลือก
   useEffect(() => {
@@ -102,6 +118,8 @@ export function NewDealForm({
     const v = bahtTextToSatang(value);
     if (v === null) e.value = "มูลค่าต้องเป็นตัวเลข (บาท) ทศนิยมไม่เกิน 2 ตำแหน่ง";
     if (fe.show(e) || !pipe || v === null) return;
+    if (sending.current) return;
+    sending.current = true;
     setBusy(true);
     setServerError(null);
     const r = await createDealAction(systemId, {
@@ -116,12 +134,17 @@ export function NewDealForm({
       forecastCategory: category,
       nextStep: nextStep.trim() || null,
     });
-    setBusy(false);
     if (!r.ok) {
+      sending.current = false;
+      setBusy(false);
+      if (searchSkipped.current) { searchSkipped.current = false; setSearchTick((n) => n + 1); }
       if (!fe.show(r.fieldErrors)) setServerError(r.error);
       return;
     }
-    router.push(`/app/sys/${systemId}/crm/deals/${r.id}`);
+    // สำเร็จ: ปุ่มค้าง "กำลังบันทึก…" จนเปลี่ยนหน้า (ไม่ปลดล็อก — กันกดซ้ำ)
+    const href = `/app/sys/${systemId}/crm/deals/${r.id}`;
+    router.push(href);
+    navFallback.current = setTimeout(() => { if (window.location.pathname.endsWith("/crm/deals/new")) window.location.assign(href); }, 4000);
   };
 
   const err = (k: (typeof DEAL_FIELDS)[number]) => <FieldError id={fe.errorId(k)} message={fe.errors[k]} testid={`deal-new-${k}-error`} />;

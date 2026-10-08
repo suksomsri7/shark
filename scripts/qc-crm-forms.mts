@@ -1751,6 +1751,35 @@ async function browserForm(browser: Any, spec: FormSpec, ctx: RunCtx, device = "
       recB(F, "d", "double-click", "browser", ok, n === 0 ? "double-click-lost-submit" : side !== null && side !== rows && n === rows ? "duplicate-side-rows" : "duplicate-rows", `rows Δ${n} (want ${rows < 0 ? "≥1, each once" : rows}) dupes ${dup}${side === null ? "" : ` side ${side}`} · POSTs [${posts.join(",")}] · msg ${msg ? `${msg.tid}:"${cut(msg.s, 60)}"` : "-"}`);
     });
   }
+  // d (deal-new-form only) — PARITY-fix C1 (8 Oct, prod walk finding "deal written, page stayed, no redirect"):
+  //   on a slow link (400 ms latency) type into the contact search and submit at once (the search server action then queues
+  //   BEHIND the create and used to swallow router.push), and keep clicking submit whenever it is enabled while still on
+  //   /deals/new (the button used to unlock between "action answered" and "page changed" ⇒ one deal per extra click).
+  //   Want: exactly ONE deal row and the browser lands on the new deal's page.
+  if (wantB("d") && F === "deal-new-form") {
+    await run("d", async (kit) => {
+      const NAME = "re-click + search queued behind save";
+      const t = newTag(); const e0 = await openForm(kit, spec, ctx); if (e0) return recB(F, "d", NAME, "browser", false, "open", e0);
+      const before = await spec.probe(ctx, t);
+      const e1 = await fillAll(kit, spec, spec.valid(ctx, t, "browser")); if (e1) return recB(F, "d", NAME, "browser", false, "fill", e1);
+      const cdp = await kit.page.createCDPSession();
+      await cdp.send("Network.enable"); await cdp.send("Network.emulateNetworkConditions", { offline: false, latency: 400, downloadThroughput: -1, uploadThroughput: -1 });
+      const onNew = () => new URL(kit.page.url()).pathname.endsWith("/crm/deals/new");
+      await kit.page.type("[data-testid=deal-new-contact-q]", "qc", { delay: 15 });
+      await (await findVis(kit.page, spec.submit, 3000))?.click();
+      let extra = 0; const t0 = Date.now();
+      while (Date.now() - t0 < 12_000 && onNew()) {
+        const enabled = await kit.page.$eval(`[data-testid=${spec.submit}]`, (b: HTMLButtonElement) => !b.disabled).catch(() => false);
+        if (enabled && extra < 3 && onNew()) { await kit.page.click(`[data-testid=${spec.submit}]`).catch(() => {}); extra++; }
+        await sleep(40);
+      }
+      const landed = /\/crm\/deals\/(?!new)[^/]+$/.test(new URL(kit.page.url()).pathname);
+      await cdp.send("Network.emulateNetworkConditions", { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 }).catch(() => {});
+      await sleep(1500);
+      const n = (await spec.probe(ctx, t)) - before;
+      recB(F, "d", NAME, "browser", n === 1 && landed, n !== 1 ? "duplicate-rows" : "no-navigation", `rows Δ${n} (want 1) · extra clicks landed ${extra} · left /deals/new ${landed ? `after ${Date.now() - t0 - 1500} ms` : "NO (12 s)"}`);
+    });
+  }
   // e — fill everything, then close / cancel / navigate away → no rows
   if (wantB("e")) {
     if (guard) skipB(F, "e", "abandon", "browser", `skippedSafety: ${spec.guard}`);
@@ -2011,6 +2040,7 @@ function plannedChecks(sp: FormSpec): Planned[] {
     for (const rc of casesOf(sp)) out.push({ cat: "b", mode: "browser", device, check: `required:${rc.id}${sfx}` });
     out.push({ cat: "e", mode: "browser", device, check: `abandon${sfx}` });
     if (device === "desktop") { out.push({ cat: "d", mode: "browser", device, check: "double-click" }); out.push({ cat: "c", mode: "browser", device, check: null }); }
+    if (device === "desktop" && sp.testid === "deal-new-form") out.push({ cat: "d", mode: "browser", device, check: "re-click + search queued behind save" }); // PARITY-fix C1
   }
   return out;
 }

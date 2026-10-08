@@ -15784,7 +15784,8 @@
       "expect": {
         "type": "navigate",
         "target": "/app/sys/[id]/crm/emails?box=unmatched",
-        "db": ""
+        "db": "",
+        "note": "กติกาเป็นขอบเขต ไม่ใช่บทบาท (C5.4-B L1-m2 · C5.5-fix15 unmatchedGateProblem): เห็นแท็บ = เจ้าของร้าน หรือ บัญชีที่เห็นผู้ติดต่อทั้งระบบ (CONTACT = ALL) และไม่ถูกจำกัดสาขา (unitAccess [] หรือ *) — manager ของชุด QC ถูกจำกัดสาขา จึงอยู่ใน hiddenFor · ผู้จัดการค่าปริยาย (ทั้งร้าน) บนร้านจริงเห็นแท็บนี้ = ถูกต้อง"
       },
       "wo": "C2.5",
       "oracle": ""
