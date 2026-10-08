@@ -50,5 +50,5 @@ forced exit=1 12 47 skipped= False failed= ['H0.6-S5.6', 'H0.6-S8.1', 'H0.6-S8.2
   ✅ [H0.6-X6.4] 5 approveRun(expect) ∥ 5 reverseRun on a DRAFT ×3: exactly one approve ok and one JV · r
   ❌ [H0.6-S6.5] ledger after everything (qc-payroll-reverse semantics): every REVERSED run's JV is REVERSED 
   ✅ [H0.6-Z1] residue: throwaway tenants and every tenantId row (outbox, audit, CRM, account, HR) are gone
-typecheck(base+oracle) exit=0 errors=0 [21:23Z]
+typecheck(base+oracle) NOT RUN - controller killed its own lock-wait at 21:23Z as redundant (H0.6 builder typecheck covers the same oracle file; gate queue 4 deep on a load-45 box). The exit=0 was the killed flock chain, not tsc.
 ALLDONE 2026-10-08T21:23:34Z
