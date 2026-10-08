@@ -1,0 +1,22 @@
+# controller re-run H0.4 @ed7dda27 2026-10-08T02:56:13Z
+fitness-hr env exit=0 5 5 []
+fitness-hr noenv exit=0 5 5 []
+fitness env exit=0 33 33 []
+fitness noenv exit=0 33 33 []
+counts before: COUNTS {"tenant":20,"hrEmployee":22,"hrPayrollRun":0,"customer":71,"posSale":224,"hrAttendance":0,"hrLeave":0,"hrPayAdjustment":0,"qcTempTenants":0}
+seed#1 exit=0 22 22 []
+seed#2 exit=0 22 22 []
+seed summaries identical
+counts after:  COUNTS {"tenant":20,"hrEmployee":22,"hrPayrollRun":0,"customer":71,"posSale":224,"hrAttendance":0,"hrLeave":0,"hrPayAdjustment":0,"qcTempTenants":0}
+visual --dry exit=0 DRY_SUMMARY {"wo":"all","user":"owner","pages":7,"viewports":3,"shots":21}
+visual no-base exit=2 in 1s: ❌ visual-hr: ไม่ได้ส่ง --base http://127.0.0.1:<port> (เซิร์ฟเวอร์ QC เป็นงาน CONTROLLER-RUN · ใช�
+qc-hr exit=0 9 9 []
+qc-hr-payadjust exit=0 27 27 []
+qc-payroll exit=0 19 19 []
+qc-hf-hr-privacy exit=0 194 194 []
+qc-hr-h0.2 exit=0 58 58 None
+qc-hr-h0.3 exit=0 36 36 []
+qc-crm-c3.3 exit=0 (finished 03:12Z after the task timeout; summary from log) 90 90 []
+src diff vs base: 0 lines
+tracked hr expected/fixtures: (none)
+done 2026-10-08T03:21:54Z
