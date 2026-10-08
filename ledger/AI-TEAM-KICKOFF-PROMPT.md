@@ -22,7 +22,10 @@ a brief with a Controller addendum but no wo-notes), continue it from the step o
 Never restart finished work. Never re-spawn an agent whose files are already on a branch — resume from the files.
 Re-create the heartbeat if missing (§6). Write the first RESUME line of this session with the time from `date -u`.
 
-## 1. First session only — build the run pack (the design doc is a plan, not yet a run)
+## 1. First session only — set up the trees (the run pack ALREADY EXISTS on main since 8 Oct: AI-TEAM-MASTER-PLAN.md ·
+AI-TEAM-RUN.md §2 contracts · ai-team-briefs/ (COMMON, RESOLUTIONS, T0.0–T6.4) · wo-notes/TEMPLATE-ai.md ·
+REVIEW-AI-TEAM-DESIGN-2026-10-08.md · AI-TEAM-RESUME.md · AI-TEAM-OWNER-QUESTIONS.md — do NOT rewrite them; steps 2–3 below
+apply only if a file is missing)
 1. Controller tree: `git -C /root/projects/shark-in-th worktree add /root/projects/shark-ai -b session/ai-team origin/main`
    (if `session/ai-team` already exists on origin, check it out instead). Own node_modules: `pnpm install` + `pnpm exec prisma
    generate` inside the tree (NOT a bind mount of another tree — POS lost a day to that). Copy the QC4 env from
