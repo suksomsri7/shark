@@ -722,3 +722,9 @@
 - builder แก้ P1.8 ใน p11 (checkout wip/pos-p1.8 + generate) · builder แก้ P1.10 ใน tree c · ถัดไป: re-merge scratch → ด่านเต็ม → 15/55 · โควตา session 81% (reset 01:30)
 
 - 🔴 **คำสั่งเจ้าของ 01:39 UTC: "หลังจากงานเสร็จให้วิ่ง 1 เลน"** — หลังรับ P1.8+P1.10 (15/55) ลดเหลือ 1 เลน: P1.16 (oracle→builder) ก่อน · P1.10U ต่อ · brief พร้อมแล้ว (414a4ce8)
+
+### 8 ต.ค. 01:58 UTC — แก้รอบ 1 จบทั้งสองใบ · reviewer ตรวจซ้ำ = MERGEABLE ทั้งคู่ · merge รอบ 2 + ด่านเต็ม
+- **P1.10** `wip/pos-p1.10` @ 8fa7f730 (F1–F11 + R2 hint เฉพาะ PAID · F11 ใช้ `receiptRefusalMessageKey()` แยกจาก REFUSAL_KEY — รับ) · 40/40 ×4 บังคับ + ไม่บังคับ · regression p1.3/1.5/1.6/1.9/1.9b เท่าเดิม · fitness 41/41
+- **P1.8** `wip/pos-p1.8` @ 27738244 (F1–F9) · 49/49 ×3 · ชุดเงินเท่าเดิม (16/107/6/12/5/6/14) · `qc-member-m1.9` รันไม่ได้ (expected.json ของ seed สมาชิกไม่ตรง QC4 — ไม่ใช่ของ P1.8 · ไม่ re-seed เพราะล้าง CRM) · reviewer เหลือ R1 (JV ของใบคืนที่ปิดบิลคำนวณ VAT จาก gross → 2200 เหลือเศษสตางค์) + R2 (`saleStatusByKey` ไม่เช็ก docType) MINOR → **ยกเข้า brief P1.16 R5b** (ทำในใบถัดไป)
+- scratch merge รอบ 2 `tmp/merge-r2` = **c4a5db33** (session/pos 4f2f887c + P1.8 27738244 + P1.10 8fa7f730 · conflict 3 ไฟล์เดิม แก้แบบเดียวกับรอบแรก · JSON ตรวจแล้ว) · ด่านเต็มบน p11: unit `pos-gates16-merge` → `/root/pos-runs/gates16-merge-*/SUMMARY.txt` (status→checkout→generate→typecheck→fitness ×3→p1.8 ×3/p1.10 ×2→ชุดเงิน 7→suites 11) · เขียวแล้ว = ff session/pos → c4a5db33 · push · 15/55
+- follow-ups รอเจ้าของเคาะ (จาก reviewer/builder): บัตรของขวัญส่วนแบ่งตอนคืนบางส่วน (คืนขาด) · AI tools หักคืนสุทธิ · sources/referrals/journeys นับ gross · ป้าย "ส่วนลดท้ายบิล" รวมแต้ม/ว่อชเชอร์ (P1.10U ก่อนโชว์ลูกค้า) · @page 297mm กับไดรเวอร์เทอร์มอลจริง (P1.10U) · revoke กันเฉพาะเครื่องซื่อสัตย์ (Q3)
