@@ -88,6 +88,7 @@ Base: `git pull --ff-only` (already at 0bf1c6df) + cherry-pick of controller ora
 - F10 `recordCashMovement`: DEVICE_REVOKED guard on `ctx.deviceId` (after the idempotency replay, like submitRegisterSale). closeShift / recountShift / discardHeldCart stay unguarded. `registerStatus` gains optional `deviceStatus`. ShiftRefusal DEVICE_REVOKED message now covers cash in/out.
 - F11 `receipt-render.ts` `receiptRefusalMessageKey(code)` (own map, keys under `pos.receipt`): SALE_NOT_FOUND→`errors.saleNotFound` · PERMISSION_DENIED→`errors.permissionDenied` · INTERNAL/other→`errors.internal`; th+en added. Not put into register-shared `REFUSAL_KEY` because that map resolves under `pos.register` and maps INTERNAL→`errors.unknown` for the register screen (changing it would alter register behaviour).
 - F7 deferred (follow-up above).
+- Re-review R2 (MINOR): `fullTaxInvoiceHint` also requires `status === "PAID"` (a VOIDED/REFUNDED ABB no longer prints "ขอใบกำกับเต็มรูปได้ภายใน 7 วัน") · typecheck exit 0 · `qc-pos-p1.10` QC_FORCE=1 exit 0 · 40/40 · Z1/Z2 green.
 
 Commits: 9d333d3b (oracle cherry-pick) · 9380bcf5 (receipt F1–F6, F11) · cc6bea67 (F8–F10).
 Checks not covered by the oracle (F1 zero-VAT bill, F3 30-min upgrade, F4 refSaleId, F8, F9, F10) are verified by reading only plus the renderer scratch check below — no dedicated DB test was written.

@@ -223,7 +223,7 @@ export async function receiptPayload(ctx: ReceiptCtx, actor: RegisterActor, inpu
             },
           }
         : {}),
-      footer: { text: rs.footer, qrEReceiptUrl: null, fullTaxInvoiceHint: kind === "TAX_INVOICE_ABB" && docType === "SALE" },
+      footer: { text: rs.footer, qrEReceiptUrl: null, fullTaxInvoiceHint: kind === "TAX_INVOICE_ABB" && docType === "SALE" && status === "PAID" }, // R2: บิลยกเลิก/คืนแล้วไม่ชวนขอใบกำกับเต็มรูป
       labels: { th: RECEIPT_LABELS.th, en: RECEIPT_LABELS.en },
     };
 
