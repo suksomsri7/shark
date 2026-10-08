@@ -1,0 +1,5 @@
+# controller re-run of qc-hr-h0.5 @09903de2 on base session/hr 784558b1 (main merged) 2026-10-08T05:15:28Z
+unforced exit=0 JSON_SUMMARY {"suite":"qc-hr-h0.5","total":0,"passed":0,"failed":[],"findings":[],"skipped":true,"reason":["ยังไม่มี src/lib/modules/hr/pin.ts",
+forced exit=1 JSON_SUMMARY {"suite":"qc-hr-h0.5","total":58,"passed":8,"failed":["H0.5-S4.9","H0.5-S6.1","H0.5-S8.1","H0.5-S8.2","H0.5-S8.3","H0.5-S8.4","H0.5-S8.6","H0.5-S8.7","H0.5-S1.1","H0.5-S1.2","H0.5-S1.3"," RESIDUE tenants=0 none (สร้าง 3 ร้าน · ผู้ใช้ 1)
+forced passes: ✅ [H0.5-S8.5] ✅ [H0.5-S2.1] ✅ [H0.5-S2.2] ✅ [H0.5-X2.1] ✅ [H0.5-S5.5] ✅ [H0.5-S7.2] ✅ [H0.5-S7.3] ✅ [H0.5-Z1] 
+pin/hash leak grep (should be 0): 0
