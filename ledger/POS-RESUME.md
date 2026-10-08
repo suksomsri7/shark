@@ -739,3 +739,8 @@
 - ruling CD-O1–O13 = ตามที่ oracle เลือก (▶) + O3 ปัดครึ่งขึ้น · O7 ลำดับ NO_PERMISSION→NOT_POS→HAS_REFUNDS→SHIFT_CLOSED · O8 ส่ง VAT ใบคืน POS ไปเอกสาร CREDIT_NOTE ด้วย · O13 billDetail เฉพาะ SALE · prompt `pos-prompt-accountB-P1.16-SU.md` · builder ใน tree c สาขา `wip/pos-p1.16`
 - build บน p11: build17–19 ล้มเพราะ env ไม่ถึง unit (iso.sh ส่งเฉพาะ PATH/HOME/QC_ENV_FILE/NODE_OPTIONS — memory ใหม่ `reference_shark_iso_sh_drops_env_for_build`) · build20 โหลด .env.qc ในสคริปต์ชั้นใน กำลังรัน (`/root/pos-runs/build20-*/SUMMARY.txt`)
 - 03:17 UTC: build20 บน p11 (a1fa7514 · .env.qc ใน unit) = **build 0** · 129 หน้า ✓ — 15/55 ยืนยันครบทุกด่าน
+
+### 8 ต.ค. 04:01 UTC — builder P1.16 S+U เสร็จ (`wip/pos-p1.16` deb79ac4) → reviewer + ด่าน/build บน merge
+- builder: 28/28 ×3 · ชุดเงินเท่าเดิม · suites เท่าเดิม · fitness 41/41 · visual --dry rc 0 · ORACLE-EDIT? P1.8-S8 (regex บังคับ voidSale 3 พารามิเตอร์) → ผู้คุมแก้ข้อสอบ P1.8 ให้รับพารามิเตอร์ที่ 4 optional (01d6f682 บน session/pos)
+- scratch `tmp/merge-p116` = **8dafdd8b** (session/pos 01d6f682 + P1.16) · unit `pos-gates21-p116` บน p11: checkout→generate→typecheck→fitness-pos --update-pos-contract→fitness→p1.16→p1.8→build (`/root/pos-runs/gates21-p116-*/SUMMARY.txt`) · เขียวแล้ว: start server :3225 นอกล็อก (9>&-) → visual `--page sales --states` owner+cashier → เทียบภาพ 12
+- reviewer P1.16 (Opus · read-only) กำลังตรวจ deb79ac4 · ยังอยู่ 1 เลน
