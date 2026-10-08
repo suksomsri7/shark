@@ -734,3 +734,7 @@
 - p11 + tree c detach ที่ a1fa7514 · tree c `prisma generate` แล้ว · build `next build` บน p11 unit `pos-build17` → `/root/pos-runs/build17-*/SUMMARY.txt` (ด่านสุดท้าย — ไม่มี UI เปลี่ยน จึงไม่ถ่ายภาพ)
 - **1 เลน (คำสั่งเจ้าของ)**: oracle writer P1.16 ใน tree c (`wip/pos-p1.16-oracle` · prompt `pos-prompt-accountB-P1.16-O.md`) → builder S+U → reviewer → visual --page sales --states · P1.10U ต่อจากนั้น
 - ยังไม่ทำ: ลบสาขา wip/pos-p1.8 / wip/pos-p1.10 บน origin (เก็บไว้อ้างอิงจน P1.16 จบ)
+
+### 8 ต.ค. 03:08 UTC — oracle P1.16 รับแล้ว (merge f7134ed8 · 28 ข้อ · แดงตั้งต้น 3/28 · R5b จับบั๊กจริง: 2200 เหลือ +1 สตางค์ · saleStatusByKey คืน PAID ของใบคืน) → เปิด builder S+U (1 เลน)
+- ruling CD-O1–O13 = ตามที่ oracle เลือก (▶) + O3 ปัดครึ่งขึ้น · O7 ลำดับ NO_PERMISSION→NOT_POS→HAS_REFUNDS→SHIFT_CLOSED · O8 ส่ง VAT ใบคืน POS ไปเอกสาร CREDIT_NOTE ด้วย · O13 billDetail เฉพาะ SALE · prompt `pos-prompt-accountB-P1.16-SU.md` · builder ใน tree c สาขา `wip/pos-p1.16`
+- build บน p11: build17–19 ล้มเพราะ env ไม่ถึง unit (iso.sh ส่งเฉพาะ PATH/HOME/QC_ENV_FILE/NODE_OPTIONS — memory ใหม่ `reference_shark_iso_sh_drops_env_for_build`) · build20 โหลด .env.qc ในสคริปต์ชั้นใน กำลังรัน (`/root/pos-runs/build20-*/SUMMARY.txt`)
