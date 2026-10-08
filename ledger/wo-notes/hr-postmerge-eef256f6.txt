@@ -1,0 +1,6 @@
+# post-merge sanity session/hr @00389fe1 2026-10-08T01:37:12Z
+qc-hr-h0.1 exit=0 67 67 []
+qc-hr-h0.2 exit=0 58 58 None
+qc-payroll exit=0 19 19 []
+qc-hr-payadjust exit=0 27 27 []
+typecheck exit=0 (0 errors) — scratchpad pm-typecheck.log
