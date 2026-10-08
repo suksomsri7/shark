@@ -6,6 +6,30 @@
 
 ## STATUS: static part done · heavy acceptance + A8 parity pairs DEFERRED (machine lock never obtained)
 
+## STATE AT PAUSE (owner-ordered pause · 2026-10-08 ≈22:10 UTC · last commit of this branch = see `git log -1`)
+**Done + verified**
+- All deliverables written and committed (list in §1).
+- Static oracle, forced: `🟡 T0.3: 33/39 (QC_FORCE) · failed 0 · skipped-heavy 6 · missing deliverables 0/37` · `JSON_SUMMARY {"total":39,"passed":33,"findings":[],"skippedHeavy":["T0.3-S3.1","T0.3-S3.2","T0.3-S3.3","T0.3-S3.4","T0.3-S6.1","T0.3-S7.3"],"heavy":false}` · exit 0.
+- Unforced: `🟡 T0.3: 33/39 · failed 0 · skipped-heavy 6` · exit 0. Residue 0 (`ls /tmp | grep qc-ai-t0.3` → none).
+- `cd apps/mobile && npm run typecheck` → exit 0, 0 `error TS` lines (direct run, not through the oracle).
+- Orb PNGs rendered (locked run 17:24 UTC) and looked at on a contact sheet: 6 palettes × light/dark match the mockup orbs.
+- Parity script exercised by the oracle's S4.1–S4.4 (green) incl. the real airy-a / airy-dark-a page 8.
+
+**NOT done / NOT verified**
+- Heavy acceptance 39/39: never run. S3.1 S3.2 S3.3 S3.4 S6.1(in-oracle) S7.3 have no result.
+- No web export of this code has ever completed ⇒ gallery, A8 proof, TeamText (Inter vs Plex rendering), Backdrop, shooter, Inter vendoring into the QC copy are all unrendered/untested at run time.
+- A8 MOCKUP|RENDER pairs light + dark: do not exist; nothing inspected; no parity iteration; §6b is a list of PREDICTED differences only. The owner's "UI must match the mockup" gate is open.
+- Cause: `/tmp/shark-gate.lock` held continuously by other lanes' `pnpm typecheck` from ≈18:15 UTC; 7 queued attempts (each `flock -w 1800`) never got it. Nothing was killed; no unlocked export was run.
+
+**Unit still running when the builder stopped (22:39 UTC):** attempt 7 of `shoot-all.sh` (unit `iso-2935067-1791495800`) obtained the lock at ≈22:13 and is inside the web export (the old `dist` of the QC copy was already removed by it). Left to finish on its own per the pause order; its log is `/tmp/ai-t0.3-build-mockups/shoot-run.log` (last lines: `SHOOT light exit N · dark exit N`, then `UNIT EXIT N`). If it succeeds, the shots + `a8-pair-{light,dark}.png` appear under `apps/mobile/qc/shots-ai-team/t0.3/` — uncommitted and NOT inspected by anyone.
+
+**Resume — exact commands (from the lane tree, one at a time, foreground)**
+1. `ISO_MEM=6500M bash scripts/iso.sh bash scripts/with-gate-lock.sh bash /tmp/ai-t0.3-build-mockups/shoot-all.sh` (if /tmp was cleaned, recreate it from §6a) → check `SHOOT light exit 0 · dark exit 0`, then OPEN `apps/mobile/qc/shots-ai-team/t0.3/a8-pair-light.png` and `a8-pair-dark.png`.
+   - export fails on `@expo-google-fonts/inter` ⇒ see §7 (vendoring into `<QC_COPY>/src/node_modules`).
+2. Iterate on components/tokens against the pair; re-shoot needs a new export each time code changes (same command); `SKIP=1` only re-shoots an existing dist.
+3. Fill the observed difference table (§6b), then acceptance: `ISO_MEM=6500M bash scripts/iso.sh bash scripts/with-gate-lock.sh env QC_FORCE=1 QC_AI_T03_HEAVY=1 pnpm exec tsx scripts/qc-ai-t0.3.mts` → append to `ai-t0.3-green.txt`.
+4. Commit by explicit paths incl. `apps/mobile/qc/shots-ai-team/t0.3/*` (shots are not committed yet — none exist).
+
 ## 1. Files touched
 | File | New/changed | What |
 |---|---|---|
