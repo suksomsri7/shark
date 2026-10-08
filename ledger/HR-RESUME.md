@@ -96,3 +96,8 @@
 - 2026-10-08T04:01Z heartbeat: idle · no agent · waiting on owner (HQ2–HQ4 / CRM main / migration GO) · nothing spawned
 - 2026-10-08T04:24Z heartbeat: idle · no agent · waiting on owner (HQ2–HQ4 / CRM main / migration GO) · nothing spawned · tg hourly reminder sent
 - 2026-10-08T04:47Z heartbeat: idle · no agent · waiting on owner (HQ2–HQ4 / CRM main / migration GO) · nothing spawned
+
+## 2026-10-08T04:52Z — OWNER ANSWERS (Telegram) → H0.5 OPENED (1 lane: oracle writer first)
+- Owner: "1. ตามแนะนำ 2. ตรวจสอบว่าขึ้นยัง 3. Go" ⇒ (1) HQ2–HQ4 = recommended defaults (new `HR_PIN_PEPPER` in Vercel · PIN unique per tenant 4–6 digits, duplicates re-set · convert in place) · (2) CRM on main? **No** — origin/session/crm feb7877e is 41 commits ahead of origin/main f301e4b2 ⇒ H0.6 still blocked · (3) **GO migrations** for the HR RUN (QC4 in lanes; prod = runbook).
+- Controller prep: `HR_PIN_PEPPER=<64 hex>` appended (not read) to `.env.qc` + `.env.qc4` of shark-hr, shark-hr-b, shark-hr-c (same value). Brief `ledger/hr-briefs/hr-brief-H0.5.md` (R1–R8 · oracle §3 ~45 checks · rollout runbook in §5). Lane 2 `shark-hr-b` → `wip/pos-hr-h0.5-oracle` from session/hr. Oracle writer (Opus) spawned; prompt scratchpad `h05-oracle.md`. Sequence: oracle → builder → reviewer → hunter (PIN = security) → merge.
+- Prod rollout note for later (not now): owner sets `HR_PIN_PEPPER` in Vercel → deploy → backfill dry-run → duplicate list to owner → `--apply` → verify 0 plain rows.
