@@ -1,0 +1,54 @@
+# H0.6 oracle d9b100ea re-run on base (code 103fde95) · 2026-10-08T19:48:34Z · load 26.04
+unforced exit=0 0 0 skipped= True failed= []
+   [20:05Z]
+forced exit=1 12 47 skipped= False failed= ['H0.6-S5.6', 'H0.6-S8.1', 'H0.6-S8.2', 'H0.6-S8.3', 'H0.6-S8.5', 'H0.6-S8.6', 'H0.6-S1.1', 'H0.6-S1.3', 'H0.6-S1.4', 'H0.6-S1.5', 'H0.6-S2.1', 'H0.6-S2.2', 'H0.6-S2.3', 'H0.6-S2.4', 'H0.6-S2.5', 'H0.6-S2.6', 'H0.6-X1.2', 'H0.6-S3.1', 'H0.6-S3.2', 'H0.6-X9.1', 'H0.6-S3.3', 'H0.6-X9.2', 'H0.6-X8.1', 'H0.6-S5.2', 'H0.6-S5.3', 'H0.6-S5.5', 'H0.6-S5.4', 'H0.6-S4.2', 'H0.6-S4.3', 'H0.6-S7.2', 'H0.6-X1.3', 'H0.6-X6.1', 'H0.6-X6.2', 'H0.6-X6.3', 'H0.6-S6.5']
+  RESIDUE tenants=0 rows=0 audit=0 outbox=0 [20:40Z load 21.75]
+  ❌ [H0.6-S5.6] [static] reverseRun body never returns a raw error text: no `.message`, no String(e), no ${e
+  ❌ [H0.6-S8.1] [static] consumer map "hr.payroll.reversed": crmFirst(crmCommissionBridge("onPayrollReversed
+  ❌ [H0.6-S8.2] [static] webhook label { value: "hr.payroll.reversed", label: "เมื่อกลับ�
+  ❌ [H0.6-S8.3] [static] migration 20261202000000_hr_payroll_run_live_unique: DROP old unique · partial uni
+  ✅ [H0.6-S8.4] [static] FREEZE: payroll-rules.ts sha256 (F16.2) · computeItem body sha256 · markPaid bloc
+  ❌ [H0.6-S8.5] [static] vs base: crm/commissions.ts · crm-bridges/commissions.ts · outbox-consumers.ts ·
+  ❌ [H0.6-S8.6] [static] reverseRun(ctx, runId, reason?, actor?: PayrollActor) · tenantDb(ctx).$transaction
+  ✅ [H0.6-S0.1] [control] fixture: R1 (period P) created → approved with expect (balanced JV) → markPaid
+  ❌ [H0.6-S1.1] reverseRun(ctx, R1, "เหตุผล", ACTOR) → {ok:true} · status REVERSED · reverse
+  ✅ [H0.6-S1.2] original JV REVERSED · exactly one reversal entry (journal REVERSAL) · its lines are the o
+  ❌ [H0.6-S1.3] all 3 adjustments: runId = null · status APPROVED · kind/amount/period unchanged · COMMIS
+  ❌ [H0.6-S1.4] one audit hr.payroll.reverse (target R1 · actorId = ACTOR) carrying runId · periodKey · a
+  ❌ [H0.6-S1.5] exactly one outbox event hr.payroll.reversed for R1 · idempotencyKey hr.payroll.reversed#R1
+  ✅ [H0.6-S1.6] R1 keeps its items and its 7 totals (history — §6 Q1): item rows + digest byte-identical 
+  ❌ [H0.6-S2.1] after the reverse, before a new run: payrollRunPeriods(HR) has no P · strandedAdjustments(H
+  ✅ [H0.6-S2.7] strandedCommissionAdjustments(T) does not list the unbound COMMISSION row while P has only t
+  ❌ [H0.6-S2.2] createPayrollRun(P) succeeds ⇒ R2 DRAFT · binds exactly the same 3 adjustment ids · its 
+  ❌ [H0.6-S2.3] with R2 live: payrollRunPeriods has P · an APPROVED unbound row inserted into P is listed b
+  ❌ [H0.6-S2.4] DB: unique index HrPayrollRun_systemId_periodKey_live_key on (systemId, periodKey) WHERE sta
+  ❌ [H0.6-S2.5] a third createPayrollRun(P) while R2 is live → PayrollInputError with the exact text "ม�
+  ❌ [H0.6-S2.6] raw INSERT (rolled back): a second live row for P → unique violation 23505 · an extra REV
+  ❌ [H0.6-X1.2] hr.payroll.reversed with R1's payload delivered under the other tenant + onPayrollReversed({
+  ❌ [H0.6-S3.1] consumers["hr.payroll.reversed"] exists · delivering R1's event (by id) ⇒ C1 PAID → APP
+  ❌ [H0.6-S3.2] exactly one audit crm.commission.unpaid for C1 · before {status PAID} · after {status APPR
+  ❌ [H0.6-X9.1] replay: the event delivered again ×2 in a row + ×2 in parallel + onPayrollReversed(…) ca
+  ❌ [H0.6-S3.3] approve(expect) + markPaid R2 → hr.payroll.paid#R2 delivered ⇒ C1 PAID again · observed
+  ❌ [H0.6-X9.2] late replay after R2 is PAID: hr.payroll.reversed#R1 and hr.payroll.paid#R1 delivered again 
+  ❌ [H0.6-X8.1] payload is exactly {runId, periodKey, adjustmentIds} (no other key) · adjustmentIds = the 3
+  ✅ [H0.6-S5.1] DRAFT run → {ok:false} with the exact no-JV text (unchanged) · still DRAFT · no reversal
+  ❌ [H0.6-S5.2] second reverse of R1 → exact "รอบนี้กลับรายการไปแล
+  ❌ [H0.6-S5.3] DRAFT that carries a journalEntryId → exact "รอบนี้กลับรายกา
+  ❌ [H0.6-S5.5] refusal audits (H0.1 style): one row per refusal of S5.1 · S5.2 · S5.3 — action hr.payro
+  ❌ [H0.6-S5.4] reverseEntry throws (journalEntryId points at a missing entry) ⇒ {ok:false} with a fixed T
+  ✅ [H0.6-S4.1] clawback (R5) on HR system HB: C3 paid in R0b, clawed back (C3r REVERSED + DEDUCTION D3 boun
+  ❌ [H0.6-S4.2] A2 (COMMISSION↔C2) and D3 (DEDUCTION↔C3r) unbound, APPROVED, links intact · R2b = creat
+  ❌ [H0.6-S4.3] hr.payroll.reversed#R1b delivered ⇒ C2 PAID → APPROVED (pair rule R4 · OQ-2) · reversa
+  ✅ [H0.6-S7.1] tenant without an ACCOUNT system: approved run (no JV) → exact no-JV text · still APPROVE
+  ❌ [H0.6-S7.2] run with a JV whose ACCOUNT system is deleted afterwards (controller default) → {ok:true} 
+  ✅ [H0.6-X1.1] reverseRun of R1 from the other tenant's ctx and from the same tenant's other HR system → 
+  ❌ [H0.6-X1.3] HR facade adjustmentsByIds(ctx, ids) returns {id, crmCommissionId} rows only for ids of this
+  ✅ [H0.6-S6.0] [control] 2 worker PROCESSES (own pool each, 5 lanes each = 10 connections) answered every l
+  ❌ [H0.6-X6.1] 10 ∥ reverseRun on one run ×3: exactly 1 ok · 9 × exact "รอบนี้กลับ
+  ❌ [H0.6-X6.2] 5 reverseRun ∥ 5 createPayrollRun(same period) ×3: 1 reverse ok · creates refused only w
+  ❌ [H0.6-X6.3] 5 markPaid ∥ 5 reverseRun ×3: 1 reverse ok · final REVERSED · 1 reversal entry · hr.pa
+  ✅ [H0.6-X6.4] 5 approveRun(expect) ∥ 5 reverseRun on a DRAFT ×3: exactly one approve ok and one JV · r
+  ❌ [H0.6-S6.5] ledger after everything (qc-payroll-reverse semantics): every REVERSED run's JV is REVERSED 
+  ✅ [H0.6-Z1] residue: throwaway tenants and every tenantId row (outbox, audit, CRM, account, HR) are gone
+typecheck(base+oracle) exit=0 errors=0 [21:23Z]
+ALLDONE 2026-10-08T21:23:34Z
