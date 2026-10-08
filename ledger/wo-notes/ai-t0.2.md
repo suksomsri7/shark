@@ -66,8 +66,8 @@ Nothing under `src/`, `apps/mobile/app/`, `prisma/schema/`, `.githooks/`, `packa
 Full output: `ledger/wo-notes/ai-t0.2-green.txt`.
 - `qc-ai-t0.2` forced #1 (07:53Z): `🟢 T0.2: 41/41 (QC_FORCE) · missing deliverables: none · residue tag qc-ai-t0.2-0njb9v` · `JSON_SUMMARY {"total":41,"passed":41,"findings":[]}` · exit 0
 - `qc-ai-t0.2` forced #2 (09:46Z, no deliverable edited in between): `🟢 T0.2: 41/41 (QC_FORCE) · missing deliverables: none · residue tag qc-ai-t0.2-yv65kb` · `JSON_SUMMARY {"total":41,"passed":41,"findings":[]}` · exit 0
-- `qc-ai-t0.2` unforced: **not obtained at commit time** — the first attempt (09:49Z) ended with the wrapper's `flock -w 1800` timeout (exit 1, the oracle never started); a second attempt was queued at 10:23Z. Controller re-runs it.
-- residue: S8.1 + S8.2 green in both runs (0 rows tagged `qc-ai-t0.2-*`, no temp dir, `git status` of the watched paths unchanged).
+- `qc-ai-t0.2` unforced (11:17Z, third attempt — two earlier attempts died on the wrapper's 1,800 s `flock` timeout without starting): `🟢 T0.2: 41/41 · missing deliverables: none · residue tag qc-ai-t0.2-jvmpxm` · `JSON_SUMMARY {"total":41,"passed":41,"findings":[]}` · exit 0
+- residue: S8.1 + S8.2 green in all three runs (0 rows tagged `qc-ai-t0.2-*`, no temp dir, `git status` of the watched paths unchanged).
 - seed inside the oracle: both runs `rows created this run: 0` · `AI_TEAM_SEED=unchanged` (≈ 30–35 s each).
 - fitness (`scripts/fitness.mts`) without DATABASE_URL: `ผ่าน 42/42` · `FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0` · exit 0 — with the QC4 env exported: same, exit 0. F7.1 / F1.1 / F8.1 green (the draft is outside `prisma/schema/`).
 - `scripts/fitness-ai-team.mts` on the repo: `JSON_SUMMARY {"total":3,"passed":3,"findings":[]}` · exit 0 (all three are ratchet passes today: the scanned files do not exist yet).

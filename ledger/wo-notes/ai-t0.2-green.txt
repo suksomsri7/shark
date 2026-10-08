@@ -172,3 +172,77 @@ exit=0
 JSON_SUMMARY {"total":3,"passed":3,"findings":[]}
 
 ## 6. typecheck — INCONCLUSIVE (see ai-t0.2.md): the wrapper shell was stopped by the agent harness after 30 min (machine load ≈ 60); tsc itself ran on to 10:19Z, its exit code was not captured. tsconfig.tsbuildinfo (TS 5.9.3, 3691 files incl. the 4 scripts of this WO) records 0 files with semantic diagnostics. Controller to re-run.
+
+## 7. UNFORCED run (started 10:55:18Z) — same wrapper without QC_FORCE
+QC T0.2 — AI TEAM data contract · API spec · QC seed · env loader · fitness · host ep-frosty-lab-aoylqlv8-pooler · tag qc-ai-t0.2-jvmpxm
+
+
+
+── S5 docs [static] ──
+  ✅ [T0.2-S5.1] [static] the Screen→Routes table of the API doc has exactly one row per screen A1–A8 B1–B8 C1–C8 D1–D8 E1–E4, each with ≥ 1 route or a client-only note
+  ✅ [T0.2-S5.2] [static] every route named in that table has its own section, and every section is complete (Auth helper · Permission · Request · Response · Errors · Rate limit · zod block)
+  ✅ [T0.2-S5.3] [static] the doc has a section for every T1.10 route, the later-WO route families, /me (uiVersion) and /usage (frozen shape); inbox uses requireMobileUser
+  ✅ [T0.2-X10.3] [static] outside /api/mobile/usage no schema in the API doc carries micro-dollar fields or systemPrompt
+  ✅ [T0.2-S5.4] [static] docs/modules/30-ai-team.md covers M1–M9, the 18 team files and the 8 refusal codes
+  ✅ [T0.2-S5.5] [static] apps/mobile/qc/fixtures/ai-team/README.md describes the fixture format
+
+── S6 fitness F16 [static] ──
+  ✅ [T0.2-S6.1] fitness-ai-team runs green on the repo and reports F16.1, F16.2 and F16.3 with a JSON_SUMMARY
+  ✅ [T0.2-S6.2] F16.1 turns red (exit ≠ 0, finding names the file) when a temp src/messages/th/ai-team.json contains "token"
+  ✅ [T0.2-S6.3] F16.1 turns red for each other forbidden word and each scanned location (โทเคน · บาทต่องาน · ค่าแรง · wage · mobile i18n · API schema)
+  ✅ [T0.2-S6.4] negative control: clean temp files in all three locations stay green, and an empty root passes (ratchet)
+
+── S7 prisma draft ──
+  ✅ [T0.2-S7.1] the ai_team.prisma draft passes `prisma validate` together with the existing schema (a deliberately broken control file fails)
+  ✅ [T0.2-S7.2] [static] the draft declares the 15 models and 5 enums of MASTER-PLAN §6 T1.1 with the keys of the brief
+
+── X10 / S1 static ──
+  ✅ [T0.2-X10.1] [static] docs, seed, loader, fitness and draft contain no credential, no connection URL, no live secret of this environment, and never read `.env`
+  ✅ [T0.2-S1.6] [static] the seed writes only under slug prefix qc-ai-team- / @qc.shark and has no unscoped delete
+  ✅ [T0.2-S1.7] [static] scripts/qc-all.mts registers the marker `requires: ai-team-seed` → seed-ai-team-qc.mts
+
+── S4 env loader ──
+  ✅ [T0.2-S4.1] env loader refuses a production host (spawned with a fake URL): exit code 4
+  ✅ [T0.2-S4.2] env loader refuses QC1, an unknown host, a URL that only mentions ep-frosty-lab outside the hostname, and a bad DIRECT_URL alone: exit code 4 each
+  ✅ [T0.2-S4.3] no refusal prints the URL, the user, the password or the database name
+  ✅ [T0.2-S4.4] positive control: on the real QC4 env the loader returns (exit 0) and the module exports loadAiTeamQcEnv, atIds, withInjectedNow
+
+── S1 seed ×2 ──
+  · seed run 1: exit 0 in 117.8s — rows created this run: 0 · 39.8s / AI_TEAM_SEED=unchanged
+  · seed run 2: exit 0 in 91.5s — rows created this run: 0 · 30.5s / AI_TEAM_SEED=unchanged
+  ✅ [T0.2-S1.1] the seed runs twice, both exit 0, and exactly the three tenants qc-ai-team-at1|at2|atx carry the prefix
+  ✅ [T0.2-S1.2] second seed run: the row count of EVERY table (tenantId column) of AT-1/AT-2/AT-X is unchanged
+  ✅ [T0.2-S1.3] second seed run replaces nothing: atIds() has the contract shape, matches the DB by slug/e-mail, and the id sets of the seeded tables are identical
+  ✅ [T0.2-S1.4] other lanes' seed tenants (up to 3, picked at runtime) keep their row counts across the two seed runs
+  ✅ [T0.2-S1.5] a quiet canary tenant + user created by this oracle (same e-mail domain) is byte-for-byte untouched by the two seed runs
+
+── S2 AT-1 content ──
+  ✅ [T0.2-S2.1] AT-1, AT-2 and AT-X each have an active AppSystem of every type ACCOUNT/CRM/CHAT/MEMBER/KANBAN
+  ✅ [T0.2-S2.2] AT-1 has exactly 3 accepted members: at-owner OWNER · at-nid MANAGER · at-staff STAFF
+  ✅ [T0.2-S2.3] AT-1 has ≥ 20 customers (CrmContact, not archived, in AT-1's CRM system)
+  ✅ [T0.2-S2.4] AT-1 has ≥ 5 deals (CrmDeal in AT-1's CRM system)
+  ✅ [T0.2-S2.5] AT-1 has ≥ 3 open invoices (INVOICE · OUT · numbered · AWAITING_PAYMENT|PARTIAL · balance > 0)
+  ✅ [T0.2-S2.6] AT-1 has ≥ 3 customer chat threads waiting for a reply (OPEN · last message IN · real IN message row)
+  ✅ [T0.2-S2.7] AT-1 has ≥ 3 active knowledge-base articles over ≥ 2 categories
+  ✅ [T0.2-S2.8] AT-1 has an active ApprovalPolicy for AccountDocument, threshold 2,000,000 satang (20,000 baht), ≥ 1 step
+  ✅ [T0.2-S2.9] permission keys: at-nid may approve account + CRM · at-staff has ai.chat.send + ai.employee.use
+
+── S3 owners ──
+  ✅ [T0.2-S3.1] AT-2 has the same single OWNER as AT-1 (at-owner@qc.shark)
+  ✅ [T0.2-S3.2] AT-X has a different single OWNER (ax-owner@qc.shark) and the two owners share no tenant
+
+── X1 isolation ──
+  ✅ [T0.2-X1.1] seed users belong only to their own seed tenants (owner: AT-1+AT-2 · other owner: AT-X · approver/staff: AT-1) and to no foreign tenant
+  ✅ [T0.2-X1.2] seed tenants contain only seed users (AT-1: 3 · AT-2: 1 · AT-X: 1) — no foreign account can enter them
+  ✅ [T0.2-X1.3] no seeded row crosses a tenant: every systemId / owner / assignee of an AT-* row belongs to the same tenant
+
+── X10 runtime ──
+  ✅ [T0.2-X10.2] the seed (2 runs) and the env loader print no connection URL and no secret
+
+── S8 residue ──
+  ✅ [T0.2-S8.1] no row tagged qc-ai-t0.2-* is left in the database (canary tenant, its rows, its user)
+  ✅ [T0.2-S8.2] no temp directory is left and the worktree paths scanned by fitness/prisma are exactly as before the run
+
+🟢 T0.2: 41/41 · missing deliverables: none · residue tag qc-ai-t0.2-jvmpxm
+JSON_SUMMARY {"total":41,"passed":41,"findings":[]}
+exit=0
