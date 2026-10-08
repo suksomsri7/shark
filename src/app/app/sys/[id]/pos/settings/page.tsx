@@ -12,7 +12,8 @@ import { ModuleTabs } from "@/components/module-tabs";
 import { SettingsShell } from "@/components/pos/settings/SettingsShell";
 import { posSettingsTabOf } from "@/components/pos/settings/settings-tabs";
 import { ReceiptSettings } from "./ReceiptSettings";
-import { SettingsRefusal, SettingsSoon } from "./settings-ui";
+import { DeviceSettings } from "./DeviceSettings";
+import { SettingsRefusal } from "./settings-ui";
 
 // POS P1.10 U — หน้าตั้งค่าหน้าขาย /pos/settings (ภาพ 17A ใบเสร็จและภาษี · 17B เครื่องและเครื่องพิมพ์) · โครง = SettingsShell + ทะเบียนแท็บ (มติ CD1)
 //   ข้อมูลของแต่ละแท็บโหลดฝั่ง client ผ่าน action (รหัสเครื่องของเบราว์เซอร์อยู่ใน localStorage) · คำปฏิเสธเป็นข้อมูล
@@ -45,8 +46,10 @@ export default async function PosSettingsPage({ params, searchParams }: { params
           <SettingsRefusal message={t("refusal")} />
         ) : tab === "receipt" ? (
           <ReceiptSettings systemId={id} unitId={unitId} branchName={units.find((u) => u.id === unitId)?.name ?? ""} canEdit={canEditReceipt} canManageDevices={canManageDevices} />
+        ) : canManageDevices ? (
+          <DeviceSettings systemId={id} unitId={unitId} shopName={sys.name} />
         ) : (
-          <SettingsSoon tab={tab} canEdit={canManageDevices} />
+          <SettingsRefusal message={t("devicesRefusal")} />
         )}
       </SettingsShell>
     </div>

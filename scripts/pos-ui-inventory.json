@@ -5724,6 +5724,426 @@
       "wo": "P1.10U",
       "oracle": "",
       "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-device-retry",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-devices",
+        "note": "แสดงเมื่อ listDevicesAction ปฏิเสธ/ล้ม (pos-device-load-error) · เจ้าของ (pos.device.manage) · แคชเชียร์ QC ไม่มีสิทธิ์ ⇒ ทั้งแท็บเป็นการ์ดปฏิเสธ pos-settings-refusal"
+      },
+      "wo": "P1.10U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-device-register",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "pos-device-register-dialog",
+        "note": "ลงทะเบียนเบราว์เซอร์นี้ (deviceCode = getPosDeviceId) · ลงแล้ว = ปุ่มปิด \"เครื่องนี้ลงทะเบียนแล้ว\" · ครบเพดาน = ปุ่มปิด + pos-device-limit · เจ้าของ (pos.device.manage) · แคชเชียร์ QC ไม่มีสิทธิ์ ⇒ ทั้งแท็บเป็นการ์ดปฏิเสธ pos-settings-refusal"
+      },
+      "wo": "P1.10U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-device-register-name",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-device-register-dialog",
+        "note": "ชื่อเครื่อง (ค่าเริ่ม \"เคาน์เตอร์ N\") ≤ 60 ตัวอักษร"
+      },
+      "wo": "P1.10U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-device-register-cancel",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-devices",
+        "note": "ปิดกล่อง (Esc ก็ได้)"
+      },
+      "wo": "P1.10U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-device-register-confirm",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "registerDeviceAction",
+        "note": "สำเร็จ = โหลดรายการใหม่ + เลือกเครื่องใหม่ · DEVICE_LIMIT/DEVICE_REVOKED/VALIDATION = pos-device-register-error (คีย์ pos.device.errors.*)"
+      },
+      "wo": "P1.10U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-device-card-*",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-device-panel",
+        "note": "การ์ดเครื่อง (listDevicesAction.items) → แผงตั้งค่าขวา · เพิกถอนแล้ว = การ์ดจาง + แผงอ่านอย่างเดียว"
+      },
+      "wo": "P1.10U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-device-name",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "updateDeviceAction",
+        "note": "blur/Enter = patch {id, name}"
+      },
+      "wo": "P1.10U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-device-regno",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "updateDeviceAction",
+        "note": "blur/Enter = patch {id, posRegNo} (ว่าง = null)"
+      },
+      "wo": "P1.10U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-device-paper-58",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "updateDeviceAction",
+        "note": "printerConfig ทั้งก้อน {…, paper:\"58\"}"
+      },
+      "wo": "P1.10U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-device-paper-80",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "updateDeviceAction",
+        "note": "printerConfig ทั้งก้อน {…, paper:\"80\"}"
+      },
+      "wo": "P1.10U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-device-mode-bt",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "updateDeviceAction",
+        "note": "printerConfig.mode = escpos-bt (ชุดค่าของ parsePrinterConfig)"
+      },
+      "wo": "P1.10U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-device-mode-usb",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "updateDeviceAction",
+        "note": "printerConfig.mode = escpos-usb"
+      },
+      "wo": "P1.10U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-device-mode-browser",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "updateDeviceAction",
+        "note": "printerConfig.mode = browser"
+      },
+      "wo": "P1.10U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-device-thai-text",
+      "kind": "select",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "updateDeviceAction",
+        "note": "printerConfig.thaiText raster (ปริยาย · มติ CD3) | tis620 · แสดงเมื่อ mode ไม่ใช่ browser"
+      },
+      "wo": "P1.10U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-device-auto-print",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "updateDeviceAction",
+        "note": "printerConfig.autoPrint"
+      },
+      "wo": "P1.10U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-device-drawer-kick",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "updateDeviceAction",
+        "note": "printerConfig.drawerKick"
+      },
+      "wo": "P1.10U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-device-copies",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "updateDeviceAction",
+        "note": "printerConfig.copies 1 ↔ 2 (พิมพ์สำเนาให้ร้าน)"
+      },
+      "wo": "P1.10U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-device-test-print",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "print",
+        "note": "พิมพ์ใบทดสอบผ่านวิธีพิมพ์ของเครื่องที่เลือก (printReceipt) · ปฏิเสธ = pos-print-error"
+      },
+      "wo": "P1.10U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-device-revoke",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "pos-device-revoke-dialog",
+        "note": "ปุ่มอันตราย → กล่องยืนยัน"
+      },
+      "wo": "P1.10U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-device-revoke-cancel",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-device-panel",
+        "note": "ปิดกล่อง (Esc ก็ได้)"
+      },
+      "wo": "P1.10U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-device-revoke-confirm",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "revokeDeviceAction",
+        "note": "\"เครื่องจะขายไม่ได้อีก กะที่เปิดอยู่ยังปิดได้โดยผู้จัดการ\" → REVOKED · โหลดรายการใหม่"
+      },
+      "wo": "P1.10U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
     }
   ],
   "$roles": "roles/hiddenFor ที่อนุญาต: owner · manager · cashier · kind/expect.type ชุดเดียวกับทะเบียน CRM (F15.3b ตรวจ)"

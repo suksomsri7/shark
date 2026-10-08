@@ -4,9 +4,7 @@
 // 🔴 ไฟล์นี้ไม่มีปุ่ม/ช่องกรอก (element ที่กดได้อยู่ในไฟล์แท็บ พร้อม data-testid ตัวอักษรตรง — ทะเบียนปุ่ม F15.3)
 
 import type { ReactNode } from "react";
-import { useTranslations } from "next-intl";
 import { RegisterIcon, type RegisterIconName } from "@/components/pos/register/RegisterIcon";
-import type { PosSettingsTabKey } from "@/components/pos/settings/settings-tabs";
 
 export type T = (key: string, values?: Record<string, string | number>) => string;
 
@@ -93,15 +91,5 @@ export function InlineNote({ tone, children, testid }: { tone: "error" | "ok"; c
     >
       {children}
     </p>
-  );
-}
-
-/** ที่ว่างของแท็บระหว่างสร้าง (ใช้ในขั้นที่ 1 ของ P1.10 U เท่านั้น) */
-export function SettingsSoon({ tab, canEdit }: { tab: PosSettingsTabKey; canEdit: boolean }) {
-  const t = useTranslations("pos.settings");
-  return (
-    <div data-testid="pos-settings-loading" className="text-[14px] text-[color:var(--color-muted)]">
-      {t(`tabs.${tab}`)} · {canEdit ? t("save") : t("readOnly")}
-    </div>
   );
 }
