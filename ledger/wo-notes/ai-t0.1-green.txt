@@ -1,0 +1,276 @@
+# T0.1 — oracle scripts/qc-ai-t0.1.mts on the committed probe (d2020b64) · QC4 · SHARK_AI_MOCK=1 · 2026-10-08 (UTC) · builder runs
+# wrapper: bash scripts/iso.sh bash scripts/qc4.sh bash scripts/with-gate-lock.sh env [QC_FORCE=1] SHARK_AI_MOCK=1 pnpm exec tsx scripts/qc-ai-t0.1.mts
+# expected under mock: 23/26, exactly S1.5 · S2.3 · S4.4 PENDING-REAL (they need the controller's real result file), exit 0
+
+════════════════ FORCED #1 (QC_FORCE=1) ════════════════
+QC T0.1 — AI TEAM cost probe (mock provider only) · host ep-frosty-lab-aoylqlv8-pooler · tag qc-ai-t0.1-6rbwqi · QC_FORCE
+(node:2812247) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+── X10 / X11 [static] ──
+  ✅ [T0.1-X10.2] [static] the probe has no key literal, never prints/reads secrets or `.env`, loads env only through loadAiTeamQcEnv(); the real file (when present) is clean too
+  ✅ [T0.1-X11.1] [static] the probe goes through sendMessage + createConversation/sendMobileChat and contains no charging/provider bypass (refund through topUp only)
+
+── S3 guards ──
+  · probe (no AI_COST_PROBE): exit 0 · 0 new ledger rows · stdout -
+  ✅ [T0.1-S3.3] without AI_COST_PROBE the probe exits 0 and does nothing: no file, no row, wallet untouched (qc-all can never trigger a measurement)
+  · probe (mock without PROBE_OUT): exit 2 · 0 new ledger rows · stdout -
+  ✅ [T0.1-S3.4] SHARK_AI_MOCK=1 without PROBE_OUT is refused (exit ≠ 0, nothing written): a mock result can never overwrite the real ledger file
+
+── full mock run ──
+  · probe (full): exit 0 · 34 new ledger rows · stdout PROBE_RESULT {"runs":30,"spentMicro":149544,"spentUsd":0.149544,"stoppedByCap":false,"out":"/tmp/qc-ai-t0.1-6rbwqi/full.md","refundRef":"qc-ai-t0.1-refund-muzwc…
+
+── S1 result file [mock] ──
+  ✅ [T0.1-S1.1] [mock] the probe (defaults: cap 3, 3 rounds) exits 0 and writes a result file whose `probe-data` block has the contract shape: provider mock, 10 types, 30 rows in round-major order
+  ✅ [T0.1-S1.2] [mock] every row has tokensIn / tokensOut / micro / wallMs > 0, a routed model id (haiku|sonnet), its own conversation of the AT-1 owner and ≥ 1 ledger row id
+  ✅ [T0.1-S1.3] [mock] the 30-row markdown table equals the probe-data rows cell for cell
+  ✅ [T0.1-S1.4] [mock] p50 / p95 / mean per type recompute from the rows (nearest rank)
+
+── S2 ledger [mock] ──
+  ✅ [T0.1-S2.1] [mock] per row: the AiCreditTxn USAGE rows of its conversation in QC4 are exactly `txnIds`, and their Σ micro / tokens equal the row
+  ✅ [T0.1-S2.2] [mock] totals.spentMicro = Σ rows = Σ ledger = every USAGE row AT-1 gained during the run (no unlisted spend, no unlisted conversation)
+
+── S3 cap ──
+  ✅ [T0.1-S3.1] [mock] full run: total spend ≤ COST_CAP_USD (default 3 = 3,000,000 micro), not stopped, stdout ends with PROBE_RESULT carrying the same spend
+  · probe (cap): exit 0 · 3 new ledger rows · stdout PROBE_RESULT {"runs":1,"spentMicro":3312,"spentUsd":0.003312,"stoppedByCap":true,"out":"/tmp/qc-ai-t0.1-6rbwqi/cap.md","refundRef":"qc-ai-t0.1-refund-muzwiss7m8…
+  ✅ [T0.1-S3.2] [mock] COST_CAP_USD=0.000001 ⇒ exit 0, exactly one run (type 1, round 1), stoppedByCap true + `STOPPED BY CAP` in the file, spend = ledger
+
+── S4 pack math [mock] ──
+  ✅ [T0.1-S4.1] [mock] weights are in the file (default mix, Σ = 1) and categoryMeanMicro / weightedMeanMicro recompute from the table
+  ✅ [T0.1-S4.2] [mock] pack math for 490 / 1,490 / 3,990 THB recomputes from the table at thbPerUsd() (pinned to 37.5 for the run), margin ≥ 50 %, formula + numbers in the text
+  ✅ [T0.1-S4.3] [mock] FREE trial: one proposal + 2 alternatives, three different allowances, approxTasks recompute
+
+── X11 charging path [mock] ──
+  ✅ [T0.1-X11.2] [mock] every run was charged by the normal path: exactly one CHAT row priced by costMicroUsd(model, tokens); the mobile-path type also has exactly one AUTO_TITLE row, the others none
+  ✅ [T0.1-X11.3] [mock] seen live while the probe ran: USER + ASSISTANT message pairs written by sendMessage (answers of MockProvider) in conversations that are all listed in the file
+
+── S5 cleanup ──
+  ✅ [T0.1-S5.1] no probe conversation is left after either run: 0 AiConversation rows and 0 rows in any table that references the listed conversation ids (ledger excepted)
+  ✅ [T0.1-S5.2] AT-1 wallet balance is equal before and after each probe run
+  ✅ [T0.1-S5.3] each run wrote exactly one ADJUST row ref qc-ai-t0.1-refund-<runId> of +spentMicro, and cleanup{} in the file says the same
+  ✅ [T0.1-S5.4] every tenant table of AT-1 has the row count it had before the runs (ledger = exactly the listed rows + refunds) and the daily AiUsage net is given back
+
+── X10 runtime ──
+  ✅ [T0.1-X10.1] no probe output (stdout, stderr, result files) carries the key, a secret of this environment, an Authorization header or a URL
+
+── real file ledger/AI-TEAM-COST-2026-10.md ──
+  ⏳ [T0.1-S1.5] [REAL FILE] ledger/AI-TEAM-COST-2026-10.md: provider real · 30 rows · every row tokensIn/tokensOut/micro > 0 and a real model id · table = data · totals ≤ cap — PENDING-REAL: ledger/AI-TEAM-COST-2026-10.md is not there yet — re-run this oracle after the controller's real measurement
+  ⏳ [T0.1-S2.3] [REAL FILE] ledger/AI-TEAM-COST-2026-10.md: Σ micro of the file = Σ AiCreditTxn USAGE rows (by txnIds / conversation ids) still in the QC4 ledger — PENDING-REAL: ledger/AI-TEAM-COST-2026-10.md is not there yet — re-run this oracle after the controller's real measurement
+  ⏳ [T0.1-S4.4] [REAL FILE] ledger/AI-TEAM-COST-2026-10.md: p50/p95, weighted mean, pack math and FREE trial recompute from its own table — PENDING-REAL: ledger/AI-TEAM-COST-2026-10.md is not there yet — re-run this oracle after the controller's real measurement
+
+── S5 residue ──
+  ✅ [T0.1-S5.5] oracle residue: no temp dir left, tracked paths of the worktree and the real ledger file exactly as before
+
+🟡 T0.1: 23/26 (QC_FORCE) · PENDING-REAL 3 · probe present · env loader present · residue tag qc-ai-t0.1-6rbwqi
+JSON_SUMMARY {"total":26,"passed":23,"findings":[{"id":"T0.1-S1.5","sev":"MINOR","pending":"PENDING-REAL"},{"id":"T0.1-S2.3","sev":"MINOR","pending":"PENDING-REAL"},{"id":"T0.1-S4.4","sev":"MINOR","pending":"PENDING-REAL"}],"pendingReal":3}
+EXIT=0
+
+════════════════ FORCED #2 (QC_FORCE=1) ════════════════
+QC T0.1 — AI TEAM cost probe (mock provider only) · host ep-frosty-lab-aoylqlv8-pooler · tag qc-ai-t0.1-ne3iuz · QC_FORCE
+(node:2836343) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+── X10 / X11 [static] ──
+  ✅ [T0.1-X10.2] [static] the probe has no key literal, never prints/reads secrets or `.env`, loads env only through loadAiTeamQcEnv(); the real file (when present) is clean too
+  ✅ [T0.1-X11.1] [static] the probe goes through sendMessage + createConversation/sendMobileChat and contains no charging/provider bypass (refund through topUp only)
+
+── S3 guards ──
+  · probe (no AI_COST_PROBE): exit 0 · 0 new ledger rows · stdout -
+  ✅ [T0.1-S3.3] without AI_COST_PROBE the probe exits 0 and does nothing: no file, no row, wallet untouched (qc-all can never trigger a measurement)
+  · probe (mock without PROBE_OUT): exit 2 · 0 new ledger rows · stdout -
+  ✅ [T0.1-S3.4] SHARK_AI_MOCK=1 without PROBE_OUT is refused (exit ≠ 0, nothing written): a mock result can never overwrite the real ledger file
+
+── full mock run ──
+  · probe (full): exit 0 · 34 new ledger rows · stdout PROBE_RESULT {"runs":30,"spentMicro":149544,"spentUsd":0.149544,"stoppedByCap":false,"out":"/tmp/qc-ai-t0.1-ne3iuz/full.md","refundRef":"qc-ai-t0.1-refund-muzxn…
+
+── S1 result file [mock] ──
+  ✅ [T0.1-S1.1] [mock] the probe (defaults: cap 3, 3 rounds) exits 0 and writes a result file whose `probe-data` block has the contract shape: provider mock, 10 types, 30 rows in round-major order
+  ✅ [T0.1-S1.2] [mock] every row has tokensIn / tokensOut / micro / wallMs > 0, a routed model id (haiku|sonnet), its own conversation of the AT-1 owner and ≥ 1 ledger row id
+  ✅ [T0.1-S1.3] [mock] the 30-row markdown table equals the probe-data rows cell for cell
+  ✅ [T0.1-S1.4] [mock] p50 / p95 / mean per type recompute from the rows (nearest rank)
+
+── S2 ledger [mock] ──
+  ✅ [T0.1-S2.1] [mock] per row: the AiCreditTxn USAGE rows of its conversation in QC4 are exactly `txnIds`, and their Σ micro / tokens equal the row
+  ✅ [T0.1-S2.2] [mock] totals.spentMicro = Σ rows = Σ ledger = every USAGE row AT-1 gained during the run (no unlisted spend, no unlisted conversation)
+
+── S3 cap ──
+  ✅ [T0.1-S3.1] [mock] full run: total spend ≤ COST_CAP_USD (default 3 = 3,000,000 micro), not stopped, stdout ends with PROBE_RESULT carrying the same spend
+  · probe (cap): exit 0 · 3 new ledger rows · stdout PROBE_RESULT {"runs":1,"spentMicro":3312,"spentUsd":0.003312,"stoppedByCap":true,"out":"/tmp/qc-ai-t0.1-ne3iuz/cap.md","refundRef":"qc-ai-t0.1-refund-muzxtfhci0…
+  ✅ [T0.1-S3.2] [mock] COST_CAP_USD=0.000001 ⇒ exit 0, exactly one run (type 1, round 1), stoppedByCap true + `STOPPED BY CAP` in the file, spend = ledger
+
+── S4 pack math [mock] ──
+  ✅ [T0.1-S4.1] [mock] weights are in the file (default mix, Σ = 1) and categoryMeanMicro / weightedMeanMicro recompute from the table
+  ✅ [T0.1-S4.2] [mock] pack math for 490 / 1,490 / 3,990 THB recomputes from the table at thbPerUsd() (pinned to 37.5 for the run), margin ≥ 50 %, formula + numbers in the text
+  ✅ [T0.1-S4.3] [mock] FREE trial: one proposal + 2 alternatives, three different allowances, approxTasks recompute
+
+── X11 charging path [mock] ──
+  ✅ [T0.1-X11.2] [mock] every run was charged by the normal path: exactly one CHAT row priced by costMicroUsd(model, tokens); the mobile-path type also has exactly one AUTO_TITLE row, the others none
+  ✅ [T0.1-X11.3] [mock] seen live while the probe ran: USER + ASSISTANT message pairs written by sendMessage (answers of MockProvider) in conversations that are all listed in the file
+
+── S5 cleanup ──
+  ✅ [T0.1-S5.1] no probe conversation is left after either run: 0 AiConversation rows and 0 rows in any table that references the listed conversation ids (ledger excepted)
+  ✅ [T0.1-S5.2] AT-1 wallet balance is equal before and after each probe run
+  ✅ [T0.1-S5.3] each run wrote exactly one ADJUST row ref qc-ai-t0.1-refund-<runId> of +spentMicro, and cleanup{} in the file says the same
+  ✅ [T0.1-S5.4] every tenant table of AT-1 has the row count it had before the runs (ledger = exactly the listed rows + refunds) and the daily AiUsage net is given back
+
+── X10 runtime ──
+  ✅ [T0.1-X10.1] no probe output (stdout, stderr, result files) carries the key, a secret of this environment, an Authorization header or a URL
+
+── real file ledger/AI-TEAM-COST-2026-10.md ──
+  ⏳ [T0.1-S1.5] [REAL FILE] ledger/AI-TEAM-COST-2026-10.md: provider real · 30 rows · every row tokensIn/tokensOut/micro > 0 and a real model id · table = data · totals ≤ cap — PENDING-REAL: ledger/AI-TEAM-COST-2026-10.md is not there yet — re-run this oracle after the controller's real measurement
+  ⏳ [T0.1-S2.3] [REAL FILE] ledger/AI-TEAM-COST-2026-10.md: Σ micro of the file = Σ AiCreditTxn USAGE rows (by txnIds / conversation ids) still in the QC4 ledger — PENDING-REAL: ledger/AI-TEAM-COST-2026-10.md is not there yet — re-run this oracle after the controller's real measurement
+  ⏳ [T0.1-S4.4] [REAL FILE] ledger/AI-TEAM-COST-2026-10.md: p50/p95, weighted mean, pack math and FREE trial recompute from its own table — PENDING-REAL: ledger/AI-TEAM-COST-2026-10.md is not there yet — re-run this oracle after the controller's real measurement
+
+── S5 residue ──
+  ✅ [T0.1-S5.5] oracle residue: no temp dir left, tracked paths of the worktree and the real ledger file exactly as before
+
+🟡 T0.1: 23/26 (QC_FORCE) · PENDING-REAL 3 · probe present · env loader present · residue tag qc-ai-t0.1-ne3iuz
+JSON_SUMMARY {"total":26,"passed":23,"findings":[{"id":"T0.1-S1.5","sev":"MINOR","pending":"PENDING-REAL"},{"id":"T0.1-S2.3","sev":"MINOR","pending":"PENDING-REAL"},{"id":"T0.1-S4.4","sev":"MINOR","pending":"PENDING-REAL"}],"pendingReal":3}
+EXIT=0
+
+════════════════ UNFORCED ════════════════
+QC T0.1 — AI TEAM cost probe (mock provider only) · host ep-frosty-lab-aoylqlv8-pooler · tag qc-ai-t0.1-ri027o
+(node:2858530) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+── X10 / X11 [static] ──
+  ✅ [T0.1-X10.2] [static] the probe has no key literal, never prints/reads secrets or `.env`, loads env only through loadAiTeamQcEnv(); the real file (when present) is clean too
+  ✅ [T0.1-X11.1] [static] the probe goes through sendMessage + createConversation/sendMobileChat and contains no charging/provider bypass (refund through topUp only)
+
+── S3 guards ──
+  · probe (no AI_COST_PROBE): exit 0 · 0 new ledger rows · stdout -
+  ✅ [T0.1-S3.3] without AI_COST_PROBE the probe exits 0 and does nothing: no file, no row, wallet untouched (qc-all can never trigger a measurement)
+  · probe (mock without PROBE_OUT): exit 2 · 0 new ledger rows · stdout -
+  ✅ [T0.1-S3.4] SHARK_AI_MOCK=1 without PROBE_OUT is refused (exit ≠ 0, nothing written): a mock result can never overwrite the real ledger file
+
+── full mock run ──
+  · probe (full): exit 0 · 34 new ledger rows · stdout PROBE_RESULT {"runs":30,"spentMicro":149544,"spentUsd":0.149544,"stoppedByCap":false,"out":"/tmp/qc-ai-t0.1-ri027o/full.md","refundRef":"qc-ai-t0.1-refund-muzyo…
+
+── S1 result file [mock] ──
+  ✅ [T0.1-S1.1] [mock] the probe (defaults: cap 3, 3 rounds) exits 0 and writes a result file whose `probe-data` block has the contract shape: provider mock, 10 types, 30 rows in round-major order
+  ✅ [T0.1-S1.2] [mock] every row has tokensIn / tokensOut / micro / wallMs > 0, a routed model id (haiku|sonnet), its own conversation of the AT-1 owner and ≥ 1 ledger row id
+  ✅ [T0.1-S1.3] [mock] the 30-row markdown table equals the probe-data rows cell for cell
+  ✅ [T0.1-S1.4] [mock] p50 / p95 / mean per type recompute from the rows (nearest rank)
+
+── S2 ledger [mock] ──
+  ✅ [T0.1-S2.1] [mock] per row: the AiCreditTxn USAGE rows of its conversation in QC4 are exactly `txnIds`, and their Σ micro / tokens equal the row
+  ✅ [T0.1-S2.2] [mock] totals.spentMicro = Σ rows = Σ ledger = every USAGE row AT-1 gained during the run (no unlisted spend, no unlisted conversation)
+
+── S3 cap ──
+  ✅ [T0.1-S3.1] [mock] full run: total spend ≤ COST_CAP_USD (default 3 = 3,000,000 micro), not stopped, stdout ends with PROBE_RESULT carrying the same spend
+  · probe (cap): exit 0 · 3 new ledger rows · stdout PROBE_RESULT {"runs":1,"spentMicro":3312,"spentUsd":0.003312,"stoppedByCap":true,"out":"/tmp/qc-ai-t0.1-ri027o/cap.md","refundRef":"qc-ai-t0.1-refund-muzyt4cvsh…
+  ✅ [T0.1-S3.2] [mock] COST_CAP_USD=0.000001 ⇒ exit 0, exactly one run (type 1, round 1), stoppedByCap true + `STOPPED BY CAP` in the file, spend = ledger
+
+── S4 pack math [mock] ──
+  ✅ [T0.1-S4.1] [mock] weights are in the file (default mix, Σ = 1) and categoryMeanMicro / weightedMeanMicro recompute from the table
+  ✅ [T0.1-S4.2] [mock] pack math for 490 / 1,490 / 3,990 THB recomputes from the table at thbPerUsd() (pinned to 37.5 for the run), margin ≥ 50 %, formula + numbers in the text
+  ✅ [T0.1-S4.3] [mock] FREE trial: one proposal + 2 alternatives, three different allowances, approxTasks recompute
+
+── X11 charging path [mock] ──
+  ✅ [T0.1-X11.2] [mock] every run was charged by the normal path: exactly one CHAT row priced by costMicroUsd(model, tokens); the mobile-path type also has exactly one AUTO_TITLE row, the others none
+  ✅ [T0.1-X11.3] [mock] seen live while the probe ran: USER + ASSISTANT message pairs written by sendMessage (answers of MockProvider) in conversations that are all listed in the file
+
+── S5 cleanup ──
+  ✅ [T0.1-S5.1] no probe conversation is left after either run: 0 AiConversation rows and 0 rows in any table that references the listed conversation ids (ledger excepted)
+  ✅ [T0.1-S5.2] AT-1 wallet balance is equal before and after each probe run
+  ✅ [T0.1-S5.3] each run wrote exactly one ADJUST row ref qc-ai-t0.1-refund-<runId> of +spentMicro, and cleanup{} in the file says the same
+  ✅ [T0.1-S5.4] every tenant table of AT-1 has the row count it had before the runs (ledger = exactly the listed rows + refunds) and the daily AiUsage net is given back
+
+── X10 runtime ──
+  ✅ [T0.1-X10.1] no probe output (stdout, stderr, result files) carries the key, a secret of this environment, an Authorization header or a URL
+
+── real file ledger/AI-TEAM-COST-2026-10.md ──
+  ⏳ [T0.1-S1.5] [REAL FILE] ledger/AI-TEAM-COST-2026-10.md: provider real · 30 rows · every row tokensIn/tokensOut/micro > 0 and a real model id · table = data · totals ≤ cap — PENDING-REAL: ledger/AI-TEAM-COST-2026-10.md is not there yet — re-run this oracle after the controller's real measurement
+  ⏳ [T0.1-S2.3] [REAL FILE] ledger/AI-TEAM-COST-2026-10.md: Σ micro of the file = Σ AiCreditTxn USAGE rows (by txnIds / conversation ids) still in the QC4 ledger — PENDING-REAL: ledger/AI-TEAM-COST-2026-10.md is not there yet — re-run this oracle after the controller's real measurement
+  ⏳ [T0.1-S4.4] [REAL FILE] ledger/AI-TEAM-COST-2026-10.md: p50/p95, weighted mean, pack math and FREE trial recompute from its own table — PENDING-REAL: ledger/AI-TEAM-COST-2026-10.md is not there yet — re-run this oracle after the controller's real measurement
+
+── S5 residue ──
+  ✅ [T0.1-S5.5] oracle residue: no temp dir left, tracked paths of the worktree and the real ledger file exactly as before
+
+🟡 T0.1: 23/26 · PENDING-REAL 3 · probe present · env loader present · residue tag qc-ai-t0.1-ri027o
+JSON_SUMMARY {"total":26,"passed":23,"findings":[{"id":"T0.1-S1.5","sev":"MINOR","pending":"PENDING-REAL"},{"id":"T0.1-S2.3","sev":"MINOR","pending":"PENDING-REAL"},{"id":"T0.1-S4.4","sev":"MINOR","pending":"PENDING-REAL"}],"pendingReal":3}
+EXIT=0
+
+════════════════ BUILDER failure-path tests of the probe (mock, same wrapper, one lock hold) ════════════════
+# A: SHARK_AI_DAILY_REQ=1 => run 2 returns ok:false · B: SIGTERM during the run · C: clean 1-round run afterwards
+=== A: daily net of 1 request => run 1 ok, run 2 refused (ok:false) ===
+(node:2790170) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+ai-team-cost-probe · run muzv5f30h4gy · provider mock · routing auto · cap 3000000 micro · rounds 1 · wallet before: OK
+  run 1/10 · chat-short · round 1 · tools 0 · micro 3312 · total 3312 · 7796 ms
+ai-team-cost-probe: run 2 (chat-history, round 1) failed — sendMessage returned over_budget/day
+  cleanup · conversations 2 · refund 3312 micro · wallet restored · residue none · file written
+PROBE_RESULT {"runs":1,"spentMicro":3312,"spentUsd":0.003312,"stoppedByCap":false,"out":"/tmp/ai-t01-builder/failA.md","refundRef":"qc-ai-t0.1-refund-muzv5f30h4gy"}
+exit A=2
+=== B: SIGTERM while running ===
+exit B=2
+(node:2792624) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+ai-team-cost-probe · run muzvaa8s4wzx · provider mock · routing auto · cap 3000000 micro · rounds 3 · wallet before: OK
+  run 1/30 · chat-short · round 1 · tools 0 · micro 3312 · total 3312 · 8200 ms
+  run 2/30 · chat-history · round 1 · tools 0 · micro 2326 · total 5638 · 3997 ms
+  run 3/30 · quotation · round 1 · tools 0 · micro 6654 · total 12292 · 2809 ms
+  run 4/30 · stalled-deals · round 1 · tools 0 · micro 2128 · total 14420 · 1800 ms
+ai-team-cost-probe: run 5 (follow-up-silent, round 1) failed — interrupted by a signal
+  cleanup · conversations 4 · refund 14420 micro · wallet restored · residue none · file written
+PROBE_RESULT {"runs":4,"spentMicro":14420,"spentUsd":0.01442,"stoppedByCap":false,"out":"/tmp/ai-t01-builder/failB.md","refundRef":"qc-ai-t0.1-refund-muzvaa8s4wzx"}
+=== C: clean 1-round run afterwards (state must be consistent) ===
+(node:2795771) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+ai-team-cost-probe · run muzvfekv5o36 · provider mock · routing auto · cap 3000000 micro · rounds 1 · wallet before: OK
+  run 1/10 · chat-short · round 1 · tools 0 · micro 3312 · total 3312 · 8994 ms
+  run 2/10 · chat-history · round 1 · tools 0 · micro 2326 · total 5638 · 3900 ms
+  run 3/10 · quotation · round 1 · tools 0 · micro 6654 · total 12292 · 2808 ms
+  run 4/10 · stalled-deals · round 1 · tools 0 · micro 2128 · total 14420 · 1992 ms
+  run 5/10 · follow-up-silent · round 1 · tools 0 · micro 2158 · total 16578 · 2002 ms
+  run 6/10 · fb-post · round 1 · tools 0 · micro 6672 · total 23250 · 2696 ms
+  run 7/10 · review-reply · round 1 · tools 0 · micro 6708 · total 29958 · 3898 ms
+  run 8/10 · invoice-from-quotation · round 1 · tools 0 · micro 6384 · total 36342 · 3199 ms
+  run 9/10 · daily-summary · round 1 · tools 0 · micro 6492 · total 42834 · 2888 ms
+  run 10/10 · teach-back · round 1 · tools 0 · micro 7014 · total 49848 · 1699 ms
+  cleanup · conversations 10 · refund 49848 micro · wallet restored · residue none · file written
+PROBE_RESULT {"runs":10,"spentMicro":49848,"spentUsd":0.049848,"stoppedByCap":false,"out":"/tmp/ai-t01-builder/okC.md","refundRef":"qc-ai-t0.1-refund-muzvfekv5o36"}
+exit C=0
+EXIT=0

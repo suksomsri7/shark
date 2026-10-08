@@ -53,8 +53,33 @@ Anything the list misses is caught by the **residue check**: `cleanup.residue` i
 
 Refund detail: the refund is Σ of **all** USAGE rows AT-1 gained during the run, not only those of the listed conversations (a tool that calls a model itself — CRM/kanban/member AI bridges — charges without a conversation id). Such spend is refunded, reported as `cleanup.unlistedUsageMicro` and makes the exit code 2 (the table would under-count the cost of that task type).
 
-## 5. Results
-(see the end of this file — filled after the green runs)
+## 5. Results (full output: `ledger/wo-notes/ai-t0.1-green.txt`)
+All on the committed probe (d2020b64), QC4, `SHARK_AI_MOCK=1`, through the exact wrapper, each run its own lock hold:
+- forced #1: `🟡 T0.1: 23/26 (QC_FORCE) · PENDING-REAL 3 · residue tag qc-ai-t0.1-6rbwqi` · `JSON_SUMMARY {"total":26,"passed":23,"findings":[{"id":"T0.1-S1.5","sev":"MINOR","pending":"PENDING-REAL"},{"id":"T0.1-S2.3","sev":"MINOR","pending":"PENDING-REAL"},{"id":"T0.1-S4.4","sev":"MINOR","pending":"PENDING-REAL"}],"pendingReal":3}` · exit 0
+- forced #2: `🟡 T0.1: 23/26 (QC_FORCE) · PENDING-REAL 3 · residue tag qc-ai-t0.1-ne3iuz` · same JSON_SUMMARY · exit 0
+- unforced: `🟡 T0.1: 23/26 · PENDING-REAL 3 · residue tag qc-ai-t0.1-ri027o` · same JSON_SUMMARY · exit 0
+- (an earlier forced run on the pre-commit file, before the mock switch was re-read after the env load, was also 23/26 — not kept in green.txt)
+- every other check green in all three, including S5.1–S5.5 (no conversation left · wallet equal · one ADJUST per run · every AT-1 table count and the AiUsage net unchanged · no temp dir, worktree unchanged, safety net not needed) and X10.1/X10.2/X11.1–X11.3.
+- mock figures (meaningless as prices): full run 30 rows, 149,544 micro, 33 USAGE rows + 1 ADJUST; capped run 1 row, 3,312 micro, `stoppedByCap: true`.
+- AT-1 wallet: opened lazily by the first probe run with the welcome grant; `walletBeforeMicro` = `walletAfterMicro` = 10,000,000 (US$10) in every run since ⇒ above cap + US$1 for the real run (the controller still checks, brief error 5).
+
+Builder failure-path tests (mock, dummy key, one lock hold — end of green.txt):
+- A `SHARK_AI_DAILY_REQ=1`: run 1 measured, run 2 `sendMessage returned over_budget/day` ⇒ exit 2, partial file written with 1 row + `failure{}`, 2 conversations deleted (incl. the pre-created history room), refund 3,312, wallet restored, residue none.
+- B `SIGTERM` after run 3 started: the turn in flight finished, run 5 not started (`interrupted by a signal`) ⇒ exit 2, file with 4 rows, refund 14,420, wallet restored, residue none.
+- C clean 1-round run right after A and B: exit 0, 10 rows, wallet restored, residue none (A and B left a consistent tenant).
+
+Not run by the builder (controller's): `pnpm typecheck`, fitness, the earlier AI-team oracle (`qc-ai-t0.2`), the baseline set — no product file changed in this WO.
+
+## 6. Real run — command for the controller
+```
+bash scripts/iso.sh bash scripts/qc4.sh bash scripts/with-gate-lock.sh env AI_COST_PROBE=1 COST_CAP_USD=3 pnpm exec tsx scripts/ai-team-cost-probe.mts
+```
+- `SHARK_AI_MOCK` must NOT be 1 (neither exported nor in the QC env file — the probe re-reads it after the env load and refuses to write a mock result to the ledger file); `PROBE_OUT` unset ⇒ `ledger/AI-TEAM-COST-2026-10.md`; `PROBE_ROUNDS` unset ⇒ 3 ⇒ 30 turns.
+- `iso.sh` passes only PATH/HOME/QC_ENV_FILE/NODE_OPTIONS into the unit: every switch goes after `env` inside the wrapper, as above. The provider key, `SHARK_AI_MODEL`, `SHARK_AI_PRICE_MARKUP`, `SHARK_THB_PER_USD` come from the QC env file / the controller — the probe sets none of them. For the default routing the oracle expects, `SHARK_AI_MODEL` must be blank (the first stdout line says `routing auto|forced`); for list price ×1 the markup must be 1 (the file prints `price markup ×N`); `thbPerUsd` is printed in §4 of the file (36 unless `SHARK_THB_PER_USD` is set).
+- Expected duration: 30 real turns with tools, roughly 5–15 min, plus ~10 s of snapshots/cleanup, plus the lock wait. Progress: one stdout line per run with the running total in micro.
+- First line says `wallet before: OK|LOW`; LOW in a real run ⇒ refused (exit 2, nothing written): fund AT-1 (`ADJUST qc-ai-t0.1-fund-<date>`), run again.
+- Afterwards inspect: (1) exit code 0 and the last two stdout lines (`cleanup · … wallet restored · residue none · file written`, `PROBE_RESULT {…"runs":30…}`); (2) in the file: `provider: real`, 30 rows, model ids, `tool calls` > 0 on the tool types, `cleanup.deleted` (what real tools created: AiProposal / AiPlan / AiMemory / KbArticle …), `cleanup.residue: []`, `cleanup.unlistedUsageMicro: 0`, `cleanup.problems: []`, `failure: null`; (3) re-run the oracle forced ×2 + unforced ⇒ 26/26; (4) AT-1 table counts by hand as planned (the probe's own residue check already compares all 299 tenant models).
+- If it exits 2: stderr names the run and a scrubbed reason; the file holds what was measured (do not use it for pricing); the wallet is refunded and the rooms are deleted anyway. Delete the partial `ledger/AI-TEAM-COST-2026-10.md` before the next attempt is judged (with it present S1.5/S2.3/S4.4 are CRITICAL).
 
 ## 7. Disputes / technical decisions
 - No ORACLE-EDIT request (see the final section if that changed).
