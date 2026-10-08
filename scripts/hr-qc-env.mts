@@ -53,7 +53,7 @@ export async function loadHrQcEnv(label: string): Promise<{ host: string }> {
 // 🔴 ตารางของใบหลัง (HrSalaryProfile.payType · HrShift · HrRoster · HrLeaveBalance · HrLawValue …) **ยังไม่มีจริง** — ห้ามเติมจนกว่า migration ลง
 export const HR_TABLES = {
   // ── prisma/schema/hr.prisma ──
-  hrEmployee: { model: "HrEmployee", file: "hr.prisma", tenantId: true, role: "ทะเบียนพนักงาน (pinCode · linkedUserId · ช่องอ่อนไหว PDPA)" },
+  hrEmployee: { model: "HrEmployee", file: "hr.prisma", tenantId: true, role: "ทะเบียนพนักงาน (PIN · linkedUserId · ช่องอ่อนไหว PDPA)" },
   hrEmployeeDoc: { model: "HrEmployeeDoc", file: "hr.prisma", tenantId: true, role: "เอกสารแนบพนักงาน" },
   hrAttendance: { model: "HrAttendance", file: "hr.prisma", tenantId: true, role: "ลงเวลาเข้า/ออก + คำตัดสินสาย (snapshot)" },
   hrLeave: { model: "HrLeave", file: "hr.prisma", tenantId: true, role: "ใบลา (PENDING/APPROVED/REJECTED/CANCELLED)" },

@@ -1,0 +1,382 @@
+{
+ "$schema": "ทะเบียนปุ่ม/ตัวบ่งชี้ของ HR V2 — ทรงเดียวกับ scripts/crm-ui-inventory.json (rows) · ขอบเขต src/lib/modules/hr/** + src/app/app/sys/[id]/{hr,payroll}/** · คีย์ที่ขึ้นต้นด้วย $ คือเอกสาร ไม่ใช่ข้อมูล · ตัวตรวจอ่านเฉพาะ rows (ยังไม่มีด่าน fitness ของทะเบียนนี้ — ดูบันทึก H0.4 'decisions')",
+ "$owner": "ใบ H0.4 สร้าง · ทุกใบ UI ของ HR เติมแถวของหน้าตัวเองก่อนปิดใบ (hr-brief-COMMON §C.12) · ห้ามเพิ่ม testid ใน UI ในใบนี้ (R8)",
+ "$fields": {
+  "page": "route เต็มตามโฟลเดอร์จริง (เช่น /app/sys/[id]/hr/payroll · /app/sys/[id]/payroll/[runId]/slip/[employeeId])",
+  "testid": "ค่า data-testid ตรงตัว · ชื่อที่สร้างจากตัวแปร (`hr-payroll-run-${periodKey}-error`) เขียนเป็นแพตเทิร์น * แบบ crm-ui-inventory (normId ของ scripts/lib/crm-testid-scan.mts)",
+  "kind": "button | link | form | input | select | textarea | display — `display` = ตัวบ่งชี้ที่ข้อสอบอ่าน (role=alert/note/ป้าย) กดไม่ได้ (interactive=false)",
+  "interactive": "ตามกติกา isInteractive ของ crm-testid-scan (กดได้/กรอกได้)",
+  "file": "ไฟล์ที่เขียน data-testid (หรือที่ส่ง testId prop)",
+  "via": "เมื่อ testid ไม่ได้เขียนตรง ๆ: มาจาก prop testId ของคอมโพเนนต์ (ConfirmDialog → `${testId}-trigger` / `${testId}-sheet` · StrandedMoveButton → data-testid={testId})",
+  "conditional": "testid มีเฉพาะบางสถานะ",
+  "roles": "บทบาท HQC ที่ต้องเห็น (owner · manager · payroll · staff · kiosk · member)",
+  "hiddenFor": "บทบาท HQC ที่ต้องไม่เห็น (หน้าเงินเดือน: canViewPayroll = OWNER หรือ hr.payroll.read)",
+  "expect": "เหมือน crm-ui-inventory: { type: modal | navigate | mutation | inline-error | ui, target, … }",
+  "wo": "ใบที่สร้าง testid",
+  "oracle": "ข้อสอบที่อ่าน/กด testid นี้"
+ },
+ "$foreign": [
+  {
+   "testid": "hr-link-sales-teams",
+   "owner": "scripts/crm-ui-inventory.json",
+   "file": "src/lib/modules/hr/ui.tsx",
+   "wo": "C3.6",
+   "why": "ลิงก์ 'ทีมขาย' ของ CRM ที่อาศัยบนหน้า HR (CRM_HOSTED_CONTROLS ใน fitness F14) — แถวอยู่ทะเบียน CRM · 1 testid = 1 แถว"
+  }
+ ],
+ "$debt": {
+  "$note": "หน้า/ไฟล์ที่ตัวกด/ช่องกรอกยังไม่มี data-testid ณ H0.4 (นับ tag ที่ไม่มี data-testid/testId · ไม่นับ input hidden · นับด้วยสคริปต์ในบันทึก H0.4) — ห้ามเพิ่ม ลดได้อย่างเดียว · ใบที่เขียนหน้าใหม่ปิดหนี้",
+  "/app/sys/[id]/hr/attendance": {
+   "files": {
+    "src/lib/modules/hr/ui.tsx#HrAttendanceSection": 4
+   },
+   "closesIn": "H2.5"
+  },
+  "/app/sys/[id]/hr/leave": {
+   "files": {
+    "src/lib/modules/hr/ui.tsx#HrLeaveSection": 7,
+    "src/lib/modules/hr/BulkLeaveApprovals.tsx": 7
+   },
+   "closesIn": "H2.7"
+  },
+  "/app/sys/[id]/hr/employees": {
+   "files": {
+    "src/lib/modules/hr/ui.tsx#HrEmployeesSection": 21,
+    "src/lib/modules/hr/PinField.tsx": 3
+   },
+   "closesIn": "H1.1/H4.4"
+  },
+  "/app/sys/[id]/hr/employees/[employeeId]": {
+   "files": {
+    "src/app/app/sys/[id]/hr/employees/[employeeId]/page.tsx": 8,
+    "src/lib/modules/hr/EmployeeProfileForm.tsx": 30
+   },
+   "closesIn": "H1.1/H4.4"
+  },
+  "/app/sys/[id]/hr/kiosk": {
+   "files": {
+    "src/lib/modules/hr/KioskClock.tsx": 8
+   },
+   "closesIn": "H2.4"
+  },
+  "/app/sys/[id]/hr/payroll": {
+   "files": {
+    "src/lib/modules/hr/payroll-ui.tsx": 8,
+    "src/lib/modules/hr/PayAdjustForm.tsx": 8,
+    "src/lib/modules/hr/PayAdjustRowActions.tsx": 6,
+    "src/lib/modules/hr/RunRowActions.tsx": 4
+   },
+   "closesIn": "H3.4"
+  },
+  "/app/sys/[id]/payroll/[runId]/slip/[employeeId]": {
+   "files": {},
+   "closesIn": "H3.8",
+   "note": "ไม่มีตัวกด · ไม่มี testid ของเนื้อหาสลิปเลย"
+  },
+  "/app/sys/[id] (HrHub)": {
+   "files": {
+    "src/lib/modules/hr/ui.tsx#HrHub": 1
+   },
+   "closesIn": "(ไม่อยู่ในแผนที่ของ brief — ผู้คุมงานกำหนด)"
+  }
+ },
+ "rows": [
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-payroll-create",
+   "kind": "form",
+   "interactive": true,
+   "file": "src/lib/modules/hr/RunRowActions.tsx",
+   "roles": [
+    "owner",
+    "payroll"
+   ],
+   "hiddenFor": [
+    "manager",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "action:createPayrollRunAction",
+    "resultTarget": "hr-payroll-create-error",
+    "db": "HrPayrollRun DRAFT ของงวดที่เลือก"
+   },
+   "wo": "H0.1",
+   "oracle": "qc-hr-h0.1"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-payroll-create-error",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/RunRowActions.tsx",
+   "roles": [
+    "owner",
+    "payroll"
+   ],
+   "hiddenFor": [
+    "manager",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "inline-error",
+    "target": "hr-payroll-create"
+   },
+   "wo": "H0.2",
+   "oracle": "qc-hr-h0.2",
+   "note": "role=alert — ข้อความไทยคงที่เมื่อสร้างรอบไม่สำเร็จ"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-payroll-run-*-approve-trigger",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/RunRowActions.tsx",
+   "via": "ConfirmDialog testId={`hr-payroll-run-${periodKey}-approve`} → `${testId}-trigger`",
+   "roles": [
+    "owner",
+    "payroll"
+   ],
+   "hiddenFor": [
+    "manager",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "modal",
+    "target": "hr-payroll-run-*-approve-sheet",
+    "db": "HrPayrollRun DRAFT→APPROVED + JV (approveRun expect)"
+   },
+   "wo": "H0.1",
+   "oracle": "qc-hr-h0.1"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-payroll-run-*-recompute-trigger",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/RunRowActions.tsx",
+   "via": "ConfirmDialog testId={`hr-payroll-run-${periodKey}-recompute`} → `${testId}-trigger`",
+   "roles": [
+    "owner",
+    "payroll"
+   ],
+   "hiddenFor": [
+    "manager",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "modal",
+    "target": "hr-payroll-run-*-recompute-sheet",
+    "db": "recomputeDraftRun"
+   },
+   "wo": "H0.1",
+   "oracle": "qc-hr-h0.1"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-payroll-run-*-delete-trigger",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/RunRowActions.tsx",
+   "via": "ConfirmDialog testId={`hr-payroll-run-${periodKey}-delete`} → `${testId}-trigger`",
+   "roles": [
+    "owner",
+    "payroll"
+   ],
+   "hiddenFor": [
+    "manager",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "modal",
+    "target": "hr-payroll-run-*-delete-sheet",
+    "db": "deleteDraftRun"
+   },
+   "wo": "H0.1",
+   "oracle": "qc-hr-h0.1"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-payroll-run-*-error",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/RunRowActions.tsx",
+   "roles": [
+    "owner",
+    "payroll"
+   ],
+   "hiddenFor": [
+    "manager",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "inline-error",
+    "target": "hr-payroll-run-*-approve-trigger"
+   },
+   "wo": "H0.1",
+   "oracle": "qc-hr-h0.1",
+   "note": "role=alert ต่อแถวรอบ (approve/recompute/delete ไม่สำเร็จ)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-payroll-run-*-exclusions",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/payroll-ui.tsx",
+   "roles": [
+    "owner",
+    "payroll"
+   ],
+   "hiddenFor": [
+    "manager",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "ui",
+    "target": "hr-payroll-run-*-exclusions",
+    "state": "appears"
+   },
+   "wo": "H0.2",
+   "oracle": "qc-hr-h0.2",
+   "note": "role=note — คนที่มีโปรไฟล์แต่ไม่อยู่ในรอบร่าง (ENDED_BEFORE · STARTS_AFTER · REMOVED_NO_END_DATE)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-payroll-run-*-negative",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/payroll-ui.tsx",
+   "roles": [
+    "owner",
+    "payroll"
+   ],
+   "hiddenFor": [
+    "manager",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "ui",
+    "target": "hr-payroll-run-*-negative",
+    "state": "appears"
+   },
+   "wo": "H0.2",
+   "oracle": "qc-hr-h0.2",
+   "note": "ป้ายรอบที่มีแถวสุทธิติดลบ (อนุมัติไม่ได้)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-payroll-run-*-partial",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/payroll-ui.tsx",
+   "roles": [
+    "owner",
+    "payroll"
+   ],
+   "hiddenFor": [
+    "manager",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "ui",
+    "target": "hr-payroll-run-*-partial",
+    "state": "appears"
+   },
+   "wo": "H0.2",
+   "oracle": "qc-hr-h0.2",
+   "note": "ป้าย 'ต้องตรวจ' เข้า/ออกกลางเดือน (PARTIAL_MONTH)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-payroll-item-*-negative",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/payroll-ui.tsx",
+   "conditional": "มี data-testid เฉพาะแถวที่ NEGATIVE_NET (ไม่งั้น undefined)",
+   "roles": [
+    "owner",
+    "payroll"
+   ],
+   "hiddenFor": [
+    "manager",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "navigate",
+    "target": "/app/sys/[id]/payroll/[runId]/slip/[employeeId]"
+   },
+   "wo": "H0.2",
+   "oracle": "qc-hr-h0.2"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-payroll-stranded",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/payroll-ui.tsx",
+   "roles": [
+    "owner",
+    "payroll"
+   ],
+   "hiddenFor": [
+    "manager",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "ui",
+    "target": "hr-payroll-stranded",
+    "state": "appears"
+   },
+   "wo": "H0.2",
+   "oracle": "qc-hr-h0.2",
+   "note": "role=note — รายการที่อนุมัติแล้วแต่ค้างงวดที่ปิด"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-payroll-stranded-*-move",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/RunRowActions.tsx",
+   "via": "StrandedMoveButton data-testid={testId} · payroll-ui.tsx:311 testId={`hr-payroll-stranded-${a.id}-move`}",
+   "roles": [
+    "owner",
+    "payroll"
+   ],
+   "hiddenFor": [
+    "manager",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "action:moveStrandedAdjustmentAction",
+    "db": "HrPayAdjustment.periodKey → งวดเปิดถัดไป"
+   },
+   "wo": "H0.2",
+   "oracle": "qc-hr-h0.2"
+  }
+ ]
+}
