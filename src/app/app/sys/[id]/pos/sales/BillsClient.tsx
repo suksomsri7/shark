@@ -13,7 +13,9 @@ import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
 import { billDetailAction, billsPageDataAction, voidSaleAction } from "@/lib/modules/pos/bills-actions";
 import { BILLS_ERROR_KEYS, BILL_STATUS_FILTERS, VOID_REASON_MAX, addBillDays, type BillDetailResult, type BillRow, type BillStatusFilter, type BillsPageDataResult } from "@/lib/modules/pos/bills-shared";
+import { heartbeatAction } from "@/lib/modules/pos/device-actions";
 import { getPosDeviceId } from "@/lib/modules/pos/device-id";
+import { parsePrinterConfig, type PosPrinterPaper } from "@/lib/modules/pos/device-shared";
 import { reprintReceiptAction } from "@/lib/modules/pos/receipt-actions";
 import { receiptRefusalMessageKey, renderReceiptHtml } from "@/lib/modules/pos/receipt-render";
 import { refundSaleAction, saleForRefundAction } from "@/lib/modules/pos/refund-actions";
@@ -140,27 +142,36 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
     };
   }, [systemId, unitId, date, status, q, channel, staffUserId, page, reloadTick]);
 
+  // แก้รอบ 1 F1: บิลที่ผู้ใช้ต้องการล่าสุด — ผลของคำขอเก่า (แตะ A ช้า แล้วแตะ B) ห้ามทับลิ้นชักของ B
+  const wantedRef = useRef<string | null>(null);
   const loadDetail = useCallback(
     async (saleId: string) => {
       setDrawerErr(null);
+      let res: BillDetailResult;
       try {
-        setDetail(await billDetailAction({ systemId, unitId, saleId }));
+        res = await billDetailAction({ systemId, unitId, saleId });
       } catch {
-        setDetail({ ok: false, code: "UNKNOWN", message: "" });
+        res = { ok: false, code: "UNKNOWN", message: "" };
       }
+      if (wantedRef.current === saleId) setDetail(res);
     },
     [systemId, unitId],
   );
   const openBill = useCallback(
     (saleId: string) => {
-      if (saleId === selectedId && detail) return; // แถวเดิมที่เปิดอยู่แล้ว — ไม่โหลดซ้ำ
+      wantedRef.current = saleId;
+      if (detail?.ok && detail.bill.id === saleId) {
+        setSelectedId(saleId); // บิลนี้แสดงอยู่แล้ว — ไม่โหลดซ้ำ
+        return;
+      }
       setSelectedId(saleId);
       setDetail(null);
       void loadDetail(saleId);
     },
-    [loadDetail, selectedId, detail],
+    [loadDetail, detail],
   );
   const closeDrawer = useCallback(() => {
+    wantedRef.current = null;
     setSelectedId(null);
     setDetail(null);
     setMenuFor(null);
@@ -218,6 +229,23 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
     }
   };
 
+  // แก้รอบ 1 F3 (R5): ขนาดกระดาษ = printerConfig ของเครื่องนี้ (heartbeat ตัวเดียวกับหน้าขาย · อ่านครั้งแรกที่พิมพ์แล้วจำไว้) ?? "80"
+  const paperRef = useRef<PosPrinterPaper | null>(null);
+  const devicePaper = async (): Promise<PosPrinterPaper> => {
+    if (paperRef.current) return paperRef.current;
+    let paper: PosPrinterPaper = "80";
+    const deviceCode = getPosDeviceId();
+    if (deviceCode) {
+      const hb = await heartbeatAction({ systemId, unitId, deviceCode }).catch(() => null);
+      if (hb?.ok && hb.device) {
+        const cfg = parsePrinterConfig(hb.device.printerConfig);
+        if (cfg.ok) paper = cfg.config.paper ?? "80";
+      }
+    }
+    paperRef.current = paper;
+    return paper;
+  };
+
   // ── พิมพ์สำเนา (พิมพ์ผ่านเบราว์เซอร์ใน iframe ซ่อน · มติ CD4 — เครื่องพิมพ์ ESC/POS เป็นของ P1.10U) ──
   const reprint = async (saleId: string) => {
     if (reprintBusy) return;
@@ -230,7 +258,7 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
         setDrawerErr(trc(receiptRefusalMessageKey(r.code)));
         return;
       }
-      const html = renderReceiptHtml(r.payload, { paper: "80", locale: locale.startsWith("en") ? "en" : "th" });
+      const html = renderReceiptHtml(r.payload, { paper: await devicePaper(), locale: locale.startsWith("en") ? "en" : "th" });
       const frame = document.createElement("iframe");
       frame.setAttribute("aria-hidden", "true");
       frame.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden";
@@ -384,11 +412,12 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
         refreshAll();
         return;
       }
-      if (r.code === "PAYMENT_MISMATCH") {
-        // ยอดบนเซิร์ฟเวอร์เปลี่ยน (มีคนคืนไปก่อน) — โหลดใหม่ · คำขอใหม่ = คีย์ใหม่
+      if (r.code === "PAYMENT_MISMATCH" || r.code === "IDEMPOTENCY_CONFLICT") {
+        // ยอดบนเซิร์ฟเวอร์เปลี่ยน (มีคนคืนไปก่อน) / คีย์นี้ถูกใช้กับรายการอื่นแล้ว (แก้รอบ 1 F2) — โหลดใหม่ · คำขอใหม่ = คีย์ใหม่
         await loadRefund(rf.sale.id);
         setRfKey(newKey("refund"));
         setRfErr(t("refund.changed"));
+        refreshAll();
       } else if (r.code === "SHIFT_REQUIRED") setRfCashErr(tr("shiftRequired"));
       else if (r.code === "UNKNOWN") {
         setRfErr(tr("unknown"));
@@ -510,9 +539,12 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
             <button type="button" data-testid="pos-bills-date-prev" aria-label={t("datePrev")} className="btn btn-ghost h-11 w-11 !px-0" onClick={() => setFilter(() => setDate((d) => addBillDays(d, -1)))}>
               <BillIcon name="left" />
             </button>
-            <label className="input flex h-11 w-auto items-center gap-2 font-semibold">
+            {/* แก้รอบ 1 F6: ป้ายที่เห็น = วันที่ไทย (พ.ศ.) แบบภาพ 12 · ช่องวันที่ของเบราว์เซอร์ซ้อนทับโปร่งใส (แตะ = เปิดตัวเลือกวัน) */}
+            <label className="input relative flex h-11 w-auto min-w-[170px] cursor-pointer items-center gap-2 font-semibold">
               <BillIcon name="cal" className="text-[color:var(--color-muted)]" />
-              <span className="sr-only">{t("date")}</span>
+              <span aria-hidden className="tabular-nums">
+                {dateLabel(date, locale)}
+              </span>
               <input
                 type="date"
                 data-testid="pos-bills-date"
@@ -521,8 +553,15 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
                 onChange={(e) => {
                   if (/^\d{4}-\d{2}-\d{2}$/.test(e.target.value)) setFilter(() => setDate(e.target.value));
                 }}
-                className="w-[150px] bg-transparent outline-none"
-                aria-label={t("date")}
+                onClick={(e) => {
+                  try {
+                    e.currentTarget.showPicker?.();
+                  } catch {
+                    /* เบราว์เซอร์ไม่รองรับ showPicker — ใช้การแตะปกติ */
+                  }
+                }}
+                className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                aria-label={`${t("date")} ${dateLabel(date, locale)}`}
               />
             </label>
             <button type="button" data-testid="pos-bills-date-next" aria-label={t("dateNext")} disabled={date >= today} className="btn btn-ghost h-11 w-11 !px-0 disabled:opacity-40" onClick={() => setFilter(() => setDate((d) => addBillDays(d, 1)))}>

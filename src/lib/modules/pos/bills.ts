@@ -278,7 +278,7 @@ export async function billsPageData(ctx: RegisterCtx, actor: RegisterActor, q: u
         time: timeOf(r).toISOString(),
         sourceModule: r.sourceModule,
         customer: cu
-          ? { name: customerName(cu), sub: [nonEmpty(cu.memberCode), cu.tierDefId ? tierName.get(cu.tierDefId) : undefined].filter(Boolean).join(" · ") || (nonEmpty(cu.phone) ?? "") }
+          ? { name: customerName(cu), sub: [nonEmpty(cu.memberCode), cu.tierDefId ? tierName.get(cu.tierDefId) : undefined].filter(Boolean).join(" · ") } // แก้รอบ 1 F5: รหัสสมาชิก/ระดับเท่านั้น (ไม่แสดงเบอร์ · ค้นด้วยเบอร์ยังได้)
           : null,
         payMethods: payMethodsText(r.payments.map((p) => p.type)),
         staffName: r.soldByUserId ? (names.get(r.soldByUserId) ?? "-") : SYSTEM_NAME,

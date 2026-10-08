@@ -141,7 +141,8 @@ export function SummaryCard({ label, value, sub, testid }: { label: string; valu
 /** CSV ของแถวในหน้านี้ (U1: "ส่งออก (หน้านี้)" — ส่งออกทั้งวันอยู่ที่ CSV ของ P1.17) */
 export function billsCsv(rows: BillRow[], head: string[], cell: (r: BillRow) => (string | number)[]): string {
   const esc = (v: string | number) => {
-    const s = String(v);
+    // แก้รอบ 1 F4: กันสูตรในสเปรดชีต (= + - @ นำหน้า) — ใส่ ' นำหน้าเฉพาะข้อความ (ตัวเลขเงินเป็น number ไม่โดน)
+    const s = typeof v === "string" && /^[=+\-@]/.test(v) ? `'${v}` : String(v);
     return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };
   return "﻿" + [head, ...rows.map(cell)].map((r) => r.map(esc).join(",")).join("\r\n");

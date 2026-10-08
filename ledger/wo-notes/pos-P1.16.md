@@ -85,3 +85,33 @@ Cashier run reuses today's tagged set when complete (no writes). finally/signal:
 | `scripts/fitness-pos.mts` | 0 · 8/8 (F15.2 info: `voidSale(…, audit?)` + new caller `bills.ts` → controller `--update-pos-contract`) |
 | `visual-pos.mts p1.16 --page sales --states --dry` owner / cashier | 0 / 0 (15 shots each) |
 Not run (rules): next build, server, real visual shots (CONTROLLER-RUN on p11), deploy.
+
+## Fix round 1 (reviewer MERGEABLE-AFTER-FIXES · controller F1–F6)
+| fix | done |
+|---|---|
+| F1 MAJOR | `BillsClient` `wantedRef` set in `openBill` (cleared on close); `loadDetail` drops a result whose sale id ≠ `wantedRef.current` (tap A slow → tap B fast keeps B); early return only when `detail?.ok && detail.bill.id === saleId` |
+| F2 | refund `IDEMPOTENCY_CONFLICT` handled like `PAYMENT_MISMATCH`: reload `saleForRefund`, rotate the key, "ยอดเปลี่ยน กรุณาตรวจอีกครั้ง", `refreshAll()` (now also on PAYMENT_MISMATCH) |
+| F3 | reprint paper = this device's `printerConfig.paper` (`heartbeatAction` of `getPosDeviceId()` → `parsePrinterConfig`, read on first reprint and cached) ?? "80" — R5 |
+| F4 | CSV cells that start with `= + - @` get a `'` prefix (formula injection) |
+| F5 | `BillRow.customer.sub` = member code / tier only (phone fallback dropped; phone search unchanged) |
+| F6 | date control shows "30 ก.ย. 2569" (`th-TH` · Buddhist year · BKK) with the native `<input type=date>` overlaid transparent (`showPicker()` on tap); ‹ › kept; testid unchanged |
+
+Recorded (no code):
+- **en locale** shows server-built Thai strings in the drawer timeline (`เปิดบิลและชำระครบ …`), refund reason text and `"ระบบ"` staff name — the names table mandates these texts (deviation). Follow-up: return codes + params from `billDetail` and translate on screen.
+- **Gate mismatch**: `page.tsx` is gated by `posSalesScope` (`pos.sale.create` only) while the actions/service serve `pos.sale.read` (`receiptReadScope`) — a read-only user gets 404 on the page. Follow-up: widen both gates together (page + qc-hf-pos-page-authz S-8 literal).
+- **Performance**: `billsPageData` loads the day's SALE rows (lean select) into memory for counts/summary/search; fine for shop volumes, note for busy restaurants (thousands of bills/day) — follow-up: SQL counts + paged query if it shows up.
+
+Deviations table additions:
+| mockup element | here | ruling |
+|---|---|---|
+| refund modal has no reference field | "เลขอ้างอิง (ไม่บังคับ)" input under non-cash methods (prefilled from the original payment) | P1.8 pay methods carry `reference` |
+| drawer totals: only ยอดสุทธิ + VAT | extra rows ส่วนลด / ค่าบริการ / ทิป / คืนเงินแล้ว when non-zero | totals identity visible |
+| no unit selector | unit select when the user reaches > 1 branch (`?unit=`) | multi-branch scope |
+| reprint + ส่ง LINE share a row | reprint is a full-width row (ส่ง LINE omitted) | CD3 |
+| voided row: muted only | receiptNo struck through (table, cards, drawer title) | U4 |
+
+Gates (fix round 1 code):
+- typecheck 0 · fitness-pos 0 · 8/8 · visual `--page sales --states --dry` owner rc 0 · cashier rc 0
+- qc-pos-p1.16 unforced 0 · 28/28 · forced 0 · 28/28 (cleanup 314 tables · residue 0)
+- qc-pos-p1.3 0 · 128/128
+- Note: the first forced p1.16 (27/28, Z1) and first p1.3 (127/128, S9.1) runs were red **only** from seed-tenant row drift caused by a concurrent writer: the controller's real visual run seeded the bills fixture in the QC coffee shop at 04:13:57Z (`posqc-vis-bills-2125105`, receipts 202610-0018…0024 + CN202610-0001/0002, shift closed by the harness). Re-runs after it finished: green. (Confirms the step-4 fixture works on the real server.)
