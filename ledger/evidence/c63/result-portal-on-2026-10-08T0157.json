@@ -1,0 +1,34 @@
+{
+ "stage": "portal-on",
+ "startedAt": "2026-10-08T01:57:49.810Z",
+ "pages": [],
+ "steps": [
+  {
+   "code": "S14",
+   "role": "owner",
+   "what": "portal: enable settings.crm.portal (UI) → setup --stage portal → customer walks /b/<slug>/* → customer cannot open /app/* → owner disables portal",
+   "at": "2026-10-08T01:57:52.391Z",
+   "ok": true,
+   "db": {
+    "enabled": "true",
+    "board": null
+   },
+   "end": "2026-10-08T01:57:58.635Z"
+  }
+ ],
+ "findings": [],
+ "aborted": null,
+ "finishedAt": "2026-10-08T01:57:58.684Z",
+ "sideEffectsStart": {
+  "emails": 0,
+  "customers": 0,
+  "documents": 0,
+  "account_contacts": 0,
+  "cards": 0,
+  "crm_webhooks": 0,
+  "automation_runs": 0,
+  "ai_txns": 1,
+  "enrollments": 0,
+  "owner_notifications": 0
+ }
+}
