@@ -47,6 +47,14 @@
 //   🔴 เขียน: กะ 1 กะ + บิลขาย PAID เงินสด 1 ใบ + เงินเข้า 1 รายการ (ของรอบนี้ · ร้าน QC) · finally/signal ปิดกะนี้ถ้ายังเปิด (นับ = ยอดคาด)
 //   แคชเชียร์ QC ไม่มี pos.shift.operate ⇒ ทุกสถานะ = การ์ดปฏิเสธ pos-shift-refusal (หน้า 200) · ไม่เขียนอะไร ◂
 //
+// POS P1.16 ▸ หน้า sales ("บิลวันนี้" ภาพ 12) + `--states` (เฉพาะร้าน coffee · --page sales หรือ wo p1.16*): เครื่องแยก `posqc-vis-bills-<pid>`
+//   bills-list (วันนี้ ≥ 6 บิลหลายสถานะ) · bills-drawer (เลือกแถว → ลิ้นชัก) · bills-void (กล่องยกเลิก + พิมพ์เหตุผล · ไม่กดยืนยัน) ·
+//   bills-refund (หน้าต่างคืนเงิน · เลือก 1 บรรทัด · เงินสด · ไม่กดยืนยัน) · bills-empty (?date= วันที่ไม่มีบิล) — 3 ขนาด
+//   ข้อมูล: 7 บิลของวันนี้ผ่านบริการ (submitRegisterSale ในกะของเครื่องภาพบิล · ปกติ 2 · คืนบางส่วน 1 (refundSale) · คืนครบ 1 (refundSale) ·
+//   ยกเลิก 1 (voidSaleByActor = ตัวทำงานของ voidSaleAction) · เงินสดนอกกะ 1 (createSale shiftId null) · จ่ายผสม 1) — ชื่อบรรทัดลงท้าย "(ภาพบิล QC)"
+//   🔴 เขียน: กะ 1 กะ + 7 บิล + ใบคืน 2 ใบ (ร้าน QC) · รอบแคชเชียร์ใช้ชุดของวันนี้ซ้ำถ้ามีครบ (ไม่เขียนเพิ่ม) ·
+//   finally/signal ปิดกะของเครื่องภาพบิลถ้ายังเปิด (นับ = ยอดคาด) · แคชเชียร์ไม่มี pos.sale.void/refund ⇒ bills-void/bills-refund = ลิ้นชักที่ปุ่มปิด/ซ่อน ◂
+//
 // 🔴 ไม่มีค่าปริยายของ base — ไม่ส่ง `--base`/`QC_BASE` = exit 2 · ต่อไม่ได้ = exit 2 · `:3215` = exit 2
 //    (พอร์ต 3215 เป็นของเซิร์ฟเวอร์ CRM RUN — LANE-RULES ข้อ 4 · ตั้ง POS_VISUAL_ALLOW_3215=1 เมื่อ CRM ปิดแล้วเท่านั้น)
 // 🔴 ชื่อไฟล์จงใจไม่ขึ้นต้น qc- (ต้องมีเซิร์ฟเวอร์ + chromium — ไม่เข้า qc:all)
@@ -116,7 +124,7 @@ const fileOf = (p: PosPage, w: number, h: number) => `${OUT}/${p}-${userKey}-${w
 const STATES_ON = /^p1\.3/i.test(WO) || argv.includes("--states");
 const LOCALE_EN = process.env.LOCALE === "en";
 type Device = (typeof POS_VIEWPORTS)[number]["name"];
-type StateKey = "default" | "cart3" | "cart4-01" | "line-editor" | "bill-discount" | "custom-item" | "paydlg-cash" | "sale-done" | "search-empty" | "stock-warn" | "offline" | "mobile-sheet" | "options-popover" | "weigh" | StockStateKey | ShiftsStateKey;
+type StateKey = "default" | "cart3" | "cart4-01" | "line-editor" | "bill-discount" | "custom-item" | "paydlg-cash" | "sale-done" | "search-empty" | "stock-warn" | "offline" | "mobile-sheet" | "options-popover" | "weigh" | StockStateKey | ShiftsStateKey | BillsStateKey;
 const STATE_PLAN: { key: StateKey; devices: readonly Device[]; note: string }[] = [
   { key: "default", devices: ["desktop", "ipad", "mobile"], note: "เปิดหน้า (ตะกร้าว่าง) — การ์ดเหลือน้อย/หมด/ปิดขายของ fixture อยู่ในกริด" },
   { key: "cart3", devices: ["desktop", "ipad", "mobile"], note: "อเมริกาโน่×2 · ลาเต้ (ลด ฿10) · ครัวซองต์ (สต็อก N → N−1)" },
@@ -155,6 +163,21 @@ const SHIFTS_STATE_PLAN: { key: ShiftsStateKey; devices: readonly Device[]; note
   { key: "shifts-close", devices: ["desktop", "ipad", "mobile"], note: "การ์ดปิดกะ: แบงก์/เหรียญ = ยอดคาด − ฿15 + เหตุผล (ไม่กดปิด)" },
   { key: "shifts-z", devices: ["desktop", "ipad", "mobile"], note: "ปิดกะ → แผง Z + กะที่ปิดแล้ว (ขนาดถัดไป = เปิด Z จากแถวในรายการ)" },
 ];
+// POS P1.16 ▸ สถานะของหน้าบิลวันนี้ (ข้อมูลสร้างครั้งเดียวก่อนเปิด chromium · ทุกสถานะอ่านอย่างเดียว ไม่กดยืนยัน) ◂
+type BillsStateKey = "bills-list" | "bills-drawer" | "bills-void" | "bills-refund" | "bills-empty";
+const BILLS_STATE_PLAN: { key: BillsStateKey; devices: readonly Device[]; note: string }[] = [
+  { key: "bills-list", devices: ["desktop", "ipad", "mobile"], note: "วันนี้ ≥ 6 บิล: ยกเลิก 1 · คืนบางส่วน 1 · คืนครบ 1 · เงินสดนอกกะ 1 · ปกติ/จ่ายผสม" },
+  { key: "bills-drawer", devices: ["desktop", "ipad", "mobile"], note: "เลือกบิลปกติ → ลิ้นชักบิล (390 = แผ่นเต็มจอ)" },
+  { key: "bills-void", devices: ["desktop", "ipad", "mobile"], note: "เจ้าของ = กล่องยกเลิกบิล + พิมพ์เหตุผล (ไม่กดยืนยัน) · แคชเชียร์ = ปุ่มยกเลิกปิด + คำอธิบาย" },
+  { key: "bills-refund", devices: ["desktop", "ipad", "mobile"], note: "เจ้าของ = หน้าต่างคืนเงิน เลือก 1 บรรทัด + เงินสด (ไม่กดยืนยัน) · แคชเชียร์ = ไม่มีปุ่มคืนเงิน" },
+  { key: "bills-empty", devices: ["desktop", "ipad", "mobile"], note: "?date= วันที่ไม่มีบิล → ข้อความว่าง" },
+];
+const BILLS_STATE_KEYS: ReadonlySet<string> = new Set(BILLS_STATE_PLAN.map((s) => s.key));
+const isBillsState = (k: StateKey): k is BillsStateKey => BILLS_STATE_KEYS.has(k);
+/** รหัสเครื่องของสถานะหน้าบิล (กะของบิลชุดภาพ · ปิดใน finally) */
+const BILLS_DEVICE_ID = `posqc-vis-bills-${process.pid}`;
+/** วันที่ไม่มีบิลของสถานะ bills-empty (ก่อนร้าน QC มีข้อมูล) */
+const BILLS_EMPTY_DATE = "2024-01-02";
 /** รหัสเครื่องของสถานะหน้ากะ — แยกจาก DEVICE_ID ของหน้าขาย (กะของหน้าขายเปิดค้างทั้งรอบ) */
 const SHIFTS_DEVICE_ID = `posqc-vis-shdev-${process.pid}`;
 const STOCK_STATE_KEYS: ReadonlySet<string> = new Set(STOCK_STATE_PLAN.map((s) => s.key));
@@ -167,8 +190,17 @@ const viewports = LOCALE_EN ? POS_VIEWPORTS.filter((v) => v.name === "desktop") 
 const stockStatesOn = STATES_ON && tenantKey === "coffee" && (onlyPage === "stock" || /^p1\.14/i.test(WO));
 // สถานะหน้ากะเฉพาะ --page shifts หรือ wo p1.9* (รอบ --states ทุกหน้าเดิมไม่เปิดกะ/ไม่ขายเพิ่ม)
 const shiftsStatesOn = STATES_ON && tenantKey === "coffee" && (onlyPage === "shifts" || /^p1\.9/i.test(WO));
+// สถานะหน้าบิลวันนี้เฉพาะ --page sales หรือ wo p1.16* (รอบ --states ทุกหน้าเดิมไม่สร้างบิลเพิ่ม)
+const billsStatesOn = STATES_ON && tenantKey === "coffee" && (onlyPage === "sales" || /^p1\.16/i.test(WO));
+const billsPath = (st: BillsStateKey) => `/app/sys/${SYS}/pos/sales?unit=${encodeURIComponent(unitId)}${st === "bills-empty" ? `&date=${BILLS_EMPTY_DATE}` : ""}`;
 const jobs: Job[] = pages.flatMap((p: PosPage): Job[] =>
-  shiftsStatesOn && p === "shifts"
+  billsStatesOn && p === "sales"
+    ? BILLS_STATE_PLAN.flatMap((st): Job[] =>
+        viewports
+          .filter((v) => st.devices.includes(v.name))
+          .map((v): Job => ({ page: p, v, state: st.key, path: billsPath(st.key), file: `${OUT}/${p}-${st.key.replace(/^bills-/, "")}-${userKey}-${v.w}x${v.h}${LOCALE_EN ? "-en" : ""}.png` })),
+      )
+    : shiftsStatesOn && p === "shifts"
     ? SHIFTS_STATE_PLAN.flatMap((st): Job[] =>
         viewports
           .filter((v) => st.devices.includes(v.name))
@@ -212,6 +244,11 @@ if (DRY) {
       console.log(`สถานะหน้ากะ P1.9 U${userKey === "cashier" ? " (แคชเชียร์ = การ์ดปฏิเสธทุกสถานะ)" : ""} · เครื่อง ${SHIFTS_DEVICE_ID}:`);
       for (const st of SHIFTS_STATE_PLAN) console.log(`  · ${st.key.padEnd(19)} ${st.devices.join("/").padEnd(20)} ${st.note}`);
       if (userKey === "owner") console.log("  เขียน: กะ 1 กะ (เปิดผ่าน UI → ปิดผ่าน UI ใน shifts-z · ค้าง = ปิดใน finally นับ = ยอดคาด) + บิลขายเงินสด 1 ใบ + นำเงินเข้า ฿100 1 รายการ");
+    }
+    if (billsStatesOn && pages.includes("sales")) {
+      console.log(`สถานะหน้าบิลวันนี้ P1.16 U${userKey === "cashier" ? " (แคชเชียร์ = ปุ่มยกเลิกปิด/ไม่มีคืนเงิน)" : ""} · เครื่อง ${BILLS_DEVICE_ID}:`);
+      for (const st of BILLS_STATE_PLAN) console.log(`  · ${st.key.padEnd(19)} ${st.devices.join("/").padEnd(20)} ${st.note}`);
+      console.log(`  เขียน: กะ 1 กะ (บริการ openShift · ปิดใน finally นับ = ยอดคาด) + บิลวันนี้ 7 ใบ + ใบคืน 2 ใบ${userKey === "cashier" ? " — ข้ามเมื่อวันนี้มีชุดภาพบิลครบแล้ว (จากรอบเจ้าของ)" : ""}`);
     }
     if (needFixtures) console.log(`  fixture: สินค้าชั่วคราว 11 ตัว (เหลือ 2 · หมดสต็อก · ปิดขาย + 4 ตัวของภาพ 01 + ลาเต้มีตัวแปร 1+2 + สินค้าชั่ง 1) + กลุ่มตัวเลือก 4 กลุ่ม ที่สาขา ${unitKey} — ลบใน finally`);
   }
@@ -375,6 +412,13 @@ for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
         if (SHIFTS.close) console.error(`${SHIFTS.close.ok ? "🧹" : "⚠️"} ${SHIFTS.close.detail}`);
       } catch (e) {
         console.error(`❌ ปิดกะของหน้ากะไม่สำเร็จ: ${e instanceof Error ? e.message : e}`);
+      }
+      // POS P1.16 U: ปิดกะของเครื่องภาพบิล (เหมือน finally)
+      try {
+        await closeBillsShift();
+        if (BILLS.close) console.error(`${BILLS.close.ok ? "🧹" : "⚠️"} ${BILLS.close.detail}`);
+      } catch (e) {
+        console.error(`❌ ปิดกะของหน้าบิลไม่สำเร็จ: ${e instanceof Error ? e.message : e}`);
       }
       // POS P1.14 U: ยกเลิกรอบนับของรอบนี้ (เหมือน finally)
       try {
@@ -611,6 +655,7 @@ async function runState(page: Any, state: StateKey, device: Device): Promise<voi
   // R3: แยกด้วยสมาชิกชุดที่แน่นอน ไม่ใช่คำนำหน้า — สถานะหน้าขาย "stock-warn" ขึ้นต้น "stock-" แต่ไม่ใช่สถานะหน้าสต็อก
   if (isStockState(state)) return runStockState(page, state); // POS P1.14 U
   if (isShiftsState(state)) return runShiftsState(page, state); // POS P1.9 U
+  if (isBillsState(state)) return runBillsState(page, state); // POS P1.16 U
   await visibleEl(page, tid("pos-reg-root"), 0, 15_000).catch(() => {
     throw new StepError("หน้าขายใหม่ไม่ขึ้น (pos-reg-root) — ธง settings.pos.registerV2 ของร้าน QC เปิดหรือยัง? (seed-pos-qc)");
   });
@@ -992,6 +1037,209 @@ async function closeShiftsStateShift(): Promise<void> {
 }
 // ◂
 
+// ═══════════════════ POS P1.16 U ▸ ข้อมูล + ขั้นตอนของหน้าบิลวันนี้ (เครื่อง BILLS_DEVICE_ID · actor = เจ้าของร้าน) ═══════════════════
+const BILLS = { seeded: false, reused: false, shiftId: "", target: "", ids: {} as Record<string, string>, error: null as string | null, close: null as null | { ok: boolean; detail: string } };
+const BILL_TAG = "(ภาพบิล QC)";
+async function ownerActor(): Promise<{ userId: string; role: "OWNER" | "MANAGER" | "STAFF"; unitAccess: string[]; permissions: Record<string, unknown> }> {
+  const own = T.users.owner;
+  const mb = await prisma.membership.findUnique({ where: { id: own.membershipId }, select: { role: true, unitAccess: true, permissions: true } });
+  if (!mb) throw new StepError("ไม่พบ membership เจ้าของร้าน QC");
+  return {
+    userId: own.userId,
+    role: mb.role as "OWNER" | "MANAGER" | "STAFF",
+    unitAccess: Array.isArray(mb.unitAccess) ? (mb.unitAccess as unknown[]).filter((u): u is string => typeof u === "string") : [],
+    permissions: mb.permissions && typeof mb.permissions === "object" ? (mb.permissions as Record<string, unknown>) : {},
+  };
+}
+/** บิลภาพของวันนี้ที่มีอยู่แล้ว (รอบแคชเชียร์ใช้ซ้ำ) — ต้องครบทุกสถานะ + มีบิลปกติที่ยังไม่คืน */
+async function existingBillsSet(): Promise<string | null> {
+  const start = new Date(Date.parse(`${new Date(Date.now() + 7 * 3_600_000).toISOString().slice(0, 10)}T00:00:00+07:00`));
+  const rows = await prisma.posSale.findMany({
+    where: { tenantId: T.tenantId, systemId: SYS, unitId, docType: "SALE", createdAt: { gte: start }, lines: { some: { name: { endsWith: BILL_TAG } } } },
+    select: { id: true, status: true, refundedSatang: true, shiftId: true, payments: { select: { type: true } } },
+    orderBy: { createdAt: "asc" },
+  });
+  const has = (f: (r: (typeof rows)[number]) => boolean) => rows.some(f);
+  const ok =
+    rows.length >= 6 &&
+    has((r) => r.status === "VOIDED") &&
+    has((r) => r.status === "REFUNDED") &&
+    has((r) => r.status === "PAID" && r.refundedSatang > 0) &&
+    has((r) => r.shiftId === null && r.payments.some((p) => p.type === "CASH"));
+  return ok ? (rows.find((r) => r.status === "PAID" && r.refundedSatang === 0 && r.shiftId !== null)?.id ?? null) : null;
+}
+/** สร้างบิลชุดภาพครั้งเดียวต่อรอบ (ก่อนเปิด chromium) — พังไม่โยน (บันทึก BILLS.error · ทุกสถานะตกพร้อมเหตุผล) */
+async function seedBillsOnce(): Promise<void> {
+  if (BILLS.seeded || BILLS.error) return;
+  try {
+    if (userKey !== "owner") {
+      const reuse = await existingBillsSet();
+      if (reuse) {
+        BILLS.target = reuse;
+        BILLS.reused = true;
+        BILLS.seeded = true;
+        return;
+      }
+    }
+    const { openShift } = await import("@/lib/modules/pos/shift");
+    const { quoteRegisterCart, submitRegisterSale } = await import("@/lib/modules/pos/register");
+    const { refundSale, saleForRefund } = await import("@/lib/modules/pos/refund");
+    const { voidSaleByActor } = await import("@/lib/modules/pos/bills");
+    const { createSale } = await import("@/lib/modules/pos/service");
+    const { refundLineAmount, refundServiceCharge } = await import("@/lib/modules/pos/refund-math");
+    const actor = await ownerActor();
+    const ctx = { tenantId: T.tenantId, systemId: SYS, unitId, deviceId: BILLS_DEVICE_ID };
+    const op = await openShift(ctx, actor, { deviceId: BILLS_DEVICE_ID, deviceLabel: "เครื่องภาพบิล QC", floatSatang: 100000 });
+    if (!op.ok) throw new StepError(`เปิดกะของเครื่องภาพบิลไม่ได้: ${op.code}`);
+    BILLS.shiftId = op.shift.id;
+    let n = 0;
+    const key = (k: string) => `${FIX.prefix}${process.pid}-bill-${k}-${++n}`;
+    const sell = async (k: string, lines: [string, number, number][], pay: (grand: number) => [string, number][]): Promise<string> => {
+      const cart = { lines: lines.map(([name, qty, unitPriceSatang]) => ({ name: `${name} ${BILL_TAG}`, qty, unitPriceSatang })) };
+      const q = await quoteRegisterCart(ctx, actor, cart);
+      if (!q.ok) throw new StepError(`quote บิล ${k}: ${q.code}`);
+      const payMethods = pay(q.grandTotalSatang).map(([type, amountSatang]) => ({ type, amountSatang }));
+      const cash = payMethods.filter((p) => p.type === "CASH").reduce((a, p) => a + p.amountSatang, 0);
+      const r = await submitRegisterSale(ctx, actor, {
+        ...cart,
+        idempotencyKey: key(k),
+        expectedGrandTotalSatang: q.grandTotalSatang,
+        payMethods,
+        ...(cash > 0 ? { cashReceivedSatang: Math.ceil(cash / 10000) * 10000 } : {}),
+      } as never);
+      if (!r.ok) throw new StepError(`ขายบิล ${k}: ${r.code}`);
+      BILLS.ids[k] = r.saleId;
+      return r.saleId;
+    };
+    /** คืน qty ต่อบรรทัด (ยอดคืนตามสูตรเดียวกับ refund.ts) */
+    const refund = async (k: string, saleId: string, pick: (lines: { lineId: string; qty: number }[]) => { lineId: string; qty: number }[], type: "CASH" | "PROMPTPAY") => {
+      const fr = await saleForRefund(ctx, actor, { saleId });
+      if (!fr.ok) throw new StepError(`saleForRefund ${k}: ${fr.code}`);
+      const want = pick(fr.lines.map((l) => ({ lineId: l.lineId, qty: l.refundableQty })));
+      const byId = new Map(fr.lines.map((l) => [l.lineId, l]));
+      const amounts = want.map((w) => {
+        const l = byId.get(w.lineId)!;
+        return refundLineAmount(l.netSatang, l.qty, l.refundedQty, l.refundedSatang, w.qty);
+      });
+      const linesSum = amounts.reduce((a, b) => a + b, 0);
+      const full = fr.lines.every((l) => l.refundedQty + (want.find((w) => w.lineId === l.lineId)?.qty ?? 0) >= l.qty);
+      const total = linesSum + refundServiceCharge(fr.sale.serviceChargeSatang, linesSum, fr.sale.netTotalSatang, fr.sale.serviceChargeRefundedSatang, full);
+      const r = await refundSale(ctx, actor, {
+        saleId,
+        lines: want,
+        payMethods: total > 0 ? [{ type, amountSatang: total }] : [],
+        reasonCode: "CHANGED_MIND",
+        reason: "ลูกค้าเปลี่ยนใจ (ภาพ QC)",
+        deviceId: BILLS_DEVICE_ID,
+        idempotencyKey: key(`r${k}`),
+      });
+      if (!r.ok) throw new StepError(`คืนเงินบิล ${k}: ${r.code}`);
+    };
+    // ลำดับเวลา: เก่า → ใหม่ (รายการเรียงใหม่ → เก่า)
+    await sell("mixed", [["ลาเต้เย็น", 2, 7500], ["บราวนี่", 1, 6500]], (g) => [["PROMPTPAY", g - 10000], ["CASH", 10000]]);
+    const partial = await sell("partial", [["ครัวซองต์อัลมอนด์", 1, 8500], ["อเมริกาโน่ร้อน", 2, 7500], ["แซนด์วิชแฮมชีส", 2, 9500]], (g) => [["PROMPTPAY", g]]);
+    const full = await sell("full", [["เค้กส้ม", 1, 9000]], (g) => [["CASH", g]]);
+    const voided = await sell("void", [["ชาไทยเย็น", 2, 6000]], (g) => [["CASH", g]]);
+    {
+      const off = await createSale({
+        tenantId: T.tenantId,
+        unitId,
+        systemId: SYS,
+        sourceModule: "POS",
+        shiftId: null,
+        soldByUserId: actor.userId,
+        idempotencyKey: key("offshift"),
+        lines: [{ name: `โกโก้เย็น ${BILL_TAG}`, qty: 1, unitPriceSatang: 6500 }],
+        payMethods: [{ type: "CASH", amountSatang: 6500 }],
+      } as never);
+      BILLS.ids.offshift = off.saleId;
+    }
+    await sell("cash", [["มัทฉะลาเต้", 1, 9000], ["คุกกี้", 2, 3500]], (g) => [["CASH", g]]);
+    const target = await sell("target", [["ครัวซองต์อัลมอนด์", 1, 8500], ["ลาเต้เย็น", 2, 7500], ["อเมริกาโน่ร้อน", 1, 6500], ["บราวนี่", 2, 6500]], (g) => [["CASH", g]]);
+    await refund("partial", partial, (ls) => [{ lineId: ls[0]!.lineId, qty: 1 }], "PROMPTPAY");
+    await refund("full", full, (ls) => ls.filter((l) => l.qty > 0), "CASH");
+    const v = await voidSaleByActor(ctx, actor, { unitId, saleId: voided, reason: "ลูกค้ายกเลิกออเดอร์ (ภาพ QC)", idempotencyKey: key("void") });
+    if (!v.ok) throw new StepError(`ยกเลิกบิล: ${v.code}`);
+    // ระบายคิว (ใบกำกับอย่างย่อ · แต้ม · ใบลดหนี้) ให้ลิ้นชักมีแถว "ลงบัญชีอัตโนมัติ"
+    try {
+      const { drainAll } = await import("@/lib/outbox-consumers");
+      await drainAll();
+    } catch {
+      /* เซิร์ฟเวอร์ QC ระบายเองภายหลัง */
+    }
+    BILLS.target = target;
+    BILLS.seeded = true;
+  } catch (e) {
+    BILLS.error = e instanceof Error ? e.message.slice(0, 200) : String(e);
+  }
+}
+/** แตะบิลเป้าหมาย (แถวที่ md+ · การ์ดที่ 390) แล้วรอลิ้นชักที่มีไทม์ไลน์ */
+async function openTargetBill(page: Any): Promise<void> {
+  await visibleEl(page, tid("pos-bills-list"), 0, 15_000);
+  await clickEl(page, `[data-bill-id="${BILLS.target}"]`);
+  await visibleEl(page, tid("pos-bills-timeline"), 0, 15_000).catch(() => {
+    throw new StepError("แตะบิลแล้วไม่เห็นลิ้นชักบิล (pos-bills-timeline)");
+  });
+}
+async function runBillsState(page: Any, state: BillsStateKey): Promise<void> {
+  if (state === "bills-empty") {
+    await visibleEl(page, tid("pos-bills-empty"), 0, 15_000).catch(() => {
+      throw new StepError(`วันที่ ${BILLS_EMPTY_DATE} ไม่ขึ้นข้อความว่าง (pos-bills-empty)`);
+    });
+    return;
+  }
+  if (BILLS.error || !BILLS.target) throw new StepError(`ไม่มีบิลชุดภาพ: ${BILLS.error ?? "ยังไม่ได้สร้าง"}`);
+  await visibleEl(page, tid("pos-bills-list"), 0, 15_000).catch(() => {
+    throw new StepError("หน้าบิลวันนี้ไม่ขึ้น (pos-bills-list)");
+  });
+  await visibleEl(page, `[data-bill-id="${BILLS.target}"]`, 0, 15_000).catch(() => {
+    throw new StepError("ไม่เห็นบิลเป้าหมายในหน้าแรกของรายการ");
+  });
+  const n = await page.$$eval('[data-testid="pos-bills-row"],[data-testid="pos-bills-card"]', (els: Element[]) => els.filter((e) => e.getClientRects().length > 0).length).catch(() => 0);
+  if (n < 6) throw new StepError(`รายการวันนี้มี ${n} บิล (คาด ≥ 6)`);
+  if (state === "bills-list") return;
+  await openTargetBill(page);
+  if (state === "bills-drawer") return;
+  if (state === "bills-void") {
+    if (userKey !== "owner") {
+      await visibleEl(page, tid("pos-bills-void-hint"), 0, 10_000).catch(() => {
+        throw new StepError("แคชเชียร์ไม่เห็นคำอธิบายปุ่มยกเลิกที่ปิด (pos-bills-void-hint)");
+      });
+      return;
+    }
+    await clickEl(page, tid("pos-bills-void-open"));
+    await visibleEl(page, tid("pos-bills-void"), 0, 10_000);
+    await typeInto(page, tid("pos-bills-void-reason"), "ลูกค้ายกเลิกออเดอร์ ทำรายการซ้ำ");
+    return;
+  }
+  // bills-refund
+  if (userKey !== "owner") {
+    const hasRefund = await visibleEl(page, tid("pos-bills-refund-open"), 0, 1_500).then(() => true).catch(() => false);
+    if (hasRefund) throw new StepError("แคชเชียร์เห็นปุ่มคืนเงิน (ต้องซ่อน — ไม่มี pos.sale.refund)");
+    return;
+  }
+  await clickEl(page, tid("pos-bills-refund-open"));
+  await visibleEl(page, tid("pos-bills-refund-line"), 0, 15_000).catch(() => {
+    throw new StepError("หน้าต่างคืนเงินไม่ขึ้นรายการ (pos-bills-refund-line)");
+  });
+  await clickEl(page, tid("pos-bills-refund-line"));
+  await clickEl(page, tid("pos-bills-refund-method-cash"));
+  await page
+    .waitForFunction(() => !(document.querySelector('[data-testid="pos-bills-refund-confirm"]') as HTMLButtonElement | null)?.disabled, { timeout: 5_000 })
+    .catch(() => {
+      throw new StepError("เลือก 1 บรรทัดแล้วปุ่มยืนยันคืนเงินยังปิด");
+    });
+}
+/** finally/signal: ปิดกะของเครื่องภาพบิลถ้ายังเปิด (หาจาก DB · เรียกซ้ำได้ · ผลใน summary ไม่โยน) */
+async function closeBillsShift(): Promise<void> {
+  if (!billsStatesOn || BILLS.close) return;
+  const open = await prisma.posShift.findFirst({ where: { tenantId: T.tenantId, unitId, systemId: SYS, deviceId: BILLS_DEVICE_ID, status: "OPEN" }, orderBy: { openedAt: "desc" }, select: { id: true } });
+  if (!open) return;
+  BILLS.shiftId = open.id;
+  BILLS.close = await closeShiftAsOwner(open.id, "bills-close");
+}
+// ◂
+
 type Shot = { page: string; state: string | null; stepError: string | null; viewport: string; file: string; status: number; expect: number | "record"; http5xx: number; finalUrl: string; redirectedToLogin: boolean; overflow: boolean; overflowEl: string | null; consoleErrors: string[]; httpErrors: string[]; ok: boolean };
 const shots: Shot[] = [];
 let failures = 0;
@@ -1033,6 +1281,10 @@ try {
     QC_IDS.crois = byName("ครัวซองต์เนยสด");
   }
 
+  if (billsStatesOn && pages.includes("sales")) {
+    await seedBillsOnce(); // POS P1.16 U — พังไม่โยน (ทุกสถานะ bills-* ตกพร้อมเหตุผล)
+    console.log(BILLS.error ? `  ⚠️ บิลชุดภาพ: ${BILLS.error}` : `  บิลชุดภาพ: ${BILLS.reused ? "ใช้ชุดของวันนี้ซ้ำ" : `สร้าง ${Object.keys(BILLS.ids).length} ใบ`} · เป้าหมาย ${BILLS.target}`);
+  }
   const pptr = (await import("/root/dive3d/node_modules/puppeteer-core/lib/esm/puppeteer/puppeteer-core.js" as string).catch((e: unknown) => {
     throw new Fatal(`เปิด puppeteer-core ไม่ได้ (${e instanceof Error ? e.message : e}) — ต้องมี /root/dive3d/node_modules/puppeteer-core`);
   })) as Any;
@@ -1047,7 +1299,7 @@ try {
         const p = job.page;
         const v = job.v;
         const page = await browser.newPage();
-        await pinDevice(page, p === "shifts" && job.state ? SHIFTS_DEVICE_ID : DEVICE_ID); // R3 V4: เครื่องเดียวกับที่เจ้าของเปิดกะให้ · P1.9 U: สถานะหน้ากะใช้เครื่องแยก
+        await pinDevice(page, p === "shifts" && job.state ? SHIFTS_DEVICE_ID : p === "sales" && job.state ? BILLS_DEVICE_ID : DEVICE_ID); // P1.16 U: หน้าบิลใช้เครื่องของกะภาพบิล (การ์ดเงินสด "จากลิ้นชักกะ #N") // R3 V4: เครื่องเดียวกับที่เจ้าของเปิดกะให้ · P1.9 U: สถานะหน้ากะใช้เครื่องแยก
         await page.setViewport({ width: v.w, height: v.h, deviceScaleFactor: 2, isMobile: v.mobile, hasTouch: v.name !== "desktop" });
         await page.setCookie(...cookies);
         const consoleErrors: string[] = [];
@@ -1133,6 +1385,9 @@ try {
   await cancelRunCount(); // POS P1.14 U
   if (STOCK.cancel) console.error(`${STOCK.cancel.ok ? "🧹" : "⚠️"} ${STOCK.cancel.detail}`);
   if (STOCK.cancel && !STOCK.cancel.ok) failures++;
+  await closeBillsShift(); // POS P1.16 U
+  if (BILLS.close) console.error(`${BILLS.close.ok ? "🧹" : "⚠️"} ${BILLS.close.detail}`);
+  if (BILLS.close && !BILLS.close.ok) failures++;
   const { removed, stale } = await cleanSessions();
   let fixOut = "";
   try {
@@ -1144,9 +1399,9 @@ try {
   }
   await prisma.$disconnect();
   cleanProfiles();
-  writeFileSync(`${OUT}/summary-${userKey}.json`, JSON.stringify({ wo: WO, user: userKey, tenant: tenantKey, base: BASE, at: new Date().toISOString(), deviceId: DEVICE_ID, shiftOpenError: SHIFT.openError, shiftClose: SHIFT.close, stockCount: STOCK, shiftsState: SHIFTS, shots }, null, 2));
+  writeFileSync(`${OUT}/summary-${userKey}.json`, JSON.stringify({ wo: WO, user: userKey, tenant: tenantKey, base: BASE, at: new Date().toISOString(), deviceId: DEVICE_ID, shiftOpenError: SHIFT.openError, shiftClose: SHIFT.close, stockCount: STOCK, shiftsState: SHIFTS, billsState: BILLS, shots }, null, 2));
   console.log(`\n🧹 ลบ session ของรอบนี้ ${removed}${stale ? ` (+ซากหมดอายุ ${stale})` : ""}${fixOut} · ลบโปรไฟล์ chromium ${PROFILE_DIRS[0]} · ภาพ ${shots.length} ใบใน ${OUT}`);
 }
 if (fatal) console.error(`❌ ${fatal}`);
-console.log(`JSON_SUMMARY ${JSON.stringify({ wo: WO, user: userKey, tenant: tenantKey, base: BASE, shiftOpenError: SHIFT.openError, shiftClose: SHIFT.close, stockCount: STOCK, shiftsState: SHIFTS, shots: shots.map(({ consoleErrors, httpErrors, ...s }) => ({ ...s, consoleErrors: consoleErrors.length, httpErrors: httpErrors.length })), failures, fatal: fatal || null })}`);
+console.log(`JSON_SUMMARY ${JSON.stringify({ wo: WO, user: userKey, tenant: tenantKey, base: BASE, shiftOpenError: SHIFT.openError, shiftClose: SHIFT.close, stockCount: STOCK, shiftsState: SHIFTS, billsState: BILLS, shots: shots.map(({ consoleErrors, httpErrors, ...s }) => ({ ...s, consoleErrors: consoleErrors.length, httpErrors: httpErrors.length })), failures, fatal: fatal || null })}`);
 process.exit(fatal ? 2 : failures > 0 ? 1 : 0);

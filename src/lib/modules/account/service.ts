@@ -4238,6 +4238,8 @@ export async function upsertExternalCreditNoteDocument(input: {
   vatRegistered: boolean;
   vatRateBp: number;
   grandTotalSatang: number;
+  /** POS P1.16 ▸ CD-O8: VAT ของใบคืน POS (รวมในราคา) — ส่งมา = ใช้แทนการถอดต่อบรรทัด (เอกสาร = ใบคืน POS = JV) ◂ */
+  vatSatang?: number;
   reason: string;
   note?: string | null;
   lines: ExternalSaleDocLine[];
@@ -4253,6 +4255,12 @@ export async function upsertExternalCreditNoteDocument(input: {
   });
   if (totals.grandTotal !== input.grandTotalSatang)
     return { ok: false, reason: `ยอดรวมของบรรทัด (${totals.grandTotal}) ไม่เท่ากับยอดใบคืน (${input.grandTotalSatang}) — ไม่สร้างใบลดหนี้` };
+  // POS P1.16 ▸ CD-O8: VAT ระดับเอกสารจากใบคืน POS (แบบรวมในราคา · สมุดจด VAT) — subTotal = ยอด − VAT ◂
+  const v = input.vatSatang;
+  if (input.vatMode === "INCLUDE" && input.vatRegistered && typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= totals.grandTotal) {
+    totals.vatAmount = v;
+    totals.subTotal = totals.grandTotal - v;
+  }
   const contact = input.contactId
     ? await prisma.accountContact.findFirst({
         where: { id: input.contactId, systemId: input.systemId },
