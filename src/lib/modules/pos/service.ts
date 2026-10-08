@@ -253,8 +253,10 @@ async function assertUnitOfSystem(tx: Client, input: CreateSaleInput): Promise<v
 
 /** R2 F2: สถานะของบิลที่ถือคีย์นี้ (null = ยังไม่มี) — ผู้เรียกใช้ตัดสินว่าจะออกคีย์ใหม่ไหม (เช่น ร้านอาหาร re-checkout หลัง void) */
 export async function saleStatusByKey(tenantId: string, idempotencyKey: string, db: Client = prisma): Promise<string | null> {
-  const s = await db.posSale.findUnique({ where: { tenantId_idempotencyKey: { tenantId, idempotencyKey } }, select: { status: true } });
-  return s?.status ?? null;
+  const s = await db.posSale.findUnique({ where: { tenantId_idempotencyKey: { tenantId, idempotencyKey } }, select: { status: true, docType: true } });
+  // POS P1.16 ▸ R5b(b): ใบคืนเงิน (docType REFUND) ไม่ใช่ "บิลขาย" ของโมดูลใด — ผู้เรียกต้องไม่เห็นใบคืนเป็นบิลของตัวเอง ◂
+  if (!s || s.docType === "REFUND") return null;
+  return s.status;
 }
 
 /**
@@ -755,8 +757,12 @@ async function consumeSaleInventory(tenantId: string, unitId: string, saleId: st
   }
 }
 
+// POS P1.16 ▸ R3/CD2: อาร์กิวเมนต์ที่ 4 (ไม่บังคับ) = ผู้ยกเลิก + เหตุผล ⇒ AuditLog "pos.sale.void" ในtx เดียวกับการพลิกสถานะ ◂
+//   ผู้เรียกเดิม (3 อาร์กิวเมนต์ · AI proposals · โมดูลอื่น) ไม่เปลี่ยนและไม่เขียน audit · idempotencyKey เก็บใน after (bills.ts ใช้จับการเล่นซ้ำ)
+export type VoidSaleAudit = { actorUserId: string; reason: string; idempotencyKey?: string };
+
 // void: กลับรายการ (คืนแต้ม + สถานะ)
-export async function voidSale(tenantId: string, unitId: string, saleId: string): Promise<void> {
+export async function voidSale(tenantId: string, unitId: string, saleId: string, audit?: VoidSaleAudit): Promise<void> {
   await prisma.$transaction(async (tx) => {
     const sale = await tx.posSale.findFirst({ where: { id: saleId, tenantId, unitId } });
     // POS P1.8 ▸ ใบคืนเงิน (docType REFUND) void ไม่ได้ (มติ R1 · คืนของใบคืน = นอกขอบเขต) ◂
@@ -772,6 +778,22 @@ export async function voidSale(tenantId: string, unitId: string, saleId: string)
     // POS P1.8 ▸ เขียนแบบมีเงื่อนไข: ใบคืนที่ commit ระหว่างนี้ (ล็อกบิล FOR UPDATE) ทำให้ไม่ตรง ⇒ ปฏิเสธ ไม่ทับสถานะ ◂
     const flipped = await tx.posSale.updateMany({ where: { id: saleId, status: "PAID", refundedSatang: 0 }, data: { status: "VOIDED" } });
     if (flipped.count !== 1) throw new PosSaleError("HAS_REFUNDS", "บิลนี้มีการคืนเงินแล้ว — ยกเลิกทั้งใบไม่ได้ ใช้การคืนเงินส่วนที่เหลือแทน");
+    // POS P1.16 ▸ R3: ผู้ยกเลิก + เหตุผล ลง AuditLog ในtx เดียวกัน (writeAudit ใช้ prisma กลาง เข้าร่วม tx ไม่ได้ — โน้ต oracle drift 1) ◂
+    if (audit) {
+      await tx.auditLog.create({
+        data: {
+          tenantId,
+          unitId,
+          actorType: "USER",
+          actorId: audit.actorUserId,
+          action: "pos.sale.void",
+          targetType: "PosSale",
+          targetId: saleId,
+          before: { status: "PAID", receiptNo: sale.receiptNo, grandTotalSatang: sale.grandTotalSatang },
+          after: { status: "VOIDED", reason: audit.reason, ...(audit.idempotencyKey ? { idempotencyKey: audit.idempotencyKey } : {}) },
+        },
+      });
+    }
     // outbox: void → กลับรายการบัญชี (contract 2.4)
     await emitOutbox(tx, {
       tenantId,

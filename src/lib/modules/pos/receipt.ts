@@ -22,6 +22,8 @@ import { posSaleWhere, type PosUnitScope } from "./access";
 import { prisma } from "./db";
 import { RECEIPT_LABELS, type ReceiptDocType, type ReceiptKind, type ReceiptPayload, type ReceiptSaleStatus } from "./receipt-render";
 import { receiptSettingsOf } from "./receipt-settings";
+// POS P1.16 ▸ R2: กติกาชนิดใบเสร็จตัวเดียวกับหน้าบิลวันนี้ (billDetail.receiptKind) ◂
+import { receiptKindOf } from "./receipt-shared";
 import type { RegisterActor } from "./register-shared";
 
 type Db = PrismaClient;
@@ -108,7 +110,7 @@ export async function receiptPayload(ctx: ReceiptCtx, actor: RegisterActor, inpu
     const vat = bookId ? await account.vatConfigOf(bookId) : null;
     const taxId = nonEmpty(book?.taxId);
     const hasVat = sale.vatSatang > 0; // F1: บิลที่ไม่มี VAT จริงไม่ใช่ใบกำกับ
-    const kind: ReceiptKind = vat && vat.vatRegistered && vat.posAbbreviatedInvoice && taxId && hasVat ? "TAX_INVOICE_ABB" : "RECEIPT";
+    const kind: ReceiptKind = receiptKindOf({ vatRegistered: !!vat?.vatRegistered, posAbbreviatedInvoice: !!vat?.posAbbreviatedInvoice, taxId: book?.taxId, vatSatang: sale.vatSatang });
 
     // ── เครื่อง/กะ ของบิล (PosSale.shiftId → PosShift.deviceId → PosDevice ของสาขาเดียวกัน) ──
     const shift = sale.shiftId

@@ -4560,6 +4560,863 @@
       "wo": "P1.14U",
       "oracle": "",
       "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-date-prev",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "วันก่อนหน้า → โหลด billsPageDataAction ของวันนั้น (หน้า 1)"
+      },
+      "wo": "P1.16",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-date",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "เลือกวันที่ (เวลาไทย · ไม่เกินวันนี้) → โหลดรายการของวันนั้น"
+      },
+      "wo": "P1.16",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-date-next",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "วันถัดไป (ปิดเมื่อเป็นวันนี้)"
+      },
+      "wo": "P1.16",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-search",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "ค้นเลขบิล (ขึ้นต้น) / ชื่อ / เบอร์ลูกค้า · หน่วง 300ms · ≤60 ตัว"
+      },
+      "wo": "P1.16",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-unit",
+      "kind": "select",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]/pos/sales",
+        "note": "?unit=<สาขาที่เข้าได้> · แสดงเมื่อเข้าได้มากกว่า 1 สาขา"
+      },
+      "wo": "P1.16",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-channel",
+      "kind": "filter",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "กรองช่องทาง (sourceModule ของวันนั้น)"
+      },
+      "wo": "P1.16",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-staff",
+      "kind": "filter",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "กรองพนักงานผู้ขาย"
+      },
+      "wo": "P1.16",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-export",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "download",
+        "note": "CSV ของแถวในหน้านี้ (ส่งออกทั้งวัน = CSV ของ P1.17)"
+      },
+      "wo": "P1.16",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-chip-*",
+      "kind": "tab",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "ชิปสถานะ all/paid/voided/refunded/offShiftCash + ตัวเลขของทั้งวัน"
+      },
+      "wo": "P1.16",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-retry",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "โหลดรายการใหม่หลังโหลดไม่สำเร็จ"
+      },
+      "wo": "P1.16",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-clear",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "ล้างตัวกรอง (ค้นหา · ช่องทาง · พนักงาน · สถานะ)"
+      },
+      "wo": "P1.16",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-row",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-bills-drawer",
+        "note": "แถวบิล (md+) → เปิดลิ้นชักบิล (billDetailAction) + แถบเน้นซ้าย"
+      },
+      "wo": "P1.16",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-row-menu",
+      "kind": "menu",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-bills-drawer",
+        "note": "เมนู ⋯ ของแถว — เปิดลิ้นชักก่อน · รายการตาม can.* ของบิล"
+      },
+      "wo": "P1.16",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-card",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-bills-drawer",
+        "note": "การ์ดบิล (390) → แผ่นรายละเอียดเต็มจอ"
+      },
+      "wo": "P1.16",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-card-menu",
+      "kind": "menu",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-bills-drawer",
+        "note": "เมนู ⋯ ของการ์ด (390)"
+      },
+      "wo": "P1.16",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-menu-view",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "ดูบิล (ปิดเมนู · ลิ้นชักเปิดอยู่แล้ว)"
+      },
+      "wo": "P1.16",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-menu-reprint",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "toast",
+        "note": "พิมพ์สำเนา = reprintReceiptAction → renderReceiptHtml ใน iframe ซ่อน → print() · audit pos.receipt.reprint"
+      },
+      "wo": "P1.16",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-menu-refund",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "pos-bills-refund",
+        "note": "แสดงเมื่อ can.refund (pos.sale.refund + บิลคืนได้)"
+      },
+      "wo": "P1.16",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-menu-void",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "pos-bills-void",
+        "note": "แสดงเมื่อ can.void (pos.sale.void · PAID · ไม่มีคืน · กะเปิด · บิล POS)"
+      },
+      "wo": "P1.16",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-page-prev",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "หน้าก่อนหน้า"
+      },
+      "wo": "P1.16",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-page-next",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "หน้าถัดไป"
+      },
+      "wo": "P1.16",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-page-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "ปุ่มเลขหน้า (ปัจจุบัน ± 1 · หัว/ท้าย)"
+      },
+      "wo": "P1.16",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-drawer-close",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "ปิดลิ้นชัก/แผ่นบิล (หรือ Esc)"
+      },
+      "wo": "P1.16",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-member-link",
+      "kind": "link",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/members/[id]",
+        "note": "ดูสมาชิกของบิล (แสดงเมื่อบิลผูกสมาชิก)"
+      },
+      "wo": "P1.16",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-accounting-link",
+      "kind": "link",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]/account/print/[docId]",
+        "note": "เอกสารบัญชี (ใบกำกับอย่างย่อ) ของบิล · แสดงเมื่อผูกบัญชี"
+      },
+      "wo": "P1.16",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-reprint",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "toast",
+        "note": "พิมพ์ซ้ำ (สำเนา) — เบราว์เซอร์พิมพ์ HTML ของ P1.10 · ไทม์ไลน์ได้แถว \"พิมพ์สำเนา\""
+      },
+      "wo": "P1.16",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-void-open",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "pos-bills-void",
+        "note": "ยกเลิกบิล (danger outline) · can.void false = ปิดพร้อมคำอธิบาย pos-bills-void-hint (แคชเชียร์ QC = ต้องมีสิทธิ์ผู้จัดการ)"
+      },
+      "wo": "P1.16",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-refund-open",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "pos-bills-refund",
+        "note": "คืนเงิน (ปุ่มดำ) · ซ่อนเมื่อ can.refund false"
+      },
+      "wo": "P1.16",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-void-close",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "ปิดกล่องยกเลิกบิล"
+      },
+      "wo": "P1.16",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-void-reason",
+      "kind": "textarea",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "เหตุผล (บังคับ · ≤200)"
+      },
+      "wo": "P1.16",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-void-cancel",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "กลับ (ไม่ยกเลิก)"
+      },
+      "wo": "P1.16",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-void-confirm",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "voidSaleAction",
+        "note": "คีย์คงที่ต่อการเปิดกล่อง · สำเร็จ = toast \"ยกเลิกบิลแล้ว\" + โหลดรายการ/ลิ้นชักใหม่ · ปฏิเสธ = ข้อความในกล่อง (pos.bills.errors.*)"
+      },
+      "wo": "P1.16",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-refund-close",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "ปิดหน้าต่างคืนเงิน (หรือ Esc)"
+      },
+      "wo": "P1.16",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-refund-line",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "เลือกบรรทัดที่คืน (คืนครบแล้ว = ปิด · สินค้าชั่ง = ทั้งบรรทัด)"
+      },
+      "wo": "P1.16",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-refund-minus",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "ลดจำนวนที่คืน"
+      },
+      "wo": "P1.16",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-refund-plus",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "เพิ่มจำนวนที่คืน (≤ refundableQty)"
+      },
+      "wo": "P1.16",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-refund-restock",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "รับของคืนเข้าสต็อก (ค่าเริ่ม = stocked · ซ่อนเมื่อไม่ผูกคลัง)"
+      },
+      "wo": "P1.16",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-refund-reason",
+      "kind": "select",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "เหตุผล DAMAGED · WRONG_ITEM · CHANGED_MIND · OTHER"
+      },
+      "wo": "P1.16",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-refund-reason-text",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "ข้อความเหตุผล (บังคับเมื่อ อื่น ๆ)"
+      },
+      "wo": "P1.16",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-refund-method-cash",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "คืนเงินสดจากลิ้นชักกะของเครื่องนี้ (ไม่มีกะ = SHIFT_REQUIRED ใต้การ์ด)"
+      },
+      "wo": "P1.16",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-refund-method-original",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "คืนเข้า PromptPay/บัญชีเดิม (แสดงเมื่อบิลจ่าย PROMPTPAY/TRANSFER)"
+      },
+      "wo": "P1.16",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-refund-method-card",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "คืนเข้าบัตรเดิม (แสดงเมื่อบิลจ่ายบัตร)"
+      },
+      "wo": "P1.16",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-refund-method-credit",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "เครดิตร้าน — ปิดไว้ \"รอบถัดไป (กระเป๋าสมาชิก)\" (มติ CD3 · ไม่ใช่วิธีคืนของ P1.8)"
+      },
+      "wo": "P1.16",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-refund-reference",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "เลขอ้างอิงของการคืนที่ไม่ใช่เงินสด (เติมจากการจ่ายเดิม)"
+      },
+      "wo": "P1.16",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-refund-retry",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "refundSaleAction",
+        "note": "ลองซ้ำด้วยคีย์เดิมหลัง UNKNOWN"
+      },
+      "wo": "P1.16",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-refund-cancel",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "ยกเลิก (ปิดหน้าต่าง)"
+      },
+      "wo": "P1.16",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-refund-confirm",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "refundSaleAction",
+        "note": "ยืนยันคืนเงิน ฿x (ปิดเมื่อไม่ได้เลือก) · สำเร็จ = toast \"คืนเงินแล้ว · <CN>\" + ลิ้นชัก/รายการโหลดใหม่ · PAYMENT_MISMATCH = โหลดใหม่ + \"ยอดเปลี่ยน\""
+      },
+      "wo": "P1.16",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
     }
   ],
   "$roles": "roles/hiddenFor ที่อนุญาต: owner · manager · cashier · kind/expect.type ชุดเดียวกับทะเบียน CRM (F15.3b ตรวจ)"

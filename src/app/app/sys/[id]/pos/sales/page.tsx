@@ -1,72 +1,59 @@
 import { notFound } from "next/navigation";
+import { getTranslations } from "next-intl/server";
 import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
+import { canAccessUnit } from "@/lib/core/rbac";
 import { systemDef } from "@/lib/systems";
 import { posTabs } from "@/lib/modules/pos/tabs";
 import { posMembership, posSalesScope, posSaleWhere } from "@/lib/modules/pos/access";
+import { posUnits } from "@/lib/modules/pos/register";
+import { bkkDateOf, isBillDate } from "@/lib/modules/pos/bills-shared";
+import { posAccountSystemId } from "@/lib/modules/account";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { Section } from "@/components/ui/Section";
-import { DataList } from "@/components/ui/DataList";
-import { StatusChip } from "@/components/ui/StatusChip";
-import { MoneyText } from "@/components/ui/MoneyText";
 import { ModuleTabs } from "@/components/module-tabs";
-import { POS_SALE_STATUS_LABEL } from "@/lib/ui/status-labels";
+import { BillsClient } from "./BillsClient";
 
-const fmt = (d: Date) =>
-  d.toLocaleString("th-TH", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Bangkok" });
-
-// ฟังก์ชันย่อย "ประวัติบิล" ของระบบ POS (แตกออกจากหน้าภาพรวม)
-export default async function PosSalesPage({ params }: { params: Promise<{ id: string }> }) {
+// POS P1.16 U — หน้า "บิลวันนี้" (ภาพ 12 · route เดิม /pos/sales · มติ CD1 แทนหน้าประวัติบิลเดิม)
+//   ข้อมูลทั้งหน้าโหลดจาก billsPageDataAction คำขอเดียว (client) · หน้านี้เลือกสาขาที่เข้าได้ + บอกว่าร้านเคยมีบิลไหม (ข้อความว่าง)
+// 🔴 HF-POS-PAGES: ต้องขายได้ที่สาขาใดสาขาหนึ่ง · คนจำกัดสาขาเห็นเฉพาะสาขาของตัวเอง — สิทธิ์จริงต่อบิลตัดสินใน bills.ts
+export default async function PosSalesPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ unit?: string; date?: string }> }) {
   const { id } = await params;
+  const { unit, date } = await searchParams;
   const auth = await requireTenant();
   const tenantId = auth.active.tenantId;
   const sys = await prisma.appSystem.findFirst({ where: { id, tenantId, type: "POS" } });
   if (!sys) notFound();
-  // HF-POS-PAGES: เดิมไม่ตรวจสิทธิ์เลย — ต้องขายได้ที่สาขาใดสาขาหนึ่ง · คนจำกัดสาขาเห็นเฉพาะบิลสาขาของตัวเอง
+  const m = posMembership(auth.active);
   const scope = posSalesScope(posMembership(auth.active));
   if (!scope) notFound();
   const def = systemDef(sys.type);
+  const t = await getTranslations("pos.bills");
 
-  const sales = await prisma.posSale.findMany({
-    where: posSaleWhere(tenantId, id, scope),
-    orderBy: { createdAt: "desc" },
-    take: 100,
-  });
-  // POS P1.8 ▸ R3: บิลขายที่นับยอด (PAID + คืนครบ) − ใบคืนเงิน (docType REFUND) ในรายการเดียวกัน ◂
-  const paid = sales.filter((s) => s.docType === "SALE" && s.status !== "VOIDED");
-  const total = paid.reduce((s, x) => s + x.grandTotalSatang, 0) - sales.filter((s) => s.docType === "REFUND").reduce((s, x) => s + x.grandTotalSatang, 0);
+  const [allUnits, anyBill, accountSystemId] = await Promise.all([
+    posUnits(tenantId, id),
+    // ร้านนี้เคยมีบิลในขอบเขตของผู้ใช้ไหม — แยกข้อความ "วันนี้ยังไม่มีบิล" กับ "ยังไม่เคยขาย"
+    prisma.posSale.findFirst({ where: posSaleWhere(tenantId, id, scope), select: { id: true } }),
+    posAccountSystemId(tenantId, id),
+  ]);
+  const units = allUnits
+    .filter((u) => canAccessUnit(m, u.id) && (scope.allUnits || scope.unitIds.includes(u.id)))
+    .map((u) => ({ id: u.id, name: u.name }));
+  const unitId = units.some((u) => u.id === unit) ? unit! : units[0]?.id;
+  // ?date=YYYY-MM-DD (ลิงก์ตรงไปวันที่ · ไม่เกินวันนี้) — ไม่ระบุ/ผิดรูป = วันนี้ตามเวลาไทย
+  const today = bkkDateOf();
+  const initialDate = isBillDate(date) && date <= today ? date : today;
 
   return (
-    <div className="flex max-w-2xl flex-col gap-5">
-      <PageHeader title={`${def?.icon ?? ""} ${sys.name}`.trim()} desc="ประวัติการขาย" />
-      <ModuleTabs
-        items={posTabs(id)}
-      />
-
-      <Section title="ประวัติบิล">
-        <div className="text-sm text-[color:var(--color-muted)]">
-          รวม <MoneyText satang={total} /> · {paid.length} บิล (ล่าสุด 100 รายการ)
+    <div className="flex w-full min-w-0 max-w-[1600px] flex-col gap-5">
+      <PageHeader title={`${def?.icon ?? ""} ${sys.name}`.trim()} desc={t("desc")} />
+      <ModuleTabs items={posTabs(id)} />
+      {unitId ? (
+        <BillsClient systemId={id} units={units} unitId={unitId} today={today} initialDate={initialDate} hasAnyBill={!!anyBill} accountSystemId={accountSystemId} />
+      ) : (
+        <div className="card text-sm text-[color:var(--color-muted)]" data-testid="pos-bills-no-unit">
+          {t("noUnits")}
         </div>
-        <DataList
-          items={sales.map((s) => ({
-            key: s.id,
-            primary: (
-              <span>
-                {s.receiptNo} · <MoneyText satang={s.docType === "REFUND" ? -s.grandTotalSatang : s.grandTotalSatang} />
-              </span>
-            ),
-            trailing: (
-              <span className="flex items-center gap-2">
-                {(s.status !== "PAID" || s.docType === "REFUND") && (
-                  <StatusChip value={s.docType === "REFUND" ? "REFUND" : s.status} map={POS_SALE_STATUS_LABEL} tone="danger" />
-                )}
-                <span className="text-xs text-[color:var(--color-muted)]">{fmt(s.createdAt)}</span>
-              </span>
-            ),
-          }))}
-          empty="ยังไม่มีการขาย — บิลจะแสดงที่นี่เมื่อขายผ่านระบบที่เชื่อมไว้"
-        />
-      </Section>
+      )}
     </div>
   );
 }

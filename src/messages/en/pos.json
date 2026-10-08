@@ -911,5 +911,166 @@
       "permissionDenied": "This account can't view bills or print receipts yet — ask the owner for access",
       "internal": "Receipts are temporarily unavailable — please try again"
     }
+  },
+  "bills": {
+    "desc": "Today's bills · void / refund",
+    "noUnits": "This point of sale is not linked to a branch you can access — link a business to the POS first and bills will show here",
+    "loading": "Loading…",
+    "retry": "Try again",
+    "date": "Date",
+    "datePrev": "Previous day",
+    "dateNext": "Next day",
+    "search": "Bill no. / customer",
+    "unit": "Branch",
+    "allChannels": "All channels",
+    "allStaff": "All staff",
+    "export": "Export (this page)",
+    "statusFilter": "Filter by status",
+    "chip": {
+      "all": "All",
+      "paid": "Paid",
+      "voided": "Voided",
+      "refunded": "Refunded",
+      "offShiftCash": "Off-shift cash"
+    },
+    "sum": {
+      "net": "Net sales",
+      "netSub": "After refunds and voids",
+      "bills": "Bills",
+      "billsSub": "In store {store} · online {online}",
+      "avg": "Average per bill",
+      "avgSub": "Yesterday {y}"
+    },
+    "col": {
+      "no": "No.",
+      "time": "Time",
+      "channel": "Channel",
+      "customer": "Customer",
+      "pay": "Payment",
+      "staff": "Staff",
+      "total": "Total",
+      "status": "Status",
+      "menu": "Bill options"
+    },
+    "csv": {
+      "refunded": "Refunded"
+    },
+    "channelPos": "In store",
+    "walkIn": "Walk-in customer",
+    "offShiftCashPay": "Off-shift cash",
+    "approvedBy": "Approved by {name}",
+    "refundedSub": "Refunded {amount}",
+    "status": {
+      "PAID": "Paid",
+      "VOIDED": "Voided",
+      "PARTIAL": "Partly refunded",
+      "REFUNDED": "Refunded"
+    },
+    "menu": {
+      "view": "View bill",
+      "reprint": "Print copy",
+      "refund": "Refund",
+      "void": "Void bill"
+    },
+    "showing": "Showing {n} of {total} bills",
+    "pagePrev": "Previous page",
+    "pageNext": "Next page",
+    "empty": {
+      "noBillsDate": "No bills on {date}",
+      "noBillsDateSub": "Pick another day, or sell from the register and bills will show here",
+      "noBillsEver": "No sales yet — bills will show here once you sell through a connected system",
+      "noMatch": "No bills match these filters",
+      "clear": "Clear filters"
+    },
+    "drawer": {
+      "title": "Bill details",
+      "close": "Close",
+      "shiftNo": "Shift #{no}",
+      "items": "Items",
+      "discount": "Discount",
+      "serviceCharge": "Service charge",
+      "net": "Net total",
+      "vatIncl": "Includes VAT {rate}%",
+      "tip": "Tip (outside the total)",
+      "refunded": "Refunded",
+      "payments": "Payments",
+      "cashLine": "received {tendered} change {change}",
+      "member": "Member",
+      "points": "+{n} points",
+      "viewMember": "View member",
+      "posted": "Posted to accounts",
+      "abb": "Abbreviated tax invoice",
+      "history": "Bill history",
+      "reprint": "Reprint (copy)",
+      "void": "Void bill",
+      "refund": "Refund"
+    },
+    "voidHint": {
+      "NO_PERMISSION": "Voiding needs manager rights · only before the shift closes",
+      "SHIFT_CLOSED": "Shift closed — use a refund instead",
+      "HAS_REFUNDS": "This bill already has refunds",
+      "NOT_POS": "Bill from another module — void it there",
+      "OTHER": "This bill can no longer be voided"
+    },
+    "voidDlg": {
+      "title": "Void bill {no}",
+      "reason": "Reason",
+      "placeholder": "e.g. customer cancelled the order",
+      "warn": "The system will reverse the accounting, return the stock and give back points/benefits used, automatically",
+      "back": "Back",
+      "confirm": "Confirm void"
+    },
+    "toastVoided": "Bill voided",
+    "toastReprint": "Copy sent to print",
+    "toastRefunded": "Refunded · {no}",
+    "refund": {
+      "title": "Partial refund",
+      "pick": "Choose items to refund",
+      "fullyRefunded": "Fully refunded",
+      "weighed": "Weighed item, refund the whole line",
+      "of": "of {n}",
+      "restock": "Return item to stock",
+      "reason": "Reason",
+      "reasons": {
+        "DAMAGED": "Faulty item",
+        "WRONG_ITEM": "Wrong item",
+        "CHANGED_MIND": "Customer changed mind",
+        "OTHER": "Other"
+      },
+      "otherText": "Enter a reason",
+      "method": "Refund with",
+      "m": {
+        "cash": "Cash",
+        "cashSub": "from shift #{no} drawer",
+        "cashNoShift": "from the drawer (open a shift on this device)",
+        "promptpay": "Back to original PromptPay",
+        "transfer": "Back to the paying account",
+        "originalSub": "The account that paid",
+        "card": "Card",
+        "cardSub": "Back to the original card (reference)",
+        "credit": "Store credit",
+        "creditSub": "Coming next (member wallet)"
+      },
+      "reference": "Reference (optional)",
+      "summary": "Refund {amount}",
+      "tickPoints": "Deduct points pro rata (≈{n} points)",
+      "tickStock": "Return {n} items to stock",
+      "tickCn": "Issue a credit note (auto-numbered)",
+      "tickJv": "Reverse the accounting automatically",
+      "auditNote": "The person and the reason are recorded in the audit log",
+      "cancel": "Cancel",
+      "confirm": "Confirm refund {amount}",
+      "changed": "The amount changed — please check again"
+    },
+    "errors": {
+      "noPermission": "This account is not allowed to do this — ask the owner or a manager",
+      "saleNotFound": "This bill was not found in this branch",
+      "saleNotVoidable": "This bill cannot be voided (already voided, fully refunded, a refund document, or a bill from another system)",
+      "hasRefunds": "This bill already has refunds — it cannot be voided; refund the remaining items instead",
+      "shiftClosed": "This bill's shift is closed — it cannot be voided; use a refund instead",
+      "reasonRequired": "Enter a reason for voiding (up to 200 characters)",
+      "validation": "The request is not valid",
+      "unknown": "Something went wrong — please try again"
+    }
   }
 }
