@@ -92,3 +92,4 @@
 - QC data set lives on QC4: tenant `qc-hr-v2` (7 users hr-qc-*@shark.local, 14 employees, PAID run last month 11 items) — reseed: `bash scripts/iso.sh bash scripts/qc4.sh bash scripts/with-gate-lock.sh env QC_FORCE=1 pnpm exec tsx scripts/seed-hr-qc.mts` · answer file `scripts/hr-expected.json` (ignored).
 - **No further WO can start without owner input:** H0.5 needs HQ2–HQ4 (PIN pepper secret · PIN uniqueness/length rule · convert-in-place) · H0.6 needs CRM merged to main · H0.7 needs H0.5 · H1.1–H1.3 = migrations (owner GO). Lanes idle: shark-hr @fa79d4ad, shark-hr-b @19e5af93.
 - 2026-10-08T03:36Z heartbeat: no agent running · H0.1–H0.4 merged (session/hr a747f2a5) · next WOs blocked on owner (HQ2–HQ4 / CRM main / migration GO) · lanes idle · nothing spawned · tg already sent at 03:4xZ, no change
+- 2026-10-08T03:47Z heartbeat: idle · no agent · H0.1–H0.4 merged · waiting on owner (HQ2–HQ4 / CRM main / migration GO) · nothing spawned
