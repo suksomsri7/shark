@@ -170,7 +170,7 @@ export function ReceiptSettings({ systemId, unitId, branchName, canEdit, canMana
     setPrinting(true);
     try {
       const dev = await thisDevicePrinter(systemId, unitId);
-      setPrintRes(await printReceipt(p, forceBrowser ? { ...dev.config, mode: "browser" } : dev.config, { locale, deviceCode: dev.deviceCode }));
+      setPrintRes(await printReceipt(p, forceBrowser ? { ...dev.config, mode: "browser" } : dev.config, { locale, deviceCode: dev.deviceCode, kickDrawer: false }));
     } finally {
       setPrinting(false);
     }
@@ -428,7 +428,7 @@ export function ReceiptSettings({ systemId, unitId, branchName, canEdit, canMana
                 <div className="flex flex-col gap-2">
                   <span className="text-[13px] font-semibold text-[color:var(--color-ink-soft)]">{tr("creditPattern")}</span>
                   <span data-testid="pos-settings-credit-pattern" className="flex h-12 items-center rounded-[13px] border bg-[color:var(--color-surface-2)] px-4 font-mono text-[14px] font-semibold">
-                    {"CN{YYYY}{MM}-{NNNN}"}
+                    {`${data.refundPrefix}{YYYY}{MM}-{NNNN}`}
                   </span>
                 </div>
                 <div className="flex flex-col justify-end gap-2">
@@ -468,6 +468,7 @@ export function ReceiptSettings({ systemId, unitId, branchName, canEdit, canMana
                 ref={frameRef}
                 data-testid="pos-settings-preview"
                 title={tr("previewFrame")}
+                sandbox="allow-same-origin"
                 className="w-full max-w-[336px] rounded-[4px] border bg-white"
                 style={{ height: frameH }}
                 srcDoc={previewHtml}

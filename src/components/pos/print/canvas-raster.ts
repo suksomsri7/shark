@@ -4,11 +4,14 @@
 import type { EscPosRasterSlot } from "@/lib/modules/pos/receipt-render";
 import { gsv0, packMono, slotWidthDots } from "./raster";
 
+/** ไม่มี canvas วาดภาษาไทย (เบราว์เซอร์/สภาพแวดล้อมไม่รองรับ) — printReceipt แปลงเป็น UNSUPPORTED · ความผิดพลาดอื่นของการประกอบไบต์ = WRITE_FAILED */
+export class CanvasUnavailableError extends Error {}
+
 const FONT = "Sarabun, 'Noto Sans Thai', 'Leelawadee UI', Tahoma, sans-serif";
 
-/** ภาพของช่องเดียว → ไบต์ GS v 0 · ไม่มี canvas = โยน (ผู้เรียกแปลงเป็น UNSUPPORTED) */
+/** ภาพของช่องเดียว → ไบต์ GS v 0 · ไม่มี canvas = โยน CanvasUnavailableError (ผู้เรียกแปลงเป็น UNSUPPORTED) */
 export function rasterizeSlot(slot: EscPosRasterSlot): Uint8Array {
-  if (typeof document === "undefined") throw new Error("canvas unavailable");
+  if (typeof document === "undefined") throw new CanvasUnavailableError("canvas unavailable");
   const width = slotWidthDots(slot);
   const px = slot.big ? 48 : 24;
   const height = Math.ceil(px * 1.45);
@@ -16,7 +19,7 @@ export function rasterizeSlot(slot: EscPosRasterSlot): Uint8Array {
   canvas.width = width;
   canvas.height = height;
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
-  if (!ctx) throw new Error("canvas 2d unavailable");
+  if (!ctx) throw new CanvasUnavailableError("canvas 2d unavailable");
   ctx.fillStyle = "#fff";
   ctx.fillRect(0, 0, width, height);
   ctx.fillStyle = "#000";

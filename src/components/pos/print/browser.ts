@@ -12,6 +12,8 @@ export function printHtml(html: string): Promise<PrintResult> {
       const frame = document.createElement("iframe");
       frame.setAttribute("aria-hidden", "true");
       frame.setAttribute("data-pos-print", "1");
+      // แก้รอบ 1 FU-a: ไม่รันสคริปต์ในเอกสารใบเสร็จ · allow-same-origin = หน้าเรียก print() ของกรอบได้ · allow-modals = หน้าต่างพิมพ์เปิดได้
+      frame.setAttribute("sandbox", "allow-same-origin allow-modals");
       frame.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden";
       frame.onload = () => {
         try {

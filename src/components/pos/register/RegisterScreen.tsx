@@ -1594,6 +1594,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
               ? undefined
               : {
                   name: device && device.status === "ACTIVE" ? device.name : null,
+                  revoked: device?.status === "REVOKED" || status?.deviceStatus === "REVOKED",
                   settingsHref: `${base}/pos/settings?tab=devices&unit=${encodeURIComponent(unitId)}`,
                   printer: printer.config.mode === "browser" ? "browser" : printerPaired(printer.config.mode, printer.deviceCode) ? "ready" : "none",
                   paper: printer.config.paper,

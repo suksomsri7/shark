@@ -7,9 +7,11 @@
 //   U5 spliceRaster ปฏิเสธ offset ที่ไม่ใช่ที่ว่าง (กันแทนผิดที่)
 //   U6 chunkBytes: ทุกก้อน ≤ ขนาด · ต่อกลับเท่าเดิม · จำนวนก้อน = ceil(n/ขนาด) (USB 16 KB · BT 20)
 //   U7 ความกว้างภาพ (80 มม. 576 · 58 มม. 384 · ตัวใหญ่ 80 มม. 576) + ลิ้นชักอย่างเดียว = ESC p 0 25 250 ล้วน + VAT ตัวอย่าง ฿170 @7% = 11.12
+//   U8 (แก้รอบ 1 F1) ลิ้นชัก: buildEscPos ของสำเนา (copy:true) ไม่มี 1B 70 แม้ค่าตั้ง drawerKick + ผู้เรียกขอ · ต้นฉบับ + ขอ = มี · ไม่ขอ = ไม่มี
+//   (U1 แก้รอบ 1 F4: ปัก fnv + ความยาวที่คาดไว้ — ไม่ใช่แค่เทียบกับตัวเอง)
 import { encodeEscPos, type ReceiptPayload } from "@/lib/modules/pos/receipt-render";
 import { BT_CHUNK, USB_CHUNK, chunkBytes } from "@/components/pos/print/chunk";
-import { DRAWER_PULSE } from "@/components/pos/print/escpos";
+import { DRAWER_PULSE, buildEscPos } from "@/components/pos/print/escpos";
 import { RASTER_PLACEHOLDER, gsv0, packMono, slotWidthDots, spliceRaster } from "@/components/pos/print/raster";
 import { includedVat, samplePayload } from "@/components/pos/print/sample-payload";
 
@@ -57,10 +59,13 @@ console.log("── P1.10U print module (pure) ──");
   const c = encodeEscPos(fixed(), { paper: "58", drawerKick: false, thaiText: "tis620", cut: true, locale: "th" });
   const d = encodeEscPos(fixed(), { paper: "58", drawerKick: false, thaiText: "tis620", cut: true, locale: "th" });
   const sameSlots = JSON.stringify(a.rasterSlots) === JSON.stringify(b.rasterSlots);
+  // F4: ค่าที่ปักไว้ (renderer P1.10 แช่แข็ง — เปลี่ยน = ตั้งใจเปลี่ยนรูปใบเสร็จ ต้องอัปเดตพร้อมเหตุผล)
+  const PIN = { rasterLen: 689, rasterSlots: 25, rasterFnv: "451d547a", tisLen: 1017, tisFnv: "fe27237c" };
+  const pinned = a.bytes.length === PIN.rasterLen && a.rasterSlots.length === PIN.rasterSlots && fnv(a.bytes) === PIN.rasterFnv && c.bytes.length === PIN.tisLen && fnv(c.bytes) === PIN.tisFnv;
   chk(
     "U1",
-    "ESC/POS ของ payload คงที่ได้ผลเดิมทุกไบต์ (raster 80 + tis620 58) · มีช่อง raster บรรทัดไทย · tis620 ไม่มีช่อง",
-    eq(a.bytes, b.bytes) && sameSlots && eq(c.bytes, d.bytes) && a.rasterSlots.length > 0 && c.rasterSlots.length === 0,
+    "ESC/POS ของ payload คงที่ = ไบต์ที่ปักไว้ (raster/80 689 B · 25 ช่อง · fnv 451d547a · tis620/58 1017 B · fnv fe27237c) และเรียกซ้ำได้ผลเดิม",
+    pinned && eq(a.bytes, b.bytes) && sameSlots && eq(c.bytes, d.bytes) && c.rasterSlots.length === 0,
     `raster ${a.bytes.length}B/${a.rasterSlots.length} ช่อง fnv ${fnv(a.bytes)} vs ${fnv(b.bytes)} · tis620 ${c.bytes.length}B fnv ${fnv(c.bytes)} vs ${fnv(d.bytes)}`,
   );
   console.log(`     raster80 ${a.bytes.length} B · ${a.rasterSlots.length} ช่อง · fnv ${fnv(a.bytes)} · tis620/58 ${c.bytes.length} B · fnv ${fnv(c.bytes)}`);
@@ -172,6 +177,17 @@ console.log("── P1.10U print module (pure) ──");
     w80 === 576 && w58 === 384 && wBig === 576 && JSON.stringify(pulse) === JSON.stringify([0x1b, 0x70, 0x00, 0x19, 0xfa]) && vat === 1112 && p.kind === "TAX_INVOICE_ABB" && p.totals.vatBaseSatang === 15888,
     `w ${w80}/${w58}/${wBig} pulse ${pulse} vat ${vat} kind ${p.kind}`,
   );
+}
+
+// U8 — F1
+{
+  const PULSE = [0x1b, 0x70];
+  const cfg = { paper: "58" as const, drawerKick: true, thaiText: "tis620" as const };
+  const cash = (copy: boolean): ReceiptPayload => ({ ...fixed(), copy, payments: [{ type: "CASH", amountSatang: 17000, tenderedSatang: 20000, changeSatang: 3000 }] });
+  const copyKick = indexOfSeq(buildEscPos(cash(true), cfg, "th", true), PULSE);
+  const origKick = indexOfSeq(buildEscPos(cash(false), cfg, "th", true), PULSE);
+  const origNoAsk = indexOfSeq(buildEscPos(cash(false), cfg, "th"), PULSE);
+  chk("U8", "ลิ้นชัก: สำเนา + drawerKick + ขอ = ไม่มี 1B 70 · ต้นฉบับ + ขอ = มี · ต้นฉบับไม่ขอ (ปริยาย) = ไม่มี", copyKick === -1 && origKick >= 0 && origNoAsk === -1, `copy ${copyKick} orig ${origKick} noAsk ${origNoAsk}`);
 }
 
 const failed = checks.filter((c) => !c.ok);

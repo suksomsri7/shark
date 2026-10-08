@@ -6,9 +6,16 @@ import type { PosPrinterConfig } from "@/lib/modules/pos/device-shared";
 import { rasterizeSlot } from "./canvas-raster";
 import { spliceRaster } from "./raster";
 
-export function buildEscPos(payload: ReceiptPayload, cfg: Pick<PosPrinterConfig, "paper" | "drawerKick" | "thaiText">, locale: "th" | "en", drawerKick = cfg.drawerKick): Uint8Array {
+/**
+ * แก้รอบ 1 F1: ลิ้นชักเปิดเฉพาะเมื่อผู้เรียกขอ (kickDrawer — PayDone ใบต้นฉบับใบแรกของบิล) และใบนี้ไม่ใช่สำเนา ·
+ * ค่าตั้งเครื่อง drawerKick อย่างเดียวไม่พอ (พิมพ์ซ้ำ/สำเนา/ตัวอย่าง/ทดสอบ ต้องไม่เปิดลิ้นชัก)
+ */
+export const drawerKickFor = (payload: Pick<ReceiptPayload, "copy">, cfg: Pick<PosPrinterConfig, "drawerKick">, kickDrawer: boolean): boolean => kickDrawer === true && cfg.drawerKick === true && payload.copy !== true;
+
+/** ใบเสร็จ → ไบต์ ESC/POS · kickDrawer ปริยาย false (ดู drawerKickFor) */
+export function buildEscPos(payload: ReceiptPayload, cfg: Pick<PosPrinterConfig, "paper" | "drawerKick" | "thaiText">, locale: "th" | "en", kickDrawer = false): Uint8Array {
   const thaiText = cfg.thaiText === "tis620" ? "tis620" : "raster";
-  const r = encodeEscPos(payload, { paper: cfg.paper, drawerKick, thaiText, cut: true, locale });
+  const r = encodeEscPos(payload, { paper: cfg.paper, drawerKick: drawerKickFor(payload, cfg, kickDrawer), thaiText, cut: true, locale });
   if (thaiText !== "raster" || r.rasterSlots.length === 0) return r.bytes;
   return spliceRaster(r.bytes, r.rasterSlots, r.rasterSlots.map((s) => rasterizeSlot(s)));
 }

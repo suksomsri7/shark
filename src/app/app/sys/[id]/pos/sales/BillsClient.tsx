@@ -17,7 +17,7 @@ import { getPosDeviceId } from "@/lib/modules/pos/device-id";
 import { reprintReceiptAction } from "@/lib/modules/pos/receipt-actions";
 import { receiptRefusalMessageKey } from "@/lib/modules/pos/receipt-render";
 // POS P1.10 U ▸ พิมพ์สำเนาผ่านโมดูลพิมพ์ (มติ CD4) — วิธีพิมพ์/กระดาษตามค่าตั้งเครื่องนี้ (heartbeat) ◂
-import { thisDevicePrinter, type ThisDevicePrinter } from "@/components/pos/print/device-printer";
+import { thisDevicePrinter } from "@/components/pos/print/device-printer";
 import { printReceipt } from "@/components/pos/print/printReceipt";
 import { printErrorKey } from "@/components/pos/print/types";
 import { refundSaleAction, saleForRefundAction } from "@/lib/modules/pos/refund-actions";
@@ -231,8 +231,8 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
     }
   };
 
-  // แก้รอบ 1 F3 (R5) → P1.10 U: ค่าตั้งเครื่องพิมพ์ของเครื่องนี้ (heartbeat ตัวเดียวกับหน้าขาย · อ่านครั้งแรกที่พิมพ์แล้วจำไว้) ?? เบราว์เซอร์ 80 มม.
-  const printerRef = useRef<ThisDevicePrinter | null>(null);
+  // แก้รอบ 1 F3 (R5) → P1.10 U: ค่าตั้งเครื่องพิมพ์ของเครื่องนี้ (heartbeat ตัวเดียวกับหน้าขาย) ?? เบราว์เซอร์ 80 มม. ·
+  //   P1.10 U แก้รอบ 1 F7: อ่านใหม่ทุกครั้งที่พิมพ์ (ผู้จัดการเปลี่ยนวิธีพิมพ์/กระดาษระหว่างหน้าเปิดอยู่ได้) · สำเนาไม่เปิดลิ้นชัก (F1)
   const tp = useTranslations("pos.print") as T;
 
   // ── พิมพ์สำเนา: printReceipt ตามวิธีพิมพ์ของเครื่องนี้ · พิมพ์ตรงไม่ได้ (ไม่รองรับ/ยังไม่จับคู่) = พิมพ์ผ่านเบราว์เซอร์แทน ──
@@ -247,11 +247,10 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
         setDrawerErr(trc(receiptRefusalMessageKey(r.code)));
         return;
       }
-      printerRef.current ??= await thisDevicePrinter(systemId, unitId);
-      const dev = printerRef.current;
+      const dev = await thisDevicePrinter(systemId, unitId);
       const lc = locale.startsWith("en") ? "en" : "th";
-      let res = await printReceipt(r.payload, dev.config, { locale: lc, deviceCode: dev.deviceCode });
-      if (!res.ok && res.via !== "browser" && (res.code === "UNSUPPORTED" || res.code === "NO_DEVICE")) res = await printReceipt(r.payload, { ...dev.config, mode: "browser" }, { locale: lc });
+      let res = await printReceipt(r.payload, dev.config, { locale: lc, deviceCode: dev.deviceCode, kickDrawer: false });
+      if (!res.ok && res.via !== "browser" && (res.code === "UNSUPPORTED" || res.code === "NO_DEVICE")) res = await printReceipt(r.payload, { ...dev.config, mode: "browser" }, { locale: lc, kickDrawer: false });
       if (!res.ok) {
         setDrawerErr(tp(printErrorKey(res.code)));
         return;

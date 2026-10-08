@@ -14,6 +14,7 @@ import * as account from "@/lib/modules/account";
 import { posMembership } from "./access";
 import { prisma } from "./db";
 import { listDevices } from "./device";
+import { REFUND_PREFIX_DEFAULT } from "./refund-shared";
 import type { PosDeviceListItem } from "./device-shared";
 import { posReceiptSettings, updatePosReceiptSettings } from "./receipt-settings";
 import type { PosReceiptSettings, PosReceiptSettingsPatch, PosReceiptSettingsRefusal, PosReceiptSettingsResult } from "./receipt-settings-shared";
@@ -91,6 +92,8 @@ export async function receiptSettingsPageDataAction(args: { systemId: string; un
         posAbbreviatedInvoice: boolean;
       } | null;
       devices: PosDeviceListItem[];
+      /** P1.10 U แก้รอบ 1 F5: คำนำหน้าเลขใบคืน/ใบลดหนี้ตามที่ refund.ts ออกจริง (settings.pos.receipt.refundPrefix · ผิดรูป/ว่าง = "CN") */
+      refundPrefix: string;
     }
   | PosReceiptSettingsRefusal
 > {
@@ -106,6 +109,13 @@ export async function receiptSettingsPageDataAction(args: { systemId: string; un
     const rs = await posReceiptSettings({ tenantId, systemId });
     if (!rs.ok) return rs;
     const bookId = await account.posAccountSystemId(tenantId, systemId);
+    // F5: กติกาเดียวกับ refundPrefixOf (refund.ts) — อ่านค่าที่เก็บดิบ (parseReceiptSettings ไม่เก็บคีย์นี้)
+    const sys = await prisma.appSystem.findFirst({ where: { id: systemId, tenantId, type: "POS" }, select: { settings: true } });
+    const rawSettings = sys?.settings && typeof sys.settings === "object" && !Array.isArray(sys.settings) ? (sys.settings as Record<string, unknown>) : {};
+    const posS = rawSettings.pos && typeof rawSettings.pos === "object" ? (rawSettings.pos as Record<string, unknown>) : {};
+    const recS = posS.receipt && typeof posS.receipt === "object" ? (posS.receipt as Record<string, unknown>) : {};
+    const rawPrefix = typeof recS.refundPrefix === "string" ? recS.refundPrefix.trim() : "";
+    const refundPrefix = /^[A-Za-z][A-Za-z0-9-]{0,9}$/.test(rawPrefix) ? rawPrefix : REFUND_PREFIX_DEFAULT;
     const [row, vat] = bookId
       ? await Promise.all([
           prisma.accountSettings.findFirst({
@@ -142,6 +152,7 @@ export async function receiptSettingsPageDataAction(args: { systemId: string; un
             }
           : null,
       devices,
+      refundPrefix,
     };
   } catch (e) {
     unstable_rethrow(e);

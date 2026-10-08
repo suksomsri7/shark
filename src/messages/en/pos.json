@@ -134,7 +134,8 @@
       "device": "Device {name}",
       "deviceNone": "Device not registered",
       "deviceRevoked": "This device has been revoked — it cannot sell. Contact a manager",
-      "printerBrowser": "Browser printing {width} mm"
+      "printerBrowser": "Browser printing {width} mm",
+      "deviceRevokedChip": "Device revoked"
     },
     "empty": {
       "title": "No products to sell yet",
@@ -1266,6 +1267,7 @@
     "test": {
       "title": "Test print",
       "line": "Printer test"
-    }
+    },
+    "reprint": "Reprint"
   }
 }

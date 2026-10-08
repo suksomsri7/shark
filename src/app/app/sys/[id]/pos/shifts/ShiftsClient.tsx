@@ -213,7 +213,11 @@ export function ShiftsClient({ systemId, units, unitId, canManage, meName }: Pro
     if (!drawerDev || drawerBusy) return;
     setDrawerBusy(true);
     try {
-      setDrawerRes(await kickDrawer(drawerDev.config, drawerDev.deviceCode));
+      // อ่านค่าตั้งเครื่องใหม่ก่อนส่ง (ผู้จัดการปิด drawerKick/เปลี่ยนวิธีพิมพ์ระหว่างหน้าเปิดอยู่ได้)
+      const dev = await thisDevicePrinter(systemId, unitId);
+      setDrawerDev(dev);
+      if (!dev.config.drawerKick || !printerPaired(dev.config.mode, dev.deviceCode)) return;
+      setDrawerRes(await kickDrawer(dev.config, dev.deviceCode));
     } finally {
       setDrawerBusy(false);
     }

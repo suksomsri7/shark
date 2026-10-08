@@ -3,6 +3,8 @@
 //   วิธีพิมพ์ตาม printerConfig.mode: browser = iframe + print() · escpos-usb = WebUSB · escpos-bt = Web Bluetooth
 //   ESC/POS: ข้อมูลจับคู่ของ "รหัสเครื่องนี้" (localStorage) ต้องตรงชนิด ไม่งั้น NO_DEVICE · เบราว์เซอร์ไม่มี API = UNSUPPORTED
 //     (จอเสนอ "พิมพ์ผ่านระบบแทน" = เรียกซ้ำด้วย mode browser) · copies 2 = ใบที่ 2 ประทับ "สำเนา" ไม่เปิดลิ้นชักซ้ำ
+//   แก้รอบ 1 F1: ลิ้นชักเปิดเฉพาะ opts.kickDrawer === true (ปริยาย false) + ค่าตั้ง drawerKick + ใบไม่ใช่สำเนา — มีแต่ PayDone ใบต้นฉบับใบแรกที่ส่ง true
+//   แก้รอบ 1 FU-b: ไม่มี canvas วาดภาษาไทย = UNSUPPORTED · ประกอบไบต์/แทน raster พัง = WRITE_FAILED
 //   copy:true = ประทับ "สำเนา" (ปกติจอใช้ค่าจาก payload.copy ที่เซิร์ฟเวอร์ตัดสิน — กฎ 30 นาที)
 // 🔴 browser พิมพ์ใบเดียวเสมอ (หน้าต่างพิมพ์ของระบบเลือกจำนวนเองได้) · ลิ้นชักเปิดได้เฉพาะ ESC/POS (เบราว์เซอร์สั่งลิ้นชักไม่ได้)
 import type { PosPrinterConfig } from "@/lib/modules/pos/device-shared";
@@ -10,12 +12,13 @@ import { getPosDeviceId } from "@/lib/modules/pos/device-id";
 import type { ReceiptPayload } from "@/lib/modules/pos/receipt-render";
 import { bluetoothSupported, writeBluetooth } from "./bluetooth";
 import { printViaBrowser } from "./browser";
+import { CanvasUnavailableError } from "./canvas-raster";
 import { DRAWER_PULSE, buildEscPos } from "./escpos";
 import { pairingMatches, readPairing } from "./pairing";
 import { refusePrint, type PrintResult, type PrintTransport } from "./types";
 import { usbSupported, writeUsb } from "./usb";
 
-export type PrintOptions = { copy?: boolean; locale: "th" | "en"; deviceCode?: string };
+export type PrintOptions = { copy?: boolean; locale: "th" | "en"; deviceCode?: string; kickDrawer?: boolean };
 
 export const transportOf = (mode: PosPrinterConfig["mode"]): PrintTransport => (mode === "escpos-usb" ? "usb" : mode === "escpos-bt" ? "bluetooth" : "browser");
 
@@ -45,7 +48,7 @@ export async function printReceipt(payload: ReceiptPayload, cfg: PosPrinterConfi
     if (!transportSupported(cfg.mode)) return refusePrint("UNSUPPORTED", via);
     let bytes: Uint8Array;
     try {
-      bytes = buildEscPos(first, cfg, locale);
+      bytes = buildEscPos(first, cfg, locale, opts?.kickDrawer === true);
       if (cfg.copies === 2) {
         const second = buildEscPos({ ...payload, copy: true }, cfg, locale, false);
         const both = new Uint8Array(bytes.length + second.length);
@@ -53,8 +56,8 @@ export async function printReceipt(payload: ReceiptPayload, cfg: PosPrinterConfi
         both.set(second, bytes.length);
         bytes = both;
       }
-    } catch {
-      return refusePrint("UNSUPPORTED", via); // ไม่มี canvas วาดภาษาไทย
+    } catch (e) {
+      return refusePrint(e instanceof CanvasUnavailableError ? "UNSUPPORTED" : "WRITE_FAILED", via);
     }
     return await send(cfg, opts?.deviceCode, bytes);
   } catch {

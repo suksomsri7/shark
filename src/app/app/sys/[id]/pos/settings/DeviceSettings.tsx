@@ -208,7 +208,7 @@ export function DeviceSettings({ systemId, unitId, shopName }: Props) {
     });
     setBusy(true);
     try {
-      setPrintRes(await printReceipt(p, forceBrowser ? { ...sel.printerConfig, mode: "browser" } : sel.printerConfig, { locale, deviceCode: sel.deviceCode }));
+      setPrintRes(await printReceipt(p, forceBrowser ? { ...sel.printerConfig, mode: "browser" } : sel.printerConfig, { locale, deviceCode: sel.deviceCode, kickDrawer: false }));
     } finally {
       setBusy(false);
     }

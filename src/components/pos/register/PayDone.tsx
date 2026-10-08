@@ -39,8 +39,14 @@ type Props = {
   locale: "th" | "en";
 };
 
-/** บิลที่พิมพ์อัตโนมัติไปแล้ว (ระดับโมดูล — จอสำเร็จถูกวาดใหม่/StrictMode ก็ไม่พิมพ์ซ้ำ) */
+/** บิลที่สั่งพิมพ์อัตโนมัติไปแล้ว (ระดับโมดูล — จอสำเร็จถูกวาดใหม่/StrictMode ก็ไม่พิมพ์ซ้ำ) */
 const autoPrinted = new Set<string>();
+/**
+ * แก้รอบ 1 F1/F2: บิลที่พิมพ์ใบต้นฉบับสำเร็จแล้ว (ระดับโมดูล · ฝั่ง client) —
+ *   ยังไม่มี = ปุ่ม "พิมพ์ใบเสร็จ" (receiptPayloadAction) + เปิดลิ้นชักได้ (ใบต้นฉบับใบแรก) ·
+ *   มีแล้ว = ปุ่มกลายเป็น "พิมพ์ซ้ำ" (reprintReceiptAction · สำเนา + audit) และไม่เปิดลิ้นชักอีก
+ */
+const printedOriginal = new Set<string>();
 
 export function PayDone({ receiptNo, totalSatang, changeSatang, payMethods, onNext, systemId, saleId, printer, locale }: Props) {
   const t = useTranslations("pos.register");
@@ -50,20 +56,30 @@ export function PayDone({ receiptNo, totalSatang, changeSatang, payMethods, onNe
   const [printRes, setPrintRes] = useState<PrintResult | null>(null);
   const [loadErr, setLoadErr] = useState<string | null>(null);
   const [lastKind, setLastKind] = useState<"receipt" | "copy">("receipt");
+  const [printed, setPrinted] = useState(() => printedOriginal.has(saleId));
   const print = async (kind: "receipt" | "copy", forceBrowser = false) => {
     if (printing) return;
+    // F2: ต้นฉบับพิมพ์ไปแล้ว ⇒ "พิมพ์ใบเสร็จ"/ลองซ้ำ = พิมพ์ซ้ำผ่าน reprintReceiptAction (สำเนา + audit)
+    const original = kind === "receipt" && !printedOriginal.has(saleId);
     setPrinting(kind);
     setLastKind(kind);
     setLoadErr(null);
     setPrintRes(null);
     try {
-      const r = kind === "copy" ? await reprintReceiptAction({ systemId, saleId }) : await receiptPayloadAction({ systemId, saleId });
+      const r = original ? await receiptPayloadAction({ systemId, saleId }) : await reprintReceiptAction({ systemId, saleId });
       if (!r.ok) {
         setLoadErr(trc(receiptRefusalMessageKey(r.code)));
         return;
       }
       const cfg = forceBrowser ? { ...printer.config, mode: "browser" as const } : printer.config;
-      setPrintRes(await printReceipt(r.payload, cfg, { locale, deviceCode: printer.deviceCode }));
+      // F1: ลิ้นชักเฉพาะใบต้นฉบับใบแรกของบิล (ไม่ใช่สำเนาตามกฎ 30 นาที) — สำเนา/พิมพ์ซ้ำ = false เสมอ
+      const kickDrawer = original && cfg.drawerKick && !r.payload.copy;
+      const res = await printReceipt(r.payload, cfg, { locale, deviceCode: printer.deviceCode, kickDrawer });
+      if (res.ok && original) {
+        printedOriginal.add(saleId);
+        setPrinted(true);
+      }
+      setPrintRes(res);
     } catch {
       setLoadErr(trc("errors.internal"));
     } finally {
@@ -142,7 +158,7 @@ export function PayDone({ receiptNo, totalSatang, changeSatang, payMethods, onNe
             onClick={() => void print("receipt")}
           >
             <RegisterIcon name="print" size={15} />
-            {printing === "receipt" ? tp("printing") : tp("receipt")}
+            {printing === "receipt" ? tp("printing") : printed ? tp("reprint") : tp("receipt")}
           </button>
           <button
             data-testid="pos-print-copy"

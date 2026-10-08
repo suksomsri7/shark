@@ -11,7 +11,7 @@ import { useTranslations } from "next-intl";
 import { RegisterIcon } from "./RegisterIcon";
 
 /** สถานะเครื่อง/เครื่องพิมพ์ของแถบล่าง — undefined = ยังไม่รู้ (ก่อน heartbeat ตอบ) */
-export type StatusBarDevice = { name: string | null; settingsHref: string; printer: "browser" | "ready" | "none"; paper: "58" | "80" };
+export type StatusBarDevice = { name: string | null; revoked: boolean; settingsHref: string; printer: "browser" | "ready" | "none"; paper: "58" | "80" };
 
 const Kbd = ({ k }: { k: string }) => (
   <kbd className="inline-grid h-[18px] min-w-[22px] place-items-center rounded-[5px] border bg-[color:var(--color-surface)] px-[5px] font-sans text-[10.5px] font-bold text-[color:var(--color-ink-soft)]">{k}</kbd>
@@ -51,7 +51,12 @@ export function RegisterStatusBar({ pendingStock, pendingSync, device }: { pendi
       {device && (
         <>
           <span aria-hidden>·</span>
-          {device.name ? (
+          {device.revoked ? (
+            <span data-testid="pos-reg-status-device" data-state="revoked" className="inline-flex items-center gap-1.5 font-semibold text-[color:var(--color-danger)]">
+              <RegisterIcon name="warn" size={12} />
+              {t("status.deviceRevokedChip")}
+            </span>
+          ) : device.name ? (
             <span data-testid="pos-reg-status-device" className="inline-flex items-center gap-1.5">
               <RegisterIcon name="cash" size={12} />
               {t("status.device", { name: device.name })}
