@@ -33,6 +33,15 @@
 - oracle «qc-ai-t0.4.mts»: S1 [static] `PACKS` มี 4 แพ็ก · FREE enabled เท่านั้น · ราคา 0/490/1490/3990 (3) · S2 [static] `approxTasks` ของทุกแพ็กเป็น null หรือมีคอมเมนต์อ้าง AI-TEAM-COST บรรทัด (2) · S3 [static] F16.1: ไม่มี "token"/"โทเคน"/"บาทต่องาน"/"ค่าแรง" ในสตริง team ทั้ง th/en (2) · S4 [static] ทุกคีย์ th มีคู่ en (2) · S5 `FREE_PACK.allowanceMicro > 0` และ `maxScheduled ≥ 1` `maxApprovers ≥ 1` (1)
 - regression: —
 
+### T0.5 — วาดแบบ Login + Sign-up สไตล์ Airy (ผู้คุมงาน/Sonnet · ไม่มีข้อสอบโค้ด · เจ้าของสั่ง 8 ต.ค.)
+- ส่งมอบ: `ledger/design-ai-team/gen_airy_f.py` (exec ตัวช่วยจาก gen_airy_full เหมือนชุด ง/จ) → F1 เข้าสู่ระบบ · F2 สมัครใช้ครั้งแรก · F3 ใส่รหัส OTP (+ สถานะ error "รหัสไม่ถูก/หมดอายุ") · `gen_airy_dark.py` รับชุด f · `airy-f.jpg` `airy-dark-f.jpg` · README อัปเดต · ส่ง tg ภาพ 2 ใบ
+- เกณฑ์รับ: ปุ่มทางเข้าตรงกับ `app/login.tsx` วันนี้ (อีเมล/OTP · Apple · Google · LINE · Facebook) · ไม่มีคำว่า token/จำนวนงาน · เจ้าของตอบ "ใช้ได้" (หรือเงียบ 24 ชม. = ใช้แบบที่ส่ง · จดใน OWNER-QUESTIONS)
+
+### T2.13 — หน้า Login + Sign-up ตามแบบ T0.5 (Opus · 18 ข้อ · ภาพ F1 F2 F3)
+- `app/login.tsx` เขียนใหม่ด้วยธีม Airy + คอมโพเนนต์ team (ทางเข้าเดิมครบ · state เดิม: อีเมล → ขอ OTP → ใส่รหัส → `signIn` · Apple/Google ผ่าน route เดิม · LINE/Facebook ผ่าน `auth/exchange` เดิม) · `app/signup.tsx` = ฟอร์มเดียวกัน copy "สมัครใช้ฟรี" (OTP กับอีเมลใหม่ → verify → `Gate` → `/dna`/D2) · D1 เชื่อม 2 ปุ่ม · `qc-mobile-auth` เท่า baseline · ข้อความ error ไทยเดิมคงไว้
+- oracle «qc-ai-t2.13.mts»: S1 ภาพคู่ F1 F2 F3 light/dark (6) · S2 ทุกปุ่มทางเข้าเดิมยังเรียก API เดิม (mock intercept: otp/verify/google/apple/exchange) (5) · S3 sign-up อีเมลใหม่ → verify → ไป D2 (fixture) · อีเมลเดิม → login ปกติ (2) · S4 error OTP ผิดแสดง inline (1) · S5 testID/i18n (2) · typecheck (1) · residue (1)
+- regression: `qc-mobile-auth` · T2.12
+
 ### T1.1 — migration `_ai_team_a` (Opus · 30 ข้อ · 🎯 ผู้ตรวจอ่าน SQL)
 - ตาม MASTER-PLAN §6 T1.1 + R-E C2/C6/C7/C12/C22/C24/C25/C26/C35 · `scope.ts` ลงทุก model (axis tenant · `AiSubscription` = `g()`) · `prisma/migrations/<ts>_ai_team_a/migration.sql` additive · ทะเบียน erase/export ของร้าน (ไฟล์ที่ REVIEW/ brief ระบุ) รับตารางใหม่ · ไม่มีโค้ด product นอกจาก type/scope
 - oracle «qc-ai-t1.1.mts»: S1 migration apply บน QC4 สำเร็จ + ทุก model ใหม่มีใน `_prisma_migrations`/`information_schema` (14 ตาราง/คอลัมน์) (14) · S2 [static] SQL ไม่มี `DROP` · `ALTER TYPE … RENAME/DROP` · `NOT NULL` ไม่มี DEFAULT บนตารางเดิม · `CREATE INDEX` บน `AiProposal`/`AiScheduledTask`/`AiCreditTxn`/`AiSettings` (ตารางเดิม) (4) · S3 fitness F1.x/F8.1 เขียวหลังเพิ่ม (2) · S4 ชุด baseline AI/mobile/approval ทั้งหมดเท่าเดิม (นับใน regression) · S5 `AiSubscription` ไม่มี `tenantId` บังคับ + unique partial `ownerUserId` where pack=FREE (ตรวจ constraint) (2) · S6 คอลัมน์ `AiProposal.autoExecuted` default false ครอบแถวเดิม (1) · S7 erase/export ของร้าน AT-X ลบ/ส่งออกแถวตารางใหม่ (seed แถวชั่วคราว) (3) · S8 [static] ไม่มีการแก้ `core.prisma` (diff ว่าง) (1) · S9 residue (3)
@@ -242,4 +251,5 @@
 
 ## 4. บันทึกเหตุการณ์ (UTC จาก `date -u` · ใหม่ล่างสุด)
 - 2026-10-08 ~01:40Z Fable: เริ่มเขียนชุดเอกสาร RUN ใน `shark-in-th` (main ในเครื่อง) · ปล่อยผู้สำรวจโค้ด (Opus อ่านอย่างเดียว) → `REVIEW-AI-TEAM-DESIGN-2026-10-08.md` · prompt ผู้สำรวจ = §11.6 ของ MASTER-PLAN (หัวข้อ 10 ข้อ: prisma as-built · map `src/lib/ai/**` + call graph · API มือถือ · แอป · สิทธิ์/approval · outbox · fitness/QC · ข้อขัดแย้งแบบ↔โค้ด · ไฟล์ร้อน POS/HR · ownership ต่อเฟส)
+- 2026-10-08 ~05:00Z เจ้าของสั่ง: push GitHub · ทำตามแผน/UI · **เพิ่มหน้า login + sign-up** (แบบ 36 หน้าขาด) → เพิ่มใบ T0.5 (วาดแบบ) + T2.13 (ทำจอ) รวม 49 ใบ · เริ่ม 1 เลนใน session ใหม่
 - 2026-10-08 ~02:10Z ผู้สำรวจส่ง REVIEW 527 บรรทัด (ฐาน main 7411dfde) · Fable เคาะ C1–C35 ลง RESOLUTIONS R-E · ปรับ MASTER-PLAN §6 T1.1 (ตาราง `AiTask` แทนคอลัมน์บน AiConversation · FK ชื่อ `aiEmployeeId`) · เปิดคำถามเจ้าของ Q4/Q5 · เขียนสัญญา §2 ครบ 47 ใบ

@@ -34,6 +34,7 @@ Every item is a DECISION, not a suggestion. If real code makes one impossible, t
 | Undoable kinds registry + reverse adapters | **T4.3** | each reverse goes through the owning module's facade (account void, kanban move back, content unschedule, chat unsend if provider allows) |
 | Knowledge sources "pulled from SHARK automatically" | **T4.6** adapters (inventory items + prices, opening hours/branches) through the owning facades | no copying of data into KB tables |
 | Deep links `shark://team/...` + push payload routing | **T2.1** (routing) · **T2.11** (notification settings) | push senders stay the existing ones |
+| Login + sign-up screens (owner 8 Oct: missing from the 36 mockups) | **T0.5** draws F1–F3 in the Airy generators and sends them to the owner; **T2.13** rebuilds `app/login.tsx` + `app/signup.tsx` on the new theme with every existing sign-in path unchanged (`qc-mobile-auth` = baseline) | the login screen has no `uiVersion` (pre-auth) ⇒ the new design applies to every build 2.0.0 user |
 | Dark-mode contrast checker script | **T5.4** | runs on the final 36×2 set in T6.2 |
 
 ## R-C. Resolved contradictions (design ↔ code ↔ plan)
