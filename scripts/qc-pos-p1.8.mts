@@ -1377,7 +1377,14 @@ async function runDb() {
     else {
       const d = cn[0];
       if (d.sourceDocId !== m0.abb?.id) p.push("sourceDocId ไม่ใช่ ABB ของบิล");
-      if (d.docNo !== rm1Row?.receiptNo) p.push(`docNo ${short(d.docNo, 20)} ≠ ${short(rm1Row?.receiptNo, 20)}`);
+      if (d.docNo !== rm1Row?.receiptNo) {
+        // ORACLE-EDIT C2 (ผู้คุม 8 ต.ค.): หลายสาขาใช้สมุดบัญชีเล่มเดียว → เลข CN รันต่อสาขา ชนกันข้ามสาขาได้ ⇒ เอกสารบัญชีใบหลังได้ docNo null
+        //   (กติกาเดียวกับใบกำกับอย่างย่อของบิลขายวันนี้ · เลขต่อสมุดหลายสาขา = P1.13/P3.4) — ยอมรับ null เฉพาะเมื่อมี CREDIT_NOTE ใบอื่นในสมุดเดียวกันถือเลขนั้นอยู่
+        const taken = d.docNo == null && rm1Row?.receiptNo
+          ? await P.accountDocument.findFirst({ where: { systemId: d.systemId, docType: "CREDIT_NOTE", docNo: rm1Row.receiptNo, id: { not: d.id } }, select: { id: true } }).catch(() => null)
+          : null;
+        if (!taken) p.push(`docNo ${short(d.docNo, 20)} ≠ ${short(rm1Row?.receiptNo, 20)}`);
+      }
       if (d.grandTotal !== 8500 || d.vatAmount !== v) p.push(`grand ${d.grandTotal} vat ${d.vatAmount}`);
     }
     const es = await jvOf([rm1], cn.map((d: Any) => d.id));
