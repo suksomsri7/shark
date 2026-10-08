@@ -1,0 +1,679 @@
+== seed member == 11:36:26
+(node:912437) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+┌─ [email:dev] ────────────────────────────────
+│ to:      mb-member-02@example.com
+│ subject: คุณได้รับแต้มเพิ่ม
+│ คุณศิริพร ทองดี ได้รับ 20 แต้มจาก SIAM DIVE MEMBER QC ดูยอดสะสมที่ http://127.0.0.1:3215/m/siam-dive-member-qc/wallet
+└──────────────────────────────────────────────
+
+
+┌─ [email:dev] ────────────────────────────────
+│ to:      mb-member-02@example.com
+│ subject: คุณได้รับแต้มเพิ่ม
+│ คุณศิริพร ทองดี ได้รับ 20 แต้มจาก SIAM DIVE MEMBER QC ดูยอดสะสมที่ http://127.0.0.1:3215/m/siam-dive-member-qc/wallet
+└──────────────────────────────────────────────
+
+
+┌─ [email:dev] ────────────────────────────────
+│ to:      mb-member-04@example.com
+│ subject: คุณได้รับแต้มเพิ่ม
+│ คุณพิมพ์ชนก ทองดี ได้รับ 20 แต้มจาก SIAM DIVE MEMBER QC ดูยอดสะสมที่ http://127.0.0.1:3215/m/siam-dive-member-qc/wallet
+└──────────────────────────────────────────────
+
+
+┌─ [email:dev] ────────────────────────────────
+│ to:      mb-member-04@example.com
+│ subject: คุณได้รับแต้มเพิ่ม
+│ คุณพิมพ์ชนก ทองดี ได้รับ 20 แต้มจาก SIAM DIVE MEMBER QC ดูยอดสะสมที่ http://127.0.0.1:3215/m/siam-dive-member-qc/wallet
+└──────────────────────────────────────────────
+
+
+┌─ [email:dev] ────────────────────────────────
+│ to:      mb-member-06@example.com
+│ subject: คุณได้รับแต้มเพิ่ม
+│ คุณกมลวรรณ ได้รับ 24 แต้มจาก SIAM DIVE MEMBER QC ดูยอดสะสมที่ http://127.0.0.1:3215/m/siam-dive-member-qc/wallet
+└──────────────────────────────────────────────
+
+
+┌─ [email:dev] ────────────────────────────────
+│ to:      mb-member-06@example.com
+│ subject: คุณได้รับแต้มเพิ่ม
+│ คุณกมลวรรณ ได้รับ 24 แต้มจาก SIAM DIVE MEMBER QC ดูยอดสะสมที่ http://127.0.0.1:3215/m/siam-dive-member-qc/wallet
+└──────────────────────────────────────────────
+
+
+┌─ [email:dev] ────────────────────────────────
+│ to:      mb-member-08@example.com
+│ subject: คุณได้รับแต้มเพิ่ม
+│ คุณรัตนาภรณ์ ได้รับ 32 แต้มจาก SIAM DIVE MEMBER QC ดูยอดสะสมที่ http://127.0.0.1:3215/m/siam-dive-member-qc/wallet
+└──────────────────────────────────────────────
+
+
+┌─ [email:dev] ────────────────────────────────
+│ to:      mb-member-08@example.com
+│ subject: คุณได้รับแต้มเพิ่ม
+│ คุณรัตนาภรณ์ ได้รับ 32 แต้มจาก SIAM DIVE MEMBER QC ดูยอดสะสมที่ http://127.0.0.1:3215/m/siam-dive-member-qc/wallet
+└──────────────────────────────────────────────
+
+
+┌─ [email:dev] ────────────────────────────────
+│ to:      mb-member-10@example.com
+│ subject: คุณได้รับแต้มเพิ่ม
+│ คุณจันทิมา ได้รับ 40 แต้มจาก SIAM DIVE MEMBER QC ดูยอดสะสมที่ http://127.0.0.1:3215/m/siam-dive-member-qc/wallet
+└──────────────────────────────────────────────
+
+
+┌─ [email:dev] ────────────────────────────────
+│ to:      mb-member-10@example.com
+│ subject: คุณได้รับแต้มเพิ่ม
+│ คุณจันทิมา ได้รับ 40 แต้มจาก SIAM DIVE MEMBER QC ดูยอดสะสมที่ http://127.0.0.1:3215/m/siam-dive-member-qc/wallet
+└──────────────────────────────────────────────
+
+
+┌─ [email:dev] ────────────────────────────────
+│ to:      mb-member-12@example.com
+│ subject: คุณได้รับแต้มเพิ่ม
+│ คุณอรอุมา ได้รับ 48 แต้มจาก SIAM DIVE MEMBER QC ดูยอดสะสมที่ http://127.0.0.1:3215/m/siam-dive-member-qc/wallet
+└──────────────────────────────────────────────
+
+
+┌─ [email:dev] ────────────────────────────────
+│ to:      mb-member-12@example.com
+│ subject: คุณได้รับแต้มเพิ่ม
+│ คุณอรอุมา ได้รับ 48 แต้มจาก SIAM DIVE MEMBER QC ดูยอดสะสมที่ http://127.0.0.1:3215/m/siam-dive-member-qc/wallet
+└──────────────────────────────────────────────
+
+
+┌─ [email:dev] ────────────────────────────────
+│ to:      mb-member-14@example.com
+│ subject: คุณได้รับแต้มเพิ่ม
+│ คุณศิริพร ได้รับ 56 แต้มจาก SIAM DIVE MEMBER QC ดูยอดสะสมที่ http://127.0.0.1:3215/m/siam-dive-member-qc/wallet
+└──────────────────────────────────────────────
+
+
+┌─ [email:dev] ────────────────────────────────
+│ to:      mb-member-14@example.com
+│ subject: คุณได้รับแต้มเพิ่ม
+│ คุณศิริพร ได้รับ 56 แต้มจาก SIAM DIVE MEMBER QC ดูยอดสะสมที่ http://127.0.0.1:3215/m/siam-dive-member-qc/wallet
+└──────────────────────────────────────────────
+
+
+┌─ [email:dev] ────────────────────────────────
+│ to:      mb-member-16@example.com
+│ subject: คุณได้รับแต้มเพิ่ม
+│ คุณพิมพ์ชนก ได้รับ 64 แต้มจาก SIAM DIVE MEMBER QC ดูยอดสะสมที่ http://127.0.0.1:3215/m/siam-dive-member-qc/wallet
+└──────────────────────────────────────────────
+
+
+┌─ [email:dev] ────────────────────────────────
+│ to:      mb-member-16@example.com
+│ subject: คุณได้รับแต้มเพิ่ม
+│ คุณพิมพ์ชนก ได้รับ 64 แต้มจาก SIAM DIVE MEMBER QC ดูยอดสะสมที่ http://127.0.0.1:3215/m/siam-dive-member-qc/wallet
+└──────────────────────────────────────────────
+
+
+┌─ [email:dev] ────────────────────────────────
+│ to:      mb-member-18@example.com
+│ subject: คุณได้รับแต้มเพิ่ม
+│ คุณกมลวรรณ ได้รับ 72 แต้มจาก SIAM DIVE MEMBER QC ดูยอดสะสมที่ http://127.0.0.1:3215/m/siam-dive-member-qc/wallet
+└──────────────────────────────────────────────
+
+
+┌─ [email:dev] ────────────────────────────────
+│ to:      mb-member-18@example.com
+│ subject: คุณได้รับแต้มเพิ่ม
+│ คุณกมลวรรณ ได้รับ 72 แต้มจาก SIAM DIVE MEMBER QC ดูยอดสะสมที่ http://127.0.0.1:3215/m/siam-dive-member-qc/wallet
+└──────────────────────────────────────────────
+
+
+┌─ [email:dev] ────────────────────────────────
+│ to:      mb-member-20@example.com
+│ subject: คุณได้รับแต้มเพิ่ม
+│ คุณรัตนาภรณ์ ได้รับ 80 แต้มจาก SIAM DIVE MEMBER QC ดูยอดสะสมที่ http://127.0.0.1:3215/m/siam-dive-member-qc/wallet
+└──────────────────────────────────────────────
+
+
+┌─ [email:dev] ────────────────────────────────
+│ to:      mb-member-20@example.com
+│ subject: คุณได้รับแต้มเพิ่ม
+│ คุณรัตนาภรณ์ ได้รับ 80 แต้มจาก SIAM DIVE MEMBER QC ดูยอดสะสมที่ http://127.0.0.1:3215/m/siam-dive-member-qc/wallet
+└──────────────────────────────────────────────
+
+
+┌─ [email:dev] ────────────────────────────────
+│ to:      mb-member-22@example.com
+│ subject: คุณได้รับแต้มเพิ่ม
+│ คุณจันทิมา ได้รับ 88 แต้มจาก SIAM DIVE MEMBER QC ดูยอดสะสมที่ http://127.0.0.1:3215/m/siam-dive-member-qc/wallet
+└──────────────────────────────────────────────
+
+
+┌─ [email:dev] ────────────────────────────────
+│ to:      mb-member-22@example.com
+│ subject: คุณได้รับแต้มเพิ่ม
+│ คุณจันทิมา ได้รับ 88 แต้มจาก SIAM DIVE MEMBER QC ดูยอดสะสมที่ http://127.0.0.1:3215/m/siam-dive-member-qc/wallet
+└──────────────────────────────────────────────
+
+
+┌─ [email:dev] ────────────────────────────────
+│ to:      mb-member-24@example.com
+│ subject: คุณได้รับแต้มเพิ่ม
+│ คุณอรอุมา ได้รับ 96 แต้มจาก SIAM DIVE MEMBER QC ดูยอดสะสมที่ http://127.0.0.1:3215/m/siam-dive-member-qc/wallet
+└──────────────────────────────────────────────
+
+
+┌─ [email:dev] ────────────────────────────────
+│ to:      mb-member-24@example.com
+│ subject: คุณได้รับแต้มเพิ่ม
+│ คุณอรอุมา ได้รับ 96 แต้มจาก SIAM DIVE MEMBER QC ดูยอดสะสมที่ http://127.0.0.1:3215/m/siam-dive-member-qc/wallet
+└──────────────────────────────────────────────
+
+
+┌─ [email:dev] ────────────────────────────────
+│ to:      mb-member-26@example.com
+│ subject: คุณได้รับแต้มเพิ่ม
+│ คุณศิริพร ได้รับ 104 แต้มจาก SIAM DIVE MEMBER QC ดูยอดสะสมที่ http://127.0.0.1:3215/m/siam-dive-member-qc/wallet
+└──────────────────────────────────────────────
+
+
+┌─ [email:dev] ────────────────────────────────
+│ to:      mb-member-26@example.com
+│ subject: คุณได้รับแต้มเพิ่ม
+│ คุณศิริพร ได้รับ 104 แต้มจาก SIAM DIVE MEMBER QC ดูยอดสะสมที่ http://127.0.0.1:3215/m/siam-dive-member-qc/wallet
+└──────────────────────────────────────────────
+
+
+┌─ [email:dev] ────────────────────────────────
+│ to:      mb-member-28@example.com
+│ subject: คุณได้รับแต้มเพิ่ม
+│ คุณพิมพ์ชนก ได้รับ 112 แต้มจาก SIAM DIVE MEMBER QC ดูยอดสะสมที่ http://127.0.0.1:3215/m/siam-dive-member-qc/wallet
+└──────────────────────────────────────────────
+
+
+┌─ [email:dev] ────────────────────────────────
+│ to:      mb-member-28@example.com
+│ subject: คุณได้รับแต้มเพิ่ม
+│ คุณพิมพ์ชนก ได้รับ 112 แต้มจาก SIAM DIVE MEMBER QC ดูยอดสะสมที่ http://127.0.0.1:3215/m/siam-dive-member-qc/wallet
+└──────────────────────────────────────────────
+
+
+┌─ [email:dev] ────────────────────────────────
+│ to:      mb-member-30@example.com
+│ subject: คุณได้รับแต้มเพิ่ม
+│ คุณกมลวรรณ ได้รับ 120 แต้มจาก SIAM DIVE MEMBER QC ดูยอดสะสมที่ http://127.0.0.1:3215/m/siam-dive-member-qc/wallet
+└──────────────────────────────────────────────
+
+
+┌─ [email:dev] ────────────────────────────────
+│ to:      mb-member-30@example.com
+│ subject: คุณได้รับแต้มเพิ่ม
+│ คุณกมลวรรณ ได้รับ 120 แต้มจาก SIAM DIVE MEMBER QC ดูยอดสะสมที่ http://127.0.0.1:3215/m/siam-dive-member-qc/wallet
+└──────────────────────────────────────────────
+
+
+┌─ [email:dev] ────────────────────────────────
+│ to:      mb-member-32@example.com
+│ subject: คุณได้รับแต้มเพิ่ม
+│ คุณรัตนาภรณ์ ได้รับ 220 แต้มจาก SIAM DIVE MEMBER QC ดูยอดสะสมที่ http://127.0.0.1:3215/m/siam-dive-member-qc/wallet
+└──────────────────────────────────────────────
+
+
+┌─ [email:dev] ────────────────────────────────
+│ to:      mb-member-32@example.com
+│ subject: คุณได้รับแต้มเพิ่ม
+│ คุณรัตนาภรณ์ ได้รับ 220 แต้มจาก SIAM DIVE MEMBER QC ดูยอดสะสมที่ http://127.0.0.1:3215/m/siam-dive-member-qc/wallet
+└──────────────────────────────────────────────
+
+
+┌─ [email:dev] ────────────────────────────────
+│ to:      mb-member-34@example.com
+│ subject: คุณได้รับแต้มเพิ่ม
+│ คุณจันทิมา ได้รับ 240 แต้มจาก SIAM DIVE MEMBER QC ดูยอดสะสมที่ http://127.0.0.1:3215/m/siam-dive-member-qc/wallet
+└──────────────────────────────────────────────
+
+
+┌─ [email:dev] ────────────────────────────────
+│ to:      mb-member-34@example.com
+│ subject: คุณได้รับแต้มเพิ่ม
+│ คุณจันทิมา ได้รับ 240 แต้มจาก SIAM DIVE MEMBER QC ดูยอดสะสมที่ http://127.0.0.1:3215/m/siam-dive-member-qc/wallet
+└──────────────────────────────────────────────
+
+
+┌─ [email:dev] ────────────────────────────────
+│ to:      mb-member-36@example.com
+│ subject: คุณได้รับแต้มเพิ่ม
+│ คุณอรอุมา ได้รับ 260 แต้มจาก SIAM DIVE MEMBER QC ดูยอดสะสมที่ http://127.0.0.1:3215/m/siam-dive-member-qc/wallet
+└──────────────────────────────────────────────
+
+
+┌─ [email:dev] ────────────────────────────────
+│ to:      mb-member-36@example.com
+│ subject: คุณได้รับแต้มเพิ่ม
+│ คุณอรอุมา ได้รับ 260 แต้มจาก SIAM DIVE MEMBER QC ดูยอดสะสมที่ http://127.0.0.1:3215/m/siam-dive-member-qc/wallet
+└──────────────────────────────────────────────
+
+
+┌─ [email:dev] ────────────────────────────────
+│ to:      mb-member-38@example.com
+│ subject: คุณได้รับแต้มเพิ่ม
+│ คุณศิริพร ได้รับ 280 แต้มจาก SIAM DIVE MEMBER QC ดูยอดสะสมที่ http://127.0.0.1:3215/m/siam-dive-member-qc/wallet
+└──────────────────────────────────────────────
+
+
+┌─ [email:dev] ────────────────────────────────
+│ to:      mb-member-38@example.com
+│ subject: คุณได้รับแต้มเพิ่ม
+│ คุณศิริพร ได้รับ 280 แต้มจาก SIAM DIVE MEMBER QC ดูยอดสะสมที่ http://127.0.0.1:3215/m/siam-dive-member-qc/wallet
+└──────────────────────────────────────────────
+
+
+┌─ [email:dev] ────────────────────────────────
+│ to:      mb-member-40@example.com
+│ subject: คุณได้รับแต้มเพิ่ม
+│ คุณพิมพ์ชนก ได้รับ 300 แต้มจาก SIAM DIVE MEMBER QC ดูยอดสะสมที่ http://127.0.0.1:3215/m/siam-dive-member-qc/wallet
+└──────────────────────────────────────────────
+
+
+┌─ [email:dev] ────────────────────────────────
+│ to:      mb-member-40@example.com
+│ subject: คุณได้รับแต้มเพิ่ม
+│ คุณพิมพ์ชนก ได้รับ 300 แต้มจาก SIAM DIVE MEMBER QC ดูยอดสะสมที่ http://127.0.0.1:3215/m/siam-dive-member-qc/wallet
+└──────────────────────────────────────────────
+
+
+┌─ [email:dev] ────────────────────────────────
+│ to:      mb-member-42@example.com
+│ subject: คุณได้รับแต้มเพิ่ม
+│ คุณกมลวรรณ ได้รับ 320 แต้มจาก SIAM DIVE MEMBER QC ดูยอดสะสมที่ http://127.0.0.1:3215/m/siam-dive-member-qc/wallet
+└──────────────────────────────────────────────
+
+
+┌─ [email:dev] ────────────────────────────────
+│ to:      mb-member-42@example.com
+│ subject: คุณได้รับแต้มเพิ่ม
+│ คุณกมลวรรณ ได้รับ 320 แต้มจาก SIAM DIVE MEMBER QC ดูยอดสะสมที่ http://127.0.0.1:3215/m/siam-dive-member-qc/wallet
+└──────────────────────────────────────────────
+
+
+┌─ [email:dev] ────────────────────────────────
+│ to:      mb-member-44@example.com
+│ subject: คุณได้รับแต้มเพิ่ม
+│ คุณรัตนาภรณ์ ได้รับ 340 แต้มจาก SIAM DIVE MEMBER QC ดูยอดสะสมที่ http://127.0.0.1:3215/m/siam-dive-member-qc/wallet
+└──────────────────────────────────────────────
+
+
+┌─ [email:dev] ────────────────────────────────
+│ to:      mb-member-44@example.com
+│ subject: คุณได้รับแต้มเพิ่ม
+│ คุณรัตนาภรณ์ ได้รับ 340 แต้มจาก SIAM DIVE MEMBER QC ดูยอดสะสมที่ http://127.0.0.1:3215/m/siam-dive-member-qc/wallet
+└──────────────────────────────────────────────
+
+
+┌─ [email:dev] ────────────────────────────────
+│ to:      mb-member-46@example.com
+│ subject: คุณได้รับแต้มเพิ่ม
+│ คุณจันทิมา ได้รับ 640 แต้มจาก SIAM DIVE MEMBER QC ดูยอดสะสมที่ http://127.0.0.1:3215/m/siam-dive-member-qc/wallet
+└──────────────────────────────────────────────
+
+
+┌─ [email:dev] ────────────────────────────────
+│ to:      mb-member-46@example.com
+│ subject: คุณได้รับแต้มเพิ่ม
+│ คุณจันทิมา ได้รับ 640 แต้มจาก SIAM DIVE MEMBER QC ดูยอดสะสมที่ http://127.0.0.1:3215/m/siam-dive-member-qc/wallet
+└──────────────────────────────────────────────
+
+
+┌─ [email:dev] ────────────────────────────────
+│ to:      mb-member-48@example.com
+│ subject: คุณได้รับแต้มเพิ่ม
+│ คุณอรอุมา ได้รับ 720 แต้มจาก SIAM DIVE MEMBER QC ดูยอดสะสมที่ http://127.0.0.1:3215/m/siam-dive-member-qc/wallet
+└──────────────────────────────────────────────
+
+
+┌─ [email:dev] ────────────────────────────────
+│ to:      mb-member-48@example.com
+│ subject: คุณได้รับแต้มเพิ่ม
+│ คุณอรอุมา ได้รับ 720 แต้มจาก SIAM DIVE MEMBER QC ดูยอดสะสมที่ http://127.0.0.1:3215/m/siam-dive-member-qc/wallet
+└──────────────────────────────────────────────
+
+
+┌─ [email:dev] ────────────────────────────────
+│ to:      mb-member-50@example.com
+│ subject: คุณได้รับแต้มเพิ่ม
+│ คุณศิริพร ได้รับ 800 แต้มจาก SIAM DIVE MEMBER QC ดูยอดสะสมที่ http://127.0.0.1:3215/m/siam-dive-member-qc/wallet
+└──────────────────────────────────────────────
+
+
+┌─ [email:dev] ────────────────────────────────
+│ to:      mb-member-50@example.com
+│ subject: คุณได้รับแต้มเพิ่ม
+│ คุณศิริพร ได้รับ 800 แต้มจาก SIAM DIVE MEMBER QC ดูยอดสะสมที่ http://127.0.0.1:3215/m/siam-dive-member-qc/wallet
+└──────────────────────────────────────────────
+
+
+┌─ [email:dev] ────────────────────────────────
+│ to:      mb-member-52@example.com
+│ subject: คุณได้รับแต้มเพิ่ม
+│ คุณพิมพ์ชนก ได้รับ 880 แต้มจาก SIAM DIVE MEMBER QC ดูยอดสะสมที่ http://127.0.0.1:3215/m/siam-dive-member-qc/wallet
+└──────────────────────────────────────────────
+
+
+┌─ [email:dev] ────────────────────────────────
+│ to:      mb-member-52@example.com
+│ subject: คุณได้รับแต้มเพิ่ม
+│ คุณพิมพ์ชนก ได้รับ 880 แต้มจาก SIAM DIVE MEMBER QC ดูยอดสะสมที่ http://127.0.0.1:3215/m/siam-dive-member-qc/wallet
+└──────────────────────────────────────────────
+
+
+┌─ [email:dev] ────────────────────────────────
+│ to:      mb-member-54@example.com
+│ subject: คุณได้รับแต้มเพิ่ม
+│ คุณกมลวรรณ ได้รับ 960 แต้มจาก SIAM DIVE MEMBER QC ดูยอดสะสมที่ http://127.0.0.1:3215/m/siam-dive-member-qc/wallet
+└──────────────────────────────────────────────
+
+
+┌─ [email:dev] ────────────────────────────────
+│ to:      mb-member-54@example.com
+│ subject: คุณได้รับแต้มเพิ่ม
+│ คุณกมลวรรณ ได้รับ 960 แต้มจาก SIAM DIVE MEMBER QC ดูยอดสะสมที่ http://127.0.0.1:3215/m/siam-dive-member-qc/wallet
+└──────────────────────────────────────────────
+
+
+┌─ [email:dev] ────────────────────────────────
+│ to:      mb-member-56@example.com
+│ subject: คุณได้รับแต้มเพิ่ม
+│ คุณรัตนาภรณ์ ได้รับ 2100 แต้มจาก SIAM DIVE MEMBER QC ดูยอดสะสมที่ http://127.0.0.1:3215/m/siam-dive-member-qc/wallet
+└──────────────────────────────────────────────
+
+
+┌─ [email:dev] ────────────────────────────────
+│ to:      mb-member-56@example.com
+│ subject: คุณได้รับแต้มเพิ่ม
+│ คุณรัตนาภรณ์ ได้รับ 2100 แต้มจาก SIAM DIVE MEMBER QC ดูยอดสะสมที่ http://127.0.0.1:3215/m/siam-dive-member-qc/wallet
+└──────────────────────────────────────────────
+
+
+┌─ [email:dev] ────────────────────────────────
+│ to:      mb-member-58@example.com
+│ subject: คุณได้รับแต้มเพิ่ม
+│ คุณจันทิมา ได้รับ 2300 แต้มจาก SIAM DIVE MEMBER QC ดูยอดสะสมที่ http://127.0.0.1:3215/m/siam-dive-member-qc/wallet
+└──────────────────────────────────────────────
+
+
+┌─ [email:dev] ────────────────────────────────
+│ to:      mb-member-58@example.com
+│ subject: คุณได้รับแต้มเพิ่ม
+│ คุณจันทิมา ได้รับ 2300 แต้มจาก SIAM DIVE MEMBER QC ดูยอดสะสมที่ http://127.0.0.1:3215/m/siam-dive-member-qc/wallet
+└──────────────────────────────────────────────
+
+
+┌─ [email:dev] ────────────────────────────────
+│ to:      mb-member-60@example.com
+│ subject: คุณได้รับแต้มเพิ่ม
+│ คุณอรอุมา ได้รับ 2500 แต้มจาก SIAM DIVE MEMBER QC ดูยอดสะสมที่ http://127.0.0.1:3215/m/siam-dive-member-qc/wallet
+└──────────────────────────────────────────────
+
+
+┌─ [email:dev] ────────────────────────────────
+│ to:      mb-member-60@example.com
+│ subject: คุณได้รับแต้มเพิ่ม
+│ คุณอรอุมา ได้รับ 2500 แต้มจาก SIAM DIVE MEMBER QC ดูยอดสะสมที่ http://127.0.0.1:3215/m/siam-dive-member-qc/wallet
+└──────────────────────────────────────────────
+
+  ↳ member-backfill-tiers.mts · {"script":"member-backfill-tiers","dryRun":false,"tenant":"siam-dive-member-qc","ร้านที่แก้":1,"ระดับที่สร้าง":4,"กฎเลื่อนระดับ":3,"สมาชิกที่ผูกระดับ":60,"ประวัติINITIAL":60}
+  ↳ member-backfill-fields.mts · {"script":"member-backfill-fields","dryRun":false,"tenant":"siam-dive-member-qc","ร้านที่แก้":1,"ส่วนที่สร้าง":4,"ฟิลด์ที่สร้าง":26,"ฟิลด์ที่ปรับปลายทาง":0,"ฟิลด์ระบบทั้งหมด":26}
+  ↳ member-backfill-consent.mts · {"script":"member-backfill-consent","dryRun":false,"tenant":"siam-dive-member-qc","ร้านที่แก้":1,"แถวยินยอมที่สร้าง":180,"ยอมรับ":120,"ปฏิเสธ":60}
+  ↳ member-backfill-party-links.mts · {"script":"member-backfill-party-links","dryRun":false,"tenant":"siam-dive-member-qc","ร้านที่แก้":1,"สมาชิกผูกParty":0,"ห้องแชทผูก":6,"ผู้ติดต่อCRM":0,"ผู้ติดต่อบัญชี":0}
+  ↳ member-backfill-attribution.mts · {"script":"member-backfill-attribution","dryRun":false,"tenant":"siam-dive-member-qc","ร้านที่แก้":1,"ตั้งที่มา":60,"จากนำเข้าไฟล์":0,"firstTouchที่สร้าง":60}
+  ↳ member-backfill-hr-users.mts · {"script":"member-backfill-hr-users","dryRun":false,"tenant":"siam-dive-member-qc","ร้านที่แก้":1,"ผูกสำเร็จ":1,"ไม่มีอีเมล":1,"หาบัญชีไม่เจอ":0,"ข้าม_มีเงินเดือน":0,"ข้าม_บัญชีผูกคนอื่นแล้ว":0}
+  ↳ member-backfill-referral-codes.mts · {"script":"member-backfill-referral-codes","dryRun":false,"tenant":"siam-dive-member-qc","ร้านที่แก้":1,"โค้ดที่แจก":60,"มีอยู่แล้ว":0}
+
+✅ seed ระบบสมาชิก: ร้าน cmuy185c600001hkzkq05qdd2 · ระบบ 8 ประเภท · สมาชิก 60 · บิล 120 · นัด 40 · ห้องแชท 10 · เฉลย scripts/member-expected.json · ใช้เวลา 155 วิ
+exit=0 11:39:03
+== qc-member-m1.1 == 11:39:03
+(node:916322) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ [M1.1-S1.1] Customer เพิ่มคอลัมน์ 29 ตัว (§4.1) · คอลัมน์เดิมยังครบ (memberCode name phone email tier totalSpentSatang visitCount tags marketingConsent consentAt partyId)
+  ✅ [M1.1-S1.2] Customer index: unique(tenantId, referralCode) แบบ partial (WHERE referralCode IS NOT NULL) · index (tenantId,tierDefId) (tenantId,source) (tenantId,lastActivityAt) (tenantId,birthDate)
+  ✅ [M1.1-S1.3] enum ใหม่ 12 ชุดครบทุกค่า (§4.2) · AiCreditSource มี MEMBER_ASSIST · MemberTier เดิมคง 4 ค่า
+  ✅ [M1.1-S1.4] 🔴 D19 ไม่มี enum MemberChannel/MemberConsentChannel ใน DB · MemberConsent.channel · MemberChannelIdentity.channel · Customer.preferredChannel · Customer.sourceChannel เป็น text (key จากทะเบียน channels.ts)
+  ✅ [M1.1-S1.5] ตารางใหม่ M1 18 ตาราง (§4.3) มี id tenantId createdAt · ตารางที่แก้ได้มี updatedAt (ตาราง M2/M3 เกิดที่ migration ของตัวเอง)
+  ✅ [M1.1-S1.6] MemberSection {systemId key label description columns sortOrder isSystem sensitive collapsed} unique(systemId,key) · MemberField {systemId sectionId key label description type options required defaultValue unique filterable showInList showOnCard customerEditable sensitive trackHistory isSystem systemKey sortOrder archivedAt} unique(systemId,key) · type = MemberFieldType
+  ✅ [M1.1-S1.7] MemberFieldValue คอลัมน์แยกชนิด (D14) {customerId fieldId valueText valueNumber valueDate valueBool valueOptions valueRef valueFileId updatedById} unique(customerId,fieldId) · index (fieldId,valueText) (fieldId,valueNumber) (fieldId,valueDate) · History {customerId fieldId oldValue newValue changedById changedVia} index(customerId,fieldId,createdAt)
+  ✅ [M1.1-S1.8] MemberConsent {customerId channel granted source policyVersion grantedAt revokedAt byUserId} unique(customerId,channel) · MemberChannelIdentity (D18) {customerId channel externalId displayName contactId verified linkedBy linkedAt lastSeenAt} unique(tenantId,channel,externalId) index(customerId) · HrEmployee.linkedUserId (D17 ใช้คอลัมน์เดิม)
+  ✅ [M1.1-S1.9] MemberSensitivePolicy (D8+D17) {systemId targetType targetId roles Role[] hrPositions text[] hrDepartments text[] sameUnitOnly logAccess} unique(systemId,targetType,targetId) · MemberAccessLog {customerId userId hrEmployeeId hrPosition targetType targetId page} index(customerId,createdAt)+(userId,createdAt) · MemberPrivacyRequest {customerId type status requestedVia approvalRequestId fileId doneAt} index(tenantId,status) · MemberPrivacyPolicy unique(systemId,version) · MemberSavedView {systemId ownerUserId scope name filters columns sort sortOrder} · MemberTag unique(systemId,name)
+  ✅ [M1.1-S1.10] MemberTierDef (D1) {systemId key name color icon sortOrder description isDefault paidPlanId legacyTier keepRuleId upgradeRuleId reviewCron graceDays notifyBeforeDays archivedAt} unique(systemId,key) · MemberTierBenefit {tierDefId type config active} index · MemberTierHistory {customerId fromTierDefId toTierDefId reason ruleId evidence byUserId approvalRequestId notifiedAt} index(customerId,createdAt) · AcquisitionLink (D10) {systemId code name source campaignId unitId target utm qrFileId hits signups firstPurchases active} unique(tenantId,code) · MemberAttribution {customerId touch source linkId campaignId staffUserId referrerCustomerId unitId occurredAt} unique(customerId,touch)
+  ✅ [M1.1-S1.11] ตารางเดิมเพิ่มคอลัมน์ (§4.1): AutomationRule {scope AutomationScope default KANBAN · memberSystemId · tierDefId · journeyStats} · MemberActivity {data actorUserId} + index(customerId,module,createdAt) · PosSale {voucherUseIds giftCardTxnId tierDiscountSatang stampEventIds attributionId} · Appointment.stampEventId · Coupon {perMemberCode saveToWallet stackWithVoucher} · MktCampaign {segmentId journeyId holdoutPct variantB pushEnabled attachVoucherTemplateId stats} · MktRecipient {variant holdout openedAt usedAt saleSatang} · ChatContact {linkedBy MemberLinkMethod · linkedAt}
+  ✅ [M1.1-S1.12] migration `*_member_v2_a` เป็น additive ล้วน (ไม่มี DROP TABLE/DROP COLUMN/DROP TYPE/ALTER COLUMN TYPE/SET NOT NULL) · applied บน QC (_prisma_migrations finished_at) · `prisma migrate diff` DB↔schema = empty migration (ไม่มี drift)
+  ✅ [M1.1-S1b.1] channels.ts export CHANNELS 15 รายการ {key label(ไทย) kind∈CHAT|MESSAGING|MARKETPLACE|DIRECT canConsent canNotify} ครบ 15 key (D19) · SHOPEE/LAZADA/TIKTOK_SHOP = MARKETPLACE · LINE/EMAIL/SMS/PUSH canConsent+canNotify · helpers isChannelKey(key) · getChannel(key) · consentChannels() · notifyChannels()
+  ✅ [M1.1-S1b.2] chatChannelToKey(ChatChannelType) map ทุกค่าใน enum แชท (WEBCHAT,LINE,FACEBOOK,INSTAGRAM,SHOPEE,LAZADA,WHATSAPP,APP,TIKTOK) เข้า key ทะเบียน · channels.ts บริสุทธิ์ (ไม่ import prisma/โมดูล/next) · ไม่มี 'as any'
+  ✅ [M1.1-S2.1] backfill-tiers: TierDef 4 แถว/ระบบ (key member/silver/gold/platinum · legacyTier ครบ 4 · isDefault = MEMBER) · Customer.tierDefId ตาม enum เดิม (GOLD→gold · MEMBER→default) · tierSince · TierHistory INITIAL 1 แถว/คน (evidence มี totalSpentSatang) · MemberTierConfig เดิม → AutomationRule scope MEMBER_TIER (upgrade · tierDefId · conditions spent12m ≥ minSpendSatang) ≥ 3 ใบ + TierDef.upgradeRuleId ชี้กลับ
+  ✅ [M1.1-S2.2] backfill-fields: ฟิลด์ระบบ 26 ตัว (isSystem · systemKey ตาม §11.2) ในส่วนระบบ (isSystem) ของทุกระบบ MEMBER ของร้าน · label ไทย · phone/email unique · ไม่ซ้ำหลังรันซ้ำ
+  ✅ [M1.1-S2.3] backfill-consent: marketingConsent=true → MemberConsent LINE/EMAIL/SMS granted=true source IMPORT grantedAt=consentAt · false → 3 แถว granted=false (บันทึกสถานะ) · channel เป็น key ทะเบียน
+  ✅ [M1.1-S2.4] backfill-party-links: Customer ที่ partyId ว่าง → Party (เบอร์/อีเมล ผ่าน facade party) · ChatContact เบอร์ตรง → partyId เดียวกับสมาชิก + customerId + linkedBy PHONE + linkedAt · CrmContact เบอร์ตรง → partyId (ถ้ามีโมดูล) · ลูกค้าที่มีแค่อีเมล → partyId ผ่านอีเมล
+  ✅ [M1.1-S2.5] backfill-attribution: Customer ไม่มี source → WALK_IN + MemberAttribution FIRST (occurredAt = createdAt · unitId = homeUnitId ถ้ามี) · คนที่มี source/FIRST อยู่แล้ว (LINE_OA) ไม่ถูกทับ
+  ✅ [M1.1-S2.6] backfill-hr-users (D17): HrEmployee.email ตรงกับ User ที่มี Membership ในร้าน (เทียบแบบไม่สนตัวพิมพ์) → linkedUserId · ไม่มีอีเมล = ไม่แตะ · ที่ผูกอยู่แล้วไม่เปลี่ยน (พยาบาลจาก seed ยังชี้ user เดิม)
+  ✅ [M1.1-S2.7] 🔴 idempotent: รันทั้ง 6 สคริปต์ซ้ำ → exit 0 ทุกตัว · จำนวน TierDef/TierHistory/Field/Section/Consent/Attribution/Party/กฎระดับ เท่าเดิมทุกตัว · TierDef ไม่ซ้ำ (4 ใบเท่าเดิม)
+  ✅ [M1.1-S2.8] --dry-run: exit 0 · พิมพ์คำว่า dry-run/ทดลอง · **ไม่เขียน** (BF-3 ยัง tierDefId/partyId/source ว่าง · ไม่มี consent/attribution) · --tenant จำกัดร้าน: ลูกค้าร้านอื่น (BFX) ไม่ถูกแตะหลังรันจริง 2 รอบ (tierDefId/partyId ว่าง · ร้านอื่นไม่มี TierDef)
+  ✅ [M1.1-S3.1] seed ตัวเลขตรง MQC: สมาชิก 60 (MEMBER 30 · SILVER 15 · GOLD 10 · PLATINUM 5 · ป่าตอง 40 · กะตะ 20) · ระบบ 8 ประเภท (MEMBER/POINT/REWARD/COUPON/POS/BOOKING/CHAT/HR) · คน 7 (owner · manager · staff 4 · noPerm) · บิล PAID 120 (80/40) · นัด 40 · ห้องแชท 10 · HrEmployee ≥ 3 · พยาบาล linkedUserId = user nurse
+  ✅ [M1.1-S3.2] เฉลย member-expected.json: {tenantId systemId systems{8} units{patong,kata} users{owner,manager,staff{thana,pook,nurse,kata},noPerm} members[60]{id memberCode partyId phone email tier unit index} tierDefs{member,silver,gold,platinum} fields{dive:{certLevel certAgency certNo diveCount lastDiveAt} health:{conditions emergencyContact}} today oracleValidUntil} · id ตัวอย่างมีจริงใน DB และตรงค่า · สมาชิกทุกคน partyId ไม่ว่าง
+  ✅ [M1.1-S3.3] ข้อมูลในร้าน: LINE identity 30 (channel LINE · linkedBy CHANNEL_ID) · consent LINE granted 40 · ค่าฟิลด์ระดับใบรับรอง 45 คน · โรคประจำตัว 12 คน (ส่วน "สุขภาพ" sensitive=true) · memberCode/เบอร์ไม่ซ้ำ 60 · tierDefId ครบ 60 · TierHistory INITIAL 60 · MemberAttribution FIRST 60 · MemberTierConfig 3 แถว · วันเกิดเดือน ต.ค. (ปีเกิดจริง) = 12 คน
+  ✅ [M1.1-S4.1] scope.ts ลงทะเบียนตารางใหม่ครบ 18 (tenant หรือ sys()) — fail-closed guard ไม่โยนตอน boot
+  ✅ [M1.1-S4.2] fitness ผ่านทั้งแบบไม่มี env (ไม่มี DATABASE_URL/DIRECT_URL) และแบบมี env (exit 0 ทั้งคู่)
+  ✅ [M1.1-S3.4] 🔴 seed idempotent: รัน seed-member-qc.mts ซ้ำ → exit 0 · ร้าน slug เดิมมี 1 ร้าน (ลบเก่าสร้างใหม่) · tenantId ใหม่ · สมาชิก 60 · เฉลยเขียนใหม่ (mtime ใหม่ · tenantId ตรง DB) · ผู้ใช้ QC อีเมลเดิมไม่ซ้ำ
+
+🟢 M1.1: 28/28
+JSON_SUMMARY {"total":28,"passed":28,"findings":[]}
+exit=0 11:42:45
+== seed crm #1 == 11:42:45
+(node:922158) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  BACKFILL_SUMMARY {"script":"crm-backfill-companies-from-text","dryRun":true,"tenant":"siam-dive-member-qc","ระบบที่แก้":1,"บริษัทที่สร้าง":1,"บริษัทเดิมที่ใช้ซ้ำ":0,"ผู้ติดต่อที่ผูก":3,"ข้ามคำแทน":0,"ร้านที่ล้ม":0}
+  BACKFILL_SUMMARY {"script":"crm-backfill-companies-from-text","dryRun":false,"tenant":"siam-dive-member-qc","ระบบที่แก้":1,"บริษัทที่สร้าง":1,"บริษัทเดิมที่ใช้ซ้ำ":0,"ผู้ติดต่อที่ผูก":3,"ข้ามคำแทน":0,"ร้านที่ล้ม":0}
+  BACKFILL_SUMMARY {"script":"crm-backfill-stage-history","dryRun":true,"tenant":"siam-dive-member-qc","ร้านที่แก้":0,"ดีลที่ได้ประวัติแถวแรก":0,"ร้านที่ล้ม":0}
+  BACKFILL_SUMMARY {"script":"crm-backfill-stage-history","dryRun":false,"tenant":"siam-dive-member-qc","ร้านที่แก้":0,"ดีลที่ได้ประวัติแถวแรก":0,"ร้านที่ล้ม":0}
+  BACKFILL_SUMMARY {"script":"crm-backfill-party-links","dryRun":true,"tenant":"siam-dive-member-qc","ร้านที่แก้":1,"ร้านที่ล้ม":0,"CrmContact":0,"PatientRecord":4,"Appointment":2,"ShopOrder":2,"RentalBooking":2,"QueueTicket":2,"TicketOrder":2,"SchoolEnrollment":2,"HotelReservation":2,"ClinicVisit":2,"ข้ามเพราะไม่มีกุญแจที่เชื่อถือได้":0}
+  BACKFILL_SUMMARY {"script":"crm-backfill-party-links","dryRun":false,"tenant":"siam-dive-member-qc","ร้านที่แก้":1,"ร้านที่ล้ม":0,"CrmContact":0,"PatientRecord":4,"Appointment":2,"ShopOrder":2,"RentalBooking":2,"QueueTicket":2,"TicketOrder":2,"SchoolEnrollment":2,"HotelReservation":2,"ClinicVisit":2,"ข้ามเพราะไม่มีกุญแจที่เชื่อถือได้":0}
+  BACKFILL_SUMMARY {"script":"crm-backfill-contact-names","dryRun":true,"tenant":"siam-dive-member-qc","ร้านที่แก้":0,"ผู้ติดต่อที่แยกชื่อ":0,"ร้านที่ล้ม":0}
+  BACKFILL_SUMMARY {"script":"crm-backfill-contact-names","dryRun":false,"tenant":"siam-dive-member-qc","ร้านที่แก้":0,"ผู้ติดต่อที่แยกชื่อ":0,"ร้านที่ล้ม":0}
+  BACKFILL_SUMMARY {"script":"crm-backfill-lost-reasons","dryRun":true,"tenant":"siam-dive-member-qc","ระบบที่แก้":0,"เหตุผลที่เพิ่ม":0,"ดีลที่ผูกเหตุผล":0,"ร้านที่ล้ม":0}
+  BACKFILL_SUMMARY {"script":"crm-backfill-lost-reasons","dryRun":false,"tenant":"siam-dive-member-qc","ระบบที่แก้":0,"เหตุผลที่เพิ่ม":0,"ดีลที่ผูกเหตุผล":0,"ร้านที่ล้ม":0}
+  BACKFILL_SUMMARY {"script":"crm-backfill-visibility","dryRun":true,"tenant":"siam-dive-member-qc","ระบบที่แก้":1,"นโยบายที่เพิ่ม":10,"ร้านที่ล้ม":0}
+  BACKFILL_SUMMARY {"script":"crm-backfill-visibility","dryRun":false,"tenant":"siam-dive-member-qc","ระบบที่แก้":1,"นโยบายที่เพิ่ม":10,"ร้านที่ล้ม":0}
+
+✅ seed CRM: ร้าน cmuy1cvc60000pgkzbjdrbtdz · ระบบ CRM cmuy1gmlm0000jikz45h7xblz · บริษัท 20 · ผู้ติดต่อ 80 · ดีล 60 · กิจกรรม 200 · สัญญา 12 · ทีม 2 · backfill 6/6 · สมาชิกในร้าน 60 (CRM 0) · outbox ที่ยังไม่ DONE จากรอบนี้ 220 · เฉลย scripts/crm-expected.json · 67s
+exit=0 11:44:11
+== seed crm #2 == 11:44:11
+(node:924428) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  BACKFILL_SUMMARY {"script":"crm-backfill-companies-from-text","dryRun":true,"tenant":"siam-dive-member-qc","ระบบที่แก้":1,"บริษัทที่สร้าง":1,"บริษัทเดิมที่ใช้ซ้ำ":0,"ผู้ติดต่อที่ผูก":3,"ข้ามคำแทน":0,"ร้านที่ล้ม":0}
+  BACKFILL_SUMMARY {"script":"crm-backfill-companies-from-text","dryRun":false,"tenant":"siam-dive-member-qc","ระบบที่แก้":1,"บริษัทที่สร้าง":1,"บริษัทเดิมที่ใช้ซ้ำ":0,"ผู้ติดต่อที่ผูก":3,"ข้ามคำแทน":0,"ร้านที่ล้ม":0}
+  BACKFILL_SUMMARY {"script":"crm-backfill-stage-history","dryRun":true,"tenant":"siam-dive-member-qc","ร้านที่แก้":0,"ดีลที่ได้ประวัติแถวแรก":0,"ร้านที่ล้ม":0}
+  BACKFILL_SUMMARY {"script":"crm-backfill-stage-history","dryRun":false,"tenant":"siam-dive-member-qc","ร้านที่แก้":0,"ดีลที่ได้ประวัติแถวแรก":0,"ร้านที่ล้ม":0}
+  BACKFILL_SUMMARY {"script":"crm-backfill-party-links","dryRun":true,"tenant":"siam-dive-member-qc","ร้านที่แก้":1,"ร้านที่ล้ม":0,"CrmContact":0,"PatientRecord":4,"Appointment":2,"ShopOrder":2,"RentalBooking":2,"QueueTicket":2,"TicketOrder":2,"SchoolEnrollment":2,"HotelReservation":2,"ClinicVisit":2,"ข้ามเพราะไม่มีกุญแจที่เชื่อถือได้":0}
+  BACKFILL_SUMMARY {"script":"crm-backfill-party-links","dryRun":false,"tenant":"siam-dive-member-qc","ร้านที่แก้":1,"ร้านที่ล้ม":0,"CrmContact":0,"PatientRecord":4,"Appointment":2,"ShopOrder":2,"RentalBooking":2,"QueueTicket":2,"TicketOrder":2,"SchoolEnrollment":2,"HotelReservation":2,"ClinicVisit":2,"ข้ามเพราะไม่มีกุญแจที่เชื่อถือได้":0}
+  BACKFILL_SUMMARY {"script":"crm-backfill-contact-names","dryRun":true,"tenant":"siam-dive-member-qc","ร้านที่แก้":0,"ผู้ติดต่อที่แยกชื่อ":0,"ร้านที่ล้ม":0}
+  BACKFILL_SUMMARY {"script":"crm-backfill-contact-names","dryRun":false,"tenant":"siam-dive-member-qc","ร้านที่แก้":0,"ผู้ติดต่อที่แยกชื่อ":0,"ร้านที่ล้ม":0}
+  BACKFILL_SUMMARY {"script":"crm-backfill-lost-reasons","dryRun":true,"tenant":"siam-dive-member-qc","ระบบที่แก้":0,"เหตุผลที่เพิ่ม":0,"ดีลที่ผูกเหตุผล":0,"ร้านที่ล้ม":0}
+  BACKFILL_SUMMARY {"script":"crm-backfill-lost-reasons","dryRun":false,"tenant":"siam-dive-member-qc","ระบบที่แก้":0,"เหตุผลที่เพิ่ม":0,"ดีลที่ผูกเหตุผล":0,"ร้านที่ล้ม":0}
+  BACKFILL_SUMMARY {"script":"crm-backfill-visibility","dryRun":true,"tenant":"siam-dive-member-qc","ระบบที่แก้":1,"นโยบายที่เพิ่ม":10,"ร้านที่ล้ม":0}
+  BACKFILL_SUMMARY {"script":"crm-backfill-visibility","dryRun":false,"tenant":"siam-dive-member-qc","ระบบที่แก้":1,"นโยบายที่เพิ่ม":10,"ร้านที่ล้ม":0}
+
+✅ seed CRM: ร้าน cmuy1cvc60000pgkzbjdrbtdz · ระบบ CRM cmuy1gmlm0000jikz45h7xblz · บริษัท 20 · ผู้ติดต่อ 80 · ดีล 60 · กิจกรรม 200 · สัญญา 12 · ทีม 2 · backfill 6/6 · สมาชิกในร้าน 60 (CRM 0) · outbox ที่ยังไม่ DONE จากรอบนี้ 220 · เฉลย scripts/crm-expected.json · 62s
+exit=0 11:45:15
+== seed acc-v2 == 11:45:15
+🗄️  DB QC: ep-plain-art-ao3djg4u-pooler.c-2.ap-southeast-1.aws.neon.tech
+
+(node:927148) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+🧹 ลบร้าน QC เดิม (cmuk7wtu20000b5kznw08vv7o) — 1428 แถว
+🏢 ร้าน "SIAM DIVE QC" cmuy1k6fi0000e4kzyasl8a9y · ระบบบัญชี cmuy1k6h00004e4kzhytuxgnt
+📏 หน่วยนับ 15 หน่วย (ชุดเริ่มต้น §8.3 สร้างใหม่ 12 · เติมรหัสให้ของเดิม 0)
+📦 สินค้า/บริการ 12 รายการ
+🔗 ผูกคลังสินค้า 2 รายการ (MASK-01=24 · TANK-12=9)
+🎁 รายการจัดชุด 1 ชุด (B00001) · ส่วนประกอบ 2 รายการ
+📥 ยอดยกมา LOGBK-01 50 ชิ้น × ฿180.00 = ฿9,000.00
+🧮 ใบปรับต้นทุน CA-202609-0001 · MASK-01 ฿1,680.00 → ฿1,750.00 × 24 = ฿1,680.00
+👥 ผู้ติดต่อ 63 ราย (ลูกค้า 41 · ผู้ขาย 22)
+🗂️  กลุ่มผู้ติดต่อกำหนดเอง 3 กลุ่ม (VIP 5 · โรงแรมพันธมิตร 4 · ซัพพลายเออร์หลัก 4)
+🔗 สาธิตป้าย "ที่มา": สมาชิก 1 ราย (ปิยธิดา อินสุ่ม) · CRM 1 ราย (คุณสมชาย ใจดี)
+💳 CSH001 เงินสด · ยอดยกมา ฿14,000.00
+💳 BSV001 กสิกรไทย ออมทรัพย์ · ยอดยกมา ฿405,050.00
+💳 EWL001 พร้อมเพย์ · ยอดยกมา ฿50,000.00
+💳 PTY001 เงินสดย่อย · ยอดยกมา ฿20,000.00
+🗄️  BSV002 ธนาคารกรุงเทพ (เลิกใช้) · ปิดใช้งานแล้ว (ไม่นับในยอดรวม)
+📌 ปักหมุดบัญชีเงินที่ติดตาม: กสิกรไทย ออมทรัพย์ · เงินสด · พร้อมเพย์
+📌 ปักหมุดบัญชีที่ติดตาม: 4000 รายได้จากการขายสินค้า · 5000 ซื้อสินค้า/ต้นทุนขาย
+🧾 ใบแจ้งหนี้ 53 ใบ + ใบรับมัดจำ 1 ใบ
+🧾 เอกสารฝั่งจ่าย 16 ใบ (ค้างจ่าย 10)
+🐷 สำรองรับ-จ่าย: เติม ฿10,000 · ค่าใช้จ่าย 2 รายการ (เบิกชดเชยแล้ว 1) → PTY001 ฿29,700.00 · BSV001 ฿901,800.00
+👯 คู่ผู้ติดต่อซ้ำที่ตั้งใจใส่: C00001 ↔ C00007 (เลขภาษีเดียวกัน คนละสาขา) — ตัวรองมีเอกสาร 14 ใบ · JV 1 · กลุ่ม 2 · กฎประจำ 1
+🧾 บิลขายหน้าร้าน (POS) 2 ใบ · รวม ฿13,500.00 · บรรทัดสินค้า 3 บรรทัด (ผูกทะเบียนสินค้าครบ) · สต็อกเหลือ MASK-01=22 · TANK-12=8
+🏦 กระทบยอดธนาคาร BSV001 2026-09: นำเข้า 11 แถว · จับคู่ 8 · แนะนำ 1 · รอจับคู่ 2
+🏦 กระทบยอดธนาคาร BSV001 2026-08: นำเข้า 6 แถว · จับคู่ครบ · ส่วนต่าง 0 (ปุ่มยืนยันกดได้)
+   ทำเครื่องหมายนำส่งแล้ว: ภ.ง.ด.53 ก.ย. 69 (1 ใบ · ภาษี 150.00)
+🧾 WHT V2: เครดิต 3 ใบ (รับสุทธิ 62,400.00 · เครดิตภาษี 1,800.00) · หัก 3 ใบ (จ่ายสุทธิ 23,920.00 · ภาษีที่หัก 690.00) · CSH001 Δ 38,480.00
+🖊️  เช็ค V2: เช็ครับ 2 (1 รอครบกำหนด · 1 เด้ง) · เช็คจ่าย 2 (1 รอเรียกเก็บ · 1 ยกเลิก) — ไม่มีใบใดเคลียร์
+🔗 PromptPay V2: คำขอ 2 ใบ (Beam จ่ายแล้ว 7,490.00 · QR นิ่งรอชำระ 24,900.00) · EWL001 Δ 7,490.00
+🧾 ผังบัญชี V2: +บัญชีสร้างเอง 2 (6301/4031) +ปิดใช้งาน 1 (6302)
+📒 WO 6.2: สินทรัพย์ 2 ตัว · ค่าเสื่อม 6 แถว (2 ตัว × 3 งวด) (รวม 32,999.91) · JV มือ 1 · ⚑ 1 (9999 ค้าง 1,000.00) · กลับรายการ 1 คู่ · ปิดงวด 2026-08
+⚙️  ตั้งค่าเอกสาร §9.2: เลขที่ 3 ชนิด · หมายเหตุ 2 ชนิด · แท็ก 2 · เทมเพลตพิมพ์ กะทัดรัด
+⚙️  นโยบายบัญชี §9.3: ปีบัญชีเริ่ม เม.ย. · ล็อกก่อน 31 ส.ค. 2026 · ราคารวม VAT · สินค้าซ้ำ=ห้าม · QT→ใบรับมัดจำ · รายงานรายสัปดาห์
+🔐 สิทธิ์/การเชื่อมต่อ §9.4–9.5: ผู้ใช้ +3 · บทบาท 2 (พนักงานขาย · ผู้อนุมัติ เพดาน ฿50,000) · เชื่อม 5 ระบบ · HR ยังไม่เชื่อม · คีย์ API shark_23aa9f… · webhook cmuy1n13609vae4kze994q8nu
+/root/projects/shark-crm/scripts/seed-acc-v2-qc.mts:135
+  if (actual !== want) throw new Error(`❌ ${label}: ได้ ${actual} ต้องการ ${want}`);
+                             ^
+
+
+Error: ❌ พ้นกำหนด (จาก DB): ได้ 13640000 ต้องการ 12840000
+    at assertEq (/root/projects/shark-crm/scripts/seed-acc-v2-qc.mts:135:30)
+    at <anonymous> (/root/projects/shark-crm/scripts/seed-acc-v2-qc.mts:2076:1)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+
+Node.js v20.20.2
+exit=1 11:48:04
+== oracle dashboard == 11:48:04
+🗄️  DB QC: ep-plain-art-ao3djg4u-pooler.c-2.ap-southeast-1.aws.neon.tech
+(node:939611) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+✅ เขียนเฉลย dashboard+overview ลง scripts/acc-v2-expected.json (ณ 2026-09-30T12:00:00+07:00)
+   [2.3] รายรับ 2026-09: เอกสารที่ออก ฿0.00 (0 ใบ) · ปี 2026: ชำระแล้ว ฿0.00 · รอชำระ ฿0.00 · พ้นกำหนด ฿0.00
+   [2.3] รายจ่าย 2026-09: เอกสารที่ออก ฿0.00 (0 ใบ) · ปี 2026: ชำระแล้ว ฿0.00 · รอชำระ ฿0.00 · พ้นกำหนด ฿0.00
+   2026-09: รายได้ ฿0.00 · ค่าใช้จ่าย ฿0.00 · กำไร ฿0.00
+   ปี 2026: รายได้ ฿0.00 · ค่าใช้จ่าย ฿0.00 · กำไร ฿0.00 (ปีก่อน ฿0.00)
+   ค้างรับ ฿0.00 (0 ใบ · พ้นกำหนด 0 ใบ ฿0.00)
+   ค้างจ่าย ฿0.00 (0 ใบ) · เงินรวมทุกช่องทาง ฿0.00
+   ปฏิทิน 2026-09: เข้า ฿0.00 · ออก ฿0.00
+exit=0 11:56:27
+== oracle contacts == 11:56:27
+🗄️  DB QC: ep-plain-art-ao3djg4u-pooler.c-2.ap-southeast-1.aws.neon.tech
+(node:941232) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+✅ เขียนเฉลย contacts+contactsOverview ลง scripts/acc-v2-expected.json
+   contacts: all=0 customer=0 vendor=0 archived=0 regular=0
+   groups: 
+   source: สมาชิก=0 · CRM=0
+   overview: ลูกค้าใหม่เดือนนี้=0 · กลับมาซื้อ=0 · top purchases=0 · top outstanding=0 · top vendors=0
+exit=0 11:57:05
+== oracle contact-profile == 11:57:05
+🗄️  DB QC: ep-plain-art-ao3djg4u-pooler.c-2.ap-southeast-1.aws.neon.tech
+(node:941394) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+/root/projects/shark-crm/scripts/acc-v2-expected-contact-profile.mts:43
+if (target.length === 0) throw new Error("ไม่พบผู้ติดต่อ fixture 'ปิยธิดา อินสุ่ม' — seed ก่อน");
+                               ^
+
+
+Error: ไม่พบผู้ติดต่อ fixture 'ปิยธิดา อินสุ่ม' — seed ก่อน
+    at <anonymous> (/root/projects/shark-crm/scripts/acc-v2-expected-contact-profile.mts:43:32)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+
+Node.js v20.20.2
+exit=1 11:57:08
+== DRAIN == 11:57:08
+(node:941467) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ [CR-1.1] sweep subs: หมดอายุ 1 → EXPIRED · ตัวยังไม่หมดคงเดิม
+  ✅ [CR-1.2] sweep subs ซ้ำ → 0 (idempotent)
+  ✅ [CR-2.1] sweep proposals: เก่า→EXPIRED ใหม่คง PENDING
+  ✅ [CR-3.1] runDailyCron คืนครบ 3 ตัวเลข ไม่ throw
+
+===== QC Cron =====
+ผ่าน 4/4
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":4,"passed":4,"findings":[]}
+exit=0 11:57:28
+== backup qc1-expected == 11:57:28
+.qc-shots/qc1-expected/scripts/fixtures/acc-v2/kbank-2026-09.expected.json
+.qc-shots/qc1-expected/scripts/fixtures/acc-v2/kbank-2026-08.expected.json
+.qc-shots/qc1-expected/scripts/member-expected.json
+.qc-shots/qc1-expected/scripts/acc-v2-expected.json
+.qc-shots/qc1-expected/scripts/crm-expected.json
+exit=0 11:57:28
+ALLDONE
