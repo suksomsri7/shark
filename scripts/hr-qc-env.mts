@@ -105,7 +105,7 @@ export const HR_DELETE_ORDER = [
 export type HqcUnit = "huahin" | "suanphueng";
 export type HqcPayType = "MONTHLY" | "DAILY" | "HOURLY";
 export type HqcShift = "morning" | "afternoon" | "closing";
-export type HqcUserKey = "owner" | "manager" | "payroll" | "staff" | "kiosk" | "member";
+export type HqcUserKey = "owner" | "manager" | "payroll" | "staff" | "kiosk" | "member" | "payrollSelf";
 export type HqcEmployee = {
   key: string;
   name: string;
@@ -126,7 +126,7 @@ export type HqcEmployee = {
   /** วันเริ่มงาน = วันนี้ − N วัน (ลบ = อนาคต) · ดู `start` สำหรับกรณีพิเศษ */
   startDaysAgo: number;
   /** กรณีพิเศษของวันเริ่ม/สิ้นสุด (คิดจากวันนี้ตอนรัน) */
-  start?: "firstOfNextMonth";
+  start?: "firstOfNextMonth" | "firstOfThisMonth";
   end?: "lastDayOfMonthBeforePaidRun";
   active: boolean;
   /** PIN ทดสอบ (ไม่ซ้ำในร้าน) · null = ไม่ตั้ง PIN */
@@ -142,10 +142,21 @@ export type HqcEmployee = {
   /** โน้ตในทะเบียน (ข้อความวันที่คิดตอน seed) */
   note?: "probationEnds+14" | "contractEndsEndOfThisMonth";
   /** ใส่ช่องอ่อนไหว (PDPA) ตัวอย่าง — ใช้พิสูจน์ field-absence ของผู้ไม่มีสิทธิ์ */
-  sensitive?: { nationalId: string; ssoNumber: string; bankName: string; bankAccountNo: string; bankAccountName: string; birthDate: string; addressLine: string };
+  sensitive?: { nationalId: string; ssoNumber: string; bankName: string; bankAccountNo: string; bankAccountName: string; addressLine: string; birthYearsAgo: number };
 };
 
 const B = (baht: number) => Math.round(baht * 100);
+/** สิทธิ์ของผู้ดูเงินเดือน — ใช้ร่วมกันระหว่าง `payroll` (ผู้ดูล้วน) และ `payrollSelf` (ผู้ดูที่มีแถวของตัวเอง — ก้อย) */
+const PAYROLL_KEYS: Record<string, boolean> = {
+  "hr.payroll.read": true,
+  "hr.payroll.create": true,
+  "hr.payroll.approve": true,
+  "hr.payroll.pay": true,
+  "hr.payroll.reverse": true,
+  "hr.payadjust.request": true,
+  "hr.payadjust.approve": true,
+  "hr.payadjust.reject": true,
+};
 
 export const HQC = {
   tenantName: "บ้านกาแฟสวนผึ้ง (QC HR)",
@@ -171,47 +182,36 @@ export const HQC = {
     // ── 9 คนจากภาพ 02/06 (ชื่อ · ตำแหน่ง · เงินเดือน) ──
     { key: "keng", name: "พี่เก่ง", code: "EMP-001", position: "ผู้จัดการ", department: "บริหาร", unit: "huahin", employmentType: "FULL_TIME", payType: "MONTHLY", rateSatang: null, baseSalarySatang: B(32_000), startDaysAgo: 1460, active: true, pin: "4101", linkedUser: null, shift: "morning", origin: "mockup", flags: ["manager-in-mockup"] },
     { key: "namfon", name: "น้ำฝน", code: "EMP-002", position: "แคชเชียร์", department: "หน้าร้าน", unit: "huahin", employmentType: "FULL_TIME", payType: "MONTHLY", rateSatang: null, baseSalarySatang: B(16_000), startDaysAgo: 1335, active: true, pin: "4102", linkedUser: "staff", shift: "morning", origin: "mockup", flags: ["self-service", "late-18min", "ot-6h-paid-run"],
-      sensitive: { nationalId: "1100000000021", ssoNumber: "1100000000021", bankName: "KBank", bankAccountNo: "0000004321", bankAccountName: "น้ำฝน ใจดี", birthDate: "1998-05-14", addressLine: "12/3 ถ.ดำเนินเกษม" } },
+      sensitive: { nationalId: "1100000000021", ssoNumber: "1100000000021", bankName: "KBank", bankAccountNo: "0000004321", bankAccountName: "น้ำฝน ใจดี", addressLine: "12/3 ถ.ดำเนินเกษม", birthYearsAgo: 28 } },
     { key: "prae", name: "แพร", code: "EMP-003", position: "แคชเชียร์", department: "หน้าร้าน", unit: "huahin", employmentType: "FULL_TIME", payType: "MONTHLY", rateSatang: null, baseSalarySatang: B(15_500), startDaysAgo: 845, active: true, pin: "4103", linkedUser: null, shift: "morning", origin: "mockup", flags: ["leave-approved-last-week"] },
     { key: "ton", name: "ต้น", code: "EMP-004", position: "พ่อครัว", department: "ครัว", unit: "huahin", employmentType: "FULL_TIME", payType: "MONTHLY", rateSatang: null, baseSalarySatang: B(17_000), startDaysAgo: 1430, active: true, pin: "4104", linkedUser: null, shift: "morning", origin: "mockup", flags: ["early-out"] },
     { key: "por", name: "ปอ", code: "EMP-005", position: "ผู้ช่วยครัว", department: "ครัว", unit: "huahin", employmentType: "FULL_TIME", payType: "MONTHLY", rateSatang: null, baseSalarySatang: B(13_000), startDaysAgo: 640, active: true, pin: "4105", linkedUser: null, shift: "morning", origin: "mockup", flags: ["deduction-500-paid-run", "salary-not-in-mockup"] },
     { key: "nat", name: "นัท", code: "EMP-006", position: "บาริสต้า", department: "บาร์", unit: "huahin", employmentType: "FULL_TIME", payType: "MONTHLY", rateSatang: null, baseSalarySatang: B(16_500), startDaysAgo: 920, active: true, pin: "4106", linkedUser: null, shift: "afternoon", origin: "mockup", flags: ["absent-one-day", "salary-not-in-mockup"] },
     { key: "mint", name: "มิ้นท์", code: "EMP-007", position: "พนักงานเสิร์ฟ", department: "หน้าร้าน", unit: "huahin", employmentType: "DAILY", payType: "DAILY", rateSatang: B(400), baseSalarySatang: B(8_800), startDaysAgo: 272, active: true, pin: "4107", linkedUser: null, shift: "closing", origin: "mockup", flags: ["daily-rate", "leave-pending-next-week", "deduction-pending-this-month"] },
     { key: "bow", name: "โบว์", code: "EMP-009", position: "บาริสต้า", department: "บาร์", unit: "huahin", employmentType: "PROBATION", payType: "MONTHLY", rateSatang: null, baseSalarySatang: B(14_000), startDaysAgo: 76, active: true, pin: "4109", linkedUser: null, shift: "morning", origin: "mockup", flags: ["probation-ends-in-14-days", "bonus-1000-paid-run"], note: "probationEnds+14",
-      sensitive: { nationalId: "1100000000621", ssoNumber: "1100000000621", bankName: "KBank", bankAccountNo: "0000014321", bankAccountName: "พิมพ์ชนก ใจดี", birthDate: "2003-03-12", addressLine: "88/12 ถ.เพชรเกษม ต.หัวหิน" } },
+      sensitive: { nationalId: "1100000000621", ssoNumber: "1100000000621", bankName: "KBank", bankAccountNo: "0000014321", bankAccountName: "พิมพ์ชนก ใจดี", addressLine: "88/12 ถ.เพชรเกษม ต.หัวหิน", birthYearsAgo: 23 } },
     { key: "jay", name: "เจ", code: "EMP-012", position: "บาริสต้า", department: "บาร์", unit: "suanphueng", borrowedTo: "huahin", employmentType: "PART_TIME", payType: "HOURLY", rateSatang: B(65), baseSalarySatang: B(4_680), startDaysAgo: 160, active: true, pin: "4112", linkedUser: null, shift: "afternoon", origin: "mockup", flags: ["hourly-rate", "borrowed", "contract-ends-end-of-month", "ot-pending-this-month"], note: "contractEndsEndOfThisMonth" },
     // ── 5 กรณีขอบ ──
     { key: "fai", name: "ฝ้าย", code: "EMP-010", position: "พนักงานเสิร์ฟ", department: "หน้าร้าน", unit: "huahin", employmentType: "DAILY", payType: "DAILY", rateSatang: B(400), baseSalarySatang: B(8_800), startDaysAgo: 217, end: "lastDayOfMonthBeforePaidRun", active: false, pin: null, linkedUser: null, shift: null, origin: "edge", flags: ["leaver", "excluded-ENDED_BEFORE"] },
     { key: "om", name: "ออม", code: "EMP-013", position: "พนักงานเสิร์ฟ", department: "หน้าร้าน", unit: "suanphueng", employmentType: "FULL_TIME", payType: "MONTHLY", rateSatang: null, baseSalarySatang: B(12_000), startDaysAgo: 0, start: "firstOfNextMonth", active: true, pin: "4113", linkedUser: null, shift: null, origin: "edge", flags: ["future-starter", "excluded-STARTS_AFTER"] },
-    { key: "kong", name: "ก้อง", code: "EMP-011", position: "พ่อครัว", department: "ครัว", unit: "suanphueng", employmentType: "PROBATION", payType: "MONTHLY", rateSatang: null, baseSalarySatang: B(18_000), startDaysAgo: 45, active: true, pin: "4111", linkedUser: null, shift: null, origin: "edge", flags: ["probation-hire-45-days"] },
+    { key: "kong", name: "ก้อง", code: "EMP-011", position: "พ่อครัว", department: "ครัว", unit: "suanphueng", employmentType: "PROBATION", payType: "MONTHLY", rateSatang: null, baseSalarySatang: B(18_000), startDaysAgo: 0, start: "firstOfThisMonth", active: true, pin: "4111", linkedUser: null, shift: null, origin: "edge", flags: ["probation-hire-this-month", "excluded-STARTS_AFTER"] },
     { key: "pui", name: "ปุ้ย", code: "EMP-008", position: "หัวหน้าบาริสต้า", department: "บาร์", unit: "suanphueng", employmentType: "FULL_TIME", payType: "MONTHLY", rateSatang: null, baseSalarySatang: B(22_000), startDaysAgo: 700, active: true, pin: null, linkedUser: null, shift: null, origin: "edge", flags: ["no-pin"] },
-    { key: "koy", name: "ก้อย", code: "EMP-014", position: "ธุรการ/บุคคล", department: "สำนักงาน", unit: "suanphueng", employmentType: "FULL_TIME", payType: "MONTHLY", rateSatang: null, baseSalarySatang: B(20_000), startDaysAgo: 500, active: true, pin: "4114", linkedUser: "payroll", shift: null, origin: "edge", flags: ["linked-staff-user", "payroll-viewer-own-row"] },
+    { key: "koy", name: "ก้อย", code: "EMP-014", position: "ธุรการ/บุคคล", department: "สำนักงาน", unit: "suanphueng", employmentType: "FULL_TIME", payType: "MONTHLY", rateSatang: null, baseSalarySatang: B(20_000), startDaysAgo: 500, active: true, pin: "4114", linkedUser: "payrollSelf", shift: null, origin: "edge", flags: ["linked-staff-user", "payroll-viewer-own-row"] },
   ] as readonly HqcEmployee[],
   /**
-   * ผู้ใช้ 6 บทบาท (passwordless — สร้าง User + Membership ตรงแบบ seed-crm-qc / seed-member-qc · ล็อกอินด้วย OTP)
+   * ผู้ใช้ 7 คน = 6 บทบาทของ brief (ไม่ผูกพนักงาน ยกเว้น staff ↔ น้ำฝน) + `payrollSelf` (ผู้ดูเงินเดือนที่มีแถวของตัวเอง ↔ ก้อย · มติ H0.4 r2)
+   * (passwordless — สร้าง User + Membership ตรงแบบ seed-crm-qc / seed-member-qc · ล็อกอินด้วย OTP)
    * keys = permissions ของ Membership (OWNER/MANAGER ผ่าน evaluate ทุกคีย์อยู่แล้ว ⇒ {})
+   * 🔴 MANAGER ผ่าน `evaluate` ของทุก action `hr.payroll.*` (rbac.ts:36) — มีแค่ `canViewPayroll` ที่กันไว้ ⇒ ข้อสอบต้องยิง action ด้วย ไม่ใช่ดูแค่หน้า
    */
   users: {
     owner: { email: "hr-qc-owner@shark.local", name: "เจ้าของร้าน (QC HR)", role: "OWNER", keys: {} },
     manager: { email: "hr-qc-manager@shark.local", name: "ผู้จัดการร้าน (QC HR)", role: "MANAGER", keys: {} },
-    payroll: {
-      email: "hr-qc-payroll@shark.local",
-      name: "ก้อย ฝ่ายบุคคล (QC HR)",
-      role: "STAFF",
-      keys: {
-        "hr.payroll.read": true,
-        "hr.payroll.create": true,
-        "hr.payroll.approve": true,
-        "hr.payroll.pay": true,
-        "hr.payroll.reverse": true,
-        "hr.payadjust.request": true,
-        "hr.payadjust.approve": true,
-        "hr.payadjust.reject": true,
-      },
-    },
+    payroll: { email: "hr-qc-payroll@shark.local", name: "ฝ่ายเงินเดือน (QC HR)", role: "STAFF", keys: PAYROLL_KEYS },
     staff: { email: "hr-qc-staff@shark.local", name: "น้ำฝน (QC HR)", role: "STAFF", keys: { "hr.leave.request": true } },
     kiosk: { email: "hr-qc-kiosk@shark.local", name: "แท็บเล็ตหน้าร้าน (QC HR)", role: "STAFF", keys: { "hr.attendance.clock": true } },
     member: { email: "hr-qc-member@shark.local", name: "สมาชิกในร้าน (QC HR)", role: "STAFF", keys: {} },
+    payrollSelf: { email: "hr-qc-payroll-self@shark.local", name: "ก้อย ฝ่ายบุคคล (QC HR)", role: "STAFF", keys: PAYROLL_KEYS },
   } as Record<HqcUserKey, { email: string; name: string; role: "OWNER" | "MANAGER" | "STAFF"; keys: Record<string, boolean> }>,
   payroll: {
     /** รอบที่จ่ายแล้ว = เดือนที่แล้ว (offset −1) · วันจ่าย = วันสุดท้ายของงวด */
@@ -231,6 +231,8 @@ export const HQC = {
     excluded: [
       { employee: "fai", reason: "ENDED_BEFORE" },
       { employee: "om", reason: "STARTS_AFTER" },
+      /** ผู้ทดลองงานเริ่มวันที่ 1 ของเดือนนี้ ⇒ ไม่อยู่ในงวดที่จ่ายเสมอ (มติ H0.4 r2 FIX F — ไม่มี PARTIAL_MONTH ที่ขึ้นกับวันที่ของเดือน) */
+      { employee: "kong", reason: "STARTS_AFTER" },
     ],
   },
   attendance: {
@@ -310,7 +312,16 @@ export function hqcDates(now = new Date()) {
     /** ผู้เริ่มงานอนาคต: วันที่ 1 ของเดือนหน้า ⇒ H0.2 ตัดออกจากรอบที่จ่าย (STARTS_AFTER) */
     futureStart: firstDayOf(addMonths(thisMonth, 1)),
     endOfThisMonth: lastDayOf(thisMonth),
-    startOf: (e: HqcEmployee) => (e.start === "firstOfNextMonth" ? firstDayOf(addMonths(thisMonth, 1)) : addDays(today, -e.startDaysAgo)),
+    /** ผู้ทดลองงาน: วันที่ 1 ของเดือนนี้ (เวลาไทย) ⇒ หลังงวดที่จ่ายเสมอ (STARTS_AFTER) */
+    probationStart: firstDayOf(thisMonth),
+    startOf: (e: HqcEmployee) =>
+      e.start === "firstOfNextMonth" ? firstDayOf(addMonths(thisMonth, 1)) : e.start === "firstOfThisMonth" ? firstDayOf(thisMonth) : addDays(today, -e.startDaysAgo),
+    /** วันเกิด = วันนี้ − N ปี (เดือน/วันเดียวกัน · 29 ก.พ. → 28 ก.พ.) — ไม่มีวันที่ตายตัวในชุดข้อมูล (X7) */
+    yearsAgo: (n: number) => {
+      const [y, m, d] = today.split("-").map(Number) as [number, number, number];
+      const last = new Date(Date.UTC(y - n, m, 0)).getUTCDate();
+      return `${String(y - n).padStart(4, "0")}-${String(m).padStart(2, "0")}-${String(Math.min(d, last)).padStart(2, "0")}`;
+    },
     dayKey: (offset: number) => addDays(today, offset),
   };
 }

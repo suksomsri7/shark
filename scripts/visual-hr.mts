@@ -4,7 +4,7 @@
 //   pnpm exec tsx scripts/visual-hr.mts all --dry --user owner                       # พิมพ์ตาราง หน้า × ขนาดจอ (ไม่แตะ DB/เซิร์ฟเวอร์)
 //   bash scripts/iso.sh bash scripts/qc4.sh bash scripts/with-gate-lock.sh env QC_FORCE=1 \
 //     pnpm exec tsx scripts/visual-hr.mts 0.4 --user staff --base http://127.0.0.1:3226  # ถ่ายจริง (CONTROLLER-RUN)
-//   ผู้ใช้: owner · manager · payroll · staff · kiosk · member (HQC.users) · ต้อง seed-hr-qc ก่อน (อ่าน scripts/hr-expected.json)
+//   ผู้ใช้: owner · manager · payroll · staff · kiosk · member · payrollSelf (HQC.users) · ต้อง seed-hr-qc ก่อน (อ่าน scripts/hr-expected.json)
 //   ใบ UI หลัง ๆ ลงทะเบียนหน้าของตัวเองใน SPECS["<wo>"] (SPECS["0.4"] = ทุกหน้าของวันนี้)
 //
 // 🔴 CONTROLLER-RUN: เซิร์ฟเวอร์ = `ACC_V2_PORT=3226 bash scripts/acc-v2-serve.sh start` (production build) — builder ส่งแค่ --dry
@@ -13,7 +13,9 @@
 //    ไม่มี process.exit() ในกรอบ try (exit ข้าม finally = token ค้างในฐาน QC ที่ใช้ร่วมกัน) — ใช้ Fatal + exitCode
 // 🔴 ล้นแนวนอน (scrollWidth > clientWidth ของ documentElement หรือ body) = ❌ (กติกา visual-crm) · HTTP 0/5xx = ❌ ·
 //    4xx = ⚠️ (บางบทบาทถูกกันออกโดยตั้งใจ — บันทึกไว้ให้ผู้คุมงานดู) · console error = บันทึก + ⚠️
-// 🔴 ชื่อคุกกี้ผูกกับโปรโตคอล: http = `shark_session` · https = `__Host-shark_session` (+ `shark_tenant`)
+// 🔴 ชื่อคุกกี้ตาม APP_ENV (กติกาเดียวกับ src/lib/env.ts:32 `secureCookies = APP_ENV !== "development"` → session.ts:9):
+//    อ่านหลัง loadHrQcEnv · secure = `__Host-shark_session` (+ `shark_tenant` secure) · development = `shark_session` — ไม่ดูจากโปรโตคอล
+// 🔴 summary แยกไฟล์ต่อผู้ใช้ `summary-<user>.json` (รันหลายบทบาทในโฟลเดอร์เดียวกันไม่ทับกัน)
 // 🔴 โปรไฟล์ chromium `/tmp/chr-hr-<pid>` (+ คู่ใน snap-private-tmp) ลบใน finally เสมอ
 
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -102,6 +104,9 @@ if (!scope || scope.tenantId !== E.tenant?.id) {
   die(`เฉลย ${HQC.expectedPath} ไม่ตรงกับฐาน (ร้านในฐาน ${scope?.tenantId ?? "ไม่มี"} · เฉลย ${E.tenant?.id}) — รัน seed-hr-qc ใหม่`);
 }
 const IDS: Ids = { hr: E.systems.HR, namfon: E.employees.namfon, paidRun: E.paidRun.id };
+/** ตรงกับ src/lib/env.ts:32 — เซิร์ฟเวอร์ QC อ่าน env ชุดเดียวกัน (qc4.sh) */
+const SECURE_COOKIES = (process.env.APP_ENV ?? "") !== "development";
+console.log(`🍪 APP_ENV=${process.env.APP_ENV ?? "(ไม่ตั้ง)"} ⇒ คุกกี้ ${SECURE_COOKIES ? "__Host-shark_session (secure)" : "shark_session"}`);
 mkdirSync(OUT, { recursive: true });
 
 // ═══════════════════ 5. ถ่าย ═══════════════════
@@ -120,9 +125,8 @@ async function mintSession(key: HqcUserKey): Promise<Any[]> {
   const ttl = new Date(Date.now() + 60 * 60 * 1000);
   const row = await prisma.session.create({ data: { userId, tokenHash: sha256(token), userAgent: UA, idleExpiresAt: ttl, expiresAt: ttl }, select: { id: true } });
   MINE.push(row.id);
-  const https = BASE.startsWith("https:");
   const host = new URL(BASE).hostname;
-  return https
+  return SECURE_COOKIES
     ? [{ name: "__Host-shark_session", value: token, url: BASE, path: "/", secure: true }, { name: "shark_tenant", value: E.tenant.id, url: BASE, path: "/", secure: true }]
     : [{ name: "shark_session", value: token, domain: host, path: "/" }, { name: "shark_tenant", value: E.tenant.id, domain: host, path: "/" }];
 }
@@ -184,7 +188,7 @@ try {
 }
 
 const bad = shots.filter((s) => !s.ok);
-writeFileSync(`${OUT}/summary.json`, JSON.stringify({ wo: WO, user: USER, base: BASE, at: new Date().toISOString(), fatal: fatal || null, shots }, null, 1) + "\n");
+writeFileSync(`${OUT}/summary-${USER}.json`, JSON.stringify({ wo: WO, user: USER, base: BASE, at: new Date().toISOString(), fatal: fatal || null, shots }, null, 1) + "\n");
 if (fatal) console.error(`❌ ${fatal}`);
 console.log(`\nJSON_SUMMARY ${JSON.stringify({ suite: "visual-hr", wo: WO, user: USER, total: shots.length, passed: shots.length - bad.length, findings: bad.map((s) => `${s.page}@${s.viewport}: HTTP ${s.status}${s.overflow.html || s.overflow.body ? " overflow" : ""}`), fatal: fatal || null })}`);
 process.exit(fatal || bad.length ? 1 : 0);

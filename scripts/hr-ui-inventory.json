@@ -9,7 +9,7 @@
   "file": "ไฟล์ที่เขียน data-testid (หรือที่ส่ง testId prop)",
   "via": "เมื่อ testid ไม่ได้เขียนตรง ๆ: มาจาก prop testId ของคอมโพเนนต์ (ConfirmDialog → `${testId}-trigger` / `${testId}-sheet` · StrandedMoveButton → data-testid={testId})",
   "conditional": "testid มีเฉพาะบางสถานะ",
-  "roles": "บทบาท HQC ที่ต้องเห็น (owner · manager · payroll · staff · kiosk · member)",
+  "roles": "บทบาท HQC ที่ต้องเห็น (owner · manager · payroll · staff · kiosk · member · payrollSelf)",
   "hiddenFor": "บทบาท HQC ที่ต้องไม่เห็น (หน้าเงินเดือน: canViewPayroll = OWNER หรือ hr.payroll.read)",
   "expect": "เหมือน crm-ui-inventory: { type: modal | navigate | mutation | inline-error | ui, target, … }",
   "wo": "ใบที่สร้าง testid",
@@ -77,7 +77,8 @@
    "files": {
     "src/lib/modules/hr/ui.tsx#HrHub": 1
    },
-   "closesIn": "(ไม่อยู่ในแผนที่ของ brief — ผู้คุมงานกำหนด)"
+   "closesIn": "H2.11",
+   "note": "ลิงก์เดียวบน HrHub — ปิดในใบ H2.11 (manager overview) · มติผู้คุมงาน H0.4 r2"
   }
  },
  "rows": [
@@ -89,7 +90,8 @@
    "file": "src/lib/modules/hr/RunRowActions.tsx",
    "roles": [
     "owner",
-    "payroll"
+    "payroll",
+    "payrollSelf"
    ],
    "hiddenFor": [
     "manager",
@@ -114,7 +116,8 @@
    "file": "src/lib/modules/hr/RunRowActions.tsx",
    "roles": [
     "owner",
-    "payroll"
+    "payroll",
+    "payrollSelf"
    ],
    "hiddenFor": [
     "manager",
@@ -139,7 +142,8 @@
    "via": "ConfirmDialog testId={`hr-payroll-run-${periodKey}-approve`} → `${testId}-trigger`",
    "roles": [
     "owner",
-    "payroll"
+    "payroll",
+    "payrollSelf"
    ],
    "hiddenFor": [
     "manager",
@@ -157,6 +161,33 @@
   },
   {
    "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-payroll-run-*-approve-sheet",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/RunRowActions.tsx",
+   "via": "ConfirmDialog testId={`hr-payroll-run-${periodKey}-approve`} → `${testId}-sheet` (src/components/ui/ConfirmDialog.tsx:62)",
+   "conditional": "มีเฉพาะตอนกล่องยืนยันเปิด (กด hr-payroll-run-*-approve-trigger) · รอบ DRAFT เท่านั้น",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "ui",
+    "target": "hr-payroll-run-*-approve-trigger",
+    "note": "กล่องยืนยัน — ปุ่มยืนยันข้างในยังไม่มี testid (หนี้ RunRowActions.tsx ใน $debt)"
+   },
+   "wo": "H0.1",
+   "oracle": "qc-hr-h0.1"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
    "testid": "hr-payroll-run-*-recompute-trigger",
    "kind": "button",
    "interactive": true,
@@ -164,7 +195,8 @@
    "via": "ConfirmDialog testId={`hr-payroll-run-${periodKey}-recompute`} → `${testId}-trigger`",
    "roles": [
     "owner",
-    "payroll"
+    "payroll",
+    "payrollSelf"
    ],
    "hiddenFor": [
     "manager",
@@ -182,6 +214,33 @@
   },
   {
    "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-payroll-run-*-recompute-sheet",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/RunRowActions.tsx",
+   "via": "ConfirmDialog testId={`hr-payroll-run-${periodKey}-recompute`} → `${testId}-sheet` (src/components/ui/ConfirmDialog.tsx:62)",
+   "conditional": "มีเฉพาะตอนกล่องยืนยันเปิด (กด hr-payroll-run-*-recompute-trigger) · รอบ DRAFT เท่านั้น",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "ui",
+    "target": "hr-payroll-run-*-recompute-trigger",
+    "note": "กล่องยืนยัน — ปุ่มยืนยันข้างในยังไม่มี testid (หนี้ RunRowActions.tsx ใน $debt)"
+   },
+   "wo": "H0.1",
+   "oracle": "qc-hr-h0.1"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
    "testid": "hr-payroll-run-*-delete-trigger",
    "kind": "button",
    "interactive": true,
@@ -189,7 +248,8 @@
    "via": "ConfirmDialog testId={`hr-payroll-run-${periodKey}-delete`} → `${testId}-trigger`",
    "roles": [
     "owner",
-    "payroll"
+    "payroll",
+    "payrollSelf"
    ],
    "hiddenFor": [
     "manager",
@@ -207,13 +267,41 @@
   },
   {
    "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-payroll-run-*-delete-sheet",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/RunRowActions.tsx",
+   "via": "ConfirmDialog testId={`hr-payroll-run-${periodKey}-delete`} → `${testId}-sheet` (src/components/ui/ConfirmDialog.tsx:62)",
+   "conditional": "มีเฉพาะตอนกล่องยืนยันเปิด (กด hr-payroll-run-*-delete-trigger) · รอบ DRAFT เท่านั้น",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "ui",
+    "target": "hr-payroll-run-*-delete-trigger",
+    "note": "กล่องยืนยัน — ปุ่มยืนยันข้างในยังไม่มี testid (หนี้ RunRowActions.tsx ใน $debt)"
+   },
+   "wo": "H0.1",
+   "oracle": "qc-hr-h0.1"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
    "testid": "hr-payroll-run-*-error",
    "kind": "display",
    "interactive": false,
    "file": "src/lib/modules/hr/RunRowActions.tsx",
    "roles": [
     "owner",
-    "payroll"
+    "payroll",
+    "payrollSelf"
    ],
    "hiddenFor": [
     "manager",
@@ -237,7 +325,8 @@
    "file": "src/lib/modules/hr/payroll-ui.tsx",
    "roles": [
     "owner",
-    "payroll"
+    "payroll",
+    "payrollSelf"
    ],
    "hiddenFor": [
     "manager",
@@ -262,7 +351,8 @@
    "file": "src/lib/modules/hr/payroll-ui.tsx",
    "roles": [
     "owner",
-    "payroll"
+    "payroll",
+    "payrollSelf"
    ],
    "hiddenFor": [
     "manager",
@@ -287,7 +377,8 @@
    "file": "src/lib/modules/hr/payroll-ui.tsx",
    "roles": [
     "owner",
-    "payroll"
+    "payroll",
+    "payrollSelf"
    ],
    "hiddenFor": [
     "manager",
@@ -313,7 +404,8 @@
    "conditional": "มี data-testid เฉพาะแถวที่ NEGATIVE_NET (ไม่งั้น undefined)",
    "roles": [
     "owner",
-    "payroll"
+    "payroll",
+    "payrollSelf"
    ],
    "hiddenFor": [
     "manager",
@@ -336,7 +428,8 @@
    "file": "src/lib/modules/hr/payroll-ui.tsx",
    "roles": [
     "owner",
-    "payroll"
+    "payroll",
+    "payrollSelf"
    ],
    "hiddenFor": [
     "manager",
@@ -362,7 +455,8 @@
    "via": "StrandedMoveButton data-testid={testId} · payroll-ui.tsx:311 testId={`hr-payroll-stranded-${a.id}-move`}",
    "roles": [
     "owner",
-    "payroll"
+    "payroll",
+    "payrollSelf"
    ],
    "hiddenFor": [
     "manager",

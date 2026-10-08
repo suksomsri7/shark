@@ -35,7 +35,7 @@
 | D10 | docs: new op has a `test:` id · API docs not stale · new permission key has a Thai label in `permissions.ts` · new event registered | ☐ | F13.x result |
 | D11 | notes complete on this template + debt table + QC4 restored (`seed-hr-qc` re-run = same counts) | ☐ | this file + seed `JSON_SUMMARY` |
 | D12 | commits on `wip/pos-hr-<wo>` only, pushed · controller merges into `session/hr` (never `main`/`session/*`/`rc/*`/`hotfix/*`) · migration ⇒ prod `_prisma_migrations` row at deploy time | ☐ | hashes |
-| D13 | **privacy matrix** green: every new surface × 6 viewers + other tenant (§6) — RSC props · server-action returns · CSV · outbox payloads · AI tool output | ☐ | check ids per cell |
+| D13 | **privacy matrix** green: every new surface × 7 HQC viewers (6 brief viewers + `payrollSelf`) + other tenant (§6) — RSC props · server-action returns · CSV · outbox payloads · AI tool output | ☐ | check ids per cell |
 | D14 | **payroll regression set** green and identical before/after: `qc-payroll` · `qc-payroll-reverse` · `qc-hr-payadjust` · `qc-crm-c3.3` · `qc-hf-hr-privacy` · `qc-account-cpa` | ☐ | §5 rows |
 | D15 | **parity** with `design-hr/NN` at 1440 / 1024 / 390, Thai + English (UI WOs) · `hr.*` keys complete (F16.4) | ☐ | §7 table + F16.4 line |
 | D16 | **every new event** has a consumer in `src/lib/outbox-consumers.ts` + exactly one automation/webhook label + an oracle that replays it twice | ☐ | check id + summary |
@@ -76,14 +76,15 @@ Command per suite: `bash scripts/iso.sh bash scripts/qc4.sh bash scripts/with-ga
 - known pre-existing: `qc-ai-actions` 11/12 CRASH on QC4 (identical before/after is fine) · other pre-existing reds: …
 
 ## 6. Privacy matrix (gate D13 · one row per new/changed surface · cell = check id + result: `shown` / `absent` / `refused (identical bytes)`)
-Viewers = `HQC.users` of `scripts/hr-qc-env.mts` + a second tenant built by the oracle.
-| surface (page · action · CSV · event · AI tool) | field(s) | owner | payroll (`hr.payroll.read`) | manager (no payroll key) | staff with HR key | plain member | the employee themself (linked user) | other tenant |
-|---|---|---|---|---|---|---|---|---|
-| | | | | | | | | |
+Viewers = `HQC.users` of `scripts/hr-qc-env.mts` + a second tenant built by the oracle. Column → HQC user: owner = `owner` · payroll viewer = `payroll` · manager without payroll = `manager` · staff with HR key = `kiosk` · plain member = `member` · themself = `staff` (น้ำฝน) · payroll viewer with own row = `payrollSelf` (ก้อย).
+- 🔴 MANAGER passes `evaluate` for all `hr.payroll.*` actions (`src/lib/core/rbac.ts:36`); only `canViewPayroll` keeps it out — oracles test the actions, not just the page.
+| surface (page · action · CSV · event · AI tool) | field(s) | owner (`owner`) | payroll viewer (`payroll`) | manager without payroll (`manager`) | staff with HR key (`kiosk`) | plain member (`member`) | themself (`staff` = น้ำฝน) | payroll viewer with own row (`payrollSelf` = ก้อย) | other tenant |
+|---|---|---|---|---|---|---|---|---|---|
+| | | | | | | | | | |
 - refusal bytes for non-viewers identical (no salary oracle) — check id: …
 
 ## 7. Screenshots + parity (UI WOs · D7/D15 · CONTROLLER-RUN)
-Command: `bash scripts/iso.sh bash scripts/qc4.sh bash scripts/with-gate-lock.sh env QC_FORCE=1 pnpm exec tsx scripts/visual-hr.mts <wo> --user <owner|manager|payroll|staff|kiosk|member> --base http://127.0.0.1:3226` (builder delivers `--dry`; register the WO's pages in `SPECS["<wo>"]`)
+Command: `bash scripts/iso.sh bash scripts/qc4.sh bash scripts/with-gate-lock.sh env QC_FORCE=1 pnpm exec tsx scripts/visual-hr.mts <wo> --user <owner|manager|payroll|staff|kiosk|member|payrollSelf> --base http://127.0.0.1:3226` (builder delivers `--dry`; register the WO's pages in `SPECS["<wo>"]`)
 | page | mockup | user | 1440×900 | 1024×768 | 390×844 | overflow (3 sizes) | HTTP | console errors | differences seen (where) |
 |---|---|---|---|---|---|---|---|---|---|
 | | `design-hr/NN-*.body.html` | owner | path | path | path | no/no/no | 200 | 0 | |
@@ -109,4 +110,4 @@ Command: `bash scripts/iso.sh bash scripts/qc4.sh bash scripts/with-gate-lock.sh
 ## 11. QC4 restored / temp data left
 - oracle `finally` deletes …; residue check result: …
 - no `qc-visual-hr` session left · no chromium profile `/tmp/chr-hr-*` left · no ChatRateBucket rows of the oracle's tenants left
-- **temp data left:** none / <exact list, by design>
+- **temp data left:** none / <exact list, by design> — include `AuthToken` OTP rows created by human logins of `hr-qc-*@shark.local` (keyed by e-mail, not removed by the user cascade)

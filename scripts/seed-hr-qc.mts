@@ -84,6 +84,13 @@ async function otherCounts(excludeTenantId: string | null) {
   };
 }
 
+/** หยุดกลางทาง (ไม่ใช่ข้อผิดพลาดของ seed) — โยนออกจาก try ให้ finally ปิดการเชื่อมต่อก่อน แล้วค่อยตั้ง exit code (FIX K) */
+class SeedAbort extends Error {
+  constructor(message: string, readonly code: number) {
+    super(message);
+  }
+}
+
 let exitCode = 1;
 try {
   // ═══════════════════ 0. ตารางใน HR_TABLES มีจริง ═══════════════════
@@ -94,8 +101,7 @@ try {
   // ═══════════════════ 1. ลบร้านเดิม ═══════════════════
   const old = (await P.tenant.findFirst({ where: { slug: HQC.tenantSlug }, select: { id: true, name: true } })) as { id: string; name: string } | null;
   if (old && old.name !== HQC.tenantName) {
-    console.error(`🔴 ร้าน slug ${HQC.tenantSlug} มีชื่อ "${old.name}" ≠ "${HQC.tenantName}" — ไม่ใช่ร้าน QC ของ HR · ไม่ลบอะไร`);
-    process.exit(4);
+    throw new SeedAbort(`🔴 ร้าน slug ${HQC.tenantSlug} มีชื่อ "${old.name}" ≠ "${HQC.tenantName}" — ไม่ใช่ร้าน QC ของ HR · ไม่ลบอะไร`, 4);
   }
   const before = await otherCounts(old?.id ?? null);
   if (old) {
@@ -151,7 +157,7 @@ try {
   const ctx = { tenantId, systemId: hrSys.id as string };
   console.log(`🏢 ร้าน "${HQC.tenantName}" ${tenantId} · HR ${hrSys.id} · บัญชี ${accSys.id}`);
 
-  // ═══════════════════ 3. ผู้ใช้ 6 บทบาท ═══════════════════
+  // ═══════════════════ 3. ผู้ใช้ 7 คน (6 บทบาทของ brief + payrollSelf) ═══════════════════
   const users: Record<string, { userId: string; membershipId: string }> = {};
   for (const [key, u] of Object.entries(HQC.users)) {
     const row = await P.user.create({ data: { email: u.email, name: u.name } });
@@ -163,6 +169,8 @@ try {
 
   // ═══════════════════ 4. พนักงาน 14 คน ═══════════════════
   const emp: Record<string, string> = {};
+  /** ช่องอ่อนไหวของ HQC → ช่องของ saveEmployeeProfile (วันเกิดคิดจากวันนี้ — FIX G) */
+  const sensitiveOf = ({ birthYearsAgo, ...rest }: NonNullable<HqcEmployee["sensitive"]>) => ({ ...rest, birthDate: D.yearsAgo(birthYearsAgo) });
   const noteText = (e: HqcEmployee): string | null =>
     e.note === "probationEnds+14" ? `ทดลองงานครบ ${thaiShort(addDays(D.today, 14))}` : e.note === "contractEndsEndOfThisMonth" ? `สัญญาพาร์ทไทม์ถึง ${thaiShort(D.endOfThisMonth)}` : null;
   for (const e of HQC.employees) {
@@ -176,7 +184,7 @@ try {
       startDate: D.startOf(e),
       ...(e.end === "lastDayOfMonthBeforePaidRun" ? { endDate: D.leaverEnd } : {}),
       ...(noteText(e) ? { note: noteText(e) } : {}),
-      ...(e.sensitive ? { ...e.sensitive } : {}),
+      ...(e.sensitive ? sensitiveOf(e.sensitive) : {}),
     });
     if (!r?.ok) throw new Error(`saveEmployeeProfile ${e.key}: ${r?.reason}`);
     if (e.shift) {
@@ -199,13 +207,26 @@ try {
   q.chk("E1", `พนักงาน ${HQC.employees.length} คน (9 จากภาพ + 5 กรณีขอบ)`, rows.length === HQC.employees.length, HQC.employees.length, rows.length, "CRITICAL");
   const byId = new Map(rows.map((r: Any) => [r.id, r]));
   const linkOk = HQC.employees.every((e) => (byId.get(emp[e.key]) as Any)?.linkedUserId === (e.linkedUser ? uid(e.linkedUser) : null));
-  q.chk("E2", "ผูกบัญชีตรง HQC (น้ำฝน ↔ staff · ก้อย ↔ payroll · ที่เหลือไม่ผูก)", linkOk, "ตรง", linkOk ? "ตรง" : "ไม่ตรง");
+  q.chk("E2", "ผูกบัญชีตรง HQC (น้ำฝน ↔ staff · ก้อย ↔ payrollSelf · ที่เหลือไม่ผูก)", linkOk, "ตรง", linkOk ? "ตรง" : "ไม่ตรง");
+  const userKeyOf = (userId: string | null) => (userId ? (Object.keys(users).find((k) => users[k]!.userId === userId) ?? `?${userId}`) : null);
+  const links = Object.fromEntries(
+    HQC.employees.map((e) => [e.key, userKeyOf((byId.get(emp[e.key]) as Any)?.linkedUserId ?? null)] as const).filter(([, u]) => u !== null),
+  ) as Record<string, string>;
+  const linkedTo = (u: HqcUserKey) => Object.entries(links).filter(([, v]) => v === u).map(([k]) => k).join(",") || "-";
+  q.chk(
+    "E2b",
+    "ผู้ดู 6 บทบาทของ brief ไม่ผูกพนักงาน (ยกเว้น staff ↔ น้ำฝน) · payrollSelf ↔ ก้อยคนเดียว",
+    (["owner", "manager", "payroll", "kiosk", "member"] as HqcUserKey[]).every((u) => linkedTo(u) === "-") && linkedTo("staff") === "namfon" && linkedTo("payrollSelf") === "koy",
+    "owner/manager/payroll/kiosk/member: - · staff: namfon · payrollSelf: koy",
+    (Object.keys(HQC.users) as HqcUserKey[]).map((u) => `${u}: ${linkedTo(u)}`).join(" · "),
+    "CRITICAL",
+  );
   const fai = byId.get(emp.fai) as Any;
   q.chk("E3", "ผู้ลาออก: active=false · endDate = วันสุดท้ายของเดือนก่อนงวดที่จ่าย", fai?.active === false && fai?.endDate?.toISOString().slice(0, 10) === D.leaverEnd, `false · ${D.leaverEnd}`, `${fai?.active} · ${fai?.endDate?.toISOString().slice(0, 10)}`);
   const om = byId.get(emp.om) as Any;
   q.chk("E4", "ผู้เริ่มงานอนาคต: startDate = วันที่ 1 ของเดือนหน้า", om?.startDate?.toISOString().slice(0, 10) === D.futureStart, D.futureStart, om?.startDate?.toISOString().slice(0, 10));
   const kong = byId.get(emp.kong) as Any;
-  q.chk("E5", "ทดลองงาน: startDate = วันนี้ − 45", kong?.startDate?.toISOString().slice(0, 10) === addDays(D.today, -45), addDays(D.today, -45), kong?.startDate?.toISOString().slice(0, 10));
+  q.chk("E5", "ทดลองงาน: startDate = วันที่ 1 ของเดือนนี้ (หลังงวดที่จ่ายเสมอ)", kong?.startDate?.toISOString().slice(0, 10) === D.probationStart, D.probationStart, kong?.startDate?.toISOString().slice(0, 10));
   // PIN อ่านผ่าน kioskRoster (hasPin) — สคริปต์นี้ไม่แตะคอลัมน์ PIN เอง (F16.5 หลัง H0.5)
   const roster = (await hr.kioskRoster(ctx)) as { id: string; hasPin: boolean }[];
   const hasPin = (k: string) => roster.find((x) => x.id === emp[k])?.hasPin ?? null;
@@ -229,7 +250,7 @@ try {
   const excl = (await pay.runExclusions(ctx, D.paidRunPeriod)) as { employeeId: string; reason: string }[];
   const wantExcl = HQC.payroll.excluded.map((x) => `${emp[x.employee]}:${x.reason}`).sort();
   const gotExcl = excl.map((x) => `${x.employeeId}:${x.reason}`).sort();
-  q.chk("P1", "H0.2 ตัดผู้ลาออก (ENDED_BEFORE) + ผู้เริ่มงานอนาคต (STARTS_AFTER) ออกจากรอบที่จ่าย — ครบและไม่เกิน", JSON.stringify(wantExcl) === JSON.stringify(gotExcl), "fai:ENDED_BEFORE · om:STARTS_AFTER", excl.map((x) => `${Object.keys(emp).find((k) => emp[k] === x.employeeId)}:${x.reason}`).join(" · "), "CRITICAL");
+  q.chk("P1", "H0.2 ตัดผู้ลาออก (ENDED_BEFORE) + ผู้เริ่มงานอนาคต/ผู้ทดลองงานเดือนนี้ (STARTS_AFTER) ออกจากรอบที่จ่าย — ครบและไม่เกิน", JSON.stringify(wantExcl) === JSON.stringify(gotExcl), HQC.payroll.excluded.map((x) => `${x.employee}:${x.reason}`).join(" · "), excl.map((x) => `${Object.keys(emp).find((k) => emp[k] === x.employeeId)}:${x.reason}`).join(" · "), "CRITICAL");
   const created = await pay.createPayrollRun(ctx, { periodKey: D.paidRunPeriod, payDate: atBkk(D.paidRunPayDate, 12 * 60) });
   const items = (await P.hrPayrollItem.findMany({ where: { tenantId, runId: created.id }, select: digest.PAYROLL_DIGEST_SELECT })) as Any[];
   const draft = await P.hrPayrollRun.findFirst({ where: { tenantId, id: created.id } });
@@ -325,7 +346,8 @@ try {
     units,
     users: Object.fromEntries(Object.entries(users).map(([k, v]) => [k, { ...v, email: HQC.users[k as HqcUserKey].email }])),
     employees: emp,
-    dates: { today: D.today, thisMonth: D.thisMonth, paidRunPeriod: D.paidRunPeriod, paidRunPayDate: D.paidRunPayDate, leaverEnd: D.leaverEnd, futureStart: D.futureStart },
+    links,
+    dates: { today: D.today, thisMonth: D.thisMonth, paidRunPeriod: D.paidRunPeriod, paidRunPayDate: D.paidRunPayDate, leaverEnd: D.leaverEnd, futureStart: D.futureStart, probationStart: D.probationStart },
     paidRun: {
       id: run.id,
       periodKey: run.periodKey,
@@ -345,8 +367,13 @@ try {
   console.log(`💾 ${HQC.expectedPath} · รอบ ${run.periodKey} สุทธิ ฿${bahtText(run.totalNetSatang)} · ${items.length} คน · ${((Date.now() - t0) / 1000).toFixed(1)} วิ`);
   exitCode = q.summary({ counts });
 } catch (e) {
-  q.chk("X0", "seed ทำงานจนจบ", false, "จบ", (e instanceof Error ? e.stack ?? e.message : String(e)).split("\n").slice(0, 3).join(" | ").slice(0, 400), "CRITICAL");
-  exitCode = q.summary({});
+  if (e instanceof SeedAbort) {
+    console.error(e.message);
+    exitCode = e.code;
+  } else {
+    q.chk("X0", "seed ทำงานจนจบ", false, "จบ", (e instanceof Error ? e.stack ?? e.message : String(e)).split("\n").slice(0, 3).join(" | ").slice(0, 400), "CRITICAL");
+    exitCode = q.summary({});
+  }
 } finally {
   await P.$disconnect?.();
 }
