@@ -256,9 +256,14 @@ function nextRunlessPeriod(periodKey: string, runs: Set<string>): string | null 
 //   ทางระบบ (ไม่ส่ง actor — hr facade / CRM) ยังลบได้เฉพาะรายการที่ไม่เข้ารอบ ตามสัญญาของ facade (ไม่มีผู้ใช้ให้ลงประวัติการคำนวณใหม่) ◂
 const CANCEL_BOUND_APPROVED = "รายการนี้อยู่ในรอบจ่ายที่อนุมัติแล้ว ลบไม่ได้ (ใช้กลับรายการรอบจ่ายแทน)";
 const CANCEL_BOUND_DRAFT_SYSTEM = "รายการนี้อยู่ในรอบจ่ายร่าง — ลบได้จากหน้าเงินเดือนเท่านั้น (ระบบจะคำนวณรอบร่างใหม่ให้)";
+// H0.2 ▸ CR-H0.2-3: รายการที่มาจาก CRM (คอมมิชชัน/หักคืน · มี crmCommissionId) ลบจาก HR ไม่ได้ทุกกรณี (ยังไม่เข้ารอบ · ผูกรอบร่าง · อื่น ๆ)
+//   ทั้งทางมี actor และไม่มี actor — ไม่ลบอะไร · CrmCommission.hrPayAdjustmentId คงเดิม · ไม่ลง audit (ไม่มีอะไรเปลี่ยน) ·
+//   ทางถอน/ย้ายงวดของ CRM = withdrawCommissionAdjustment / moveCommissionAdjustmentPeriod (ไม่ผ่านฟังก์ชันนี้) ◂
+const CANCEL_FROM_CRM = "รายการนี้มาจาก CRM — ถอนหรือแก้ที่ CRM แล้วระบบจะถอนออกจากรอบจ่ายให้เอง";
 export async function cancelAdjustment(ctx: Ctx, id: string, actor?: { userId?: string | null; isOwner: boolean }): Promise<{ ok: boolean; reason?: string }> {
   const row = await tenantDb(ctx).hrPayAdjustment.findFirst({ where: { id } });
   if (!row) return { ok: false, reason: "ไม่พบรายการ" };
+  if (row.crmCommissionId != null) return { ok: false, reason: CANCEL_FROM_CRM };
   let boundDraft: { id: string; periodKey: string } | null = null;
   if (row.runId) {
     const run = await tenantDb(ctx).hrPayrollRun.findFirst({ where: { id: row.runId, systemId: ctx.systemId }, select: { id: true, periodKey: true, status: true, journalEntryId: true } });
@@ -536,6 +541,19 @@ export class PayrollInputError extends Error {
 }
 const PERIOD_INVALID_TH = "งวดต้องเป็นปี-เดือน (YYYY-MM) และเดือนอยู่ระหว่าง 01–12";
 const PAYDATE_INVALID_TH = "วันที่จ่ายไม่ถูกต้อง — เลือกวันที่จ่ายใหม่";
+// H0.2 ▸ CR-H0.2-4 (แก้โดยผู้คุมงาน: ±1 ปี): วันที่จ่ายต้องอยู่ใน [วันแรกของงวด − 365 วัน, วันสุดท้ายของงวด + 365 วัน] —
+//   เทียบ "วันที่" ตามปฏิทินไทย (bkkParts) ไม่ใช่เวลา · ขอบทั้งสองข้างรับ ◂
+const PAYDATE_WINDOW_TH = "วันที่จ่ายต้องอยู่ภายใน 1 ปีของงวดนี้";
+const PAYDATE_WINDOW_DAYS = 365;
+const DAY_MS = 86_400_000;
+/** ช่วงวันที่จ่ายที่รับของงวด "YYYY-MM" เป็นสตริง YYYY-MM-DD (เทียบแบบสตริงได้) */
+function payDateWindow(periodKey: string): { from: string; to: string } {
+  const y = Number(periodKey.slice(0, 4));
+  const m = Number(periodKey.slice(5, 7));
+  const first = Date.UTC(y, m - 1, 1);
+  const last = Date.UTC(y, m, 0);
+  return { from: new Date(first - PAYDATE_WINDOW_DAYS * DAY_MS).toISOString().slice(0, 10), to: new Date(last + PAYDATE_WINDOW_DAYS * DAY_MS).toISOString().slice(0, 10) };
+}
 const noMembersText = (periodKey: string) => `ไม่มีพนักงานที่ต้องจ่ายในงวด ${periodKey} — ทุกคนที่ตั้งเงินเดือนไว้ออกก่อนงวดหรือเริ่มงานหลังงวด`;
 
 // ── สร้างรอบจ่าย (DRAFT) — คำนวณทุกพนักงานที่มีโปรไฟล์ ในธุรกรรมเดียว ──
@@ -552,6 +570,11 @@ export async function createPayrollRun(
   const periodKey = typeof input.periodKey === "string" ? input.periodKey.trim() : "";
   if (!PERIOD_RE.test(periodKey)) throw new PayrollInputError(PERIOD_INVALID_TH);
   if (!(input.payDate instanceof Date) || !Number.isFinite(input.payDate.getTime())) throw new PayrollInputError(PAYDATE_INVALID_TH);
+  {
+    const day = bkkParts(input.payDate).dateStr;
+    const win = payDateWindow(periodKey);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || day < win.from || day > win.to) throw new PayrollInputError(PAYDATE_WINDOW_TH);
+  }
   const scope = { tenantId: ctx.tenantId, systemId: ctx.systemId };
   return tenantDb(ctx).$transaction(async (t) => {
     const tx = t as unknown as Prisma.TransactionClient;
