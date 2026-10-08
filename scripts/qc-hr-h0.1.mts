@@ -50,7 +50,7 @@ const RULES_FILE = "src/lib/modules/hr/payroll-rules.ts";
 const SCHEMA_FILE = "prisma/schema/payroll.prisma";
 // hashes taken on the base (f85f5455) — FREEZE (hr-brief-COMMON §C.4/C.5 · H0.1 §4)
 const RULES_SHA = "75a66c0c1354e932e7ba29609dcbf0919ffe82b51f476a3945fd1a0749833bf7";
-const SCHEMA_SHA = "7f9ab537951e8b58ad127ad9fed3014ae0ea013ee2cea35bc226533295f5f8a7";
+const SCHEMA_SHA = "2636c177261f57c1a102fe6d09c6819e9a2fc1aabc649a10cae6a8ef2d361302";
 const COMPUTE_ITEM_SHA = "b151a83c16eb96cb9adca8d5ed8b622612ebc50c39ad729f6f7966c43a47cd13";
 const CRM_BLOCK_SHA = "fcc215391da90dccc285f4f8fdcca41568a1a722c1273a353136d7af5be774b4";
 const MARKPAID_BLOCK_SHA = "893a9e4e25add025394a2484feaf3b2aaeb2807c168ff20f9f29a90c4bc853c3";
