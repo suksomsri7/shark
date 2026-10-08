@@ -1,0 +1,15 @@
+# T5.3 — Hand-off flows E4 (trigger → ordered steps) (Opus · server + app)
+Read `ai-brief-COMMON.md` + RESOLUTIONS R-E C27 first. Contract: AI-TEAM-RUN §2 T5.3. Mockup `airy-e.jpg` page 4 (+ dark). HTML: "ลำดับส่งต่องาน · ฝ่ายขาย · เริ่มเมื่อดีลปิดการขาย" · numbered steps (1 คุณเอก · ย้ายดีล + สรุปเงื่อนไข · ทำเองได้ / 2 พลอยใส · ออกใบแจ้งหนี้จากใบเสนอราคา · รออนุมัติ / 3 น้องมะลิ · ส่งใบแจ้งหนี้ + นัดส่งทาง LINE · ทำเองได้ / 4 คุณเอก · ตั้งเตือนติดตามหลังส่ง 7 วัน · ทำเองได้) · "＋ เพิ่มขั้น" · "ถ้าขั้นไหนติด" rows (🙋 หยุดแล้วถามคนที่สั่งงาน ไม่ข้ามขั้นเอง · ⏰ ไม่มีใครอนุมัติใน 4 ชม. เตือนซ้ำ แล้วส่งต่อให้เจ้าของ) · note "ระบบร่างลำดับนี้จากงานที่ทำซ้ำ 6 ครั้ง · แก้ได้ทุกขั้น" · "บันทึก".
+
+## Verified facts (REVIEW §6)
+- Outbox: `emitOutbox` inside tx; consumers registered in `src/lib/outbox-consumers.ts` `baseConsumers` + labels in `automation/labels.ts` and `webhooks/labels.ts` (3 registries); `drainOutbox` lease 6 min; idempotency key per event.
+- Triggerable events (allowlist for v2): `crm.deal.won` (exists? verify in `AUTOMATION_EVENTS` — pick the real CRM "deal won/stage changed" event name), `account.document.paid`, `chat.thread.unanswered` (if exists), MANUAL. Only events that already exist are offered; the flow consumer is a **new consumer on existing events** (no new event types) — so no new labels needed unless we emit `ai.flow.started` (we don't).
+- `AiHandoffFlow(roomId, name, trigger, stepsJson, active, staleHours)` (T1.1).
+
+## Deliverables
+Server `src/lib/ai/team/flows.ts`: CRUD with validation (≤ 8 steps; each `{ aiEmployeeId ∈ room, instruction ≤ 500, mode DRAFT|AUTO }` — AUTO allowed only if that employee has AUTO for the relevant skill, else stored as DRAFT with a warning in the DTO) · `runFlow(flowId, { triggerPayload, startedById = flow.createdById })` → `startRoomTask` + hand-offs in order via T5.2 (each step's instruction is the brief; the step employee runs it) · outbox consumer `aiFlowTrigger` wrapped `withAutomation`-style for the allowlisted events: idempotency = `flow-<flowId>-<event.idempotencyKey>` (stored in `AiTask.idempotencyKey`) → replay-safe (X4) · stale handling: `scripts/ai-team-cron.mts --job=stale` extends T1.9's reminder to room tasks (`staleHours` from the flow) · `draftFlowFromHistory(roomId)` from T5.1's suggestion data · routes `flows/**`.
+App `app/(app)/rooms/[id]/flow.tsx`: trigger picker (MANUAL + allowlisted events with Thai labels from `eventLabel`), draggable steps (employee picker + instruction + mode chip), "+ เพิ่มขั้น", stuck rules (read-only text), save; "ตั้งลำดับ" from E1 suggestion opens this with a prefilled draft.
+testIDs `flow-trigger`, `flow-step-<n>`, `flow-step-<n>-emp`, `flow-step-<n>-mode`, `flow-add`, `flow-save`.
+
+## Acceptance (oracle `qc-ai-t5.3`)
+S1 CRUD + validation + AUTO downgrade · S2 trigger event twice + parallel ⇒ one task (X4) · S3 ordered run, DRAFT step waits · S4 stale 4 h reminder + escalation (X5, injected now) · S5 draft from history · S6 [static] consumer registered (existing events; no new labels required — assert none added) · S7 pairs E4 + drag · S8 X1 · testIDs/i18n. Regressions T5.2 outbox suites.
