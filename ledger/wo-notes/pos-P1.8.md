@@ -4,7 +4,7 @@
 > Brief `ledger/pos-briefs/pos-brief-P1.8.md` (§2 R1–R10 · §7 CD1–CD8) · prompt `pos-prompt-accountB-P1.8-S.md` · oracle `scripts/qc-pos-p1.8.mts` (49 checks · **not edited**) · oracle notes `ledger/wo-notes/pos-P1.8-oracle.md`
 > DB: QC4 only (`ep-frosty-lab`, neondb_owner) through `iso.sh → qc4.sh → with-gate-lock.sh` · typecheck through `/tmp/pos-gate.lock`
 
-## ⚠️ ORACLE-EDIT? — P1.8-C2 (`docNo` clause only)
+## ⚠️ ORACLE-EDIT? — P1.8-C2 (`docNo` clause only) — ✅ resolved by controller oracle commit 1599ca50 (cherry-picked onto this branch as 546f7d6c in fix round 1)
 
 C2 requires the CREDIT_NOTE of the ฿85 refund to have `docNo === <POS CN number>` (`CN202610-0006`). This cannot hold in the oracle's own fixture:
 - `AccountDocument` has `@@unique([systemId, docType, docNo])`.
@@ -197,3 +197,35 @@ Gates:
 - `pnpm exec tsx scripts/fitness-pos.mts` → `JSON_SUMMARY {"suite":"fitness-pos","total":8,"passed":8,"findings":[]}` (F15.2 info: new `refundSale` caller `refund-actions.ts`)
 - pre-commit fitness caught F6.1 once (`refund-actions.ts` without `assertCan`) → fixed before the commit.
 - Not run (rules): `next build`, server, visual (no UI in this card), `qc-pos-p1.10` (lane 2).
+
+## 9. Fix round 1 (reviewer MERGEABLE-AFTER-FIXES @ 7bbeb3fc · controller rulings F1–F9)
+
+Branch first took the controller's oracle C2 edit (`1599ca50` → cherry-pick `546f7d6c`, oracle file only, not edited by the builder) so the oracle can reach 49/49.
+
+| fix | done |
+|---|---|
+| F1 | `refundSale` + `saleForRefund` refuse `sourceModule !== "POS"` with `SALE_NOT_REFUNDABLE` (`notPosOwned` in `refund.ts`; message now names "a bill of another system"). Hotel/ticket/booking/shop keep their own refund flows + `voidSale`. All oracle bills are `sourceModule:"POS"` (still 49/49) |
+| F2 | `src/lib/ai/tools.ts` ×5 `posSale` reads that filter `status:"PAID"` add `docType:"SALE"` (where-clauses only; gross meaning kept, no netting) |
+| F3 | `member/tiers.ts collectEvidence` selects `refundedSatang`, both loops use `grandTotalSatang − refundedSatang`. No docType filter needed: REFUND docs carry `memberId: null` so they never match `memberId: customer.id`; fully refunded bills are `REFUNDED` (not `PAID`) |
+| F4 | `cleanInput` accepts `payMethods: []`; in the tx `[]` with `grand ≠ 0` ⇒ `VALIDATION "ระบุวิธีคืนเงิน"` (entries still need ≥ 1 satang). A ฿0 refund has no payment rows, outbox `payMethods: []`, the consumer skips accounting (nothing to post) and runs stock + member steps. Probe (QC4 temp tenant, not committed): bill 100 + free item → refund the paid line, then the free line with `[]` ⇒ ok, grand 0, 0 payments, bill `REFUNDED`/10000, event `DONE` `full:true` |
+| F5 | `refundLineAmount` partial = `min(halfUpDiv(net·q, Q), max(0, net − prevAmount))` |
+| F6 | refund that completes the bill: `vat = min(grand, max(0, sale.vatSatang − Σ vatSatang of earlier REFUND docs))`; partial refunds keep the current-rate split. Probe: bill vat 654 → the paid refund (654) + ฿0 completing refund (0) = 654 |
+| F7 | keys not prefixed. `createSaleOnce` (`service.ts`): a row under the key with `docType === "REFUND"` ⇒ `IDEMPOTENCY_CONFLICT`; `regDuplicate` (`register.ts`): REFUND row ⇒ bare `IDEMPOTENCY_CONFLICT` (no sale fields). Mirror already in place: refund `samePayload` requires `dup.docType === "REFUND"`, so a sale key is a conflict (oracle I2). Probe: `createSale` with a refund's key ⇒ `IDEMPOTENCY_CONFLICT` |
+| F8 | consumer step 1a re-posts the original sale ONLY when `account.posSalePosted()` (new facade → `gl.externalSalePosted` = the same `PosSale#<saleId>#PAID` journal key `postExternalSale` checks) is `false`; wrapped: failure is logged (`console.error`, no customer data) and the credit note still posts. Step 1b: `applyExternalRefund` result with `reason ≠ "unlinked"` and no `docId` ⇒ **throw** (outbox retries) instead of warn |
+| F9 | stock return passes the original OUT movement's `locationId`/`lotCode` to `inventory.receive` (legacy OUT without a location = default warehouse, as before). Member step failure stays WARN-only (same as the sale side `memberSaleBridge`) |
+
+Contract additions for P1.16 (§4):
+- Refunds are POS-only: `saleForRefund`/`refundSale` on a bill with `sourceModule !== "POS"` ⇒ `{ok:false, code:"SALE_NOT_REFUNDABLE"}` — the bills page should send hotel/ticket/booking/shop bills to their own module (or offer void only).
+- ฿0 refunds: when the computed refund total is 0 send `payMethods: []` (any non-empty list ⇒ `PAYMENT_MISMATCH`; `[]` with a total > 0 ⇒ `VALIDATION`). The CN has no payment rows; event payload `payMethods: []`.
+- VAT on the CN: partial = `splitIncludedVat(grand, current POS rate)`; the refund that completes the bill takes the remainder of the bill's VAT (Σ CN VAT = bill VAT exactly). A client-side preview of VAT may differ by a satang on the completing refund — show the server value.
+
+Follow-ups updated (§7): F2 → done for `docType` (gross); **AI tools net-of-refund** (subtract `refundedSatang` / REFUND docs) still open — owner ruling. F4 → tiers done; `member/sources.ts:781`, `referrals.ts:838/945`, `journeys.ts:1392`, `member/reports.ts` stay gross (reports) — owner ruling. F6 (gift-card share under-refunds on a partial) — reviewer-confirmed, owner ruling. F8 + **revenue split residue**: JV of a CN splits 4000/4030 by `serviceGross` share and VAT by `splitIncludedVat(gross)`, so across partial refunds Σ(4000/4030/VAT) of the CNs can differ by a satang from the sale JV, and the CN document VAT (`computeTotals`) can differ from the POS CN `vatSatang` remainder (F6) — no code, account owner. F9 (sale re-post) → now conditional on the missing journal (F8 above).
+
+Gates (QC4 `ep-frosty-lab`, head after the three fix commits):
+- typecheck `env NODE_OPTIONS=--max-old-space-size=5632 ISO_MEM=6500M bash scripts/iso.sh flock -w 3600 /tmp/pos-gate.lock pnpm typecheck` → exit 0
+- `qc-pos-p1.8` forced #1 → 0 · 49/49 · forced #2 → 0 · `{"total":49,"passed":49,"failed":[],"forced":true,"a5":{"drift":[],"tempLeft":[]}}` · unforced → 0 · 49/49 `forced:false` · cleanup `314 ตาราง · เหลือ {} · Tenant 0`, Z1/Z2 green
+- money set (same as §8): qc-pos-account 0 · 16/16 · qc-account-cpa 0 · 107/107 · qc-restaurant-money 0 · 6/6 · qc-shop-refund 0 · 12/12 · qc-hotel-money 0 · 5/5 · qc-ticket-money 0 · 6/6 · qc-subscription-money 0 · 14/14 ✅ identical
+- unchanged: qc-pos-p1.3 0 · 128/128 · p1.6 0 · 48/48 · p1.9 0 · 53/53 · p1.9b 0 · 22/22 · p1.14 0 · 30/30 · p1.17 0 · 40/40 · p1.1 0 · 178/178 · qc-hf-pos-page-authz 0 · 56/56 · qc-pos-closeday 0 · 22/22 ✅
+- `pnpm fitness` with env → 0 · 41/41 · without env → 0 · 41/41 · `scripts/fitness-pos.mts` → 0 · 8/8 · pre-commit fitness green on all three commits
+- member tier suite `qc-member-m1.9` (tiers engine; reads the QC seed, no prod) → **exit 1, BLOCKED by environment, not by code**: it dies in setup (line 56 `actorOf` → membership null) before any tier call. Read-only probe: the committed `scripts/member-expected.json` owner `cmuj0t05p…` has no User/Membership on QC4 (member tenant `cmuk7n647…` has 8 other memberships) — the expected file comes from a different seed run. Re-seeding would wipe the shared QC4 CRM data (memory rule), so not done. Every other tier suite (`m1.1 m2.x m3.x`) reads the same file. Tier evidence is exercised by `qc-pos-p1.8` (member-bridges → `evaluateAndApply` → `collectEvidence` after refunds, M checks green). Controller: re-seed member QC on QC4 (before the CRM seed) or point me at a fresh expected file to run m1.9.
+- Not run (rules): `next build`, server, deploy, `qc-pos-p1.10`.
