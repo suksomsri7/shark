@@ -1,0 +1,76 @@
+# AI-TEAM baseline · session/ai-team 71a1f363 · started 2026-10-08T05:04:40Z · QC4 · SHARK_AI_MOCK=1 · QC_FORCE=1
+## qc-ai-tools · exit 0 · 11s
+JSON_SUMMARY {"total":18,"passed":18,"findings":[]}
+## qc-ai-tools2 · exit 0 · 114s
+JSON_SUMMARY {"total":8,"passed":8,"findings":[]}
+## qc-ai-proposals · exit 0 · 58s
+JSON_SUMMARY {"total":16,"passed":16,"findings":[]}
+## qc-ai-plan · exit 0 · 10s
+JSON_SUMMARY {"total":7,"passed":7,"findings":[]}
+## qc-ai-schedule · exit 0 · 84s
+JSON_SUMMARY {"total":8,"passed":8,"findings":[]}
+## qc-ai-skills · exit 0 · 9s
+JSON_SUMMARY {"total":23,"passed":23,"findings":[]}
+## qc-ai-memory · exit 0 · 10s
+JSON_SUMMARY {"total":7,"passed":7,"findings":[]}
+## qc-ai-credit · exit 0 · 81s
+JSON_SUMMARY {"total":32,"passed":32,"findings":[]}
+## qc-ai-usage · exit 0 · 8s
+  ✅ [AU-6.2] แอปมีจอ/แถบโควตาเรียก /api/mobile/usage
+
+qc-ai-usage: 31/31 ผ่าน · CRITICAL fail 0
+## qc-mobile-app · exit 0 · 22s
+  ✅ [APP-5.1] tsc --noEmit ใน apps/mobile ผ่าน
+
+qc-mobile-app: 38/38 ผ่าน · CRITICAL fail 0
+## qc-mobile-auth · exit 0 · 8s
+  ✅ [MA-13.3] exchange: code จริง → Bearer + replay → 401
+
+qc-mobile-auth: 31/31 ผ่าน · CRITICAL fail 0
+## qc-mobile-chat · exit 0 · 684s
+  ✅ [MC-6.4] facts ไม่ครบ (Zod) → 400
+
+qc-mobile-chat: 29/29 ผ่าน · CRITICAL fail 0
+## qc-mobile-authz-hotfix · exit 0 · 835s
+JSON_SUMMARY {"total":12,"passed":12,"findings":[]}
+## qc-approval · exit 0 · 156s
+JSON_SUMMARY {"total":16,"passed":16,"findings":[]}
+## qc-approval-wiring · exit 0 · 369s
+JSON_SUMMARY {"total":7,"passed":7,"findings":[]}
+## qc-approval-edit · exit 0 · 413s
+JSON_SUMMARY {"total":12,"passed":12,"findings":[]}
+## qc-push · exit 0 · 563s
+  ✅ [PU-2.3] งานประจำ AI เสร็จ → push
+
+qc-push: 7/7 ผ่าน · CRITICAL fail 0
+## qc-audit-trail · exit 0 · 426s
+  ✅ [A-7.1] listAuditActions distinct + มี label
+
+✅ PASS — 21/21
+## qc-crm-c1.10 · exit 1 · 2003s
+JSON_SUMMARY {"total":66,"passed":65,"findings":[{"id":"C1.10-X3.1","sev":"CRITICAL"}]}
+  ❌ [C1.10-X3.1] 🔴 18 POST /contacts with ONE Idempotency-Key + body at the same instant (2 worker processes × 6 + 6 in-process) → exactly ONE row · every 200 carries the same contactId · the rest only 409 idempotency_in_progress · a later retry replays the same contactId — exp 1 row | 
+## qc-crm-c1.11 · exit 1 · 2405s
+JSON_SUMMARY {"total":66,"passed":57,"findings":[{"id":"C1.11-S6.1","sev":"CRITICAL"},{"id":"C1.11-S6.3","sev":"CRITICAL"},{"id":"C1.11-S6.4","sev":"CRITICAL"},{"id":"C1.11-S6.5","sev":"CRITICAL"},{"id":"C1.11-S6.6","sev":"CRITICAL"},{"id":"C1.11-S6.7","sev":"CRITICAL"},{"id":"C1.11-S6.8","sev":"CRITICAL"},{"id":"C1.11-S6.9","sev":"MAJOR"},{"id":"C1.11-S7.1","sev":"CRITICAL"}]}
+  ❌ [C1.11-S6.1] switch page at uiVersion 1: OWNER → 200 with a Thai explanation, "switch back any time" wording and crm-uiversion-toggle · MANAGER (with crm.settings.manage) → 404 · STAFF → 404 · another tenant's system → 404 — exp owner only | act owner=404 back=false toggle=false m
+  ❌ [C1.11-S6.3] OWNER flips 1 → 2: { ok } · settings.crm.uiVersion = 2 written in place (chatToLead set earlier survives) · an audit row crm.settings.* mentioning uiVersion · the v1 action worked while at 1 and the v2 action was refused at 1 — exp flipped | act v1create=ok v2At1=FORBIDDEN:
+  ❌ [C1.11-S6.4] at 2: the contacts page renders v2 (no CrmContactsSection) and lists the contact the v1 action created · /crm/companies → 200 · the v2 action createCompanyAction works — exp v2 | act contacts=200 v1Section=true lists=true company=FORBIDDEN:ระบบ CRM ใหม่ยั
+  ❌ [C1.11-S6.5] OWNER flips 2 → 1: the contacts page is v1 again (CrmContactsSection) and lists the contact the v2 bridge created while at 2 · /crm/companies → 404 · the v2 action is FORBIDDEN again · NOTHING deleted (contacts · companies · deals · pipelines · activities · settings ke
+  ❌ [C1.11-S6.6] 1 → 2 again: v2 resumes with the data intact — the company created at 2 is listed again · the switch page still opens (with the way back) at 2 — exp resumed | act flip=FORBIDDEN:ร้านนี้ยังไม่เปิดให้สลับไปใช้ CRM ใ�
+  ❌ [C1.11-S6.7] REST ops follow the switch (C1.10 route, key bound to SW): GET /contacts → 409 crm_v2_disabled at 1 · 200 at 2 · 409 again after switching back — exp 409 · 200 · 409 | act at1=409/crm_v2_disabled at2=409/crm_v2_disabled back=409/crm_v2_disabled
+  ❌ [C1.11-S6.8] bridges follow the switch (chatToLead on): chat message at 1 → no lead · at 2 → ONE lead · back at 1 → no lead · the SAME event replayed after switching to 2 again → its lead appears (resume) — exp skip · run · skip · resume | act ran=true/true/true/true leads=0/0/
+  ❌ [C1.11-S6.9] entry points: at 1 the module entry is the v1 CrmHub (no crm-home) and the OWNER can reach the switch page (hub link, not shown to MANAGER — or an OWNER-gated drawer entry) · at 2 the module entry is the v2 home (crm-home) — exp v1 hub · v2 home | act hub=200 crmHub=true own
+  ❌ [C1.11-S7.1] a v1 CRM (TV): import · contacts duplicates · companies duplicates → 404 for its OWNER (a real duplicate pair exists) · the switch page is the one C1.11 page that opens (200) — exp 3× 404 + switch 200 | act 404 404 404 404
+## qc-crm-c3.7 · exit 1 · 255s
+JSON_SUMMARY {"total":5,"passed":3,"findings":[{"id":"C3.7-K.1","sev":"MAJOR"},{"id":"C3.7-FATAL","sev":"CRITICAL"}]}
+  ❌ [C3.7-K.1] seed control: crm-expected.json resolves to the seeded shop on THIS database (CRM system uiVersion 2 · thana an accepted member) · thana owns ≥ 1 OPEN deal · the Krabi team owns ≥ 1 deal (the visibility probe has something to hide) — exp seed as assumed | act system=false v
+  ❌ [C3.7-FATAL] the oracle ran to the end without an unexpected exception — exp no exception | act PrismaClientKnownRequestError: 
+# finished 2026-10-08T07:26:47Z
+
+# ── Controller summary (2026-10-08) ──
+# GREEN 18/21: ai-tools 18/18 · ai-tools2 · ai-proposals · ai-plan · ai-schedule · ai-skills · ai-memory · ai-credit · ai-usage · mobile-app · mobile-auth · mobile-chat · mobile-authz-hotfix · approval · approval-wiring · approval-edit · push · audit-trail
+# RED AT BASELINE (pre-existing on QC4, not caused by this run — no AI-team code exists yet; never "fixed" here):
+#   qc-crm-c1.10  65/66  C1.10-X3.1 (concurrency check; machine load was 40–60 during the run — re-run standalone before T1.7 uses it)
+#   qc-crm-c1.11  57/66  C1.11-S6.x/S7.1 (v1↔v2 switch: "ร้านนี้ยังไม่เปิดให้สลับ" — rollout allow-list/env of QC4 differs from the CRM lanes' QC1–3)
+#   qc-crm-c3.7    3/5   C3.7-K.1 + FATAL (crm-expected.json seed shop is not on QC4 — CRM seed lives on QC1–3; do NOT run seed-crm-qc on QC4 without asking: it shares tables with the member seed)
+# CRM C5.5 G1/G2/G3 suites named in REVIEW §10: not located as separate files in scripts/ — to resolve in the T1.7 brief addendum.
