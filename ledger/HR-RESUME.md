@@ -58,3 +58,7 @@
 - 2026-10-08T00:22:35Z CR-H0.2-4 AMENDED by controller: pay-date window ±1 year, text 'วันที่จ่ายต้องอยู่ภายใน 1 ปีของงวดนี้' (qc-crm-c3.3 fixtures 2026-09-30/2026-10-30 vs commission-month periods would rot under −31 d/+62 d). S9.5 edited on the lane (ok ×4 incl. +10 months; refused 1970 / 9999 / +13 months); builder R2 messaged. Quota session 68% (resets 01:30Z).
 - 2026-10-08T01:01:19Z H0.2 BUILDER R2 delivered 19e5af93: CR-H0.2-3 payroll.ts:262-266 (refuse crmCommissionId rows both paths, no audit, nothing mutated) + new PayAdjustRowActions.tsx (approve/reject kept, delete only when canDelete, hint ถอนที่ CRM) + payroll-ui.tsx:254 · CR-H0.2-4 (±1 y) payroll.ts:546-576. Builder: qc-hr-h0.2 58/58 ×3 · qc-hr-h0.1 67/67 · 12 suites = baseline (qc-crm-c3.3 90/90 under ±1 y) · fitness 33/33 · typecheck 0. REVIEWER R2 (read-only, no files) + controller re-run (control2.txt) launched; build+shots after the re-run's oracle snapshot files are gone.
 - 2026-10-08T01:02:42Z H0.2 REVIEWER R2 @19e5af93: ACCEPT WITH NOTES (N1 cosmetic Date.UTC years 0–99; N2 untracked controller shot script must type-check in next build). Waiting: controller re-run (control2.txt) → build + shots → merge.
+
+## 2026-10-08T01:24Z — H0.2 CONTROLLER RE-RUN @19e5af93: ALL GREEN (control2.txt committed 1d3c1443)
+- H0.1 oracle 67/67 · H0.2 oracle 58/58 ×3 (forced ×2 + unforced) · 12 regression suites = baseline · residue 0 tenants.
+- Now: next build of shark-hr-b inside iso (ISO_MEM=7000M, full .env.qc) → serve :3226 → scripts/hr-shot-h0.2.mts → visual check → merge into session/hr.
