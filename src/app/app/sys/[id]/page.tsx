@@ -162,7 +162,20 @@ async function PosContent({ systemId, tenantId, scope }: { systemId: string; ten
   const today = card ? null : await closeDaySummary({ tenantId, systemId, unitIds: posScopeUnitIds(scope) });
   // ลิงก์รายงาน: มีสิทธิ์ pos.report.view อย่างน้อย 1 สาขาของ POS นี้ที่เข้าได้ (ตรงกับด่านของหน้า /pos/reports)
   const canReport = units.some((u) => canAccessUnit(m, u.id) && evaluate(m, { module: "pos", action: REPORT_PERMISSION, unitId: u.id }));
-  const total = paidAll._sum.grandTotalSatang ?? 0;
+  // POS P1.8 ▸ R3: ยอด PAID ข้างบนรวมใบคืนเงิน (docType REFUND · status PAID) ⇒ ปรับเป็น "บิลขาย PAID + คืนครบ − ใบคืน" ด้วยคำสั่งเดียว
+  //   (คงรูป where เดิมของยอดรวมไว้ — ข้อสอบสิทธิ์ HF-POS-PAGES O-2 ตรวจตัวอักษรของขอบเขต posSaleWhere) ◂
+  const adj = await prisma.posSale.groupBy({
+    by: ["docType", "status"],
+    where: { ...posSaleWhere(tenantId, systemId, scope), OR: [{ docType: "REFUND" }, { status: "REFUNDED" }] },
+    _sum: { grandTotalSatang: true },
+    _count: { _all: true },
+  });
+  const refundDocs = adj.filter((g) => g.docType === "REFUND");
+  const refundedSales = adj.filter((g) => g.docType === "SALE" && g.status === "REFUNDED");
+  const sumOf = (gs: typeof adj) => gs.reduce((t, g) => t + (g._sum.grandTotalSatang ?? 0), 0);
+  const countOf = (gs: typeof adj) => gs.reduce((t, g) => t + g._count._all, 0);
+  const total = (paidAll._sum.grandTotalSatang ?? 0) + sumOf(refundedSales) - 2 * sumOf(refundDocs);
+  const paidCount = paidAll._count - countOf(refundDocs) + countOf(refundedSales);
   return (
     <>
       <ModuleTabs items={posTabs(systemId)} />
@@ -196,7 +209,7 @@ async function PosContent({ systemId, tenantId, scope }: { systemId: string; ten
       </Section>
       <Section title="ยอดขายรวม">
         <div className="text-sm text-[color:var(--color-muted)]">
-          รวม <MoneyText satang={total} /> · {paidAll._count} บิลที่ชำระแล้ว
+          รวม <MoneyText satang={total} /> · {paidCount} บิลที่ชำระแล้ว
         </div>
       </Section>
       <Section
@@ -208,13 +221,13 @@ async function PosContent({ systemId, tenantId, scope }: { systemId: string; ten
             key: s.id,
             primary: (
               <span>
-                {s.receiptNo} · <MoneyText satang={s.grandTotalSatang} />
+                {s.receiptNo} · <MoneyText satang={s.docType === "REFUND" ? -s.grandTotalSatang : s.grandTotalSatang} />
               </span>
             ),
             trailing: (
               <span className="flex items-center gap-2">
-                {s.status !== "PAID" && (
-                  <StatusChip value={s.status} map={POS_SALE_STATUS_LABEL} tone="danger" />
+                {(s.status !== "PAID" || s.docType === "REFUND") && (
+                  <StatusChip value={s.docType === "REFUND" ? "REFUND" : s.status} map={POS_SALE_STATUS_LABEL} tone="danger" />
                 )}
                 <span className="text-xs text-[color:var(--color-muted)]">{fmt(s.createdAt)}</span>
               </span>

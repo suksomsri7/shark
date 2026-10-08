@@ -908,8 +908,11 @@ posSaleService.getSaleBySource({ tenantId, unitId, sourceModule, sourceId }): Pr
 ### 7.6 Refund (คืนเงินหลังปิดกะ / คืนบางส่วน)
 
 1. เปิดบิลเดิม → เลือกบรรทัด+จำนวนที่คืน (≤ ที่เหลือคืนได้: qty เดิม − ที่เคยคืน) → เลือกวิธีคืนเงิน (CASH ต้องมีกะเปิด / TRANSFER) + reason
+   > **P1.8 ruling (CD8):** CASH ต้องมีกะเปิดของเครื่อง **เฉพาะเมื่อค่าตั้ง `pos.shift.required.register` บังคับกะ** (ไม่บังคับ = คืนนอกกะได้ · แสดงในเงินสดนอกกะเป็นแถวติดลบ) · วิธีคืน CASH/TRANSFER/PROMPTPAY/CARD (มัดจำ/ลงห้อง = REFUND_METHOD_INVALID)
 2. สร้าง**เอกสารใหม่** `docType: REFUND`, `receiptNo: CN2607-000004` (counter แยก docType), `refSaleId`, lines อ้าง `refLineId`, ยอดเป็นบวก, payments = เงินที่จ่ายคืน
+   > **P1.8 ruling (CD8 · O2):** เลขใบคืน = `CN${YYYYMM}-NNNN` (คำนำหน้าจาก `settings.pos.receipt.refundPrefix` ปริยาย "CN") จาก `PosDocCounter` ต่อสาขา/ชนิด/เดือน · ใบเสร็จขายยังใช้ `PosReceiptCounter` `YYYYMM-NNNN` เดิม (ย้ายเข้าตัวนับใหม่ = P1.10/P6.1)
 3. Transaction: INSERT เอกสาร REFUND · คืนสต็อก movement `RETURN` (เฉพาะบรรทัดมี productId, เลือกได้ว่า "รับของคืน" หรือ "ไม่รับ (ของเสีย)" → ADJUST แทน) · อัปเดตใบเดิม `status → PARTIALLY_REFUNDED | REFUNDED`
+   > **P1.8 ruling (CD8):** ไม่มีสถานะ `PARTIALLY_REFUNDED` — คืนบางส่วน**บิลยัง `PAID`** (สะสม `refundedSatang`) · `REFUNDED` เมื่อคืนครบทุกบรรทัด · สต็อกคืนทางคิว `pos.sale.refunded` ด้วย `inventory.receive` ที่ต้นทุนของ OUT เดิม (O12 · ไม่รับคืน = ไม่มี movement)
 4. ส่วนลด/คูปอง/VAT ปันส่วนตามสัดส่วนบรรทัดที่คืน (pro-rata, ปัดสตางค์ half-up, ใบสุดท้ายเก็บเศษ) · คูปอง**ไม่คืนสิทธิ์**เมื่อ refund บางส่วน (คืนเต็มใบ = release เหมือน void)
 5. หลัง commit (outbox): `point.reverse({tenantId, refType: 'PosSale', refId: saleId, amountSatang: <ยอดที่คืน>, idempotencyKey: "PosSale:{refundSaleId}:reverse"})` — **Point คำนวณแต้มที่ต้องหักเอง POS ไม่คิดสัดส่วน (D5 — ห้ามใช้ adjust)** · `account.postRefund({tenantId, unitId, saleId: refundSaleId, docType: 'REFUND', grandTotal: <ยอดคืน>, vatAmount, discountTotal, pointDiscount, payMethods, sourceModule, businessDate, idempotencyKey: "PosSale:{refundSaleId}:post"})` — facade 2.4 (D3) · reverse `member.recordSpend` ตามยอดคืน (สเปค 06 — D6) · `activity.log(type: 'SALE_REFUND')` · emit `pos.sale.refunded` ให้โมดูลต้นทาง · audit log
 

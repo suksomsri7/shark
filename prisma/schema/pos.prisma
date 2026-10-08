@@ -17,6 +17,12 @@ enum PosPayType {
   CARD // P1.6: บัตร (EDC/อ้างอิงมือ · ไม่มีเกตเวย์ — P1.7)
 }
 
+// P1.8 — ชนิดเอกสารของ PosSale (enum ใหม่ ⇒ ไม่มี ALTER TYPE … ADD VALUE) · ใบคืนเงิน = เอกสารใหม่ ไม่ใช่แก้บิลเดิม (มติ R1)
+enum PosSaleDocType {
+  SALE
+  REFUND
+}
+
 model PosSale {
   id               String        @id @default(cuid())
   tenantId         String
@@ -64,6 +70,14 @@ model PosSale {
   // id หลวม (User.id · ไม่มี FK · ไม่มี index แบบ shiftId) · หน้าขาย (submitRegisterSale) + หน้าขายเดิม (actions/pos.ts) เขียน · โมดูลอื่น = null
   soldByUserId        String?
 
+  // ── P1.8 — คืนเงินบางส่วน/ใบลดหนี้ · เพิ่มคอลัมน์ล้วน (บิลเดิม = SALE/null/0 = พฤติกรรมเดิม) ──
+  // ใบ REFUND: ยอดเป็นบวกทั้งหมด ตีความตาม docType · status PAID (เงินออกแล้ว) · soldByUserId = ผู้คืน · note = เหตุผล
+  // refSaleId = id หลวมของบิล SALE เดิม (ไม่มี FK · index สร้างใน P6.1 ด้วย CREATE INDEX CONCURRENTLY)
+  docType             PosSaleDocType @default(SALE)
+  refSaleId           String?
+  refundedSatang      Int            @default(0) // บนบิล SALE: ยอดที่คืนไปแล้วสะสม (สุทธิ = grandTotal − refundedSatang)
+  reasonCode          String? // ใบ REFUND: DAMAGED | WRONG_ITEM | CHANGED_MIND | OTHER
+
   lines    PosSaleLine[]
   payments PosPayment[]
 
@@ -91,6 +105,9 @@ model PosSaleLine {
   // ── P1.2 — เพิ่มคอลัมน์ล้วน (บิลเดิม = null = พฤติกรรมเดิม) ──
   components      Json? // ชุด/คอมโบ: สำเนาส่วนประกอบตอนขาย [{invItemId, qty}] ต่อ 1 หน่วย · ตัดสต็อก qty × line.qty คีย์ pos-consume-<sale>-<line>-<invItem>
   weightGrams     Int? // สินค้าชั่ง: น้ำหนัก (กรัม) ของบรรทัด (qty = 1 เสมอ) · ตัดสต็อกเป็นกรัม
+  // ── P1.8 — บรรทัดของใบ REFUND เท่านั้น (บิลขาย = null) ──
+  refLineId       String? // PosSaleLine.id ของบิลเดิม (id หลวม)
+  restock         Boolean? // true = รับของคืนเข้าคลัง · false = ไม่รับ (ของเสีย — ต้นทุนขายคงอยู่)
   options         PosSaleLineOption[]
 
   @@index([saleId])
@@ -143,6 +160,19 @@ model PosReceiptCounter {
   seq      Int    @default(0)
 
   @@unique([unitId, period])
+}
+
+// P1.8 — เลขเอกสารที่ไม่ใช่ใบเสร็จขาย (ใบคืนเงิน CN${YYYYMM}-NNNN) ต่อสาขา/ชนิด/เดือน (มติ R4 · O2)
+//   ใบเสร็จขายยังใช้ PosReceiptCounter เดิม (การย้ายเข้าตารางนี้เลื่อนไป P1.10/P6.1) · จองเลขใน tx ของใบคืน (upsert + increment)
+model PosDocCounter {
+  id       String         @id @default(cuid())
+  tenantId String
+  unitId   String
+  docType  PosSaleDocType
+  period   String // YYYYMM
+  seq      Int            @default(0)
+
+  @@unique([unitId, docType, period])
 }
 
 // ═══════════════════ P1.1a — แคตตาล็อกเดียว (PosProduct) · ตารางใหม่ล้วน ═══════════════════

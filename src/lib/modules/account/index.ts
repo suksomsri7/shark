@@ -9,6 +9,8 @@ import { handleBeamPaid, handleBeamFailed } from "./payment-request";
 import {
   convertDocument,
   createDocument,
+  findExternalSaleDoc,
+  upsertExternalCreditNoteDocument,
   findAccountLinkFor,
   findAccountLinkForPos,
   findDocByRef,
@@ -64,6 +66,8 @@ export async function posAccountSystemId(
 }
 import {
   postExternalSale,
+  postExternalRefund,
+  externalSalePosted,
   postGiftCardSale as postGiftCardSaleGl,
   postGiftCardUse as postGiftCardUseGl,
   postGiftCardExpire as postGiftCardExpireGl,
@@ -273,6 +277,109 @@ export async function reverseExternalSale(input: {
   const reversed = await reverseFor(ctx, "PosSale", input.refId, "POS void บิล");
   const voided = await voidExternalSaleDocument(input.tenantId, link.systemId, input.refId, "POS void บิล");
   return { posted: reversed.length > 0, docVoided: voided.voided };
+}
+
+// ─────────────────────────────────────────────────────────────
+// POS P1.8 ▸ คืนเงินหน้าร้าน → ใบลดหนี้ + กลับรายการตามสัดส่วน (REVIEW #6) ◂
+//
+// 🔴 ร้านที่ไม่ผูกบัญชีกับ POS = { posted:false, reason:"unlinked" } **ห้าม throw** (หลัก standalone เดียวกับ applyExternalSale)
+// 🔴 GL: Dr รายได้ (สินค้า/บริการตามสัดส่วนบรรทัดบริการ) + Dr ภาษีขาย · Cr เงินสด/ธนาคารตามวิธีคืน — idempotent ต่อใบคืน
+//    VAT ถอดด้วย splitIncludedVat สูตรเดียวกับ PosSale.vatSatang ของใบคืน · JV/ใบกำกับของบิลเดิมไม่ถูกแตะ (CD6)
+// 🔴 ชั้นเอกสาร: CREDIT_NOTE 1 ใบต่อใบคืน อ้าง ABB ของบิลเดิม (findDocByRef) · เลขที่ = เลขใบคืนของ POS
+//    สร้างเฉพาะเมื่อส่ง lines และร้านเปิด "ใบกำกับอย่างย่อจาก POS" (กติกาเดียวกับชั้นเอกสารของ applyExternalSale)
+//    POS ไม่เห็นเลขบัญชีใด ๆ (D3)
+export async function applyExternalRefund(input: {
+  tenantId: string;
+  sourceSystemId: string; // POS AppSystem.id
+  refId: string; // PosSale.id ของใบคืน (docType REFUND)
+  saleRefId: string; // PosSale.id ของบิลเดิม (หา ABB)
+  occurredAt: Date;
+  grossSatang: number; // ยอดคืน (รวม VAT ถ้าร้านจด)
+  /** ส่วนของยอดคืนที่เป็นบริการ (กลับ 4030) — ไม่ส่ง = สินค้าทั้งก้อน */
+  serviceGrossSatang?: number;
+  payMethods: { channel: "CASH" | "TRANSFER" | "PROMPTPAY" | "DEPOSIT" | "ROOM_CHARGE"; amountSatang: number }[];
+  /** บรรทัดของใบคืน (Σ qty×unitPrice − discount = grossSatang เป๊ะ) — ไม่ส่ง/ว่าง = ไม่มีชั้นเอกสาร */
+  lines?: { itemId?: string | null; name: string; qty: number; unitPriceSatang: number; discountSatang?: number }[];
+  docNo?: string | null; // เลขใบคืนของ POS
+  reason?: string | null;
+}): Promise<{ posted: boolean; reason?: string; docId?: string }> {
+  // ไม่ผูก = จบเงียบ · ความล้มของ GL (งวดปิด/ผังไม่ครบ) โยนต่อแบบ applyExternalSale ⇒ คิวลองใหม่ ไม่ปิดเงียบ ๆ
+  const link = await findAccountLinkForPos(input.tenantId, input.sourceSystemId);
+  if (!link) return { posted: false, reason: "unlinked" };
+  const ctx: GlCtx = { tenantId: input.tenantId, systemId: link.systemId };
+  const { vatRegistered, vatRateBp, posAbbreviatedInvoice } = await vatConfigOf(link.systemId);
+  const gross = input.grossSatang;
+  if (!Number.isInteger(gross) || gross <= 0) return { posted: false, reason: "ยอดคืนต้องเป็นจำนวนเต็มสตางค์มากกว่า 0 — ไม่บันทึกบัญชี" };
+  const paySum = input.payMethods.reduce((n, p) => n + p.amountSatang, 0);
+  if (paySum !== gross) return { posted: false, reason: `ยอดคืนแยกตามวิธี (${paySum}) ไม่เท่ากับยอดใบคืน (${gross}) — ไม่บันทึกบัญชี` };
+  const lines = input.lines ?? [];
+  if (lines.length > 0) {
+    const bad = lines.find((l) => !Number.isInteger(l.qty) || l.qty <= 0 || !Number.isInteger(l.unitPriceSatang) || l.unitPriceSatang < 0 || (l.discountSatang !== undefined && (!Number.isInteger(l.discountSatang) || l.discountSatang < 0)));
+    if (bad) return { posted: false, reason: `บรรทัด "${bad.name}" ของใบคืนมีจำนวน/ราคา/ส่วนลดไม่ถูกต้อง — ไม่บันทึกบัญชี` };
+    const sum = lines.reduce((n, l) => n + l.qty * l.unitPriceSatang - (l.discountSatang ?? 0), 0);
+    if (sum !== gross) return { posted: false, reason: `ยอดรวมของบรรทัดใบคืน (${sum}) ไม่เท่ากับยอดคืน (${gross}) — ไม่บันทึกบัญชี` };
+  }
+  const { baseSatang: base, vatSatang: vat } = vatRegistered ? splitIncludedVat(gross, vatRateBp) : { baseSatang: gross, vatSatang: 0 };
+  const svcGross = Math.min(Math.max(0, Math.round(input.serviceGrossSatang ?? 0)), gross);
+  const svcBase = Math.min(base, Math.round((base * svcGross) / gross));
+  // คืนได้เฉพาะเงินสด/ธนาคาร (มัดจำ/ลงห้อง ถูกปฏิเสธตั้งแต่ POS — R5) · ที่เหลือ = ธนาคาร
+  const crLines = input.payMethods.map((p) => ({ key: (p.channel === "CASH" ? "CASH" : "BANK") as "CASH" | "BANK", amountSatang: p.amountSatang }));
+  const res = await postExternalRefund(ctx, { refId: input.refId, date: input.occurredAt, baseSatang: base, vatSatang: vat, serviceBaseSatang: svcBase, crLines });
+  const posted = "entryId" in res;
+  if (lines.length === 0 || !posAbbreviatedInvoice) return { posted };
+
+  const abb = await findExternalSaleDoc(link.systemId, input.saleRefId);
+  const map = await resolveProductIdsForExternalSale(ctx.systemId, { itemIds: lines.map((l) => l.itemId ?? "").filter(Boolean), productIds: [] });
+  const docLines: ExternalSaleDocLine[] = lines.map((l) => ({
+    description: l.name,
+    qty: l.qty,
+    unitPrice: l.unitPriceSatang,
+    discount: l.discountSatang ?? 0,
+    vatRateBp: null,
+    productId: (l.itemId ? map.byItemId.get(l.itemId) : undefined) ?? null,
+  }));
+  const reason = (input.reason ?? "").trim() || "คืนสินค้า/คืนเงินหน้าร้าน";
+  const doc = await upsertExternalCreditNoteDocument({
+    tenantId: ctx.tenantId,
+    systemId: ctx.systemId,
+    refSystemId: input.sourceSystemId,
+    refId: input.refId,
+    sourceDocId: abb?.id ?? null,
+    docNo: input.docNo ?? null,
+    occurredAt: input.occurredAt,
+    contactId: abb?.contactId ?? null,
+    vatMode: vatRegistered ? "INCLUDE" : "NONE",
+    vatRegistered,
+    vatRateBp,
+    grandTotalSatang: gross,
+    reason,
+    note: input.docNo ? `คืนเงินหน้าร้าน POS · ใบคืน ${input.docNo}${abb?.docNo ? ` · อ้างใบเสร็จ ${abb.docNo}` : ""}` : "คืนเงินหน้าร้าน POS",
+    lines: docLines,
+  });
+  if (!doc.ok) return { posted, reason: doc.reason };
+  return { posted, docId: doc.docId };
+}
+
+/**
+ * POS P1.8 F8 — บิล POS นี้ลง JV ขายแล้วหรือยัง (คีย์ PosSale#<refId>#PAID ของสมุดที่ผูกกับ POS)
+ * null = ไม่ผูกบัญชี (ไม่มีอะไรให้ลง) · ใช้ตัดสินว่าตัวรับคืนเงินต้องลงบิลเดิมแทน pos.sale.paid ที่ข้ามไปหรือไม่
+ */
+export async function posSalePosted(input: { tenantId: string; sourceSystemId: string; refId: string }): Promise<boolean | null> {
+  const link = await findAccountLinkForPos(input.tenantId, input.sourceSystemId);
+  if (!link) return null;
+  return externalSalePosted({ tenantId: input.tenantId, systemId: link.systemId }, input.refId);
+}
+
+/** POS P1.8 R9 — เอกสารบัญชี (ใบกำกับอย่างย่อ) ของบิล POS — null = ไม่ผูกบัญชี/ยังไม่มีเอกสาร (อ่านอย่างเดียว · ไม่ throw) */
+export async function posSaleAccountingRef(input: { tenantId: string; sourceSystemId: string; refId: string }): Promise<{ docId: string; docNo: string | null } | null> {
+  try {
+    const link = await findAccountLinkForPos(input.tenantId, input.sourceSystemId);
+    if (!link) return null;
+    const doc = await findExternalSaleDoc(link.systemId, input.refId);
+    return doc ? { docId: doc.id, docNo: doc.docNo } : null;
+  } catch {
+    return null;
+  }
 }
 
 // ─────────────────────────────────────────────────────────────

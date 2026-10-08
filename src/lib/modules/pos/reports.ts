@@ -61,7 +61,7 @@ export type DailyRow = {
   tipSatang: number;
   voidCount: number;
   voidTotalSatang: number;
-  /** P1.8 เติม (ยังไม่มีใบคืนเงิน ⇒ 0) */
+  /** P1.8 — ใบคืนเงินของวัน (จำนวน · ยอด) · netSalesSatang = ยอดสุทธิหลังหักคืนเงินและยกเลิกแล้ว */
   refundCount: number;
   refundTotalSatang: number;
   avgBillSatang: number;
@@ -88,16 +88,21 @@ export type StaffRow = {
   userId: string | null;
   name: string | null;
   billCount: number;
+  /** P1.8 — หักใบคืนเงินของบิลที่คนนี้ขายแล้ว (คืนในช่วงรายงาน) */
   netSalesSatang: number;
   discountSatang: number;
   tipSatang: number;
   voidCount: number;
   voidTotalSatang: number;
   avgBillSatang: number;
+  /** P1.8 — ใบคืนเงินของบิลที่คนนี้ขาย (คืนในช่วงรายงาน · เพิ่มล้วน) */
+  refundCount?: number;
+  refundTotalSatang?: number;
 };
 export type StaffTotals = Omit<StaffRow, "userId" | "name">;
 
-export type PaymentRow = { type: string; label: string; count: number; billCount: number; amountSatang: number; cashTenderedSatang?: number; changeSatang?: number };
+/** P1.8 — amountSatang = รับสุทธิหลังหักเงินคืนของวิธีนั้น · refundCount/refundSatang = ใบคืน (มีเฉพาะเมื่อมีการคืน) */
+export type PaymentRow = { type: string; label: string; count: number; billCount: number; amountSatang: number; cashTenderedSatang?: number; changeSatang?: number; refundCount?: number; refundSatang?: number };
 export type PaymentTotals = { totalPaidSatang: number; salesSatang: number; tipSatang: number; billCount: number };
 
 export type MarginRow = {
@@ -178,8 +183,13 @@ export type TaxRow = {
   nonVatGrossSatang: number;
   voidCount: number;
   voidReceiptNos: string[];
+  /** P1.8 — ใบคืนเงิน/ใบลดหนี้ของวัน+สาขา (เพิ่มล้วน · ยอดขาย/VAT ข้างบนเป็นของใบเสร็จขาย) */
+  refundCount?: number;
+  refundGrossSatang?: number;
+  refundVatSatang?: number;
+  refundReceiptNos?: string[];
 };
-export type TaxTotals = { billCount: number; grossSatang: number; vatSatang: number; baseSatang: number; vatableGrossSatang: number; nonVatGrossSatang: number; voidCount: number };
+export type TaxTotals = { billCount: number; grossSatang: number; vatSatang: number; baseSatang: number; vatableGrossSatang: number; nonVatGrossSatang: number; voidCount: number; refundCount?: number; refundGrossSatang?: number; refundVatSatang?: number };
 
 export type DashboardCard = {
   businessDate: string;
@@ -343,12 +353,18 @@ type SaleRow = {
   tipSatang: number;
   shiftId: string | null;
   soldByUserId: string | null;
+  /** P1.8 — SALE = บิลขาย · REFUND = ใบคืนเงิน (ยอดบวก ตีความเป็นเงินออก · refSaleId = บิลเดิม) */
+  docType: string;
+  refSaleId: string | null;
 };
 
-/** R3 — บิลของขอบเขต + ช่วง (PAID + VOIDED · REFUNDED ไม่นับ) เรียงตามเวลา · ดัชนี (tenantId, unitId, createdAt) */
+/**
+ * R3 — เอกสารของขอบเขต + ช่วง เรียงตามเวลา · ดัชนี (tenantId, unitId, createdAt)
+ * POS P1.8 ▸ บิลขาย PAID + VOIDED + คืนครบ REFUNDED (ยังเป็นการขายของวันที่ขาย) + ใบคืนเงิน (หักในวันที่คืน) — ผู้อ่านแยกด้วย paidOf/voidedOf/refundsOf ◂
+ */
 async function loadSales(db: Db, s: Scope, start: Date, end: Date): Promise<SaleRow[]> {
   return db.posSale.findMany({
-    where: { tenantId: s.tenantId, systemId: s.systemId, unitId: { in: s.unitIds }, createdAt: { gte: start, lt: end }, status: { in: ["PAID", "VOIDED"] } },
+    where: { tenantId: s.tenantId, systemId: s.systemId, unitId: { in: s.unitIds }, createdAt: { gte: start, lt: end }, status: { in: ["PAID", "VOIDED", "REFUNDED"] } },
     select: {
       id: true,
       unitId: true,
@@ -363,6 +379,8 @@ async function loadSales(db: Db, s: Scope, start: Date, end: Date): Promise<Sale
       tipSatang: true,
       shiftId: true,
       soldByUserId: true,
+      docType: true,
+      refSaleId: true,
     },
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
   });
@@ -382,6 +400,10 @@ type LineRow = {
   weightGrams: number | null;
   /** โหลดเฉพาะเมื่อขอ (รายงานกำไร) · อื่น ๆ = undefined */
   components?: unknown;
+  /** P1.8 — บรรทัดของใบคืนเงิน (ค่าติดลบแล้ว · ไม่นับเป็นบิล) */
+  refund?: boolean;
+  refLineId?: string | null;
+  restock?: boolean | null;
 };
 /** withComponents = เลือกคอลัมน์ JSON components ด้วย (รายงานกำไรเท่านั้น · R2-F4) */
 async function loadLines(db: Db, tenantId: string, saleIds: string[], withComponents = false): Promise<LineRow[]> {
@@ -403,6 +425,8 @@ async function loadLines(db: Db, tenantId: string, saleIds: string[], withCompon
           productId: true,
           weightGrams: true,
           components: withComponents,
+          refLineId: true,
+          restock: true,
         },
         orderBy: { id: "asc" },
       })),
@@ -411,8 +435,11 @@ async function loadLines(db: Db, tenantId: string, saleIds: string[], withCompon
   return out;
 }
 
-const paidOf = (sales: SaleRow[]) => sales.filter((x) => x.status === "PAID");
-const voidedOf = (sales: SaleRow[]) => sales.filter((x) => x.status === "VOIDED");
+/** บิลขายที่นับยอด (PAID หรือคืนครบ REFUNDED — การคืนถูกหักผ่าน refundsOf) */
+const paidOf = (sales: SaleRow[]) => sales.filter((x) => x.docType === "SALE" && x.status !== "VOIDED");
+const voidedOf = (sales: SaleRow[]) => sales.filter((x) => x.docType === "SALE" && x.status === "VOIDED");
+/** POS P1.8 — ใบคืนเงินในช่วง */
+const refundsOf = (sales: SaleRow[]) => sales.filter((x) => x.docType === "REFUND");
 const envelope = <K extends ReportKind, R, T>(kind: K, s: Scope, r: Range, rows: R[], totals: T): { ok: true; report: Report<K, R, T> } => ({
   ok: true,
   report: { kind, from: r.from, to: r.to, unitId: s.unitId, generatedAt: new Date().toISOString(), rows, totals },
@@ -422,21 +449,25 @@ const envelope = <K extends ReportKind, R, T>(kind: K, s: Scope, r: Range, rows:
 function dailyTotalsOf(sales: SaleRow[]): DailyTotals {
   const paid = paidOf(sales);
   const voided = voidedOf(sales);
-  const net = sum(paid, (x) => x.grandTotalSatang);
-  const vat = sum(paid, (x) => x.vatSatang);
+  const refunds = refundsOf(sales);
+  // P1.8 ▸ ยอดสุทธิ "หลังหักคืนเงินและยกเลิก" (หัวจอ 08) — ใบคืน: subtotal = Σ ยอดบรรทัดที่คืน · ส่วนลด 0 · ค่าบริการส่วนที่คืน
+  //   ⇒ gross − discount + ค่าบริการ = net ยังจริงหลังหัก · บิลคืนครบ (REFUNDED) + ใบคืนของมัน = 0 ◂
+  const refundTotal = sum(refunds, (x) => x.grandTotalSatang);
+  const net = sum(paid, (x) => x.grandTotalSatang) - refundTotal;
+  const vat = sum(paid, (x) => x.vatSatang) - sum(refunds, (x) => x.vatSatang);
   return {
     billCount: paid.length,
-    grossSatang: sum(paid, (x) => x.subtotalSatang),
+    grossSatang: sum(paid, (x) => x.subtotalSatang) - sum(refunds, (x) => x.subtotalSatang),
     discountSatang: sum(paid, (x) => x.discountSatang),
-    serviceChargeSatang: sum(paid, (x) => x.serviceChargeSatang),
+    serviceChargeSatang: sum(paid, (x) => x.serviceChargeSatang) - sum(refunds, (x) => x.serviceChargeSatang),
     netSalesSatang: net,
     vatSatang: vat,
     netExVatSatang: net - vat,
     tipSatang: sum(paid, (x) => x.tipSatang),
     voidCount: voided.length,
     voidTotalSatang: sum(voided, (x) => x.grandTotalSatang),
-    refundCount: 0,
-    refundTotalSatang: 0,
+    refundCount: refunds.length,
+    refundTotalSatang: refundTotal,
     avgBillSatang: avg(net, paid.length),
   };
 }
@@ -465,12 +496,22 @@ export async function reportDailySales(ctx: ReportCtx, actor: RegisterActor, inp
 const productKey = (l: Pick<LineRow, "productId" | "itemId" | "serviceId" | "name">): string =>
   l.productId ? `p:${l.productId}` : l.itemId ? `i:${l.itemId}` : l.serviceId ? `s:${l.serviceId}` : `n:${l.name}`;
 
-/** บรรทัดของบิล PAID เรียงตามเวลาบิล (ชื่อของแถว = ชื่อบรรทัดล่าสุด) */
+/**
+ * บรรทัดของบิลที่นับยอด เรียงตามเวลาบิล (ชื่อของแถว = ชื่อบรรทัดล่าสุด)
+ * P1.8 ▸ + บรรทัดของใบคืนเงินในช่วง เป็นค่าติดลบ (จำนวน/กรัม/ยอด) · refund = true (ไม่นับเป็นบิล) — บรรทัดใบคืนถือ productId/itemId/serviceId ของบรรทัดเดิม ◂
+ */
 async function paidLines(db: Db, s: Scope, sales: SaleRow[], withComponents = false): Promise<LineRow[]> {
-  const paid = paidOf(sales);
-  const order = new Map(paid.map((x, i) => [x.id, i]));
-  const lines = await loadLines(db, s.tenantId, paid.map((x) => x.id), withComponents);
-  return lines.sort((a, b) => order.get(a.saleId)! - order.get(b.saleId)! || cmpStr(a.id, b.id));
+  const docs = [...paidOf(sales), ...refundsOf(sales)].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime() || cmpStr(a.id, b.id));
+  const order = new Map(docs.map((x, i) => [x.id, i]));
+  const refundIds = new Set(refundsOf(sales).map((x) => x.id));
+  const lines = await loadLines(db, s.tenantId, docs.map((x) => x.id), withComponents);
+  return lines
+    .map((l) =>
+      refundIds.has(l.saleId)
+        ? { ...l, qty: -l.qty, weightGrams: l.weightGrams === null ? null : -l.weightGrams, unitPriceSatang: l.unitPriceSatang, discountSatang: -l.discountSatang, lineTotalSatang: -l.lineTotalSatang, refund: true }
+        : l,
+    )
+    .sort((a, b) => order.get(a.saleId)! - order.get(b.saleId)! || cmpStr(a.id, b.id));
 }
 
 function productRowsOf(lines: LineRow[]): { rows: ProductRow[]; totals: ProductTotals } {
@@ -483,11 +524,14 @@ function productRowsOf(lines: LineRow[]): { rows: ProductRow[]; totals: ProductT
     r.productId = l.productId;
     r.itemId = l.itemId;
     r.serviceId = l.serviceId;
-    r.name = l.name;
+    if (!l.refund) r.name = l.name;
     r.qty += l.qty;
     r.weightGrams += l.weightGrams ?? 0;
-    r.lineCount += 1;
-    r.bills.add(l.saleId);
+    // P1.8 ▸ บรรทัดใบคืน: หักจำนวน/ยอด แต่ไม่นับเป็นบรรทัด/บิลขาย ◂
+    if (!l.refund) {
+      r.lineCount += 1;
+      r.bills.add(l.saleId);
+    }
     r.grossSatang += l.unitPriceSatang * l.qty;
     r.lineDiscountSatang += l.discountSatang;
     r.salesSatang += l.lineTotalSatang;
@@ -503,7 +547,7 @@ function productRowsOf(lines: LineRow[]): { rows: ProductRow[]; totals: ProductT
       qty: sum(rows, (x) => x.qty),
       weightGrams: sum(rows, (x) => x.weightGrams),
       lineCount: sum(rows, (x) => x.lineCount),
-      billCount: new Set(lines.map((l) => l.saleId)).size,
+      billCount: new Set(lines.filter((l) => !l.refund).map((l) => l.saleId)).size,
       grossSatang: sum(rows, (x) => x.grossSatang),
       lineDiscountSatang: sum(rows, (x) => x.lineDiscountSatang),
       salesSatang: sum(rows, (x) => x.salesSatang),
@@ -543,7 +587,17 @@ export async function reportStaff(ctx: ReportCtx, actor: RegisterActor, input: R
     if (isRefusal(p)) return p;
     const { s, r } = p;
     const sales = await loadSales(db, s, r.start, r.end);
-    const shiftIds = [...new Set(sales.filter((x) => !x.soldByUserId && x.shiftId).map((x) => x.shiftId as string))];
+    // P1.8 ▸ ใบคืนเงินหักจากผู้ขายของบิลเดิม (บิลเดิมอาจอยู่นอกช่วง — อ่านเพิ่มคำสั่งเดียวต่อก้อน) ◂
+    const refunds = refundsOf(sales);
+    type Origin = { soldByUserId: string | null; shiftId: string | null };
+    const origin = new Map<string, Origin>(sales.filter((x) => x.docType === "SALE").map((x) => [x.id, { soldByUserId: x.soldByUserId, shiftId: x.shiftId }]));
+    const missing = [...new Set(refunds.map((x) => x.refSaleId).filter((id): id is string => !!id && !origin.has(id)))];
+    for (const ids of chunks(missing)) {
+      // บิลเดิมอยู่สาขาเดียวกับใบคืนและเกิดก่อนใบคืน ⇒ กรอง unitId + createdAt (ดัชนี tenantId, unitId, createdAt · R15)
+      const rows = await db.posSale.findMany({ where: { tenantId: s.tenantId, unitId: { in: s.unitIds }, createdAt: { lt: r.end }, id: { in: ids } }, select: { id: true, soldByUserId: true, shiftId: true } });
+      for (const o of rows) origin.set(o.id, { soldByUserId: o.soldByUserId, shiftId: o.shiftId });
+    }
+    const shiftIds = [...new Set([...origin.values()].filter((x) => !x.soldByUserId && x.shiftId).map((x) => x.shiftId as string))];
     const opener = new Map<string, string>();
     for (const part of chunks(shiftIds)) {
       for (const sh of await db.posShift.findMany({ where: { tenantId: s.tenantId, id: { in: part } }, select: { id: true, openedByUserId: true } })) opener.set(sh.id, sh.openedByUserId);
@@ -555,9 +609,17 @@ export async function reportStaff(ctx: ReportCtx, actor: RegisterActor, input: R
       m.set(k, cur);
       return cur;
     };
+    for (const x of refunds) {
+      const o = x.refSaleId ? origin.get(x.refSaleId) : undefined;
+      const row = rowOf(o ? sellerOf({ ...x, soldByUserId: o.soldByUserId, shiftId: o.shiftId }, opener) : null);
+      row.netSalesSatang -= x.grandTotalSatang;
+      row.refundCount = (row.refundCount ?? 0) + 1;
+      row.refundTotalSatang = (row.refundTotalSatang ?? 0) + x.grandTotalSatang;
+    }
     for (const x of sales) {
+      if (x.docType !== "SALE") continue;
       const row = rowOf(sellerOf(x, opener));
-      if (x.status === "PAID") {
+      if (x.status !== "VOIDED") {
         row.billCount += 1;
         row.netSalesSatang += x.grandTotalSatang;
         row.discountSatang += x.discountSatang;
@@ -582,6 +644,7 @@ export async function reportStaff(ctx: ReportCtx, actor: RegisterActor, input: R
       voidCount: sum(rows, (x) => x.voidCount),
       voidTotalSatang: sum(rows, (x) => x.voidTotalSatang),
       avgBillSatang: avg(net, bills),
+      ...(refunds.length ? { refundCount: refunds.length, refundTotalSatang: sum(refunds, (x) => x.grandTotalSatang) } : {}),
     });
   });
 }
@@ -593,15 +656,26 @@ export async function reportPayments(ctx: ReportCtx, actor: RegisterActor, input
     const p = await prepare(db, ctx, actor, input);
     if (isRefusal(p)) return p;
     const { s, r } = p;
-    const paid = paidOf(await loadSales(db, s, r.start, r.end));
-    const agg = new Map<string, { count: number; bills: Set<string>; amount: number; tendered: number; change: number }>();
-    for (const ids of chunks(paid.map((x) => x.id))) {
+    const all = await loadSales(db, s, r.start, r.end);
+    const paid = paidOf(all);
+    // P1.8 ▸ เงินคืนหักจากวิธีของมัน (amount สุทธิ) · count/billCount/tendered/change = ฝั่งรับเดิม ◂
+    const refunds = refundsOf(all);
+    const refundIds = new Set(refunds.map((x) => x.id));
+    const agg = new Map<string, { count: number; bills: Set<string>; amount: number; tendered: number; change: number; rCount: number; rAmount: number }>();
+    for (const ids of chunks([...paid, ...refunds].map((x) => x.id))) {
       const pays = await db.posPayment.findMany({
         where: { tenantId: s.tenantId, saleId: { in: ids } },
         select: { saleId: true, type: true, amountSatang: true, tenderedSatang: true, changeSatang: true },
       });
       for (const x of pays) {
-        const a = agg.get(x.type) ?? { count: 0, bills: new Set<string>(), amount: 0, tendered: 0, change: 0 };
+        const a = agg.get(x.type) ?? { count: 0, bills: new Set<string>(), amount: 0, tendered: 0, change: 0, rCount: 0, rAmount: 0 };
+        if (refundIds.has(x.saleId)) {
+          a.amount -= x.amountSatang;
+          a.rCount += 1;
+          a.rAmount += x.amountSatang;
+          agg.set(x.type, a);
+          continue;
+        }
         a.count += 1;
         a.bills.add(x.saleId);
         a.amount += x.amountSatang;
@@ -623,11 +697,12 @@ export async function reportPayments(ctx: ReportCtx, actor: RegisterActor, input
           billCount: a.bills.size,
           amountSatang: a.amount,
           ...(t === "CASH" ? { cashTenderedSatang: a.tendered, changeSatang: a.change } : {}),
+          ...(a.rCount ? { refundCount: a.rCount, refundSatang: a.rAmount } : {}),
         };
       });
     return envelope("payments", s, r, rows, {
       totalPaidSatang: sum(rows, (x) => x.amountSatang),
-      salesSatang: sum(paid, (x) => x.grandTotalSatang),
+      salesSatang: sum(paid, (x) => x.grandTotalSatang) - sum(refunds, (x) => x.grandTotalSatang),
       tipSatang: sum(paid, (x) => x.tipSatang),
       billCount: paid.length,
     });
@@ -664,14 +739,28 @@ export async function reportMargin(ctx: ReportCtx, actor: RegisterActor, input: 
     const sales = await loadSales(db, s, r.start, r.end);
     const paid = paidOf(sales);
     const lines = await paidLines(db, s, sales, true);
-    const partsOf = new Map(lines.map((l) => [l.id, lineConsumption(l.saleId, { ...l, components: l.components ?? null })]));
+    const partsOf = new Map(lines.filter((l) => !l.refund).map((l) => [l.id, lineConsumption(l.saleId, { ...l, components: l.components ?? null })]));
+    // P1.8 ▸ บรรทัดใบคืน: ยอดขายติดลบ · ต้นทุน = ของที่รับคืนจริง (IN คีย์ pos-refund-<ใบคืน>-<บรรทัด>[-<ของ>] ที่ต้นทุนเดิม · O12) ติดลบ ·
+    //   ไม่รับคืน (restock false/ว่าง) = ต้นทุนคงเดิม (ความเสียหาย) ⇒ ทุกบรรทัดใบคืนนับเป็น "มีต้นทุน" ◂
+    const refundLines = lines.filter((l) => l.refund);
+    const returned = new Map<string, number>();
+    for (const part of chunks(refundLines.filter((l) => l.restock === true))) {
+      const mv = await db.invMovement.findMany({
+        where: { tenantId: s.tenantId, type: "IN", OR: part.map((l) => ({ idempotencyKey: { startsWith: `pos-refund-${l.saleId}-${l.id}` } })) },
+        select: { idempotencyKey: true, qtyDelta: true, costSatang: true },
+      });
+      for (const l of part) {
+        const own = mv.filter((x) => x.idempotencyKey === `pos-refund-${l.saleId}-${l.id}` || x.idempotencyKey.startsWith(`pos-refund-${l.saleId}-${l.id}-`));
+        returned.set(l.id, sum(own, (x) => Math.abs(x.qtyDelta) * x.costSatang));
+      }
+    }
     // ต้นทุนที่บันทึก: ค้นด้วยดัชนี unique (tenantId, idempotencyKey) เท่านั้น (InvMovement ไม่มีดัชนี refId)
     const moved = new Map<string, number>();
     for (const keys of chunks([...partsOf.values()].flat().map((x) => x.key))) {
       const mv = await db.invMovement.findMany({ where: { tenantId: s.tenantId, idempotencyKey: { in: keys } }, select: { idempotencyKey: true, qtyDelta: true, costSatang: true } });
       for (const x of mv) moved.set(x.idempotencyKey, Math.abs(x.qtyDelta) * x.costSatang);
     }
-    const needEstimate = [...new Set(lines.filter((l) => l.itemId && !partsOf.get(l.id)!.every((x) => moved.has(x.key))).map((l) => l.itemId as string))];
+    const needEstimate = [...new Set(lines.filter((l) => !l.refund && l.itemId && !partsOf.get(l.id)!.every((x) => moved.has(x.key))).map((l) => l.itemId as string))];
     const itemCost = new Map<string, number>();
     for (const ids of chunks(needEstimate)) {
       for (const it of await db.invItem.findMany({ where: { tenantId: s.tenantId, id: { in: ids } }, select: { id: true, costSatang: true } })) itemCost.set(it.id, it.costSatang);
@@ -684,7 +773,7 @@ export async function reportMargin(ctx: ReportCtx, actor: RegisterActor, input: 
       a.name = l.name;
       a.qty += l.qty;
       a.revenue += l.lineTotalSatang;
-      const c = lineCost(l, partsOf.get(l.id)!, moved, itemCost);
+      const c: LineCost = l.refund ? { kind: "stored", cost: -(returned.get(l.id) ?? 0) } : lineCost(l, partsOf.get(l.id)!, moved, itemCost);
       if (c.kind === "uncosted") a.uncosted += 1;
       else {
         a.costed += 1;
@@ -716,7 +805,7 @@ export async function reportMargin(ctx: ReportCtx, actor: RegisterActor, input: 
     const revenue = sum(all, (a) => a.revenue);
     const costedRevenue = sum(all, (a) => a.costedRevenue);
     const cost = sum(all, (a) => a.cost);
-    const netExVat = sum(paid, (x) => x.grandTotalSatang - x.vatSatang);
+    const netExVat = sum(paid, (x) => x.grandTotalSatang - x.vatSatang) - sum(refundsOf(sales), (x) => x.grandTotalSatang - x.vatSatang);
     const grossMargin = costedRevenue - cost;
     return envelope("margin", s, r, rows.slice(0, r.limit), {
       revenueSatang: revenue,
@@ -808,8 +897,16 @@ export async function reportTax(ctx: ReportCtx, actor: RegisterActor, input: Rep
     const p = await prepare(db, ctx, actor, input);
     if (isRefusal(p)) return p;
     const { s, r } = p;
-    const sales = await loadSales(db, s, r.start, r.end); // เรียงตามเวลาแล้ว
+    const all = await loadSales(db, s, r.start, r.end); // เรียงตามเวลาแล้ว
+    // P1.8 ▸ ใบคืนเงิน (= ใบลดหนี้) แยกคอลัมน์ refund* ของวัน+สาขา · เลขที่เริ่ม/สุดท้ายเป็นของใบเสร็จขายเท่านั้น ◂
+    const sales = all.filter((x) => x.docType === "SALE");
+    const refundGroups = new Map<string, SaleRow[]>();
+    for (const x of refundsOf(all)) {
+      const k = `${bkkBusinessDate(x.createdAt)}|${x.unitId}`;
+      refundGroups.set(k, [...(refundGroups.get(k) ?? []), x]);
+    }
     const groups = new Map<string, { date: string; unitId: string; bills: SaleRow[] }>();
+    for (const [k, rs] of refundGroups) if (!groups.has(k)) groups.set(k, { date: k.split("|")[0]!, unitId: rs[0]!.unitId, bills: [] });
     for (const x of sales) {
       const date = bkkBusinessDate(x.createdAt);
       const k = `${date}|${x.unitId}`;
@@ -823,6 +920,7 @@ export async function reportTax(ctx: ReportCtx, actor: RegisterActor, input: Rep
         const voided = voidedOf(g.bills);
         const gross = sum(paid, (x) => x.grandTotalSatang);
         const vat = sum(paid, (x) => x.vatSatang);
+        const rs = refundGroups.get(`${g.date}|${g.unitId}`) ?? [];
         return {
           businessDate: g.date,
           unitId: g.unitId,
@@ -837,6 +935,9 @@ export async function reportTax(ctx: ReportCtx, actor: RegisterActor, input: Rep
           nonVatGrossSatang: sum(paid.filter((x) => x.vatSatang === 0), (x) => x.grandTotalSatang),
           voidCount: voided.length,
           voidReceiptNos: voided.map((x) => x.receiptNo ?? "").filter((x) => x !== ""),
+          ...(rs.length
+            ? { refundCount: rs.length, refundGrossSatang: sum(rs, (x) => x.grandTotalSatang), refundVatSatang: sum(rs, (x) => x.vatSatang), refundReceiptNos: rs.map((x) => x.receiptNo ?? "").filter((x) => x !== "") }
+            : {}),
         };
       })
       .sort((a, b) => cmpStr(a.businessDate, b.businessDate) || cmpStr(a.unitName, b.unitName) || cmpStr(a.unitId, b.unitId));
@@ -848,6 +949,9 @@ export async function reportTax(ctx: ReportCtx, actor: RegisterActor, input: Rep
       vatableGrossSatang: sum(rows, (x) => x.vatableGrossSatang),
       nonVatGrossSatang: sum(rows, (x) => x.nonVatGrossSatang),
       voidCount: sum(rows, (x) => x.voidCount),
+      ...(rows.some((x) => x.refundCount)
+        ? { refundCount: sum(rows, (x) => x.refundCount ?? 0), refundGrossSatang: sum(rows, (x) => x.refundGrossSatang ?? 0), refundVatSatang: sum(rows, (x) => x.refundVatSatang ?? 0) }
+        : {}),
     });
   });
 }

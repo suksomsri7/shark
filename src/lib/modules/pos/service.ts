@@ -128,7 +128,9 @@ export type PosSaleErrorCode =
   | "STOCK_INSUFFICIENT"
   // POS P1.9: ไม่มีกะที่ใช้ได้ / กะปิดแล้ว (ขาย · void)
   | "SHIFT_REQUIRED"
-  | "SHIFT_CLOSED";
+  | "SHIFT_CLOSED"
+  // POS P1.8 (§7 CD1): บิลที่คืนเงินไปแล้วบางส่วน void ทั้งใบไม่ได้ (ใช้การคืนส่วนที่เหลือแทน)
+  | "HAS_REFUNDS";
 export class PosSaleError extends Error {
   readonly code: PosSaleErrorCode;
   constructor(code: PosSaleErrorCode, message: string) {
@@ -360,7 +362,8 @@ async function createSaleOnce(input: CreateSaleInput, client: Client, ownsTx: bo
       },
     });
     if (dup) {
-      if (!samePayload(input, dup)) {
+      // POS P1.8 F7 ▸ คีย์ของใบคืน (REFUND) ใช้ที่เดียวกับคีย์บิลขาย — เจอใบคืน = ชนเสมอ (ห้ามตอบใบคืนเป็น "บิลเดิม") ◂
+      if (dup.docType === "REFUND" || !samePayload(input, dup)) {
         throw new PosSaleError("IDEMPOTENCY_CONFLICT", "มีบิลของรหัสรายการนี้อยู่แล้วแต่รายการ/ยอด/วิธีจ่ายไม่ตรงกัน — ตรวจบิลเดิมก่อน ห้ามขายซ้ำ");
       }
       return {
@@ -756,14 +759,19 @@ async function consumeSaleInventory(tenantId: string, unitId: string, saleId: st
 export async function voidSale(tenantId: string, unitId: string, saleId: string): Promise<void> {
   await prisma.$transaction(async (tx) => {
     const sale = await tx.posSale.findFirst({ where: { id: saleId, tenantId, unitId } });
-    if (!sale || sale.status !== "PAID") throw new Error("บิลนี้ void ไม่ได้");
+    // POS P1.8 ▸ ใบคืนเงิน (docType REFUND) void ไม่ได้ (มติ R1 · คืนของใบคืน = นอกขอบเขต) ◂
+    if (!sale || sale.status !== "PAID" || sale.docType !== "SALE") throw new Error("บิลนี้ void ไม่ได้");
+    // POS P1.8 ▸ §7 CD1: คืนเงินไปแล้วบางส่วน ⇒ void ทั้งใบจะกลับรายการส่วนที่คืนไปแล้วซ้ำ (JV · แต้ม · สต็อก) — ปฏิเสธก่อนเขียนอะไร (ทุกผู้เรียก) ◂
+    if (sale.refundedSatang > 0) throw new PosSaleError("HAS_REFUNDS", "บิลนี้มีการคืนเงินแล้ว — ยกเลิกทั้งใบไม่ได้ ใช้การคืนเงินส่วนที่เหลือแทน");
     // POS P1.9 ▸ S11: บิลในกะที่ปิดแล้ว void ไม่ได้ (คืนเงินเท่านั้น) · ล็อกแถวกะ FOR SHARE แบบ createSale · บิลนอกกะ (null) = เดิม ◂
     // POS P1.9 R2 F4 ▸ เฉพาะบิลหน้าขาย (sourceModule "POS") · บิลของโมดูลอื่น (คืนเงินโรงแรม/จอง/… เคลมฝั่งตัวเองก่อนแล้วค่อย void) ไม่ถูกปฏิเสธ — ปฏิเสธ = ค้างครึ่งทาง ◂
     if (sale.shiftId && sale.sourceModule === "POS") {
       const sh = await tx.$queryRaw<{ status: string }[]>`SELECT status::text AS status FROM "PosShift" WHERE id = ${sale.shiftId} FOR SHARE`;
       if (sh[0]?.status !== "OPEN") throw new PosSaleError("SHIFT_CLOSED", "กะของบิลนี้ปิดแล้ว — ยกเลิกบิลไม่ได้ ใช้การคืนเงินแทน");
     }
-    await tx.posSale.update({ where: { id: saleId }, data: { status: "VOIDED" } });
+    // POS P1.8 ▸ เขียนแบบมีเงื่อนไข: ใบคืนที่ commit ระหว่างนี้ (ล็อกบิล FOR UPDATE) ทำให้ไม่ตรง ⇒ ปฏิเสธ ไม่ทับสถานะ ◂
+    const flipped = await tx.posSale.updateMany({ where: { id: saleId, status: "PAID", refundedSatang: 0 }, data: { status: "VOIDED" } });
+    if (flipped.count !== 1) throw new PosSaleError("HAS_REFUNDS", "บิลนี้มีการคืนเงินแล้ว — ยกเลิกทั้งใบไม่ได้ ใช้การคืนเงินส่วนที่เหลือแทน");
     // outbox: void → กลับรายการบัญชี (contract 2.4)
     await emitOutbox(tx, {
       tenantId,
@@ -851,7 +859,8 @@ async function restoreVoidedInventory(tenantId: string, unitId: string, saleId: 
 export async function listSales(tenantId: string, unitId: string, sinceDateStr: string) {
   const since = new Date(sinceDateStr + "T00:00:00Z");
   return prisma.posSale.findMany({
-    where: { tenantId, unitId, createdAt: { gte: since } },
+    // POS P1.8 ▸ R3: รายการ "บิลขาย" เท่านั้น (ใบคืนเงิน docType REFUND ไม่ใช่บิลขาย) ◂
+    where: { tenantId, unitId, docType: "SALE", createdAt: { gte: since } },
     orderBy: { createdAt: "desc" },
     include: { lines: true },
     take: 200,
@@ -863,11 +872,17 @@ export async function daySummary(tenantId: string, unitId: string): Promise<{ co
   const d = new Date(Date.now() + 7 * 3600000);
   const dateStr = d.toISOString().slice(0, 10);
   const start = new Date(new Date(dateStr + "T00:00:00Z").getTime() - 7 * 3600000);
+  // POS P1.8 ▸ R3: ยอดสุทธิ = บิลขายที่ไม่ถูกยกเลิก (PAID + คืนครบ REFUNDED) − ใบคืนเงินของวันนี้ · จำนวน = บิลขายเท่านั้น ◂
   const sales = await prisma.posSale.findMany({
-    where: { tenantId, unitId, status: "PAID", createdAt: { gte: start } },
-    select: { grandTotalSatang: true },
+    where: { tenantId, unitId, status: { not: "VOIDED" }, createdAt: { gte: start } },
+    select: { grandTotalSatang: true, docType: true },
   });
-  return { count: sales.length, totalSatang: sales.reduce((s, x) => s + x.grandTotalSatang, 0) };
+  const bills = sales.filter((x) => x.docType === "SALE");
+  const refunds = sales.filter((x) => x.docType === "REFUND");
+  return {
+    count: bills.length,
+    totalSatang: bills.reduce((s, x) => s + x.grandTotalSatang, 0) - refunds.reduce((s, x) => s + x.grandTotalSatang, 0),
+  };
 }
 
 // ═══════════════════════════ ปิดวัน / สรุปยอดสิ้นวัน (read-only) ═══════════════════════════
@@ -877,7 +892,8 @@ export async function daySummary(tenantId: string, unitId: string): Promise<{ co
 // unitIds (HF-POS-PAGES) = จำกัดเฉพาะสาขาที่ผู้ใช้เข้าได้ · ไม่ระบุ = ทุกสาขาของ POS นี้ (เหมือนเดิม)
 export type CloseCtx = { tenantId: string; systemId: string; unitIds?: string[] };
 
-export type PayMethodLine = { type: PosPayType; label: string; amountSatang: number; count: number };
+// POS P1.8 ▸ amountSatang = สุทธิหลังหักเงินคืนของวิธีนั้น · count = จำนวนรายการรับ (เดิม) · refund* = ใบคืนของวิธีนั้น (เพิ่มล้วน) ◂
+export type PayMethodLine = { type: PosPayType; label: string; amountSatang: number; count: number; refundCount?: number; refundSatang?: number };
 
 export type PosDaySummary = {
   businessDate: string; // YYYY-MM-DD (BKK)
@@ -885,6 +901,9 @@ export type PosDaySummary = {
   billCount: number; // จำนวนบิล PAID
   voidCount: number; // จำนวนบิล void (createdAt วันนั้น)
   voidTotalSatang: number; // ยอดรวมบิล void
+  /** POS P1.8 — ใบคืนเงินของวันนั้น (หักออกจาก netSales/byMethod/เงินในลิ้นชักแล้ว) */
+  refundCount: number;
+  refundTotalSatang: number;
   byMethod: PayMethodLine[]; // แยกตามวิธีจ่าย (จาก PosPayment ของบิล PAID วันนั้น) — เรียงตาม enum
   cashInDrawerSatang: number; // เงินสดที่ควรมีในลิ้นชัก = ยอดจ่ายเงินสดของบิล PAID วันนั้น
   // แยกยอดตามชนิดรายการ — ธุรกิจที่มีทั้งสินค้าและบริการต้องรู้ว่ารายได้มาจากทางไหน
@@ -927,6 +946,8 @@ export type PosDayBill = {
   grandTotalSatang: number;
   status: string;
   methodLabel: string;
+  /** POS P1.8 — "REFUND" = ใบคืนเงิน (grandTotalSatang เป็นบวก ตีความเป็นเงินออก) */
+  docType?: string;
 };
 
 // ── สรุปวัน (default = วันนี้ BKK) ต่อระบบ POS ──
@@ -934,27 +955,37 @@ export async function closeDaySummary(ctx: CloseCtx, businessDate?: string): Pro
   const date = businessDate ?? bkkToday();
   const { start, end } = bkkDayRange(date);
 
-  // บิลทั้งหมดของระบบ POS นี้ในวันนั้น (PAID + VOIDED)
+  // บิลทั้งหมดของระบบ POS นี้ในวันนั้น (PAID + VOIDED + คืนครบ) + ใบคืนเงินของวันนั้น (POS P1.8 ▸ R3: docType แยก ◂)
   const sales = await prisma.posSale.findMany({
     where: { tenantId: ctx.tenantId, systemId: ctx.systemId, createdAt: { gte: start, lt: end }, ...(ctx.unitIds ? { unitId: { in: ctx.unitIds } } : {}) },
-    select: { id: true, status: true, grandTotalSatang: true },
+    select: { id: true, status: true, grandTotalSatang: true, docType: true },
   });
-  const paid = sales.filter((s) => s.status === "PAID");
-  const voided = sales.filter((s) => s.status === "VOIDED");
+  // บิลขายที่ยังนับยอด = ไม่ถูกยกเลิก (PAID หรือคืนครบ REFUNDED — การคืนถูกหักผ่านใบคืนเงินของวันที่คืน)
+  const paid = sales.filter((s) => s.docType === "SALE" && s.status !== "VOIDED");
+  const voided = sales.filter((s) => s.docType === "SALE" && s.status === "VOIDED");
+  const refunds = sales.filter((s) => s.docType === "REFUND");
 
-  // แยกวิธีจ่าย จาก PosPayment ของบิล PAID วันนั้น
+  // แยกวิธีจ่าย จาก PosPayment ของบิลวันนั้น (ใบคืน = หักออก)
   const paidIds = paid.map((s) => s.id);
-  const payments = paidIds.length
+  const refundIds = refunds.map((s) => s.id);
+  const payments = paidIds.length || refundIds.length
     ? await prisma.posPayment.findMany({
-        where: { tenantId: ctx.tenantId, saleId: { in: paidIds } },
-        select: { type: true, amountSatang: true },
+        where: { tenantId: ctx.tenantId, saleId: { in: [...paidIds, ...refundIds] } },
+        select: { type: true, amountSatang: true, saleId: true },
       })
     : [];
-  const agg = new Map<PosPayType, { amountSatang: number; count: number }>();
+  const refundSet = new Set(refundIds);
+  const agg = new Map<PosPayType, { amountSatang: number; count: number; refundCount: number; refundSatang: number }>();
   for (const p of payments) {
-    const cur = agg.get(p.type) ?? { amountSatang: 0, count: 0 };
-    cur.amountSatang += p.amountSatang;
-    cur.count += 1;
+    const cur = agg.get(p.type) ?? { amountSatang: 0, count: 0, refundCount: 0, refundSatang: 0 };
+    if (refundSet.has(p.saleId)) {
+      cur.amountSatang -= p.amountSatang;
+      cur.refundCount += 1;
+      cur.refundSatang += p.amountSatang;
+    } else {
+      cur.amountSatang += p.amountSatang;
+      cur.count += 1;
+    }
     agg.set(p.type, cur);
   }
   const byMethod: PayMethodLine[] = PAY_TYPE_ORDER.filter((t) => agg.has(t)).map((t) => ({
@@ -962,30 +993,35 @@ export async function closeDaySummary(ctx: CloseCtx, businessDate?: string): Pro
     label: PAY_TYPE_LABEL_TH[t],
     amountSatang: agg.get(t)!.amountSatang,
     count: agg.get(t)!.count,
+    ...(agg.get(t)!.refundCount ? { refundCount: agg.get(t)!.refundCount, refundSatang: agg.get(t)!.refundSatang } : {}),
   }));
 
-  // แยกยอดสินค้า/บริการ/พิมพ์เอง จากบรรทัดของบิล PAID วันนั้น
-  const saleLines = paidIds.length
+  // แยกยอดสินค้า/บริการ/พิมพ์เอง จากบรรทัดของบิลวันนั้น (บรรทัดใบคืนถือ itemId/serviceId ของบรรทัดเดิม = หักออก)
+  const saleLines = paidIds.length || refundIds.length
     ? await prisma.posSaleLine.findMany({
-        where: { tenantId: ctx.tenantId, saleId: { in: paidIds } },
-        select: { lineTotalSatang: true, itemId: true, serviceId: true },
+        where: { tenantId: ctx.tenantId, saleId: { in: [...paidIds, ...refundIds] } },
+        select: { lineTotalSatang: true, itemId: true, serviceId: true, saleId: true },
       })
     : [];
   let productSalesSatang = 0;
   let serviceSalesSatang = 0;
   let otherSalesSatang = 0;
   for (const l of saleLines) {
-    if (l.serviceId) serviceSalesSatang += l.lineTotalSatang;
-    else if (l.itemId) productSalesSatang += l.lineTotalSatang;
-    else otherSalesSatang += l.lineTotalSatang;
+    const v = refundSet.has(l.saleId) ? -l.lineTotalSatang : l.lineTotalSatang;
+    if (l.serviceId) serviceSalesSatang += v;
+    else if (l.itemId) productSalesSatang += v;
+    else otherSalesSatang += v;
   }
+  const refundTotalSatang = refunds.reduce((s, x) => s + x.grandTotalSatang, 0);
 
   return {
     businessDate: date,
-    netSalesSatang: paid.reduce((s, x) => s + x.grandTotalSatang, 0),
+    netSalesSatang: paid.reduce((s, x) => s + x.grandTotalSatang, 0) - refundTotalSatang,
     billCount: paid.length,
     voidCount: voided.length,
     voidTotalSatang: voided.reduce((s, x) => s + x.grandTotalSatang, 0),
+    refundCount: refunds.length,
+    refundTotalSatang,
     byMethod,
     cashInDrawerSatang: agg.get("CASH")?.amountSatang ?? 0,
     productSalesSatang,
@@ -1001,7 +1037,7 @@ export async function closeDayBills(ctx: CloseCtx, businessDate?: string): Promi
   const sales = await prisma.posSale.findMany({
     where: { tenantId: ctx.tenantId, systemId: ctx.systemId, createdAt: { gte: start, lt: end }, ...(ctx.unitIds ? { unitId: { in: ctx.unitIds } } : {}) },
     orderBy: { createdAt: "asc" },
-    select: { id: true, receiptNo: true, createdAt: true, grandTotalSatang: true, status: true },
+    select: { id: true, receiptNo: true, createdAt: true, grandTotalSatang: true, status: true, docType: true },
   });
   const ids = sales.map((s) => s.id);
   const payments = ids.length
@@ -1025,6 +1061,7 @@ export async function closeDayBills(ctx: CloseCtx, businessDate?: string): Promi
       grandTotalSatang: s.grandTotalSatang,
       status: s.status,
       methodLabel: uniq.map((t) => PAY_TYPE_LABEL_TH[t]).join(" + ") || "—",
+      docType: s.docType,
     };
   });
 }
@@ -1038,7 +1075,7 @@ function csvEsc(v: unknown): string {
   return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 const baht = (satang: number) => (satang / 100).toFixed(2);
-const STATUS_TH: Record<string, string> = { PAID: "ชำระแล้ว", VOIDED: "ยกเลิก" };
+const STATUS_TH: Record<string, string> = { PAID: "ชำระแล้ว", VOIDED: "ยกเลิก", REFUNDED: "คืนเงินครบ" };
 
 export async function closeDayCsv(ctx: CloseCtx, businessDate?: string): Promise<string> {
   const date = businessDate ?? bkkToday();
@@ -1050,7 +1087,14 @@ export async function closeDayCsv(ctx: CloseCtx, businessDate?: string): Promise
   rows.push(["เลขที่ใบเสร็จ", "เวลา", "ยอด (บาท)", "วิธีจ่าย", "สถานะ"].map(csvEsc).join(","));
   for (const b of bills) {
     rows.push(
-      [b.receiptNo ?? "", fmtTime(b.createdAt), baht(b.grandTotalSatang), b.methodLabel, STATUS_TH[b.status] ?? b.status]
+      [
+        b.receiptNo ?? "",
+        fmtTime(b.createdAt),
+        // POS P1.8 ▸ ใบคืนเงิน = เงินออก (ติดลบ) ◂
+        b.docType === "REFUND" ? `-${baht(b.grandTotalSatang)}` : baht(b.grandTotalSatang),
+        b.methodLabel,
+        b.docType === "REFUND" ? "ใบคืนเงิน" : (STATUS_TH[b.status] ?? b.status),
+      ]
         .map(csvEsc)
         .join(","),
     );
@@ -1061,6 +1105,7 @@ export async function closeDayCsv(ctx: CloseCtx, businessDate?: string): Promise
   rows.push([csvEsc("ยอดขายสุทธิ (บาท)"), csvEsc(baht(summary.netSalesSatang))].join(","));
   rows.push([csvEsc("จำนวนบิล"), csvEsc(summary.billCount)].join(","));
   rows.push([csvEsc("บิลยกเลิก"), csvEsc(`${summary.voidCount} (${baht(summary.voidTotalSatang)} บาท)`)].join(","));
+  if (summary.refundCount) rows.push([csvEsc("คืนเงิน"), csvEsc(`${summary.refundCount} (${baht(summary.refundTotalSatang)} บาท)`)].join(","));
   for (const m of summary.byMethod) {
     rows.push([csvEsc(`ยอด${m.label} (บาท)`), csvEsc(baht(m.amountSatang))].join(","));
   }

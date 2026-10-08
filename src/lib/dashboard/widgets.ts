@@ -109,26 +109,27 @@ export async function runWidgets(ctx: DashboardCtx, keys: string[]): Promise<Wid
     // ยอดขายวันนี้ (สตางค์) — PosSale PAID วันนี้ (BKK)
     salesToday: async () => {
       if (!pos) return 0;
+      // POS P1.8 ▸ R3: บิลขาย PAID + คืนครบ · สุทธิหลังคืนเงิน (grand − refundedSatang) ◂
       const r = await tenantDb({ tenantId, systemId: pos.id }).posSale.aggregate({
-        where: { status: "PAID", createdAt: { gte: todayStart, lt: todayEnd } },
-        _sum: { grandTotalSatang: true },
+        where: { docType: "SALE", status: { in: ["PAID", "REFUNDED"] }, createdAt: { gte: todayStart, lt: todayEnd } },
+        _sum: { grandTotalSatang: true, refundedSatang: true },
       });
-      return r._sum.grandTotalSatang ?? 0;
+      return (r._sum.grandTotalSatang ?? 0) - (r._sum.refundedSatang ?? 0);
     },
     // ยอดขาย 7 วัน (สตางค์)
     sales7d: async () => {
       if (!pos) return 0;
       const r = await tenantDb({ tenantId, systemId: pos.id }).posSale.aggregate({
-        where: { status: "PAID", createdAt: { gte: since7d } },
-        _sum: { grandTotalSatang: true },
+        where: { docType: "SALE", status: { in: ["PAID", "REFUNDED"] }, createdAt: { gte: since7d } },
+        _sum: { grandTotalSatang: true, refundedSatang: true },
       });
-      return r._sum.grandTotalSatang ?? 0;
+      return (r._sum.grandTotalSatang ?? 0) - (r._sum.refundedSatang ?? 0);
     },
     // จำนวนบิลวันนี้
     billsToday: async () => {
       if (!pos) return 0;
       return tenantDb({ tenantId, systemId: pos.id }).posSale.count({
-        where: { status: "PAID", createdAt: { gte: todayStart, lt: todayEnd } },
+        where: { docType: "SALE", status: { in: ["PAID", "REFUNDED"] }, createdAt: { gte: todayStart, lt: todayEnd } },
       });
     },
     // สมาชิกใหม่ 7 วัน

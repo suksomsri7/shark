@@ -1649,6 +1649,57 @@ export async function postExternalSale(
   });
 }
 
+/** POS P1.8 F8 ▸ บิล POS นี้ลง JV ขาย (PosSale#<refId>#PAID) แล้วหรือยัง — คีย์เดียวกับ postExternalSale (อ่านอย่างเดียว) ◂ */
+export async function externalSalePosted(ctx: GlCtx, refId: string): Promise<boolean> {
+  return alreadyPosted(ctx, `PosSale#${refId}#PAID`, prisma);
+}
+
+// POS P1.8 ▸ คืนเงินหน้าร้าน (ใบคืน REFUND ของ POS) — กลับรายการตามสัดส่วน "เฉพาะส่วนที่คืน" ◂
+//   Dr รายได้ขายสินค้า/ค่าบริการ (ฐาน) · Dr ภาษีขาย (VAT) · Cr เงินสด/ธนาคาร ตามวิธีคืน — ไม่แตะลูกหนี้ 1100
+//   idempotent ต่อ (PosSale, refId = id ใบคืน, REFUNDED) · JV ของบิลเดิม **ไม่ถูกกลับรายการ** (ใบลดหนี้หักล้างแทน · CD6)
+//   facade (account/index) เป็นผู้คิดฐาน/VAT + ทางเงิน แล้วส่งมา — โมดูลอื่นไม่รู้เลขบัญชี
+export async function postExternalRefund(
+  ctx: GlCtx,
+  o: {
+    refId: string;
+    date: Date;
+    baseSatang: number;
+    vatSatang: number;
+    serviceBaseSatang?: number;
+    crLines: { key: "CASH" | "BANK"; amountSatang: number }[];
+  },
+  tx?: Tx,
+): Promise<{ entryId: string } | { skipped: true }> {
+  return withTx(tx, async (db) => {
+    const event = "REFUNDED";
+    if (await alreadyPosted(ctx, `PosSale#${o.refId}#${event}`, db)) return { skipped: true };
+
+    const b = new Book(ctx, db);
+    const svcBase = Math.min(Math.max(0, Math.round(o.serviceBaseSatang ?? 0)), o.baseSatang);
+    const goodsBase = o.baseSatang - svcBase;
+    if (goodsBase > 0) b.dr(await b.id("INCOME_GOODS"), goodsBase);
+    if (svcBase > 0) b.dr(await b.id("INCOME_SERVICE"), svcBase);
+    if (o.vatSatang > 0) b.dr(await b.id("VAT_OUTPUT"), o.vatSatang);
+    for (const l of o.crLines) b.cr(await b.id(l.key), l.amountSatang);
+
+    const entry = await commitEntry(
+      ctx,
+      {
+        book: "SALES",
+        journal: "DOC",
+        date: o.date,
+        refType: "PosSale",
+        refId: o.refId,
+        event,
+        memo: "คืนเงิน POS (ใบลดหนี้)",
+      },
+      b,
+      db,
+    );
+    return { entryId: entry.id };
+  });
+}
+
 // ─────────────────── บัตรกำนัล (M2.6 · D3 · §9.4) ───────────────────
 //
 // 🔴 ทำไมขายบัตรกำนัลไม่ใช่ "รายได้": ร้านรับเงินไปแล้วแต่ยังไม่ได้ส่งมอบสินค้า/บริการ

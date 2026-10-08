@@ -58,8 +58,9 @@ export async function gatherBusinessSnapshot(ctx: AnalystCtx): Promise<BusinessS
   // ยอดขาย PAID ในหน้าต่าง 7 วัน — ดึงครั้งเดียวแล้วแยก bucket ตามวันไทย
   const sales = pos
     ? await tenantDb({ tenantId, systemId: pos.id }).posSale.findMany({
-        where: { status: "PAID", createdAt: { gte: windowStart } },
-        select: { grandTotalSatang: true, createdAt: true },
+        // POS P1.8 ▸ R3: บิลขาย PAID + คืนครบ · ยอดสุทธิหลังคืนเงิน (grand − refundedSatang) ◂
+        where: { docType: "SALE", status: { in: ["PAID", "REFUNDED"] }, createdAt: { gte: windowStart } },
+        select: { grandTotalSatang: true, createdAt: true, refundedSatang: true },
       })
     : [];
 
@@ -73,7 +74,7 @@ export async function gatherBusinessSnapshot(ctx: AnalystCtx): Promise<BusinessS
     const key = dayKeyBangkok(s.createdAt);
     const g = bucket.get(key);
     if (!g) continue; // หลุดนอกหน้าต่าง 7 วัน (ขอบเวลา) — ข้าม
-    const amt = s.grandTotalSatang ?? 0;
+    const amt = (s.grandTotalSatang ?? 0) - (s.refundedSatang ?? 0);
     g.totalSatang += amt;
     g.count += 1;
     sales7dSatang += amt;

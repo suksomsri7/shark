@@ -4207,6 +4207,130 @@ export async function upsertExternalSaleDocument(input: {
   }
 }
 
+// ═══════════════════════════════════════════════════════════════
+// POS P1.8 ▸ ใบลดหนี้ของ "ใบคืนเงินหน้าร้าน" (REFUND document ของ POS) — ชั้นเอกสารคู่กับ ABB ◂
+//
+// ชนิด = CREDIT_NOTE (ใบลดหนี้) อ้าง `sourceDocId` = ใบกำกับอย่างย่อของบิลเดิม (ถ้ามี) · refType "PosSale" · refId = id ใบคืน
+// 🔴 ไม่โพสต์ GL ที่ตัวเอกสาร (ไม่ผ่าน issueDocument/postDocument — นั่นคือ Dr รายได้/Cr ลูกหนี้ 1100) · เงินคืนลงบัญชีทาง
+//    `gl.postExternalRefund` (Dr รายได้ + Dr ภาษีขาย · Cr เงินสด/ธนาคาร) เส้นเดียว · สถานะ PAID = คืนเงินครบแล้วตอนออก
+// 🔴 ใบกำกับอย่างย่อของบิลเดิม **ไม่ถูกยกเลิก** (CD6) — ใบลดหนี้หักล้างแทน
+export const EXTERNAL_REFUND_DOC_TYPE: AccountDocType = "CREDIT_NOTE";
+
+/** เอกสารบัญชีของบิล POS (ABB) — id + เลขที่ · null = ยังไม่มี (อ่านอย่างเดียว) */
+export async function findExternalSaleDoc(systemId: string, refId: string): Promise<{ id: string; docNo: string | null; contactId: string | null } | null> {
+  return prisma.accountDocument.findFirst({
+    where: { systemId, docType: EXTERNAL_SALE_DOC_TYPE, refType: EXTERNAL_SALE_REF_TYPE, refId },
+    select: { id: true, docNo: true, contactId: true },
+  });
+}
+
+/** สร้างใบลดหนี้ของใบคืนเงิน POS **ครั้งเดียวต่อใบคืน** (idempotent ต่อ systemId+CREDIT_NOTE+PosSale+refId) */
+export async function upsertExternalCreditNoteDocument(input: {
+  tenantId: string;
+  systemId: string;
+  refSystemId: string; // AppSystem.id ของ POS ต้นทาง
+  refId: string; // PosSale.id ของใบคืน (docType REFUND)
+  sourceDocId: string | null; // ใบกำกับอย่างย่อของบิลเดิม
+  docNo?: string | null; // เลขใบคืนของ POS (CN…) — ชนกันในสมุดเล่มนี้ = ปล่อยว่าง
+  occurredAt: Date;
+  contactId: string | null;
+  vatMode: AccountVatMode;
+  vatRegistered: boolean;
+  vatRateBp: number;
+  grandTotalSatang: number;
+  reason: string;
+  note?: string | null;
+  lines: ExternalSaleDocLine[];
+}): Promise<{ ok: true; docId: string; created: boolean } | { ok: false; reason: string }> {
+  const existing = await findDocByRef(input.systemId, EXTERNAL_REFUND_DOC_TYPE, EXTERNAL_SALE_REF_TYPE, input.refId);
+  if (existing) return { ok: true, docId: existing.id, created: false };
+  if (input.lines.length === 0) return { ok: false, reason: "ใบคืนเงินไม่มีรายการ — ไม่สร้างใบลดหนี้" };
+  const totals = computeTotals({
+    lines: input.lines.map((l) => ({ description: l.description, qty: l.qty, unitPrice: l.unitPrice, discount: l.discount ?? 0, vatRateBp: l.vatRateBp ?? undefined })),
+    vatMode: input.vatMode,
+    vatRegistered: input.vatRegistered,
+    vatRateBp: input.vatRateBp,
+  });
+  if (totals.grandTotal !== input.grandTotalSatang)
+    return { ok: false, reason: `ยอดรวมของบรรทัด (${totals.grandTotal}) ไม่เท่ากับยอดใบคืน (${input.grandTotalSatang}) — ไม่สร้างใบลดหนี้` };
+  const contact = input.contactId
+    ? await prisma.accountContact.findFirst({
+        where: { id: input.contactId, systemId: input.systemId },
+        select: { name: true, taxId: true, legalType: true, branchCode: true, branchName: true, address: true, phone: true, email: true },
+      })
+    : null;
+  const write = (withDocNo: boolean) =>
+    prisma.$transaction(async (tx) => {
+      const again = await tx.accountDocument.findFirst({
+        where: { systemId: input.systemId, docType: EXTERNAL_REFUND_DOC_TYPE, refType: EXTERNAL_SALE_REF_TYPE, refId: input.refId },
+        select: { id: true },
+      });
+      if (again) return { id: again.id, created: false };
+      let docNo: string | null = withDocNo ? (input.docNo ?? "").trim() || null : null;
+      if (docNo) {
+        const dup = await tx.accountDocument.findFirst({ where: { systemId: input.systemId, docType: EXTERNAL_REFUND_DOC_TYPE, docNo }, select: { id: true } });
+        if (dup) docNo = null;
+      }
+      const created = await tx.accountDocument.create({
+        data: {
+          tenantId: input.tenantId,
+          systemId: input.systemId,
+          docType: EXTERNAL_REFUND_DOC_TYPE,
+          docNo,
+          status: "PAID", // คืนเงินหน้าร้านแล้วตอนออกใบ
+          direction: "OUT",
+          issueDate: input.occurredAt,
+          contactId: input.contactId,
+          contactSnapshot: contact ?? undefined,
+          vatMode: input.vatMode,
+          vatTiming: "ON_ISSUE",
+          taxPointBasis: "ON_ISSUE",
+          subTotal: totals.subTotal,
+          vatAmount: totals.vatAmount,
+          grandTotal: totals.grandTotal,
+          paidTotal: totals.grandTotal,
+          source: "POS",
+          refSystemId: input.refSystemId,
+          refType: EXTERNAL_SALE_REF_TYPE,
+          refId: input.refId,
+          sourceDocId: input.sourceDocId,
+          adjustReason: input.reason.slice(0, 500),
+          note: input.note ?? null,
+          lines: {
+            create: input.lines.map((l, i) => ({
+              tenantId: input.tenantId,
+              systemId: input.systemId,
+              sortOrder: i,
+              description: l.description,
+              qty: l.qty,
+              unitName: l.unitName ?? null,
+              unitPrice: l.unitPrice,
+              discount: l.discount ?? 0,
+              vatRateBp: l.vatRateBp ?? input.vatRateBp,
+              amount: lineAmount({ description: l.description, qty: l.qty, unitPrice: l.unitPrice, discount: l.discount ?? 0 }),
+              productId: l.productId ?? null,
+            })),
+          },
+        },
+        select: { id: true },
+      });
+      return { id: created.id, created: true };
+    });
+  try {
+    try {
+      const doc = await write(true);
+      return { ok: true, docId: doc.id, created: doc.created };
+    } catch (e) {
+      // เลขที่ชนกับใบที่เพิ่งเขียนพร้อมกัน (unique systemId+docType+docNo) → เขียนใหม่แบบไม่มีเลขที่
+      if ((e as { code?: unknown } | null)?.code !== "P2002") throw e;
+      const doc = await write(false);
+      return { ok: true, docId: doc.id, created: doc.created };
+    }
+  } catch (e) {
+    return { ok: false, reason: safeReason(e, "สร้างใบลดหนี้ของใบคืนเงินหน้าร้านไม่สำเร็จ") };
+  }
+}
+
 /** ยกเลิกเอกสารบิล POS เมื่อบิลถูก void — กลับสถานะเป็น VOIDED (ไม่ลบบรรทัด · ไม่มี GL ให้กลับ) */
 export async function voidExternalSaleDocument(
   tenantId: string,
