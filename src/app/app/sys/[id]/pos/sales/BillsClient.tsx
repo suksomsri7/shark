@@ -1083,15 +1083,17 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
                       return (
                         <div key={l.lineId} className={`flex flex-col gap-1 border-t px-3 py-2 first:border-t-0 ${q > 0 ? "bg-[color:var(--color-surface-2)]" : ""}`}>
                           <div className="flex items-center gap-3 text-[13px]">
-                            <input
-                              type="checkbox"
-                              data-testid="pos-bills-refund-line"
-                              aria-label={l.name}
-                              disabled={done}
-                              checked={q > 0}
-                              onChange={(e) => setLineQty(l.lineId, e.target.checked ? (weighed ? l.refundableQty : 1) : 0)}
-                              className="h-5 w-5 shrink-0 accent-[color:var(--color-ink)]"
-                            />
+                            <label className="-my-1 -ml-2 grid h-11 w-11 shrink-0 place-items-center">
+                              <input
+                                type="checkbox"
+                                data-testid="pos-bills-refund-line"
+                                aria-label={l.name}
+                                disabled={done}
+                                checked={q > 0}
+                                onChange={(e) => setLineQty(l.lineId, e.target.checked ? (weighed ? l.refundableQty : 1) : 0)}
+                                className="h-5 w-5 accent-[color:var(--color-ink)]"
+                              />
+                            </label>
                             <span className={`min-w-0 flex-1 ${done ? "text-[color:var(--color-muted)]" : ""}`}>
                               {l.name}
                               <small className="ml-1.5 text-[11px] text-[color:var(--color-muted)]">{done ? t("refund.fullyRefunded") : weighed ? t("refund.weighed") : money(l.unitPriceSatang)}</small>
@@ -1110,8 +1112,8 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
                             <span className="w-12 shrink-0 text-[11px] text-[color:var(--color-muted)]">{t("refund.of", { n: l.refundableQty })}</span>
                             <span className={`w-16 shrink-0 text-right font-semibold tabular-nums ${q > 0 ? "" : "text-[color:var(--color-muted)]"}`}>{money(amount)}</span>
                           </div>
-                          {l.stocked && q > 0 ? (
-                            <label className="ml-8 flex min-h-[32px] items-center gap-2 text-[12px] text-[color:var(--color-ink-soft)]">
+                          {l.stocked && !done ? (
+                            <label className={`ml-9 flex min-h-[44px] items-center gap-2 text-[12px] ${q > 0 ? "text-[color:var(--color-ink-soft)]" : "text-[color:var(--color-muted)]"}`}>
                               <input
                                 type="checkbox"
                                 data-testid="pos-bills-refund-restock"
