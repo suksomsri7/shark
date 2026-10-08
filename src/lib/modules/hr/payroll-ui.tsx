@@ -8,13 +8,12 @@ import { SubmitButton } from "@/components/ui/SubmitButton";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { formatBaht } from "@/lib/ui/money";
 import { listEmployees, monthlyAttendance, employeesWithSchedule, bkkParts, type Ctx } from "./service";
-import { listSalaryProfiles, listRuns, listAdjustments } from "./payroll";
+import { listSalaryProfiles, listRuns, listAdjustments, runExclusions, strandedAdjustments, type RunExclusionReason } from "./payroll";
 import { payrollItemsDigest } from "./payroll-digest"; // H0.1 ▸ CR16: ลายนิ้วมือแถวพนักงาน คำนวณฝั่ง server ตอนแสดงแถว ◂
 import PayAdjustForm from "./PayAdjustForm";
 import PayAdjustRowActions from "./PayAdjustRowActions"; // HF-HR-0 ▸ รอบ 5c (F5): ปุ่มของรายการ + เหตุผลที่ถูกปฏิเสธในแถว ◂
-import RunRowActions from "./RunRowActions"; // H0.1 ▸ R6 · CR12: "อนุมัติ" / "ดึงข้อมูลใหม่" (คำนวณใหม่) / "ลบร่าง" ของรอบร่าง + เหตุผลที่ถูกปฏิเสธในแถว ◂
+import RunRowActions, { CreateRunForm, StrandedMoveButton } from "./RunRowActions"; // H0.1 ▸ R6 · CR12: "อนุมัติ" / "ดึงข้อมูลใหม่" (คำนวณใหม่) / "ลบร่าง" ของรอบร่าง + เหตุผลที่ถูกปฏิเสธในแถว ◂ · H0.2 ▸ ฟอร์มสร้างรอบ + ปุ่มย้ายรายการค้าง ◂
 import {
-  createPayrollRunAction,
   markPaidAction,
   reverseRunAction,
   setSalaryProfileAction,
@@ -49,6 +48,19 @@ const ADJUST_STATUS_LABEL: Record<string, string> = {
 };
 const adjustTone = (v: string): "muted" | "strong" | "danger" =>
   v === "APPROVED" ? "strong" : v === "REJECTED" ? "danger" : "muted";
+
+// H0.2 ▸ R1: เหตุที่พนักงานไม่อยู่ในรอบของงวด (runExclusions) · R1/R3: flag ของแถว (snapshotJson.flags) ◂
+const EXCLUSION_LABEL: Record<RunExclusionReason, string> = {
+  ENDED_BEFORE: "ออกจากงานก่อนงวดนี้",
+  STARTS_AFTER: "เริ่มงานหลังงวดนี้",
+  REMOVED_NO_END_DATE: "ถูกลบออกโดยไม่มีวันสิ้นสุดงาน — ตั้งวันสิ้นสุดงานถ้าต้องจ่ายงวดนี้",
+};
+const flagsOf = (snapshot: unknown): string[] => {
+  const f = (snapshot as { flags?: unknown } | null)?.flags;
+  return Array.isArray(f) ? f.map(String) : [];
+};
+const PARTIAL_MONTH_TEXT = "ต้องตรวจ · เข้า/ออกกลางเดือน — ยังไม่คิดตามสัดส่วน";
+const NEGATIVE_NET_TEXT = "ยอดสุทธิติดลบ (รายการหักมากกว่าเงินได้) — อนุมัติไม่ได้ ลบหรือแก้รายการหักแล้วกด “ดึงข้อมูลใหม่”";
 
 // ───────────── PayrollSection (หน้าย่อย /app/sys/[id]/hr/payroll) ─────────────
 export async function PayrollSection({ systemId }: { systemId: string }) {
@@ -95,6 +107,13 @@ export async function PayrollSection({ systemId }: { systemId: string }) {
   );
   const profileByEmp = new Map(profiles.map((p) => [p.employeeId, p]));
   const nameByEmp = new Map(employees.map((e) => [e.id, e.name]));
+  // H0.2 ▸ R1: คนที่ไม่อยู่ในรอบร่างแต่ละรอบ (ตัดสินด้วยกติกาเดียวกับตอนสร้าง/คำนวณใหม่) · R2: รายการค้างในงวดที่มีรอบแล้ว ◂
+  const draftRunPeriods = runs.filter((r) => r.status === "DRAFT").map((r) => r.periodKey);
+  const [exclusionsOfDrafts, stranded] = await Promise.all([
+    Promise.all(draftRunPeriods.map(async (periodKey) => ({ periodKey, list: await runExclusions(ctx, periodKey) }))),
+    strandedAdjustments(ctx),
+  ]);
+  const draftRunIds = new Set(runs.filter((r) => r.status === "DRAFT").map((r) => r.id));
 
   return (
     <div className="flex flex-col gap-6">
@@ -201,7 +220,8 @@ export async function PayrollSection({ systemId }: { systemId: string }) {
         <div className="flex flex-col gap-3">
           <p className={`text-xs ${muted}`}>
             ยื่นรายการเข้างวด → <b>อนุมัติ</b> ก่อน จึงจะถูกดึงเข้ารอบจ่ายของงวดนั้น ·
-            รายการที่ยังไม่อนุมัติจะไม่มีผลกับเงินเดือน · เข้ารอบจ่ายแล้วแก้ไม่ได้ (ใช้กลับรายการรอบจ่ายแทน)
+            รายการที่ยังไม่อนุมัติจะไม่มีผลกับเงินเดือน · งวดที่มีรอบจ่ายแล้วยื่นเพิ่มไม่ได้ (ยื่นเข้างวดถัดไป) ·
+            รายการในรอบร่างลบได้ (ระบบคำนวณรอบร่างใหม่ให้) · รอบที่อนุมัติแล้วแก้ไม่ได้ (ใช้กลับรายการรอบจ่ายแทน)
           </p>
           <PayAdjustForm
             systemId={systemId}
@@ -229,7 +249,9 @@ export async function PayrollSection({ systemId }: { systemId: string }) {
                   </span>
                   <span className="flex shrink-0 items-center gap-2">
                     <StatusChip value={a.status} map={ADJUST_STATUS_LABEL} toneOf={adjustTone} />
-                    {!a.runId && <PayAdjustRowActions systemId={systemId} id={a.id} pending={a.status === "PENDING"} />}
+                    {/* H0.2 ▸ CR-H0.2-1: รายการในรอบร่างลบได้ด้วย (service ลบ + คำนวณรอบร่างใหม่ในคำสั่งเดียว) ◂ */}
+                    {/* H0.2 ▸ CR-H0.2-3: รายการจาก CRM ไม่มีปุ่มลบ (แสดง "ถอนที่ CRM") · รายการ PENDING ของ CRM ยังมีปุ่มอนุมัติ/ไม่อนุมัติ ◂ */}
+                    {(!a.runId || draftRunIds.has(a.runId)) && <PayAdjustRowActions systemId={systemId} id={a.id} pending={a.status === "PENDING"} canDelete={!a.crmCommissionId} />}
                   </span>
                 </div>
               ))
@@ -243,25 +265,56 @@ export async function PayrollSection({ systemId }: { systemId: string }) {
         {profiles.length === 0 ? (
           <p className={`text-xs ${muted}`}>ตั้งเงินเดือนพนักงานอย่างน้อย 1 คนก่อนสร้างรอบจ่าย</p>
         ) : (
-          <form action={createPayrollRunAction} className="flex flex-wrap items-end gap-2">
-            <input type="hidden" name="systemId" value={systemId} />
-            <label className={`flex flex-col gap-1 text-xs ${muted}`}>
-              งวด (เดือน)
-              <input name="periodKey" type="month" required className="input" />
-            </label>
-            <label className={`flex flex-col gap-1 text-xs ${muted}`}>
-              วันที่จ่าย
-              <input name="payDate" type="date" required className="input" />
-            </label>
-            <SubmitButton variant="primary" pendingText="กำลังสร้าง…">
-              + สร้างรอบจ่าย
-            </SubmitButton>
-          </form>
+          // H0.2 ▸ R4: ฟอร์มคืนเหตุผลเมื่อสร้างไม่ได้ (งวด/วันที่จ่ายไม่ถูกต้อง · งวดซ้ำ) ◂
+          <CreateRunForm systemId={systemId} />
         )}
       </Section>
 
       {/* รายการรอบจ่าย */}
       <Section title={`รอบจ่ายเงินเดือน (${runs.length})`}>
+        {/* H0.2 ▸ R1: คนที่มีโปรไฟล์เงินเดือนแต่ไม่อยู่ในรอบร่าง (ไม่จ่ายเงียบ ๆ และไม่ตัดเงียบ ๆ) — เฉพาะผู้ดูเงินเดือน (หลังด่านข้างบน) ◂ */}
+        {exclusionsOfDrafts
+          .filter((x) => x.list.length > 0)
+          .map((x) => (
+            <div
+              key={`ex-${x.periodKey}`}
+              role="note"
+              data-testid={`hr-payroll-run-${x.periodKey}-exclusions`}
+              className="mb-2 rounded-lg border bg-[color:var(--color-surface-2)] px-3 py-2 text-xs"
+            >
+              <div className="font-medium">
+                งวด {x.periodKey}: ไม่รวม {x.list.length} คนในรอบนี้
+              </div>
+              <ul className={`mt-1 flex flex-col gap-0.5 ${muted}`}>
+                {x.list.map((e) => (
+                  <li key={e.employeeId}>
+                    {e.name} — {EXCLUSION_LABEL[e.reason] ?? e.reason}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        {/* H0.2 ▸ R2: รายการค้าง — งวดของมันมีรอบจ่ายแล้ว (รอบดึงรายการได้ครั้งเดียว) ⇒ ต้องย้ายไปงวดถัดไปจึงจะถูกจ่าย ◂ */}
+        {stranded.length > 0 && (
+          <div role="note" data-testid="hr-payroll-stranded" className="mb-2 rounded-lg border bg-[color:var(--color-surface-2)] px-3 py-2 text-xs">
+            <div className="font-medium">รายการค้าง {stranded.length} รายการ — งวดของรายการมีรอบจ่ายแล้ว จะไม่ถูกจ่ายจนกว่าจะย้ายไปงวดถัดไป</div>
+            <div className="mt-1 flex flex-col gap-1">
+              {stranded.map((a) => (
+                <div key={a.id} className="flex flex-wrap items-center justify-between gap-2">
+                  <span className={muted}>
+                    {nameByEmp.get(a.employeeId) ?? "—"} · {ADJUST_KIND_LABEL[a.kind] ?? a.kind} {ADJUST_ADD.has(a.kind) ? "+" : "−"}
+                    {formatBaht(a.amountSatang)} · งวด {a.periodKey} · {ADJUST_STATUS_LABEL[a.status] ?? a.status}
+                  </span>
+                  {a.crmCommissionId ? (
+                    <span className={muted}>คอมมิชชันจาก CRM — ระบบ CRM ย้ายงวดให้เอง</span>
+                  ) : (
+                    <StrandedMoveButton systemId={systemId} id={a.id} testId={`hr-payroll-stranded-${a.id}-move`} />
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
         <DataList
           items={runs.map((r) => ({
             key: r.id,
@@ -270,7 +323,26 @@ export async function PayrollSection({ systemId }: { systemId: string }) {
                 งวด {r.periodKey} · {formatBaht(r.totalNetSatang)}
               </span>
             ),
-            secondary: `${r.items.length} คน · เงินเดือนรวม ${formatBaht(r.totalGrossSatang)} · ปสส. ${formatBaht(r.totalSsoEmployeeSatang)} · ภาษี ${formatBaht(r.totalWhtSatang)}`,
+            // H0.2 ▸ R1/R3: แถวที่มี flag — NEGATIVE_NET (แดง · อนุมัติไม่ได้) · PARTIAL_MONTH (ต้องตรวจ · ยังไม่คิดตามสัดส่วน) ◂
+            secondary: (() => {
+              const neg = r.items.filter((it) => flagsOf(it.snapshotJson).includes("NEGATIVE_NET")).length;
+              const partial = r.items.filter((it) => flagsOf(it.snapshotJson).includes("PARTIAL_MONTH")).length;
+              return (
+                <span className="flex flex-col gap-0.5 whitespace-normal">
+                  <span>{`${r.items.length} คน · เงินเดือนรวม ${formatBaht(r.totalGrossSatang)} · ปสส. ${formatBaht(r.totalSsoEmployeeSatang)} · ภาษี ${formatBaht(r.totalWhtSatang)}`}</span>
+                  {neg > 0 && (
+                    <span data-testid={`hr-payroll-run-${r.periodKey}-negative`} className="text-[color:var(--color-danger)]">
+                      {neg} คน: {NEGATIVE_NET_TEXT}
+                    </span>
+                  )}
+                  {partial > 0 && (
+                    <span data-testid={`hr-payroll-run-${r.periodKey}-partial`}>
+                      {partial} คน: {PARTIAL_MONTH_TEXT}
+                    </span>
+                  )}
+                </span>
+              );
+            })(),
             trailing: (
               <div className="flex flex-wrap items-center justify-end gap-2">
                 <StatusChip value={r.status} map={RUN_STATUS_LABEL} tone={runTone(r.status)} />
@@ -324,15 +396,23 @@ export async function PayrollSection({ systemId }: { systemId: string }) {
           r.items.length === 0 ? null : (
             <div key={r.id} className="mt-1 flex flex-wrap items-center gap-2">
               <span className={`text-xs ${muted}`}>สลิปงวด {r.periodKey}:</span>
-              {r.items.map((it) => (
-                <Link
-                  key={it.id}
-                  href={`/app/sys/${systemId}/payroll/${r.id}/slip/${it.employeeId}`}
-                  className="rounded-full border px-3 py-1 text-xs hover:bg-[color:var(--color-surface-2)]"
-                >
-                  {nameByEmp.get(it.employeeId) ?? "พนักงาน"}
-                </Link>
-              ))}
+              {r.items.map((it) => {
+                // H0.2 ▸ R3: แถวสุทธิติดลบ = ขอบ/ตัวอักษรแดง + "ติดลบ" · R1: เข้า/ออกกลางเดือน = "ต้องตรวจ" ◂
+                const f = flagsOf(it.snapshotJson);
+                const neg = f.includes("NEGATIVE_NET");
+                return (
+                  <Link
+                    key={it.id}
+                    href={`/app/sys/${systemId}/payroll/${r.id}/slip/${it.employeeId}`}
+                    data-testid={neg ? `hr-payroll-item-${it.employeeId}-negative` : undefined}
+                    className={`rounded-full border px-3 py-1 text-xs hover:bg-[color:var(--color-surface-2)]${neg ? " border-[color:var(--color-danger)] text-[color:var(--color-danger)]" : ""}`}
+                  >
+                    {nameByEmp.get(it.employeeId) ?? "พนักงาน"}
+                    {neg ? ` · ติดลบ ${formatBaht(it.netSatang)}` : ""}
+                    {f.includes("PARTIAL_MONTH") ? " · ต้องตรวจ" : ""}
+                  </Link>
+                );
+              })}
             </div>
           ),
         )}

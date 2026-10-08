@@ -2,7 +2,8 @@
 
 import { useActionState } from "react";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
-import { approvePayrollRunAction, deleteDraftRunAction, recomputeDraftRunAction } from "./payroll-actions";
+import { SubmitButton } from "@/components/ui/SubmitButton";
+import { approvePayrollRunAction, createPayrollRunAction, deleteDraftRunAction, moveStrandedAdjustmentAction, recomputeDraftRunAction } from "./payroll-actions";
 
 // H0.1 ▸ R6: ปุ่ม "ดึงข้อมูลใหม่" (= คำนวณใหม่ · ถ้อยคำตามแบบ design-hr/06 — CR10) / "ลบร่าง" ของรอบจ่ายที่ยังเป็นร่าง (DRAFT) 1 แถว
 //   — server action คืน { ok, reason } · ปุ่มใช้ token ชุดเดียวกับปุ่มเดิมของแถว (border · surface-2 · danger สำหรับลบ) ไม่มีสีใหม่
@@ -96,5 +97,54 @@ export default function RunRowActions({
         </span>
       )}
     </>
+  );
+}
+
+// ─────────── H0.2 ▸ R4 (D12): ฟอร์มสร้างรอบจ่าย — action คืน { ok, reason } ⇒ งวด/วันที่จ่ายไม่ถูกต้อง · งวดซ้ำ · ไม่มีใครต้องจ่าย
+//   แสดงเหตุผลใต้ฟอร์ม (เดิมเป็น void action: งวดซ้ำ = หน้า error · งวด 2026-13 ถูกสร้างจริง) ◂
+type FormRes = { ok: boolean; reason?: string } | null;
+const muted = "text-[color:var(--color-muted)]";
+
+export function CreateRunForm({ systemId }: { systemId: string }) {
+  const [state, run] = useActionState<FormRes, FormData>(createPayrollRunAction, null);
+  return (
+    <form action={run} className="flex flex-wrap items-end gap-2" data-testid="hr-payroll-create">
+      <input type="hidden" name="systemId" value={systemId} />
+      <label className={`flex flex-col gap-1 text-xs ${muted}`}>
+        งวด (เดือน)
+        <input name="periodKey" type="month" required className="input" />
+      </label>
+      <label className={`flex flex-col gap-1 text-xs ${muted}`}>
+        วันที่จ่าย
+        <input name="payDate" type="date" required className="input" />
+      </label>
+      <SubmitButton variant="primary" pendingText="กำลังสร้าง…">
+        + สร้างรอบจ่าย
+      </SubmitButton>
+      {state && !state.ok && (
+        <span role="alert" data-testid="hr-payroll-create-error" className="w-full text-xs text-[color:var(--color-danger)]">
+          สร้างรอบไม่สำเร็จ: {state.reason}
+        </span>
+      )}
+    </form>
+  );
+}
+
+// ─────────── H0.2 ▸ R2 (D5): ปุ่ม "ย้ายไปงวดถัดไป" ของรายการค้าง 1 แถว (รายการปกติ — ของ CRM ระบบ CRM ย้ายเอง) ◂
+export function StrandedMoveButton({ systemId, id, testId }: { systemId: string; id: string; testId: string }) {
+  const [state, run] = useActionState<FormRes, FormData>((_prev, formData) => moveStrandedAdjustmentAction(formData), null);
+  return (
+    <form action={run} className="flex flex-wrap items-center justify-end gap-2">
+      <input type="hidden" name="systemId" value={systemId} />
+      <input type="hidden" name="id" value={id} />
+      <button type="submit" data-testid={testId} className="min-h-[44px] rounded-full border px-3 text-xs hover:bg-[color:var(--color-surface-2)]">
+        ย้ายไปงวดถัดไป
+      </button>
+      {state && (
+        <span role={state.ok ? "status" : "alert"} className={`max-w-[14rem] text-xs ${state.ok ? muted : "text-[color:var(--color-danger)]"}`}>
+          {state.ok ? state.reason : `ไม่สำเร็จ: ${state.reason}`}
+        </span>
+      )}
+    </form>
   );
 }

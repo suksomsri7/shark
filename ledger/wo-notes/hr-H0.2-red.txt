@@ -1,0 +1,79 @@
+[env] qc-hr-h0.2 · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech
+⚠️  QC_FORCE=1 — ข้ามด่าน SKIP ทั้งที่ยังขาด 4 อย่าง (คาด: แดงตามเหตุผล ไม่ crash)
+  ✅ [H0.2-S5.1] R5 · computeItem (ตัวฟังก์ชัน) hash เท่าฐาน
+  ✅ [H0.2-S5.2] R5 · payroll-rules.ts hash เท่าฐาน (FREEZE)
+  ✅ [H0.2-S5.3] R5 · strandedCommissionAdjustments ลายเซ็น + ตัวฟังก์ชัน hash เท่าฐาน
+  ✅ [H0.2-S5.4] privacy · PayrollSection กันผู้ไม่ดูเงินเดือน (return) ก่อนอ่านรอบ/รายการ/ผู้ถูกตัด · ทางนั้นไม่มีข้อความ flag (guard)
+  ❌ [H0.2-S5.5] R1–R3 UI · หน้าเงินเดือนเรียก runExclusions + strandedAdjustments หลังด่าน · มีข้อความ PARTIAL_MONTH + NEGATIVE_NET — expected runExclusions + strandedAdjustments หลังด่าน · ข้อความ ต้องตรวจ/ยังไม่คิดตามสัดส่วน · NEGATIVE_NET · PARTIAL_MONTH | actual runExclusions@-1 stranded@-1 ctx@686 partialText=false NEG=false PM=false
+  ❌ [H0.2-S5.6] R4 · createPayrollRunAction ไม่ใช้ /^\d{4}-\d{2}$/ · ใช้ PERIOD_RE · คืนผล { ok, reason } — expected ไม่มี regex หลวม · PERIOD_RE · return { ok … } | actual loose=true PERIOD_RE=false returnsOk=false
+(node:908178) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+── S1 D1 ใครอยู่ในรอบ (2026-08) ──
+  ✅ [H0.2-S1.1] D1 · พนักงาน active ไม่มีวันเริ่ม/สิ้นสุด → อยู่ในรอบ · ไม่มี flag (guard)
+  ❌ [H0.2-S1.2] D1 · endDate 2026-07-31 (ยัง active) → ไม่อยู่ในรอบ 2026-08 — expected ไม่มีรายการ | actual in=true
+  ❌ [H0.2-S1.3] D1 · endDate 2026-08-15 + active=false → อยู่ในรอบ · flags มี PARTIAL_MONTH · ยอดเต็มเดือน (ไม่คิดสัดส่วน) — expected in · PARTIAL_MONTH · gross 2000000 | actual in=true flags=[] gross=2000000
+  ✅ [H0.2-S1.4] D1 · endDate 2026-08-31 + active=false → อยู่ในรอบ · ไม่มี PARTIAL_MONTH
+  ❌ [H0.2-S1.5] D1 · startDate 2026-09-01 → ไม่อยู่ในรอบ 2026-08 — expected ไม่มีรายการ | actual in=true
+  ❌ [H0.2-S1.6] D1 · startDate 2026-08-20 → อยู่ในรอบ · flags มี PARTIAL_MONTH · ยอดเต็มเดือน — expected in · PARTIAL_MONTH · gross 2000000 | actual in=true flags=[] gross=2000000
+  ❌ [H0.2-S1.7] D1 · active=false ไม่มี endDate → ไม่อยู่ในรอบ — expected ไม่มีรายการ | actual in=true
+  ✅ [H0.2-S1.8] D1 · startDate 2026-08-01 (วันแรกของงวด) → อยู่ในรอบ · ไม่มี PARTIAL_MONTH
+  ❌ [H0.2-S1.9] D1 · รายการ APPROVED ของคนที่ถูกตัด (endDate ก่อนงวด) runId = null + สถานะเดิม · ของคนในรอบถูกผูก (positive control) — expected B: runId null APPROVED · A: ผูกรอบ | actual B=cmuy14vh4000xr6kzvymy9f5q/APPROVED A=true
+  ❌ [H0.2-S1.10] D1 · runExclusions(ctx, 2026-08) = 3 คนพอดี {ENDED_BEFORE · STARTS_AFTER · REMOVED_NO_END_DATE} + ชื่อ — expected runExclusions | actual MISSING runExclusions
+  ❌ [H0.2-S1.11] D1 · runExclusions ของร้านอื่น / ระบบ HR อื่น ไม่เห็นคนของระบบนี้ (X1) — expected runExclusions | actual MISSING runExclusions
+  ❌ [H0.2-S1.12] X4 · ยอดรวมของรอบ = Σ รายการ (ทุกช่อง) · 5 รายการ — expected Σ ตรงทุกช่อง · 5 รายการ | actual items=8 diff= net=15550000
+  ❌ [H0.2-S1.13] D1 · recomputeDraftRun (H0.1) → สมาชิกและ flags เดิม · รายการของคนที่ถูกตัดยังไม่ผูก — expected recomputeDraftRun | actual MISSING recomputeDraftRun (H0.1)
+── S2 D5 งวดที่ปิดแล้ว ──
+  ❌ [H0.2-S2.1] D5 · ยื่นทางปกติเข้างวดที่มีรอบ DRAFT → code PERIOD_CLOSED + ข้อความเดียวกับทาง CRM · ไม่มีแถวใหม่ — expected DRAFT · PERIOD_CLOSED · "งวด 2026-09 มีรอบจ่ายเงินเดือนแล้ว — ยื่นเข้างวดถัดไปแทน" · แถว +0 | actual run=DRAFT res={"ok":true,"id":"cmuy14wa9006dr6kzmquge6hr","amountSatang":77700} rows 2→3
+  ❌ [H0.2-S2.2] D5 · ยื่นทางปกติเข้างวดที่มีรอบ APPROVED → PERIOD_CLOSED · ไม่มีแถวใหม่ — expected APPROVED · PERIOD_CLOSED · "งวด 2026-10 มีรอบจ่ายเงินเดือนแล้ว — ยื่นเข้างวดถัดไปแทน" · แถว +0 | actual run=APPROVED res={"ok":true,"id":"cmuy14wba006er6kznddnxn8k","amountSatang":77700} rows 1→2
+  ❌ [H0.2-S2.3] D5 · ยื่นทางปกติเข้างวดที่มีรอบ PAID → PERIOD_CLOSED · ไม่มีแถวใหม่ — expected PAID · PERIOD_CLOSED · "งวด 2026-11 มีรอบจ่ายเงินเดือนแล้ว — ยื่นเข้างวดถัดไปแทน" · แถว +0 | actual run=PAID res={"ok":true,"id":"cmuy14wcc006fr6kzhn4z2w1v","amountSatang":77700} rows 0→1
+  ✅ [H0.2-S2.4] D5 · ทาง CRM เข้างวดที่มีรอบ → PERIOD_CLOSED ข้อความเดิม (guard · ข้อความอ้างอิง)
+  ✅ [H0.2-S2.5] D5 · ยื่นทางปกติเข้างวดที่ยังไม่มีรอบ → ok · PENDING (guard)
+  ❌ [H0.2-S2.6] D5 · strandedAdjustments(ctx) = รายการค้างของ fixture พอดี (ปกติ PENDING ×2 + CRM ×1) — expected P1 (ปกติ) · P4 (ปกติ) · C1 (CRM) | actual MISSING strandedAdjustments
+  ✅ [H0.2-S2.7] R5 · strandedCommissionAdjustments(tenantId) = [แถว CRM] ทุกช่อง/ลำดับช่องเดิม · ไม่มีแถวปกติ (guard)
+  ✅ [H0.2-S2.12] D5 · ปฏิเสธ (REJECTED) แถวปกติที่ค้าง → ไม่ย้ายงวด (guard)
+  ❌ [H0.2-S2.8] D5 · อนุมัติแถวปกติ PENDING ที่งวดมีรอบแล้ว → ok · movedFrom 2026-09 · movedTo 2026-12 · แถวอยู่งวด 2026-12 — expected ok · 2026-09 → 2026-12 | actual {"ok":true} row=APPROVED/2026-09/null
+  ❌ [H0.2-S2.9] D5 · รอบ 2026-12 ดึงแถวที่ย้ายมา (runId + addSatang ของพนักงาน) — expected P1 ผูกรอบ 2026-12 · addSatang 100000 | actual runId=null add=0
+  ❌ [H0.2-S2.10] D5 · หลังย้าย strandedAdjustments เหลือแต่แถว CRM — expected C1 เท่านั้น | actual MISSING strandedAdjustments
+  ✅ [H0.2-S2.11] R5 · อนุมัติแถว CRM ที่ค้าง → ย้ายไป 2027-01 เหมือนเดิม (regression guard)
+── S3 D6 สุทธิติดลบ ──
+  ✅ [H0.2-S3.1] D6 · computeItem เดิม: ssoEligible ฐาน 1,000 บาท + ADVANCE 5,000 → gross 0 · ปสส. 8,300 · net −8,300 สตางค์ (guard)
+  ❌ [H0.2-S3.2] D6 · รายการติดลบมี flags NEGATIVE_NET · รายการบวกไม่มี — expected S/N1/N2 มี NEGATIVE_NET · T ไม่มี | actual {"S":[],"N1":[],"N2":[],"T":[]}
+  ✅ [H0.2-S3.8] R5 · RN-10 เดิม: ssoEligible:false หักเกิน → gross 0 · net 0 · ไม่มี NEGATIVE_NET (guard)
+  ❌ [H0.2-S3.3] D6 · approveRun(expect ถูก) ปฏิเสธด้วยข้อความ N=1 ตายตัว · ยัง DRAFT · ไม่มี JV — expected ok:false · "มีพนักงาน 1 คนที่ยอดสุทธิติดลบ (รายการหักมากกว่าเงินได้) — แก้รายการหักแล้วกด 'คำนวณใหม่'" · DRAFT · JV +0 | actual {"ok":false,"note":"บรรทัด JV ติดลบไม่ได้"} status=DRAFT jv 2→2
+  ❌ [H0.2-S3.4] D6 · ลบรายการหัก (fixture) → recomputeDraftRun → net ≥ 0 · ไม่มี NEGATIVE_NET · ยอดรวม = Σ — expected recomputeDraftRun | actual MISSING recomputeDraftRun (H0.1)
+  ❌ [H0.2-S3.5] D6 · อนุมัติหลังคำนวณใหม่ → APPROVED · JV Dr = Cr · Cr ธนาคาร = ยอดสุทธิรวม — expected APPROVED · Dr = Cr · Cr = net | actual {"ok":false,"note":"บรรทัด JV ติดลบไม่ได้"} status=DRAFT dr/cr=-1/-2 net=-8300
+  ❌ [H0.2-S3.6] D6 · รอบผสม (ติดลบ 2 คน · ยอดรวมบวก) approveRun ไม่ส่ง expect → ปฏิเสธข้อความ N=2 · DRAFT · ไม่มี JV — expected total>0 · ok:false · "มีพนักงาน 2 คนที่ยอดสุทธิติดลบ (รายการหักมากกว่าเงินได้) — แก้รายการหักแล้วกด 'คำนวณใหม่'" · DRAFT · JV +0 | actual total=2891317 {"ok":true,"note":"อนุมัติและลงบัญชีเรียบร้อย"} status=APPROVED jv 2→3
+  ❌ [H0.2-S3.7] D6 · ทางของสินค้า: deleteDraftRun → cancelAdjustment → createPayrollRun → approve ok · Dr = Cr — expected deleteDraftRun | actual MISSING deleteDraftRun (H0.1)
+── S4 D12 งวด/วันจ่ายปลอม ──
+  ❌ [H0.2-S4.1] D12 · createPayrollRun 2026-13 → throw ไทย · ไม่มีแถว — expected throw ไทย · 0 แถว | actual err=null rows=1
+  ❌ [H0.2-S4.2] D12 · createPayrollRun 2026-00 → throw ไทย · ไม่มีแถว — expected throw ไทย · 0 แถว | actual err=null rows=1
+  ❌ [H0.2-S4.3] D12 · createPayrollRun 2026-1 → throw ไทย · ไม่มีแถว — expected throw ไทย · 0 แถว | actual err=null rows=1
+  ❌ [H0.2-S4.4] D12 · createPayrollRun "  " → throw ไทย · ไม่มีแถว — expected throw ไทย · 0 แถว | actual err=null rows=1
+  ❌ [H0.2-S4.5] D12 · createPayrollRun payDate = Invalid Date → throw ไทย · ไม่มีแถว — expected throw ไทย (ไม่ใช่ error ของฐาน) · 0 แถว | actual err=
+Invalid `tx.hrPayrollRun.create()` invocation in
+/root/projects/shark-hr-b/src/lib/modules/hr/payroll.ts:388:39
+
+  385   { gross: 0, ssoEmployee: 0, ssoEmployer: 0, wht: 0, net: 0, add: 0, deduct: 0 },
+  386 );
+  387 
+→ rows=0
+  ❌ [H0.2-S4.6] D12 · createPayrollRunAction 2027-13 → { ok:false, reason ไทย } · ไม่มีแถว — expected { ok:false, reason ไทย } · 0 แถว | actual undefined rows=1
+  ❌ [H0.2-S4.7] D12 · createPayrollRunAction payDate 2026-02-31 / abc → { ok:false, reason ไทย } · ไม่มีแถว — expected ทั้งคู่ { ok:false, reason ไทย } · 0 แถว | actual undefined · {"status":"THROW","message":"PrismaClientValidationError: \nInvalid `tx.hrPayrollRun.create()` invocation in\n/root/projects/shark-hr-b/src/lib/modules/hr/payroll.ts:388:39\n\n  385   { gross: 0, ssoEmployee: 0, ssoEmplo rows=1
+  ❌ [H0.2-S4.8] D12 · createPayrollRunAction ถูกต้อง → { ok:true } + แถว · ซ้ำงวดเดิม → { ok:false, reason ไทย } (ไม่ throw) — expected ok:true + 1 แถว · ซ้ำ → { ok:false, reason ไทย } | actual undefined n=1 · {"status":"THROW","message":"Error: มีรอบจ่ายงวด 2027-04 อยู่แล้ว — ลบหรือเลือกงวดอื่น"} n=1
+── X6 races (worker processes · 10 เลน × 3 รอบ) ──
+  ❌ [H0.2-X6.1] race · approve ∥ recompute ของรอบ NEGATIVE_NET (10 เลน × 3 รอบ) → ไม่มีรอบไหน APPROVED · ไม่มี JV · ยังมีรายการติดลบ · ADVANCE ผูก 1 ครั้ง — expected 3 รอบ DRAFT · JV +0 · ติดลบยังอยู่ · ผูก 1 | actual  r0:APPROVED/jv=true/neg=true/bound=1/items=2/sum=true r1:APPROVED/jv=true/neg=true/bound=1/items=2/sum=true r2:APPROVED/jv=true/neg=true/bound=1/items=2/sum=true jv 3→6 outs=15/15
+  ❌ [H0.2-X6.2] race · ผล approve ทุกเลน = ปฏิเสธข้อความไทย (ไม่ throw) · recompute ทุกเลน = ok หรือคำปฏิเสธไทย — expected A:NO:<ไทย> ×15 · R:OK|NO:<ไทย> ×15 | actual A bad=["A:OK:อนุมัติและลงบัญชีเรียบร้อย","A:OK:อนุมัติและลงบัญชีเรียบร้อย"] R bad=["R:MISSING:recomputeDraftRun","R:MISSING:recomputeDraftRun"]
+  ❌ [H0.2-X6.3] race · decide(APPROVED) ∥ createPayrollRun (10 เลน × 3 รอบ) → ทุกแถวอยู่ในรอบ หรือถูกย้าย หรืออยู่ใน strandedAdjustments · addSatang = Σ แถวที่ผูก — expected ทุกแถว: ในรอบ | ย้าย | อยู่ใน strandedAdjustments · add = Σ | actual  r0:rjml4=APPROVED/2028-01/free r0:37rnh=APPROVED/2028-01/free r0:i0psd=APPROVED/2028-01/free r0:6nnhp=APPROVED/2028-01/free r0:0gus4=APPROVED/2028-01/free r2:12qbi=APPROVED/2028-07/free (strandedAdjustments MISSING)
+  ✅ [H0.2-X6.4] race · รอบเดียวต่องวด · create ที่แพ้ = ข้อความไทยซ้ำงวด · decide ทุกเลน ok
+  ✅ [H0.2-Z1] คืนสภาพ: ไม่เหลือแถวของร้านชั่วคราวในทุกตารางที่มี tenantId · ไม่เหลือ tenant/user ชั่วคราว
+
+===== qc-hr-h0.2 ===== ผ่าน 16/52 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-hr-h0.2","total":52,"passed":16,"failed":["H0.2-S5.5","H0.2-S5.6","H0.2-S1.2","H0.2-S1.3","H0.2-S1.5","H0.2-S1.6","H0.2-S1.7","H0.2-S1.9","H0.2-S1.10","H0.2-S1.11","H0.2-S1.12","H0.2-S1.13","H0.2-S2.1","H0.2-S2.2","H0.2-S2.3","H0.2-S2.6","H0.2-S2.8","H0.2-S2.9","H0.2-S2.10","H0.2-S3.2","H0.2-S3.3","H0.2-S3.4","H0.2-S3.5","H0.2-S3.6","H0.2-S3.7","H0.2-S4.1","H0.2-S4.2","H0.2-S4.3","H0.2-S4.4","H0.2-S4.5","H0.2-S4.6","H0.2-S4.7","H0.2-S4.8","H0.2-X6.1","H0.2-X6.2","H0.2-X6.3"],"skipped":false,"forced":true,"missing":["payroll.ts ยังไม่มี runExclusions (H0.2)","payroll.ts ยังไม่มี strandedAdjustments (H0.2)","payroll.ts ยังไม่มี recomputeDraftRun (H0.1 — ต้องมาก่อน H0.2)","payroll.ts ยังไม่มี deleteDraftRun (H0.1 — ต้องมาก่อน H0.2)"],"crashed":null}
+exit=1

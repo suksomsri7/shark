@@ -86,7 +86,8 @@ export function listSalaryProfiles(ctx: Ctx) {
 // (13 ส.ค. 2026 · เจ้าของสั่งข้อ 5+7) — 🔴 คนยื่น ≠ คนอนุมัติ (ยื่นแล้วรออนุมัติเสมอ ไม่เข้าเงินเดือนเอง)
 export type AdjustKind = "OT" | "COMMISSION" | "BONUS" | "ALLOWANCE" | "DEDUCTION" | "ADVANCE";
 const ADJUST_KINDS: AdjustKind[] = ["OT", "COMMISSION", "BONUS", "ALLOWANCE", "DEDUCTION", "ADVANCE"];
-const PERIOD_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
+// H0.2 ▸ R4 (D12): ตัวเดียวกันทั้ง service (createPayrollRun · requestAdjustment) และ action (createPayrollRunAction) — เดือน 01–12 เท่านั้น ◂
+export const PERIOD_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
 const OT_HOURS_MAX_ALL = 744; // HF-HR-0 ▸ รอบ 5b (H5) — ค่าเดียวกับ privacy.OT_HOURS_MAX (privacy import ไฟล์นี้ ⇒ ประกาศซ้ำแทนการ import วน) ◂
 
 /** อัตรา OT ต่อชั่วโมงของพนักงานคนนี้ (ตั้งเองในโปรไฟล์ หรือคิดจากเงินเดือน ÷30 ÷8 ×1.5) */
@@ -131,6 +132,13 @@ export async function requestAdjustment(
   }
   const emp = await tenantDb(ctx).hrEmployee.findFirst({ where: { id: input.employeeId } });
   if (!emp) return { ok: false, reason: "ไม่พบพนักงาน" };
+  // H0.2 ▸ R2 (D5): กติกาเดียวกับทาง CRM (มติผู้คุมงาน S4) — งวดที่มีรอบจ่ายแล้ว (ทุกสถานะ รวมร่าง) จะไม่ถูกดึงรายการอีก ⇒ ไม่รับรายการใหม่
+  //   ข้อความเดียวกับทาง CRM ทุกตัวอักษร · ตรวจก่อนอ่านอะไรที่ขึ้นกับเงินเดือน (อัตรา OT) ⇒ ไม่เป็นช่องเดาเงินเดือน ◂
+  {
+    const p = input.periodKey.trim();
+    const closed = await tenantDb(ctx).hrPayrollRun.findFirst({ where: { systemId: ctx.systemId, periodKey: p }, select: { id: true } });
+    if (closed) return { ok: false, code: "PERIOD_CLOSED", reason: `งวด ${p} มีรอบจ่ายเงินเดือนแล้ว — ยื่นเข้างวดถัดไปแทน` };
+  }
 
   let amount = Math.round(input.amountSatang ?? 0);
   let rate: number | null = null;
@@ -188,22 +196,40 @@ export async function decideAdjustment(
   }
   // CRM C3.3-fix H5 ▸ รายการคอมมิชชัน CRM ที่งวดของมัน "มีรอบจ่ายแล้ว" (รอบถูกสร้างก่อนอนุมัติ) — อนุมัติในงวดเดิม = ค้างถาวร
   //   (createPayrollRun ดึงรายการของงวดได้ครั้งเดียว) ⇒ ย้ายไปงวดถัดไปที่ยังไม่มีรอบ **ในคำสั่งเดียวกับการอนุมัติ** (guard: PENDING ·
-  //   runId IS NULL · งวดเดิม) · รายการที่ไม่ผูกคอมมิชชันใช้ทางเดิม ◂
-  let moveTo: string | null = null;
-  if (status === "APPROVED" && row.crmCommissionId) {
-    const runs = new Set((await tenantDb(ctx).hrPayrollRun.findMany({ where: { systemId: ctx.systemId }, select: { periodKey: true }, take: 2_000 })).map((r) => r.periodKey));
-    if (runs.has(row.periodKey)) {
-      moveTo = nextRunlessPeriod(row.periodKey, runs);
-      if (!moveTo) return { ok: false, reason: `งวด ${row.periodKey} มีรอบจ่ายแล้ว และหางวดถัดไปที่ยังไม่มีรอบจ่ายไม่พบ — ตรวจรอบจ่ายเงินเดือน` };
-    }
+  //   runId IS NULL · งวดเดิม) ◂
+  // H0.2 ▸ R2 (D5): ใช้กับ **ทุกรายการ** (ปกติ + CRM) — เดิมเฉพาะ CRM ⇒ รายการปกติที่อนุมัติหลังงวดมีรอบ = APPROVED แต่ไม่มีวันถูกจ่าย ·
+  //   การอนุมัติทำใน tx เดียว ใต้ล็อกงวด (advisory คีย์เดียวกับ createPayrollRun) ⇒ อนุมัติ ∥ สร้างรอบของงวดเดียวกัน ต่อคิวกัน:
+  //   อนุมัติก่อน = รอบดึงแถวไป · สร้างรอบก่อน = การอนุมัติเห็นรอบแล้วย้ายงวด (ไม่มีแถวค้างโดยไม่มีใครเห็น) · งวดปลายทางล็อกต่อ
+  //   (เดือนหลังเสมอ ⇒ ลำดับล็อกจากน้อยไปมาก ไม่วนรอ) แล้วตรวจซ้ำว่ายังไม่มีรอบ · ปฏิเสธ (REJECTED) ไม่ย้าย ทางเดิม ◂
+  if (status === "APPROVED") {
+    return tenantDb(ctx).$transaction(async (t) => {
+      const tx = t as unknown as Prisma.TransactionClient;
+      const scope = { tenantId: ctx.tenantId, systemId: ctx.systemId };
+      await lockRunPeriod(tx, ctx, row.periodKey);
+      const runs = new Set((await tx.hrPayrollRun.findMany({ where: scope, select: { periodKey: true }, take: 2_000 })).map((r) => r.periodKey));
+      let moveTo: string | null = null;
+      if (runs.has(row.periodKey)) {
+        moveTo = nextRunlessPeriod(row.periodKey, runs);
+        if (!moveTo) return { ok: false, reason: `งวด ${row.periodKey} มีรอบจ่ายแล้ว และหางวดถัดไปที่ยังไม่มีรอบจ่ายไม่พบ — ตรวจรอบจ่ายเงินเดือน` };
+        await lockRunPeriod(tx, ctx, moveTo);
+        const taken = await tx.hrPayrollRun.findFirst({ where: { ...scope, periodKey: moveTo }, select: { id: true } });
+        if (taken) return { ok: false, reason: "รอบจ่ายเพิ่งเปลี่ยนระหว่างอนุมัติ — กรุณาลองอีกครั้ง" };
+      }
+      const claim = await tx.hrPayAdjustment.updateMany({
+        where: { ...scope, id, status: "PENDING", runId: null, periodKey: row.periodKey },
+        data: { status, decidedById: decider.userId ?? null, decidedAt: new Date(), ...(moveTo ? { periodKey: moveTo } : {}) },
+      });
+      if (claim.count === 0) return { ok: false, reason: "รายการนี้ตัดสินไปแล้ว" };
+      // รีวิวเงิน note (c): ผู้เรียก (payroll-actions) ลง audit การย้ายงวด from → to จาก movedFrom/movedTo
+      return moveTo ? { ok: true, reason: `งวด ${row.periodKey} มีรอบจ่ายแล้ว — อนุมัติและย้ายรายการไปงวด ${moveTo}`, movedFrom: row.periodKey, movedTo: moveTo } : { ok: true };
+    }, { maxWait: 20_000, timeout: 60_000 });
   }
   const claim = await tenantDb(ctx).hrPayAdjustment.updateMany({
-    where: { id, status: "PENDING", runId: null, ...(moveTo ? { periodKey: row.periodKey } : {}) },
-    data: { status, decidedById: decider.userId ?? null, decidedAt: new Date(), ...(moveTo ? { periodKey: moveTo } : {}) },
+    where: { id, status: "PENDING", runId: null },
+    data: { status, decidedById: decider.userId ?? null, decidedAt: new Date() },
   });
   if (claim.count === 0) return { ok: false, reason: "รายการนี้ตัดสินไปแล้ว" };
-  // รีวิวเงิน note (c): ผู้เรียก (payroll-actions) ลง audit การย้ายงวด from → to จาก movedFrom/movedTo
-  return moveTo ? { ok: true, reason: `งวด ${row.periodKey} มีรอบจ่ายแล้ว — อนุมัติและย้ายรายการไปงวด ${moveTo}`, movedFrom: row.periodKey, movedTo: moveTo } : { ok: true };
+  return { ok: true };
 }
 
 /** CRM C3.3-fix H5 ▸ เดือนแรก > `periodKey` ที่ยังไม่มีรอบจ่าย (ค้นไม่เกิน 240 เดือน) · ไม่พบ = null */
@@ -224,10 +250,27 @@ function nextRunlessPeriod(periodKey: string, runs: Set<string>): string | null 
 // HF-HR-0 ▸ รอบ 5c (F1): `actor` = ผู้ใช้ที่กดลบ (หน้าเงินเดือน — สิทธิ์ hr.payadjust.approve เดียวกับอนุมัติ ตรวจที่ action) ·
 //   ไม่ส่ง = ทางระบบ (hr facade / CRM — ไม่มีผู้ใช้) ทำงานเหมือนเดิม · ผู้ใช้ที่ไม่ใช่เจ้าของร้าน ลบรายการของแถวพนักงานที่ผูกกับบัญชีตัวเองไม่ได้
 //   (ยกเว้นผู้ยื่นยกเลิกคำขอเพิ่มเงินที่ยังรอของตัวเอง) · ไม่รู้ตัวผู้ใช้ = ตรวจไม่ได้ ⇒ ไม่ลบ · ลบด้วยเงื่อนไขสถานะที่อ่านมา + ประวัติทุกครั้ง ◂
+// H0.2 ▸ CR-H0.2-1 (OQ-1): รายการที่ผูกกับรอบ **ร่าง** (DRAFT · ยังไม่มี JV) ลบได้จากหน้าเงินเดือน (มีผู้ใช้) — ลบ + คำนวณรอบร่างใหม่
+//   ใน tx เดียว ใต้ล็อกงวดของรอบ (cancelBoundDraftAdjustment) ⇒ ยอดรวม = Σ รายการ · ลายนิ้วมือเปลี่ยน · NEGATIVE_NET หายเมื่อไม่ติดลบแล้ว ·
+//   ผูกกับรอบที่อนุมัติ/จ่าย/กลับรายการแล้ว = ปฏิเสธ (ข้อความใหม่ — เดิมบอกให้ "กลับรายการ" แม้เป็นร่าง ซึ่งทำไม่ได้) ·
+//   ทางระบบ (ไม่ส่ง actor — hr facade / CRM) ยังลบได้เฉพาะรายการที่ไม่เข้ารอบ ตามสัญญาของ facade (ไม่มีผู้ใช้ให้ลงประวัติการคำนวณใหม่) ◂
+const CANCEL_BOUND_APPROVED = "รายการนี้อยู่ในรอบจ่ายที่อนุมัติแล้ว ลบไม่ได้ (ใช้กลับรายการรอบจ่ายแทน)";
+const CANCEL_BOUND_DRAFT_SYSTEM = "รายการนี้อยู่ในรอบจ่ายร่าง — ลบได้จากหน้าเงินเดือนเท่านั้น (ระบบจะคำนวณรอบร่างใหม่ให้)";
+// H0.2 ▸ CR-H0.2-3: รายการที่มาจาก CRM (คอมมิชชัน/หักคืน · มี crmCommissionId) ลบจาก HR ไม่ได้ทุกกรณี (ยังไม่เข้ารอบ · ผูกรอบร่าง · อื่น ๆ)
+//   ทั้งทางมี actor และไม่มี actor — ไม่ลบอะไร · CrmCommission.hrPayAdjustmentId คงเดิม · ไม่ลง audit (ไม่มีอะไรเปลี่ยน) ·
+//   ทางถอน/ย้ายงวดของ CRM = withdrawCommissionAdjustment / moveCommissionAdjustmentPeriod (ไม่ผ่านฟังก์ชันนี้) ◂
+const CANCEL_FROM_CRM = "รายการนี้มาจาก CRM — ถอนหรือแก้ที่ CRM แล้วระบบจะถอนออกจากรอบจ่ายให้เอง";
 export async function cancelAdjustment(ctx: Ctx, id: string, actor?: { userId?: string | null; isOwner: boolean }): Promise<{ ok: boolean; reason?: string }> {
   const row = await tenantDb(ctx).hrPayAdjustment.findFirst({ where: { id } });
   if (!row) return { ok: false, reason: "ไม่พบรายการ" };
-  if (row.runId) return { ok: false, reason: "รายการนี้เข้ารอบจ่ายแล้ว ลบไม่ได้ (ใช้กลับรายการรอบจ่ายแทน)" };
+  if (row.crmCommissionId != null) return { ok: false, reason: CANCEL_FROM_CRM };
+  let boundDraft: { id: string; periodKey: string } | null = null;
+  if (row.runId) {
+    const run = await tenantDb(ctx).hrPayrollRun.findFirst({ where: { id: row.runId, systemId: ctx.systemId }, select: { id: true, periodKey: true, status: true, journalEntryId: true } });
+    if (!run || run.status !== "DRAFT" || run.journalEntryId) return { ok: false, reason: CANCEL_BOUND_APPROVED };
+    if (!actor) return { ok: false, reason: CANCEL_BOUND_DRAFT_SYSTEM };
+    boundDraft = { id: run.id, periodKey: run.periodKey };
+  }
   const uid = typeof actor?.userId === "string" ? actor.userId.trim() : "";
   if (actor && !actor.isOwner) {
     if (!uid) return { ok: false, reason: "ระบบไม่ทราบผู้ลบรายการนี้ จึงยังลบไม่ได้ — กรุณาลบในหน้าเงินเดือน" };
@@ -235,6 +278,7 @@ export async function cancelAdjustment(ctx: Ctx, id: string, actor?: { userId?: 
     const ownPendingAdd = row.status === "PENDING" && row.requestedById === uid && isAddKind(row.kind);
     if (subject?.linkedUserId === uid && !ownPendingAdd) return { ok: false, reason: "ลบรายการของตัวเองไม่ได้ — ให้ผู้อนุมัติคนอื่นหรือเจ้าของร้านดำเนินการ" };
   }
+  if (boundDraft) return cancelBoundDraftAdjustment(ctx, row, boundDraft, { userId: uid || null, isOwner: !!actor?.isOwner });
   const del = await tenantDb(ctx).hrPayAdjustment.deleteMany({ where: { id, runId: null, status: row.status } });
   if (del.count === 0) return { ok: false, reason: "รายการนี้เปลี่ยนไปแล้ว กรุณาเปิดดูใหม่" };
   await writeAudit({
@@ -324,20 +368,90 @@ function computeItem(profile: {
 type RunItemRow = ReturnType<typeof computeItem>;
 type RunTotals = { gross: number; ssoEmployee: number; ssoEmployer: number; wht: number; net: number; add: number; deduct: number };
 
+// ─────────── H0.2 ▸ R1 (D1) ใครอยู่ในรอบจ่ายของงวด · R3 (D6) flag ของแถว ───────────
+//   งวด = เดือนตามปฏิทินกรุงเทพของ periodKey (วันแรก…วันสุดท้าย เทียบเป็นสตริง YYYY-MM-DD กับคอลัมน์ @db.Date — ไม่มีเรื่องเขตเวลา) ·
+//   อยู่ในรอบเมื่อ (a) ไม่มีวันเริ่ม หรือเริ่ม ≤ วันสุดท้าย · (b) ไม่มีวันสิ้นสุด หรือสิ้นสุด ≥ วันแรก · (c) active หรือมีวันสิ้นสุด
+//   (ถูกลบโดยไม่มีวันสิ้นสุด = ไม่รู้ว่าออกเมื่อไร ⇒ ไม่จ่าย + รายงาน — ไม่จ่ายเงียบ ๆ) · เข้า/ออกกลางเดือน = ยอดเต็มเดือนเดิม (ยังไม่คิดสัดส่วน — HQ6)
+//   + flag PARTIAL_MONTH · โปรไฟล์ที่ไม่มีแถวพนักงาน = อยู่ในรอบตามเดิม (ไม่เปลี่ยนพฤติกรรมของข้อมูลที่ไม่มีวันที่ให้ตัดสิน) ◂
+export type RunExclusionReason = "ENDED_BEFORE" | "STARTS_AFTER" | "REMOVED_NO_END_DATE";
+export type RunExclusion = { employeeId: string; name: string; reason: RunExclusionReason };
+export type RunFlag = "PARTIAL_MONTH" | "NEGATIVE_NET";
+
+/** วันแรก/วันสุดท้ายของงวด "YYYY-MM" เป็น "YYYY-MM-DD" · งวดผิดรูปแบบ = null */
+function periodBounds(periodKey: string): { firstDay: string; lastDay: string } | null {
+  if (!PERIOD_RE.test(periodKey)) return null;
+  const [y, m] = periodKey.split("-").map(Number) as [number, number];
+  const days = new Date(Date.UTC(y, m, 0)).getUTCDate(); // วันที่ 0 ของเดือนถัดไป = วันสุดท้ายของเดือนนี้ (ปฏิทินล้วน ไม่ขึ้นกับเขตเวลา)
+  return { firstDay: `${periodKey}-01`, lastDay: `${periodKey}-${String(days).padStart(2, "0")}` };
+}
+const dayOf = (d: Date | null): string | null => (d ? d.toISOString().slice(0, 10) : null); // @db.Date มาเป็นเที่ยงคืน UTC ของวันนั้น
+
+async function periodMembership(
+  db: Prisma.TransactionClient,
+  ctx: Ctx,
+  periodKey: string,
+  employeeIds: string[],
+): Promise<{ included: Set<string>; partial: Set<string>; exclusions: RunExclusion[] }> {
+  const included = new Set<string>();
+  const partial = new Set<string>();
+  const exclusions: RunExclusion[] = [];
+  const b = periodBounds(periodKey);
+  if (!b || employeeIds.length === 0) return { included, partial, exclusions };
+  const emps = await db.hrEmployee.findMany({
+    where: { tenantId: ctx.tenantId, systemId: ctx.systemId, id: { in: employeeIds } },
+    select: { id: true, name: true, active: true, startDate: true, endDate: true },
+  });
+  const byId = new Map(emps.map((e) => [e.id, e]));
+  for (const id of employeeIds) {
+    const e = byId.get(id);
+    if (!e) {
+      included.add(id);
+      continue;
+    }
+    const start = dayOf(e.startDate);
+    const end = dayOf(e.endDate);
+    const reason: RunExclusionReason | null =
+      end !== null && end < b.firstDay ? "ENDED_BEFORE" : start !== null && start > b.lastDay ? "STARTS_AFTER" : !e.active && end === null ? "REMOVED_NO_END_DATE" : null;
+    if (reason) {
+      exclusions.push({ employeeId: e.id, name: e.name, reason });
+      continue;
+    }
+    included.add(id);
+    if ((start !== null && start > b.firstDay) || (end !== null && end < b.lastDay)) partial.add(id);
+  }
+  exclusions.sort((x, y) => (x.name < y.name ? -1 : x.name > y.name ? 1 : x.employeeId < y.employeeId ? -1 : 1));
+  return { included, partial, exclusions };
+}
+
+/** flag ของแถว (snapshot.flags) — ไม่มี flag = ไม่ใส่คีย์ (แถวปกติเหมือนเดิมทุกไบต์) · NEGATIVE_NET = สุทธิติดลบ ⇒ approveRun ไม่อนุมัติ (R3) */
+function withRunFlags(item: RunItemRow, partialMonth: boolean): RunItemRow {
+  const flags: RunFlag[] = [];
+  if (partialMonth) flags.push("PARTIAL_MONTH");
+  if (item.netSatang < 0) flags.push("NEGATIVE_NET");
+  return flags.length ? { ...item, snapshot: { ...item.snapshot, flags } } : item;
+}
+// ◂ H0.2
+
 // H0.1 ▸ CR15 (ความเป็นส่วนตัว): รอบที่มีพนักงานเข้ารอบคนเดียว ยอดรวมของรอบ = เงินเดือนของคนนั้น (เห็นได้จากรายการรอบ)
 //   ยอมรับได้ เพราะทุกคนที่เห็นรายการรอบจ่ายผ่าน canViewPayroll อยู่แล้ว (OWNER หรือ hr.payroll.read) — ไม่เปลี่ยนพฤติกรรม ◂
 async function buildRunRows(
   tx: Prisma.TransactionClient,
   ctx: Ctx,
   periodKey: string,
-): Promise<{ items: RunItemRow[]; totals: RunTotals; adjustmentIds: string[] }> {
+): Promise<{ items: RunItemRow[]; totals: RunTotals; adjustmentIds: string[]; exclusions: RunExclusion[] }> {
   const scope = { tenantId: ctx.tenantId, systemId: ctx.systemId };
-  const profiles = await tx.hrSalaryProfile.findMany({
+  const allProfiles = await tx.hrSalaryProfile.findMany({
     where: scope,
     select: { employeeId: true, baseSalarySatang: true, ssoEligible: true, personalDeductionJson: true },
   });
+  if (allProfiles.length === 0)
+    return { items: [], totals: { gross: 0, ssoEmployee: 0, ssoEmployer: 0, wht: 0, net: 0, add: 0, deduct: 0 }, adjustmentIds: [], exclusions: [] };
+  // H0.2 ▸ R1 (D1): ใครอยู่ในรอบของงวดนี้ — ตัวเดียวกับ runExclusions (periodMembership) ⇒ สร้าง/คำนวณใหม่/หน้าจอ ตรงกันเสมอ ·
+  //   คนที่ถูกตัด = ไม่มีแถว และรายการของเขาไม่ถูกผูก (กติกาเดียวกับ H4 ข้างล่าง) · เข้า/ออกกลางเดือน = ยอดเต็มเดือนเดิม + flag PARTIAL_MONTH ◂
+  const member = await periodMembership(tx, ctx, periodKey, allProfiles.map((p) => p.employeeId));
+  const profiles = allProfiles.filter((p) => member.included.has(p.employeeId));
   if (profiles.length === 0)
-    return { items: [], totals: { gross: 0, ssoEmployee: 0, ssoEmployer: 0, wht: 0, net: 0, add: 0, deduct: 0 }, adjustmentIds: [] };
+    return { items: [], totals: { gross: 0, ssoEmployee: 0, ssoEmployer: 0, wht: 0, net: 0, add: 0, deduct: 0 }, adjustmentIds: [], exclusions: member.exclusions };
   // CRM C3.3-fix H4 ▸ เฉพาะรายการของพนักงานที่ "มีแถวในรอบนี้" (มีโปรไฟล์เงินเดือน) — รายการของคนที่ไม่มีโปรไฟล์ไม่ได้ถูกจ่าย
   //   ผูก runId ให้ = ถือว่าจ่ายแล้วทั้งที่ไม่มีใครได้เงิน (และคอมมิชชัน CRM จะกลายเป็น PAID) ⇒ ปล่อยไว้ให้รอบถัดไป/ตัวกวาด ◂
   const paidEmployees = new Set(profiles.map((p) => p.employeeId));
@@ -362,12 +476,15 @@ async function buildRunRows(
   const items = profiles.map((p) => {
     const rows = adjByEmp.get(p.employeeId) ?? [];
     const { addSatang, deductSatang } = sumAdjustments(rows);
-    return computeItem({
-      ...p,
-      addSatang,
-      deductSatang,
-      adjustDetail: rows.map((r) => ({ kind: r.kind, amountSatang: r.amountSatang, note: r.note })),
-    });
+    return withRunFlags(
+      computeItem({
+        ...p,
+        addSatang,
+        deductSatang,
+        adjustDetail: rows.map((r) => ({ kind: r.kind, amountSatang: r.amountSatang, note: r.note })),
+      }),
+      member.partial.has(p.employeeId),
+    );
   });
   const totals = items.reduce(
     (t2, i) => ({
@@ -381,7 +498,7 @@ async function buildRunRows(
     }),
     { gross: 0, ssoEmployee: 0, ssoEmployer: 0, wht: 0, net: 0, add: 0, deduct: 0 },
   );
-  return { items, totals, adjustmentIds: adjustments.map((a) => a.id) };
+  return { items, totals, adjustmentIds: adjustments.map((a) => a.id), exclusions: member.exclusions };
 }
 
 /** คอลัมน์ยอดรวมของรอบ (ชื่อคอลัมน์ HrPayrollRun) จากยอดของ buildRunRows */
@@ -414,6 +531,31 @@ function runItemData(scope: { tenantId: string; systemId: string }, i: RunItemRo
   };
 }
 
+// H0.2 ▸ R4: ข้อผิดพลาดที่ "ผู้ใช้แก้ได้" ของการสร้างรอบ (งวด/วันที่จ่ายไม่ถูกต้อง · งวดซ้ำ · ไม่มีใครต้องจ่าย) — ข้อความไทยคงที่ที่เขียนในไฟล์นี้
+//   ⇒ createPayrollRunAction คืน message นี้ใน { ok:false, reason } ได้ (ไม่ใช่ข้อความดิบของฐานข้อมูล) · ข้อผิดพลาดอื่นยัง throw ตามเดิม ◂
+export class PayrollInputError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "PayrollInputError";
+  }
+}
+const PERIOD_INVALID_TH = "งวดต้องเป็นปี-เดือน (YYYY-MM) และเดือนอยู่ระหว่าง 01–12";
+const PAYDATE_INVALID_TH = "วันที่จ่ายไม่ถูกต้อง — เลือกวันที่จ่ายใหม่";
+// H0.2 ▸ CR-H0.2-4 (แก้โดยผู้คุมงาน: ±1 ปี): วันที่จ่ายต้องอยู่ใน [วันแรกของงวด − 365 วัน, วันสุดท้ายของงวด + 365 วัน] —
+//   เทียบ "วันที่" ตามปฏิทินไทย (bkkParts) ไม่ใช่เวลา · ขอบทั้งสองข้างรับ ◂
+const PAYDATE_WINDOW_TH = "วันที่จ่ายต้องอยู่ภายใน 1 ปีของงวดนี้";
+const PAYDATE_WINDOW_DAYS = 365;
+const DAY_MS = 86_400_000;
+/** ช่วงวันที่จ่ายที่รับของงวด "YYYY-MM" เป็นสตริง YYYY-MM-DD (เทียบแบบสตริงได้) */
+function payDateWindow(periodKey: string): { from: string; to: string } {
+  const y = Number(periodKey.slice(0, 4));
+  const m = Number(periodKey.slice(5, 7));
+  const first = Date.UTC(y, m - 1, 1);
+  const last = Date.UTC(y, m, 0);
+  return { from: new Date(first - PAYDATE_WINDOW_DAYS * DAY_MS).toISOString().slice(0, 10), to: new Date(last + PAYDATE_WINDOW_DAYS * DAY_MS).toISOString().slice(0, 10) };
+}
+const noMembersText = (periodKey: string) => `ไม่มีพนักงานที่ต้องจ่ายในงวด ${periodKey} — ทุกคนที่ตั้งเงินเดือนไว้ออกก่อนงวดหรือเริ่มงานหลังงวด`;
+
 // ── สร้างรอบจ่าย (DRAFT) — คำนวณทุกพนักงานที่มีโปรไฟล์ ในธุรกรรมเดียว ──
 // CRM C3.3-fix (race ถอน ↔ สร้างรอบ · 27 ก.ย.) ▸ ทั้งฟังก์ชันอยู่ใน **ธุรกรรมเดียว**: ล็อกงวด (advisory) → อ่านรายการ APPROVED ที่ยังไม่เข้ารอบ
 //   ด้วย `SELECT … FOR UPDATE` → คำนวณ → สร้างรอบ → ผูก runId ด้วย UPDATE เดียวที่ guard `runId IS NULL AND status = APPROVED` (ต้องผูกได้ครบ
@@ -424,19 +566,27 @@ export async function createPayrollRun(
   ctx: Ctx,
   input: { periodKey: string; payDate: Date },
 ): Promise<{ id: string }> {
-  const periodKey = input.periodKey.trim();
+  // H0.2 ▸ R4 (D12): งวด "YYYY-MM" เดือน 01–12 และวันที่จ่ายที่เป็นวันจริง — ตรวจก่อนเปิด tx (ไม่มีแถวใดถูกเขียน) · ข้อความไทยคงที่ ◂
+  const periodKey = typeof input.periodKey === "string" ? input.periodKey.trim() : "";
+  if (!PERIOD_RE.test(periodKey)) throw new PayrollInputError(PERIOD_INVALID_TH);
+  if (!(input.payDate instanceof Date) || !Number.isFinite(input.payDate.getTime())) throw new PayrollInputError(PAYDATE_INVALID_TH);
+  {
+    const day = bkkParts(input.payDate).dateStr;
+    const win = payDateWindow(periodKey);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || day < win.from || day > win.to) throw new PayrollInputError(PAYDATE_WINDOW_TH);
+  }
   const scope = { tenantId: ctx.tenantId, systemId: ctx.systemId };
   return tenantDb(ctx).$transaction(async (t) => {
     const tx = t as unknown as Prisma.TransactionClient;
     // สองการสร้างรอบของงวดเดียวกันต่อคิวกัน (unique (systemId, periodKey) เป็นด่านสุดท้าย — ล็อกนี้ทำให้ได้ข้อความไทยแทน error ของฐาน)
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`hr:payroll:run:${ctx.systemId}:${periodKey}`}, 0))`;
     const dup = await tx.hrPayrollRun.findFirst({ where: { ...scope, periodKey }, select: { id: true } });
-    if (dup) throw new Error(`มีรอบจ่ายงวด ${periodKey} อยู่แล้ว — ลบหรือเลือกงวดอื่น`);
+    if (dup) throw new PayrollInputError(`มีรอบจ่ายงวด ${periodKey} อยู่แล้ว — ลบหรือเลือกงวดอื่น`);
 
     // H0.1 ▸ R1: แถว + ยอดรวม + รายการที่ล็อกไว้ มาจาก buildRunRows (ตัวเดียวกับ recomputeDraftRun) — ผลลัพธ์เท่าเดิมทุกไบต์ ◂
-    const { items, totals, adjustmentIds } = await buildRunRows(tx, ctx, periodKey);
+    const { items, totals, adjustmentIds, exclusions } = await buildRunRows(tx, ctx, periodKey);
     if (items.length === 0)
-      throw new Error("ยังไม่มีโปรไฟล์เงินเดือน — ตั้งเงินเดือนพนักงานก่อนสร้างรอบจ่าย");
+      throw new PayrollInputError(exclusions.length > 0 ? noMembersText(periodKey) : "ยังไม่มีโปรไฟล์เงินเดือน — ตั้งเงินเดือนพนักงานก่อนสร้างรอบจ่าย");
 
     const run = await tx.hrPayrollRun.create({
       data: {
@@ -513,7 +663,8 @@ async function lockRunRow(tx: Prisma.TransactionClient, ctx: Ctx, runId: string)
 //   ผู้ทำ = ผู้ใช้ใน session ที่ action ส่งมา (สคริปต์/ทางเดิมที่ไม่ส่ง actor = actorId null) ◂
 type RunActual = { net: number; items: number; gross: number; digest: string };
 type RunSeen = { net: number; items: number; gross?: number; digest?: string } | null;
-type RunRefused = { code: "NOT_DRAFT" | "DRAFT_HAS_JV" | "STALE"; actual: RunActual };
+// H0.2 ▸ R3: + NEGATIVE_NET (มีแถวสุทธิติดลบ · `negative` = จำนวนแถว) ◂
+type RunRefused = { code: "NOT_DRAFT" | "DRAFT_HAS_JV" | "STALE" | "NEGATIVE_NET"; actual: RunActual; negative?: number };
 
 async function runActual(tx: Prisma.TransactionClient, ctx: Ctx, cur: LockedRun): Promise<RunActual> {
   const items = await tx.hrPayrollItem.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, runId: cur.id }, select: PAYROLL_DIGEST_SELECT });
@@ -528,7 +679,7 @@ async function auditRefusal(ctx: Ctx, actor: PayrollActor | undefined, action: s
     action,
     targetType: "HrPayrollRun",
     targetId: runId,
-    after: { code: refused.code, seen, actual: refused.actual },
+    after: { code: refused.code, seen, actual: refused.actual, ...(refused.negative !== undefined ? { negative: refused.negative } : {}) },
   });
 }
 
@@ -596,6 +747,93 @@ export async function deleteDraftRun(ctx: Ctx, runId: string, actor: PayrollActo
   return { ok: true };
 }
 
+type DraftSnap = { totalAddSatang: number; totalDeductSatang: number; totalNetSatang: number; itemCount: number };
+/**
+ * ตัวในของ "คำนวณใหม่" (ใบ H0.1 R3) — ผู้เรียกถือล็อกงวด + ล็อกแถวรอบ (`cur` อ่านใต้ FOR UPDATE · ต้องเป็น DRAFT ไม่มี JV) ใน tx เดียวกัน:
+ * ปลดรายการทั้งหมดของรอบ → ลบแถวพนักงาน → buildRunRows ใหม่ → สร้างแถว → ยอดรวม + note → ผูกรายการกลับ (guard + count) ·
+ * คำปฏิเสธ = throw RunRefusal (ย้อนทั้ง tx) · H0.2 ▸ CR-H0.2-1: cancelAdjustment ของรายการในรอบร่างใช้ตัวเดียวกันนี้ ◂
+ */
+async function rebuildDraftRun(tx: Prisma.TransactionClient, ctx: Ctx, cur: LockedRun, note: string): Promise<{ before: DraftSnap; after: DraftSnap }> {
+  const scope = { tenantId: ctx.tenantId, systemId: ctx.systemId };
+  const id = cur.id;
+  const itemCountBefore = await tx.hrPayrollItem.count({ where: { ...scope, runId: id } });
+  // ปลดรายการทั้งหมดของรอบ (แถวถูกล็อกด้วย UPDATE นี้จน commit) → buildRunRows เห็นมันเป็น "ยังไม่เข้ารอบ" ใน tx เดียวกัน
+  await tx.hrPayAdjustment.updateMany({ where: { ...scope, runId: id }, data: { runId: null } });
+  await tx.hrPayrollItem.deleteMany({ where: { ...scope, runId: id } });
+  const { items, totals, adjustmentIds, exclusions } = await buildRunRows(tx, ctx, cur.periodKey);
+  // H0.2 ▸ R1: ทุกคนที่มีโปรไฟล์ถูกตัดออกจากงวดนี้ = ไม่มีแถวให้จ่าย ⇒ ไม่คำนวณใหม่ (บอกเหตุผลจริง ไม่ใช่ "ยังไม่มีโปรไฟล์") ◂
+  if (items.length === 0) throw new RunRefusal(exclusions.length > 0 ? noMembersText(cur.periodKey) : RECOMPUTE_NO_PROFILE);
+  await tx.hrPayrollItem.createMany({ data: items.map((i) => ({ ...runItemData(scope, i), runId: id })) });
+  const upd = await tx.hrPayrollRun.updateMany({
+    where: { ...scope, id, status: "DRAFT", journalEntryId: null },
+    data: { ...runTotalsData(totals), note },
+  });
+  if (upd.count !== 1) throw new RunRefusal(RUN_CHANGED);
+  if (adjustmentIds.length > 0) {
+    const bound = await tx.hrPayAdjustment.updateMany({
+      where: { ...scope, id: { in: adjustmentIds }, runId: null, status: "APPROVED" },
+      data: { runId: id },
+    });
+    if (bound.count !== adjustmentIds.length) throw new RunRefusal(RUN_CHANGED);
+  }
+  return {
+    before: { totalAddSatang: cur.totalAddSatang, totalDeductSatang: cur.totalDeductSatang, totalNetSatang: cur.totalNetSatang, itemCount: itemCountBefore },
+    after: { totalAddSatang: totals.add, totalDeductSatang: totals.deduct, totalNetSatang: totals.net, itemCount: items.length },
+  };
+}
+
+/**
+ * H0.2 ▸ CR-H0.2-1 (OQ-1): ลบรายการเพิ่ม/หักที่ผูกกับรอบ **ร่าง** แล้วคำนวณรอบร่างนั้นใหม่ — tx เดียว: ล็อกงวดของรอบ (คีย์เดียวกับสร้าง/ลบ/คำนวณใหม่)
+ * → อ่านรอบใหม่ใต้ FOR UPDATE ต้องยังเป็น DRAFT ไม่มี JV → ลบแถวด้วย guard (id · runId · สถานะที่อ่านมา · count = 1) → rebuildDraftRun ·
+ * ประวัติ `hr.payadjust.delete` (+ runId) และ `hr.payroll.recompute` หลัง commit · ผู้เรียก (cancelAdjustment) ตรวจสิทธิ์ "แถวของตัวเอง" มาแล้ว
+ */
+async function cancelBoundDraftAdjustment(
+  ctx: Ctx,
+  row: { id: string; employeeId: string; kind: string; amountSatang: number; status: string; periodKey: string; requestedById: string | null; decidedById: string | null },
+  run: { id: string; periodKey: string },
+  actor: PayrollActor,
+): Promise<{ ok: boolean; reason?: string }> {
+  const scope = { tenantId: ctx.tenantId, systemId: ctx.systemId };
+  let res: { note: string; before: DraftSnap; after: DraftSnap };
+  try {
+    res = await tenantDb(ctx).$transaction(async (t) => {
+      const tx = t as unknown as Prisma.TransactionClient;
+      await lockRunPeriod(tx, ctx, run.periodKey);
+      const cur = await lockRunRow(tx, ctx, run.id);
+      if (!cur || cur.periodKey !== run.periodKey) throw new RunRefusal(RUN_CHANGED);
+      if (cur.status !== "DRAFT" || cur.journalEntryId) throw new RunRefusal(CANCEL_BOUND_APPROVED);
+      const del = await tx.hrPayAdjustment.deleteMany({ where: { ...scope, id: row.id, runId: run.id, status: row.status as "PENDING" | "APPROVED" | "REJECTED" } });
+      if (del.count !== 1) throw new RunRefusal(RUN_CHANGED);
+      const note = `คำนวณใหม่ ${bkkStamp(new Date())}`;
+      const r = await rebuildDraftRun(tx, ctx, cur, note);
+      return { note, ...r };
+    }, { maxWait: 20_000, timeout: 60_000 });
+  } catch (e) {
+    if (e instanceof RunRefusal) return { ok: false, reason: e.message };
+    throw e;
+  }
+  await writeAudit({
+    tenantId: ctx.tenantId,
+    actorType: "USER",
+    actorId: actor.userId,
+    action: "hr.payadjust.delete",
+    targetType: "HrPayAdjustment",
+    targetId: row.id,
+    before: { employeeId: row.employeeId, kind: row.kind, amountSatang: row.amountSatang, status: row.status, periodKey: row.periodKey, requestedById: row.requestedById, decidedById: row.decidedById, runId: run.id },
+  });
+  await writeAudit({
+    tenantId: ctx.tenantId,
+    actorType: "USER",
+    actorId: actor.userId,
+    action: "hr.payroll.recompute",
+    targetType: "HrPayrollRun",
+    targetId: run.id,
+    before: res.before,
+    after: { ...res.after, cause: "hr.payadjust.delete", adjustmentId: row.id },
+  });
+  return { ok: true };
+}
+
 /**
  * คำนวณรอบร่างใหม่ (ใบ H0.1 R3) — id รอบ · งวด · วันที่จ่าย คงเดิม (ลิงก์/สลิปยังใช้ได้) · ปลดรายการ → ลบแถวพนักงาน →
  * buildRunRows ใหม่ (เงินเดือนปัจจุบัน · พนักงานที่มีโปรไฟล์ตอนนี้ · รายการ APPROVED ที่ยังไม่เข้ารอบของงวด) → สร้างแถว → ยอดรวมใหม่ →
@@ -618,32 +856,9 @@ export async function recomputeDraftRun(ctx: Ctx, runId: string, actor: PayrollA
       if (cur.status !== "DRAFT") return { ok: false as const, reason: RECOMPUTE_ONLY_DRAFT, refused: { code: "NOT_DRAFT" as const, actual: await runActual(tx, ctx, cur) } };
       if (cur.journalEntryId) return { ok: false as const, reason: DRAFT_HAS_JV, refused: { code: "DRAFT_HAS_JV" as const, actual: await runActual(tx, ctx, cur) } };
 
-      const itemCountBefore = await tx.hrPayrollItem.count({ where: { ...scope, runId: id } });
-      // ปลดรายการทั้งหมดของรอบ (แถวถูกล็อกด้วย UPDATE นี้จน commit) → buildRunRows เห็นมันเป็น "ยังไม่เข้ารอบ" ใน tx เดียวกัน
-      await tx.hrPayAdjustment.updateMany({ where: { ...scope, runId: id }, data: { runId: null } });
-      await tx.hrPayrollItem.deleteMany({ where: { ...scope, runId: id } });
-      const { items, totals, adjustmentIds } = await buildRunRows(tx, ctx, cur.periodKey);
-      if (items.length === 0) throw new RunRefusal(RECOMPUTE_NO_PROFILE);
-      await tx.hrPayrollItem.createMany({ data: items.map((i) => ({ ...runItemData(scope, i), runId: id })) });
       const note = `คำนวณใหม่ ${bkkStamp(new Date())}`;
-      const upd = await tx.hrPayrollRun.updateMany({
-        where: { ...scope, id, status: "DRAFT", journalEntryId: null },
-        data: { ...runTotalsData(totals), note },
-      });
-      if (upd.count !== 1) throw new RunRefusal(RUN_CHANGED);
-      if (adjustmentIds.length > 0) {
-        const bound = await tx.hrPayAdjustment.updateMany({
-          where: { ...scope, id: { in: adjustmentIds }, runId: null, status: "APPROVED" },
-          data: { runId: id },
-        });
-        if (bound.count !== adjustmentIds.length) throw new RunRefusal(RUN_CHANGED);
-      }
-      return {
-        ok: true as const,
-        note,
-        before: { totalAddSatang: cur.totalAddSatang, totalDeductSatang: cur.totalDeductSatang, totalNetSatang: cur.totalNetSatang, itemCount: itemCountBefore },
-        after: { totalAddSatang: totals.add, totalDeductSatang: totals.deduct, totalNetSatang: totals.net, itemCount: items.length },
-      };
+      const r = await rebuildDraftRun(tx, ctx, cur, note);
+      return { ok: true as const, note, before: r.before, after: r.after };
     }, { maxWait: 20_000, timeout: 60_000 });
   } catch (e) {
     if (e instanceof RunRefusal) return { ok: false, reason: e.message };
@@ -670,7 +885,9 @@ const APPROVE_NOT_DRAFT = "รอบนี้อนุมัติหรือ�
 const APPROVE_DRAFT_HAS_JV = "รอบนี้มีเอกสารบัญชีค้างอยู่ ต้องให้ผู้ดูแลตรวจสอบก่อน"; // H0.1 ▸ CR17 ◂
 /** H0.1 ▸ CR12: เหตุที่อนุมัติไม่สำเร็จ (ให้ approvePayrollRunAction เลือกข้อความคงที่ — POST_FAILED = ลงบัญชีล้ม รอบกลับเป็นร่าง) ◂
  *  H0.1 ▸ CR17: DRAFT_HAS_JV = ร่างที่มี journalEntryId ค้าง (ลงบัญชีไปแล้วแต่สถานะถูกคืนเป็นร่าง) ⇒ ไม่ลงบัญชีซ้ำ ◂ */
-export type ApproveFailCode = "NOT_FOUND" | "NOT_DRAFT" | "STALE" | "POST_FAILED" | "DRAFT_HAS_JV";
+export type ApproveFailCode = "NOT_FOUND" | "NOT_DRAFT" | "STALE" | "POST_FAILED" | "DRAFT_HAS_JV" | "NEGATIVE_NET";
+// H0.2 ▸ R3 (D6): ข้อความคงที่ (N = จำนวนแถวที่สุทธิติดลบ) — action ส่งต่อถึงจอได้ (ไม่มีข้อความดิบของ error) ◂
+export const approveNegativeNetText = (n: number) => `มีพนักงาน ${n} คนที่ยอดสุทธิติดลบ (รายการหักมากกว่าเงินได้) — แก้รายการหักแล้วกด 'คำนวณใหม่'`;
 
 /**
  * H0.1 R4 · R5 — claim DRAFT→APPROVED เฉพาะเมื่อรอบ "ยังเป็นตัวเลขที่ผู้อนุมัติเห็น" (ยอดจ่ายสุทธิรวม + จำนวนคน) แบบอะตอมมิก:
@@ -711,8 +928,13 @@ async function claimApproveExpected(ctx: Ctx, runId: string, expect: ApproveExpe
       if (stale) return { code: "STALE", actual };
       guard = { totalNetSatang: expect.totalNetSatang, ...(gross !== undefined ? { totalGrossSatang: gross } : {}) };
     }
+    // H0.2 ▸ R3 (D6): แถวที่สุทธิติดลบ (หักมากกว่าเงินได้) = ไม่อนุมัติ ทั้งทางที่มี/ไม่มี expect — นับใต้ล็อกแถวรอบเดียวกับที่คำนวณใหม่/ลบถือตลอด tx
+    //   ⇒ คำนวณใหม่แทรกระหว่างการนับกับ UPDATE ไม่ได้ · UPDATE มี guard "ไม่มีแถวติดลบ" ซ้ำอีกชั้น (เดิม JV ปฏิเสธเฉพาะยอดรวมติดลบ
+    //   — แถวเดียวติดลบในยอดรวมบวก ลงบัญชีและจ่ายขาดได้) ◂
+    const negative = await tx.hrPayrollItem.count({ where: { ...scope, runId, netSatang: { lt: 0 } } });
+    if (negative > 0) return { code: "NEGATIVE_NET", actual: await runActual(tx, ctx, cur), negative };
     const claim = await tx.hrPayrollRun.updateMany({
-      where: { ...scope, id: runId, status: "DRAFT", journalEntryId: null, ...guard },
+      where: { ...scope, id: runId, status: "DRAFT", journalEntryId: null, ...guard, items: { none: { netSatang: { lt: 0 } } } },
       data: { status: "APPROVED" },
     });
     return claim.count === 1 ? { code: "OK" } : { code: "NOT_DRAFT", actual: await runActual(tx, ctx, cur) };
@@ -749,6 +971,7 @@ export async function approveRun(
     await auditRefusal(ctx, actor, "hr.payroll.approve.refused", runId, claimed, seen); // CR19
     if (claimed.code === "STALE") return { ok: false, note: APPROVE_STALE, code: "STALE" };
     if (claimed.code === "DRAFT_HAS_JV") return { ok: false, note: APPROVE_DRAFT_HAS_JV, code: "DRAFT_HAS_JV" };
+    if (claimed.code === "NEGATIVE_NET") return { ok: false, note: approveNegativeNetText(claimed.negative ?? 0), code: "NEGATIVE_NET" };
     return { ok: false, note: APPROVE_NOT_DRAFT, code: "NOT_DRAFT" };
   }
 
@@ -877,7 +1100,9 @@ export function listRuns(ctx: Ctx, take = 50) {
     include: {
       items: {
         // H0.1 ▸ CR16: + คอลัมน์ของลายนิ้วมือ (เพิ่ม/หัก/ปสส. 2 ช่อง/ภาษี) ⇒ หน้ารอบจ่ายคำนวณ itemsDigest ฝั่ง server ส่งไปกับปุ่มอนุมัติ ◂
-        select: { id: true, ...PAYROLL_DIGEST_SELECT },
+        // H0.2 ▸ R1/R3: + snapshotJson (flags PARTIAL_MONTH / NEGATIVE_NET ของแถว) — หน้าเงินเดือน (หลังด่าน canViewPayroll) ใช้ทำเครื่องหมาย "ต้องตรวจ"/"ติดลบ"
+        //   ฝั่ง server เท่านั้น (แถวไม่ถูกส่งถึง client นอกจากลายนิ้วมือและป้ายข้อความ) ◂
+        select: { id: true, ...PAYROLL_DIGEST_SELECT, snapshotJson: true },
         orderBy: { id: "asc" },
       },
     },
@@ -895,6 +1120,98 @@ export async function payslipData(ctx: Ctx, runId: string, employeeId: string) {
   ]);
   return { run, item, employee };
 }
+
+// ─────────── H0.2 ▸ ตัวอ่าน/ตัวย้ายของหน้าเงินเดือน (เฉพาะผู้ดูเงินเดือน — หน้า PayrollSection เรียกหลังด่าน canViewPayroll) ───────────
+/**
+ * R1: คนที่มีโปรไฟล์เงินเดือนแต่ "ไม่อยู่ในรอบ" ของงวดนี้ + เหตุผล (ENDED_BEFORE · STARTS_AFTER · REMOVED_NO_END_DATE) —
+ * กติกาเดียวกับ buildRunRows (periodMembership) · ผูกร้าน + ระบบ HR · งวดผิดรูปแบบ = []
+ */
+export async function runExclusions(ctx: Ctx, periodKey: string): Promise<RunExclusion[]> {
+  const p = typeof periodKey === "string" ? periodKey.trim() : "";
+  if (!PERIOD_RE.test(p)) return [];
+  return tenantDb(ctx).$transaction(async (t) => {
+    const tx = t as unknown as Prisma.TransactionClient;
+    const profiles = await tx.hrSalaryProfile.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId }, select: { employeeId: true }, take: 5_000 });
+    return (await periodMembership(tx, ctx, p, profiles.map((x) => x.employeeId))).exclusions;
+  });
+}
+
+export type StrandedAdjustment = {
+  id: string;
+  employeeId: string;
+  periodKey: string;
+  kind: string;
+  status: string;
+  amountSatang: number;
+  note: string | null;
+  crmCommissionId: string | null;
+};
+/**
+ * R2: รายการ "ค้าง" ของระบบ HR นี้ — ปกติ + CRM · PENDING/APPROVED · ยังไม่เข้ารอบ (`runId IS NULL`) · งวดของมันมีรอบจ่ายแล้ว (ทุกสถานะ)
+ * ⇒ createPayrollRun ของงวดนั้นไม่มีวันเกิดซ้ำ จึงจะไม่ถูกจ่ายถ้าไม่มีใครย้าย (CR-H0.2-2: รวมรายการของคนที่ถูกตัดออกจากงวด) ·
+ * `strandedCommissionAdjustments` (ของ CRM) ไม่เปลี่ยน
+ */
+export async function strandedAdjustments(ctx: Ctx, limit = 200): Promise<StrandedAdjustment[]> {
+  const db = tenantDb(ctx);
+  const runs = (await db.hrPayrollRun.findMany({ where: { systemId: ctx.systemId }, select: { periodKey: true }, take: 2_000 })).map((r) => r.periodKey);
+  if (runs.length === 0) return [];
+  const rows = await db.hrPayAdjustment.findMany({
+    where: { systemId: ctx.systemId, runId: null, status: { in: ["PENDING", "APPROVED"] }, periodKey: { in: runs } },
+    select: { id: true, employeeId: true, periodKey: true, kind: true, status: true, amountSatang: true, note: true, crmCommissionId: true },
+    orderBy: [{ periodKey: "asc" }, { id: "asc" }],
+    take: Math.max(1, Math.min(limit, 1_000)),
+  });
+  return rows.map((r) => ({ ...r, kind: String(r.kind), status: String(r.status) }));
+}
+
+/**
+ * R2: ปุ่ม "ย้ายไปงวดถัดไป" ของรายการค้าง **ปกติ** (ไม่ผูกคอมมิชชัน — ของ CRM ตัวกวาดของ CRM ย้ายเอง · moveCommissionAdjustmentPeriod)
+ * ความหมายเดียวกับ moveCommissionAdjustmentPeriod: แก้ periodKey ในที่เดิม · guard runId IS NULL + PENDING/APPROVED + งวดเดิม ·
+ * ปลายทาง = เดือนแรกหลังงวดเดิมที่ยังไม่มีรอบ — tx เดียว ใต้ล็อกงวดเดิมแล้วงวดปลายทาง (น้อยไปมาก) ⇒ ไม่ชนกับสร้างรอบปลายทาง ·
+ * ผู้ใช้ที่ไม่ใช่เจ้าของร้าน ย้ายรายการของแถวพนักงานที่ผูกกับบัญชีตัวเองไม่ได้ (กติกาเดียวกับลบ) · ประวัติ `hr.payadjust.move`
+ */
+export async function moveStrandedAdjustment(ctx: Ctx, id: string, actor: PayrollActor): Promise<{ ok: boolean; reason?: string; movedFrom?: string; movedTo?: string }> {
+  const scope = { tenantId: ctx.tenantId, systemId: ctx.systemId };
+  const row = await tenantDb(ctx).hrPayAdjustment.findFirst({ where: { id }, select: { id: true, employeeId: true, periodKey: true, status: true, runId: true, crmCommissionId: true } });
+  if (!row) return { ok: false, reason: "ไม่พบรายการ" };
+  if (row.crmCommissionId) return { ok: false, reason: "รายการคอมมิชชันจาก CRM ระบบ CRM ย้ายงวดให้เอง" };
+  if (row.runId || (row.status !== "PENDING" && row.status !== "APPROVED")) return { ok: false, reason: "รายการนี้ไม่ได้ค้างแล้ว กรุณาเปิดดูใหม่" };
+  if (!actor.isOwner) {
+    const uid = typeof actor.userId === "string" ? actor.userId.trim() : "";
+    if (!uid) return { ok: false, reason: "ระบบไม่ทราบผู้ย้ายรายการนี้ จึงยังย้ายไม่ได้ — กรุณาย้ายในหน้าเงินเดือน" };
+    const subject = await tenantDb(ctx).hrEmployee.findFirst({ where: { id: row.employeeId }, select: { linkedUserId: true } });
+    if (subject?.linkedUserId === uid) return { ok: false, reason: "ย้ายรายการของตัวเองไม่ได้ — ให้ผู้อนุมัติคนอื่นหรือเจ้าของร้านดำเนินการ" };
+  }
+  const res = await tenantDb(ctx).$transaction(async (t) => {
+    const tx = t as unknown as Prisma.TransactionClient;
+    await lockRunPeriod(tx, ctx, row.periodKey);
+    const runs = new Set((await tx.hrPayrollRun.findMany({ where: scope, select: { periodKey: true }, take: 2_000 })).map((r) => r.periodKey));
+    if (!runs.has(row.periodKey)) return { ok: false as const, reason: "งวดของรายการนี้ยังไม่มีรอบจ่าย — ไม่ต้องย้าย" };
+    const to = nextRunlessPeriod(row.periodKey, runs);
+    if (!to) return { ok: false as const, reason: `หางวดถัดไปที่ยังไม่มีรอบจ่ายหลังงวด ${row.periodKey} ไม่พบ — ตรวจรอบจ่ายเงินเดือน` };
+    await lockRunPeriod(tx, ctx, to);
+    if (await tx.hrPayrollRun.findFirst({ where: { ...scope, periodKey: to }, select: { id: true } })) return { ok: false as const, reason: "รอบจ่ายเพิ่งเปลี่ยน — กรุณาลองอีกครั้ง" };
+    const n = await tx.hrPayAdjustment.updateMany({
+      where: { ...scope, id, runId: null, crmCommissionId: null, periodKey: row.periodKey, status: { in: ["PENDING", "APPROVED"] } },
+      data: { periodKey: to },
+    });
+    if (n.count !== 1) return { ok: false as const, reason: "รายการนี้เปลี่ยนไปแล้ว กรุณาเปิดดูใหม่" };
+    return { ok: true as const, to };
+  }, { maxWait: 20_000, timeout: 60_000 });
+  if (!res.ok) return { ok: false, reason: res.reason };
+  await writeAudit({
+    tenantId: ctx.tenantId,
+    actorType: "USER",
+    actorId: actor.userId,
+    action: "hr.payadjust.move",
+    targetType: "HrPayAdjustment",
+    targetId: id,
+    before: { periodKey: row.periodKey, status: row.status },
+    after: { periodKey: res.to },
+  });
+  return { ok: true, movedFrom: row.periodKey, movedTo: res.to };
+}
+// ◂ H0.2
 
 // CRM C3.3 ▸ ทางเข้าของคอมมิชชัน CRM (ใบ C3.3 · addendum ข้อ 8 · 10) — อ่าน/เขียนผ่านไฟล์นี้เท่านั้น (CRM ห้ามแตะตาราง HR ตรง)
 //   • requestCommissionAdjustment — ยื่นรายการ COMMISSION/DEDUCTION ที่ผูก `crmCommissionId` · 🔴 partial unique
