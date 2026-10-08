@@ -1,0 +1,121 @@
+== c2.1-standalone start 2026-10-08T00:03:05Z · HEAD cb7405de · iso ISO_MEM=5G · cmd: pnpm exec tsx scripts/qc-crm-c2.1.mts
+
+═══ QC CRM v2 · C2.1 — automation scope CRM + shared action runner ═══
+[env] DB ep-plain-art-ao3djg4u-pooler.c-2.ap-southeast-1.aws.neon.tech · tag qc-c21-klqazq
+
+── S6 · regressions (child processes) ──
+  ✅ [C2.1-S6.1] regression scripts/qc-kanban-k2.9.mts (child process, same gate lock) → JSON_SUMMARY not skipped · total ≥ 26 · every failure is one of the pre-existing screenshot-evidence checks (K2.9-S11.7 — they read .qc-shots/, absent in this worktree)
+  ❌ [C2.1-S6.2] regression scripts/qc-member-m3.3.mts (child process, same gate lock) → JSON_SUMMARY not skipped · total ≥ 32 · every failure is one of the pre-existing screenshot-evidence checks (M3.3-S9.2, M3.3-S9.3 — they read .qc-shots/, absent in this worktree) — exp green except baseline visuals | act exit=1 unexpected=M3.3-ERR JSON_SUMMARY {"total":1,"passed":0,"findings":[{"id":"M3.3-ERR","sev":"CRITICAL"}]}
+── S0 · structure ──
+  ✅ [C2.1-S0.1] action-runner.ts exists and exports executeActions · runDueWaits · eventKeyOf (functions) · WAIT_LEASE_MS = 15 min · the SubjectAdapter type (resolveSubject/addressOf/consentOf/runDomainAction)
+  ✅ [C2.1-S0.2] ONE lease/claim implementation (C18): WAIT_LEASE_MS is defined only in action-runner.ts, which holds the WAITING claim (updateMany … WAITING … scheduledAt) and has no static import from @/lib/modules/* [static]
+  ✅ [C2.1-S0.3] journeys.ts move-only: its runtime exports (19 names) and every function arity are EXACTLY the 21a96bb baseline, and the member facade still exports runForEvent/runDueWaits/emitJourneyCronEvents/createJourney/toggleJourney/journeyDetail (positive control: green before the refactor too)
+  ✅ [C2.1-S0.4] journeys.ts imports the shared runner (@/lib/automation/action-runner) and no longer holds its own lease constant / WAITING claim / channel send loop [static]
+  ✅ [C2.1-S0.5] crm/automation.ts exports the 12 contract functions · automation-shared.ts exists and is pure (no prisma / next / server-only / db import) · crm/automation.ts imports the shared runner and defines no lease/claim of its own
+  ✅ [C2.1-S0.6] engine.ts keeps the v1 filter (scope "KANBAN", boardId null) and adds a CRM branch like the kanban delegation: lazy import("@/lib/modules/crm/automation") for crm.* / custom.record.* [static]
+  ✅ [C2.1-S0.7] outbox-consumers.ts: withAutomation forwards the event id and systemId to the engine inside a `// CRM C2.1 ▸ … ◂` block [static]
+  ✅ [C2.1-S0.8] implementation sites marked `// AUDIT-CLASS X1 X3 X4 X5 X6 X8 X9` in the owned files [static]
+(node:1778556) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+── R · member journeys unchanged (throwaway tenant) ──
+  ✅ [C2.1-R.1] member journey (ADD_TAG · SEND_LINE · WAIT_THEN 1 {SEND_LINE}) → runs 1 · tag on the customer · LINE sent to the member's LINE identity · one WAITING row (positive control)
+  ✅ [C2.1-R.2] same member event again (1 sequential + 4 parallel) → runs 0 each · still ONE main run · no second LINE (positive control)
+  ✅ [C2.1-R.3] two overlapping member runDueWaits (now + 2 days) → the waiting SEND_LINE of R1 is sent exactly once and its row is OK (positive control)
+  ✅ [C2.1-R.4] member consent revoked during the wait → the waiting SEND_LINE of R2 is NOT sent (step skipped with a Thai reason) — consent at send time (positive control)
+── S1 · engine scope ──
+  ✅ [C2.1-S1.1] engine.runForEvent(crm.deal.created of system A) → the CRM rule runs once (tag on the deal's contact, main run OK) AND the v1 KANBAN rule on the same event still notifies · the v1 path never treats the CRM rule's NOTIFY placeholder as a notification
+  ✅ [C2.1-S1.2] the same event type from the OTHER CRM system of the tenant (A2) never fires system A's rule (no run, no tag)
+  ✅ [C2.1-S1.3] a rule bound to pipelineId P never fires for a deal of another pipeline of the same system
+── S2 · triggers ──
+  ✅ [C2.1-S2.1] trigger crm.contact.created (payload ids only) → the contact is loaded by id, action ran, ONE main run OK with crmContactId = the contact
+  ✅ [C2.1-S2.2] trigger crm.deal.stage.changed with {dealId} only → subject = the deal's contact (loaded by id) → action ran once
+  ✅ [C2.1-S2.3] trigger custom.record.created → record loaded by id → parent contact → action ran once
+  ✅ [C2.1-S2.4] cron trigger crm.deal.close_due{daysBefore 3}: the OPEN deal closing in 3 days fires, the one closing in 20 days does not
+  ✅ [C2.1-S2.5] cron trigger custom.record.field_due{vehicle, nextService, 7}: the record due in 7 days fires for its parent contact, the one due in 40 days does not
+  ✅ [C2.1-S2.6] cron trigger crm.activity.overdue: an open activity past its due time fires for its contact, a done one does not
+── S3 · conditions ──
+  ✅ [C2.1-S3.1] c.* (lifecycleStage eq · score gte · tags contains) evaluated on the contact loaded by id: matching rule fires once, non-matching (score ≥ 90) does not
+  ✅ [C2.1-S3.2] d.* (valueSatang between · stageId eq) on the deal loaded by id: match fires, lt 100,000 does not
+  ✅ [C2.1-S3.3] co.* (industry eq) on the deal's company: dive fires, bakery does not
+  ✅ [C2.1-S3.4] f.{key} = contact custom field (budget 50,000): gte 40,000 fires, gte 60,000 does not
+  ✅ [C2.1-S3.5] o.{objectKey} exists + o.{objectKey}.{fieldKey} eq fire · count_gte 2 (only 1 record) and not_exists do not
+  ✅ [C2.1-S3.6] one-level OR fires when one item holds (score<90 but industry dive) · the same items under AND do not
+── S4 · actions ──
+  ✅ [C2.1-S4.1] MOVE_STAGE moves the deal through the deals service (stage + history row) · ASSIGN sets the manager as owner (contact or deal)
+  ✅ [C2.1-S4.2] CREATE_ACTIVITY creates the task with {ชื่อ} rendered · CREATE_DEAL opens a deal for the contact in the given pipeline
+  ✅ [C2.1-S4.3] SEND_EMAIL → email sender once to the contact's e-mail (subject kept) · SEND_LINE → LINE sender once to contact.lineUserId · SEND_PUSH → push sender once for the owner (all injected, consent granted)
+  ✅ [C2.1-S4.4] SET_FIELD writes the contact custom field (budget = 12,345) · ADD_TAG adds s4-add · REMOVE_TAG removes s4-old
+  ✅ [C2.1-S4.5] NOTIFY_STAFF → an in-app notification for the listed user carrying the text · OPEN_KANBAN_CARD → the kanban sender is called once with the board of this tenant
+  ✅ [C2.1-S4.6] ENROLL_SEQUENCE / STOP_SEQUENCE (C2.2) and ADJUST_SCORE (C2.8) are real steps: the main run is OK (not FAILED) and ADJUST_SCORE {points 5} moves the contact's score by exactly +5
+  ✅ [C2.1-S4.7] WEBHOOK → post sender once to the public URL · WAIT_THEN → one WAITING row (crmContactId = contact, scheduledAt ≈ now + 2 days) that runDueWaits later resumes (thenActions ran, row OK)
+  ✅ [C2.1-S4.8] dryRun of a draft writes NOTHING (every tenant table incl. AutomationRun/OutboxEvent/AuditLog/AppNotification unchanged) and lists the matching deal/contact
+── S5 · starter rules ──
+  ✅ [C2.1-S5.1] applyStarterRules: the 6 CRM_STARTER_RULES + the vehicle template's date-due rule (custom.record.field_due {vehicle, nextService, 7}) — ALL disabled, scope CRM, this system · re-apply creates nothing
+  ✅ [C2.1-S5.2] the 6 starters follow blueprint §7.3: triggers include crm.contact.created · crm.deal.stale{days 14} · crm.score.threshold · crm.deal.lost · Thai names · unique keys · every action type is in CRM_ACTION_TYPES
+  ✅ [C2.1-S5.3] enable the "new lead" starter → a contact created through the contacts service → its real crm.contact.created outbox event through the consumer → the starter runs once for that contact (main run, not FAILED)
+  ✅ [C2.1-X3.1] X3: applyStarterRules fired 10× in parallel on a fresh system → exactly the 6 starters (no object there), no duplicate name
+── S7 · quota per scope ──
+  ✅ [C2.1-S7.1] CRM quota (Tenant.limits.crm.automationRunsPerMonth = 2): 3 member-journey runs of the same tenant do NOT count · the first 2 CRM events run · the 3rd is SKIPPED with a Thai quota reason and no action · usageThisMonth.limit = 2
+  ✅ [C2.1-S7.2] scopes are separate: with the CRM quota exhausted the member journey still runs and the v1 KANBAN rule still notifies · another tenant's CRM limit defaults to CRM_AUTOMATION_RUNS_PER_MONTH = 5,000
+── S9 · brief extras ──
+  ✅ [C2.1-S9.1] catalogue: CRM_RULE_TRIGGERS covers every crm.* / custom.record.* AUTOMATION_EVENTS value + the 5 cron triggers (cron: true, params) · Thai labels · CRM_ACTION_TYPES ⊇ the 17 blueprint actions + ISSUE_VOUCHER + GIVE_POINTS
+  ✅ [C2.1-S9.2] createRule refuses (Thai, nothing written): a non-CRM trigger (pos.sale.paid) · an unknown action (SET_TIER) · WAIT_THEN 120 days · 21 actions
+  ✅ [C2.1-S9.3] R-A: GIVE_POINTS / ISSUE_VOUCHER on a contact NOT linked to a member → steps SKIPPED with a Thai reason naming สมาชิก (run not FAILED) · on a member-linked contact they go to the member adapter (no "not a member" reason)
+  ✅ [C2.1-S9.4] member-linked contact without lineUserId: SEND_LINE goes to the linked member's LINE identity (MemberConsent LINE granted ⇒ sent once)
+  ✅ [C2.1-S9.5] cron triggers + CRM waits are scheduled: a registered minute/hourly/daily job named crm.automation* (C0.5 registry) or the platform cron calls the CRM automation [static]
+── U · uiVersion 1 ──
+  ✅ [C2.1-U.1] uiVersion 1: an enabled CRM rule does nothing for an event of that system (direct and through the engine) — no run row, no tag — and the rule rows are KEPT (still enabled)
+  ✅ [C2.1-U.2] uiVersion 1: runCronTriggers skips the system (the overdue activity fires nothing)
+  ✅ [C2.1-U.3] uiVersion 1: a WAITING step created while the system was at 2 is NOT executed and NOT cancelled by runDueWaits (row kept WAITING)
+  ✅ [C2.1-U.4] uiVersion 1: v1 automation of the other modules is unchanged — the tenant-level KANBAN rule on crm.contact.created notifies, the member journey of the same tenant runs (positive control)
+  ✅ [C2.1-U.5] uiVersion 1: createRule / applyStarterRules / dryRun / toggleRule are refused with the Thai CRM_V2_DISABLED message and write nothing
+  ✅ [C2.1-U.6] flip back to 2: the kept WAITING step resumes (v-after tag, row OK) and a new event runs the kept rule
+── X1 · scope ──
+  ✅ [C2.1-X1.1] forged ids: tenant B's event naming tenant A's contact · tenant A's event naming B's contact · A's tenant with B's systemId → no rule runs, no contact touched
+  ✅ [C2.1-X1.2] createRule refuses refs outside the tenant/system (Thai, nothing written): stage of system A2 · a user who is not a member · a board of tenant B · a pipeline of A2 (action and rule.pipelineId)
+  ✅ [C2.1-X1.3] runtime guard (raw row bypassing validation): MOVE_STAGE to a stage of another system and ASSIGN to an outsider do nothing, the next step still runs
+  ✅ [C2.1-X1.4] rights (C1.7): STAFF without crm.automation.manage is refused create/list/dryRun/toggle/delete · an OWNER passing another tenant's CRM systemId is refused (NOT_FOUND-style Thai) — nothing written
+── X3 · loop guard ──
+  ✅ [C2.1-X3.2] self-trigger: rule "on crm.activity.logged → CREATE_ACTIVITY" fired through the real consumers stops by itself — our pump goes quiet within 25 rounds and at most 3 activities were generated
+  ✅ [C2.1-X3.3] ping-pong: two rules moving a deal back and forth stop — pump quiet within 25 rounds, ≤ 6 stage-history rows
+  ✅ [C2.1-X3.4] the loop stop leaves a trace: a SKIPPED run of one of the two rules with a Thai reason
+── X4 · redelivery ──
+  ✅ [C2.1-X4.1] the same event delivered twice in sequence → ONE main run for (rule, contact) · one activity · one e-mail
+  ✅ [C2.1-X4.2] 10 parallel deliveries of a fresh event (2 rounds, separate connections) → exactly one run, one activity, one e-mail per round
+  ✅ [C2.1-X4.3] the REAL consumer path (consumers["crm.contact.created"] on the service's outbox row) delivered 2× in sequence + 3× in parallel → ONE run, ONE activity
+  ✅ [C2.1-X4.4] the dedupe lives in the database (C2.0 partial UNIQUE(ruleId, crmContactId, eventKey)): a second raw row with the same triple is rejected (23505)
+  ✅ [C2.1-X4.5] positive control: the same rule still runs for another contact / another event (dedupe is per (rule, contact, eventKey), not per rule)
+── X5 · leases ──
+  ✅ [C2.1-X5.1] overlapping runDueWaits (CRM ×2 + the member path ×1, same instant) → the CRM waiting step runs exactly once (1 activity, row OK) — the member path never cancels a CRM row
+  ✅ [C2.1-X5.2] crash after claim (row leased by a dead worker): 5 min later it is left alone · after the 15-min lease it is picked up and run exactly once
+  ✅ [C2.1-X5.3] two overlapping runCronTriggers + a third the same Thai day → one run and one activity for (rule, deal, day)
+── X6 · dangerous input ──
+  ✅ [C2.1-X6.1] createRule refuses WEBHOOK to 127.0.0.1 · 169.254.169.254 · localhost (webhookTargetProblem, Thai) — nothing written
+  ✅ [C2.1-X6.2] runtime guard (raw row bypassing validation): the metadata URL is never posted (neither the injected sender nor fetch) · the step records a Thai reason · the next step still runs
+  ✅ [C2.1-X6.3] template variables are substituted ONCE: a contact named "… {ชื่อ} {ดีล} <b>x</b>" yields the title "สวัสดี " + the name verbatim (no recursive expansion)
+  ✅ [C2.1-X6.4] the WEBHOOK body is a JSON object carrying ids (contactId) and NO name / phone / e-mail of the contact
+── X8 · PDPA ──
+  ✅ [C2.1-X8.1] consent withdrawn DURING the wait → the waiting SEND_LINE is not sent (sender not called), the row is finished with a Thai consent reason
+  ✅ [C2.1-X8.2] marketingOptOut contact and a contact who never consented: SEND_EMAIL is not sent (canContact false at send time) — steps skipped with a Thai reason, runs not FAILED
+  ✅ [C2.1-X8.3] no phone / e-mail of our fixtures in any CRM-rule AutomationRun (detail, payload) nor in OpsEvent of our tenants
+── X9 · danger + audit ──
+  ✅ [C2.1-X9.1] create / update / toggle / delete of a CRM rule each write an audit row (action crm.automation.*, targetId = rule id)
+  ✅ [C2.1-X9.2] deleteRule is a danger op: without confirm, or with a reason < 5 chars → refused (Thai), rule kept · with confirm + reason → deleted
+  ✅ [C2.1-X9.3] caps hold on update too: 21 actions refused (Thai) — the stored rule is unchanged
+── S8 · UI (static) ──
+  ✅ [C2.1-S8.1] page src/app/app/sys/[id]/crm/settings/automation/page.tsx: CRM system guard (type "CRM") → requireCrmV2Page → crmCan(… "crm.automation.manage") else notFound()
+  ✅ [C2.1-S8.2] nav: CRM_DEEP_NAV has path /crm/settings/automation (status ready, wo C2.1) · inventory: ≥ 5 rows (page /settings/automation, wo C2.1) whose testid appears in the page/components
+  ✅ [C2.1-S8.3] client files never import prisma-reaching modules (only *-shared) · "use server" files export async functions only and call assertCrmV2
+  ✅ [C2.1-S8.4] the rule builder reuses the K2.9 sentence-builder UI (imports from @/components/kanban/ or a shared automation component) rather than a third builder [static]
+  ✅ [C2.1-CLEAN] the oracle gives the QC database back exactly as found — every throwaway tenant, every row it owned and the throwaway users are gone
+
+🔴 C2.1: 83/84 · outbound fetch stubbed 0×
+JSON_SUMMARY {"total":84,"passed":83,"findings":[{"id":"C2.1-S6.2","sev":"CRITICAL"}]}
+== c2.1-standalone end 2026-10-08T00:05:06Z rc=1

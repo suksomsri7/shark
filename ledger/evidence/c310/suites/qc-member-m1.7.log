@@ -1,0 +1,38 @@
+  ✅ [M1.7-S1.1] createPolicyVersion (effectiveAt อนาคต) → version 1 · currentPolicy = null (ยังไม่ถึงวัน) · publish → current v1 (effectiveAt ≤ now) · สร้าง v2 ร่าง (effectiveAt null) → list [v2, v1] (desc · isCurrent เฉพาะ v1) · bodyHtml ผ่าน sanitize (ไม่มี <script>)
+  ✅ [M1.7-S1.2] acceptPolicy(สมาชิก 1, v1, LIFF) → Customer.privacyVersion 1 + MemberActivity (module member · type มี POLICY) · ยอมรับร่าง (v2 ยังไม่เผยแพร่)/เวอร์ชันไม่มี → throw ไทย
+  ✅ [M1.7-S1.3] สิทธิ์ member.privacy.manage: STAFF → throw · MANAGER (ไม่มีคีย์โดยปริยาย §6.1) → throw · OWNER ผ่าน
+  ✅ [M1.7-S2.1] setConsent(WHATSAPP granted true source STAFF policyVersion 1) → แถว {granted true, grantedAt, revokedAt null, byUserId owner, source STAFF, policyVersion 1} · event member.consent.changed {customerId, channel, granted}
+  ✅ [M1.7-S2.2] ถอน LINE/EMAIL/SMS → granted false + revokedAt · legacy sync: Customer.marketingConsent = false เมื่อทั้ง 3 ไม่ยินยอม · ให้ EMAIL กลับ → marketingConsent true (§4.5)
+  ✅ [M1.7-S2.3] channel ที่ canConsent=false (WEBCHAT) → throw ไทย · นอกทะเบียน (TELEGRAM) → throw · source นอก enum → throw
+  ✅ [M1.7-S2.4] actor CUSTOMER: ตั้ง consent ของตนเอง (source CUSTOMER_SELF · byUserId null) ได้ · ของคนอื่น → throw · source ไม่ใช่ CUSTOMER_SELF → throw · getConsents คืนทุกช่องทาง canConsent (label ไทย · ยังไม่ตั้ง = granted null · ตั้งแล้ว = boolean)
+  ✅ [M1.7-S3.1] setSensitivePolicy: STAFF/MANAGER → throw (privacy.manage) · OWNER ตั้ง health = roles [OWNER] เท่านั้น → manager ดู 360 แล้ว health visible=false (ค่าปริยาย OWNER+MANAGER ถูกทับ)
+  ✅ [M1.7-S3.2] upsert เดิม (targetType,targetId) 1 แถว · hrPositions ['พยาบาล'] → nurse เห็น · hrDepartments ['คลินิก'] (ตำแหน่งว่าง) → nurse เห็น (แผนกตรง) · ตำแหน่ง/แผนกอื่น → nurse ไม่เห็น
+  ✅ [M1.7-S3.3] policy ระดับ FIELD (ฟิลด์ certLevel/certNo sensitive=true · roles [OWNER]): manager เห็นส่วน dive แต่ฟิลด์นั้น hidden=true ไม่มี value · listSensitivePolicies → รายการ 2 (targetLabel ไทย 'สุขภาพ'/ป้ายฟิลด์ · roles · hrPositions/hrDepartments)
+  ✅ [M1.7-S3.4] hrPositionsSummary → positions มี 'พยาบาล' + 'พนักงานขาย' · departments มี 'คลินิก' · unlinkedCount = HrEmployee active ที่ยังไม่ผูกบัญชี (จาก DB) · unlinked[{id,name}] (สำหรับคำเตือน 'n คนยังไม่ผูก')
+  ✅ [M1.7-S3.5] deleteSensitivePolicy → กลับค่าปริยาย (manager เห็น health อีกครั้ง) · ลบ id ไม่มี → throw ไทย · AuditLog member.privacy.* ≥ 3
+  ✅ [M1.7-S4.1] listAccessLog({customerId}) → แถว {at, userId, userName 'นภา…', hrPosition 'พยาบาล', targetType SECTION, targetLabel 'สุขภาพ', customerName} เรียงใหม่→เก่า
+  ✅ [M1.7-S4.2] STAFF listAccessLog → throw · ตัวกรอง userId+from/to → เฉพาะของ nurse ในช่วง · ช่วงเก่า → ว่าง
+  ✅ [M1.7-S5.1] exportBundle(สมาชิก 1) → คีย์ครบ 14 · profile มีค่าอ่อนไหว (โรคประจำตัว) · sales 2 · appointments 1 · chat.contacts ≥ 1 (seed) · points {balance, ledger[]} · ไม่มีข้อมูลคนอื่น (ไม่มีเบอร์สมาชิก 2)
+  ✅ [M1.7-S5.2] requestExport(owner) → {requestId, bundle} · MemberPrivacyRequest {type EXPORT, status DONE, doneAt, requestedVia STAFF} · AccessLog targetType EXPORT · AuditLog member.privacy.export · ลูกค้าขอของตนเอง (via CUSTOMER_SELF) ได้ · ของคนอื่น → throw
+  ✅ [M1.7-S5.3] thana (ไม่มี privacy.manage) requestExport → throw · exportBundle เป็น internal (ไม่ตรวจสิทธิ์เอง — ผู้เรียกตรวจ) หรือ throw ก็ได้
+  ✅ [M1.7-S6.1] requestErase: STAFF (ไม่มี member.customer.delete) → throw · OWNER → {requestId, approvalRequestId, status PENDING} · MemberPrivacyRequest DELETE PENDING approvalRequestId · ApprovalRequest entityType member.erase PENDING · ขอซ้ำขณะ PENDING → requestId เดิม · ลูกค้ายังไม่ถูกลบ
+  ✅ [M1.7-S6.2] 🔴 approve → consumer approval.request.approved → approval-effects member.erase → eraseMember: name 'ลูกค้าที่ถูกลบ' · firstName/lastName/nickname/phone/email/birthDate null · tags [] · status CLOSED · ค่าฟิลด์ 0 · identities 0 · consents ทั้งหมด granted false · Party anonymize (name เดียวกัน · phone/email null) · PosSale 1 บิลคง (memberId คง) · PointLedger คง · request DONE doneAt · event member.updated changedKeys ['erased']
+  ✅ [M1.7-S6.3] reject → request REJECTED · ลูกค้า Y ยังครบ (name/phone/status ACTIVE) · ขอใหม่หลังถูกปฏิเสธ → requestId ใหม่ PENDING
+  ✅ [M1.7-S6.4] eraseMember ซ้ำ → no-op (ไม่ throw · ไม่เปลี่ยน) · 360 ของคนที่ถูกลบ → profile.status CLOSED · name 'ลูกค้าที่ถูกลบ' · sections ค่าว่าง · listMembers({status:'CLOSED'}) มี X (ถ้า M1.5 มีแล้ว)
+  ✅ [M1.7-S6.5] sweepAutoErase (settings.member.privacy.autoEraseYears = 1): Z (lastActivityAt 2 ปีก่อน) → คำขอ DELETE PENDING requestedVia API + approval (ไม่ลบเอง — รออนุมัติ) · รันซ้ำ → ไม่สร้างซ้ำ (created 0) · Z ยัง ACTIVE
+  ✅ [M1.7-S7.1] หน้า settings/privacy: requireTenant · canManagePrivacy (ไม่มี = notFound) · testid 8 · ช่องทางยินยอมวนจาก channels.ts consentChannels() (ไม่ฮาร์ดโค้ด) · ชิปตำแหน่ง/แผนกจาก hrPositionsSummary + คำเตือน 'ยังไม่ผูก' ลิงก์ไป HR · privacy-actions.ts 'use server' gate member.privacy.manage · ไม่มีอีโมจิ · MemberTabs/PageHeader
+  ❌ [M1.7-S7.2] ภาพ 14: settings-privacy-owner desktop+mobile 200 ไม่มี console error · thana 404 · PARITY: ผ่าน ใน wo-notes/member-M1.7.md — exp 200/404/PARITY | act shots= o=undefined t=undefined
+  ✅ [M1.7-S8.1] member.consent.changed ลง 3 ทะเบียน (consumer · AUTOMATION_EVENTS ป้ายไทย · WEBHOOK 1 ครั้ง) · cron.ts รายวันเรียก sweepAutoErase
+  ✅ [M1.7-S8.2] privacy.ts ไม่ import โมดูลอื่นตรงนอก facade (party/point/chat/account/kanban ผ่าน index · approval ผ่าน service = เส้น member→approval ใน fitness) · approval-effects.ts มีเคส member.erase · ไม่มี any · sanitize HTML ผ่าน @/lib/core/sanitize หรือ util เดิม
+
+🔴 M1.7: 25/26
+JSON_SUMMARY {"total":26,"passed":25,"findings":[{"id":"M1.7-S7.2","sev":"MAJOR"}]}
+(node:1477015) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)

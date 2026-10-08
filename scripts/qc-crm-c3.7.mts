@@ -217,8 +217,17 @@ try {
   const krabiDeals = (await P.crmDeal.findMany({ where: { tenantId: SEED_T, systemId: SEED_S, OR: [{ teamId: KRABI }, { ownerUserId: { in: [seedNok, seedKata].filter(Boolean) } }] }, select: { id: true, title: true, contactId: true } })) as Any[];
   const now0 = new Date();
   const day = thaiDay(now0);
+  // C3.10 ORACLE-FIX (X1.3): mirror `mobile.todayTasks` = `activities.activityStatusWhere` overdue ∪ today (C5.4-E L6-m1):
+  //   open = doneAt null AND type ≠ NOTE (a note is not a task) · reference time = COALESCE(dueAt, startAt) < end of the Thai day
+  //   ∪ done within the Thai day (any type). The pre-fix SQL counted open NOTE rows (QC1 7 Oct: 7 of thana's ⇒ 113 vs 120).
   const keyTasks = (await P.crmActivity.findMany({
-    where: { tenantId: SEED_T, systemId: SEED_S, ownerUserId: seedThana, OR: [{ doneAt: null, dueAt: { lt: day.to } }, { doneAt: { gte: day.from, lt: day.to } }] },
+    where: {
+      tenantId: SEED_T, systemId: SEED_S, ownerUserId: seedThana,
+      OR: [
+        { doneAt: null, type: { not: "NOTE" }, OR: [{ dueAt: { lt: day.to } }, { dueAt: null, startAt: { lt: day.to } }] },
+        { doneAt: { gte: day.from, lt: day.to } },
+      ],
+    },
     select: { id: true, title: true, dueAt: true, doneAt: true },
   })) as Any[];
   const nokTasks = (await P.crmActivity.findMany({ where: { tenantId: SEED_T, systemId: SEED_S, ownerUserId: { in: [seedNok, seedKata].filter(Boolean) } }, select: { id: true } })) as Any[];

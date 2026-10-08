@@ -1,0 +1,95 @@
+
+===== QC WO 5.2 · ภาพรวมการเงิน + สำรองรับ/จ่าย =====
+[env] DB ep-plain-art-ao3djg4u-pooler.c-2.ap-southeast-1.aws.neon.tech
+
+FO1 6 ไทล์ (ตรง f7 เป๊ะ — inflow/overdueReceivable/expectedIn/outflow/overduePayable/expectedOut):
+  ✅ FO1.1 tile "inflow" = เฉลยอิสระ
+  ✅ FO1.1 tile "outflow" = เฉลยอิสระ
+  ✅ FO1.1 tile "expectedIn" = เฉลยอิสระ
+  ✅ FO1.1 tile "expectedOut" = เฉลยอิสระ
+  ✅ FO1.1 tile "overdueReceivable" = เฉลยอิสระ
+  ✅ FO1.1 tile "overduePayable" = เฉลยอิสระ
+  ✅ FO1.2 6 คีย์ครบตามภาพ f7 (ไม่มี 'สุทธิ'/'ยอดคงเหลือรวม' ปนมา)
+  ❌ FO1.3 คาดว่าจะเข้า ≠ 0 (มีใบครบกำหนดเดือนนี้จริงในเฉลย) — ได้ 0
+  ❌ FO1.4 คาดว่าจะออก ≠ 0 (มีบิลครบกำหนดเดือนนี้จริงในเฉลย) — ได้ 0
+  ❌ FO1.5 คาดว่าจะเข้า = 2 ใบ ฿8,000.00 (800,000 สตางค์) — ได้ {"count":0,"amount":0} · ควรได้ {"count":2,"amount":800000}
+  ❌ FO1.6 คาดว่าจะออก = 1 ใบ ฿2,000.00 (200,000 สตางค์) — ได้ {"count":0,"amount":0} · ควรได้ {"count":1,"amount":200000}
+  ❌ FO1.7 ค้างรับเกินกำหนดยังคงเดิม 4 ใบ (ใบใหม่ไม่ปนเข้า overdue) — ได้ {"count":0,"amount":0} · ควรได้ {"count":4,"amount":12840000}
+  ❌ FO1.8 ค้างจ่ายเกินกำหนดยังคงเดิม 2 ใบ (ใบใหม่ไม่ปนเข้า overdue) — ได้ {"count":0,"amount":0} · ควรได้ {"count":2,"amount":7750000}
+
+FO2 ผลรวมปฏิทินรายวัน:
+  ✅ FO2.1 ทุกวันในเดือน (30 วัน) ตรงเฉลยอิสระ
+  ✅ FO2.2 Σ เงินเข้าทุกวัน = ไทล์เงินเข้า
+  ✅ FO2.3 Σ เงินออกทุกวัน = ไทล์เงินออก
+
+FO3 financeDayDetail (2026-09-20 — ค่าจอดรถ ค้างเบิก ที่ seed ใส่ไว้):
+  ❌ FO3.1 มี 1 แถว — ได้ 0 · ควรได้ 1
+  ❌ FO3.2 เป็นเอกสารรายจ่าย (direction IN) — 
+  ❌ FO3.3 ยอด = 30,000 สตางค์ (฿300.00) — ได้ undefined · ควรได้ 30000
+  ❌ FO3.4 totalOut ของวันนั้น = 30,000 — ได้ 0 · ควรได้ 30000
+  ✅ FO3.5 totalIn ของวันนั้น = 0 (ไม่มีเงินเข้าวันนี้)
+
+FO4 pettyCashList (PTY001):
+  ❌ FO4.1 พบกล่อง PTY001 — 
+  ❌ FO4.2 ยอดคงเหลือ = เฉลย (2,970,000 สตางค์) — ได้ undefined · ควรได้ 2970000
+  ❌ FO4.3 เติมล่าสุด = โอนเข้าล่าสุดจริง (SQL อิสระ) — 
+  ❌ FO4.4 เติมล่าสุดคือรายการล่าสุดตามวันที่ (เบิกชดเชย A 2026-09-14 ฿500) — ได้ undefined · ควรได้ 50000
+
+FO5 topUpPettyCash idempotent:
+  ✅ FO5.1 เติมเงินสำเร็จ
+  ✅ FO5.2 ยอดเพิ่มขึ้น 30,000 สตางค์
+  ✅ FO5.3 เติมซ้ำ (transferId เดิม) ยังคืน ok
+  ✅ FO5.4 เติมซ้ำแล้วยอดไม่ขยับต่อ (idempotent)
+
+FO6 reimbursePettyCash:
+  ✅ FO6.1 มี 1 รายการรอเบิกชดเชย ก่อนเบิก
+  ✅ FO6.2 เบิกชดเชยสำเร็จ
+  ✅ FO6.3 ยอดเพิ่มขึ้น 20,000 สตางค์ (เท่ากับ payment ที่เบิกชดเชย)
+  ✅ FO6.4 payment.reimbursedAt ถูกตั้งแล้ว
+  ✅ FO6.5 payment.reimbursedTransferId ถูกตั้งแล้ว
+  ✅ FO6.6 ไม่มีรายการรอเบิกชดเชยแล้ว (0 รายการ)
+  ✅ FO6.7 เบิกชดเชยซ้ำ (payment เดิม) ถูกปฏิเสธ
+  ✅ FO6.8 เหตุผลพูดถึง 'เบิกชดเชยไปแล้ว'
+  ✅ FO6.9 เบิกซ้ำแล้วยอดไม่ขยับต่อ (ไม่โพสต์ GL ซ้ำ)
+
+FO7 guard:
+  ✅ FO7.1 พนักงานไม่มีสิทธิ์ 'account.finance.manage' ถูกปฏิเสธ
+  ✅ FO7.2 positive control: สิทธิ์ที่มีจริงต้องผ่าน
+
+FO8 tenant isolation:
+  ✅ FO8.1 ระบบบัญชีจริง (QC) มองผ่าน systemId ของร้านทิ้ง = ว่างเปล่า
+  ✅ FO8.2 ยอดรวม 'เงินคุณอยู่ไหน' ของร้านทิ้ง (มองจาก tenant คนละร้าน) = 0
+  ✅ FO8.3 ร้าน QC จริงเบิกชดเชย payment ของร้านทิ้งไม่ได้ (ข้าม tenant)
+  ✅ FO8.4 pettyCashList ข้าม systemId เห็น 0 กล่อง
+
+FO9 งบ query ของ financeOverview:
+  ✅ FO9.1 financeOverview ≤ 12 query (ได้ 10)
+
+🧹 ลบร้านทดสอบแล้ว
+
+===== QC WO 5.2 · ภาพรวมการเงิน + สำรองรับ/จ่าย สรุป =====
+ผ่าน 31 · ตก 14
+  - FO1.3 คาดว่าจะเข้า ≠ 0 (มีใบครบกำหนดเดือนนี้จริงในเฉลย) — ได้ 0
+  - FO1.4 คาดว่าจะออก ≠ 0 (มีบิลครบกำหนดเดือนนี้จริงในเฉลย) — ได้ 0
+  - FO1.5 คาดว่าจะเข้า = 2 ใบ ฿8,000.00 (800,000 สตางค์) — ได้ {"count":0,"amount":0} · ควรได้ {"count":2,"amount":800000}
+  - FO1.6 คาดว่าจะออก = 1 ใบ ฿2,000.00 (200,000 สตางค์) — ได้ {"count":0,"amount":0} · ควรได้ {"count":1,"amount":200000}
+  - FO1.7 ค้างรับเกินกำหนดยังคงเดิม 4 ใบ (ใบใหม่ไม่ปนเข้า overdue) — ได้ {"count":0,"amount":0} · ควรได้ {"count":4,"amount":12840000}
+  - FO1.8 ค้างจ่ายเกินกำหนดยังคงเดิม 2 ใบ (ใบใหม่ไม่ปนเข้า overdue) — ได้ {"count":0,"amount":0} · ควรได้ {"count":2,"amount":7750000}
+  - FO3.1 มี 1 แถว — ได้ 0 · ควรได้ 1
+  - FO3.2 เป็นเอกสารรายจ่าย (direction IN) — 
+  - FO3.3 ยอด = 30,000 สตางค์ (฿300.00) — ได้ undefined · ควรได้ 30000
+  - FO3.4 totalOut ของวันนั้น = 30,000 — ได้ 0 · ควรได้ 30000
+  - FO4.1 พบกล่อง PTY001 — 
+  - FO4.2 ยอดคงเหลือ = เฉลย (2,970,000 สตางค์) — ได้ undefined · ควรได้ 2970000
+  - FO4.3 เติมล่าสุด = โอนเข้าล่าสุดจริง (SQL อิสระ) — 
+  - FO4.4 เติมล่าสุดคือรายการล่าสุดตามวันที่ (เบิกชดเชย A 2026-09-14 ฿500) — ได้ undefined · ควรได้ 50000
+JSON_SUMMARY {"total":45,"passed":31,"findings":["FO1.3 คาดว่าจะเข้า ≠ 0 (มีใบครบกำหนดเดือนนี้จริงในเฉลย) — ได้ 0","FO1.4 คาดว่าจะออก ≠ 0 (มีบิลครบกำหนดเดือนนี้จริงในเฉลย) — ได้ 0","FO1.5 คาดว่าจะเข้า = 2 ใบ ฿8,000.00 (800,000 สตางค์) — ได้ {\"count\":0,\"amount\":0} · ควรได้ {\"count\":2,\"amount\":800000}","FO1.6 คาดว่าจะออก = 1 ใบ ฿2,000.00 (200,000 สตางค์) — ได้ {\"count\":0,\"amount\":0} · ควรได้ {\"count\":1,\"amount\":200000}","FO1.7 ค้างรับเกินกำหนดยังคงเดิม 4 ใบ (ใบใหม่ไม่ปนเข้า overdue) — ได้ {\"count\":0,\"amount\":0} · ควรได้ {\"count\":4,\"amount\":12840000}","FO1.8 ค้างจ่ายเกินกำหนดยังคงเดิม 2 ใบ (ใบใหม่ไม่ปนเข้า overdue) — ได้ {\"count\":0,\"amount\":0} · ควรได้ {\"count\":2,\"amount\":7750000}","FO3.1 มี 1 แถว — ได้ 0 · ควรได้ 1","FO3.2 เป็นเอกสารรายจ่าย (direction IN) — ","FO3.3 ยอด = 30,000 สตางค์ (฿300.00) — ได้ undefined · ควรได้ 30000","FO3.4 totalOut ของวันนั้น = 30,000 — ได้ 0 · ควรได้ 30000","FO4.1 พบกล่อง PTY001 — ","FO4.2 ยอดคงเหลือ = เฉลย (2,970,000 สตางค์) — ได้ undefined · ควรได้ 2970000","FO4.3 เติมล่าสุด = โอนเข้าล่าสุดจริง (SQL อิสระ) — ","FO4.4 เติมล่าสุดคือรายการล่าสุดตามวันที่ (เบิกชดเชย A 2026-09-14 ฿500) — ได้ undefined · ควรได้ 50000"]}
+(node:976046) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)

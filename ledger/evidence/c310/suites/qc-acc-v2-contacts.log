@@ -1,0 +1,42 @@
+
+===== QC WO 3.2 · ผู้ติดต่อ V2 =====
+[env] DB ep-plain-art-ao3djg4u-pooler.c-2.ap-southeast-1.aws.neon.tech
+
+P1 ตัวนับกลุ่มมาตรฐาน:
+  ❌ P1.1 ทั้งหมด = เฉลย — ได้ 0 · ควรได้ 63
+  ❌ P1.2 ลูกค้า = เฉลย — ได้ 0 · ควรได้ 41
+  ❌ P1.3 ผู้ขาย = เฉลย — ได้ 0 · ควรได้ 22
+  ❌ P1.4 ปิดใช้งาน = เฉลย — ได้ 0 · ควรได้ 5
+  ✅ P1.5 ลูกค้าประจำ = เฉลย
+  ❌ P1.6 BLUEPRINT §3 แถว 3.2 ตัวนับ 63/41/12/22/5 — {"all":0,"customer":0,"regular":0,"vendor":0,"archived":0,"custom":[],"source":{"member":0,"crm":0,"chat":0,"pos":0,"imported":0}}
+
+P2 กลุ่มกำหนดเอง:
+
+P3 ที่มา:
+  ✅ P3.1 สมาชิก = เฉลย
+  ✅ P3.2 CRM = เฉลย
+  ✅ P3.3 แชท = 0 (ยังไม่ wire ChatContact.partyId)
+  ✅ P3.4 POS = 0 (ยังไม่มีกลไกผูก partyId)
+  ✅ P3.5 นำเข้า = 0 (ไม่มีคอลัมน์ source)
+
+P4 ค้นหา:
+  ❌ P4.1 ค้นหาชื่อบางส่วน เจอปิยธิดา — 
+(node:975274) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+/root/projects/shark-crm/scripts/qc-acc-v2-contacts.mts:133
+const r2 = await cl.listContactsPage(ctx, { q: c19!.taxId! }, sidebar);
+                                                    ^
+
+
+TypeError: Cannot read properties of null (reading 'taxId')
+    at <anonymous> (/root/projects/shark-crm/scripts/qc-acc-v2-contacts.mts:133:53)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+
+Node.js v20.20.2

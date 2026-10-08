@@ -1,0 +1,175 @@
+
+===== QC WO 1.1 · หน้ารายการทุกชนิด (DocListPage) =====
+[env] ไฟล์ .env.qc · DB ep-plain-art-ao3djg4u-pooler.c-2.ap-southeast-1.aws.neon.tech
+
+  ✅ L1 QUOTATION มี LIST_TABS ประกาศ (ไม่ว่าง)
+  ✅ L1 INVOICE มี LIST_TABS ประกาศ (ไม่ว่าง)
+  ✅ L1 RECEIPT มี LIST_TABS ประกาศ (ไม่ว่าง)
+  ✅ L1 TAX_INVOICE มี LIST_TABS ประกาศ (ไม่ว่าง)
+  ✅ L1 DEPOSIT_RECEIPT มี LIST_TABS ประกาศ (ไม่ว่าง)
+  ✅ L1 CREDIT_NOTE มี LIST_TABS ประกาศ (ไม่ว่าง)
+  ✅ L1 DEBIT_NOTE มี LIST_TABS ประกาศ (ไม่ว่าง)
+  ✅ L1 BILLING_NOTE มี LIST_TABS ประกาศ (ไม่ว่าง)
+  ✅ L1 EXPENSE มี LIST_TABS ประกาศ (ไม่ว่าง)
+  ✅ L1 PURCHASE มี LIST_TABS ประกาศ (ไม่ว่าง)
+  ✅ L1 PURCHASE_ORDER มี LIST_TABS ประกาศ (ไม่ว่าง)
+  ✅ L1 ASSET_PURCHASE_ORDER มี LIST_TABS ประกาศ (ไม่ว่าง)
+  ✅ L1 ASSET_PURCHASE มี LIST_TABS ประกาศ (ไม่ว่าง)
+  ✅ L1 PURCHASE_TAX_INVOICE มี LIST_TABS ประกาศ (ไม่ว่าง)
+  ✅ L1 GOODS_ISSUE มี LIST_TABS ประกาศ (ไม่ว่าง)
+  ✅ L2 QUOTATION แท็บแรกคือ "all"
+  ✅ L2 QUOTATION ไม่มีคีย์แท็บซ้ำ
+  ✅ L2 QUOTATION ป้ายแท็บเป็นภาษาไทยล้วน (ไม่มี a-z หลุด)
+  ✅ L2 DEPOSIT_RECEIPT แท็บแรกคือ "all"
+  ✅ L2 DEPOSIT_RECEIPT ไม่มีคีย์แท็บซ้ำ
+  ✅ L2 DEPOSIT_RECEIPT ป้ายแท็บเป็นภาษาไทยล้วน (ไม่มี a-z หลุด)
+  ✅ L2 INVOICE แท็บแรกคือ "all"
+  ✅ L2 INVOICE ไม่มีคีย์แท็บซ้ำ
+  ✅ L2 INVOICE ป้ายแท็บเป็นภาษาไทยล้วน (ไม่มี a-z หลุด)
+  ✅ L2 RECEIPT แท็บแรกคือ "all"
+  ✅ L2 RECEIPT ไม่มีคีย์แท็บซ้ำ
+  ✅ L2 RECEIPT ป้ายแท็บเป็นภาษาไทยล้วน (ไม่มี a-z หลุด)
+  ✅ L2 TAX_INVOICE แท็บแรกคือ "all"
+  ✅ L2 TAX_INVOICE ไม่มีคีย์แท็บซ้ำ
+  ✅ L2 TAX_INVOICE ป้ายแท็บเป็นภาษาไทยล้วน (ไม่มี a-z หลุด)
+  ✅ L2 CREDIT_NOTE แท็บแรกคือ "all"
+  ✅ L2 CREDIT_NOTE ไม่มีคีย์แท็บซ้ำ
+  ✅ L2 CREDIT_NOTE ป้ายแท็บเป็นภาษาไทยล้วน (ไม่มี a-z หลุด)
+  ✅ L2 DEBIT_NOTE แท็บแรกคือ "all"
+  ✅ L2 DEBIT_NOTE ไม่มีคีย์แท็บซ้ำ
+  ✅ L2 DEBIT_NOTE ป้ายแท็บเป็นภาษาไทยล้วน (ไม่มี a-z หลุด)
+  ✅ L2 BILLING_NOTE แท็บแรกคือ "all"
+  ✅ L2 BILLING_NOTE ไม่มีคีย์แท็บซ้ำ
+  ✅ L2 BILLING_NOTE ป้ายแท็บเป็นภาษาไทยล้วน (ไม่มี a-z หลุด)
+  ✅ L2 PURCHASE_ORDER แท็บแรกคือ "all"
+  ✅ L2 PURCHASE_ORDER ไม่มีคีย์แท็บซ้ำ
+  ✅ L2 PURCHASE_ORDER ป้ายแท็บเป็นภาษาไทยล้วน (ไม่มี a-z หลุด)
+  ✅ L2 ASSET_PURCHASE_ORDER แท็บแรกคือ "all"
+  ✅ L2 ASSET_PURCHASE_ORDER ไม่มีคีย์แท็บซ้ำ
+  ✅ L2 ASSET_PURCHASE_ORDER ป้ายแท็บเป็นภาษาไทยล้วน (ไม่มี a-z หลุด)
+  ✅ L2 PURCHASE แท็บแรกคือ "all"
+  ✅ L2 PURCHASE ไม่มีคีย์แท็บซ้ำ
+  ✅ L2 PURCHASE ป้ายแท็บเป็นภาษาไทยล้วน (ไม่มี a-z หลุด)
+  ✅ L2 EXPENSE แท็บแรกคือ "all"
+  ✅ L2 EXPENSE ไม่มีคีย์แท็บซ้ำ
+  ✅ L2 EXPENSE ป้ายแท็บเป็นภาษาไทยล้วน (ไม่มี a-z หลุด)
+  ✅ L2 ASSET_PURCHASE แท็บแรกคือ "all"
+  ✅ L2 ASSET_PURCHASE ไม่มีคีย์แท็บซ้ำ
+  ✅ L2 ASSET_PURCHASE ป้ายแท็บเป็นภาษาไทยล้วน (ไม่มี a-z หลุด)
+  ✅ L2 PURCHASE_TAX_INVOICE แท็บแรกคือ "all"
+  ✅ L2 PURCHASE_TAX_INVOICE ไม่มีคีย์แท็บซ้ำ
+  ✅ L2 PURCHASE_TAX_INVOICE ป้ายแท็บเป็นภาษาไทยล้วน (ไม่มี a-z หลุด)
+  ✅ L2 DEPOSIT_PAYMENT แท็บแรกคือ "all"
+  ✅ L2 DEPOSIT_PAYMENT ไม่มีคีย์แท็บซ้ำ
+  ✅ L2 DEPOSIT_PAYMENT ป้ายแท็บเป็นภาษาไทยล้วน (ไม่มี a-z หลุด)
+  ✅ L2 CREDIT_NOTE_RECEIVED แท็บแรกคือ "all"
+  ✅ L2 CREDIT_NOTE_RECEIVED ไม่มีคีย์แท็บซ้ำ
+  ✅ L2 CREDIT_NOTE_RECEIVED ป้ายแท็บเป็นภาษาไทยล้วน (ไม่มี a-z หลุด)
+  ✅ L2 DEBIT_NOTE_RECEIVED แท็บแรกคือ "all"
+  ✅ L2 DEBIT_NOTE_RECEIVED ไม่มีคีย์แท็บซ้ำ
+  ✅ L2 DEBIT_NOTE_RECEIVED ป้ายแท็บเป็นภาษาไทยล้วน (ไม่มี a-z หลุด)
+  ✅ L2 COMBINED_PAYMENT แท็บแรกคือ "all"
+  ✅ L2 COMBINED_PAYMENT ไม่มีคีย์แท็บซ้ำ
+  ✅ L2 COMBINED_PAYMENT ป้ายแท็บเป็นภาษาไทยล้วน (ไม่มี a-z หลุด)
+  ✅ L2 GOODS_ISSUE แท็บแรกคือ "all"
+  ✅ L2 GOODS_ISSUE ไม่มีคีย์แท็บซ้ำ
+  ✅ L2 GOODS_ISSUE ป้ายแท็บเป็นภาษาไทยล้วน (ไม่มี a-z หลุด)
+  ✅ L2 GOODS_ISSUE_RETURN แท็บแรกคือ "all"
+  ✅ L2 GOODS_ISSUE_RETURN ไม่มีคีย์แท็บซ้ำ
+  ✅ L2 GOODS_ISSUE_RETURN ป้ายแท็บเป็นภาษาไทยล้วน (ไม่มี a-z หลุด)
+  ✅ L2 COST_ADJUSTMENT แท็บแรกคือ "all"
+  ✅ L2 COST_ADJUSTMENT ไม่มีคีย์แท็บซ้ำ
+  ✅ L2 COST_ADJUSTMENT ป้ายแท็บเป็นภาษาไทยล้วน (ไม่มี a-z หลุด)
+  ✅ L3 QUOTATION · tabToFilter คืน filter ตรงทุกแท็บ (8 แท็บ)
+  ✅ L3 DEPOSIT_RECEIPT · tabToFilter คืน filter ตรงทุกแท็บ (8 แท็บ)
+  ✅ L3 INVOICE · tabToFilter คืน filter ตรงทุกแท็บ (7 แท็บ)
+  ✅ L3 RECEIPT · tabToFilter คืน filter ตรงทุกแท็บ (4 แท็บ)
+  ✅ L3 TAX_INVOICE · tabToFilter คืน filter ตรงทุกแท็บ (4 แท็บ)
+  ✅ L3 CREDIT_NOTE · tabToFilter คืน filter ตรงทุกแท็บ (6 แท็บ)
+  ✅ L3 DEBIT_NOTE · tabToFilter คืน filter ตรงทุกแท็บ (6 แท็บ)
+  ✅ L3 BILLING_NOTE · tabToFilter คืน filter ตรงทุกแท็บ (7 แท็บ)
+  ✅ L3 PURCHASE_ORDER · tabToFilter คืน filter ตรงทุกแท็บ (5 แท็บ)
+  ✅ L3 ASSET_PURCHASE_ORDER · tabToFilter คืน filter ตรงทุกแท็บ (5 แท็บ)
+  ✅ L3 PURCHASE · tabToFilter คืน filter ตรงทุกแท็บ (7 แท็บ)
+  ✅ L3 EXPENSE · tabToFilter คืน filter ตรงทุกแท็บ (7 แท็บ)
+  ✅ L3 ASSET_PURCHASE · tabToFilter คืน filter ตรงทุกแท็บ (7 แท็บ)
+  ✅ L3 PURCHASE_TAX_INVOICE · tabToFilter คืน filter ตรงทุกแท็บ (4 แท็บ)
+  ✅ L3 DEPOSIT_PAYMENT · tabToFilter คืน filter ตรงทุกแท็บ (8 แท็บ)
+  ✅ L3 CREDIT_NOTE_RECEIVED · tabToFilter คืน filter ตรงทุกแท็บ (6 แท็บ)
+  ✅ L3 DEBIT_NOTE_RECEIVED · tabToFilter คืน filter ตรงทุกแท็บ (6 แท็บ)
+  ✅ L3 COMBINED_PAYMENT · tabToFilter คืน filter ตรงทุกแท็บ (7 แท็บ)
+  ✅ L3 GOODS_ISSUE · tabToFilter คืน filter ตรงทุกแท็บ (5 แท็บ)
+  ✅ L3 GOODS_ISSUE_RETURN · tabToFilter คืน filter ตรงทุกแท็บ (5 แท็บ)
+  ✅ L3 COST_ADJUSTMENT · tabToFilter คืน filter ตรงทุกแท็บ (4 แท็บ)
+  ✅ L4 tabToFilter(INVOICE, คีย์มั่ว) → fallback ALL
+  ✅ L4 tabToFilter(docType ที่ไม่มี LIST_TABS, ใด ๆ) → fallback ALL
+  ✅ L4 activeTabKey(INVOICE, คีย์มั่ว) → แท็บแรก (all)
+  ✅ L4 activeTabKey(INVOICE, undefined) → แท็บแรก (all)
+  ✅ L5 QUOTATION:awaiting (flyout) มีแท็บนี้ในหน้ารายการจริง
+  ✅ L5 QUOTATION:accepted (flyout) มีแท็บนี้ในหน้ารายการจริง
+  ✅ L5 QUOTATION:overdue (flyout sentinel) มีแท็บ "overdue" ในหน้ารายการจริง
+  ✅ L5 DEPOSIT_RECEIPT:awaiting (flyout) มีแท็บนี้ในหน้ารายการจริง
+  ✅ L5 DEPOSIT_RECEIPT:overdue (flyout sentinel) มีแท็บ "overdue" ในหน้ารายการจริง
+  ✅ L5 DEPOSIT_RECEIPT:deduct (flyout) มีแท็บนี้ในหน้ารายการจริง
+  ✅ L5 INVOICE:awaiting (flyout) มีแท็บนี้ในหน้ารายการจริง
+  ✅ L5 INVOICE:paid (flyout) มีแท็บนี้ในหน้ารายการจริง
+  ✅ L5 INVOICE:overdue (flyout sentinel) มีแท็บ "overdue" ในหน้ารายการจริง
+  ✅ L5 RECEIPT:paid (flyout) มีแท็บนี้ในหน้ารายการจริง
+  ✅ L5 TAX_INVOICE:issued (flyout) มีแท็บนี้ในหน้ารายการจริง
+  ✅ L5 BILLING_NOTE:awaiting (flyout) มีแท็บนี้ในหน้ารายการจริง
+  ✅ L5 BILLING_NOTE:overdue (flyout sentinel) มีแท็บ "overdue" ในหน้ารายการจริง
+  ✅ L5 BILLING_NOTE:paid (flyout) มีแท็บนี้ในหน้ารายการจริง
+  ✅ L5 PURCHASE:awaiting (flyout) มีแท็บนี้ในหน้ารายการจริง
+  ✅ L5 PURCHASE:paid (flyout) มีแท็บนี้ในหน้ารายการจริง
+  ✅ L5 PURCHASE:overdue (flyout sentinel) มีแท็บ "overdue" ในหน้ารายการจริง
+  ✅ L5 EXPENSE:awaiting (flyout) มีแท็บนี้ในหน้ารายการจริง
+  ✅ L5 EXPENSE:paid (flyout) มีแท็บนี้ในหน้ารายการจริง
+  ✅ L5 EXPENSE:overdue (flyout sentinel) มีแท็บ "overdue" ในหน้ารายการจริง
+  ✅ L5 ASSET_PURCHASE:awaiting (flyout) มีแท็บนี้ในหน้ารายการจริง
+  ✅ L5 ASSET_PURCHASE:overdue (flyout sentinel) มีแท็บ "overdue" ในหน้ารายการจริง
+  ✅ L5 ASSET_PURCHASE:received (flyout) มีแท็บนี้ในหน้ารายการจริง
+  ✅ L5 PURCHASE_ORDER:awaiting_approval (flyout) มีแท็บนี้ในหน้ารายการจริง
+  ✅ L5 PURCHASE_ORDER:approved (flyout) มีแท็บนี้ในหน้ารายการจริง
+  ✅ L5 ASSET_PURCHASE_ORDER:awaiting_approval (flyout) มีแท็บนี้ในหน้ารายการจริง
+  ✅ L5 ASSET_PURCHASE_ORDER:approved (flyout) มีแท็บนี้ในหน้ารายการจริง
+  ✅ L5 PURCHASE_TAX_INVOICE:awaiting_receive (flyout) มีแท็บนี้ในหน้ารายการจริง
+  ✅ L5 PURCHASE_TAX_INVOICE:received (flyout) มีแท็บนี้ในหน้ารายการจริง
+  ✅ L5 COMBINED_PAYMENT:awaiting (flyout) มีแท็บนี้ในหน้ารายการจริง
+  ✅ L5 COMBINED_PAYMENT:overdue (flyout sentinel) มีแท็บ "overdue" ในหน้ารายการจริง
+  ✅ L5 COMBINED_PAYMENT:paid (flyout) มีแท็บนี้ในหน้ารายการจริง
+  ✅ L6 INVOICE ชุดคีย์แท็บตรง f3
+  ✅ L6 INVOICE ชุดป้ายแท็บตรง f3
+  ✅ L6 INVOICE แท็บ overdue มี tone=danger
+  ✅ L7 หาร้าน QC เจอใน DB ก้อนนี้ (ชื่อ SIAM DIVE QC + ระบบ ACCOUNT)
+  ✅ L7 INVOICE tabCounts["all"] ตรงเฉลย
+  ✅ L7 INVOICE tabCounts["draft"] ตรงเฉลย
+  ❌ L7 INVOICE tabCounts["awaiting"] ตรงเฉลย — ได้ 12 · ควรได้ 14
+  ✅ L7 INVOICE tabCounts["partial"] ตรงเฉลย
+  ✅ L7 INVOICE tabCounts["paid"] ตรงเฉลย
+  ❌ L7 INVOICE tabCounts["overdue"] ตรงเฉลย — ได้ 6 · ควรได้ 4
+  ✅ L7 INVOICE tabCounts["cancelled"] ตรงเฉลย
+  ✅ L7 INVOICE ผลรวม all = Σ(draft+awaiting+partial+paid+overdue+cancelled)
+  ✅ L8 EXPENSE ผลรวม all = Σ ทุกแท็บที่ไม่ใช่ "all"
+  ✅ L8 EXPENSE tabCounts["awaiting"] = AWAITING_PAYMENT ทั้งหมด − พ้นกำหนด (oracle อิสระ)
+  ✅ L8 PURCHASE ผลรวม all = Σ ทุกแท็บที่ไม่ใช่ "all"
+  ✅ L8 PURCHASE tabCounts["awaiting"] = AWAITING_PAYMENT ทั้งหมด − พ้นกำหนด (oracle อิสระ)
+  ✅ L9 listDocumentsPaged pageSize=0 → clamp 1
+  ✅ L9 listDocumentsPaged page=-5 → clamp 1
+  ✅ L9 listDocumentsPaged pageSize=9999 → clamp 100
+  ✅ L9 listExpenseDocsPaged pageSize=0 → clamp 1
+  ✅ L9 listExpenseDocsPaged page=0 → clamp 1
+  ✅ L9 listExpenseDocsPaged pageSize=500 → clamp 100
+  ✅ L9 listGoodsIssuePaged pageSize=-1 → clamp 1
+  ✅ L10 listDocumentsPaged sort=docNo เรียง desc ตรงกับ sort ฝั่ง JS อิสระ
+
+===== QC WO 1.1 =====
+❌ ตก 2 — 159 เช็ก
+(node:977690) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)

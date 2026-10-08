@@ -1,0 +1,53 @@
+
+===== QC WO 6.2 · สมุดรายวัน V2 (§11.2 · g16) =====
+🗄️  DB QC: ep-plain-art-ao3djg4u-pooler.c-2.ap-southeast-1.aws.neon.tech
+
+T1 รายการ/แท็บสมุด:
+  ❌ T1.1 จำนวนใบสำคัญทั้งหมด = เฉลย — ได้ 0 · ควรได้ 152
+  ❌ T1.2 ตัวนับแท็บ 'ทั้งหมด' = ผลรวมทุกเล่ม — ได้ 0 · ควรได้ 152
+  ❌ T1.3-SALES ตัวนับแท็บ SALES = เฉลย — ได้ 0 · ควรได้ 55
+  ❌ T1.3-PURCHASES ตัวนับแท็บ PURCHASES = เฉลย — ได้ 0 · ควรได้ 21
+  ❌ T1.3-RECEIPTS ตัวนับแท็บ RECEIPTS = เฉลย — ได้ 0 · ควรได้ 39
+  ❌ T1.3-PAYMENTS ตัวนับแท็บ PAYMENTS = เฉลย — ได้ 0 · ควรได้ 15
+  ❌ T1.3-GENERAL ตัวนับแท็บ GENERAL = เฉลย — ได้ 0 · ควรได้ 22
+  ❌ T1.4 กรองแท็บ 'ทั่วไป' ได้เฉพาะเล่มนั้น — ได้ 0 · ควรได้ 22
+  ❌ T1.5 ยอดเดบิตรวมของเล่ม 'ทั่วไป' = เฉลย SQL — ได้ 0 · ควรได้ 140332991
+  ✅ T1.6 เรียงวันที่ใหม่→เก่า
+  ❌ T1.7 ทุกใบมีป้ายสมุดเป็นภาษาไทย — ได้ [] · ควรได้ ["ขาย","จ่าย","ซื้อ","ทั่วไป","รับ"]
+
+T2 ตัวกรอง (ช่วงวันที่ · ค้นหา · ⚑):
+(node:977602) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+/root/projects/shark-crm/node_modules/.pnpm/@prisma+client@7.8.0_prisma@7.8.0_@types+react-dom@19.2.3_@types+react@19.2.17__@types+_12a6afd4e8168cdd815b06207f03ccf9/node_modules/@prisma/client/src/runtime/RequestHandler.ts:237
+      throw new PrismaClientKnownRequestError(message, {
+            ^
+
+
+PrismaClientKnownRequestError: 
+Invalid `prisma.accountJournalEntry.findFirstOrThrow()` invocation in
+/root/projects/shark-crm/scripts/qc-acc-v2-journal.mts:103:52
+
+  100 
+  101 // ═════════ T2 — ตัวกรอง ═════════
+  102 console.log("\nT2 ตัวกรอง (ช่วงวันที่ · ค้นหา · ⚑):");
+→ 103 const flagged = await prisma.accountJournalEntry.findFirstOrThrow(
+An operation failed because it depends on one or more records that were required but not found. No record was found for a query.
+    at zr.handleRequestError (/root/projects/shark-crm/node_modules/.pnpm/@prisma+client@7.8.0_prisma@7.8.0_@types+react-dom@19.2.3_@types+react@19.2.17__@types+_12a6afd4e8168cdd815b06207f03ccf9/node_modules/@prisma/client/src/runtime/RequestHandler.ts:237:13)
+    at zr.handleAndLogRequestError (/root/projects/shark-crm/node_modules/.pnpm/@prisma+client@7.8.0_prisma@7.8.0_@types+react-dom@19.2.3_@types+react@19.2.17__@types+_12a6afd4e8168cdd815b06207f03ccf9/node_modules/@prisma/client/src/runtime/RequestHandler.ts:183:12)
+    at zr.request (/root/projects/shark-crm/node_modules/.pnpm/@prisma+client@7.8.0_prisma@7.8.0_@types+react-dom@19.2.3_@types+react@19.2.17__@types+_12a6afd4e8168cdd815b06207f03ccf9/node_modules/@prisma/client/src/runtime/RequestHandler.ts:152:12)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async a (/root/projects/shark-crm/node_modules/.pnpm/@prisma+client@7.8.0_prisma@7.8.0_@types+react-dom@19.2.3_@types+react@19.2.17__@types+_12a6afd4e8168cdd815b06207f03ccf9/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:963:24)
+    at async <anonymous> (/root/projects/shark-crm/scripts/qc-acc-v2-journal.mts:103:19) {
+  code: 'P2025',
+  meta: { modelName: 'AccountJournalEntry', operation: 'a query' },
+  clientVersion: '7.8.0'
+}
+
+Node.js v20.20.2

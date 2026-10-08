@@ -1,0 +1,27 @@
+  ✅ [M2.2-S1.1] transferEnabled=false → requestTransferOtp throw ไทย · เปิด → {otpId, expiresAt (≤ 5 นาที), maskedTo, devOtp 6 หลัก (APP_ENV development)} · พนักงาน (ไม่ใช่ CUSTOMER) ขอ OTP → throw
+  ✅ [M2.2-S1.2] OTP ผิด → throw ไทย · โอนให้ตัวเอง → throw · พนักงานโอนแทน → throw · ลูกค้าอื่นสวมเจ้าของ → throw · ยอดไม่เปลี่ยน
+  ✅ [M2.2-S1.3] โอน 350 (OTP ถูก): A 500→150 · B 0→350 · ตัด FIFO ล็อต 40 วัน (300) หมด + ล็อต 200 วัน 50 · ผู้รับได้ 2 ล็อต expiresAt เท่าต้นทาง (300 @40 วัน · 50 @200 วัน) · PointTransfer {points 350, feePoints 0, otpVerifiedAt, ledgerOutId, ledgerInId} · idempotent · event point.transferred
+  ✅ [M2.2-S1.4] OTP ใช้แล้วใช้ซ้ำไม่ได้ → throw · cap 1,000/เดือน: โอนแล้ว 350 + 700 > 1,000 → throw ไทย · แต้มไม่พอ (160 > 150) → throw · ยอดไม่เปลี่ยน
+  ✅ [M2.2-S1.5] rate limit OTP: ขอเกิน 3 ครั้ง/10 นาที → throw ไทย (ขอครั้งที่ 4–7 ต้องโดนอย่างน้อยครั้งหนึ่ง) · OTP ล่าสุดยังใช้ได้ (ขอใหม่ = ยกเลิกอันเก่า)
+  ✅ [M2.2-S2.1] adjust: reason ว่าง → throw ไทย · ไม่มี member.point.adjust → throw · thana +200 (≤ เพดาน 500) → {applied true, ledgerId, balance 200} · ledger ADJUST + ล็อต expiresAt ตามที่ส่ง (2031) · ledger data/reason มี actorUserId thana
+  ✅ [M2.2-S2.2] MANAGER +800 (> เพดาน 500) → {pending true, approvalRequestId} · ApprovalRequest entityType member.point.adjust PENDING · ยังไม่เขียนแต้ม (balance 200)
+  ✅ [M2.2-S2.3] อนุมัติ → approval-effects member.point.adjust → แต้ม +800 (balance 1,000 · ล็อตใหม่) · drain ซ้ำไม่บวกซ้ำ · OWNER −150 → applied ทันที (ไม่ต้องอนุมัติ) · ตัด FIFO · ledger ADJUST delta −150 · balance 850
+  ✅ [M2.2-S3.1] settings ก–จ บันทึกครบ: satangPerPoint 2000 · earnBase GROSS · excludeVoucher false · expiryMode END_OF_YEAR · remindDays [14,3] · burnRate 20 · burnMin 50 · burnMax 30 · transfer on cap 5000 · adjustApprovalOver 1000 · dailyCap 2000
+  ✅ [M2.2-S3.2] previewPointImpact → {monthlyEarn (EARN 30 วันล่าสุด), monthlyCostSatang (= monthlyEarn × burnRateSatang), liabilitySatang (= Σ balance × burnRateSatang), expiringIn90d (Σ remaining ล็อต expiresAt ≤ 90 วัน)} เป็นตัวเลขทั้งหมด · liability ตรง DB
+  ✅ [M2.2-S3.3] ค่าที่ไม่มีคอลัมน์ (ใช้ได้ที่ POS/จอง/LIFF · ค่าธรรมเนียมโอน · ต้อง OTP) เก็บใน AppSystem.settings.member.points ผ่าน setPointExtras/getPointExtras · ค่าปริยาย burnAllowedAt ครบ 3 · requireOtp true
+  ✅ [M2.2-S4.1] หน้า 4 หน้ามีจริง (points · settings · adjust · expiring) · requireTenant + สิทธิ์ (read / settings.manage / point.adjust) · testid 18 · actions 'use server' gate · nav points → ready · MemberSettingsTabs แต้ม → ready · ไม่มีอีโมจิ/hex
+  ✅ [M2.2-S4.2] หน้าตั้งค่า (ภาพ 16): (ก) แถวประโยค 'ทุก ฿n = 1 แต้ม · นับจาก · ไม่ให้แต้มกับส่วนที่จ่ายด้วย gift/voucher/แต้ม' + ตารางกฎเพิ่ม 5 แถว (ตัวคูณระดับ/สินค้า-หมวด/ช่วงเวลา/เหตุการณ์/เพดานวัน) สวิตช์เปิด · (ข) แบบ/อายุ/เตือน 2 ช่อง/ระดับที่ไม่หมดอายุ (ชิป TierDef ที่มี NO_POINT_EXPIRY) · (ค) อัตรา/ขั้นต่ำ/สูงสุด %/ใช้ได้ที่ · (ง) เปิด/ค่าธรรมเนียม/จำกัดเดือน/OTP · (จ) เกิน n ต้องอนุมัติ · การ์ดผลกระทบ 4 ตัวเลข · ปุ่มยกเลิก/บันทึก (buffer)
+  ❌ [M2.2-S5.1] ภาพ 16: points-settings-owner desktop+mobile 200 · points-home-owner 200 · points-adjust-owner 200 · points-expiring-owner 200 — exp 200 ×5 | act ///
+  ✅ [M2.2-S5.2] 🔴 parity ภาพ 16 — Fable ตรวจด้วยตา · wo-notes/member-M2.2.md มี 'PARITY: ผ่าน'
+
+🔴 M2.2: 14/15
+JSON_SUMMARY {"total":15,"passed":14,"findings":[{"id":"M2.2-S5.1","sev":"MAJOR"}]}
+(node:1478423) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)

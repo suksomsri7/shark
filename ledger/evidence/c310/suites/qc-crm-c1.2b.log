@@ -1,0 +1,144 @@
+
+═══ QC CRM v2 · C1.2b — custom objects service ═══
+[env] DB ep-plain-art-ao3djg4u-pooler.c-2.ap-southeast-1.aws.neon.tech · tag qc-c12b-vbmsmh
+
+── S0 · structure ──
+  ✅ [C1.2b-S0.1] the deliverable files exist: objects.ts · objects-shared.ts · templates/objects/* (template data lives in its own folder, not inline in the service)
+  ✅ [C1.2b-S0.2] objects-shared.ts is client-safe (C1.9 UI imports it from 'use client' files): no prisma / core db / server-only import
+  ✅ [C1.2b-S0.3] the service reaches the field engine ONLY through the member facade (`@/lib/modules/member` → `fields` namespace), never `member/fields` directly — no second engine, no deep import (addendum)
+  ✅ [C1.2b-S0.4] CSV export is built with the shared `csvRow` of @/lib/core/csv (no second CSV engine — MASTER-PLAN §2.8) [static]
+  ✅ [C1.2b-S0.5] recordCount is only ever changed with a single-statement increment/decrement (addendum · X3) [static]
+  ✅ [C1.2b-S0.6] objects.ts exports the §5.8 surface: create/update/archive/restore/reorder/list/get · records.{create,update,archive,get,list,move,bulk,import,export} · tabsFor · timelineFor
+  ✅ [C1.2b-S0.7] the crm facade (`@/lib/modules/crm` index.ts) exposes the service as `objects` (C1.3/C1.4/C1.9 reach it through the facade)
+  ✅ [C1.2b-S0.8] [prerequisite C1.2a] the member facade exposes the field engine as a `fields` namespace (createSection/createField/listLayout) — without it every S1/S3 check below is red for C1.2a's reason, not C1.2b's
+[setup] tenant A cmuyenhq20000h4kzyidqulkl · tenant B cmuyenhqg0001h4kzn1zx4o1f · crmA cmuyenhsk0007h4kzhp5337di · crmA2 cmuyenhte0008h4kzmq59vuhi
+
+
+── S1 · object + layout ──
+  ✅ [C1.2b-S1.1] objects.create('รถ', parent CONTACT, titleFieldKey plate) writes ONE CustomObject in THIS CRM system — tenant/system/parentType/titleFieldKey as given, recordCount 0, not archived
+  ✅ [C1.2b-S1.2] six fields of six DIFFERENT types (TEXT·NUMBER·DATE·SELECT·BOOLEAN·LOOKUP) are created for object 'car' through the engine and land as MemberField rows owned by the CRM system (systemId = crmA · objectKey = 'car') — not by the member system
+  ✅ [C1.2b-S1.3] listLayout({objectKey:'car'}) returns exactly those 6 fields with their types (nothing from other objects, nothing missing)
+  ✅ [C1.2b-S1.4] layouts are isolated: the member (customer) layout, the 'contract' object layout and the SAME key 'car' in another CRM system of the same tenant show none of crmA car's fields
+  ✅ [C1.2b-S1.5] objects.list / objects.get return the object with label, parentType, titleFieldKey and recordCount 0 — and list shows only this system's objects (crmA2's 'onlya2' is absent)
+  ✅ [C1.2b-S1.6] objects.reorder(['contract','car']) changes the list order
+
+── S2 · records ──
+  ✅ [C1.2b-S2.1] records.create without a title → title = the value of titleFieldKey ('plate'); the row sits in this system/object under the contact (parentType CONTACT) and the 6 values are stored in CustomRecordValue (recordType CUSTOM)
+  ✅ [C1.2b-S2.2] records.get round-trips every value (TEXT · NUMBER · DATE · SELECT · BOOLEAN · LOOKUP) keyed by field key, plus the title
+  ✅ [C1.2b-S2.3] title follows titleFieldKey on update (plate changed → title changed; another field changed → title kept) and an explicit title on create wins over titleFieldKey
+  ✅ [C1.2b-S2.4] records.list({parentId}) returns the parent's records (3 created under c1) and `q` searches the title
+  ✅ [C1.2b-S2.5] records.archive sets archivedAt (the row is kept) and the default list hides it
+  ✅ [C1.2b-S2.6] a parent of the WRONG TYPE (a company / a member for a CONTACT object), an unknown parent id, and a missing parent for a CONTACT object are all VALIDATION (Thai message) and create nothing
+  ✅ [C1.2b-S2.7] records.move re-parents the record (parentId = the new contact AND partyId re-inherited from it); moving to a parent of the wrong type is VALIDATION and changes nothing
+  ✅ [C1.2b-S2.8] timelineFor(recordId) answers for a record of this system (array or {items}) — it is the data source of the record page
+
+── S3 · filters on records ──
+  ✅ [C1.2b-S3.1] TEXT filter: 'contains' (AA → 2 records) and '=exact' (→ 1 record)
+  ✅ [C1.2b-S3.2] NUMBER filter: range 10000..30000 (→ 2) and =5000 (→ 1)
+  ✅ [C1.2b-S3.3] DATE filter: closed range (→ 1) and open-ended range (→ 2) on Bangkok calendar days
+  ✅ [C1.2b-S3.4] SELECT filter: fuel=diesel (→ 2)
+  ✅ [C1.2b-S3.5] LOOKUP filter: branch = unit 2 (→ 2)
+  ✅ [C1.2b-S3.6] BOOLEAN filter (insured=true → 2) and two filters AND-ed (diesel AND mileage ≥ 20000 → 1)
+  ✅ [C1.2b-S3.7] a filter on a field the object does not have is VALIDATION (never silently ignored — an ignored filter shows the whole list)
+
+── S5 · tabsFor ──
+  ✅ [C1.2b-S5.1] tabsFor(CONTACT, id) lists 'car' with count = LIVE records of THIS parent (2 — the archived third one is not counted)
+  ✅ [C1.2b-S5.2] …and omits an object with showAsTab=false, an archived object and an object of another parent type (COMPANY)
+  ✅ [C1.2b-S5.3] tabsFor(COMPANY, id) lists 'contract' with count 1 and no CONTACT object
+
+── S6 · archive / restore ──
+  ✅ [C1.2b-S6.1] archiving an object that HAS records without typing its key — or typing the wrong key — is refused with a Thai message and the object stays active
+  ✅ [C1.2b-S6.2] with the key typed (+ reason) the object is archived: gone from list and tabs, no new record can be added, and its records are KEPT (archive ≠ delete)
+  ✅ [C1.2b-S6.3] restore brings it back: archivedAt null, its record listed again, recordCount unchanged (1)
+  ✅ [C1.2b-S6.4] an EMPTY object is archived without typing the key (the confirmation guards data, not the click)
+
+── S8 · no hard cap ──
+  ✅ [C1.2b-S8.1] 35 objects in one CRM system are all created — there is NO hard cap (decision C8)
+  ❌ [C1.2b-S8.2] …but past 30 objects an OpsEvent WARN (tenant-tagged, Thai) is written — none while the system still had ≤ 29 — exp 0 at 29 · ≥1 after 35 | act at29=1 after=2 CRM ใกล้ถึงเพดาน objectsWarn (80%) | ระบบ CRM นี้มีวัตถุกำหนดเอง 31 วัตถุ (เกิน 30) — ยังใช้งานได้ปกติ แต่หน้ารายการและตัวกรองอาจช้าลง
+  ✅ [C1.2b-S8.3] an object past 200,000 records still accepts a new record and an OpsEvent WARN is written (no hard cap on records either)
+
+── S9 · immutability ──
+  ✅ [C1.2b-S9.1] while an object has NO records its key may change — and its fields follow (layout under the new key has them, no MemberField left on the old key)
+  ✅ [C1.2b-S9.2] while it has no records its parentType may change too
+  ✅ [C1.2b-S9.3] once records exist, changing the key OR the parentType is VALIDATION and nothing moves (records would point at a parent of the wrong kind / URLs and filters would break) — other attributes (label) still change
+  ✅ [C1.2b-S9.4] a key that already exists in the same CRM system is refused (DUPLICATE/VALIDATION, Thai) — the same key in ANOTHER CRM system is fine (crmA2 already has 'car')
+  ✅ [C1.2b-S9.5] reserved keys (customer/contact/company/deal — the engine's own objectKeys; an object named 'contact' would share the contacts' fields) and malformed keys are VALIDATION
+
+── S10 · partyId + recordCount ──
+  ✅ [C1.2b-S10.1] partyId is inherited from the parent: CONTACT → the contact's partyId · COMPANY → the company's partyId
+  ✅ [C1.2b-S10.2] CUSTOMER parent → partyId = the member's partyId · NONE → no parent, partyId null · a parentId for a NONE object is VALIDATION
+  ✅ [C1.2b-S10.3] recordCount cache: 3 creates → 3 · archive → 2 · archiving the SAME record again → still 2 (no double decrement) · a refused create → still 2
+
+── S11 · templates ──
+  ✅ [C1.2b-S11.1] OBJECT_TEMPLATES (objects-shared) holds exactly the 8 templates of blueprint §10 / R-C.12 — สัตว์เลี้ยง · รถ · ทรัพย์สิน/เครื่องจักร · สัญญา · กรมธรรม์ · อสังหาฯ · โครงการ · ผู้เรียน — each once, with unique well-formed keys
+  ✅ [C1.2b-S11.2] every template has 5–8 fields, a titleFieldKey that is one of its own TEXT fields, and a recommended parentType from the enum
+  ✅ [C1.2b-S11.3] every template carries exactly ONE starter-rule spec: kind 'date field due', pointing at one of its own DATE fields, enabled === false (C2.1 materialises it; nothing may fire on its own)
+  ✅ [C1.2b-S11.4] objects.create({templateKey}) materialises exactly the template's fields through the engine (layout = template field keys) and records templateKey on the object — for all 8
+  ✅ [C1.2b-S11.5] no automation rule is created by applying a template in C1.2b (the starter rule is DATA; C2.1 materialises it disabled)
+
+── S12 · events ──
+  ✅ [C1.2b-S12.1] the 3 events are registered in all 3 registries — a consumer in outbox-consumers.ts, AUTOMATION_EVENTS (they are rule triggers, §5.8) and WEBHOOK_EVENTS (via the spread) — and each label is declared exactly once
+  ✅ [C1.2b-S12.2] records.create emits exactly ONE custom.record.created — key `custom.record.created#<recordId>#<seq>` (R-C.8), systemId = the CRM system, payload.recordId/objectId set
+  ✅ [C1.2b-S12.3] two separate updates of the same record emit TWO custom.record.updated events (the #<seq> part differs — a key of only the recordId would swallow every update after the first)
+  ✅ [C1.2b-S12.4] records.archive emits custom.record.archived (one)
+  ✅ [C1.2b-S12.5] create: when the event cannot be written the whole create rolls back — no CustomRecord, no value row, recordCount unchanged (the event is part of the write transaction)
+  ✅ [C1.2b-S12.6] update: a failed event write leaves title AND value untouched
+  ✅ [C1.2b-S12.7] archive: a failed event write leaves the record live and recordCount unchanged
+
+── X1 · scope ──
+  ✅ [C1.2b-X1.1] records.get of a record of ANOTHER TENANT and of ANOTHER CRM SYSTEM of the same tenant (same object key 'car' in both) → NOT_FOUND, and the error does not echo the foreign title
+  ✅ [C1.2b-X1.2] update / archive / move of a foreign record (other CRM system · other tenant) → NOT_FOUND and the foreign row is untouched
+  ✅ [C1.2b-X1.3] an object that exists only in another CRM system of the same tenant: get / update / archive / records.create → NOT_FOUND, the object untouched
+  ✅ [C1.2b-X1.4] records.list of crmA never contains crmA2's / tenant B's records of the same key · tabsFor(contact of crmA2) through crmA counts nothing (or NOT_FOUND) · timelineFor(foreign record) → NOT_FOUND
+  ✅ [C1.2b-X1.5] a parent that belongs to ANOTHER CRM SYSTEM of the same tenant or to another tenant is VALIDATION on create and on move — the DB has no FK, the service must assert it (C1.1 review)
+  ✅ [C1.2b-X1.6] ctx.systemId is re-resolved against the tenant with type CRM: another tenant's CRM system or a MEMBER system id → NOT_FOUND (list/create/get), nothing written
+
+── X3 · concurrency ──
+  ✅ [C1.2b-X3.1] 12 records.create fired at once (2 rounds, one module pool ⇒ several real connections) leave recordCount EXACTLY equal to the live rows (24) — 'read, add in JS, write' loses increments
+  ✅ [C1.2b-X3.2] 5 different records archived at once → recordCount −5 exactly (= live rows 19)
+  ✅ [C1.2b-X3.3] the SAME record archived 5× at once decrements recordCount ONCE (conditional update on archivedAt IS NULL) — rc = live = 18
+  ✅ [C1.2b-X3.4a] [positive control] the 4 worker PROCESSES really ran and answered (12 creates · 12 archive calls) — if red, X3.4/X3.5 prove nothing
+  ✅ [C1.2b-X3.4] 12 creates across 4 SEPARATE PROCESSES (own PrismaClients, synchronised start) → recordCount = live rows = before + 12 (an in-process mutex would pass X3.1 and fail here)
+  ✅ [C1.2b-X3.5] the same 3 records archived by 4 processes at once → recordCount drops by exactly 3 (= live rows)
+  ✅ [C1.2b-X3.6] 10 objects.create with the SAME key at once → exactly one object; every loser gets a Thai DUPLICATE/VALIDATION error (not a raw P2002 / 500)
+
+── X4 · redelivery ──
+  ✅ [C1.2b-X4.0] [positive control] the created event exists for a record whose parent contact is linked to a member
+  ✅ [C1.2b-X4.1] the custom.record.created consumer run TWICE writes exactly ONE MemberActivity row on the parent's timeline (customer linked to the contact · refId = recordId)
+  ✅ [C1.2b-X4.2] …and run twice IN PARALLEL (3 rounds, fresh record each) still ONE row — flag/lock first, then write (lesson H5)
+  ✅ [C1.2b-X4.3] a parent contact with NO member: the consumer resolves (a CRM 'extra' never fails the queue) and writes no timeline row
+  ✅ [C1.2b-X4.4] an object whose parent IS a member (CUSTOMER): the consumer writes ONE row on that member's timeline, even when delivered twice at once
+
+── X6 · import / export ──
+  ✅ [C1.2b-X6.1] records.import of a 3-row CSV (header = field keys) creates 3 records, titles from titleFieldKey, recordCount +3
+  ✅ [C1.2b-X6.2] the import caps are named constants in objects-shared (OBJECT_IMPORT_MAX_ROWS ≤ 50,000 · OBJECT_IMPORT_MAX_BYTES ≤ 20 MB) so the UI can say them
+  ✅ [C1.2b-X6.3] an import of OBJECT_IMPORT_MAX_ROWS + 1 rows is refused as a whole (VALIDATION, Thai) and creates NOTHING
+  ✅ [C1.2b-X6.4] an import larger than OBJECT_IMPORT_MAX_BYTES (measured in UTF-8 bytes — Thai is 3 bytes/char) is refused and creates nothing
+  ✅ [C1.2b-X6.5] records.export returns CSV in which NO cell starts with = + - @ (every one is neutralised to '…' by csvRow) — including a formula typed into the TITLE field
+  ✅ [C1.2b-X6.6] export is scoped to the system: crmA's 'car' export does not contain the records of 'car' in crmA2 or tenant B
+
+── X9 · dangerous actions ──
+  ✅ [C1.2b-X9.1] archive of an object WITH records needs a reason too: typed key but no reason / a reason < 5 chars → refused, object active
+  ✅ [C1.2b-X9.2] bulk archive without confirm, or with confirm but a reason < 5 chars → refused and NOTHING archived
+  ✅ [C1.2b-X9.3] with confirm + reason the bulk archive runs: the 2 own records archived, recordCount −2 exactly, and a foreign id smuggled into `ids` (crmA2) is NOT touched (whole call refused NOT_FOUND, or the foreign id skipped)
+  ✅ [C1.2b-X9.4] bulk has a named cap (OBJECT_BULK_MAX ≤ 5,000) and ids beyond it are VALIDATION before anything is touched
+  ✅ [C1.2b-X9.5] every mutation leaves an AuditLog row: object create + archive (the archive row keeps the typed reason) · record create/update/archive · each record of a bulk archive (or one bulk row naming them)
+
+── X8 · PDPA ──
+  ✅ [C1.2b-X8.0] [positive control] events of all 3 types were produced by this run (otherwise X8.1/X8.2 are vacuous)
+  ✅ [C1.2b-X8.1] no custom.record.* payload carries the parent's phone / e-mail / name, the record title or a field value (the PII-parent record's title is a child's name)
+  ✅ [C1.2b-X8.2] payloads are ids/keys only: no string value with spaces or Thai text anywhere in the payload (catches any label/title/value leak, not just the sentinels)
+  ✅ [C1.2b-X8.3] no OpsEvent and no console line produced by the service/consumer contains the parent's phone, e-mail or name
+  ✅ [C1.2b-CLEAN] the oracle gives the QC database back exactly as found — the two throwaway tenants, every row they owned, the throwaway user and the test trigger are gone
+
+🔴 C1.2b: 92/93
+JSON_SUMMARY {"total":93,"passed":92,"findings":[{"id":"C1.2b-S8.2","sev":"CRITICAL"}]}
+(node:1348456) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)

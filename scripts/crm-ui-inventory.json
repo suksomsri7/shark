@@ -12469,7 +12469,8 @@
       "opener": [
         "crm-auto-new",
         "crm-auto-action-type=SET_FIELD"
-      ]
+      ],
+      "needs": "ฟิลด์กำหนดเองของผู้ติดต่อ (MemberField objectKey=contact) ≥1 — ซีด QC1 มี 0 (มีแต่ของวัตถุ contract 5 · automation.ts builderOptions.contactFields) ⇒ select มีแค่ตัวเลือกว่าง 'เลือกฟิลด์ของผู้ติดต่อ'"
     },
     {
       "page": "/settings/automation",
@@ -12851,8 +12852,7 @@
       "testid": "crm-auto-rule-toggle",
       "kind": "toggle",
       "roles": [
-        "owner",
-        "manager"
+        "owner"
       ],
       "hiddenFor": [
         "nok",
@@ -12865,7 +12865,24 @@
       },
       "wo": "C2.1",
       "oracle": "",
-      "needs": "กฎอัตโนมัติของ CRM ระบบนี้ (AutomationRule scope=CRM) — ขึ้นกับซีด · แถว crm-auto-starters/crm-auto-save ในกลุ่มเดียวกันสร้างให้ก่อน"
+      "needs": "กฎอัตโนมัติของ CRM ระบบนี้ (AutomationRule scope=CRM) — ขึ้นกับซีด · แถว crm-auto-starters/crm-auto-save ในกลุ่มเดียวกันสร้างให้ก่อน",
+      "variants": [
+        {
+          "name": "manager-enable-scope-refusal",
+          "roles": [
+            "manager"
+          ],
+          "expect": {
+            "type": "mutation",
+            "target": "action:toggleCrmRuleAction",
+            "outcome": "refusal",
+            "resultTarget": "crm-auto-list-error",
+            "refusalText": "มองเห็นเฉพาะบางส่วน",
+            "db": "AutomationRule.enabled ไม่เปลี่ยน (C5.5-fix1 42acc952 H55-2 automation.ts toggleRule → assertAuthorCanDoByHand: เปิดกฎที่มีขั้น สร้างงานติดตาม (CREATE_ACTIVITY) ต้องเห็นผู้ติดต่อ/ดีลทั้งร้าน — ผู้จัดการ QC1 ถูกจำกัดทีม/สาขา)"
+          },
+          "note": "C3.10 (RV-6 ทะเบียนตามผลิตภัณฑ์): ผู้จัดการเห็นสวิตช์และกดได้ แต่การเปิดกฎถูกปฏิเสธเป็นข้อความในบรรทัด crm-auto-list-error · การปิดกฎทำได้เสมอ (ไม่ใช่สิ่งที่แถวนี้กด) · เจ้าของร้านยังคาด mutation ตามแถวหลัก"
+        }
+      ]
     },
     {
       "page": "/settings/automation",
@@ -21218,6 +21235,18 @@
             "target": "crm-commission-rule-row-*",
             "state": "disabled",
             "db": "ไม่กด — มองเห็นแต่ disabled (canManage = crm.settings.manage · ผู้จัดการไม่มีคีย์ตั้งค่า)"
+          },
+          "needs": "กฎค่าคอม (CrmCommissionRule) อย่างน้อย 1 — ซีดมี 0 และผู้จัดการสร้างกฎเองไม่ได้ (C3.10: มีกฎแล้วแต่ไม่เห็นแถว = dead ตาม needsProbe)",
+          "needsProbe": {
+            "db": {
+              "model": "CrmCommissionRule",
+              "where": {
+                "systemId": "$SYS"
+              }
+            },
+            "roles": [
+              "manager"
+            ]
           }
         }
       ]
@@ -21654,7 +21683,19 @@
             "refusalText": "เกินวงเงิน",
             "db": "CrmCommission ไม่เปลี่ยน (ยอดเกินเพดาน crm._maxCommissionApproveSatang ของผู้กด — commissions.ts approve OVER_CAP_MSG)"
           },
-          "note": "C4.2 it5 RV-4: ผู้จัดการมีเพดาน 1,000 บาท (fixture ของตัวกด) · ค่าคม B 500,000 บาท ผูกคำขออนุมัติหลอก ⇒ ไม่แจ้งเจ้าของร้าน"
+          "note": "C4.2 it5 RV-4: ผู้จัดการมีเพดาน 1,000 บาท (fixture ของตัวกด) · ค่าคม B 500,000 บาท ผูกคำขออนุมัติหลอก ⇒ ไม่แจ้งเจ้าของร้าน",
+          "needs": "ค่าคอม PENDING B ของตัวกด — fixture สร้างได้เมื่อระบบมีกฎค่าคอม (CrmCommissionRule) อย่างน้อย 1 · ซีดมี 0 (C3.10: มีกฎแล้วแต่ไม่เห็นแถว = dead ตาม needsProbe)",
+          "needsProbe": {
+            "db": {
+              "model": "CrmCommissionRule",
+              "where": {
+                "systemId": "$SYS"
+              }
+            },
+            "roles": [
+              "manager"
+            ]
+          }
         }
       ]
     },
