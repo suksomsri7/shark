@@ -1,0 +1,24 @@
+# session/hr @1dc4bdb1 after merge of origin/main 71a1f363 · 2026-10-08T05:01:07Z · QC4 got 20261104000001-3 account_journal_* via migrate deploy
+fitness noenv exit=0 42 42 []
+fitness-hr noenv exit=0 5 5 []
+qc-hr-h0.1 exit=0 67 67 []
+qc-hr-h0.2 exit=0 58 58 None
+qc-hr-h0.3 exit=1 34 36 [{'id': 'H0.3-S5.1', 'sev': 'CRITICAL'}, {'id': 'H0.3-S5.2', 'sev': 'CRITICAL'}]
+qc-hr exit=0 9 9 []
+qc-hr-attendance exit=0 31 31 []
+qc-hr-roster exit=0 24 24 []
+qc-hr-leave-booking exit=0 14 14 []
+qc-hr-payadjust exit=0 27 27 []
+qc-payroll exit=0 19 19 []
+qc-payroll-reverse exit=0 ✅ PASS — 14/14
+qc-booking-hours-hr exit=0 13 13 []
+qc-crm-c3.3 exit=0 90 90 []
+qc-approval exit=0 16 16 []
+qc-approval-wiring exit=0 7 7 []
+qc-hf-hr-privacy exit=0 194 194 []
+qc-ai-tools exit=0 18 18 []
+qc-ai-proposals exit=0 16 16 []
+qc-account-cpa exit=0 107 107 []
+seed-hr-qc exit=0 23 23 []
+done 2026-10-08T06:20:07Z
+typecheck exit=0 (0 errors, iso) — scratchpad pmm-typecheck.log
