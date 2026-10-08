@@ -70,7 +70,12 @@ model HrEmployee {
   name         String
   phone        String?
   position     String?
-  pinCode      String? // สำหรับ kiosk clock-in
+  pinCode      String? // ⚠️ เลิกใช้ (HR H0.5) — PIN ตัวเปล่าแบบเก่า · backfill แล้วเป็น null · ลบคอลัมน์ใน RUN ถัดไป
+  // HR H0.5 ▸ PIN เก็บเป็น HMAC-SHA256(HR_PIN_PEPPER, tenantId␟pin) เท่านั้น — อ่าน/เขียนได้ที่ hr/pin.ts ที่เดียว (F16.5)
+  //   ไม่ซ้ำ "ทั้งร้าน" ในหมู่คนที่ยังทำงาน = partial unique "HrEmployee_tenantId_pinHash_active_key" (SQL ดิบใน migration
+  //   20261201000000_hr_pin_hash — Prisma schema ประกาศ WHERE ไม่ได้) ◂
+  pinHash      String?
+  pinSetAt     DateTime?
   linkedUserId String? // ผูก User ถ้ามีบัญชี
   active       Boolean  @default(true)
   createdAt    DateTime @default(now())
