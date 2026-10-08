@@ -1649,6 +1649,11 @@ export async function postExternalSale(
   });
 }
 
+/** POS P1.8 F8 ▸ บิล POS นี้ลง JV ขาย (PosSale#<refId>#PAID) แล้วหรือยัง — คีย์เดียวกับ postExternalSale (อ่านอย่างเดียว) ◂ */
+export async function externalSalePosted(ctx: GlCtx, refId: string): Promise<boolean> {
+  return alreadyPosted(ctx, `PosSale#${refId}#PAID`, prisma);
+}
+
 // POS P1.8 ▸ คืนเงินหน้าร้าน (ใบคืน REFUND ของ POS) — กลับรายการตามสัดส่วน "เฉพาะส่วนที่คืน" ◂
 //   Dr รายได้ขายสินค้า/ค่าบริการ (ฐาน) · Dr ภาษีขาย (VAT) · Cr เงินสด/ธนาคาร ตามวิธีคืน — ไม่แตะลูกหนี้ 1100
 //   idempotent ต่อ (PosSale, refId = id ใบคืน, REFUNDED) · JV ของบิลเดิม **ไม่ถูกกลับรายการ** (ใบลดหนี้หักล้างแทน · CD6)

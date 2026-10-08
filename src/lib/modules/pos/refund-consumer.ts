@@ -2,9 +2,9 @@
 //
 // ลำดับ (ทุกขั้น idempotent · เล่นซ้ำได้ไม่จำกัด):
 //   0. รอคิวปิดบิล: event `pos.sale.paid` ของบิลเดิมยัง PENDING = โยน (คิวลองใหม่) ⇒ ฝั่งบัญชี/สมาชิกเห็นการขายก่อนการคืนเสมอ
-//   1. บัญชี: ยืนยันว่าบิลเดิมลงบัญชีแล้ว (bridgePosSalePaid — idempotent · กันกรณีคืนครบก่อนคิวปิดบิลวิ่ง ⇒ บิล REFUNDED ถูกข้าม)
-//      แล้วใบลดหนี้ + JV กลับรายการตามสัดส่วน (bridgePosSaleRefunded → account.applyExternalRefund · ไม่ผูกบัญชี = จบเงียบ)
-//   2. คลัง (O12): บรรทัด restock === true ที่มี OUT ของบิลเดิม → รับคืนที่ "ต้นทุนของ OUT เดิม" คีย์ pos-refund-<refundSaleId>-<refundLineId>[-<invItemId>]
+//   1. บัญชี: บิลเดิมยังไม่มี JV ขาย (pos.sale.paid ข้ามเพราะคืนครบก่อนคิววิ่ง ⇒ REFUNDED) = ลงแทน (ล้ม = log เดินต่อ · F8)
+//      แล้วใบลดหนี้ + JV กลับรายการตามสัดส่วน (bridgePosSaleRefunded → account.applyExternalRefund · ไม่ผูกบัญชี = จบเงียบ · ล้ม = โยน)
+//   2. คลัง (O12): บรรทัด restock === true ที่มี OUT ของบิลเดิม → รับคืนที่ "ต้นทุน/คลัง/ล็อตของ OUT เดิม" คีย์ pos-refund-<refundSaleId>-<refundLineId>[-<invItemId>]
 //      (มีคำว่า refund ⇒ สะพานคลัง→บัญชีลง Dr1200/Cr5000) · restock false/null = ไม่มี movement (ต้นทุนขายคงอยู่ = ความเสียหาย)
 //   3. สมาชิก (member-bridges.onPosSaleRefunded): แต้ม/ยอดสะสม/ตรา/ระดับ — ล้ม = WARN (บิล/บัญชีไม่กระทบ · แบบ memberSaleBridge)
 // 🔴 ขั้น 1–2 ล้ม ⇒ โยนท้ายสุด (คิวลองใหม่ · ทางที่ REVIEW #10 ขอ) หลังวิ่งทุกขั้นครบแล้ว · voidSale เดิมไม่เปลี่ยน
@@ -14,6 +14,7 @@ import { logOps } from "@/lib/core/ops";
 import * as inventory from "@/lib/modules/inventory/service";
 import { systemForUnit } from "@/lib/modules/system/service";
 import { prisma } from "./db";
+import { posSalePosted } from "@/lib/modules/account";
 import { bridgePosSalePaid, bridgePosSaleRefunded } from "./account-bridge";
 import { lineConsumption } from "./service";
 
@@ -55,23 +56,35 @@ export const posSaleRefunded: OutboxHandler = async (evt: Evt) => {
   const errors: unknown[] = [];
   const origById = new Map(sale.lines.map((l) => [l.id, l]));
 
-  // 1. บัญชี
-  try {
-    if (!sale.giftCardId && sale.docType === "SALE") {
-      await bridgePosSalePaid(sale, sale.payments, sale.lines.reduce((n, l) => n + (l.serviceId ? l.lineTotalSatang : 0), 0), {
-        lines: sale.lines.map((l) => ({ name: l.name, qty: l.qty, unitPriceSatang: l.unitPriceSatang, discountSatang: l.discountSatang, lineTotalSatang: l.lineTotalSatang, itemId: l.itemId })),
-        customer: null,
-      });
+  // 1a. บัญชีของบิลเดิม (F8): ลงแทนเฉพาะเมื่อ pos.sale.paid ข้ามไปจริง (ยังไม่มี JV PosSale#<saleId>#PAID — เช่นคืนครบก่อนคิวปิดบิลวิ่ง ⇒ บิล REFUNDED)
+  //   ขั้นนี้ล้ม = log แล้วเดินต่อ — ห้ามขวางการลงใบลดหนี้ของใบคืน
+  if (!sale.giftCardId && sale.docType === "SALE") {
+    try {
+      const posted = await posSalePosted({ tenantId: evt.tenantId, sourceSystemId: sale.systemId, refId: sale.id });
+      if (posted === false) {
+        await bridgePosSalePaid(sale, sale.payments, sale.lines.reduce((n, l) => n + (l.serviceId ? l.lineTotalSatang : 0), 0), {
+          lines: sale.lines.map((l) => ({ name: l.name, qty: l.qty, unitPriceSatang: l.unitPriceSatang, discountSatang: l.discountSatang, lineTotalSatang: l.lineTotalSatang, itemId: l.itemId })),
+          customer: null,
+        });
+      }
+    } catch (e) {
+      console.error("[pos] refund: ลงบัญชีบิลเดิมแทนคิวปิดบิลไม่สำเร็จ — ลงใบลดหนี้ต่อ", { saleId: sale.id, refundSaleId: refund.id, code: errCode(e) });
     }
-    const serviceGross = refund.lines.reduce((n, l) => n + (l.serviceId ? l.lineTotalSatang : 0), 0);
-    const res = await bridgePosSaleRefunded(
-      refund,
-      sale.id,
-      refund.lines.map((l) => ({ name: l.name, qty: l.qty, unitPriceSatang: l.unitPriceSatang, discountSatang: l.discountSatang, lineTotalSatang: l.lineTotalSatang, itemId: l.itemId })),
-      refund.payments,
-      serviceGross,
-    );
-    if (res.reason && res.reason !== "unlinked" && !res.docId) console.warn(`[บัญชี] ใบคืน POS ${refund.id}: ไม่บันทึกใบลดหนี้ — ${res.reason}`);
+  }
+
+  // 1b. ใบลดหนี้ + JV ของใบคืน — ยอด 0 (F4) = ไม่มีเงินให้ลง · ล้ม (≠ ไม่ผูกบัญชี) = โยน ⇒ คิวลองใหม่ (ห้ามเตือนแล้วจบ)
+  try {
+    if (refund.grandTotalSatang > 0) {
+      const serviceGross = refund.lines.reduce((n, l) => n + (l.serviceId ? l.lineTotalSatang : 0), 0);
+      const res = await bridgePosSaleRefunded(
+        refund,
+        sale.id,
+        refund.lines.map((l) => ({ name: l.name, qty: l.qty, unitPriceSatang: l.unitPriceSatang, discountSatang: l.discountSatang, lineTotalSatang: l.lineTotalSatang, itemId: l.itemId })),
+        refund.payments,
+        serviceGross,
+      );
+      if (res.reason && res.reason !== "unlinked" && !res.docId) throw new Error(`[บัญชี] ใบคืน POS ${refund.id}: ไม่บันทึกใบลดหนี้ — ${res.reason}`);
+    }
   } catch (e) {
     errors.push(e);
   }
@@ -99,7 +112,7 @@ export const posSaleRefunded: OutboxHandler = async (evt: Evt) => {
         });
         const outs = await prisma.invMovement.findMany({
           where: { tenantId: evt.tenantId, type: "OUT", idempotencyKey: { in: parts.map((x) => x.outKey) } },
-          select: { idempotencyKey: true, itemId: true, costSatang: true },
+          select: { idempotencyKey: true, itemId: true, costSatang: true, locationId: true, lotCode: true },
         });
         const outOf = new Map(outs.map((m) => [m.idempotencyKey, m]));
         for (const part of parts) {
@@ -110,6 +123,9 @@ export const posSaleRefunded: OutboxHandler = async (evt: Evt) => {
               itemId: part.itemId,
               qty: part.qty,
               costSatang: out.costSatang, // O12: ต้นทุนของการตัดเดิม ไม่ใช่ถัวเฉลี่ยปัจจุบัน
+              // F9: คืนเข้าคลัง/ล็อตเดียวกับที่ตัดออก (หลายคลังไม่เพี้ยน) · OUT แถว legacy ไม่มีคลัง = คลัง default
+              locationId: out.locationId,
+              lotCode: out.lotCode,
               idempotencyKey: part.key,
               sourceModule: "POS",
               refType: "PosSale",

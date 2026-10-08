@@ -67,6 +67,7 @@ export async function posAccountSystemId(
 import {
   postExternalSale,
   postExternalRefund,
+  externalSalePosted,
   postGiftCardSale as postGiftCardSaleGl,
   postGiftCardUse as postGiftCardUseGl,
   postGiftCardExpire as postGiftCardExpireGl,
@@ -357,6 +358,16 @@ export async function applyExternalRefund(input: {
   });
   if (!doc.ok) return { posted, reason: doc.reason };
   return { posted, docId: doc.docId };
+}
+
+/**
+ * POS P1.8 F8 — บิล POS นี้ลง JV ขายแล้วหรือยัง (คีย์ PosSale#<refId>#PAID ของสมุดที่ผูกกับ POS)
+ * null = ไม่ผูกบัญชี (ไม่มีอะไรให้ลง) · ใช้ตัดสินว่าตัวรับคืนเงินต้องลงบิลเดิมแทน pos.sale.paid ที่ข้ามไปหรือไม่
+ */
+export async function posSalePosted(input: { tenantId: string; sourceSystemId: string; refId: string }): Promise<boolean | null> {
+  const link = await findAccountLinkForPos(input.tenantId, input.sourceSystemId);
+  if (!link) return null;
+  return externalSalePosted({ tenantId: input.tenantId, systemId: link.systemId }, input.refId);
 }
 
 /** POS P1.8 R9 — เอกสารบัญชี (ใบกำกับอย่างย่อ) ของบิล POS — null = ไม่ผูกบัญชี/ยังไม่มีเอกสาร (อ่านอย่างเดียว · ไม่ throw) */
