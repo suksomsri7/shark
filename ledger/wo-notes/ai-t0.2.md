@@ -145,3 +145,12 @@ Files changed in round 2: `docs/api/AI-TEAM-MOBILE-API.md` · `docs/modules/30-a
 | NOTE repairable deal | a deal found without an owner (create succeeded, follow-up update did not) gets the follow-up update on the next run instead of being skipped |
 
 Round-2 oracle result: see "## R2.1" in `ai-t0.2-green.txt` and the builder report. Typecheck / fitness are run by the controller (ruling).
+
+## 11. Controller acceptance (2026-10-08 · on 873c80ca · merged as 0a595d3e)
+- Oracle re-run by the controller: forced 41/41 exit 0 ×2 · unforced 41/41 exit 0 (logs `/tmp/ai-t0.2-r2/{f1,f2,u}.log`); round-1 code had also been re-run forced ×2 = 41/41. Residue 0 (S8.1/S8.2 green in every run).
+- fitness.mts 42/42 without env · 42/42 with QC4 env · fitness-ai-team 3/3 · `pnpm typecheck` exit 0 (NODE_OPTIONS 5632).
+- Reviewer (fresh Opus, read-only): ACCEPT-WITH-FIXES, 0 BLOCKER, 7 SHOULD-FIX → all ruled in the brief ("Controller rulings after review") and applied in round 2. Hunter: not required for T0.2.
+- D4 regression: the baseline set was NOT re-run after this WO — no product code under src/ changed (10 files: docs, scripts, draft outside prisma/schema, one marked qc-all hunk read by the controller). First WO touching src/ (T0.4/T1.1) re-runs the full baseline.
+- D6/D7/D8 n/a (no route, no screen). D10: docs/api + docs/modules written here.
+- Debt: D-1 AI-team oracles SKIP off-QC4 (CI branch decision at T6.1) · D-2 seed "repaired" paths never exercised on QC4 (untested code) · D-3 fitness-ai-team not in pre-commit (runs via qc-ai-t0.2 S6.1) · D-4 outbox events of the first seed run left PENDING for the three AT tenants (seed must not drain a global queue).
+- Follow-ups for later briefs: T1.2 (default employee not created on list · use ⇒ read) · T1.10 (requireTeamMobile 404 wrapper · /team/search · /team/manual/draft · atomic POST employees) · T2.9 S6 (no DELETE employees) · T1.9 (inbox edits re-validation) · T2.1 (i18n path apps/mobile/src/i18n/team.ts) · T1.3 (F16.2 rejects the seven unit-type skills, C30).
