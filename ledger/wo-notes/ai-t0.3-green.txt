@@ -1,0 +1,121 @@
+# T0.3 builder runs — 2026-10-08T21:32:13Z — tree ba2cf114 + notes
+
+## forced, static (heavy NOT run — machine lock unavailable, see ai-t0.3.md)
+
+── S1 legacy C/R/S · S2 tokens ──
+  ✅ [T0.3-S1.1] [static] `@/src/theme` (theme.ts) still exports C, R, S with exactly today's values (frozen snapshot of 873c80ca)
+  ✅ [T0.3-S1.2] [static] theme.ts is a pure re-export shim of ./theme/* and theme/index.ts exports the SAME C/R/S objects + tokens, light, dark, useTheme, get/setThemeOverride, THEME_STORAGE_KEY
+  ✅ [T0.3-S2.1] [static] light and dark have the same deep key set and the same value kinds (evaluated, not grepped)
+  ✅ [T0.3-S2.2] [static] light/dark carry every contract key with a valid colour, differ from each other, and match the mockup-CSS anchors (incl. the primary button: #16161c/#ffffff light · #f2f2f7/#16161c dark)
+  ✅ [T0.3-S2.3] [static] tokens: every length = generator CSS px × 390/536 (±1, whole or half pt; 26 values read against gen_*.py file:line) · radii.full 999 · size.touchMin 44 · 9 type styles
+  ✅ [T0.3-S2.4] useTheme() follows the system scheme, obeys set/getThemeOverride (key shark_theme), and honours a stored override after a cold start on native and on web
+  ✅ [T0.3-X10.3] [static] the theme override store keeps only "light"/"dark" under shark_theme: no session/token key is read or written by src/theme
+
+── S2.5–S2.7 · S5 team components (static, AST) ──
+  ✅ [T0.3-S2.5] [static] no colour literal (hex · rgb() · rgba() · hsl()) in any string of components/team (comments ignored — AST)
+  ✅ [T0.3-S2.6] [static] src/theme and components/team import only what the contract allows (the only new package is @expo-google-fonts/inter; no AsyncStorage/svg/gradient/blur)
+  ✅ [T0.3-S2.7] [static] no numeric borderRadius literal in components/team (radii come from tokens / R)
+  ✅ [T0.3-S2.8] [static] the 12 orb PNGs exist under assets/team/orbs: PNG, square 300–1024 px, transparent corners + opaque centre, all different, department colours in the mockup's order
+  ✅ [T0.3-S2.9] [static] Orb draws the PNGs with react-native Image (12 static require() calls in components/team), AvatarStack renders Orb/Image, no "gradient" string, and scripts/ai-team-render-orbs.mjs is committed
+  ✅ [T0.3-S5.6] [static] touch target ≥ 44 pt: every Pressable/Touchable element in components/team has hitSlop or a style naming tokens' touchMin; PrimaryButton is pressable and uses colors.accent / accentFg
+  ✅ [T0.3-S2.10] [static] apps/mobile/package.json adds exactly one dependency vs the base — @expo-google-fonts/inter — and package-lock.json exactly its one entry; nothing else differs
+  ✅ [T0.3-S2.11] [static] Inter 300/400/500/600/700 (the weights of the mockup CSS, read from the generators) are loaded in src/lib/fonts.ts inside ONE `// AI TEAM T0.3 ▸ … ◂` block that is the file's only change vs the base
+  ✅ [T0.3-S5.7] text-runs.ts is pure and, executed: splitRuns is lossless, maximal and classifies every character by the per-glyph rule (16 mixed strings); fontFor maps the five weights to both families; every type style uses one of them
+  ✅ [T0.3-S5.8] [static] TeamText is built on ui/text.tsx + text-runs (re-exports splitRuns, uses fontFor) and is the ONLY place of components/team that touches ui/text's Text; text-rendering components use <TeamText>
+  ✅ [T0.3-S5.1] [static] every team component exists, exports its name, and declares testID + its required props
+  ✅ [T0.3-S5.2] [static] every team component forwards testID to a rendered element
+  ✅ [T0.3-S5.3] [static] team components own no text: no JSX text with letters and no Thai string literal (strings arrive through props)
+  ✅ [T0.3-S5.4] [static] team components take Text/TextInput from ui/text.tsx only and never use react-native Modal
+  ✅ [T0.3-S5.5] [static] the gallery route exists, is guarded by __DEV__ / EXPO_PUBLIC_TEAM_GALLERY, uses all 15 components and carries the gallery-* / team-gallery / team-a8 testIDs
+
+── S3.5 · S3.6 fixture + shooter (static) · X10 ──
+  ✅ [T0.3-S3.5] [static] fixture t0.3.json is the oracle's file (sha256), parses with the contract's zod schemas and has 0 employees
+  ✅ [T0.3-S3.6] [static] shoot-ai-team.mjs carries the CLI contract (ROUTES · FIXTURE · --dark → prefers-color-scheme + shark_theme · port 4713 · QC_COPY · gallery flag · output folder) and no build/OTA command
+  ✅ [T0.3-X10.1] [static] nothing in the fixture resembles a token, a secret, a connection string, a micro-dollar/prompt field or real contact data
+  ✅ [T0.3-X10.2] [static] shooter, parity script, gallery and theme never read an env file, carry no secret-like literal, and the shooter's only bearer is `qc-mock`
+
+── S4 parity script ──
+  ✅ [T0.3-S4.1] parity script: exit 0 for pages 1–8 of an 8-up sheet and 1–4 of a 4-up sheet; each output is a PNG of exactly (Wm + 24 + shotW) × (H + 64)
+  ✅ [T0.3-S4.2] parity script crops the right page with the documented grid (left pane = that page's screen, no bezel) and pastes the shot unscaled (right pane pixel-identical); also on a half-size sheet
+  ✅ [T0.3-S4.3] parity script: page index 0, 9, 5-on-a-4-up, a non-number and missing arguments → exit 2, an unreadable input → exit 1; nothing written
+  ✅ [T0.3-S4.4] parity script: --dark gives a dark band, default a light one, both bands carry the two labels; the real mockups (airy-a / airy-dark-a page 8) pair with a 780×1688 shot
+
+── S7 the 1.0 screens ──
+  ✅ [T0.3-S7.1] [static] the 1.0 screens (sessions · chat · crm · member + their components) still import C/R/S from `@/src/theme` and nothing from the new theme/team code; components/ui/text.tsx is byte-identical to the base (no Inter in 1.0)
+  ✅ [T0.3-S7.2] the frozen "before" picture of the sessions screen exists (390×844 PNG, sha256 recorded in this oracle)
+
+── heavy: S3 shoot pipeline · S7.3 pixel diff · S6 mobile typecheck (not requested) ──
+  ⏭️  [T0.3-S3.1] shoot-ai-team (QC_PREPARE=1, light) exits 0: summary.json mode light · ok · gallery + A8 ok, no overflow, nothing missing/unmocked · PNG 780×1688 — SKIPPED-HEAVY (set QC_AI_T03_HEAVY=1)
+  ⏭️  [T0.3-S3.2] shoot-ai-team --dark (same export) exits 0: summary.json mode dark · ok · both screens ok, no overflow · light entries kept · dark PNGs are dark — SKIPPED-HEAVY (set QC_AI_T03_HEAVY=1)
+  ⏭️  [T0.3-S3.3] independent probe of the export, light + dark: `/team/_gallery` shows all 15 gallery-* components, no overflow, no page error, no external request — SKIPPED-HEAVY (set QC_AI_T03_HEAVY=1)
+  ⏭️  [T0.3-S3.4] independent probe, light + dark: A8 shows the fixture's tenant + 3 recommendations + mockup copy, calls exactly summary/employees/recommend with the tenant header, no overflow; dark is dark — SKIPPED-HEAVY (set QC_AI_T03_HEAVY=1)
+  ⏭️  [T0.3-S6.1] `npm run typecheck` in apps/mobile exits 0 — SKIPPED-HEAVY (set QC_AI_T03_HEAVY=1)
+  ⏭️  [T0.3-S7.3] sessions screen of the fresh export vs the "before" picture: differing pixels ≤ 0.5 % (control: a 64×64 change is detected) — SKIPPED-HEAVY (set QC_AI_T03_HEAVY=1)
+
+── housekeeping ──
+  ✅ [T0.3-S7.4] housekeeping: no temp file of this run is left and the oracle changed nothing in the worktree
+
+🟡 T0.3: 33/39 (QC_FORCE) · failed 0 · skipped-heavy 6 · missing deliverables 0/37 · residue tag qc-ai-t0.3-iiqlja
+JSON_SUMMARY {"total":39,"passed":33,"findings":[],"skippedHeavy":["T0.3-S3.1","T0.3-S3.2","T0.3-S3.3","T0.3-S3.4","T0.3-S6.1","T0.3-S7.3"],"heavy":false}
+exit code: 0
+
+## unforced (re-run with a quiet worktree; a first unforced run showed S7.4 red only because the builder committed notes while it was running)
+
+── S1 legacy C/R/S · S2 tokens ──
+  ✅ [T0.3-S1.1] [static] `@/src/theme` (theme.ts) still exports C, R, S with exactly today's values (frozen snapshot of 873c80ca)
+  ✅ [T0.3-S1.2] [static] theme.ts is a pure re-export shim of ./theme/* and theme/index.ts exports the SAME C/R/S objects + tokens, light, dark, useTheme, get/setThemeOverride, THEME_STORAGE_KEY
+  ✅ [T0.3-S2.1] [static] light and dark have the same deep key set and the same value kinds (evaluated, not grepped)
+  ✅ [T0.3-S2.2] [static] light/dark carry every contract key with a valid colour, differ from each other, and match the mockup-CSS anchors (incl. the primary button: #16161c/#ffffff light · #f2f2f7/#16161c dark)
+  ✅ [T0.3-S2.3] [static] tokens: every length = generator CSS px × 390/536 (±1, whole or half pt; 26 values read against gen_*.py file:line) · radii.full 999 · size.touchMin 44 · 9 type styles
+  ✅ [T0.3-S2.4] useTheme() follows the system scheme, obeys set/getThemeOverride (key shark_theme), and honours a stored override after a cold start on native and on web
+  ✅ [T0.3-X10.3] [static] the theme override store keeps only "light"/"dark" under shark_theme: no session/token key is read or written by src/theme
+
+── S2.5–S2.7 · S5 team components (static, AST) ──
+  ✅ [T0.3-S2.5] [static] no colour literal (hex · rgb() · rgba() · hsl()) in any string of components/team (comments ignored — AST)
+  ✅ [T0.3-S2.6] [static] src/theme and components/team import only what the contract allows (the only new package is @expo-google-fonts/inter; no AsyncStorage/svg/gradient/blur)
+  ✅ [T0.3-S2.7] [static] no numeric borderRadius literal in components/team (radii come from tokens / R)
+  ✅ [T0.3-S2.8] [static] the 12 orb PNGs exist under assets/team/orbs: PNG, square 300–1024 px, transparent corners + opaque centre, all different, department colours in the mockup's order
+  ✅ [T0.3-S2.9] [static] Orb draws the PNGs with react-native Image (12 static require() calls in components/team), AvatarStack renders Orb/Image, no "gradient" string, and scripts/ai-team-render-orbs.mjs is committed
+  ✅ [T0.3-S5.6] [static] touch target ≥ 44 pt: every Pressable/Touchable element in components/team has hitSlop or a style naming tokens' touchMin; PrimaryButton is pressable and uses colors.accent / accentFg
+  ✅ [T0.3-S2.10] [static] apps/mobile/package.json adds exactly one dependency vs the base — @expo-google-fonts/inter — and package-lock.json exactly its one entry; nothing else differs
+  ✅ [T0.3-S2.11] [static] Inter 300/400/500/600/700 (the weights of the mockup CSS, read from the generators) are loaded in src/lib/fonts.ts inside ONE `// AI TEAM T0.3 ▸ … ◂` block that is the file's only change vs the base
+  ✅ [T0.3-S5.7] text-runs.ts is pure and, executed: splitRuns is lossless, maximal and classifies every character by the per-glyph rule (16 mixed strings); fontFor maps the five weights to both families; every type style uses one of them
+  ✅ [T0.3-S5.8] [static] TeamText is built on ui/text.tsx + text-runs (re-exports splitRuns, uses fontFor) and is the ONLY place of components/team that touches ui/text's Text; text-rendering components use <TeamText>
+  ✅ [T0.3-S5.1] [static] every team component exists, exports its name, and declares testID + its required props
+  ✅ [T0.3-S5.2] [static] every team component forwards testID to a rendered element
+  ✅ [T0.3-S5.3] [static] team components own no text: no JSX text with letters and no Thai string literal (strings arrive through props)
+  ✅ [T0.3-S5.4] [static] team components take Text/TextInput from ui/text.tsx only and never use react-native Modal
+  ✅ [T0.3-S5.5] [static] the gallery route exists, is guarded by __DEV__ / EXPO_PUBLIC_TEAM_GALLERY, uses all 15 components and carries the gallery-* / team-gallery / team-a8 testIDs
+
+── S3.5 · S3.6 fixture + shooter (static) · X10 ──
+  ✅ [T0.3-S3.5] [static] fixture t0.3.json is the oracle's file (sha256), parses with the contract's zod schemas and has 0 employees
+  ✅ [T0.3-S3.6] [static] shoot-ai-team.mjs carries the CLI contract (ROUTES · FIXTURE · --dark → prefers-color-scheme + shark_theme · port 4713 · QC_COPY · gallery flag · output folder) and no build/OTA command
+  ✅ [T0.3-X10.1] [static] nothing in the fixture resembles a token, a secret, a connection string, a micro-dollar/prompt field or real contact data
+  ✅ [T0.3-X10.2] [static] shooter, parity script, gallery and theme never read an env file, carry no secret-like literal, and the shooter's only bearer is `qc-mock`
+
+── S4 parity script ──
+  ✅ [T0.3-S4.1] parity script: exit 0 for pages 1–8 of an 8-up sheet and 1–4 of a 4-up sheet; each output is a PNG of exactly (Wm + 24 + shotW) × (H + 64)
+  ✅ [T0.3-S4.2] parity script crops the right page with the documented grid (left pane = that page's screen, no bezel) and pastes the shot unscaled (right pane pixel-identical); also on a half-size sheet
+  ✅ [T0.3-S4.3] parity script: page index 0, 9, 5-on-a-4-up, a non-number and missing arguments → exit 2, an unreadable input → exit 1; nothing written
+  ✅ [T0.3-S4.4] parity script: --dark gives a dark band, default a light one, both bands carry the two labels; the real mockups (airy-a / airy-dark-a page 8) pair with a 780×1688 shot
+
+── S7 the 1.0 screens ──
+  ✅ [T0.3-S7.1] [static] the 1.0 screens (sessions · chat · crm · member + their components) still import C/R/S from `@/src/theme` and nothing from the new theme/team code; components/ui/text.tsx is byte-identical to the base (no Inter in 1.0)
+  ✅ [T0.3-S7.2] the frozen "before" picture of the sessions screen exists (390×844 PNG, sha256 recorded in this oracle)
+
+── heavy: S3 shoot pipeline · S7.3 pixel diff · S6 mobile typecheck (not requested) ──
+  ⏭️  [T0.3-S3.1] shoot-ai-team (QC_PREPARE=1, light) exits 0: summary.json mode light · ok · gallery + A8 ok, no overflow, nothing missing/unmocked · PNG 780×1688 — SKIPPED-HEAVY (set QC_AI_T03_HEAVY=1)
+  ⏭️  [T0.3-S3.2] shoot-ai-team --dark (same export) exits 0: summary.json mode dark · ok · both screens ok, no overflow · light entries kept · dark PNGs are dark — SKIPPED-HEAVY (set QC_AI_T03_HEAVY=1)
+  ⏭️  [T0.3-S3.3] independent probe of the export, light + dark: `/team/_gallery` shows all 15 gallery-* components, no overflow, no page error, no external request — SKIPPED-HEAVY (set QC_AI_T03_HEAVY=1)
+  ⏭️  [T0.3-S3.4] independent probe, light + dark: A8 shows the fixture's tenant + 3 recommendations + mockup copy, calls exactly summary/employees/recommend with the tenant header, no overflow; dark is dark — SKIPPED-HEAVY (set QC_AI_T03_HEAVY=1)
+  ⏭️  [T0.3-S6.1] `npm run typecheck` in apps/mobile exits 0 — SKIPPED-HEAVY (set QC_AI_T03_HEAVY=1)
+  ⏭️  [T0.3-S7.3] sessions screen of the fresh export vs the "before" picture: differing pixels ≤ 0.5 % (control: a 64×64 change is detected) — SKIPPED-HEAVY (set QC_AI_T03_HEAVY=1)
+
+── housekeeping ──
+  ✅ [T0.3-S7.4] housekeeping: no temp file of this run is left and the oracle changed nothing in the worktree
+
+🟡 T0.3: 33/39 · failed 0 · skipped-heavy 6 · missing deliverables 0/37 · residue tag qc-ai-t0.3-1sq6l8
+JSON_SUMMARY {"total":39,"passed":33,"findings":[],"skippedHeavy":["T0.3-S3.1","T0.3-S3.2","T0.3-S3.3","T0.3-S3.4","T0.3-S6.1","T0.3-S7.3"],"heavy":false}
+exit code: 0
+
+## apps/mobile npm run typecheck (run outside the oracle, 18:2x UTC, on the tree of ba2cf114 + shim fix): exit 0, 0 error lines
