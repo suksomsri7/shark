@@ -37,3 +37,11 @@ export { payrollEmployeeOfUser, payrollRunPeriods, adjustmentOfCommission, adjus
 //   รายการค้าง (PENDING/APPROVED) ในงวดที่มีรอบแล้ว
 export { withdrawCommissionAdjustment, activeLinkedUserIds, strandedCommissionAdjustments, moveCommissionAdjustmentPeriod } from "./payroll";
 // ◂ CRM C3.3
+
+// HR H0.5 ▸ contract C-8 — "PIN นี้เป็นของพนักงานคนไหนในร้าน" (re-export ล้วน — ตรรกะอยู่ที่ `pin.ts`)
+//   ผู้เรียกที่รออยู่: POS P1.15 (ยืนยันพนักงานหน้าเครื่อง / อนุมัติ void) · HR เป็นเจ้าของ PIN (review ruling #3 — ไม่มี PosStaffPin)
+//   verifyPin({ tenantId, pin, unitId?, systemId? }) → { ok:true, employeeId, systemId, userId } | { ok:false, reason } — คืน id เท่านั้น ·
+//   ถังจำกัด hr-verifypin:<tenantId> 120 ครั้ง/60 วินาที · unitId ยังไม่มีผลจนถึง H1.1 · systemId = ตัวกรอง
+export type { VerifyPinInput, VerifyPinResult, VerifyPinOk, VerifyPinFail } from "./pin";
+export { verifyPin } from "./pin";
+// ◂ HR H0.5

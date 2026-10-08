@@ -8,6 +8,9 @@ import { isAvailable as rulesIsAvailable, workedMinutes } from "./rules";
 // WO 3.1 — Party (INTEGRATION-MAP §F.1): จาก name/phone/email เท่านั้น — **ห้ามส่ง nationalId/PDPA อื่น**
 // เรียกผ่าน facade เท่านั้น (F2.2)
 import * as party from "@/lib/modules/party";
+// HR H0.5 ▸ PIN (hash · ไม่ซ้ำทั้งร้าน · ทางเก่า) อยู่ที่ pin.ts ที่เดียว — ไฟล์นี้ไม่แตะคอลัมน์ PIN เอง (F16.5) ◂
+import { activateEmployeeKeepingPinUnique, hasPin, PIN_SELECT, pinOfInput, setPin, verifyPinForEmployee, type PinInput } from "./pin";
+export { setPin } from "./pin"; // HR H0.5 ▸ ย้ายไป pin.ts · ผู้เรียกเดิม (actions · seed · oracle) import จากที่นี่ได้ตามเดิม ◂
 
 // HR (ระบบที่ 17) — service ชั้นประกอบ (systemId-scoped)
 // ⚠️ กติกา availability + ชั่วโมงทำงาน มาจาก rules.ts (สมอง FREEZE) — ที่นี่แค่โหลด DB แล้วเรียกใช้
@@ -21,14 +24,22 @@ export type Ctx = { tenantId: string; systemId: string };
 const toDbDate = (s: string | Date): Date => (s instanceof Date ? s : new Date(`${s}T00:00:00Z`));
 
 // ── พนักงาน ──
+// HR H0.5 ▸ PIN ของพนักงานใหม่ = `pin` (`pinCode` ชื่อเก่ายังรับ — ทั้งสองทางผ่าน setPin = hash เสมอ ไม่เก็บตัวเปล่า) ◂
 export type CreateEmployeeInput = {
   name: string;
   phone?: string | null;
   position?: string | null;
-  pinCode?: string | null;
-};
+} & PinInput;
 
-export async function createEmployee(ctx: Ctx, input: CreateEmployeeInput): Promise<{ id: string }> {
+/**
+ * สร้างพนักงาน แล้วค่อยตั้ง PIN (ถ้ามี) ผ่าน setPin — คนละคำสั่ง (ไม่ต้องอยู่ tx เดียว)
+ * HR H0.5 ▸ PIN ใช้ไม่ได้ (ซ้ำในร้าน / รูปแบบผิด / ยังไม่ตั้งค่า pepper) ⇒ พนักงานยังถูกสร้าง · ผลมี pinSet:false + reason
+ *   ให้หน้าจอบอกได้ว่า "สร้างแล้ว แต่ PIN นี้ใช้ไม่ได้" ◂
+ */
+export async function createEmployee(
+  ctx: Ctx,
+  input: CreateEmployeeInput,
+): Promise<{ id: string; pinSet?: boolean; reason?: string }> {
   const name = input.name.trim();
   // WO 3.1 (MAP §F.1) — เชื่อม Party จาก name/phone เท่านั้น · ล้มเหลว = partyId null (ไม่ throw)
   const partyId = await party.safeFindOrCreate(ctx.tenantId, {
@@ -43,12 +54,14 @@ export async function createEmployee(ctx: Ctx, input: CreateEmployeeInput): Prom
       name,
       phone: input.phone?.trim() || null,
       position: input.position?.trim() || null,
-      pinCode: input.pinCode?.trim() || null,
       partyId,
       // active = true (default ใน schema)
     },
   });
-  return { id: e.id };
+  const pin = pinOfInput(input);
+  if (!pin) return { id: e.id };
+  const pr = await setPin(ctx, e.id, pin);
+  return pr.ok ? { id: e.id, pinSet: true } : { id: e.id, pinSet: false, reason: pr.reason };
 }
 
 export async function listEmployees(ctx: Ctx, take = 200) {
@@ -277,11 +290,18 @@ export async function setEmployeeActive(
   ctx: Ctx,
   employeeId: string,
   active: boolean,
-): Promise<{ ok: boolean; reason?: string; name?: string }> {
-  const emp = await tenantDb(ctx).hrEmployee.findFirst({ where: { id: employeeId } });
+): Promise<{ ok: boolean; reason?: string; name?: string; pinCleared?: boolean }> {
+  const emp = await tenantDb(ctx).hrEmployee.findFirst({ where: { id: employeeId }, select: { id: true, name: true } });
   if (!emp) return { ok: false, reason: "ไม่พบพนักงาน" };
-  await tenantDb(ctx).hrEmployee.updateMany({ where: { id: employeeId }, data: { active } });
-  return { ok: true, name: emp.name };
+  if (!active) {
+    // พ้นสภาพ = ออกจากดัชนี PIN (WHERE active) ⇒ PIN ของคนนี้ว่างให้คนอื่นตั้งได้ · hash ยังเก็บไว้ (กลับมาแล้วไม่ชน = ใช้ต่อได้)
+    await tenantDb(ctx).hrEmployee.updateMany({ where: { id: employeeId }, data: { active } });
+    return { ok: true, name: emp.name };
+  }
+  // HR H0.5 ▸ R4: กลับมาทำงานแล้ว PIN เดิมชนกับคนที่ตั้งไประหว่างนั้น ⇒ ล้าง PIN ของคนที่กลับมา (ต้องตั้งใหม่) ไม่ล้มทั้งคำสั่ง ◂
+  const r = await activateEmployeeKeepingPinUnique(ctx, employeeId);
+  if (r.count !== 1) return { ok: false, reason: "ไม่พบพนักงาน" };
+  return r.pinCleared ? { ok: true, name: emp.name, pinCleared: true } : { ok: true, name: emp.name };
 }
 
 // HR H0.3 ▸ หน้าต่างกันแตะซ้ำ (วินาที) ต่อพนักงาน — ดู clock() ◂
@@ -382,27 +402,10 @@ function kindAfter(last: { kind: HrAttendanceKind; at: Date } | null, now: Date)
 // ─────────────────── kiosk: พนักงานกดลงเวลาเองด้วย PIN (13 ส.ค. 2026) ───────────────────
 // เดิมมีแต่หน้าที่เจ้าของกดลงเวลา "แทน" พนักงาน (ใครกดก็ได้ ไม่มีการยืนยันตัวตน)
 // kiosk = เปิดหน้านี้ค้างไว้บนแท็บเล็ตหน้าร้าน · พนักงานเลือกชื่อ + ใส่ PIN ของตัวเอง
-// PIN = รหัสหน้าประตู 4-6 หลัก (ไม่ใช่รหัสผ่านบัญชี) เจ้าของตั้ง/ดู/เปลี่ยนได้ → เก็บเป็นข้อความ
-//   ป้องกันการเดาด้วย rate limit ที่ชั้น action (ห้ามยิงรัว) ไม่ใช่ด้วยการซ่อนค่า
+// PIN = รหัสหน้าประตู 4-6 หลัก (ไม่ใช่รหัสผ่านบัญชี) · กันเดาด้วย rate limit ที่ชั้น action (ห้ามยิงรัว)
+// HR H0.5 ▸ เดิมเก็บเป็นข้อความ (เจ้าของดูได้) — ตอนนี้เก็บเป็น hash ไม่มีใครดูได้ (ลืม = ตั้งใหม่) · ไม่ซ้ำทั้งร้าน ◂
 
-/** ตั้ง/ล้าง PIN ให้พนักงาน — ว่าง = ปิดการลงเวลาเองของคนนี้ */
-export async function setPin(ctx: Ctx, employeeId: string, pin: string): Promise<{ ok: boolean; reason?: string }> {
-  const clean = pin.trim();
-  if (clean && !/^\d{4,6}$/.test(clean)) return { ok: false, reason: "PIN ต้องเป็นตัวเลข 4-6 หลัก" };
-  const emp = await tenantDb(ctx).hrEmployee.findFirst({ where: { id: employeeId } });
-  if (!emp) return { ok: false, reason: "ไม่พบพนักงาน" };
-  if (clean) {
-    // PIN ซ้ำกับคนอื่นในร้านได้ (เลือกชื่อก่อนใส่ PIN อยู่แล้ว) แต่เตือนไว้ว่าอย่าซ้ำจะดีกว่า
-    // HF-HR-0 (D8): ห้ามบอกว่าใครถือ PIN นี้ — เดิมตอบชื่อเจ้าของ ⇒ ไล่เดา PIN ได้ว่าเป็นของใคร
-    const dup = await tenantDb(ctx).hrEmployee.findFirst({
-      where: { pinCode: clean, active: true, NOT: { id: employeeId } },
-      select: { id: true },
-    });
-    if (dup) return { ok: false, reason: "PIN นี้ใช้ไม่ได้ กรุณาเลือก PIN อื่น" };
-  }
-  await tenantDb(ctx).hrEmployee.updateMany({ where: { id: employeeId }, data: { pinCode: clean || null } });
-  return { ok: true };
-}
+// HR H0.5 ▸ setPin (ตั้ง/ล้าง PIN) ย้ายไป pin.ts — เก็บเป็น hash · ไม่ซ้ำทั้งร้าน (partial unique) · re-export ที่หัวไฟล์ ◂
 
 /** ครั้งถัดไปของวันนี้ (เวลาไทย) ควรเป็นเข้าหรือออก — พนักงานไม่ต้องเลือกเอง
  *  HR H0.3 ▸ ใช้แสดงผลเท่านั้น · การลงเวลาจริงตัดสินซ้ำใต้ล็อกใน clock(kind "NEXT") ด้วย kindAfter ตัวเดียวกัน ◂ */
@@ -434,14 +437,13 @@ export type KioskClockResult =
  * เพราะเลือกชื่อจากรายชื่อบนจอ (ไม่ใช่ระบบล็อกอิน) แต่ยังบอกให้ชัดว่าเกิดอะไรขึ้นเพื่อไม่ให้คนงง
  */
 export async function clockWithPin(ctx: Ctx, employeeId: string, pin: string): Promise<KioskClockResult> {
-  const emp = await tenantDb(ctx).hrEmployee.findFirst({ where: { id: employeeId, active: true } });
-  if (!emp) return { ok: false, reason: "ไม่พบพนักงาน" };
-  if (!emp.pinCode) return { ok: false, reason: `${emp.name} ยังไม่มี PIN — ให้เจ้าของตั้งที่หน้าพนักงาน` };
-  if (emp.pinCode !== pin.trim()) return { ok: false, reason: "PIN ไม่ถูกต้อง" };
+  // HR H0.5 ▸ เทียบ PIN ที่ pin.ts (hash · เวลาคงที่ · ทางเก่าอัปเกรดเอง) — ข้อความเดิม: ไม่พบ / "<ชื่อ> ยังไม่มี PIN — …" / "PIN ไม่ถูกต้อง" ◂
+  const emp = await verifyPinForEmployee(ctx, employeeId, pin);
+  if (!emp.ok) return { ok: false, reason: emp.reason };
   // HR H0.3 ▸ เลือกเข้า/ออก + กันแตะซ้ำ ใต้ล็อกเดียวกันใน clock (เดิมอ่าน nextClockKind แล้วค่อยเขียน ⇒ แตะเบิ้ล = เข้า+ออก) ◂
   let res: ClockOutcome;
   try {
-    res = await clock(ctx, { employeeId: emp.id, kind: "NEXT", requireActive: true });
+    res = await clock(ctx, { employeeId: emp.employeeId, kind: "NEXT", requireActive: true });
   } catch (e) {
     if (e instanceof ClockRefusedError) return { ok: false, reason: "ไม่พบพนักงาน" };
     throw e;
@@ -454,9 +456,9 @@ export async function kioskRoster(ctx: Ctx) {
   const emps = await tenantDb(ctx).hrEmployee.findMany({
     where: { active: true },
     orderBy: { createdAt: "asc" },
-    select: { id: true, name: true, position: true, pinCode: true },
+    select: { id: true, name: true, position: true, ...PIN_SELECT },
   });
-  return emps.map((e) => ({ id: e.id, name: e.name, position: e.position, hasPin: !!e.pinCode }));
+  return emps.map((e) => ({ id: e.id, name: e.name, position: e.position, hasPin: hasPin(e) })); // HR H0.5 ▸ hash หรือตัวเปล่า (ช่วง rollout) ◂
 }
 
 // ── ลา ──

@@ -22,6 +22,7 @@ const schema = z.object({
   // 🔴 ไม่ตั้งค่า = ไม่มีทางลัดใด ๆ ในระบบ (ค่าว่าง = ปิดสนิท) · ต้องตั้งทั้งคู่ถึงจะทำงาน
   REVIEW_EMAIL: z.string().default(""),
   REVIEW_OTP: z.string().default(""),
+  HR_PIN_PEPPER: z.string().min(32).optional(), // HR H0.5 ▸ pepper ของ HMAC PIN พนักงาน · ไม่ตั้ง = hr/pin.ts ปฏิเสธ · optional ให้ fitness/deploy เก่ายังบูตได้ ◂
 });
 
 export const env = schema.parse(process.env);
@@ -31,6 +32,7 @@ export const isDev = env.APP_ENV === "development";
 // cookie secure ทุกที่ที่ไม่ใช่ localhost dev (preview/prod เป็น HTTPS)
 export const secureCookies = env.APP_ENV !== "development";
 export const emailEnabled = env.RESEND_API_KEY.length > 0;
+export const hasPinPepper = (env.HR_PIN_PEPPER ?? "").length >= 32; // HR H0.5 ▸ โน้ตหน้าจอ/ข้อสอบ — hr/pin.ts อ่าน process.env ตอนเรียกเอง (fitness ไม่มี env) ◂
 /** ความลับของ webhook อีเมลขาเข้า — ค่าว่าง = ยังไม่ได้เปิดบริการ (route ตอบ 503) */
 export const emailInboundSecret = env.EMAIL_INBOUND_SECRET.trim();
 // โชว์ OTP บนจอทุก env ที่ไม่ใช่ production (แม้ต่อ Resend แล้ว) — กัน login ติดตอน
