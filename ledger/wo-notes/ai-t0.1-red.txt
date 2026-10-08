@@ -1,0 +1,74 @@
+# T0.1 oracle on the base (session/ai-team 0ea0377f, branch wip/pos-ai-t0.1-oracle) — 2026-10-08T16:36Z — oracle writer run
+
+## 1. FORCED — bash scripts/iso.sh bash scripts/qc4.sh bash scripts/with-gate-lock.sh env QC_FORCE=1 SHARK_AI_MOCK=1 pnpm exec tsx scripts/qc-ai-t0.1.mts   → exit 1
+
+⚠️  QC_FORCE=1 — running although the probe is missing (expected: RED for that reason, no crash): scripts/ai-team-cost-probe.mts
+QC T0.1 — AI TEAM cost probe (mock provider only) · host ep-frosty-lab-aoylqlv8-pooler · tag qc-ai-t0.1-bmi2y5 · QC_FORCE
+(node:2692273) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+── X10 / X11 [static] ──
+  ❌ [T0.1-X10.2] [static] the probe has no key literal, never prints/reads secrets or `.env`, loads env only through loadAiTeamQcEnv(); the real file (when present) is clean too — exp scripts/ai-team-cost-probe.mts exists | act file missing
+  ❌ [T0.1-X11.1] [static] the probe goes through sendMessage + createConversation/sendMobileChat and contains no charging/provider bypass (refund through topUp only) — exp scripts/ai-team-cost-probe.mts exists | act file missing
+
+── S3 guards ──
+  ❌ [T0.1-S3.3] without AI_COST_PROBE the probe exits 0 and does nothing: no file, no row, wallet untouched (qc-all can never trigger a measurement) — exp probe + seed present | act scripts/ai-team-cost-probe.mts missing
+  ❌ [T0.1-S3.4] SHARK_AI_MOCK=1 without PROBE_OUT is refused (exit ≠ 0, nothing written): a mock result can never overwrite the real ledger file — exp probe + seed present | act scripts/ai-team-cost-probe.mts missing
+
+── full mock run ──
+  · not started: scripts/ai-team-cost-probe.mts missing
+
+── S1 result file [mock] ──
+  ❌ [T0.1-S1.1] [mock] the probe (defaults: cap 3, 3 rounds) exits 0 and writes a result file whose `probe-data` block has the contract shape: provider mock, 10 types, 30 rows in round-major order — exp a parsable result file of the full mock run | act scripts/ai-team-cost-probe.mts missing
+  ❌ [T0.1-S1.2] [mock] every row has tokensIn / tokensOut / micro / wallMs > 0, a routed model id (haiku|sonnet), its own conversation of the AT-1 owner and ≥ 1 ledger row id — exp a parsable result file of the full mock run | act scripts/ai-team-cost-probe.mts missing
+  ❌ [T0.1-S1.3] [mock] the 30-row markdown table equals the probe-data rows cell for cell — exp a parsable result file of the full mock run | act scripts/ai-team-cost-probe.mts missing
+  ❌ [T0.1-S1.4] [mock] p50 / p95 / mean per type recompute from the rows (nearest rank) — exp a parsable result file of the full mock run | act scripts/ai-team-cost-probe.mts missing
+
+── S2 ledger [mock] ──
+  ❌ [T0.1-S2.1] [mock] per row: the AiCreditTxn USAGE rows of its conversation in QC4 are exactly `txnIds`, and their Σ micro / tokens equal the row — exp a parsable result file of the full mock run | act scripts/ai-team-cost-probe.mts missing
+  ❌ [T0.1-S2.2] [mock] totals.spentMicro = Σ rows = Σ ledger = every USAGE row AT-1 gained during the run (no unlisted spend, no unlisted conversation) — exp a parsable result file of the full mock run | act scripts/ai-team-cost-probe.mts missing
+
+── S3 cap ──
+  ❌ [T0.1-S3.1] [mock] full run: total spend ≤ COST_CAP_USD (default 3 = 3,000,000 micro), not stopped, stdout ends with PROBE_RESULT carrying the same spend — exp a parsable result file of the full mock run | act scripts/ai-team-cost-probe.mts missing
+  ❌ [T0.1-S3.2] [mock] COST_CAP_USD=0.000001 ⇒ exit 0, exactly one run (type 1, round 1), stoppedByCap true + `STOPPED BY CAP` in the file, spend = ledger — exp probe + seed present | act scripts/ai-team-cost-probe.mts missing
+
+── S4 pack math [mock] ──
+  ❌ [T0.1-S4.1] [mock] weights are in the file (default mix, Σ = 1) and categoryMeanMicro / weightedMeanMicro recompute from the table — exp a parsable result file of the full mock run | act scripts/ai-team-cost-probe.mts missing
+  ❌ [T0.1-S4.2] [mock] pack math for 490 / 1,490 / 3,990 THB recomputes from the table at thbPerUsd() (pinned to 37.5 for the run), margin ≥ 50 %, formula + numbers in the text — exp a parsable result file of the full mock run | act scripts/ai-team-cost-probe.mts missing
+  ❌ [T0.1-S4.3] [mock] FREE trial: one proposal + 2 alternatives, three different allowances, approxTasks recompute — exp a parsable result file of the full mock run | act scripts/ai-team-cost-probe.mts missing
+
+── X11 charging path [mock] ──
+  ❌ [T0.1-X11.2] [mock] every run was charged by the normal path: exactly one CHAT row priced by costMicroUsd(model, tokens); the mobile-path type also has exactly one AUTO_TITLE row, the others none — exp a parsable result file of the full mock run | act scripts/ai-team-cost-probe.mts missing
+  ❌ [T0.1-X11.3] [mock] seen live while the probe ran: USER + ASSISTANT message pairs written by sendMessage (answers of MockProvider) in conversations that are all listed in the file — exp a parsable result file of the full mock run | act scripts/ai-team-cost-probe.mts missing
+
+── S5 cleanup ──
+  ❌ [T0.1-S5.1] no probe conversation is left after either run: 0 AiConversation rows and 0 rows in any table that references the listed conversation ids (ledger excepted) — exp the probe ran | act scripts/ai-team-cost-probe.mts missing
+  ❌ [T0.1-S5.2] AT-1 wallet balance is equal before and after each probe run — exp the probe ran | act scripts/ai-team-cost-probe.mts missing
+  ❌ [T0.1-S5.3] each run wrote exactly one ADJUST row ref qc-ai-t0.1-refund-<runId> of +spentMicro, and cleanup{} in the file says the same — exp the probe ran | act scripts/ai-team-cost-probe.mts missing
+  ❌ [T0.1-S5.4] every tenant table of AT-1 has the row count it had before the runs (ledger = exactly the listed rows + refunds) and the daily AiUsage net is given back — exp the probe ran | act scripts/ai-team-cost-probe.mts missing
+
+── X10 runtime ──
+  ❌ [T0.1-X10.1] no probe output (stdout, stderr, result files) carries the key, a secret of this environment, an Authorization header or a URL — exp the probe ran and wrote a result | act scripts/ai-team-cost-probe.mts missing
+
+── real file ledger/AI-TEAM-COST-2026-10.md ──
+  ⏳ [T0.1-S1.5] [REAL FILE] ledger/AI-TEAM-COST-2026-10.md: provider real · 30 rows · every row tokensIn/tokensOut/micro > 0 and a real model id · table = data · totals ≤ cap — PENDING-REAL: ledger/AI-TEAM-COST-2026-10.md is not there yet — re-run this oracle after the controller's real measurement
+  ⏳ [T0.1-S2.3] [REAL FILE] ledger/AI-TEAM-COST-2026-10.md: Σ micro of the file = Σ AiCreditTxn USAGE rows (by txnIds / conversation ids) still in the QC4 ledger — PENDING-REAL: ledger/AI-TEAM-COST-2026-10.md is not there yet — re-run this oracle after the controller's real measurement
+  ⏳ [T0.1-S4.4] [REAL FILE] ledger/AI-TEAM-COST-2026-10.md: p50/p95, weighted mean, pack math and FREE trial recompute from its own table — PENDING-REAL: ledger/AI-TEAM-COST-2026-10.md is not there yet — re-run this oracle after the controller's real measurement
+
+── S5 residue ──
+  ✅ [T0.1-S5.5] oracle residue: no temp dir left, tracked paths of the worktree and the real ledger file exactly as before
+
+🔴 T0.1: 1/26 (QC_FORCE) · PENDING-REAL 3 · probe MISSING · env loader present · residue tag qc-ai-t0.1-bmi2y5
+JSON_SUMMARY {"total":26,"passed":1,"findings":[{"id":"T0.1-X10.2","sev":"CRITICAL"},{"id":"T0.1-X11.1","sev":"CRITICAL"},{"id":"T0.1-S3.3","sev":"CRITICAL"},{"id":"T0.1-S3.4","sev":"MAJOR"},{"id":"T0.1-S1.1","sev":"CRITICAL"},{"id":"T0.1-S1.2","sev":"CRITICAL"},{"id":"T0.1-S1.3","sev":"CRITICAL"},{"id":"T0.1-S1.4","sev":"MAJOR"},{"id":"T0.1-S2.1","sev":"CRITICAL"},{"id":"T0.1-S2.2","sev":"CRITICAL"},{"id":"T0.1-S3.1","sev":"CRITICAL"},{"id":"T0.1-S3.2","sev":"CRITICAL"},{"id":"T0.1-S4.1","sev":"CRITICAL"},{"id":"T0.1-S4.2","sev":"CRITICAL"},{"id":"T0.1-S4.3","sev":"MAJOR"},{"id":"T0.1-X11.2","sev":"CRITICAL"},{"id":"T0.1-X11.3","sev":"CRITICAL"},{"id":"T0.1-S5.1","sev":"CRITICAL"},{"id":"T0.1-S5.2","sev":"CRITICAL"},{"id":"T0.1-S5.3","sev":"CRITICAL"},{"id":"T0.1-S5.4","sev":"MAJOR"},{"id":"T0.1-X10.1","sev":"CRITICAL"},{"id":"T0.1-S1.5","sev":"MINOR","pending":"PENDING-REAL"},{"id":"T0.1-S2.3","sev":"MINOR","pending":"PENDING-REAL"},{"id":"T0.1-S4.4","sev":"MINOR","pending":"PENDING-REAL"}],"pendingReal":3}
+
+## 2. UNFORCED — bash scripts/iso.sh bash scripts/qc4.sh bash scripts/with-gate-lock.sh env SHARK_AI_MOCK=1 pnpm exec tsx scripts/qc-ai-t0.1.mts   → exit 0
+
+⚠️  SKIPPED — WO T0.1 not built yet (missing: scripts/ai-team-cost-probe.mts)
+JSON_SUMMARY {"total":0,"passed":0,"findings":[],"skipped":true}
