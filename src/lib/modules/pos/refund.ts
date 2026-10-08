@@ -49,7 +49,7 @@ const MAX_KEY = 200;
 const MSG: Record<RefundRefusalCode, string> = {
   NO_PERMISSION: "บัญชีนี้ยังไม่มีสิทธิ์คืนเงิน — ขอให้เจ้าของร้านหรือผู้จัดการทำรายการ",
   SALE_NOT_FOUND: "ไม่พบบิลนี้ในสาขานี้",
-  SALE_NOT_REFUNDABLE: "บิลนี้คืนเงินไม่ได้ (ถูกยกเลิก คืนครบแล้ว หรือเป็นบิลขายบัตรกำนัล)",
+  SALE_NOT_REFUNDABLE: "บิลนี้คืนเงินที่ POS ไม่ได้ (ถูกยกเลิก คืนครบแล้ว เป็นบิลขายบัตรกำนัล หรือเป็นบิลของระบบอื่น — คืนที่ระบบนั้น)",
   REFUND_EXCEEDS: "จำนวนที่คืนเกินจำนวนที่ยังคืนได้ของรายการนี้",
   REFUND_EMPTY: "เลือกรายการที่จะคืนอย่างน้อย 1 รายการ",
   PAYMENT_MISMATCH: "ยอดเงินที่คืนแยกตามวิธีไม่เท่ากับยอดคืน",
@@ -141,7 +141,8 @@ function cleanInput(raw: unknown, ctx: RegisterCtx): CleanInput | RefundRefusal 
     lines.push({ lineId: l.lineId, qty: l.qty, restock: typeof l.restock === "boolean" ? l.restock : null });
   }
   // วิธีคืน
-  if (!Array.isArray(raw.payMethods) || raw.payMethods.length === 0) return refuse("VALIDATION", "ระบุวิธีคืนเงิน");
+  // F4 ▸ [] ผ่านด่านรูปแบบได้ — ตัดสินในtx หลังคิดยอด: ยอดคืน 0 เท่านั้นที่ไม่มีวิธีคืน (ยอด > 0 + [] = VALIDATION) ◂
+  if (!Array.isArray(raw.payMethods)) return refuse("VALIDATION", "ระบุวิธีคืนเงิน");
   if (raw.payMethods.length > MAX_PAY) return refuse("VALIDATION", `แบ่งคืนได้ไม่เกิน ${MAX_PAY} รายการ`);
   const payMethods: CleanInput["payMethods"] = [];
   for (const p of raw.payMethods as unknown[]) {
@@ -225,9 +226,12 @@ async function priorRefunds(db: Db | Tx, sale: { id: string; tenantId: string; u
   return { docs, qty, amt, sc };
 }
 
-/** เหตุที่บิลคืนไม่ได้ (null = คืนได้) — ใบคืน/ยกเลิก/คืนครบ/บิลขายบัตรกำนัล */
-function notRefundable(sale: Pick<PosSale, "docType" | "status" | "giftCardId">): RefundRefusalCode | null {
-  if (sale.docType !== "SALE" || sale.status !== "PAID" || sale.giftCardId) return "SALE_NOT_REFUNDABLE";
+/** บิลของระบบอื่น (โรงแรม/ตั๋ว/จอง/ร้านค้าออนไลน์ …) คืนที่ระบบนั้นเอง (คืนเงินของโมดูล + voidSale) — POS คืนเฉพาะบิลของ POS (F1) */
+const notPosOwned = (sale: Pick<PosSale, "docType" | "sourceModule" | "giftCardId">) => sale.docType !== "SALE" || sale.sourceModule !== "POS" || !!sale.giftCardId;
+
+/** เหตุที่บิลคืนไม่ได้ (null = คืนได้) — ใบคืน/ยกเลิก/คืนครบ/บิลขายบัตรกำนัล/บิลของระบบอื่น */
+function notRefundable(sale: Pick<PosSale, "docType" | "status" | "giftCardId" | "sourceModule">): RefundRefusalCode | null {
+  if (notPosOwned(sale) || sale.status !== "PAID") return "SALE_NOT_REFUNDABLE";
   return null;
 }
 
@@ -276,7 +280,7 @@ async function refundInTx(tx: Tx, s: Scope, x: CleanInput, preShiftId: string | 
   // สิทธิ์คืนของบิล ณ ตอนรับคำขอ (อ่านก่อนล็อก): ใบคืน/ยกเลิก/คืนครบแล้ว/บิลขายบัตรกำนัล = SALE_NOT_REFUNDABLE
   const pre = await tx.posSale.findFirst({
     where: { id: x.saleId, tenantId: s.tenantId, unitId: s.unitId, systemId: s.systemId },
-    select: { docType: true, status: true, giftCardId: true },
+    select: { docType: true, status: true, giftCardId: true, sourceModule: true },
   });
   if (!pre) return refuse("SALE_NOT_FOUND");
   const nr0 = notRefundable(pre);
@@ -288,7 +292,7 @@ async function refundInTx(tx: Tx, s: Scope, x: CleanInput, preShiftId: string | 
   const sale = await tx.posSale.findUnique({ where: { id: x.saleId }, include: { lines: { orderBy: { id: "asc" } } } });
   if (!sale) return refuse("SALE_NOT_FOUND");
   // หลังล็อก: ถูกยกเลิกระหว่างรอ = คืนไม่ได้ · ถูกคืนครบระหว่างรอ (REFUNDED) = เดินต่อ ⇒ จำนวนที่เหลือ 0 = REFUND_EXCEEDS (คนที่แพ้การแข่ง)
-  const nr = sale.status === "REFUNDED" && sale.docType === "SALE" && !sale.giftCardId ? null : notRefundable(sale);
+  const nr = sale.status === "REFUNDED" && !notPosOwned(sale) ? null : notRefundable(sale);
   if (nr) return refuse(nr);
 
   const prior = await priorRefunds(tx, sale);
@@ -316,6 +320,7 @@ async function refundInTx(tx: Tx, s: Scope, x: CleanInput, preShiftId: string | 
   const linesSum = amounts.reduce((a, b) => a + b, 0);
   const sc = refundServiceCharge(sale.serviceChargeSatang, linesSum, netTotal, prior.sc, full);
   const grand = linesSum + sc;
+  if (x.payMethods.length === 0 && grand !== 0) return refuse("VALIDATION", "ระบุวิธีคืนเงิน");
   const paySum = x.payMethods.reduce((t, p) => t + p.amountSatang, 0);
   if (paySum !== grand) return refuse("PAYMENT_MISMATCH", `ยอดเงินที่คืน ${paySum} ไม่เท่ากับยอดคืน ${grand} (สตางค์)`);
 
@@ -330,8 +335,13 @@ async function refundInTx(tx: Tx, s: Scope, x: CleanInput, preShiftId: string | 
   if (!shiftId && shiftRequired && x.payMethods.some((p) => p.type === "CASH")) return refuse("SHIFT_REQUIRED");
 
   // ── VAT ระดับเอกสาร (COMMON 1): อัตราของ POS ตอนนี้ · บิลเดิมไม่มี VAT = ใบคืนไม่มี VAT ──
-  const rate = sale.vatSatang > 0 ? await posVatRateBp(tx, s.tenantId, s.systemId) : 0;
-  const vat = splitIncludedVat(grand, rate).vatSatang;
+  //   F6 ▸ ใบที่ทำให้ครบทั้งบิล = VAT ที่เหลือของบิล (VAT บิล − Σ VAT ใบคืนก่อนหน้า · ไม่ติดลบ) ⇒ Σ VAT ใบคืน = VAT บิลเป๊ะ ◂
+  let vat = 0;
+  if (sale.vatSatang > 0 && full) {
+    vat = Math.min(grand, Math.max(0, sale.vatSatang - prior.docs.reduce((t, d) => t + d.vatSatang, 0)));
+  } else if (sale.vatSatang > 0) {
+    vat = splitIncludedVat(grand, await posVatRateBp(tx, s.tenantId, s.systemId)).vatSatang;
+  }
 
   // ── เลขใบคืน (R4 · O2): ตัวนับใหม่ต่อสาขา/ชนิด/เดือน — INSERT … ON CONFLICT ⇒ คืนพร้อมกันหลายใบบนแถวใหม่ไม่ชน unique ──
   const period = bkkPeriod();
@@ -457,6 +467,8 @@ export async function saleForRefund(ctx: RegisterCtx, actor: RegisterActor, inpu
       include: { lines: { orderBy: { id: "asc" } }, payments: { orderBy: { id: "asc" } } },
     });
     if (!sale) return refuse("SALE_NOT_FOUND");
+    // F1 ▸ บิลของระบบอื่นไม่เปิดจอคืนเงินของ POS เลย (คืนที่ระบบต้นทาง) ◂
+    if (sale.sourceModule !== "POS") return refuse("SALE_NOT_REFUNDABLE");
     const prior = await priorRefunds(db, sale);
     const nets = lineNets(
       sale.lines.map((l) => l.lineTotalSatang),

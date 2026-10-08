@@ -47,7 +47,8 @@ export function lineNets(lineTotals: number[], serviceChargeSatang: number, gran
  */
 export function refundLineAmount(net: number, qtyTotal: number, prevQty: number, prevAmount: number, q: number): number {
   if (prevQty + q >= qtyTotal) return Math.max(0, net - prevAmount);
-  return halfUpDiv(Math.max(0, net) * q, qtyTotal);
+  // F5 ▸ ใบที่ยังไม่ครบไม่เกินยอดที่เหลือของบรรทัด (เศษปัดขึ้นสะสมหลายใบ ห้ามทำให้ใบสุดท้ายติดลบ) ◂
+  return Math.min(halfUpDiv(Math.max(0, net) * q, qtyTotal), Math.max(0, net - prevAmount));
 }
 
 /** ค่าบริการของใบคืน (CD4) — full = ใบนี้ทำให้ทุกบรรทัดคืนครบ */

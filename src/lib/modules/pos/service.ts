@@ -362,7 +362,8 @@ async function createSaleOnce(input: CreateSaleInput, client: Client, ownsTx: bo
       },
     });
     if (dup) {
-      if (!samePayload(input, dup)) {
+      // POS P1.8 F7 ▸ คีย์ของใบคืน (REFUND) ใช้ที่เดียวกับคีย์บิลขาย — เจอใบคืน = ชนเสมอ (ห้ามตอบใบคืนเป็น "บิลเดิม") ◂
+      if (dup.docType === "REFUND" || !samePayload(input, dup)) {
         throw new PosSaleError("IDEMPOTENCY_CONFLICT", "มีบิลของรหัสรายการนี้อยู่แล้วแต่รายการ/ยอด/วิธีจ่ายไม่ตรงกัน — ตรวจบิลเดิมก่อน ห้ามขายซ้ำ");
       }
       return {

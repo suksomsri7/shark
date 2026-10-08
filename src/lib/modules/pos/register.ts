@@ -1521,6 +1521,8 @@ const regChange = (req: RegParsedSubmit): number => {
  * — R4 K2: พกรายละเอียดเฉพาะบิล POS ของระบบ+สาขาเดียวกัน · อื่น ๆ = CONFLICT เปล่า
  */
 function regDuplicate(s: RegScope, req: RegParsedSubmit, sale: RegSaleRow, duplicated: boolean): RegisterSubmitResult {
+  // POS P1.8 F7 ▸ คีย์นี้เป็นของใบคืน (REFUND) = ชนเปล่า ๆ — ไม่ตอบใบคืนเป็นบิลขาย และไม่พกรายละเอียดของมัน ◂
+  if (sale.docType === "REFUND") return regRefuse("IDEMPOTENCY_CONFLICT");
   if (sale.status !== "PAID" || !regSameSubmission(s, req, sale)) {
     // R4 K2: รายละเอียดบิล (saleId · receiptNo · สถานะ) เฉพาะบิล POS ของระบบ+สาขาเดียวกับคำขอ (ผู้ขายผ่าน regScope ของสาขานี้แล้ว = มองเห็นได้)
     //   อย่างอื่น (สาขาอื่น · โมดูลอื่นที่ถือคีย์ reg2:… ผ่านหน้าขายเดิม) = CONFLICT เปล่า ไม่มีฟิลด์บิลเลย
