@@ -593,7 +593,9 @@ export async function reportStaff(ctx: ReportCtx, actor: RegisterActor, input: R
     const origin = new Map<string, Origin>(sales.filter((x) => x.docType === "SALE").map((x) => [x.id, { soldByUserId: x.soldByUserId, shiftId: x.shiftId }]));
     const missing = [...new Set(refunds.map((x) => x.refSaleId).filter((id): id is string => !!id && !origin.has(id)))];
     for (const ids of chunks(missing)) {
-      for (const o of await db.posSale.findMany({ where: { tenantId: s.tenantId, id: { in: ids } }, select: { id: true, soldByUserId: true, shiftId: true } })) origin.set(o.id, { soldByUserId: o.soldByUserId, shiftId: o.shiftId });
+      // บิลเดิมอยู่สาขาเดียวกับใบคืนและเกิดก่อนใบคืน ⇒ กรอง unitId + createdAt (ดัชนี tenantId, unitId, createdAt · R15)
+      const rows = await db.posSale.findMany({ where: { tenantId: s.tenantId, unitId: { in: s.unitIds }, createdAt: { lt: r.end }, id: { in: ids } }, select: { id: true, soldByUserId: true, shiftId: true } });
+      for (const o of rows) origin.set(o.id, { soldByUserId: o.soldByUserId, shiftId: o.shiftId });
     }
     const shiftIds = [...new Set([...origin.values()].filter((x) => !x.soldByUserId && x.shiftId).map((x) => x.shiftId as string))];
     const opener = new Map<string, string>();
