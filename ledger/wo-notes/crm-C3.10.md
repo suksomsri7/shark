@@ -49,7 +49,38 @@ Owner of the fix: session/accounting (`scripts/seed-acc-v2-qc.mts` must pin its 
 4. Record the final table below, update CRM-RESUME §0.23 + MASTER-PLAN (C3.10 ✅ → 51/53 only if no untriaged CRM red), copy `/tmp/c310-logs` evidence into the repo (`ledger/evidence/c310/` text logs only) before the VPS tmp is cleaned.
 
 ## Final table
-(pending — filled when the unit finishes)
+Filled 2026-10-08 00:16 UTC by the builder lane (wip/crm-c310). `pnpm qc:all` of 7 Oct on QC1: **380 suites · 313 ✅ · 67 ❌** (rc=1, finished 19:51:47 UTC — `ledger/evidence/c310/qc-all.log`). Evidence root `ledger/evidence/c310/` (`suites/qc-<name>.log` = the qc:all log of that suite, `lane/<name>.log` = standalone re-run). Detail of every lane item: "Lane work" + "Resume 3" below.
+
+### A. The 67 red suites → final class
+| red suite(s) | n | final class | standalone result / evidence |
+|---|---|---|---|
+| `crm-c1.2b` (S8.2) | 1 | **stale oracle** (80 % objectsWarn) — fixed `541a4b21` | **93/93** · `lane/c1.2b-rerun.log` |
+| `crm-c3.7` (X1.3 · S1.1 S1.2 S1.6 S2.2 S2.4 S2.6) | 1 | **stale oracle** (X1.3 counted NOTE — fixed `9e4fe9a9`) + **stale evidence** (390 summaries / app render of 1 Oct) | **30/30** · `lane/c3.7-r3.log` · `c37/*.json` |
+| `crm-c2.1` (S6.2 ← child `qc-member-m3.3` S4.1/S4.2) | 1 | **not reproducible** (member-side holdout checks; trigger inside qc:all not identified) — no CRM cause | **84/84**, S6.2 ✅ · `lane/c2.1-standalone2.log` (run 1 = wrong member answer key in the worktree, `lane/c2.1-standalone.log`) |
+| `crm-c5.3` · `crm-c51fix-equiv` · `crm-perf` | 3 | **env-guard** ("QC2 only", 0 checks run on QC1) — by design | their QC2 results (C6.0 gate) stand · `suites/qc-crm-{c5.3,c51fix-equiv,perf}.log` |
+| `hf-o23` | 1 | **env-guard** ("QC4 only") — by design | `suites/qc-hf-o23.log` |
+| `kanban-k2.3` (15/17: S3.2 · S3.6) | 1 | **pre-existing, not CRM** (dnd-kit-from-member · screenshots absent — CRM-RESUME line 38) | not re-run · `suites/qc-kanban-k2.3.log` |
+| `acc-v2-*` (27) · `account-api-*` (7) | 34 | **environment debt, owner session/accounting** — `acc-v2-contact-merge` re-seeds at the real clock, the seed's overdue assert throws after the tenant was re-created and before the answer key is rewritten ⇒ every later accounting suite compares a new DB with a stale key; `acc-v2-coa` T15 = known time-rotted check (controller triage, sections above — not re-verified suite by suite by the lane) | not re-run (needs the accounting seed fix) · `suites/qc-acc-v2-contact-merge.log:87–101` |
+| `member-m*` (25 suites · 44 red checks) | 25 | **member-side evidence debt, not CRM**: 38 checks read member screenshots/summaries that this run never produced (`act undefined…`) · 5 = `M2.8-S7.x` derived (they read other suites' qc:all logs: 3 point at suites red for the reasons in this table, 2 at logs that do not exist) · 1 = `M3.6-S4.1` (`runDue` also sent other due notifications of the shared QC1 tenant) | not re-run (member suites, some re-seed and would wipe CRM data) · `suites/qc-member-*.log` |
+
+Sum 1+1+1+3+1+1+34+25 = 67. **CRM suites after the lane: no red left with a CRM product cause.** The three content reds are green standalone; the three guards are by design.
+
+### B. `crm-buttons` (suite ✅ in qc:all, but `verdict.py` FAIL 7455/7771 — `buttons-verdict.json`, `buttons-summary-qcall.json`)
+| finding of 7 Oct | n | final class | proof |
+|---|---|---|---|
+| hiddenLeak — customer "reached" 14 staff pages | 28 | **runner bug** (one cookie jar for 5 roles; the staff cookie of the previous role stayed) — fixed `284614a6` | customer standalone **🔒 94/94 · 123/123** (`lane/btn-customer.log`) · control fixed 🔒 2/2 vs pre-fix 🔒 0/2 (`lane/btn-ctl-{fixed,prefix}-pipelines.log`) · `/deals` all roles 🔒 2/2. **No vulnerability: with the fixed runner no portal session reached a staff page in any run.** |
+| wrongExpect `deal-card-*` drag (owner/manager/thana × 2 viewports) | 6 | **runner bug** (preferred fixture card below the fold, drag branch never scrolled it into view) — fixed `e47a6f7a` | reproduced 155/157 (`lane/btn-drag-ctl-pre.log`) → **157/157** with the fix (`lane/btn-drag-fixed2.log`) · `/deals` all roles **288/288** (`lane/btn-5a-all-deals.log`) |
+| wrongExpect `crm-auto-rule-toggle` (manager) | 2 | **registry debt** (C5.5-fix1 scope guard refuses the team-scoped manager — correct product behaviour) — refusal variant `284614a6` | manager **94/94**, toggle passed ×2 (`lane/btn-5d-manager-automation.log`) |
+| dead `crm-auto-action-field` (owner/manager) | 4 | **data-fixture** (QC1: 0 contact custom fields ⇒ the select has only its placeholder) → registry `needs` `284614a6` | owner **92/92**, row skippedNeeds ×2 (`lane/btn-5b-owner-automation.log`) · same for manager in 5d |
+| dead `crm-commission-rule-row-*` · `crm-commission-approve-selected` (manager) | 4 | **data-fixture + registry debt** (fresh seed: 0 `CrmCommissionRule`; the manager variants had no `needs`) — variant-level `needs`/`needsProbe` `e47a6f7a` | reproduced 42/46 dead 4 (`lane/btn-5c-manager-commissions.log`) → **42/42**, 4 rows skippedNeeds probe=false (`lane/btn-5c2-manager-commissions.log`). Limit: on a fresh seed these two variants are skipped, not exercised. |
+| consoleErrors `/api/files/<id>` 404 on the contact page | 8 | **environment** (attachment blob absent on QC1 after the reseed; UI shows its "ไม่พบไฟล์" block) | controller triage · not re-run |
+| VACUOUS | 272 | **verdict.py artefact** — a single-process qc:all run has no run6 base to pair with | controller triage |
+
+### C. What was NOT done / limits
+- The full 5-role × 2-viewport `crm-buttons` run (≈ 5 h) was **not** repeated with the fixed runner and registry: every red class above was re-checked on its own page/role only. A complete green `verdict.py` therefore does not exist for this build.
+- `acc-v2-*` / `account-api-*` / `member-*` / `kanban-k2.3` were not re-run (other sessions' suites; classes above come from their qc:all logs).
+- **Product bugs found: none. Vulnerabilities found: none.** Changes of the lane are QC-side only (`scripts/qc-crm-c1.2b.mts`, `scripts/qc-crm-c3.7.mts`, `scripts/qc-crm-buttons.mts`, `scripts/crm-ui-inventory.json`) — no file under `src/` was touched.
+- After the last script change: `fitness3` 42/42 · `typecheck3` rc=0 (through iso). `scripts/qc-crm-buttons-prefix-c310.mts` (negative control) deleted in the closing commit; `batch-btn1.sh` / `batch-btn3.sh` in the evidence still name it — they are records, not runnable any more.
 
 ## Lane work (builder) — resumed 22:05 UTC after container restart (wip/crm-c310)
 Worktree `/root/projects/shark-crm-c310`, QC1 (`.env.qc` host `ep-plain-art`) only, runs via `/tmp/c310-logs/lane/run-suite.sh <log> <script>` (= QC1 host guard + `with-gate-lock.sh pnpm exec tsx …`, env `QC_ENV_FILE=.env.qc CRM_V2_SWITCH=all QC_BASE=http://127.0.0.1:3215 SHARK_AI_MOCK=1`). Server :3215 untouched (health 200). `scripts/crm-expected.json` = QC1 seed answer key copied from the main tree, kept LOCAL only (never committed).
