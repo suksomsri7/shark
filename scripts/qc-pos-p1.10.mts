@@ -695,8 +695,8 @@ async function runDb() {
     await sysSvc.linkUnit(tid, posV, uV);
     await sysSvc.linkUnit(tid, memV, uV);
     await sysSvc.linkUnit(tid, posW, uW);
-    await P.accountSettings.create({ data: { tenantId: tid, systemId: accV, vatRegistered: true, vatRateBp: 700, ...BOOK, docConfig: { autoTaxInvoice: { posAbbreviated: true } } } });
-    await P.accountSettings.create({ data: { tenantId: tid, systemId: accW, vatRegistered: true, vatRateBp: 700, orgName: "บริษัท คิวซี ดับเบิลยู จำกัด", taxId: validTaxId("010556654321"), docConfig: { autoTaxInvoice: { posAbbreviated: false } } } });
+    await P.accountSettings.create({ data: { tenantId: tid, systemId: accV, vatRegistered: true, vatRateBp: 700, ...BOOK, docConfig: { docSettings: { autoTaxInvoice: { posAbbreviated: true } } } } });
+    await P.accountSettings.create({ data: { tenantId: tid, systemId: accW, vatRegistered: true, vatRateBp: 700, orgName: "บริษัท คิวซี ดับเบิลยู จำกัด", taxId: validTaxId("010556654321"), docConfig: { docSettings: { autoTaxInvoice: { posAbbreviated: false } } } } });
     sb.posLinkedIds.push(posV, posW);
     await P.accountSystemLink.create({ data: { tenantId: tid, systemId: accV, linkedKind: "POS", linkedId: posV } });
     await P.accountSystemLink.create({ data: { tenantId: tid, systemId: accW, linkedKind: "POS", linkedId: posW } });
