@@ -728,3 +728,9 @@
 - **P1.8** `wip/pos-p1.8` @ 27738244 (F1–F9) · 49/49 ×3 · ชุดเงินเท่าเดิม (16/107/6/12/5/6/14) · `qc-member-m1.9` รันไม่ได้ (expected.json ของ seed สมาชิกไม่ตรง QC4 — ไม่ใช่ของ P1.8 · ไม่ re-seed เพราะล้าง CRM) · reviewer เหลือ R1 (JV ของใบคืนที่ปิดบิลคำนวณ VAT จาก gross → 2200 เหลือเศษสตางค์) + R2 (`saleStatusByKey` ไม่เช็ก docType) MINOR → **ยกเข้า brief P1.16 R5b** (ทำในใบถัดไป)
 - scratch merge รอบ 2 `tmp/merge-r2` = **c4a5db33** (session/pos 4f2f887c + P1.8 27738244 + P1.10 8fa7f730 · conflict 3 ไฟล์เดิม แก้แบบเดียวกับรอบแรก · JSON ตรวจแล้ว) · ด่านเต็มบน p11: unit `pos-gates16-merge` → `/root/pos-runs/gates16-merge-*/SUMMARY.txt` (status→checkout→generate→typecheck→fitness ×3→p1.8 ×3/p1.10 ×2→ชุดเงิน 7→suites 11) · เขียวแล้ว = ff session/pos → c4a5db33 · push · 15/55
 - follow-ups รอเจ้าของเคาะ (จาก reviewer/builder): บัตรของขวัญส่วนแบ่งตอนคืนบางส่วน (คืนขาด) · AI tools หักคืนสุทธิ · sources/referrals/journeys นับ gross · ป้าย "ส่วนลดท้ายบิล" รวมแต้ม/ว่อชเชอร์ (P1.10U ก่อนโชว์ลูกค้า) · @page 297mm กับไดรเวอร์เทอร์มอลจริง (P1.10U) · revoke กันเฉพาะเครื่องซื่อสัตย์ (Q3)
+
+### 8 ต.ค. 02:36 UTC — ✅ รับ P1.8 + P1.10 → **15/55** (รอ build ยืนยัน) · ลดเหลือ 1 เลน · เริ่ม P1.16 (oracle)
+- gates16 บน merge c4a5db33: 30/30 ขั้น เขียว (typecheck 0 · fitness ×3 · p1.8 49/49 ×3 · p1.10 40/40 ×2 · CPA 107/107 · p1.3 128/128 · ชุดเงิน 7 + suites 11 ทั้งหมด rc 0) → merge เข้า session/pos = **a1fa7514** (push แล้ว) · ลบ tmp/merge-r2
+- p11 + tree c detach ที่ a1fa7514 · tree c `prisma generate` แล้ว · build `next build` บน p11 unit `pos-build17` → `/root/pos-runs/build17-*/SUMMARY.txt` (ด่านสุดท้าย — ไม่มี UI เปลี่ยน จึงไม่ถ่ายภาพ)
+- **1 เลน (คำสั่งเจ้าของ)**: oracle writer P1.16 ใน tree c (`wip/pos-p1.16-oracle` · prompt `pos-prompt-accountB-P1.16-O.md`) → builder S+U → reviewer → visual --page sales --states · P1.10U ต่อจากนั้น
+- ยังไม่ทำ: ลบสาขา wip/pos-p1.8 / wip/pos-p1.10 บน origin (เก็บไว้อ้างอิงจน P1.16 จบ)
