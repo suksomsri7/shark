@@ -5417,6 +5417,66 @@
       "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-module-tabs",
+      "kind": "tab",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]/pos/*",
+        "anyOf": [
+          "/app/sys/[id]"
+        ],
+        "note": "แท็บโมดูล (posTabs) · ตั้งค่า = แท็บปัจจุบัน (ท้ายสุด)"
+      },
+      "wo": "P1.10U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-nav-*",
+      "kind": "link",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]/pos/settings",
+        "note": "เมนูซ้าย (POS_SETTINGS_TABS · live เท่านั้น): receipt · devices → ?tab=<key>&unit= · แท็บที่ยังไม่เปิดเป็น pos-settings-nav-soon-* (span ไม่กดได้ · รอบถัดไป P1.18)"
+      },
+      "wo": "P1.10U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-unit",
+      "kind": "select",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]/pos/settings",
+        "note": "แสดงเมื่อเข้าได้มากกว่า 1 สาขา → ?tab=<แท็บเดิม>&unit=<สาขา>"
+      },
+      "wo": "P1.10U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
     }
   ],
   "$roles": "roles/hiddenFor ที่อนุญาต: owner · manager · cashier · kind/expect.type ชุดเดียวกับทะเบียน CRM (F15.3b ตรวจ)"

@@ -12,5 +12,6 @@ export function posTabs(systemId: string): { href: string; label: string }[] {
     { href: `${s}/pos/shifts`, label: "กะ" }, // POS P1.9 U ▸ กะและลิ้นชักเงิน (ภาพ 07) ◂
     { href: `${s}/pos/close`, label: "ปิดวัน" },
     { href: `${s}/pos/reports`, label: "รายงาน" }, // POS P1.17 U ▸ รายงาน 7 ชุด ◂
+    { href: `${s}/pos/settings`, label: "ตั้งค่า" }, // POS P1.10 U ▸ ใบเสร็จและภาษี · เครื่องและเครื่องพิมพ์ (ภาพ 17A/17B) ◂
   ];
 }
