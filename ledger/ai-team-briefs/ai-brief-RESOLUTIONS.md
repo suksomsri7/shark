@@ -97,3 +97,9 @@ Every item is a DECISION, not a suggestion. If real code makes one impossible, t
 | C33 | `/api/mobile/proposals/confirm` keeps not requiring `ai.chat.send` (approvers may lack it); written into T1.9/T1.10 contracts. |
 | C34 | T0.1 measures through the real `sendMessage` (source CHAT) and reads cost from `AiCreditTxn` USAGE rows per measured conversation; haiku and sonnet paths both measured per `pickModel`. |
 | C35 | No new `AiCreditSource` value in this run; employee attribution = `AiCreditTxn.aiEmployeeId`. |
+
+## R-F. Owner order 8 Oct 2026 (evening): "UI ต้องตามที่ออกแบบ"
+- The approved Airy mockups (36 screens × light/dark + F1–F3 once approved) are the specification of every screen. A default taken by the controller or a builder that makes the render differ from the mockup is void.
+- Parity tables (gate D7) may not contain "accepted" differences for anything the app can render. A difference is accepted only for a platform impossibility (written reason) or an owner decision recorded in R-A/R-C (e.g. no baht values, no task counts before T0.1, disabled paid packs).
+- Consequences already applied: fonts = Inter for Latin/digits + IBM Plex Sans Thai for Thai (T0.3, `TeamText`); length tokens = mockup CSS × 390/536; orbs = images rendered from the mockup CSS; A1 search covers employees + tasks + customers (T1.10/T2.2).
+- Controller interpretation (not the owner's words): elements cut from a screen for scope reasons must be rendered as in the mockup and disabled/"เร็ว ๆ นี้" rather than removed, unless R-A/R-C says otherwise.
