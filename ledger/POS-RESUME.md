@@ -720,3 +720,5 @@
 - **Ruling ผู้คุม** (ไฟล์ prompt `pos-prompt-accountB-P1.{8,10}-S-fix.md`): P1.8 — คืนได้เฉพาะ sourceModule POS (แก้ R5) · ai/tools เติม docType:"SALE" อย่างเดียว (ข้อยกเว้นไฟล์ร้อน CRM) · tiers หัก refundedSatang · ฿0 ยอม payMethods [] · ไม่ prefix คีย์ (ข้อสอบคาด conflict) ใช้เช็ก docType แทน · VAT ใบคืนที่ปิดบิลเอาเศษที่เหลือ · P1.10 — ABB ต้อง sale.vatSatang>0 · payload เพิ่ม status + ตรา VOID · ต้นฉบับภายใน 30 นาทีไม่งั้นอัปเป็นสำเนา+audit · refReceiptNo ผ่าน refSaleId · F7 (ป้ายส่วนลดสมาชิก) เลื่อนไป P1.16
 - ด่านชุด merge (gates15) หยุดเองหลังผ่าน typecheck 0 · fitness ×3 0 · p1.8-f1 49/49 · p1.10-f1 40/40 บนสาขา merge b0e5718d (= merge สองใบเข้ากันได้) — ต้องรันใหม่หลังแก้อยู่แล้ว · โปรเซสลูกค้างใน p11 หยุดแล้ว
 - builder แก้ P1.8 ใน p11 (checkout wip/pos-p1.8 + generate) · builder แก้ P1.10 ใน tree c · ถัดไป: re-merge scratch → ด่านเต็ม → 15/55 · โควตา session 81% (reset 01:30)
+
+- 🔴 **คำสั่งเจ้าของ 01:39 UTC: "หลังจากงานเสร็จให้วิ่ง 1 เลน"** — หลังรับ P1.8+P1.10 (15/55) ลดเหลือ 1 เลน: P1.16 (oracle→builder) ก่อน · P1.10U ต่อ · brief พร้อมแล้ว (414a4ce8)
