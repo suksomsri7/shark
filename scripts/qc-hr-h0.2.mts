@@ -12,6 +12,8 @@
 // [S4] D12 งวด/วันจ่ายปลอม — 2026-13 · 2026-00 · 2026-1 · "  " · วันจ่ายไม่ถูกต้อง → ปฏิเสธ ไม่มีแถว · action คืน { ok:false, reason }
 // [S5] static — computeItem + payroll-rules.ts ไม่เปลี่ยน (hash) · strandedCommissionAdjustments ไม่เปลี่ยน · หน้าเงินเดือนกันผู้ไม่ดูเงินเดือนก่อนอ่าน
 // [X6] แข่งข้าม process (connection แยก) 10 เลน × 3 รอบ: approve ∥ recompute ของรอบ NEGATIVE_NET · decide(APPROVED) ∥ createPayrollRun
+// [S9/X9] Oracle round 2 (8 Oct · brief §9): CR-H0.2-3 รายการที่มี crmCommissionId ลบจาก HR ไม่ได้ (ทุกสถานะ · มี/ไม่มี actor) + หน้าเงินเดือนซ่อนปุ่มลบ ·
+//      CR-H0.2-4 payDate อยู่ใน [วันแรก − 31 วัน, วันสุดท้าย + 62 วัน] · X9 CRM withdraw ∥ คำนวณใหม่ ∥ approve(expect สด)
 //
 // รัน (VPS · QC4 เท่านั้น):
 //   bash scripts/iso.sh bash scripts/qc4.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/qc-hr-h0.2.mts            → SKIP (exit 0) ถ้าของ H0.2/H0.1 ยังไม่มี
@@ -87,6 +89,13 @@ const CHECKS: readonly (readonly [string, string])[] = [
   ["X6.2", "race · ผล approve ทุกเลน = ปฏิเสธข้อความไทย (ไม่ throw) · recompute ทุกเลน = ok หรือคำปฏิเสธไทย"],
   ["X6.3", "race · decide(APPROVED) ∥ createPayrollRun (10 เลน × 3 รอบ) → ทุกแถวอยู่ในรอบ หรือถูกย้าย หรืออยู่ใน strandedAdjustments · addSatang = Σ แถวที่ผูก"],
   ["X6.4", "race · รอบเดียวต่องวด · create ที่แพ้ = ข้อความไทยซ้ำงวด · decide ทุกเลน ok"],
+  // ── Oracle round 2 (8 Oct · hunter findings · brief §9 CR-H0.2-3 / CR-H0.2-4) ──
+  ["S9.1", "CR-H0.2-3 · รายการ COMMISSION จาก CRM ที่ยังไม่เข้ารอบ (APPROVED + PENDING): cancelAdjustment มี/ไม่มี actor → ok:false ข้อความ CRM ตายตัว · แถวยังอยู่ · CrmCommission.hrPayAdjustmentId เดิม"],
+  ["S9.2", "CR-H0.2-3 · รายการ COMMISSION จาก CRM ที่ผูกรอบร่าง: ลบทั้งสองทาง → ข้อความ CRM · ยอดรวม/ลายนิ้วมือเดิม · Σ รายการ = ยอดรวม · ไม่มี audit hr.payadjust.delete"],
+  ["S9.3", "CR-H0.2-3 · รายการหักคืน (DEDUCTION ของแถวถอนคืน CRM) ผูกรอบร่าง: ลบถูกปฏิเสธ · ทาง CRM (withdraw) เดิม: ผูกอยู่ = false · ลบร่างแล้ว = true · Σ = ยอดรวมทุกขั้น"],
+  ["S9.4", "CR-H0.2-3 (source) · หน้าเงินเดือนแสดงปุ่มลบรายการเฉพาะแถวที่ไม่มี crmCommissionId"],
+  ["S9.5", "CR-H0.2-4 · payDate ต้องอยู่ใน [วันแรกของงวด − 31 วัน, วันสุดท้าย + 62 วัน]: ในช่วง ok ×3 · 1970-01-01 / 9999-12-31 / งวด+3 เดือน → PayrollInputError ข้อความตายตัว · action คืน reason ตรง · ไม่มีแถว"],
+  ["X9.1", "race · CRM withdraw ∥ คำนวณร่างใหม่ ∥ approve (expect สด) ×3 รอบ → ไม่มี JV ของรอบที่แถวเปลี่ยนใต้มือ · คอมมิชชันไม่ถูกนับซ้ำ · Σ = ยอดรวม"],
   ["Z1", "คืนสภาพ: ไม่เหลือแถวของร้านชั่วคราวในทุกตารางที่มี tenantId · ไม่เหลือ tenant/user ชั่วคราว"],
 ];
 const ID = (k: string) => `H0.2-${k}`;
@@ -162,6 +171,7 @@ if (process.argv[2] === "--x6-worker") {
   const late = Date.now() > Number(arg.startAt);
   const out: string[] = [];
   const one = async (c: Any): Promise<string> => {
+    if (Number(c.delayMs) > 0) await new Promise((r) => setTimeout(r, Number(c.delayMs))); // Oracle round 2 (X9.1): ลำดับต่างกันต่อรอบ · X6 ไม่ส่ง
     try {
       if (c.fn === "approve") {
         const r = c.expect ? await pay.approveRun(c.ctx, c.runId, c.expect) : await pay.approveRun(c.ctx, c.runId);
@@ -180,6 +190,11 @@ if (process.argv[2] === "--x6-worker") {
       if (c.fn === "create") {
         const r = await pay.createPayrollRun(c.ctx, { periodKey: c.periodKey, payDate: new Date(c.payDate) });
         return `${c.tag}:OK:${String(r?.id ?? "")}`;
+      }
+      // Oracle round 2 (X9.1): ทาง CRM ถอนรายการคอมมิชชัน (hr facade · ไม่ส่ง tx)
+      if (c.fn === "withdraw") {
+        const r = await pay.withdrawCommissionAdjustment(c.ctx, { adjustmentId: c.id, crmCommissionId: c.cid, statuses: ["PENDING", "APPROVED"] });
+        return `${c.tag}:${r === true ? "TRUE" : r === false ? "FALSE" : `BAD(${String(r)})`}:`;
       }
       return `${c.tag}:BAD:${c.fn}`;
     } catch (e) {
@@ -792,6 +807,347 @@ async function groupX6(): Promise<void> {
   chk("X6.4", rc.out.length === ROUNDS * PER && cOk === ROUNDS && cBad.length === 0 && dBad.length === 0 && bad4.length === 0, "create ok 3 · แพ้ = 'มีรอบจ่ายงวด …' · decide ok 15", `cOk=${cOk} cBad=${short(cBad.slice(0, 2))} dBad=${short(dBad.slice(0, 2))} ${bad4.join(" ")}`);
 }
 
+// ═════════════════════════ Oracle round 2 (8 Oct) — hunter findings · brief §9 ═════════════════════════
+// CR-H0.2-3: รายการที่มี crmCommissionId (คอมมิชชัน หรือหักคืน) ลบจาก HR ไม่ได้ ทุกสถานะ ทั้งทางมี/ไม่มี actor · ทาง CRM (withdraw/move) เดิม
+// CR-H0.2-4: payDate ต้องอยู่ใน [วันแรกของงวด − 31 วัน, วันสุดท้ายของงวด + 62 วัน]
+const CRM_CANCEL_MSG = "รายการนี้มาจาก CRM — ถอนหรือแก้ที่ CRM แล้วระบบจะถอนออกจากรอบจ่ายให้เอง";
+const PAYDATE_WINDOW_MSG = "วันที่จ่ายต้องอยู่ใกล้งวดนี้ (ก่อนงวดไม่เกิน 1 เดือน หรือหลังงวดไม่เกิน 2 เดือน)";
+const ADJ_ROWS_UI = "src/lib/modules/hr/PayAdjustRowActions.tsx";
+const digestMod = (await import("@/lib/modules/hr/payroll-digest" as string).catch(() => null)) as Any;
+/** ตัวเลขที่หน้าเว็บส่งตอนอนุมัติ (H0.1 CR11 · CR16) อ่านสด ณ ตอนนี้ */
+async function freshExpect(runId: string): Promise<Any> {
+  const run = await P.hrPayrollRun.findUnique({ where: { id: runId } });
+  const items = (await P.hrPayrollItem.findMany({ where: { runId }, select: digestMod?.PAYROLL_DIGEST_SELECT ?? { employeeId: true } })) as Any[];
+  const digest = typeof digestMod?.payrollItemsDigest === "function" ? String(digestMod.payrollItemsDigest(items)) : undefined;
+  return { totalNetSatang: Number(run?.totalNetSatang ?? 0), itemCount: items.length, totalGrossSatang: Number(run?.totalGrossSatang ?? 0), ...(digest ? { itemsDigest: digest } : {}) };
+}
+const sameExpect = (a: Any, b: Any) => a.totalNetSatang === b.totalNetSatang && a.itemCount === b.itemCount && a.totalGrossSatang === b.totalGrossSatang && a.itemsDigest === b.itemsDigest;
+
+// ── S9.4 (source) ──
+/** ตัดคอมเมนต์ JSX/บรรทัด ออกก่อนจับ (คอมเมนต์ที่พูดถึง crmCommissionId ไม่นับเป็นเงื่อนไข) */
+const stripComments = (s: string) => s.replace(/\{\/\*[\s\S]*?\*\/\}/g, "").replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+// "แถวนี้ไม่มี crmCommissionId": !x.crmCommissionId (ไม่ใช่ !!) · x.crmCommissionId == / === null|undefined
+const NO_CRM_RE = /(?<![!\w])!(?!!)\s*\(?\s*[\w$.?]*crmCommissionId\b|[\w$.?]*crmCommissionId\s*===?\s*(?:null|undefined)\b/;
+function runStaticS9(): void {
+  const ui = rd(UI);
+  const tagAt = ui.indexOf("<PayAdjustRowActions");
+  const tagEnd = tagAt >= 0 ? ui.indexOf("/>", tagAt) : -1;
+  const props = tagAt >= 0 && tagEnd > tagAt ? stripComments(ui.slice(tagAt, tagEnd)) : "";
+  const chipAt = tagAt >= 0 ? ui.lastIndexOf("<StatusChip", tagAt) : -1;
+  const from = tagAt < 0 ? 0 : chipAt >= 0 && tagAt - chipAt < 800 ? chipAt : Math.max(0, tagAt - 400);
+  const gate = tagAt >= 0 ? stripComments(ui.slice(from, tagAt)) : "";
+  // ทาง A: เงื่อนไขก่อน <PayAdjustRowActions> ในแถวรายการ = "ไม่มี crmCommissionId" (หรือ ternary x.crmCommissionId ? … : <PayAdjustRowActions)
+  //        + ยังต้องให้แถว PENDING ของ CRM มีปุ่มอนุมัติ/ไม่อนุมัติ (เงื่อนไขมี PENDING/pending แบบ OR) — ซ่อนแค่ปุ่มลบ ไม่ใช่ทั้งชุด
+  const ternary = /[\w$.?]*crmCommissionId\s*\?[^:]*:\s*\(?\s*$/.test(gate);
+  const pathA = (NO_CRM_RE.test(gate) || ternary) && /PENDING|pending/.test(gate) && /\|\|/.test(gate);
+  // ทาง B: ส่ง prop ที่มาจาก crmCommissionId ให้ PayAdjustRowActions แล้วฟอร์มลบ (op=delete) อยู่ใต้เงื่อนไขของ prop นั้น (ขั้วถูก)
+  //        หรือส่งทั้งแถว แล้วคอมโพเนนต์เช็ก crmCommissionId เองก่อนฟอร์มลบ
+  const pm = /(\w+)\s*=\s*\{([^{}]*crmCommissionId[^{}]*)\}/.exec(props);
+  const comp = stripComments(rd(ADJ_ROWS_UI));
+  const delAt = comp.search(/value=["']delete["']/);
+  const retAt = comp.indexOf("return (");
+  const compWin = delAt > 0 ? comp.slice(retAt >= 0 && retAt < delAt ? retAt : Math.max(0, delAt - 1200), delAt) : "";
+  let pathB = false;
+  let bWhy = "no crm prop";
+  if (pm) {
+    const name = pm[1]!;
+    const expr = pm[2]!;
+    const positive = NO_CRM_RE.test(expr); // true = "ลบได้" (ไม่มี crmCommissionId)
+    const n = name.replace(/[$]/g, "\\$&");
+    const posUse = new RegExp(`(?<![!\\w$])${n}\\b\\s*(?:&&|\\?)`);
+    const negUse = new RegExp(`(?<![!\\w$])!\\s*${n}\\b\\s*(?:&&|\\?)|(?<![!\\w$])${n}\\b\\s*\\?[^:]*:\\s*\\(?\\s*(?:<>)?\\s*<form\\b(?:(?!<form\\b)[\\s\\S])*$`);
+    // ใช้ prop ในเงื่อนไขก่อนฟอร์มลบ — ขั้ว: positive ⇒ `name &&`/`name ?` · negative ⇒ `!name &&` หรือ `name ? … : <ลบ>`
+    pathB = !!compWin && (positive ? posUse.test(compWin) && !negUse.test(compWin) : negUse.test(compWin));
+    bWhy = `prop ${name}={${expr.trim().slice(0, 60)}} ${positive ? "positive" : "negative"} used=${pathB}`;
+  } else if (/\b\w+\s*=\s*\{\s*\w+\s*\}/.test(props) && NO_CRM_RE.test(compWin)) {
+    pathB = true;
+    bWhy = "row prop + component checks !crmCommissionId before delete";
+  }
+  chk(
+    "S9.4",
+    tagAt > 0 && delAt > 0 && (pathA || pathB),
+    "ปุ่มลบแสดงเฉพาะแถวที่ไม่มี crmCommissionId (A: เงื่อนไขในแถวของ payroll-ui.tsx + PENDING ยังมีปุ่มอนุมัติ · B: prop/แถวไป PayAdjustRowActions แล้วฟอร์มลบอยู่ใต้เงื่อนไขนั้น)",
+    `tag@${tagAt} delForm@${delAt} gate="${gate.replace(/\s+/g, " ").trim().slice(-160)}" A=${pathA} B=${pathB} (${bWhy})`,
+  );
+}
+
+// ── S9.1–S9.3 · S9.5 ──
+async function groupS9(): Promise<void> {
+  console.log("── S9 รายการจาก CRM ห้ามลบจาก HR · วันที่จ่ายต้องใกล้งวด ──");
+  const hr9 = await sys.createSystem(tid, "HR", "HR S9");
+  const ctx = { tenantId: tid, systemId: hr9.id };
+  const E = await mkEmp(ctx, "S9-E พนักงานขาย", 30_000);
+  const F = await mkEmp(ctx, "S9-F", 18_000);
+  let seq = 0;
+  // fixture CRM (แบบ qc-hr-h0.1 S7.5): แถว CrmCommission ตรง + รายการ HR ผ่านทางเข้าของ CRM (requestAdjustment + crmCommissionId) + ลิงก์สองทาง
+  const mkCom = async (o: { baht: number; periodKey: string; status?: string; reversedOfId?: string }): Promise<string> => {
+    const id = `qch02${RAND}s9c${++seq}`;
+    await P.crmCommission.create({
+      data: {
+        id, tenantId: tid, systemId: `qc-h02-crm-${RAND}`, dealId: `qc-h02-deal-${RAND}`, ruleId: `qc-h02-rule-${RAND}`, userId: `qc-h02-seller-${RAND}`,
+        amountSatang: BigInt(B(o.baht)), basisSatang: BigInt(B(o.baht) * 10), basis: "PAID", status: o.status ?? "APPROVED", periodKey: o.periodKey, refId: id,
+        ...(o.reversedOfId ? { reversedOfId: o.reversedOfId, refType: "REVERSAL", decidedAt: new Date() } : {}),
+      },
+    });
+    return id;
+  };
+  const link = async (cid: string, employeeId: string, kind: string, periodKey: string, baht: number, approve: boolean): Promise<string> => {
+    const r = await pay.requestAdjustment(ctx, { employeeId, periodKey, kind, amountSatang: B(baht), note: `QC H0.2 S9 ${kind}`, requestedById: "qc-h02-crm-approver", crmCommissionId: cid });
+    if (!r?.ok) throw new Error(`fixture S9: ยื่นรายการ CRM ไม่ได้ ${short(r)}`);
+    if (approve) {
+      const d = await pay.decideAdjustment(ctx, r.id, "APPROVED", OWNER());
+      if (!d?.ok || d?.movedTo) throw new Error(`fixture S9: อนุมัติรายการ CRM ไม่ได้ ${short(d)}`);
+    }
+    await P.crmCommission.update({ where: { id: cid }, data: { hrPayAdjustmentId: r.id } });
+    return r.id as string;
+  };
+  const cancel = async (id: string, actor?: Any): Promise<Any> => {
+    try {
+      return actor ? await pay.cancelAdjustment(ctx, id, actor) : await pay.cancelAdjustment(ctx, id);
+    } catch (e) {
+      return { ok: "THROW", reason: msgOf(e).slice(0, 160) };
+    }
+  };
+  const refused = (r: Any) => r?.ok === false && r?.reason === CRM_CANCEL_MSG;
+  const rs = (r: Any) => `${r?.ok}:${String(r?.reason ?? "").slice(0, 70)}`;
+  const delAudits = (ids: string[]) => P.auditLog.count({ where: { tenantId: tid, action: "hr.payadjust.delete", targetId: { in: ids } } }) as Promise<number>;
+  const totalsOf = async (runId: string) => {
+    const x = await runAndItems(runId);
+    return { x, tot: TOTAL_PAIRS.map(([t]) => Number(x.run?.[t])).join(","), exp: await freshExpect(runId) };
+  };
+
+  // S9.1 — ยังไม่เข้ารอบ (APPROVED + PENDING) · ทางไม่มี actor ก่อน แล้วทางมี actor (ฐาน: ทางแรกลบไปแล้ว ⇒ ทางสอง "ไม่พบรายการ")
+  {
+    const cA = await mkCom({ baht: 500, periodKey: "2030-01" });
+    const aA = await link(cA, E, "COMMISSION", "2030-01", 500, true);
+    const cP = await mkCom({ baht: 400, periodKey: "2030-01" });
+    const aP = await link(cP, E, "COMMISSION", "2030-01", 400, false);
+    const res: string[] = [];
+    let ok = true;
+    for (const [id, cid, st] of [[aA, cA, "APPROVED"], [aP, cP, "PENDING"]] as const) {
+      const r0 = await cancel(id);
+      const r1 = await cancel(id, OWNER());
+      const row = await P.hrPayAdjustment.findUnique({ where: { id } });
+      const cm = await P.crmCommission.findUnique({ where: { id: cid } });
+      const good = refused(r0) && refused(r1) && row?.status === st && row?.runId === null && row?.crmCommissionId === cid && cm?.hrPayAdjustmentId === id;
+      ok &&= good;
+      res.push(`${st}: noActor ${rs(r0)} · actor ${rs(r1)} · row=${row ? `${row.status}/${row.runId ?? "free"}` : "DELETED"} link=${cm?.hrPayAdjustmentId === id ? (row ? "intact" : "DANGLING (ชี้แถวที่ถูกลบ ⇒ ตัวกวาด CRM ไม่ส่งซ้ำ)") : `→${cm?.hrPayAdjustmentId ?? "null"}`}`);
+    }
+    const au = await delAudits([aA, aP]);
+    chk("S9.1", ok && au === 0, `ทั้ง 4 ครั้ง ok:false "${CRM_CANCEL_MSG}" · แถวอยู่ · ลิงก์เดิม · audit delete 0`, `${res.join(" | ")} · audit=${au}`);
+  }
+
+  // S9.2 — ผูกรอบร่าง
+  {
+    const cC = await mkCom({ baht: 700, periodKey: "2030-02" });
+    const aC = await link(cC, E, "COMMISSION", "2030-02", 700, true);
+    await approvedAdj(ctx, F, "2030-02", "BONUS", 300);
+    const run = await pay.createPayrollRun(ctx, { periodKey: "2030-02", payDate: D("2030-02-25") });
+    const pre = await P.hrPayAdjustment.findUnique({ where: { id: aC } });
+    const before = await totalsOf(run.id);
+    const au0 = await delAudits([aC]);
+    const r0 = await cancel(aC);
+    const r1 = await cancel(aC, OWNER());
+    const after = await totalsOf(run.id);
+    const row = await P.hrPayAdjustment.findUnique({ where: { id: aC } });
+    const cm = await P.crmCommission.findUnique({ where: { id: cC } });
+    const au1 = await delAudits([aC]);
+    const itE = after.x.items.find((i) => i.employeeId === E);
+    chk(
+      "S9.2",
+      pre?.runId === run.id && refused(r0) && refused(r1) && row?.runId === run.id && row?.status === "APPROVED" && cm?.hrPayAdjustmentId === aC &&
+        before.tot === after.tot && sameExpect(before.exp, after.exp) && after.x.sumOk && after.x.run?.status === "DRAFT" && after.x.run?.journalEntryId === null && itE?.addSatang === B(700) && au1 === au0,
+      `ok:false "${CRM_CANCEL_MSG}" ×2 · ยังผูก · ยอดรวม/ลายนิ้วมือเดิม · Σ ตรง · add E = 70000 · audit +0`,
+      `boundAtStart=${pre?.runId === run.id} noActor ${rs(r0)} · actor ${rs(r1)} · row=${row ? `${row.status}/${row.runId === run.id ? "bound" : row.runId}` : "DELETED"} link=${cm?.hrPayAdjustmentId === aC} totals ${before.tot}→${after.tot} digestSame=${before.exp.itemsDigest === after.exp.itemsDigest} sum=${after.x.sumOk} addE=${itE?.addSatang} audit +${au1 - au0}`,
+    );
+  }
+
+  // S9.3 — หักคืน (DEDUCTION ของแถวถอนคืน CRM แบบ handoffReversal: crmCommissionId = แถว REVERSED) ผูกรอบร่าง
+  {
+    const cO = await mkCom({ baht: 600, periodKey: "2030-03", status: "PAID" });
+    const cR = await mkCom({ baht: -600, periodKey: "2030-04", status: "REVERSED", reversedOfId: cO });
+    const aR = await link(cR, E, "DEDUCTION", "2030-04", 600, true);
+    const run = await pay.createPayrollRun(ctx, { periodKey: "2030-04", payDate: D("2030-04-25") });
+    const pre = await P.hrPayAdjustment.findUnique({ where: { id: aR } });
+    const steps: string[] = [`bound=${pre?.runId === run.id}`];
+    let ok = pre?.runId === run.id;
+    const r0 = await cancel(aR);
+    const r1 = await cancel(aR, OWNER());
+    const row1 = await P.hrPayAdjustment.findUnique({ where: { id: aR } });
+    ok &&= refused(r0) && refused(r1) && row1?.runId === run.id;
+    steps.push(`noActor ${rs(r0)} · actor ${rs(r1)} · row=${row1 ? (row1.runId === run.id ? "bound" : "free") : "DELETED"}`);
+    const wd = (async () => {
+      try {
+        return await pay.withdrawCommissionAdjustment(ctx, { adjustmentId: aR, crmCommissionId: cR, statuses: ["PENDING", "APPROVED"] });
+      } catch (e) {
+        return `THROW ${msgOf(e).slice(0, 80)}`;
+      }
+    });
+    const w1 = await wd();
+    const row2 = await P.hrPayAdjustment.findUnique({ where: { id: aR } });
+    ok &&= w1 === false && row2?.runId === run.id;
+    steps.push(`withdraw(bound)=${w1} row=${row2 ? (row2.runId === run.id ? "bound" : "free") : "DELETED"}`);
+    const rc = fnOf("recomputeDraftRun");
+    const rr = rc ? await rc(ctx, run.id, OWNER()).catch((e: unknown) => ({ ok: "THROW", reason: msgOf(e) })) : { ok: "MISSING" };
+    const x1 = await runAndItems(run.id);
+    const ded1 = x1.items.find((i) => i.employeeId === E)?.deductSatang;
+    ok &&= rr?.ok === true && x1.sumOk && ded1 === B(600) && x1.run?.status === "DRAFT";
+    steps.push(`recompute ${rs(rr)} sum=${x1.sumOk} dedE=${ded1}`);
+    const dd = fnOf("deleteDraftRun");
+    const dr = dd ? await dd(ctx, run.id, OWNER()).catch((e: unknown) => ({ ok: "THROW", reason: msgOf(e) })) : { ok: "MISSING" };
+    const row3 = await P.hrPayAdjustment.findUnique({ where: { id: aR } });
+    const w2 = await wd();
+    const row4 = await P.hrPayAdjustment.findUnique({ where: { id: aR } });
+    ok &&= dr?.ok === true && row3?.runId === null && row3?.status === "APPROVED" && w2 === true && row4 === null;
+    steps.push(`deleteDraft ${rs(dr)} row=${row3 ? `${row3.status}/${row3.runId ?? "free"}` : "DELETED"} withdraw(free)=${w2} gone=${row4 === null}`);
+    let x2: Awaited<ReturnType<typeof runAndItems>> | null = null;
+    try {
+      const nr = await pay.createPayrollRun(ctx, { periodKey: "2030-04", payDate: D("2030-04-25") });
+      x2 = await runAndItems(nr.id);
+    } catch (e) {
+      steps.push(`recreate THROW ${msgOf(e).slice(0, 80)}`);
+    }
+    const ded2 = x2?.items.find((i) => i.employeeId === E)?.deductSatang;
+    ok &&= !!x2 && x2.sumOk && ded2 === 0;
+    steps.push(`recreate sum=${x2?.sumOk} dedE=${ded2}`);
+    chk("S9.3", ok, `ลบถูกปฏิเสธ ×2 · withdraw(ผูก)=false · คำนวณใหม่ Σ ตรง หัก 60000 ครั้งเดียว · ลบร่าง → withdraw=true → รอบใหม่ Σ ตรง หัก 0`, steps.join(" · "));
+  }
+
+  // S9.5 — วันที่จ่ายใกล้งวด (CR-H0.2-4)
+  {
+    const runsAt = async (p: string) => (await P.hrPayrollRun.count({ where: { systemId: hr9.id, periodKey: p } })) as number;
+    const tryCreate = async (p: string, d: string): Promise<{ ok: boolean; err: string; name: string; rows: number }> => {
+      try {
+        await pay.createPayrollRun(ctx, { periodKey: p, payDate: D(d) });
+        return { ok: true, err: "", name: "", rows: await runsAt(p) };
+      } catch (e) {
+        return { ok: false, err: msgOf(e), name: String((e as Error)?.name ?? ""), rows: await runsAt(p) };
+      }
+    };
+    const okCases: [string, string][] = [["2031-03", "2031-03-25"], ["2031-05", "2031-04-05"], ["2031-07", "2031-08-05"]];
+    const noCases: [string, string][] = [["2031-09", "1970-01-01"], ["2031-11", "9999-12-31"], ["2032-01", "2032-04-25"]];
+    const bad: string[] = [];
+    for (const [p, d] of okCases) {
+      const r = await tryCreate(p, d);
+      if (!(r.ok && r.rows === 1)) bad.push(`OK? ${p}@${d} → ${r.ok ? "ok" : r.err.slice(0, 60)} rows=${r.rows}`);
+    }
+    for (const [p, d] of noCases) {
+      const r = await tryCreate(p, d);
+      const isInputErr = r.name === "PayrollInputError" || (typeof pay.PayrollInputError === "function" && r.name === pay.PayrollInputError.name);
+      if (!(!r.ok && r.err === PAYDATE_WINDOW_MSG && isInputErr && r.rows === 0)) bad.push(`NO? ${p}@${d} → ${r.ok ? "created" : `${r.name}:${r.err.slice(0, 60)}`} rows=${r.rows}`);
+    }
+    const act = (await import("@/lib/modules/hr/payroll-actions" as string)) as Any;
+    const callAct = async (periodKey: string, payDate: string): Promise<Any> => {
+      const fd = new FormData();
+      fd.set("systemId", hr9.id);
+      fd.set("periodKey", periodKey);
+      fd.set("payDate", payDate);
+      try {
+        return await inScope(cookie, `/app/sys/${hr9.id}/hr/payroll`, () => (act.createPayrollRunAction.length >= 2 ? act.createPayrollRunAction({ ok: true }, fd) : act.createPayrollRunAction(fd)));
+      } catch (e) {
+        return { status: "THROW", message: `${(e as Error)?.name}: ${msgOf(e).slice(0, 120)}` };
+      }
+    };
+    for (const [p, d] of [["2032-03", "1970-01-01"], ["2032-05", "9999-12-31"]] as const) {
+      const r = await callAct(p, d);
+      const n = await runsAt(p);
+      if (!(r?.ok === false && r?.reason === PAYDATE_WINDOW_MSG && n === 0)) bad.push(`action ${p}@${d} → ${short(r, 120)} rows=${n}`);
+    }
+    {
+      const r = await callAct("2032-07", "2032-07-25");
+      const n = await runsAt("2032-07");
+      if (!(r?.ok === true && n === 1)) bad.push(`action OK? 2032-07@2032-07-25 → ${short(r, 120)} rows=${n}`);
+    }
+    chk("S9.5", bad.length === 0, `ในช่วง ok ×3 (+action ok) · นอกช่วง ×3 → PayrollInputError "${PAYDATE_WINDOW_MSG}" 0 แถว · action ×2 → reason ตรง 0 แถว`, bad.join(" | ") || "—");
+  }
+}
+
+// ── X9 race: CRM withdraw ∥ คำนวณร่างใหม่ ∥ approve (expect สด) ──
+async function groupX9(): Promise<void> {
+  console.log("── X9 race · CRM withdraw ∥ recompute ∥ approve(expect สด) (worker processes · 3 รอบ) ──");
+  const ROUNDS = 3;
+  const PER = 3;
+  const hr9x = await sys.createSystem(tid, "HR", "HR X9");
+  const cx = { tenantId: tid, systemId: hr9x.id };
+  const E = await mkEmp(cx, "X9-E พนักงานขาย", 25_000);
+  await mkEmp(cx, "X9-F", 15_000);
+  const COM = B(3_000);
+  const BONUS = B(1_000);
+  const periods = ["2033-01", "2033-03", "2033-05"];
+  const fx: { p: string; runId: string; cid: string; adj: string; expect: Any }[] = [];
+  for (const p of periods) {
+    await approvedAdj(cx, E, p, "BONUS", 1_000);
+    const run = await pay.createPayrollRun(cx, { periodKey: p, payDate: D(`${p}-25`) });
+    const cid = `qch02${RAND}x9${p.replace("-", "")}`;
+    await P.crmCommission.create({ data: { id: cid, tenantId: tid, systemId: `qc-h02-crm-${RAND}`, dealId: `qc-h02-deal-x9-${RAND}`, ruleId: `qc-h02-rule-${RAND}`, userId: `qc-h02-seller-${RAND}`, amountSatang: BigInt(COM), basisSatang: BigInt(COM * 10), basis: "PAID", status: "APPROVED", periodKey: p, refId: cid } });
+    // fixture ตรง: แถว CRM ที่ APPROVED แต่ยังไม่ผูก ในงวดที่มีรอบร่างแล้ว (เช่น พนักงานยังไม่มีโปรไฟล์ตอนสร้างรอบ — C3.3-fix H4/H5) ·
+    //   ทางยื่นปฏิเสธงวดที่มีรอบแล้ว (R2) ⇒ เขียนตรง · คำนวณใหม่จะดึงมันเข้ารอบ ส่วน CRM อาจถอนมันพร้อมกัน
+    const adj = await P.hrPayAdjustment.create({ data: { tenantId: tid, systemId: hr9x.id, employeeId: E, periodKey: p, kind: "COMMISSION", amountSatang: COM, status: "APPROVED", decidedById: ownerId, decidedAt: new Date(), requestedById: "qc-h02-crm-approver", note: "QC H0.2 X9 commission", crmCommissionId: cid } });
+    await P.crmCommission.update({ where: { id: cid }, data: { hrPayAdjustmentId: adj.id } });
+    fx.push({ p, runId: run.id, cid, adj: adj.id, expect: await freshExpect(run.id) });
+  }
+  const j0 = await jvCount();
+  const startAt = Date.now() + 35_000;
+  const gap = 5_000;
+  const mk = (calls: (r: number) => Any[]) => ({ startAt, rounds: Array.from({ length: ROUNDS }, (_, r) => ({ atMs: r * gap, calls: calls(r) })) });
+  // ลำดับต่อรอบ (ms หลังเวลาเริ่มของรอบ · เลนละ +15ms): r0 คำนวณใหม่นำ (ดึงคอมเข้ารอบ ⇒ approve ต้อง STALE · withdraw ต้อง false) ·
+  //   r1 withdraw นำ แล้วคำนวณใหม่ แล้ว approve · r2 พร้อมกันหมด
+  const DELAY: Record<string, number[]> = { W: [400, 0, 0], R: [0, 150, 0], A: [400, 400, 0] };
+  const at = (k: string, r: number, l: number) => DELAY[k]![r]! + (DELAY[k]![r]! > 0 || r === 1 ? l * 15 : 0);
+  const wW = mk((r) => Array.from({ length: PER }, (_, l) => ({ tag: "W", fn: "withdraw", ctx: cx, id: fx[r]!.adj, cid: fx[r]!.cid, delayMs: at("W", r, l) })));
+  const wR = mk((r) => Array.from({ length: PER }, (_, l) => ({ tag: "R", fn: "recompute", ctx: cx, runId: fx[r]!.runId, actor: OWNER(), delayMs: at("R", r, l) })));
+  const wA = mk((r) => Array.from({ length: PER }, (_, l) => ({ tag: "A", fn: "approve", ctx: cx, runId: fx[r]!.runId, expect: fx[r]!.expect, delayMs: at("A", r, l) })));
+  const [ow, or, oa] = await Promise.all([spawnWorker(wW), spawnWorker(wR), spawnWorker(wA)]);
+  const lateOrErr = [ow, or, oa].filter((w) => w.late || w.err).map((w) => w.err ?? "late");
+  const bad: string[] = [];
+  let approved = 0;
+  const outcomes: string[] = [];
+  for (let r = 0; r < ROUNDS; r++) {
+    const f = fx[r]!;
+    const lanes = (o: { out: string[] }) => o.out.slice(r * PER, (r + 1) * PER);
+    const w = lanes(ow);
+    const a = lanes(oa);
+    const rc = lanes(or);
+    const nTrue = w.filter((o) => o === "W:TRUE:").length;
+    const aOk = a.filter((o) => o.startsWith("A:OK:")).length;
+    const outBad = [...w.filter((o) => o !== "W:TRUE:" && o !== "W:FALSE:"), ...a.filter((o) => !(o.startsWith("A:OK:") || (o.startsWith("A:NO:") && THAI.test(o)))), ...rc.filter((o) => !(o.startsWith("R:OK:") || (o.startsWith("R:NO:") && THAI.test(o))))];
+    const x = await runAndItems(f.runId);
+    const row = await P.hrPayAdjustment.findUnique({ where: { id: f.adj } });
+    const crmRows = (await P.hrPayAdjustment.count({ where: { tenantId: tid, crmCommissionId: f.cid } })) as number;
+    const bound = !!row && row.runId === f.runId;
+    const itE = x.items.find((i) => i.employeeId === E);
+    const now = await freshExpect(f.runId);
+    const tag = `r${r}(${x.run?.status} W=${nTrue} A=${aOk} row=${row ? (bound ? "bound" : "free") : "gone"})`;
+    outcomes.push(`${tag} R=${short(rc.map((o) => o.split(":").slice(0, 2).join(":")))}`);
+    if (outBad.length) bad.push(`${tag} out=${short(outBad.slice(0, 2), 120)}`);
+    if (nTrue > 1 || (nTrue === 1 && row) || (nTrue === 0 && !row)) bad.push(`${tag} withdraw≠row`);
+    if (crmRows > 1) bad.push(`${tag} crmRows=${crmRows}`);
+    if (itE?.addSatang !== BONUS + (bound ? COM : 0)) bad.push(`${tag} addE=${itE?.addSatang} want ${BONUS + (bound ? COM : 0)} (นับคอมมิชชันผิด)`);
+    if (!x.sumOk) bad.push(`${tag} Σ≠ยอดรวม ${x.diff.join(",")}`);
+    if (x.run?.status === "APPROVED") {
+      approved += 1;
+      const bal = await jvBalance(x.run.journalEntryId);
+      if (!sameExpect(now, f.expect)) bad.push(`${tag} JV ของรอบที่แถวเปลี่ยน (expect ${f.expect.totalNetSatang}/${f.expect.itemCount} → now ${now.totalNetSatang}/${now.itemCount} digestSame=${now.itemsDigest === f.expect.itemsDigest})`);
+      if (!(bal.dr === bal.cr && bal.dr > 0)) bad.push(`${tag} JV dr/cr ${bal.dr}/${bal.cr}`);
+      if (bound) bad.push(`${tag} คอมมิชชันที่ไม่อยู่ในตัวเลขที่อนุมัติ ถูกผูกกับรอบที่อนุมัติแล้ว`);
+      if (aOk !== 1) bad.push(`${tag} approve ok ${aOk}≠1`);
+    } else if (x.run?.status === "DRAFT") {
+      if (x.run.journalEntryId !== null) bad.push(`${tag} DRAFT มี JV`);
+      if (aOk !== 0) bad.push(`${tag} approve ok ${aOk} แต่ยัง DRAFT`);
+    } else bad.push(`${tag} สถานะ ${x.run?.status}`);
+  }
+  console.log(`   X9 outcomes: ${outcomes.join(" · ")}`);
+  const j1 = await jvCount();
+  if (j1 - j0 !== approved) bad.push(`JV +${j1 - j0} ≠ APPROVED ${approved}`);
+  const outs = `${ow.out.length}/${or.out.length}/${oa.out.length}`;
+  chk(
+    "X9.1",
+    lateOrErr.length === 0 && ow.out.length === ROUNDS * PER && or.out.length === ROUNDS * PER && oa.out.length === ROUNDS * PER && bad.length === 0,
+    "ทุกรอบ: APPROVED ⇒ แถว = ตัวเลขที่ expect · Dr = Cr · คอมมิชชันไม่ผูก | DRAFT ⇒ ไม่มี JV · add = โบนัส + คอม (ถ้าผูก) · withdraw true ⇔ แถวหาย · Σ ตรง",
+    `${lateOrErr.join(" | ").slice(0, 160)} outs=${outs} approved=${approved} ${bad.slice(0, 5).join(" · ")}`,
+  );
+}
+
 // ═════════════════════════ cleanup + residue ═════════════════════════
 const ORDERED = [
   "hrPayrollItem", "hrPayrollRun", "hrPayAdjustment", "hrSalaryProfile", "hrAttendance", "hrLeave", "hrEmployeeDoc", "hrEmployee",
@@ -833,8 +1189,9 @@ let crashed = "";
 TENANT_MODELS = await loadTenantModels();
 try {
   runStatic();
+  runStaticS9(); // Oracle round 2
   await setupTenant();
-  for (const g of [groupS1, groupS2, groupS3, groupS4, groupX6]) {
+  for (const g of [groupS1, groupS2, groupS3, groupS4, groupX6, groupS9, groupX9]) {
     try {
       await g();
     } catch (e) {
