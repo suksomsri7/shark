@@ -1,0 +1,398 @@
+// AI TEAM (SHARK HUB v2 · ทีมพนักงาน AI) — DRAFT data contract · work order T0.2
+//
+// 🔴 THIS FILE IS A DRAFT. It lives in prisma/drafts/ (NOT prisma/schema/) on purpose: it is not migrated, not generated into the
+//    client and not registered in src/lib/core/scope.ts. T1.1 moves it to prisma/schema/ai_team.prisma together with
+//    (1) the migration `_ai_team_a` (additive only), (2) the scope.ts entries (every model = tenant axis, AiSubscription = global `g()`
+//    like PushDevice) and (3) the erase/export registry of a shop. Until then fitness F1.1/F8.1 must not see these models.
+//    Validated by scripts/qc-ai-t0.2.mts S7.1 on a temp copy of prisma/schema/*.prisma + this file.
+//
+// Sources: ledger/AI-TEAM-MASTER-PLAN.md §6 T1.1 · ledger/ai-team-briefs/ai-brief-RESOLUTIONS.md R-E (C2 C6 C7 C12 C22 C24 C25 C26 C35)
+//          · docs/modules/30-ai-team.md (who writes which column).
+//
+// Rules of this file
+//   • Additive only. core.prisma is FROZEN (Plan / ActorType untouched). No new AiCreditSource value (C35).
+//   • NO column on AiConversation (C7) — the task is the side table AiTask (1:1 by conversationId).
+//   • Every foreign key to an AI employee is named aiEmployeeId (the HR module already owns the column name for people).
+//   • Relations only between the new models. Ids of existing models (User · AiConversation · AiProposal · KbArticle ·
+//     AiScheduledTask) are plain String columns — the frozen/hot files get no back-relation.
+//   • Money = micro-dollars as Int, like AiCreditWallet (ceiling ≈ $2,147 per value). Never sent to the app (the app gets percentages).
+//   • Value sets that are not one of the five enums below are String columns with the allowed values in the comment
+//     (house style of AiPlan.status / AiProposal.risk) — a new value never needs ALTER TYPE.
+//   • Counters (usedMicro · usedMicroCycle · version · daily numbers) are written by single statements only (COMMON §C5).
+//
+// T1.1 adds — nullable columns on EXISTING models (written here as a comment; NOT applied by this draft):
+//   AiProposal       aiEmployeeId String?  decidedById String?  decidedAt DateTime?  autoExecuted Boolean @default(false)        (C26)
+//                    — no index inside the migration (large table: CONCURRENTLY in T6.1)
+//   AiScheduledTask  aiEmployeeId String?  createdById String?  frequency String? (DAILY|WEEKLY|MONTHLY)  daysJson Json?
+//                    minute Int? (minute of the day, Asia/Bangkok)  channelsJson Json? (APP|LINE|EMAIL)
+//                    outputMode String? (DRAFT|AUTO)  claimedAt DateTime? (15-minute lease)                                     (C12)
+//   AiCreditTxn      aiEmployeeId String?  subscriptionId String?                                                              (C6)
+//   AiSettings       defaultApproverUserId String?  undoWindowSec Int?  teamPausedUntil DateTime?                              (C25)
+//                    + uiVersion Int @default(1) — read by GET /api/mobile/me (AI-TEAM-RUN §2 T1.10); C25 does not list it,
+//                      the controller confirms it in the T1.1 brief (docs/api/AI-TEAM-MOBILE-API.md §GET /api/mobile/me)
+//   Raw SQL of T1.1 (prisma cannot express partial uniques):
+//     CREATE UNIQUE INDEX "AiSubscription_owner_free_key"  ON "AiSubscription" ("ownerUserId") WHERE "pack" = 'FREE' AND "ownerUserId" IS NOT NULL;
+//     CREATE UNIQUE INDEX "AiSubscription_tenant_key"      ON "AiSubscription" ("tenantId")    WHERE "tenantId" IS NOT NULL;
+//     CREATE UNIQUE INDEX "AiEmployee_default_key"         ON "AiEmployee" ("tenantId")        WHERE "isDefault";
+//     ALTER TABLE "AiSubscription" ADD CONSTRAINT "AiSubscription_one_owner_chk" CHECK (("ownerUserId" IS NULL) <> ("tenantId" IS NULL));
+
+// ─────────────────────────── enums (exactly five — MASTER-PLAN §6 T1.1) ───────────────────────────
+
+enum AiPack {
+  FREE
+  STARTER
+  PRO
+  BUSINESS
+}
+
+// OFF = the skill is not offered and every execute is refused · READ = read tools only · DRAFT = proposals a person confirms
+// AUTO = delegation by a person (grantedById + limits) — refused until T4.2, never for DESTRUCTIVE kinds
+enum AiAccessLevel {
+  OFF
+  READ
+  DRAFT
+  AUTO
+}
+
+enum AiEmployeeStatus {
+  ACTIVE
+  PAUSED
+  TERMINATED
+}
+
+// WAITING / WORKING on the screens are computed (a PENDING proposal exists / not) — not stored
+enum AiTaskStatus {
+  OPEN
+  DONE
+  ARCHIVED
+}
+
+// version 2.0 uses PAUSE only; WALLET and ASK are behind the flag AI_TEAM_SALES_ENABLED (packs.ts)
+enum AiOverflowMode {
+  PAUSE
+  WALLET
+  ASK
+}
+
+// ─────────────────────────── M1 employee ───────────────────────────
+
+model AiEmployee {
+  id               String           @id @default(cuid())
+  tenantId         String
+  name             String // ≤ 60 characters, no HTML (validated in employees.ts)
+  positionKey      String // sales | chat | account | content | member | custom (templates.ts) · "general" for the default employee
+  orbColor         String? // token name of the orb avatar (theme), not a colour literal
+  persona          Json             @default("{}") // { gender: MALE|FEMALE|NONE, tone, humor, length, languages[] } — prompt parameters only
+  status           AiEmployeeStatus @default(ACTIVE)
+  pauseReason      String? // MANUAL | QUOTA_CAP | TEAM_QUOTA — null when ACTIVE
+  pauseNote        String?
+  pausedAt         DateTime?
+  terminatedAt     DateTime?
+  terminateReason  String?
+  isDefault        Boolean          @default(false) // "ผู้ช่วยทั่วไป" — one per tenant, can be paused, never terminated
+  quotaCapPct      Int              @default(100) // per-employee ceiling as % of the pack allowance of the cycle (template default, e.g. 25)
+  usedMicroCycle   Int              @default(0) // single-statement counter, reset with the subscription cycle
+  usedCycleKey     String? // cycle the counter belongs to ("YYYY-MM" Asia/Bangkok)
+  capNotifiedKey   String? // cycle in which the "cap reached" notice was sent (once per cycle)
+  workHours        Json             @default("{}") // {} = 24 h · { days:[1..7], fromMinute, toMinute } Asia/Bangkok
+  commanderUserIds String[]         @default([]) // empty = everyone with ai.employee.use
+  templateSnapshot Json? // the position template as it was at hire time
+  hiredById        String
+  idempotencyKey   String?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  manuals         AiEmployeeManual[]
+  access          AiEmployeeAccess[]
+  knowledgeGrants AiKnowledgeGrant[]
+  tasks           AiTask[]
+  roomMemberships AiRoomMember[]
+  daily           AiEmployeeDaily[]
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, status])
+}
+
+// ─────────────────────────── M5 manual (append-only versions) ───────────────────────────
+
+model AiEmployeeManual {
+  id                  String     @id @default(cuid())
+  tenantId            String
+  aiEmployeeId        String
+  aiEmployee          AiEmployee @relation(fields: [aiEmployeeId], references: [id], onDelete: Cascade)
+  version             Int // max + 1 inside one transaction; the unique below is the last line of defence
+  sections            Json // { duties[], forbidden[], askWhen[], steps[], goodExamples[], metrics[], forbiddenReply?, notifyOnForbidden? } — ≤ 2,000 chars / 20 items per section
+  note                String?
+  source              String     @default("EDIT") // HIRE | EDIT | TEACH | REVERT
+  revertedFromVersion Int?
+  attachedText        String?    @db.Text // text extracted from an attached SOP (≤ 20,000 chars) — injected as a data block, never as instructions
+  promptHash          String? // hash of the built prompt for the audit row ai.prompt.version (no content)
+  editedById          String
+  createdAt           DateTime   @default(now())
+
+  @@unique([aiEmployeeId, version])
+  @@index([tenantId])
+}
+
+// ─────────────────────────── M4 access (one row per employee × skill) ───────────────────────────
+
+model AiEmployeeAccess {
+  id             String        @id @default(cuid())
+  tenantId       String
+  aiEmployeeId   String
+  aiEmployee     AiEmployee    @relation(fields: [aiEmployeeId], references: [id], onDelete: Cascade)
+  skillId        String // id of src/lib/ai/skills.ts, or the virtual skill "core" (C15)
+  level          AiAccessLevel @default(DRAFT)
+  limits         Json          @default("{}") // { maxSatang?, maxDiscountPct?, conditions? } — read by auto.ts only
+  autoKinds      Json          @default("{}") // { "<proposal kind>": { grantedById, grantedAt, limits } } — per-kind AUTO grants (T4.2)
+  promotion      Json          @default("{}") // { "<proposal kind>": { offeredAt, dismissedAt? } } — one offer per 30 days (T4.4)
+  grantedById    String? // the person who delegated AUTO — re-checked at execute time
+  grantedAt      DateTime?
+  revokedReason  String? // DEMOTED | GRANTOR_REVOKED | MANUAL
+  updatedById    String
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@unique([aiEmployeeId, skillId])
+  @@index([tenantId])
+}
+
+// no row for an employee = the employee sees every category (today's behaviour) · rows = allow-list
+model AiKnowledgeGrant {
+  id           String     @id @default(cuid())
+  tenantId     String
+  aiEmployeeId String
+  aiEmployee   AiEmployee @relation(fields: [aiEmployeeId], references: [id], onDelete: Cascade)
+  category     String? // KbArticle.category (C14)
+  sourceKey    String? // automatic source: products | hours
+  articleId    String? // a single KbArticle
+  createdById  String
+  createdAt    DateTime   @default(now())
+
+  @@index([tenantId, aiEmployeeId])
+}
+
+// ─────────────────────────── M2 task (1:1 side table of AiConversation — C7) ───────────────────────────
+
+model AiTask {
+  id                  String       @id @default(cuid())
+  tenantId            String
+  conversationId      String       @unique // AiConversation.id — tag e~<aiEmployeeId>~<hex> (C8)
+  aiEmployeeId        String
+  aiEmployee          AiEmployee   @relation(fields: [aiEmployeeId], references: [id])
+  currentAiEmployeeId String? // room hand-off: the employee holding the turn (T5.2) — null = aiEmployeeId
+  roomId              String?
+  room                AiRoom?      @relation(fields: [roomId], references: [id])
+  flowId              String? // AiHandoffFlow that created the task (T5.3)
+  status              AiTaskStatus @default(OPEN)
+  title               String       @default("")
+  startedById         String
+  idempotencyKey      String?
+  waitingQuotaAt      DateTime? // refused for quota — the starter is told when the new cycle opens (T3.3)
+  doneAt              DateTime?
+  archivedAt          DateTime?
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, aiEmployeeId, status])
+  @@index([tenantId, roomId])
+}
+
+// ─────────────────────────── M9 rooms (never reuse Team* — C29) ───────────────────────────
+
+model AiRoom {
+  id               String    @id @default(cuid())
+  tenantId         String
+  name             String
+  leadAiEmployeeId String // receives the order first; must be a member
+  commanderUserIds String[]  @default([]) // empty = the users who may command EVERY member
+  archivedAt       DateTime?
+  createdById      String
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  members AiRoomMember[]
+  flows   AiHandoffFlow[]
+  tasks   AiTask[]
+
+  @@index([tenantId])
+}
+
+model AiRoomMember {
+  id           String     @id @default(cuid())
+  tenantId     String
+  roomId       String
+  room         AiRoom     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  aiEmployeeId String
+  aiEmployee   AiEmployee @relation(fields: [aiEmployeeId], references: [id])
+  sortOrder    Int        @default(0)
+  createdAt    DateTime   @default(now())
+
+  @@unique([roomId, aiEmployeeId])
+  @@index([tenantId])
+}
+
+model AiHandoffFlow {
+  id          String   @id @default(cuid())
+  tenantId    String
+  roomId      String
+  room        AiRoom   @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  name        String
+  trigger     String   @default("MANUAL") // MANUAL | an outbox event type from the allow-list (e.g. crm.deal.won)
+  stepsJson   Json     @default("[]") // [{ aiEmployeeId, instruction, mode: DRAFT|AUTO }] — ≤ 8 steps; AUTO is lowered to DRAFT without a real grant
+  onStuck     String   @default("ASK") // ASK = stop and ask the commander, never skip a step
+  staleHours  Int      @default(4)
+  active      Boolean  @default(true)
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([tenantId, roomId])
+  @@index([tenantId, trigger, active])
+}
+
+// ─────────────────────────── M5 teaching · M4 action log ───────────────────────────
+
+model AiTeachNote {
+  id             String    @id @default(cuid())
+  tenantId       String
+  aiEmployeeId   String
+  proposalId     String // the rejected AiProposal
+  conversationId String?
+  category       String // PRICE | DISCOUNT | CUSTOMER | TONE | OTHER
+  note           String    @db.Text // the approver's words — data, never instructions (X6)
+  remember       String    @default("JOB") // JOB | MANUAL
+  ruleText       String? // rule proposed by the model, edited/confirmed by the person
+  section        String? // manual section the rule goes into
+  outcome        String    @default("PENDING") // PENDING | JOB | MANUAL | DISMISSED
+  manualVersion  Int? // version created by confirmTeaching
+  createdById    String
+  confirmedAt    DateTime?
+  createdAt      DateTime  @default(now())
+
+  @@index([tenantId, aiEmployeeId, createdAt])
+  @@index([tenantId, proposalId])
+}
+
+// source of screen C6 and of undo (C22). No customer phone / e-mail / message body in `summary` (X8).
+model AiActionLog {
+  id              String    @id @default(cuid())
+  tenantId        String
+  aiEmployeeId    String
+  proposalId      String?
+  conversationId  String?
+  scheduledTaskId String?
+  kind            String // proposal kind
+  riskClass       String    @default("INTERNAL") // MONEY | CUSTOMER_FACING | DESTRUCTIVE | INTERNAL (kind-class.ts)
+  summary         String
+  mode            String // DRAFT (a person approved) | AUTO | SCHEDULED
+  actorUserId     String? // DRAFT: who approved · AUTO: the grantor
+  undoUntil       DateTime? // null = this kind has no inverse (no undo button)
+  undoneAt        DateTime?
+  undoneById      String?
+  undoReason      String?
+  createdAt       DateTime  @default(now())
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, aiEmployeeId, createdAt])
+  @@index([tenantId, proposalId])
+}
+
+// ─────────────────────────── M8 daily roll-up (idempotent upsert per employee × day) ───────────────────────────
+
+model AiEmployeeDaily {
+  id              String     @id @default(cuid())
+  tenantId        String
+  aiEmployeeId    String
+  aiEmployee      AiEmployee @relation(fields: [aiEmployeeId], references: [id], onDelete: Cascade)
+  day             String // "YYYY-MM-DD" Asia/Bangkok
+  tasksDone       Int        @default(0)
+  approved        Int        @default(0) // approved without an edit
+  edited          Int        @default(0)
+  rejected        Int        @default(0)
+  autoExecuted    Int        @default(0)
+  usageMicro      Int        @default(0) // internal only — the report DTO carries quotaPct
+  minutesSaved    Int        @default(0) // Σ estimatedMinutes of the task kinds (templates.ts) — never model timing, never baht
+  approvalWaitSec Int        @default(0) // Σ seconds between proposal and decision
+  approvalCount   Int        @default(0)
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  @@unique([aiEmployeeId, day])
+  @@index([tenantId, day])
+}
+
+// ─────────────────────────── M6 pack and quota ───────────────────────────
+
+// GLOBAL axis (scope.ts `g()`, like PushDevice — C2): exactly one of ownerUserId / tenantId is set.
+//   FREE rows are keyed by ownerUserId (all shops of one owner share one allowance) · paid rows (future) by tenantId.
+//   Lookup at charge time: AiPackBinding of the tenant → this row.
+model AiSubscription {
+  id             String         @id @default(cuid())
+  ownerUserId    String?
+  tenantId       String?
+  pack           AiPack         @default(FREE)
+  cycleStart     DateTime // month boundary in Asia/Bangkok
+  cycleEnd       DateTime
+  allowanceMicro Int // from packs.ts at cycle start
+  usedMicro      Int            @default(0) // UPDATE … SET "usedMicro" = LEAST(…) … RETURNING — one statement, inside the AiCreditTxn tx
+  overflowMode   AiOverflowMode @default(PAUSE)
+  status         String         @default("ACTIVE") // ACTIVE | EXHAUSTED | CANCELLED
+  lastResetKey   String? // "YYYY-MM" of the last reset — makes resetCycles idempotent
+  notifiedPct    Int            @default(0) // highest of 80 / 95 / 100 already announced in this cycle
+  windowDisabled Boolean        @default(true) // R-C5: the legacy 5 h / weekly window does not apply under a subscription
+  paymentRef     String? // sales version (T3.5) — unused in 2.0
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  bindings AiPackBinding[]
+
+  @@index([ownerUserId])
+  @@index([tenantId])
+  @@index([status, cycleEnd])
+}
+
+// tenant → subscription, created lazily by quota.ts#ensureBinding (C2):
+//   OWNER membership with the oldest acceptedAt (tie → oldest createdAt); no OWNER → the tenant's own FREE subscription.
+model AiPackBinding {
+  id                  String         @id @default(cuid())
+  tenantId            String         @unique
+  subscriptionId      String
+  subscription        AiSubscription @relation(fields: [subscriptionId], references: [id])
+  resolvedOwnerUserId String? // null = bound to the tenant itself (no accepted OWNER)
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+
+  @@index([subscriptionId])
+}
+
+// "แจ้งฉันเมื่อเปิดขาย" — one row per user × tenant × pack (T3.6)
+model AiSaleNotify {
+  id        String   @id @default(cuid())
+  tenantId  String
+  userId    String
+  pack      AiPack
+  createdAt DateTime @default(now())
+
+  @@unique([tenantId, userId, pack])
+  @@index([userId])
+}
+
+// ─────────────────────────── M7 notification preferences (C24) ───────────────────────────
+
+model AiNotifyPref {
+  id               String   @id @default(cuid())
+  tenantId         String
+  userId           String
+  events           Json     @default("{}") // { approvalWaiting, employeeStuck, taskDone, quotaLow, weeklyReport } → { on, digestMinute? }
+  channels         Json     @default("{}") // { app, line, email }
+  quietStartMinute Int? // minute of the day, Asia/Bangkok
+  quietEndMinute   Int?
+  urgentBypass     Boolean  @default(false) // "งานด่วนแจ้งเลย"
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([userId, tenantId])
+  @@index([tenantId])
+}

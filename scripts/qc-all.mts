@@ -281,6 +281,39 @@ if (needsCrmSeed.length) {
   );
 }
 
+// AI TEAM T0.2 ▸ ชุดข้อมูล QC "ทีมพนักงาน AI" — เครื่องหมาย `// requires: ai-team-seed` → scripts/seed-ai-team-qc.mts
+//   seed เป็น find-or-create (รันซ้ำ = 0 แถวใหม่) จึงรันได้ทุกรอบ · อยู่บน QC4 (ep-frosty-lab) เท่านั้น:
+//   ฐานอื่น (CI shard · QC1) ไม่ seed และไม่บล็อก — ข้อสอบ AI-team พิมพ์ SKIPPED exit 0 เองเมื่อไม่ใช่ QC4 (มติ OQ-8)
+const AI_TEAM_SEED_MARKER = "// requires: ai-team-seed";
+const needsAiTeamSeed = picked.filter((f) => {
+  try {
+    return readFileSync(join(ROOT, "scripts", f), "utf8").includes(AI_TEAM_SEED_MARKER);
+  } catch {
+    return false;
+  }
+});
+let aiTeamSeedBlocked: string | null = null;
+if (needsAiTeamSeed.length) {
+  let qc4 = false;
+  try {
+    qc4 = new URL(process.env.DIRECT_URL || process.env.DATABASE_URL || "").hostname.startsWith("ep-frosty-lab");
+  } catch {
+    qc4 = false;
+  }
+  if (!qc4) {
+    console.log(`🌱 ${needsAiTeamSeed.length} ชุดใช้ชุดข้อมูล QC ทีม AI — ฐานนี้ไม่ใช่ QC4 → ไม่ seed (ข้อสอบจะ SKIP เอง)\n`);
+  } else {
+    const t0 = Date.now();
+    const seed = runStep("seed-ai-team-qc.mts");
+    if (seed.code !== 0) {
+      aiTeamSeedBlocked = "seed ชุดข้อมูล QC ทีม AI ล้ม (scripts/seed-ai-team-qc.mts) — ดู log ด้านบน";
+      console.log(seed.out.split("\n").slice(-25).join("\n"));
+    }
+    console.log(`   ${aiTeamSeedBlocked ? "❌" : "✅"} เตรียมชุดข้อมูล QC ทีม AI ${((Date.now() - t0) / 1000).toFixed(1)}s${aiTeamSeedBlocked ? ` — ${aiTeamSeedBlocked}` : ""}\n`);
+  }
+}
+// ◂ AI TEAM T0.2
+
 type Row = { name: string; code: number; summary: string; ms: number };
 const rows: Row[] = [];
 
@@ -304,6 +337,14 @@ for (const f of picked) {
     console.log(`  ❌ ${name.padEnd(24)} ${crmSeedBlocked}`);
     continue;
   }
+  // AI TEAM T0.2 ▸
+  if (aiTeamSeedBlocked && needsAiTeamSeed.includes(f)) {
+    const name = f.replace(/^qc-|\.mts$/g, "");
+    rows.push({ name, code: 1, summary: aiTeamSeedBlocked, ms: 0 });
+    console.log(`  ❌ ${name.padEnd(24)} ${aiTeamSeedBlocked}`);
+    continue;
+  }
+  // ◂ AI TEAM T0.2
   if (kanbanSeedBlocked && needsKanbanSeed.includes(f)) {
     const name = f.replace(/^qc-|\.mts$/g, "");
     rows.push({ name, code: 1, summary: kanbanSeedBlocked, ms: 0 });
