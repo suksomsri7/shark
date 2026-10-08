@@ -96,7 +96,7 @@ export function loadPosQcEnv(label: string): { host: string; envFile: string; is
   return { host, envFile, isQc4 };
 }
 
-// ═══════════════════ 2. ชื่อตารางจริงที่ POS ใช้วันนี้ (ตรวจกับ prisma/schema/*.prisma 1 ต.ค. 2569) ═══════════════════
+// ═══════════════════ 2. ชื่อตารางจริงที่ POS ใช้วันนี้ (ตรวจกับไฟล์ .prisma ใน prisma/schema 1 ต.ค. 2569 · P1.11: ห้ามมีทับตามด้วยดาวในบรรทัดนี้ — ตัวตัดคอมเมนต์ของข้อสอบสถิตจะกินทะเบียนข้างล่างทั้งก้อน) ═══════════════════
 // key = ชื่อ delegate ของ Prisma (camelCase) · value = { model ตรงตัว · ไฟล์ schema · บทบาทใน POS }
 // 🔴 ตารางของ P1.1a (PosProduct · PosCategory · PosVariant · RecipeLine · PosShift · PosDevice · PosHeldCart ·
 //    PosPaymentIntent · PosReceiptToken · PosStockCount · PosStaffPin · SalesChannel · ExternalOrder …) **ยังไม่มีจริง**
@@ -154,6 +154,9 @@ export const POS_MODELS = {
   posHeldCart: { model: "PosHeldCart", file: "pos.prisma", role: "บิลที่พักไว้ (P1.5 · HELD/RECALLED/DISCARDED · ต่อสาขา)" },
   posDocCounter: { model: "PosDocCounter", file: "pos.prisma", role: "เลขใบคืนเงิน CN${YYYYMM}-NNNN ต่อสาขา/ชนิด/เดือน (P1.8)" },
   posDevice: { model: "PosDevice", file: "pos.prisma", role: "ทะเบียนเครื่องขาย (P1.10 · ACTIVE/REVOKED · deviceCode = รหัสเครื่องของ P1.9 · printerConfig)" },
+  // ── P1.11 ใบเสร็จออนไลน์ (migration 20261129000000_pos_p111_online_receipt) ──
+  posReceiptIssue: { model: "PosReceiptIssue", file: "pos.prisma", role: "ลูกค้าแจ้งปัญหาบิลจาก /r/<token> (OPEN/RESOLVED · kanbanCardId · 3 ครั้ง/บิล/24 ชม.)" },
+  posTaxInvoiceRequest: { model: "PosTaxInvoiceRequest", file: "pos.prisma", role: "คำขอใบกำกับภาษีเต็มรูปจาก /r/<token> (REQUESTED/ISSUED/REJECTED · P1.13 ออกเอกสาร)" },
 } as const;
 export type PosModelKey = keyof typeof POS_MODELS;
 

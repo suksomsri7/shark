@@ -389,6 +389,9 @@ export type {
   ReviewSubmitResult,
 } from "./reviews-shared";
 export type { RequestReviewInput, RequestReviewResult, EscalateResult, ListReviewsOptions } from "./reviews";
+// POS P1.11 ▸ มติผู้คุมงาน 8: รีวิวจากหน้าใบเสร็จออนไลน์ของ POS (ประกอบจาก requestReview/submitReview เดิม) + สถานะรีวิวของบิล (อ่านอย่างเดียว) ◂
+export type { SubmitReviewForRefInput, SubmitReviewForRefResult } from "./reviews";
+export { submitReviewForRef, reviewStateForRef } from "./reviews";
 export {
   getReviewSettings,
   setReviewSettings,

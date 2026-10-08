@@ -192,8 +192,20 @@ const RECEIPT_REFUSAL_KEY: Readonly<Record<string, string>> = {
   SALE_NOT_FOUND: "errors.saleNotFound",
   PERMISSION_DENIED: "errors.permissionDenied",
   INTERNAL: "errors.internal",
+  // POS P1.11 ▸ ใบเสร็จออนไลน์ / ส่งใบเสร็จ / แจ้งปัญหา / ขอใบกำกับเต็มรูป / รีวิว (receipt-public-shared.ts) ◂
+  VALIDATION: "errors.validation",
+  RATE_LIMITED: "errors.rateLimited",
+  TOKEN_NOT_FOUND: "public.errors.tokenNotFound",
+  NO_MEMBER: "public.errors.noMember",
+  ALREADY_REVIEWED: "public.errors.alreadyReviewed",
+  NOT_ELIGIBLE: "taxInvoice.errors.notEligible",
+  ALREADY_REQUESTED: "taxInvoice.errors.alreadyRequested",
+  SALE_VOIDED: "send.errors.saleVoided",
+  NO_LINE_IDENTITY: "send.errors.noLineIdentity",
+  NO_EMAIL: "send.errors.noEmail",
+  SEND_FAILED: "send.errors.sendFailed",
 };
-/** รหัสปฏิเสธของ receiptPayloadAction / reprintReceiptAction → คีย์ข้อความใต้ `pos.receipt` */
+/** รหัสปฏิเสธของ action ใบเสร็จทุกตัว (receiptPayload/reprint · P1.11 ส่งใบเสร็จ + หน้าใบเสร็จออนไลน์) → คีย์ข้อความใต้ `pos.receipt` */
 export function receiptRefusalMessageKey(code: string): string {
   return Object.prototype.hasOwnProperty.call(RECEIPT_REFUSAL_KEY, code) ? RECEIPT_REFUSAL_KEY[code]! : "errors.internal";
 }

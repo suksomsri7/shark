@@ -2,6 +2,7 @@
 // สัญญา = scripts/qc-pos-p1.10.mts (P1–P6 · A3 · RS2) · ภาพ ledger/design-pos/11-customer-display.png แผง B
 //
 // 🔴 อ่านอย่างเดียว — ไม่เขียนบิล ไม่มี event (R8) · copy:true = AuditLog "pos.receipt.reprint" 1 แถวต่อการเรียก (T8) · ปฏิเสธ = ไม่มี audit
+//    ยกเว้น P1.11 (มติผู้คุมงาน 4): บิลเก่าที่ยังไม่มี publicToken + qrEReceipt เปิด = เขียนโทเคนครั้งเดียว (ensureReceiptToken · UPDATE เดียว · ไม่มี event)
 // 🔴 สิทธิ์ pos.sale.read (มติ CD3 — ผู้มี pos.sale.create ได้โดยนัย) · บิลต้องอยู่ในขอบเขตสาขาของผู้เรียก (posSaleWhere) ·
 //    บิลของสาขา/ระบบ/ร้านอื่น หรือ id มั่ว = SALE_NOT_FOUND (ไม่บอกว่ามีอยู่)
 // 🔴 kind = TAX_INVOICE_ABB เฉพาะเมื่อสมุดบัญชีที่ผูก POS จด VAT + เปิดใบกำกับอย่างย่อจาก POS + มีเลขผู้เสียภาษี (T2) + บิลมี VAT จริง
@@ -14,8 +15,10 @@
 //    เลขผู้เสียภาษี/สาขา มาจากสมุดเสมอ (ไม่ใช่ค่าตั้ง)
 // 🔴 เงินทุกตัวเป็นสตางค์จำนวนเต็มจากแถว DB — subtotal − ส่วนลดรายการ − ส่วนลดท้ายบิล − คูปอง − ส่วนลดระดับ + ค่าบริการ = ยอดสุทธิ ·
 //    ฐานภาษี + VAT = ยอดสุทธิ (VAT ที่เก็บบนบิล · P1.6 splitIncludedVat) · ทิปอยู่นอกยอด (Σ จ่าย = ยอด + ทิป)
-import type { PrismaClient } from "@prisma/client";
+import type { Prisma, PrismaClient } from "@prisma/client";
 import { writeAudit } from "@/lib/core/audit";
+// POS P1.11 ▸ R3: QR ใบเสร็จออนไลน์ = โดเมนของคำขอ (core/origin · ไม่ใช้ APP_URL ตรง) + โทเคนของบิล (สร้างแบบขี้เกียจให้บิลเก่า · มติ 4) ◂
+import { publicOrigin } from "@/lib/core/origin";
 import { canAccessUnit, evaluate } from "@/lib/core/rbac";
 import * as account from "@/lib/modules/account";
 import { posSaleWhere, type PosUnitScope } from "./access";
@@ -24,9 +27,10 @@ import { RECEIPT_LABELS, type ReceiptDocType, type ReceiptKind, type ReceiptPayl
 import { receiptSettingsOf } from "./receipt-settings";
 // POS P1.16 ▸ R2: กติกาชนิดใบเสร็จตัวเดียวกับหน้าบิลวันนี้ (billDetail.receiptKind) ◂
 import { receiptKindOf } from "./receipt-shared";
+import { ensureReceiptToken } from "./receipt-token";
 import type { RegisterActor } from "./register-shared";
 
-type Db = PrismaClient;
+type Db = PrismaClient | Prisma.TransactionClient;
 export type ReceiptCtx = { tenantId: string; systemId: string; unitId?: string; deviceId?: string };
 export type ReceiptRefusalCode = "PERMISSION_DENIED" | "SALE_NOT_FOUND" | "VALIDATION" | "INTERNAL";
 export type ReceiptRefusal = { ok: false; code: ReceiptRefusalCode; message: string };
@@ -45,7 +49,8 @@ const nonEmpty = (v: string | null | undefined): string | undefined => (typeof v
 /** ต้นฉบับออกได้ภายในกี่มิลลิวินาทีหลังสร้างบิล (F3) — เกิน = สำเนา */
 export const RECEIPT_ORIGINAL_WINDOW_MS = 30 * 60_000;
 
-function actorOf(a: unknown): RegisterActor | null {
+/** ผู้กระทำจากค่าที่ส่งมา (รูปผิด = null) · P1.11 sendReceipt ใช้ตัวเดียวกัน */
+export function receiptActorOf(a: unknown): RegisterActor | null {
   if (!isRecord(a) || !isId(a.userId)) return null;
   if (a.role !== "OWNER" && a.role !== "MANAGER" && a.role !== "STAFF") return null;
   if (!Array.isArray(a.unitAccess) || !a.unitAccess.every((x) => typeof x === "string")) return null;
@@ -73,7 +78,7 @@ export async function receiptPayload(ctx: ReceiptCtx, actor: RegisterActor, inpu
   try {
     const db = client ?? prisma;
     if (!isRecord(ctx) || !isId(ctx.tenantId) || !isId(ctx.systemId)) return refuse("SALE_NOT_FOUND");
-    const a = actorOf(actor);
+    const a = receiptActorOf(actor);
     if (!a) return refuse("PERMISSION_DENIED");
     const scope = receiptReadScope(a);
     if (!scope) return refuse("PERMISSION_DENIED");
@@ -84,150 +89,14 @@ export async function receiptPayload(ctx: ReceiptCtx, actor: RegisterActor, inpu
 
     const sale = await db.posSale.findFirst({
       where: { id: input.saleId, ...posSaleWhere(tenantId, systemId, scope) },
-      include: { lines: { orderBy: { id: "asc" }, include: { options: { orderBy: { id: "asc" } } } }, payments: { orderBy: { id: "asc" } } },
+      include: SALE_INCLUDE,
     });
     if (!sale) return refuse("SALE_NOT_FOUND");
-    const status: ReceiptSaleStatus | null = sale.status === "PAID" || sale.status === "VOIDED" || sale.status === "REFUNDED" ? sale.status : null;
-    if (!status) return refuse("SALE_NOT_FOUND");
     // F3: ต้นฉบับเฉพาะบิลสด (≤ 30 นาที) · เก่ากว่า = สำเนา + audit (ไม่ปฏิเสธ)
     const copy = input.copy === true || Date.now() - sale.createdAt.getTime() > RECEIPT_ORIGINAL_WINDOW_MS;
-
-    // ── ระบบ POS · สาขา · ค่าตั้งใบเสร็จ · สมุดบัญชีที่ผูก ──
-    const [posSys, unit, tenant, bookId] = await Promise.all([
-      db.appSystem.findFirst({ where: { id: systemId, tenantId, type: "POS" }, select: { settings: true } }),
-      db.businessUnit.findFirst({ where: { id: sale.unitId, tenantId }, select: { name: true } }),
-      db.tenant.findUnique({ where: { id: tenantId }, select: { name: true } }),
-      account.posAccountSystemId(tenantId, systemId),
-    ]);
-    if (!posSys) return refuse("SALE_NOT_FOUND");
-    const rs = receiptSettingsOf(posSys.settings);
-    const book = bookId
-      ? await db.accountSettings.findFirst({
-          where: { systemId: bookId, tenantId },
-          select: { orgName: true, taxId: true, branchCode: true, address: true, phone: true, logoUrl: true },
-        })
-      : null;
-    const vat = bookId ? await account.vatConfigOf(bookId) : null;
-    const taxId = nonEmpty(book?.taxId);
-    const hasVat = sale.vatSatang > 0; // F1: บิลที่ไม่มี VAT จริงไม่ใช่ใบกำกับ
-    const kind: ReceiptKind = receiptKindOf({ vatRegistered: !!vat?.vatRegistered, posAbbreviatedInvoice: !!vat?.posAbbreviatedInvoice, taxId: book?.taxId, vatSatang: sale.vatSatang });
-
-    // ── เครื่อง/กะ ของบิล (PosSale.shiftId → PosShift.deviceId → PosDevice ของสาขาเดียวกัน) ──
-    const shift = sale.shiftId
-      ? await db.posShift.findFirst({ where: { id: sale.shiftId, tenantId, unitId: sale.unitId }, select: { shiftNo: true, deviceId: true, deviceLabel: true } })
-      : null;
-    const device = shift
-      ? await db.posDevice.findUnique({ where: { unitId_deviceCode: { unitId: sale.unitId, deviceCode: shift.deviceId } }, select: { tenantId: true, name: true, posRegNo: true } })
-      : null;
-    const dev = device && device.tenantId === tenantId ? device : null;
-
-    // ── ผู้ขาย · สมาชิก · คูปอง ──
-    const [seller, customer, coupons] = await Promise.all([
-      rs.showCashier && sale.soldByUserId ? db.user.findUnique({ where: { id: sale.soldByUserId }, select: { name: true } }) : null,
-      sale.memberId ? db.customer.findFirst({ where: { id: sale.memberId, tenantId }, select: { id: true, name: true, firstName: true, lastName: true, memberCode: true, tierDefId: true } }) : null,
-      db.couponRedemption.findMany({
-        where: { tenantId, status: { not: "RELEASED" }, OR: [{ saleId: sale.id }, { refType: "PosSale", refId: sale.id }] },
-        select: { discountSatang: true, coupon: { select: { code: true } } },
-      }),
-    ]);
-    const [tier, balance] = customer
-      ? await Promise.all([
-          customer.tierDefId ? db.memberTierDef.findFirst({ where: { id: customer.tierDefId, tenantId }, select: { name: true } }) : null,
-          db.pointBalance.findFirst({ where: { tenantId, customerId: customer.id }, orderBy: { updatedAt: "desc" }, select: { balance: true } }),
-        ])
-      : [null, null];
-
-    // ── ยอด (สตางค์จากแถว DB) ──
-    const subtotalSatang = sale.lines.reduce((t, l) => t + l.qty * l.unitPriceSatang, 0);
-    const lineDiscountSatang = sale.lines.reduce((t, l) => t + l.discountSatang, 0);
-    const couponDiscountSatang = coupons.reduce((t, c) => t + c.discountSatang, 0);
-    const tierDiscountSatang = sale.tierDiscountSatang;
-    // PosSale.discountSatang = ส่วนลดท้ายบิล + คูปอง + สิทธิ์สมาชิก (ระดับ + ว่อชเชอร์) — ส่วนที่ไม่ใช่คูปอง/ระดับ = ส่วนลดท้ายบิล
-    const billDiscountSatang = sale.discountSatang - couponDiscountSatang - tierDiscountSatang;
-    const vatSatang = sale.vatSatang;
-
-    const anySale = sale as unknown as Record<string, unknown>;
-    const docType: ReceiptDocType = anySale.docType === "REFUND" ? "REFUND" : "SALE"; // P1.8 เพิ่มคอลัมน์ docType — ก่อนนั้น = SALE เสมอ
-    // F4: P1.8 เพิ่ม refSaleId (ยังไม่มีใน client ของต้นไม้นี้ ⇒ อ่านแบบไดนามิก) → เลขใบเสร็จของบิลต้นทาง (ร้าน + ระบบเดียวกัน)
-    const refSaleId = docType === "REFUND" && isId(anySale.refSaleId) ? anySale.refSaleId : undefined;
-    const refSale = refSaleId ? await db.posSale.findFirst({ where: { id: refSaleId, tenantId, systemId }, select: { receiptNo: true } }) : null;
-    const refReceiptNo = nonEmpty(refSale?.receiptNo);
-
-    const shopName = nonEmpty(rs.header.name) ?? nonEmpty(book?.orgName) ?? nonEmpty(tenant?.name) ?? nonEmpty(unit?.name) ?? "-";
-    const logoUrl = rs.header.logoUrl ?? nonEmpty(book?.logoUrl);
-    const memberName = customer ? (nonEmpty(customer.name) ?? nonEmpty([customer.firstName, customer.lastName].filter(Boolean).join(" ")) ?? nonEmpty(customer.memberCode) ?? "-") : "";
-    const couponCode = coupons.map((c) => c.coupon?.code).filter((c): c is string => !!c).join(", ");
-
-    const payload: ReceiptPayload = {
-      docType,
-      kind,
-      status,
-      copy,
-      paper: null,
-      shop: {
-        name: shopName,
-        branchName: unit?.name ?? "",
-        address: nonEmpty(rs.header.address) ?? nonEmpty(book?.address) ?? "",
-        phone: nonEmpty(rs.header.phone) ?? nonEmpty(book?.phone) ?? "",
-        ...(kind === "TAX_INVOICE_ABB" ? { taxId, branchNo: nonEmpty(book?.branchCode) ?? "00000" } : {}),
-        ...(logoUrl ? { logoUrl } : {}),
-      },
-      device: {
-        ...(dev?.posRegNo ? { posRegNo: dev.posRegNo } : {}),
-        ...((dev?.name ?? shift?.deviceLabel) ? { name: (dev?.name ?? shift?.deviceLabel)! } : {}),
-      },
-      doc: {
-        receiptNo: sale.receiptNo ?? "",
-        issuedAt: (sale.paidAt ?? sale.createdAt).toISOString(),
-        ...(nonEmpty(seller?.name) ? { cashierName: nonEmpty(seller?.name)! } : {}),
-        ...(shift ? { shiftNo: shift.shiftNo } : {}),
-        ...(refReceiptNo ? { refReceiptNo } : {}),
-      },
-      lines: sale.lines.map((l) => ({
-        name: l.name,
-        qty: l.qty,
-        unitPriceSatang: l.unitPriceSatang,
-        lineTotalSatang: l.lineTotalSatang,
-        discountSatang: l.discountSatang,
-        options: l.options.map((o) => o.choiceName),
-        ...(nonEmpty(l.note) ? { note: nonEmpty(l.note)! } : {}),
-        ...(l.weightGrams !== null ? { weightGrams: l.weightGrams } : {}),
-      })),
-      totals: {
-        subtotalSatang,
-        lineDiscountSatang,
-        billDiscountSatang,
-        couponDiscountSatang,
-        ...(couponCode ? { couponCode } : {}),
-        tierDiscountSatang,
-        serviceChargeSatang: sale.serviceChargeSatang,
-        grandTotalSatang: sale.grandTotalSatang,
-        vatBaseSatang: sale.grandTotalSatang - vatSatang,
-        vatSatang,
-        vatRateBp: hasVat && vat && vat.vatRegistered ? vat.vatRateBp : 0,
-        tipSatang: sale.tipSatang,
-      },
-      payments: sale.payments.map((p) => ({
-        type: p.type,
-        amountSatang: p.amountSatang,
-        ...(p.tenderedSatang !== null ? { tenderedSatang: p.tenderedSatang } : {}),
-        ...(p.changeSatang !== null ? { changeSatang: p.changeSatang } : {}),
-        ...(nonEmpty(p.reference) ? { reference: nonEmpty(p.reference)! } : {}),
-      })),
-      // showPoints ปิด = ไม่พิมพ์ส่วนสมาชิก/แต้ม
-      ...(customer && rs.showPoints
-        ? {
-            member: {
-              name: memberName,
-              ...(tier?.name ? { tierName: tier.name } : {}),
-              pointEarned: sale.pointEarned,
-              ...(balance ? { pointBalance: balance.balance } : {}),
-            },
-          }
-        : {}),
-      footer: { text: rs.footer, qrEReceiptUrl: null, fullTaxInvoiceHint: kind === "TAX_INVOICE_ABB" && docType === "SALE" && status === "PAID" }, // R2: บิลยกเลิก/คืนแล้วไม่ชวนขอใบกำกับเต็มรูป
-      labels: { th: RECEIPT_LABELS.th, en: RECEIPT_LABELS.en },
-    };
+    const built = await buildReceipt(db, tenantId, systemId, sale, copy);
+    if (!built) return refuse("SALE_NOT_FOUND");
+    const { payload, kind } = built;
 
     if (copy) {
       await writeAudit({
@@ -244,4 +113,176 @@ export async function receiptPayload(ctx: ReceiptCtx, actor: RegisterActor, inpu
     console.error("[pos/receipt] receiptPayload INTERNAL", e);
     return refuse("INTERNAL");
   }
+}
+
+// POS P1.11 ▸ ตัวประกอบใบเสร็จร่วม: receiptPayload (หลังตรวจสิทธิ์/ขอบเขต) · publicReceipt (หน้าใบเสร็จออนไลน์ · ค้นจากโทเคน) ·
+//   sendReceipt (อีเมล) — ใช้สูตรบรรทัด/ส่วนลด/VAT ชุดเดียวกัน ไม่ derive เงินซ้ำ · ไม่ตรวจสิทธิ์ ไม่เขียน audit (ผู้เรียกทำเอง) ◂
+const SALE_INCLUDE = {
+  lines: { orderBy: { id: "asc" }, include: { options: { orderBy: { id: "asc" } } } },
+  payments: { orderBy: { id: "asc" } },
+} as const satisfies Prisma.PosSaleInclude;
+export type ReceiptSaleRow = Prisma.PosSaleGetPayload<{ include: typeof SALE_INCLUDE }>;
+export type ReceiptBuild = { payload: ReceiptPayload; kind: ReceiptKind; sale: ReceiptSaleRow; bookId: string | null };
+
+/**
+ * ใบเสร็จของบิลตาม id (ร้าน + ระบบ POS ของบิล) โดยไม่ตรวจสิทธิ์ผู้ใช้ — ผู้เรียกต้องตัดสินสิทธิ์/ขอบเขตก่อนเสมอ
+ * (หน้าใบเสร็จออนไลน์: โทเคนคือสิทธิ์ · ส่งใบเสร็จ: ตรวจ pos.sale.read + ขอบเขตสาขาเองแล้ว) · null = ไม่พบ/สถานะใช้ไม่ได้
+ */
+export async function receiptForSale(tenantId: string, systemId: string, saleId: string, opts: { copy?: boolean } = {}, client?: Db): Promise<ReceiptBuild | null> {
+  if (!isId(tenantId) || !isId(systemId) || !isId(saleId)) return null;
+  const db = client ?? prisma;
+  const sale = await db.posSale.findFirst({ where: { id: saleId, tenantId, systemId }, include: SALE_INCLUDE });
+  if (!sale) return null;
+  return buildReceipt(db, tenantId, systemId, sale, opts.copy === true);
+}
+
+async function buildReceipt(db: Db, tenantId: string, systemId: string, sale: ReceiptSaleRow, copy: boolean): Promise<ReceiptBuild | null> {
+  const status: ReceiptSaleStatus | null = sale.status === "PAID" || sale.status === "VOIDED" || sale.status === "REFUNDED" ? sale.status : null;
+  if (!status) return null;
+
+  // ── ระบบ POS · สาขา · ค่าตั้งใบเสร็จ · สมุดบัญชีที่ผูก ──
+  const [posSys, unit, tenant, bookId] = await Promise.all([
+    db.appSystem.findFirst({ where: { id: systemId, tenantId, type: "POS" }, select: { settings: true } }),
+    db.businessUnit.findFirst({ where: { id: sale.unitId, tenantId }, select: { name: true } }),
+    db.tenant.findUnique({ where: { id: tenantId }, select: { name: true } }),
+    account.posAccountSystemId(tenantId, systemId),
+  ]);
+  if (!posSys) return null;
+  const rs = receiptSettingsOf(posSys.settings);
+  const book = bookId
+    ? await db.accountSettings.findFirst({
+        where: { systemId: bookId, tenantId },
+        select: { orgName: true, taxId: true, branchCode: true, address: true, phone: true, logoUrl: true },
+      })
+    : null;
+  const vat = bookId ? await account.vatConfigOf(bookId) : null;
+  const taxId = nonEmpty(book?.taxId);
+  const hasVat = sale.vatSatang > 0; // F1: บิลที่ไม่มี VAT จริงไม่ใช่ใบกำกับ
+  const kind: ReceiptKind = receiptKindOf({ vatRegistered: !!vat?.vatRegistered, posAbbreviatedInvoice: !!vat?.posAbbreviatedInvoice, taxId: book?.taxId, vatSatang: sale.vatSatang });
+
+  // ── เครื่อง/กะ ของบิล (PosSale.shiftId → PosShift.deviceId → PosDevice ของสาขาเดียวกัน) ──
+  const shift = sale.shiftId
+    ? await db.posShift.findFirst({ where: { id: sale.shiftId, tenantId, unitId: sale.unitId }, select: { shiftNo: true, deviceId: true, deviceLabel: true } })
+    : null;
+  const device = shift
+    ? await db.posDevice.findUnique({ where: { unitId_deviceCode: { unitId: sale.unitId, deviceCode: shift.deviceId } }, select: { tenantId: true, name: true, posRegNo: true } })
+    : null;
+  const dev = device && device.tenantId === tenantId ? device : null;
+
+  // ── ผู้ขาย · สมาชิก · คูปอง ──
+  const [seller, customer, coupons] = await Promise.all([
+    rs.showCashier && sale.soldByUserId ? db.user.findUnique({ where: { id: sale.soldByUserId }, select: { name: true } }) : null,
+    sale.memberId ? db.customer.findFirst({ where: { id: sale.memberId, tenantId }, select: { id: true, name: true, firstName: true, lastName: true, memberCode: true, tierDefId: true } }) : null,
+    db.couponRedemption.findMany({
+      where: { tenantId, status: { not: "RELEASED" }, OR: [{ saleId: sale.id }, { refType: "PosSale", refId: sale.id }] },
+      select: { discountSatang: true, coupon: { select: { code: true } } },
+    }),
+  ]);
+  const [tier, balance] = customer
+    ? await Promise.all([
+        customer.tierDefId ? db.memberTierDef.findFirst({ where: { id: customer.tierDefId, tenantId }, select: { name: true } }) : null,
+        db.pointBalance.findFirst({ where: { tenantId, customerId: customer.id }, orderBy: { updatedAt: "desc" }, select: { balance: true } }),
+      ])
+    : [null, null];
+
+  // ── ยอด (สตางค์จากแถว DB) ──
+  const subtotalSatang = sale.lines.reduce((t, l) => t + l.qty * l.unitPriceSatang, 0);
+  const lineDiscountSatang = sale.lines.reduce((t, l) => t + l.discountSatang, 0);
+  const couponDiscountSatang = coupons.reduce((t, c) => t + c.discountSatang, 0);
+  const tierDiscountSatang = sale.tierDiscountSatang;
+  // PosSale.discountSatang = ส่วนลดท้ายบิล + คูปอง + สิทธิ์สมาชิก (ระดับ + ว่อชเชอร์) — ส่วนที่ไม่ใช่คูปอง/ระดับ = ส่วนลดท้ายบิล
+  const billDiscountSatang = sale.discountSatang - couponDiscountSatang - tierDiscountSatang;
+  const vatSatang = sale.vatSatang;
+
+  const anySale = sale as unknown as Record<string, unknown>;
+  const docType: ReceiptDocType = anySale.docType === "REFUND" ? "REFUND" : "SALE"; // P1.8 เพิ่มคอลัมน์ docType — ก่อนนั้น = SALE เสมอ
+  // F4: P1.8 เพิ่ม refSaleId (ยังไม่มีใน client ของต้นไม้นี้ ⇒ อ่านแบบไดนามิก) → เลขใบเสร็จของบิลต้นทาง (ร้าน + ระบบเดียวกัน)
+  const refSaleId = docType === "REFUND" && isId(anySale.refSaleId) ? anySale.refSaleId : undefined;
+  const refSale = refSaleId ? await db.posSale.findFirst({ where: { id: refSaleId, tenantId, systemId }, select: { receiptNo: true } }) : null;
+  const refReceiptNo = nonEmpty(refSale?.receiptNo);
+
+  const shopName = nonEmpty(rs.header.name) ?? nonEmpty(book?.orgName) ?? nonEmpty(tenant?.name) ?? nonEmpty(unit?.name) ?? "-";
+  const logoUrl = rs.header.logoUrl ?? nonEmpty(book?.logoUrl);
+  const memberName = customer ? (nonEmpty(customer.name) ?? nonEmpty([customer.firstName, customer.lastName].filter(Boolean).join(" ")) ?? nonEmpty(customer.memberCode) ?? "-") : "";
+  const couponCode = coupons.map((c) => c.coupon?.code).filter((c): c is string => !!c).join(", ");
+
+  const payload: ReceiptPayload = {
+    docType,
+    kind,
+    status,
+    copy,
+    paper: null,
+    shop: {
+      name: shopName,
+      branchName: unit?.name ?? "",
+      address: nonEmpty(rs.header.address) ?? nonEmpty(book?.address) ?? "",
+      phone: nonEmpty(rs.header.phone) ?? nonEmpty(book?.phone) ?? "",
+      ...(kind === "TAX_INVOICE_ABB" ? { taxId, branchNo: nonEmpty(book?.branchCode) ?? "00000" } : {}),
+      ...(logoUrl ? { logoUrl } : {}),
+    },
+    device: {
+      ...(dev?.posRegNo ? { posRegNo: dev.posRegNo } : {}),
+      ...((dev?.name ?? shift?.deviceLabel) ? { name: (dev?.name ?? shift?.deviceLabel)! } : {}),
+    },
+    doc: {
+      receiptNo: sale.receiptNo ?? "",
+      issuedAt: (sale.paidAt ?? sale.createdAt).toISOString(),
+      ...(nonEmpty(seller?.name) ? { cashierName: nonEmpty(seller?.name)! } : {}),
+      ...(shift ? { shiftNo: shift.shiftNo } : {}),
+      ...(refReceiptNo ? { refReceiptNo } : {}),
+    },
+    lines: sale.lines.map((l) => ({
+      name: l.name,
+      qty: l.qty,
+      unitPriceSatang: l.unitPriceSatang,
+      lineTotalSatang: l.lineTotalSatang,
+      discountSatang: l.discountSatang,
+      options: l.options.map((o) => o.choiceName),
+      ...(nonEmpty(l.note) ? { note: nonEmpty(l.note)! } : {}),
+      ...(l.weightGrams !== null ? { weightGrams: l.weightGrams } : {}),
+    })),
+    totals: {
+      subtotalSatang,
+      lineDiscountSatang,
+      billDiscountSatang,
+      couponDiscountSatang,
+      ...(couponCode ? { couponCode } : {}),
+      tierDiscountSatang,
+      serviceChargeSatang: sale.serviceChargeSatang,
+      grandTotalSatang: sale.grandTotalSatang,
+      vatBaseSatang: sale.grandTotalSatang - vatSatang,
+      vatSatang,
+      vatRateBp: hasVat && vat && vat.vatRegistered ? vat.vatRateBp : 0,
+      tipSatang: sale.tipSatang,
+    },
+    payments: sale.payments.map((p) => ({
+      type: p.type,
+      amountSatang: p.amountSatang,
+      ...(p.tenderedSatang !== null ? { tenderedSatang: p.tenderedSatang } : {}),
+      ...(p.changeSatang !== null ? { changeSatang: p.changeSatang } : {}),
+      ...(nonEmpty(p.reference) ? { reference: nonEmpty(p.reference)! } : {}),
+    })),
+    // showPoints ปิด = ไม่พิมพ์ส่วนสมาชิก/แต้ม
+    ...(customer && rs.showPoints
+      ? {
+          member: {
+            name: memberName,
+            ...(tier?.name ? { tierName: tier.name } : {}),
+            pointEarned: sale.pointEarned,
+            ...(balance ? { pointBalance: balance.balance } : {}),
+          },
+        }
+      : {}),
+    // POS P1.11 ▸ R3: qrEReceipt เปิด (ค่าปริยาย) = `${origin}/r/<token>` · บิลเก่าไม่มีโทเคน = สร้างตอนนี้ (UPDATE เดียว · client เดียวกัน) ◂
+    footer: { text: rs.footer, qrEReceiptUrl: rs.qrEReceipt ? await eReceiptUrl(db, tenantId, sale) : null, fullTaxInvoiceHint: kind === "TAX_INVOICE_ABB" && docType === "SALE" && status === "PAID" }, // R2: บิลยกเลิก/คืนแล้วไม่ชวนขอใบกำกับเต็มรูป
+    labels: { th: RECEIPT_LABELS.th, en: RECEIPT_LABELS.en },
+  };
+  return { payload, kind, sale, bookId: bookId ?? null };
+}
+
+/** URL ใบเสร็จออนไลน์ของบิล (R3) — null เมื่อหาโทเคนไม่ได้ (บิลหายระหว่างทาง) */
+export async function eReceiptUrl(db: Db, tenantId: string, sale: { id: string; publicToken: string | null }): Promise<string | null> {
+  const token = sale.publicToken ?? (await ensureReceiptToken(tenantId, sale.id, db));
+  if (!token) return null;
+  return `${(await publicOrigin()).replace(/\/+$/, "")}/r/${token}`;
 }

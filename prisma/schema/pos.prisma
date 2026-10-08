@@ -78,6 +78,10 @@ model PosSale {
   refundedSatang      Int            @default(0) // บนบิล SALE: ยอดที่คืนไปแล้วสะสม (สุทธิ = grandTotal − refundedSatang)
   reasonCode          String? // ใบ REFUND: DAMAGED | WRONG_ITEM | CHANGED_MIND | OTHER
 
+  // ── P1.11 — ใบเสร็จออนไลน์ /r/<token> · เพิ่มคอลัมน์ล้วน (บิลเดิม = null → ได้โทเคนแบบขี้เกียจผ่าน ensureReceiptToken) ──
+  // 12 ตัว Crockford base32 จาก crypto.randomBytes · ตั้งใน tx ของ createSale/refundSale · ไม่เปลี่ยนตลอดอายุบิล · ค้นด้วย unique index เท่านั้น (R9)
+  publicToken         String?        @unique
+
   lines    PosSaleLine[]
   payments PosPayment[]
 
@@ -525,4 +529,52 @@ model PosStockCountEntry {
 
   @@unique([tenantId, idempotencyKey])
   @@index([countId])
+}
+
+// ── POS P1.11 — ลูกค้าแจ้งปัญหาบิลจากหน้าใบเสร็จออนไลน์ (R4) · ผู้เขียนเดียว = pos/receipt-issue.ts (+ kanbanCardId จาก pos-receipt-bridges.ts) ──
+//   saleId = id หลวมของบิล SALE (ไม่มี FK) · เพดาน 3 ครั้ง/บิล/24 ชม. นับจากแถวเอง (CD4 — ไม่มีตารางตัวนับ)
+enum PosReceiptIssueStatus {
+  OPEN
+  RESOLVED
+}
+
+model PosReceiptIssue {
+  id           String                @id @default(cuid())
+  tenantId     String
+  unitId       String
+  saleId       String // PosSale.id (SALE)
+  message      String // 1–500 (ตัดช่องว่างแล้ว)
+  contact      String? // ≤120 (ไม่บังคับ)
+  status       PosReceiptIssueStatus @default(OPEN)
+  kanbanCardId String? // KanbanCard.id ที่ consumer เปิด (id หลวม · null = ยังไม่มี/ร้านไม่มีบอร์ด)
+  createdAt    DateTime              @default(now())
+
+  @@index([tenantId, saleId, createdAt])
+}
+
+// ── POS P1.11 — คำขอใบกำกับภาษีเต็มรูปจากหน้าใบเสร็จออนไลน์ (R5) · ผู้เขียน = pos/receipt-tax-request.ts · P1.13 ออกเอกสาร (accountDocId) ──
+//   1 คำขอที่ยังเปิด (REQUESTED/ISSUED) ต่อบิล — ตัดสินใต้ล็อกแถวบิล (FOR UPDATE) · taxId ตรวจรูปแบบอย่างเดียว (DBD = P1.13)
+enum PosTaxInvoiceRequestStatus {
+  REQUESTED
+  ISSUED
+  REJECTED
+}
+
+model PosTaxInvoiceRequest {
+  id           String                     @id @default(cuid())
+  tenantId     String
+  unitId       String
+  saleId       String // PosSale.id (SALE)
+  name         String // ชื่อผู้ซื้อ/บริษัท
+  taxId        String // 13 หลัก
+  branchCode   String                     @default("00000") // 5 หลัก
+  address      String
+  email        String?
+  status       PosTaxInvoiceRequestStatus @default(REQUESTED)
+  accountDocId String? // AccountDocument.id ของใบกำกับเต็มรูป (P1.13)
+  createdAt    DateTime                   @default(now())
+  updatedAt    DateTime                   @updatedAt
+
+  @@index([tenantId, saleId])
+  @@index([tenantId, status, createdAt])
 }

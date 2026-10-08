@@ -20,6 +20,8 @@ import { posVatRateBp } from "./service";
 import { isShiftDeviceId, parseShiftSettings, resolveRegisterShift } from "./shift";
 import type { RegisterActor, RegisterCtx } from "./register-shared";
 import { lineNets, refundLineAmount, refundServiceCharge } from "./refund-math";
+// POS P1.11 ▸ R1: ใบคืนก็มีโทเคน (เปิดแล้วพาไปหน้าบิลต้นทาง) ◂
+import { newReceiptToken } from "./receipt-token";
 import {
   REFUND_PAY_TYPES,
   REFUND_PREFIX_DEFAULT,
@@ -363,6 +365,7 @@ async function refundInTx(tx: Tx, s: Scope, x: CleanInput, preShiftId: string | 
       sourceId: null,
       idempotencyKey: x.idempotencyKey,
       receiptNo,
+      publicToken: newReceiptToken(), // POS P1.11 ▸ R1 ◂
       status: "PAID",
       docType: "REFUND",
       refSaleId: sale.id,

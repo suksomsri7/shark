@@ -19,6 +19,8 @@ export type PosReceiptSettings = {
   showPoints: boolean;
   showCashier: boolean;
   qrEReceipt: boolean;
+  /** POS P1.11 ▸ มติผู้คุมงาน 5: บอร์ดงานที่รับเรื่อง "แจ้งปัญหาบิล" จากหน้าใบเสร็จออนไลน์ (KanbanBoard.id) · null = ไม่เปิดการ์ด (ไม่มี fallback) ◂ */
+  issueBoardId?: string | null;
 };
 export type PosReceiptSettingsPatch = {
   header?: { name?: string | null; phone?: string | null; address?: string | null; logoUrl?: string | null };
@@ -26,6 +28,7 @@ export type PosReceiptSettingsPatch = {
   showPoints?: boolean;
   showCashier?: boolean;
   qrEReceipt?: boolean;
+  issueBoardId?: string | null; // POS P1.11
 };
 export type ParseReceiptSettingsResult = { ok: true; settings: PosReceiptSettings } | PosFieldRefusal;
 export type PosReceiptSettingsRefusal = { ok: false; code: "NOT_FOUND" | "PERMISSION_DENIED" | "VALIDATION" | "UNKNOWN"; message: string; field?: string };
@@ -97,18 +100,24 @@ export function parseReceiptSettings(json: unknown): ParseReceiptSettingsResult 
     if (len(t) > RECEIPT_FOOTER_MAX || !clean(t, true)) return bad("footer", `footer: ข้อความท้ายใบเสร็จยาวได้ไม่เกิน ${RECEIPT_FOOTER_MAX} ตัวอักษร`);
     footer = t; // ว่าง = ไม่พิมพ์ข้อความท้าย (ตั้งใจ)
   }
-  const out: PosReceiptSettings = { header, footer, showPoints: true, showCashier: true, qrEReceipt: true };
+  const out: PosReceiptSettings = { header, footer, showPoints: true, showCashier: true, qrEReceipt: true, issueBoardId: null };
   for (const k of ["showPoints", "showCashier", "qrEReceipt"] as const) {
     const v = json[k];
     if (v === undefined || v === null) continue;
     if (typeof v !== "boolean") return bad(k, `${k}: ต้องเป็นจริง/เท็จ`);
     out[k] = v;
   }
+  // POS P1.11 ▸ บอร์ดรับเรื่องแจ้งปัญหาบิล: id ของบอร์ด (ตรวจรูปแบบอย่างเดียว — consumer ตรวจว่าบอร์ดยังอยู่) · ว่าง/null = ไม่มี ◂
+  const ib = json.issueBoardId;
+  if (ib !== undefined && ib !== null) {
+    if (typeof ib !== "string" || ib.trim().length > 64 || !/^[A-Za-z0-9_-]*$/.test(ib.trim())) return bad("issueBoardId", "issueBoardId: รหัสบอร์ดงานไม่ถูกต้อง");
+    out.issueBoardId = ib.trim() || null;
+  }
   return { ok: true, settings: out };
 }
 
 function defaults(): PosReceiptSettings {
-  return { header: { logoUrl: null }, footer: RECEIPT_FOOTER_DEFAULT, showPoints: true, showCashier: true, qrEReceipt: true };
+  return { header: { logoUrl: null }, footer: RECEIPT_FOOTER_DEFAULT, showPoints: true, showCashier: true, qrEReceipt: true, issueBoardId: null };
 }
 
 /** รวม patch (บางส่วน) ทับค่าปัจจุบัน — header รวมรายฟิลด์ (null/ว่าง = ล้างฟิลด์นั้น) · ผลต้องผ่าน parseReceiptSettings อีกรอบ */
@@ -116,6 +125,6 @@ export function mergeReceiptSettings(cur: PosReceiptSettings, patch: PosReceiptS
   const header: Record<string, unknown> = { ...cur.header };
   if (isRecord(patch.header)) for (const [k, v] of Object.entries(patch.header)) header[k] = v;
   const next: Record<string, unknown> = { ...cur, header };
-  for (const k of ["footer", "showPoints", "showCashier", "qrEReceipt"] as const) if (patch[k] !== undefined) next[k] = patch[k];
+  for (const k of ["footer", "showPoints", "showCashier", "qrEReceipt", "issueBoardId"] as const) if (patch[k] !== undefined) next[k] = patch[k];
   return next;
 }

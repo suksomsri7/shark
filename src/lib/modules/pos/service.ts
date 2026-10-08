@@ -11,6 +11,8 @@ import { splitIncludedVat } from "@/lib/money/vat";
 import { parsePosPaymentSettings } from "./payment-settings";
 // POS P1.9 ▸ ค่าตั้งกะ (otherSources) — ตัวอ่านเดียวกับ shift.ts ◂
 import { parseShiftSettings } from "./shift";
+// POS P1.11 ▸ R1: โทเคนใบเสร็จออนไลน์ตั้งใน tx เดียวกับบิล (ทุก sourceModule) ◂
+import { newReceiptToken } from "./receipt-token";
 
 // POS createSale — contract 2.1 (จุดตัดเงินกลาง). MVP: PAID_NOW
 //
@@ -489,6 +491,7 @@ async function createSaleOnce(input: CreateSaleInput, client: Client, ownsTx: bo
         sourceId: input.sourceId,
         idempotencyKey: input.idempotencyKey,
         receiptNo,
+        publicToken: newReceiptToken(), // POS P1.11 ▸ R1 ◂
         status: "PAID",
         subtotalSatang: subtotal,
         discountSatang: billDiscount + couponDiscount,

@@ -63,6 +63,10 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   PosStockCountEntry: tenant,
   // POS P1.10 — ทะเบียนเครื่องขาย (ผู้เขียนเดียว = pos/device.ts · ทุกคำสั่งกรอง tenantId + unitId (+ systemId ของ POS))
   PosDevice: sys(),
+  // POS P1.11 — ใบเสร็จออนไลน์: แจ้งปัญหาบิล (ผู้เขียน = pos/receipt-issue.ts + kanbanCardId จาก pos-receipt-bridges.ts) ·
+  //   คำขอใบกำกับเต็มรูป (ผู้เขียน = pos/receipt-tax-request.ts · P1.13 ออกเอกสาร) — ทุกคำสั่งกรอง tenantId + saleId (+ unitId ของบิล)
+  PosReceiptIssue: unit,
+  PosTaxInvoiceRequest: unit,
   // Outbox (kernel — side effects post-commit · WO-0002)
   OutboxEvent: tenant,
   // Party (WO 3.1) — ตัวตนกลางระดับ tenant ข้ามทุกระบบ (ตรงข้าม AccountContact ที่ scope ต่อ systemId)
