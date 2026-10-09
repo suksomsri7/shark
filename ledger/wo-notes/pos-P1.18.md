@@ -4,8 +4,8 @@ Branch `wip/pos-p1.18` from `origin/session/pos` d46b8e89 (oracle b93f0623 merge
 Tree `/root/projects/shark-pos-c` · QC4 (`ep-frosty-lab`) · logs under `scratchpad/p118/runs/`.
 
 ## Checkpoint
-- done: step 1 (d4ccb98c) · step 2 (af6ae94a + ORACLE-EDIT 29d5b747 + a887a2a6) · step 3 (K1–K4 + ORACLE-EDIT p1.15)
-- next: step 4 (pos-integrations.ts composition root + setPosLinkEnabled account facade + actions)
+- done: step 1 (d4ccb98c) · step 2 (af6ae94a + ORACLE-EDIT 29d5b747 + a887a2a6) · step 3 (aaaaf455 + ORACLE-EDIT p1.15) · step 4 (8c08c2ec + ORACLE-EDIT I8 aa88aca1) · step 5 (staff overview + approval facade)
+- next: step 6 (locale cookies/action · printLocale in the print path · pos.nav.* in posTabs/childrenFor · qc-nav-functions ORACLE-EDIT if needed) then the final gate set
 - commands:
   - oracle forced: `bash scripts/iso.sh env QC_FORCE=1 bash scripts/qc4.sh env GATE_LOCK_FILE=/tmp/shark-gate-pos.lock bash scripts/with-gate-lock.sh pnpm exec tsx scripts/qc-pos-p1.18.mts`
   - typecheck: `env NODE_OPTIONS=--max-old-space-size=5632 ISO_MEM=6500M bash scripts/iso.sh flock -w 3600 /tmp/pos-gate.lock pnpm typecheck`
@@ -20,13 +20,21 @@ Tree `/root/projects/shark-pos-c` · QC4 (`ep-frosty-lab`) · logs under `scratc
 - **Step 3** (P1.15 close items): K1 `register-shared` STAFF_PIN_DEVICE_THROTTLE_AFTER=10 / _MS=15 min + `PIN_THROTTLED` (union, REFUSAL_KEY, REG_MESSAGE, staff-pin MSG) · `verifyStaffPin` counts `pos.staff.pin_failed {deviceId, unitId}` AuditLog rows of the device in the window **before** matching; anonymous PIN_INVALID writes one row; throttled attempts write none; named attempts untouched · K2 `setStaffPin` taken PIN ⇒ `refuse("WEAK_PIN")` (identical code+message) · K3 `regDiscountOver` ③ uses a deterministic held-cart id `hcap<sha256(tenant|system|unit|key)[0..21]>` → `holdCartForApproval(…, {id})` (P2002 ⇒ winner's row) so two concurrent same-key submits share one held cart and one request (submitForApproval/PosApprovalPayload already dedupe per entity) · K4 `approval/service.ts decide()` refuses requester = decider (`ok:false, status PENDING, code SELF_APPROVAL`, Thai message) before any write; bulkDecide reports that message.
   ORACLE-EDIT `qc-pos-p1.15` PN3/PN8 (own commit): PN3 expects WEAK_PIN + same message as a weak PIN; PN8 code list drops PIN_TAKEN (6). Count unchanged.
   oracle forced: 45/77 (K1–K4 + ST6 green) · qc-pos-p1.15 39/39 · typecheck 0.
+- **Step 4** (R7 R8): `src/lib/pos-integrations.ts` posIntegrationCards / setPosAccountLink / POS_INTEGRATION_CODES · `account/index.ts` setPosLinkEnabled · `src/lib/pos-integrations-actions.ts` (2 actions, opts never forwarded).
+  ORACLE-EDIT `qc-pos-p1.18` I8 (own commit aa88aca1): I8 demanded every BOOKING fact carry P2.4 while I12 + names table #20 give `advanceBookingBill` P2.7 — contradictory; I8 now requires all facts planned with a phase and ≥1 with the card's phase. Count unchanged.
+  oracle forced: 65/77 (I1–I13 A1–A5 H2 green) · typecheck 0.
+- **Step 5** (R10): `settings-overview.ts` posStaffOverview (listStaffForDevice items as-is · roleMatrix 12 rows · STAFF holders/total from accepted memberships with unit access · approvals = active POS_* policies applying to this POS/unit) · `approval/index.ts` listPoliciesForEntities · action posStaffOverviewAction.
+  oracle forced: 71/77 (S1–S4 green) · scoped tsc 0.
 
 ## Deviations
 1. **K4 self-approval guard exempts (a) OWNER and (b) entity type `crm.commission`** (ruling text: "refuse requester = approver inside the core"). (a) the OWNER is the last authority — a one-owner shop could never close its own OWNER-step request, and `qc-crm-c3.3` S4.8 asserts the owner approving the owner's own commission works; (b) CRM ruling C3.3 S3 handles a self-decided commission downstream (row stays PENDING + note + one owner escalation) and `qc-crm-c3.3` S4.8 asserts `decide().ok === true` for the MANAGER's own commission. Everything else (incl. K4's `QC_P118_SELF`, all POS_*) is refused in the core. Controller: confirm, or rule that CRM moves its rule into the core guard (then drop the set).
 2. **ORACLE-EDIT `qc-hf-pos-page-authz` S-8** (not in the prompt's list): it asserted the literal `posSalesScope(...)` on the sales page that ruling Q9 replaces with `posSalesReadScope`; only the function name changed (own `test(...)` commit, 56 checks unchanged).
 
-## Foreign-module edits
-(filled)
+## Foreign-module edits (each also one line in `ledger/POS-OWNER-PENDING.md` under "แจ้งเจ้าของโมดูลบัญชี/อนุมัติ" — heading renamed from "…บัญชี" to "…บัญชี/อนุมัติ")
+- `src/lib/modules/account/index.ts` — marked block: `setPosLinkEnabled(ctx, posSystemId, enabled, actorUserId)` wraps `connections.connect/disconnect` (kind POS).
+- `src/lib/modules/approval/index.ts` — marked block: `listPoliciesForEntities(ctx, entityTypes)` (listPolicies + type filter, read-only).
+- `src/lib/modules/approval/service.ts` — `decide()` self-approval guard (SELF_APPROVAL; OWNER + crm.commission exempt) · `DecideResult` + optional `code/message` · bulkDecide reason uses the message.
+- `src/lib/core/permissions.ts` — 2 keys in the POS block (marked).
 
 ## Contract for P1.18U
 (filled at the end)

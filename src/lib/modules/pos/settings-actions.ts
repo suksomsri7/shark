@@ -10,7 +10,7 @@ import { requireTenant } from "@/lib/core/context";
 import { assertCan } from "@/lib/core/rbac";
 import { posMembership } from "./access";
 import { posSettingsHistory, updatePosDiscountCaps, updatePosGeneralSettings, updatePosUnitStockPolicy } from "./settings-general";
-import { posSettingsOverview, type PosSettingsOverviewResult } from "./settings-overview";
+import { posSettingsOverview, posStaffOverview, type PosSettingsOverviewResult, type PosStaffOverviewResult } from "./settings-overview";
 import { updatePosUnitPromptpay, type PosUnitPromptpayResult } from "./payment-settings";
 import type { PosDiscountCapsResult, PosGeneralSettingsResult, PosSettingsHistoryResult, PosSettingsRefusal, PosUnitStockPolicyResult } from "./settings-shared";
 
@@ -108,5 +108,17 @@ export async function updatePosUnitPromptpayAction(args: { systemId: string; uni
   } catch (e) {
     unstable_rethrow(e);
     return unexpected("unitPromptpay", e);
+  }
+}
+
+/** R10 แท็บพนักงานและสิทธิ์ของสาขา (pos.settings.manage ที่สาขา) */
+export async function posStaffOverviewAction(args: { systemId: string; unitId: string }): Promise<PosStaffOverviewResult> {
+  try {
+    const s = await session();
+    if (!gate(s.m, MANAGE)) return DENIED;
+    return await posStaffOverview({ tenantId: s.tenantId, systemId: str(args?.systemId), unitId: str(args?.unitId) }, s.actor, {});
+  } catch (e) {
+    unstable_rethrow(e);
+    return unexpected("staff", e);
   }
 }

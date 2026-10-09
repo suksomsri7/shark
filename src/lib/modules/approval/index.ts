@@ -26,3 +26,11 @@ export { lastDecisionOf, requestStatuses } from "./service";
 
 // POS P1.15 ▸ เลือกกติกาที่เข้าเงื่อนไข (อ่านล้วน · ไม่ยื่นอะไร) — ผู้เรียก: pos/pos-approval.ts (ส่วนลดเกินสิทธิ์ต้องรู้ก่อนพักบิล · มติผู้คุมงาน 7) ◂
 export { resolvePolicy } from "./service";
+
+// POS P1.18 ▸ R10 (มติ Q4): กติกาของชนิดที่ขอ (อ่านล้วน · ทั้ง active และปิด · มี steps) — ผู้เรียก: pos/settings-overview.ts (แท็บพนักงานและสิทธิ์ 17C)
+//   กรองว่ากติกาไหน "ใช้กับ POS/สาขานี้" เป็นหน้าที่ของผู้เรียก · ห่อ listPolicies เดิม ไม่มีตรรกะใหม่ ◂
+import { listPolicies as listPoliciesOfTenant, type Ctx as PolicyCtx } from "./service";
+export async function listPoliciesForEntities(ctx: PolicyCtx, entityTypes: readonly string[]) {
+  const want = new Set(entityTypes);
+  return (await listPoliciesOfTenant(ctx)).filter((p) => want.has(p.entityType));
+}
