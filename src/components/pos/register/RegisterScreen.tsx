@@ -100,6 +100,9 @@ import { ScanCameraDialog } from "./ScanCameraDialog";
 import { ScanChooserDialog } from "./ScanChooserDialog";
 import { SearchRow } from "./SearchRow";
 import { WeighDialog } from "./WeighDialog";
+// POS P1.13U ▸ กล่องใบกำกับภาษีเต็มรูป (ภาพ 15A) — ผู้ซื้ออยู่ในตะกร้าฝั่ง client เท่านั้น ส่งไปกับ submit ◂
+import { TaxInvoiceDialog } from "./TaxInvoiceDialog";
+import { taxInvoiceRefusalKey, type TaxInvoiceBuyerInput } from "@/lib/modules/pos/tax-invoice-shared";
 // POS P1.9 ▸ รหัสเครื่อง → กะของเครื่อง (ผูกบิล · ล็อกปุ่มชำระเมื่อบังคับเปิดกะ) ◂
 import { getPosDeviceId } from "@/lib/modules/pos/device-id";
 // POS P1.10 U ▸ heartbeat ของเครื่องนี้ → ชื่อเครื่อง + printerConfig (พิมพ์ใบเสร็จ · ชิปแถบล่าง) · เครื่องถูกเพิกถอน = แถบแดงค้าง + ล็อกปุ่มชำระ ◂
@@ -143,7 +146,9 @@ type Layer =
   | { kind: "openPrice"; productId: string }
   | { kind: "clear" }
   | { kind: "pay" }
-  | { kind: "done"; result: RegisterSubmitOk; payMethods: RegisterPayMethod[]; memberAttached?: boolean }
+  | { kind: "done"; result: RegisterSubmitOk; payMethods: RegisterPayMethod[]; memberAttached?: boolean; taxInvoice?: boolean }
+  // POS P1.13U: กล่องใบกำกับเต็มรูป (15A) · errorKey = คำปฏิเสธจาก submit (คีย์ใต้ pos) ที่ทำให้เปิดซ้ำ
+  | { kind: "taxInvoice"; errorKey?: string }
   | { kind: "note" }
   // P1.2 U: กล่องตัวเลือก/ตัวแปร (weighedBarcode = มาจากป้ายเครื่องชั่งที่สแกน) · กล่องน้ำหนัก (options = ที่เลือกมาก่อน)
   | { kind: "options"; product: RegisterProduct; weighedBarcode?: string; anchor?: PickAnchor }
@@ -294,6 +299,12 @@ export function RegisterScreen(props: RegisterScreenProps) {
     document.addEventListener("visibilitychange", onVis);
     return () => document.removeEventListener("visibilitychange", onVis);
   }, [refreshHeld]);
+
+  // ═══════ POS P1.13U ใบกำกับภาษีเต็มรูป (มติ 1–3) ═══════
+  //   ผู้ซื้อ + จำไว้กับสมาชิก อยู่ในหน่วยความจำของจอเท่านั้น — บิลใหม่/พักบิล/เรียกคืน (resetBill) = หาย (บิลที่พักไม่เก็บผู้ซื้อ · ไม่มีข้อผิดพลาด)
+  const [taxInv, setTaxInv] = useState<{ buyer: TaxInvoiceBuyerInput; remember: boolean } | null>(null);
+  /** ร้านนี้ไม่มีกุญแจ DBD (รู้จากครั้งแรกที่ค้น) ⇒ ซ่อนปุ่มค้นจนกว่าจะโหลดหน้าใหม่ */
+  const [dbdOff, setDbdOff] = useState(false);
 
   // ═══════ การส่งบิล ═══════
   const [idemKey, setIdemKey] = useState(newKey);
@@ -958,6 +969,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
     setIdemKey(newKey());
     clearPending();
     setWarnAck({});
+    setTaxInv(null); // P1.13U: ผู้ซื้อของบิลก่อนไม่ตามไปบิลใหม่
     pendingSubmit.current = null;
     setPayPhase("form");
     setPayError(null);
@@ -986,7 +998,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
         pendingSubmit.current = null;
         clearPending();
         setPayPhase("form");
-        setLayers((s) => [...s.filter((l) => l.kind !== "pay" && l.kind !== "sheet"), { kind: "done", result: r, payMethods: sale.payMethods, memberAttached: !!sale.memberId }]);
+        setLayers((s) => [...s.filter((l) => l.kind !== "pay" && l.kind !== "sheet"), { kind: "done", result: r, payMethods: sale.payMethods, memberAttached: !!sale.memberId, taxInvoice: !!sale.taxInvoice }]);
         void refreshStatus();
         return;
       }
@@ -1008,6 +1020,9 @@ export function RegisterScreen(props: RegisterScreenProps) {
       clearPending();
       setPayPhase("form");
       setPayError({ code: r.code, ...errorFor(r.code) });
+      // P1.13U มติ 2: เลขผู้เสียภาษีถูกปฏิเสธตอนบันทึก ⇒ เปิดกล่องใบกำกับซ้ำพร้อมข้อความ (คีย์บิลเดิม · ไม่มีบิล)
+      if (r.code === "TAX_ID_INVALID" && sale.taxInvoice)
+        setLayers((s) => (s.some((l) => l.kind === "taxInvoice") ? s : [...s, { kind: "taxInvoice", errorKey: taxInvoiceRefusalKey("TAX_ID_INVALID") }]));
       if (r.code === "PRICE_CHANGED" && "grandTotalSatang" in r) {
         // ยอดสดจากคำตอบ (ไม่ต้อง quote ซ้ำ) — ผู้ใช้ต้องกดยืนยันใหม่กับยอดนี้
         setQuote({
@@ -1055,6 +1070,11 @@ export function RegisterScreen(props: RegisterScreenProps) {
       ...(cart.note ? { note: cart.note } : {}),
       expectedGrandTotalSatang: due,
     });
+    // P1.13U มติ 1: ผู้ซื้อใบกำกับเต็มรูป (+ จำไว้กับสมาชิก เมื่อบิลมีสมาชิก) ไปกับคำขอเดียวกัน
+    if (taxInv) {
+      sale.taxInvoice = taxInv.buyer;
+      if (taxInv.remember && cart.memberId) sale.rememberBuyer = true;
+    }
     void send(sale);
   };
   const retryPay = () => {
@@ -1063,6 +1083,16 @@ export function RegisterScreen(props: RegisterScreenProps) {
   const nextSale = () => {
     resetBill();
     setLayers([]);
+  };
+  /** P1.13U มติ 1–2: เปิดกล่อง 15A (ปุ่มท้ายตะกร้า · สวิตช์/แก้ในจอชำระ) — ร้านออกใบกำกับไม่ได้ = ข้อความแทนการเปิด */
+  const taxEligible = status?.taxInvoiceEligible === true;
+  const openTaxInvoice = () => {
+    if (frozenRef.current || layersRef.current.some((l) => l.kind === "taxInvoice")) return;
+    if (!taxEligible) {
+      showToast({ key: "errors.taxInvoiceNotEligible" });
+      return;
+    }
+    push({ kind: "taxInvoice" });
   };
 
   // R4.1 F1: คำขอที่โหลดกลับแล้วถูกปฏิเสธชัด ⇒ กล่องชำระค้างบนตะกร้าว่าง — ปิดกล่องแล้วแสดงเหตุผลเป็นข้อความลอย
@@ -1254,6 +1284,9 @@ export function RegisterScreen(props: RegisterScreenProps) {
       frozen={frozen}
       onPay={openPay}
       onSoon={soon}
+      onTaxInvoice={openTaxInvoice}
+      taxInvoiceSet={!!taxInv}
+      taxInvoiceEligible={taxEligible}
       onNote={() => {
         if (!frozenRef.current && cart.lines.length) push({ kind: "note" });
       }}
@@ -1378,6 +1411,37 @@ export function RegisterScreen(props: RegisterScreenProps) {
               setPayError(null);
             }}
             intent={props.payIntent ? { ...props.payIntent, systemId, unitId, cartKey: idemKey, discountOverCap } : null}
+            taxInvoice={{
+              eligible: taxEligible,
+              buyer: taxInv?.buyer ?? null,
+              onOpen: openTaxInvoice,
+              onClear: () => {
+                setTaxInv(null);
+                if (payError?.code === "TAX_ID_INVALID" || payError?.code === "NOT_ELIGIBLE") setPayError(null);
+              },
+            }}
+          />
+        );
+      case "taxInvoice":
+        return (
+          <TaxInvoiceDialog
+            key={k}
+            mode="sale"
+            systemId={systemId}
+            unitId={unitId}
+            chip={quoteFresh ? moneyText(quoteFresh.grandTotalSatang) : null}
+            initial={taxInv?.buyer ?? null}
+            memberId={cart.memberId ?? null}
+            initialRemember={taxInv?.remember ?? false}
+            dbdOff={dbdOff}
+            onDbdOff={() => setDbdOff(true)}
+            externalErrorKey={l.errorKey ?? null}
+            onCancel={() => setLayers((s) => s.filter((x) => x.kind !== "taxInvoice"))}
+            onSave={(buyer, remember) => {
+              setTaxInv({ buyer, remember });
+              if (payError?.code === "TAX_ID_INVALID" || payError?.code === "VALIDATION") setPayError(null);
+              setLayers((s) => s.filter((x) => x.kind !== "taxInvoice"));
+            }}
           />
         );
       case "scanChoose":
@@ -1448,6 +1512,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
             printer={printer}
             locale={locale.startsWith("en") ? "en" : "th"}
             memberAttached={!!l.memberAttached}
+            taxInvoicePending={!!l.taxInvoice}
           />
         );
       case "options":

@@ -41,6 +41,7 @@ import { hundredthsText, parseHundredths } from "./LineEditor";
 import { RegisterDialog } from "./RegisterDialog";
 import { RegisterIcon, type RegisterIconName } from "./RegisterIcon";
 import { PayIntentPanel, usePayIntent, type IntentTarget, type PayIntentSetup } from "./PayIntentPanel";
+import { HEAD_OFFICE_BRANCH_CODE, type TaxInvoiceBuyerInput } from "@/lib/modules/pos/tax-invoice-shared";
 
 export type PayPhase = "form" | "sending" | "unknown" | "conflict";
 export type PayError = { code: string; key: string; values?: Record<string, string | number> };
@@ -83,6 +84,8 @@ type Props = {
   onRemoveMember: () => void;
   /** POS P1.7U ▸ ใบขอรับเงิน (ไม่ส่ง = พร้อมเพย์แบบ QR นิ่ง + ยืนยันเองของ P1.6) */
   intent?: PayIntentSetup | null;
+  /** POS P1.13U ▸ สวิตช์ "ออกใบกำกับภาษีเต็มรูป" ท้ายจอ (ภาพ 02) — buyer = ผู้ซื้อที่ตั้งไว้ (สวิตช์เปิด) · ปิดสวิตช์ = onClear · แก้/เปิด = onOpen (กล่อง 15A) ◂ */
+  taxInvoice?: { eligible: boolean; buyer: TaxInvoiceBuyerInput | null; onOpen: () => void; onClear: () => void } | null;
 };
 
 /** แถวที่แยกจ่ายไว้แล้ว (ยังไม่ส่ง) · id = ตัวนับในกล่อง (ไม่ใช่คีย์บิล) */
@@ -716,10 +719,51 @@ export function PayDialog(p: Props) {
             )}
           </div>
 
-          {/* ── ท้าย: ทิป · ย้อนกลับ · ปุ่มหลัก ── */}
+          {/* ── ท้าย: ใบกำกับเต็มรูป (P1.13U) · ทิป · ย้อนกลับ · ปุ่มหลัก ── */}
           {showForm && (
             <div className="flex shrink-0 flex-col gap-3 border-t px-5 pb-[max(16px,env(safe-area-inset-bottom))] pt-3 md:flex-row md:items-center md:gap-[31px] md:px-[22px] md:py-[14px]">
-              <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-4 gap-y-2 text-[13px]">
+              <div className="flex min-w-0 flex-1 flex-col gap-y-1">
+              {p.taxInvoice ? (
+                <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5 text-[13px]">
+                  <button
+                    data-testid="pos-taxinv-toggle"
+                    className={`flex h-11 items-center gap-3 font-bold disabled:cursor-not-allowed ${!p.taxInvoice.eligible ? "text-[color:var(--color-muted)]" : ""}`}
+                    type="button"
+                    role="switch"
+                    aria-checked={!!p.taxInvoice.buyer}
+                    aria-disabled={!p.taxInvoice.eligible || undefined}
+                    disabled={busy}
+                    onClick={() => (p.taxInvoice?.buyer ? p.taxInvoice.onClear() : p.taxInvoice?.onOpen())}
+                  >
+                    <span className={`relative h-6 w-10 rounded-full transition-colors ${p.taxInvoice.buyer ? "bg-[color:var(--color-ink)]" : "bg-[color:var(--color-line)]"}`}>
+                      <span className={`absolute top-0.5 size-5 rounded-full bg-[color:var(--color-surface)] shadow transition-[left] ${p.taxInvoice.buyer ? "left-[18px]" : "left-0.5"}`} />
+                    </span>
+                    {t("taxInvoice.toggle")}
+                  </button>
+                  {!p.taxInvoice.eligible ? (
+                    <span data-testid="pos-taxinv-not-eligible" className="min-w-0 text-[12.5px] text-[color:var(--color-muted)]">
+                      {t("errors.taxInvoiceNotEligible")}
+                    </span>
+                  ) : p.taxInvoice.buyer ? (
+                    <>
+                      <span data-testid="pos-taxinv-footer-line" className="min-w-0 max-w-full truncate text-[12.5px] text-[color:var(--color-ink-soft)]">
+                        {"\u2014 "}
+                        {[
+                          p.taxInvoice.buyer.name,
+                          p.taxInvoice.buyer.taxId,
+                          p.taxInvoice.buyer.branchCode && p.taxInvoice.buyer.branchCode !== HEAD_OFFICE_BRANCH_CODE
+                            ? t("taxInvoice.branchOf", { code: p.taxInvoice.buyer.branchCode })
+                            : t("taxInvoice.headOffice"),
+                        ].join(" \u00b7 ")}
+                      </span>
+                      <button data-testid="pos-taxinv-edit" className="h-11 px-1 text-[12.5px] font-bold text-[color:var(--color-accent)] disabled:opacity-50" type="button" disabled={busy} onClick={p.taxInvoice.onOpen}>
+                        {t("taxInvoice.edit")}
+                      </button>
+                    </>
+                  ) : null}
+                </div>
+              ) : null}
+              <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2 text-[13px]">
                 <button
                   data-testid="pos-reg-paydlg-tip-toggle"
                   className="flex h-11 items-center gap-3 font-bold disabled:cursor-not-allowed disabled:text-[color:var(--color-muted)]"
@@ -756,6 +800,7 @@ export function PayDialog(p: Props) {
                     <span>{t("pay.tipHint")}</span>
                   </label>
                 ) : null}
+              </div>
               </div>
               <button
                 data-testid="pos-reg-paydlg-back"

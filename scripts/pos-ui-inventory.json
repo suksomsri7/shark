@@ -694,11 +694,10 @@
       ],
       "hiddenFor": [],
       "expect": {
-        "type": "toast",
-        "target": "pos-reg-toast",
-        "note": "เร็ว ๆ นี้ — P1.13 ใบกำกับเต็มรูป"
+        "type": "modal",
+        "note": "ใบกำกับเต็มรูป → กล่อง 15A (TaxInvoiceDialog โหมด sale) · ร้านออกไม่ได้ (registerStatus.taxInvoiceEligible false) = จาง + toast เหตุผล"
       },
-      "wo": "P1.3",
+      "wo": "P1.13U",
       "oracle": "qc-pos-p1.3",
       "system": "POS",
       "query": "unit=[unitId]"
@@ -7181,6 +7180,330 @@
         "note": "ข้อความแสดงผลในฟอร์มชำระ (ไม่ใช่ปุ่ม) — ยอดบิลลดลงต่ำกว่าเงินที่เข้าแล้ว: \"เงินเข้าเกินยอด ฿X — คืนเงินเอง\" · ยืนยันรับเงินปิด · ปิดกล่องได้"
       },
       "wo": "P1.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-taxinv-close",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "note": "ปิดกล่องใบกำกับเต็มรูป (ไม่เก็บค่า)"
+      },
+      "wo": "P1.13U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-taxinv-form",
+      "kind": "form",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "note": "ฟอร์ม 15A — ตรวจด้วย parseTaxInvoiceBuyer ก่อนส่ง"
+      },
+      "wo": "P1.13U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-taxinv-kind-person",
+      "kind": "toggle",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "note": "ชนิดผู้ซื้อ บุคคลธรรมดา"
+      },
+      "wo": "P1.13U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-taxinv-kind-juristic",
+      "kind": "toggle",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "note": "ชนิดผู้ซื้อ นิติบุคคล (ตั้งเองจากเลขขึ้นต้น 0 เมื่อครบ 13 หลัก)"
+      },
+      "wo": "P1.13U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-taxinv-taxid",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "inline-error",
+        "note": "เลขผู้เสียภาษี 13 หลัก (ตัดช่องว่าง/ขีด) · ✓ เมื่อหลักตรวจถูก · แดง \"เลขไม่ถูกต้อง\""
+      },
+      "wo": "P1.13U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-taxinv-dbd",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "note": "ค้นจากกรมพัฒน์ (นิติบุคคล + เลขถูก) → lookupBuyerByTaxIdAction · พบ = การ์ดผล · ไม่พบ/ไม่มีกุญแจ = กรอกเอง"
+      },
+      "wo": "P1.13U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-taxinv-dbd-use",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "note": "ใช้ข้อมูลจาก DBD (ชื่อ/ที่อยู่/สำนักงานใหญ่ · source DBD)"
+      },
+      "wo": "P1.13U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-taxinv-name",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "note": "ชื่อผู้ซื้อ ≤120"
+      },
+      "wo": "P1.13U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-taxinv-address",
+      "kind": "textarea",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "note": "ที่อยู่ ≤300"
+      },
+      "wo": "P1.13U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-taxinv-branch-hq",
+      "kind": "toggle",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "note": "สาขา = สำนักงานใหญ่ (00000)"
+      },
+      "wo": "P1.13U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-taxinv-branch-other",
+      "kind": "toggle",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "note": "สาขาที่ (รหัส 5 หลัก)"
+      },
+      "wo": "P1.13U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-taxinv-branch-code",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "note": "รหัสสาขา 5 หลัก"
+      },
+      "wo": "P1.13U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-taxinv-email",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "note": "อีเมลรับ e-Tax (ไม่บังคับ ≤120)"
+      },
+      "wo": "P1.13U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-taxinv-remember",
+      "kind": "toggle",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "note": "จำไว้กับสมาชิก (มีสมาชิกเท่านั้น) → rememberBuyer"
+      },
+      "wo": "P1.13U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-taxinv-cancel",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "note": "ยกเลิก (ปิดกล่อง)"
+      },
+      "wo": "P1.13U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-taxinv-submit",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "note": "บันทึกและกลับไปชำระ — เก็บผู้ซื้อในตะกร้า (ฝั่งจอ) · ส่งไปกับ submitRegisterSaleAction"
+      },
+      "wo": "P1.13U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-taxinv-toggle",
+      "kind": "toggle",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "modal",
+        "note": "สวิตช์ท้ายจอชำระ: เปิด = กล่อง 15A · ปิด = ล้างผู้ซื้อ · ร้านออกไม่ได้ = จาง + เหตุผล"
+      },
+      "wo": "P1.13U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-taxinv-edit",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "modal",
+        "note": "แก้ผู้ซื้อ (เปิด 15A พร้อมค่าเดิม)"
+      },
+      "wo": "P1.13U",
       "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]"

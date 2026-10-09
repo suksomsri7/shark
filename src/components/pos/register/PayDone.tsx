@@ -43,6 +43,8 @@ type Props = {
   locale: "th" | "en";
   /** POS P1.11U ▸ บิลนี้มีสมาชิก (เปิดปุ่มส่งทาง LINE) */
   memberAttached?: boolean;
+  /** POS P1.13U ▸ มติ 5: บิลส่งไปพร้อมผู้ซื้อใบกำกับเต็มรูป ⇒ ช่อง "ใบกำกับเต็มรูป · กำลังออกในบัญชี" (consumer ออกเอง · ไม่ poll) ◂ */
+  taxInvoicePending?: boolean;
 };
 
 /** บิลที่สั่งพิมพ์อัตโนมัติไปแล้ว (ระดับโมดูล — จอสำเร็จถูกวาดใหม่/StrictMode ก็ไม่พิมพ์ซ้ำ) */
@@ -54,7 +56,7 @@ const autoPrinted = new Set<string>();
  */
 const printedOriginal = new Set<string>();
 
-export function PayDone({ receiptNo, totalSatang, changeSatang, payMethods, onNext, systemId, saleId, printer, locale, memberAttached = false }: Props) {
+export function PayDone({ receiptNo, totalSatang, changeSatang, payMethods, onNext, systemId, saleId, printer, locale, memberAttached = false, taxInvoicePending = false }: Props) {
   const t = useTranslations("pos.register");
   const tp = useTranslations("pos.print");
   const trc = useTranslations("pos.receipt");
@@ -169,6 +171,14 @@ export function PayDone({ receiptNo, totalSatang, changeSatang, payMethods, onNe
             <div className={cell}>
               <span className="text-[11.5px] text-[color:var(--color-muted)]">{t("done.paidBy")}</span>
               <span className="text-[15px] font-bold tabular-nums">{paidBy}</span>
+            </div>
+          )}
+          {taxInvoicePending && (
+            <div className={cell}>
+              <span className="text-[11.5px] text-[color:var(--color-muted)]">{t("taxInvoice.doneLabel")}</span>
+              <span data-testid="pos-taxinv-done" className="text-[15px] font-bold">
+                {t("taxInvoice.donePending")}
+              </span>
             </div>
           )}
         </div>
