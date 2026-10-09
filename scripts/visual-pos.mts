@@ -730,6 +730,8 @@ const P115 = {
   heldId: "",
   policyId: "",
   requestId: "",
+  /** fix รอบ 1 F9: ทุกคำขอที่สร้าง (approval-wait 1 ใบต่อขนาดจอ) — ลบครบใน finally */
+  requestIds: [] as string[],
   saleId: "",
   cleanup: null as null | { ok: boolean; detail: string },
 };
@@ -827,6 +829,7 @@ async function seedVoidRequest(): Promise<string> {
     select: { id: true },
   });
   P115.requestId = req.id;
+  P115.requestIds.push(req.id);
   P115.saleId = sale.id;
   await prisma.posApprovalPayload.create({
     data: {
@@ -912,7 +915,7 @@ async function runP115State(page: Any, state: StateKey, device: Device): Promise
   }
 }
 /** สรุปสำหรับ summary/JSON_SUMMARY — ไม่มี PIN/โทเคน */
-const p115Summary = () => ({ seeded: P115.seeded, error: P115.error, device: P115.deviceRowId ? DEVICE_ID : null, pinsSet: Object.keys(P115.pins), heldId: P115.heldId || null, requestId: P115.requestId || null, saleId: P115.saleId || null, cleanup: P115.cleanup });
+const p115Summary = () => ({ seeded: P115.seeded, error: P115.error, device: P115.deviceRowId ? DEVICE_ID : null, pinsSet: Object.keys(P115.pins), heldId: P115.heldId || null, requestIds: P115.requestIds, saleId: P115.saleId || null, cleanup: P115.cleanup });
 /** finally/signal: ลบคำขอ/snapshot/กติกา · ทิ้งบิลพัก · คืนแถว PIN · เพิกถอนเครื่อง — เรียกซ้ำได้ · ผลใน summary ไม่โยน */
 async function cleanupP115(): Promise<void> {
   if (P115.cleanup || (!P115.seeded && !P115.error && !P115.restore.length && !P115.deviceRowId)) return;
@@ -927,12 +930,16 @@ async function cleanupP115(): Promise<void> {
     }
   };
   await step("คำขอ", async () => {
-    if (P115.requestId) {
-      await prisma.posApprovalPayload.deleteMany({ where: { tenantId: T.tenantId, requestId: P115.requestId } });
-      await prisma.approvalRequest.deleteMany({ where: { tenantId: T.tenantId, id: P115.requestId } });
+    // fix รอบ 1 F9: ลบทุกคำขอของกติกาภาพ (ทุกขนาดจอ) + snapshot ของมัน ก่อนลบกติกา
+    let n = 0;
+    if (P115.policyId) {
+      const reqs = await prisma.approvalRequest.findMany({ where: { tenantId: T.tenantId, policyId: P115.policyId }, select: { id: true } });
+      const ids = [...new Set([...P115.requestIds, ...reqs.map((r) => r.id)])];
+      if (ids.length) await prisma.posApprovalPayload.deleteMany({ where: { tenantId: T.tenantId, requestId: { in: ids } } });
+      n = (await prisma.approvalRequest.deleteMany({ where: { tenantId: T.tenantId, OR: [{ policyId: P115.policyId }, { id: { in: P115.requestIds } }] } })).count;
+      await prisma.approvalPolicy.deleteMany({ where: { tenantId: T.tenantId, id: P115.policyId } });
     }
-    if (P115.policyId) await prisma.approvalPolicy.deleteMany({ where: { tenantId: T.tenantId, id: P115.policyId } });
-    return `คำขอ/กติกาของภาพ ${P115.requestId ? 1 : 0}/${P115.policyId ? 1 : 0}`;
+    return `คำขอ/กติกาของภาพ ${n}/${P115.policyId ? 1 : 0}`;
   });
   await step("บิลพัก", async () => {
     if (!P115.heldId) return "บิลพัก 0";
