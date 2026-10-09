@@ -989,3 +989,41 @@
 - **gates45-c** @789498c4: generate/typecheck/build/fitness ×3 + suites p1.13 p1.15 p1.7 p1.11 p1.16 p1.3 p1.10 p1.9 p1.8 pos-account account-cpa authz (`/root/pos-runs/gates45-c-*/SUMMARY.txt`) — เลน 4 เงียบแล้ว เหลือ P1.12 builder ใช้ tenant ชั่วคราวของตัวเอง
 - เลน: L1 (p11) ว่าง · L2 (c) gates45 · L3 (b) **P1.12 S builder a5dcd3a1** · L4 (d) ว่าง (อยู่ที่ wip/pos-p1.13u 994346a4)
 - ถัดไป: gates45 เขียว → ปิดชุด · P1.12 S รายงาน → reviewer → merge → P1.12U (ถ้าโควตาถึง) · **weekly 94% → ที่ 97% เขียน HANDOVER**
+
+---
+# 🤝 HANDOVER → บัญชี A — 9 ต.ค. 2026 11:45Z (เจ้าของสั่ง "เตรียมส่งไม้ต่อ" · weekly B 95%)
+
+## 0. เริ่มงานในบัญชี A
+เปิด Claude Code ที่ `/root/projects/shark-pos` (branch `session/pos`) แล้วสั่ง **"อ่านท้าย ledger/POS-RESUME.md แล้วทำต่อ"** · อ่านก่อน: `ledger/pos-briefs/pos-brief-LANE-RULES.md`, `pos-brief-COMMON.md`, memory ของบัญชี A (ถ้ามี) · agent ของบัญชี B ย้ายข้ามบัญชีไม่ได้ → spawn ใหม่จากสาขา `wip/*` ที่ push แล้ว · โควตา A ดูที่ `/root/tools/claude-usage-watch/state-a.json` (`grep -oE '"pct": ?[0-9]+'` ตัวแรก = session, ตัวสอง = weekly) · A weekly 61% รีเซ็ต 14 ต.ค. 11:00Z
+
+## 1. สถานะ
+- **21/55** รับแล้ว (นับเมื่อครึ่ง U ปิด) · `session/pos` head = commit นี้ (ก่อนหน้า b682cd43) · **gates45 เขียวทั้งหมดบน 789498c4** (typecheck · build · fitness ×3 · p1.13 p1.15 p1.7 p1.11 p1.16 p1.3 p1.10 p1.9 p1.8 pos-account account-cpa authz) → `/root/pos-runs/gates45-c-*/SUMMARY.txt`
+- ⛔ `main` ไม่ถูกแตะ · ไม่มี deploy · รายการรอเจ้าของ `ledger/POS-OWNER-PENDING.md` (ล่าสุด O24 VAT บัตรของขวัญ)
+- ใบที่เหลือใน P1: **P1.12** (กำลังทำ S) → P1.12U → **P1.18** (ตั้งค่า/การ์ดเชื่อมระบบ/th-en/ปิดเฟส) · จากนั้น P2 ตาม `ledger/POS-MASTER-PLAN.md`
+
+## 2. เลน / worktree / สาขา
+| ทรี | สาขา @ หัว | สถานะ | หมายเหตุ |
+|---|---|---|---|
+| `/root/projects/shark-pos` (ผู้คุม) | `session/pos` | สะอาด | node_modules = bind mount จาก `shark-pos-p11` → `pnpm exec prisma generate` ที่ p11 หรือที่นี่กระทบกัน · pre-commit fitness แดง "model ไม่มีใน schema" = client เก่า ⇒ generate ที่ทรีนี้ตอน p11 ว่าง |
+| `shark-pos-p11` (L1) | `wip/pos-p1.7u` de130460 (merge แล้ว) | ว่าง | พอร์ตภาพ 3225 |
+| `shark-pos-c` (L2) | detached 789498c4 | ว่าง (gates45 จบ) | node_modules ของตัวเอง · พอร์ต 3226 · ใช้รันด่านชุด/build |
+| `shark-pos-b` (L3) | **`wip/pos-p1.12`** (push ล่าสุด 251a01ec = ORACLE-EDIT p1.3 S3.29/S3.42 + อาจมีมากกว่า — ดู `git -C /root/projects/shark-pos-b log`) | **P1.12 S กำลังทำ** — builder B ถูกสั่งปิด step ปัจจุบัน + push + เขียน "## HANDOVER" ใน `ledger/wo-notes/pos-P1.12.md` | node_modules ของตัวเอง · พอร์ต 3227 · migration P1.12 (2 คอลัมน์ Json บน PosSale) อาจ deploy บน QC4 แล้วหรือยัง — ดูใน notes |
+| `shark-pos-d` (L4) | `wip/pos-p1.13u` 994346a4 (merge แล้ว) | ว่าง | node_modules ของตัวเอง · พอร์ตภาพ 3228 · ภาพล่าสุด `.qc-shots/pos/p113u-r2/` |
+สาขาที่ merge แล้ว (ลบได้): `wip/pos-p1.7u` `wip/pos-p1.11u` `wip/pos-p1.15u` `wip/pos-p1.13u` `wip/pos-p1.12-oracle` · ⚠️ ห้ามแตะ worktree `shark-crm*` `shark-in-th` `shark-hr*` `shark-ai*` และ process ของ session อื่น
+
+## 3. งานถัดไป (ตามลำดับ)
+1. **P1.12 S ต่อ**: prompt `pos-briefs/pos-prompt-accountB-P1.12-S.md` (build order 5 ขั้น + ruling 14 ข้อ) · brief `pos-brief-P1.12.md` (§9 rulings) · oracle `scripts/qc-pos-p1.12.mts` 64 ข้อ + `wo-notes/pos-P1.12-oracle.md` (names table = สัญญา) · spawn builder Opus ใหม่บนทรี b: "อ่าน `ledger/wo-notes/pos-P1.12.md` §HANDOVER แล้วทำ step ถัดไปตาม prompt" · เสร็จ = p1.12 64/64 ×3 residue 0 + ชุดถดถอยตาม prompt
+2. **reviewer P1.12 S** (Opus อ่านอย่างเดียว · เขียน `pos-prompt-accountB-P1.12-R.md` ตามแบบ `pos-prompt-accountB-P1.13-R.md`) → รอบแก้ → ผู้คุม merge `--no-ff origin/wip/pos-p1.12` → ยังนับ 21/55
+3. **P1.12U**: เขียน brief/prompt จาก `pos-brief-P1.12.md` §6 (UI inventory) + mockup `design-pos/01-register.png` (ชิปสมาชิกที่ตะกร้า) `02-payment.png` (แถวสิทธิ์ที่จอชำระ) `14-member-hold.png` (แผงสมาชิก/สมัครด่วน) · ตามแบบ `pos-prompt-accountB-P1.13U.md` (ruling + state ภาพ + testid + key) · builder → reviewer → build+ภาพ (สคริปต์แม่แบบ `/root/pos-runs/ctl-scripts-2026-10-09/build44-d.sh`, `vis44-p113u.sh`, `chain44.sh` — แก้ทรี/สาขา/พอร์ต/WO) → เทียบ mockup → merge → **22/55**
+4. **P1.18** brief (ตั้งค่า 5 แท็บ mockup 10/17 · การ์ด 13 ระบบ · th/en · `qc:all`) → oracle → S → U
+5. follow-ups ค้าง: V2 ภาพ sales cashier state ทั่วไปล้ม (ของเดิม: `existingBillsSet` เลือกบิลเก่าสุด) · P1.15 กฎฝั่ง server "ไม่รับผลอนุมัติหลัง 5 นาที" · P1.13: ส่งชื่อสมาชิกให้ 15A (ทำใน P1.12U) · DBD status แสดงดิบ · ขอ index เบอร์/ชื่อจากเจ้าของโมดูลสมาชิก · ลบสาขา wip ที่ merge แล้ว
+
+## 4. วิธีทำงาน (สั้น — รายละเอียดใน LANE-RULES/COMMON)
+- **oracle-first**: brief → oracle writer (fail-before) → builder S → reviewer Opus → รอบแก้ → merge → U (brief/prompt + ruling) → builder U → reviewer → build + ภาพจริง (`scripts/acc-v2-serve.sh start|stop` + `scripts/visual-pos.mts <wo> --states --user owner|cashier --tenant coffee --page register|sales|settings|receipt-public --base http://127.0.0.1:<port>`) → **เทียบ mockup `ledger/design-pos/NN-*.png` ด้วยตาทุกใบ** → merge → นับการ์ด
+- ด่าน: `bash scripts/iso.sh env QC_FORCE=1 bash scripts/qc4.sh env GATE_LOCK_FILE=/tmp/shark-gate-pos.lock bash scripts/with-gate-lock.sh pnpm exec tsx scripts/<suite>.mts` · typecheck `env NODE_OPTIONS=--max-old-space-size=5632 ISO_MEM=6500M bash scripts/iso.sh flock -w 3600 /tmp/pos-gate.lock pnpm typecheck` · build ผ่าน systemd-run + `build-*-inner.sh` (โหลด `.env.qc` ทั้งไฟล์ · timeout 50 นาที) · ผลทุกชุด `/root/pos-runs/<ชื่อ>-<stamp>/SUMMARY.txt` · แม่แบบสคริปต์ `/root/pos-runs/ctl-scripts-2026-10-09/` (gates45-c.sh = ด่านชุดเต็ม)
+- ⛔ ห้าม: push `main` · deploy · อ่าน/แก้/source `.env` (prod) · DB อื่นนอก QC4 (`ep-frosty-lab` role neondb_owner · พิมพ์แค่ hostname) · `pkill -f` · seed ล้างข้อมูล (`seed-member-qc` `seed-hr-qc` `migrate reset/dev` `db push`) · พิมพ์ค่า env/PIN/key · เรียก Beam/DBD จริงในเทส · แตะ worktree/process ของ session อื่น
+- subagent ใช้ scratchpad ร่วมกัน → ทุก prompt ต้องบังคับ `scratchpad/<wo>/` · ผู้คุมใช้ `scratchpad/ctl/` · suites หลายเลนบน tenant `posqc-coffee` ชนกัน (fingerprint/restore แดงหลอก) → รันซ้ำก่อนตัดสิน · จัดคิวภาพกับชุด DB ด้วยไฟล์ธง (ดู `chain44.sh`)
+- รายงาน Telegram `tg "📊 POS · N% (x/55) …"` ≤5 บรรทัดเมื่อสถานะเปลี่ยน · checkpoint ท้าย `ledger/POS-RESUME.md` + push `session/pos` ทุกครั้ง · นับการ์ดเมื่อ U ปิด · ผู้ตรวจ Opus ทุกใบ · refusal เป็น data + ข้อความไทย · เจ้าของเลือกคุณภาพ > ความเร็ว
+
+## 5. จุดที่ B หยุด
+- รอรายงานสุดท้ายจาก builder P1.12 (จะต่อท้ายบล็อกนี้ถ้ามาทัน) · ไม่ spawn/resume เพิ่ม · gates45 เขียว · ไม่มี unit systemd ค้าง (ตรวจ `systemctl list-units 'pos-*' --no-legend`)
