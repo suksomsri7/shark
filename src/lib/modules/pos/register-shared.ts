@@ -62,6 +62,9 @@ export const STAFF_TOKEN_TTL_MS = 12 * 3_600_000;
 /** POS P1.18 ▸ K1 (มติ 2): ใส่ PIN แบบไม่ระบุคนผิดครบ N ครั้งบนเครื่องเดียวภายในหน้าต่าง ⇒ PIN_THROTTLED ทุกครั้งถัดไปของเครื่องนั้นจนพ้นหน้าต่าง ◂ */
 export const STAFF_PIN_DEVICE_THROTTLE_AFTER = 10;
 export const STAFF_PIN_DEVICE_THROTTLE_MS = 15 * 60_000;
+/** POS P1.18 ▸ K1 แก้รอบ 1 F2: ผิดแบบไม่ระบุคนรวมทั้งสาขาครบ N ครั้งในหน้าต่างเดียวกัน ⇒ PIN_THROTTLED ทุกครั้งถัดไปแบบไม่ระบุคนของสาขานั้น
+ *  (รหัสเครื่องมาจาก client — เปลี่ยนรหัสใหม่ทุก 9 ครั้งต้องไม่ช่วยให้เดาได้) · รหัสเครื่องที่ไม่ได้ลงทะเบียนทุกตัวของสาขานับเป็น "เครื่องเดียว" ◂ */
+export const STAFF_PIN_UNIT_THROTTLE_AFTER = 30;
 export type StaffPinOk = { ok: true };
 /** ผล verifyStaffPin: staffToken ส่งต่อใน staffToken ของ submit/พัก/เรียกคืน/เปิดกะ · expiresAt = ISO */
 export type VerifyStaffPinOk = { ok: true; userId: string; role: RegisterRole; staffToken: string; expiresAt: string };
