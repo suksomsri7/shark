@@ -1968,6 +1968,9 @@ async function regDiscountOver(
       subtotalSatang: free.quote.subtotalSatang,
       grandTotalSatang: free.quote.grandTotalSatang,
       deviceId: deviceId ?? null,
+      // POS P1.15U ▸ เพดานของผู้ขอ ณ ตอนขอ (ชิป "เกินเพดาน x% ของ<บทบาท>" ในหน้าอนุมัติ 21A) ◂
+      capBp: regMaxDiscountBp(s.actor, caps),
+      capRole: s.actor.role,
       title: `ส่วนลด ${(discountBp / 100).toLocaleString("th-TH", { maximumFractionDigits: 2 })}% · บิล ฿${(free.quote.subtotalSatang / 100).toLocaleString("th-TH", { maximumFractionDigits: 2 })}`,
     },
   });

@@ -322,7 +322,7 @@ export async function posApprovalCards(tenantId: string, requestIds: string[]): 
       kind: r.kind as PosApprovalKind,
       title: s(p.title),
       requesterName: by ? (nameOf.get(by) ?? null) : null,
-      requesterRole: by ? (roleOf.get(by) ?? null) : null,
+      requesterRole: s(p.capRole) ?? (by ? (roleOf.get(by) ?? null) : null),
       deviceName: s(p.unitId) && s(p.deviceId) ? (devOf.get(`${s(p.unitId)}|${s(p.deviceId)}`) ?? null) : null,
       reason: s(p.reason),
       capBp: n(p.capBp),
