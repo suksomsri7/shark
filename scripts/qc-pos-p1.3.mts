@@ -2610,7 +2610,10 @@ async function cleanup() {
   // ตัวนับใบเสร็จของสาขาจริง: คืนค่าเดิม (บิลหลุดเข้าสาขาจริง = บั๊กของผู้สร้าง แต่ข้อมูลต้องคืน)
   for (const c of realCounters) {
     try {
-      await P.posReceiptCounter.update({ where: { id: c.id }, data: { seq: c.seq } });
+      // ORACLE-EDIT (P1.11U รอบ 3): ระหว่างรอบนี้อาจมีการขายจริงของร้าน QC (รอบภาพ/เลนอื่น) — คืนค่าเป็น max(snapshot, เลขที่ออกไปแล้วจริง) ห้ามต่ำกว่าใบที่ออกแล้ว (ไม่งั้นขายต่อชน unique receiptNo = BUSY)
+      const issuedRows = (await P.posSale.findMany({ where: { unitId: c.unitId, receiptNo: { startsWith: `${c.period}-` } }, select: { receiptNo: true }, orderBy: { receiptNo: "desc" }, take: 20 })) as Any[];
+      const issued = issuedRows.reduce((m: number, r: Any) => Math.max(m, Number(String(r.receiptNo).slice(String(c.period).length + 1)) || 0), 0);
+      await P.posReceiptCounter.update({ where: { id: c.id }, data: { seq: Math.max(Number(c.seq), issued) } });
     } catch {
       /* แถวหาย = ไม่มีอะไรให้คืน */
     }
