@@ -58,10 +58,11 @@
 // POS P1.11U ▸ หน้า receipt-public (ใบเสร็จออนไลน์สาธารณะ `/r/<token>` · ภาพ 11C · เฉพาะร้าน coffee · 390×844 เท่านั้น · ไม่ต้องล็อกอิน):
 //   ไม่ส่ง --states = rpub-paid ภาพเดียว · --states = rpub-paid · rpub-refunded-partial · rpub-voided · rpub-taxinvoice-form (เปิดแผ่น + กรอก ไม่กดส่ง) ·
 //   rpub-issue-sent (กรอก + กดส่ง → "ส่งแล้ว…") · rpub-not-found (โทเคนรูปถูกแต่ไม่มีจริง → HTTP 404)
-//   ข้อมูล: กะ 1 กะ (เครื่อง `posqc-p111u-<pid>`) + บิล 3 ใบผ่านบริการหน้าขาย (submitRegisterSale ลาเต้×2 · อเมริกาโน่ · ครัวซองต์ − ส่วนลดท้ายบิล ฿10 ·
-//   เงินสด ฿100 + PromptPay ส่วนที่เหลือ) → คืนบางส่วน 1 ใบ (refundSale) · ยกเลิก 1 ใบ (voidSaleByActor) · โทเคนอ่านด้วย prisma
-//   🔴 finally/signal: ลบ PosReceiptIssue/PosTaxInvoiceRequest ของบิลชุดนี้ (+ OutboxEvent pos.receipt.issue_reported ของมัน) · ปิดกะ (นับ = ยอดคาด) ·
-//   บิลขาย/ใบคืนคงอยู่ (ข้อมูลเงิน ห้ามลบ — แบบเดียวกับชุดภาพบิล P1.16) · คีย์กันซ้ำขึ้นต้น `posqc-p111u-` ◂
+//   ข้อมูล (F3 · ชุดเดียวต่อวัน): หาบิลชุดวันนี้ก่อนด้วยคีย์กันซ้ำ `posqc-p111u-<YYYYMMDD ไทย>-<paid|partial|voided>-*` + วันที่ (แบบ existingBillsSet ของ P1.16)
+//   ครบ = ใช้ซ้ำ ไม่เขียนบิล/กะเพิ่ม · ขาดชนิดไหน = เปิดกะเครื่องคงที่ `posqc-p111u-dev` แล้วขายเฉพาะชนิดนั้นผ่านบริการหน้าขาย (submitRegisterSale ลาเต้×2 ·
+//   อเมริกาโน่ · ครัวซองต์ − ส่วนลดท้ายบิล ฿10 · เงินสด ฿100 + PromptPay ส่วนที่เหลือ) → คืนบางส่วน (refundSale) · ยกเลิก (voidSaleByActor) · โทเคนอ่านด้วย prisma
+//   🔴 finally/signal: ลบ PosReceiptIssue/PosTaxInvoiceRequest ของบิลชุดนี้ (+ OutboxEvent ของมัน) · เก็บการ์ดบอร์ดงานที่ consumer เปิดเข้าคลัง (archiveCard) ·
+//   ปิดกะที่รอบนี้ใช้ขาย (นับ = ยอดคาด) · บิลขาย/ใบคืนคงอยู่ (ข้อมูลเงิน ห้ามลบ — แต่ไม่งอกเพราะใช้ชุดของวันซ้ำ) ◂
 //
 // 🔴 ไม่มีค่าปริยายของ base — ไม่ส่ง `--base`/`QC_BASE` = exit 2 · ต่อไม่ได้ = exit 2 · `:3215` = exit 2
 //    (พอร์ต 3215 เป็นของเซิร์ฟเวอร์ CRM RUN — LANE-RULES ข้อ 4 · ตั้ง POS_VISUAL_ALLOW_3215=1 เมื่อ CRM ปิดแล้วเท่านั้น)
@@ -208,7 +209,8 @@ const RPUB_STATE_KEYS: ReadonlySet<string> = new Set(RPUB_STATE_PLAN.map((s) => 
 const isRpubState = (k: StateKey): k is RpubStateKey => RPUB_STATE_KEYS.has(k);
 /** โทเคนที่รูปถูกแต่ไม่มีจริง (Crockford ไม่มี I L O U · ตรวจกับ DB ก่อนใช้) */
 const RPUB_MISSING_TOKEN = "ZZZZZZZZZZZZ";
-const RPUB_DEVICE_ID = `posqc-p111u-${process.pid}`;
+/** F3: เครื่องคงที่ (ไม่ผูก pid) — รอบซ้ำไม่สร้างเครื่อง/กะเพิ่ม · กะเปิดเฉพาะเมื่อต้องขายบิลใหม่ */
+const RPUB_DEVICE_ID = "posqc-p111u-dev";
 type Job = { page: PosPage; v: (typeof POS_VIEWPORTS)[number]; state: StateKey | null; file: string; path?: string; expect?: number };
 const viewports = LOCALE_EN ? POS_VIEWPORTS.filter((v) => v.name === "desktop") : [...POS_VIEWPORTS];
 // สถานะหน้าสต็อกเฉพาะ --page stock หรือ wo p1.14* (รอบ p1.3/p1.2 --states ทุกหน้าเดิมไม่เปลี่ยน · ไม่เปิดรอบนับเพิ่ม)
@@ -281,7 +283,7 @@ if (DRY) {
     if (rpubOn && STATES_ON) {
       console.log(`สถานะหน้าใบเสร็จออนไลน์ P1.11U (สาธารณะ · 390×844 · เครื่อง ${RPUB_DEVICE_ID}):`);
       for (const st of RPUB_STATE_PLAN) console.log(`  · ${st.key.padEnd(22)} คาด ${st.expect} ${st.note}`);
-      console.log("  เขียน: กะ 1 กะ (ปิดใน finally) + บิล 3 ใบ + ใบคืน 1 ใบ + แจ้งปัญหา 1 แถว (ลบใน finally พร้อม OutboxEvent ของมัน)");
+      console.log("  เขียน: ชุดบิลของวันนี้ครบ = ไม่เขียนบิล/กะ · ขาด = กะ 1 กะ (ปิดใน finally) + บิลที่ขาด (สูงสุด 3 ใบ + ใบคืน 1) · แจ้งปัญหา 1 แถว (ลบใน finally พร้อม OutboxEvent · การ์ดบอร์ดงาน = เก็บเข้าคลัง)");
     }
     if (billsStatesOn && pages.includes("sales")) {
       console.log(`สถานะหน้าบิลวันนี้ P1.16 U${userKey === "cashier" ? " (แคชเชียร์ = ปุ่มยกเลิกปิด/ไม่มีคืนเงิน)" : ""} · เครื่อง ${BILLS_DEVICE_ID}:`);
@@ -1289,15 +1291,36 @@ async function closeBillsShift(): Promise<void> {
 // ═══════════════════ POS P1.11U ▸ ข้อมูล + ขั้นตอนของหน้าใบเสร็จออนไลน์ (เครื่อง RPUB_DEVICE_ID · actor = เจ้าของร้าน) ═══════════════════
 const RPUB = {
   seeded: false,
+  reused: [] as string[],
   error: null as string | null,
   shiftId: "",
+  openedShift: false,
   sales: {} as Record<string, string>,
   tokens: {} as Record<string, string>,
   actions: {} as Record<string, unknown>,
   close: null as null | { ok: boolean; detail: string },
   cleanup: null as null | { issues: number; taxRequests: number; outbox: number; kanbanCards: string[]; error?: string },
 };
-const RPUB_KEY = `posqc-p111u-${process.pid}`;
+/** F3: คีย์กันซ้ำของ "ชุดวันนี้" (วันที่ไทย) — รอบซ้ำวันเดียวกันใช้บิลชุดเดิม (แบบ existingBillsSet ของ P1.16) · ข้ามวัน = ชุดใหม่ 1 ชุด */
+const RPUB_PREFIX = `posqc-p111u-${new Date(Date.now() + 7 * 3_600_000).toISOString().slice(0, 10).replace(/-/g, "")}-`;
+/** บิลชุดภาพของวันนี้ที่ยังอยู่ในสถานะที่ภาพต้องการ (paid = PAID ไม่มีคืน · partial = PAID คืนบางส่วน · voided = VOIDED) */
+async function existingRpubSet(): Promise<Record<string, string>> {
+  const start = new Date(Date.parse(`${new Date(Date.now() + 7 * 3_600_000).toISOString().slice(0, 10)}T00:00:00+07:00`));
+  const rows = await prisma.posSale.findMany({
+    where: { tenantId: T.tenantId, systemId: SYS, unitId, docType: "SALE", idempotencyKey: { startsWith: RPUB_PREFIX }, createdAt: { gte: start } },
+    select: { id: true, status: true, refundedSatang: true, idempotencyKey: true },
+    orderBy: { createdAt: "desc" },
+  });
+  const out: Record<string, string> = {};
+  for (const r of rows) {
+    const kind = r.idempotencyKey.slice(RPUB_PREFIX.length).split("-")[0] ?? "";
+    if (out[kind]) continue;
+    const ok =
+      kind === "paid" ? r.status === "PAID" && r.refundedSatang === 0 : kind === "partial" ? r.status === "PAID" && r.refundedSatang > 0 : kind === "voided" ? r.status === "VOIDED" : false;
+    if (ok) out[kind] = r.id;
+  }
+  return out;
+}
 /** สร้างบิลชุดภาพครั้งเดียว (ก่อนเปิด chromium) ผ่านบริการหน้าขาย — พังไม่โยน (RPUB.error · ทุกสถานะตกพร้อมเหตุผล) */
 async function seedRpubOnce(): Promise<void> {
   if (RPUB.seeded || RPUB.error) return;
@@ -1312,9 +1335,23 @@ async function seedRpubOnce(): Promise<void> {
       const { publicReceipt } = await import("@/lib/modules/pos/public-receipt");
       const actor = await ownerActor();
       const ctx = { tenantId: T.tenantId, systemId: SYS, unitId, deviceId: RPUB_DEVICE_ID };
-      const op = await openShift(ctx, actor, { deviceId: RPUB_DEVICE_ID, deviceLabel: "เครื่องภาพใบเสร็จออนไลน์ QC", floatSatang: 100000 });
-      if (!op.ok) throw new StepError(`เปิดกะของเครื่องภาพใบเสร็จไม่ได้: ${op.code}`);
-      RPUB.shiftId = op.shift.id;
+      const have = await existingRpubSet();
+      for (const [k, id] of Object.entries(have)) if (need.has(k as "paid")) {
+        RPUB.sales[k] = id;
+        RPUB.reused.push(k);
+      }
+      const missing = [...need].filter((b) => !RPUB.sales[b]);
+      if (missing.length) {
+        // กะของเครื่องภาพ: ใช้กะที่เปิดค้างอยู่ (รอบที่ตายกลางทาง) · ไม่มี = เปิดใหม่และปิดใน finally
+        const cur = await prisma.posShift.findFirst({ where: { tenantId: T.tenantId, unitId, systemId: SYS, deviceId: RPUB_DEVICE_ID, status: "OPEN" }, orderBy: { openedAt: "desc" }, select: { id: true } });
+        if (cur) RPUB.shiftId = cur.id;
+        else {
+          const op = await openShift(ctx, actor, { deviceId: RPUB_DEVICE_ID, deviceLabel: "เครื่องภาพใบเสร็จออนไลน์ QC", floatSatang: 100000 });
+          if (!op.ok) throw new StepError(`เปิดกะของเครื่องภาพใบเสร็จไม่ได้: ${op.code}`);
+          RPUB.shiftId = op.shift.id;
+        }
+        RPUB.openedShift = true;
+      }
       const prods = await prisma.posProduct.findMany({ where: { tenantId: T.tenantId, systemId: SYS, archivedAt: null }, select: { id: true, name: true } });
       const idOf = (n: string) => {
         const id = prods.find((r) => r.name === n)?.id;
@@ -1328,24 +1365,29 @@ async function seedRpubOnce(): Promise<void> {
         if (!q.ok) throw new StepError(`quote บิล ${k}: ${q.code}`);
         const cash = Math.min(10000, q.grandTotalSatang);
         const payMethods = [{ type: "CASH", amountSatang: cash }, ...(q.grandTotalSatang > cash ? [{ type: "PROMPTPAY", amountSatang: q.grandTotalSatang - cash }] : [])];
-        const r = await submitRegisterSale(ctx, actor, { ...cart, idempotencyKey: `${RPUB_KEY}-${k}`, expectedGrandTotalSatang: q.grandTotalSatang, payMethods, cashReceivedSatang: cash } as never);
+        const r = await submitRegisterSale(ctx, actor, { ...cart, idempotencyKey: `${RPUB_PREFIX}${k}-${process.pid}`, expectedGrandTotalSatang: q.grandTotalSatang, payMethods, cashReceivedSatang: cash } as never);
         if (!r.ok) throw new StepError(`ขายบิล ${k}: ${r.code}`);
         RPUB.sales[k] = r.saleId;
         return r.saleId;
       };
-      for (const b of ["paid", "partial", "voided"] as const) if (need.has(b)) await sell(b);
-      if (RPUB.sales.partial) {
+      const fresh = new Set<string>();
+      for (const b of ["paid", "partial", "voided"] as const)
+        if (need.has(b) && !RPUB.sales[b]) {
+          await sell(b);
+          fresh.add(b);
+        }
+      if (fresh.has("partial")) {
         const saleId = RPUB.sales.partial;
         const fr = await saleForRefund(ctx, actor, { saleId });
         if (!fr.ok) throw new StepError(`saleForRefund: ${fr.code}`);
         const l = fr.lines[0]!;
         const amount = refundLineAmount(l.netSatang, l.qty, l.refundedQty, l.refundedSatang, 1);
         const total = amount + refundServiceCharge(fr.sale.serviceChargeSatang, amount, fr.sale.netTotalSatang, fr.sale.serviceChargeRefundedSatang, fr.lines.length === 1 && l.qty === 1);
-        const r = await refundSale(ctx, actor, { saleId, lines: [{ lineId: l.lineId, qty: 1 }], payMethods: total > 0 ? [{ type: "CASH", amountSatang: total }] : [], reasonCode: "CHANGED_MIND", reason: "ลูกค้าเปลี่ยนใจ (ภาพใบเสร็จ QC)", deviceId: RPUB_DEVICE_ID, idempotencyKey: `${RPUB_KEY}-refund` });
+        const r = await refundSale(ctx, actor, { saleId, lines: [{ lineId: l.lineId, qty: 1 }], payMethods: total > 0 ? [{ type: "CASH", amountSatang: total }] : [], reasonCode: "CHANGED_MIND", reason: "ลูกค้าเปลี่ยนใจ (ภาพใบเสร็จ QC)", deviceId: RPUB_DEVICE_ID, idempotencyKey: `${RPUB_PREFIX}partial-refund-${process.pid}` });
         if (!r.ok) throw new StepError(`คืนเงินบางส่วน: ${r.code}`);
       }
-      if (RPUB.sales.voided) {
-        const v = await voidSaleByActor(ctx, actor, { unitId, saleId: RPUB.sales.voided, reason: "ลูกค้ายกเลิกออเดอร์ (ภาพใบเสร็จ QC)", idempotencyKey: `${RPUB_KEY}-void` });
+      if (fresh.has("voided")) {
+        const v = await voidSaleByActor(ctx, actor, { unitId, saleId: RPUB.sales.voided!, reason: "ลูกค้ายกเลิกออเดอร์ (ภาพใบเสร็จ QC)", idempotencyKey: `${RPUB_PREFIX}voided-void-${process.pid}` });
         if (!v.ok) throw new StepError(`ยกเลิกบิล: ${v.code}`);
       }
       try {
@@ -1427,7 +1469,16 @@ async function cleanRpub(): Promise<void> {
     let kanbanCards: string[] = [];
     if (ids.length) {
       const rows = await prisma.posReceiptIssue.findMany({ where: { tenantId: T.tenantId, saleId: { in: ids } }, select: { id: true, kanbanCardId: true } });
-      kanbanCards = rows.map((r) => r.kanbanCardId).filter((x): x is string => !!x);
+      // F3: การ์ดบอร์ดงานที่ consumer เปิดให้แจ้งปัญหาของชุดภาพ (kanbanCardId หรือ sourceKey "pos-receipt-issue:<issueId>") → เก็บเข้าคลัง (archiveCard)
+      const cards = await prisma.kanbanCard.findMany({
+        where: { tenantId: T.tenantId, status: "ACTIVE", OR: [{ id: { in: rows.map((r) => r.kanbanCardId).filter((x): x is string => !!x) } }, { sourceKey: { in: rows.map((r) => `pos-receipt-issue:${r.id}`) } }] },
+        select: { id: true, systemId: true },
+      });
+      if (cards.length) {
+        const { archiveCard } = await import("@/lib/modules/kanban/service");
+        for (const c of cards) await archiveCard(T.tenantId, c.systemId, c.id, T.users.owner.userId);
+      }
+      kanbanCards = cards.map((c) => c.id);
       for (const r of rows) outbox += (await prisma.outboxEvent.deleteMany({ where: { tenantId: T.tenantId, type: "pos.receipt.issue_reported", payload: { path: ["issueId"], equals: r.id } } })).count;
       issues = (await prisma.posReceiptIssue.deleteMany({ where: { tenantId: T.tenantId, saleId: { in: ids } } })).count;
       const reqs = await prisma.posTaxInvoiceRequest.findMany({ where: { tenantId: T.tenantId, saleId: { in: ids } }, select: { id: true } });
@@ -1438,14 +1489,11 @@ async function cleanRpub(): Promise<void> {
   } catch (e) {
     RPUB.cleanup = { issues: 0, taxRequests: 0, outbox: 0, kanbanCards: [], error: e instanceof Error ? e.message.slice(0, 160) : String(e) };
   }
-  if (!RPUB.close) {
-    const open = await prisma.posShift.findFirst({ where: { tenantId: T.tenantId, unitId, systemId: SYS, deviceId: RPUB_DEVICE_ID, status: "OPEN" }, orderBy: { openedAt: "desc" }, select: { id: true } }).catch(() => null);
-    if (open) RPUB.close = await closeShiftAsOwner(open.id, "rpub-close");
-  }
+  if (!RPUB.close && RPUB.openedShift && RPUB.shiftId) RPUB.close = await closeShiftAsOwner(RPUB.shiftId, "rpub-close"); // ปิดเฉพาะกะที่รอบนี้ใช้ขาย
 }
 const rpubCleanupLine = () =>
   RPUB.cleanup
-    ? `${RPUB.cleanup.error ? "⚠️" : "🧹"} ใบเสร็จออนไลน์: ลบแจ้งปัญหา ${RPUB.cleanup.issues} · คำขอใบกำกับ ${RPUB.cleanup.taxRequests} · OutboxEvent ${RPUB.cleanup.outbox}${RPUB.cleanup.kanbanCards.length ? ` · ⚠️ การ์ดบอร์ดงานค้าง ${RPUB.cleanup.kanbanCards.join(",")}` : ""}${RPUB.cleanup.error ? ` · ${RPUB.cleanup.error}` : ""}${RPUB.close ? ` · ${RPUB.close.detail}` : ""}`
+    ? `${RPUB.cleanup.error ? "⚠️" : "🧹"} ใบเสร็จออนไลน์: ลบแจ้งปัญหา ${RPUB.cleanup.issues} · คำขอใบกำกับ ${RPUB.cleanup.taxRequests} · OutboxEvent ${RPUB.cleanup.outbox}${RPUB.cleanup.kanbanCards.length ? ` · เก็บการ์ดบอร์ดงานเข้าคลัง ${RPUB.cleanup.kanbanCards.length}` : ""}${RPUB.cleanup.error ? ` · ${RPUB.cleanup.error}` : ""}${RPUB.close ? ` · ${RPUB.close.detail}` : ""}`
     : "";
 // ◂
 
@@ -1492,7 +1540,7 @@ try {
 
   if (rpubOn) {
     await seedRpubOnce(); // POS P1.11U — พังไม่โยน (ทุกสถานะ rpub-* ที่ต้องใช้บิลตกพร้อมเหตุผล)
-    console.log(RPUB.error ? `  ⚠️ บิลชุดภาพใบเสร็จ: ${RPUB.error}` : `  บิลชุดภาพใบเสร็จ: ${Object.keys(RPUB.sales).join(" · ") || "-"} · actions ${JSON.stringify(RPUB.actions)}`);
+    console.log(RPUB.error ? `  ⚠️ บิลชุดภาพใบเสร็จ: ${RPUB.error}` : `  บิลชุดภาพใบเสร็จ: ${Object.keys(RPUB.sales).join(" · ") || "-"}${RPUB.reused.length ? ` (ใช้ชุดวันนี้ซ้ำ: ${RPUB.reused.join(" · ")})` : ""} · actions ${JSON.stringify(RPUB.actions)}`);
   }
   if (billsStatesOn && pages.includes("sales")) {
     await seedBillsOnce(); // POS P1.16 U — พังไม่โยน (ทุกสถานะ bills-* ตกพร้อมเหตุผล)

@@ -7,7 +7,7 @@
 // 🔴 คำปฏิเสธแสดงผ่านคีย์ (pos.bills.errors.* · pos.refund.errors.* · pos.receipt.errors.*) ไม่แสดง message ไทยของเซิร์ฟเวอร์
 // 🔴 คีย์กันซ้ำ: ยกเลิกบิล 1 คีย์ต่อการเปิดกล่อง · คืนเงิน 1 คีย์ต่อการเปิดหน้าต่าง (ยอดเปลี่ยน = ออกคีย์ใหม่ · ขัดข้อง = ลองซ้ำด้วยคีย์เดิม)
 // ไม่ทำในใบนี้ (มติ CD3): "รอเงินเข้า" (P1.7) · ส่ง LINE (P1.11) · ขอใบเต็มรูป (P1.13) · เครดิตร้าน (กระเป๋าสมาชิก) · "กำลังทำรายการคืนเงิน" (presence)
-// POS P1.11U ▸ แถวส่งใบเสร็จในลิ้นชัก: ส่ง LINE (บิลสมาชิก) · ส่งอีเมล (แผ่นช่องเดียว) · คัดลอกลิงก์ใบเสร็จ (footer.qrEReceiptUrl ของ receiptPayloadAction) ◂
+// POS P1.11U ▸ แถวส่งใบเสร็จในลิ้นชัก: ส่ง LINE (บิลสมาชิก) · ส่งอีเมล (แผ่นช่องเดียว) · คัดลอกลิงก์ใบเสร็จ (receiptLinkAction · ไม่เขียน audit) ◂
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
@@ -17,7 +17,7 @@ import { BILLS_ERROR_KEYS, BILL_STATUS_FILTERS, VOID_REASON_MAX, addBillDays, ty
 import { heartbeatAction } from "@/lib/modules/pos/device-actions";
 import { getPosDeviceId } from "@/lib/modules/pos/device-id";
 import { parsePrinterConfig, type PosPrinterPaper } from "@/lib/modules/pos/device-shared";
-import { receiptPayloadAction, reprintReceiptAction } from "@/lib/modules/pos/receipt-actions";
+import { receiptLinkAction, reprintReceiptAction } from "@/lib/modules/pos/receipt-actions";
 import { sendReceiptAction } from "@/lib/modules/pos/receipt-send-actions";
 import { RECEIPT_EMAIL_RE } from "@/lib/modules/pos/receipt-public-shared";
 import { receiptRefusalMessageKey, renderReceiptHtml } from "@/lib/modules/pos/receipt-render";
@@ -326,9 +326,9 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
     if (sendBusy) return;
     setSendBusy(true);
     try {
-      const r = await receiptPayloadAction({ systemId, saleId });
+      const r = await receiptLinkAction({ systemId, saleId }); // F1: อ่านลิงก์อย่างเดียว ไม่เขียน audit reprint
       if (!r.ok) return setToast(trc(receiptRefusalMessageKey(r.code)));
-      const url = r.payload.footer.qrEReceiptUrl;
+      const url = r.url;
       if (!url) return setToast(trc("send.qrOff"));
       try {
         await navigator.clipboard.writeText(url);

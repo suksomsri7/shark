@@ -11,7 +11,7 @@ import { unstable_rethrow } from "next/navigation";
 import { requireTenant } from "@/lib/core/context";
 import { assertCan, type MembershipCtx } from "@/lib/core/rbac";
 import { posMembership } from "./access";
-import { receiptPayload, type ReceiptPayloadResult } from "./receipt";
+import { receiptLink, receiptPayload, type ReceiptLinkResult, type ReceiptPayloadResult } from "./receipt";
 
 /** ด่านสิทธิ์ระดับร้าน: pos.sale.read หรือ pos.sale.create (assertCan · คืน boolean) — ขอบเขตสาขาตัดสินใน receipt.ts */
 function canRead(m: MembershipCtx): boolean {
@@ -62,5 +62,23 @@ export async function reprintReceiptAction(args: { systemId: string; saleId: str
   } catch (e) {
     unstable_rethrow(e);
     return unexpected("reprintReceiptAction", e);
+  }
+}
+
+/** POS P1.11U F1 ▸ ลิงก์ใบเสร็จออนไลน์ (คัดลอกลิงก์ในลิ้นชักบิล) — สิทธิ์อ่านเดียวกับ receiptPayloadAction · ไม่เขียน audit · url null = ปิด QR ใบเสร็จออนไลน์ ◂ */
+export async function receiptLinkAction(args: { systemId: string; saleId: string }): Promise<ReceiptLinkResult> {
+  try {
+    const auth = await requireTenant();
+    const m = posMembership(auth.active);
+    if (!canRead(m)) return { ok: false, code: "PERMISSION_DENIED", message: "บัญชีนี้ยังไม่มีสิทธิ์ดูบิล/พิมพ์ใบเสร็จ — ขอสิทธิ์จากเจ้าของร้าน" };
+    return await receiptLink(
+      { tenantId: auth.active.tenantId, systemId: typeof args?.systemId === "string" ? args.systemId : "" },
+      { userId: auth.user.id, role: m.role, unitAccess: m.unitAccess, permissions: m.permissions },
+      { saleId: typeof args?.saleId === "string" ? args.saleId : "" },
+    );
+  } catch (e) {
+    unstable_rethrow(e);
+    console.error("[pos/receipt-actions] receiptLinkAction", e);
+    return { ok: false, code: "INTERNAL", message: "เกิดข้อผิดพลาด — ลองอีกครั้ง" };
   }
 }

@@ -5870,7 +5870,7 @@
       ],
       "expect": {
         "type": "toast",
-        "note": "คัดลอกลิงก์ใบเสร็จ = receiptPayloadAction().footer.qrEReceiptUrl → คลิปบอร์ด · null = toast \"เปิด QR ใบเสร็จออนไลน์ในตั้งค่าก่อน\""
+        "note": "คัดลอกลิงก์ใบเสร็จ = receiptLinkAction() (อ่านลิงก์อย่างเดียว ไม่เขียน audit · F1) → คลิปบอร์ด · url null = toast \"เปิด QR ใบเสร็จออนไลน์ในตั้งค่าก่อน\""
       },
       "wo": "P1.11U",
       "oracle": "",

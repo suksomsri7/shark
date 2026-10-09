@@ -29,7 +29,7 @@ export async function generateMetadata({
   searchParams: Promise<{ lang?: string }>;
 }): Promise<Metadata> {
   const { token } = await params;
-  if (!POS_RECEIPT_TOKEN_RE.test(token)) return {};
+  if (!POS_RECEIPT_TOKEN_RE.test(token.toUpperCase())) return {};
   const { lang } = await searchParams;
   return { title: posReceiptT(await posLocale(lang))("public.title"), robots: POS_RECEIPT_ROBOTS };
 }
@@ -67,16 +67,18 @@ export default async function PublicTaxInvoicePage({
   const { token } = await params;
   const { err, issued, requested, lang } = await searchParams;
   // POS P1.11U ▸ ใบเสร็จออนไลน์ POS (โทเคน 12 ตัว) — ไม่ผ่านเพดาน IP / บริบทของบัญชี
-  if (POS_RECEIPT_TOKEN_RE.test(token)) {
+  // F5: โทเคน Crockford ไม่สนตัวพิมพ์ (พิมพ์ลิงก์ด้วยมือ/สแกนแล้วได้ตัวเล็ก) ⇒ ตรวจและค้นด้วยตัวใหญ่
+  const posToken = token.toUpperCase();
+  if (POS_RECEIPT_TOKEN_RE.test(posToken)) {
     const locale = await posLocale(lang);
     let res: PublicReceiptResult;
     try {
-      res = await publicReceipt(token);
+      res = await publicReceipt(posToken);
     } catch {
       res = { ok: false, code: "INTERNAL", message: "" };
     }
     if (!res.ok && res.code === "TOKEN_NOT_FOUND") notFound();
-    return res.ok ? <PosPublicReceipt token={token} receipt={res.receipt} locale={locale} /> : <PosReceiptUnavailable locale={locale} />;
+    return res.ok ? <PosPublicReceipt token={posToken} receipt={res.receipt} locale={locale} /> : <PosReceiptUnavailable locale={locale} />;
   }
   // ◂
   // WO 9.2 ข้อ 4/11 — เพดานต่อ IP กันไล่เดา token · ชนเพดาน = หน้า "ลิงก์ไม่ถูกต้อง" เหมือน token ผิด
