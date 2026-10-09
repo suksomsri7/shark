@@ -20,8 +20,10 @@ import { receiptActorOf } from "./receipt";
 import { receiptKindOf } from "./receipt-shared";
 import type { RegisterActor } from "./register-shared";
 import {
+  TAX_INVOICE_DBD_PER_MINUTE,
   TAX_INVOICE_LATE_DAYS,
   buyerKindFromTaxId,
+  isValidThaiTaxIdChecksum,
   maskTaxId,
   parseTaxInvoiceBuyer,
   sameTaxInvoiceBuyer,
@@ -37,6 +39,11 @@ type Db = typeof prisma | Prisma.TransactionClient;
 export type TaxInvoiceCtx = { tenantId: string; systemId: string; unitId: string };
 export type TaxInvoiceIssueResult = { ok: true; docId: string; docNo: string | null } | TaxInvoiceRefusal;
 export type TaxInvoiceRejectResult = { ok: true } | TaxInvoiceRefusal;
+export type DbdBuyer = { kind: "JURISTIC"; name: string; taxId: string; branchCode: "00000"; address: string; status: string | null };
+export type TaxInvoiceLookupResult = { ok: true; found: true; buyer: DbdBuyer } | { ok: true; found: false } | TaxInvoiceRefusal;
+export type BuyerProfile = { kind: "PERSON" | "JURISTIC"; name: string; taxId: string; branchCode: string; address: string; email: string | null };
+export type BuyerProfileResult = { ok: true; profile: BuyerProfile | null } | TaxInvoiceRefusal;
+type DbdLookup = (taxId: string) => Promise<account.DbdLookupResult>;
 
 const DAY_MS = 86_400_000;
 const REASON_MAX = 500;
@@ -264,5 +271,87 @@ export async function rejectTaxInvoiceRequest(ctx: TaxInvoiceCtx, actor: Registe
     return { ok: true };
   } catch (e) {
     return internal("rejectTaxInvoiceRequest", e);
+  }
+}
+
+// ═══════════ R5 ค้นกรมพัฒน์ฯ ═══════════
+
+const joinAddress = (x: { addressLine: string | null; subdistrict: string | null; district: string | null; province: string | null; postcode: string | null } | null | undefined) =>
+  [x?.addressLine, x?.subdistrict, x?.district, x?.province, x?.postcode].map((s) => (typeof s === "string" ? s.trim() : "")).filter(Boolean).join(" ");
+
+/**
+ * R5 — ค้นนิติบุคคลจากเลขผู้เสียภาษี (สิทธิ์ pos.sale.create ที่สาขา · มติ 11)
+ * {ok:true, found:true, buyer} | {ok:true, found:false} | DBD_NOT_CONFIGURED · TAX_ID_INVALID · DBD_UNAVAILABLE · RATE_LIMITED (มติ 10) · ไม่ throw
+ * opts.deps.lookup = ตัวค้นปลอมของข้อสอบ (ไม่ส่ง = facade lookupJuristic — ไม่มีกุญแจ = noKey ไม่แตะเครือข่าย)
+ */
+export async function lookupBuyerByTaxId(ctx: TaxInvoiceCtx, actor: RegisterActor, input: { taxId: string }, opts?: { deps?: { lookup?: DbdLookup } }): Promise<TaxInvoiceLookupResult> {
+  try {
+    const c = ctxOf(ctx);
+    const a = receiptActorOf(actor);
+    if (!c) return taxInvoiceRefuse("PERMISSION_DENIED");
+    if (!a || !evaluate(a, { module: "pos", action: "pos.sale.create", unitId: c.unitId })) return taxInvoiceRefuse("PERMISSION_DENIED");
+    if (!isRecord(input) || !onlyKeys(input, ["taxId"])) return taxInvoiceRefuse("VALIDATION");
+    const taxId = typeof input.taxId === "string" ? input.taxId.trim() : "";
+    const audit = (outcome: string) =>
+      writeAudit({ tenantId: c.tenantId, actorId: a.userId, action: AUDIT_DBD, targetType: "BusinessUnit", targetId: c.unitId, after: { unitId: c.unitId, taxId: maskTaxId(taxId), outcome } });
+    if (!isValidThaiTaxIdChecksum(taxId)) {
+      await audit("TAX_ID_INVALID");
+      return taxInvoiceRefuse("TAX_ID_INVALID");
+    }
+    // เพดานต่อสาขา: นับแถว audit ของสาขานี้ในหนึ่งนาทีล่าสุด (ก่อนแตะกรมพัฒน์ฯ)
+    const recent = await prisma.auditLog.count({ where: { tenantId: c.tenantId, action: AUDIT_DBD, targetType: "BusinessUnit", targetId: c.unitId, createdAt: { gte: new Date(Date.now() - 60_000) } } });
+    if (recent >= TAX_INVOICE_DBD_PER_MINUTE) {
+      await audit("RATE_LIMITED");
+      return taxInvoiceRefuse("RATE_LIMITED");
+    }
+    const lookup: DbdLookup = opts?.deps?.lookup ?? ((id: string) => account.lookupJuristic(id));
+    let res: account.DbdLookupResult;
+    try {
+      res = await lookup(taxId);
+    } catch {
+      await audit("DBD_UNAVAILABLE");
+      return taxInvoiceRefuse("DBD_UNAVAILABLE");
+    }
+    if (!res || typeof res !== "object") {
+      await audit("DBD_UNAVAILABLE");
+      return taxInvoiceRefuse("DBD_UNAVAILABLE");
+    }
+    if (res.ok !== true) {
+      const reason = (res as { reason?: unknown }).reason;
+      if (reason === account.DBD_REASON.notFound) {
+        await audit("NOT_FOUND");
+        return { ok: true, found: false };
+      }
+      const code = reason === account.DBD_REASON.noKey ? "DBD_NOT_CONFIGURED" : reason === account.DBD_REASON.badTaxId ? "TAX_ID_INVALID" : "DBD_UNAVAILABLE";
+      await audit(code);
+      return taxInvoiceRefuse(code);
+    }
+    const name = typeof res.name === "string" ? res.name.trim() : "";
+    if (!name) {
+      await audit("NOT_FOUND");
+      return { ok: true, found: false };
+    }
+    await audit("FOUND");
+    return { ok: true, found: true, buyer: { kind: "JURISTIC", name, taxId, branchCode: "00000", address: joinAddress(res.address), status: res.status ?? null } };
+  } catch (e) {
+    return internal("lookupBuyerByTaxId", e);
+  }
+}
+
+// ═══════════ R6 ผู้ซื้อที่จำไว้ ═══════════
+
+/** R6 — ผู้ซื้อที่จำไว้ของสมาชิก (เติมฟอร์ม) · ไม่มี/สมาชิกร้านอื่น = profile null · ไม่มีผู้กระทำ — action ตรวจสิทธิ์ (มติ 14) · ไม่ throw */
+export async function buyerProfileForMember(ctx: { tenantId: string }, input: { memberId: string }): Promise<BuyerProfileResult> {
+  try {
+    if (!isRecord(ctx) || !isId(ctx.tenantId)) return taxInvoiceRefuse("NOT_FOUND");
+    if (!isRecord(input) || !isId(input.memberId)) return taxInvoiceRefuse("VALIDATION");
+    const row = await prisma.posBuyerProfile.findFirst({
+      where: { tenantId: ctx.tenantId, customerId: input.memberId },
+      select: { kind: true, name: true, taxId: true, branchCode: true, address: true, email: true },
+    });
+    if (!row) return { ok: true, profile: null };
+    return { ok: true, profile: { kind: row.kind === "PERSON" ? "PERSON" : "JURISTIC", name: row.name, taxId: row.taxId, branchCode: row.branchCode, address: row.address, email: row.email ?? null } };
+  } catch (e) {
+    return internal("buyerProfileForMember", e);
   }
 }
