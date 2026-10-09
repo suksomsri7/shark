@@ -1211,3 +1211,17 @@ export async function attachPrivateFileToDoc(
   return { ok: true, id: row.id };
 }
 // ◂ CRM C3.5
+
+// POS P1.18 ▸ R8 (CD2): สวิตช์ "ลงบัญชีบิลของ POS นี้" จากหน้าตั้งค่า POS — การ์ด ACCOUNT การ์ดเดียวที่ POS สลับได้ ·
+//   ห่อ connect/disconnect ของ ./connections ตรง ๆ (soft: แถว · ตัวเลือก · บัญชีที่ผูกอยู่ครบ — แค่หยุด/เริ่มลงบัญชี) ·
+//   ctx = ระบบบัญชีที่ผูก POS นี้ (ผู้เรียกหาแถว AccountSystemLink เอง) · สิทธิ์/ยืนยัน/audit ตรวจที่ผู้เรียก (composition root src/lib/pos-integrations.ts)
+import { connect as connectPosLink, disconnect as disconnectPosLink } from "./connections";
+export async function setPosLinkEnabled(
+  ctx: AccountCtx,
+  posSystemId: string,
+  enabled: boolean,
+  actorUserId: string | null,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  return enabled ? connectPosLink(ctx, "POS", posSystemId, actorUserId) : disconnectPosLink(ctx, "POS", posSystemId, actorUserId);
+}
+// ◂ POS P1.18
