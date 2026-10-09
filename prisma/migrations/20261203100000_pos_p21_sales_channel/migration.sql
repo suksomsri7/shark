@@ -1,6 +1,8 @@
 -- POS P2.1 — ช่องทางขาย (SalesChannel) ต่อสาขา + สำเนาช่องทาง/ค่าคอมฯ บน PosSale + ชนิดจ่าย PLATFORM · เพิ่มล้วน
 -- ที่มา: prisma migrate diff --from-schema <schema ก่อน P2.1 (session/pos e4672cfa)> --to-schema prisma/schema --script (ไม่ได้ diff จากฐาน)
---   แก้มือ: เรียง CREATE TYPE ก่อน ADD COLUMN ที่ใช้ชนิดนั้น · ADD VALUE / ADD COLUMN / CREATE TABLE / CREATE INDEX ใส่ IF NOT EXISTS (รันซ้ำได้หลังล้มกลางไฟล์)
+--   แก้มือ: เรียง CREATE TYPE ก่อน ADD COLUMN ที่ใช้ชนิดนั้น · ADD VALUE / ADD COLUMN / CREATE TABLE / CREATE INDEX ใส่ IF NOT EXISTS
+--   ⚠️ ไฟล์นี้ "ไม่ใช่" รันซ้ำได้ทั้งไฟล์: CREATE TYPE ×3 ไม่มีตัวกัน (บรีฟอนุญาต CREATE TYPE ธรรมดา) — ล้มหลังสร้างชนิดแล้ว = ต้องเก็บกวาดมือก่อนรันใหม่
+--      (แก้แค่คอมเมนต์นี้ใน fix round 1 · SQL เดิมทุกไบต์ — deploy บน QC4 แล้ว)
 -- 🔴 ไม่มี DROP/RENAME/UPDATE · คอลัมน์ใหม่ nullable หรือ default ค่าคงที่ ⇒ metadata-only (PG11+ ไม่ rewrite ตาราง PosSale)
 --    index ของ PosSale(channelId …) เลื่อนไป P6.1 (CREATE INDEX CONCURRENTLY นอก prisma migrate — แบบ P1.9/P1.17)
 SET lock_timeout = '3s';
