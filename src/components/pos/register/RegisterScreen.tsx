@@ -141,7 +141,7 @@ type Layer =
   | { kind: "openPrice"; productId: string }
   | { kind: "clear" }
   | { kind: "pay" }
-  | { kind: "done"; result: RegisterSubmitOk; payMethods: RegisterPayMethod[] }
+  | { kind: "done"; result: RegisterSubmitOk; payMethods: RegisterPayMethod[]; memberAttached?: boolean }
   | { kind: "note" }
   // P1.2 U: กล่องตัวเลือก/ตัวแปร (weighedBarcode = มาจากป้ายเครื่องชั่งที่สแกน) · กล่องน้ำหนัก (options = ที่เลือกมาก่อน)
   | { kind: "options"; product: RegisterProduct; weighedBarcode?: string; anchor?: PickAnchor }
@@ -974,7 +974,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
         pendingSubmit.current = null;
         clearPending();
         setPayPhase("form");
-        setLayers((s) => [...s.filter((l) => l.kind !== "pay" && l.kind !== "sheet"), { kind: "done", result: r, payMethods: sale.payMethods }]);
+        setLayers((s) => [...s.filter((l) => l.kind !== "pay" && l.kind !== "sheet"), { kind: "done", result: r, payMethods: sale.payMethods, memberAttached: !!sale.memberId }]);
         void refreshStatus();
         return;
       }
@@ -1434,6 +1434,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
             saleId={l.result.saleId}
             printer={printer}
             locale={locale.startsWith("en") ? "en" : "th"}
+            memberAttached={!!l.memberAttached}
           />
         );
       case "options":

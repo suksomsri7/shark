@@ -7,6 +7,7 @@
 // 🔴 คำปฏิเสธแสดงผ่านคีย์ (pos.bills.errors.* · pos.refund.errors.* · pos.receipt.errors.*) ไม่แสดง message ไทยของเซิร์ฟเวอร์
 // 🔴 คีย์กันซ้ำ: ยกเลิกบิล 1 คีย์ต่อการเปิดกล่อง · คืนเงิน 1 คีย์ต่อการเปิดหน้าต่าง (ยอดเปลี่ยน = ออกคีย์ใหม่ · ขัดข้อง = ลองซ้ำด้วยคีย์เดิม)
 // ไม่ทำในใบนี้ (มติ CD3): "รอเงินเข้า" (P1.7) · ส่ง LINE (P1.11) · ขอใบเต็มรูป (P1.13) · เครดิตร้าน (กระเป๋าสมาชิก) · "กำลังทำรายการคืนเงิน" (presence)
+// POS P1.11U ▸ แถวส่งใบเสร็จในลิ้นชัก: ส่ง LINE (บิลสมาชิก) · ส่งอีเมล (แผ่นช่องเดียว) · คัดลอกลิงก์ใบเสร็จ (receiptLinkAction · ไม่เขียน audit) ◂
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
@@ -14,7 +15,9 @@ import { useLocale, useTranslations } from "next-intl";
 import { billDetailAction, billsPageDataAction, voidSaleAction } from "@/lib/modules/pos/bills-actions";
 import { BILLS_ERROR_KEYS, BILL_STATUS_FILTERS, VOID_REASON_MAX, addBillDays, type BillDetailResult, type BillRow, type BillStatusFilter, type BillsPageDataResult } from "@/lib/modules/pos/bills-shared";
 import { getPosDeviceId } from "@/lib/modules/pos/device-id";
-import { reprintReceiptAction } from "@/lib/modules/pos/receipt-actions";
+import { receiptLinkAction, reprintReceiptAction } from "@/lib/modules/pos/receipt-actions";
+import { sendReceiptAction } from "@/lib/modules/pos/receipt-send-actions";
+import { RECEIPT_EMAIL_RE } from "@/lib/modules/pos/receipt-public-shared";
 import { receiptRefusalMessageKey } from "@/lib/modules/pos/receipt-render";
 // POS P1.10 U ▸ พิมพ์สำเนาผ่านโมดูลพิมพ์ (มติ CD4) — วิธีพิมพ์/กระดาษตามค่าตั้งเครื่องนี้ (heartbeat) ◂
 import { thisDevicePrinter } from "@/components/pos/print/device-printer";
@@ -263,6 +266,66 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
       setReprintBusy(false);
     }
   };
+
+  // ── POS P1.11U ▸ ส่งใบเสร็จ (sendReceiptAction · คำปฏิเสธ = toast ผ่าน receiptRefusalMessageKey) ──
+  const [sendBusy, setSendBusy] = useState(false);
+  const [emailOpen, setEmailOpen] = useState(false);
+  const [emailTo, setEmailTo] = useState("");
+  const [emailErr, setEmailErr] = useState<string | null>(null);
+  const send = async (saleId: string, via: "LINE" | "EMAIL", email?: string): Promise<boolean> => {
+    if (sendBusy) return false;
+    setSendBusy(true);
+    try {
+      const r = await sendReceiptAction({ systemId, saleId, via, ...(email ? { email } : {}) });
+      if (!r.ok) {
+        if (via === "EMAIL") setEmailErr(trc(receiptRefusalMessageKey(r.code)));
+        else setToast(trc(receiptRefusalMessageKey(r.code)));
+        return false;
+      }
+      setToast(trc(via === "LINE" ? "send.sentLine" : "send.sentEmail"));
+      if (selectedId === saleId) void loadDetail(saleId);
+      return true;
+    } catch {
+      if (via === "EMAIL") setEmailErr(trc("errors.internal"));
+      else setToast(trc("errors.internal"));
+      return false;
+    } finally {
+      setSendBusy(false);
+    }
+  };
+  const openEmail = () => {
+    setEmailTo("");
+    setEmailErr(null);
+    setEmailOpen(true);
+  };
+  const closeEmail = useCallback(() => setEmailOpen(false), []);
+  const submitEmail = async (saleId: string) => {
+    const to = emailTo.trim();
+    if (to && !RECEIPT_EMAIL_RE.test(to)) return setEmailErr(trc("send.emailInvalid"));
+    setEmailErr(null);
+    if (await send(saleId, "EMAIL", to || undefined)) setEmailOpen(false);
+  };
+  const copyLink = async (saleId: string) => {
+    if (sendBusy) return;
+    setSendBusy(true);
+    try {
+      const r = await receiptLinkAction({ systemId, saleId }); // F1: อ่านลิงก์อย่างเดียว ไม่เขียน audit reprint
+      if (!r.ok) return setToast(trc(receiptRefusalMessageKey(r.code)));
+      const url = r.url;
+      if (!url) return setToast(trc("send.qrOff"));
+      try {
+        await navigator.clipboard.writeText(url);
+        setToast(trc("send.copied"));
+      } catch {
+        setToast(trc("send.copyFailed", { url }));
+      }
+    } catch {
+      setToast(trc("errors.internal"));
+    } finally {
+      setSendBusy(false);
+    }
+  };
+  // ◂
 
   // ── คืนเงิน ──
   const [refundOpen, setRefundOpen] = useState(false);
@@ -980,12 +1043,39 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
               {/* ปุ่ม */}
               <div className="mt-auto flex flex-col gap-3 border-t px-5 pb-4 pt-3">
                 {drawerErr ? <span className="text-[13px] text-[color:var(--color-danger)]">{drawerErr}</span> : null}
-                {bill.can.reprint ? (
-                  <button type="button" data-testid="pos-bills-reprint" disabled={reprintBusy} className="btn btn-ghost h-12 rounded-[12px]" onClick={() => void reprint(bill.id)}>
-                    <BillIcon name="print" />
-                    {t("drawer.reprint")}
+                {/* POS P1.11U ▸ พิมพ์ซ้ำ + ส่ง LINE (แถวเดียวกันตามภาพ 12) · ส่งอีเมล + คัดลอกลิงก์ใบเสร็จ ◂ */}
+                <div className="grid grid-cols-2 gap-3">
+                  {bill.can.reprint ? (
+                    <button type="button" data-testid="pos-bills-reprint" disabled={reprintBusy} className="btn btn-ghost h-12 rounded-[12px] px-2 leading-tight" onClick={() => void reprint(bill.id)}>
+                      <BillIcon name="print" />
+                      {t("drawer.reprint")}
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    data-testid="pos-receipt-send-line"
+                    disabled={sendBusy || !bill.member || bill.status === "VOIDED"}
+                    className="btn btn-ghost h-12 rounded-[12px] px-2 leading-tight disabled:text-[color:var(--color-muted)]"
+                    onClick={() => void send(bill.id, "LINE")}
+                  >
+                    <BillIcon name="mail" />
+                    {trc("send.line")}
                   </button>
-                ) : null}
+                  <button
+                    type="button"
+                    data-testid="pos-receipt-send-email"
+                    disabled={sendBusy || bill.status === "VOIDED"}
+                    className="btn btn-ghost h-12 rounded-[12px] px-2 leading-tight disabled:text-[color:var(--color-muted)]"
+                    onClick={openEmail}
+                  >
+                    <BillIcon name="at" />
+                    {trc("send.email")}
+                  </button>
+                  <button type="button" data-testid="pos-receipt-send-copy" disabled={sendBusy} className="btn btn-ghost h-12 rounded-[12px] px-2 leading-tight" onClick={() => void copyLink(bill.id)}>
+                    <BillIcon name="link" />
+                    {trc("send.copyLink")}
+                  </button>
+                </div>
                 <div className={`grid gap-3 ${bill.can.refund ? "grid-cols-2" : "grid-cols-1"}`}>
                   <button
                     type="button"
@@ -1013,6 +1103,53 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
           ) : null}
         </aside>
       ) : null}
+
+      {/* ═══ POS P1.11U ▸ แผ่นส่งใบเสร็จทางอีเมล (ช่องเดียว · ว่าง = อีเมลสมาชิกของบิล) ═══ */}
+      {emailOpen && bill ? (
+        <BillDialog labelledBy="pos-receipt-send-email-title" testid="pos-receipt-send-email-sheet" onClose={closeEmail}>
+          <div className="flex items-center gap-3 border-b px-5 pb-3 pt-4">
+            <h2 id="pos-receipt-send-email-title" className="text-[17px] font-bold">
+              {trc("send.emailTitle")}
+            </h2>
+            <span className="flex-1" />
+            <button type="button" data-testid="pos-receipt-send-email-close" aria-label={trc("send.close")} className="-mr-2 grid h-11 w-11 place-items-center rounded-lg hover:bg-[color:var(--color-surface-2)]" onClick={closeEmail}>
+              <BillIcon name="x" />
+            </button>
+          </div>
+          <form
+            data-testid="pos-receipt-send-email-form"
+            noValidate
+            className="flex flex-col gap-3 px-5 pb-5 pt-4"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void submitEmail(bill.id);
+            }}
+          >
+            <label className="flex flex-col gap-1.5 text-[13px] text-[color:var(--color-ink-soft)]">
+              {trc("send.emailLabel")}
+              <input
+                type="email"
+                data-testid="pos-receipt-send-email-input"
+                autoFocus
+                maxLength={200}
+                value={emailTo}
+                onChange={(e) => setEmailTo(e.target.value)}
+                className="input h-11 text-[15px]"
+              />
+            </label>
+            <span className="text-[12px] text-[color:var(--color-muted)]">{trc("send.emailHint")}</span>
+            {emailErr ? (
+              <span role="alert" data-testid="pos-receipt-send-error" className="text-[13px] text-[color:var(--color-danger)]">
+                {emailErr}
+              </span>
+            ) : null}
+            <button type="submit" data-testid="pos-receipt-send-email-submit" disabled={sendBusy} className="btn btn-primary h-12 rounded-[12px]">
+              {trc("send.submit")}
+            </button>
+          </form>
+        </BillDialog>
+      ) : null}
+      {/* ◂ */}
 
       {/* ═══ กล่องยกเลิกบิล (U6) ═══ */}
       {voidOpen && bill ? (

@@ -35,6 +35,8 @@ export type ReceiptCtx = { tenantId: string; systemId: string; unitId?: string; 
 export type ReceiptRefusalCode = "PERMISSION_DENIED" | "SALE_NOT_FOUND" | "VALIDATION" | "INTERNAL";
 export type ReceiptRefusal = { ok: false; code: ReceiptRefusalCode; message: string };
 export type ReceiptPayloadResult = { ok: true; payload: ReceiptPayload } | ReceiptRefusal;
+/** P1.11U F1: ลิงก์ใบเสร็จออนไลน์ของบิล (คัดลอกลิงก์ในลิ้นชักบิล) — null = ปิด QR ใบเสร็จออนไลน์ในค่าตั้ง */
+export type ReceiptLinkResult = { ok: true; url: string | null } | ReceiptRefusal;
 
 const MSG: Record<ReceiptRefusalCode, string> = {
   PERMISSION_DENIED: "บัญชีนี้ยังไม่มีสิทธิ์ดูบิล/พิมพ์ใบเสร็จ — ขอสิทธิ์จากเจ้าของร้าน",
@@ -111,6 +113,34 @@ export async function receiptPayload(ctx: ReceiptCtx, actor: RegisterActor, inpu
     return { ok: true, payload };
   } catch (e) {
     console.error("[pos/receipt] receiptPayload INTERNAL", e);
+    return refuse("INTERNAL");
+  }
+}
+
+/**
+ * POS P1.11U F1 ▸ ลิงก์ใบเสร็จออนไลน์ของบิล (ปุ่ม "คัดลอกลิงก์ใบเสร็จ") — อ่านอย่างเดียว:
+ *   สิทธิ์/ขอบเขตเดียวกับ receiptPayload (receiptReadScope + posSaleWhere) · เลือกแค่ id/publicToken · ไม่ประกอบใบเสร็จ · ไม่เขียน audit
+ *   (receiptPayload ยกบิลเก่ากว่า 30 นาทีเป็นสำเนา + audit reprint — การคัดลอกลิงก์ไม่ใช่การพิมพ์) · บิลเก่าไม่มีโทเคน = ensureReceiptToken (lazy · R1)
+ *   rs.qrEReceipt ปิด ⇒ url null ◂
+ */
+export async function receiptLink(ctx: ReceiptCtx, actor: RegisterActor, input: { saleId: string }, client?: Db): Promise<ReceiptLinkResult> {
+  try {
+    const db = client ?? prisma;
+    if (!isRecord(ctx) || !isId(ctx.tenantId) || !isId(ctx.systemId)) return refuse("SALE_NOT_FOUND");
+    const a = receiptActorOf(actor);
+    if (!a) return refuse("PERMISSION_DENIED");
+    const scope = receiptReadScope(a);
+    if (!scope) return refuse("PERMISSION_DENIED");
+    if (!isRecord(input) || !Object.keys(input).every((k) => k === "saleId")) return refuse("VALIDATION");
+    if (!isId(input.saleId)) return refuse("SALE_NOT_FOUND");
+    const { tenantId, systemId } = ctx;
+    const sale = await db.posSale.findFirst({ where: { id: input.saleId, ...posSaleWhere(tenantId, systemId, scope) }, select: { id: true, publicToken: true } });
+    if (!sale) return refuse("SALE_NOT_FOUND");
+    const posSys = await db.appSystem.findFirst({ where: { id: systemId, tenantId, type: "POS" }, select: { settings: true } });
+    if (!posSys) return refuse("SALE_NOT_FOUND");
+    return { ok: true, url: receiptSettingsOf(posSys.settings).qrEReceipt ? await eReceiptUrl(db, tenantId, sale) : null };
+  } catch (e) {
+    console.error("[pos/receipt] receiptLink INTERNAL", e);
     return refuse("INTERNAL");
   }
 }
