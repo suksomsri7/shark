@@ -355,7 +355,7 @@ export async function billDetail(ctx: RegisterCtx, actor: RegisterActor, input: 
       account.posSaleAccountingRef({ tenantId, sourceSystemId: systemId, refId: sale.id }),
     ]);
     // POS P1.13 ▸ R7: คำขอใบกำกับเต็มรูปที่ยังรอ (ไม่มีเอกสาร) ◂
-    const openTaxReq = sale.taxInvoiceDocId ? null : await prisma.posTaxInvoiceRequest.findFirst({ where: { tenantId, saleId: sale.id, status: "REQUESTED" }, select: { id: true }, orderBy: { createdAt: "desc" } });
+    const openTaxReq = sale.taxInvoiceDocId ? null : await prisma.posTaxInvoiceRequest.findFirst({ where: { tenantId, saleId: sale.id, status: "REQUESTED" }, select: { id: true, name: true, taxId: true, branchCode: true, address: true, email: true }, orderBy: { createdAt: "desc" } }); // P1.13U มติ 4: ข้อมูลคำขอไว้เติมฟอร์ม 15A ◂
     const [abbDoc, cnDocs, names] = await Promise.all([
       accounting ? prisma.accountDocument.findFirst({ where: { id: accounting.docId, tenantId }, select: { createdAt: true } }) : null,
       bookId && refundDocs.length
@@ -467,7 +467,12 @@ export async function billDetail(ctx: RegisterCtx, actor: RegisterActor, input: 
             ...(snapshotBuyer(sale.taxInvoice)?.name ? { buyerName: snapshotBuyer(sale.taxInvoice)!.name } : {}),
           }
         : openTaxReq
-          ? { status: "REQUESTED", requestId: openTaxReq.id }
+          ? {
+              status: "REQUESTED",
+              requestId: openTaxReq.id,
+              buyerName: openTaxReq.name,
+              request: { name: openTaxReq.name, taxId: openTaxReq.taxId, branchCode: openTaxReq.branchCode, address: openTaxReq.address, email: openTaxReq.email },
+            }
           : { status: "NONE" },
       refunds: refundDocs.map((d) => ({
         id: d.id,

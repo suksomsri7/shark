@@ -107,6 +107,11 @@ export async function taxInvoiceEligibleAtPay(tenantId: string, systemId: string
   return abbEligible(tenantId, systemId, vatSatang);
 }
 
+/** P1.13U มติ 2 — ระบบ POS นี้ออกใบกำกับเต็มรูปได้ไหม (registerStatus): เงื่อนไขเดียวกับ NOT_ELIGIBLE ตอนชำระ ยกเว้น VAT > 0 (เป็นของแต่ละบิล) */
+export async function taxInvoiceEligibleForSystem(tenantId: string, systemId: string): Promise<boolean> {
+  return abbEligible(tenantId, systemId, 1);
+}
+
 /** เลขเอกสารของใบกำกับที่ผูกกับบิล (อ่านผ่าน facade — ใบเต็มรูปชนะ ABB) */
 async function docNoOf(ctx: TaxInvoiceCtx, saleId: string, docId: string): Promise<string | null> {
   const ref = await account.posSaleAccountingRef({ tenantId: ctx.tenantId, sourceSystemId: ctx.systemId, refId: saleId });

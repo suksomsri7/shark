@@ -426,7 +426,7 @@ import { createHash } from "node:crypto";
 import { writeAudit } from "@/lib/core/audit";
 import { staffActorFromToken, verifyManagerPin } from "./staff-pin";
 import { TAX_INVOICE_MESSAGES, parseTaxInvoiceBuyer, type TaxInvoiceBuyer } from "./tax-invoice-shared"; // POS P1.13 ▸ ผู้ซื้อของใบกำกับเต็มรูป ◂
-import { rememberBuyerForMember, taxInvoiceEligibleAtPay } from "./tax-invoice"; // POS P1.13 ▸ R6 · follow-up 3 ◂
+import { rememberBuyerForMember, taxInvoiceEligibleAtPay, taxInvoiceEligibleForSystem } from "./tax-invoice"; // POS P1.13 ▸ R6 · follow-up 3 · P1.13U มติ 2 ◂
 import {
   POS_APPROVAL_MESSAGE,
   approvedDiscountOf,
@@ -2080,6 +2080,8 @@ export async function registerStatus(ctx: RegisterCtx, actor: RegisterActor, cli
               WHERE NOT EXISTS (SELECT 1 FROM "InvMovement" m WHERE m."tenantId" = ${s.tenantId}
                 AND m."idempotencyKey" = 'pos-consume-' || s.id || '-' || l.id || '-' || (c->>'invItemId'))))
         )`;
+    // POS P1.13U ▸ มติ 2: ปุ่ม "ใบกำกับเต็มรูป" บนจอ — เงื่อนไขเดียวกับ NOT_ELIGIBLE ตอนชำระ (ไม่นับ VAT ของบิล) · อ่านพลาด = false ◂
+    const taxInvoiceEligible = await taxInvoiceEligibleForSystem(s.tenantId, s.systemId).catch(() => false);
     return {
       ok: true,
       unit: { id: s.unitId, name: s.unitName },
@@ -2089,6 +2091,7 @@ export async function registerStatus(ctx: RegisterCtx, actor: RegisterActor, cli
       pendingStockCount: Number(pend[0]?.n ?? 0),
       pendingSyncCount: 0,
       deviceStatus,
+      taxInvoiceEligible,
     };
   });
 }
