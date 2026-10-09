@@ -94,7 +94,7 @@ chat.onCustomerAsk('order_status') → อ่าน externalOrder/PosSale ล่
 - Marketing: อ่าน price rule (C-6) · เขียน: "ซื้อครบ X แจกคูปอง" = consumer `pos.sale.paid` ฝั่งการตลาด (มี journey engine ใน member v2)
 - Forms: `FormDef` ชนิด "ใบสมัครสมาชิกหน้าร้าน" ใช้ใน quickRegister (ฟิลด์ตามร้านตั้ง) · ตั้งค่าได้ ไม่บังคับ
 - Storage (Bunny): รูปสินค้าผ่าน `storage.upload` เดิม (เหมือนคลังเอกสารบัญชี) · ใบเสร็จ PDF ไม่เก็บ (render สด)
-- i18n: ทุกสตริง POS อยู่ `src/messages/{th,en}.json` key `pos.*` · ใบเสร็จพิมพ์ตามภาษาตั้งค่าสาขา · ชื่อสินค้ามี `nameEn?`
+- i18n: ทุกสตริง POS อยู่ `src/messages/{th,en}.json` key `pos.*` · ใบเสร็จพิมพ์ตามภาษาตั้งค่าของระบบ POS (`settings.pos.receiptLocale` · P1.18 มติ Q7 9 ต.ค. — เดิมเขียน "สาขา") · ชื่อสินค้ามี `nameEn?`
 
 ## C-13 ออฟไลน์ (P3) — สัญญาระหว่าง client กับ server
 ```ts
