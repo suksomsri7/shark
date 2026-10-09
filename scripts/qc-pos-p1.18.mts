@@ -138,6 +138,9 @@ const CHECKS: readonly Def[] = [
   D("V2", "X3", "[มติ Q9 FU-c] canEdit.receipt ตรงกับตัวเขียนใบเสร็จ: MANAGER (U1) false + updatePosReceiptSettings PERMISSION_DENIED · MANAGER (U1+U2) true + ok"),
   // ── K งานปิด P1.15 ──
   D("K1", "X3", "[มติ Q9 P1.15] ใส่ PIN แบบไม่ระบุคนผิด N ครั้ง (N = STAFF_PIN_DEVICE_THROTTLE_AFTER) ที่เครื่อง 1 → PIN_INVALID ทุกครั้ง · ครั้งถัดไป (PIN ถูก) → PIN_THROTTLED · เครื่อง 2 PIN ถูก → ok · failedCount ของพนักงานไม่ขยับ"),
+  // ORACLE-EDIT (แก้รอบ 1 F2 · มติผู้คุมงาน 9 ต.ค.): K1 ต่อเครื่องเดาได้ด้วยรหัสเครื่องใหม่ทุก 9 ครั้ง ⇒ เพิ่มด่านต่อสาขา + ถังเครื่องไม่ลงทะเบียน
+  D("K1b", "X3", "[แก้รอบ 1 F2] ด่านต่อสาขา: ผิดแบบไม่ระบุคนรวม N_U ครั้ง (N_U = STAFF_PIN_UNIT_THROTTLE_AFTER = 30) ที่ U2 กระจายหลายรหัสเครื่อง (ลงทะเบียน 3 เครื่อง × 9 + ไม่ลงทะเบียน 3 รหัส — ไม่มีเครื่อง/ถังไหนถึง N) → PIN_INVALID ทุกครั้ง · ครั้งที่ N_U+1 บนเครื่องลงทะเบียนใหม่ที่ยังไม่เคยผิด → PIN_THROTTLED · สาขา U1 ไม่โดน (DEV2 PIN ถูก → ok)"),
+  D("K1c", "X3", "[แก้รอบ 1 F2] ถังเครื่องไม่ลงทะเบียน: ผิดแบบไม่ระบุคน N ครั้งที่ U1 ด้วยรหัสเครื่องไม่ลงทะเบียน 'ใหม่ทุกครั้ง' → PIN_INVALID ทุกครั้ง · รหัสไม่ลงทะเบียนใหม่อีกตัว PIN ถูก → PIN_THROTTLED (รวมถังเดียวต่อสาขา) · ระบุคน (userId) บนรหัสไม่ลงทะเบียนใหม่ → ok (ไม่โดนด่าน) · เครื่องลงทะเบียน DEV2 PIN ถูก → ok"),
   D("K2", "X2", "[มติ Q9 P1.15] ตั้ง PIN ซ้ำกับคนอื่นในสาขา → ไม่ใช่ PIN_TAKEN และแยกไม่ออก: ok (แล้ว PIN นั้นแบบไม่ระบุคน → PIN_INVALID · ระบุคน → คนนั้น) หรือ ปฏิเสธด้วย code+message เดียวกับ PIN อ่อน · ข้อความไม่บอกว่ามีคนใช้"),
   D("K3", "X1", "[มติ Q9 P1.15 F5] กติกา POS_DISCOUNT_OVER · submit พร้อมกัน 2 ครั้งคีย์เดียว (3 รอบ) → requestId เดียวกัน · บิลพัก +1 · คำขอ +1 ต่อรอบ · ไม่มีบิล · อนุมัติ → submit พร้อมกันคีย์เดียว → บิล 1 ใบ อีกตัว = บิลเดิม หรือ IDEMPOTENCY_CONFLICT"),
   D("K4", "X3", "[มติ Q9 P1.15] approval decide โดยผู้ยื่นเอง (MANAGER ที่ผ่าน canDecideStep) → ok:false · คำขอยัง PENDING · ไม่มี ApprovalDecision/outbox approved · OWNER ตัดสินได้ (ตัวควบคุม)"),
@@ -1962,6 +1965,49 @@ async function runDb() {
     const row1 = T ? await P.posStaffPin.findFirst({ where: { tenantId: T, unitId: U.U1, userId: uid("C1") } }).catch(() => null) : null;
     if (row0 && row1 && (row1.failedCount !== row0.failedCount || !!row1.lockedUntil !== !!row0.lockedUntil)) p.push(`failedCount ${row0.failedCount}→${row1.failedCount}`);
     chk("K1", NK === "" && p.length === 0, `ผิด ${N} → PIN_THROTTLED เฉพาะเครื่องนั้น`, FX(NK + (p.join(" · ") || "ครบ")));
+  }
+  // ORACLE-EDIT (แก้รอบ 1 F2): K1c ก่อน K1b (K1c ใช้ U1 ที่ K1 ผิดไปแล้ว N ครั้ง — รวม 2N < N_U ⇒ ด่านต่อสาขาไม่ปน) · K1b ใช้ U2 ล้วน
+  {
+    const p: string[] = [];
+    const N = typeof regShared?.STAFF_PIN_DEVICE_THROTTLE_AFTER === "number" ? (regShared.STAFF_PIN_DEVICE_THROTTLE_AFTER as number) : 10;
+    const anonAt = (u: string, dev: string, pin: string, userId?: string) => call(staffMod, "verifyStaffPin", uctx(u, "X", dev), { unitId: U[u], deviceId: dev, pin, ...(userId ? { userId } : {}) });
+    for (let i = 0; i < N; i++) {
+      const r = await anonAt("U1", `qc118${RAND}c${i}`, `9076${String(10 + i).padStart(2, "0")}`);
+      if (!refused(r, "PIN_INVALID")) p.push(`รหัสใหม่ครั้งที่ ${i + 1} → ${codeOf(r)}`);
+    }
+    const t = keep("K1c รหัสไม่ลงทะเบียนใหม่ PIN ถูก", await anonAt("U1", `qc118${RAND}cx`, "258014"));
+    if (!refused(t, "PIN_THROTTLED")) p.push(`รหัสไม่ลงทะเบียนใหม่ (PIN ถูก) หลังผิด ${N} → ${codeOf(t)} (คาด PIN_THROTTLED)`);
+    const named = await anonAt("U1", `qc118${RAND}cy`, "258014", uid("C1"));
+    if (named?.ok !== true || named.userId !== uid("C1")) p.push(`ระบุคนบนรหัสไม่ลงทะเบียน → ${codeOf(named)} (คาด ok)`);
+    const reg = await anonAt("U1", DEV2, "258014");
+    if (reg?.ok !== true || reg.userId !== uid("C1")) p.push(`เครื่องลงทะเบียน DEV2 → ${codeOf(reg)} (คาด ok)`);
+    chk("K1c", p.length === 0, `รหัสไม่ลงทะเบียน = ถังเดียวต่อสาขา (ผิด ${N} → PIN_THROTTLED)`, FX(p.join(" · ") || "ครบ"));
+  }
+  {
+    const p: string[] = [];
+    const NU = typeof regShared?.STAFF_PIN_UNIT_THROTTLE_AFTER === "number" ? (regShared.STAFF_PIN_UNIT_THROTTLE_AFTER as number) : 30;
+    const NUK = typeof regShared?.STAFF_PIN_UNIT_THROTTLE_AFTER === "number" ? "" : `${MISSING} STAFF_PIN_UNIT_THROTTLE_AFTER (register-shared.ts) · `;
+    const anonAt = (u: string, dev: string, pin: string) => call(staffMod, "verifyStaffPin", uctx(u, "X", dev), { unitId: U[u], deviceId: dev, pin });
+    // เครื่องลงทะเบียนเพิ่มที่ U2 (DEV3 มีแล้ว) — แต่ละเครื่องผิดไม่เกิน 9 · ไม่ลงทะเบียน 3 รหัส (ถัง 3) ⇒ ไม่มีด่านต่อเครื่อง/ถังตัวไหนถึงเกณฑ์
+    const extra = [`qc118${RAND}e1`, `qc118${RAND}e2`, `qc118${RAND}e3`];
+    for (const d of extra) {
+      const rg = await call(devMod, "registerDevice", uctx("U2"), A("OWNER"), { name: `เครื่อง QC ${d.slice(-2)}`, deviceCode: d });
+      if (rg?.ok !== true) p.push(`(fixture) registerDevice ${d.slice(-2)} → ${codeOf(rg)}`);
+    }
+    const plan: string[] = [];
+    for (const d of [DEV3, extra[0]!, extra[1]!]) for (let i = 0; i < 9; i++) plan.push(d);
+    for (let i = 0; plan.length < NU; i++) plan.push(`qc118${RAND}b${i}`);
+    let n = 0;
+    for (const d of plan) {
+      n++;
+      const r = await anonAt("U2", d, `9077${String(10 + (n % 80)).padStart(2, "0")}`);
+      if (!refused(r, "PIN_INVALID")) p.push(`ผิดครั้งที่ ${n} (${d === DEV3 ? "DEV3" : d.slice(-2)}) → ${codeOf(r)}`);
+    }
+    const t = keep("K1b ครั้งที่ N_U+1 เครื่องใหม่", await anonAt("U2", extra[2]!, "907799"));
+    if (!refused(t, "PIN_THROTTLED")) p.push(`ครั้งที่ ${NU + 1} (เครื่องลงทะเบียนที่ยังไม่เคยผิด) ที่ U2 → ${codeOf(t)} (คาด PIN_THROTTLED)`);
+    const other = await anonAt("U1", DEV2, "258014");
+    if (other?.ok !== true || other.userId !== uid("C1")) p.push(`สาขา U1 (DEV2 PIN ถูก) → ${codeOf(other)} (คาด ok)`);
+    chk("K1b", NUK === "" && p.length === 0, `ผิดรวม ${NU} ที่สาขา → PIN_THROTTLED ทั้งสาขา · สาขาอื่นไม่โดน`, FX(NUK + (p.join(" · ") || "ครบ")));
   }
   {
     const p: string[] = [];
