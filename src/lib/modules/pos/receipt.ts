@@ -231,16 +231,17 @@ async function buildReceipt(db: Db, tenantId: string, systemId: string, sale: Re
   const dev = device && device.tenantId === tenantId ? device : null;
 
   // ── ผู้ขาย · สมาชิก · คูปอง ──
+  // POS P1.12 ▸ R15: สมาชิกจากสำเนาตอนขาย (บิลเก่าไม่มีสำเนา = ข้อมูลสด) — มีสำเนา = ไม่อ่านเบอร์เต็มเลย (รีวิว F9) ◂
+  const snap = saleMemberSnapshot((sale as { memberSnapshot?: unknown }).memberSnapshot);
   const [seller, customer, coupons] = await Promise.all([
     rs.showCashier && sale.soldByUserId ? db.user.findUnique({ where: { id: sale.soldByUserId }, select: { name: true } }) : null,
-    sale.memberId ? db.customer.findFirst({ where: { id: sale.memberId, tenantId }, select: { id: true, name: true, firstName: true, lastName: true, memberCode: true, tierDefId: true, phone: true, memberSystemId: true } }) : null,
+    sale.memberId ? db.customer.findFirst({ where: { id: sale.memberId, tenantId }, select: { id: true, name: true, firstName: true, lastName: true, memberCode: true, tierDefId: true, phone: !snap, memberSystemId: true } }) : null,
     db.couponRedemption.findMany({
       where: { tenantId, status: { not: "RELEASED" }, OR: [{ saleId: sale.id }, { refType: "PosSale", refId: sale.id }] },
       select: { discountSatang: true, coupon: { select: { code: true } } },
     }),
   ]);
-  // POS P1.12 ▸ R15: สมาชิกจากสำเนาตอนขาย (บิลเก่าไม่มีสำเนา = ข้อมูลสด) · ยอดแต้มสดของระบบแต้มของสาขา (แก้บั๊ก "ระบบแต้มที่อัปเดตล่าสุด") ◂
-  const snap = saleMemberSnapshot((sale as { memberSnapshot?: unknown }).memberSnapshot);
+  // POS P1.12 ▸ R15: ยอดแต้มสดของระบบแต้มของสาขา (แก้บั๊ก "ระบบแต้มที่อัปเดตล่าสุด") ◂
   const benefitLines = saleMemberBenefits((sale as { memberBenefits?: unknown }).memberBenefits);
   const [tier, balance] = customer
     ? await Promise.all([

@@ -708,6 +708,30 @@ export async function pointBalanceForUnit(ctx: MemberCtx, input: { customerId: s
   };
 }
 
+// POS P1.12 (รีวิว F6) ▸ แบบหลายคน (แถวค้นสมาชิกของหน้าขาย ≤ 8 คน): resolveSystems + getPointSettings ครั้งเดียวต่อคำขอ ·
+//   getBalance ต่อคน (โมดูลแต้มไม่มีอ่านยอดแบบรวม) · ผล = Map<customerId, UnitPointsDto> (สาขาไม่มีระบบแต้ม = Map ว่าง) ·
+//   กติกาเดียวกับ pointBalanceForUnit (ไม่ตรวจว่าสมาชิกอยู่ระบบนี้ — ผู้เรียกตรวจเองก่อนเสมอ) ◂
+export async function pointBalancesForUnit(ctx: MemberCtx, input: { customerIds: string[]; unitId: string }): Promise<Map<string, UnitPointsDto>> {
+  const out = new Map<string, UnitPointsDto>();
+  const unitId = String(input?.unitId ?? "").trim();
+  const ids = [...new Set((Array.isArray(input?.customerIds) ? input.customerIds : []).map((x) => String(x ?? "").trim()).filter(Boolean))];
+  if (!unitId || !ids.length) return out;
+  const sys = await resolveSystems(ctx, unitId);
+  const pointSystemId = sys.pointSystemId;
+  if (!pointSystemId) return out;
+  const [settings, balances] = await Promise.all([point.getPointSettings(ctx.tenantId), Promise.all(ids.map((id) => point.getBalance(pointSystemId, id)))]);
+  ids.forEach((id, i) =>
+    out.set(id, {
+      pointSystemId,
+      balance: balances[i] ?? 0,
+      burnRateSatang: Math.max(1, settings.burnRateSatang),
+      burnMinPoints: Math.max(0, settings.burnMinPoints),
+      burnMaxPct: settings.burnMaxPct,
+    }),
+  );
+  return out;
+}
+
 // ───────────────────────── ตะกร้าของบิล (ทางสำรองทางเดียวที่เหลือ) ─────────────────────────
 //
 // 🔴 M2.8 ลบ "ตะกร้าล่าสุดในหน่วยความจำ" ทิ้งแล้ว (หนี้จาก M2.7): บน serverless คนละอินสแตนซ์ =

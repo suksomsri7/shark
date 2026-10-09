@@ -62,7 +62,8 @@ async function guard<T>(name: string, body: () => Promise<T>): Promise<T | Regis
 export function digitsPhone(raw: string): string {
   let d = (raw ?? "").replace(/\D/g, "");
   if (!d) return "";
-  if (d.startsWith("0066")) d = d.slice(4);
+  // รีวิว F2: 0066 → 66 แล้วเข้าทาง 66 ด้านล่าง (0066 81 234 5678 → 0812345678 · เดิมตัดเหลือ 812345678 = PHONE_INVALID)
+  if (d.startsWith("0066")) d = "66" + d.slice(4);
   if (!d.startsWith("66")) return d;
   d = d.slice(2);
   return d.startsWith("0") ? d : "0" + d;
@@ -115,12 +116,13 @@ export async function registerMemberGate(s: { tenantId: string; unitId: string; 
 }
 
 // ═══════════════════ แถวสมาชิกบนจอ (R2 DTO) ═══════════════════
-async function itemsOf(ms: MemberScope, briefs: MemberBrief[]): Promise<RegisterMemberItem[]> {
+async function itemsOf(ms: MemberScope, briefs: MemberBrief[], pointsOf?: Map<string, UnitPointsDto>): Promise<RegisterMemberItem[]> {
   if (!briefs.length) return [];
   const member = await memberFacade();
   const ids = briefs.map((b) => b.id);
   const [points, stats] = await Promise.all([
-    Promise.all(ids.map((id) => member.pointBalanceForUnit(ms.mctx, { customerId: id, unitId: ms.unitId }))),
+    // รีวิว F6: ระบบแต้ม + ตั้งค่าแต้มของสาขา resolve ครั้งเดียวต่อคำขอ (เดิมทุกแถว)
+    pointsOf ?? member.pointBalancesForUnit(ms.mctx, { customerIds: ids, unitId: ms.unitId }),
     // ซื้อล่าสุด/จำนวนครั้ง = บิลขาย POS ของร้าน (ตารางของ POS เอง) ที่ไม่ถูกยกเลิก
     prisma.posSale.groupBy({
       by: ["memberId"],
@@ -130,7 +132,7 @@ async function itemsOf(ms: MemberScope, briefs: MemberBrief[]): Promise<Register
     }),
   ]);
   const statOf = new Map(stats.map((r) => [r.memberId ?? "", r]));
-  return briefs.map((b, i) => {
+  return briefs.map((b) => {
     const st = statOf.get(b.id);
     return {
       id: b.id,
@@ -138,7 +140,7 @@ async function itemsOf(ms: MemberScope, briefs: MemberBrief[]): Promise<Register
       name: b.name,
       phoneMasked: b.phoneMasked,
       tier: b.tier ? { key: b.tier.key, name: b.tier.name, color: b.tier.color } : null,
-      points: points[i]?.balance ?? 0,
+      points: points.get(b.id)?.balance ?? 0,
       lastPurchaseAt: st?._max.createdAt ? st._max.createdAt.toISOString() : null,
       purchaseCount: st?._count._all ?? 0,
       suspended: b.status === "SUSPENDED",
@@ -227,6 +229,22 @@ export async function registerMemberLookup(ctx: RegisterCtx, actor: RegisterActo
 }
 
 // ═══════════════════ R4 สมัครด่วน ═══════════════════
+/**
+ * รีวิว F1 — เบอร์นี้มีสมาชิกอยู่แล้วไหม (รวมแถวเก่าที่เก็บแบบมีขีด/เว้นวรรค): createMember เทียบสตริงที่เก็บตรงตัว ⇒ "089-555-1234" เดิม +
+ * พิมพ์ "089 555 1234" จะได้ลูกค้าซ้ำ — ค้นด้วยผู้กระทำแทนทุกรูปเต็มความยาว (phoneForms ชุดเดียวกับการค้น) แล้วรับเฉพาะคนที่เบอร์ที่เก็บ
+ * แปลงเป็นตัวเลขล้วนแล้วตรงกัน (เบอร์เต็มอ่านในฟังก์ชันนี้เท่านั้น ไม่ออกไปไหน) · MERGED/CLOSED ไม่นับ · หลายคน = ใช้ล่าสุดก่อน
+ */
+async function existingByPhone(ms: MemberScope, digits: string): Promise<MemberBrief | null> {
+  const hits = new Map<string, ListRowLite>();
+  for (const rows of await Promise.all(phoneForms(digits, digits).map((f) => listRows(ms, f)))) for (const r of rows) hits.set(r.id, r);
+  if (!hits.size) return null;
+  const stored = await prisma.customer.findMany({ where: { tenantId: ms.tenantId, id: { in: [...hits.keys()] } }, select: { id: true, phone: true } });
+  const same = new Set(stored.filter((c) => !!c.phone && digitsPhone(c.phone) === digits).map((c) => c.id));
+  const ids = [...hits.values()].filter((r) => same.has(r.id)).sort(byActivity).map((r) => r.id);
+  const [brief] = await briefsInOrder(ms, ids);
+  return brief ?? null;
+}
+
 const QUICK_KEYS = ["phone", "name", "birthDate", "marketingConsent", "heardFrom", "idempotencyKey"] as const;
 const CONSENT_CHANNELS = ["LINE", "EMAIL", "SMS"] as const;
 
@@ -268,6 +286,12 @@ export async function registerQuickMember(
 
     const ms = await memberScope({ tenantId: sc.ctx.tenantId, unitId: sc.ctx.unitId, actor: sc.actor });
     if (isRefusal(ms)) return ms;
+    // รีวิว F1: มีคนใช้เบอร์นี้แล้ว (ตัวเลขตรงกัน ไม่ว่าเก็บแบบไหน) = created:false คนเดิม · ไม่สร้าง · ไม่ audit
+    const existing = await existingByPhone(ms, phone);
+    if (existing) {
+      const [hit] = await itemsOf(ms, [existing]);
+      return { ok: true, created: false, member: hit! };
+    }
     const member = await memberFacade();
     let res: Awaited<ReturnType<MemberFacade["createMember"]>>;
     try {
@@ -322,11 +346,10 @@ export async function registerMemberBenefits(ctx: RegisterCtx, actor: RegisterAc
     const cart = await registerBenefitsCart(sc.ctx, sc.actor, input.cart);
     if (isRefusal(cart)) return cart;
     const member = await memberFacade();
-    const [wallet, pts, items] = await Promise.all([
-      member.getWallet(g.mctx, g.actor, g.brief.id, { cart: cart.cart }),
-      member.pointBalanceForUnit(g.mctx, { customerId: g.brief.id, unitId: g.unitId }),
-      itemsOf(g, [g.brief]),
-    ]);
+    // รีวิว F6: ระบบแต้ม + ตั้งค่าแต้มของสาขา resolve ครั้งเดียว ใช้ทั้งแผงแต้มและแถวสมาชิก
+    const pmap = await member.pointBalancesForUnit(g.mctx, { customerIds: [g.brief.id], unitId: g.unitId });
+    const pts = pmap.get(g.brief.id) ?? null;
+    const [wallet, items] = await Promise.all([member.getWallet(g.mctx, g.actor, g.brief.id, { cart: cart.cart }), itemsOf(g, [g.brief], pmap)]);
     const tb = wallet.tierBenefits;
     return {
       ok: true,
@@ -360,17 +383,23 @@ export async function registerMemberBenefits(ctx: RegisterCtx, actor: RegisterAc
 }
 
 // ═══════════════════ R13 ส่งมอบรางวัลที่เคาน์เตอร์ ═══════════════════
-async function fulfilAudited(tenantId: string, redemptionId: string, customerId: string): Promise<boolean> {
+async function fulfilAudited(tenantId: string, redemptionId: string): Promise<boolean> {
   const row = await prisma.auditLog.findFirst({
-    where: { tenantId, action: AUDIT_REWARD_FULFILLED, targetType: "RewardRedemption", targetId: redemptionId, after: { path: ["customerId"], equals: customerId } },
+    where: { tenantId, action: AUDIT_REWARD_FULFILLED, targetType: "RewardRedemption", targetId: redemptionId },
     select: { id: true },
   });
   return !!row;
 }
 
+/** รายการแลกของสมาชิกคนนี้ในระบบรางวัลของสาขา (อ่านอย่างเดียว · ไม่ใช่ของคนนี้/ระบบอื่น = null) */
+const redemptionOf = (tenantId: string, rewardSystemId: string, redemptionId: string, customerId: string) =>
+  prisma.rewardRedemption.findFirst({ where: { id: redemptionId, tenantId, systemId: rewardSystemId, customerId }, select: { status: true, fulfilledById: true } });
+
 /**
- * R13 — ส่งมอบของรางวัลที่สมาชิกแลกไว้ (ไม่ใช่บรรทัดบิล · ไม่มีเงิน) ผ่าน reward.fulfilV2 · idempotent (ส่งมอบแล้ว = ok · audit แถวเดียว) ·
- * รายการไม่ใช่ของสมาชิกคนนี้ = MEMBER_NOT_FOUND (มติ 13 · ไม่บอกว่ามีอยู่) · fulfilledById + audit = ผู้ใช้จริง
+ * R13 — ส่งมอบของรางวัลที่สมาชิกแลกไว้ (ไม่ใช่บรรทัดบิล · ไม่มีเงิน) ผ่าน reward.fulfilV2 · ระบบรางวัล = ลิงก์ REWARD ของสาขา
+ * (ระบบเดียวกับ rewardsPending ของแผงสิทธิ์ · รีวิว F4) · ส่งมอบแล้ว (หน้าขายหรือหลังร้าน) = ok ไม่ audit · ไม่ใช่ของสมาชิกคนนี้/ยกเลิก/
+ * ไม่มีจริง = MEMBER_NOT_FOUND (มติ 13 · ไม่บอกว่ามีอยู่) · audit เฉพาะเมื่อคำขอนี้เปลี่ยนแถวเป็น FULFILLED จริง (fulfilledById = ผู้ใช้จริง +
+ * ยังไม่มี audit ของรายการนี้) · fulfilledById + audit = ผู้ใช้จริง
  */
 export async function registerFulfilReward(ctx: RegisterCtx, actor: RegisterActor, input: { memberId: string; redemptionId: string }): Promise<RegisterFulfilRewardResult> {
   return guard("registerFulfilReward", async (): Promise<RegisterFulfilRewardResult> => {
@@ -380,20 +409,21 @@ export async function registerFulfilReward(ctx: RegisterCtx, actor: RegisterActo
     const g = await registerMemberGate({ tenantId: sc.ctx.tenantId, unitId: sc.ctx.unitId, actor: sc.actor }, String(input.memberId ?? ""));
     if (isRefusal(g)) return g;
     const reward = await import("@/lib/modules/reward");
-    const rctx = await reward.resolveRewardCtx(g.tenantId, g.memberSystemId, g.real.userId);
+    const rctx = await reward.resolveRewardCtxForUnit(g.tenantId, g.memberSystemId, g.unitId, g.real.userId);
     if (!rctx) return registerRefuse("MEMBER_NOT_FOUND");
-    const pending = await reward.pendingForCustomer(rctx, g.brief.id);
-    if (!pending.some((p) => p.redemptionId === input.redemptionId)) {
-      // ส่งมอบไปแล้วจากหน้าขายนี้ (ยิงซ้ำ) = ok · อื่น (ของคนอื่น/ยกเลิก/ไม่มีจริง) = ไม่พบ
-      return (await fulfilAudited(g.tenantId, input.redemptionId, g.brief.id)) ? { ok: true } : registerRefuse("MEMBER_NOT_FOUND");
-    }
+    const before = await redemptionOf(g.tenantId, rctx.systemId, input.redemptionId, g.brief.id);
+    // ส่งมอบไปแล้ว (ยิงซ้ำ / หลังร้านส่งมอบก่อน) = ok ไม่ audit · ของคนอื่น/ระบบอื่น/ยกเลิก/ไม่มีจริง = ไม่พบ
+    if (before?.status === "FULFILLED") return { ok: true };
+    if (before?.status !== "PENDING") return registerRefuse("MEMBER_NOT_FOUND");
     try {
       await reward.fulfilV2(rctx, g.actor, { redemptionId: input.redemptionId, unitId: g.unitId });
     } catch (e) {
       // หมดอายุ / รับได้เฉพาะสาขาอื่น — ข้อความไทยของโมดูลรางวัล
       return registerRefuse("VALIDATION", errMessage(e).slice(0, 200));
     }
-    if (!(await fulfilAudited(g.tenantId, input.redemptionId, g.brief.id))) {
+    // fulfilV2 ไม่บอกว่าใครเปลี่ยนแถว (แข่งกันกด = ok ทั้งคู่) ⇒ อ่านแถวซ้ำ: เปลี่ยนโดยผู้ใช้จริงคนนี้ + ยังไม่มี audit = audit แถวเดียว
+    const after = await redemptionOf(g.tenantId, rctx.systemId, input.redemptionId, g.brief.id);
+    if (after?.status === "FULFILLED" && after.fulfilledById === g.real.userId && !(await fulfilAudited(g.tenantId, input.redemptionId))) {
       await writeAudit({
         tenantId: g.tenantId,
         actorId: g.real.userId,
@@ -432,6 +462,7 @@ const KIND_OF: Record<string, RegisterMemberLine["kind"] | undefined> = { TIER: 
  * จาก saleWalletCart ตัวเดียวกับ createSale ⇒ ยอดบนจอ = ยอดที่ตัดจริง · สิทธิ์ที่เลือกแต่ใช้ไม่ได้ = memberConflicts (quote ไม่ปฏิเสธ):
  *   ว่อชเชอร์ใช้ไม่ได้ = VOUCHER_INVALID · ว่อชเชอร์ห้ามซ้อนคูปอง (กติกาเดียวกับ createSale: คูปองขัดแย้ง + มีว่อชเชอร์ถูกใช้) = VOUCHER_COUPON_CONFLICT ·
  *   แต้ม: ไม่มีระบบแต้ม = POINTS_DISABLED · < ขั้นต่ำ = POINTS_BELOW_MIN · > คงเหลือ = POINTS_INSUFFICIENT · ถูกตัดให้พอดีเพดาน = POINTS_CAPPED {allowedPoints}
+ *   (ตัดแล้วเหลือ > 0 แต่ < ขั้นต่ำ = POINTS_BELOW_MIN "บิลเล็กเกิน" · รีวิว F3)
  *   (ลำดับตรวจเดียวกับ computeQuote ของกระเป๋า)
  */
 export async function registerMemberQuote(
@@ -469,6 +500,8 @@ export async function registerMemberQuote(
     if (!pts) conflicts.push({ kind: "POINTS", code: "POINTS_DISABLED", message: msg ?? "สาขานี้ยังไม่ได้เปิดใช้ระบบแต้ม" });
     else if (want < pts.burnMinPoints) conflicts.push({ kind: "POINTS", code: "POINTS_BELOW_MIN", message: msg ?? `ใช้แต้มได้ตั้งแต่ ${pts.burnMinPoints} แต้ม` });
     else if (want > pts.balance) conflicts.push({ kind: "POINTS", code: "POINTS_INSUFFICIENT", message: msg ?? `แต้มคงเหลือ ${pts.balance} แต้ม` });
+    // รีวิว F3: กระเป๋าตัดให้พอดีเพดานแล้วเหลือต่ำกว่าขั้นต่ำ = บิลเล็กเกินจะใช้แต้ม (ไม่ใช่ CAPPED — ส่งจำนวนที่ตัดแล้วก็ยังติดขั้นต่ำ)
+    else if (pointsBurned > 0 && pointsBurned < pts.burnMinPoints) conflicts.push({ kind: "POINTS", code: "POINTS_BELOW_MIN", message: `บิลนี้เล็กเกินกว่าจะใช้แต้มขั้นต่ำ ${pts.burnMinPoints} แต้ม` });
     else if (pointsBurned !== want) conflicts.push({ kind: "POINTS", code: "POINTS_CAPPED", message: msg ?? `ใช้แต้มได้ ${pointsBurned} แต้ม`, allowedPoints: pointsBurned });
   }
   return {

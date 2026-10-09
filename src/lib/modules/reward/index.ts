@@ -27,6 +27,8 @@ export type {
 export {
   /** หา ctx (REWARD systemId + POINT systemId ที่ผูก) จาก MEMBER systemId ของ route — หน้า/action เรียกก่อนทุกครั้ง */
   resolveRewardCtx,
+  /** POS P1.12 ▸ ctx รางวัลจากลิงก์ REWARD ของสาขา (ระบบเดียวกับรายการรอรับในกระเป๋าสิทธิ์ · ส่งมอบที่หน้าขาย) ◂ */
+  resolveRewardCtxForUnit,
   /** สร้าง/แก้/เปิดปิดของรางวัล (ต้องมีสิทธิ์ `member.loyalty.manage`) */
   createRewardV2,
   updateRewardV2,
