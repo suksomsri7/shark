@@ -18,7 +18,7 @@ export const REGISTER_LOW_STOCK = 5;
 export const REGISTER_PAGE_SIZE = 100;
 export const REGISTER_PAGE_MAX = 500;
 /** วิธีจ่ายที่หน้าขายรับ (P1.3 Addendum 2 + P1.6 R2: โอน + บัตรแบบกรอกเลขอ้างอิง EDC · ไม่มีเกตเวย์ = P1.7) */
-export const REGISTER_PAY_TYPES = ["CASH", "PROMPTPAY", "TRANSFER", "CARD"] as const;
+export const REGISTER_PAY_TYPES = ["CASH", "PROMPTPAY", "TRANSFER", "CARD", "PLATFORM"] as const; // POS P2.1 ▸ PLATFORM เฉพาะช่องทาง payout PLATFORM (R5 · CHANNEL_PAY_MISMATCH) ◂
 /** P1.6 R2: แบ่งจ่ายได้ไม่เกินกี่รายการ (ชนิดซ้ำได้ · เงินสดได้รายการเดียว) — เกิน = SPLIT_INVALID */
 export const REGISTER_MAX_PAY_METHODS = 10;
 /** P1.6 R5: หมายเหตุบิล/บรรทัดยาวได้ไม่เกิน (ตัวอักษร) */
@@ -178,7 +178,14 @@ export type RegisterRefusalCode =
   | "POINTS_INSUFFICIENT"
   | "POINTS_CAPPED"
   | "BENEFITS_EXCEED_TOTAL"
-  | "MEMBER_RIGHTS_CHANGED";
+  | "MEMBER_RIGHTS_CHANGED"
+  // POS P2.1 ▸ ช่องทางขาย (R13) — ช่องทางที่ส่งมาใช้ไม่ได้ · วิธีจ่ายไม่ตรงช่องทาง · ตั้งค่าช่องทาง ◂
+  | "CHANNEL_INVALID"
+  | "CHANNEL_PAY_MISMATCH"
+  | "CHANNEL_NOT_FOUND"
+  | "CHANNEL_CODE_TAKEN"
+  | "CHANNEL_BUILTIN_LOCKED"
+  | "CHANNEL_LIMIT";
 
 /** คำปฏิเสธ — คืนค่า ไม่ throw · `lineIndex` = บรรทัดที่ผิด (ลำดับเดียวกับที่ส่งมา) ถ้าระบุได้ */
 export type RegisterRefusal = { ok: false; code: RegisterRefusalCode; message: string; lineIndex?: number };
@@ -261,7 +268,12 @@ export type RegisterQuoteInput = {
   memberId?: string;
   couponCode?: string;
   memberChoices?: RegisterMemberChoices;
+  /** POS P2.1 ▸ R10: ช่องทางขาย (SalesChannel.id ของสาขานี้) — ไม่ส่ง = หน้าร้าน (STORE) · อื่น/เก็บแล้ว/ปิด = CHANNEL_INVALID · บิลพักเก็บไว้ ◂ */
+  channelId?: string;
 };
+
+/** POS P2.1 ▸ R10: ช่องทางของ quote (ปริยาย = STORE ของสาขา) — คีย์ตายตัว 4 ตัว ◂ */
+export type RegisterQuoteChannel = { id: string; code: string; name: string; payout: "PLATFORM" | "DIRECT" };
 
 /** P1.2 R3: ตัวเลือกที่เซิร์ฟเวอร์ใช้คิดราคา (ราคา/ชื่อสดจาก DB) */
 export type RegisterQuoteLineOption = { choiceId: string; groupId: string; name: string; priceDeltaSatang: number };
@@ -305,6 +317,8 @@ export type RegisterQuoteTotals = {
   pointsToEarn?: number;
   stampsToAdd?: { cardId: string; name: string; count: number }[];
   memberConflicts?: RegisterMemberConflict[];
+  /** POS P2.1 ▸ R10: ช่องทางของบิล (เซิร์ฟเวอร์เติมทุก quote · ยอดที่จอคิดเองไม่มี ⇒ optional) ◂ */
+  channel?: RegisterQuoteChannel;
 };
 /** POS P1.12: บรรทัดสิทธิ์สมาชิกบนยอด (ลำดับกระเป๋า) · ref = id ว่อชเชอร์ (ระดับ/แต้ม = null) · note = คำอธิบายเมื่อระบบปรับให้ */
 export type RegisterMemberLine = { kind: "TIER" | "VOUCHER" | "POINTS" | "GIFTCARD"; ref: string | null; label: string; discountSatang: number; note: string | null };
@@ -343,6 +357,8 @@ export type RegisterSubmitInput = RegisterQuoteInput & {
   note?: string;
   /** ยอดที่แคชเชียร์เห็นจาก quote ล่าสุด (บังคับ · จำนวนเต็ม ≥ 0) — ไม่ตรงยอดเซิร์ฟเวอร์ = PRICE_CHANGED */
   expectedGrandTotalSatang: number;
+  /** POS P2.1 ▸ R10: เลขออเดอร์แพลตฟอร์ม (ตัดช่องว่าง · ≤ CHANNEL_REF_MAX 40 ไม่งั้น VALIDATION) ◂ */
+  channelRef?: string;
   /** POS P1.15 R3: โทเคนผู้ขายจาก verifyStaffPin (ผูกเครื่อง · 12 ชม.) — ผู้ขาย/เพดานส่วนลด = คนในโทเคน · ผิด/หมดอายุ = STAFF_TOKEN_INVALID */
   staffToken?: string;
   /** POS P1.15 R4/R5: PIN ผู้จัดการที่เครื่องนี้ (คู่ managerUserId) — อนุญาตส่วนลดเกินสิทธิ์ทันที (audit pos.discount.override) */
@@ -778,6 +794,13 @@ const REFUSAL_KEY: Readonly<Record<string, string>> = {
   POINTS_CAPPED: "errors.pointsCapped",
   BENEFITS_EXCEED_TOTAL: "errors.benefitsExceedTotal",
   MEMBER_RIGHTS_CHANGED: "errors.memberRightsChanged",
+  // POS P2.1 ▸ ช่องทางขาย (R13) ◂
+  CHANNEL_INVALID: "errors.channelInvalid",
+  CHANNEL_PAY_MISMATCH: "errors.channelPayMismatch",
+  CHANNEL_NOT_FOUND: "errors.channelNotFound",
+  CHANNEL_CODE_TAKEN: "errors.channelCodeTaken",
+  CHANNEL_BUILTIN_LOCKED: "errors.channelBuiltinLocked",
+  CHANNEL_LIMIT: "errors.channelLimit",
 };
 
 /**

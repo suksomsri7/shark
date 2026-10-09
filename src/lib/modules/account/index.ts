@@ -15,6 +15,7 @@ import {
   findAccountLinkForPos,
   findDocByRef,
   findOrCreateCustomerContact,
+  ensureNamedCustomerContact, // POS P2.1 ▸ ผู้ติดต่อของช่องทาง = ชื่อเดียวกัน 1 รายต่อสมุด (CD6 · ล็อกต่อสมุด+ชื่อ · รีวิว F2) ◂
   resolveProductIdsForExternalSale,
   setDocExternalRef,
   setQuotationResponse,
@@ -72,6 +73,10 @@ export async function posAccountSystemId(
 import {
   postExternalSale,
   postExternalRefund,
+  postExternalChannelCommission, // POS P2.1 ◂
+  posSaleEntryPosted, // POS P2.1 ▸ fix round 1 (F1) ◂
+  posSalePaidContact, // POS P2.1 ▸ fix round 1 (F3) ◂
+  ensureAccounting, // POS P2.1 ▸ ก่อนโพสต์คีย์ช่องทาง (R7) ◂
   externalSalePosted,
   postGiftCardSale as postGiftCardSaleGl,
   postGiftCardUse as postGiftCardUseGl,
@@ -103,7 +108,9 @@ export async function applyExternalSale(input: {
   grossSatang: number; // ยอดรวม (ราคารวม VAT ถ้าร้านจด)
   // ส่วนของยอดรวมที่มาจาก "บริการ" — ไม่ระบุ = ถือเป็นขายสินค้าทั้งก้อน (พฤติกรรมเดิม)
   serviceGrossSatang?: number;
-  payMethods: { channel: "CASH" | "TRANSFER" | "PROMPTPAY" | "DEPOSIT" | "ROOM_CHARGE"; amountSatang: number }[];
+  payMethods: { channel: "CASH" | "TRANSFER" | "PROMPTPAY" | "DEPOSIT" | "ROOM_CHARGE" | "PLATFORM"; amountSatang: number }[];
+  /** POS P2.1 (เพิ่มล้วน · มติ 1 / CD6): ชื่อช่องทางขาย — แถว PLATFORM ลงลูกหนี้ 1100 ผูกผู้ติดต่อชื่อนี้ (ไม่ส่ง/ไม่มีแถว PLATFORM = เดิมทุกไบต์) */
+  channelName?: string | null;
   /** WO 4.2 — บรรทัดของบิล (สตางค์ · ราคาต่อหน่วยตามที่ขายจริง = รวม VAT เมื่อร้านจด VAT)
    *  Σ(qty×unitPriceSatang − discountSatang) ต้องเท่ากับ grossSatang เป๊ะ ไม่งั้นไม่บันทึกอะไรเลย */
   lines?: {
@@ -165,8 +172,9 @@ export async function applyExternalSale(input: {
   // ช่องทางเงิน → บัญชีขา Dr (ขา Cr รายได้/VAT คงเดิม):
   //   CASH → 1000 (CASH) · TRANSFER/PROMPTPAY → 1010 (BANK)
   //   DEPOSIT → 2110 (DEPOSIT_RECEIVED ลดหนี้สินมัดจำรับ) · ROOM_CHARGE → 1100 (AR ลูกหนี้)
+  //   POS P2.1: PLATFORM → ลูกหนี้แพลตฟอร์ม (PLATFORM_RECEIVABLE = 1100 · option A) ผูกผู้ติดต่อของช่องทาง
   const channelToKey = (
-    ch: "CASH" | "TRANSFER" | "PROMPTPAY" | "DEPOSIT" | "ROOM_CHARGE",
+    ch: "CASH" | "TRANSFER" | "PROMPTPAY" | "DEPOSIT" | "ROOM_CHARGE" | "PLATFORM",
   ): "CASH" | "BANK" | "DEPOSIT_RECEIVED" | "AR" => {
     switch (ch) {
       case "CASH":
@@ -175,13 +183,20 @@ export async function applyExternalSale(input: {
         return "DEPOSIT_RECEIVED";
       case "ROOM_CHARGE":
         return "AR";
+      case "PLATFORM":
+        return CHANNEL_GL_KEY["PLATFORM_RECEIVABLE"];
       default:
         return "BANK";
     }
   };
+  // POS P2.1 ▸ มีแถว PLATFORM เท่านั้นที่ seed ผัง/หาผู้ติดต่อ (บิลอื่นไม่แตะอะไรเพิ่ม — JV เดิมทุกไบต์) ◂
+  const hasPlatform = input.payMethods.some((p) => p.channel === "PLATFORM");
+  if (hasPlatform) await ensureAccounting(ctx); // R7: คีย์ลูกหนี้แพลตฟอร์มต้องจับคู่ได้ก่อนโพสต์ (ห้ามตก 9999)
+  const platformContactId = hasPlatform ? await platformContact(ctx, input.channelName) : null;
   const drLines = input.payMethods.map((p) => ({
     key: channelToKey(p.channel),
     amountSatang: p.amountSatang,
+    ...(p.channel === "PLATFORM" && platformContactId ? { contactId: platformContactId } : {}),
   }));
 
   // ถอด VAT จากฝั่งบริการด้วยอัตราส่วนเดียวกับทั้งบิล แล้ว clamp ไม่ให้เกินฐานรวม
@@ -373,7 +388,9 @@ export async function applyExternalRefund(input: {
   grossSatang: number; // ยอดคืน (รวม VAT ถ้าร้านจด)
   /** ส่วนของยอดคืนที่เป็นบริการ (กลับ 4030) — ไม่ส่ง = สินค้าทั้งก้อน */
   serviceGrossSatang?: number;
-  payMethods: { channel: "CASH" | "TRANSFER" | "PROMPTPAY" | "DEPOSIT" | "ROOM_CHARGE"; amountSatang: number }[];
+  payMethods: { channel: "CASH" | "TRANSFER" | "PROMPTPAY" | "DEPOSIT" | "ROOM_CHARGE" | "PLATFORM"; amountSatang: number }[];
+  /** POS P2.1 (เพิ่มล้วน): ชื่อช่องทางขาย — แถว PLATFORM (แพลตฟอร์มคืนลูกค้า) ลดลูกหนี้ 1100 ของผู้ติดต่อนี้ */
+  channelName?: string | null;
   /** บรรทัดของใบคืน (Σ qty×unitPrice − discount = grossSatang เป๊ะ) — ไม่ส่ง/ว่าง = ไม่มีชั้นเอกสาร */
   lines?: { itemId?: string | null; name: string; qty: number; unitPriceSatang: number; discountSatang?: number }[];
   docNo?: string | null; // เลขใบคืนของ POS
@@ -404,7 +421,16 @@ export async function applyExternalRefund(input: {
   const svcGross = Math.min(Math.max(0, Math.round(input.serviceGrossSatang ?? 0)), gross);
   const svcBase = Math.min(base, Math.round((base * svcGross) / gross));
   // คืนได้เฉพาะเงินสด/ธนาคาร (มัดจำ/ลงห้อง ถูกปฏิเสธตั้งแต่ POS — R5) · ที่เหลือ = ธนาคาร
-  const crLines = input.payMethods.map((p) => ({ key: (p.channel === "CASH" ? "CASH" : "BANK") as "CASH" | "BANK", amountSatang: p.amountSatang }));
+  //   POS P2.1 ▸ PLATFORM = แพลตฟอร์มคืนลูกค้า ⇒ Cr ลูกหนี้แพลตฟอร์ม (1100) ผูกผู้ติดต่อของช่องทาง (R9) ◂
+  //   fix round 1 (F3) ▸ ผู้ติดต่อ = ผู้ติดต่อบนบรรทัด 1100 ของ JV ขาย (PAID) ของบิลเดิม · ไม่มี = ชื่อช่องทางปัจจุบัน ◂
+  const refundPlatformContact = input.payMethods.some((p) => p.channel === "PLATFORM")
+    ? ((await posSalePaidContact(ctx, input.saleRefId, CHANNEL_GL_KEY["PLATFORM_RECEIVABLE"])) ?? (await platformContact(ctx, input.channelName)))
+    : null;
+  const crLines = input.payMethods.map((p) =>
+    p.channel === "PLATFORM"
+      ? { key: CHANNEL_GL_KEY["PLATFORM_RECEIVABLE"], amountSatang: p.amountSatang, ...(refundPlatformContact ? { contactId: refundPlatformContact } : {}) }
+      : { key: (p.channel === "CASH" ? "CASH" : "BANK") as "CASH" | "BANK", amountSatang: p.amountSatang },
+  );
   const res = await postExternalRefund(ctx, { refId: input.refId, date: input.occurredAt, baseSatang: base, vatSatang: vat, serviceBaseSatang: svcBase, crLines });
   const posted = "entryId" in res;
   if (lines.length === 0 || !posAbbreviatedInvoice) return { posted };
@@ -440,6 +466,92 @@ export async function applyExternalRefund(input: {
   });
   if (!doc.ok) return { posted, reason: doc.reason };
   return { posted, docId: doc.docId };
+}
+
+// ─────────────────────────────────────────────────────────────
+// POS P2.1 ▸ ช่องทางขาย: ลูกหนี้แพลตฟอร์ม + ค่าคอมฯ ช่องทาง (R7 R9 · §9 Q1 option A · CD5 CD6) ◂
+//
+// 🔴 คีย์ของช่องทาง (§9 Q1): ตั้งชื่อไว้ตอนนี้ ชี้ไปบัญชีเดิมของผัง (option A — ผังไม่เปลี่ยน) ·
+//    เจ้าของบัญชีเลือก option B ทีหลัง (1120 ลูกหนี้แพลตฟอร์ม / 6520 ค่าคอมมิชชันแพลตฟอร์ม · POS-OWNER-PENDING O25) = แก้ตารางนี้ที่เดียว
+// 🔴 POS ไม่เห็นเลขบัญชี — ส่งแค่ยอด/payout/ชื่อช่องทาง · ไม่ผูกสมุด = {posted:false, reason:"unlinked"} ไม่ throw ·
+//    ความล้มของ GL (งวดปิด ฯลฯ) โยนต่อ ⇒ คิวลองใหม่ (แบบ applyExternalSale)
+const CHANNEL_GL_KEY = {
+  "PLATFORM_RECEIVABLE": "AR", // ลูกหนี้แพลตฟอร์ม (option A = 1100 ลูกหนี้การค้า · แยกรายแพลตฟอร์มด้วยผู้ติดต่อ)
+  "PLATFORM_COMMISSION": "PAYMENT_FEE", // ค่าคอมฯ แพลตฟอร์ม (option A = 6500 ค่าธรรมเนียมชำระเงิน)
+  "CHANNEL_COMMISSION_PAYABLE": "AP", // ค่าคอมฯ ค้างจ่ายของช่องทางที่ร้านเก็บเงินเอง (2100)
+  "CHANNEL_COMMISSION_VAT": "VAT_INPUT_UNDUE", // VAT บนค่าคอมฯ รอใบกำกับจากแพลตฟอร์ม (1155 · Q2/O26)
+} as const;
+
+/**
+ * ผู้ติดต่อของช่องทาง (ชื่อเดียวกัน 1 รายต่อสมุด · CD6) — ชื่อว่าง = null (บรรทัดไม่ผูกผู้ติดต่อ)
+ * fix round 1 (รีวิว F2): หา-แล้ว-สร้างอยู่ใต้ pg_advisory_xact_lock(hashtext(สมุด:ชื่อ)) ใน transaction เดียว
+ *   + หาตัวเก่าสุดก่อน (createdAt asc) — ตัวล็อกอยู่ใน service (facade ห้ามแตะ prisma ดิบ · F5) ⇒ ensureNamedCustomerContact
+ */
+async function platformContact(ctx: GlCtx, channelName: string | null | undefined): Promise<string | null> {
+  const name = (channelName ?? "").trim();
+  if (!name) return null;
+  return (await ensureNamedCustomerContact({ tenantId: ctx.tenantId, systemId: ctx.systemId }, name)).id;
+}
+
+/**
+ * POS P2.1 (R7 R9) — JV ค่าคอมฯ ของช่องทางขาย แยกจาก JV ขาย (PAID) · idempotent ต่อคีย์ของตัวเอง:
+ *   ปกติ: `PosSale#<บิล>#COMMISSION` · reverse (คืนเงินตามสัดส่วน): `PosSale#<ใบคืน>#COMMISSION_REFUNDED`
+ *   PLATFORM: Dr ค่าคอมฯ (6500) + Dr ภาษีซื้อรอใบกำกับ (1155) / Cr ลูกหนี้แพลตฟอร์ม (1100) ⇒ ลูกหนี้เหลือ = ยอดที่แพลตฟอร์มจะโอน
+ *   DIRECT:   Dr ค่าคอมฯ (6500) + Dr 1155 / Cr เจ้าหนี้ (2100) · สมุดไม่จด VAT ⇒ VAT รวมเข้าค่าคอมฯ (ไม่มี 1155)
+ *   ค่าคอมฯ 0 ⇒ {posted:false, reason:"zero"} · ไม่ผูกสมุด ⇒ {posted:false, reason:"unlinked"} · void = reverseFor ของบิลกลับให้เอง
+ */
+export async function applyExternalChannelCommission(input: {
+  tenantId: string;
+  sourceSystemId: string; // POS AppSystem.id
+  refId: string; // PosSale.id ของบิล (ปกติ) หรือของใบคืน (reverse)
+  occurredAt: Date;
+  commissionSatang: number;
+  commissionVatSatang: number;
+  payout: "PLATFORM" | "DIRECT";
+  channelName: string;
+  /** เลขใบเสร็จ/เลขใบคืนของ POS — ใส่ใน memo */
+  receiptNo?: string | null;
+  /** true = กลับรายการตามส่วนแบ่งของใบคืน (refId = ใบคืน) */
+  reverse?: boolean;
+  /** fix round 1 (เพิ่มล้วน): reverse — PosSale.id ของบิลเดิม ⇒ กลับได้เฉพาะเมื่อบิลมี JV COMMISSION แล้ว + ใช้ผู้ติดต่อของ PAID (F1 F3) */
+  saleRefId?: string | null;
+}): Promise<{ posted: boolean; reason?: string; entryId?: string }> {
+  const c = Number.isInteger(input.commissionSatang) && input.commissionSatang > 0 ? input.commissionSatang : 0;
+  const v = Number.isInteger(input.commissionVatSatang) && input.commissionVatSatang > 0 ? input.commissionVatSatang : 0;
+  const link = await findAccountLinkForPos(input.tenantId, input.sourceSystemId);
+  if (!link) return { posted: false, reason: "unlinked" };
+  if (c + v === 0) return { posted: false, reason: "zero" };
+  const ctx: GlCtx = { tenantId: input.tenantId, systemId: link.systemId };
+  // fix round 1 (รีวิว F1) ▸ ลำดับเงิน: ห้ามมี COMMISSION โดยไม่มี PAID · ห้ามกลับ (COMMISSION_REFUNDED) ค่าคอมฯ ที่บิลไม่เคยลง ◂
+  //   คีย์ของตัวเองมีแล้ว = จบก่อนแตะผัง/ผู้ติดต่อ (ผลเดิม "already")
+  const saleId = input.reverse ? (input.saleRefId ?? null) : input.refId;
+  if (await posSaleEntryPosted(ctx, input.refId, input.reverse ? "COMMISSION_REFUNDED" : "COMMISSION")) return { posted: false, reason: "already" };
+  if (!input.reverse && !(await posSaleEntryPosted(ctx, input.refId, "PAID"))) return { posted: false, reason: "no-paid" };
+  if (input.reverse && saleId && !(await posSaleEntryPosted(ctx, saleId, "COMMISSION"))) return { posted: false, reason: "no-commission" };
+  await ensureAccounting(ctx); // R7: ผัง/การจับคู่คีย์ครบก่อนโพสต์ — ห้ามตก 9999 SUSPENSE
+  const { vatRegistered } = await vatConfigOf(link.systemId);
+  // fix round 1 (รีวิว F3) ▸ PLATFORM: ผู้ติดต่อ = ผู้ติดต่อบนบรรทัด 1100 ของ PAID ของบิล (ช่องทางเปลี่ยนชื่อทีหลังก็ยังเป็นรายเดิม) · ไม่มี = ชื่อช่องทาง ◂
+  const paidContact = input.payout === "PLATFORM" && saleId ? await posSalePaidContact(ctx, saleId, CHANNEL_GL_KEY["PLATFORM_RECEIVABLE"]) : null;
+  const contactId = paidContact ?? (await platformContact(ctx, input.channelName));
+  const name = (input.channelName ?? "").trim() || "ช่องทางขาย";
+  const no = (input.receiptNo ?? "").trim();
+  const memo = input.reverse ? `คืนค่าคอมฯ ช่องทาง ${name}${no ? ` · ใบคืน ${no}` : ""}` : `ค่าคอมฯ ช่องทาง ${name}${no ? ` · บิล ${no}` : ""}`;
+  const res = await postExternalChannelCommission(ctx, {
+    refId: input.refId,
+    date: input.occurredAt,
+    commissionSatang: c,
+    commissionVatSatang: v,
+    foldVat: !vatRegistered,
+    keys: {
+      expense: CHANNEL_GL_KEY["PLATFORM_COMMISSION"],
+      vatInput: CHANNEL_GL_KEY["CHANNEL_COMMISSION_VAT"],
+      counter: input.payout === "PLATFORM" ? CHANNEL_GL_KEY["PLATFORM_RECEIVABLE"] : CHANNEL_GL_KEY["CHANNEL_COMMISSION_PAYABLE"],
+    },
+    contactId,
+    memo,
+    reverse: !!input.reverse,
+  });
+  return "entryId" in res ? { posted: true, entryId: res.entryId } : { posted: false, reason: "already" };
 }
 
 /**

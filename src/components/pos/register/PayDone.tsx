@@ -28,7 +28,7 @@ import { RegisterDialog, SheetGrab } from "./RegisterDialog";
 import { RegisterIcon } from "./RegisterIcon";
 
 const AUTO_SECONDS = 5;
-const PAY_LABEL: Record<RegisterPayType, string> = { CASH: "pay.cash", PROMPTPAY: "pay.promptpay", TRANSFER: "pay.transfer", CARD: "pay.card" };
+const PAY_LABEL: Record<RegisterPayType, string> = { CASH: "pay.cash", PROMPTPAY: "pay.promptpay", TRANSFER: "pay.transfer", CARD: "pay.card", PLATFORM: "pay.platform" }; // POS P2.1 ▸ PLATFORM ◂
 
 type Props = {
   receiptNo: string | null;

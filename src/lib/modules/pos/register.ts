@@ -425,6 +425,8 @@ import { posPaymentSettings, type PosPaymentSettings } from "./payment-settings"
 // POS P1.9 ▸ กะของเครื่อง (S5/S6/S15) ◂
 import { isShiftDeviceId, registerShiftStatus, resolveRegisterShift } from "./shift";
 import { posDeviceRevoked, touchPosDevice } from "./device"; // POS P1.10 ▸ การ์ดเครื่องที่ถูกเพิกถอน + heartbeat ◂
+import { resolveSaleChannel } from "./channel"; // POS P2.1 ▸ R10 ช่องทางของตะกร้า ◂
+import { CHANNEL_REF_MAX } from "./channel-shared"; // POS P2.1 ◂
 // POS P1.15 ▸ โทเคนผู้ขาย (R3) · PIN ผู้จัดการ (R4) · สายอนุมัติส่วนลดเกินสิทธิ์ (R5/R6) ◂
 import { createHash } from "node:crypto";
 import { writeAudit } from "@/lib/core/audit";
@@ -476,6 +478,7 @@ import {
   type RegisterQuoteLineOption,
   type RegisterQuoteResult,
   type RegisterQuoteTotals,
+  type RegisterQuoteChannel,
   type RegisterMemberConflict,
   type RegisterRefusal,
   type RegisterRefusalCode,
@@ -565,6 +568,13 @@ const REG_MESSAGE: Record<RegisterRefusalCode, string> = {
   POINTS_CAPPED: "ใช้แต้มเกินเพดานต่อบิลของร้าน — ปรับจำนวนแต้มตามที่ระบบแนะนำ",
   BENEFITS_EXCEED_TOTAL: "ส่วนลดรวมมากกว่ายอดบิล — ลดส่วนลดหรือสิทธิ์ที่เลือกก่อน",
   MEMBER_RIGHTS_CHANGED: "สิทธิ์ของสมาชิกเพิ่งเปลี่ยน (อาจถูกใช้กับบิลอื่น) — ตรวจยอดใหม่แล้วชำระอีกครั้ง ยังไม่ได้เก็บเงิน",
+  // POS P2.1 ▸ ช่องทางขาย (R13) ◂
+  CHANNEL_INVALID: "ช่องทางขายนี้ใช้ไม่ได้ (ไม่พบ ปิดอยู่ เก็บแล้ว หรือเป็นของสาขาอื่น) — ยังไม่ได้บันทึกบิล",
+  CHANNEL_PAY_MISMATCH: "วิธีชำระไม่ตรงกับช่องทางขาย — ออเดอร์แพลตฟอร์มต้องชำระด้วย \"แพลตฟอร์ม\" เต็มยอด ช่องทางอื่นใช้ \"แพลตฟอร์ม\" ไม่ได้",
+  CHANNEL_NOT_FOUND: "ไม่พบช่องทางขายนี้ในสาขานี้",
+  CHANNEL_CODE_TAKEN: "รหัสช่องทางนี้มีอยู่แล้วในสาขานี้",
+  CHANNEL_BUILTIN_LOCKED: "ช่องทางพื้นฐานแก้ส่วนนี้ไม่ได้",
+  CHANNEL_LIMIT: "สาขานี้มีช่องทางขายครบ 30 ช่องทางแล้ว",
 };
 const REG_ROLE_LABEL: Record<RegisterRole, string> = { OWNER: "เจ้าของร้าน", MANAGER: "ผู้จัดการ", STAFF: "แคชเชียร์" };
 
@@ -1006,10 +1016,11 @@ type RegParsedCart = {
   memberId: string | null;
   couponCode?: string | null;
   memberChoices?: RegMemberChoices | null;
+  channelId?: string | null; // POS P2.1 ▸ R10 ◂
 };
 
 // POS P1.12 ▸ R3 R6: couponCode + memberChoices (ยก Q12) — บิลพักเก็บ couponCode แต่ทิ้ง memberChoices (registerCanonicalCart · มติ 12) ◂
-const REG_QUOTE_KEYS: ReadonlySet<string> = new Set(["lines", "billDiscount", "memberId", "couponCode", "memberChoices"]);
+const REG_QUOTE_KEYS: ReadonlySet<string> = new Set(["lines", "billDiscount", "memberId", "couponCode", "memberChoices", "channelId"]); // POS P2.1 ▸ + channelId ◂
 /** POS P1.12: คีย์ของ memberChoices (ตรงตัว · giftCard/voucherIds/อื่น = VALIDATION · มติ Q1 CD3) */
 const REG_CHOICE_KEYS: ReadonlySet<string> = new Set(["voucherId", "points"]);
 /** POS P1.12: เพดานแต้มที่รับในคำขอ (กันเลขล้น — เกินยอดคงเหลือจริง = POINTS_INSUFFICIENT) */
@@ -1018,6 +1029,7 @@ const REG_SUBMIT_KEYS: ReadonlySet<string> = new Set([
   ...REG_QUOTE_KEYS, "idempotencyKey", "payMethods", "cashReceivedSatang", "expectedGrandTotalSatang", "tipSatang", "note",
   "staffToken", "managerPin", "managerUserId", "heldCartId", // POS P1.15 ▸ R3 R4 R6 ◂
   "taxInvoice", "rememberBuyer", // POS P1.13 ▸ R2 R6 ◂
+  "channelRef", // POS P2.1 ▸ R10 ◂
 ]);
 const REG_PAY_KEYS: ReadonlySet<string> = new Set(["type", "amountSatang", "reference"]);
 const REG_LINE_KEYS: ReadonlySet<string> = new Set(["productId", "name", "qty", "unitPriceSatang", "openPrice", "discount", "note", "options", "weighedBarcode", "weightGrams"]);
@@ -1090,6 +1102,12 @@ function regParseCart(raw: unknown, allowed: ReadonlySet<string>): RegParsedCart
     memberId = raw.memberId;
   }
   if (memberChoices && !memberId) return regRefuse("VALIDATION", "แนบสมาชิกก่อนเลือกใช้สิทธิ์");
+  // POS P2.1 ▸ R10: ช่องทาง (ผิดรูป = VALIDATION · ไม่พบ/สาขาอื่น/เก็บแล้ว/ปิด = CHANNEL_INVALID ตอนคิดราคา) ◂
+  let channelId: string | null = null;
+  if (raw.channelId !== undefined && raw.channelId !== null) {
+    if (!regIsId(raw.channelId)) return regRefuse("VALIDATION", "รหัสช่องทางขายไม่ถูกต้อง");
+    channelId = raw.channelId;
+  }
   const lines: RegParsedLine[] = [];
   for (let i = 0; i < raw.lines.length; i++) {
     const l: unknown = raw.lines[i];
@@ -1152,7 +1170,7 @@ function regParseCart(raw: unknown, allowed: ReadonlySet<string>): RegParsedCart
       lines.push({ kind: "custom", name, qty: l.qty, unitPriceSatang: l.unitPriceSatang, discount, note });
     }
   }
-  return { lines, billDiscount, memberId, couponCode, memberChoices };
+  return { lines, billDiscount, memberId, couponCode, memberChoices, channelId };
 }
 
 /**
@@ -1230,6 +1248,8 @@ type RegPriced = {
   coupon?: { systemId: string; code: string; discountSatang: number } | null;
   member?: RegisterMemberQuote | null;
   conflicts?: RegisterMemberConflict[];
+  /** POS P2.1 ▸ R10: ช่องทางที่แก้แล้ว (display = null) ◂ */
+  channel?: RegisterQuoteChannel | null;
 };
 
 /**
@@ -1251,6 +1271,13 @@ async function regPrice(
   const needOverride = cart.lines.findIndex((l) => l.kind === "custom" || l.openPrice !== null || l.weightGrams !== null);
   if (!opts.display && needOverride >= 0 && !evaluate(s.actor, { module: "pos", action: "pos.sale.priceOverride", unitId: s.unitId })) {
     return regRefuse("PERMISSION_DENIED", "ต้องมีสิทธิ์ตั้งราคาเอง — ให้ผู้จัดการทำรายการนี้", needOverride);
+  }
+  // POS P2.1 ▸ R10: ช่องทางของตะกร้า (ไม่ส่ง = STORE ของสาขา) — ตัวแก้เดียวกับ createSale · display (แผงสิทธิ์) ไม่แก้ ◂
+  let channel: RegisterQuoteChannel | null = null;
+  if (!opts.display) {
+    const rc = await resolveSaleChannel(db, { tenantId: s.tenantId, systemId: s.systemId, unitId: s.unitId }, { channelId: cart.channelId ?? null, sourceModule: "POS" });
+    if (!rc.ok) return regRefuse("CHANNEL_INVALID");
+    channel = { id: rc.channel.id, code: rc.channel.code, name: rc.channel.name, payout: rc.channel.payout };
   }
   // POS P1.12 ▸ R1: สมาชิกของบิล = ร้านเดียวกัน + ระบบสมาชิกของสาขา + ยังใช้งาน (เดิมตรวจแค่ร้าน) — ระบบอื่น/รวมแล้ว/ลบแล้ว/ไม่มีจริง =
   //   MEMBER_NOT_FOUND (404-not-403) · ระงับ = MEMBER_SUSPENDED · สาขาไม่มีระบบสมาชิก = MEMBER_SYSTEM_MISSING ◂
@@ -1330,6 +1357,7 @@ async function regPrice(
       }
     } else {
       if (l.weighedBarcode !== null || l.weightGrams !== null) return regRefuse("VALIDATION", "สินค้านี้ไม่ได้ขายตามน้ำหนัก", i);
+      // P2.2 ▸ channel price here ◂ (ราคาตามช่องทาง — P2.1 ส่ง channel เข้ามาแล้วแต่ยังไม่ใช้ · ราคาเดิมทุกสตางค์)
       const unit0 = l.openPrice ?? v.priceSatang;
       if (unit0 === null) return regRefuse("PRICE_NOT_SET", undefined, i);
       base = unit0;
@@ -1348,7 +1376,9 @@ async function regPrice(
   const vat = await regVat(db, s.tenantId, s.systemId);
   // P1.6 O19: ค่าบริการตามค่าตั้งของระบบ POS (ปิด = 0 · ยอดเท่าวันนี้)
   const settings = pay ?? (await regPaySettings(db, s));
-  const serviceChargeBp = settings.serviceCharge.enabled ? settings.serviceCharge.rateBp : 0;
+  // POS P2.1 ▸ CD8: ค่าบริการเฉพาะ STORE/QR_TABLE (ออเดอร์แพลตฟอร์มราคาตามแพลตฟอร์ม · ยอดต้องเท่าที่แพลตฟอร์มเก็บ) ◂
+  const serviceChargeOn = channel === null || channel.code === "STORE" || channel.code === "QR_TABLE";
+  const serviceChargeBp = settings.serviceCharge.enabled && serviceChargeOn ? settings.serviceCharge.rateBp : 0;
   const maxDiscountBp = maxBp !== undefined ? maxBp : regMaxDiscountBp(s.actor, await regDiscountCaps(db, s));
   const r0 = priceCart({ lines: priceLines, billDiscount: cart.billDiscount, vat, maxDiscountBp, serviceChargeBp });
   if (!r0.ok) return regRefuse(r0.code, r0.code === "DISCOUNT_EXCEEDS_LIMIT" || r0.code === "TOO_MANY_LINES" ? undefined : r0.message, r0.lineIndex);
@@ -1419,9 +1449,10 @@ async function regPrice(
     pointsToEarn: member?.pointsToEarn ?? 0,
     stampsToAdd: member?.stampsToAdd ?? [],
     memberConflicts: conflicts,
+    ...(channel ? { channel } : {}), // POS P2.1 ▸ R10 ◂
   };
   const resolved = r.lines.map((x, i) => ({ ...meta[i]!, unitPriceSatang: x.unitPriceSatang, discountSatang: x.discountSatang }));
-  return { quote, resolved, coupon, member, conflicts };
+  return { quote, resolved, coupon, member, conflicts, channel };
 }
 
 /** P1.6: ค่าตั้งการชำระเงินของระบบ POS นี้ (อ่านไม่ได้ = ปิดทั้งคู่ — ยอดเท่าวันนี้ ไม่เดาค่าบริการ) */
@@ -1559,6 +1590,7 @@ export function registerCanonicalCart(raw: unknown): RegisterQuoteInput | Regist
     ...(c.billDiscount ? { billDiscount: { ...c.billDiscount } } : {}),
     ...(c.memberId ? { memberId: c.memberId } : {}),
     ...(c.couponCode ? { couponCode: c.couponCode } : {}),
+    ...(c.channelId ? { channelId: c.channelId } : {}), // POS P2.1 ▸ R10 บิลพักเก็บช่องทาง ◂
   };
 }
 
@@ -1610,6 +1642,8 @@ type RegParsedSubmit = {
   /** POS P1.13: ผู้ซื้อใบกำกับเต็มรูป (แกะแล้ว · null = ไม่ขอ) · จำผู้ซื้อไว้กับสมาชิกของบิล */
   taxInvoice: TaxInvoiceBuyer | null;
   rememberBuyer: boolean;
+  /** POS P2.1 ▸ R10: เลขออเดอร์แพลตฟอร์ม (แกะแล้ว · null = ไม่มี) ◂ */
+  channelRef: string | null;
 };
 
 /** POS P1.15: สตริงเสริม — ไม่ส่ง/null = null · สตริง 1…max ตัวที่สะอาด = ค่า · อื่น = undefined (ผู้เรียกปฏิเสธ) */
@@ -1646,7 +1680,7 @@ function regParseSubmit(raw: unknown): RegParsedSubmit | RegisterRefusal {
   const payMethods: RegParsedSubmit["payMethods"] = [];
   for (const p of pmRaw as unknown[]) {
     if (!regIsRecord(p) || !regOnlyKeys(p, REG_PAY_KEYS)) return regRefuse("VALIDATION", "วิธีชำระเงินไม่ถูกต้อง");
-    if (!(REGISTER_PAY_TYPES as readonly unknown[]).includes(p.type)) return regRefuse("VALIDATION", "หน้าขายนี้รับเงินสด พร้อมเพย์ โอน และบัตรเท่านั้น");
+    if (!(REGISTER_PAY_TYPES as readonly unknown[]).includes(p.type)) return regRefuse("VALIDATION", "หน้าขายนี้รับเงินสด พร้อมเพย์ โอน บัตร และแพลตฟอร์ม (เฉพาะออเดอร์แพลตฟอร์ม) เท่านั้น");
     // B1.1: แต่ละรายการต้อง ≥ 1 สตางค์ (รายการยอด 0 = VALIDATION — บิลยอด 0 ส่งรายการว่าง)
     if (!regIsMoney(p.amountSatang) || p.amountSatang < 1) return regRefuse("VALIDATION", "จำนวนเงินของแต่ละวิธีต้องเป็นจำนวนเต็มสตางค์ตั้งแต่ 1");
     // เงินสดได้รายการเดียว (เงินที่รับ/ทอนผูกกับแถวเงินสดแถวเดียว · มติ §8 ข้อ 2)
@@ -1697,10 +1731,17 @@ function regParseSubmit(raw: unknown): RegParsedSubmit | RegisterRefusal {
   }
   if (raw.rememberBuyer !== undefined && raw.rememberBuyer !== null && typeof raw.rememberBuyer !== "boolean") return regRefuse("VALIDATION", "ค่าจำผู้ซื้อไม่ถูกต้อง");
   const rememberBuyer = raw.rememberBuyer === true;
+  // POS P2.1 ▸ R10: เลขออเดอร์แพลตฟอร์ม (ตัดช่องว่าง · ≤ 40 · ว่าง = null) ◂
+  let channelRef: string | null = null;
+  if (raw.channelRef !== undefined && raw.channelRef !== null) {
+    if (typeof raw.channelRef !== "string" || [...raw.channelRef.trim()].length > CHANNEL_REF_MAX || !regCleanText(raw.channelRef)) return regRefuse("VALIDATION", `เลขออเดอร์แพลตฟอร์มยาวได้ไม่เกิน ${CHANNEL_REF_MAX} ตัวอักษร`);
+    channelRef = raw.channelRef.trim() || null;
+  }
   const rawCart: Record<string, unknown> = { lines: raw.lines };
   if (raw.billDiscount !== undefined && raw.billDiscount !== null) rawCart.billDiscount = raw.billDiscount;
   if (raw.memberId !== undefined && raw.memberId !== null) rawCart.memberId = raw.memberId;
   if (cart.couponCode) rawCart.couponCode = cart.couponCode; // POS P1.12 ◂
+  if (cart.channelId) rawCart.channelId = cart.channelId; // POS P2.1 ◂
   return {
     cart,
     idempotencyKey: REG_KEY_PREFIX + raw.idempotencyKey,
@@ -1716,6 +1757,7 @@ function regParseSubmit(raw: unknown): RegParsedSubmit | RegisterRefusal {
     rawCart,
     taxInvoice,
     rememberBuyer,
+    channelRef, // POS P2.1 ◂
   };
 }
 
@@ -1861,7 +1903,9 @@ const regChange = (req: RegParsedSubmit): number => {
 function regDuplicate(s: RegScope, req: RegParsedSubmit, sale: RegSaleRow, duplicated: boolean): RegisterSubmitResult {
   // POS P1.8 F7 ▸ คีย์นี้เป็นของใบคืน (REFUND) = ชนเปล่า ๆ — ไม่ตอบใบคืนเป็นบิลขาย และไม่พกรายละเอียดของมัน ◂
   if (sale.docType === "REFUND") return regRefuse("IDEMPOTENCY_CONFLICT");
-  if (sale.status !== "PAID" || !regSameSubmission(s, req, sale)) {
+  // POS P2.1 ▸ CD3: ช่องทางต่าง = คำขอต่าง (ไม่ส่ง = หน้าร้าน · บิลเดิมไม่มีช่องทาง = หน้าร้าน) ◂
+  const channelDiffers = req.cart.channelId ? sale.channelId !== req.cart.channelId : !!sale.channelCode && sale.channelCode !== "STORE";
+  if (sale.status !== "PAID" || channelDiffers || !regSameSubmission(s, req, sale)) {
     // R4 K2: รายละเอียดบิล (saleId · receiptNo · สถานะ) เฉพาะบิล POS ของระบบ+สาขาเดียวกับคำขอ (ผู้ขายผ่าน regScope ของสาขานี้แล้ว = มองเห็นได้)
     //   อย่างอื่น (สาขาอื่น · โมดูลอื่นที่ถือคีย์ reg2:… ผ่านหน้าขายเดิม) = CONFLICT เปล่า ไม่มีฟิลด์บิลเลย
     if (sale.sourceModule !== "POS" || sale.unitId !== s.unitId || sale.systemId !== s.systemId) return regRefuse("IDEMPOTENCY_CONFLICT");
@@ -1931,6 +1975,13 @@ export async function submitRegisterSale(ctx: RegisterCtx, actor: RegisterActor,
     }
     if (isRegRefusal(p)) return p;
     const q = p.quote;
+    // POS P2.1 ▸ R5 R10: วิธีชำระตามช่องทาง — payout PLATFORM = "แพลตฟอร์ม" แถวเดียว ไม่มีทิป/เงินที่รับ · ช่องทางอื่นใช้ PLATFORM ไม่ได้ (ก่อนเขียนอะไร) ◂
+    {
+      const plat = req.payMethods.filter((x) => x.type === "PLATFORM").length;
+      const platformChannel = p.channel?.payout === "PLATFORM";
+      const okPlatform = req.payMethods.length === 1 && plat === 1 && req.tipSatang === 0 && !req.cashReceivedSatang;
+      if (platformChannel ? !okPlatform : plat > 0) return regRefuse("CHANNEL_PAY_MISMATCH");
+    }
     // POS P1.12 ▸ R7: โค้ดคูปอง/สิทธิ์ที่เลือกแต่ใช้ไม่ได้ = ปฏิเสธด้วยรหัสของมันก่อนเขียนอะไร (คูปอง → ว่อชเชอร์ → แต้ม) ·
     //   แต้มที่กระเป๋าตัดให้พอดีเพดาน ≠ แต้มที่ขอ = POINTS_CAPPED {allowedPoints} (ห้ามตัดแต้มต่างจากที่แคชเชียร์เห็น) ◂
     const bad = p.conflicts?.[0];
@@ -1966,6 +2017,8 @@ export async function submitRegisterSale(ctx: RegisterCtx, actor: RegisterActor,
       ...(p.coupon ? { couponSystemId: p.coupon.systemId, couponCode: p.coupon.code } : {}),
       sourceModule: "POS",
       idempotencyKey: req.idempotencyKey,
+      ...(req.cart.channelId ? { channelId: req.cart.channelId } : {}), // POS P2.1 ▸ R10 (ไม่ส่ง = createSale เลือก STORE เอง) ◂
+      ...(req.channelRef ? { channelRef: req.channelRef } : {}),
       lines: p.resolved.map((l) => ({
         name: l.name,
         qty: l.qty,

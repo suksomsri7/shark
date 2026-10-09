@@ -162,12 +162,14 @@ export const POS_MODELS = {
   posPaymentIntent: { model: "PosPaymentIntent", file: "pos.prisma", role: "ใบขอรับเงิน PromptPay/Beam/บัตร (P1.7 · PENDING→PAID→CONSUMED · id pi_…)" },
   posStaffPin: { model: "PosStaffPin", file: "pos.prisma", role: "PIN พนักงานต่อสาขา (P1.15 · scrypt salt:hash · ล็อก 5 ครั้ง/15 นาที)" },
   posApprovalPayload: { model: "PosApprovalPayload", file: "pos.prisma", role: "snapshot คำขออนุมัติ POS_VOID/POS_REFUND/POS_DISCOUNT_OVER (P1.15 · requestId = ApprovalRequest.id)" },
+  // POS P2.1 ▸ ช่องทางขาย (migration 20261203100000_pos_p21_sales_channel) — ผู้เขียนเดียว pos/channel.ts ◂
+  salesChannel: { model: "SalesChannel", file: "pos.prisma", role: "ช่องทางขายต่อสาขา (P2.1 · BUILTIN STORE/QR_TABLE/WEB/CHAT · EXTERNAL · CUSTOM · ค่าคอมฯ สำเนาลงบิล)" },
 } as const;
 export type PosModelKey = keyof typeof POS_MODELS;
 
 /** ตารางที่แผน POS จะสร้าง (POS-MIGRATION-PLAN §1) — **ยังไม่มี** ณ P0.1 · ใบที่สร้างย้ายเข้า POS_MODELS */
 export const POS_FUTURE_MODELS = [
-  "PosVariant", "SalesChannel", "PosProductChannelPrice", // P1.10 ย้าย PosDevice ไป POS_MODELS แล้ว · P1.1a ย้าย PosProduct/PosCategory/RecipeLine/PosProductOptionGroup ไป POS_MODELS แล้ว
+  "PosVariant", "PosProductChannelPrice", // POS P2.1 ▸ ย้าย SalesChannel ไป POS_MODELS แล้ว ◂ · P1.10 ย้าย PosDevice ไป POS_MODELS แล้ว · P1.1a ย้าย PosProduct/PosCategory/RecipeLine/PosProductOptionGroup ไป POS_MODELS แล้ว
   "ExternalOrder", "ExternalOrderEvent", "PosShift", "PosReceiptToken", // P1.7 ย้าย PosPaymentIntent ไป POS_MODELS แล้ว
   "PosStockCount", "PosStockCountLine", // P1.8 ย้าย PosDocCounter ไป POS_MODELS แล้ว · P1.15 ย้าย PosStaffPin ไป POS_MODELS แล้ว
 ] as const;

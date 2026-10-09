@@ -212,6 +212,7 @@
       "methodsTitle": "Method for the remaining amount",
       "transfer": "Bank transfer",
       "card": "Credit/debit card",
+      "platform": "Platform",
       "promptpayHint": "Scan QR",
       "transferHint": "Enter a reference",
       "cardHint": "EDC terminal",
@@ -355,7 +356,13 @@
       "pointsInsufficient": "The member does not have enough points",
       "pointsCapped": "Points exceed the per-bill limit — adjusted to the allowed amount",
       "benefitsExceedTotal": "Total discounts exceed the bill — reduce the discount or benefits first",
-      "memberRightsChanged": "Member benefits just changed — check the total and pay again (nothing was charged)"
+      "memberRightsChanged": "Member benefits just changed — check the total and pay again (nothing was charged)",
+      "channelInvalid": "This sales channel can't be used (not found, inactive or from another branch) — pick another channel",
+      "channelPayMismatch": "Payment doesn't match the sales channel — platform orders are paid in full by \"Platform\"; other channels can't use \"Platform\"",
+      "channelNotFound": "This sales channel was not found in this branch",
+      "channelCodeTaken": "This channel code already exists in this branch",
+      "channelBuiltinLocked": "This part of a built-in channel can't be changed (Store locks commission, payout and deactivation)",
+      "channelLimit": "This branch already has 30 sales channels"
     },
     "held": {
       "title": "Held bills",
@@ -628,7 +635,8 @@
       "PROMPTPAY": "PromptPay",
       "TRANSFER": "Transfer",
       "DEPOSIT": "Deposit",
-      "ROOM_CHARGE": "Room charge"
+      "ROOM_CHARGE": "Room charge",
+      "PLATFORM": "Platform · awaiting payout"
     },
     "recount": {
       "title": "Recount (shift closed by system)",
@@ -1233,6 +1241,7 @@
         "DEPOSIT": "Deposit",
         "ROOM_CHARGE": "Room charge",
         "CARD": "Card",
+        "PLATFORM": "Paid via platform",
         "OTHER": "Other"
       },
       "footer": "Sent by SHARK · no other personal data on this page",
@@ -1800,5 +1809,63 @@
       "pointsValue": "<b>{points} pts</b> (total {total})",
       "expectedNote": "Expected — the point system records it within seconds"
     }
+  },
+  "channel": {
+    "title": "External sales channels",
+    "subtitle": "Orders arrive in \"Online orders\" · prices follow \"Channel prices\"",
+    "perUnitNote": "Set per branch",
+    "add": "+ Add another channel",
+    "connect": "Connect",
+    "edit": "Edit channel",
+    "archive": "Archive this channel",
+    "archived": "Archived",
+    "locked": "Built-in channel",
+    "status": {
+      "active": "Active",
+      "inactive": "Off"
+    },
+    "kind": {
+      "BUILTIN": "Built-in",
+      "EXTERNAL": "Platform",
+      "CUSTOM": "Custom"
+    },
+    "builtin": {
+      "STORE": "Store",
+      "QR_TABLE": "QR table",
+      "WEB": "SHARK Shop website",
+      "CHAT": "Chat"
+    },
+    "field": {
+      "name": "Channel name",
+      "code": "Channel code",
+      "payout": "Payout",
+      "commissionBp": "Commission (%)",
+      "commissionFixed": "Fixed commission per order (฿)",
+      "commissionVat": "VAT on commission",
+      "active": "Active",
+      "ref": "Platform order no."
+    },
+    "payout": {
+      "PLATFORM": "Platform collects and pays the shop",
+      "DIRECT": "Shop collects directly"
+    },
+    "summary": {
+      "commission": "Commission {rate} · {payout}",
+      "none": "No commission",
+      "platformPays": "platform pays out",
+      "directPays": "shop collects"
+    },
+    "example": "Total {gross} → commission {commission} · net {net}",
+    "commissionBlock": {
+      "gross": "Total",
+      "commission": "Platform commission",
+      "net": "Net received",
+      "note": "Paid via platform → recorded as payment \"Platform\" and the commission is posted automatically"
+    },
+    "label": "Channel",
+    "all": "All channels",
+    "empty": "No external sales channels yet",
+    "error": "Couldn't load sales channels — try again",
+    "saved": "Channel saved"
   }
 }

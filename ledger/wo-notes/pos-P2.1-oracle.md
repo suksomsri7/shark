@@ -3,7 +3,7 @@
 Oracle writer · VPS (account B) · 9 Oct 2026 · tree `/root/projects/shark-pos-b` (lane 3) · branch `wip/pos-p2.1-oracle` from `origin/session/pos` 502cf9fe (P1.12 S merged at 1bfa0ff9).
 Contract: `ledger/pos-briefs/pos-brief-P2.1.md` §2 R1–R13, §3, §4, §5 CD1–CD10, **§9 controller rulings (binding)**. The U half (mockups 09/10/12, settings panel) is not tested here.
 
-53 checks · families ST (5) + S8 static · B pure (5) · C channels (7) · S createSale (7) · G GL (9) · R reversal/refund (6) · P register (4) · Q readers (6) · E1 · Z (2).
+53 checks (54 after the fix-round-1 ORACLE-EDIT — R7, see the end) · families ST (5) + S8 static · B pure (5) · C channels (7) · S createSale (7) · G GL (9) · R reversal/refund (6 → 7) · P register (4) · Q readers (6) · E1 · Z (2).
 Modes: `--list` (no DB) · `--no-db` (ST1–ST5, S8, B1–B5; never loads prisma) · DB run SKIPs (exit 0 + reasons) until the P2.1 objects exist · `QC_FORCE=1` runs anyway (red by reason, no crash).
 Fixtures (module functions; prisma only for tenant/unit/link rows, the payment profile, two legacy bills and cleanup): temp tenant `posqc-p21-<rand>` — POS-A (VAT book, ABB) units **A, A2, F**; POS-B (unlinked) unit **B**; POS-C (non-VAT book, service charge 10 % via `updatePosPaymentSettings`) unit **C**; second temp tenant `posqc-p21-<rand>-t2` unit **X**. Device + open shift on A. Actors use the seed's real user ids (`posqc-coffee-user-owner` / `-cashier`) as OWNER / MANAGER / STAFF variants. Both tenants are wiped in `finally` (every table with `tenantId`), residue counted (Z1); rows of this run outside the temp tenants = 0 (Z2).
 
@@ -86,3 +86,9 @@ P2.1-E1 - · P2.1-Z1 - · P2.1-Z2 -
 X-coverage: S=6 P=5 X1=6 -=14 X3=2 X5=7 X4=11 X2=2
 ```
 (full Thai titles: `pnpm exec tsx scripts/qc-pos-p2.1.mts --list`)
+
+## ORACLE-EDIT — fix round 1 (reviewer F1 · controller ruling "ORACLE-EDIT R6") · 9 Oct 2026 · builder S (account B)
+- Commit `5b1f44d2` `test(pos P2.1): ORACLE-EDIT R6 — commission self-heal before COMMISSION_REFUNDED (reviewer F1)` — **own commit, oracle only**.
+- New check id **`P2.1-R7`** (X4) — the id `R6` was already taken by the AGENT/DIRECT refund check, so the ruling's "R6" lands as R7. Count **53 → 54** (R family 6 → 7 · X4 11 → 12).
+- Scenario (temp tenant only): LINEMAN ฿420 PLATFORM bill on unit A → drain (PAID + COMMISSION posted) → the test deletes that bill's `PosSale#<id>#COMMISSION` entry + its lines (`tenantId = T`, one entry id) to simulate "COMMISSION step threw after PAID, not yet retried" → full PLATFORM refund → drain. Expected: `#COMMISSION` ×1 (shape `1100:0/12600 6500:12600/0`) and `#COMMISSION_REFUNDED` ×1; every 1100 line of bill + refund carries a contact, one contact, nets to 0; 6500 nets to 0; replaying `consumers[pos.sale.refunded]` + `consumers[pos.sale.paid]` ×2 + drain adds no entry.
+- Red before the consumer change (head 5b1f44d2, forced, `scratchpad/p21-fix/runs/r7-red-before.log`): exit 1 · **53/54** · R7 actual `COMMISSION 0 · COMMISSION_REFUNDED 1 · 1100 per contact {LINE MAN: +12600} · 6500 −12600` = exactly the reviewer's phantom receivable. Green after `bb3f96f1` (54/54).

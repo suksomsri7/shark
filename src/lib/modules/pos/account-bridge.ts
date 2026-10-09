@@ -4,10 +4,11 @@
 // WO-0002: map ประเภทการชำระของ POS → ช่องทางเงินฝั่งบัญชี แล้วส่งให้ facade
 
 import type { PosPayType, Prisma } from "@prisma/client";
-import { applyExternalRefund, applyExternalSale, reverseExternalSale } from "@/lib/modules/account";
+import { applyExternalChannelCommission, applyExternalRefund, applyExternalSale, reverseExternalSale } from "@/lib/modules/account";
 import { emitOutbox } from "@/lib/core/outbox";
 import { logOps } from "@/lib/core/ops";
 import { prisma } from "./db";
+import { saleChannelName } from "./channel"; // POS P2.1 ◂
 import { allocateBillDiscount } from "./refund-math";
 import { snapshotBuyer } from "./tax-invoice-shared";
 
@@ -15,8 +16,11 @@ import { snapshotBuyer } from "./tax-invoice-shared";
 //   CASH → เงินสด (1000) · PROMPTPAY/TRANSFER → ธนาคาร (1010)
 //   DEPOSIT → ลูกค้าใช้เงินมัดจำที่วางไว้ → Dr 2110 เงินมัดจำรับ (ลดหนี้สิน)
 //   ROOM_CHARGE → ลงบิลห้องยังไม่จ่าย → Dr 1100 ลูกหนี้
-function channelOf(type: PosPayType): "CASH" | "TRANSFER" | "PROMPTPAY" | "DEPOSIT" | "ROOM_CHARGE" {
+//   POS P2.1: PLATFORM → แพลตฟอร์มเก็บเงินแทน → Dr ลูกหนี้แพลตฟอร์ม (ห้ามตกไป TRANSFER = ธนาคาร)
+function channelOf(type: PosPayType): "CASH" | "TRANSFER" | "PROMPTPAY" | "DEPOSIT" | "ROOM_CHARGE" | "PLATFORM" {
   switch (type) {
+    case "PLATFORM":
+      return "PLATFORM";
     case "CASH":
       return "CASH";
     case "PROMPTPAY":
@@ -44,6 +48,12 @@ type SaleForBridge = {
   /** POS P1.13 ▸ สำเนาผู้ซื้อใบกำกับเต็มรูป (PosSale.taxInvoice) + สาขา (event) — ไม่มี = เส้น ABB เดิม ◂ */
   taxInvoice?: Prisma.JsonValue | null;
   unitId?: string;
+  /** POS P2.1 ▸ สำเนาช่องทาง + ค่าคอมฯ ของบิล (แถว PosSale) — ไม่มี/0 = ไม่มี JV ค่าคอมฯ ◂ */
+  channelId?: string | null;
+  channelCode?: string | null;
+  channelPayout?: "PLATFORM" | "DIRECT" | null;
+  channelCommissionSatang?: number;
+  channelCommissionVatSatang?: number;
 };
 
 /** บรรทัดบิลที่ consumer อ่านมาจาก PosSaleLine (WO 4.2) */
@@ -121,11 +131,17 @@ export async function bridgePosSalePaid(
         }))
       : undefined;
 
+  // POS P2.1 ▸ ชื่อช่องทาง = ผู้ติดต่อของลูกหนี้แพลตฟอร์ม + memo ค่าคอมฯ (อ่านเฉพาะบิลที่มี PLATFORM/ค่าคอมฯ — บิลอื่นไม่มี query เพิ่ม) ◂
+  const commission = Math.max(0, sale.channelCommissionSatang ?? 0);
+  const commissionVat = Math.max(0, sale.channelCommissionVatSatang ?? 0);
+  const needsChannel = pays.some((p) => p.type === "PLATFORM") || (commission + commissionVat > 0 && !!sale.channelPayout);
+  const channelName = needsChannel ? await saleChannelName(prisma, sale.tenantId, sale.channelId, sale.channelCode) : null;
   const res = await applyExternalSale({
     tenantId: sale.tenantId,
     sourceSystemId: sale.systemId,
     refId: sale.id,
     occurredAt: sale.paidAt ?? sale.createdAt,
+    ...(channelName ? { channelName } : {}),
     grossSatang: gross,
     // clamp: ส่วนลดท้ายบิลอาจทำให้ยอดบริการ (ก่อนลด) มากกว่ายอดสุทธิ — กันไม่ให้เกินทั้งบิล
     serviceGrossSatang: Math.min(serviceGrossSatang, gross),
@@ -149,7 +165,46 @@ export async function bridgePosSalePaid(
   // บรรทัดถูกปฏิเสธ (ยอดไม่ตรง/ข้อมูลเพี้ยน) — เงินยังเข้า GL ตามปกติ · เตือนเป็นภาษาไทย **ห้ามมีข้อมูลลูกค้าใน log**
   if (lines && res.reason && res.reason !== "unlinked" && !res.docId)
     console.warn(`[บัญชี] บิล POS ${sale.id}: ไม่บันทึกบรรทัดสินค้าเข้าบัญชี — ${res.reason}`);
+  // POS P2.1 ▸ R7: ค่าคอมฯ ช่องทาง = JV แยก (คีย์ PosSale#<id>#COMMISSION) หลัง PAID ในขั้นเดียวกันของคิว ·
+  //   ล้ม = โยน ⇒ คิวลองใหม่ (PAID ข้ามด้วยคีย์ของตัวเอง) · ไม่ผูกสมุด = จบเงียบ (snapshot อยู่บนบิล) ◂
+  await postSaleCommission(sale, channelName);
   return res;
+}
+
+// POS P2.1 ▸ fix round 1 (รีวิว F1 F4) — ขั้นค่าคอมฯ ของบิล (ตัวเดียว · ใช้ทั้งคิวปิดบิล ตัวซ่อมของบิลที่คืนแล้ว และตัวรับคืนเงิน) ◂
+//   ไม่มีค่าคอมฯ/ไม่มี payout = ไม่มี query เลย (บิลอื่นทุกใบเหมือนเดิมทุกไบต์)
+//   F4: อ่านสถานะบิลซ้ำ 1 ครั้งก่อนลง — VOIDED = ข้าม (ตัวกลับรายการของคิว void เป็นผู้เขียนคนเดียว)
+//   F1: facade ลงเฉพาะเมื่อมี JV PAID ของบิลแล้ว · มี COMMISSION แล้ว = "already" (idempotent ต่อคีย์)
+async function postSaleCommission(sale: SaleForBridge, channelName: string | null): Promise<void> {
+  const commission = Math.max(0, sale.channelCommissionSatang ?? 0);
+  const commissionVat = Math.max(0, sale.channelCommissionVatSatang ?? 0);
+  if (commission + commissionVat <= 0 || !sale.channelPayout) return;
+  const cur = await prisma.posSale.findFirst({ where: { id: sale.id, tenantId: sale.tenantId }, select: { status: true } });
+  if (!cur || cur.status === "VOIDED") return;
+  await applyExternalChannelCommission({
+    tenantId: sale.tenantId,
+    sourceSystemId: sale.systemId,
+    refId: sale.id,
+    occurredAt: sale.paidAt ?? sale.createdAt,
+    commissionSatang: commission,
+    commissionVatSatang: commissionVat,
+    payout: sale.channelPayout,
+    channelName: channelName ?? "",
+    receiptNo: sale.receiptNo ?? null,
+  });
+}
+
+/**
+ * POS P2.1 ▸ fix round 1 (รีวิว F1) — ลง JV ค่าคอมฯ ที่ขาดของบิลที่มี JV ขาย (PAID) แล้ว ◂
+ * ผู้เรียก: ตัวรับคืนเงิน (ก่อน COMMISSION_REFUNDED) + คิวปิดบิลของบิลที่สถานะ REFUNDED แล้ว (ทางลองใหม่ซ่อมตัวเอง)
+ * idempotent ต่อ PosSale#<saleId>#COMMISSION · ไม่มี PAID = ไม่ลง · ล้ม = โยน (ผู้เรียกให้คิวลองใหม่)
+ */
+export async function bridgePosSaleCommission(sale: SaleForBridge): Promise<void> {
+  const commission = Math.max(0, sale.channelCommissionSatang ?? 0);
+  const commissionVat = Math.max(0, sale.channelCommissionVatSatang ?? 0);
+  if (commission + commissionVat <= 0 || !sale.channelPayout) return;
+  const channelName = await saleChannelName(prisma, sale.tenantId, sale.channelId, sale.channelCode);
+  await postSaleCommission(sale, channelName);
 }
 
 /**
@@ -193,6 +248,8 @@ export async function bridgePosSaleRefunded(
   lines: SaleLineForBridge[],
   payments: { type: PosPayType; amountSatang: number }[],
   serviceGrossSatang: number,
+  /** POS P2.1 ▸ ชื่อช่องทาง — แถว PLATFORM ของใบคืนลดลูกหนี้ของผู้ติดต่อนี้ (ไม่ส่ง = เดิม) ◂ */
+  channelName?: string | null,
 ): Promise<{ posted: boolean; reason?: string; docId?: string }> {
   const sc = Math.max(0, refund.serviceChargeSatang);
   const src: SaleLineForBridge[] = sc > 0 ? [...lines, { name: "ค่าบริการ", qty: 1, unitPriceSatang: sc, discountSatang: 0, lineTotalSatang: sc, itemId: null }] : lines;
@@ -208,6 +265,7 @@ export async function bridgePosSaleRefunded(
     lines: src.map((l) => ({ itemId: l.itemId, name: l.name, qty: l.qty, unitPriceSatang: l.unitPriceSatang, discountSatang: l.discountSatang })),
     docNo: refund.receiptNo,
     reason: refund.note,
+    ...(channelName ? { channelName } : {}), // POS P2.1 ◂
     // POS P1.16 ▸ R5b(a): VAT ของใบคืน (P1.8 F6 · Σ ใบคืน = VAT บิล) ไปที่ JV + ใบลดหนี้ ไม่ถอดใหม่จากยอด ◂
     ...(typeof refund.vatSatang === "number" ? { vatSatang: refund.vatSatang } : {}),
   });

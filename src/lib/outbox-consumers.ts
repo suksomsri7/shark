@@ -5,7 +5,7 @@
 import { after } from "next/server";
 import { prisma } from "@/lib/core/db";
 import { drainOutbox, type OutboxHandler } from "@/lib/core/outbox";
-import { bridgePosSalePaid, bridgePosSaleVoided } from "@/lib/modules/pos/account-bridge";
+import { bridgePosSaleCommission, bridgePosSalePaid, bridgePosSaleVoided } from "@/lib/modules/pos/account-bridge";
 // 🔴 import ตรง (ไม่ผ่าน account/index) — index อยู่ในวงจร service↔inventory↔account/index อยู่แล้ว
 //    การดึง inbox เข้าไปใน index ทำให้โมดูลบัญชีโหลดไม่ขึ้นทั้งชุด (ดูคอมเมนต์ใน account/index.ts)
 import { ingestInboxFiles as ingestInboxFilesToAccount } from "@/lib/modules/account/inbox";
@@ -137,6 +137,9 @@ const posSalePaid: OutboxHandler = async (evt) => {
     },
   });
   if (!sale) return;
+  // POS P2.1 ▸ fix round 1 (รีวิว F1): บิลถูกคืนครบแล้ว (REFUNDED) แต่ขั้นค่าคอมฯ ยังไม่ลง ⇒ ทางลองใหม่ซ่อมตัวเอง ◂
+  //   ลงเฉพาะ COMMISSION (มี PAID แล้วเท่านั้น · idempotent ต่อคีย์) — ไม่มีค่าคอมฯ = ไม่มี query · PAID ของบิลที่คืนแล้วยังเป็นงานของตัวรับคืนเงิน (F8)
+  if (sale.status === "REFUNDED" && !sale.giftCardId && sale.docType === "SALE") await bridgePosSaleCommission(sale);
   if (sale.status !== "PAID") return; // ถูก void ก่อน drain → ไม่ต้อง post (void handler จัดการ)
   // M2.6 — บิล "ขาย/เติมบัตรกำนัล" ข้ามทั้งใบ: ไม่ลงบัญชีขาย · ไม่ให้แต้ม · ไม่นับสแตมป์/ที่มา
   // 🔴 ขายบัตรกำนัลยัง**ไม่ใช่รายได้** (เป็นเงินรับล่วงหน้า หนี้สิน 2110) และยัง**ไม่ใช่การซื้อของ**

@@ -74,6 +74,8 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   // POS P1.15 ▸ PIN พนักงานต่อสาขา (ผู้เขียนเดียว pos/staff-pin.ts) · snapshot คำขออนุมัติ POS (ผู้เขียนเดียว pos/pos-approval.ts) ◂
   PosStaffPin: unit,
   PosApprovalPayload: tenant,
+  // POS P2.1 ▸ ช่องทางขายต่อสาขา (ผู้เขียนเดียว = pos/channel.ts · ทุกคำสั่งกรอง tenantId + systemId + unitId) ◂
+  SalesChannel: sys(),
   // Outbox (kernel — side effects post-commit · WO-0002)
   OutboxEvent: tenant,
   // Party (WO 3.1) — ตัวตนกลางระดับ tenant ข้ามทุกระบบ (ตรงข้าม AccountContact ที่ scope ต่อ systemId)

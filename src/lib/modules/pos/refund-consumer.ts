@@ -14,8 +14,9 @@ import { logOps } from "@/lib/core/ops";
 import * as inventory from "@/lib/modules/inventory/service";
 import { systemForUnit } from "@/lib/modules/system/service";
 import { prisma } from "./db";
-import { posSalePosted } from "@/lib/modules/account";
-import { bridgePosSalePaid, bridgePosSaleRefunded } from "./account-bridge";
+import { applyExternalChannelCommission, posSalePosted } from "@/lib/modules/account";
+import { saleChannelName } from "./channel"; // POS P2.1 ◂
+import { bridgePosSaleCommission, bridgePosSalePaid, bridgePosSaleRefunded } from "./account-bridge";
 import { lineConsumption } from "./service";
 
 type Evt = Parameters<OutboxHandler>[0];
@@ -70,7 +71,21 @@ export const posSaleRefunded: OutboxHandler = async (evt: Evt) => {
     } catch (e) {
       console.error("[pos] refund: ลงบัญชีบิลเดิมแทนคิวปิดบิลไม่สำเร็จ — ลงใบลดหนี้ต่อ", { saleId: sale.id, refundSaleId: refund.id, code: errCode(e) });
     }
+    // POS P2.1 ▸ fix round 1 (รีวิว F1) — บิลมี PAID แล้วแต่ขั้น COMMISSION ยังไม่ลง (ล้มหลัง PAID แล้วบิลถูกคืนครบ ⇒ คิวปิดบิลไม่วิ่งซ้ำ) ◂
+    //   ลง COMMISSION ของบิลก่อน 1c เสมอ (idempotent ต่อคีย์ · ไม่มี PAID = facade ไม่ลง · ไม่มีค่าคอมฯ = ไม่มี query)
+    //   ล้ม = โยนท้ายสุด ⇒ คิวลองใหม่ (1c ข้ามเพราะยังไม่มี COMMISSION ⇒ ไม่มีวันกลับค่าคอมฯ ที่ไม่เคยลง)
+    try {
+      await bridgePosSaleCommission(sale);
+    } catch (e) {
+      errors.push(e);
+    }
   }
+
+  // POS P2.1 ▸ ชื่อช่องทางของใบคืน (ผู้ติดต่อลูกหนี้แพลตฟอร์ม + memo) — อ่านเฉพาะใบที่มี PLATFORM/ส่วนแบ่งค่าคอมฯ ◂
+  const shareC = Math.max(0, refund.channelCommissionSatang);
+  const shareV = Math.max(0, refund.channelCommissionVatSatang);
+  const channelName =
+    refund.payments.some((x) => x.type === "PLATFORM") || shareC + shareV > 0 ? await saleChannelName(prisma, evt.tenantId, refund.channelId, refund.channelCode) : null;
 
   // 1b. ใบลดหนี้ + JV ของใบคืน — ยอด 0 (F4) = ไม่มีเงินให้ลง · ล้ม (≠ ไม่ผูกบัญชี) = โยน ⇒ คิวลองใหม่ (ห้ามเตือนแล้วจบ)
   try {
@@ -82,8 +97,30 @@ export const posSaleRefunded: OutboxHandler = async (evt: Evt) => {
         refund.lines.map((l) => ({ name: l.name, qty: l.qty, unitPriceSatang: l.unitPriceSatang, discountSatang: l.discountSatang, lineTotalSatang: l.lineTotalSatang, itemId: l.itemId })),
         refund.payments,
         serviceGross,
+        channelName,
       );
       if (res.reason && res.reason !== "unlinked" && !res.docId) throw new Error(`[บัญชี] ใบคืน POS ${refund.id}: ไม่บันทึกใบลดหนี้ — ${res.reason}`);
+    }
+  } catch (e) {
+    errors.push(e);
+  }
+
+  // POS P2.1 ▸ 1c. R9: กลับค่าคอมฯ ช่องทางตามส่วนแบ่งของใบคืน (คีย์ PosSale#<ใบคืน>#COMMISSION_REFUNDED · ล้ม = โยน ⇒ ลองใหม่) ◂
+  try {
+    if (shareC + shareV > 0 && refund.channelPayout) {
+      await applyExternalChannelCommission({
+        tenantId: evt.tenantId,
+        sourceSystemId: refund.systemId,
+        refId: refund.id,
+        occurredAt: refund.paidAt ?? refund.createdAt,
+        commissionSatang: shareC,
+        commissionVatSatang: shareV,
+        payout: refund.channelPayout,
+        channelName: channelName ?? "",
+        receiptNo: refund.receiptNo,
+        reverse: true,
+        saleRefId: sale.id, // fix round 1 (F1 F3): กลับได้เฉพาะเมื่อบิลมี COMMISSION · ผู้ติดต่อ = ของ PAID ◂
+      });
     }
   } catch (e) {
     errors.push(e);

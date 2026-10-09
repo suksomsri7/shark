@@ -14,6 +14,9 @@ import { parseShiftSettings } from "./shift";
 // POS P1.11 ▸ R1: โทเคนใบเสร็จออนไลน์ตั้งใน tx เดียวกับบิล (ทุก sourceModule) ◂
 import { newReceiptToken } from "./receipt-token";
 import type { TaxInvoiceSnapshot } from "./tax-invoice-shared"; // POS P1.13 ▸ R1 ◂
+// POS P2.1 ▸ ช่องทางขาย: ตัวแก้ช่องทางของบิล (ผู้เขียนตาราง = channel.ts) + คณิตค่าคอมฯ (บริสุทธิ์) ◂
+import { resolveSaleChannel } from "./channel";
+import { CHANNEL_REF_MAX, channelCommission, defaultChannelCode } from "./channel-shared";
 
 // POS createSale — contract 2.1 (จุดตัดเงินกลาง). MVP: PAID_NOW
 //
@@ -121,6 +124,14 @@ export type CreateSaleInput = {
    * เขียนลง PosSale.memberSnapshot ใน tx ของบิล · ไม่ส่ง = null (ผู้เรียกเดิมไม่กระทบ) · ไม่อยู่ใน samePayload · ห้ามแก้หลัง commit (ยกเว้น PDPA)
    */
   memberSnapshot?: { name: string | null; memberCode: string; phoneMasked: string | null; tierKey: string | null; tierName: string | null };
+  /**
+   * POS P2.1 (R4 · เพิ่มล้วน): ช่องทางขาย (SalesChannel.id ของร้าน + สาขานี้ · ไม่เก็บ · เปิดใช้งาน ไม่งั้น CHANNEL_INVALID) ·
+   * ไม่ส่ง = ช่องทางปริยายตาม sourceModule (ECOM → WEB · อื่น → STORE · CD2) · ช่องทาง payout PLATFORM ⇒ ชำระ PLATFORM แถวเดียวเต็มยอด (R5) ·
+   * อยู่ใน payload ของคีย์ซ้ำ (samePayload) **เฉพาะเมื่อส่งมา** (CD3 — ผู้เรียกเดิมเหมือนเดิมทุกไบต์) · บิลขายบัตรกำนัล (MEMBER) = STORE เสมอ
+   */
+  channelId?: string;
+  /** POS P2.1 (R4 · เพิ่มล้วน): เลขออเดอร์ของแพลตฟอร์ม (ตัดช่องว่าง · ≤ 40 ตัว ไม่งั้น VALIDATION · ว่าง = null) · ไม่อยู่ใน samePayload */
+  channelRef?: string;
 };
 
 export type SaleResult = {
@@ -144,7 +155,10 @@ export type PosSaleErrorCode =
   | "SHIFT_REQUIRED"
   | "SHIFT_CLOSED"
   // POS P1.8 (§7 CD1): บิลที่คืนเงินไปแล้วบางส่วน void ทั้งใบไม่ได้ (ใช้การคืนส่วนที่เหลือแทน)
-  | "HAS_REFUNDS";
+  | "HAS_REFUNDS"
+  // POS P2.1 ▸ ช่องทางขายใช้ไม่ได้ (ไม่พบ/สาขาอื่น/เก็บแล้ว/ปิด) · วิธีชำระไม่ตรงช่องทาง (R5) ◂
+  | "CHANNEL_INVALID"
+  | "CHANNEL_PAY_MISMATCH";
 export class PosSaleError extends Error {
   readonly code: PosSaleErrorCode;
   constructor(code: PosSaleErrorCode, message: string) {
@@ -191,6 +205,11 @@ function validateSaleInput(input: CreateSaleInput): void {
       throw bad("น้ำหนักต้องเป็นจำนวนเต็มกรัมตั้งแต่ 1 และจำนวนต้องเป็น 1");
     }
   }
+  // POS P2.1 ▸ R4: ตรวจเฉพาะเมื่อส่งมา (ผู้เรียกเดิมไม่ส่ง = ไม่ถูกตรวจเพิ่ม) ◂
+  if (input.channelId !== undefined && input.channelId !== null && (typeof input.channelId !== "string" || !input.channelId || input.channelId.length > 200)) throw bad("รหัสช่องทางขายไม่ถูกต้อง");
+  if (input.channelRef !== undefined && input.channelRef !== null && (typeof input.channelRef !== "string" || [...input.channelRef.trim()].length > CHANNEL_REF_MAX || /[\u0000-\u001F\u007F]/.test(input.channelRef.trim()))) {
+    throw bad(`เลขออเดอร์แพลตฟอร์มยาวได้ไม่เกิน ${CHANNEL_REF_MAX} ตัวอักษร`);
+  }
   if (input.serviceChargeSatang !== undefined && !isNonNegInt(input.serviceChargeSatang)) throw bad("ค่าบริการต้องเป็นจำนวนเต็มสตางค์ ไม่ติดลบ");
   if (input.tipSatang !== undefined && !isNonNegInt(input.tipSatang)) throw bad("ทิปต้องเป็นจำนวนเต็มสตางค์ ไม่ติดลบ");
   if (!Array.isArray(input.payMethods)) throw bad("ไม่มีรายการชำระเงิน");
@@ -215,6 +234,7 @@ function samePayload(
     memberId: string | null;
     serviceChargeSatang: number;
     tipSatang: number;
+    channelId?: string | null; // POS P2.1 ▸ CD3 ◂
     lines: { qty: number; unitPriceSatang: number; discountSatang: number; itemId: string | null; productId: string | null; serviceId: string | null; weightGrams: number | null }[];
     payments: { type: string; amountSatang: number }[];
   },
@@ -230,7 +250,9 @@ function samePayload(
     dup.serviceChargeSatang === (input.serviceChargeSatang ?? 0) &&
     dup.tipSatang === (input.tipSatang ?? 0) &&
     bag(dup.lines.map(tup)) === bag(input.lines.map(tup)) &&
-    bag(dup.payments.map((p) => `${p.type}|${p.amountSatang}`)) === bag(input.payMethods.map((p) => `${p.type}|${p.amountSatang}`))
+    bag(dup.payments.map((p) => `${p.type}|${p.amountSatang}`)) === bag(input.payMethods.map((p) => `${p.type}|${p.amountSatang}`)) &&
+    // POS P2.1 ▸ CD3: ช่องทางเข้าเทียบเฉพาะเมื่อผู้เรียกส่ง channelId (ผู้เรียกเดิม = เทียบแบบเดิมทุกไบต์) ◂
+    (input.channelId === undefined || input.channelId === null || (dup.channelId ?? null) === input.channelId)
   );
 }
 
@@ -378,6 +400,47 @@ async function applyMemberRights(
   }
 }
 
+/**
+ * POS P2.1 (R4 R5 R6 · มติ 13) — ช่องทางของบิล: แก้ช่องทาง (ส่ง channelId / ปริยายตาม sourceModule) + ตรวจวิธีชำระตาม payout ·
+ * คืนตัวสร้างสำเนา (snapshot) ของบิล · ปฏิเสธ = โยน PosSaleError (CHANNEL_INVALID / CHANNEL_PAY_MISMATCH) ก่อนแตะตัวนับใบเสร็จ
+ *   payout PLATFORM ⇒ ชำระ PLATFORM แถวเดียว (ยอด = ยอดบิล — ตรวจโดย PAYMENT_MISMATCH เดิม) · ไม่มีทิป · ไม่มีเงินรับ ·
+ *   payout DIRECT ⇒ ห้ามมีแถว PLATFORM · บิลของโมดูลสมาชิก (ขาย/เติมบัตรกำนัล · สมาชิกรายเดือน) = STORE ค่าคอมฯ 0 เสมอ
+ */
+async function saleChannelOf(tx: Client, input: CreateSaleInput) {
+  const giftCard = input.sourceModule === "MEMBER";
+  const r = await resolveSaleChannel(tx, { tenantId: input.tenantId, systemId: input.systemId, unitId: input.unitId }, {
+    channelId: input.channelId ?? null,
+    sourceModule: input.sourceModule ?? "POS",
+    giftCard,
+  });
+  if (!r.ok) throw new PosSaleError("CHANNEL_INVALID", r.message);
+  const ch = r.channel;
+  const pays = input.payMethods;
+  const platformRows = pays.filter((p) => p.type === "PLATFORM").length;
+  if (ch.payout === "PLATFORM") {
+    if (pays.length !== 1 || platformRows !== 1 || (input.tipSatang ?? 0) > 0 || (pays[0]!.cashTenderedSatang !== undefined && pays[0]!.cashTenderedSatang !== null)) {
+      throw new PosSaleError("CHANNEL_PAY_MISMATCH", `ออเดอร์ช่องทาง ${ch.name} ต้องชำระด้วย "แพลตฟอร์ม" แถวเดียวเต็มยอด ไม่มีทิป — ยังไม่ได้บันทึกบิล`);
+    }
+  } else if (platformRows > 0) {
+    throw new PosSaleError("CHANNEL_PAY_MISMATCH", `ช่องทาง ${ch.name} ร้านเก็บเงินเอง — ใช้วิธีชำระ "แพลตฟอร์ม" ไม่ได้ ยังไม่ได้บันทึกบิล`);
+  }
+  const ref = !giftCard && typeof input.channelRef === "string" && input.channelRef.trim() ? input.channelRef.trim() : null;
+  const rates = giftCard || ch.code === "STORE" ? { commissionBp: 0, commissionFixedSatang: 0, commissionVatBp: 0 } : ch;
+  const commission = (grossSatang: number) => {
+    const c = channelCommission(grossSatang, rates);
+    return { channelCommissionSatang: c.commissionSatang, channelCommissionVatSatang: c.commissionVatSatang };
+  };
+  return {
+    channel: ch,
+    commission,
+    snapshot: (grossSatang: number) => ({ channelId: ch.id, channelCode: ch.code, channelRef: ref, channelPayout: ch.payout, ...commission(grossSatang) }),
+  };
+}
+/** POS P2.1 ▸ R11 CD9: รหัสช่องทางที่ตัวอ่านใช้ — บิลเดิม (channelCode null) = defaultChannelCode(sourceModule) ◂ */
+export function saleChannelCode(sale: { channelCode: string | null; sourceModule: string | null }): string {
+  return sale.channelCode ?? defaultChannelCode(sale.sourceModule);
+}
+
 export async function createSale(input: CreateSaleInput, client: Client = prisma): Promise<SaleResult> {
   // เราเปิด tx เอง (client = prisma) → drain outbox ได้หลัง commit · ถ้าถูกเรียกใน tx ผู้อื่น ปล่อยให้ cron เก็บ
   const ownsTx = "$transaction" in client && typeof (client as PrismaClient).$transaction === "function";
@@ -429,6 +492,8 @@ async function createSaleOnce(input: CreateSaleInput, client: Client, ownsTx: bo
     }
     // POS P1.9 ▸ กะ (S5/S6) — หลังค้นคีย์ซ้ำ · ก่อนล็อกสินค้า/ตัวนับใบเสร็จ ◂
     const shiftId = await bindSaleShift(tx, input);
+    // POS P2.1 ▸ R4 R5: ช่องทางของบิล + กติกาชำระแพลตฟอร์ม — หลังค้นคีย์ซ้ำ · ก่อนตัวนับใบเสร็จ (ปฏิเสธ = ไม่มีอะไรถูกเขียน) ◂
+    const channel = await saleChannelOf(tx, input);
 
     const lines = input.lines.map((l) => ({
       ...l,
@@ -545,6 +610,7 @@ async function createSaleOnce(input: CreateSaleInput, client: Client, ownsTx: bo
         soldByUserId: input.soldByUserId ?? null, // POS P1.17 ▸ R6 ◂
         ...(input.taxInvoice ? { taxInvoice: input.taxInvoice as unknown as Prisma.InputJsonValue } : {}), // POS P1.13 ▸ R1 ◂
         ...(input.memberSnapshot ? { memberSnapshot: { ...input.memberSnapshot } as unknown as Prisma.InputJsonValue } : {}), // POS P1.12 ▸ R9 ◂
+        ...channel.snapshot(beforeMember), // POS P2.1 ▸ R6 สำเนาช่องทาง + ค่าคอมฯ ◂
       },
     });
     // POS P1.2: บรรทัดที่มีตัวเลือกต้องรู้ id ตั้งแต่ตอนเขียน (ผูก PosSaleLineOption ในtx เดียวกัน)
@@ -636,6 +702,7 @@ async function createSaleOnce(input: CreateSaleInput, client: Client, ownsTx: bo
           voucherUseIds,
           giftCardTxnId,
           ...(memberBenefits ? { memberBenefits: memberBenefits as unknown as Prisma.InputJsonValue } : {}), // POS P1.12 ▸ R9 ◂
+          ...channel.commission(grandTotal), // POS P2.1 ▸ R6 ฐานค่าคอมฯ = ยอดหลังสิทธิ์สมาชิก ◂
         },
       });
     }
@@ -995,7 +1062,7 @@ export type PosDaySummary = {
   otherSalesSatang: number; // รายการที่พนักงานพิมพ์เอง (ไม่ผูกทั้งสองอย่าง)
 };
 
-export const PAY_TYPE_ORDER: PosPayType[] = ["CASH", "PROMPTPAY", "TRANSFER", "CARD", "DEPOSIT", "ROOM_CHARGE"];
+export const PAY_TYPE_ORDER: PosPayType[] = ["CASH", "PROMPTPAY", "TRANSFER", "CARD", "DEPOSIT", "ROOM_CHARGE", "PLATFORM"]; // POS P2.1 ▸ PLATFORM ท้ายสุด ◂
 export const PAY_TYPE_LABEL_TH: Record<PosPayType, string> = {
   CASH: "เงินสด",
   PROMPTPAY: "พร้อมเพย์",
@@ -1003,6 +1070,7 @@ export const PAY_TYPE_LABEL_TH: Record<PosPayType, string> = {
   CARD: "บัตร", // POS P1.6 (เลขอ้างอิง EDC · ไม่มีเกตเวย์)
   DEPOSIT: "มัดจำ",
   ROOM_CHARGE: "ลงบิลห้องพัก",
+  PLATFORM: "แพลตฟอร์ม", // POS P2.1 ▸ แพลตฟอร์มเก็บเงินแทน (รอแพลตฟอร์มโอน) ◂
 };
 
 // business date (BKK) → ช่วง UTC [start, end) ของวันนั้น

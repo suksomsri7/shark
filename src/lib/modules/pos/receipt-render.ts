@@ -1,6 +1,6 @@
 // receipt-render.ts — ข้อมูลใบเสร็จ (ชนิด + คำบรรยาย th/en) และตัวเรนเดอร์ HTML / ESC-POS (POS P1.10 · มติ R5 R6 · ภาพ 11B)
 //
-// 🔴 บริสุทธิ์ + ใช้ร่วม client: ห้าม import prisma / server-only / next/* / node:* / ไฟล์ฝั่งเซิร์ฟเวอร์ของ pos
+// 🔴 บริสุทธิ์ + ใช้ร่วม client: ห้าม import prisma / server-only / next/(ทุกตัว) / node:(ทุกตัว) / ไฟล์ฝั่งเซิร์ฟเวอร์ของ pos
 //    (P1.10U import ไฟล์นี้ในเบราว์เซอร์: พรีวิว · WebUSB/Bluetooth · rasterize ภาษาไทยด้วย canvas)
 // 🔴 ไม่มี Date.now() / new Date() ไม่มีอาร์กิวเมนต์ / Math.random() — ทุกอย่างมาจาก payload ⇒ เรียกซ้ำได้ผลเดิมทุกไบต์
 // 🔴 คำบรรยายทุกคำมาจาก payload.labels[locale] (en = ไม่มีอักษรไทยเลย) · ข้อมูลร้าน/สินค้าพิมพ์ตามที่เก็บ
@@ -9,7 +9,7 @@
 export type ReceiptDocType = "SALE" | "REFUND";
 // POS P1.13 ▸ R7: TAX_INVOICE_FULL = บิลที่ออกใบกำกับภาษีเต็มรูปแล้ว (สลิปเป็นใบเสร็จ + "ออกใบกำกับภาษีเต็มรูปแล้ว เลขที่ …" · ไม่ใช่หัวใบกำกับอย่างย่อ) ◂
 export type ReceiptKind = "TAX_INVOICE_ABB" | "TAX_INVOICE_FULL" | "RECEIPT";
-export type ReceiptPayType = "CASH" | "TRANSFER" | "PROMPTPAY" | "DEPOSIT" | "ROOM_CHARGE" | "CARD";
+export type ReceiptPayType = "CASH" | "TRANSFER" | "PROMPTPAY" | "DEPOSIT" | "ROOM_CHARGE" | "CARD" | "PLATFORM"; // POS P2.1 ▸ PLATFORM ◂
 /** สถานะบิล (PosSale.status · แก้รอบ 1 F2) — VOIDED = ประทับ "ยกเลิก / VOID" · REFUNDED พิมพ์ปกติ (ใบลดหนี้แยก · P1.16) */
 export type ReceiptSaleStatus = "PAID" | "VOIDED" | "REFUNDED";
 
@@ -54,6 +54,8 @@ export type ReceiptLabels = {
   /** POS P1.13 ▸ R7 ◂ */
   fullTaxInvoiceIssued: string;
   eReceipt: string;
+  /** POS P2.1 ▸ R11: "ช่องทาง <ชื่อ> · <เลขออเดอร์>" ◂ */
+  channel: string;
   pay: Record<ReceiptPayType, string>;
 };
 
@@ -105,6 +107,8 @@ export type ReceiptPayload = {
   payments: ReceiptPayment[];
   /** POS P1.12 (R15): ชื่อ/รหัส/เบอร์ปิดบัง/ระดับ จากสำเนาตอนขาย (บิลเก่า = ข้อมูลสด) · pointBalance = ยอดสดของระบบแต้มของสาขา */
   member?: { name: string; memberCode?: string; phoneMasked?: string; tierName?: string; pointEarned: number; pointBalance?: number };
+  /** POS P2.1 ▸ R11 มติ 8: ช่องทางขายของบิล (null = หน้าร้าน STORE รวมบิลเก่า) · ไม่มีค่าคอมฯ บนใบเสร็จเด็ดขาด ◂ */
+  channel?: { code: string; name: string; ref: string | null } | null;
   footer: { text: string; qrEReceiptUrl: string | null; fullTaxInvoiceHint: boolean };
   labels: { th: ReceiptLabels; en: ReceiptLabels };
 };
@@ -151,7 +155,8 @@ export const RECEIPT_LABELS: { readonly th: ReceiptLabels; readonly en: ReceiptL
     fullTaxInvoiceHint: "ขอใบกำกับเต็มรูปได้ภายใน 7 วัน",
     fullTaxInvoiceIssued: "ออกใบกำกับภาษีเต็มรูปแล้ว เลขที่",
     eReceipt: "สแกนรับใบเสร็จอิเล็กทรอนิกส์",
-    pay: { CASH: "เงินสด", TRANSFER: "โอนเงิน", PROMPTPAY: "พร้อมเพย์", DEPOSIT: "มัดจำ", ROOM_CHARGE: "ลงบัญชีห้องพัก", CARD: "บัตร" },
+    channel: "ช่องทาง",
+    pay: { CASH: "เงินสด", TRANSFER: "โอนเงิน", PROMPTPAY: "พร้อมเพย์", DEPOSIT: "มัดจำ", ROOM_CHARGE: "ลงบัญชีห้องพัก", CARD: "บัตร", PLATFORM: "ชำระผ่านแพลตฟอร์ม" },
   },
   en: {
     receipt: "RECEIPT",
@@ -193,7 +198,8 @@ export const RECEIPT_LABELS: { readonly th: ReceiptLabels; readonly en: ReceiptL
     fullTaxInvoiceHint: "Full tax invoice available on request within 7 days",
     fullTaxInvoiceIssued: "Full tax invoice issued, no.",
     eReceipt: "Scan for e-receipt",
-    pay: { CASH: "Cash", TRANSFER: "Transfer", PROMPTPAY: "PromptPay", DEPOSIT: "Deposit", ROOM_CHARGE: "Room charge", CARD: "Card" },
+    channel: "Channel",
+    pay: { CASH: "Cash", TRANSFER: "Transfer", PROMPTPAY: "PromptPay", DEPOSIT: "Deposit", ROOM_CHARGE: "Room charge", CARD: "Card", PLATFORM: "Paid via platform" },
   },
 };
 
@@ -293,6 +299,8 @@ const esc = (s: unknown) =>
     .replace(/'/g, "&#39;");
 const row = (label: string, value: string, cls = "") => `<div class="row${cls ? ` ${cls}` : ""}"><span class="l">${esc(label)}</span> <span class="r">${esc(value)}</span></div>`;
 const line = (text: string, cls = "") => `<div class="${cls || "t"}">${esc(text)}</div>`;
+/** POS P2.1 ▸ R11: "ช่องทาง <ชื่อ> · <เลขออเดอร์>" (ไม่มีเลข = ชื่ออย่างเดียว) ◂ */
+const channelText = (L: ReceiptLabels, c: { name: string; ref: string | null }) => `${L.channel ?? ""} ${c.name}${c.ref ? ` · ${c.ref}` : ""}`.trim();
 
 /**
  * ใบเสร็จเป็น HTML (inline CSS · @page กว้าง 58/80 มม. · ดำบนขาว) — ส่วนตามลำดับภาพ 11B พร้อม `data-section`:
@@ -350,6 +358,7 @@ export function renderReceiptHtml(payload: ReceiptPayload, opts: RenderHtmlOptio
   if (p.doc.cashierName) d.push(row(L.cashier, p.doc.cashierName));
   if (p.doc.shiftNo !== undefined && p.doc.shiftNo !== null) d.push(row(L.shift, `#${p.doc.shiftNo}`));
   if (p.doc.refReceiptNo) d.push(row(L.refDoc, p.doc.refReceiptNo));
+  if (p.channel) d.push(line(channelText(L, p.channel), "s")); // POS P2.1 ▸ R11 ◂
   out.push(`<section data-section="doc">${d.join("")}</section>`);
 
   // lines
@@ -539,6 +548,7 @@ function layout(p: ReceiptPayload, L: ReceiptLabels, cols: number, locale: Local
   if (p.doc.shiftNo !== undefined && p.doc.shiftNo !== null) add(pair(L.shift, `#${p.doc.shiftNo}`, cols));
   if (p.device?.name) add(pair("POS", p.device.name, cols));
   if (p.doc.refReceiptNo) add(pair(L.refDoc, p.doc.refReceiptNo, cols));
+  if (p.channel) add(wrap(channelText(L, p.channel), cols)); // POS P2.1 ▸ R11 ◂
   rule();
   // lines
   for (const l of p.lines) {

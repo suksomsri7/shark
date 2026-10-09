@@ -78,6 +78,7 @@ export async function publicReceipt(token: string): Promise<PublicReceiptResult>
       points,
       // POS P1.12 ▸ R15 มติ 8: บรรทัดสิทธิ์จากสำเนาของบิล (kind · label · ส่วนลด) — ไม่มีข้อมูลตัวตนสมาชิก ◂
       memberBenefits: (t.memberBenefits ?? []).map((b) => ({ kind: b.kind, label: b.label, discountSatang: b.discountSatang })),
+      channel: payload.channel ? { name: payload.channel.name, ref: payload.channel.ref } : null, // POS P2.1 ▸ R11 ◂
       // review: บิลมีสมาชิกที่ยังอยู่ในระบบสมาชิก (points ไม่ null) + ยังไม่ได้ส่งรีวิว + ลิงก์ขอรีวิวของ journey ยังไม่หมดอายุ (F2)
       actions: { taxInvoice, review: (reviewState === "NONE" || reviewState === "REQUESTED") && points !== null, report: true },
     };

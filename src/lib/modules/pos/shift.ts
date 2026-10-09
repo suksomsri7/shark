@@ -30,7 +30,7 @@ const NOTE_MAX = 200;
 const LABEL_MAX = 40;
 const DEVICE_RE = /^[A-Za-z0-9_-]{8,64}$/;
 const OTHER_METHODS = ["CARD", "PROMPTPAY", "TRANSFER"] as const;
-const METHOD_ORDER = ["CASH", "CARD", "PROMPTPAY", "TRANSFER", "DEPOSIT", "ROOM_CHARGE"];
+const METHOD_ORDER = ["CASH", "CARD", "PROMPTPAY", "TRANSFER", "DEPOSIT", "ROOM_CHARGE", "PLATFORM"]; // POS P2.1 ▸ PLATFORM = ไม่ใช่เงินสด (รอแพลตฟอร์มโอน) ◂
 const HOUR_MS = 3_600_000;
 /** R2 F1: บิลของกะสร้างหลังเปิดกะเสมอ · เผื่อนาฬิกาเครื่องแอปเหลื่อมกัน 5 นาที (กรอง shiftId อยู่แล้ว เผื่อมากไม่ทำให้ผิด) */
 const SALE_CLOCK_SLACK_MS = 5 * 60_000;

@@ -220,6 +220,14 @@
       "memberSnapshot.tierName": {
         "optional": false,
         "type": "string | null"
+      },
+      "channelId": {
+        "optional": true,
+        "type": "string"
+      },
+      "channelRef": {
+        "optional": true,
+        "type": "string"
       }
     },
     "MemberSaleChoices": {
