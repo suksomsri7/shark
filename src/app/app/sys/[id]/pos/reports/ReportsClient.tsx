@@ -10,6 +10,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { MoneyText } from "@/components/ui/MoneyText";
+import { DATE_OVERLAY_INPUT, DateOverlay, openDatePicker } from "@/components/pos/DateOverlay";
 import { formatBaht } from "@/lib/ui/money";
 import { posReportAction, posReportCsvAction } from "@/lib/modules/pos/report-actions";
 import { bkkHm, Icon, prevRangeOf, rangeLabel, ReportsOverview } from "./ReportsOverview";
@@ -509,9 +510,14 @@ export function ReportsClient({ systemId, units, initial, today, maxDays }: Prop
         <div className="order-3 flex w-full min-w-0 flex-wrap items-center gap-3 sm:gap-4 xl:order-2 xl:ml-2 xl:w-auto xl:flex-1 xl:flex-nowrap">
           <div className="flex min-h-[48px] w-full min-w-0 items-center gap-2 rounded-xl border bg-[color:var(--color-surface)] px-3 sm:w-auto xl:shrink-0" role="group" aria-label={t("overview.dateRange")}>
             <Icon d={I_CAL} className="h-[18px] w-[18px] text-[color:var(--color-muted)]" />
-            <input data-testid="pos-report-from" type="date" aria-label={t("from")} className={dateCls} value={view.from} max={view.to || today} onChange={(e) => set({ from: e.target.value })} />
+            {/* POS P1.18U ▸ มติ 9 (Q9): ป้ายวันที่ตามภาษาจอ + ช่องวันที่ของเบราว์เซอร์ซ้อนโปร่งใส (ไม่ขึ้นกับรูปแบบ mm/dd/yyyy ของเบราว์เซอร์) ◂ */}
+            <DateOverlay value={view.from} className={dateCls}>
+              <input data-testid="pos-report-from" type="date" aria-label={t("from")} className={DATE_OVERLAY_INPUT} value={view.from} max={view.to || today} onClick={openDatePicker} onChange={(e) => set({ from: e.target.value })} />
+            </DateOverlay>
             <span className="text-[color:var(--color-muted)]" aria-hidden="true">–</span>
-            <input data-testid="pos-report-to" type="date" aria-label={t("to")} className={dateCls} value={view.to} min={view.from || undefined} onChange={(e) => set({ to: e.target.value })} />
+            <DateOverlay value={view.to} className={dateCls}>
+              <input data-testid="pos-report-to" type="date" aria-label={t("to")} className={DATE_OVERLAY_INPUT} value={view.to} min={view.from || undefined} onClick={openDatePicker} onChange={(e) => set({ to: e.target.value })} />
+            </DateOverlay>
           </div>
           <div className="flex min-h-[48px] w-full min-w-0 items-center gap-2 rounded-xl border bg-[color:var(--color-surface)] px-3 sm:w-auto xl:shrink-0">
             <Icon d={I_SHOP} className="h-[18px] w-[18px] text-[color:var(--color-muted)]" />

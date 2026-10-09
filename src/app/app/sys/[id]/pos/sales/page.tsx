@@ -49,7 +49,7 @@ export default async function PosSalesPage({ params, searchParams }: { params: P
   return (
     <div className="flex w-full min-w-0 max-w-[1600px] flex-col gap-5">
       <PageHeader title={`${def?.icon ?? ""} ${sys.name}`.trim()} desc={t("desc")} />
-      <ModuleTabs items={posTabs(id)} />
+      <ModuleTabs items={posTabs(id, await getTranslations("pos"))} />
       {unitId ? (
         <BillsClient systemId={id} units={units} unitId={unitId} today={today} initialDate={initialDate} hasAnyBill={!!anyBill} accountSystemId={accountSystemId} canIssueTaxInvoice={canIssueTaxInvoice} />
       ) : (

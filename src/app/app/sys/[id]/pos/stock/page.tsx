@@ -53,7 +53,7 @@ export default async function PosStockPage({
   return (
     <div className="flex w-full min-w-0 max-w-7xl flex-col gap-5">
       <PageHeader title={`${def?.icon ?? ""} ${sys.name}`.trim()} desc={t("desc")} />
-      <ModuleTabs items={posTabs(id)} data-testid="pos-stock-module-tabs" />
+      <ModuleTabs items={posTabs(id, await getTranslations("pos"))} data-testid="pos-stock-module-tabs" />
       {!meta.ok ? (
         <div role="alert" className="card flex max-w-2xl flex-col gap-1 text-sm" data-testid="pos-stock-refusal" data-code={meta.code}>
           <b className="text-[15px]">{t("title")}</b>

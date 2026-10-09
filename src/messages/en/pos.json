@@ -583,6 +583,9 @@
       "doneLabel": "Full tax invoice",
       "donePending": "Being issued in accounting",
       "clearedOnRecall": "Full tax invoice details were cleared — enter them again before payment"
+    },
+    "emptyCatalogue": {
+      "cashierBody": "Ask a manager or the shop owner to add products on the Products page, then come back here to sell"
     }
   },
   "shift": {
@@ -939,6 +942,58 @@
         "voids": "Voids",
         "note": "Note"
       }
+    },
+    "closeDay": {
+      "desc": "Close day — end-of-day summary",
+      "pickDate": "Pick a day",
+      "view": "View summary",
+      "summaryTitle": "Summary for {date}",
+      "summaryTitleToday": "Summary for {date} (today)",
+      "netSales": "Net sales",
+      "billCount": "Bills",
+      "voidCount": "Voided bills",
+      "voidTotal": "Voided amount",
+      "byKindTitle": "By item type",
+      "kind": {
+        "product": "Products",
+        "service": "Services",
+        "other": "Other items"
+      },
+      "byKindNote": "Before bill-level discounts — the three boxes may not add up to net sales exactly",
+      "byMethodTitle": "By payment method",
+      "noSales": "No sales on this day yet",
+      "colMethod": "Method",
+      "colCount": "Count",
+      "colAmount": "Amount",
+      "colReceipt": "Receipt",
+      "colTime": "Time",
+      "cashTitle": "Close day / cash reconciliation",
+      "billsTitle": "Bills ({count})",
+      "noBills": "No bills on this day yet",
+      "voided": "(voided)",
+      "refund": "(refund)",
+      "method": {
+        "CASH": "Cash",
+        "PROMPTPAY": "PromptPay",
+        "TRANSFER": "Transfer",
+        "CARD": "Card",
+        "DEPOSIT": "Deposit",
+        "ROOM_CHARGE": "Room charge",
+        "PLATFORM": "Platform"
+      },
+      "tools": {
+        "csvFile": "close-day-{date}.csv",
+        "downloadFailed": "Download failed — try again",
+        "expectedCash": "Cash expected in the drawer",
+        "countedCash": "Cash counted (baht)",
+        "countedPlaceholder": "e.g. 1500.00",
+        "diff": "Difference (counted − expected)",
+        "over": "Over",
+        "short": "Short",
+        "note": "A reconciliation helper only — the day is not closed or saved",
+        "preparing": "Preparing file…",
+        "downloadCsv": "Download CSV"
+      }
     }
   },
   "stock": {
@@ -1103,6 +1158,31 @@
       "empty": "No history yet",
       "out": "Out {name}",
       "scopeNote": "History of this inventory (every branch that shares it)"
+    },
+    "productsPage": {
+      "desc": "Services/products — set up what the register sells",
+      "servicesTitle": "Services",
+      "servicesIntro": "Services you can sell at the register — <b>add, reprice or remove them in the products/services system only</b> so the register and bookings always match",
+      "servicesNoStock": "services don't deduct stock",
+      "servicesNoInventory": "No products/services system connected — connect one on the overview page and its services will appear here",
+      "servicesConnect": "Connect a system",
+      "servicesEmpty": "No services in the catalogue yet — add them in the products/services system, “Services” tab",
+      "servicesAdd": "Add services",
+      "serviceBookable": "Bookable in advance",
+      "serviceBookableMin": "Bookable in advance · takes {min} min",
+      "serviceWalkInOnly": "Register only",
+      "servicesEditLink": "Reprice/add services in the products/services system →",
+      "itemsNoInventory": "No products/services system connected — shops that sell products need one first (connect it on the overview page; service-only shops can skip this)",
+      "itemsConnect": "Connect inventory",
+      "itemsEmpty": "No products in inventory yet — add products in the inventory system, then come back to set sale prices",
+      "itemsAdd": "Add products to inventory",
+      "needAccount": "Pricing products that have no price needs an accounting system first —",
+      "needAccountLink": "Open/connect accounting",
+      "priceIntro": "Prices set here appear in the register automatically · products without a price sell at cost by default",
+      "itemMeta": "{sku} · per {unit} · cost",
+      "noSalePrice": "no sale price yet",
+      "salePrice": "Sale price (baht)",
+      "save": "Save"
     }
   },
   "refund": {
@@ -1424,7 +1504,16 @@
       "history": "Bill history",
       "reprint": "Reprint (copy)",
       "void": "Void bill",
-      "refund": "Refund"
+      "refund": "Refund",
+      "system": "System",
+      "timeline": {
+        "paid": "Bill opened and paid in full",
+        "posted": "Posted to accounting {docNo}",
+        "points": "member points given",
+        "refund": "Refunded {amount}",
+        "void": "Bill voided",
+        "reprint": "Copy printed"
+      }
     },
     "voidHint": {
       "NO_PERMISSION": "Voiding needs manager rights · only before the shift closes",

@@ -85,13 +85,12 @@
       },
       {
         "file": "src/app/app/sys/[id]/pos/close/page.tsx",
-        "untestid": 4,
+        "untestid": 3,
         "closes": "P1.9 / P4.1",
-        "note": "แท็บโมดูล · ฟอร์มเลือกวัน (form · input · button)",
+        "note": "แท็บโมดูล · ฟอร์มเลือกวัน (form · button) — ช่องวันที่ย้ายไป CloseDateField (pos-close-date · P1.18U)",
         "byTag": {
           "ModuleTabs": 1,
           "form": 1,
-          "input": 1,
           "button": 1
         }
       },
@@ -10111,6 +10110,25 @@
       "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/close",
+      "testid": "pos-close-date",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]/pos/close",
+        "note": "เลือกวัน (ฟอร์ม GET name=date) — ป้ายวันที่ตามภาษาจอ (DateOverlay) + ช่องวันที่ของเบราว์เซอร์ซ้อนโปร่งใส · ค่าเริ่ม = วันธุรกิจตามเวลาตัดวัน (posBusinessToday)"
+      },
+      "wo": "P1.18U",
+      "oracle": "",
+      "system": "POS"
     }
   ],
   "$roles": "roles/hiddenFor ที่อนุญาต: owner · manager · cashier · kind/expect.type ชุดเดียวกับทะเบียน CRM (F15.3b ตรวจ)"

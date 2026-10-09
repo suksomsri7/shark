@@ -7,7 +7,8 @@ import { systemDef } from "@/lib/systems";
 import { posTabs } from "@/lib/modules/pos/tabs";
 import { posMembership } from "@/lib/modules/pos/access";
 import { posUnits } from "@/lib/modules/pos/register";
-import { bkkBusinessDate, isReportKind, REPORT_MAX_DAYS, REPORT_PERMISSION } from "@/lib/modules/pos/reports";
+import { isReportKind, REPORT_MAX_DAYS, REPORT_PERMISSION } from "@/lib/modules/pos/reports";
+import { posBusinessToday } from "@/lib/modules/pos/service";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { ModuleTabs } from "@/components/module-tabs";
 import { ReportsClient } from "./ReportsClient";
@@ -44,7 +45,8 @@ export default async function PosReportsPage({
   const t = await getTranslations("pos.report");
 
   // ค่าเริ่ม: ภาพรวม = วันนี้ · ชนิดตาราง = 7 วันล่าสุดจบที่วันนี้ (เวลาไทย) · ค่าจาก URL ที่ผิดรูป = ค่าเริ่ม (ช่วงเกิน 92 วันส่งต่อให้จอ/เซิร์ฟเวอร์ปฏิเสธเป็นข้อมูล)
-  const today = bkkBusinessDate(new Date());
+  // POS P1.18U ▸ มติ 10c: "วันนี้" = วันธุรกิจตามเวลาตัดวันของระบบ (posBusinessToday · deviation 9 ของ P1.18 S) ◂
+  const today = await posBusinessToday({ tenantId, systemId: id });
   const kindRaw = one(sp.kind);
   const kind = isReportKind(kindRaw) ? kindRaw : "overview";
   const fromRaw = one(sp.from);
@@ -57,7 +59,7 @@ export default async function PosReportsPage({
   return (
     <div className="flex w-full min-w-0 max-w-7xl flex-col gap-5">
       <PageHeader title={`${def?.icon ?? ""} ${sys.name}`.trim()} desc={t("desc")} />
-      <ModuleTabs items={posTabs(id)} data-testid="pos-report-module-tabs" />
+      <ModuleTabs items={posTabs(id, await getTranslations("pos"))} data-testid="pos-report-module-tabs" />
       {allowed.length === 0 ? (
         <div role="alert" className="card text-sm text-[color:var(--color-muted)]" data-testid="pos-report-refusal">
           {t("errors.permissionDenied")}
