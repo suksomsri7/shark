@@ -45,6 +45,9 @@ export function ApprovalWaitDialog(p: {
   const [busy, setBusy] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const doneRef = useRef(false);
+  /** fix รอบ 1 F6: หยุดถามสถานะ (หมดอายุ/ล้ม) · ยกเลิกคำขอที่หมดอายุไปแล้ว (ครั้งเดียว) */
+  const stopRef = useRef(false);
+  const expiredRef = useRef(false);
   const cb = useRef(p);
   cb.current = p;
 
@@ -59,6 +62,13 @@ export function ApprovalWaitDialog(p: {
         doneRef.current = true;
         cb.current.onDone(r.request);
       }
+      // fix รอบ 1 F6: หมดอายุ (PENDING ≥ 5 นาที) = ยกเลิกคำขอครั้งเดียวแล้วหยุดถาม · FAILED = หยุดถาม (บิลยังอยู่ตามเดิม)
+      if (st === "FAILED") stopRef.current = true;
+      if (st === "EXPIRED" && !expiredRef.current) {
+        expiredRef.current = true;
+        stopRef.current = true;
+        await cancelRef.current().catch(() => undefined);
+      }
     } catch {
       setLoadErr(true);
     }
@@ -66,7 +76,7 @@ export function ApprovalWaitDialog(p: {
   useEffect(() => {
     void poll();
     const id = setInterval(() => {
-      if (!doneRef.current) void poll();
+      if (!doneRef.current && !stopRef.current) void poll();
     }, POLL_MS);
     const tick = setInterval(() => setNow(Date.now()), 1_000);
     return () => {
@@ -124,6 +134,8 @@ export function ApprovalWaitDialog(p: {
     const st = p.deviceId ? readStaffSession(p.deviceId) : null;
     return cancelPosApprovalAction({ systemId: p.systemId, unitId: p.unitId, requestId: p.requestId, ...(st && p.deviceId ? { staffToken: st.staffToken, deviceId: p.deviceId } : {}) });
   };
+  const cancelRef = useRef(cancelRequestNow);
+  cancelRef.current = cancelRequestNow;
   const cancel = async () => {
     if (busy) return;
     setBusy(true);
