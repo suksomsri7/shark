@@ -419,6 +419,8 @@ if (DRY) {
       console.log(`สถานะหน้ากะ P1.9 U${userKey === "cashier" ? " (แคชเชียร์ = การ์ดปฏิเสธทุกสถานะ)" : ""} · เครื่อง ${SHIFTS_DEVICE_ID}:`);
       for (const st of SHIFTS_STATE_PLAN) console.log(`  · ${st.key.padEnd(19)} ${st.devices.join("/").padEnd(20)} ${st.note}`);
       if (userKey === "owner") console.log("  เขียน: กะ 1 กะ (เปิดผ่าน UI → ปิดผ่าน UI ใน shifts-z · ค้าง = ปิดใน finally นับ = ยอดคาด) + บิลขายเงินสด 1 ใบ + นำเงินเข้า ฿100 1 รายการ");
+      if (userKey === "owner" && SHIFTS_STATE_PLAN.some((st) => st.key !== "shifts-noshift"))
+        console.log(`  HF-VIS-SHIFTS: ข้อมูล P1.15U (เครื่อง ${DEVICE_ID} · PIN 6 หลักสุ่ม · บิลพัก 1 ใบ — คืนค่า/ลบใน finally) + เครื่อง ${SHIFTS_DEVICE_ID} (registerDevice · เพิกถอนใน finally) + โทเคนผู้ขายของเครื่องนั้นก่อนขายบิลของกะ`);
     }
     if (rpubOn && STATES_ON) {
       console.log(`สถานะหน้าใบเสร็จออนไลน์ P1.11U (สาธารณะ · 390×844 · เครื่อง ${RPUB_DEVICE_ID}):`);
@@ -898,6 +900,8 @@ const P115 = {
   seeded: false,
   error: null as string | null,
   deviceRowId: "",
+  /** HF-VIS-SHIFTS: แถวเครื่อง SHIFTS_DEVICE_ID (ลงทะเบียนครั้งแรกที่ shiftsSale ใช้ · เพิกถอนใน cleanupP115) */
+  shiftsDeviceRowId: "",
   pins: {} as Record<string, string>,
   restore: [] as { userId: string; row: { pinHash: string; failedCount: number; lockedUntil: Date | null; setById: string } | null }[],
   sessions: {} as Record<string, string>,
@@ -1089,10 +1093,10 @@ async function runP115State(page: Any, state: StateKey, device: Device): Promise
   }
 }
 /** สรุปสำหรับ summary/JSON_SUMMARY — ไม่มี PIN/โทเคน */
-const p115Summary = () => ({ seeded: P115.seeded, error: P115.error, device: P115.deviceRowId ? DEVICE_ID : null, pinsSet: Object.keys(P115.pins), heldId: P115.heldId || null, requestIds: P115.requestIds, saleId: P115.saleId || null, cleanup: P115.cleanup });
+const p115Summary = () => ({ seeded: P115.seeded, error: P115.error, device: P115.deviceRowId ? DEVICE_ID : null, shiftsDevice: P115.shiftsDeviceRowId ? SHIFTS_DEVICE_ID : null, pinsSet: Object.keys(P115.pins), heldId: P115.heldId || null, requestIds: P115.requestIds, saleId: P115.saleId || null, cleanup: P115.cleanup });
 /** finally/signal: ลบคำขอ/snapshot/กติกา · ทิ้งบิลพัก · คืนแถว PIN · เพิกถอนเครื่อง — เรียกซ้ำได้ · ผลใน summary ไม่โยน */
 async function cleanupP115(): Promise<void> {
-  if (P115.cleanup || (!P115.seeded && !P115.error && !P115.restore.length && !P115.deviceRowId)) return;
+  if (P115.cleanup || (!P115.seeded && !P115.error && !P115.restore.length && !P115.deviceRowId && !P115.shiftsDeviceRowId)) return;
   const parts: string[] = [];
   let ok = true;
   const step = async (label: string, fn: () => Promise<string>) => {
@@ -1136,6 +1140,14 @@ async function cleanupP115(): Promise<void> {
     const r = await revokeDevice({ tenantId: T.tenantId, systemId: SYS, unitId }, await ownerActor(), { id: P115.deviceRowId });
     if (!r.ok) throw new StepError(`เพิกถอนเครื่อง ${DEVICE_ID}: ${r.code}`);
     return `เพิกถอนเครื่อง ${DEVICE_ID}`;
+  });
+  // HF-VIS-SHIFTS ▸ เครื่องของสถานะหน้ากะ (ปิดกะตาม id ไม่ติดเครื่องที่ถูกเพิกถอน — closeShiftsStateShift หลังขั้นนี้ได้ตามเดิม) ◂
+  await step("เครื่องหน้ากะ", async () => {
+    if (!P115.shiftsDeviceRowId) return "เครื่องหน้ากะ 0";
+    const { revokeDevice } = await import("@/lib/modules/pos/device");
+    const r = await revokeDevice({ tenantId: T.tenantId, systemId: SYS, unitId }, await ownerActor(), { id: P115.shiftsDeviceRowId });
+    if (!r.ok) throw new StepError(`เพิกถอนเครื่อง ${SHIFTS_DEVICE_ID}: ${r.code}`);
+    return `เพิกถอนเครื่อง ${SHIFTS_DEVICE_ID}`;
   });
   P115.cleanup = { ok, detail: `P1.15U: ${parts.join(" · ")}` };
 }
@@ -1462,6 +1474,15 @@ async function ensureShiftsOpen(page: Any): Promise<void> {
   SHIFTS.id = row.id;
   SHIFTS.opened = true;
 }
+/** HF-VIS-SHIFTS ▸ ครั้งเดียวต่อรอบ: ลงทะเบียน SHIFTS_DEVICE_ID (actor เจ้าของ · แบบ seedP115Once ทำกับ DEVICE_ID) — หน้าขายล็อกเมื่อเครื่องไม่ลงทะเบียน ◂ */
+async function registerShiftsDeviceOnce(): Promise<void> {
+  if (P115.shiftsDeviceRowId) return;
+  if (!P115.seeded) throw new StepError(`ลงทะเบียนเครื่องสถานะหน้ากะไม่ได้ — ไม่มีข้อมูล P1.15U (PIN): ${P115.error ?? "ยังไม่ได้สร้าง"}`);
+  const { registerDevice } = await import("@/lib/modules/pos/device");
+  const rg = await registerDevice({ tenantId: T.tenantId, systemId: SYS, unitId }, await ownerActor(), { name: `เครื่องขาย QC ${process.pid} (QC shifts)`.slice(0, 60), deviceCode: SHIFTS_DEVICE_ID });
+  if (!rg.ok) throw new StepError(`ลงทะเบียนเครื่อง ${SHIFTS_DEVICE_ID} ไม่ได้: ${rg.code}`);
+  P115.shiftsDeviceRowId = rg.device.id;
+}
 /** ขายเงินสด 1 บิลผ่านหน้าขายของเครื่องเดียวกัน (แท็บแยก 1440 · ขั้นตอนเดียวกับ sale-done) */
 async function shiftsSale(page: Any): Promise<void> {
   if (!QC_IDS.amer || !QC_IDS.latte) throw new StepError("ไม่พบสินค้าตายตัวของร้าน QC (อเมริกาโน่เย็น/ลาเต้ร้อน)");
@@ -1470,11 +1491,22 @@ async function shiftsSale(page: Any): Promise<void> {
     await pinDevice(reg, SHIFTS_DEVICE_ID);
     await reg.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1 });
     await reg.setCookie(...USER_COOKIES);
+    // HF-VIS-SHIFTS ▸ เครื่องต้องลงทะเบียน + มีโทเคนผู้ขาย (sessionStorage pos-staff:<deviceId>) ไม่งั้นหน้าขายขึ้นจอล็อก (P1.15U) ◂
+    await registerShiftsDeviceOnce();
+    const staffJson = await staffSessionJson(userKey, SHIFTS_DEVICE_ID).catch(() => null);
+    if (!staffJson) throw new StepError(`ออกโทเคนผู้ขาย (${userKey}) ของเครื่อง ${SHIFTS_DEVICE_ID} ไม่ได้ (shiftsSale)`);
+    await injectStaff(reg, SHIFTS_DEVICE_ID, staffJson);
     await reg.goto(`${BASE}${pathOf("register")}`, { waitUntil: "networkidle2", timeout: 60_000 });
     await visibleEl(reg, tid("pos-reg-root"), 0, 15_000).catch(() => {
       throw new StepError("หน้าขายใหม่ไม่ขึ้น (pos-reg-root) ระหว่างขายบิลของกะ");
     });
     if (await shiftBannerStays(reg)) throw new StepError("หน้าขายของเครื่องสถานะหน้ากะยังขึ้นแถบเปิดกะ (deviceId ไม่ตรง?)");
+    // HF-VIS-SHIFTS ▸ จอล็อกค้าง (รอให้หายได้ถึง 5 วิ — เฟรมแรกก่อนอ่านโทเคนล็อกชั่วครู่) = บอกเหตุจริง แทน "คลิกหาย?" ของ expectLines ◂
+    const lockGone = await reg
+      .waitForFunction(() => !Array.from(document.querySelectorAll('[data-testid="pos-lock-screen"]')).some((e) => e.getClientRects().length > 0), { timeout: 5_000 })
+      .then(() => true)
+      .catch(() => false);
+    if (!lockGone) throw new StepError("หน้าขายของเครื่องสถานะหน้ากะถูกล็อก (ไม่มี staff token / เครื่องไม่ลงทะเบียน)");
     await cashSaleAmerLatte(reg, "desktop"); // R2 F6: ขั้นตอนเดียวกับสถานะ sale-done
   } finally {
     await reg.close().catch(() => undefined);
@@ -3082,7 +3114,8 @@ try {
     console.log(RPUB.error ? `  ⚠️ บิลชุดภาพใบเสร็จ: ${RPUB.error}` : `  บิลชุดภาพใบเสร็จ: ${Object.keys(RPUB.sales).join(" · ") || "-"}${RPUB.reused.length ? ` (ใช้ชุดวันนี้ซ้ำ: ${RPUB.reused.join(" · ")})` : ""} · actions ${JSON.stringify(RPUB.actions)} · abb ${JSON.stringify(RPUB.abb && { toggled: RPUB.abb.toggled, taxIdSet: !!RPUB.abb.taxIdSet, vatRegistered: RPUB.abb.vatRegistered, posAbbreviatedInvoice: RPUB.abb.posAbbreviatedInvoice, hasTaxId: RPUB.abb.hasTaxId })}`);
   }
   // POS P1.15U ▸ หน้าขายล็อกเมื่อไม่มีโทเคนผู้ขาย/เครื่องไม่ลงทะเบียน ⇒ ลงทะเบียนเครื่อง + PIN + โทเคน (+ ข้อมูลของสถานะ 13B/21B) ก่อนเปิด chromium ◂
-  if (jobs.some((j) => j.page === "register" || j.state === "paydone-print")) {
+  // HF-VIS-SHIFTS ▸ + เจ้าของที่มีสถานะหน้ากะนอกจาก shifts-noshift (shiftsSale ขายผ่านหน้าขายของ SHIFTS_DEVICE_ID ⇒ ต้องมี PIN/โทเคน) ◂
+  if (jobs.some((j) => j.page === "register" || j.state === "paydone-print" || (userKey === "owner" && j.page === "shifts" && !!j.state && j.state !== "shifts-noshift"))) {
     await seedP115Once();
     console.log(P115.error ? `  ⚠️ ข้อมูลภาพ P1.15U: ${P115.error}` : `  ข้อมูลภาพ P1.15U: เครื่อง ${DEVICE_ID} · PIN ${Object.keys(P115.pins).join("/")} (ไม่พิมพ์ค่า) · บิลพัก ${P115.heldId || "-"}`);
   }
