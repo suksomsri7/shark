@@ -5,7 +5,7 @@
 //    ขอบเขตผิด (ร้าน/ระบบ/สาขา · กะของสาขาอื่น/ร้านอื่น) = NOT_FOUND (404 ไม่ใช่ 403)
 // 🔴 Z แช่แข็ง: zReport เขียนครั้งเดียวในtx ที่ปิดกะ · zReport() คืน JSON ที่เก็บไว้ตรง ๆ ไม่คำนวณใหม่ · ไม่มีโค้ดใดเขียนแถวที่ปิดแล้ว
 // 🔴 ล็อก: ปิดกะ/เงินเข้าออก = แถวกะ FOR UPDATE · บิล (createSale) = FOR SHARE ⇒ ปิดกะรอบิลที่กำลังบันทึก · ทุกบิลที่ commit แล้วอยู่ใน Z
-// 🔴 ไม่มี PIN ที่นี่ — PIN เป็นของ HR (verifyPin · P1.15/P3.5) · ผู้ทำรายการ = ผู้ใช้ของ session
+// 🔴 ไม่มี PIN ที่นี่ — PIN พนักงานอยู่ที่ pos/staff-pin.ts (P1.15) · ผู้ทำรายการ = ผู้ใช้ของ session หรือคนในโทเคนผู้ขาย (openShift staffToken · P1.15 R3)
 import { randomUUID } from "node:crypto";
 import { Prisma, type PosShift, type PosShiftRecount, type PrismaClient } from "@prisma/client";
 import { prisma } from "./db";
