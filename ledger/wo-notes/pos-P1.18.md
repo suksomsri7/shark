@@ -4,8 +4,8 @@ Branch `wip/pos-p1.18` from `origin/session/pos` d46b8e89 (oracle b93f0623 merge
 Tree `/root/projects/shark-pos-c` · QC4 (`ep-frosty-lab`) · logs under `scratchpad/p118/runs/`.
 
 ## Checkpoint
-- done: steps 1–6 (d4ccb98c · af6ae94a · aaaaf455 · 8c08c2ec · 34511c2e · step 6) + 4 ORACLE-EDIT commits
-- next: final gate set (p1.18 forced ×2 + unforced · listed suites · fitness ×2 · fitness-pos · typecheck)
+- done: steps 1–6 + final gates (DONE). Not merged. Waiting for controller review.
+- next: controller — review deviations 1/3/4/10 and run the foreign suites listed under Follow-ups.
 - commands:
   - oracle forced: `bash scripts/iso.sh env QC_FORCE=1 bash scripts/qc4.sh env GATE_LOCK_FILE=/tmp/shark-gate-pos.lock bash scripts/with-gate-lock.sh pnpm exec tsx scripts/qc-pos-p1.18.mts`
   - typecheck: `env NODE_OPTIONS=--max-old-space-size=5632 ISO_MEM=6500M bash scripts/iso.sh flock -w 3600 /tmp/pos-gate.lock pnpm typecheck`
@@ -38,6 +38,8 @@ Tree `/root/projects/shark-pos-c` · QC4 (`ep-frosty-lab`) · logs under `scratc
 6. **Unit-card `lastActivityAt`**: MEMBER (newest sale with memberId), POINT (pointEarned > 0), INVENTORY (a line with itemId), ACCOUNT (newest DONE `pos.sale.paid`), CHAT (newest `pos.receipt.sent` via LINE). COUPON / REWARD / CRM / KANBAN = null (no column or no cheap POS-side trace: PosSale has no coupon column; reward-fulfil / CRM-counted / POS-made card would need foreign internals). Only ACCOUNT is oracle-checked.
 7. **KANBAN void-card rule** is read from the KANBAN system's `settings.integrations.cardOnVoidedSale` JSON in the composition root (kanban has no facade; ST2 forbids `kanban/integrations`). Same fields the kanban bridge reads; if kanban's schema validation rejects the stored object the bridge treats the rule as off while the card could show LINKED — follow-up: a kanban facade read.
 8. **`posTabs(id, t?)`**: pages still call `posTabs(id)` (th labels from messages) — P1.18U passes `t` so EN shows EN tabs; `childrenFor("POS")` already follows the user locale.
+10. **ORACLE-EDIT `qc-pos-p1.16` ST1** (own commit 9e7668ef): it required the Thai literal "บิลวันนี้" on the /pos/sales lines of tabs.ts/layout.tsx; now checks the `sales` nav key + `pos.nav.sales` (th) = "บิลวันนี้". Count unchanged (28).
+11. **K3 second fix** (0d39ac2d): the first final unforced run caught round 2 with one held cart but two requests (`submitPosApproval` read the snapshot twice) — now one snapshot; afterwards forced ×2 + unforced 77/77.
 9. **Close-day / reports "today"** on pages (`close/page.tsx` bkkToday, `reports/page.tsx` bkkBusinessDate(now)) still default to the calendar day; the server functions honour the cut-off for any explicit date and `posBusinessToday(ctx)` is exported for the pages (P1.18U).
 
 ## Foreign-module edits (each also one line in `ledger/POS-OWNER-PENDING.md` under "แจ้งเจ้าของโมดูลบัญชี/อนุมัติ" — heading renamed from "…บัญชี" to "…บัญชี/อนุมัติ")
@@ -65,5 +67,6 @@ All refusals: `{ok:false, code, message(th, log only), field?}` → screen text 
 - P1.18U: pass `t` to `posTabs` on every POS page · page-level business "today" via `posBusinessToday` · sent receipts locale (ruling 13) · show `pinThrottled`.
 - kanban facade read for the void-card rule (deviation 7) · CRM-counted lastActivity via a crm facade read.
 
-## Gate exit codes
-(filled at the end)
+## Gate exit codes (head 0d39ac2d · logs `scratchpad/p118/runs/final-*` and `final2-*`, each log headed `tree=… head=…`)
+Final pass 2 (final2-20261009T143157Z): typecheck 0 · pnpm fitness (no env) 0 · pnpm fitness (QC4 env) 0 · fitness-pos 0 · qc-pos-p1.18 forced #1 0 (77/77) · forced #2 0 (77/77) · **unforced 0 (77/77, ST7 = SKIP-until-U, residue 0, leaks none, fpDrift none)** · qc-pos-p1.15 0 (39/39) · p1.16 0 (28/28) · p1.17 0 (40/40) · p1.5 0 (21/21) · p1.6 0 (48/48) · p1.8 0 (49/49) · p1.3 1 (126/128 — only S9.1/S9.2: `posqc-coffee-tenant.receiptSeqSum 144→145` written by the parallel P1.12U lane during the run; pass 1 had the same Z drift + S1.9 picking the other lane's `PQC-VIS-…` product — functional checks green both times).
+Final pass 1 (final-20261009T140645Z, head d2ac9b07 — before the K3 second fix and the p1.16 ORACLE-EDIT): typecheck 0 · fitness ×2 0 · fitness-pos 0 · p1.18 forced ×2 0 · p1.7 0 (32/32) · p1.10 0 (40/40) · p1.9 0 (53/53) · p1.12 0 (67/67) · p1.13 0 (33/33) · qc-nav-functions 0 · qc-hf-pos-page-authz 0 (56/56) · **qc-pos-account 0 (16/16) · qc-account-cpa 0 (107/107) — identical to the gates46 baseline** · p1.11 0 · p1.10u-print 0 · qc-pos-closeday 0 · (p1.18 unforced 1 K3 → fixed; p1.15/p1.17/p1.5/p1.6 1 = Z seed drift only → green in pass 2; p1.16 1 ST1 literal → ORACLE-EDIT, green in pass 2).
