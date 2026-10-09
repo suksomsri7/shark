@@ -24,7 +24,7 @@ Contract: `ledger/pos-briefs/pos-prompt-accountB-P2.1U.md` (rulings 1–9) · `p
 Existing keys reused: `channel.{title,subtitle,perUnitNote,add,connect,edit,archive,archived,locked,status.*,kind.*,builtin.*,field.*,payout.*,summary.*,example,commissionBlock.{gross,commission,net,note},empty,error,saved}`, `shift.method.PLATFORM`, `report.closeDay.method.PLATFORM`, `register.pay.platform`, `register.errors.channel*`. Now unused (left in place): `settings.channels.{title,sub,lineman,grab,shopee,foodpanda,storefront.*,note,banner}`, `bills.sum.billsSub`.
 
 ## Testids
-Inventory rows (wo `P2.1U`, 20 added, 1 retired) + addendum "P2.1U" in `pos-spec-P1.3-register-ui.md`: settings `pos-channel-{open,toggle,connect}-*`, `pos-channel-{add,show-archived,retry}`, drawer `pos-channel-drawer-{close,cancel,name,code,payout-*,commission,fixed,vat-*,sort,save,archive,archive-cancel,archive-confirm}`; bills `pos-bills-channel-filter`; register `pos-reg-paydlg-method-platform`. Retired `pos-settings-channel-storefront-state`. Display ids listed in the addendum.
+Inventory rows (wo `P2.1U`, 21 added, 1 retired — corrected in fix round 1 · +1 in fix round 1 = 22) + addendum "P2.1U" in `pos-spec-P1.3-register-ui.md`: settings `pos-channel-{open,toggle,connect}-*`, `pos-channel-{add,show-archived,retry}`, drawer `pos-channel-drawer-{close,cancel,name,code,payout-*,commission,fixed,vat-*,sort,save,archive,archive-cancel,archive-confirm}`; bills `pos-bills-channel-filter`; register `pos-reg-paydlg-method-platform`. Retired `pos-settings-channel-storefront-state`. Display ids listed in the addendum.
 
 ## Deviations from 10/12/09 and the rulings (rule touched)
 1. Steps 1 and 2 are one commit (`3eeec8f8`) — the panel's row tap and "+ เพิ่มช่องทางอื่น" open the drawer; a panel-only commit would have shipped dead buttons (build order).
@@ -60,3 +60,36 @@ Inventory rows (wo `P2.1U`, 20 added, 1 retired) + addendum "P2.1U" in `pos-spec
 - QC4 (iso → QC_FORCE qc4 → POS gate lock), first pass, no re-run needed: `qc-pos-p2.1` **0 · 55/55** (55 = 54 + the R8 ORACLE-EDIT already in the base) · `qc-pos-p1.16` **0 · 28/28** · `qc-pos-p1.18` (`QC_P118_PHASE=U`) **0 · 81/81, ST7 = 0** (81 registered at this base) · `qc-pos-p1.3` **0 · 128/128** · `qc-pos-p1.5` **0 · 21/21** · `qc-pos-p1.9` **0 · 53/53** · `qc-pos-p1.10` **0 · 40/40** · `qc-pos-p1.13` **0 · 33/33** · `qc-pos-p1.17` **0 · 40/40** · `qc-hf-pos-page-authz` **0 · 56/56**.
 - `pnpm fitness` no env **0 · 41/41** · QC4 env **0 · 41/41** · `scripts/fitness-pos.mts` **0 · 8/8** (F15.3a/b inventory 542 rows · F15.4 keys).
 - Visual `--dry` (`runs/dry-<page>-<user>-<th|en>.log`): settings owner/cashier th 46/46 shots · en 16/16 · sales th 27 · en 9 · register owner th 88 / en 32 · cashier th 85 / en 31 — all **rc 0**. Real screenshots = controller.
+
+## Fix round 1 (review `wo-notes/pos-P2.1U-review.md` · controller rulings 9 Oct 22:3xZ · code commit `7e2869b6` on top of merge `7f77b1d0` = origin/session/pos 8b2795b2, ledger/oracle only)
+Everything under the review's "Verified OK" is unchanged. Server behaviour is unchanged: the only `src/lib` change is the pure `channelNet` helper (ruling 5).
+- **F1 (fixed): `scripts/visual-pos.mts`.**
+  - `createP21uPair` (:3069) creates the WEB + LINE MAN pair with **per-run** keys `posqc-vis-p21u-<pid>-<n>-web|lineman`, like the P1.16 set.
+  - In `seedChannelBillsOnce` (:3112), owner runs always create a new pair, so it is newer than this run's P1.16 set.
+  - Cashier runs use `newestP21uPair` (:3099), which finds today's newest LINE MAN sale by `channelId` LINEMAN + `channelRef` "LM-48152" + BILL_TAG, and the newest WEB bill not newer than it. The pair is reused only if both are on page 1. Otherwise, or when none exists, a new pair is created.
+  - `p21uPageOnePos` (:3057) asserts the position with the screen's own reader: `billsPageData`, page 1, 10 rows, no filter. A pair not on page 1 is a fixture error. The setup log prints "หน้าแรก: เว็บร้าน #a · LINE MAN #b จาก N".
+  - `runP21uBillsState` (:3158) now calls `ensureP21uOnPageOne` (:3135) before its UI checks. That function re-checks page 1, because sale states or other lanes may have sold after the seed. If the pair has been pushed off page 1, it creates a fresh pair and reloads the page. It logs the position, so the state no longer fails on page position.
+  - Bills are never deleted, as before.
+- **F2 (no code change):** follow-up for P2.12, listed below.
+- **F3 (fixed):** `BillsClient.tsx:313-314`. `commissionRate` returns no rate when gross ≤ 0 or `commissionSatang === grandTotal` (capped). Other cases are unchanged.
+- **F4 (fixed, client only, 14 lines marked `POS P2.1U ▸ F4`):** `BillsClient.tsx` :677 (`rfMethod` + `"PLATFORM"`), :729 (preselect when any original payment is PLATFORM), :768 (`payTypeOf` → `PLATFORM`), :1882-1890/:1946 (PLATFORM-paid bill → a single option, "แพลตฟอร์ม" `pos-bills-refund-method-platform`, preselected; cash/original/card/credit are not rendered; the other bills are unchanged).
+  - `refund.ts:417-424` (R9) confirms the server rule. It counts PLATFORM payments on the sale. If there are any, every refund pay row must be PLATFORM. An empty payMethods list (a ฿0 refund) also passes.
+  - Keys `bills.refund.m.platform` "แพลตฟอร์ม"/"Platform" and `bills.refund.m.platformSub` "แพลตฟอร์มคืนเงินลูกค้าเอง"/"The platform refunds the customer" were added in th and en. **Deviation:** the controller suggested `bills.refund.method.PLATFORM`, but `bills.refund.method` is already a string ("คืนเงินด้วย"), so the key cannot nest there. The new keys follow the existing `refund.m.*` method keys instead. `shift.method.PLATFORM` ("แพลตฟอร์ม · รอแพลตฟอร์มโอน") reads wrong for a refund.
+  - Inventory gets row 543 for `pos-bills-refund-method-platform` (wo P2.1U, owner, toggle). The addendum line is at `pos-spec-P1.3-register-ui.md:685`.
+- **F5 (partial, per ruling):** `channel-shared.ts:118` adds pure `channelNet(gross, commission, vat)` = gross − commission − VAT, in integer satang. Inputs that are not positive integers count as 0. The result is not clamped, the same as the old JSX. It is used at `BillsClient.tsx:1381`. The drawer example (`ChannelDrawer.tsx:115`, verified OK) still uses inline arithmetic and can switch to the helper in P2.12.
+- **F6 (nits):**
+  - Every fix-round log starts with a `tree=/root/projects/shark-pos-b head=<sha> dirty=<n>` header and ends with `EXIT=`. This includes `runs/dry-*.log`.
+  - Inventory count corrected: 21 rows with wo `P2.1U` at the review (the "20 added" in §Testids was wrong), plus 1 in this round, for **22**. There are 543 rows in total.
+  - The filter-on-date-change behaviour stays as it is, per the ruling.
+
+### Follow-ups recorded for P2.12
+- F2: make `name` optional on channel update and write it only when it is provided. Then the panel/drawer toggle and edit can drop the stored name, and a concurrent rename is no longer reverted.
+- F3: store a snapshot of the rate (bp/fixed/VAT bp) on the sale, so the drawer does not need the live-rate match.
+- F5: refund-aware commission block. The reader should return the net-of-refunds gross, commission and VAT (refund shares from `channelRefundShare`). REFUNDED and partly refunded LINE MAN bills then show the real figures. Also switch the drawer example to `channelNet`.
+- P2.8 still has the channel picker, header chip and connection states. The F4 refund option is now in place.
+
+### Gates (code head `7e2869b6` · logs `scratchpad/p21u-fix/runs/` · header `tree=/root/projects/shark-pos-b head=7e2869b6 dirty=0`)
+- typecheck **0** (`runs/typecheck.log` at 7e2869b6; also `typecheck-pre.log` on the uncommitted tree, 0).
+- QC4 (iso → QC_FORCE qc4 → POS gate lock): `qc-pos-p1.18` (`QC_P118_PHASE=U`) **0 · 81/81, ST7 ✅** · `qc-pos-p1.16` **0 · 28/28** on the re-run. The first run was 27/28: only Z1 failed, on fingerprint drift in `posqc-coffee-tenant.outboxEvent 423→424 / auditLog 326→334`, which came from another lane on posqc-coffee during the run. That log is kept as `qc-pos-p1.16-run1.log`. `qc-pos-p1.8` **0 · 49/49** · `qc-pos-p1.5` **0 · 21/21** · `qc-pos-p2.1` **0 · 55/55**.
+- `pnpm fitness` no env **0 · 41/41** · QC4 env **0 · 41/41** · `scripts/fitness-pos.mts` **0 · 8/8**. F15.3a/b covers 543 inventory rows and F15.4 the keys.
+- Visual `--dry` (`runs/dry-<page>-<user>-<th|en>.log`, with header + EXIT): sales owner/cashier th 27 · en 9 · settings owner/cashier th 46 · en 16, all **rc 0**. Real screenshots are the controller's job. The F1 page-1 lines appear only in a real run, in the setup log and before each bills-channel state.
