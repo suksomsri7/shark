@@ -19,6 +19,9 @@
 // 🔴 ไม่แสดง message ของเซิร์ฟเวอร์เลย — ข้อความมาจากคีย์ errors.* (refusalMessageKey) · รหัสอยู่แค่ data-code
 // 🔴 ผลยังไม่แน่ใจ (unknown) = มีแค่ "ลองอีกครั้ง" (ชุดคำขอเดิม คีย์เดิม — วงจรคีย์อยู่ที่ RegisterScreen) · ห้ามสร้างคีย์ในไฟล์นี้ (S5.21)
 // 🔴 ไม่มีข้อความไทยนอกคอมเมนต์ (S5.3) · testid เขียนตรงบนแท็ก
+// POS P1.7U ▸ พร้อมเพย์ (และบัตรเมื่อร้านเปิด Beam) = ใบขอรับเงินต่อรอบ (PayIntentPanel · usePayIntent):
+//   รอบนี้ยืนยัน/แยกจ่ายได้เมื่อใบเป็น PAID เท่านั้น · แถวที่มาจากใบ PAID มี reference = id ของใบ และล็อก (เอาออก/แก้ไม่ได้ — มติ 2) ·
+//   บัตรเมื่อ Beam ปิด/CARD_UNAVAILABLE = ทาง EDC + เลขอ้างอิงเดิมของ P1.6 (มติ 3) · ส่วนลดเกินเพดาน = ไม่สร้าง QR (มติ 5) ◂
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
@@ -37,6 +40,7 @@ import {
 import { hundredthsText, parseHundredths } from "./LineEditor";
 import { RegisterDialog } from "./RegisterDialog";
 import { RegisterIcon, type RegisterIconName } from "./RegisterIcon";
+import { PayIntentPanel, usePayIntent, type IntentTarget, type PayIntentSetup } from "./PayIntentPanel";
 
 export type PayPhase = "form" | "sending" | "unknown" | "conflict";
 export type PayError = { code: string; key: string; values?: Record<string, string | number> };
@@ -77,10 +81,20 @@ type Props = {
   onClose: () => void;
   onNewBill: () => void;
   onRemoveMember: () => void;
+  /** POS P1.7U ▸ ใบขอรับเงิน (ไม่ส่ง = พร้อมเพย์แบบ QR นิ่ง + ยืนยันเองของ P1.6) */
+  intent?: PayIntentSetup | null;
 };
 
 /** แถวที่แยกจ่ายไว้แล้ว (ยังไม่ส่ง) · id = ตัวนับในกล่อง (ไม่ใช่คีย์บิล) */
-type PayRow = { id: number; type: RegisterPayType; amountSatang: number; reference?: string; tenderedSatang?: number };
+type PayRow = {
+  id: number;
+  type: RegisterPayType;
+  amountSatang: number;
+  reference?: string;
+  tenderedSatang?: number;
+  /** P1.7U: แถวจากใบขอรับเงินที่ PAID แล้ว — ล็อก (reference = id ของใบ) */
+  via?: "WEBHOOK" | "MANUAL" | null;
+};
 
 const QUICK = [10_000, 50_000, 100_000];
 const STATUS_KEY: Record<RegisterSaleStatus, string> = { PAID: "pay.statusPaid", VOIDED: "pay.statusVoided", REFUNDED: "pay.statusRefunded" };
@@ -150,8 +164,30 @@ export function PayDialog(p: Props) {
   const rowsFull = rows.length >= REGISTER_MAX_PAY_METHODS - 1;
   const ppMissing = method === "PROMPTPAY" && !p.promptpayId;
   const ready = !busy && p.itemCount > 0 && !p.quotePending && !p.quoteError && tipOk && !ppMissing;
-  const canConfirm = ready && (zero || plan.state === "complete");
-  const canSplit = ready && !zero && plan.state === "partial" && !rowsFull;
+
+  // ── POS P1.7U ▸ ใบขอรับเงินของรอบนี้ (มติ 1–3 · 5) ──
+  /** บัตรถูกปฏิเสธ CARD_UNAVAILABLE ⇒ ใช้ทาง EDC เดิมตลอดกล่องนี้ */
+  const [cardEdc, setCardEdc] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const beamCard = !!p.intent?.beamCard && !cardEdc;
+  const intentMode = !!p.intent && (method === "PROMPTPAY" || (method === "CARD" && beamCard));
+  const roundAmount = plan.state === "complete" || plan.state === "partial" ? plan.amount : 0;
+  const intentWaiting = roundAmount <= 0 || (plan.state === "partial" && rowsFull);
+  const target: IntentTarget =
+    intentMode && ready && !zero && !intentWaiting && !p.intent!.discountOverCap ? { method: method as "PROMPTPAY" | "CARD", amountSatang: roundAmount } : null;
+  const pi = usePayIntent(p.intent ?? null, target);
+  /** ใบของรอบนี้จ่ายแล้วและยอดตรงรอบนี้ ⇒ ยืนยัน/แยกจ่ายได้ · ยอด/วิธีล็อก */
+  const piPaid = intentMode && pi.intent?.status === "PAID" && pi.intent.amountSatang === roundAmount;
+  const piLocked = intentMode && pi.intent?.status === "PAID";
+  const canConfirm = ready && (zero || plan.state === "complete") && (!intentMode || zero || remaining <= 0 || piPaid);
+  const canSplit = ready && !zero && plan.state === "partial" && !rowsFull && (!intentMode || piPaid);
+  const flash = (key: string) => {
+    setNotice(key);
+    setTimeout(() => setNotice((n) => (n === key ? null : n)), 3500);
+  };
+  useEffect(() => {
+    if (pi.error?.code === "CARD_UNAVAILABLE" && method === "CARD") setCardEdc(true);
+  }, [pi.error, method]);
 
   // ยอดบิลเปลี่ยน (quote ใหม่ · PRICE_CHANGED) ⇒ แถวที่แยกไว้คิดจากยอดเก่า — ล้างทิ้ง เริ่มรับใหม่ (กติกาข้อ 4)
   const lastDue = useRef(p.dueSatang);
@@ -165,6 +201,7 @@ export function PayDialog(p: Props) {
 
   // เลือกวิธีจ่าย: เงินสด = ช่องว่างรอรับเงิน · อื่น ๆ = ยอดคงเหลือพอดี · โฟกัสช่องจำนวนเฉพาะเมาส์/คีย์บอร์ด (จอสัมผัสไม่เด้งคีย์บอร์ด)
   const pickMethod = (m: RegisterPayType) => {
+    if (piLocked && m !== method) return flash("pay.intent.locked"); // มติ 2: ใบที่เงินเข้าแล้วเปลี่ยนวิธีไม่ได้
     setMethod(m);
     setEntry(m === "CASH" ? "" : null);
     setReference("");
@@ -177,7 +214,7 @@ export function PayDialog(p: Props) {
 
   // ── แป้นตัวเลข: ต่อท้ายหลักบาท · ค่าที่มีทศนิยม (จาก "พอดี") หรือค่าอัตโนมัติ = เริ่มใหม่ · ⌫ ลบทีละตัว ──
   const press = (k: (typeof KEYS)[number]) => {
-    if (busy) return;
+    if (busy || piLocked) return;
     if (k.digits === null) {
       setEntry(entryText.slice(0, -1));
       return;
@@ -188,11 +225,11 @@ export function PayDialog(p: Props) {
     setEntry(next);
   };
   const quick = (v: number) => {
-    if (busy) return;
+    if (busy || piLocked) return;
     setEntry(hundredthsText(v));
   };
   const exact = () => {
-    if (busy) return;
+    if (busy || piLocked) return;
     setEntry(method === "CASH" ? hundredthsText(Math.max(remaining, 0)) : null);
   };
 
@@ -204,16 +241,20 @@ export function PayDialog(p: Props) {
       type: method,
       amountSatang: plan.amount,
       ...(method === "CASH" ? { tenderedSatang: plan.amount } : {}),
-      ...((method === "CARD" || method === "TRANSFER") && reference.trim() ? { reference: reference.trim() } : {}),
+      ...(!intentMode && (method === "CARD" || method === "TRANSFER") && reference.trim() ? { reference: reference.trim() } : {}),
+      ...(intentMode && piPaid && pi.intent ? { reference: pi.intent.id, via: pi.intent.confirmedVia } : {}),
     };
+    if (intentMode) pi.release();
     setRows((s) => [...s, row]);
-    const next: RegisterPayType = method === "CASH" ? (p.promptpayId ? "PROMPTPAY" : "TRANSFER") : method;
+    // P1.7U: หลังใบที่เงินเข้าแล้ว ⇒ รอบถัดไปเริ่มที่เงินสด (ถ้ายังไม่มีแถวเงินสด) — ไม่สร้าง QR ใบที่สองเอง
+    const next: RegisterPayType = intentMode ? (cashRow ? "TRANSFER" : "CASH") : method === "CASH" ? (p.promptpayId ? "PROMPTPAY" : "TRANSFER") : method;
     setMethod(next);
-    setEntry(null);
+    setEntry(next === "CASH" ? "" : null);
     setReference("");
   };
   const removeRow = (id: number) => {
     if (busy) return;
+    if (rows.some((r) => r.id === id && r.via !== undefined)) return flash("pay.intent.locked"); // มติ 2: เงินเข้าแล้ว — เอาออกไม่ได้
     setRows((s) => s.filter((r) => r.id !== id));
     setEntry(method === "CASH" ? "" : null);
   };
@@ -230,7 +271,8 @@ export function PayDialog(p: Props) {
               type: method,
               amountSatang: plan.amount,
               ...(method === "CASH" ? { tenderedSatang: entrySatang ?? plan.amount } : {}),
-              ...((method === "CARD" || method === "TRANSFER") && reference.trim() ? { reference: reference.trim() } : {}),
+              ...(!intentMode && (method === "CARD" || method === "TRANSFER") && reference.trim() ? { reference: reference.trim() } : {}),
+              ...(intentMode && piPaid && pi.intent ? { reference: pi.intent.id } : {}),
             },
           ]
         : [];
@@ -423,15 +465,18 @@ export function PayDialog(p: Props) {
                         <span className="min-w-0 flex-1 truncate text-[color:var(--color-muted)]">
                           {r.type === "CASH" && r.tenderedSatang !== undefined
                             ? t("pay.rowCash", { received: moneyText(r.tenderedSatang), change: moneyText(r.tenderedSatang - r.amountSatang) })
-                            : r.reference
+                            : r.via !== undefined
+                              ? t(r.via === "WEBHOOK" ? "pay.intent.paidBeam" : "pay.intent.paidManual")
+                              : r.reference
                               ? t("pay.rowRef", { ref: r.reference })
                               : ""}
                         </span>
                         <button
                           data-testid={`pos-reg-paydlg-row-remove-${r.id}`}
-                          className="-mr-2 grid size-11 shrink-0 place-items-center rounded-[11px] text-[color:var(--color-muted)] hover:bg-[color:var(--color-surface-2)] disabled:opacity-50"
+                          className="-mr-2 grid size-11 shrink-0 place-items-center rounded-[11px] text-[color:var(--color-muted)] hover:bg-[color:var(--color-surface-2)] disabled:opacity-50 aria-disabled:opacity-40"
                           type="button"
                           disabled={busy}
+                          aria-disabled={r.via !== undefined || undefined}
                           aria-label={t("pay.removeRow", { method: t(methodLabelKey(r.type)), amount: moneyText(r.amountSatang) })}
                           onClick={() => removeRow(r.id)}
                         >
@@ -469,7 +514,9 @@ export function PayDialog(p: Props) {
                               : t("pay.noPromptPay")
                             : m.type === "TRANSFER"
                               ? t("pay.transferHint")
-                              : t("pay.cardHint");
+                              : p.intent
+                                ? t(beamCard ? "pay.intent.cardBeam" : "pay.intent.cardEdc")
+                                : t("pay.cardHint");
                       return (
                         <button
                           key={m.type}
@@ -493,7 +540,10 @@ export function PayDialog(p: Props) {
             {/* ── คอลัมน์ขวา (มือถือ: ต่อท้ายคอลัมน์ซ้าย · ไม่มีแป้นตัวเลข) ── */}
             {showForm && !zero && (
               <div className="flex flex-col gap-4 px-5 pb-4 md:w-[400px] md:shrink-0 md:overflow-y-auto md:bg-[color:var(--color-surface-2)] md:px-[22px] md:py-[18px] lg:w-[470px] xl:gap-[23px]">
-                {method === "PROMPTPAY" && p.promptpayId && (
+                {intentMode && p.intent && (
+                  <PayIntentPanel h={pi} setup={p.intent} method={method === "CARD" ? "CARD" : "PROMPTPAY"} amountSatang={roundAmount} waiting={intentWaiting} />
+                )}
+                {!p.intent && method === "PROMPTPAY" && p.promptpayId && (
                   <div data-testid="pos-reg-paydlg-qr" className="flex items-center gap-5 rounded-[12px] border bg-[color:var(--color-surface)] p-[14px] max-md:flex-col xl:gap-[31px]">
                     <PromptPayQr payload={qr} size={150} />
                     <div className="flex min-w-0 flex-1 flex-col gap-3 max-md:items-center max-md:text-center">
@@ -504,7 +554,7 @@ export function PayDialog(p: Props) {
                   </div>
                 )}
 
-                {(method === "CARD" || method === "TRANSFER") && (
+                {((method === "CARD" && !intentMode) || method === "TRANSFER") && (
                   <label className="flex flex-col gap-1.5 text-[13px] text-[color:var(--color-muted)]">
                     <span>
                       {t("pay.reference")} <span className="text-[12px]">· {t("pay.referenceHint")}</span>
@@ -531,7 +581,7 @@ export function PayDialog(p: Props) {
                     autoComplete="off"
                     value={entryText}
                     placeholder="0"
-                    disabled={busy}
+                    disabled={busy || piLocked}
                     aria-invalid={plan.state === "invalid" || plan.state === "over"}
                     onChange={(e) => setEntry(e.target.value)}
                   />
@@ -560,6 +610,11 @@ export function PayDialog(p: Props) {
                     {t("errors.splitInvalid")}
                   </p>
                 )}
+                {notice && (
+                  <p data-testid="pos-pay-intent-locked" className="text-[13px] font-semibold text-[color:var(--color-danger)]" role="status">
+                    {t(notice)}
+                  </p>
+                )}
 
                 <div className="hidden grid-cols-3 gap-3.5 md:grid" role="group" aria-label={t("pay.numpad")}>
                   {KEYS.map((k) => (
@@ -570,7 +625,7 @@ export function PayDialog(p: Props) {
                         k.id === "00" || k.id === "back" ? "bg-[color:var(--color-surface-2)] text-[18px]" : "bg-[color:var(--color-surface)]"
                       }`}
                       type="button"
-                      disabled={busy}
+                      disabled={busy || piLocked}
                       aria-label={k.id === "back" ? t("pay.backspace") : k.label}
                       onClick={() => press(k)}
                     >
@@ -585,7 +640,7 @@ export function PayDialog(p: Props) {
                       data-testid={`pos-reg-paydlg-quick-${v / 100}`}
                       className="h-11 rounded-[8px] border bg-[color:var(--color-surface)] text-[13px] font-semibold tabular-nums disabled:opacity-50"
                       type="button"
-                      disabled={busy || (method !== "CASH" && v > remaining)}
+                      disabled={busy || piLocked || (method !== "CASH" && v > remaining)}
                       onClick={() => quick(v)}
                     >
                       {(v / 100).toLocaleString("th-TH")}
@@ -595,7 +650,7 @@ export function PayDialog(p: Props) {
                     data-testid="pos-reg-paydlg-quick-exact"
                     className="h-11 rounded-[8px] border bg-[color:var(--color-surface)] text-[13px] font-semibold disabled:opacity-50"
                     type="button"
-                    disabled={busy}
+                    disabled={busy || piLocked}
                     onClick={exact}
                   >
                     {t("pay.exact")}
@@ -670,6 +725,7 @@ export function PayDialog(p: Props) {
                   type="submit"
                   aria-keyshortcuts="F4"
                   disabled={!canConfirm}
+                  title={intentMode && !piPaid && !zero ? t("pay.intent.waitPaid") : undefined}
                 >
                   {primaryLabel}
                   {!busy && !p.quotePending && <span className="ml-1.5 hidden opacity-70 md:inline">(F4)</span>}

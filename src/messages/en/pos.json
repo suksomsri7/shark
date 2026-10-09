@@ -228,7 +228,35 @@
       "tipAmount": "Tip amount",
       "tipHint": "Tips are not shop revenue · no VAT",
       "billNote": "Bill note: {note}",
-      "breakdownVat": "VAT {rate}% included {amount}"
+      "breakdownVat": "VAT {rate}% included {amount}",
+      "intent": {
+        "promptpayTitle": "PromptPay · this round",
+        "cardTitle": "Credit/debit card · Beam",
+        "waitBeam": "Waiting for payment… confirmed automatically by Beam",
+        "staticHint": "Ask the customer to scan, then confirm once you see the money arrive",
+        "manual": "Confirm manually when the money arrives",
+        "manualBusy": "Confirming…",
+        "managerOnly": "Only managers (shift management) can confirm manually",
+        "waitCard": "Waiting for Beam…",
+        "cardHint": "The customer scans to pay by card on the Beam page",
+        "openLink": "Open link",
+        "expiresIn": "Expires in {time}",
+        "paidBeam": "Payment received · via Beam",
+        "paidManual": "Payment received · confirmed manually",
+        "lateWebhook": "Paid after the QR expired",
+        "expired": "QR expired",
+        "cancelled": "This payment request was cancelled — create a new QR",
+        "regenerate": "Create a new QR",
+        "creating": "Creating the QR…",
+        "retry": "Try again",
+        "notConfigured": "The shop has not set up PromptPay",
+        "setupLink": "Set up PromptPay in the shop payment profile →",
+        "approvalFirst": "Get the discount approved before creating a QR",
+        "locked": "Payment already received — use it for this bill or refund it yourself",
+        "waitPaid": "Wait for the payment before confirming",
+        "cardBeam": "Beam",
+        "cardEdc": "EDC · enter a reference"
+      }
     },
     "done": {
       "title": "Sale complete",
@@ -1289,6 +1317,27 @@
         "logoUrl": "The logo link must start with https://",
         "footer": "Footer text can be at most 200 characters"
       }
+    },
+    "payments": {
+      "title": "Payment methods",
+      "subtitle": "Amount-locked PromptPay QR · Beam · payment confirmation — applies to every branch of this point of sale",
+      "promptpayCard": "PromptPay",
+      "promptpayId": "PromptPay ID",
+      "promptpayNone": "Not set — PromptPay QR is unavailable",
+      "promptpayHint": "Read from the shop payment profile (shared by every system) · cannot be edited here",
+      "promptpayLink": "Set it in the shop payment profile →",
+      "qrExpiry": "QR lifetime (minutes)",
+      "qrExpiryHint": "5–60 minutes · an expired QR must be created again",
+      "beamCard": "Beam",
+      "beamEnabled": "Accept payments through Beam",
+      "beamHint": "Needs Beam keys on the platform — automatic PromptPay confirmation + credit/debit cards",
+      "beamNotConfigured": "No keys yet",
+      "beamConfigured": "Keys set",
+      "manualCard": "Manual confirmation",
+      "manualRequiresManager": "Manual payment confirmation needs a manager",
+      "manualHint": "The \"Confirm manually\" button is limited to people who manage shifts · PromptPay via Beam always needs a manager · Beam card payments cannot be confirmed manually",
+      "permissionDenied": "This account cannot change payment settings — it needs device management in every branch of this point of sale",
+      "expiryInvalid": "QR lifetime must be a whole number from 5 to 60 minutes"
     }
   },
   "print": {
