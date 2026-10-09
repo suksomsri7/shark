@@ -356,6 +356,8 @@ async function anonymousPinFailures(tx: PinTx, s: UnitScope, bucket: string): Pr
 async function matchAnonymousPin(db: Db, s: UnitScope, deviceId: string, pin: unknown): Promise<Matched | RegisterRefusal> {
   return db.$transaction(
     async (tx) => {
+      // POS P1.18U ▸ มติ 10e (R2): รอล็อกได้ไม่เกิน 3 วิ — เกินเวลา = error ⇒ guard ตอบ INTERNAL (ปิดทางแบบปลอดภัย · ไม่ตรวจ PIN) ◂
+      await tx.$queryRaw`SELECT set_config('lock_timeout', '3s', true) AS x`;
       await tx.$queryRaw`SELECT 1 AS x FROM (SELECT pg_advisory_xact_lock(hashtext(${"pos.staff.pin:"}::text || ${s.tenantId}::text || ':' || ${s.unitId}::text))) l`;
       const bucket = await pinDeviceBucket(tx, s, deviceId);
       const n = await anonymousPinFailures(tx, s, bucket);

@@ -23,6 +23,8 @@ type Props = {
   categoryId: string | null;
   /** ร้านนี้ยังไม่มีสินค้าขายที่สาขานี้เลย (ไม่ค้น · ไม่เลือกหมวด · ได้ 0) */
   catalogueEmpty: boolean;
+  /** POS P1.18U ▸ มติ 11: มีสิทธิ์จัดการสินค้า ⇒ ปุ่ม "เพิ่มสินค้า" · ไม่มี (แคชเชียร์) = ข้อความอย่างเดียว ◂ */
+  canManageProducts?: boolean;
   hasMore: boolean;
   productsHref: string;
   /** P1.2 U R2: anchor = กรอบการ์ดที่แตะ (ป๊อปโอเวอร์ตัวเลือกยึดกับการ์ด — ภาพ 01) */
@@ -33,7 +35,7 @@ type Props = {
   onClearSearch: () => void;
 };
 
-export function ProductGrid({ products, inCart, pending, q, categoryId, catalogueEmpty, hasMore, productsHref, onPick, selectedId = null, onMore, onClearSearch }: Props) {
+export function ProductGrid({ products, inCart, pending, q, categoryId, catalogueEmpty, canManageProducts = true, hasMore, productsHref, onPick, selectedId = null, onMore, onClearSearch }: Props) {
   const t = useTranslations("pos.register");
   const moreRef = useRef<HTMLButtonElement>(null);
   // เลื่อนถึงปุ่ม "แสดงเพิ่ม" = โหลดหน้าถัดไปเอง (ครั้งเดียวต่อการเห็น — ระหว่างโหลดไม่ยิงซ้ำ)
@@ -54,15 +56,17 @@ export function ProductGrid({ products, inCart, pending, q, categoryId, catalogu
           <RegisterIcon name="box" size={32} strokeWidth={1.5} />
         </span>
         <h2 className="text-[20px] font-bold tracking-[-0.01em]">{t("empty.title")}</h2>
-        <p className="max-w-[380px] text-[14.5px] leading-[1.6] text-[color:var(--color-muted)]">{t("empty.body")}</p>
-        <Link
-          data-testid="pos-reg-empty-add-product"
-          className="btn btn-primary mt-2 h-[46px] gap-[9px] rounded-[13px] px-5 text-[15px]"
-          href={productsHref}
-        >
-          <RegisterIcon name="plus" size={14} />
-          {t("empty.addProduct")}
-        </Link>
+        <p className="max-w-[380px] text-[14.5px] leading-[1.6] text-[color:var(--color-muted)]">{canManageProducts ? t("empty.body") : t("emptyCatalogue.cashierBody")}</p>
+        {canManageProducts && (
+          <Link
+            data-testid="pos-reg-empty-add-product"
+            className="btn btn-primary mt-2 h-[46px] gap-[9px] rounded-[13px] px-5 text-[15px]"
+            href={productsHref}
+          >
+            <RegisterIcon name="plus" size={14} />
+            {t("empty.addProduct")}
+          </Link>
+        )}
       </div>
     );
   }

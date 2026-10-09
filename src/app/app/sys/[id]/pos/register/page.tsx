@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { getTranslations } from "next-intl/server";
 import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
 import { systemDef } from "@/lib/systems";
@@ -16,7 +17,7 @@ import { RegisterScreen } from "@/components/pos/register/RegisterScreen";
 // POS P1.7U ▸ ใบขอรับเงิน: ค่าตั้ง settings.pos.payment + คีย์ Beam ของแพลตฟอร์ม (boolean เท่านั้น) + สิทธิ์ยืนยันเอง ◂
 import { evaluate } from "@/lib/core/rbac";
 import { beamEnabled } from "@/lib/payment/beam";
-import { parsePosIntentSettings } from "@/lib/modules/pos/payment-intent-shared";
+import { parsePosIntentSettings, promptpayIdForUnit } from "@/lib/modules/pos/payment-intent-shared";
 
 // หน้าขาย POS (cashier) — เปิดบิลเก็บเงิน walk-in เงินสด/พร้อมเพย์
 //
@@ -46,7 +47,7 @@ export default async function PosRegisterPage({
   // B2.3 N-b: จอใหม่เฉพาะระบบที่ active — ตรงกับ layout ที่โหลดเฉพาะระบบ active มาตัดสินโหมดราง (ไม่งั้นจอใหม่ไม่มีราง)
   const v2 = sys.active && posRegisterV2On(sys.settings);
 
-  const tabs = posTabs(id);
+  const tabs = posTabs(id, await getTranslations("pos")); // POS P1.18U ▸ มติ 9: แท็บโมดูลตามภาษาจอ ◂
 
   // HF-POS-PAGES: เดิมไม่ตรวจสิทธิ์ + ?unit= ของสาขาอื่นก็เปิดได้ (โหลดสมาชิก/สินค้าของสาขานั้น)
   //   ตอนนี้: ต้องขายได้ · รายการสาขาเหลือเฉพาะที่เข้าได้ · ขอสาขาที่เข้าไม่ได้ = notFound
@@ -77,7 +78,9 @@ export default async function PosRegisterPage({
       registerDiscountCaps(ctx),
     ]);
     const limits = registerSellerLimits(actor, active.id, caps);
-    const ppId = profile?.promptpayId && isValidPromptPayId(profile.promptpayId) ? profile.promptpayId : null;
+    // POS P1.18U ▸ มติ 10b (F6): QR พร้อมเพย์แบบคงที่ = เลขของสาขาก่อน เลขของร้าน (PaymentProfile) ทีหลัง — ลำดับเดียวกับ createPaymentIntent ◂
+    const unitPp = promptpayIdForUnit(sys.settings, active.id);
+    const ppId = unitPp && isValidPromptPayId(unitPp) ? unitPp : profile?.promptpayId && isValidPromptPayId(profile.promptpayId) ? profile.promptpayId : null;
     const intentSet = parsePosIntentSettings(sys.settings);
     return (
       <RegisterScreen
@@ -102,6 +105,7 @@ export default async function PosRegisterPage({
           canManageShift: evaluate(posMembership(auth.active), { module: "pos", action: "pos.shift.manage", unitId: active.id }),
           promptpayLink: "/app/settings/payment",
         }}
+        canManageProducts={evaluate(posMembership(auth.active), { module: "pos", action: "pos.product.manage", unitId: active.id })}
       />
     );
   }

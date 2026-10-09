@@ -156,6 +156,8 @@ export type RegisterScreenProps = {
   discountCaps?: PosDiscountCaps;
   /** POS P1.7U ▸ ใบขอรับเงิน (พร้อมเพย์ QR ล็อกยอด · Beam) — ค่าตั้ง + สิทธิ์จากหน้าเพจ · ไม่ส่ง = QR นิ่งแบบ P1.6 ◂ */
   payIntent?: { beamCard: boolean; manualRequiresManager: boolean; canManageShift: boolean; promptpayLink: string };
+  /** POS P1.18U ▸ มติ 11: ผู้ใช้ session มี pos.product.manage ที่สาขานี้ — สถานะร้านไม่มีสินค้า (19ก) แสดงปุ่ม "เพิ่มสินค้า" · ไม่มี = ข้อความอย่างเดียว ◂ */
+  canManageProducts?: boolean;
 };
 
 /** ns "member" = คีย์ใต้ pos.member (P1.12U) · ไม่ระบุ = ใต้ pos.register */
@@ -878,7 +880,8 @@ export function RegisterScreen(props: RegisterScreenProps) {
    *  P1.12U fix รอบ 2 F1: โทเคนผู้ขายตาย = ลบโทเคน + ล็อก (เหมือนทุกคำขอที่พกโทเคน) */
   const onOverrideRefused = (code: string) => {
     if (code === "STAFF_TOKEN_INVALID") staffTokenDead();
-    else if (code === "PIN_INVALID" || code === "PIN_LOCKED") {
+    else if (code === "PIN_INVALID" || code === "PIN_LOCKED" || code === "PIN_THROTTLED") {
+      // POS P1.18U ▸ มติ 10a: PIN_THROTTLED = ปลด PIN ที่เตรียมไว้ + ข้อความ errors.pinThrottled (รอ 15 นาที) — ไม่ใช่ข้อความทั่วไป ◂
       setDiscAuth(null);
       showToast(errorFor(code));
     } else if (code === "APPROVAL_MISMATCH" || code === "DISCOUNT_EXCEEDS_LIMIT") {
@@ -1635,7 +1638,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
       setPayError({ code: r.code, ...errorFor(r.code) });
       if (r.code === "STAFF_TOKEN_INVALID") staffTokenDead(); // POS P1.15U ▸ โทเคนตาย = ล็อก (ไม่มีบิล · คีย์เดิม) ◂
       // POS P1.15U ▸ PIN ผู้จัดการผิด/ล็อก = ล้างสิทธิ์ที่เตรียมไว้ (ใส่ใหม่ผ่านแผ่นส่วนลดเกินสิทธิ์) · ต้องรออนุมัติ = บิลถูกพักแล้ว ⇒ 21B (ล้างจอนอก send) ◂
-      if (r.code === "PIN_INVALID" || r.code === "PIN_LOCKED" || r.code === "APPROVAL_MISMATCH") setDiscAuth(null);
+      if (r.code === "PIN_INVALID" || r.code === "PIN_LOCKED" || r.code === "PIN_THROTTLED" || r.code === "APPROVAL_MISMATCH") setDiscAuth(null); // POS P1.18U ▸ 10a ◂
       if ((r.code === "APPROVAL_REQUIRED" || r.code === "PENDING_APPROVAL") && "requestId" in r) setApprovalHandoff({ requestId: r.requestId, ...(r.heldCartId ? { heldCartId: r.heldCartId } : {}) });
       // P1.13U มติ 2: เลขผู้เสียภาษีถูกปฏิเสธตอนบันทึก ⇒ เปิดกล่องใบกำกับซ้ำพร้อมข้อความ (คีย์บิลเดิม · ไม่มีบิล)
       if (r.code === "TAX_ID_INVALID" && sale.taxInvoice)
@@ -2520,6 +2523,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
                 q={shownQ}
                 categoryId={categoryId}
                 catalogueEmpty={catalogueEmpty}
+                canManageProducts={props.canManageProducts ?? true}
                 hasMore={!!nextCursor}
                 productsHref={`${base}/pos/products`}
                 onPick={pick}
