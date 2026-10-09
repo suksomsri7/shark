@@ -1409,6 +1409,10 @@ async function regPrice(
       //   POS P2.2 ▸ R4 R5: ราคาเปิด = OPEN · อื่น ๆ = ตัวแก้ราคา (โปร > ช่องทาง+สาขา > ช่องทาง > สาขา > ฐาน) บนช่องทางของตะกร้า ณ book.at
       //   · ไม่ตั้งราคา = PRICE_NOT_SET · แถวที่ชนะเป็น "ไม่ขาย" = CHANNEL_NOT_SOLD (บรรทัดนี้) ◂
       if (l.openPrice !== null) {
+        // รีวิว F1: ราคาเปิดไม่ข้ามแถว "ไม่ขาย" — แถวที่ชนะบนช่องทางของตะกร้าเป็นไม่ขาย = CHANNEL_NOT_SOLD (บรรทัดนี้ · เหมือนทางปกติ)
+        //   ผลอื่น (มีราคา / PRICE_NOT_SET) ไม่สนใจ — บรรทัดคงเป็น OPEN ราคาที่กรอก (Q7)
+        const rp = priceOf(book, row, priceChannelCode);
+        if (!rp.ok && rp.code === "CHANNEL_NOT_SOLD") return regRefuse(rp.code, undefined, i);
         base = l.openPrice;
         priceSource = "OPEN";
       } else {
