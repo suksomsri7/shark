@@ -53,6 +53,8 @@ const AUDIT_ISSUED = "pos.taxinvoice.issued";
 const AUDIT_REJECTED = "pos.taxinvoice.rejected";
 const AUDIT_DBD = "pos.taxinvoice.dbd_lookup";
 const EV_ISSUED = "pos.sale.taxInvoiceIssued";
+/** fix F5: เหตุผลของระบบเมื่อออกเต็มรูปให้ผู้ซื้อคนอื่น (คำขอที่เลขไม่ตรงถูกปิด) */
+const AUTO_REJECT_REASON = "ออกใบกำกับภาษีเต็มรูปให้ผู้ซื้อรายอื่นแล้ว";
 
 const isRecord = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
 const isId = (v: unknown): v is string => typeof v === "string" && v.length > 0 && v.length <= 200 && !v.includes("\u0000");
@@ -145,6 +147,7 @@ async function issueCore(x: IssueCore): Promise<TaxInvoiceIssueResult> {
   if (!conv.created && conv.buyerMatches === false) return taxInvoiceRefuse("ALREADY_ISSUED");
 
   const snapshot: TaxInvoiceSnapshot = { ...buyer, requestedAt: new Date().toISOString() };
+  const autoRejected: { id: string; taxId: string }[] = [];
   // ธุรกรรมเดียว: สำเนา + เลขเอกสาร (เฉพาะเมื่อยังว่าง — แข่งกันได้ผู้ชนะคนเดียว) · คำขอ P1.11 → ISSUED · event
   const won = await prisma.$transaction(async (tx) => {
     const n = await tx.posSale.updateMany({
@@ -153,11 +156,17 @@ async function issueCore(x: IssueCore): Promise<TaxInvoiceIssueResult> {
       data: { taxInvoice: snapshot as unknown as Prisma.InputJsonValue, taxInvoiceDocId: conv.docId },
     });
     if (n.count !== 1) return false;
-    // คำขอจากใบเสร็จออนไลน์ของบิลนี้ที่ยังเปิดอยู่ = ได้เอกสารแล้ว (มติ 8: เลขเอกสารอยู่ที่ accountDocId)
-    await tx.posTaxInvoiceRequest.updateMany({
-      where: { tenantId: ctx.tenantId, saleId: sale.id, status: "REQUESTED", ...(request ? { id: request.id } : {}) },
-      data: { status: "ISSUED", accountDocId: conv.docId },
-    });
+    // คำขอจากใบเสร็จออนไลน์ (มติ 8: เลขเอกสารอยู่ที่ accountDocId) — ออกจากคำขอ = คำขอนั้น ISSUED
+    //   fix F5: ออกทีหลังโดยไม่ระบุคำขอ = คำขอที่ยังเปิดของบิล ISSUED เฉพาะเมื่อเลขผู้เสียภาษีตรงผู้ซื้อที่ออก · ไม่ตรง = REJECTED (เหตุผลของระบบ + audit)
+    const open = request ? [{ id: request.id, taxId: buyer.taxId }] : await tx.posTaxInvoiceRequest.findMany({ where: { tenantId: ctx.tenantId, saleId: sale.id, status: "REQUESTED" }, select: { id: true, taxId: true } });
+    for (const r of open) {
+      const same = r.taxId === buyer.taxId;
+      const u = await tx.posTaxInvoiceRequest.updateMany({
+        where: { id: r.id, tenantId: ctx.tenantId, status: "REQUESTED" },
+        data: same ? { status: "ISSUED", accountDocId: conv.docId } : { status: "REJECTED" },
+      });
+      if (!same && u.count === 1) autoRejected.push({ id: r.id, taxId: r.taxId });
+    }
     await emitOutbox(tx, {
       tenantId: ctx.tenantId,
       type: EV_ISSUED,
@@ -188,6 +197,16 @@ async function issueCore(x: IssueCore): Promise<TaxInvoiceIssueResult> {
     targetId: sale.id,
     after: { saleId: sale.id, unitId: sale.unitId, docId: conv.docId, docNo: conv.docNo, kind: buyer.kind, buyerName: buyer.name, taxId: maskTaxId(buyer.taxId), branchCode: buyer.branchCode, via: x.via, ...(request ? { requestId: request.id } : {}) },
   });
+  for (const r of autoRejected)
+    await writeAudit({
+      tenantId: ctx.tenantId,
+      actorId: x.actor.userId,
+      action: AUDIT_REJECTED,
+      targetType: "PosTaxInvoiceRequest",
+      targetId: r.id,
+      before: { status: "REQUESTED" },
+      after: { status: "REJECTED", saleId: sale.id, unitId: sale.unitId, reason: AUTO_REJECT_REASON, system: true, docId: conv.docId, taxId: maskTaxId(r.taxId) },
+    });
   if (x.rememberBuyer && sale.memberId) await rememberBuyerForMember(ctx.tenantId, sale.memberId, buyer);
   scheduleDrain();
   return { ok: true, docId: conv.docId, docNo: conv.docNo };
