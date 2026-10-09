@@ -104,3 +104,11 @@ export const MEMBER_CARD_PREFIX = "SHARK-MC:";
 export function isMemberCardCode(code: string): boolean {
   return code.trim().toUpperCase().startsWith(MEMBER_CARD_PREFIX);
 }
+
+/**
+ * POS P1.12U fix รอบ 1 (F7): สีป้ายระดับจาก tier.color — รับเฉพาะ hex (#rgb · #rgba · #rrggbb · #rrggbbaa) · อื่น ๆ (ว่าง · ชื่อสี · ค่าแปลก) = null
+ * ⇒ จอใช้ป้ายเทาแบบ "ทั่วไป" (อ่านออกเสมอ)
+ */
+export function tierBadgeColor(color: string | null | undefined): string | null {
+  return typeof color === "string" && /^#[0-9a-f]{3,8}$/i.test(color) ? color : null;
+}

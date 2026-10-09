@@ -89,12 +89,15 @@
 //      ห้ามลบใบด้วย SQL (แถวเงิน) · ใบ PAID ที่ไม่ได้ใช้ = บันทึกใน summary (intentState) ◂
 // POS P1.12U ▸ สมาชิกที่ตะกร้า + สิทธิ์ที่จอชำระ (มติ 11): หน้า register `--states` เพิ่ม member-panel (cart3 → + เพิ่มสมาชิก → 14A พิมพ์ "089" ·
 //   สมาชิก QC กาแฟขึ้นในรายการ) · member-register (14A ค้น 0899000002 = ไม่พบ + เบอร์เติมเอง · ชื่อ "ทดสอบ สมัครด่วน" · ยินยอม · ที่มา LINE —
-//   ไม่กดสมัคร) · member-attached (cart3 + ผูกสมาชิก QC → การ์ด 01) · paydlg-member-points (cart3 + สมาชิก → ชำระ → ใช้ 500 แต้ม) ·
+//   ไม่กดสมัคร) · member-attached (อเมริกาโน่×2 + ลาเต้ + ผูกสมาชิก QC → การ์ด 01) · paydlg-member-points (อเมริกาโน่×2 + ลาเต้ + สมาชิก → ชำระ → ใช้ 500 แต้ม) ·
 //   paydlg-member-capped (อเมริกาโน่ 1 แก้ว + สมาชิก → ชำระ → 500 แต้ม > เพดาน 50% ⇒ แก้เป็น allowedPoints (≈325) + บรรทัดบอก) · sale-done-member
-//   (1440 · ⚠️ ขายจริง PAID 1 บิลผูกสมาชิก QC: อเมริกาโน่×2 + ลาเต้ เงินสด → 02b ช่องแต้มที่ได้รับ) — ร้าน coffee ไม่มีระบบคูปอง ⇒ ไม่มีภาพคูปอง
+//   (1440 · ⚠️ ขายจริง PAID 1 บิลผูกสมาชิก QC: อเมริกาโน่×2 + ลาเต้ เงินสด → 02b ช่องแต้มที่ได้รับ)
 //   ข้อมูล (prepMemberFixture ก่อนเปิด chromium · find-or-create ผ่านโมดูล): ค่าตั้งแต้มของร้าน burn 10 สตางค์/แต้ม · ขั้นต่ำ 100 · สูงสุด 50%
-//   (setPointSettings เฉพาะเมื่อไม่ตรง) · ยอดแต้มของสมาชิก QC < 1,000 ⇒ point.credit ให้ครบ 1,240 ด้วยคีย์รายวัน `posqc-p112u-topup-<YYYYMMDD>`
-//   (รันซ้ำวันเดียวกัน = ไม่เติมซ้ำ) · ไม่ลบอะไร (ค่าตั้ง/แต้ม/บิลคงอยู่ · บันทึกใน summary memberState) ◂
+//   (setPointSettings เฉพาะเมื่อไม่ตรง) · ยอดแต้มของสมาชิก QC < 1,000 ⇒ point.credit ให้ครบ 1,240 ด้วยคีย์ `posqc-p112u-topup-<YYYYMMDD>-<ยอดก่อนเติม>`
+//   (fix รอบ 1: คีย์ผูกยอดก่อนเติม ⇒ lane อื่นตัดแต้มจนต่ำกว่า 1,000 ซ้ำในวันเดียวกัน = เติมได้อีก · รันซ้ำยอดเดิม = ไม่เติมซ้ำ) ·
+//   fix รอบ 1 (มติ 10): ระบบคูปองของร้าน QC (ผูกสาขาที่ถ่าย) + คูปอง WELCOME50 ฿50 (หมดอายุ 2030 · find-or-create ตามโค้ด ผ่านโมดูล system/coupon) ⇒
+//   member-attached ใส่ WELCOME50 จากตะกร้า (ส่วนลดท้ายบิล → คูปอง · แถว 01 "คูปอง WELCOME50 −฿50") · paydlg-member-points ใส่จากจอชำระ ("ใส่คูปอง" · แถว 02)
+//   — ไม่มีสถานะไหนบันทึกบิลพร้อมคูปอง (ไม่มี CouponRedemption) · ไม่ลบอะไร (ค่าตั้ง/แต้ม/บิล/ระบบคูปองคงอยู่ · บันทึกใน summary memberState) ◂
 //
 // 🔴 ไม่มีค่าปริยายของ base — ไม่ส่ง `--base`/`QC_BASE` = exit 2 · ต่อไม่ได้ = exit 2 · `:3215` = exit 2
 //    (พอร์ต 3215 เป็นของเซิร์ฟเวอร์ CRM RUN — LANE-RULES ข้อ 4 · ตั้ง POS_VISUAL_ALLOW_3215=1 เมื่อ CRM ปิดแล้วเท่านั้น)
@@ -197,11 +200,11 @@ const STATE_PLAN: { key: StateKey; devices: readonly Device[]; note: string }[] 
   // POS P1.13U ▸ ภาพ 15A / 02 ท้ายจอ — สมุด QC ต้องออกใบกำกับอย่างย่อได้ (ensureAbbBook ก่อนเปิด chromium · คืนค่าใน cleanRpub) ◂
   { key: "taxinvoice-dialog", devices: ["desktop", "ipad", "mobile"], note: "cart3 → ปุ่ม \"ใบกำกับเต็มรูป\" ท้ายตะกร้า → 15A นิติบุคคล + เลข QC (✓) · ปุ่ม DBD หรือ \"กรอกเอง\" (QC ไม่มีกุญแจ)" },
   { key: "taxinvoice-set", devices: ["desktop", "ipad", "mobile"], note: "cart3 → ชำระ → สวิตช์ใบกำกับ → กรอก 15A → บันทึก → แถว \"— ชื่อ · เลข · สำนักงานใหญ่ · แก้\" ท้ายจอชำระ (ไม่กดยืนยัน)" },
-  // POS P1.12U ▸ ภาพ 01 การ์ดสมาชิก · 14A แผงสมาชิก · 02 การ์ดแต้ม · 02b ช่องแต้ม (ข้อมูล: prepMemberFixture · ไม่มีคูปอง — ร้าน QC ไม่มีระบบคูปอง) ◂
-  { key: "member-panel", devices: ["desktop", "ipad", "mobile"], note: "cart3 → + เพิ่มสมาชิก → 14A · พิมพ์ \"089\" → สมาชิก QC กาแฟในรายการ (พบ N รายชื่อ)" },
+  // POS P1.12U ▸ ภาพ 01 การ์ดสมาชิก · 14A แผงสมาชิก · 02 การ์ดแต้ม · 02b ช่องแต้ม (ข้อมูล: prepMemberFixture · คูปอง WELCOME50 ของร้าน QC — fix รอบ 1 มติ 10) ◂
+  { key: "member-panel", devices: ["desktop", "ipad", "mobile"], note: "อเมริกาโน่×2 + ลาเต้ → + เพิ่มสมาชิก → 14A · พิมพ์ \"089\" → สมาชิก QC กาแฟในรายการ (พบ N รายชื่อ · 390 = แถวแตะได้ในแผ่นล่าง)" },
   { key: "member-register", devices: ["desktop", "ipad", "mobile"], note: "14A ค้น 0899000002 (ไม่พบ · เบอร์เติมเอง) + ชื่อ \"ทดสอบ สมัครด่วน\" + ยินยอม + ที่มา LINE (ไม่กดสมัคร)" },
-  { key: "member-attached", devices: ["desktop", "ipad", "mobile"], note: "cart3 + ผูกสมาชิก QC → การ์ดสมาชิก 01 (ระดับ · แต้ม · ซื้อครั้งที่) + ปุ่มใช้แต้ม (390 = แผ่นตะกร้าเปิด)" },
-  { key: "paydlg-member-points", devices: ["desktop", "ipad", "mobile"], note: "cart3 + สมาชิก → ชำระ → การ์ดแต้ม ใช้ 500 แต้ม (ลด ฿50) ✓ ใช้แล้ว (ไม่มีคูปอง — ร้าน QC ไม่มีระบบคูปอง)" },
+  { key: "member-attached", devices: ["desktop", "ipad", "mobile"], note: "อเมริกาโน่×2 + ลาเต้ (สินค้ามีสต็อก) + ผูกสมาชิก QC → การ์ดสมาชิก 01 (ระดับ · แต้ม · ซื้อครั้งที่) + ปุ่มใช้แต้ม + คูปอง WELCOME50 −฿50 (ส่วนลดท้ายบิล → คูปอง · 390 = แผ่นตะกร้าเปิด)" },
+  { key: "paydlg-member-points", devices: ["desktop", "ipad", "mobile"], note: "อเมริกาโน่×2 + ลาเต้ + สมาชิก → ชำระ → ใส่คูปอง WELCOME50 (แถวคูปอง −฿50 ✓ใช้แล้ว) → การ์ดแต้ม ใช้ 500 แต้ม (ลด ฿50) ✓ ใช้แล้ว" },
   { key: "paydlg-member-capped", devices: ["desktop", "ipad", "mobile"], note: "อเมริกาโน่ 1 + สมาชิก → ชำระ → 500 แต้ม (> 50%) → แก้เป็น allowedPoints อัตโนมัติ (≈325) + บรรทัด \"ใช้ได้สูงสุด\"" },
   { key: "sale-done-member", devices: ["desktop"], note: "⚠️ ขายจริง 1 บิลผูกสมาชิก QC (อเมริกาโน่×2 + ลาเต้ · เงินสด) → 02b ช่องแต้มที่ได้รับ" },
   // POS P1.15U ▸ ภาพ 13B / 21B + แผ่นส่วนลดเกินสิทธิ์ (ข้อมูล: seedP115Once · ลบ/คืนค่าใน finally) ◂
@@ -386,6 +389,8 @@ if (DRY) {
     if (pages.includes("register")) console.log(`  P1.15U: เครื่อง ${DEVICE_ID} (registerDevice · เพิกถอนใน finally) · PIN 6 หลักสุ่มของเจ้าของ/แคชเชียร์ (setStaffPin · ไม่พิมพ์ · คืนแถวเดิมใน finally) · โทเคนผู้ขายฉีดลง sessionStorage · บิลพัก 1 ใบ · กติกา POS_VOID ที่ปิดไว้ + คำขอ PENDING 1 ใบ (approval-wait) — ลบใน finally`);
     if (pages.includes("register") && jobs.some((j) => j.state === "paydlg-promptpay-qr" || j.state === "paydlg-promptpay-paid"))
       console.log("  P1.7U: ใบขอรับเงินของเครื่องรอบนี้ (PENDING = ยกเลิกใน finally) + บิลขายจริงที่ใช้ใบ PAID (paydlg-promptpay-paid) · PromptPay ID ของร้าน QC ตั้ง/คืนค่าเมื่อยังไม่มี");
+    if (pages.includes("register") && jobs.some((j) => j.state && /^(member-|paydlg-member-|sale-done-member)/.test(j.state)))
+      console.log("  P1.12U: สมาชิก QC (ค่าตั้งแต้ม · เติมแต้มคีย์ posqc-p112u-topup-<วันที่>-<ยอดก่อนเติม>) · fix รอบ 1: ระบบคูปองของร้าน QC ผูกสาขาที่ถ่าย + WELCOME50 ฿50 (find-or-create · ไม่ลบ) — member-attached/paydlg-member-points ใส่คูปอง (ไม่บันทึกบิล)");
     if (needFixtures) console.log(`  fixture: สินค้าชั่วคราว 11 ตัว (เหลือ 2 · หมดสต็อก · ปิดขาย + 4 ตัวของภาพ 01 + ลาเต้มีตัวแปร 1+2 + สินค้าชั่ง 1) + กลุ่มตัวเลือก 4 กลุ่ม ที่สาขา ${unitKey} — ลบใน finally`);
   }
   console.log(`รวม ${plan.length} ภาพ (${pages.length} หน้า × ${viewports.length} ขนาด${STATES_ON ? " · หน้าขายแยกตามสถานะ" : ""} × 1 ผู้ใช้)`);
@@ -694,10 +699,11 @@ async function waitPayReady(page: Any) {
       throw new StepError("ปุ่มชำระไม่เปิดภายใน 15 วิ (quote ไม่มา/ถูกปฏิเสธ)");
     });
 }
-async function addCart3(page: Any, device: Device) {
-  if (!QC_IDS.amer || !QC_IDS.latte || !QC_IDS.crois) throw new StepError("ไม่พบสินค้าตายตัวของร้าน QC (อเมริกาโน่เย็น/ลาเต้ร้อน/ครัวซองต์เนยสด) — รัน seed-pos-qc + backfill ก่อน");
-  for (const id of [QC_IDS.amer, QC_IDS.amer, QC_IDS.latte, QC_IDS.crois]) await clickEl(page, tid(`pos-reg-product-${id}`));
-  await expectLines(page, 3); // อเมริกาโน่ ×2 รวมเป็นบรรทัดเดียว
+/** inStockOnly (POS P1.12U fix รอบ 1 V3 · สถานะสมาชิก) = ไม่ใส่ครัวซองต์ (สต็อกของร้าน QC หมดได้ ⇒ เตือนสต็อกแดงรกภาพ 01) — อเมริกาโน่×2 + ลาเต้ −฿10 */
+async function addCart3(page: Any, device: Device, inStockOnly = false) {
+  if (!QC_IDS.amer || !QC_IDS.latte || (!inStockOnly && !QC_IDS.crois)) throw new StepError("ไม่พบสินค้าตายตัวของร้าน QC (อเมริกาโน่เย็น/ลาเต้ร้อน/ครัวซองต์เนยสด) — รัน seed-pos-qc + backfill ก่อน");
+  for (const id of inStockOnly ? [QC_IDS.amer, QC_IDS.amer, QC_IDS.latte] : [QC_IDS.amer, QC_IDS.amer, QC_IDS.latte, QC_IDS.crois]) await clickEl(page, tid(`pos-reg-product-${id}`));
+  await expectLines(page, inStockOnly ? 2 : 3); // อเมริกาโน่ ×2 รวมเป็นบรรทัดเดียว
   await waitPayReady(page);
   // ส่วนลดรายการ ฿10 ที่บรรทัดที่ 2 (ลาเต้)
   if (device === "mobile") await clickEl(page, tid("pos-reg-cart-view"));
@@ -1514,8 +1520,12 @@ const MEMBER_REG_STATES: ReadonlySet<string> = new Set(["member-panel", "member-
 const MEMBER_POINT_SETTINGS = { burnRateSatang: 10, burnMinPoints: 100, burnMaxPct: 50 } as const;
 const MEMBER_MIN_BALANCE = 1_000;
 const MEMBER_TOPUP_TO = 1_240;
-/** คีย์เติมแต้มรายวัน (วันที่ไทย) — รอบซ้ำวันเดียวกันไม่เติมซ้ำ */
-const MEMBER_TOPUP_KEY = `posqc-p112u-topup-${new Date(Date.now() + 7 * 3_600_000).toISOString().slice(0, 10).replace(/-/g, "")}`;
+/** คีย์เติมแต้ม = วันที่ไทย + ยอดก่อนเติม (fix รอบ 1 · รีวิวข้อ 11) — รอบซ้ำยอดเดิม = ไม่เติมซ้ำ · ยอดลดลงอีกในวันเดียวกัน = คีย์ใหม่ เติมได้ */
+const MEMBER_TOPUP_PREFIX = `posqc-p112u-topup-${new Date(Date.now() + 7 * 3_600_000).toISOString().slice(0, 10).replace(/-/g, "")}`;
+/** fix รอบ 1 (มติ 10): คูปองของภาพ 01/02 — ระบบคูปองของร้าน QC (ผูกสาขาที่ถ่าย) + โค้ดนี้ ฿50 (find-or-create ตามโค้ด) */
+const QC_COUPON_CODE = "WELCOME50";
+const QC_COUPON_SYSTEM_NAME = "คูปอง · POS QC";
+const QC_COUPON_END_AT = new Date("2030-12-31T16:59:59.000Z");
 const MEMBERX = {
   id: "",
   error: null as string | null,
@@ -1524,7 +1534,10 @@ const MEMBERX = {
   balanceBefore: null as number | null,
   balanceAfter: null as number | null,
   toppedUp: 0,
-  topupKey: MEMBER_TOPUP_KEY,
+  topupKey: "",
+  /** fix รอบ 1 (มติ 10): ระบบคูปอง/คูปองของภาพ (สร้างใหม่หรือมีอยู่แล้ว) · พัง = เฉพาะสถานะที่ใส่คูปองตก */
+  coupon: { systemId: "", couponId: "", systemCreated: false, couponCreated: false, reactivated: false },
+  couponError: null as string | null,
   /** บิลที่ sale-done-member ขาย (เลขใบเสร็จจากจอ) */
   sales: [] as string[],
 };
@@ -1552,6 +1565,7 @@ async function prepMemberFixture(): Promise<void> {
     MEMBERX.balanceBefore = bal;
     MEMBERX.balanceAfter = bal;
     if (bal < MEMBER_MIN_BALANCE) {
+      MEMBERX.topupKey = `${MEMBER_TOPUP_PREFIX}-${bal}`;
       const r = await point.credit({
         tenantId: T.tenantId,
         systemId: C.systems.POINT.id,
@@ -1560,15 +1574,86 @@ async function prepMemberFixture(): Promise<void> {
         reason: "แต้มสำหรับภาพหน้าขาย P1.12U (QC)",
         refType: "PosQcVisual",
         refId: "p112u",
-        idempotencyKey: MEMBER_TOPUP_KEY,
+        idempotencyKey: MEMBERX.topupKey,
       });
       MEMBERX.balanceAfter = r.balance;
       MEMBERX.toppedUp = r.balance - bal;
-      if (r.balance < MEMBER_MIN_BALANCE) throw new StepError(`แต้มสมาชิก QC ${r.balance} < ${MEMBER_MIN_BALANCE} (คีย์ ${MEMBER_TOPUP_KEY} ใช้ไปแล้ววันนี้)`);
+      if (r.balance < MEMBER_MIN_BALANCE) throw new StepError(`แต้มสมาชิก QC ${r.balance} < ${MEMBER_MIN_BALANCE} (คีย์ ${MEMBERX.topupKey} ถูกใช้แล้ว)`);
     }
   } catch (e) {
     MEMBERX.error = e instanceof Error ? e.message.slice(0, 200) : String(e);
   }
+  await prepQcCoupon();
+}
+/**
+ * fix รอบ 1 (มติ 10): ระบบคูปองของร้าน QC ที่สาขาที่ถ่าย + คูปอง WELCOME50 ฿50 — find-or-create ผ่านโมดูล (system/service · coupon) ไม่มี SQL ดิบ ไม่ลบ:
+ *   สาขามีระบบคูปองแล้ว = ใช้ตัวนั้น · ไม่มี = ระบบชื่อ "คูปอง · POS QC" ของร้าน (สร้างเมื่อไม่มี) แล้วผูกสาขานี้ · โค้ดมีแล้ว = ใช้ (ปิดอยู่ = เปิด) · ไม่มี = createCoupon
+ *   พังไม่โยน (เฉพาะสถานะที่ใส่คูปองตกพร้อมเหตุผล)
+ */
+async function prepQcCoupon(): Promise<void> {
+  if (MEMBERX.coupon.couponId || MEMBERX.couponError) return;
+  try {
+    const sys = await import("@/lib/modules/system/service");
+    const coupon = await import("@/lib/modules/coupon");
+    let sid = await sys.systemForUnit(T.tenantId, unitId, "COUPON");
+    if (!sid) {
+      const mine = (await sys.listSystems(T.tenantId, "COUPON")).find((x) => x.name === QC_COUPON_SYSTEM_NAME);
+      const id = mine?.id ?? (await sys.createSystem(T.tenantId, "COUPON", QC_COUPON_SYSTEM_NAME)).id;
+      MEMBERX.coupon.systemCreated = !mine;
+      await sys.linkUnit(T.tenantId, id, unitId);
+      sid = await sys.systemForUnit(T.tenantId, unitId, "COUPON");
+      if (sid !== id) throw new StepError("ผูกระบบคูปองกับสาขาไม่สำเร็จ");
+    }
+    MEMBERX.coupon.systemId = sid;
+    const found = (await coupon.listCoupons(T.tenantId, sid)).find((c) => c.code === QC_COUPON_CODE);
+    if (found) {
+      if (found.endAt && found.endAt.getTime() <= Date.now()) throw new StepError(`คูปอง ${QC_COUPON_CODE} ของร้าน QC หมดอายุแล้ว (${found.endAt.toISOString().slice(0, 10)})`);
+      if (found.type !== "FIXED" || found.valueSatang !== 5_000) throw new StepError(`คูปอง ${QC_COUPON_CODE} ของร้าน QC ไม่ใช่ ฿50 (${found.type} ${found.valueSatang ?? found.percent})`);
+      if (!found.active) {
+        const r = await coupon.setCouponActive(T.tenantId, sid, found.id, true);
+        if (!r.ok) throw new StepError(`เปิดคูปอง ${QC_COUPON_CODE} ไม่ได้: ${r.reason}`);
+        MEMBERX.coupon.reactivated = true;
+      }
+      MEMBERX.coupon.couponId = found.id;
+    } else {
+      const r = await coupon.createCoupon({ tenantId: T.tenantId, systemId: sid, code: QC_COUPON_CODE, name: "ต้อนรับ ฿50 (POS QC)", type: "FIXED", valueSatang: 5_000, endAt: QC_COUPON_END_AT });
+      if (!r.ok) throw new StepError(`สร้างคูปอง ${QC_COUPON_CODE} ไม่ได้: ${r.reason}`);
+      MEMBERX.coupon.couponId = r.couponId;
+      MEMBERX.coupon.couponCreated = true;
+    }
+  } catch (e) {
+    MEMBERX.couponError = e instanceof Error ? e.message.slice(0, 200) : String(e);
+  }
+}
+/**
+ * fix รอบ 1 (มติ 10): ใส่ WELCOME50 ผ่านจอ — "cart" = ส่วนลดท้ายบิล → คูปอง (แถว 01 pos-member-coupon-line) · "pay" = "ใส่คูปอง" ในจอชำระ (แถว 02 pos-member-coupon)
+ *   กล่องคูปองปิดเองเมื่อ quote ไม่มีข้อขัด · ทางตะกร้าปิดกล่องส่วนลดท้ายบิลที่ค้างด้วย Escape
+ */
+async function applyQcCoupon(page: Any, from: "cart" | "pay") {
+  if (MEMBERX.couponError) throw new StepError(`คูปอง QC: ${MEMBERX.couponError}`);
+  if (!MEMBERX.coupon.couponId) throw new StepError("ยังไม่ได้เตรียมคูปอง QC (prepQcCoupon)");
+  if (from === "cart") {
+    await clickEl(page, tid("pos-reg-bill-discount"));
+    await visibleEl(page, tid("pos-reg-bill-discount-dialog"));
+    await clickEl(page, tid("pos-reg-coupon"));
+  } else await clickEl(page, tid("pos-member-coupon-enter"));
+  await visibleEl(page, tid("pos-reg-coupon-dialog"), 0, 5_000);
+  await typeInto(page, tid("pos-reg-coupon-input"), QC_COUPON_CODE);
+  await clickEl(page, tid("pos-reg-coupon-apply"));
+  await page.waitForFunction(() => !document.querySelector('[data-testid="pos-reg-coupon-dialog"]'), { timeout: 15_000 }).catch(async () => {
+    const err = await page.$eval(tid("pos-reg-coupon-error"), (e: Element) => e.textContent?.trim() ?? "").catch(() => "");
+    throw new StepError(`ใส่คูปอง ${QC_COUPON_CODE} แล้วกล่องไม่ปิด${err ? ` (${err})` : ""}`);
+  });
+  if (from === "cart" && (await page.$(tid("pos-reg-bill-discount-dialog")))) {
+    await page.keyboard.press("Escape");
+    await page.waitForFunction(() => !document.querySelector('[data-testid="pos-reg-bill-discount-dialog"]'), { timeout: 5_000 }).catch(() => {
+      throw new StepError("กล่องส่วนลดท้ายบิลไม่ปิดหลังใส่คูปอง");
+    });
+  }
+  const row = from === "cart" ? "pos-member-coupon-line" : "pos-member-coupon";
+  await visibleEl(page, `${tid(row)}[data-state="ok"]`, 0, 15_000).catch(() => {
+    throw new StepError(`ไม่ขึ้นแถวคูปอง ${QC_COUPON_CODE} (${row})`);
+  });
 }
 /** 14A จากแถว "+ เพิ่มสมาชิก" (มือถือ: เปิดแผ่นตะกร้าก่อน) */
 async function openMemberPanel(page: Any, device: Device) {
@@ -1610,7 +1695,7 @@ async function runMemberRegState(page: Any, state: MemberStateKey, device: Devic
     for (const id of [QC_IDS.amer, QC_IDS.amer, QC_IDS.latte]) await clickEl(page, tid(`pos-reg-product-${id}`));
     await expectLines(page, 2);
     await waitPayReady(page);
-  } else await addCart3(page, device);
+  } else await addCart3(page, device, true); // fix รอบ 1 V3: สถานะสมาชิกใช้เฉพาะสินค้าที่มีสต็อก
   if (state === "member-panel") {
     await openMemberPanel(page, device);
     await typeInto(page, tid("pos-member-search"), "089");
@@ -1636,10 +1721,23 @@ async function runMemberRegState(page: Any, state: MemberStateKey, device: Devic
       .catch(() => {
         throw new StepError("กรอกครบแล้วปุ่มสมัครยังปิด");
       });
+    // fix รอบ 1 V2: เนื้อแผงเป็นตัวเลื่อน — เลื่อนให้ปุ่มสมัครอยู่ในภาพ (ที่ 390 ต้องเลื่อนในแผง ไม่ใช่หน้า)
+    const inPanel = await page.$eval(tid("pos-member-register-submit"), (el: Element) => {
+      el.scrollIntoView({ block: "end" });
+      const r = el.getBoundingClientRect();
+      const box = el.closest('[data-testid="pos-member-panel"]')?.getBoundingClientRect();
+      return !!box && r.top >= box.top && r.bottom <= box.bottom + 1;
+    });
+    if (!inPanel) throw new StepError("ปุ่มสมัครไม่อยู่ในแผงหลังเลื่อน (เนื้อแผงไม่เลื่อน?)");
+    await sleep(200);
     return; // 🔴 ไม่กดสมัคร (มติ 11)
   }
   await attachQcMember(page, device, state !== "member-attached");
-  if (state === "member-attached") return;
+  if (state === "member-attached") {
+    await applyQcCoupon(page, "cart"); // fix รอบ 1 มติ 10: แถวคูปองของภาพ 01
+    await waitPayReady(page);
+    return;
+  }
   await clickPay(page, device);
   await visibleEl(page, tid("pos-reg-paydlg"), 0, 10_000);
   if (state === "sale-done-member") {
@@ -1656,6 +1754,7 @@ async function runMemberRegState(page: Any, state: MemberStateKey, device: Devic
   await visibleEl(page, tid("pos-member-points"), 0, 15_000).catch(() => {
     throw new StepError("จอชำระไม่มีการ์ดแต้ม (benefits.points)");
   });
+  if (state === "paydlg-member-points") await applyQcCoupon(page, "pay"); // fix รอบ 1 มติ 10: แถวคูปองของภาพ 02
   await typeInto(page, tid("pos-member-points-input"), "500");
   await clickEl(page, tid("pos-member-points-apply"));
   if (state === "paydlg-member-points") {
@@ -2691,7 +2790,9 @@ try {
   // POS P1.12U ▸ สมาชิก QC + ค่าตั้งแต้ม + ยอดแต้มก่อนเปิดหน้าขาย (สถานะสมาชิก) ◂
   if (jobs.some((j) => j.state && MEMBER_REG_STATES.has(j.state))) {
     await prepMemberFixture();
-    console.log(MEMBERX.error ? `  ⚠️ สมาชิก QC: ${MEMBERX.error}` : `  สมาชิก QC ${MEMBERX.id}: แต้ม ${MEMBERX.balanceBefore} → ${MEMBERX.balanceAfter}${MEMBERX.toppedUp ? ` (เติม ${MEMBERX.toppedUp} · ${MEMBER_TOPUP_KEY})` : ""}${MEMBERX.settingsChanged ? " · ตั้งค่าแต้มใหม่" : ""}`);
+    console.log(MEMBERX.error ? `  ⚠️ สมาชิก QC: ${MEMBERX.error}` : `  สมาชิก QC ${MEMBERX.id}: แต้ม ${MEMBERX.balanceBefore} → ${MEMBERX.balanceAfter}${MEMBERX.toppedUp ? ` (เติม ${MEMBERX.toppedUp} · ${MEMBERX.topupKey})` : ""}${MEMBERX.settingsChanged ? " · ตั้งค่าแต้มใหม่" : ""}`);
+    const cp = MEMBERX.coupon;
+    console.log(MEMBERX.couponError ? `  ⚠️ คูปอง QC: ${MEMBERX.couponError}` : `  คูปอง QC ${QC_COUPON_CODE}: ระบบ ${cp.systemId}${cp.systemCreated ? " (สร้างใหม่ + ผูกสาขา)" : ""} · คูปอง ${cp.couponId}${cp.couponCreated ? " (สร้างใหม่)" : cp.reactivated ? " (เปิดใหม่)" : ""}`);
   }
   // POS P1.13U ▸ สมุด QC ออกใบกำกับได้ก่อนเปิดหน้าขาย (registerStatus อ่านตอนโหลดหน้า) · บิลของสถานะใบกำกับในลิ้นชัก ◂
   if (jobs.some((j) => j.state && TAXINV_REG_STATES.has(j.state))) {

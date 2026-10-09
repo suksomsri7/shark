@@ -11,10 +11,10 @@
 // 🔴 เบอร์ที่แสดงเป็นแบบปิดบังเสมอ (phoneMasked · CD8) · ไม่มีข้อความไทยนอกคอมเมนต์
 
 import { useEffect, useRef, useState } from "react";
-import { useTranslations } from "next-intl";
-import { formatThaiDate } from "@/lib/ui/date";
+import { useLocale, useTranslations } from "next-intl";
+import { formatShortDate } from "@/lib/ui/date";
 import { refusalMessageKey, type RegisterMemberBenefits, type RegisterMemberItem } from "@/lib/modules/pos/register-shared";
-import { digitsOnlyQuery, memberAgo, memberInitial } from "@/lib/modules/pos/register-member-shared";
+import { digitsOnlyQuery, memberAgo, memberInitial, tierBadgeColor } from "@/lib/modules/pos/register-member-shared";
 import { registerFulfilRewardAction, registerMemberLookupAction } from "@/lib/modules/pos/register-actions";
 import { RegisterDialog, SheetGrab } from "./RegisterDialog";
 import { RegisterIcon } from "./RegisterIcon";
@@ -43,9 +43,12 @@ export function MemberPanel(p: {
   onScan: () => void;
   onFulfilled: () => void;
   onClose: () => void;
+  /** fix รอบ 1 F5: ฟอร์มสมัครด่วนขอคีย์ใหม่ (เบอร์/ชื่อเปลี่ยนหลังส่งไม่สำเร็จ) */
+  onRekey: () => void;
 }) {
   const t = useTranslations("pos.member");
   const tr = useTranslations("pos.register");
+  const locale = useLocale(); // fix รอบ 1 F6: วันหมดอายุตามภาษาของจอ
   const [q, setQ] = useState("");
   const [items, setItems] = useState<RegisterMemberItem[] | null>(null);
   const [itemsFor, setItemsFor] = useState("");
@@ -132,19 +135,24 @@ export function MemberPanel(p: {
     }
   };
 
-  const tierBadge = (m: RegisterMemberItem) =>
-    m.suspended ? (
+  const tierBadge = (m: RegisterMemberItem) => {
+    // fix รอบ 1 F7: สีที่ไม่ใช่ hex = ป้ายเทาแบบ "ทั่วไป" (ชื่อระดับคงเดิม)
+    const color = m.tier ? tierBadgeColor(m.tier.color) : null;
+    return m.suspended ? (
       <span className="shrink-0 rounded-[8px] border border-[color:var(--color-danger)] px-2 py-0.5 text-[12px] font-semibold text-[color:var(--color-danger)]">{t("panel.suspended")}</span>
-    ) : m.tier ? (
+    ) : m.tier && color ? (
       <span
         className="shrink-0 rounded-[8px] border px-2 py-0.5 text-[12px] font-semibold"
-        style={{ borderColor: m.tier.color, color: m.tier.color, backgroundColor: `color-mix(in srgb, ${m.tier.color} 10%, transparent)` }}
+        style={{ borderColor: color, color, backgroundColor: `color-mix(in srgb, ${color} 10%, transparent)` }}
       >
         {m.tier.name}
       </span>
+    ) : m.tier ? (
+      <span className="shrink-0 rounded-[8px] border px-2 py-0.5 text-[12px] text-[color:var(--color-muted)]">{m.tier.name}</span>
     ) : (
       <span className="shrink-0 rounded-[8px] border px-2 py-0.5 text-[12px] text-[color:var(--color-muted)]">{t("chip.general")}</span>
     );
+  };
   const subLine = (m: RegisterMemberItem) => {
     const ago = m.lastPurchaseAt ? memberAgo(m.lastPurchaseAt) : null;
     const when = ago ? t("panel.lastPurchase", { when: t(`panel.ago.${ago.key}`, { count: ago.count }) }) : t("panel.never");
@@ -189,178 +197,183 @@ export function MemberPanel(p: {
           </button>
         </header>
 
-        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-5 py-5 md:px-7">
-          {/* ── โหมดมีสมาชิกแล้ว (มติ 5): การ์ด + รางวัลรอรับ ── */}
-          {p.attached && (
-            <section data-testid="pos-member-panel-attached" className="flex flex-col gap-3">
-              <div className="flex items-center gap-3 rounded-[16px] border-[1.5px] border-[color:var(--color-accent)] bg-[color:var(--color-accent-soft)] px-4 py-3">
-                {avatar(p.attached, true)}
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-[15px] font-bold">{p.attached.name}</div>
-                  <div className="truncate text-[12.5px] text-[color:var(--color-muted)]">{subLine(p.attached)}</div>
-                </div>
-                {tierBadge(p.attached)}
-                <button
-                  data-testid="pos-member-panel-detach"
-                  className="h-11 shrink-0 px-1 text-[12.5px] text-[color:var(--color-muted)] underline underline-offset-2 disabled:opacity-50"
-                  type="button"
-                  disabled={p.frozen}
-                  onClick={p.onDetach}
-                >
-                  {t("chip.detach")}
-                </button>
-              </div>
-              <h3 className="text-[14px] font-bold">{t("panel.rewardsPending")}</h3>
-              {rewards === null ? (
-                <p className="text-[13.5px] text-[color:var(--color-muted)]">{t("panel.searching")}</p>
-              ) : rewards.length === 0 ? (
-                <p data-testid="pos-member-rewards-empty" className="text-[13.5px] text-[color:var(--color-muted)]">
-                  {t("panel.noRewards")}
-                </p>
-              ) : (
-                <ul className="overflow-hidden rounded-[14px] border" aria-label={t("panel.rewardsPending")}>
-                  {rewards.map((r) => {
-                    const done = fulfilled.has(r.redemptionId);
-                    return (
-                      <li key={r.redemptionId} className="flex flex-col gap-1 border-b px-4 py-2.5 last:border-b-0">
-                        <div className="flex items-center gap-3">
-                          <div className="min-w-0 flex-1">
-                            <div className="truncate text-[14.5px] font-semibold">{r.rewardName}</div>
-                            <div className="text-[12.5px] text-[color:var(--color-muted)]">
-                              {r.expiresAt ? t("panel.expires", { date: formatThaiDate(r.expiresAt) }) : t("panel.noExpiry")}
-                            </div>
-                          </div>
-                          {done ? (
-                            <span data-testid={`pos-member-fulfilled-${r.redemptionId}`} className="flex shrink-0 items-center gap-1 text-[13.5px] font-bold">
-                              <RegisterIcon name="check" size={14} />
-                              {t("panel.fulfilled")}
-                            </span>
-                          ) : (
-                            <button
-                              data-testid={`pos-member-fulfil-${r.redemptionId}`}
-                              className="btn btn-ghost h-11 shrink-0 rounded-[12px] px-4 text-[14px] disabled:opacity-50"
-                              type="button"
-                              disabled={!!fulfilling || p.frozen}
-                              onClick={() => void fulfil(r.redemptionId)}
-                            >
-                              {fulfilling === r.redemptionId ? t("panel.fulfilling") : t("panel.fulfil")}
-                            </button>
-                          )}
-                        </div>
-                        {fulfilErr?.id === r.redemptionId && (
-                          <p data-testid="pos-member-fulfil-error" className="text-[13px] text-[color:var(--color-danger)]" role="alert">
-                            {fulfilErr.msg}
-                          </p>
-                        )}
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-              <h3 className="mt-2 text-[14px] font-bold">{t("panel.switchTitle")}</h3>
-            </section>
-          )}
-
-          {/* ── ค้น + สแกน ── */}
-          <div className="flex flex-col gap-3 sm:flex-row">
-            <label className="flex h-[52px] min-w-0 flex-1 items-center gap-2.5 rounded-[14px] border-[1.5px] border-[color:var(--color-ink)] px-4">
-              <RegisterIcon name="search" size={16} className="shrink-0 text-[color:var(--color-ink-soft)]" />
-              <input
-                data-testid="pos-member-search"
-                ref={inputRef}
-                className="h-full min-w-0 flex-1 bg-transparent text-[16px] font-bold outline-none placeholder:font-normal placeholder:text-[color:var(--color-muted)]"
-                autoComplete="off"
-                autoFocus
-                aria-label={t("panel.searchLabel")}
-                placeholder={t("panel.searchPlaceholder")}
-                value={q}
-                maxLength={200}
-                onChange={(e) => setQ(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
-                  e.preventDefault();
-                  const one = shown && shown.length === 1 ? shown[0] : null;
-                  if (one) pickRow(one);
-                }}
-              />
-              {shown && shown.length > 0 && (
-                <span data-testid="pos-member-found" className="shrink-0 whitespace-nowrap text-[13px] text-[color:var(--color-muted)]">
-                  {t("panel.found", { count: shown.length })}
-                </span>
-              )}
-            </label>
-            <button
-              data-testid="pos-member-scan"
-              className="btn btn-ghost h-[52px] shrink-0 gap-2 rounded-[14px] px-5 text-[15px] disabled:opacity-50"
-              type="button"
-              disabled={p.frozen}
-              onClick={p.onScan}
-            >
-              <RegisterIcon name="qr" size={16} />
-              {t("panel.scanQr")}
-            </button>
-          </div>
-
-          {lookupErr && (
-            <p data-testid="pos-member-lookup-error" className="text-[13.5px] text-[color:var(--color-danger)]" role="alert">
-              {lookupErr}
-            </p>
-          )}
-          {searching && !shown && <p className="text-[13.5px] text-[color:var(--color-muted)]">{t("panel.searching")}</p>}
-          {shown && shown.length === 0 && !lookupErr && searchable(q) && (
-            <p data-testid="pos-member-empty" className="py-2 text-center text-[14px] text-[color:var(--color-muted)]">
-              {t("panel.empty")}
-            </p>
-          )}
-          {list.length > 0 && (
-            <div className="overflow-hidden rounded-[14px] border" role="list" aria-label={t("panel.title")}>
-              {list.map((m) => {
-                const on = p.attached?.id === m.id;
-                return (
+        {/* fix รอบ 1 V1/V2: ตัวเลื่อน = เนื้อแผง (หัวแผงค้าง) · ข้างในเป็นคอลัมน์ธรรมดา — ถ้าเนื้อแผงเป็น flex คอลัมน์เอง ลูกที่ overflow-hidden (รายชื่อ ·
+            รางวัล) ถูกบีบเหลือ 0 เมื่อเนื้อเกินความสูงแผ่นล่าง 88dvh (มือถือ) ⇒ แถวสมาชิกหาย/แตะไม่ได้ · overscroll-contain = หน้าหลังไม่เลื่อนตาม */}
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-5 md:px-7">
+          <div className="flex flex-col gap-4">
+            {/* ── โหมดมีสมาชิกแล้ว (มติ 5): การ์ด + รางวัลรอรับ ── */}
+            {p.attached && (
+              <section data-testid="pos-member-panel-attached" className="flex flex-col gap-3">
+                <div className="flex items-center gap-3 rounded-[16px] border-[1.5px] border-[color:var(--color-accent)] bg-[color:var(--color-accent-soft)] px-4 py-3">
+                  {avatar(p.attached, true)}
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-[15px] font-bold">{p.attached.name}</div>
+                    <div className="truncate text-[12.5px] text-[color:var(--color-muted)]">{subLine(p.attached)}</div>
+                  </div>
+                  {tierBadge(p.attached)}
                   <button
-                    key={m.id}
-                    data-testid={`pos-member-row-${m.id}`}
-                    className={`flex min-h-16 w-full items-center gap-3 border-b px-4 py-3 text-left last:border-b-0 disabled:cursor-not-allowed ${
-                      on ? "border-l-[3px] border-l-[color:var(--color-accent)] bg-[color:var(--color-accent-soft)]" : ""
-                    } ${m.suspended ? "opacity-55" : "hover:bg-[color:var(--color-surface-2)]"}`}
+                    data-testid="pos-member-panel-detach"
+                    className="h-11 shrink-0 px-1 text-[12.5px] text-[color:var(--color-muted)] underline underline-offset-2 disabled:opacity-50"
                     type="button"
-                    role="listitem"
-                    aria-disabled={m.suspended || undefined}
-                    disabled={m.suspended || p.frozen}
-                    onClick={() => pickRow(m)}
+                    disabled={p.frozen}
+                    onClick={p.onDetach}
                   >
-                    {avatar(m, on)}
-                    <span className="flex min-w-0 flex-1 flex-col">
-                      <span className="truncate text-[15px] font-bold">{m.name}</span>
-                      <span className="truncate text-[12.5px] text-[color:var(--color-muted)]">{subLine(m)}</span>
-                    </span>
-                    {tierBadge(m)}
-                    <span className="flex w-14 shrink-0 flex-col items-end leading-tight">
-                      <span className="text-[15px] font-bold tabular-nums">{m.points.toLocaleString("th-TH")}</span>
-                      <span className="text-[11.5px] text-[color:var(--color-muted)]">{t("panel.pointsUnit")}</span>
-                    </span>
+                    {t("chip.detach")}
                   </button>
-                );
-              })}
-            </div>
-          )}
+                </div>
+                <h3 className="text-[14px] font-bold">{t("panel.rewardsPending")}</h3>
+                {rewards === null ? (
+                  <p className="text-[13.5px] text-[color:var(--color-muted)]">{t("panel.searching")}</p>
+                ) : rewards.length === 0 ? (
+                  <p data-testid="pos-member-rewards-empty" className="text-[13.5px] text-[color:var(--color-muted)]">
+                    {t("panel.noRewards")}
+                  </p>
+                ) : (
+                  <ul className="overflow-hidden rounded-[14px] border" aria-label={t("panel.rewardsPending")}>
+                    {rewards.map((r) => {
+                      const done = fulfilled.has(r.redemptionId);
+                      return (
+                        <li key={r.redemptionId} className="flex flex-col gap-1 border-b px-4 py-2.5 last:border-b-0">
+                          <div className="flex items-center gap-3">
+                            <div className="min-w-0 flex-1">
+                              <div className="truncate text-[14.5px] font-semibold">{r.rewardName}</div>
+                              <div className="text-[12.5px] text-[color:var(--color-muted)]">
+                                {r.expiresAt ? t("panel.expires", { date: formatShortDate(r.expiresAt, locale) }) : t("panel.noExpiry")}
+                              </div>
+                            </div>
+                            {done ? (
+                              <span data-testid={`pos-member-fulfilled-${r.redemptionId}`} className="flex shrink-0 items-center gap-1 text-[13.5px] font-bold">
+                                <RegisterIcon name="check" size={14} />
+                                {t("panel.fulfilled")}
+                              </span>
+                            ) : (
+                              <button
+                                data-testid={`pos-member-fulfil-${r.redemptionId}`}
+                                className="btn btn-ghost h-11 shrink-0 rounded-[12px] px-4 text-[14px] disabled:opacity-50"
+                                type="button"
+                                disabled={!!fulfilling || p.frozen}
+                                onClick={() => void fulfil(r.redemptionId)}
+                              >
+                                {fulfilling === r.redemptionId ? t("panel.fulfilling") : t("panel.fulfil")}
+                              </button>
+                            )}
+                          </div>
+                          {fulfilErr?.id === r.redemptionId && (
+                            <p data-testid="pos-member-fulfil-error" className="text-[13px] text-[color:var(--color-danger)]" role="alert">
+                              {fulfilErr.msg}
+                            </p>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+                <h3 className="mt-2 text-[14px] font-bold">{t("panel.switchTitle")}</h3>
+              </section>
+            )}
 
-          {/* ── สมัครใหม่ ── */}
-          <div className="flex items-center gap-3 text-[13.5px] font-bold text-[color:var(--color-ink-soft)]">
-            <span className="h-px flex-1 bg-[color:var(--color-line)]" />
-            {t("panel.divider")}
-            <span className="h-px flex-1 bg-[color:var(--color-line)]" />
+            {/* ── ค้น + สแกน ── */}
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <label className="flex h-[52px] min-w-0 shrink-0 items-center gap-2.5 rounded-[14px] border-[1.5px] border-[color:var(--color-ink)] px-4 sm:flex-1">
+                <RegisterIcon name="search" size={16} className="shrink-0 text-[color:var(--color-ink-soft)]" />
+                <input
+                  data-testid="pos-member-search"
+                  ref={inputRef}
+                  className="h-full min-w-0 flex-1 bg-transparent text-[16px] font-bold outline-none placeholder:font-normal placeholder:text-[color:var(--color-muted)]"
+                  autoComplete="off"
+                  autoFocus
+                  aria-label={t("panel.searchLabel")}
+                  placeholder={t("panel.searchPlaceholder")}
+                  value={q}
+                  maxLength={200}
+                  onChange={(e) => setQ(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
+                    e.preventDefault();
+                    const one = shown && shown.length === 1 ? shown[0] : null;
+                    if (one) pickRow(one);
+                  }}
+                />
+                {shown && shown.length > 0 && (
+                  <span data-testid="pos-member-found" className="shrink-0 whitespace-nowrap text-[13px] text-[color:var(--color-muted)]">
+                    {t("panel.found", { count: shown.length })}
+                  </span>
+                )}
+              </label>
+              <button
+                data-testid="pos-member-scan"
+                className="btn btn-ghost h-[52px] shrink-0 gap-2 rounded-[14px] px-5 text-[15px] disabled:opacity-50"
+                type="button"
+                disabled={p.frozen}
+                onClick={p.onScan}
+              >
+                <RegisterIcon name="qr" size={16} />
+                {t("panel.scanQr")}
+              </button>
+            </div>
+
+            {lookupErr && (
+              <p data-testid="pos-member-lookup-error" className="text-[13.5px] text-[color:var(--color-danger)]" role="alert">
+                {lookupErr}
+              </p>
+            )}
+            {searching && !shown && <p className="text-[13.5px] text-[color:var(--color-muted)]">{t("panel.searching")}</p>}
+            {shown && shown.length === 0 && !lookupErr && searchable(q) && (
+              <p data-testid="pos-member-empty" className="py-2 text-center text-[14px] text-[color:var(--color-muted)]">
+                {t("panel.empty")}
+              </p>
+            )}
+            {list.length > 0 && (
+              <div className="overflow-hidden rounded-[14px] border" role="list" aria-label={t("panel.title")}>
+                {list.map((m) => {
+                  const on = p.attached?.id === m.id;
+                  return (
+                    <button
+                      key={m.id}
+                      data-testid={`pos-member-row-${m.id}`}
+                      className={`flex min-h-16 w-full items-center gap-3 border-b px-4 py-3 text-left last:border-b-0 disabled:cursor-not-allowed ${
+                        on ? "border-l-[3px] border-l-[color:var(--color-accent)] bg-[color:var(--color-accent-soft)]" : ""
+                      } ${m.suspended ? "opacity-55" : "hover:bg-[color:var(--color-surface-2)]"}`}
+                      type="button"
+                      role="listitem"
+                      aria-disabled={m.suspended || undefined}
+                      disabled={m.suspended || p.frozen}
+                      onClick={() => pickRow(m)}
+                    >
+                      {avatar(m, on)}
+                      <span className="flex min-w-0 flex-1 flex-col">
+                        <span className="truncate text-[15px] font-bold">{m.name}</span>
+                        <span className="truncate text-[12.5px] text-[color:var(--color-muted)]">{subLine(m)}</span>
+                      </span>
+                      {tierBadge(m)}
+                      <span className="flex w-14 shrink-0 flex-col items-end leading-tight">
+                        <span className="text-[15px] font-bold tabular-nums">{m.points.toLocaleString("th-TH")}</span>
+                        <span className="text-[11.5px] text-[color:var(--color-muted)]">{t("panel.pointsUnit")}</span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* ── สมัครใหม่ ── */}
+            <div className="flex items-center gap-3 text-[13.5px] font-bold text-[color:var(--color-ink-soft)]">
+              <span className="h-px flex-1 bg-[color:var(--color-line)]" />
+              {t("panel.divider")}
+              <span className="h-px flex-1 bg-[color:var(--color-line)]" />
+            </div>
+            <QuickRegister
+              systemId={p.systemId}
+              unitId={p.unitId}
+              prefillPhone={prefill}
+              formKey={p.formKey}
+              frozen={p.frozen}
+              onRekey={p.onRekey}
+              onDone={(r) =>
+                p.onAttach(r.member, r.created ? { key: "register.registered", values: { name: r.member.name } } : { key: "register.existing" })
+              }
+            />
           </div>
-          <QuickRegister
-            systemId={p.systemId}
-            unitId={p.unitId}
-            prefillPhone={prefill}
-            formKey={p.formKey}
-            frozen={p.frozen}
-            onDone={(r) =>
-              p.onAttach(r.member, r.created ? { key: "register.registered", values: { name: r.member.name } } : { key: "register.existing" })
-            }
-          />
         </div>
       </aside>
     </RegisterDialog>

@@ -10,8 +10,8 @@
 // 🔴 ตัวเลขเงินทุกตัวมาจาก quote ของเซิร์ฟเวอร์ (ยกเว้นตัวอย่าง "ลด ฿x" ก่อนกดใช้ = แต้ม × อัตรา) · ไม่มีข้อความไทยนอกคอมเมนต์
 
 import { useEffect, useRef, useState } from "react";
-import { useTranslations } from "next-intl";
-import { formatThaiDate } from "@/lib/ui/date";
+import { useLocale, useTranslations } from "next-intl";
+import { formatShortDate } from "@/lib/ui/date";
 import { moneyText, type RegisterMemberBenefits, type RegisterMemberChoices, type RegisterMemberItem, type RegisterQuote } from "@/lib/modules/pos/register-shared";
 import { memberShortName, parsePointsInput, pointsRate } from "@/lib/modules/pos/register-member-shared";
 import { RegisterIcon } from "./RegisterIcon";
@@ -41,6 +41,7 @@ export type PayBenefitsProps = {
 export function PayBenefits(p: PayBenefitsProps) {
   const t = useTranslations("pos.member");
   const tr = useTranslations("pos.register");
+  const locale = useLocale(); // fix รอบ 1 F6: วันหมดอายุตามภาษาของจอ
   const pts = p.benefits?.points ?? null;
   const chosen = p.choices.points ?? 0;
   const [text, setText] = useState(chosen > 0 ? String(chosen) : "");
@@ -242,7 +243,7 @@ export function PayBenefits(p: PayBenefitsProps) {
                       {on && <span className="size-2.5 rounded-full bg-[color:var(--color-ink)]" />}
                     </span>
                     <span className="flex min-w-0 flex-1 flex-col">
-                      <span className="truncate text-[14px] font-semibold">{[v.name, v.valueLabel, t("pay.voucherExpires", { date: formatThaiDate(v.expiresAt) })].join(" · ")}</span>
+                      <span className="truncate text-[14px] font-semibold">{[v.name, v.valueLabel, t("pay.voucherExpires", { date: formatShortDate(v.expiresAt, locale) })].join(" · ")}</span>
                       {!v.applicable && v.reason && <span className="truncate text-[12.5px] text-[color:var(--color-muted)]">{v.reason}</span>}
                     </span>
                     {v.applicable && amount > 0 && <span className="shrink-0 text-[14.5px] font-bold tabular-nums text-[color:var(--color-danger)]">{moneyText(-amount)}</span>}

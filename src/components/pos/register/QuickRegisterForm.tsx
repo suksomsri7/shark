@@ -6,6 +6,7 @@
 //   ปุ่มเปิดเมื่อเบอร์ 9–10 หลัก + ชื่อ ≥ 1 ตัว · วันเกิดผิด = บรรทัดแดงใต้ช่อง ไม่ส่ง
 //   idempotencyKey = คีย์ของการเปิดฟอร์มครั้งนี้ (RegisterScreen สร้าง — S5.21 ห้ามสร้างคีย์ในไฟล์อื่น) · กดซ้ำ = คนเดิม
 //   ผล: ok (created true/false) ⇒ onDone (ผูก + ปิด + ข้อความลอย) · ปฏิเสธ ⇒ บรรทัดแดงใต้ฟอร์มด้วย refusalMessageKey
+//   fix รอบ 1 (F5): ส่งแล้วไม่สำเร็จ (ปฏิเสธ/เครือข่ายล้ม) แล้วแก้เบอร์หรือชื่อ = คนใหม่ ⇒ ขอคีย์ใหม่จาก RegisterScreen (onRekey) · กดซ้ำค่าเดิม = คีย์เดิม
 // 🔴 เบอร์เต็มอยู่ในช่องที่แคชเชียร์พิมพ์เท่านั้น (CD8) · ไม่มีข้อความไทยนอกคอมเมนต์
 
 import { useEffect, useState } from "react";
@@ -25,6 +26,8 @@ export function QuickRegisterForm(p: {
   formKey: string;
   frozen: boolean;
   onDone: (r: { created: boolean; member: RegisterMemberItem }) => void;
+  /** fix รอบ 1 F5: ขอคีย์ใหม่ (RegisterScreen สร้าง — S5.21) เมื่อเบอร์/ชื่อเปลี่ยนหลังส่งไม่สำเร็จ */
+  onRekey: () => void;
 }) {
   const t = useTranslations("pos.member.register");
   const tr = useTranslations("pos.register");
@@ -37,9 +40,19 @@ export function QuickRegisterForm(p: {
   const [heard, setHeard] = useState<RegisterHeardFrom>("WALK_IN");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  /** fix รอบ 1 F5: เบอร์ + ชื่อของครั้งที่ส่งแล้วไม่สำเร็จ (คีย์นั้นอาจสร้างคนนั้นไปแล้วที่เซิร์ฟเวอร์) */
+  const [failedWith, setFailedWith] = useState<{ phone: string; name: string } | null>(null);
   useEffect(() => {
     if (!phoneTouched) setPhone(p.prefillPhone ?? "");
   }, [p.prefillPhone, phoneTouched]);
+  const sentPhone = phone.replace(/[\s-]/g, "");
+  const sentName = name.trim();
+  useEffect(() => {
+    if (!failedWith || (failedWith.phone === sentPhone && failedWith.name === sentName)) return;
+    setFailedWith(null);
+    p.onRekey();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- ตัวกระตุ้น = เบอร์/ชื่อที่จะส่งเปลี่ยนหลังส่งไม่สำเร็จ
+  }, [sentPhone, sentName, failedWith]);
 
   const ready = quickPhoneReady(phone) && name.trim().length >= 1 && !busy && !p.frozen;
   const submit = async () => {
@@ -56,8 +69,8 @@ export function QuickRegisterForm(p: {
         systemId: p.systemId,
         unitId: p.unitId,
         input: {
-          phone: phone.replace(/[\s-]/g, ""),
-          name: name.trim(),
+          phone: sentPhone,
+          name: sentName,
           ...(b.ymd ? { birthDate: b.ymd } : {}),
           marketingConsent: consent,
           heardFrom: heard,
@@ -71,9 +84,14 @@ export function QuickRegisterForm(p: {
         setBirth("");
         setConsent(false);
         setHeard("WALK_IN");
+        setFailedWith(null);
         p.onDone({ created: r.created, member: r.member });
-      } else setErr(tr(refusalMessageKey(r.code)));
+      } else {
+        setFailedWith({ phone: sentPhone, name: sentName });
+        setErr(tr(refusalMessageKey(r.code)));
+      }
     } catch {
+      setFailedWith({ phone: sentPhone, name: sentName });
       setErr(tr("errors.unknown"));
     } finally {
       setBusy(false);

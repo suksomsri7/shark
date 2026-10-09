@@ -2349,6 +2349,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
               if (cart.memberId) void refreshBenefits(cart.memberId, benefitsCartJson);
             }}
             onClose={() => setLayers((s) => s.filter((x) => x.kind !== "member"))}
+            onRekey={() => setMemberFormKey(newKey())}
           />
         );
       case "done":
