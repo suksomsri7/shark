@@ -426,7 +426,7 @@ import { createHash } from "node:crypto";
 import { writeAudit } from "@/lib/core/audit";
 import { staffActorFromToken, verifyManagerPin } from "./staff-pin";
 import { TAX_INVOICE_MESSAGES, parseTaxInvoiceBuyer, type TaxInvoiceBuyer } from "./tax-invoice-shared"; // POS P1.13 ▸ ผู้ซื้อของใบกำกับเต็มรูป ◂
-import { rememberBuyerForMember } from "./tax-invoice"; // POS P1.13 ▸ R6 ◂
+import { rememberBuyerForMember, taxInvoiceEligibleAtPay } from "./tax-invoice"; // POS P1.13 ▸ R6 · follow-up 3 ◂
 import {
   POS_APPROVAL_MESSAGE,
   approvedDiscountOf,
@@ -544,6 +544,7 @@ const REG_MESSAGE: Record<RegisterRefusalCode, string> = {
   APPROVAL_MISMATCH: POS_APPROVAL_MESSAGE.APPROVAL_MISMATCH,
   // POS P1.13 ▸ ผู้ซื้อของใบกำกับเต็มรูป ◂
   TAX_ID_INVALID: TAX_INVOICE_MESSAGES.TAX_ID_INVALID,
+  NOT_ELIGIBLE: "ร้านนี้ยังออกใบกำกับภาษีไม่ได้ · ตรวจการเชื่อมบัญชี/เลขผู้เสียภาษี",
 };
 const REG_ROLE_LABEL: Record<RegisterRole, string> = { OWNER: "เจ้าของร้าน", MANAGER: "ผู้จัดการ", STAFF: "แคชเชียร์" };
 
@@ -1734,6 +1735,8 @@ export async function submitRegisterSale(ctx: RegisterCtx, actor: RegisterActor,
     if (req.expected !== q.grandTotalSatang) return { ok: false, code: "PRICE_CHANGED", message: REG_MESSAGE.PRICE_CHANGED, ...q };
     // ④ (⑤ ย้ายไปก่อน ① — R4 K4) · P1.6: ทิปอยู่นอกยอดบิล ⇒ Σ วิธีจ่าย = ยอด + ทิป (มติ §8 ข้อ 1)
     if (req.payMethods.reduce((t, x) => t + x.amountSatang, 0) !== q.grandTotalSatang + req.tipSatang) return regRefuse("PAYMENT_MISMATCH");
+    // POS P1.13 follow-up 3: ขอใบกำกับเต็มรูปแต่บิลนี้จะไม่ได้ใบกำกับ (ไม่ผูกสมุดจด VAT · ไม่มีเลขภาษี · ปิดใบอย่างย่อ · ไม่มี VAT) ⇒ NOT_ELIGIBLE ก่อนเขียนอะไร ◂
+    if (req.taxInvoice && !(await taxInvoiceEligibleAtPay(s.tenantId, s.systemId, q.vatSatang))) return regRefuse("NOT_ELIGIBLE");
     // POS P1.15 ▸ R6: ยึดส่วนลดที่อนุมัติไว้ให้บิลคีย์นี้ (ใช้ได้ครั้งเดียว · แข่งกัน = ผู้ชนะคนเดียว) — ตรวจทุกอย่างผ่านแล้วจึงยึด ◂
     if (over?.claimRequestId && !(await claimApprovedDiscount(s.tenantId, over.claimRequestId, req.idempotencyKey))) return regRefuse("DISCOUNT_EXCEEDS_LIMIT");
     // ⑥

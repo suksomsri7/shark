@@ -306,7 +306,8 @@
       "approvalRequired": "Approval requested — wait for an approver or enter a manager PIN on this device",
       "pendingApproval": "An approval request for this is already pending — wait or enter a manager PIN",
       "approvalMismatch": "This bill doesn't match what was approved — request approval again or enter a manager PIN",
-      "taxIdInvalid": "The buyer's tax ID isn't valid — check the 13 digits"
+      "taxIdInvalid": "The buyer's tax ID isn't valid — check the 13 digits",
+      "taxInvoiceNotEligible": "This shop can't issue tax invoices yet · check the accounting link / tax ID"
     },
     "held": {
       "title": "Held bills",

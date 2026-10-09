@@ -20,6 +20,7 @@ import {
   setQuotationResponse,
   upsertExternalSaleDocument,
   supersedeExternalSaleAbb,
+  bookTaxIdOf,
   vatConfigOf,
   voidExternalSaleDocument,
   type ExternalSaleDocLine,
@@ -200,7 +201,9 @@ export async function applyExternalSale(input: {
   // ── WO 4.2: ชั้นเอกสาร (ไม่มี lines = ข้ามทั้งบล็อก → เส้นทางเดิมทุกประการ) ──
   //    WO 8.1: เจ้าของปิด "ใบกำกับอย่างย่อจาก POS" ในหน้าตั้งค่า (§9.2) = ไม่สร้างชั้นเอกสารนี้
   //    POS P1.13: ผู้ซื้อขอใบกำกับเต็มรูป + สมุดจด VAT = สร้างใบเต็มรูปเสมอ (ลูกค้าขอเอกสารเอง ไม่ขึ้นกับสวิตช์ใบอย่างย่อ)
-  const full = !!input.buyer && vatRegistered;
+  // follow-up 3 (ป้องกัน): ใบเต็มรูปเฉพาะเมื่อสมุด "ออกใบกำกับได้" ณ ตอนลงบัญชี (จด VAT · เปิดใบอย่างย่อจาก POS · มีเลขผู้เสียภาษี · บิลมี VAT)
+  //   ไม่ครบ = ถอยไปเส้น ABB/ใบเสร็จเดิม (ไม่ล้างสำเนาผู้ซื้อ · ฝั่ง POS เตือน ops) — หน้าขายปฏิเสธ NOT_ELIGIBLE ตั้งแต่ตอนชำระแล้ว
+  const full = !!input.buyer && vatRegistered && posAbbreviatedInvoice && vat > 0 && (await bookTaxIdOf(link.systemId)) !== "";
   if (!lines || lines.length === 0 || (!posAbbreviatedInvoice && !full)) return { posted };
 
   const contactId = full ? await resolveBuyerContact(ctx, input.buyer!) : await resolveExternalSaleContact(ctx, input.customer);

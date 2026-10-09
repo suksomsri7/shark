@@ -101,6 +101,11 @@ async function abbEligible(tenantId: string, systemId: string, vatSatang: number
   return receiptKindOf({ vatRegistered: !!vat?.vatRegistered, posAbbreviatedInvoice: !!vat?.posAbbreviatedInvoice, taxId: book?.taxId, vatSatang }) === "TAX_INVOICE_ABB";
 }
 
+/** follow-up 3 — ตอนชำระ: บิลนี้จะได้ใบกำกับ (ABB → เต็มรูป) ไหม (สมุดผูก · จด VAT · เปิดใบอย่างย่อ · มีเลขภาษี · VAT > 0) */
+export async function taxInvoiceEligibleAtPay(tenantId: string, systemId: string, vatSatang: number): Promise<boolean> {
+  return abbEligible(tenantId, systemId, vatSatang);
+}
+
 /** เลขเอกสารของใบกำกับที่ผูกกับบิล (อ่านผ่าน facade — ใบเต็มรูปชนะ ABB) */
 async function docNoOf(ctx: TaxInvoiceCtx, saleId: string, docId: string): Promise<string | null> {
   const ref = await account.posSaleAccountingRef({ tenantId: ctx.tenantId, sourceSystemId: ctx.systemId, refId: saleId });

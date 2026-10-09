@@ -6,6 +6,7 @@
 import type { PosPayType, Prisma } from "@prisma/client";
 import { applyExternalRefund, applyExternalSale, reverseExternalSale } from "@/lib/modules/account";
 import { emitOutbox } from "@/lib/core/outbox";
+import { logOps } from "@/lib/core/ops";
 import { prisma } from "./db";
 import { allocateBillDiscount } from "./refund-math";
 import { snapshotBuyer } from "./tax-invoice-shared";
@@ -136,6 +137,8 @@ export async function bridgePosSalePaid(
     ...(buyer ? { buyer: { kind: buyer.kind, name: buyer.name, taxId: buyer.taxId, branchCode: buyer.branchCode, address: buyer.address, email: buyer.email } } : {}),
   });
   if (buyer && res.fullTaxInvoice && res.docId) await recordPayTimeTaxInvoice(sale, res.docId);
+  // follow-up 3: มีผู้ซื้อแต่สมุดออกใบเต็มรูปไม่ได้ตอนลงบัญชี (ไม่ผูก/ไม่จด VAT/ปิดใบอย่างย่อ/ไม่มีเลขภาษี) — เส้นเดิมทำงานแล้ว · เตือน ops (ไม่มีข้อมูลผู้ซื้อ)
+  else if (buyer) await logOps("WARN", "pos.taxInvoice", `บิล POS ${sale.id}: มีคำขอใบกำกับเต็มรูปแต่สมุดบัญชีออกไม่ได้ตอนลงบัญชี — ออกเอกสารตามเส้นเดิม`, { tenantId: sale.tenantId }).catch(() => undefined);
   // บรรทัดถูกปฏิเสธ (ยอดไม่ตรง/ข้อมูลเพี้ยน) — เงินยังเข้า GL ตามปกติ · เตือนเป็นภาษาไทย **ห้ามมีข้อมูลลูกค้าใน log**
   if (lines && res.reason && res.reason !== "unlinked" && !res.docId)
     console.warn(`[บัญชี] บิล POS ${sale.id}: ไม่บันทึกบรรทัดสินค้าเข้าบัญชี — ${res.reason}`);

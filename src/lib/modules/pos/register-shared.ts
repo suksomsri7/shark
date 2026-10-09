@@ -153,7 +153,9 @@ export type RegisterRefusalCode =
   // fix รอบ 1 F1: บิลที่ส่งพร้อม heldCartId ไม่ตรงกับที่อนุมัติ (ตะกร้า/ยอด/เจ้าของบิลพัก)
   | "APPROVAL_MISMATCH"
   // POS P1.13: เลขผู้เสียภาษีของผู้ซื้อ (ใบกำกับเต็มรูปตอนชำระ) ผิด checksum/รูปแบบ
-  | "TAX_ID_INVALID";
+  | "TAX_ID_INVALID"
+  // POS P1.13 follow-up 3: ขอใบกำกับเต็มรูปตอนชำระแต่ร้านออกใบกำกับไม่ได้ (ไม่ผูกสมุดจด VAT / ไม่มีเลขภาษี / ปิดใบอย่างย่อ / บิลไม่มี VAT)
+  | "NOT_ELIGIBLE";
 
 /** คำปฏิเสธ — คืนค่า ไม่ throw · `lineIndex` = บรรทัดที่ผิด (ลำดับเดียวกับที่ส่งมา) ถ้าระบุได้ */
 export type RegisterRefusal = { ok: false; code: RegisterRefusalCode; message: string; lineIndex?: number };
@@ -614,6 +616,7 @@ const REFUSAL_KEY: Readonly<Record<string, string>> = {
   APPROVAL_MISMATCH: "errors.approvalMismatch",
   // POS P1.13 ▸ ผู้ซื้อของใบกำกับเต็มรูปตอนชำระ — เลขผู้เสียภาษีผิด (ข้อมูลผู้ซื้ออื่นผิด = VALIDATION เดิม) ◂
   TAX_ID_INVALID: "errors.taxIdInvalid",
+  NOT_ELIGIBLE: "errors.taxInvoiceNotEligible", // POS P1.13 follow-up 3 ◂
 };
 
 /**

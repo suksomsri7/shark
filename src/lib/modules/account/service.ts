@@ -615,6 +615,12 @@ export async function vatConfigOf(
   };
 }
 
+/** POS P1.13 follow-up 3 — เลขผู้เสียภาษีของสมุด (ว่าง = "") · ใบกำกับภาษี (อย่างย่อ/เต็มรูป) ออกได้เมื่อมีเลขนี้ */
+export async function bookTaxIdOf(systemId: string): Promise<string> {
+  const s = await prisma.accountSettings.findFirst({ where: { systemId }, select: { taxId: true } });
+  return (s?.taxId ?? "").trim();
+}
+
 /**
  * WO 3.2 — หาว่า tenant นี้เปิดระบบ MEMBER/CRM ไว้ไหม (คืน systemId แรกที่เจอของแต่ละชนิด · null = ไม่เปิด)
  * ใช้เดา "ที่มา" ของผู้ติดต่อ (badges สมาชิก/CRM ในหน้าผู้ติดต่อ) — AppSystem เป็น model กลาง (เหมือนที่ guard.ts
