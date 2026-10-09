@@ -213,7 +213,8 @@ export function SharkSettings({ systemId, unitId, storefront, pay }: Props) {
           })}
         </ul>
         {c.code === "AI" && <div className="inline-block self-start rounded-[8px] border border-dashed px-[9px] py-1.5 text-[11.5px] text-[color:var(--color-muted)]">{tc("AI.note")}</div>}
-        {isAccount && accDenied && (
+        {/* POS P1.18U ▸ แก้รอบ 1 F3: สวิตช์บัญชีถูกล็อกเพราะไม่มีสิทธิ์ (ก่อนหรือหลังถูกปฏิเสธ) ⇒ บอกเหตุผลใต้การ์ดเสมอ ◂ */}
+        {isAccount && (accDenied || (accountLive && accountLocked)) && (
           <p data-testid="pos-settings-account-denied" className="text-[11.5px] text-[color:var(--color-danger)]">
             {tk("accountDenied")}
           </p>
@@ -221,8 +222,9 @@ export function SharkSettings({ systemId, unitId, storefront, pay }: Props) {
         {(c.state === "OFF" || c.state === "NO_SYSTEM") && (
           <div className="mt-auto flex items-center gap-3 text-[11.5px] text-[color:var(--color-muted)]">
             <span className="min-w-0 flex-1">{c.state === "OFF" ? `${tk("offPrefix")} · ${tc(`${c.code}.off`)}` : tk("noSystem")}</span>
-            {(c.state === "NO_SYSTEM" || (c.manage && c.manage.canManage)) && (
-              <Link data-testid={`pos-settings-card-enable-${code}`} href={c.state === "NO_SYSTEM" ? ADD_SYSTEM_HREF : c.manage!.href} className="inline-flex min-h-11 shrink-0 items-center font-bold text-[color:var(--color-accent)]">
+            {/* POS P1.18U ▸ แก้รอบ 1 F4: ลิงก์ "เปิดใช้" เฉพาะผู้จัดการได้ (manage.canManage) ไปที่ manage.href · ไม่มีสิทธิ์ = ข้อความเทาอย่างเดียว ◂ */}
+            {c.manage?.canManage && (
+              <Link data-testid={`pos-settings-card-enable-${code}`} href={c.manage.href} className="inline-flex min-h-11 shrink-0 items-center font-bold text-[color:var(--color-accent)]">
                 {tk("enable")}
               </Link>
             )}

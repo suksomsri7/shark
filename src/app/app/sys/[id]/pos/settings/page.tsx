@@ -64,13 +64,18 @@ export default async function PosSettingsPage({ params, searchParams }: { params
   const unitPp = promptpayIdForUnit(sys.settings, unitId);
   const intent = parsePosIntentSettings(sys.settings);
   // POS P1.18U ▸ R11 แถวเว็บร้าน: สาขาประเภท SHOP ที่เปิดอยู่และมีสินค้าเปิดขาย (อ่านอย่างเดียว) ◂
+  // POS P1.18U ▸ แก้รอบ 1 F6: คิวรีเดียว (EXISTS ใช้ดัชนี ShopProduct(tenantId, unitId, active)) — ไม่ดึงสินค้าทั้งร้านมาตัดซ้ำในหน่วยความจำ ·
+  //   ไม่มี relation BusinessUnit↔ShopProduct ใน schema ⇒ ใช้ SQL ผูก tenantId · ผลเท่าเดิม (สาขาแรกตาม sortOrder, createdAt) ◂
   const shop =
     canRead && (tab === "shark" || tab === "channels")
-      ? await prisma.businessUnit.findFirst({
-          where: { tenantId, type: "SHOP", status: "ACTIVE", id: { in: (await prisma.shopProduct.findMany({ where: { tenantId, active: true }, select: { unitId: true }, distinct: ["unitId"] })).map((x) => x.unitId) } },
-          orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
-          select: { name: true, slug: true },
-        })
+      ? ((
+          await prisma.$queryRaw<{ name: string; slug: string }[]>`
+            SELECT bu."name", bu."slug" FROM "BusinessUnit" bu
+            WHERE bu."tenantId" = ${tenantId} AND bu."type" = 'SHOP' AND bu."status" = 'ACTIVE'
+              AND EXISTS (SELECT 1 FROM "ShopProduct" sp WHERE sp."tenantId" = bu."tenantId" AND sp."unitId" = bu."id" AND sp."active")
+            ORDER BY bu."sortOrder" ASC, bu."createdAt" ASC
+            LIMIT 1`
+        )[0] ?? null)
       : null;
   const storefront = shop ? { name: shop.name, path: `/s/${auth.active.tenant.slug}/${shop.slug}/shop` } : null;
   return (
