@@ -928,3 +928,8 @@
 
 ## 9 ต.ค. 08:05 UTC — P1.13 รอบแก้ 1 ส่งแล้ว (0d45a6d0) → ผู้ตรวจดูซ้ำ
 - **L4 P1.13**: head **0d45a6d0** (F1 64c0e33d · F2 9e837395 · F3 0fd07421 · F4 b0efc9a9 + ORACLE-EDIT S2 b340f16a · F5 f5aa62c2 · fu1 14d87c87 · fu2 cf6adbfe/0e16a906 · fu3 801a3542 + ORACLE-EDIT S5 c82d9b8f (ย้ายบิล unlinked จาก S1 → S5 — รับ) · fu4–5 บันทึก 0d7553cc · merge session/pos 9ba7834b f2545922) · ด่านก่อน merge: p1.13 32/32 ×3 · p1.11/p1.8/p1.16/p1.3/p1.10/authz เขียว · money set เท่าเดิม · fitness · หลัง merge: typecheck 0 · p1.13 32/32 ×3 · p1.11 38 · race ที่เหลือ (refund ระหว่าง supersede กับ claim) บันทึกในโน้ต · ผู้ตรวจ (a8e7731…) ดูซ้ำแล้ว → ถ้า MERGEABLE: merge (money set ของ builder ก่อน merge ถือว่าพอ เพราะส่วนต่างหลัง merge = P1.11U ที่ gated แล้ว)
+
+## 9 ต.ค. 08:10 UTC — ✅ P1.13 S merge แล้ว (ยัง 19/55 — นับเมื่อ P1.13U ปิด) → ด่านปิดชุด gates41-c
+- **L4 P1.13 S ปิด**: re-review 0d45a6d0 = **MERGEABLE** (F1–F5 + fu1–3 ปิด · N1–N5 low → ใส่ prompt P1.13U: N1 `buyerMatches` เทียบฟิลด์เท่ากับ `sameTaxInvoiceBuyer` · N2 logOps WARN ที่ claim-lost branch (saleId+docId) · N3 ลบส่วน S4 ที่ว่างเปล่า · N4 email limit P1.11 → 120 · N5 WARN ใน account-bridge แยกตาม res.reason) → merge session/pos **d9fec398** push แล้ว (merge สะอาดกับ P1.7U/p1.3-counter)
+- **ด่านปิดชุด**: `scratchpad/ctl/gates41-c.sh` ทรี c @origin/session/pos d9fec398 → generate · typecheck · build · fitness ×3 · p1.13/p1.7/p1.11/p1.3/p1.10/p1.15/pos-account/account-cpa/authz → `/root/pos-runs/gates41-c-*/SUMMARY.txt` (ครั้งแรกที่ P1.7U+P1.13 อยู่ด้วยกัน)
+- เหลือ L3 P1.15U รอบ 2 + ภาพ vis40 (กำลังถ่าย) · ต่อไป (ถ้าโควตาเหลือ): P1.13U brief/oracle · weekly 89%
