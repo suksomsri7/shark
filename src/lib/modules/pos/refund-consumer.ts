@@ -14,7 +14,8 @@ import { logOps } from "@/lib/core/ops";
 import * as inventory from "@/lib/modules/inventory/service";
 import { systemForUnit } from "@/lib/modules/system/service";
 import { prisma } from "./db";
-import { posSalePosted } from "@/lib/modules/account";
+import { applyExternalChannelCommission, posSalePosted } from "@/lib/modules/account";
+import { saleChannelName } from "./channel"; // POS P2.1 ◂
 import { bridgePosSalePaid, bridgePosSaleRefunded } from "./account-bridge";
 import { lineConsumption } from "./service";
 
@@ -72,6 +73,12 @@ export const posSaleRefunded: OutboxHandler = async (evt: Evt) => {
     }
   }
 
+  // POS P2.1 ▸ ชื่อช่องทางของใบคืน (ผู้ติดต่อลูกหนี้แพลตฟอร์ม + memo) — อ่านเฉพาะใบที่มี PLATFORM/ส่วนแบ่งค่าคอมฯ ◂
+  const shareC = Math.max(0, refund.channelCommissionSatang);
+  const shareV = Math.max(0, refund.channelCommissionVatSatang);
+  const channelName =
+    refund.payments.some((x) => x.type === "PLATFORM") || shareC + shareV > 0 ? await saleChannelName(prisma, evt.tenantId, refund.channelId, refund.channelCode) : null;
+
   // 1b. ใบลดหนี้ + JV ของใบคืน — ยอด 0 (F4) = ไม่มีเงินให้ลง · ล้ม (≠ ไม่ผูกบัญชี) = โยน ⇒ คิวลองใหม่ (ห้ามเตือนแล้วจบ)
   try {
     if (refund.grandTotalSatang > 0) {
@@ -82,8 +89,29 @@ export const posSaleRefunded: OutboxHandler = async (evt: Evt) => {
         refund.lines.map((l) => ({ name: l.name, qty: l.qty, unitPriceSatang: l.unitPriceSatang, discountSatang: l.discountSatang, lineTotalSatang: l.lineTotalSatang, itemId: l.itemId })),
         refund.payments,
         serviceGross,
+        channelName,
       );
       if (res.reason && res.reason !== "unlinked" && !res.docId) throw new Error(`[บัญชี] ใบคืน POS ${refund.id}: ไม่บันทึกใบลดหนี้ — ${res.reason}`);
+    }
+  } catch (e) {
+    errors.push(e);
+  }
+
+  // POS P2.1 ▸ 1c. R9: กลับค่าคอมฯ ช่องทางตามส่วนแบ่งของใบคืน (คีย์ PosSale#<ใบคืน>#COMMISSION_REFUNDED · ล้ม = โยน ⇒ ลองใหม่) ◂
+  try {
+    if (shareC + shareV > 0 && refund.channelPayout) {
+      await applyExternalChannelCommission({
+        tenantId: evt.tenantId,
+        sourceSystemId: refund.systemId,
+        refId: refund.id,
+        occurredAt: refund.paidAt ?? refund.createdAt,
+        commissionSatang: shareC,
+        commissionVatSatang: shareV,
+        payout: refund.channelPayout,
+        channelName: channelName ?? "",
+        receiptNo: refund.receiptNo,
+        reverse: true,
+      });
     }
   } catch (e) {
     errors.push(e);

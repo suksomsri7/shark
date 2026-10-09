@@ -20,6 +20,7 @@ import { posVatRateBp } from "./service";
 import { isShiftDeviceId, parseShiftSettings, resolveRegisterShift } from "./shift";
 import type { RegisterActor, RegisterCtx } from "./register-shared";
 import { lineNets, refundLineAmount, refundServiceCharge } from "./refund-math";
+import { channelRefundShare } from "./channel-shared"; // POS P2.1 ▸ R9 ส่วนแบ่งค่าคอมฯ ของใบคืน ◂
 // POS P1.11 ▸ R1: ใบคืนก็มีโทเคน (เปิดแล้วพาไปหน้าบิลต้นทาง) ◂
 import { newReceiptToken } from "./receipt-token";
 // POS P1.15 ▸ R5/R6: คืนเงินผ่านสายอนุมัติ (POS_REFUND) · PIN ผู้จัดการ · ตัวรับคิวคืนเงินที่อนุมัติแล้ว (นอกกะ · มติ 13) ◂
@@ -412,6 +413,17 @@ async function refundInTxInner(tx: Tx, s: Scope, x: CleanInput, preShiftId: stri
   // หลังล็อก: ถูกยกเลิกระหว่างรอ = คืนไม่ได้ · ถูกคืนครบระหว่างรอ (REFUNDED) = เดินต่อ ⇒ จำนวนที่เหลือ 0 = REFUND_EXCEEDS (คนที่แพ้การแข่ง)
   const nr = sale.status === "REFUNDED" && !notPosOwned(sale) ? null : notRefundable(sale);
   if (nr) return refuse(nr);
+  // POS P2.1 ▸ R9: บิลที่จ่ายผ่านแพลตฟอร์ม = แพลตฟอร์มคืนลูกค้า (วิธีคืนต้องเป็น PLATFORM ทั้งหมด) · บิลอื่นคืนเป็น PLATFORM ไม่ได้ ◂
+  {
+    const salePlatform = (await tx.posPayment.count({ where: { saleId: sale.id, tenantId: s.tenantId, type: "PLATFORM" } })) > 0;
+    const askPlatform = x.payMethods.filter((p) => p.type === "PLATFORM").length;
+    if (salePlatform ? askPlatform !== x.payMethods.length : askPlatform > 0) {
+      return refuse(
+        "REFUND_METHOD_INVALID",
+        salePlatform ? "บิลนี้ชำระผ่านแพลตฟอร์ม — แพลตฟอร์มเป็นผู้คืนเงินลูกค้า เลือกวิธีคืน \"แพลตฟอร์ม\"" : "บิลนี้ไม่ได้ชำระผ่านแพลตฟอร์ม — คืนเงินเป็น \"แพลตฟอร์ม\" ไม่ได้",
+      );
+    }
+  }
 
   const prior = await priorRefunds(tx, sale);
   const byId = new Map(sale.lines.map((l) => [l.id, l]));
@@ -471,6 +483,14 @@ async function refundInTxInner(tx: Tx, s: Scope, x: CleanInput, preShiftId: stri
     ON CONFLICT ("unitId", "docType", "period") DO UPDATE SET "seq" = "PosDocCounter"."seq" + 1
     RETURNING "seq"`;
   const receiptNo = `${refundPrefixOf(s.settings)}${period}-${String(Number(ctr[0]!.seq)).padStart(4, "0")}`;
+  // POS P2.1 ▸ R9 CD10: ส่วนแบ่งค่าคอมฯ ของใบนี้ — บางส่วน = ครึ่งขึ้นตามสัดส่วนยอดคืน · ใบที่ทำให้ครบ = ส่วนที่เหลือ (Σ = ค่าคอมฯ บิลเป๊ะ) ◂
+  const channelShare =
+    sale.channelCommissionSatang + sale.channelCommissionVatSatang > 0
+      ? channelRefundShare(sale, { grossSatang: grand, full }, {
+          commissionSatang: prior.docs.reduce((t, d) => t + d.channelCommissionSatang, 0),
+          commissionVatSatang: prior.docs.reduce((t, d) => t + d.channelCommissionVatSatang, 0),
+        })
+      : { commissionSatang: 0, commissionVatSatang: 0 };
 
   const refund = await tx.posSale.create({
     data: {
@@ -498,6 +518,13 @@ async function refundInTxInner(tx: Tx, s: Scope, x: CleanInput, preShiftId: stri
       paidAt: new Date(),
       shiftId,
       soldByUserId: s.actor.userId,
+      // POS P2.1 ▸ R9: สำเนาช่องทางของบิลเดิม + ส่วนแบ่งค่าคอมฯ ของใบนี้ ◂
+      channelId: sale.channelId,
+      channelCode: sale.channelCode,
+      channelRef: sale.channelRef,
+      channelPayout: sale.channelPayout,
+      channelCommissionSatang: channelShare.commissionSatang,
+      channelCommissionVatSatang: channelShare.commissionVatSatang,
     },
   });
   const lineRows = x.lines.map((r, i) => {

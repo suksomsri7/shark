@@ -1614,7 +1614,8 @@ export async function postExternalSale(
      * และแยกยื่นภาษีไม่ได้ — ผังบัญชีมี 4030 อยู่แล้วแต่ POS ไม่เคยใช้
      */
     serviceBaseSatang?: number;
-    drLines: { key: "CASH" | "BANK" | "DEPOSIT_RECEIVED" | "AR"; amountSatang: number }[];
+    // POS P2.1 ▸ contactId (ไม่บังคับ) = ผู้ติดต่อของแพลตฟอร์มบนบรรทัดลูกหนี้ (CD6) · ไม่ส่ง = บรรทัดเดิมทุกไบต์ ◂
+    drLines: { key: "CASH" | "BANK" | "DEPOSIT_RECEIVED" | "AR"; amountSatang: number; contactId?: string | null }[];
   },
   tx?: Tx,
 ): Promise<{ entryId: string } | { skipped: true }> {
@@ -1623,7 +1624,7 @@ export async function postExternalSale(
     if (await alreadyPosted(ctx, `PosSale#${o.refId}#${event}`, db)) return { skipped: true };
 
     const b = new Book(ctx, db);
-    for (const l of o.drLines) b.dr(await b.id(l.key), l.amountSatang);
+    for (const l of o.drLines) b.dr(await b.id(l.key), l.amountSatang, undefined, l.contactId ?? undefined);
     // แยกรายได้ 2 หมวดตามสัดส่วนจริงของบิล — ปัดให้สองก้อนรวมกันเท่า baseSatang เป๊ะ (งบต้องบาลานซ์)
     const svcBase = Math.min(Math.max(0, Math.round(o.serviceBaseSatang ?? 0)), o.baseSatang);
     const goodsBase = o.baseSatang - svcBase;
@@ -1666,7 +1667,8 @@ export async function postExternalRefund(
     baseSatang: number;
     vatSatang: number;
     serviceBaseSatang?: number;
-    crLines: { key: "CASH" | "BANK"; amountSatang: number }[];
+    // POS P2.1 ▸ AR = แพลตฟอร์มคืนลูกค้า (ลดลูกหนี้แพลตฟอร์ม · R9) + contactId ของแพลตฟอร์ม · ไม่ส่ง = เดิม ◂
+    crLines: { key: "CASH" | "BANK" | "AR"; amountSatang: number; contactId?: string | null }[];
   },
   tx?: Tx,
 ): Promise<{ entryId: string } | { skipped: true }> {
@@ -1680,7 +1682,7 @@ export async function postExternalRefund(
     if (goodsBase > 0) b.dr(await b.id("INCOME_GOODS"), goodsBase);
     if (svcBase > 0) b.dr(await b.id("INCOME_SERVICE"), svcBase);
     if (o.vatSatang > 0) b.dr(await b.id("VAT_OUTPUT"), o.vatSatang);
-    for (const l of o.crLines) b.cr(await b.id(l.key), l.amountSatang);
+    for (const l of o.crLines) b.cr(await b.id(l.key), l.amountSatang, undefined, l.contactId ?? undefined);
 
     const entry = await commitEntry(
       ctx,
@@ -1693,6 +1695,56 @@ export async function postExternalRefund(
         event,
         memo: "คืนเงิน POS (ใบลดหนี้)",
       },
+      b,
+      db,
+    );
+    return { entryId: entry.id };
+  });
+}
+
+// POS P2.1 ▸ ค่าคอมฯ ช่องทางขาย (แพลตฟอร์ม/ตัวแทน) — JV แยกจาก PAID (CD5: รายได้เต็ม + ค่าใช้จ่ายแยก) ◂
+//   ปกติ (event COMMISSION · refId = บิล):  Dr ค่าใช้จ่าย (commission · สมุดไม่จด VAT = รวม VAT) + Dr ภาษีซื้อยังไม่ถึงกำหนด (VAT) / Cr ลูกหนี้แพลตฟอร์ม (PLATFORM) หรือเจ้าหนี้ (DIRECT)
+//   กลับตามสัดส่วน (event COMMISSION_REFUNDED · refId = ใบคืน): ขากลับด้าน
+//   เล่ม GENERAL · idempotent ต่อ PosSale#<refId>#<event> · void บิล = reverseFor(PosSale, บิล) กลับให้เองพร้อม PAID
+//   facade (account/index) เป็นผู้เลือกคีย์ (§9 Q1 option A) + ผู้ติดต่อ แล้วส่งมา — โมดูลอื่นไม่รู้เลขบัญชี
+export async function postExternalChannelCommission(
+  ctx: GlCtx,
+  o: {
+    refId: string;
+    date: Date;
+    commissionSatang: number;
+    commissionVatSatang: number;
+    /** true = สมุดไม่จด VAT ⇒ VAT ค่าคอมฯ รวมเข้าค่าใช้จ่าย (ไม่มีบรรทัดภาษีซื้อ) */
+    foldVat: boolean;
+    keys: { expense: string; vatInput: string; counter: string };
+    /** ผู้ติดต่อของช่องทาง บนบรรทัดลูกหนี้/เจ้าหนี้ (CD6) */
+    contactId?: string | null;
+    memo: string;
+    reverse?: boolean;
+  },
+  tx?: Tx,
+): Promise<{ entryId: string } | { skipped: true }> {
+  return withTx(tx, async (db) => {
+    const event = o.reverse ? "COMMISSION_REFUNDED" : "COMMISSION";
+    if (await alreadyPosted(ctx, `PosSale#${o.refId}#${event}`, db)) return { skipped: true };
+    const c = Math.max(0, Math.round(o.commissionSatang));
+    const v = Math.max(0, Math.round(o.commissionVatSatang));
+    const expense = o.foldVat ? c + v : c;
+    const vat = o.foldVat ? 0 : v;
+    const b = new Book(ctx, db);
+    const contact = o.contactId ?? undefined;
+    if (!o.reverse) {
+      b.dr(await b.id(o.keys.expense), expense);
+      if (vat > 0) b.dr(await b.id(o.keys.vatInput), vat);
+      b.cr(await b.id(o.keys.counter), c + v, undefined, contact);
+    } else {
+      b.dr(await b.id(o.keys.counter), c + v, undefined, contact);
+      b.cr(await b.id(o.keys.expense), expense);
+      if (vat > 0) b.cr(await b.id(o.keys.vatInput), vat);
+    }
+    const entry = await commitEntry(
+      ctx,
+      { book: "GENERAL", journal: "ADJUST", date: o.date, refType: "PosSale", refId: o.refId, event, memo: o.memo },
       b,
       db,
     );

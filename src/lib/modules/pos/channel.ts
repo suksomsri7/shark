@@ -15,6 +15,7 @@ import {
   CHANNEL_BUILTIN_CODES,
   CHANNEL_BUILTIN_NAMES,
   CHANNEL_LIMIT_PER_UNIT,
+  channelFallbackName,
   defaultChannelCode,
   isChannelBuiltinCode,
   isChannelExternalPreset,
@@ -319,6 +320,15 @@ export async function archiveChannel(ctx: RegisterCtx, actor: RegisterActor, inp
       });
     return { ok: true, channel: channelItem(after) };
   });
+}
+
+/** ชื่อช่องทางของบิล (สะพานบัญชี: ผู้ติดต่อ + memo · ตัวอ่าน) — แถวถูกลบ/บิลเดิม = ชื่อสำรองจากรหัส (ไม่ throw) */
+export async function saleChannelName(db: Db, tenantId: string, channelId: string | null | undefined, code: string | null | undefined): Promise<string> {
+  if (channelId) {
+    const r = await db.salesChannel.findFirst({ where: { id: channelId, tenantId }, select: { name: true } });
+    if (r) return r.name;
+  }
+  return code ? channelFallbackName(code) : "";
 }
 
 /** ธุรกรรม — client ที่เป็น tx อยู่แล้ว = ทำในtx นั้นเลย */
