@@ -46,7 +46,7 @@ const ADD_SYSTEM_HREF = "/app/settings/systems";
 /** ชื่อการ์ดที่เป็นชื่อเฉพาะ (ไม่แปล) */
 const PROPER_TITLE: Partial<Record<PosIntegrationCard["code"], string>> = { CRM: "CRM" };
 
-type Props = { systemId: string; unitId: string; storefront: Storefront; pay: PaySummary };
+type Props = { systemId: string; unitId: string; storefront: Storefront; pay: PaySummary; canAddSystem: boolean };
 
 function relTime(iso: string, locale: string): string {
   const at = new Date(iso);
@@ -76,7 +76,7 @@ function IconTile({ icon, accent }: { icon: RegisterIconName; accent?: boolean }
   );
 }
 
-export function SharkSettings({ systemId, unitId, storefront, pay }: Props) {
+export function SharkSettings({ systemId, unitId, storefront, pay, canAddSystem }: Props) {
   const t = useTranslations("pos.settings");
   const tk = useTranslations("pos.settings.shark");
   const tc = useTranslations("pos.settings.cards");
@@ -232,9 +232,11 @@ export function SharkSettings({ systemId, unitId, storefront, pay }: Props) {
         {(c.state === "OFF" || c.state === "NO_SYSTEM") && (
           <div className="mt-auto flex items-center gap-3 text-[11.5px] text-[color:var(--color-muted)]">
             <span className="min-w-0 flex-1">{c.state === "OFF" ? `${tk("offPrefix")} · ${tc(`${c.code}.off`)}` : tk("noSystem")}</span>
-            {/* POS P1.18U ▸ แก้รอบ 1 F4: ลิงก์ "เปิดใช้" เฉพาะผู้จัดการได้ (manage.canManage) ไปที่ manage.href · ไม่มีสิทธิ์ = ข้อความเทาอย่างเดียว ◂ */}
-            {c.manage?.canManage && (
-              <Link data-testid={`pos-settings-card-enable-${code}`} href={c.manage.href} className="inline-flex min-h-11 shrink-0 items-center font-bold text-[color:var(--color-accent)]">
+            {/* POS P1.18U ▸ แก้รอบ 1 F4: OFF ⇒ ลิงก์ "เปิดใช้" เฉพาะผู้จัดการได้ (manage.canManage) ไปที่ manage.href ·
+                แก้รอบ 3 N1: NO_SYSTEM (manage: null) ⇒ ลิงก์ไปหน้าเพิ่มระบบ เฉพาะผู้ที่เพิ่มระบบได้ (canAddSystem = systems.system.create) ·
+                ไม่มีสิทธิ์ = ข้อความเทาอย่างเดียว ◂ */}
+            {(c.state === "OFF" ? c.manage?.canManage === true : canAddSystem) && (
+              <Link data-testid={`pos-settings-card-enable-${code}`} href={c.state === "OFF" && c.manage ? c.manage.href : ADD_SYSTEM_HREF} className="inline-flex min-h-11 shrink-0 items-center font-bold text-[color:var(--color-accent)]">
                 {tk("enable")}
               </Link>
             )}
