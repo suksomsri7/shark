@@ -937,3 +937,8 @@
 ## 9 ต.ค. 08:20 UTC — ภาพ P1.15U ผ่าน (รอรอบ 2 เล็กแล้ว merge)
 - **L3 P1.15U**: vis40 (`/root/pos-runs/vis40-p115u-20261009T074734Z`, ภาพ `shark-pos-b/.qc-shots/pos/p1.15u-r1/`) register owner 50/50 · cashier 50/50 · sales 15/15 ผ่าน · เทียบ 13B lock-screen **ตรงแบบ** (tile/ชื่อ/6 จุด/แป้น ลืม PIN·0·⌫/hint · คอลัมน์ขวา การ์ด+ใช้งานอยู่+สลับพนักงาน+บิลพัก+footer) · lock-pin-locked แดง "ล็อกชั่วคราว 15 นาที" + ปุ่มผู้จัดการปลดล็อก · 21B approval-wait (owner) ตรง 21B (ผู้อนุมัติ ส่งแล้ว · กำลังรอ 4:57 · หรือ · PIN 4 ช่อง+แป้น · ยกเลิกคำขอ; cashier = ปุ่ม "ยกเลิกบิล — รออนุมัติ…" ตาม ruling) · discount-over-sheet ตรง checklist · staff-switch ตรง → **ภาพผ่าน** · รอรอบ 2 (N1 Bills fail-closed · N2 · N3) จาก builder a593959… → builder merge session/pos (ตอนนี้มี P1.7U + P1.13 S) เอง → ผม merge → **20/55**
 - gates41-c กำลัง typecheck/build session/pos d9fec398 · weekly 89% (ใกล้ 90% = HANDOVER)
+
+## 9 ต.ค. 09:00 UTC — ✅ gates41-c เขียวทั้งชุด · เจ้าของปรับเกณฑ์ handover = weekly 97%
+- **ด่านปิดชุด** (`/root/pos-runs/gates41-c-*` ทรี c @d9fec398 = P1.7U+P1.11U+P1.13 S+p1.3-counter): generate 0 · typecheck 0 · build 0 · fitness ×3 0 · p1.13/p1.7/p1.11/p1.3/p1.10/p1.15/pos-account/account-cpa/authz ทั้งหมด exit 0
+- **เจ้าของสั่ง 08:25Z**: "Weekly limit ถึง 97% ค่อยเริ่มเตรียมตัวส่งไม้ต่อให้บัญชี A ตอนนี้ 89%" → เกณฑ์ HANDOVER = weekly ≥97% (session ยัง 90%) · บันทึก memory `feedback_pos_handover_at_97_weekly`
+- ต่อไป: รอ P1.15U รอบ 2 → merge (20/55) · เริ่ม P1.13U (prompt + rulings + visual states; builder เพิ่ม U checks ใน qc-pos-p1.13) ในทรี d · weekly 89%
