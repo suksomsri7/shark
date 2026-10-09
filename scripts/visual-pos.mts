@@ -99,6 +99,18 @@
 //   member-attached ใส่ WELCOME50 จากตะกร้า (ส่วนลดท้ายบิล → คูปอง · แถว 01 "คูปอง WELCOME50 −฿50") · paydlg-member-points ใส่จากจอชำระ ("ใส่คูปอง" · แถว 02)
 //   — ไม่มีสถานะไหนบันทึกบิลพร้อมคูปอง (ไม่มี CouponRedemption) · ไม่ลบอะไร (ค่าตั้ง/แต้ม/บิล/ระบบคูปองคงอยู่ · บันทึกใน summary memberState) ◂
 //
+// POS P1.18U ▸ หน้า settings `--states` (--page settings หรือ wo p1.18u*/p118u*) เพิ่ม 8 สถานะ (3 ขนาด · th + LOCALE=en · owner + cashier):
+//   settings-general (ทั่วไป · แคชเชียร์ = อ่านอย่างเดียว) · settings-staff (17C · แคชเชียร์ = การ์ดปฏิเสธ) · settings-staff-pin (กล่อง PIN เปิด ใส่ 3 หลัก · ไม่ส่ง) ·
+//   settings-shark (ภาพ 10) · settings-shark-account-off (สวิตช์บัญชี → กล่องยืนยันเปิด · ไม่กดยืนยัน · แคชเชียร์ = สวิตช์ปิด) ·
+//   settings-history (ลิ้นชักประวัติเปิด ≥ 3 แถว · แคชเชียร์ = ไม่มีปุ่มประวัติ) · settings-channels · settings-offline
+//   ข้อมูลประวัติ (seedHistoryOnce): ประวัติของ POS ร้าน QC < 3 แถว ⇒ แก้ค่าทั่วไปจริง 4 ครั้งผ่าน updatePosGeneralSettings (เจ้าของร้าน · บิลพักหมดอายุ +1 แล้วคืน ·
+//   ล็อกจอ ±1 แล้วคืน — ค่าสุดท้ายเท่าเดิม) · ≥ 3 แถวแล้ว = ไม่เขียน (รันซ้ำไม่งอก)
+//   หน้า register `--states` เพิ่ม register-en (แตะ EN ที่แถบบน md+ · มือถือ = คุกกี้ LOCALE=en (หัว 05ก ไม่มีตัวสลับ) · หลังถ่ายลบคุกกี้ LOCALE/lang คืนภาษาไทย) ·
+//   register-empty-catalogue (ภาพ 19ก · เจ้าของเท่านั้น — แคชเชียร์ QC เข้าสาขา fixture ไม่ได้): fixture สาขา SHOP "posqc-coffee-unit-empty-vis" + ระบบ POS
+//   "แคตตาล็อกว่าง (ภาพ QC)" (createSystem + linkUnit + updatePosGeneralSettings shift.requiredRegister=false + registerDevice) ·
+//   ไม่มีฟังก์ชันโมดูลสร้าง BusinessUnit / ธง registerV2 ⇒ 2 แถวนี้ใช้คำสั่งเดียวกับ createSystemAction / seed-pos-qc (find-or-create · id/ชื่อตายตัว) ·
+//   finally ลบทั้งชุด (เครื่อง · ลิงก์ · ระบบ · สาขา) = เก็บกวาด ◂
+//
 // 🔴 ไม่มีค่าปริยายของ base — ไม่ส่ง `--base`/`QC_BASE` = exit 2 · ต่อไม่ได้ = exit 2 · `:3215` = exit 2
 //    (พอร์ต 3215 เป็นของเซิร์ฟเวอร์ CRM RUN — LANE-RULES ข้อ 4 · ตั้ง POS_VISUAL_ALLOW_3215=1 เมื่อ CRM ปิดแล้วเท่านั้น)
 // 🔴 ชื่อไฟล์จงใจไม่ขึ้นต้น qc- (ต้องมีเซิร์ฟเวอร์ + chromium — ไม่เข้า qc:all)
@@ -172,7 +184,7 @@ const fileOf = (p: PosPage, w: number, h: number) => `${OUT}/${p}-${userKey}-${w
 const STATES_ON = /^p1\.3/i.test(WO) || argv.includes("--states");
 const LOCALE_EN = process.env.LOCALE === "en";
 type Device = (typeof POS_VIEWPORTS)[number]["name"];
-type StateKey = "default" | "cart3" | "cart4-01" | "line-editor" | "bill-discount" | "custom-item" | "paydlg-cash" | "paydlg-promptpay-qr" | "paydlg-promptpay-paid" | "paydlg-card-edc" | "sale-done" | "search-empty" | "stock-warn" | "offline" | "mobile-sheet" | "options-popover" | "weigh" | "taxinvoice-dialog" | "taxinvoice-set" | MemberStateKey | P115StateKey | StockStateKey | ShiftsStateKey | BillsStateKey | SettingsStateKey | RpubStateKey;
+type StateKey = "register-en" | "register-empty-catalogue" | "default" | "cart3" | "cart4-01" | "line-editor" | "bill-discount" | "custom-item" | "paydlg-cash" | "paydlg-promptpay-qr" | "paydlg-promptpay-paid" | "paydlg-card-edc" | "sale-done" | "search-empty" | "stock-warn" | "offline" | "mobile-sheet" | "options-popover" | "weigh" | "taxinvoice-dialog" | "taxinvoice-set" | MemberStateKey | P115StateKey | StockStateKey | ShiftsStateKey | BillsStateKey | SettingsStateKey | RpubStateKey;
 const STATE_PLAN: { key: StateKey; devices: readonly Device[]; note: string }[] = [
   { key: "default", devices: ["desktop", "ipad", "mobile"], note: "เปิดหน้า (ตะกร้าว่าง) — การ์ดเหลือน้อย/หมด/ปิดขายของ fixture อยู่ในกริด" },
   { key: "cart3", devices: ["desktop", "ipad", "mobile"], note: "อเมริกาโน่×2 · ลาเต้ (ลด ฿10) · ครัวซองต์ (สต็อก N → N−1)" },
@@ -213,7 +225,12 @@ const STATE_PLAN: { key: StateKey; devices: readonly Device[]; note: string }[] 
   { key: "staff-switch", devices: ["desktop", "ipad", "mobile"], note: "จอล็อก → แตะการ์ดอีกคน → แป้น PIN ของคนนั้น (ยังไม่ใส่ครบ)" },
   { key: "discount-over-sheet", devices: ["desktop", "ipad", "mobile"], note: "โทเคนแคชเชียร์ · cart3 + ส่วนลดท้ายบิล 20% (> เพดาน 10%) → แผ่นส่วนลดเกินสิทธิ์" },
   { key: "approval-wait", devices: ["desktop", "ipad", "mobile"], note: "⚠️ ขายจริง 1 บิล → คำขอ POS_VOID PENDING (เขียนตรง · ลบใน finally) → บิลวันนี้ → \"ยกเลิกบิล — รออนุมัติ…\" → 21B (แคชเชียร์ = ปุ่มรออนุมัติ)" },
+  // POS P1.18U ▸ มติ 8 ตัวสลับภาษาบนแถบบน · มติ 11 ร้านไม่มีสินค้า (ภาพ 19ก) ◂
+  { key: "register-en", devices: ["desktop", "ipad", "mobile"], note: "แตะ EN ที่ตัวสลับภาษาแถบบน (md+) → ทั้งจอภาษาอังกฤษ · 390 = คุกกี้ LOCALE=en (ไม่มีตัวสลับในหัว 05ก) · หลังถ่ายคืนภาษาไทย" },
+  { key: "register-empty-catalogue", devices: ["desktop", "ipad", "mobile"], note: "ภาพ 19ก: สาขา fixture ของระบบ POS ที่ไม่มีสินค้า → ไอคอน + \"ยังไม่มีสินค้าให้ขาย\" + ปุ่มเพิ่มสินค้า (เจ้าของเท่านั้น)" },
 ];
+/** POS P1.18U ▸ สถานะหน้าขายที่แคชเชียร์ QC ถ่ายไม่ได้ (เข้าสาขา fixture ไม่ได้ · ห้ามแก้ membership ของ seed) ◂ */
+const OWNER_ONLY_STATES: ReadonlySet<string> = new Set(["register-empty-catalogue"]);
 type MemberStateKey = "member-panel" | "member-register" | "member-attached" | "paydlg-member-points" | "paydlg-member-capped" | "sale-done-member";
 type P115StateKey = "lock-screen" | "lock-pin-locked" | "staff-switch" | "discount-over-sheet" | "approval-wait";
 const P115_STATE_KEYS: ReadonlySet<string> = new Set<string>(["lock-screen", "lock-pin-locked", "staff-switch", "discount-over-sheet", "approval-wait"]);
@@ -247,7 +264,9 @@ const BILLS_STATE_PLAN: { key: BillsStateKey; devices: readonly Device[]; note: 
   { key: "bill-taxinvoice-issued", devices: ["desktop", "ipad", "mobile"], note: "⚠️ บิลกาแฟ ABB → issueFullTaxInvoice (ใบ TX ค้างในบัญชี QC4) → ลิ้นชัก \"ใบกำกับเต็มรูป <เลข> · ผู้ซื้อ\"" },
 ];
 // POS P1.10 U ▸ สถานะของหน้าตั้งค่า (เครื่อง QC 2 เครื่องลงทะเบียนครั้งเดียวก่อนเปิด chromium · ไม่กดยืนยันเพิกถอน/ไม่กดพิมพ์) ◂
-type SettingsStateKey = "settings-receipt" | "settings-payments" | "settings-devices" | "settings-device-revoke" | "settings-print-pair" | "paydone-print";
+type SettingsStateKey = "settings-receipt" | "settings-payments" | "settings-devices" | "settings-device-revoke" | "settings-print-pair" | "paydone-print" | P118uSettingsKey;
+// POS P1.18U ▸ แท็บตั้งค่าที่เหลือ 5 แท็บ + กล่อง PIN · ยืนยันปิดบัญชี · ลิ้นชักประวัติ ◂
+type P118uSettingsKey = "settings-general" | "settings-staff" | "settings-staff-pin" | "settings-shark" | "settings-shark-account-off" | "settings-history" | "settings-channels" | "settings-offline";
 const SETTINGS_STATE_PLAN: { key: SettingsStateKey; devices: readonly Device[]; note: string }[] = [
   { key: "settings-receipt", devices: ["desktop", "ipad", "mobile"], note: "17A ใบเสร็จและภาษี + ตัวอย่างสด (แคชเชียร์ = ช่องปิด · อ่านอย่างเดียว)" },
   { key: "settings-payments", devices: ["desktop", "ipad", "mobile"], note: "P1.7U 17A วิธีรับเงิน: พร้อมเพย์ (อ่านอย่างเดียว) · อายุ QR · Beam + ชิปคีย์ · ยืนยันเอง (แคชเชียร์ = อ่านอย่างเดียว)" },
@@ -255,7 +274,26 @@ const SETTINGS_STATE_PLAN: { key: SettingsStateKey; devices: readonly Device[]; 
   { key: "settings-device-revoke", devices: ["desktop", "ipad", "mobile"], note: "เลือกเครื่อง 2 → กล่องยืนยันเพิกถอน (ไม่กดยืนยัน)" },
   { key: "settings-print-pair", devices: ["desktop", "ipad", "mobile"], note: "เครื่อง 1 (เบราว์เซอร์นี้) → กล่องเลือกเครื่องพิมพ์ = \"เบราว์เซอร์นี้ไม่รองรับ\" (ซ่อน navigator.usb)" },
   { key: "paydone-print", devices: ["desktop"], note: "⚠️ ขายจริง 1 บิลบนเครื่อง 2 (พิมพ์ผ่านเบราว์เซอร์) → จอสำเร็จ + ปุ่มพิมพ์ใบเสร็จ/สำเนา" },
+  { key: "settings-general", devices: ["desktop", "ipad", "mobile"], note: "P1.18U ทั่วไป: หน้าขาย · กะและลิ้นชัก · รายงาน · สต็อกของสาขา · บาร์โค้ดชั่ง · พร้อมเพย์สาขา · ค่าบริการ · ภาษาของแอป (แคชเชียร์ = อ่านอย่างเดียว ไม่มีปุ่มบันทึก)" },
+  { key: "settings-staff", devices: ["desktop", "ipad", "mobile"], note: "P1.18U 17C พนักงานและสิทธิ์: ตารางสิทธิ์ · นโยบายอนุมัติ · พนักงานและ PIN (แคชเชียร์ = การ์ดปฏิเสธ)" },
+  { key: "settings-staff-pin", devices: ["desktop", "ipad", "mobile"], note: "P1.18U 17C → ตั้ง/เปลี่ยน PIN ของแถวแรก → กล่อง PIN ใส่ 3 หลัก (ไม่ส่ง) · แคชเชียร์ = การ์ดปฏิเสธ" },
+  { key: "settings-shark", devices: ["desktop", "ipad", "mobile"], note: "P1.18U ภาพ 10: 13 การ์ด + ใบเสร็จและภาษี + ออฟไลน์ · ช่องทางขายภายนอก + วิธีรับเงิน" },
+  { key: "settings-shark-account-off", devices: ["desktop", "ipad", "mobile"], note: "P1.18U สวิตช์บัญชี (เปิดอยู่) → กล่อง \"ปิดการลงบัญชี?\" (ไม่กดยืนยัน) · แคชเชียร์ = สวิตช์ปิด" },
+  { key: "settings-history", devices: ["desktop", "ipad", "mobile"], note: "P1.18U ปุ่ม \"ประวัติการเปลี่ยน\" → ลิ้นชัก ≥ 3 แถว (seedHistoryOnce) · แคชเชียร์ = ไม่มีปุ่มประวัติ" },
+  { key: "settings-channels", devices: ["desktop", "ipad", "mobile"], note: "P1.18U ช่องทางขายภายนอก: แบนเนอร์ P2.1U + 5 แถว (เว็บร้านอ่านจริง)" },
+  { key: "settings-offline", devices: ["desktop", "ipad", "mobile"], note: "P1.18U ออฟไลน์และการซิงก์: แบนเนอร์ P3.4 + การ์ดออฟไลน์" },
 ];
+const P118U_SETTINGS_TAB: Record<P118uSettingsKey, string> = {
+  "settings-general": "general",
+  "settings-staff": "staff",
+  "settings-staff-pin": "staff",
+  "settings-shark": "shark",
+  "settings-shark-account-off": "shark",
+  "settings-history": "shark",
+  "settings-channels": "channels",
+  "settings-offline": "offline",
+};
+const isP118uSettings = (k: string): k is P118uSettingsKey => Object.prototype.hasOwnProperty.call(P118U_SETTINGS_TAB, k);
 const SETTINGS_STATE_KEYS: ReadonlySet<string> = new Set(SETTINGS_STATE_PLAN.map((s) => s.key));
 const isSettingsState = (k: StateKey): k is SettingsStateKey => SETTINGS_STATE_KEYS.has(k);
 /** เครื่อง QC ของหน้าตั้งค่า (brief §6) — 1 = มี printerConfig (ภาพจับคู่) · 2 = เบราว์เซอร์ (กะ + บิลของ paydone-print) */
@@ -291,6 +329,11 @@ const RPUB_MISSING_TOKEN = "ZZZZZZZZZZZZ";
 /** F3: เครื่องคงที่ (ไม่ผูก pid) — รอบซ้ำไม่สร้างเครื่อง/กะเพิ่ม · กะเปิดเฉพาะเมื่อต้องขายบิลใหม่ */
 const RPUB_DEVICE_ID = "posqc-p111u-dev";
 type Job = { page: PosPage; v: (typeof POS_VIEWPORTS)[number]; state: StateKey | null; file: string; path?: string; expect?: number };
+// POS P1.18U ▸ fixture ของภาพ 19ก (ร้านไม่มีสินค้า) — id/ชื่อตายตัว · path จริงรู้หลังหา/สร้างระบบ (emptyPath) ◂
+const EMPTY_UNIT = { id: "posqc-coffee-unit-empty-vis", slug: "pos-qc-coffee-empty-vis", name: "สาขาแคตตาล็อกว่าง (ภาพ QC)" } as const;
+const EMPTY_POS_NAME = "ขายหน้าร้าน · แคตตาล็อกว่าง (ภาพ QC)";
+const EMPTY_DEVICE_ID = `posqc-vis-empty-${process.pid}`;
+const EMPTY_PATH_PLACEHOLDER = `/app/sys/<empty-pos>/pos/register?unit=${EMPTY_UNIT.id}`;
 const viewports = LOCALE_EN ? POS_VIEWPORTS.filter((v) => v.name === "desktop") : [...POS_VIEWPORTS];
 // สถานะหน้าสต็อกเฉพาะ --page stock หรือ wo p1.14* (รอบ p1.3/p1.2 --states ทุกหน้าเดิมไม่เปลี่ยน · ไม่เปิดรอบนับเพิ่ม)
 const stockStatesOn = STATES_ON && tenantKey === "coffee" && (onlyPage === "stock" || /^p1\.14/i.test(WO));
@@ -299,10 +342,12 @@ const shiftsStatesOn = STATES_ON && tenantKey === "coffee" && (onlyPage === "shi
 // สถานะหน้าบิลวันนี้เฉพาะ --page sales หรือ wo p1.16* (รอบ --states ทุกหน้าเดิมไม่สร้างบิลเพิ่ม)
 const billsStatesOn = STATES_ON && tenantKey === "coffee" && (onlyPage === "sales" || /^p1\.16/i.test(WO));
 // สถานะหน้าตั้งค่าเฉพาะ --page settings หรือ wo p1.10u* (รอบ --states ทุกหน้าเดิมไม่ลงทะเบียนเครื่อง/ไม่ขายเพิ่ม)
-const settingsStatesOn = STATES_ON && tenantKey === "coffee" && (onlyPage === "settings" || /^p1\.10u/i.test(WO));
+const settingsStatesOn = STATES_ON && tenantKey === "coffee" && (onlyPage === "settings" || /^p1\.10u/i.test(WO) || /^p1\.?18u/i.test(WO));
 const settingsPath = (st: SettingsStateKey) =>
   st === "paydone-print"
     ? `/app/sys/${SYS}/pos/register?unit=${encodeURIComponent(unitId)}`
+    : isP118uSettings(st)
+    ? `/app/sys/${SYS}/pos/settings?tab=${P118U_SETTINGS_TAB[st]}&unit=${encodeURIComponent(unitId)}`
     : `/app/sys/${SYS}/pos/settings?tab=${st === "settings-receipt" ? "receipt" : st === "settings-payments" ? "payments" : "devices"}&unit=${encodeURIComponent(unitId)}`;
 const billsPath = (st: BillsStateKey) => `/app/sys/${SYS}/pos/sales?unit=${encodeURIComponent(unitId)}${st === "bills-empty" ? `&date=${BILLS_EMPTY_DATE}` : ""}`;
 // POS P1.11U ▸ หน้าใบเสร็จออนไลน์: ร้าน coffee เท่านั้น (ร้านอื่น = ข้ามหน้า) · 390×844 เสมอ (LOCALE=en ⇒ ?lang=en) · path จริงรู้หลังสร้างบิล (rpubPath) ◂
@@ -339,10 +384,10 @@ const jobs: Job[] = pages.flatMap((p: PosPage): Job[] =>
           .map((v): Job => ({ page: p, v, state: st.key, path: `${pathOf(p)}${st.tab ? `&tab=${st.tab}` : ""}`, file: `${OUT}/${p}-${st.key.replace(/^stock-/, "")}-${userKey}-${v.w}x${v.h}${LOCALE_EN ? "-en" : ""}.png` })),
       )
     : STATES_ON && p === "register"
-    ? STATE_PLAN.flatMap((st): Job[] =>
+    ? STATE_PLAN.filter((st) => userKey === "owner" || !OWNER_ONLY_STATES.has(st.key)).flatMap((st): Job[] =>
         viewports
           .filter((v) => st.devices.includes(v.name))
-          .map((v): Job => ({ page: p, v, state: st.key, file: `${OUT}/${p}-${st.key}-${userKey}-${v.w}x${v.h}${LOCALE_EN ? "-en" : ""}.png` })),
+          .map((v): Job => ({ page: p, v, state: st.key, ...(st.key === "register-empty-catalogue" ? { path: EMPTY_PATH_PLACEHOLDER } : {}), file: `${OUT}/${p}-${st.key}-${userKey}-${v.w}x${v.h}${LOCALE_EN ? "-en" : ""}.png` })),
       )
     : viewports.map((v): Job => ({ page: p, v, state: null, file: LOCALE_EN ? fileOf(p, v.w, v.h).replace(/\.png$/, "-en.png") : fileOf(p, v.w, v.h) })),
 );
@@ -381,6 +426,11 @@ if (DRY) {
       for (const st of BILLS_STATE_PLAN) console.log(`  · ${st.key.padEnd(19)} ${st.devices.join("/").padEnd(20)} ${st.note}`);
       console.log(`  เขียน: กะ 1 กะ (บริการ openShift · ปิดใน finally นับ = ยอดคาด) + บิลวันนี้ 7 ใบ + ใบคืน 2 ใบ${userKey === "cashier" ? " — ข้ามเมื่อวันนี้มีชุดภาพบิลครบแล้ว (จากรอบเจ้าของ)" : ""}`);
     }
+    if (settingsStatesOn && pages.includes("settings") && jobs.some((j) => j.state === "settings-history"))
+      console.log("  P1.18U: ประวัติการเปลี่ยนของ POS ร้าน QC < 3 แถว ⇒ แก้ค่าทั่วไปจริง 4 ครั้ง (updatePosGeneralSettings เจ้าของร้าน · ค่าสุดท้ายเท่าเดิม) · ≥ 3 แถว = ไม่เขียน");
+    if (pages.includes("register") && jobs.some((j) => j.state === "register-empty-catalogue"))
+      console.log(`  P1.18U: fixture ภาพ 19ก — สาขา ${EMPTY_UNIT.id} + ระบบ POS "${EMPTY_POS_NAME}" (createSystem · linkUnit · registerV2 · shift.requiredRegister=false) + เครื่อง ${EMPTY_DEVICE_ID} (registerDevice) — ลบทั้งชุดใน finally`);
+    if (pages.includes("register") && userKey === "cashier") console.log("  P1.18U: register-empty-catalogue = เจ้าของเท่านั้น (แคชเชียร์ QC ไม่มีสิทธิ์เข้าสาขา fixture — ห้ามแก้ membership ของ seed)");
     if (settingsStatesOn && pages.includes("settings")) {
       console.log(`สถานะหน้าตั้งค่า P1.10 U${userKey === "cashier" ? " (แคชเชียร์ = ใบเสร็จอ่านอย่างเดียว · แท็บเครื่องเป็นการ์ดปฏิเสธ)" : ""} · เครื่อง ${SETTINGS_DEVICE_CODES.join(" · ")}:`);
       for (const st of SETTINGS_STATE_PLAN) console.log(`  · ${st.key.padEnd(22)} ${st.devices.join("/").padEnd(20)} ${st.note}`);
@@ -1086,12 +1136,14 @@ async function runState(page: Any, state: StateKey, device: Device): Promise<voi
   if (isBillsState(state)) return runBillsState(page, state); // POS P1.16 U
   if (isRpubState(state)) return runRpubState(page, state); // POS P1.11U
   if (isSettingsState(state)) return runSettingsState(page, state, device); // POS P1.10 U
+  if (state === "register-empty-catalogue") return runEmptyCatalogue(page); // POS P1.18U (ระบบ fixture · ไม่เปิดกะ)
   await visibleEl(page, tid("pos-reg-root"), 0, 15_000).catch(() => {
     throw new StepError("หน้าขายใหม่ไม่ขึ้น (pos-reg-root) — ธง settings.pos.registerV2 ของร้าน QC เปิดหรือยัง? (seed-pos-qc)");
   });
   // ข้อ 7: ร้าน QC บังคับเปิดกะ (P1.9) — เปิดผ่าน UI ครั้งเดียวต่อรอบ ภาพจึงมีหัว "กะ #… · เปิด …" เหมือนภาพ 01
   await ensureShift(page);
   if (P115_STATE_KEYS.has(state)) return runP115State(page, state, device); // POS P1.15U
+  if (state === "register-en") return runRegisterEn(page, device); // POS P1.18U
   switch (state) {
     case "default":
       return;
@@ -2549,6 +2601,13 @@ async function seedSettingsOnce(): Promise<void> {
   }
 }
 async function runSettingsState(page: Any, state: SettingsStateKey, device: Device): Promise<void> {
+  // POS P1.18U ▸ แท็บที่เหลือไม่ใช้เครื่อง QC ของหน้าตั้งค่า ◂
+  if (isP118uSettings(state)) {
+    await visibleEl(page, tid("pos-settings-root"), 0, 15_000).catch(() => {
+      throw new StepError("หน้าตั้งค่าไม่ขึ้น (pos-settings-root)");
+    });
+    return runP118uSettingsState(page, state);
+  }
   // POS P1.7U ▸ แท็บวิธีรับเงิน ไม่ใช้เครื่อง QC ของหน้าตั้งค่า ◂
   if (state === "settings-payments") {
     await visibleEl(page, tid("pos-settings-payments"), 0, 15_000).catch(() => {
@@ -2639,6 +2698,219 @@ async function cleanupSettingsState(): Promise<void> {
   }
   SETTINGS.cleanup = { ok, detail: parts.join(" · ") };
 }
+
+// ═══════════════════ POS P1.18U ▸ ข้อมูล + ขั้นตอนของแท็บตั้งค่าที่เหลือ · ประวัติ · ภาพ 19ก (ร้านไม่มีสินค้า) ═══════════════════
+const P118U = {
+  history: null as null | { before: number; edits: number; error?: string },
+  empty: { systemId: "", deviceRowId: "", created: [] as string[], error: null as string | null, cleanup: null as null | { ok: boolean; detail: string } },
+};
+/** ลิ้นชักประวัติต้องมี ≥ 3 แถว — ไม่ถึง = แก้ค่าทั่วไปจริง 4 ครั้งผ่านตัวเขียน (เจ้าของร้าน · ค่าสุดท้ายเท่าเดิม) · ถึงแล้ว = ไม่เขียน · พังไม่โยน */
+async function seedHistoryOnce(): Promise<void> {
+  if (P118U.history) return;
+  try {
+    const { posSettingsHistory, updatePosGeneralSettings } = await import("@/lib/modules/pos/settings-general");
+    const { posSettingsOverview } = await import("@/lib/modules/pos/settings-overview");
+    const actor = await ownerActor();
+    const ctx = { tenantId: T.tenantId, systemId: SYS };
+    const h = await posSettingsHistory(ctx, actor, {});
+    const before = h.ok ? h.items.length : 0;
+    let edits = 0;
+    if (before < 3) {
+      const o = await posSettingsOverview({ ...ctx, unitId }, actor, {});
+      if (!o.ok) throw new StepError(`อ่านค่าทั่วไปไม่ได้: ${o.code}`);
+      const g = o.general;
+      const held2 = g.heldCartExpireDays >= 365 ? g.heldCartExpireDays - 1 : g.heldCartExpireDays + 1;
+      const lock2 = g.autoLockMinutes >= 60 ? g.autoLockMinutes - 1 : g.autoLockMinutes + 1;
+      for (const patch of [{ heldCartExpireDays: held2 }, { heldCartExpireDays: g.heldCartExpireDays }, { autoLockMinutes: lock2 }, { autoLockMinutes: g.autoLockMinutes }]) {
+        const r = await updatePosGeneralSettings(ctx, actor, patch);
+        if (!r.ok) throw new StepError(`แก้ค่าทั่วไปไม่ได้: ${r.code}${r.field ? ` (${r.field})` : ""}`);
+        edits++;
+      }
+    }
+    P118U.history = { before, edits };
+  } catch (e) {
+    P118U.history = { before: -1, edits: 0, error: e instanceof Error ? e.message.slice(0, 200) : String(e) };
+  }
+}
+/** path ของภาพ 19ก (ระบบ POS ของ fixture) */
+const emptyPath = () => EMPTY_PATH_PLACEHOLDER.replace("<empty-pos>", P118U.empty.systemId || "missing");
+/**
+ * fixture ภาพ 19ก: สาขา SHOP + ระบบ POS ที่ไม่มีสินค้า (ธงหน้าขายใหม่ · ไม่บังคับเปิดกะ) + เครื่องของรอบนี้ — find-or-create (id/ชื่อตายตัว) · พังไม่โยน
+ *  ฟังก์ชันโมดูล: createSystem · linkUnit · updatePosGeneralSettings · registerDevice ·
+ *  ไม่มีฟังก์ชันโมดูล: แถว BusinessUnit (คำสั่งเดียวกับ createSystemAction / DNA CREATE_UNIT) + ธง settings.pos.registerV2 (ขั้นข้อมูลเดียวกับ seed-pos-qc / P6.1)
+ */
+async function seedEmptyCatalogueOnce(): Promise<void> {
+  const E = P118U.empty;
+  if (E.systemId || E.error) return;
+  try {
+    const sysSvc = await import("@/lib/modules/system/service");
+    const { updatePosGeneralSettings } = await import("@/lib/modules/pos/settings-general");
+    const { registerDevice } = await import("@/lib/modules/pos/device");
+    const actor = await ownerActor();
+    const unit = await prisma.businessUnit.findFirst({ where: { id: EMPTY_UNIT.id, tenantId: T.tenantId }, select: { id: true } });
+    if (!unit) {
+      await prisma.businessUnit.create({ data: { id: EMPTY_UNIT.id, tenantId: T.tenantId, type: "SHOP", name: EMPTY_UNIT.name, slug: EMPTY_UNIT.slug } });
+      E.created.push("unit");
+    }
+    let sys = await prisma.appSystem.findFirst({ where: { tenantId: T.tenantId, type: "POS", name: EMPTY_POS_NAME }, select: { id: true, settings: true } });
+    if (!sys) {
+      const c = await sysSvc.createSystem(T.tenantId, "POS", EMPTY_POS_NAME);
+      sys = { id: c.id, settings: c.settings };
+      E.created.push("system");
+    }
+    E.systemId = sys.id;
+    const link = await prisma.appSystemUnit.findFirst({ where: { tenantId: T.tenantId, unitId: EMPTY_UNIT.id, type: "POS" }, select: { systemId: true } });
+    if (link?.systemId !== sys.id) await sysSvc.linkUnit(T.tenantId, sys.id, EMPTY_UNIT.id);
+    const cur = sys.settings && typeof sys.settings === "object" && !Array.isArray(sys.settings) ? (sys.settings as Record<string, Any>) : {};
+    if (cur.pos?.registerV2 !== true) await prisma.appSystem.update({ where: { id: sys.id }, data: { settings: { ...cur, pos: { ...(cur.pos ?? {}), registerV2: true } } } });
+    const g = await updatePosGeneralSettings({ tenantId: T.tenantId, systemId: sys.id }, actor, { shift: { requiredRegister: false } });
+    if (!g.ok) throw new StepError(`ปิดการบังคับเปิดกะของระบบ fixture ไม่ได้: ${g.code}`);
+    const d = await registerDevice({ tenantId: T.tenantId, systemId: sys.id, unitId: EMPTY_UNIT.id }, actor, { name: "เครื่องภาพ 19ก (QC)", deviceCode: EMPTY_DEVICE_ID });
+    if (!d.ok) throw new StepError(`ลงทะเบียนเครื่องของสาขา fixture ไม่ได้: ${d.code}`);
+    E.deviceRowId = d.device.id;
+    const n = await prisma.posProduct.count({ where: { tenantId: T.tenantId, systemId: sys.id, archivedAt: null } });
+    if (n) throw new StepError(`ระบบ fixture มีสินค้า ${n} รายการ (ต้องว่าง)`);
+  } catch (e) {
+    E.error = e instanceof Error ? e.message.slice(0, 200) : String(e);
+  }
+}
+/** finally: ลบ fixture ภาพ 19ก ทั้งชุด (เครื่อง · ลิงก์ · ระบบ · สาขา) — เก็บกวาด · เรียกซ้ำได้ · ไม่โยน */
+async function cleanupEmptyCatalogue(): Promise<void> {
+  const E = P118U.empty;
+  if (E.cleanup || (!E.systemId && !E.created.length)) return;
+  const parts: string[] = [];
+  let ok = true;
+  try {
+    if (E.systemId) {
+      const dv = await prisma.posDevice.deleteMany({ where: { tenantId: T.tenantId, systemId: E.systemId, unitId: EMPTY_UNIT.id } });
+      const ln = await prisma.appSystemUnit.deleteMany({ where: { tenantId: T.tenantId, systemId: E.systemId } });
+      const sy = await prisma.appSystem.deleteMany({ where: { id: E.systemId, tenantId: T.tenantId, type: "POS", name: EMPTY_POS_NAME } });
+      parts.push(`เครื่อง ${dv.count} · ลิงก์ ${ln.count} · ระบบ ${sy.count}`);
+    }
+    const un = await prisma.businessUnit.deleteMany({ where: { id: EMPTY_UNIT.id, tenantId: T.tenantId } });
+    parts.push(`สาขา ${un.count}`);
+  } catch (e) {
+    ok = false;
+    parts.push(`ลบ fixture ภาพ 19ก ล้ม: ${e instanceof Error ? e.message.slice(0, 160) : String(e)}`);
+  }
+  E.cleanup = { ok, detail: `P1.18U fixture 19ก: ${parts.join(" · ")}` };
+}
+async function runEmptyCatalogue(page: Any): Promise<void> {
+  if (P118U.empty.error || !P118U.empty.systemId) throw new StepError(`ไม่มี fixture ภาพ 19ก: ${P118U.empty.error ?? "ยังไม่ได้สร้าง"}`);
+  await visibleEl(page, tid("pos-reg-root"), 0, 15_000).catch(() => {
+    throw new StepError("หน้าขายใหม่ของระบบ fixture ไม่ขึ้น (pos-reg-root)");
+  });
+  await visibleEl(page, tid("pos-reg-empty"), 0, 15_000).catch(() => {
+    throw new StepError("ไม่เห็นสถานะร้านไม่มีสินค้า (pos-reg-empty)");
+  });
+  await visibleEl(page, tid("pos-reg-empty-add-product"), 0, 5_000).catch(() => {
+    throw new StepError("เจ้าของร้านไม่เห็นปุ่มเพิ่มสินค้า (pos-reg-empty-add-product)");
+  });
+  // แถบ "ยังไม่มีใครตั้ง PIN" ของสาขา fixture ไม่อยู่ในภาพ 19ก — ปิดแถบ (จำใน sessionStorage ของแท็บนี้)
+  const nopin = await visibleEl(page, tid("pos-staff-nopin-dismiss"), 0, 2_000).catch(() => null);
+  if (nopin) await clickEl(page, tid("pos-staff-nopin-dismiss"));
+}
+async function runRegisterEn(page: Any, device: Device): Promise<void> {
+  if (device === "mobile") {
+    // หัวมือถือ (05ก) ไม่มีตัวสลับภาษา — ตั้งคุกกี้ภาษาแบบเดียวกับ setUiLocaleAction แล้วโหลดใหม่
+    const host = new URL(BASE).hostname;
+    await page.setCookie(...["LOCALE", "lang"].map((name) => ({ name, value: "en", domain: host, path: "/" })));
+    await page.reload({ waitUntil: "networkidle2", timeout: 60_000 });
+  } else {
+    await clickEl(page, tid("pos-locale-switch-en"));
+    await page.waitForSelector('[data-testid="pos-locale-switch-en"][aria-pressed="true"]', { timeout: 15_000 }).catch(() => {
+      throw new StepError("แตะ EN แล้วจอไม่เปลี่ยนเป็นภาษาอังกฤษ (pos-locale-switch-en aria-pressed)");
+    });
+  }
+  await page.waitForFunction(() => document.documentElement.lang === "en" || !!document.querySelector('[data-testid="pos-locale-switch-en"][aria-pressed="true"]'), { timeout: 15_000 }).catch(() => undefined);
+  await visibleEl(page, tid("pos-reg-root"), 0, 15_000);
+}
+/** หลังถ่าย register-en: คืนภาษาไทยให้งานถัดไปของรอบภาษาไทย (คุกกี้ LOCALE/lang อยู่ใน context ร่วม) */
+async function restoreThaiLocale(page: Any): Promise<void> {
+  if (LOCALE_EN) return;
+  await page.deleteCookie({ name: "LOCALE", url: BASE }, { name: "lang", url: BASE }).catch(() => undefined);
+}
+async function runP118uSettingsState(page: Any, state: P118uSettingsKey): Promise<void> {
+  const cashier = userKey === "cashier";
+  switch (state) {
+    case "settings-general":
+      await visibleEl(page, tid("pos-settings-general-register"), 0, 15_000).catch(() => {
+        throw new StepError("แท็บทั่วไปไม่ขึ้น (pos-settings-general-register)");
+      });
+      await visibleEl(page, tid("pos-settings-general-language"), 0, 5_000);
+      if (cashier) await visibleEl(page, tid("pos-settings-readonly"), 0, 5_000).catch(() => {
+        throw new StepError("แคชเชียร์ไม่เห็นป้ายอ่านอย่างเดียว (pos-settings-readonly)");
+      });
+      else await visibleEl(page, tid("pos-settings-general-save-register"), 0, 5_000);
+      return;
+    case "settings-staff":
+    case "settings-staff-pin":
+      if (cashier) {
+        await visibleEl(page, tid("pos-settings-refusal"), 0, 10_000).catch(() => {
+          throw new StepError("แคชเชียร์ไม่เห็นการ์ดปฏิเสธของแท็บพนักงาน (pos-settings-refusal)");
+        });
+        return;
+      }
+      await visibleEl(page, tid("pos-settings-staff-matrix"), 0, 15_000).catch(() => {
+        throw new StepError("ตารางสิทธิ์ไม่ขึ้น (pos-settings-staff-matrix)");
+      });
+      await visibleEl(page, tid("pos-settings-staff-pins"), 0, 5_000);
+      if (state === "settings-staff") return;
+      await clickEl(page, tidPrefix("pos-settings-staff-pin-open-")).catch(() => {
+        throw new StepError("ไม่มีแถวพนักงานให้ตั้ง PIN (pos-settings-staff-pin-open-*)");
+      });
+      await visibleEl(page, tid("pos-settings-staff-pin"), 0, 5_000);
+      for (const k of ["1", "3", "5"]) await clickEl(page, tid(`pos-settings-staff-pin-key-${k}`));
+      return;
+    case "settings-shark":
+    case "settings-shark-account-off":
+    case "settings-history":
+      await visibleEl(page, tid("pos-settings-shark-count"), 0, 20_000).catch(() => {
+        throw new StepError("การ์ดการเชื่อมต่อไม่ขึ้น (pos-settings-shark-count)");
+      });
+      await visibleEl(page, tid("pos-settings-card-member"), 0, 5_000);
+      await visibleEl(page, tid("pos-settings-card-receipt"), 0, 5_000);
+      if (state === "settings-shark") return;
+      if (state === "settings-history") {
+        if (cashier) {
+          if ((await page.$(tid("pos-settings-history-open"))) || (await page.$(tid("pos-settings-history-shell-open")))) throw new StepError("แคชเชียร์เห็นปุ่มประวัติ (ต้องไม่เห็น — ไม่มี pos.settings.manage)");
+          return;
+        }
+        if (P118U.history?.error) throw new StepError(`ข้อมูลประวัติ: ${P118U.history.error}`);
+        await clickEl(page, tid("pos-settings-history-open"));
+        await visibleEl(page, tid("pos-settings-history"), 0, 5_000);
+        await visibleEl(page, tid("pos-settings-history-row"), 2, 15_000).catch(() => {
+          throw new StepError("ลิ้นชักประวัติมีไม่ถึง 3 แถว");
+        });
+        return;
+      }
+      // settings-shark-account-off
+      {
+        const sw = await visibleEl(page, tid("pos-settings-account-switch"), 0, 5_000).catch(() => {
+          throw new StepError("การ์ดบัญชีไม่มีสวิตช์ (ACCOUNT ไม่ LINKED/OFF ในร้าน QC?)");
+        });
+        const st = (await sw.evaluate((el: Element) => ({ on: el.getAttribute("aria-checked") === "true", disabled: (el as HTMLButtonElement).disabled }))) as { on: boolean; disabled: boolean };
+        if (cashier) {
+          if (!st.disabled) throw new StepError("แคชเชียร์กดสวิตช์บัญชีได้ (ต้องปิด)");
+          return;
+        }
+        // ห้ามกดถ้าปิดอยู่ (กด = เปิดการลงบัญชีจริง) — ภาพนี้ต้องเริ่มจากสถานะเปิด
+        if (!st.on) throw new StepError("ACCOUNT ของร้าน QC ปิดอยู่ — ไม่กดเปิด (จะเปิดการลงบัญชีจริง)");
+        await clickEl(page, tid("pos-settings-account-switch"));
+        await visibleEl(page, tid("pos-settings-account-confirm"), 0, 5_000);
+      }
+      return;
+    case "settings-channels":
+      await visibleEl(page, tid("pos-settings-channels"), 0, 15_000);
+      await visibleEl(page, tid("pos-settings-channel-storefront"), 0, 5_000);
+      return;
+    case "settings-offline":
+      await visibleEl(page, tid("pos-settings-offline"), 0, 15_000);
+      await visibleEl(page, tid("pos-settings-card-offline"), 0, 5_000);
+      return;
+  }
+}
+// ◂
 
 // ═══════════════════ POS P1.7U ▸ ใบขอรับเงินของภาพ (PromptPay ID ของร้าน QC · เก็บกวาดใบของรอบนี้) ═══════════════════
 const INTENT_STATES: ReadonlySet<string> = new Set(["paydlg-promptpay-qr", "paydlg-promptpay-paid"]);
@@ -2787,6 +3059,11 @@ try {
     await seedSettingsOnce(); // POS P1.10 U — พังไม่โยน (ทุกสถานะ settings-* ตกพร้อมเหตุผล)
     console.log(SETTINGS.error ? `  ⚠️ เครื่อง QC ของหน้าตั้งค่า: ${SETTINGS.error}` : `  เครื่อง QC ของหน้าตั้งค่า: ${SETTINGS.devices.map((d) => d.id).join(" · ")} · กะ ${SETTINGS.shiftId || "-"}`);
   }
+  // POS P1.18U ▸ ประวัติ ≥ 3 แถว · fixture ภาพ 19ก ◂
+  if (jobs.some((j) => j.state === "settings-history")) {
+    await seedHistoryOnce();
+    console.log(P118U.history?.error ? `  ⚠️ ประวัติการเปลี่ยน: ${P118U.history.error}` : `  ประวัติการเปลี่ยน: มี ${P118U.history?.before} แถว · แก้เพิ่ม ${P118U.history?.edits}`);
+  }
   // POS P1.12U ▸ สมาชิก QC + ค่าตั้งแต้ม + ยอดแต้มก่อนเปิดหน้าขาย (สถานะสมาชิก) ◂
   if (jobs.some((j) => j.state && MEMBER_REG_STATES.has(j.state))) {
     await prepMemberFixture();
@@ -2823,11 +3100,11 @@ try {
         const page = await browser.newPage();
         await pinDevice(
           page,
-          p === "settings" && job.state ? SETTINGS_DEVICE_CODES[job.state === "paydone-print" ? 1 : 0] : p === "shifts" && job.state ? SHIFTS_DEVICE_ID : p === "sales" && job.state ? BILLS_DEVICE_ID : DEVICE_ID,
+          job.state === "register-empty-catalogue" ? EMPTY_DEVICE_ID : p === "settings" && job.state ? SETTINGS_DEVICE_CODES[job.state === "paydone-print" ? 1 : 0] : p === "shifts" && job.state ? SHIFTS_DEVICE_ID : p === "sales" && job.state ? BILLS_DEVICE_ID : DEVICE_ID,
         ); // P1.10 U: หน้าตั้งค่าใช้เครื่อง QC 1 (paydone-print = เครื่อง 2 ที่มีกะ) // P1.16 U: หน้าบิลใช้เครื่องของกะภาพบิล (การ์ดเงินสด "จากลิ้นชักกะ #N") // R3 V4: เครื่องเดียวกับที่เจ้าของเปิดกะให้ · P1.9 U: สถานะหน้ากะใช้เครื่องแยก
         await page.setViewport({ width: v.w, height: v.h, deviceScaleFactor: 2, isMobile: v.mobile, hasTouch: v.name !== "desktop" });
         // POS P1.15U ▸ หน้าขาย = โทเคนผู้ขายของเครื่องที่หน้านี้ใช้ (discount-over-sheet = แคชเชียร์ · เพดาน 10%) · ปลดล็อกแถว PIN ที่ lock-pin-locked ตั้งไว้ ◂
-        if ((p === "register" || job.state === "paydone-print") && P115.seeded) {
+        if ((p === "register" || job.state === "paydone-print") && P115.seeded && job.state !== "register-empty-catalogue") {
           await unlockRunPin().catch(() => undefined);
           const dev = job.state === "paydone-print" ? SETTINGS_DEVICE_CODES[1] : DEVICE_ID;
           const who: UserKey = job.state === "discount-over-sheet" && P115.pins.cashier ? "cashier" : userKey;
@@ -2861,7 +3138,12 @@ try {
             /* ignore */
           }
         });
-        const resp = await page.goto(`${BASE}${p === "receipt-public" && job.state && isRpubState(job.state) ? rpubPath(job.state) : (job.path ?? pathOf(p))}`, { waitUntil: "networkidle2", timeout: 60_000 }).catch(() => null);
+        // POS P1.18U ▸ fixture ภาพ 19ก สร้างก่อนงานแรกของสถานะนี้ (ระบบ POS ที่สองโผล่ในเมนูเฉพาะช่วงภาพ 19ก) · ลบหลังงานสุดท้ายของสถานะ ◂
+        if (job.state === "register-empty-catalogue" && !P118U.empty.systemId && !P118U.empty.error) {
+          await seedEmptyCatalogueOnce();
+          console.log(P118U.empty.error ? `  ⚠️ fixture ภาพ 19ก: ${P118U.empty.error}` : `  fixture ภาพ 19ก: ระบบ ${P118U.empty.systemId} · สาขา ${EMPTY_UNIT.id}${P118U.empty.created.length ? ` (สร้าง ${P118U.empty.created.join("+")})` : " (ใช้ของเดิม)"}`);
+        }
+        const resp = await page.goto(`${BASE}${p === "receipt-public" && job.state && isRpubState(job.state) ? rpubPath(job.state) : job.state === "register-empty-catalogue" ? emptyPath() : (job.path ?? pathOf(p))}`, { waitUntil: "networkidle2", timeout: 60_000 }).catch(() => null);
         await new Promise((r) => setTimeout(r, 800));
         // POS P1.3 ▸ ขั้นตอนของสถานะ (พัง = บันทึก stepError แล้วถ่าย ณ จุดนั้น) ◂
         let stepError: string | null = null;
@@ -2901,6 +3183,8 @@ try {
           .catch(() => ({ over: false, el: null }))) as { over: boolean; el: string | null };
         const file = job.file;
         await page.screenshot({ path: file, fullPage: true });
+        if (job.state === "register-en") await restoreThaiLocale(page); // POS P1.18U
+        if (job.state === "register-empty-catalogue" && job === jobs.filter((j) => j.state === "register-empty-catalogue").at(-1)) await cleanupEmptyCatalogue(); // POS P1.18U
         // POS P1.7U ▸ ใบที่ PAID แล้วต้องถูกใช้ในบิล (ไม่ทิ้งเงินเข้าไม่มีบิล) — พัง = ภาพนี้ตก ◂
         if (job.state === "paydlg-promptpay-paid" && !stepError) {
           await finishPaidIntentSale(page).catch((e: unknown) => {
@@ -2955,6 +3239,9 @@ try {
   await cleanupIntents(); // POS P1.7U
   if (INTENTS.cleanup) console.error(`${INTENTS.cleanup.ok ? "🧹" : "⚠️"} ${INTENTS.cleanup.detail}`);
   if (INTENTS.cleanup && !INTENTS.cleanup.ok) failures++;
+  await cleanupEmptyCatalogue(); // POS P1.18U
+  if (P118U.empty.cleanup) console.error(`${P118U.empty.cleanup.ok ? "🧹" : "⚠️"} ${P118U.empty.cleanup.detail}`);
+  if (P118U.empty.cleanup && !P118U.empty.cleanup.ok) failures++;
   await cleanupSettingsState(); // POS P1.10 U
   if (SETTINGS.cleanup) console.error(`${SETTINGS.cleanup.ok ? "🧹" : "⚠️"} ${SETTINGS.cleanup.detail}`);
   if (SETTINGS.cleanup && !SETTINGS.cleanup.ok) failures++;
@@ -2969,7 +3256,7 @@ try {
   }
   await prisma.$disconnect();
   cleanProfiles();
-  writeFileSync(`${OUT}/summary-${userKey}.json`, JSON.stringify({ wo: WO, user: userKey, tenant: tenantKey, base: BASE, at: new Date().toISOString(), deviceId: DEVICE_ID, shiftOpenError: SHIFT.openError, shiftClose: SHIFT.close, stockCount: STOCK, shiftsState: SHIFTS, billsState: BILLS, settingsState: SETTINGS, rpubState: RPUB, intentState: INTENTS, counterLag: COUNTER_LAG, p115State: p115Summary(), taxInvoiceState: TAXINV, memberState: MEMBERX, shots }, null, 2));
+  writeFileSync(`${OUT}/summary-${userKey}.json`, JSON.stringify({ wo: WO, user: userKey, tenant: tenantKey, base: BASE, at: new Date().toISOString(), deviceId: DEVICE_ID, shiftOpenError: SHIFT.openError, shiftClose: SHIFT.close, stockCount: STOCK, shiftsState: SHIFTS, billsState: BILLS, settingsState: SETTINGS, rpubState: RPUB, intentState: INTENTS, counterLag: COUNTER_LAG, p115State: p115Summary(), taxInvoiceState: TAXINV, memberState: MEMBERX, p118uState: P118U, shots }, null, 2));
   console.log(`\n🧹 ลบ session ของรอบนี้ ${removed}${stale ? ` (+ซากหมดอายุ ${stale})` : ""}${fixOut} · ลบโปรไฟล์ chromium ${PROFILE_DIRS[0]} · ภาพ ${shots.length} ใบใน ${OUT}`);
 }
 if (fatal) console.error(`❌ ${fatal}`);
