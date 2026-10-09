@@ -1,0 +1,19 @@
+# Prompt — HF-VIS-SHIFTS (visual-script hotfix: owner shifts states seed a sale on an unregistered, token-less device ⇒ register lock screen swallows the clicks). Controller (account A, 9 Oct 23:3xZ). Base = `origin/session/pos` head. Tree = the one the launcher names (c or p11). Scripts only.
+
+---
+
+You are the BUILDER for **HF-VIS-SHIFTS**. English reports, Thai code comments. Diagnosis (controller's read-only agent, at b694aea0, all in `scripts/visual-pos.mts`): `shiftsSale()` (~:1466) opens a second tab pinned to `SHIFTS_DEVICE_ID` (~:311) with cookies only; that device is never registered and gets no `pos-staff:<deviceId>` token (`seedP115Once` ~:951–990 runs only for register / `paydone-print` jobs, ~:3085, and registers only `DEVICE_ID`; `injectStaff` only ~:3142–3147). `RegisterScreen.tsx` then locks (`deviceReady` :519, `noPinMode` :556, `locked` :574, `inert={locked}` :2447, `<LockScreen mode="unregistered">` :2600–2621), `visibleEl`/`clickEl` still "succeed", the cart stays empty and `expectLines(reg, 2)` throws "ตะกร้าไม่ได้ 2 บรรทัด…". Owner shifts states have not been green since the lock screen landed (P1.15U). Product code is correct — **no edits under `src/**`**.
+
+## Fix (smallest, `scripts/visual-pos.mts` only)
+1. Widen the `seedP115Once` gate (~:3085) so an **owner run with shift-state jobs other than `shifts-noshift`** also seeds (PIN for the run user + old-PIN rows recorded for cleanup, `DEVICE_ID` registration, parked cart — the existing cleanup already undoes these).
+2. In `shiftsSale`, before `reg.goto`: once per run, `registerDevice(...)` for `SHIFTS_DEVICE_ID` (name "…QC shifts", via the owner actor exactly like `seedP115Once` does for `DEVICE_ID`), store the row id (new field, e.g. `P115.shiftsDeviceRowId`); then `staffSessionJson(userKey, SHIFTS_DEVICE_ID)` ⇒ `injectStaff(reg, SHIFTS_DEVICE_ID, json)` (throw a `StepError` naming the step if the json is missing).
+3. `cleanupP115`: also revoke `P115.shiftsDeviceRowId` (and include it in the early-return guard ~:1095). Keep the existing finally order (`closeShiftsStateShift` closes the shift by id).
+4. Guard: before `cashSaleAmerLatte` in `shiftsSale`, if `pos-lock-screen` (or the LockScreen root testid — read `LockScreen.tsx`) is visible ⇒ `StepError("หน้าขายของเครื่องสถานะหน้ากะถูกล็อก (ไม่มี staff token / เครื่องไม่ลงทะเบียน)")` instead of the misleading "คลิกหาย?".
+No other behaviour change: register/settings/sales/… states and the cashier path byte-identical in `--dry` output.
+
+## Tree / commands
+Named by the launcher. `git -C <tree> status --short` must be clean; `git -C <tree> fetch origin session/pos && git -C <tree> checkout -B wip/pos-hf-vis-shifts origin/session/pos`. No `pnpm install`/`prisma generate` (tree p11 shares node_modules with the controller — never touch them). Always `git -C …` / absolute paths. Gates: typecheck `env NODE_OPTIONS=--max-old-space-size=5632 ISO_MEM=6500M bash scripts/iso.sh flock -w 3600 /tmp/pos-gate.lock pnpm typecheck` = 0 · `visual-pos.mts --dry` rc 0 for `--page shifts` and `--page register` × owner/cashier (DB wrappers as the other prompts: `bash scripts/iso.sh bash scripts/qc4.sh pnpm exec tsx scripts/visual-pos.mts p1close --dry --states --user owner --tenant coffee --page shifts --base http://127.0.0.1:3228`). No real screenshot run (no server) — the controller shoots after merge. No build/deploy/.env/Telegram/seeds/wipes. Scratch only under `/tmp/claude-0/-root/ed31d917-ff51-51e8-bfad-e5b8bfa6fa15/scratchpad/hf-vis-shifts/`.
+
+## Done =
+One commit `fix(pos HF-VIS-SHIFTS): visual shifts states register + unlock the shifts device before the seed sale` (+ a short "## HF-VIS-SHIFTS" section appended to `ledger/wo-notes/pos-P1.18U.md` — what/why/file:line) · push `wip/pos-hf-vis-shifts` · report ≤10 lines with the head SHA. Do not merge, do not touch other trees.
+Commit trailer: `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`
