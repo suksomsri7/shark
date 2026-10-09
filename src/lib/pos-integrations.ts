@@ -159,14 +159,18 @@ export async function posIntegrationCards(ctx: UnitCtx, actor: Actor, _input: un
     }
 
     // ── ACCOUNT (ระดับ POS · AccountSystemLink) — การ์ดเดียวที่สลับได้จากหน้านี้ ──
+    // แก้รอบ 1 F7: POS ผูกได้หลายระบบบัญชี (unique = systemId+kind+linkedId) ⇒ LINKED เมื่อมีแถวที่ยังลงบัญชีอยู่ "อย่างน้อยหนึ่ง" ·
+    //   target = แถวที่ยังลงบัญชีแถวแรก · มีมากกว่า 1 แถว ⇒ fact autoPost บอกจำนวน (params.linkCount)
     {
-      const link = await prisma.accountSystemLink.findFirst({ where: { tenantId, linkedKind: "POS", linkedId: systemId }, orderBy: { createdAt: "asc" }, select: { systemId: true, enabled: true, archivedAt: true } });
-      const accSys = link ? byId.get(link.systemId) : ofType("ACCOUNT")[0];
+      const links = await prisma.accountSystemLink.findMany({ where: { tenantId, linkedKind: "POS", linkedId: systemId }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { systemId: true, enabled: true, archivedAt: true } });
+      const activeLink = links.find((l) => l.enabled && !l.archivedAt && byId.has(l.systemId));
+      const accSys = activeLink ? byId.get(activeLink.systemId) : links[0] ? byId.get(links[0].systemId) : ofType("ACCOUNT")[0];
       const manage = accSys ? { href: `/app/sys/${accSys.id}/account/settings/connections`, canManage: explicitGrant(m, "account.settings.manage") } : null;
-      if (link && link.enabled && !link.archivedAt && accSys) {
+      const params = links.length > 1 ? { autoPost: { linkCount: links.length } } : undefined;
+      if (activeLink && accSys) {
         const last = await prisma.outboxEvent.findFirst({ where: { tenantId, systemId, type: "pos.sale.paid", status: "DONE" }, orderBy: { createdAt: "desc" }, select: { createdAt: true } });
-        cards.set("ACCOUNT", card("ACCOUNT", "LINKED", { scope: "POS", target: { systemId: accSys.id, name: accSys.name }, lastActivityAt: iso(last?.createdAt), manage }));
-      } else cards.set("ACCOUNT", card("ACCOUNT", ofType("ACCOUNT").length ? "OFF" : "NO_SYSTEM", { scope: "POS", manage }));
+        cards.set("ACCOUNT", card("ACCOUNT", "LINKED", { scope: "POS", target: { systemId: accSys.id, name: accSys.name }, lastActivityAt: iso(last?.createdAt), manage }, params));
+      } else cards.set("ACCOUNT", card("ACCOUNT", ofType("ACCOUNT").length ? "OFF" : "NO_SYSTEM", { scope: "POS", manage }, params));
     }
 
     // ── CRM (ระดับร้าน · ประตูสะพาน v2 ตัวเดียวกับที่ CRM นับบิล POS) ──
@@ -237,20 +241,33 @@ export async function setPosAccountLink(ctx: { tenantId: string; systemId: strin
     const allowed = m.role === "OWNER" || (explicitGrant(m, "account.settings.manage") && (await canOnAllLinkedUnits(prisma, ctx, m, PERM_SETTINGS_MANAGE)));
     if (!allowed) return settingsRefuse("PERMISSION_DENIED", "เปิด/ปิดการลงบัญชีต้องเป็นเจ้าของร้าน หรือมีสิทธิ์ตั้งค่าบัญชีและตั้งค่าหน้าขายทุกสาขา");
     if (!enabled && input.confirm !== true) return settingsRefuse("CONFIRM_REQUIRED", "ปิดการลงบัญชีต้องยืนยัน — บิลใหม่จะไม่ลงบัญชีจนกว่าจะเปิดอีกครั้ง");
-    const link = await prisma.accountSystemLink.findFirst({ where: { tenantId: ctx.tenantId, linkedKind: "POS", linkedId: ctx.systemId }, orderBy: { createdAt: "asc" }, select: { systemId: true, enabled: true, archivedAt: true } });
-    if (!link) return settingsRefuse("NOT_FOUND", "เชื่อมที่หน้าบัญชีก่อน");
-    const isOn = link.enabled && !link.archivedAt;
-    if (isOn === enabled) return { ok: true, enabled, changed: false };
-    const r = await setPosLinkEnabled({ tenantId: ctx.tenantId, systemId: link.systemId }, ctx.systemId, enabled, m.userId);
-    if (!r.ok) return settingsRefuse("NOT_FOUND", "เชื่อมที่หน้าบัญชีก่อน");
+    // แก้รอบ 1 F7: ทำกับ "ทุก" AccountSystemLink ของ POS นี้ใน transaction เดียว (ล็อกแถวลิงก์ FOR UPDATE — สลับพร้อมกันไม่สลับครึ่งเดียว) ·
+    //   เขียนผ่าน account facade (setPosLinkEnabled + tx) เท่านั้น · ทุกแถวอยู่ในสถานะที่ขอแล้ว = ok ไม่เปลี่ยน ไม่มี audit
+    type LinkRow = { systemId: string; enabled: boolean; archivedAt: Date | null };
+    const isOn = (l: LinkRow) => l.enabled && !l.archivedAt;
+    const done = await prisma.$transaction(async (tx): Promise<{ before: boolean; links: LinkRow[] } | "NOT_FOUND" | "SAME"> => {
+      const links = await tx.$queryRaw<LinkRow[]>`
+        SELECT "systemId", enabled, "archivedAt" FROM "AccountSystemLink"
+        WHERE "tenantId" = ${ctx.tenantId} AND "linkedKind" = 'POS' AND "linkedId" = ${ctx.systemId}
+        ORDER BY "createdAt" ASC, id ASC FOR UPDATE`;
+      if (!links.length) return "NOT_FOUND";
+      if (links.every((l) => isOn(l) === enabled)) return "SAME";
+      for (const l of links) {
+        const r = await setPosLinkEnabled({ tenantId: ctx.tenantId, systemId: l.systemId }, ctx.systemId, enabled, m.userId, tx);
+        if (!r.ok) throw new Error(`[pos-integrations] account link ${l.systemId}: ${r.reason}`);
+      }
+      return { before: links.some(isOn), links };
+    });
+    if (done === "NOT_FOUND") return settingsRefuse("NOT_FOUND", "เชื่อมที่หน้าบัญชีก่อน");
+    if (done === "SAME") return { ok: true, enabled, changed: false };
     await writeAudit({
       tenantId: ctx.tenantId,
       actorId: m.userId,
       action: "pos.integration.account",
       targetType: "AppSystem",
       targetId: ctx.systemId,
-      before: { enabled: isOn },
-      after: { enabled, accountSystemId: link.systemId },
+      before: { enabled: done.before },
+      after: { enabled, accountSystemId: done.links[0]!.systemId, ...(done.links.length > 1 ? { accountSystemIds: done.links.map((l) => l.systemId) } : {}) },
     });
     return { ok: true, enabled, changed: true };
   } catch (e) {

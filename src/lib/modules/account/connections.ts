@@ -207,15 +207,22 @@ export async function isValidLinkTarget(ctx: Ctx, kind: AccountLinkedKind, linke
 }
 
 /** เชื่อม/เชื่อมกลับ — สร้างแถวถ้ายังไม่มี · มีแล้วตั้ง enabled=true (ตัวเลือกเดิมกลับมาครบ) */
+// POS P1.18 ▸ F7: connect/disconnect รับ tx ของผู้เรียกได้ (เปิด/ปิดทุกแถวที่ผูก POS เดียวใน transaction เดียว · ผู้เรียก = account facade
+//   setPosLinkEnabled) — tx ดิบไม่มีตัวกรองของ tenantDb ⇒ ใส่ tenantId + systemId ของ ctx ลง where/data เอง · ไม่ส่ง tx = เหมือนเดิมทุกอย่าง ◂
+const linkDbOf = (ctx: Ctx, tx?: Prisma.TransactionClient): Db => (tx ? (tx as unknown as Db) : dbOf(ctx));
+const ownScope = (ctx: Ctx, tx?: Prisma.TransactionClient) => (tx ? { tenantId: ctx.tenantId, systemId: ctx.systemId } : {});
+// ◂ POS P1.18
+
 export async function connect(
   ctx: Ctx,
   kind: AccountLinkedKind,
   linkedId: string,
   actorUserId: string | null,
+  tx?: Prisma.TransactionClient, // POS P1.18 ▸ F7 ◂
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
   if (!linkedId) return { ok: false, reason: "ยังไม่มีระบบนี้ในร้าน — เปิดระบบก่อนแล้วค่อยกลับมาเชื่อม" };
-  const db = dbOf(ctx);
-  const existing = await db.accountSystemLink.findFirst({ where: { linkedKind: kind, linkedId } });
+  const db = linkDbOf(ctx, tx);
+  const existing = await db.accountSystemLink.findFirst({ where: { ...ownScope(ctx, tx), linkedKind: kind, linkedId } });
   if (existing) {
     await db.accountSystemLink.update({
       where: { id: existing.id },
@@ -225,7 +232,7 @@ export async function connect(
   }
   // tenantId/systemId ถูก inject โดย tenantDb (แกน system) — TS ยังไม่รู้ ⇒ cast ตามแพตเทิร์นเดียวกับ policy.ts
   await db.accountSystemLink.create({
-    data: { linkedKind: kind, linkedId, enabled: true, updatedById: actorUserId, config: {} } as Prisma.AccountSystemLinkCreateInput,
+    data: { ...ownScope(ctx, tx), linkedKind: kind, linkedId, enabled: true, updatedById: actorUserId, config: {} } as Prisma.AccountSystemLinkCreateInput,
   });
   return { ok: true };
 }
@@ -236,10 +243,11 @@ export async function disconnect(
   kind: AccountLinkedKind,
   linkedId: string,
   actorUserId: string | null,
+  tx?: Prisma.TransactionClient, // POS P1.18 ▸ F7 ◂
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
-  const db = dbOf(ctx);
+  const db = linkDbOf(ctx, tx);
   const n = await db.accountSystemLink.updateMany({
-    where: { linkedKind: kind, linkedId },
+    where: { ...ownScope(ctx, tx), linkedKind: kind, linkedId },
     data: { enabled: false, updatedById: actorUserId },
   });
   if (n.count === 0) return { ok: false, reason: "ยังไม่ได้เชื่อมระบบนี้อยู่แล้ว" };

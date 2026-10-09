@@ -1214,14 +1214,16 @@ export async function attachPrivateFileToDoc(
 
 // POS P1.18 ▸ R8 (CD2): สวิตช์ "ลงบัญชีบิลของ POS นี้" จากหน้าตั้งค่า POS — การ์ด ACCOUNT การ์ดเดียวที่ POS สลับได้ ·
 //   ห่อ connect/disconnect ของ ./connections ตรง ๆ (soft: แถว · ตัวเลือก · บัญชีที่ผูกอยู่ครบ — แค่หยุด/เริ่มลงบัญชี) ·
-//   ctx = ระบบบัญชีที่ผูก POS นี้ (ผู้เรียกหาแถว AccountSystemLink เอง) · สิทธิ์/ยืนยัน/audit ตรวจที่ผู้เรียก (composition root src/lib/pos-integrations.ts)
+//   ctx = ระบบบัญชีที่ผูก POS นี้ (ผู้เรียกหาแถว AccountSystemLink เอง) · สิทธิ์/ยืนยัน/audit ตรวจที่ผู้เรียก (composition root src/lib/pos-integrations.ts) ·
+//   แก้รอบ 1 F7: POS ผูกได้หลายระบบบัญชี ⇒ ผู้เรียกวนทุกแถวใน transaction เดียวแล้วส่ง tx มา (connect/disconnect ใส่ขอบเขตร้าน+ระบบเอง)
 import { connect as connectPosLink, disconnect as disconnectPosLink } from "./connections";
 export async function setPosLinkEnabled(
   ctx: AccountCtx,
   posSystemId: string,
   enabled: boolean,
   actorUserId: string | null,
+  tx?: Prisma.TransactionClient,
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
-  return enabled ? connectPosLink(ctx, "POS", posSystemId, actorUserId) : disconnectPosLink(ctx, "POS", posSystemId, actorUserId);
+  return enabled ? connectPosLink(ctx, "POS", posSystemId, actorUserId, tx) : disconnectPosLink(ctx, "POS", posSystemId, actorUserId, tx);
 }
 // ◂ POS P1.18
