@@ -546,7 +546,16 @@ export type RegisterCartLine =
  * POS P1.12U มติ 1: couponCode = โค้ดที่ลูกค้ายื่น (ส่งทุก quote/submit · ไปกับบิลพัก) · memberChoices = แต้ม/ว่อชเชอร์ที่เลือกบนจอชำระเท่านั้น
  *   (มีเฉพาะตอนกล่องชำระเปิดและมีสมาชิก · ปิดกล่อง/ถอดสมาชิก = ล้าง · บิลพักไม่เก็บ)
  */
-export type RegisterCart = { lines: RegisterCartLine[]; billDiscount?: PriceDiscount; couponCode?: string; memberId?: string; memberChoices?: RegisterMemberChoices; note?: string };
+export type RegisterCart = {
+  lines: RegisterCartLine[];
+  billDiscount?: PriceDiscount;
+  couponCode?: string;
+  memberId?: string;
+  memberChoices?: RegisterMemberChoices;
+  note?: string;
+  /** POS P2.1U ▸ มติ 6: ช่องทางขายของบิล (มาจากบิลพักที่เก็บ channelId · ไม่มีตัวเลือกบนจอ — Q3) — ส่งต่อใน quote/submit/พักบิล ◂ */
+  channelId?: string;
+};
 
 /** ชุดตัวเลือกแบบไม่ขึ้นกับลำดับ (multiset · undefined ≡ []) */
 const optionSetKey = (o: readonly string[] | undefined): string => [...(o ?? [])].sort().join("\u0000");
@@ -642,6 +651,8 @@ export function quoteInputToCart(input: RegisterQuoteInput, newLineKey: () => st
     ...(input.memberId ? { memberId: input.memberId } : {}),
     // POS P1.12U มติ 1: บิลพักเก็บโค้ดคูปองไว้ (เซิร์ฟเวอร์ตรวจซ้ำตอน quote) · สิทธิ์ที่เลือกไม่ถูกเก็บ ⇒ เรียกคืนแล้วไม่มี memberChoices
     ...(typeof input.couponCode === "string" && input.couponCode ? { couponCode: input.couponCode } : {}),
+    // POS P2.1U ▸ มติ 6: บิลพักเก็บช่องทางขาย (R10) — เรียกคืนแล้ว quote ด้วยช่องทางเดิม (เซิร์ฟเวอร์ตรวจซ้ำ: เก็บแล้ว/ปิด = CHANNEL_INVALID) ◂
+    ...(typeof input.channelId === "string" && input.channelId ? { channelId: input.channelId } : {}),
   };
 }
 
@@ -675,6 +686,7 @@ export function cartToQuoteInput(cart: RegisterCart, opts?: { choices?: boolean 
     ...(cart.billDiscount ? { billDiscount: { ...cart.billDiscount } } : {}),
     ...(cart.memberId ? { memberId: cart.memberId } : {}),
     ...(cart.couponCode ? { couponCode: cart.couponCode } : {}),
+    ...(cart.channelId ? { channelId: cart.channelId } : {}), // POS P2.1U ▸ มติ 6 ◂
     ...(opts?.choices !== false && cart.memberId && cart.memberChoices && (cart.memberChoices.voucherId || (cart.memberChoices.points ?? 0) > 0)
       ? {
           memberChoices: {

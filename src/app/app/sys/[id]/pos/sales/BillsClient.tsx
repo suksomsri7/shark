@@ -10,6 +10,10 @@
 // POS P1.13U ▸ แถวใบกำกับในลิ้นชัก (ภาพ 12 · มติ 4): ABB "ขอใบเต็มรูป" (ออกทีหลัง) · คำขอของลูกค้า ออก/ปฏิเสธ · ออกแล้ว = เลข + ผู้ซื้อ —
 //   ปุ่มเฉพาะผู้มีสิทธิ์ pos.taxinvoice.issue ที่สาขา (หน้าเพจส่ง canIssueTaxInvoice) · กล่องเดียวกับหน้าขาย (TaxInvoiceDialog โหมด issue) ◂
 // POS P1.11U ▸ แถวส่งใบเสร็จในลิ้นชัก: ส่ง LINE (บิลสมาชิก) · ส่งอีเมล (แผ่นช่องเดียว) · คัดลอกลิงก์ใบเสร็จ (receiptLinkAction · ไม่เขียน audit) ◂
+// POS P2.1U ▸ ช่องทางขาย (มติ 3–4 · ภาพ 12/09): คอลัมน์ "ช่องทาง" = ชื่อช่องทางขาย (แพลตฟอร์ม = กรอบดำหนา · ระบบอื่นที่เป็นหน้าร้านปริยาย = ป้ายระบบเดิม) ·
+//   ลูกค้า = เลขออเดอร์แพลตฟอร์มเมื่อไม่มีสมาชิก · วิธีชำระ "แพลตฟอร์ม" · ตัวกรอง "ทุกช่องทาง" (salesChannelId) ข้างตัวกรองระบบต้นทางเดิม ·
+//   การ์ดบิลบรรทัดรอง "หน้าร้าน N · ออนไลน์ M" (ออนไลน์ = ทุกช่องทางที่ไม่ใช่ STORE · นับจากตัวกรอง salesChannelId ของเซิร์ฟเวอร์) ·
+//   ลิ้นชัก = บล็อกค่าคอมฯ ใต้ยอด (ตัวเลขเฉพาะเมื่อเซิร์ฟเวอร์ส่ง commission* — pos.report.view) · ไม่มีบนใบเสร็จ ◂
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
@@ -40,7 +44,11 @@ import { listStaffForDeviceAction } from "@/lib/modules/pos/staff-pin-actions";
 import { ManagerPinPad, type ManagerPinResult } from "@/components/pos/register/ManagerPinPad";
 import { posApprovalStatusAction } from "@/lib/modules/pos/pos-approval-actions";
 import { ApprovalWaitDialog, type ApprovalPinResult } from "@/components/pos/register/ApprovalWaitDialog";
-import { BillIcon, ChannelChip, StatusChip, SummaryCard, bkkHm, billsCsv, channelLabel, chipOf, dateLabel, methodLabel, money, payText, type T } from "./bills-ui";
+import { BillChannelPill, BillIcon, StatusChip, SummaryCard, bkkHm, billChannelText, billsCsv, channelLabel, chipOf, dateLabel, methodLabel, money, payText, type T } from "./bills-ui";
+// POS P2.1U ▸ ช่องทางขาย: รายการช่องทางของสาขา (หาอัตราค่าคอมฯ ของบล็อกในลิ้นชัก) + เครื่องคิดค่าคอมฯ ฝั่ง client (บริสุทธิ์) ◂
+import { listChannelsAction } from "@/lib/modules/pos/channel-actions";
+import { channelCommission, type ChannelItem } from "@/lib/modules/pos/channel-shared";
+import { channelDisplayName, channelRateText } from "@/components/pos/settings/channel-text";
 
 type Unit = { id: string; name: string };
 type Props = {
@@ -122,6 +130,7 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
   const trc = useTranslations("pos.receipt") as T;
   const tpos = useTranslations("pos") as T;
   const trg = useTranslations("pos.register");
+  const tch = useTranslations("pos.channel") as T; // POS P2.1U ◂
   const locale = useLocale();
   // POS P1.18U ▸ มติ 9 (บิล drawer en): ชื่อผู้ทำ "ระบบ" (ไม่มีผู้ใช้) + ไทม์ไลน์ แปลตามภาษาจอ (kind + params จากเซิร์ฟเวอร์ · ไม่มี kind = text เดิม) ◂
   const who = (n: string) => (n === BILLS_SYSTEM_NAME ? t("drawer.system") : n);
@@ -153,6 +162,7 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
   const [qInput, setQInput] = useState("");
   const [q, setQ] = useState("");
   const [channel, setChannel] = useState("");
+  const [salesChannelId, setSalesChannelId] = useState(""); // POS P2.1U ▸ มติ 3 ◂
   const [staffUserId, setStaffUserId] = useState("");
   const [status, setStatus] = useState<BillStatusFilter>("ALL");
   const [page, setPage] = useState(1);
@@ -187,6 +197,7 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
       status,
       ...(q ? { q } : {}),
       ...(channel ? { channel } : {}),
+      ...(salesChannelId ? { salesChannelId } : {}),
       ...(staffUserId ? { staffUserId } : {}),
       page,
       pageSize: 10,
@@ -203,7 +214,7 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
     return () => {
       alive = false;
     };
-  }, [systemId, unitId, date, status, q, channel, staffUserId, page, reloadTick]);
+  }, [systemId, unitId, date, status, q, channel, salesChannelId, staffUserId, page, reloadTick]);
 
   // แก้รอบ 1 F1: บิลที่ผู้ใช้ต้องการล่าสุด — ผลของคำขอเก่า (แตะ A ช้า แล้วแตะ B) ห้ามทับลิ้นชักของ B
   const wantedRef = useRef<string | null>(null);
@@ -248,6 +259,60 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
 
   const ok: PageOk | null = data && data.ok ? data : null;
   const bill: Detail | null = detail && detail.ok ? detail.bill : null;
+
+  // ── POS P2.1U ▸ มติ 3: "หน้าร้าน N · ออนไลน์ M" ของทั้งวัน (บิลที่ไม่ยกเลิก = การ์ด "บิล") ──
+  //   N = บิลช่องทาง STORE (ตัวกรอง salesChannelId ทั้งวัน − ที่ยกเลิก) · M = บิลทั้งหมด − N · คิดใหม่เมื่อวัน/สาขา/ตัวเลขของวันเปลี่ยน
+  //   สาขาที่ยังไม่มีแถวช่องทาง (บิลเดิมทั้งหมด) = ตัวเลขเดิมของเซิร์ฟเวอร์ (sourceModule)
+  const storeChannelId = ok?.salesChannels.find((c) => c.code === "STORE")?.id ?? null;
+  const dayKey = ok ? `${unitId}|${ok.date}|${ok.counts.all}|${ok.counts.voided}|${ok.summary.billCount}|${storeChannelId ?? ""}|${ok.salesChannels.length}` : null;
+  const [chSum, setChSum] = useState<{ key: string; store: number; online: number } | null>(null);
+  useEffect(() => {
+    if (!ok || !dayKey) return;
+    const live = ok.summary.billCount;
+    if (!storeChannelId) {
+      setChSum(ok.salesChannels.length > 0 ? { key: dayKey, store: 0, online: live } : { key: dayKey, store: ok.summary.storeCount, online: ok.summary.onlineCount });
+      return;
+    }
+    let alive = true;
+    const base = { systemId, unitId, date: ok.date, salesChannelId: storeChannelId, page: 1, pageSize: 10 as const };
+    Promise.all([billsPageDataAction({ ...base, status: "ALL" }), billsPageDataAction({ ...base, status: "VOIDED" })])
+      .then(([a, v]) => {
+        if (!alive || !a.ok || !v.ok) return;
+        const store = Math.max(0, a.total - v.total);
+        setChSum({ key: dayKey, store, online: Math.max(0, live - store) });
+      })
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- คิดใหม่ตาม dayKey เท่านั้น (ตัวกรอง/หน้าไม่เกี่ยว)
+  }, [dayKey]);
+  const channelSum = chSum && chSum.key === dayKey ? chSum : null;
+
+  // ── POS P2.1U ▸ มติ 4: อัตราค่าคอมฯ ของบล็อกในลิ้นชัก — บิลเก็บแค่ยอดค่าคอมฯ (สำเนาตอนขาย) ไม่เก็บอัตรา ⇒
+  //   อ่านอัตราปัจจุบันของช่องทาง แล้วแสดงเฉพาะเมื่อคิดซ้ำได้ยอดตรงกับบิลทุกสตางค์ (เปลี่ยนอัตราหลังขาย = ไม่แสดงอัตรา ไม่เดา) ──
+  const [unitChannels, setUnitChannels] = useState<{ unitId: string; items: ChannelItem[] } | null>(null);
+  const wantRates = !!bill?.channel && bill.channel.code !== "STORE" && bill.channel.commissionSatang !== undefined;
+  useEffect(() => {
+    if (!wantRates || unitChannels?.unitId === unitId) return;
+    let alive = true;
+    listChannelsAction({ systemId, unitId, includeArchived: true })
+      .then((r) => {
+        if (alive && r.ok) setUnitChannels({ unitId, items: r.items });
+      })
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, [wantRates, unitChannels, systemId, unitId]);
+  const commissionRate = (b: Detail): string => {
+    const ch = b.channel;
+    if (!ch || ch.commissionSatang === undefined || unitChannels?.unitId !== unitId) return "";
+    const it = unitChannels.items.find((c) => c.code === ch.code);
+    if (!it) return "";
+    const again = channelCommission(b.totals.grandTotal, it);
+    return again.commissionSatang === ch.commissionSatang && again.commissionVatSatang === (ch.commissionVatSatang ?? 0) ? channelRateText(it) : "";
+  };
   const refreshAll = useCallback(() => {
     setReloadTick((n) => n + 1);
     if (selectedId) void loadDetail(selectedId);
@@ -782,7 +847,7 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
     const csv = billsCsv(
       ok.items,
       [t("col.no"), t("col.time"), t("col.channel"), t("col.customer"), t("col.pay"), t("col.staff"), t("col.total"), t("csv.refunded"), t("col.status")],
-      (r) => [r.receiptNo ?? "", bkkHm(r.time, locale), channelLabel(r.sourceModule, t, ts), r.customer ? `${r.customer.name}${r.customer.sub ? ` (${r.customer.sub})` : ""}` : "", payText(r, t, ts), r.staffName, (r.grandTotalSatang / 100).toFixed(2), (r.refundedSatang / 100).toFixed(2), t(`status.${chipOf(r)}`)],
+      (r) => [r.receiptNo ?? "", bkkHm(r.time, locale), billChannelText(r, t, ts, tch), r.customer ? `${r.customer.name}${r.customer.sub ? ` (${r.customer.sub})` : ""}` : (r.channelRef ?? ""), payText(r, t, ts), r.staffName, (r.grandTotalSatang / 100).toFixed(2), (r.refundedSatang / 100).toFixed(2), t(`status.${chipOf(r)}`)],
     );
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
     const a = document.createElement("a");
@@ -799,7 +864,7 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
     setPage(1);
   };
   const lastPage = ok ? Math.max(1, Math.ceil(ok.total / ok.pageSize)) : 1;
-  const filtered = !!(q || channel || staffUserId || status !== "ALL");
+  const filtered = !!(q || channel || salesChannelId || staffUserId || status !== "ALL");
 
   // ═══════════ แถวของตาราง / การ์ด ═══════════
   const rowMenu = (r: BillRow) =>
@@ -855,6 +920,9 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
         <span className="truncate">{r.customer.name}</span>
         {r.customer.sub ? <small className="truncate text-[11px] text-[color:var(--color-muted)]">{r.customer.sub}</small> : null}
       </span>
+    ) : r.channelRef ? (
+      // POS P2.1U ▸ มติ 3: บิลแพลตฟอร์มไม่มีสมาชิก = เลขออเดอร์ของแพลตฟอร์มในช่องชื่อ (ภาพ 12 "GF-7610") ◂
+      <span className="truncate text-[color:var(--color-muted)] tabular-nums">{r.channelRef}</span>
     ) : (
       <span className="text-[color:var(--color-muted)]">{t("walkIn")}</span>
     );
@@ -930,8 +998,17 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
               ))}
             </select>
           ) : null}
-          <select data-testid="pos-bills-channel" aria-label={t("allChannels")} className="input h-11 w-auto" value={channel} onChange={(e) => setFilter(() => setChannel(e.target.value))}>
+          {/* POS P2.1U ▸ มติ 3: "ทุกช่องทาง" = ช่องทางขาย (salesChannelId) · ตัวกรองเดิม (ระบบต้นทาง = sourceModule) คงไว้ ป้ายว่าง "ทุกระบบ" ◂ */}
+          <select data-testid="pos-bills-channel-filter" aria-label={t("allChannels")} className="input h-11 w-auto max-w-[220px]" value={salesChannelId} onChange={(e) => setFilter(() => setSalesChannelId(e.target.value))}>
             <option value="">{t("allChannels")}</option>
+            {(ok?.salesChannels ?? []).map((c) => (
+              <option key={c.id} value={c.id}>
+                {channelDisplayName(c.code, c.name, tch)}
+              </option>
+            ))}
+          </select>
+          <select data-testid="pos-bills-channel" aria-label={t("channel.allSources")} className="input h-11 w-auto" value={channel} onChange={(e) => setFilter(() => setChannel(e.target.value))}>
+            <option value="">{t("channel.allSources")}</option>
             {(ok?.channels ?? []).map((c) => (
               <option key={c} value={c}>
                 {channelLabel(c, t, ts)}
@@ -989,7 +1066,9 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
             testid="pos-bills-sum-count"
             label={t("sum.bills")}
             value={ok ? String(ok.summary.billCount) : "–"}
-            sub={ok ? t("sum.billsSub", { store: ok.summary.storeCount, online: ok.summary.onlineCount }) : ""}
+            sub={
+              <span data-testid="pos-bills-channel-summary">{channelSum ? t("summary.channel", { store: channelSum.store, online: channelSum.online }) : "\u00a0"}</span>
+            }
           />
           <SummaryCard testid="pos-bills-sum-avg" label={t("sum.avg")} value={ok ? money(ok.summary.avgSatang) : "–"} sub={ok ? t("sum.avgSub", { y: money(ok.summary.yesterdayAvgSatang) }) : ""} />
         </div>
@@ -1018,6 +1097,7 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
                       setQInput("");
                       setQ("");
                       setChannel("");
+                      setSalesChannelId("");
                       setStaffUserId("");
                       setStatus("ALL");
                     })
@@ -1063,8 +1143,8 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
                         >
                           <td className={`whitespace-nowrap px-3 py-3 font-bold tabular-nums ${active ? "shadow-[inset_3px_0_0_var(--color-accent)]" : ""} ${voided ? "line-through" : ""}`}>{r.receiptNo ?? "—"}</td>
                           <td className="whitespace-nowrap px-2 py-3 tabular-nums">{bkkHm(r.time, locale)}</td>
-                          <td className="max-w-[120px] px-2 py-3">
-                            <ChannelChip src={r.sourceModule} t={t} ts={ts} />
+                          <td data-testid={`pos-bill-channel-${r.id}`} className="max-w-[140px] px-2 py-3">
+                            <BillChannelPill row={r} t={t} ts={ts} tc={tch} />
                           </td>
                           <td className="max-w-[180px] px-2 py-3">{customerCell(r)}</td>
                           <td className="px-2 py-3">{payText(r, t, ts)}</td>
@@ -1110,9 +1190,11 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
                           <span className="font-semibold tabular-nums">{money(r.grandTotalSatang)}</span>
                         </span>
                         <span className="flex w-full flex-wrap items-center gap-2 text-[12px]">
-                          <ChannelChip src={r.sourceModule} t={t} ts={ts} />
+                          <span data-testid={`pos-bill-channel-card-${r.id}`} className="inline-flex min-w-0 max-w-[50%]">
+                            <BillChannelPill row={r} t={t} ts={ts} tc={tch} />
+                          </span>
                           <span className="min-w-0 truncate text-[color:var(--color-muted)]">
-                            {r.customer ? r.customer.name : t("walkIn")} · {payText(r, t, ts)}
+                            {r.customer ? r.customer.name : (r.channelRef ?? t("walkIn"))} · {payText(r, t, ts)}
                           </span>
                           <span className="flex-1" />
                           <StatusChip chip={chip} t={t} />
@@ -1202,7 +1284,7 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
                   </button>
                 </div>
                 <div className="mt-1 text-[12px] text-[color:var(--color-muted)]">
-                  {[bkkHm(bill.time, locale), who(bill.staffName), bill.deviceName, channelLabel(bill.sourceModule, t, ts), bill.shiftNo !== null ? t("drawer.shiftNo", { no: bill.shiftNo }) : null].filter(Boolean).join(" · ")}
+                  {[bkkHm(bill.time, locale), who(bill.staffName), bill.deviceName, billChannelText({ sourceModule: bill.sourceModule, salesChannel: bill.channel }, t, ts, tch), bill.shiftNo !== null ? t("drawer.shiftNo", { no: bill.shiftNo }) : null].filter(Boolean).join(" · ")}
                 </div>
               </div>
               {/* รายการ */}
@@ -1260,6 +1342,50 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
                   </div>
                 ) : null}
               </section>
+              {/* POS P2.1U ▸ มติ 4 (ภาพ 09 บล็อกล่าง): ช่องทาง + เลขออเดอร์ · ตัวเลขค่าคอมฯ เฉพาะเมื่อเซิร์ฟเวอร์ส่งมา (pos.report.view) และมีค่าคอมฯ/รับเงินผ่านแพลตฟอร์ม ·
+                  สุทธิ = ยอดบิล − ค่าคอมฯ − VAT ค่าคอมฯ · ไม่มีบนใบเสร็จ ◂ */}
+              {bill.channel && bill.channel.code !== "STORE" ? (
+                <section data-testid="pos-bill-commission" className="flex flex-col gap-0.5 border-b px-5 py-3 text-[13px] tabular-nums">
+                  <div data-testid="pos-bill-commission-channel" className="flex min-w-0 items-center gap-2 text-[color:var(--color-ink-soft)]">
+                    <span className="min-w-0 truncate">
+                      {tch("commissionBlock.channel", { name: channelDisplayName(bill.channel.code, bill.channel.name, tch) })}
+                      {bill.channel.ref ? ` \u00b7 ${bill.channel.ref}` : ""}
+                    </span>
+                  </div>
+                  {bill.channel.commissionSatang !== undefined && (bill.channel.payout === "PLATFORM" || bill.channel.commissionSatang + (bill.channel.commissionVatSatang ?? 0) > 0)
+                    ? (() => {
+                        const c = bill.channel.commissionSatang ?? 0;
+                        const v = bill.channel.commissionVatSatang ?? 0;
+                        const rate = commissionRate(bill);
+                        return (
+                          <>
+                            <div className="mt-1 flex justify-between gap-3 py-0.5">
+                              <span>{tch("commissionBlock.gross")}</span>
+                              <span>{money(bill.totals.grandTotal)}</span>
+                            </div>
+                            <div data-testid="pos-bill-commission-fee" className="flex justify-between gap-3 py-0.5">
+                              <span className="min-w-0">{rate ? tch("commissionBlock.commissionRate", { rate }) : tch("commissionBlock.commission")}</span>
+                              <span className="text-[color:var(--color-danger)]">−{money(c)}</span>
+                            </div>
+                            {v > 0 ? (
+                              <div className="flex justify-between gap-3 py-0.5">
+                                <span>{tch("commissionBlock.vat")}</span>
+                                <span className="text-[color:var(--color-danger)]">−{money(v)}</span>
+                              </div>
+                            ) : null}
+                            <div data-testid="pos-bill-commission-net" className="flex justify-between gap-3 pt-1 font-bold">
+                              <span>{tch("commissionBlock.net")}</span>
+                              <span>{money(bill.totals.grandTotal - c - v)}</span>
+                            </div>
+                            <p className="mt-2 rounded-[10px] border border-dashed px-3 py-2 text-[12px] leading-[1.5] text-[color:var(--color-muted)]">
+                              {bill.channel.payout === "PLATFORM" ? tch("commissionBlock.note") : tch("commissionBlock.noteDirect")}
+                            </p>
+                          </>
+                        );
+                      })()
+                    : null}
+                </section>
+              ) : null}
               {/* การชำระ */}
               <section className="border-b px-5 py-3 text-[13px]">
                 <h3 className="mb-1.5 text-[12px] font-bold text-[color:var(--color-muted)]">{t("drawer.payments")}</h3>
@@ -1267,7 +1393,7 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
                 {bill.payments.map((p, i) => (
                   <div key={i} className="flex justify-between gap-3 py-0.5 tabular-nums">
                     <span className="min-w-0 text-[color:var(--color-ink-soft)]">
-                      {methodLabel(p.type, ts)}
+                      {methodLabel(p.type, ts, t)}
                       {p.type === "CASH" && p.tenderedSatang !== undefined ? ` · ${t("drawer.cashLine", { tendered: money(p.tenderedSatang), change: money(p.changeSatang ?? 0) })}` : ""}
                       {p.type !== "CASH" && p.reference ? ` · ${p.reference}` : ""}
                     </span>

@@ -672,3 +672,14 @@ Rows added to `scripts/pos-ui-inventory.json` (wo `P1.18U`; page `/app/sys/[id]/
 - ช่องทาง / ออฟไลน์: display `pos-settings-channels` · `pos-settings-offline` · `pos-settings-phase-banner` (+ the shark panels above).
 - Close day page (`/app/sys/[id]/pos/close`): `pos-close-date` (date overlay; debt row of close/page.tsx `<input>` 1 → 0).
 - Register 19ก: `pos-reg-empty-add-product` now owner/manager only (`canManageProducts`); cashier sees `register.emptyCatalogue.cashierBody`.
+
+## Addendum P2.1U — ช่องทางขาย: แผง 10 · ลิ้นชักช่องทาง · คอลัมน์/ตัวกรอง/สรุปบิล 12 · บล็อกค่าคอมฯ 09 · ช่องแพลตฟอร์มที่จอชำระ (builder U, 9 Oct 2026)
+Rows added to `scripts/pos-ui-inventory.json` (wo `P2.1U`); display-only ids listed for the reviewer. Retired: `pos-settings-channel-storefront-state` (the live WEB row replaces it) and the PLANNED display ids `pos-settings-channels-panel` · `pos-settings-channel-<lineman|grab|shopee|foodpanda|storefront>` · the channels-tab `pos-settings-phase-banner` (offline keeps its banner).
+- Settings (`/app/sys/[id]/pos/settings`, shark tab compact + `?tab=channels` full width — one component `ChannelsPanel`): `pos-channel-open-<code>` (row → drawer) · `pos-channel-toggle-<code>` (switch `active`; STORE locked; cashier disabled) ·
+  `pos-channel-connect-<lineman|grab|shopee|foodpanda>` (preset not yet created) · `pos-channel-add` · `pos-channel-show-archived` · `pos-channel-retry`;
+  display `pos-channels-panel` · `pos-channel-list` · `pos-channel-row-<code>` · `pos-channel-preset-<code>` · `pos-channel-status-<code>` · `pos-channel-row-error` · `pos-channel-row-saved` · `pos-channel-error` · `pos-channel-empty` · `pos-channel-limit` · `pos-channel-readonly`. `<code>` = channel code lower-cased.
+- Drawer `pos-channel-drawer` (display): `pos-channel-drawer-close` · `-cancel` · `-name` · `-code` (create only) · `-payout-<platform|direct|none>` · `-commission` · `-fixed` · `-vat-<0|7>` · `-sort` · `-save` · `-archive` · `-archive-cancel` · `-archive-confirm`;
+  display `pos-channel-drawer-locked` · `-error` · `-field-error` (`data-field`) · `-vat` (group) · `-archive-confirm-box` · `pos-channel-example`.
+- Bills (`/app/sys/[id]/pos/sales`): `pos-bills-channel-filter` (ทุกช่องทาง → `salesChannelId`; the old `pos-bills-channel` = source filter, empty option now "ทุกระบบ"); display `pos-bill-channel-<saleId>` (table cell) · `pos-bill-channel-card-<saleId>` (390 card pill) ·
+  `pos-bills-channel-summary` (count-card sub-line "หน้าร้าน N · ออนไลน์ M") · drawer `pos-bill-commission` · `pos-bill-commission-channel` · `pos-bill-commission-fee` · `pos-bill-commission-net`.
+- Register 02: `pos-reg-paydlg-method-platform` (only when `quote.channel.payout === "PLATFORM"`; preselected, other tiles disabled).

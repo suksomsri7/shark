@@ -6,6 +6,7 @@
 import type { ReactNode } from "react";
 import type { BillRow } from "@/lib/modules/pos/bills-shared";
 import { moneyText } from "@/lib/modules/pos/register-shared";
+import { channelDisplayName } from "@/components/pos/settings/channel-text"; // POS P2.1U ▸ ชื่อช่องทางตามภาษาจอ ◂
 
 export type T = (key: string, values?: Record<string, string | number>) => string;
 
@@ -42,23 +43,49 @@ export function channelLabel(src: string, t: T, ts: T): string {
   return SOURCE_KEYS.has(src) ? ts(`source.${src}`) : src;
 }
 export function ChannelChip({ src, t, ts }: { src: string; t: T; ts: T }) {
-  const pos = src === "POS";
+  // POS P2.1U ▸ ภาพ 12: ป้ายระบบต้นทางเป็นกรอบเทา (กรอบดำหนา = ช่องทางแพลตฟอร์มเท่านั้น) · ระบบจอง = ไอคอนปฏิทิน ◂
+  return (
+    <span className="inline-flex h-6 max-w-full items-center gap-1 truncate whitespace-nowrap rounded-md border border-[color:var(--color-line)] px-2 text-[11px] text-[color:var(--color-muted)]">
+      {src === "BOOKING" ? <BillIcon name="cal" size={12} /> : null}
+      {channelLabel(src, t, ts)}
+    </span>
+  );
+}
+
+// ═══════════ POS P2.1U ▸ ช่องทางขายของบิล (ภาพ 12 · มติ 3) ═══════════
+/**
+ * บิลของระบบอื่นที่ช่องทางเป็นหน้าร้านปริยาย (จอง/โรงแรม/ร้านอาหาร/ตั๋ว — มติ Q6 ยังไม่ส่ง channelId) = ป้ายระบบต้นทางเดิม ·
+ * อื่น ๆ = ชื่อช่องทางขาย (builtin ที่ยังใช้ชื่อตั้งต้น = คำแปล) · ไม่มีข้อมูลช่องทาง = ป้ายระบบต้นทาง
+ */
+export function billChannelSource(r: { sourceModule: string; salesChannel: { code: string; name: string } | null }): boolean {
+  return !r.salesChannel || (r.sourceModule !== "POS" && r.sourceModule !== "ECOM" && r.salesChannel.code === "STORE");
+}
+export function billChannelText(r: { sourceModule: string; salesChannel: { code: string; name: string } | null }, t: T, ts: T, tc: T): string {
+  return billChannelSource(r) || !r.salesChannel ? channelLabel(r.sourceModule, t, ts) : channelDisplayName(r.salesChannel.code, r.salesChannel.name, tc);
+}
+/** ป้ายช่องทางของแถวบิล — แพลตฟอร์ม (จ่ายด้วย "แพลตฟอร์ม" = ช่องทาง payout PLATFORM ตามกฎ R5) = กรอบดำหนา · อื่น = กรอบเทา */
+export function BillChannelPill({ row, t, ts, tc }: { row: Pick<BillRow, "sourceModule" | "salesChannel" | "payMethods">; t: T; ts: T; tc: T }) {
+  if (billChannelSource(row)) return <ChannelChip src={row.sourceModule} t={t} ts={ts} />;
+  const platform = row.payMethods.split("+").includes("PLATFORM");
   return (
     <span
-      className={`inline-flex h-6 max-w-full items-center truncate whitespace-nowrap rounded-md border px-2 text-[11px] ${pos ? "border-[color:var(--color-line)] text-[color:var(--color-muted)]" : "border-[color:var(--color-ink)] font-bold"}`}
+      className={`inline-flex h-6 max-w-full items-center truncate whitespace-nowrap rounded-md border px-2 text-[11px] ${
+        platform ? "border-[color:var(--color-ink)] font-bold text-[color:var(--color-ink)]" : "border-[color:var(--color-line)] text-[color:var(--color-muted)]"
+      }`}
     >
-      {channelLabel(src, t, ts)}
+      {billChannelText(row, t, ts, tc)}
     </span>
   );
 }
 
 /** วิธีชำระ "CASH+PROMPTPAY" → "เงินสด + พร้อมเพย์" · เงินสดนอกกะ = ป้ายของมันเอง */
 const METHOD_KEYS = new Set(["CASH", "CARD", "PROMPTPAY", "TRANSFER", "DEPOSIT", "ROOM_CHARGE"]);
-export const methodLabel = (m: string, ts: T) => (METHOD_KEYS.has(m) ? ts(`method.${m}`) : m);
+/** POS P2.1U ▸ มติ 3: PLATFORM = "แพลตฟอร์ม" (คำสั้นของหน้าบิล pos.bills.channel.platformPay — ส่ง t ของ pos.bills) ◂ */
+export const methodLabel = (m: string, ts: T, t?: T) => (m === "PLATFORM" && t ? t("channel.platformPay") : METHOD_KEYS.has(m) ? ts(`method.${m}`) : m);
 export function payText(row: Pick<BillRow, "payMethods" | "offShiftCash">, t: T, ts: T): string {
   if (row.offShiftCash) return t("offShiftCashPay");
   if (!row.payMethods) return "—";
-  return row.payMethods.split("+").map((m) => methodLabel(m, ts)).join(" + ");
+  return row.payMethods.split("+").map((m) => methodLabel(m, ts, t)).join(" + ");
 }
 
 // ═══════════ ไอคอน (เส้น · currentColor) ═══════════

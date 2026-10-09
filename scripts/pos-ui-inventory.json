@@ -10471,6 +10471,43 @@
       "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-channel-filter",
+      "kind": "filter",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-bills-list",
+        "note": "ทุกช่องทาง = ช่องทางขายของบิลวันนี้ (BillsPageData.salesChannels) → query salesChannelId · ตัวกรองระบบต้นทางเดิม pos-bills-channel คงไว้ (ป้ายว่าง \"ทุกระบบ\")"
+      },
+      "wo": "P2.1U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-paydlg-method-platform",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-paydlg",
+        "note": "ช่อง \"แพลตฟอร์ม\" — มีเฉพาะบิลที่ quote.channel.payout = PLATFORM (บิลพักที่มี channelId · P2.8) · เลือกไว้เต็มยอด ช่องอื่น/แป้น/ทิปปิด (R5)"
+      },
+      "wo": "P2.1U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
     }
   ],
   "$roles": "roles/hiddenFor ที่อนุญาต: owner · manager · cashier · kind/expect.type ชุดเดียวกับทะเบียน CRM (F15.3b ตรวจ)"

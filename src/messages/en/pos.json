@@ -264,7 +264,9 @@
         "overPaid": "Received {amount} more than the bill — refund it yourself",
         "roundsExhausted": "Could not create the QR after several tries — try again",
         "refundYourself": "This bill can no longer be saved but the money has arrived — refund the customer yourself"
-      }
+      },
+      "platformHint": "Paid in full via the platform",
+      "platformVia": "Full amount via {name}"
     },
     "done": {
       "title": "Sale complete",
@@ -1598,6 +1600,13 @@
       "cancel": "Cancel",
       "close": "Close",
       "requestTaxIdChanged": "The tax ID differs from the customer's request — the request will be rejected and the invoice issued as entered"
+    },
+    "channel": {
+      "platformPay": "Platform",
+      "allSources": "All sources"
+    },
+    "summary": {
+      "channel": "In store {store} · Online {online}"
     }
   },
   "payment": {
@@ -2444,7 +2453,11 @@
       "gross": "Total",
       "commission": "Platform commission",
       "net": "Net received",
-      "note": "Paid via platform → recorded as payment \"Platform\" and the commission is posted automatically"
+      "note": "Paid via platform → recorded as payment \"Platform\" and the commission is posted automatically",
+      "channel": "Channel {name}",
+      "commissionRate": "Platform commission {rate}",
+      "vat": "VAT on commission",
+      "noteDirect": "The shop collected the payment · the commission is booked as owed to the platform"
     },
     "label": "Channel",
     "all": "All channels",
