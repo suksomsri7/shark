@@ -2122,10 +2122,15 @@ export async function bulkChannelMarkup(
         }
         // สิทธิ์ตรวจก่อนข้ามค่าที่เท่าเดิม (ผู้ไม่มีสิทธิ์ได้ PERMISSION_DENIED เสมอ ไม่ใช่ "สำเร็จ 0 แถว")
         await requirePriceRowScope(ctx, actor, p, unitId, tx, cache);
+        const prev = exBy.get(p.id);
+        // รีวิว F2: แถว (ช่องทาง, สาขา) เดิมที่ "ไม่ขาย" คงไว้ตามเดิม (ปรับทั้งชุดไม่เปิดขายให้เอง) · นับ skipped · ไม่มี audit
+        if (prev?.notSold) {
+          skipped++;
+          continue;
+        }
         const price = channelMarkupPrice(p.basePriceSatang, markupBp, roundTo);
         if (price > MAX_INT4) throw invalid("ราคาหลังบวกเกินเพดานที่ระบบรับได้");
-        const prev = exBy.get(p.id);
-        if (prev && !prev.notSold && prev.priceSatang === price) {
+        if (prev && prev.priceSatang === price) {
           skipped++;
           continue;
         }
