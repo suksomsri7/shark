@@ -431,6 +431,8 @@ export type RegisterStatus = {
   deviceStatus?: "ACTIVE" | "REVOKED" | null;
   /** POS P1.13U มติ 2: ระบบนี้ออกใบกำกับภาษีเต็มรูปได้ (สมุดผูก · จด VAT · เปิดใบอย่างย่อ · มีเลขภาษี) — false = ปุ่ม/สวิตช์ใบกำกับจางพร้อมเหตุผล */
   taxInvoiceEligible: boolean;
+  /** POS P1.12U มติ 2: สาขานี้มีระบบสมาชิก (systemForUnit MEMBER) — false = ไม่มีแถวสมาชิก/ส่วนสิทธิ์บนจอ · สแกนบัตรสมาชิก = memberSystemMissing */
+  memberEnabled: boolean;
 };
 export type RegisterStatusResult = RegisterStatus | RegisterRefusal;
 /** POS P1.9 (S15) — กะของเครื่องบนแถบสถานะ */

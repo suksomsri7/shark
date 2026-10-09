@@ -2250,6 +2250,8 @@ export async function registerStatus(ctx: RegisterCtx, actor: RegisterActor, cli
         )`;
     // POS P1.13U ▸ มติ 2: ปุ่ม "ใบกำกับเต็มรูป" บนจอ — เงื่อนไขเดียวกับ NOT_ELIGIBLE ตอนชำระ (ไม่นับ VAT ของบิล) · อ่านพลาด = false ◂
     const taxInvoiceEligible = await taxInvoiceEligibleForSystem(s.tenantId, s.systemId).catch(() => false);
+    // POS P1.12U ▸ มติ 2: สาขานี้มีระบบสมาชิก (R1) — false = จอไม่มีแถวสมาชิก/ส่วนสิทธิ์เลย · อ่านพลาด = false ◂
+    const memberEnabled = await systemForUnit(s.tenantId, s.unitId, "MEMBER").then((id) => !!id, () => false);
     return {
       ok: true,
       unit: { id: s.unitId, name: s.unitName },
@@ -2260,6 +2262,7 @@ export async function registerStatus(ctx: RegisterCtx, actor: RegisterActor, cli
       pendingSyncCount: 0,
       deviceStatus,
       taxInvoiceEligible,
+      memberEnabled,
     };
   });
 }
