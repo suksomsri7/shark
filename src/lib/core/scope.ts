@@ -67,6 +67,8 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   //   คำขอใบกำกับเต็มรูป (ผู้เขียน = pos/receipt-tax-request.ts · P1.13 ออกเอกสาร) — ทุกคำสั่งกรอง tenantId + saleId (+ unitId ของบิล)
   PosReceiptIssue: unit,
   PosTaxInvoiceRequest: unit,
+  // POS P1.7 — ใบขอรับเงิน PromptPay/Beam (ผู้เขียนเดียว = pos/payment-intent.ts · ทุกคำสั่งกรอง tenantId + unitId (+ systemId ของ POS))
+  PosPaymentIntent: sys(),
   // Outbox (kernel — side effects post-commit · WO-0002)
   OutboxEvent: tenant,
   // Party (WO 3.1) — ตัวตนกลางระดับ tenant ข้ามทุกระบบ (ตรงข้าม AccountContact ที่ scope ต่อ systemId)

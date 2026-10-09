@@ -8,6 +8,7 @@ import { sweepUnattendedChats } from "@/lib/platform/kanban-bridges";
 import { logOps } from "@/lib/core/ops";
 import { isCronAuthorized } from "@/lib/core/cron-auth";
 import { forceCloseStaleShifts } from "@/lib/modules/pos/shift";
+import { expirePaymentIntents } from "@/lib/modules/pos/payment-intent"; // POS P1.7 ▸ R5 ◂
 
 // GET /api/cron/hourly — งานประจำของผู้ช่วย AI (Vercel Cron เรียกทุกต้นชั่วโมง)
 // auth: isCronAuthorized (Bearer SHARK_CRON_SECRET หรือ X-Cron-Secret) — ผิด/ไม่มี → 401 สั้น ๆ
@@ -88,6 +89,15 @@ export async function GET(req: Request) {
       detail: e instanceof Error ? (e.stack ?? e.message) : String(e),
     });
   }
+  // POS P1.7 ▸ R5: ใบขอรับเงิน PENDING ที่หมดเวลา → EXPIRED (จอใช้การอ่านสถานะแบบเขียนทันทีอยู่แล้ว · ตัวนี้เก็บกวาด) — best-effort ◂
+  let posIntentsExpired = -1;
+  try {
+    posIntentsExpired = (await expirePaymentIntents()).expired;
+  } catch (e) {
+    await logOps("WARN", "cron", "expirePaymentIntents (ใบขอรับเงิน POS หมดอายุ) ล้ม", {
+      detail: e instanceof Error ? (e.stack ?? e.message) : String(e),
+    });
+  }
   return NextResponse.json({
     ok: true,
     ran,
@@ -101,6 +111,7 @@ export async function GET(req: Request) {
     notificationsSent,
     memberReportsSent,
     posShiftsForced,
+    posIntentsExpired,
     at: new Date().toISOString(),
   });
 }

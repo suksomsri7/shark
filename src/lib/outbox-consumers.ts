@@ -707,6 +707,8 @@ const baseConsumers: Record<string, OutboxHandler> = {
   // POS P1.11 ▸ ใบเสร็จออนไลน์: แจ้งปัญหาบิล → การ์ดบอร์ดรับเรื่อง + ตอบรับ LINE (composition root pos-receipt-bridges · โหลดตอนใช้) · คำขอใบกำกับเต็มรูป = กฎอัตโนมัติเท่านั้น (ออกเอกสาร P1.13) ◂
   "pos.receipt.issue_reported": withAutomation(async (evt) => void (await (await import("@/lib/pos-receipt-bridges")).onReceiptIssueReported(evt))),
   "pos.receipt.taxInvoiceRequested": withAutomation(async () => {}),
+  // POS P1.7 ▸ เงินเข้าใบขอรับเงิน (webhook/ยืนยันเอง) — กฎอัตโนมัติเท่านั้น (จอลูกค้า P2 ต่อบน event เดิม) · ไม่มี event ตอน CONSUMED ◂
+  "pos.payment.intent_paid": withAutomation(async () => {}),
   // Wave4-A: AppNotification "ลูกค้าทักเข้ามา" ถูกสร้างแล้วใน chat.announceInbound (de-dup) —
   // consumer นี้ปิด event เป็น DONE + เป็นจุดให้ Automation rules / Webhooks ยิงราย inbound message
   // WO 7.2: + ดูดรูปบิลที่แนบมาในข้อความเข้ากล่องขาเข้าของบัญชี (เฉพาะร้านที่เปิด inboxFromChat)
