@@ -16,7 +16,7 @@ import { systemForUnit } from "@/lib/modules/system/service";
 import { prisma } from "./db";
 import { applyExternalChannelCommission, posSalePosted } from "@/lib/modules/account";
 import { saleChannelName } from "./channel"; // POS P2.1 ◂
-import { bridgePosSalePaid, bridgePosSaleRefunded } from "./account-bridge";
+import { bridgePosSaleCommission, bridgePosSalePaid, bridgePosSaleRefunded } from "./account-bridge";
 import { lineConsumption } from "./service";
 
 type Evt = Parameters<OutboxHandler>[0];
@@ -71,6 +71,14 @@ export const posSaleRefunded: OutboxHandler = async (evt: Evt) => {
     } catch (e) {
       console.error("[pos] refund: ลงบัญชีบิลเดิมแทนคิวปิดบิลไม่สำเร็จ — ลงใบลดหนี้ต่อ", { saleId: sale.id, refundSaleId: refund.id, code: errCode(e) });
     }
+    // POS P2.1 ▸ fix round 1 (รีวิว F1) — บิลมี PAID แล้วแต่ขั้น COMMISSION ยังไม่ลง (ล้มหลัง PAID แล้วบิลถูกคืนครบ ⇒ คิวปิดบิลไม่วิ่งซ้ำ) ◂
+    //   ลง COMMISSION ของบิลก่อน 1c เสมอ (idempotent ต่อคีย์ · ไม่มี PAID = facade ไม่ลง · ไม่มีค่าคอมฯ = ไม่มี query)
+    //   ล้ม = โยนท้ายสุด ⇒ คิวลองใหม่ (1c ข้ามเพราะยังไม่มี COMMISSION ⇒ ไม่มีวันกลับค่าคอมฯ ที่ไม่เคยลง)
+    try {
+      await bridgePosSaleCommission(sale);
+    } catch (e) {
+      errors.push(e);
+    }
   }
 
   // POS P2.1 ▸ ชื่อช่องทางของใบคืน (ผู้ติดต่อลูกหนี้แพลตฟอร์ม + memo) — อ่านเฉพาะใบที่มี PLATFORM/ส่วนแบ่งค่าคอมฯ ◂
@@ -111,6 +119,7 @@ export const posSaleRefunded: OutboxHandler = async (evt: Evt) => {
         channelName: channelName ?? "",
         receiptNo: refund.receiptNo,
         reverse: true,
+        saleRefId: sale.id, // fix round 1 (F1 F3): กลับได้เฉพาะเมื่อบิลมี COMMISSION · ผู้ติดต่อ = ของ PAID ◂
       });
     }
   } catch (e) {

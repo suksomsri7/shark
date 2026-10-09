@@ -1752,6 +1752,26 @@ export async function postExternalChannelCommission(
   });
 }
 
+// POS P2.1 ▸ fix round 1 (รีวิว F1 F3) — ตัวอ่านของ JV บิล POS (อ่านอย่างเดียว · ไม่เขียนอะไร) ◂
+/** JV ของบิล/ใบคืน POS คีย์ PosSale#<refId>#<event> มีแล้วหรือยัง (คีย์เดียวกับ postExternalSale / postExternalChannelCommission) */
+export async function posSaleEntryPosted(ctx: GlCtx, refId: string, event: "PAID" | "COMMISSION" | "COMMISSION_REFUNDED"): Promise<boolean> {
+  return alreadyPosted(ctx, `PosSale#${refId}#${event}`, prisma);
+}
+
+/**
+ * ผู้ติดต่อบนบรรทัดลูกหนี้ (คีย์ arKey) ฝั่ง Dr ของ JV ขาย PosSale#<saleRefId>#PAID — ไม่มี JV/ไม่มีผู้ติดต่อ/ไม่มีการจับคู่คีย์ = null
+ * ใช้ให้การคืนเงิน/ค่าคอมฯ ลงลูกหนี้แพลตฟอร์ม "คนเดียวกับตอนขาย" แม้ช่องทางถูกเปลี่ยนชื่อภายหลัง (รีวิว F3)
+ */
+export async function posSalePaidContact(ctx: GlCtx, saleRefId: string, arKey: string): Promise<string | null> {
+  const m = await prisma.accountMapping.findFirst({ where: { systemId: ctx.systemId, key: arKey }, select: { accountId: true } });
+  if (!m) return null;
+  const e = await prisma.accountJournalEntry.findFirst({
+    where: { systemId: ctx.systemId, idempotencyKey: `PosSale#${saleRefId}#PAID` },
+    select: { lines: { where: { accountId: m.accountId, debit: { gt: 0 }, contactId: { not: null } }, select: { contactId: true }, orderBy: { id: "asc" }, take: 1 } },
+  });
+  return e?.lines[0]?.contactId ?? null;
+}
+
 // ─────────────────── บัตรกำนัล (M2.6 · D3 · §9.4) ───────────────────
 //
 // 🔴 ทำไมขายบัตรกำนัลไม่ใช่ "รายได้": ร้านรับเงินไปแล้วแต่ยังไม่ได้ส่งมอบสินค้า/บริการ

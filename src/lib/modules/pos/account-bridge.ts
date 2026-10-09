@@ -167,20 +167,44 @@ export async function bridgePosSalePaid(
     console.warn(`[บัญชี] บิล POS ${sale.id}: ไม่บันทึกบรรทัดสินค้าเข้าบัญชี — ${res.reason}`);
   // POS P2.1 ▸ R7: ค่าคอมฯ ช่องทาง = JV แยก (คีย์ PosSale#<id>#COMMISSION) หลัง PAID ในขั้นเดียวกันของคิว ·
   //   ล้ม = โยน ⇒ คิวลองใหม่ (PAID ข้ามด้วยคีย์ของตัวเอง) · ไม่ผูกสมุด = จบเงียบ (snapshot อยู่บนบิล) ◂
-  if (commission + commissionVat > 0 && sale.channelPayout) {
-    await applyExternalChannelCommission({
-      tenantId: sale.tenantId,
-      sourceSystemId: sale.systemId,
-      refId: sale.id,
-      occurredAt: sale.paidAt ?? sale.createdAt,
-      commissionSatang: commission,
-      commissionVatSatang: commissionVat,
-      payout: sale.channelPayout,
-      channelName: channelName ?? "",
-      receiptNo: sale.receiptNo ?? null,
-    });
-  }
+  await postSaleCommission(sale, channelName);
   return res;
+}
+
+// POS P2.1 ▸ fix round 1 (รีวิว F1 F4) — ขั้นค่าคอมฯ ของบิล (ตัวเดียว · ใช้ทั้งคิวปิดบิล ตัวซ่อมของบิลที่คืนแล้ว และตัวรับคืนเงิน) ◂
+//   ไม่มีค่าคอมฯ/ไม่มี payout = ไม่มี query เลย (บิลอื่นทุกใบเหมือนเดิมทุกไบต์)
+//   F4: อ่านสถานะบิลซ้ำ 1 ครั้งก่อนลง — VOIDED = ข้าม (ตัวกลับรายการของคิว void เป็นผู้เขียนคนเดียว)
+//   F1: facade ลงเฉพาะเมื่อมี JV PAID ของบิลแล้ว · มี COMMISSION แล้ว = "already" (idempotent ต่อคีย์)
+async function postSaleCommission(sale: SaleForBridge, channelName: string | null): Promise<void> {
+  const commission = Math.max(0, sale.channelCommissionSatang ?? 0);
+  const commissionVat = Math.max(0, sale.channelCommissionVatSatang ?? 0);
+  if (commission + commissionVat <= 0 || !sale.channelPayout) return;
+  const cur = await prisma.posSale.findFirst({ where: { id: sale.id, tenantId: sale.tenantId }, select: { status: true } });
+  if (!cur || cur.status === "VOIDED") return;
+  await applyExternalChannelCommission({
+    tenantId: sale.tenantId,
+    sourceSystemId: sale.systemId,
+    refId: sale.id,
+    occurredAt: sale.paidAt ?? sale.createdAt,
+    commissionSatang: commission,
+    commissionVatSatang: commissionVat,
+    payout: sale.channelPayout,
+    channelName: channelName ?? "",
+    receiptNo: sale.receiptNo ?? null,
+  });
+}
+
+/**
+ * POS P2.1 ▸ fix round 1 (รีวิว F1) — ลง JV ค่าคอมฯ ที่ขาดของบิลที่มี JV ขาย (PAID) แล้ว ◂
+ * ผู้เรียก: ตัวรับคืนเงิน (ก่อน COMMISSION_REFUNDED) + คิวปิดบิลของบิลที่สถานะ REFUNDED แล้ว (ทางลองใหม่ซ่อมตัวเอง)
+ * idempotent ต่อ PosSale#<saleId>#COMMISSION · ไม่มี PAID = ไม่ลง · ล้ม = โยน (ผู้เรียกให้คิวลองใหม่)
+ */
+export async function bridgePosSaleCommission(sale: SaleForBridge): Promise<void> {
+  const commission = Math.max(0, sale.channelCommissionSatang ?? 0);
+  const commissionVat = Math.max(0, sale.channelCommissionVatSatang ?? 0);
+  if (commission + commissionVat <= 0 || !sale.channelPayout) return;
+  const channelName = await saleChannelName(prisma, sale.tenantId, sale.channelId, sale.channelCode);
+  await postSaleCommission(sale, channelName);
 }
 
 /**

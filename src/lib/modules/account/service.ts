@@ -4077,6 +4077,76 @@ export async function ensureAccountContact(
   return attempt(false); // ชน 6 รอบติด = ผิดปกติจริง — บันทึกโดยไม่มีเลขที่ ดีกว่าทำงานผู้เรียกหาย
 }
 
+// POS P2.1 ▸ fix round 1 (รีวิว F2) — ผู้ติดต่อ "ตามชื่อ" ของช่องทางขาย 1 รายต่อสมุด (CD6) แบบกันชนข้ามโพรเซส ◂
+/**
+ * หาผู้ติดต่อชื่อนี้ (ไม่สนตัวพิมพ์ · ยังไม่ปิดใช้ · ตัวเก่าสุดก่อน) — ไม่มีก็สร้าง ภายใต้ `pg_advisory_xact_lock(systemId:ชื่อ)`
+ * ผู้เรียกเดียว = facade `platformContact` (account/index.ts · POS P2.1)
+ *
+ * 🔴 ทำไมไม่ใช้ findContactForImport + findOrCreateCustomerContact แบบเดิม: อ่านแล้วค่อยสร้างไม่มีล็อก ⇒ บิลแรกของช่องทางใหม่
+ *    สองใบที่ลงพร้อมกันได้ผู้ติดต่อ "LINE MAN" สองราย (+ Party สองราย) แล้วลูกหนี้รายแพลตฟอร์มแตกสองกอง
+ * 🔴 กติกาเดียวกับ ensureAccountContact: ภายใน transaction ใช้ `tx` อย่างเดียว (Party/เลขที่/event ผ่าน tx ทั้งหมด)
+ *    ห้ามเรียก createContact (เปิด connection ใหม่ = คนถือล็อกไปรอ connection ที่คนรอล็อกถือไว้)
+ * แถวที่สร้าง = แถวที่ findOrCreateCustomerContact({ name }) → createContact สร้างทุกคอลัมน์
+ *    (CUSTOMER · COMPANY · สาขา 00000 · Party COMPANY ชื่อเดียวกัน · เลขที่ C… · event account.contact.created)
+ * findContactForImport (นำเข้า CSV) ไม่ได้อยู่บนเส้นนี้แล้ว ⇒ ไม่แก้ (ไม่มี orderBy เหมือนเดิม)
+ */
+export async function ensureNamedCustomerContact(
+  ctx: { tenantId: string; systemId: string },
+  rawName: string,
+): Promise<{ id: string; created: boolean }> {
+  const name = rawName.trim();
+  if (!name) throw new Error("ต้องมีชื่อผู้ติดต่อ");
+  const find = (db: Prisma.TransactionClient) =>
+    db.accountContact.findFirst({
+      where: { tenantId: ctx.tenantId, systemId: ctx.systemId, archivedAt: null, name: { equals: name, mode: "insensitive" } },
+      select: { id: true },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    });
+  // ทางลัด: มีแล้วจบ (ไม่เปิด transaction/ไม่จับล็อก — เส้นทางปกติตั้งแต่บิลที่สองของช่องทาง)
+  const hit = await find(prisma);
+  if (hit) return { id: hit.id, created: false };
+
+  const attempt = async (withCode: boolean): Promise<{ id: string; created: boolean }> =>
+    prisma.$transaction(async (tx) => {
+      // กุญแจ = สมุด + ชื่อตัวเล็ก (ตรงกับการหาแบบไม่สนตัวพิมพ์ — "LINE MAN" กับ "Line Man" รอกันเอง)
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${ctx.systemId} || ':' || lower(${name})))`;
+      const again = await find(tx);
+      if (again) return { id: again.id, created: false };
+      const partyId = await party.safeFindOrCreate(ctx.tenantId, { name, phone: null, email: null, taxId: null, branchCode: undefined, kind: "COMPANY" }, tx);
+      const code = withCode ? await nextContactCode(ctx.systemId, tx) : null;
+      const row = await tx.accountContact.create({
+        data: {
+          tenantId: ctx.tenantId,
+          systemId: ctx.systemId,
+          kind: "CUSTOMER",
+          legalType: "COMPANY",
+          name,
+          taxId: null,
+          branchCode: "00000",
+          branchName: null,
+          address: null,
+          ...contactWriteFields({ phone: null }),
+          email: null,
+          creditTermDays: 0,
+          note: null,
+          partyId,
+          ...(code ? { code } : {}),
+        },
+      });
+      await emitContactCreated(tx, ctx, row);
+      return { id: row.id, created: true };
+    });
+
+  for (let i = 0; i < 6; i += 1) {
+    try {
+      return await attempt(true);
+    } catch (e) {
+      if (!isContactCodeConflict(e)) throw e;
+    }
+  }
+  return attempt(false);
+}
+
 // ═══════════════════════════════════════════════════════════════
 // WO 4.2 (MAP §F.13) — เอกสารบัญชีของ "บิลขายหน้าร้าน" (POS)
 //
