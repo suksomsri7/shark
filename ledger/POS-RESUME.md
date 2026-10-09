@@ -976,3 +976,10 @@
 - สั่งต่อ: ผู้ตรวจ a0efac87 ยืนยัน F1–F6/V1/ข้อ 10 + P1.15U F4/F8 ยังอยู่ (≤40 บรรทัด) · **build44 ทรี d** @cd6bc919 → chain44 → vis44 (`p113u-r2` register owner --states ทั้งหมดรวม lock/taxinvoice · sales owner · พอร์ต 3228) → แตะ `ctl/vis44-done` · ผล `/root/pos-runs/build44-d-*/`, `vis44-p113u-*/`, ภาพ `.qc-shots/pos/p113u-r2/`
 - ถัดไป: ผู้ตรวจ OK + ภาพ taxinvoice-set ไม่ตัดคำ + lock states ไม่พัง → `git -C /root/projects/shark-pos merge --no-ff origin/wip/pos-p1.13u` → **21/55** → tg · แล้ว gates DB บน session/pos (ทรี c) · P1.12 oracle (ทรี b) รอรายงาน
 - โควตา 11:10Z: session ~37% · weekly 92%
+
+## 9 ต.ค. 11:20Z — P1.12 oracle merge (3a4cf496) → builder S เปิด (ทรี b) · P1.13U F7 แก้แล้ว 994346a4 รอภาพ vis44 → merge
+- **P1.12 oracle** (Opus · `wip/pos-p1.12-oracle` 49093e47): `qc-pos-p1.12.mts` 64 ข้อ (ST1–5 B1–6 M1–11 T1–5 V1–8 P1–8 S1–4 W1–2 X1–7 R1–6 Z1–2) · forced 5/64 แดงตามออกแบบ residue 0 · typecheck 0 · merge session/pos 3a4cf496 · ruling 14 ข้อใน `pos-prompt-accountB-P1.12-S.md` (183b4e1b): ตัด VOUCHER_LIMIT (ORACLE-EDIT V3/ST5) · held cart strip memberChoices · W2 = MEMBER_NOT_FOUND · live points ผ่าน member facade export ใหม่ (อนุญาตแก้ member index เพิ่ม export เท่านั้น) · drift: CD7 มีแล้ว · listMembers ต้อง export
+- **builder S P1.12** spawn แล้ว (Opus · ทรี b · `wip/pos-p1.12` จาก 183b4e1b · scratch `p112/`) — push ทุก step (เผื่อส่งไม้ต่อ A กลางทาง)
+- **L4 P1.13U**: ผู้ตรวจรอบ 2 = MERGEABLE (F7 low) → builder แก้ F7 6d013e45 → head **994346a4** · build44 ทรี d @cd6bc919 build 0 · vis44 กำลังรัน (register owner 0 · sales owner …) · ภาพ `.qc-shots/pos/p113u-r2/`
+- ถัดไป: vis44 จบ → ดู `register-taxinvoice-set-owner-1440x900.png` (V1 ป้าย "ใบกำกับ ✓" ไม่ตัด) + lock-screen states ไม่พัง → merge `origin/wip/pos-p1.13u` 994346a4 → **21/55** → tg · แล้ว gates DB ชุดเต็มบน session/pos ในทรี c (หลังเลน 4 เงียบ)
+- โควตา 11:20Z: session 45% (ถึง 12:29Z) · **weekly 94%** (A 59%) · ส่งไม้ต่อ A ที่ 97% — ใกล้แล้ว: ไม่เปิดงานใหม่เพิ่มหลังจากนี้ นอกจากปิด P1.13U
