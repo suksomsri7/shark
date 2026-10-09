@@ -882,3 +882,9 @@
 
 ### 9 ต.ค. 06:30 UTC — P1.15U ส่งแล้ว → ผู้ตรวจ
 - L3: P1.15U **7af05531** (gated a238ef87 · 39/39 ×3 · ด่านซ้ำจาก scratchpad/p115u/ มี header ทรี b · server hunks: staffToken void/refund · recall approved cap · discard on reject · pos-approval-actions status 52 บรรทัด+cancel · oracle AP-U1/AP-U2/TK-U1) · deviations 5 ข้อ — ข้อ 1 (ไม่มีเครื่อง/ไม่มี PIN ⇒ ล็อกทั้งร้าน) **คำตัดสิน**: ถ้ายังไม่มีใครในสาขาตั้ง PIN ให้ใช้งานได้ตาม session user + แบนเนอร์ "ตั้ง PIN พนักงานเพื่อเปิดการล็อกหน้าจอ" · มี PIN เมื่อไรค่อยล็อก · ผู้ตรวจ Opus เปิดแล้ว (prompt `pos-prompt-accountB-P1.15U-R.md` 98f4ba08 · scratch ใน scratchpad/p115u-r/)
+
+## 9 ต.ค. 06:40 UTC — P1.13 oracle-edit เขียว 31/31 ×3 → ผู้ตรวจเปิดแล้ว · P1.15U ผลตรวจ = MERGEABLE-AFTER-FIXES → รอบแก้ 1
+- **L4 P1.13**: builder ส่งหลัง ORACLE-EDIT ST1/Q1/Q2/Q3 (3d42a3ef) head `wip/pos-p1.13` **211573c6** · forced ×2 + unforced 31/31 residue 0 · typecheck 0 · ผู้ตรวจ Opus เปิดแล้ว (prompt `pos-prompt-accountB-P1.13-R.md` 1fabd109 · scratch `scratchpad/p113-r/`) — session 81% < 90% จึงเปิดก่อนรีเซ็ต
+- **L3 P1.15U**: ผู้ตรวจ 7af05531 → F1 (ล็อกสกรีนตั้ง PIN ให้ card คนอื่นได้ = ยกระดับสิทธิ์) F2 (กฎร้านไม่มี PIN ยังไม่ทำ) F3 (managerPin ลง sessionStorage) F4 (F4 ใต้ล็อกขายได้ไม่มี token) F5 (PIN ผู้จัดการคุม discount ที่สูงกว่าที่เห็น) F6 (EXPIRED แค่หน้าจอ) F7 (ใครก็ยกเลิกคำขอได้) F8 (หน้า Bills ข้ามล็อก) F9 (visual ทิ้ง request ค้าง) F10 (สลับพนักงานแล้ว token เก่าตาย cart ค้าง) · rulings → `pos-prompt-accountB-P1.15U-fix.md` e5bdedaa · ส่งให้ builder เดิม (ทรี b) แล้ว · ต่อไป: re-review สั้น → build+ภาพ (lock-screen · lock-pin-locked · 21B · discount-over) → merge
+- **L1 P1.7U** รอบแก้ · **L2 P1.11U** รอบ 3 — ยังรัน
+- โควตา 06:31Z: session 81% (รีเซ็ต 07:29Z) · weekly 83% · A weekly 55%
