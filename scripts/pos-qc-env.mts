@@ -96,7 +96,7 @@ export function loadPosQcEnv(label: string): { host: string; envFile: string; is
   return { host, envFile, isQc4 };
 }
 
-// ═══════════════════ 2. ชื่อตารางจริงที่ POS ใช้วันนี้ (ตรวจกับ prisma/schema/*.prisma 1 ต.ค. 2569) ═══════════════════
+// ═══════════════════ 2. ชื่อตารางจริงที่ POS ใช้วันนี้ (ตรวจกับไฟล์ .prisma ใต้ prisma/schema 1 ต.ค. 2569 · P1.7: ไม่เขียนสแลชตามด้วยดาวในคอมเมนต์ (ตัวตัดคอมเมนต์ของข้อสอบอ่านเป็นคอมเมนต์ก้อน)) ═══════════════════
 // key = ชื่อ delegate ของ Prisma (camelCase) · value = { model ตรงตัว · ไฟล์ schema · บทบาทใน POS }
 // 🔴 ตารางของ P1.1a (PosProduct · PosCategory · PosVariant · RecipeLine · PosShift · PosDevice · PosHeldCart ·
 //    PosPaymentIntent · PosReceiptToken · PosStockCount · PosStaffPin · SalesChannel · ExternalOrder …) **ยังไม่มีจริง**
@@ -154,13 +154,14 @@ export const POS_MODELS = {
   posHeldCart: { model: "PosHeldCart", file: "pos.prisma", role: "บิลที่พักไว้ (P1.5 · HELD/RECALLED/DISCARDED · ต่อสาขา)" },
   posDocCounter: { model: "PosDocCounter", file: "pos.prisma", role: "เลขใบคืนเงิน CN${YYYYMM}-NNNN ต่อสาขา/ชนิด/เดือน (P1.8)" },
   posDevice: { model: "PosDevice", file: "pos.prisma", role: "ทะเบียนเครื่องขาย (P1.10 · ACTIVE/REVOKED · deviceCode = รหัสเครื่องของ P1.9 · printerConfig)" },
+  posPaymentIntent: { model: "PosPaymentIntent", file: "pos.prisma", role: "ใบขอรับเงิน PromptPay/Beam/บัตร (P1.7 · PENDING→PAID→CONSUMED · id pi_…)" },
 } as const;
 export type PosModelKey = keyof typeof POS_MODELS;
 
 /** ตารางที่แผน POS จะสร้าง (POS-MIGRATION-PLAN §1) — **ยังไม่มี** ณ P0.1 · ใบที่สร้างย้ายเข้า POS_MODELS */
 export const POS_FUTURE_MODELS = [
   "PosVariant", "SalesChannel", "PosProductChannelPrice", // P1.10 ย้าย PosDevice ไป POS_MODELS แล้ว · P1.1a ย้าย PosProduct/PosCategory/RecipeLine/PosProductOptionGroup ไป POS_MODELS แล้ว
-  "ExternalOrder", "ExternalOrderEvent", "PosShift", "PosPaymentIntent", "PosReceiptToken",
+  "ExternalOrder", "ExternalOrderEvent", "PosShift", "PosReceiptToken", // P1.7 ย้าย PosPaymentIntent ไป POS_MODELS แล้ว
   "PosStockCount", "PosStockCountLine", "PosStaffPin", // P1.8 ย้าย PosDocCounter ไป POS_MODELS แล้ว
 ] as const;
 
