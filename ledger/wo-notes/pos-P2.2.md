@@ -70,6 +70,7 @@ RESET lock_timeout;
 - **Register**: tiles carry `priceSatang` (STORE effective) + `listPriceSatang`, `priceSource`, `priceRule{id,name,endsAt}`; show the accent chip + struck list when `priceSource === "RULE"`; refetch the catalog at `priceValidUntil`. Quote lines carry `priceSource`/`listPriceSatang`/`priceRule{id,name}`: badge "ราคาตามช่องทาง" (CHANNEL) / Happy hour (RULE). `localQuote` must return null when any line has a `priceRule` or the cart channel ≠ STORE (server quote is truth). New refusal `CHANNEL_NOT_SOLD` (+ lineIndex) → `register.errors.channelNotSold`.
 - **Bills drawer**: `billDetail().bill.lines[]` + `priceSource`, `priceRuleName`, `listPriceSatang` → note via `price.billNote.channel` ("ราคา {channel}") / `price.billNote.rule` ("{kind} · {name} (ปกติ {list})"); receipts unchanged (CD9).
 - **10 settings**: flip `MARKETING.happyHourPricing` with its own ORACLE-EDIT on `qc-pos-p1.18.mts:319` (Q8).
+- **Fix round 1 additions (review F1/F2/F3/F5):** a STORE-notSold tile (`priceSatang null` + `listPriceSatang` set) shows "ไม่ขายหน้าร้าน" and **never opens the open-price dialog** (server refuses an open-price line on a notSold row with `CHANNEL_NOT_SOLD` anyway) · bulk dialog copy: rows already "ไม่ขาย" for that (channel, branch) are kept as not sold and counted in `skipped` · rule editor sends `startsAt`/`endsAt` as ISO with an offset (`…T00:00:00+07:00`; a bare date or local string ⇒ VALIDATION `{field}`) · time window copy: "ช่วงเวลาสิ้นสุดได้ถึง 23:59" (`timeTo` 24:00 not accepted — owner question).
 - Message keys ready under `pos.price.*` (title, sectionTitle, edit, notSold, useBase, branch, markupPct, platformPrice, filterDiffers, source.*, badge.*, billNote.*, bulk.*, rule.*).
 
 ## Follow-ups
@@ -78,6 +79,7 @@ RESET lock_timeout;
 - F3 Rules referencing archived/deleted products stay valid (ids are loose); the editor should show "สินค้าถูกเก็บถาวร".
 - F4 P2.4/P2.7/P2.8 callers should pass `priceSource/priceRuleId/listPriceSatang` from `resolvePrices` into createSale (today only the register does).
 - F5 P2.11: branch rows (null, unit) are already branch prices; copy/compare UI and reports remain there. P2.12 reads `PosSaleLine.priceSource`.
+- F7 (review F4 follow-up, P2.12) `channel.ts` writes its audit with `writeAudit` after the channel write (outside the transaction) — same pattern as the old price-rule code; move into one `$transaction` in P2.12.
 - F6 `marketing.activePriceRules` facade + `campaignId` (P3, CD1).
 
 ## Gate exit codes
@@ -93,3 +95,24 @@ All at head 3347c88a (steps 1–6 + merge of origin/session/pos), logs `runs/fin
 - Re-run 3 of `qc-pos-p1.3` **127/128** (`runs/final-p13-r3.log`): only **P1.3-S9.1** red — posqc-coffee `outboxEvent 487→488`, `accountJournalEntry 728→729` during the run · S9.2 fingerprint now green.
 - Re-run 3 of `qc-pos-p1.2` **54/55** (`runs/final-p12-r3.log`): only **P1.2-Z1** red — posqc-coffee `auditLog 388→389` during the run · Z2 fingerprint now green.
 - Both drifts coincide with tree `shark-pos-d` running `visual-pos.mts p1close --states --tenant coffee` (pages shifts → stock, server :3228) against posqc-coffee throughout runs r1–r3 (`ps` at run time). Every functional check of both suites is green; residue checks left to the controller's merge-point gates on a quiet QC4.
+
+## Fix round 1 (review `pos-P2.2-review-S.md` F1–F5 · controller rulings 9 Oct 23:2xZ)
+Builder S · account B · tree `/root/projects/shark-pos-c` · from dad9601d · logs `/tmp/claude-0/-root/ed31d917-ff51-51e8-bfad-e5b8bfa6fa15/scratchpad/p22-fix/runs/` (each with a `tree=… head=…` header).
+
+| finding | change | commit |
+|---|---|---|
+| ORACLE-EDIT Q8 | `scripts/qc-pos-p2.2.mts:1497–1499` one assert inside Q8: LINEMAN cart `[matcha openPrice 4,000]` ⇒ `CHANNEL_NOT_SOLD` @0 (+ D-text) · count 42 | b78896fb `test(pos P2.2): ORACLE-EDIT Q8 — open price refused on a notSold row (reviewer F1)` |
+| ORACLE-EDIT C6 | `scripts/qc-pos-p2.2.mts:1359–1364` one assert inside C6: owner bulk LINEMAN +27% `productIds:[matcha]` (its (LINEMAN, all) row is notSold) ⇒ ok · written 0 · skipped 1 · row still `LINEMAN|*|X` · audit +0 (+ D-text) · count 42 | a6c1f0b0 `test(pos P2.2): ORACLE-EDIT C6 — bulk markup keeps notSold rows (reviewer F2)` |
+| F2 (Medium) | `catalog.ts:2125–2130` `bulkChannelMarkup`: after the rights check (deviation 4 kept), an existing (code, unit) row with `notSold:true` ⇒ `skipped++; continue` (no write, no audit); equal-price skip unchanged | 36862268 |
+| F3 (Low) | `price-shared.ts:49–50` `PRICE_RULE_DATE_RE` (ISO date+time, optional seconds/fraction, `Z` or `±HH:MM`) · `:435–436` `parsePriceRuleInput` dates must match it and `Date.parse` finite, else VALIDATION `{startsAt|endsAt}`; `null` still allowed. Oracle P1/P5 send `toISOString()` (Z) ⇒ unaffected. Probe (tsx): `+07:00`/`Z`/`T00:00Z` ok · `2026-10-10`, `2026-10-10T00:00:00`, `10/10/2026`, `+0700` ⇒ bad | 7269354f |
+| F4 (Low) | `price-rule.ts:98–106` `auditRuleTx(tx, …)` (same row shape as `writeAudit`: USER actor, before/after) · update (`:173–181`), create (`:183–191`, inside the existing advisory-lock tx) and archive (`:208–213`) write the rule and its audit in one `$transaction`; `writeAudit` import dropped; results/refusals identical. `channel.ts` same pattern ⇒ follow-up F7 (P2.12) | b2c8b0c6 |
+| F1 (Medium) | `register.ts:1411–1415` open-price branch also runs `priceOf(book,row,priceChannelCode)`; `CHANNEL_NOT_SOLD` ⇒ `regRefuse` at this line index (same code/message as the normal path); any other result (price / PRICE_NOT_SET) ignored — line stays `OPEN` at the entered price (Q7 unchanged). Deviation 7 withdrawn | 5244b8eb |
+| F5 (Info) | no code · U contract line "ช่วงเวลาสิ้นสุดได้ถึง 23:59" · owner question in `ledger/POS-OWNER-PENDING.md` (24:00 windows) | notes commit |
+
+Red before the fixes (kept): `runs/red-p22-forced.log` (a6c1f0b0, both ORACLE-EDITs, no fixes) **39/42** — C6 (matcha bulk → written 1, `LINEMAN|*|8300`, audit +1) and its cascade C5/Q8 · `runs/red2-p22-forced-noF1.log` (b2c8b0c6, F2–F4 fixed, F1 not) **41/42** — only Q8: "ราคาเปิด LINEMAN มัทฉะ(ไม่ขาย) → OK (คาด CHANNEL_NOT_SOLD @0)". Residue 0 in both.
+
+Gate exit codes at code head **5244b8eb** (`runs/summary.txt`; final head = + this ledger-only commit):
+- `qc-pos-p2.2` forced ×2 **0 · 42/42 · 42/42** · unforced **0 · 42/42** · residue 0 · leaks 0 · guardHits 0 · drift none.
+- `qc-pos-p2.1` **0 · 55/55** · `qc-pos-p1.12` **0 · 72/72** · `qc-pos-p1.2` **0 · 55/55** · `qc-pos-p1.5` **0 · 21/21** · `qc-pos-account` **0 · 16/16** · `qc-account-cpa` **0 · 107/107**.
+- `pnpm fitness` no env **0 · 41/41** · QC4 env **0 · 41/41** · `scripts/fitness-pos.mts` **0 · 8/8** · typecheck **0** (`runs/typecheck.log`).
+- `qc-pos-p1.3` r1 **127/128** (only P1.3-S9.1: posqc-coffee `auditLog 390→393`) · r2 **126/128** (only S9.1/S9.2: posqc-coffee posSale 256→267, outbox +18, auditLog +7 …) — residue/fingerprint only, all functional checks green; tree `shark-pos-d` was running `visual-pos.mts p21u --tenant coffee` (:3228) against posqc-coffee during both runs (`ps`). ⇒ controller merge-point gate on a quiet QC4 (as ruled).
