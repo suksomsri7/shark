@@ -83,6 +83,10 @@ const CHECKS: readonly Def[] = [
   // ── ORACLE-EDIT (fix รอบ 1 · ผู้คุมงานอนุมัติ) ──
   D("AP-F1", "X2", "[R6 F1 F5] ส่วนลดที่อนุมัติผูกกับตะกร้า: ขอ 15% บิล ฿200 → APPROVAL_REQUIRED · ส่งซ้ำคีย์เดิม → PENDING_APPROVAL requestId/heldCartId เดิม ไม่มีบิลพักใหม่ · อนุมัติ → ตะกร้าใหญ่กว่า (฿300 · 15% เท่าเดิม) + heldCartId → APPROVAL_MISMATCH ไม่มีบิล · คนอื่นที่ไม่ใช่ผู้พักใช้ heldCartId → APPROVAL_MISMATCH · ตะกร้าที่อนุมัติเอง → ผ่าน ฿170 · refusalMessageKey(APPROVAL_MISMATCH) มีข้อความ th/en"),
   D("PN-F2", "X3", "[R4 F2] managerPin ไม่มี managerUserId → VALIDATION (ขาย + ยกเลิกบิล) ไม่มีบิล · managerPin ผิด 5 ครั้ง (ระบุผู้จัดการ) → PIN_INVALID ×5 · failedCount 5 + lockedUntil · PIN ถูกครั้งถัดไป → PIN_LOCKED ไม่มีบิล"),
+  // ── ORACLE-EDIT (P1.15U · ผู้คุมงานอนุมัติ — มติ 5) ──
+  D("AP-U1", "X5", "[P1.15U มติ 5] เรียกคืนบิลพักที่อนุมัติส่วนลดแล้ว → {approvedRequestId = requestId · heldCartId} + quote ok ด้วยเพดานที่อนุมัติ (15% ฿240 → ฿204) · submit {heldCartId} ผ่าน ฿204 · บิลพักธรรมดา (ไม่มีอนุมัติ) เรียกคืน → ไม่มี approvedRequestId · [fix รอบ 1] อนุมัติที่ถูกใช้แล้ว: บิลพักเดิม (ตั้งกลับ HELD) เรียกคืน → ไม่มี approvedRequestId + quote ถูกปฏิเสธ DISCOUNT_EXCEEDS_LIMIT"),
+  D("AP-U2", "X1", "[P1.15U มติ 5] คำขอส่วนลดเกินสิทธิ์ถูกปฏิเสธ → drain → บิลพัก DISCARDED · audit pos.heldCart.discard 1 แถว (actorId ผู้ตัดสิน · after.via approval_rejected · after.requestId) · event rejected DONE · เล่น rejected ซ้ำ ×2 ไม่มี audit ที่สอง · เรียกคืน → NOT_FOUND"),
+  D("TK-U1", "X3", "[P1.15U มติ 2] ยกเลิกบิล/คืนเงินพก staffToken: โทเคนมั่ว → STAFF_TOKEN_INVALID (บิลยัง PAID · ไม่มี audit void · ไม่มีใบคืน) · session เจ้าของ + โทเคน STAFF (C1) ที่ถูกต้อง ยกเลิกบิล ฿60 → VOIDED · audit pos.sale.void actorId = คนในโทเคน (ไม่ใช่ session) · [fix รอบ 1] คืนเงินด้วยโทเคน C1 ที่ถูกต้อง (มีกติกา POS_REFUND) → APPROVAL_REQUIRED · คำขอ requestedById = C1 (ไม่ใช่ session)"),
   // ── NC ตัวควบคุมลบ ──
   D("NC", "-", "ตัวควบคุมลบ: ตัวตรวจของข้อสอบจับคำตอบที่ผิดโดยตั้งใจได้ (hash ดิบ/sha256/salt สั้น · PIN ผิด · หมดอายุ 24 ชม./1 ชม. · ล็อก 5 นาที · audit มี PIN · คำปฏิเสธที่ throw/ไม่มีข้อความ/อังกฤษ · คีย์ errors.unknown)"),
   // ── Z คืนสภาพ ──
@@ -1396,6 +1400,94 @@ async function runDb() {
     if (await saleByKey(lk.key)) p.push("มีบิลขณะล็อก");
     if ((await overrideAudits()).length !== n0) p.push("มี audit override");
     chk("PN-F2", NS === "" && NT === "" && !!sF2 && p.length === 0, "VALIDATION ไม่ระบุผู้จัดการ · ผิด 5 = ล็อก · PIN_LOCKED", FX(NS + NT + (p.join(" · ") || "ครบ")));
+  }
+
+  // ════════ ORACLE-EDIT (P1.15U · มติ 5) AP-U1 เรียกคืนบิลที่อนุมัติส่วนลดแล้ว = quote ด้วยเพดานที่อนุมัติ ════════
+  {
+    const p: string[] = [];
+    const CARTU = { amount: 24000, pct: 1500, name: "AP-U1 ส่วนลด ฿240" };
+    const a = await sell(ctxA(DEV1), A("C1"), CARTU);
+    keep("AP-U1 ขออนุมัติ", a.r);
+    const rq = refused(a.r, "APPROVAL_REQUIRED") && typeof a.r.requestId === "string" ? a.r.requestId : "";
+    const held = rq && typeof a.r.heldCartId === "string" ? a.r.heldCartId : "";
+    if (!rq || !held) p.push(`ขออนุมัติ → ${codeOf(a.r)}`);
+    const d = await decideAs("MGR", rq, "APPROVED");
+    if (d?.ok !== true) p.push(`decide → ${short(d, 60)}`);
+    await drain();
+    const rc = held ? await call(heldMod, "recallHeldCart", ctxA(DEV1), A("C1"), { id: held }) : null;
+    if (rc?.ok !== true || rc.approvedRequestId !== rq || rc.heldCartId !== held) p.push(`recall → ${codeOf(rc)} approvedRequestId ${rc?.approvedRequestId === rq ? "ตรง" : short(rc?.approvedRequestId, 30)}`);
+    if (rc?.quote?.ok !== true || rc.quote.grandTotalSatang !== 20400) p.push(`quote ของบิลที่อนุมัติ → ${codeOf(rc?.quote)} ${short(rc?.quote?.grandTotalSatang, 12)}`);
+    const ok = await sell(ctxA(DEV1), A("C1"), CARTU, { heldCartId: held });
+    if (ok.r?.ok !== true || ok.r.grandTotalSatang !== 20400) p.push(`submit {heldCartId} → ${codeOf(ok.r)} ${short(ok.r?.message ?? "", 60)}`);
+    // ตัวควบคุมลบ: บิลพักธรรมดา (ไม่มีคำขอ) เรียกคืน = ไม่มี approvedRequestId
+    const h = await call(heldMod, "holdRegisterCart", ctxA(DEV1), A("C1"), { cart: cartOf({ amount: 5000, name: "AP-U1 ไม่มีส่วนลด" }), label: null });
+    const rc2 = h?.ok === true ? await call(heldMod, "recallHeldCart", ctxA(DEV1), A("C1"), { id: h.heldCart.id }) : null;
+    if (rc2?.ok !== true || rc2.approvedRequestId !== undefined) p.push(`บิลพักธรรมดา → ${codeOf(rc2)} approvedRequestId ${short(rc2?.approvedRequestId, 30)}`);
+    // ORACLE-EDIT fix รอบ 1: อนุมัติที่ถูกใช้ไปแล้ว (CONSUMED) ต้องไม่ให้เพดานอีก — ตั้งบิลพักเดิมกลับเป็น HELD แล้วเรียกคืน
+    if (held && ok.r?.ok === true) {
+      await P.posHeldCart.update({ where: { id: held }, data: { status: "HELD", recalledAt: null, recalledByUserId: null } }).catch(() => null);
+      const rc3 = await call(heldMod, "recallHeldCart", ctxA(DEV1), A("C1"), { id: held });
+      if (rc3?.ok !== true || rc3.approvedRequestId !== undefined || !refused(rc3.quote, "DISCOUNT_EXCEEDS_LIMIT")) p.push(`อนุมัติที่ใช้แล้ว → ${codeOf(rc3)} approvedRequestId ${short(rc3?.approvedRequestId, 30)} quote ${codeOf(rc3?.quote)}`);
+    }
+    chk("AP-U1", NC_ === "" && p.length === 0, "เรียกคืน = approvedRequestId + quote ฿204 · submit ผ่าน · บิลธรรมดาไม่มี approvedRequestId", FX(NC_ + (p.join(" · ") || "ครบ")));
+  }
+  // ════════ ORACLE-EDIT (P1.15U · มติ 5) AP-U2 ปฏิเสธส่วนลดเกินสิทธิ์ = ทิ้งบิลพัก (audit · เล่นซ้ำไม่ซ้ำ) ════════
+  {
+    const p: string[] = [];
+    const CARTR = { amount: 22000, pct: 1500, name: "AP-U2 ส่วนลด ฿220" };
+    const a = await sell(ctxA(DEV1), A("C1"), CARTR);
+    keep("AP-U2 ขออนุมัติ", a.r);
+    const rq = refused(a.r, "APPROVAL_REQUIRED") && typeof a.r.requestId === "string" ? a.r.requestId : "";
+    const held = rq && typeof a.r.heldCartId === "string" ? a.r.heldCartId : "";
+    if (!rq || !held) p.push(`ขออนุมัติ → ${codeOf(a.r)}`);
+    const d = await decideAs("MGR", rq, "REJECTED");
+    if (d?.ok !== true) p.push(`decide REJECTED → ${short(d, 60)}`);
+    await drain();
+    const row = async () => (held ? P.posHeldCart.findUnique({ where: { id: held } }).catch(() => null) : null);
+    if ((await row())?.status !== "DISCARDED") p.push(`บิลพัก ${(await row())?.status}`);
+    const au = held ? await audits("pos.heldCart.discard", held) : [];
+    if (au.length !== 1 || au[0].actorId !== uid("MGR") || au[0].after?.via !== "approval_rejected" || au[0].after?.requestId !== rq) p.push(`audit discard ${au.length} ${short(au[0] && { actor: au[0].actorId === uid("MGR"), after: au[0].after }, 120)}`);
+    const rj = T && rq ? await P.outboxEvent.findFirst({ where: { tenantId: T, type: "approval.request.rejected", idempotencyKey: `approval.request.rejected#${rq}` } }).catch(() => null) : null;
+    if (rj?.status !== "DONE") p.push(`event rejected ${rj?.status ?? "ไม่มี"} ${short(rj?.lastError ?? "", 60)}`);
+    const errs: string[] = [];
+    await replay(rj, errs);
+    if (errs.length) p.push(errs.slice(0, 2).join(" · "));
+    if ((held ? await audits("pos.heldCart.discard", held) : []).length !== 1 || (await row())?.status !== "DISCARDED") p.push("เล่น rejected ซ้ำแล้วมี audit ที่สอง/สถานะเปลี่ยน");
+    const rc = held ? keep("AP-U2 เรียกคืนบิลที่ถูกทิ้ง", await call(heldMod, "recallHeldCart", ctxA(DEV1), A("C1"), { id: held })) : null;
+    if (!refused(rc, "NOT_FOUND")) p.push(`เรียกคืน → ${codeOf(rc)}`);
+    chk("AP-U2", NC_ === "" && p.length === 0, "ปฏิเสธ = บิลพัก DISCARDED + audit 1 · เล่นซ้ำไม่ซ้ำ · เรียกคืน NOT_FOUND", FX(NC_ + (p.join(" · ") || "ครบ")));
+  }
+
+  // ════════ ORACLE-EDIT (P1.15U · มติ 2) TK-U1 ยกเลิกบิล/คืนเงินด้วยโทเคนผู้ขาย ════════
+  {
+    const p: string[] = [];
+    const sU = await baseSale("sTKU1", { amount: 6000, name: "TK-U1 บิล ฿60" }); // ต่ำกว่าเกณฑ์ ฿100 ⇒ ยกเลิกได้ทันที
+    const bad = await voidBy("OWNER", sU, { staffToken: "bm90LWEtdG9rZW4.bad" }, "TK-U1 void โทเคนมั่ว");
+    if (!refused(bad, "STAFF_TOKEN_INVALID")) p.push(`void โทเคนมั่ว → ${codeOf(bad)}`);
+    if ((await saleRow(sU))?.status !== "PAID" || (await audits("pos.sale.void", sU)).length) p.push("โทเคนมั่วแล้วบิลถูกยกเลิก");
+    let tok: Any = null;
+    try {
+      tok = await call(staffMod, "issueStaffToken", ctxA(DEV1), { unitId: U.A, deviceId: DEV1, userId: uid("C1") });
+    } catch {
+      tok = null;
+    }
+    if (typeof tok?.staffToken !== "string") p.push(`issueStaffToken C1 → ${short(tok, 60)}`);
+    const ok = await voidBy("OWNER", sU, { staffToken: tok?.staffToken }, "TK-U1 void โทเคน C1");
+    if (ok?.ok !== true) p.push(`void โทเคน C1 → ${codeOf(ok)} ${short(ok?.message ?? "", 60)}`);
+    if ((await saleRow(sU))?.status !== "VOIDED") p.push(`บิล ${(await saleRow(sU))?.status}`);
+    const au = await audits("pos.sale.void", sU);
+    if (au.length !== 1 || au[0].actorId !== uid("C1")) p.push(`audit void ${au.length} actor ${au[0]?.actorId === uid("OWNER") ? "OWNER (session)" : short(au[0]?.actorId, 30)}`);
+    const sR = await baseSale("sTKU1r", { amount: 4000, name: "TK-U1 คืน ฿40" });
+    const ln = sR ? ((await P.posSaleLine.findMany({ where: { saleId: sR } }).catch(() => [])) as Any[])[0] : null;
+    const key = newKey("rfu");
+    const rf = keep("TK-U1 คืนเงินโทเคนมั่ว", await call(refundMod, "refundSale", ctxA(DEV1), A("OWNER"), { saleId: sR, lines: [{ lineId: ln?.id ?? "none", qty: 1 }], payMethods: [{ type: "CASH", amountSatang: 4000 }], reasonCode: "DAMAGED", idempotencyKey: key, staffToken: "bm90LWEtdG9rZW4.bad" }));
+    if (!refused(rf, "STAFF_TOKEN_INVALID")) p.push(`คืนเงินโทเคนมั่ว → ${codeOf(rf)}`);
+    if ((await saleByKey(key)) || (await requestsFor("POS_REFUND", sR || "none")).length) p.push("โทเคนมั่วแล้วมีใบคืน/คำขอ");
+    // ORACLE-EDIT fix รอบ 1: คืนเงินด้วยโทเคนที่ถูกต้อง — ผู้ขอของคำขอ = คนในโทเคน (มีกติกา POS_REFUND ทุกยอด)
+    const rfOk = keep("TK-U1 คืนเงินโทเคน C1", await call(refundMod, "refundSale", ctxA(DEV1), A("OWNER"), { saleId: sR, lines: [{ lineId: ln?.id ?? "none", qty: 1 }], payMethods: [{ type: "CASH", amountSatang: 4000 }], reasonCode: "DAMAGED", idempotencyKey: newKey("rfv"), staffToken: tok?.staffToken }));
+    const rqRf = refused(rfOk, "APPROVAL_REQUIRED") ? await reqRow(rfOk.requestId) : null;
+    if (!rqRf || rqRf.requestedById !== uid("C1")) p.push(`คืนเงินโทเคน C1 → ${codeOf(rfOk)} requestedBy ${rqRf?.requestedById === uid("OWNER") ? "OWNER (session)" : short(rqRf?.requestedById, 30)}`);
+    chk("TK-U1", NS === "" && !!sU && !!sR && p.length === 0, "โทเคนมั่ว = STAFF_TOKEN_INVALID ไม่มีผล · โทเคน C1 = ยกเลิกได้ · audit actor = C1", FX(NS + (p.join(" · ") || "ครบ")));
   }
 
   // ════════ PN8 ปฏิเสธเป็นข้อมูล + คีย์ข้อความ ════════

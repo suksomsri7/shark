@@ -542,6 +542,7 @@ const REG_MESSAGE: Record<RegisterRefusalCode, string> = {
   APPROVAL_REQUIRED: POS_APPROVAL_MESSAGE.APPROVAL_REQUIRED,
   PENDING_APPROVAL: POS_APPROVAL_MESSAGE.PENDING_APPROVAL,
   APPROVAL_MISMATCH: POS_APPROVAL_MESSAGE.APPROVAL_MISMATCH,
+  ALREADY_SET: "ตั้ง PIN ไว้แล้ว — เปลี่ยน PIN ได้ที่ ตั้งค่า → พนักงาน", // POS P1.15U F1 (staff-pin.ts)
   // POS P1.13 ▸ ผู้ซื้อของใบกำกับเต็มรูป ◂
   TAX_ID_INVALID: TAX_INVOICE_MESSAGES.TAX_ID_INVALID,
   NOT_ELIGIBLE: "ร้านนี้ยังออกใบกำกับภาษีไม่ได้ · ตรวจการเชื่อมบัญชี/เลขผู้เสียภาษี",
@@ -1993,6 +1994,9 @@ async function regDiscountOver(
       subtotalSatang: free.quote.subtotalSatang,
       grandTotalSatang: free.quote.grandTotalSatang,
       deviceId: deviceId ?? null,
+      // POS P1.15U ▸ เพดานของผู้ขอ ณ ตอนขอ (ชิป "เกินเพดาน x% ของ<บทบาท>" ในหน้าอนุมัติ 21A) ◂
+      capBp: regMaxDiscountBp(s.actor, caps),
+      capRole: s.actor.role,
       title: `ส่วนลด ${(discountBp / 100).toLocaleString("th-TH", { maximumFractionDigits: 2 })}% · บิล ฿${(free.quote.subtotalSatang / 100).toLocaleString("th-TH", { maximumFractionDigits: 2 })}`,
     },
   });

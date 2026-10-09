@@ -10,8 +10,10 @@
 // 🔴 outcome (ตัวรับคิวเขียนครั้งเดียว): EXECUTED · BLOCKED_SELF_APPROVAL · FAILED:<code> · CONSUMED (ส่วนลดที่ใช้แล้ว)
 import { Prisma } from "@prisma/client";
 import { writeAudit } from "@/lib/core/audit";
+import { evaluate } from "@/lib/core/rbac";
 import { cancelRequest, lastDecisionOf, requestStatuses, resolvePolicy, submitForApproval } from "@/lib/modules/approval";
 import { prisma } from "./db";
+import { POS_APPROVAL_WAIT_MS, type PosApprovalView, type PosApprovalWaitStatus } from "./register-shared";
 
 export const POS_APPROVAL_KINDS = ["POS_VOID", "POS_REFUND", "POS_DISCOUNT_OVER"] as const;
 export type PosApprovalKind = (typeof POS_APPROVAL_KINDS)[number];
@@ -196,4 +198,142 @@ export async function claimApprovedDiscount(tenantId: string, requestId: string,
   if (await markPosApprovalOutcome(tenantId, requestId, "CONSUMED", { consumedBySaleKey: saleKey })) return true;
   const snap = await posApprovalPayload(tenantId, requestId);
   return !!snap && payloadOutcome(snap.payload) === "CONSUMED" && snap.payload.consumedBySaleKey === saleKey;
+}
+
+// ═══════════ POS P1.15U ▸ อ่านสถานะคำขอสำหรับจอรออนุมัติ 21B (อ่านล้วน · ผูกร้าน+ระบบ+สาขาจาก snapshot) ◂ ═══════════
+/**
+ * requestId (ของจอนี้) หรือ saleId (คำขอยกเลิก/คืนเงินที่ยังเปิดของบิลนี้) → มุมมองของจอ · ไม่พบ/ร้าน-สาขาอื่น = null ·
+ * อ่านแถวสายอนุมัติตรง (ApprovalRequest/Step/Decision · อ่านอย่างเดียว แบบ crm/portal) เพราะ facade ไม่มีตัวอ่าน note/ขั้น
+ */
+export async function posApprovalView(scope: { tenantId: string; systemId: string; unitId: string }, ref: { requestId?: string | null; saleId?: string | null }): Promise<PosApprovalView | null> {
+  let requestId = ref.requestId ?? null;
+  for (const kind of ["POS_VOID", "POS_REFUND"] as const) if (!requestId && ref.saleId) requestId = (await openPosRequest(scope.tenantId, kind, ref.saleId))?.requestId ?? null;
+  const snap = requestId ? await posApprovalPayload(scope.tenantId, requestId) : null;
+  if (!requestId || !snap || snap.payload.unitId !== scope.unitId || snap.payload.systemId !== scope.systemId) return null;
+  const req = await prisma.approvalRequest.findFirst({ where: { id: requestId, tenantId: scope.tenantId }, select: { status: true, createdAt: true, policyId: true, currentStepOrder: true, amountSatang: true } });
+  if (!req) return null;
+  const [step, dec] = await Promise.all([
+    prisma.approvalStep.findFirst({ where: { policyId: req.policyId, order: req.currentStepOrder }, select: { approverRole: true, approverUserId: true } }),
+    prisma.approvalDecision.findFirst({ where: { requestId, tenantId: scope.tenantId }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], select: { decidedById: true, note: true } }),
+  ]);
+  const ids = [step?.approverUserId, dec?.decidedById].filter((x): x is string => !!x);
+  const names = new Map((ids.length ? await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } }) : []).map((u) => [u.id, u.name]));
+  const out = payloadOutcome(snap.payload);
+  const st = String(req.status);
+  const status: PosApprovalWaitStatus =
+    st === "PENDING"
+      ? Date.now() - req.createdAt.getTime() >= POS_APPROVAL_WAIT_MS ? "EXPIRED" : "PENDING"
+      : st === "APPROVED"
+        ? out && (out.startsWith("FAILED") || out === "BLOCKED_SELF_APPROVAL") ? "FAILED" : snap.kind === "POS_DISCOUNT_OVER" || out ? "APPROVED" : "PENDING"
+        : st === "REJECTED" || st === "CANCELLED" ? st : "FAILED";
+  const s = (v: unknown) => (typeof v === "string" && v ? v : null);
+  return {
+    requestId,
+    kind: snap.kind,
+    status,
+    createdAt: req.createdAt.toISOString(),
+    title: s(snap.payload.title),
+    reason: s(snap.payload.reason),
+    amountSatang: req.amountSatang ?? null,
+    approverName: step?.approverUserId ? (names.get(step.approverUserId) ?? null) : null,
+    approverRole: step ? String(step.approverRole) : null,
+    deciderName: dec ? (names.get(dec.decidedById) ?? null) : null,
+    note: dec?.note ?? null,
+    outcome: out,
+    heldCartId: s(snap.payload.heldCartId),
+    saleId: s(snap.payload.saleId),
+  };
+}
+
+/**
+ * ยกเลิกคำขอที่ยัง PENDING (facade cancelRequest) — fix รอบ 1 F7: เฉพาะผู้ขอเอง (actor = คนในโทเคน/ผู้ใช้ session) หรือผู้มี pos.staff.manage ·
+ * คำขอของสาขาอื่น/ไม่ใช่ POS/ปิดแล้ว = NOT_FOUND · audit pos.approval.cancel {requestId, saleId, byUserId}
+ */
+export async function cancelPosApprovalRequest(
+  scope: { tenantId: string; systemId: string; unitId: string },
+  requestId: string,
+  actor: { userId: string; role: "OWNER" | "MANAGER" | "STAFF"; unitAccess: string[]; permissions: Record<string, unknown> },
+): Promise<"OK" | "NOT_FOUND" | "PERMISSION_DENIED"> {
+  const snap = await posApprovalPayload(scope.tenantId, requestId);
+  if (!snap || snap.payload.unitId !== scope.unitId || snap.payload.systemId !== scope.systemId) return "NOT_FOUND";
+  if (snap.payload.requestedById !== actor.userId && !evaluate(actor, { module: "pos", action: "pos.staff.manage", unitId: scope.unitId })) return "PERMISSION_DENIED";
+  if (!(await cancelRequest({ tenantId: scope.tenantId }, requestId))) return "NOT_FOUND";
+  const str = (v: unknown) => (typeof v === "string" && v ? v : null);
+  await writeAudit({
+    tenantId: scope.tenantId,
+    actorId: actor.userId,
+    action: "pos.approval.cancel",
+    targetType: "ApprovalRequest",
+    targetId: requestId,
+    after: { requestId, kind: snap.kind, saleId: str(snap.payload.saleId), heldCartId: str(snap.payload.heldCartId), byUserId: actor.userId },
+  });
+  return "OK";
+}
+
+
+// ═══════════ POS P1.15U ▸ การ์ดคำขอ POS บนหน้าอนุมัติ 21A (อ่านล้วน · ผูกร้าน) ◂ ═══════════
+/** ข้อมูลประกอบการ์ดของคำขอ POS (ประกอบตอนแสดง — snapshot เก็บ title · ชื่อคน/เครื่องอ่านสด) */
+export type PosApprovalCard = {
+  kind: PosApprovalKind;
+  title: string | null;
+  requesterName: string | null;
+  requesterRole: string | null;
+  deviceName: string | null;
+  reason: string | null;
+  /** เพดานของผู้ขอ (bp) ถ้า snapshot มี — ไม่มี = ไม่แสดงชิป "เกินเพดาน" */
+  capBp: number | null;
+  receiptNo: string | null;
+  refundSatang: number | null;
+  /** ส่วนลด: bp + สตางค์ · คืนเงิน: บรรทัด "ชื่อ ×จำนวน" */
+  discountBp: number | null;
+  discountSatang: number | null;
+  refundLines: string[];
+};
+export async function posApprovalCards(tenantId: string, requestIds: string[]): Promise<Map<string, PosApprovalCard>> {
+  const out = new Map<string, PosApprovalCard>();
+  const ids = [...new Set(requestIds.filter(Boolean))].slice(0, 200);
+  if (!ids.length) return out;
+  const rows = (await prisma.posApprovalPayload.findMany({ where: { tenantId, requestId: { in: ids } } })).filter((r) => isPosApprovalKind(r.kind) && isRecord(r.payload));
+  if (!rows.length) return out;
+  const s = (v: unknown) => (typeof v === "string" && v ? v : null);
+  const n = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
+  const pl = (r: (typeof rows)[number]) => r.payload as Record<string, unknown>;
+  const userIds = [...new Set(rows.map((r) => s(pl(r).requestedById)).filter((x): x is string => !!x))];
+  const devices = rows.map((r) => ({ unitId: s(pl(r).unitId), code: s(pl(r).deviceId) })).filter((d): d is { unitId: string; code: string } => !!d.unitId && !!d.code);
+  const saleIds = [...new Set(rows.map((r) => s(pl(r).saleId)).filter((x): x is string => !!x))];
+  const lineIds = rows.flatMap((r) => (Array.isArray(pl(r).lines) ? (pl(r).lines as unknown[]).flatMap((l) => (isRecord(l) && typeof l.lineId === "string" ? [l.lineId] : [])) : []));
+  const [users, members, devs, sales, lines] = await Promise.all([
+    userIds.length ? prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, name: true } }) : [],
+    userIds.length ? prisma.membership.findMany({ where: { tenantId, userId: { in: userIds } }, select: { userId: true, role: true } }) : [],
+    devices.length ? prisma.posDevice.findMany({ where: { tenantId, OR: devices.map((d) => ({ unitId: d.unitId, deviceCode: d.code })) }, select: { unitId: true, deviceCode: true, name: true } }) : [],
+    saleIds.length ? prisma.posSale.findMany({ where: { tenantId, id: { in: saleIds } }, select: { id: true, receiptNo: true } }) : [],
+    lineIds.length ? prisma.posSaleLine.findMany({ where: { tenantId, id: { in: [...new Set(lineIds)] } }, select: { id: true, name: true } }) : [],
+  ]);
+  const nameOf = new Map(users.map((u) => [u.id, u.name]));
+  const roleOf = new Map(members.map((m) => [m.userId, String(m.role)]));
+  const devOf = new Map(devs.map((d) => [`${d.unitId}|${d.deviceCode}`, d.name]));
+  const receiptOf = new Map(sales.map((x) => [x.id, x.receiptNo]));
+  const lineOf = new Map(lines.map((l) => [l.id, l.name]));
+  for (const r of rows) {
+    const p = pl(r);
+    const by = s(p.requestedById);
+    const sale = s(p.saleId);
+    out.set(r.requestId, {
+      kind: r.kind as PosApprovalKind,
+      title: s(p.title),
+      requesterName: by ? (nameOf.get(by) ?? null) : null,
+      requesterRole: s(p.capRole) ?? (by ? (roleOf.get(by) ?? null) : null),
+      deviceName: s(p.unitId) && s(p.deviceId) ? (devOf.get(`${s(p.unitId)}|${s(p.deviceId)}`) ?? null) : null,
+      reason: s(p.reason),
+      capBp: n(p.capBp),
+      receiptNo: sale ? (receiptOf.get(sale) ?? null) : null,
+      refundSatang: n(p.refundSatang),
+      discountBp: n(p.discountBp),
+      discountSatang: n(p.discountSatang),
+      refundLines: Array.isArray(p.lines)
+        ? (p.lines as unknown[]).flatMap((l) => (isRecord(l) && typeof l.lineId === "string" ? [`${lineOf.get(l.lineId) ?? "-"} ×${typeof l.qty === "number" ? l.qty : 1}`] : []))
+        : [],
+    });
+  }
+  return out;
 }

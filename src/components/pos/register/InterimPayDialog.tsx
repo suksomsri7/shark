@@ -333,6 +333,8 @@ export function PayDialog(p: Props) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "F4" || e.repeat) return;
+      // POS P1.15U ▸ fix รอบ 1 F4: กล่องอยู่ใต้ [inert] (จอล็อก / กล่องอื่นทับ) = ไม่รับ F4 ◂
+      if (document.querySelector('[data-testid="pos-reg-paydlg"]')?.closest("[inert]")) return;
       e.preventDefault();
       primaryRef.current();
     };

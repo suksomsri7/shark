@@ -82,6 +82,14 @@ export function posRegisterV2On(settings: unknown): boolean {
   return typeof s === "object" && s.pos?.registerV2 === true;
 }
 
+/** POS P1.15U ▸ ล็อกจออัตโนมัติหลังไม่ใช้งาน N นาที — `settings.pos.register.autoLockMinutes` (จำนวนเต็ม 0–60 · 0 = ปิด) · ไม่ตั้ง/ผิดรูป = 2 ◂ */
+export const REGISTER_AUTO_LOCK_MINUTES = 2;
+export function posRegisterAutoLockMinutes(settings: unknown): number {
+  const s = (settings ?? {}) as { pos?: { register?: { autoLockMinutes?: unknown } | null } | null };
+  const v = typeof s === "object" ? s.pos?.register?.autoLockMinutes : undefined;
+  return typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= 60 ? v : REGISTER_AUTO_LOCK_MINUTES;
+}
+
 // ═══════════ ชนิดข้อมูล ═══════════
 export type RegisterRole = "OWNER" | "MANAGER" | "STAFF";
 
@@ -152,6 +160,8 @@ export type RegisterRefusalCode =
   | "PENDING_APPROVAL"
   // fix รอบ 1 F1: บิลที่ส่งพร้อม heldCartId ไม่ตรงกับที่อนุมัติ (ตะกร้า/ยอด/เจ้าของบิลพัก)
   | "APPROVAL_MISMATCH"
+  // POS P1.15U fix รอบ 1 F1: ตั้ง PIN ของตัวเองซ้ำจากจอล็อก
+  | "ALREADY_SET"
   // POS P1.13: เลขผู้เสียภาษีของผู้ซื้อ (ใบกำกับเต็มรูปตอนชำระ) ผิด checksum/รูปแบบ
   | "TAX_ID_INVALID"
   // POS P1.13 follow-up 3: ขอใบกำกับเต็มรูปตอนชำระแต่ร้านออกใบกำกับไม่ได้ (ไม่ผูกสมุดจด VAT / ไม่มีเลขภาษี / ปิดใบอย่างย่อ / บิลไม่มี VAT)
@@ -311,6 +321,34 @@ export type RegisterIdempotencyConflict = {
 export type PosApprovalRefusal = { ok: false; code: "APPROVAL_REQUIRED" | "PENDING_APPROVAL"; message: string; requestId: string; heldCartId?: string };
 export type RegisterSubmitResult = RegisterSubmitOk | RegisterPriceChanged | RegisterIdempotencyConflict | PosApprovalRefusal | RegisterRefusal;
 
+// ═══════════ POS P1.15U ▸ จอรออนุมัติ 21B (อ่านสถานะคำขอ · posApprovalStatusAction) ◂ ═══════════
+/** คำขอที่ไม่มีใครตอบภายในเวลานี้ = หมดอายุ (จอแสดง · ผู้ขอยกเลิกได้ · บิลคงเดิม) */
+export const POS_APPROVAL_WAIT_MS = 5 * 60_000;
+/**
+ * สถานะสำหรับจอ: PENDING (รวม APPROVED ที่ตัวรับคิวยังไม่ทำรายการของยกเลิก/คืนเงิน) · APPROVED (ทำรายการแล้ว / ส่วนลดพร้อมเรียกคืน) ·
+ * REJECTED · CANCELLED · EXPIRED (PENDING เกิน 5 นาที) · FAILED (อนุมัติแล้วแต่ทำรายการไม่ได้ / อนุมัติของตัวเอง)
+ */
+export type PosApprovalWaitStatus = "PENDING" | "APPROVED" | "REJECTED" | "CANCELLED" | "EXPIRED" | "FAILED";
+export type PosApprovalView = {
+  requestId: string;
+  kind: "POS_VOID" | "POS_REFUND" | "POS_DISCOUNT_OVER";
+  status: PosApprovalWaitStatus;
+  createdAt: string;
+  title: string | null;
+  reason: string | null;
+  amountSatang: number | null;
+  /** ผู้อนุมัติของขั้นปัจจุบัน: ชื่อ (เจาะจงคน) หรือบทบาท */
+  approverName: string | null;
+  approverRole: string | null;
+  deciderName: string | null;
+  /** เหตุผลของผู้ตัดสิน (ปฏิเสธ) */
+  note: string | null;
+  outcome: string | null;
+  heldCartId: string | null;
+  saleId: string | null;
+};
+export type PosApprovalViewResult = { ok: true; request: PosApprovalView | null } | RegisterRefusal;
+
 export type RegisterStatus = {
   ok: true;
   unit: { id: string; name: string };
@@ -364,7 +402,17 @@ export type ListHeldCartsResult = { ok: true; items: HeldCartSummary[]; count: n
 /** quote = ราคาปัจจุบัน (ไม่ใช่ราคาตอนพัก) · บรรทัดที่ขายไม่ได้แล้วยังอยู่ใน cart พร้อม notice (quote จึงไม่ ok จนกว่าจะเอาออก) ·
  *  products = สินค้าของบรรทัดที่ยังขายได้ (จอใช้แสดงชื่อ/ราคา) · lineNames = ชื่อสินค้าต่อบรรทัด (null = รายการกำหนดเอง/ไม่พบ) */
 export type RecallHeldCartResult =
-  | { ok: true; heldCartId: string; cart: RegisterQuoteInput; quote: RegisterQuoteResult; notices: HeldCartNotice[]; products: RegisterProduct[]; lineNames: (string | null)[] }
+  | {
+      ok: true;
+      heldCartId: string;
+      cart: RegisterQuoteInput;
+      quote: RegisterQuoteResult;
+      notices: HeldCartNotice[];
+      products: RegisterProduct[];
+      lineNames: (string | null)[];
+      /** POS P1.15U: บิลพักนี้ได้รับอนุมัติส่วนลดเกินสิทธิ์ (ยังไม่ถูกใช้) — quote คิดด้วยเพดานที่อนุมัติ · ชำระด้วย heldCartId */
+      approvedRequestId?: string;
+    }
   | RegisterRefusal;
 export type DiscardHeldCartResult = { ok: true } | RegisterRefusal;
 
@@ -614,6 +662,7 @@ const REFUSAL_KEY: Readonly<Record<string, string>> = {
   APPROVAL_REQUIRED: "errors.approvalRequired",
   PENDING_APPROVAL: "errors.pendingApproval",
   APPROVAL_MISMATCH: "errors.approvalMismatch",
+  ALREADY_SET: "errors.alreadySet", // POS P1.15U F1
   // POS P1.13 ▸ ผู้ซื้อของใบกำกับเต็มรูปตอนชำระ — เลขผู้เสียภาษีผิด (ข้อมูลผู้ซื้ออื่นผิด = VALIDATION เดิม) ◂
   TAX_ID_INVALID: "errors.taxIdInvalid",
   NOT_ELIGIBLE: "errors.taxInvoiceNotEligible", // POS P1.13 follow-up 3 ◂

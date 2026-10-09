@@ -153,6 +153,20 @@ const PATHS = {
       <path d="M3 10h18M7 14.5h4" />
     </>
   ),
+  // POS P1.15U ▸ จอล็อก 13B (กุญแจ · สลับพนักงาน) · 21B (ลบตัวอักษร) ◂
+  lock: (
+    <>
+      <rect x="5" y="10.5" width="14" height="9.5" rx="2.5" />
+      <path d="M8 10.5V8a4 4 0 0 1 8 0v2.5" />
+    </>
+  ),
+  swap: <path d="M7 8h12l-3.5-3.5M17 16H5l3.5 3.5" />,
+  del: (
+    <>
+      <path d="M9 5.5h10.5a1.5 1.5 0 0 1 1.5 1.5v10a1.5 1.5 0 0 1-1.5 1.5H9L3.5 12 9 5.5Z" />
+      <path d="m11.5 9.5 5 5M16.5 9.5l-5 5" />
+    </>
+  ),
 } as const;
 
 export type RegisterIconName = keyof typeof PATHS;

@@ -2,7 +2,8 @@
 
 Oracle writer · VPS · 9 Oct 2026 · branch `wip/pos-p1.15-oracle` from `origin/session/pos` e4d47b5b (P1.10U/P1.11 server code not merged — they add nothing P1.15 depends on).
 Contract: `ledger/pos-briefs/pos-brief-P1.15.md` §2 R1–R9, §4, §5 CD1–CD6. §3 (UI: 13B, 21A/21B, discount sheet) is not tested.
-36 checks: PN0–PN8 · TK1–TK5 · DC1–DC6 · AP0–AP10 · AP-F1 · PN-F2 · NC · Z1 · Z2 (static = PN0, AP0, NC).
+39 checks: PN0–PN8 · TK1–TK5 · DC1–DC6 · AP0–AP10 · AP-F1 · PN-F2 · AP-U1 · AP-U2 · TK-U1 · NC · Z1 · Z2 (static = PN0, AP0, NC).
+ORACLE-EDIT (P1.15U, controller-approved): + **AP-U1** (recall of an approved held cart = approved-cap quote + `approvedRequestId`; fix round 1: a consumed approval no longer quotes the cap) · + **AP-U2** (rejected discount request discards the held cart, audit once) · + **TK-U1** (void/refund with a bad token = `STAFF_TOKEN_INVALID`; valid token = actor/requester is the token user, fix round 1 adds the refund request). 36 → 39.
 ORACLE-EDIT (P1.15 fix round 1, controller-approved): + **AP-F1** (approved discount bound to cart/amount/held-cart owner ⇒ `APPROVAL_MISMATCH`; same-key retry of the auto-hold returns the same `PENDING_APPROVAL`; the approved cart itself passes) · + **PN-F2** (`managerPin` without `managerUserId` ⇒ `VALIDATION` on submit and void; 5 wrong manager PINs with the id ⇒ lock ⇒ `PIN_LOCKED`). 34 → 36. `--list` after the edit: S=2 X1=3 X2=4 X3=7 X4=4 X5=9 -=7.
 
 ## CONTROLLER-DECISION (read first — the oracle encodes my proposal for each; rule before the builder starts)

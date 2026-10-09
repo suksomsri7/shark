@@ -15,6 +15,7 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 import { quoteRegisterCart, quoteRegisterCartWithCap, registerCanonicalCart, registerProductsByIds, registerScopeCheck } from "./register";
 import { posDeviceRevoked } from "./device"; // POS P1.10 ▸ การ์ดเครื่องที่ถูกเพิกถอน ◂
 import { staffActorFromToken } from "./staff-pin"; // POS P1.15 ▸ R3 โทเคนผู้ขาย ◂
+import { approvedDiscountOf } from "./pos-approval"; // POS P1.15U ▸ มติ 5 เรียกคืนบิลที่อนุมัติส่วนลดแล้ว ◂
 import {
   HELD_CART_EXPIRE_DAYS,
   HELD_CART_LABEL_MAX,
@@ -243,7 +244,7 @@ export async function recallHeldCart(ctx: RegisterCtx, actor: RegisterActor, inp
     if (isRefusal(s)) return s;
     const id = idOf(input);
     if (!id) return refuse("NOT_FOUND");
-    const row = await db.posHeldCart.findFirst({ where: { id, ...rowWhere(s) }, select: { status: true, createdAt: true, cartJson: true } });
+    const row = await db.posHeldCart.findFirst({ where: { id, ...rowWhere(s) }, select: { status: true, createdAt: true, cartJson: true, approvedRequestId: true } });
     if (!row || row.status === "DISCARDED") return refuse("NOT_FOUND");
     if (row.status === "RECALLED") return refuse("ALREADY_RECALLED");
     const cutoff = await expireCutoff(db, s);
@@ -254,7 +255,9 @@ export async function recallHeldCart(ctx: RegisterCtx, actor: RegisterActor, inp
     if (isRefusal(cart) || !cart.lines.length) return refuse("VALIDATION", "บิลที่พักนี้อ่านไม่ได้ — ทิ้งแล้วเปิดบิลใหม่");
     const held = Array.isArray(j?.heldUnitPrices) ? (j.heldUnitPrices as unknown[]) : [];
 
-    const quote = await quoteRegisterCart(s.ctx, s.actor, cart, db);
+    // POS P1.15U ▸ มติ 5: ส่วนลดที่อนุมัติแล้ว (ยังไม่ถูกใช้) ⇒ quote ด้วยเพดานที่อนุมัติ + คืน approvedRequestId (จอส่ง heldCartId ตอนชำระ) ◂
+    const ap = row.approvedRequestId ? await approvedDiscountOf(s.ctx.tenantId, row.approvedRequestId, "") : null;
+    const quote = ap ? await quoteRegisterCartWithCap(s.ctx, s.actor, cart, ap.discountBp >= 10_000 ? null : ap.discountBp, db) : await quoteRegisterCart(s.ctx, s.actor, cart, db);
     const notices: HeldCartNotice[] = [];
     // ราคาปัจจุบันต่อบรรทัดสินค้าแคตตาล็อก (ไม่ใช่ราคาเปิด) — quote ทั้งบิลผ่าน = ใช้เลย · ไม่ผ่าน = ถามทีละบรรทัดที่เหลือ
     const catalogIdx = cart.lines.flatMap((l, i) => ("productId" in l && typeof l.productId === "string" && l.openPrice !== true ? [i] : []));
@@ -310,7 +313,36 @@ export async function recallHeldCart(ctx: RegisterCtx, actor: RegisterActor, inp
       const now = await db.posHeldCart.findFirst({ where: { id, ...rowWhere(s) }, select: { status: true } });
       return refuse(now?.status === "RECALLED" ? "ALREADY_RECALLED" : "NOT_FOUND");
     }
-    return { ok: true, heldCartId: id, cart, quote, notices, products, lineNames };
+    return { ok: true, heldCartId: id, cart, quote, notices, products, lineNames, ...(ap ? { approvedRequestId: ap.requestId } : {}) };
+  });
+}
+
+/**
+ * POS P1.15U ▸ มติ 5: คำขอ POS_DISCOUNT_OVER ถูกปฏิเสธ ⇒ ทิ้งบิลพักที่รออนุมัติ (ตัวรับคิวเรียก · ไม่มี actor ของ session) ·
+ * เฉพาะแถวที่ยัง HELD ⇒ เล่นซ้ำไม่มี audit ที่สอง · audit pos.heldCart.discard ผู้กระทำ = ผู้ตัดสิน (ไม่รู้ = SYSTEM) ◂
+ */
+export async function discardHeldCartRejected(tenantId: string, heldCartId: string, requestId: string, deciderId: string | null, client?: Db): Promise<boolean> {
+  const db: Db = client ?? prisma;
+  return db.$transaction(async (tx) => {
+    const before = await tx.posHeldCart.findFirst({ where: { id: heldCartId, tenantId, status: "HELD" }, select: { unitId: true, label: true, heldByUserId: true, lineCount: true, approxTotalSatang: true } });
+    if (!before) return false;
+    const r = await tx.posHeldCart.updateMany({ where: { id: heldCartId, tenantId, status: "HELD" }, data: { status: "DISCARDED", version: { increment: 1 } } });
+    if (r.count !== 1) return false;
+    const { unitId, ...rest } = before;
+    await tx.auditLog.create({
+      data: {
+        tenantId,
+        unitId,
+        actorType: deciderId ? "USER" : "SYSTEM",
+        actorId: deciderId,
+        action: "pos.heldCart.discard",
+        targetType: "PosHeldCart",
+        targetId: heldCartId,
+        before: { status: "HELD", ...rest } as Prisma.InputJsonValue,
+        after: { status: "DISCARDED", via: "approval_rejected", requestId } as Prisma.InputJsonValue,
+      },
+    });
+    return true;
   });
 }
 

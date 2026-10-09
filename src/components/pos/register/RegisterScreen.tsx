@@ -47,6 +47,8 @@ import {
   REGISTER_MAX_PAY_METHODS,
   REGISTER_MAX_QTY,
   type HeldCartNoticeCode,
+  type PosApprovalView,
+  type PosDiscountCaps,
   type HeldCartSummary,
   type RegisterCart,
   type RegisterCartLine,
@@ -102,6 +104,14 @@ import { SearchRow } from "./SearchRow";
 import { WeighDialog } from "./WeighDialog";
 // POS P1.9 ▸ รหัสเครื่อง → กะของเครื่อง (ผูกบิล · ล็อกปุ่มชำระเมื่อบังคับเปิดกะ) ◂
 import { getPosDeviceId } from "@/lib/modules/pos/device-id";
+// POS P1.15U ▸ ผู้ขายบนเครื่อง (โทเคน PIN ใน sessionStorage) · จอล็อก 13B · ล็อกเมื่อไม่ใช้งาน ◂
+import { clearStaffSession, readStaffSession, writeStaffSession, type StaffSession } from "@/lib/modules/pos/staff-session";
+import { listStaffForDeviceAction } from "@/lib/modules/pos/staff-pin-actions";
+import { LockScreen, type LockMode } from "./LockScreen";
+import { ApprovalWaitDialog, type ApprovalPinResult } from "./ApprovalWaitDialog";
+// ชื่อลงท้าย Sheet = ตัวสแกนปุ่ม (F15.3) นับเป็นคอมโพเนนต์กดได้ ⇒ ชื่อแฝงตอนวาง (ปุ่มข้างในมี testid ครบ)
+import { DiscountOverSheet as DiscountOverBox } from "./DiscountOverSheet";
+import { useIdleLock } from "./use-idle-lock";
 // POS P1.10 U ▸ heartbeat ของเครื่องนี้ → ชื่อเครื่อง + printerConfig (พิมพ์ใบเสร็จ · ชิปแถบล่าง) · เครื่องถูกเพิกถอน = แถบแดงค้าง + ล็อกปุ่มชำระ ◂
 import { heartbeatAction } from "@/lib/modules/pos/device-actions";
 import { POS_PRINTER_DEFAULTS, parsePrinterConfig, type PosDeviceView } from "@/lib/modules/pos/device-shared";
@@ -125,6 +135,10 @@ export type RegisterScreenProps = {
   tipEnabled?: boolean;
   /** P1.2 U R2: สาขานี้ตั้งนโยบาย BLOCK (ห้ามขายเกินสต็อก) ⇒ ตัวแปรที่หมดเลือกไม่ได้ · ไม่ตั้ง/ALLOW_NEGATIVE = เลือกได้ */
   oversellBlock?: boolean;
+  /** POS P1.15U: ล็อกจออัตโนมัติหลังไม่ใช้งาน N นาที (settings.pos.register.autoLockMinutes · 0 = ปิด) */
+  autoLockMinutes?: number;
+  /** POS P1.15U: เพดานส่วนลดตามบทบาทของระบบนี้ (registerDiscountCaps) — ผู้ขายในโทเคนที่ไม่ใช่ผู้ใช้ session ใช้ค่านี้คิดยอดบนจอ */
+  discountCaps?: PosDiscountCaps;
   /** POS P1.7U ▸ ใบขอรับเงิน (พร้อมเพย์ QR ล็อกยอด · Beam) — ค่าตั้ง + สิทธิ์จากหน้าเพจ · ไม่ส่ง = QR นิ่งแบบ P1.6 ◂ */
   payIntent?: { beamCard: boolean; manualRequiresManager: boolean; canManageShift: boolean; promptpayLink: string };
 };
@@ -153,7 +167,18 @@ type Layer =
   // P1.5: ลิ้นชักบิลที่พัก · กล่องตั้งป้ายก่อนพัก · ถาม "พักตะกร้านี้ก่อน?" เมื่อเรียกคืนทับตะกร้าที่มีของ
   | { kind: "held" }
   | { kind: "holdLabel" }
-  | { kind: "heldConfirm"; item: HeldCartSummary };
+  | { kind: "heldConfirm"; item: HeldCartSummary }
+  // POS P1.15U: แผ่นส่วนลดเกินสิทธิ์ (next = ตะกร้าที่จะใช้ถ้าได้สิทธิ์) · กล่องรอผู้จัดการอนุมัติ 21B (heldCartId = บิลส่วนลดที่พักรอ)
+  | { kind: "discountOver"; next: RegisterCart; wantBp: number }
+  | { kind: "approval"; requestId: string; heldCartId?: string };
+/**
+ * POS P1.15U ▸ สิทธิ์ส่วนลดเกินเพดานของบิลนี้: pin = PIN ผู้จัดการที่เครื่อง (ส่งพร้อม submit · heldCartId = บิลส่วนลดที่พักรอ) ·
+ * approved = เรียกคืนบิลพักที่อนุมัติแล้ว (quote ด้วยเพดานที่อนุมัติ · ใช้ได้เฉพาะตะกร้าเดิมทุกไบต์ — inputJson) ◂
+ */
+//   fix รอบ 1 F5: ทุกสิทธิ์จำส่วนลดที่อนุญาต (bp ของยอดก่อนส่วนลด + สตางค์) — ส่วนลดของตะกร้าเกินนี้ = ล้างสิทธิ์แล้วเปิดแผ่นใหม่
+type DiscountAuth =
+  | { kind: "pin"; managerUserId: string; managerName: string; managerPin: string; heldCartId?: string; bp: number; satang: number }
+  | { kind: "approved"; heldCartId: string; inputJson: string; quote: RegisterQuote; bp: number; satang: number };
 
 const newKey = () => {
   try {
@@ -295,6 +320,144 @@ export function RegisterScreen(props: RegisterScreenProps) {
     return () => document.removeEventListener("visibilitychange", onVis);
   }, [refreshHeld]);
 
+  // ═══════ POS P1.15U ▸ ผู้ขายบนเครื่อง + จอล็อก 13B (มติผู้คุมงาน 1 3 8) ═══════
+  //   โทเคนอยู่ใน sessionStorage `pos-staff:<deviceId>` · ล็อกเมื่อ: ไม่มี/หมดอายุ · ไม่ใช้งานครบ N นาที · กดล็อก · คำขอใดตอบ STAFF_TOKEN_INVALID
+  //   ล็อกไม่ทิ้งตะกร้า (อยู่ใน state) · ปลดด้วยคนเดิม = ขายต่อ · คนอื่น = พักตะกร้าของคนก่อน (ป้าย "สลับพนักงาน") แล้วเริ่มบิลใหม่
+  const [deviceId, setDeviceId] = useState<string | undefined>(undefined);
+  /** undefined = ยังไม่ได้อ่าน storage (SSR/เฟรมแรก) · null = ไม่มีโทเคน */
+  const [staff, setStaff] = useState<StaffSession | null | undefined>(undefined);
+  const staffRef = useRef(staff);
+  staffRef.current = staff;
+  /** คนที่ใช้เครื่องล่าสุด (คงไว้แม้โทเคนตาย — ชิป "ใช้งานอยู่" + เจ้าของตะกร้าตอนสลับ) */
+  const lastStaffRef = useRef<StaffSession | null>(null);
+  const [lockFlag, setLockFlag] = useState(false);
+  const [lockedAt, setLockedAt] = useState<Date | null>(null);
+  /** registerStatus ที่ถามพร้อมรหัสเครื่องตอบแล้ว (รู้สถานะทะเบียนเครื่อง) */
+  const [deviceKnown, setDeviceKnown] = useState(false);
+  useEffect(() => {
+    const d = getPosDeviceId();
+    setDeviceId(d);
+    const cur = readStaffSession(d);
+    setStaff(cur);
+    if (cur) lastStaffRef.current = cur;
+  }, []);
+  // ── fix รอบ 1 F2: ร้านที่ยังไม่มีใครตั้ง PIN (ทุกแถวของ listStaffForDevice hasPin:false) = ขายด้วยผู้ใช้ session ได้ + แถบเตือนปิดได้ ·
+  //    มี PIN แม้คนเดียว = กติกาล็อกเต็ม · เครื่องไม่ลงทะเบียน = ข้อความลงทะเบียนเหมือนเดิม · โหมดนี้ไม่ล็อกเมื่อไม่ใช้งาน ──
+  const deviceReady = deviceKnown && !!deviceId && status?.deviceStatus === "ACTIVE";
+  /** null = ยังไม่รู้ · true = มีคนตั้ง PIN แล้วอย่างน้อย 1 คน */
+  const [anyPin, setAnyPin] = useState<boolean | null>(null);
+  const refreshPins = useCallback(async () => {
+    try {
+      const r = await listStaffForDeviceAction({ systemId, unitId, ...(deviceId ? { deviceId } : {}) });
+      const has = r.ok ? r.items.some((x) => x.hasPin) : true; // อ่านไม่ได้ = ถือว่ามี PIN (ล็อกไว้ก่อน — ปลอดภัยกว่า)
+      // fix รอบ 2 N3: จากไม่มี PIN → มี PIN (มีคนตั้งระหว่างเปิดจอ) = ล็อกทันที
+      if (has && anyPinRef.current === false) {
+        setLockFlag(true);
+        setLockedAt(new Date());
+      }
+      anyPinRef.current = has;
+      setAnyPin(has);
+    } catch {
+      anyPinRef.current = true;
+      setAnyPin(true);
+    }
+  }, [systemId, unitId, deviceId]);
+  const anyPinRef = useRef<boolean | null>(null);
+  // fix รอบ 2 N3: ถามใหม่เมื่อกลับมาที่แท็บ และทุกครั้งที่สถานะเครื่องรีเฟรช (รอบ 60 วิ · หลังขาย)
+  useEffect(() => {
+    if (!deviceReady) return;
+    void refreshPins();
+    const onVis = () => {
+      if (document.visibilityState === "visible") void refreshPins();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, [deviceReady, refreshPins]);
+  useEffect(() => {
+    if (deviceReady && anyPinRef.current === false) void refreshPins();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- ตัวกระตุ้นคือสถานะที่รีเฟรช
+  }, [status]);
+  const noPinMode = deviceReady && anyPin === false;
+  const noPinBannerKey = `pos-nopin-banner:${deviceId ?? "-"}`;
+  const [noPinDismissed, setNoPinDismissed] = useState(false);
+  useEffect(() => {
+    try {
+      setNoPinDismissed(window.sessionStorage.getItem(noPinBannerKey) === "1");
+    } catch {
+      /* ไม่มี storage = แสดงแถบ */
+    }
+  }, [noPinBannerKey]);
+  const dismissNoPin = () => {
+    setNoPinDismissed(true);
+    try {
+      window.sessionStorage.setItem(noPinBannerKey, "1");
+    } catch {
+      /* จำไม่ได้ = ปิดเฉพาะหน้านี้ */
+    }
+  };
+  const locked = lockFlag || (!staff && !noPinMode);
+  const lockedRef = useRef(locked);
+  lockedRef.current = locked;
+  const lockNow = useCallback(() => {
+    setLockFlag(true);
+    setLockedAt(new Date());
+  }, []);
+  /** คำขอใดตอบ STAFF_TOKEN_INVALID ⇒ ลบโทเคน + ล็อก (ไม่ถอยไปใช้ผู้ใช้ session) */
+  const staffTokenDead = () => {
+    clearStaffSession(deviceId);
+    setStaff(null);
+    setLockedAt(new Date());
+    showToast({ key: "errors.staffTokenInvalid" });
+  };
+  /** คำขอที่พกโทเคน: ส่ง deviceId ด้วยเสมอ (ลายเซ็นโทเคนผูกเครื่อง) */
+  const tokenArgs = (): { deviceId?: string; staffToken?: string } => ({
+    ...(deviceId ? { deviceId } : {}),
+    ...(staffRef.current ? { staffToken: staffRef.current.staffToken } : {}),
+  });
+  const onUnlocked = async (next: StaffSession) => {
+    const prev = lastStaffRef.current;
+    // มติ 3: คนอื่นปลดล็อก ⇒ ตะกร้าที่ค้างพักไว้ในชื่อคนก่อน (ด้วยโทเคนของคนก่อน) · ว่าง = ไม่พัก · ระหว่างส่งบิล = ไม่แตะ
+    //   fix รอบ 1 F10: โทเคนคนก่อนตาย ⇒ พักด้วยโทเคนของคนใหม่ ป้าย "สลับพนักงาน · <ชื่อคนก่อน>" · พักไม่ได้ทั้งสองทาง = ไม่สลับ (จอยังล็อก)
+    //   ตะกร้าของคนก่อนไม่ค้างบนจอของคนใหม่เด็ดขาด
+    if (prev && prev.userId !== next.userId && cartRef.current.lines.length && !frozenRef.current) {
+      const who = prev.name ?? "-";
+      const hold = async (token: string, label: string) => {
+        try {
+          return await holdRegisterCartAction({ systemId, unitId, ...(deviceId ? { deviceId } : {}), cart: cartToQuoteInput(cartRef.current), label, staffToken: token });
+        } catch {
+          return null;
+        }
+      };
+      let r = await hold(prev.staffToken, t("lock.holdLabel"));
+      if (!r?.ok) r = await hold(next.staffToken, `${t("lock.holdLabel")} · ${who}`.slice(0, 60));
+      if (!r?.ok) {
+        showToast({ key: "lock.switchHeldFailed", values: { name: who } });
+        return; // ไม่สลับ — ตะกร้ายังเป็นของคนก่อน จอยังล็อก
+      }
+      resetBill();
+      setLayers([]);
+      showToast({ key: "lock.switchHeld", values: { name: who } });
+      void refreshHeld();
+    }
+    if (deviceId) writeStaffSession(deviceId, next);
+    lastStaffRef.current = next;
+    setStaff(next);
+    setLockFlag(false);
+    setLockedAt(null);
+  };
+  const lockMode: LockMode = !deviceKnown || staff === undefined || (deviceReady && anyPin === null) ? "checking" : !deviceId ? "unregistered" : status?.deviceStatus === "REVOKED" ? "revoked" : status?.deviceStatus === "ACTIVE" ? "ready" : "unregistered";
+  // POS P1.15U ▸ มติ 4: เพดานส่วนลดของผู้ขายในโทเคน (คนเดียวกับ session = limits ของหน้าเพจ · คนอื่น = ค่าตั้งตามบทบาท) + สิทธิ์เกินเพดานของบิลนี้ ◂
+  const sellerCap: number | null =
+    staff && staff.userId !== userId && props.discountCaps ? (props.discountCaps[staff.role] >= 10_000 ? null : props.discountCaps[staff.role]) : limits.maxDiscountBp;
+  const [discAuth, setDiscAuth] = useState<DiscountAuth | null>(null);
+  const [discBusy, setDiscBusy] = useState(false);
+  const [discErr, setDiscErr] = useState<string | null>(null);
+  /** ส่งต่อจาก send/ขออนุมัติ: บิลถูกพักที่เซิร์ฟเวอร์รออนุมัติ ⇒ ล้างจอ (resetBill นอก send) แล้วเปิด 21B */
+  const [approvalHandoff, setApprovalHandoff] = useState<{ requestId: string; heldCartId?: string } | null>(null);
+  /** เพดานที่ใช้คิดยอดบนจอ — มีสิทธิ์เกินเพดานแล้ว = ไม่จำกัด (เซิร์ฟเวอร์ตัดสินจริง) */
+  // fix รอบ 1 F5: มีสิทธิ์เกินเพดาน = เพดานบนจอขยายเท่าที่อนุญาต (ไม่ปลดเพดาน) · เกินกว่านั้น = แผ่นส่วนลดเกินสิทธิ์อีกครั้ง
+  const localCap = discAuth && sellerCap !== null ? Math.max(sellerCap, discAuth.bp) : sellerCap;
+
   // ═══════ การส่งบิล ═══════
   const [idemKey, setIdemKey] = useState(newKey);
   const [payPhase, setPayPhase] = useState<PayPhase>("form");
@@ -308,7 +471,12 @@ export function RegisterScreen(props: RegisterScreenProps) {
   const pendingStoreKey = `pos-reg-pending:${systemId}:${unitId}:${userId}`;
   const savePending = (sale: RegisterSubmitInput, phase: "sending" | "unknown") => {
     try {
-      window.sessionStorage.setItem(pendingStoreKey, JSON.stringify({ v: 1, userId, idempotencyKey: sale.idempotencyKey, sale, phase }));
+      // POS P1.15U ▸ fix รอบ 1 F3: PIN ผู้จัดการห้ามลง storage (อ่านได้จากเครื่อง) — สำเนาที่เก็บไม่มี managerPin/managerUserId ·
+      //   โหลดกลับแล้วลองซ้ำ = บิลเดิมถ้าบันทึกแล้ว · ไม่งั้นได้ DISCOUNT_EXCEEDS_LIMIT ชัด ๆ (ไม่มีบิล) แล้วใส่ PIN ใหม่ · staffToken อยู่ใน sessionStorage อยู่แล้ว ◂
+      const { managerPin: _pin, managerUserId: _mgr, ...stored } = sale;
+      void _pin;
+      void _mgr;
+      window.sessionStorage.setItem(pendingStoreKey, JSON.stringify({ v: 1, userId, idempotencyKey: stored.idempotencyKey, sale: stored, phase }));
     } catch {
       /* เก็บไม่ได้ — ลองซ้ำในหน้านี้ยังได้ */
     }
@@ -324,6 +492,13 @@ export function RegisterScreen(props: RegisterScreenProps) {
   /** ค่าล่าสุดที่วาดแล้ว — งาน async (ผลสแกน) อ่านจาก ref ไม่ใช่ค่าที่ติดมากับ closure ตอนกด Enter (B2.2 S1) */
   const frozenRef = useRef(frozen);
   frozenRef.current = frozen;
+  // POS P1.15U ▸ มติ 8: ไม่ใช้งานครบ N นาที / แท็บถูกซ่อนนานเกิน ⇒ ล็อก (ไม่ล็อกระหว่างส่งบิล/ผลยังไม่แน่ใจ) ◂
+  useIdleLock(props.autoLockMinutes ?? 2, !locked && !frozen && !noPinMode, lockNow);
+  // POS P1.15U ▸ fix รอบ 1 F4: ล็อกตอนกล่องชำระยังอยู่ในขั้นกรอก = ปิดกล่องชำระ (ระหว่างส่ง/ไม่แน่ใจ ห้ามปิด — สเปก §3.4) ◂
+  useEffect(() => {
+    if (locked && payPhase === "form") setLayers((s) => (s.some((l) => l.kind === "pay") ? s.filter((l) => l.kind !== "pay") : s));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- ตัวกระตุ้นคือการล็อก
+  }, [locked]);
   /** รุ่นของบิล — resetBill เพิ่มทุกครั้ง · ผลสแกนที่เริ่มในบิลรุ่นก่อน = ทิ้ง (B2.2 S1) */
   const billGen = useRef(0);
 
@@ -402,6 +577,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
       if (r.ok) {
         setStatus(r);
         synced();
+        setDeviceKnown(true); // POS P1.15U ▸ จอล็อกรู้สถานะทะเบียนเครื่องแล้ว ◂
       }
       void refreshDevice();
     } catch {
@@ -480,12 +656,12 @@ export function RegisterScreen(props: RegisterScreenProps) {
     if (!cart.lines.length) return null;
     // P1.2: ส่วนต่างของตัวเลือก/ราคาตามน้ำหนักอยู่ที่เซิร์ฟเวอร์เท่านั้น ⇒ ตะกร้าที่มีบรรทัดแบบนั้นใช้ quote (ไม่เดายอด)
     if (cart.lines.some(isPricedByServer)) return null;
-    const input = cartToPriceInput(cart, known.current, vat, limits.maxDiscountBp);
+    const input = cartToPriceInput(cart, known.current, vat, localCap);
     if ("ok" in input) return null; // สินค้าไม่รู้จัก/ไม่มีราคา — รอ quote ของเซิร์ฟเวอร์ตัดสิน
     const r = priceCart(input);
     return r.ok ? r : null;
     // eslint-disable-next-line react-hooks/exhaustive-deps -- known เปลี่ยนพร้อม cartVer
-  }, [cart, cartVer, vat, limits.maxDiscountBp]);
+  }, [cart, cartVer, vat, localCap]);
 
   const changeCart = (next: RegisterCart) => {
     setCart(next);
@@ -534,8 +710,22 @@ export function RegisterScreen(props: RegisterScreenProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- เวอร์ชันตะกร้าคือตัวกระตุ้นเดียว
   }, [cartVer]);
 
-  const quoteFresh = quote && quote.ver === cartVer ? quote.q : null;
-  const quoteFailed = quoteErr && quoteErr.ver === cartVer ? quoteErr.code : null;
+  const quoteServer = quote && quote.ver === cartVer ? quote.q : null;
+  const quoteErrNow = quoteErr && quoteErr.ver === cartVer ? quoteErr.code : null;
+  // POS P1.15U ▸ ส่วนลดเกินเพดานที่มีสิทธิ์แล้ว: quote ของเซิร์ฟเวอร์ปฏิเสธ (quote ไม่รู้จัก PIN/บิลที่อนุมัติ) ⇒ ยอดสำหรับชำระ =
+  //   อนุมัติแล้ว: quote ที่เรียกคืนด้วยเพดานที่อนุมัติ (ตะกร้าเดิมทุกไบต์) · PIN: priceCart ไม่จำกัดเพดาน (ราคาบรรทัดตัวเลือก/ชั่งจาก quote ล่าสุด) —
+  //   ยอดไม่ตรงเซิร์ฟเวอร์ = PRICE_CHANGED พร้อมยอดจริง (ยืนยันอีกครั้ง) ◂
+  const cartInputJson = useMemo(() => JSON.stringify(cartToQuoteInput(cart)), [cart]);
+  const overrideQuote: RegisterQuote | null =
+    quoteServer || quoteErrNow !== "DISCOUNT_EXCEEDS_LIMIT" || !discAuth
+      ? null
+      : discAuth.kind === "approved"
+        ? discAuth.inputJson === cartInputJson
+          ? discAuth.quote
+          : null
+        : localQuote(cart);
+  const quoteFresh = quoteServer ?? overrideQuote;
+  const quoteFailed = quoteErrNow && !overrideQuote ? quoteErrNow : null;
   // R3 F1: ตะกร้าที่มีบรรทัดราคาฝั่งเซิร์ฟเวอร์ (ตัวเลือก/ชั่ง) และ quote ยังไม่ตรงรุ่น = ยอดรอ (—) — ห้ามโชว์ยอดของตะกร้าเก่าค้าง
   const totalsPending = !quoteFresh && cart.lines.some(isPricedByServer);
   const shownTotals: CartTotalsModel | null = totalsPending ? null : (quoteFresh ?? (local ? { ...local } : quote?.q ?? null));
@@ -568,7 +758,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
 
   function errorFor(code: string): Msg {
     const key = refusalMessageKey(code);
-    if (key === "errors.discountExceedsLimit") return { key, values: { limit: pctText(limits.maxDiscountBp ?? 0) } };
+    if (key === "errors.discountExceedsLimit") return { key, values: { limit: pctText(sellerCap ?? 0) } };
     if (key === "errors.tooManyLines") return { key, values: { max: REGISTER_MAX_LINES } };
     if (key === "errors.stockInsufficient") return { key, values: { count: 0 } };
     return { key };
@@ -636,9 +826,10 @@ export function RegisterScreen(props: RegisterScreenProps) {
     heldBusyRef.current = true;
     setHeldBusy(true);
     try {
-      const r = await holdRegisterCartAction({ systemId, unitId, cart: cartToQuoteInput(cart), label: label?.trim() || null });
+      const r = await holdRegisterCartAction({ systemId, unitId, ...tokenArgs(), cart: cartToQuoteInput(cart), label: label?.trim() || null });
       if (!r.ok) {
-        showToast(errorFor(r.code));
+        if (r.code === "STAFF_TOKEN_INVALID") staffTokenDead();
+        else showToast(errorFor(r.code));
         return false;
       }
       resetBill();
@@ -654,16 +845,17 @@ export function RegisterScreen(props: RegisterScreenProps) {
       setHeldBusy(false);
     }
   };
-  const onRecallHeld = async (id: string): Promise<void> => {
-    if (frozenRef.current || heldBusyRef.current) return;
+  const onRecallHeld = async (id: string, armPin?: { managerUserId: string; pin: string }): Promise<true | string> => {
+    if (frozenRef.current || heldBusyRef.current) return "BUSY";
     heldBusyRef.current = true;
     setHeldBusy(true);
     try {
-      const r = await recallHeldCartAction({ systemId, unitId, id });
+      const r = await recallHeldCartAction({ systemId, unitId, ...tokenArgs(), id });
       if (!r.ok) {
-        showToast(errorFor(r.code));
+        if (r.code === "STAFF_TOKEN_INVALID") staffTokenDead();
+        else showToast(errorFor(r.code));
         void refreshHeld();
-        return;
+        return r.code;
       }
       remember(r.products);
       r.cart.lines.forEach((l, i) => {
@@ -674,11 +866,22 @@ export function RegisterScreen(props: RegisterScreenProps) {
       const next = quoteInputToCart(r.cart, newKey);
       changeCart(next);
       setHeldNotices(r.notices.flatMap((n) => (next.lines[n.lineIndex] ? [{ key: next.lines[n.lineIndex]!.key, code: n.code, from: n.heldUnitPriceSatang, to: n.unitPriceSatang }] : [])));
+      // POS P1.15U ▸ มติ 5: บิลพักที่อนุมัติส่วนลดแล้ว ⇒ ยอดจาก quote ที่เรียกคืน (เพดานที่อนุมัติ) + heldCartId ตอนชำระ ◂
+      if (r.approvedRequestId && r.quote.ok) {
+        const q = r.quote;
+        const satang = q.lineDiscountSatang + q.billDiscountSatang;
+        setDiscAuth({ kind: "approved", heldCartId: r.heldCartId, inputJson: JSON.stringify(cartToQuoteInput(next)), quote: q, satang, bp: q.subtotalSatang > 0 ? Math.ceil((satang * 10_000) / q.subtotalSatang) : 0 });
+      } else if (armPin) {
+        const d = discountOf(next);
+        setDiscAuth({ kind: "pin", managerUserId: armPin.managerUserId, managerName: "", managerPin: armPin.pin, heldCartId: r.heldCartId, ...d });
+      }
       setLayers([]);
       showToast({ key: "held.recalled" });
       void refreshHeld();
+      return true;
     } catch {
       showToast({ key: "errors.loadFailed" });
+      return "UNKNOWN";
     } finally {
       heldBusyRef.current = false;
       setHeldBusy(false);
@@ -885,8 +1088,20 @@ export function RegisterScreen(props: RegisterScreenProps) {
   const lineIndex = (key: string) => cart.lines.findIndex((l) => l.key === key);
   /** ทดลองตะกร้าใหม่ด้วย priceCart ก่อนใช้จริง — ไม่ผ่าน = คืนข้อความ (กล่องค้าง ไม่ตัดเลขให้พอดี) */
   const tryCart = (next: RegisterCart): Msg | null => {
-    // R3 F2: บรรทัดตัวเลือก/ชั่ง = ใช้ราคาต่อหน่วยจาก quote ล่าสุด (จับคู่ด้วยคีย์บรรทัด) แล้วตรวจเพดานส่วนลดทั้งตะกร้าตามเดิม ·
-    //   ข้ามเฉพาะเมื่อยังไม่มี quote ของบรรทัดนั้นเลย (ราคาไม่รู้ — ให้ quote ตัดสิน)
+    const r = priceLocal(next, localCap);
+    if (r && !r.ok) return errorFor(r.code);
+    // fix รอบ 1 F5: เกินส่วนลดที่ผู้จัดการ/สายอนุมัติอนุญาต (bp หรือสตางค์) = เท่ากับเกินเพดาน
+    if (discAuth) {
+      const d = discountOf(next);
+      if (d.bp > discAuth.bp || d.satang > discAuth.satang) return errorFor("DISCOUNT_EXCEEDS_LIMIT");
+    }
+    return null;
+  };
+  /**
+   * priceCart ของตะกร้า (เพดาน cap) — null = ราคายังไม่รู้ (สินค้าใหม่จากเซิร์ฟเวอร์ / บรรทัดตัวเลือกที่ยังไม่มี quote) ให้ quote ตัดสิน
+   * R3 F2: บรรทัดตัวเลือก/ชั่ง = ใช้ราคาต่อหน่วยจาก quote ล่าสุด (จับคู่ด้วยคีย์บรรทัด) แล้วตรวจเพดานส่วนลดทั้งตะกร้าตามเดิม
+   */
+  function priceLocal(next: RegisterCart, cap: number | null) {
     let priced = next;
     if (next.lines.some(isPricedByServer)) {
       const lines: RegisterCartLine[] = [];
@@ -902,10 +1117,48 @@ export function RegisterScreen(props: RegisterScreenProps) {
       }
       priced = { ...next, lines };
     }
-    const input = cartToPriceInput(priced, known.current, vat, limits.maxDiscountBp);
+    const input = cartToPriceInput(priced, known.current, vat, cap);
     if ("ok" in input) return null; // ราคายังไม่รู้ (สินค้าใหม่จากเซิร์ฟเวอร์) — ให้ quote ตัดสิน
-    const r = priceCart(input);
-    return r.ok ? null : errorFor(r.code);
+    return priceCart(input);
+  }
+  /** POS P1.15U ▸ ยอดสำหรับชำระของส่วนลดที่ผู้จัดการอนุญาตด้วย PIN (ไม่จำกัดเพดาน) — รูปเดียวกับ quote ของเซิร์ฟเวอร์ ◂ */
+  function localQuote(c: RegisterCart): RegisterQuote | null {
+    const r = priceLocal(c, localCap);
+    if (!r || !r.ok) return null;
+    return {
+      ok: true,
+      subtotalSatang: r.subtotalSatang,
+      lineDiscountSatang: r.lineDiscountSatang,
+      billDiscountSatang: r.billDiscountSatang,
+      couponDiscountSatang: r.couponDiscountSatang,
+      netSatang: r.netSatang,
+      serviceChargeSatang: r.serviceChargeSatang,
+      vatSatang: r.vatSatang,
+      grandTotalSatang: r.grandTotalSatang,
+      vatMode: vat.mode,
+      vatRateBp: vat.rateBp,
+      lines: r.lines.map((pl, i) => {
+        const l = c.lines[i];
+        return { productId: l?.kind === "product" ? l.productId : null, unitPriceSatang: pl.unitPriceSatang, grossSatang: pl.grossSatang, discountSatang: pl.discountSatang, lineTotalSatang: pl.lineTotalSatang, optionsSatang: 0, options: [], weightGrams: null };
+      }),
+    };
+  }
+  /** ส่วนลดรวม (bp ของยอดก่อนส่วนลด) ของตะกร้า — แสดงบนแผ่นส่วนลดเกินสิทธิ์ */
+  const discountBpOf = (c: RegisterCart): number => discountOf(c).bp;
+  /** ส่วนลดรวมของตะกร้า (สตางค์ + bp ปัดขึ้น) — ราคายังไม่รู้ = 0 (quote ของเซิร์ฟเวอร์ตัดสิน) */
+  function discountOf(c: RegisterCart): { bp: number; satang: number } {
+    const r = priceLocal(c, null);
+    if (!r || !r.ok) return { bp: 0, satang: 0 };
+    const satang = r.lineDiscountSatang + r.billDiscountSatang;
+    return { satang, bp: r.subtotalSatang > 0 ? Math.ceil((satang * 10_000) / r.subtotalSatang) : 0 };
+  }
+  /** ส่วนลดเกินเพดานของผู้ขาย (มีโทเคน) ⇒ เปิดแผ่นส่วนลดเกินสิทธิ์แทนข้อความผิด — คืน true เมื่อเปิดแผ่นแล้ว */
+  const openDiscountOver = (next: RegisterCart, err: Msg | null): boolean => {
+    if (err?.key !== "errors.discountExceedsLimit" || !staffRef.current) return false;
+    setDiscErr(null);
+    setDiscAuth(null); // fix รอบ 1 F5: สิทธิ์เดิมไม่ครอบคลุมแล้ว — ขอใหม่
+    setLayers((s) => [...s.filter((l) => l.kind !== "billDiscount" && l.kind !== "line" && l.kind !== "discountOver"), { kind: "discountOver", next, wantBp: discountBpOf(next) }]);
+    return true;
   };
   const applyLine = (key: string, r: LineEditResult): Msg | null => {
     const i = lineIndex(key);
@@ -915,6 +1168,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
     const lines = cart.lines.map((l, j) => (j === i ? ({ ...l, qty: r.qty, discount: r.discount, note: r.note } as RegisterCartLine) : l));
     const next = { ...cart, lines };
     const err = tryCart(next);
+    if (openDiscountOver(next, err)) return null; // POS P1.15U ▸ มติ 4 ◂
     if (err) return err;
     changeCart(next);
     pop();
@@ -937,6 +1191,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
     const next: RegisterCart = { ...cart, billDiscount: d };
     if (!d) delete next.billDiscount;
     const err = tryCart(next);
+    if (openDiscountOver(next, err)) return null; // POS P1.15U ▸ มติ 4 ◂
     if (err) return err;
     changeCart(next);
     pop();
@@ -962,6 +1217,8 @@ export function RegisterScreen(props: RegisterScreenProps) {
     setPayPhase("form");
     setPayError(null);
     setConflict(null);
+    setDiscAuth(null); // POS P1.15U ▸ สิทธิ์ส่วนลดเกินเพดานเป็นของบิลนี้เท่านั้น ◂
+    setDiscErr(null);
   };
 
   // ═══════ ชำระเงิน ═══════
@@ -972,8 +1229,10 @@ export function RegisterScreen(props: RegisterScreenProps) {
     setPayPhase("form");
     setLayers((s) => (s.some((l) => l.kind === "pay") ? s : [...s, { kind: "pay" }]));
   };
-  const send = async (sale: RegisterSubmitInput) => {
+  const send = async (sale: RegisterSubmitInput, opts?: { restore?: boolean }) => {
     if (sendingRef.current) return; // กดซ้ำ/Enter ซ้ำ = คำขอเดียวระหว่างทาง
+    // POS P1.15U ▸ fix รอบ 1 F4: จอล็อกทับอยู่ = ไม่ส่ง (ยกเว้นลองซ้ำชุดคำขอที่ค้างจากก่อนโหลดหน้า — ชุดเดิมพกโทเคนของมันเอง) ◂
+    if (lockedRef.current && !opts?.restore) return;
     sendingRef.current = true;
     pendingSubmit.current = sale;
     savePending(sale, "sending");
@@ -1008,6 +1267,10 @@ export function RegisterScreen(props: RegisterScreenProps) {
       clearPending();
       setPayPhase("form");
       setPayError({ code: r.code, ...errorFor(r.code) });
+      if (r.code === "STAFF_TOKEN_INVALID") staffTokenDead(); // POS P1.15U ▸ โทเคนตาย = ล็อก (ไม่มีบิล · คีย์เดิม) ◂
+      // POS P1.15U ▸ PIN ผู้จัดการผิด/ล็อก = ล้างสิทธิ์ที่เตรียมไว้ (ใส่ใหม่ผ่านแผ่นส่วนลดเกินสิทธิ์) · ต้องรออนุมัติ = บิลถูกพักแล้ว ⇒ 21B (ล้างจอนอก send) ◂
+      if (r.code === "PIN_INVALID" || r.code === "PIN_LOCKED" || r.code === "APPROVAL_MISMATCH") setDiscAuth(null);
+      if ((r.code === "APPROVAL_REQUIRED" || r.code === "PENDING_APPROVAL") && "requestId" in r) setApprovalHandoff({ requestId: r.requestId, ...(r.heldCartId ? { heldCartId: r.heldCartId } : {}) });
       if (r.code === "PRICE_CHANGED" && "grandTotalSatang" in r) {
         // ยอดสดจากคำตอบ (ไม่ต้อง quote ซ้ำ) — ผู้ใช้ต้องกดยืนยันใหม่กับยอดนี้
         setQuote({
@@ -1040,6 +1303,12 @@ export function RegisterScreen(props: RegisterScreenProps) {
   };
   const confirmPay = (c: PayChoice) => {
     if (!quoteFresh || sendingRef.current || payPhase !== "form") return;
+    // POS P1.15U ▸ fix รอบ 1 F4: ล็อกอยู่ = ไม่ส่ง · เครื่องลงทะเบียนที่มี PIN แล้วแต่ไม่มีโทเคน = ล็อก (ไม่ถอยไปใช้ผู้ใช้ session เงียบ ๆ — มติ 1) ◂
+    if (lockedRef.current) return;
+    if (!staffRef.current && !noPinMode) {
+      lockNow();
+      return;
+    }
     const due = quoteFresh.grandTotalSatang;
     // P1.6: Σ วิธีจ่าย = ยอดบิล + ทิป · ทุกแถว ≥ 1 สตางค์ · ≤ 10 แถว · บิล 0 บาท (ไม่มีทิป) = payMethods [] — ตรวจซ้ำก่อนส่ง (กล่องคิดมาแล้ว)
     const tip = props.tipEnabled ? c.tipSatang : 0;
@@ -1055,7 +1324,17 @@ export function RegisterScreen(props: RegisterScreenProps) {
       ...(cart.note ? { note: cart.note } : {}),
       expectedGrandTotalSatang: due,
     });
-    void send(sale);
+    // POS P1.15U ▸ มติ 2: ผู้ขาย = คนในโทเคน (ส่งทุกบิล · ลองซ้ำส่งชุดเดิมทั้งก้อน) ◂
+    const st = staffRef.current;
+    // POS P1.15U ▸ มติ 4–5: ส่วนลดเกินเพดาน — PIN ผู้จัดการ (managerPin + managerUserId · heldCartId ของบิลที่พักรอ) · บิลพักที่อนุมัติแล้ว (heldCartId) ◂
+    const auth = discAuth;
+    const over =
+      auth?.kind === "pin"
+        ? { managerPin: auth.managerPin, managerUserId: auth.managerUserId, ...(auth.heldCartId ? { heldCartId: auth.heldCartId } : {}) }
+        : auth?.kind === "approved" && auth.inputJson === cartInputJson
+          ? { heldCartId: auth.heldCartId }
+          : {};
+    void send({ ...sale, ...(st ? { staffToken: st.staffToken } : {}), ...over });
   };
   const retryPay = () => {
     if (pendingSubmit.current) void send(pendingSubmit.current); // ชุดเดิมทุกไบต์ · คีย์เดิม
@@ -1063,6 +1342,72 @@ export function RegisterScreen(props: RegisterScreenProps) {
   const nextSale = () => {
     resetBill();
     setLayers([]);
+  };
+
+  // ═══════ POS P1.15U ▸ ส่วนลดเกินสิทธิ์ (มติ 4) + รอผู้จัดการอนุมัติ 21B (มติ 5) ═══════
+  // บิลถูกพักที่เซิร์ฟเวอร์รออนุมัติ (APPROVAL_REQUIRED / PENDING_APPROVAL) ⇒ ล้างจอ (คีย์ใหม่ · resetBill ที่เดียว) แล้วเปิด 21B
+  useEffect(() => {
+    if (!approvalHandoff) return;
+    resetBill();
+    setLayers([{ kind: "approval", requestId: approvalHandoff.requestId, ...(approvalHandoff.heldCartId ? { heldCartId: approvalHandoff.heldCartId } : {}) }]);
+    setApprovalHandoff(null);
+    void refreshHeld();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- ตัวกระตุ้นคือคำส่งต่อเท่านั้น
+  }, [approvalHandoff]);
+  /** (ข) ส่งขออนุมัติ: submit ตะกร้าที่ขอส่วนลด (ไม่มีวิธีจ่าย · ยอดคาดที่ไม่มีทางตรง ⇒ ไม่มีบิลเกิดแน่นอน) → เซิร์ฟเวอร์พักบิล + ยื่นคำขอ */
+  const requestDiscountApproval = async (next: RegisterCart) => {
+    const st = staffRef.current;
+    if (!st || discBusy || frozenRef.current) return;
+    setDiscBusy(true);
+    setDiscErr(null);
+    try {
+      const grand = priceLocal(next, null);
+      const sale: RegisterSubmitInput = {
+        ...cartToQuoteInput(next),
+        idempotencyKey: idemKey,
+        payMethods: [],
+        expectedGrandTotalSatang: (grand && grand.ok ? grand.grandTotalSatang : 0) + 1,
+        staffToken: st.staffToken,
+      };
+      const r = await submitRegisterSaleAction({ systemId, unitId, sale, ...(deviceId ? { deviceId } : {}) });
+      if (!r.ok && (r.code === "APPROVAL_REQUIRED" || r.code === "PENDING_APPROVAL") && "requestId" in r) {
+        setApprovalHandoff({ requestId: r.requestId, ...(r.heldCartId ? { heldCartId: r.heldCartId } : {}) });
+        return;
+      }
+      if (!r.ok && r.code === "STAFF_TOKEN_INVALID") {
+        setLayers((s) => s.filter((l) => l.kind !== "discountOver"));
+        return staffTokenDead();
+      }
+      setDiscErr(t(!r.ok && r.code === "DISCOUNT_EXCEEDS_LIMIT" ? "discountOver.noPolicy" : r.ok ? "errors.unknown" : refusalMessageKey(r.code)));
+    } catch {
+      setDiscErr(t("errors.unknown"));
+    } finally {
+      setDiscBusy(false);
+    }
+  };
+  /** (ก) PIN ผู้จัดการ: เก็บไว้กับบิลนี้ (ส่งพร้อม submit) แล้วใช้ส่วนลด */
+  const armManagerPin = (next: RegisterCart, managerUserId: string, managerName: string, pin: string) => {
+    setDiscAuth({ kind: "pin", managerUserId, managerName, managerPin: pin, ...discountOf(next) });
+    changeCart(next);
+    setLayers((s) => s.filter((l) => l.kind !== "discountOver"));
+    showToast({ key: "discountOver.pinArmed", values: { name: managerName } });
+  };
+  /** 21B ของส่วนลด: PIN ผู้จัดการ = เรียกคืนบิลที่พักรอ แล้วเตรียม PIN ไว้กับบิลนั้น (ส่งพร้อม heldCartId ⇒ เซิร์ฟเวอร์ยกเลิกคำขอที่รอ) */
+  const approvalPin = async (heldCartId: string | undefined, managerUserId: string, pin: string): Promise<ApprovalPinResult> => {
+    if (!heldCartId) return { ok: false, code: "NOT_FOUND" };
+    const r = await onRecallHeld(heldCartId, { managerUserId, pin });
+    return r === true ? { ok: true } : { ok: false, code: r };
+  };
+  /** 21B จบ: อนุมัติ = เรียกคืนบิลด้วยเพดานที่อนุมัติ · ปฏิเสธ = แจ้งเหตุผล (เซิร์ฟเวอร์ทิ้งบิลพักแล้ว) · ยกเลิก = แจ้ง */
+  const approvalDone = (view: PosApprovalView, heldCartId: string | undefined) => {
+    setLayers((s) => s.filter((l) => l.kind !== "approval"));
+    if (view.status === "APPROVED") {
+      showToast({ key: "approval.approvedDiscount" });
+      if (heldCartId) void onRecallHeld(heldCartId);
+    } else if (view.status === "REJECTED") {
+      showToast(view.note ? { key: "approval.rejected", values: { reason: view.note } } : { key: "approval.rejectedNoReason" });
+      void refreshHeld();
+    } else showToast({ key: "approval.cancelled" });
   };
 
   // R4.1 F1: คำขอที่โหลดกลับแล้วถูกปฏิเสธชัด ⇒ กล่องชำระค้างบนตะกร้าว่าง — ปิดกล่องแล้วแสดงเหตุผลเป็นข้อความลอย
@@ -1096,19 +1441,20 @@ export function RegisterScreen(props: RegisterScreenProps) {
     setIdemKey(saved.idempotencyKey);
     setPayPhase("unknown");
     setLayers([{ kind: "pay" }]);
-    void send(saved.sale);
+    void send(saved.sale, { restore: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- ครั้งเดียวตอนเปิดจอ (key ของจอ = สาขา)
   }, []);
 
   // ═══════ แป้นลัด: ตัวจับเดียวบน window (สเปก §3.6) ═══════
-  const keyState = useRef({ top, payEnabled, q, cartLen: cart.lines.length, payPhase, frozen });
-  keyState.current = { top, payEnabled, q, cartLen: cart.lines.length, payPhase, frozen };
+  const keyState = useRef({ top, payEnabled, q, cartLen: cart.lines.length, payPhase, frozen, locked });
+  keyState.current = { top, payEnabled, q, cartLen: cart.lines.length, payPhase, frozen, locked };
   const handlers = useRef({ openPay, onHold, pop, push, setQ });
   handlers.current = { openPay, onHold, pop, push, setQ };
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const s = keyState.current;
       const h = handlers.current;
+      if (s.locked) return; // POS P1.15U ▸ จอล็อกทับอยู่ = แป้นลัดทั้งหมดปิด (แป้น PIN อยู่ที่ LockScreen) ◂
       if (e.key === "F2") {
         // แป้นพิมพ์จริง ⇒ โฟกัสเสมอ (ไม่เช็ก pointer แบบ focusSearch) แม้กำลังพิมพ์ช่องอื่นอยู่
         e.preventDefault();
@@ -1163,6 +1509,10 @@ export function RegisterScreen(props: RegisterScreenProps) {
   useEffect(() => {
     const onScanKey = (e: KeyboardEvent) => {
       const buf = scanBuf.current;
+      if (lockedRef.current) {
+        buf.length = 0; // POS P1.15U ▸ จอล็อก: ตัวเลขคือ PIN ไม่ใช่การสแกน ◂
+        return;
+      }
       const prev = buf[buf.length - 1];
       if (prev && e.timeStamp - prev.at > SCAN_MAX_GAP_MS) buf.length = 0; // ห่างเกินจังหวะเครื่องสแกน = เริ่มบัฟเฟอร์ใหม่
       if (!buf.length) {
@@ -1242,6 +1592,22 @@ export function RegisterScreen(props: RegisterScreenProps) {
       </button>
     </div>
   ) : null;
+  // POS P1.15U ▸ ส่วนลดเกินเพดาน (เช่น บิลที่เรียกคืน) ⇒ ปุ่ม "ขอสิทธิ์ส่วนลด" ใต้ข้อความ → แผ่นส่วนลดเกินสิทธิ์ ◂
+  const errorNode = errorMsg ? (
+    <>
+      {msgNode(errorMsg)}
+      {quoteFailed === "DISCOUNT_EXCEEDS_LIMIT" && staff && !frozen ? (
+        <button
+          data-testid="pos-discount-over-open"
+          className="mt-1 block min-h-[44px] font-semibold underline underline-offset-2"
+          type="button"
+          onClick={() => openDiscountOver(cart, { key: "errors.discountExceedsLimit" })}
+        >
+          {t("discountOver.open")}
+        </button>
+      ) : null}
+    </>
+  ) : null;
   const cartPanel = (variant: "inline" | "sheet") => (
     <CartPanel
       variant={variant}
@@ -1250,7 +1616,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
       totalsPending={totalsPending}
       payAmount={payAmount}
       payEnabled={payEnabled}
-      error={errorMsg ? msgNode(errorMsg) : null}
+      error={errorNode}
       frozen={frozen}
       onPay={openPay}
       onSoon={soon}
@@ -1307,9 +1673,43 @@ export function RegisterScreen(props: RegisterScreenProps) {
         );
       }
       case "billDiscount":
-        return <BillDiscountDialog key={k} current={cart.billDiscount} onApply={applyBillDiscount} onCoupon={() => push({ kind: "coupon" })} onClose={pop} />;
+        return <BillDiscountDialog key={k} current={cart.billDiscount} capBp={staff ? sellerCap : undefined} onApply={applyBillDiscount} onCoupon={() => push({ kind: "coupon" })} onClose={pop} />;
       case "coupon":
         return <CouponDialog key={k} onClose={pop} />;
+      // POS P1.15U ▸ แผ่นส่วนลดเกินสิทธิ์ (มติ 4) · รอผู้จัดการอนุมัติ 21B (มติ 5) ◂
+      case "discountOver":
+        return (
+          <DiscountOverBox
+            key={k}
+            systemId={systemId}
+            unitId={unitId}
+            deviceId={deviceId}
+            capBp={sellerCap}
+            wantBp={l.wantBp}
+            canRequest={online && !!staff}
+            busy={discBusy}
+            error={discErr}
+            onPin={(id, name, pin) => armManagerPin(l.next, id, name, pin)}
+            onRequest={() => void requestDiscountApproval(l.next)}
+            onClose={() => {
+              if (!discBusy) pop();
+            }}
+          />
+        );
+      case "approval":
+        return (
+          <ApprovalWaitDialog
+            key={k}
+            systemId={systemId}
+            unitId={unitId}
+            deviceId={deviceId}
+            requestId={l.requestId}
+            onPin={(mgr, pin) => approvalPin(l.heldCartId, mgr, pin)}
+            allowPin={!!l.heldCartId}
+            onDone={(v) => approvalDone(v, l.heldCartId)}
+            onClose={pop}
+          />
+        );
       case "custom":
         return (
           <CustomItemDialog
@@ -1506,6 +1906,8 @@ export function RegisterScreen(props: RegisterScreenProps) {
       className="flex min-h-[calc(100dvh-3.5rem)] flex-col bg-[color:var(--color-surface)] md:h-[calc(100dvh-3.5rem)] md:min-h-0 md:overflow-hidden"
     >
       {/* B2.2 S2: มีกล่องเปิด ⇒ ทุกอย่างหลังม่าน inert (คลิก/โฟกัส/โปรแกรมอ่านจอไม่ถึง) · contents = ไม่เปลี่ยนเลย์เอาต์ flex */}
+      {/* POS P1.15U ▸ จอล็อกทับอยู่ ⇒ ทั้งจอขายและชั้นกล่อง inert (จอล็อก/ข้อความลอยอยู่นอกกรอบนี้) ◂ */}
+      <div className="contents" inert={locked}>
       <div className="contents" inert={layers.length > 0}>
         <h1 className="sr-only">{t("title")}</h1>
         <RegisterTopContext
@@ -1517,9 +1919,10 @@ export function RegisterScreen(props: RegisterScreenProps) {
           activeUnitId={unitId}
           online={online}
           lastSyncAt={lastSyncAt}
-          user={status ? { name: status.user.name, role: status.user.role } : null}
+          user={staff ? { name: staff.name ?? "-", role: staff.role } : status ? { name: status.user.name, role: status.user.role } : null}
           shift={status?.shift ?? null}
           onCamera={openCamera}
+          onLock={staff || noPinMode ? lockNow : undefined}
         />
         <ModeTabsNav systemId={systemId} />
         {!online && (
@@ -1533,6 +1936,15 @@ export function RegisterScreen(props: RegisterScreenProps) {
           <div data-testid="pos-reg-device-revoked" className="flex shrink-0 items-center gap-3 bg-[color:var(--color-danger)] px-5 py-[11px] text-[14px] font-semibold leading-[1.5] text-white" role="alert">
             <RegisterIcon name="warn" size={18} />
             <span>{t("status.deviceRevoked")}</span>
+          </div>
+        )}
+        {noPinMode && !noPinDismissed && (
+          <div data-testid="pos-staff-nopin-banner" className="flex shrink-0 flex-wrap items-center gap-3 border-b bg-[color:var(--color-surface-2)] px-5 py-[10px] text-[14px] text-[color:var(--color-ink)]" role="status">
+            <RegisterIcon name="lock" size={16} />
+            <span className="flex-1">{t("staff.noPinBanner")}</span>
+            <button data-testid="pos-staff-nopin-dismiss" type="button" className="grid size-11 place-items-center rounded-[11px] text-[color:var(--color-muted)]" aria-label={t("cart.close")} onClick={dismissNoPin}>
+              <RegisterIcon name="x" size={14} />
+            </button>
           </div>
         )}
         {shiftBlocked && (
@@ -1623,15 +2035,16 @@ export function RegisterScreen(props: RegisterScreenProps) {
           {layerNode(l, `${l.kind}-${i}`)}
         </div>
       ))}
+      </div>
       {toast && (
         <div
           data-testid="pos-reg-toast"
-          className="pointer-events-none fixed inset-x-4 bottom-[max(24px,env(safe-area-inset-bottom))] z-[60] mx-auto flex max-w-[520px] items-center gap-3 rounded-[16px] bg-[color:var(--color-ink)] px-[18px] py-[14px] text-[14px] leading-[1.5] text-[color:var(--color-surface)] shadow-xl max-md:bottom-[150px]"
+          className="pointer-events-none fixed inset-x-4 bottom-[max(24px,env(safe-area-inset-bottom))] z-[80] mx-auto flex max-w-[520px] items-center gap-3 rounded-[16px] bg-[color:var(--color-ink)] px-[18px] py-[14px] text-[14px] leading-[1.5] text-[color:var(--color-surface)] shadow-xl max-md:bottom-[150px]"
           role="status"
           aria-live="polite"
         >
           <span className="min-w-0 flex-1">{msgNode(toast)}</span>
-          {toast.offerCustom && limits.canOverridePrice && (
+          {toast.offerCustom && limits.canOverridePrice && !locked && (
             <button
               data-testid="pos-reg-scan-add-custom"
               className="pointer-events-auto h-11 shrink-0 rounded-[11px] border border-[color:var(--color-surface)] px-3 text-[14px] font-semibold"
@@ -1645,6 +2058,29 @@ export function RegisterScreen(props: RegisterScreenProps) {
             </button>
           )}
         </div>
+      )}
+      {locked && (
+        <LockScreen
+          mode={lockMode}
+          systemId={systemId}
+          unitId={unitId}
+          deviceId={deviceId}
+          tenantName={props.tenantName}
+          unitName={props.units.find((u) => u.id === unitId)?.name ?? ""}
+          deviceLabel={(device && device.status === "ACTIVE" ? device.name : null) ?? status?.shift?.deviceLabel ?? null}
+          shift={status?.shift ?? null}
+          online={online}
+          current={lastStaffRef.current}
+          lockedAt={lockedAt}
+          heldItems={heldItems}
+          heldCount={heldCount}
+          autoLockMinutes={props.autoLockMinutes ?? 2}
+          settingsHref={`${base}/pos/settings?tab=devices&unit=${encodeURIComponent(unitId)}`}
+          sessionUserId={userId}
+          onCancel={noPinMode ? () => setLockFlag(false) : undefined}
+          onStaffChanged={() => void refreshPins()}
+          onUnlocked={(n) => void onUnlocked(n)}
+        />
       )}
     </div>
   );

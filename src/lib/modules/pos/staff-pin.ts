@@ -177,6 +177,23 @@ export async function setStaffPin(ctx: StaffPinCtx, actor: RegisterActor, input:
   });
 }
 
+/**
+ * POS P1.15U ▸ fix รอบ 1 F1: ตั้ง PIN "ของตัวเอง" ครั้งแรกจากจอล็อก — ผู้ถูกตั้ง = actor เสมอ (ไม่รับ userId) ·
+ * มี PIN อยู่แล้ว = ALREADY_SET (เปลี่ยน PIN = ตั้งค่า → พนักงาน) · ที่เหลือกติกาเดียวกับ setStaffPin ◂
+ */
+export async function setOwnStaffPin(ctx: StaffPinCtx, actor: RegisterActor, input: { pin: string }, client?: Db): Promise<StaffPinOk | RegisterRefusal> {
+  return guard("setOwnStaffPin", async (): Promise<StaffPinOk | RegisterRefusal> => {
+    const db = client ?? prisma;
+    const s = await unitScope(db, ctx);
+    if (isRefusal(s)) return s;
+    const a = actorOf(actor);
+    if (!a) return refuse("PERMISSION_DENIED");
+    const has = await db.posStaffPin.findUnique({ where: { unitId_userId: { unitId: s.unitId, userId: a.userId } }, select: { tenantId: true } });
+    if (has && has.tenantId === s.tenantId) return refuse("ALREADY_SET", "ตั้ง PIN ไว้แล้ว — เปลี่ยน PIN ได้ที่ ตั้งค่า → พนักงาน");
+    return setStaffPin(ctx, a, { userId: a.userId, pin: isRecord(input) && typeof input.pin === "string" ? input.pin : "" }, db);
+  });
+}
+
 // ═══════════ จับ PIN (แกนร่วมของ verifyStaffPin · PIN ผู้จัดการ) ═══════════
 type Matched = { ok: true; rowId: string; pinHash: string; actor: RegisterActor };
 

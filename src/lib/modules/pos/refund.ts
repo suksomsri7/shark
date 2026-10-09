@@ -24,7 +24,7 @@ import { lineNets, refundLineAmount, refundServiceCharge } from "./refund-math";
 import { newReceiptToken } from "./receipt-token";
 // POS P1.15 ▸ R5/R6: คืนเงินผ่านสายอนุมัติ (POS_REFUND) · PIN ผู้จัดการ · ตัวรับคิวคืนเงินที่อนุมัติแล้ว (นอกกะ · มติ 13) ◂
 import { POS_APPROVAL_MESSAGE, auditPinOverride, cancelOpenPosRequest, submitPosApproval } from "./pos-approval";
-import { verifyManagerPin } from "./staff-pin";
+import { staffActorFromToken, verifyManagerPin } from "./staff-pin";
 import {
   REFUND_PAY_TYPES,
   REFUND_PREFIX_DEFAULT,
@@ -244,8 +244,19 @@ function notRefundable(sale: Pick<PosSale, "docType" | "status" | "giftCardId" |
 export async function refundSale(ctx: RegisterCtx, actor: RegisterActor, input: RefundSaleInput, client?: Db): Promise<RefundSaleResult> {
   try {
     const db = client ?? prisma;
-    const s = await scopeOf(db, ctx, actor);
-    if (isRefusal(s)) return s;
+    const s0 = await scopeOf(db, ctx, actor);
+    if (isRefusal(s0)) return s0;
+    let sTok = s0;
+    // POS P1.15U ▸ มติ 2: staffToken = ผู้ขอคือคนในโทเคนของเครื่องนี้ (กติกาเดียวกับ submit) · ผิด/หมดอายุ/เครื่องอื่น = STAFF_TOKEN_INVALID ไม่ถอยไปใช้ session ◂
+    const tok = isRecord(input) ? input.staffToken : undefined;
+    if (tok !== undefined && tok !== null) {
+      const dev = isRecord(input) && typeof input.deviceId === "string" ? input.deviceId : isRecord(ctx) && typeof ctx.deviceId === "string" ? ctx.deviceId : undefined;
+      const ta = dev ? await staffActorFromToken({ tenantId: s0.tenantId, unitId: s0.unitId, deviceId: dev }, tok, db) : null;
+      const st = ta ? await scopeOf(db, ctx, ta) : null;
+      if (!st || isRefusal(st)) return { ok: false, code: "STAFF_TOKEN_INVALID", message: "การเข้าใช้งานของพนักงานบนเครื่องนี้หมดอายุหรือไม่ถูกต้อง — ใส่ PIN อีกครั้ง" };
+      sTok = st;
+    }
+    const s = sTok;
     // POS P1.15 ▸ มติ 11: PIN ผู้จัดการ (มี pos.sale.refund) อนุญาตแทนผู้ขอที่ไม่มีสิทธิ์คืน — ผู้ขอต้องยังมี pos.sale.create ◂
     const raw: Record<string, unknown> = isRecord(input) ? input : {};
     const hasPin = raw.managerPin !== undefined && raw.managerPin !== null;
