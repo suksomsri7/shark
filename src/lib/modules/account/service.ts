@@ -4083,6 +4083,21 @@ export async function ensureAccountContact(
 //      ⇒ **โครงสร้างเองกันการโพสต์ซ้ำ** ไม่ต้องพึ่งวินัยของผู้ใช้
 // เอกสารนี้ **ไม่โพสต์ GL** — เงินเข้าบัญชีทาง `gl.postExternalSale` เส้นเดิมเท่านั้น
 export const EXTERNAL_SALE_DOC_TYPE: AccountDocType = "TAX_INVOICE_ABB";
+
+/** POS P1.13 fix F4: ผู้ซื้อตามที่พิมพ์ — ใบกำกับเต็มรูปแสดงสิ่งที่ผู้ซื้อกรอก (แถวผู้ติดต่อที่จับคู่ได้ไม่ถูกแก้) */
+export type ExternalBuyerSnapshot = { kind?: "PERSON" | "JURISTIC"; name: string; taxId: string; branchCode: string; address: string; email: string | null };
+/** สำเนาผู้ติดต่อบนเอกสาร = แถวผู้ติดต่อ (ช่องอื่น เช่น เบอร์) ทับด้วยช่องที่ผู้ซื้อกรอก */
+function buyerContactSnapshot(contact: Record<string, unknown> | null, buyer: ExternalBuyerSnapshot): Prisma.InputJsonValue {
+  return {
+    ...(contact ?? {}),
+    name: buyer.name,
+    taxId: buyer.taxId,
+    branchCode: buyer.branchCode || "00000",
+    address: buyer.address,
+    email: buyer.email ?? null,
+    ...(buyer.kind ? { legalType: buyer.kind === "PERSON" ? "PERSON" : "COMPANY" } : {}),
+  } as Prisma.InputJsonValue;
+}
 export const EXTERNAL_SALE_REF_TYPE = "PosSale";
 
 export type ExternalSaleDocLine = {
@@ -4116,6 +4131,8 @@ export async function upsertExternalSaleDocument(input: {
   /** POS P1.13 (R2 · CD1 · เพิ่มล้วน): บิลมีผู้ซื้อขอใบกำกับเต็มรูปตอนชำระ → ชนิด TAX_INVOICE (แทน ABB) · เลขจากชุด TAX_INVOICE ของสมุด
    *  (nextDocNo ณ วันที่ขาย · มติ 3) · ไม่โพสต์ GL เหมือน ABB (เงินเข้าทาง postExternalSale เส้นเดิม) · ไม่ส่ง = ABB เดิมทุกไบต์ */
   fullTaxInvoice?: boolean;
+  /** POS P1.13 fix F4: ผู้ซื้อตามที่กรอก → contactSnapshot ของใบเต็มรูป */
+  buyer?: ExternalBuyerSnapshot;
 }): Promise<{ ok: true; docId: string; created: boolean } | { ok: false; reason: string }> {
   const docType: AccountDocType = input.fullTaxInvoice ? "TAX_INVOICE" : EXTERNAL_SALE_DOC_TYPE;
   const existing = await findDocByRef(input.systemId, docType, EXTERNAL_SALE_REF_TYPE, input.refId);
@@ -4178,7 +4195,7 @@ export async function upsertExternalSaleDocument(input: {
           direction: "OUT",
           issueDate: input.occurredAt,
           contactId: input.contactId,
-          contactSnapshot: contact ?? undefined,
+          contactSnapshot: input.buyer ? buyerContactSnapshot(contact, input.buyer) : (contact ?? undefined), // POS P1.13 fix F4 ◂
           vatMode: input.vatMode,
           vatTiming: "ON_ISSUE",
           taxPointBasis: "ON_ISSUE",
@@ -4257,7 +4274,7 @@ export async function supersedeExternalSaleAbb(input: {
   abbDocId: string;
   contactId: string | null;
   /** POS P1.13 fix F1: ผู้ซื้อของคำขอนี้ — ABB ถูกแทนไปแล้ว (created:false) ⇒ บอกว่าใบเดิมเป็นของผู้ซื้อคนนี้ไหม (taxId · สาขา · ชื่อ) */
-  buyer?: { name: string; taxId: string; branchCode: string };
+  buyer?: ExternalBuyerSnapshot; // + fix F4: contactSnapshot ของใบใหม่ = ช่องที่ผู้ซื้อกรอก
 }): Promise<{ ok: true; docId: string; docNo: string | null; created: boolean; buyerMatches?: boolean } | { ok: false; reason: string; code: "NOT_FOUND" | "NOT_LIVE" | "INTERNAL" }> {
   try {
     const contact = input.contactId
@@ -4296,7 +4313,7 @@ export async function supersedeExternalSaleAbb(input: {
           direction: abb.direction,
           issueDate: abb.issueDate,
           contactId: input.contactId,
-          contactSnapshot: contact ?? undefined,
+          contactSnapshot: input.buyer ? buyerContactSnapshot(contact, input.buyer) : (contact ?? undefined), // POS P1.13 fix F4 ◂
           vatMode: abb.vatMode,
           vatTiming: abb.vatTiming,
           taxPointBasis: abb.taxPointBasis,

@@ -235,7 +235,7 @@ export async function applyExternalSale(input: {
     grandTotalSatang: gross,
     note: input.receiptNo ? `ขายหน้าร้าน POS · ใบเสร็จ ${input.receiptNo}` : "ขายหน้าร้าน POS",
     lines: docLines,
-    ...(full ? { fullTaxInvoice: true } : {}), // POS P1.13 ▸ R2 ◂
+    ...(full ? { fullTaxInvoice: true, buyer: input.buyer } : {}), // POS P1.13 ▸ R2 · fix F4 สำเนาผู้ซื้อตามที่กรอก ◂
   });
   if (!doc.ok) return { posted, reason: doc.reason };
   // WO 4.3 (§8.2): บิล POS ที่ขาย "รายการจัดชุด" → ตัดสต็อกส่วนประกอบ
@@ -294,7 +294,7 @@ export async function supersedeAbbWithTaxInvoice(input: {
       systemId: link.systemId,
       abbDocId: abb.id,
       contactId,
-      buyer: { name: input.buyer.name, taxId: input.buyer.taxId, branchCode: input.buyer.branchCode }, // POS P1.13 fix F1 ◂
+      buyer: input.buyer, // POS P1.13 fix F1 (ตรวจผู้ซื้อของใบเดิม) + F4 (สำเนาผู้ซื้อตามที่กรอก) ◂
     });
     if (!res.ok) return { ok: false, code: res.code === "NOT_FOUND" ? "NO_ABB" : res.code, reason: res.reason };
     return res;
