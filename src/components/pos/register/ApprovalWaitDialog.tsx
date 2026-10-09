@@ -164,10 +164,10 @@ export function ApprovalWaitDialog(p: {
           </p>
           <div className="flex items-center gap-3 rounded-[14px] border px-4 py-3">
             <span aria-hidden className="grid size-9 shrink-0 place-items-center rounded-[9px] border bg-[color:var(--color-surface-2)] text-[13px] font-bold">
-              {(view?.approverName ?? roleText(view?.approverRole ?? null) ?? "?").trim().charAt(0) || "?"}
+              {(view?.approverName || roleText(view?.approverRole ?? null) || "?").trim().charAt(0) || "?"}
             </span>
             <span className="min-w-0 flex-1">
-              <span className="block truncate text-[14.5px] font-bold">{t("approval.approver", { name: view?.approverName ?? roleText(view?.approverRole ?? null) ?? "-" })}</span>
+              <span className="block truncate text-[14.5px] font-bold">{t("approval.approver", { name: view?.approverName || roleText(view?.approverRole ?? null) || "-" })}</span>
               <span className="block truncate text-[12.5px] text-[color:var(--color-muted)]">{t("approval.notified", { role: roleText(view?.approverRole ?? null) })}</span>
             </span>
             <span className="shrink-0 rounded-[8px] border border-[color:var(--color-accent)] px-2.5 py-1 text-[12px] font-semibold text-[color:var(--color-accent)]">{t("approval.sentChip")}</span>
