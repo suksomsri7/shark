@@ -879,3 +879,6 @@
 ### 9 ต.ค. 06:26 UTC — P1.13 S ส่ง (รอ ORACLE-EDIT ข้อ 8) · session 79% ใกล้เพดานก่อนรีเซ็ต 07:29Z
 - L4: P1.13 S **f9a51648** (migration `20261201100000_pos_p113_tax_invoice` deploy 0 · steps 1efea829…3a516b25 · L6 edit fc12dfb7 · 27/31 เพราะ oracle ยังใช้ `issuedDocId` ขัดคำตัดสิน 8) → อนุมัติ ORACLE-EDIT ST1/Q1/Q2/Q3 ให้ builder commit patch + รัน 31/31 ×3 → ผู้ตรวจ Opus **หลังรีเซ็ต 07:29Z** (session 79% · กัน 90%) · extras: alias `convertAbbToTaxInvoice` · void บิลที่มี TAX_INVOICE จะ void เอกสารนั้นด้วย · money set ไม่เปลี่ยน
 - โควตา 06:25Z: session 79% · weekly_all 83% · weekly_fable 55% · กำลังรัน: P1.7U fix (p11) · P1.11U รอบ 3 (c) · P1.15U ด่านซ้ำ (b) · P1.13 oracle-edit (d) — ไม่ spawn ใหม่จนกว่ารีเซ็ต
+
+### 9 ต.ค. 06:30 UTC — P1.15U ส่งแล้ว → ผู้ตรวจ
+- L3: P1.15U **7af05531** (gated a238ef87 · 39/39 ×3 · ด่านซ้ำจาก scratchpad/p115u/ มี header ทรี b · server hunks: staffToken void/refund · recall approved cap · discard on reject · pos-approval-actions status 52 บรรทัด+cancel · oracle AP-U1/AP-U2/TK-U1) · deviations 5 ข้อ — ข้อ 1 (ไม่มีเครื่อง/ไม่มี PIN ⇒ ล็อกทั้งร้าน) **คำตัดสิน**: ถ้ายังไม่มีใครในสาขาตั้ง PIN ให้ใช้งานได้ตาม session user + แบนเนอร์ "ตั้ง PIN พนักงานเพื่อเปิดการล็อกหน้าจอ" · มี PIN เมื่อไรค่อยล็อก · ผู้ตรวจ Opus เปิดแล้ว (prompt `pos-prompt-accountB-P1.15U-R.md` 98f4ba08 · scratch ใน scratchpad/p115u-r/)
