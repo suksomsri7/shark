@@ -80,6 +80,9 @@ const CHECKS: readonly Def[] = [
   D("AP8", "X5", "[R4 R5] กติกา POS_DISCOUNT_OVER: แคชเชียร์ลด 15% → {APPROVAL_REQUIRED, requestId, heldCartId} · PosHeldCart HELD heldBy แคชเชียร์ · คำขอ POS_DISCOUNT_OVER entityId = heldCartId amount 3000 · ไม่มีบิล"),
   D("AP9", "X1", "[R6] อนุมัติ → drain → heldCart.approvedRequestId = requestId · recall → submit {heldCartId} ลด 20% → DISCOUNT_EXCEEDS_LIMIT · ลด 15% → ผ่าน 1 บิล + audit pos.discount.override (byUserId ผู้ตัดสิน · requestId) · เล่น approved ซ้ำ ×2 · submit อีกครั้ง (คีย์ใหม่) → DISCOUNT_EXCEEDS_LIMIT · บิลยัง 1"),
   D("AP10", "X3", "[R5 CD4] PIN ผู้จัดการชนะคำขอที่รอ: บิล ฿180 ขอยกเลิก (PENDING) → PIN ผิด PIN_INVALID (บิล PAID คำขอ PENDING) → PIN ถูก → VOIDED · คำขอ CANCELLED · audit pos.approval.pin_override {requestId, action POS_VOID, byUserId ผู้จัดการ} · audit void actorId ผู้จัดการ · decide ทีหลัง ok:false · คืนเงินด้วย PIN ขณะมีกติกา → ใบคืนทันที · ไม่มีคำขอ · pin_override {requestId null, action POS_REFUND}"),
+  // ── ORACLE-EDIT (fix รอบ 1 · ผู้คุมงานอนุมัติ) ──
+  D("AP-F1", "X2", "[R6 F1 F5] ส่วนลดที่อนุมัติผูกกับตะกร้า: ขอ 15% บิล ฿200 → APPROVAL_REQUIRED · ส่งซ้ำคีย์เดิม → PENDING_APPROVAL requestId/heldCartId เดิม ไม่มีบิลพักใหม่ · อนุมัติ → ตะกร้าใหญ่กว่า (฿300 · 15% เท่าเดิม) + heldCartId → APPROVAL_MISMATCH ไม่มีบิล · คนอื่นที่ไม่ใช่ผู้พักใช้ heldCartId → APPROVAL_MISMATCH · ตะกร้าที่อนุมัติเอง → ผ่าน ฿170 · refusalMessageKey(APPROVAL_MISMATCH) มีข้อความ th/en"),
+  D("PN-F2", "X3", "[R4 F2] managerPin ไม่มี managerUserId → VALIDATION (ขาย + ยกเลิกบิล) ไม่มีบิล · managerPin ผิด 5 ครั้ง (ระบุผู้จัดการ) → PIN_INVALID ×5 · failedCount 5 + lockedUntil · PIN ถูกครั้งถัดไป → PIN_LOCKED ไม่มีบิล"),
   // ── NC ตัวควบคุมลบ ──
   D("NC", "-", "ตัวควบคุมลบ: ตัวตรวจของข้อสอบจับคำตอบที่ผิดโดยตั้งใจได้ (hash ดิบ/sha256/salt สั้น · PIN ผิด · หมดอายุ 24 ชม./1 ชม. · ล็อก 5 นาที · audit มี PIN · คำปฏิเสธที่ throw/ไม่มีข้อความ/อังกฤษ · คีย์ errors.unknown)"),
   // ── Z คืนสภาพ ──
@@ -1328,6 +1331,71 @@ async function runDb() {
     const po2 = (await audits("pos.approval.pin_override")).slice(n1);
     if (po2.length !== 1 || po2[0].after?.requestId !== null || po2[0].after?.action !== "POS_REFUND" || po2[0].after?.byUserId !== uid("MGR")) p.push(`pin_override คืนเงิน ${po2.length} ${short(po2[0]?.after, 100)}`);
     chk("AP10", !!s180 && !!sP && p.length === 0, "PIN ชนะคำขอ (CANCELLED) · audit ผู้จัดการ · คืนด้วย PIN ทันที", FX(p.join(" · ") || "ครบ"));
+  }
+
+  // ════════ ORACLE-EDIT (fix รอบ 1) AP-F1 ส่วนลดที่อนุมัติผูกกับตะกร้า/ยอด/ผู้พัก + พักซ้ำด้วยคีย์เดิม ════════
+  {
+    const p: string[] = [];
+    const CARTF = { amount: 20000, pct: 1500, name: "APF1 ส่วนลด ฿200" };
+    const a = await sell(ctxA(DEV1), A("C1"), CARTF);
+    keep("AP-F1 ขออนุมัติ", a.r);
+    const rq = refused(a.r, "APPROVAL_REQUIRED") && typeof a.r.requestId === "string" ? a.r.requestId : "";
+    const held = rq && typeof a.r.heldCartId === "string" ? a.r.heldCartId : "";
+    if (!rq || !held) p.push(`ขออนุมัติ → ${codeOf(a.r)}`);
+    const heldCount = async () => (T ? Number(await P.posHeldCart.count({ where: { tenantId: T } }).catch(() => -1)) : -1);
+    const h0 = await heldCount();
+    const again = await sell(ctxA(DEV1), A("C1"), CARTF, {}, a.key);
+    keep("AP-F1 ส่งซ้ำคีย์เดิม", again.r);
+    if (!refused(again.r, "PENDING_APPROVAL") || again.r.requestId !== rq || again.r.heldCartId !== held) p.push(`ส่งซ้ำคีย์เดิม → ${codeOf(again.r)} ${short({ r: again.r?.requestId === rq, h: again.r?.heldCartId === held }, 40)}`);
+    if ((await heldCount()) !== h0) p.push("ส่งซ้ำคีย์เดิมแล้วมีบิลพักใหม่");
+    const d = await decideAs("MGR", rq, "APPROVED");
+    if (d?.ok !== true) p.push(`decide → ${short(d, 60)}`);
+    await drain();
+    const big = await sell(ctxA(DEV1), A("C1"), { ...CARTF, amount: 30000 }, { heldCartId: held });
+    keep("AP-F1 ตะกร้าใหญ่กว่า", big.r);
+    if (!refused(big.r, "APPROVAL_MISMATCH")) p.push(`ตะกร้าใหญ่กว่า + heldCartId → ${codeOf(big.r)}`);
+    if (await saleByKey(big.key)) p.push("มีบิลจากตะกร้าใหญ่กว่า");
+    const other = await sell(ctxA(DEV1), A("C2"), CARTF, { heldCartId: held });
+    keep("AP-F1 คนอื่นใช้บิลพัก", other.r);
+    if (!refused(other.r, "APPROVAL_MISMATCH")) p.push(`C2 (ไม่ใช่ผู้พัก) ใช้ heldCartId → ${codeOf(other.r)}`);
+    if (await saleByKey(other.key)) p.push("มีบิลจาก C2");
+    const ok = await sell(ctxA(DEV1), A("C1"), CARTF, { heldCartId: held });
+    if (ok.r?.ok !== true || ok.r.grandTotalSatang !== 17000) p.push(`ตะกร้าที่อนุมัติ → ${codeOf(ok.r)} ${short(ok.r?.message ?? "", 60)}`);
+    const fnK = regShared?.refusalMessageKey;
+    try {
+      const k = typeof fnK === "function" ? String(fnK("APPROVAL_MISMATCH")) : "errors.unknown";
+      const th = JSON.parse(rd(F.msgTh) || "null");
+      const en = JSON.parse(rd(F.msgEn) || "null");
+      if (k === "errors.unknown" || !THAI.test(msgAt(th, k)) || !msgAt(en, k)) p.push(`คีย์ข้อความ APPROVAL_MISMATCH ${k}`);
+    } catch {
+      p.push("อ่าน messages ไม่ได้");
+    }
+    chk("AP-F1", NC_ === "" && p.length === 0, "MISMATCH เมื่อตะกร้า/ผู้พักไม่ตรง · ส่งซ้ำ = คำขอเดิม · ตะกร้าเดิมผ่าน", FX(NC_ + (p.join(" · ") || "ครบ")));
+  }
+  // ════════ ORACLE-EDIT (fix รอบ 1) PN-F2 PIN ผู้จัดการต้องระบุผู้จัดการ + ล็อกหลังผิด 5 ครั้ง ════════
+  {
+    const p: string[] = [];
+    const n0 = (await overrideAudits()).length;
+    const a = await sell(ctxA(DEV1), A("C1"), { ...B200, pct: 1500 }, { managerPin: PIN.MGR });
+    keep("PN-F2 ขาย PIN ไม่ระบุผู้จัดการ", a.r);
+    if (!refused(a.r, "VALIDATION")) p.push(`ขาย managerPin ไม่มี managerUserId → ${codeOf(a.r)}`);
+    if (await saleByKey(a.key)) p.push("มีบิล (ไม่ระบุผู้จัดการ)");
+    const sF2 = await baseSale("sF2", { amount: 3000, name: "PN-F2 บิล ฿30" });
+    const v = await voidBy("C1", sF2, { managerPin: PIN.MGR }, "PN-F2 ยกเลิก PIN ไม่ระบุผู้จัดการ");
+    if (!refused(v, "VALIDATION")) p.push(`ยกเลิก managerPin ไม่มี managerUserId → ${codeOf(v)}`);
+    for (let i = 1; i <= 5; i++) {
+      const w = await sell(ctxA(DEV1), A("C1"), { ...B200, pct: 1500 }, { managerPin: "906142", managerUserId: uid("MGR") });
+      keep(`PN-F2 PIN ผิด ${i}`, w.r);
+      if (!refused(w.r, "PIN_INVALID")) p.push(`ผิดครั้งที่ ${i} → ${codeOf(w.r)}`);
+    }
+    const row = await pinRow("MGR");
+    if (row?.failedCount !== 5 || !row?.lockedUntil) p.push(`failedCount ${row?.failedCount} lockedUntil ${short(row?.lockedUntil, 30)}`);
+    const lk = await sell(ctxA(DEV1), A("C1"), { ...B200, pct: 1500 }, { managerPin: PIN.MGR, managerUserId: uid("MGR") });
+    keep("PN-F2 PIN ถูกขณะล็อก", lk.r);
+    if (!refused(lk.r, "PIN_LOCKED")) p.push(`PIN ถูกขณะล็อก → ${codeOf(lk.r)}`);
+    if (await saleByKey(lk.key)) p.push("มีบิลขณะล็อก");
+    if ((await overrideAudits()).length !== n0) p.push("มี audit override");
+    chk("PN-F2", NS === "" && NT === "" && !!sF2 && p.length === 0, "VALIDATION ไม่ระบุผู้จัดการ · ผิด 5 = ล็อก · PIN_LOCKED", FX(NS + NT + (p.join(" · ") || "ครบ")));
   }
 
   // ════════ PN8 ปฏิเสธเป็นข้อมูล + คีย์ข้อความ ════════

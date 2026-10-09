@@ -29,6 +29,7 @@ const ENTITY_TYPES = new Set([
   "crm.commission",
   "crm.reassign",
   "crm.portal_request",
+  "POS_VOID", "POS_REFUND", "POS_DISCOUNT_OVER", // POS P1.15 ▸ ผลอยู่ที่ pos/pos-approval-consumer.ts (มติผู้คุมงาน 8) ◂
 ]);
 const ROLES = new Set(["MANAGER", "OWNER"]);
 

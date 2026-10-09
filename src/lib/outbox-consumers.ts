@@ -543,6 +543,9 @@ const crmApprovalEffect: OutboxHandler = async (evt) => {
 };
 // ◂ CRM C1.8
 
+// POS P1.15 ▸ ผลอนุมัติ POS_* (ยกเลิกบิล · คืนเงิน · ส่วนลดเกินสิทธิ์) — ขั้นแรกที่ retry ได้ (crmFirst · โยนเฉพาะล้มชั่วคราว) · โหลดตอนใช้ กันวงโหลดไฟล์ ◂
+const posApprovalEffect: OutboxHandler = async (evt) => (await import("@/lib/modules/pos/pos-approval-consumer")).onPosApprovalDecided(evt);
+
 // CRM C3.3 ▸ สะพานคอมมิชชัน (`src/lib/platform/crm-bridges/commissions.ts` · R-D) — dynamic import ด้วยเหตุผลเดียวกับ `crmBridge`
 //   (crm → … → scheduleDrain ที่ไฟล์นี้ = วงโหลดไฟล์) · ใช้เป็น **ขั้นแรกที่ retry ได้** (`crmFirst`): `hr.payroll.paid` ที่หายไป =
 //   คอมมิชชันค้าง APPROVED ตลอดกาล ⇒ ล้มชั่วคราวต้องให้คิวส่งใหม่ (ไม่ใช่ WARN แบบของแถม) · ตัวรับ idempotent ทั้งหมด (X4)
@@ -694,8 +697,8 @@ const baseConsumers: Record<string, OutboxHandler> = {
   "approval.request.submitted": withAutomation(compose(approvalSubmitted, kanbanBridge("onApprovalSubmitted"))),
   // K3.3: + ความเห็น "ผลอนุมัติ: …" ที่การ์ดติดตาม + ปิดการ์ดเมื่อผ่าน (ต่อท้าย notify+effect เดิม)
   // CRM C1.8 ▸ + ผลอนุมัติ crm.* เป็นขั้นแรกที่ retry ได้ (crmFirst) — applyApprovalEffect ไม่แตะ crm.* แล้ว (ไม่ทำซ้ำสองที่) ◂
-  "approval.request.approved": crmFirst(crmApprovalEffect, withAutomation(compose(withApprovalEffect(approvalApproved), kanbanBridge("onApprovalDecided")))),
-  "approval.request.rejected": crmFirst(crmApprovalEffect, withAutomation(compose(withApprovalEffect(approvalRejected), kanbanBridge("onApprovalDecided")))),
+  "approval.request.approved": crmFirst(posApprovalEffect, crmFirst(crmApprovalEffect, withAutomation(compose(withApprovalEffect(approvalApproved), kanbanBridge("onApprovalDecided"))))),
+  "approval.request.rejected": crmFirst(posApprovalEffect, crmFirst(crmApprovalEffect, withAutomation(compose(withApprovalEffect(approvalRejected), kanbanBridge("onApprovalDecided"))))),
   // WO-0038: AppNotification ถูกสร้างแล้วใน sweepExpiringLots — consumer นี้มีไว้ปิด event เป็น DONE
   // (ไม่งั้นค้าง PENDING โดน drain วนตลอด) + เป็นจุดให้ Automation rules ยิงตามกติกาที่ร้านตั้ง
   "inventory.lot.expiring": withAutomation(async () => {}),
@@ -707,6 +710,8 @@ const baseConsumers: Record<string, OutboxHandler> = {
   // POS P1.11 ▸ ใบเสร็จออนไลน์: แจ้งปัญหาบิล → การ์ดบอร์ดรับเรื่อง + ตอบรับ LINE (composition root pos-receipt-bridges · โหลดตอนใช้) · คำขอใบกำกับเต็มรูป = กฎอัตโนมัติเท่านั้น (ออกเอกสาร P1.13) ◂
   "pos.receipt.issue_reported": withAutomation(async (evt) => void (await (await import("@/lib/pos-receipt-bridges")).onReceiptIssueReported(evt))),
   "pos.receipt.taxInvoiceRequested": withAutomation(async () => {}),
+  // POS P1.7 ▸ เงินเข้าใบขอรับเงิน (webhook/ยืนยันเอง) — กฎอัตโนมัติเท่านั้น (จอลูกค้า P2 ต่อบน event เดิม) · ไม่มี event ตอน CONSUMED ◂
+  "pos.payment.intent_paid": withAutomation(async () => {}),
   // Wave4-A: AppNotification "ลูกค้าทักเข้ามา" ถูกสร้างแล้วใน chat.announceInbound (de-dup) —
   // consumer นี้ปิด event เป็น DONE + เป็นจุดให้ Automation rules / Webhooks ยิงราย inbound message
   // WO 7.2: + ดูดรูปบิลที่แนบมาในข้อความเข้ากล่องขาเข้าของบัญชี (เฉพาะร้านที่เปิด inboxFromChat)

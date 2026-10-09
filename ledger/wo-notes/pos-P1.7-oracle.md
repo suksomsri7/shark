@@ -2,7 +2,7 @@
 
 Oracle writer · VPS · 9 Oct 2026 · lane 4 · branch `wip/pos-p1.7-oracle` from `origin/session/pos` 1c7bb5c5. Tree `/root/projects/shark-pos-d`.
 Contract: `ledger/pos-briefs/pos-brief-P1.7.md` §2 R1–R8, §4, §5 CD1–CD6. §3 (PayScreen / 17A UI) is not tested.
-30 checks: C1–C10 · W1–W5 · M1–M3 · S1–S6 · E1–E2 · X1 · NC · Z1–Z2 (`--list` prints them). `--no-db` runs C9 + NC only.
+31 checks: C1–C10 · C31 · W1–W5 · M1–M3 · S1–S6 · E1–E2 · X1 · NC · Z1–Z2 (`--list` prints them). **ORACLE-EDIT C31** (fix round 1 F1, approved by the controller 9 Oct): `[{TRANSFER 100 ref pi_X}, {PROMPTPAY A ref pi_X}]` ⇒ VALIDATION, no bill, pi_X still PAID with saleId null; a correct submit consumes it (one PosPayment row); a second bill with pi_X ⇒ INTENT_CONSUMED. Was 30 checks before this edit. `--no-db` runs C9 + NC only.
 
 ## CONTROLLER-DECISION (read first — the oracle encodes my proposal for each; rule before the builder starts)
 1. **CD-A: `CARD_REQUIRES_INTENT` conflicts with P1.6.** R4 says "CARD **requires** a PAID intent (`CARD_REQUIRES_INTENT`)". But P1.6 already ships `PosPayType.CARD` as an EDC card with a manual reference (`schema pos.prisma:17` "บัตร (EDC/อ้างอิงมือ · ไม่มีเกตเวย์ — P1.7)"). `qc-pos-p1.6` T2/T5/T6/T7 submit `CARD` + `reference "EDC-…"` with no intent and expect PAID. The brief also says `qc-pos-p1.6` must stay green. Enforcing the rule breaks P1.6 and removes EDC cards for every shop without Beam (prod has no Beam keys). **Oracle proposal:** a CARD with a `pi_` reference = Beam card intent (consumed like PROMPTPAY). A CARD with any other reference or none = the P1.6 EDC path, unchanged. S6 asserts `CARD + "EDC-778899"` → PAID with the reference stored. `CARD_REQUIRES_INTENT` is **not** asserted and is not in the 13 required codes. If you rule strict, S6's CARD half flips (ORACLE-EDIT) and `qc-pos-p1.6` T2/T5/T6/T7 need edits too.
@@ -70,7 +70,7 @@ Contract: `ledger/pos-briefs/pos-brief-P1.7.md` §2 R1–R8, §4, §5 CD1–CD6.
 
 ## Expected red run (before the builder)
 Run on QC4 (`ep-frosty-lab`, POS lock), 9 Oct 2026, base 1c7bb5c5:
-- `--list` → 30 checks · X-coverage `X4=5 X1=5 -=10 X5=4 X3=2 S=1 X2=3`.
+- `--list` → 30 checks (before ORACLE-EDIT C31; now 31, X4=6) · X-coverage `X4=5 X1=5 -=10 X5=4 X3=2 S=1 X2=3`.
 - `--no-db` → 1/2 (C9 red: no model/migration/scope/pos-qc-env/consumer/label/actions/route branch · NC green). Exit 1.
 - **Unforced** (unit `pos-p17o-1`) → `⏭️ SKIPPED` with 10 reasons (no `payment-intent.ts`, 7 exports missing, no Prisma delegate `posPaymentIntent`, no table `PosPaymentIntent`). Exit 0. Nothing written to QC4 (the skip happens before the temp tenant).
 - **Forced ×2** (units `pos-p17o-2`, `pos-p17o-3`) → **4/30 green, 26 red, identical failed sets** (md5 of the failed list equal). Exit 1 both.

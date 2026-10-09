@@ -5,7 +5,7 @@
 //    ขอบเขตผิด (ร้าน/ระบบ/สาขา · กะของสาขาอื่น/ร้านอื่น) = NOT_FOUND (404 ไม่ใช่ 403)
 // 🔴 Z แช่แข็ง: zReport เขียนครั้งเดียวในtx ที่ปิดกะ · zReport() คืน JSON ที่เก็บไว้ตรง ๆ ไม่คำนวณใหม่ · ไม่มีโค้ดใดเขียนแถวที่ปิดแล้ว
 // 🔴 ล็อก: ปิดกะ/เงินเข้าออก = แถวกะ FOR UPDATE · บิล (createSale) = FOR SHARE ⇒ ปิดกะรอบิลที่กำลังบันทึก · ทุกบิลที่ commit แล้วอยู่ใน Z
-// 🔴 ไม่มี PIN ที่นี่ — PIN เป็นของ HR (verifyPin · P1.15/P3.5) · ผู้ทำรายการ = ผู้ใช้ของ session
+// 🔴 ไม่มี PIN ที่นี่ — PIN พนักงานอยู่ที่ pos/staff-pin.ts (P1.15) · ผู้ทำรายการ = ผู้ใช้ของ session หรือคนในโทเคนผู้ขาย (openShift staffToken · P1.15 R3)
 import { randomUUID } from "node:crypto";
 import { Prisma, type PosShift, type PosShiftRecount, type PrismaClient } from "@prisma/client";
 import { prisma } from "./db";
@@ -14,6 +14,7 @@ import { emitOutbox } from "@/lib/core/outbox";
 import { scheduleDrain } from "@/lib/outbox-consumers";
 import { posRegisterV2On, type RegisterActor, type RegisterCtx } from "./register-shared";
 import { posDeviceRevoked } from "./device"; // POS P1.10 ▸ การ์ดเครื่องที่ถูกเพิกถอน ◂
+import { staffActorFromToken } from "./staff-pin"; // POS P1.15 ▸ R3 โทเคนผู้ขาย (ผู้เปิดกะ = คนในโทเคน) ◂
 
 type Db = PrismaClient;
 type Tx = Prisma.TransactionClient;
@@ -75,7 +76,9 @@ export type ShiftRefusalCode =
   | "SHIFT_NOT_FORCED"
   | "ALREADY_RECOUNTED"
   // P1.10 (R2) — เครื่องที่ถูกเพิกถอนเปิดกะไม่ได้
-  | "DEVICE_REVOKED";
+  | "DEVICE_REVOKED"
+  // P1.15 (R3) — โทเคนผู้ขายผิด/หมดอายุ/เครื่องอื่น/ถูกถอดสิทธิ์
+  | "STAFF_TOKEN_INVALID";
 export type ShiftRefusal = { ok: false; code: ShiftRefusalCode; message: string; shiftId?: string; recountId?: string };
 
 export type ShiftView = {
@@ -165,6 +168,7 @@ const MSG: Record<ShiftRefusalCode, string> = {
   SHIFT_NOT_FORCED: "นับย้อนหลังได้เฉพาะกะที่ระบบบังคับปิด",
   ALREADY_RECOUNTED: "กะนี้ถูกนับย้อนหลังไปแล้ว — นับได้ครั้งเดียว",
   DEVICE_REVOKED: "เครื่องนี้ถูกเพิกถอนแล้ว — เปิดกะหรือนำเงินเข้า/ออกลิ้นชักไม่ได้ ติดต่อผู้จัดการ",
+  STAFF_TOKEN_INVALID: "การเข้าใช้งานของพนักงานบนเครื่องนี้หมดอายุหรือไม่ถูกต้อง — ใส่ PIN อีกครั้ง",
 };
 const refuse = (code: ShiftRefusalCode, message?: string, extra?: { shiftId?: string; recountId?: string }): ShiftRefusal => ({ ok: false, code, message: message ?? MSG[code], ...(extra ?? {}) });
 const isRefusal = (v: unknown): v is ShiftRefusal => !!v && typeof v === "object" && (v as { ok?: unknown }).ok === false;
@@ -493,17 +497,31 @@ async function openShiftOfDevice(db: Db, s: { tenantId: string; unitId: string; 
 }
 
 // ═══════════ API ═══════════
-export type OpenShiftInput = { deviceId: string; deviceLabel?: string | null; floatSatang: number; floatDetail?: Record<string, number> | null };
+export type OpenShiftInput = {
+  deviceId: string;
+  deviceLabel?: string | null;
+  floatSatang: number;
+  floatDetail?: Record<string, number> | null;
+  /** POS P1.15 R3: โทเคนผู้ขายของเครื่องนี้ — ผู้เปิดกะ = คนในโทเคน (ต้องมีสิทธิ์กะเอง) · ผิด = STAFF_TOKEN_INVALID */
+  staffToken?: string | null;
+};
 export type OpenShiftResult = { ok: true; shift: ShiftView; forceClosedShiftId?: string } | ShiftRefusal;
 
 /** เปิดกะ (S4) — เครื่องมีกะ OPEN แล้ว = SHIFT_ALREADY_OPEN + shiftId (จอรับกะนั้นต่อ · ไม่มีคีย์กันซ้ำ) */
 export async function openShift(ctx: RegisterCtx, actor: RegisterActor, input: OpenShiftInput, client?: Db): Promise<OpenShiftResult> {
   return guard("openShift", async (): Promise<OpenShiftResult> => {
     const db = client ?? prisma;
-    const s = await scopeOf(db, ctx, actor);
+    let s = await scopeOf(db, ctx, actor);
     if (isRefusal(s)) return s;
+    // POS P1.15 ▸ R3: โทเคนผู้ขาย (ผูกเครื่องที่เปิดกะ) → ผู้กระทำ = คนในโทเคน · ไม่ส่ง = ผู้ใช้ session เหมือนเดิม ◂
+    if (isRecord(input) && input.staffToken !== undefined && input.staffToken !== null) {
+      const ta = await staffActorFromToken({ tenantId: s.tenantId, unitId: s.unitId, deviceId: input.deviceId }, input.staffToken, db);
+      const st = ta ? await scopeOf(db, ctx, ta) : null;
+      if (!st || isRefusal(st)) return refuse("STAFF_TOKEN_INVALID");
+      s = st;
+    }
     if (!s.operate && !s.manage) return refuse("PERMISSION_DENIED");
-    if (!isRecord(input) || !onlyKeys(input, ["deviceId", "deviceLabel", "floatSatang", "floatDetail"])) return refuse("VALIDATION");
+    if (!isRecord(input) || !onlyKeys(input, ["deviceId", "deviceLabel", "floatSatang", "floatDetail", "staffToken"])) return refuse("VALIDATION");
     if (!isShiftDeviceId(input.deviceId)) return refuse("VALIDATION", "รหัสเครื่องไม่ถูกต้อง");
     const label = optText(input.deviceLabel, LABEL_MAX);
     if (label === false) return refuse("VALIDATION", `ชื่อเครื่องยาวได้ไม่เกิน ${LABEL_MAX} ตัวอักษร`);

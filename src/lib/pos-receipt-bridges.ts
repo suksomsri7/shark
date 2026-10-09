@@ -51,7 +51,7 @@ export async function onReceiptIssueReported(evt: IssueEvt): Promise<ReceiptIssu
     ).catch(async (e: unknown) => {
       // F5: บอร์ดใช้ไม่ได้ (ไม่มีคอลัมน์ ฯลฯ) = ข้ามแบบ no-board · บันทึกสถานะลง ops (ไม่มีข้อความลูกค้า)
       const { logOps } = await import("@/lib/core/ops");
-      await logOps("WARN", "pos.receipt", "เปิดการ์ดแจ้งปัญหาบิลไม่สำเร็จ — ข้าม (no-board)", { tenantId, error: e instanceof Error ? e.name : "error", code: (e as { code?: unknown })?.code != null ? String((e as { code?: unknown }).code).slice(0, 40) : null }).catch(() => {});
+      await logOps("WARN", "pos.receipt", "เปิดการ์ดแจ้งปัญหาบิลไม่สำเร็จ — ข้าม (no-board)", { tenantId, detail: `${e instanceof Error ? e.name : "error"}${(e as { code?: unknown })?.code != null ? " " + String((e as { code?: unknown }).code).slice(0, 40) : ""}` }).catch(() => {});
       return null;
     });
     if (card) {

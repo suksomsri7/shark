@@ -54,7 +54,7 @@ const CHECKS: readonly Def[] = [
   D("ST5", "-", "[static · S13 S12] outbox-consumers.ts มี consumer pos.shift.opened + pos.shift.closed · automation/labels.ts มีป้ายทั้งคู่ · /api/cron/hourly เรียก forceCloseStaleShifts"),
   D("ST6", "-", "[static · S15] ข้อความ pos.shift.{title open close float expected counted overShort reason cashIn cashOut xReport zReport offShift forced blind required} + pos.register.errors.{shiftRequired shiftAlreadyOpen shiftClosed reasonRequired drawerInsufficient} th+en · en ไม่มีอักษรไทย · refusalMessageKey 5 รหัสใหม่ตรงคีย์"),
   D("ST7", "-", "[static · S3 S5 S15] shift-actions.ts \"use server\" · export async ล้วน · ไม่ throw · 8 action เรียกบริการของมัน + catch · RegisterCtx มี deviceId? · RegisterStatus.shift ไม่ใช่ null ตายตัว · createSale input มี shiftId?"),
-  D("ST8", "-", "[static · S14 · ตะเข็บ HR] ไม่มี model PosStaffPin · PosShift ไม่มีคอลัมน์ pin · shift.ts ไม่อ่าน pinCode/hrEmployee (PIN เป็นของ HR verifyPin · P1.15/P3.5)"),
+  D("ST8", "-", "[static · S14 · ตะเข็บ HR] PosShift ไม่มีคอลัมน์ pin · shift.ts ไม่อ่าน pinCode/hrEmployee/pinHash (ORACLE-EDIT P1.15 fix รอบ 1: ตัดเงื่อนไข \"ไม่มี model PosStaffPin\" — P1.15 R1 สร้าง PIN ของ POS ที่ pos/staff-pin.ts)"),
   // ── O เปิดกะ ──
   D("O1", "-", "เปิดกะ: เจ้าของเปิดเครื่อง D1 เงินตั้งต้น ฿2,000 + floatDetail → ok · แถว OPEN ร้าน/สาขา/ระบบ/deviceId ถูก · shiftNo ≥ 1 · openedByUserId · floatSatang 200,000 · floatDetail ตรงตัว · currentShift(D1) = กะนี้"),
   D("O2", "-", "เปิดซ้ำเครื่องเดิม → SHIFT_ALREADY_OPEN พร้อม shiftId ของกะที่เปิดอยู่ · ไม่มีแถวใหม่ · เครื่อง D2 สาขาเดียวกัน → ok กะที่ 2 (หลายกะพร้อมกันต่อสาขา) shiftNo = ของ D1 + 1"),
@@ -381,12 +381,11 @@ async function runStatic(): Promise<void> {
   if (!/\bshiftId\s*\?\s*:\s*string/.test(csInput)) s7.push("CreateSaleInput ไม่มี shiftId?: string");
   chk("P1.9-ST7", s7.length === 0, "actions 8 · RegisterCtx.deviceId? · RegisterStatus.shift · CreateSaleInput.shiftId?", s7.slice(0, 8).join(" · ") + (s7.length > 8 ? ` …(+${s7.length - 8})` : "") || "ครบ");
 
-  // ST8 ตะเข็บ HR (เขียวได้บนฐาน — ห้ามมีตาราง PIN ของ POS)
+  // ST8 ตะเข็บ HR — ORACLE-EDIT (P1.15 fix รอบ 1 · ผู้คุมงานอนุมัติ): ตัดเงื่อนไข "ไม่มี model PosStaffPin" (P1.15 R1 แทนที่) · คงสองข้อที่เหลือ
   const s8: string[] = [];
-  if (prismaBlock(schemaSrc, "model", "PosStaffPin")) s8.push("มี model PosStaffPin (PIN เป็นของ HR)");
   if (shiftB && /^\s*\w*pin\w*\s+/im.test(shiftB.split("\n").slice(1).join("\n"))) s8.push("PosShift มีคอลัมน์ pin");
   if (/\bpinCode\b|\bhrEmployee\b|\bpinHash\b/.test(shiftSrc)) s8.push("shift.ts อ่าน PIN/HrEmployee ตรง");
-  chk("P1.9-ST8", s8.length === 0, "ไม่มีตาราง/คอลัมน์ PIN ของ POS", s8.join(" · ") || "ไม่มี (ถูก)");
+  chk("P1.9-ST8", s8.length === 0, "PosShift ไม่มีคอลัมน์ pin · shift.ts ไม่อ่าน PIN/HrEmployee ตรง", s8.join(" · ") || "ไม่มี (ถูก)");
   await runStaticR2(); // ORACLE-ADD (controller R2 ruling) ▸ S.R2.1–S.R2.5
 }
 const STATIC_IDS = ["P1.9-ST1", "P1.9-ST2", "P1.9-ST3", "P1.9-ST4", "P1.9-ST5", "P1.9-ST6", "P1.9-ST7", "P1.9-ST8"];

@@ -321,6 +321,8 @@ model PosHeldCart {
   status            PosHeldCartStatus @default(HELD)
   createdAt         DateTime          @default(now())
   version           Int               @default(1)
+  // POS P1.15 ▸ คำขออนุมัติ POS_DISCOUNT_OVER ที่ผ่านแล้ว (ตัวรับคิว pos-approval-consumer.ts เขียนครั้งเดียว · ใช้ได้ 1 บิล — ตัวบอกว่าใช้แล้วอยู่ที่ PosApprovalPayload) ◂
+  approvedRequestId String?
 
   @@index([unitId, status, createdAt])
 }
@@ -577,4 +579,67 @@ model PosTaxInvoiceRequest {
 
   @@index([tenantId, saleId])
   @@index([tenantId, status, createdAt])
+}
+
+// POS P1.7 — ใบขอรับเงิน (payment intent) ของส่วนที่ไม่ใช่เงินสด ก่อนบิลเกิด
+//   PromptPay ไดนามิก (QR ล็อกยอด) · Beam (PromptPay ยืนยันอัตโนมัติ + บัตร) · ยืนยันเอง (มี audit)
+//   ผู้เขียนเดียว = src/lib/modules/pos/payment-intent.ts · บิลใช้ intent ได้ครั้งเดียวใน submitRegisterSale (FOR UPDATE)
+//   id = "pi_" + สุ่ม (ไม่ใช่ cuid) ⇒ เลขอ้างอิงในวิธีจ่ายบอกได้ทันทีว่าเป็น intent
+model PosPaymentIntent {
+  id                String    @id
+  tenantId          String
+  unitId            String
+  systemId          String // ระบบ POS
+  kind              String // "PROMPTPAY_STATIC" | "PROMPTPAY_BEAM" | "CARD_BEAM"
+  amountSatang      Int
+  status            String // "PENDING" | "PAID" | "CONSUMED" | "EXPIRED" | "CANCELLED"
+  qrPayload         String? // EMV ของ QR (STATIC/Beam) · บัตร = URL หน้าชำระของ Beam
+  beamChargeId      String?
+  beamRef           String? // chargeId ที่ webhook ยืนยัน
+  deviceId          String
+  createdByUserId   String
+  confirmedVia      String? // "WEBHOOK" | "MANUAL"
+  confirmedByUserId String?
+  paidAt            DateTime?
+  expiresAt         DateTime
+  saleId            String? // บิลที่ใช้ intent นี้ (CONSUMED)
+  lateWebhook       Boolean   @default(false) // เงินเข้าหลังหมดเวลา (เงินจริง — ยังใช้ได้ใน 24 ชม.)
+  idempotencyKey    String
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, unitId, status, createdAt])
+  @@index([beamChargeId])
+}
+
+// ═══════════════════ POS P1.15 — PIN พนักงาน · ข้อมูลประกอบคำขออนุมัติของ POS (ตารางใหม่ล้วน · CD1–CD5) ═══════════════════
+// ผู้เขียนเดียว: PosStaffPin = pos/staff-pin.ts · PosApprovalPayload = pos/pos-approval.ts (+ ตัวรับคิว pos-approval-consumer.ts บันทึกผล)
+// PIN ต่อสาขา (CD1) · pinHash = "<salt 16 ไบต์ hex>:<scrypt hex>" ไม่เก็บ PIN ดิบ · ล็อก 15 นาทีหลังผิดติดกัน 5 ครั้ง
+model PosStaffPin {
+  id          String    @id @default(cuid())
+  tenantId    String
+  unitId      String // BusinessUnit.id
+  userId      String // User.id (ต้องมี pos.sale.create ที่สาขานี้)
+  pinHash     String
+  failedCount Int       @default(0)
+  lockedUntil DateTime?
+  setById     String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([unitId, userId])
+  @@index([tenantId, unitId])
+}
+
+// ApprovalRequest ของแกนกลางไม่มีคอลัมน์ payload/title (CD3) ⇒ snapshot ของคำขอ POS_* อยู่ที่นี่ (requestId = ApprovalRequest.id)
+// kind = POS_VOID | POS_REFUND | POS_DISCOUNT_OVER · payload = { ref, ... snapshot, outcome? } (ref = saleId / heldCartId)
+model PosApprovalPayload {
+  requestId String   @id
+  tenantId  String
+  kind      String
+  payload   Json
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, kind])
 }

@@ -402,7 +402,7 @@ const CALL_SITES: Record<string, number> = {
   "src/lib/modules/hotel/service.ts": 2, // checkOut/recordDeposit · systemForUnit
   "src/lib/modules/member/subscription.ts": 1, // subscribe · resolvePosForMember
   "src/lib/modules/pos/api/ops/sales.ts": 1, // REST/AI op sales.create · posUnitIsLinked
-  "src/lib/modules/pos/register.ts": 1, // หน้าขายใหม่ P1.3 · regScope
+  "src/lib/modules/pos/register.ts": 1, // หน้าขายใหม่ P1.3 · regScope · P1.7: จุดเดียวใน regCreateSale มี 2 โหมด (tx ของตัวเอง = ทาง P1.6 · tx ของผู้เรียก = ใบขอรับเงิน pi_ → ตัดสต็อกหลัง commit + scheduleDrain ทำซ้ำที่ผู้เรียก regSubmitWithIntents)
   "src/lib/modules/rental/service.ts": 2, // returnAsset (POS ตัวแรก · O21) / recordRentalDeposit (systemForUnit)
   "src/lib/modules/restaurant/order.ts": 1, // checkout · systemForUnit · คีย์ rest-<hash> (I6)
   "src/lib/modules/school/service.ts": 1, // markPaid · POS ตัวแรกของร้าน (O21)

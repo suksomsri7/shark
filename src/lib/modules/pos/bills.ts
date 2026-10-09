@@ -14,7 +14,10 @@ import { prisma } from "./db";
 import { receiptReadScope } from "./receipt";
 import { receiptKindOf } from "./receipt-shared";
 import { saleForRefund } from "./refund";
-import { PAY_TYPE_ORDER, PosSaleError, voidSale } from "./service";
+import { PAY_TYPE_ORDER, PosSaleError, voidSale, type VoidSaleAudit } from "./service";
+// POS P1.15 ▸ R5: ยกเลิกบิลผ่านสายอนุมัติ (POS_VOID) · PIN ผู้จัดการชนะคำขอที่รอ (CD4) ◂
+import { POS_APPROVAL_MESSAGE, auditPinOverride, cancelOpenPosRequest, submitPosApproval } from "./pos-approval";
+import { verifyManagerPin } from "./staff-pin";
 import { moneyText, type RegisterActor, type RegisterCtx } from "./register-shared";
 import {
   BILL_PAGE_SIZES,
@@ -495,14 +498,21 @@ export async function voidSaleByActor(ctx: RegisterCtx, actor: RegisterActor, in
     const saleId = input.saleId;
     const key = input.idempotencyKey;
     if (!canAccessUnit(a, unitId)) return refuse("SALE_NOT_FOUND");
-    if (!evaluate(a, { module: "pos", action: VOID_PERMISSION, unitId })) return refuse("NO_PERMISSION", "บัญชีนี้ยังไม่มีสิทธิ์ยกเลิกบิล — ขอให้เจ้าของร้านหรือผู้จัดการทำรายการ");
+    // POS P1.15 ▸ มติ 11: PIN ผู้จัดการที่ถูกต้อง (ผู้จัดการมี pos.sale.void) อนุญาตแทนผู้ขอที่ไม่มีสิทธิ์ยกเลิก — ผู้ขอต้องยังมี pos.sale.create ◂
+    const hasPin = !absent(input.managerPin);
+    // fix รอบ 1 F2: PIN ผู้จัดการต้องมาคู่ managerUserId เสมอ
+    if (hasPin && (absent(input.managerUserId) || !isId(input.managerUserId))) return refuse("VALIDATION", "เลือกผู้จัดการก่อนใส่ PIN");
+    const canVoid = evaluate(a, { module: "pos", action: VOID_PERMISSION, unitId });
+    if (!canVoid && !(hasPin && evaluate(a, { module: "pos", action: "pos.sale.create", unitId }))) {
+      return refuse("NO_PERMISSION", "บัญชีนี้ยังไม่มีสิทธิ์ยกเลิกบิล — ขอให้เจ้าของร้านหรือผู้จัดการทำรายการ");
+    }
     const reasonRaw = typeof input.reason === "string" ? input.reason : "";
     const reason = reasonRaw.trim();
     if (!reason || reason.length > VOID_REASON_MAX) return refuse("REASON_REQUIRED");
 
     const sale = await prisma.posSale.findFirst({
       where: { id: saleId, tenantId, systemId, unitId },
-      select: { id: true, status: true, docType: true, sourceModule: true, refundedSatang: true, shiftId: true },
+      select: { id: true, status: true, docType: true, sourceModule: true, refundedSatang: true, shiftId: true, grandTotalSatang: true, receiptNo: true },
     });
     if (!sale) return refuse("SALE_NOT_FOUND");
     // เล่นซ้ำคีย์เดิม = ผลเดิม (ไม่ throw · ไม่มี event/audit ที่สอง) · คีย์ใหม่บนบิลที่ยกเลิกแล้ว = SALE_NOT_VOIDABLE
@@ -515,21 +525,60 @@ export async function voidSaleByActor(ctx: RegisterCtx, actor: RegisterActor, in
       const sh = await prisma.posShift.findFirst({ where: { id: sale.shiftId, tenantId }, select: { status: true } });
       if (sh?.status !== "OPEN") return refuse("SHIFT_CLOSED");
     }
+    const deviceId = isRecord(ctx) && typeof ctx.deviceId === "string" ? ctx.deviceId : null;
 
-    try {
-      await voidSale(tenantId, unitId, sale.id, { actorUserId: a.userId, reason, idempotencyKey: key });
-    } catch (e) {
-      // ชนกับการยกเลิก/คืนเงินที่ commit ระหว่างนี้ — อ่านแถวใหม่แล้วตัดสินจากของจริง
-      const now = await prisma.posSale.findFirst({ where: { id: sale.id, tenantId }, select: { status: true, refundedSatang: true } });
-      if (now?.status === "VOIDED") return (await voidedWithKey(tenantId, sale.id, key)) ? { ok: true, sale: { id: sale.id, status: "VOIDED" }, duplicated: true } : refuse("SALE_NOT_VOIDABLE");
-      if (e instanceof PosSaleError && (e.code === "HAS_REFUNDS" || e.code === "SHIFT_CLOSED")) return refuse(e.code);
-      if (e instanceof Error && e.message === "บิลนี้ void ไม่ได้") return refuse("SALE_NOT_VOIDABLE");
-      throw e;
+    // POS P1.15 ▸ R5 + CD4: PIN ผู้จัดการ = ยกเลิกทันที (แม้มีกติกา) · audit void ผู้กระทำ = ผู้จัดการ + pin_override · ยกเลิกคำขอที่รอของบิลนี้ ◂
+    if (hasPin) {
+      const v = await verifyManagerPin({ tenantId, unitId, deviceId }, { managerPin: input.managerPin, managerUserId: input.managerUserId });
+      if (v.ok === false) return pinRefusal(v);
+      if (!evaluate(v.actor, { module: "pos", action: VOID_PERMISSION, unitId })) return refuse("NO_PERMISSION", "PIN นี้ไม่มีสิทธิ์ยกเลิกบิล — ใช้ PIN ของผู้จัดการ");
+      const done = await voidNow(tenantId, unitId, sale.id, key, { actorUserId: v.actor.userId, reason, idempotencyKey: key, via: "pin_override", requestId: null, requestedByUserId: a.userId });
+      if (!done.ok || done.duplicated) return done;
+      const cancelled = await cancelOpenPosRequest(tenantId, "POS_VOID", sale.id);
+      await auditPinOverride({ tenantId, action: "POS_VOID", requestId: cancelled, byUserId: v.actor.userId, forUserId: a.userId, targetType: "PosSale", targetId: sale.id, extra: { saleId: sale.id } });
+      return done;
     }
-    const after = await prisma.posSale.findFirst({ where: { id: sale.id, tenantId }, select: { status: true } });
-    return { ok: true, sale: { id: sale.id, status: after?.status ?? "VOIDED" } };
+
+    // POS P1.15 ▸ R5: กติกา POS_VOID ที่เข้าเงื่อนไข (ยอดบิล) = ยื่นคำขอ ไม่ยกเลิก · มีคำขอรออยู่ = PENDING_APPROVAL (มติ 9) · ไม่มีกติกา = ทางเดิม ◂
+    const ap = await submitPosApproval({
+      tenantId,
+      unitId,
+      systemId,
+      kind: "POS_VOID",
+      ref: sale.id,
+      entityIdOf: (n) => (n === 1 ? sale.id : `${sale.id}:${n}`),
+      amountSatang: sale.grandTotalSatang,
+      requestedById: a.userId,
+      payload: { saleId: sale.id, reason, idempotencyKey: key, deviceId, receiptNo: sale.receiptNo, title: `ยกเลิกบิล ${sale.receiptNo ?? sale.id.slice(-6)}` },
+    });
+    if (ap.status !== "AUTO") {
+      const code = ap.status === "PENDING" ? "PENDING_APPROVAL" : "APPROVAL_REQUIRED";
+      return { ok: false, code, message: POS_APPROVAL_MESSAGE[code], requestId: ap.requestId };
+    }
+    return await voidNow(tenantId, unitId, sale.id, key, { actorUserId: a.userId, reason, idempotencyKey: key });
   } catch (e) {
     console.error("[pos/bills] voidSaleByActor", e);
     return refuse("UNKNOWN");
   }
+}
+
+/** ยกเลิกจริง (voidSale ตัวเดียว + audit ในtx) — ชนกับการยกเลิก/คืนเงินที่ commit ระหว่างนี้ = อ่านแถวใหม่แล้วตัดสินจากของจริง */
+async function voidNow(tenantId: string, unitId: string, saleId: string, key: string, audit: VoidSaleAudit): Promise<VoidSaleActionResult> {
+  try {
+    await voidSale(tenantId, unitId, saleId, audit);
+  } catch (e) {
+    const now = await prisma.posSale.findFirst({ where: { id: saleId, tenantId }, select: { status: true, refundedSatang: true } });
+    if (now?.status === "VOIDED") return (await voidedWithKey(tenantId, saleId, key)) ? { ok: true, sale: { id: saleId, status: "VOIDED" }, duplicated: true } : refuse("SALE_NOT_VOIDABLE");
+    if (e instanceof PosSaleError && (e.code === "HAS_REFUNDS" || e.code === "SHIFT_CLOSED")) return refuse(e.code);
+    if (e instanceof Error && e.message === "บิลนี้ void ไม่ได้") return refuse("SALE_NOT_VOIDABLE");
+    throw e;
+  }
+  const after = await prisma.posSale.findFirst({ where: { id: saleId, tenantId }, select: { status: true } });
+  return { ok: true, sale: { id: saleId, status: after?.status ?? "VOIDED" } };
+}
+
+/** POS P1.15 ▸ คำปฏิเสธของ PIN ผู้จัดการ → ชนิดผลของไฟล์นี้ (PIN_* / DEVICE_REVOKED ส่งต่อ · ไม่ระบุผู้จัดการ = VALIDATION · อื่น = UNKNOWN) ◂ */
+function pinRefusal(v: { code: string; message: string }): { ok: false; code: "PIN_INVALID" | "PIN_LOCKED" | "DEVICE_REVOKED"; message: string } | ReturnType<typeof refuse> {
+  if (v.code === "PIN_INVALID" || v.code === "PIN_LOCKED" || v.code === "DEVICE_REVOKED") return { ok: false, code: v.code, message: v.message };
+  return v.code === "VALIDATION" ? refuse("VALIDATION", v.message) : refuse("UNKNOWN");
 }

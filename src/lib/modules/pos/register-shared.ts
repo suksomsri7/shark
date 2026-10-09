@@ -31,6 +31,39 @@ export const REGISTER_MAX_WEIGHT_GRAMS = 99_999;
 /** เพดานส่วนลดปริยายของ STAFF (basis point · docs/modules/14-pos.md §9) — OWNER/MANAGER ไม่จำกัด เว้นตั้ง `pos._maxDiscountBp` */
 export const REGISTER_STAFF_MAX_DISCOUNT_BP = 1000;
 
+// ═══════════ POS P1.15 R4 ▸ เพดานส่วนลดตามบทบาท (AppSystem(POS).settings.pos.discount) ◂ ═══════════
+/** เพดาน (basis point) ต่อบทบาท — STAFF = คีย์หลัก · CASHIER = ชื่อเรียกอีกแบบของ STAFF (CONTROLLER-DECISION 3) */
+export type PosDiscountCaps = { STAFF: number; MANAGER: number; OWNER: number };
+export const POS_DISCOUNT_CAPS_DEFAULT: PosDiscountCaps = { STAFF: REGISTER_STAFF_MAX_DISCOUNT_BP, MANAGER: 10_000, OWNER: 10_000 };
+/**
+ * อ่าน `settings.pos.discount.maxBpByRole` แบบมีค่าปริยาย (บริสุทธิ์) — ไม่ใช่ออบเจกต์/ผิดรูป = ค่าปริยายทั้งหมด ·
+ * ค่าที่ใช้ได้ = จำนวนเต็ม 0–10000 · บทบาทที่ไม่ตั้ง/ผิดรูป = ค่าปริยายของบทบาทนั้น · STAFF ไม่ตั้งแต่มี CASHIER = ใช้ CASHIER
+ * (คีย์ `overrideRequiresPin` เดิมของ brief ถูกยกเลิก — ส่วนลดเกินสิทธิ์ต้องใช้ PIN ผู้จัดการ/สายอนุมัติเสมอ · มติ 3)
+ */
+export function posDiscountCaps(settings: unknown): PosDiscountCaps {
+  const rec = (v: unknown): Record<string, unknown> | null => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null);
+  const by = rec(rec(rec(rec(settings)?.pos)?.discount)?.maxBpByRole);
+  const bp = (v: unknown): number | null => (typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= 10_000 ? v : null);
+  if (!by) return { ...POS_DISCOUNT_CAPS_DEFAULT };
+  return {
+    STAFF: bp(by.STAFF) ?? bp(by.CASHIER) ?? POS_DISCOUNT_CAPS_DEFAULT.STAFF,
+    MANAGER: bp(by.MANAGER) ?? POS_DISCOUNT_CAPS_DEFAULT.MANAGER,
+    OWNER: bp(by.OWNER) ?? POS_DISCOUNT_CAPS_DEFAULT.OWNER,
+  };
+}
+
+// ═══════════ POS P1.15 ▸ PIN พนักงาน · โทเคนผู้ขาย (ชนิดของ staff-pin.ts · client import ได้) ◂ ═══════════
+/** PIN = ตัวเลข 4–6 หลัก (ASCII) · ผิดติดกันกี่ครั้งจึงล็อก · ล็อกนานเท่าไร · อายุโทเคนผู้ขาย */
+export const STAFF_PIN_RE = /^[0-9]{4,6}$/;
+export const STAFF_PIN_LOCK_AFTER = 5;
+export const STAFF_PIN_LOCK_MS = 15 * 60_000;
+export const STAFF_TOKEN_TTL_MS = 12 * 3_600_000;
+export type StaffPinOk = { ok: true };
+/** ผล verifyStaffPin: staffToken ส่งต่อใน staffToken ของ submit/พัก/เรียกคืน/เปิดกะ · expiresAt = ISO */
+export type VerifyStaffPinOk = { ok: true; userId: string; role: RegisterRole; staffToken: string; expiresAt: string };
+export type StaffListItem = { userId: string; name: string | null; role: RegisterRole; hasPin: boolean; shift: { id: string; openedAt: string } | null };
+export type ListStaffForDeviceResult = { ok: true; items: StaffListItem[] } | RegisterRefusal;
+
 /** POS P1.5: บิลที่พัก (HELD) อายุเกินกี่วันนับจาก createdAt (24 ชม.ต่อวัน แบบเลื่อน) ⇒ ทิ้งเองตอนเปิดรายการ — ตั้งได้ที่
  *  `AppSystem(POS).settings.pos.heldCart.expireDays` (จำนวนเต็ม 1–365) · ไม่ตั้ง/ผิดรูป = ค่านี้ */
 export const HELD_CART_EXPIRE_DAYS = 2;
@@ -101,7 +134,23 @@ export type RegisterRefusalCode =
   // POS P1.10: เครื่องที่ถูกเพิกถอน (ขาย/เปิดกะ/พัก/เรียกคืน) · ลงทะเบียนเกินเพดาน · ไม่พบเครื่องในสาขานี้
   | "DEVICE_REVOKED"
   | "DEVICE_LIMIT"
-  | "DEVICE_NOT_FOUND";
+  | "DEVICE_NOT_FOUND"
+  // POS P1.7: ใบขอรับเงิน (reference "pi_…" ของ PROMPTPAY/CARD) — ไม่พบ/สาขาอื่น · ยังไม่จ่าย · ใช้แล้ว · จ่ายเกิน 24 ชม. · ยอดไม่ตรง
+  | "INTENT_NOT_FOUND"
+  | "INTENT_NOT_PAID"
+  | "INTENT_CONSUMED"
+  | "INTENT_EXPIRED"
+  | "AMOUNT_MISMATCH"
+  // POS P1.15: PIN พนักงาน · โทเคนผู้ขายบนเครื่อง · สายอนุมัติ (R9)
+  | "PIN_INVALID"
+  | "PIN_LOCKED"
+  | "PIN_TAKEN"
+  | "WEAK_PIN"
+  | "STAFF_TOKEN_INVALID"
+  | "APPROVAL_REQUIRED"
+  | "PENDING_APPROVAL"
+  // fix รอบ 1 F1: บิลที่ส่งพร้อม heldCartId ไม่ตรงกับที่อนุมัติ (ตะกร้า/ยอด/เจ้าของบิลพัก)
+  | "APPROVAL_MISMATCH";
 
 /** คำปฏิเสธ — คืนค่า ไม่ throw · `lineIndex` = บรรทัดที่ผิด (ลำดับเดียวกับที่ส่งมา) ถ้าระบุได้ */
 export type RegisterRefusal = { ok: false; code: RegisterRefusalCode; message: string; lineIndex?: number };
@@ -207,7 +256,7 @@ export type RegisterQuote = { ok: true } & RegisterQuoteTotals;
 export type RegisterQuoteResult = RegisterQuote | RegisterRefusal;
 
 export type RegisterPayType = (typeof REGISTER_PAY_TYPES)[number];
-/** reference = เลขอ้างอิงบัตร/EDC หรือโอน (P1.6 · ≤ REGISTER_REFERENCE_MAX · เงินสด/พร้อมเพย์ไม่มี) */
+/** reference = เลขอ้างอิงบัตร/EDC หรือโอน (P1.6 · ≤ REGISTER_REFERENCE_MAX · เงินสดไม่มี) · P1.7: "pi_…" บน PROMPTPAY/CARD = id ใบขอรับเงินที่ PAID แล้ว (พร้อมเพย์รับเฉพาะ pi_…) */
 export type RegisterPayMethod = { type: RegisterPayType; amountSatang: number; reference?: string };
 export type RegisterSubmitInput = RegisterQuoteInput & {
   /** คีย์เดียวต่อบิล — คงเดิมทุกการลองซ้ำ (สเปก §3.4) */
@@ -221,6 +270,13 @@ export type RegisterSubmitInput = RegisterQuoteInput & {
   note?: string;
   /** ยอดที่แคชเชียร์เห็นจาก quote ล่าสุด (บังคับ · จำนวนเต็ม ≥ 0) — ไม่ตรงยอดเซิร์ฟเวอร์ = PRICE_CHANGED */
   expectedGrandTotalSatang: number;
+  /** POS P1.15 R3: โทเคนผู้ขายจาก verifyStaffPin (ผูกเครื่อง · 12 ชม.) — ผู้ขาย/เพดานส่วนลด = คนในโทเคน · ผิด/หมดอายุ = STAFF_TOKEN_INVALID */
+  staffToken?: string;
+  /** POS P1.15 R4/R5: PIN ผู้จัดการที่เครื่องนี้ (คู่ managerUserId) — อนุญาตส่วนลดเกินสิทธิ์ทันที (audit pos.discount.override) */
+  managerPin?: string;
+  managerUserId?: string;
+  /** POS P1.15 R6: บิลพักที่ได้รับอนุมัติ POS_DISCOUNT_OVER แล้ว — ผ่านเพดานได้ 1 บิล สำหรับส่วนลด ≤ ที่อนุมัติ */
+  heldCartId?: string;
 };
 export type RegisterSubmitOk = { ok: true; saleId: string; receiptNo: string | null; grandTotalSatang: number; changeSatang: number; duplicated: boolean };
 /** PRICE_CHANGED พกยอดสดของเซิร์ฟเวอร์มาด้วย (จอแสดงใหม่ได้ทันทีไม่ต้อง quote ซ้ำ) */
@@ -239,7 +295,12 @@ export type RegisterIdempotencyConflict = {
   receiptNo: string | null;
   saleStatus: RegisterSaleStatus;
 };
-export type RegisterSubmitResult = RegisterSubmitOk | RegisterPriceChanged | RegisterIdempotencyConflict | RegisterRefusal;
+/**
+ * POS P1.15 R5: ต้องผ่านสายอนุมัติ — APPROVAL_REQUIRED (ยื่นคำขอใหม่แล้ว) / PENDING_APPROVAL (มีคำขอรออยู่ · requestId เดิม) ·
+ * ส่วนลดเกินสิทธิ์: heldCartId = บิลที่พักไว้ให้เรียกคืนเมื่ออนุมัติ
+ */
+export type PosApprovalRefusal = { ok: false; code: "APPROVAL_REQUIRED" | "PENDING_APPROVAL"; message: string; requestId: string; heldCartId?: string };
+export type RegisterSubmitResult = RegisterSubmitOk | RegisterPriceChanged | RegisterIdempotencyConflict | PosApprovalRefusal | RegisterRefusal;
 
 export type RegisterStatus = {
   ok: true;
@@ -529,6 +590,21 @@ const REFUSAL_KEY: Readonly<Record<string, string>> = {
   DEVICE_REVOKED: "errors.deviceRevoked",
   DEVICE_LIMIT: "errors.deviceLimit",
   DEVICE_NOT_FOUND: "errors.deviceNotFound",
+  // POS P1.7 ▸ ใบขอรับเงินในบิล ◂
+  INTENT_NOT_FOUND: "errors.intentNotFound",
+  INTENT_NOT_PAID: "errors.intentNotPaid",
+  INTENT_CONSUMED: "errors.intentConsumed",
+  INTENT_EXPIRED: "errors.intentExpired",
+  AMOUNT_MISMATCH: "errors.amountMismatch",
+  // POS P1.15 ▸ PIN · โทเคนผู้ขาย · สายอนุมัติ (R9 · คีย์ใต้ pos.register — CONTROLLER-DECISION 12) ◂
+  PIN_INVALID: "errors.pinInvalid",
+  PIN_LOCKED: "errors.pinLocked",
+  PIN_TAKEN: "errors.pinTaken",
+  WEAK_PIN: "errors.weakPin",
+  STAFF_TOKEN_INVALID: "errors.staffTokenInvalid",
+  APPROVAL_REQUIRED: "errors.approvalRequired",
+  PENDING_APPROVAL: "errors.pendingApproval",
+  APPROVAL_MISMATCH: "errors.approvalMismatch",
 };
 
 /**

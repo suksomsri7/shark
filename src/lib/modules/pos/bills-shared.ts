@@ -119,7 +119,12 @@ export type BillDetailResult = { ok: true; bill: BillDetail } | BillsRefusal;
 
 // ── voidSaleAction (R3) ──
 export type VoidSaleByActorInput = { unitId: string; saleId: string; reason: string; idempotencyKey: string };
-export type VoidSaleActionResult = { ok: true; sale: { id: string; status: string }; duplicated?: true } | BillsRefusal;
+export type VoidSaleActionResult =
+  | { ok: true; sale: { id: string; status: string }; duplicated?: true }
+  | BillsRefusal
+  // POS P1.15 ▸ PIN ผู้จัดการผิด/ล็อก/เครื่องถูกเพิกถอน · ต้องรออนุมัติ (requestId) — จอแปลด้วย refusalMessageKey ของ pos.register ◂
+  | { ok: false; code: "PIN_INVALID" | "PIN_LOCKED" | "DEVICE_REVOKED"; message: string }
+  | { ok: false; code: "APPROVAL_REQUIRED" | "PENDING_APPROVAL"; message: string; requestId: string };
 
 /** ป้ายเหตุผลการคืนเงิน (ไทม์ไลน์ · หน้าต่างคืนเงิน) — ตรงกับ REFUND_REASON_CODES ของ P1.8 */
 export const REFUND_REASON_LABEL_TH: Record<string, string> = {

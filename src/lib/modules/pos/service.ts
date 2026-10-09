@@ -729,7 +729,8 @@ export function lineConsumption(
   return out;
 }
 
-async function consumeSaleInventory(tenantId: string, unitId: string, saleId: string): Promise<void> {
+// POS P1.7 ▸ export: register.ts เรียก createSale ในธุรกรรมของตัวเอง (ล็อกใบขอรับเงิน) ⇒ ทำงานหลัง commit ชุดเดียวกับตอน createSale เป็นเจ้าของ tx ◂
+export async function consumeSaleInventory(tenantId: string, unitId: string, saleId: string): Promise<void> {
   const sale = await prisma.posSale.findFirst({ where: { id: saleId, tenantId }, select: { status: true } });
   if (!sale || sale.status !== "PAID") return; // void แล้ว = อย่าตัด
   // POS P1.2: ทุกบรรทัดของบิล (บรรทัดชุดไม่มี itemId แต่มี components) → ส่วนที่ต้องตัด
@@ -762,7 +763,15 @@ async function consumeSaleInventory(tenantId: string, unitId: string, saleId: st
 
 // POS P1.16 ▸ R3/CD2: อาร์กิวเมนต์ที่ 4 (ไม่บังคับ) = ผู้ยกเลิก + เหตุผล ⇒ AuditLog "pos.sale.void" ในtx เดียวกับการพลิกสถานะ ◂
 //   ผู้เรียกเดิม (3 อาร์กิวเมนต์ · AI proposals · โมดูลอื่น) ไม่เปลี่ยนและไม่เขียน audit · idempotencyKey เก็บใน after (bills.ts ใช้จับการเล่นซ้ำ)
-export type VoidSaleAudit = { actorUserId: string; reason: string; idempotencyKey?: string };
+export type VoidSaleAudit = {
+  actorUserId: string;
+  reason: string;
+  idempotencyKey?: string;
+  // POS P1.15 ▸ ยกเลิกผ่านสายอนุมัติ (actor = ผู้ตัดสิน) / PIN ผู้จัดการ (actor = ผู้จัดการ) — ผู้ขอเดิมบันทึกคู่กัน (มติ 11) ◂
+  via?: "approval" | "pin_override";
+  requestId?: string | null;
+  requestedByUserId?: string;
+};
 
 // void: กลับรายการ (คืนแต้ม + สถานะ)
 export async function voidSale(tenantId: string, unitId: string, saleId: string, audit?: VoidSaleAudit): Promise<void> {
@@ -793,7 +802,13 @@ export async function voidSale(tenantId: string, unitId: string, saleId: string,
           targetType: "PosSale",
           targetId: saleId,
           before: { status: "PAID", receiptNo: sale.receiptNo, grandTotalSatang: sale.grandTotalSatang },
-          after: { status: "VOIDED", reason: audit.reason, ...(audit.idempotencyKey ? { idempotencyKey: audit.idempotencyKey } : {}) },
+          after: {
+            status: "VOIDED",
+            reason: audit.reason,
+            ...(audit.idempotencyKey ? { idempotencyKey: audit.idempotencyKey } : {}),
+            ...(audit.via ? { via: audit.via, requestId: audit.requestId ?? null } : {}),
+            ...(audit.requestedByUserId ? { requestedByUserId: audit.requestedByUserId } : {}),
+          },
         },
       });
     }
