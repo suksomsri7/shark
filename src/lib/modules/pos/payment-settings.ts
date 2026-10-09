@@ -21,6 +21,8 @@ import {
   type PosIntentSettingsResult,
 } from "./payment-intent-shared";
 import { canManageAllLinkedUnits } from "./receipt-settings";
+import { writeAudit } from "@/lib/core/audit"; // POS P1.18 ▸ R6 ◂
+import { settingsAuditDiff } from "./settings-shared"; // POS P1.18 ▸ R6 ◂
 
 type Db = typeof prisma | Prisma.TransactionClient;
 
@@ -127,7 +129,8 @@ export async function updatePosPaymentSettings(
       if (tip.ledgerAccountId !== undefined && tip.ledgerAccountId !== null && (typeof tip.ledgerAccountId !== "string" || tip.ledgerAccountId.length > 64)) return refuse("VALIDATION");
     }
 
-    return await prisma.$transaction(async (tx): Promise<PosPaymentSettingsResult> => {
+    let diff = null as ReturnType<typeof settingsAuditDiff>; // POS P1.18 ▸ R6 audit (หลัง commit · ไม่เปลี่ยน = ไม่ลง) ◂
+    const res = await prisma.$transaction(async (tx): Promise<PosPaymentSettingsResult> => {
       // ล็อกแถวระบบก่อนอ่าน settings (แก้พร้อมกันสองหน้าจอ = ไม่ทับกันหาย)
       const locked = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM "AppSystem" WHERE id = ${ctx.systemId} AND "tenantId" = ${ctx.tenantId} AND type = 'POS' FOR UPDATE`;
       if (locked.length === 0) return refuse("NOT_FOUND");
@@ -153,8 +156,11 @@ export async function updatePosPaymentSettings(
       const pos = isRecord(base.pos) ? base.pos : {};
       const settings = { ...base, pos: { ...pos, serviceCharge: next.serviceCharge, tip: next.tip } } as Prisma.InputJsonValue;
       await tx.appSystem.update({ where: { id: sys.id }, data: { settings } });
+      diff = settingsAuditDiff("payment", cur, next);
       return { ok: true, ...next };
     });
+    if (res.ok && diff) await writeAudit({ tenantId: ctx.tenantId, actorId: actor.userId, action: "pos.settings.updated", targetType: "AppSystem", targetId: ctx.systemId, before: diff.before, after: diff.after });
+    return res;
   } catch (e) {
     console.error("[pos/payment-settings] update", e);
     return refuse("UNKNOWN");
@@ -206,7 +212,8 @@ export async function updatePosIntentSettings(
       return intentRefuse("VALIDATION", `อายุ QR ต้องเป็นจำนวนเต็ม ${POS_QR_EXPIRY_MIN}–${POS_QR_EXPIRY_MAX} นาที`, "qrExpiryMinutes");
     if (mc !== undefined && typeof mc !== "boolean") return intentRefuse("VALIDATION", undefined, "manualConfirmRequiresManager");
 
-    return await prisma.$transaction(async (tx): Promise<PosIntentSettingsResult> => {
+    let diff = null as ReturnType<typeof settingsAuditDiff>; // POS P1.18 ▸ R6 audit ◂
+    const res = await prisma.$transaction(async (tx): Promise<PosIntentSettingsResult> => {
       // ล็อกแถวระบบก่อนอ่าน settings (แบบ updatePosPaymentSettings — แก้พร้อมกันสองหน้าจอ = ไม่ทับกันหาย)
       const locked = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM "AppSystem" WHERE id = ${ctx.systemId} AND "tenantId" = ${ctx.tenantId} AND type = 'POS' FOR UPDATE`;
       if (locked.length === 0) return intentRefuse("NOT_FOUND");
@@ -226,8 +233,11 @@ export async function updatePosIntentSettings(
       const payment = { ...rawPay, beam: { ...rawBeam, enabled: next.beam.enabled }, qrExpiryMinutes: next.qrExpiryMinutes, manualConfirmRequiresManager: next.manualConfirmRequiresManager };
       const settings = { ...base, pos: { ...pos, payment } } as Prisma.InputJsonValue;
       await tx.appSystem.update({ where: { id: sys.id }, data: { settings } });
+      diff = settingsAuditDiff("intent", cur, next);
       return { ok: true, settings: parsePosIntentSettings(settings) };
     });
+    if (res.ok && diff) await writeAudit({ tenantId: ctx.tenantId, actorId: actor.userId, action: "pos.settings.updated", targetType: "AppSystem", targetId: ctx.systemId, before: diff.before, after: diff.after });
+    return res;
   } catch (e) {
     console.error("[pos/payment-settings] update intent", e);
     return intentRefuse("UNKNOWN");

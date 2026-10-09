@@ -330,6 +330,7 @@
       "amountMismatch": "The amount doesn't match the payment request — check the amount again",
       "pinInvalid": "Incorrect PIN",
       "pinLocked": "This PIN is locked for now — ask a manager to unlock it or wait 15 minutes",
+      "pinThrottled": "Too many wrong tries — wait 15 minutes and try again",
       "pinTaken": "Someone at this branch already uses this PIN — choose another",
       "weakPin": "This PIN is too easy to guess — choose another",
       "staffTokenInvalid": "Staff sign-in expired — enter your PIN again",
@@ -1538,7 +1539,9 @@
       "notFound": "This point of sale was not found",
       "permissionDenied": "This account cannot change receipt settings — it needs device management in every branch of this point of sale",
       "validation": "Some details are not valid — check the marked field",
-      "unknown": "Something went wrong — try again"
+      "unknown": "Something went wrong — try again",
+      "settingsSectionLocked": "Only the shop owner can change this section",
+      "confirmRequired": "Confirm before switching this off — new bills will not be posted to accounting until it is switched on again"
     },
     "receipt": {
       "title": "Receipt & tax",
@@ -1741,5 +1744,16 @@
       "pointsEarned": "Points earned {points} (total {total})",
       "pointsExpected": "Points to earn {points}"
     }
+  },
+  "nav": {
+    "overview": "Overview",
+    "register": "Register",
+    "products": "Products & services",
+    "stock": "Stock",
+    "sales": "Today's bills",
+    "shifts": "Shifts",
+    "close": "Close day",
+    "reports": "Reports",
+    "settings": "Settings"
   }
 }

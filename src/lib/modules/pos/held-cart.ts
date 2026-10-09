@@ -17,8 +17,8 @@ import { posDeviceRevoked } from "./device"; // POS P1.10 ▸ การ์ดเ
 import { staffActorFromToken } from "./staff-pin"; // POS P1.15 ▸ R3 โทเคนผู้ขาย ◂
 import { approvedDiscountOf } from "./pos-approval"; // POS P1.15U ▸ มติ 5 เรียกคืนบิลที่อนุมัติส่วนลดแล้ว ◂
 import {
-  HELD_CART_EXPIRE_DAYS,
   HELD_CART_LABEL_MAX,
+  posHeldCartExpireDays,
   type DiscardHeldCartResult,
   type HeldCartNotice,
   type HeldCartSummary,
@@ -89,9 +89,7 @@ async function expireCutoff(db: Db, s: Scoped): Promise<Date> {
 }
 async function expireOf(db: Db, s: Scoped): Promise<{ days: number; cutoff: Date }> {
   const sys = await db.appSystem.findFirst({ where: { id: s.ctx.systemId, tenantId: s.ctx.tenantId }, select: { settings: true } });
-  const st = sys?.settings as { pos?: { heldCart?: { expireDays?: unknown } } } | null | undefined;
-  const v = st?.pos?.heldCart?.expireDays;
-  const days = typeof v === "number" && Number.isInteger(v) && v >= 1 && v <= 365 ? v : HELD_CART_EXPIRE_DAYS;
+  const days = posHeldCartExpireDays(sys?.settings); // POS P1.18 ▸ R3 ตัวอ่านเดียว (register-shared) ◂
   return { days, cutoff: new Date(Date.now() - days * DAY_MS) };
 }
 

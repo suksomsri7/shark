@@ -9,6 +9,8 @@
 import type { Prisma } from "@prisma/client";
 import { evaluate, type MembershipCtx } from "@/lib/core/rbac";
 import { prisma } from "./db";
+import { writeAudit } from "@/lib/core/audit"; // POS P1.18 ▸ R6 ◂
+import { settingsAuditDiff } from "./settings-shared"; // POS P1.18 ▸ R6 ◂
 import {
   mergeReceiptSettings,
   parseReceiptSettings,
@@ -87,7 +89,8 @@ export async function updatePosReceiptSettings(ctx: Ctx, actor: PosReceiptSettin
     if (!m || !evaluate(m, { module: "pos", action: "pos.device.manage" })) return refuse("PERMISSION_DENIED");
     if (!(await canManageAllLinkedUnits(prisma, ctx, m))) return refuse("PERMISSION_DENIED");
     if (!isRecord(patch)) return refuse("VALIDATION");
-    return await prisma.$transaction(async (tx): Promise<PosReceiptSettingsResult> => {
+    let diff = null as ReturnType<typeof settingsAuditDiff>; // POS P1.18 ▸ R6 audit (เขียนหลัง commit · ไม่เปลี่ยน = ไม่ลง) ◂
+    const res = await prisma.$transaction(async (tx): Promise<PosReceiptSettingsResult> => {
       const locked = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM "AppSystem" WHERE id = ${ctx.systemId} AND "tenantId" = ${ctx.tenantId} AND type = 'POS' FOR UPDATE`;
       if (locked.length === 0) return refuse("NOT_FOUND");
       const sys = await loadPos(tx, ctx);
@@ -107,8 +110,11 @@ export async function updatePosReceiptSettings(ctx: Ctx, actor: PosReceiptSettin
           true),
           "updatedAt" = now()
         WHERE "id" = ${sys.id} AND "tenantId" = ${ctx.tenantId} AND type = 'POS'`;
+      diff = settingsAuditDiff("receipt", cur as unknown as Record<string, unknown>, parsed.settings as unknown as Record<string, unknown>);
       return { ok: true, settings: parsed.settings };
     });
+    if (res.ok && diff) await writeAudit({ tenantId: ctx.tenantId, actorId: actor.userId, action: "pos.settings.updated", targetType: "AppSystem", targetId: ctx.systemId, before: diff.before, after: diff.after });
+    return res;
   } catch (e) {
     console.error("[pos/receipt-settings] update", e);
     return refuse("UNKNOWN");

@@ -68,6 +68,13 @@ export type ListStaffForDeviceResult = { ok: true; items: StaffListItem[] } | Re
 /** POS P1.5: บิลที่พัก (HELD) อายุเกินกี่วันนับจาก createdAt (24 ชม.ต่อวัน แบบเลื่อน) ⇒ ทิ้งเองตอนเปิดรายการ — ตั้งได้ที่
  *  `AppSystem(POS).settings.pos.heldCart.expireDays` (จำนวนเต็ม 1–365) · ไม่ตั้ง/ผิดรูป = ค่านี้ */
 export const HELD_CART_EXPIRE_DAYS = 2;
+/** POS P1.18 ▸ R3 ตัวอ่านเดียวของ `settings.pos.heldCart.expireDays` (held-cart.ts + ตัวเขียนทั่วไปใช้ตัวนี้ · บริสุทธิ์) —
+ *  จำนวนเต็ม 1–365 · ไม่ตั้ง/ผิดรูป/ไม่ใช่ตัวเลข = HELD_CART_EXPIRE_DAYS (พฤติกรรมเดิมของ expireOf ทุกประการ) ◂ */
+export function posHeldCartExpireDays(settings: unknown): number {
+  const s = (settings ?? {}) as { pos?: { heldCart?: { expireDays?: unknown } | null } | null };
+  const v = typeof s === "object" ? s.pos?.heldCart?.expireDays : undefined;
+  return typeof v === "number" && Number.isInteger(v) && v >= 1 && v <= 365 ? v : HELD_CART_EXPIRE_DAYS;
+}
 /** ป้ายบิลที่พักยาวได้ไม่เกิน (ตัวอักษร) */
 export const HELD_CART_LABEL_MAX = 60;
 
