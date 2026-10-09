@@ -178,7 +178,14 @@ export type RegisterRefusalCode =
   | "POINTS_INSUFFICIENT"
   | "POINTS_CAPPED"
   | "BENEFITS_EXCEED_TOTAL"
-  | "MEMBER_RIGHTS_CHANGED";
+  | "MEMBER_RIGHTS_CHANGED"
+  // POS P2.1 ▸ ช่องทางขาย (R13) — ช่องทางที่ส่งมาใช้ไม่ได้ · วิธีจ่ายไม่ตรงช่องทาง · ตั้งค่าช่องทาง ◂
+  | "CHANNEL_INVALID"
+  | "CHANNEL_PAY_MISMATCH"
+  | "CHANNEL_NOT_FOUND"
+  | "CHANNEL_CODE_TAKEN"
+  | "CHANNEL_BUILTIN_LOCKED"
+  | "CHANNEL_LIMIT";
 
 /** คำปฏิเสธ — คืนค่า ไม่ throw · `lineIndex` = บรรทัดที่ผิด (ลำดับเดียวกับที่ส่งมา) ถ้าระบุได้ */
 export type RegisterRefusal = { ok: false; code: RegisterRefusalCode; message: string; lineIndex?: number };
@@ -746,6 +753,13 @@ const REFUSAL_KEY: Readonly<Record<string, string>> = {
   POINTS_CAPPED: "errors.pointsCapped",
   BENEFITS_EXCEED_TOTAL: "errors.benefitsExceedTotal",
   MEMBER_RIGHTS_CHANGED: "errors.memberRightsChanged",
+  // POS P2.1 ▸ ช่องทางขาย (R13) ◂
+  CHANNEL_INVALID: "errors.channelInvalid",
+  CHANNEL_PAY_MISMATCH: "errors.channelPayMismatch",
+  CHANNEL_NOT_FOUND: "errors.channelNotFound",
+  CHANNEL_CODE_TAKEN: "errors.channelCodeTaken",
+  CHANNEL_BUILTIN_LOCKED: "errors.channelBuiltinLocked",
+  CHANNEL_LIMIT: "errors.channelLimit",
 };
 
 /**
