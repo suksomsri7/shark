@@ -841,3 +841,10 @@
 - L1: build33 @33cdddd6 "Compiled successfully in 5.6min" ล้มเฉพาะ TS2353 (ของผม) ⇒ **โค้ด P1.10U ไม่ทำ build ค้าง** (ที่ค้างคือ CPU steal) · build34 @**0056cacb** (= 33a22ae7 + 8dfab705 · pos.json both-add) unit pos-build34-p110u-1791521205 04:46Z → 0 ⇒ vis23 (:3225 settings/register owner+cashier) → เทียบ 17A/17B/02 → merge
 - P1.11U builder: typecheck แดงเพราะ TS2353 เดียวกัน (แก้แล้วบน session/pos) · ข้าม PayDone share row + 17A toggle (รอ P1.10U) = P1.11U-FOLLOWUP · copy link เขียน audit reprint บนบิล >30 นาที (ผู้ตรวจจะชี้) · visual run ทิ้ง 3 บิล/1 คืน/1 กะ ใน QC4
 - ทรี b และ d ว่าง → ถัดไป: brief P1.15U (เลน 3) · brief P2.1 S (เลน 4 · ไม่ชนไฟล์ register UI) · P1.7U หลัง P1.11U merge
+
+### 9 ต.ค. 05:03 UTC — build34 P1.10U **0** → vis23 ถ่ายภาพ · P1.11U fix round 1 เสร็จ · เลน 3/4 เริ่ม
+- L1: build34 @0056cacb **build 0** (compile ~6 นาที · typecheck 0) ⇒ vis23 unit pos-vis23-1791522104 (server :3225 จาก p11 · settings/register owner+cashier) → ดูภาพเทียบ 17A/17B/02 → merge 0056cacb → 17/55
+- L2: P1.11U fix round 1 = **2d545ea4** (merge session/pos 3127fa07 · F1 receiptLinkAction · F4 ไม่ส่ง id · F5 upper-case · F3 seed ต่อวัน+archive การ์ด · typecheck 0 · 38/38 ×3) → re-review ส่งแล้ว · build ทรี c (`build35-c.sh`) หยุดไว้ก่อน (iso-3297365 stop แล้ว) จะรันหลัง vis23 จบ → :3226 ถ่าย receipt-public/sales
+- L3: P1.15U builder เริ่ม ทรี b `wip/pos-p1.15u` (prompt `pos-prompt-accountB-P1.15U.md` 3127fa07 · rulings 1–10 · server hunks อนุญาต: staffToken void/refund · status read · recall approved cap · discard on reject)
+- L4: P1.13 brief `pos-brief-P1.13.md` (R1–R9 · CD1–CD6 · ใบกำกับเต็มรูปแทน ABB · DBD facade stub · PosBuyerProfile · AccountDocument.supersededByDocId) + oracle writer เริ่ม ทรี d `wip/pos-p1.13-oracle`
+- ⚠️ unit ที่ใช้ iso.sh: stop wrapper ไม่พอ ต้อง stop unit iso-<pid> ของมันด้วย (ดู cwd ใน /proc)
