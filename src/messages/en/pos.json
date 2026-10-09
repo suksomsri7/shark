@@ -400,7 +400,7 @@
       "lockNow": "Lock screen",
       "holdLabel": "Staff switch",
       "switchHeld": "{name}'s bill was held (staff switch)",
-      "switchHeldFailed": "Could not hold {name}'s bill — it is still on screen",
+      "switchHeldFailed": "Could not hold {name}'s bill — the switch did not happen, try again",
       "backToSale": "Back to selling",
       "needPinBills": "Enter your PIN on the register first",
       "needPinBillsBody": "This device needs to know who is acting — unlock the register with your PIN, then come back to void or refund",

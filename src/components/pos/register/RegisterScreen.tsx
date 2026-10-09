@@ -394,22 +394,30 @@ export function RegisterScreen(props: RegisterScreenProps) {
   });
   const onUnlocked = async (next: StaffSession) => {
     const prev = lastStaffRef.current;
-    if (deviceId) writeStaffSession(deviceId, next);
     // มติ 3: คนอื่นปลดล็อก ⇒ ตะกร้าที่ค้างพักไว้ในชื่อคนก่อน (ด้วยโทเคนของคนก่อน) · ว่าง = ไม่พัก · ระหว่างส่งบิล = ไม่แตะ
+    //   fix รอบ 1 F10: โทเคนคนก่อนตาย ⇒ พักด้วยโทเคนของคนใหม่ ป้าย "สลับพนักงาน · <ชื่อคนก่อน>" · พักไม่ได้ทั้งสองทาง = ไม่สลับ (จอยังล็อก)
+    //   ตะกร้าของคนก่อนไม่ค้างบนจอของคนใหม่เด็ดขาด
     if (prev && prev.userId !== next.userId && cartRef.current.lines.length && !frozenRef.current) {
       const who = prev.name ?? "-";
-      try {
-        const r = await holdRegisterCartAction({ systemId, unitId, ...(deviceId ? { deviceId } : {}), cart: cartToQuoteInput(cartRef.current), label: t("lock.holdLabel"), staffToken: prev.staffToken });
-        if (r.ok) {
-          resetBill();
-          setLayers([]);
-          showToast({ key: "lock.switchHeld", values: { name: who } });
-          void refreshHeld();
-        } else showToast({ key: "lock.switchHeldFailed", values: { name: who } });
-      } catch {
+      const hold = async (token: string, label: string) => {
+        try {
+          return await holdRegisterCartAction({ systemId, unitId, ...(deviceId ? { deviceId } : {}), cart: cartToQuoteInput(cartRef.current), label, staffToken: token });
+        } catch {
+          return null;
+        }
+      };
+      let r = await hold(prev.staffToken, t("lock.holdLabel"));
+      if (!r?.ok) r = await hold(next.staffToken, `${t("lock.holdLabel")} · ${who}`.slice(0, 60));
+      if (!r?.ok) {
         showToast({ key: "lock.switchHeldFailed", values: { name: who } });
+        return; // ไม่สลับ — ตะกร้ายังเป็นของคนก่อน จอยังล็อก
       }
+      resetBill();
+      setLayers([]);
+      showToast({ key: "lock.switchHeld", values: { name: who } });
+      void refreshHeld();
     }
+    if (deviceId) writeStaffSession(deviceId, next);
     lastStaffRef.current = next;
     setStaff(next);
     setLockFlag(false);
@@ -1997,7 +2005,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
       {toast && (
         <div
           data-testid="pos-reg-toast"
-          className="pointer-events-none fixed inset-x-4 bottom-[max(24px,env(safe-area-inset-bottom))] z-[60] mx-auto flex max-w-[520px] items-center gap-3 rounded-[16px] bg-[color:var(--color-ink)] px-[18px] py-[14px] text-[14px] leading-[1.5] text-[color:var(--color-surface)] shadow-xl max-md:bottom-[150px]"
+          className="pointer-events-none fixed inset-x-4 bottom-[max(24px,env(safe-area-inset-bottom))] z-[80] mx-auto flex max-w-[520px] items-center gap-3 rounded-[16px] bg-[color:var(--color-ink)] px-[18px] py-[14px] text-[14px] leading-[1.5] text-[color:var(--color-surface)] shadow-xl max-md:bottom-[150px]"
           role="status"
           aria-live="polite"
         >
