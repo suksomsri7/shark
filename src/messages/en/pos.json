@@ -351,6 +351,7 @@
       "voucherCouponConflict": "This voucher cannot be combined with a coupon — choose one",
       "pointsDisabled": "This branch has no point system — points cannot be redeemed",
       "pointsBelowMin": "Points are below the shop minimum for redemption",
+      "pointsBelowMinBill": "This bill is too small to use the minimum of {min} points",
       "pointsInsufficient": "The member does not have enough points",
       "pointsCapped": "Points exceed the per-bill limit — adjusted to the allowed amount",
       "benefitsExceedTotal": "Total discounts exceed the bill — reduce the discount or benefits first",

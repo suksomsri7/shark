@@ -1030,3 +1030,14 @@
 - ⚠️ `qc-member-m2.7`/`m2.8` ล้มตอน setup ทั้งบน base และสาขานี้ (`member-expected.json` ไม่ตรง seed สมาชิกบน QC4 — ไม่ใช่ของ P1.12; ห้าม reseed เอง → แจ้งเจ้าของ/รอ session สมาชิก)
 - **งานแรกของ A** = spawn reviewer Opus (อ่านอย่างเดียว ทรี b @80d86f6b, diff `183b4e1b..80d86f6b`) ด้วย prompt ใหม่ `pos-prompt-accountB-P1.12-R.md` ตามแบบ P1.13-R → รอบแก้ (ถ้ามี) → merge `--no-ff origin/wip/pos-p1.12` → ต่อข้อ 3 (P1.12U)
 - ไม่มี agent/unit ค้าง · ไม่ spawn/resume เพิ่มจากบัญชี B
+
+# ▶️ บัญชี A รับไม้ต่อ — 9 ต.ค. 2026 12:05Z → 12:4xZ (Fable คุม · Opus ทำ)
+- 12:05Z อ่าน HANDOVER · โควตา A weekly 27% · tg 4356 · trial merge `wip/pos-p1.12` 80d86f6b บน session/pos f1d8ee4c = ทรี c `tmp/p112-merge` **a2d2848d** (ไม่ชน · 24 ไฟล์)
+- 12:2xZ เลน 1 = **reviewer P1.12 S** (Opus อ่านอย่างเดียว · prompt `pos-prompt-accountB-P1.12-R.md` fe490670 · รายงานที่ `scratchpad/p112-r/REPORT.md`)
+- 🔴 **12:3xZ เจ้าของสั่ง "เปิด 4 เลน"** (ยกเลิกเพดาน 2 เลน) ⇒ เลน 2 = **builder P1.12U** ทรี d `wip/pos-p1.12u` จากฐาน a2d2848d (prompt `pos-prompt-accountB-P1.12U.md` · มติ 1–11 · merge origin/session/pos ก่อนด่านท้าย) · เลน 3 = **ร่าง brief P1.18** (Opus อ่านอย่างเดียว เขียน `pos-brief-P1.18.md` DRAFT) · เลน 4 = **ร่าง brief P2.1** (เขียน `pos-brief-P2.1.md` DRAFT) — ผู้คุมเคาะ §9 ก่อนเปิด oracle writer
+- ถัดไปเมื่อผลมา: R ⇒ (รอบแก้บนทรี b ถ้ามี) ⇒ merge `--no-ff origin/wip/pos-p1.12` เข้า session/pos (ยังนับ 21/55) ⇒ บอก builder U ให้ merge · brief ร่าง ⇒ ผู้คุมอ่าน+เคาะ §9 ⇒ oracle writer (ทรี p11 / ทรี c) ⇒ builder S
+- ทรีว่าง: p11 (L1) · c หลังปิด tmp/p112-merge · e = `wip/survey-inventory-v2` (ของสำรวจคลัง ห้ามแตะ)
+- 13:0xZ **R P1.12 S = MERGEABLE** (รายงาน `wo-notes/pos-P1.12-review-S.md`) · F1 Medium (quick register ซ้ำเบอร์เก่าแบบมีขีด) + F2–F9 ⇒ เปิด **รอบแก้ 1** บนทรี b (`pos-prompt-accountB-P1.12-S-fix.md` · F1 F2 F3 F4 F6 F7 F8 F9 · oracle 64→67: M12 P9 W3 + M11/X4 แข็งขึ้น) · เลน = fix S (b) · U (d) · brief P1.18 · brief P2.1 · หลัง fix: ผู้คุม merge `--no-ff origin/wip/pos-p1.12` + รัน qc-pos-p1.12 forced ×2 ที่จุด merge (ทรี c) · แจ้ง builder U ให้ merge (oracle count จะชน U1 → U1 = 68)
+- 🔴 **13:1xZ เจ้าของสั่ง "เปิด 3 เลน"** (ลดจาก 4) ⇒ เพดาน = 3 เลนขนาน (รวมผู้ตรวจ/ร่าง brief) · 4 งานที่เดินอยู่ปล่อยให้จบ ไม่เปิดเพิ่มจนกว่าจะเหลือ ≤ 2 แล้วเติมถึง 3
+- 13:5xZ brief P1.18 (ร่าง+§9 e66bdaae) · brief P2.1 (ร่าง+§9 d0950c92 · O25–O27) · เลน 3 = **oracle writer P1.18** ทรี p11 `wip/pos-p1.18-oracle` (prompt `pos-prompt-accountB-P1.18-O.md` · ⚠️ ห้าม prisma generate ใน p11) · เลนตอนนี้ = fix S P1.12 (b) · U P1.12 (d) · oracle P1.18 (p11) = 3 เต็ม
+- คิวถัดไป (เมื่อมีเลนว่าง ตามลำดับ): ① merge P1.12 S (หลัง fix) → ② builder S P1.18 (ทรี c หลัง generate) → ③ oracle writer P2.1 (ทรีที่มี client P1.12) → ④ reviewer P1.12U → ⑤ builder S P2.1 (ขนานกับ P1.18 S ได้)

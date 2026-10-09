@@ -76,7 +76,9 @@ const CHECKS: readonly Def[] = [
   D("M8", "X3", "[มติ Q2] ผู้ใช้ไม่มี pos.sale.create (มี pos.sale.read + member.*) → PERMISSION_DENIED จาก lookup / quick register / benefits / fulfil / quote · ไม่มีอะไรถูกเขียน"),
   D("M9", "X5", "[R4] สมัครด่วน → Customer (source POS · homeUnitId A · sourceDetail.heardFrom/unitId) + consent LINE/EMAIL/SMS ตาม marketingConsent (source STAFF) + attribution FIRST/LAST (POS · staffUserId = ผู้กระทำจริง · unitId A) + audit pos.member.registered {customerId, created:true, unitId} ผู้กระทำจริง ไม่มีเบอร์เต็ม · ผล {ok, created:true, member (DTO R2)}"),
   D("M10", "X1", "[R4] เบอร์ซ้ำ (X) → {ok:true, created:false, member.id = X} · ยิงซ้ำ idempotencyKey เดิม → ลูกค้าคนเดิม · audit 1 แถว"),
-  D("M11", "X5", "[R4 R9 CD8] PHONE_INVALID (7 หลัก · ตัวอักษร) · บิลของ X มี memberSnapshot ตรงตัว {name, memberCode, phoneMasked 089-xxx-5521, tierKey gold, tierName Gold}"),
+  D("M11", "X5", "[R4 R9 CD8] PHONE_INVALID (7 หลัก · ตัวอักษร) · บิลของ X มี memberSnapshot ตรงตัว {name, memberCode, phoneMasked 089-xxx-5521, tierKey gold, tierName Gold} · (ORACLE-EDIT รีวิว F2) 0066 81x xxx xxxx → เก็บ 081xxxxxxx"),
+  // ORACLE-EDIT (รีวิว F1 · มติผู้คุมงาน fix รอบ 1): สมัครด่วนเบอร์เดียวกับแถวเก่าที่เก็บแบบมีขีด ต้องไม่สร้างลูกค้าซ้ำ
+  D("M12", "X1", "[R4 Q4 รีวิว F1] L เก็บเบอร์แบบมีขีด 089-555-NNNN · สมัครด่วนด้วยเบอร์เดียวกันพิมพ์เว้นวรรค → {ok, created:false, member.id = L} · จำนวน Customer เท่าเดิม · ไม่มี audit pos.member.registered"),
   // ── T ระดับ ──
   D("T1", "X4", "[R6 R8] Gold 5%: quote tierDiscountSatang 2,500 บนตะกร้า ฿500 = memberLines TIER = PosSale.tierDiscountSatang · grandTotal 47,500 · สูตรยอด subtotal − lineDisc − bill − coupon + svc − memberDiscount"),
   D("T2", "-", "[R6] MEMBER_RIGHTS_UNSUPPORTED ไม่ถูกคืนอีก (quote/submit ของสมาชิกที่มีส่วนลดระดับผ่าน)"),
@@ -101,6 +103,8 @@ const CHECKS: readonly Def[] = [
   D("P6", "-", "[R16] สาขา C (มีสมาชิก ไม่มีระบบแต้ม) → quote POINTS_DISABLED · submit POINTS_DISABLED · benefits.points = null"),
   D("P7", "X5", "[R7 R8 R12] หลังระบายคิว pointEarned = pointsExpected ของผล submit = point.computeEarn(ไม่นับส่วนที่จ่ายด้วยแต้ม) > 0"),
   D("P8", "X4", "[CD1 R10] GL บิลใช้แต้ม (Y 500 แต้ม ฿200 → ฿150) = GL บิลเดียวกันที่ลดท้ายบิล ฿50 ทุกรหัสบัญชี · สมดุล · VAT บิลเท่ากัน"),
+  // ORACLE-EDIT (รีวิว F3): เพดาน % ตัดแต้มเหลือต่ำกว่าขั้นต่ำ = POINTS_BELOW_MIN (ไม่ใช่ POINTS_CAPPED ที่ส่งซ้ำแล้วก็ยังติดขั้นต่ำ)
+  D("P9", "-", "[R16 รีวิว F3] ขั้นต่ำ 100 · เพดาน 50% · 10 สต./แต้ม · ตะกร้า ฿15 ขอ 100 แต้ม (เพดานเหลือ < 100) → quote POINTS_BELOW_MIN (ไม่ใช่ CAPPED) · submit POINTS_BELOW_MIN · ไม่มีบิล/แถวแต้ม"),
   // ── S สแตมป์ ──
   D("S1", "-", "[R12] quote ตะกร้า ฿800 ของ X → stampsToAdd มีการ์ดของร้าน count 1"),
   D("S2", "X5", "[R12] หลังระบายคิว: StampEvent ADD (refType SALE refId บิล) 1 แถว · PosSale.stampEventIds มี id นั้น"),
@@ -109,11 +113,13 @@ const CHECKS: readonly Def[] = [
   // ── W รางวัล ──
   D("W1", "X5", "[R13] benefits.rewardsPending มีรายการของ X · registerFulfilReward (พนักงานไม่มี member.loyalty.fulfil) → ok · FULFILLED · fulfilledById = ผู้กระทำจริง · audit pos.member.reward_fulfilled 1"),
   D("W2", "X1", "[R13] ส่งมอบซ้ำ → ok · audit ยัง 1 · memberId ไม่ใช่เจ้าของรายการ → NOT_FOUND/MEMBER_NOT_FOUND ไม่เปลี่ยนอะไร"),
+  // ORACLE-EDIT (รีวิว F4): หลังร้านส่งมอบไปก่อน = หน้าขาย ok โดยไม่ audit
+  D("W3", "X1", "[R13 รีวิว F4] รายการที่หลังร้านส่งมอบแล้ว (fulfilV2 ด้วย OWNER) → registerFulfilReward ok · ยัง FULFILLED โดย OWNER · audit pos.member.reward_fulfilled 0 แถว"),
   // ── X ย้อนครบ ──
   D("X1", "X5", "[R14] void บิล (ระดับ + ว่อชเชอร์ + คูปอง + 200 แต้ม + ดวง) → ว่อชเชอร์ ACTIVE · Σ แต้มของบิล = 0 · ยอดแต้ม = ก่อนขาย · คูปอง RELEASED · ดวงถูก VOID · ยอดสะสม = ก่อนขาย"),
   D("X2", "X1", "[R14] เล่น consumers[pos.sale.voided] ซ้ำ 2 รอบ + ระบาย → แถวแต้ม/ยอดแต้ม/VOID ดวง/ยอดสะสม/คูปองไม่เปลี่ยน"),
   D("X3", "X5", "[R14 CD7] คืนเงินครบ → ว่อชเชอร์ ACTIVE · Σ แต้มของบิล = 0 · คูปอง RELEASED · ดวงถูก VOID · ยอดสะสม = ก่อนขาย"),
-  D("X4", "X5", "[R14 P1.8] คืนบางส่วน → ว่อชเชอร์ยัง USED · BURN ยังอยู่ (ไม่มี +100 คืน) · หักแต้มที่ได้ตามสัดส่วน (คีย์ pos-refund-<refundId>:<earnId>) · ดวงไม่ถูก VOID"),
+  D("X4", "X5", "[R14 P1.8] คืนบางส่วน → ว่อชเชอร์ยัง USED · BURN ยังอยู่ (ไม่มี +100 คืน) · หักแต้มที่ได้ตามสัดส่วน (คีย์ pos-refund-<refundId>:<earnId> · ORACLE-EDIT รีวิว F7: แถวเดียวต่อ EARN · −floor(pointEarned × ยอดใบคืน / ยอดบิล)) · ดวงไม่ถูก VOID"),
   D("X5", "X1", "[R14] เล่น consumers[pos.sale.refunded] ซ้ำ 2 รอบ (ครบ + บางส่วน) + ระบาย → แถวแต้ม/ยอดแต้มไม่เปลี่ยน"),
   D("X6", "X1", "[R14 AUDIT M11] void ทันทีหลังขาย (แข่งกับคิว pos.sale.paid) → หลังระบาย 2 รอบ Σ แต้มของบิล = 0 · ว่อชเชอร์ ACTIVE · ดวงสุทธิ 0 · ยอดสะสมสุทธิ 0"),
   D("X7", "X4", "[R14 COMMON-1] GL ของบิลที่ void: Σ ต่อรหัสบัญชี = 0 (ขาย + กลับรายการ) · ทุก JV สมดุล"),
@@ -901,7 +907,10 @@ async function runDb() {
   const lDigits = PH.L.replace(/\D/g, "");
   {
     const p: string[] = [];
+    const t1 = Date.now();
     const r1 = await lookup("0892145");
+    // ORACLE-EDIT (รีวิว F6): บันทึกเวลาค้นหนึ่งครั้ง (ข้อมูล · ไม่ตัดสิน)
+    console.log(`M1 lookup ms=${Date.now() - t1}`);
     const r2 = await lookup("089-214-5521");
     const r3 = await lookup(lDigits);
     const r4 = await lookup("08");
@@ -1186,7 +1195,28 @@ async function runDb() {
     if (!refused(r1, "PHONE_INVALID")) p.push(`เบอร์ 7 หลัก → ${codeOf(r1)}`);
     const r2 = await quick({ phone: "abcdefghij", name: "ตัวอักษร", marketingConsent: false, heardFrom: "WALK_IN", idempotencyKey: newKey("qp") });
     if (!refused(r2, "PHONE_INVALID")) p.push(`เบอร์ตัวอักษร → ${codeOf(r2)}`);
-    chk("M11", p.length === 0, "PHONE_INVALID ×2 · memberSnapshot ตรงตัว (ปิดเบอร์)", FXB(joinP(p)));
+    // ORACLE-EDIT (รีวิว F2): 0066 นำหน้า = รหัสประเทศ → เก็บ 0 + 9 หลัก (เดิมตัดเหลือ 9 หลัก = PHONE_INVALID)
+    const d9 = `8${rnd(8)}`;
+    const r3 = await quick({ phone: `0066 ${d9.slice(0, 2)} ${d9.slice(2, 5)} ${d9.slice(5)}`, name: `ศูนย์ศูนย์หกหก ${TAGN}`, marketingConsent: false, heardFrom: "WALK_IN", idempotencyKey: newKey("q66") });
+    if (r3?.ok !== true) p.push(`0066… → ${codeOf(r3)} ${short(r3?.message ?? "", 60)}`);
+    else {
+      const c66 = await P.customer.findUnique({ where: { id: String(r3.member?.id ?? "-") }, select: { phone: true } }).catch(() => null);
+      if (c66?.phone !== `0${d9}`) p.push(`0066… เก็บเป็น ${c66 ? "อื่น" : "ไม่มี"} (คาด 0 + 9 หลัก)`);
+    }
+    chk("M11", p.length === 0, "PHONE_INVALID ×2 · memberSnapshot ตรงตัว (ปิดเบอร์) · 0066 → 0", FXB(joinP(p)));
+  }
+  {
+    // ORACLE-EDIT (รีวิว F1): แถวเก่า L เก็บ "089-555-NNNN" · แคชเชียร์พิมพ์ "089 555 NNNN" → คนเดิม ไม่สร้างซ้ำ ไม่ audit
+    const p: string[] = [];
+    const spaced = PH.L.replace(/-/g, " ");
+    const n0 = await custCount();
+    const a0 = (await audits(AUDIT_REG)).length;
+    const r = await quick({ phone: spaced, name: "ลุงเลกาซี พิมพ์เว้นวรรค", marketingConsent: false, heardFrom: "WALK_IN", idempotencyKey: newKey("qL") }, staff);
+    if (!C.L) p.push("(ฟิกซ์เจอร์) ไม่มี L");
+    if (!(r?.ok === true && r.created === false && r.member?.id === C.L)) p.push(`เบอร์ L เว้นวรรค → ${codeOf(r)} created ${r?.created} id ${r?.member?.id === C.L ? "L" : short(r?.member?.id, 20)}`);
+    if ((await custCount()) !== n0) p.push(`Customer ${n0} → ${await custCount()}`);
+    if ((await audits(AUDIT_REG)).length !== a0) p.push(`audit ${AUDIT_REG} ${a0} → ${(await audits(AUDIT_REG)).length}`);
+    chk("M12", NRM === "" && p.length === 0, "เบอร์เก่ามีขีด + พิมพ์เว้นวรรค = created:false คนเดิม · Customer คงเดิม · ไม่ audit", FXB(NRM + joinP(p)));
   }
 
   // ════════ V ว่อชเชอร์/คูปอง ════════
@@ -1364,6 +1394,16 @@ async function runDb() {
     if (!(b?.ok === true && b.points === null)) p.push(`benefits สาขา C → ${codeOf(b)} points ${short(b?.points, 40)}`);
     chk("P6", p.length === 0, "สาขาไม่มีระบบแต้ม = POINTS_DISABLED · points null", FXB(joinP(p)));
   }
+  {
+    // ORACLE-EDIT (รีวิว F3): ตะกร้า ฿15 ของ X (Gold 5% ⇒ เหลือ ฿14.25 · เพดาน 50% = 71 แต้ม < ขั้นต่ำ 100) ขอ 100 แต้ม
+    //   → POINTS_BELOW_MIN ทั้ง quote และ submit (ไม่ใช่ POINTS_CAPPED ที่ allowedPoints ต่ำกว่าขั้นต่ำ = ทางตัน) · ไม่มีบิล/แถวแต้ม
+    const L15: L3[] = [["ลูกอม P112", 1, 1500]];
+    const c9: CartIn = { lines: L15, memberId: X, memberChoices: { points: 100 } };
+    const p = await ptsCase("P9", "A", c9, "POINTS_BELOW_MIN", (r) => (r.allowedPoints === undefined ? "" : `submit มี allowedPoints ${r.allowedPoints}`));
+    const q9 = await quote("A", c9);
+    if (conflictCodes(q9).includes("POINTS_CAPPED")) p.push("quote ยังรายงาน POINTS_CAPPED");
+    chk("P9", p.length === 0, "เพดานเหลือ < ขั้นต่ำ = POINTS_BELOW_MIN · ไม่เขียน", FXB(joinP(p)));
+  }
   const bTB = await sale("bTB", "A", { lines: [["ชุด P112", 1, 40_000]], memberId: X, couponCode: "PCT10", billDiscount: { type: "AMOUNT", value: 4000 } });
 
   // ════════ S สแตมป์ ════════
@@ -1468,6 +1508,32 @@ async function runDb() {
     const f3 = await fulfil(Y, redemptionId, staff);
     if (!refusedAny(f3, ["NOT_FOUND", "MEMBER_NOT_FOUND"])) p.push(`memberId Y → ${codeOf(f3)}`);
     chk("W2", NRM === "" && p.length === 0, "ซ้ำ ok audit 1 · คนอื่น NOT_FOUND", FXB(NRM + joinP(p)));
+  }
+  {
+    // ORACLE-EDIT (รีวิว F4): X แลกรางวัลอีกรายการ (−100 แต้ม) · หลังร้านส่งมอบก่อน (fulfilV2 ด้วย OWNER) → หน้าขายส่งมอบ = ok ไม่ audit
+    const p: string[] = [];
+    let rid3 = "";
+    try {
+      const rctx = await rewardMod.resolveRewardCtx(T, S.MEM, ownerId);
+      const rwRow = (await P.reward.findFirst({ where: { tenantId: T } }).catch(() => null)) as Any;
+      if (!rctx || !rwRow || !X) p.push("(ฟิกซ์เจอร์) ไม่มี ctx/ของรางวัล");
+      else {
+        const rd = await rewardMod.redeemV2(rctx, owner, { rewardId: rwRow.id, customerId: X, unitId: U.A, idempotencyKey: `${TAG}-rd3` });
+        rid3 = String(rd?.redemptionId ?? "");
+        if (rid3) await rewardMod.fulfilV2(rctx, owner, { redemptionId: rid3, unitId: U.A });
+      }
+    } catch (e) {
+      p.push(`(ฟิกซ์เจอร์) แลก/ส่งมอบหลังร้าน throw ${short((e as Error).message, 80)}`);
+    }
+    if (rid3) {
+      const f = await fulfil(X, rid3, staff);
+      if (f?.ok !== true) p.push(`หน้าขายส่งมอบรายการที่ส่งมอบแล้ว → ${codeOf(f)} ${short(f?.message ?? "", 60)}`);
+      const rr = (await P.rewardRedemption.findUnique({ where: { id: rid3 } }).catch(() => null)) as Any;
+      if (rr?.status !== "FULFILLED" || rr?.fulfilledById !== ownerId) p.push(`รายการ ${rr?.status} by ${rr?.fulfilledById === ownerId ? "OWNER" : short(rr?.fulfilledById, 20)}`);
+      const au = await audits(AUDIT_FULFIL, (a) => a.targetId === rid3 || short(a.after, 2000).includes(rid3));
+      if (au.length !== 0) p.push(`audit ${au.length} แถว (คาด 0)`);
+    } else if (!p.length) p.push("(ฟิกซ์เจอร์) ไม่มี redemptionId");
+    chk("W3", NRM === "" && p.length === 0, "หลังร้านส่งมอบก่อน = ok · audit 0", FXB(NRM + joinP(p)));
   }
 
   // ════════ X ย้อนครบ ════════
@@ -1581,8 +1647,17 @@ async function runDb() {
       if (!ls.some((l) => Number(l.delta) === -100 && l.idempotencyKey === `pos-burn-${bPR.id}`)) p.push("BURN −100 หาย");
       if (ls.filter((l) => Number(l.delta) > 0).length !== 1) p.push(`แถวบวก ${ls.filter((l) => Number(l.delta) > 0).length} (คาด EARN 1 · ไม่คืน BURN)`);
       // PROPOSED ORACLE-EDIT: point.reversePartialEarn เก็บคีย์ต่อแถว EARN = `pos-refund-<refundId>:<earnLedgerId>` (lots.ts · P1.8) — เทียบคำนำหน้า
-      const part = ls.find((l) => String(l.idempotencyKey ?? "").startsWith(`pos-refund-${rfPR.refundId}:`));
-      if (!(earnPR > 0 && part && Number(part.delta) < 0 && -Number(part.delta) < earnPR)) p.push(`หักตามสัดส่วน ${short(part?.delta, 10)} จาก EARN ${earnPR}`);
+      // ORACLE-EDIT (รีวิว F7): EARN 1 แถว ⇒ REVERSE ของใบคืนนี้ 1 แถวพอดี · ขนาด = สูตร P1.8 (point.reversePartialEarn ·
+      //   qc-pos-p1.8 C5): floor(pointEarned × ยอดใบคืน / ยอดบิล)
+      const parts = ls.filter((l) => String(l.idempotencyKey ?? "").startsWith(`pos-refund-${rfPR.refundId}:`));
+      const saleRow = await row(bPR.id);
+      const refRow = rfPR.refundId ? ((await P.posSale.findUnique({ where: { id: rfPR.refundId }, select: { grandTotalSatang: true } }).catch(() => null)) as Any) : null;
+      const earned = Number(saleRow?.pointEarned ?? NaN);
+      const wantK = Math.floor((earned * Number(refRow?.grandTotalSatang ?? NaN)) / Number(saleRow?.grandTotalSatang ?? NaN));
+      if (earned !== earnPR) p.push(`pointEarned ${earned} ≠ EARN ${earnPR}`);
+      if (!(earnPR > 0 && wantK > 0 && wantK < earnPR)) p.push(`(ฟิกซ์เจอร์) EARN ${earnPR} สัดส่วนคาด ${wantK}`);
+      if (parts.length !== 1) p.push(`แถว pos-refund-<refundId>: ${parts.length} (คาด 1)`);
+      else if (Number(parts[0].delta) !== -wantK) p.push(`หักตามสัดส่วน ${parts[0].delta} (คาด −${wantK} = floor(${earned} × ${refRow?.grandTotalSatang} / ${saleRow?.grandTotalSatang}))`);
       if (addsPR.length !== 1 || (await voidsOf(addsPR)) !== 0) p.push(`ดวง ADD ${addsPR.length} VOID ${await voidsOf(addsPR)} (คาด 1/0)`);
     }
     chk("X4", !bPR.err && p.length === 0, "คืนบางส่วน: USED · BURN คง · หักแต้มตามสัดส่วน · ดวงคง", FXB(NBJ(NB(bPR), p)));

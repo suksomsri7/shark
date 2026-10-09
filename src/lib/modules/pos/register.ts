@@ -1477,7 +1477,14 @@ export async function registerScopeCheck(
  * ราคาของสินค้าแคตตาล็อกที่ไม่ใช่ราคาเปิด "ถูกตัดทิ้ง" (ไม่เก็บ ไม่เชื่อ · มติ R2) · note ไม่เก็บ (quote/submit ไม่ใช้)
  */
 export function registerCanonicalCart(raw: unknown): RegisterQuoteInput | RegisterRefusal {
-  const c = regParseCart(raw, REG_QUOTE_KEYS);
+  // POS P1.12 ▸ มติ 12 (รีวิว F8): บิลพักทิ้ง memberChoices ก่อนตรวจ (ตัดเงียบ ๆ — คีย์แปลกข้างในก็ไม่ถูกตรวจ · เลือกใหม่ที่จอชำระเท่านั้น) ◂
+  let held: unknown = raw;
+  if (regIsRecord(raw) && "memberChoices" in raw) {
+    const { memberChoices: _dropped, ...rest } = raw;
+    void _dropped;
+    held = rest;
+  }
+  const c = regParseCart(held, REG_QUOTE_KEYS);
   if (isRegRefusal(c)) return c;
   const lines: RegisterQuoteLineInput[] = c.lines.map((l) => {
     const discount = l.discount ? { discount: { ...l.discount } } : {};

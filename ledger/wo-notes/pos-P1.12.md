@@ -174,3 +174,44 @@ Code tip for all gates = `251a01ec` (+ `scripts/pos-sale-contract.json` recorded
   typecheck **0** — logs `scratchpad/p112/runs/ruled-forced.log`, `ruled-unforced.log`, `ruled-p15.log`, `tc-final.log`.
 - Still environmental (unchanged before/after): `qc-member-m2.7/m2.8` setup crash (member-expected.json vs QC4 member seed).
 - Next: reviewer (P1.12 S), then merge `wip/pos-p1.12` into `session/pos`; P1.12U builds on the contract above.
+
+## Fix round 1 (9 Oct · reviewer `pos-P1.12-review-S.md` · prompt `pos-prompt-accountB-P1.12-S-fix.md`)
+Base 80d86f6b · code `3c851aca` fix(pos P1.12): reviewer F1 F2 F3 F4 F6 F8 F9 · oracle `b7ec4386` test(pos P1.12): ORACLE-EDIT M12 M11 P9 W3 X4 (64 → 67).
+Scratch / logs: `/tmp/claude-0/-root/ed31d917-ff51-51e8-bfad-e5b8bfa6fa15/scratchpad/p112-fix/runs/`.
+- **F1** `registerQuickMember`: before `createMember`, `existingByPhone` runs `listMembers` (delegated actor, unit's member system) over the
+  full-length forms of `phoneForms(digits, digits)` (digits · 3-3-4 dash · 2-3-4 dash · 3-3-4 space), reads the hits' stored `Customer.phone`
+  (POS-internal, never returned) and keeps those whose `digitsPhone(stored) === digits`; ACTIVE/SUSPENDED only, newest activity first ⇒
+  `{ok:true, created:false, member}` — no createMember, no audit.
+- **F2** `digitsPhone`: `0066…` ⇒ `"66" + d.slice(4)` ⇒ joins the 66 branch (`0066812345678` → `0812345678`).
+- **F3** `registerMemberQuote`: wallet-trimmed points `> 0 && < burnMinPoints` ⇒ conflict `POINTS_BELOW_MIN` "บิลนี้เล็กเกินกว่าจะใช้แต้มขั้นต่ำ {min} แต้ม"
+  (submit refuses with the same code before any write — existing first-conflict mapping). New i18n key `pos.register.errors.pointsBelowMinBill`
+  (th + en, `{min}`) for the UI. Trimmed to 0 stays `POINTS_CAPPED {allowedPoints: 0}` (not in the ruling).
+- **F4** `registerFulfilReward`: reward ctx from the **unit's REWARD link** via the new reward facade export
+  `resolveRewardCtxForUnit(tenantId, memberSystemId, unitId, actorUserId)` (`reward/v2.ts` + `reward/index.ts`, additive, read-only — `resolveRewardCtx`
+  cannot take a unit) · the redemption is read by id + tenant + that reward system + this customer (`prisma.rewardRedemption.findFirst`, POS db client):
+  FULFILLED ⇒ `{ok:true}` without audit · not PENDING / not this customer / unknown ⇒ `MEMBER_NOT_FOUND` · after `fulfilV2` the row is re-read and
+  the audit is written only when `status FULFILLED && fulfilledById === real user` and no `pos.member.reward_fulfilled` audit with
+  `targetId = redemptionId` exists (one guarded `writeAudit`; a simultaneous double-tap by the same user can still race — accepted by the ruling).
+  `pendingForCustomer` no longer used by POS; fitness F2 `pos→reward` comment updated (same edge).
+- **F6** new member export `pointBalancesForUnit(ctx, {customerIds, unitId}) → Map<customerId, UnitPointsDto>` (`member/wallet.ts` + `member/index.ts`,
+  additive: one `resolveSystems`, one `getPointSettings`, one `point.getBalance` per id — the point module has no batched read). `itemsOf` uses it;
+  `registerMemberBenefits` resolves once and shares the map with its member row. `pointBalanceForUnit` kept for single-customer callers
+  (quote, receipt). Oracle M1 logs `M1 lookup ms=238` (first forced run, info only).
+- **F7** oracle X4 (see oracle commit): exactly one `pos-refund-<refundId>:` row, delta = −floor(pointEarned × refund grand / sale grand).
+- **F8** `registerCanonicalCart` drops `memberChoices` before `regParseCart` (unknown keys inside it are ignored on hold); B6 green.
+- **F9** `receipt.ts`: `memberSnapshot` parsed first; Customer select uses `phone: !snap` (no full phone read for bills with a snapshot).
+- Not in this round (recorded follow-ups): F5 typed point error (member owner) · PointBalance 0 on old receipts (accepted).
+- `service.ts` untouched ⇒ money set (COMMON §7) not re-run.
+
+### Fix round 1 — gates
+- typecheck (`iso.sh flock /tmp/pos-gate.lock pnpm typecheck`, 5632 MB) on the code+oracle tree: **0**.
+- `qc-pos-p1.12` forced #1 (before commit, same content as `b7ec4386`): **67/67** exit 0, residue 0, Tenant 0.
+- Positive control — new oracle against the 80d86f6b `src/` (restored afterwards, tree clean): **63/67** exit 1, red exactly M11 (0066) · M12 · P9 · W3;
+  X4 green on old code as expected (P1.8 reversal untouched; the edit tightens the assertion only).
+- At head `b7ec4386` (logs `runs/*.log`, each with the tree/head header): `qc-pos-p1.12` forced #2 **67/67** exit 0 · unforced **67/67** exit 0
+  (not SKIPPED) — both residue 0, 320 tables, Tenant 0; `M1 lookup ms=228 / 206` · `qc-pos-p1.3` 0 · 128/128 · `qc-pos-p1.5` 0 · 21/21 ·
+  `qc-pos-p1.8` 0 · 49/49 · `qc-pos-p1.11` 0 · 38/38 · `qc-pos-p1.13` 0 · 32/32 · `qc-pos-p1.15` 0 · 39/39 · `qc-pos-p1.16` 0 · 28/28 ·
+  `qc-hf-pos-page-authz` 0 · 56/56 · `pnpm fitness` without env 0 · 41/41 · with QC4 env 0 · 41/41 · `scripts/fitness-pos.mts` 0 · 8/8
+  (pre-commit fitness green on both commits). Money set not needed (`service.ts` untouched).
+- New facade exports this round (additive, read-only): `member.pointBalancesForUnit` (F6) · `reward.resolveRewardCtxForUnit` (F4).
+- Next: controller re-review of the fix round → merge `wip/pos-p1.12` into `session/pos` (not done here).
