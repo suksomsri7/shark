@@ -13,7 +13,6 @@
 // 🔴 เบอร์โทร: ออกจากไฟล์นี้แบบปิดบังเท่านั้น (phoneMasked · CD8) — เบอร์เต็มมีแค่ในคำขอสมัครด่วนที่แคชเชียร์พิมพ์
 // 🔴 ปฏิเสธ = คืน {ok:false, code, message ไทย} ไม่ throw · ขัดข้องที่ไม่คาดคิด = INTERNAL
 
-import type { Prisma } from "@prisma/client";
 import { writeAudit } from "@/lib/core/audit";
 import { evaluate } from "@/lib/core/rbac";
 import { systemForUnit } from "@/lib/modules/system/service";
@@ -505,5 +504,3 @@ export async function posMemberErased(evt: { tenantId: string; payload: unknown 
       AND ("memberSnapshot"->'name' <> 'null'::jsonb OR "memberSnapshot"->'phoneMasked' <> 'null'::jsonb)`;
 }
 
-/** ชนิดที่ Prisma ต้องการสำหรับคอลัมน์ Json (register.ts ส่ง snapshot เข้า createSale) */
-export const memberSnapshotJson = (s: RegisterMemberSnapshot): Prisma.InputJsonValue => ({ ...s }) as unknown as Prisma.InputJsonValue;
