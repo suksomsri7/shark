@@ -84,6 +84,8 @@ export function TaxInvoiceDialog(p: Props) {
   const [errKey, setErrKey] = useState<string | null>(p.externalErrorKey ?? null);
   const [tried, setTried] = useState(false);
   const firstRef = useRef<HTMLInputElement>(null);
+  /** F4: ผู้ใช้แตะช่องใดแล้ว ⇒ ไม่เติมจากผู้ซื้อที่จำไว้ทับ (คำตอบโปรไฟล์มาช้า) */
+  const touched = useRef(false);
 
   // ลิ้นชักบิล: Esc ปิด (ไม่ปิดระหว่างส่ง)
   const busyRef = useRef(busy);
@@ -107,7 +109,7 @@ export function TaxInvoiceDialog(p: Props) {
     void (async () => {
       try {
         const r = await buyerProfileForMemberAction({ systemId, unitId, memberId });
-        if (!live || !r.ok || !r.profile) return;
+        if (!live || touched.current || !r.ok || !r.profile) return;
         const pr = r.profile;
         kindTouched.current = true;
         setKind(pr.kind);
@@ -145,6 +147,7 @@ export function TaxInvoiceDialog(p: Props) {
   const showDbd = kind === "JURISTIC" && !p.dbdOff;
 
   const edited = () => {
+    touched.current = true;
     setErrKey(null);
     if (source !== "MANUAL") {
       setSource("MANUAL");
@@ -161,6 +164,7 @@ export function TaxInvoiceDialog(p: Props) {
     if (!kindTouched.current && /^\d{13}$/.test(next)) setKind(buyerKindFromTaxId(next));
   };
   const pickKind = (k: TaxInvoiceBuyerKind) => {
+    touched.current = true;
     kindTouched.current = true;
     setKind(k);
     setErrKey(null);
@@ -278,6 +282,9 @@ export function TaxInvoiceDialog(p: Props) {
           data-testid="pos-taxinv-form"
           className="flex min-h-0 flex-1 flex-col"
           noValidate
+          onInputCapture={() => {
+            touched.current = true; // F4: พิมพ์ช่องใดก็ได้ = แตะแล้ว
+          }}
           onSubmit={(e) => {
             e.preventDefault();
             void submit();
@@ -422,7 +429,12 @@ export function TaxInvoiceDialog(p: Props) {
 
             {/* สาขา · อีเมล */}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-[1fr_1fr]">
-              <fieldset className="flex min-w-0 flex-col gap-1.5">
+              <fieldset
+                className="flex min-w-0 flex-col gap-1.5"
+                onClickCapture={() => {
+                  touched.current = true; // F4: เลือกสาขา = แตะแล้ว
+                }}
+              >
                 <legend className={`${label} mb-1.5`}>{t("branch")}</legend>
                 <div className="flex gap-2">
                   <button
