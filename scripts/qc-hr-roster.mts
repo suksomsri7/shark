@@ -19,7 +19,7 @@ const sys = await import("@/lib/modules/system/service");
 const booking = await import("@/lib/modules/booking/service");
 const hr = await import("@/lib/modules/hr/service");
 const { SYSTEM_DEFS } = await import("@/lib/systems");
-const { posTabs } = await import("@/lib/modules/pos/tabs");
+const { posTabs, POS_NAV_KEYS } = await import("@/lib/modules/pos/tabs");
 const { hrTabs } = await import("@/lib/modules/hr/ui");
 
 type Sev = "CRITICAL" | "MAJOR" | "MINOR";
@@ -41,9 +41,12 @@ try {
     "ครบ 3", JSON.stringify([labelOf("HR"), labelOf("POS"), labelOf("INVENTORY")]));
   const layoutSrc = readFileSync("src/app/app/layout.tsx", "utf8");
   const layoutHas = (label: string) => layoutSrc.includes(`label: "${label}"`);
-  chk("NM-2", "แท็บ POS ในเมนูตรงกับ posTabs (ชื่อเดียวกันทุกที่)",
-    posTabs("X").every((t) => layoutHas(t.label)), "ตรงกันทุกแท็บ",
-    JSON.stringify(posTabs("X").filter((t) => !layoutHas(t.label)).map((t) => t.label)));
+  // ORACLE-EDIT POS P1.18 (R13c มติ Q5): ป้ายแท็บ POS ย้ายไป messages pos.nav.* — เมนู (layout) ใช้คีย์ nav.<k> ชุดเดียวกับ posTabs
+  //   ⇒ เทียบ "คีย์เดียวกันทุกแท็บ" แทนการหาข้อความไทยตรงตัวใน layout (ค่า th ของ posTabs = ป้ายเดิมจาก messages/th/pos.json)
+  const posNavMissing = (POS_NAV_KEYS as readonly string[]).filter((k) => !layoutSrc.includes(`label: posNav("nav.${k}")`));
+  chk("NM-2", "แท็บ POS ในเมนูตรงกับ posTabs (คีย์ pos.nav.* ชุดเดียวกันทุกที่)",
+    posTabs("X").length === POS_NAV_KEYS.length && posNavMissing.length === 0, "ตรงกันทุกแท็บ",
+    JSON.stringify(posNavMissing));
   chk("NM-3", "แท็บ HR ในเมนูตรงกับ hrTabs", hrTabs("X").every((t) => layoutHas(t.label)), "ตรงกันทุกแท็บ",
     JSON.stringify(hrTabs("X").filter((t) => !layoutHas(t.label)).map((t) => t.label)));
   chk("NM-4", "หน้าขาย POS มีจริง + ทุกหน้า POS ใช้แท็บชุดเดียว (posTabs)",
