@@ -1167,6 +1167,8 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
                           >
                             {t("taxInvoice.reject")}
                           </button>
+                          {/* fix F6: บิลยกเลิก/คืนเงินแล้ว = บริการปฏิเสธการออก (SALE_VOIDED / HAS_REFUNDS) ⇒ ไม่เสนอปุ่มออก (ปฏิเสธคำขอยังทำได้) */}
+                          {bill.status === "PAID" && bill.totals.refunded === 0 ? (
                           <button
                             type="button"
                             data-testid="pos-taxinv-request-issue"
@@ -1176,6 +1178,7 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
                           >
                             {t("taxInvoice.issue")}
                           </button>
+                          ) : null}
                         </span>
                       ) : null}
                     </div>
