@@ -157,10 +157,10 @@ export function StaffSettings({ systemId, unitId, isOwner }: Props) {
   const capInput = (role: "MANAGER" | "STAFF", value: string, set: (v: string) => void, editable: boolean) =>
     editable ? (
       <span className="inline-flex flex-col items-center gap-1">
-        <span className="inline-flex items-center gap-1">
+        <span className="inline-flex items-center gap-0.5">
           <input
             data-testid={`pos-settings-staff-cap-${role.toLowerCase()}`}
-            className="input h-11 w-[72px] rounded-[10px] px-2 text-right text-[15px] font-bold tabular-nums"
+            className="input h-11 w-[56px] rounded-[10px] px-2 text-right text-[15px] font-bold tabular-nums"
             inputMode="decimal"
             autoComplete="off"
             aria-label={ts("capLabel", { role: ts(`roles.${role}`) })}
@@ -172,7 +172,7 @@ export function StaffSettings({ systemId, unitId, isOwner }: Props) {
               setFieldErr((f) => ({ ...f, [role]: undefined }));
             }}
           />
-          <span className="text-[14px] font-bold">%</span>
+          <span className="text-[13px] font-bold">%</span>
         </span>
         {fieldErr[role] && (
           <span data-testid="pos-settings-staff-cap-error" role="alert" className="text-[11.5px] text-[color:var(--color-danger)]">
@@ -218,13 +218,21 @@ export function StaffSettings({ systemId, unitId, isOwner }: Props) {
               </span>
             </span>
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[480px] border-separate border-spacing-0 text-[14.5px] tabular-nums">
+          {/* POS P1.18U ▸ แก้รอบ 2 V1: ตารางต้องพอดีการ์ดที่ 1440/1024 (การ์ดกว้างแค่ ~406–425px) — table-fixed + คอลัมน์บทบาทกว้างคงที่ 88px ×3 ·
+              คอลัมน์งานได้ที่เหลือ (ชื่อ/คำอธิบายย่อยตัดบรรทัดตามคำ) · เลื่อนแนวนอนเป็นตาข่ายกันพลาดเฉพาะจอ < md (390) ◂ */}
+          <div className="max-md:overflow-x-auto">
+            <table className="w-full min-w-[360px] table-fixed border-separate border-spacing-0 text-[14.5px] tabular-nums md:min-w-0">
+              <colgroup>
+                <col />
+                {ROLE_ORDER.map((r) => (
+                  <col key={r} className="w-[88px]" />
+                ))}
+              </colgroup>
               <thead>
                 <tr>
-                  <th className="border-b bg-[color:var(--color-surface-2)] px-3 py-3.5 text-left text-[13px] font-bold text-[color:var(--color-ink-soft)] md:pl-5">{ts("task")}</th>
+                  <th className="border-b bg-[color:var(--color-surface-2)] py-3.5 pl-4 pr-2 text-left text-[13px] font-bold text-[color:var(--color-ink-soft)] md:pl-5">{ts("task")}</th>
                   {ROLE_ORDER.map((r) => (
-                    <th key={r} className="border-b bg-[color:var(--color-surface-2)] px-3 py-3.5 text-center text-[13px] font-bold text-[color:var(--color-ink-soft)]">
+                    <th key={r} className="border-b bg-[color:var(--color-surface-2)] px-1.5 py-3.5 text-center text-[13px] font-bold text-[color:var(--color-ink-soft)]">
                       {roleLabel(r)}
                       <small className="block font-normal text-[color:var(--color-muted)]">{ts("people", { count: counts[r] })}</small>
                     </th>
@@ -244,24 +252,24 @@ export function StaffSettings({ systemId, unitId, isOwner }: Props) {
                   };
                   return (
                     <tr key={row.task} data-testid={`pos-settings-staff-row-${row.task}`}>
-                      <td className={`border-b px-3 py-3 text-left md:pl-5 ${muted}`}>
+                      <td className={`border-b py-3 pl-4 pr-2 text-left break-words md:pl-5 ${muted}`}>
                         <b className="font-semibold">{ts(`tasks.${row.task}`)}</b>
-                        {SUB_LABEL.has(row.task) && <small className="block text-[12.5px] text-[color:var(--color-muted)]">{ts(`taskSub.${row.task}`)}</small>}
+                        {SUB_LABEL.has(row.task) && <small className="block text-[12.5px] leading-[1.45] text-[color:var(--color-muted)]">{ts(`taskSub.${row.task}`)}</small>}
                         {planned && (
                           <span className="mt-1 inline-flex h-6 items-center rounded-[7px] border px-2 text-[11.5px] text-[color:var(--color-muted)]">{ts("soonPhase", { phase: row.planned! })}</span>
                         )}
                       </td>
                       {row.task === "discount" ? (
                         <>
-                          <td className="border-b bg-[color:var(--color-surface-2)] px-3 py-3 text-center font-bold">{ts("unlimited")}</td>
-                          <td className="border-b px-3 py-3 text-center">{capInput("MANAGER", mgr, setMgr, canCaps && isOwner)}</td>
-                          <td className="border-b px-3 py-3 text-center">{capInput("STAFF", stf, setStf, canCaps)}</td>
+                          <td className="border-b bg-[color:var(--color-surface-2)] px-1.5 py-3 text-center font-bold">{ts("unlimited")}</td>
+                          <td className="border-b px-1.5 py-3 text-center">{capInput("MANAGER", mgr, setMgr, canCaps && isOwner)}</td>
+                          <td className="border-b px-1.5 py-3 text-center">{capInput("STAFF", stf, setStf, canCaps)}</td>
                         </>
                       ) : (
                         <>
-                          <td className="border-b bg-[color:var(--color-surface-2)] px-3 py-3 text-center">{row.owner && !planned ? <Check tone="ink" /> : <span className="text-[17px] text-[color:var(--color-muted)]">—</span>}</td>
-                          <td className="border-b px-3 py-3 text-center">{row.manager && !planned ? <Check tone="ink" /> : <span className="text-[17px] text-[color:var(--color-muted)]">—</span>}</td>
-                          <td className="border-b px-3 py-3 text-center">{staffCell()}</td>
+                          <td className="border-b bg-[color:var(--color-surface-2)] px-1.5 py-3 text-center">{row.owner && !planned ? <Check tone="ink" /> : <span className="text-[17px] text-[color:var(--color-muted)]">—</span>}</td>
+                          <td className="border-b px-1.5 py-3 text-center">{row.manager && !planned ? <Check tone="ink" /> : <span className="text-[17px] text-[color:var(--color-muted)]">—</span>}</td>
+                          <td className="border-b px-1.5 py-3 text-center">{staffCell()}</td>
                         </>
                       )}
                     </tr>

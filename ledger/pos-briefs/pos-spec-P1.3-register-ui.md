@@ -668,6 +668,7 @@ Rows added to `scripts/pos-ui-inventory.json` (wo `P1.18U`; page `/app/sys/[id]/
   `pos-settings-pay-row-state-*` (read-only); display `pos-settings-shark` · `-shark-count` · `-shark-backlog` · `pos-settings-card-<code>` (13 + receipt + offline) · `pos-settings-fact-<code>-<key>` ·
   `pos-settings-card-receipt-vat` · `pos-settings-account-confirm` · `pos-settings-account-denied` · `pos-settings-account-toast` · `pos-settings-channels-panel` · `pos-settings-channel-<lineman|grab|shopee|foodpanda|storefront>` ·
   `pos-settings-pay-panel` · `pos-settings-pay-row-<promptpay|card|transfer|voucher|credit>` · `pos-settings-offline-pending`.
+  Fix round 2 (visual): `pos-settings-card-state-*` now also on PLANNED cards (AI — read-only off knob, chip moved out of the header); display `pos-settings-card-soon-<code>` (PLANNED chip row under the title; `ai` · `offline`) · `pos-settings-card-etax` (e-Tax row).
 - ช่องทาง / ออฟไลน์: display `pos-settings-channels` · `pos-settings-offline` · `pos-settings-phase-banner` (+ the shark panels above).
 - Close day page (`/app/sys/[id]/pos/close`): `pos-close-date` (date overlay; debt row of close/page.tsx `<input>` 1 → 0).
 - Register 19ก: `pos-reg-empty-add-product` now owner/manager only (`canManageProducts`); cashier sees `register.emptyCatalogue.cashierBody`.

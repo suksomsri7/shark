@@ -22,7 +22,7 @@ import { RegisterIcon, type RegisterIconName } from "@/components/pos/register/R
 import { posSettingsHref } from "@/components/pos/settings/settings-tabs";
 import { useSettingsHistory } from "@/components/pos/settings/HistoryDrawer";
 import { InlineNote, TabHead } from "./settings-ui";
-import { ChannelsPanel, MiniKnob, OfflineCard, PaymentsPanel, SoonChip, type PaySummary, type Storefront } from "./shark-ui";
+import { CARD_HEAD, ChannelsPanel, HEAD_SWITCH, HEAD_TITLE, MiniKnob, OfflineCard, PaymentsPanel, SOON_ROW, SoonChip, type PaySummary, type Storefront } from "./shark-ui";
 
 type CardsOk = Extract<PosIntegrationCardsResult, { ok: true }>;
 type ReceiptData = Extract<Awaited<ReturnType<typeof receiptSettingsPageDataAction>>, { ok: true }>;
@@ -169,9 +169,14 @@ export function SharkSettings({ systemId, unitId, storefront, pay }: Props) {
     const accountLocked = accDenied || !c.manage?.canManage;
     const manageAt = tc(`${c.code}.manageAt`);
     const title = PROPER_TITLE[c.code] ?? tc(`${c.code}.title`);
+    // POS P1.18U ▸ แก้รอบ 2 V3/V4: หัวการ์ด = ไอคอน · ชื่อ (min-w-0 ตัดบรรทัดได้ ไม่ถูกทับ) · สวิตช์ชิดขวาตรงบรรทัดแรก ·
+    //   ชิป "เร็ว ๆ นี้ · <เฟส>" ของการ์ด PLANNED ย้ายไปบรรทัดของตัวเองใต้ชื่อ · สวิตช์ PLANNED = ตัวแสดงสถานะปิด (อ่านอย่างเดียว) ◂
+    const plannedPhase = c.state === "PLANNED" ? (c.facts.find((f) => f.phase)?.phase ?? "") : null;
     const sw =
-      c.state === "PLANNED" ? (
-        <SoonChip phase={c.facts.find((f) => f.phase)?.phase ?? ""} />
+      plannedPhase !== null ? (
+        <span data-testid={`pos-settings-card-state-${code}`} role="switch" aria-checked="false" aria-disabled="true" aria-label={title} title={tk("soon", { phase: plannedPhase })} className={HEAD_SWITCH}>
+          <MiniKnob on={false} />
+        </span>
       ) : accountLive ? (
         <button
           data-testid="pos-settings-account-switch"
@@ -181,23 +186,28 @@ export function SharkSettings({ systemId, unitId, storefront, pay }: Props) {
           aria-label={tc("ACCOUNT.switch")}
           disabled={accBusy || accountLocked}
           title={accountLocked ? tk("accountDenied") : undefined}
-          className="grid min-h-11 min-w-11 place-items-center disabled:opacity-50"
+          className={`${HEAD_SWITCH} disabled:opacity-50`}
           onClick={() => (c.state === "LINKED" ? setConfirmOff(true) : void setAccount(true))}
         >
           <MiniKnob on={c.state === "LINKED"} />
         </button>
       ) : (
-        <span data-testid={`pos-settings-card-state-${code}`} role="switch" aria-checked={c.state === "LINKED"} aria-disabled="true" aria-label={title} title={manageAt} className="grid min-h-11 min-w-11 place-items-center">
+        <span data-testid={`pos-settings-card-state-${code}`} role="switch" aria-checked={c.state === "LINKED"} aria-disabled="true" aria-label={title} title={manageAt} className={HEAD_SWITCH}>
           <MiniKnob on={c.state === "LINKED"} />
         </span>
       );
     return (
       <CardShell key={c.code} code={code} dim={dim}>
-        <div className={`flex items-center gap-[13px] text-[13.5px] font-bold ${dim ? "text-[color:var(--color-muted)]" : ""}`}>
+        <div className={`${CARD_HEAD} ${dim ? "text-[color:var(--color-muted)]" : ""}`}>
           <IconTile icon={ICON[c.code]} accent={c.code === "AI"} />
-          <span className="min-w-0 flex-1">{title}</span>
+          <span className={HEAD_TITLE}>{title}</span>
           {sw}
         </div>
+        {plannedPhase !== null && (
+          <div data-testid={`pos-settings-card-soon-${code}`} className={SOON_ROW}>
+            <SoonChip phase={plannedPhase} />
+          </div>
+        )}
         <ul className={`list-disc pl-4 text-[12px] leading-[1.55] ${dim ? "text-[color:var(--color-muted)]" : "text-[color:var(--color-ink-soft)]"}`}>
           {c.facts.map((f) => {
             const params: Record<string, string | number> = {};
@@ -248,20 +258,23 @@ export function SharkSettings({ systemId, unitId, storefront, pay }: Props) {
   const book = receipt?.book ?? null;
   const regNo = receipt?.devices.find((d) => d.status === "ACTIVE" && d.posRegNo)?.posRegNo ?? null;
   const headerSet = !!receipt && (!!receipt.settings.header.name || !!receipt.settings.header.phone || !!receipt.settings.header.address || !!receipt.settings.footer.trim());
+  // POS P1.18U ▸ แก้รอบ 2 V2: แถว = ป้ายซ้าย (จาง · shrink-0 · บรรทัดเดียว) + ค่าชิดขวาบรรทัดเดียว (ไอคอนอยู่หน้าข้อความ) ·
+  //   flex-wrap + justify-between: ค่าที่ยาวกว่าที่เหลือข้างป้าย ⇒ ทั้งก้อนลงไปบรรทัดของตัวเองใต้ป้าย (กว้างเต็มการ์ด) — ไม่บีบเป็นคอลัมน์แคบ ·
+  //   ไม่ตัดกลางคำ (ไม่ truncate) · ยาวเกินทั้งการ์ดจริง ๆ ⇒ ตัดบรรทัดตามคำเท่านั้น ◂
   const kv = (k: string, v: ReactNode, testid?: string) => (
-    <div className="flex gap-3 border-t py-[5px] text-[12px] first:border-t-0">
-      <span className="w-[120px] shrink-0 text-[color:var(--color-muted)] md:w-[136px]">{k}</span>
-      <span data-testid={testid} className="min-w-0 flex-1">
+    <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-0.5 border-t py-[5px] text-[12px] first:border-t-0">
+      <span className="shrink-0 whitespace-nowrap text-[color:var(--color-muted)]">{k}</span>
+      <span data-testid={testid} className="inline-flex max-w-full items-center gap-1.5 text-right">
         {v}
       </span>
     </div>
   );
   const receiptCard = (
     <div data-testid="pos-settings-card-receipt" className="flex min-w-0 flex-col gap-3 rounded-[12px] border bg-[color:var(--color-surface)] px-[14px] py-3">
-      <div className="flex items-center gap-[13px] text-[13.5px] font-bold">
+      <div className={CARD_HEAD}>
         <IconTile icon="doc" />
-        <span className="min-w-0 flex-1">{tk("receiptTitle")}</span>
-        <Link data-testid="pos-settings-card-receipt-edit" href={posSettingsHref(systemId, "receipt", unitId)} className="inline-flex min-h-11 items-center text-[11.5px] font-bold text-[color:var(--color-accent)]">
+        <span className={HEAD_TITLE}>{tk("receiptTitle")}</span>
+        <Link data-testid="pos-settings-card-receipt-edit" href={posSettingsHref(systemId, "receipt", unitId)} className="-my-[9px] inline-flex min-h-11 shrink-0 items-center text-[11.5px] font-bold text-[color:var(--color-accent)]">
           {tk("edit")}
         </Link>
       </div>
@@ -269,12 +282,12 @@ export function SharkSettings({ systemId, unitId, storefront, pay }: Props) {
         {kv(
           tk("vat"),
           book?.vatRegistered ? (
-            <span className="inline-flex items-center gap-1.5">
-              <span aria-hidden className="inline-grid size-[14px] place-items-center rounded-[4px] bg-[color:var(--color-ink)] text-[color:var(--color-surface)]">
+            <>
+              <span aria-hidden className="inline-grid size-[14px] shrink-0 place-items-center rounded-[4px] bg-[color:var(--color-ink)] text-[color:var(--color-surface)]">
                 <RegisterIcon name="check" size={10} />
               </span>
-              {tk("vatOn")}
-            </span>
+              <span>{tk("vatOn")}</span>
+            </>
           ) : book ? (
             tk("vatOff")
           ) : (
@@ -284,15 +297,16 @@ export function SharkSettings({ systemId, unitId, storefront, pay }: Props) {
         )}
         {kv(tk("taxId"), book?.taxId ? tk("taxIdValue", { taxId: book.taxId, branch: book.branchCode ?? "00000" }) : tk("notSet"))}
         {kv(tk("posNo"), `${regNo ?? "—"} · ${headerSet ? tk("headerSet") : tk("headerNotSet")}`)}
-        {kv(
-          tk("etax"),
-          <span className="flex items-center gap-1.5">
+        {/* POS P1.18U ▸ แก้รอบ 2 V2: แถว e-Tax = ป้าย + [ชิป + ปุ่มเล็ก] เป็นก้อนเดียวไม่ตัดบรรทัด · ที่ไม่พอ ⇒ ทั้งก้อนลงบรรทัดใต้ป้าย ◂ */}
+        <div data-testid="pos-settings-card-etax" className="flex flex-wrap items-center justify-between gap-x-3 gap-y-0.5 border-t py-[3px] text-[12px]">
+          <span className="shrink-0 whitespace-nowrap text-[color:var(--color-muted)]">{tk("etax")}</span>
+          <span className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap">
             <span className="inline-flex h-6 items-center rounded-[7px] border px-2 text-[11.5px] text-[color:var(--color-muted)]">{tk("etaxChip")}</span>
-            <button data-testid="pos-settings-card-etax-apply" type="button" disabled title={tk("etaxSoon")} className="btn btn-ghost ml-auto h-11 rounded-[9px] px-3 text-[12px] disabled:opacity-50">
+            <button data-testid="pos-settings-card-etax-apply" type="button" disabled title={tk("etaxSoon")} className="btn btn-ghost h-11 rounded-[9px] px-2.5 text-[12px] disabled:opacity-50">
               {tk("etaxApply")}
             </button>
-          </span>,
-        )}
+          </span>
+        </div>
       </div>
     </div>
   );
@@ -323,7 +337,8 @@ export function SharkSettings({ systemId, unitId, storefront, pay }: Props) {
           <OfflineCard />
         </div>
       )}
-      <div className="flex min-w-0 flex-col items-stretch gap-6 lg:flex-row lg:items-start lg:gap-3">
+      {/* POS P1.18U ▸ แก้รอบ 2 V3: สองแผงวางคู่กันตั้งแต่ xl (เดิม lg) — ที่ 1024 แผงละ ~200px ชิป "เร็ว ๆ นี้" เบียดชื่อจนเหลือ ~8px · ใต้ xl = เรียงลงเต็มความกว้าง ◂ */}
+      <div className="flex min-w-0 flex-col items-stretch gap-6 xl:flex-row xl:items-start xl:gap-3">
         <ChannelsPanel storefront={storefront} />
         <PaymentsPanel systemId={systemId} unitId={unitId} pay={pay} />
       </div>

@@ -17,6 +17,14 @@ import { TabHead } from "./settings-ui";
 export type Storefront = { name: string; path: string } | null;
 export type PaySummary = { promptpayMasked: string | null; beamOn: boolean };
 
+// POS P1.18U ▸ แก้รอบ 2 V3/V4: หัวการ์ด (การ์ดระบบ · ใบเสร็จและภาษี · ออฟไลน์) ชิดบน — ไอคอน 26px · ชื่อ pt 3px ให้บรรทัดแรกอยู่กลางไอคอน ·
+//   สวิตช์/ลิงก์ขวาบนคงพื้นที่กด 44px แต่ -my-[9px] ให้จุดกึ่งกลางตรงบรรทัดแรก (ชื่อตัดเป็น 2 บรรทัด สวิตช์ไม่ลงไปกลาง) ◂
+export const CARD_HEAD = "flex items-start gap-[13px] text-[13.5px] font-bold";
+export const HEAD_TITLE = "min-w-0 flex-1 break-words pt-[3px] leading-[20px]";
+export const HEAD_SWITCH = "-my-[9px] grid min-h-11 min-w-11 shrink-0 place-items-center";
+/** แถวชิป "เร็ว ๆ นี้ · <เฟส>" ใต้หัวการ์ด PLANNED — เยื้องตรงกับต้นชื่อ (ไอคอน 26 + ช่อง 13) · กว้างได้ถึงขอบขวาการ์ด (ไม่อยู่ในคอลัมน์ชื่อที่แคบ) */
+export const SOON_ROW = "-mt-1.5 flex pl-[39px]";
+
 /** ชิป "เร็ว ๆ นี้ · <เฟส>" */
 export function SoonChip({ phase }: { phase: string }) {
   const t = useTranslations("pos.settings.shark");
@@ -60,7 +68,7 @@ function LRow({ tile, title, sub, testid, children }: { tile: ReactNode; title: 
     <div data-testid={testid} className="flex min-w-0 items-center gap-4 border-t px-[14px] py-2 text-[13px] first:border-t-0 md:gap-[22px]">
       {tile}
       <span className="min-w-0 flex-1">
-        <b className="block font-semibold">{title}</b>
+        <b className="block truncate font-semibold">{title}</b>
         <span className="block truncate text-[11.5px] text-[color:var(--color-muted)]">{sub}</span>
       </span>
       {children}
@@ -161,15 +169,18 @@ export function OfflineCard({ wide = false }: { wide?: boolean }) {
   const t = useTranslations("pos.settings.offline");
   return (
     <div data-testid="pos-settings-card-offline" className={`flex min-w-0 flex-col gap-3 rounded-[12px] border bg-[color:var(--color-surface)] px-[14px] py-3 ${wide ? "md:px-6 md:py-5" : ""}`}>
-      <div className="flex items-center gap-[13px] text-[13.5px] font-bold text-[color:var(--color-muted)]">
+      {/* POS P1.18U ▸ แก้รอบ 2 V3/V4: ชิป "เร็ว ๆ นี้ · P3.4" ลงบรรทัดของตัวเองใต้ชื่อ (เดิมเบียดจนชื่อตัดเป็น "ออฟ/ไลน์" และทับ "Offline") ◂ */}
+      <div className={`${CARD_HEAD} text-[color:var(--color-muted)]`}>
         <Tile>
           <RegisterIcon name="swap" size={14} />
         </Tile>
-        <span className="min-w-0 flex-1">{t("cardTitle")}</span>
-        <SoonChip phase="P3.4" />
-        <span data-testid="pos-settings-card-state-offline" role="switch" aria-checked="false" aria-disabled="true" aria-label={t("cardTitle")} title={t("planned")} className="grid min-h-11 place-items-center">
+        <span className={HEAD_TITLE}>{t("cardTitle")}</span>
+        <span data-testid="pos-settings-card-state-offline" role="switch" aria-checked="false" aria-disabled="true" aria-label={t("cardTitle")} title={t("planned")} className={HEAD_SWITCH}>
           <MiniKnob on={false} />
         </span>
+      </div>
+      <div data-testid="pos-settings-card-soon-offline" className="-mt-1.5 flex pl-[43px]">
+        <SoonChip phase="P3.4" />
       </div>
       <ul className="list-disc pl-4 text-[12px] leading-[1.6] text-[color:var(--color-muted)]">
         <li>{t("factSell")}</li>
