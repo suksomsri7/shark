@@ -1,0 +1,88 @@
+# POS P2.1 — oracle notes (`scripts/qc-pos-p2.1.mts`)
+
+Oracle writer · VPS (account B) · 9 Oct 2026 · tree `/root/projects/shark-pos-b` (lane 3) · branch `wip/pos-p2.1-oracle` from `origin/session/pos` 502cf9fe (P1.12 S merged at 1bfa0ff9).
+Contract: `ledger/pos-briefs/pos-brief-P2.1.md` §2 R1–R13, §3, §4, §5 CD1–CD10, **§9 controller rulings (binding)**. The U half (mockups 09/10/12, settings panel) is not tested here.
+
+53 checks · families ST (5) + S8 static · B pure (5) · C channels (7) · S createSale (7) · G GL (9) · R reversal/refund (6) · P register (4) · Q readers (6) · E1 · Z (2).
+Modes: `--list` (no DB) · `--no-db` (ST1–ST5, S8, B1–B5; never loads prisma) · DB run SKIPs (exit 0 + reasons) until the P2.1 objects exist · `QC_FORCE=1` runs anyway (red by reason, no crash).
+Fixtures (module functions; prisma only for tenant/unit/link rows, the payment profile, two legacy bills and cleanup): temp tenant `posqc-p21-<rand>` — POS-A (VAT book, ABB) units **A, A2, F**; POS-B (unlinked) unit **B**; POS-C (non-VAT book, service charge 10 % via `updatePosPaymentSettings`) unit **C**; second temp tenant `posqc-p21-<rand>-t2` unit **X**. Device + open shift on A. Actors use the seed's real user ids (`posqc-coffee-user-owner` / `-cashier`) as OWNER / MANAGER / STAFF variants. Both tenants are wiped in `finally` (every table with `tenantId`), residue counted (Z1); rows of this run outside the temp tenants = 0 (Z2).
+
+## CONTROLLER-DECISION (read first — the oracle encodes my proposal for each)
+1. **Channel contact on the PAID JV too (G9 · CD6).** The oracle requires `contactId` = the channel's contact (named exactly `channel.name`, one per name per book) on **every 1100 line of the PLATFORM sale's PAID JV and its COMMISSION JV**, and on the 2100 line of a DIRECT commission. Reason: otherwise the per-contact AR subledger shows LINE MAN −126 and "no contact" +420 — useless for payout matching. Needs `applyExternalSale` to accept an optional contact/channel name for PLATFORM dr lines (additive). Alternative: only the COMMISSION JV lines → ORACLE-EDIT G9 (drop the `PAID sLM` row).
+2. **Kind/payout defaults on create (C3).** `code ∈ CHANNEL_EXTERNAL_PRESETS` ⇒ `kind EXTERNAL`, payout default `PLATFORM`, adapter default `MANUAL`; any other code ⇒ `kind CUSTOM`, payout default `DIRECT`, adapter default `NONE`; creating a builtin code (`STORE QR_TABLE WEB CHAT`) ⇒ `CHANNEL_CODE_TAKEN` (they always exist after `ensureUnitChannels`). Only the LINEMAN/GRAB/CUSTOM_AGENT outcomes are asserted.
+3. **Tip / `cashTenderedSatang` on a PLATFORM bill (S4).** Today `tipSatang > 0` is refused with VALIDATION before anything channel-related (`TIP_POSTING_READY = false`), and `cashTenderedSatang` on a non-CASH row is VALIDATION in `validateSaleInput`. The oracle accepts **`CHANNEL_PAY_MISMATCH` or `VALIDATION`** for those two cases (nothing written either way); CASH / split cases must be `CHANNEL_PAY_MISMATCH`.
+4. **Builtin edit rules (C4).** STORE: commission/payout/`active:false`/archive ⇒ `CHANNEL_BUILTIN_LOCKED`, row byte-identical. Other builtins: commission editable (positive control on QR_TABLE), **code change ⇒ `CHANNEL_BUILTIN_LOCKED`**. STORE name edit is not tested (free).
+5. **Channel limit (C3).** 30 rows per unit; the 31st create ⇒ `CHANNEL_LIMIT`. Tested on a unit with no archived rows. Proposal: archived rows still count (code stays reserved by `@@unique([unitId, code])`).
+6. **Cross-scope ids (C5).** An id of another tenant **or another unit of the same tenant** ⇒ `CHANNEL_NOT_FOUND` for save and archive (404-not-403), row unchanged. `listChannels` with neither `pos.sale.read` nor `pos.sale.create` ⇒ `PERMISSION_DENIED`.
+7. **Commission visibility (Q2).** `BillDetail.channel.commissionSatang/commissionVatSatang` are numbers for OWNER/MANAGER and for STAFF holding `pos.report.view`; for STAFF without it the keys are absent or `null` (channel `code/name/ref/payout` still shown).
+8. **Receipts (Q3).** `receiptPayload.payload.channel = {code, name, ref} | null` and `publicReceipt().receipt.channel = {name, ref} | null` — `null` for STORE (incl. legacy STORE), set for every other code (WEB/QR_TABLE/CHAT too). Rendered th/80 slip contains `ช่องทาง <name>` and the ref. No key matching `/commission/i` and no commission amount anywhere in payload/public JSON/slip text.
+9. **Refund share bookkeeping (R2/R3 · CD10).** The REFUND `PosSale` row copies `channelId/channelCode/channelRef/channelPayout` from the sale and stores its share in `channelCommissionSatang/channelCommissionVatSatang`. "Full" (= remainder) is the refund that brings `refundedSatang` to `grandTotalSatang`; earlier shares are pro-rata half-up on refund gross. Brief example in the oracle: lines 12 345 / 14 321 / 15 334 of a ฿420 LINEMAN bill ⇒ 3 704 (the .5 case) / 4 296 / 4 600 = 12 600.
+10. **Commission JV book/memo/keys (G1 · R2).** `book = GENERAL`; memo contains `ค่าคอมฯ ช่องทาง <channel.name>` and the sale's `receiptNo`; idempotency keys `PosSale#<saleId>#COMMISSION` and `PosSale#<refundId>#COMMISSION_REFUNDED` (commitEntry's `${refType}#${refId}#${event}` with events `COMMISSION` / `COMMISSION_REFUNDED`).
+11. **Audit field (C6).** `AuditLog` has `actorId` (no `userId` column) — the oracle checks `actorId` = the acting user, `targetId` (or after-JSON) = channelId, before/after JSON contains the code; `updated` rows carry both `before` and `after`. Proposal `targetType "SalesChannel"` (not asserted).
+12. **Restaurant path (S7).** CD2 means POS defaults the channel; the restaurant module is not edited. The oracle checks RESTAURANT/HOTEL/BOOKING via `createSale({sourceModule})` directly (no restaurant table fixture) + ECOM through the real `shop.confirmOrderPaid`. If you want the real restaurant checkout path, ORACLE-EDIT S7.
+13. **Gift-card bills always STORE (§9).** Not tested — no gift-card sale fixture (member module). Reviewer to verify by reading `createSale` (a `giftCardId` bill must resolve STORE / commission 0 regardless of input).
+14. **Legacy fallback name (Q6 · CD9).** Legacy rows (`channelId` null) read `{code: defaultChannelCode(sourceModule), name}`; the oracle asserts STORE ⇒ `หน้าร้าน` and ECOM ⇒ code `WEB` (name free: unit row or static builtin name).
+
+## Drift (brief vs code at 502cf9fe)
+- `AuditLog` column is `actorId`, not `userId` (CD-11).
+- `refusalMessageKey` returns keys relative to `pos.register` (`errors.<camel>`), so R13's `pos.register.errors.*` = message keys `register.errors.channelInvalid` … in `src/messages/{th,en}/pos.json` (split files, not `src/messages/{th,en}.json`).
+- Tip can never be enabled today (`TIP_POSTING_READY = false`) and `cashTenderedSatang` on non-CASH rows is already VALIDATION (CD-3).
+- `REFUND_PAY_TYPES` lacks PLATFORM ⇒ today a PLATFORM refund is `VALIDATION`, not `REFUND_METHOD_INVALID`; `refund.ts` refuses DEPOSIT/ROOM_CHARGE explicitly (pattern for PLATFORM-on-non-PLATFORM sale).
+- `postExternalRefund` crLines union is `CASH | BANK`; `applyExternalRefund` maps everything non-CASH to BANK — PLATFORM must map to AR (1100) or the refund credits the bank.
+- `receipt-render.ts` `ReceiptPayType` has no PLATFORM; `RECEIPT_LABELS` pay labels need it too. Messages: `shift.method.*` and `receipt.public.pay.*` exist per pay type — PLATFORM keys required (ST2).
+- Option A accounts are already in every seeded book's mappings (`AR` 1100 · `AP` 2100 · `VAT_INPUT_UNDUE` 1155 · `PAYMENT_FEE` 6500, `coa.ts:89–112`). §9's `PLATFORM_RECEIVABLE` / `PLATFORM_COMMISSION` names must appear in the facade (ST3) and resolve to `AR` / `PAYMENT_FEE`; G8 proves no 9999 / `needsReview` on any entry.
+- `shop.confirmOrderPaid` passes no channel ⇒ WEB comes from `defaultChannelCode("ECOM")` inside `createSale` (CD2 holds; S7 + ST3 check no foreign module sets `channelId` beside a `createSale` call).
+- Direct `createSale` callers without `shiftId` are off-shift (P1.9 default) — the S/G/R bills are off-shift; the register bill (P2) is shift-bound and drives Q4.
+- `billsPageData` default page size is small — the oracle passes `pageSize: 50`.
+
+## Names table (exactly as the oracle calls them — builder S must match)
+| # | name | shape / where |
+|---|---|---|
+| 1 | `model SalesChannel` | `id tenantId systemId unitId code kind name adapter active sortOrder payout commissionBp commissionFixedSatang commissionVatBp archivedAt? createdAt updatedAt autoAccept Boolean @default(false) prepMinutes Int? pausedUntil DateTime? adapterConfig Json?` · `@@unique([unitId, code])` · `@@index([tenantId, systemId, unitId])` · `kind SalesChannelKind` · `adapter SalesChannelAdapter` · `payout SalesChannelPayout` |
+| 2 | enums | `SalesChannelKind {BUILTIN EXTERNAL CUSTOM}` · `SalesChannelAdapter {NONE MANUAL WEB CHAT API}` · `SalesChannelPayout {PLATFORM DIRECT}` · `PosPayType += PLATFORM` |
+| 3 | `PosSale` columns | `channelId String?` · `channelCode String?` · `channelRef String?` · `channelPayout SalesChannelPayout?` · `channelCommissionSatang Int @default(0)` · `channelCommissionVatSatang Int @default(0)` |
+| 4 | migration | one dir `*_pos_p21_sales_channel`: `SET/RESET lock_timeout` · `ALTER TYPE "PosPayType" ADD VALUE IF NOT EXISTS 'PLATFORM'` · `CREATE TYPE "SalesChannel{Kind,Adapter,Payout}"` (plain or inside `DO $$ … $$`) · `CREATE TABLE "SalesChannel"` · `CREATE [UNIQUE] INDEX … ON "SalesChannel"` (unique on `("unitId","code")`) · `ALTER TABLE "PosSale" ADD COLUMN` × exactly the 6 columns (`channelCommission*` = `INTEGER NOT NULL DEFAULT 0`, `channelPayout` = `"SalesChannelPayout"`). Nothing else. |
+| 5 | registrations | `core/scope.ts` `SalesChannel: <axis>` · `pos-qc-env` `POS_MODELS.salesChannel {model: "SalesChannel", …}` and removed from `POS_FUTURE_MODELS` · `permissions.ts` `"pos.channel.manage": "…ตั้งค่าช่องทางขายและค่าคอมมิชชันแพลตฟอร์ม…"` |
+| 6 | `pos/channel-shared.ts` (pure, client-safe) | `channelCommission(grossSatang, {commissionBp, commissionFixedSatang, commissionVatBp}) → {commissionSatang, commissionVatSatang}` (exact keys; `c = min(gross, halfUp(gross·bp/10000) + fixed)`, `vat = halfUp(c·vatBp/10000)`) |
+| 7 | 〃 | `channelRefundShare(sale: {grandTotalSatang, channelCommissionSatang, channelCommissionVatSatang}, refund: {grossSatang, full: boolean}, prior: {commissionSatang, commissionVatSatang}) → {commissionSatang, commissionVatSatang}` (full ⇒ sale − prior · else halfUp(sale × gross / grand)) |
+| 8 | 〃 | `parseChannelInput(raw) → {ok:true, value} \| {ok:false, code:"VALIDATION", message}` · keys ⊆ `id code name active payout commissionBp commissionFixedSatang commissionVatBp sortOrder adapter` · name trimmed non-empty · code `^[A-Z][A-Z0-9_]{1,23}$` · bp/vatBp int 0..10000 · fixed int 0..1 000 000 · payout `PLATFORM\|DIRECT` · adapter `NONE\|MANUAL\|WEB\|CHAT\|API` · never throws |
+| 9 | 〃 | `defaultChannelCode(sourceModule?: string \| null) → "STORE" \| "WEB"` (ECOM → WEB, everything else/null/"" → STORE) · `CHANNEL_BUILTIN_CODES = ["STORE","QR_TABLE","WEB","CHAT"]` · `CHANNEL_EXTERNAL_PRESETS = ["LINEMAN","GRAB","FOODPANDA","SHOPEE","LAZADA","TIKTOK"]` · `CHANNEL_LIMIT_PER_UNIT = 30` · `CHANNEL_REF_MAX = 40` |
+| 10 | builtin names | STORE `หน้าร้าน` · QR_TABLE `QR โต๊ะ` · WEB `เว็บร้าน SHARK Shop` · CHAT `แชท` (STORE: DIRECT, commission 0, active, not archivable) |
+| 11 | `pos/channel.ts` | `listChannels(ctx {tenantId, systemId, unitId}, actor, {includeArchived?}) → {ok:true, items: ChannelItem[]}` · `saveChannel(ctx, actor, input) → {ok:true, channel: ChannelItem}` · `archiveChannel(ctx, actor, {id}) → {ok:true, …}` · `ensureUnitChannels(db, {tenantId, systemId, unitId})` (`createMany({skipDuplicates:true})` of the 4 builtins) · refusals `{ok:false, code, message (Thai)}` never throw |
+| 12 | `ChannelItem` | exactly `{id, code, kind, name, adapter, active, payout, commissionBp, commissionFixedSatang, commissionVatBp, sortOrder, archived}` |
+| 13 | `pos/channel-actions.ts` | `"use server"` first statement · `listChannelsAction` `saveChannelAction` `archiveChannelAction` (each calls its service fn, has `catch`, uses `requireTenant`) · async exports only |
+| 14 | refusal codes | `CHANNEL_INVALID CHANNEL_PAY_MISMATCH CHANNEL_NOT_FOUND CHANNEL_CODE_TAKEN CHANNEL_BUILTIN_LOCKED CHANNEL_LIMIT` (+ `VALIDATION PERMISSION_DENIED REFUND_METHOD_INVALID IDEMPOTENCY_CONFLICT`) · `PosSaleErrorCode += CHANNEL_INVALID CHANNEL_PAY_MISMATCH` (thrown `PosSaleError.code`, Thai message) · `RegisterRefusalCode` + `REFUSAL_KEY` all 6 → `errors.<camel>` |
+| 15 | messages (`src/messages/{th,en}/pos.json`) | `register.errors.{channelInvalid,channelPayMismatch,channelNotFound,channelCodeTaken,channelBuiltinLocked,channelLimit}` (th in Thai) · non-empty `channel.*` block (settings strings) · `shift.method.PLATFORM` · `receipt.public.pay.PLATFORM` |
+| 16 | `createSale` input | `channelId?: string` · `channelRef?: string` (trimmed, ≤ 40 else VALIDATION) · contract json gains exactly these two (S8) |
+| 17 | pay-type lists | `PAY_TYPE_ORDER` + `PAY_TYPE_LABEL_TH.PLATFORM = "แพลตฟอร์ม"` · `POS_PAY_TYPE_LABEL.PLATFORM = "แพลตฟอร์ม"` · `REFUND_PAY_TYPES` · `REGISTER_PAY_TYPES` · shift `METHOD_ORDER` · `ReceiptPayType` · REST `EXTERNAL_PAY_TYPES` unchanged |
+| 18 | facade | `applyExternalChannelCommission({tenantId, sourceSystemId, refId, occurredAt, commissionSatang, commissionVatSatang, payout, channelName, receiptNo?, reverse?})` → `{posted, reason?, entryId?}` (signature not asserted, only export + ≥ 2 call sites in `account-bridge`/`refund-consumer`) · keys `PLATFORM_RECEIVABLE`→AR, `PLATFORM_COMMISSION`→PAYMENT_FEE in `account/index.ts` · `applyExternalSale`/`applyExternalRefund` channel union (inline or via a named type) includes `"PLATFORM"` · `channelOf` has `case "PLATFORM"` |
+| 19 | gl | `postExternalChannelCommission` exported from `account/gl.ts` |
+| 20 | JV shapes (per account code, Σ dr/cr) | PAID LINEMAN ฿420: `1100:42000/0 2200:0/2748 4000:0/39252` · COMMISSION: `1100:0/12600 6500:12600/0` · GRAB ฿310 VAT book: `1100:0/8507 1155:557/0 6500:7950/0` · GRAB non-VAT: `1100:0/8507 6500:8507/0` (PAID `1100:31000/0 4000:0/31000`) · AGENT DIRECT ฿420 10 %: `2100:0/4200 6500:4200/0` · REFUNDED (PLATFORM) Cr 1100 = refund gross, no 1000/1010 · COMMISSION_REFUNDED PLATFORM `1100:<share>/0 6500:0/<share>` · DIRECT `2100:<share>/0 6500:0/<share>` |
+| 21 | register | `quoteRegisterCart` / `submitRegisterSale` / `holdRegisterCart` cart key `channelId` · submit key `channelRef` · quote result `channel: {id, code, name, payout}` (exact keys) · recall returns `cart.channelId` and `quote.channel` |
+| 22 | readers | `BillRow.salesChannel: {code, name} \| null` · query key `salesChannelId` · old `channel` = sourceModule · `BillDetail.channel: {code, name, ref, payout, commissionSatang?, commissionVatSatang?} \| null` · `ReceiptPayload.channel: {code, name, ref} \| null` · `PublicReceipt.channel: {name, ref} \| null` · reports/close-day `PLATFORM` label `แพลตฟอร์ม` |
+| 23 | audits | `pos.channel.created` · `pos.channel.updated` (before + after) · `pos.channel.archived` — `actorId` = acting user, channelId + code in target/JSON |
+| 24 | register seam | the literal comment `// P2.2 ▸ channel price here ◂` in `register.ts` |
+
+## Expected after build
+All 53 green. Regression list = brief §4 (identical before/after). No ORACLE-EDIT expected; found none while writing.
+
+## Runs (9 Oct 2026, tree b @ 502cf9fe + oracle)
+- `pnpm exec tsx scripts/qc-pos-p2.1.mts --list` → exit 0, 53 ids (below).
+- `--no-db` → exit 1, 0/11 (ST1–ST5, S8, B1–B5 all red with "missing …" reasons; no prisma load).
+- forced (`bash scripts/iso.sh env QC_FORCE=1 bash scripts/qc4.sh env GATE_LOCK_FILE=/tmp/shark-gate-pos.lock bash scripts/with-gate-lock.sh pnpm exec tsx scripts/qc-pos-p2.1.mts`, host `ep-frosty-lab`) → exit 1, **3/53 green** = G5 (positive control: STORE bill PAID JV shape `1000:42000/0 2200:0/2748 4000:0/39252`), Z1 (2 temp tenants × 320 tables, residue 0, Tenant rows gone), Z2 (no leaks). 50 red, all by reason: ST/S8/B "missing model/enum/column/export"; C/S/G/R/P2/Q/C7 prefixed "missing PosSale.channel* · table SalesChannel · PosPayType.PLATFORM" (PLATFORM sales THROW on the enum); P1/P3/P4-LINEMAN `VALIDATION` (unknown cart key `channelId`); C6 0 audit rows; G8 "no commission JV"; E1 none of the channel codes seen. No crash, network guard 0 hits.
+- typecheck: `env NODE_OPTIONS=--max-old-space-size=5632 ISO_MEM=6500M bash scripts/iso.sh flock -w 3600 /tmp/pos-gate.lock pnpm typecheck` → exit 0 (13:02–13:04Z, no lock wait). A later 3-line hardening edit (S3–S5 drain first; outbox count limited to `pos.sale.*`) was re-checked with single-file `tsc` (strict + noUnusedLocals, temp tsconfig in scratch) → exit 0.
+
+## `--list`
+```
+P2.1-ST1 S · P2.1-ST2 S · P2.1-ST3 S · P2.1-ST4 S · P2.1-ST5 S · P2.1-S8 S
+P2.1-B1 P · P2.1-B2 P · P2.1-B3 P · P2.1-B4 P · P2.1-B5 P
+P2.1-C1 X1 · P2.1-C2 X1 · P2.1-C3 - · P2.1-C4 - · P2.1-C5 X3 · P2.1-C6 X5 · P2.1-C7 X4
+P2.1-S1 - · P2.1-S2 X4 · P2.1-S3 X5 · P2.1-S4 X5 · P2.1-S5 X2 · P2.1-S6 X1 · P2.1-S7 -
+P2.1-G1 X4 · P2.1-G2 X4 · P2.1-G3 X4 · P2.1-G4 X4 · P2.1-G5 - · P2.1-G6 X1 · P2.1-G7 - · P2.1-G8 X4 · P2.1-G9 X5
+P2.1-R1 X5 · P2.1-R2 X4 · P2.1-R3 X4 · P2.1-R4 X5 · P2.1-R5 X1 · P2.1-R6 X4
+P2.1-P1 X2 · P2.1-P2 X5 · P2.1-P3 X1 · P2.1-P4 -
+P2.1-Q1 - · P2.1-Q2 X3 · P2.1-Q3 - · P2.1-Q4 X4 · P2.1-Q5 - · P2.1-Q6 -
+P2.1-E1 - · P2.1-Z1 - · P2.1-Z2 -
+X-coverage: S=6 P=5 X1=6 -=14 X3=2 X5=7 X4=11 X2=2
+```
+(full Thai titles: `pnpm exec tsx scripts/qc-pos-p2.1.mts --list`)
