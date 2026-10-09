@@ -101,7 +101,13 @@ export type RegisterRefusalCode =
   // POS P1.10: เครื่องที่ถูกเพิกถอน (ขาย/เปิดกะ/พัก/เรียกคืน) · ลงทะเบียนเกินเพดาน · ไม่พบเครื่องในสาขานี้
   | "DEVICE_REVOKED"
   | "DEVICE_LIMIT"
-  | "DEVICE_NOT_FOUND";
+  | "DEVICE_NOT_FOUND"
+  // POS P1.7: ใบขอรับเงิน (reference "pi_…" ของ PROMPTPAY/CARD) — ไม่พบ/สาขาอื่น · ยังไม่จ่าย · ใช้แล้ว · จ่ายเกิน 24 ชม. · ยอดไม่ตรง
+  | "INTENT_NOT_FOUND"
+  | "INTENT_NOT_PAID"
+  | "INTENT_CONSUMED"
+  | "INTENT_EXPIRED"
+  | "AMOUNT_MISMATCH";
 
 /** คำปฏิเสธ — คืนค่า ไม่ throw · `lineIndex` = บรรทัดที่ผิด (ลำดับเดียวกับที่ส่งมา) ถ้าระบุได้ */
 export type RegisterRefusal = { ok: false; code: RegisterRefusalCode; message: string; lineIndex?: number };
@@ -207,7 +213,7 @@ export type RegisterQuote = { ok: true } & RegisterQuoteTotals;
 export type RegisterQuoteResult = RegisterQuote | RegisterRefusal;
 
 export type RegisterPayType = (typeof REGISTER_PAY_TYPES)[number];
-/** reference = เลขอ้างอิงบัตร/EDC หรือโอน (P1.6 · ≤ REGISTER_REFERENCE_MAX · เงินสด/พร้อมเพย์ไม่มี) */
+/** reference = เลขอ้างอิงบัตร/EDC หรือโอน (P1.6 · ≤ REGISTER_REFERENCE_MAX · เงินสดไม่มี) · P1.7: "pi_…" บน PROMPTPAY/CARD = id ใบขอรับเงินที่ PAID แล้ว (พร้อมเพย์รับเฉพาะ pi_…) */
 export type RegisterPayMethod = { type: RegisterPayType; amountSatang: number; reference?: string };
 export type RegisterSubmitInput = RegisterQuoteInput & {
   /** คีย์เดียวต่อบิล — คงเดิมทุกการลองซ้ำ (สเปก §3.4) */
@@ -529,6 +535,12 @@ const REFUSAL_KEY: Readonly<Record<string, string>> = {
   DEVICE_REVOKED: "errors.deviceRevoked",
   DEVICE_LIMIT: "errors.deviceLimit",
   DEVICE_NOT_FOUND: "errors.deviceNotFound",
+  // POS P1.7 ▸ ใบขอรับเงินในบิล ◂
+  INTENT_NOT_FOUND: "errors.intentNotFound",
+  INTENT_NOT_PAID: "errors.intentNotPaid",
+  INTENT_CONSUMED: "errors.intentConsumed",
+  INTENT_EXPIRED: "errors.intentExpired",
+  AMOUNT_MISMATCH: "errors.amountMismatch",
 };
 
 /**

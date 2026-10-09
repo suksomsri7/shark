@@ -726,7 +726,8 @@ export function lineConsumption(
   return out;
 }
 
-async function consumeSaleInventory(tenantId: string, unitId: string, saleId: string): Promise<void> {
+// POS P1.7 ▸ export: register.ts เรียก createSale ในธุรกรรมของตัวเอง (ล็อกใบขอรับเงิน) ⇒ ทำงานหลัง commit ชุดเดียวกับตอน createSale เป็นเจ้าของ tx ◂
+export async function consumeSaleInventory(tenantId: string, unitId: string, saleId: string): Promise<void> {
   const sale = await prisma.posSale.findFirst({ where: { id: saleId, tenantId }, select: { status: true } });
   if (!sale || sale.status !== "PAID") return; // void แล้ว = อย่าตัด
   // POS P1.2: ทุกบรรทัดของบิล (บรรทัดชุดไม่มี itemId แต่มี components) → ส่วนที่ต้องตัด

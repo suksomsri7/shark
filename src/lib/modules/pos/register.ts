@@ -412,6 +412,11 @@ export async function posLinkSaleToDeal(tenantId: string, actor: MemberActor, in
 import { Prisma, type PosProduct, type PrismaClient } from "@prisma/client";
 import { canAccessUnit, evaluate, permissionValue } from "@/lib/core/rbac";
 import { createSale, PosSaleError, type CreateSaleInput } from "./service";
+// POS P1.7 ▸ ใบขอรับเงิน (pi_…) ใช้ในธุรกรรมขายของหน้าขาย · งานหลัง commit ชุดเดียวกับ createSale (ตัดสต็อก + ระบายคิว · มติ I) ◂
+import { consumeSaleInventory } from "./service";
+import { consumeSaleIntents, lockSaleIntents, type SaleIntentRef } from "./payment-intent";
+import { isPaymentIntentId } from "./payment-intent-shared";
+import { scheduleDrain } from "@/lib/outbox-consumers";
 import { posPaymentSettings, type PosPaymentSettings } from "./payment-settings";
 // POS P1.9 ▸ กะของเครื่อง (S5/S6/S15) ◂
 import { isShiftDeviceId, registerShiftStatus, resolveRegisterShift } from "./shift";
@@ -502,6 +507,12 @@ const REG_MESSAGE: Record<RegisterRefusalCode, string> = {
   DEVICE_REVOKED: "เครื่องนี้ถูกเพิกถอนแล้ว — ใช้ขายไม่ได้ ติดต่อผู้จัดการ",
   DEVICE_LIMIT: "ลงทะเบียนเครื่องครบจำนวนที่แพ็กเกจให้แล้ว",
   DEVICE_NOT_FOUND: "ไม่พบเครื่องนี้ในสาขานี้",
+  // POS P1.7 ▸ ใบขอรับเงิน (pi_…) ◂
+  INTENT_NOT_FOUND: "ไม่พบรายการรับเงินนี้ที่สาขานี้ — สร้าง QR ใหม่",
+  INTENT_NOT_PAID: "ยังไม่ได้รับเงินของรายการนี้ — รอเงินเข้า หรือยืนยันเองเมื่อเห็นเงินเข้า",
+  INTENT_CONSUMED: "รายการรับเงินนี้ถูกใช้กับบิลอื่นไปแล้ว",
+  INTENT_EXPIRED: "เงินเข้าเกิน 24 ชั่วโมงแล้ว — ใช้กับบิลไม่ได้ ให้ผู้จัดการจัดการเอง",
+  AMOUNT_MISMATCH: "ยอดชำระไม่ตรงกับรายการรับเงิน — ตรวจยอดอีกครั้ง",
 };
 const REG_ROLE_LABEL: Record<RegisterRole, string> = { OWNER: "เจ้าของร้าน", MANAGER: "ผู้จัดการ", STAFF: "แคชเชียร์" };
 
@@ -1374,7 +1385,8 @@ function regParseSubmit(raw: unknown): RegParsedSubmit | RegisterRefusal {
     if (p.type === "CASH" && payMethods.some((x) => x.type === "CASH")) return regRefuse("VALIDATION", "เงินสดใส่ได้รายการเดียว");
     let reference: string | null = null;
     if (p.reference !== undefined && p.reference !== null) {
-      if (p.type !== "CARD" && p.type !== "TRANSFER") return regRefuse("VALIDATION", "เลขอ้างอิงใส่ได้เฉพาะบัตรและโอน");
+      // POS P1.7 ▸ พร้อมเพย์รับเลขอ้างอิงได้เฉพาะ id ใบขอรับเงิน (pi_…) · อื่น ๆ = VALIDATION เหมือน P1.6 ◂
+      if (p.type !== "CARD" && p.type !== "TRANSFER" && !(p.type === "PROMPTPAY" && isPaymentIntentId(p.reference))) return regRefuse("VALIDATION", "เลขอ้างอิงใส่ได้เฉพาะบัตรและโอน");
       if (typeof p.reference !== "string" || p.reference.length > REGISTER_REFERENCE_MAX || !regCleanText(p.reference)) return regRefuse("VALIDATION", "เลขอ้างอิงไม่ถูกต้อง");
       reference = p.reference.trim() || null;
     }
@@ -1621,6 +1633,11 @@ export async function submitRegisterSale(ctx: RegisterCtx, actor: RegisterActor,
       shiftId: shift.shiftId,
       soldByUserId: actor.userId, // POS P1.17 ▸ R6 · ผู้ขาย = ผู้ใช้ของ session ◂
     };
+    // POS P1.7 ▸ R4: PROMPTPAY/CARD ที่อ้าง "pi_…" = ใช้ใบขอรับเงินที่ PAID ในธุรกรรมเดียวกับบิล (ล็อก FOR UPDATE) · ไม่มี = ทาง P1.6 เดิมทุกไบต์ ◂
+    const intentRefs: SaleIntentRef[] = req.payMethods.flatMap((x) =>
+      (x.type === "PROMPTPAY" || x.type === "CARD") && x.reference !== null && isPaymentIntentId(x.reference) ? [{ intentId: x.reference, payType: x.type, amountSatang: x.amountSatang }] : [],
+    );
+    if (intentRefs.length) return regSubmitWithIntents(db, s, req, saleInput, intentRefs, startedAt);
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
         const r = await createSale(saleInput, db);
@@ -1653,6 +1670,76 @@ export async function submitRegisterSale(ctx: RegisterCtx, actor: RegisterActor,
     }
     return regRefuse("BUSY");
   });
+}
+
+/** POS P1.7: ข้อผิดพลาดภายในธุรกรรมขายแบบใบขอรับเงิน (โยนเพื่อให้ธุรกรรมย้อนทั้งก้อน แล้วคืนเป็นคำปฏิเสธ) */
+class RegIntentRefusal extends Error {
+  constructor(readonly refusal: RegisterRefusal) {
+    super(refusal.code);
+  }
+}
+
+/**
+ * POS P1.7 R4 — ส่งบิลที่อ้างใบขอรับเงิน: ธุรกรรมเดียว = ล็อก intent (FOR UPDATE) → ตรวจ → createSale(…, tx) → CONSUMED + saleId + PosPayment.note
+ * ⇒ สองคำขอแย่ง intent เดียว = บิลเกิดใบเดียว (ผู้แพ้รอล็อกแล้วเห็น CONSUMED) · คีย์เดิมซ้ำ = บิลเดิม (ค้นคีย์ก่อนล็อก + หลังแพ้)
+ * หลัง commit: ตัดสต็อก (perpetual) + scheduleDrain() ให้ pos.sale.paid ทำงานทันที (มติ I) — ชุดเดียวกับ createSale ตอนเป็นเจ้าของ tx
+ */
+async function regSubmitWithIntents(
+  db: RegDb,
+  s: RegScope,
+  req: RegParsedSubmit,
+  saleInput: CreateSaleInput,
+  refs: SaleIntentRef[],
+  startedAt: number,
+): Promise<RegisterSubmitResult> {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const saleId = await db.$transaction(
+        async (tx) => {
+          const locked = await lockSaleIntents(tx, s, refs);
+          if (!locked.ok) throw new RegIntentRefusal(regRefuse(locked.code));
+          const r = await createSale(saleInput, tx);
+          // createSale คืนบิลเดิมของคีย์นี้ได้ (บิลที่ไม่ได้อ้าง intent ชุดนี้ commit ไปก่อน) ⇒ ใช้ intent เฉพาะเมื่อบิลนี้อ้างครบทุกใบ
+          const linked = await tx.posPayment.count({ where: { tenantId: s.tenantId, saleId: r.saleId, reference: { in: [...locked.notes.keys()] } } });
+          if (linked === locked.notes.size) await consumeSaleIntents(tx, s, r.saleId, locked.notes);
+          return r.saleId;
+        },
+        { timeout: 20_000, maxWait: 10_000 },
+      );
+      if (saleInput.lines.some((l) => l.itemId || (l.components && l.components.length))) await consumeSaleInventory(s.tenantId, s.unitId, saleId);
+      scheduleDrain();
+      const row = await regLoadSale(db, s.tenantId, req.idempotencyKey);
+      if (!row || row.id !== saleId) return regRefuse("INTERNAL");
+      return regDuplicate(s, req, row, row.createdAt.getTime() < startedAt);
+    } catch (e) {
+      if (e instanceof RegIntentRefusal) {
+        // แพ้การแย่ง intent ให้คำขอคีย์เดียวกันที่ commit ไปแล้ว = บิลเดิม (ไม่ใช่ INTENT_CONSUMED)
+        if (e.refusal.code === "INTENT_CONSUMED") {
+          const row = await regLoadSale(db, s.tenantId, req.idempotencyKey);
+          if (row) return regDuplicate(s, req, row, true);
+        }
+        return e.refusal;
+      }
+      const code = (e as { code?: unknown } | null)?.code;
+      if (code === "P2002") {
+        const row = await regLoadSale(db, s.tenantId, req.idempotencyKey);
+        if (row) return regDuplicate(s, req, row, true);
+        continue;
+      }
+      if (code === "P2034" || code === "P2028") continue;
+      if (e instanceof PosSaleError) {
+        if (e.code === "IDEMPOTENCY_CONFLICT") {
+          const row = await regLoadSale(db, s.tenantId, req.idempotencyKey);
+          return row ? regDuplicate(s, req, row, true) : regRefuse("IDEMPOTENCY_CONFLICT");
+        }
+        return regRefuse(e.code === "HAS_REFUNDS" ? "VALIDATION" : e.code, e.code === "STOCK_INSUFFICIENT" ? e.message : undefined);
+      }
+      if (e instanceof Error && e.message.startsWith("PAYMENT_MISMATCH")) return regRefuse("PAYMENT_MISMATCH");
+      if (e instanceof Error && e.message.startsWith("INTENT_CONSUMED")) return regRefuse("INTENT_CONSUMED");
+      throw e;
+    }
+  }
+  return regRefuse("BUSY");
 }
 
 /** POS P1.9: ctx.deviceId — ไม่ส่ง = undefined · ผิดรูป = false */
