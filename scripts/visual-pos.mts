@@ -119,7 +119,8 @@
 //   fixture ช่องทาง (ensureChannelFixture): LINEMAN (PLATFORM 30%) + GRAB (PLATFORM 25% + ฿2 · VAT 7%) ของสาขาที่ถ่าย — หาตามรหัส · ไม่มี = สร้าง ·
 //   ค่าไม่ตรง = แก้ผ่าน saveChannel (เจ้าของร้าน) · ตรงแล้ว = ไม่เขียน · ไม่ลบ (บิลภาพอ้าง id) · SHOPEE/FOODPANDA มีอยู่แล้ว = ไม่ลบ (แจ้งใน log)
 //   sales: bills-channels (วันนี้มีบิลหน้าร้าน + เว็บร้าน + LINE MAN PLATFORM "LM-48152") · bills-drawer-commission (ลิ้นชักบิล LINE MAN — เจ้าของเห็นบล็อกค่าคอมฯ ·
-//   แคชเชียร์ = บรรทัดช่องทางอย่างเดียว) — บิล 2 ใบสร้างด้วย createSale (คีย์ตายตัวต่อวัน posqc-vis-p21u-<วันที่>-web|lineman · รันซ้ำ = บิลเดิม · ไม่ลบ)
+//   แคชเชียร์ = บรรทัดช่องทางอย่างเดียว) — บิล 2 ใบสร้างด้วย createSale (fix รอบ 1 F1: คีย์ต่อรอบ posqc-vis-p21u-<pid>-<n>-web|lineman · เจ้าของสร้างคู่ใหม่ทุกรอบ ·
+//   แคชเชียร์ใช้คู่ล่าสุดของวันนี้ซ้ำเมื่ออยู่หน้าแรก · ก่อนถ่ายยืนยันหน้าแรกด้วย billsPageData (หลุด = สร้างคู่ใหม่ + โหลดหน้าใหม่) · ไม่ลบ)
 //   register: paydlg-platform (บิลพักที่มี channelId ของ LINE MAN · holdRegisterCart ต่อภาพ → เรียกคืน → ชำระ → ช่อง "แพลตฟอร์ม" เลือกไว้ · ไม่ยืนยัน ·
 //   บิลพักที่ยังค้างลบใน finally) ◂
 //
@@ -486,7 +487,7 @@ if (DRY) {
         `  P2.1U: ช่องทาง ${P21U_CHANNELS.map((c) => `${c.code} (${c.payout} ${c.commissionBp / 100}%${c.commissionFixedSatang ? ` + ฿${c.commissionFixedSatang / 100}` : ""}${c.commissionVatBp ? ` · VAT ${c.commissionVatBp / 100}%` : ""})`).join(" · ")} ของสาขา ${unitKey} — หาตามรหัส · ไม่มี = สร้าง · ค่าไม่ตรง = แก้ (saveChannel เจ้าของร้าน) · ไม่ลบ`,
       );
     if (billsStatesOn && pages.includes("sales") && jobs.some((j) => j.state === "bills-channels" || j.state === "bills-drawer-commission"))
-      console.log(`  P2.1U: บิลช่องทางของวันนี้ 2 ใบ (createSale คีย์ posqc-vis-p21u-<วันที่>-web|lineman · รันซ้ำ = บิลเดิม · ไม่ลบ): เว็บร้าน ฿235 PROMPTPAY · LINE MAN ฿420 PLATFORM ${P21U_REF}`);
+      console.log(`  P2.1U: บิลช่องทางของวันนี้ 2 ใบ (createSale คีย์ต่อรอบ posqc-vis-p21u-<pid>-<n>-web|lineman · เจ้าของ = สร้างคู่ใหม่ทุกรอบ · แคชเชียร์ = ใช้คู่ล่าสุดของวันนี้ (${P21U_REF} + แท็กภาพบิล) ซ้ำเมื่ออยู่หน้าแรก ไม่งั้นสร้าง · ยืนยันหน้าแรกด้วย billsPageData · ไม่ลบ): เว็บร้าน ฿235 PROMPTPAY · LINE MAN ฿420 PLATFORM ${P21U_REF}`);
     if (pages.includes("register") && jobs.some((j) => j.state === "paydlg-platform"))
       console.log("  P2.1U: paydlg-platform พักบิล LINE MAN (holdRegisterCart + channelId) ใหม่ต่อภาพ → เรียกคืนผ่าน UI · ที่ค้างทิ้งใน finally (discardHeldCart)");
     if (needFixtures) console.log(`  fixture: สินค้าชั่วคราว 11 ตัว (เหลือ 2 · หมดสต็อก · ปิดขาย + 4 ตัวของภาพ 01 + ลาเต้มีตัวแปร 1+2 + สินค้าชั่ง 1) + กลุ่มตัวเลือก 4 กลุ่ม ที่สาขา ${unitKey} — ลบใน finally`);
@@ -3010,7 +3011,7 @@ const P21U = {
   /** code → SalesChannel.id ของสาขาที่ถ่าย */
   ids: {} as Record<string, string>,
   notes: [] as string[],
-  bills: { done: false, error: null as string | null, web: "", lineman: "", reused: 0 },
+  bills: { done: false, error: null as string | null, web: "", lineman: "", reused: 0, page: "" },
   /** บิลพักของสถานะ paydlg-platform (ทิ้งใน finally ถ้ายังไม่ถูกเรียกคืน) */
   held: [] as string[],
   cleanup: null as null | { ok: boolean; detail: string },
@@ -3050,51 +3051,100 @@ async function ensureChannelFixture(): Promise<void> {
     P21U.error = e instanceof Error ? e.message.slice(0, 200) : String(e);
   }
 }
-/** วันที่ไทยวันนี้ (คีย์บิลตายตัวต่อวัน) */
+/** วันที่ไทยวันนี้ (หน้าบิลวันนี้ของภาพ) */
 const bkkToday = () => new Date(Date.now() + 7 * 3_600_000).toISOString().slice(0, 10);
+/** POS P2.1U fix รอบ 1 ▸ F1: ตำแหน่งบิลในหน้าแรกของ "บิลวันนี้" (ตัวอ่านเดียวกับหน้าจอ · ค่าปริยาย = ทุกสถานะ · 10 แถว · ไม่กรอง) ◂ */
+async function p21uPageOnePos(saleIds: string[]): Promise<{ pos: number[]; total: number }> {
+  const { billsPageData } = await import("@/lib/modules/pos/bills");
+  const r = (await billsPageData({ tenantId: T.tenantId, systemId: SYS, unitId, deviceId: BILLS_DEVICE_ID } as never, (await ownerActor()) as never, { unitId, date: bkkToday(), page: 1, pageSize: 10 })) as Any;
+  if (!r?.ok) throw new StepError(`อ่านหน้าบิลวันนี้ไม่ได้: ${r?.code ?? "?"}`);
+  const ids = (r.items as { id: string }[]).map((i) => i.id);
+  return { pos: saleIds.map((id) => ids.indexOf(id) + 1), total: r.total as number };
+}
 /**
- * บิลช่องทางของภาพ 12/09 (หลังบิลชุดภาพของ P1.16 — เป็นบิลใหม่สุดในรายการ): เว็บร้าน (PROMPTPAY) + LINE MAN (PLATFORM · LM-48152 · ฿420)
- * ผ่าน createSale ด้วยคีย์ตายตัวต่อวัน ⇒ รันซ้ำ/รอบแคชเชียร์ = บิลเดิม (ไม่เขียนเพิ่ม) · ไม่ลบ (บิลขายจริงของวันใน QC4 เหมือนบิลชุดภาพ)
+ * POS P2.1U fix รอบ 1 ▸ F1: สร้างคู่บิลช่องทาง (เว็บร้าน PROMPTPAY ฿235 + LINE MAN PLATFORM ฿420 · LM-48152) ด้วยคีย์ต่อรอบ
+ * (`${process.pid}` เหมือนบิลชุดภาพ P1.16) ⇒ คู่ใหม่ = บิลใหม่สุดของวันเสมอ · ไม่ลบ (บิลขายจริงของวันใน QC4 เหมือนบิลชุดภาพ) ◂
+ */
+let p21uPairN = 0;
+async function createP21uPair(): Promise<{ web: string; lineman: string }> {
+  const web = P21U.ids.WEB;
+  const lm = P21U.ids.LINEMAN;
+  if (!web || !lm) throw new StepError("ไม่มีช่องทาง WEB/LINEMAN ของสาขา QC");
+  const { createSale } = await import("@/lib/modules/pos/service");
+  const actor = await ownerActor();
+  const k = `${FIX.prefix}p21u-${process.pid}-${++p21uPairN}`;
+  const base = { tenantId: T.tenantId, unitId, systemId: SYS, sourceModule: "POS", shiftId: BILLS.shiftId || null, soldByUserId: actor.userId };
+  const w = await createSale({
+    ...base,
+    idempotencyKey: `${k}-web`,
+    channelId: web,
+    lines: [{ name: `ลาเต้เย็น ${BILL_TAG}`, qty: 2, unitPriceSatang: 7500 }, { name: `ครัวซองต์อัลมอนด์ ${BILL_TAG}`, qty: 1, unitPriceSatang: 8500 }],
+    payMethods: [{ type: "PROMPTPAY", amountSatang: 23500 }],
+  } as never);
+  const m = await createSale({
+    ...base,
+    idempotencyKey: `${k}-lineman`,
+    channelId: lm,
+    channelRef: P21U_REF,
+    lines: [
+      { name: `ผัดไทยกุ้ง ${BILL_TAG}`, qty: 1, unitPriceSatang: 12000 },
+      { name: `ต้มยำกุ้งน้ำข้น ${BILL_TAG}`, qty: 1, unitPriceSatang: 18000 },
+      { name: `ชาไทยเย็น ${BILL_TAG}`, qty: 2, unitPriceSatang: 6000 },
+    ],
+    payMethods: [{ type: "PLATFORM", amountSatang: 42000 }],
+  } as never);
+  return { web: w.saleId, lineman: m.saleId };
+}
+/** POS P2.1U fix รอบ 1 ▸ F1: คู่ล่าสุดของวันนี้ (LINE MAN หาตาม channelRef LM-48152 + BILL_TAG · เว็บร้าน = บิลเว็บร้านล่าสุดที่ไม่ใหม่กว่า LINE MAN) ◂ */
+async function newestP21uPair(): Promise<{ web: string; lineman: string } | null> {
+  const start = new Date(Date.parse(`${bkkToday()}T00:00:00+07:00`));
+  const where = { tenantId: T.tenantId, systemId: SYS, unitId, docType: "SALE" as const, status: "PAID" as const, createdAt: { gte: start }, lines: { some: { name: { endsWith: BILL_TAG } } } };
+  const m = await prisma.posSale.findFirst({ where: { ...where, channelId: P21U.ids.LINEMAN, channelRef: P21U_REF }, select: { id: true, createdAt: true }, orderBy: [{ createdAt: "desc" }, { id: "desc" }] });
+  if (!m) return null;
+  const w = await prisma.posSale.findFirst({ where: { ...where, channelId: P21U.ids.WEB, createdAt: { gte: start, lte: m.createdAt } }, select: { id: true }, orderBy: [{ createdAt: "desc" }, { id: "desc" }] });
+  return w ? { web: w.id, lineman: m.id } : null;
+}
+/**
+ * บิลช่องทางของภาพ 12/09 (หลังบิลชุดภาพของ P1.16): POS P2.1U fix รอบ 1 ▸ F1 — รอบเจ้าของ = สร้างคู่ใหม่ด้วยคีย์ต่อรอบเสมอ
+ * (บิลชุดภาพของรอบนี้ใหม่กว่าคู่เดิม) · รอบแคชเชียร์ = ใช้คู่ล่าสุดของวันนี้ซ้ำเมื่ออยู่ในหน้าแรกทั้งคู่ · ไม่มี/หลุดหน้าแรก = สร้างคู่ใหม่ ·
+ * ยืนยันตำแหน่งหน้าแรกด้วยตัวอ่าน billsPageData (บันทึกใน log) ◂
  */
 async function seedChannelBillsOnce(): Promise<void> {
   if (P21U.bills.done || P21U.bills.error) return;
   try {
     await ensureChannelFixture();
     if (P21U.error) throw new StepError(`fixture ช่องทาง: ${P21U.error}`);
-    const web = P21U.ids.WEB;
-    const lm = P21U.ids.LINEMAN;
-    if (!web || !lm) throw new StepError("ไม่มีช่องทาง WEB/LINEMAN ของสาขา QC");
-    const { createSale } = await import("@/lib/modules/pos/service");
-    const actor = await ownerActor();
-    const day = bkkToday();
-    const before = await prisma.posSale.count({ where: { tenantId: T.tenantId, idempotencyKey: { in: [`${FIX.prefix}p21u-${day}-web`, `${FIX.prefix}p21u-${day}-lineman`] } } }).catch(() => 0);
-    const base = { tenantId: T.tenantId, unitId, systemId: SYS, sourceModule: "POS", shiftId: BILLS.shiftId || null, soldByUserId: actor.userId };
-    const w = await createSale({
-      ...base,
-      idempotencyKey: `${FIX.prefix}p21u-${day}-web`,
-      channelId: web,
-      lines: [{ name: `ลาเต้เย็น ${BILL_TAG}`, qty: 2, unitPriceSatang: 7500 }, { name: `ครัวซองต์อัลมอนด์ ${BILL_TAG}`, qty: 1, unitPriceSatang: 8500 }],
-      payMethods: [{ type: "PROMPTPAY", amountSatang: 23500 }],
-    } as never);
-    const m = await createSale({
-      ...base,
-      idempotencyKey: `${FIX.prefix}p21u-${day}-lineman`,
-      channelId: lm,
-      channelRef: P21U_REF,
-      lines: [
-        { name: `ผัดไทยกุ้ง ${BILL_TAG}`, qty: 1, unitPriceSatang: 12000 },
-        { name: `ต้มยำกุ้งน้ำข้น ${BILL_TAG}`, qty: 1, unitPriceSatang: 18000 },
-        { name: `ชาไทยเย็น ${BILL_TAG}`, qty: 2, unitPriceSatang: 6000 },
-      ],
-      payMethods: [{ type: "PLATFORM", amountSatang: 42000 }],
-    } as never);
-    P21U.bills.web = w.saleId;
-    P21U.bills.lineman = m.saleId;
-    P21U.bills.reused = before;
+    let pair = userKey === "owner" ? null : await newestP21uPair();
+    if (pair && (await p21uPageOnePos([pair.web, pair.lineman])).pos.some((n) => n === 0)) pair = null;
+    P21U.bills.reused = pair ? 2 : 0;
+    pair ??= await createP21uPair();
+    P21U.bills.web = pair.web;
+    P21U.bills.lineman = pair.lineman;
+    const at = await p21uPageOnePos([pair.web, pair.lineman]);
+    if (at.pos.some((n) => n === 0)) throw new StepError(`คู่บิลช่องทางไม่อยู่หน้าแรก (เว็บร้าน #${at.pos[0]} · LINE MAN #${at.pos[1]} จาก ${at.total})`);
+    P21U.bills.page = `หน้าแรก: เว็บร้าน #${at.pos[0]} · LINE MAN #${at.pos[1]} จาก ${at.total} บิลของวันนี้`;
     P21U.bills.done = true;
   } catch (e) {
     P21U.bills.error = e instanceof Error ? e.message.slice(0, 200) : String(e);
   }
+}
+/**
+ * POS P2.1U fix รอบ 1 ▸ F1: ก่อนถ่าย — ยืนยันว่าคู่บิลยังอยู่หน้าแรก (บิลที่สถานะก่อนหน้า/เลนอื่นขายหลัง seed ดันลงได้) ·
+ * หลุด = สร้างคู่ใหม่ (คีย์ต่อรอบ) แล้วโหลดหน้าใหม่ ⇒ สถานะไม่ล้มเพราะตำแหน่งหน้า · บอกตำแหน่งใน log ◂
+ */
+async function ensureP21uOnPageOne(page: Any): Promise<void> {
+  let at = await p21uPageOnePos([P21U.bills.web, P21U.bills.lineman]);
+  if (at.pos.some((n) => n === 0)) {
+    const was = `เว็บร้าน #${at.pos[0] || "-"} · LINE MAN #${at.pos[1] || "-"}`;
+    const pair = await createP21uPair();
+    P21U.bills.web = pair.web;
+    P21U.bills.lineman = pair.lineman;
+    at = await p21uPageOnePos([pair.web, pair.lineman]);
+    if (at.pos.some((n) => n === 0)) throw new StepError(`คู่บิลช่องทางใหม่ยังไม่อยู่หน้าแรก (เว็บร้าน #${at.pos[0]} · LINE MAN #${at.pos[1]} จาก ${at.total})`);
+    console.log(`    P2.1U: คู่บิลเดิมหลุดหน้าแรก (${was}) → สร้างคู่ใหม่ ${pair.web} · ${pair.lineman}`);
+    await page.reload({ waitUntil: "networkidle2", timeout: 60_000 });
+  }
+  console.log(`    P2.1U: บิล LINE MAN อยู่หน้าแรก #${at.pos[1]} (เว็บร้าน #${at.pos[0]}) จาก ${at.total} บิลของวันนี้`);
 }
 /** ป้ายช่องทางของแถวบิล (ตาราง md+ / การ์ด 390) ที่มองเห็น */
 async function visibleChannelPill(page: Any, saleId: string): Promise<string> {
@@ -3105,11 +3155,12 @@ async function visibleChannelPill(page: Any, saleId: string): Promise<string> {
 }
 async function runP21uBillsState(page: Any, state: "bills-channels" | "bills-drawer-commission"): Promise<void> {
   if (P21U.bills.error || !P21U.bills.lineman) throw new StepError(`ไม่มีบิลช่องทางของภาพ: ${P21U.bills.error ?? "ยังไม่ได้สร้าง"}`);
+  await ensureP21uOnPageOne(page); // POS P2.1U fix รอบ 1 ▸ F1 ◂
   await visibleEl(page, tid("pos-bills-list"), 0, 15_000).catch(() => {
     throw new StepError("หน้าบิลวันนี้ไม่ขึ้น (pos-bills-list)");
   });
   await visibleEl(page, `[data-bill-id="${P21U.bills.lineman}"]`, 0, 15_000).catch(() => {
-    throw new StepError("ไม่เห็นบิล LINE MAN ในหน้าแรกของรายการ (บิลอื่นของวันนี้ใหม่กว่า?)");
+    throw new StepError("ตัวอ่านบอกว่าบิล LINE MAN อยู่หน้าแรก แต่หน้าจอไม่แสดงแถวนี้ (pos-bills-list)");
   });
   const lm = await visibleChannelPill(page, P21U.bills.lineman);
   if (!/LINE MAN/.test(lm)) throw new StepError(`ป้ายช่องทางของบิล LINE MAN = "${lm}"`);
@@ -3399,7 +3450,7 @@ try {
   }
   if (billsStatesOn && pages.includes("sales") && jobs.some((j) => j.state === "bills-channels" || j.state === "bills-drawer-commission")) {
     await seedChannelBillsOnce();
-    console.log(P21U.bills.error ? `  ⚠️ บิลช่องทาง: ${P21U.bills.error}` : `  บิลช่องทาง: เว็บร้าน ${P21U.bills.web} · LINE MAN ${P21U.bills.lineman} (${P21U_REF})${P21U.bills.reused ? ` · ใช้บิลของวันนี้ซ้ำ ${P21U.bills.reused} ใบ` : ""}`);
+    console.log(P21U.bills.error ? `  ⚠️ บิลช่องทาง: ${P21U.bills.error}` : `  บิลช่องทาง: เว็บร้าน ${P21U.bills.web} · LINE MAN ${P21U.bills.lineman} (${P21U_REF})${P21U.bills.reused ? ` · ใช้คู่ล่าสุดของวันนี้ซ้ำ ${P21U.bills.reused} ใบ` : " · สร้างคู่ใหม่ (คีย์ต่อรอบ)"} · ${P21U.bills.page}`);
   }
   const pptr = (await import("/root/dive3d/node_modules/puppeteer-core/lib/esm/puppeteer/puppeteer-core.js" as string).catch((e: unknown) => {
     throw new Fatal(`เปิด puppeteer-core ไม่ได้ (${e instanceof Error ? e.message : e}) — ต้องมี /root/dive3d/node_modules/puppeteer-core`);

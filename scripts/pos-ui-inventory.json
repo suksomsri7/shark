@@ -10508,6 +10508,25 @@
       "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-refund-method-platform",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "คืนผ่านแพลตฟอร์ม — ทางเดียวที่มีเมื่อบิลจ่าย PLATFORM (เลือกไว้แล้ว · ช่องอื่นไม่แสดง · refund.ts R9 รับเฉพาะ PLATFORM ทั้งหมด) · fix รอบ 1 F4"
+      },
+      "wo": "P2.1U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
     }
   ],
   "$roles": "roles/hiddenFor ที่อนุญาต: owner · manager · cashier · kind/expect.type ชุดเดียวกับทะเบียน CRM (F15.3b ตรวจ)"

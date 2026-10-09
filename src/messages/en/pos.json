@@ -1561,7 +1561,9 @@
         "card": "Card",
         "cardSub": "Back to the original card (reference)",
         "credit": "Store credit",
-        "creditSub": "Coming next (member wallet)"
+        "creditSub": "Coming next (member wallet)",
+        "platform": "Platform",
+        "platformSub": "The platform refunds the customer"
       },
       "reference": "Reference (optional)",
       "summary": "Refund {amount}",

@@ -47,7 +47,7 @@ import { ApprovalWaitDialog, type ApprovalPinResult } from "@/components/pos/reg
 import { BillChannelPill, BillIcon, StatusChip, SummaryCard, bkkHm, billChannelText, billsCsv, channelLabel, chipOf, dateLabel, methodLabel, money, payText, type T } from "./bills-ui";
 // POS P2.1U ▸ ช่องทางขาย: รายการช่องทางของสาขา (หาอัตราค่าคอมฯ ของบล็อกในลิ้นชัก) + เครื่องคิดค่าคอมฯ ฝั่ง client (บริสุทธิ์) ◂
 import { listChannelsAction } from "@/lib/modules/pos/channel-actions";
-import { channelCommission, type ChannelItem } from "@/lib/modules/pos/channel-shared";
+import { channelCommission, channelNet, type ChannelItem } from "@/lib/modules/pos/channel-shared";
 import { channelDisplayName, channelRateText } from "@/components/pos/settings/channel-text";
 
 type Unit = { id: string; name: string };
@@ -310,6 +310,8 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
     if (!ch || ch.commissionSatang === undefined || unitChannels?.unitId !== unitId) return "";
     const it = unitChannels.items.find((c) => c.code === ch.code);
     if (!it) return "";
+    // POS P2.1U fix รอบ 1 ▸ F3: ยอดชนเพดาน (ค่าคอมฯ = ยอดบิล) หรือยอด 0 ⇒ อัตราหลายชุดให้ยอดเดียวกัน — ไม่แสดงอัตรา ◂
+    if (b.totals.grandTotal <= 0 || ch.commissionSatang === b.totals.grandTotal) return "";
     const again = channelCommission(b.totals.grandTotal, it);
     return again.commissionSatang === ch.commissionSatang && again.commissionVatSatang === (ch.commissionVatSatang ?? 0) ? channelRateText(it) : "";
   };
@@ -672,7 +674,7 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
   const [rfRestock, setRfRestock] = useState<Record<string, boolean>>({});
   const [rfReason, setRfReason] = useState<RefundReasonCode>("DAMAGED");
   const [rfReasonText, setRfReasonText] = useState("");
-  const [rfMethod, setRfMethod] = useState<"CASH" | "ORIGINAL" | "CARD">("CASH");
+  const [rfMethod, setRfMethod] = useState<"CASH" | "ORIGINAL" | "CARD" | "PLATFORM">("CASH"); // POS P2.1U ▸ F4: + PLATFORM ◂
   const [rfRef, setRfRef] = useState("");
   const [rfKey, setRfKey] = useState("");
   const [rfErr, setRfErr] = useState<string | null>(null);
@@ -724,6 +726,7 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
     const p = r?.payments ?? [];
     const orig = p.find((x) => x.type === "PROMPTPAY") ?? p.find((x) => x.type === "TRANSFER");
     setRfRef(orig?.reference ?? "");
+    if (p.some((x) => x.type === "PLATFORM")) setRfMethod("PLATFORM"); // POS P2.1U ▸ F4: บิลจ่ายผ่านแพลตฟอร์ม = เลือก "แพลตฟอร์ม" ไว้ ◂
   };
   const closeRefund = useCallback(() => {
     if (!rfBusy) setRefundOpen(false);
@@ -762,7 +765,7 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
     setRfErr(null);
     setRfRetry(false);
   };
-  const payTypeOf = (): RefundPayType => (rfMethod === "CASH" ? "CASH" : rfMethod === "CARD" ? "CARD" : originalPay?.type === "TRANSFER" ? "TRANSFER" : "PROMPTPAY");
+  const payTypeOf = (): RefundPayType => (rfMethod === "PLATFORM" ? "PLATFORM" : rfMethod === "CASH" ? "CASH" : rfMethod === "CARD" ? "CARD" : originalPay?.type === "TRANSFER" ? "TRANSFER" : "PROMPTPAY");
   const submitRefund = async () => {
     if (!rf || rfBusy || draft.lines.length === 0) return;
     if (!requireToken()) {
@@ -1375,7 +1378,7 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
                             ) : null}
                             <div data-testid="pos-bill-commission-net" className="flex justify-between gap-3 pt-1 font-bold">
                               <span>{tch("commissionBlock.net")}</span>
-                              <span>{money(bill.totals.grandTotal - c - v)}</span>
+                              <span>{money(channelNet(bill.totals.grandTotal, c, v))}</span>
                             </div>
                             <p className="mt-2 rounded-[10px] border border-dashed px-3 py-2 text-[12px] leading-[1.5] text-[color:var(--color-muted)]">
                               {bill.channel.payout === "PLATFORM" ? tch("commissionBlock.note") : tch("commissionBlock.noteDirect")}
@@ -1876,6 +1879,15 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
                 {/* คืนเงินด้วย */}
                 <div className="flex flex-col gap-1.5">
                   <span className="text-[12px] font-bold text-[color:var(--color-ink-soft)]">{t("refund.method")}</span>
+                  {/* POS P2.1U ▸ F4: บิลจ่ายผ่านแพลตฟอร์ม — แพลตฟอร์มคืนลูกค้า ⇒ วิธีคืนมีทางเดียว (refund.ts R9 รับเฉพาะ PLATFORM ทั้งหมด) ◂ */}
+                  {(rf.payments ?? []).some((x) => x.type === "PLATFORM") ? (
+                    <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+                      <button type="button" data-testid="pos-bills-refund-method-platform" aria-pressed={rfMethod === "PLATFORM"} onClick={() => setRfMethod("PLATFORM")} className="flex min-h-[52px] flex-col items-center justify-center rounded-xl border border-[color:var(--color-ink)] bg-[color:var(--color-surface-2)] px-2 text-center text-[13px] font-semibold leading-tight shadow-[inset_0_0_0_1px_var(--color-ink)]">
+                        {t("refund.m.platform")}
+                        <small className="text-[11px] font-normal text-[color:var(--color-muted)]">{t("refund.m.platformSub")}</small>
+                      </button>
+                    </div>
+                  ) : (
                   <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
                     <button
                       type="button"
@@ -1931,6 +1943,7 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
                       <small className="text-[11px] font-normal">{t("refund.m.creditSub")}</small>
                     </button>
                   </div>
+                  )}
                   {rfCashErr && rfMethod === "CASH" ? (
                     <span className="text-[12px] text-[color:var(--color-danger)]" data-testid="pos-bills-refund-cash-error">
                       {rfCashErr}

@@ -682,4 +682,5 @@ Rows added to `scripts/pos-ui-inventory.json` (wo `P2.1U`); display-only ids lis
   display `pos-channel-drawer-locked` · `-error` · `-field-error` (`data-field`) · `-vat` (group) · `-archive-confirm-box` · `pos-channel-example`.
 - Bills (`/app/sys/[id]/pos/sales`): `pos-bills-channel-filter` (ทุกช่องทาง → `salesChannelId`; the old `pos-bills-channel` = source filter, empty option now "ทุกระบบ"); display `pos-bill-channel-<saleId>` (table cell) · `pos-bill-channel-card-<saleId>` (390 card pill) ·
   `pos-bills-channel-summary` (count-card sub-line "หน้าร้าน N · ออนไลน์ M") · drawer `pos-bill-commission` · `pos-bill-commission-channel` · `pos-bill-commission-fee` · `pos-bill-commission-net`.
+- Bills refund dialog (fix round 1, F4): `pos-bills-refund-method-platform` — the only refund method when the bill was paid by PLATFORM (preselected; cash/original/card/credit not rendered; `refund.ts` R9 accepts only an all-PLATFORM refund).
 - Register 02: `pos-reg-paydlg-method-platform` (only when `quote.channel.payout === "PLATFORM"`; preselected, other tiles disabled).
