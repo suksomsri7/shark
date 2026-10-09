@@ -895,3 +895,8 @@
 - **L4 P1.13**: ผู้ตรวจ 211573c6 → F1 race buyer≠doc (facade คืน created:false ต้องเทียบ snapshot) F2 DBD rate limit ข้ามได้ (owner + unit ไม่เช็ค) F3 dashboard SALES_WHERE ไม่มี TAX_INVOICE F4 snapshot ใช้ชื่อ contact เก่า (ruling: snapshot จากที่พิมพ์ + ORACLE-EDIT S2) F5 ปิด request ของผู้ซื้อคนอื่น · follow-up 1–3 ทำเลย (strip dash · P1.11 limits 120/300 · pay-time NOT_ELIGIBLE) · 4–5 บันทึก · rulings → `pos-prompt-accountB-P1.13-S-fix.md` · ส่ง builder เดิม (ทรี d)
 - **L3 P1.15U** รอบแก้ 1 ยังรัน
 - โควตา 06:39Z: **session 88%** (รีเซ็ต 07:29Z — ไม่ spawn ใหม่จนรีเซ็ต) · **weekly 85%** → เตือนเจ้าของเตรียมบัญชี A แล้ว · ที่ 90% = HANDOVER block
+
+## 9 ต.ค. 07:00 UTC — P1.7U ภาพ: QR panel ตัดแป้น → รอบ 2 รวมแก้ · P1.11U vis38 กำลังรัน · session 94% หยุด spawn จนรีเซ็ต
+- **L1 P1.7U**: build37 เขียว · vis37 (`/root/pos-runs/vis37-p17u-20261009T064656Z`, ภาพ `shark-pos-p11/.qc-shots/pos/p1.7u-r1/`) register owner/cashier 45/45 ผ่าน · settings-print-pair แดง = WebUSB headless (ปัญหาเก่า แก้แล้วในสาขา P1.11U ไม่ใช่ของ P1.7U) · เทียบ 02-payment: paid/card-edc ตรงแบบ · **promptpay-qr: QR panel สูง ~320px ดันแป้น 00/0/⌫ โดนตัดและแถว 100/500/1,000/พอดี หายที่ 1440x900** → ส่ง addendum รอบ 2 ให้ builder (QR 160–176px + คอลัมน์ข้อความ · แป้น ≤70px) → เมื่อ push: build39 p11 + ถ่าย register owner เท่านั้น (state paydlg-promptpay-qr) → merge · 17A วิธีรับเงิน ตรงสไตล์ → รับ
+- **L2 P1.11U**: build38-c @a19918d3 เขียว → vis38 (`scratchpad/ctl/vis38-p111u.sh` wo p1.11u-r3 พอร์ต 3226 · waiter task b2ltv6yp5) → ดู sale-done/paydone-print/rpub-taxinvoice-form → merge + ORACLE-EDIT p1.3 counter
+- **โควตา 06:59Z: session 94%** → ไม่ spawn/resume จนรีเซ็ต 07:29Z (ข้อความที่ส่ง builder P1.7U/P1.13/P1.15U ไปแล้วยังทำต่อได้) · weekly 85%
