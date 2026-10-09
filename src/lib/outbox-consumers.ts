@@ -712,6 +712,8 @@ const baseConsumers: Record<string, OutboxHandler> = {
   "pos.receipt.taxInvoiceRequested": withAutomation(async () => {}),
   // POS P1.7 ▸ เงินเข้าใบขอรับเงิน (webhook/ยืนยันเอง) — กฎอัตโนมัติเท่านั้น (จอลูกค้า P2 ต่อบน event เดิม) · ไม่มี event ตอน CONSUMED ◂
   "pos.payment.intent_paid": withAutomation(async () => {}),
+  // POS P1.13 ▸ ออกใบกำกับภาษีเต็มรูปให้บิล (ตอนชำระ · ออกทีหลัง · จากคำขอ) — กฎอัตโนมัติเท่านั้น (ส่งอีเมลเอกสาร = งานต่อบน event เดิม) ◂
+  "pos.sale.taxInvoiceIssued": withAutomation(async () => {}),
   // Wave4-A: AppNotification "ลูกค้าทักเข้ามา" ถูกสร้างแล้วใน chat.announceInbound (de-dup) —
   // consumer นี้ปิด event เป็น DONE + เป็นจุดให้ Automation rules / Webhooks ยิงราย inbound message
   // WO 7.2: + ดูดรูปบิลที่แนบมาในข้อความเข้ากล่องขาเข้าของบัญชี (เฉพาะร้านที่เปิด inboxFromChat)

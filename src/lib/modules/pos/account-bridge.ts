@@ -3,9 +3,12 @@
 // ⚠️ ห้าม import pos/service (กันวงวน import) — consumer อ่าน PosSale ผ่าน prisma ตรงแล้วส่งเข้ามา
 // WO-0002: map ประเภทการชำระของ POS → ช่องทางเงินฝั่งบัญชี แล้วส่งให้ facade
 
-import type { PosPayType } from "@prisma/client";
+import type { PosPayType, Prisma } from "@prisma/client";
 import { applyExternalRefund, applyExternalSale, reverseExternalSale } from "@/lib/modules/account";
+import { emitOutbox } from "@/lib/core/outbox";
+import { prisma } from "./db";
 import { allocateBillDiscount } from "./refund-math";
+import { snapshotBuyer } from "./tax-invoice-shared";
 
 // PosPayType → ช่องทางเงินฝั่งบัญชี (passthrough — WO-0040a เลิกยุบ DEPOSIT/ROOM_CHARGE)
 //   CASH → เงินสด (1000) · PROMPTPAY/TRANSFER → ธนาคาร (1010)
@@ -37,6 +40,9 @@ type SaleForBridge = {
   /** POS P1.6: ค่าบริการ (อยู่ในยอดบิล = รายได้ในฐาน VAT) · ทิป (นอกยอดบิล · ไม่ใช่รายได้) — ไม่ส่ง = 0 */
   serviceChargeSatang?: number;
   tipSatang?: number;
+  /** POS P1.13 ▸ สำเนาผู้ซื้อใบกำกับเต็มรูป (PosSale.taxInvoice) + สาขา (event) — ไม่มี = เส้น ABB เดิม ◂ */
+  taxInvoice?: Prisma.JsonValue | null;
+  unitId?: string;
 };
 
 /** บรรทัดบิลที่ consumer อ่านมาจาก PosSaleLine (WO 4.2) */
@@ -96,6 +102,7 @@ export async function bridgePosSalePaid(
       ? [...src0, { name: "ค่าบริการ", qty: 1, unitPriceSatang: serviceCharge, discountSatang: 0, lineTotalSatang: serviceCharge, itemId: null }]
       : src0;
   const pays = withoutTip(payments, Math.max(0, sale.tipSatang ?? 0));
+  const buyer = snapshotBuyer(sale.taxInvoice);
   // ส่วนลดท้ายบิล = Σ บรรทัด − ยอดสุทธิ (เก็บที่หัวบิลใน PosSale.discountSatang รวมคูปองแล้ว)
   const lineSum = src.reduce((n, l) => n + l.qty * l.unitPriceSatang - l.discountSatang, 0);
   const billDiscount = lineSum - gross;
@@ -125,11 +132,33 @@ export async function bridgePosSalePaid(
     lines,
     customer: detail?.customer ?? undefined,
     receiptNo: sale.receiptNo ?? null,
+    // POS P1.13 ▸ R2: บิลที่มีผู้ซื้อขอใบกำกับเต็มรูป → เอกสาร TAX_INVOICE แทน ABB (GL เดิม) ◂
+    ...(buyer ? { buyer: { kind: buyer.kind, name: buyer.name, taxId: buyer.taxId, branchCode: buyer.branchCode, address: buyer.address, email: buyer.email } } : {}),
   });
+  if (buyer && res.fullTaxInvoice && res.docId) await recordPayTimeTaxInvoice(sale, res.docId);
   // บรรทัดถูกปฏิเสธ (ยอดไม่ตรง/ข้อมูลเพี้ยน) — เงินยังเข้า GL ตามปกติ · เตือนเป็นภาษาไทย **ห้ามมีข้อมูลลูกค้าใน log**
   if (lines && res.reason && res.reason !== "unlinked" && !res.docId)
     console.warn(`[บัญชี] บิล POS ${sale.id}: ไม่บันทึกบรรทัดสินค้าเข้าบัญชี — ${res.reason}`);
   return res;
+}
+
+/**
+ * POS P1.13 (R2 · มติ 12) — ใบกำกับเต็มรูปตอนชำระเกิดแล้ว: ผูก PosSale.taxInvoiceDocId + event pos.sale.taxInvoiceIssued ในธุรกรรมเดียว
+ * เขียนเฉพาะครั้งแรก (taxInvoiceDocId ยังว่าง) ⇒ consumer เล่นซ้ำกี่รอบก็ไม่มี event/ค่าใหม่ · คีย์ event ต่อบิลกันซ้ำอีกชั้น
+ */
+async function recordPayTimeTaxInvoice(sale: SaleForBridge, docId: string): Promise<void> {
+  await prisma.$transaction(async (tx) => {
+    const n = await tx.posSale.updateMany({ where: { id: sale.id, tenantId: sale.tenantId, taxInvoiceDocId: null }, data: { taxInvoiceDocId: docId } });
+    if (n.count !== 1) return;
+    await emitOutbox(tx, {
+      tenantId: sale.tenantId,
+      type: "pos.sale.taxInvoiceIssued",
+      idempotencyKey: `pos.sale.taxInvoiceIssued:${sale.id}`,
+      systemId: sale.systemId,
+      unitId: sale.unitId ?? null,
+      payload: { tenantId: sale.tenantId, saleId: sale.id, docId, unitId: sale.unitId ?? null, via: "PAY" },
+    });
+  });
 }
 
 /** void บิล POS → กลับรายการบัญชี (ผ่าน facade) */

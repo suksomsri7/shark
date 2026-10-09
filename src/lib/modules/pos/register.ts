@@ -425,7 +425,8 @@ import { posDeviceRevoked, touchPosDevice } from "./device"; // POS P1.10 ▸ �
 import { createHash } from "node:crypto";
 import { writeAudit } from "@/lib/core/audit";
 import { staffActorFromToken, verifyManagerPin } from "./staff-pin";
-import { TAX_INVOICE_MESSAGES } from "./tax-invoice-shared"; // POS P1.13 ▸ ผู้ซื้อของใบกำกับเต็มรูป ◂
+import { TAX_INVOICE_MESSAGES, parseTaxInvoiceBuyer, type TaxInvoiceBuyer } from "./tax-invoice-shared"; // POS P1.13 ▸ ผู้ซื้อของใบกำกับเต็มรูป ◂
+import { rememberBuyerForMember } from "./tax-invoice"; // POS P1.13 ▸ R6 ◂
 import {
   POS_APPROVAL_MESSAGE,
   approvedDiscountOf,
@@ -978,6 +979,7 @@ const REG_QUOTE_KEYS: ReadonlySet<string> = new Set(["lines", "billDiscount", "m
 const REG_SUBMIT_KEYS: ReadonlySet<string> = new Set([
   ...REG_QUOTE_KEYS, "idempotencyKey", "payMethods", "cashReceivedSatang", "expectedGrandTotalSatang", "tipSatang", "note",
   "staffToken", "managerPin", "managerUserId", "heldCartId", // POS P1.15 ▸ R3 R4 R6 ◂
+  "taxInvoice", "rememberBuyer", // POS P1.13 ▸ R2 R6 ◂
 ]);
 const REG_PAY_KEYS: ReadonlySet<string> = new Set(["type", "amountSatang", "reference"]);
 const REG_LINE_KEYS: ReadonlySet<string> = new Set(["productId", "name", "qty", "unitPriceSatang", "openPrice", "discount", "note", "options", "weighedBarcode", "weightGrams"]);
@@ -1435,6 +1437,9 @@ type RegParsedSubmit = {
   heldCartId: string | null;
   /** ตะกร้าดิบของคำขอ (lines · billDiscount · memberId) — ใช้พักบิลรออนุมัติ (ผ่านตัวตรวจของ held-cart อีกชั้น) */
   rawCart: Record<string, unknown>;
+  /** POS P1.13: ผู้ซื้อใบกำกับเต็มรูป (แกะแล้ว · null = ไม่ขอ) · จำผู้ซื้อไว้กับสมาชิกของบิล */
+  taxInvoice: TaxInvoiceBuyer | null;
+  rememberBuyer: boolean;
 };
 
 /** โครงของ submit (ไม่แตะ DB) — วิธีจ่าย CASH/PROMPTPAY เท่านั้น (Addendum 2) · expected ต้องเป็นจำนวนเต็ม ≥ 0 */
@@ -1499,6 +1504,15 @@ function regParseSubmit(raw: unknown): RegParsedSubmit | RegisterRefusal {
   // fix รอบ 1 F2: PIN ผู้จัดการต้องมาคู่ managerUserId เสมอ (ไม่มีทาง "จับทุกแถว" สำหรับ PIN ผู้จัดการ)
   if (managerPin !== null && managerUserId === null) return regRefuse("VALIDATION", "เลือกผู้จัดการก่อนใส่ PIN");
   if (heldCartId === undefined) return regRefuse("VALIDATION", "รหัสบิลที่พักไม่ถูกต้อง");
+  // POS P1.13 ▸ R2: ผู้ซื้อของใบกำกับเต็มรูป — ผิด = TAX_ID_INVALID / VALIDATION ก่อนเขียนอะไรทั้งสิ้น (ก่อนค้นคีย์ซ้ำ) ◂
+  let taxInvoice: TaxInvoiceBuyer | null = null;
+  if (raw.taxInvoice !== undefined && raw.taxInvoice !== null) {
+    const b = parseTaxInvoiceBuyer(raw.taxInvoice);
+    if (!b.ok) return regRefuse(b.code, b.message);
+    taxInvoice = b.buyer;
+  }
+  if (raw.rememberBuyer !== undefined && raw.rememberBuyer !== null && typeof raw.rememberBuyer !== "boolean") return regRefuse("VALIDATION", "ค่าจำผู้ซื้อไม่ถูกต้อง");
+  const rememberBuyer = raw.rememberBuyer === true;
   const rawCart: Record<string, unknown> = { lines: raw.lines };
   if (raw.billDiscount !== undefined && raw.billDiscount !== null) rawCart.billDiscount = raw.billDiscount;
   if (raw.memberId !== undefined && raw.memberId !== null) rawCart.memberId = raw.memberId;
@@ -1515,6 +1529,8 @@ function regParseSubmit(raw: unknown): RegParsedSubmit | RegisterRefusal {
     managerUserId,
     heldCartId,
     rawCart,
+    taxInvoice,
+    rememberBuyer,
   };
 }
 
@@ -1757,6 +1773,8 @@ export async function submitRegisterSale(ctx: RegisterCtx, actor: RegisterActor,
       ...(req.note ? { note: req.note } : {}),
       shiftId: shift.shiftId,
       soldByUserId: actor.userId, // POS P1.17 ▸ R6 · ผู้ขาย = ผู้ใช้ของ session ◂ · POS P1.15 ▸ R3 = คนในโทเคนเมื่อส่งโทเคน (actor ถูกแทนด้านบน) ◂
+      // POS P1.13 ▸ R1 R2: สำเนาผู้ซื้อเขียนใน tx ของบิล (createSale) · requestedAt = เวลาที่ขอ ◂
+      ...(req.taxInvoice ? { taxInvoice: { ...req.taxInvoice, requestedAt: new Date().toISOString() } } : {}),
     };
     // POS P1.7 ▸ R4: PROMPTPAY/CARD ที่อ้าง "pi_…" = ใช้ใบขอรับเงินที่ PAID ในธุรกรรมเดียวกับบิล (ล็อก FOR UPDATE) · ไม่มี = ทาง P1.6 เดิมทุกไบต์ ◂
     const intentRefs: SaleIntentRef[] = req.payMethods.flatMap((x) =>
@@ -1773,6 +1791,8 @@ export async function submitRegisterSale(ctx: RegisterCtx, actor: RegisterActor,
       if (over?.claimRequestId) await releasePosApprovalClaim(s.tenantId, over.claimRequestId, req.idempotencyKey).catch(() => undefined);
       return res;
     }
+    // POS P1.13 ▸ R6: จำผู้ซื้อไว้กับสมาชิกของบิล (upsert 1 แถวต่อสมาชิก · เฉพาะบิลที่เกิดในคำขอนี้ · ไม่แตะ Customer) ◂
+    if (req.taxInvoice && req.rememberBuyer && req.cart.memberId && !res.duplicated) await rememberBuyerForMember(s.tenantId, req.cart.memberId, req.taxInvoice);
     // POS P1.15 ▸ audit ของส่วนลดเกินสิทธิ์ (เฉพาะบิลที่เกิดในคำขอนี้ — คำตอบซ้ำไม่เขียนซ้ำ) ◂
     if (over && !res.duplicated) {
       await writeAudit({

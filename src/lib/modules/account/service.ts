@@ -3720,6 +3720,9 @@ export async function findOrCreateCustomerContact(
     branchCode?: string | null;
     /** WO 3.1 (MAP §F.5) — ผู้เรียก (เช่น CRM) รู้ partyId ของผู้ติดต่อฝั่งตัวเองอยู่แล้ว → ใช้เป็นกุญแจแรก */
     partyId?: string | null;
+    /** POS P1.13 (มติ 1 · เพิ่มล้วน): ที่อยู่สตริงรวม + ชนิดนิติบุคคล/บุคคล — ใช้ตอน "สร้างใหม่" เท่านั้น (ผู้ติดต่อเดิมที่จับคู่ได้ไม่ถูกแก้) */
+    address?: string | null;
+    legalType?: AccountLegalType;
   },
 ) {
   // (0) partyId ที่ผู้เรียกส่งมา — ถ้าเคยออกเอกสารให้ตัวตนนี้ในระบบบัญชีนี้แล้ว ใช้ผู้ติดต่อเดิม
@@ -3788,6 +3791,8 @@ export async function findOrCreateCustomerContact(
     taxId: taxId || null,
     branchCode: c.branchCode || undefined,
     partyId: c.partyId ?? undefined,
+    ...(c.address ? { address: c.address } : {}), // POS P1.13 ▸ มติ 1 ◂
+    ...(c.legalType ? { legalType: c.legalType } : {}),
   } as Parameters<typeof createContact>[0]);
 }
 export async function setDocExternalRef(docId: string, ref: { refSystemId: string; refType: string; refId: string }) {
@@ -4108,8 +4113,12 @@ export async function upsertExternalSaleDocument(input: {
   grandTotalSatang: number;
   note?: string | null;
   lines: ExternalSaleDocLine[];
+  /** POS P1.13 (R2 · CD1 · เพิ่มล้วน): บิลมีผู้ซื้อขอใบกำกับเต็มรูปตอนชำระ → ชนิด TAX_INVOICE (แทน ABB) · เลขจากชุด TAX_INVOICE ของสมุด
+   *  (nextDocNo ณ วันที่ขาย · มติ 3) · ไม่โพสต์ GL เหมือน ABB (เงินเข้าทาง postExternalSale เส้นเดิม) · ไม่ส่ง = ABB เดิมทุกไบต์ */
+  fullTaxInvoice?: boolean;
 }): Promise<{ ok: true; docId: string; created: boolean } | { ok: false; reason: string }> {
-  const existing = await findDocByRef(input.systemId, EXTERNAL_SALE_DOC_TYPE, EXTERNAL_SALE_REF_TYPE, input.refId);
+  const docType: AccountDocType = input.fullTaxInvoice ? "TAX_INVOICE" : EXTERNAL_SALE_DOC_TYPE;
+  const existing = await findDocByRef(input.systemId, docType, EXTERNAL_SALE_REF_TYPE, input.refId);
   if (existing) return { ok: true, docId: existing.id, created: false };
 
   if (input.lines.length === 0) return { ok: false, reason: "บิลไม่มีรายการสินค้า — ไม่สร้างเอกสาร" };
@@ -4143,14 +4152,15 @@ export async function upsertExternalSaleDocument(input: {
     const doc = await prisma.$transaction(async (tx) => {
       // กันเบิ้ลอีกชั้นภายใน tx (drain 2 ตัวชนกันตอน lease หมดอายุ)
       const again = await tx.accountDocument.findFirst({
-        where: { systemId: input.systemId, docType: EXTERNAL_SALE_DOC_TYPE, refType: EXTERNAL_SALE_REF_TYPE, refId: input.refId },
+        where: { systemId: input.systemId, docType, refType: EXTERNAL_SALE_REF_TYPE, refId: input.refId },
         select: { id: true },
       });
       if (again) return { id: again.id, created: false };
 
       // เลขที่เอกสาร = เลขใบเสร็จ POS ถ้ายังว่างในสมุดเล่มนี้ (ไม่กินเลขรันของบัญชี) · ชนกัน = ปล่อยว่าง
-      let docNo: string | null = (input.docNo ?? "").trim() || null;
-      if (docNo) {
+      // POS P1.13 ▸ ใบกำกับเต็มรูป = เลขรันชุด TAX_INVOICE ของสมุด (มติ 3) ◂
+      let docNo: string | null = input.fullTaxInvoice ? await nextDocNo(tx, input.tenantId, input.systemId, "TAX_INVOICE", input.occurredAt) : (input.docNo ?? "").trim() || null;
+      if (docNo && !input.fullTaxInvoice) {
         const dup = await tx.accountDocument.findFirst({
           where: { systemId: input.systemId, docType: EXTERNAL_SALE_DOC_TYPE, docNo },
           select: { id: true },
@@ -4162,7 +4172,7 @@ export async function upsertExternalSaleDocument(input: {
         data: {
           tenantId: input.tenantId,
           systemId: input.systemId,
-          docType: EXTERNAL_SALE_DOC_TYPE,
+          docType,
           docNo,
           status: "PAID", // ขายสด = รับเงินครบตั้งแต่ออกบิล
           direction: "OUT",
@@ -4216,12 +4226,112 @@ export async function upsertExternalSaleDocument(input: {
 // 🔴 ใบกำกับอย่างย่อของบิลเดิม **ไม่ถูกยกเลิก** (CD6) — ใบลดหนี้หักล้างแทน
 export const EXTERNAL_REFUND_DOC_TYPE: AccountDocType = "CREDIT_NOTE";
 
-/** เอกสารบัญชีของบิล POS (ABB) — id + เลขที่ · null = ยังไม่มี (อ่านอย่างเดียว) */
+/**
+ * เอกสารบัญชีของบิล POS — id + เลขที่ · null = ยังไม่มี (อ่านอย่างเดียว)
+ * POS P1.13 (R8 · มติ 2): ใบกำกับเต็มรูป ("TAX_INVOICE" ที่ยังไม่ CANCELLED · refType PosSale + refId บิล) ชนะ ABB —
+ *   ใบลดหนี้/ลิงก์บัญชีของบิลอ้างใบเต็มรูปเมื่อมี · ไม่มีใบเต็มรูป = ABB เส้นเดิม (สถานะใดก็ได้ เหมือนเดิม)
+ */
 export async function findExternalSaleDoc(systemId: string, refId: string): Promise<{ id: string; docNo: string | null; contactId: string | null } | null> {
+  const full = await prisma.accountDocument.findFirst({
+    where: { systemId, docType: "TAX_INVOICE", refType: EXTERNAL_SALE_REF_TYPE, refId, status: { not: "CANCELLED" } },
+    select: { id: true, docNo: true, contactId: true },
+    orderBy: { createdAt: "desc" },
+  });
+  if (full) return full;
   return prisma.accountDocument.findFirst({
     where: { systemId, docType: EXTERNAL_SALE_DOC_TYPE, refType: EXTERNAL_SALE_REF_TYPE, refId },
     select: { id: true, docNo: true, contactId: true },
   });
+}
+
+/**
+ * POS P1.13 (R3 · CD1 · CD2 · มติ 4) — ใบกำกับอย่างย่อของบิล POS → ใบกำกับภาษีเต็มรูป (ออกทีหลัง)
+ * ธุรกรรมเดียว: ล็อกแถว ABB → สร้าง TAX_INVOICE (บรรทัด/ฐาน/VAT/ยอดเท่า ABB ทุกสตางค์ · วันที่ = วันที่ของ ABB · เลขรันชุด TAX_INVOICE ·
+ *   sourceDocId = ABB · refType/refId ของบิลเดิม · ผู้ติดต่อ = ผู้ซื้อ) → ABB = CANCELLED + supersededByDocId
+ * 🔴 ไม่แตะ GL เลย (ไม่ผ่าน voidDocument — นั่นกลับรายการ JV) — เงินของบิลอยู่ที่ JV ของ POS เส้นเดิม · ยอดเท่าเดิม ⇒ ภาษีขายเท่าเดิม
+ * 🔴 กันออกซ้ำ: ABB ที่ถูกแทนแล้ว = คืนใบเดิม (`created:false`) · ดัชนี unique (systemId, sourceDocId) ของ TAX_INVOICE กันซ้ำที่ฐานอีกชั้น (มติ 3)
+ */
+export async function supersedeExternalSaleAbb(input: {
+  tenantId: string;
+  systemId: string; // สมุดบัญชี
+  abbDocId: string;
+  contactId: string | null;
+}): Promise<{ ok: true; docId: string; docNo: string | null; created: boolean } | { ok: false; reason: string; code: "NOT_FOUND" | "NOT_LIVE" | "INTERNAL" }> {
+  try {
+    const contact = input.contactId
+      ? await prisma.accountContact.findFirst({
+          where: { id: input.contactId, systemId: input.systemId },
+          select: { name: true, taxId: true, legalType: true, branchCode: true, branchName: true, address: true, phone: true, email: true },
+        })
+      : null;
+    return await prisma.$transaction(async (tx) => {
+      await lockDocumentRow(tx, input.tenantId, input.systemId, input.abbDocId);
+      const abb = await tx.accountDocument.findFirst({
+        where: { id: input.abbDocId, tenantId: input.tenantId, systemId: input.systemId, docType: EXTERNAL_SALE_DOC_TYPE },
+        include: { lines: { orderBy: { sortOrder: "asc" } } },
+      });
+      if (!abb) return { ok: false as const, code: "NOT_FOUND" as const, reason: "ไม่พบใบกำกับภาษีอย่างย่อของบิลนี้" };
+      if (abb.supersededByDocId) {
+        const prev = await tx.accountDocument.findFirst({ where: { id: abb.supersededByDocId, systemId: input.systemId }, select: { id: true, docNo: true } });
+        if (prev) return { ok: true as const, docId: prev.id, docNo: prev.docNo, created: false };
+      }
+      if (abb.status === "CANCELLED" || abb.status === "VOIDED") return { ok: false as const, code: "NOT_LIVE" as const, reason: "ใบกำกับภาษีอย่างย่อนี้ถูกยกเลิกแล้ว" };
+      const docNo = await nextDocNo(tx, input.tenantId, input.systemId, "TAX_INVOICE", abb.issueDate);
+      const created = await tx.accountDocument.create({
+        data: {
+          tenantId: input.tenantId,
+          systemId: input.systemId,
+          docType: "TAX_INVOICE",
+          docNo,
+          status: abb.status,
+          direction: abb.direction,
+          issueDate: abb.issueDate,
+          contactId: input.contactId,
+          contactSnapshot: contact ?? undefined,
+          vatMode: abb.vatMode,
+          vatTiming: abb.vatTiming,
+          taxPointBasis: abb.taxPointBasis,
+          subTotal: abb.subTotal,
+          vatAmount: abb.vatAmount,
+          grandTotal: abb.grandTotal,
+          paidTotal: abb.paidTotal,
+          source: abb.source,
+          refSystemId: abb.refSystemId,
+          refType: abb.refType,
+          refId: abb.refId,
+          sourceDocId: abb.id,
+          note: abb.docNo ? `ใบกำกับภาษีเต็มรูป แทนใบกำกับภาษีอย่างย่อ ${abb.docNo}` : "ใบกำกับภาษีเต็มรูป แทนใบกำกับภาษีอย่างย่อ",
+          lines: {
+            create: abb.lines.map((l) => ({
+              tenantId: l.tenantId,
+              systemId: l.systemId,
+              sortOrder: l.sortOrder,
+              description: l.description,
+              qty: l.qty,
+              unitName: l.unitName,
+              unitPrice: l.unitPrice,
+              discount: l.discount,
+              vatRateBp: l.vatRateBp,
+              amount: l.amount,
+              productId: l.productId,
+              accountId: l.accountId,
+              whtIncomeType: l.whtIncomeType,
+              whtRateBp: l.whtRateBp,
+              unitCost: l.unitCost,
+            })),
+          },
+        },
+        select: { id: true, docNo: true },
+      });
+      await tx.accountDocument.update({
+        where: { id: abb.id },
+        data: { status: "CANCELLED", supersededByDocId: created.id, voidReason: `แทนด้วยใบกำกับภาษีเต็มรูป ${created.docNo ?? ""}`.trim() },
+      });
+      return { ok: true as const, docId: created.id, docNo: created.docNo, created: true };
+    });
+  } catch (e) {
+    return { ok: false, code: "INTERNAL", reason: safeReason(e, "ออกใบกำกับภาษีเต็มรูปไม่สำเร็จ") };
+  }
 }
 
 /** สร้างใบลดหนี้ของใบคืนเงิน POS **ครั้งเดียวต่อใบคืน** (idempotent ต่อ systemId+CREDIT_NOTE+PosSale+refId) */
@@ -4346,7 +4456,8 @@ export async function voidExternalSaleDocument(
   refId: string,
   reason: string,
 ): Promise<{ voided: boolean; reason?: string }> {
-  const doc = await findDocByRef(systemId, EXTERNAL_SALE_DOC_TYPE, EXTERNAL_SALE_REF_TYPE, refId);
+  // POS P1.13 ▸ บิลที่มีใบกำกับเต็มรูป (มีผล) = ยกเลิกใบเต็มรูป · ไม่มี = ABB เส้นเดิม ◂
+  const doc = await findExternalSaleDoc(systemId, refId);
   if (!doc) return { voided: false, reason: "ไม่มีเอกสารบิลขายหน้าร้านของบิลนี้" };
   const res = await voidDocument(tenantId, systemId, doc.id, reason);
   if (!res.ok) return { voided: false, reason: res.reason };

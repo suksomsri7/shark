@@ -7,6 +7,7 @@
 
 import { formatBaht } from "@/lib/ui/money";
 import type { PriceDiscount, PriceCartInput, PriceVat } from "./pricing-shared";
+import type { TaxInvoiceBuyerInput } from "./tax-invoice-shared"; // POS P1.13 ◂
 
 // ═══════════ ค่าคงที่ ═══════════
 export const REGISTER_MAX_LINES = 200;
@@ -279,6 +280,10 @@ export type RegisterSubmitInput = RegisterQuoteInput & {
   managerUserId?: string;
   /** POS P1.15 R6: บิลพักที่ได้รับอนุมัติ POS_DISCOUNT_OVER แล้ว — ผ่านเพดานได้ 1 บิล สำหรับส่วนลด ≤ ที่อนุมัติ */
   heldCartId?: string;
+  /** POS P1.13 R2: ผู้ซื้อขอใบกำกับภาษีเต็มรูป (parseTaxInvoiceBuyer) — ผิด = TAX_ID_INVALID / VALIDATION ไม่มีบิล */
+  taxInvoice?: TaxInvoiceBuyerInput;
+  /** POS P1.13 R6: จำผู้ซื้อไว้กับสมาชิกของบิล (มี memberId เท่านั้น) */
+  rememberBuyer?: boolean;
 };
 export type RegisterSubmitOk = { ok: true; saleId: string; receiptNo: string | null; grandTotalSatang: number; changeSatang: number; duplicated: boolean };
 /** PRICE_CHANGED พกยอดสดของเซิร์ฟเวอร์มาด้วย (จอแสดงใหม่ได้ทันทีไม่ต้อง quote ซ้ำ) */

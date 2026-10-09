@@ -19,6 +19,7 @@ import {
   setDocExternalRef,
   setQuotationResponse,
   upsertExternalSaleDocument,
+  supersedeExternalSaleAbb,
   vatConfigOf,
   voidExternalSaleDocument,
   type ExternalSaleDocLine,
@@ -122,7 +123,10 @@ export async function applyExternalSale(input: {
   };
   /** เลขใบเสร็จของ POS — ใช้เป็นเลขที่เอกสารถ้ายังว่างในสมุดเล่มนี้ */
   receiptNo?: string | null;
-}): Promise<{ posted: boolean; reason?: string; docId?: string }> {
+  /** POS P1.13 (R2 · CD1 · CD4 · เพิ่มล้วน): ผู้ซื้อขอใบกำกับภาษีเต็มรูปตอนชำระ — สมุดจด VAT ⇒ ชั้นเอกสารเป็น TAX_INVOICE (แทน ABB)
+   *  ผู้ติดต่อ = ผู้ซื้อ (จับด้วยเลขผู้เสียภาษี+สาขาก่อน · ไม่ผูก partyId ของสมาชิก — มติ 1) · GL เหมือนบิลไม่มีผู้ซื้อทุกสตางค์ · ไม่ส่ง = เดิมทุกไบต์ */
+  buyer?: { kind: "PERSON" | "JURISTIC"; name: string; taxId: string; branchCode: string; address: string; email: string | null };
+}): Promise<{ posted: boolean; reason?: string; docId?: string; fullTaxInvoice?: boolean }> {
   const link = await findAccountLinkForPos(input.tenantId, input.sourceSystemId);
   if (!link) return { posted: false, reason: "unlinked" };
 
@@ -195,9 +199,11 @@ export async function applyExternalSale(input: {
 
   // ── WO 4.2: ชั้นเอกสาร (ไม่มี lines = ข้ามทั้งบล็อก → เส้นทางเดิมทุกประการ) ──
   //    WO 8.1: เจ้าของปิด "ใบกำกับอย่างย่อจาก POS" ในหน้าตั้งค่า (§9.2) = ไม่สร้างชั้นเอกสารนี้
-  if (!lines || lines.length === 0 || !posAbbreviatedInvoice) return { posted };
+  //    POS P1.13: ผู้ซื้อขอใบกำกับเต็มรูป + สมุดจด VAT = สร้างใบเต็มรูปเสมอ (ลูกค้าขอเอกสารเอง ไม่ขึ้นกับสวิตช์ใบอย่างย่อ)
+  const full = !!input.buyer && vatRegistered;
+  if (!lines || lines.length === 0 || (!posAbbreviatedInvoice && !full)) return { posted };
 
-  const contactId = await resolveExternalSaleContact(ctx, input.customer);
+  const contactId = full ? await resolveBuyerContact(ctx, input.buyer!) : await resolveExternalSaleContact(ctx, input.customer);
   const map = await resolveProductIdsForExternalSale(ctx.systemId, {
     itemIds: lines.map((l) => l.itemId ?? "").filter(Boolean),
     productIds: lines.map((l) => l.accountProductId ?? "").filter(Boolean),
@@ -229,14 +235,72 @@ export async function applyExternalSale(input: {
     grandTotalSatang: gross,
     note: input.receiptNo ? `ขายหน้าร้าน POS · ใบเสร็จ ${input.receiptNo}` : "ขายหน้าร้าน POS",
     lines: docLines,
+    ...(full ? { fullTaxInvoice: true } : {}), // POS P1.13 ▸ R2 ◂
   });
   if (!doc.ok) return { posted, reason: doc.reason };
   // WO 4.3 (§8.2): บิล POS ที่ขาย "รายการจัดชุด" → ตัดสต็อกส่วนประกอบ
   //   ตัดเฉพาะตอนเอกสารถูก "สร้างใหม่" (created) — ยิงซ้ำด้วย refId เดิม upsert คืนใบเดิม ⇒ ไม่ตัดซ้ำ
   //   (ตัวที่ผูกคลังยังมีคีย์ idempotent ต่อบรรทัดซ้อนอีกชั้น)
   if (doc.created) await consumeBundleComponentsForDoc(ctx, doc.docId);
-  return { posted, docId: doc.docId };
+  return { posted, docId: doc.docId, ...(full ? { fullTaxInvoice: true } : {}) };
 }
+
+/**
+ * POS P1.13 (มติ 1 · CD4) — ผู้ติดต่อของผู้ซื้อใบกำกับเต็มรูป: เลขผู้เสียภาษี + สาขาชนะชื่อ (ใช้ผู้ติดต่อเดิมของร้านที่เลขตรง)
+ * ไม่ส่ง partyId (ไม่งั้นผู้ติดต่อของสมาชิกที่ไม่มีเลขภาษีจะชนะ) · สร้างใหม่ = มีเลข/สาขา/ที่อยู่/อีเมล/ชนิดครบ
+ */
+async function resolveBuyerContact(
+  ctx: GlCtx,
+  buyer: { kind: "PERSON" | "JURISTIC"; name: string; taxId: string; branchCode: string; address: string; email: string | null },
+): Promise<string> {
+  const contact = await findOrCreateCustomerContact(
+    { tenantId: ctx.tenantId, systemId: ctx.systemId },
+    {
+      name: buyer.name,
+      taxId: buyer.taxId,
+      branchCode: buyer.branchCode || "00000",
+      email: buyer.email ?? null,
+      address: buyer.address,
+      legalType: buyer.kind === "PERSON" ? "PERSON" : "COMPANY",
+    },
+  );
+  return contact.id;
+}
+
+/**
+ * POS P1.13 (R3 · CD1 · CD2 · มติ 4) — ออกใบกำกับภาษีเต็มรูปทีหลังแทนใบกำกับอย่างย่อของบิล POS (ทางเฉพาะของ POS · ไม่แตะ GL)
+ * {ok:true, docId, docNo, created} | {ok:false, code}:
+ *   UNLINKED (POS ไม่ผูกสมุด) · NOT_VAT (สมุดไม่จด VAT) · NO_ABB (ยังไม่มี ABB ของบิล — consumer ยังไม่ทำงาน · ลองใหม่ได้) ·
+ *   NOT_LIVE (ABB ถูกยกเลิก/แทนไปแล้วโดยไม่มีใบเต็มรูป) · INTERNAL
+ * ยิงซ้ำหลังออกแล้ว = ใบเดิม (created:false) · ไม่เคย throw
+ */
+export async function supersedeAbbWithTaxInvoice(input: {
+  tenantId: string;
+  sourceSystemId: string; // POS AppSystem.id
+  refId: string; // PosSale.id
+  buyer: { kind: "PERSON" | "JURISTIC"; name: string; taxId: string; branchCode: string; address: string; email: string | null };
+}): Promise<{ ok: true; docId: string; docNo: string | null; created: boolean } | { ok: false; code: "UNLINKED" | "NOT_VAT" | "NO_ABB" | "NOT_LIVE" | "INTERNAL"; reason: string }> {
+  try {
+    const link = await findAccountLinkForPos(input.tenantId, input.sourceSystemId);
+    if (!link) return { ok: false, code: "UNLINKED", reason: "POS นี้ยังไม่ผูกสมุดบัญชี" };
+    const { vatRegistered } = await vatConfigOf(link.systemId);
+    if (!vatRegistered) return { ok: false, code: "NOT_VAT", reason: "สมุดบัญชีไม่ได้จดภาษีมูลค่าเพิ่ม" };
+    const ctx: GlCtx = { tenantId: input.tenantId, systemId: link.systemId };
+    const abb = await findDocByRef(link.systemId, "TAX_INVOICE_ABB", "PosSale", input.refId);
+    if (!abb) return { ok: false, code: "NO_ABB", reason: "ระบบบัญชียังไม่มีใบกำกับภาษีอย่างย่อของบิลนี้" };
+    const contactId = await resolveBuyerContact(ctx, input.buyer);
+    const res = await supersedeExternalSaleAbb({ tenantId: input.tenantId, systemId: link.systemId, abbDocId: abb.id, contactId });
+    if (!res.ok) return { ok: false, code: res.code === "NOT_FOUND" ? "NO_ABB" : res.code, reason: res.reason };
+    return res;
+  } catch (e) {
+    return { ok: false, code: "INTERNAL", reason: safeReason(e, "ออกใบกำกับภาษีเต็มรูปไม่สำเร็จ") };
+  }
+}
+/** ชื่อตามข้อสอบ P1.13 (ตารางชื่อ #16) — ตัวเดียวกับ supersedeAbbWithTaxInvoice */
+export const convertAbbToTaxInvoice = supersedeAbbWithTaxInvoice;
+
+// POS P1.13 ▸ R5 · CD3: ค้นนิติบุคคลกรมพัฒน์ฯ — POS เรียกผ่าน facade เท่านั้น (กุญแจอยู่ใน env ของ prod · ไม่มีกุญแจ = DBD_REASON.noKey) ◂
+export { lookupJuristic, isDbdConfigured, DBD_REASON, type DbdLookupResult } from "./dbd";
 
 /**
  * ผู้ติดต่อของบิล POS — partyId ก่อน (WO 3.1) แล้วค่อยเบอร์/ชื่อ ตามลำดับของ `findOrCreateCustomerContact`
