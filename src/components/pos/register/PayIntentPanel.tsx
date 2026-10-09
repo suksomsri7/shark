@@ -273,6 +273,24 @@ export function usePayIntent(
     setRegen((n) => n + 1);
   }, [tk, cartKey]);
 
+  /**
+   * แก้รอบ 2 N1: ปิดกล่อง — ยกเลิกใบปัจจุบันที่ PENDING แล้วรอผล · INTENT_PAID = เงินเข้าแล้ว ⇒ รับใบนั้นเป็นใบที่ล็อก (แบบ F2) และห้ามปิด
+   *   คืน "none" (ไม่มีใบค้าง) · "ok" (ยกเลิกแล้ว/ล้มแบบอื่น — ปิดได้ · ถอดกล่องจะลองยกเลิกซ้ำ) · "paid" (ห้ามปิด)
+   */
+  const cancelCurrent = useCallback(async (): Promise<"none" | "ok" | "paid"> => {
+    const cur = intentRef.current;
+    if (!cur || cur.status !== "PENDING") return "none";
+    seq.current++; // คำตอบสร้างใบที่ค้างอยู่กลายเป็นของเก่า
+    const c = await cancelIntent(cur.id);
+    if (!c.ok && c.code === "INTENT_PAID") {
+      await adoptPaid(cur);
+      return "paid";
+    }
+    if (c.ok) setIntent((x) => (x && x.id === cur.id ? { ...x, status: "CANCELLED" } : x));
+    return "ok";
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   /** ใบ PAID ถูกใส่ลงแถวแยกจ่ายแล้ว — ปล่อยจากรอบนี้ (ไม่ยกเลิก) */
   const release = useCallback(() => {
     seq.current++;
@@ -283,7 +301,7 @@ export function usePayIntent(
 
   const expMs = intent ? Date.parse(intent.expiresAt) : NaN;
   const secondsLeft = intent?.status === "PENDING" && Number.isFinite(expMs) ? Math.max(0, Math.ceil((expMs - now) / 1000)) : null;
-  return { intent, creating, confirming, error, secondsLeft, confirmManual, regenerate, release };
+  return { intent, creating, confirming, error, secondsLeft, confirmManual, regenerate, release, cancelCurrent };
 }
 export type PayIntentHandle = ReturnType<typeof usePayIntent>;
 

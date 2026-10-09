@@ -6535,6 +6535,26 @@
       "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-pay-intent-overpaid",
+      "kind": "form",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "inline-error",
+        "target": "pos-reg-paydlg-confirm",
+        "state": "disabled",
+        "note": "ข้อความแสดงผลในฟอร์มชำระ (ไม่ใช่ปุ่ม) — ยอดบิลลดลงต่ำกว่าเงินที่เข้าแล้ว: \"เงินเข้าเกินยอด ฿X — คืนเงินเอง\" · ยืนยันรับเงินปิด · ปิดกล่องได้"
+      },
+      "wo": "P1.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
     }
   ],
   "$roles": "roles/hiddenFor ที่อนุญาต: owner · manager · cashier · kind/expect.type ชุดเดียวกับทะเบียน CRM (F15.3b ตรวจ)"

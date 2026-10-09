@@ -256,7 +256,8 @@
         "cardBeam": "Beam",
         "cardEdc": "EDC · enter a reference",
         "overPaid": "Received {amount} more than the bill — refund it yourself",
-        "roundsExhausted": "Could not create the QR after several tries — try again"
+        "roundsExhausted": "Could not create the QR after several tries — try again",
+        "refundYourself": "This bill can no longer be saved but the money has arrived — refund the customer yourself"
       }
     },
     "done": {

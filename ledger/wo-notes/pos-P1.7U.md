@@ -97,3 +97,16 @@ Not run here: real visual (needs a server) — CONTROLLER-RUN; `next build`.
 | `pnpm fitness` without env / with qc4 | exit 0 · 41/41 / exit 0 · 41/41 |
 | `fitness-pos` | exit 0 · 8/8 |
 | visual `--dry` register / settings × owner, cashier | exit 0 · 45 / 16 shots |
+
+## Fix round 2 (re-review MERGEABLE at 3e69da35 · N1/N3/N4 before merge)
+- **N1**: `tryClose` is async: blocked while `pi.confirming` (manual confirm in flight) or while a close is already running; with a PENDING intent it calls the hook's new `cancelCurrent()` and waits — `INTENT_PAID` ⇒ adopt + lock (same path as F2, method/amount restored, locked notice) and the dialog stays open; any other outcome closes (the unmount cancel retries if the first one failed).
+- **N3**: a terminal submit refusal on the dialog (`DEVICE_REVOKED`, `SHIFT_CLOSED`, `SHIFT_REQUIRED`, `INTENT_CONSUMED`, `INTENT_EXPIRED`) allows closing even with money in, and shows "บิลนี้บันทึกไม่ได้แล้ว แต่เงินเข้าแล้ว — คืนเงินลูกค้าเอง" (`pos-pay-intent-refund`, key `pay.intent.refundYourself` th/en).
+- **N4**: inventory row `pos-pay-intent-overpaid` (display line, registered with kind `form` + expect `inline-error` → confirm disabled — the inventory has no kind for a non-interactive line; noted in the row).
+- Nothing else touched; visual not re-run (controller building 3e69da35 in this tree).
+- **Follow-up (owner/controller):** report "เงินเข้าไม่มีบิล" — PAID intents never consumed (incl. paid rows per cart key that survive a dialog reopen / a terminal refusal / an over-paid close) so the manager can refund or attach them.
+
+| gate (fix round 2) | result |
+|---|---|
+| typecheck | exit 0 |
+| `qc-pos-p1.7` QC_FORCE=1 | exit 0 · 32/32 · residue 0 |
+| `fitness-pos` | exit 0 · 8/8 (also `pnpm fitness` 41/41 pre-commit) |

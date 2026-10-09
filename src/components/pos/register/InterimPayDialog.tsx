@@ -112,6 +112,8 @@ const KEYS: { id: string; label: string; digits: string | null }[] = [
 ];
 /** ตัวเลขบาทยาวได้ไม่เกิน 7 หลัก (฿9,999,999) จากแป้น */
 const MAX_DIGITS = 7;
+/** แก้รอบ 2 N3: รหัสปฏิเสธของการบันทึกบิลที่บิลนี้ไปต่อไม่ได้ (ต้องคืนเงินที่เข้าแล้วเอง) */
+const TERMINAL_SUBMIT: ReadonlySet<string> = new Set(["DEVICE_REVOKED", "SHIFT_CLOSED", "SHIFT_REQUIRED", "INTENT_CONSUMED", "INTENT_EXPIRED"]);
 const methodLabelKey = (type: RegisterPayType) => METHODS.find((m) => m.type === type)?.label ?? "pay.cash";
 const methodIcon = (type: RegisterPayType): RegisterIconName => METHODS.find((m) => m.type === type)?.icon ?? "cash";
 const ratePct = (bp: number) => String(Number((bp / 100).toFixed(2)));
@@ -198,8 +200,20 @@ export function PayDialog(p: Props) {
   const overPaid = remaining < 0 && rows.some((r) => r.via !== undefined);
   /** F3b: มีเงินเข้าแล้วในกล่องนี้ (ใบปัจจุบัน PAID หรือแถวที่มาจากใบ) ⇒ ปิดกล่องไม่ได้ (ยกเว้นเงินเกินยอด — ต้องออกไปคืนเงิน) */
   const moneyIn = pi.intent?.status === "PAID" || rows.some((r) => r.via !== undefined);
-  const tryClose = () => {
-    if (moneyIn && !overPaid) return flash("pay.intent.locked");
+  /** แก้รอบ 2 N3: ปฏิเสธจากการบันทึกบิลแบบปลายทาง (บิลนี้บันทึกไม่ได้แล้ว) ⇒ ปิดได้แม้มีเงินเข้า + บรรทัด "คืนเงินเอง" */
+  const terminalRefusal = !!p.error && TERMINAL_SUBMIT.has(p.error.code);
+  const [closing, setClosing] = useState(false);
+  // แก้รอบ 2 N1: ระหว่างยืนยันเอง/กำลังปิด = ห้ามปิด · ใบ PENDING ถูกยกเลิกและรอผลก่อนปิด (INTENT_PAID ⇒ รับใบนั้น + ล็อก + ไม่ปิด)
+  const tryClose = async () => {
+    if (closing) return;
+    if (pi.confirming) return flash("pay.intent.locked");
+    if (moneyIn && !overPaid && !terminalRefusal) return flash("pay.intent.locked");
+    if (pi.intent?.status === "PENDING") {
+      setClosing(true);
+      const r = await pi.cancelCurrent();
+      setClosing(false);
+      if (r === "paid") return; // onPaidElsewhere แสดงข้อความล็อกแล้ว
+    }
     p.onClose();
   };
   useEffect(() => {
@@ -365,7 +379,7 @@ export function PayDialog(p: Props) {
     }`;
 
   return (
-    <RegisterDialog onDismiss={tryClose} locked={busy}>
+    <RegisterDialog onDismiss={() => void tryClose()} locked={busy || closing}>
       <div
         data-testid="pos-reg-paydlg"
         className="relative flex h-[100dvh] w-full flex-col overflow-hidden bg-[color:var(--color-surface)] shadow-xl md:h-[min(760px,calc(100dvh-32px))] md:w-[min(1120px,calc(100vw-32px))] md:rounded-[16px]"
@@ -386,7 +400,7 @@ export function PayDialog(p: Props) {
               className="-ml-2 grid size-11 place-items-center rounded-[11px] text-[color:var(--color-muted)] hover:bg-[color:var(--color-surface-2)] max-md:order-first max-md:text-[color:var(--color-ink)] md:-mr-2 md:ml-0"
               type="button"
               aria-label={t("cart.close")}
-              onClick={tryClose}
+              onClick={() => void tryClose()}
             >
               <span className="md:hidden">
                 <RegisterIcon name="back" size={20} />
@@ -635,6 +649,11 @@ export function PayDialog(p: Props) {
                     {t("errors.splitInvalid")}
                   </p>
                 )}
+                {terminalRefusal && moneyIn && (
+                  <p data-testid="pos-pay-intent-refund" className="text-[13px] font-semibold text-[color:var(--color-danger)]" role="alert">
+                    {t("pay.intent.refundYourself")}
+                  </p>
+                )}
                 {overPaid && (
                   <p data-testid="pos-pay-intent-overpaid" className="text-[13px] font-semibold text-[color:var(--color-danger)]" role="alert">
                     {t("pay.intent.overPaid", { amount: moneyText(-remaining) })}
@@ -736,7 +755,7 @@ export function PayDialog(p: Props) {
                 className="btn btn-ghost hidden h-12 rounded-[13px] px-5 text-[14.5px] md:inline-flex"
                 type="button"
                 disabled={busy}
-                onClick={tryClose}
+                onClick={() => void tryClose()}
               >
                 {t("pay.back")}
               </button>
