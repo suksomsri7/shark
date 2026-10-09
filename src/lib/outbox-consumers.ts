@@ -1256,6 +1256,8 @@ const baseConsumers: Record<string, OutboxHandler> = {
   "member.erased": crmFirst(async (evt) => {
     const crm = await import("@/lib/modules/crm");
     await crm.privacy.onMemberErased({ tenantId: evt.tenantId, payload: evt.payload });
+    // POS P1.12 ▸ R9 Q8: ล้างชื่อ/เบอร์ปิดบังในสำเนาสมาชิกบนบิล POS ของคนนี้ (idempotent · หลังตัวรับของ CRM) ◂
+    await (await import("@/lib/modules/pos/register-member")).posMemberErased({ tenantId: evt.tenantId, payload: evt.payload });
   }, withAutomation(async () => {})),
   "crm.contact.erased": crmFirst(async (evt) => {
     const crm = await import("@/lib/modules/crm");

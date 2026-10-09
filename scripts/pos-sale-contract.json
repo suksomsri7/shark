@@ -196,6 +196,30 @@
       "taxInvoice": {
         "optional": true,
         "type": "TaxInvoiceSnapshot"
+      },
+      "memberSnapshot": {
+        "optional": true,
+        "type": "object"
+      },
+      "memberSnapshot.name": {
+        "optional": false,
+        "type": "string | null"
+      },
+      "memberSnapshot.memberCode": {
+        "optional": false,
+        "type": "string"
+      },
+      "memberSnapshot.phoneMasked": {
+        "optional": false,
+        "type": "string | null"
+      },
+      "memberSnapshot.tierKey": {
+        "optional": false,
+        "type": "string | null"
+      },
+      "memberSnapshot.tierName": {
+        "optional": false,
+        "type": "string | null"
       }
     },
     "MemberSaleChoices": {

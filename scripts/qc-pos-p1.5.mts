@@ -63,7 +63,7 @@ const CHECKS: readonly (readonly [string, string, string])[] = [
   ["P1.5-H2", "-", "รายการ: listHeldCarts คืนบิลที่พัก (id label lineCount approxTotalSatang heldByUserId createdAt) ใหม่สุดก่อน · count = จำนวน items · แคชเชียร์ที่มีสิทธิ์สาขานี้เห็นบิลที่เจ้าของพัก"],
   ["P1.5-H3", "X1", "เรียกคืน: ตะกร้าที่คืน = ที่พัก (บรรทัด/จำนวน/รายการเอง/ส่วนลดท้ายบิล) · quote ok ยอด 9,400 · แถว RECALLED + recalledAt + recalledByUserId · หายจากรายการ · ครั้งที่ 2 → ALREADY_RECALLED · ทิ้งหลังเรียกคืน → ปฏิเสธ แถวยัง RECALLED · พัก/เรียกคืนไม่สร้างบิลและตัวนับใบเสร็จไม่ขยับ"],
   ["P1.5-H4", "-", "ทิ้ง: discardHeldCart → ok · แถว DISCARDED · หายจากรายการ · เรียกคืนหลังทิ้ง → NOT_FOUND · ทิ้งซ้ำ → NOT_FOUND"],
-  ["P1.5-H5", "X4", "ตรวจตะกร้าฝั่งเซิร์ฟเวอร์ตอนพัก: ว่าง · ป้าย 61 ตัว · ป้ายไม่ใช่สตริง · couponCode · คีย์แปลก (idempotencyKey) · qty 0 · 201 บรรทัด · productId ไม่มีจริง · cart ไม่ใช่ object → ปฏิเสธตามรหัส ไม่มีแถวเกิด · ป้าย 60 ตัวพอดี → ok"],
+  ["P1.5-H5", "X4", "ตรวจตะกร้าฝั่งเซิร์ฟเวอร์ตอนพัก: ว่าง · ป้าย 61 ตัว · ป้ายไม่ใช่สตริง · couponDiscountSatang (P1.12: couponCode ถูกเก็บ) · คีย์แปลก (idempotencyKey) · qty 0 · 201 บรรทัด · productId ไม่มีจริง · cart ไม่ใช่ object → ปฏิเสธตามรหัส ไม่มีแถวเกิด · ป้าย 60 ตัวพอดี → ok"],
   ["P1.5-H6", "X4", "ราคาในบิลพักไม่ถูกเชื่อ: พักพร้อม unitPriceSatang 1 ของสินค้าแคตตาล็อก → ปฏิเสธ หรือยอดพัก = ราคาจริง 6,000 · แก้ cartJson ใน DB ให้ทุกช่องราคา/ยอด = 1 → เรียกคืนแล้ว quote ราคา 6,000 ยอด 6,000 · บรรทัดที่คืนไม่กลายเป็นราคาเปิด"],
   ["P1.5-H7", "X4", "ราคาใหม่ตอนเรียกคืน (H3): พักตอน ฿50 แล้วเปลี่ยนเป็น ฿60 → quote บรรทัด 6,000 ยอด 9,000 (รวมสินค้าที่ราคาไม่เปลี่ยน 3,000) · notices มี PRICE_CHANGED lineIndex 0 ราคาเดิม 5,000 → 6,000 หนึ่งรายการ · บรรทัดที่ราคาไม่เปลี่ยนไม่มี notice"],
   ["P1.5-H8", "X4", "สินค้าเก็บถาวร / ปิดขายที่สาขา ระหว่างพัก → เรียกคืน ok แถว RECALLED · cart คง 3 บรรทัด · notices PRODUCT_NOT_FOUND@0 + PRODUCT_UNAVAILABLE@1 · quote ไม่ ok (ไม่คิดยอดด้วยราคาเก่าเงียบ ๆ)"],
@@ -702,7 +702,8 @@ async function runDb() {
       ["ว่าง", { cart: { lines: [] } }, ["VALIDATION"]],
       ["ป้าย 61", { cart: { lines: [{ productId: U, qty: 1 }] }, label: "ก".repeat(61) }, ["VALIDATION"]],
       ["ป้ายตัวเลข", { cart: { lines: [{ productId: U, qty: 1 }] }, label: 12345 }, ["VALIDATION"]],
-      ["คูปอง", { cart: { lines: [{ productId: U, qty: 1 }], couponCode: "FREE" } }, ["VALIDATION"]],
+      // PROPOSED ORACLE-EDIT (P1.12 R3 · มติ 12): couponCode ถูกเก็บในบิลพักแล้ว (qc-pos-p1.12 B6) — ส่วนลดคูปองเป็นสตางค์จาก client ยัง VALIDATION
+      ["คูปองเป็นสตางค์", { cart: { lines: [{ productId: U, qty: 1 }], couponDiscountSatang: 1000 } }, ["VALIDATION"]],
       ["คีย์แปลก", { cart: { lines: [{ productId: U, qty: 1 }], idempotencyKey: "abcdefgh1234" } }, ["VALIDATION"]],
       ["qty 0", { cart: { lines: [{ productId: U, qty: 0 }] } }, ["VALIDATION", "INVALID_LINE"]],
       ["201 บรรทัด", { cart: { lines: Array.from({ length: 201 }, () => ({ productId: U, qty: 1 })) } }, ["TOO_MANY_LINES", "VALIDATION"]],

@@ -411,7 +411,11 @@ export async function posLinkSaleToDeal(tenantId: string, actor: MemberActor, in
 //    ส่วนลดเกินเพดาน/เกินยอด = ปฏิเสธ · บิลจริงเดินผ่าน createSale เดิม (ตัดสต็อก · บัญชี · แต้ม · outbox เหมือนวันนี้ทุกประการ)
 import { Prisma, type PosProduct, type PrismaClient } from "@prisma/client";
 import { canAccessUnit, evaluate, permissionValue } from "@/lib/core/rbac";
-import { createSale, PosSaleError, type CreateSaleInput } from "./service";
+import { createSale, PosSaleError, saleWalletCart, type CreateSaleInput, type SaleWalletCart } from "./service";
+// POS P1.12 ▸ คูปองที่หน้าขาย (R6 · ตรวจบนฐานเดียวกับ createSale) · VAT ของยอดหลังสิทธิ์สมาชิก (สูตรเดียวกับ createSale) ◂
+import * as couponSvc from "@/lib/modules/coupon/service";
+import { splitIncludedVat } from "@/lib/money/vat";
+import type { RegisterMemberGate, RegisterMemberQuote } from "./register-member";
 // POS P1.7 ▸ ใบขอรับเงิน (pi_…) ใช้ในธุรกรรมขายของหน้าขาย · งานหลัง commit ชุดเดียวกับ createSale (ตัดสต็อก + ระบายคิว · มติ I) ◂
 import { consumeSaleInventory } from "./service";
 import { consumeSaleIntents, lockSaleIntents, type SaleIntentRef } from "./payment-intent";
@@ -471,6 +475,7 @@ import {
   type RegisterQuoteLineOption,
   type RegisterQuoteResult,
   type RegisterQuoteTotals,
+  type RegisterMemberConflict,
   type RegisterRefusal,
   type RegisterRefusalCode,
   type RegisterRole,
@@ -546,6 +551,19 @@ const REG_MESSAGE: Record<RegisterRefusalCode, string> = {
   // POS P1.13 ▸ ผู้ซื้อของใบกำกับเต็มรูป ◂
   TAX_ID_INVALID: TAX_INVOICE_MESSAGES.TAX_ID_INVALID,
   NOT_ELIGIBLE: "ร้านนี้ยังออกใบกำกับภาษีไม่ได้ · ตรวจการเชื่อมบัญชี/เลขผู้เสียภาษี",
+  // POS P1.12 ▸ สมาชิกที่ตะกร้า + สิทธิ์ที่จอชำระ (R16) ◂
+  MEMBER_SYSTEM_MISSING: "สาขานี้ยังไม่ได้เปิดใช้ระบบสมาชิก — ขายแบบไม่แนบสมาชิก",
+  MEMBER_SUSPENDED: "สมาชิกคนนี้ถูกระงับอยู่ — ใช้สิทธิ์สมาชิกกับบิลนี้ไม่ได้ ขายแบบไม่แนบสมาชิก",
+  PHONE_INVALID: "เบอร์โทรไม่ถูกต้อง — กรอกเบอร์ 9–10 หลัก เช่น 0812345678",
+  VOUCHER_INVALID: "ว่อชเชอร์ใบนี้ใช้กับบิลนี้ไม่ได้",
+  VOUCHER_COUPON_CONFLICT: "ว่อชเชอร์ใบนี้ใช้ร่วมกับคูปองไม่ได้ — เลือกอย่างใดอย่างหนึ่ง",
+  COUPON_INVALID: "คูปองนี้ใช้กับบิลนี้ไม่ได้",
+  POINTS_DISABLED: "สาขานี้ยังไม่ได้เปิดใช้ระบบแต้ม — ใช้แต้มแลกส่วนลดไม่ได้",
+  POINTS_BELOW_MIN: "แต้มที่ใช้ยังไม่ถึงขั้นต่ำของร้าน",
+  POINTS_INSUFFICIENT: "แต้มคงเหลือของสมาชิกไม่พอ",
+  POINTS_CAPPED: "ใช้แต้มเกินเพดานต่อบิลของร้าน — ปรับจำนวนแต้มตามที่ระบบแนะนำ",
+  BENEFITS_EXCEED_TOTAL: "ส่วนลดรวมมากกว่ายอดบิล — ลดส่วนลดหรือสิทธิ์ที่เลือกก่อน",
+  MEMBER_RIGHTS_CHANGED: "สิทธิ์ของสมาชิกเพิ่งเปลี่ยน (อาจถูกใช้กับบิลอื่น) — ตรวจยอดใหม่แล้วชำระอีกครั้ง ยังไม่ได้เก็บเงิน",
 };
 const REG_ROLE_LABEL: Record<RegisterRole, string> = { OWNER: "เจ้าของร้าน", MANAGER: "ผู้จัดการ", STAFF: "แคชเชียร์" };
 
@@ -553,6 +571,10 @@ function regRefuse(code: RegisterRefusalCode, message?: string, lineIndex?: numb
   return lineIndex === undefined ? { ok: false, code, message: message ?? REG_MESSAGE[code] } : { ok: false, code, message: message ?? REG_MESSAGE[code], lineIndex };
 }
 const isRegRefusal = (v: unknown): v is RegisterRefusal => !!v && typeof v === "object" && (v as { ok?: unknown }).ok === false;
+/** POS P1.12: คำปฏิเสธชุดข้อความเดียวกับหน้าขาย (register-member.ts ใช้ — MEMBER_NOT_FOUND ข้อความเดียวทุกทาง · 404-not-403) */
+export function registerRefuse(code: RegisterRefusalCode, message?: string): RegisterRefusal {
+  return regRefuse(code, message);
+}
 const regIsRecord = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
 const regIsMoney = (v: unknown): v is number => typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= PRICE_MAX_SATANG;
 
@@ -975,9 +997,22 @@ type RegParsedLine =
       weightGrams: number | null;
     }
   | { kind: "custom"; name: string; qty: number; unitPriceSatang: number; discount: PriceDiscount | null; note?: string | null };
-type RegParsedCart = { lines: RegParsedLine[]; billDiscount: PriceDiscount | null; memberId: string | null };
+/** POS P1.12: couponCode = โค้ดที่ลูกค้ายื่น (ตัดช่องว่าง · null = ไม่มี) · memberChoices = สิทธิ์ที่เลือกบนจอชำระ (null = ไม่เลือก · ไม่ถูกเก็บในบิลพัก) */
+type RegMemberChoices = { voucherId: string | null; points: number };
+type RegParsedCart = {
+  lines: RegParsedLine[];
+  billDiscount: PriceDiscount | null;
+  memberId: string | null;
+  couponCode?: string | null;
+  memberChoices?: RegMemberChoices | null;
+};
 
-const REG_QUOTE_KEYS: ReadonlySet<string> = new Set(["lines", "billDiscount", "memberId"]);
+// POS P1.12 ▸ R3 R6: couponCode + memberChoices (ยก Q12) — บิลพักเก็บ couponCode แต่ทิ้ง memberChoices (registerCanonicalCart · มติ 12) ◂
+const REG_QUOTE_KEYS: ReadonlySet<string> = new Set(["lines", "billDiscount", "memberId", "couponCode", "memberChoices"]);
+/** POS P1.12: คีย์ของ memberChoices (ตรงตัว · giftCard/voucherIds/อื่น = VALIDATION · มติ Q1 CD3) */
+const REG_CHOICE_KEYS: ReadonlySet<string> = new Set(["voucherId", "points"]);
+/** POS P1.12: เพดานแต้มที่รับในคำขอ (กันเลขล้น — เกินยอดคงเหลือจริง = POINTS_INSUFFICIENT) */
+const REG_POINTS_MAX = 100_000_000;
 const REG_SUBMIT_KEYS: ReadonlySet<string> = new Set([
   ...REG_QUOTE_KEYS, "idempotencyKey", "payMethods", "cashReceivedSatang", "expectedGrandTotalSatang", "tipSatang", "note",
   "staffToken", "managerPin", "managerUserId", "heldCartId", // POS P1.15 ▸ R3 R4 R6 ◂
@@ -1014,13 +1049,36 @@ function regDiscountSatang(d: PriceDiscount | null, base: number): number {
   return d.value > 10_000 ? -1 : roundHalfUp(base * d.value, 10_000);
 }
 
-/** ตรวจโครงตะกร้า (ไม่แตะ DB) — คูปองจาก client = VALIDATION (มติ Q12: ไม่เมิน ไม่เชื่อ) */
+/**
+ * ตรวจโครงตะกร้า (ไม่แตะ DB) — ส่วนลดคูปองเป็นสตางค์จาก client = VALIDATION เสมอ (ไม่เมิน ไม่เชื่อ · มติ Q12) ·
+ * POS P1.12: couponCode (สตริง ≤ 64) · memberChoices {voucherId?: string, points?: จำนวนเต็ม ≥ 0} ตรงตัว · เลือกสิทธิ์โดยไม่มีสมาชิก = VALIDATION
+ */
 function regParseCart(raw: unknown, allowed: ReadonlySet<string>): RegParsedCart | RegisterRefusal {
   if (!regIsRecord(raw)) return regRefuse("VALIDATION");
-  if (raw.couponCode !== undefined || raw.couponDiscountSatang !== undefined) {
-    return regRefuse("VALIDATION", "หน้าขายนี้ยังไม่รับคูปอง — ยังไม่ได้บันทึกอะไร");
-  }
+  if (raw.couponDiscountSatang !== undefined) return regRefuse("VALIDATION", "ส่วนลดคูปองคิดที่เซิร์ฟเวอร์เท่านั้น — ส่งโค้ดคูปองแทน");
   if (!regOnlyKeys(raw, allowed)) return regRefuse("VALIDATION");
+  // POS P1.12 ▸ คูปอง + สิทธิ์ที่เลือก ◂
+  let couponCode: string | null = null;
+  if (raw.couponCode !== undefined && raw.couponCode !== null) {
+    if (typeof raw.couponCode !== "string" || raw.couponCode.length > 64 || !regCleanText(raw.couponCode)) return regRefuse("VALIDATION", "โค้ดคูปองไม่ถูกต้อง");
+    couponCode = raw.couponCode.trim() || null;
+  }
+  let memberChoices: RegMemberChoices | null = null;
+  if (raw.memberChoices !== undefined && raw.memberChoices !== null) {
+    const mc: unknown = raw.memberChoices;
+    if (!regIsRecord(mc) || !regOnlyKeys(mc, REG_CHOICE_KEYS)) return regRefuse("VALIDATION", "สิทธิ์ที่เลือกไม่ถูกต้อง");
+    let voucherId: string | null = null;
+    if (mc.voucherId !== undefined && mc.voucherId !== null) {
+      if (!regIsId(mc.voucherId)) return regRefuse("VALIDATION", "ว่อชเชอร์ที่เลือกไม่ถูกต้อง");
+      voucherId = mc.voucherId;
+    }
+    let points = 0;
+    if (mc.points !== undefined && mc.points !== null) {
+      if (typeof mc.points !== "number" || !Number.isInteger(mc.points) || mc.points < 0 || mc.points > REG_POINTS_MAX) return regRefuse("VALIDATION", "จำนวนแต้มต้องเป็นจำนวนเต็มที่ไม่ติดลบ");
+      points = mc.points;
+    }
+    memberChoices = voucherId !== null || points > 0 ? { voucherId, points } : null;
+  }
   if (!Array.isArray(raw.lines)) return regRefuse("VALIDATION", "ข้อมูลรายการในตะกร้าไม่ถูกต้อง");
   if (raw.lines.length > REGISTER_MAX_LINES) return regRefuse("TOO_MANY_LINES");
   const billDiscount = regDiscount(raw.billDiscount);
@@ -1030,6 +1088,7 @@ function regParseCart(raw: unknown, allowed: ReadonlySet<string>): RegParsedCart
     if (!regIsId(raw.memberId)) return regRefuse("VALIDATION", "รหัสสมาชิกไม่ถูกต้อง");
     memberId = raw.memberId;
   }
+  if (memberChoices && !memberId) return regRefuse("VALIDATION", "แนบสมาชิกก่อนเลือกใช้สิทธิ์");
   const lines: RegParsedLine[] = [];
   for (let i = 0; i < raw.lines.length; i++) {
     const l: unknown = raw.lines[i];
@@ -1092,7 +1151,7 @@ function regParseCart(raw: unknown, allowed: ReadonlySet<string>): RegParsedCart
       lines.push({ kind: "custom", name, qty: l.qty, unitPriceSatang: l.unitPriceSatang, discount, note });
     }
   }
-  return { lines, billDiscount, memberId };
+  return { lines, billDiscount, memberId, couponCode, memberChoices };
 }
 
 /**
@@ -1144,29 +1203,6 @@ async function regVat(db: RegDb, tenantId: string, systemId: string): Promise<{ 
   return registered && Number.isInteger(rate) && rate > 0 && rate <= 10_000 ? { mode: "INCLUDED", rateBp: rate } : { mode: "NONE", rateBp: 0 };
 }
 
-/**
- * สมาชิกคนนี้จะได้ส่วนลดอัตโนมัติจาก createSale ไหม — ใช้ตัวตัดสินเดียวกับ createSale: ระบบสมาชิกของสาขา (systemForUnit MEMBER)
- * → `member.automaticDiscountForSale` (ขั้นส่วนลดระดับของ computeQuote ที่ applyOnSale ใช้ · อ่านอย่างเดียว ไม่เรียก computeEarn
- * จึงไม่สร้างแถวตั้งค่าใด ๆ) · สาขาไม่มีระบบสมาชิก / ลูกค้าไม่อยู่ในระบบนั้น = createSale ไม่ใช้สิทธิ์ (แนบชื่อเฉย ๆ) = false
- */
-async function regMemberAutoDiscount(
-  s: RegScope,
-  memberId: string,
-  lines: { name: string; qty: number; unitPriceSatang: number; discountSatang: number; itemId: string | null; serviceId: string | null }[],
-): Promise<boolean> {
-  const memberSystemId = await systemForUnit(s.tenantId, s.unitId, "MEMBER");
-  if (!memberSystemId) return false;
-  // dynamic import แบบเดียวกับ service.ts (member/index → wallet → giftcard → pos/index = วงกลมของโมดูล)
-  const member = await import("@/lib/modules/member");
-  try {
-    const d = await member.automaticDiscountForSale({ tenantId: s.tenantId, systemId: memberSystemId, actorUserId: null }, memberId, { unitId: s.unitId, lines });
-    return d > 0;
-  } catch (e) {
-    if (e instanceof member.MemberNotFoundError) return false;
-    throw e;
-  }
-}
-
 /** บรรทัดที่คิดแล้ว พร้อมส่งเข้า createSale */
 type RegResolvedLine = {
   name: string;
@@ -1183,8 +1219,17 @@ type RegResolvedLine = {
   weightGrams: number | null;
 };
 
-/** ผลคิดราคาที่ผ่าน (ยอด + บรรทัดพร้อมส่ง createSale) */
-type RegPriced = { quote: RegisterQuoteTotals; resolved: RegResolvedLine[] };
+/**
+ * ผลคิดราคาที่ผ่าน (ยอด + บรรทัดพร้อมส่ง createSale) — POS P1.12: coupon = คูปองที่ใช้ได้ (ระบบคูปองของสาขา + โค้ด) ·
+ * member = สิทธิ์สมาชิกบนยอด (quote ของกระเป๋า + สำเนาสมาชิก) · conflicts = สิทธิ์ที่เลือกแต่ใช้ไม่ได้ (submit ปฏิเสธ)
+ */
+type RegPriced = {
+  quote: RegisterQuoteTotals;
+  resolved: RegResolvedLine[];
+  coupon?: { systemId: string; code: string; discountSatang: number } | null;
+  member?: RegisterMemberQuote | null;
+  conflicts?: RegisterMemberConflict[];
+};
 
 /**
  * คิดราคาฝั่งเซิร์ฟเวอร์ (ใช้ร่วม quote + submit): สิทธิ์ราคาเอง → สมาชิก → สินค้า (ขายได้ที่สาขานี้ · เปิดขาย · ไม่มีตัวเลือกบังคับ ·
@@ -1197,16 +1242,23 @@ async function regPrice(
   pay?: PosPaymentSettings,
   /** POS P1.15: เพดานที่ใช้แทนของผู้ขาย (PIN ผู้จัดการ · ส่วนลดที่อนุมัติ · null = ไม่จำกัด) — ไม่ส่ง = เพดานของ s.actor ตามค่าตั้ง */
   maxBp?: number | null,
-): Promise<{ quote: RegisterQuoteTotals; resolved: RegResolvedLine[] } | RegisterRefusal> {
+  /** POS P1.12: display = คิดราคาเพื่อแสดงสิทธิ์อย่างเดียว (registerBenefitsCart · ไม่ขาย) — ข้ามด่านสิทธิ์ราคาเอง */
+  opts: { display?: boolean } = {},
+): Promise<RegPriced | RegisterRefusal> {
   // Q8: รายการกำหนดเอง / ราคาเปิด ต้องมี pos.sale.priceOverride (OWNER/MANAGER ได้ตามบทบาท · STAFF ต้องได้รับ)
   // P1.2 R12 (มติ P4): กรอกน้ำหนักเอง = ตั้งราคาเอง (กันโกงตาชั่ง) · สแกนป้ายชั่งไม่ต้องมีสิทธิ์
   const needOverride = cart.lines.findIndex((l) => l.kind === "custom" || l.openPrice !== null || l.weightGrams !== null);
-  if (needOverride >= 0 && !evaluate(s.actor, { module: "pos", action: "pos.sale.priceOverride", unitId: s.unitId })) {
+  if (!opts.display && needOverride >= 0 && !evaluate(s.actor, { module: "pos", action: "pos.sale.priceOverride", unitId: s.unitId })) {
     return regRefuse("PERMISSION_DENIED", "ต้องมีสิทธิ์ตั้งราคาเอง — ให้ผู้จัดการทำรายการนี้", needOverride);
   }
-  if (cart.memberId) {
-    const c = await db.customer.findFirst({ where: { id: cart.memberId, tenantId: s.tenantId }, select: { id: true } });
-    if (!c) return regRefuse("MEMBER_NOT_FOUND");
+  // POS P1.12 ▸ R1: สมาชิกของบิล = ร้านเดียวกัน + ระบบสมาชิกของสาขา + ยังใช้งาน (เดิมตรวจแค่ร้าน) — ระบบอื่น/รวมแล้ว/ลบแล้ว/ไม่มีจริง =
+  //   MEMBER_NOT_FOUND (404-not-403) · ระงับ = MEMBER_SUSPENDED · สาขาไม่มีระบบสมาชิก = MEMBER_SYSTEM_MISSING ◂
+  const rm = cart.memberId || cart.couponCode ? await import("./register-member") : null;
+  let gate: RegisterMemberGate | null = null;
+  if (cart.memberId && rm) {
+    const g = await rm.registerMemberGate({ tenantId: s.tenantId, unitId: s.unitId, actor: s.actor }, cart.memberId);
+    if (isRegRefusal(g)) return g;
+    gate = g;
   }
   const wantIds = [...new Set(cart.lines.flatMap((l) => (l.kind === "product" ? [l.productId] : [])))];
   const visibleIds = wantIds.length
@@ -1297,13 +1349,41 @@ async function regPrice(
   const settings = pay ?? (await regPaySettings(db, s));
   const serviceChargeBp = settings.serviceCharge.enabled ? settings.serviceCharge.rateBp : 0;
   const maxDiscountBp = maxBp !== undefined ? maxBp : regMaxDiscountBp(s.actor, await regDiscountCaps(db, s));
-  const r = priceCart({ lines: priceLines, billDiscount: cart.billDiscount, vat, maxDiscountBp, serviceChargeBp });
-  if (!r.ok) return regRefuse(r.code, r.code === "DISCOUNT_EXCEEDS_LIMIT" || r.code === "TOO_MANY_LINES" ? undefined : r.message, r.lineIndex);
-  // B1.1 (มติ 3.2 ข้อ 3 · D6 ใหม่): สมาชิกที่ createSale จะหักส่วนลดอัตโนมัติให้ = ปฏิเสธตั้งแต่ quote ก่อนเขียนอะไร (P1.12 รองรับ)
-  if (cart.memberId) {
-    const wallet = r.lines.map((x, i) => ({ name: meta[i]!.name, qty: x.qty, unitPriceSatang: x.unitPriceSatang, discountSatang: x.discountSatang, itemId: meta[i]!.itemId, serviceId: meta[i]!.serviceId }));
-    if (await regMemberAutoDiscount(s, cart.memberId, wallet)) return regRefuse("MEMBER_RIGHTS_UNSUPPORTED");
+  const r0 = priceCart({ lines: priceLines, billDiscount: cart.billDiscount, vat, maxDiscountBp, serviceChargeBp });
+  if (!r0.ok) return regRefuse(r0.code, r0.code === "DISCOUNT_EXCEEDS_LIMIT" || r0.code === "TOO_MANY_LINES" ? undefined : r0.message, r0.lineIndex);
+  // POS P1.12 ▸ R6 คูปอง: ตรวจบนฐานเดียวกับ createSale (ยอดหลังส่วนลดบรรทัด + ท้ายบิล) ด้วยระบบคูปองของสาขา — ใช้ไม่ได้ = รายงานใน
+  //   memberConflicts (quote ไม่ปฏิเสธ · submit = COUPON_INVALID) แล้วคิดยอดแบบไม่มีคูปอง · ส่วนลดคูปองอยู่นอกเพดานของแคชเชียร์ (เหมือนเดิม) ◂
+  const conflicts: RegisterMemberConflict[] = [];
+  let r = r0;
+  let coupon: RegPriced["coupon"] = null;
+  if (cart.couponCode && !opts.display) {
+    const couponSystemId = await systemForUnit(s.tenantId, s.unitId, "COUPON");
+    if (!couponSystemId) conflicts.push({ kind: "COUPON", code: "COUPON_INVALID", message: "สาขานี้ยังไม่ได้เปิดใช้ระบบคูปอง — ใช้โค้ดส่วนลดไม่ได้" });
+    else {
+      const base = r0.subtotalSatang - r0.lineDiscountSatang - r0.billDiscountSatang;
+      const v = await couponSvc.validate({ code: cart.couponCode, tenantId: s.tenantId, systemId: couponSystemId, memberId: cart.memberId, amountSatang: base, unitId: s.unitId });
+      if (!v.ok) conflicts.push({ kind: "COUPON", code: "COUPON_INVALID", message: `คูปองใช้ไม่ได้: ${couponSvc.couponReasonText(v.reason)}` });
+      else {
+        const r1 = priceCart({ lines: priceLines, billDiscount: cart.billDiscount, vat, maxDiscountBp, serviceChargeBp, couponDiscountSatang: v.discountSatang });
+        if (!r1.ok) return regRefuse(r1.code, r1.code === "DISCOUNT_EXCEEDS_LIMIT" || r1.code === "TOO_MANY_LINES" ? undefined : r1.message, r1.lineIndex);
+        r = r1;
+        coupon = { systemId: couponSystemId, code: cart.couponCode, discountSatang: r1.couponDiscountSatang };
+      }
+    }
   }
+  // POS P1.12 ▸ R6 สิทธิ์สมาชิก (ระดับ · ว่อชเชอร์ · แต้ม) ผ่านกระเป๋าด้วยตะกร้าจาก saleWalletCart ตัวเดียวกับ createSale ⇒ quote = บิลจริง ·
+  //   เลิกปฏิเสธ MEMBER_RIGHTS_UNSUPPORTED (คงรหัสไว้ให้จอเก่า) · ส่วนลดสมาชิกอยู่นอกเพดานของแคชเชียร์ (CD6) ◂
+  let member: RegisterMemberQuote | null = null;
+  if (gate && rm && !opts.display) {
+    const walletLines = r.lines.map((x, i) => ({ name: meta[i]!.name, qty: x.qty, unitPriceSatang: x.unitPriceSatang, discountSatang: x.discountSatang, itemId: meta[i]!.itemId, serviceId: meta[i]!.serviceId }));
+    member = await rm.registerMemberQuote(gate, saleWalletCart(walletLines, s.unitId, cart.couponCode ?? null), { voucherId: cart.memberChoices?.voucherId ?? null, points: cart.memberChoices?.points ?? 0 });
+    conflicts.push(...member.memberConflicts);
+  }
+  const memberDiscount = member?.memberDiscountSatang ?? 0;
+  const grand = r.grandTotalSatang - memberDiscount;
+  if (grand < 0) return regRefuse("BENEFITS_EXCEED_TOTAL");
+  // VAT ของยอดหลังสิทธิ์สมาชิก = สูตรของ createSale (splitIncludedVat บนยอดสุทธิ) · ไม่มีสมาชิก = ค่าของ priceCart เดิมทุกบาท
+  const vatSatang = memberDiscount > 0 ? (r.vatMode === "INCLUDED" && r.vatRateBp > 0 ? splitIncludedVat(grand, r.vatRateBp).vatSatang : 0) : r.vatSatang;
   const lines: RegisterQuoteLine[] = r.lines.map((x, i) => {
     const m = meta[i]!;
     const options: RegisterQuoteLineOption[] = m.options.map((o) => ({ choiceId: o.choiceId, groupId: o.groupId, name: o.name, priceDeltaSatang: o.priceDeltaSatang }));
@@ -1324,16 +1404,23 @@ async function regPrice(
     lineDiscountSatang: r.lineDiscountSatang,
     billDiscountSatang: r.billDiscountSatang,
     couponDiscountSatang: r.couponDiscountSatang,
-    netSatang: r.netSatang,
+    netSatang: r.netSatang - memberDiscount,
     serviceChargeSatang: r.serviceChargeSatang,
-    vatSatang: r.vatSatang,
-    grandTotalSatang: r.grandTotalSatang,
+    vatSatang,
+    grandTotalSatang: grand,
     lines,
     vatMode: vat.mode,
     vatRateBp: vat.rateBp,
+    // POS P1.12 ▸ R6 ◂
+    tierDiscountSatang: member?.tierDiscountSatang ?? 0,
+    memberDiscountSatang: memberDiscount,
+    memberLines: member?.memberLines ?? [],
+    pointsToEarn: member?.pointsToEarn ?? 0,
+    stampsToAdd: member?.stampsToAdd ?? [],
+    memberConflicts: conflicts,
   };
   const resolved = r.lines.map((x, i) => ({ ...meta[i]!, unitPriceSatang: x.unitPriceSatang, discountSatang: x.discountSatang }));
-  return { quote, resolved };
+  return { quote, resolved, coupon, member, conflicts };
 }
 
 /** P1.6: ค่าตั้งการชำระเงินของระบบ POS นี้ (อ่านไม่ได้ = ปิดทั้งคู่ — ยอดเท่าวันนี้ ไม่เดาค่าบริการ) */
@@ -1390,7 +1477,14 @@ export async function registerScopeCheck(
  * ราคาของสินค้าแคตตาล็อกที่ไม่ใช่ราคาเปิด "ถูกตัดทิ้ง" (ไม่เก็บ ไม่เชื่อ · มติ R2) · note ไม่เก็บ (quote/submit ไม่ใช้)
  */
 export function registerCanonicalCart(raw: unknown): RegisterQuoteInput | RegisterRefusal {
-  const c = regParseCart(raw, REG_QUOTE_KEYS);
+  // POS P1.12 ▸ มติ 12 (รีวิว F8): บิลพักทิ้ง memberChoices ก่อนตรวจ (ตัดเงียบ ๆ — คีย์แปลกข้างในก็ไม่ถูกตรวจ · เลือกใหม่ที่จอชำระเท่านั้น) ◂
+  let held: unknown = raw;
+  if (regIsRecord(raw) && "memberChoices" in raw) {
+    const { memberChoices: _dropped, ...rest } = raw;
+    void _dropped;
+    held = rest;
+  }
+  const c = regParseCart(held, REG_QUOTE_KEYS);
   if (isRegRefusal(c)) return c;
   const lines: RegisterQuoteLineInput[] = c.lines.map((l) => {
     const discount = l.discount ? { discount: { ...l.discount } } : {};
@@ -1406,7 +1500,28 @@ export function registerCanonicalCart(raw: unknown): RegisterQuoteInput | Regist
       ...(l.weightGrams !== null ? { weightGrams: l.weightGrams } : {}),
     };
   });
-  return { lines, ...(c.billDiscount ? { billDiscount: { ...c.billDiscount } } : {}), ...(c.memberId ? { memberId: c.memberId } : {}) };
+  // POS P1.12 ▸ R3 มติ 12: บิลพักเก็บ couponCode (ตรวจใหม่ตอนเรียกคืน) · memberChoices ถูกตัดทิ้งเงียบ ๆ (เลือกใหม่ที่จอชำระเท่านั้น · CD4) ◂
+  return {
+    lines,
+    ...(c.billDiscount ? { billDiscount: { ...c.billDiscount } } : {}),
+    ...(c.memberId ? { memberId: c.memberId } : {}),
+    ...(c.couponCode ? { couponCode: c.couponCode } : {}),
+  };
+}
+
+/**
+ * POS P1.12 (R5) — ตะกร้าของหน้าขาย → ตะกร้าของกระเป๋าสิทธิ์ (saleWalletCart) สำหรับแผงสิทธิ์ (registerMemberBenefits · อ่านอย่างเดียว):
+ * ด่านขอบเขต/สิทธิ์ขายเดียวกับ quote · ราคาจาก DB ชุดเดียวกับ quote · ไม่ตรวจสิทธิ์ราคาเอง/เพดานส่วนลด/สมาชิก/สิทธิ์ที่เลือก (ใช้แสดงสิทธิ์เท่านั้น ไม่ขาย)
+ */
+export async function registerBenefitsCart(ctx: RegisterCtx, actor: RegisterActor, raw: unknown, client?: RegDb): Promise<{ ok: true; cart: SaleWalletCart } | RegisterRefusal> {
+  const db: RegDb = client ?? prisma;
+  const s = await regScope(db, ctx, actor);
+  if (isRegRefusal(s)) return s;
+  const cart = regParseCart(raw, REG_QUOTE_KEYS);
+  if (isRegRefusal(cart)) return cart;
+  const p = await regPrice(db, s, { lines: cart.lines, billDiscount: cart.billDiscount, memberId: null }, undefined, null, { display: true });
+  if (isRegRefusal(p)) return p;
+  return { ok: true, cart: saleWalletCart(p.resolved, s.unitId, null) };
 }
 
 /** สินค้าที่ "ยังขายได้ที่สาขานี้" ตาม id (กติกามองเห็นเดียวกับกริด) — จอใช้แสดงชื่อ/ราคาบรรทัดที่เรียกคืน · ไม่เจอ = ไม่อยู่ในผล */
@@ -1518,6 +1633,7 @@ function regParseSubmit(raw: unknown): RegParsedSubmit | RegisterRefusal {
   const rawCart: Record<string, unknown> = { lines: raw.lines };
   if (raw.billDiscount !== undefined && raw.billDiscount !== null) rawCart.billDiscount = raw.billDiscount;
   if (raw.memberId !== undefined && raw.memberId !== null) rawCart.memberId = raw.memberId;
+  if (cart.couponCode) rawCart.couponCode = cart.couponCode; // POS P1.12 ◂
   return {
     cart,
     idempotencyKey: REG_KEY_PREFIX + raw.idempotencyKey,
@@ -1537,13 +1653,20 @@ function regParseSubmit(raw: unknown): RegParsedSubmit | RegisterRefusal {
 }
 
 // P1.2 R14: บรรทัดพกตัวเลือกที่บันทึก (PosSaleLineOption) มาด้วย — ใช้เทียบคำขอซ้ำ
-type RegSaleRow = Prisma.PosSaleGetPayload<{ include: { lines: { include: { options: true } }; payments: true } }>;
+// POS P1.12: + คูปองของบิล (โค้ด · ส่วนลด) — ใช้แยกส่วนลดท้ายบิลออกจากคูปอง/สิทธิ์สมาชิกตอนเทียบคำขอซ้ำ
+type RegSaleRow = Prisma.PosSaleGetPayload<{ include: { lines: { include: { options: true } }; payments: true } }> & { coupons: { code: string; discountSatang: number }[] };
 async function regLoadSale(db: RegDb, tenantId: string, idempotencyKey: string): Promise<RegSaleRow | null> {
   // B1.1: ลำดับคงที่ (การเทียบเป็น multiset อยู่แล้ว — ลำดับนี้ให้ผลอ่านซ้ำได้เหมือนเดิมทุกครั้ง)
-  return db.posSale.findUnique({
+  const sale = await db.posSale.findUnique({
     where: { tenantId_idempotencyKey: { tenantId, idempotencyKey } },
     include: { lines: { orderBy: { id: "asc" }, include: { options: { orderBy: { id: "asc" } } } }, payments: { orderBy: { id: "asc" } } },
   });
+  if (!sale) return null;
+  const reds = await db.couponRedemption.findMany({
+    where: { tenantId, OR: [{ saleId: sale.id }, { refType: "PosSale", refId: sale.id }] },
+    select: { discountSatang: true, coupon: { select: { code: true } } },
+  });
+  return { ...sale, coupons: reds.map((r) => ({ code: (r.coupon?.code ?? "").toUpperCase(), discountSatang: r.discountSatang })) };
 }
 
 /** กุญแจของบรรทัดแบบมาตรฐาน (ราคาต่อหน่วย · จำนวน · ส่วนลดเป็นสตางค์) */
@@ -1646,7 +1769,16 @@ function regSameSubmission(s: RegScope, req: RegParsedSubmit, sale: RegSaleRow):
   if (sale.tipSatang !== req.tipSatang || (sale.note ?? null) !== req.note) return false;
   const payKey = (xs: { type: string; amountSatang: number }[]) => regBag(xs.map((p) => `${p.type}:${p.amountSatang}`));
   if (payKey(sale.payments) !== payKey(req.payMethods)) return false;
-  if (sale.discountSatang !== regDiscountSatang(req.cart.billDiscount, sale.subtotalSatang)) return false;
+  // POS P1.12: PosSale.discountSatang = ท้ายบิล + คูปอง + สิทธิ์สมาชิก (Σ memberBenefits) — เทียบส่วนท้ายบิลหลังหักสองส่วนนั้น ·
+  //   คูปอง (โค้ด) · แต้มที่ตัด · ว่อชเชอร์ ต้องตรงคำขอ (บิลก่อน P1.12 ไม่มี memberBenefits/คูปอง = 0 เหมือนเดิม)
+  const ben = regIsRecord(sale.memberBenefits) ? sale.memberBenefits : null;
+  const benLines = ben && Array.isArray(ben.lines) ? (ben.lines as unknown[]) : [];
+  const memberPart = benLines.reduce<number>((t, l) => t + (regIsRecord(l) && typeof l.discountSatang === "number" ? l.discountSatang : 0), 0);
+  const couponPart = sale.coupons.reduce((t, c) => t + c.discountSatang, 0);
+  if (sale.discountSatang - couponPart - memberPart !== regDiscountSatang(req.cart.billDiscount, sale.subtotalSatang)) return false;
+  if (regBag(sale.coupons.map((c) => c.code)) !== regBag(req.cart.couponCode ? [req.cart.couponCode.toUpperCase()] : [])) return false;
+  if ((ben && typeof ben.pointsBurned === "number" ? ben.pointsBurned : 0) !== (req.cart.memberChoices?.points ?? 0)) return false;
+  if ((sale.voucherUseIds[0] ?? null) !== (req.cart.memberChoices?.voucherId ?? null)) return false;
   return regLinesEqual(req.cart.lines, sale.lines, req.wb ?? null);
 }
 
@@ -1732,6 +1864,13 @@ export async function submitRegisterSale(ctx: RegisterCtx, actor: RegisterActor,
     }
     if (isRegRefusal(p)) return p;
     const q = p.quote;
+    // POS P1.12 ▸ R7: โค้ดคูปอง/สิทธิ์ที่เลือกแต่ใช้ไม่ได้ = ปฏิเสธด้วยรหัสของมันก่อนเขียนอะไร (คูปอง → ว่อชเชอร์ → แต้ม) ·
+    //   แต้มที่กระเป๋าตัดให้พอดีเพดาน ≠ แต้มที่ขอ = POINTS_CAPPED {allowedPoints} (ห้ามตัดแต้มต่างจากที่แคชเชียร์เห็น) ◂
+    const bad = p.conflicts?.[0];
+    if (bad) {
+      if (bad.code === "POINTS_CAPPED") return { ok: false, code: "POINTS_CAPPED", message: bad.message, allowedPoints: bad.allowedPoints ?? 0 };
+      return regRefuse(bad.code, bad.message);
+    }
     // ③
     if (req.expected !== q.grandTotalSatang) return { ok: false, code: "PRICE_CHANGED", message: REG_MESSAGE.PRICE_CHANGED, ...q };
     // ④ (⑤ ย้ายไปก่อน ① — R4 K4) · P1.6: ทิปอยู่นอกยอดบิล ⇒ Σ วิธีจ่าย = ยอด + ทิป (มติ §8 ข้อ 1)
@@ -1746,6 +1885,18 @@ export async function submitRegisterSale(ctx: RegisterCtx, actor: RegisterActor,
       unitId: s.unitId,
       systemId: s.systemId,
       ...(req.cart.memberId ? { memberId: req.cart.memberId } : {}),
+      // POS P1.12 ▸ R1 R7 R9: ระบบสมาชิกของบิลส่งชัดเสมอ (ทาง askedNothing ของ createSale ไม่ทำงานจากหน้าขาย) · สิทธิ์ที่เลือก · คูปองที่ตรวจแล้ว ·
+      //   สำเนาสมาชิก ณ ตอนขาย (เพิ่มล้วน · ไม่อยู่ใน samePayload) ◂
+      ...(p.member
+        ? {
+            memberSystemId: p.member.memberSystemId,
+            memberSnapshot: { ...p.member.snapshot },
+            ...(req.cart.memberChoices
+              ? { memberChoices: { voucherIds: req.cart.memberChoices.voucherId ? [req.cart.memberChoices.voucherId] : [], ...(req.cart.memberChoices.points > 0 ? { points: req.cart.memberChoices.points } : {}) } }
+              : {}),
+          }
+        : {}),
+      ...(p.coupon ? { couponSystemId: p.coupon.systemId, couponCode: p.coupon.code } : {}),
       sourceModule: "POS",
       idempotencyKey: req.idempotencyKey,
       lines: p.resolved.map((l) => ({
@@ -1797,6 +1948,10 @@ export async function submitRegisterSale(ctx: RegisterCtx, actor: RegisterActor,
     }
     // POS P1.13 ▸ R6: จำผู้ซื้อไว้กับสมาชิกของบิล (upsert 1 แถวต่อสมาชิก · เฉพาะบิลที่เกิดในคำขอนี้ · ไม่แตะ Customer) ◂
     if (req.taxInvoice && req.rememberBuyer && req.cart.memberId && !res.duplicated) await rememberBuyerForMember(s.tenantId, req.cart.memberId, req.taxInvoice);
+    // POS P1.12 ▸ R7 (02b): แต้มที่ตัด · แต้มที่จะได้ (ค่าจริงหลังคิวระบาย) · ยอดแต้มหลังตัด (ก่อนขาย − ที่ตัด) — เฉพาะบิลที่เกิดในคำขอนี้ ◂
+    if (p.member && !res.duplicated) {
+      res = { ...res, member: { pointsBurned: p.member.pointsBurned, pointsExpected: p.member.pointsToEarn, pointsBalanceAfterBurn: (p.member.pointsBalance ?? 0) - p.member.pointsBurned } };
+    }
     // POS P1.15 ▸ audit ของส่วนลดเกินสิทธิ์ (เฉพาะบิลที่เกิดในคำขอนี้ — คำตอบซ้ำไม่เขียนซ้ำ) ◂
     if (over && !res.duplicated) {
       await writeAudit({
@@ -1821,6 +1976,18 @@ export async function submitRegisterSale(ctx: RegisterCtx, actor: RegisterActor,
  */
 function regCreateSale(input: CreateSaleInput, client: RegDb | Prisma.TransactionClient) {
   return createSale(input, client);
+}
+
+/**
+ * POS P1.12 ▸ R7: สิทธิ์ถูกแย่งระหว่าง quote กับธุรกรรมของบิล (ว่อชเชอร์ถูกใช้กับบิลอื่น · แต้มคงเหลือขยับ · คูปองครบสิทธิ์) — ธุรกรรมย้อนทั้งก้อน
+ * (ไม่มีบิล ไม่มีการตัดแต้ม) ⇒ MEMBER_RIGHTS_CHANGED / COUPON_INVALID ให้จอคิดยอดใหม่ · ตัดสินจากชื่อชนิด error ของโมดูลเจ้าของสิทธิ์ (POS import ตรงไม่ได้) ◂
+ */
+const REG_RIGHTS_ERRORS = new Set(["MemberInputError", "MemberNotFoundError", "VoucherStateError", "VoucherInputError", "VoucherNotFoundError", "GiftCardStateError", "GiftCardInputError"]);
+function regRightsRace(e: unknown): RegisterRefusal | null {
+  if (!(e instanceof Error)) return null;
+  if (e.message.startsWith("คูปองใช้ไม่ได้")) return regRefuse("COUPON_INVALID", e.message.slice(0, 200));
+  if (REG_RIGHTS_ERRORS.has(e.name) || e.message.startsWith("แต้มคงเหลือไม่พอ")) return regRefuse("MEMBER_RIGHTS_CHANGED");
+  return null;
 }
 
 /** POS P1.7: ข้อผิดพลาดภายในธุรกรรมขายแบบใบขอรับเงิน (โยนเพื่อให้ธุรกรรมย้อนทั้งก้อน แล้วคืนเป็นคำปฏิเสธ) */
@@ -1889,6 +2056,8 @@ async function regSubmitWithIntents(
       }
       if (e instanceof Error && e.message.startsWith("PAYMENT_MISMATCH")) return regRefuse("PAYMENT_MISMATCH");
       if (e instanceof Error && e.message.startsWith("INTENT_CONSUMED")) return regRefuse("INTENT_CONSUMED");
+      const race = regRightsRace(e); // POS P1.12 ◂
+      if (race) return race;
       throw e;
     }
   }
@@ -2034,6 +2203,8 @@ async function regCreate(db: RegDb, s: RegScope, req: RegParsedSubmit, saleInput
       }
       // createSale ตรวจยอดอีกชั้น (เช่น ส่วนลดอัตโนมัติของระดับสมาชิกที่ P1.3 ยังไม่คิด · P1.12) — ไม่มีบิลเกิด
       if (e instanceof Error && e.message.startsWith("PAYMENT_MISMATCH")) return regRefuse("PAYMENT_MISMATCH");
+      const race = regRightsRace(e); // POS P1.12 ◂
+      if (race) return race;
       throw e;
     }
   }

@@ -30,6 +30,34 @@ import { receiptKindOf } from "./receipt-shared";
 import { ensureReceiptToken } from "./receipt-token";
 import type { RegisterActor } from "./register-shared";
 
+// ── POS P1.12 ▸ R9 R15: สำเนาสมาชิก/สิทธิ์บนบิล (อ่านอย่างปลอดภัยจาก Json · ผิดรูป = ไม่มี) — ใบเสร็จ · หน้าบิล · ใบเสร็จออนไลน์ใช้ชุดเดียว ◂
+export type SaleMemberSnapshot = { name: string | null; memberCode: string | null; phoneMasked: string | null; tierKey: string | null; tierName: string | null };
+export type SaleMemberBenefitLine = { kind: string; label: string; discountSatang: number };
+const strOrNull = (v: unknown): string | null => (typeof v === "string" ? v : null);
+export function saleMemberSnapshot(v: unknown): SaleMemberSnapshot | null {
+  if (!isRecord(v)) return null;
+  return { name: strOrNull(v.name), memberCode: strOrNull(v.memberCode), phoneMasked: strOrNull(v.phoneMasked), tierKey: strOrNull(v.tierKey), tierName: strOrNull(v.tierName) };
+}
+/** บรรทัดสิทธิ์ของบิล (ไม่รวมคูปอง) · null = บิลไม่มีสำเนาสิทธิ์ (walk-in / ก่อน P1.12) */
+export function saleMemberBenefits(v: unknown): SaleMemberBenefitLine[] | null {
+  if (!isRecord(v) || !Array.isArray(v.lines)) return null;
+  return (v.lines as unknown[]).flatMap((l) =>
+    isRecord(l) && typeof l.kind === "string" && typeof l.discountSatang === "number" && Number.isInteger(l.discountSatang)
+      ? [{ kind: l.kind, label: typeof l.label === "string" ? l.label : l.kind, discountSatang: l.discountSatang }]
+      : [],
+  );
+}
+/**
+ * ยอดแต้มสด "ของระบบแต้มที่ผูกสาขาของบิล" (แก้บั๊ก: เดิมอ่าน PointBalance ใดก็ได้ที่อัปเดตล่าสุด) — ผ่าน facade สมาชิกเท่านั้น (มติ 6) ·
+ * สาขาไม่มีระบบแต้ม / ลูกค้าไม่อยู่ในระบบสมาชิก = null
+ */
+export async function salePointBalance(tenantId: string, unitId: string, customer: { id: string; memberSystemId: string | null }): Promise<number | null> {
+  if (!customer.memberSystemId) return null;
+  const member = await import("@/lib/modules/member");
+  const r = await member.pointBalanceForUnit({ tenantId, systemId: customer.memberSystemId, actorUserId: null }, { customerId: customer.id, unitId });
+  return r ? r.balance : null;
+}
+
 type Db = PrismaClient | Prisma.TransactionClient;
 export type ReceiptCtx = { tenantId: string; systemId: string; unitId?: string; deviceId?: string };
 export type ReceiptRefusalCode = "PERMISSION_DENIED" | "SALE_NOT_FOUND" | "VALIDATION" | "INTERNAL";
@@ -203,18 +231,22 @@ async function buildReceipt(db: Db, tenantId: string, systemId: string, sale: Re
   const dev = device && device.tenantId === tenantId ? device : null;
 
   // ── ผู้ขาย · สมาชิก · คูปอง ──
+  // POS P1.12 ▸ R15: สมาชิกจากสำเนาตอนขาย (บิลเก่าไม่มีสำเนา = ข้อมูลสด) — มีสำเนา = ไม่อ่านเบอร์เต็มเลย (รีวิว F9) ◂
+  const snap = saleMemberSnapshot((sale as { memberSnapshot?: unknown }).memberSnapshot);
   const [seller, customer, coupons] = await Promise.all([
     rs.showCashier && sale.soldByUserId ? db.user.findUnique({ where: { id: sale.soldByUserId }, select: { name: true } }) : null,
-    sale.memberId ? db.customer.findFirst({ where: { id: sale.memberId, tenantId }, select: { id: true, name: true, firstName: true, lastName: true, memberCode: true, tierDefId: true } }) : null,
+    sale.memberId ? db.customer.findFirst({ where: { id: sale.memberId, tenantId }, select: { id: true, name: true, firstName: true, lastName: true, memberCode: true, tierDefId: true, phone: !snap, memberSystemId: true } }) : null,
     db.couponRedemption.findMany({
       where: { tenantId, status: { not: "RELEASED" }, OR: [{ saleId: sale.id }, { refType: "PosSale", refId: sale.id }] },
       select: { discountSatang: true, coupon: { select: { code: true } } },
     }),
   ]);
+  // POS P1.12 ▸ R15: ยอดแต้มสดของระบบแต้มของสาขา (แก้บั๊ก "ระบบแต้มที่อัปเดตล่าสุด") ◂
+  const benefitLines = saleMemberBenefits((sale as { memberBenefits?: unknown }).memberBenefits);
   const [tier, balance] = customer
     ? await Promise.all([
-        customer.tierDefId ? db.memberTierDef.findFirst({ where: { id: customer.tierDefId, tenantId }, select: { name: true } }) : null,
-        db.pointBalance.findFirst({ where: { tenantId, customerId: customer.id }, orderBy: { updatedAt: "desc" }, select: { balance: true } }),
+        !snap && customer.tierDefId ? db.memberTierDef.findFirst({ where: { id: customer.tierDefId, tenantId }, select: { name: true } }) : null,
+        salePointBalance(tenantId, sale.unitId, customer),
       ])
     : [null, null];
 
@@ -223,8 +255,10 @@ async function buildReceipt(db: Db, tenantId: string, systemId: string, sale: Re
   const lineDiscountSatang = sale.lines.reduce((t, l) => t + l.discountSatang, 0);
   const couponDiscountSatang = coupons.reduce((t, c) => t + c.discountSatang, 0);
   const tierDiscountSatang = sale.tierDiscountSatang;
-  // PosSale.discountSatang = ส่วนลดท้ายบิล + คูปอง + สิทธิ์สมาชิก (ระดับ + ว่อชเชอร์) — ส่วนที่ไม่ใช่คูปอง/ระดับ = ส่วนลดท้ายบิล
-  const billDiscountSatang = sale.discountSatang - couponDiscountSatang - tierDiscountSatang;
+  // PosSale.discountSatang = ส่วนลดท้ายบิล + คูปอง + สิทธิ์สมาชิก — POS P1.12: บิลที่มีสำเนาสิทธิ์ หัก Σ สิทธิ์ (ระดับ/ว่อชเชอร์/แต้ม แยกบรรทัด) ·
+  //   บิลเก่า = หักเฉพาะระดับ (สูตรเดิม) ◂
+  const memberBenefitsSatang = benefitLines ? benefitLines.reduce((t, b) => t + b.discountSatang, 0) : tierDiscountSatang;
+  const billDiscountSatang = sale.discountSatang - couponDiscountSatang - memberBenefitsSatang;
   const vatSatang = sale.vatSatang;
 
   const anySale = sale as unknown as Record<string, unknown>;
@@ -236,7 +270,14 @@ async function buildReceipt(db: Db, tenantId: string, systemId: string, sale: Re
 
   const shopName = nonEmpty(rs.header.name) ?? nonEmpty(book?.orgName) ?? nonEmpty(tenant?.name) ?? nonEmpty(unit?.name) ?? "-";
   const logoUrl = rs.header.logoUrl ?? nonEmpty(book?.logoUrl);
-  const memberName = customer ? (nonEmpty(customer.name) ?? nonEmpty([customer.firstName, customer.lastName].filter(Boolean).join(" ")) ?? nonEmpty(customer.memberCode) ?? "-") : "";
+  const memberName = snap
+    ? (nonEmpty(snap.name ?? undefined) ?? "-")
+    : customer
+      ? (nonEmpty(customer.name) ?? nonEmpty([customer.firstName, customer.lastName].filter(Boolean).join(" ")) ?? nonEmpty(customer.memberCode) ?? "-")
+      : "";
+  const memberCode = snap ? nonEmpty(snap.memberCode ?? undefined) : nonEmpty(customer?.memberCode);
+  const phoneMasked = snap ? nonEmpty(snap.phoneMasked ?? undefined) : customer?.phone ? (await import("@/lib/modules/member")).maskPhone(customer.phone) : undefined;
+  const tierName = snap ? nonEmpty(snap.tierName ?? undefined) : nonEmpty(tier?.name);
   const couponCode = coupons.map((c) => c.coupon?.code).filter((c): c is string => !!c).join(", ");
 
   const payload: ReceiptPayload = {
@@ -282,6 +323,7 @@ async function buildReceipt(db: Db, tenantId: string, systemId: string, sale: Re
       couponDiscountSatang,
       ...(couponCode ? { couponCode } : {}),
       tierDiscountSatang,
+      ...(benefitLines ? { memberBenefits: benefitLines } : {}),
       serviceChargeSatang: sale.serviceChargeSatang,
       grandTotalSatang: sale.grandTotalSatang,
       vatBaseSatang: sale.grandTotalSatang - vatSatang,
@@ -301,9 +343,11 @@ async function buildReceipt(db: Db, tenantId: string, systemId: string, sale: Re
       ? {
           member: {
             name: memberName,
-            ...(tier?.name ? { tierName: tier.name } : {}),
+            ...(memberCode ? { memberCode } : {}),
+            ...(phoneMasked ? { phoneMasked } : {}),
+            ...(tierName ? { tierName } : {}),
             pointEarned: sale.pointEarned,
-            ...(balance ? { pointBalance: balance.balance } : {}),
+            ...(balance !== null ? { pointBalance: balance } : {}),
           },
         }
       : {}),

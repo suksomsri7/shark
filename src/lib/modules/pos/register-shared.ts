@@ -165,7 +165,20 @@ export type RegisterRefusalCode =
   // POS P1.13: เลขผู้เสียภาษีของผู้ซื้อ (ใบกำกับเต็มรูปตอนชำระ) ผิด checksum/รูปแบบ
   | "TAX_ID_INVALID"
   // POS P1.13 follow-up 3: ขอใบกำกับเต็มรูปตอนชำระแต่ร้านออกใบกำกับไม่ได้ (ไม่ผูกสมุดจด VAT / ไม่มีเลขภาษี / ปิดใบอย่างย่อ / บิลไม่มี VAT)
-  | "NOT_ELIGIBLE";
+  | "NOT_ELIGIBLE"
+  // POS P1.12 ▸ สมาชิกที่ตะกร้า + สิทธิ์ที่จอชำระ (R1 R4 R11 R16) — MEMBER_RIGHTS_UNSUPPORTED คงไว้ให้จอเก่า (หน้าขายไม่คืนแล้ว) ◂
+  | "MEMBER_SYSTEM_MISSING"
+  | "MEMBER_SUSPENDED"
+  | "PHONE_INVALID"
+  | "VOUCHER_INVALID"
+  | "VOUCHER_COUPON_CONFLICT"
+  | "COUPON_INVALID"
+  | "POINTS_DISABLED"
+  | "POINTS_BELOW_MIN"
+  | "POINTS_INSUFFICIENT"
+  | "POINTS_CAPPED"
+  | "BENEFITS_EXCEED_TOTAL"
+  | "MEMBER_RIGHTS_CHANGED";
 
 /** คำปฏิเสธ — คืนค่า ไม่ throw · `lineIndex` = บรรทัดที่ผิด (ลำดับเดียวกับที่ส่งมา) ถ้าระบุได้ */
 export type RegisterRefusal = { ok: false; code: RegisterRefusalCode; message: string; lineIndex?: number };
@@ -233,8 +246,22 @@ export type RegisterQuoteLineInput =
       weightGrams?: number;
     }
   | { name: string; qty: number; unitPriceSatang: number; discount?: PriceDiscount; note?: string };
-/** ไม่มีช่องคูปองโดยตั้งใจ (มติ Q12 — couponCode/couponDiscountSatang = VALIDATION) */
-export type RegisterQuoteInput = { lines: RegisterQuoteLineInput[]; billDiscount?: PriceDiscount; memberId?: string };
+/**
+ * POS P1.12 (R6 · CD4): สิทธิ์ที่เลือกบนจอชำระ — คีย์ตรงตัว (giftCard/voucherIds/อื่น = VALIDATION · บัตรของขวัญเป็นวิธีชำระ = P2.9) ·
+ * voucherId = ว่อชเชอร์ 1 ใบ (vouchersPerSale) · points = จำนวนเต็ม ≥ 0 (0 = ไม่ใช้แต้ม) · ไม่ถูกเก็บในบิลพัก
+ */
+export type RegisterMemberChoices = { voucherId?: string; points?: number };
+/**
+ * คูปอง: POS P1.12 ยก Q12 — couponCode (โค้ดที่ลูกค้ายื่น · ตรวจซ้ำทุก quote/submit) · couponDiscountSatang จาก client ยังเป็น VALIDATION เสมอ
+ * memberChoices = สิทธิ์ที่เลือกบนจอชำระ (ไม่มี memberId = VALIDATION เมื่อเลือกอะไรไว้)
+ */
+export type RegisterQuoteInput = {
+  lines: RegisterQuoteLineInput[];
+  billDiscount?: PriceDiscount;
+  memberId?: string;
+  couponCode?: string;
+  memberChoices?: RegisterMemberChoices;
+};
 
 /** P1.2 R3: ตัวเลือกที่เซิร์ฟเวอร์ใช้คิดราคา (ราคา/ชื่อสดจาก DB) */
 export type RegisterQuoteLineOption = { choiceId: string; groupId: string; name: string; priceDeltaSatang: number };
@@ -266,7 +293,31 @@ export type RegisterQuoteTotals = {
   lines: RegisterQuoteLine[];
   vatMode: "INCLUDED" | "NONE";
   vatRateBp: number;
+  /**
+   * POS P1.12 (R6) — สิทธิ์สมาชิก/คูปองบนยอด: เซิร์ฟเวอร์เติมให้ทุก quote (ยอดที่จอคิดเองในเครื่องไม่มีช่องเหล่านี้ ⇒ optional) ·
+   * grandTotal = subtotal − lineDiscount − billDiscount − coupon + serviceCharge − memberDiscount ·
+   * memberLines = สิทธิ์ที่ใช้ตามลำดับกระเป๋า (TIER → VOUCHER → POINTS · ไม่รวมคูปอง — คูปองอยู่ที่ couponDiscountSatang) ·
+   * memberConflicts = สิทธิ์ที่เลือกแต่ใช้ไม่ได้ (quote ไม่ปฏิเสธ · submit ปฏิเสธด้วยรหัสเดียวกัน)
+   */
+  tierDiscountSatang?: number;
+  memberDiscountSatang?: number;
+  memberLines?: RegisterMemberLine[];
+  pointsToEarn?: number;
+  stampsToAdd?: { cardId: string; name: string; count: number }[];
+  memberConflicts?: RegisterMemberConflict[];
 };
+/** POS P1.12: บรรทัดสิทธิ์สมาชิกบนยอด (ลำดับกระเป๋า) · ref = id ว่อชเชอร์ (ระดับ/แต้ม = null) · note = คำอธิบายเมื่อระบบปรับให้ */
+export type RegisterMemberLine = { kind: "TIER" | "VOUCHER" | "POINTS" | "GIFTCARD"; ref: string | null; label: string; discountSatang: number; note: string | null };
+export type RegisterMemberConflictCode =
+  | "VOUCHER_INVALID"
+  | "VOUCHER_COUPON_CONFLICT"
+  | "COUPON_INVALID"
+  | "POINTS_DISABLED"
+  | "POINTS_BELOW_MIN"
+  | "POINTS_INSUFFICIENT"
+  | "POINTS_CAPPED";
+/** POS P1.12: สิทธิ์ที่เลือกแต่ใช้ไม่ได้ — message = เหตุผลภาษาไทย (log · จอใช้ refusalMessageKey(code)) · allowedPoints เฉพาะ POINTS_CAPPED */
+export type RegisterMemberConflict = { kind: "VOUCHER" | "COUPON" | "POINTS"; code: RegisterMemberConflictCode; message: string; allowedPoints?: number };
 export type RegisterQuote = { ok: true } & RegisterQuoteTotals;
 export type RegisterQuoteResult = RegisterQuote | RegisterRefusal;
 
@@ -297,7 +348,21 @@ export type RegisterSubmitInput = RegisterQuoteInput & {
   /** POS P1.13 R6: จำผู้ซื้อไว้กับสมาชิกของบิล (มี memberId เท่านั้น) */
   rememberBuyer?: boolean;
 };
-export type RegisterSubmitOk = { ok: true; saleId: string; receiptNo: string | null; grandTotalSatang: number; changeSatang: number; duplicated: boolean };
+export type RegisterSubmitOk = {
+  ok: true;
+  saleId: string;
+  receiptNo: string | null;
+  grandTotalSatang: number;
+  changeSatang: number;
+  duplicated: boolean;
+  /**
+   * POS P1.12 (R7 · 02b): บิลที่มีสมาชิก (เฉพาะคำขอที่สร้างบิล) — pointsBurned = แต้มที่ตัดในบิล · pointsExpected = แต้มที่จะได้
+   * (quote.pointsToEarn · ค่าจริงเขียนหลังคิวระบาย) · pointsBalanceAfterBurn = ยอดก่อนขาย − pointsBurned (ระบบแต้มของสาขา)
+   */
+  member?: { pointsBurned: number; pointsExpected: number; pointsBalanceAfterBurn: number };
+};
+/** POS P1.12: แต้มเกินเพดานต่อบิล — allowedPoints = แต้มที่ใช้ได้จริง (จอแก้ให้อัตโนมัติ · ห้ามตัดแต้มต่างจากที่แคชเชียร์เห็น) */
+export type RegisterPointsCapped = { ok: false; code: "POINTS_CAPPED"; message: string; allowedPoints: number };
 /** PRICE_CHANGED พกยอดสดของเซิร์ฟเวอร์มาด้วย (จอแสดงใหม่ได้ทันทีไม่ต้อง quote ซ้ำ) */
 export type RegisterPriceChanged = { ok: false; code: "PRICE_CHANGED"; message: string } & RegisterQuoteTotals;
 /**
@@ -319,7 +384,7 @@ export type RegisterIdempotencyConflict = {
  * ส่วนลดเกินสิทธิ์: heldCartId = บิลที่พักไว้ให้เรียกคืนเมื่ออนุมัติ
  */
 export type PosApprovalRefusal = { ok: false; code: "APPROVAL_REQUIRED" | "PENDING_APPROVAL"; message: string; requestId: string; heldCartId?: string };
-export type RegisterSubmitResult = RegisterSubmitOk | RegisterPriceChanged | RegisterIdempotencyConflict | PosApprovalRefusal | RegisterRefusal;
+export type RegisterSubmitResult = RegisterSubmitOk | RegisterPriceChanged | RegisterIdempotencyConflict | PosApprovalRefusal | RegisterPointsCapped | RegisterRefusal;
 
 // ═══════════ POS P1.15U ▸ จอรออนุมัติ 21B (อ่านสถานะคำขอ · posApprovalStatusAction) ◂ ═══════════
 /** คำขอที่ไม่มีใครตอบภายในเวลานี้ = หมดอายุ (จอแสดง · ผู้ขอยกเลิกได้ · บิลคงเดิม) */
@@ -668,6 +733,19 @@ const REFUSAL_KEY: Readonly<Record<string, string>> = {
   // POS P1.13 ▸ ผู้ซื้อของใบกำกับเต็มรูปตอนชำระ — เลขผู้เสียภาษีผิด (ข้อมูลผู้ซื้ออื่นผิด = VALIDATION เดิม) ◂
   TAX_ID_INVALID: "errors.taxIdInvalid",
   NOT_ELIGIBLE: "errors.taxInvoiceNotEligible", // POS P1.13 follow-up 3 ◂
+  // POS P1.12 ▸ สมาชิกที่ตะกร้า + สิทธิ์ที่จอชำระ (R16) ◂
+  MEMBER_SYSTEM_MISSING: "errors.memberSystemMissing",
+  MEMBER_SUSPENDED: "errors.memberSuspended",
+  PHONE_INVALID: "errors.phoneInvalid",
+  VOUCHER_INVALID: "errors.voucherInvalid",
+  VOUCHER_COUPON_CONFLICT: "errors.voucherCouponConflict",
+  COUPON_INVALID: "errors.couponInvalid",
+  POINTS_DISABLED: "errors.pointsDisabled",
+  POINTS_BELOW_MIN: "errors.pointsBelowMin",
+  POINTS_INSUFFICIENT: "errors.pointsInsufficient",
+  POINTS_CAPPED: "errors.pointsCapped",
+  BENEFITS_EXCEED_TOTAL: "errors.benefitsExceedTotal",
+  MEMBER_RIGHTS_CHANGED: "errors.memberRightsChanged",
 };
 
 /**
@@ -687,3 +765,51 @@ export function moneyText(satang: number): string {
 export function displayName(row: { name: string; nameEn?: string | null }, locale: string): string {
   return locale.startsWith("en") && row.nameEn ? row.nameEn : row.name;
 }
+
+// ═══════════ POS P1.12 ▸ สมาชิกที่ตะกร้า (ค้น · สมัครด่วน · สิทธิ์ · ส่งมอบรางวัล) — สัญญาของ register-member.ts + actions ◂ ═══════════
+/** ที่มาของลูกค้าที่สมัครหน้าร้าน (ชิป 14A: หน้าร้าน · LINE · บอกต่อ · โฆษณา) */
+export const REGISTER_HEARD_FROM = ["WALK_IN", "LINE", "REFERRAL", "ADS"] as const;
+export type RegisterHeardFrom = (typeof REGISTER_HEARD_FROM)[number];
+/**
+ * แถวสมาชิกบนจอ (R2) — phoneMasked เท่านั้น (ไม่มีเบอร์เต็ม · CD8) · points = ระบบแต้มของสาขา · lastPurchaseAt ISO ·
+ * purchaseCount = บิลขาย POS ที่ไม่ถูกยกเลิก · suspended = แนบบิลไม่ได้ (MEMBER_SUSPENDED)
+ */
+export type RegisterMemberItem = {
+  id: string;
+  memberCode: string;
+  name: string;
+  phoneMasked: string;
+  tier: { key: string; name: string; color: string } | null;
+  points: number;
+  lastPurchaseAt: string | null;
+  purchaseCount: number;
+  suspended: boolean;
+};
+export type RegisterMemberLookupResult = { ok: true; items: RegisterMemberItem[] } | RegisterRefusal;
+export type RegisterQuickMemberInput = {
+  phone: string;
+  name: string;
+  /** YYYY-MM-DD (ไม่บังคับ) */
+  birthDate?: string;
+  marketingConsent: boolean;
+  heardFrom: RegisterHeardFrom;
+  /** คีย์เดียวต่อฟอร์ม [A-Za-z0-9_-]{8,100} — กดซ้ำ = คนเดิม */
+  idempotencyKey: string;
+};
+/** created:false = มีสมาชิกเบอร์นี้แล้ว (หรือยิงซ้ำคีย์เดิม) — ผูกคนเดิมกับบิล */
+export type RegisterQuickMemberResult = { ok: true; created: boolean; member: RegisterMemberItem } | RegisterRefusal;
+export type RegisterMemberBenefits = {
+  ok: true;
+  member: RegisterMemberItem;
+  /** ส่วนลดระดับ (อัตโนมัติ) — null = ไม่มีระดับ */
+  tier: { name: string; discountPct: number; discountFixedSatang: number; discountMaxSatang: number } | null;
+  /** null = สาขานี้ไม่มีระบบแต้ม · burnRateSatang = มูลค่าต่อแต้ม (สตางค์) · balanceValueSatang = balance × burnRateSatang */
+  points: { balance: number; burnRateSatang: number; burnMinPoints: number; burnMaxPct: number; balanceValueSatang: number; expiringSoon: { points: number; expiresAt: string }[] } | null;
+  vouchers: { id: string; name: string; code: string; valueLabel: string; expiresAt: string; applicable: boolean; discountSatang: number; reason: string | null }[];
+  stamps: { cardId: string; name: string; stamps: number; slots: number }[];
+  /** อ่านอย่างเดียว (บัตรของขวัญเป็นวิธีชำระ = P2.9 · CD3) — ไม่มีเลขเต็ม/PIN */
+  giftCards: { numberMasked: string; balanceSatang: number; expiresAt: string | null }[];
+  rewardsPending: { redemptionId: string; rewardName: string; expiresAt: string | null }[];
+};
+export type RegisterMemberBenefitsResult = RegisterMemberBenefits | RegisterRefusal;
+export type RegisterFulfilRewardResult = { ok: true } | RegisterRefusal;
