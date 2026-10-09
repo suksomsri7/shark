@@ -89,6 +89,8 @@ export async function voidSaleAction(args: {
   deviceId?: string;
   managerPin?: string | null;
   managerUserId?: string | null;
+  /** POS P1.15U ▸ โทเคนผู้ขายของเครื่องนี้ (ผู้ขอ = คนในโทเคน) ◂ */
+  staffToken?: string | null;
 }): Promise<VoidSaleActionResult> {
   try {
     const auth = await requireTenant();
@@ -102,6 +104,7 @@ export async function voidSaleAction(args: {
       reason: typeof args?.reason === "string" ? args.reason : "",
       idempotencyKey: typeof args?.idempotencyKey === "string" ? args.idempotencyKey : "",
       ...(pin !== null ? { managerPin: pin, managerUserId: typeof args?.managerUserId === "string" ? args.managerUserId : null } : {}),
+      ...(typeof args?.staffToken === "string" ? { staffToken: args.staffToken } : {}),
     });
     if (res.ok) {
       try {

@@ -14,12 +14,14 @@ import { RegisterIcon } from "./RegisterIcon";
 type Err = { key: string; values?: Record<string, string | number> };
 type Props = {
   current: PriceDiscount | undefined;
+  /** POS P1.15U ▸ เพดานส่วนลดของผู้ขาย (bp · null = ไม่จำกัด · undefined = ไม่แสดง) — เกินเพดาน = แผ่นส่วนลดเกินสิทธิ์ (RegisterScreen) ◂ */
+  capBp?: number | null;
   onApply: (d: PriceDiscount | undefined) => Err | null;
   onCoupon: () => void;
   onClose: () => void;
 };
 
-export function BillDiscountDialog({ current, onApply, onCoupon, onClose }: Props) {
+export function BillDiscountDialog({ current, capBp, onApply, onCoupon, onClose }: Props) {
   const t = useTranslations("pos.register");
   const tc = useTranslations("common");
   const [mode, setMode] = useState<"AMOUNT" | "PERCENT">(current?.type ?? "AMOUNT");
@@ -39,6 +41,11 @@ export function BillDiscountDialog({ current, onApply, onCoupon, onClose }: Prop
       <div data-testid="pos-reg-bill-discount-dialog" className={REG_DIALOG_PANEL} role="dialog" aria-modal="true" aria-label={t("actions.billDiscount")}>
         <SheetGrab />
         <h2 className="text-[19px] font-bold">{t("actions.billDiscount")}</h2>
+        {typeof capBp === "number" && (
+          <p data-testid="pos-reg-bill-discount-cap" className="-mt-2 text-[13px] text-[color:var(--color-muted)]">
+            {t("discountOver.yourCap", { cap: String(Number((capBp / 100).toFixed(2))) })}
+          </p>
+        )}
         <form
           data-testid="pos-reg-bill-discount-form"
           className="flex flex-col gap-4"

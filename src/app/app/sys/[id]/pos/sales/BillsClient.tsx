@@ -17,6 +17,7 @@ import { useLocale, useTranslations } from "next-intl";
 import { billDetailAction, billsPageDataAction, voidSaleAction } from "@/lib/modules/pos/bills-actions";
 import { BILLS_ERROR_KEYS, BILL_STATUS_FILTERS, VOID_REASON_MAX, addBillDays, type BillDetailResult, type BillRow, type BillStatusFilter, type BillsPageDataResult } from "@/lib/modules/pos/bills-shared";
 import { getPosDeviceId } from "@/lib/modules/pos/device-id";
+import { heartbeatAction } from "@/lib/modules/pos/device-actions"; // POS P1.15U F8: เครื่องลงทะเบียนไหม
 import { receiptLinkAction, reprintReceiptAction } from "@/lib/modules/pos/receipt-actions";
 import { sendReceiptAction } from "@/lib/modules/pos/receipt-send-actions";
 import { RECEIPT_EMAIL_RE } from "@/lib/modules/pos/receipt-public-shared";
@@ -32,6 +33,13 @@ import { currentShiftAction } from "@/lib/modules/pos/shift-actions";
 import { TaxInvoiceDialog, type TaxInvoiceSubmitResult } from "@/components/pos/register/TaxInvoiceDialog";
 import { issueFromTaxInvoiceRequestAction, issueFullTaxInvoiceAction, rejectTaxInvoiceRequestAction } from "@/lib/modules/pos/tax-invoice-actions";
 import { buyerKindFromTaxId, taxInvoiceRefusalKey, type TaxInvoiceBuyerInput } from "@/lib/modules/pos/tax-invoice-shared";
+// POS P1.15U ▸ ผู้ขอ = คนในโทเคนของเครื่องนี้ (มติ 2) · รหัสปฏิเสธของ PIN/สายอนุมัติ (มติ 6) · กล่องรอผู้จัดการอนุมัติ 21B ◂
+import { refusalMessageKey, type PosApprovalView } from "@/lib/modules/pos/register-shared";
+import { clearStaffSession, readStaffSession } from "@/lib/modules/pos/staff-session";
+import { listStaffForDeviceAction } from "@/lib/modules/pos/staff-pin-actions";
+import { ManagerPinPad, type ManagerPinResult } from "@/components/pos/register/ManagerPinPad";
+import { posApprovalStatusAction } from "@/lib/modules/pos/pos-approval-actions";
+import { ApprovalWaitDialog, type ApprovalPinResult } from "@/components/pos/register/ApprovalWaitDialog";
 import { BillIcon, ChannelChip, StatusChip, SummaryCard, bkkHm, billsCsv, channelLabel, chipOf, dateLabel, methodLabel, money, payText, type T } from "./bills-ui";
 
 type Unit = { id: string; name: string };
@@ -113,6 +121,7 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
   const tr = useTranslations("pos.refund.errors") as T;
   const trc = useTranslations("pos.receipt") as T;
   const tpos = useTranslations("pos") as T;
+  const trg = useTranslations("pos.register");
   const locale = useLocale();
 
   // ── ตัวกรอง ──
@@ -220,6 +229,134 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
     if (selectedId) void loadDetail(selectedId);
   }, [selectedId, loadDetail]);
 
+  // ── POS P1.15U ▸ โทเคนผู้ขาย · รหัสใหม่ · คำขอที่รออนุมัติของบิลนี้ (ปุ่ม "รออนุมัติ…") · 21B ◂
+  /** โทเคนของเครื่องนี้ (มี = ส่ง deviceId + staffToken · ไม่มี = ผู้ใช้ session ตามเดิม) */
+  const tokenFields = (): { deviceId?: string; staffToken?: string } => {
+    const dev = getPosDeviceId();
+    const st = dev ? readStaffSession(dev) : null;
+    return dev && st ? { deviceId: dev, staffToken: st.staffToken } : {};
+  };
+  /** PIN_* · DEVICE_REVOKED · APPROVAL_* · PENDING_APPROVAL · STAFF_TOKEN_INVALID → ข้อความของหน้าขาย (ไม่ใช่ "unknown") */
+  const posErr = (code: string): string => (code === "PIN_LOCKED" ? trg("lock.pinLocked") : trg(refusalMessageKey(code)));
+  type Wait = { requestId: string; kind: "void" | "refund"; saleId: string; void?: { reason: string; key: string }; refund?: Parameters<typeof refundSaleAction>[0]["refund"] };
+  const [wait, setWait] = useState<Wait | null>(null);
+  const [openReq, setOpenReq] = useState<{ saleId: string; requestId: string; kind: "void" | "refund" } | null>(null);
+  useEffect(() => {
+    if (!selectedId) return;
+    let alive = true;
+    posApprovalStatusAction({ systemId, unitId, saleId: selectedId })
+      .then((r) => {
+        if (!alive) return;
+        const v = r.ok ? r.request : null;
+        setOpenReq(v && (v.status === "PENDING" || v.status === "EXPIRED") ? { saleId: selectedId, requestId: v.requestId, kind: v.kind === "POS_REFUND" ? "refund" : "void" } : null);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [systemId, unitId, selectedId, reloadTick]);
+  const pendingFor = (saleId: string, kind: "void" | "refund") => (openReq && openReq.saleId === saleId && openReq.kind === kind ? openReq : null);
+  const waitDone = (v: PosApprovalView) => {
+    const kind = wait?.kind ?? "void";
+    setWait(null);
+    setOpenReq(null);
+    if (v.status === "APPROVED") setToast(trg(kind === "refund" ? "approval.approvedRefund" : "approval.approvedVoid"));
+    else if (v.status === "REJECTED") setToast(v.note ? trg("approval.rejected", { reason: v.note }) : trg("approval.rejectedNoReason"));
+    else setToast(trg("approval.cancelled"));
+    refreshAll();
+  };
+  /** 21B: PIN ผู้จัดการ = ส่งคำขอเดิมซ้ำพร้อม managerPin + managerUserId (ยกเลิก: เหตุผล/คีย์เดิม · คืนเงิน: คำขอเดิมทั้งก้อน) */
+  const waitPin = async (managerUserId: string, managerPin: string, view: PosApprovalView | null): Promise<ApprovalPinResult> => {
+    if (!wait) return { ok: false, code: "NOT_FOUND" };
+    if (wait.kind === "void") {
+      const reason = wait.void?.reason ?? view?.reason ?? "";
+      const r = await voidSaleAction({ systemId, unitId, saleId: wait.saleId, reason, idempotencyKey: wait.void?.key ?? newKey("void"), managerPin, managerUserId, ...tokenFields() });
+      if (!r.ok) return { ok: false, code: r.code };
+      setWait(null);
+      setOpenReq(null);
+      setToast(t("toastVoided"));
+      refreshAll();
+      return { ok: true };
+    }
+    if (!wait.refund) return { ok: false, code: "VALIDATION" };
+    const r = await refundSaleAction({ systemId, unitId, ...(wait.refund.deviceId ? { deviceId: wait.refund.deviceId } : {}), refund: { ...wait.refund, managerPin, managerUserId } });
+    if (!r.ok) return { ok: false, code: r.code };
+    setWait(null);
+    setOpenReq(null);
+    setToast(t("toastRefunded", { no: r.refund.receiptNo ?? "" }));
+    refreshAll();
+    return { ok: true };
+  };
+
+  // ── POS P1.15U ▸ fix รอบ 1 F8: เครื่องที่ลงทะเบียน (+ ร้านมี PIN แล้ว) = ยกเลิก/คืนเงินต้องมีโทเคนที่ยังใช้ได้ · ไม่มี/ตาย = "ใส่ PIN ที่หน้าขายก่อน" ·
+  //    NO_PERMISSION = แป้น PIN ผู้จัดการ (managerPin + managerUserId) · เครื่องไม่ลงทะเบียน = เหมือนเดิม ◂
+  //    fix รอบ 2 N1: null = กำลังตรวจเครื่อง (ยกเลิก/คืนเงินถูกกันไว้) · ตรวจล้ม/ไม่ ok = true (ปิดไว้ก่อน — แบบเดียวกับหน้าขาย)
+  const [pinShop, setPinShop] = useState<boolean | null>(null);
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      const dev = getPosDeviceId();
+      if (!dev) return setPinShop(false);
+      const hb = await heartbeatAction({ systemId, unitId, deviceCode: dev }).catch(() => null);
+      if (!alive) return;
+      if (!hb?.ok) return setPinShop(true);
+      if (!hb.device || hb.device.status !== "ACTIVE") return setPinShop(false);
+      const ls = await listStaffForDeviceAction({ systemId, unitId, deviceId: dev }).catch(() => null);
+      if (alive) setPinShop(!ls || !ls.ok || ls.items.some((x) => x.hasPin));
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [systemId, unitId]);
+  const [needPin, setNeedPin] = useState(false);
+  /** ต้องมีโทเคน แต่ไม่มี = เปิดข้อความ "ใส่ PIN ที่หน้าขายก่อน" แล้วคืน false */
+  const requireToken = (): boolean => {
+    if (pinShop === null) return false; // N1: ยังตรวจเครื่องไม่เสร็จ (ปุ่มแสดง "กำลังตรวจสถานะเครื่อง…")
+    if (pinShop && !tokenFields().staffToken) {
+      setNeedPin(true);
+      return false;
+    }
+    return true;
+  };
+  const tokenDead = () => {
+    clearStaffSession(getPosDeviceId());
+    setVoidOpen(false);
+    setRefundOpen(false);
+    setNeedPin(true);
+  };
+  const [mgrPin, setMgrPin] = useState<{ kind: "void" } | { kind: "refund"; refund: Parameters<typeof refundSaleAction>[0]["refund"] } | null>(null);
+  const mgrPinSubmit = async (managerUserId: string, managerPin: string): Promise<ManagerPinResult> => {
+    if (!mgrPin || !bill) return { ok: false, code: "NOT_FOUND" };
+    if (mgrPin.kind === "void") {
+      const r = await voidSaleAction({ systemId, unitId, saleId: bill.id, reason: voidReason.trim(), idempotencyKey: voidKey, managerPin, managerUserId, ...tokenFields() });
+      if (!r.ok) {
+        if (r.code === "STAFF_TOKEN_INVALID") {
+          setMgrPin(null);
+          tokenDead();
+        }
+        return { ok: false, code: r.code };
+      }
+      setMgrPin(null);
+      setVoidOpen(false);
+      setToast(t("toastVoided"));
+      refreshAll();
+      return { ok: true };
+    }
+    const r = await refundSaleAction({ systemId, unitId, ...(mgrPin.refund.deviceId ? { deviceId: mgrPin.refund.deviceId } : {}), refund: { ...mgrPin.refund, managerPin, managerUserId } });
+    if (!r.ok) {
+      if (r.code === "STAFF_TOKEN_INVALID") {
+        setMgrPin(null);
+        tokenDead();
+      }
+      return { ok: false, code: r.code };
+    }
+    setMgrPin(null);
+    setRefundOpen(false);
+    setToast(t("toastRefunded", { no: r.refund.receiptNo ?? "" }));
+    refreshAll();
+    return { ok: true };
+  };
+
   // ── ยกเลิกบิล ──
   const [voidOpen, setVoidOpen] = useState(false);
   const [voidReason, setVoidReason] = useState("");
@@ -227,6 +364,7 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
   const [voidErr, setVoidErr] = useState<string | null>(null);
   const [voidBusy, setVoidBusy] = useState(false);
   const openVoid = () => {
+    if (!requireToken()) return; // F8
     setVoidReason("");
     setVoidErr(null);
     setVoidKey(newKey("void"));
@@ -243,15 +381,26 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
       setVoidErr(te("reasonRequired"));
       return;
     }
+    if (!requireToken()) {
+      setVoidOpen(false);
+      return;
+    }
     setVoidBusy(true);
     setVoidErr(null);
     try {
-      const r = await voidSaleAction({ systemId, unitId, saleId: bill.id, reason, idempotencyKey: voidKey });
+      const r = await voidSaleAction({ systemId, unitId, saleId: bill.id, reason, idempotencyKey: voidKey, ...tokenFields() });
       if (r.ok) {
         setVoidOpen(false);
         setToast(t("toastVoided"));
         refreshAll();
-      } else setVoidErr(te(errKey(r.code)));
+      } else if (r.code === "APPROVAL_REQUIRED" || r.code === "PENDING_APPROVAL") {
+        // POS P1.15U ▸ มติ 6: ต้องรออนุมัติ ⇒ 21B (PIN ผู้จัดการ = ส่งซ้ำด้วยเหตุผล/คีย์เดิม) ◂
+        setVoidOpen(false);
+        setOpenReq({ saleId: bill.id, requestId: r.requestId, kind: "void" });
+        setWait({ requestId: r.requestId, kind: "void", saleId: bill.id, void: { reason, key: voidKey } });
+      } else if (r.code === "STAFF_TOKEN_INVALID") tokenDead(); // F8
+      else if (r.code === "NO_PERMISSION" && pinShop) setMgrPin({ kind: "void" }); // F8: ผู้จัดการอนุญาตด้วย PIN ที่เครื่องนี้
+      else setVoidErr(errKey(r.code) !== "unknown" ? te(errKey(r.code)) : posErr(r.code));
     } catch {
       setVoidErr(te("unknown"));
     } finally {
@@ -462,6 +611,7 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
   );
   const openRefund = async () => {
     if (!bill) return;
+    if (!requireToken()) return; // F8
     setMenuFor(null);
     setRf(null);
     setRfErr(null);
@@ -526,6 +676,10 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
   const payTypeOf = (): RefundPayType => (rfMethod === "CASH" ? "CASH" : rfMethod === "CARD" ? "CARD" : originalPay?.type === "TRANSFER" ? "TRANSFER" : "PROMPTPAY");
   const submitRefund = async () => {
     if (!rf || rfBusy || draft.lines.length === 0) return;
+    if (!requireToken()) {
+      setRefundOpen(false);
+      return;
+    }
     if (rfReason === "OTHER" && !rfReasonText.trim()) {
       setRfErr(tr("reasonRequired"));
       return;
@@ -537,20 +691,20 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
     try {
       const type = payTypeOf();
       const reference = type === "CASH" ? null : rfRef.trim().slice(0, 100) || null;
-      const r = await refundSaleAction({
-        systemId,
-        unitId,
-        ...(deviceRef.current ? { deviceId: deviceRef.current } : {}),
-        refund: {
-          saleId: rf.sale.id,
-          lines: draft.lines.map((l) => ({ lineId: l.lineId, qty: l.qty, restock: l.restock })),
-          payMethods: draft.total > 0 ? [{ type, amountSatang: draft.total, reference }] : [],
-          reasonCode: rfReason,
-          reason: rfReasonText.trim() || null,
-          ...(deviceRef.current ? { deviceId: deviceRef.current } : {}),
-          idempotencyKey: rfKey,
-        },
-      });
+      // POS P1.15U ▸ มติ 2: โทเคนผู้ขายของเครื่องนี้ (ผู้ขอ = คนในโทเคน) — เก็บคำขอทั้งก้อนไว้ส่งซ้ำพร้อม PIN ผู้จัดการใน 21B ◂
+      const tf = tokenFields();
+      const dev = deviceRef.current ?? tf.deviceId;
+      const refundIn = {
+        saleId: rf.sale.id,
+        lines: draft.lines.map((l) => ({ lineId: l.lineId, qty: l.qty, restock: l.restock })),
+        payMethods: draft.total > 0 ? [{ type, amountSatang: draft.total, reference }] : [],
+        reasonCode: rfReason,
+        reason: rfReasonText.trim() || null,
+        ...(dev ? { deviceId: dev } : {}),
+        idempotencyKey: rfKey,
+        ...(tf.staffToken ? { staffToken: tf.staffToken } : {}),
+      };
+      const r = await refundSaleAction({ systemId, unitId, ...(dev ? { deviceId: dev } : {}), refund: refundIn });
       if (r.ok) {
         setRefundOpen(false);
         setToast(t("toastRefunded", { no: r.refund.receiptNo ?? "" }));
@@ -563,11 +717,19 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
         setRfKey(newKey("refund"));
         setRfErr(t("refund.changed"));
         refreshAll();
+      } else if (r.code === "APPROVAL_REQUIRED" || r.code === "PENDING_APPROVAL") {
+        // POS P1.15U ▸ มติ 6: ต้องรออนุมัติ ⇒ 21B (PIN ผู้จัดการ = ส่งคำขอคืนเงินเดิมซ้ำทั้งก้อน) ◂
+        const refund = refundIn;
+        setRefundOpen(false);
+        setOpenReq({ saleId: rf.sale.id, requestId: r.requestId, kind: "refund" });
+        setWait({ requestId: r.requestId, kind: "refund", saleId: rf.sale.id, refund });
       } else if (r.code === "SHIFT_REQUIRED") setRfCashErr(tr("shiftRequired"));
       else if (r.code === "UNKNOWN") {
         setRfErr(tr("unknown"));
         setRfRetry(true);
-      } else setRfErr(tr(refundErrKey(r.code)));
+      } else if (r.code === "STAFF_TOKEN_INVALID") tokenDead(); // F8
+      else if (r.code === "NO_PERMISSION" && pinShop) setMgrPin({ kind: "refund", refund: refundIn }); // F8
+      else setRfErr(refundErrKey(r.code) !== "unknown" ? tr(refundErrKey(r.code)) : posErr(r.code));
     } catch {
       setRfErr(tr("unknown"));
       setRfRetry(true);
@@ -578,7 +740,8 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
 
   // ── Esc ปิดลิ้นชัก (เมื่อไม่มีกล่องเปิดทับ) ──
   useEffect(() => {
-    if (!selectedId || voidOpen || refundOpen || taxDlg || rejectFor) return;
+    // P1.13U ใบกำกับ (taxDlg/rejectFor) + P1.15U แป้น PIN ผู้จัดการ / รออนุมัติ (mgrPin/wait) เปิดทับ ⇒ Esc ปิดกล่องนั้นก่อน ไม่ปิดลิ้นชัก
+    if (!selectedId || voidOpen || refundOpen || taxDlg || rejectFor || mgrPin || wait) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         if (menuFor) setMenuFor(null);
@@ -587,7 +750,7 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selectedId, voidOpen, refundOpen, taxDlg, rejectFor, menuFor, closeDrawer]);
+  }, [selectedId, voidOpen, refundOpen, taxDlg, rejectFor, mgrPin, wait, menuFor, closeDrawer]);
 
   // ── ส่งออกหน้านี้ ──
   const exportCsv = () => {
@@ -1234,19 +1397,36 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
                   </button>
                 </div>
                 <div className={`grid gap-3 ${bill.can.refund ? "grid-cols-2" : "grid-cols-1"}`}>
+                  {/* POS P1.15U ▸ มติ 6: คำขอยกเลิก/คืนเงินของบิลนี้ยังรออนุมัติ ⇒ ปุ่มเป็น "รออนุมัติ…" (จาง) แตะแล้วเปิด 21B ◂ */}
                   <button
                     type="button"
                     data-testid="pos-bills-void-open"
-                    disabled={!bill.can.void}
-                    className="btn btn-ghost h-12 rounded-[12px] border-[color:var(--color-danger)] text-[color:var(--color-danger)] disabled:border-[color:var(--color-line)] disabled:text-[color:var(--color-muted)]"
-                    onClick={openVoid}
+                    data-pending={pendingFor(bill.id, "void") ? "true" : undefined}
+                    disabled={!bill.can.void || pinShop === null}
+                    className={`btn btn-ghost h-12 rounded-[12px] border-[color:var(--color-danger)] text-[color:var(--color-danger)] disabled:border-[color:var(--color-line)] disabled:text-[color:var(--color-muted)] ${pendingFor(bill.id, "void") ? "opacity-60" : ""}`}
+                    onClick={() => {
+                      const pr = pendingFor(bill.id, "void");
+                      if (pr) setWait({ requestId: pr.requestId, kind: "void", saleId: bill.id });
+                      else openVoid();
+                    }}
                   >
                     <BillIcon name="x" />
-                    {t("drawer.void")}
+                    {pinShop === null ? trg("lock.checkingDevice") : pendingFor(bill.id, "void") ? `${t("drawer.void")} — ${trg("approval.pending")}` : t("drawer.void")}
                   </button>
                   {bill.can.refund ? (
-                    <button type="button" data-testid="pos-bills-refund-open" className="btn btn-primary h-12 rounded-[12px]" onClick={() => void openRefund()}>
-                      {t("drawer.refund")}
+                    <button
+                      type="button"
+                      data-testid="pos-bills-refund-open"
+                      data-pending={pendingFor(bill.id, "refund") ? "true" : undefined}
+                      disabled={pinShop === null}
+                      className={`btn btn-primary h-12 rounded-[12px] disabled:opacity-50 ${pendingFor(bill.id, "refund") ? "opacity-60" : ""}`}
+                      onClick={() => {
+                        const pr = pendingFor(bill.id, "refund");
+                        if (pr) setWait({ requestId: pr.requestId, kind: "refund", saleId: bill.id });
+                        else void openRefund();
+                      }}
+                    >
+                      {pinShop === null ? trg("lock.checkingDevice") : pendingFor(bill.id, "refund") ? `${t("drawer.refund")} — ${trg("approval.pending")}` : t("drawer.refund")}
                     </button>
                   ) : null}
                 </div>
@@ -1674,6 +1854,53 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
         </BillDialog>
       ) : null}
 
+      {/* POS P1.15U ▸ fix รอบ 1 F8: ใส่ PIN ที่หน้าขายก่อน · PIN ผู้จัดการแทนสิทธิ์ที่ขาด ◂ */}
+      {needPin ? (
+        <BillDialog labelledBy="pos-bills-need-pin-title" testid="pos-bills-need-pin" onClose={() => setNeedPin(false)}>
+          <div className="flex flex-col gap-3 px-5 py-5">
+            <h2 id="pos-bills-need-pin-title" className="text-[17px] font-bold">
+              {trg("lock.needPinBills")}
+            </h2>
+            <p className="text-[13.5px] text-[color:var(--color-ink-soft)]">{trg("lock.needPinBillsBody")}</p>
+            <div className="flex justify-end gap-2 pt-2">
+              <button type="button" data-testid="pos-bills-need-pin-close" className="btn btn-ghost h-12 rounded-[12px] px-5" onClick={() => setNeedPin(false)}>
+                {t("drawer.close")}
+              </button>
+              <Link data-testid="pos-bills-need-pin-link" href={`/app/sys/${systemId}/pos/register?unit=${encodeURIComponent(unitId)}`} className="btn btn-primary inline-flex h-12 items-center rounded-[12px] px-5">
+                {trg("lock.goRegister")}
+              </Link>
+            </div>
+          </div>
+        </BillDialog>
+      ) : null}
+      {mgrPin ? (
+        <BillDialog labelledBy="pos-bills-mgr-pin-title" testid="pos-bills-mgr-pin" wide onClose={() => setMgrPin(null)}>
+          <div className="flex items-center gap-3 border-b px-5 pb-3 pt-4">
+            <h2 id="pos-bills-mgr-pin-title" className="flex-1 text-[17px] font-bold">
+              {trg("lock.managerAllow")}
+            </h2>
+            <button type="button" data-testid="pos-bills-mgr-pin-close" aria-label={t("drawer.close")} className="-mr-2 grid h-11 w-11 place-items-center rounded-lg hover:bg-[color:var(--color-surface-2)]" onClick={() => setMgrPin(null)}>
+              <BillIcon name="x" />
+            </button>
+          </div>
+          <div className="px-5 py-4">
+            <ManagerPinPad systemId={systemId} unitId={unitId} deviceId={getPosDeviceId()} onPinEntered={mgrPinSubmit} />
+          </div>
+        </BillDialog>
+      ) : null}
+      {/* POS P1.15U ▸ กล่องรอผู้จัดการอนุมัติ 21B (ยกเลิกบิล/คืนเงิน) ◂ */}
+      {wait ? (
+        <ApprovalWaitDialog
+          systemId={systemId}
+          unitId={unitId}
+          deviceId={getPosDeviceId()}
+          requestId={wait.requestId}
+          allowPin={wait.kind === "void" || !!wait.refund}
+          onPin={waitPin}
+          onDone={waitDone}
+          onClose={() => setWait(null)}
+        />
+      ) : null}
       {toast ? (
         <div role="status" data-testid="pos-bills-toast" className="fixed bottom-6 left-1/2 z-[60] -translate-x-1/2 rounded-xl bg-[color:var(--color-ink)] px-4 py-3 text-sm text-[color:var(--color-surface)] shadow-lg">
           {toast}

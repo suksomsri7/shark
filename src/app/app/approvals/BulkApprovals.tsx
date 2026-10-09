@@ -5,7 +5,10 @@ import { bulkDecideAction, type BulkDecideState } from "@/lib/modules/approval/a
 
 // เลือกหลายคำขอ (checkbox) แล้วอนุมัติ/ปฏิเสธพร้อมกัน — สรุปผลแสดง inline
 // อยู่ในหน้า /app/approvals แทนปุ่มรายใบเดิม (เลือก 1 ใบ = ทำรายเดียวได้)
-type Item = { id: string; label: string; meta: string };
+// POS P1.15U ▸ ภาพ 21A: คำขอ POS มีการ์ดเต็ม — ยอดขวา · บรรทัดเหตุผล · ชิปแดง "เกินเพดาน" · รายละเอียด (ผู้ขอ/เครื่อง/เวลา/เหตุผล/ถ้าอนุมัติ) · บรรทัดนโยบาย
+//   ข้อความทั้งหมดประกอบที่หน้าเพจ (เซิร์ฟเวอร์ · แปลแล้ว) — ปุ่มอนุมัติ/ปฏิเสธ = ชุดเดิมของหน้านี้ ◂
+type PosCard = { amount: string | null; reason: string | null; chip: string | null; rows: [string, string][]; policy: string | null; detailLabel: string };
+type Item = { id: string; label: string; meta: string; pos?: PosCard };
 
 export default function BulkApprovals({ items }: { items: Item[] }) {
   const [state, formAction, pending] = useActionState<BulkDecideState, FormData>(
@@ -41,25 +44,71 @@ export default function BulkApprovals({ items }: { items: Item[] }) {
       </label>
 
       <div className="flex flex-col gap-2">
-        {items.map((i) => (
-          <label
-            key={i.id}
-            className="flex min-h-[44px] cursor-pointer items-center gap-3 rounded-lg border px-3 py-2 text-sm"
-          >
-            <input
-              type="checkbox"
-              name="requestIds"
-              value={i.id}
-              checked={selected.has(i.id)}
-              onChange={() => toggle(i.id)}
-              className="h-5 w-5 shrink-0"
-            />
-            <span className="min-w-0">
-              <span className="block truncate font-medium">{i.label}</span>
-              <span className="block truncate text-xs text-[color:var(--color-muted)]">{i.meta}</span>
-            </span>
-          </label>
-        ))}
+        {items.map((i) =>
+          i.pos ? (
+            <div
+              key={i.id}
+              data-testid="approval-pos-card"
+              className={`flex flex-col gap-2 rounded-xl border px-3 py-3 text-sm ${selected.has(i.id) ? "border-2 border-[color:var(--color-ink)]" : ""}`}
+            >
+              <label className="flex min-h-[44px] cursor-pointer items-start gap-3">
+                <input
+                  type="checkbox"
+                  name="requestIds"
+                  value={i.id}
+                  checked={selected.has(i.id)}
+                  onChange={() => toggle(i.id)}
+                  className="mt-0.5 h-5 w-5 shrink-0"
+                />
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-start gap-2">
+                    <span className="min-w-0 flex-1 font-semibold">{i.label}</span>
+                    {i.pos.amount ? <span className="shrink-0 font-bold tabular-nums">{i.pos.amount}</span> : null}
+                  </span>
+                  <span className="block truncate text-xs text-[color:var(--color-muted)]">{i.meta}</span>
+                </span>
+              </label>
+              {i.pos.chip ? (
+                <span className="self-start rounded-md border border-[color:var(--color-danger)] px-2 py-0.5 text-xs font-semibold text-[color:var(--color-danger)]">
+                  {i.pos.chip}
+                </span>
+              ) : null}
+              {i.pos.reason ? <p className="rounded-lg bg-[color:var(--color-surface-2)] px-3 py-2 text-xs">{i.pos.reason}</p> : null}
+              <details className="text-xs">
+                <summary className="flex min-h-[44px] cursor-pointer items-center text-[color:var(--color-ink-soft)]">{i.pos.detailLabel}</summary>
+                <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 rounded-lg border px-3 py-2">
+                  {i.pos.rows.map(([k, v]) => (
+                    <div key={k} className="contents">
+                      <dt className="text-[color:var(--color-muted)]">{k}</dt>
+                      <dd className="min-w-0 break-words">{v}</dd>
+                    </div>
+                  ))}
+                </dl>
+                {i.pos.policy ? (
+                  <p className="mt-2 rounded-lg bg-[color:var(--color-accent-soft)] px-3 py-2 font-semibold text-[color:var(--color-accent)]">{i.pos.policy}</p>
+                ) : null}
+              </details>
+            </div>
+          ) : (
+            <label
+              key={i.id}
+              className="flex min-h-[44px] cursor-pointer items-center gap-3 rounded-lg border px-3 py-2 text-sm"
+            >
+              <input
+                type="checkbox"
+                name="requestIds"
+                value={i.id}
+                checked={selected.has(i.id)}
+                onChange={() => toggle(i.id)}
+                className="h-5 w-5 shrink-0"
+              />
+              <span className="min-w-0">
+                <span className="block truncate font-medium">{i.label}</span>
+                <span className="block truncate text-xs text-[color:var(--color-muted)]">{i.meta}</span>
+              </span>
+            </label>
+          ),
+        )}
       </div>
 
       <div className="flex flex-wrap gap-2">

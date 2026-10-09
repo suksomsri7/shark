@@ -9,7 +9,7 @@ import { unstable_rethrow } from "next/navigation";
 import { requireTenant } from "@/lib/core/context";
 import { assertCan, canAccessUnit } from "@/lib/core/rbac";
 import { posMembership } from "./access";
-import { listStaffForDevice, setStaffPin, unlockStaffPin, verifyStaffPin, type StaffPinCtx } from "./staff-pin";
+import { listStaffForDevice, setOwnStaffPin, setStaffPin, unlockStaffPin, verifyStaffPin, type StaffPinCtx } from "./staff-pin";
 import type { ListStaffForDeviceResult, RegisterActor, RegisterRefusal, StaffPinOk, VerifyStaffPinOk } from "./register-shared";
 
 type Target = { systemId: string; unitId: string; deviceId?: string };
@@ -57,6 +57,17 @@ export async function setStaffPinAction(args: Target & { userId: string; pin: st
     return await setStaffPin(s.ctx, s.actor, { userId: typeof args?.userId === "string" ? args.userId : "", pin: args?.pin });
   } catch (e) {
     return unexpected("setStaffPinAction", e);
+  }
+}
+
+/** POS P1.15U ▸ fix รอบ 1 F1: ตั้ง PIN ครั้งแรกของ "ผู้ใช้ session เอง" (จอล็อก) — ไม่รับ userId · มีแล้ว = ALREADY_SET ◂ */
+export async function setOwnStaffPinAction(args: Target & { pin: string }): Promise<StaffPinOk | RegisterRefusal> {
+  try {
+    const s = await scoped("setOwnStaffPinAction", args);
+    if ("ok" in s) return s;
+    return await setOwnStaffPin(s.ctx, s.actor, { pin: args?.pin });
+  } catch (e) {
+    return unexpected("setOwnStaffPinAction", e);
   }
 }
 

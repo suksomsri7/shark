@@ -24,6 +24,8 @@ export type RefundSaleInput = {
   /** POS P1.15 R5: PIN ผู้จัดการที่เครื่องนี้ (คู่ managerUserId) — คืนทันทีแม้มีกติกา POS_REFUND (audit pos.approval.pin_override) */
   managerPin?: string | null;
   managerUserId?: string | null;
+  /** POS P1.15U ▸ โทเคนผู้ขายของเครื่องนี้ — ผู้ขอ/ผู้ทำรายการ = คนในโทเคน · ผิด/หมดอายุ = STAFF_TOKEN_INVALID ◂ */
+  staffToken?: string | null;
 };
 
 export type RefundRefusalCode =
@@ -90,7 +92,9 @@ export type RefundSaleResult =
   | RefundRefusal
   // POS P1.15 ▸ PIN ผู้จัดการผิด/ล็อก/เครื่องถูกเพิกถอน · ต้องรออนุมัติ (requestId) — จอแปลด้วย refusalMessageKey ของ pos.register ◂
   | { ok: false; code: "PIN_INVALID" | "PIN_LOCKED" | "DEVICE_REVOKED"; message: string }
-  | { ok: false; code: "APPROVAL_REQUIRED" | "PENDING_APPROVAL"; message: string; requestId: string };
+  | { ok: false; code: "APPROVAL_REQUIRED" | "PENDING_APPROVAL"; message: string; requestId: string }
+  // POS P1.15U ▸ staffToken ผิด/หมดอายุ ◂
+  | { ok: false; code: "STAFF_TOKEN_INVALID"; message: string };
 
 export type SaleForRefundLine = {
   lineId: string;
