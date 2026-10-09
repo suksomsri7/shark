@@ -106,10 +106,11 @@
 //   ข้อมูลประวัติ (seedHistoryOnce): ประวัติของ POS ร้าน QC < 3 แถว ⇒ แก้ค่าทั่วไปจริง 4 ครั้งผ่าน updatePosGeneralSettings (เจ้าของร้าน · บิลพักหมดอายุ +1 แล้วคืน ·
 //   ล็อกจอ ±1 แล้วคืน — ค่าสุดท้ายเท่าเดิม) · ≥ 3 แถวแล้ว = ไม่เขียน (รันซ้ำไม่งอก)
 //   หน้า register `--states` เพิ่ม register-en (แตะ EN ที่แถบบน md+ · มือถือ = คุกกี้ LOCALE=en (หัว 05ก ไม่มีตัวสลับ) · หลังถ่ายลบคุกกี้ LOCALE/lang คืนภาษาไทย) ·
-//   register-empty-catalogue (ภาพ 19ก · เจ้าของเท่านั้น — แคชเชียร์ QC เข้าสาขา fixture ไม่ได้): fixture สาขา SHOP "posqc-coffee-unit-empty-vis" + ระบบ POS
+//   register-empty-catalogue (ภาพ 19ก · เจ้าของเท่านั้น — แคชเชียร์ QC เข้าสาขา fixture ไม่ได้): fixture สาขา SHOP "posqc-vis-empty-<pid>" + ระบบ POS
 //   "แคตตาล็อกว่าง (ภาพ QC)" (createSystem + linkUnit + updatePosGeneralSettings shift.requiredRegister=false + registerDevice) ·
-//   ไม่มีฟังก์ชันโมดูลสร้าง BusinessUnit / ธง registerV2 ⇒ 2 แถวนี้ใช้คำสั่งเดียวกับ createSystemAction / seed-pos-qc (find-or-create · id/ชื่อตายตัว) ·
-//   finally ลบทั้งชุด (เครื่อง · ลิงก์ · ระบบ · สาขา) = เก็บกวาด ◂
+//   ไม่มีฟังก์ชันโมดูลสร้าง BusinessUnit / ธง registerV2 ⇒ 2 แถวนี้ใช้คำสั่งเดียวกับ createSystemAction / seed-pos-qc (find-or-create · id ผูก pid —
+//   รอบ th/en พร้อมกันไม่ชนกัน · F7) · finally และ SIGINT/SIGTERM/SIGHUP ลบทั้งชุด (เครื่อง · ลิงก์ · ระบบ · สาขา + AuditLog ที่ชี้แถวเหล่านี้) ·
+//   ซากสาขา posqc-vis-empty-* อายุ > 1 ชม. (รอบที่ถูก kill -9) กวาดตอนสร้าง ◂
 //
 // 🔴 ไม่มีค่าปริยายของ base — ไม่ส่ง `--base`/`QC_BASE` = exit 2 · ต่อไม่ได้ = exit 2 · `:3215` = exit 2
 //    (พอร์ต 3215 เป็นของเซิร์ฟเวอร์ CRM RUN — LANE-RULES ข้อ 4 · ตั้ง POS_VISUAL_ALLOW_3215=1 เมื่อ CRM ปิดแล้วเท่านั้น)
@@ -329,10 +330,13 @@ const RPUB_MISSING_TOKEN = "ZZZZZZZZZZZZ";
 /** F3: เครื่องคงที่ (ไม่ผูก pid) — รอบซ้ำไม่สร้างเครื่อง/กะเพิ่ม · กะเปิดเฉพาะเมื่อต้องขายบิลใหม่ */
 const RPUB_DEVICE_ID = "posqc-p111u-dev";
 type Job = { page: PosPage; v: (typeof POS_VIEWPORTS)[number]; state: StateKey | null; file: string; path?: string; expect?: number };
-// POS P1.18U ▸ fixture ของภาพ 19ก (ร้านไม่มีสินค้า) — id/ชื่อตายตัว · path จริงรู้หลังหา/สร้างระบบ (emptyPath) ◂
-const EMPTY_UNIT = { id: "posqc-coffee-unit-empty-vis", slug: "pos-qc-coffee-empty-vis", name: "สาขาแคตตาล็อกว่าง (ภาพ QC)" } as const;
+// POS P1.18U ▸ fixture ของภาพ 19ก (ร้านไม่มีสินค้า) — path จริงรู้หลังหา/สร้างระบบ (emptyPath) ◂
+// POS P1.18U ▸ แก้รอบ 1 F7: id สาขา/รหัสเครื่องผูก pid (`posqc-vis-empty-<pid>`) — รอบ th/en ที่รันพร้อมกันไม่ลบแถวของกันและกัน ·
+//   ระบบ POS หาโดยลิงก์ของสาขารอบนี้ (ไม่หาด้วยชื่อ) · ซากรอบที่ถูก kill เกิน 1 ชม. ถูกกวาดตอนสร้าง ◂
+const EMPTY_PREFIX = "posqc-vis-empty-";
+const EMPTY_UNIT = { id: `${EMPTY_PREFIX}${process.pid}`, slug: `pos-qc-vis-empty-${process.pid}`, name: "สาขาแคตตาล็อกว่าง (ภาพ QC)" } as const;
 const EMPTY_POS_NAME = "ขายหน้าร้าน · แคตตาล็อกว่าง (ภาพ QC)";
-const EMPTY_DEVICE_ID = `posqc-vis-empty-${process.pid}`;
+const EMPTY_DEVICE_ID = `${EMPTY_PREFIX}${process.pid}`;
 const EMPTY_PATH_PLACEHOLDER = `/app/sys/<empty-pos>/pos/register?unit=${EMPTY_UNIT.id}`;
 const viewports = LOCALE_EN ? POS_VIEWPORTS.filter((v) => v.name === "desktop") : [...POS_VIEWPORTS];
 // สถานะหน้าสต็อกเฉพาะ --page stock หรือ wo p1.14* (รอบ p1.3/p1.2 --states ทุกหน้าเดิมไม่เปลี่ยน · ไม่เปิดรอบนับเพิ่ม)
@@ -630,6 +634,13 @@ for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
         if (INTENTS.cleanup) console.error(`${INTENTS.cleanup.ok ? "🧹" : "⚠️"} ${INTENTS.cleanup.detail}`);
       } catch (e) {
         console.error(`❌ เก็บกวาดใบขอรับเงินไม่สำเร็จ: ${e instanceof Error ? e.message : e}`);
+      }
+      // POS P1.18U ▸ แก้รอบ 1 F2: ลบ fixture ภาพ 19ก (เครื่อง · ลิงก์ · ระบบ · สาขา · AuditLog) ก่อนเก็บกวาดหน้าตั้งค่า (เหมือน finally) ◂
+      try {
+        await cleanupEmptyCatalogue();
+        if (P118U.empty.cleanup) console.error(`${P118U.empty.cleanup.ok ? "🧹" : "⚠️"} ${P118U.empty.cleanup.detail}`);
+      } catch (e) {
+        console.error(`❌ ลบ fixture ภาพ 19ก ไม่สำเร็จ: ${e instanceof Error ? e.message : e}`);
       }
       // POS P1.10 U: ปิดกะ + เพิกถอนเครื่อง QC ของหน้าตั้งค่า (เหมือน finally)
       try {
@@ -2747,12 +2758,15 @@ async function seedEmptyCatalogueOnce(): Promise<void> {
     const { updatePosGeneralSettings } = await import("@/lib/modules/pos/settings-general");
     const { registerDevice } = await import("@/lib/modules/pos/device");
     const actor = await ownerActor();
+    await sweepStaleEmptyCatalogue(); // POS P1.18U ▸ F7 ◂
     const unit = await prisma.businessUnit.findFirst({ where: { id: EMPTY_UNIT.id, tenantId: T.tenantId }, select: { id: true } });
     if (!unit) {
       await prisma.businessUnit.create({ data: { id: EMPTY_UNIT.id, tenantId: T.tenantId, type: "SHOP", name: EMPTY_UNIT.name, slug: EMPTY_UNIT.slug } });
       E.created.push("unit");
     }
-    let sys = await prisma.appSystem.findFirst({ where: { tenantId: T.tenantId, type: "POS", name: EMPTY_POS_NAME }, select: { id: true, settings: true } });
+    // POS P1.18U ▸ F7: ระบบของสาขารอบนี้เท่านั้น (ลิงก์ของสาขา pid) — ไม่หยิบระบบชื่อเดียวกันของรอบอื่น ◂
+    const own = await prisma.appSystemUnit.findFirst({ where: { tenantId: T.tenantId, unitId: EMPTY_UNIT.id, type: "POS" }, select: { systemId: true } });
+    let sys = own ? await prisma.appSystem.findFirst({ where: { id: own.systemId, tenantId: T.tenantId, type: "POS", name: EMPTY_POS_NAME }, select: { id: true, settings: true } }) : null;
     if (!sys) {
       const c = await sysSvc.createSystem(T.tenantId, "POS", EMPTY_POS_NAME);
       sys = { id: c.id, settings: c.settings };
@@ -2781,19 +2795,40 @@ async function cleanupEmptyCatalogue(): Promise<void> {
   const parts: string[] = [];
   let ok = true;
   try {
-    if (E.systemId) {
-      const dv = await prisma.posDevice.deleteMany({ where: { tenantId: T.tenantId, systemId: E.systemId, unitId: EMPTY_UNIT.id } });
-      const ln = await prisma.appSystemUnit.deleteMany({ where: { tenantId: T.tenantId, systemId: E.systemId } });
-      const sy = await prisma.appSystem.deleteMany({ where: { id: E.systemId, tenantId: T.tenantId, type: "POS", name: EMPTY_POS_NAME } });
-      parts.push(`เครื่อง ${dv.count} · ลิงก์ ${ln.count} · ระบบ ${sy.count}`);
-    }
-    const un = await prisma.businessUnit.deleteMany({ where: { id: EMPTY_UNIT.id, tenantId: T.tenantId } });
-    parts.push(`สาขา ${un.count}`);
+    parts.push(await deleteEmptyCatalogueSet(EMPTY_UNIT.id, E.systemId || null, E.deviceRowId ? [E.deviceRowId] : []));
   } catch (e) {
     ok = false;
     parts.push(`ลบ fixture ภาพ 19ก ล้ม: ${e instanceof Error ? e.message.slice(0, 160) : String(e)}`);
   }
   E.cleanup = { ok, detail: `P1.18U fixture 19ก: ${parts.join(" · ")}` };
+}
+/**
+ * POS P1.18U ▸ F7: ลบชุด fixture 19ก ของสาขาหนึ่ง (เครื่อง · ลิงก์ · ระบบ · สาขา) + แถว AuditLog ที่ชี้ไปยังแถวที่ลบ (targetId ของระบบ/เครื่อง/สาขา —
+ *   pos.settings.updated ของ updatePosGeneralSettings · pos.device.register ของ registerDevice) — ระบบต้องผูกกับสาขานี้ + ชื่อ fixture เท่านั้น ◂
+ */
+async function deleteEmptyCatalogueSet(unitId: string, knownSystemId: string | null, knownDeviceIds: string[]): Promise<string> {
+  const links = await prisma.appSystemUnit.findMany({ where: { tenantId: T.tenantId, unitId, type: "POS" }, select: { systemId: true } });
+  const sysIds = [...new Set([...(knownSystemId ? [knownSystemId] : []), ...links.map((l) => l.systemId)])];
+  const mine = sysIds.length ? await prisma.appSystem.findMany({ where: { id: { in: sysIds }, tenantId: T.tenantId, type: "POS", name: EMPTY_POS_NAME }, select: { id: true } }) : [];
+  const sids = mine.map((x) => x.id);
+  const devs = sids.length ? await prisma.posDevice.findMany({ where: { tenantId: T.tenantId, systemId: { in: sids }, unitId }, select: { id: true } }) : [];
+  const devIds = [...new Set([...knownDeviceIds, ...devs.map((d) => d.id)])];
+  const dv = sids.length ? await prisma.posDevice.deleteMany({ where: { tenantId: T.tenantId, systemId: { in: sids }, unitId } }) : { count: 0 };
+  const ln = sids.length ? await prisma.appSystemUnit.deleteMany({ where: { tenantId: T.tenantId, systemId: { in: sids } } }) : { count: 0 };
+  const sy = sids.length ? await prisma.appSystem.deleteMany({ where: { id: { in: sids }, tenantId: T.tenantId, type: "POS", name: EMPTY_POS_NAME } }) : { count: 0 };
+  const un = await prisma.businessUnit.deleteMany({ where: { id: unitId, tenantId: T.tenantId } });
+  const au = await prisma.auditLog.deleteMany({ where: { tenantId: T.tenantId, targetId: { in: [...sids, ...devIds, unitId] } } });
+  return `เครื่อง ${dv.count} · ลิงก์ ${ln.count} · ระบบ ${sy.count} · สาขา ${un.count} · AuditLog ${au.count}`;
+}
+/** POS P1.18U ▸ F7: ซาก fixture 19ก ของรอบที่ถูก kill (สาขา `posqc-vis-empty-*` อายุ > 1 ชม.) — ไม่แตะของรอบที่ยังรันอยู่ · พังไม่โยน ◂ */
+async function sweepStaleEmptyCatalogue(): Promise<void> {
+  try {
+    const old = new Date(Date.now() - 60 * 60 * 1000);
+    const stale = await prisma.businessUnit.findMany({ where: { tenantId: T.tenantId, id: { startsWith: EMPTY_PREFIX, not: EMPTY_UNIT.id }, createdAt: { lt: old } }, select: { id: true } });
+    for (const u of stale) console.log(`  🧹 ซาก fixture 19ก ${u.id}: ${await deleteEmptyCatalogueSet(u.id, null, [])}`);
+  } catch (e) {
+    console.log(`  ⚠️ กวาดซาก fixture 19ก ไม่สำเร็จ: ${e instanceof Error ? e.message.slice(0, 160) : String(e)}`);
+  }
 }
 async function runEmptyCatalogue(page: Any): Promise<void> {
   if (P118U.empty.error || !P118U.empty.systemId) throw new StepError(`ไม่มี fixture ภาพ 19ก: ${P118U.empty.error ?? "ยังไม่ได้สร้าง"}`);
