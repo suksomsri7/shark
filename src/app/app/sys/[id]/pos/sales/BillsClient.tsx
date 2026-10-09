@@ -265,14 +265,17 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
 
   // ── POS P1.15U ▸ fix รอบ 1 F8: เครื่องที่ลงทะเบียน (+ ร้านมี PIN แล้ว) = ยกเลิก/คืนเงินต้องมีโทเคนที่ยังใช้ได้ · ไม่มี/ตาย = "ใส่ PIN ที่หน้าขายก่อน" ·
   //    NO_PERMISSION = แป้น PIN ผู้จัดการ (managerPin + managerUserId) · เครื่องไม่ลงทะเบียน = เหมือนเดิม ◂
-  const [pinShop, setPinShop] = useState(false);
+  //    fix รอบ 2 N1: null = กำลังตรวจเครื่อง (ยกเลิก/คืนเงินถูกกันไว้) · ตรวจล้ม/ไม่ ok = true (ปิดไว้ก่อน — แบบเดียวกับหน้าขาย)
+  const [pinShop, setPinShop] = useState<boolean | null>(null);
   useEffect(() => {
     let alive = true;
     void (async () => {
       const dev = getPosDeviceId();
-      if (!dev) return;
+      if (!dev) return setPinShop(false);
       const hb = await heartbeatAction({ systemId, unitId, deviceCode: dev }).catch(() => null);
-      if (!alive || !hb?.ok || !hb.device || hb.device.status !== "ACTIVE") return;
+      if (!alive) return;
+      if (!hb?.ok) return setPinShop(true);
+      if (!hb.device || hb.device.status !== "ACTIVE") return setPinShop(false);
       const ls = await listStaffForDeviceAction({ systemId, unitId, deviceId: dev }).catch(() => null);
       if (alive) setPinShop(!ls || !ls.ok || ls.items.some((x) => x.hasPin));
     })();
@@ -283,6 +286,7 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
   const [needPin, setNeedPin] = useState(false);
   /** ต้องมีโทเคน แต่ไม่มี = เปิดข้อความ "ใส่ PIN ที่หน้าขายก่อน" แล้วคืน false */
   const requireToken = (): boolean => {
+    if (pinShop === null) return false; // N1: ยังตรวจเครื่องไม่เสร็จ (ปุ่มแสดง "กำลังตรวจสถานะเครื่อง…")
     if (pinShop && !tokenFields().staffToken) {
       setNeedPin(true);
       return false;
@@ -1240,7 +1244,7 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
                     type="button"
                     data-testid="pos-bills-void-open"
                     data-pending={pendingFor(bill.id, "void") ? "true" : undefined}
-                    disabled={!bill.can.void}
+                    disabled={!bill.can.void || pinShop === null}
                     className={`btn btn-ghost h-12 rounded-[12px] border-[color:var(--color-danger)] text-[color:var(--color-danger)] disabled:border-[color:var(--color-line)] disabled:text-[color:var(--color-muted)] ${pendingFor(bill.id, "void") ? "opacity-60" : ""}`}
                     onClick={() => {
                       const pr = pendingFor(bill.id, "void");
@@ -1249,21 +1253,22 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
                     }}
                   >
                     <BillIcon name="x" />
-                    {pendingFor(bill.id, "void") ? `${t("drawer.void")} — ${trg("approval.pending")}` : t("drawer.void")}
+                    {pinShop === null ? trg("lock.checkingDevice") : pendingFor(bill.id, "void") ? `${t("drawer.void")} — ${trg("approval.pending")}` : t("drawer.void")}
                   </button>
                   {bill.can.refund ? (
                     <button
                       type="button"
                       data-testid="pos-bills-refund-open"
                       data-pending={pendingFor(bill.id, "refund") ? "true" : undefined}
-                      className={`btn btn-primary h-12 rounded-[12px] ${pendingFor(bill.id, "refund") ? "opacity-60" : ""}`}
+                      disabled={pinShop === null}
+                      className={`btn btn-primary h-12 rounded-[12px] disabled:opacity-50 ${pendingFor(bill.id, "refund") ? "opacity-60" : ""}`}
                       onClick={() => {
                         const pr = pendingFor(bill.id, "refund");
                         if (pr) setWait({ requestId: pr.requestId, kind: "refund", saleId: bill.id });
                         else void openRefund();
                       }}
                     >
-                      {pendingFor(bill.id, "refund") ? `${t("drawer.refund")} — ${trg("approval.pending")}` : t("drawer.refund")}
+                      {pinShop === null ? trg("lock.checkingDevice") : pendingFor(bill.id, "refund") ? `${t("drawer.refund")} — ${trg("approval.pending")}` : t("drawer.refund")}
                     </button>
                   ) : null}
                 </div>

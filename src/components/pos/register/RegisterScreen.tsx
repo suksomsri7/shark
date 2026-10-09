@@ -347,14 +347,34 @@ export function RegisterScreen(props: RegisterScreenProps) {
   const refreshPins = useCallback(async () => {
     try {
       const r = await listStaffForDeviceAction({ systemId, unitId, ...(deviceId ? { deviceId } : {}) });
-      setAnyPin(r.ok ? r.items.some((x) => x.hasPin) : true); // อ่านไม่ได้ = ถือว่ามี PIN (ล็อกไว้ก่อน — ปลอดภัยกว่า)
+      const has = r.ok ? r.items.some((x) => x.hasPin) : true; // อ่านไม่ได้ = ถือว่ามี PIN (ล็อกไว้ก่อน — ปลอดภัยกว่า)
+      // fix รอบ 2 N3: จากไม่มี PIN → มี PIN (มีคนตั้งระหว่างเปิดจอ) = ล็อกทันที
+      if (has && anyPinRef.current === false) {
+        setLockFlag(true);
+        setLockedAt(new Date());
+      }
+      anyPinRef.current = has;
+      setAnyPin(has);
     } catch {
+      anyPinRef.current = true;
       setAnyPin(true);
     }
   }, [systemId, unitId, deviceId]);
+  const anyPinRef = useRef<boolean | null>(null);
+  // fix รอบ 2 N3: ถามใหม่เมื่อกลับมาที่แท็บ และทุกครั้งที่สถานะเครื่องรีเฟรช (รอบ 60 วิ · หลังขาย)
   useEffect(() => {
-    if (deviceReady) void refreshPins();
+    if (!deviceReady) return;
+    void refreshPins();
+    const onVis = () => {
+      if (document.visibilityState === "visible") void refreshPins();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
   }, [deviceReady, refreshPins]);
+  useEffect(() => {
+    if (deviceReady && anyPinRef.current === false) void refreshPins();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- ตัวกระตุ้นคือสถานะที่รีเฟรช
+  }, [status]);
   const noPinMode = deviceReady && anyPin === false;
   const noPinBannerKey = `pos-nopin-banner:${deviceId ?? "-"}`;
   const [noPinDismissed, setNoPinDismissed] = useState(false);

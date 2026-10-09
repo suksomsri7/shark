@@ -405,7 +405,8 @@
       "needPinBills": "Enter your PIN on the register first",
       "needPinBillsBody": "This device needs to know who is acting — unlock the register with your PIN, then come back to void or refund",
       "goRegister": "Go to the register",
-      "managerAllow": "Manager approves with a PIN"
+      "managerAllow": "Manager approves with a PIN",
+      "checkingDevice": "Checking this device…"
     },
     "staff": {
       "title": "Who is using this register",
@@ -480,7 +481,8 @@
         "ifDiscount": "{pct}% off = {amount}",
         "policy": "Policy: {name}",
         "details": "Details"
-      }
+      },
+      "cancelFailed": "Could not cancel the request · ask a manager to cancel it in 21A"
     }
   },
   "shift": {

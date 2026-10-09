@@ -42,6 +42,7 @@ export function ApprovalWaitDialog(p: {
   const doneRef = useRef(false);
   /** fix รอบ 1 F6: หยุดถามสถานะ (หมดอายุ/ล้ม) · ยกเลิกคำขอที่หมดอายุไปแล้ว (ครั้งเดียว) */
   const stopRef = useRef(false);
+  const [cancelFailed, setCancelFailed] = useState(false);
   const expiredRef = useRef(false);
   const cb = useRef(p);
   cb.current = p;
@@ -62,7 +63,9 @@ export function ApprovalWaitDialog(p: {
       if (st === "EXPIRED" && !expiredRef.current) {
         expiredRef.current = true;
         stopRef.current = true;
-        await cancelRef.current().catch(() => undefined);
+        // fix รอบ 2 N2: ยกเลิกไม่ได้ (ไม่ใช่ผู้ขอ/ผู้จัดการ · ขัดข้อง) = แจ้งบรรทัดเดียว ไม่กลืนเงียบ
+        const c = await cancelRef.current().catch(() => null);
+        if (!c || !c.ok) setCancelFailed(true);
       }
     } catch {
       setLoadErr(true);
@@ -146,6 +149,7 @@ export function ApprovalWaitDialog(p: {
           {expired ? (
             <p data-testid="pos-approval-wait-expired" role="alert" className="text-[14px] font-semibold text-[color:var(--color-danger)]">
               {t("approval.expired")}
+              {cancelFailed ? <span data-testid="pos-approval-wait-cancel-failed" className="block text-[13px] font-normal">{t("approval.cancelFailed")}</span> : null}
             </p>
           ) : view?.status === "FAILED" ? (
             <p data-testid="pos-approval-wait-failed" role="alert" className="text-[14px] font-semibold text-[color:var(--color-danger)]">
