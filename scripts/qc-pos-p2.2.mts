@@ -61,7 +61,7 @@ const CHECKS: readonly Def[] = [
   // ── C ราคาช่องทาง/สาขา (catalog.ts) ──
   D("C1", "-", "[R1 R2] setChannelPrices (เจ้าของ): ตั้ง 3 แถว (LINEMAN ทุกสาขา · สาขา A ทุกช่องทาง · LINEMAN สาขา A) → แถวตรง + updatedByUserId · แทนทั้งชุดด้วย 1 แถว → เหลือ 1 · [] → 0 · รหัส builtin (QR_TABLE) ได้ · notSold → priceSatang null · ตั้งแถวของ fixture (ลาเต้ LINEMAN 9,400 → C6 9,500 · ม็อคค่า LINEMAN 8,500 · มัทฉะ LINEMAN ไม่ขาย · อเมริกาโน่ สาขา A 5,500)"),
   D("C2", "X5", "[R1 R2 CD7] VALIDATION ไม่เขียนอะไร: (code,unit) ซ้ำ · (null,null) · คีย์แปลก (แถว/บน) · notSold+ราคา · ไม่ notSold+ไม่มีราคา · ราคา −1 / 1.5 / สตริง / เกิน PRICE_MAX · รหัสที่ระบบไม่มี (GRAB) / ตัวเล็ก / ช่องทางที่เก็บถาวร · 61 แถว · rows ไม่ใช่อาร์เรย์ · สินค้าชั่ง → VALIDATION (แถวสินค้าชั่ง 0)"),
-  D("C3", "X3", "[R2 Q5 X2] สิทธิ์ pos.product.setPrice ตามขอบเขต: ผู้จัดการสาขา A เขียนแถวสาขา A ได้ · แถวทุกสาขา → PERMISSION_DENIED · พนักงาน (pos.sale.create) → PERMISSION_DENIED · สินค้าร้าน T2 / id มั่ว → PRODUCT_NOT_FOUND · แถวไม่เปลี่ยน"),
+  D("C3", "X3", "[R2 Q5 X2] สิทธิ์ pos.product.setPrice ตามขอบเขต: ผู้จัดการสาขา A เขียนแถวสาขา A ได้ · แถวทุกสาขา → PERMISSION_DENIED · พนักงาน (pos.sale.create) → PERMISSION_DENIED · สินค้าร้าน T2 / id มั่ว → NOT_FOUND (CatalogError · มติผู้คุมงาน 1) · แถวไม่เปลี่ยน"),
   D("C4", "X5", "[R2] audit pos.product.channelPrice ต่อการเขียน (actorId = userId จริง · มี productId · before/after) · คำขอที่ถูกปฏิเสธไม่มี audit · AccountProduct.salePrice + InvItem.priceSatang ของสินค้าที่ผูกบัญชีไม่เปลี่ยน (ตัวควบคุมบวก: setPrice ฐานเขียนกลับจริง)"),
   D("C5", "-", "[R6] listForUnit.channelPrices: สาขา A อเมริกาโน่ = (LINEMAN ทุกสาขา 7,600 · channelId = LINEMAN ของสาขา A) + (สาขา A 5,500 · channelId null) · สาขา B ไม่เห็นแถวสาขา A · LINEMAN ที่สาขา B ไม่มีช่องทาง → channelId null · คีย์ต่อแถวตรง {channelId channelCode unitId priceSatang notSold}"),
   D("C6", "X4", "[R2 CD6 Q6] bulkChannelMarkup LINEMAN +27% ปัด 100 หมวดกาแฟ → แถวราคาตายตัว (ลาเต้ 9,500 · อเมริกาโน่ 7,600) · ข้ามสินค้าไม่มีราคา · ไม่แตะสินค้านอกหมวด · audit ต่อสินค้า · ผู้จัดการสาขา A ปรับเฉพาะ (LINEMAN, A) ได้ แถวอื่นของสินค้าคงอยู่ · ทุกสาขา → PERMISSION_DENIED · พนักงาน → PERMISSION_DENIED · bp 0 / 20001 · roundTo 10 · ทั้ง productIds+categoryId · ไม่มีทั้งคู่ · คีย์แปลก → VALIDATION"),
@@ -1299,11 +1299,11 @@ async function runDb() {
     if (!codeIs(s1, "PERMISSION_DENIED")) p.push(`พนักงาน → ${codeOf(s1)}`);
     if ((await cpSig(PR.tea2 ?? "")) !== want) p.push(`tea2 เปลี่ยนหลังคำปฏิเสธ ${await cpSig(PR.tea2 ?? "")}`);
     const t2 = await setCP(ownerId, PR.t2 ?? "nope", [cprow("LINEMAN", null, 1)], "C3 T2");
-    if (!codeIs(t2, "PRODUCT_NOT_FOUND")) p.push(`สินค้าร้าน T2 → ${codeOf(t2)} (คาด PRODUCT_NOT_FOUND)`);
+    if (!codeIs(t2, "NOT_FOUND")) p.push(`สินค้าร้าน T2 → ${codeOf(t2)} (คาด NOT_FOUND · มติ 1)`);
     const nf = await setCP(ownerId, `nope${RAND}`, [cprow("LINEMAN", null, 1)], "C3 nope");
-    if (!codeIs(nf, "PRODUCT_NOT_FOUND")) p.push(`id มั่ว → ${codeOf(nf)}`);
+    if (!codeIs(nf, "NOT_FOUND")) p.push(`id มั่ว → ${codeOf(nf)} (คาด NOT_FOUND · มติ 1)`);
     if ((await cpRows(PR.t2 ?? "", T2)).length !== 0) p.push("สินค้าร้าน T2 มีแถว");
-    chk("C3", NCP() === "" && p.length === 0, "ผู้จัดการ A ได้เฉพาะแถว A · ทุกสาขา/พนักงาน DENIED · ร้านอื่น PRODUCT_NOT_FOUND", FX(NCP() + (P8(p) || "ครบ")));
+    chk("C3", NCP() === "" && p.length === 0, "ผู้จัดการ A ได้เฉพาะแถว A · ทุกสาขา/พนักงาน DENIED · ร้านอื่น NOT_FOUND", FX(NCP() + (P8(p) || "ครบ")));
   }
   // C4 audit + ไม่เขียนกลับบัญชี
   {
