@@ -1,0 +1,55 @@
+diff --git a/scripts/qc-pos-p1.13.mts b/scripts/qc-pos-p1.13.mts
+index 45b004f6..44955f02 100644
+--- a/scripts/qc-pos-p1.13.mts
++++ b/scripts/qc-pos-p1.13.mts
+@@ -276,7 +276,6 @@ async function runStatic(): Promise<void> {
+     };
+     need("PosSale", "taxInvoice", /^taxInvoice\s+Json\?(\s|$)/, "Json?");
+     need("PosSale", "taxInvoiceDocId", /^taxInvoiceDocId\s+String\?(\s|$)/, "String?");
+-    need("PosTaxInvoiceRequest", "issuedDocId", /^issuedDocId\s+String\?(\s|$)/, "String?");
+     need("AccountDocument", "supersededByDocId", /^supersededByDocId\s+String\?(\s|$)/, "String?");
+     const prof = prismaBlock(schemaSrc, "model", "PosBuyerProfile");
+     if (!prof) p.push("ไม่มี model PosBuyerProfile");
+@@ -289,12 +288,12 @@ async function runStatic(): Promise<void> {
+       if (!/@updatedAt\b/.test(fieldLine(prof, "updatedAt"))) p.push("PosBuyerProfile.updatedAt ไม่ใช่ @updatedAt");
+       if (!/@@index\(\s*\[\s*tenantId\s*,\s*taxId\s*\]/.test(prof)) p.push("PosBuyerProfile ไม่มี @@index([tenantId, taxId])");
+     }
+-    const files = walk("prisma/migrations", [], /\.sql$/).filter((f) => /"PosBuyerProfile"|ADD\s+COLUMN\s+"(taxInvoice|taxInvoiceDocId|issuedDocId|supersededByDocId)"/i.test(rd(f)));
++    const files = walk("prisma/migrations", [], /\.sql$/).filter((f) => /"PosBuyerProfile"|ADD\s+COLUMN\s+"(taxInvoice|taxInvoiceDocId|supersededByDocId)"/i.test(rd(f)));
+     if (!files.length) p.push("ไม่มี migration ที่แตะ PosBuyerProfile / taxInvoice / taxInvoiceDocId / issuedDocId / supersededByDocId");
+     const all = files.map((f) => rd(f).replace(/--.*$/gm, "")).join("\n");
+     if (files.length) {
+       if (!/CREATE\s+TABLE\s+"PosBuyerProfile"/i.test(all)) p.push('ไม่มี CREATE TABLE "PosBuyerProfile"');
+-      for (const [t, c] of [["PosSale", "taxInvoice"], ["PosSale", "taxInvoiceDocId"], ["PosTaxInvoiceRequest", "issuedDocId"], ["AccountDocument", "supersededByDocId"]] as const)
++      for (const [t, c] of [["PosSale", "taxInvoice"], ["PosSale", "taxInvoiceDocId"], ["AccountDocument", "supersededByDocId"]] as const)
+         if (!new RegExp(`ALTER\\s+TABLE\\s+"${t}"[^;]*ADD\\s+COLUMN\\s+"${c}"`, "i").test(all)) p.push(`ไม่มี ${t} ADD COLUMN "${c}"`);
+       if (!/CREATE\s+UNIQUE\s+INDEX[^;]*ON\s+"PosBuyerProfile"\s*\(\s*"customerId"\s*\)/i.test(all)) p.push("ไม่มี unique index PosBuyerProfile(customerId)");
+     }
+@@ -595,7 +594,7 @@ const COL = {
+   sup: dbCols.has("AccountDocument.supersededByDocId"),
+   prof: dbCols.has("PosBuyerProfile.customerId"),
+ };
+-for (const [k, lbl] of [["snap", "PosSale.taxInvoice"], ["docId", "PosSale.taxInvoiceDocId"], ["issued", "PosTaxInvoiceRequest.issuedDocId"], ["sup", "AccountDocument.supersededByDocId"], ["prof", "ตาราง PosBuyerProfile"]] as const)
++for (const [k, lbl] of [["snap", "PosSale.taxInvoice"], ["docId", "PosSale.taxInvoiceDocId"], ["sup", "AccountDocument.supersededByDocId"], ["prof", "ตาราง PosBuyerProfile"]] as const)
+   if (!COL[k]) skipReasons.push(`ฐาน QC4 ยังไม่มี ${lbl}`);
+ 
+ const COUNT_MODELS = ["posSale", "posSaleLine", "posPayment", "posShift", "posDevice", "posTaxInvoiceRequest", "outboxEvent", "auditLog", "customer", "accountDocument", "accountContact", "accountJournalEntry"] as const;
+@@ -1190,7 +1189,7 @@ async function runDb() {
+   const rqQ2 = await reqOf("bQ2", { ...REQ_Q });
+   const rqQ3 = await reqOf("bQ3", { ...REQ_Q });
+   await drain();
+-  const NQ = NEED([M.fromReq, "issueFromTaxInvoiceRequest"], [M.reject, "rejectTaxInvoiceRequest"]) + NCOL("issued", "snap", "docId", "sup") + (rqQ && rqQ2 && rqQ3 ? "" : "คำขอตั้งต้นล้ม · ");
++  const NQ = NEED([M.fromReq, "issueFromTaxInvoiceRequest"], [M.reject, "rejectTaxInvoiceRequest"]) + NCOL("snap", "docId", "sup") + (rqQ && rqQ2 && rqQ3 ? "" : "คำขอตั้งต้นล้ม · ");
+   {
+     const p: string[] = [];
+     const abb0 = await abbOf(B.bQ!.id);
+@@ -1200,8 +1199,7 @@ async function runDb() {
+     if (!ti) p.push("ไม่มี TAX_INVOICE");
+     const q = await reqRow(rqQ);
+     if (q?.status !== "ISSUED") p.push(`คำขอ ${q?.status} (คาด ISSUED)`);
+-    if (!ti || q?.issuedDocId !== ti.id) p.push(`issuedDocId ${short(q?.issuedDocId, 30)} (คาด ${ti?.id})`);
+-    if (q && q.accountDocId !== null && q.accountDocId !== ti?.id) p.push(`accountDocId ${q.accountDocId}`);
++    if (!ti || q?.accountDocId !== ti.id) p.push(`accountDocId ${short(q?.accountDocId, 30)} (คาด ${ti?.id} · มติ 8)`);
+     const st = await saleTax(B.bQ!.id);
+     snapOk(st.snap, { kind: "JURISTIC", ...REQ_Q }, p, "bQ");
+     if (ti) {
