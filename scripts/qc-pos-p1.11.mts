@@ -241,7 +241,7 @@ const F = {
   service: `${POS_DIR}/service.ts`,
   bridges: "src/lib/pos-receipt-bridges.ts",
   consumers: "src/lib/outbox-consumers.ts",
-  page: "src/app/r/[token]/page.tsx",
+  page: "src/app/(store)/r/[token]/page.tsx", // ORACLE-EDIT (controller · ST6): หน้า /r/[token] อยู่ในกลุ่ม (store) ของบัญชีอยู่แล้ว
 };
 /** ฟังก์ชันใหม่ของใบนี้ — ข้อสอบหาในไฟล์ใดก็ได้ของ pub/issue/send (+ ตัวรับ event ใน bridges/issue) */
 const NEW_FNS = ["publicReceipt", "ensureReceiptToken", "requestFullTaxInvoice", "submitReceiptReview", "reportReceiptIssue", "sendReceipt"] as const;
