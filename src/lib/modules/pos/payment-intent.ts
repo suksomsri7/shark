@@ -538,7 +538,7 @@ export async function consumeSaleIntents(tx: Tx, s: { tenantId: string; unitId: 
   const upd = await tx.posPaymentIntent.updateMany({ where: { id: { in: ids }, tenantId: s.tenantId, unitId: s.unitId, status: "PAID" }, data: { status: "CONSUMED", saleId } });
   if (upd.count !== ids.length) throw new Error(`INTENT_CONSUMED: ใช้ intent ได้ ${upd.count}/${ids.length}`);
   for (const [id, note] of notes) {
-    const p = await tx.posPayment.updateMany({ where: { tenantId: s.tenantId, saleId, reference: id }, data: { note } });
+    const p = await tx.posPayment.updateMany({ where: { tenantId: s.tenantId, saleId, reference: id, type: { in: ["PROMPTPAY", "CARD"] } }, data: { note } });
     if (p.count !== 1) throw new Error(`INTERNAL: แถวชำระเงินที่อ้าง ${id} = ${p.count}`);
   }
 }

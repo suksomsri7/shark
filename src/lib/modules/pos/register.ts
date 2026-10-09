@@ -1387,6 +1387,8 @@ function regParseSubmit(raw: unknown): RegParsedSubmit | RegisterRefusal {
     if (p.reference !== undefined && p.reference !== null) {
       // POS P1.7 ▸ พร้อมเพย์รับเลขอ้างอิงได้เฉพาะ id ใบขอรับเงิน (pi_…) · อื่น ๆ = VALIDATION เหมือน P1.6 ◂
       if (p.type !== "CARD" && p.type !== "TRANSFER" && !(p.type === "PROMPTPAY" && isPaymentIntentId(p.reference))) return regRefuse("VALIDATION", "เลขอ้างอิงใส่ได้เฉพาะบัตรและโอน");
+      // POS P1.7 fix F1a ▸ id ใบขอรับเงิน (pi_…) ใช้ได้กับพร้อมเพย์/บัตรเท่านั้น — บนโอน = VALIDATION (กันอ้าง intent ซ้อนในบิลเดียว) ◂
+      if (p.type !== "PROMPTPAY" && p.type !== "CARD" && isPaymentIntentId(p.reference)) return regRefuse("VALIDATION", "เลขอ้างอิงนี้ใช้ได้กับพร้อมเพย์/บัตรเท่านั้น");
       if (typeof p.reference !== "string" || p.reference.length > REGISTER_REFERENCE_MAX || !regCleanText(p.reference)) return regRefuse("VALIDATION", "เลขอ้างอิงไม่ถูกต้อง");
       reference = p.reference.trim() || null;
     }
@@ -1706,10 +1708,12 @@ async function regSubmitWithIntents(
         async (tx) => {
           const locked = await lockSaleIntents(tx, s, refs);
           if (!locked.ok) throw new RegIntentRefusal(regRefuse(locked.code));
+          // fix F1b ▸ ตัดสินจากตัวบิล: ถือล็อกคีย์เดียวกับ createSale (advisory ต่อ ร้าน+คีย์ · ซ้อนในธุรกรรมเดียวได้) แล้วดูว่าบิลของคีย์นี้มีอยู่ก่อนไหม
+          //   ไม่มี = บิลที่ createSale สร้างในธุรกรรมนี้ ⇒ ใช้ intent · มีแล้ว = createSale คืนบิลเดิม (เล่นซ้ำ) ⇒ ไม่แตะ intent ◂
+          await tx.$queryRaw`SELECT 1 AS x FROM (SELECT pg_advisory_xact_lock(hashtext(${saleInput.tenantId}::text || ':' || ${saleInput.idempotencyKey}::text))) l`;
+          const existed = await tx.posSale.findUnique({ where: { tenantId_idempotencyKey: { tenantId: saleInput.tenantId, idempotencyKey: saleInput.idempotencyKey } }, select: { id: true } });
           const r = await regCreateSale(saleInput, tx);
-          // createSale คืนบิลเดิมของคีย์นี้ได้ (บิลที่ไม่ได้อ้าง intent ชุดนี้ commit ไปก่อน) ⇒ ใช้ intent เฉพาะเมื่อบิลนี้อ้างครบทุกใบ
-          const linked = await tx.posPayment.count({ where: { tenantId: s.tenantId, saleId: r.saleId, reference: { in: [...locked.notes.keys()] } } });
-          if (linked === locked.notes.size) await consumeSaleIntents(tx, s, r.saleId, locked.notes);
+          if (!existed) await consumeSaleIntents(tx, s, r.saleId, locked.notes);
           return r.saleId;
         },
         { timeout: 20_000, maxWait: 10_000 },
