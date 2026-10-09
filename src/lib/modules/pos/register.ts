@@ -1461,7 +1461,7 @@ export async function quoteRegisterCartWithCap(ctx: RegisterCtx, actor: Register
   });
 }
 
-const REG_OVERRIDE_KEYS: ReadonlySet<string> = new Set(["cart", "managerPin", "managerUserId", "heldCartId", "idempotencyKey"]);
+const REG_OVERRIDE_KEYS: ReadonlySet<string> = new Set(["cart", "staffToken", "managerPin", "managerUserId", "heldCartId", "idempotencyKey"]);
 /**
  * POS P1.12U fix รอบ 1 (F1) — quote ของจอสำหรับตะกร้าที่มีสิทธิ์เกินเพดาน (PIN ผู้จัดการที่เตรียมไว้ · บิลพักที่อนุมัติแล้ว) — อ่านอย่างเดียว:
  *   quote ปกติก่อน (เพดานของผู้ขาย) ⇒ ไม่ใช่ DISCOUNT_EXCEEDS_LIMIT = คืนตามนั้นทุกไบต์ · เป็น = ตัดสินเพดานด้วย regResolveOverrideCap (①/② ชุดเดียวกับ submit)
@@ -1469,15 +1469,20 @@ const REG_OVERRIDE_KEYS: ReadonlySet<string> = new Set(["cart", "managerPin", "m
  *   ปฏิเสธ: VALIDATION (คีย์แปลก · ชนิดผิด · PIN ไม่มีผู้จัดการ · คีย์บิลผิดรูป) · PIN_INVALID/PIN_LOCKED/DEVICE_REVOKED (verifyManagerPin — นับผิดเหมือน submit) ·
  *   APPROVAL_MISMATCH · DISCOUNT_EXCEEDS_LIMIT (ไม่มีสิทธิ์/สิทธิ์ไม่ครอบ/อนุมัติถูกใช้แล้ว) · รหัสอื่นของ quote ปกติ
  *   ไม่มีผลข้างเคียงของ ③/④: ไม่พักบิล ไม่ยื่นคำขอ ไม่ cancelOpenPosRequest ไม่ยึดสิทธิ์ ไม่ audit pos.discount.override
+ *   fix รอบ 2 (F1): staffToken = ผู้กระทำแบบเดียวกับ submitRegisterSale (ตรวจก่อนคิดราคา · ผิดชนิด/ผิด/หมดอายุ/เครื่องอื่น = STAFF_TOKEN_INVALID ·
+ *   ไม่ถอยไปใช้ผู้ใช้ session) ⇒ เพดานของผู้ขาย + ด่าน "คนพักบิล/pos.sale.manage" ของบิลพักที่อนุมัติ = คนในโทเคน
  */
 export async function quoteRegisterCartOverride(ctx: RegisterCtx, actor: RegisterActor, input: RegisterQuoteOverrideInput, client?: RegDb): Promise<RegisterQuoteResult> {
   return regGuard("quoteRegisterCartOverride", async (): Promise<RegisterQuoteResult> => {
     const db: RegDb = client ?? prisma;
-    const s = await regScope(db, ctx, actor);
-    if (isRegRefusal(s)) return s;
+    const s0 = await regScope(db, ctx, actor);
+    if (isRegRefusal(s0)) return s0;
     const deviceId = regDeviceOf(ctx);
     if (deviceId === false) return regRefuse("VALIDATION", "รหัสเครื่องไม่ถูกต้อง");
     if (!regIsRecord(input) || !regOnlyKeys(input, REG_OVERRIDE_KEYS)) return regRefuse("VALIDATION");
+    // fix รอบ 2 (F1): โทเคนผู้ขาย — ตัวตรวจชนิดเดียวกับ regParseSubmit (ผิดชนิด = STAFF_TOKEN_INVALID)
+    const staffToken = regOptStr(input.staffToken, 1000);
+    if (staffToken === undefined) return regRefuse("STAFF_TOKEN_INVALID");
     const auth = regParseOverrideAuth(input);
     if (isRegRefusal(auth)) return auth;
     let idempotencyKey = "";
@@ -1487,6 +1492,14 @@ export async function quoteRegisterCartOverride(ctx: RegisterCtx, actor: Registe
     }
     const cart = regParseCart(input.cart, REG_QUOTE_KEYS);
     if (isRegRefusal(cart)) return cart;
+    // fix รอบ 2 (F1): ผู้ขาย = คนในโทเคน เหมือน submitRegisterSale (R3 ของ P1.15) — ตรวจก่อนคิดราคา · ไม่ส่งโทเคน = ผู้ใช้ session เหมือนเดิม
+    let s: RegScope = s0;
+    if (staffToken !== null) {
+      const ta = deviceId ? await staffActorFromToken({ tenantId: s0.tenantId, unitId: s0.unitId, deviceId }, staffToken, db) : null;
+      const st = ta ? await regScope(db, ctx, ta) : null;
+      if (!st || isRegRefusal(st)) return regRefuse("STAFF_TOKEN_INVALID");
+      s = st;
+    }
     // quote ปกติ (ตัวเดียวกับ quoteRegisterCart) — ไม่เกินเพดานของผู้ขาย = ไม่แตะ PIN/บิลพักเลย
     const p = await regPrice(db, s, cart);
     if (!isRegRefusal(p)) return { ok: true, ...p.quote };

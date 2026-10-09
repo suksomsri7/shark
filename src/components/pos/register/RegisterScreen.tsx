@@ -858,16 +858,27 @@ export function RegisterScreen(props: RegisterScreenProps) {
   // ═══════ POS P1.12U fix รอบ 1 (F1 · F9) ▸ ตะกร้าที่มีสมาชิก/คูปอง + สิทธิ์เกินเพดาน (PIN ผู้จัดการที่เตรียมไว้ · บิลพักที่อนุมัติแล้ว) ═══════
   //   ยอดในเครื่องใช้ไม่ได้ (มติ 1) ⇒ quote ฝั่งเซิร์ฟเวอร์ด้วยสิทธิ์นั้น (quoteRegisterCartOverrideAction · อ่านอย่างเดียว · ทางเดียวกับ quote ปกติ ⇒
   //   quote/สิทธิ์ที่เลือก/totalsPending/PRICE_CHANGED ทำงานเหมือนเดิม) · ไม่มีสมาชิก/คูปอง = ทาง P1.15U เดิม (localQuote / quote ที่เรียกคืน) ◂
+  //   P1.12U fix รอบ 2 F3: บิลที่อนุมัติแล้ว + ตะกร้าถูกแก้ (inputJson ไม่ตรง) = ไม่ส่ง override quote (quote ปกติ ⇒ การ์ดส่วนลดเกินสิทธิ์) · คง discAuth/heldCartId ไว้ —
+  //   แก้กลับเป็นตะกร้าเดิม = override quote ด้วยเพดานที่อนุมัติอีกครั้ง · ทิ้งสิทธิ์เฉพาะตอน submit ตอบ APPROVAL_MISMATCH (เหมือนตะกร้าไม่มีสมาชิกของ P1.15U)
   const overrideAuthOf = (c: RegisterCart, a: DiscountAuth | null): { managerPin?: string; managerUserId?: string; heldCartId?: string } | null =>
     !a || !(c.memberId || c.couponCode)
       ? null
       : a.kind === "pin"
         ? { managerPin: a.managerPin, managerUserId: a.managerUserId, ...(a.heldCartId ? { heldCartId: a.heldCartId } : {}) }
-        : { heldCartId: a.heldCartId };
-  const overrideKey = `${JSON.stringify(overrideAuthOf(cart, discAuth))}|${idemKey}`;
-  /** override quote ถูกปฏิเสธ: PIN ผิด/ล็อก = ปลด PIN + ข้อความ · อนุมัติไม่ตรง/ไม่ครอบ/ใช้แล้ว = ทิ้งสิทธิ์ (เหมือนทาง submit) ⇒ quote ปกติตัดสินต่อ */
+        : a.inputJson === JSON.stringify(cartToQuoteInput(c, { choices: false }))
+          ? { heldCartId: a.heldCartId }
+          : null;
+  // P1.12U fix รอบ 2 F1: override quote พกโทเคนผู้ขาย ⇒ โทเคนล่าสุดที่ไม่ว่างเป็นส่วนของคีย์ — ปลดล็อกได้โทเคนใหม่ = quote ใหม่ (ไม่ค้าง STAFF_TOKEN_INVALID) ·
+  //   โทเคนตาย/ล็อก (staff = null) ไม่รันซ้ำ (ไม่ quote ด้วยผู้ใช้ session แล้วทิ้งสิทธิ์ระหว่างจอล็อก)
+  const ovTokenRef = useRef("");
+  if (staff) ovTokenRef.current = staff.staffToken;
+  const ovAuthNow = overrideAuthOf(cart, discAuth);
+  const overrideKey = `${JSON.stringify(ovAuthNow)}|${idemKey}|${ovAuthNow ? ovTokenRef.current : ""}`;
+  /** override quote ถูกปฏิเสธ: PIN ผิด/ล็อก = ปลด PIN + ข้อความ · อนุมัติไม่ตรง/ไม่ครอบ/ใช้แล้ว = ทิ้งสิทธิ์ (เหมือนทาง submit) ⇒ quote ปกติตัดสินต่อ ·
+   *  P1.12U fix รอบ 2 F1: โทเคนผู้ขายตาย = ลบโทเคน + ล็อก (เหมือนทุกคำขอที่พกโทเคน) */
   const onOverrideRefused = (code: string) => {
-    if (code === "PIN_INVALID" || code === "PIN_LOCKED") {
+    if (code === "STAFF_TOKEN_INVALID") staffTokenDead();
+    else if (code === "PIN_INVALID" || code === "PIN_LOCKED") {
       setDiscAuth(null);
       showToast(errorFor(code));
     } else if (code === "APPROVAL_MISMATCH" || code === "DISCOUNT_EXCEEDS_LIMIT") {
@@ -886,6 +897,9 @@ export function RegisterScreen(props: RegisterScreenProps) {
     const ver = cartVer;
     const seq = ++quoteSeq.current;
     const ov = overrideAuthOf(cart, discAuth);
+    // P1.12U fix รอบ 2 F2: รันซ้ำในรุ่นตะกร้าเดิม = สิทธิ์เกินเพดานเปลี่ยน (ถูกทิ้ง/ถูกปฏิเสธ/เพิ่งเตรียม) ⇒ ยอดเดิมของรุ่นนี้ใช้ไม่ได้แล้ว —
+    //   ล้างทันที (ปุ่มชำระปิดจนกว่า quote ใหม่ตอบ · เหมือน P1.15U) ไม่ค้างยอดราคาผู้จัดการไว้โดยไม่มีสิทธิ์
+    setQuote((q) => (q?.ver === ver ? null : q));
     setQuoteSlow(false);
     const slow = setTimeout(() => {
       if (seq === quoteSeq.current) setQuoteSlow(true);
@@ -893,7 +907,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
     const id = setTimeout(async () => {
       try {
         const r = ov
-          ? await quoteRegisterCartOverrideAction({ systemId, unitId, deviceId: getPosDeviceId(), cart: cartToQuoteInput(cart), ...ov, idempotencyKey: idemKey })
+          ? await quoteRegisterCartOverrideAction({ systemId, unitId, deviceId: getPosDeviceId(), ...tokenArgs(), cart: cartToQuoteInput(cart), ...ov, idempotencyKey: idemKey }) // P1.12U fix รอบ 2 F1: + โทเคนผู้ขาย
           : await quoteRegisterCartAction({ systemId, unitId, cart: cartToQuoteInput(cart) });
         if (seq !== quoteSeq.current) return;
         if (r.ok) {

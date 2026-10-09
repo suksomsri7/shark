@@ -130,7 +130,7 @@ export async function quoteRegisterCartOverrideAction(args: Target & RegisterQuo
     if ("ok" in s) return s;
     const a = (args ?? {}) as Partial<RegisterQuoteOverrideInput>;
     const input: Record<string, unknown> = { cart: a.cart };
-    for (const k of ["managerPin", "managerUserId", "heldCartId", "idempotencyKey"] as const) if (a[k] !== undefined) input[k] = a[k];
+    for (const k of ["staffToken", "managerPin", "managerUserId", "heldCartId", "idempotencyKey"] as const) if (a[k] !== undefined) input[k] = a[k];
     return await quoteRegisterCartOverride(s.ctx, s.actor, input as RegisterQuoteOverrideInput);
   } catch (e) {
     return unexpected("quoteRegisterCartOverrideAction", e);
