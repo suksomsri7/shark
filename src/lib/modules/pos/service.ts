@@ -320,6 +320,34 @@ async function bindSaleShift(tx: Client, input: CreateSaleInput): Promise<string
   return open.length === 1 ? open[0]!.id : null; // 2+ ลิ้นชักเปิดอยู่ = ไม่เดา (นอกกะ · O24)
 }
 
+/** POS P1.12: บรรทัดที่ส่งเข้ากระเป๋าสิทธิ์ (ราคาต่อหน่วย · จำนวน · ส่วนลดบรรทัด — ส่วนลดท้ายบิลไม่อยู่ในตะกร้าของกระเป๋า · CD6) */
+export type SaleWalletLine = { name: string; qty: number; unitPriceSatang: number; discountSatang?: number; itemId?: string | null; serviceId?: string | null };
+/** POS P1.12: ตะกร้าของกระเป๋าสิทธิ์ (รูป WalletCart ของ member facade) */
+export type SaleWalletCart = {
+  unitId: string;
+  couponCode: string | null;
+  lines: { name: string; qty: number; unitPriceSatang: number; discountSatang: number; itemId: string | null; serviceId: string | null }[];
+};
+/**
+ * POS P1.12 (R6) — ตัวช่วยบริสุทธิ์ตัวเดียวที่แปลงบรรทัดบิลเป็นตะกร้าของ `member.applyOnSale` / `member.quoteApply`:
+ * createSale (ตัดจริงในtx) และ quote ของหน้าขาย (ยอดบนจอ) เรียกตัวนี้ทั้งคู่ ⇒ ฐานส่วนลดระดับ/ว่อชเชอร์/แต้มตรงกันเสมอ
+ * (ส่วนลดบรรทัดอยู่ในบรรทัด · ส่วนลดท้ายบิลไม่อยู่ = ฐานระดับก่อนลดท้ายบิล · CD6 · couponCode ใช้แค่กติกากันซ้อน voucher)
+ */
+export function saleWalletCart(lines: readonly SaleWalletLine[], unitId: string, couponCode: string | null | undefined): SaleWalletCart {
+  return {
+    unitId,
+    couponCode: couponCode ?? null,
+    lines: lines.map((l) => ({
+      name: l.name,
+      qty: l.qty,
+      unitPriceSatang: l.unitPriceSatang,
+      discountSatang: l.discountSatang ?? 0,
+      itemId: l.itemId ?? null,
+      serviceId: l.serviceId ?? null,
+    })),
+  };
+}
+
 type MemberFacade = typeof import("@/lib/modules/member");
 type AppliedRights = Awaited<ReturnType<MemberFacade["applyOnSale"]>>;
 
@@ -555,20 +583,10 @@ async function createSaleOnce(input: CreateSaleInput, client: Client, ownsTx: bo
             customerId,
             unitId: input.unitId,
             choices: ch,
-            cart: {
-              unitId: input.unitId,
-              // ส่งโค้ดคูปองไปด้วยเพื่อให้กติกา "ห้ามใช้ voucher ซ้อนคูปอง" ตัดสินได้ (§11.5)
-              // — ตัวส่วนลดคูปองยังเป็นของ POS เหมือนเดิม (หักออกจากยอดสิทธิ์ด้านล่าง ไม่นับซ้ำ)
-              couponCode: hasCoupon ? input.couponCode : null,
-              lines: lines.map((l) => ({
-                name: l.name,
-                qty: l.qty,
-                unitPriceSatang: l.unitPriceSatang,
-                discountSatang: l.discountSatang,
-                itemId: l.itemId ?? null,
-                serviceId: l.serviceId ?? null,
-              })),
-            },
+            // ส่งโค้ดคูปองไปด้วยเพื่อให้กติกา "ห้ามใช้ voucher ซ้อนคูปอง" ตัดสินได้ (§11.5)
+            // — ตัวส่วนลดคูปองยังเป็นของ POS เหมือนเดิม (หักออกจากยอดสิทธิ์ด้านล่าง ไม่นับซ้ำ)
+            // POS P1.12 ▸ ตะกร้าของกระเป๋าสร้างด้วยตัวช่วยเดียวกับ quote ของหน้าขาย (saleWalletCart) — ยอดบนจอ = ยอดที่ตัดจริง ◂
+            cart: saleWalletCart(lines, input.unitId, hasCoupon ? input.couponCode : null),
           },
           tx as Prisma.TransactionClient,
         ),

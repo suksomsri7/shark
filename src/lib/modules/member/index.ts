@@ -104,6 +104,7 @@ export type {
   WalletDto,
   WalletVoucherDto,
   WalletCouponDto,
+  UnitPointsDto,
   QuoteKind,
   QuoteLine,
   QuoteConflict,
@@ -121,6 +122,8 @@ export {
   applyOnSale,
   /** POS P1.3 ▸ ส่วนลดอัตโนมัติ (ระดับ) ที่ applyOnSale จะหักให้บิลนี้ — อ่านอย่างเดียว ◂ */
   automaticDiscountForSale,
+  /** POS P1.12 ▸ ยอดแต้ม + กติกาใช้แต้มของระบบแต้มที่ผูกสาขา (อ่านอย่างเดียว · ใบเสร็จ/แผงสิทธิ์ของหน้าขาย) ◂ */
+  pointBalanceForUnit,
   /** บิลถูกยกเลิก → คืนสิทธิ์ทุกชนิด (idempotent) */
   releaseOnVoid,
   /** ลำดับการใช้สิทธิ์ที่หน้าจอเอาไปโชว์เป็นชิปได้ตรง ๆ */
@@ -417,6 +420,9 @@ export {
 // KPI หน้ารวมสมาชิก (M1.5) — M3.4 เติม `reviewAvg` เป็นค่าจริงแล้ว · `memberKpis` = ชื่อที่สัญญา M3.4 เรียก
 export type { MemberKpis } from "./list";
 export { getMemberKpis, getMemberKpis as memberKpis } from "./list";
+// POS P1.12 ▸ ค้นสมาชิกที่หน้าขาย (R2) ผ่านตัวค้นเดียวกับหน้ารวมสมาชิก (ขอบเขตสาขา · ไม่มี MERGED · เบอร์ปิดบัง) — เพิ่ม export ล้วน ◂
+export type { ListMembersOptions, ListMembersResult, MemberListRow } from "./list";
+export { listMembers } from "./list";
 
 // ── แนะนำเพื่อน (M3.5 · D6 §4.3 §5.10 §7.1 §11.7 · ภาพ 24 · 08 ขวา) ──
 // 🔴 ชื่อที่ export ออกนอกโมดูลมีคำว่า referral กำกับ (ชื่อสั้นในไฟล์ `reject`/`stats`/`attach` ชนง่าย)

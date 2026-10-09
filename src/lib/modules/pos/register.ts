@@ -411,7 +411,7 @@ export async function posLinkSaleToDeal(tenantId: string, actor: MemberActor, in
 //    ส่วนลดเกินเพดาน/เกินยอด = ปฏิเสธ · บิลจริงเดินผ่าน createSale เดิม (ตัดสต็อก · บัญชี · แต้ม · outbox เหมือนวันนี้ทุกประการ)
 import { Prisma, type PosProduct, type PrismaClient } from "@prisma/client";
 import { canAccessUnit, evaluate, permissionValue } from "@/lib/core/rbac";
-import { createSale, PosSaleError, type CreateSaleInput } from "./service";
+import { createSale, PosSaleError, saleWalletCart, type CreateSaleInput, type SaleWalletCart } from "./service";
 // POS P1.7 ▸ ใบขอรับเงิน (pi_…) ใช้ในธุรกรรมขายของหน้าขาย · งานหลัง commit ชุดเดียวกับ createSale (ตัดสต็อก + ระบายคิว · มติ I) ◂
 import { consumeSaleInventory } from "./service";
 import { consumeSaleIntents, lockSaleIntents, type SaleIntentRef } from "./payment-intent";
@@ -546,6 +546,19 @@ const REG_MESSAGE: Record<RegisterRefusalCode, string> = {
   // POS P1.13 ▸ ผู้ซื้อของใบกำกับเต็มรูป ◂
   TAX_ID_INVALID: TAX_INVOICE_MESSAGES.TAX_ID_INVALID,
   NOT_ELIGIBLE: "ร้านนี้ยังออกใบกำกับภาษีไม่ได้ · ตรวจการเชื่อมบัญชี/เลขผู้เสียภาษี",
+  // POS P1.12 ▸ สมาชิกที่ตะกร้า + สิทธิ์ที่จอชำระ (R16) ◂
+  MEMBER_SYSTEM_MISSING: "สาขานี้ยังไม่ได้เปิดใช้ระบบสมาชิก — ขายแบบไม่แนบสมาชิก",
+  MEMBER_SUSPENDED: "สมาชิกคนนี้ถูกระงับอยู่ — ใช้สิทธิ์สมาชิกกับบิลนี้ไม่ได้ ขายแบบไม่แนบสมาชิก",
+  PHONE_INVALID: "เบอร์โทรไม่ถูกต้อง — กรอกเบอร์ 9–10 หลัก เช่น 0812345678",
+  VOUCHER_INVALID: "ว่อชเชอร์ใบนี้ใช้กับบิลนี้ไม่ได้",
+  VOUCHER_COUPON_CONFLICT: "ว่อชเชอร์ใบนี้ใช้ร่วมกับคูปองไม่ได้ — เลือกอย่างใดอย่างหนึ่ง",
+  COUPON_INVALID: "คูปองนี้ใช้กับบิลนี้ไม่ได้",
+  POINTS_DISABLED: "สาขานี้ยังไม่ได้เปิดใช้ระบบแต้ม — ใช้แต้มแลกส่วนลดไม่ได้",
+  POINTS_BELOW_MIN: "แต้มที่ใช้ยังไม่ถึงขั้นต่ำของร้าน",
+  POINTS_INSUFFICIENT: "แต้มคงเหลือของสมาชิกไม่พอ",
+  POINTS_CAPPED: "ใช้แต้มเกินเพดานต่อบิลของร้าน — ปรับจำนวนแต้มตามที่ระบบแนะนำ",
+  BENEFITS_EXCEED_TOTAL: "ส่วนลดรวมมากกว่ายอดบิล — ลดส่วนลดหรือสิทธิ์ที่เลือกก่อน",
+  MEMBER_RIGHTS_CHANGED: "สิทธิ์ของสมาชิกเพิ่งเปลี่ยน (อาจถูกใช้กับบิลอื่น) — ตรวจยอดใหม่แล้วชำระอีกครั้ง ยังไม่ได้เก็บเงิน",
 };
 const REG_ROLE_LABEL: Record<RegisterRole, string> = { OWNER: "เจ้าของร้าน", MANAGER: "ผู้จัดการ", STAFF: "แคชเชียร์" };
 
@@ -553,6 +566,10 @@ function regRefuse(code: RegisterRefusalCode, message?: string, lineIndex?: numb
   return lineIndex === undefined ? { ok: false, code, message: message ?? REG_MESSAGE[code] } : { ok: false, code, message: message ?? REG_MESSAGE[code], lineIndex };
 }
 const isRegRefusal = (v: unknown): v is RegisterRefusal => !!v && typeof v === "object" && (v as { ok?: unknown }).ok === false;
+/** POS P1.12: คำปฏิเสธชุดข้อความเดียวกับหน้าขาย (register-member.ts ใช้ — MEMBER_NOT_FOUND ข้อความเดียวทุกทาง · 404-not-403) */
+export function registerRefuse(code: RegisterRefusalCode, message?: string): RegisterRefusal {
+  return regRefuse(code, message);
+}
 const regIsRecord = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
 const regIsMoney = (v: unknown): v is number => typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= PRICE_MAX_SATANG;
 
@@ -1197,16 +1214,20 @@ async function regPrice(
   pay?: PosPaymentSettings,
   /** POS P1.15: เพดานที่ใช้แทนของผู้ขาย (PIN ผู้จัดการ · ส่วนลดที่อนุมัติ · null = ไม่จำกัด) — ไม่ส่ง = เพดานของ s.actor ตามค่าตั้ง */
   maxBp?: number | null,
+  /** POS P1.12: display = คิดราคาเพื่อแสดงสิทธิ์อย่างเดียว (registerBenefitsCart · ไม่ขาย) — ข้ามด่านสิทธิ์ราคาเอง */
+  opts: { display?: boolean } = {},
 ): Promise<{ quote: RegisterQuoteTotals; resolved: RegResolvedLine[] } | RegisterRefusal> {
   // Q8: รายการกำหนดเอง / ราคาเปิด ต้องมี pos.sale.priceOverride (OWNER/MANAGER ได้ตามบทบาท · STAFF ต้องได้รับ)
   // P1.2 R12 (มติ P4): กรอกน้ำหนักเอง = ตั้งราคาเอง (กันโกงตาชั่ง) · สแกนป้ายชั่งไม่ต้องมีสิทธิ์
   const needOverride = cart.lines.findIndex((l) => l.kind === "custom" || l.openPrice !== null || l.weightGrams !== null);
-  if (needOverride >= 0 && !evaluate(s.actor, { module: "pos", action: "pos.sale.priceOverride", unitId: s.unitId })) {
+  if (!opts.display && needOverride >= 0 && !evaluate(s.actor, { module: "pos", action: "pos.sale.priceOverride", unitId: s.unitId })) {
     return regRefuse("PERMISSION_DENIED", "ต้องมีสิทธิ์ตั้งราคาเอง — ให้ผู้จัดการทำรายการนี้", needOverride);
   }
+  // POS P1.12 ▸ R1: สมาชิกของบิล = ร้านเดียวกัน + ระบบสมาชิกของสาขา + ยังใช้งาน (เดิมตรวจแค่ร้าน) — ระบบอื่น/รวมแล้ว/ลบแล้ว/ไม่มีจริง =
+  //   MEMBER_NOT_FOUND (404-not-403) · ระงับ = MEMBER_SUSPENDED · สาขาไม่มีระบบสมาชิก = MEMBER_SYSTEM_MISSING ◂
   if (cart.memberId) {
-    const c = await db.customer.findFirst({ where: { id: cart.memberId, tenantId: s.tenantId }, select: { id: true } });
-    if (!c) return regRefuse("MEMBER_NOT_FOUND");
+    const g = await (await import("./register-member")).registerMemberGate({ tenantId: s.tenantId, unitId: s.unitId, actor: s.actor }, cart.memberId);
+    if (isRegRefusal(g)) return g;
   }
   const wantIds = [...new Set(cart.lines.flatMap((l) => (l.kind === "product" ? [l.productId] : [])))];
   const visibleIds = wantIds.length
@@ -1407,6 +1428,21 @@ export function registerCanonicalCart(raw: unknown): RegisterQuoteInput | Regist
     };
   });
   return { lines, ...(c.billDiscount ? { billDiscount: { ...c.billDiscount } } : {}), ...(c.memberId ? { memberId: c.memberId } : {}) };
+}
+
+/**
+ * POS P1.12 (R5) — ตะกร้าของหน้าขาย → ตะกร้าของกระเป๋าสิทธิ์ (saleWalletCart) สำหรับแผงสิทธิ์ (registerMemberBenefits · อ่านอย่างเดียว):
+ * ด่านขอบเขต/สิทธิ์ขายเดียวกับ quote · ราคาจาก DB ชุดเดียวกับ quote · ไม่ตรวจสิทธิ์ราคาเอง/เพดานส่วนลด/สมาชิก/สิทธิ์ที่เลือก (ใช้แสดงสิทธิ์เท่านั้น ไม่ขาย)
+ */
+export async function registerBenefitsCart(ctx: RegisterCtx, actor: RegisterActor, raw: unknown, client?: RegDb): Promise<{ ok: true; cart: SaleWalletCart } | RegisterRefusal> {
+  const db: RegDb = client ?? prisma;
+  const s = await regScope(db, ctx, actor);
+  if (isRegRefusal(s)) return s;
+  const cart = regParseCart(raw, REG_QUOTE_KEYS);
+  if (isRegRefusal(cart)) return cart;
+  const p = await regPrice(db, s, { lines: cart.lines, billDiscount: cart.billDiscount, memberId: null }, undefined, null, { display: true });
+  if (isRegRefusal(p)) return p;
+  return { ok: true, cart: saleWalletCart(p.resolved, s.unitId, null) };
 }
 
 /** สินค้าที่ "ยังขายได้ที่สาขานี้" ตาม id (กติกามองเห็นเดียวกับกริด) — จอใช้แสดงชื่อ/ราคาบรรทัดที่เรียกคืน · ไม่เจอ = ไม่อยู่ในผล */
