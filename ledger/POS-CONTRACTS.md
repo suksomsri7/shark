@@ -71,10 +71,11 @@ approval.submitForApproval(ctx, { module:'POS', refType:'PosSale'|'PosHeldCart',
 
 ## C-10 ลูกค้า · สมาชิก v2 · CRM
 ```ts
-member.lookup({ tenantId, memberSystemId, q })                  // เบอร์/ชื่อ/รหัส/QR — ≤100ms (index phone) · มี findOrCreate/recordSpend แล้ว
-member.quickRegister({ tenantId, memberSystemId, phone, name, consent, attributionId? })   // สมัครจากหน้าขาย → Customer + MemberConsent + MemberAttribution
-member.benefitsFor({ memberId, unitId })                         // → { tierDiscountBp, vouchers[], stampCards[], giftCards[] } สำหรับจอชำระ
-voucher.quote/redeem/release · giftcard.charge/reverse · stamp.earn/reverse   // ของสมาชิก v2 — POS เรียกใน tx เดียวกับบิล (แบบเดียวกับ coupon 2.3)
+// ⚠️ แก้ 9 ต.ค. 2026 (P1.12 brief §9 Q5) — ชื่อจริงในโค้ด: POS เข้าถึงสิทธิ์สมาชิกผ่าน wallet ของสมาชิก v2 เท่านั้น (`member/wallet.ts` ห้ามเรียก voucher/point/stamp/giftcard ตรง)
+member.listMembers + briefFor + resolveCardToken   // = lookup เบอร์/ชื่อ/รหัส/QR — งบ p95 ≤300ms บน QC (ไม่มี index เบอร์/ชื่อ · normalise ตัวเลข) · POS ห่อเป็น registerMemberLookup
+member.createMember({ source:"POS", consents[], idempotencyKey })   // = quickRegister → Customer + MemberConsent (+ attribution ผ่าน bridge) · POS ห่อเป็น registerQuickMember
+member.getWallet(ctx, customerId, { cart }) + getPointSettings   // = benefitsFor → tier · vouchers(applicable/reason) · points · stamps · giftCards(อ่านอย่างเดียว) · POS ห่อเป็น registerMemberBenefits
+member.quoteApply / applyOnSale(ctx, input, tx) / releaseOnVoid   // = quote · ใช้สิทธิ์ใน tx เดียวกับบิล (createSale มีแล้ว) · คืนสิทธิ์ตอน void/คืนเงิน · แต้ม = ส่วนลด (ไม่ใช่วิธีชำระ) · บัตรของขวัญเป็นวิธีชำระ = P2.9
 crm.onSale (consumer pos.sale.paid เมื่อ CRM เชื่อม): บิล ≥ เกณฑ์ หรือ taxInvoice.taxId เป็นนิติบุคคล → createDeal/ผูก CrmCompany + กิจกรรม "ซื้อหน้าร้าน" บน contact
 crm.creditTerms({ partyId })                                     // ลูกค้าองค์กร: วงเงิน/เครดิตเทอม → payMethod STORE_CREDIT → Account ออกใบแจ้งหนี้
 ```
