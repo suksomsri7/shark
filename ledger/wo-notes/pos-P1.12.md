@@ -156,3 +156,13 @@ Code tip for all gates = `251a01ec` (+ `scripts/pos-sale-contract.json` recorded
 - `qc-hf-pos-page-authz` 0 · 56/56.
 - `pnpm fitness` without env 0 · 41/41 · with QC4 env 0 · 41/41 · `scripts/fitness-pos.mts` 0 · 8/8 (F15.2: + `CreateSaleInput.memberSnapshot?`
   recorded with `--update-pos-contract`).
+
+## HANDOVER (9 Oct)
+- Head before this section: `af6f05ec` (branch `wip/pos-p1.12`, pushed). Tree `/root/projects/shark-pos-b`, clean.
+- Build order: steps 1–4 **done** · step 5 ruled ORACLE-EDITs **done** (V3+ST5 `b9804e00`, p1.3 S3.29+S3.42 `251a01ec`) · fix `a0c96d63` · notes + contract `af6f05ec`. Nothing partial, nothing not started.
+- Migration: `20261202100000_pos_p112_member_snapshot` **deployed on QC4** (ep-frosty-lab) + `prisma generate` in tree b.
+- Oracle: `qc-pos-p1.12` forced ×2 + unforced **63/64** (only X4), residue 0 — logs `scratchpad/p112/runs/final-forced1.log`, `final-forced2.log`, `final-unforced.log`;
+  with proposed X4 edit locally **64/64** (`runs/x4-proposed-forced.log`). Typecheck 0 at code tip `251a01ec`. Other gates: see "Gates" above.
+- Open (controller rulings needed, no oracle edit done by builder): (1) X4 key `pos-refund-<refundId>:<earnId>` — diff `scratchpad/p112/qc-pos-p1.12-X4.proposed.diff`;
+  (2) qc-pos-p1.5 H5 couponCode vs ruling 12 — diff `scratchpad/p112/qc-pos-p1.5-H5.proposed.diff`; (3) qc-member-m2.7/m2.8 crash at fixture in base and branch alike (member-expected.json vs QC4 seed).
+- Next action: controller rules on (1)+(2) → apply each as its own `test(...)` ORACLE-EDIT commit → re-run `qc-pos-p1.12` forced ×2 + unforced (expect 64/64) and `qc-pos-p1.5` (expect 21/21) → review + merge into `session/pos`.
