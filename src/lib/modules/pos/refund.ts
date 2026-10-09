@@ -20,6 +20,9 @@ import { posVatRateBp } from "./service";
 import { isShiftDeviceId, parseShiftSettings, resolveRegisterShift } from "./shift";
 import type { RegisterActor, RegisterCtx } from "./register-shared";
 import { lineNets, refundLineAmount, refundServiceCharge } from "./refund-math";
+// POS P1.15 ▸ R5/R6: คืนเงินผ่านสายอนุมัติ (POS_REFUND) · PIN ผู้จัดการ · ตัวรับคิวคืนเงินที่อนุมัติแล้ว (นอกกะ · มติ 13) ◂
+import { POS_APPROVAL_MESSAGE, auditPinOverride, cancelOpenPosRequest, submitPosApproval } from "./pos-approval";
+import { verifyManagerPin } from "./staff-pin";
 import {
   REFUND_PAY_TYPES,
   REFUND_PREFIX_DEFAULT,
@@ -241,30 +244,130 @@ export async function refundSale(ctx: RegisterCtx, actor: RegisterActor, input: 
     const db = client ?? prisma;
     const s = await scopeOf(db, ctx, actor);
     if (isRefusal(s)) return s;
-    if (!s.canRefund) return refuse("NO_PERMISSION");
+    // POS P1.15 ▸ มติ 11: PIN ผู้จัดการ (มี pos.sale.refund) อนุญาตแทนผู้ขอที่ไม่มีสิทธิ์คืน — ผู้ขอต้องยังมี pos.sale.create ◂
+    const raw: Record<string, unknown> = isRecord(input) ? input : {};
+    const hasPin = raw.managerPin !== undefined && raw.managerPin !== null;
+    if (!s.canRefund && !(hasPin && evaluate(s.actor, { module: "pos", action: "pos.sale.create", unitId: s.unitId }))) return refuse("NO_PERMISSION");
     const x = cleanInput(input, ctx);
     if (isRefusal(x)) return x;
     // กะของเครื่อง (S5 ของ P1.9) — หาก่อนเปิด tx (อาจบังคับปิดกะค้างเกินเวลา) แล้วล็อกซ้ำในtx
     const shiftSettings = parseShiftSettings(s.settings);
     const sh = await resolveRegisterShift(db, s, x.deviceId);
     const preShiftId = sh.ok ? sh.shiftId : null;
-    for (let attempt = 0; ; attempt++) {
-      try {
-        const res = await db.$transaction((tx) => refundInTx(tx, s, x, preShiftId, shiftSettings.requiredRegister), { timeout: 20_000, maxWait: 10_000 });
-        if (res.ok && !res.duplicated) scheduleDrain();
-        return res;
-      } catch (e) {
-        if (attempt < 2 && isUniqueViolation(e)) continue;
-        throw e;
-      }
+    const commit = (opts: RefundTxOpts) => runRefundTx(db, s, x, preShiftId, shiftSettings.requiredRegister, opts);
+
+    // POS P1.15 ▸ R5 + CD4: PIN ผู้จัดการ = คืนทันที (แม้มีกติกา) · ยกเลิกคำขอคืนเงินที่รอของบิลนี้ · audit pin_override ◂
+    if (hasPin) {
+      const dup = await commit({ mode: "plan" });
+      if (dup.kind === "result") return dup.result;
+      const v = await verifyManagerPin({ tenantId: s.tenantId, unitId: s.unitId, deviceId: x.deviceId ?? null }, { managerPin: raw.managerPin, managerUserId: raw.managerUserId });
+      if (v.ok === false) return { ok: false, code: v.code as "PIN_INVALID" | "PIN_LOCKED" | "DEVICE_REVOKED", message: v.message };
+      if (!evaluate(v.actor, { module: "pos", action: REFUND_PERMISSION, unitId: s.unitId })) return refuse("NO_PERMISSION", "PIN นี้ไม่มีสิทธิ์คืนเงิน — ใช้ PIN ของผู้จัดการ");
+      const done = await commit({ mode: "commit", auditActorId: v.actor.userId, auditExtra: { via: "pin_override", requestedByUserId: s.actor.userId } });
+      if (done.kind !== "result" || !done.result.ok || done.result.duplicated) return done.kind === "result" ? done.result : refuse("UNKNOWN");
+      const cancelled = await cancelOpenPosRequest(s.tenantId, "POS_REFUND", x.saleId);
+      await auditPinOverride({ tenantId: s.tenantId, action: "POS_REFUND", requestId: cancelled, byUserId: v.actor.userId, forUserId: s.actor.userId, targetType: "PosSale", targetId: done.result.refund.id, extra: { saleId: x.saleId } });
+      return done.result;
     }
+
+    // POS P1.15 ▸ R5: กติกา POS_REFUND (ยอดคืน) = ยื่นคำขอพร้อม snapshot · มีคำขอรออยู่ของบิลนี้ = PENDING_APPROVAL · ไม่มีกติกา = ทางเดิม ◂
+    const plan = await commit({ mode: "plan" });
+    if (plan.kind === "result") return plan.result;
+    const ap = await submitPosApproval({
+      tenantId: s.tenantId,
+      unitId: s.unitId,
+      systemId: s.systemId,
+      kind: "POS_REFUND",
+      ref: x.saleId,
+      entityIdOf: (n) => (n === 1 ? `${x.saleId}:${x.idempotencyKey}` : `${x.saleId}:${x.idempotencyKey}:${n}`),
+      amountSatang: plan.grandSatang,
+      requestedById: s.actor.userId,
+      payload: {
+        saleId: x.saleId,
+        lines: x.lines,
+        payMethods: x.payMethods,
+        reasonCode: x.reasonCode,
+        reason: x.reason,
+        idempotencyKey: x.idempotencyKey,
+        deviceId: x.deviceId ?? null,
+        refundSatang: plan.grandSatang,
+        title: `คืนเงิน ฿${(plan.grandSatang / 100).toLocaleString("th-TH", { maximumFractionDigits: 2 })}`,
+      },
+    });
+    if (ap.status !== "AUTO") {
+      const code = ap.status === "PENDING" ? "PENDING_APPROVAL" : "APPROVAL_REQUIRED";
+      return { ok: false, code, message: POS_APPROVAL_MESSAGE[code], requestId: ap.requestId };
+    }
+    const done = await commit({ mode: "commit" });
+    return done.kind === "result" ? done.result : refuse("UNKNOWN");
   } catch (e) {
     console.error("[pos/refund] refundSale", e);
     return refuse("UNKNOWN");
   }
 }
 
-async function refundInTx(tx: Tx, s: Scope, x: CleanInput, preShiftId: string | null, shiftRequired: boolean): Promise<RefundSaleResult> {
+/** P1.15: โหมดของธุรกรรมคืนเงิน — plan = ตรวจครบ + คิดยอด แล้วไม่เขียน (ยอดสำหรับคำขออนุมัติ) · commit = ออกใบคืน */
+type RefundTxOpts = {
+  mode: "plan" | "commit";
+  /** ผู้กระทำใน AuditLog pos.sale.refund (PIN ผู้จัดการ / ผู้ตัดสิน) — ไม่ส่ง = ผู้ทำรายการ */
+  auditActorId?: string;
+  auditExtra?: Record<string, unknown>;
+};
+type RefundTxOut = { kind: "result"; result: RefundSaleResult } | { kind: "plan"; grandSatang: number };
+
+async function runRefundTx(db: Db, s: Scope, x: CleanInput, preShiftId: string | null, shiftRequired: boolean, opts: RefundTxOpts): Promise<RefundTxOut> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const res = await db.$transaction((tx) => refundInTx(tx, s, x, preShiftId, shiftRequired, opts), { timeout: 20_000, maxWait: 10_000 });
+      if (res.kind === "result" && res.result.ok && !res.result.duplicated) scheduleDrain();
+      return res;
+    } catch (e) {
+      if (attempt < 2 && isUniqueViolation(e)) continue;
+      throw e;
+    }
+  }
+}
+
+/**
+ * POS P1.15 ▸ R6 + มติ 13: ออกใบคืนของคำขอ POS_REFUND ที่อนุมัติแล้ว (ผู้เรียก: pos-approval-consumer.ts) — คีย์ `approval-<requestId>` ·
+ * นอกกะ (shiftId null แบบคืนเงินนอกหน้าขาย) · ผู้ทำรายการบนใบ = ผู้ขอเดิม · audit actor = ผู้ตัดสิน + via approval ·
+ * สิทธิ์ = การอนุมัติ (ไม่ตรวจสิทธิ์ของผู้ตัดสินซ้ำ) · เล่นซ้ำ = ใบเดิม (คีย์กันซ้ำ)
+ */
+export async function refundApproved(
+  target: { tenantId: string; systemId: string; unitId: string },
+  input: RefundSaleInput,
+  by: { requestId: string; deciderId: string; requestedById: string },
+  client?: Db,
+): Promise<RefundSaleResult> {
+  try {
+    const db = client ?? prisma;
+    const sys = await db.appSystem.findFirst({ where: { id: target.systemId, tenantId: target.tenantId, type: "POS" }, select: { settings: true } });
+    if (!sys) return refuse("SALE_NOT_FOUND");
+    const s: Scope = {
+      tenantId: target.tenantId,
+      systemId: target.systemId,
+      unitId: target.unitId,
+      actor: { userId: by.requestedById, role: "STAFF", unitAccess: [target.unitId], permissions: {} },
+      settings: sys.settings,
+      canRefund: true,
+      canView: true,
+    };
+    const x = cleanInput({ ...input, idempotencyKey: `approval-${by.requestId}`, deviceId: undefined }, { tenantId: target.tenantId, systemId: target.systemId, unitId: target.unitId });
+    if (isRefusal(x)) return x;
+    const out = await runRefundTx(db, s, x, null, false, { mode: "commit", auditActorId: by.deciderId, auditExtra: { via: "approval", requestId: by.requestId, requestedByUserId: by.requestedById } });
+    return out.kind === "result" ? out.result : refuse("UNKNOWN");
+  } catch (e) {
+    console.error("[pos/refund] refundApproved", e);
+    return refuse("UNKNOWN");
+  }
+}
+
+async function refundInTx(tx: Tx, s: Scope, x: CleanInput, preShiftId: string | null, shiftRequired: boolean, opts: RefundTxOpts = { mode: "commit" }): Promise<RefundTxOut> {
+  const r = await refundInTxInner(tx, s, x, preShiftId, shiftRequired, opts);
+  return "kind" in r ? r : { kind: "result", result: r };
+}
+
+async function refundInTxInner(tx: Tx, s: Scope, x: CleanInput, preShiftId: string | null, shiftRequired: boolean, opts: RefundTxOpts): Promise<RefundSaleResult | RefundTxOut> {
   // คีย์เดียวกันพร้อมกัน = เรียงคิว (แบบ createSale R2 F4) ก่อนค้นคีย์ซ้ำ
   await tx.$queryRaw`SELECT 1 AS x FROM (SELECT pg_advisory_xact_lock(hashtext(${s.tenantId}::text || ':' || ${x.idempotencyKey}::text))) l`;
   const dup = await tx.posSale.findUnique({
@@ -323,6 +426,8 @@ async function refundInTx(tx: Tx, s: Scope, x: CleanInput, preShiftId: string | 
   if (x.payMethods.length === 0 && grand !== 0) return refuse("VALIDATION", "ระบุวิธีคืนเงิน");
   const paySum = x.payMethods.reduce((t, p) => t + p.amountSatang, 0);
   if (paySum !== grand) return refuse("PAYMENT_MISMATCH", `ยอดเงินที่คืน ${paySum} ไม่เท่ากับยอดคืน ${grand} (สตางค์)`);
+  // POS P1.15 ▸ โหมดวางแผน: ตรวจครบแล้วคืนยอด (ไม่เขียนอะไร · กะไม่บังคับ — คำขออนุมัติคืนนอกกะ มติ 13) ◂
+  if (opts.mode === "plan") return { kind: "plan", grandSatang: grand };
 
   // ── กะ (R5): กะเปิดของเครื่องนี้ (ล็อก FOR SHARE แบบ createSale ⇒ ปิดกะรอใบคืนที่กำลังบันทึก) · ไม่มี + บังคับกะ + คืนเงินสด = SHIFT_REQUIRED ──
   let shiftId: string | null = null;
@@ -441,11 +546,20 @@ async function refundInTx(tx: Tx, s: Scope, x: CleanInput, preShiftId: string | 
     data: {
       tenantId: s.tenantId,
       actorType: "USER",
-      actorId: s.actor.userId,
+      actorId: opts.auditActorId ?? s.actor.userId, // POS P1.15 ▸ PIN ผู้จัดการ / ผู้ตัดสินของสายอนุมัติ ◂
       action: "pos.sale.refund",
       targetType: "PosSale",
       targetId: refund.id,
-      after: { saleId: sale.id, receiptNo, saleReceiptNo: sale.receiptNo, grandTotalSatang: grand, full, reasonCode: x.reasonCode, payMethods: x.payMethods.map((p) => ({ type: p.type, amountSatang: p.amountSatang })) },
+      after: {
+        saleId: sale.id,
+        receiptNo,
+        saleReceiptNo: sale.receiptNo,
+        grandTotalSatang: grand,
+        full,
+        reasonCode: x.reasonCode,
+        payMethods: x.payMethods.map((p) => ({ type: p.type, amountSatang: p.amountSatang })),
+        ...(opts.auditExtra ?? {}),
+      } as Prisma.InputJsonValue,
     },
   });
 

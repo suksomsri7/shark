@@ -76,17 +76,32 @@ export async function billDetailAction(args: { systemId: string; unitId: string;
   }
 }
 
-/** ยกเลิกบิล (ผู้มีสิทธิ์ pos.sale.void · เหตุผลบังคับ · คีย์เดิม = ผลเดิม) */
-export async function voidSaleAction(args: { systemId: string; unitId: string; saleId: string; reason: string; idempotencyKey: string }): Promise<VoidSaleActionResult> {
+/**
+ * ยกเลิกบิล (ผู้มีสิทธิ์ pos.sale.void · เหตุผลบังคับ · คีย์เดิม = ผลเดิม) —
+ * POS P1.15: managerPin + managerUserId = ผู้จัดการอนุญาตที่เครื่องนี้ (ผู้ขอที่มีแค่ pos.sale.create ก็ส่งได้ · มติ 11) · มีกติกา = APPROVAL_REQUIRED/PENDING_APPROVAL
+ */
+export async function voidSaleAction(args: {
+  systemId: string;
+  unitId: string;
+  saleId: string;
+  reason: string;
+  idempotencyKey: string;
+  deviceId?: string;
+  managerPin?: string | null;
+  managerUserId?: string | null;
+}): Promise<VoidSaleActionResult> {
   try {
     const auth = await requireTenant();
     const s = fromSession(auth, args);
-    if (!canAny(s.m, ["pos.sale.void"])) return { ok: false, code: "NO_PERMISSION", message: "บัญชีนี้ยังไม่มีสิทธิ์ยกเลิกบิล — ขอให้เจ้าของร้านหรือผู้จัดการทำรายการ" };
-    const res = await voidSaleByActor(s.ctx, s.actor, {
+    const pin = typeof args?.managerPin === "string" ? args.managerPin : null;
+    if (!canAny(s.m, pin !== null ? ["pos.sale.void", "pos.sale.create"] : ["pos.sale.void"])) return { ok: false, code: "NO_PERMISSION", message: "บัญชีนี้ยังไม่มีสิทธิ์ยกเลิกบิล — ขอให้เจ้าของร้านหรือผู้จัดการทำรายการ" };
+    const ctx = typeof args?.deviceId === "string" ? { ...s.ctx, deviceId: args.deviceId } : s.ctx;
+    const res = await voidSaleByActor(ctx, s.actor, {
       unitId: s.ctx.unitId,
       saleId: typeof args?.saleId === "string" ? args.saleId : "",
       reason: typeof args?.reason === "string" ? args.reason : "",
       idempotencyKey: typeof args?.idempotencyKey === "string" ? args.idempotencyKey : "",
+      ...(pin !== null ? { managerPin: pin, managerUserId: typeof args?.managerUserId === "string" ? args.managerUserId : null } : {}),
     });
     if (res.ok) {
       try {

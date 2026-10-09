@@ -287,7 +287,14 @@
       "alreadyRecounted": "This shift has already been recounted",
       "deviceRevoked": "This device has been revoked — contact a manager",
       "deviceLimit": "Device limit reached — revoke an unused device first",
-      "deviceNotFound": "Device not found at this branch"
+      "deviceNotFound": "Device not found at this branch",
+      "pinInvalid": "Incorrect PIN",
+      "pinLocked": "This PIN is locked for now — ask a manager to unlock it or wait 15 minutes",
+      "pinTaken": "Someone at this branch already uses this PIN — choose another",
+      "weakPin": "This PIN is too easy to guess — choose another",
+      "staffTokenInvalid": "Staff sign-in expired — enter your PIN again",
+      "approvalRequired": "Approval requested — wait for an approver or enter a manager PIN on this device",
+      "pendingApproval": "An approval request for this is already pending — wait or enter a manager PIN"
     },
     "held": {
       "title": "Held bills",

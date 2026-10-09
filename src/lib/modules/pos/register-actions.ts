@@ -177,13 +177,14 @@ export async function registerStatusAction(args: Target): Promise<RegisterStatus
 // ═══════ POS P1.5 — พักบิล / เรียกคืน (held-cart.ts) · ปฏิเสธคืนเป็นข้อมูล ไม่ throw ═══════
 
 /** พักตะกร้าปัจจุบัน — `cart` = ผลของ cartToQuoteInput (ไม่มีคีย์บิล) · label ไม่บังคับ (≤ 60 ตัวอักษร) */
-export async function holdRegisterCartAction(args: Target & { cart: RegisterQuoteInput; label?: string | null }): Promise<HoldRegisterCartResult> {
+export async function holdRegisterCartAction(args: Target & { cart: RegisterQuoteInput; label?: string | null; staffToken?: string | null }): Promise<HoldRegisterCartResult> {
   const auth = await session("holdRegisterCartAction");
   if ("ok" in auth) return auth;
   try {
     const s = sessionScope(auth, args);
     if ("ok" in s) return s;
-    return await holdRegisterCart(s.ctx, s.actor, { cart: args.cart, label: args.label ?? null });
+    // POS P1.15 ▸ R3: staffToken = ผู้ขายบนเครื่อง (held-cart ตรวจ · ผิด = STAFF_TOKEN_INVALID) ◂
+    return await holdRegisterCart(s.ctx, s.actor, { cart: args.cart, label: args.label ?? null, ...(typeof args?.staffToken === "string" ? { staffToken: args.staffToken } : {}) });
   } catch (e) {
     return unexpected("holdRegisterCartAction", e);
   }
@@ -203,13 +204,13 @@ export async function listHeldCartsAction(args: Target): Promise<ListHeldCartsRe
 }
 
 /** เรียกคืน (ผู้ชนะคนเดียว) — ได้ตะกร้า + quote ราคาปัจจุบัน + notices · จอต้อง resetBill() ก่อนวางตะกร้า (คีย์บิลใหม่) */
-export async function recallHeldCartAction(args: Target & { id: string }): Promise<RecallHeldCartResult> {
+export async function recallHeldCartAction(args: Target & { id: string; staffToken?: string | null }): Promise<RecallHeldCartResult> {
   const auth = await session("recallHeldCartAction");
   if ("ok" in auth) return auth;
   try {
     const s = sessionScope(auth, args);
     if ("ok" in s) return s;
-    return await recallHeldCart(s.ctx, s.actor, { id: typeof args?.id === "string" ? args.id : "" });
+    return await recallHeldCart(s.ctx, s.actor, { id: typeof args?.id === "string" ? args.id : "", ...(typeof args?.staffToken === "string" ? { staffToken: args.staffToken } : {}) });
   } catch (e) {
     return unexpected("recallHeldCartAction", e);
   }

@@ -21,6 +21,9 @@ export type RefundSaleInput = {
   /** เครื่องที่คืน (ผูกกะที่เปิดอยู่ของเครื่องนี้) — ไม่ส่ง = ctx.deviceId */
   deviceId?: string;
   idempotencyKey: string;
+  /** POS P1.15 R5: PIN ผู้จัดการที่เครื่องนี้ (คู่ managerUserId) — คืนทันทีแม้มีกติกา POS_REFUND (audit pos.approval.pin_override) */
+  managerPin?: string | null;
+  managerUserId?: string | null;
 };
 
 export type RefundRefusalCode =
@@ -84,7 +87,10 @@ export type RefundDoc = {
 };
 export type RefundSaleResult =
   | { ok: true; refund: RefundDoc; sale: { id: string; status: string; refundedSatang: number }; duplicated?: true }
-  | RefundRefusal;
+  | RefundRefusal
+  // POS P1.15 ▸ PIN ผู้จัดการผิด/ล็อก/เครื่องถูกเพิกถอน · ต้องรออนุมัติ (requestId) — จอแปลด้วย refusalMessageKey ของ pos.register ◂
+  | { ok: false; code: "PIN_INVALID" | "PIN_LOCKED" | "DEVICE_REVOKED"; message: string }
+  | { ok: false; code: "APPROVAL_REQUIRED" | "PENDING_APPROVAL"; message: string; requestId: string };
 
 export type SaleForRefundLine = {
   lineId: string;

@@ -268,6 +268,7 @@
       "src/lib/modules/hotel/service.ts",
       "src/lib/modules/pos/api/ops/sales.ts",
       "src/lib/modules/pos/bills.ts",
+      "src/lib/modules/pos/pos-approval-consumer.ts",
       "src/lib/modules/rental/service.ts",
       "src/lib/modules/restaurant/order.ts",
       "src/lib/modules/school/service.ts",
