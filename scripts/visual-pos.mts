@@ -1480,7 +1480,7 @@ async function cleanupSettingsState(): Promise<void> {
 const INTENT_STATES: ReadonlySet<string> = new Set(["paydlg-promptpay-qr", "paydlg-promptpay-paid"]);
 const INTENTS = {
   /** PaymentProfile ก่อนรอบนี้ (null = ไม่มีแถว · undefined = ไม่ได้แตะ) */
-  ppBefore: undefined as undefined | null | { promptpayId: string; displayName: string | null },
+  ppBefore: undefined as undefined | null | { promptpayId: string | null; displayName: string | null },
   ppNote: "",
   consumed: 0,
   cleanup: null as null | { ok: boolean; detail: string },
