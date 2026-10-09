@@ -862,3 +862,16 @@
 ### 9 ต.ค. 05:30 UTC — P1.11U ภาพตรง 11C/12 · merge ชน P1.10U → ให้ builder รวมเอง + follow-up รอบ 2
 - L2: build35-c 0 · vis35 (:3226) receipt-public paid/refunded-partial/voided/issue-sent + sales list/drawer/void/refund/empty ✅ ตรง 11C/12 · แดง 2 state = fixture (`rpub-taxinvoice-form`: ร้าน QC ไม่เปิด ABB ⇒ taxInvoice NOT_AVAILABLE · `rpub-not-found`: console 404 ของตัวเอง) ไม่ใช่ UI · merge 2d545ea4 เข้า session/pos ชน 4 ไฟล์กับ P1.10U (pos-qc-env/inventory/visual-pos/BillsClient) → abort · ส่ง builder รอบ 2: merge session/pos + PayDone share row (02b) + 17A qrEReceipt toggle + visual fixes (print-pair รับ 2 สถานะ · เปิด ABB บนร้าน QC ชั่วคราว + บิลสมาชิก · not-found ยอม console 404) → ด่าน + ภาพซ้ำ → merge
 - โควตา 05:12Z: session 51% (รีเซ็ต 07:29Z) · weekly_all 78% · weekly_fable 53%
+
+### 9 ต.ค. 05:52 UTC — P1.7U ส่งแล้ว → ผู้ตรวจ · เจ้าของถามเรื่องบัญชี A
+- L1: P1.7U **52b0713b** (32/32 ×3 · typecheck 0 · deviations 5 ข้อ: key ใช้ `_` · ไม่มี "via Beam" ใน PayDone · ลิงก์พร้อมเพย์ไป /app/settings/payment · ปิด dialog ทิ้ง intent PENDING · non-cash = intent rows) → ผู้ตรวจ Opus (prompt `pos-prompt-accountB-P1.7U-R.md` dab6072e) · build/ภาพ p11 รอผลตรวจ
+- เจ้าของ: บัญชี A อยู่ VPS เดียวกัน (A session 0% · weekly 27% · รีเซ็ต 14 ต.ค. 20:59Z) → ตอบ: **ไม่เปิด A ทำ POS พร้อมกัน** (CPU เต็ม · ตัวคุมงานซ้อน · ร้าน QC ร่วม) · ส่งไม้เมื่อ B ใกล้ 90%: หยุด spawn → ผู้สร้าง push ขั้นล่าสุด → เขียนบล็อก HANDOVER ท้ายไฟล์นี้ → เจ้าของเปิด A ที่ /root/projects/shark-pos สั่ง "อ่านท้าย ledger/POS-RESUME.md แล้วทำต่อ" (agent ย้ายข้ามบัญชีไม่ได้ เปิดใหม่จาก branch wip/*) · memory ใช้ร่วมกัน (symlink) · เตือน tg ที่ weekly 85%
+- โควตา 05:47Z: session 65% (รีเซ็ต 07:29Z) · weekly_all 81% · weekly_fable 54%
+
+### 9 ต.ค. 05:58 UTC — P1.11U รอบ 2 ส่ง · 🔴 scratchpad ร่วมทำสคริปต์ด่านชนกัน
+- L2: P1.11U รอบ 2 **da826682** (merge session/pos 96ecfe56 + PayDone share row + 17A qrEReceipt + visual fixes · typecheck 0 · 38/38 ×3 · p1.10 40 · print 8/8) → re-review สั้น (reviewer เดิม) · build36-c unit pos-build36-c-1791525462 → vis: register sale-done/paydone + settings receipt + receipt-public (:3226) → merge
+- 🔴 builder P1.11U (c) และ P1.15U (b) ต่างใช้ `scratchpad/gates.sh` → ถูกเขียนทับขณะรัน ⇒ ด่านอาจรันผิดทรี · สั่ง P1.15U ย้ายไป `scratchpad/p115u/` และพิสูจน์ทุก log ว่ามาจากทรี b (รันซ้ำถ้าพิสูจน์ไม่ได้) · กฎใหม่: ทุก prompt ระบุ subdir ต่อใบงาน · memory `reference_subagents_share_scratchpad`
+- L1: P1.7U reviewer MERGEABLE-AFTER-FIXES (F1 split reuse PAID intent · F2 cancel vs PAID race · F3 ปิด dialog ทิ้ง intent/PRICE_CHANGED ลบ via rows · F4 caps) → fix round 1 ส่งแล้ว
+
+### 9 ต.ค. 06:15 UTC — P1.11U รอบ 2 ภาพจริงพัง 2 จุด → รอบ 3
+- L2: re-review da826682 MERGEABLE (nit: useRef guard · preview ตาม toggle · RPUB.abb ตั้งก่อน vatConfigOf) · build36-c 0 · vis36 (:3226): **register/sale-done + settings/paydone-print ล้ม** — หลัง submit เงินสดขึ้นกล่อง "ยังไม่แน่ใจว่าบันทึกบิลแล้วหรือยัง" (client throw · server.log สะอาด · state นี้ผ่านบน P1.10U build) · **rpub-taxinvoice-form ยัง NOT_AVAILABLE** แม้ toggle posAbbreviated (abbNo null ⇒ บิลขายก่อน toggle มีผล) → ส่งรอบ 3 (อนุญาต next dev :3227 ชั่วคราวเพื่อดู console · สคริปต์ใน scratchpad/p111u-r3/) · receipt-public paid ✅ (มี review/points แล้ว)
