@@ -60,3 +60,16 @@ Contract: `ledger/pos-briefs/pos-prompt-accountB-P1.13U.md` rulings 1–9 + revi
 - `pnpm fitness` without env 0 · 41/41 · with QC4 env 0 · 41/41 · `scripts/fitness-pos.mts` 0 · 8/8.
 - visual `--page register --states --dry` owner 0 · cashier 0 · `--page sales --states --dry` owner 0 · cashier 0 (plans include the 4 new states × 3 viewports).
 - Real visual shots = CONTROLLER-RUN (needs a running server): `pnpm exec tsx scripts/visual-pos.mts p113u --page register --states --user owner|cashier` and `--page sales --states --user owner|cashier`; the sales owner run leaves one TX document in QC4 accounting (docId/docNo printed and in `summary-owner.json taxInvoiceState`).
+
+## Fix round 1 (reviewer verdict on 5599d412 = MERGEABLE-AFTER-FIXES · prompt `pos-prompt-accountB-P1.13U-fix.md`)
+Edits started only after `build42-d-*/SUMMARY.txt` DONE (09:51Z); F5 and DB suites only after `ctl/vis42-done` (10:07Z).
+| item | commit | change |
+|---|---|---|
+| F1 | 0b5dcc7b | `TaxInvoiceDialog`: the DBD reply is bound to the tax id it was sent for (`lookupFor` + current-id ref); a reply for another id is dropped, the input stays editable during the lookup, "ใช้ข้อมูลนี้" re-checks the id; `DBD_NOT_CONFIGURED` still hides the button (shop-wide) |
+| F2 | 1b4843c2 | `bills.ts`: `BillDetail.taxInvoice.request` only when `evaluate(a, pos.taxinvoice.issue @ unit)`; `buyerName` for every reader (type already optional) |
+| F3 | c4175663 | `BillsClient`: `requestId` sent to `issueFullTaxInvoiceAction` only when the tax id equals the request's — a changed id lets the service reject the request (S fix F5 + audit) and the drawer refresh shows ISSUED without the request row · 15A shows `pos-taxinv-request-changed` ("เลขผู้เสียภาษีต่างจากที่ลูกค้าขอ — คำขอจะถูกปฏิเสธ และออกใบกำกับตามที่กรอก") before confirm · key `pos.bills.taxInvoice.requestTaxIdChanged` th+en · inventory row |
+| F4 | 4c60b760 | `TaxInvoiceDialog`: `touched` ref (any input, kind pick, branch click) ⇒ the stored-profile reply no longer prefills |
+| F5 | f8877009 | `visual-pos.mts seedTaxInvBillsOnce`: leftover REQUESTED requests (+ `pos.receipt.taxInvoiceRequested` outbox rows) on the reused bill are deleted before the new request (`taxInvoiceState.leftover`) |
+| F6 | 76ca8f1b | drawer REQUESTED row: [ออกใบกำกับ] only on PAID bills without refunds; [ปฏิเสธ] stays |
+
+Gates (QC4 `ep-frosty-lab-aoylqlv8-pooler…` · logs `scratchpad/p113u/f1/` with `tree=/root/projects/shark-pos-d head=f8877009` headers): typecheck TC_EXIT=0 (76ca8f1b, f8877009) · `qc-pos-p1.13` forced #1/#2 + unforced 0 · 33/33 each, residue 0 · `qc-pos-p1.11` 0 · 38/38 · `qc-hf-pos-page-authz` 0 · 56/56 · `pnpm fitness` no env 0 · 41/41 · QC4 env 0 · 41/41 · `fitness-pos` 0 · 8/8 · visual `--dry` register/sales × owner/cashier rc 0.
