@@ -1,0 +1,55 @@
+# P2.1U review: `wip/pos-p2.1u` 2a77a384 (tree b, read-only)
+**Verdict: MERGEABLE-AFTER-FIXES.** The product code is sound. One visual-fixture fix (F1) is needed before the controller's real screenshot run. F2–F6 are low or follow-ups. Diff base = merge-base 0152c932. Code tree 2a77a384 = 0bd43c4f (`git diff 0bd43c4f 2a77a384 -- . ':!ledger'` is empty). 1935a9d1→0bd43c4f adds only HF-418 `LockScreen.tsx`. session/pos is now b3c3fbf5 (adds `qc-pos-p2.2.mts` only), so the merge is clean.
+
+## Findings
+- **F1 (Medium, visual fixture): the bills states break after the second owner sales run in a BKK day.** `scripts/visual-pos.mts:3074,3081` uses fixed per-day keys for the WEB and LINE MAN bills, but the P1.16 set uses per-run keys (`:2166` `${process.pid}`), so every owner sales run adds 6 newer bills. Run 1 (owner th) puts LM at #1. Run 2 (owner en) pushes it to #7. Run 3 (a re-shoot, or another lane's sales run on silom) pushes it to #13, which is page 2. `runP21uBillsState` (`:3112`) then throws "ไม่เห็นบิล LINE MAN ในหน้าแรก" for `bills-channels` and `bills-drawer-commission`. `--dry` cannot catch this. Smallest fix: owner runs create the pair with per-run keys like BILLS, and cashier runs reuse today's newest pair (found by `channelRef` LM-48152 + BILL_TAG). Or reuse only when LM is among the day's 10 newest sales.
+- **F2 (Low, deviation 2): toggling or editing can undo a concurrent rename.** `ChannelsPanel.tsx:109` sends `{id, name: c.name, active}` with the name loaded at mount, and `channel.ts:229` always writes `name: v.name`. Concrete case: A renames GRAB to "Grab Food" while B's open panel toggles GRAB, so the name reverts. The drawer (`ChannelDrawer.tsx:161`) has the same issue. Given `parseChannelInput`'s required `name` (`channel-shared.ts:170`), sending the stored name is the smallest client-side option. The real fix is server-side (P2.12): make `name` optional on update and only write it when provided.
+- **F3 (Low, deviation 12): the live-rate match can still show a wrong rate.** `BillsClient.tsx:308-315` shows the current rate when `channelCommission(grandTotal, current)` reproduces the snapshot. That is not unique when the cap applies (`min(gross, …)`). Example: a CUSTOM channel with a ฿50 fixed fee sells a ฿30 bill, so commission = 30. Change the fee to ฿40 and it still reproduces 30, so the drawer labels "฿40". Same with gross 0. Fix: drop the rate when `commissionSatang === grandTotal` or gross is 0. Long term, snapshot bp/fixed on the sale (P2.12, already listed).
+- **F4 (Low, follow-up, outside rulings): PLATFORM bills cannot be refunded from the UI.** The refund dialog only ever sends CASH, CARD, PROMPTPAY or TRANSFER (`BillsClient.tsx:765`). `refund.ts:417-424` requires an all-PLATFORM refund for PLATFORM-paid bills, so every refund of a LINE MAN bill returns `REFUND_METHOD_INVALID`. Today such bills come only from the API, fixtures or held carts. Fix (≈10 lines): when `originalPay.type === "PLATFORM"`, offer only a "แพลตฟอร์ม" option. P2.8 must have this before the picker ships.
+- **F5 (Low): the commission block ignores refunds.** For a REFUNDED or partly refunded LINE MAN bill it still shows the original ยอดรวม, commission and รับจริง (`BillsClient.tsx:1378`). Also, net is recomputed in JSX as `grandTotal − c − v` rather than through a `channel-shared` helper. It is trivial, but against the "money only via channel-shared" rule. Follow-up: a `channelNet()` helper, and refund-aware figures from the reader (P2.12).
+- **F6 (Nit):**
+  - The `salesChannelId` filter survives a date change. If the new day lacks that channel, the select shows "ทุกช่องทาง" while the list is still filtered. The source and staff filters already behave this way.
+  - The `runs/dry-*.log` files have no `tree=`/`EXIT` header (rc is not recorded in the file).
+  - The notes say 20 inventory rows were added; the JSON has 21 `wo:"P2.1U"` rows.
+
+## Verified OK (1–10)
+1. **Panel:** one `ChannelsPanel` is used in both places (`SharkSettings.tsx`, `shark-ui.tsx` `ChannelsPane wide`, banner removed for channels only).
+   - Rows come from `listChannelsAction({includeArchived:true})` in server `byDisplayOrder`, with archived rows behind "แสดงที่เก็บแล้ว (n)".
+   - Badges: preset initials, builtin icons, first letter for others. Sub-line comes only from `channel-text.ts` `channelSummary`; there is no math in JSX.
+   - STORE switch is disabled with a lock and tooltip. QR_TABLE/WEB/CHAT can be edited by name only in the drawer, and their switch stays live (dev 5). Inactive WEB is harmless because `resolveSaleChannel` skips `active` on the default path.
+   - Connect sends `{code, name}`, so the server applies the defaults.
+   - `CHANNEL_LIMIT` counts archived rows, matching the server. Every write path checks `canManage`: toggle, connect, add, drawer save and archive. `page.tsx` evaluates `pos.channel.manage` with `unitId`.
+2. **Drawer:**
+   - `parseHundredths` does exact string→int: 12.34 → 1234, 2.50 → 250, 3 decimals rejected, no floats.
+   - The example uses the same integers that are sent to the server. `parseChannelInput` runs before the action.
+   - Refusal mapping: CODE_TAKEN goes to the code field, VALIDATION{field} to that field, BUILTIN_LOCKED and LIMIT to the banner.
+   - Edits send `id + name +` changed keys only. Archive has an inline confirm.
+   - NONE = DIRECT + 0/0/0 (dev 3). Reopening a DIRECT zero-commission channel selects NONE (`choiceOf`, :56-57) with hint "ช่องทางของร้านเอง ไม่มีค่าธรรมเนียม". The "ร้านเก็บเงินเอง" copy is never shown for it, in the row, the drawer or the bill block.
+3. **Bills:** the pill comes from the PLATFORM tender (dev 9). Under R5 a PLATFORM-payout channel always has exactly one PLATFORM row and DIRECT never has one, so bold means the channel was PLATFORM at sale time. That is more correct than the live payout after an edit. Edge: a ฿0 PLATFORM bill, if creatable, renders gray.
+   - BOOKING keeps the calendar pill. `channelRef` appears only when there is no member (table, card and CSV). The pay cell shows "แพลตฟอร์ม".
+   - "ทุกระบบ" is a **new** key `bills.channel.allSources`. A JSON leaf diff shows 0 th/en values changed or removed (51 added each, th/en key sets identical).
+   - Summary: N = STORE(ALL) − STORE(VOIDED) = PAID+REFUNDED STORE, the same population as `summary.billCount` (`bills.ts:175`). It is whole-day and unfiltered, like the cards, so N + M = the card. Cost: 2 extra full-day `billsPageData` reads per load and after each void/refund (3× server work). Acceptable now; a server field is listed for P2.12.
+   - Note: BOOKING/HOTEL bills (default STORE channel) now count as หน้าร้าน, where `sum.billsSub` counted them as ออนไลน์. This follows ruling 3 literally.
+4. **Commission block:** shown only when `channel` is set and ≠ STORE. The reproduction uses `channelCommission(totals.grandTotal = sale.grandTotalSatang, current bp/fixed/vat)`, the same base as `service.ts:431/706`. The cashier view has no commission keys and shows the channel line only. No receipt file is touched, and no receipt renderer contains "commission".
+5. **Labels:** rows come from the server readers (`PAY_TYPE_ORDER` ends with PLATFORM; reports `:689`). Shift and close-day per-method rows use `shift.method.PLATFORM`; reports and overview use `report.closeDay.method.PLATFORM`. The keys exist in th and en.
+6. **Register tile:** shown only if `REGISTER_PAY_TYPES` has PLATFORM (`register-shared.ts:21`) and the quote's `channel.payout === "PLATFORM"` (`RegisterScreen.tsx:2199`). It is preselected with the full amount. The other tiles, keypad, quick buttons, exact and tip are disabled, and a late quote is handled by an effect.
+   - `channelId` is a conditional spread in both `quoteInputToCart` and `cartToQuoteInput`, so a cart without it produces a byte-identical input (no key, never `undefined`). The server held-cart paths (`register.ts:1594,1745,1908`) are unchanged. p1.5 21/21. There is no picker.
+7. **Keys/ST7:** th/en key parity holds. The en text is real English (only "฿" is non-ASCII). My own grep of added non-comment `src/**` lines finds 0 Thai characters. The p1.18 log shows ST7 ✅. The addendum is at `pos-spec-P1.3-register-ui.md:676`.
+8. **Fixtures:** they go through `saveChannel`/`createSale`/`holdRegisterCart`/`discardHeldCart`; the only raw prisma call is a `count`. Channels are idempotent by code, bills by fixed key (`samePayload` ignores shift). Held carts are discarded in finally and on signals.
+   - No `qc-*` suite (p2.1, p1.16, p1.9, p1.3, p1.5, p1.18, p2.2) references posqc-coffee or silom, so persistent LINE MAN/GRAB and the 2 bills do not affect oracle fingerprints. They do appear in silom's visual shift X/Z and bills screens, which is intended.
+9. **Server hunks:** the only file outside the UI, messages and visual trees is `register-shared.ts` (+12/−1, pure, marked, neutral), plus the data file `scripts/pos-ui-inventory.json`. `git diff -- 'scripts/qc-*.mts' scripts/fitness* prisma` is empty, so there is no ORACLE-EDIT.
+10. **Deviations:** 1–15 all accepted.
+    - Accepted as written: 1, 4, 5, 6, 7, 8, 9, 10 (new key), 11, 13, 14, 15.
+    - Accepted with notes: 2 (F2), 3 (copy verified), 12 (F3).
+    - **Gates:** all 13 final logs carry `tree=/root/projects/shark-pos-b head=0bd43c4f dirty=0`, all EXIT=0. Counts: p2.1 55 = 55 already at 167a75fe (R8 c05ee731 in base). p1.18 81 = 80 + P1.18U ORACLE-EDIT H2 d1c48cf9 in 348c6d47. The rest match the notes. Typecheck step 4 EXIT=0 at 0bd43c4f.
+
+## Screens to scrutinise (ruling 8)
+`bills-channels` at 390 (pill in the card's 2nd line, not literally "under the time"; summary line non-blank) · `bills-drawer-commission` owner (−฿126 red, รับจริง ฿294, rate "30%" shown) vs cashier (channel line only) · `settings-channels` 1024 (compact panel beside PaymentsPanel below xl; long sub-line "ค่าคอมฯ 25% + ฿2.00 · VAT 7% · แพลตฟอร์มโอนให้" truncation) · `settings-channel-drawer` cashier (read-only, no save, example ฿126/฿294) · `settings-channel-create` (NONE preselected, code uppercase) · `paydlg-platform` iPad (5-column tile row) · en for all.
+
+## Follow-ups
+- **P2.8:** platform refund option (F4) · channel picker/header chip · connection states.
+- **P2.12:** snapshot rate on the sale (F3) · optional `name` on update (F2) · bills summary channel counts field (drops the 2 extra reads) · refund-aware commission block and `channelNet` helper (F5).
+
+---
+## Controller rulings (account A, 9 Oct 2026 22:3xZ)
+F1 → fix (per-run keys for owner runs; cashier runs reuse today's newest pair by `channelRef` + tag, or create). F2 → follow-up P2.12 (`name` optional on update); client stays as is. F3 → fix (no rate when `commissionSatang === grandTotal` or gross 0). F4 → fix now (refund dialog offers only "แพลตฟอร์ม" when the original pay type is PLATFORM). F5 → `channelNet()` helper in `channel-shared.ts` now; refund-aware figures P2.12. F6 → dry logs get the header; notes row count corrected; filter-on-date-change stays (existing behaviour). Deviations 1–15 accepted.
