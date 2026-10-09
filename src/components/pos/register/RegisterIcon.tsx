@@ -16,6 +16,19 @@ const PATHS = {
   minus: <path d="M5 12h14" />,
   x: <path d="m6 6 12 12M18 6 6 18" />,
   check: <path d="m5 12.5 4.5 4.5L19 7" />,
+  // POS P1.11U ▸ แถวส่งใบเสร็จของจอสำเร็จ (ภาพ 02b #i-link) ◂
+  link: (
+    <>
+      <path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1" />
+      <path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" />
+    </>
+  ),
+  mail: (
+    <>
+      <rect x="3.5" y="5.5" width="17" height="13" rx="2" />
+      <path d="m4 7 8 6 8-6" />
+    </>
+  ),
   users: (
     <>
       <circle cx="9" cy="8" r="3.4" />

@@ -2,7 +2,9 @@
 
 // PayDone.tsx — จอสำเร็จหลังชำระครบ (POS P1.6 U · ภาพ 02b) — แทน SaleDone ชั่วคราวของ P1.3
 //   วงกลมหมึก + ถูก · "ชำระแล้ว ฿X" 30 หนา · กล่องตัวเลข (เงินทอน · เลขใบเสร็จ · วิธีชำระ) · ปุ่ม "ขายต่อ (อัตโนมัติ 5 วินาที)"
-//   ช่องที่ภาพมีแต่ยังไม่มีงานรองรับ: แต้มที่ได้ (P1.12) · ใบกำกับอย่างย่อ (P1.13) · สถานะลงบัญชี · LINE/QR ใบเสร็จ (P1.11) — ไม่แสดง
+//   ช่องที่ภาพมีแต่ยังไม่มีงานรองรับ: แต้มที่ได้ (P1.12) · ใบกำกับอย่างย่อ (P1.13) · สถานะลงบัญชี · QR ใบเสร็จบนจอ — ไม่แสดง
+// POS P1.11U ▸ แถวส่งใบเสร็จ (ภาพ 02b): "ส่งทาง LINE" (เปิดเมื่อบิลมีสมาชิก) · "ส่งอีเมล" (แผ่นช่องเดียวในจอนี้ · ว่าง = อีเมลสมาชิก) ข้างปุ่มพิมพ์ ·
+//   sendReceiptAction · ผล/คำปฏิเสธเป็นข้อความใต้ปุ่ม · นับถอยหลัง 5 วินาทีหยุดระหว่างแผ่นอีเมลเปิด/กำลังส่ง ◂
 // POS P1.10 U ▸ ปุ่ม "พิมพ์ใบเสร็จ" (receiptPayloadAction — ต้นฉบับภายใน 30 นาที · จอเชื่อ payload.copy) + "พิมพ์สำเนา" (reprintReceiptAction · audit)
 //   ผ่าน printReceipt ตามค่าตั้งเครื่องนี้ (heartbeat) · autoPrint + จับคู่ USB/BT แล้ว = พิมพ์เองครั้งเดียวต่อบิล (กันด้วย saleId ใน ref) ·
 //   พิมพ์ไม่สำเร็จ = กล่องคำปฏิเสธ + "พิมพ์ซ้ำ" (+ "พิมพ์ผ่านระบบแทน") และหยุดนับถอยหลัง · ลิ้นชักเปิดใน encodeEscPos (เงินสด + drawerKick) ไม่มีปุ่มแยก ◂
@@ -17,6 +19,8 @@ import { moneyText, type RegisterPayMethod, type RegisterPayType } from "@/lib/m
 import type { PosPrinterConfig } from "@/lib/modules/pos/device-shared";
 import { receiptPayloadAction, reprintReceiptAction } from "@/lib/modules/pos/receipt-actions";
 import { receiptRefusalMessageKey } from "@/lib/modules/pos/receipt-render";
+import { sendReceiptAction } from "@/lib/modules/pos/receipt-send-actions";
+import { RECEIPT_EMAIL_RE } from "@/lib/modules/pos/receipt-public-shared";
 import { PrintStatus } from "@/components/pos/print/PrintStatus";
 import { printReceipt, printerPaired } from "@/components/pos/print/printReceipt";
 import type { PrintResult } from "@/components/pos/print/types";
@@ -37,6 +41,8 @@ type Props = {
   saleId: string;
   printer: { config: PosPrinterConfig; deviceCode: string | undefined };
   locale: "th" | "en";
+  /** POS P1.11U ▸ บิลนี้มีสมาชิก (เปิดปุ่มส่งทาง LINE) */
+  memberAttached?: boolean;
 };
 
 /** บิลที่สั่งพิมพ์อัตโนมัติไปแล้ว (ระดับโมดูล — จอสำเร็จถูกวาดใหม่/StrictMode ก็ไม่พิมพ์ซ้ำ) */
@@ -48,7 +54,7 @@ const autoPrinted = new Set<string>();
  */
 const printedOriginal = new Set<string>();
 
-export function PayDone({ receiptNo, totalSatang, changeSatang, payMethods, onNext, systemId, saleId, printer, locale }: Props) {
+export function PayDone({ receiptNo, totalSatang, changeSatang, payMethods, onNext, systemId, saleId, printer, locale, memberAttached = false }: Props) {
   const t = useTranslations("pos.register");
   const tp = useTranslations("pos.print");
   const trc = useTranslations("pos.receipt");
@@ -94,8 +100,31 @@ export function PayDone({ receiptNo, totalSatang, changeSatang, payMethods, onNe
     autoPrinted.add(saleId);
     void printRef.current("receipt");
   }, [saleId, printer.config.autoPrint, printer.config.mode, printer.deviceCode]);
+  // ── POS P1.11U ▸ ส่งใบเสร็จ ──
+  const [sendBusy, setSendBusy] = useState<"LINE" | "EMAIL" | null>(null);
+  const [sendMsg, setSendMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [emailOpen, setEmailOpen] = useState(false);
+  const [emailTo, setEmailTo] = useState("");
+  const send = async (via: "LINE" | "EMAIL") => {
+    if (sendBusy) return;
+    const to = emailTo.trim();
+    if (via === "EMAIL" && to && !RECEIPT_EMAIL_RE.test(to)) return setSendMsg({ ok: false, text: trc("send.emailInvalid") });
+    setSendBusy(via);
+    setSendMsg(null);
+    try {
+      const r = await sendReceiptAction({ systemId, saleId, via, ...(via === "EMAIL" && to ? { email: to } : {}) });
+      if (!r.ok) return setSendMsg({ ok: false, text: trc(receiptRefusalMessageKey(r.code)) });
+      setSendMsg({ ok: true, text: trc(via === "LINE" ? "send.sentLine" : "send.sentEmail") });
+      if (via === "EMAIL") setEmailOpen(false);
+    } catch {
+      setSendMsg({ ok: false, text: trc("errors.internal") });
+    } finally {
+      setSendBusy(null);
+    }
+  };
   const failed = !!loadErr || (!!printRes && !printRes.ok);
-  const auto = changeSatang === 0 && !failed && !printing;
+  // P1.11U: นับถอยหลังหยุดระหว่างแผ่นอีเมลเปิด/กำลังส่ง (กลับมานับต่อเมื่อปิด)
+  const auto = changeSatang === 0 && !failed && !printing && !emailOpen && !sendBusy;
   const [left, setLeft] = useState(AUTO_SECONDS);
   const nextRef = useRef(onNext);
   nextRef.current = onNext;
@@ -170,6 +199,31 @@ export function PayDone({ receiptNo, totalSatang, changeSatang, payMethods, onNe
             <RegisterIcon name="doc" size={15} />
             {printing === "copy" ? tp("printing") : tp("copy")}
           </button>
+          {/* POS P1.11U ▸ ส่งทาง LINE · ส่งอีเมล (ภาพ 02b) ◂ */}
+          <button
+            data-testid="pos-receipt-send-paydone-line"
+            className="btn btn-ghost h-12 gap-2 rounded-[13px] px-5 text-[15px] disabled:opacity-60"
+            type="button"
+            disabled={!memberAttached || !!sendBusy}
+            onClick={() => void send("LINE")}
+          >
+            <RegisterIcon name="link" size={15} />
+            {sendBusy === "LINE" ? trc("public.sending") : trc("send.lineVia")}
+          </button>
+          <button
+            data-testid="pos-receipt-send-paydone-email"
+            className="btn btn-ghost h-12 gap-2 rounded-[13px] px-5 text-[15px] disabled:opacity-60"
+            type="button"
+            disabled={!!sendBusy}
+            aria-expanded={emailOpen}
+            onClick={() => {
+              setSendMsg(null);
+              setEmailOpen((v) => !v);
+            }}
+          >
+            <RegisterIcon name="mail" size={15} />
+            {trc("send.email")}
+          </button>
           <button
             data-testid="pos-reg-done-next"
             className="btn btn-primary h-14 w-full gap-2 rounded-[16px] px-6 text-[16px] font-bold md:h-12 md:w-auto md:min-w-[210px] md:rounded-[13px]"
@@ -181,6 +235,44 @@ export function PayDone({ receiptNo, totalSatang, changeSatang, payMethods, onNe
             {auto && <span className="font-normal opacity-70">{t("done.auto", { sec: Math.max(left, 0) })}</span>}
           </button>
         </div>
+        {emailOpen && (
+          <form
+            data-testid="pos-receipt-send-paydone-email-form"
+            noValidate
+            className="flex w-full flex-col gap-2 rounded-[13px] border p-4 text-left md:w-[420px]"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void send("EMAIL");
+            }}
+          >
+            <label className="flex flex-col gap-1.5 text-[13px] text-[color:var(--color-ink-soft)]">
+              {trc("send.emailLabel")}
+              <input
+                type="email"
+                data-testid="pos-receipt-send-paydone-email-input"
+                autoFocus
+                maxLength={200}
+                value={emailTo}
+                onChange={(e) => setEmailTo(e.target.value)}
+                className="input h-11 text-[15px]"
+              />
+            </label>
+            <span className="text-[12px] text-[color:var(--color-muted)]">{trc("send.emailHint")}</span>
+            <div className="flex gap-2">
+              <button data-testid="pos-receipt-send-paydone-email-close" type="button" className="btn btn-ghost h-11 flex-1 rounded-[12px]" onClick={() => setEmailOpen(false)}>
+                {trc("send.close")}
+              </button>
+              <button data-testid="pos-receipt-send-paydone-email-submit" type="submit" disabled={!!sendBusy} className="btn btn-primary h-11 flex-1 rounded-[12px] disabled:opacity-60">
+                {sendBusy === "EMAIL" ? trc("public.sending") : trc("send.submit")}
+              </button>
+            </div>
+          </form>
+        )}
+        {sendMsg && (
+          <p data-testid="pos-receipt-send-paydone-result" role={sendMsg.ok ? "status" : "alert"} className={`text-[13.5px] ${sendMsg.ok ? "text-[color:var(--color-ink-soft)]" : "text-[color:var(--color-danger)]"}`}>
+            {sendMsg.text}
+          </p>
+        )}
       </div>
     </RegisterDialog>
   );

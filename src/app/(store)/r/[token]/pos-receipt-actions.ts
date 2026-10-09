@@ -14,16 +14,12 @@ import { unstable_rethrow } from "next/navigation";
 import { publicReceipt, submitReceiptReview } from "@/lib/modules/pos/public-receipt";
 import { reportReceiptIssue } from "@/lib/modules/pos/receipt-issue";
 import { requestFullTaxInvoice } from "@/lib/modules/pos/receipt-tax-request";
-import type {
-  FullTaxInvoiceRequestResult,
-  PublicReceiptResult,
-  ReceiptRefusal,
-  ReceiptReviewResult,
-  ReportReceiptIssueResult,
-} from "@/lib/modules/pos/receipt-public-shared";
+import type { PublicReceiptActionResult, PublicReceiptResult, ReceiptRefusal } from "@/lib/modules/pos/receipt-public-shared";
 
 const internal = (): ReceiptRefusal => ({ ok: false, code: "INTERNAL", message: "ระบบใบเสร็จขัดข้องชั่วคราว — ลองอีกครั้ง" });
 const tokenOf = (token: unknown): string => (typeof token === "string" ? token : "");
+// P1.11U F4: สำเร็จส่งกลับแค่ {ok:true} — id ภายใน (issueId/requestId/reviewId) ไม่ออกจากเซิร์ฟเวอร์
+const okOnly = (r: { ok: true } | ReceiptRefusal): PublicReceiptActionResult => (r.ok ? { ok: true } : r);
 
 /** อ่านใบเสร็จสาธารณะ (สำหรับรีเฟรชหลังส่งฟอร์ม) */
 export async function publicReceiptAction(token: string): Promise<PublicReceiptResult> {
@@ -36,9 +32,9 @@ export async function publicReceiptAction(token: string): Promise<PublicReceiptR
 }
 
 /** แจ้งปัญหาบิลนี้ — input = { message, contact? } */
-export async function reportReceiptIssueAction(token: string, input: { message: string; contact?: string | null }): Promise<ReportReceiptIssueResult> {
+export async function reportReceiptIssueAction(token: string, input: { message: string; contact?: string | null }): Promise<PublicReceiptActionResult> {
   try {
-    return await reportReceiptIssue(tokenOf(token), input);
+    return okOnly(await reportReceiptIssue(tokenOf(token), input));
   } catch (e) {
     unstable_rethrow(e);
     return internal();
@@ -49,9 +45,9 @@ export async function reportReceiptIssueAction(token: string, input: { message: 
 export async function requestFullTaxInvoiceAction(
   token: string,
   input: { name: string; taxId: string; branchCode?: string | null; address: string; email?: string | null },
-): Promise<FullTaxInvoiceRequestResult> {
+): Promise<PublicReceiptActionResult> {
   try {
-    return await requestFullTaxInvoice(tokenOf(token), input);
+    return okOnly(await requestFullTaxInvoice(tokenOf(token), input));
   } catch (e) {
     unstable_rethrow(e);
     return internal();
@@ -59,9 +55,9 @@ export async function requestFullTaxInvoiceAction(
 }
 
 /** ให้คะแนนร้าน (บิลของสมาชิกเท่านั้น) — input = { rating 1–5, body? } */
-export async function submitReceiptReviewAction(token: string, input: { rating: number; body?: string | null }): Promise<ReceiptReviewResult> {
+export async function submitReceiptReviewAction(token: string, input: { rating: number; body?: string | null }): Promise<PublicReceiptActionResult> {
   try {
-    return await submitReceiptReview(tokenOf(token), input);
+    return okOnly(await submitReceiptReview(tokenOf(token), input));
   } catch (e) {
     unstable_rethrow(e);
     return internal();
