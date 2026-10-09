@@ -82,6 +82,13 @@ model PosSale {
   // 12 ตัว Crockford base32 จาก crypto.randomBytes · ตั้งใน tx ของ createSale/refundSale · ไม่เปลี่ยนตลอดอายุบิล · ค้นด้วย unique index เท่านั้น (R9)
   publicToken         String?        @unique
 
+  // ── P1.13 — ใบกำกับภาษีเต็มรูป · เพิ่มคอลัมน์ล้วน (บิลเดิม = null = ไม่มีผู้ซื้อ) ──
+  // taxInvoice = สำเนาผู้ซื้อที่แกะแล้ว {kind, name, taxId, branchCode, address, email, source, requestedAt} (tax-invoice-shared.ts parseTaxInvoiceBuyer)
+  //   เขียนครั้งเดียว (ใน tx ของ createSale หรือตอนออกทีหลัง) · ห้ามแก้หลังออกเอกสารแล้ว (taxInvoiceDocId มีค่า)
+  // taxInvoiceDocId = AccountDocument.id ของ TAX_INVOICE ที่มีผล (id หลวม · ไม่มี FK — ข้ามโมดูลบัญชี)
+  taxInvoice          Json?
+  taxInvoiceDocId     String?
+
   lines    PosSaleLine[]
   payments PosPayment[]
 
@@ -579,6 +586,24 @@ model PosTaxInvoiceRequest {
 
   @@index([tenantId, saleId])
   @@index([tenantId, status, createdAt])
+}
+
+// ── POS P1.13 — ผู้ซื้อที่จำไว้ต่อสมาชิก (R6) · กรอกใบกำกับเต็มรูปครั้งหน้าไม่ต้องพิมพ์ใหม่ ──
+//   1 แถวต่อสมาชิก (Customer.id · id หลวม ไม่มี FK) · upsert เมื่อส่ง rememberBuyer พร้อมบิลที่มีสมาชิก · ไม่แตะตาราง Customer ของ CRM/สมาชิก
+//   ผู้เขียนเดียว = pos/tax-invoice.ts
+model PosBuyerProfile {
+  id         String   @id @default(cuid())
+  tenantId   String
+  customerId String   @unique // Customer.id (สมาชิก)
+  kind       String // "PERSON" | "JURISTIC"
+  name       String
+  taxId      String // 13 หลัก (ผ่าน mod-11 แล้ว)
+  branchCode String   @default("00000")
+  address    String
+  email      String?
+  updatedAt  DateTime @updatedAt
+
+  @@index([tenantId, taxId])
 }
 
 // POS P1.7 — ใบขอรับเงิน (payment intent) ของส่วนที่ไม่ใช่เงินสด ก่อนบิลเกิด

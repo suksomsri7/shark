@@ -44,3 +44,6 @@
 | 13 | **O4** Beam / ร้านทดลอง / เครื่องพิมพ์ | ✅ ไม่เร่ง ขอเมื่อถึง P1.7 / P1.10 | — |
 | 14 | **O7** คีย์ API (CRM) | ✅ คีย์ทั่วไปจัดการที่ `/app/settings/api` ที่เดียว | แจ้ง session CRM |
 | 15 | **m2** checklist | ✅ ใส่ในคู่มือ deploy (P6.1 runbook) | ทำแล้ว |
+
+## แจ้งเจ้าของโมดูลบัญชี (session บัญชีพักอยู่)
+- 9 ต.ค. · **P1.13** แตะ schema บัญชี 1 คอลัมน์: `AccountDocument.supersededByDocId String?` (nullable · เพิ่มอย่างเดียว · migration `20261201100000_pos_p113_tax_invoice` · QC4 เท่านั้น) — ใบกำกับอย่างย่อของบิล POS ที่ถูกแทนด้วยใบกำกับเต็มรูป (สถานะ CANCELLED + id ของ TAX_INVOICE · ไม่แตะ GL) · facade ใหม่ `supersedeAbbWithTaxInvoice`/`convertAbbToTaxInvoice` + `applyExternalSale({buyer})` + `findOrCreateCustomerContact({address, legalType})` ใน `account/` — ให้ session บัญชีตรวจรับตอนกลับมา

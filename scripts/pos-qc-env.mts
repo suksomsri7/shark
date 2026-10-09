@@ -157,6 +157,8 @@ export const POS_MODELS = {
   // ── P1.11 ใบเสร็จออนไลน์ (migration 20261129000000_pos_p111_online_receipt) ──
   posReceiptIssue: { model: "PosReceiptIssue", file: "pos.prisma", role: "ลูกค้าแจ้งปัญหาบิลจาก /r/<token> (OPEN/RESOLVED · kanbanCardId · 3 ครั้ง/บิล/24 ชม.)" },
   posTaxInvoiceRequest: { model: "PosTaxInvoiceRequest", file: "pos.prisma", role: "คำขอใบกำกับภาษีเต็มรูปจาก /r/<token> (REQUESTED/ISSUED/REJECTED · P1.13 ออกเอกสาร)" },
+  // ── P1.13 ใบกำกับเต็มรูป (migration 20261201100000_pos_p113_tax_invoice) ──
+  posBuyerProfile: { model: "PosBuyerProfile", file: "pos.prisma", role: "ผู้ซื้อที่จำไว้ต่อสมาชิก (P1.13 · customerId @unique · upsert เมื่อ rememberBuyer)" },
   posPaymentIntent: { model: "PosPaymentIntent", file: "pos.prisma", role: "ใบขอรับเงิน PromptPay/Beam/บัตร (P1.7 · PENDING→PAID→CONSUMED · id pi_…)" },
   posStaffPin: { model: "PosStaffPin", file: "pos.prisma", role: "PIN พนักงานต่อสาขา (P1.15 · scrypt salt:hash · ล็อก 5 ครั้ง/15 นาที)" },
   posApprovalPayload: { model: "PosApprovalPayload", file: "pos.prisma", role: "snapshot คำขออนุมัติ POS_VOID/POS_REFUND/POS_DISCOUNT_OVER (P1.15 · requestId = ApprovalRequest.id)" },

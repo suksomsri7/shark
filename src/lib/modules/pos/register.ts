@@ -425,6 +425,7 @@ import { posDeviceRevoked, touchPosDevice } from "./device"; // POS P1.10 ▸ �
 import { createHash } from "node:crypto";
 import { writeAudit } from "@/lib/core/audit";
 import { staffActorFromToken, verifyManagerPin } from "./staff-pin";
+import { TAX_INVOICE_MESSAGES } from "./tax-invoice-shared"; // POS P1.13 ▸ ผู้ซื้อของใบกำกับเต็มรูป ◂
 import {
   POS_APPROVAL_MESSAGE,
   approvedDiscountOf,
@@ -540,6 +541,8 @@ const REG_MESSAGE: Record<RegisterRefusalCode, string> = {
   APPROVAL_REQUIRED: POS_APPROVAL_MESSAGE.APPROVAL_REQUIRED,
   PENDING_APPROVAL: POS_APPROVAL_MESSAGE.PENDING_APPROVAL,
   APPROVAL_MISMATCH: POS_APPROVAL_MESSAGE.APPROVAL_MISMATCH,
+  // POS P1.13 ▸ ผู้ซื้อของใบกำกับเต็มรูป ◂
+  TAX_ID_INVALID: TAX_INVOICE_MESSAGES.TAX_ID_INVALID,
 };
 const REG_ROLE_LABEL: Record<RegisterRole, string> = { OWNER: "เจ้าของร้าน", MANAGER: "ผู้จัดการ", STAFF: "แคชเชียร์" };
 
