@@ -453,7 +453,22 @@
       "rejected": "The manager rejected it: {reason}",
       "rejectedNoReason": "The manager rejected the request",
       "cancelled": "Request cancelled — the bill is unchanged",
-      "pending": "Awaiting approval…"
+      "pending": "Awaiting approval…",
+      "card": {
+        "minutesAgo": "{n} min ago",
+        "reason": "Reason: {reason}",
+        "overCap": "Over the {role} limit of {cap}%",
+        "rowRequester": "Requested by",
+        "rowDevice": "Device",
+        "rowTime": "Time",
+        "rowReason": "Reason",
+        "rowIfApproved": "If approved",
+        "ifVoid": "Cash back {amount} · stock returned · credit note",
+        "ifRefund": "Refund {amount} · {lines}",
+        "ifDiscount": "{pct}% off = {amount}",
+        "policy": "Policy: {name}",
+        "details": "Details"
+      }
     }
   },
   "shift": {

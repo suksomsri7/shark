@@ -453,7 +453,22 @@
       "rejected": "ผู้จัดการปฏิเสธ: {reason}",
       "rejectedNoReason": "ผู้จัดการปฏิเสธคำขอ",
       "cancelled": "ยกเลิกคำขอแล้ว — บิลยังอยู่ตามเดิม",
-      "pending": "รออนุมัติ…"
+      "pending": "รออนุมัติ…",
+      "card": {
+        "minutesAgo": "{n} นาทีที่แล้ว",
+        "reason": "เหตุผล: {reason}",
+        "overCap": "เกินเพดาน {cap}% ของ{role}",
+        "rowRequester": "ผู้ขอ",
+        "rowDevice": "เครื่อง",
+        "rowTime": "เวลา",
+        "rowReason": "เหตุผล",
+        "rowIfApproved": "ถ้าอนุมัติ",
+        "ifVoid": "คืนเงินสด {amount} · คืนสต็อก · ใบลดหนี้",
+        "ifRefund": "คืนเงิน {amount} · {lines}",
+        "ifDiscount": "ส่วนลด {pct}% = {amount}",
+        "policy": "นโยบาย: {name}",
+        "details": "รายละเอียด"
+      }
     }
   },
   "shift": {
