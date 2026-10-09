@@ -1112,6 +1112,8 @@ export type PosDayBill = {
   methodLabel: string;
   /** POS P1.8 — "REFUND" = ใบคืนเงิน (grandTotalSatang เป็นบวก ตีความเป็นเงินออก) */
   docType?: string;
+  /** POS P1.18U ▸ มติ 9: ชนิดวิธีจ่ายของบิล (ลำดับเดียวกับ methodLabel) — จอแปลตามภาษาเอง (เพิ่มอย่างเดียว) ◂ */
+  methodTypes?: PosPayType[];
 };
 
 // ── สรุปวัน (default = วันนี้ BKK) ต่อระบบ POS ──
@@ -1228,6 +1230,7 @@ export async function closeDayBills(ctx: CloseCtx, businessDate?: string): Promi
       status: s.status,
       methodLabel: uniq.map((t) => PAY_TYPE_LABEL_TH[t]).join(" + ") || "—",
       docType: s.docType,
+      methodTypes: uniq, // POS P1.18U ▸ มติ 9 ◂
     };
   });
 }

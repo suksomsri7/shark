@@ -143,7 +143,8 @@ export type BillDetail = {
     request?: { name: string; taxId: string; branchCode: string; address: string; email: string | null };
   };
   refunds: { id: string; receiptNo: string | null; grandTotalSatang: number; time: string; reasonCode: string | null; reason: string | null; byName: string; accounting: { docNo: string | null } | null }[];
-  timeline: { time: string; text: string }[];
+  /** POS P1.18U ▸ มติ 9 (บิล drawer en): kind + params = ประโยคที่จอแปลตามภาษา (text ไทยเดิมคงไว้ · เพิ่มอย่างเดียว) ◂ */
+  timeline: { time: string; text: string; kind?: BillTimelineKind; params?: Record<string, string | number | boolean | null> }[];
   can: { void: boolean; refund: boolean; reprint: boolean };
   voidBlockedReason?: BillVoidBlockedReason;
 };
@@ -161,6 +162,9 @@ export type VoidSaleActionResult =
   | { ok: false; code: "STAFF_TOKEN_INVALID"; message: string };
 
 /** ป้ายเหตุผลการคืนเงิน (ไทม์ไลน์ · หน้าต่างคืนเงิน) — ตรงกับ REFUND_REASON_CODES ของ P1.8 */
+/** POS P1.18U ▸ ชนิดแถวไทม์ไลน์ของลิ้นชักบิล · ชื่อผู้ทำที่เป็น "ระบบ" (ไม่มีผู้ใช้) — จอแปลเองตามภาษา ◂ */
+export type BillTimelineKind = "paid" | "posted" | "refund" | "void" | "reprint";
+export const BILLS_SYSTEM_NAME = "ระบบ";
 export const REFUND_REASON_LABEL_TH: Record<string, string> = {
   DAMAGED: "สินค้ามีปัญหา",
   WRONG_ITEM: "ส่งผิดรายการ",

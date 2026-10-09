@@ -85,13 +85,12 @@
       },
       {
         "file": "src/app/app/sys/[id]/pos/close/page.tsx",
-        "untestid": 4,
+        "untestid": 3,
         "closes": "P1.9 / P4.1",
-        "note": "แท็บโมดูล · ฟอร์มเลือกวัน (form · input · button)",
+        "note": "แท็บโมดูล · ฟอร์มเลือกวัน (form · button) — ช่องวันที่ย้ายไป CloseDateField (pos-close-date · P1.18U)",
         "byTag": {
           "ModuleTabs": 1,
           "form": 1,
-          "input": 1,
           "button": 1
         }
       },
@@ -5430,7 +5429,7 @@
       "expect": {
         "type": "navigate",
         "target": "/app/sys/[id]/pos/settings",
-        "note": "เมนูซ้าย (POS_SETTINGS_TABS · live เท่านั้น): receipt · devices → ?tab=<key>&unit= · แท็บที่ยังไม่เปิดเป็น pos-settings-nav-soon-* (span ไม่กดได้ · รอบถัดไป P1.18)"
+        "note": "เมนูซ้าย (POS_SETTINGS_TABS · ทั้ง 8 แท็บ live ตั้งแต่ P1.18U): general · receipt · payments · devices · staff · shark · channels · offline → ?tab=<key>&unit= · ไม่ส่ง ?tab= = ทั่วไป (มติ Q6)"
       },
       "wo": "P1.10U",
       "oracle": "",
@@ -8892,6 +8891,1244 @@
       "oracle": "qc-pos-p1.12",
       "system": "POS",
       "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-general-retry",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-general",
+        "note": "แสดงเมื่อ posSettingsOverviewAction ล้ม (pos-settings-load-error) · โหลดซ้ำ"
+      },
+      "wo": "P1.18U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-general-autolock",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-general-save-register",
+        "note": "ล็อกจออัตโนมัติ 0–60 นาที (จำนวนเต็ม) · ผิด = pos-settings-general-field-error ใต้ช่อง · แคชเชียร์ = ช่องปิด"
+      },
+      "wo": "P1.18U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-general-held-days",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-general-save-register",
+        "note": "บิลพักหมดอายุ 1–365 วัน · แคชเชียร์ = ช่องปิด"
+      },
+      "wo": "P1.18U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-general-receipt-th",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-general-save-register",
+        "note": "ภาษาใบเสร็จ = ไทย (receiptLocale th · role radio)"
+      },
+      "wo": "P1.18U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-general-receipt-en",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-general-save-register",
+        "note": "ภาษาใบเสร็จ = อังกฤษ (receiptLocale en · role radio)"
+      },
+      "wo": "P1.18U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-general-save-register",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "updatePosGeneralSettingsAction",
+        "note": "การ์ดหน้าขาย: ส่งเฉพาะคีย์ที่เปลี่ยน {autoLockMinutes, heldCartExpireDays, receiptLocale} · ไม่มีอะไรเปลี่ยน = \"บันทึกแล้ว\" ไม่ยิง action · บันทึกแล้ว = pos-settings-general-saved 3 วิ · SETTINGS_SECTION_LOCKED/PERMISSION_DENIED = pos-settings-general-locked (การ์ดอ่านอย่างเดียว) · แคชเชียร์ไม่เห็นปุ่ม",
+        "db": "AppSystem(POS).settings.pos.{register.autoLockMinutes, heldCart.expireDays, receiptLocale}"
+      },
+      "wo": "P1.18U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-general-shift-required-register",
+      "kind": "toggle",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-general-save-shift",
+        "note": "บังคับเปิดกะก่อนขาย · หน้าขาย (shift.requiredRegister)"
+      },
+      "wo": "P1.18U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-general-shift-required-other",
+      "kind": "toggle",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-general-save-shift",
+        "note": "บังคับเปิดกะก่อนขาย · บิลจากระบบอื่น (shift.requiredOtherSources)"
+      },
+      "wo": "P1.18U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-general-shift-blind",
+      "kind": "toggle",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-general-save-shift",
+        "note": "ปิดกะแบบไม่เห็นยอด (shift.blindClose)"
+      },
+      "wo": "P1.18U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-general-shift-overshort",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-general-save-shift",
+        "note": "ผลต่างเกิน ฿N ต้องใส่เหตุผล — กรอกบาท (ทศนิยม 2) → สตางค์ 0–10,000,000"
+      },
+      "wo": "P1.18U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-general-shift-force-close",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-general-save-shift",
+        "note": "ปิดกะค้างอัตโนมัติหลัง 1–72 ชม."
+      },
+      "wo": "P1.18U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-general-save-shift",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "updatePosGeneralSettingsAction",
+        "note": "การ์ดกะและลิ้นชัก: patch {shift:{เฉพาะคีย์ย่อยที่เปลี่ยน}} · VALIDATION field shift.* = ใต้ช่อง",
+        "db": "AppSystem(POS).settings.pos.shift"
+      },
+      "wo": "P1.18U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-general-day-cutoff",
+      "kind": "select",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-general-save-reports",
+        "note": "ตัดวันที่ 00:00–06:00 ทีละ 15 นาที (dayCutoffMinutes 0–360 · ค่าที่ตั้งไว้นอกตารางแสดงด้วย) · \"บิลก่อนเวลานี้นับเป็นวันก่อนหน้า\""
+      },
+      "wo": "P1.18U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-general-save-reports",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "updatePosGeneralSettingsAction",
+        "note": "การ์ดรายงาน: patch {dayCutoffMinutes}",
+        "db": "AppSystem(POS).settings.pos.reports.dayCutoffMinutes"
+      },
+      "wo": "P1.18U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-general-oversell-allow",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-general-save-stock",
+        "note": "ขายเกินสต็อก = อนุญาต + ตั้งธง (ALLOW_NEGATIVE · สาขาของเมนูซ้าย)"
+      },
+      "wo": "P1.18U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-general-oversell-block",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-general-save-stock",
+        "note": "ขายเกินสต็อก = ห้ามขาย (BLOCK)"
+      },
+      "wo": "P1.18U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-general-save-stock",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "updatePosUnitStockPolicyAction",
+        "note": "การ์ดสต็อกของสาขา (pos.settings.manage ที่สาขานี้ · canEdit.unitStock)",
+        "db": "BusinessUnit.settings.pos.stock.oversellPolicy"
+      },
+      "wo": "P1.18U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-general-weighed-enabled",
+      "kind": "toggle",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-general-save-weighed",
+        "note": "อ่านบาร์โค้ดจากเครื่องชั่ง (weighedBarcode.enabled)"
+      },
+      "wo": "P1.18U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-general-weighed-prefix-*",
+      "kind": "select",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-general-save-weighed",
+        "note": "คำนำหน้า 20–29 ต่อกฎ (ลำดับแถว) · ซ้ำ = pos-settings-general-field-error (weighedBarcode.rules)"
+      },
+      "wo": "P1.18U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-general-weighed-kind-*-*",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-general-save-weighed",
+        "note": "ชนิดค่าในบาร์โค้ด น้ำหนัก (WEIGHT) | ราคา (PRICE) ต่อกฎ"
+      },
+      "wo": "P1.18U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-general-weighed-remove-*",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-general-weighed",
+        "note": "ลบกฎแถวนั้น (ยังไม่บันทึกจนกด บันทึก)"
+      },
+      "wo": "P1.18U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-general-weighed-add",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-general-weighed",
+        "note": "+ เพิ่มกฎ (คำนำหน้าแรกที่ยังว่าง · ครบ 10 = ซ่อน)"
+      },
+      "wo": "P1.18U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-general-save-weighed",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "updatePosGeneralSettingsAction",
+        "note": "การ์ดบาร์โค้ดสินค้าชั่ง: patch {weighedBarcode:{enabled, rules}} (ส่งครบทั้งสองช่อง)",
+        "db": "AppSystem(POS).settings.pos.weighedBarcode"
+      },
+      "wo": "P1.18U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-general-promptpay-input",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-general-save-promptpay",
+        "note": "เจ้าของเท่านั้น (canEdit.payment) · isValidPromptPayId ก่อนส่ง · ผิด = pos-settings-general-field-error · ไม่ใช่เจ้าของ = pos-settings-general-promptpay-owner-only"
+      },
+      "wo": "P1.18U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-general-promptpay-remove",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "updatePosUnitPromptpayAction",
+        "note": "ลบเลขของสาขา (promptpayId null) — แสดงเมื่อสาขามีเลข · QR กลับไปใช้เลขของร้าน",
+        "db": "AppSystem(POS).settings.pos.payment.promptpayIdByUnit.<unitId>"
+      },
+      "wo": "P1.18U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-general-save-promptpay",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "updatePosUnitPromptpayAction",
+        "note": "ตั้งเลขพร้อมเพย์ของสาขา → ผลเป็นเลขปิดบัง (pos-settings-general-promptpay-current) · MANAGER = SETTINGS_SECTION_LOCKED",
+        "db": "AppSystem(POS).settings.pos.payment.promptpayIdByUnit.<unitId>"
+      },
+      "wo": "P1.18U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-history-shell-open",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "pos-settings-history",
+        "note": "ปุ่มนาฬิกาบนหัวเมนูซ้าย (ทุกแท็บ · เฉพาะผู้มี pos.settings.manage) → ลิ้นชักประวัติการเปลี่ยน"
+      },
+      "wo": "P1.18U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-history-open",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "pos-settings-history",
+        "note": "ปุ่ม \"ประวัติการเปลี่ยน\" ของแท็บการเชื่อมต่อ (ลิ้นชักเดียวกัน)"
+      },
+      "wo": "P1.18U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-history-close",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-history",
+        "note": "ปิดลิ้นชัก (Esc / แตะม่าน ด้วย)"
+      },
+      "wo": "P1.18U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-history-more",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-history",
+        "note": "โหลดเพิ่ม (posSettingsHistoryAction cursor = nextCursor · หน้าละ 20)"
+      },
+      "wo": "P1.18U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-history-retry",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-history",
+        "note": "แสดงเมื่อโหลดล้ม (pos-settings-history-error) · โหลดซ้ำ"
+      },
+      "wo": "P1.18U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-staff-save",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "updatePosDiscountCapsAction",
+        "note": "ปุ่มดำ \"บันทึก\" = เพดานส่วนลดเท่านั้น (เฉพาะคีย์ที่เปลี่ยน · % → bp) · ผู้แก้ได้ = canEdit.caps · PERMISSION_DENIED = pos-settings-staff-error",
+        "db": "AppSystem(POS).settings.pos.discount.maxBpByRole"
+      },
+      "wo": "P1.18U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-staff-retry",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-staff",
+        "note": "แสดงเมื่อ posStaffOverviewAction ล้ม"
+      },
+      "wo": "P1.18U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-staff-cap-*",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-staff-save",
+        "note": "manager (เจ้าของร้านเท่านั้น) · staff — % 0–100 ทศนิยม 2 · ผิด = pos-settings-staff-cap-error"
+      },
+      "wo": "P1.18U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-staff-grants-link",
+      "kind": "link",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/settings/staff",
+        "note": "สิทธิ์รายคนแก้ที่หน้าพนักงานของร้าน (CD8)"
+      },
+      "wo": "P1.18U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-staff-policy-switch-*",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-staff-policies",
+        "note": "สวิตช์แสดงสถานะนโยบาย (อ่านอย่างเดียว · aria-disabled) — [*] = ApprovalPolicy.id · แก้ที่ /app/settings/approval"
+      },
+      "wo": "P1.18U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-staff-policy-link",
+      "kind": "link",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/settings/approval",
+        "note": "จัดการนโยบาย →"
+      },
+      "wo": "P1.18U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-staff-pin-open-*",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "pos-settings-staff-pin",
+        "note": "ตั้ง PIN / เปลี่ยน PIN ของพนักงาน [*] = userId → กล่อง PIN"
+      },
+      "wo": "P1.18U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-staff-hr-switch",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-staff-pins",
+        "note": "ดึงรายชื่อจาก HR — ปิดเสมอ (aria-disabled · ชิป เร็ว ๆ นี้ · P3.5)"
+      },
+      "wo": "P1.18U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-staff-pin-key-*",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-staff-pin-dots",
+        "note": "แป้น 0–9 (PIN สูงสุด 6 หลัก · แป้นพิมพ์จริงใช้ได้)"
+      },
+      "wo": "P1.18U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-staff-pin-clear",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-staff-pin-dots",
+        "note": "ล้าง PIN ที่ใส่"
+      },
+      "wo": "P1.18U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-staff-pin-del",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-staff-pin-dots",
+        "note": "ลบตัวสุดท้าย"
+      },
+      "wo": "P1.18U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-staff-pin-next",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "setStaffPinAction",
+        "note": "ครั้งแรก = ถัดไป (ยืนยันอีกครั้ง) · ครั้งที่สองตรงกัน = setStaffPinAction → ปิดกล่อง + โหลดรายชื่อใหม่ · ไม่ตรง/WEAK_PIN = pos-settings-staff-pin-message",
+        "db": "PosStaffPin"
+      },
+      "wo": "P1.18U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-staff-pin-cancel",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-staff",
+        "note": "ปิดกล่อง PIN (Esc ด้วย)"
+      },
+      "wo": "P1.18U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-shark-retry",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-shark",
+        "note": "แสดงเมื่อ posIntegrationCardsAction ล้ม"
+      },
+      "wo": "P1.18U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-account-switch",
+      "kind": "toggle",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "modal",
+        "target": "pos-settings-account-confirm",
+        "note": "การ์ดบัญชี (สวิตช์จริงตัวเดียว · CD2): เปิด→ปิด = กล่องยืนยัน · ปิด→เปิด = setPosAccountLinkAction {enabled:true} ทันที · ไม่มีสิทธิ์ (manage.canManage false หรือ PERMISSION_DENIED) = ปุ่มปิด + \"เจ้าของร้านหรือผู้ดูแลบัญชีเท่านั้น\" · NOT_FOUND = pos-settings-account-toast"
+      },
+      "wo": "P1.18U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-account-confirm-off",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "setPosAccountLinkAction",
+        "note": "\"ปิดการลงบัญชี\" → {enabled:false, confirm:true} → โหลดการ์ดใหม่",
+        "db": "AccountSystemLink.enabled"
+      },
+      "wo": "P1.18U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-account-confirm-cancel",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-shark",
+        "note": "ยกเลิก (ไม่ยิง action)"
+      },
+      "wo": "P1.18U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-account-toast-link",
+      "kind": "link",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]/account/settings/connections",
+        "note": "เชื่อมที่หน้าบัญชีก่อน → หน้าการเชื่อมต่อของระบบบัญชี (หรือ /app/settings/systems)"
+      },
+      "wo": "P1.18U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-account-toast-close",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-shark",
+        "note": "ปิดข้อความ"
+      },
+      "wo": "P1.18U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-card-state-*",
+      "kind": "toggle",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-shark",
+        "note": "ตัวแสดงสถานะของการ์ด (aria-disabled · title \"จัดการที่หน้า…\") — [*] = code ตัวเล็ก (member · point · …) และ offline · สลับไม่ได้จาก POS (CD2)"
+      },
+      "wo": "P1.18U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-card-enable-*",
+      "kind": "link",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/settings/connections",
+        "note": "การ์ด OFF (ผู้มีสิทธิ์ของระบบนั้น) → manage.href · NO_SYSTEM → /app/settings/systems · \"เปิดใช้\""
+      },
+      "wo": "P1.18U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-card-manage-*",
+      "kind": "link",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/settings/connections",
+        "note": "การ์ด LINKED + manage.canManage → manage.href (\"จัดการ →\")"
+      },
+      "wo": "P1.18U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-card-receipt-edit",
+      "kind": "link",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]/pos/settings",
+        "note": "การ์ดใบเสร็จและภาษี \"แก้ไข\" → ?tab=receipt"
+      },
+      "wo": "P1.18U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-card-etax-apply",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-card-receipt",
+        "note": "\"สมัคร\" e-Tax — ปิดเสมอ (รอผู้ให้บริการ · P3.11)"
+      },
+      "wo": "P1.18U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-channel-storefront-state",
+      "kind": "toggle",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-channels-panel",
+        "note": "สถานะเว็บร้าน SHARK Shop (อ่านอย่างเดียว · R11: สาขา SHOP ที่เปิดและมีสินค้า)"
+      },
+      "wo": "P1.18U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-pay-panel-edit",
+      "kind": "link",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]/pos/settings",
+        "note": "แผงวิธีรับเงิน \"แก้ไข\" → ?tab=payments"
+      },
+      "wo": "P1.18U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-pay-row-state-*",
+      "kind": "toggle",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-pay-panel",
+        "note": "สถานะวิธีรับเงิน promptpay · card · transfer (อ่านอย่างเดียว · แก้ที่แท็บวิธีรับเงิน)"
+      },
+      "wo": "P1.18U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-locale-switch-th",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]/pos/register",
+        "note": "ตัวสลับภาษาแอป TH (แถบบนหน้าขาย md+ และการ์ดภาษาของแอปในแท็บทั่วไป) → setUiLocaleAction {locale:\"th\"} (คุกกี้ LOCALE + lang) → router.refresh()"
+      },
+      "wo": "P1.18U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-locale-switch-en",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]/pos/register",
+        "note": "ตัวสลับภาษาแอป EN → setUiLocaleAction {locale:\"en\"} → router.refresh() (ทั้งจอเป็นภาษาอังกฤษ)"
+      },
+      "wo": "P1.18U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-staff-pin-key-0",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-staff-pin-dots",
+        "note": "แป้น 0 (แถวล่างกลาง)"
+      },
+      "wo": "P1.18U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-card-state-offline",
+      "kind": "toggle",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-card-offline",
+        "note": "การ์ดออฟไลน์: สวิตช์ปิดเสมอ (aria-disabled · P3.4) — ใช้ซ้ำในแท็บออฟไลน์และการซิงก์"
+      },
+      "wo": "P1.18U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/close",
+      "testid": "pos-close-date",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]/pos/close",
+        "note": "เลือกวัน (ฟอร์ม GET name=date) — ป้ายวันที่ตามภาษาจอ (DateOverlay) + ช่องวันที่ของเบราว์เซอร์ซ้อนโปร่งใส · ค่าเริ่ม = วันธุรกิจตามเวลาตัดวัน (posBusinessToday)"
+      },
+      "wo": "P1.18U",
+      "oracle": "",
+      "system": "POS"
     }
   ],
   "$roles": "roles/hiddenFor ที่อนุญาต: owner · manager · cashier · kind/expect.type ชุดเดียวกับทะเบียน CRM (F15.3b ตรวจ)"

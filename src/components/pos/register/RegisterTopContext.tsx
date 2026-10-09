@@ -19,6 +19,7 @@ import { useTranslations } from "next-intl";
 import { formatThaiTime } from "@/lib/ui/date";
 import type { RegisterRole, RegisterShiftInfo } from "@/lib/modules/pos/register-shared";
 import { RegisterIcon } from "./RegisterIcon";
+import { LocaleChooser } from "@/components/pos/LocaleChooser";
 
 type Unit = { id: string; name: string };
 type Props = {
@@ -185,6 +186,8 @@ export function RegisterTopContext(p: Props) {
         {p.online && p.lastSyncAt && <span className="hidden xl:inline">{` · ${t("status.lastSync", { time: formatThaiTime(p.lastSyncAt) })}`}</span>}
       </span>
       {shiftChip("hidden lg:inline-flex")}
+      {/* POS P1.18U ▸ มติ 8 (O10 ก): ตัวสลับภาษา TH | EN ข้างชิปออนไลน์/กะ (md+ · มือถือ 390 ไม่มีที่ในหัว 05ก — สลับได้ที่ ตั้งค่า → ทั่วไป) ◂ */}
+      <LocaleChooser compact />
       {p.user && p.onLock && (
         <button
           data-testid="pos-lock-now"

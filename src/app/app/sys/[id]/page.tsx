@@ -178,7 +178,7 @@ async function PosContent({ systemId, tenantId, scope }: { systemId: string; ten
   const paidCount = paidAll._count - countOf(refundDocs) + countOf(refundedSales);
   return (
     <>
-      <ModuleTabs items={posTabs(systemId)} />
+      <ModuleTabs items={posTabs(systemId, await getTranslations("pos"))} />
       <Link
         href={`/app/sys/${systemId}/pos/register`}
         className="btn btn-primary min-h-[52px] text-base"

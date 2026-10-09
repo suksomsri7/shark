@@ -39,6 +39,8 @@ import {
   type BillsRefusal,
   type BillsRefusalCode,
   type BillVoidBlockedReason,
+  type BillTimelineKind,
+  BILLS_SYSTEM_NAME,
   type VoidSaleActionResult,
 } from "./bills-shared";
 
@@ -46,7 +48,7 @@ import {
 export const VOID_PERMISSION = "pos.sale.void";
 const REFUND_PERMISSION = "pos.sale.refund";
 const MAX_KEY = 200;
-const SYSTEM_NAME = "ระบบ";
+const SYSTEM_NAME = BILLS_SYSTEM_NAME; // POS P1.18U ▸ ค่าเดิม ย้ายไป bills-shared (จอเทียบเพื่อแปล) ◂
 
 const MSG: Record<BillsRefusalCode, string> = {
   NO_PERMISSION: "บัญชีนี้ยังไม่มีสิทธิ์ทำรายการนี้ — ขอสิทธิ์จากเจ้าของร้านหรือผู้จัดการ",
@@ -408,20 +410,22 @@ export async function billDetail(ctx: RegisterCtx, actor: RegisterActor, input: 
     const deviceName = dev?.name ?? shift?.deviceLabel ?? null;
 
     // ── ไทม์ไลน์ (เฉพาะเหตุการณ์ที่มีหลักฐานในฐาน — ไม่แต่งแถว LINE/กำลังทำรายการ) ──
-    const timeline: { time: string; text: string; at: number }[] = [];
-    const push = (d: Date, text: string) => timeline.push({ time: d.toISOString(), text, at: d.getTime() });
-    push(timeOf(sale), `เปิดบิลและชำระครบ · ${staffName}`);
-    if (accounting && abbDoc) push(abbDoc.createdAt, `ลงบัญชีอัตโนมัติ ${accounting.docNo ?? ""}`.trim() + (sale.pointEarned > 0 ? " · ให้แต้มสมาชิก" : ""));
+    // POS P1.18U ▸ มติ 9: ทุกแถวพก kind + params (จอแปลตามภาษา) · text ไทยเดิมไม่เปลี่ยน ◂
+    type TParams = Record<string, string | number | boolean | null>;
+    const timeline: { time: string; text: string; at: number; kind: BillTimelineKind; params: TParams }[] = [];
+    const push = (d: Date, text: string, kind: BillTimelineKind, params: TParams) => timeline.push({ time: d.toISOString(), text, at: d.getTime(), kind, params });
+    push(timeOf(sale), `เปิดบิลและชำระครบ · ${staffName}`, "paid", { name: staffName });
+    if (accounting && abbDoc) push(abbDoc.createdAt, `ลงบัญชีอัตโนมัติ ${accounting.docNo ?? ""}`.trim() + (sale.pointEarned > 0 ? " · ให้แต้มสมาชิก" : ""), "posted", { docNo: accounting.docNo ?? null, points: sale.pointEarned > 0 });
     const cnByRef = new Map(cnDocs.map((d) => [d.refId, d.docNo]));
     for (const d of refundDocs) {
       const label = d.reasonCode ? (REFUND_REASON_LABEL_TH[d.reasonCode] ?? d.reasonCode) : "";
-      push(timeOf(d), [`คืนเงิน ${moneyText(d.grandTotalSatang)}`, nameOf(d.soldByUserId), label, d.receiptNo ?? ""].filter(Boolean).join(" · "));
+      push(timeOf(d), [`คืนเงิน ${moneyText(d.grandTotalSatang)}`, nameOf(d.soldByUserId), label, d.receiptNo ?? ""].filter(Boolean).join(" · "), "refund", { amountSatang: d.grandTotalSatang, name: nameOf(d.soldByUserId), reasonCode: d.reasonCode ?? null, receiptNo: d.receiptNo ?? null });
     }
     for (const au of audits) {
       if (au.action === "pos.sale.void") {
         const reason = isRecord(au.after) && typeof au.after.reason === "string" ? au.after.reason : "";
-        push(au.createdAt, ["ยกเลิกบิล", nameOf(au.actorId), reason].filter(Boolean).join(" · "));
-      } else push(au.createdAt, `พิมพ์สำเนา · ${nameOf(au.actorId)}`);
+        push(au.createdAt, ["ยกเลิกบิล", nameOf(au.actorId), reason].filter(Boolean).join(" · "), "void", { name: nameOf(au.actorId), reason: reason || null });
+      } else push(au.createdAt, `พิมพ์สำเนา · ${nameOf(au.actorId)}`, "reprint", { name: nameOf(au.actorId) });
     }
     timeline.sort((p, n) => p.at - n.at);
 
@@ -534,7 +538,7 @@ export async function billDetail(ctx: RegisterCtx, actor: RegisterActor, input: 
         byName: nameOf(d.soldByUserId),
         accounting: cnByRef.has(d.id) ? { docNo: cnByRef.get(d.id) ?? null } : null,
       })),
-      timeline: timeline.map(({ time, text }) => ({ time, text })),
+      timeline: timeline.map(({ time, text, kind, params }) => ({ time, text, kind, params })),
       can: { void: canVoid, refund: canRefund, reprint: true },
       ...(voidBlockedReason ? { voidBlockedReason } : {}),
     };

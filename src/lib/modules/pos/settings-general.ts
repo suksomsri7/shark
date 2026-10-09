@@ -388,8 +388,9 @@ function decodeCursor(v: unknown): { at: Date; id: string } | null {
   }
 }
 /** after/before → พารามิเตอร์ประโยคแบบแบน (ค่าพื้นฐาน · ซ้อนได้ 2 ชั้น "shift.blindClose") */
-function summaryOf(after: unknown, maskPhone: (phone: string) => string): Record<string, string | number | boolean | null> {
+function summaryOf(after: unknown, before: unknown, maskPhone: (phone: string) => string): Record<string, string | number | boolean | null> {
   const out: Record<string, string | number | boolean | null> = {};
+  const prev = recOf(maskAuditPhones(before, maskPhone)); // POS P1.18U ▸ F1: คีย์ชั้นที่ 2 ที่ค่าเท่าเดิม = ไม่ได้แก้ ⇒ ไม่ออกในประโยค (คีย์ชั้นบนคงเดิม) ◂
   const put = (k: string, v: unknown) => {
     if (Object.keys(out).length >= 24) return;
     if (v === null || typeof v === "boolean" || typeof v === "number") out[k] = v as never;
@@ -399,7 +400,12 @@ function summaryOf(after: unknown, maskPhone: (phone: string) => string): Record
   for (const [k, v] of Object.entries(recOf(maskAuditPhones(after, maskPhone)))) {
     if (SUMMARY_DROP.has(k)) continue;
     if (isRecord(v)) {
-      for (const [k2, v2] of Object.entries(v)) if (!SUMMARY_DROP.has(k2)) put(`${k}.${k2}`, isRecord(v2) || Array.isArray(v2) ? null : v2);
+      const pv = isRecord(prev[k]) ? (prev[k] as Record<string, unknown>) : null;
+      for (const [k2, v2] of Object.entries(v)) {
+        if (SUMMARY_DROP.has(k2)) continue;
+        if (pv && canon(pv[k2]) === canon(v2)) continue; // POS P1.18U ▸ F1 ◂
+        put(`${k}.${k2}`, isRecord(v2) || Array.isArray(v2) ? null : v2);
+      }
     } else if (Array.isArray(v)) put(`${k}.count`, v.length);
     else put(k, v);
   }
@@ -460,7 +466,7 @@ export async function posSettingsHistory(ctx: Ctx, actor: PosSettingsWriterActor
       actorName: (r.actorId && nameOf.get(r.actorId)) || null,
       action: r.action,
       section: sectionOf(r.action, r.before, r.after),
-      summary: summaryOf(r.after, maskPhone),
+      summary: summaryOf(r.after, r.before, maskPhone), // POS P1.18U ▸ F1 ◂
     }));
     const last = page[page.length - 1];
     return { ok: true, items, nextCursor: rows.length > HISTORY_PAGE && last ? encodeCursor(last.createdAt, last.id) : null };

@@ -650,3 +650,25 @@ Rows added to `scripts/pos-ui-inventory.json` (page `/app/sys/[id]/pos/register`
 - Coupon dialog (real entry): `pos-reg-coupon-dialog` · `pos-reg-coupon-form` · `pos-reg-coupon-input` · `pos-reg-coupon-apply` · `pos-reg-coupon-remove` ·
   `pos-reg-coupon-current` / `pos-reg-coupon-error` (display) · `pos-reg-coupon-close`.
 - 02b: `pos-member-done-points` (display).
+
+## Addendum P1.18U — settings tabs ทั่วไป · พนักงานและสิทธิ์ 17C · การเชื่อมต่อระบบ SHARK 10 · ช่องทาง · ออฟไลน์ · history · locale switcher · i18n (builder U, 9 Oct 2026)
+Rows added to `scripts/pos-ui-inventory.json` (wo `P1.18U`; page `/app/sys/[id]/pos/settings` unless noted; `pos-settings-nav-*` note updated: all 8 tabs live, default `general`).
+- ทั่วไป (`pos-settings-general`, display): `-retry` · `-autolock` · `-held-days` · `-receipt-th|en` · `-save-register` · `-shift-required-register` · `-shift-required-other` · `-shift-blind` ·
+  `-shift-overshort` · `-shift-force-close` · `-save-shift` · `-day-cutoff` · `-save-reports` · `-oversell-allow|block` · `-save-stock` · `-weighed-enabled` · `-weighed-prefix-*` ·
+  `-weighed-kind-*-*` · `-weighed-remove-*` · `-weighed-add` · `-save-weighed` · `-promptpay-input` · `-promptpay-remove` · `-save-promptpay` (all `pos-settings-general-…`).
+  Display: cards `pos-settings-general-{register,shift,reports,stock,weighed,promptpay,service,language}` · `-field-error` (`data-field`) · `-locked` · `-error` · `-saved` · `-weighed-empty` ·
+  `-promptpay-current` · `-promptpay-owner-only` · `-service-value` · `pos-settings-readonly` · `pos-settings-load-error`.
+- Locale (register top bar md+ and the ทั่วไป language card; rows on page `/app/sys/[id]/pos/register`): `pos-locale-switch-th` · `pos-locale-switch-en`; display `pos-locale-switch` (group) · `pos-locale-switch-error`.
+- History: `pos-settings-history-shell-open` (shell clock) · `pos-settings-history-open` (shark tab) · `pos-settings-history-close` · `-more` · `-retry`; display `pos-settings-history` · `-row` · `-empty` · `-error`.
+- พนักงานและสิทธิ์: `pos-settings-staff-save` · `-retry` · `-cap-*` (manager|staff) · `-grants-link` · `-policy-switch-*` (read-only) · `-policy-link` · `-pin-open-*` (userId) · `-hr-switch` (read-only) ·
+  PIN dialog `pos-settings-staff-pin-key-*` · `-key-0` · `-clear` · `-del` · `-next` · `-cancel`; display `pos-settings-staff` · `-matrix` · `-row-<task>` · `-cap-error` · `-policies` · `-policies-empty` ·
+  `-pins` · `-pins-empty` · `-person-<userId>` · `-error` · `-saved` · `pos-settings-staff-pin` · `-pin-dots` · `-pin-message`.
+- การเชื่อมต่อระบบ SHARK: `pos-settings-shark-retry` · `pos-settings-account-switch` · `pos-settings-account-confirm-off|cancel` · `pos-settings-account-toast-link|close` · `pos-settings-card-state-*` (read-only; code lower-case + offline) ·
+  `pos-settings-card-enable-*` · `pos-settings-card-manage-*` · `pos-settings-card-receipt-edit` · `pos-settings-card-etax-apply` (disabled) · `pos-settings-channel-storefront-state` (read-only) · `pos-settings-pay-panel-edit` ·
+  `pos-settings-pay-row-state-*` (read-only); display `pos-settings-shark` · `-shark-count` · `-shark-backlog` · `pos-settings-card-<code>` (13 + receipt + offline) · `pos-settings-fact-<code>-<key>` ·
+  `pos-settings-card-receipt-vat` · `pos-settings-account-confirm` · `pos-settings-account-denied` · `pos-settings-account-toast` · `pos-settings-channels-panel` · `pos-settings-channel-<lineman|grab|shopee|foodpanda|storefront>` ·
+  `pos-settings-pay-panel` · `pos-settings-pay-row-<promptpay|card|transfer|voucher|credit>` · `pos-settings-offline-pending`.
+  Fix round 2 (visual): `pos-settings-card-state-*` now also on PLANNED cards (AI — read-only off knob, chip moved out of the header); display `pos-settings-card-soon-<code>` (PLANNED chip row under the title; `ai` · `offline`) · `pos-settings-card-etax` (e-Tax row).
+- ช่องทาง / ออฟไลน์: display `pos-settings-channels` · `pos-settings-offline` · `pos-settings-phase-banner` (+ the shark panels above).
+- Close day page (`/app/sys/[id]/pos/close`): `pos-close-date` (date overlay; debt row of close/page.tsx `<input>` 1 → 0).
+- Register 19ก: `pos-reg-empty-add-product` now owner/manager only (`canManageProducts`); cashier sees `register.emptyCatalogue.cashierBody`.
