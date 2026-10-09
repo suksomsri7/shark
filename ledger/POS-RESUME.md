@@ -1030,3 +1030,10 @@
 - ⚠️ `qc-member-m2.7`/`m2.8` ล้มตอน setup ทั้งบน base และสาขานี้ (`member-expected.json` ไม่ตรง seed สมาชิกบน QC4 — ไม่ใช่ของ P1.12; ห้าม reseed เอง → แจ้งเจ้าของ/รอ session สมาชิก)
 - **งานแรกของ A** = spawn reviewer Opus (อ่านอย่างเดียว ทรี b @80d86f6b, diff `183b4e1b..80d86f6b`) ด้วย prompt ใหม่ `pos-prompt-accountB-P1.12-R.md` ตามแบบ P1.13-R → รอบแก้ (ถ้ามี) → merge `--no-ff origin/wip/pos-p1.12` → ต่อข้อ 3 (P1.12U)
 - ไม่มี agent/unit ค้าง · ไม่ spawn/resume เพิ่มจากบัญชี B
+
+# ▶️ บัญชี A รับไม้ต่อ — 9 ต.ค. 2026 12:05Z → 12:4xZ (Fable คุม · Opus ทำ)
+- 12:05Z อ่าน HANDOVER · โควตา A weekly 27% · tg 4356 · trial merge `wip/pos-p1.12` 80d86f6b บน session/pos f1d8ee4c = ทรี c `tmp/p112-merge` **a2d2848d** (ไม่ชน · 24 ไฟล์)
+- 12:2xZ เลน 1 = **reviewer P1.12 S** (Opus อ่านอย่างเดียว · prompt `pos-prompt-accountB-P1.12-R.md` fe490670 · รายงานที่ `scratchpad/p112-r/REPORT.md`)
+- 🔴 **12:3xZ เจ้าของสั่ง "เปิด 4 เลน"** (ยกเลิกเพดาน 2 เลน) ⇒ เลน 2 = **builder P1.12U** ทรี d `wip/pos-p1.12u` จากฐาน a2d2848d (prompt `pos-prompt-accountB-P1.12U.md` · มติ 1–11 · merge origin/session/pos ก่อนด่านท้าย) · เลน 3 = **ร่าง brief P1.18** (Opus อ่านอย่างเดียว เขียน `pos-brief-P1.18.md` DRAFT) · เลน 4 = **ร่าง brief P2.1** (เขียน `pos-brief-P2.1.md` DRAFT) — ผู้คุมเคาะ §9 ก่อนเปิด oracle writer
+- ถัดไปเมื่อผลมา: R ⇒ (รอบแก้บนทรี b ถ้ามี) ⇒ merge `--no-ff origin/wip/pos-p1.12` เข้า session/pos (ยังนับ 21/55) ⇒ บอก builder U ให้ merge · brief ร่าง ⇒ ผู้คุมอ่าน+เคาะ §9 ⇒ oracle writer (ทรี p11 / ทรี c) ⇒ builder S
+- ทรีว่าง: p11 (L1) · c หลังปิด tmp/p112-merge · e = `wip/survey-inventory-v2` (ของสำรวจคลัง ห้ามแตะ)
