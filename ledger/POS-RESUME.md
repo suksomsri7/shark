@@ -1025,5 +1025,8 @@
 - subagent ใช้ scratchpad ร่วมกัน → ทุก prompt ต้องบังคับ `scratchpad/<wo>/` · ผู้คุมใช้ `scratchpad/ctl/` · suites หลายเลนบน tenant `posqc-coffee` ชนกัน (fingerprint/restore แดงหลอก) → รันซ้ำก่อนตัดสิน · จัดคิวภาพกับชุด DB ด้วยไฟล์ธง (ดู `chain44.sh`)
 - รายงาน Telegram `tg "📊 POS · N% (x/55) …"` ≤5 บรรทัดเมื่อสถานะเปลี่ยน · checkpoint ท้าย `ledger/POS-RESUME.md` + push `session/pos` ทุกครั้ง · นับการ์ดเมื่อ U ปิด · ผู้ตรวจ Opus ทุกใบ · refusal เป็น data + ข้อความไทย · เจ้าของเลือกคุณภาพ > ความเร็ว
 
-## 5. จุดที่ B หยุด
-- รอรายงานสุดท้ายจาก builder P1.12 (จะต่อท้ายบล็อกนี้ถ้ามาทัน) · ไม่ spawn/resume เพิ่ม · gates45 เขียว · ไม่มี unit systemd ค้าง (ตรวจ `systemctl list-units 'pos-*' --no-legend`)
+## 5. จุดที่ B หยุด (12:05Z)
+- **P1.12 S เสร็จ รอผู้ตรวจ**: `wip/pos-p1.12` head **80d86f6b** (push แล้ว ทรี b สะอาด) · build order 1–4 ครบ · migration `20261202100000_pos_p112_member_snapshot` deploy บน QC4 แล้ว + client generate ในทรี b · ORACLE-EDIT: V3/ST5 ตัด VOUCHER_LIMIT (b9804e00) · p1.3 S3.29/S3.42 (251a01ec) · p1.12 X4 prefix key (f7a63fd0) · p1.5 H5 couponDiscountSatang (f2d559ff) · แก้เพิ่ม a0c96d63 (เช็คสมาชิกเป็นของร้านก่อนเช็คระบบสมาชิกของสาขา) · ด่าน: **p1.12 64/64 forced+unforced residue 0** · p1.5 21/21 · p1.3 128/128 · p1.8/p1.11/p1.13/p1.15/p1.16 เขียว · authz 56 · fitness 41 ×2 · fitness-pos 8 · money suites เท่า baseline · typecheck 0 · notes + สัญญาสำหรับ P1.12U + §HANDOVER ใน `ledger/wo-notes/pos-P1.12.md`
+- ⚠️ `qc-member-m2.7`/`m2.8` ล้มตอน setup ทั้งบน base และสาขานี้ (`member-expected.json` ไม่ตรง seed สมาชิกบน QC4 — ไม่ใช่ของ P1.12; ห้าม reseed เอง → แจ้งเจ้าของ/รอ session สมาชิก)
+- **งานแรกของ A** = spawn reviewer Opus (อ่านอย่างเดียว ทรี b @80d86f6b, diff `183b4e1b..80d86f6b`) ด้วย prompt ใหม่ `pos-prompt-accountB-P1.12-R.md` ตามแบบ P1.13-R → รอบแก้ (ถ้ามี) → merge `--no-ff origin/wip/pos-p1.12` → ต่อข้อ 3 (P1.12U)
+- ไม่มี agent/unit ค้าง · ไม่ spawn/resume เพิ่มจากบัญชี B
