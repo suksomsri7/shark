@@ -11,12 +11,15 @@ import { requireTenant } from "@/lib/core/context";
 import { assertCan, canAccessUnit } from "@/lib/core/rbac";
 import { posMembership } from "./access";
 import { cancelPaymentIntent, confirmPaymentIntentManual, createPaymentIntent, paymentIntentStatus } from "./payment-intent";
+import { updatePosIntentSettings } from "./payment-settings";
 import type {
   CreatePaymentIntentInput,
   CreatePaymentIntentResult,
   PaymentIntentActionResult,
   PaymentIntentRefusal,
   PaymentIntentStatusResult,
+  PosIntentSettingsPatch,
+  PosIntentSettingsResult,
 } from "./payment-intent-shared";
 
 type Target = { systemId: string; unitId: string; deviceId?: string };
@@ -99,5 +102,31 @@ export async function paymentIntentStatusAction(args: Target & { intentId: strin
     return await paymentIntentStatus(s.ctx, s.actor, { intentId: args?.intentId });
   } catch (e) {
     return internal("paymentIntentStatusAction", e);
+  }
+}
+
+/**
+ * POS P1.7U ▸ มติ 6: ค่าตั้ง 17A "วิธีรับเงิน" (settings.pos.payment) — สิทธิ์ pos.device.manage แบบค่าตั้งใบเสร็จ
+ *   (ระดับร้านที่นี่ + ครบทุกสาขาที่ผูก POS นี้ใน updatePosIntentSettings) · ร้าน/บทบาทจาก session เท่านั้น ◂
+ */
+export async function updatePosIntentSettingsAction(args: { systemId: string; patch: PosIntentSettingsPatch }): Promise<PosIntentSettingsResult> {
+  try {
+    const auth = await requireTenant();
+    const m = posMembership(auth.active);
+    try {
+      assertCan(m, { module: "pos", action: "pos.device.manage" });
+    } catch {
+      return { ok: false, code: "PERMISSION_DENIED", message: "บัญชีนี้ยังไม่มีสิทธิ์ตั้งค่าการรับเงิน — ขอสิทธิ์จากเจ้าของร้าน" };
+    }
+    const systemId = args && typeof args.systemId === "string" ? args.systemId : "";
+    return await updatePosIntentSettings(
+      { tenantId: auth.active.tenantId, systemId },
+      { userId: auth.user.id, role: m.role, unitAccess: m.unitAccess, permissions: m.permissions },
+      args?.patch ?? {},
+    );
+  } catch (e) {
+    unstable_rethrow(e);
+    console.error("[pos/payment-intent-actions] updatePosIntentSettingsAction", e);
+    return { ok: false, code: "UNKNOWN", message: "เกิดข้อผิดพลาด — ลองอีกครั้ง" };
   }
 }

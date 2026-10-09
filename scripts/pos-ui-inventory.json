@@ -6439,6 +6439,102 @@
       "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-pay-save",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "updatePosIntentSettingsAction",
+        "db": "AppSystem(POS).settings.pos.payment {beam.enabled · qrExpiryMinutes · manualConfirmRequiresManager}",
+        "note": "pos.device.manage ทุกสาขาที่ผูก · ปฏิเสธ = pos-settings-pay-error · ผู้อ่านอย่างเดียว (แคชเชียร์) = ปุ่มปิด + pos-settings-readonly"
+      },
+      "wo": "P1.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-pay-expiry",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-pay-save",
+        "note": "อายุ QR 5–60 นาที (จำนวนเต็ม) · ผิด = pos-settings-pay-error"
+      },
+      "wo": "P1.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-pay-beam",
+      "kind": "toggle",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-pay-save",
+        "note": "รับเงินผ่าน Beam — ปิดเมื่อแพลตฟอร์มยังไม่มีคีย์ (ชิป \"ยังไม่ตั้งคีย์\") และยังไม่เคยเปิด"
+      },
+      "wo": "P1.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-pay-manual",
+      "kind": "toggle",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-pay-save",
+        "note": "manualConfirmRequiresManager — ยืนยันเงินเข้าเองต้องเป็นผู้จัดการ (pos.shift.manage)"
+      },
+      "wo": "P1.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-pay-link",
+      "kind": "link",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/settings/payment",
+        "note": "PromptPay ID ของร้าน (PaymentProfile · อ่านอย่างเดียวในแท็บนี้)"
+      },
+      "wo": "P1.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
     }
   ],
   "$roles": "roles/hiddenFor ที่อนุญาต: owner · manager · cashier · kind/expect.type ชุดเดียวกับทะเบียน CRM (F15.3b ตรวจ)"
