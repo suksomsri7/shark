@@ -8,7 +8,6 @@
 // • audit pos.priceRule.created / updated / archived (actorId = ผู้ใช้จริง · before/after = DTO 18 คีย์ + ruleId)
 // • ตัวแก้ราคา (price-shared.ts) อ่านกติกาที่ active ไม่เก็บถาวรผ่าน price.ts — ไม่มี outbox (ราคาอ่านตอนขาย · R12)
 import type { Prisma, PrismaClient, PosPriceRule } from "@prisma/client";
-import { writeAudit } from "@/lib/core/audit";
 import { canAccessUnit, evaluate } from "@/lib/core/rbac";
 import { prisma } from "./db";
 import {
@@ -96,6 +95,16 @@ function canWriteUnits(s: Scope, unitIds: readonly string[], linked: readonly st
 
 const auditOf = (r: PosPriceRule) => ({ ruleId: r.id, ...priceRuleItem(r) });
 
+/**
+ * รีวิว F4: audit ของกติกาเขียนในธุรกรรมเดียวกับแถวกติกา (บันทึกสำเร็จ ⇔ มี audit · audit ล้ม = ย้อนทั้งคู่ ⇒ ลองซ้ำไม่ได้กติกาซ้ำ)
+ *   รูปแถวเดียวกับ writeAudit (actorType USER · before/after ว่าง = ไม่ใส่)
+ */
+async function auditRuleTx(tx: Prisma.TransactionClient, tenantId: string, actorId: string, action: string, targetId: string, before: unknown, after: unknown): Promise<void> {
+  await tx.auditLog.create({
+    data: { tenantId, actorType: "USER", actorId, action, targetType: "PosPriceRule", targetId, before: (before ?? undefined) as never, after: (after ?? undefined) as never },
+  });
+}
+
 /** R3 — กติกาของระบบ (ปริยาย = ที่ยังไม่เก็บถาวร · includeArchived = รวมที่เก็บถาวร archived:true) เรียง priority มากก่อน → สร้างก่อน */
 export async function listPriceRules(ctx: RegisterCtx, actor: RegisterActor, input: { includeArchived?: boolean } = {}, client?: Db): Promise<ListPriceRulesResult> {
   return guard("listPriceRules", async (): Promise<ListPriceRulesResult> => {
@@ -161,20 +170,25 @@ export async function savePriceRule(ctx: RegisterCtx, actor: RegisterActor, inpu
       updatedByUserId: s.actor.userId,
     };
     if (prior) {
-      const n = await db.posPriceRule.updateMany({ where: { id: prior.id, tenantId: s.tenantId, systemId: s.systemId, archivedAt: null }, data });
-      if (n.count !== 1) return refuse("PRICE_RULE_NOT_FOUND");
-      const after = await db.posPriceRule.findUniqueOrThrow({ where: { id: prior.id } });
-      await writeAudit({ tenantId: s.tenantId, actorId: s.actor.userId, action: "pos.priceRule.updated", targetType: "PosPriceRule", targetId: prior.id, before: auditOf(prior), after: auditOf(after) });
+      const after = await db.$transaction(async (tx): Promise<PosPriceRule | null> => {
+        const n = await tx.posPriceRule.updateMany({ where: { id: prior.id, tenantId: s.tenantId, systemId: s.systemId, archivedAt: null }, data });
+        if (n.count !== 1) return null;
+        const row = await tx.posPriceRule.findUniqueOrThrow({ where: { id: prior.id } });
+        await auditRuleTx(tx, s.tenantId, s.actor.userId, "pos.priceRule.updated", prior.id, auditOf(prior), auditOf(row));
+        return row;
+      });
+      if (!after) return refuse("PRICE_RULE_NOT_FOUND");
       return { ok: true, rule: priceRuleItem(after) };
     }
     const created = await db.$transaction(async (tx): Promise<PosPriceRule | PriceRuleRefusal> => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`pos-price-rule:${s.systemId}`}))`;
       const live = await tx.posPriceRule.count({ where: { tenantId: s.tenantId, systemId: s.systemId, archivedAt: null } });
       if (live >= PRICE_RULE_LIMIT) return refuse("PRICE_RULE_LIMIT");
-      return tx.posPriceRule.create({ data: { ...data, tenantId: s.tenantId, systemId: s.systemId, createdByUserId: s.actor.userId } });
+      const row = await tx.posPriceRule.create({ data: { ...data, tenantId: s.tenantId, systemId: s.systemId, createdByUserId: s.actor.userId } });
+      await auditRuleTx(tx, s.tenantId, s.actor.userId, "pos.priceRule.created", row.id, null, auditOf(row));
+      return row;
     });
     if (isRefusal(created)) return created;
-    await writeAudit({ tenantId: s.tenantId, actorId: s.actor.userId, action: "pos.priceRule.created", targetType: "PosPriceRule", targetId: created.id, after: auditOf(created) });
     return { ok: true, rule: priceRuleItem(created) };
   });
 }
@@ -191,9 +205,12 @@ export async function archivePriceRule(ctx: RegisterCtx, actor: RegisterActor, i
     if (!row) return refuse("PRICE_RULE_NOT_FOUND");
     if (!canWriteUnits(s, row.unitIds, await linkedUnits(db, s))) return refuse("PERMISSION_DENIED");
     if (row.archivedAt) return { ok: true, rule: priceRuleItem(row) };
-    const n = await db.posPriceRule.updateMany({ where: { id: row.id, tenantId: s.tenantId, systemId: s.systemId, archivedAt: null }, data: { archivedAt: new Date(), updatedByUserId: s.actor.userId } });
-    const after = await db.posPriceRule.findUniqueOrThrow({ where: { id: row.id } });
-    if (n.count === 1) await writeAudit({ tenantId: s.tenantId, actorId: s.actor.userId, action: "pos.priceRule.archived", targetType: "PosPriceRule", targetId: row.id, before: auditOf(row), after: auditOf(after) });
+    const after = await db.$transaction(async (tx): Promise<PosPriceRule> => {
+      const n = await tx.posPriceRule.updateMany({ where: { id: row.id, tenantId: s.tenantId, systemId: s.systemId, archivedAt: null }, data: { archivedAt: new Date(), updatedByUserId: s.actor.userId } });
+      const cur = await tx.posPriceRule.findUniqueOrThrow({ where: { id: row.id } });
+      if (n.count === 1) await auditRuleTx(tx, s.tenantId, s.actor.userId, "pos.priceRule.archived", row.id, auditOf(row), auditOf(cur));
+      return cur;
+    });
     return { ok: true, rule: priceRuleItem(after) };
   });
 }
