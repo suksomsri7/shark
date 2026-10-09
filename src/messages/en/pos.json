@@ -305,7 +305,8 @@
       "staffTokenInvalid": "Staff sign-in expired — enter your PIN again",
       "approvalRequired": "Approval requested — wait for an approver or enter a manager PIN on this device",
       "pendingApproval": "An approval request for this is already pending — wait or enter a manager PIN",
-      "approvalMismatch": "This bill doesn't match what was approved — request approval again or enter a manager PIN"
+      "approvalMismatch": "This bill doesn't match what was approved — request approval again or enter a manager PIN",
+      "alreadySet": "A PIN is already set — change it in Settings → Staff"
     },
     "held": {
       "title": "Held bills",
@@ -387,8 +388,7 @@
       "managerTitle": "Manager unlock",
       "managerBody": "Manager: tap your own name, then enter your manager PIN",
       "managerFor": "unlock for {name}",
-      "forgotBody": "Ask a manager to set a new PIN in Settings → Staff",
-      "forgotSet": "Manager confirmed — set a new PIN for {name}",
+      "forgotBody": "Ask a manager to set the PIN in Settings → Staff",
       "unlocked": "Unlocked — enter {name}'s PIN again",
       "unlockDenied": "This device's account cannot unlock PINs — a manager can do it in Settings → Staff",
       "setTitle": "Set {name}'s PIN",
@@ -408,14 +408,15 @@
       "shiftOwner": "Shift #{no} owner · opened {time}",
       "shiftOwnerNoNo": "Shift owner · opened {time}",
       "canSell": "Can sell in this shift",
-      "noPin": "No PIN yet — tap to set",
+      "noPin": "No PIN yet — a manager sets it in Settings → Staff",
       "switch": "Switch staff",
       "loading": "Loading staff…",
       "empty": "No staff can sell at this branch yet",
       "loadFailed": "Could not load staff",
       "retry": "Try again",
       "heldTitle": "{count} held bills",
-      "heldLine": "{label} · {lines} items · held {time} by {name}"
+      "heldLine": "{label} · {lines} items · held {time} by {name}",
+      "noPinOwn": "No PIN yet — tap to set your PIN"
     },
     "discountOver": {
       "title": "Discount over your limit",

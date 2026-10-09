@@ -1954,6 +1954,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
           heldCount={heldCount}
           autoLockMinutes={props.autoLockMinutes ?? 2}
           settingsHref={`${base}/pos/settings?tab=devices&unit=${encodeURIComponent(unitId)}`}
+          sessionUserId={userId}
           onUnlocked={(n) => void onUnlocked(n)}
         />
       )}

@@ -5,7 +5,8 @@
 //   ซ้าย: กุญแจ · "ใส่ PIN เพื่อปลดล็อก" · <อวตาร> ชื่อ · บทบาท · ล็อกเมื่อ HH:MM · จุด 6 ดวง · แป้น 1–9 / ลืม PIN / 0 / ⌫ · คำใบ้
 //   ขวา: "ใครกำลังใช้เครื่องนี้" การ์ดพนักงาน (ใช้งานอยู่ · เจ้าของกะ · ขายในกะนี้ได้ · ยังไม่ตั้ง PIN) · [สลับพนักงาน] · การ์ดบิลที่พัก · ท้าย: ล็อกอัตโนมัติ N นาที
 //   ทาง: PIN ของคนที่เลือก (ส่ง userId เสมอ — ไม่มีทาง "จับทุกแถว") · PIN_LOCKED / ลืม PIN = ผู้จัดการแตะชื่อตัวเอง + PIN ผู้จัดการ →
-//     unlockStaffPinAction · คนที่ยังไม่มี PIN = ตั้ง PIN (ตัวเอง / บัญชีเครื่องที่มี pos.staff.manage — เซิร์ฟเวอร์ตัดสิน) แล้วเข้าใช้ทันที
+//     unlockStaffPinAction (ไม่มีทางตั้ง PIN ใหม่ — ตั้งค่า → พนักงาน) · fix รอบ 1 F1: ตั้ง PIN จากจอนี้ได้เฉพาะการ์ดของผู้ใช้ session
+//     ที่ยังไม่มี PIN (setOwnStaffPinAction) · คนอื่นที่ยังไม่มี PIN = ข้อความให้ผู้จัดการตั้งที่ ตั้งค่า → พนักงาน
 //   ไม่ได้ลงทะเบียนเครื่อง = "ลงทะเบียนเครื่องนี้ก่อน" + ลิงก์ตั้งค่า (ไม่มีแป้น PIN) · เครื่องถูกเพิกถอน = ข้อความแดง
 // 🔴 PIN ไม่ถูกเก็บที่ใดนอก state ของจอนี้ (ล้างทันทีหลังส่ง) · โทเคนที่ได้ส่งให้ RegisterScreen ผ่าน onUnlocked เท่านั้น
 // 🔴 ไม่มีข้อความไทยนอกคอมเมนต์ · testid ตัวอักษรตรงบนแท็ก · ปุ่ม ≥ 44px
@@ -15,7 +16,7 @@ import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { formatThaiDate, formatThaiTime } from "@/lib/ui/date";
 import { moneyText, refusalMessageKey, type HeldCartSummary, type RegisterRole, type RegisterShiftInfo, type StaffListItem } from "@/lib/modules/pos/register-shared";
-import { listStaffForDeviceAction, setStaffPinAction, unlockStaffPinAction, verifyStaffPinAction } from "@/lib/modules/pos/staff-pin-actions";
+import { listStaffForDeviceAction, setOwnStaffPinAction, unlockStaffPinAction, verifyStaffPinAction } from "@/lib/modules/pos/staff-pin-actions";
 import type { StaffSession } from "@/lib/modules/pos/staff-session";
 import { RegisterIcon } from "./RegisterIcon";
 
@@ -45,6 +46,12 @@ export function LockScreen(p: {
   heldCount: number;
   autoLockMinutes: number;
   settingsHref: string;
+  /** fix รอบ 1 F1: ผู้ใช้ session — ตั้ง PIN จากจอนี้ได้เฉพาะการ์ดของคนนี้ (ครั้งแรกเท่านั้น) */
+  sessionUserId: string;
+  /** fix รอบ 1 F2: ร้านยังไม่มีใครตั้ง PIN — จอล็อกเปิดเองจากปุ่มล็อก มีปุ่ม "กลับไปขาย" */
+  onCancel?: () => void;
+  /** ตั้ง PIN สำเร็จ — หน้าขายถามรายชื่อใหม่ (โหมดร้านไม่มี PIN จบ) */
+  onStaffChanged?: () => void;
   onUnlocked: (s: StaffSession) => void;
 }) {
   const t = useTranslations("pos.register");
@@ -102,8 +109,14 @@ export function LockScreen(p: {
       return;
     }
     setSelected(s.userId);
-    setPhase(s.hasPin ? { kind: "pin" } : { kind: "set", userId: s.userId, first: null });
-    reset(null);
+    // fix รอบ 1 F1: ตั้ง PIN จากจอนี้ได้เฉพาะการ์ดของผู้ใช้ session (ครั้งแรก) · คนอื่นที่ยังไม่มี PIN = ให้ผู้จัดการตั้งที่ ตั้งค่า → พนักงาน
+    if (!s.hasPin && s.userId === p.sessionUserId) {
+      setPhase({ kind: "set", userId: s.userId, first: null });
+      reset(null);
+      return;
+    }
+    setPhase({ kind: "pin" });
+    reset(s.hasPin ? null : { key: "lock.forgotBody" });
   };
   /** สลับพนักงาน: เลือกคนถัดไปที่ไม่ใช่คนที่ใช้งานอยู่ (แป้น PIN ของคนนั้น) */
   const switchNext = () => {
@@ -152,16 +165,12 @@ export function LockScreen(p: {
         });
         setManager(null);
         setSelected(phase.forUserId);
-        if (phase.forgot) {
-          setPhase({ kind: "set", userId: phase.forUserId, first: null });
-          setMsg({ key: "lock.forgotSet", values: { name: nameOf(phase.forUserId) }, tone: "ok" });
-        } else {
-          setPhase({ kind: "pin" });
-          setMsg({ key: "lock.unlocked", values: { name: nameOf(phase.forUserId) }, tone: "ok" });
-        }
+        // fix รอบ 1 F1: ลืม PIN ไม่มีทางตั้ง PIN ใหม่จากจอนี้ — ปลดล็อกแล้วชี้ไป ตั้งค่า → พนักงาน
+        setPhase({ kind: "pin" });
+        setMsg(phase.forgot ? { key: "lock.forgotBody", tone: "ok" } : { key: "lock.unlocked", values: { name: nameOf(phase.forUserId) }, tone: "ok" });
         return;
       }
-      // ตั้ง PIN: ครั้งแรก → ยืนยันอีกครั้ง → setStaffPinAction → เข้าใช้ด้วย PIN ใหม่
+      // ตั้ง PIN ของตัวเอง (fix รอบ 1 F1): ครั้งแรก → ยืนยันอีกครั้ง → setOwnStaffPinAction → เข้าใช้ด้วย PIN ใหม่
       if (phase.first === null) {
         setPhase({ ...phase, first: value });
         setMsg({ key: "lock.setConfirmTitle" });
@@ -171,12 +180,14 @@ export function LockScreen(p: {
         setPhase({ ...phase, first: null });
         return setMsg({ key: "lock.setMismatch", tone: "danger" });
       }
-      const s = await setStaffPinAction({ ...target, userId: phase.userId, pin: value });
+      if (phase.userId !== p.sessionUserId) return setMsg({ key: "lock.forgotBody", tone: "danger" });
+      const s = await setOwnStaffPinAction({ ...target, pin: value });
       if (!s.ok) {
         setPhase({ ...phase, first: null });
-        return setMsg(s.code === "PERMISSION_DENIED" ? { key: "lock.forgotBody", tone: "danger" } : refusal(s.code));
+        return setMsg(refusal(s.code));
       }
       void loadStaff();
+      p.onStaffChanged?.();
       if (!p.deviceId) return;
       const r = await verifyStaffPinAction({ ...target, deviceId: p.deviceId, pin: value, userId: phase.userId });
       if (!r.ok) {
@@ -254,7 +265,7 @@ export function LockScreen(p: {
       const time = formatThaiTime(new Date(s.shift.openedAt));
       return no !== null ? t("staff.shiftOwner", { no, time }) : t("staff.shiftOwnerNoNo", { time });
     }
-    if (!s.hasPin) return t("staff.noPin");
+    if (!s.hasPin) return t(s.userId === p.sessionUserId ? "staff.noPinOwn" : "staff.noPin");
     return p.shift ? t("staff.canSell") : t(ROLE_KEY[s.role]);
   };
   const heldFirst = p.heldItems?.[0] ?? null;

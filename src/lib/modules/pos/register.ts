@@ -540,6 +540,7 @@ const REG_MESSAGE: Record<RegisterRefusalCode, string> = {
   APPROVAL_REQUIRED: POS_APPROVAL_MESSAGE.APPROVAL_REQUIRED,
   PENDING_APPROVAL: POS_APPROVAL_MESSAGE.PENDING_APPROVAL,
   APPROVAL_MISMATCH: POS_APPROVAL_MESSAGE.APPROVAL_MISMATCH,
+  ALREADY_SET: "ตั้ง PIN ไว้แล้ว — เปลี่ยน PIN ได้ที่ ตั้งค่า → พนักงาน", // POS P1.15U F1 (staff-pin.ts)
 };
 const REG_ROLE_LABEL: Record<RegisterRole, string> = { OWNER: "เจ้าของร้าน", MANAGER: "ผู้จัดการ", STAFF: "แคชเชียร์" };
 
