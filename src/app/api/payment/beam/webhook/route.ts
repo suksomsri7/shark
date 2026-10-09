@@ -69,7 +69,7 @@ export async function POST(req: Request): Promise<Response> {
     return Response.json({ ok: true, handled: accRes.handled }, { status: 200 });
   }
 
-  // POS P1.7 ▸ "pos-<id ใบขอรับเงิน>" = หน้าขาย (PromptPay/บัตรผ่าน Beam) · facade ไม่โยน · ตอบ 200 เสมอ (ไม่บอกว่ารู้จัก ref ไหม) ◂
+  // POS P1.7 ▸ "pos-<id ใบขอรับเงิน>" = หน้าขาย (PromptPay/บัตรผ่าน Beam) · facade ไม่โยน · ตอบ 200 (503 เฉพาะขัดข้องภายใน — fix F2) (ไม่บอกว่ารู้จัก ref ไหม) ◂
   if (referenceId.startsWith("pos-")) {
     const posRes = await onBeamWebhookEvent({ referenceId, chargeId, status, amountSatang: paidSatang, raw });
     // fix F2: ขัดข้องภายใน = 503 ให้ Beam ส่งซ้ำ (การยืนยันเป็น idempotent) · คำปฏิเสธทางธุรกิจ/ref ไม่รู้จัก = 200

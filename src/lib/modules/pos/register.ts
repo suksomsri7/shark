@@ -1388,7 +1388,7 @@ function regParseSubmit(raw: unknown): RegParsedSubmit | RegisterRefusal {
       // POS P1.7 ▸ พร้อมเพย์รับเลขอ้างอิงได้เฉพาะ id ใบขอรับเงิน (pi_…) · อื่น ๆ = VALIDATION เหมือน P1.6 ◂
       if (p.type !== "CARD" && p.type !== "TRANSFER" && !(p.type === "PROMPTPAY" && isPaymentIntentId(p.reference))) return regRefuse("VALIDATION", "เลขอ้างอิงใส่ได้เฉพาะบัตรและโอน");
       // POS P1.7 fix F1a ▸ id ใบขอรับเงิน (pi_…) ใช้ได้กับพร้อมเพย์/บัตรเท่านั้น — บนโอน = VALIDATION (กันอ้าง intent ซ้อนในบิลเดียว) ◂
-      if (p.type !== "PROMPTPAY" && p.type !== "CARD" && isPaymentIntentId(p.reference)) return regRefuse("VALIDATION", "เลขอ้างอิงนี้ใช้ได้กับพร้อมเพย์/บัตรเท่านั้น");
+      if (p.type !== "PROMPTPAY" && p.type !== "CARD" && typeof p.reference === "string" && isPaymentIntentId(p.reference.trim())) return regRefuse("VALIDATION", "เลขอ้างอิงนี้ใช้ได้กับพร้อมเพย์/บัตรเท่านั้น");
       if (typeof p.reference !== "string" || p.reference.length > REGISTER_REFERENCE_MAX || !regCleanText(p.reference)) return regRefuse("VALIDATION", "เลขอ้างอิงไม่ถูกต้อง");
       reference = p.reference.trim() || null;
     }
