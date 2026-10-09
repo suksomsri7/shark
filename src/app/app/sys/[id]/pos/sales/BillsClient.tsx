@@ -15,7 +15,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
 import { billDetailAction, billsPageDataAction, voidSaleAction } from "@/lib/modules/pos/bills-actions";
-import { BILLS_ERROR_KEYS, BILL_STATUS_FILTERS, VOID_REASON_MAX, addBillDays, type BillDetailResult, type BillRow, type BillStatusFilter, type BillsPageDataResult } from "@/lib/modules/pos/bills-shared";
+import { BILLS_ERROR_KEYS, BILLS_SYSTEM_NAME, BILL_STATUS_FILTERS, VOID_REASON_MAX, addBillDays, type BillDetail, type BillDetailResult, type BillRow, type BillStatusFilter, type BillsPageDataResult } from "@/lib/modules/pos/bills-shared";
 import { getPosDeviceId } from "@/lib/modules/pos/device-id";
 import { heartbeatAction } from "@/lib/modules/pos/device-actions"; // POS P1.15U F8: เครื่องลงทะเบียนไหม
 import { receiptLinkAction, reprintReceiptAction } from "@/lib/modules/pos/receipt-actions";
@@ -123,6 +123,30 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
   const tpos = useTranslations("pos") as T;
   const trg = useTranslations("pos.register");
   const locale = useLocale();
+  // POS P1.18U ▸ มติ 9 (บิล drawer en): ชื่อผู้ทำ "ระบบ" (ไม่มีผู้ใช้) + ไทม์ไลน์ แปลตามภาษาจอ (kind + params จากเซิร์ฟเวอร์ · ไม่มี kind = text เดิม) ◂
+  const who = (n: string) => (n === BILLS_SYSTEM_NAME ? t("drawer.system") : n);
+  const timelineText = (h: BillDetail["timeline"][number]): string => {
+    const p = h.params ?? {};
+    const name = typeof p.name === "string" ? who(p.name) : "";
+    const str = (v: unknown) => (typeof v === "string" && v ? v : "");
+    switch (h.kind) {
+      case "paid":
+        return [t("drawer.timeline.paid"), name].filter(Boolean).join(" · ");
+      case "posted":
+        return [t("drawer.timeline.posted", { docNo: str(p.docNo) }).trim(), p.points === true ? t("drawer.timeline.points") : ""].filter(Boolean).join(" · ");
+      case "refund": {
+        const code = str(p.reasonCode);
+        const reason = code ? ((REFUND_REASON_CODES as readonly string[]).includes(code) ? t(`refund.reasons.${code}`) : code) : "";
+        return [t("drawer.timeline.refund", { amount: money(typeof p.amountSatang === "number" ? p.amountSatang : 0) }), name, reason, str(p.receiptNo)].filter(Boolean).join(" · ");
+      }
+      case "void":
+        return [t("drawer.timeline.void"), name, str(p.reason)].filter(Boolean).join(" · ");
+      case "reprint":
+        return [t("drawer.timeline.reprint"), name].filter(Boolean).join(" · ");
+      default:
+        return h.text;
+    }
+  };
 
   // ── ตัวกรอง ──
   const [date, setDate] = useState(initialDate);
@@ -1046,7 +1070,7 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
                           <td className="px-2 py-3">{payText(r, t, ts)}</td>
                           <td className="px-2 py-3">
                             <span className="flex flex-col">
-                              <span>{r.staffName}</span>
+                              <span>{who(r.staffName)}</span>
                               {voided && r.voidApprovedBy ? <small className="text-[11px] text-[color:var(--color-muted)]">{t("approvedBy", { name: r.voidApprovedBy })}</small> : null}
                             </span>
                           </td>
@@ -1178,7 +1202,7 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
                   </button>
                 </div>
                 <div className="mt-1 text-[12px] text-[color:var(--color-muted)]">
-                  {[bkkHm(bill.time, locale), bill.staffName, bill.deviceName, channelLabel(bill.sourceModule, t, ts), bill.shiftNo !== null ? t("drawer.shiftNo", { no: bill.shiftNo }) : null].filter(Boolean).join(" · ")}
+                  {[bkkHm(bill.time, locale), who(bill.staffName), bill.deviceName, channelLabel(bill.sourceModule, t, ts), bill.shiftNo !== null ? t("drawer.shiftNo", { no: bill.shiftNo }) : null].filter(Boolean).join(" · ")}
                 </div>
               </div>
               {/* รายการ */}
@@ -1355,7 +1379,7 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
                   {bill.timeline.map((h, i) => (
                     <li key={i} className="flex gap-4 text-[color:var(--color-ink-soft)]">
                       <span className="w-10 shrink-0 tabular-nums text-[color:var(--color-muted)]">{bkkHm(h.time, locale)}</span>
-                      <span className="min-w-0 break-words">{h.text}</span>
+                      <span className="min-w-0 break-words">{timelineText(h)}</span>
                     </li>
                   ))}
                 </ol>

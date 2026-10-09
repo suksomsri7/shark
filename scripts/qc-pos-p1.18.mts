@@ -119,6 +119,8 @@ const CHECKS: readonly Def[] = [
   D("H1", "X5", "[R6] ทุกตัวเขียนลง audit pos.settings.updated: general caps unitStock receipt payment intent (+ พร้อมเพย์รายสาขา section payment) — ตัวเขียนเดิม updatePosReceiptSettings/updatePosPaymentSettings/updatePosIntentSettings ด้วย"),
   D("H2", "X2", "[R9] posSettingsHistory(X) ใหม่สุดก่อน · {id at actorName action section summary} · มีแถว unitStock ของสาขาที่ผูก X · ไม่มีแถวของ Y · มีแถว pos.integration.account"),
   D("H3", "X1", "[R9] หน้าละ 20 · nextCursor → หน้าถัดไป ไม่ซ้ำ ไม่หาย · หน้าสุดท้าย nextCursor null · เรียงเวลาไม่เพิ่ม"),
+  // ORACLE-EDIT (P1.18U แก้รอบ 1 F1 · มติผู้คุมงาน 9 ต.ค.): สรุปประวัติต้องมีเฉพาะคีย์ชั้นที่ 2 ที่เปลี่ยนจริง (ไม่ลากพี่น้องในก้อนเดียวกันมา)
+  D("H2b", "X5", "[แก้รอบ 1 F1 · R9] แก้ shift.blindClose อย่างเดียว → แถวประวัติใหม่สุดของ X summary คีย์ = [\"shift.blindClose\"] พอดี · แก้กฎบาร์โค้ดชั่งอย่างเดียว (enabled เท่าเดิม) → summary มี weighedBarcode.rules ไม่มี weighedBarcode.enabled · คืนค่าเดิมหลังตรวจ"),
   D("H4", "X3", "[R6 R9] ไม่มี before/after ดิบในรายการ · ไม่มีเลขพร้อมเพย์ดิบทั้งในรายการและ AuditLog · แคชเชียร์ → PERMISSION_DENIED"),
   // ── S พนักงาน / อนุมัติ ──
   D("S1", "X2", "[R10] posStaffOverview(U1).staff = ผู้ขายที่สาขา (pos.sale.create) {userId name role hasPin shift} · hasPin ตรง PosStaffPin · ไม่มี pinHash/deviceId · แคชเชียร์ → PERMISSION_DENIED"),
@@ -1767,6 +1769,41 @@ async function runDb() {
     const rc = keep("H4 C1", await history("C1"));
     if (!refused(rc, "PERMISSION_DENIED")) p.push(`แคชเชียร์ → ${codeOf(rc)}`);
     chk("H4", NH === "" && items.length > 0 && p.length === 0, "ไม่มีค่าดิบ · ไม่มีเลขพร้อมเพย์ · แคชเชียร์ถูกปฏิเสธ", FX(NH + (p.join(" · ") || "ครบ")));
+  }
+
+  // ORACLE-EDIT (P1.18U แก้รอบ 1 F1): H2b — ทำหลัง H3/H4 (ไม่รบกวนจำนวนแถวของ H3) · คืนค่า shift/weighedBarcode เดิมของ X ท้ายข้อ
+  {
+    const p: string[] = [];
+    const ov0 = await overview("OWNER");
+    const g0: Any = ov0?.ok === true ? ov0.general : null;
+    if (!isRecord(g0) || !isRecord(g0.shift) || !isRecord(g0.weighedBarcode)) p.push(`(fixture) overview → ${codeOf(ov0)}`);
+    else {
+      const latest = async (): Promise<Any> => {
+        const r = await history("OWNER");
+        return Array.isArray(r?.items) ? r.items[0] : null;
+      };
+      const keysOf = (it: Any) => (isRecord(it?.summary) ? Object.keys(it.summary).sort() : null);
+      // 1) blindClose อย่างเดียว (สลับค่า ⇒ เปลี่ยนจริงแน่)
+      const b1 = await gen("OWNER", { shift: { blindClose: !g0.shift.blindClose } });
+      if (b1?.ok !== true) p.push(`blindClose → ${codeOf(b1)}`);
+      const it1 = await latest();
+      if (it1?.section !== "general") p.push(`แถวล่าสุด section ${short(it1?.section, 20)}`);
+      if (short(keysOf(it1)) !== short(["shift.blindClose"])) p.push(`blindClose อย่างเดียว → summary ${short(keysOf(it1), 160)}`);
+      // 2) กฎบาร์โค้ดชั่งอย่างเดียว (enabled เท่าเดิม = true · กฎต่างจากเดิม)
+      const wbA = { enabled: true, rules: [{ prefix: "26", kind: "WEIGHT" }] };
+      const wbB = { enabled: true, rules: [{ prefix: "27", kind: "PRICE" }] };
+      const w0 = await gen("OWNER", { weighedBarcode: wbA });
+      if (w0?.ok !== true) p.push(`(fixture) wb A → ${codeOf(w0)}`);
+      const w1 = await gen("OWNER", { weighedBarcode: wbB });
+      if (w1?.ok !== true) p.push(`wb B → ${codeOf(w1)}`);
+      const k2 = keysOf(await latest()) ?? [];
+      if (k2.includes("weighedBarcode.enabled")) p.push(`กฎอย่างเดียว → มี weighedBarcode.enabled (${short(k2, 160)})`);
+      if (!k2.includes("weighedBarcode.rules")) p.push(`กฎอย่างเดียว → ไม่มี weighedBarcode.rules (${short(k2, 160)})`);
+      // คืนค่าเดิม
+      const back = await gen("OWNER", { shift: g0.shift, weighedBarcode: g0.weighedBarcode });
+      if (back?.ok !== true) p.push(`(fixture) คืนค่า → ${codeOf(back)}`);
+    }
+    chk("H2b", NH === "" && p.length === 0, "summary = เฉพาะคีย์ที่เปลี่ยน (shift.blindClose · ไม่มี weighedBarcode.enabled)", FX(NH + (p.join(" · ") || "ครบ")));
   }
 
   // ════════ S พนักงาน / อนุมัติ ════════

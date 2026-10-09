@@ -583,6 +583,9 @@
       "doneLabel": "Full tax invoice",
       "donePending": "Being issued in accounting",
       "clearedOnRecall": "Full tax invoice details were cleared — enter them again before payment"
+    },
+    "emptyCatalogue": {
+      "cashierBody": "Ask a manager or the shop owner to add products on the Products page, then come back here to sell"
     }
   },
   "shift": {
@@ -939,6 +942,58 @@
         "voids": "Voids",
         "note": "Note"
       }
+    },
+    "closeDay": {
+      "desc": "Close day — end-of-day summary",
+      "pickDate": "Pick a day",
+      "view": "View summary",
+      "summaryTitle": "Summary for {date}",
+      "summaryTitleToday": "Summary for {date} (today)",
+      "netSales": "Net sales",
+      "billCount": "Bills",
+      "voidCount": "Voided bills",
+      "voidTotal": "Voided amount",
+      "byKindTitle": "By item type",
+      "kind": {
+        "product": "Products",
+        "service": "Services",
+        "other": "Other items"
+      },
+      "byKindNote": "Before bill-level discounts — the three boxes may not add up to net sales exactly",
+      "byMethodTitle": "By payment method",
+      "noSales": "No sales on this day yet",
+      "colMethod": "Method",
+      "colCount": "Count",
+      "colAmount": "Amount",
+      "colReceipt": "Receipt",
+      "colTime": "Time",
+      "cashTitle": "Close day / cash reconciliation",
+      "billsTitle": "Bills ({count})",
+      "noBills": "No bills on this day yet",
+      "voided": "(voided)",
+      "refund": "(refund)",
+      "method": {
+        "CASH": "Cash",
+        "PROMPTPAY": "PromptPay",
+        "TRANSFER": "Transfer",
+        "CARD": "Card",
+        "DEPOSIT": "Deposit",
+        "ROOM_CHARGE": "Room charge",
+        "PLATFORM": "Platform"
+      },
+      "tools": {
+        "csvFile": "close-day-{date}.csv",
+        "downloadFailed": "Download failed — try again",
+        "expectedCash": "Cash expected in the drawer",
+        "countedCash": "Cash counted (baht)",
+        "countedPlaceholder": "e.g. 1500.00",
+        "diff": "Difference (counted − expected)",
+        "over": "Over",
+        "short": "Short",
+        "note": "A reconciliation helper only — the day is not closed or saved",
+        "preparing": "Preparing file…",
+        "downloadCsv": "Download CSV"
+      }
     }
   },
   "stock": {
@@ -1103,6 +1158,31 @@
       "empty": "No history yet",
       "out": "Out {name}",
       "scopeNote": "History of this inventory (every branch that shares it)"
+    },
+    "productsPage": {
+      "desc": "Services/products — set up what the register sells",
+      "servicesTitle": "Services",
+      "servicesIntro": "Services you can sell at the register — <b>add, reprice or remove them in the products/services system only</b> so the register and bookings always match",
+      "servicesNoStock": "services don't deduct stock",
+      "servicesNoInventory": "No products/services system connected — connect one on the overview page and its services will appear here",
+      "servicesConnect": "Connect a system",
+      "servicesEmpty": "No services in the catalogue yet — add them in the products/services system, “Services” tab",
+      "servicesAdd": "Add services",
+      "serviceBookable": "Bookable in advance",
+      "serviceBookableMin": "Bookable in advance · takes {min} min",
+      "serviceWalkInOnly": "Register only",
+      "servicesEditLink": "Reprice/add services in the products/services system →",
+      "itemsNoInventory": "No products/services system connected — shops that sell products need one first (connect it on the overview page; service-only shops can skip this)",
+      "itemsConnect": "Connect inventory",
+      "itemsEmpty": "No products in inventory yet — add products in the inventory system, then come back to set sale prices",
+      "itemsAdd": "Add products to inventory",
+      "needAccount": "Pricing products that have no price needs an accounting system first —",
+      "needAccountLink": "Open/connect accounting",
+      "priceIntro": "Prices set here appear in the register automatically · products without a price sell at cost by default",
+      "itemMeta": "{sku} · per {unit} · cost",
+      "noSalePrice": "no sale price yet",
+      "salePrice": "Sale price (baht)",
+      "save": "Save"
     }
   },
   "refund": {
@@ -1424,7 +1504,16 @@
       "history": "Bill history",
       "reprint": "Reprint (copy)",
       "void": "Void bill",
-      "refund": "Refund"
+      "refund": "Refund",
+      "system": "System",
+      "timeline": {
+        "paid": "Bill opened and paid in full",
+        "posted": "Posted to accounting {docNo}",
+        "points": "member points given",
+        "refund": "Refunded {amount}",
+        "void": "Bill voided",
+        "reprint": "Copy printed"
+      }
     },
     "voidHint": {
       "NO_PERMISSION": "Voiding needs manager rights · only before the shift closes",
@@ -1639,6 +1728,496 @@
       "manualHint": "The \"Confirm manually\" button is limited to people who manage shifts · PromptPay via Beam always needs a manager · Beam card payments cannot be confirmed manually",
       "permissionDenied": "This account cannot change payment settings — it needs device management in every branch of this point of sale",
       "expiryInvalid": "QR lifetime must be a whole number from 5 to 60 minutes"
+    },
+    "locale": {
+      "label": "App language",
+      "th": "Thai",
+      "en": "English",
+      "failed": "Couldn't change the language — try again"
+    },
+    "general": {
+      "title": "General",
+      "subtitle": "Settings for every branch of this point of sale · shifts and drawer · reports · branch stock and PromptPay",
+      "unitMinutes": "min",
+      "unitDays": "days",
+      "unitBaht": "baht",
+      "unitHours": "hrs",
+      "localeTh": "Thai",
+      "localeEn": "English",
+      "permissionDenied": "This account can't edit this section — it needs POS settings permission at every branch of this point of sale",
+      "register": {
+        "title": "Register",
+        "autoLock": "Auto-lock screen",
+        "autoLockHint": "Lock the screen after this much idle time · 0 = never",
+        "heldDays": "Held bills expire after",
+        "heldDaysHint": "Held bills older than this are discarded automatically (1–365 days)",
+        "receiptLocale": "Receipt language",
+        "receiptLocaleHint": "Language printed on receipts from every device (independent of the screen language)"
+      },
+      "shift": {
+        "title": "Shifts and drawer",
+        "requiredRegister": "Require an open shift · register",
+        "requiredRegisterHint": "No open shift = the register can't sell",
+        "requiredOther": "Require an open shift · bills from other systems",
+        "requiredOtherHint": "Bills from restaurant, booking or online store need an open shift",
+        "blindClose": "Blind shift close",
+        "blindCloseHint": "Whoever closes the shift counts cash without seeing the expected amount",
+        "overShort": "Reason required when over/short exceeds",
+        "overShortHint": "A cash difference above this amount needs a typed reason at shift close",
+        "forceClose": "Auto-close forgotten shifts after",
+        "forceCloseHint": "Shifts left open longer than this are closed automatically (1–72 hrs)"
+      },
+      "reports": {
+        "title": "Reports",
+        "cutoff": "Business day starts at",
+        "cutoffHint": "Bills before this time count for the previous day (00:00–06:00)"
+      },
+      "stock": {
+        "title": "Branch stock",
+        "unitHint": "Switch branches with the branch picker in the left menu",
+        "oversell": "Selling beyond stock",
+        "allow": "Allow + flag",
+        "block": "Block",
+        "allowHint": "Sell even when stock goes negative, then flag it for review",
+        "blockHint": "Items without enough stock can't be sold"
+      },
+      "weighed": {
+        "title": "Weighed-item barcodes",
+        "enabled": "Read scale barcodes",
+        "hint": "EAN-13 labels starting 20–29 · weight or price encoded in the barcode",
+        "empty": "No rules yet — add the prefix your shop's scale prints",
+        "prefix": "Prefix",
+        "kind": "Value in the barcode",
+        "kindWeight": "Weight",
+        "kindPrice": "Price",
+        "remove": "Remove the rule for prefix {prefix}",
+        "add": "+ Add rule"
+      },
+      "promptpay": {
+        "title": "Branch PromptPay",
+        "current": "Number used to receive money at this branch",
+        "useShop": "Using the shop's number {id}",
+        "none": "Not set",
+        "hint": "Register QR codes use the branch number first, the shop's number otherwise",
+        "input": "New PromptPay number for this branch",
+        "placeholder": "10-digit mobile or 13-digit ID",
+        "ownerOnly": "Shop owner only",
+        "remove": "Remove"
+      },
+      "service": {
+        "title": "Service charge",
+        "on": "On · {rate}%",
+        "off": "Off",
+        "note": "There is no service-charge editor yet — it comes in a later release"
+      },
+      "language": {
+        "title": "App language",
+        "hint": "Screen language for this account · printed receipts use the receipt language above"
+      },
+      "fieldErrors": {
+        "autoLockMinutes": "Enter 0–60 minutes",
+        "heldCartExpireDays": "Enter 1–365 days",
+        "receiptLocale": "Choose Thai or English",
+        "shift": {
+          "overShortReasonSatang": "Enter an amount from 0 to 100,000 baht",
+          "forceCloseAfterHours": "Enter 1–72 hours"
+        },
+        "dayCutoffMinutes": "Choose a time from 00:00 to 06:00",
+        "weighedBarcode": {
+          "rules": "Duplicate prefix — each rule needs its own prefix"
+        },
+        "oversellPolicy": "Choose allow or block",
+        "promptpayId": "Invalid PromptPay number — use a 10-digit mobile or a 13-digit ID"
+      }
+    },
+    "history": {
+      "title": "Change history",
+      "open": "View change history",
+      "close": "Close",
+      "empty": "No changes yet",
+      "more": "Load more",
+      "system": "System",
+      "generic": "Edited {section}",
+      "sections": {
+        "general": "general settings",
+        "caps": "discount limits",
+        "unitStock": "branch stock",
+        "receipt": "receipt",
+        "payment": "payments",
+        "intent": "payment requests",
+        "integration": "connections",
+        "devices": "devices",
+        "staff": "staff",
+        "other": "settings"
+      },
+      "general": {
+        "heldCartExpireDays": "Set held bills to expire after {value} days",
+        "autoLockMinutes": "{value, plural, =0 {Turned off auto-lock} other {Set auto-lock to # min}}",
+        "shift": {
+          "requiredRegister": "{value, select, true {Required an open shift to sell at the register} other {Stopped requiring an open shift at the register}}",
+          "requiredOtherSources": "{value, select, true {Required an open shift for bills from other systems} other {Stopped requiring an open shift for bills from other systems}}",
+          "blindClose": "{value, select, true {Turned on blind shift close} other {Turned off blind shift close}}",
+          "overShortReasonSatang": "Required a reason when over/short exceeds ฿{value}",
+          "forceCloseAfterHours": "Set forgotten shifts to auto-close after {value} hrs"
+        },
+        "weighedBarcode": {
+          "enabled": "{value, select, true {Turned on scale barcodes} other {Turned off scale barcodes}}",
+          "rules": "Edited scale barcode rules"
+        },
+        "receiptLocale": "{value, select, en {Set the receipt language to English} other {Set the receipt language to Thai}}",
+        "dayCutoffMinutes": "Set the business day to start at {value}"
+      },
+      "caps": {
+        "STAFF": "Set the staff discount limit to {value}%",
+        "MANAGER": "Set the manager discount limit to {value}%"
+      },
+      "unitStock": {
+        "oversellPolicy": "{value, select, BLOCK {Blocked selling beyond stock} other {Allowed selling beyond stock + flag}}"
+      },
+      "receipt": {
+        "header": {
+          "name": "Edited the shop name on receipts",
+          "phone": "Edited the phone on receipts",
+          "address": "Edited the address on receipts",
+          "logoUrl": "Edited the receipt logo"
+        },
+        "footer": "Edited the receipt footer",
+        "showPoints": "{value, select, true {Showed the points balance on receipts} other {Hid the points balance on receipts}}",
+        "showCashier": "{value, select, true {Showed the cashier name on receipts} other {Hid the cashier name on receipts}}",
+        "qrEReceipt": "{value, select, true {Turned on the online receipt QR} other {Turned off the online receipt QR}}",
+        "issueBoardId": "Changed the board for bill issue reports"
+      },
+      "payment": {
+        "serviceCharge": {
+          "enabled": "{value, select, true {Turned on the service charge} other {Turned off the service charge}}",
+          "rateBp": "Set the service charge to {value}%"
+        },
+        "tip": {
+          "enabled": "{value, select, true {Turned on tips} other {Turned off tips}}"
+        },
+        "promptpayMasked": "{value, select, null {Removed the branch PromptPay} other {Set the branch PromptPay to {value}}}"
+      },
+      "intent": {
+        "beam": {
+          "enabled": "{value, select, true {Turned on Beam payments} other {Turned off Beam payments}}"
+        },
+        "qrExpiryMinutes": "Set QR expiry to {value} min",
+        "manualConfirmRequiresManager": "{value, select, true {Manual payment confirmation now needs a manager} other {Anyone can confirm payments manually}}"
+      },
+      "integration": {
+        "enabled": "{value, select, true {Turned on accounting} other {Turned off accounting}}"
+      },
+      "devices": {
+        "register": "Registered device {name}",
+        "update": "Edited device {name}",
+        "revoke": "Revoked a device"
+      },
+      "staff": {
+        "pinSet": "Set a staff PIN",
+        "pinUnlocked": "Unlocked a staff PIN"
+      }
+    },
+    "staff": {
+      "title": "Staff and permissions",
+      "subtitle": "Role permissions · risky actions need approval · clock in with a 4–6 digit PIN",
+      "refusal": "Only people who can manage POS settings at this branch — ask the shop owner for \"POS settings\" permission",
+      "matrixTitle": "Role permissions",
+      "legendAllowed": "Allowed",
+      "legendApproval": "Needs approval",
+      "task": "Task",
+      "people": "{count, plural, one {# person} other {# people}}",
+      "roles": {
+        "OWNER": "Owner",
+        "MANAGER": "Manager",
+        "STAFF": "Staff"
+      },
+      "tasks": {
+        "sell": "Sell",
+        "discount": "Discount (limit)",
+        "priceOverride": "Open price",
+        "void": "Void bill",
+        "refund": "Refund",
+        "shiftOperate": "Open/close shift",
+        "shiftManage": "Shift history/Z",
+        "productManage": "Manage products",
+        "stockCount": "Receive/adjust stock",
+        "reports": "Reports",
+        "settings": "Settings",
+        "onlineOrders": "Accept/reject orders"
+      },
+      "taskSub": {
+        "discount": "per bill",
+        "priceOverride": "type a price at the register",
+        "onlineOrders": "online orders from every channel"
+      },
+      "unlimited": "Unlimited",
+      "soonPhase": "Coming soon · {phase}",
+      "capLabel": "{role} discount limit (%)",
+      "capInvalid": "Enter 0–100",
+      "capDenied": "This account can't change this limit — managers can set the staff limit up to their own; only the owner sets the manager limit",
+      "grantsNote": "Per-person permissions are edited on the shop's staff page",
+      "grantsLink": "Manage staff →",
+      "policiesTitle": "Approval policies",
+      "viaApproval": "Via approvals",
+      "policiesEmpty": "No policies yet",
+      "policyReadOnly": "Turn on/off on the approvals page",
+      "policiesNote": "Managers can approve at the device (with their PIN) or from their phone",
+      "policiesManage": "Manage policies →",
+      "approver": {
+        "OWNER": "Shop owner",
+        "MANAGER": "Manager",
+        "other": "Approver"
+      },
+      "pinsTitle": "Staff and PINs",
+      "pinsEmpty": "No staff can sell at this branch yet",
+      "pinSet": "PIN set",
+      "pinNotSet": "No PIN yet",
+      "pinChange": "Change PIN",
+      "pinSetButton": "Set PIN",
+      "hrSync": "Pull staff and schedules from HR",
+      "hrSyncHint": "People on leave or without a shift today won't appear when clocking in",
+      "pin": {
+        "setTitle": "Set PIN · {name}",
+        "changeTitle": "Change PIN · {name}",
+        "enter": "Enter a new 4–6 digit PIN",
+        "confirm": "Enter the same PIN again to confirm",
+        "cancel": "Close",
+        "dots": "{count} digits entered",
+        "mismatch": "The two PINs don't match — start again",
+        "clear": "Clear",
+        "del": "Delete last digit",
+        "hint": "No sequences or repeats such as 1234 or 0000",
+        "next": "Next",
+        "save": "Save PIN",
+        "saving": "Saving…"
+      }
+    },
+    "shark": {
+      "title": "SHARK connections",
+      "subtitle": "Connect system by system · the POS sells fine without them · turn each on/off on that system's page",
+      "count": "{linked} of {total} systems connected",
+      "backlog": "{count} jobs stuck",
+      "soon": "Coming soon · {phase}",
+      "accountDenied": "Shop owner or accounting admin only",
+      "accountNotLinked": "Connect it on the accounting page first",
+      "openAccount": "Go to accounting",
+      "offPrefix": "Off",
+      "noSystem": "This shop doesn't have this system yet",
+      "enable": "Turn on",
+      "lastActivity": "Last {when}",
+      "manage": "Manage →",
+      "receiptTitle": "Receipt and tax",
+      "edit": "Edit",
+      "vat": "VAT",
+      "vatOn": "VAT registered · prices include VAT",
+      "vatOff": "Not VAT registered",
+      "noBook": "No accounting book connected",
+      "taxId": "Tax ID",
+      "taxIdValue": "{taxId} · branch {branch}",
+      "notSet": "Not set",
+      "posNo": "POS device no.",
+      "headerSet": "receipt header/footer set",
+      "headerNotSet": "receipt header/footer not set",
+      "etax": "e-Tax Invoice by Email",
+      "etaxChip": "Waiting for provider",
+      "etaxApply": "Apply",
+      "etaxSoon": "Opens when a provider is available (P3.11)",
+      "accountOffTitle": "Turn off accounting?",
+      "accountOffBody": "New bills won't be posted to accounting until you turn it back on",
+      "accountOffConfirm": "Turn off accounting",
+      "cancel": "Cancel"
+    },
+    "cards": {
+      "MEMBER": {
+        "title": "Members",
+        "off": "bills aren't linked to members",
+        "manageAt": "Manage on the branch connections page",
+        "facts": {
+          "memberLookup": "Find by phone/QR at the register",
+          "memberSpend": "Purchases recorded on the profile",
+          "memberSignup": "Sign up members at the register"
+        }
+      },
+      "POINT": {
+        "title": "Points",
+        "off": "bills don't earn points",
+        "manageAt": "Manage on the branch connections page",
+        "facts": {
+          "pointRate": "{baht} baht = 1 point",
+          "pointRedeem": "Redeem points as a discount at payment",
+          "pointVoidReverse": "Voided bill = points taken back"
+        }
+      },
+      "COUPON": {
+        "title": "Coupons and vouchers",
+        "off": "coupons can't be used at the register",
+        "manageAt": "Manage on the branch connections page",
+        "facts": {
+          "couponCode": "Accept codes/QR at the register",
+          "voucherPayment": "Vouchers as a payment method",
+          "couponUnitLimit": "Limit to branches"
+        }
+      },
+      "REWARD": {
+        "title": "Rewards",
+        "off": "rewards can't be redeemed at the register",
+        "manageAt": "Manage on the branch connections page",
+        "facts": {
+          "rewardRedeem": "Redeem rewards at the register",
+          "rewardNearCustomerDisplay": "Show “almost there” on the customer display"
+        }
+      },
+      "ACCOUNT": {
+        "title": "Accounting",
+        "off": "bills aren't posted to accounting",
+        "manageAt": "Manage on the accounting page",
+        "switch": "Post this point of sale's bills to accounting",
+        "facts": {
+          "autoPost": "Every bill posted automatically",
+          "autoPostMulti": "Every bill posted automatically ({linkCount} books)",
+          "taxInvoice": "Abbreviated/full tax invoices",
+          "platformCommission": "Platform commission booked as an expense",
+          "promptpayReconcile": "Automatic PromptPay reconciliation"
+        }
+      },
+      "INVENTORY": {
+        "title": "Inventory",
+        "off": "sales don't deduct stock",
+        "manageAt": "Manage on the branch connections page",
+        "facts": {
+          "stockDeduct": "Stock deducted on sale",
+          "bomDeduct": "Deduct by BOM recipe",
+          "oversellPolicy": "Negative stock: {policy, select, BLOCK {blocked} other {allowed + flagged}}",
+          "lowStockReorder": "Low stock → alert + draft purchase order"
+        }
+      },
+      "HR": {
+        "title": "Staff (HR)",
+        "off": "staff aren't pulled from HR",
+        "manageAt": "Manage on the HR page",
+        "facts": {
+          "shiftPinSchedule": "Clock in with a PIN by schedule",
+          "salesCommission": "Sales per person → commission",
+          "leaveHidesShift": "On leave = hidden from the shift picker"
+        }
+      },
+      "CRM": {
+        "off": "bills aren't sent to CRM",
+        "manageAt": "Manage on the CRM page",
+        "facts": {
+          "dealPaidCount": "Paid bills counted on linked deals",
+          "bigBillDeal": "Bills over ฿5,000 → create a deal",
+          "corporateCredit": "Corporate customers → invoice/store credit"
+        }
+      },
+      "CHAT": {
+        "title": "Chat",
+        "off": "receipts can't be sent via LINE",
+        "manageAt": "Manage on the chat page",
+        "facts": {
+          "lineReceipt": "Send receipts via LINE",
+          "chatOrders": "Take orders from chat",
+          "orderStatusBot": "Auto-answer order status questions"
+        }
+      },
+      "KANBAN": {
+        "title": "Task boards",
+        "off": "bills don't create task cards",
+        "manageAt": "Manage on the task board page",
+        "facts": {
+          "voidBillCard": "Voided bill → task card",
+          "issueReportCard": "Customer bill issue → task card",
+          "stockOutShiftDiffCard": "Out of stock/shift difference → task card",
+          "shiftCloseCashCheck": "After shift close, create a “cash check” task for the manager"
+        }
+      },
+      "MARKETING": {
+        "title": "Marketing",
+        "off": "no campaigns at the register",
+        "manageAt": "Manage on the marketing page",
+        "facts": {
+          "happyHourPricing": "Happy-hour campaigns set prices automatically",
+          "couponAfterPurchase": "Give a coupon after a qualifying purchase"
+        }
+      },
+      "BOOKING": {
+        "title": "Bookings and queues",
+        "off": "bookings aren't shown at the register",
+        "manageAt": "Manage on the booking page",
+        "facts": {
+          "tableReservationsOnMap": "Reserved tables shown on the floor plan",
+          "callQueueFromTable": "Call the queue from the tables screen",
+          "advanceBookingBill": "Advance bookings billed at the POS"
+        }
+      },
+      "AI": {
+        "title": "AI staff",
+        "off": "no AI assistant at the register",
+        "manageAt": "Manage on the AI staff page",
+        "note": "Drafts only — a person confirms",
+        "facts": {
+          "shiftDaySummary": "Shift/day summaries",
+          "purchaseSuggestion": "Purchase suggestions",
+          "anomalyDetection": "Flag unusual discounts/voids"
+        }
+      }
+    },
+    "channels": {
+      "title": "External sales channels",
+      "sub": "Orders land on “Online orders” · priced by “Channel prices”",
+      "lineman": {
+        "sub": "Automatic orders · menu and sold-out sync"
+      },
+      "grab": {
+        "sub": "Automatic orders · menu sync"
+      },
+      "shopee": {
+        "sub": "Automatic orders"
+      },
+      "foodpanda": {
+        "sub": "Not connected"
+      },
+      "storefront": {
+        "name": "SHARK Shop website",
+        "none": "No online store open yet",
+        "on": "Open",
+        "off": "Not open",
+        "manageAt": "Manage on the branch's online store page"
+      },
+      "note": "Online store orders already reach the register today · delivery channels open in P2.1U",
+      "tabTitle": "External sales channels",
+      "tabSub": "Delivery apps and the online store — orders from every channel in one place",
+      "banner": "Coming in a later phase · P2.1U"
+    },
+    "payPanel": {
+      "title": "Payment methods",
+      "sub": "In the order shown on the payment screen",
+      "edit": "Edit",
+      "promptpay": "PromptPay {id}",
+      "promptpayNone": "PromptPay · no number set",
+      "promptpayBeam": "Payment confirmed automatically via Beam ✓",
+      "promptpayManual": "Scan to pay · confirm receipt manually",
+      "card": "Credit/debit card",
+      "cardBeam": "Via Beam",
+      "cardEdc": "Card terminal (EDC) · enter the reference",
+      "transfer": "Bank transfer",
+      "transferSub": "Attach the slip",
+      "voucher": "Vouchers/gift cards",
+      "voucherSub": "Works with the membership system",
+      "credit": "Store credit",
+      "creditSub": "Regular customers only · limit per person",
+      "readOnly": "Edit on the Payment methods tab"
+    },
+    "offline": {
+      "cardTitle": "Offline",
+      "planned": "Offline selling arrives in P3.4",
+      "factSell": "Keep selling when the internet drops",
+      "factTempNo": "Temporary numbers <b>{no}</b>",
+      "factSync": "Sync and issue real numbers when back online",
+      "pending": "Waiting to sync",
+      "tabTitle": "Offline and sync",
+      "tabSub": "Keep selling when the internet drops, then sync when back online",
+      "banner": "Coming in a later phase · P3.4 — today, if the internet drops the register says so and stops taking payment until it is back online"
     }
   },
   "print": {

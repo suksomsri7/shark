@@ -16,18 +16,18 @@ export type PosSettingsTab = {
 };
 
 export const POS_SETTINGS_TABS: readonly PosSettingsTab[] = [
-  { key: "general", msg: "general", icon: "gear", live: false, owner: "P1.18" },
+  { key: "general", msg: "general", icon: "gear", live: true, owner: "P1.18U" },
   { key: "receipt", msg: "receipt", icon: "doc", live: true, owner: "P1.10U" },
   { key: "payments", msg: "payments", icon: "wallet", live: true, owner: "P1.7U" },
   { key: "devices", msg: "devices", icon: "print", live: true, owner: "P1.10U" },
-  { key: "staff", msg: "staff", icon: "users", live: false, owner: "P1.15/P1.18" },
-  { key: "shark", msg: "shark", icon: "grid", live: false, owner: "P1.18" },
-  { key: "channels", msg: "channels", icon: "truck", live: false, owner: "P1.18" },
-  { key: "offline", msg: "offline", icon: "clock", live: false, owner: "P1.18" },
+  { key: "staff", msg: "staff", icon: "users", live: true, owner: "P1.18U" },
+  { key: "shark", msg: "shark", icon: "link", live: true, owner: "P1.18U" },
+  { key: "channels", msg: "channels", icon: "truck", live: true, owner: "P1.18U" },
+  { key: "offline", msg: "offline", icon: "swap", live: true, owner: "P1.18U" },
 ];
 
-/** แท็บแรกที่เปิดได้ (ไม่ส่ง ?tab= / ส่งแท็บที่ยังไม่เปิด = แท็บนี้) */
-export const POS_SETTINGS_DEFAULT_TAB: PosSettingsTabKey = "receipt";
+/** แท็บแรกที่เปิดได้ (ไม่ส่ง ?tab= / ส่งแท็บที่ยังไม่เปิด = แท็บนี้) — POS P1.18U ▸ มติ Q6: "ทั่วไป" (เมนูแรกตามภาพ) ◂ */
+export const POS_SETTINGS_DEFAULT_TAB: PosSettingsTabKey = "general";
 
 /** ?tab= → แท็บที่เปิดได้จริง (ไม่รู้จัก/ยังไม่ live = ค่าปริยาย) */
 export function posSettingsTabOf(raw: unknown): PosSettingsTabKey {

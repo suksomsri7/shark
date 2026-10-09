@@ -17,6 +17,7 @@ import { getTranslations } from "next-intl/server";
 
 // หน้า "สินค้า/ราคา" ของ POS — ตั้งราคาขายต่อสินค้าในคลังที่ผูกระบบขาย
 // ราคาขายเก็บที่ AccountProduct.salePrice (master data) → register อ่านผ่าน posCatalog
+// POS P1.18U ▸ มติ 9: ข้อความทั้งหมดผ่าน t (pos.stock.productsPage.*) · แท็บโมดูลตามภาษาจอ (posTabs(id, t)) ◂
 export default async function PosProductsPage({
   params,
   searchParams,
@@ -35,8 +36,10 @@ export default async function PosProductsPage({
   if (!posCanSetTenantPrice(posMembership(auth.active), await posPriceUnitIds(tenantId, id))) notFound();
   const def = systemDef(sys.type);
   const tStock = await getTranslations("pos.stock");
+  const t = await getTranslations("pos.stock.productsPage");
+  const tPos = await getTranslations("pos");
 
-  const tabs = posTabs(id);
+  const tabs = posTabs(id, tPos);
   // POS P1.14 U ▸ ทางเข้าหน้าสต็อก (ตรวจนับ · รับ/โอน/ปรับ) ◂
   const stockLink = (
     <Link href={`/app/sys/${id}/pos/stock`} className="btn btn-ghost min-h-11" data-testid="pos-products-stock-link">
@@ -52,7 +55,7 @@ export default async function PosProductsPage({
     <div className="flex max-w-2xl flex-col gap-5">
       <PageHeader
         title={`${def?.icon ?? ""} ${sys.name}`.trim()}
-        desc="บริการ/สินค้า — ตั้งรายการที่ขายหน้าร้าน"
+        desc={t("desc")}
         actions={stockLink}
       />
       <ModuleTabs items={tabs} />
@@ -61,20 +64,21 @@ export default async function PosProductsPage({
       {ok && <p className="text-sm text-[color:var(--color-success)]">{ok}</p>}
 
       {/* ── บริการ ── อ่านอย่างเดียว: ต้นฉบับอยู่ระบบสินค้า/บริการ (เจ้าของสั่งข้อ 14-15) */}
-      <Section title="บริการ">
+      <Section title={t("servicesTitle")}>
         <p className="mb-2 text-xs text-[color:var(--color-muted)]">
-          บริการที่ขายหน้าร้านได้ — <b>เพิ่ม/แก้ราคา/ลบ ทำที่ระบบสินค้า/บริการที่เดียว</b> แล้วทั้งหน้าขายและหน้าจองเห็นตรงกัน
-          {" · "}บริการไม่ตัดสต็อก
+          {t.rich("servicesIntro", { b: (c) => <b>{c}</b> })}
+          {" · "}
+          {t("servicesNoStock")}
         </p>
         {!inventorySystemId ? (
           <EmptyState
-            text="ยังไม่ได้เชื่อมระบบสินค้า/บริการ — เชื่อมที่หน้าภาพรวมก่อน แล้วบริการจะมาโผล่ที่นี่"
-            action={{ href: `/app/sys/${id}`, label: "ไปเชื่อมระบบ" }}
+            text={t("servicesNoInventory")}
+            action={{ href: `/app/sys/${id}`, label: t("servicesConnect") }}
           />
         ) : services.length === 0 ? (
           <EmptyState
-            text="ยังไม่มีบริการในแคตตาล็อก — เพิ่มที่ระบบสินค้า/บริการ แท็บ “บริการ”"
-            action={{ href: `/app/sys/${inventorySystemId}/inventory/services`, label: "ไปเพิ่มบริการ" }}
+            text={t("servicesEmpty")}
+            action={{ href: `/app/sys/${inventorySystemId}/inventory/services`, label: t("servicesAdd") }}
           />
         ) : (
           <div className="flex flex-col gap-2">
@@ -83,14 +87,14 @@ export default async function PosProductsPage({
                 <span className="min-w-0">
                   <span className="block truncate font-medium">{sv.name}</span>
                   <span className="block truncate text-xs text-[color:var(--color-muted)]">
-                    {sv.bookable ? `จองล่วงหน้าได้${sv.durationMin ? ` · ใช้เวลา ${sv.durationMin} นาที` : ""}` : "ขายหน้าร้านอย่างเดียว"}
+                    {sv.bookable ? (sv.durationMin ? t("serviceBookableMin", { min: sv.durationMin }) : t("serviceBookable")) : t("serviceWalkInOnly")}
                   </span>
                 </span>
                 <MoneyText satang={sv.priceSatang} />
               </div>
             ))}
             <Link href={`/app/sys/${inventorySystemId}/inventory/services`} className="text-xs underline">
-              แก้ราคา/เพิ่มบริการที่ระบบสินค้า/บริการ →
+              {t("servicesEditLink")}
             </Link>
           </div>
         )}
@@ -98,27 +102,27 @@ export default async function PosProductsPage({
 
       {!inventorySystemId ? (
         <EmptyState
-          text="ยังไม่ได้เชื่อมระบบสินค้า/บริการ — ร้านที่ขายสินค้าด้วยให้เชื่อมก่อนที่หน้าภาพรวม (ร้านที่ขายเฉพาะบริการไม่ต้องเชื่อมก็ได้)"
-          action={{ href: `/app/sys/${id}`, label: "ไปเชื่อมคลัง" }}
+          text={t("itemsNoInventory")}
+          action={{ href: `/app/sys/${id}`, label: t("itemsConnect") }}
         />
       ) : items.length === 0 ? (
         <EmptyState
-          text="ยังไม่มีสินค้าในคลัง — เพิ่มสินค้าในระบบคลังก่อน แล้วกลับมาตั้งราคาขาย"
-          action={{ href: `/app/sys/${inventorySystemId}`, label: "ไปเพิ่มสินค้าในคลัง" }}
+          text={t("itemsEmpty")}
+          action={{ href: `/app/sys/${inventorySystemId}`, label: t("itemsAdd") }}
         />
       ) : (
         <>
           {!accountSystemId && (
             <p className="rounded-xl border border-dashed p-2.5 text-xs text-[color:var(--color-muted)]">
-              ตั้งราคาสินค้าที่ยังไม่มีราคาต้องเชื่อมระบบบัญชีก่อน —{" "}
+              {t("needAccount")}{" "}
               <Link href="/app/settings/systems" className="text-[color:var(--color-accent)] underline">
-                เปิด/เชื่อมระบบบัญชี
+                {t("needAccountLink")}
               </Link>
             </p>
           )}
           <Section>
             <p className="mb-2 text-xs text-[color:var(--color-muted)]">
-              ราคาที่ตั้งไว้จะขึ้นให้อัตโนมัติในหน้าขาย · สินค้าที่ยังไม่ตั้งราคา หน้าขายจะใช้ต้นทุนเป็นราคาเริ่มต้น
+              {t("priceIntro")}
             </p>
             <div className="flex flex-col gap-2">
               {items.map((it) => (
@@ -132,12 +136,12 @@ export default async function PosProductsPage({
                   <div className="flex min-w-0 flex-1 flex-col">
                     <span className="truncate font-medium">{it.name}</span>
                     <span className="text-xs text-[color:var(--color-muted)]">
-                      {it.sku} · ต่อ {it.unitLabel} · ต้นทุน <MoneyText satang={it.costSatang} />
-                      {it.salePriceSatang == null && " · ยังไม่ตั้งราคาขาย"}
+                      {t("itemMeta", { sku: it.sku, unit: it.unitLabel })} <MoneyText satang={it.costSatang} />
+                      {it.salePriceSatang == null && ` · ${t("noSalePrice")}`}
                     </span>
                   </div>
                   <label className="flex flex-col text-xs text-[color:var(--color-muted)]">
-                    ราคาขาย (บาท)
+                    {t("salePrice")}
                     <input
                       name="salePrice"
                       type="number"
@@ -149,7 +153,7 @@ export default async function PosProductsPage({
                       className="input w-28"
                     />
                   </label>
-                  <SubmitButton variant="ghost">บันทึก</SubmitButton>
+                  <SubmitButton variant="ghost">{t("save")}</SubmitButton>
                 </form>
               ))}
             </div>
