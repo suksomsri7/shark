@@ -462,6 +462,11 @@ export function RegisterScreen(props: RegisterScreenProps) {
   frozenRef.current = frozen;
   // POS P1.15U ▸ มติ 8: ไม่ใช้งานครบ N นาที / แท็บถูกซ่อนนานเกิน ⇒ ล็อก (ไม่ล็อกระหว่างส่งบิล/ผลยังไม่แน่ใจ) ◂
   useIdleLock(props.autoLockMinutes ?? 2, !locked && !frozen && !noPinMode, lockNow);
+  // POS P1.15U ▸ fix รอบ 1 F4: ล็อกตอนกล่องชำระยังอยู่ในขั้นกรอก = ปิดกล่องชำระ (ระหว่างส่ง/ไม่แน่ใจ ห้ามปิด — สเปก §3.4) ◂
+  useEffect(() => {
+    if (locked && payPhase === "form") setLayers((s) => (s.some((l) => l.kind === "pay") ? s.filter((l) => l.kind !== "pay") : s));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- ตัวกระตุ้นคือการล็อก
+  }, [locked]);
   /** รุ่นของบิล — resetBill เพิ่มทุกครั้ง · ผลสแกนที่เริ่มในบิลรุ่นก่อน = ทิ้ง (B2.2 S1) */
   const billGen = useRef(0);
 
@@ -1164,8 +1169,10 @@ export function RegisterScreen(props: RegisterScreenProps) {
     setPayPhase("form");
     setLayers((s) => (s.some((l) => l.kind === "pay") ? s : [...s, { kind: "pay" }]));
   };
-  const send = async (sale: RegisterSubmitInput) => {
+  const send = async (sale: RegisterSubmitInput, opts?: { restore?: boolean }) => {
     if (sendingRef.current) return; // กดซ้ำ/Enter ซ้ำ = คำขอเดียวระหว่างทาง
+    // POS P1.15U ▸ fix รอบ 1 F4: จอล็อกทับอยู่ = ไม่ส่ง (ยกเว้นลองซ้ำชุดคำขอที่ค้างจากก่อนโหลดหน้า — ชุดเดิมพกโทเคนของมันเอง) ◂
+    if (lockedRef.current && !opts?.restore) return;
     sendingRef.current = true;
     pendingSubmit.current = sale;
     savePending(sale, "sending");
@@ -1236,6 +1243,12 @@ export function RegisterScreen(props: RegisterScreenProps) {
   };
   const confirmPay = (c: PayChoice) => {
     if (!quoteFresh || sendingRef.current || payPhase !== "form") return;
+    // POS P1.15U ▸ fix รอบ 1 F4: ล็อกอยู่ = ไม่ส่ง · เครื่องลงทะเบียนที่มี PIN แล้วแต่ไม่มีโทเคน = ล็อก (ไม่ถอยไปใช้ผู้ใช้ session เงียบ ๆ — มติ 1) ◂
+    if (lockedRef.current) return;
+    if (!staffRef.current && !noPinMode) {
+      lockNow();
+      return;
+    }
     const due = quoteFresh.grandTotalSatang;
     // P1.6: Σ วิธีจ่าย = ยอดบิล + ทิป · ทุกแถว ≥ 1 สตางค์ · ≤ 10 แถว · บิล 0 บาท (ไม่มีทิป) = payMethods [] — ตรวจซ้ำก่อนส่ง (กล่องคิดมาแล้ว)
     const tip = props.tipEnabled ? c.tipSatang : 0;
@@ -1370,7 +1383,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
     setIdemKey(saved.idempotencyKey);
     setPayPhase("unknown");
     setLayers([{ kind: "pay" }]);
-    void send(saved.sale);
+    void send(saved.sale, { restore: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- ครั้งเดียวตอนเปิดจอ (key ของจอ = สาขา)
   }, []);
 
