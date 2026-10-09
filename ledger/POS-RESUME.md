@@ -983,3 +983,9 @@
 - **L4 P1.13U**: ผู้ตรวจรอบ 2 = MERGEABLE (F7 low) → builder แก้ F7 6d013e45 → head **994346a4** · build44 ทรี d @cd6bc919 build 0 · vis44 กำลังรัน (register owner 0 · sales owner …) · ภาพ `.qc-shots/pos/p113u-r2/`
 - ถัดไป: vis44 จบ → ดู `register-taxinvoice-set-owner-1440x900.png` (V1 ป้าย "ใบกำกับ ✓" ไม่ตัด) + lock-screen states ไม่พัง → merge `origin/wip/pos-p1.13u` 994346a4 → **21/55** → tg · แล้ว gates DB ชุดเต็มบน session/pos ในทรี c (หลังเลน 4 เงียบ)
 - โควตา 11:20Z: session 45% (ถึง 12:29Z) · **weekly 94%** (A 59%) · ส่งไม้ต่อ A ที่ 97% — ใกล้แล้ว: ไม่เปิดงานใหม่เพิ่มหลังจากนี้ นอกจากปิด P1.13U
+
+## 9 ต.ค. 11:35Z — ✅ P1.13U merge → **21/55** · gates45 ชุดเต็มบน session/pos (ทรี c) · เลนเดิน: P1.12 S (ทรี b)
+- **L4 P1.13U ปิด**: vis44 @cd6bc919 register owner 0 · sales owner 0 (0 ❌) · ภาพ `taxinvoice-set` ปุ่ม "✓ ใบกำกับ" ไม่ตัดที่ 1440 ✓ · lock-screen 13B หลัง merge P1.15U ยังตรง ✓ · F7 994346a4 (client-only, typecheck 0) · **merge session/pos = 789498c4** (push แล้ว)
+- **gates45-c** @789498c4: generate/typecheck/build/fitness ×3 + suites p1.13 p1.15 p1.7 p1.11 p1.16 p1.3 p1.10 p1.9 p1.8 pos-account account-cpa authz (`/root/pos-runs/gates45-c-*/SUMMARY.txt`) — เลน 4 เงียบแล้ว เหลือ P1.12 builder ใช้ tenant ชั่วคราวของตัวเอง
+- เลน: L1 (p11) ว่าง · L2 (c) gates45 · L3 (b) **P1.12 S builder a5dcd3a1** · L4 (d) ว่าง (อยู่ที่ wip/pos-p1.13u 994346a4)
+- ถัดไป: gates45 เขียว → ปิดชุด · P1.12 S รายงาน → reviewer → merge → P1.12U (ถ้าโควตาถึง) · **weekly 94% → ที่ 97% เขียน HANDOVER**
