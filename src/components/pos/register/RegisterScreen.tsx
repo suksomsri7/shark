@@ -72,6 +72,7 @@ import {
   holdRegisterCartAction,
   listHeldCartsAction,
   quoteRegisterCartAction,
+  quoteRegisterCartOverrideAction,
   recallHeldCartAction,
   registerCatalogAction,
   registerMemberBenefitsAction,
@@ -487,6 +488,12 @@ export function RegisterScreen(props: RegisterScreenProps) {
    *   เรียกคืนบิลนั้นทางอื่น (ลิ้นชักบิลที่พัก) = ไม่คืน + ข้อความ "ใบกำกับเต็มรูปถูกล้าง กรอกใหม่ก่อนชำระ" · สลับพนักงาน = ทิ้ง (มติ 1)
    */
   const parkedTaxInv = useRef<{ heldCartId: string; value: { buyer: TaxInvoiceBuyerInput; remember: boolean } } | null>(null);
+  /**
+   * POS P1.12U fix รอบ 1 (F2): แต้ม/ว่อชเชอร์ที่เลือกไว้ตอนบิลถูกพักรออนุมัติ (เซิร์ฟเวอร์ไม่เก็บสิทธิ์ที่เลือกในบิลพัก — มติ 12) — แบบ parkedTaxInv:
+   *   เก็บคู่ heldCartId ตอนส่งต่อไป 21B · เรียกคืนทางอนุมัติ (21B) = เก็บไว้ · เปิดจอชำระของบิลนั้น (สิทธิ์เกินเพดานผูก heldCartId เดียวกัน) = ใส่คืน
+   *   แล้ว quote ใหม่ตรวจซ้ำ (เกินเพดาน/ขั้นต่ำ/ขัดกัน = ตัวจัดการเดิม · ยอดเปลี่ยน = PRICE_CHANGED) · เรียกคืนทางอื่น/บิลอื่น/ทิ้งบิล/ปฏิเสธ/สลับพนักงาน = ทิ้ง
+   */
+  const parkedChoices = useRef<{ heldCartId: string; choices: RegisterMemberChoices } | null>(null);
   // ═══════ POS P1.15U ▸ ผู้ขายบนเครื่อง + จอล็อก 13B (มติผู้คุมงาน 1 3 8) ═══════
   //   โทเคนอยู่ใน sessionStorage `pos-staff:<deviceId>` · ล็อกเมื่อ: ไม่มี/หมดอายุ · ไม่ใช้งานครบ N นาที · กดล็อก · คำขอใดตอบ STAFF_TOKEN_INVALID
   //   ล็อกไม่ทิ้งตะกร้า (อยู่ใน state) · ปลดด้วยคนเดิม = ขายต่อ · คนอื่น = พักตะกร้าของคนก่อน (ป้าย "สลับพนักงาน") แล้วเริ่มบิลใหม่
@@ -611,6 +618,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
     if (prev && prev.userId !== next.userId && !frozenRef.current) {
       setTaxInv(null);
       parkedTaxInv.current = null;
+      parkedChoices.current = null; // fix รอบ 1 F2
     }
     if (deviceId) writeStaffSession(deviceId, next);
     lastStaffRef.current = next;
@@ -847,6 +855,26 @@ export function RegisterScreen(props: RegisterScreenProps) {
     setCart(fn);
     setCartVer((v) => v + 1);
   };
+  // ═══════ POS P1.12U fix รอบ 1 (F1 · F9) ▸ ตะกร้าที่มีสมาชิก/คูปอง + สิทธิ์เกินเพดาน (PIN ผู้จัดการที่เตรียมไว้ · บิลพักที่อนุมัติแล้ว) ═══════
+  //   ยอดในเครื่องใช้ไม่ได้ (มติ 1) ⇒ quote ฝั่งเซิร์ฟเวอร์ด้วยสิทธิ์นั้น (quoteRegisterCartOverrideAction · อ่านอย่างเดียว · ทางเดียวกับ quote ปกติ ⇒
+  //   quote/สิทธิ์ที่เลือก/totalsPending/PRICE_CHANGED ทำงานเหมือนเดิม) · ไม่มีสมาชิก/คูปอง = ทาง P1.15U เดิม (localQuote / quote ที่เรียกคืน) ◂
+  const overrideAuthOf = (c: RegisterCart, a: DiscountAuth | null): { managerPin?: string; managerUserId?: string; heldCartId?: string } | null =>
+    !a || !(c.memberId || c.couponCode)
+      ? null
+      : a.kind === "pin"
+        ? { managerPin: a.managerPin, managerUserId: a.managerUserId, ...(a.heldCartId ? { heldCartId: a.heldCartId } : {}) }
+        : { heldCartId: a.heldCartId };
+  const overrideKey = `${JSON.stringify(overrideAuthOf(cart, discAuth))}|${idemKey}`;
+  /** override quote ถูกปฏิเสธ: PIN ผิด/ล็อก = ปลด PIN + ข้อความ · อนุมัติไม่ตรง/ไม่ครอบ/ใช้แล้ว = ทิ้งสิทธิ์ (เหมือนทาง submit) ⇒ quote ปกติตัดสินต่อ */
+  const onOverrideRefused = (code: string) => {
+    if (code === "PIN_INVALID" || code === "PIN_LOCKED") {
+      setDiscAuth(null);
+      showToast(errorFor(code));
+    } else if (code === "APPROVAL_MISMATCH" || code === "DISCOUNT_EXCEEDS_LIMIT") {
+      setDiscAuth(null);
+      if (code === "APPROVAL_MISMATCH") showToast(errorFor(code));
+    }
+  };
   useEffect(() => {
     if (!cart.lines.length) {
       quoteSeq.current++;
@@ -857,13 +885,16 @@ export function RegisterScreen(props: RegisterScreenProps) {
     }
     const ver = cartVer;
     const seq = ++quoteSeq.current;
+    const ov = overrideAuthOf(cart, discAuth);
     setQuoteSlow(false);
     const slow = setTimeout(() => {
       if (seq === quoteSeq.current) setQuoteSlow(true);
     }, 400);
     const id = setTimeout(async () => {
       try {
-        const r = await quoteRegisterCartAction({ systemId, unitId, cart: cartToQuoteInput(cart) });
+        const r = ov
+          ? await quoteRegisterCartOverrideAction({ systemId, unitId, deviceId: getPosDeviceId(), cart: cartToQuoteInput(cart), ...ov, idempotencyKey: idemKey })
+          : await quoteRegisterCartAction({ systemId, unitId, cart: cartToQuoteInput(cart) });
         if (seq !== quoteSeq.current) return;
         if (r.ok) {
           setQuote({ ver, q: r, keys: cart.lines.map((l) => l.key) });
@@ -871,6 +902,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
           synced();
         } else {
           setQuoteErr({ ver, code: r.code });
+          if (ov) onOverrideRefused(r.code);
         }
       } catch {
         if (seq === quoteSeq.current) setQuoteErr({ ver, code: "UNKNOWN" });
@@ -882,8 +914,8 @@ export function RegisterScreen(props: RegisterScreenProps) {
       clearTimeout(id);
       clearTimeout(slow);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- เวอร์ชันตะกร้าคือตัวกระตุ้นเดียว
-  }, [cartVer]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- เวอร์ชันตะกร้า + สิทธิ์เกินเพดานของตะกร้าสมาชิก/คูปอง (fix รอบ 1 F1) คือตัวกระตุ้น
+  }, [cartVer, overrideKey]);
 
   const quoteServer = quote && quote.ver === cartVer ? quote.q : null;
   const quoteErrNow = quoteErr && quoteErr.ver === cartVer ? quoteErr.code : null;
@@ -891,8 +923,9 @@ export function RegisterScreen(props: RegisterScreenProps) {
   //   อนุมัติแล้ว: quote ที่เรียกคืนด้วยเพดานที่อนุมัติ (ตะกร้าเดิมทุกไบต์) · PIN: priceCart ไม่จำกัดเพดาน (ราคาบรรทัดตัวเลือก/ชั่งจาก quote ล่าสุด) —
   //   ยอดไม่ตรงเซิร์ฟเวอร์ = PRICE_CHANGED พร้อมยอดจริง (ยืนยันอีกครั้ง) ◂
   const cartInputJson = useMemo(() => JSON.stringify(cartToQuoteInput(cart, { choices: false })), [cart]);
+  // fix รอบ 1 F1/F9: ตะกร้าสมาชิก/คูปองได้ยอดจาก override quote ของเซิร์ฟเวอร์เท่านั้น (ไม่ใช้ quote ที่เรียกคืนซึ่งไม่มีสิทธิ์ที่เลือก)
   const overrideQuote: RegisterQuote | null =
-    quoteServer || quoteErrNow !== "DISCOUNT_EXCEEDS_LIMIT" || !discAuth
+    quoteServer || quoteErrNow !== "DISCOUNT_EXCEEDS_LIMIT" || !discAuth || overrideAuthOf(cart, discAuth)
       ? null
       : discAuth.kind === "approved"
         ? discAuth.inputJson === cartInputJson
@@ -908,6 +941,8 @@ export function RegisterScreen(props: RegisterScreenProps) {
   const [voucherNote, setVoucherNote] = useState<{ id: string; msg: Msg } | null>(null);
   /** บันทึกบิลตอบ MEMBER_RIGHTS_CHANGED ⇒ แบนเนอร์ในจอชำระจนกว่าจะเลือกใหม่/ปิดกล่อง */
   const [rightsChanged, setRightsChanged] = useState(false);
+  /** คูปองที่เพิ่งใส่: รอ quote ของรุ่นตะกร้านั้น — ไม่มีข้อขัด = ปิดกล่อง · มี = ข้อความในกล่อง + ตะกร้าคืนโค้ดเดิม */
+  const [couponWait, setCouponWait] = useState<{ ver: number; prev: string | null } | null>(null);
   useEffect(() => {
     const ch = cart.memberChoices;
     if (!quoteServer || !ch || !cart.memberId) return;
@@ -932,14 +967,13 @@ export function RegisterScreen(props: RegisterScreenProps) {
       }
     }
     const vc = ch.voucherId ? cf.find((c) => c.kind === "VOUCHER" || c.code === "VOUCHER_COUPON_CONFLICT") : undefined;
-    if (vc && ch.voucherId) {
+    // fix รอบ 1 F4: คูปองที่เพิ่งใส่ยังรอผลของรุ่นนี้ ⇒ ไม่ล้างว่อชเชอร์ (ตัวรอคูปองคืนโค้ดเดิมก่อน แล้ว quote ใหม่ตัดสิน — ขัดต่อ = ล้างตอนนั้น)
+    if (vc && ch.voucherId && couponWait?.ver !== cartVer) {
       setVoucherNote({ id: ch.voucherId, msg: errorFor(vc.code) });
       setChoices((c) => ({ ...c, voucherId: undefined }));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- ตัวกระตุ้น = quote ใหม่ของตะกร้านี้
   }, [quoteServer]);
-  /** คูปองที่เพิ่งใส่: รอ quote ของรุ่นตะกร้านั้น — ไม่มีข้อขัด = ปิดกล่อง · มี = ข้อความในกล่อง + ตะกร้าคืนโค้ดเดิม */
-  const [couponWait, setCouponWait] = useState<{ ver: number; prev: string | null } | null>(null);
   const [couponErr, setCouponErr] = useState<string | null>(null);
   useEffect(() => {
     if (!couponWait) return;
@@ -979,6 +1013,15 @@ export function RegisterScreen(props: RegisterScreenProps) {
     setVoucherNote(null);
     setRightsChanged(false);
   }, [payOpen]);
+  // fix รอบ 1 F3: quote ตอบ MEMBER_SYSTEM_MISSING ขณะบิลมีสมาชิก (เช่น ระบบสมาชิกของสาขาถูกถอดหลังพักบิล) ⇒ ถอดสมาชิก + บอกเหตุผล ครั้งเดียวต่อรุ่นตะกร้า
+  const memberMissingVer = useRef(-1);
+  useEffect(() => {
+    if (quoteErrNow !== "MEMBER_SYSTEM_MISSING" || !cart.memberId || memberMissingVer.current === cartVer) return;
+    memberMissingVer.current = cartVer;
+    detachMember();
+    showToast({ key: "errors.memberSystemMissing" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- ตัวกระตุ้น = คำตอบ quote ของรุ่นตะกร้านี้
+  }, [quoteErrNow, cartVer]);
 
   // R3 F1: ตะกร้าที่มีบรรทัดราคาฝั่งเซิร์ฟเวอร์ (ตัวเลือก/ชั่ง) และ quote ยังไม่ตรงรุ่น = ยอดรอ (—) — ห้ามโชว์ยอดของตะกร้าเก่าค้าง
   // POS P1.12U มติ 1: มีสมาชิก/คูปอง = ยอดของเซิร์ฟเวอร์เท่านั้น ⇒ quote ยังไม่ตรงรุ่น = ยอดรอ (—) เหมือนบรรทัดตัวเลือก
@@ -1125,7 +1168,12 @@ export function RegisterScreen(props: RegisterScreenProps) {
         if (viaApproval) setTaxInv(parked.value);
         else showToast({ key: "taxInvoice.clearedOnRecall" });
       }
+      // fix รอบ 1 F2: สิทธิ์ที่เลือกที่พักไว้ — คงไว้เฉพาะบิลเดียวกันที่กลับมาทางอนุมัติ (ใส่คืนตอนเปิดจอชำระ) · อื่น ๆ = ทิ้ง (ไม่มีข้อความ)
+      if (parkedChoices.current && (parkedChoices.current.heldCartId !== id || !viaApproval)) parkedChoices.current = null;
       const next = quoteInputToCart(r.cart, newKey);
+      // fix รอบ 1 F3: สาขานี้ไม่มีระบบสมาชิกแล้ว (registerStatus รู้แล้วเท่านั้น) ⇒ บิลที่เรียกคืนไม่พาสมาชิกมา + บอกเหตุผล (ไม่งั้นทุก quote ถูกปฏิเสธและไม่มีปุ่มถอด)
+      const memberDropped = !!next.memberId && status?.memberEnabled === false;
+      if (memberDropped) delete next.memberId;
       changeCart(next);
       setHeldNotices(r.notices.flatMap((n) => (next.lines[n.lineIndex] ? [{ key: next.lines[n.lineIndex]!.key, code: n.code, from: n.heldUnitPriceSatang, to: n.unitPriceSatang }] : [])));
       // POS P1.15U ▸ มติ 5: บิลพักที่อนุมัติส่วนลดแล้ว ⇒ ยอดจาก quote ที่เรียกคืน (เพดานที่อนุมัติ) + heldCartId ตอนชำระ ◂
@@ -1138,7 +1186,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
         setDiscAuth({ kind: "pin", managerUserId: armPin.managerUserId, managerName: "", managerPin: armPin.pin, heldCartId: r.heldCartId, ...d });
       }
       setLayers([]);
-      showToast({ key: "held.recalled" });
+      showToast(memberDropped ? { key: "errors.memberSystemMissing" } : { key: "held.recalled" });
       void refreshHeld();
       return true;
     } catch {
@@ -1161,6 +1209,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
     setHeldBusy(true);
     try {
       const r = await discardHeldCartAction({ systemId, unitId, id: h.id });
+      if (r.ok && parkedChoices.current?.heldCartId === h.id) parkedChoices.current = null; // fix รอบ 1 F2
       showToast(r.ok ? { key: "held.discarded" } : errorFor(r.code));
     } catch {
       showToast({ key: "errors.loadFailed" });
@@ -1495,6 +1544,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
     setPayError(null);
     setPayPhase("form");
     setLayers((s) => (s.some((l) => l.kind === "pay") ? s : [...s, { kind: "pay" }]));
+    restoreParkedChoices();
   };
   /** POS P1.12U มติ 3: "ใช้แต้ม" บนการ์ดสมาชิก = เปิดจอชำระโดยโฟกัสช่องแต้ม (เงื่อนไขเดียวกับปุ่มชำระ) */
   const openPayPoints = () => {
@@ -1502,7 +1552,19 @@ export function RegisterScreen(props: RegisterScreenProps) {
     setPayError(null);
     setPayPhase("form");
     setLayers((s) => (s.some((l) => l.kind === "pay") ? s : [...s, { kind: "pay", focusPoints: true }]));
+    restoreParkedChoices();
   };
+  /**
+   * fix รอบ 1 F2: เปิดจอชำระของบิลที่กลับมาจากการอนุมัติ (สิทธิ์เกินเพดานผูก heldCartId เดียวกับที่พักสิทธิ์ไว้) ⇒ ใส่แต้ม/ว่อชเชอร์เดิมคืนครั้งเดียว ·
+   * quote ใหม่ตรวจซ้ำ (POINTS_CAPPED/ต่ำกว่าขั้นต่ำ/ว่อชเชอร์ขัด = ตัวจัดการเดิม) · ไม่มีข้อความใหม่ (การ์ดแต้มขึ้น "✓ ใช้แล้ว" เอง)
+   */
+  function restoreParkedChoices() {
+    const pc = parkedChoices.current;
+    const a = discAuth;
+    if (!pc || !a || a.heldCartId !== pc.heldCartId || !cartRef.current.memberId) return;
+    parkedChoices.current = null;
+    setChoices(() => ({ ...pc.choices }));
+  }
   const send = async (sale: RegisterSubmitInput, opts?: { restore?: boolean }) => {
     if (sendingRef.current) return; // กดซ้ำ/Enter ซ้ำ = คำขอเดียวระหว่างทาง
     // POS P1.15U ▸ fix รอบ 1 F4: จอล็อกทับอยู่ = ไม่ส่ง (ยกเว้นลองซ้ำชุดคำขอที่ค้างจากก่อนโหลดหน้า — ชุดเดิมพกโทเคนของมันเอง) ◂
@@ -1542,13 +1604,15 @@ export function RegisterScreen(props: RegisterScreenProps) {
       setPayPhase("form");
       // POS P1.12U มติ 6: แต้มเกินเพดาน = แก้เป็น allowedPoints แล้ว quote ใหม่ (กล่องเปิดอยู่ ไม่มีการ์ดผิดพลาด) ·
       //   สิทธิ์เปลี่ยนระหว่างบันทึก = แบนเนอร์ + quote ใหม่ + ขอสิทธิ์ใหม่ (ที่เลือกคงไว้ถ้ายังใช้ได้ — quote ตัดสิน)
-      if (r.code === "POINTS_CAPPED" && "allowedPoints" in r) {
+      // fix รอบ 1 F8: แก้อัตโนมัติเฉพาะเมื่อตะกร้าบนจอยังเป็นของสมาชิกคนเดียวกับคำขอ (ทางโหลดคำขอค้างกลับ = ตะกร้าว่าง ⇒ การ์ดผิดพลาดปกติ)
+      const sameMember = !!sale.memberId && cartRef.current.memberId === sale.memberId;
+      if (r.code === "POINTS_CAPPED" && "allowedPoints" in r && sameMember) {
         const allowed = r.allowedPoints;
         setPointsNote({ key: "pay.capped", ns: "member", values: { points: allowed.toLocaleString("th-TH") } });
         setChoices((c) => ({ ...c, points: allowed > 0 ? allowed : 0 }));
         return;
       }
-      if (r.code === "MEMBER_RIGHTS_CHANGED") {
+      if (r.code === "MEMBER_RIGHTS_CHANGED" && sameMember) {
         setRightsChanged(true);
         setCartVer((v) => v + 1);
         if (sale.memberId) void refreshBenefits(sale.memberId, JSON.stringify(cartToQuoteInput(cartRef.current, { choices: false })));
@@ -1634,7 +1698,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
     const over =
       auth?.kind === "pin"
         ? { managerPin: auth.managerPin, managerUserId: auth.managerUserId, ...(auth.heldCartId ? { heldCartId: auth.heldCartId } : {}) }
-        : auth?.kind === "approved" && auth.inputJson === cartInputJson
+        : auth?.kind === "approved" && (auth.inputJson === cartInputJson || !!overrideAuthOf(cart, auth))
           ? { heldCartId: auth.heldCartId }
           : {};
     void send({ ...sale, ...(st ? { staffToken: st.staffToken } : {}), ...over });
@@ -1663,6 +1727,8 @@ export function RegisterScreen(props: RegisterScreenProps) {
     if (!approvalHandoff) return;
     // merge P1.15U ข้อ 10b: ผู้ซื้อของบิลนี้ไปกับบิลที่พัก (ฝั่งจอ) ก่อน resetBill ล้าง
     if (approvalHandoff.heldCartId && taxInv) parkedTaxInv.current = { heldCartId: approvalHandoff.heldCartId, value: taxInv };
+    // POS P1.12U fix รอบ 1 F2: สิทธิ์ที่เลือกในจอชำระไปกับบิลที่พัก (ฝั่งจอ) ก่อน resetBill ล้าง
+    if (approvalHandoff.heldCartId && cart.memberId && cart.memberChoices) parkedChoices.current = { heldCartId: approvalHandoff.heldCartId, choices: { ...cart.memberChoices } };
     resetBill();
     setLayers([{ kind: "approval", requestId: approvalHandoff.requestId, ...(approvalHandoff.heldCartId ? { heldCartId: approvalHandoff.heldCartId } : {}) }]);
     setApprovalHandoff(null);
@@ -1718,6 +1784,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
     setLayers((s) => s.filter((l) => l.kind !== "approval"));
     // merge P1.15U ข้อ 10b: ปฏิเสธ/ยกเลิก = บิลพักถูกทิ้ง ⇒ ผู้ซื้อที่ผูกไว้หมดความหมาย
     if (view.status !== "APPROVED" && parkedTaxInv.current?.heldCartId === heldCartId) parkedTaxInv.current = null;
+    if (view.status !== "APPROVED" && parkedChoices.current?.heldCartId === heldCartId) parkedChoices.current = null; // fix รอบ 1 F2
     if (view.status === "APPROVED") {
       showToast({ key: "approval.approvedDiscount" });
       if (heldCartId) void onRecallHeld(heldCartId, undefined, true);
