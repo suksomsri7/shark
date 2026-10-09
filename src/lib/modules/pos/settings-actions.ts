@@ -104,7 +104,11 @@ export async function updatePosUnitPromptpayAction(args: { systemId: string; uni
   try {
     const s = await session();
     if (!gate(s.m, ["pos.settings.payment", "pos.settings.manage"])) return { ok: false, code: "SETTINGS_SECTION_LOCKED", message: "เลขพร้อมเพย์เป็นปลายทางเงิน — เจ้าของร้านเท่านั้นที่ตั้งได้" };
-    return await updatePosUnitPromptpay({ tenantId: s.tenantId, systemId: str(args?.systemId) }, s.actor, { unitId: str(args?.unitId), promptpayId: typeof args?.promptpayId === "string" ? args.promptpayId : null });
+    return await updatePosUnitPromptpay({ tenantId: s.tenantId, systemId: str(args?.systemId) }, s.actor, {
+      unitId: str(args?.unitId),
+      // F4: ส่งค่าตามที่ได้รับ (ไม่แปลงเป็น null) — ค่าไม่ใช่ string ⇒ ตัวเขียนตอบ VALIDATION · null ที่ส่งมาตรง ๆ เท่านั้นที่ลบเลขของสาขา
+      promptpayId: args?.promptpayId as string | null,
+    });
   } catch (e) {
     unstable_rethrow(e);
     return unexpected("unitPromptpay", e);
