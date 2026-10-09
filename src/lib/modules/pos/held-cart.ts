@@ -289,7 +289,8 @@ export async function recallHeldCart(ctx: RegisterCtx, actor: RegisterActor, inp
             ...(l.weightGrams !== undefined ? { weightGrams: l.weightGrams } : {}),
           };
         });
-        const q = await quoteRegisterCart(s.ctx, s.actor, { lines }, db);
+        // POS P2.2 ▸ R9 (บั๊ก :292): ตะกร้าทดสอบพกช่องทางของบิลพัก (cart.channelId) — ไม่งั้นบิล LINE MAN ถูกคิดราคาหน้าร้าน = PRICE_CHANGED ปลอม ◂
+        const q = await quoteRegisterCart(s.ctx, s.actor, { lines, ...(cart.channelId ? { channelId: cart.channelId } : {}) }, db);
         if (q.ok) {
           probe.forEach((i, k) => current.set(i, q.lines[k]!.unitPriceSatang));
           break;

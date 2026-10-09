@@ -427,6 +427,9 @@ import { isShiftDeviceId, registerShiftStatus, resolveRegisterShift } from "./sh
 import { posDeviceRevoked, touchPosDevice } from "./device"; // POS P1.10 ▸ การ์ดเครื่องที่ถูกเพิกถอน + heartbeat ◂
 import { resolveSaleChannel } from "./channel"; // POS P2.1 ▸ R10 ช่องทางของตะกร้า ◂
 import { CHANNEL_REF_MAX } from "./channel-shared"; // POS P2.1 ◂
+// POS P2.2 ▸ ราคาตามช่องทาง/สาขา/ช่วงเวลา (R5 R6) — ชุดราคาโหลดครั้งเดียวต่อคำขอ · ตัวแก้บริสุทธิ์ price-shared.ts ◂
+import { loadPriceBook, priceBookValidUntil, priceOf, type PriceBook } from "./price";
+import { priceRuleActiveUntil, type PriceSource } from "./price-shared";
 // POS P1.15 ▸ โทเคนผู้ขาย (R3) · PIN ผู้จัดการ (R4) · สายอนุมัติส่วนลดเกินสิทธิ์ (R5/R6) ◂
 import { createHash } from "node:crypto";
 import { writeAudit } from "@/lib/core/audit";
@@ -576,6 +579,10 @@ const REG_MESSAGE: Record<RegisterRefusalCode, string> = {
   CHANNEL_CODE_TAKEN: "รหัสช่องทางนี้มีอยู่แล้วในสาขานี้",
   CHANNEL_BUILTIN_LOCKED: "ช่องทางพื้นฐานแก้ส่วนนี้ไม่ได้",
   CHANNEL_LIMIT: "สาขานี้มีช่องทางขายครบ 30 ช่องทางแล้ว",
+  // POS P2.2 ▸ R12 ◂
+  CHANNEL_NOT_SOLD: "สินค้านี้ไม่ขายในช่องทางนี้ — เอาออกจากบิล หรือเปลี่ยนช่องทาง",
+  PRICE_RULE_NOT_FOUND: "ไม่พบโปรราคานี้",
+  PRICE_RULE_LIMIT: "ระบบนี้มีโปรราคาครบ 100 รายการแล้ว — เก็บถาวรโปรที่ไม่ใช้ก่อน",
 };
 const REG_ROLE_LABEL: Record<RegisterRole, string> = { OWNER: "เจ้าของร้าน", MANAGER: "ผู้จัดการ", STAFF: "แคชเชียร์" };
 
@@ -696,9 +703,15 @@ async function regRowsInOrder(db: RegDb, tenantId: string, ids: string[]): Promi
   return ids.flatMap((id) => (byId.has(id) ? [byId.get(id)!] : []));
 }
 
-/** แถว → สินค้าบนกริด (สเปก §3.2 + Q6 Q9 · trackStock แบบ C2 ผ่าน effectiveTrackStock ของ catalog) */
-async function regViews(db: RegDb, s: RegScope, rows: PosProduct[]): Promise<RegisterProduct[]> {
+/** POS P2.2 ▸ ชุดราคาของแถวสินค้า ณ `at` (แถวราคา + กติกาที่อาจเกี่ยว · 1 ครั้งต่อคำขอ) ◂ */
+function regPriceBook(db: RegDb, s: RegScope, rows: PosProduct[], at: Date = new Date()): Promise<PriceBook> {
+  return loadPriceBook(db, { tenantId: s.tenantId, systemId: s.systemId, unitId: s.unitId }, rows, at);
+}
+
+/** แถว → สินค้าบนกริด (สเปก §3.2 + Q6 Q9 · trackStock แบบ C2 ผ่าน effectiveTrackStock ของ catalog) · POS P2.2 R6: ราคาไทล์ = ราคาจริงของหน้าร้าน ณ `book.at` */
+async function regViews(db: RegDb, s: RegScope, rows: PosProduct[], book?: PriceBook): Promise<RegisterProduct[]> {
   if (!rows.length) return [];
+  const pb = book ?? (await regPriceBook(db, s, rows));
   const ids = rows.map((r) => r.id);
   const invIds = [...new Set(rows.map((r) => r.invItemId).filter((x): x is string => !!x))];
   // P1.2 R6: ตัวแปรใช้กลุ่มตัวเลือกของแม่ (P6) และราคาแม่เมื่อไม่ตั้งราคาเอง (P5)
@@ -709,12 +722,14 @@ async function regViews(db: RegDb, s: RegScope, rows: PosProduct[]): Promise<Reg
     db.posProductOptionGroup.findMany({ where: { tenantId: s.tenantId, productId: { in: ownerIds } }, select: { productId: true, groupId: true } }),
     // P1.1b มติ 3 (merge): แถว MENU ใช้ความพร้อมขายสดจาก MenuItem — กติกาเดียวกับ catalog.listForUnit (S1.27)
     menuSoldOutIds(s.tenantId, rows, db),
-    parentIds.length ? db.posProduct.findMany({ where: { tenantId: s.tenantId, id: { in: parentIds } }, select: { id: true, basePriceSatang: true } }) : Promise.resolve([]),
+    parentIds.length ? db.posProduct.findMany({ where: { tenantId: s.tenantId, id: { in: parentIds } }, select: { id: true, basePriceSatang: true, soldByWeight: true } }) : Promise.resolve([]),
     // P1.2 R6: ตัวแปรที่ขายได้ที่สาขานี้ (กติกามองเห็นเดียวกัน) ต่อแม่
     db.$queryRaw<{ id: string; n: number }[]>`SELECT p."parentId" AS id, count(*)::int AS n FROM "PosProduct" p
       WHERE ${regVisibleWhere(s)} AND p."parentId" = ANY(${ids}::text[]) GROUP BY p."parentId"`,
   ]);
   const parentPrice = new Map(parents.map((p) => [p.id, p.basePriceSatang]));
+  const parentWeighed = new Set(parents.filter((p) => p.soldByWeight).map((p) => p.id));
+  const ruleById = new Map(pb.rules.map((r) => [r.id, r]));
   const kidCount = new Map(kids.map((k) => [k.id, Number(k.n)]));
   const groupIds = [...new Set(links.map((l) => l.groupId))];
   const groups = groupIds.length
@@ -741,6 +756,21 @@ async function regViews(db: RegDb, s: RegScope, rows: PosProduct[]): Promise<Reg
     // มติ 3.1 ข้อ 12: ปิดขายมือชนะหมดสต็อก
     const soldOutReason = unavailable ? ("UNAVAILABLE" as const) : stockLeft !== null && stockLeft <= 0 ? ("NO_STOCK" as const) : null;
     const images = Array.isArray(p.images) ? p.images.filter((x): x is string => typeof x === "string") : [];
+    // POS P2.2 ▸ R6: ราคาไทล์ของหน้าร้าน (STORE) — สินค้าชั่ง = ราคาต่อกก. เดิม (CD7) · ไม่ตั้งราคา = null · ไม่ขายหน้าร้าน = null (listPriceSatang ยังบอกราคาปกติ) ◂
+    const own = p.basePriceSatang ?? (p.parentId ? (parentPrice.get(p.parentId) ?? null) : null);
+    const weighed = p.soldByWeight || (p.basePriceSatang === null && !!p.parentId && parentWeighed.has(p.parentId));
+    const rp = weighed ? null : priceOf(pb, p, "STORE");
+    const tileRule = rp?.ok && rp.ruleId ? ruleById.get(rp.ruleId) : undefined;
+    const tilePrice: { priceSatang: number | null; listPriceSatang: number | null; priceSource: PriceSource | null; priceRule: { id: string; name: string; endsAt: string | null } | null } = weighed
+      ? { priceSatang: own, listPriceSatang: null, priceSource: own === null ? null : "WEIGHED", priceRule: null }
+      : rp?.ok
+        ? {
+            priceSatang: rp.priceSatang,
+            listPriceSatang: rp.listPriceSatang,
+            priceSource: rp.source,
+            priceRule: rp.ruleId ? { id: rp.ruleId, name: rp.ruleName ?? "", endsAt: tileRule ? (priceRuleActiveUntil(tileRule, pb.at)?.toISOString() ?? null) : null } : null,
+          }
+        : { priceSatang: null, listPriceSatang: rp?.code === "CHANNEL_NOT_SOLD" ? own : null, priceSource: null, priceRule: null };
     return {
       id: p.id,
       invItemId: p.invItemId,
@@ -748,8 +778,8 @@ async function regViews(db: RegDb, s: RegScope, rows: PosProduct[]): Promise<Reg
       nameEn: p.nameEn,
       kind: p.kind,
       categoryId: p.categoryId,
-      // P1.2 P5: ตัวแปรที่ไม่ตั้งราคา = ราคาแม่ (สินค้าชั่ง = ราคาต่อกิโลกรัม)
-      priceSatang: p.basePriceSatang ?? (p.parentId ? (parentPrice.get(p.parentId) ?? null) : null),
+      // P1.2 P5: ตัวแปรที่ไม่ตั้งราคา = ราคาแม่ (สินค้าชั่ง = ราคาต่อกิโลกรัม) · POS P2.2 R6: = ราคาหน้าร้านหลังชั้นราคา (สาขา/ช่องทาง STORE/โปร) ◂
+      priceSatang: tilePrice.priceSatang,
       sku: inv?.sku ?? null,
       barcode: p.barcode ?? inv?.barcode ?? null,
       imageUrl: images[0] ?? null,
@@ -763,6 +793,10 @@ async function regViews(db: RegDb, s: RegScope, rows: PosProduct[]): Promise<Reg
       stockLeft,
       trackStock: ts.trackStock,
       trackStockMode: ts.mode,
+      // POS P2.2 ▸ R6 ◂
+      listPriceSatang: tilePrice.listPriceSatang,
+      priceSource: tilePrice.priceSource,
+      priceRule: tilePrice.priceRule,
     };
   });
 }
@@ -895,7 +929,9 @@ export async function registerCatalog(ctx: RegisterCtx, actor: RegisterActor, in
         })
       : [];
     const categories: RegisterCategory[] = cats.map((c) => ({ id: c.id, name: c.name, nameEn: c.nameEn, productCount: countById.get(c.id) ?? 0 }));
-    return { ok: true, categories, products: await regViews(db, s, page), nextCursor };
+    // POS P2.2 ▸ R6: ชุดราคาเดียวของหน้านี้ → ไทล์ + ขอบหน้าต่างโปรถัดไป (จอ refetch ตอนนั้น) ◂
+    const book = await regPriceBook(db, s, page);
+    return { ok: true, categories, products: await regViews(db, s, page, book), nextCursor, priceValidUntil: priceBookValidUntil(book) };
   });
 }
 
@@ -1237,6 +1273,10 @@ type RegResolvedLine = {
   options: RegPickedOption[];
   components: { invItemId: string; qty: number }[];
   weightGrams: number | null;
+  /** POS P2.2 ▸ R5 R7: ชั้นราคาที่ชนะ (สำเนาลงบิล) · โปรที่ชนะ · ราคาปกติขั้น ② (OPEN/CUSTOM/WEIGHED = null) ◂ */
+  priceSource: PriceSource;
+  priceRule: { id: string; name: string } | null;
+  listPriceSatang: number | null;
 };
 
 /**
@@ -1294,7 +1334,10 @@ async function regPrice(
     ? (await db.$queryRaw<{ id: string }[]>`SELECT p.id FROM "PosProduct" p WHERE ${regVisibleWhere(s)} AND p.id = ANY(${wantIds}::text[])`).map((r) => r.id)
     : [];
   const rows = await regRowsInOrder(db, s.tenantId, visibleIds);
-  const views = new Map((await regViews(db, s, rows)).map((v) => [v.id, v]));
+  // POS P2.2 ▸ R5: เวลาเดียว (at) + ชุดราคาเดียวต่อการคิดราคา 1 ครั้ง (แถวราคา + กติกา · 2 คำสั่ง) ⇒ สินค้าเดียวในบิลเดียวได้ราคาเดียว (B1.1) ◂
+  const book = await regPriceBook(db, s, rows, new Date());
+  const priceChannelCode = channel?.code ?? "STORE";
+  const views = new Map((await regViews(db, s, rows, book)).map((v) => [v.id, v]));
   const rowById = new Map(rows.map((r) => [r.id, r]));
   // P1.2: กลุ่มตัวเลือก (สด) ของเจ้าของกลุ่ม · สูตรชุด · ค่าตั้งป้ายชั่ง (อ่านเมื่อมีบรรทัดที่ต้องใช้เท่านั้น)
   const optCat = await regOptionCatalog(db, s.tenantId, [...new Set(rows.map((r) => r.parentId ?? r.id))]);
@@ -1317,7 +1360,7 @@ async function regPrice(
     const l = cart.lines[i]!;
     if (l.kind === "custom") {
       priceLines.push({ qty: l.qty, unitPriceSatang: l.unitPriceSatang, discount: l.discount });
-      meta.push({ name: l.name, qty: l.qty, productId: null, itemId: null, serviceId: null, note: l.note ?? null, options: [], components: [], weightGrams: null });
+      meta.push({ name: l.name, qty: l.qty, productId: null, itemId: null, serviceId: null, note: l.note ?? null, options: [], components: [], weightGrams: null, priceSource: "CUSTOM", priceRule: null, listPriceSatang: null });
       continue;
     }
     const v = views.get(l.productId);
@@ -1332,6 +1375,10 @@ async function regPrice(
     if (!opt.ok) return regRefuse(opt.code, undefined, i);
     let base: number;
     let weightGrams: number | null = null;
+    // POS P2.2 ▸ R4 ①: สินค้าชั่ง = WEIGHED · ราคาเปิด = OPEN (ไม่โดนแถว/กติกา) · อื่น ๆ = ตัวแก้ราคา ◂
+    let priceSource: PriceSource = "WEIGHED";
+    let priceRule: { id: string; name: string } | null = null;
+    let listPriceSatang: number | null = null;
     if (row.soldByWeight) {
       // P1.2 R12: ราคาต่อกก. = ราคาของแถว (ตัวแปรสืบแม่) · ป้าย WEIGHT = ปัดครึ่งขึ้น(กรัม × ราคา/1000) · ป้าย PRICE = ราคาบนป้าย (สตางค์ · มติ P2)
       if (l.weighedBarcode === null && l.weightGrams === null) return regRefuse("WEIGHT_REQUIRED", undefined, i);
@@ -1359,9 +1406,19 @@ async function regPrice(
     } else {
       if (l.weighedBarcode !== null || l.weightGrams !== null) return regRefuse("VALIDATION", "สินค้านี้ไม่ได้ขายตามน้ำหนัก", i);
       // P2.2 ▸ channel price here ◂ (ราคาตามช่องทาง — P2.1 ส่ง channel เข้ามาแล้วแต่ยังไม่ใช้ · ราคาเดิมทุกสตางค์)
-      const unit0 = l.openPrice ?? v.priceSatang;
-      if (unit0 === null) return regRefuse("PRICE_NOT_SET", undefined, i);
-      base = unit0;
+      //   POS P2.2 ▸ R4 R5: ราคาเปิด = OPEN · อื่น ๆ = ตัวแก้ราคา (โปร > ช่องทาง+สาขา > ช่องทาง > สาขา > ฐาน) บนช่องทางของตะกร้า ณ book.at
+      //   · ไม่ตั้งราคา = PRICE_NOT_SET · แถวที่ชนะเป็น "ไม่ขาย" = CHANNEL_NOT_SOLD (บรรทัดนี้) ◂
+      if (l.openPrice !== null) {
+        base = l.openPrice;
+        priceSource = "OPEN";
+      } else {
+        const rp = priceOf(book, row, priceChannelCode);
+        if (!rp.ok) return regRefuse(rp.code, undefined, i);
+        base = rp.priceSatang;
+        priceSource = rp.source;
+        listPriceSatang = rp.listPriceSatang;
+        priceRule = rp.ruleId ? { id: rp.ruleId, name: rp.ruleName ?? "" } : null;
+      }
     }
     // R1: ราคาต่อหน่วย = ฐาน + Σ delta (ส่วนลดบรรทัด/ท้ายบิลคิดบนราคานี้) · ติดลบ = INVALID_LINE
     const unit = base + opt.delta;
@@ -1372,7 +1429,7 @@ async function regPrice(
     const itemId = v.kind === "PRODUCT" && v.invItemId && v.trackStock ? v.invItemId : null;
     const serviceId = v.kind === "SERVICE" && v.invItemId ? v.invItemId : null;
     const components = v.kind === "BUNDLE" ? recipes.filter((r) => r.productId === v.id).map((r) => ({ invItemId: r.invItemId, qty: r.qty })) : [];
-    meta.push({ name: v.name, qty: l.qty, productId: v.id, itemId, serviceId, note: l.note ?? null, options: opt.picked, components, weightGrams });
+    meta.push({ name: v.name, qty: l.qty, productId: v.id, itemId, serviceId, note: l.note ?? null, options: opt.picked, components, weightGrams, priceSource, priceRule, listPriceSatang });
   }
   const vat = await regVat(db, s.tenantId, s.systemId);
   // P1.6 O19: ค่าบริการตามค่าตั้งของระบบ POS (ปิด = 0 · ยอดเท่าวันนี้)
@@ -1429,6 +1486,10 @@ async function regPrice(
       optionsSatang: m.options.reduce((t, o) => t + o.priceDeltaSatang, 0),
       options,
       weightGrams: m.weightGrams,
+      // POS P2.2 ▸ R5 ◂
+      priceSource: m.priceSource,
+      listPriceSatang: m.listPriceSatang,
+      priceRule: m.priceRule ? { ...m.priceRule } : null,
     };
   });
   const quote: RegisterQuoteTotals = {
@@ -2035,6 +2096,10 @@ export async function submitRegisterSale(ctx: RegisterCtx, actor: RegisterActor,
           : {}),
         ...(l.components.length ? { components: l.components.map((c) => ({ ...c })) } : {}),
         ...(l.weightGrams !== null ? { weightGrams: l.weightGrams } : {}),
+        // POS P2.2 ▸ R7: สำเนาชั้นราคา (เพิ่มล้วน · ไม่อยู่ใน samePayload · createSale ไม่คิดราคาเอง) ◂
+        priceSource: l.priceSource,
+        ...(l.priceRule ? { priceRuleId: l.priceRule.id } : {}),
+        ...(l.listPriceSatang !== null ? { listPriceSatang: l.listPriceSatang } : {}),
       })),
       billDiscountSatang: q.billDiscountSatang,
       // P1.6: เงินที่รับอยู่บนแถวเงินสด (ทอนคิดที่ createSale) · เลขอ้างอิงบัตร/โอน
