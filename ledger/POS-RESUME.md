@@ -969,3 +969,10 @@
 - gates43-c @9163ebbe: fetch/checkout/generate/typecheck 0 · build กำลังรัน (`/root/pos-runs/gates43-c-*/`)
 - ค้างของผม: เขียน O-item ใน `POS-OWNER-PENDING.md` (VAT บนส่วนที่จ่ายด้วยบัตรของขวัญหายใน legacy path) + อัปเดต C-10 ใน POS-CONTRACTS ให้ชื่อตรง wallet
 - โควตา 10:55Z: session 35% (ถึง 12:29Z) · **weekly 92%** (A 59%) · ส่งไม้ต่อ A ที่ 97%
+
+## 9 ต.ค. 11:10Z — P1.13U รอบแก้ 1 + merge P1.15U เสร็จ (cd6bc919) · gates43 เขียว · build44/vis44 ทรี d + ผู้ตรวจยืนยัน
+- **gates43-c** @9163ebbe (session/pos หลัง P1.15U): generate/typecheck/build/fitness ×3 = 0 ทั้งหมด (`/root/pos-runs/gates43-c-*/`) — ยังไม่รันชุด DB (รอชุดของเลน 4 จบ กัน Z2 ชน)
+- **L4 P1.13U** builder: F1 0b5dcc7b · F2 1b4843c2 · F3 c4175663 · F4 4c60b760 · F5 f8877009 · F6 76ca8f1b · V1 a8ede518 (ป้าย "ใบกำกับ" + ✓ เมื่อตั้ง buyer) · V2 = ของเดิม (cashier visual ใช้บิลเก่าสุดของวัน `existingBillsSet` เหมือนบน session/pos) บันทึก follow-up · merge origin/session/pos 9163ebbe = 02a636a9 + ข้อ 10a–f (buyer ผูก heldCartId ข้ามรออนุมัติ · toast เมื่อ recall ทางอื่น · issue/reject นอกเกต PIN · Esc รอทุก dialog) · ด่านบนหัว merge: typecheck 0 · p1.13 33/33 ×3 · p1.15 39/39 · p1.7 32 · p1.11 38 · p1.3 128 · p1.10 40 · authz 56 · fitness ×2 · fitness-pos · dry 0 · head **cd6bc919**
+- สั่งต่อ: ผู้ตรวจ a0efac87 ยืนยัน F1–F6/V1/ข้อ 10 + P1.15U F4/F8 ยังอยู่ (≤40 บรรทัด) · **build44 ทรี d** @cd6bc919 → chain44 → vis44 (`p113u-r2` register owner --states ทั้งหมดรวม lock/taxinvoice · sales owner · พอร์ต 3228) → แตะ `ctl/vis44-done` · ผล `/root/pos-runs/build44-d-*/`, `vis44-p113u-*/`, ภาพ `.qc-shots/pos/p113u-r2/`
+- ถัดไป: ผู้ตรวจ OK + ภาพ taxinvoice-set ไม่ตัดคำ + lock states ไม่พัง → `git -C /root/projects/shark-pos merge --no-ff origin/wip/pos-p1.13u` → **21/55** → tg · แล้ว gates DB บน session/pos (ทรี c) · P1.12 oracle (ทรี b) รอรายงาน
+- โควตา 11:10Z: session ~37% · weekly 92%
