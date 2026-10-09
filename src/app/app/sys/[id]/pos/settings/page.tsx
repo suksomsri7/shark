@@ -40,8 +40,10 @@ export default async function PosSettingsPage({ params, searchParams }: { params
   const tab = posSettingsTabOf(rawTab);
   const canManageDevices = evaluate(m, { module: "pos", action: "pos.device.manage", unitId });
   const canRead = canManageDevices || evaluate(m, { module: "pos", action: "pos.sale.create", unitId });
-  // POS P1.18 ▸ FU-c (P1.10U): แก้ใบเสร็จ = กติกาเดียวกับ updatePosReceiptSettings — pos.device.manage ระดับร้าน + ครบทุกสาขาที่ผูก POS นี้ ◂
-  const canEditReceipt = await canManageAllLinkedUnits(prisma, { tenantId, systemId: id }, m);
+  // POS P1.18 ▸ FU-c (P1.10U): แก้ใบเสร็จ = กติกาเดียวกับ updatePosReceiptSettings / posSettingsOverview.canEdit.receipt —
+  //   pos.device.manage ระดับร้าน (evaluate ก่อน) + ครบทุกสาขาที่ผูก POS นี้ · F1: unitAccess ["*"] อย่างเดียวไม่พอ (PromptPay ID ไม่ปิดบัง) ◂
+  const deviceManageAtShop = evaluate(m, { module: "pos", action: "pos.device.manage" });
+  const canEditReceipt = deviceManageAtShop && (await canManageAllLinkedUnits(prisma, { tenantId, systemId: id }, m));
   const def = systemDef(sys.type);
   const t = await getTranslations("pos.settings");
   const payProfile = tab === "payments" && canRead ? await getPaymentProfile({ tenantId }) : null;
