@@ -162,8 +162,11 @@ export async function holdCartForApproval(ctx: RegisterCtx, actor: RegisterActor
       return isRefusal(row) ? row : { ok: true, id: row.id };
     } catch (e) {
       if (!opts?.id || (e as { code?: unknown } | null)?.code !== "P2002") throw e;
-      const won = await db.posHeldCart.findFirst({ where: { id: opts.id, ...rowWhere(s) }, select: { id: true } });
-      if (!won) throw e;
+      // POS P1.18 ▸ F9: ใช้แถวของผู้ชนะได้เฉพาะที่ยัง HELD และยังไม่หมดอายุ — ถูกทิ้ง/เรียกคืน/หมดอายุแล้ว (ส่งซ้ำคีย์เดิมทีหลัง)
+      //   = ปฏิเสธแบบบิลที่ไม่มีอยู่ (NOT_FOUND) ไม่ผูกคำขออนุมัติใหม่กับบิลที่ตายแล้ว ◂
+      const cutoff = await expireCutoff(db, s);
+      const won = await db.posHeldCart.findFirst({ where: { id: opts.id, ...rowWhere(s), status: "HELD", createdAt: { gte: cutoff } }, select: { id: true } });
+      if (!won) return refuse("NOT_FOUND");
       return { ok: true, id: won.id };
     }
   });
