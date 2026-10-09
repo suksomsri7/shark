@@ -79,7 +79,7 @@ const CHECKS: readonly Def[] = [
   D("Q5", "-", "[R4 CD2 Q3] กติกา STORE ไม่โดน LINEMAN (9,500 CHANNEL) → เพิ่มกติกา 20% ทุกช่องทาง priority 0 → LINEMAN 7,600 RULE (คิดบน 9,500) · STORE ยัง 5,900 (priority 10 ชนะ)"),
   D("Q6", "X4", "[R4 ⑥ CD5] ตัวเลือก M +1,000 บวกหลังกติกา: STORE 6,900 (optionsSatang 1,000) · LINEMAN 8,600 · listPriceSatang ไม่รวมตัวเลือก (7,500)"),
   D("Q7", "-", "[R4 ① CD7] ราคาเปิด 4,000 ของลาเต้ระหว่าง happy hour → 4,000 OPEN (STORE + LINEMAN) · รายการกำหนดเอง → CUSTOM · สินค้าชั่ง 500 g × 1,200/kg → 60,000 WEIGHED · ทั้งหมด priceRule null · list null"),
-  D("Q8", "X5", "[R1 R4 R12] LINEMAN [เอสเพรสโซ่, มัทฉะ(ไม่ขาย)] → CHANNEL_NOT_SOLD lineIndex 1 (ข้อความไทย \"ไม่ขายในช่องทางนี้\") · STORE ตะกร้าเดียวกันผ่าน (ตัวควบคุม) · submit LINEMAN → CHANNEL_NOT_SOLD ไม่มีบิล · ราคาเปิดของมัทฉะบน LINEMAN → CHANNEL_NOT_SOLD (F1)"),
+  D("Q8", "X5", "[R1 R4 R12] LINEMAN [เอสเพรสโซ่, มัทฉะ(ไม่ขาย)] → CHANNEL_NOT_SOLD lineIndex 1 (ข้อความไทย \"ไม่ขายในช่องทางนี้\") · STORE ตะกร้าเดียวกันผ่าน (ตัวควบคุม) · submit LINEMAN → CHANNEL_NOT_SOLD ไม่มีบิล · ราคาเปิดของมัทฉะบน LINEMAN → CHANNEL_NOT_SOLD (F1) · สินค้าไม่มีราคาฐาน + แถวไม่ขาย + ราคาเปิด → CHANNEL_NOT_SOLD (F6)"),
   D("Q9", "X4", "[R5 CD4 Q4] สมาชิก Gold 5% + คูปอง PCT10 บนราคากติกา: ลาเต้ ×2 (5,900) = ตะกร้าควบคุมรายการกำหนดเอง 5,900 ×2 ทุกยอด (คูปอง 1,180 · tier · grand) และ ≠ ตะกร้า 7,500 · เพดานส่วนลดพนักงาน 10% คิดบน 5,900 (10% ผ่าน ลด 590 · 10.01% → DISCOUNT_EXCEEDS_LIMIT) — กติกาไม่ใช่ส่วนลด"),
   D("Q10", "X5", "[R5] submit ด้วย expectedGrandTotal 5,900 หลังเก็บกติกา → PRICE_CHANGED พกยอดสด 7,500 (บรรทัด BASE) · ไม่มีแถวใหม่ (บิล/จ่าย/outbox/เลขใบเสร็จ) · ส่งใหม่ 7,500 → สำเร็จ บรรทัด BASE"),
   // ── S บิล ──
@@ -1497,6 +1497,11 @@ async function runDb() {
     // ORACLE-EDIT (reviewer F1): ราคาเปิดของสินค้าที่แถวชนะเป็น "ไม่ขาย" ต้องถูกปฏิเสธเหมือนทางปกติ (ราคาเปิดไม่ข้าม notSold)
     const op = await quote("A", { channelId: CH.LM_A, lines: [pl(PR.matcha ?? "none", 1, { openPrice: true, unitPriceSatang: 4000 })] }, owner, "Q8 open LINEMAN");
     if (!refused(op, "CHANNEL_NOT_SOLD") || op.lineIndex !== 0) p.push(`ราคาเปิด LINEMAN มัทฉะ(ไม่ขาย) → ${codeOf(op)} lineIndex ${short(op?.lineIndex, 5)} (คาด CHANNEL_NOT_SOLD @0)`);
+    // ORACLE-EDIT (reviewer F6): สินค้าไม่มีราคาฐาน (ขนมไม่ตั้งราคา) + แถว (LINEMAN, ทุกสาขา) ไม่ขาย → ราคาเปิดบน LINEMAN = CHANNEL_NOT_SOLD (ไม่ใช่ผ่าน) · ล้างแถวคืนหลังตรวจ
+    const un = await setCP(ownerId, PR.unpriced ?? "", [cprow("LINEMAN", null, null, true)], "Q8 unpriced notSold");
+    const ou = await quote("A", { channelId: CH.LM_A, lines: [pl(PR.unpriced ?? "none", 1, { openPrice: true, unitPriceSatang: 4000 })] }, owner, "Q8 open unpriced LINEMAN");
+    const unc = await setCP(ownerId, PR.unpriced ?? "", [], "Q8 unpriced clear");
+    if (!okish(un) || !okish(unc) || !refused(ou, "CHANNEL_NOT_SOLD") || ou.lineIndex !== 0) p.push(`ราคาเปิด LINEMAN ขนมไม่ตั้งราคา(ไม่ขาย) → ${codeOf(ou)} lineIndex ${short(ou?.lineIndex, 5)} (คาด CHANNEL_NOT_SOLD @0 · ตั้งแถว ${codeOf(un)} · ล้าง ${codeOf(unc)})`);
     const c0 = await counts();
     const key = newKey("q8");
     const sb = await submit({ channelId: CH.LM_A, ...cart }, 11_500, [["PLATFORM", 11_500]], key);
