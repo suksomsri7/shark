@@ -688,6 +688,26 @@ export async function automaticDiscountForSale(ctx: MemberCtx, customerId: strin
   return tierDiscountOf(benefits, subtotalOf(cart ?? { lines: [] }));
 }
 
+// POS P1.12 ▸ แต้มของ "ระบบแต้มที่ผูกสาขานี้" (อ่านอย่างเดียว · มติผู้คุมงาน 6) — หน้าขาย/ใบเสร็จของ POS อ่านยอดสด + กติกาใช้แต้ม
+//   ผ่านทางนี้ทางเดียว (POS ห้าม import โมดูลแต้มตรง) · ใช้ resolveSystems ตัวเดียวกับ getWallet/computeQuote ⇒ ระบบแต้มที่หน้าขายเห็น
+//   = ระบบที่ applyOnSale ตัดจริง · สาขาไม่มีระบบแต้ม = null · ไม่ตรวจว่าสมาชิกอยู่ระบบนี้ (ผู้เรียกตรวจเองก่อนเสมอ) ◂
+export type UnitPointsDto = { pointSystemId: string; balance: number; burnRateSatang: number; burnMinPoints: number; burnMaxPct: number };
+export async function pointBalanceForUnit(ctx: MemberCtx, input: { customerId: string; unitId: string }): Promise<UnitPointsDto | null> {
+  const unitId = String(input?.unitId ?? "").trim();
+  const customerId = String(input?.customerId ?? "").trim();
+  if (!unitId || !customerId) return null;
+  const sys = await resolveSystems(ctx, unitId);
+  if (!sys.pointSystemId) return null;
+  const [balance, settings] = await Promise.all([point.getBalance(sys.pointSystemId, customerId), point.getPointSettings(ctx.tenantId)]);
+  return {
+    pointSystemId: sys.pointSystemId,
+    balance,
+    burnRateSatang: Math.max(1, settings.burnRateSatang),
+    burnMinPoints: Math.max(0, settings.burnMinPoints),
+    burnMaxPct: settings.burnMaxPct,
+  };
+}
+
 // ───────────────────────── ตะกร้าของบิล (ทางสำรองทางเดียวที่เหลือ) ─────────────────────────
 //
 // 🔴 M2.8 ลบ "ตะกร้าล่าสุดในหน่วยความจำ" ทิ้งแล้ว (หนี้จาก M2.7): บน serverless คนละอินสแตนซ์ =

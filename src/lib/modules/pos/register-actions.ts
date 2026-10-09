@@ -18,6 +18,7 @@ import { assertCan, canAccessUnit } from "@/lib/core/rbac";
 import { posMembership } from "./access";
 import { registerCatalog, registerScan, quoteRegisterCart, submitRegisterSale, registerStatus, registerProductOptions } from "./register";
 import { discardHeldCart, holdRegisterCart, listHeldCarts, recallHeldCart } from "./held-cart";
+import { registerFulfilReward, registerMemberBenefits, registerMemberLookup, registerQuickMember } from "./register-member"; // POS P1.12 ◂
 import type {
   DiscardHeldCartResult,
   HoldRegisterCartResult,
@@ -27,7 +28,12 @@ import type {
   RegisterCatalogInput,
   RegisterCatalogResult,
   RegisterCtx,
+  RegisterFulfilRewardResult,
+  RegisterMemberBenefitsResult,
+  RegisterMemberLookupResult,
   RegisterProductOptionsResult,
+  RegisterQuickMemberInput,
+  RegisterQuickMemberResult,
   RegisterQuoteInput,
   RegisterQuoteResult,
   RegisterRefusal,
@@ -226,5 +232,62 @@ export async function discardHeldCartAction(args: Target & { id: string }): Prom
     return await discardHeldCart(s.ctx, s.actor, { id: typeof args?.id === "string" ? args.id : "" });
   } catch (e) {
     return unexpected("discardHeldCartAction", e);
+  }
+}
+
+// ═══════ POS P1.12 — สมาชิกที่ตะกร้า (register-member.ts) · ทุก action ต้องมี pos.sale.create ที่สาขา (sessionScope + register-member ตรวจซ้ำ) ═══════
+
+/** ค้นสมาชิก (เบอร์ ≥ 3 หลัก · ชื่อ ≥ 2 ตัว · รหัสสมาชิก · SHARK-MC:<token>) — ≤ 8 แถว · เบอร์ปิดบัง */
+export async function registerMemberLookupAction(args: Target & { q: string }): Promise<RegisterMemberLookupResult> {
+  const auth = await session("registerMemberLookupAction");
+  if ("ok" in auth) return auth;
+  try {
+    const s = sessionScope(auth, args);
+    if ("ok" in s) return s;
+    return await registerMemberLookup(s.ctx, s.actor, { q: typeof args?.q === "string" ? args.q : "" });
+  } catch (e) {
+    return unexpected("registerMemberLookupAction", e);
+  }
+}
+
+/** สมัครสมาชิกด่วนแล้วผูกกับบิล — created:false = มีสมาชิกเบอร์นี้แล้ว (ผูกคนเดิม) · idempotencyKey เดิม = คนเดิม */
+export async function registerQuickMemberAction(args: Target & { input: RegisterQuickMemberInput }): Promise<RegisterQuickMemberResult> {
+  const auth = await session("registerQuickMemberAction");
+  if ("ok" in auth) return auth;
+  try {
+    const s = sessionScope(auth, args);
+    if ("ok" in s) return s;
+    return await registerQuickMember(s.ctx, s.actor, args?.input);
+  } catch (e) {
+    return unexpected("registerQuickMemberAction", e);
+  }
+}
+
+/** สิทธิ์ของสมาชิกกับตะกร้านี้ (จอชำระ) — อ่านอย่างเดียว · `cart` = ผลของ cartToQuoteInput */
+export async function registerMemberBenefitsAction(args: Target & { memberId: string; cart: RegisterQuoteInput }): Promise<RegisterMemberBenefitsResult> {
+  const auth = await session("registerMemberBenefitsAction");
+  if ("ok" in auth) return auth;
+  try {
+    const s = sessionScope(auth, args);
+    if ("ok" in s) return s;
+    return await registerMemberBenefits(s.ctx, s.actor, { memberId: typeof args?.memberId === "string" ? args.memberId : "", cart: args?.cart });
+  } catch (e) {
+    return unexpected("registerMemberBenefitsAction", e);
+  }
+}
+
+/** ส่งมอบของรางวัลที่สมาชิกแลกไว้ (ไม่ใช่บรรทัดบิล) — ส่งซ้ำ = ok */
+export async function registerFulfilRewardAction(args: Target & { memberId: string; redemptionId: string }): Promise<RegisterFulfilRewardResult> {
+  const auth = await session("registerFulfilRewardAction");
+  if ("ok" in auth) return auth;
+  try {
+    const s = sessionScope(auth, args);
+    if ("ok" in s) return s;
+    return await registerFulfilReward(s.ctx, s.actor, {
+      memberId: typeof args?.memberId === "string" ? args.memberId : "",
+      redemptionId: typeof args?.redemptionId === "string" ? args.redemptionId : "",
+    });
+  } catch (e) {
+    return unexpected("registerFulfilRewardAction", e);
   }
 }

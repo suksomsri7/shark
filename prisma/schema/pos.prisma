@@ -89,6 +89,14 @@ model PosSale {
   taxInvoice          Json?
   taxInvoiceDocId     String?
 
+  // ── P1.12 — สมาชิกที่ตะกร้า + สิทธิ์ที่จอชำระ · เพิ่มคอลัมน์ล้วน (บิลเดิม = null) ──
+  // memberSnapshot = สำเนาสมาชิกตอนขาย {name, memberCode, phoneMasked, tierKey, tierName} (ผู้เรียกส่งมา · หน้าขายใหม่ส่ง · ผู้เรียกเดิม = null)
+  //   ห้ามแก้หลัง commit · ยกเว้น PDPA member.erased ล้าง name/phoneMasked เป็น null (คงระดับ + เงิน)
+  // memberBenefits = สิทธิ์ที่ใช้กับบิล {lines: [{kind, ref, label, discountSatang, note?}] (ไม่รวม COUPON), pointsBurned}
+  //   createSale เขียนเองทุกผู้เรียกเมื่อมีสิทธิ์สมาชิกถูกใช้ (applyOnSale คืนค่า) · walk-in = null · ห้ามแก้หลัง commit
+  memberSnapshot      Json?
+  memberBenefits      Json?
+
   lines    PosSaleLine[]
   payments PosPayment[]
 

@@ -338,7 +338,18 @@
       "approvalMismatch": "This bill doesn't match what was approved — request approval again or enter a manager PIN",
       "alreadySet": "A PIN is already set — change it in Settings → Staff",
       "taxIdInvalid": "The buyer's tax ID isn't valid — check the 13 digits",
-      "taxInvoiceNotEligible": "This shop can't issue tax invoices yet · check the accounting link / tax ID"
+      "taxInvoiceNotEligible": "This shop can't issue tax invoices yet · check the accounting link / tax ID",
+      "memberSystemMissing": "This branch has no member system yet — sell without a member",
+      "memberSuspended": "This member is suspended — member benefits cannot be used on this bill",
+      "phoneInvalid": "Invalid phone number — enter 9–10 digits, e.g. 0812345678",
+      "voucherInvalid": "This voucher cannot be used on this bill",
+      "voucherCouponConflict": "This voucher cannot be combined with a coupon — choose one",
+      "pointsDisabled": "This branch has no point system — points cannot be redeemed",
+      "pointsBelowMin": "Points are below the shop minimum for redemption",
+      "pointsInsufficient": "The member does not have enough points",
+      "pointsCapped": "Points exceed the per-bill limit — adjusted to the allowed amount",
+      "benefitsExceedTotal": "Total discounts exceed the bill — reduce the discount or benefits first",
+      "memberRightsChanged": "Member benefits just changed — check the total and pay again (nothing was charged)"
     },
     "held": {
       "title": "Held bills",
@@ -1665,6 +1676,69 @@
       "rateLimited": "Too many lookups — wait a moment and try again",
       "internal": "The tax invoice service is temporarily unavailable — try again",
       "unknown": "That didn't work — try again"
+    }
+  },
+  "member": {
+    "chip": {
+      "add": "+ Add member",
+      "detach": "Remove",
+      "usePoints": "Use points",
+      "points": "{points} pts",
+      "purchaseNo": "Purchase #{count}",
+      "tierLine": "{tier} tier discount",
+      "couponLine": "Coupon {code}"
+    },
+    "panel": {
+      "title": "Member",
+      "subtitle": "Attach to this bill",
+      "searchPlaceholder": "Search by phone, name or member code",
+      "found": "{count} found",
+      "scanQr": "Scan member QR",
+      "empty": "No member found",
+      "lastPurchase": "Last purchase {when}",
+      "never": "No purchases yet",
+      "pointsUnit": "pts",
+      "suspended": "Suspended",
+      "divider": "Not found? Sign up takes 20 seconds",
+      "rewardsPending": "Rewards to collect",
+      "fulfil": "Hand over",
+      "fulfilled": "Handed over"
+    },
+    "register": {
+      "phone": "Phone",
+      "name": "Name",
+      "namePlaceholder": "Nickname or full name",
+      "birthDate": "Birthday (optional)",
+      "consent": "Agree to receive news (PDPA)",
+      "heardFrom": "Heard from",
+      "heardWalkIn": "Walk-in",
+      "heardLine": "LINE",
+      "heardReferral": "Referral",
+      "heardAds": "Ads",
+      "submit": "+ Sign up and attach to this bill",
+      "footnote": "Data goes to the member system · points start with this bill",
+      "existing": "A member with this phone already exists — attached to the bill"
+    },
+    "pay": {
+      "pointsTitle": "Use points as a discount",
+      "rate": "{points} pts = ฿{baht}",
+      "balance": "{name} has {points} pts (= {value})",
+      "pointsUnit": "pts",
+      "discountPreview": "Save {amount}",
+      "applyPoints": "Apply {amount} discount",
+      "capped": "This bill allows up to {points} pts",
+      "couponApplied": "✓Applied",
+      "voucherTitle": "Vouchers",
+      "voucherUnavailable": "Not applicable",
+      "tierLine": "{tier} tier discount",
+      "stampHint": "This bill earns {count} stamp(s) ({stamps}/{slots})",
+      "giftCards": "Gift cards",
+      "comingSoon": "Coming soon",
+      "rightsChanged": "Benefits changed — total recalculated"
+    },
+    "done": {
+      "pointsEarned": "Points earned {points} (total {total})",
+      "pointsExpected": "Points to earn {points}"
     }
   }
 }

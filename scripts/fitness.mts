@@ -305,6 +305,7 @@ const ALLOWED_EDGES = new Set([
   "inventory→approval",
   "hr→approval",
   "pos→approval", // POS P1.15 ▸ void/คืนเงิน/ส่วนลดเกินสิทธิ์เข้าสายอนุมัติผ่าน facade `@/lib/modules/approval` เท่านั้น (มติผู้คุมงาน 6) ◂
+  "pos→reward", // POS P1.12 ▸ ส่งมอบของรางวัลที่เคาน์เตอร์ (register-member.ts → facade `@/lib/modules/reward` เท่านั้น: resolveRewardCtx · pendingForCustomer · fulfilV2 · มติผู้คุมงาน 7) ◂
   // contract C-2 (13 ส.ค. 2026): availability = ของ HR — ระบบจองถาม hr.employeesOnLeave
   // ลาอนุมัติแล้ว → ช่องจองของช่างคนนั้นปิดเอง · ห้าม copy สูตรวันลาไปไว้ในโมดูลจอง
   "booking→hr",

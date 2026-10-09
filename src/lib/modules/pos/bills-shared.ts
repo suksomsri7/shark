@@ -107,7 +107,17 @@ export type BillDetail = {
     refunded: number;
   };
   payments: { type: string; amountSatang: number; tenderedSatang?: number; changeSatang?: number; reference?: string }[];
-  member: { name: string; memberCode: string | null; tierName?: string; pointsEarned: number; customerId: string } | null;
+  /**
+   * POS P1.12 (R15): ชื่อ/รหัส/ระดับจากสำเนาตอนขาย (บิลเก่า = ข้อมูลสด) · benefits = สิทธิ์ที่ใช้กับบิล (ระดับ/ว่อชเชอร์/แต้ม · ไม่รวมคูปอง · บิลเก่า = [])
+   */
+  member: {
+    name: string;
+    memberCode: string | null;
+    tierName?: string;
+    pointsEarned: number;
+    customerId: string;
+    benefits: { kind: string; label: string; discountSatang: number }[];
+  } | null;
   accounting: { docNo: string | null; docId: string } | null;
   receiptKind: "TAX_INVOICE_ABB" | "RECEIPT";
   /** POS P1.13 ▸ R7: ใบกำกับภาษีเต็มรูปของบิล — ISSUED (เลข + ชื่อผู้ซื้อ) · REQUESTED (ลูกค้าขอจากใบเสร็จออนไลน์ รอออก) · NONE ◂ */

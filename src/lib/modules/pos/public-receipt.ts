@@ -9,7 +9,7 @@
 import * as member from "@/lib/modules/member";
 import * as point from "@/lib/modules/point";
 import { prisma } from "./db";
-import { receiptForSale } from "./receipt";
+import { receiptForSale, salePointBalance } from "./receipt";
 import { saleForToken } from "./receipt-token";
 import { taxInvoiceActionOf } from "./receipt-tax-request";
 import {
@@ -49,7 +49,7 @@ export async function publicReceipt(token: string): Promise<PublicReceiptResult>
             select: { docNo: true },
           })
         : null,
-      pointsOf(sale.tenantId, sale.memberId, built.sale.pointEarned),
+      pointsOf(sale.tenantId, sale.unitId, sale.memberId, built.sale.pointEarned),
       taxInvoiceActionOf(sale, kind),
       sale.memberId ? member.reviewStateForRef({ tenantId: sale.tenantId }, { refType: "PosSale", refId: sale.id }) : null,
     ]);
@@ -76,6 +76,8 @@ export async function publicReceipt(token: string): Promise<PublicReceiptResult>
       grandTotalSatang: t.grandTotalSatang,
       payments: payload.payments.map((p) => ({ method: p.type, satang: p.amountSatang })),
       points,
+      // POS P1.12 ▸ R15 มติ 8: บรรทัดสิทธิ์จากสำเนาของบิล (kind · label · ส่วนลด) — ไม่มีข้อมูลตัวตนสมาชิก ◂
+      memberBenefits: (t.memberBenefits ?? []).map((b) => ({ kind: b.kind, label: b.label, discountSatang: b.discountSatang })),
       // review: บิลมีสมาชิกที่ยังอยู่ในระบบสมาชิก (points ไม่ null) + ยังไม่ได้ส่งรีวิว + ลิงก์ขอรีวิวของ journey ยังไม่หมดอายุ (F2)
       actions: { taxInvoice, review: (reviewState === "NONE" || reviewState === "REQUESTED") && points !== null, report: true },
     };
@@ -86,11 +88,16 @@ export async function publicReceipt(token: string): Promise<PublicReceiptResult>
   }
 }
 
-/** แต้มของบิล (มีสมาชิกเท่านั้น) — balance จากโมดูลแต้ม · ลูกค้าไม่อยู่ในระบบสมาชิกใดแล้ว = null */
-async function pointsOf(tenantId: string, memberId: string | null, earned: number): Promise<PublicReceipt["points"]> {
+/**
+ * แต้มของบิล (มีสมาชิกเท่านั้น) — POS P1.12 R15: balance สดของระบบแต้มที่ผูกสาขาของบิล (member facade · ตัวเดียวกับใบเสร็จ) ·
+ * สาขาไม่มีระบบแต้ม = ทางเดิม (ระบบแต้มตัวแรกของระบบสมาชิก · มติ P1.11 ข้อ 11) · ลูกค้าไม่อยู่ในระบบสมาชิกใดแล้ว = null
+ */
+async function pointsOf(tenantId: string, unitId: string, memberId: string | null, earned: number): Promise<PublicReceipt["points"]> {
   if (!memberId) return null;
   const c = await prisma.customer.findFirst({ where: { id: memberId, tenantId }, select: { memberSystemId: true } });
   if (!c?.memberSystemId) return null;
+  const unitBal = await salePointBalance(tenantId, unitId, { id: memberId, memberSystemId: c.memberSystemId });
+  if (unitBal !== null) return { earned, balance: unitBal };
   const [pointSys] = await point.resolvePointSystemIds(tenantId, c.memberSystemId);
   return { earned, balance: pointSys ? await point.getBalance(pointSys, memberId) : 0 };
 }
