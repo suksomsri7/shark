@@ -875,3 +875,7 @@
 
 ### 9 ต.ค. 06:15 UTC — P1.11U รอบ 2 ภาพจริงพัง 2 จุด → รอบ 3
 - L2: re-review da826682 MERGEABLE (nit: useRef guard · preview ตาม toggle · RPUB.abb ตั้งก่อน vatConfigOf) · build36-c 0 · vis36 (:3226): **register/sale-done + settings/paydone-print ล้ม** — หลัง submit เงินสดขึ้นกล่อง "ยังไม่แน่ใจว่าบันทึกบิลแล้วหรือยัง" (client throw · server.log สะอาด · state นี้ผ่านบน P1.10U build) · **rpub-taxinvoice-form ยัง NOT_AVAILABLE** แม้ toggle posAbbreviated (abbNo null ⇒ บิลขายก่อน toggle มีผล) → ส่งรอบ 3 (อนุญาต next dev :3227 ชั่วคราวเพื่อดู console · สคริปต์ใน scratchpad/p111u-r3/) · receipt-public paid ✅ (มี review/points แล้ว)
+
+### 9 ต.ค. 06:26 UTC — P1.13 S ส่ง (รอ ORACLE-EDIT ข้อ 8) · session 79% ใกล้เพดานก่อนรีเซ็ต 07:29Z
+- L4: P1.13 S **f9a51648** (migration `20261201100000_pos_p113_tax_invoice` deploy 0 · steps 1efea829…3a516b25 · L6 edit fc12dfb7 · 27/31 เพราะ oracle ยังใช้ `issuedDocId` ขัดคำตัดสิน 8) → อนุมัติ ORACLE-EDIT ST1/Q1/Q2/Q3 ให้ builder commit patch + รัน 31/31 ×3 → ผู้ตรวจ Opus **หลังรีเซ็ต 07:29Z** (session 79% · กัน 90%) · extras: alias `convertAbbToTaxInvoice` · void บิลที่มี TAX_INVOICE จะ void เอกสารนั้นด้วย · money set ไม่เปลี่ยน
+- โควตา 06:25Z: session 79% · weekly_all 83% · weekly_fable 55% · กำลังรัน: P1.7U fix (p11) · P1.11U รอบ 3 (c) · P1.15U ด่านซ้ำ (b) · P1.13 oracle-edit (d) — ไม่ spawn ใหม่จนกว่ารีเซ็ต
