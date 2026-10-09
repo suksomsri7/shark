@@ -24,7 +24,8 @@ export default async function PosSalesPage({ params, searchParams }: { params: P
   const sys = await prisma.appSystem.findFirst({ where: { id, tenantId, type: "POS" } });
   if (!sys) notFound();
   const m = posMembership(auth.active);
-  const scope = posSalesReadScope(posMembership(auth.active)); // POS P1.18 ▸ มติ Q9: ดูบิลได้ด้วย pos.sale.read หรือ pos.sale.create (เท่ากับ action ของหน้า) ◂
+  // POS P1.18 ▸ มติ Q9: ดูบิลได้ด้วย pos.sale.read หรือ pos.sale.create (เท่ากับ action ของหน้า) ◂
+  const scope = posSalesReadScope(posMembership(auth.active));
   if (!scope) notFound();
   const def = systemDef(sys.type);
   const t = await getTranslations("pos.bills");
