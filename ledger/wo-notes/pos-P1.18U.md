@@ -135,3 +135,11 @@ Account B, tree c `/root/projects/shark-pos-c`, 9 Oct. Prompt `pos-prompt-accoun
 - The pre-commit fitness also passed.
 - fpDrift in the qc run is only `posStaffPin` of the seed tenant, the same as in round 1. It comes from the controller's tree-d run, not from this card.
 - Real screenshots are the controller's.
+
+## Fix round 3 (account B, tree c, 9 Oct · review `pos-P1.18U-review-R2.md` N1 · prompt `pos-prompt-accountB-P1.18U-fix3.md` · code commit 4d110cb0)
+- **N1** NO_SYSTEM cards offer "เปิดใช้" again, only to users who may add a system.
+  - **Rule source:** creating a system is `addSystemAction` → `assertSystemsCan(auth, "systems.system.create")` (`src/lib/actions/systems.ts:49`, helper `:32-41` = `assertCan` = `evaluate` with `{ module: "systems", action }`). The systems page itself (`src/app/app/settings/systems/page.tsx:115-120`) renders `<AddSystemForm />` to every member; the action is the gate. OWNER passes through `evaluate`; others need the `systems.system.create` permission.
+  - `settings/page.tsx:60-62`: `canAddSystem = evaluate(m, { module: "systems", action: "systems.system.create" })` (same evaluator, `m` = `posMembership(auth.active)`, same role/unitAccess/permissions). Passed at `:108` as `canAddSystem`.
+  - `SharkSettings.tsx:49,79`: new prop `canAddSystem: boolean`. `:234-243`: the OFF/NO_SYSTEM footer shows the link when `c.state === "OFF" ? c.manage?.canManage === true : canAddSystem`; `href` = `c.manage.href` for OFF (F4 rule unchanged), `ADD_SYSTEM_HREF` (`:45`) for NO_SYSTEM. Without the right: muted `tk("noSystem")` only. testid `pos-settings-card-enable-<code>` unchanged; keys `shark.noSystem` / `shark.enable` already exist (th/en). No new Thai outside `t()` (only a comment).
+  - **No preselect:** the systems page reads only `?removed` (`systems/page.tsx:17-19`) and `AddSystemForm` keeps the selected code in local state (`add-system-form.tsx:15`), so no type query param is added.
+- **Gates** (head 4d110cb0, dirty 0 · logs `scratchpad/p118u-fix3/runs/`, each headed `tree= head= dirty= cmd=`): typecheck 0 · `pnpm fitness` no env 0 (41/41) · pre-commit fitness pass · **qc-pos-p1.18 `QC_P118_PHASE=U` unforced 0 (81/81, phase U, ST7 ✅, residue 0, leaks none, fpDrift none)** · qc-hf-pos-page-authz 0 (56/56) · visual `--page settings --states --dry` owner th rc 0 (40 shots).
