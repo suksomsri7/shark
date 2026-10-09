@@ -102,9 +102,11 @@ export type RegisterMemberGate = MemberScope & { ok: true; brief: MemberBrief };
  * (ผู้เรียกผ่านด่านขอบเขต + pos.sale.create ของสาขาแล้ว)
  */
 export async function registerMemberGate(s: { tenantId: string; unitId: string; actor: RegisterActor }, memberId: string): Promise<RegisterMemberGate | RegisterRefusal> {
+  // ด่านมีอยู่จริงของ R1 (แถวเดียวที่ POS อ่าน Customer เอง): ไม่ใช่ลูกค้าของร้านนี้ = MEMBER_NOT_FOUND ก่อนดูระบบสมาชิกของสาขา
+  //   (404-not-403 — id ของร้านอื่น/มั่ว ไม่ได้รู้แม้แต่ว่าสาขานี้มีระบบสมาชิกไหม · qc-pos-p1.3 S3.13 เดิม)
+  if (!isId(memberId) || !(await prisma.customer.findFirst({ where: { id: memberId, tenantId: s.tenantId }, select: { id: true } }))) return registerRefuse("MEMBER_NOT_FOUND");
   const ms = await memberScope(s);
   if (isRefusal(ms)) return ms;
-  if (!isId(memberId)) return registerRefuse("MEMBER_NOT_FOUND");
   const member = await memberFacade();
   const [brief] = await member.briefFor(ms.mctx, ms.actor, [memberId]);
   if (!brief || brief.id !== memberId || brief.status === "MERGED" || brief.status === "CLOSED") return registerRefuse("MEMBER_NOT_FOUND");
