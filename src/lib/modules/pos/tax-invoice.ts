@@ -12,6 +12,7 @@
 import type { Prisma } from "@prisma/client";
 import { writeAudit } from "@/lib/core/audit";
 import { emitOutbox } from "@/lib/core/outbox";
+import { logOps } from "@/lib/core/ops";
 import { evaluate } from "@/lib/core/rbac";
 import * as account from "@/lib/modules/account";
 import { scheduleDrain } from "@/lib/outbox-consumers";
@@ -184,6 +185,9 @@ async function issueCore(x: IssueCore): Promise<TaxInvoiceIssueResult> {
   });
   if (!won) {
     // อีกคำขอออกให้บิลนี้ไปก่อนเสี้ยววินาที / บิลถูกคืนเงิน-ยกเลิกระหว่างทาง — ตัดสินจากแถวล่าสุด
+    // reviewer N2: ฝั่งบัญชีสร้างใบใหม่แล้วแต่ฝั่ง POS ยึดไม่สำเร็จ — เตือน ops (เฉพาะ saleId + docId · ไม่มีข้อมูลผู้ซื้อ)
+    if (conv.created)
+      await logOps("WARN", "pos.taxInvoice", `บิล POS ${sale.id}: ออกใบกำกับเต็มรูป ${conv.docId} ฝั่งบัญชีแล้วแต่ยึดบิลไม่สำเร็จ (แข่งกับคำขออื่น/การคืนเงิน) — ตรวจเอกสาร`, { tenantId: ctx.tenantId }).catch(() => undefined);
     const again = await prisma.posSale.findFirst({ where: { id: sale.id, tenantId: ctx.tenantId }, select: { taxInvoice: true, taxInvoiceDocId: true, status: true, refundedSatang: true } });
     if (again?.taxInvoiceDocId) {
       const prev = snapshotBuyer(again.taxInvoice);
