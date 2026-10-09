@@ -76,6 +76,8 @@ const CHECKS: readonly Def[] = [
   D("U2", "X4", "[P1.12U fix F1] สมาชิก X + ใช้ 500 แต้ม + ลดท้ายบิล 15% (> เพดานแคชเชียร์ 10%) + PIN ผู้จัดการถูก → quoteRegisterCartOverride ok (quote ปกติ = DISCOUNT_EXCEEDS_LIMIT) · ลดท้ายบิลเต็ม 15% (เพดานของผู้จัดการ) · เส้น POINTS 5,000 · ไม่มี conflict · ยอดทั้งก้อนตรงทุกไบต์กับ submitRegisterSale PIN/สิทธิ์เดียวกัน (PRICE_CHANGED) · submit ยอดนั้น ok ตัด 500 แต้ม"),
   D("U3", "X5", "[P1.12U fix F1] override quote: PIN ผิด → PIN_INVALID (นับผิด +1 บนแถวผู้จัดการ เหมือน submit) · PIN ไม่มี managerUserId → VALIDATION · ไม่ส่งสิทธิ์ (มีกติกา POS_DISCOUNT_OVER) → DISCOUNT_EXCEEDS_LIMIT · PIN ถูกถัดมา → ok (ยังไม่ล็อก · ตัวนับกลับ 0) · ไม่มี audit pos.discount.override/pin_override · ไม่มี PosHeldCart/คำขออนุมัติเพิ่ม"),
   D("U4", "X1", "[P1.12U fix F1] บิลพักที่อนุมัติ POS_DISCOUNT_OVER (ลด 15% + คูปอง WELCOME50) → override quote {heldCartId} ok ด้วยเพดานที่อนุมัติ (ลด 15% + คูปอง ฿50 · quote ปกติ = DISCOUNT_EXCEEDS_LIMIT) · submit {heldCartId} ยอดนั้น ok · หลังอนุมัติถูกใช้ override quote เดิม → DISCOUNT_EXCEEDS_LIMIT"),
+  // ORACLE-EDIT (P1.12U fix รอบ 2 · มติผู้คุมงาน 1 · รีวิว R2 F1): override quote ต้องใช้ผู้กระทำจาก staffToken แบบเดียวกับ submit
+  D("U5", "X3", "[P1.12U fix2 F1] เครื่องล็อกอินด้วยบัญชี STAFF (ไม่มี pos.sale.manage) · แคชเชียร์ B (staffToken) พักบิลลดเกินสิทธิ์ → อนุมัติ → override quote {heldCartId, staffToken B} ok ด้วยเพดานที่อนุมัติ · ไม่ส่งโทเคน (session ≠ คนพักบิล) → APPROVAL_MISMATCH · โทเคนถูกแก้ → STAFF_TOKEN_INVALID · submit {heldCartId, staffToken B} ยอดเดียวกัน ok ขายโดย B"),
   D("M7", "X3", "[CD2 มติ Q2 · R5] พนักงานมีแค่ pos.sale.create (ไม่มี member.*) ค้น · ดูสิทธิ์ · สมัครด่วนได้ · benefits อ่านอย่างเดียว (นับแถวเท่าเดิม) · คีย์ผลตรง R5 · tier 5%/cap ฿100 · ว่อชเชอร์ applicable/reason · giftCards {numberMasked, balanceSatang, expiresAt} ไม่มีเลขเต็ม/PIN · stamps"),
   D("M8", "X3", "[มติ Q2] ผู้ใช้ไม่มี pos.sale.create (มี pos.sale.read + member.*) → PERMISSION_DENIED จาก lookup / quick register / benefits / fulfil / quote · ไม่มีอะไรถูกเขียน"),
   D("M9", "X5", "[R4] สมัครด่วน → Customer (source POS · homeUnitId A · sourceDetail.heardFrom/unitId) + consent LINE/EMAIL/SMS ตาม marketingConsent (source STAFF) + attribution FIRST/LAST (POS · staffUserId = ผู้กระทำจริง · unitId A) + audit pos.member.registered {customerId, created:true, unitId} ผู้กระทำจริง ไม่มีเบอร์เต็ม · ผล {ok, created:true, member (DTO R2)}"),
@@ -2000,6 +2002,52 @@ async function runDb() {
         }
       }
       chk("U4", !fx && p.length === 0, "อนุมัติ + คูปอง → override ok ฿290 · submit ok · ใช้แล้ว = DISCOUNT_EXCEEDS_LIMIT", FXU(pU) + joinP(p));
+    }
+
+    // U5 — ORACLE-EDIT (P1.12U fix รอบ 2 · รีวิว R2 F1): ผู้กระทำของ override quote = คนในโทเคนผู้ขาย (เหมือน submit) ·
+    //   เครื่องล็อกอินด้วยบัญชี STAFF ร่วม (ไม่มี pos.sale.manage · ไม่ใช่คนพักบิล) · แคชเชียร์ B = ผู้ใช้แคชเชียร์ของ seed (สมาชิกภาพ STAFF ในร้านชั่วคราว + PIN)
+    {
+      const p: string[] = [];
+      const devLogin = { userId: PQC.resto.users.cashier.userId, role: "STAFF", unitAccess: [U.A], permissions: { "pos.sale.create": true, "pos.sale.priceOverride": true } };
+      let tokB = "";
+      if (!fx) {
+        await step("U5 สมาชิกภาพแคชเชียร์ B", () => P.membership.create({ data: { userId: cashierId, tenantId: T, role: "STAFF", unitAccess: [U.A], permissions: { "pos.sale.create": true, "pos.sale.priceOverride": true }, acceptedAt: new Date() } }));
+        let pinB = "";
+        for (let i = 0; i < 4 && !pinB; i++) {
+          const cand = `8${rnd(5)}`;
+          const r = await call(staffPinMod, "setStaffPin", ctxOf("A"), owner, { userId: cashierId, pin: cand });
+          if (r?.ok === true) pinB = cand;
+          else if (i === 3) p.push(`setStaffPin B → ${codeOf(r)}`);
+        }
+        const v = pinB ? await call(staffPinMod, "verifyStaffPin", ctxOf("A", DEV1), { unitId: U.A, deviceId: DEV1, pin: pinB, userId: cashierId }) : null;
+        if (v?.ok === true && typeof v.staffToken === "string") tokB = v.staffToken;
+        else if (pinB) p.push(`verifyStaffPin B → ${codeOf(v)}`);
+      }
+      const c5: CartIn = { lines: [["U5 ของลดเกินสิทธิ์ (โทเคน)", 1, 30_000]], billDiscount: { type: "PERCENT", value: 1500 } };
+      const ask = tokB ? await submitRaw("A", cartOf(c5), 1, devLogin, { payMethods: [], cashReceivedSatang: null, staffToken: tokB }) : null;
+      const rq = ask && refused(ask.r, "APPROVAL_REQUIRED") && typeof ask.r.requestId === "string" ? String(ask.r.requestId) : "";
+      const held = rq && typeof ask?.r?.heldCartId === "string" ? String(ask.r.heldCartId) : "";
+      if (tokB && (!rq || !held)) p.push(`ขออนุมัติด้วยโทเคน B → ${codeOf(ask?.r)} ${short(ask?.r?.message ?? "", 60)}`);
+      const hb = held ? await P.posHeldCart.findFirst({ where: { id: held }, select: { heldByUserId: true } }).catch(() => null) : null;
+      if (held && hb?.heldByUserId !== cashierId) p.push(`heldByUserId ${hb?.heldByUserId === devLogin.userId ? "= บัญชีเครื่อง" : short(hb?.heldByUserId, 30)} (คาด B)`);
+      const d = rq ? await call(apSvc, "decide", { ...owner }, { tenantId: T }, rq, { decision: "APPROVED", note: "QC U5" }) : null;
+      if (rq && d?.ok !== true) p.push(`decide → ${short(d, 60)}`);
+      await drain();
+      const ov5 = (extra: Any) => ov({ cart: cartOf(c5), heldCartId: held, ...extra }, devLogin);
+      const q = held ? await ov5({ staffToken: tokB }) : null;
+      if (q?.ok !== true) p.push(`override {heldCartId, staffToken B} → ${codeOf(q)} ${short(q?.message ?? "", 60)}`);
+      else if (q.billDiscountSatang !== 4_500 || q.grandTotalSatang !== 25_500) p.push(`ยอด ${q.billDiscountSatang}/${q.grandTotalSatang} (คาด 4,500/25,500)`);
+      const noTok = held ? await ov5({}) : null;
+      if (held && !refused(noTok, "APPROVAL_MISMATCH")) p.push(`ไม่ส่งโทเคน → ${codeOf(noTok)} (คาด APPROVAL_MISMATCH)`);
+      const badTok = held ? await ov5({ staffToken: `${tokB.slice(0, -2)}${tokB.slice(-2) === "AA" ? "BB" : "AA"}` }) : null;
+      if (held && !refused(badTok, "STAFF_TOKEN_INVALID")) p.push(`โทเคนถูกแก้ → ${codeOf(badTok)} (คาด STAFF_TOKEN_INVALID)`);
+      if (q?.ok === true) {
+        const s = await submitRaw("A", cartOf(c5), Number(q.grandTotalSatang), devLogin, { heldCartId: held, staffToken: tokB });
+        const row = s.r?.ok === true ? await saleByKey(s.key) : null;
+        if (s.r?.ok !== true || s.r.grandTotalSatang !== q.grandTotalSatang) p.push(`submit {heldCartId, staffToken B} → ${codeOf(s.r)} ${short(s.r?.message ?? s.r?.grandTotalSatang, 60)}`);
+        else if (row?.soldByUserId !== cashierId) p.push(`soldByUserId ${short(row?.soldByUserId, 30)} (คาด B)`);
+      }
+      chk("U5", !fx && !!tokB && p.length === 0, "โทเคน B → override ok ฿255 · ไม่ส่งโทเคน APPROVAL_MISMATCH · โทเคนถูกแก้ STAFF_TOKEN_INVALID · submit ok ขายโดย B", FXU(pU) + joinP(p));
     }
   }
   if (notes.length) console.log(`  ℹ️  ฟิกซ์เจอร์มีหมายเหตุ ${notes.length}: ${notes.slice(0, 6).join(" | ")}`);
