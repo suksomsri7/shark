@@ -68,3 +68,25 @@ Actions (`src/lib/modules/pos/tax-invoice-actions.ts`, all return data, never th
 
 ## After ORACLE-EDIT ST1/Q1/Q2/Q3 (ruling 8 · approved)
 - `qc-pos-p1.13` forced #1 **0 · 31/31** · forced #2 **0 · 31/31** · unforced **0 · 31/31** (no SKIP) — residue 0, Tenant 0, guardHits 0 each run · typecheck 0.
+
+## Fix round 1 (reviewer verdict on 211573c6 = MERGEABLE-AFTER-FIXES · prompt `pos-prompt-accountB-P1.13-S-fix.md`)
+| item | commit | change | verification |
+|---|---|---|---|
+| F1 | 64c0e33d | `supersedeExternalSaleAbb` takes the buyer; `created:false` returns `buyerMatches` (contactSnapshot taxId/branch/name) → `issueCore` ALREADY_ISSUED with no POS write · claim of `taxInvoiceDocId` requires `status PAID, refundedSatang 0`; 0 rows ⇒ re-read ⇒ idempotent / ALREADY_ISSUED / HAS_REFUNDS / SALE_VOIDED | L1–L6 green (idempotent repeat, other buyer, refunds) |
+| F2 | 9e837395 | `lookupBuyerByTaxId`: appSystemUnit {tenant, system, unit, POS} first (PERMISSION_DENIED) · 30/min/unit + new 100/min/tenant checked before any audit (incl. TAX_ID_INVALID) | D1–D3 green |
+| F3 | 0fd07421 | `account/dashboard.ts` SALES_WHERE + `{TAX_INVOICE, source POS}` · POS-OWNER-PENDING line | qc-pos-account 16/16 · qc-account-cpa 107/107 |
+| F4 | b0efc9a9 | full-invoice `contactSnapshot` = buyer as typed (name/address/taxId/branch/email/legalType) at pay time and later issue; contact row untouched | ORACLE-EDIT S2 (b340f16a) green |
+| F5 | f5aa62c2 | later issue without requestId: open request ISSUED only when its taxId matches, else REJECTED + audit `pos.taxinvoice.rejected` (reason "ออกใบกำกับภาษีเต็มรูปให้ผู้ซื้อรายอื่นแล้ว", `after.system`) | Q1–Q3 + P1 green (not separately oracle-tested) |
+| FU1 | 14d87c87 | parser strips spaces/dashes from taxId + branchCode · `branchCode ""` = 00000 | B1–B4 green + ad-hoc: "0-1055-61177-63-9" ok · "00 001" → 00001 · letters still TAX_ID_INVALID / VALIDATION |
+| FU2 | cf6adbfe · 0e16a906 | P1.11 request limits name ≤120 / address ≤300 (server) + P1.11U form `maxLength` aligned after the merge | qc-pos-p1.11 38/38 (before and after merge) |
+| FU3 | 801a3542 | pay time: `taxInvoice` on a bill that gets no tax invoice (unlinked / non-VAT / ABB off / no book taxId / VAT 0) ⇒ `NOT_ELIGIBLE` before any write (key `pos.register.errors.taxInvoiceNotEligible` th+en) · consumer falls back to the plain path when the book is ineligible at consume time (snapshot kept, ops WARN, no buyer data) | ORACLE-EDIT S5 (c82d9b8f · bTN moved out of S1 · count 32) green |
+| FU4–5 | 0d7553cc | recorded in POS-OWNER-PENDING + below | — |
+
+Follow-ups recorded (not fixed): (a) accountant can void / credit-note a POS TAX_INVOICE from the account list, bypassing the POS reversal · (b) output-VAT report lacks the TX no. / buyer taxId for POS bills · (c) `supersedeExternalSaleAbb` ignores a locked period · (d) held cart / approval re-submit must resend `taxInvoice` (P1.13U / P1.15U). Also: a race where the account doc is superseded but the POS claim then hits a refund leaves a live TAX_INVOICE with POS answering HAS_REFUNDS (accepted by ruling F1).
+
+Merge: `f2545922` = `origin/session/pos` 9ba7834b (P1.11U) into `wip/pos-p1.13`, no conflicts.
+
+Gates (QC4 `ep-frosty-lab-aoylqlv8-pooler…`, POS gate lock):
+- Before the merge (tip 0d7553cc): `qc-pos-p1.13` forced #1 0 · 32/32 · forced #2 0 · 32/32 · unforced 0 · 32/32 (residue 0, Tenant 0 each) · p1.11 38/38 · p1.8 49/49 · p1.16 28/28 · p1.3 128/128 · p1.10 40/40 · hf-pos-page-authz 56/56 · money set identical (16 · 107 · 6 · 12 · 5 · 6 · 14, all exit 0) · fitness without env 0 · 41/41 · with QC4 env 0 · 41/41 · fitness-pos 0 · 8/8.
+- After the merge (tip 0e16a906): typecheck `TC_EXIT=0` (log `scratchpad/p113/tc-0e16a906.log`) · `qc-pos-p1.13` forced #1/#2 + unforced 0 · 32/32 each (residue 0) · `qc-pos-p1.11` 0 · 38/38.
+- Typecheck runs on a `git archive` copy of each pushed commit (node_modules symlinked), so the tree stayed editable while the POS lock was busy; pushes happened only after `TC_EXIT=0` (9e837395, 0fd07421, then 0e16a906 carrying the rest, because of lock contention).
