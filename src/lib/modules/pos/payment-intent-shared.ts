@@ -35,6 +35,19 @@ export const POS_QR_EXPIRY_MAX = 60;
 
 const isRecord = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
 
+/**
+ * POS P1.18 ▸ มติ Q9: เลขพร้อมเพย์รายสาขา `settings.pos.payment.promptpayIdByUnit[unitId]` (ตัดช่องว่าง) ·
+ * ไม่มีสาขานั้น / แผนที่ผิดรูป / ค่าว่าง / ไม่ใช่สตริง = null (QR ใช้เลขของโปรไฟล์ร้านแทน) · บริสุทธิ์ ◂
+ */
+export function promptpayIdForUnit(settings: unknown, unitId: string): string | null {
+  const pos = isRecord(settings) && isRecord(settings.pos) ? settings.pos : null;
+  const pay = pos && isRecord(pos.payment) ? pos.payment : null;
+  const map = pay && isRecord(pay.promptpayIdByUnit) ? pay.promptpayIdByUnit : null;
+  if (!map || typeof unitId !== "string" || !Object.prototype.hasOwnProperty.call(map, unitId)) return null;
+  const v = map[unitId];
+  return typeof v === "string" && v.trim() ? v.trim() : null;
+}
+
 /** อ่านค่าตั้งจาก settings JSON ทั้งก้อนของระบบ POS (ค่าเพี้ยน = ค่าปริยาย · ไม่โยน) */
 export function parsePosIntentSettings(settings: unknown): PosIntentSettings {
   const pos = isRecord(settings) && isRecord(settings.pos) ? settings.pos : {};

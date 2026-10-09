@@ -5,7 +5,7 @@ import { prisma } from "@/lib/core/db";
 import { canAccessUnit, evaluate } from "@/lib/core/rbac";
 import { systemDef } from "@/lib/systems";
 import { posTabs } from "@/lib/modules/pos/tabs";
-import { posMembership, posSalesScope, posSaleWhere } from "@/lib/modules/pos/access";
+import { posMembership, posSalesReadScope, posSaleWhere } from "@/lib/modules/pos/access";
 import { posUnits } from "@/lib/modules/pos/register";
 import { bkkDateOf, isBillDate } from "@/lib/modules/pos/bills-shared";
 import { posAccountSystemId } from "@/lib/modules/account";
@@ -24,7 +24,7 @@ export default async function PosSalesPage({ params, searchParams }: { params: P
   const sys = await prisma.appSystem.findFirst({ where: { id, tenantId, type: "POS" } });
   if (!sys) notFound();
   const m = posMembership(auth.active);
-  const scope = posSalesScope(posMembership(auth.active));
+  const scope = posSalesReadScope(posMembership(auth.active)); // POS P1.18 ▸ มติ Q9: ดูบิลได้ด้วย pos.sale.read หรือ pos.sale.create (เท่ากับ action ของหน้า) ◂
   if (!scope) notFound();
   const def = systemDef(sys.type);
   const t = await getTranslations("pos.bills");

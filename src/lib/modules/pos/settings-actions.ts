@@ -11,6 +11,7 @@ import { assertCan } from "@/lib/core/rbac";
 import { posMembership } from "./access";
 import { posSettingsHistory, updatePosDiscountCaps, updatePosGeneralSettings, updatePosUnitStockPolicy } from "./settings-general";
 import { posSettingsOverview, type PosSettingsOverviewResult } from "./settings-overview";
+import { updatePosUnitPromptpay, type PosUnitPromptpayResult } from "./payment-settings";
 import type { PosDiscountCapsResult, PosGeneralSettingsResult, PosSettingsHistoryResult, PosSettingsRefusal, PosUnitStockPolicyResult } from "./settings-shared";
 
 async function session() {
@@ -95,5 +96,17 @@ export async function posSettingsHistoryAction(args: { systemId: string; cursor?
   } catch (e) {
     unstable_rethrow(e);
     return unexpected("history", e);
+  }
+}
+
+/** มติ Q9 เลขพร้อมเพย์รายสาขา (เจ้าของเท่านั้น · null = ลบ) */
+export async function updatePosUnitPromptpayAction(args: { systemId: string; unitId: string; promptpayId: string | null }): Promise<PosUnitPromptpayResult> {
+  try {
+    const s = await session();
+    if (!gate(s.m, ["pos.settings.payment", "pos.settings.manage"])) return { ok: false, code: "SETTINGS_SECTION_LOCKED", message: "เลขพร้อมเพย์เป็นปลายทางเงิน — เจ้าของร้านเท่านั้นที่ตั้งได้" };
+    return await updatePosUnitPromptpay({ tenantId: s.tenantId, systemId: str(args?.systemId) }, s.actor, { unitId: str(args?.unitId), promptpayId: typeof args?.promptpayId === "string" ? args.promptpayId : null });
+  } catch (e) {
+    unstable_rethrow(e);
+    return unexpected("unitPromptpay", e);
   }
 }

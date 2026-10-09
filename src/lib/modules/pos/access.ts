@@ -32,6 +32,19 @@ export function posSalesScope(m: MembershipCtx | null): PosUnitScope | null {
   return unitIds.length > 0 ? { allUnits: false, unitIds } : null;
 }
 
+/**
+ * POS P1.18 ▸ มติ Q9 (ประตูหน้า /pos/sales): ดูบิลได้ด้วย pos.sale.read **หรือ** pos.sale.create ต่อสาขา (action ของหน้ารับ pos.sale.read อยู่แล้ว) ·
+ * กติกาเดียวกับ posSalesScope ทุกอย่างนอกจากคีย์ · posSalesScope เดิมไม่เปลี่ยน (ปิดวัน/CSV ยังใช้ pos.sale.create) ◂
+ */
+export function posSalesReadScope(m: MembershipCtx | null): PosUnitScope | null {
+  const can = (unitId?: string) =>
+    !!m && (evaluate(m, { module: "pos", action: "pos.sale.read", unitId }) || evaluate(m, { module: "pos", action: "pos.sale.create", unitId }));
+  if (!m || !can()) return null;
+  if (allBranches(m)) return { allUnits: true };
+  const unitIds = m.unitAccess.filter((u) => can(u));
+  return unitIds.length > 0 ? { allUnits: false, unitIds } : null;
+}
+
 /** ขอบเขต → รายการ unitId สำหรับกรอง (undefined = ไม่กรอง) */
 export function posScopeUnitIds(scope: PosUnitScope): string[] | undefined {
   return scope.allUnits ? undefined : scope.unitIds;

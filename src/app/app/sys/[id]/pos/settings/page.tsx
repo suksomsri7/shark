@@ -6,6 +6,7 @@ import { canAccessUnit, evaluate } from "@/lib/core/rbac";
 import { systemDef } from "@/lib/systems";
 import { posTabs } from "@/lib/modules/pos/tabs";
 import { posMembership } from "@/lib/modules/pos/access";
+import { canManageAllLinkedUnits } from "@/lib/modules/pos/receipt-settings"; // POS P1.18 ▸ FU-c ◂
 import { posUnits } from "@/lib/modules/pos/register";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { ModuleTabs } from "@/components/module-tabs";
@@ -39,7 +40,8 @@ export default async function PosSettingsPage({ params, searchParams }: { params
   const tab = posSettingsTabOf(rawTab);
   const canManageDevices = evaluate(m, { module: "pos", action: "pos.device.manage", unitId });
   const canRead = canManageDevices || evaluate(m, { module: "pos", action: "pos.sale.create", unitId });
-  const canEditReceipt = evaluate(m, { module: "pos", action: "pos.device.manage" });
+  // POS P1.18 ▸ FU-c (P1.10U): แก้ใบเสร็จ = กติกาเดียวกับ updatePosReceiptSettings — pos.device.manage ระดับร้าน + ครบทุกสาขาที่ผูก POS นี้ ◂
+  const canEditReceipt = await canManageAllLinkedUnits(prisma, { tenantId, systemId: id }, m);
   const def = systemDef(sys.type);
   const t = await getTranslations("pos.settings");
   const payProfile = tab === "payments" && canRead ? await getPaymentProfile({ tenantId }) : null;
