@@ -166,3 +166,11 @@ Code tip for all gates = `251a01ec` (+ `scripts/pos-sale-contract.json` recorded
 - Open (controller rulings needed, no oracle edit done by builder): (1) X4 key `pos-refund-<refundId>:<earnId>` — diff `scratchpad/p112/qc-pos-p1.12-X4.proposed.diff`;
   (2) qc-pos-p1.5 H5 couponCode vs ruling 12 — diff `scratchpad/p112/qc-pos-p1.5-H5.proposed.diff`; (3) qc-member-m2.7/m2.8 crash at fixture in base and branch alike (member-expected.json vs QC4 seed).
 - Next action: controller rules on (1)+(2) → apply each as its own `test(...)` ORACLE-EDIT commit → re-run `qc-pos-p1.12` forced ×2 + unforced (expect 64/64) and `qc-pos-p1.5` (expect 21/21) → review + merge into `session/pos`.
+
+### HANDOVER update (9 Oct, after rulings)
+- Controller ruled both open oracle items as ORACLE-EDITs (no code change): `f7a63fd0` test(P1.12) X4 matches the refund points key by prefix
+  `pos-refund-<refundId>:` (count 64) · `f2d559ff` test(P1.5) H5 case swapped to `couponDiscountSatang` (count 21).
+- Re-run at `f2d559ff`: `qc-pos-p1.12` forced **64/64** exit 0 · unforced **64/64** exit 0 (residue 0, Tenant 0 both) · `qc-pos-p1.5` **21/21** exit 0 ·
+  typecheck **0** — logs `scratchpad/p112/runs/ruled-forced.log`, `ruled-unforced.log`, `ruled-p15.log`, `tc-final.log`.
+- Still environmental (unchanged before/after): `qc-member-m2.7/m2.8` setup crash (member-expected.json vs QC4 member seed).
+- Next: reviewer (P1.12 S), then merge `wip/pos-p1.12` into `session/pos`; P1.12U builds on the contract above.
