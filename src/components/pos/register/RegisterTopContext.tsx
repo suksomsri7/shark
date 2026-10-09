@@ -149,6 +149,17 @@ export function RegisterTopContext(p: Props) {
       >
         <RegisterIcon name="cam" size={14} />
       </button>
+      {p.onLock && (
+        <button
+          data-testid="pos-lock-now-mobile"
+          className="grid size-11 shrink-0 place-items-center rounded-[10px] border text-[color:var(--color-ink-soft)]"
+          type="button"
+          aria-label={p.user ? `${t("lock.lockNow")} · ${p.user.name}` : t("lock.lockNow")}
+          onClick={p.onLock}
+        >
+          <RegisterIcon name="lock" size={14} />
+        </button>
+      )}
       {p.inApp && (
         <button
           data-testid="pos-reg-mobile-menu"

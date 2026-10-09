@@ -134,7 +134,7 @@ const fileOf = (p: PosPage, w: number, h: number) => `${OUT}/${p}-${userKey}-${w
 const STATES_ON = /^p1\.3/i.test(WO) || argv.includes("--states");
 const LOCALE_EN = process.env.LOCALE === "en";
 type Device = (typeof POS_VIEWPORTS)[number]["name"];
-type StateKey = "default" | "cart3" | "cart4-01" | "line-editor" | "bill-discount" | "custom-item" | "paydlg-cash" | "sale-done" | "search-empty" | "stock-warn" | "offline" | "mobile-sheet" | "options-popover" | "weigh" | StockStateKey | ShiftsStateKey | BillsStateKey | SettingsStateKey;
+type StateKey = "default" | "cart3" | "cart4-01" | "line-editor" | "bill-discount" | "custom-item" | "paydlg-cash" | "sale-done" | "search-empty" | "stock-warn" | "offline" | "mobile-sheet" | "options-popover" | "weigh" | P115StateKey | StockStateKey | ShiftsStateKey | BillsStateKey | SettingsStateKey;
 const STATE_PLAN: { key: StateKey; devices: readonly Device[]; note: string }[] = [
   { key: "default", devices: ["desktop", "ipad", "mobile"], note: "เปิดหน้า (ตะกร้าว่าง) — การ์ดเหลือน้อย/หมด/ปิดขายของ fixture อยู่ในกริด" },
   { key: "cart3", devices: ["desktop", "ipad", "mobile"], note: "อเมริกาโน่×2 · ลาเต้ (ลด ฿10) · ครัวซองต์ (สต็อก N → N−1)" },
@@ -155,7 +155,15 @@ const STATE_PLAN: { key: StateKey; devices: readonly Device[]; note: string }[] 
   // P1.2 U R2 (ภาพ 01 ป๊อปโอเวอร์): สินค้าชั่วคราวมีตัวแปร + 4 กลุ่ม → เลือกตัวแปร · M +10 · นมโอ๊ต +15 · จำนวน 2
   { key: "options-popover", devices: ["desktop", "ipad", "mobile"], note: "ตัวเลือก/ตัวแปร: ป๊อปโอเวอร์ยึดการ์ด (390 = แผ่นล่าง) · เลือก 2 กลุ่ม + จำนวน 2" },
   { key: "weigh", devices: ["desktop", "mobile"], note: "สินค้าชั่ง ฿350/กก. → กล่องน้ำหนัก (owner พิมพ์ 250 กรัม · cashier = ต้องมีสิทธิ์)" },
+  // POS P1.15U ▸ ภาพ 13B / 21B + แผ่นส่วนลดเกินสิทธิ์ (ข้อมูล: seedP115Once · ลบ/คืนค่าใน finally) ◂
+  { key: "lock-screen", devices: ["desktop", "ipad", "mobile"], note: "13B: กดล็อก → จอล็อก (ผู้ใช้รอบนี้ · ล็อกเมื่อ HH:MM) + จุด 3 ดวง · ขวา: พนักงาน 2 คน + บิลที่พัก 1 ใบ" },
+  { key: "lock-pin-locked", devices: ["desktop"], note: "แถว PIN ของผู้ใช้รอบนี้ถูกล็อก → ใส่ PIN ถูก → \"ล็อกชั่วคราว 15 นาที\" + ปุ่มผู้จัดการปลดล็อก" },
+  { key: "staff-switch", devices: ["desktop", "ipad", "mobile"], note: "จอล็อก → แตะการ์ดอีกคน → แป้น PIN ของคนนั้น (ยังไม่ใส่ครบ)" },
+  { key: "discount-over-sheet", devices: ["desktop", "ipad", "mobile"], note: "โทเคนแคชเชียร์ · cart3 + ส่วนลดท้ายบิล 20% (> เพดาน 10%) → แผ่นส่วนลดเกินสิทธิ์" },
+  { key: "approval-wait", devices: ["desktop", "ipad", "mobile"], note: "⚠️ ขายจริง 1 บิล → คำขอ POS_VOID PENDING (เขียนตรง · ลบใน finally) → บิลวันนี้ → \"ยกเลิกบิล — รออนุมัติ…\" → 21B (แคชเชียร์ = ปุ่มรออนุมัติ)" },
 ];
+type P115StateKey = "lock-screen" | "lock-pin-locked" | "staff-switch" | "discount-over-sheet" | "approval-wait";
+const P115_STATE_KEYS: ReadonlySet<string> = new Set<string>(["lock-screen", "lock-pin-locked", "staff-switch", "discount-over-sheet", "approval-wait"]);
 // POS P1.14 U ▸ สถานะของหน้าสต็อก (ลำดับสำคัญ: default ก่อนเปิดรอบ · count-open รอบแรกเปิด+บันทึก · ที่เหลือใช้รอบเดิม) ◂
 type StockStateKey = "stock-default" | "stock-count-open" | "stock-count-confirm" | "stock-receive" | "stock-adjust";
 const STOCK_STATE_PLAN: { key: StockStateKey; tab: string | null; devices: readonly Device[]; note: string }[] = [
@@ -197,6 +205,8 @@ const isSettingsState = (k: StateKey): k is SettingsStateKey => SETTINGS_STATE_K
 const SETTINGS_DEVICE_CODES = [`posqc-vis-dev-${process.pid}-1`, `posqc-vis-dev-${process.pid}-2`] as const;
 const BILLS_STATE_KEYS: ReadonlySet<string> = new Set(BILLS_STATE_PLAN.map((s) => s.key));
 const isBillsState = (k: StateKey): k is BillsStateKey => BILLS_STATE_KEYS.has(k);
+/** รหัสเครื่องคงที่ของรอบนี้ — ทุกแท็บ (ทั้ง context ของผู้ใช้และของเจ้าของ) ใช้ค่าเดียวกัน = เครื่องเดียวกัน (P1.15U: ลงทะเบียน + โทเคนผู้ขาย) */
+const DEVICE_ID = `posqc-vis-dev-${process.pid}`;
 /** รหัสเครื่องของสถานะหน้าบิล (กะของบิลชุดภาพ · ปิดใน finally) */
 const BILLS_DEVICE_ID = `posqc-vis-bills-${process.pid}`;
 /** วันที่ไม่มีบิลของสถานะ bills-empty (ก่อนร้าน QC มีข้อมูล) */
@@ -288,6 +298,7 @@ if (DRY) {
       for (const st of SETTINGS_STATE_PLAN) console.log(`  · ${st.key.padEnd(22)} ${st.devices.join("/").padEnd(20)} ${st.note}`);
       console.log("  เขียน: เครื่อง QC 2 เครื่อง (registerDevice · เพิกถอนใน finally) + กะ 1 กะของเครื่อง 2 (openShift · ปิดใน finally นับ = ยอดคาด) + บิลขายเงินสด 1 ใบ (paydone-print)");
     }
+    if (pages.includes("register")) console.log(`  P1.15U: เครื่อง ${DEVICE_ID} (registerDevice · เพิกถอนใน finally) · PIN 6 หลักสุ่มของเจ้าของ/แคชเชียร์ (setStaffPin · ไม่พิมพ์ · คืนแถวเดิมใน finally) · โทเคนผู้ขายฉีดลง sessionStorage · บิลพัก 1 ใบ · กติกา POS_VOID ที่ปิดไว้ + คำขอ PENDING 1 ใบ (approval-wait) — ลบใน finally`);
     if (needFixtures) console.log(`  fixture: สินค้าชั่วคราว 11 ตัว (เหลือ 2 · หมดสต็อก · ปิดขาย + 4 ตัวของภาพ 01 + ลาเต้มีตัวแปร 1+2 + สินค้าชั่ง 1) + กลุ่มตัวเลือก 4 กลุ่ม ที่สาขา ${unitKey} — ลบใน finally`);
   }
   console.log(`รวม ${plan.length} ภาพ (${pages.length} หน้า × ${viewports.length} ขนาด${STATES_ON ? " · หน้าขายแยกตามสถานะ" : ""} × 1 ผู้ใช้)`);
@@ -479,6 +490,13 @@ for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
       } catch (e) {
         console.error(`❌ ปิดกะไม่สำเร็จ: ${e instanceof Error ? e.message : e}`);
       }
+      // POS P1.15U: ลบคำขอ/กติกา · ทิ้งบิลพัก · คืนแถว PIN · เพิกถอนเครื่อง (เหมือน finally)
+      try {
+        await cleanupP115();
+        if (P115.cleanup) console.error(`${P115.cleanup.ok ? "🧹" : "⚠️"} ${P115.cleanup.detail}`);
+      } catch (e) {
+        console.error(`❌ เก็บกวาด P1.15U ไม่สำเร็จ: ${e instanceof Error ? e.message : e}`);
+      }
       try {
         const r = await cleanSessions();
         console.error(`🧹 ลบ session ${r.removed} (+ซาก ${r.stale})`);
@@ -615,8 +633,6 @@ async function ensureShift(page: Any): Promise<void> {
   if (!(await shiftBannerStays(page))) return;
   throw new StepError(SHIFT.opened ? "เปิดกะให้เครื่องนี้แล้วแต่แถบ \"เปิดกะก่อนเริ่มขาย\" ยังอยู่ (deviceId ไม่ตรง?)" : `ไม่ได้เปิดกะ: ${SHIFT.openError ?? "?"}`);
 }
-/** รหัสเครื่องคงที่ของรอบนี้ — ทุกแท็บ (ทั้ง context ของผู้ใช้และของเจ้าของ) ใช้ค่าเดียวกัน = เครื่องเดียวกัน */
-const DEVICE_ID = `posqc-vis-dev-${process.pid}`;
 const DEVICE_KEY = "shark.pos.deviceId";
 async function pinDevice(page: Any, device: string = DEVICE_ID): Promise<void> {
   await page.evaluateOnNewDocument(
@@ -696,6 +712,253 @@ async function closeShiftAsOwner(shiftId: string, keyTag: string): Promise<{ ok:
   }
 }
 
+// ═══════════════════ POS P1.15U ▸ ผู้ขายบนเครื่อง (PIN + โทเคน) · จอล็อก 13B · แผ่นส่วนลดเกินสิทธิ์ · 21B ═══════════════════
+//   หน้าขายล็อกเมื่อไม่มีโทเคนผู้ขาย (sessionStorage `pos-staff:<deviceId>`) และเครื่องต้องลงทะเบียน ⇒ ทุกงานของหน้า register:
+//   ลงทะเบียนเครื่องของรอบ (registerDevice · เพิกถอนใน finally) · ตั้ง PIN 6 หลักสุ่มของเจ้าของ/แคชเชียร์ผ่าน setStaffPin (ไม่พิมพ์ PIN ·
+//   แถวเดิมถูกเก็บแล้วคืนค่าใน finally · ไม่มีแถวเดิม = ลบ) · ออกโทเคนด้วย issueStaffToken แล้วฉีดลง sessionStorage ก่อนสคริปต์ของหน้า
+//   สถานะใหม่: lock-screen · lock-pin-locked (ตั้งล็อกแถว PIN ของผู้ใช้รอบนี้ตรง ๆ แล้วใส่ PIN ถูก → PIN_LOCKED) · staff-switch ·
+//   discount-over-sheet (โทเคนแคชเชียร์ · ลด 20% > เพดาน 10%) · approval-wait (ขายเงินสด 1 บิลผ่าน UI → คำขอ POS_VOID PENDING + snapshot
+//   เขียนตรงด้วย prisma ใต้กติกาที่ปิดไว้ (active false · ไม่กระทบชุดข้อสอบอื่น) → หน้าบิลวันนี้ → ปุ่ม "ยกเลิกบิล — รออนุมัติ…" → 21B)
+//   🔴 finally/signal: ลบคำขอ + snapshot + กติกา · ทิ้งบิลพักของรอบ · คืนแถว PIN · เพิกถอนเครื่อง ◂
+const P115 = {
+  seeded: false,
+  error: null as string | null,
+  deviceRowId: "",
+  pins: {} as Record<string, string>,
+  restore: [] as { userId: string; row: { pinHash: string; failedCount: number; lockedUntil: Date | null; setById: string } | null }[],
+  sessions: {} as Record<string, string>,
+  heldId: "",
+  policyId: "",
+  requestId: "",
+  saleId: "",
+  cleanup: null as null | { ok: boolean; detail: string },
+};
+const STAFF_KEY = (dev: string) => `pos-staff:${dev}`;
+const WEAK = new Set(["0000", "1234", "1111", "123456", "000000"]);
+async function memberActorOf(k: UserKey): Promise<{ userId: string; role: "OWNER" | "MANAGER" | "STAFF"; unitAccess: string[]; permissions: Record<string, unknown> }> {
+  const u = T.users[k];
+  const mb = await prisma.membership.findUnique({ where: { id: u.membershipId }, select: { role: true, unitAccess: true, permissions: true } });
+  if (!mb) throw new StepError(`ไม่พบ membership ${k} ของร้าน QC`);
+  return {
+    userId: u.userId,
+    role: mb.role as "OWNER" | "MANAGER" | "STAFF",
+    unitAccess: Array.isArray(mb.unitAccess) ? (mb.unitAccess as unknown[]).filter((x): x is string => typeof x === "string") : [],
+    permissions: mb.permissions && typeof mb.permissions === "object" ? (mb.permissions as Record<string, unknown>) : {},
+  };
+}
+/** โทเคนผู้ขาย (JSON ของ sessionStorage) ของผู้ใช้ k บนเครื่อง dev — ต้องมีแถว PIN แล้ว (pinVersion) */
+async function staffSessionJson(k: UserKey, dev: string): Promise<string | null> {
+  const cacheKey = `${k}|${dev}`;
+  if (P115.sessions[cacheKey]) return P115.sessions[cacheKey]!;
+  if (!P115.pins[k]) return null;
+  const { issueStaffToken } = await import("@/lib/modules/pos/staff-pin");
+  const a = await memberActorOf(k);
+  const t = await issueStaffToken({ tenantId: T.tenantId, systemId: SYS, unitId, deviceId: dev }, { unitId, deviceId: dev, userId: a.userId });
+  const json = JSON.stringify({ userId: a.userId, name: T.users[k].name, role: a.role, staffToken: t.staffToken, expiresAt: t.expiresAt });
+  P115.sessions[cacheKey] = json;
+  return json;
+}
+async function injectStaff(page: Any, dev: string, json: string): Promise<void> {
+  await page.evaluateOnNewDocument(
+    (k: string, v: string) => {
+      try {
+        window.sessionStorage.setItem(k, v);
+      } catch {
+        /* ไม่มี storage = จอล็อก (ตามจริง) */
+      }
+    },
+    STAFF_KEY(dev),
+    json,
+  );
+}
+/** ครั้งเดียวต่อรอบ (ก่อนเปิด chromium) — พังไม่โยน (บันทึก P115.error · หน้าขายจะขึ้นจอล็อกและสถานะตกพร้อมเหตุผล) */
+async function seedP115Once(): Promise<void> {
+  if (P115.seeded || P115.error) return;
+  try {
+    const { registerDevice } = await import("@/lib/modules/pos/device");
+    const { setStaffPin } = await import("@/lib/modules/pos/staff-pin");
+    const { randomInt } = await import("node:crypto");
+    const owner = await ownerActor();
+    const ctx = { tenantId: T.tenantId, systemId: SYS, unitId };
+    const rg = await registerDevice(ctx, owner, { name: `เครื่องขาย QC ${process.pid} (ภาพ P1.15U)`.slice(0, 60), deviceCode: DEVICE_ID });
+    if (!rg.ok) throw new StepError(`ลงทะเบียนเครื่อง ${DEVICE_ID} ไม่ได้: ${rg.code}`);
+    P115.deviceRowId = rg.device.id;
+    for (const k of USERS) {
+      const a = await memberActorOf(k).catch(() => null);
+      if (!a) continue;
+      const prev = await prisma.posStaffPin.findUnique({ where: { unitId_userId: { unitId, userId: a.userId } }, select: { pinHash: true, failedCount: true, lockedUntil: true, setById: true } });
+      P115.restore.push({ userId: a.userId, row: prev });
+      for (let i = 0; i < 6 && !P115.pins[k]; i++) {
+        const pin = String(randomInt(100000, 1000000));
+        if (WEAK.has(pin) || Object.values(P115.pins).includes(pin)) continue;
+        const r = await setStaffPin(ctx, a, { userId: a.userId, pin });
+        if (r.ok) P115.pins[k] = pin;
+        else if (r.code !== "PIN_TAKEN" && r.code !== "WEAK_PIN") break; // แคชเชียร์ขายสาขานี้ไม่ได้ = ไม่มี PIN (สถานะที่ต้องใช้จะตกพร้อมเหตุผล)
+      }
+    }
+    if (!P115.pins[userKey]) throw new StepError(`ตั้ง PIN ของผู้ใช้รอบนี้ (${userKey}) ไม่ได้`);
+    // บิลที่พัก 1 ใบ (การ์ด "บิลที่พักไว้" ของจอล็อก)
+    if (QC_IDS.amer && QC_IDS.latte && QC_IDS.crois) {
+      const { holdRegisterCart } = await import("@/lib/modules/pos/held-cart");
+      const h = await holdRegisterCart(ctx, owner, { cart: { lines: [{ productId: QC_IDS.amer, qty: 1 }, { productId: QC_IDS.latte, qty: 1 }, { productId: QC_IDS.crois, qty: 1 }] }, label: "พี่แว่น (ภาพ QC)" });
+      if (h.ok) P115.heldId = h.heldCart.id;
+    }
+    // กติกา POS_VOID ที่ปิดไว้ (active false — resolvePolicy ไม่เห็น ⇒ ชุดข้อสอบอื่นไม่เปลี่ยน) ให้คำขอของภาพมีขั้น/ชื่อกติกา
+    if (jobs.some((j) => j.state === "approval-wait")) {
+      const pol = await prisma.approvalPolicy.create({
+        data: { tenantId: T.tenantId, name: `ยกเลิกบิล > ฿100 ต้องผู้จัดการ (ภาพ QC ${process.pid})`, entityType: "POS_VOID", active: false, thresholdSatang: 10000, steps: { create: [{ tenantId: T.tenantId, order: 1, approverRole: "MANAGER" }] } },
+        select: { id: true },
+      });
+      P115.policyId = pol.id;
+    }
+    P115.seeded = true;
+  } catch (e) {
+    P115.error = e instanceof Error ? e.message.slice(0, 200) : String(e);
+  }
+}
+/** approval-wait: บิลล่าสุดของเครื่องรอบนี้ (ขายผ่าน UI) → คำขอ POS_VOID PENDING + snapshot (เขียนตรง · ลบใน finally) */
+async function seedVoidRequest(): Promise<string> {
+  if (!P115.policyId) throw new StepError("ไม่มีกติกา POS_VOID ของภาพ (seedP115Once)");
+  const sale = await prisma.posSale.findFirst({ where: { tenantId: T.tenantId, systemId: SYS, unitId, docType: "SALE", status: "PAID", createdAt: { gte: RUN_STARTED } }, orderBy: { createdAt: "desc" }, select: { id: true, receiptNo: true, grandTotalSatang: true } });
+  if (!sale) throw new StepError("ไม่พบบิลที่เพิ่งขายของรอบนี้");
+  const cashier = T.users.cashier.userId;
+  const req = await prisma.approvalRequest.create({
+    data: { tenantId: T.tenantId, policyId: P115.policyId, entityType: "POS_VOID", entityId: sale.id, unitId, systemId: SYS, amountSatang: sale.grandTotalSatang, requestedById: cashier, idempotencyKey: `approval-POS_VOID-${sale.id}` },
+    select: { id: true },
+  });
+  P115.requestId = req.id;
+  P115.saleId = sale.id;
+  await prisma.posApprovalPayload.create({
+    data: {
+      requestId: req.id,
+      tenantId: T.tenantId,
+      kind: "POS_VOID",
+      payload: { ref: sale.id, entityId: sale.id, saleId: sale.id, requestedById: cashier, amountSatang: sale.grandTotalSatang, unitId, systemId: SYS, reason: "ลูกค้าเปลี่ยนใจ (ภาพ QC)", idempotencyKey: `${FIX.prefix}${process.pid}-void`, deviceId: DEVICE_ID, receiptNo: sale.receiptNo, title: `ยกเลิกบิล ${sale.receiptNo ?? sale.id.slice(-6)}` },
+    },
+  });
+  return sale.id;
+}
+/** ปลดล็อกแถว PIN ของผู้ใช้รอบนี้ (หลัง lock-pin-locked) */
+async function unlockRunPin(): Promise<void> {
+  await prisma.posStaffPin.updateMany({ where: { tenantId: T.tenantId, unitId, userId: T.users[userKey].userId }, data: { failedCount: 0, lockedUntil: null } });
+}
+async function clickPinDigits(page: Any, pin: string): Promise<void> {
+  for (const d of pin) await clickEl(page, tid(`pos-lock-key-${d}`));
+}
+async function lockFromRegister(page: Any, device: Device): Promise<void> {
+  await clickEl(page, tid(device === "mobile" ? "pos-lock-now-mobile" : "pos-lock-now"));
+  await visibleEl(page, tid("pos-lock-screen"), 0, 10_000);
+  await visibleEl(page, tid("pos-staff-card"), 0, 15_000).catch(() => {
+    throw new StepError("จอล็อกไม่มีรายชื่อพนักงาน (listStaffForDeviceAction)");
+  });
+}
+async function runP115State(page: Any, state: StateKey, device: Device): Promise<void> {
+  if (P115.error || !P115.seeded) throw new StepError(`ไม่มีข้อมูลภาพ P1.15U: ${P115.error ?? "ยังไม่ได้สร้าง"}`);
+  if (state === "lock-screen") {
+    await lockFromRegister(page, device);
+    await clickPinDigits(page, "123"); // จุด 3 ดวง (ยังไม่ครบ 6 = ไม่ส่ง)
+    return;
+  }
+  if (state === "lock-pin-locked") {
+    await prisma.posStaffPin.updateMany({ where: { tenantId: T.tenantId, unitId, userId: T.users[userKey].userId }, data: { failedCount: 5, lockedUntil: new Date(Date.now() + 15 * 60_000) } });
+    await lockFromRegister(page, device);
+    await clickPinDigits(page, P115.pins[userKey]!);
+    await visibleEl(page, tid("pos-lock-manager-unlock"), 0, 10_000);
+    return;
+  }
+  if (state === "staff-switch") {
+    await lockFromRegister(page, device);
+    const other = T.users[userKey === "owner" ? "cashier" : "owner"].name;
+    const cards = await page.$$(tid("pos-staff-card"));
+    let hit = false;
+    for (const c of cards) {
+      if (String(await c.evaluate((n: Element) => n.textContent ?? "")).includes(other)) {
+        await c.click();
+        hit = true;
+        break;
+      }
+    }
+    if (!hit) throw new StepError(`ไม่พบการ์ดของ ${other} บนจอล็อก`);
+    await clickPinDigits(page, "12");
+    return;
+  }
+  if (state === "discount-over-sheet") {
+    await addCart3(page, device);
+    await openCartOnMobile(page, device);
+    await clickEl(page, tid("pos-reg-bill-discount"));
+    await visibleEl(page, tid("pos-reg-bill-discount-dialog"));
+    await clickEl(page, tid("pos-reg-bill-discount-percent"));
+    await typeInto(page, tid("pos-reg-bill-discount-value"), "20");
+    await clickEl(page, tid("pos-reg-bill-discount-apply"));
+    await visibleEl(page, tid("pos-discount-over-sheet"), 0, 10_000);
+    await visibleEl(page, tid("pos-discount-over-manager"), 0, 10_000).catch(() => undefined);
+    return;
+  }
+  if (state === "approval-wait") {
+    await cashSaleAmerLatte(page, device);
+    const saleId = await seedVoidRequest();
+    await page.goto(`${BASE}/app/sys/${SYS}/pos/sales?unit=${encodeURIComponent(unitId)}`, { waitUntil: "networkidle2", timeout: 60_000 });
+    await visibleEl(page, tid("pos-bills-list"), 0, 15_000);
+    await clickEl(page, `[data-bill-id="${saleId}"]`);
+    await visibleEl(page, tid("pos-bills-void-open"), 0, 15_000);
+    await page.waitForFunction(() => document.querySelector('[data-testid="pos-bills-void-open"]')?.getAttribute("data-pending") === "true", { timeout: 15_000 }).catch(() => {
+      throw new StepError("ปุ่มยกเลิกบิลไม่ขึ้น \"รออนุมัติ…\" (posApprovalStatusAction saleId)");
+    });
+    if (userKey === "cashier") return; // แคชเชียร์ QC ไม่มี pos.sale.void — ปุ่มปิดแต่ขึ้น "รออนุมัติ…" (ภาพนี้)
+    await clickEl(page, tid("pos-bills-void-open"));
+    await visibleEl(page, tid("pos-approval-wait"), 0, 10_000);
+    await page.waitForFunction(() => document.querySelector('[data-testid="pos-approval-wait"]')?.getAttribute("data-status") === "PENDING", { timeout: 15_000 }).catch(() => undefined);
+    return;
+  }
+}
+/** สรุปสำหรับ summary/JSON_SUMMARY — ไม่มี PIN/โทเคน */
+const p115Summary = () => ({ seeded: P115.seeded, error: P115.error, device: P115.deviceRowId ? DEVICE_ID : null, pinsSet: Object.keys(P115.pins), heldId: P115.heldId || null, requestId: P115.requestId || null, saleId: P115.saleId || null, cleanup: P115.cleanup });
+/** finally/signal: ลบคำขอ/snapshot/กติกา · ทิ้งบิลพัก · คืนแถว PIN · เพิกถอนเครื่อง — เรียกซ้ำได้ · ผลใน summary ไม่โยน */
+async function cleanupP115(): Promise<void> {
+  if (P115.cleanup || (!P115.seeded && !P115.error && !P115.restore.length && !P115.deviceRowId)) return;
+  const parts: string[] = [];
+  let ok = true;
+  const step = async (label: string, fn: () => Promise<string>) => {
+    try {
+      parts.push(await fn());
+    } catch (e) {
+      ok = false;
+      parts.push(`${label} ล้ม: ${e instanceof Error ? e.message.slice(0, 120) : String(e)}`);
+    }
+  };
+  await step("คำขอ", async () => {
+    if (P115.requestId) {
+      await prisma.posApprovalPayload.deleteMany({ where: { tenantId: T.tenantId, requestId: P115.requestId } });
+      await prisma.approvalRequest.deleteMany({ where: { tenantId: T.tenantId, id: P115.requestId } });
+    }
+    if (P115.policyId) await prisma.approvalPolicy.deleteMany({ where: { tenantId: T.tenantId, id: P115.policyId } });
+    return `คำขอ/กติกาของภาพ ${P115.requestId ? 1 : 0}/${P115.policyId ? 1 : 0}`;
+  });
+  await step("บิลพัก", async () => {
+    if (!P115.heldId) return "บิลพัก 0";
+    const { discardHeldCart } = await import("@/lib/modules/pos/held-cart");
+    const r = await discardHeldCart({ tenantId: T.tenantId, systemId: SYS, unitId }, await ownerActor(), { id: P115.heldId });
+    return `บิลพักของภาพ ${r.ok ? "ทิ้งแล้ว" : "ไม่อยู่แล้ว"}`;
+  });
+  await step("PIN", async () => {
+    let n = 0;
+    for (const r of P115.restore) {
+      if (r.row) await prisma.posStaffPin.updateMany({ where: { unitId, userId: r.userId }, data: { pinHash: r.row.pinHash, failedCount: r.row.failedCount, lockedUntil: r.row.lockedUntil, setById: r.row.setById } });
+      else await prisma.posStaffPin.deleteMany({ where: { tenantId: T.tenantId, unitId, userId: r.userId } });
+      n++;
+    }
+    return `คืนแถว PIN ${n}`;
+  });
+  await step("เครื่อง", async () => {
+    if (!P115.deviceRowId) return "เครื่อง 0";
+    const { revokeDevice } = await import("@/lib/modules/pos/device");
+    const r = await revokeDevice({ tenantId: T.tenantId, systemId: SYS, unitId }, await ownerActor(), { id: P115.deviceRowId });
+    if (!r.ok) throw new StepError(`เพิกถอนเครื่อง ${DEVICE_ID}: ${r.code}`);
+    return `เพิกถอนเครื่อง ${DEVICE_ID}`;
+  });
+  P115.cleanup = { ok, detail: `P1.15U: ${parts.join(" · ")}` };
+}
+
 async function runState(page: Any, state: StateKey, device: Device): Promise<void> {
   // R3: แยกด้วยสมาชิกชุดที่แน่นอน ไม่ใช่คำนำหน้า — สถานะหน้าขาย "stock-warn" ขึ้นต้น "stock-" แต่ไม่ใช่สถานะหน้าสต็อก
   if (isStockState(state)) return runStockState(page, state); // POS P1.14 U
@@ -707,6 +970,7 @@ async function runState(page: Any, state: StateKey, device: Device): Promise<voi
   });
   // ข้อ 7: ร้าน QC บังคับเปิดกะ (P1.9) — เปิดผ่าน UI ครั้งเดียวต่อรอบ ภาพจึงมีหัว "กะ #… · เปิด …" เหมือนภาพ 01
   await ensureShift(page);
+  if (P115_STATE_KEYS.has(state)) return runP115State(page, state, device); // POS P1.15U
   switch (state) {
     case "default":
       return;
@@ -1451,6 +1715,11 @@ try {
     QC_IDS.crois = byName("ครัวซองต์เนยสด");
   }
 
+  // POS P1.15U ▸ หน้าขายล็อกเมื่อไม่มีโทเคนผู้ขาย/เครื่องไม่ลงทะเบียน ⇒ ลงทะเบียนเครื่อง + PIN + โทเคน (+ ข้อมูลของสถานะ 13B/21B) ก่อนเปิด chromium ◂
+  if (jobs.some((j) => j.page === "register" || j.state === "paydone-print")) {
+    await seedP115Once();
+    console.log(P115.error ? `  ⚠️ ข้อมูลภาพ P1.15U: ${P115.error}` : `  ข้อมูลภาพ P1.15U: เครื่อง ${DEVICE_ID} · PIN ${Object.keys(P115.pins).join("/")} (ไม่พิมพ์ค่า) · บิลพัก ${P115.heldId || "-"}`);
+  }
   if (settingsStatesOn && pages.includes("settings")) {
     await seedSettingsOnce(); // POS P1.10 U — พังไม่โยน (ทุกสถานะ settings-* ตกพร้อมเหตุผล)
     console.log(SETTINGS.error ? `  ⚠️ เครื่อง QC ของหน้าตั้งค่า: ${SETTINGS.error}` : `  เครื่อง QC ของหน้าตั้งค่า: ${SETTINGS.devices.map((d) => d.id).join(" · ")} · กะ ${SETTINGS.shiftId || "-"}`);
@@ -1478,6 +1747,14 @@ try {
           p === "settings" && job.state ? SETTINGS_DEVICE_CODES[job.state === "paydone-print" ? 1 : 0] : p === "shifts" && job.state ? SHIFTS_DEVICE_ID : p === "sales" && job.state ? BILLS_DEVICE_ID : DEVICE_ID,
         ); // P1.10 U: หน้าตั้งค่าใช้เครื่อง QC 1 (paydone-print = เครื่อง 2 ที่มีกะ) // P1.16 U: หน้าบิลใช้เครื่องของกะภาพบิล (การ์ดเงินสด "จากลิ้นชักกะ #N") // R3 V4: เครื่องเดียวกับที่เจ้าของเปิดกะให้ · P1.9 U: สถานะหน้ากะใช้เครื่องแยก
         await page.setViewport({ width: v.w, height: v.h, deviceScaleFactor: 2, isMobile: v.mobile, hasTouch: v.name !== "desktop" });
+        // POS P1.15U ▸ หน้าขาย = โทเคนผู้ขายของเครื่องที่หน้านี้ใช้ (discount-over-sheet = แคชเชียร์ · เพดาน 10%) · ปลดล็อกแถว PIN ที่ lock-pin-locked ตั้งไว้ ◂
+        if ((p === "register" || job.state === "paydone-print") && P115.seeded) {
+          await unlockRunPin().catch(() => undefined);
+          const dev = job.state === "paydone-print" ? SETTINGS_DEVICE_CODES[1] : DEVICE_ID;
+          const who: UserKey = job.state === "discount-over-sheet" && P115.pins.cashier ? "cashier" : userKey;
+          const json = await staffSessionJson(who, dev).catch(() => null);
+          if (json) await injectStaff(page, dev, json);
+        }
         // POS P1.10 U ▸ settings-print-pair: เบราว์เซอร์ไม่มี WebUSB (แบบ iOS Safari) — ซ่อน navigator.usb ก่อนสคริปต์ของหน้า ⇒ กล่องจับคู่ขึ้นสถานะ "ไม่รองรับ" ◂
         if (job.state === "settings-print-pair") {
           await page.evaluateOnNewDocument(() => {
@@ -1566,6 +1843,9 @@ try {
 } finally {
   await closeRunShift();
   if (SHIFT.close && !SHIFT.close.ok) console.error(`⚠️ ${SHIFT.close.detail}`);
+  await cleanupP115(); // POS P1.15U (หลังปิดกะ — เพิกถอนเครื่องเป็นขั้นท้าย)
+  if (P115.cleanup) console.error(`${P115.cleanup.ok ? "🧹" : "⚠️"} ${P115.cleanup.detail}`);
+  if (P115.cleanup && !P115.cleanup.ok) failures++;
   await closeShiftsStateShift(); // POS P1.9 U
   if (SHIFTS.close) console.error(`${SHIFTS.close.ok ? "🧹" : "⚠️"} ${SHIFTS.close.detail}`);
   if (SHIFTS.opened && SHIFTS.close && !SHIFTS.close.ok) failures++;
@@ -1589,9 +1869,9 @@ try {
   }
   await prisma.$disconnect();
   cleanProfiles();
-  writeFileSync(`${OUT}/summary-${userKey}.json`, JSON.stringify({ wo: WO, user: userKey, tenant: tenantKey, base: BASE, at: new Date().toISOString(), deviceId: DEVICE_ID, shiftOpenError: SHIFT.openError, shiftClose: SHIFT.close, stockCount: STOCK, shiftsState: SHIFTS, billsState: BILLS, settingsState: SETTINGS, shots }, null, 2));
+  writeFileSync(`${OUT}/summary-${userKey}.json`, JSON.stringify({ wo: WO, user: userKey, tenant: tenantKey, base: BASE, at: new Date().toISOString(), deviceId: DEVICE_ID, shiftOpenError: SHIFT.openError, shiftClose: SHIFT.close, stockCount: STOCK, shiftsState: SHIFTS, billsState: BILLS, settingsState: SETTINGS, p115State: p115Summary(), shots }, null, 2));
   console.log(`\n🧹 ลบ session ของรอบนี้ ${removed}${stale ? ` (+ซากหมดอายุ ${stale})` : ""}${fixOut} · ลบโปรไฟล์ chromium ${PROFILE_DIRS[0]} · ภาพ ${shots.length} ใบใน ${OUT}`);
 }
 if (fatal) console.error(`❌ ${fatal}`);
-console.log(`JSON_SUMMARY ${JSON.stringify({ wo: WO, user: userKey, tenant: tenantKey, base: BASE, shiftOpenError: SHIFT.openError, shiftClose: SHIFT.close, stockCount: STOCK, shiftsState: SHIFTS, billsState: BILLS, settingsState: SETTINGS, shots: shots.map(({ consoleErrors, httpErrors, ...s }) => ({ ...s, consoleErrors: consoleErrors.length, httpErrors: httpErrors.length })), failures, fatal: fatal || null })}`);
+console.log(`JSON_SUMMARY ${JSON.stringify({ wo: WO, user: userKey, tenant: tenantKey, base: BASE, shiftOpenError: SHIFT.openError, shiftClose: SHIFT.close, stockCount: STOCK, shiftsState: SHIFTS, billsState: BILLS, settingsState: SETTINGS, p115State: p115Summary(), shots: shots.map(({ consoleErrors, httpErrors, ...s }) => ({ ...s, consoleErrors: consoleErrors.length, httpErrors: httpErrors.length })), failures, fatal: fatal || null })}`);
 process.exit(fatal ? 2 : failures > 0 ? 1 : 0);
