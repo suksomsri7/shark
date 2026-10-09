@@ -268,7 +268,12 @@ export type RegisterQuoteInput = {
   memberId?: string;
   couponCode?: string;
   memberChoices?: RegisterMemberChoices;
+  /** POS P2.1 ▸ R10: ช่องทางขาย (SalesChannel.id ของสาขานี้) — ไม่ส่ง = หน้าร้าน (STORE) · อื่น/เก็บแล้ว/ปิด = CHANNEL_INVALID · บิลพักเก็บไว้ ◂ */
+  channelId?: string;
 };
+
+/** POS P2.1 ▸ R10: ช่องทางของ quote (ปริยาย = STORE ของสาขา) — คีย์ตายตัว 4 ตัว ◂ */
+export type RegisterQuoteChannel = { id: string; code: string; name: string; payout: "PLATFORM" | "DIRECT" };
 
 /** P1.2 R3: ตัวเลือกที่เซิร์ฟเวอร์ใช้คิดราคา (ราคา/ชื่อสดจาก DB) */
 export type RegisterQuoteLineOption = { choiceId: string; groupId: string; name: string; priceDeltaSatang: number };
@@ -312,6 +317,8 @@ export type RegisterQuoteTotals = {
   pointsToEarn?: number;
   stampsToAdd?: { cardId: string; name: string; count: number }[];
   memberConflicts?: RegisterMemberConflict[];
+  /** POS P2.1 ▸ R10: ช่องทางของบิล (เซิร์ฟเวอร์เติมทุก quote · ยอดที่จอคิดเองไม่มี ⇒ optional) ◂ */
+  channel?: RegisterQuoteChannel;
 };
 /** POS P1.12: บรรทัดสิทธิ์สมาชิกบนยอด (ลำดับกระเป๋า) · ref = id ว่อชเชอร์ (ระดับ/แต้ม = null) · note = คำอธิบายเมื่อระบบปรับให้ */
 export type RegisterMemberLine = { kind: "TIER" | "VOUCHER" | "POINTS" | "GIFTCARD"; ref: string | null; label: string; discountSatang: number; note: string | null };
@@ -343,6 +350,8 @@ export type RegisterSubmitInput = RegisterQuoteInput & {
   note?: string;
   /** ยอดที่แคชเชียร์เห็นจาก quote ล่าสุด (บังคับ · จำนวนเต็ม ≥ 0) — ไม่ตรงยอดเซิร์ฟเวอร์ = PRICE_CHANGED */
   expectedGrandTotalSatang: number;
+  /** POS P2.1 ▸ R10: เลขออเดอร์แพลตฟอร์ม (ตัดช่องว่าง · ≤ CHANNEL_REF_MAX 40 ไม่งั้น VALIDATION) ◂ */
+  channelRef?: string;
   /** POS P1.15 R3: โทเคนผู้ขายจาก verifyStaffPin (ผูกเครื่อง · 12 ชม.) — ผู้ขาย/เพดานส่วนลด = คนในโทเคน · ผิด/หมดอายุ = STAFF_TOKEN_INVALID */
   staffToken?: string;
   /** POS P1.15 R4/R5: PIN ผู้จัดการที่เครื่องนี้ (คู่ managerUserId) — อนุญาตส่วนลดเกินสิทธิ์ทันที (audit pos.discount.override) */
