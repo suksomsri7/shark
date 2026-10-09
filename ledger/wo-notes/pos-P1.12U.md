@@ -5,8 +5,9 @@ Builder U · VPS account B · 9 Oct 2026 · tree `/root/projects/shark-pos-d` (l
 `ledger/wo-notes/pos-P1.12.md` "P1.12U contract". Scratch/logs: `/tmp/claude-0/-root/ed31d917-ff51-51e8-bfad-e5b8bfa6fa15/scratchpad/p112u/`.
 
 ## Checkpoint
-- Done: step 1 (ruling 2 server hunk + ORACLE-EDIT U1 · cart state/quote guards · MemberChip + totals rows).
-- Next: step 2 (MemberPanel + QuickRegisterForm + scan routing).
+- Done: step 1 (ruling 2 server hunk + ORACLE-EDIT U1 · cart state/quote guards · MemberChip + totals rows) · step 2 (MemberPanel 14A +
+  QuickRegisterForm + SHARK-MC scan routing: camera from panel, wedge with panel on top, wedge/camera outside the panel).
+- Next: step 3 (PayBenefits + disabled P2 tiles + CouponDialog real entry + PayDone cell + keys/inventory).
 - Commands: typecheck `env NODE_OPTIONS=--max-old-space-size=5632 ISO_MEM=6500M bash scripts/iso.sh flock -w 3600 /tmp/pos-gate.lock pnpm typecheck` ·
   keys `python3 <scratch>/add_keys.py <tree>` · inventory `python3 <scratch>/inv.py <tree> [testid-to-remove…]`.
 

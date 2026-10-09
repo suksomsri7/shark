@@ -75,6 +75,7 @@ import {
   recallHeldCartAction,
   registerCatalogAction,
   registerMemberBenefitsAction,
+  registerMemberLookupAction,
   registerScanAction,
   registerStatusAction,
   submitRegisterSaleAction,
@@ -109,6 +110,8 @@ import { SearchRow } from "./SearchRow";
 import { WeighDialog } from "./WeighDialog";
 // POS P1.12U ▸ สมาชิกที่ตะกร้า (01) · แผงสมาชิก 14A · สิทธิ์ที่จอชำระ (02) ◂
 import { MemberChip } from "./MemberChip";
+import { MemberPanel } from "./MemberPanel";
+import { isMemberCardCode } from "@/lib/modules/pos/register-member-shared";
 // POS P1.13U ▸ กล่องใบกำกับภาษีเต็มรูป (ภาพ 15A) — ผู้ซื้ออยู่ในตะกร้าฝั่ง client เท่านั้น ส่งไปกับ submit ◂
 import { TaxInvoiceDialog } from "./TaxInvoiceDialog";
 import { taxInvoiceRefusalKey, type TaxInvoiceBuyerInput } from "@/lib/modules/pos/tax-invoice-shared";
@@ -153,7 +156,8 @@ export type RegisterScreenProps = {
   payIntent?: { beamCard: boolean; manualRequiresManager: boolean; canManageShift: boolean; promptpayLink: string };
 };
 
-type Msg = { key: string; values?: Record<string, string | number> };
+/** ns "member" = คีย์ใต้ pos.member (P1.12U) · ไม่ระบุ = ใต้ pos.register */
+type Msg = { key: string; values?: Record<string, string | number>; ns?: "member" };
 /** ข้อความลอย — offerCustom = ปุ่ม "เพิ่มเป็นรายการกำหนดเอง?" (สแกนไม่พบ · เฉพาะผู้มีสิทธิ์ราคาเปิด · P1.4 B4) */
 type ToastMsg = Msg & { offerCustom?: boolean };
 /** บรรทัดใหม่ (ยังไม่มี key) — Omit แบบกระจายทีละสมาชิกของ union */
@@ -176,7 +180,10 @@ type Layer =
   | { kind: "options"; product: RegisterProduct; weighedBarcode?: string; anchor?: PickAnchor }
   | { kind: "weigh"; product: RegisterProduct; options: string[]; note?: string }
   | { kind: "scanChoose"; products: RegisterProduct[] }
-  | { kind: "camera" }
+  // POS P1.12U: forMember = เปิดจากแผงสมาชิก (รหัสที่อ่านได้ไปทางค้นสมาชิกเสมอ)
+  | { kind: "camera"; forMember?: boolean }
+  // POS P1.12U: แผงสมาชิก 14A (ค้น · สแกนบัตร · สมัครด่วน · รางวัลรอรับเมื่อมีสมาชิกแล้ว)
+  | { kind: "member" }
   // P1.5: ลิ้นชักบิลที่พัก · กล่องตั้งป้ายก่อนพัก · ถาม "พักตะกร้านี้ก่อน?" เมื่อเรียกคืนทับตะกร้าที่มีของ
   | { kind: "held" }
   | { kind: "holdLabel" }
@@ -244,6 +251,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
   const t = useTranslations("pos.register");
   const ts = useTranslations("pos.shift");
   const tc = useTranslations("common");
+  const tm = useTranslations("pos.member");
   const locale = useLocale();
   const wide = useMedia("(min-width: 768px)");
   const xl = useMedia("(min-width: 1280px)") === true;
@@ -435,6 +443,37 @@ export function RegisterScreen(props: RegisterScreenProps) {
       else delete next.couponCode;
       return next;
     });
+  };
+
+  /** คีย์กันกดซ้ำของฟอร์มสมัครด่วน — 1 คีย์ต่อการเปิดฟอร์ม (หมุนเมื่อเปิดแผง/สมัครสำเร็จ · สร้างที่นี่เท่านั้น — S5.21) */
+  const [memberFormKey, setMemberFormKey] = useState(newKey);
+  /** เปิดแผงสมาชิก 14A (แถว + เพิ่มสมาชิก · แตะการ์ด) — สาขาไม่มีระบบสมาชิก = ไม่มีทางเข้า */
+  const openMember = () => {
+    if (!memberEnabled || frozenRef.current || layersRef.current.some((l) => l.kind === "member")) return;
+    setMemberFormKey(newKey());
+    push({ kind: "member" });
+  };
+  /**
+   * บัตรสมาชิก (SHARK-MC:…) จากกล้อง/เครื่องสแกน หรือรหัสที่อ่านจากกล้องของแผงสมาชิก → ค้นสมาชิก (มติ 4):
+   *   เจอคนเดียว = ผูก + ปิดแผง + ข้อความชื่อ · ไม่เจอ = "ไม่พบสมาชิก" · ถูกระงับ = ข้อความ · สาขาไม่มีระบบสมาชิก = memberSystemMissing
+   */
+  const memberScan = async (code: string) => {
+    if (!memberEnabled) return showToast({ key: "errors.memberSystemMissing" });
+    if (frozenRef.current || layersRef.current.some((l) => l.kind === "pay" || l.kind === "done")) return showToast({ key: "scan.ignoredWhileDialog" });
+    const gen = billGen.current;
+    try {
+      const r = await registerMemberLookupAction({ systemId, unitId, q: code.trim().slice(0, 200) });
+      if (gen !== billGen.current || frozenRef.current) return;
+      if (!r.ok) return showToast(errorFor(r.code));
+      const m = r.items.length === 1 ? r.items[0]! : null;
+      if (!m) return showToast({ key: "panel.empty", ns: "member" });
+      if (m.suspended) return showToast({ key: "errors.memberSuspended" });
+      attachMember(m);
+      setLayers((s) => s.filter((l) => l.kind !== "member" && l.kind !== "camera"));
+      showToast({ key: "panel.attachedToast", ns: "member", values: { name: m.name } });
+    } catch {
+      if (gen === billGen.current) showToast({ key: "errors.loadFailed" });
+    }
   };
 
   // ═══════ POS P1.13U ใบกำกับภาษีเต็มรูป (มติ 1–3) ═══════
@@ -899,7 +938,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
     if (key === "errors.stockInsufficient") return { key, values: { count: 0 } };
     return { key };
   }
-  const msgNode = (m: Msg) => t.rich(m.key, { ...(m.values ?? {}), b: (c) => <b>{c}</b> });
+  const msgNode = (m: Msg) => (m.ns === "member" ? tm : t).rich(m.key, { ...(m.values ?? {}), b: (c) => <b>{c}</b> });
 
   // ── แบบจำลองบรรทัดสำหรับวาด (ราคาเซิร์ฟเวอร์ทับราคากริดเมื่อ quote ตรงตะกร้า — มติ Q22) ──
   /** P1.2 U: บรรทัดรองของตัวเลือก/น้ำหนัก — ชื่อตามภาษาจอจากกล่องตัวเลือกก่อน แล้วค่อยชื่อจาก quote · น้ำหนักจาก quote (ป้าย) หรือที่กรอก */
@@ -1204,6 +1243,8 @@ export function RegisterScreen(props: RegisterScreenProps) {
 
   /** ทางสแกนทางเดียว (เครื่องสแกนรัว · กล้อง) — เรียก registerScanAction ตรง: ไม่ผ่านคำค้น/หน่วง 200ms/โหลดกริด (B1 · ข้อสอบ S1) */
   const onScannedCode = async (code: string) => {
+    // POS P1.12U มติ 4: บัตรสมาชิก (SHARK-MC:…) ไปทางค้นสมาชิก — สินค้าไม่เปลี่ยน
+    if (isMemberCardCode(code)) return void memberScan(code);
     if (frozenRef.current) return showToast({ key: "scan.ignoredWhileDialog" }); // R2: ระหว่างส่งบิล = บอก ไม่เงียบ
     const gen = billGen.current;
     try {
@@ -1686,8 +1727,8 @@ export function RegisterScreen(props: RegisterScreenProps) {
   const scanBuf = useRef<ScanKey[]>([]);
   /** ค่าของช่องกรอก (ไม่ใช่ช่องค้นหา) ตอนคีย์แรกของบัฟเฟอร์ — คืนค่านี้ถ้าบัฟเฟอร์กลายเป็นการสแกน (R2) */
   const scanFieldSnap = useRef<{ el: HTMLInputElement | HTMLTextAreaElement; value: string } | null>(null);
-  const scanHandlers = useRef({ onScannedCode, clearSearchForScan, showToast });
-  scanHandlers.current = { onScannedCode, clearSearchForScan, showToast };
+  const scanHandlers = useRef({ onScannedCode, clearSearchForScan, showToast, memberScan });
+  scanHandlers.current = { onScannedCode, clearSearchForScan, showToast, memberScan };
   useEffect(() => {
     const onScanKey = (e: KeyboardEvent) => {
       const buf = scanBuf.current;
@@ -1729,6 +1770,15 @@ export function RegisterScreen(props: RegisterScreenProps) {
       }
       // กล่องเปิดอยู่ (ชำระ · ตัวเลือก · กล้อง …) และจังหวะเป็นเครื่องสแกน ⇒ ไม่ทำอะไร + บอกผู้ใช้ (B2) · กลืนตัวจบไม่ให้ไปกดปุ่มในกล่อง
       if (r.kind === "ignore" && r.reason === "dialog" && scanTimed) {
+        // POS P1.12U มติ 4: แผงสมาชิกอยู่บนสุด + ยิงบัตรสมาชิก ⇒ ค้น/ผูกสมาชิก (ช่องที่รหัสตกลงไปถูกคืนค่าข้างบนแล้ว)
+        const body = classifyScanBurst(keys, { target: "body" });
+        if (layersRef.current[layersRef.current.length - 1]?.kind === "member" && body.kind === "scan" && isMemberCardCode(body.code)) {
+          e.preventDefault();
+          e.stopPropagation();
+          lastScanAt.current = e.timeStamp;
+          void h.memberScan(body.code);
+          return;
+        }
         e.preventDefault();
         e.stopPropagation();
         h.showToast({ key: "scan.ignoredWhileDialog" });
@@ -1827,8 +1877,8 @@ export function RegisterScreen(props: RegisterScreenProps) {
             ready={memberReady}
             points={memberReady ? (benefits?.points?.balance ?? null) : null}
             frozen={frozen}
-            onPick={() => showToast({ key: "soon" })}
-            onOpen={() => showToast({ key: "soon" })}
+            onPick={openMember}
+            onOpen={openMember}
             onUsePoints={openPayPoints}
             onDetach={detachMember}
           />
@@ -2060,9 +2110,38 @@ export function RegisterScreen(props: RegisterScreenProps) {
             key={k}
             onCode={(code) => {
               pop();
-              void onScannedCode(code);
+              void (l.forMember ? memberScan(code) : onScannedCode(code));
             }}
             onClose={pop}
+          />
+        );
+      case "member":
+        return (
+          <MemberPanel
+            key={k}
+            systemId={systemId}
+            unitId={unitId}
+            attached={cart.memberId ? ((memberInfo && memberInfo.id === cart.memberId ? memberInfo : null) ?? placeholderMember(cart.memberId)) : null}
+            benefits={memberReady ? benefits : null}
+            formKey={memberFormKey}
+            frozen={frozen}
+            onAttach={(m, toast) => {
+              attachMember(m);
+              setMemberFormKey(newKey());
+              setLayers((s) => s.filter((x) => x.kind !== "member" && x.kind !== "camera"));
+              showToast({ ...toast, ns: "member" });
+            }}
+            onDetach={() => {
+              detachMember();
+              showToast({ key: "panel.detached", ns: "member" });
+            }}
+            onScan={() => {
+              if (!layersRef.current.some((x) => x.kind === "camera")) push({ kind: "camera", forMember: true });
+            }}
+            onFulfilled={() => {
+              if (cart.memberId) void refreshBenefits(cart.memberId, benefitsCartJson);
+            }}
+            onClose={() => setLayers((s) => s.filter((x) => x.kind !== "member"))}
           />
         );
       case "done":

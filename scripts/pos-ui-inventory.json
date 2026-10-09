@@ -8405,6 +8405,247 @@
       "oracle": "qc-pos-p1.12",
       "system": "POS",
       "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-member-panel-close",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-member-panel",
+        "note": "✕ ปิดแผงสมาชิก (Esc/แตะม่านเหมือนกัน)"
+      },
+      "wo": "P1.12U",
+      "oracle": "qc-pos-p1.12",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-member-panel-detach",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-member-panel",
+        "note": "ถอดในโหมดมีสมาชิกแล้ว = ล้างสมาชิก + สิทธิ์ที่เลือก (คูปองคงไว้) · แผงอยู่ต่อเพื่อเลือกคนใหม่"
+      },
+      "wo": "P1.12U",
+      "oracle": "qc-pos-p1.12",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-member-fulfil-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "note": "R13 ส่งมอบรางวัลรอรับ (registerFulfilRewardAction) → แถวเป็น ส่งมอบแล้ว จนปิดแผง · ปฏิเสธ = บรรทัดแดง"
+      },
+      "wo": "P1.12U",
+      "oracle": "qc-pos-p1.12",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-member-search",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-member-row-*",
+        "note": "ค้นด้วยเบอร์/ชื่อ/รหัส/บัตร SHARK-MC (หน่วง 250ms) · พบ N รายชื่อ · Enter = ผูกเมื่อเจอคนเดียว"
+      },
+      "wo": "P1.12U",
+      "oracle": "qc-pos-p1.12",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-member-scan",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "modal",
+        "target": "pos-reg-scan-sheet",
+        "note": "สแกน QR สมาชิก = กล้อง (P1.4) · รหัสที่อ่านได้ไปทางค้นสมาชิก · เจอคนเดียว = ผูก + ปิด"
+      },
+      "wo": "P1.12U",
+      "oracle": "qc-pos-p1.12",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-member-row-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-member-chip",
+        "note": "แตะแถว = ผูกสมาชิกกับบิล + ปิดแผง + ข้อความชื่อ · ถูกระงับ = แตะไม่ได้"
+      },
+      "wo": "P1.12U",
+      "oracle": "qc-pos-p1.12",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-member-register",
+      "kind": "form",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "note": "ฟอร์มสมัครด่วน (registerQuickMemberAction) · created true/false = ผูก + ปิด + ข้อความ · ปฏิเสธ = บรรทัดแดง"
+      },
+      "wo": "P1.12U",
+      "oracle": "qc-pos-p1.12",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-member-register-phone",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "note": "เบอร์โทร (เติมจากคำค้นตัวเลขล้วน) · ปุ่มสมัครเปิดเมื่อ 9–10 หลัก"
+      },
+      "wo": "P1.12U",
+      "oracle": "qc-pos-p1.12",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-member-register-name",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "note": "ชื่อ (ชื่อเล่นหรือชื่อจริง ≤ 80)"
+      },
+      "wo": "P1.12U",
+      "oracle": "qc-pos-p1.12",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-member-register-birthdate",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "inline-error",
+        "target": "pos-member-register-birthdate-error",
+        "note": "วันเกิด วว / ดด / ปปปป (ไม่บังคับ · พ.ศ. แปลงให้) · ผิด = วันเกิดไม่ถูกต้อง ไม่ส่ง"
+      },
+      "wo": "P1.12U",
+      "oracle": "qc-pos-p1.12",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-member-register-consent",
+      "kind": "toggle",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "note": "ยินยอมรับข่าวสาร (PDPA) · ปริยายปิด · LINE/EMAIL/SMS ตามค่านี้"
+      },
+      "wo": "P1.12U",
+      "oracle": "qc-pos-p1.12",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-member-register-heard-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "note": "ที่มา: หน้าร้าน (ปริยาย) · LINE · บอกต่อ · โฆษณา"
+      },
+      "wo": "P1.12U",
+      "oracle": "qc-pos-p1.12",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-member-register-submit",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-member-chip",
+        "note": "+ สมัครและผูกกับบิลนี้ (เปิดเมื่อเบอร์ 9–10 หลัก + ชื่อ)"
+      },
+      "wo": "P1.12U",
+      "oracle": "qc-pos-p1.12",
+      "system": "POS",
+      "query": "unit=[unitId]"
     }
   ],
   "$roles": "roles/hiddenFor ที่อนุญาต: owner · manager · cashier · kind/expect.type ชุดเดียวกับทะเบียน CRM (F15.3b ตรวจ)"
