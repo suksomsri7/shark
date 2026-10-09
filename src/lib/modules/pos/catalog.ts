@@ -30,6 +30,9 @@ import { randomUUID } from "node:crypto";
 import { Prisma, type PosProduct, type PosProductKind, type PrismaClient } from "@prisma/client";
 import { canAccessUnit, canGrantUnitAccess, evaluate, type MembershipCtx } from "@/lib/core/rbac";
 import { prisma } from "./db";
+// POS P2.2 ▸ ราคาตามช่องทาง/สาขา (ตัวแก้บริสุทธิ์ + รหัสช่องทาง) ◂
+import { CHANNEL_BUILTIN_CODES, CHANNEL_CODE_RE, isChannelBuiltinCode } from "./channel-shared";
+import { BULK_MARKUP_BP_MAX, BULK_MARKUP_PRODUCTS_MAX, CHANNEL_PRICE_ROWS_MAX, channelMarkupPrice, type ChannelPriceInputRow, type ChannelPriceView } from "./price-shared";
 
 // ═══════════════════ ชนิดข้อมูล + error ═══════════════════
 
@@ -108,8 +111,11 @@ export type PosProductView = {
   soldByWeight: boolean;
   scalePlu: string | null;
   recipe: { invItemId: string; qty: number }[];
-  /** ราคาต่อช่องทาง — ใบช่องทางขายเป็นเจ้าของ · P1.1a ว่างเสมอ */
-  channelPrices: { channelId: string; priceSatang: number }[];
+  /**
+   * POS P2.2 ▸ R6 มติ 11: แถวราคาตามช่องทาง/สาขาที่ใช้กับสาขานี้ (ทุกสาขา + ของสาขานี้) · channelId = ช่องทางของสาขานี้ที่รหัสตรง
+   * (ไม่มี/แถวราคาสาขา = null) · notSold = ไม่ขายในช่องทางนี้ (priceSatang null) ◂
+   */
+  channelPrices: ChannelPriceView[];
   /** ขายได้ที่สาขานี้ไหม (key = unitId ที่ขอ) */
   availability: Record<string, boolean>;
   /** สต็อกคงเหลือ (key = unitId ที่ขอ · = InvItem.onHand ของคลังที่สาขานี้ใช้ · C3) */
@@ -915,13 +921,26 @@ async function toViews(tenantId: string, unitId: string, unitInv: string | null,
   if (!rows.length) return [];
   const ids = rows.map((r) => r.id);
   const invIds = [...new Set(rows.map((r) => r.invItemId).filter((x): x is string => !!x))];
-  const [items, links, recipes, menuSoldOut] = await Promise.all([
+  const systemId = rows[0]!.systemId;
+  const [items, links, recipes, menuSoldOut, cpRowsAll, unitChannels] = await Promise.all([
     invIds.length ? db.invItem.findMany({ where: { tenantId, id: { in: invIds } }, select: { id: true, onHand: true, barcode: true, sku: true } }) : Promise.resolve([]),
     db.posProductOptionGroup.findMany({ where: { tenantId, productId: { in: ids } }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] }),
     db.recipeLine.findMany({ where: { tenantId, productId: { in: ids } }, orderBy: [{ createdAt: "asc" }] }),
     // P1.1b มติ 3: แถว MENU อ่านความพร้อมขายสดจาก MenuItem (G8 — ตัวนับสดไม่ mirror)
     menuSoldOutIds(tenantId, rows, db),
+    // POS P2.2 ▸ R6: แถวราคาตามช่องทาง/สาขา (ทุกสาขา + สาขานี้) + ช่องทางของสาขานี้ (รหัส → id) ◂
+    db.posProductChannelPrice.findMany({
+      where: { tenantId, systemId, productId: { in: ids }, OR: [{ unitId: null }, { unitId }] },
+      select: { productId: true, channelCode: true, unitId: true, priceSatang: true, notSold: true },
+    }),
+    db.salesChannel.findMany({ where: { tenantId, systemId, unitId, archivedAt: null }, select: { id: true, code: true } }),
   ]);
+  const channelIdOf = new Map(unitChannels.map((c) => [c.code, c.id]));
+  const cpBy = new Map<string, ChannelPriceView[]>();
+  for (const r of cpRowsAll) {
+    const v: ChannelPriceView = { channelId: r.channelCode ? (channelIdOf.get(r.channelCode) ?? null) : null, channelCode: r.channelCode, unitId: r.unitId, priceSatang: r.priceSatang, notSold: r.notSold };
+    cpBy.set(r.productId, [...(cpBy.get(r.productId) ?? []), v]);
+  }
   const groupIds = [...new Set(links.map((l) => l.groupId))];
   const groups = groupIds.length
     ? await db.menuOptionGroup.findMany({
@@ -991,7 +1010,7 @@ async function toViews(tenantId: string, unitId: string, unitInv: string | null,
       soldByWeight: p.soldByWeight,
       scalePlu: p.scalePlu,
       recipe: recipesBy.get(p.id) ?? [],
-      channelPrices: [],
+      channelPrices: cpSort(cpBy.get(p.id) ?? []),
       availability: { [unitId]: rowAvailable(p, unitId, menuSoldOut) },
       stock: inv ? { [unitId]: inv.onHand } : {},
     };
@@ -1877,6 +1896,255 @@ export async function createCategory(
       const row = await tx.posCategory.create({ data: { tenantId: ctx.tenantId, systemId: ctx.systemId, unitId, name, nameEn, sortOrder } });
       await audit(tx, ctx, "pos.category.create", "PosCategory", row.id, null, { name, nameEn, unitId, sortOrder });
       return { id: row.id, name: row.name, unitId: row.unitId };
+    });
+  });
+}
+
+// ═══════════════════ POS P2.2 ▸ ราคาตามช่องทาง / สาขา (R1 R2 · CD6 CD7 · มติ 1 5 6 11) — ผู้เขียนเดียวของ PosProductChannelPrice ◂ ═══════════════════
+
+const CP_TOP_KEYS: ReadonlySet<string> = new Set(["productId", "rows"]);
+const CP_ROW_KEYS: ReadonlySet<string> = new Set(["channelCode", "unitId", "priceSatang", "notSold"]);
+const BULK_KEYS: ReadonlySet<string> = new Set(["channelCode", "unitId", "markupBp", "roundTo", "productIds", "categoryId"]);
+type CpRow = { channelCode: string | null; unitId: string | null; priceSatang: number | null; notSold: boolean };
+const cpKey = (r: { channelCode: string | null; unitId: string | null }) => `${r.channelCode ?? "*"}|${r.unitId ?? "*"}`;
+const cpSame = (a: CpRow, b: CpRow) => a.priceSatang === b.priceSatang && a.notSold === b.notSold;
+/** เรียงคงที่ (audit/อ่าน): รหัสช่องทาง (ทุกช่องทางก่อน) → สาขา (ทุกสาขาก่อน) */
+const cpSort = <T extends { channelCode: string | null; unitId: string | null }>(rows: T[]): T[] =>
+  [...rows].sort((a, b) => (a.channelCode ?? "").localeCompare(b.channelCode ?? "") || (a.unitId ?? "").localeCompare(b.unitId ?? ""));
+const cpPlain = (r: CpRow) => ({ channelCode: r.channelCode, unitId: r.unitId, priceSatang: r.priceSatang, notSold: r.notSold });
+
+/** แถวหนึ่งของอินพุต → ค่าที่ตรวจแล้ว (คีย์ตรงตัว · notSold ⇒ ราคา null · ไม่ notSold ⇒ ราคา 0..PRICE_MAX) */
+function cleanCpRow(v: unknown): CpRow {
+  const o = ownFields(v, CP_ROW_KEYS, "แถวราคา", "แถวราคามีช่องที่ระบบไม่รู้จัก — ยังไม่ได้บันทึกอะไร");
+  const code = o.channelCode === undefined ? null : o.channelCode;
+  const unit = o.unitId === undefined ? null : o.unitId;
+  if (code !== null && (typeof code !== "string" || !CHANNEL_CODE_RE.test(code))) throw invalid("ไม่รู้จักช่องทางนี้");
+  if (unit !== null && (typeof unit !== "string" || !unit || unit.length > 200)) throw invalid("ไม่รู้จักสาขานี้");
+  if (code === null && unit === null) throw invalid("แถวที่ไม่ระบุทั้งช่องทางและสาขาคือราคาปกติ — ตั้งที่ราคาขายของสินค้า");
+  const notSold = o.notSold === undefined ? false : o.notSold;
+  if (typeof notSold !== "boolean") throw invalid("ค่า \"ไม่ขาย\" ไม่ถูกต้อง");
+  const price = o.priceSatang === undefined ? null : o.priceSatang;
+  if (notSold) {
+    if (price !== null) throw invalid("ช่องทางที่ไม่ขายต้องไม่มีราคา");
+  } else if (!isSatang(price)) throw invalid("ราคาต้องเป็นจำนวนเต็มสตางค์ไม่ติดลบ");
+  return { channelCode: code as string | null, unitId: unit as string | null, priceSatang: notSold ? null : (price as number), notSold };
+}
+
+/** รหัสช่องทางที่ใช้ได้ในระบบนี้ = builtin ∪ รหัสของ SalesChannel ที่ยังไม่เก็บถาวร (สาขาใดก็ได้ของระบบ) */
+async function liveChannelCodes(ctx: CatalogCtx, codes: string[], db: CatalogClient): Promise<Set<string>> {
+  const want = [...new Set(codes.filter((c) => !isChannelBuiltinCode(c)))];
+  const live = new Set<string>(CHANNEL_BUILTIN_CODES);
+  if (!want.length) return live;
+  const rows = await db.salesChannel.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, code: { in: want }, archivedAt: null }, select: { code: true } });
+  for (const r of rows) live.add(r.code);
+  return live;
+}
+
+/** สาขาที่ผูกระบบ POS นี้และไม่เก็บถาวร */
+async function liveUnitsOfPos(ctx: CatalogCtx, db: CatalogClient): Promise<Set<string>> {
+  const links = await db.appSystemUnit.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, type: "POS" }, select: { unitId: true } });
+  if (!links.length) return new Set();
+  const units = await db.businessUnit.findMany({ where: { tenantId: ctx.tenantId, id: { in: links.map((l) => l.unitId) }, status: { not: "ARCHIVED" } }, select: { id: true } });
+  return new Set(units.map((u) => u.id));
+}
+
+/**
+ * สิทธิ์ราคาตามขอบเขตของแถว (Q5 · มติ 6): แถวสาขา = pos.product.setPrice ที่สาขานั้น (เข้าไม่ได้ = PERMISSION_DENIED) ·
+ * แถวทุกสาขา = ขอบเขตของสินค้า (แถวสินค้าของสาขา = สาขานั้น · สินค้าทุกสาขา = ทุกสาขาที่ขายแถวนี้ได้ — กติกาเดียวกับ setPrice/access.ts)
+ * · แคชต่อขอบเขต (bulk 500 สินค้าไม่ถามซ้ำ)
+ */
+async function requirePriceRowScope(
+  ctx: CatalogCtx,
+  actor: MembershipCtx | null,
+  product: { unitId: string | null; invItemId: string | null },
+  rowUnitId: string | null,
+  db: CatalogClient,
+  cache: Map<string, CatalogWriteVerdict>,
+): Promise<void> {
+  if (actor === null) return;
+  const scope: CatalogRowScope = { unitId: rowUnitId ?? product.unitId, invItemId: scopeInv(product, rowUnitId) };
+  const key = `${scope.unitId ?? "*"}|${scope.invItemId ?? "-"}`;
+  let v = cache.get(key);
+  if (!v) {
+    v = await rowWriteVerdict(actor, ctx, scope, PERM_SET_PRICE, db);
+    cache.set(key, v);
+  }
+  // แถวของสาขาที่ผู้กระทำเข้าไม่ได้ = ไม่มีสิทธิ์ (สินค้าเองมองเห็นแล้ว — ไม่ใช่ 404)
+  if (v !== "OK") throw denied();
+}
+const scopeInv = (product: { unitId: string | null; invItemId: string | null }, rowUnitId: string | null): string | null =>
+  rowUnitId === null && product.unitId === null ? product.invItemId : null;
+
+/**
+ * R2 — แทนแถวราคาตามช่องทาง/สาขาของสินค้า 1 รายการทั้งชุด ในธุรกรรมเดียว (ล็อกแถวสินค้าก่อนอ่านค่าเดิม)
+ *   • อินพุต `{productId, rows:[{channelCode|null, unitId|null, priceSatang|null, notSold?}]}` คีย์ตรงตัว · ≤ CHANNEL_PRICE_ROWS_MAX แถว ·
+ *     (code, unit) ซ้ำ / (null, null) / notSold+ราคา / ไม่ notSold+ไม่มีราคา / ราคานอก 0..PRICE_MAX / รหัสที่ไม่ใช่ builtin หรือช่องทางที่ยังไม่เก็บของระบบ /
+ *     สาขาที่ไม่ผูก POS นี้ / สินค้าชั่ง (CD7) = VALIDATION — ไม่เขียนอะไร
+ *   • สิทธิ์ pos.product.setPrice ตามขอบเขตของ "แถวที่เพิ่ม/เปลี่ยน/ลบ" (มติ 6 — ผู้จัดการสาขา A ลบแถวทุกสาขาไม่ได้) · แถวที่ไม่เปลี่ยนไม่ต้องมีสิทธิ์
+ *   • สินค้าของร้าน/ระบบอื่น หรือไม่มีจริง = NOT_FOUND (มติ 1 · แบบ 404) · ไม่เขียนกลับ AccountProduct/InvItem (บัญชีเก็บราคาปกติ)
+ *   • audit `pos.product.channelPrice` {productId, rows} ก่อน → หลัง (actorId = ผู้ใช้จริง) เมื่อมีอะไรเปลี่ยน
+ */
+export async function setChannelPrices(
+  ctx: CatalogCtx,
+  input: { productId: string; rows: ChannelPriceInputRow[] },
+  client: CatalogClient = prisma,
+): Promise<{ productId: string; rows: CpRow[]; changed: boolean }> {
+  return boundary(async () => {
+    assertCleanInputs(ctx, input);
+    const top = ownFields(input, CP_TOP_KEYS, "ราคาตามช่องทาง", "ข้อมูลราคาตามช่องทางมีช่องที่ระบบไม่รู้จัก — ยังไม่ได้บันทึกอะไร");
+    if (!Array.isArray(top.rows)) throw invalid("แถวราคาต้องเป็นรายการ");
+    if (top.rows.length > CHANNEL_PRICE_ROWS_MAX) throw invalid(`ตั้งราคาตามช่องทางได้ไม่เกิน ${CHANNEL_PRICE_ROWS_MAX} แถวต่อสินค้า`);
+    const want = top.rows.map(cleanCpRow);
+    const seen = new Set<string>();
+    for (const r of want) {
+      if (seen.has(cpKey(r))) throw invalid("มีแถวช่องทาง/สาขาซ้ำกัน");
+      seen.add(cpKey(r));
+    }
+    return inTx(client, async (tx) => {
+      await assertPosSystem(ctx, tx);
+      const actor = await actorOf(ctx, tx);
+      const product = await loadProduct(ctx, actor, top.productId, tx, true);
+      const parent = product.parentId ? await tx.posProduct.findFirst({ where: { id: product.parentId, tenantId: ctx.tenantId }, select: { soldByWeight: true } }) : null;
+      // CD7: สินค้าชั่ง (รวมตัวแปรของสินค้าชั่ง) ไม่มีราคาตามช่องทาง/กติกาใน P2.2
+      if (product.soldByWeight || parent?.soldByWeight) throw invalid("สินค้าขายตามน้ำหนักยังตั้งราคาตามช่องทางไม่ได้");
+      const codes = await liveChannelCodes(ctx, want.flatMap((r) => (r.channelCode ? [r.channelCode] : [])), tx);
+      if (want.some((r) => r.channelCode !== null && !codes.has(r.channelCode))) throw invalid("ไม่รู้จักช่องทางนี้");
+      if (want.some((r) => r.unitId !== null)) {
+        const units = await liveUnitsOfPos(ctx, tx);
+        if (want.some((r) => r.unitId !== null && !units.has(r.unitId))) throw invalid("ไม่รู้จักสาขานี้");
+        // สินค้าของสาขา: แถวราคาของสาขาอื่นไม่มีความหมาย
+        if (product.unitId && want.some((r) => r.unitId !== null && r.unitId !== product.unitId)) throw invalid("สินค้านี้ขายเฉพาะสาขาเดียว — ตั้งราคาของสาขาอื่นไม่ได้");
+      }
+      const beforeRows = await tx.posProductChannelPrice.findMany({
+        where: { tenantId: ctx.tenantId, systemId: ctx.systemId, productId: product.id },
+        select: { id: true, channelCode: true, unitId: true, priceSatang: true, notSold: true },
+      });
+      const beforeBy = new Map(beforeRows.map((r) => [cpKey(r), r]));
+      const wantBy = new Map(want.map((r) => [cpKey(r), r]));
+      const removed = beforeRows.filter((r) => !wantBy.has(cpKey(r)));
+      const touched = [...want.filter((r) => !beforeBy.has(cpKey(r)) || !cpSame(beforeBy.get(cpKey(r))!, r)), ...removed];
+      const cache = new Map<string, CatalogWriteVerdict>();
+      for (const r of touched) await requirePriceRowScope(ctx, actor, product, r.unitId, tx, cache);
+      if (!touched.length) {
+        // ไม่มีอะไรเปลี่ยน: ยังต้องมีสิทธิ์ราคาของสินค้านี้ (ผู้ไม่มีสิทธิ์ไม่ได้ "สำเร็จ")
+        await requirePriceRowScope(ctx, actor, product, want.find((r) => r.unitId !== null)?.unitId ?? null, tx, cache);
+        return { productId: product.id, rows: cpSort(want), changed: false };
+      }
+      const userId = auditUserOf(ctx);
+      if (removed.length) await tx.posProductChannelPrice.deleteMany({ where: { tenantId: ctx.tenantId, id: { in: removed.map((r) => r.id) } } });
+      for (const r of want) {
+        const prev = beforeBy.get(cpKey(r));
+        if (prev && cpSame(prev, r)) continue;
+        if (prev) await tx.posProductChannelPrice.update({ where: { id: prev.id }, data: { priceSatang: r.priceSatang, notSold: r.notSold, updatedByUserId: userId } });
+        else
+          await tx.posProductChannelPrice.create({
+            data: { tenantId: ctx.tenantId, systemId: ctx.systemId, productId: product.id, channelCode: r.channelCode, unitId: r.unitId, priceSatang: r.priceSatang, notSold: r.notSold, updatedByUserId: userId },
+          });
+      }
+      await audit(tx, ctx, "pos.product.channelPrice", "PosProduct", product.id, { productId: product.id, rows: cpSort(beforeRows.map(cpPlain)) }, { productId: product.id, rows: cpSort(want).map(cpPlain) });
+      return { productId: product.id, rows: cpSort(want), changed: true };
+    });
+  });
+}
+
+/** ผู้กระทำที่บันทึกใน updatedByUserId (ผู้เรียกระดับระบบ = ผู้ทำแทน หรือ "system") */
+function auditUserOf(ctx: CatalogCtx): string {
+  if (typeof ctx.actorUserId === "string") return ctx.actorUserId;
+  return typeof ctx.onBehalfOfUserId === "string" && ctx.onBehalfOfUserId ? ctx.onBehalfOfUserId : "system";
+}
+
+/**
+ * R2 · CD6 · Q6 — ตั้งราคาช่องทาง = ฐาน × (1 + bp) ปัดครั้งเดียวครึ่งขึ้น (roundTo 1 สตางค์ | 100 = บาท) เป็น "ราคาตายตัว" ทีละสินค้า
+ *   • อินพุตคีย์ตรงตัว `{channelCode, unitId|null, markupBp 1..BULK_MARKUP_BP_MAX, roundTo 1|100, productIds (≤ 500) | categoryId}` (อย่างใดอย่างหนึ่งเท่านั้น)
+ *   • เขียน/แทนเฉพาะแถว (channelCode, unitId) ของแต่ละสินค้า (แถวอื่นคงอยู่ · มติ 5) · ข้ามสินค้าที่ไม่มีราคาฐานของตัวเอง/สินค้าชั่ง/ค่าเท่าเดิม
+ *   • สิทธิ์ pos.product.setPrice ตามขอบเขตแถว (unitId null = ทุกสาขาที่ขายสินค้านั้น) — ขาดที่สินค้าใด = PERMISSION_DENIED ไม่เขียนอะไร
+ *   • audit `pos.product.channelPrice` 1 แถวต่อสินค้าที่เขียน (via bulk)
+ */
+export async function bulkChannelMarkup(
+  ctx: CatalogCtx,
+  input: { channelCode: string; unitId: string | null; markupBp: number; roundTo: 1 | 100; productIds?: string[]; categoryId?: string },
+  client: CatalogClient = prisma,
+): Promise<{ written: number; skipped: number; productIds: string[] }> {
+  return boundary(async () => {
+    assertCleanInputs(ctx, input);
+    const o = ownFields(input, BULK_KEYS, "ปรับราคาทั้งช่องทาง", "ข้อมูลปรับราคามีช่องที่ระบบไม่รู้จัก — ยังไม่ได้บันทึกอะไร");
+    if (typeof o.channelCode !== "string" || !CHANNEL_CODE_RE.test(o.channelCode)) throw invalid("ไม่รู้จักช่องทางนี้");
+    const code = o.channelCode;
+    const unitId = o.unitId === undefined || o.unitId === null ? null : o.unitId;
+    if (unitId !== null && (typeof unitId !== "string" || !unitId)) throw invalid("ไม่รู้จักสาขานี้");
+    if (typeof o.markupBp !== "number" || !Number.isInteger(o.markupBp) || o.markupBp < 1 || o.markupBp > BULK_MARKUP_BP_MAX) throw invalid(`บวกราคาได้ 0.01%–${BULK_MARKUP_BP_MAX / 100}%`);
+    if (o.roundTo !== 1 && o.roundTo !== 100) throw invalid("ปัดได้เป็นสตางค์ (1) หรือบาท (100) เท่านั้น");
+    const markupBp = o.markupBp;
+    const roundTo = o.roundTo as 1 | 100;
+    const hasIds = o.productIds !== undefined && o.productIds !== null;
+    const hasCat = o.categoryId !== undefined && o.categoryId !== null;
+    if (hasIds === hasCat) throw invalid("เลือกสินค้าเป็นรายการ หรือเลือกหมวด อย่างใดอย่างหนึ่ง");
+    let ids: string[] = [];
+    if (hasIds) {
+      if (!Array.isArray(o.productIds) || !o.productIds.length || o.productIds.length > BULK_MARKUP_PRODUCTS_MAX || !o.productIds.every((x) => typeof x === "string" && !!x && x.length <= 200)) {
+        throw invalid(`เลือกสินค้าได้ 1–${BULK_MARKUP_PRODUCTS_MAX} รายการ`);
+      }
+      ids = [...new Set(o.productIds as string[])];
+    } else if (typeof o.categoryId !== "string" || !o.categoryId) throw invalid("หมวดไม่ถูกต้อง");
+    return inTx(client, async (tx) => {
+      await assertPosSystem(ctx, tx);
+      const actor = await actorOf(ctx, tx);
+      const codes = await liveChannelCodes(ctx, [code], tx);
+      if (!codes.has(code)) throw invalid("ไม่รู้จักช่องทางนี้");
+      if (unitId !== null && !(await liveUnitsOfPos(ctx, tx)).has(unitId)) throw invalid("ไม่รู้จักสาขานี้");
+      if (hasCat) {
+        const cat = await tx.posCategory.findFirst({ where: { id: o.categoryId as string, tenantId: ctx.tenantId, systemId: ctx.systemId }, select: { id: true } });
+        if (!cat) throw notFound();
+        const rows = await tx.posProduct.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, categoryId: cat.id, archivedAt: null }, select: { id: true }, take: BULK_MARKUP_PRODUCTS_MAX + 1 });
+        if (rows.length > BULK_MARKUP_PRODUCTS_MAX) throw invalid(`หมวดนี้มีสินค้าเกิน ${BULK_MARKUP_PRODUCTS_MAX} รายการ — เลือกเป็นรายการแทน`);
+        ids = rows.map((r) => r.id);
+      }
+      // ล็อกแถวสินค้าทั้งชุด (เรียง id) ก่อนอ่านแถวราคาเดิม — ลำดับเดียวกับ setChannelPrices/setPrice
+      const locked = (await lockProductRows(tx, ctx.tenantId, ids)).filter((p) => p.systemId === ctx.systemId);
+      if (hasIds && locked.length !== ids.length) throw notFound();
+      const visible = locked.filter((p) => !(actor && p.unitId && !canAccessUnit(actor, p.unitId)));
+      if (hasIds && visible.length !== ids.length) throw notFound();
+      const existing = visible.length
+        ? await tx.posProductChannelPrice.findMany({
+            where: { tenantId: ctx.tenantId, systemId: ctx.systemId, productId: { in: visible.map((p) => p.id) }, channelCode: code, unitId },
+            select: { id: true, productId: true, priceSatang: true, notSold: true },
+          })
+        : [];
+      const exBy = new Map(existing.map((r) => [r.productId, r]));
+      const plan: { p: PosProduct; price: number; prev: (typeof existing)[number] | undefined }[] = [];
+      const cache = new Map<string, CatalogWriteVerdict>();
+      let skipped = 0;
+      for (const p of visible) {
+        // ข้าม: ไม่มีราคาฐานของตัวเอง (ตัวแปรที่สืบราคาแม่ใช้แถวของแม่อยู่แล้ว) · สินค้าชั่ง (CD7) · สินค้าของสาขาอื่นเมื่อระบุสาขา
+        if (p.basePriceSatang === null || p.soldByWeight || (unitId !== null && p.unitId !== null && p.unitId !== unitId)) {
+          skipped++;
+          continue;
+        }
+        // สิทธิ์ตรวจก่อนข้ามค่าที่เท่าเดิม (ผู้ไม่มีสิทธิ์ได้ PERMISSION_DENIED เสมอ ไม่ใช่ "สำเร็จ 0 แถว")
+        await requirePriceRowScope(ctx, actor, p, unitId, tx, cache);
+        const price = channelMarkupPrice(p.basePriceSatang, markupBp, roundTo);
+        if (price > MAX_INT4) throw invalid("ราคาหลังบวกเกินเพดานที่ระบบรับได้");
+        const prev = exBy.get(p.id);
+        if (prev && !prev.notSold && prev.priceSatang === price) {
+          skipped++;
+          continue;
+        }
+        plan.push({ p, price, prev });
+      }
+      const userId = auditUserOf(ctx);
+      for (const x of plan) {
+        if (x.prev) await tx.posProductChannelPrice.update({ where: { id: x.prev.id }, data: { priceSatang: x.price, notSold: false, updatedByUserId: userId } });
+        else await tx.posProductChannelPrice.create({ data: { tenantId: ctx.tenantId, systemId: ctx.systemId, productId: x.p.id, channelCode: code, unitId, priceSatang: x.price, notSold: false, updatedByUserId: userId } });
+        const before = x.prev ? [{ channelCode: code, unitId, priceSatang: x.prev.priceSatang, notSold: x.prev.notSold }] : [];
+        await audit(tx, ctx, "pos.product.channelPrice", "PosProduct", x.p.id, { productId: x.p.id, rows: before }, {
+          productId: x.p.id,
+          rows: [{ channelCode: code, unitId, priceSatang: x.price, notSold: false }],
+          via: "bulk",
+          markupBp,
+          roundTo,
+        });
+      }
+      return { written: plan.length, skipped, productIds: plan.map((x) => x.p.id) };
     });
   });
 }
