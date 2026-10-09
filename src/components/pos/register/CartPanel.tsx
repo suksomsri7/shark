@@ -285,10 +285,16 @@ export function CartPanel(p: Props) {
             aria-label={p.taxInvoiceSet ? `${t("actions.taxInvoice")} · ${t("taxInvoice.set")}` : undefined}
             onClick={p.onTaxInvoice}
           >
-            <RegisterIcon name="doc" size={12} />
-            <span className="truncate xl:hidden">{t("actions.taxInvoiceShort")}</span>
-            <span className="hidden truncate xl:inline">{t("actions.taxInvoice")}</span>
-            {p.taxInvoiceSet && <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-[color:var(--color-ink)]" />}
+            {/* fix V1: ตั้งผู้ซื้อแล้ว = ไอคอน ✓ + ป้ายสั้น "ใบกำกับ" ทุกความกว้าง (ป้ายเต็ม + ตัวหนา + จุด ล้นจนตัดเป็น "ใบกำกับเต็..." ที่ 1440/1024) */}
+            <RegisterIcon name={p.taxInvoiceSet ? "check" : "doc"} size={12} />
+            {p.taxInvoiceSet ? (
+              <span className="truncate">{t("actions.taxInvoiceShort")}</span>
+            ) : (
+              <>
+                <span className="truncate xl:hidden">{t("actions.taxInvoiceShort")}</span>
+                <span className="hidden truncate xl:inline">{t("actions.taxInvoice")}</span>
+              </>
+            )}
           </button>
         </div>
       )}
