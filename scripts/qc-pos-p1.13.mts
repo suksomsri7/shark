@@ -66,6 +66,7 @@ const CHECKS: readonly Def[] = [
   D("L3", "-", "[R3] paidAt 8 วันก่อน → TOO_LATE (ไม่มี snapshot/เอกสาร · ABB ยังมีผล) · paidAt 6 วันก่อน → ออกได้ (ตัวควบคุมบวก)"),
   D("L4", "-", "[R1 R3] ALREADY_ISSUED: บิลที่ออกเต็มรูปตอนชำระ (ผู้ซื้อคนอื่น) · SALE_VOIDED: บิลที่ voidSale แล้ว — ไม่มีเอกสาร/สถานะเปลี่ยน"),
   D("L5", "X3", "[R3] NOT_ELIGIBLE บิล POS ไม่ผูกสมุด · ACCOUNT_PENDING บิลผูกสมุดที่ยังไม่มี ABB (ไม่เขียนอะไร) · PERMISSION_DENIED พนักงานมีแค่ pos.sale.read · ผ่านด่านสิทธิ์ (ได้ ACCOUNT_PENDING): พนักงาน pos.sale.read+pos.taxinvoice.issue · MANAGER ปริยาย · SALE_NOT_FOUND id มั่ว · TAX_ID_INVALID"),
+  D("L6", "-", "[R3 มติ 15 · ORACLE-EDIT] คืนเงินบางส่วนแล้วออกเต็มรูป → HAS_REFUNDS (ไม่มี snapshot/docId · ไม่มี TAX_INVOICE · ABB ยังมีผล · ไม่มี audit pos.taxinvoice.issued)"),
   // ── Q จากคำขอ P1.11 ──
   D("Q1", "X5", "[R4 R3] issueFromTaxInvoiceRequest(คำขอ REQUESTED) → ok docId · คำขอ ISSUED + issuedDocId = docId (accountDocId null หรือ = docId) · ผู้ซื้อจากแถวคำขอ (ชื่อ/เลข/สาขา/ที่อยู่/อีเมล · kind JURISTIC เมื่อเลขขึ้นต้น 0) · ABB superseded · audit pos.taxinvoice.issued"),
   D("Q2", "X5", "[R4] rejectTaxInvoiceRequest → ok · REJECTED · audit pos.taxinvoice.rejected (มีเหตุผล) · ไม่มีเอกสารใหม่ · ABB ยังมีผล · เหตุผลว่าง → VALIDATION"),
@@ -841,6 +842,7 @@ async function runDb() {
   await regSale("bQ2", "A", [["ส้ม P113", 1, 1900]], [["CASH", 1900]]);
   await regSale("bQ3", "A", [["มะนาว P113", 1, 1800]], [["CASH", 1800]]);
   await regSale("bAbb", "A", [["แก้ว P113", 1, 3300]], [["CASH", 3300]]);
+  await regSale("bR6", "A", [["จาน P113", 1, 2500], ["ช้อน P113", 1, 1500]], [["CASH", 4000]]); // ORACLE-EDIT L6 (มติ 15)
   // บิลผูกสมุดที่ไม่มี ABB (ใส่ผ่าน prisma · ไม่มี outbox) — ACCOUNT_PENDING
   {
     let id = "", err = "";
@@ -1155,6 +1157,26 @@ async function runDb() {
     if (!refused(rT, "TAX_ID_INVALID")) p.push(`taxId ผิด → ${codeOf(rT)}`);
     if ((await docsOf(B.bAbb!.id, "TAX_INVOICE")).length) p.push("taxId ผิดแล้วมีเอกสาร");
     chk("L5", NI === "" && p.length === 0, "NOT_ELIGIBLE · ACCOUNT_PENDING · PERMISSION_DENIED · ผ่านสิทธิ์ 2 แบบ · SALE_NOT_FOUND · TAX_ID_INVALID", FXB(NI + (p.join(" · ") || "ครบ")));
+  }
+
+  // ════════ L6 คืนเงินบางส่วนแล้วออกเต็มรูป → HAS_REFUNDS (ORACLE-EDIT · มติผู้คุมงาน 15) ════════
+  {
+    const p: string[] = [];
+    const b6 = B.bR6!;
+    const lineId = b6.L["ช้อน P113"] ?? "";
+    const rf = b6.id
+      ? await call(refundMod, "refundSale", ctxOf("A", DEV1), owner, { saleId: b6.id, lines: [{ lineId, qty: 1 }], payMethods: [{ type: "CASH", amountSatang: 1500 }], reasonCode: "CHANGED_MIND", reason: "ลูกค้าเปลี่ยนใจ", idempotencyKey: newKey("r6") })
+      : { ok: false, code: "NO_SALE" };
+    if (rf?.ok !== true) p.push(`(ข้อมูล) คืน bR6: ${codeOf(rf)} ${short(rf?.message ?? "", 60)}`);
+    await drain();
+    const r = await issue(ctxOf("A"), owner, { saleId: b6.id, buyer: { ...BUY_L2 } }, "issue หลังคืนบางส่วน");
+    if (!refused(r, "HAS_REFUNDS")) p.push(`หลังคืนบางส่วน → ${codeOf(r)} ${short(r?.message ?? "", 50)}`);
+    const st = await saleTax(b6.id);
+    if (COL.snap && (st.snap !== null || st.docId !== null)) p.push("มี snapshot/docId");
+    if ((await docsOf(b6.id, "TAX_INVOICE")).length) p.push("มี TAX_INVOICE");
+    if ((await liveDocs(b6.id)) !== 1 || (await abbOf(b6.id))?.status === "CANCELLED") p.push("ABB ไม่มีผลแล้ว");
+    if ((await audits(AUDIT_ISSUED, (a) => a.targetId === b6.id)).length) p.push(`มี audit ${AUDIT_ISSUED}`);
+    chk("L6", NI === "" && p.length === 0, "คืนบางส่วนแล้ว = HAS_REFUNDS ไม่เขียนอะไร", FXB(NI + (p.join(" · ") || "ครบ")));
   }
 
   // ════════ Q จากคำขอ P1.11 ════════

@@ -59,11 +59,11 @@ Contract: `ledger/pos-briefs/pos-brief-P1.13.md` §2 R1–R9, §3, §4, §5 CD1�
 | 23 | messages | `src/messages/{th,en}/pos.json` → `taxInvoice.errors.{validation, taxIdInvalid, tooLate, saleVoided, alreadyIssued, notEligible, accountPending, permissionDenied, saleNotFound, notFound, dbdNotConfigured, dbdUnavailable, rateLimited, internal, unknown}` |
 | 24 | ledger | `ledger/POS-OWNER-PENDING.md` mentions `supersededByDocId` (account-schema touch, CD5) |
 
-## Check list (30 · S=4 P=4 X1=2 X2=3 X3=1 X4=2 X5=7 functional=7)
+## Check list (31 · S=4 P=4 X1=2 X2=3 X3=1 X4=2 X5=7 functional=8 — L6 added by ORACLE-EDIT, controller ruling 15)
 ST1 schema + additive migration · ST2 registrations/labels/permission/messages/owner-pending · ST3 pos→account facade only, facade exports, no direct account/customer writes, no DBD key/fetch, pure shared file · ST4 "use server" only async functions + 5 actions ·
 B1 parser happy paths/defaults/trim · B2 mod-11 (4 good, 7 bad; oracle self-control) · B3 branch/kind/source · B4 length/shape limits + message-key mapper ·
 S1 snapshot at pay time (linked + unlinked) + invalid buyer writes nothing · S2 TAX_INVOICE (no ABB) + contact by taxId + taxInvoiceDocId · S3 GL equal to identical sale without buyer · S4 event once + replay ×2 + unlinked no doc ·
-L1 later issue (ABB −2 d): supersede, same amounts/lines/date, GL unchanged, snapshot, audit · L2 idempotent / ALREADY_ISSUED · L3 TOO_LATE −8 d vs −6 d · L4 ALREADY_ISSUED (pay-time) + SALE_VOIDED · L5 NOT_ELIGIBLE, ACCOUNT_PENDING, permissions (deny + 2 positive controls), SALE_NOT_FOUND, TAX_ID_INVALID ·
+L1 later issue (ABB −2 d): supersede, same amounts/lines/date, GL unchanged, snapshot, audit · L2 idempotent / ALREADY_ISSUED · L3 TOO_LATE −8 d vs −6 d · L4 ALREADY_ISSUED (pay-time) + SALE_VOIDED · L5 NOT_ELIGIBLE, ACCOUNT_PENDING, permissions (deny + 2 positive controls), SALE_NOT_FOUND, TAX_ID_INVALID · L6 (ORACLE-EDIT, ruling 15) partial refund then issue ⇒ HAS_REFUNDS, nothing written ·
 Q1 from request → ISSUED + issuedDocId · Q2 reject → REJECTED + audit · Q3 other unit/unknown → NOT_FOUND ·
 D1 DBD stub found/not found/unavailable/throw + masked audit · D2 no key + bad id · D3 30/min per unit ·
 M1 profile upsert per member, Customer untouched · M2 prefill + no leak ·
@@ -84,3 +84,6 @@ R1 credit note references TAX_INVOICE (ABB control) · E1 13 refusal codes as Th
 - Forced run #2 (after the Z1 change): **1/30**, exit 1 — only Z1 green (residue 0, no leaked rows); 29 red as above.
 - Typecheck: `env NODE_OPTIONS=--max-old-space-size=5632 ISO_MEM=6500M bash scripts/iso.sh flock -w 3600 /tmp/pos-gate.lock pnpm typecheck` → **exit 0**, 0 errors (05:09–05:13Z, lock free, full project incl. `scripts/qc-pos-p1.13.mts`).
 - Not run here (builder's job, CD6/COMMON §7): `qc-pos-account`, `qc-account-cpa` and the other money suites before/after the build.
+
+## ORACLE-EDIT L6 (builder S · 9 Oct · controller ruling 15)
+Added check `L6`: fixture bill `bR6` (2 lines, POS-A), partial refund of one line, then `issueFullTaxInvoice` ⇒ `HAS_REFUNDS`; no snapshot/docId, no TAX_INVOICE, ABB still live, no `pos.taxinvoice.issued` audit. Count 30 → 31.
