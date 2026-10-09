@@ -92,6 +92,8 @@ const SOURCES: readonly string[] = ["MANUAL", "DBD", "PROFILE"];
 const EMAIL_RE = /^[^\s@]+@[^\s@.]+(\.[^\s@.]+)+$/;
 const NO_CTRL = /[\u0000-\u0008\u000B-\u001F\u007F]/;
 const isRecord = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
+/** follow-up 1: ตัดช่องว่างและขีด (เลขผู้เสียภาษี · รหัสสาขา) — ตัวอักษรอื่นยังอยู่ ⇒ ตัวตรวจปฏิเสธ */
+const digitsOnly = (s: string) => s.replace(/[\s\-\u2010-\u2015]/g, "");
 /** ความยาวแบบนับรหัสอักขระ (ไม่นับ surrogate คู่เป็น 2) */
 const textLength = (s: string) => Array.from(s).length;
 
@@ -117,6 +119,7 @@ type ParseResult = { ok: true; buyer: TaxInvoiceBuyer } | { ok: false; code: "VA
 /**
  * แกะ/ตรวจผู้ซื้อ (R1) — {ok:true, buyer} | {ok:false, code VALIDATION|TAX_ID_INVALID, message} · ไม่ throw
  * ลำดับ: รูปร่าง/คีย์ → kind → ชื่อ → ที่อยู่ → สาขา → อีเมล → source → เลขผู้เสียภาษี
+ * เลขผู้เสียภาษี/สาขา: ตัดช่องว่างและขีดก่อนตรวจ · สาขาว่าง = "00000" (follow-up 1)
  */
 export function parseTaxInvoiceBuyer(input: unknown): ParseResult {
   const bad = (message?: string): ParseResult => ({ ok: false, code: "VALIDATION", message: message ?? TAX_INVOICE_MESSAGES.VALIDATION });
@@ -133,11 +136,13 @@ export function parseTaxInvoiceBuyer(input: unknown): ParseResult {
   const address = str(input.address);
   if (!address || textLength(address) > TAX_INVOICE_ADDRESS_MAX || NO_CTRL.test(address)) return bad(`ที่อยู่ผู้ซื้อต้องมี 1–${TAX_INVOICE_ADDRESS_MAX} ตัวอักษร`);
 
+  // follow-up 1: ตัดช่องว่าง/ขีดออกก่อนตรวจ (คนพิมพ์ "0-1055-61177-63-9" / "00 001") · ว่าง = สำนักงานใหญ่
   let branchCode = HEAD_OFFICE_BRANCH_CODE;
   if (input.branchCode !== undefined && input.branchCode !== null) {
-    const b = str(input.branchCode);
-    if (b === null || !/^\d{5}$/.test(b)) return bad("รหัสสาขาต้องเป็นตัวเลข 5 หลัก (สำนักงานใหญ่ = 00000)");
-    branchCode = b;
+    if (typeof input.branchCode !== "string") return bad("รหัสสาขาต้องเป็นตัวเลข 5 หลัก (สำนักงานใหญ่ = 00000)");
+    const b = digitsOnly(input.branchCode);
+    if (b !== "" && !/^\d{5}$/.test(b)) return bad("รหัสสาขาต้องเป็นตัวเลข 5 หลัก (สำนักงานใหญ่ = 00000)");
+    if (b) branchCode = b;
   }
 
   let email: string | null = null;
@@ -156,7 +161,7 @@ export function parseTaxInvoiceBuyer(input: unknown): ParseResult {
     source = input.source as TaxInvoiceBuyerSource;
   }
 
-  const taxId = str(input.taxId);
+  const taxId = typeof input.taxId === "string" ? digitsOnly(input.taxId) : null;
   if (!taxId || !isValidThaiTaxIdChecksum(taxId)) return { ok: false, code: "TAX_ID_INVALID", message: TAX_INVOICE_MESSAGES.TAX_ID_INVALID };
 
   return { ok: true, buyer: { kind, name, taxId, branchCode, address, email, source } };
