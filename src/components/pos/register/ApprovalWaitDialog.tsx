@@ -27,7 +27,10 @@ export function ApprovalWaitDialog(p: {
   unitId: string;
   deviceId?: string;
   requestId: string;
-  onPin: (managerUserId: string, pin: string) => Promise<ApprovalPinResult>;
+  /** view = สถานะล่าสุดของคำขอ (ผู้เรียกใช้เหตุผลเดิมเมื่อส่งซ้ำ) */
+  onPin: (managerUserId: string, pin: string, view: PosApprovalView | null) => Promise<ApprovalPinResult>;
+  /** false = ซ่อนทาง PIN (ผู้เรียกส่งคำขอเดิมซ้ำไม่ได้ เช่น คืนเงินที่ยื่นจากที่อื่น) */
+  allowPin?: boolean;
   onDone: (view: PosApprovalView) => void;
   onClose: () => void;
 }) {
@@ -94,7 +97,7 @@ export function ApprovalWaitDialog(p: {
     setPin("");
     setErr(null);
     try {
-      const r = await p.onPin(mgr, value);
+      const r = await p.onPin(mgr, value, view);
       if (r.ok) doneRef.current = true;
       else setErr(t(r.code === "PIN_LOCKED" ? "lock.pinLocked" : refusalMessageKey(r.code)));
     } catch {
@@ -186,11 +189,14 @@ export function ApprovalWaitDialog(p: {
               </span>
             </div>
           )}
+          {p.allowPin !== false && (
           <div className="flex items-center gap-3 text-[12px] text-[color:var(--color-muted)]">
             <span className="h-px flex-1 bg-[color:var(--color-line)]" />
             {t("approval.or")}
             <span className="h-px flex-1 bg-[color:var(--color-line)]" />
           </div>
+          )}
+          {p.allowPin !== false && (
           <div className="grid gap-4 md:grid-cols-[1fr_auto]">
             <div className="flex flex-col gap-3">
               <h3 className="text-[15px] font-bold">{t("approval.pinTitle")}</h3>
@@ -256,6 +262,7 @@ export function ApprovalWaitDialog(p: {
               </button>
             </div>
           </div>
+          )}
         </div>
         <footer className="flex items-center gap-3 border-t px-6 py-4">
           <p className="flex-1 text-[12px] text-[color:var(--color-muted)]">{t("approval.footer")}</p>

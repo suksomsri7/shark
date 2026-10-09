@@ -17,7 +17,7 @@ import { saleForRefund } from "./refund";
 import { PAY_TYPE_ORDER, PosSaleError, voidSale, type VoidSaleAudit } from "./service";
 // POS P1.15 ▸ R5: ยกเลิกบิลผ่านสายอนุมัติ (POS_VOID) · PIN ผู้จัดการชนะคำขอที่รอ (CD4) ◂
 import { POS_APPROVAL_MESSAGE, auditPinOverride, cancelOpenPosRequest, submitPosApproval } from "./pos-approval";
-import { verifyManagerPin } from "./staff-pin";
+import { staffActorFromToken, verifyManagerPin } from "./staff-pin";
 import { moneyText, type RegisterActor, type RegisterCtx } from "./register-shared";
 import {
   BILL_PAGE_SIZES,
@@ -488,9 +488,16 @@ async function voidedWithKey(tenantId: string, saleId: string, key: string): Pro
 export async function voidSaleByActor(ctx: RegisterCtx, actor: RegisterActor, input: unknown): Promise<VoidSaleActionResult> {
   try {
     const c = ctxOf(ctx);
-    const a = actorOf(actor);
+    let a = actorOf(actor);
     if (!a) return refuse("NO_PERMISSION");
     if (!c || !isRecord(input) || !isId(input.unitId)) return refuse("VALIDATION");
+    // POS P1.15U ▸ มติ 2: staffToken = ผู้ขอคือคนในโทเคนของเครื่องนี้ (กติกาเดียวกับ submit) · ผิด/หมดอายุ/เครื่องอื่น = STAFF_TOKEN_INVALID ไม่ถอยไปใช้ session ◂
+    if (!absent(input.staffToken)) {
+      const dev = isRecord(ctx) && typeof ctx.deviceId === "string" ? ctx.deviceId : undefined;
+      const ta = dev ? await staffActorFromToken({ tenantId: c.tenantId, unitId: input.unitId, deviceId: dev }, input.staffToken) : null;
+      if (!ta) return { ok: false, code: "STAFF_TOKEN_INVALID", message: "การเข้าใช้งานของพนักงานบนเครื่องนี้หมดอายุหรือไม่ถูกต้อง — ใส่ PIN อีกครั้ง" };
+      a = ta;
+    }
     if (typeof input.idempotencyKey !== "string" || !input.idempotencyKey.trim() || input.idempotencyKey.length > MAX_KEY) return refuse("VALIDATION", "รหัสรายการ (idempotencyKey) ไม่ถูกต้อง");
     if (!isId(input.saleId)) return refuse("SALE_NOT_FOUND");
     const { tenantId, systemId } = c;

@@ -124,7 +124,9 @@ export type VoidSaleActionResult =
   | BillsRefusal
   // POS P1.15 ▸ PIN ผู้จัดการผิด/ล็อก/เครื่องถูกเพิกถอน · ต้องรออนุมัติ (requestId) — จอแปลด้วย refusalMessageKey ของ pos.register ◂
   | { ok: false; code: "PIN_INVALID" | "PIN_LOCKED" | "DEVICE_REVOKED"; message: string }
-  | { ok: false; code: "APPROVAL_REQUIRED" | "PENDING_APPROVAL"; message: string; requestId: string };
+  | { ok: false; code: "APPROVAL_REQUIRED" | "PENDING_APPROVAL"; message: string; requestId: string }
+  // POS P1.15U ▸ staffToken ผิด/หมดอายุ (ผู้ขอ = คนในโทเคน · มติ 2) ◂
+  | { ok: false; code: "STAFF_TOKEN_INVALID"; message: string };
 
 /** ป้ายเหตุผลการคืนเงิน (ไทม์ไลน์ · หน้าต่างคืนเงิน) — ตรงกับ REFUND_REASON_CODES ของ P1.8 */
 export const REFUND_REASON_LABEL_TH: Record<string, string> = {

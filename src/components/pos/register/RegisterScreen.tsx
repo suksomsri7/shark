@@ -1574,6 +1574,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
             deviceId={deviceId}
             requestId={l.requestId}
             onPin={(mgr, pin) => approvalPin(l.heldCartId, mgr, pin)}
+            allowPin={!!l.heldCartId}
             onDone={(v) => approvalDone(v, l.heldCartId)}
             onClose={pop}
           />
