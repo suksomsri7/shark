@@ -1793,7 +1793,9 @@ export function RegisterScreen(props: RegisterScreenProps) {
       className="flex min-h-[calc(100dvh-3.5rem)] flex-col bg-[color:var(--color-surface)] md:h-[calc(100dvh-3.5rem)] md:min-h-0 md:overflow-hidden"
     >
       {/* B2.2 S2: มีกล่องเปิด ⇒ ทุกอย่างหลังม่าน inert (คลิก/โฟกัส/โปรแกรมอ่านจอไม่ถึง) · contents = ไม่เปลี่ยนเลย์เอาต์ flex */}
-      <div className="contents" inert={layers.length > 0 || locked}>
+      {/* POS P1.15U ▸ จอล็อกทับอยู่ ⇒ ทั้งจอขายและชั้นกล่อง inert (จอล็อก/ข้อความลอยอยู่นอกกรอบนี้) ◂ */}
+      <div className="contents" inert={locked}>
+      <div className="contents" inert={layers.length > 0}>
         <h1 className="sr-only">{t("title")}</h1>
         <RegisterTopContext
           wide={wide}
@@ -1907,10 +1909,11 @@ export function RegisterScreen(props: RegisterScreenProps) {
 
       {/* ── ชั้นกล่อง (วาดตามลำดับ — ตัวท้ายอยู่บนสุด) · ชั้นที่ไม่ใช่บนสุด = inert (B2.2 S2) ── */}
       {layers.map((l, i) => (
-        <div key={`${l.kind}-${i}`} className="contents" inert={i < layers.length - 1 || locked}>
+        <div key={`${l.kind}-${i}`} className="contents" inert={i < layers.length - 1}>
           {layerNode(l, `${l.kind}-${i}`)}
         </div>
       ))}
+      </div>
       {toast && (
         <div
           data-testid="pos-reg-toast"
