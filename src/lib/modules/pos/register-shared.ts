@@ -364,6 +364,8 @@ export type RegisterStatus = {
   pendingSyncCount: number;
   /** POS P1.10 (แก้รอบ 1 F10): สถานะทะเบียนของเครื่องนี้ — null = ไม่ส่ง deviceId / ไม่ได้ลงทะเบียน · REVOKED = จอควรล็อกการขาย */
   deviceStatus?: "ACTIVE" | "REVOKED" | null;
+  /** POS P1.13U มติ 2: ระบบนี้ออกใบกำกับภาษีเต็มรูปได้ (สมุดผูก · จด VAT · เปิดใบอย่างย่อ · มีเลขภาษี) — false = ปุ่ม/สวิตช์ใบกำกับจางพร้อมเหตุผล */
+  taxInvoiceEligible: boolean;
 };
 export type RegisterStatusResult = RegisterStatus | RegisterRefusal;
 /** POS P1.9 (S15) — กะของเครื่องบนแถบสถานะ */

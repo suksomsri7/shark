@@ -48,6 +48,10 @@ type Props = {
   onRemoveMember?: () => void;
   onPay: () => void;
   onSoon: () => void;
+  /** POS P1.13U มติ 1–2: ปุ่ม "ใบกำกับเต็มรูป" เปิดกล่อง 15A · set = บิลนี้มีผู้ซื้อแล้ว (จุดบอก) · eligible false = จาง + เหตุผล (ไม่เปิดกล่อง) */
+  onTaxInvoice: () => void;
+  taxInvoiceSet: boolean;
+  taxInvoiceEligible: boolean;
   /** P1.6 U: ปุ่ม "หมายเหตุ" เปิดกล่องหมายเหตุบิล · hasNote = บิลมีหมายเหตุแล้ว (จุดบอกบนปุ่ม) */
   onNote: () => void;
   hasNote: boolean;
@@ -271,15 +275,26 @@ export function CartPanel(p: Props) {
           </button>
           <button
             data-testid="pos-reg-tax-invoice"
-            className="btn-sm h-10 min-w-0 xl:h-11 gap-[5px] rounded-[11px] px-1.5 text-[13px] xl:gap-1.5 xl:px-[14px] xl:text-[14px]"
+            className={`btn-sm h-10 min-w-0 xl:h-11 gap-[5px] rounded-[11px] px-1.5 text-[13px] disabled:opacity-50 xl:gap-1.5 xl:px-[14px] xl:text-[14px] ${
+              !p.taxInvoiceEligible ? "text-[color:var(--color-muted)] opacity-60" : p.taxInvoiceSet ? "border-[color:var(--color-ink)] font-bold" : ""
+            }`}
             type="button"
-            aria-disabled="true"
-            title={t("soon")}
-            onClick={p.onSoon}
+            disabled={p.frozen}
+            aria-disabled={!p.taxInvoiceEligible || undefined}
+            title={!p.taxInvoiceEligible ? t("errors.taxInvoiceNotEligible") : undefined}
+            aria-label={p.taxInvoiceSet ? `${t("actions.taxInvoice")} · ${t("taxInvoice.set")}` : undefined}
+            onClick={p.onTaxInvoice}
           >
-            <RegisterIcon name="doc" size={12} />
-            <span className="truncate xl:hidden">{t("actions.taxInvoiceShort")}</span>
-            <span className="hidden truncate xl:inline">{t("actions.taxInvoice")}</span>
+            {/* fix V1: ตั้งผู้ซื้อแล้ว = ไอคอน ✓ + ป้ายสั้น "ใบกำกับ" ทุกความกว้าง (ป้ายเต็ม + ตัวหนา + จุด ล้นจนตัดเป็น "ใบกำกับเต็..." ที่ 1440/1024) */}
+            <RegisterIcon name={p.taxInvoiceSet ? "check" : "doc"} size={12} />
+            {p.taxInvoiceSet ? (
+              <span className="truncate">{t("actions.taxInvoiceShort")}</span>
+            ) : (
+              <>
+                <span className="truncate xl:hidden">{t("actions.taxInvoiceShort")}</span>
+                <span className="hidden truncate xl:inline">{t("actions.taxInvoice")}</span>
+              </>
+            )}
           </button>
         </div>
       )}

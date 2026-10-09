@@ -336,7 +336,7 @@ export function PosReceiptActions({ token, actions, points }: { token: string; a
             </label>
             <label className={labelCls}>
               {t("taxInvoice.email")}
-              <input data-testid="pos-rpub-taxinvoice-email" className={inputCls} type="email" value={tf.email} maxLength={200} autoComplete="email" onChange={(e) => setTf({ ...tf, email: e.target.value })} />
+              <input data-testid="pos-rpub-taxinvoice-email" className={inputCls} type="email" value={tf.email} maxLength={120} autoComplete="email" onChange={(e) => setTf({ ...tf, email: e.target.value })} />
             </label>
             {errLine("pos-rpub-taxinvoice-error")}
             <button type="submit" data-testid="pos-rpub-taxinvoice-submit" disabled={busy} className="btn btn-primary mt-1 h-[46px] rounded-[13px] text-[15px] disabled:opacity-60">

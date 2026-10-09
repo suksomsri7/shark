@@ -76,6 +76,10 @@
 //   🔴 เขียน: เครื่อง 2 เครื่อง + กะ 1 กะของเครื่อง 2 (openShift ของบริการ) + บิลขายเงินสด 1 ใบ · finally/signal ปิดกะนี้ (นับ = ยอดคาด) +
 //   เพิกถอนเครื่อง QC ของรอบนี้ (ซากของรอบที่ถูก kill เกิน 1 ชม. ถูกเพิกถอนตอนเริ่ม) · แคชเชียร์ QC ไม่มี pos.device.manage ⇒ แท็บเครื่อง = การ์ดปฏิเสธ ◂
 //
+// POS P1.13U ▸ ใบกำกับภาษีเต็มรูป (มติ 9): หน้า register `--states` เพิ่ม taxinvoice-dialog (15A จากปุ่มท้ายตะกร้า · นิติบุคคล + เลข QC ✓) ·
+//   taxinvoice-set (จอชำระ + สวิตช์ → 15A → บันทึก → แถวผู้ซื้อท้ายจอ) — ก่อนเปิด chromium เปิดสมุด QC ให้ออกใบกำกับได้ด้วย ensureAbbBook (คืนค่าใน cleanRpub) ·
+//   หน้า sales `--states` เพิ่ม bill-taxinvoice-requested (บิลกาแฟ ABB + คำขอ P1.11 ผ่าน requestFullTaxInvoice · ลบคำขอใน finally/signal) ·
+//   bill-taxinvoice-issued (⚠️ issueFullTaxInvoice — ใบ TX ค้างในบัญชี QC4 · docId ใน summary taxInvoiceState) · บิลใช้ซ้ำรายวันด้วยคีย์ posqc-p113u-<วันที่>- ◂
 // POS P1.7U ▸ ใบขอรับเงิน (มติ 8): หน้า register `--states` เพิ่ม paydlg-promptpay-qr (cart3 → ชำระ → พร้อมเพย์ = ใบ PROMPTPAY_STATIC + QR ล็อกยอด) ·
 //   paydlg-promptpay-paid (desktop/mobile · กด "ยืนยันเองเมื่อเห็นเงินเข้า" ผ่าน confirmPaymentIntentManualAction → ✓ เงินเข้าแล้ว · หลังถ่ายกดยืนยันรับเงิน
 //   = บิลขายจริง 1 ใบที่ใช้ใบนั้น (CONSUMED)) · paydlg-card-edc (Beam ปิด ⇒ ช่องบัตร "EDC · ใส่เลขอ้างอิง" + ช่องเลขอ้างอิงแบบ P1.6) ·
@@ -157,7 +161,7 @@ const fileOf = (p: PosPage, w: number, h: number) => `${OUT}/${p}-${userKey}-${w
 const STATES_ON = /^p1\.3/i.test(WO) || argv.includes("--states");
 const LOCALE_EN = process.env.LOCALE === "en";
 type Device = (typeof POS_VIEWPORTS)[number]["name"];
-type StateKey = "default" | "cart3" | "cart4-01" | "line-editor" | "bill-discount" | "custom-item" | "paydlg-cash" | "paydlg-promptpay-qr" | "paydlg-promptpay-paid" | "paydlg-card-edc" | "sale-done" | "search-empty" | "stock-warn" | "offline" | "mobile-sheet" | "options-popover" | "weigh" | P115StateKey | StockStateKey | ShiftsStateKey | BillsStateKey | SettingsStateKey | RpubStateKey;
+type StateKey = "default" | "cart3" | "cart4-01" | "line-editor" | "bill-discount" | "custom-item" | "paydlg-cash" | "paydlg-promptpay-qr" | "paydlg-promptpay-paid" | "paydlg-card-edc" | "sale-done" | "search-empty" | "stock-warn" | "offline" | "mobile-sheet" | "options-popover" | "weigh" | "taxinvoice-dialog" | "taxinvoice-set" | P115StateKey | StockStateKey | ShiftsStateKey | BillsStateKey | SettingsStateKey | RpubStateKey;
 const STATE_PLAN: { key: StateKey; devices: readonly Device[]; note: string }[] = [
   { key: "default", devices: ["desktop", "ipad", "mobile"], note: "เปิดหน้า (ตะกร้าว่าง) — การ์ดเหลือน้อย/หมด/ปิดขายของ fixture อยู่ในกริด" },
   { key: "cart3", devices: ["desktop", "ipad", "mobile"], note: "อเมริกาโน่×2 · ลาเต้ (ลด ฿10) · ครัวซองต์ (สต็อก N → N−1)" },
@@ -182,6 +186,9 @@ const STATE_PLAN: { key: StateKey; devices: readonly Device[]; note: string }[] 
   // P1.2 U R2 (ภาพ 01 ป๊อปโอเวอร์): สินค้าชั่วคราวมีตัวแปร + 4 กลุ่ม → เลือกตัวแปร · M +10 · นมโอ๊ต +15 · จำนวน 2
   { key: "options-popover", devices: ["desktop", "ipad", "mobile"], note: "ตัวเลือก/ตัวแปร: ป๊อปโอเวอร์ยึดการ์ด (390 = แผ่นล่าง) · เลือก 2 กลุ่ม + จำนวน 2" },
   { key: "weigh", devices: ["desktop", "mobile"], note: "สินค้าชั่ง ฿350/กก. → กล่องน้ำหนัก (owner พิมพ์ 250 กรัม · cashier = ต้องมีสิทธิ์)" },
+  // POS P1.13U ▸ ภาพ 15A / 02 ท้ายจอ — สมุด QC ต้องออกใบกำกับอย่างย่อได้ (ensureAbbBook ก่อนเปิด chromium · คืนค่าใน cleanRpub) ◂
+  { key: "taxinvoice-dialog", devices: ["desktop", "ipad", "mobile"], note: "cart3 → ปุ่ม \"ใบกำกับเต็มรูป\" ท้ายตะกร้า → 15A นิติบุคคล + เลข QC (✓) · ปุ่ม DBD หรือ \"กรอกเอง\" (QC ไม่มีกุญแจ)" },
+  { key: "taxinvoice-set", devices: ["desktop", "ipad", "mobile"], note: "cart3 → ชำระ → สวิตช์ใบกำกับ → กรอก 15A → บันทึก → แถว \"— ชื่อ · เลข · สำนักงานใหญ่ · แก้\" ท้ายจอชำระ (ไม่กดยืนยัน)" },
   // POS P1.15U ▸ ภาพ 13B / 21B + แผ่นส่วนลดเกินสิทธิ์ (ข้อมูล: seedP115Once · ลบ/คืนค่าใน finally) ◂
   { key: "lock-screen", devices: ["desktop", "ipad", "mobile"], note: "13B: กดล็อก → จอล็อก (ผู้ใช้รอบนี้ · ล็อกเมื่อ HH:MM) + จุด 3 ดวง · ขวา: พนักงาน 2 คน + บิลที่พัก 1 ใบ" },
   { key: "lock-pin-locked", devices: ["desktop"], note: "แถว PIN ของผู้ใช้รอบนี้ถูกล็อก → ใส่ PIN ถูก → \"ล็อกชั่วคราว 15 นาที\" + ปุ่มผู้จัดการปลดล็อก" },
@@ -209,13 +216,16 @@ const SHIFTS_STATE_PLAN: { key: ShiftsStateKey; devices: readonly Device[]; note
   { key: "shifts-z", devices: ["desktop", "ipad", "mobile"], note: "ปิดกะ → แผง Z + กะที่ปิดแล้ว (ขนาดถัดไป = เปิด Z จากแถวในรายการ)" },
 ];
 // POS P1.16 ▸ สถานะของหน้าบิลวันนี้ (ข้อมูลสร้างครั้งเดียวก่อนเปิด chromium · ทุกสถานะอ่านอย่างเดียว ไม่กดยืนยัน) ◂
-type BillsStateKey = "bills-list" | "bills-drawer" | "bills-void" | "bills-refund" | "bills-empty";
+type BillsStateKey = "bills-list" | "bills-drawer" | "bills-void" | "bills-refund" | "bills-empty" | "bill-taxinvoice-requested" | "bill-taxinvoice-issued";
 const BILLS_STATE_PLAN: { key: BillsStateKey; devices: readonly Device[]; note: string }[] = [
   { key: "bills-list", devices: ["desktop", "ipad", "mobile"], note: "วันนี้ ≥ 6 บิล: ยกเลิก 1 · คืนบางส่วน 1 · คืนครบ 1 · เงินสดนอกกะ 1 · ปกติ/จ่ายผสม" },
   { key: "bills-drawer", devices: ["desktop", "ipad", "mobile"], note: "เลือกบิลปกติ → ลิ้นชักบิล (390 = แผ่นเต็มจอ)" },
   { key: "bills-void", devices: ["desktop", "ipad", "mobile"], note: "เจ้าของ = กล่องยกเลิกบิล + พิมพ์เหตุผล (ไม่กดยืนยัน) · แคชเชียร์ = ปุ่มยกเลิกปิด + คำอธิบาย" },
   { key: "bills-refund", devices: ["desktop", "ipad", "mobile"], note: "เจ้าของ = หน้าต่างคืนเงิน เลือก 1 บรรทัด + เงินสด (ไม่กดยืนยัน) · แคชเชียร์ = ไม่มีปุ่มคืนเงิน" },
   { key: "bills-empty", devices: ["desktop", "ipad", "mobile"], note: "?date= วันที่ไม่มีบิล → ข้อความว่าง" },
+  // POS P1.13U ▸ แถวใบกำกับในลิ้นชัก (ภาพ 12) — บิล ABB ของวันนี้ (ใช้ซ้ำได้) · คำขอ P1.11 ลบใน finally · ใบ TX ที่ออกค้างในบัญชี QC4 (docId ใน summary) ◂
+  { key: "bill-taxinvoice-requested", devices: ["desktop", "ipad", "mobile"], note: "บิลกาแฟ ABB + คำขอ P1.11 (requestFullTaxInvoice) → ลิ้นชัก \"ลูกค้าขอใบกำกับเต็มรูป\" · เจ้าของ = [ออกใบกำกับ][ปฏิเสธ] · แคชเชียร์ = ไม่มีปุ่ม" },
+  { key: "bill-taxinvoice-issued", devices: ["desktop", "ipad", "mobile"], note: "⚠️ บิลกาแฟ ABB → issueFullTaxInvoice (ใบ TX ค้างในบัญชี QC4) → ลิ้นชัก \"ใบกำกับเต็มรูป <เลข> · ผู้ซื้อ\"" },
 ];
 // POS P1.10 U ▸ สถานะของหน้าตั้งค่า (เครื่อง QC 2 เครื่องลงทะเบียนครั้งเดียวก่อนเปิด chromium · ไม่กดยืนยันเพิกถอน/ไม่กดพิมพ์) ◂
 type SettingsStateKey = "settings-receipt" | "settings-payments" | "settings-devices" | "settings-device-revoke" | "settings-print-pair" | "paydone-print";
@@ -522,6 +532,12 @@ for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
         if (SHIFTS.close) console.error(`${SHIFTS.close.ok ? "🧹" : "⚠️"} ${SHIFTS.close.detail}`);
       } catch (e) {
         console.error(`❌ ปิดกะของหน้ากะไม่สำเร็จ: ${e instanceof Error ? e.message : e}`);
+      }
+      // POS P1.13U: ลบคำขอใบกำกับของรอบนี้ + ปิดกะของเครื่องภาพใบกำกับ (ก่อน cleanRpub ที่คืนค่าสมุด · เหมือน finally)
+      try {
+        await cleanupTaxInv();
+      } catch (e) {
+        console.error(`❌ เก็บกวาดชุดภาพใบกำกับไม่สำเร็จ: ${e instanceof Error ? e.message : e}`);
       }
       // POS P1.11U: ลบแจ้งปัญหา/คำขอของบิลชุดภาพใบเสร็จ + ปิดกะ (เหมือน finally)
       try {
@@ -1152,6 +1168,10 @@ async function runState(page: Any, state: StateKey, device: Device): Promise<voi
       await openCartOnMobile(page, device);
       await visibleEl(page, tidPrefix("pos-reg-line-warn-"));
       return;
+    // POS P1.13U ▸ 15A จากปุ่มท้ายตะกร้า / สวิตช์ท้ายจอชำระ ◂
+    case "taxinvoice-dialog":
+    case "taxinvoice-set":
+      return runTaxInvoiceRegState(page, state, device);
     case "mobile-sheet":
       await addCart3(page, device);
       await clickEl(page, tid("pos-reg-cart-view"));
@@ -1461,6 +1481,221 @@ async function closeShiftsStateShift(): Promise<void> {
 }
 // ◂
 
+// ═══════════════════ POS P1.13U ▸ ใบกำกับภาษีเต็มรูป (15A · แถวในลิ้นชักบิล) ═══════════════════
+/** เลขผู้ซื้อ QC (mod-11 ถูก · ไม่ใช่เลขของสมุด QC) */
+const TAXINV_BUYER = { kind: "JURISTIC" as const, name: "บริษัท ทะเลใส จำกัด (ภาพ QC)", taxId: "0105559012342", branchCode: "00000", address: "88/8 ถ.เพชรเกษม ต.หัวหิน อ.หัวหิน จ.ประจวบคีรีขันธ์ 77110", email: null };
+const TAXINV_REG_STATES: ReadonlySet<string> = new Set(["taxinvoice-dialog", "taxinvoice-set"]);
+const TAXINV_BILL_STATES: ReadonlySet<string> = new Set(["bill-taxinvoice-requested", "bill-taxinvoice-issued"]);
+/** คีย์ชุดวันนี้ (วันที่ไทย) — รอบซ้ำวันเดียวกันใช้บิลเดิม (ไม่ออกใบ TX เพิ่ม) */
+const TAXINV_PREFIX = `posqc-p113u-${new Date(Date.now() + 7 * 3_600_000).toISOString().slice(0, 10).replace(/-/g, "")}-`;
+const TAXINV_DEVICE_ID = `posqc-vis-taxinv-${process.pid}`;
+const TAXINV = {
+  abbReady: false,
+  error: null as string | null,
+  billsError: null as string | null,
+  shiftId: "",
+  openedShift: false,
+  reqSale: "",
+  reqReceipt: "",
+  requestId: "",
+  issSale: "",
+  issReceipt: "",
+  /** ใบ TAX_INVOICE ที่ออกให้บิล bill-taxinvoice-issued (ค้างในบัญชี QC4 — บันทึกไว้ตามมติ 9) */
+  docId: "",
+  docNo: "" as string | null,
+  reused: [] as string[],
+  /** fix F5: คำขอ REQUESTED ค้างจากรอบก่อนที่ลบก่อนสร้างคำขอของรอบนี้ */
+  leftover: 0,
+  close: null as null | { ok: boolean; detail: string },
+  cleanup: null as null | { requests: number; outbox: number; error?: string },
+};
+/** สมุด QC พร้อมออกใบกำกับ (registerStatus.taxInvoiceEligible) ก่อนเปิดหน้า — พังไม่โยน (สถานะ 15A ตกพร้อมเหตุผล) */
+async function prepTaxInvoiceBook(): Promise<void> {
+  if (TAXINV.abbReady || TAXINV.error) return;
+  try {
+    await ensureAbbBook();
+    if (!RPUB.abb) throw new StepError("POS ของร้าน QC ไม่ผูกสมุดบัญชี — ออกใบกำกับไม่ได้");
+    TAXINV.abbReady = true;
+  } catch (e) {
+    TAXINV.error = e instanceof Error ? e.message.slice(0, 200) : String(e);
+  }
+}
+async function runTaxInvoiceRegState(page: Any, state: StateKey, device: Device): Promise<void> {
+  if (TAXINV.error) throw new StepError(`สมุด QC: ${TAXINV.error}`);
+  await addCart3(page, device);
+  if (state === "taxinvoice-dialog") {
+    await openCartOnMobile(page, device);
+    await clickEl(page, tid("pos-reg-tax-invoice"));
+  } else {
+    await clickPay(page, device);
+    await visibleEl(page, tid("pos-reg-paydlg"), 0, 10_000);
+    await clickEl(page, tid("pos-taxinv-toggle"));
+  }
+  await visibleEl(page, tid("pos-taxinv-dialog"), 0, 10_000).catch(async () => {
+    const toast = await page.$eval(tid("pos-reg-toast"), (e: Element) => e.textContent?.slice(0, 120) ?? "").catch(() => "");
+    throw new StepError(`กล่อง 15A ไม่ขึ้น${toast ? ` (ข้อความ: ${toast})` : ""} — registerStatus.taxInvoiceEligible ของร้าน QC?`);
+  });
+  await clickEl(page, tid("pos-taxinv-kind-juristic"));
+  await typeInto(page, tid("pos-taxinv-taxid"), TAXINV_BUYER.taxId);
+  await visibleEl(page, tid("pos-taxinv-taxid-ok"), 0, 5_000).catch(() => {
+    throw new StepError("พิมพ์เลข QC แล้วไม่ขึ้น ✓ (pos-taxinv-taxid-ok)");
+  });
+  // ปุ่ม DBD (นิติบุคคล + เลขถูก) หรือ "กรอกเอง" เมื่อรอบนี้รู้แล้วว่าไม่มีกุญแจ — ไม่กดค้น (QC ไม่มีกุญแจ · ไม่ยิงเครือข่ายจริง)
+  const dbd = await page.$(tid("pos-taxinv-dbd"));
+  const manual = await page.$(tid("pos-taxinv-dbd-note"));
+  if (!dbd && !manual) throw new StepError("ไม่มีปุ่ม DBD และไม่มีข้อความกรอกเอง");
+  if (state === "taxinvoice-dialog") return;
+  await typeInto(page, tid("pos-taxinv-name"), TAXINV_BUYER.name);
+  await typeInto(page, tid("pos-taxinv-address"), TAXINV_BUYER.address);
+  await clickEl(page, tid("pos-taxinv-submit"));
+  await page.waitForFunction(() => !document.querySelector('[data-testid="pos-taxinv-dialog"]'), { timeout: 5_000 }).catch(async () => {
+    const err = await page.$eval(tid("pos-taxinv-error"), (e: Element) => e.textContent?.slice(0, 120) ?? "").catch(() => "");
+    throw new StepError(`บันทึก 15A แล้วกล่องไม่ปิด${err ? ` (${err})` : ""}`);
+  });
+  await visibleEl(page, tid("pos-taxinv-footer-line"), 0, 5_000).catch(() => {
+    throw new StepError("ท้ายจอชำระไม่ขึ้นแถวผู้ซื้อ (pos-taxinv-footer-line)");
+  });
+}
+/** บิลกาแฟ ABB ของวันนี้ตามคีย์ (ใช้ซ้ำ) — want: req = PAID ไม่คืน ยังไม่ออก · iss = ออกเต็มรูปแล้ว */
+async function existingTaxInvBill(kind: "req" | "iss"): Promise<{ id: string; receiptNo: string | null; docId: string | null } | null> {
+  const start = new Date(Date.parse(`${new Date(Date.now() + 7 * 3_600_000).toISOString().slice(0, 10)}T00:00:00+07:00`));
+  const rows = await prisma.posSale.findMany({
+    where: { tenantId: T.tenantId, systemId: SYS, unitId, docType: "SALE", createdAt: { gte: start }, OR: [{ idempotencyKey: { startsWith: `${TAXINV_PREFIX}${kind}` } }, { idempotencyKey: { startsWith: `reg2:${TAXINV_PREFIX}${kind}` } }] },
+    select: { id: true, receiptNo: true, status: true, refundedSatang: true, taxInvoiceDocId: true },
+    orderBy: { createdAt: "desc" },
+  });
+  const r = rows.find((x) => x.status === "PAID" && x.refundedSatang === 0 && (kind === "iss" ? !!x.taxInvoiceDocId : !x.taxInvoiceDocId));
+  return r ? { id: r.id, receiptNo: r.receiptNo, docId: r.taxInvoiceDocId } : null;
+}
+/** บิลของสถานะใบกำกับในลิ้นชัก (ก่อนเปิด chromium) — ผ่านบริการจริง: ขาย → ระบายคิว (ABB) → คำขอ P1.11 / issueFullTaxInvoice · พังไม่โยน */
+async function seedTaxInvBillsOnce(): Promise<void> {
+  if (TAXINV.reqSale || TAXINV.issSale || TAXINV.billsError) return;
+  const need = new Set(jobs.filter((j) => j.state && TAXINV_BILL_STATES.has(j.state)).map((j) => (j.state === "bill-taxinvoice-requested" ? "req" : "iss")));
+  if (!need.size) return;
+  try {
+    await prepTaxInvoiceBook();
+    if (TAXINV.error) throw new StepError(`สมุด QC: ${TAXINV.error}`);
+    const { openShift } = await import("@/lib/modules/pos/shift");
+    const { quoteRegisterCart, submitRegisterSale } = await import("@/lib/modules/pos/register");
+    const { issueFullTaxInvoice } = await import("@/lib/modules/pos/tax-invoice");
+    const { requestFullTaxInvoice } = await import("@/lib/modules/pos/receipt-tax-request");
+    const { ensureReceiptToken } = await import("@/lib/modules/pos/receipt-token");
+    const account = await import("@/lib/modules/account");
+    const actor = await ownerActor();
+    const ctx = { tenantId: T.tenantId, systemId: SYS, unitId, deviceId: TAXINV_DEVICE_ID };
+    const have: Partial<Record<"req" | "iss", { id: string; receiptNo: string | null; docId: string | null }>> = {};
+    for (const k of need) {
+      const e = await existingTaxInvBill(k);
+      if (e) {
+        have[k] = e;
+        TAXINV.reused.push(k);
+      }
+    }
+    const missing = [...need].filter((k) => !have[k]);
+    if (missing.length) {
+      const op = await openShift(ctx, actor, { deviceId: TAXINV_DEVICE_ID, deviceLabel: "เครื่องภาพใบกำกับ QC", floatSatang: 100000 });
+      if (!op.ok) throw new StepError(`เปิดกะของเครื่องภาพใบกำกับไม่ได้: ${op.code}`);
+      TAXINV.shiftId = op.shift.id;
+      TAXINV.openedShift = true;
+      const prods = await prisma.posProduct.findMany({ where: { tenantId: T.tenantId, systemId: SYS, archivedAt: null }, select: { id: true, name: true } });
+      const idOf = (n: string) => {
+        const id = prods.find((r) => r.name === n)?.id;
+        if (!id) throw new StepError(`ไม่พบสินค้า QC "${n}" (seed-pos-qc)`);
+        return id;
+      };
+      for (const k of missing) {
+        const cart = { lines: [{ productId: idOf("ลาเต้ร้อน"), qty: 2 }, { productId: idOf("อเมริกาโน่เย็น"), qty: 1 }] };
+        const q = await quoteRegisterCart(ctx, actor, cart);
+        if (!q.ok) throw new StepError(`quote บิล ${k}: ${q.code}`);
+        const r = await submitRegisterSale(ctx, actor, { ...cart, idempotencyKey: `${TAXINV_PREFIX}${k}-${process.pid}`, expectedGrandTotalSatang: q.grandTotalSatang, payMethods: [{ type: "CASH", amountSatang: q.grandTotalSatang }], cashReceivedSatang: q.grandTotalSatang } as never);
+        if (!r.ok) throw new StepError(`ขายบิล ${k}: ${r.code}`);
+        have[k] = { id: r.saleId, receiptNo: r.receiptNo, docId: null };
+      }
+      try {
+        const { drainAll } = await import("@/lib/outbox-consumers");
+        await drainAll(); // ใบกำกับอย่างย่อของบิลใหม่ (ออกเต็มรูปทีหลังต้องมี ABB ก่อน — ไม่งั้น ACCOUNT_PENDING)
+      } catch {
+        /* เซิร์ฟเวอร์ QC ระบายเองภายหลัง */
+      }
+    }
+    if (have.req) {
+      TAXINV.reqSale = have.req.id;
+      TAXINV.reqReceipt = have.req.receiptNo ?? "";
+      const row = await prisma.posSale.findFirst({ where: { id: have.req.id, tenantId: T.tenantId }, select: { publicToken: true } });
+      const tok = row?.publicToken ?? (await ensureReceiptToken(T.tenantId, have.req.id));
+      if (!tok) throw new StepError("บิล req ไม่มีโทเคนใบเสร็จ");
+      // fix F5: รอบที่ถูก kill ทิ้งคำขอ REQUESTED ค้างบนบิลที่ใช้ซ้ำ ⇒ คำขอใหม่ได้ ALREADY_REQUESTED ทั้งวัน — ลบคำขอค้าง (+ outbox ของมัน) ก่อน
+      const left = await prisma.posTaxInvoiceRequest.findMany({ where: { tenantId: T.tenantId, saleId: have.req.id, status: "REQUESTED" }, select: { id: true } });
+      for (const l of left) await prisma.outboxEvent.deleteMany({ where: { tenantId: T.tenantId, type: "pos.receipt.taxInvoiceRequested", payload: { path: ["requestId"], equals: l.id } } });
+      if (left.length) TAXINV.leftover = (await prisma.posTaxInvoiceRequest.deleteMany({ where: { tenantId: T.tenantId, id: { in: left.map((l) => l.id) } } })).count;
+      const rq = await requestFullTaxInvoice(tok, { name: TAXINV_BUYER.name, taxId: TAXINV_BUYER.taxId, branchCode: TAXINV_BUYER.branchCode, address: TAXINV_BUYER.address });
+      if (!rq.ok) throw new StepError(`คำขอใบกำกับ (P1.11): ${rq.code}`);
+      TAXINV.requestId = rq.requestId;
+    }
+    if (have.iss) {
+      TAXINV.issSale = have.iss.id;
+      TAXINV.issReceipt = have.iss.receiptNo ?? "";
+      if (have.iss.docId) TAXINV.docId = have.iss.docId;
+      else {
+        const r = await issueFullTaxInvoice({ tenantId: T.tenantId, systemId: SYS, unitId }, actor, { saleId: have.iss.id, buyer: TAXINV_BUYER });
+        if (!r.ok) throw new StepError(`issueFullTaxInvoice: ${r.code}`);
+        TAXINV.docId = r.docId;
+      }
+      const ref = await account.posSaleAccountingRef({ tenantId: T.tenantId, sourceSystemId: SYS, refId: have.iss.id });
+      TAXINV.docNo = ref && ref.docId === TAXINV.docId ? ref.docNo : null;
+    }
+  } catch (e) {
+    TAXINV.billsError = e instanceof Error ? e.message.slice(0, 200) : String(e);
+  }
+}
+/** finally/signal: ลบคำขอ P1.11 ของรอบนี้ (+ outbox ของคำขอ) · ปิดกะของเครื่องภาพใบกำกับ — เรียกซ้ำได้ · ไม่โยน */
+async function cleanupTaxInv(): Promise<void> {
+  if (TAXINV.cleanup) return;
+  try {
+    let requests = 0;
+    let outbox = 0;
+    if (TAXINV.requestId) {
+      outbox += (await prisma.outboxEvent.deleteMany({ where: { tenantId: T.tenantId, type: "pos.receipt.taxInvoiceRequested", payload: { path: ["requestId"], equals: TAXINV.requestId } } })).count;
+      requests = (await prisma.posTaxInvoiceRequest.deleteMany({ where: { id: TAXINV.requestId, tenantId: T.tenantId } })).count;
+      TAXINV.cleanup = { requests, outbox };
+    } else if (TAXINV.reqSale || TAXINV.issSale) TAXINV.cleanup = { requests, outbox };
+  } catch (e) {
+    TAXINV.cleanup = { requests: 0, outbox: 0, error: e instanceof Error ? e.message.slice(0, 160) : String(e) };
+  }
+  if (!TAXINV.close && TAXINV.openedShift && TAXINV.shiftId) TAXINV.close = await closeShiftAsOwner(TAXINV.shiftId, "taxinv-close");
+}
+/** หน้าบิล: ค้นด้วยเลขบิลแล้วแตะบิล (บิลภาพอาจไม่อยู่หน้าแรก) → ลิ้นชัก */
+async function openBillBySearch(page: Any, saleId: string, receiptNo: string): Promise<void> {
+  await visibleEl(page, tid("pos-bills-list"), 0, 15_000);
+  if (receiptNo) {
+    await typeInto(page, tid("pos-bills-search"), receiptNo);
+    await sleep(900);
+  }
+  await visibleEl(page, `[data-bill-id="${saleId}"]`, 0, 15_000).catch(() => {
+    throw new StepError(`ไม่เห็นบิล ${receiptNo || saleId} ในรายการ`);
+  });
+  await clickEl(page, `[data-bill-id="${saleId}"]`);
+  await visibleEl(page, tid("pos-bills-timeline"), 0, 15_000).catch(() => {
+    throw new StepError("แตะบิลแล้วไม่เห็นลิ้นชักบิล (pos-bills-timeline)");
+  });
+}
+async function runTaxInvoiceBillState(page: Any, state: BillsStateKey): Promise<void> {
+  if (TAXINV.billsError) throw new StepError(`บิลภาพใบกำกับ: ${TAXINV.billsError}`);
+  const req = state === "bill-taxinvoice-requested";
+  const id = req ? TAXINV.reqSale : TAXINV.issSale;
+  if (!id) throw new StepError("ไม่มีบิลภาพใบกำกับ");
+  await openBillBySearch(page, id, req ? TAXINV.reqReceipt : TAXINV.issReceipt);
+  await visibleEl(page, tid(req ? "pos-taxinv-bill-requested" : "pos-taxinv-bill-issued"), 0, 10_000).catch(() => {
+    throw new StepError(`ลิ้นชักไม่ขึ้นแถว ${req ? "คำขอใบกำกับ (pos-taxinv-bill-requested)" : "ใบกำกับเต็มรูป (pos-taxinv-bill-issued)"}`);
+  });
+  if (req) {
+    const btn = await page.$(tid("pos-taxinv-request-issue"));
+    if (userKey === "owner" && !btn) throw new StepError("เจ้าของไม่เห็นปุ่มออกใบกำกับ (pos-taxinv-request-issue)");
+    if (userKey !== "owner" && btn) throw new StepError("แคชเชียร์ไม่ควรเห็นปุ่มออกใบกำกับ");
+  }
+}
+// ◂
+
 // ═══════════════════ POS P1.16 U ▸ ข้อมูล + ขั้นตอนของหน้าบิลวันนี้ (เครื่อง BILLS_DEVICE_ID · actor = เจ้าของร้าน) ═══════════════════
 const BILLS = { seeded: false, reused: false, shiftId: "", target: "", ids: {} as Record<string, string>, error: null as string | null, close: null as null | { ok: boolean; detail: string } };
 const BILL_TAG = "(ภาพบิล QC)";
@@ -1606,6 +1841,7 @@ async function openTargetBill(page: Any): Promise<void> {
   });
 }
 async function runBillsState(page: Any, state: BillsStateKey): Promise<void> {
+  if (TAXINV_BILL_STATES.has(state)) return runTaxInvoiceBillState(page, state); // POS P1.13U
   if (state === "bills-empty") {
     await visibleEl(page, tid("pos-bills-empty"), 0, 15_000).catch(() => {
       throw new StepError(`วันที่ ${BILLS_EMPTY_DATE} ไม่ขึ้นข้อความว่าง (pos-bills-empty)`);
@@ -1714,51 +1950,61 @@ async function existingRpubSet(): Promise<Record<string, string>> {
   }
   return out;
 }
+/**
+ * สมุด QC ที่ผูก POS ออกใบกำกับอย่างย่อได้ (ย้ายออกจาก seedRpubOnce ใน P1.13U — ใช้ร่วมกับสถานะใบกำกับเต็มรูปของหน้าขาย/หน้าบิล):
+ *   เปิด posAbbreviated + ตั้ง taxId ชั่วคราว (คืนค่าเดิมใน cleanRpub) · เรียกซ้ำได้ (ครั้งที่สอง = ตรวจผลเดิม ไม่ทับค่าที่ต้องคืน) · ไม่พร้อม = โยน StepError
+ */
+async function ensureAbbBook(): Promise<void> {
+  if (RPUB.abb) {
+    if (!RPUB.abb.vatRegistered || !RPUB.abb.posAbbreviatedInvoice || !RPUB.abb.hasTaxId)
+      throw new StepError(`สมุด QC ยังออกใบกำกับอย่างย่อไม่ได้ (vatRegistered ${RPUB.abb.vatRegistered} · posAbbreviatedInvoice ${RPUB.abb.posAbbreviatedInvoice} · taxId ${RPUB.abb.hasTaxId})`);
+    return;
+  }
+  // รอบ 2 (มติ 3b): ใบกำกับอย่างย่อต้องเปิดที่สมุดที่ผูก POS — เปิด posAbbreviated ชั่วคราวผ่านตัวบันทึกตั้งค่าบัญชีเดิม (saveDocSettings) · คืนค่าใน finally
+  const account = await import("@/lib/modules/account");
+  const { saveDocSettings } = await import("@/lib/modules/account/doc-settings");
+  const { parseDocSettings } = await import("@/lib/modules/account/settings-schema");
+  const bookId = await account.posAccountSystemId(T.tenantId, SYS);
+  if (bookId) {
+    const row = await prisma.accountSettings.findFirst({ where: { systemId: bookId, tenantId: T.tenantId }, select: { docConfig: true, taxId: true } });
+    const prev = parseDocSettings(row?.docConfig ?? null).autoTaxInvoice;
+    let toggled = false;
+    if (row && !prev.posAbbreviated) {
+      const sv = await saveDocSettings({ tenantId: T.tenantId, systemId: bookId }, { autoTaxInvoice: { ...prev, posAbbreviated: true } });
+      if (!sv.ok) throw new StepError(`เปิดใบกำกับอย่างย่อของสมุด QC ไม่ได้: ${sv.reason}`);
+      toggled = true;
+    }
+    // รอบ 3 (มติ 2): ตัวตัดสินจริงคือ receiptKindOf = vatRegistered + posAbbreviatedInvoice + **taxId ของสมุด** + VAT ของบิล —
+    //   สมุด QC ไม่มีเลขผู้เสียภาษี (hasTaxId:false ในรอบ vis36) ⇒ ตั้งเลขผู้เสียภาษีชั่วคราวผ่านตัวบันทึก "ข้อมูลกิจการ" เดิม (account saveSettings
+    //   ด้วยค่าเดิมทั้งก้อน + taxId) แล้วคืนค่าเดิมใน finally · อ่าน vatConfigOf/taxId ซ้ำและยืนยันก่อนขายบิล
+    const hasTaxId = !!row?.taxId?.trim();
+    RPUB.abb = { bookId, prev, toggled, vatRegistered: false, hasTaxId };
+    if (!hasTaxId) {
+      // สมุด QC ไม่มีแถว AccountSettings เลย (พบรอบ 3: ค่า VAT มาจากค่าปริยาย) ⇒ saveSettings สร้างแถว → finally ลบแถวที่รอบนี้สร้าง ·
+      //   มีแถวแต่ไม่มี taxId ⇒ finally บันทึกค่าเดิมทั้งก้อนกลับ
+      const { getSettings, saveSettings } = await import("@/lib/modules/account/service");
+      const view = await getSettings(T.tenantId, bookId);
+      RPUB.abb.prevView = view;
+      const saved = await saveSettings(T.tenantId, bookId, { ...view, taxId: "0105561234567" });
+      if (!row) RPUB.abb.createdRowId = saved.id;
+      RPUB.abb.taxIdSet = true;
+    }
+    const vat = await account.vatConfigOf(bookId);
+    const again = await prisma.accountSettings.findFirst({ where: { systemId: bookId, tenantId: T.tenantId }, select: { taxId: true } });
+    RPUB.abb.vatRegistered = vat.vatRegistered;
+    RPUB.abb.posAbbreviatedInvoice = vat.posAbbreviatedInvoice;
+    RPUB.abb.hasTaxId = !!again?.taxId?.trim();
+    if (!vat.vatRegistered || !vat.posAbbreviatedInvoice || !RPUB.abb.hasTaxId)
+      throw new StepError(`สมุด QC ยังออกใบกำกับอย่างย่อไม่ได้ (vatRegistered ${vat.vatRegistered} · posAbbreviatedInvoice ${vat.posAbbreviatedInvoice} · taxId ${RPUB.abb.hasTaxId})`);
+  }
+}
 /** สร้างบิลชุดภาพครั้งเดียว (ก่อนเปิด chromium) ผ่านบริการหน้าขาย — พังไม่โยน (RPUB.error · ทุกสถานะตกพร้อมเหตุผล) */
 async function seedRpubOnce(): Promise<void> {
   if (RPUB.seeded || RPUB.error) return;
   const need = new Set(rpubPlan.map((st) => st.bill).filter((b) => b !== "none"));
   try {
     if (need.size) {
-      // รอบ 2 (มติ 3b): ใบกำกับอย่างย่อต้องเปิดที่สมุดที่ผูก POS — เปิด posAbbreviated ชั่วคราวผ่านตัวบันทึกตั้งค่าบัญชีเดิม (saveDocSettings) · คืนค่าใน finally
-      {
-        const account = await import("@/lib/modules/account");
-        const { saveDocSettings } = await import("@/lib/modules/account/doc-settings");
-        const { parseDocSettings } = await import("@/lib/modules/account/settings-schema");
-        const bookId = await account.posAccountSystemId(T.tenantId, SYS);
-        if (bookId) {
-          const row = await prisma.accountSettings.findFirst({ where: { systemId: bookId, tenantId: T.tenantId }, select: { docConfig: true, taxId: true } });
-          const prev = parseDocSettings(row?.docConfig ?? null).autoTaxInvoice;
-          let toggled = false;
-          if (row && !prev.posAbbreviated) {
-            const sv = await saveDocSettings({ tenantId: T.tenantId, systemId: bookId }, { autoTaxInvoice: { ...prev, posAbbreviated: true } });
-            if (!sv.ok) throw new StepError(`เปิดใบกำกับอย่างย่อของสมุด QC ไม่ได้: ${sv.reason}`);
-            toggled = true;
-          }
-          // รอบ 3 (มติ 2): ตัวตัดสินจริงคือ receiptKindOf = vatRegistered + posAbbreviatedInvoice + **taxId ของสมุด** + VAT ของบิล —
-          //   สมุด QC ไม่มีเลขผู้เสียภาษี (hasTaxId:false ในรอบ vis36) ⇒ ตั้งเลขผู้เสียภาษีชั่วคราวผ่านตัวบันทึก "ข้อมูลกิจการ" เดิม (account saveSettings
-          //   ด้วยค่าเดิมทั้งก้อน + taxId) แล้วคืนค่าเดิมใน finally · อ่าน vatConfigOf/taxId ซ้ำและยืนยันก่อนขายบิล
-          const hasTaxId = !!row?.taxId?.trim();
-          RPUB.abb = { bookId, prev, toggled, vatRegistered: false, hasTaxId };
-          if (!hasTaxId) {
-            // สมุด QC ไม่มีแถว AccountSettings เลย (พบรอบ 3: ค่า VAT มาจากค่าปริยาย) ⇒ saveSettings สร้างแถว → finally ลบแถวที่รอบนี้สร้าง ·
-            //   มีแถวแต่ไม่มี taxId ⇒ finally บันทึกค่าเดิมทั้งก้อนกลับ
-            const { getSettings, saveSettings } = await import("@/lib/modules/account/service");
-            const view = await getSettings(T.tenantId, bookId);
-            RPUB.abb.prevView = view;
-            const saved = await saveSettings(T.tenantId, bookId, { ...view, taxId: "0105561234567" });
-            if (!row) RPUB.abb.createdRowId = saved.id;
-            RPUB.abb.taxIdSet = true;
-          }
-          const vat = await account.vatConfigOf(bookId);
-          const again = await prisma.accountSettings.findFirst({ where: { systemId: bookId, tenantId: T.tenantId }, select: { taxId: true } });
-          RPUB.abb.vatRegistered = vat.vatRegistered;
-          RPUB.abb.posAbbreviatedInvoice = vat.posAbbreviatedInvoice;
-          RPUB.abb.hasTaxId = !!again?.taxId?.trim();
-          if (!vat.vatRegistered || !vat.posAbbreviatedInvoice || !RPUB.abb.hasTaxId)
-            throw new StepError(`สมุด QC ยังออกใบกำกับอย่างย่อไม่ได้ (vatRegistered ${vat.vatRegistered} · posAbbreviatedInvoice ${vat.posAbbreviatedInvoice} · taxId ${RPUB.abb.hasTaxId})`);
-        }
-      }
+      await ensureAbbBook(); // รอบ 2 (มติ 3b) · รอบ 3 (มติ 2) — ดู ensureAbbBook
       const mem = await prisma.customer.findFirst({ where: { tenantId: T.tenantId, phone: PQC.coffee.member.phone }, select: { id: true } });
       if (!mem) throw new StepError(`ไม่พบสมาชิก QC ${PQC.coffee.member.phone} (seed-pos-qc)`);
       RPUB.memberId = mem.id;
@@ -1903,7 +2149,7 @@ async function runRpubState(page: Any, state: RpubStateKey): Promise<void> {
 }
 /** finally/signal: ลบแถวแจ้งปัญหา/คำขอใบกำกับของบิลชุดนี้ (+ OutboxEvent ของแจ้งปัญหา) แล้วปิดกะ — เรียกซ้ำได้ · ผลใน summary ไม่โยน */
 async function cleanRpub(): Promise<void> {
-  if (!rpubOn || RPUB.cleanup) return;
+  if (RPUB.cleanup || (!rpubOn && !RPUB.abb)) return; // P1.13U: สถานะใบกำกับเต็มรูปใช้ ensureAbbBook ด้วย ⇒ คืนค่าสมุดแม้ไม่ได้ถ่ายหน้าใบเสร็จ
   // รอบ 3: คืนข้อมูลกิจการเดิมของสมุด QC (taxId ว่างเหมือนก่อนรอบ) — ก่อนคืน posAbbreviated
   if (RPUB.abb?.taxIdSet && !RPUB.abb.taxIdRestored) {
     try {
@@ -2246,6 +2492,15 @@ try {
     await seedSettingsOnce(); // POS P1.10 U — พังไม่โยน (ทุกสถานะ settings-* ตกพร้อมเหตุผล)
     console.log(SETTINGS.error ? `  ⚠️ เครื่อง QC ของหน้าตั้งค่า: ${SETTINGS.error}` : `  เครื่อง QC ของหน้าตั้งค่า: ${SETTINGS.devices.map((d) => d.id).join(" · ")} · กะ ${SETTINGS.shiftId || "-"}`);
   }
+  // POS P1.13U ▸ สมุด QC ออกใบกำกับได้ก่อนเปิดหน้าขาย (registerStatus อ่านตอนโหลดหน้า) · บิลของสถานะใบกำกับในลิ้นชัก ◂
+  if (jobs.some((j) => j.state && TAXINV_REG_STATES.has(j.state))) {
+    await prepTaxInvoiceBook();
+    console.log(TAXINV.error ? `  ⚠️ สมุด QC สำหรับ 15A: ${TAXINV.error}` : "  สมุด QC พร้อมออกใบกำกับ (15A)");
+  }
+  if (billsStatesOn && pages.includes("sales") && jobs.some((j) => j.state && TAXINV_BILL_STATES.has(j.state))) {
+    await seedTaxInvBillsOnce();
+    console.log(TAXINV.billsError ? `  ⚠️ บิลภาพใบกำกับ: ${TAXINV.billsError}` : `  บิลภาพใบกำกับ: คำขอ ${TAXINV.reqSale || "-"} (${TAXINV.requestId || "-"}) · ออกแล้ว ${TAXINV.issSale || "-"} → TX ${TAXINV.docNo ?? "?"} docId ${TAXINV.docId || "-"}${TAXINV.reused.length ? ` (ใช้ชุดวันนี้ซ้ำ: ${TAXINV.reused.join(" · ")})` : ""}`);
+  }
   if (billsStatesOn && pages.includes("sales")) {
     await seedBillsOnce(); // POS P1.16 U — พังไม่โยน (ทุกสถานะ bills-* ตกพร้อมเหตุผล)
     console.log(BILLS.error ? `  ⚠️ บิลชุดภาพ: ${BILLS.error}` : `  บิลชุดภาพ: ${BILLS.reused ? "ใช้ชุดของวันนี้ซ้ำ" : `สร้าง ${Object.keys(BILLS.ids).length} ใบ`} · เป้าหมาย ${BILLS.target}`);
@@ -2387,6 +2642,9 @@ try {
   if (STOCK.cancel) console.error(`${STOCK.cancel.ok ? "🧹" : "⚠️"} ${STOCK.cancel.detail}`);
   if (STOCK.cancel && !STOCK.cancel.ok) failures++;
   await closeBillsShift(); // POS P1.16 U
+  await cleanupTaxInv(); // POS P1.13U (ก่อน cleanRpub — คืนค่าสมุดหลังสุด)
+  if (TAXINV.cleanup || TAXINV.close) console.error(`${TAXINV.cleanup?.error || (TAXINV.close && !TAXINV.close.ok) ? "⚠️" : "🧹"} ใบกำกับเต็มรูป: ลบคำขอ ${TAXINV.cleanup?.requests ?? 0} · OutboxEvent ${TAXINV.cleanup?.outbox ?? 0}${TAXINV.cleanup?.error ? ` · ${TAXINV.cleanup.error}` : ""}${TAXINV.close ? ` · ${TAXINV.close.detail}` : ""}${TAXINV.docId ? ` · ใบ TX ค้างในบัญชี QC4: ${TAXINV.docNo ?? "?"} (${TAXINV.docId})` : ""}`);
+  if (TAXINV.cleanup?.error || (TAXINV.close && !TAXINV.close.ok)) failures++;
   await cleanRpub(); // POS P1.11U
   if (RPUB.cleanup) console.error(rpubCleanupLine());
   if (RPUB.cleanup?.error || (RPUB.close && !RPUB.close.ok) || (RPUB.abb?.toggled && RPUB.abb.restored !== "ok") || (RPUB.abb?.taxIdSet && RPUB.abb.taxIdRestored !== "ok")) failures++;
@@ -2409,9 +2667,9 @@ try {
   }
   await prisma.$disconnect();
   cleanProfiles();
-  writeFileSync(`${OUT}/summary-${userKey}.json`, JSON.stringify({ wo: WO, user: userKey, tenant: tenantKey, base: BASE, at: new Date().toISOString(), deviceId: DEVICE_ID, shiftOpenError: SHIFT.openError, shiftClose: SHIFT.close, stockCount: STOCK, shiftsState: SHIFTS, billsState: BILLS, settingsState: SETTINGS, rpubState: RPUB, intentState: INTENTS, counterLag: COUNTER_LAG, p115State: p115Summary(), shots }, null, 2));
+  writeFileSync(`${OUT}/summary-${userKey}.json`, JSON.stringify({ wo: WO, user: userKey, tenant: tenantKey, base: BASE, at: new Date().toISOString(), deviceId: DEVICE_ID, shiftOpenError: SHIFT.openError, shiftClose: SHIFT.close, stockCount: STOCK, shiftsState: SHIFTS, billsState: BILLS, settingsState: SETTINGS, rpubState: RPUB, intentState: INTENTS, counterLag: COUNTER_LAG, p115State: p115Summary(), taxInvoiceState: TAXINV, shots }, null, 2));
   console.log(`\n🧹 ลบ session ของรอบนี้ ${removed}${stale ? ` (+ซากหมดอายุ ${stale})` : ""}${fixOut} · ลบโปรไฟล์ chromium ${PROFILE_DIRS[0]} · ภาพ ${shots.length} ใบใน ${OUT}`);
 }
 if (fatal) console.error(`❌ ${fatal}`);
-console.log(`JSON_SUMMARY ${JSON.stringify({ wo: WO, user: userKey, tenant: tenantKey, base: BASE, shiftOpenError: SHIFT.openError, shiftClose: SHIFT.close, stockCount: STOCK, shiftsState: SHIFTS, billsState: BILLS, settingsState: SETTINGS, rpubState: RPUB, counterLag: COUNTER_LAG, p115State: p115Summary(), shots: shots.map(({ consoleErrors, httpErrors, ...s }) => ({ ...s, consoleErrors: consoleErrors.length, httpErrors: httpErrors.length })), failures, fatal: fatal || null })}`);
+console.log(`JSON_SUMMARY ${JSON.stringify({ wo: WO, user: userKey, tenant: tenantKey, base: BASE, shiftOpenError: SHIFT.openError, shiftClose: SHIFT.close, stockCount: STOCK, shiftsState: SHIFTS, billsState: BILLS, settingsState: SETTINGS, rpubState: RPUB, counterLag: COUNTER_LAG, p115State: p115Summary(), taxInvoiceState: TAXINV, shots: shots.map(({ consoleErrors, httpErrors, ...s }) => ({ ...s, consoleErrors: consoleErrors.length, httpErrors: httpErrors.length })), failures, fatal: fatal || null })}`);
 process.exit(fatal ? 2 : failures > 0 ? 1 : 0);

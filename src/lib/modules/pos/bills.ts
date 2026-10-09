@@ -355,7 +355,7 @@ export async function billDetail(ctx: RegisterCtx, actor: RegisterActor, input: 
       account.posSaleAccountingRef({ tenantId, sourceSystemId: systemId, refId: sale.id }),
     ]);
     // POS P1.13 ▸ R7: คำขอใบกำกับเต็มรูปที่ยังรอ (ไม่มีเอกสาร) ◂
-    const openTaxReq = sale.taxInvoiceDocId ? null : await prisma.posTaxInvoiceRequest.findFirst({ where: { tenantId, saleId: sale.id, status: "REQUESTED" }, select: { id: true }, orderBy: { createdAt: "desc" } });
+    const openTaxReq = sale.taxInvoiceDocId ? null : await prisma.posTaxInvoiceRequest.findFirst({ where: { tenantId, saleId: sale.id, status: "REQUESTED" }, select: { id: true, name: true, taxId: true, branchCode: true, address: true, email: true }, orderBy: { createdAt: "desc" } }); // P1.13U มติ 4: ข้อมูลคำขอไว้เติมฟอร์ม 15A ◂
     const [abbDoc, cnDocs, names] = await Promise.all([
       accounting ? prisma.accountDocument.findFirst({ where: { id: accounting.docId, tenantId }, select: { createdAt: true } }) : null,
       bookId && refundDocs.length
@@ -400,6 +400,8 @@ export async function billDetail(ctx: RegisterCtx, actor: RegisterActor, input: 
     // ── ปุ่มที่กดได้ ──
     const isPos = sale.sourceModule === "POS";
     const canVoidPerm = evaluate(a, { module: "pos", action: VOID_PERMISSION, unitId });
+    // P1.13U fix F2: ข้อมูลคำขอใบกำกับ (เลข/ที่อยู่/อีเมลของลูกค้า) เฉพาะผู้ที่ออกใบกำกับได้ที่สาขานี้ · ชื่อผู้ซื้อเห็นทุกคน
+    const canIssueTax = evaluate(a, { module: "pos", action: "pos.taxinvoice.issue", unitId });
     const shiftClosed = !!sale.shiftId && isPos && shift?.status !== "OPEN";
     const canVoid = canVoidPerm && sale.status === "PAID" && sale.refundedSatang === 0 && isPos && !shiftClosed;
     // มติ CD-O7: NO_PERMISSION → NOT_POS → HAS_REFUNDS → SHIFT_CLOSED
@@ -467,7 +469,12 @@ export async function billDetail(ctx: RegisterCtx, actor: RegisterActor, input: 
             ...(snapshotBuyer(sale.taxInvoice)?.name ? { buyerName: snapshotBuyer(sale.taxInvoice)!.name } : {}),
           }
         : openTaxReq
-          ? { status: "REQUESTED", requestId: openTaxReq.id }
+          ? {
+              status: "REQUESTED",
+              requestId: openTaxReq.id,
+              buyerName: openTaxReq.name,
+              ...(canIssueTax ? { request: { name: openTaxReq.name, taxId: openTaxReq.taxId, branchCode: openTaxReq.branchCode, address: openTaxReq.address, email: openTaxReq.email } } : {}),
+            }
           : { status: "NONE" },
       refunds: refundDocs.map((d) => ({
         id: d.id,

@@ -4301,8 +4301,15 @@ export async function supersedeExternalSaleAbb(input: {
         if (prev) {
           // POS P1.13 fix F1: ใบเดิมเป็นของผู้ซื้อคนนี้ไหม (กันคำขอสองตัวแข่งกันแล้วผู้แพ้ได้เอกสารของอีกคน) ◂
           const snap = (prev.contactSnapshot && typeof prev.contactSnapshot === "object" ? prev.contactSnapshot : {}) as Record<string, unknown>;
-          const buyerMatches = input.buyer
-            ? snap.taxId === input.buyer.taxId && ((snap.branchCode as string | null | undefined) || "00000") === (input.buyer.branchCode || "00000") && snap.name === input.buyer.name
+          // POS P1.13 reviewer N1: เทียบช่องเดียวกับ sameTaxInvoiceBuyer (ประเภท · ชื่อ · เลขภาษี · สาขา · ที่อยู่ · อีเมล) ◂
+          const b = input.buyer;
+          const buyerMatches = b
+            ? (!b.kind || snap.legalType === (b.kind === "PERSON" ? "PERSON" : "COMPANY")) &&
+              snap.name === b.name &&
+              snap.taxId === b.taxId &&
+              ((snap.branchCode as string | null | undefined) || "00000") === (b.branchCode || "00000") &&
+              (snap.address ?? "") === (b.address ?? "") &&
+              ((snap.email as string | null | undefined) ?? null) === (b.email ?? null)
             : undefined;
           return { ok: true as const, docId: prev.id, docNo: prev.docNo, created: false, ...(buyerMatches !== undefined ? { buyerMatches } : {}) };
         }

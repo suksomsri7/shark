@@ -138,7 +138,14 @@ export async function bridgePosSalePaid(
   });
   if (buyer && res.fullTaxInvoice && res.docId) await recordPayTimeTaxInvoice(sale, res.docId);
   // follow-up 3: มีผู้ซื้อแต่สมุดออกใบเต็มรูปไม่ได้ตอนลงบัญชี (ไม่ผูก/ไม่จด VAT/ปิดใบอย่างย่อ/ไม่มีเลขภาษี) — เส้นเดิมทำงานแล้ว · เตือน ops (ไม่มีข้อมูลผู้ซื้อ)
-  else if (buyer) await logOps("WARN", "pos.taxInvoice", `บิล POS ${sale.id}: มีคำขอใบกำกับเต็มรูปแต่สมุดบัญชีออกไม่ได้ตอนลงบัญชี — ออกเอกสารตามเส้นเดิม`, { tenantId: sale.tenantId }).catch(() => undefined);
+  //   reviewer N5: แยกข้อความตาม res.reason — สมุดออกไม่ได้ (ไม่ผูก/ไม่มีเหตุผล) กับ บรรทัดถูกปฏิเสธ (เอกสารไม่เกิด)
+  else if (buyer) {
+    const linesRejected = !!res.reason && res.reason !== "unlinked" && !res.docId;
+    const msg = linesRejected
+      ? `บิล POS ${sale.id}: มีคำขอใบกำกับเต็มรูปแต่บรรทัดถูกปฏิเสธตอนลงบัญชี — ไม่เกิดเอกสาร (เงินเข้า GL ตามปกติ)`
+      : `บิล POS ${sale.id}: มีคำขอใบกำกับเต็มรูปแต่สมุดบัญชีออกไม่ได้ตอนลงบัญชี — ออกเอกสารตามเส้นเดิม`;
+    await logOps("WARN", "pos.taxInvoice", msg, { tenantId: sale.tenantId }).catch(() => undefined);
+  }
   // บรรทัดถูกปฏิเสธ (ยอดไม่ตรง/ข้อมูลเพี้ยน) — เงินยังเข้า GL ตามปกติ · เตือนเป็นภาษาไทย **ห้ามมีข้อมูลลูกค้าใน log**
   if (lines && res.reason && res.reason !== "unlinked" && !res.docId)
     console.warn(`[บัญชี] บิล POS ${sale.id}: ไม่บันทึกบรรทัดสินค้าเข้าบัญชี — ${res.reason}`);

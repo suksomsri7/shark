@@ -7,6 +7,8 @@
 // 🔴 คำปฏิเสธแสดงผ่านคีย์ (pos.bills.errors.* · pos.refund.errors.* · pos.receipt.errors.*) ไม่แสดง message ไทยของเซิร์ฟเวอร์
 // 🔴 คีย์กันซ้ำ: ยกเลิกบิล 1 คีย์ต่อการเปิดกล่อง · คืนเงิน 1 คีย์ต่อการเปิดหน้าต่าง (ยอดเปลี่ยน = ออกคีย์ใหม่ · ขัดข้อง = ลองซ้ำด้วยคีย์เดิม)
 // ไม่ทำในใบนี้ (มติ CD3): "รอเงินเข้า" (P1.7) · ส่ง LINE (P1.11) · ขอใบเต็มรูป (P1.13) · เครดิตร้าน (กระเป๋าสมาชิก) · "กำลังทำรายการคืนเงิน" (presence)
+// POS P1.13U ▸ แถวใบกำกับในลิ้นชัก (ภาพ 12 · มติ 4): ABB "ขอใบเต็มรูป" (ออกทีหลัง) · คำขอของลูกค้า ออก/ปฏิเสธ · ออกแล้ว = เลข + ผู้ซื้อ —
+//   ปุ่มเฉพาะผู้มีสิทธิ์ pos.taxinvoice.issue ที่สาขา (หน้าเพจส่ง canIssueTaxInvoice) · กล่องเดียวกับหน้าขาย (TaxInvoiceDialog โหมด issue) ◂
 // POS P1.11U ▸ แถวส่งใบเสร็จในลิ้นชัก: ส่ง LINE (บิลสมาชิก) · ส่งอีเมล (แผ่นช่องเดียว) · คัดลอกลิงก์ใบเสร็จ (receiptLinkAction · ไม่เขียน audit) ◂
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -28,6 +30,9 @@ import { refundSaleAction, saleForRefundAction } from "@/lib/modules/pos/refund-
 import { refundLineAmount, refundServiceCharge } from "@/lib/modules/pos/refund-math";
 import { REFUND_ERROR_KEYS, REFUND_REASON_CODES, REFUND_REASON_MAX, type RefundPayType, type RefundReasonCode, type SaleForRefund } from "@/lib/modules/pos/refund-shared";
 import { currentShiftAction } from "@/lib/modules/pos/shift-actions";
+import { TaxInvoiceDialog, type TaxInvoiceSubmitResult } from "@/components/pos/register/TaxInvoiceDialog";
+import { issueFromTaxInvoiceRequestAction, issueFullTaxInvoiceAction, rejectTaxInvoiceRequestAction } from "@/lib/modules/pos/tax-invoice-actions";
+import { buyerKindFromTaxId, taxInvoiceRefusalKey, type TaxInvoiceBuyerInput } from "@/lib/modules/pos/tax-invoice-shared";
 // POS P1.15U ▸ ผู้ขอ = คนในโทเคนของเครื่องนี้ (มติ 2) · รหัสปฏิเสธของ PIN/สายอนุมัติ (มติ 6) · กล่องรอผู้จัดการอนุมัติ 21B ◂
 import { refusalMessageKey, type PosApprovalView } from "@/lib/modules/pos/register-shared";
 import { clearStaffSession, readStaffSession } from "@/lib/modules/pos/staff-session";
@@ -38,7 +43,26 @@ import { ApprovalWaitDialog, type ApprovalPinResult } from "@/components/pos/reg
 import { BillIcon, ChannelChip, StatusChip, SummaryCard, bkkHm, billsCsv, channelLabel, chipOf, dateLabel, methodLabel, money, payText, type T } from "./bills-ui";
 
 type Unit = { id: string; name: string };
-type Props = { systemId: string; units: Unit[]; unitId: string; today: string; initialDate: string; hasAnyBill: boolean; accountSystemId: string | null };
+type Props = {
+  systemId: string;
+  units: Unit[];
+  unitId: string;
+  today: string;
+  initialDate: string;
+  hasAnyBill: boolean;
+  accountSystemId: string | null;
+  /** POS P1.13U มติ 4: ผู้ใช้มีสิทธิ์ pos.taxinvoice.issue ที่สาขานี้ (เจ้าของ/ผู้จัดการโดยปริยาย) — false = ไม่มีปุ่มออก/ปฏิเสธ */
+  canIssueTaxInvoice?: boolean;
+};
+/** P1.13U: เหตุผลที่ปฏิเสธคำขอใบกำกับ (มติ 4 — แผ่นเหตุผล ≤200 · เซิร์ฟเวอร์รับ ≤500) */
+const TAX_REJECT_MAX = 200;
+const sameRequestBuyer = (a: TaxInvoiceBuyerInput, b: TaxInvoiceBuyerInput) =>
+  a.kind === b.kind &&
+  a.name.trim() === b.name.trim() &&
+  a.taxId === b.taxId &&
+  (a.branchCode || "00000") === (b.branchCode || "00000") &&
+  a.address.trim() === b.address.trim() &&
+  (a.email?.trim() || null) === (b.email?.trim() || null);
 type PageOk = Extract<BillsPageDataResult, { ok: true }>;
 type Detail = Extract<BillDetailResult, { ok: true }>["bill"];
 
@@ -90,12 +114,13 @@ function BillDialog({ labelledBy, testid, wide, onClose, children }: { labelledB
   );
 }
 
-export function BillsClient({ systemId, units, unitId, today, initialDate, hasAnyBill, accountSystemId }: Props) {
+export function BillsClient({ systemId, units, unitId, today, initialDate, hasAnyBill, accountSystemId, canIssueTaxInvoice = false }: Props) {
   const t = useTranslations("pos.bills") as T;
   const ts = useTranslations("pos.shift") as T;
   const te = useTranslations("pos.bills.errors") as T;
   const tr = useTranslations("pos.refund.errors") as T;
   const trc = useTranslations("pos.receipt") as T;
+  const tpos = useTranslations("pos") as T;
   const trg = useTranslations("pos.register");
   const locale = useLocale();
 
@@ -476,6 +501,80 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
   };
   // ◂
 
+  // ── POS P1.13U ▸ ใบกำกับภาษีเต็มรูป (มติ 4) ──
+  //   later = บิล ABB ที่ยังไม่ออก → issueFullTaxInvoiceAction · request = คำขอของลูกค้า: ข้อมูลไม่แก้ = issueFromTaxInvoiceRequestAction · แก้ = issueFullTaxInvoiceAction + requestId
+  const [taxDlg, setTaxDlg] = useState<null | { mode: "later" } | { mode: "request"; requestId: string; initial: TaxInvoiceBuyerInput }>(null);
+  const [dbdOff, setDbdOff] = useState(false);
+  const [rejectFor, setRejectFor] = useState<string | null>(null);
+  const [rejectReason, setRejectReason] = useState("");
+  const [rejectErr, setRejectErr] = useState<string | null>(null);
+  const [rejectBusy, setRejectBusy] = useState(false);
+  const closeTaxDlg = useCallback(() => setTaxDlg(null), []);
+  const openTaxRequest = (b: Detail) => {
+    const rq = b.taxInvoice.request;
+    if (!rq || !b.taxInvoice.requestId) return;
+    setTaxDlg({
+      mode: "request",
+      requestId: b.taxInvoice.requestId,
+      initial: { kind: buyerKindFromTaxId(rq.taxId), name: rq.name, taxId: rq.taxId, branchCode: rq.branchCode, address: rq.address, email: rq.email, source: "MANUAL" },
+    });
+  };
+  const issueTaxInvoice = async (buyer: TaxInvoiceBuyerInput, remember: boolean): Promise<TaxInvoiceSubmitResult> => {
+    if (!bill || !taxDlg) return;
+    const rememberArg = remember && bill.member ? { rememberBuyer: true } : {};
+    try {
+      const r =
+        taxDlg.mode === "request" && sameRequestBuyer(buyer, taxDlg.initial)
+          ? await issueFromTaxInvoiceRequestAction({ systemId, unitId, requestId: taxDlg.requestId, ...rememberArg })
+          : // fix F3 (มติ): ส่ง requestId เฉพาะเมื่อเลขผู้เสียภาษีตรงคำขอ · เลขต่าง = ออกตามที่กรอก แล้วบริการปฏิเสธคำขอเอง (S fix F5 + audit)
+            await issueFullTaxInvoiceAction({ systemId, unitId, saleId: bill.id, buyer, ...(taxDlg.mode === "request" && buyer.taxId === taxDlg.initial.taxId ? { requestId: taxDlg.requestId } : {}), ...rememberArg });
+      if (r.ok) {
+        setTaxDlg(null);
+        setToast(t("taxInvoice.toastIssued", { docNo: r.docNo ?? "\u2014" }));
+        refreshAll();
+        return;
+      }
+      if (r.code === "ALREADY_ISSUED") refreshAll(); // ลิ้นชักตามสถานะจริง (มีคนออกไปก่อน)
+      return { errorKey: taxInvoiceRefusalKey(r.code) };
+    } catch {
+      return { errorKey: taxInvoiceRefusalKey("INTERNAL") };
+    }
+  };
+  const openReject = (requestId: string) => {
+    setRejectFor(requestId);
+    setRejectReason("");
+    setRejectErr(null);
+  };
+  const closeReject = useCallback(() => {
+    if (!rejectBusy) setRejectFor(null);
+  }, [rejectBusy]);
+  const submitReject = async () => {
+    if (!rejectFor || rejectBusy) return;
+    const reason = rejectReason.trim();
+    if (!reason || reason.length > TAX_REJECT_MAX) {
+      setRejectErr(tpos(taxInvoiceRefusalKey("VALIDATION")));
+      return;
+    }
+    setRejectBusy(true);
+    setRejectErr(null);
+    try {
+      const r = await rejectTaxInvoiceRequestAction({ systemId, unitId, requestId: rejectFor, reason });
+      if (r.ok) {
+        setRejectFor(null);
+        setToast(t("taxInvoice.toastRejected"));
+        refreshAll();
+      } else {
+        setRejectErr(tpos(taxInvoiceRefusalKey(r.code)));
+        if (r.code === "NOT_FOUND") refreshAll();
+      }
+    } catch {
+      setRejectErr(tpos(taxInvoiceRefusalKey("INTERNAL")));
+    } finally {
+      setRejectBusy(false);
+    }
+  };
+  // ◂
+
   // ── คืนเงิน ──
   const [refundOpen, setRefundOpen] = useState(false);
   const [rf, setRf] = useState<SaleForRefund | null>(null);
@@ -641,7 +740,8 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
 
   // ── Esc ปิดลิ้นชัก (เมื่อไม่มีกล่องเปิดทับ) ──
   useEffect(() => {
-    if (!selectedId || voidOpen || refundOpen) return;
+    // P1.13U ใบกำกับ (taxDlg/rejectFor) + P1.15U แป้น PIN ผู้จัดการ / รออนุมัติ (mgrPin/wait) เปิดทับ ⇒ Esc ปิดกล่องนั้นก่อน ไม่ปิดลิ้นชัก
+    if (!selectedId || voidOpen || refundOpen || taxDlg || rejectFor || mgrPin || wait) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         if (menuFor) setMenuFor(null);
@@ -650,7 +750,7 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selectedId, voidOpen, refundOpen, menuFor, closeDrawer]);
+  }, [selectedId, voidOpen, refundOpen, taxDlg, rejectFor, mgrPin, wait, menuFor, closeDrawer]);
 
   // ── ส่งออกหน้านี้ ──
   const exportCsv = () => {
@@ -1152,7 +1252,7 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
                 ))}
               </section>
               {/* สมาชิก · บัญชี · ใบกำกับ */}
-              {bill.member || bill.accounting || bill.receiptKind === "TAX_INVOICE_ABB" ? (
+              {bill.member || bill.accounting || bill.receiptKind === "TAX_INVOICE_ABB" || bill.taxInvoice.status !== "NONE" ? (
                 <section className="flex flex-col gap-1 border-b px-5 py-3 text-[13px]">
                   {bill.member ? (
                     <div className="flex min-h-[32px] items-center gap-2.5">
@@ -1180,12 +1280,70 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
                       )}
                     </div>
                   ) : null}
-                  {bill.receiptKind === "TAX_INVOICE_ABB" ? (
-                    <div className="flex min-h-[32px] items-center gap-2.5">
+                  {/* POS P1.13U ▸ ใบกำกับ: ออกเต็มรูปแล้ว = แทนแถว ABB · ยังไม่ออก = ABB + "ขอใบเต็มรูป" · ลูกค้าขอ = ออก/ปฏิเสธ ◂ */}
+                  {bill.taxInvoice.status === "ISSUED" ? (
+                    <div data-testid="pos-taxinv-bill-issued" className="flex min-h-[32px] items-center gap-2.5">
+                      <BillIcon name="doc" className="text-[color:var(--color-muted)]" />
+                      <span className="min-w-0 truncate">
+                        {t("taxInvoice.issued")} <b className="tabular-nums">{bill.taxInvoice.docNo ?? "\u2014"}</b>
+                        {bill.taxInvoice.buyerName ? ` \u00b7 ${bill.taxInvoice.buyerName}` : ""}
+                      </span>
+                    </div>
+                  ) : bill.receiptKind === "TAX_INVOICE_ABB" ? (
+                    <div data-testid="pos-taxinv-bill-abb" className="flex min-h-[32px] items-center gap-2.5">
                       <BillIcon name="doc" className="text-[color:var(--color-muted)]" />
                       <span>
                         {t("drawer.abb")} <b className="tabular-nums">{bill.receiptNo}</b>
                       </span>
+                      <span className="flex-1" />
+                      {canIssueTaxInvoice && bill.taxInvoice.status === "NONE" && bill.status === "PAID" && bill.totals.refunded === 0 ? (
+                        <button
+                          type="button"
+                          data-testid="pos-taxinv-request-full"
+                          className="inline-flex min-h-[44px] items-center font-semibold text-[color:var(--color-accent)]"
+                          onClick={() => setTaxDlg({ mode: "later" })}
+                        >
+                          {t("taxInvoice.requestFull")}
+                        </button>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  {bill.taxInvoice.status === "REQUESTED" ? (
+                    <div data-testid="pos-taxinv-bill-requested" className="flex flex-wrap items-center gap-x-2.5 gap-y-1 py-1">
+                      <BillIcon name="mail" className="text-[color:var(--color-muted)]" />
+                      <span className="min-w-0 flex-1">
+                        {t("taxInvoice.requested")}
+                        {bill.taxInvoice.buyerName ? (
+                          <>
+                            {" \u00b7 "}
+                            <b>{bill.taxInvoice.buyerName}</b>
+                          </>
+                        ) : null}
+                      </span>
+                      {canIssueTaxInvoice && bill.taxInvoice.requestId ? (
+                        <span className="flex gap-2">
+                          <button
+                            type="button"
+                            data-testid="pos-taxinv-request-reject"
+                            className="btn btn-ghost h-11 rounded-[11px] px-3 text-[13px]"
+                            onClick={() => openReject(bill.taxInvoice.requestId!)}
+                          >
+                            {t("taxInvoice.reject")}
+                          </button>
+                          {/* fix F6: บิลยกเลิก/คืนเงินแล้ว = บริการปฏิเสธการออก (SALE_VOIDED / HAS_REFUNDS) ⇒ ไม่เสนอปุ่มออก (ปฏิเสธคำขอยังทำได้) */}
+                          {bill.status === "PAID" && bill.totals.refunded === 0 ? (
+                          <button
+                            type="button"
+                            data-testid="pos-taxinv-request-issue"
+                            disabled={!bill.taxInvoice.request}
+                            className="btn btn-primary h-11 rounded-[11px] px-3 text-[13px]"
+                            onClick={() => openTaxRequest(bill)}
+                          >
+                            {t("taxInvoice.issue")}
+                          </button>
+                          ) : null}
+                        </span>
+                      ) : null}
                     </div>
                   ) : null}
                 </section>
@@ -1329,6 +1487,79 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
         </BillDialog>
       ) : null}
       {/* ◂ */}
+
+      {/* ═══ POS P1.13U ▸ กล่องใบกำกับเต็มรูป (15A โหมดออกทีหลัง / จากคำขอ) ═══ */}
+      {taxDlg && bill ? (
+        <TaxInvoiceDialog
+          mode="issue"
+          systemId={systemId}
+          unitId={unitId}
+          chip={`${bill.receiptNo ?? "\u2014"} \u00b7 ${money(bill.totals.grandTotal)}`}
+          initial={taxDlg.mode === "request" ? taxDlg.initial : null}
+          requestTaxId={taxDlg.mode === "request" ? taxDlg.initial.taxId : null}
+          memberId={bill.member?.customerId ?? null}
+          memberName={bill.member?.name ?? null}
+          dbdOff={dbdOff}
+          onDbdOff={() => setDbdOff(true)}
+          onCancel={closeTaxDlg}
+          onSave={issueTaxInvoice}
+          escClose
+        />
+      ) : null}
+      {/* ═══ POS P1.13U ▸ แผ่นปฏิเสธคำขอใบกำกับ (เหตุผลบังคับ ≤200) ═══ */}
+      {rejectFor && bill ? (
+        <BillDialog labelledBy="pos-taxinv-reject-title" testid="pos-taxinv-reject-sheet" onClose={closeReject}>
+          <div className="flex items-center gap-3 border-b px-5 pb-3 pt-4">
+            <h2 id="pos-taxinv-reject-title" className="text-[17px] font-bold">
+              {t("taxInvoice.rejectTitle")}
+            </h2>
+            <span className="flex-1" />
+            <button type="button" data-testid="pos-taxinv-reject-close" aria-label={t("taxInvoice.close")} className="-mr-2 grid h-11 w-11 place-items-center rounded-lg hover:bg-[color:var(--color-surface-2)]" disabled={rejectBusy} onClick={closeReject}>
+              <BillIcon name="x" />
+            </button>
+          </div>
+          <form
+            data-testid="pos-taxinv-reject-form"
+            className="flex flex-col"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void submitReject();
+            }}
+          >
+            <div className="flex flex-col gap-3 px-5 py-4">
+              <label className="flex flex-col gap-1.5 text-[13px]">
+                <span className="font-bold">{t("taxInvoice.rejectReason")}</span>
+                <textarea
+                  data-testid="pos-taxinv-reject-reason"
+                  value={rejectReason}
+                  maxLength={TAX_REJECT_MAX}
+                  rows={3}
+                  onChange={(e) => {
+                    setRejectReason(e.target.value);
+                    setRejectErr(null);
+                  }}
+                  className="input"
+                  autoFocus
+                />
+                <span className="self-end text-[11px] tabular-nums text-[color:var(--color-muted)]">{t("taxInvoice.rejectHint", { count: rejectReason.length, max: TAX_REJECT_MAX })}</span>
+              </label>
+              {rejectErr ? (
+                <span className="text-[13px] text-[color:var(--color-danger)]" data-testid="pos-taxinv-reject-error" role="alert">
+                  {rejectErr}
+                </span>
+              ) : null}
+            </div>
+            <div className="flex justify-end gap-2 border-t px-5 pb-4 pt-3">
+              <button type="button" data-testid="pos-taxinv-reject-cancel" className="btn btn-ghost h-12 rounded-[12px] px-5" disabled={rejectBusy} onClick={closeReject}>
+                {t("taxInvoice.cancel")}
+              </button>
+              <button type="submit" data-testid="pos-taxinv-reject-submit" disabled={rejectBusy || !rejectReason.trim()} className="btn h-12 rounded-[12px] bg-[color:var(--color-danger)] px-6 text-[color:var(--color-surface)] disabled:opacity-50">
+                {t("taxInvoice.rejectConfirm")}
+              </button>
+            </div>
+          </form>
+        </BillDialog>
+      ) : null}
 
       {/* ═══ กล่องยกเลิกบิล (U6) ═══ */}
       {voidOpen && bill ? (
