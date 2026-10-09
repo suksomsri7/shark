@@ -20,6 +20,10 @@ export const ENTITY_TYPES = [
   { value: "crm.commission", label: "จ่ายคอมมิชชันการขาย (CRM)" },
   { value: "crm.reassign", label: "โอนดีล/ผู้ติดต่อให้ผู้ดูแลคนใหม่ (CRM)" },
   { value: "crm.portal_request", label: "คำขอจากพอร์ทัลลูกค้า (CRM)" },
+  // POS P1.15 ▸ ยกเลิกบิล / คืนเงิน / ส่วนลดเกินสิทธิ์ที่หน้าขาย — ผลอยู่ที่ pos/pos-approval-consumer.ts (มติผู้คุมงาน 8) ◂
+  { value: "POS_VOID", label: "ยกเลิกบิล (POS)" },
+  { value: "POS_REFUND", label: "คืนเงิน (POS)" },
+  { value: "POS_DISCOUNT_OVER", label: "ส่วนลดเกินสิทธิ์ (POS)" },
 ] as const;
 
 export const APPROVER_ROLES = [

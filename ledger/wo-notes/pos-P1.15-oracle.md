@@ -2,7 +2,8 @@
 
 Oracle writer · VPS · 9 Oct 2026 · branch `wip/pos-p1.15-oracle` from `origin/session/pos` e4d47b5b (P1.10U/P1.11 server code not merged — they add nothing P1.15 depends on).
 Contract: `ledger/pos-briefs/pos-brief-P1.15.md` §2 R1–R9, §4, §5 CD1–CD6. §3 (UI: 13B, 21A/21B, discount sheet) is not tested.
-34 checks: PN0–PN8 · TK1–TK5 · DC1–DC6 · AP0–AP10 · NC · Z1 · Z2 (static = PN0, AP0, NC).
+36 checks: PN0–PN8 · TK1–TK5 · DC1–DC6 · AP0–AP10 · AP-F1 · PN-F2 · NC · Z1 · Z2 (static = PN0, AP0, NC).
+ORACLE-EDIT (P1.15 fix round 1, controller-approved): + **AP-F1** (approved discount bound to cart/amount/held-cart owner ⇒ `APPROVAL_MISMATCH`; same-key retry of the auto-hold returns the same `PENDING_APPROVAL`; the approved cart itself passes) · + **PN-F2** (`managerPin` without `managerUserId` ⇒ `VALIDATION` on submit and void; 5 wrong manager PINs with the id ⇒ lock ⇒ `PIN_LOCKED`). 34 → 36. `--list` after the edit: S=2 X1=3 X2=4 X3=7 X4=4 X5=9 -=7.
 
 ## CONTROLLER-DECISION (read first — the oracle encodes my proposal for each; rule before the builder starts)
 1. **Whose row counts a failed PIN?** R2 matches the PIN against *all* rows of the unit, so a wrong PIN matches no row and cannot be counted "per PIN row". Yet R2 (lock-out after 5) and DC3 (wrong `managerPin` ⇒ `+failedCount`) both need it. **Proposal:** `verifyStaffPin` takes an optional `userId` (13B: the staff member tapped in the right-hand list), and `managerPin` comes with `managerUserId` (the manager picked on the sheet). With an id, only that row is checked, and failures count on it. Without an id, all rows are matched and a miss counts on nothing (an unattributed brute-force throttle per device is out of scope here, so please confirm that is acceptable). The oracle always sends `managerUserId` and uses `userId` in PN6. If you rule "no ids", I will rewrite PN6/DC3/AP10 by ORACLE-EDIT.

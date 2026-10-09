@@ -1,0 +1,199 @@
+// pos-approval.ts — POS × สายอนุมัติกลาง (POS P1.15 · R5 · CD3 CD4 · มติผู้คุมงาน 5 7 9 10 11)
+// สัญญา = scripts/qc-pos-p1.15.mts (AP0–AP10) · brief ledger/pos-briefs/pos-brief-P1.15.md
+//
+// 🔴 POS แตะสายอนุมัติผ่าน facade `@/lib/modules/approval` เท่านั้น (fitness "pos→approval" · AP0) — approval/service.ts ไม่ถูกแก้ (CD6)
+// 🔴 ผู้เขียนตาราง PosApprovalPayload ที่เดียว (snapshot ของคำขอ — แกนกลางไม่มีคอลัมน์ payload/title · CD3) ·
+//    payload = { ref, entityId, requestedById, amountSatang, title, …snapshot, outcome? } · ref = saleId (VOID/REFUND) / heldCartId (DISCOUNT)
+// 🔴 คำขอเปิดต่อ ref มีได้ใบเดียว: PENDING · หรือ APPROVED ที่ตัวรับคิวยังไม่ได้บันทึกผล (outcome) = "รออยู่" ⇒ PENDING_APPROVAL requestId เดิม
+// 🔴 entityId (มติ 9): VOID = saleId ครั้งแรก · หลังถูกปฏิเสธ/ยกเลิก = saleId:<n> (n = คำขอที่ปิดแล้วของบิลนี้ + 1) ·
+//    REFUND = <saleId>:<คีย์ของการคืน> · DISCOUNT = heldCartId — แกนกลางกันซ้ำด้วย approval-<entityType>-<entityId> ตลอดกาล
+// 🔴 outcome (ตัวรับคิวเขียนครั้งเดียว): EXECUTED · BLOCKED_SELF_APPROVAL · FAILED:<code> · CONSUMED (ส่วนลดที่ใช้แล้ว)
+import { Prisma } from "@prisma/client";
+import { writeAudit } from "@/lib/core/audit";
+import { cancelRequest, lastDecisionOf, requestStatuses, resolvePolicy, submitForApproval } from "@/lib/modules/approval";
+import { prisma } from "./db";
+
+export const POS_APPROVAL_KINDS = ["POS_VOID", "POS_REFUND", "POS_DISCOUNT_OVER"] as const;
+export type PosApprovalKind = (typeof POS_APPROVAL_KINDS)[number];
+export const isPosApprovalKind = (v: unknown): v is PosApprovalKind => typeof v === "string" && (POS_APPROVAL_KINDS as readonly string[]).includes(v);
+
+/** ข้อความของคำปฏิเสธเชิงสายอนุมัติ (ไทย · จอใช้ refusalMessageKey) */
+export const POS_APPROVAL_MESSAGE = {
+  APPROVAL_REQUIRED: "รายการนี้ต้องรออนุมัติ — ส่งคำขอให้ผู้อนุมัติแล้ว หรือใส่ PIN ผู้จัดการที่เครื่องนี้",
+  PENDING_APPROVAL: "มีคำขออนุมัติของรายการนี้รออยู่แล้ว — รอผลอนุมัติ หรือใส่ PIN ผู้จัดการที่เครื่องนี้",
+  APPROVAL_MISMATCH: "บิลนี้ไม่ตรงกับที่ได้รับอนุมัติ (รายการ/ยอด/ผู้ขาย) — ขออนุมัติใหม่ หรือใส่ PIN ผู้จัดการ",
+} as const;
+
+const isRecord = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
+type Row = { requestId: string; tenantId: string; kind: string; payload: Prisma.JsonValue; createdAt: Date };
+export const payloadOutcome = (payload: unknown): string | null => (isRecord(payload) && typeof payload.outcome === "string" ? payload.outcome : null);
+
+/** snapshot ทุกใบของ ref นี้ (เก่าสุดก่อน) */
+async function rowsFor(tenantId: string, kind: PosApprovalKind, ref: string): Promise<Row[]> {
+  return prisma.posApprovalPayload.findMany({ where: { tenantId, kind, payload: { path: ["ref"], equals: ref } }, orderBy: [{ createdAt: "asc" }, { requestId: "asc" }] });
+}
+
+/** snapshot ของคำขอใบนี้ (ร้านเดียวกันเท่านั้น) */
+export async function posApprovalPayload(tenantId: string, requestId: string): Promise<{ kind: PosApprovalKind; payload: Record<string, unknown> } | null> {
+  const row = await prisma.posApprovalPayload.findUnique({ where: { requestId } });
+  if (!row || row.tenantId !== tenantId || !isPosApprovalKind(row.kind) || !isRecord(row.payload)) return null;
+  return { kind: row.kind, payload: row.payload };
+}
+
+/**
+ * คำขอที่ "ยังเปิด" ของ ref นี้ (ใหม่สุดก่อน): PENDING เสมอ · APPROVED ที่ยังไม่มี outcome (ตัวรับคิวยังไม่วิ่ง — มติ 9) สำหรับ VOID/REFUND ·
+ * ส่วนลดที่ APPROVED แล้ว = ปิด (ไปใช้ด้วย heldCartId)
+ */
+export async function openPosRequest(tenantId: string, kind: PosApprovalKind, ref: string): Promise<{ requestId: string; status: string } | null> {
+  const rows = await rowsFor(tenantId, kind, ref);
+  if (!rows.length) return null;
+  const st = await requestStatuses({ tenantId }, rows.map((r) => r.requestId));
+  for (const r of [...rows].reverse()) {
+    const s = st[r.requestId];
+    if (s === "PENDING") return { requestId: r.requestId, status: s };
+    if (s === "APPROVED" && kind !== "POS_DISCOUNT_OVER" && !payloadOutcome(r.payload)) return { requestId: r.requestId, status: s };
+  }
+  return null;
+}
+
+export type SubmitPosApprovalInput = {
+  tenantId: string;
+  unitId: string;
+  systemId: string;
+  kind: PosApprovalKind;
+  ref: string;
+  /** entityId ของครั้งที่ n (1 = ครั้งแรก) */
+  entityIdOf: (n: number) => string;
+  amountSatang: number;
+  requestedById: string;
+  payload: Record<string, unknown>;
+};
+export type SubmitPosApprovalResult = { status: "AUTO" } | { status: "REQUIRED"; requestId: string } | { status: "PENDING"; requestId: string };
+
+/**
+ * ยื่นคำขอ POS เข้าสายกลาง: มีคำขอเปิดของ ref นี้ = PENDING (id เดิม) · ไม่มีกติกาที่เข้าเงื่อนไข = AUTO (ทำตามทางเดิม) ·
+ * ใบใหม่ = REQUIRED + snapshot (สร้างคู่กับ requestId · แข่งกันยื่น = ผู้แพ้ได้ PENDING ของใบเดียวกัน)
+ */
+export async function submitPosApproval(input: SubmitPosApprovalInput): Promise<SubmitPosApprovalResult> {
+  const { tenantId, kind, ref } = input;
+  const open = await openPosRequest(tenantId, kind, ref);
+  if (open) return { status: "PENDING", requestId: open.requestId };
+  const prior = (await rowsFor(tenantId, kind, ref)).length;
+  for (let n = prior + 1; n <= prior + 20; n++) {
+    const entityId = input.entityIdOf(n);
+    const r = await submitForApproval({ tenantId }, { entityType: kind, entityId, unitId: input.unitId, systemId: input.systemId, amountSatang: input.amountSatang, requestedById: input.requestedById });
+    if ("autoApproved" in r) return { status: "AUTO" };
+    const st = (await requestStatuses({ tenantId }, [r.requestId]))[r.requestId];
+    // entityId นี้มีคำขอที่ปิดแล้ว (ไม่มี snapshot — เช่น ล้มระหว่างยื่นรอบก่อน) ⇒ ข้ามไปเลขถัดไป
+    if (st !== "PENDING") continue;
+    try {
+      await prisma.posApprovalPayload.create({
+        data: {
+          requestId: r.requestId,
+          tenantId,
+          kind,
+          payload: { ...input.payload, ref, entityId, requestedById: input.requestedById, amountSatang: input.amountSatang, unitId: input.unitId, systemId: input.systemId } as Prisma.InputJsonValue,
+        },
+      });
+      return { status: "REQUIRED", requestId: r.requestId };
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") return { status: "PENDING", requestId: r.requestId };
+      throw e;
+    }
+  }
+  throw new Error("ยื่นคำขออนุมัติไม่สำเร็จ — คำขอของรายการนี้ปิดไปแล้วหลายครั้งเกินไป");
+}
+
+/** มีกติกาของชนิดนี้ที่เข้าเงื่อนไขไหม (ไม่ยื่นอะไร) — ใช้ก่อนพักบิลส่วนลดเกินสิทธิ์ (มติ 7) */
+export async function posApprovalPolicyExists(tenantId: string, kind: PosApprovalKind, unitId: string, systemId: string, amountSatang: number): Promise<boolean> {
+  return !!(await resolvePolicy({ tenantId }, { entityType: kind, unitId, systemId, amountSatang }));
+}
+
+/** PIN ผู้จัดการชนะคำขอที่รอ (CD4): ยกเลิกคำขอ PENDING ของ ref นี้ (ถ้ามี) → requestId ที่ยกเลิก | null */
+export async function cancelOpenPosRequest(tenantId: string, kind: PosApprovalKind, ref: string): Promise<string | null> {
+  const open = await openPosRequest(tenantId, kind, ref);
+  if (!open || open.status !== "PENDING") return null;
+  return (await cancelRequest({ tenantId }, open.requestId)) ? open.requestId : null;
+}
+
+/** audit pos.approval.pin_override — ไม่มี PIN ในบันทึก */
+export async function auditPinOverride(input: { tenantId: string; action: PosApprovalKind; requestId: string | null; byUserId: string; forUserId: string; targetType: string; targetId: string; extra?: Record<string, unknown> }): Promise<void> {
+  await writeAudit({
+    tenantId: input.tenantId,
+    actorId: input.byUserId,
+    action: "pos.approval.pin_override",
+    targetType: input.targetType,
+    targetId: input.targetId,
+    after: { requestId: input.requestId, action: input.action, byUserId: input.byUserId, forUserId: input.forUserId, ...(input.extra ?? {}) },
+  });
+}
+
+/** ผู้ตัดสินขั้นสุดท้าย (อ่านล้วนผ่าน facade) */
+export async function posApprovalDecider(tenantId: string, requestId: string): Promise<string | null> {
+  return (await lastDecisionOf({ tenantId }, requestId))?.decidedById ?? null;
+}
+
+/** สถานะของคำขอ (อ่านล้วนผ่าน facade) */
+export async function posApprovalStatus(tenantId: string, requestId: string): Promise<string | null> {
+  return (await requestStatuses({ tenantId }, [requestId]))[requestId] ?? null;
+}
+
+/**
+ * บันทึกผลของคำขอครั้งเดียว (ไม่มี outcome อยู่ก่อน) — คืน true เมื่อเป็นผู้เขียนคนแรก ·
+ * extra = ฟิลด์ประกอบ (เช่น consumedBySaleKey) · เขียนด้วย jsonb || ในคำสั่งเดียว (อะตอมมิก)
+ */
+export async function markPosApprovalOutcome(tenantId: string, requestId: string, outcome: string, extra: Record<string, string> = {}): Promise<boolean> {
+  const patch = JSON.stringify({ outcome, outcomeAt: new Date().toISOString(), ...extra });
+  const n = await prisma.$executeRaw`
+    UPDATE "PosApprovalPayload" SET "payload" = "payload" || ${patch}::jsonb
+    WHERE "requestId" = ${requestId} AND "tenantId" = ${tenantId} AND NOT ("payload" ? 'outcome')`;
+  return n === 1;
+}
+
+/** คืนสิทธิ์ส่วนลดที่ยึดไว้ (บิลไม่เกิด) — เฉพาะเมื่อผู้ยึดคือคีย์นี้ */
+export async function releasePosApprovalClaim(tenantId: string, requestId: string, saleKey: string): Promise<void> {
+  await prisma.$executeRaw`
+    UPDATE "PosApprovalPayload" SET "payload" = "payload" - 'outcome' - 'outcomeAt' - 'consumedBySaleKey'
+    WHERE "requestId" = ${requestId} AND "tenantId" = ${tenantId} AND "payload"->>'outcome' = 'CONSUMED' AND "payload"->>'consumedBySaleKey' = ${saleKey}`;
+}
+
+/**
+ * ส่วนลดที่อนุมัติแล้วของบิลพักนี้ (ยังไม่ถูกใช้): คำขอ APPROVED · snapshot ยังไม่มี outcome (หรือถูกยึดด้วยคีย์นี้เอง — ส่งซ้ำพร้อมกัน) ·
+ * คืน discountBp ที่อนุมัติ + ผู้ตัดสิน · อื่น = null (มติ 5: ใช้แล้ว/ไม่ได้อนุมัติ ⇒ DISCOUNT_EXCEEDS_LIMIT ไม่ยื่นใหม่)
+ */
+export async function approvedDiscountOf(
+  tenantId: string,
+  approvedRequestId: string | null,
+  saleKey: string,
+): Promise<{ requestId: string; discountBp: number; discountSatang: number; cartHash: string; deciderId: string } | null> {
+  if (!approvedRequestId) return null;
+  const snap = await posApprovalPayload(tenantId, approvedRequestId);
+  if (!snap || snap.kind !== "POS_DISCOUNT_OVER") return null;
+  const out = payloadOutcome(snap.payload);
+  if (out && !(out === "CONSUMED" && snap.payload.consumedBySaleKey === saleKey)) return null;
+  if ((await posApprovalStatus(tenantId, approvedRequestId)) !== "APPROVED") return null;
+  const bp = snap.payload.discountBp;
+  const satang = snap.payload.discountSatang;
+  const cartHash = snap.payload.cartHash;
+  const deciderId = await posApprovalDecider(tenantId, approvedRequestId);
+  if (typeof bp !== "number" || !Number.isInteger(bp) || bp < 0 || !deciderId) return null;
+  if (typeof satang !== "number" || !Number.isInteger(satang) || satang < 0 || typeof cartHash !== "string" || !cartHash) return null; // snapshot ก่อน fix รอบ 1 = ใช้ไม่ได้
+  return { requestId: approvedRequestId, discountBp: bp, discountSatang: satang, cartHash, deciderId };
+}
+
+/** fix รอบ 1 F5: คำขอส่วนลดเกินสิทธิ์ที่ยื่นจาก submit คีย์นี้แล้ว (ส่งซ้ำ = คำขอ/บิลพักเดิม) */
+export async function discountRequestBySubmitKey(tenantId: string, submitKey: string): Promise<{ requestId: string; heldCartId: string } | null> {
+  const row = await prisma.posApprovalPayload.findFirst({
+    where: { tenantId, kind: "POS_DISCOUNT_OVER", payload: { path: ["submitKey"], equals: submitKey } },
+    orderBy: [{ createdAt: "asc" }, { requestId: "asc" }],
+  });
+  const held = row && isRecord(row.payload) && typeof row.payload.heldCartId === "string" ? row.payload.heldCartId : null;
+  return row && held ? { requestId: row.requestId, heldCartId: held } : null;
+}
+
+/** ยึดส่วนลดที่อนุมัติไว้ให้บิลคีย์นี้ (ครั้งเดียว) — ถูกยึดด้วยคีย์เดียวกันอยู่แล้ว = true (ส่งซ้ำ) */
+export async function claimApprovedDiscount(tenantId: string, requestId: string, saleKey: string): Promise<boolean> {
+  if (await markPosApprovalOutcome(tenantId, requestId, "CONSUMED", { consumedBySaleKey: saleKey })) return true;
+  const snap = await posApprovalPayload(tenantId, requestId);
+  return !!snap && payloadOutcome(snap.payload) === "CONSUMED" && snap.payload.consumedBySaleKey === saleKey;
+}
