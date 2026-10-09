@@ -12,6 +12,7 @@ import { Prisma } from "@prisma/client";
 import { writeAudit } from "@/lib/core/audit";
 import { cancelRequest, lastDecisionOf, requestStatuses, resolvePolicy, submitForApproval } from "@/lib/modules/approval";
 import { prisma } from "./db";
+import { POS_APPROVAL_WAIT_MS, type PosApprovalView, type PosApprovalWaitStatus } from "./register-shared";
 
 export const POS_APPROVAL_KINDS = ["POS_VOID", "POS_REFUND", "POS_DISCOUNT_OVER"] as const;
 export type PosApprovalKind = (typeof POS_APPROVAL_KINDS)[number];
@@ -197,3 +198,56 @@ export async function claimApprovedDiscount(tenantId: string, requestId: string,
   const snap = await posApprovalPayload(tenantId, requestId);
   return !!snap && payloadOutcome(snap.payload) === "CONSUMED" && snap.payload.consumedBySaleKey === saleKey;
 }
+
+// ═══════════ POS P1.15U ▸ อ่านสถานะคำขอสำหรับจอรออนุมัติ 21B (อ่านล้วน · ผูกร้าน+ระบบ+สาขาจาก snapshot) ◂ ═══════════
+/**
+ * requestId (ของจอนี้) หรือ saleId (คำขอยกเลิก/คืนเงินที่ยังเปิดของบิลนี้) → มุมมองของจอ · ไม่พบ/ร้าน-สาขาอื่น = null ·
+ * อ่านแถวสายอนุมัติตรง (ApprovalRequest/Step/Decision · อ่านอย่างเดียว แบบ crm/portal) เพราะ facade ไม่มีตัวอ่าน note/ขั้น
+ */
+export async function posApprovalView(scope: { tenantId: string; systemId: string; unitId: string }, ref: { requestId?: string | null; saleId?: string | null }): Promise<PosApprovalView | null> {
+  let requestId = ref.requestId ?? null;
+  for (const kind of ["POS_VOID", "POS_REFUND"] as const) if (!requestId && ref.saleId) requestId = (await openPosRequest(scope.tenantId, kind, ref.saleId))?.requestId ?? null;
+  const snap = requestId ? await posApprovalPayload(scope.tenantId, requestId) : null;
+  if (!requestId || !snap || snap.payload.unitId !== scope.unitId || snap.payload.systemId !== scope.systemId) return null;
+  const req = await prisma.approvalRequest.findFirst({ where: { id: requestId, tenantId: scope.tenantId }, select: { status: true, createdAt: true, policyId: true, currentStepOrder: true, amountSatang: true } });
+  if (!req) return null;
+  const [step, dec] = await Promise.all([
+    prisma.approvalStep.findFirst({ where: { policyId: req.policyId, order: req.currentStepOrder }, select: { approverRole: true, approverUserId: true } }),
+    prisma.approvalDecision.findFirst({ where: { requestId, tenantId: scope.tenantId }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], select: { decidedById: true, note: true } }),
+  ]);
+  const ids = [step?.approverUserId, dec?.decidedById].filter((x): x is string => !!x);
+  const names = new Map((ids.length ? await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } }) : []).map((u) => [u.id, u.name]));
+  const out = payloadOutcome(snap.payload);
+  const st = String(req.status);
+  const status: PosApprovalWaitStatus =
+    st === "PENDING"
+      ? Date.now() - req.createdAt.getTime() >= POS_APPROVAL_WAIT_MS ? "EXPIRED" : "PENDING"
+      : st === "APPROVED"
+        ? out && (out.startsWith("FAILED") || out === "BLOCKED_SELF_APPROVAL") ? "FAILED" : snap.kind === "POS_DISCOUNT_OVER" || out ? "APPROVED" : "PENDING"
+        : st === "REJECTED" || st === "CANCELLED" ? st : "FAILED";
+  const s = (v: unknown) => (typeof v === "string" && v ? v : null);
+  return {
+    requestId,
+    kind: snap.kind,
+    status,
+    createdAt: req.createdAt.toISOString(),
+    title: s(snap.payload.title),
+    reason: s(snap.payload.reason),
+    amountSatang: req.amountSatang ?? null,
+    approverName: step?.approverUserId ? (names.get(step.approverUserId) ?? null) : null,
+    approverRole: step ? String(step.approverRole) : null,
+    deciderName: dec ? (names.get(dec.decidedById) ?? null) : null,
+    note: dec?.note ?? null,
+    outcome: out,
+    heldCartId: s(snap.payload.heldCartId),
+    saleId: s(snap.payload.saleId),
+  };
+}
+
+/** ผู้ขอ/เครื่องของสาขานี้ยกเลิกคำขอที่ยัง PENDING (facade cancelRequest) — คำขอของสาขาอื่น/ไม่ใช่ POS = false */
+export async function cancelPosApprovalRequest(scope: { tenantId: string; systemId: string; unitId: string }, requestId: string): Promise<boolean> {
+  const snap = await posApprovalPayload(scope.tenantId, requestId);
+  if (!snap || snap.payload.unitId !== scope.unitId || snap.payload.systemId !== scope.systemId) return false;
+  return cancelRequest({ tenantId: scope.tenantId }, requestId);
+}
+

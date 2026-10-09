@@ -6,7 +6,7 @@
 //   POS_VOID          ⇒ voidSale(…, { actorUserId: ผู้ตัดสิน, via:"approval", requestId, เหตุผล/คีย์จาก snapshot })
 //   POS_REFUND        ⇒ refundApproved — ใบคืนคีย์ `approval-<requestId>` · นอกกะ (มติ 13) · ผู้ทำรายการ = ผู้ขอ · audit = ผู้ตัดสิน
 //   POS_DISCOUNT_OVER ⇒ PosHeldCart.approvedRequestId = requestId (เขียนครั้งเดียว) — ใช้ได้ 1 บิลที่ submit พร้อม heldCartId
-// rejected: ไม่ทำอะไร (คำขอปิดแล้ว · จออ่านสถานะจาก requestStatuses)
+// rejected: ไม่ทำอะไร (คำขอปิดแล้ว · จออ่านสถานะจาก requestStatuses) · POS P1.15U ▸ ยกเว้น POS_DISCOUNT_OVER = ทิ้งบิลพักที่รออนุมัติ (audit) ◂
 // 🔴 idempotent: snapshot มี outcome = ทำไปแล้ว/ปิดแล้ว ⇒ จบ · voidSale ซ้ำ = บิล VOIDED อยู่แล้ว · ใบคืนกันซ้ำด้วยคีย์ · ผูกบิลพักเฉพาะช่องที่ยังว่าง
 // 🔴 มติ 10: ผู้ตัดสิน = ผู้ขอ ⇒ ไม่ทำ (ops WARN pos.approval.self_approved_blocked) · คำขอคงสถานะเดิม · snapshot ปิดด้วย BLOCKED_SELF_APPROVAL
 // 🔴 ขั้นแรกของ chain (ห้ามขวางขั้นหลังถาวร): โยนเฉพาะความล้มชั่วคราว (DB/ธุรกรรม) · ข้อมูลใช้ไม่ได้ถาวร = WARN + outcome FAILED:<code> แล้วจบ
@@ -15,7 +15,7 @@ import { logOps } from "@/lib/core/ops";
 import { prisma } from "./db";
 import { PosSaleError, voidSale } from "./service";
 import { refundApproved } from "./refund";
-import { armHeldCartApproval } from "./held-cart";
+import { armHeldCartApproval, discardHeldCartRejected } from "./held-cart";
 import { isPosApprovalKind, markPosApprovalOutcome, payloadOutcome, posApprovalDecider, posApprovalPayload, posApprovalStatus } from "./pos-approval";
 import type { RefundSaleInput } from "./refund-shared";
 
@@ -33,8 +33,15 @@ export const onPosApprovalDecided: OutboxHandler = async (evt: Evt) => {
   const requestId = str(p.requestId);
   const entityType = str(p.entityType);
   if (!requestId || !isPosApprovalKind(entityType)) return;
-  // ปฏิเสธ = ไม่มีผลข้างเคียง (บิล/บิลพักคงเดิม)
-  if (evt.type === "approval.request.rejected") return;
+  // ปฏิเสธ = ไม่มีผลข้างเคียง (บิลคงเดิม) · POS P1.15U ▸ มติ 5: ส่วนลดเกินสิทธิ์ที่ถูกปฏิเสธ ⇒ ทิ้งบิลพักของคำขอนั้น (เฉพาะที่ยัง HELD — เล่นซ้ำไม่ทำซ้ำ) ◂
+  if (evt.type === "approval.request.rejected") {
+    if (entityType !== "POS_DISCOUNT_OVER") return;
+    const rj = await posApprovalPayload(evt.tenantId, requestId);
+    const held = rj ? (str(rj.payload.heldCartId) ?? str(rj.payload.ref)) : null;
+    if (!held || (await posApprovalStatus(evt.tenantId, requestId)) !== "REJECTED") return;
+    await discardHeldCartRejected(evt.tenantId, held, requestId, await posApprovalDecider(evt.tenantId, requestId));
+    return;
+  }
 
   const snap = await posApprovalPayload(evt.tenantId, requestId);
   if (!snap) {

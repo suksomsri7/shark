@@ -310,6 +310,34 @@ export type RegisterIdempotencyConflict = {
 export type PosApprovalRefusal = { ok: false; code: "APPROVAL_REQUIRED" | "PENDING_APPROVAL"; message: string; requestId: string; heldCartId?: string };
 export type RegisterSubmitResult = RegisterSubmitOk | RegisterPriceChanged | RegisterIdempotencyConflict | PosApprovalRefusal | RegisterRefusal;
 
+// ═══════════ POS P1.15U ▸ จอรออนุมัติ 21B (อ่านสถานะคำขอ · posApprovalStatusAction) ◂ ═══════════
+/** คำขอที่ไม่มีใครตอบภายในเวลานี้ = หมดอายุ (จอแสดง · ผู้ขอยกเลิกได้ · บิลคงเดิม) */
+export const POS_APPROVAL_WAIT_MS = 5 * 60_000;
+/**
+ * สถานะสำหรับจอ: PENDING (รวม APPROVED ที่ตัวรับคิวยังไม่ทำรายการของยกเลิก/คืนเงิน) · APPROVED (ทำรายการแล้ว / ส่วนลดพร้อมเรียกคืน) ·
+ * REJECTED · CANCELLED · EXPIRED (PENDING เกิน 5 นาที) · FAILED (อนุมัติแล้วแต่ทำรายการไม่ได้ / อนุมัติของตัวเอง)
+ */
+export type PosApprovalWaitStatus = "PENDING" | "APPROVED" | "REJECTED" | "CANCELLED" | "EXPIRED" | "FAILED";
+export type PosApprovalView = {
+  requestId: string;
+  kind: "POS_VOID" | "POS_REFUND" | "POS_DISCOUNT_OVER";
+  status: PosApprovalWaitStatus;
+  createdAt: string;
+  title: string | null;
+  reason: string | null;
+  amountSatang: number | null;
+  /** ผู้อนุมัติของขั้นปัจจุบัน: ชื่อ (เจาะจงคน) หรือบทบาท */
+  approverName: string | null;
+  approverRole: string | null;
+  deciderName: string | null;
+  /** เหตุผลของผู้ตัดสิน (ปฏิเสธ) */
+  note: string | null;
+  outcome: string | null;
+  heldCartId: string | null;
+  saleId: string | null;
+};
+export type PosApprovalViewResult = { ok: true; request: PosApprovalView | null } | RegisterRefusal;
+
 export type RegisterStatus = {
   ok: true;
   unit: { id: string; name: string };
@@ -363,7 +391,17 @@ export type ListHeldCartsResult = { ok: true; items: HeldCartSummary[]; count: n
 /** quote = ราคาปัจจุบัน (ไม่ใช่ราคาตอนพัก) · บรรทัดที่ขายไม่ได้แล้วยังอยู่ใน cart พร้อม notice (quote จึงไม่ ok จนกว่าจะเอาออก) ·
  *  products = สินค้าของบรรทัดที่ยังขายได้ (จอใช้แสดงชื่อ/ราคา) · lineNames = ชื่อสินค้าต่อบรรทัด (null = รายการกำหนดเอง/ไม่พบ) */
 export type RecallHeldCartResult =
-  | { ok: true; heldCartId: string; cart: RegisterQuoteInput; quote: RegisterQuoteResult; notices: HeldCartNotice[]; products: RegisterProduct[]; lineNames: (string | null)[] }
+  | {
+      ok: true;
+      heldCartId: string;
+      cart: RegisterQuoteInput;
+      quote: RegisterQuoteResult;
+      notices: HeldCartNotice[];
+      products: RegisterProduct[];
+      lineNames: (string | null)[];
+      /** POS P1.15U: บิลพักนี้ได้รับอนุมัติส่วนลดเกินสิทธิ์ (ยังไม่ถูกใช้) — quote คิดด้วยเพดานที่อนุมัติ · ชำระด้วย heldCartId */
+      approvedRequestId?: string;
+    }
   | RegisterRefusal;
 export type DiscardHeldCartResult = { ok: true } | RegisterRefusal;
 
