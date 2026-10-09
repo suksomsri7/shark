@@ -53,6 +53,8 @@ type Props = {
   externalErrorKey?: string | null;
   onCancel: () => void;
   onSave: (buyer: TaxInvoiceBuyerInput, remember: boolean) => TaxInvoiceSubmitResult | Promise<TaxInvoiceSubmitResult>;
+  /** fix F3: ออกจากคำขอของลูกค้า — เลขที่ลูกค้าขอ (แก้เป็นเลขอื่น = แจ้งก่อนกดว่าคำขอจะถูกปฏิเสธ) */
+  requestTaxId?: string | null;
   /** ลิ้นชักบิล: Esc ปิดกล่องเอง (หน้าขายมีตัวจับ Esc กลางอยู่แล้ว) */
   escClose?: boolean;
 };
@@ -507,6 +509,13 @@ export function TaxInvoiceDialog(p: Props) {
               <RegisterIcon name="doc" size={13} className="mt-0.5 shrink-0" />
               <span>{p.mode === "sale" ? t("info") : t("infoIssue")}</span>
             </p>
+
+            {p.requestTaxId && taxId !== p.requestTaxId ? (
+              <p data-testid="pos-taxinv-request-changed" className="flex items-start gap-2 rounded-[12px] border border-[color:var(--color-danger)] px-3.5 py-3 text-[12.5px] leading-[1.55] text-[color:var(--color-danger)]" role="status">
+                <RegisterIcon name="warn" size={13} className="mt-0.5 shrink-0" />
+                <span>{tp("bills.taxInvoice.requestTaxIdChanged")}</span>
+              </p>
+            ) : null}
 
             {errKey ? (
               <p data-testid="pos-taxinv-error" className="text-[13.5px] font-semibold text-[color:var(--color-danger)]" role="alert">

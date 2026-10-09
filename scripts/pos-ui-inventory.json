@@ -7651,6 +7651,25 @@
       "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-taxinv-request-changed",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "inline-error",
+        "target": "pos-taxinv-taxid",
+        "note": "fix F3: แก้เลขผู้เสียภาษีให้ต่างจากคำขอ → แจ้งก่อนกดว่าคำขอจะถูกปฏิเสธและออกตามที่กรอก (issueFullTaxInvoiceAction ไม่ส่ง requestId)"
+      },
+      "wo": "P1.13U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
     }
   ],
   "$roles": "roles/hiddenFor ที่อนุญาต: owner · manager · cashier · kind/expect.type ชุดเดียวกับทะเบียน CRM (F15.3b ตรวจ)"

@@ -377,7 +377,8 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
       const r =
         taxDlg.mode === "request" && sameRequestBuyer(buyer, taxDlg.initial)
           ? await issueFromTaxInvoiceRequestAction({ systemId, unitId, requestId: taxDlg.requestId, ...rememberArg })
-          : await issueFullTaxInvoiceAction({ systemId, unitId, saleId: bill.id, buyer, ...(taxDlg.mode === "request" ? { requestId: taxDlg.requestId } : {}), ...rememberArg });
+          : // fix F3 (มติ): ส่ง requestId เฉพาะเมื่อเลขผู้เสียภาษีตรงคำขอ · เลขต่าง = ออกตามที่กรอก แล้วบริการปฏิเสธคำขอเอง (S fix F5 + audit)
+            await issueFullTaxInvoiceAction({ systemId, unitId, saleId: bill.id, buyer, ...(taxDlg.mode === "request" && buyer.taxId === taxDlg.initial.taxId ? { requestId: taxDlg.requestId } : {}), ...rememberArg });
       if (r.ok) {
         setTaxDlg(null);
         setToast(t("taxInvoice.toastIssued", { docNo: r.docNo ?? "\u2014" }));
@@ -1312,6 +1313,7 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
           unitId={unitId}
           chip={`${bill.receiptNo ?? "\u2014"} \u00b7 ${money(bill.totals.grandTotal)}`}
           initial={taxDlg.mode === "request" ? taxDlg.initial : null}
+          requestTaxId={taxDlg.mode === "request" ? taxDlg.initial.taxId : null}
           memberId={bill.member?.customerId ?? null}
           memberName={bill.member?.name ?? null}
           dbdOff={dbdOff}
