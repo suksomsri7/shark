@@ -15,6 +15,27 @@ enum PosPayType {
   DEPOSIT
   ROOM_CHARGE
   CARD // P1.6: บัตร (EDC/อ้างอิงมือ · ไม่มีเกตเวย์ — P1.7)
+  PLATFORM // P2.1: แพลตฟอร์มเก็บเงินแทน (LINE MAN/Grab …) — ลงลูกหนี้ 1100 รอแพลตฟอร์มโอน
+}
+
+// ── P2.1 — ช่องทางขาย (SalesChannel) ต่อสาขา ──
+enum SalesChannelKind {
+  BUILTIN // STORE QR_TABLE WEB CHAT — สร้างอัตโนมัติ (ensureUnitChannels)
+  EXTERNAL // แพลตฟอร์มสำเร็จรูป LINEMAN GRAB FOODPANDA SHOPEE LAZADA TIKTOK
+  CUSTOM // ร้านตั้งเอง (ตัวแทน ฯลฯ)
+}
+
+enum SalesChannelAdapter {
+  NONE
+  MANUAL
+  WEB
+  CHAT
+  API
+}
+
+enum SalesChannelPayout {
+  PLATFORM // แพลตฟอร์มเก็บเงินแล้วโอนให้ร้าน (ค่าคอมฯ หักจากลูกหนี้)
+  DIRECT // ร้านเก็บเงินเอง (ค่าคอมฯ ค้างจ่าย 2100)
 }
 
 // P1.8 — ชนิดเอกสารของ PosSale (enum ใหม่ ⇒ ไม่มี ALTER TYPE … ADD VALUE) · ใบคืนเงิน = เอกสารใหม่ ไม่ใช่แก้บิลเดิม (มติ R1)
@@ -96,6 +117,15 @@ model PosSale {
   //   createSale เขียนเองทุกผู้เรียกเมื่อมีสิทธิ์สมาชิกถูกใช้ (applyOnSale คืนค่า) · walk-in = null · ห้ามแก้หลัง commit
   memberSnapshot      Json?
   memberBenefits      Json?
+
+  // ── P2.1 — ช่องทางขาย + ค่าคอมฯ (สำเนา ณ เวลาขาย) · เพิ่มคอลัมน์ล้วน (บิลเดิม = null/0 → อ่านเป็น defaultChannelCode(sourceModule)) ──
+  // channelId = SalesChannel.id (id หลวม · ไม่มี FK · index สร้างใน P6.1 CONCURRENTLY) · ใบ REFUND คัดลอกช่องทางจากบิลเดิม + เก็บส่วนแบ่งค่าคอมฯ ของใบ
+  channelId                  String?
+  channelCode                String?
+  channelRef                 String? // เลขออเดอร์แพลตฟอร์ม (≤ 40)
+  channelPayout              SalesChannelPayout?
+  channelCommissionSatang    Int                 @default(0)
+  channelCommissionVatSatang Int                 @default(0)
 
   lines    PosSaleLine[]
   payments PosPayment[]
@@ -675,4 +705,33 @@ model PosApprovalPayload {
   createdAt DateTime @default(now())
 
   @@index([tenantId, kind])
+}
+
+// P2.1 — ช่องทางขายต่อสาขา (R1 · CD1) · เขียนผ่าน pos/channel.ts เท่านั้น · builtins สร้างแบบขี้เกียจ (createMany skipDuplicates)
+// ค่าคอมฯ ถูกสำเนาลงบิลตอนขาย — แก้ค่าที่นี่ไม่กระทบบิลเก่า · คอลัมน์ autoAccept/prepMinutes/pausedUntil/adapterConfig = ของ P2.8 (CD7 · ยังไม่มีพฤติกรรม)
+model SalesChannel {
+  id                    String              @id @default(cuid())
+  tenantId              String
+  systemId              String // ระบบ POS
+  unitId                String
+  code                  String // ^[A-Z][A-Z0-9_]{1,23}$
+  kind                  SalesChannelKind
+  name                  String
+  adapter               SalesChannelAdapter @default(NONE)
+  active                Boolean             @default(true)
+  sortOrder             Int                 @default(0)
+  payout                SalesChannelPayout  @default(DIRECT)
+  commissionBp          Int                 @default(0) // 0..10000
+  commissionFixedSatang Int                 @default(0) // 0..1_000_000 ต่อบิล
+  commissionVatBp       Int                 @default(0) // VAT ที่แพลตฟอร์มคิดบนค่าคอมฯ 0..10000
+  archivedAt            DateTime?
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+  autoAccept            Boolean             @default(false)
+  prepMinutes           Int?
+  pausedUntil           DateTime?
+  adapterConfig         Json?
+
+  @@unique([unitId, code])
+  @@index([tenantId, systemId, unitId])
 }
