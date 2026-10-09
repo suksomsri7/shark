@@ -59,7 +59,7 @@ Check families (prompt): ST · B · M · T · V · P · S · W · X · R · Z. T
 - Messages live in split files `src/messages/{th,en}/pos.json`; `register.errors.couponInvalid` already exists.
 - Stamp module: a stamp in a **completed** cycle cannot be voided — fixture card uses `minSatang 60,000` so only 5 bills of X stamp (no completion in a run).
 
-## Check list (71 since P1.12U fix round 1 ORACLE-EDIT U2–U4 · 68 since P1.12U ORACLE-EDIT U1 · S=5 −=26 X1=12 X2=3 X3=3 X4=7 X5=12) — fix round 1 (reviewer F1–F4 · F7) added M12 · P9 · W3 (64 → 67)
+## Check list (72 since P1.12U fix round 2 ORACLE-EDIT U5 · 71 since P1.12U fix round 1 ORACLE-EDIT U2–U4 · 68 since P1.12U ORACLE-EDIT U1 · S=5 −=26 X1=12 X2=3 X3=3 X4=7 X5=12) — fix round 1 (reviewer F1–F4 · F7) added M12 · P9 · W3 (64 → 67)
 ST1 migration additive (2 nullable Json) · ST2 pos→loyalty only via member facade (public-receipt allowlist) + register-member.ts + delegated keys + no admin calls · ST3 "use server" + 4 actions · ST4 no GIFT_CARD tender · ST5 codes/keys/messages, MEMBER_RIGHTS_UNSUPPORTED retired, REG_QUOTE_KEYS, saleWalletCart in createSale + quote, CreateSaleInput.memberSnapshot, createSale writes memberBenefits, submit passes memberSystemId, member.erased POS after CRM ·
 B1 new keys exact · B2 giftCard VALIDATION · B3 points type · B4 client snapshot VALIDATION · B5 quick-register parser · B6 held cart memberId+couponCode ·
 M1 phone lookup (prefix/dashed/legacy) + DTO + masking + short q · M2 name/code/sort/merged/other-system · M3 SHARK-MC token · M4 404-not-403 same message · M5 SUSPENDED · M6 MEMBER_SYSTEM_MISSING ×5 · U1 registerStatus.memberEnabled A true / B false (P1.12U) · M7 STAFF w/o member.* + benefits DTO read-only · M8 no pos.sale.create ⇒ PERMISSION_DENIED ×5 · M9 quick register side effects + audit · M10 dup phone / replay key · M11 PHONE_INVALID + snapshot + `0066…` → `0…` (F2) · M12 legacy dashed L + same digits typed with spaces ⇒ created:false, same id, Customer count same, no audit (F1) ·
@@ -120,3 +120,14 @@ Fixture added (module functions): `Membership` OWNER for the owner user in the t
 - Count **68 → 71** (`--list`: X-coverage S=5 -=26 X2=3 X4=8 X5=13 X1=13 X3=3).
 - Fail-before (pre-seam code d8456e05, forced, QC4): **68/71**, exit 1 — U2 U3 U4 red `MISSING:quoteRegisterCartOverride`, every fixture step ok, residue 0
   (`scratchpad/p112u-fix/runs/p112-failbefore.log`). After the seam: forced **71/71**, residue 0 (`runs/s1-p112-forced.log`).
+
+## ORACLE-EDIT U5 (P1.12U fix round 2 · controller ruling 1 · reviewer R2 F1, 9 Oct)
+Builder P1.12U, tree p11, branch `wip/pos-p1.12u`, commit `3478f3e9`. Seam: `quoteRegisterCartOverride` accepts `staffToken` and resolves the seller exactly as
+`submitRegisterSale` (bad/expired token ⇒ STAFF_TOKEN_INVALID; token actor drives the caps and the held-cart holder/manage check). Placed after U4 (same block, policy + OWNER
+membership already present). Fixture added: `Membership` STAFF (`pos.sale.create` + `priceOverride`, unit A) for the coffee cashier user in the temp tenant · `setStaffPin`
+(random `8xxxxx`, never printed) · `verifyStaffPin` on DEV1 ⇒ token B. Session actor = STAFF device login (resto cashier user id as an actor object, no `pos.sale.manage`).
+- **U5** (X3): B's token submits ฿300 −15 % ⇒ APPROVAL_REQUIRED, `heldByUserId` = B · OWNER approves · drain · override `{heldCartId, staffToken B}` ⇒ ok 4,500 / 25,500 ·
+  no token (session ≠ holder) ⇒ APPROVAL_MISMATCH · tampered token ⇒ STAFF_TOKEN_INVALID · submit `{heldCartId, staffToken B}` at that grand ⇒ ok, `soldByUserId` = B.
+- Count **71 → 72** (`--list`: X-coverage S=5 -=26 X2=3 X4=8 X5=13 X1=13 X3=4).
+- Fail-before (3478f3e9, server unchanged, forced, QC4): **71/72**, exit 1 — U5 red (VALIDATION: unknown key `staffToken`), residue 0
+  (`scratchpad/p112u-fix2/runs/p112-failbefore.log`). After the fix (f0acfa6c): forced ×2 + unforced **72/72**, residue 0.

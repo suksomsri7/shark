@@ -199,3 +199,50 @@ Logs: `/tmp/claude-0/-root/ed31d917-ff51-51e8-bfad-e5b8bfa6fa15/scratchpad/p112u
 - `pnpm fitness` without env 0 · 41/41 · with QC4 env 0 · 41/41 · `scripts/fitness-pos.mts` 0 · 8/8.
 - visual `p112u --page register --states --dry`: owner th 0 · owner LOCALE=en 0 · cashier th 0 · cashier LOCALE=en 0 — all 6 member states listed (th 16 jobs / en 6), notes
   show WELCOME50 on member-attached + paydlg-member-points and the fixture line (`dry-*.log`). Real shots + 390 re-run = CONTROLLER-RUN.
+
+## Fix round 2 (reviewer re-check R2 F1–F3 · tree p11 · 9 Oct)
+Prompt `ledger/pos-briefs/pos-prompt-accountB-P1.12U-fix2.md` · review `ledger/wo-notes/pos-P1.12U-review-R2.md` ("Verified OK" kept as is) · start ec9e91de ·
+tree `/root/projects/shark-pos-p11` (no install/generate) · logs `/tmp/claude-0/-root/ed31d917-ff51-51e8-bfad-e5b8bfa6fa15/scratchpad/p112u-fix2/runs/` (headers `tree=… head=… dirty=…`).
+
+### Commits
+| commit | what |
+|---|---|
+| `3478f3e9` | **test** ORACLE-EDIT U5 — override quote honours staffToken (`qc-pos-p1.12` 71 → 72) |
+| `f0acfa6c` | F1 server + UI · F2 · F3 (`register.ts` · `register-actions.ts` · `register-shared.ts` · `RegisterScreen.tsx`) |
+
+### Per finding
+- **F1 (Medium) — fixed.** `register-shared.ts:329` `RegisterQuoteOverrideInput += staffToken?: string` · `register-actions.ts:133` forwards it ·
+  `register.ts:1464` `REG_OVERRIDE_KEYS += "staffToken"` · `:1484` same type check as `regParseSubmit` (wrong type ⇒ STAFF_TOKEN_INVALID) ·
+  `:1496` before pricing, the token is resolved exactly as `submitRegisterSale` (:1905): `staffActorFromToken({tenantId, unitId, deviceId})` → `regScope(ctx, tokenActor)`;
+  no device / bad / expired / other device / no longer allowed ⇒ STAFF_TOKEN_INVALID (no fallback to the session user); the token scope then drives the plain-quote cap,
+  `regDiscountCaps` and `regResolveOverrideCap` (held-cart holder / `pos.sale.manage` check). No token = session user as before.
+  UI `RegisterScreen.tsx:910` sends `...tokenArgs()` with every override quote (same helper as recall :1167) · `:880` STAFF_TOKEN_INVALID from the override quote ⇒ `staffTokenDead()` ·
+  `:873–876` the last non-empty staff token is part of `overrideKey` (only when an override auth is active) so the quote re-runs after a re-unlock and never sits on
+  STAFF_TOKEN_INVALID; a dead token / lock (staff = null) does not re-run it (no session-user quote that would drop the approval while the screen is locked).
+- **F2 (Low) — fixed.** `RegisterScreen.tsx:902`: each run of the quote effect does `setQuote((q) => (q?.ver === ver ? null : q))` — a re-run for the same `cartVer` means the
+  override auth changed (dropped / refused / armed), so the old manager-priced quote is gone at once: `quoteServer` null ⇒ pay disabled (`totalsPending` for member/coupon carts)
+  until the new answer; the plain quote then shows the discount-over card (P1.15U behaviour). New cart versions: no-op (the stored quote is already another version).
+- **F3 (Low) — fixed per the reviewer's option.** `RegisterScreen.tsx:863` `overrideAuthOf`: `kind:"approved"` returns `{heldCartId}` only while
+  `auth.inputJson === JSON.stringify(cartToQuoteInput(cart, {choices:false}))`; an edited approved member/coupon cart ⇒ no override quote ⇒ plain quote ⇒
+  DISCOUNT_EXCEEDS_LIMIT card (`overrideQuote` stays null — inputJson differs) · `discAuth`/`heldCartId` kept (no `onOverrideRefused`) · undoing the edit ⇒ key changes ⇒
+  override quote with the approved cap again · the approval is dropped only when submit answers APPROVAL_MISMATCH (:1638, unchanged). Non-member carts unchanged.
+
+### ORACLE-EDIT U5 (`3478f3e9` · own commit · recorded in `pos-P1.12-oracle.md`)
+Session actor = STAFF device login (resto cashier user id, `pos.sale.create` + `priceOverride`, no `pos.sale.manage`) · cashier B = coffee cashier user with a STAFF membership in
+the temp tenant + `setStaffPin` + `verifyStaffPin` token on DEV1 · B's token submits ฿300 −15 % ⇒ APPROVAL_REQUIRED, `heldByUserId` = B · OWNER approves · override quote
+`{heldCartId, staffToken B}` ⇒ ok 4,500 / 25,500 · without token ⇒ APPROVAL_MISMATCH · tampered token ⇒ STAFF_TOKEN_INVALID · submit `{heldCartId, staffToken B}` at that
+grand ⇒ ok, `soldByUserId` = B.
+- Red before the server change: `runs/p112-failbefore.log` (head 3478f3e9, forced) **71/72**, EXIT 1 — only U5 (override with token ⇒ VALIDATION unknown key), residue 0.
+
+### Follow-ups (no code now)
+- `HeldBillsDrawer` / `TaxInvoiceDialog` flex-column bodies on phones (same wrapper as MemberPanel 14A).
+- Overlapping wrong-PIN override quotes can count +2 on the manager's PIN row before the disarm lands.
+- The plain quote (`quoteRegisterCartAction`) still prices member carts with the session actor's cap (no staffToken) — only the override quote and submit use the token actor.
+- F10 (accepted, fix round 1).
+
+### Gates (QC4 `ep-frosty-lab-…` · POS gate lock · code head f0acfa6c, dirty 0)
+- `qc-pos-p1.12` fail-before (3478f3e9) 71/72 exit 1 · forced #1 **0 · 72/72** · forced #2 **0 · 72/72** · unforced **0 · 72/72** (residue 0 each).
+- `qc-pos-p1.15` 0 · 39/39 · `qc-pos-p1.3` 0 · 128/128 · `qc-pos-p1.13` 0 · 33/33 · `qc-hf-pos-page-authz` 0 · 56/56.
+- `pnpm fitness` without env 0 · 41/41 · with QC4 env 0 · 41/41 · `scripts/fitness-pos.mts` 0 · 8/8 · typecheck TC_EXIT=0 (`tc-1` dirty tree = f0acfa6c content, `tc-2` clean f0acfa6c).
+- visual `p112u --page register --states --dry` owner/cashier × th/en: EXIT 0, plans identical to fix round 1 except the random device id; 6 member states listed
+  (member-panel, member-register, member-attached, paydlg-member-points, paydlg-member-capped, sale-done-member).
