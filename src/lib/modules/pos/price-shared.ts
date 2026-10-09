@@ -46,6 +46,8 @@ const BP_FULL = 10_000;
 const BKK_OFFSET_MS = 7 * 3_600_000;
 const DAY_MS = 86_400_000;
 const HHMM_RE = /^([01]\d|2[0-3]):([0-5]\d)$/;
+/** รีวิว F3: startsAt/endsAt = ISO 8601 วัน+เวลา พร้อมเขตเวลา (Z หรือ ±HH:MM) — P2.2U ส่ง `…T00:00:00+07:00` */
+const PRICE_RULE_DATE_RE = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])T([01]\d|2[0-3]):[0-5]\d(:[0-5]\d(\.\d{1,9})?)?(Z|[+-]([01]\d|2[0-3]):[0-5]\d)$/;
 
 // ═══════════ ชนิดข้อมูล ═══════════
 /** แถวราคาตามช่องทาง/สาขา (PosProductChannelPrice) ที่ตัวแก้ใช้ */
@@ -430,7 +432,8 @@ export function parsePriceRuleInput(raw: unknown): ParsePriceRuleResult {
   const date = (k: "startsAt" | "endsAt"): Date | null | "bad" => {
     const v = raw[k];
     if (v === undefined || v === null) return null;
-    if (typeof v !== "string" || v.length > 40) return "bad";
+    // รีวิว F3: ISO 8601 ที่มีเขตเวลาชัด (Z หรือ ±HH:MM) เท่านั้น — "2026-10-10" / สตริงตามภาษาเครื่อง = ตีความตามเขตเวลาของเซิร์ฟเวอร์ ⇒ VALIDATION
+    if (typeof v !== "string" || v.length > 40 || !PRICE_RULE_DATE_RE.test(v)) return "bad";
     const t = Date.parse(v);
     return Number.isFinite(t) ? new Date(t) : "bad";
   };
