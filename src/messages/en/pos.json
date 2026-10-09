@@ -400,7 +400,8 @@
       "lockNow": "Lock screen",
       "holdLabel": "Staff switch",
       "switchHeld": "{name}'s bill was held (staff switch)",
-      "switchHeldFailed": "Could not hold {name}'s bill — it is still on screen"
+      "switchHeldFailed": "Could not hold {name}'s bill — it is still on screen",
+      "backToSale": "Back to selling"
     },
     "staff": {
       "title": "Who is using this register",
@@ -416,7 +417,8 @@
       "retry": "Try again",
       "heldTitle": "{count} held bills",
       "heldLine": "{label} · {lines} items · held {time} by {name}",
-      "noPinOwn": "No PIN yet — tap to set your PIN"
+      "noPinOwn": "No PIN yet — tap to set your PIN",
+      "noPinBanner": "Set staff PINs to turn on the screen lock"
     },
     "discountOver": {
       "title": "Discount over your limit",

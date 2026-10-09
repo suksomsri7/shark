@@ -106,6 +106,7 @@ import { WeighDialog } from "./WeighDialog";
 import { getPosDeviceId } from "@/lib/modules/pos/device-id";
 // POS P1.15U ▸ ผู้ขายบนเครื่อง (โทเคน PIN ใน sessionStorage) · จอล็อก 13B · ล็อกเมื่อไม่ใช้งาน ◂
 import { clearStaffSession, readStaffSession, writeStaffSession, type StaffSession } from "@/lib/modules/pos/staff-session";
+import { listStaffForDeviceAction } from "@/lib/modules/pos/staff-pin-actions";
 import { LockScreen, type LockMode } from "./LockScreen";
 import { ApprovalWaitDialog, type ApprovalPinResult } from "./ApprovalWaitDialog";
 // ชื่อลงท้าย Sheet = ตัวสแกนปุ่ม (F15.3) นับเป็นคอมโพเนนต์กดได้ ⇒ ชื่อแฝงตอนวาง (ปุ่มข้างในมี testid ครบ)
@@ -337,7 +338,41 @@ export function RegisterScreen(props: RegisterScreenProps) {
     setStaff(cur);
     if (cur) lastStaffRef.current = cur;
   }, []);
-  const locked = lockFlag || !staff;
+  // ── fix รอบ 1 F2: ร้านที่ยังไม่มีใครตั้ง PIN (ทุกแถวของ listStaffForDevice hasPin:false) = ขายด้วยผู้ใช้ session ได้ + แถบเตือนปิดได้ ·
+  //    มี PIN แม้คนเดียว = กติกาล็อกเต็ม · เครื่องไม่ลงทะเบียน = ข้อความลงทะเบียนเหมือนเดิม · โหมดนี้ไม่ล็อกเมื่อไม่ใช้งาน ──
+  const deviceReady = deviceKnown && !!deviceId && status?.deviceStatus === "ACTIVE";
+  /** null = ยังไม่รู้ · true = มีคนตั้ง PIN แล้วอย่างน้อย 1 คน */
+  const [anyPin, setAnyPin] = useState<boolean | null>(null);
+  const refreshPins = useCallback(async () => {
+    try {
+      const r = await listStaffForDeviceAction({ systemId, unitId, ...(deviceId ? { deviceId } : {}) });
+      setAnyPin(r.ok ? r.items.some((x) => x.hasPin) : true); // อ่านไม่ได้ = ถือว่ามี PIN (ล็อกไว้ก่อน — ปลอดภัยกว่า)
+    } catch {
+      setAnyPin(true);
+    }
+  }, [systemId, unitId, deviceId]);
+  useEffect(() => {
+    if (deviceReady) void refreshPins();
+  }, [deviceReady, refreshPins]);
+  const noPinMode = deviceReady && anyPin === false;
+  const noPinBannerKey = `pos-nopin-banner:${deviceId ?? "-"}`;
+  const [noPinDismissed, setNoPinDismissed] = useState(false);
+  useEffect(() => {
+    try {
+      setNoPinDismissed(window.sessionStorage.getItem(noPinBannerKey) === "1");
+    } catch {
+      /* ไม่มี storage = แสดงแถบ */
+    }
+  }, [noPinBannerKey]);
+  const dismissNoPin = () => {
+    setNoPinDismissed(true);
+    try {
+      window.sessionStorage.setItem(noPinBannerKey, "1");
+    } catch {
+      /* จำไม่ได้ = ปิดเฉพาะหน้านี้ */
+    }
+  };
+  const locked = lockFlag || (!staff && !noPinMode);
   const lockedRef = useRef(locked);
   lockedRef.current = locked;
   const lockNow = useCallback(() => {
@@ -379,7 +414,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
     setLockFlag(false);
     setLockedAt(null);
   };
-  const lockMode: LockMode = !deviceKnown || staff === undefined ? "checking" : !deviceId ? "unregistered" : status?.deviceStatus === "REVOKED" ? "revoked" : status?.deviceStatus === "ACTIVE" ? "ready" : "unregistered";
+  const lockMode: LockMode = !deviceKnown || staff === undefined || (deviceReady && anyPin === null) ? "checking" : !deviceId ? "unregistered" : status?.deviceStatus === "REVOKED" ? "revoked" : status?.deviceStatus === "ACTIVE" ? "ready" : "unregistered";
   // POS P1.15U ▸ มติ 4: เพดานส่วนลดของผู้ขายในโทเคน (คนเดียวกับ session = limits ของหน้าเพจ · คนอื่น = ค่าตั้งตามบทบาท) + สิทธิ์เกินเพดานของบิลนี้ ◂
   const sellerCap: number | null =
     staff && staff.userId !== userId && props.discountCaps ? (props.discountCaps[staff.role] >= 10_000 ? null : props.discountCaps[staff.role]) : limits.maxDiscountBp;
@@ -421,7 +456,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
   const frozenRef = useRef(frozen);
   frozenRef.current = frozen;
   // POS P1.15U ▸ มติ 8: ไม่ใช้งานครบ N นาที / แท็บถูกซ่อนนานเกิน ⇒ ล็อก (ไม่ล็อกระหว่างส่งบิล/ผลยังไม่แน่ใจ) ◂
-  useIdleLock(props.autoLockMinutes ?? 2, !locked && !frozen, lockNow);
+  useIdleLock(props.autoLockMinutes ?? 2, !locked && !frozen && !noPinMode, lockNow);
   /** รุ่นของบิล — resetBill เพิ่มทุกครั้ง · ผลสแกนที่เริ่มในบิลรุ่นก่อน = ทิ้ง (B2.2 S1) */
   const billGen = useRef(0);
 
@@ -1809,7 +1844,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
           user={staff ? { name: staff.name ?? "-", role: staff.role } : status ? { name: status.user.name, role: status.user.role } : null}
           shift={status?.shift ?? null}
           onCamera={openCamera}
-          onLock={staff ? lockNow : undefined}
+          onLock={staff || noPinMode ? lockNow : undefined}
         />
         <ModeTabsNav systemId={systemId} />
         {!online && (
@@ -1823,6 +1858,15 @@ export function RegisterScreen(props: RegisterScreenProps) {
           <div data-testid="pos-reg-device-revoked" className="flex shrink-0 items-center gap-3 bg-[color:var(--color-danger)] px-5 py-[11px] text-[14px] font-semibold leading-[1.5] text-white" role="alert">
             <RegisterIcon name="warn" size={18} />
             <span>{t("status.deviceRevoked")}</span>
+          </div>
+        )}
+        {noPinMode && !noPinDismissed && (
+          <div data-testid="pos-staff-nopin-banner" className="flex shrink-0 flex-wrap items-center gap-3 border-b bg-[color:var(--color-surface-2)] px-5 py-[10px] text-[14px] text-[color:var(--color-ink)]" role="status">
+            <RegisterIcon name="lock" size={16} />
+            <span className="flex-1">{t("staff.noPinBanner")}</span>
+            <button data-testid="pos-staff-nopin-dismiss" type="button" className="grid size-11 place-items-center rounded-[11px] text-[color:var(--color-muted)]" aria-label={t("cart.close")} onClick={dismissNoPin}>
+              <RegisterIcon name="x" size={14} />
+            </button>
           </div>
         )}
         {shiftBlocked && (
@@ -1955,6 +1999,8 @@ export function RegisterScreen(props: RegisterScreenProps) {
           autoLockMinutes={props.autoLockMinutes ?? 2}
           settingsHref={`${base}/pos/settings?tab=devices&unit=${encodeURIComponent(unitId)}`}
           sessionUserId={userId}
+          onCancel={noPinMode ? () => setLockFlag(false) : undefined}
+          onStaffChanged={() => void refreshPins()}
           onUnlocked={(n) => void onUnlocked(n)}
         />
       )}

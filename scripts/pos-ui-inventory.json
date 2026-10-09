@@ -6907,6 +6907,42 @@
       "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-staff-nopin-dismiss",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "note": "ร้านยังไม่มีใครตั้ง PIN: ปิดแถบ \"ตั้ง PIN พนักงานเพื่อเปิดการล็อกหน้าจอ\" (จำใน sessionStorage ต่อเครื่อง)"
+      },
+      "wo": "P1.15U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-lock-cancel",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "note": "โหมดร้านยังไม่มี PIN: ปิดจอล็อกกลับไปขาย (ผู้ใช้ session)"
+      },
+      "wo": "P1.15U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
     }
   ],
   "$roles": "roles/hiddenFor ที่อนุญาต: owner · manager · cashier · kind/expect.type ชุดเดียวกับทะเบียน CRM (F15.3b ตรวจ)"

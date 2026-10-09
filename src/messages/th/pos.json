@@ -400,7 +400,8 @@
       "lockNow": "ล็อกจอ",
       "holdLabel": "สลับพนักงาน",
       "switchHeld": "พักบิลของ {name} ไว้แล้ว (สลับพนักงาน)",
-      "switchHeldFailed": "พักบิลของ {name} ไม่สำเร็จ — บิลยังอยู่บนจอ"
+      "switchHeldFailed": "พักบิลของ {name} ไม่สำเร็จ — บิลยังอยู่บนจอ",
+      "backToSale": "กลับไปขาย"
     },
     "staff": {
       "title": "ใครกำลังใช้เครื่องนี้",
@@ -416,7 +417,8 @@
       "retry": "ลองอีกครั้ง",
       "heldTitle": "บิลที่พักไว้ {count} ใบ",
       "heldLine": "{label} · {lines} รายการ · พัก {time} โดย{name}",
-      "noPinOwn": "ยังไม่ได้ตั้ง PIN — แตะเพื่อตั้ง PIN ของคุณ"
+      "noPinOwn": "ยังไม่ได้ตั้ง PIN — แตะเพื่อตั้ง PIN ของคุณ",
+      "noPinBanner": "ตั้ง PIN พนักงานเพื่อเปิดการล็อกหน้าจอ"
     },
     "discountOver": {
       "title": "ส่วนลดเกินสิทธิ์",

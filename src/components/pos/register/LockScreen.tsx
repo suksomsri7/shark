@@ -424,6 +424,11 @@ export function LockScreen(p: {
                 </button>
               )}
               <p className="text-center text-[13px] text-[color:var(--color-muted)]">{phase.kind === "set" ? t("lock.setHint") : t("lock.hint")}</p>
+              {p.onCancel && (
+                <button data-testid="pos-lock-cancel" type="button" disabled={busy} className="btn btn-ghost h-11 rounded-[12px] px-6 text-[14px]" onClick={p.onCancel}>
+                  {t("lock.backToSale")}
+                </button>
+              )}
             </>
           )}
         </section>
