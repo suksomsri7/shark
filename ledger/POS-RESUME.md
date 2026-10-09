@@ -921,3 +921,7 @@
 - **L1 P1.7U ปิด**: builder merge session/pos 9ba7834b เอง (de130460 · inventory 356→367 · visual-pos ทั้งสองฝั่ง · typecheck 0 · p1.7 32/32 · dry rc 0) → merge เข้า session/pos **87f61ec9** push แล้ว (ไม่ build ซ้ำ: โค้ด UI เท่ากับ build39 ที่ถ่ายภาพผ่าน + ส่วนต่างคือ P1.11U ที่ build38 ผ่านแล้ว) · follow-ups ในโน้ต: "เงินเข้าไม่มีบิล" report · over-cap guard รับ approved held cart/PIN หลัง P1.15U · N1 (Beam เท่านั้น) แก้แล้วรอบ 2
 - ทรี p11 ว่าง → ใช้ build/ภาพ session/pos รวมตอนปิดชุด
 - เหลือ: L2 ORACLE-EDIT p1.3 · L3 P1.15U รอบ 2 + ภาพ · L4 P1.13 รอบแก้ 1
+
+## 9 ต.ค. 07:58 UTC — ORACLE-EDIT p1.3 counter merge แล้ว
+- `wip/pos-p1.3-counter` be39c536 (4 บรรทัด: cleanup คืน seq = max(snapshot, เลขใบเสร็จสูงสุดที่ออกจริงของ unit/period) · typecheck 0 · p1.3 128/128 ×2) → merge session/pos · ข้อที่ยังเปิด (บันทึกไว้): cleanup ยังลบ counter ที่ไม่อยู่ใน snapshot (เดือน/สาขาใหม่ที่เกิดจากขายจริงระหว่างรัน) — follow-up ไม่เร่ง
+- ทรี c ว่าง · เหลือ L3 P1.15U รอบ 2 + ภาพ (build40-b) · L4 P1.13 รอบแก้ 1
