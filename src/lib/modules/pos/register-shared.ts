@@ -320,6 +320,12 @@ export type RegisterMemberConflictCode =
 export type RegisterMemberConflict = { kind: "VOUCHER" | "COUPON" | "POINTS"; code: RegisterMemberConflictCode; message: string; allowedPoints?: number };
 export type RegisterQuote = { ok: true } & RegisterQuoteTotals;
 export type RegisterQuoteResult = RegisterQuote | RegisterRefusal;
+/**
+ * POS P1.12U fix รอบ 1 (F1): quote ของตะกร้าที่มีสิทธิ์เกินเพดาน (quoteRegisterCartOverrideAction) — cart = รูปเดียวกับ quote ปกติ ·
+ * managerPin + managerUserId = PIN ผู้จัดการที่เตรียมไว้ (คู่กันเสมอ) · heldCartId = บิลพักที่อนุมัติแล้ว · idempotencyKey = คีย์บิลของจอชำระ (ไม่บังคับ) ·
+ * อ่านอย่างเดียว (ไม่พักบิล ไม่ยื่นคำขอ ไม่ audit) · PIN ผิดนับเหมือน submit
+ */
+export type RegisterQuoteOverrideInput = { cart: RegisterQuoteInput; managerPin?: string; managerUserId?: string; heldCartId?: string; idempotencyKey?: string };
 
 export type RegisterPayType = (typeof REGISTER_PAY_TYPES)[number];
 /** reference = เลขอ้างอิงบัตร/EDC หรือโอน (P1.6 · ≤ REGISTER_REFERENCE_MAX · เงินสดไม่มี) · P1.7: "pi_…" บน PROMPTPAY/CARD = id ใบขอรับเงินที่ PAID แล้ว (พร้อมเพย์รับเฉพาะ pi_…) */
