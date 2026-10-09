@@ -1669,6 +1669,7 @@ export async function submitRegisterSale(ctx: RegisterCtx, actor: RegisterActor,
       const st = ta ? await regScope(db, ctx, ta) : null;
       if (!st || isRegRefusal(st)) return regRefuse("STAFF_TOKEN_INVALID");
       s = st;
+      actor = st.actor; // ผู้ขายของบิลนี้ = คนในโทเคน (ไม่ใช่ผู้ใช้ session)
     }
     // POS P1.10 ▸ R2: เครื่องที่ถูกเพิกถอนของสาขานี้ขายไม่ได้ (หลังคีย์ซ้ำ ⇒ ลองซ้ำบิลที่ commit ก่อนเพิกถอน = บิลเดิม) · ไม่ลงทะเบียน = ขายได้ (Q3) ◂
     if (deviceId && (await posDeviceRevoked(db, s.tenantId, s.unitId, deviceId))) return regRefuse("DEVICE_REVOKED");
@@ -1733,7 +1734,7 @@ export async function submitRegisterSale(ctx: RegisterCtx, actor: RegisterActor,
       ...(req.tipSatang > 0 ? { tipSatang: req.tipSatang } : {}),
       ...(req.note ? { note: req.note } : {}),
       shiftId: shift.shiftId,
-      soldByUserId: s.actor.userId, // POS P1.17 ▸ R6 · ผู้ขาย = ผู้ใช้ของ session ◂ · POS P1.15 ▸ R3 = คนในโทเคนเมื่อส่งโทเคน ◂
+      soldByUserId: actor.userId, // POS P1.17 ▸ R6 · ผู้ขาย = ผู้ใช้ของ session ◂ · POS P1.15 ▸ R3 = คนในโทเคนเมื่อส่งโทเคน (actor ถูกแทนด้านบน) ◂
     };
     let res: RegisterSubmitResult;
     try {
