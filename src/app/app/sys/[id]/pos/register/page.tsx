@@ -4,7 +4,7 @@ import { prisma } from "@/lib/core/db";
 import { systemDef } from "@/lib/systems";
 import { getPaymentProfile } from "@/lib/payment/service";
 import { isValidPromptPayId } from "@/lib/payment/promptpay";
-import { posUnits, resolvePosLinks, posCatalog, posMembers, posServices, registerCatalog, registerSellerLimits, registerStatus, registerVatConfig } from "@/lib/modules/pos/register";
+import { posUnits, resolvePosLinks, posCatalog, posMembers, posServices, registerCatalog, registerDiscountCaps, registerSellerLimits, registerStatus, registerVatConfig } from "@/lib/modules/pos/register";
 import { PosRegister } from "@/lib/modules/pos/register-ui";
 import { PosLegacyRegisterFrame, PosRegisterUnlinked } from "@/lib/modules/pos/register-legacy-page";
 import { posRegisterV2On } from "@/lib/modules/pos/register-shared";
@@ -74,7 +74,7 @@ export default async function PosRegisterPage({
       // P1.2 U R2: นโยบายขายเกินสต็อกของสาขา (ตัวอ่านเดียว · service.ts) — ตัวแปรที่หมดเลือกได้เฉพาะเมื่ออนุญาตติดลบ
       unitOversellPolicy(prisma, tenantId, active.id),
     ]);
-    const limits = registerSellerLimits(actor, active.id);
+    const limits = registerSellerLimits(actor, active.id, await registerDiscountCaps({ tenantId, systemId: id })); // P1.7U F4: เพดานตามค่าตั้งของระบบ (P1.15)
     const ppId = profile?.promptpayId && isValidPromptPayId(profile.promptpayId) ? profile.promptpayId : null;
     const intentSet = parsePosIntentSettings(sys.settings);
     return (

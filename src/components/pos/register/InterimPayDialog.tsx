@@ -175,28 +175,53 @@ export function PayDialog(p: Props) {
   const intentWaiting = roundAmount <= 0 || (plan.state === "partial" && rowsFull);
   const target: IntentTarget =
     intentMode && ready && !zero && !intentWaiting && !p.intent!.discountOverCap ? { method: method as "PROMPTPAY" | "CARD", amountSatang: roundAmount } : null;
-  const pi = usePayIntent(p.intent ?? null, target);
+  const flash = (key: string) => {
+    setNotice(key);
+    setTimeout(() => setNotice((n) => (n === key ? null : n)), 3500);
+  };
+  // F1: แถวที่ = ลำดับแถวแยกจ่ายถัดไป · ใบที่อยู่บนแถวแล้วห้ามถูกใช้ซ้ำ · F2: ใบเดิมเงินเข้าแล้วระหว่างยกเลิก ⇒ คืนวิธี/ยอดของใบนั้น + ล็อก
+  const pi = usePayIntent(p.intent ?? null, target, {
+    slot: rows.length,
+    usedIds: rows.flatMap((r) => (r.via !== undefined && r.reference ? [r.reference] : [])),
+    onPaidElsewhere: (it) => {
+      setMethod(it.kind === "CARD_BEAM" ? "CARD" : "PROMPTPAY");
+      setEntry(hundredthsText(it.amountSatang));
+      flash("pay.intent.locked");
+    },
+  });
   /** ใบของรอบนี้จ่ายแล้วและยอดตรงรอบนี้ ⇒ ยืนยัน/แยกจ่ายได้ · ยอด/วิธีล็อก */
   const piPaid = intentMode && pi.intent?.status === "PAID" && pi.intent.amountSatang === roundAmount;
   const piLocked = intentMode && pi.intent?.status === "PAID";
   const canConfirm = ready && (zero || plan.state === "complete") && (!intentMode || zero || remaining <= 0 || piPaid);
   const canSplit = ready && !zero && plan.state === "partial" && !rowsFull && (!intentMode || piPaid);
-  const flash = (key: string) => {
-    setNotice(key);
-    setTimeout(() => setNotice((n) => (n === key ? null : n)), 3500);
+  /** F3b: เงินเข้าเกินยอดบิล (ยอดบิลลดลงหลังมีแถวที่เงินเข้าแล้ว) — ยืนยันไม่ได้ · ต้องคืนเงินเอง */
+  const overPaid = remaining < 0 && rows.some((r) => r.via !== undefined);
+  /** F3b: มีเงินเข้าแล้วในกล่องนี้ (ใบปัจจุบัน PAID หรือแถวที่มาจากใบ) ⇒ ปิดกล่องไม่ได้ (ยกเว้นเงินเกินยอด — ต้องออกไปคืนเงิน) */
+  const moneyIn = pi.intent?.status === "PAID" || rows.some((r) => r.via !== undefined);
+  const tryClose = () => {
+    if (moneyIn && !overPaid) return flash("pay.intent.locked");
+    p.onClose();
   };
   useEffect(() => {
     if (pi.error?.code === "CARD_UNAVAILABLE" && method === "CARD") setCardEdc(true);
   }, [pi.error, method]);
 
   // ยอดบิลเปลี่ยน (quote ใหม่ · PRICE_CHANGED) ⇒ แถวที่แยกไว้คิดจากยอดเก่า — ล้างทิ้ง เริ่มรับใหม่ (กติกาข้อ 4)
+  //   P1.7U F3b: แถวที่เงินเข้าแล้ว (via) คงไว้เสมอ · ใบปัจจุบันที่ PAID ย้ายลงแถว · คิดใหม่เฉพาะส่วนที่ยังไม่จ่าย
   const lastDue = useRef(p.dueSatang);
   useEffect(() => {
     if (lastDue.current === p.dueSatang) return;
     lastDue.current = p.dueSatang;
-    setRows([]);
+    const cur = pi.intent;
+    const paidRow: PayRow | null =
+      cur && cur.status === "PAID"
+        ? { id: ++rowSeq.current, type: cur.kind === "CARD_BEAM" ? "CARD" : "PROMPTPAY", amountSatang: cur.amountSatang, reference: cur.id, via: cur.confirmedVia }
+        : null;
+    if (paidRow) pi.release();
+    setRows((s) => [...s.filter((r) => r.via !== undefined), ...(paidRow ? [paidRow] : [])]);
     setEntry(method === "CASH" ? "" : null);
     setReference("");
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- เฉพาะเมื่อยอดบิลเปลี่ยน
   }, [p.dueSatang, method]);
 
   // เลือกวิธีจ่าย: เงินสด = ช่องว่างรอรับเงิน · อื่น ๆ = ยอดคงเหลือพอดี · โฟกัสช่องจำนวนเฉพาะเมาส์/คีย์บอร์ด (จอสัมผัสไม่เด้งคีย์บอร์ด)
@@ -332,7 +357,7 @@ export function PayDialog(p: Props) {
           ? t("pay.confirmFree")
           : canSplit
             ? t("pay.addSplit", { method: methodName, amount: moneyText(plan.amount) })
-            : t("pay.confirm", { amount: moneyText(Math.max(plan.state === "complete" ? (remaining > 0 ? plan.amount : 0) : remaining, 0)) });
+            : t("pay.confirm", { amount: moneyText(Math.max(plan.state === "complete" ? (remaining > 0 ? plan.amount : due) : remaining, 0)) });
   const showForm = p.phase === "form" || p.phase === "sending";
   const tile = (on: boolean) =>
     `flex h-[66px] flex-col items-center justify-center gap-1 rounded-[16px] border px-2 text-center text-[15px] font-semibold leading-tight disabled:cursor-not-allowed disabled:text-[color:var(--color-muted)] xl:h-[78px] xl:gap-1.5 ${
@@ -340,7 +365,7 @@ export function PayDialog(p: Props) {
     }`;
 
   return (
-    <RegisterDialog onDismiss={p.onClose} locked={busy}>
+    <RegisterDialog onDismiss={tryClose} locked={busy}>
       <div
         data-testid="pos-reg-paydlg"
         className="relative flex h-[100dvh] w-full flex-col overflow-hidden bg-[color:var(--color-surface)] shadow-xl md:h-[min(760px,calc(100dvh-32px))] md:w-[min(1120px,calc(100vw-32px))] md:rounded-[16px]"
@@ -361,7 +386,7 @@ export function PayDialog(p: Props) {
               className="-ml-2 grid size-11 place-items-center rounded-[11px] text-[color:var(--color-muted)] hover:bg-[color:var(--color-surface-2)] max-md:order-first max-md:text-[color:var(--color-ink)] md:-mr-2 md:ml-0"
               type="button"
               aria-label={t("cart.close")}
-              onClick={p.onClose}
+              onClick={tryClose}
             >
               <span className="md:hidden">
                 <RegisterIcon name="back" size={20} />
@@ -610,6 +635,11 @@ export function PayDialog(p: Props) {
                     {t("errors.splitInvalid")}
                   </p>
                 )}
+                {overPaid && (
+                  <p data-testid="pos-pay-intent-overpaid" className="text-[13px] font-semibold text-[color:var(--color-danger)]" role="alert">
+                    {t("pay.intent.overPaid", { amount: moneyText(-remaining) })}
+                  </p>
+                )}
                 {notice && (
                   <p data-testid="pos-pay-intent-locked" className="text-[13px] font-semibold text-[color:var(--color-danger)]" role="status">
                     {t(notice)}
@@ -706,7 +736,7 @@ export function PayDialog(p: Props) {
                 className="btn btn-ghost hidden h-12 rounded-[13px] px-5 text-[14.5px] md:inline-flex"
                 type="button"
                 disabled={busy}
-                onClick={p.onClose}
+                onClick={tryClose}
               >
                 {t("pay.back")}
               </button>

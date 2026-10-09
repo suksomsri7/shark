@@ -4,12 +4,13 @@
 //   usePayIntent = วงจรใบขอรับเงินของ "รอบนี้" (วิธี + ยอด) ในกล่องชำระ · PayIntentPanel = ภาพของใบนั้น
 //
 // กติกา (มติผู้คุมงาน P1.7U ข้อ 1–3 · สัญญา ledger/wo-notes/pos-P1.7.md "Contract for P1.7U"):
-//   1) เลือกพร้อมเพย์ (หรือบัตรเมื่อเปิด Beam) ให้ยอดรอบนี้ ⇒ createPaymentIntentAction · คีย์ = คีย์บิล_วิธี_ยอด (CD3) ·
+//   1) เลือกพร้อมเพย์ (หรือบัตรเมื่อเปิด Beam) ให้ยอดรอบนี้ ⇒ createPaymentIntentAction · คีย์ = คีย์บิล_s<แถว>_วิธี_ยอด (CD3 · F1) ·
 //      สร้างใหม่หลังหมดอายุ/ถูกยกเลิก = ต่อท้าย _r<n> · ⚠️ ตัวคั่นเป็น "_" ไม่ใช่ ":" เพราะคีย์ของเซิร์ฟเวอร์รับเฉพาะ [A-Za-z0-9_-] (C2)
 //   2) ยอด/วิธีเปลี่ยนตอนใบยัง PENDING ⇒ cancelPaymentIntentAction แล้วค่อยสร้างใบใหม่ (หน่วงสั้น ๆ ให้พิมพ์ยอดจบก่อน) ·
 //      ใบที่ PAID แล้วล็อก (ไม่ยกเลิก/ไม่เปลี่ยน — กล่องชำระกันการแก้เอง)
 //   3) PENDING ⇒ โพล paymentIntentStatusAction ทุก 2 วินาที · หยุดเมื่อ PAID/EXPIRED/CANCELLED/CONSUMED
-//   4) ปิดกล่องชำระ = ไม่ยกเลิกใบที่ค้าง (ลูกค้าอาจกำลังจ่าย) — ใบหมดอายุเอง · เปิดกล่องใหม่ยอดเดิม = คีย์เดิม ได้ใบเดิมกลับมา (reused)
+//   4) แก้รอบ 1 F3a: ปิดกล่องชำระ = ยกเลิกใบที่ยังไม่จ่าย (เงินมาช้า ⇒ refund_needed) · ใบที่จ่ายแล้ว (หรือแถวที่มีเงินเข้า) = ปิดกล่องไม่ได้ (F3b)
+//   5) F2: ยกเลิกแล้วได้ INTENT_PAID = เงินเข้าแล้ว ⇒ ใบนั้นกลับมาเป็นใบปัจจุบันที่ล็อก (ไม่สร้างใบใหม่ทับ)
 // 🔴 ไม่แสดง message ของเซิร์ฟเวอร์ — ข้อความจาก intentRefusalMessageKey (คีย์ใต้ pos) เท่านั้น · ไม่มีข้อความไทยนอกคอมเมนต์
 // 🔴 ไม่สร้างคีย์สุ่มในไฟล์นี้ (qc-pos-p1.3 S5.21) — ฐานของคีย์ = คีย์บิลจาก RegisterScreen
 
@@ -52,16 +53,25 @@ const POLL_MS = 2000;
 const DEBOUNCE_MS = 450;
 const MAX_ROUNDS = 6;
 const kindMethod = (k: PaymentIntentView["kind"]): PaymentIntentMethod => (k === "CARD_BEAM" ? "CARD" : "PROMPTPAY");
-/** คีย์ใบขอรับเงิน (CD3) — ตัดอักษรนอก [A-Za-z0-9_-] ออกจากคีย์บิล · ยาวรวม ≤ 100 */
-export const intentKeyOf = (cartKey: string, method: PaymentIntentMethod, amountSatang: number, round: number) =>
-  `${cartKey.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 64)}_${method}_${amountSatang}${round > 0 ? `_r${round}` : ""}`;
+/** คีย์ใบขอรับเงิน (CD3 · แก้รอบ 1 F1) — คีย์บิล_s<แถวที่>_วิธี_ยอด[_r<n>] · ตัดอักษรนอก [A-Za-z0-9_-] ออกจากคีย์บิล · ยาวรวม ≤ 100 */
+export const intentKeyOf = (cartKey: string, slot: number, method: PaymentIntentMethod, amountSatang: number, round: number) =>
+  `${cartKey.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 64)}_s${slot}_${method}_${amountSatang}${round > 0 ? `_r${round}` : ""}`;
 const errOf = (code: string): IntentErr => ({ code, key: intentRefusalMessageKey(code) });
+/** แก้รอบ 1 F5: สร้างใบไม่สำเร็จจนหมดรอบ — ข้อความจริง + "ลองใหม่" */
+const ROUNDS_EXHAUSTED: IntentErr = { code: "ROUNDS_EXHAUSTED", key: "register.pay.intent.roundsExhausted" };
+type CancelOutcome = { ok: true } | { ok: false; code: string };
 
 /**
  * วงจรใบขอรับเงินของรอบนี้ — setup null หรือ target null = ไม่มีใบ (ใบ PENDING ที่ค้างถูกยกเลิก)
+ *   usedIds = id ของใบที่อยู่บนแถวแยกจ่ายแล้ว (ใบ reused ที่ซ้ำแถวอื่น = ห้ามแสดงเป็นจ่ายแล้วของแถวใหม่ — F1)
+ *   onPaidElsewhere = ยกเลิกใบเดิมไม่ได้เพราะเงินเข้าแล้ว (INTENT_PAID) ⇒ กล่องชำระคืนวิธี/ยอดของใบนั้นและล็อก (F2)
  *   คืน intent ปัจจุบัน · สถานะงาน · ข้อผิดพลาด · วินาทีที่เหลือ · ยืนยันเอง · สร้างใหม่ · ปล่อยใบ (หลังใส่ลงแถวแยกจ่ายแล้ว)
  */
-export function usePayIntent(setup: PayIntentSetup | null, target: IntentTarget) {
+export function usePayIntent(
+  setup: PayIntentSetup | null,
+  target: IntentTarget,
+  opts: { slot: number; usedIds: readonly string[]; onPaidElsewhere: (it: PaymentIntentView) => void },
+) {
   const [intent, setIntent] = useState<PaymentIntentView | null>(null);
   const [creating, setCreating] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -72,63 +82,104 @@ export function usePayIntent(setup: PayIntentSetup | null, target: IntentTarget)
   const [now, setNow] = useState(() => Date.now());
   const intentRef = useRef(intent);
   intentRef.current = intent;
+  const optsRef = useRef(opts);
+  optsRef.current = opts;
   const seq = useRef(0);
-  /** คีย์ฐาน (คีย์บิล_วิธี_ยอด) → รอบที่ใช้อยู่ (_r<n>) */
+  /** คีย์ฐาน (คีย์บิล_s_วิธี_ยอด) → รอบที่ใช้อยู่ (_r<n>) */
   const rounds = useRef(new Map<string, number>());
   const scope = setup ? { systemId: setup.systemId, unitId: setup.unitId } : null;
   const scopeRef = useRef(scope);
   scopeRef.current = scope;
-  const tk = setup && target ? `${target.method}|${target.amountSatang}` : "";
+  const tk = setup && target ? `${opts.slot}|${target.method}|${target.amountSatang}` : "";
   const cartKey = setup?.cartKey ?? "";
 
   const args = () => ({ ...scopeRef.current!, deviceId: getPosDeviceId() });
-  const cancelQuietly = (id: string) => {
-    if (!scopeRef.current) return Promise.resolve();
-    return cancelPaymentIntentAction({ ...args(), intentId: id }).then(
-      () => undefined,
-      () => undefined,
-    );
+  /** F2: ผลของการยกเลิกคืนให้ผู้เรียกเสมอ (INTENT_PAID = เงินเข้าแล้ว ห้ามสร้างใบใหม่ทับ) */
+  const cancelIntent = async (id: string): Promise<CancelOutcome> => {
+    if (!scopeRef.current) return { ok: false, code: "NOT_FOUND" };
+    try {
+      const r = await cancelPaymentIntentAction({ ...args(), intentId: id });
+      return r.ok ? { ok: true } : { ok: false, code: r.code };
+    } catch {
+      return { ok: false, code: "INTERNAL" };
+    }
+  };
+  /** F2: ใบที่ยกเลิกไม่ได้เพราะเงินเข้าแล้ว — อ่านสถานะใหม่ ตั้งเป็นใบปัจจุบันที่ล็อก แล้วให้กล่องชำระคืนวิธี/ยอดของใบนั้น */
+  const adoptPaid = async (cur: PaymentIntentView) => {
+    const st = await paymentIntentStatusAction({ ...args(), intentId: cur.id }).catch(() => null);
+    const paid: PaymentIntentView =
+      st && st.ok ? { ...cur, status: st.status === "CONSUMED" ? "PAID" : st.status, paidAt: st.paidAt, confirmedVia: st.confirmedVia, expiresAt: st.expiresAt } : { ...cur, status: "PAID" };
+    setIntent(paid);
+    setCreating(false);
+    optsRef.current.onPaidElsewhere(paid);
   };
 
-  // ── สร้าง/ยกเลิกตามรอบนี้ (มติ 1–2) ──
+  // ── สร้าง/ยกเลิกตามรอบนี้ (มติ 1–2 · แก้รอบ 1 F1/F2/F5) ──
   useEffect(() => {
     const cur = intentRef.current;
     if (cur?.status === "PAID") return; // ล็อก — กล่องชำระไม่ให้เปลี่ยนยอด/วิธีอยู่แล้ว
     const my = ++seq.current;
     const forced = regen !== regenSeen.current;
     regenSeen.current = regen;
-    const [m, a] = tk ? tk.split("|") : [];
-    const want: IntentTarget = tk ? { method: m as PaymentIntentMethod, amountSatang: Number(a) } : null;
+    const parts = tk ? tk.split("|") : [];
+    const slot = Number(parts[0] ?? 0);
+    const want: IntentTarget = tk ? { method: parts[1] as PaymentIntentMethod, amountSatang: Number(parts[2]) } : null;
     if (cur && cur.status === "PENDING" && want && kindMethod(cur.kind) === want.method && cur.amountSatang === want.amountSatang && !forced) return;
     setError(null);
     setCreating(!!want);
-    const prev = cur && cur.status === "PENDING" ? cur.id : null;
-    if (cur) setIntent(null);
+    const prev = cur && cur.status === "PENDING" ? cur : null;
+    if (cur && !prev) setIntent(null);
     let timer: ReturnType<typeof setTimeout> | null = null;
     const run = async () => {
-      if (prev) await cancelQuietly(prev);
-      if (!want || seq.current !== my || !scopeRef.current) return;
-      const base = intentKeyOf(cartKey, want.method, want.amountSatang, 0);
-      for (let i = 0; i < MAX_ROUNDS; i++) {
+      if (prev) {
+        // F2: ยกเลิกก่อนเสมอ (target ว่างก็ด้วย) · INTENT_PAID = เงินเข้าแล้ว ⇒ หยุด ไม่สร้างใบทับ
+        const c = await cancelIntent(prev.id);
+        if (!c.ok && c.code === "INTENT_PAID") return adoptPaid(prev);
+        if (seq.current === my) setIntent((x) => (x && x.id === prev.id ? null : x));
+      }
+      if (!want || seq.current !== my || !scopeRef.current) {
+        if (seq.current === my) setCreating(false);
+        return;
+      }
+      const base = intentKeyOf(cartKey, slot, want.method, want.amountSatang, 0);
+      let done = false;
+      let dupRetried = false;
+      for (let i = 0; i < MAX_ROUNDS && !done; i++) {
         const round = rounds.current.get(base) ?? 0;
         const deviceId = getPosDeviceId() ?? "";
         let r: Awaited<ReturnType<typeof createPaymentIntentAction>>;
         try {
           r = await createPaymentIntentAction({
             ...args(),
-            input: { method: want.method, amountSatang: want.amountSatang, idempotencyKey: intentKeyOf(cartKey, want.method, want.amountSatang, round), deviceId },
+            input: { method: want.method, amountSatang: want.amountSatang, idempotencyKey: intentKeyOf(cartKey, slot, want.method, want.amountSatang, round), deviceId },
           });
         } catch {
           r = { ok: false, code: "INTERNAL", message: "" };
         }
         if (seq.current !== my) {
           // คำตอบของรอบที่ถูกแทนแล้ว — ใบใหม่ที่ไม่มีใครดูต้องไม่ค้างรอเงิน
-          if (r.ok && r.intent.status === "PENDING" && !r.reused) void cancelQuietly(r.intent.id);
+          if (r.ok && r.intent.status === "PENDING" && !r.reused) void cancelIntent(r.intent.id);
           return;
         }
         if (!r.ok) {
+          if (r.code === "IDEMPOTENCY_CONFLICT") {
+            rounds.current.set(base, round + 1); // F5: คีย์นี้ถูกใช้กับอย่างอื่นแล้ว ⇒ รอบใหม่
+            continue;
+          }
           setError(errOf(r.code));
+          done = true;
           break;
+        }
+        // F1: ใบ reused ที่เป็นของแถวอื่นแล้ว ⇒ รอบใหม่ (ครั้งเดียว) · ห้ามแสดงเป็นจ่ายแล้วของแถวนี้
+        if (r.reused && optsRef.current.usedIds.includes(r.intent.id)) {
+          rounds.current.set(base, round + 1);
+          if (dupRetried) {
+            setError(ROUNDS_EXHAUSTED);
+            done = true;
+            break;
+          }
+          dupRetried = true;
+          continue;
         }
         if (r.intent.status === "EXPIRED" || r.intent.status === "CANCELLED") {
           rounds.current.set(base, round + 1); // ใบเดิมของคีย์นี้ใช้ไม่ได้แล้ว ⇒ รอบใหม่
@@ -136,52 +187,62 @@ export function usePayIntent(setup: PayIntentSetup | null, target: IntentTarget)
         }
         if (r.intent.status === "CONSUMED") {
           setError(errOf("INTENT_CONSUMED"));
+          done = true;
           break;
         }
         setIntent(r.intent);
-        break;
+        done = true;
       }
-      if (seq.current === my) setCreating(false);
+      if (seq.current !== my) return;
+      if (!done) setError(ROUNDS_EXHAUSTED); // F5: หมดรอบ — ข้อความจริง + ลองใหม่
+      setCreating(false);
     };
     timer = setTimeout(() => void run(), prev || forced ? 0 : DEBOUNCE_MS);
     return () => {
       if (timer) clearTimeout(timer);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- รอบนี้เปลี่ยนเมื่อวิธี/ยอด/คีย์บิล/สั่งสร้างใหม่เท่านั้น
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- รอบนี้เปลี่ยนเมื่อแถว/วิธี/ยอด/คีย์บิล/สั่งสร้างใหม่เท่านั้น
   }, [tk, cartKey, regen]);
 
-  // ถอดกล่อง = คำตอบที่ยังค้างกลายเป็นของเก่า (ใบใหม่ที่ไม่มีใครดูถูกยกเลิกในตัวสร้าง)
+  // F3a: ถอดกล่อง (ปิด/ขายเสร็จ) = ยกเลิกใบปัจจุบันที่ยังไม่จ่าย (เงินมาช้า ⇒ refund_needed แทนใบกำพร้า) · คำตอบที่ค้างกลายเป็นของเก่า
   useEffect(
     () => () => {
       seq.current++;
+      const cur = intentRef.current;
+      if (cur && cur.status === "PENDING") void cancelIntent(cur.id);
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   );
 
-  // ── โพลทุก 2 วินาทีขณะ PENDING (มติ 1) + นาฬิกานับถอยหลัง ──
+  // ── โพลทุก 2 วินาทีขณะ PENDING (มติ 1) + นาฬิกานับถอยหลัง · F5: ปฏิเสธที่ไม่ใช่ INTERNAL = หยุดโพล + แสดง ──
   const pendingId = intent?.status === "PENDING" ? intent.id : null;
   useEffect(() => {
     if (!pendingId) return;
     let alive = true;
     setNow(Date.now());
     const tick = setInterval(() => setNow(Date.now()), 1000);
+    const stop = () => {
+      alive = false;
+      clearInterval(tick);
+      clearInterval(poll);
+    };
     const poll = setInterval(async () => {
       if (!scopeRef.current) return;
       const r = await paymentIntentStatusAction({ ...args(), intentId: pendingId }).catch(() => null);
       if (!alive || !r) return;
       if (!r.ok) {
-        if (r.code !== "INTERNAL") setError(errOf(r.code));
+        if (r.code !== "INTERNAL") {
+          setError(errOf(r.code));
+          stop();
+        }
         return;
       }
       setIntent((cur) =>
         cur && cur.id === pendingId ? { ...cur, status: r.status, expiresAt: r.expiresAt, paidAt: r.paidAt, confirmedVia: r.confirmedVia, qrPayload: r.qrPayload ?? cur.qrPayload } : cur,
       );
     }, POLL_MS);
-    return () => {
-      alive = false;
-      clearInterval(tick);
-      clearInterval(poll);
-    };
+    return stop;
     // eslint-disable-next-line react-hooks/exhaustive-deps -- ผูกกับใบที่ PENDING ใบเดียว
   }, [pendingId]);
 
@@ -206,8 +267,8 @@ export function usePayIntent(setup: PayIntentSetup | null, target: IntentTarget)
   const regenerate = useCallback(() => {
     const cur = intentRef.current;
     if (cur?.status === "PAID" || !tk) return;
-    const [m, a] = tk.split("|");
-    const base = intentKeyOf(cartKey, m as PaymentIntentMethod, Number(a), 0);
+    const [s, m, a] = tk.split("|");
+    const base = intentKeyOf(cartKey, Number(s), m as PaymentIntentMethod, Number(a), 0);
     if (cur && (cur.status === "EXPIRED" || cur.status === "CANCELLED")) rounds.current.set(base, (rounds.current.get(base) ?? 0) + 1);
     setRegen((n) => n + 1);
   }, [tk, cartKey]);

@@ -1528,6 +1528,7 @@ async function cleanupIntents(): Promise<void> {
         else ok = false;
       }
       const paidLeft = rows.filter((x) => x.status === "PAID").length;
+      if (paidLeft) ok = false; // แก้รอบ 1 F5: เงินเข้าไม่มีบิล = ภาพรอบนี้ตก (rc 1)
       parts.push(`ใบขอรับเงินของรอบนี้ ${rows.length} · ยกเลิก ${cancelled} · ใช้ในบิล ${INTENTS.consumed}${paidLeft ? ` · ⚠️ PAID ไม่ได้ใช้ ${paidLeft}` : ""}`);
     }
   } catch (e) {
@@ -1536,9 +1537,21 @@ async function cleanupIntents(): Promise<void> {
   }
   if (INTENTS.ppBefore !== undefined) {
     try {
-      if (INTENTS.ppBefore === null) await prisma.paymentProfile.deleteMany({ where: { tenantId: T.tenantId } });
-      else await prisma.paymentProfile.update({ where: { tenantId: T.tenantId }, data: INTENTS.ppBefore });
-      parts.push("คืน PromptPay ID ของร้าน QC แล้ว");
+      // แก้รอบ 1 F5: คืนผ่านตัวแก้เดิม (savePaymentProfile) เมื่อค่าเดิมผ่านตัวตรวจของมัน · ไม่มีแถวเดิม = ลบแถว (ตัวแก้ไม่มีทางลบ) ·
+      //   ค่าเดิมผิดรูป = เขียนตรง (ตัวแก้ปฏิเสธค่าผิดรูป) — บันทึกใน summary
+      const { savePaymentProfile } = await import("@/lib/payment/service");
+      const { isValidPromptPayId } = await import("@/lib/payment/promptpay");
+      const before = INTENTS.ppBefore;
+      if (before === null) {
+        await prisma.paymentProfile.deleteMany({ where: { tenantId: T.tenantId } });
+        parts.push("คืน PromptPay ID: ลบแถวที่รอบนี้สร้าง (ร้าน QC ไม่มีแถวเดิม · เขียนตรง)");
+      } else if (before.promptpayId && isValidPromptPayId(before.promptpayId)) {
+        await savePaymentProfile({ tenantId: T.tenantId, actorUserId: T.users.owner.userId }, { promptpayId: before.promptpayId, displayName: before.displayName ?? undefined });
+        parts.push("คืน PromptPay ID ผ่าน savePaymentProfile");
+      } else {
+        await prisma.paymentProfile.update({ where: { tenantId: T.tenantId }, data: before });
+        parts.push("คืน PromptPay ID ค่าเดิมที่ผิดรูป (เขียนตรง — savePaymentProfile ไม่รับค่าผิดรูป)");
+      }
     } catch (e) {
       ok = false;
       parts.push(`คืน PromptPay ID ไม่ได้: ${e instanceof Error ? e.message.slice(0, 120) : String(e)}`);

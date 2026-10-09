@@ -238,7 +238,6 @@
         "manualBusy": "Confirming…",
         "managerOnly": "Only managers (shift management) can confirm manually",
         "waitCard": "Waiting for Beam…",
-        "cardHint": "The customer scans to pay by card on the Beam page",
         "openLink": "Open link",
         "expiresIn": "Expires in {time}",
         "paidBeam": "Payment received · via Beam",
@@ -255,7 +254,9 @@
         "locked": "Payment already received — use it for this bill or refund it yourself",
         "waitPaid": "Wait for the payment before confirming",
         "cardBeam": "Beam",
-        "cardEdc": "EDC · enter a reference"
+        "cardEdc": "EDC · enter a reference",
+        "overPaid": "Received {amount} more than the bill — refund it yourself",
+        "roundsExhausted": "Could not create the QR after several tries — try again"
       }
     },
     "done": {
