@@ -1331,7 +1331,8 @@ async function runDb() {
       if (a1 !== 1 || a2 !== 2 || a3 !== 2) p.push(`audit 0→${a1}→${a2}→${a3} (คาด 1→2→2)`);
       const au = (await P.auditLog.findFirst({ where: { tenantId: tid, action: "pos.receipt.reprint", targetId: saleV } }).catch(() => null)) as Any;
       if (au && au.actorId !== owner.userId) p.push(`audit actorId ${au.actorId}`);
-      if (PV.footer?.qrEReceiptUrl !== null) p.push(`qrEReceiptUrl ${short(PV.footer?.qrEReceiptUrl, 40)}`);
+      // ORACLE-EDIT (controller · P1.11 R3): QR ใบเสร็จออนไลน์ = null หรือ URL ลงท้าย /r/<token 12 ตัว> เมื่อตั้งค่าเปิด
+      { const q = PV.footer?.qrEReceiptUrl; if (!(q === null || (typeof q === "string" && /\/r\/[0-9A-HJKMNP-TV-Z]{12}$/.test(q)))) p.push(`qrEReceiptUrl ${short(q, 40)}`); }
       if (PV.footer?.text !== "ขอบคุณที่อุดหนุนค่ะ") p.push(`footer.text ${PV.footer?.text}`);
       const lt = PV.labels?.th, le = PV.labels?.en;
       if (!isRecord(lt) || !isRecord(le)) p.push("labels.th/en ไม่ใช่ object");

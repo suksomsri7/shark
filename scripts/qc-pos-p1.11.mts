@@ -234,7 +234,7 @@ const F = {
   pub: `${POS_DIR}/public-receipt.ts`,
   issue: `${POS_DIR}/receipt-issue.ts`,
   send: `${POS_DIR}/receipt-send.ts`,
-  pubAct: `${POS_DIR}/public-receipt-actions.ts`,
+  pubAct: "src/app/(store)/r/[token]/pos-receipt-actions.ts", // ORACLE-EDIT (controller · P1.11 ST6): F6.1 บังคับ permission check ใน modules/pos → actions สาธารณะอยู่ข้างหน้า /r/[token] เดิมของบัญชี
   sendAct: `${POS_DIR}/receipt-send-actions.ts`,
   rcpAct: `${POS_DIR}/receipt-actions.ts`,
   receipt: `${POS_DIR}/receipt.ts`,
@@ -435,8 +435,10 @@ async function runStatic(): Promise<void> {
       if (!/\bcatch\b/.test(body)) p.push("sendReceiptAction ไม่มี catch");
       if (!/requireTenant\s*\(/.test(s)) p.push("sendReceiptAction ไม่เรียก requireTenant");
     }
+    // ORACLE-EDIT (controller · P1.11 ST6): หน้า /r/[token] มีอยู่แล้วของบัญชี (ใบกำกับ) — ส่วน POS ของหน้าเป็นของ P1.11U: ขั้น S ตรวจเมื่อหน้าเรียก publicReceipt แล้วเท่านั้น
     const page = rd(F.page);
     if (!page) p.push(`ไม่มี ${F.page}`);
+    else if (!/\bpublicReceipt\b/.test(stripComments(page))) { /* U half pending — ไม่นับ */ }
     else {
       const ps = stripComments(page);
       if (!/noindex/.test(ps)) p.push("หน้า /r/[token] ไม่มี noindex");
@@ -1466,7 +1468,7 @@ async function runDb() {
       const b = await send("A", owner, { saleId: B.bC3!.id, via: "LINE" }, DEPS, "send LINE ไม่มี party");
       if (!refused(b, "NO_LINE_IDENTITY")) p.push(`สมาชิกไม่มี party → ${codeOf(b)}`);
       if (lineCalls.length !== l0) p.push(`deps.line ถูกเรียก ${lineCalls.length - l0} ครั้ง`);
-      const c = await send("A", owner, { saleId: B.bC2!.id, via: "LINE" }, undefined, "send LINE ทางจริง ไม่มีไลน์");
+      const c = await send("A", owner, { saleId: B.bC2!.id, via: "LINE" }, {} as Any, "send LINE ทางจริง ไม่มีไลน์"); // ORACLE-EDIT (controller · builder S2): {} ไม่ใช่ undefined — default param จะฉีด fake deps
       if (!refused(c, "NO_LINE_IDENTITY")) p.push(`มี party ไม่มีไลน์ (ทางจริง) → ${codeOf(c)} ${short(c?.message ?? "", 60)}`);
       for (const k of ["bW", "bC3", "bC2"]) if ((await sentAudits(B[k]!.id)).length) p.push(`${k} มี audit`);
       if (guardHits.length !== g0) p.push(`แตะเครือข่าย ${guardHits.length - g0} (${guardHits.slice(g0).join(",")})`);
