@@ -11,6 +11,7 @@ import { splitIncludedVat } from "@/lib/money/vat";
 import { parsePosPaymentSettings } from "./payment-settings";
 // POS P1.9 ▸ ค่าตั้งกะ (otherSources) — ตัวอ่านเดียวกับ shift.ts ◂
 import { parseShiftSettings } from "./shift";
+import { posDayCutoffMinutes } from "./settings-shared"; // POS P1.18 ▸ มติ Q9 ตัดวัน ◂
 // POS P1.11 ▸ R1: โทเคนใบเสร็จออนไลน์ตั้งใน tx เดียวกับบิล (ทุก sourceModule) ◂
 import { newReceiptToken } from "./receipt-token";
 import type { TaxInvoiceSnapshot } from "./tax-invoice-shared"; // POS P1.13 ▸ R1 ◂
@@ -1073,10 +1074,23 @@ export const PAY_TYPE_LABEL_TH: Record<PosPayType, string> = {
   PLATFORM: "แพลตฟอร์ม", // POS P2.1 ▸ แพลตฟอร์มเก็บเงินแทน (รอแพลตฟอร์มโอน) ◂
 };
 
-// business date (BKK) → ช่วง UTC [start, end) ของวันนั้น
-function bkkDayRange(businessDate: string): { start: Date; end: Date } {
-  const start = new Date(new Date(businessDate + "T00:00:00Z").getTime() - 7 * 3600000);
+// business date (BKK) → ช่วง UTC [start, end) ของวันนั้น · POS P1.18 (มติ Q9): วัน D = [D 00:00 + cutoff, D+1 00:00 + cutoff) เวลาไทย ◂
+function bkkDayRange(businessDate: string, cutoffMin = 0): { start: Date; end: Date } {
+  const start = new Date(new Date(businessDate + "T00:00:00Z").getTime() - 7 * 3600000 + cutoffMin * 60_000);
   return { start, end: new Date(start.getTime() + 24 * 3600000) };
+}
+/** POS P1.18 ▸ นาทีตัดวันของระบบ POS (settings.pos.reports.dayCutoffMinutes · ตัวอ่านเดียวกับ reports.ts) ◂ */
+async function closeDayCutoff(ctx: CloseCtx): Promise<number> {
+  const sys = await prisma.appSystem.findFirst({ where: { id: ctx.systemId, tenantId: ctx.tenantId }, select: { settings: true } });
+  return posDayCutoffMinutes(sys?.settings);
+}
+/** POS P1.18 ▸ วันธุรกิจ "วันนี้" ตามนาทีตัดวัน (ก่อนเวลาตัด = ยังเป็นวันก่อน) ◂ */
+function bkkBusinessToday(cutoffMin: number): string {
+  return new Date(Date.now() + 7 * 3600000 - cutoffMin * 60_000).toISOString().slice(0, 10);
+}
+/** POS P1.18 ▸ วันธุรกิจ "วันนี้" ของระบบ POS (หน้าปิดวัน/รายงานใช้แทน bkkToday เมื่อร้านตั้งเวลาตัดวัน — งาน P1.18U) ◂ */
+export async function posBusinessToday(ctx: CloseCtx): Promise<string> {
+  return bkkBusinessToday(await closeDayCutoff(ctx));
 }
 
 // วันนี้ตามเวลาไทย (YYYY-MM-DD)
@@ -1102,8 +1116,9 @@ export type PosDayBill = {
 
 // ── สรุปวัน (default = วันนี้ BKK) ต่อระบบ POS ──
 export async function closeDaySummary(ctx: CloseCtx, businessDate?: string): Promise<PosDaySummary> {
-  const date = businessDate ?? bkkToday();
-  const { start, end } = bkkDayRange(date);
+  const dayCutoff = await closeDayCutoff(ctx); // POS P1.18 ▸ มติ Q9 ◂
+  const date = businessDate ?? bkkBusinessToday(dayCutoff);
+  const { start, end } = bkkDayRange(date, dayCutoff);
 
   // บิลทั้งหมดของระบบ POS นี้ในวันนั้น (PAID + VOIDED + คืนครบ) + ใบคืนเงินของวันนั้น (POS P1.8 ▸ R3: docType แยก ◂)
   const sales = await prisma.posSale.findMany({
@@ -1182,8 +1197,9 @@ export async function closeDaySummary(ctx: CloseCtx, businessDate?: string): Pro
 
 // ── รายการบิลของวัน (PAID + VOIDED) เรียงตามเวลา — สำหรับตาราง/CSV ──
 export async function closeDayBills(ctx: CloseCtx, businessDate?: string): Promise<PosDayBill[]> {
-  const date = businessDate ?? bkkToday();
-  const { start, end } = bkkDayRange(date);
+  const dayCutoff = await closeDayCutoff(ctx); // POS P1.18 ▸ มติ Q9 ◂
+  const date = businessDate ?? bkkBusinessToday(dayCutoff);
+  const { start, end } = bkkDayRange(date, dayCutoff);
   const sales = await prisma.posSale.findMany({
     where: { tenantId: ctx.tenantId, systemId: ctx.systemId, createdAt: { gte: start, lt: end }, ...(ctx.unitIds ? { unitId: { in: ctx.unitIds } } : {}) },
     orderBy: { createdAt: "asc" },
@@ -1228,7 +1244,7 @@ const baht = (satang: number) => (satang / 100).toFixed(2);
 const STATUS_TH: Record<string, string> = { PAID: "ชำระแล้ว", VOIDED: "ยกเลิก", REFUNDED: "คืนเงินครบ" };
 
 export async function closeDayCsv(ctx: CloseCtx, businessDate?: string): Promise<string> {
-  const date = businessDate ?? bkkToday();
+  const date = businessDate ?? bkkBusinessToday(await closeDayCutoff(ctx)); // POS P1.18 ◂
   const [summary, bills] = await Promise.all([closeDaySummary(ctx, date), closeDayBills(ctx, date)]);
   const fmtTime = (d: Date) =>
     new Intl.DateTimeFormat("th-TH", { timeZone: "Asia/Bangkok", hour: "2-digit", minute: "2-digit" }).format(d);

@@ -39,6 +39,7 @@ import {
   type PaymentIntentVia,
   type PaymentIntentView,
   type PosIntentSettings,
+  promptpayIdForUnit, // POS P1.18 ▸ มติ Q9 พร้อมเพย์รายสาขา ◂
 } from "./payment-intent-shared";
 
 type Db = PrismaClient | Prisma.TransactionClient;
@@ -118,7 +119,7 @@ const defaultBeam: PosBeamAdapter = {
 export type PaymentIntentDeps = { beam?: PosBeamAdapter };
 
 // ─────────────────── ขอบเขต (ร้าน · ระบบ POS · สาขา · สิทธิ์ขาย) ───────────────────
-type Scope = { tenantId: string; systemId: string; unitId: string; actor: IntentActor; settings: PosIntentSettings };
+type Scope = { tenantId: string; systemId: string; unitId: string; actor: IntentActor; settings: PosIntentSettings; unitPromptpayId?: string | null };
 
 function actorOf(a: unknown): IntentActor | null {
   if (!isRecord(a) || !isId(a.userId)) return null;
@@ -142,7 +143,8 @@ async function scopeOf(db: Db, ctx: unknown, actorRaw: unknown): Promise<Scope |
   if (!sys || !link || link.systemId !== systemId || !unit) return refuse("NOT_FOUND");
   if (!canAccessUnit(actor, unitId)) return refuse("NOT_FOUND");
   if (!evaluate(actor, { module: "pos", action: "pos.sale.create", unitId })) return refuse("PERMISSION_DENIED");
-  return { tenantId, systemId, unitId, actor, settings: parsePosIntentSettings(sys.settings) };
+  // POS P1.18 ▸ มติ Q9: เลขพร้อมเพย์ของสาขานี้ (อ่านก่อน — โปรไฟล์ร้านเป็นทางสำรอง) ◂
+  return { tenantId, systemId, unitId, actor, settings: parsePosIntentSettings(sys.settings), unitPromptpayId: promptpayIdForUnit(sys.settings, unitId) };
 }
 
 /** ctx.deviceId: ไม่ส่ง = undefined · ผิดรูป = false */
@@ -248,8 +250,10 @@ export async function createPaymentIntent(ctx: IntentCtx, actor: IntentActor, in
         beamChargeId = viaBeam.chargeId;
       } else {
         // มติ B: พร้อมเพย์ของร้าน = PaymentProfile.promptpayId (หนึ่งเลขต่อร้าน · เหมือนหน้าขายเดิม)
-        const profile = await prisma.paymentProfile.findUnique({ where: { tenantId: s.tenantId }, select: { promptpayId: true } });
-        const ppId = (profile?.promptpayId ?? "").trim();
+        // POS P1.18 ▸ มติ Q9: เลขของสาขา (settings.pos.payment.promptpayIdByUnit) มาก่อน · ไม่ตั้ง/ใช้ไม่ได้ = เลขของโปรไฟล์ ◂
+        const unitPp = s.unitPromptpayId && isValidPromptPayId(s.unitPromptpayId) ? s.unitPromptpayId : null;
+        const profile = unitPp ? null : await prisma.paymentProfile.findUnique({ where: { tenantId: s.tenantId }, select: { promptpayId: true } });
+        const ppId = unitPp ?? (profile?.promptpayId ?? "").trim();
         if (!ppId || !isValidPromptPayId(ppId)) return refuse("PROMPTPAY_NOT_CONFIGURED");
         kind = "PROMPTPAY_STATIC";
         qrPayload = promptpayPayload({ id: ppId, amountSatang });

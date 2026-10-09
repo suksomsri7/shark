@@ -54,7 +54,7 @@ export type SubmitInput = {
 };
 
 export type DecideInput = { decision: "APPROVED" | "REJECTED"; note?: string | null };
-export type DecideResult = { ok: boolean; status: string; note: string | null };
+export type DecideResult = { ok: boolean; status: string; note: string | null; code?: string; message?: string };
 
 // ── กติกา (policy) ──────────────────────────────────────────────
 
@@ -220,6 +220,9 @@ export async function submitForApproval(
 
 // ── ตัดสิน (decide) ──────────────────────────────────────────────
 
+/** POS P1.18 ▸ K4: ชนิดคำขอที่โมดูลต้นทางจัดการกรณี "ผู้ยื่นตัดสินเอง" ด้วยกติกาของตัวเอง (แกนไม่ปฏิเสธให้) ◂ */
+const SELF_DECISION_HANDLED_BY_SOURCE: ReadonlySet<string> = new Set(["crm.commission"]);
+
 // step ปัจจุบันนี้ ผู้ใช้ m ตัดสินได้ไหม:
 //   approverUserId ตรง userId → ได้ · OWNER → ได้ทุก step · MANAGER → เฉพาะ step ที่ role = MANAGER
 function canDecideStep(m: MembershipCtx & { userId: string }, step: { approverRole: string; approverUserId: string | null }): boolean {
@@ -240,6 +243,19 @@ export async function decide(
   const req = await tenantDb(ctx).approvalRequest.findFirst({ where: { id: requestId } });
   if (!req || req.status !== "PENDING") {
     return { ok: false, status: req?.status ?? "NOT_FOUND", note: null };
+  }
+  // POS P1.18 ▸ K4 (P1.15 close item): ผู้ยื่นตัดสินคำขอของตัวเองไม่ได้ — ที่แกน (ทุกทาง: หน้าอนุมัติ · bulkDecide · ผู้ช่วย AI) ·
+  //   คำขอคง PENDING · ไม่มีแถวตัดสิน · ไม่มี outbox · ยกเว้น 2 กรณี:
+  //   (a) ชนิดที่ต้นทางจัดการ "ตัดสินของตัวเอง" เองแล้ว (crm.commission: มติ C3.3 S3 — คง PENDING + โน้ต + แจ้งเจ้าของ · qc-crm-c3.3 S4.8)
+  //   (b) แก้รอบ 2 F3: ผู้ตัดสินเป็น OWNER และร้านมีเจ้าของ (OWNER ที่รับคำเชิญแล้ว) คนเดียว — ร้านเจ้าของคนเดียวไม่มีใครอื่นตัดสินให้
+  //       จึงไม่ค้างคำขอของตัวเอง · ร้านหลายเจ้าของยังต้องให้เจ้าของอีกคนตัดสิน · นับสดทุกครั้ง 1 query (ไม่แคช) ◂
+  if (req.requestedById === m.userId && !SELF_DECISION_HANDLED_BY_SOURCE.has(req.entityType)) {
+    const soleOwner =
+      m.role === "OWNER" &&
+      (await prisma.membership.count({ where: { tenantId: ctx.tenantId, role: "OWNER", acceptedAt: { not: null } } })) === 1;
+    if (!soleOwner) {
+      return { ok: false, status: req.status, note: null, code: "SELF_APPROVAL", message: "อนุมัติคำขอของตัวเองไม่ได้ — ให้ผู้อนุมัติคนอื่นตัดสิน" };
+    }
   }
   const steps = await tenantDb(ctx).approvalStep.findMany({
     where: { policyId: req.policyId },
@@ -342,7 +358,7 @@ export async function bulkDecide(
     try {
       const r = await decide(m, ctx, id, { decision, note: note ?? null });
       if (r.ok) result.done += 1;
-      else result.failed.push({ id, reason: bulkFailReason(r.status) });
+      else result.failed.push({ id, reason: r.code === "SELF_APPROVAL" && r.message ? r.message : bulkFailReason(r.status) }); // POS P1.18 ▸ K4 ◂
     } catch (e) {
       result.failed.push({ id, reason: e instanceof Error ? e.message.slice(0, 120) : "เกิดข้อผิดพลาด" });
     }

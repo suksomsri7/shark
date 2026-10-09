@@ -51,8 +51,9 @@ const fnBody = (text: string, start: string): string => {
 console.log("── [static] หน้า/แอ็กชันใช้ผลของ guard จริง ──");
 {
   const sales = norm("src/app/app/sys/[id]/pos/sales/page.tsx");
-  chk("S-8", "[static] หน้าประวัติบิล: scope → notFound + where = posSaleWhere(tenantId, id, scope)",
-    has(sales, "const scope = posSalesScope(posMembership(auth.active)); if (!scope) notFound();", "where: posSaleWhere(tenantId, id, scope),"), "ครบ", "ไม่ครบ");
+  // ORACLE-EDIT P1.18 (มติ Q9 ประตูหน้า /pos/sales): ขอบเขตของหน้าประวัติบิล = posSalesReadScope (pos.sale.read หรือ pos.sale.create) — กติกาอื่นเดิม
+  chk("S-8", "[static] หน้าประวัติบิล: scope (posSalesReadScope) → notFound + where = posSaleWhere(tenantId, id, scope)",
+    has(sales, "const scope = posSalesReadScope(posMembership(auth.active)); if (!scope) notFound();", "where: posSaleWhere(tenantId, id, scope),"), "ครบ", "ไม่ครบ");
 
   const close = norm("src/app/app/sys/[id]/pos/close/page.tsx");
   chk("C-8", "[static] หน้าปิดวัน: scope → notFound + closeDaySummary/closeDayBills ส่ง unitIds ของ scope (ไม่มี assertCan)",

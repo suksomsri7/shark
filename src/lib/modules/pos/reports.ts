@@ -7,7 +7,7 @@
 //
 // ค่าปริยายของคำถามเจ้าของ (รอยืนยัน — แต่ละข้อแก้ได้ที่จุดเดียวที่ระบุ):
 //   Q17.1 ผู้ขาย = soldByUserId ?? ผู้เปิดกะ ?? ไม่ระบุ        → sellerOf()
-//   Q17.2 ตัดวันเที่ยงคืนเวลาไทย                                → DAY_CUTOFF_MINUTES (+ bkkDate/dayStart)
+//   Q17.2 ตัดวันเที่ยงคืนเวลาไทย                                → posDayCutoffMinutes ของระบบ (P1.18 · Scope.cutoffMin + bkkBusinessDate/dayStart)
 //   Q17.3 กำไร = ยอดบรรทัดรวม VAT ก่อนส่วนลดท้ายบิล · ต้นทุนที่บันทึกตอนตัดสต็อก ก่อน ต้นทุนเฉลี่ยวันนี้ (ประมาณ) → lineCost() + reportMargin
 //   Q17.4 รายงาน = pos.report.view · การ์ดวันนี้ = pos.sale.create → REPORT_PERMISSION / CARD_PERMISSION
 import type { PosShift, PrismaClient } from "@prisma/client";
@@ -16,6 +16,7 @@ import { canAccessUnit, evaluate } from "@/lib/core/rbac";
 import { lineConsumption, PAY_TYPE_LABEL_TH, PAY_TYPE_ORDER } from "./service";
 import { computeReport, type ShiftReport } from "./shift";
 import type { RegisterActor } from "./register-shared";
+import { posDayCutoffMinutes } from "./settings-shared"; // POS P1.18 ▸ มติ Q9 ตัดวันตามค่าตั้งของระบบ POS ◂
 
 type Db = PrismaClient;
 
@@ -24,8 +25,8 @@ type Db = PrismaClient;
 export const REPORT_PERMISSION = "pos.report.view";
 /** Q17.4 — การ์ดยอดวันนี้ใช้สิทธิ์เดียวกับหน้า "ยอดวันนี้"/ปิดวันเดิม (posSalesScope) */
 export const CARD_PERMISSION = "pos.sale.create";
-/** Q17.2 — นาทีหลังเที่ยงคืนเวลาไทยที่ถือเป็นการเริ่มวันธุรกิจ (0 = เที่ยงคืน · ตั้งค่าต่อร้านได้ใน P1.18) */
-const DAY_CUTOFF_MINUTES = 0;
+// Q17.2 → POS P1.18 (มติ Q9): นาทีหลังเที่ยงคืนเวลาไทยที่เริ่มวันธุรกิจ = settings.pos.reports.dayCutoffMinutes ของระบบ POS
+//   (ตัวอ่านเดียว posDayCutoffMinutes · 0–360 · ไม่ตั้ง = 0 เที่ยงคืน) — อ่านที่ scopeOf แล้วส่งต่อทุกจุดที่ตัดวัน ◂
 /** R2 — ช่วงยาวสุดต่อคำขอ (วัน · รวมปลายทั้งสอง) */
 export const REPORT_MAX_DAYS = 92;
 /** R5 — จำนวนแถวสินค้า/กำไร (totals คิดจากทุกแถวเสมอ) */
@@ -36,7 +37,7 @@ const CHUNK = 1000;
 
 const BKK_OFFSET_MS = 7 * 3_600_000;
 const DAY_MS = 86_400_000;
-const SHIFT_OFFSET_MS = BKK_OFFSET_MS - DAY_CUTOFF_MINUTES * 60_000;
+const shiftOffsetMs = (cutoffMin: number): number => BKK_OFFSET_MS - cutoffMin * 60_000;
 
 export const REPORT_KINDS = ["daily", "products", "staff", "payments", "margin", "shifts", "tax"] as const;
 export type ReportKind = (typeof REPORT_KINDS)[number];
@@ -245,12 +246,12 @@ function chunks<T>(xs: readonly T[], n = CHUNK): T[][] {
 }
 const cmpStr = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 
-/** Q17.2 — วันธุรกิจ (YYYY-MM-DD) ของเวลาหนึ่ง */
-export function bkkBusinessDate(d: Date): string {
-  return new Date(d.getTime() + SHIFT_OFFSET_MS).toISOString().slice(0, 10);
+/** Q17.2 — วันธุรกิจ (YYYY-MM-DD) ของเวลาหนึ่ง · cutoffMin = นาทีตัดวัน (P1.18 · ไม่ส่ง = เที่ยงคืน) */
+export function bkkBusinessDate(d: Date, cutoffMin = 0): string {
+  return new Date(d.getTime() + shiftOffsetMs(cutoffMin)).toISOString().slice(0, 10);
 }
-/** Q17.2 — เวลาเริ่มวันธุรกิจ (UTC) · cutoff 0 = [D−1 17:00Z, D 17:00Z) = bkkDayRange ของหน้าปิดวัน */
-const dayStart = (date: string): Date => new Date(Date.parse(`${date}T00:00:00Z`) - SHIFT_OFFSET_MS);
+/** Q17.2 — เวลาเริ่มวันธุรกิจ (UTC) · วัน D = [D 00:00 + cutoff, D+1 00:00 + cutoff) เวลาไทย = bkkDayRange ของหน้าปิดวัน */
+const dayStart = (date: string, cutoffMin = 0): Date => new Date(Date.parse(`${date}T00:00:00Z`) - shiftOffsetMs(cutoffMin));
 const addDays = (date: string, n: number): string => new Date(Date.parse(`${date}T00:00:00Z`) + n * DAY_MS).toISOString().slice(0, 10);
 function daysOf(from: string, to: string): string[] {
   const out: string[] = [];
@@ -265,7 +266,7 @@ function isCalendarDate(v: unknown): v is string {
 
 type Range = { from: string; to: string; start: Date; end: Date; limit: number };
 /** R2 — YYYY-MM-DD จริง · from ≤ to · ≤ 92 วัน · limit (ถ้าส่ง) = จำนวนเต็ม 1…1000 */
-function rangeOf(input: unknown): Range | ReportRefusal {
+function rangeOf(input: unknown, cutoffMin = 0): Range | ReportRefusal {
   if (!isRecord(input)) return refuse("VALIDATION");
   const { from, to, limit } = input;
   if (!isCalendarDate(from) || !isCalendarDate(to) || from > to) return refuse("VALIDATION");
@@ -274,7 +275,7 @@ function rangeOf(input: unknown): Range | ReportRefusal {
   if (limit !== undefined && !(typeof limit === "number" && Number.isInteger(limit) && limit >= 1 && limit <= ROW_LIMIT_MAX)) {
     return refuse("VALIDATION", "จำนวนแถวต้องเป็น 1–1000");
   }
-  return { from, to, start: dayStart(from), end: dayStart(addDays(to, 1)), limit: typeof limit === "number" ? limit : ROW_LIMIT_DEFAULT };
+  return { from, to, start: dayStart(from, cutoffMin), end: dayStart(addDays(to, 1), cutoffMin), limit: typeof limit === "number" ? limit : ROW_LIMIT_DEFAULT };
 }
 
 function actorOf(a: unknown): RegisterActor | null {
@@ -286,7 +287,7 @@ function actorOf(a: unknown): RegisterActor | null {
 }
 
 // ═══════════ ขอบเขต (R13) + สิทธิ์ (R12) ═══════════
-type Scope = { tenantId: string; systemId: string; unitId: string | null; unitIds: string[]; unitName: Map<string, string> };
+type Scope = { tenantId: string; systemId: string; unitId: string | null; unitIds: string[]; unitName: Map<string, string>; cutoffMin: number };
 
 /**
  * ระบบต้องเป็น AppSystem(POS) ของร้าน (ไม่สนว่าปิดใช้งานแล้ว — ประวัติต้องดูได้) · อื่น = NOT_FOUND
@@ -301,14 +302,15 @@ async function scopeOf(db: Db, ctxRaw: unknown, actorRaw: unknown, permission: s
   const unitId = isId(ctxRaw.unitId) ? ctxRaw.unitId : null;
   const actor = actorOf(actorRaw);
   if (!actor) return refuse("PERMISSION_DENIED");
-  const sys = await db.appSystem.findFirst({ where: { id: systemId, tenantId, type: "POS" }, select: { id: true } });
+  const sys = await db.appSystem.findFirst({ where: { id: systemId, tenantId, type: "POS" }, select: { id: true, settings: true } });
   if (!sys) return refuse("NOT_FOUND");
+  const cutoffMin = posDayCutoffMinutes(sys.settings); // POS P1.18 ◂
   const can = (u: string) => evaluate(actor, { module: "pos", action: permission, unitId: u });
   if (unitId) {
     const unit = await db.businessUnit.findFirst({ where: { id: unitId, tenantId }, select: { id: true, name: true } });
     if (!unit || !canAccessUnit(actor, unitId)) return refuse("NOT_FOUND");
     if (!can(unitId)) return refuse("PERMISSION_DENIED");
-    return { tenantId, systemId, unitId, unitIds: [unit.id], unitName: new Map([[unit.id, unit.name]]) };
+    return { tenantId, systemId, unitId, unitIds: [unit.id], unitName: new Map([[unit.id, unit.name]]), cutoffMin };
   }
   const everyUnit = actor.role === "OWNER" || actor.unitAccess.includes("*");
   const units = await db.businessUnit.findMany({
@@ -318,7 +320,7 @@ async function scopeOf(db: Db, ctxRaw: unknown, actorRaw: unknown, permission: s
   });
   const allowed = units.filter((u) => can(u.id));
   if (allowed.length === 0) return refuse("PERMISSION_DENIED");
-  return { tenantId, systemId, unitId: null, unitIds: allowed.map((u) => u.id), unitName: new Map(allowed.map((u) => [u.id, u.name])) };
+  return { tenantId, systemId, unitId: null, unitIds: allowed.map((u) => u.id), unitName: new Map(allowed.map((u) => [u.id, u.name])), cutoffMin };
 }
 
 async function guard<T>(name: string, body: () => Promise<T | ReportRefusal>): Promise<T | ReportRefusal> {
@@ -333,7 +335,7 @@ async function guard<T>(name: string, body: () => Promise<T | ReportRefusal>): P
 async function prepare(db: Db, ctx: unknown, actor: unknown, input: unknown, permission = REPORT_PERMISSION): Promise<{ s: Scope; r: Range } | ReportRefusal> {
   const s = await scopeOf(db, ctx, actor, permission);
   if (isRefusal(s)) return s;
-  const r = rangeOf(input);
+  const r = rangeOf(input, s.cutoffMin);
   if (isRefusal(r)) return r;
   return { s, r };
 }
@@ -481,7 +483,7 @@ export async function reportDailySales(ctx: ReportCtx, actor: RegisterActor, inp
     const sales = await loadSales(db, s, r.start, r.end);
     const byDay = new Map<string, SaleRow[]>();
     for (const x of sales) {
-      const d = bkkBusinessDate(x.createdAt);
+      const d = bkkBusinessDate(x.createdAt, s.cutoffMin);
       const day = byDay.get(d);
       if (day) day.push(x);
       else byDay.set(d, [x]);
@@ -902,13 +904,13 @@ export async function reportTax(ctx: ReportCtx, actor: RegisterActor, input: Rep
     const sales = all.filter((x) => x.docType === "SALE");
     const refundGroups = new Map<string, SaleRow[]>();
     for (const x of refundsOf(all)) {
-      const k = `${bkkBusinessDate(x.createdAt)}|${x.unitId}`;
+      const k = `${bkkBusinessDate(x.createdAt, s.cutoffMin)}|${x.unitId}`;
       refundGroups.set(k, [...(refundGroups.get(k) ?? []), x]);
     }
     const groups = new Map<string, { date: string; unitId: string; bills: SaleRow[] }>();
     for (const [k, rs] of refundGroups) if (!groups.has(k)) groups.set(k, { date: k.split("|")[0]!, unitId: rs[0]!.unitId, bills: [] });
     for (const x of sales) {
-      const date = bkkBusinessDate(x.createdAt);
+      const date = bkkBusinessDate(x.createdAt, s.cutoffMin);
       const k = `${date}|${x.unitId}`;
       const g = groups.get(k) ?? { date, unitId: x.unitId, bills: [] };
       g.bills.push(x);
@@ -1113,15 +1115,15 @@ export async function posDashboardCard(ctx: ReportCtx, actor: RegisterActor, inp
     const nowRaw = isRecord(input) ? input.now : undefined;
     if (nowRaw !== undefined && !(nowRaw instanceof Date && Number.isFinite(nowRaw.getTime()))) return refuse("VALIDATION", "เวลาไม่ถูกต้อง");
     const now = nowRaw ?? new Date();
-    const today = bkkBusinessDate(now);
+    const today = bkkBusinessDate(now, s.cutoffMin);
     const yesterday = addDays(today, -1);
     const [sales, openShiftCount] = await Promise.all([
-      loadSales(db, s, dayStart(yesterday), dayStart(addDays(today, 1))),
+      loadSales(db, s, dayStart(yesterday, s.cutoffMin), dayStart(addDays(today, 1), s.cutoffMin)),
       db.posShift.count({ where: { tenantId: s.tenantId, systemId: s.systemId, unitId: { in: s.unitIds }, status: "OPEN" } }),
     ]);
-    const todays = sales.filter((x) => bkkBusinessDate(x.createdAt) === today);
+    const todays = sales.filter((x) => bkkBusinessDate(x.createdAt, s.cutoffMin) === today);
     const t = dailyTotalsOf(todays);
-    const y = dailyTotalsOf(sales.filter((x) => bkkBusinessDate(x.createdAt) === yesterday));
+    const y = dailyTotalsOf(sales.filter((x) => bkkBusinessDate(x.createdAt, s.cutoffMin) === yesterday));
     const top = productRowsOf(await paidLines(db, s, todays)).rows[0] ?? null;
     return {
       ok: true,

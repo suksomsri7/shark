@@ -25,6 +25,7 @@ import { posSaleWhere, type PosUnitScope } from "./access";
 import { prisma } from "./db";
 import { RECEIPT_LABELS, type ReceiptDocType, type ReceiptKind, type ReceiptPayload, type ReceiptSaleStatus } from "./receipt-render";
 import { receiptSettingsOf } from "./receipt-settings";
+import { posReceiptLocale } from "./settings-shared"; // POS P1.18 ▸ R12 ภาษาใบเสร็จที่พิมพ์ ◂
 // POS P1.16 ▸ R2: กติกาชนิดใบเสร็จตัวเดียวกับหน้าบิลวันนี้ (billDetail.receiptKind) ◂
 import { receiptKindOf } from "./receipt-shared";
 import { ensureReceiptToken } from "./receipt-token";
@@ -359,6 +360,7 @@ async function buildReceipt(db: Db, tenantId: string, systemId: string, sale: Re
     footer: { text: rs.footer, qrEReceiptUrl: rs.qrEReceipt ? await eReceiptUrl(db, tenantId, sale) : null, fullTaxInvoiceHint: kind === "TAX_INVOICE_ABB" && docType === "SALE" && status === "PAID" }, // R2: บิลยกเลิก/คืนแล้วไม่ชวนขอใบกำกับเต็มรูป
     labels: { th: RECEIPT_LABELS.th, en: RECEIPT_LABELS.en },
     channel, // POS P2.1 ◂
+    printLocale: posReceiptLocale(posSys.settings), // POS P1.18 ▸ R12 มติ Q7 ◂
   };
   return { payload, kind, sale, bookId: bookId ?? null };
 }

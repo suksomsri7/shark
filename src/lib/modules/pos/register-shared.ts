@@ -59,6 +59,12 @@ export const STAFF_PIN_RE = /^[0-9]{4,6}$/;
 export const STAFF_PIN_LOCK_AFTER = 5;
 export const STAFF_PIN_LOCK_MS = 15 * 60_000;
 export const STAFF_TOKEN_TTL_MS = 12 * 3_600_000;
+/** POS P1.18 ▸ K1 (มติ 2): ใส่ PIN แบบไม่ระบุคนผิดครบ N ครั้งบนเครื่องเดียวภายในหน้าต่าง ⇒ PIN_THROTTLED ทุกครั้งถัดไปของเครื่องนั้นจนพ้นหน้าต่าง ◂ */
+export const STAFF_PIN_DEVICE_THROTTLE_AFTER = 10;
+export const STAFF_PIN_DEVICE_THROTTLE_MS = 15 * 60_000;
+/** POS P1.18 ▸ K1 แก้รอบ 1 F2: ผิดแบบไม่ระบุคนรวมทั้งสาขาครบ N ครั้งในหน้าต่างเดียวกัน ⇒ PIN_THROTTLED ทุกครั้งถัดไปแบบไม่ระบุคนของสาขานั้น
+ *  (รหัสเครื่องมาจาก client — เปลี่ยนรหัสใหม่ทุก 9 ครั้งต้องไม่ช่วยให้เดาได้) · รหัสเครื่องที่ไม่ได้ลงทะเบียนทุกตัวของสาขานับเป็น "เครื่องเดียว" ◂ */
+export const STAFF_PIN_UNIT_THROTTLE_AFTER = 30;
 export type StaffPinOk = { ok: true };
 /** ผล verifyStaffPin: staffToken ส่งต่อใน staffToken ของ submit/พัก/เรียกคืน/เปิดกะ · expiresAt = ISO */
 export type VerifyStaffPinOk = { ok: true; userId: string; role: RegisterRole; staffToken: string; expiresAt: string };
@@ -68,6 +74,13 @@ export type ListStaffForDeviceResult = { ok: true; items: StaffListItem[] } | Re
 /** POS P1.5: บิลที่พัก (HELD) อายุเกินกี่วันนับจาก createdAt (24 ชม.ต่อวัน แบบเลื่อน) ⇒ ทิ้งเองตอนเปิดรายการ — ตั้งได้ที่
  *  `AppSystem(POS).settings.pos.heldCart.expireDays` (จำนวนเต็ม 1–365) · ไม่ตั้ง/ผิดรูป = ค่านี้ */
 export const HELD_CART_EXPIRE_DAYS = 2;
+/** POS P1.18 ▸ R3 ตัวอ่านเดียวของ `settings.pos.heldCart.expireDays` (held-cart.ts + ตัวเขียนทั่วไปใช้ตัวนี้ · บริสุทธิ์) —
+ *  จำนวนเต็ม 1–365 · ไม่ตั้ง/ผิดรูป/ไม่ใช่ตัวเลข = HELD_CART_EXPIRE_DAYS (พฤติกรรมเดิมของ expireOf ทุกประการ) ◂ */
+export function posHeldCartExpireDays(settings: unknown): number {
+  const s = (settings ?? {}) as { pos?: { heldCart?: { expireDays?: unknown } | null } | null };
+  const v = typeof s === "object" ? s.pos?.heldCart?.expireDays : undefined;
+  return typeof v === "number" && Number.isInteger(v) && v >= 1 && v <= 365 ? v : HELD_CART_EXPIRE_DAYS;
+}
 /** ป้ายบิลที่พักยาวได้ไม่เกิน (ตัวอักษร) */
 export const HELD_CART_LABEL_MAX = 60;
 
@@ -153,6 +166,9 @@ export type RegisterRefusalCode =
   // POS P1.15: PIN พนักงาน · โทเคนผู้ขายบนเครื่อง · สายอนุมัติ (R9)
   | "PIN_INVALID"
   | "PIN_LOCKED"
+  // POS P1.18 ▸ K1: เครื่องนี้ใส่ PIN แบบไม่ระบุคนผิดเกินกำหนด (รอพ้นหน้าต่าง 15 นาที) ◂
+  | "PIN_THROTTLED"
+  // PIN_TAKEN คงไว้ให้ client เก่า — P1.18 K2: ไม่ถูกคืนแล้ว (PIN ซ้ำ = คำปฏิเสธเดียวกับ PIN อ่อน)
   | "PIN_TAKEN"
   | "WEAK_PIN"
   | "STAFF_TOKEN_INVALID"
@@ -771,6 +787,7 @@ const REFUSAL_KEY: Readonly<Record<string, string>> = {
   // POS P1.15 ▸ PIN · โทเคนผู้ขาย · สายอนุมัติ (R9 · คีย์ใต้ pos.register — CONTROLLER-DECISION 12) ◂
   PIN_INVALID: "errors.pinInvalid",
   PIN_LOCKED: "errors.pinLocked",
+  PIN_THROTTLED: "errors.pinThrottled", // POS P1.18 ▸ K1 ◂
   PIN_TAKEN: "errors.pinTaken",
   WEAK_PIN: "errors.weakPin",
   STAFF_TOKEN_INVALID: "errors.staffTokenInvalid",

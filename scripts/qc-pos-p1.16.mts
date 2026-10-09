@@ -264,10 +264,21 @@ async function runStatic(): Promise<void> {
       else if (!/^\w+\s*\?\s*:/.test(fourth) && !/=/.test(fourth)) p.push(`พารามิเตอร์ที่ 4 ต้องไม่บังคับ (${short(fourth, 60)})`);
       if (sig[2]!.replace(/\s+/g, "") !== "Promise<void>") p.push(`ชนิดผลลัพธ์ voidSale เปลี่ยนเป็น ${sig[2]!.trim()} (F15.2 ขาออกห้ามเปลี่ยน)`);
     }
+    // ORACLE-EDIT P1.18 (R13c มติ Q5): ป้ายแท็บย้ายไป messages pos.nav.* — แท็บ /pos/sales ต้องใช้คีย์ nav.sales (tabs.ts: คีย์ sales · layout: posNav("nav.sales"))
+    //   และค่า th ของ pos.nav.sales = "บิลวันนี้" (ป้ายเดิม) — แทนการหาข้อความไทยตรงตัวในซอร์ส
     for (const f of [F.tabs, F.layout]) {
       const lines = rd(f).split("\n").filter((l) => l.includes("pos/sales"));
       if (!lines.length) p.push(`${f.split("/").pop()} ไม่มี /pos/sales`);
-      else if (!lines.every((l) => l.includes('"บิลวันนี้"'))) p.push(`${f.split("/").pop()} แท็บ /pos/sales ยังไม่ใช่ "บิลวันนี้"`);
+      else if (!lines.every((l) => /nav\.sales|^\s*sales\s*:/.test(l))) p.push(`${f.split("/").pop()} แท็บ /pos/sales ไม่ใช้คีย์ nav.sales`);
+    }
+    {
+      let thNavSales: unknown = null;
+      try {
+        thNavSales = (JSON.parse(rd("src/messages/th/pos.json") || "{}") as { nav?: { sales?: unknown } }).nav?.sales;
+      } catch {
+        thNavSales = null;
+      }
+      if (thNavSales !== "บิลวันนี้") p.push(`pos.nav.sales (th) ยังไม่ใช่ "บิลวันนี้" (${String(thNavSales)})`);
     }
     chk("ST1", p.length === 0, "ไฟล์+export ครบ · receiptKindOf ใช้ร่วม · voidSale(…, opts?) Promise<void> · แท็บ บิลวันนี้", p.join(" · ") || "ครบ");
   }

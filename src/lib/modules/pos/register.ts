@@ -545,6 +545,7 @@ const REG_MESSAGE: Record<RegisterRefusalCode, string> = {
   // POS P1.15 ▸ PIN · โทเคนผู้ขาย · สายอนุมัติ (R9) ◂
   PIN_INVALID: "PIN ไม่ถูกต้อง",
   PIN_LOCKED: "PIN นี้ถูกล็อกชั่วคราวเพราะใส่ผิดหลายครั้ง — ให้ผู้จัดการปลดล็อก หรือรอ 15 นาที",
+  PIN_THROTTLED: "ลองผิดหลายครั้ง — รอ 15 นาทีแล้วลองใหม่", // POS P1.18 ▸ K1 ◂
   PIN_TAKEN: "PIN นี้มีคนในสาขาใช้อยู่แล้ว — เลือก PIN อื่น",
   WEAK_PIN: "PIN นี้เดาง่ายเกินไป — เลือก PIN อื่น",
   STAFF_TOKEN_INVALID: "การเข้าใช้งานของพนักงานบนเครื่องนี้หมดอายุหรือไม่ถูกต้อง — ใส่ PIN อีกครั้ง",
@@ -2298,7 +2299,10 @@ async function regDiscountOver(
   const prev = await discountRequestBySubmitKey(s.tenantId, req.idempotencyKey);
   if (prev) return { ok: false, code: "PENDING_APPROVAL", message: POS_APPROVAL_MESSAGE.PENDING_APPROVAL, requestId: prev.requestId, heldCartId: prev.heldCartId };
   if (!(await posApprovalPolicyExists(s.tenantId, "POS_DISCOUNT_OVER", s.unitId, s.systemId, discountSatang))) return exceeds;
-  const held = await (await import("./held-cart")).holdCartForApproval({ tenantId: s.tenantId, systemId: s.systemId, unitId: s.unitId }, s.actor, req.rawCart, db);
+  // POS P1.18 ▸ K3 (F5 ที่เหลือ): ส่งพร้อมกันคีย์เดียว ⇒ ทั้งคู่ผ่าน ③ ก่อนมีคำขอ — id บิลพักคิดจาก (ร้าน · ระบบ · สาขา · คีย์) ⇒
+  //   แถวเดียว (ตัวที่ชนคีย์หลักใช้แถวของผู้ชนะ) และคำขอเดียว (submitForApproval/PosApprovalPayload กันซ้ำต่อ entity อยู่แล้ว) ◂
+  const heldId = `hcap${createHash("sha256").update(`${s.tenantId}|${s.systemId}|${s.unitId}|${req.idempotencyKey}`).digest("hex").slice(0, 21)}`;
+  const held = await (await import("./held-cart")).holdCartForApproval({ tenantId: s.tenantId, systemId: s.systemId, unitId: s.unitId }, s.actor, req.rawCart, db, { id: heldId });
   if (held.ok === false) return held;
   const r = await submitPosApproval({
     tenantId: s.tenantId,

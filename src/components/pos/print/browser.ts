@@ -36,5 +36,6 @@ export function printHtml(html: string): Promise<PrintResult> {
 
 /** ใบเสร็จผ่านเบราว์เซอร์ */
 export function printViaBrowser(payload: ReceiptPayload, paper: "58" | "80", locale: "th" | "en"): Promise<PrintResult> {
-  return printHtml(renderReceiptHtml(payload, { paper, locale }));
+  // POS P1.18 ▸ R12: ภาษาที่พิมพ์ = payload.printLocale (ค่าตั้งของระบบ POS) · locale ของจอใช้เฉพาะ payload เก่าที่ไม่มีค่านี้ ◂
+  return printHtml(renderReceiptHtml(payload, { paper, locale: payload.printLocale ?? locale }));
 }

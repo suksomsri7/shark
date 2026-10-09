@@ -138,9 +138,14 @@ const CHECKS: readonly Def[] = [
   D("V2", "X3", "[มติ Q9 FU-c] canEdit.receipt ตรงกับตัวเขียนใบเสร็จ: MANAGER (U1) false + updatePosReceiptSettings PERMISSION_DENIED · MANAGER (U1+U2) true + ok"),
   // ── K งานปิด P1.15 ──
   D("K1", "X3", "[มติ Q9 P1.15] ใส่ PIN แบบไม่ระบุคนผิด N ครั้ง (N = STAFF_PIN_DEVICE_THROTTLE_AFTER) ที่เครื่อง 1 → PIN_INVALID ทุกครั้ง · ครั้งถัดไป (PIN ถูก) → PIN_THROTTLED · เครื่อง 2 PIN ถูก → ok · failedCount ของพนักงานไม่ขยับ"),
+  // ORACLE-EDIT (แก้รอบ 1 F2 · มติผู้คุมงาน 9 ต.ค.): K1 ต่อเครื่องเดาได้ด้วยรหัสเครื่องใหม่ทุก 9 ครั้ง ⇒ เพิ่มด่านต่อสาขา + ถังเครื่องไม่ลงทะเบียน
+  D("K1b", "X3", "[แก้รอบ 1 F2] ด่านต่อสาขา: ผิดแบบไม่ระบุคนรวม N_U ครั้ง (N_U = STAFF_PIN_UNIT_THROTTLE_AFTER = 30) ที่ U2 กระจายหลายรหัสเครื่อง (ลงทะเบียน 3 เครื่อง × 9 + ไม่ลงทะเบียน 3 รหัส — ไม่มีเครื่อง/ถังไหนถึง N) → PIN_INVALID ทุกครั้ง · ครั้งที่ N_U+1 บนเครื่องลงทะเบียนใหม่ที่ยังไม่เคยผิด → PIN_THROTTLED · สาขา U1 ไม่โดน (DEV2 PIN ถูก → ok)"),
+  D("K1c", "X3", "[แก้รอบ 1 F2] ถังเครื่องไม่ลงทะเบียน: ผิดแบบไม่ระบุคน N ครั้งที่ U1 ด้วยรหัสเครื่องไม่ลงทะเบียน 'ใหม่ทุกครั้ง' → PIN_INVALID ทุกครั้ง · รหัสไม่ลงทะเบียนใหม่อีกตัว PIN ถูก → PIN_THROTTLED (รวมถังเดียวต่อสาขา) · ระบุคน (userId) บนรหัสไม่ลงทะเบียนใหม่ → ok (ไม่โดนด่าน) · เครื่องลงทะเบียน DEV2 PIN ถูก → ok"),
   D("K2", "X2", "[มติ Q9 P1.15] ตั้ง PIN ซ้ำกับคนอื่นในสาขา → ไม่ใช่ PIN_TAKEN และแยกไม่ออก: ok (แล้ว PIN นั้นแบบไม่ระบุคน → PIN_INVALID · ระบุคน → คนนั้น) หรือ ปฏิเสธด้วย code+message เดียวกับ PIN อ่อน · ข้อความไม่บอกว่ามีคนใช้"),
   D("K3", "X1", "[มติ Q9 P1.15 F5] กติกา POS_DISCOUNT_OVER · submit พร้อมกัน 2 ครั้งคีย์เดียว (3 รอบ) → requestId เดียวกัน · บิลพัก +1 · คำขอ +1 ต่อรอบ · ไม่มีบิล · อนุมัติ → submit พร้อมกันคีย์เดียว → บิล 1 ใบ อีกตัว = บิลเดิม หรือ IDEMPOTENCY_CONFLICT"),
   D("K4", "X3", "[มติ Q9 P1.15] approval decide โดยผู้ยื่นเอง (MANAGER ที่ผ่าน canDecideStep) → ok:false · คำขอยัง PENDING · ไม่มี ApprovalDecision/outbox approved · OWNER ตัดสินได้ (ตัวควบคุม)"),
+  // ORACLE-EDIT (แก้รอบ 2 F3 · มติผู้คุมงาน 9 ต.ค.): ร้านเจ้าของคนเดียวต้องไม่ค้างคำขอของตัวเอง · ร้านหลายเจ้าของยังห้าม
+  D("K4b", "X3", "[แก้รอบ 2 F3] ร้านมี OWNER (รับคำเชิญแล้ว) คนเดียว: OWNER ยื่นเอง (ขั้น OWNER) แล้ว decide เอง → ok:true APPROVED · เพิ่ม OWNER คนที่ 2 (รับคำเชิญแล้ว) → OWNER คนเดิมยื่นใหม่แล้ว decide เอง → ok:false code SELF_APPROVAL · คำขอยัง PENDING · ไม่มี ApprovalDecision · bulkDecide → done 0 failed 1 · OWNER คนที่ 2 ตัดสินได้ (ตัวควบคุม)"),
   // ── E ปฏิเสธเป็นข้อมูล ──
   D("E1", "-", "[R16] คำปฏิเสธที่เก็บได้ {ok:false, code, message ไทย} ไม่ throw · มีรหัสใหม่ครบ SETTINGS_SECTION_LOCKED CONFIRM_REQUIRED PIN_THROTTLED · settingsRefusalMessageKey ของทุกรหัสที่เห็น → คีย์ที่มีใน pos.settings th+en"),
   // ── Z คืนสภาพ ──
@@ -1469,7 +1474,8 @@ async function runDb() {
       const c = cardOf(r, code);
       if (c?.state !== state) p.push(`${code} ${short(c?.state, 12)} (คาด ${state})`);
       if (c && (c.scope !== null || c.target !== null || c.manage !== null || c.lastActivityAt !== null)) p.push(`${code} scope/target/manage/lastActivity ไม่ใช่ null`);
-      if (phase && c && !(Array.isArray(c.facts) && c.facts.length > 0 && c.facts.every((f: Any) => f?.live === false && f?.phase === PLANNED_PHASE[code]))) p.push(`${code} facts ไม่ใช่ planned ${phase}`);
+      // ORACLE-EDIT P1.18 S (ขัดกันเองกับ I12/ตารางชื่อ: BOOKING advanceBookingBill = P2.7 ไม่ใช่ P2.4) — ทุกข้อ live:false มี phase · และมีอย่างน้อยหนึ่งข้อเป็นเฟสของการ์ด
+      if (phase && c && !(Array.isArray(c.facts) && c.facts.length > 0 && c.facts.every((f: Any) => f?.live === false && typeof f?.phase === "string" && !!f.phase) && c.facts.some((f: Any) => f?.phase === PLANNED_PHASE[code]))) p.push(`${code} facts ไม่ใช่ planned ${phase}`);
     }
     chk("I8", NI === "" && p.length === 0, "PLANNED (HR BOOKING AI) · NO_SYSTEM (MARKETING CHAT)", FX(NI + (p.join(" · ") || "ครบ")));
   }
@@ -1962,6 +1968,49 @@ async function runDb() {
     if (row0 && row1 && (row1.failedCount !== row0.failedCount || !!row1.lockedUntil !== !!row0.lockedUntil)) p.push(`failedCount ${row0.failedCount}→${row1.failedCount}`);
     chk("K1", NK === "" && p.length === 0, `ผิด ${N} → PIN_THROTTLED เฉพาะเครื่องนั้น`, FX(NK + (p.join(" · ") || "ครบ")));
   }
+  // ORACLE-EDIT (แก้รอบ 1 F2): K1c ก่อน K1b (K1c ใช้ U1 ที่ K1 ผิดไปแล้ว N ครั้ง — รวม 2N < N_U ⇒ ด่านต่อสาขาไม่ปน) · K1b ใช้ U2 ล้วน
+  {
+    const p: string[] = [];
+    const N = typeof regShared?.STAFF_PIN_DEVICE_THROTTLE_AFTER === "number" ? (regShared.STAFF_PIN_DEVICE_THROTTLE_AFTER as number) : 10;
+    const anonAt = (u: string, dev: string, pin: string, userId?: string) => call(staffMod, "verifyStaffPin", uctx(u, "X", dev), { unitId: U[u], deviceId: dev, pin, ...(userId ? { userId } : {}) });
+    for (let i = 0; i < N; i++) {
+      const r = await anonAt("U1", `qc118${RAND}c${i}`, `9076${String(10 + i).padStart(2, "0")}`);
+      if (!refused(r, "PIN_INVALID")) p.push(`รหัสใหม่ครั้งที่ ${i + 1} → ${codeOf(r)}`);
+    }
+    const t = keep("K1c รหัสไม่ลงทะเบียนใหม่ PIN ถูก", await anonAt("U1", `qc118${RAND}cx`, "258014"));
+    if (!refused(t, "PIN_THROTTLED")) p.push(`รหัสไม่ลงทะเบียนใหม่ (PIN ถูก) หลังผิด ${N} → ${codeOf(t)} (คาด PIN_THROTTLED)`);
+    const named = await anonAt("U1", `qc118${RAND}cy`, "258014", uid("C1"));
+    if (named?.ok !== true || named.userId !== uid("C1")) p.push(`ระบุคนบนรหัสไม่ลงทะเบียน → ${codeOf(named)} (คาด ok)`);
+    const reg = await anonAt("U1", DEV2, "258014");
+    if (reg?.ok !== true || reg.userId !== uid("C1")) p.push(`เครื่องลงทะเบียน DEV2 → ${codeOf(reg)} (คาด ok)`);
+    chk("K1c", p.length === 0, `รหัสไม่ลงทะเบียน = ถังเดียวต่อสาขา (ผิด ${N} → PIN_THROTTLED)`, FX(p.join(" · ") || "ครบ"));
+  }
+  {
+    const p: string[] = [];
+    const NU = typeof regShared?.STAFF_PIN_UNIT_THROTTLE_AFTER === "number" ? (regShared.STAFF_PIN_UNIT_THROTTLE_AFTER as number) : 30;
+    const NUK = typeof regShared?.STAFF_PIN_UNIT_THROTTLE_AFTER === "number" ? "" : `${MISSING} STAFF_PIN_UNIT_THROTTLE_AFTER (register-shared.ts) · `;
+    const anonAt = (u: string, dev: string, pin: string) => call(staffMod, "verifyStaffPin", uctx(u, "X", dev), { unitId: U[u], deviceId: dev, pin });
+    // เครื่องลงทะเบียนเพิ่มที่ U2 (DEV3 มีแล้ว) — แต่ละเครื่องผิดไม่เกิน 9 · ไม่ลงทะเบียน 3 รหัส (ถัง 3) ⇒ ไม่มีด่านต่อเครื่อง/ถังตัวไหนถึงเกณฑ์
+    const extra = [`qc118${RAND}e1`, `qc118${RAND}e2`, `qc118${RAND}e3`];
+    for (const d of extra) {
+      const rg = await call(devMod, "registerDevice", uctx("U2"), A("OWNER"), { name: `เครื่อง QC ${d.slice(-2)}`, deviceCode: d });
+      if (rg?.ok !== true) p.push(`(fixture) registerDevice ${d.slice(-2)} → ${codeOf(rg)}`);
+    }
+    const plan: string[] = [];
+    for (const d of [DEV3, extra[0]!, extra[1]!]) for (let i = 0; i < 9; i++) plan.push(d);
+    for (let i = 0; plan.length < NU; i++) plan.push(`qc118${RAND}b${i}`);
+    let n = 0;
+    for (const d of plan) {
+      n++;
+      const r = await anonAt("U2", d, `9077${String(10 + (n % 80)).padStart(2, "0")}`);
+      if (!refused(r, "PIN_INVALID")) p.push(`ผิดครั้งที่ ${n} (${d === DEV3 ? "DEV3" : d.slice(-2)}) → ${codeOf(r)}`);
+    }
+    const t = keep("K1b ครั้งที่ N_U+1 เครื่องใหม่", await anonAt("U2", extra[2]!, "907799"));
+    if (!refused(t, "PIN_THROTTLED")) p.push(`ครั้งที่ ${NU + 1} (เครื่องลงทะเบียนที่ยังไม่เคยผิด) ที่ U2 → ${codeOf(t)} (คาด PIN_THROTTLED)`);
+    const other = await anonAt("U1", DEV2, "258014");
+    if (other?.ok !== true || other.userId !== uid("C1")) p.push(`สาขา U1 (DEV2 PIN ถูก) → ${codeOf(other)} (คาด ok)`);
+    chk("K1b", NUK === "" && p.length === 0, `ผิดรวม ${NU} ที่สาขา → PIN_THROTTLED ทั้งสาขา · สาขาอื่นไม่โดน`, FX(NUK + (p.join(" · ") || "ครบ")));
+  }
   {
     const p: string[] = [];
     const taken = keep("K2 PIN ซ้ำ", await call(staffMod, "setStaffPin", uctx("U1"), A("C2"), { userId: uid("C2"), pin: "258014" }));
@@ -2051,6 +2100,52 @@ async function runDb() {
       if (o?.ok !== true) p.push(`(ตัวควบคุม) OWNER → ${short(o, 60)}`);
     }
     chk("K4", !!rid && p.length === 0, "decide ของผู้ยื่น = ok:false ที่แกน", FX(p.join(" · ") || "ครบ"));
+  }
+  // ORACLE-EDIT (แก้รอบ 2 F3): K4b — เจ้าของคนเดียวอนุมัติของตัวเองได้ · มีเจ้าของคนที่ 2 แล้วห้าม (ร้านชั่วคราว T · ลบไปกับ T/ผู้ใช้ชั่วคราว)
+  {
+    const p: string[] = [];
+    let r1 = "", r2 = "", owner2 = "", owner2Mid = "";
+    const owners = async () => (T ? Number(await P.membership.count({ where: { tenantId: T, role: "OWNER", acceptedAt: { not: null } } }).catch(() => -1)) : -1);
+    const submitOwn = async (tag: string) =>
+      String((await apSvc.submitForApproval({ tenantId: T }, { entityType: "QC_P118_SOLE", entityId: `qc118-${RAND}-${tag}`, amountSatang: 100, requestedById: uid("OWNER") }))?.requestId ?? "");
+    try {
+      await apSvc.createPolicy({ tenantId: T }, { name: `QC เจ้าของคนเดียว ${RAND}`, entityType: "QC_P118_SOLE", steps: [{ order: 1, approverRole: "OWNER" }] });
+      r1 = await submitOwn("sole1");
+    } catch (e) {
+      p.push(`(fixture) ${(e as Error).message.slice(0, 60)}`);
+    }
+    if (r1) {
+      const n1 = await owners();
+      if (n1 !== 1) p.push(`(fixture) เจ้าของ ${n1} คน (คาด 1)`);
+      const d1 = await call(apSvc, "decide", { ...A("OWNER") }, { tenantId: T }, r1, { decision: "APPROVED" });
+      if (d1?.ok !== true || d1?.status !== "APPROVED") p.push(`เจ้าของคนเดียวอนุมัติของตัวเอง → ${short(d1, 70)}`);
+      // เพิ่มเจ้าของคนที่ 2 (รับคำเชิญแล้ว) — prisma ตรงในร้านชั่วคราว
+      try {
+        const u2 = await P.user.create({ data: { email: `${EMAIL_PREFIX}owner2@qc.invalid`, name: `OWNER2 คิวซี${RAND}` } });
+        owner2 = u2.id;
+        owner2Mid = (await P.membership.create({ data: { userId: u2.id, tenantId: T, role: "OWNER", unitAccess: ["*"], permissions: {}, acceptedAt: new Date() } })).id;
+        r2 = await submitOwn("sole2");
+      } catch (e) {
+        p.push(`(fixture เจ้าของ 2) ${(e as Error).message.slice(0, 60)}`);
+      }
+      if (r2) {
+        const n2 = await owners();
+        if (n2 !== 2) p.push(`(fixture) เจ้าของ ${n2} คน (คาด 2)`);
+        const d2 = await call(apSvc, "decide", { ...A("OWNER") }, { tenantId: T }, r2, { decision: "APPROVED" });
+        if (d2?.ok !== false || d2?.code !== "SELF_APPROVAL") p.push(`มีเจ้าของ 2 คน อนุมัติของตัวเอง → ${short(d2, 70)}`);
+        const b2 = await call(apSvc, "bulkDecide", { ...A("OWNER") }, { tenantId: T }, [r2], "APPROVED");
+        if (b2?.done !== 0 || b2?.failed?.length !== 1) p.push(`bulkDecide → ${short(b2, 70)}`);
+        const rq = await P.approvalRequest.findUnique({ where: { id: r2 } }).catch(() => null);
+        if (rq?.status !== "PENDING") p.push(`สถานะ ${rq?.status}`);
+        const dec = Number(await P.approvalDecision.count({ where: { requestId: r2 } }).catch(() => -1));
+        if (dec !== 0) p.push(`ApprovalDecision ${dec}`);
+        const o = await call(apSvc, "decide", { userId: owner2, role: "OWNER", unitAccess: ["*"], permissions: {} }, { tenantId: T }, r2, { decision: "APPROVED" });
+        if (o?.ok !== true) p.push(`(ตัวควบคุม) OWNER คนที่ 2 → ${short(o, 60)}`);
+      }
+    }
+    // คืนสภาพ "เจ้าของคนเดียว" ของ T สำหรับข้อถัดไป (ผู้ใช้ชั่วคราวลบตอนล้างร้าน)
+    if (owner2Mid) await P.membership.delete({ where: { id: owner2Mid } }).catch(() => null);
+    chk("K4b", !!r1 && !!r2 && p.length === 0, "เจ้าของคนเดียว = ok · เจ้าของ 2 คน = SELF_APPROVAL", FX(p.join(" · ") || "ครบ"));
   }
 
   // ════════ E1 ปฏิเสธเป็นข้อมูล ════════

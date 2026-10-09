@@ -17,8 +17,8 @@ import { posDeviceRevoked } from "./device"; // POS P1.10 ▸ การ์ดเ
 import { staffActorFromToken } from "./staff-pin"; // POS P1.15 ▸ R3 โทเคนผู้ขาย ◂
 import { approvedDiscountOf } from "./pos-approval"; // POS P1.15U ▸ มติ 5 เรียกคืนบิลที่อนุมัติส่วนลดแล้ว ◂
 import {
-  HELD_CART_EXPIRE_DAYS,
   HELD_CART_LABEL_MAX,
+  posHeldCartExpireDays,
   type DiscardHeldCartResult,
   type HeldCartNotice,
   type HeldCartSummary,
@@ -89,9 +89,7 @@ async function expireCutoff(db: Db, s: Scoped): Promise<Date> {
 }
 async function expireOf(db: Db, s: Scoped): Promise<{ days: number; cutoff: Date }> {
   const sys = await db.appSystem.findFirst({ where: { id: s.ctx.systemId, tenantId: s.ctx.tenantId }, select: { settings: true } });
-  const st = sys?.settings as { pos?: { heldCart?: { expireDays?: unknown } } } | null | undefined;
-  const v = st?.pos?.heldCart?.expireDays;
-  const days = typeof v === "number" && Number.isInteger(v) && v >= 1 && v <= 365 ? v : HELD_CART_EXPIRE_DAYS;
+  const days = posHeldCartExpireDays(sys?.settings); // POS P1.18 ▸ R3 ตัวอ่านเดียว (register-shared) ◂
   return { days, cutoff: new Date(Date.now() - days * DAY_MS) };
 }
 
@@ -153,13 +151,24 @@ export async function holdRegisterCart(ctx: RegisterCtx, actor: RegisterActor, i
  * POS P1.15 ▸ R4/R5: พักบิลส่วนลดเกินสิทธิ์ไว้รออนุมัติ POS_DISCOUNT_OVER (ภายในเท่านั้น — ผู้เรียก: register.ts#submitRegisterSale) ·
  * ตรวจครบแบบ quote ยกเว้นเพดานส่วนลด (คำขออนุมัติคือการขอเกินเพดาน) · heldBy = ผู้ขาย ◂
  */
-export async function holdCartForApproval(ctx: RegisterCtx, actor: RegisterActor, cartRaw: unknown, client?: Db): Promise<{ ok: true; id: string } | RegisterRefusal> {
+export async function holdCartForApproval(ctx: RegisterCtx, actor: RegisterActor, cartRaw: unknown, client?: Db, opts?: { id?: string }): Promise<{ ok: true; id: string } | RegisterRefusal> {
   return guard("holdCartForApproval", async (): Promise<{ ok: true; id: string } | RegisterRefusal> => {
     const db: Db = client ?? prisma;
     const s = await scope(db, ctx, actor);
     if (isRefusal(s)) return s;
-    const row = await holdCore(db, s, cartRaw, "รออนุมัติส่วนลด", null);
-    return isRefusal(row) ? row : { ok: true, id: row.id };
+    // POS P1.18 ▸ K3 (F5 ที่เหลือ): ผู้เรียกส่ง id ที่คิดจากคีย์ส่งบิล ⇒ ส่งพร้อมกันคีย์เดียว = แถวเดียว (ตัวที่ชนคีย์หลักใช้แถวของผู้ชนะ) ◂
+    try {
+      const row = await holdCore(db, s, cartRaw, "รออนุมัติส่วนลด", null, opts?.id);
+      return isRefusal(row) ? row : { ok: true, id: row.id };
+    } catch (e) {
+      if (!opts?.id || (e as { code?: unknown } | null)?.code !== "P2002") throw e;
+      // POS P1.18 ▸ F9: ใช้แถวของผู้ชนะได้เฉพาะที่ยัง HELD และยังไม่หมดอายุ — ถูกทิ้ง/เรียกคืน/หมดอายุแล้ว (ส่งซ้ำคีย์เดิมทีหลัง)
+      //   = ปฏิเสธแบบบิลที่ไม่มีอยู่ (NOT_FOUND) ไม่ผูกคำขออนุมัติใหม่กับบิลที่ตายแล้ว ◂
+      const cutoff = await expireCutoff(db, s);
+      const won = await db.posHeldCart.findFirst({ where: { id: opts.id, ...rowWhere(s), status: "HELD", createdAt: { gte: cutoff } }, select: { id: true } });
+      if (!won) return refuse("NOT_FOUND");
+      return { ok: true, id: won.id };
+    }
   });
 }
 
@@ -173,7 +182,7 @@ export async function armHeldCartApproval(tenantId: string, heldCartId: string, 
 }
 
 /** ตะกร้า → แถวบิลพัก (ตัวตรวจเดียวกับ quote) · maxDiscountBp: undefined = เพดานของผู้ขาย · null = ไม่จำกัด (รออนุมัติ) */
-async function holdCore(db: Db, s: Scoped, cartRaw: unknown, label: string | null, maxDiscountBp: null | undefined): Promise<Row | RegisterRefusal> {
+async function holdCore(db: Db, s: Scoped, cartRaw: unknown, label: string | null, maxDiscountBp: null | undefined, id?: string): Promise<Row | RegisterRefusal> {
   const cart = registerCanonicalCart(cartRaw);
   if (isRefusal(cart)) return cart;
   if (!cart.lines.length) return refuse("VALIDATION", "ตะกร้าว่าง — ไม่มีอะไรให้พัก");
@@ -194,6 +203,7 @@ async function holdCore(db: Db, s: Scoped, cartRaw: unknown, label: string | nul
   const stored: Stored = { cart, heldUnitPrices: q.lines.map((l) => l.unitPriceSatang), preview };
   return db.posHeldCart.create({
     data: {
+      ...(id ? { id } : {}), // POS P1.18 ▸ K3 ◂
       ...rowWhere(s),
       label,
       cartJson: stored as unknown as Prisma.InputJsonValue,

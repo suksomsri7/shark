@@ -47,7 +47,10 @@ export async function posApprovalPayload(tenantId: string, requestId: string): P
  * ส่วนลดที่ APPROVED แล้ว = ปิด (ไปใช้ด้วย heldCartId)
  */
 export async function openPosRequest(tenantId: string, kind: PosApprovalKind, ref: string): Promise<{ requestId: string; status: string } | null> {
-  const rows = await rowsFor(tenantId, kind, ref);
+  return openFromRows(tenantId, kind, await rowsFor(tenantId, kind, ref));
+}
+/** POS P1.18 ▸ K3: คำขอที่ยังเปิดจาก "ภาพเดียว" ของแถว snapshot (submitPosApproval ใช้ภาพเดียวกันนับเลขถัดไป) ◂ */
+async function openFromRows(tenantId: string, kind: PosApprovalKind, rows: Row[]): Promise<{ requestId: string; status: string } | null> {
   if (!rows.length) return null;
   const st = await requestStatuses({ tenantId }, rows.map((r) => r.requestId));
   for (const r of [...rows].reverse()) {
@@ -78,9 +81,12 @@ export type SubmitPosApprovalResult = { status: "AUTO" } | { status: "REQUIRED";
  */
 export async function submitPosApproval(input: SubmitPosApprovalInput): Promise<SubmitPosApprovalResult> {
   const { tenantId, kind, ref } = input;
-  const open = await openPosRequest(tenantId, kind, ref);
+  // POS P1.18 ▸ K3 (F5 ที่เหลือ): อ่านแถว snapshot ครั้งเดียว แล้วใช้ทั้งเช็กคำขอเปิดและนับเลขถัดไป — เดิมอ่านสองครั้ง ⇒
+  //   ผู้ส่งพร้อมกันคีย์เดียวที่เห็น "ไม่มีคำขอ" แต่นับได้ 1 (อีกตัวเพิ่งยื่นเสร็จ) ข้ามไปเลข 2 = คำขอที่สอง · ภาพเดียว = ยื่น entity เดียวกัน (กันซ้ำที่แกน) ◂
+  const rows = await rowsFor(tenantId, kind, ref);
+  const open = await openFromRows(tenantId, kind, rows);
   if (open) return { status: "PENDING", requestId: open.requestId };
-  const prior = (await rowsFor(tenantId, kind, ref)).length;
+  const prior = rows.length;
   for (let n = prior + 1; n <= prior + 20; n++) {
     const entityId = input.entityIdOf(n);
     const r = await submitForApproval({ tenantId }, { entityType: kind, entityId, unitId: input.unitId, systemId: input.systemId, amountSatang: input.amountSatang, requestedById: input.requestedById });

@@ -49,12 +49,12 @@ const CHECKS: readonly Def[] = [
   D("PN0", "S", "[R1 R7 CD1 CD5] สถิต: model PosStaffPin (id tenantId unitId userId pinHash failedCount Int @default(0) lockedUntil DateTime? setById createdAt updatedAt · @@unique([unitId, userId]) · @@index([tenantId, unitId])) · migration เพิ่มอย่างเดียว · scope.ts + pos-qc-env มี PosStaffPin · permissions.ts มีคีย์ pos.staff.manage · staff-pin.ts export 6 ฟังก์ชัน · ใช้ scryptSync + randomBytes(16) + createHmac sha256 · ไม่มี Math.random"),
   D("PN1", "X5", "[R1] setStaffPin ตั้ง PIN ตัวเอง → {ok:true} · 1 แถวต่อ (สาขา, คน) · pinHash = \"<salt 16 ไบต์ hex>:<hash hex>\" ตรวจด้วย scryptSync ได้ · ไม่มี PIN ดิบ · setById = ผู้ตั้ง · failedCount 0 · lockedUntil null · ตั้งซ้ำ = แทนแถวเดิม (ยัง 1 แถว · salt ใหม่ · ล้างตัวนับ/ล็อก)"),
   D("PN2", "-", "[R1] รูปแบบ PIN: 3 หลัก · 7 หลัก · มีตัวอักษร · ว่าง · ชนิด number · มีช่องว่าง · เลขไทย/เต็มความกว้าง → VALIDATION · PIN อ่อน 0000 1234 1111 123456 000000 → WEAK_PIN · แถวไม่เปลี่ยน · 4 หลักที่ไม่อ่อนผ่าน"),
-  D("PN3", "X2", "[R1 R2 CD1] PIN ซ้ำในสาขาเดียวกัน → PIN_TAKEN (ข้อความไม่บอกชื่อเจ้าของ PIN) ไม่มีแถว · PIN เดียวกันอีกสาขา → ผ่าน (แถวต่อสาขา)"),
+  D("PN3", "X2", "[R1 R2 CD1 · P1.18 K2] PIN ซ้ำในสาขาเดียวกัน → WEAK_PIN (code+message เดียวกับ PIN อ่อน · ไม่บอกว่ามีคนใช้/ชื่อเจ้าของ) ไม่มีแถว · PIN เดียวกันอีกสาขา → ผ่าน (แถวต่อสาขา)"),
   D("PN4", "X3", "[R1 R7] ผู้จัดการตั้ง PIN ให้คนอื่นในสาขาได้ (setById = ผู้จัดการ) · แคชเชียร์ตั้งให้คนอื่น → PERMISSION_DENIED · คนที่ไม่มี pos.sale.create ตั้งเอง/ถูกตั้งให้ → ปฏิเสธ ไม่มีแถว · เจ้าของตั้งของตัวเอง (4 หลัก) ผ่าน"),
   D("PN5", "X5", "[R2] verifyStaffPin(ctx, {unitId, deviceId, pin}) → {ok:true, userId, role STAFF, staffToken, expiresAt = ตอนนี้ + 12 ชม.} · ระบุ userId ได้ · PIN ผิด → PIN_INVALID (ข้อความไม่มีชื่อใคร) · AuditLog pos.staff.pin_verified เฉพาะครั้งที่ผ่าน (นับตรง) · audit ไม่มี PIN/อีเมล/ชื่อ"),
   D("PN6", "X3", "[R2] ล็อก: ผิดติดกัน 5 ครั้ง (ระบุ userId) → failedCount 5 · lockedUntil ≈ ตอนนี้ + 15 นาที · PIN ถูก → PIN_LOCKED · PIN ถูกแบบไม่ระบุคนก็ไม่ผ่าน · ผิด 2 แล้วถูก → ตัวนับกลับ 0 · แคชเชียร์ unlockStaffPin → PERMISSION_DENIED · ผู้จัดการปลดล็อก → ตัวนับ 0 / null → PIN ถูกผ่าน"),
   D("PN7", "X2", "[R2 R8 P1.10] listStaffForDevice: สมาชิกสาขาที่มี pos.sale.create ครบชุด (ไม่รวมคนไม่มีสิทธิ์ขาย/คนสาขาอื่น) {userId name role hasPin shift?} · hasPin ตรง DB · กะของผู้เปิดกะ · ไม่มี pinHash/failedCount/email · ถอด pos.sale.create → PIN ของคนนั้น PIN_INVALID + หายจากรายการ · เครื่องถูกเพิกถอน → DEVICE_REVOKED"),
-  D("PN8", "-", "[R9] คำปฏิเสธเป็นข้อมูลครบ 7 รหัส (PIN_INVALID PIN_LOCKED PIN_TAKEN WEAK_PIN STAFF_TOKEN_INVALID APPROVAL_REQUIRED PENDING_APPROVAL) {ok:false, code, message ไทย} ไม่ throw · refusalMessageKey ของทั้ง 7 ไม่ใช่ errors.unknown · ไม่ซ้ำกัน · มีข้อความใน messages th/en (pos.register.<คีย์> หรือ pos.<คีย์>)"),
+  D("PN8", "-", "[R9 · P1.18 K2] คำปฏิเสธเป็นข้อมูลครบ 6 รหัส (PIN_INVALID PIN_LOCKED WEAK_PIN STAFF_TOKEN_INVALID APPROVAL_REQUIRED PENDING_APPROVAL — PIN_TAKEN ไม่ถูกคืนแล้ว) {ok:false, code, message ไทย} ไม่ throw · refusalMessageKey ของทั้ง 6 ไม่ใช่ errors.unknown · ไม่ซ้ำกัน · มีข้อความใน messages th/en (pos.register.<คีย์> หรือ pos.<คีย์>)"),
   // ── TK โทเคนผู้ขาย ──
   D("TK1", "X5", "[R3] submitRegisterSale ที่ session เป็นเจ้าของ + staffToken ของแคชเชียร์ → soldByUserId = แคชเชียร์ · ไม่ส่งโทเคน → soldByUserId = ผู้ใช้ session (พฤติกรรมเดิม)"),
   D("TK2", "X5", "[R3] staffToken กับ holdRegisterCart → heldByUserId = คนในโทเคน · recallHeldCart → recalledByUserId = คนในโทเคน · openShift เครื่องที่ 2 → openedByUserId = คนในโทเคน"),
@@ -233,7 +233,8 @@ const F = {
 const STAFF_FNS = ["setStaffPin", "verifyStaffPin", "unlockStaffPin", "staffFromToken", "listStaffForDevice", "issueStaffToken"] as const;
 const PIN_COLS = ["id", "tenantId", "unitId", "userId", "pinHash", "failedCount", "lockedUntil", "setById", "createdAt", "updatedAt"] as const;
 const PAYLOAD_COLS = ["requestId", "tenantId", "kind", "payload", "createdAt"] as const;
-const NEW_CODES = ["PIN_INVALID", "PIN_LOCKED", "PIN_TAKEN", "WEAK_PIN", "STAFF_TOKEN_INVALID", "APPROVAL_REQUIRED", "PENDING_APPROVAL"];
+// ORACLE-EDIT P1.18 K2 (มติผู้คุมงาน 1): PIN ซ้ำ = คำปฏิเสธเดียวกับ PIN อ่อน ⇒ PIN_TAKEN ไม่อยู่ในชุดรหัสที่คืนแล้ว (ยังอยู่ใน union ให้ client เก่า)
+const NEW_CODES = ["PIN_INVALID", "PIN_LOCKED", "WEAK_PIN", "STAFF_TOKEN_INVALID", "APPROVAL_REQUIRED", "PENDING_APPROVAL"];
 const POS_TYPES = ["POS_VOID", "POS_REFUND", "POS_DISCOUNT_OVER"];
 
 const srcOf = (f: string) => stripComments(rd(f));
@@ -731,13 +732,16 @@ async function runDb() {
   {
     const p: string[] = [];
     const r = await setPin(ctxA(), "MGR", "C2", PIN.C1, "PN3 PIN ซ้ำ");
-    if (!refused(r, "PIN_TAKEN")) p.push(`ซ้ำในสาขา A → ${codeOf(r)}`);
+    // ORACLE-EDIT P1.18 K2: ซ้ำ = WEAK_PIN และข้อความเดียวกับ PIN อ่อนทุกตัวอักษร (แยกไม่ออกว่ามีคนใช้)
+    const weakRef = await setPin(ctxA(), "MGR", "C2", "1234", "PN3 PIN อ่อน (เทียบ)");
+    if (!refused(r, "WEAK_PIN")) p.push(`ซ้ำในสาขา A → ${codeOf(r)}`);
+    else if (r?.message !== weakRef?.message) p.push("ข้อความของ PIN ซ้ำต่างจาก PIN อ่อน");
     if (typeof r?.message === "string" && US.C1 && (r.message.includes(US.C1.name) || r.message.includes(US.C1.email))) p.push("ข้อความบอกชื่อเจ้าของ PIN");
     if ((await pinRowsOf("C2")) > 0) p.push("มีแถวของ C2 หลังถูกปฏิเสธ");
     const rb = await setPin(ctxB(), "CB", "CB", PIN.CB, "PN3 สาขา B");
     if (rb?.ok !== true) p.push(`PIN เดียวกันที่สาขา B → ${codeOf(rb)}`);
     else if (!scryptOk(PIN.CB!, (await pinRow("CB", "B"))?.pinHash)) p.push("แถวสาขา B ตรวจไม่ผ่าน");
-    chk("PN3", NS === "" && NT === "" && p.length === 0, "PIN_TAKEN ไม่บอกชื่อ · อีกสาขาผ่าน", FX(NS + NT + (p.join(" · ") || "ครบ")));
+    chk("PN3", NS === "" && NT === "" && p.length === 0, "PIN ซ้ำ = WEAK_PIN เหมือน PIN อ่อน · ไม่บอกชื่อ · อีกสาขาผ่าน", FX(NS + NT + (p.join(" · ") || "ครบ")));
   }
   // ════════ PN4 สิทธิ์ตั้ง PIN ════════
   {

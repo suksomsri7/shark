@@ -19,8 +19,12 @@ import {
   type PosIntentSettingsPatch,
   type PosIntentSettingsRefusal,
   type PosIntentSettingsResult,
+  promptpayIdForUnit, // POS P1.18 ▸ มติ Q9 ◂
 } from "./payment-intent-shared";
 import { canManageAllLinkedUnits } from "./receipt-settings";
+import { writeAudit } from "@/lib/core/audit"; // POS P1.18 ▸ R6 ◂
+import { settingsAuditDiff, type PosSettingsRefusal } from "./settings-shared"; // POS P1.18 ▸ R6 ◂
+import { isValidPromptPayId } from "@/lib/payment/promptpay"; // POS P1.18 ▸ มติ Q9 ◂
 
 type Db = typeof prisma | Prisma.TransactionClient;
 
@@ -127,7 +131,8 @@ export async function updatePosPaymentSettings(
       if (tip.ledgerAccountId !== undefined && tip.ledgerAccountId !== null && (typeof tip.ledgerAccountId !== "string" || tip.ledgerAccountId.length > 64)) return refuse("VALIDATION");
     }
 
-    return await prisma.$transaction(async (tx): Promise<PosPaymentSettingsResult> => {
+    let diff = null as ReturnType<typeof settingsAuditDiff>; // POS P1.18 ▸ R6 audit (หลัง commit · ไม่เปลี่ยน = ไม่ลง) ◂
+    const res = await prisma.$transaction(async (tx): Promise<PosPaymentSettingsResult> => {
       // ล็อกแถวระบบก่อนอ่าน settings (แก้พร้อมกันสองหน้าจอ = ไม่ทับกันหาย)
       const locked = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM "AppSystem" WHERE id = ${ctx.systemId} AND "tenantId" = ${ctx.tenantId} AND type = 'POS' FOR UPDATE`;
       if (locked.length === 0) return refuse("NOT_FOUND");
@@ -153,8 +158,11 @@ export async function updatePosPaymentSettings(
       const pos = isRecord(base.pos) ? base.pos : {};
       const settings = { ...base, pos: { ...pos, serviceCharge: next.serviceCharge, tip: next.tip } } as Prisma.InputJsonValue;
       await tx.appSystem.update({ where: { id: sys.id }, data: { settings } });
+      diff = settingsAuditDiff("payment", cur, next);
       return { ok: true, ...next };
     });
+    if (res.ok && diff) await writeAudit({ tenantId: ctx.tenantId, actorId: actor.userId, action: "pos.settings.updated", targetType: "AppSystem", targetId: ctx.systemId, before: diff.before, after: diff.after });
+    return res;
   } catch (e) {
     console.error("[pos/payment-settings] update", e);
     return refuse("UNKNOWN");
@@ -206,7 +214,8 @@ export async function updatePosIntentSettings(
       return intentRefuse("VALIDATION", `อายุ QR ต้องเป็นจำนวนเต็ม ${POS_QR_EXPIRY_MIN}–${POS_QR_EXPIRY_MAX} นาที`, "qrExpiryMinutes");
     if (mc !== undefined && typeof mc !== "boolean") return intentRefuse("VALIDATION", undefined, "manualConfirmRequiresManager");
 
-    return await prisma.$transaction(async (tx): Promise<PosIntentSettingsResult> => {
+    let diff = null as ReturnType<typeof settingsAuditDiff>; // POS P1.18 ▸ R6 audit ◂
+    const res = await prisma.$transaction(async (tx): Promise<PosIntentSettingsResult> => {
       // ล็อกแถวระบบก่อนอ่าน settings (แบบ updatePosPaymentSettings — แก้พร้อมกันสองหน้าจอ = ไม่ทับกันหาย)
       const locked = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM "AppSystem" WHERE id = ${ctx.systemId} AND "tenantId" = ${ctx.tenantId} AND type = 'POS' FOR UPDATE`;
       if (locked.length === 0) return intentRefuse("NOT_FOUND");
@@ -226,10 +235,100 @@ export async function updatePosIntentSettings(
       const payment = { ...rawPay, beam: { ...rawBeam, enabled: next.beam.enabled }, qrExpiryMinutes: next.qrExpiryMinutes, manualConfirmRequiresManager: next.manualConfirmRequiresManager };
       const settings = { ...base, pos: { ...pos, payment } } as Prisma.InputJsonValue;
       await tx.appSystem.update({ where: { id: sys.id }, data: { settings } });
+      diff = settingsAuditDiff("intent", cur, next);
       return { ok: true, settings: parsePosIntentSettings(settings) };
     });
+    if (res.ok && diff) await writeAudit({ tenantId: ctx.tenantId, actorId: actor.userId, action: "pos.settings.updated", targetType: "AppSystem", targetId: ctx.systemId, before: diff.before, after: diff.after });
+    return res;
   } catch (e) {
     console.error("[pos/payment-settings] update intent", e);
     return intentRefuse("UNKNOWN");
+  }
+}
+
+// ═══════ POS P1.18 ▸ มติ Q9 + CD-10: เลขพร้อมเพย์รายสาขา settings.pos.payment.promptpayIdByUnit.<unitId> ═══════
+//   ปลายทางเงิน ⇒ เจ้าของร้านเท่านั้น (คนอื่น = SETTINGS_SECTION_LOCKED · R16) · ตรวจด้วย isValidPromptPayId · สาขาต้องผูก POS นี้ (ไม่งั้น NOT_FOUND)
+//   null = ลบเลขของสาขา (กลับไปใช้เลขของโปรไฟล์ร้าน) · เขียนเฉพาะ promptpayIdByUnit ใต้ pos.payment (คีย์พี่น้องของ payment คงไว้)
+//   ทางเขียน: ธุรกรรม + ล็อกแถว FOR UPDATE + jsonb_set ในคำสั่งเดียว · audit section "payment" ค่าปิดบัง (เลขท้าย 4 หลัก — ไม่มีเลขดิบใน AuditLog)
+//   ตัวอ่าน = promptpayIdForUnit (payment-intent-shared.ts · ทาง QR ไดนามิกอ่านเลขสาขาก่อน โปรไฟล์ทีหลัง) ◂
+export type PosUnitPromptpayResult = { ok: true; unitId: string; promptpayMasked: string | null } | PosSettingsRefusal;
+const UNIT_PP_MSG: Record<PosSettingsRefusal["code"], string> = {
+  NOT_FOUND: "ไม่พบสาขานี้ในจุดขายนี้",
+  PERMISSION_DENIED: "บัญชีนี้ยังไม่มีสิทธิ์ตั้งค่านี้",
+  VALIDATION: "เลขพร้อมเพย์ไม่ถูกต้อง — ใช้เบอร์มือถือ 10 หลัก หรือเลขผู้เสียภาษี/บัตรประชาชน 13 หลัก",
+  UNKNOWN: "เกิดข้อผิดพลาด — ลองอีกครั้ง",
+  SETTINGS_SECTION_LOCKED: "เลขพร้อมเพย์เป็นปลายทางเงิน — เจ้าของร้านเท่านั้นที่ตั้งได้",
+  CONFIRM_REQUIRED: "ต้องยืนยันก่อน",
+};
+const unitPpRefuse = (code: PosSettingsRefusal["code"], field?: string): PosSettingsRefusal =>
+  field ? { ok: false, code, message: UNIT_PP_MSG[code], field } : { ok: false, code, message: UNIT_PP_MSG[code] };
+/** เลขที่แสดง/บันทึก audit — เห็นแค่ 4 ตัวท้าย */
+export function maskPromptpayId(id: string | null): string | null {
+  if (!id) return null;
+  const digits = id.replace(/\D/g, "");
+  return `••••${digits.slice(-4)}`;
+}
+
+export async function updatePosUnitPromptpay(
+  ctx: { tenantId: string; systemId: string },
+  actor: PosSettingsActor,
+  input: { unitId: string; promptpayId: string | null },
+): Promise<PosUnitPromptpayResult> {
+  try {
+    if (!isRecord(ctx) || typeof ctx.tenantId !== "string" || !ctx.tenantId || typeof ctx.systemId !== "string" || !ctx.systemId) return unitPpRefuse("NOT_FOUND");
+    if (!isRecord(actor) || typeof actor.userId !== "string" || !actor.userId) return unitPpRefuse("PERMISSION_DENIED");
+    if (actor.role !== "OWNER") return unitPpRefuse("SETTINGS_SECTION_LOCKED");
+    if (!isRecord(input) || typeof input.unitId !== "string" || !input.unitId || input.unitId.length > 64) return unitPpRefuse("VALIDATION", "unitId");
+    const raw: unknown = input.promptpayId;
+    if (raw !== null && (typeof raw !== "string" || raw.length > 32 || !isValidPromptPayId(raw.trim()))) return unitPpRefuse("VALIDATION", "promptpayId");
+    const next = raw === null ? null : (raw as string).trim();
+    const unitId = input.unitId;
+    const link = await prisma.appSystemUnit.findUnique({ where: { tenantId_unitId_type: { tenantId: ctx.tenantId, unitId, type: "POS" } }, select: { systemId: true } });
+    const unit = link?.systemId === ctx.systemId ? await prisma.businessUnit.findFirst({ where: { id: unitId, tenantId: ctx.tenantId, status: { not: "ARCHIVED" } }, select: { id: true } }) : null;
+    if (!unit) return unitPpRefuse("NOT_FOUND");
+    let before = null as string | null;
+    const changed = await prisma.$transaction(async (tx): Promise<boolean | PosSettingsRefusal> => {
+      const locked = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM "AppSystem" WHERE id = ${ctx.systemId} AND "tenantId" = ${ctx.tenantId} AND type = 'POS' FOR UPDATE`;
+      if (locked.length === 0) return unitPpRefuse("NOT_FOUND");
+      const sys = await loadPos(tx, ctx);
+      if (!sys) return unitPpRefuse("NOT_FOUND");
+      before = promptpayIdForUnit(sys.settings, unitId);
+      const pos = isRecord(sys.settings) && isRecord(sys.settings.pos) ? sys.settings.pos : {};
+      const pay = isRecord(pos.payment) ? pos.payment : {};
+      const map: Record<string, unknown> = { ...(isRecord(pay.promptpayIdByUnit) ? pay.promptpayIdByUnit : {}) };
+      const had = Object.prototype.hasOwnProperty.call(map, unitId);
+      if (next === null ? !had : map[unitId] === next) return false;
+      if (next === null) delete map[unitId];
+      else map[unitId] = next;
+      const json = JSON.stringify(map);
+      await tx.$executeRaw`
+        UPDATE "AppSystem"
+        SET "settings" = jsonb_set(
+          CASE WHEN jsonb_typeof("settings") = 'object' THEN "settings" ELSE '{}'::jsonb END,
+          '{pos}',
+          (CASE WHEN jsonb_typeof("settings"->'pos') = 'object' THEN "settings"->'pos' ELSE '{}'::jsonb END)
+            || jsonb_build_object('payment',
+                 (CASE WHEN jsonb_typeof("settings"->'pos'->'payment') = 'object' THEN "settings"->'pos'->'payment' ELSE '{}'::jsonb END)
+                   || jsonb_build_object('promptpayIdByUnit', ${json}::jsonb)),
+          true),
+          "updatedAt" = now()
+        WHERE "id" = ${ctx.systemId} AND "tenantId" = ${ctx.tenantId} AND type = 'POS'`;
+      return true;
+    });
+    if (typeof changed !== "boolean") return changed;
+    if (changed)
+      await writeAudit({
+        tenantId: ctx.tenantId,
+        actorId: actor.userId,
+        action: "pos.settings.updated",
+        targetType: "AppSystem",
+        targetId: ctx.systemId,
+        before: { section: "payment", unitId, promptpayMasked: maskPromptpayId(before) },
+        after: { section: "payment", unitId, promptpayMasked: maskPromptpayId(next) },
+      });
+    return { ok: true, unitId, promptpayMasked: maskPromptpayId(next) };
+  } catch (e) {
+    console.error("[pos/payment-settings] unit promptpay", e);
+    return unitPpRefuse("UNKNOWN");
   }
 }

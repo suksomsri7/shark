@@ -15,7 +15,8 @@ export const drawerKickFor = (payload: Pick<ReceiptPayload, "copy">, cfg: Pick<P
 /** ใบเสร็จ → ไบต์ ESC/POS · kickDrawer ปริยาย false (ดู drawerKickFor) */
 export function buildEscPos(payload: ReceiptPayload, cfg: Pick<PosPrinterConfig, "paper" | "drawerKick" | "thaiText">, locale: "th" | "en", kickDrawer = false): Uint8Array {
   const thaiText = cfg.thaiText === "tis620" ? "tis620" : "raster";
-  const r = encodeEscPos(payload, { paper: cfg.paper, drawerKick: drawerKickFor(payload, cfg, kickDrawer), thaiText, cut: true, locale });
+  // POS P1.18 ▸ R12: ภาษาที่พิมพ์ = payload.printLocale (ค่าตั้งของระบบ POS) · locale ของจอใช้เฉพาะ payload เก่า ◂
+  const r = encodeEscPos(payload, { paper: cfg.paper, drawerKick: drawerKickFor(payload, cfg, kickDrawer), thaiText, cut: true, locale: payload.printLocale ?? locale });
   if (thaiText !== "raster" || r.rasterSlots.length === 0) return r.bytes;
   return spliceRaster(r.bytes, r.rasterSlots, r.rasterSlots.map((s) => rasterizeSlot(s)));
 }
