@@ -500,6 +500,8 @@ export async function voidSaleByActor(ctx: RegisterCtx, actor: RegisterActor, in
     if (!canAccessUnit(a, unitId)) return refuse("SALE_NOT_FOUND");
     // POS P1.15 ▸ มติ 11: PIN ผู้จัดการที่ถูกต้อง (ผู้จัดการมี pos.sale.void) อนุญาตแทนผู้ขอที่ไม่มีสิทธิ์ยกเลิก — ผู้ขอต้องยังมี pos.sale.create ◂
     const hasPin = !absent(input.managerPin);
+    // fix รอบ 1 F2: PIN ผู้จัดการต้องมาคู่ managerUserId เสมอ
+    if (hasPin && (absent(input.managerUserId) || !isId(input.managerUserId))) return refuse("VALIDATION", "เลือกผู้จัดการก่อนใส่ PIN");
     const canVoid = evaluate(a, { module: "pos", action: VOID_PERMISSION, unitId });
     if (!canVoid && !(hasPin && evaluate(a, { module: "pos", action: "pos.sale.create", unitId }))) {
       return refuse("NO_PERMISSION", "บัญชีนี้ยังไม่มีสิทธิ์ยกเลิกบิล — ขอให้เจ้าของร้านหรือผู้จัดการทำรายการ");
@@ -528,7 +530,7 @@ export async function voidSaleByActor(ctx: RegisterCtx, actor: RegisterActor, in
     // POS P1.15 ▸ R5 + CD4: PIN ผู้จัดการ = ยกเลิกทันที (แม้มีกติกา) · audit void ผู้กระทำ = ผู้จัดการ + pin_override · ยกเลิกคำขอที่รอของบิลนี้ ◂
     if (hasPin) {
       const v = await verifyManagerPin({ tenantId, unitId, deviceId }, { managerPin: input.managerPin, managerUserId: input.managerUserId });
-      if (v.ok === false) return { ok: false, code: v.code as "PIN_INVALID" | "PIN_LOCKED" | "DEVICE_REVOKED", message: v.message };
+      if (v.ok === false) return pinRefusal(v);
       if (!evaluate(v.actor, { module: "pos", action: VOID_PERMISSION, unitId })) return refuse("NO_PERMISSION", "PIN นี้ไม่มีสิทธิ์ยกเลิกบิล — ใช้ PIN ของผู้จัดการ");
       const done = await voidNow(tenantId, unitId, sale.id, key, { actorUserId: v.actor.userId, reason, idempotencyKey: key, via: "pin_override", requestId: null, requestedByUserId: a.userId });
       if (!done.ok || done.duplicated) return done;
@@ -573,4 +575,10 @@ async function voidNow(tenantId: string, unitId: string, saleId: string, key: st
   }
   const after = await prisma.posSale.findFirst({ where: { id: saleId, tenantId }, select: { status: true } });
   return { ok: true, sale: { id: saleId, status: after?.status ?? "VOIDED" } };
+}
+
+/** POS P1.15 ▸ คำปฏิเสธของ PIN ผู้จัดการ → ชนิดผลของไฟล์นี้ (PIN_* / DEVICE_REVOKED ส่งต่อ · ไม่ระบุผู้จัดการ = VALIDATION · อื่น = UNKNOWN) ◂ */
+function pinRefusal(v: { code: string; message: string }): { ok: false; code: "PIN_INVALID" | "PIN_LOCKED" | "DEVICE_REVOKED"; message: string } | ReturnType<typeof refuse> {
+  if (v.code === "PIN_INVALID" || v.code === "PIN_LOCKED" || v.code === "DEVICE_REVOKED") return { ok: false, code: v.code, message: v.message };
+  return v.code === "VALIDATION" ? refuse("VALIDATION", v.message) : refuse("UNKNOWN");
 }
