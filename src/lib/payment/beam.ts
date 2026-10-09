@@ -36,9 +36,11 @@ export function beamEnabled(): boolean {
 export async function createCharge(input: {
   amountSatang: number;
   referenceId: string;
-  description: string;
-  returnUrl: string;
-}): Promise<{ url: string; chargeId: string } | { error: string }> {
+  description?: string;
+  returnUrl?: string;
+  /** POS P1.7 ▸ ช่องทาง (ไม่ส่ง = "card" = พฤติกรรมเดิมทุกไบต์) · "promptpay" = QR พร้อมเพย์ของ Beam ◂ */
+  method?: "card" | "promptpay";
+}): Promise<{ url: string; chargeId: string; qrPayload?: string | null } | { error: string }> {
   const cfg = beamConfig();
   if (!cfg) return { error: "beam_not_configured" };
 
@@ -54,7 +56,8 @@ export async function createCharge(input: {
       referenceId: input.referenceId,
       description: input.description,
       returnUrl: input.returnUrl,
-      paymentMethod: { paymentMethodType: "CARD" },
+      // POS P1.7 ▸ "promptpay" = QR_PROMPT_PAY (⚠️ ยังไม่เคยทดสอบกับ API จริง — ไม่มีกุญแจ) · อื่น ๆ = CARD เหมือนเดิม ◂
+      paymentMethod: { paymentMethodType: input.method === "promptpay" ? "QR_PROMPT_PAY" : "CARD" },
     }),
   });
 
@@ -68,9 +71,20 @@ export async function createCharge(input: {
     paymentMethod?: { card?: { redirectUrl?: string } };
     redirectUrl?: string;
     encryptedChargeId?: string;
+    // POS P1.7 ▸ ฟิลด์ QR ของ PromptPay — อ่านแบบผ่อน (รูปคำตอบจริงยังไม่ได้ยืนยัน) ◂
+    qrPayload?: string;
+    qr?: string;
+    qrCode?: string;
+    encodedImage?: { rawData?: string };
   };
-  const url = data.paymentMethod?.card?.redirectUrl ?? data.redirectUrl;
   const chargeId = data.chargeId ?? data.id;
+  if (input.method === "promptpay") {
+    // POS P1.7 ▸ ไม่มี QR ในคำตอบ = ถือว่า Beam ล้ม (ผู้เรียกถอยไป QR นิ่ง + ops event) ◂
+    const qrPayload = data.qrPayload ?? data.qr ?? data.qrCode ?? data.encodedImage?.rawData ?? null;
+    if (!chargeId || !qrPayload) return { error: "beam_bad_response" };
+    return { url: data.paymentMethod?.card?.redirectUrl ?? data.redirectUrl ?? "", chargeId, qrPayload };
+  }
+  const url = data.paymentMethod?.card?.redirectUrl ?? data.redirectUrl;
   if (!url || !chargeId) return { error: "beam_bad_response" };
   return { url, chargeId };
 }
