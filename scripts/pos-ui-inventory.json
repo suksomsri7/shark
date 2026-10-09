@@ -5417,6 +5417,533 @@
       "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]"
+    },
+    {
+      "page": "/r/[token]",
+      "testid": "pos-rpub-lang-th",
+      "kind": "link",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "navigate",
+        "note": "หน้าใบเสร็จออนไลน์ (สาธารณะ ไม่ต้องล็อกอิน · [token] = PosSale.publicToken 12 ตัว) → ?lang=th"
+      },
+      "wo": "P1.11U",
+      "oracle": "",
+      "system": "POS",
+      "query": ""
+    },
+    {
+      "page": "/r/[token]",
+      "testid": "pos-rpub-lang-en",
+      "kind": "link",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "navigate",
+        "note": "→ ?lang=en (หน้าเดียวกันภาษาอังกฤษ)"
+      },
+      "wo": "P1.11U",
+      "oracle": "",
+      "system": "POS",
+      "query": ""
+    },
+    {
+      "page": "/r/[token]",
+      "testid": "pos-rpub-taxinvoice-open",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "modal",
+        "note": "ขอใบกำกับภาษีเต็มรูป (ปุ่มดำ · actions.taxInvoice = AVAILABLE เท่านั้น) → แผ่นฟอร์ม"
+      },
+      "wo": "P1.11U",
+      "oracle": "",
+      "system": "POS",
+      "query": ""
+    },
+    {
+      "page": "/r/[token]",
+      "testid": "pos-rpub-taxinvoice-close",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "ปิดแผ่นขอใบกำกับ (Esc ได้)"
+      },
+      "wo": "P1.11U",
+      "oracle": "",
+      "system": "POS",
+      "query": ""
+    },
+    {
+      "page": "/r/[token]",
+      "testid": "pos-rpub-taxinvoice-form",
+      "kind": "form",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "note": "ส่งฟอร์ม = requestFullTaxInvoiceAction(token, …)"
+      },
+      "wo": "P1.11U",
+      "oracle": "",
+      "system": "POS",
+      "query": ""
+    },
+    {
+      "page": "/r/[token]",
+      "testid": "pos-rpub-taxinvoice-name",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "ชื่อผู้ซื้อ/บริษัท (บังคับ)"
+      },
+      "wo": "P1.11U",
+      "oracle": "",
+      "system": "POS",
+      "query": ""
+    },
+    {
+      "page": "/r/[token]",
+      "testid": "pos-rpub-taxinvoice-taxid",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "เลขผู้เสียภาษี 13 หลัก (กรองเหลือตัวเลข)"
+      },
+      "wo": "P1.11U",
+      "oracle": "",
+      "system": "POS",
+      "query": ""
+    },
+    {
+      "page": "/r/[token]",
+      "testid": "pos-rpub-taxinvoice-branch",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "รหัสสาขา 5 หลัก (ค่าเริ่ม 00000)"
+      },
+      "wo": "P1.11U",
+      "oracle": "",
+      "system": "POS",
+      "query": ""
+    },
+    {
+      "page": "/r/[token]",
+      "testid": "pos-rpub-taxinvoice-address",
+      "kind": "textarea",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "ที่อยู่ (บังคับ)"
+      },
+      "wo": "P1.11U",
+      "oracle": "",
+      "system": "POS",
+      "query": ""
+    },
+    {
+      "page": "/r/[token]",
+      "testid": "pos-rpub-taxinvoice-email",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "อีเมล (ไม่บังคับ)"
+      },
+      "wo": "P1.11U",
+      "oracle": "",
+      "system": "POS",
+      "query": ""
+    },
+    {
+      "page": "/r/[token]",
+      "testid": "pos-rpub-taxinvoice-submit",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "note": "สำเร็จ = ปุ่มกลายเป็น \"ขอแล้ว · รอร้านออก\" · ปฏิเสธ = ข้อความไทยในแผ่น (pos-rpub-taxinvoice-error)"
+      },
+      "wo": "P1.11U",
+      "oracle": "",
+      "system": "POS",
+      "query": ""
+    },
+    {
+      "page": "/r/[token]",
+      "testid": "pos-rpub-points-toggle",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "ดูแต้มของฉัน (N) — บิลสมาชิกเท่านั้น · กาง/พับ ได้รับ/คงเหลือ (ไม่อ่านเซิร์ฟเวอร์เพิ่ม)"
+      },
+      "wo": "P1.11U",
+      "oracle": "",
+      "system": "POS",
+      "query": ""
+    },
+    {
+      "page": "/r/[token]",
+      "testid": "pos-rpub-review-open",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "modal",
+        "note": "ให้คะแนนร้าน ★★★★★ (actions.review) → แผ่นดาว"
+      },
+      "wo": "P1.11U",
+      "oracle": "",
+      "system": "POS",
+      "query": ""
+    },
+    {
+      "page": "/r/[token]",
+      "testid": "pos-rpub-review-close",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "ปิดแผ่นให้คะแนน"
+      },
+      "wo": "P1.11U",
+      "oracle": "",
+      "system": "POS",
+      "query": ""
+    },
+    {
+      "page": "/r/[token]",
+      "testid": "pos-rpub-review-form",
+      "kind": "form",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "note": "ส่งฟอร์ม = submitReceiptReviewAction(token, {rating, body?})"
+      },
+      "wo": "P1.11U",
+      "oracle": "",
+      "system": "POS",
+      "query": ""
+    },
+    {
+      "page": "/r/[token]",
+      "testid": "pos-rpub-review-star-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "ดาว 1–5 (role=radio)"
+      },
+      "wo": "P1.11U",
+      "oracle": "",
+      "system": "POS",
+      "query": ""
+    },
+    {
+      "page": "/r/[token]",
+      "testid": "pos-rpub-review-body",
+      "kind": "textarea",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "ข้อความ (ไม่บังคับ ≤500)"
+      },
+      "wo": "P1.11U",
+      "oracle": "",
+      "system": "POS",
+      "query": ""
+    },
+    {
+      "page": "/r/[token]",
+      "testid": "pos-rpub-review-submit",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "note": "สำเร็จ = \"ขอบคุณสำหรับคะแนนค่ะ\" · ALREADY_REVIEWED/REVIEW_EXPIRED = ข้อความจางแทนปุ่ม · NO_MEMBER = ซ่อน"
+      },
+      "wo": "P1.11U",
+      "oracle": "",
+      "system": "POS",
+      "query": ""
+    },
+    {
+      "page": "/r/[token]",
+      "testid": "pos-rpub-issue-open",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "modal",
+        "note": "แจ้งปัญหาบิลนี้ → แผ่นข้อความ"
+      },
+      "wo": "P1.11U",
+      "oracle": "",
+      "system": "POS",
+      "query": ""
+    },
+    {
+      "page": "/r/[token]",
+      "testid": "pos-rpub-issue-close",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "ปิดแผ่นแจ้งปัญหา"
+      },
+      "wo": "P1.11U",
+      "oracle": "",
+      "system": "POS",
+      "query": ""
+    },
+    {
+      "page": "/r/[token]",
+      "testid": "pos-rpub-issue-form",
+      "kind": "form",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "note": "ส่งฟอร์ม = reportReceiptIssueAction(token, {message, contact?})"
+      },
+      "wo": "P1.11U",
+      "oracle": "",
+      "system": "POS",
+      "query": ""
+    },
+    {
+      "page": "/r/[token]",
+      "testid": "pos-rpub-issue-message",
+      "kind": "textarea",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "ข้อความ (บังคับ ≤500)"
+      },
+      "wo": "P1.11U",
+      "oracle": "",
+      "system": "POS",
+      "query": ""
+    },
+    {
+      "page": "/r/[token]",
+      "testid": "pos-rpub-issue-contact",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "ช่องทางติดต่อกลับ (ไม่บังคับ ≤120)"
+      },
+      "wo": "P1.11U",
+      "oracle": "",
+      "system": "POS",
+      "query": ""
+    },
+    {
+      "page": "/r/[token]",
+      "testid": "pos-rpub-issue-submit",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "note": "สำเร็จ = \"ส่งแล้ว เจ้าหน้าที่จะติดต่อกลับ\" (pos-rpub-issue-sent) · RATE_LIMITED = ข้อความในแผ่น"
+      },
+      "wo": "P1.11U",
+      "oracle": "",
+      "system": "POS",
+      "query": ""
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-receipt-send-line",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "note": "ส่ง LINE (ลิ้นชักบิล · เปิดเมื่อบิลมีสมาชิกและไม่ถูกยกเลิก) → sendReceiptAction via LINE · toast สำเร็จ/ปฏิเสธ (NO_LINE_IDENTITY …)"
+      },
+      "wo": "P1.11U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-receipt-send-email",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "modal",
+        "note": "ส่งอีเมล → แผ่นช่องเดียว"
+      },
+      "wo": "P1.11U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-receipt-send-copy",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "toast",
+        "note": "คัดลอกลิงก์ใบเสร็จ = receiptPayloadAction().footer.qrEReceiptUrl → คลิปบอร์ด · null = toast \"เปิด QR ใบเสร็จออนไลน์ในตั้งค่าก่อน\""
+      },
+      "wo": "P1.11U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-receipt-send-email-close",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "ปิดแผ่นส่งอีเมล"
+      },
+      "wo": "P1.11U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-receipt-send-email-form",
+      "kind": "form",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "note": "ส่งฟอร์ม = sendReceiptAction via EMAIL (ว่าง = อีเมลสมาชิกของบิล)"
+      },
+      "wo": "P1.11U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-receipt-send-email-input",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "อีเมลลูกค้า (ตรวจรูปแบบก่อนส่ง)"
+      },
+      "wo": "P1.11U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-receipt-send-email-submit",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "note": "สำเร็จ = toast \"ส่งใบเสร็จทางอีเมลแล้ว\" + ปิดแผ่น · ปฏิเสธ = ข้อความในแผ่น (pos-receipt-send-error)"
+      },
+      "wo": "P1.11U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
     }
   ],
   "$roles": "roles/hiddenFor ที่อนุญาต: owner · manager · cashier · kind/expect.type ชุดเดียวกับทะเบียน CRM (F15.3b ตรวจ)"

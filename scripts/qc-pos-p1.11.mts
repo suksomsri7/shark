@@ -435,10 +435,9 @@ async function runStatic(): Promise<void> {
       if (!/\bcatch\b/.test(body)) p.push("sendReceiptAction ไม่มี catch");
       if (!/requireTenant\s*\(/.test(s)) p.push("sendReceiptAction ไม่เรียก requireTenant");
     }
-    // ORACLE-EDIT (controller · P1.11 ST6): หน้า /r/[token] มีอยู่แล้วของบัญชี (ใบกำกับ) — ส่วน POS ของหน้าเป็นของ P1.11U: ขั้น S ตรวจเมื่อหน้าเรียก publicReceipt แล้วเท่านั้น
+    // P1.11U (มติข้อ 7): ยกเลิกการเลื่อนตรวจหน้า — หน้า dispatcher /r/[token] เรียก publicReceipt แล้ว ⇒ ตรวจครบทุกข้อเสมอ
     const page = rd(F.page);
     if (!page) p.push(`ไม่มี ${F.page}`);
-    else if (!/\bpublicReceipt\b/.test(stripComments(page))) { /* U half pending — ไม่นับ */ }
     else {
       const ps = stripComments(page);
       if (!/noindex/.test(ps)) p.push("หน้า /r/[token] ไม่มี noindex");

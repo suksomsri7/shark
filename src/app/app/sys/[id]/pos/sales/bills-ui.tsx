@@ -117,6 +117,25 @@ const PATHS = {
     </>
   ),
   download: <path d="M12 4v11m-4.5-4.5L12 15l4.5-4.5M5 19.5h14" />,
+  // POS P1.11U ▸ แถวส่งใบเสร็จในลิ้นชัก (ภาพ 12) ◂
+  mail: (
+    <>
+      <rect x="3.5" y="5.5" width="17" height="13" rx="2" />
+      <path d="m4 7 8 6 8-6" />
+    </>
+  ),
+  at: (
+    <>
+      <circle cx="12" cy="12" r="3.5" />
+      <path d="M15.5 12v1.3a2.6 2.6 0 0 0 5 1V12a8.5 8.5 0 1 0-3.3 6.7" />
+    </>
+  ),
+  link: (
+    <>
+      <path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1" />
+      <path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" />
+    </>
+  ),
 } as const;
 export type BillIconName = keyof typeof PATHS;
 export function BillIcon({ name, size = 16, className }: { name: BillIconName; size?: number; className?: string }) {
