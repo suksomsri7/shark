@@ -47,6 +47,7 @@ import {
   REGISTER_MAX_PAY_METHODS,
   REGISTER_MAX_QTY,
   type HeldCartNoticeCode,
+  type PosDiscountCaps,
   type HeldCartSummary,
   type RegisterCart,
   type RegisterCartLine,
@@ -102,6 +103,10 @@ import { SearchRow } from "./SearchRow";
 import { WeighDialog } from "./WeighDialog";
 // POS P1.9 ▸ รหัสเครื่อง → กะของเครื่อง (ผูกบิล · ล็อกปุ่มชำระเมื่อบังคับเปิดกะ) ◂
 import { getPosDeviceId } from "@/lib/modules/pos/device-id";
+// POS P1.15U ▸ ผู้ขายบนเครื่อง (โทเคน PIN ใน sessionStorage) · จอล็อก 13B · ล็อกเมื่อไม่ใช้งาน ◂
+import { clearStaffSession, readStaffSession, writeStaffSession, type StaffSession } from "@/lib/modules/pos/staff-session";
+import { LockScreen, type LockMode } from "./LockScreen";
+import { useIdleLock } from "./use-idle-lock";
 
 export type RegisterScreenProps = {
   systemId: string;
@@ -121,6 +126,10 @@ export type RegisterScreenProps = {
   tipEnabled?: boolean;
   /** P1.2 U R2: สาขานี้ตั้งนโยบาย BLOCK (ห้ามขายเกินสต็อก) ⇒ ตัวแปรที่หมดเลือกไม่ได้ · ไม่ตั้ง/ALLOW_NEGATIVE = เลือกได้ */
   oversellBlock?: boolean;
+  /** POS P1.15U: ล็อกจออัตโนมัติหลังไม่ใช้งาน N นาที (settings.pos.register.autoLockMinutes · 0 = ปิด) */
+  autoLockMinutes?: number;
+  /** POS P1.15U: เพดานส่วนลดตามบทบาทของระบบนี้ (registerDiscountCaps) — ผู้ขายในโทเคนที่ไม่ใช่ผู้ใช้ session ใช้ค่านี้คิดยอดบนจอ */
+  discountCaps?: PosDiscountCaps;
 };
 
 type Msg = { key: string; values?: Record<string, string | number> };
@@ -289,6 +298,71 @@ export function RegisterScreen(props: RegisterScreenProps) {
     return () => document.removeEventListener("visibilitychange", onVis);
   }, [refreshHeld]);
 
+  // ═══════ POS P1.15U ▸ ผู้ขายบนเครื่อง + จอล็อก 13B (มติผู้คุมงาน 1 3 8) ═══════
+  //   โทเคนอยู่ใน sessionStorage `pos-staff:<deviceId>` · ล็อกเมื่อ: ไม่มี/หมดอายุ · ไม่ใช้งานครบ N นาที · กดล็อก · คำขอใดตอบ STAFF_TOKEN_INVALID
+  //   ล็อกไม่ทิ้งตะกร้า (อยู่ใน state) · ปลดด้วยคนเดิม = ขายต่อ · คนอื่น = พักตะกร้าของคนก่อน (ป้าย "สลับพนักงาน") แล้วเริ่มบิลใหม่
+  const [deviceId, setDeviceId] = useState<string | undefined>(undefined);
+  /** undefined = ยังไม่ได้อ่าน storage (SSR/เฟรมแรก) · null = ไม่มีโทเคน */
+  const [staff, setStaff] = useState<StaffSession | null | undefined>(undefined);
+  const staffRef = useRef(staff);
+  staffRef.current = staff;
+  /** คนที่ใช้เครื่องล่าสุด (คงไว้แม้โทเคนตาย — ชิป "ใช้งานอยู่" + เจ้าของตะกร้าตอนสลับ) */
+  const lastStaffRef = useRef<StaffSession | null>(null);
+  const [lockFlag, setLockFlag] = useState(false);
+  const [lockedAt, setLockedAt] = useState<Date | null>(null);
+  /** registerStatus ที่ถามพร้อมรหัสเครื่องตอบแล้ว (รู้สถานะทะเบียนเครื่อง) */
+  const [deviceKnown, setDeviceKnown] = useState(false);
+  useEffect(() => {
+    const d = getPosDeviceId();
+    setDeviceId(d);
+    const cur = readStaffSession(d);
+    setStaff(cur);
+    if (cur) lastStaffRef.current = cur;
+  }, []);
+  const locked = lockFlag || !staff;
+  const lockedRef = useRef(locked);
+  lockedRef.current = locked;
+  const lockNow = useCallback(() => {
+    setLockFlag(true);
+    setLockedAt(new Date());
+  }, []);
+  /** คำขอใดตอบ STAFF_TOKEN_INVALID ⇒ ลบโทเคน + ล็อก (ไม่ถอยไปใช้ผู้ใช้ session) */
+  const staffTokenDead = () => {
+    clearStaffSession(deviceId);
+    setStaff(null);
+    setLockedAt(new Date());
+    showToast({ key: "errors.staffTokenInvalid" });
+  };
+  /** คำขอที่พกโทเคน: ส่ง deviceId ด้วยเสมอ (ลายเซ็นโทเคนผูกเครื่อง) */
+  const tokenArgs = (): { deviceId?: string; staffToken?: string } => ({
+    ...(deviceId ? { deviceId } : {}),
+    ...(staffRef.current ? { staffToken: staffRef.current.staffToken } : {}),
+  });
+  const onUnlocked = async (next: StaffSession) => {
+    const prev = lastStaffRef.current;
+    if (deviceId) writeStaffSession(deviceId, next);
+    // มติ 3: คนอื่นปลดล็อก ⇒ ตะกร้าที่ค้างพักไว้ในชื่อคนก่อน (ด้วยโทเคนของคนก่อน) · ว่าง = ไม่พัก · ระหว่างส่งบิล = ไม่แตะ
+    if (prev && prev.userId !== next.userId && cartRef.current.lines.length && !frozenRef.current) {
+      const who = prev.name ?? "-";
+      try {
+        const r = await holdRegisterCartAction({ systemId, unitId, ...(deviceId ? { deviceId } : {}), cart: cartToQuoteInput(cartRef.current), label: t("lock.holdLabel"), staffToken: prev.staffToken });
+        if (r.ok) {
+          resetBill();
+          setLayers([]);
+          showToast({ key: "lock.switchHeld", values: { name: who } });
+          void refreshHeld();
+        } else showToast({ key: "lock.switchHeldFailed", values: { name: who } });
+      } catch {
+        showToast({ key: "lock.switchHeldFailed", values: { name: who } });
+      }
+    }
+    lastStaffRef.current = next;
+    setStaff(next);
+    setLockFlag(false);
+    setLockedAt(null);
+  };
+  const lockMode: LockMode = !deviceKnown || staff === undefined ? "checking" : !deviceId ? "unregistered" : status?.deviceStatus === "REVOKED" ? "revoked" : status?.deviceStatus === "ACTIVE" ? "ready" : "unregistered";
+
   // ═══════ การส่งบิล ═══════
   const [idemKey, setIdemKey] = useState(newKey);
   const [payPhase, setPayPhase] = useState<PayPhase>("form");
@@ -318,6 +392,8 @@ export function RegisterScreen(props: RegisterScreenProps) {
   /** ค่าล่าสุดที่วาดแล้ว — งาน async (ผลสแกน) อ่านจาก ref ไม่ใช่ค่าที่ติดมากับ closure ตอนกด Enter (B2.2 S1) */
   const frozenRef = useRef(frozen);
   frozenRef.current = frozen;
+  // POS P1.15U ▸ มติ 8: ไม่ใช้งานครบ N นาที / แท็บถูกซ่อนนานเกิน ⇒ ล็อก (ไม่ล็อกระหว่างส่งบิล/ผลยังไม่แน่ใจ) ◂
+  useIdleLock(props.autoLockMinutes ?? 2, !locked && !frozen, lockNow);
   /** รุ่นของบิล — resetBill เพิ่มทุกครั้ง · ผลสแกนที่เริ่มในบิลรุ่นก่อน = ทิ้ง (B2.2 S1) */
   const billGen = useRef(0);
 
@@ -383,6 +459,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
       if (r.ok) {
         setStatus(r);
         synced();
+        setDeviceKnown(true); // POS P1.15U ▸ จอล็อกรู้สถานะทะเบียนเครื่องแล้ว ◂
       }
     } catch {
       /* เครือข่ายล้ม — ค่าเดิมค้างไว้ */
@@ -604,9 +681,10 @@ export function RegisterScreen(props: RegisterScreenProps) {
     heldBusyRef.current = true;
     setHeldBusy(true);
     try {
-      const r = await holdRegisterCartAction({ systemId, unitId, cart: cartToQuoteInput(cart), label: label?.trim() || null });
+      const r = await holdRegisterCartAction({ systemId, unitId, ...tokenArgs(), cart: cartToQuoteInput(cart), label: label?.trim() || null });
       if (!r.ok) {
-        showToast(errorFor(r.code));
+        if (r.code === "STAFF_TOKEN_INVALID") staffTokenDead();
+        else showToast(errorFor(r.code));
         return false;
       }
       resetBill();
@@ -627,9 +705,10 @@ export function RegisterScreen(props: RegisterScreenProps) {
     heldBusyRef.current = true;
     setHeldBusy(true);
     try {
-      const r = await recallHeldCartAction({ systemId, unitId, id });
+      const r = await recallHeldCartAction({ systemId, unitId, ...tokenArgs(), id });
       if (!r.ok) {
-        showToast(errorFor(r.code));
+        if (r.code === "STAFF_TOKEN_INVALID") staffTokenDead();
+        else showToast(errorFor(r.code));
         void refreshHeld();
         return;
       }
@@ -976,6 +1055,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
       clearPending();
       setPayPhase("form");
       setPayError({ code: r.code, ...errorFor(r.code) });
+      if (r.code === "STAFF_TOKEN_INVALID") staffTokenDead(); // POS P1.15U ▸ โทเคนตาย = ล็อก (ไม่มีบิล · คีย์เดิม) ◂
       if (r.code === "PRICE_CHANGED" && "grandTotalSatang" in r) {
         // ยอดสดจากคำตอบ (ไม่ต้อง quote ซ้ำ) — ผู้ใช้ต้องกดยืนยันใหม่กับยอดนี้
         setQuote({
@@ -1023,7 +1103,9 @@ export function RegisterScreen(props: RegisterScreenProps) {
       ...(cart.note ? { note: cart.note } : {}),
       expectedGrandTotalSatang: due,
     });
-    void send(sale);
+    // POS P1.15U ▸ มติ 2: ผู้ขาย = คนในโทเคน (ส่งทุกบิล · ลองซ้ำส่งชุดเดิมทั้งก้อน) ◂
+    const st = staffRef.current;
+    void send(st ? { ...sale, staffToken: st.staffToken } : sale);
   };
   const retryPay = () => {
     if (pendingSubmit.current) void send(pendingSubmit.current); // ชุดเดิมทุกไบต์ · คีย์เดิม
@@ -1069,14 +1151,15 @@ export function RegisterScreen(props: RegisterScreenProps) {
   }, []);
 
   // ═══════ แป้นลัด: ตัวจับเดียวบน window (สเปก §3.6) ═══════
-  const keyState = useRef({ top, payEnabled, q, cartLen: cart.lines.length, payPhase, frozen });
-  keyState.current = { top, payEnabled, q, cartLen: cart.lines.length, payPhase, frozen };
+  const keyState = useRef({ top, payEnabled, q, cartLen: cart.lines.length, payPhase, frozen, locked });
+  keyState.current = { top, payEnabled, q, cartLen: cart.lines.length, payPhase, frozen, locked };
   const handlers = useRef({ openPay, onHold, pop, push, setQ });
   handlers.current = { openPay, onHold, pop, push, setQ };
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const s = keyState.current;
       const h = handlers.current;
+      if (s.locked) return; // POS P1.15U ▸ จอล็อกทับอยู่ = แป้นลัดทั้งหมดปิด (แป้น PIN อยู่ที่ LockScreen) ◂
       if (e.key === "F2") {
         // แป้นพิมพ์จริง ⇒ โฟกัสเสมอ (ไม่เช็ก pointer แบบ focusSearch) แม้กำลังพิมพ์ช่องอื่นอยู่
         e.preventDefault();
@@ -1131,6 +1214,10 @@ export function RegisterScreen(props: RegisterScreenProps) {
   useEffect(() => {
     const onScanKey = (e: KeyboardEvent) => {
       const buf = scanBuf.current;
+      if (lockedRef.current) {
+        buf.length = 0; // POS P1.15U ▸ จอล็อก: ตัวเลขคือ PIN ไม่ใช่การสแกน ◂
+        return;
+      }
       const prev = buf[buf.length - 1];
       if (prev && e.timeStamp - prev.at > SCAN_MAX_GAP_MS) buf.length = 0; // ห่างเกินจังหวะเครื่องสแกน = เริ่มบัฟเฟอร์ใหม่
       if (!buf.length) {
@@ -1468,7 +1555,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
       className="flex min-h-[calc(100dvh-3.5rem)] flex-col bg-[color:var(--color-surface)] md:h-[calc(100dvh-3.5rem)] md:min-h-0 md:overflow-hidden"
     >
       {/* B2.2 S2: มีกล่องเปิด ⇒ ทุกอย่างหลังม่าน inert (คลิก/โฟกัส/โปรแกรมอ่านจอไม่ถึง) · contents = ไม่เปลี่ยนเลย์เอาต์ flex */}
-      <div className="contents" inert={layers.length > 0}>
+      <div className="contents" inert={layers.length > 0 || locked}>
         <h1 className="sr-only">{t("title")}</h1>
         <RegisterTopContext
           wide={wide}
@@ -1479,9 +1566,10 @@ export function RegisterScreen(props: RegisterScreenProps) {
           activeUnitId={unitId}
           online={online}
           lastSyncAt={lastSyncAt}
-          user={status ? { name: status.user.name, role: status.user.role } : null}
+          user={staff ? { name: staff.name ?? "-", role: staff.role } : status ? { name: status.user.name, role: status.user.role } : null}
           shift={status?.shift ?? null}
           onCamera={openCamera}
+          onLock={staff ? lockNow : undefined}
         />
         <ModeTabsNav systemId={systemId} />
         {!online && (
@@ -1561,7 +1649,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
 
       {/* ── ชั้นกล่อง (วาดตามลำดับ — ตัวท้ายอยู่บนสุด) · ชั้นที่ไม่ใช่บนสุด = inert (B2.2 S2) ── */}
       {layers.map((l, i) => (
-        <div key={`${l.kind}-${i}`} className="contents" inert={i < layers.length - 1}>
+        <div key={`${l.kind}-${i}`} className="contents" inert={i < layers.length - 1 || locked}>
           {layerNode(l, `${l.kind}-${i}`)}
         </div>
       ))}
@@ -1573,7 +1661,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
           aria-live="polite"
         >
           <span className="min-w-0 flex-1">{msgNode(toast)}</span>
-          {toast.offerCustom && limits.canOverridePrice && (
+          {toast.offerCustom && limits.canOverridePrice && !locked && (
             <button
               data-testid="pos-reg-scan-add-custom"
               className="pointer-events-auto h-11 shrink-0 rounded-[11px] border border-[color:var(--color-surface)] px-3 text-[14px] font-semibold"
@@ -1587,6 +1675,26 @@ export function RegisterScreen(props: RegisterScreenProps) {
             </button>
           )}
         </div>
+      )}
+      {locked && (
+        <LockScreen
+          mode={lockMode}
+          systemId={systemId}
+          unitId={unitId}
+          deviceId={deviceId}
+          tenantName={props.tenantName}
+          unitName={props.units.find((u) => u.id === unitId)?.name ?? ""}
+          deviceLabel={status?.shift?.deviceLabel ?? null}
+          shift={status?.shift ?? null}
+          online={online}
+          current={lastStaffRef.current}
+          lockedAt={lockedAt}
+          heldItems={heldItems}
+          heldCount={heldCount}
+          autoLockMinutes={props.autoLockMinutes ?? 2}
+          settingsHref={`${base}/pos/settings?tab=devices&unit=${encodeURIComponent(unitId)}`}
+          onUnlocked={(n) => void onUnlocked(n)}
+        />
       )}
     </div>
   );

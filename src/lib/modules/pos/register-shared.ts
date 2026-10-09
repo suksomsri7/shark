@@ -81,6 +81,14 @@ export function posRegisterV2On(settings: unknown): boolean {
   return typeof s === "object" && s.pos?.registerV2 === true;
 }
 
+/** POS P1.15U ▸ ล็อกจออัตโนมัติหลังไม่ใช้งาน N นาที — `settings.pos.register.autoLockMinutes` (จำนวนเต็ม 0–60 · 0 = ปิด) · ไม่ตั้ง/ผิดรูป = 2 ◂ */
+export const REGISTER_AUTO_LOCK_MINUTES = 2;
+export function posRegisterAutoLockMinutes(settings: unknown): number {
+  const s = (settings ?? {}) as { pos?: { register?: { autoLockMinutes?: unknown } | null } | null };
+  const v = typeof s === "object" ? s.pos?.register?.autoLockMinutes : undefined;
+  return typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= 60 ? v : REGISTER_AUTO_LOCK_MINUTES;
+}
+
 // ═══════════ ชนิดข้อมูล ═══════════
 export type RegisterRole = "OWNER" | "MANAGER" | "STAFF";
 

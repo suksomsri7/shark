@@ -35,6 +35,8 @@ type Props = {
   /** กะ OPEN ของเครื่องนี้ (registerStatus.shift) · null = ยังไม่เปิด/ยังไม่รู้ */
   shift: RegisterShiftInfo | null;
   onCamera: () => void;
+  /** POS P1.15U ▸ ปุ่มล็อกจอ (ชิปผู้ขาย = คนในโทเคน) · ไม่ส่ง = ไม่มีปุ่ม ◂ */
+  onLock?: () => void;
 };
 
 const ROLE_KEY: Record<RegisterRole, string> = { OWNER: "roles.owner", MANAGER: "roles.manager", STAFF: "roles.cashier" };
@@ -172,7 +174,26 @@ export function RegisterTopContext(p: Props) {
         {p.online && p.lastSyncAt && <span className="hidden xl:inline">{` · ${t("status.lastSync", { time: formatThaiTime(p.lastSyncAt) })}`}</span>}
       </span>
       {shiftChip("hidden lg:inline-flex")}
-      {p.user && (
+      {p.user && p.onLock && (
+        <button
+          data-testid="pos-lock-now"
+          className="inline-flex h-11 min-w-0 shrink items-center gap-2 rounded-[10px] px-1.5 text-[12.5px] text-[color:var(--color-ink-soft)] hover:bg-[color:var(--color-surface-2)]"
+          type="button"
+          title={t("lock.lockNow")}
+          aria-label={`${t("lock.lockNow")} · ${p.user.name}`}
+          onClick={p.onLock}
+        >
+          <span aria-hidden className="grid size-6 shrink-0 place-items-center rounded-[7px] border bg-[color:var(--color-surface-2)] text-[11px] font-bold text-[color:var(--color-ink-soft)]">
+            {p.user.name.trim().charAt(0).toUpperCase() || "?"}
+          </span>
+          <span data-testid="pos-reg-status-user" className="hidden truncate lg:inline">
+            {p.user.name}
+            <span className="hidden xl:inline">{` · ${t(ROLE_KEY[p.user.role])}`}</span>
+          </span>
+          <RegisterIcon name="lock" size={12} />
+        </button>
+      )}
+      {p.user && !p.onLock && (
         <span data-testid="pos-reg-status-user" className="inline-flex min-w-0 shrink items-center gap-2 text-[12.5px] text-[color:var(--color-ink-soft)]">
           <span
             aria-hidden

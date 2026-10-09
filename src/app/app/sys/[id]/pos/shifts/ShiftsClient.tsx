@@ -16,6 +16,8 @@ import { useLocale, useTranslations } from "next-intl";
 import { RegisterIcon, type RegisterIconName } from "@/components/pos/register/RegisterIcon";
 import { getPosDeviceId } from "@/lib/modules/pos/device-id";
 import { refusalMessageKey } from "@/lib/modules/pos/register-shared";
+// POS P1.15U ▸ มติ 2: เปิดกะด้วยโทเคนผู้ขายของเครื่องนี้ (ผู้เปิดกะ = คนในโทเคน) — เฉพาะเมื่อเป็นเครื่องเดียวกับที่ออกโทเคน ◂
+import { readStaffSession } from "@/lib/modules/pos/staff-session";
 import type { RecountView, ShiftReport, ShiftsPageItem } from "@/lib/modules/pos/shift";
 import {
   closeShiftAction,
@@ -250,7 +252,8 @@ export function ShiftsClient({ systemId, units, unitId, canManage, meName }: Pro
         return false;
       }
       const detail = floatByDen ? floatCalc.detail : null;
-      const r = await openShiftAction({ ...base, shift: { deviceId, floatSatang: f, ...(label.trim() ? { deviceLabel: label.trim() } : {}), ...(detail ? { floatDetail: detail } : {}) } });
+      const staffToken = readStaffSession(deviceId)?.staffToken;
+      const r = await openShiftAction({ ...base, shift: { deviceId, floatSatang: f, ...(label.trim() ? { deviceLabel: label.trim() } : {}), ...(detail ? { floatDetail: detail } : {}), ...(staffToken ? { staffToken } : {}) } });
       // R2 F2: ถูกปฏิเสธ = คืน false (ไม่ load ซ้ำ ข้อความผิดพลาดค้างในกล่อง) · true เฉพาะสำเร็จ / มีกะเปิดอยู่แล้ว (รับกะนั้นต่อ)
       if (!r.ok && r.code !== "SHIFT_ALREADY_OPEN") {
         fail(r);
