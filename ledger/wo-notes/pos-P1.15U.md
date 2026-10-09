@@ -63,3 +63,31 @@ Merged `origin/session/pos` twice (P1.10U settings/print/PayDone at 532edd5f —
 | first gate batch note | `qc-pos-p1.3` was 1 · 127/128 (S5.20 regex wants the literal `inert={layers.length > 0}` / `inert={i < layers.length - 1}`) → lock inertness moved to a wrapping element (a238ef87) → 128/128 |
 
 Real visual run (chromium + server) = CONTROLLER-RUN: `--page register --states --user owner|cashier --base …` (writes per the dry plan, all cleaned in finally).
+
+## Fix round 1 (reviewer verdict MERGEABLE-AFTER-FIXES on 7af05531 · prompt `pos-prompt-accountB-P1.15U-fix.md`)
+| finding | commit | what changed | verified by |
+|---|---|---|---|
+| F1 | bc20d08e | `setOwnStaffPin` (staff-pin.ts) + `setOwnStaffPinAction` — ignores any userId, session user only, `ALREADY_SET` when a PIN exists (new code → `errors.alreadySet`); LockScreen sets a PIN only on the session user's own no-PIN card; other no-PIN cards and ลืม PIN show `lock.forgotBody`; `setStaffPinAction` no longer called from the lock screen | subset tsc · PN suites in qc-pos-p1.15 unchanged green |
+| F2 | 19055b59 | `listStaffForDeviceAction` on a registered device: no PIN at the unit ⇒ register usable by the session user, dismissible banner `staff.noPinBanner` (sessionStorage `pos-nopin-banner:<deviceId>`), idle lock off, manual lock opens 13B with "กลับไปขาย"; any PIN ⇒ full lock rule; unregistered device unchanged; read failure ⇒ treated as "has PIN" (locked) | code review + visual seed sets PINs (lock path) |
+| F3 | b04f3759 | `savePending` stores the sale without `managerPin`/`managerUserId` (comment: a reload retry returns the committed bill or a clean `DISCOUNT_EXCEEDS_LIMIT`) | subset tsc · qc-pos-p1.3 S5.22 green |
+| F4 | d62cfdef | `send` returns while locked (restore retry of the pre-reload request excepted); `confirmPay` returns while locked and locks instead of sending when a PIN shop has no token; PayDialog F4 ignored under `[inert]`; locking in the form phase closes the pay layer | qc-pos-p1.3 S5.20/S5.21 green |
+| F5 | 34a5fa3c | `DiscountAuth` keeps the authorized discount (bp, satang); `localCap = max(sellerCap, auth.bp)` (not nulled); `tryCart` refuses a discount above it ⇒ discount-over sheet reopens and the authority is cleared | subset tsc |
+| F6 | 4fb5d6bf | 21B: first EXPIRED read cancels once and stops polling; FAILED stops polling. Follow-up (not built): consumer ignores decisions after `POS_APPROVAL_WAIT_MS` | subset tsc |
+| F7 | ecacb680 | `cancelPosApprovalRequest(scope, requestId, actor)` — requester (token user, else session user) or `pos.staff.manage`; `PERMISSION_DENIED` / `STAFF_TOKEN_INVALID`; audit `pos.approval.cancel` {requestId, kind, saleId, heldCartId, byUserId}; 21B sends the device token | subset tsc |
+| F8 | 8fc0b15e | Bills: registered device (heartbeat ACTIVE) with any PIN ⇒ void/refund need a live token, else dialog "ใส่ PIN ที่หน้าขายก่อน" + link to `/pos/register`; `STAFF_TOKEN_INVALID` clears the token + same dialog; `NO_PERMISSION` opens `ManagerPinPad` (new shared component, also used by 21B; testids `pos-mgr-pin-*`) resubmitting with `managerPin` + `managerUserId`; unregistered device unchanged | fitness-pos F15.3 · subset tsc |
+| F9 | f51dff01 | visual-pos keeps every seeded request id; cleanup deletes all requests of the visual policy (+ snapshots) before the policy | visual dry rc 0 |
+| F10 | 4ed84c27 | dead previous token ⇒ hold with the new token, label "สลับพนักงาน · <prev>"; both holds fail ⇒ no switch (screen stays locked, toast above the overlay) | subset tsc |
+| deviation 3 | 46b45ca0 | `regDiscountOver` snapshot adds `capBp: regMaxDiscountBp(s.actor, caps)` + `capRole`; `posApprovalCards` uses them ⇒ 21A over-cap chip | qc-pos-p1.15 green |
+| ORACLE-EDIT | 7049639e | TK-U1 + refund with a valid token ⇒ request `requestedById` = token user; AP-U1 + consumed approval no longer quotes the cap (held cart set back to HELD, recall ⇒ no `approvedRequestId`, quote `DISCOUNT_EXCEEDS_LIMIT`). Oracle notes 36 → 39 | qc-pos-p1.15 39/39 |
+Merge: `origin/session/pos` 9ba7834b (P1.11U) at ede913ba — conflicts in BillsClient imports, visual-pos (StateKey, seed block, summary) and the inventory (theirs + P1.15U rows); typecheck + qc-pos-p1.15 re-run after the merge (gates below).
+
+| gate (fix round 1 · head ede913ba · logs `scratchpad/p115u/runs/*` with `tree=/root/projects/shark-pos-b head=ede913ba` headers) | result |
+|---|---|
+| `pnpm typecheck` (gate lock · log ends `typecheck exit=0`) | 0 |
+| `qc-pos-p1.15` forced #1 / #2 / unforced | 0 · 39/39 ×3 (residue 0) |
+| qc-pos-p1.9 / p1.10 / p1.17 / qc-hf-pos-page-authz | 0 · 53/53 / 0 · 40/40 / 0 · 40/40 / 0 · 56/56 |
+| qc-pos-p1.3 | batch 1 · 126/128 (only S9.1/S9.2 restore checks — another lane's visual fixtures landed in the QC coffee shop mid-run: posProduct 7→18, 4 option groups); re-run right after: **0 · 128/128** |
+| `pnpm fitness` with QC4 env / without env · `fitness-pos.mts` | 0 · 41/41 / 0 · 41/41 · 0 · 8/8 |
+| visual `--states --dry` register / sales × owner / cashier | 0 · 50 / 15 each |
+
+Follow-ups added: consumer ignores decisions that arrive after `POS_APPROVAL_WAIT_MS` (F6, server side, not built).
