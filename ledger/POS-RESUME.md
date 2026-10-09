@@ -912,3 +912,7 @@
 - **L3 P1.15U**: ถูกตัด 429 ระหว่างรอด่าน · ทรี b ที่ ede913ba (merge session/pos 9ba7834b แล้ว) + notes ยังไม่ commit → ปลุกให้รันด่านที่ค้างต่อ (p1.3 ซ้ำเพราะชนกับ vis ของผมบน coffee)
 - **L4 P1.13**: ถูกตัด 429 · ทรี d ที่ 0d7553cc (F-fixes + ORACLE-EDIT S5 + follow-ups บันทึกแล้ว) → ปลุกให้ทำที่เหลือ + ด่าน + merge session/pos
 - โควตา: session รีเซ็ต 07:30Z (watcher ยังแสดง 100% ของหน้าต่างเก่า) · weekly 87%
+
+## 9 ต.ค. 07:40 UTC — P1.15U รอบแก้ 1 ส่งแล้ว (9cb8ca49) → re-review + build40-b + ภาพ
+- **L3 P1.15U**: head **9cb8ca49** (F1–F10 commit แยก · deviation 3 capBp/capRole · ORACLE-EDIT TK-U1/AP-U1 39 ข้อ · merge session/pos 9ba7834b ที่ ede913ba) · ด่านเขียว (p1.15 39/39 ×3 · p1.9/p1.10/p1.17/authz · p1.3 128 เมื่อรันซ้ำ) · ผู้ตรวจ (a2a396d…) ดูซ้ำแล้ว · build40-b @9cb8ca49 `/root/pos-runs/build40-b-20261009T073522Z` → vis40 (`scratchpad/ctl/vis40-p115u.sh` wo p1.15u-r1 พอร์ต 3227 · register owner/cashier + sales owner · waiter task b55kunp3w) → เทียบ 13B lock-screen · 21B approval-wait · discount-over → merge
+- session หน้าต่างใหม่ 6% · weekly 87%
