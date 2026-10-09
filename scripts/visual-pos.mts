@@ -55,6 +55,14 @@
 //   🔴 เขียน: กะ 1 กะ + 7 บิล + ใบคืน 2 ใบ (ร้าน QC) · รอบแคชเชียร์ใช้ชุดของวันนี้ซ้ำถ้ามีครบ (ไม่เขียนเพิ่ม) ·
 //   finally/signal ปิดกะของเครื่องภาพบิลถ้ายังเปิด (นับ = ยอดคาด) · แคชเชียร์ไม่มี pos.sale.void/refund ⇒ bills-void/bills-refund = ลิ้นชักที่ปุ่มปิด/ซ่อน ◂
 //
+// POS P1.10 U ▸ หน้า settings (ภาพ 17A/17B) + `--states` (เฉพาะร้าน coffee · --page settings หรือ wo p1.10u*):
+//   settings-receipt (17A + ตัวอย่างสด · แคชเชียร์ = อ่านอย่างเดียว) · settings-devices (17B · 2 เครื่อง QC `posqc-vis-dev-<pid>-{1,2}` ลงทะเบียนด้วย
+//   registerDevice ของบริการ · เครื่อง 1 มี printerConfig USB 80 มม. + ลิ้นชัก + พิมพ์อัตโนมัติ) · settings-device-revoke (กล่องยืนยันเพิกถอนเปิด · ไม่กดยืนยัน) ·
+//   settings-print-pair (กล่องเลือกเครื่องพิมพ์ของเครื่อง 1 — ซ่อน navigator.usb ก่อนโหลดหน้า ⇒ สถานะ "เบราว์เซอร์นี้ไม่รองรับ") — 3 ขนาด ·
+//   paydone-print (1440 เท่านั้น · หน้าขายบนเครื่อง 2 = พิมพ์ผ่านเบราว์เซอร์ · ขายเงินสด 1 บิล → จอสำเร็จพร้อมปุ่มพิมพ์ใบเสร็จ/สำเนา · ไม่กดพิมพ์)
+//   🔴 เขียน: เครื่อง 2 เครื่อง + กะ 1 กะของเครื่อง 2 (openShift ของบริการ) + บิลขายเงินสด 1 ใบ · finally/signal ปิดกะนี้ (นับ = ยอดคาด) +
+//   เพิกถอนเครื่อง QC ของรอบนี้ (ซากของรอบที่ถูก kill เกิน 1 ชม. ถูกเพิกถอนตอนเริ่ม) · แคชเชียร์ QC ไม่มี pos.device.manage ⇒ แท็บเครื่อง = การ์ดปฏิเสธ ◂
+//
 // 🔴 ไม่มีค่าปริยายของ base — ไม่ส่ง `--base`/`QC_BASE` = exit 2 · ต่อไม่ได้ = exit 2 · `:3215` = exit 2
 //    (พอร์ต 3215 เป็นของเซิร์ฟเวอร์ CRM RUN — LANE-RULES ข้อ 4 · ตั้ง POS_VISUAL_ALLOW_3215=1 เมื่อ CRM ปิดแล้วเท่านั้น)
 // 🔴 ชื่อไฟล์จงใจไม่ขึ้นต้น qc- (ต้องมีเซิร์ฟเวอร์ + chromium — ไม่เข้า qc:all)
@@ -113,10 +121,12 @@ const PAGE_EXPECT: Record<PosPage, Record<UserKey, number | "record">> = {
   stock: { owner: 200, cashier: 200 },
   // POS P1.9 U ▸ แคชเชียร์ QC ไม่มี pos.shift.operate/manage ⇒ หน้า 200 + การ์ดปฏิเสธ (pos-shift-refusal) ◂
   shifts: { owner: 200, cashier: 200 },
+  // POS P1.10 U ▸ แคชเชียร์ QC มี pos.sale.create ⇒ แท็บใบเสร็จอ่านอย่างเดียว · แท็บเครื่อง = การ์ดปฏิเสธ (หน้า 200) ◂
+  settings: { owner: 200, cashier: 200 },
 };
 // POS P1.17 U ▸ wo ขึ้นต้น p1.17: REPORT_QUERY (env) ต่อท้ายหน้า reports เช่น "kind=daily&from=2026-10-01&to=2026-10-07" (ภาพจาก URL เดียวกันได้มุมมองเดียวกัน) ◂
 const REPORT_QUERY = /^p1\.17/i.test(WO) && /^[A-Za-z0-9=&_.-]+$/.test(process.env.REPORT_QUERY ?? "") ? `?${process.env.REPORT_QUERY}` : "";
-const pathOf = (p: PosPage) => `/app/sys/${SYS}/pos/${p}${p === "register" || p === "stock" || p === "shifts" ? `?unit=${unitId}` : p === "reports" ? REPORT_QUERY : ""}`;
+const pathOf = (p: PosPage) => `/app/sys/${SYS}/pos/${p}${p === "register" || p === "stock" || p === "shifts" || p === "settings" ? `?unit=${unitId}` : p === "reports" ? REPORT_QUERY : ""}`;
 const OUT = `${PQC.shotsDir}/${WO}`;
 const fileOf = (p: PosPage, w: number, h: number) => `${OUT}/${p}-${userKey}-${w}x${h}.png`;
 
@@ -124,7 +134,7 @@ const fileOf = (p: PosPage, w: number, h: number) => `${OUT}/${p}-${userKey}-${w
 const STATES_ON = /^p1\.3/i.test(WO) || argv.includes("--states");
 const LOCALE_EN = process.env.LOCALE === "en";
 type Device = (typeof POS_VIEWPORTS)[number]["name"];
-type StateKey = "default" | "cart3" | "cart4-01" | "line-editor" | "bill-discount" | "custom-item" | "paydlg-cash" | "sale-done" | "search-empty" | "stock-warn" | "offline" | "mobile-sheet" | "options-popover" | "weigh" | StockStateKey | ShiftsStateKey | BillsStateKey;
+type StateKey = "default" | "cart3" | "cart4-01" | "line-editor" | "bill-discount" | "custom-item" | "paydlg-cash" | "sale-done" | "search-empty" | "stock-warn" | "offline" | "mobile-sheet" | "options-popover" | "weigh" | StockStateKey | ShiftsStateKey | BillsStateKey | SettingsStateKey;
 const STATE_PLAN: { key: StateKey; devices: readonly Device[]; note: string }[] = [
   { key: "default", devices: ["desktop", "ipad", "mobile"], note: "เปิดหน้า (ตะกร้าว่าง) — การ์ดเหลือน้อย/หมด/ปิดขายของ fixture อยู่ในกริด" },
   { key: "cart3", devices: ["desktop", "ipad", "mobile"], note: "อเมริกาโน่×2 · ลาเต้ (ลด ฿10) · ครัวซองต์ (สต็อก N → N−1)" },
@@ -172,6 +182,19 @@ const BILLS_STATE_PLAN: { key: BillsStateKey; devices: readonly Device[]; note: 
   { key: "bills-refund", devices: ["desktop", "ipad", "mobile"], note: "เจ้าของ = หน้าต่างคืนเงิน เลือก 1 บรรทัด + เงินสด (ไม่กดยืนยัน) · แคชเชียร์ = ไม่มีปุ่มคืนเงิน" },
   { key: "bills-empty", devices: ["desktop", "ipad", "mobile"], note: "?date= วันที่ไม่มีบิล → ข้อความว่าง" },
 ];
+// POS P1.10 U ▸ สถานะของหน้าตั้งค่า (เครื่อง QC 2 เครื่องลงทะเบียนครั้งเดียวก่อนเปิด chromium · ไม่กดยืนยันเพิกถอน/ไม่กดพิมพ์) ◂
+type SettingsStateKey = "settings-receipt" | "settings-devices" | "settings-device-revoke" | "settings-print-pair" | "paydone-print";
+const SETTINGS_STATE_PLAN: { key: SettingsStateKey; devices: readonly Device[]; note: string }[] = [
+  { key: "settings-receipt", devices: ["desktop", "ipad", "mobile"], note: "17A ใบเสร็จและภาษี + ตัวอย่างสด (แคชเชียร์ = ช่องปิด · อ่านอย่างเดียว)" },
+  { key: "settings-devices", devices: ["desktop", "ipad", "mobile"], note: "17B เครื่องและเครื่องพิมพ์ · 2 เครื่อง QC (เครื่อง 1 = USB 80 มม. + ลิ้นชัก) · แคชเชียร์ = การ์ดปฏิเสธ" },
+  { key: "settings-device-revoke", devices: ["desktop", "ipad", "mobile"], note: "เลือกเครื่อง 2 → กล่องยืนยันเพิกถอน (ไม่กดยืนยัน)" },
+  { key: "settings-print-pair", devices: ["desktop", "ipad", "mobile"], note: "เครื่อง 1 (เบราว์เซอร์นี้) → กล่องเลือกเครื่องพิมพ์ = \"เบราว์เซอร์นี้ไม่รองรับ\" (ซ่อน navigator.usb)" },
+  { key: "paydone-print", devices: ["desktop"], note: "⚠️ ขายจริง 1 บิลบนเครื่อง 2 (พิมพ์ผ่านเบราว์เซอร์) → จอสำเร็จ + ปุ่มพิมพ์ใบเสร็จ/สำเนา" },
+];
+const SETTINGS_STATE_KEYS: ReadonlySet<string> = new Set(SETTINGS_STATE_PLAN.map((s) => s.key));
+const isSettingsState = (k: StateKey): k is SettingsStateKey => SETTINGS_STATE_KEYS.has(k);
+/** เครื่อง QC ของหน้าตั้งค่า (brief §6) — 1 = มี printerConfig (ภาพจับคู่) · 2 = เบราว์เซอร์ (กะ + บิลของ paydone-print) */
+const SETTINGS_DEVICE_CODES = [`posqc-vis-dev-${process.pid}-1`, `posqc-vis-dev-${process.pid}-2`] as const;
 const BILLS_STATE_KEYS: ReadonlySet<string> = new Set(BILLS_STATE_PLAN.map((s) => s.key));
 const isBillsState = (k: StateKey): k is BillsStateKey => BILLS_STATE_KEYS.has(k);
 /** รหัสเครื่องของสถานะหน้าบิล (กะของบิลชุดภาพ · ปิดใน finally) */
@@ -192,9 +215,19 @@ const stockStatesOn = STATES_ON && tenantKey === "coffee" && (onlyPage === "stoc
 const shiftsStatesOn = STATES_ON && tenantKey === "coffee" && (onlyPage === "shifts" || /^p1\.9/i.test(WO));
 // สถานะหน้าบิลวันนี้เฉพาะ --page sales หรือ wo p1.16* (รอบ --states ทุกหน้าเดิมไม่สร้างบิลเพิ่ม)
 const billsStatesOn = STATES_ON && tenantKey === "coffee" && (onlyPage === "sales" || /^p1\.16/i.test(WO));
+// สถานะหน้าตั้งค่าเฉพาะ --page settings หรือ wo p1.10u* (รอบ --states ทุกหน้าเดิมไม่ลงทะเบียนเครื่อง/ไม่ขายเพิ่ม)
+const settingsStatesOn = STATES_ON && tenantKey === "coffee" && (onlyPage === "settings" || /^p1\.10u/i.test(WO));
+const settingsPath = (st: SettingsStateKey) =>
+  st === "paydone-print" ? `/app/sys/${SYS}/pos/register?unit=${encodeURIComponent(unitId)}` : `/app/sys/${SYS}/pos/settings?tab=${st === "settings-receipt" ? "receipt" : "devices"}&unit=${encodeURIComponent(unitId)}`;
 const billsPath = (st: BillsStateKey) => `/app/sys/${SYS}/pos/sales?unit=${encodeURIComponent(unitId)}${st === "bills-empty" ? `&date=${BILLS_EMPTY_DATE}` : ""}`;
 const jobs: Job[] = pages.flatMap((p: PosPage): Job[] =>
-  billsStatesOn && p === "sales"
+  settingsStatesOn && p === "settings"
+    ? SETTINGS_STATE_PLAN.flatMap((st): Job[] =>
+        viewports
+          .filter((v) => st.devices.includes(v.name))
+          .map((v): Job => ({ page: p, v, state: st.key, path: settingsPath(st.key), file: `${OUT}/${p}-${st.key.replace(/^settings-/, "")}-${userKey}-${v.w}x${v.h}${LOCALE_EN ? "-en" : ""}.png` })),
+      )
+    : billsStatesOn && p === "sales"
     ? BILLS_STATE_PLAN.flatMap((st): Job[] =>
         viewports
           .filter((v) => st.devices.includes(v.name))
@@ -249,6 +282,11 @@ if (DRY) {
       console.log(`สถานะหน้าบิลวันนี้ P1.16 U${userKey === "cashier" ? " (แคชเชียร์ = ปุ่มยกเลิกปิด/ไม่มีคืนเงิน)" : ""} · เครื่อง ${BILLS_DEVICE_ID}:`);
       for (const st of BILLS_STATE_PLAN) console.log(`  · ${st.key.padEnd(19)} ${st.devices.join("/").padEnd(20)} ${st.note}`);
       console.log(`  เขียน: กะ 1 กะ (บริการ openShift · ปิดใน finally นับ = ยอดคาด) + บิลวันนี้ 7 ใบ + ใบคืน 2 ใบ${userKey === "cashier" ? " — ข้ามเมื่อวันนี้มีชุดภาพบิลครบแล้ว (จากรอบเจ้าของ)" : ""}`);
+    }
+    if (settingsStatesOn && pages.includes("settings")) {
+      console.log(`สถานะหน้าตั้งค่า P1.10 U${userKey === "cashier" ? " (แคชเชียร์ = ใบเสร็จอ่านอย่างเดียว · แท็บเครื่องเป็นการ์ดปฏิเสธ)" : ""} · เครื่อง ${SETTINGS_DEVICE_CODES.join(" · ")}:`);
+      for (const st of SETTINGS_STATE_PLAN) console.log(`  · ${st.key.padEnd(22)} ${st.devices.join("/").padEnd(20)} ${st.note}`);
+      console.log("  เขียน: เครื่อง QC 2 เครื่อง (registerDevice · เพิกถอนใน finally) + กะ 1 กะของเครื่อง 2 (openShift · ปิดใน finally นับ = ยอดคาด) + บิลขายเงินสด 1 ใบ (paydone-print)");
     }
     if (needFixtures) console.log(`  fixture: สินค้าชั่วคราว 11 ตัว (เหลือ 2 · หมดสต็อก · ปิดขาย + 4 ตัวของภาพ 01 + ลาเต้มีตัวแปร 1+2 + สินค้าชั่ง 1) + กลุ่มตัวเลือก 4 กลุ่ม ที่สาขา ${unitKey} — ลบใน finally`);
   }
@@ -419,6 +457,13 @@ for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
         if (BILLS.close) console.error(`${BILLS.close.ok ? "🧹" : "⚠️"} ${BILLS.close.detail}`);
       } catch (e) {
         console.error(`❌ ปิดกะของหน้าบิลไม่สำเร็จ: ${e instanceof Error ? e.message : e}`);
+      }
+      // POS P1.10 U: ปิดกะ + เพิกถอนเครื่อง QC ของหน้าตั้งค่า (เหมือน finally)
+      try {
+        await cleanupSettingsState();
+        if (SETTINGS.cleanup) console.error(`${SETTINGS.cleanup.ok ? "🧹" : "⚠️"} ${SETTINGS.cleanup.detail}`);
+      } catch (e) {
+        console.error(`❌ เก็บกวาดเครื่องของหน้าตั้งค่าไม่สำเร็จ: ${e instanceof Error ? e.message : e}`);
       }
       // POS P1.14 U: ยกเลิกรอบนับของรอบนี้ (เหมือน finally)
       try {
@@ -656,6 +701,7 @@ async function runState(page: Any, state: StateKey, device: Device): Promise<voi
   if (isStockState(state)) return runStockState(page, state); // POS P1.14 U
   if (isShiftsState(state)) return runShiftsState(page, state); // POS P1.9 U
   if (isBillsState(state)) return runBillsState(page, state); // POS P1.16 U
+  if (isSettingsState(state)) return runSettingsState(page, state, device); // POS P1.10 U
   await visibleEl(page, tid("pos-reg-root"), 0, 15_000).catch(() => {
     throw new StepError("หน้าขายใหม่ไม่ขึ้น (pos-reg-root) — ธง settings.pos.registerV2 ของร้าน QC เปิดหรือยัง? (seed-pos-qc)");
   });
@@ -1240,6 +1286,130 @@ async function closeBillsShift(): Promise<void> {
 }
 // ◂
 
+// ═══════════════════ POS P1.10 U ▸ ข้อมูล + ขั้นตอนของหน้าตั้งค่า (เครื่อง SETTINGS_DEVICE_CODES · actor = เจ้าของร้าน) ═══════════════════
+const SETTINGS = {
+  seeded: false,
+  error: null as string | null,
+  devices: [] as { id: string; code: string }[],
+  shiftId: "",
+  swept: 0,
+  cleanup: null as null | { ok: boolean; detail: string },
+};
+/** ลงทะเบียนเครื่อง QC 2 เครื่อง + กะของเครื่อง 2 ครั้งเดียวต่อรอบ (ก่อนเปิด chromium) — พังไม่โยน (บันทึก SETTINGS.error) */
+async function seedSettingsOnce(): Promise<void> {
+  if (SETTINGS.seeded || SETTINGS.error) return;
+  try {
+    const { registerDevice, revokeDevice, updateDevice } = await import("@/lib/modules/pos/device");
+    const { openShift } = await import("@/lib/modules/pos/shift");
+    const actor = await ownerActor();
+    const ctx = { tenantId: T.tenantId, systemId: SYS, unitId };
+    // ซากของรอบที่ถูก kill (ACTIVE · รหัส posqc-vis-dev-*-1/2 · เกิน 1 ชม.) = เพิกถอนก่อน (เพดาน 3 เครื่อง/สาขา)
+    const stale = await prisma.posDevice.findMany({
+      where: { tenantId: T.tenantId, unitId, status: "ACTIVE", deviceCode: { startsWith: "posqc-vis-dev-" }, createdAt: { lt: new Date(Date.now() - 60 * 60 * 1000) } },
+      select: { id: true, deviceCode: true },
+    });
+    for (const d of stale.filter((x) => /-[12]$/.test(x.deviceCode))) if ((await revokeDevice(ctx, actor, { id: d.id })).ok) SETTINGS.swept++;
+    const names = ["เคาน์เตอร์ 1 (ภาพ QC)", "เคาน์เตอร์ 2 (ภาพ QC)"];
+    for (let i = 0; i < SETTINGS_DEVICE_CODES.length; i++) {
+      const r = await registerDevice(ctx, actor, { name: names[i]!, deviceCode: SETTINGS_DEVICE_CODES[i]! });
+      if (!r.ok) throw new StepError(`ลงทะเบียนเครื่อง QC ${i + 1} ไม่ได้: ${r.code}`);
+      SETTINGS.devices.push({ id: r.device.id, code: SETTINGS_DEVICE_CODES[i]! });
+    }
+    const u1 = await updateDevice(ctx, actor, { id: SETTINGS.devices[0]!.id, posRegNo: "POS001", printerConfig: { mode: "escpos-usb", paper: "80", drawerKick: true, autoPrint: true, thaiText: "raster", copies: 1 } });
+    if (!u1.ok) throw new StepError(`ตั้ง printerConfig เครื่อง 1 ไม่ได้: ${u1.code}`);
+    const u2 = await updateDevice(ctx, actor, { id: SETTINGS.devices[1]!.id, posRegNo: "POS002" });
+    if (!u2.ok) throw new StepError(`ตั้งเลขเครื่อง 2 ไม่ได้: ${u2.code}`);
+    if (jobs.some((j) => j.state === "paydone-print")) {
+      const code = SETTINGS_DEVICE_CODES[1];
+      const op = await openShift({ ...ctx, deviceId: code }, actor, { deviceId: code, deviceLabel: names[1]!, floatSatang: 100000 });
+      if (!op.ok) throw new StepError(`เปิดกะของเครื่อง 2 ไม่ได้: ${op.code}`);
+      SETTINGS.shiftId = op.shift.id;
+    }
+    SETTINGS.seeded = true;
+  } catch (e) {
+    SETTINGS.error = e instanceof Error ? e.message.slice(0, 200) : String(e);
+  }
+}
+async function runSettingsState(page: Any, state: SettingsStateKey, device: Device): Promise<void> {
+  if (SETTINGS.error || !SETTINGS.seeded) throw new StepError(`ไม่มีเครื่อง QC ของหน้าตั้งค่า: ${SETTINGS.error ?? "ยังไม่ได้สร้าง"}`);
+  if (state === "paydone-print") {
+    await visibleEl(page, tid("pos-reg-root"), 0, 15_000).catch(() => {
+      throw new StepError("หน้าขายใหม่ไม่ขึ้น (pos-reg-root)");
+    });
+    await ensureShift(page);
+    await cashSaleAmerLatte(page, device);
+    await visibleEl(page, tid("pos-print-receipt"), 0, 10_000).catch(() => {
+      throw new StepError("จอสำเร็จไม่มีปุ่มพิมพ์ใบเสร็จ (pos-print-receipt)");
+    });
+    await visibleEl(page, tid("pos-print-copy"), 0, 5_000);
+    return;
+  }
+  await visibleEl(page, tid("pos-settings-root"), 0, 15_000).catch(() => {
+    throw new StepError("หน้าตั้งค่าไม่ขึ้น (pos-settings-root)");
+  });
+  if (state === "settings-receipt") {
+    await visibleEl(page, tid("pos-settings-receipt"), 0, 15_000).catch(() => {
+      throw new StepError("แท็บใบเสร็จไม่ขึ้น (pos-settings-receipt)");
+    });
+    await visibleEl(page, tid("pos-settings-preview"), 0, 10_000);
+    if (userKey === "cashier") await visibleEl(page, tid("pos-settings-readonly"), 0, 5_000).catch(() => {
+      throw new StepError("แคชเชียร์ไม่เห็นป้ายอ่านอย่างเดียว (pos-settings-readonly)");
+    });
+    await sleep(600); // iframe ตัวอย่างวัดความสูงหลังโหลด
+    return;
+  }
+  if (userKey === "cashier") {
+    await visibleEl(page, tid("pos-settings-refusal"), 0, 10_000).catch(() => {
+      throw new StepError("แคชเชียร์ไม่เห็นการ์ดปฏิเสธของแท็บเครื่อง (pos-settings-refusal)");
+    });
+    return;
+  }
+  await visibleEl(page, tid("pos-settings-devices"), 0, 15_000).catch(() => {
+    throw new StepError("แท็บเครื่องไม่ขึ้น (pos-settings-devices)");
+  });
+  for (const d of SETTINGS.devices) await visibleEl(page, tid(`pos-device-card-${d.id}`), 0, 10_000);
+  if (state === "settings-devices") return;
+  if (state === "settings-device-revoke") {
+    await clickEl(page, tid(`pos-device-card-${SETTINGS.devices[1]!.id}`));
+    await clickEl(page, tid("pos-device-revoke"));
+    await visibleEl(page, tid("pos-device-revoke-dialog"), 0, 5_000);
+    return;
+  }
+  // settings-print-pair — เครื่อง 1 = เครื่องของเบราว์เซอร์นี้ (pinDevice) · mode USB
+  await clickEl(page, tid(`pos-device-card-${SETTINGS.devices[0]!.id}`));
+  await clickEl(page, tid("pos-device-pair"));
+  await visibleEl(page, tid("pos-print-pair"), 0, 5_000);
+  await visibleEl(page, tid("pos-print-pair-unsupported"), 0, 5_000).catch(() => {
+    throw new StepError("กล่องจับคู่ไม่ขึ้นสถานะ \"ไม่รองรับ\" (pos-print-pair-unsupported)");
+  });
+}
+/** finally: ปิดกะของเครื่อง 2 (นับ = ยอดคาด) + เพิกถอนเครื่อง QC ของรอบนี้ — เรียกซ้ำได้ · ไม่โยน */
+async function cleanupSettingsState(): Promise<void> {
+  if (!settingsStatesOn || SETTINGS.cleanup || (!SETTINGS.devices.length && !SETTINGS.shiftId)) return;
+  const parts: string[] = [];
+  let ok = true;
+  if (SETTINGS.shiftId) {
+    const c = await closeShiftAsOwner(SETTINGS.shiftId, "settings-close");
+    ok &&= c.ok;
+    parts.push(c.detail);
+  }
+  try {
+    const { revokeDevice } = await import("@/lib/modules/pos/device");
+    const actor = await ownerActor();
+    let n = 0;
+    for (const d of SETTINGS.devices) {
+      const r = await revokeDevice({ tenantId: T.tenantId, systemId: SYS, unitId }, actor, { id: d.id });
+      if (r.ok) n++;
+      else ok = false;
+    }
+    parts.push(`เพิกถอนเครื่อง QC ${n}/${SETTINGS.devices.length}${SETTINGS.swept ? ` (+ซาก ${SETTINGS.swept})` : ""}`);
+  } catch (e) {
+    ok = false;
+    parts.push(`เพิกถอนเครื่องล้ม: ${e instanceof Error ? e.message.slice(0, 160) : String(e)}`);
+  }
+  SETTINGS.cleanup = { ok, detail: parts.join(" · ") };
+}
+
 type Shot = { page: string; state: string | null; stepError: string | null; viewport: string; file: string; status: number; expect: number | "record"; http5xx: number; finalUrl: string; redirectedToLogin: boolean; overflow: boolean; overflowEl: string | null; consoleErrors: string[]; httpErrors: string[]; ok: boolean };
 const shots: Shot[] = [];
 let failures = 0;
@@ -1281,6 +1451,10 @@ try {
     QC_IDS.crois = byName("ครัวซองต์เนยสด");
   }
 
+  if (settingsStatesOn && pages.includes("settings")) {
+    await seedSettingsOnce(); // POS P1.10 U — พังไม่โยน (ทุกสถานะ settings-* ตกพร้อมเหตุผล)
+    console.log(SETTINGS.error ? `  ⚠️ เครื่อง QC ของหน้าตั้งค่า: ${SETTINGS.error}` : `  เครื่อง QC ของหน้าตั้งค่า: ${SETTINGS.devices.map((d) => d.id).join(" · ")} · กะ ${SETTINGS.shiftId || "-"}`);
+  }
   if (billsStatesOn && pages.includes("sales")) {
     await seedBillsOnce(); // POS P1.16 U — พังไม่โยน (ทุกสถานะ bills-* ตกพร้อมเหตุผล)
     console.log(BILLS.error ? `  ⚠️ บิลชุดภาพ: ${BILLS.error}` : `  บิลชุดภาพ: ${BILLS.reused ? "ใช้ชุดของวันนี้ซ้ำ" : `สร้าง ${Object.keys(BILLS.ids).length} ใบ`} · เป้าหมาย ${BILLS.target}`);
@@ -1299,8 +1473,21 @@ try {
         const p = job.page;
         const v = job.v;
         const page = await browser.newPage();
-        await pinDevice(page, p === "shifts" && job.state ? SHIFTS_DEVICE_ID : p === "sales" && job.state ? BILLS_DEVICE_ID : DEVICE_ID); // P1.16 U: หน้าบิลใช้เครื่องของกะภาพบิล (การ์ดเงินสด "จากลิ้นชักกะ #N") // R3 V4: เครื่องเดียวกับที่เจ้าของเปิดกะให้ · P1.9 U: สถานะหน้ากะใช้เครื่องแยก
+        await pinDevice(
+          page,
+          p === "settings" && job.state ? SETTINGS_DEVICE_CODES[job.state === "paydone-print" ? 1 : 0] : p === "shifts" && job.state ? SHIFTS_DEVICE_ID : p === "sales" && job.state ? BILLS_DEVICE_ID : DEVICE_ID,
+        ); // P1.10 U: หน้าตั้งค่าใช้เครื่อง QC 1 (paydone-print = เครื่อง 2 ที่มีกะ) // P1.16 U: หน้าบิลใช้เครื่องของกะภาพบิล (การ์ดเงินสด "จากลิ้นชักกะ #N") // R3 V4: เครื่องเดียวกับที่เจ้าของเปิดกะให้ · P1.9 U: สถานะหน้ากะใช้เครื่องแยก
         await page.setViewport({ width: v.w, height: v.h, deviceScaleFactor: 2, isMobile: v.mobile, hasTouch: v.name !== "desktop" });
+        // POS P1.10 U ▸ settings-print-pair: เบราว์เซอร์ไม่มี WebUSB (แบบ iOS Safari) — ซ่อน navigator.usb ก่อนสคริปต์ของหน้า ⇒ กล่องจับคู่ขึ้นสถานะ "ไม่รองรับ" ◂
+        if (job.state === "settings-print-pair") {
+          await page.evaluateOnNewDocument(() => {
+            try {
+              Object.defineProperty(Navigator.prototype, "usb", { get: () => undefined, configurable: true });
+            } catch {
+              /* แก้ไม่ได้ = ปล่อยตามจริง */
+            }
+          });
+        }
         await page.setCookie(...cookies);
         const consoleErrors: string[] = [];
         const httpErrors: string[] = [];
@@ -1388,6 +1575,9 @@ try {
   await closeBillsShift(); // POS P1.16 U
   if (BILLS.close) console.error(`${BILLS.close.ok ? "🧹" : "⚠️"} ${BILLS.close.detail}`);
   if (BILLS.close && !BILLS.close.ok) failures++;
+  await cleanupSettingsState(); // POS P1.10 U
+  if (SETTINGS.cleanup) console.error(`${SETTINGS.cleanup.ok ? "🧹" : "⚠️"} ${SETTINGS.cleanup.detail}`);
+  if (SETTINGS.cleanup && !SETTINGS.cleanup.ok) failures++;
   const { removed, stale } = await cleanSessions();
   let fixOut = "";
   try {
@@ -1399,9 +1589,9 @@ try {
   }
   await prisma.$disconnect();
   cleanProfiles();
-  writeFileSync(`${OUT}/summary-${userKey}.json`, JSON.stringify({ wo: WO, user: userKey, tenant: tenantKey, base: BASE, at: new Date().toISOString(), deviceId: DEVICE_ID, shiftOpenError: SHIFT.openError, shiftClose: SHIFT.close, stockCount: STOCK, shiftsState: SHIFTS, billsState: BILLS, shots }, null, 2));
+  writeFileSync(`${OUT}/summary-${userKey}.json`, JSON.stringify({ wo: WO, user: userKey, tenant: tenantKey, base: BASE, at: new Date().toISOString(), deviceId: DEVICE_ID, shiftOpenError: SHIFT.openError, shiftClose: SHIFT.close, stockCount: STOCK, shiftsState: SHIFTS, billsState: BILLS, settingsState: SETTINGS, shots }, null, 2));
   console.log(`\n🧹 ลบ session ของรอบนี้ ${removed}${stale ? ` (+ซากหมดอายุ ${stale})` : ""}${fixOut} · ลบโปรไฟล์ chromium ${PROFILE_DIRS[0]} · ภาพ ${shots.length} ใบใน ${OUT}`);
 }
 if (fatal) console.error(`❌ ${fatal}`);
-console.log(`JSON_SUMMARY ${JSON.stringify({ wo: WO, user: userKey, tenant: tenantKey, base: BASE, shiftOpenError: SHIFT.openError, shiftClose: SHIFT.close, stockCount: STOCK, shiftsState: SHIFTS, billsState: BILLS, shots: shots.map(({ consoleErrors, httpErrors, ...s }) => ({ ...s, consoleErrors: consoleErrors.length, httpErrors: httpErrors.length })), failures, fatal: fatal || null })}`);
+console.log(`JSON_SUMMARY ${JSON.stringify({ wo: WO, user: userKey, tenant: tenantKey, base: BASE, shiftOpenError: SHIFT.openError, shiftClose: SHIFT.close, stockCount: STOCK, shiftsState: SHIFTS, billsState: BILLS, settingsState: SETTINGS, shots: shots.map(({ consoleErrors, httpErrors, ...s }) => ({ ...s, consoleErrors: consoleErrors.length, httpErrors: httpErrors.length })), failures, fatal: fatal || null })}`);
 process.exit(fatal ? 2 : failures > 0 ? 1 : 0);
