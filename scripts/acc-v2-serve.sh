@@ -26,7 +26,8 @@ PORT="${ACC_V2_PORT:-3215}"
 OUT="$ROOT/.qc-shots/acc-v2"
 PIDFILE="$OUT/server.pid"
 LOGFILE="$OUT/server.log"
-ENVFILE="$ROOT/.env.qc"
+# QC5 (10 ต.ค.): ถ้าเรียกผ่าน scripts/qcN.sh จะมี QC_ENV_FILE มา → ใช้ไฟล์นั้น (เลนถ่ายภาพ POS = .env.qc5) · ไม่ตั้ง = .env.qc เดิม
+ENVFILE="${QC_ENV_FILE:+$ROOT/$QC_ENV_FILE}"; ENVFILE="${ENVFILE:-$ROOT/.env.qc}"
 CMD="${1:-build}"
 
 mkdir -p "$OUT"
