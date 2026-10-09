@@ -374,7 +374,7 @@ export function PayIntentPanel({
     );
   } else if (it && it.status === "PENDING") {
     body = (
-      <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-2">
         {it.kind === "PROMPTPAY_BEAM" ? (
           <p data-testid="pos-pay-intent-wait" className="flex items-start gap-2 text-[13px] font-semibold leading-[1.4] text-[color:var(--color-accent)]">
             <span aria-hidden className="mt-[2px] grid size-4 shrink-0 place-items-center rounded-full border-2 border-[color:var(--color-accent)]">
@@ -458,16 +458,17 @@ export function PayIntentPanel({
     >
       <div className={`relative shrink-0 ${it && it.status !== "PENDING" && it.status !== "PAID" ? "opacity-40" : ""}`}>
         {qrOn ? (
-          <PromptPayQr payload={it!.qrPayload} size={150} />
+          <PromptPayQr payload={it!.qrPayload} size={146} />
         ) : (
-          <div aria-hidden className="grid size-[174px] place-items-center rounded-xl border bg-[color:var(--color-surface-2)] text-[color:var(--color-muted)]">
+          <div aria-hidden className="grid size-[170px] place-items-center rounded-xl border bg-[color:var(--color-surface-2)] text-[color:var(--color-muted)]">
             <RegisterIcon name={method === "CARD" ? "card" : "qr"} size={28} />
           </div>
         )}
       </div>
-      <div className="flex min-w-0 flex-1 flex-col gap-3 max-md:items-center max-md:text-center">
+      {/* ภาพ 02: แผงสูง ≈ 200 — QR 170 ซ้าย · ข้อความ/ปุ่ม/อายุ QR ซ้อนในคอลัมน์ขวา (แก้รอบ 2 · แป้นตัวเลขต้องพอดีจอ 1440×900 / 1024×768) */}
+      <div className="flex min-w-0 flex-1 flex-col gap-2 max-md:items-center max-md:text-center">
         <div className="text-[12px] text-[color:var(--color-muted)]">{title}</div>
-        <div className="text-[28px] font-bold tracking-[-0.02em] tabular-nums">{moneyText(shown)}</div>
+        <div className="text-[26px] font-bold leading-[1.15] tracking-[-0.02em] tabular-nums">{moneyText(shown)}</div>
         {body}
         {lateErr && (
           <p data-testid="pos-pay-intent-error" data-code={lateErr.code} role="alert" className="text-[12.5px] text-[color:var(--color-danger)]">

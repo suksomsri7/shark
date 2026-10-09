@@ -110,3 +110,4 @@ Not run here: real visual (needs a server) — CONTROLLER-RUN; `next build`.
 | typecheck | exit 0 |
 | `qc-pos-p1.7` QC_FORCE=1 | exit 0 · 32/32 · residue 0 |
 | `fitness-pos` | exit 0 · 8/8 (also `pnpm fitness` 41/41 pre-commit) |
+- **Addendum (QR panel compact, separate commit):** vis37 `register-paydlg-promptpay-qr-owner-1440x900` clipped the `00/0/⌫` row and hid the quick amounts. Now, only while the intent panel is shown (PromptPay/Beam card, incl. the paid state; cash/EDC unchanged): QR 146 px in a 170 px box, text column beside it (gap 8 · amount 26 px · status · button/chip · expiry line inside the column) ⇒ panel ≈ 200–205 px like 02; right column gap 12 + py 14; keypad gap 10, keys 46 px (52 px at xl). Budget: 1440×900 dialog 760 − header 72 − footer 76 = 612 ≥ ~607; 1024×768 dialog 736 − 148 = 588 ≥ ~583. Keys stay ≥ 44 px. Re-shoot = controller.

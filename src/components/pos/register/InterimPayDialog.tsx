@@ -192,6 +192,8 @@ export function PayDialog(p: Props) {
     },
   });
   /** ใบของรอบนี้จ่ายแล้วและยอดตรงรอบนี้ ⇒ ยืนยัน/แยกจ่ายได้ · ยอด/วิธีล็อก */
+  /** แผงใบขอรับเงินแสดงอยู่ (คอลัมน์ขวาใช้ระยะกระชับ) */
+  const panelOn = intentMode && !!p.intent;
   const piPaid = intentMode && pi.intent?.status === "PAID" && pi.intent.amountSatang === roundAmount;
   const piLocked = intentMode && pi.intent?.status === "PAID";
   const canConfirm = ready && (zero || plan.state === "complete") && (!intentMode || zero || remaining <= 0 || piPaid);
@@ -578,7 +580,12 @@ export function PayDialog(p: Props) {
 
             {/* ── คอลัมน์ขวา (มือถือ: ต่อท้ายคอลัมน์ซ้าย · ไม่มีแป้นตัวเลข) ── */}
             {showForm && !zero && (
-              <div className="flex flex-col gap-4 px-5 pb-4 md:w-[400px] md:shrink-0 md:overflow-y-auto md:bg-[color:var(--color-surface-2)] md:px-[22px] md:py-[18px] lg:w-[470px] xl:gap-[23px]">
+              <div
+                className={`flex flex-col px-5 pb-4 md:w-[400px] md:shrink-0 md:overflow-y-auto md:bg-[color:var(--color-surface-2)] md:px-[22px] lg:w-[470px] ${
+                  // P1.7U แก้รอบ 2: มีแผง QR ⇒ ระยะ/แป้นกระชับ ให้แผง + ช่องจำนวน + แป้น 4 แถว + ปุ่มด่วน พอดีกล่องที่ 1440×900 และ 1024×768
+                  panelOn ? "gap-3 md:py-[14px]" : "gap-4 md:py-[18px] xl:gap-[23px]"
+                }`}
+              >
                 {intentMode && p.intent && (
                   <PayIntentPanel h={pi} setup={p.intent} method={method === "CARD" ? "CARD" : "PROMPTPAY"} amountSatang={roundAmount} waiting={intentWaiting} />
                 )}
@@ -665,12 +672,12 @@ export function PayDialog(p: Props) {
                   </p>
                 )}
 
-                <div className="hidden grid-cols-3 gap-3.5 md:grid" role="group" aria-label={t("pay.numpad")}>
+                <div className={`hidden grid-cols-3 md:grid ${panelOn ? "gap-2.5" : "gap-3.5"}`} role="group" aria-label={t("pay.numpad")}>
                   {KEYS.map((k) => (
                     <button
                       key={k.id}
                       data-testid={`pos-reg-paydlg-key-${k.id}`}
-                      className={`grid h-14 place-items-center rounded-[14px] border text-[21px] font-semibold tabular-nums active:bg-[color:var(--color-surface-2)] disabled:opacity-50 xl:h-16 ${
+                      className={`grid place-items-center rounded-[14px] border text-[21px] font-semibold tabular-nums active:bg-[color:var(--color-surface-2)] disabled:opacity-50 ${panelOn ? "h-[46px] xl:h-[52px]" : "h-14 xl:h-16"} ${
                         k.id === "00" || k.id === "back" ? "bg-[color:var(--color-surface-2)] text-[18px]" : "bg-[color:var(--color-surface)]"
                       }`}
                       type="button"
