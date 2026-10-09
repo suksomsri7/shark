@@ -287,7 +287,12 @@
       "alreadyRecounted": "This shift has already been recounted",
       "deviceRevoked": "This device has been revoked — contact a manager",
       "deviceLimit": "Device limit reached — revoke an unused device first",
-      "deviceNotFound": "Device not found at this branch"
+      "deviceNotFound": "Device not found at this branch",
+      "intentNotFound": "This payment request was not found at this branch — create a new QR",
+      "intentNotPaid": "Payment not received yet — wait for it, or confirm manually when you see the money arrive",
+      "intentConsumed": "This payment was already used for another bill",
+      "intentExpired": "Payment arrived more than 24 hours ago — it can't be used for a bill; ask a manager",
+      "amountMismatch": "The amount doesn't match the payment request — check the amount again"
     },
     "held": {
       "title": "Held bills",
@@ -1071,6 +1076,19 @@
       "reasonRequired": "Enter a reason for voiding (up to 200 characters)",
       "validation": "The request is not valid",
       "unknown": "Something went wrong — please try again"
+    }
+  },
+  "payment": {
+    "errors": {
+      "promptpayNotConfigured": "PromptPay is not set up — ask a manager to add it in Accounting → Business profile",
+      "cardUnavailable": "Beam is not enabled — take the card on the EDC terminal and enter its reference",
+      "amountMismatch": "The amount doesn't match the payment request — create a new QR",
+      "intentNotFound": "Payment request not found — create a new QR",
+      "intentNotPaid": "Payment not received yet — wait, or confirm manually when you see the money arrive",
+      "intentConsumed": "This payment was already used for another bill",
+      "intentExpired": "QR expired — create a new one",
+      "intentCancelled": "This payment request was cancelled",
+      "intentPaid": "Payment already received — it can't be cancelled; use it for this bill or refund the customer"
     }
   }
 }
