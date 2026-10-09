@@ -72,6 +72,10 @@ const CHECKS: readonly Def[] = [
   D("M5", "-", "[R1] S (SUSPENDED): quote / benefits / submit → MEMBER_SUSPENDED · ค้นแล้วขึ้นพร้อม suspended:true · ไม่มีบิล"),
   D("M6", "-", "[R1] สาขา B (ไม่มีระบบสมาชิก): lookup / quick register / benefits / fulfil / quote+memberId → MEMBER_SYSTEM_MISSING"),
   D("U1", "-", "[P1.12U มติ 2 · ORACLE-EDIT] registerStatus.memberEnabled: สาขา A (มีระบบสมาชิก) → true · สาขา B (ไม่มีระบบสมาชิก) → false (จอไม่มีแถวสมาชิก/ส่วนสิทธิ์)"),
+  // ORACLE-EDIT (P1.12U fix รอบ 1 · มติผู้คุมงาน 1 · รีวิว F1): quote ของตะกร้าที่มีสิทธิ์เกินเพดาน (quoteRegisterCartOverride) — อ่านอย่างเดียว
+  D("U2", "X4", "[P1.12U fix F1] สมาชิก X + ใช้ 500 แต้ม + ลดท้ายบิล 15% (> เพดานแคชเชียร์ 10%) + PIN ผู้จัดการถูก → quoteRegisterCartOverride ok (quote ปกติ = DISCOUNT_EXCEEDS_LIMIT) · ลดท้ายบิลเต็ม 15% (เพดานของผู้จัดการ) · เส้น POINTS 5,000 · ไม่มี conflict · ยอดทั้งก้อนตรงทุกไบต์กับ submitRegisterSale PIN/สิทธิ์เดียวกัน (PRICE_CHANGED) · submit ยอดนั้น ok ตัด 500 แต้ม"),
+  D("U3", "X5", "[P1.12U fix F1] override quote: PIN ผิด → PIN_INVALID (นับผิด +1 บนแถวผู้จัดการ เหมือน submit) · PIN ไม่มี managerUserId → VALIDATION · ไม่ส่งสิทธิ์ (มีกติกา POS_DISCOUNT_OVER) → DISCOUNT_EXCEEDS_LIMIT · PIN ถูกถัดมา → ok (ยังไม่ล็อก · ตัวนับกลับ 0) · ไม่มี audit pos.discount.override/pin_override · ไม่มี PosHeldCart/คำขออนุมัติเพิ่ม"),
+  D("U4", "X1", "[P1.12U fix F1] บิลพักที่อนุมัติ POS_DISCOUNT_OVER (ลด 15% + คูปอง WELCOME50) → override quote {heldCartId} ok ด้วยเพดานที่อนุมัติ (ลด 15% + คูปอง ฿50 · quote ปกติ = DISCOUNT_EXCEEDS_LIMIT) · submit {heldCartId} ยอดนั้น ok · หลังอนุมัติถูกใช้ override quote เดิม → DISCOUNT_EXCEEDS_LIMIT"),
   D("M7", "X3", "[CD2 มติ Q2 · R5] พนักงานมีแค่ pos.sale.create (ไม่มี member.*) ค้น · ดูสิทธิ์ · สมัครด่วนได้ · benefits อ่านอย่างเดียว (นับแถวเท่าเดิม) · คีย์ผลตรง R5 · tier 5%/cap ฿100 · ว่อชเชอร์ applicable/reason · giftCards {numberMasked, balanceSatang, expiresAt} ไม่มีเลขเต็ม/PIN · stamps"),
   D("M8", "X3", "[มติ Q2] ผู้ใช้ไม่มี pos.sale.create (มี pos.sale.read + member.*) → PERMISSION_DENIED จาก lookup / quick register / benefits / fulfil / quote · ไม่มีอะไรถูกเขียน"),
   D("M9", "X5", "[R4] สมัครด่วน → Customer (source POS · homeUnitId A · sourceDetail.heardFrom/unitId) + consent LINE/EMAIL/SMS ตาม marketingConsent (source STAFF) + attribution FIRST/LAST (POS · staffUserId = ผู้กระทำจริง · unitId A) + audit pos.member.registered {customerId, created:true, unitId} ผู้กระทำจริง ไม่มีเบอร์เต็ม · ผล {ok, created:true, member (DTO R2)}"),
@@ -518,6 +522,8 @@ const stampMod = await tryImport("@/lib/modules/stamp");
 const rewardMod = await tryImport("@/lib/modules/reward");
 const couponMod = await tryImport("@/lib/modules/coupon/service");
 const consMod = await tryImport("@/lib/outbox-consumers");
+const staffPinMod = await tryImport("@/lib/modules/pos/staff-pin"); // ORACLE-EDIT U2–U4 (PIN ผู้จัดการ)
+const apSvc = await tryImport("@/lib/modules/approval/service"); // ORACLE-EDIT U3–U4 (กติกา POS_DISCOUNT_OVER · ตัดสิน)
 
 const RAND = Math.random().toString(36).slice(2, 8);
 const TAG = `qc-p1.12-${RAND}`;
@@ -1879,6 +1885,122 @@ async function runDb() {
     }
     if (n < 6) p.push(`เทียบได้ ${n} บิล (คาด ≥ 6)`);
     chk("T5", p.length === 0, "quote = บิล (ยอด + VAT) ทุกตะกร้าผสม", FXB(joinP(p)));
+  }
+
+  // ════════ ORACLE-EDIT U2–U4 (P1.12U fix รอบ 1 · มติผู้คุมงาน 1): quote ของตะกร้าที่มีสิทธิ์เกินเพดาน — อ่านอย่างเดียว ════════
+  //   วางท้ายสุด (หลังทุกข้อ) เพราะสร้างกติกา POS_DISCOUNT_OVER + สมาชิกภาพเจ้าของในร้านชั่วคราว (ข้อก่อนหน้าต้องไม่เห็น) · ทุกแถวอยู่ในร้านชั่วคราว (ลบใน finally)
+  {
+    const pU: string[] = [];
+    let PIN = "";
+    const WRONG = (pin: string) => pin.slice(0, -1) + String((Number(pin.slice(-1)) + 1) % 10);
+    if (!fx) {
+      await step("U สมาชิกภาพเจ้าของ (PIN ผู้จัดการ)", () => P.membership.create({ data: { userId: ownerId, tenantId: T, role: "OWNER", unitAccess: ["*"], permissions: {}, acceptedAt: new Date() } }));
+      for (let i = 0; i < 4 && !PIN; i++) {
+        const cand = `7${rnd(5)}`;
+        const r = await call(staffPinMod, "setStaffPin", ctxOf("A"), owner, { userId: ownerId, pin: cand });
+        if (r?.ok === true) PIN = cand;
+        else if (i === 3) pU.push(`setStaffPin → ${codeOf(r)}`);
+      }
+      await step("U กติกา POS_DISCOUNT_OVER", () => apSvc.createPolicy({ tenantId: T }, { name: `QC P1.12U ส่วนลดเกินสิทธิ์ ${RAND}`, entityType: "POS_DISCOUNT_OVER", steps: [{ order: 1, approverRole: "OWNER" }] }));
+      if (X) await step("U แต้ม X +1,000", () => pointMod.earnWithLot(pctx, { customerId: X, points: 1000, refType: "QC", refId: `${TAG}-pu2`, idempotencyKey: `${TAG}-pu2` }));
+    }
+    const ov = (input: Any, actor: Any = staffSeller) => call(regMod, "quoteRegisterCartOverride", ctxOf("A", DEV1), actor, input);
+    const auditN = async (): Promise<number> => (T ? P.auditLog.count({ where: { tenantId: T, action: { in: ["pos.discount.override", "pos.approval.pin_override"] } } }).catch(() => -1) : -1);
+    const heldN = async (): Promise<number> => (T ? P.posHeldCart.count({ where: { tenantId: T } }).catch(() => -1) : -1);
+    const reqN = async (): Promise<number> => (T ? P.approvalRequest.count({ where: { tenantId: T } }).catch(() => -1) : -1);
+    const pinRow = async (): Promise<Any> => (T ? P.posStaffPin.findFirst({ where: { tenantId: T, unitId: U.A, userId: ownerId }, select: { failedCount: true, lockedUntil: true } }).catch(() => null) : null);
+    const totalsOf = (r: Any) => {
+      if (!isRecord(r)) return "";
+      const { ok: _o, code: _c, message: _m, ...rest } = r;
+      void _o;
+      void _c;
+      void _m;
+      return JSON.stringify(rest);
+    };
+    const FXU = (pre: string[]) => (fx ? `fixture:${fx} · ` : "") + (pre.length ? `${pre.join(" · ")} · ` : "");
+
+    // U3 — PIN ผิด / รูปผิด / ไม่ส่งสิทธิ์ ไม่มีผลข้างเคียง · PIN ถูกถัดมาผ่าน
+    {
+      const p: string[] = [];
+      const c3 = cartOf({ lines: [["U3 ของลดเกินสิทธิ์", 1, 50_000]], billDiscount: { type: "PERCENT", value: 2000 } });
+      const a0 = await auditN();
+      const h0 = await heldN();
+      const q0 = await reqN();
+      const plain = await qraw("A", c3, staffSeller);
+      if (!refused(plain, "DISCOUNT_EXCEEDS_LIMIT")) p.push(`quote ปกติ → ${codeOf(plain)} (คาด DISCOUNT_EXCEEDS_LIMIT)`);
+      const none = await ov({ cart: c3 });
+      if (!refused(none, "DISCOUNT_EXCEEDS_LIMIT")) p.push(`ไม่ส่งสิทธิ์ → ${codeOf(none)} (คาด DISCOUNT_EXCEEDS_LIMIT)`);
+      const noMgr = await ov({ cart: c3, managerPin: PIN || "735191" });
+      if (!refused(noMgr, "VALIDATION")) p.push(`PIN ไม่มี managerUserId → ${codeOf(noMgr)} (คาด VALIDATION)`);
+      const bad = await ov({ cart: c3, managerUserId: ownerId, managerPin: WRONG(PIN || "735191") });
+      if (!refused(bad, "PIN_INVALID")) p.push(`PIN ผิด → ${codeOf(bad)} (คาด PIN_INVALID)`);
+      const pr1 = await pinRow();
+      if (PIN && pr1?.failedCount !== 1) p.push(`ตัวนับ PIN ผิด ${short(pr1?.failedCount, 10)} (คาด 1 — ตัวนับเดียวกับ submit)`);
+      const good = PIN ? await ov({ cart: c3, managerUserId: ownerId, managerPin: PIN }) : { ok: false, code: "NO_PIN" };
+      if (good?.ok !== true || good.billDiscountSatang !== 10_000 || good.grandTotalSatang !== 40_000) p.push(`PIN ถูก → ${codeOf(good)} ${short(good?.message ?? `${good?.billDiscountSatang}/${good?.grandTotalSatang}`, 60)} (คาด ok ลด 10,000 ยอด 40,000)`);
+      const pr2 = await pinRow();
+      if (PIN && (pr2?.failedCount !== 0 || pr2?.lockedUntil)) p.push(`ตัวนับหลัง PIN ถูก ${short(pr2, 60)} (คาด 0 ไม่ล็อก)`);
+      const [a1, h1, q1] = [await auditN(), await heldN(), await reqN()];
+      if (a1 !== a0) p.push(`audit override/pin_override ${a0} → ${a1}`);
+      if (h1 !== h0) p.push(`PosHeldCart ${h0} → ${h1}`);
+      if (q1 !== q0) p.push(`คำขออนุมัติ ${q0} → ${q1}`);
+      chk("U3", !fx && !!PIN && p.length === 0, "PIN ผิด PIN_INVALID (+1) · ไม่มีผู้จัดการ VALIDATION · ไม่ส่งสิทธิ์ DISCOUNT_EXCEEDS_LIMIT · PIN ถูก ok · ไม่มี audit/บิลพัก/คำขอ", FXU(pU) + joinP(p));
+    }
+
+    // U2 — สมาชิก + 500 แต้ม + PIN ผู้จัดการ = submit ทุกไบต์
+    {
+      const p: string[] = [];
+      const c2: CartIn = { lines: [["U2 ของสมาชิกลดเกินสิทธิ์", 1, 100_000]], memberId: X, billDiscount: { type: "PERCENT", value: 1500 }, memberChoices: { points: 500 } };
+      const pinIn = { managerUserId: ownerId, managerPin: PIN };
+      const a0 = await auditN();
+      const plain = await quote("A", c2, staffSeller);
+      if (!refused(plain, "DISCOUNT_EXCEEDS_LIMIT")) p.push(`quote ปกติ → ${codeOf(plain)} (คาด DISCOUNT_EXCEEDS_LIMIT)`);
+      const q = await ov({ cart: cartOf(c2), ...pinIn });
+      const pts = (q?.memberLines ?? []).find((l: Any) => l?.kind === "POINTS");
+      if (q?.ok !== true) p.push(`override → ${codeOf(q)} ${short(q?.message ?? "", 80)}`);
+      else {
+        if (q.billDiscountSatang !== 15_000) p.push(`ลดท้ายบิล ${q.billDiscountSatang} (คาด 15,000 — เพดานผู้จัดการ)`);
+        if (pts?.discountSatang !== 5_000) p.push(`เส้น POINTS ${short(pts, 80)} (คาด 5,000)`);
+        if ((q.memberConflicts ?? []).length) p.push(`conflicts ${short(q.memberConflicts, 80)}`);
+      }
+      if ((await auditN()) !== a0) p.push("override quote เขียน audit");
+      if (q?.ok === true) {
+        const pc = await submitRaw("A", cartOf(c2), Number(q.grandTotalSatang) + 1, staffSeller, pinIn);
+        if (!refused(pc.r, "PRICE_CHANGED")) p.push(`submit ยอดผิด → ${codeOf(pc.r)} (คาด PRICE_CHANGED)`);
+        else if (totalsOf(pc.r) !== totalsOf(q)) p.push(`ยอดไม่ตรงทุกไบต์: override ${short(totalsOf(q), 120)} ≠ submit ${short(totalsOf(pc.r), 120)}`);
+        const ok = await submitRaw("A", cartOf(c2), Number(q.grandTotalSatang), staffSeller, pinIn);
+        if (ok.r?.ok !== true || ok.r.grandTotalSatang !== q.grandTotalSatang) p.push(`submit ยอดเดียวกัน → ${codeOf(ok.r)} ${short(ok.r?.message ?? ok.r?.grandTotalSatang, 80)}`);
+        else if (ok.r.member?.pointsBurned !== 500) p.push(`pointsBurned ${short(ok.r.member, 80)} (คาด 500)`);
+      }
+      chk("U2", !fx && !!PIN && !!X && p.length === 0, "override ok ด้วยเพดานผู้จัดการ + แต้ม 500 · ยอด = submit ทุกไบต์ · submit ok", FXU(pU) + joinP(p));
+    }
+
+    // U4 — บิลพักที่อนุมัติ + คูปอง · ใช้ได้ครั้งเดียว
+    {
+      const p: string[] = [];
+      const c4: CartIn = { lines: [["U4 ของคูปองลดเกินสิทธิ์", 1, 40_000]], billDiscount: { type: "PERCENT", value: 1500 }, couponCode: "WELCOME50" };
+      const ask = fx ? null : await submitRaw("A", cartOf(c4), 1, staffSeller, { payMethods: [], cashReceivedSatang: null });
+      const rq = ask && refused(ask.r, "APPROVAL_REQUIRED") && typeof ask.r.requestId === "string" ? String(ask.r.requestId) : "";
+      const held = rq && typeof ask?.r?.heldCartId === "string" ? String(ask.r.heldCartId) : "";
+      if (!rq || !held) p.push(`ขออนุมัติ → ${codeOf(ask?.r)} ${short(ask?.r?.message ?? "", 60)}`);
+      const d = rq ? await call(apSvc, "decide", { ...owner }, { tenantId: T }, rq, { decision: "APPROVED", note: "QC U4" }) : null;
+      if (rq && d?.ok !== true) p.push(`decide → ${short(d, 60)}`);
+      await drain();
+      const plain = await quote("A", c4, staffSeller);
+      if (!refused(plain, "DISCOUNT_EXCEEDS_LIMIT")) p.push(`quote ปกติ → ${codeOf(plain)} (คาด DISCOUNT_EXCEEDS_LIMIT)`);
+      const q = held ? await ov({ cart: cartOf(c4), heldCartId: held }) : null;
+      if (q?.ok !== true) p.push(`override {heldCartId} → ${codeOf(q)} ${short(q?.message ?? "", 60)}`);
+      else if (q.billDiscountSatang !== 6_000 || q.couponDiscountSatang !== 5_000 || q.grandTotalSatang !== 29_000) p.push(`ยอด ${q.billDiscountSatang}/${q.couponDiscountSatang}/${q.grandTotalSatang} (คาด 6,000/5,000/29,000)`);
+      if (q?.ok === true) {
+        const s = await submitRaw("A", cartOf(c4), Number(q.grandTotalSatang), staffSeller, { heldCartId: held });
+        if (s.r?.ok !== true || s.r.grandTotalSatang !== q.grandTotalSatang) p.push(`submit {heldCartId} → ${codeOf(s.r)} ${short(s.r?.message ?? s.r?.grandTotalSatang, 60)}`);
+        else {
+          const again = await ov({ cart: cartOf(c4), heldCartId: held });
+          if (!refused(again, "DISCOUNT_EXCEEDS_LIMIT")) p.push(`อนุมัติที่ใช้แล้ว → ${codeOf(again)} (คาด DISCOUNT_EXCEEDS_LIMIT)`);
+        }
+      }
+      chk("U4", !fx && p.length === 0, "อนุมัติ + คูปอง → override ok ฿290 · submit ok · ใช้แล้ว = DISCOUNT_EXCEEDS_LIMIT", FXU(pU) + joinP(p));
+    }
   }
   if (notes.length) console.log(`  ℹ️  ฟิกซ์เจอร์มีหมายเหตุ ${notes.length}: ${notes.slice(0, 6).join(" | ")}`);
 }

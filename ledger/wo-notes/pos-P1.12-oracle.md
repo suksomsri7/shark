@@ -59,7 +59,7 @@ Check families (prompt): ST · B · M · T · V · P · S · W · X · R · Z. T
 - Messages live in split files `src/messages/{th,en}/pos.json`; `register.errors.couponInvalid` already exists.
 - Stamp module: a stamp in a **completed** cycle cannot be voided — fixture card uses `minSatang 60,000` so only 5 bills of X stamp (no completion in a run).
 
-## Check list (68 since P1.12U ORACLE-EDIT U1 · S=5 −=26 X1=12 X2=3 X3=3 X4=7 X5=12) — fix round 1 (reviewer F1–F4 · F7) added M12 · P9 · W3 (64 → 67)
+## Check list (71 since P1.12U fix round 1 ORACLE-EDIT U2–U4 · 68 since P1.12U ORACLE-EDIT U1 · S=5 −=26 X1=12 X2=3 X3=3 X4=7 X5=12) — fix round 1 (reviewer F1–F4 · F7) added M12 · P9 · W3 (64 → 67)
 ST1 migration additive (2 nullable Json) · ST2 pos→loyalty only via member facade (public-receipt allowlist) + register-member.ts + delegated keys + no admin calls · ST3 "use server" + 4 actions · ST4 no GIFT_CARD tender · ST5 codes/keys/messages, MEMBER_RIGHTS_UNSUPPORTED retired, REG_QUOTE_KEYS, saleWalletCart in createSale + quote, CreateSaleInput.memberSnapshot, createSale writes memberBenefits, submit passes memberSystemId, member.erased POS after CRM ·
 B1 new keys exact · B2 giftCard VALIDATION · B3 points type · B4 client snapshot VALIDATION · B5 quick-register parser · B6 held cart memberId+couponCode ·
 M1 phone lookup (prefix/dashed/legacy) + DTO + masking + short q · M2 name/code/sort/merged/other-system · M3 SHARK-MC token · M4 404-not-403 same message · M5 SUSPENDED · M6 MEMBER_SYSTEM_MISSING ×5 · U1 registerStatus.memberEnabled A true / B false (P1.12U) · M7 STAFF w/o member.* + benefits DTO read-only · M8 no pos.sale.create ⇒ PERMISSION_DENIED ×5 · M9 quick register side effects + audit · M10 dup phone / replay key · M11 PHONE_INVALID + snapshot + `0066…` → `0…` (F2) · M12 legacy dashed L + same digits typed with spaces ⇒ created:false, same id, Customer count same, no audit (F1) ·
@@ -102,3 +102,21 @@ One `test(pos P1.12)` commit by builder S, as ruled: **M12** new (F1) · **M11**
   `registerStatus(ctxOf("B"), owner).memberEnabled === false` (unit B without MEMBER). Count **67 → 68** after the fix-round merge (was 64 → 65 on the pre-fix base).
   Server: `register.ts registerStatus` returns `memberEnabled = !!systemForUnit(unitId, "MEMBER")` (read error ⇒ false) +
   `RegisterStatus.memberEnabled: boolean`. Builder P1.12U, tree d, branch `wip/pos-p1.12u`.
+
+## ORACLE-EDIT U2 U3 U4 (P1.12U fix round 1 · controller ruling 1 · reviewer F1/F9, 9 Oct)
+Builder P1.12U, tree p11, branch `wip/pos-p1.12u`. Seam under test: `register.ts quoteRegisterCartOverride(ctx, actor, {cart, managerPin?, managerUserId?, heldCartId?, idempotencyKey?})`
+(+ `quoteRegisterCartOverrideAction`), read-only. Block placed **last** in `runDb` (after T5) because it creates a POS_DISCOUNT_OVER policy and an OWNER
+membership (coffee owner user) in the temp tenant — earlier checks (e.g. T4 control) must not see them; all rows are in the temp tenant (wiped in finally).
+Fixture added (module functions): `Membership` OWNER for the owner user in the temp tenant · `setStaffPin` (random non-weak 6-digit PIN, never printed) at unit A ·
+`approval.createPolicy` POS_DISCOUNT_OVER (step OWNER) · `point.earnWithLot` +1,000 to X (key `<TAG>-pu2`).
+- **U3** (X5): cart ฿500 −20 % as STAFF seller (cap 10 %): normal quote DISCOUNT_EXCEEDS_LIMIT · override without auth DISCOUNT_EXCEEDS_LIMIT · PIN without
+  `managerUserId` VALIDATION · well-formed wrong PIN PIN_INVALID and `PosStaffPin.failedCount` 1 (same counter as submit) · correct PIN ok (฿100 off, ฿400) and counter 0 ·
+  no `pos.discount.override`/`pos.approval.pin_override` audit, no PosHeldCart, no ApprovalRequest added by any of these quotes.
+- **U2** (X4): X + 500 points + −15 % + correct PIN: normal quote DISCOUNT_EXCEEDS_LIMIT · override ok, billDiscount 15,000, POINTS line 5,000, no conflicts, no audit ·
+  submit with the same PIN/choices and expected+1 ⇒ PRICE_CHANGED whose totals (minus ok/code/message) are byte-equal (JSON) to the override quote · submit with the
+  override grand ⇒ ok, `member.pointsBurned` 500.
+- **U4** (X1): walk-in ฿400 −15 % + WELCOME50 submitted by the STAFF seller ⇒ APPROVAL_REQUIRED (held cart + request) · OWNER decides APPROVED · drain · normal quote
+  DISCOUNT_EXCEEDS_LIMIT · override `{heldCartId}` ok 6,000 / coupon 5,000 / grand 29,000 · submit `{heldCartId}` with that grand ok · same override again ⇒ DISCOUNT_EXCEEDS_LIMIT.
+- Count **68 → 71** (`--list`: X-coverage S=5 -=26 X2=3 X4=8 X5=13 X1=13 X3=3).
+- Fail-before (pre-seam code d8456e05, forced, QC4): **68/71**, exit 1 — U2 U3 U4 red `MISSING:quoteRegisterCartOverride`, every fixture step ok, residue 0
+  (`scratchpad/p112u-fix/runs/p112-failbefore.log`). After the seam: forced **71/71**, residue 0 (`runs/s1-p112-forced.log`).
