@@ -86,6 +86,7 @@ const CHECKS: readonly Def[] = [
   // ── ORACLE-EDIT (P1.15U · ผู้คุมงานอนุมัติ — มติ 5) ──
   D("AP-U1", "X5", "[P1.15U มติ 5] เรียกคืนบิลพักที่อนุมัติส่วนลดแล้ว → {approvedRequestId = requestId · heldCartId} + quote ok ด้วยเพดานที่อนุมัติ (15% ฿240 → ฿204) · submit {heldCartId} ผ่าน ฿204 · บิลพักธรรมดา (ไม่มีอนุมัติ) เรียกคืน → ไม่มี approvedRequestId"),
   D("AP-U2", "X1", "[P1.15U มติ 5] คำขอส่วนลดเกินสิทธิ์ถูกปฏิเสธ → drain → บิลพัก DISCARDED · audit pos.heldCart.discard 1 แถว (actorId ผู้ตัดสิน · after.via approval_rejected · after.requestId) · event rejected DONE · เล่น rejected ซ้ำ ×2 ไม่มี audit ที่สอง · เรียกคืน → NOT_FOUND"),
+  D("TK-U1", "X3", "[P1.15U มติ 2] ยกเลิกบิล/คืนเงินพก staffToken: โทเคนมั่ว → STAFF_TOKEN_INVALID (บิลยัง PAID · ไม่มี audit void · ไม่มีใบคืน) · session เจ้าของ + โทเคน STAFF (C1) ที่ถูกต้อง ยกเลิกบิล ฿60 → VOIDED · audit pos.sale.void actorId = คนในโทเคน (ไม่ใช่ session)"),
   // ── NC ตัวควบคุมลบ ──
   D("NC", "-", "ตัวควบคุมลบ: ตัวตรวจของข้อสอบจับคำตอบที่ผิดโดยตั้งใจได้ (hash ดิบ/sha256/salt สั้น · PIN ผิด · หมดอายุ 24 ชม./1 ชม. · ล็อก 5 นาที · audit มี PIN · คำปฏิเสธที่ throw/ไม่มีข้อความ/อังกฤษ · คีย์ errors.unknown)"),
   // ── Z คืนสภาพ ──
@@ -1449,6 +1450,34 @@ async function runDb() {
     const rc = held ? keep("AP-U2 เรียกคืนบิลที่ถูกทิ้ง", await call(heldMod, "recallHeldCart", ctxA(DEV1), A("C1"), { id: held })) : null;
     if (!refused(rc, "NOT_FOUND")) p.push(`เรียกคืน → ${codeOf(rc)}`);
     chk("AP-U2", NC_ === "" && p.length === 0, "ปฏิเสธ = บิลพัก DISCARDED + audit 1 · เล่นซ้ำไม่ซ้ำ · เรียกคืน NOT_FOUND", FX(NC_ + (p.join(" · ") || "ครบ")));
+  }
+
+  // ════════ ORACLE-EDIT (P1.15U · มติ 2) TK-U1 ยกเลิกบิล/คืนเงินด้วยโทเคนผู้ขาย ════════
+  {
+    const p: string[] = [];
+    const sU = await baseSale("sTKU1", { amount: 6000, name: "TK-U1 บิล ฿60" }); // ต่ำกว่าเกณฑ์ ฿100 ⇒ ยกเลิกได้ทันที
+    const bad = await voidBy("OWNER", sU, { staffToken: "bm90LWEtdG9rZW4.bad" }, "TK-U1 void โทเคนมั่ว");
+    if (!refused(bad, "STAFF_TOKEN_INVALID")) p.push(`void โทเคนมั่ว → ${codeOf(bad)}`);
+    if ((await saleRow(sU))?.status !== "PAID" || (await audits("pos.sale.void", sU)).length) p.push("โทเคนมั่วแล้วบิลถูกยกเลิก");
+    let tok: Any = null;
+    try {
+      tok = await call(staffMod, "issueStaffToken", ctxA(DEV1), { unitId: U.A, deviceId: DEV1, userId: uid("C1") });
+    } catch {
+      tok = null;
+    }
+    if (typeof tok?.staffToken !== "string") p.push(`issueStaffToken C1 → ${short(tok, 60)}`);
+    const ok = await voidBy("OWNER", sU, { staffToken: tok?.staffToken }, "TK-U1 void โทเคน C1");
+    if (ok?.ok !== true) p.push(`void โทเคน C1 → ${codeOf(ok)} ${short(ok?.message ?? "", 60)}`);
+    if ((await saleRow(sU))?.status !== "VOIDED") p.push(`บิล ${(await saleRow(sU))?.status}`);
+    const au = await audits("pos.sale.void", sU);
+    if (au.length !== 1 || au[0].actorId !== uid("C1")) p.push(`audit void ${au.length} actor ${au[0]?.actorId === uid("OWNER") ? "OWNER (session)" : short(au[0]?.actorId, 30)}`);
+    const sR = await baseSale("sTKU1r", { amount: 4000, name: "TK-U1 คืน ฿40" });
+    const ln = sR ? ((await P.posSaleLine.findMany({ where: { saleId: sR } }).catch(() => [])) as Any[])[0] : null;
+    const key = newKey("rfu");
+    const rf = keep("TK-U1 คืนเงินโทเคนมั่ว", await call(refundMod, "refundSale", ctxA(DEV1), A("OWNER"), { saleId: sR, lines: [{ lineId: ln?.id ?? "none", qty: 1 }], payMethods: [{ type: "CASH", amountSatang: 4000 }], reasonCode: "DAMAGED", idempotencyKey: key, staffToken: "bm90LWEtdG9rZW4.bad" }));
+    if (!refused(rf, "STAFF_TOKEN_INVALID")) p.push(`คืนเงินโทเคนมั่ว → ${codeOf(rf)}`);
+    if ((await saleByKey(key)) || (await requestsFor("POS_REFUND", sR || "none")).length) p.push("โทเคนมั่วแล้วมีใบคืน/คำขอ");
+    chk("TK-U1", NS === "" && !!sU && !!sR && p.length === 0, "โทเคนมั่ว = STAFF_TOKEN_INVALID ไม่มีผล · โทเคน C1 = ยกเลิกได้ · audit actor = C1", FX(NS + (p.join(" · ") || "ครบ")));
   }
 
   // ════════ PN8 ปฏิเสธเป็นข้อมูล + คีย์ข้อความ ════════
