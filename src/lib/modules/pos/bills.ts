@@ -13,6 +13,7 @@ import * as account from "@/lib/modules/account";
 import { prisma } from "./db";
 import { receiptReadScope } from "./receipt";
 import { receiptKindOf } from "./receipt-shared";
+import { snapshotBuyer } from "./tax-invoice-shared"; // POS P1.13 ▸ R7 ◂
 import { saleForRefund } from "./refund";
 import { PAY_TYPE_ORDER, PosSaleError, voidSale, type VoidSaleAudit } from "./service";
 // POS P1.15 ▸ R5: ยกเลิกบิลผ่านสายอนุมัติ (POS_VOID) · PIN ผู้จัดการชนะคำขอที่รอ (CD4) ◂
@@ -353,6 +354,8 @@ export async function billDetail(ctx: RegisterCtx, actor: RegisterActor, input: 
       customer?.tierDefId ? prisma.memberTierDef.findFirst({ where: { id: customer.tierDefId, tenantId }, select: { name: true } }) : null,
       account.posSaleAccountingRef({ tenantId, sourceSystemId: systemId, refId: sale.id }),
     ]);
+    // POS P1.13 ▸ R7: คำขอใบกำกับเต็มรูปที่ยังรอ (ไม่มีเอกสาร) ◂
+    const openTaxReq = sale.taxInvoiceDocId ? null : await prisma.posTaxInvoiceRequest.findFirst({ where: { tenantId, saleId: sale.id, status: "REQUESTED" }, select: { id: true }, orderBy: { createdAt: "desc" } });
     const [abbDoc, cnDocs, names] = await Promise.all([
       accounting ? prisma.accountDocument.findFirst({ where: { id: accounting.docId, tenantId }, select: { createdAt: true } }) : null,
       bookId && refundDocs.length
@@ -457,6 +460,15 @@ export async function billDetail(ctx: RegisterCtx, actor: RegisterActor, input: 
         : null,
       accounting: accounting ? { docNo: accounting.docNo, docId: accounting.docId } : null,
       receiptKind,
+      taxInvoice: sale.taxInvoiceDocId
+        ? {
+            status: "ISSUED",
+            docNo: accounting && accounting.docId === sale.taxInvoiceDocId ? accounting.docNo : null,
+            ...(snapshotBuyer(sale.taxInvoice)?.name ? { buyerName: snapshotBuyer(sale.taxInvoice)!.name } : {}),
+          }
+        : openTaxReq
+          ? { status: "REQUESTED", requestId: openTaxReq.id }
+          : { status: "NONE" },
       refunds: refundDocs.map((d) => ({
         id: d.id,
         receiptNo: d.receiptNo,

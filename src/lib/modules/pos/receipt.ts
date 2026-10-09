@@ -158,7 +158,10 @@ async function buildReceipt(db: Db, tenantId: string, systemId: string, sale: Re
   const vat = bookId ? await account.vatConfigOf(bookId) : null;
   const taxId = nonEmpty(book?.taxId);
   const hasVat = sale.vatSatang > 0; // F1: บิลที่ไม่มี VAT จริงไม่ใช่ใบกำกับ
-  const kind: ReceiptKind = receiptKindOf({ vatRegistered: !!vat?.vatRegistered, posAbbreviatedInvoice: !!vat?.posAbbreviatedInvoice, taxId: book?.taxId, vatSatang: sale.vatSatang });
+  // POS P1.13 ▸ R7: บิลที่ออกใบกำกับเต็มรูปแล้ว (taxInvoiceDocId) = TAX_INVOICE_FULL + เลขใบกำกับ (facade · ใบเต็มรูปชนะ ABB) ◂
+  const fullDoc = sale.taxInvoiceDocId && bookId ? await account.posSaleAccountingRef({ tenantId, sourceSystemId: systemId, refId: sale.id }) : null;
+  const fullTaxInvoiceNo = fullDoc && fullDoc.docId === sale.taxInvoiceDocId ? nonEmpty(fullDoc.docNo) : undefined;
+  const kind: ReceiptKind = sale.taxInvoiceDocId ? "TAX_INVOICE_FULL" : receiptKindOf({ vatRegistered: !!vat?.vatRegistered, posAbbreviatedInvoice: !!vat?.posAbbreviatedInvoice, taxId: book?.taxId, vatSatang: sale.vatSatang });
 
   // ── เครื่อง/กะ ของบิล (PosSale.shiftId → PosShift.deviceId → PosDevice ของสาขาเดียวกัน) ──
   const shift = sale.shiftId
@@ -217,7 +220,7 @@ async function buildReceipt(db: Db, tenantId: string, systemId: string, sale: Re
       branchName: unit?.name ?? "",
       address: nonEmpty(rs.header.address) ?? nonEmpty(book?.address) ?? "",
       phone: nonEmpty(rs.header.phone) ?? nonEmpty(book?.phone) ?? "",
-      ...(kind === "TAX_INVOICE_ABB" ? { taxId, branchNo: nonEmpty(book?.branchCode) ?? "00000" } : {}),
+      ...(kind === "TAX_INVOICE_ABB" || kind === "TAX_INVOICE_FULL" ? { taxId, branchNo: nonEmpty(book?.branchCode) ?? "00000" } : {}),
       ...(logoUrl ? { logoUrl } : {}),
     },
     device: {
@@ -230,6 +233,7 @@ async function buildReceipt(db: Db, tenantId: string, systemId: string, sale: Re
       ...(nonEmpty(seller?.name) ? { cashierName: nonEmpty(seller?.name)! } : {}),
       ...(shift ? { shiftNo: shift.shiftNo } : {}),
       ...(refReceiptNo ? { refReceiptNo } : {}),
+      ...(kind === "TAX_INVOICE_FULL" && fullTaxInvoiceNo ? { fullTaxInvoiceNo } : {}),
     },
     lines: sale.lines.map((l) => ({
       name: l.name,
