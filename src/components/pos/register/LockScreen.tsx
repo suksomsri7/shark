@@ -65,7 +65,10 @@ export function LockScreen(p: {
   const [locked, setLocked] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
-  const [now, setNow] = useState(() => new Date());
+  // HF-418: นาฬิกาหัวจอล็อกอ่านเวลาหลัง mount เท่านั้น — จอล็อกถูกวาดตั้งแต่ SSR (staff ยังไม่ได้อ่าน = ล็อก) ⇒ เดิม new Date() ตอนเรนเดอร์
+  //   ให้ "HH:MM" ของเซิร์ฟเวอร์ ≠ ของเบราว์เซอร์เมื่อข้ามนาทีระหว่าง SSR → hydrate = React #418 (text) แบบสุ่มทุกรอบภาพ
+  //   null = ยังไม่ mount (SSR/เฟรมแรก) ⇒ เว้นที่ของเวลาไว้ (invisible) ไม่ให้หัวจอขยับ
+  const [now, setNow] = useState<Date | null>(null);
   const target = { systemId: p.systemId, unitId: p.unitId, ...(p.deviceId ? { deviceId: p.deviceId } : {}) };
 
   const loadStaff = useCallback(async () => {
@@ -82,6 +85,7 @@ export function LockScreen(p: {
     if (p.mode === "ready") void loadStaff();
   }, [p.mode, loadStaff]);
   useEffect(() => {
+    setNow(new Date());
     const id = setInterval(() => setNow(new Date()), 30_000);
     return () => clearInterval(id);
   }, []);
@@ -321,8 +325,16 @@ export function LockScreen(p: {
           <i aria-hidden className={`inline-block size-2 rounded-full ${p.online ? "bg-[color:var(--color-ink)]" : "border-[1.5px] border-[color:var(--color-ink)]"}`} />
           {p.online ? t("status.online") : t("status.offline")}
         </span>
-        <span className="shrink-0 text-[15px] font-bold tabular-nums">{formatThaiTime(now)}</span>
-        <span className="hidden shrink-0 text-[13px] text-[color:var(--color-muted)] sm:inline">{formatThaiDate(now)}</span>
+        {now ? (
+          <>
+            <span data-testid="pos-lock-clock" className="shrink-0 text-[15px] font-bold tabular-nums">{formatThaiTime(now)}</span>
+            <span className="hidden shrink-0 text-[13px] text-[color:var(--color-muted)] sm:inline">{formatThaiDate(now)}</span>
+          </>
+        ) : (
+          <span aria-hidden className="invisible shrink-0 text-[15px] font-bold tabular-nums">
+            00:00
+          </span>
+        )}
       </header>
 
       <div className="flex min-h-0 flex-1 flex-col md:flex-row">
