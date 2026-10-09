@@ -91,3 +91,19 @@ Merge: `origin/session/pos` 9ba7834b (P1.11U) at ede913ba — conflicts in Bills
 | visual `--states --dry` register / sales × owner / cashier | 0 · 50 / 15 each |
 
 Follow-ups added: consumer ignores decisions that arrive after `POS_APPROVAL_WAIT_MS` (F6, server side, not built).
+
+## Fix round 2 + merge
+- **696a86f4** `fix(pos P1.15U): N1 bills fails closed · N2 expiry-cancel notice · N3 no-PIN recheck`
+  - N1: `BillsClient` `pinShop` starts `null` ⇒ void/refund disabled with "กำลังตรวจสถานะเครื่อง…" until the device check ends; a failed/non-ok heartbeat sets `true` (fail closed, like the register); unregistered/no device = `false`.
+  - N2: 21B shows "ยกเลิกคำขอไม่ได้ · ให้ผู้จัดการยกเลิกใน 21A" when the expiry auto-cancel is refused (no longer swallowed).
+  - N3: RegisterScreen re-runs the no-PIN check on tab visible and after each status refresh while in no-PIN mode; a flip to "has PIN" locks the screen.
+  - Gates on 696a86f4: typecheck 0 · fitness-pos 8/8 · visual `--page sales --states --dry` owner/cashier rc 0 · `qc-pos-p1.15` forced 38/39 ×2 — only Z2 (coffee-shop fingerprint moved by lane 4 / the controller visual run mid-suite); controller accepted the round on these gates.
+- **Merge 2339a13a** = `origin/session/pos` 1e32b118 (P1.7U PromptPay panel · P1.13 S tax invoice · p1.3 receipt-counter ORACLE-EDIT). Conflicts (all "keep both"): `register/page.tsx` (caps + `payIntent`; one `registerSellerLimits(…, caps)`), `RegisterScreen.tsx` props (`autoLockMinutes`/`discountCaps` + `payIntent`), `register-shared.ts` + `register.ts` refusal codes (`ALREADY_SET` + `TAX_ID_INVALID`/`NOT_ELIGIBLE`), messages th/en (`errors.alreadySet` + tax keys), `visual-pos.mts` (StateKey union, dry print, seed block, summary incl. `intentState` + `p115State`), `pos-ui-inventory.json` (theirs + 35 P1.15U rows). `pnpm exec prisma generate` run in tree b after the merge.
+
+| gate (head 2339a13a · logs `scratchpad/p115u/runs/*-m2.log` with tree/head header) | result |
+|---|---|
+| `pnpm typecheck` (iso + `/tmp/pos-gate.lock`, log ends `typecheck exit=0`) | 0 |
+| `pnpm fitness` (no env) · `fitness-pos.mts` | 0 · 41/41 · 0 · 8/8 |
+| visual `--states --dry` register owner/cashier · sales owner/cashier | rc 0 · 58 / 58 / 15 / 15 |
+| `qc-pos-p1.15` forced #1 / #2 / unforced (after `ctl/vis42-done`) | 0 · 39/39 ×3 · residue 0 |
+| qc-pos-p1.7 / p1.13 / p1.3 / p1.10 / p1.9 / qc-hf-pos-page-authz | 0 · 32/32 / 0 · 32/32 (suite has 32 checks after its own ORACLE-EDIT c82d9b8f) / 0 · 128/128 / 0 · 40/40 / 0 · 53/53 / 0 · 56/56 |
