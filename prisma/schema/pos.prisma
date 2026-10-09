@@ -577,6 +577,8 @@ model PosTaxInvoiceRequest {
 
   @@index([tenantId, saleId])
   @@index([tenantId, status, createdAt])
+}
+
 // POS P1.7 — ใบขอรับเงิน (payment intent) ของส่วนที่ไม่ใช่เงินสด ก่อนบิลเกิด
 //   PromptPay ไดนามิก (QR ล็อกยอด) · Beam (PromptPay ยืนยันอัตโนมัติ + บัตร) · ยืนยันเอง (มี audit)
 //   ผู้เขียนเดียว = src/lib/modules/pos/payment-intent.ts · บิลใช้ intent ได้ครั้งเดียวใน submitRegisterSale (FOR UPDATE)
