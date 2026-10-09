@@ -21,6 +21,7 @@ export const isPosApprovalKind = (v: unknown): v is PosApprovalKind => typeof v 
 export const POS_APPROVAL_MESSAGE = {
   APPROVAL_REQUIRED: "รายการนี้ต้องรออนุมัติ — ส่งคำขอให้ผู้อนุมัติแล้ว หรือใส่ PIN ผู้จัดการที่เครื่องนี้",
   PENDING_APPROVAL: "มีคำขออนุมัติของรายการนี้รออยู่แล้ว — รอผลอนุมัติ หรือใส่ PIN ผู้จัดการที่เครื่องนี้",
+  APPROVAL_MISMATCH: "บิลนี้ไม่ตรงกับที่ได้รับอนุมัติ (รายการ/ยอด/ผู้ขาย) — ขออนุมัติใหม่ หรือใส่ PIN ผู้จัดการ",
 } as const;
 
 const isRecord = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
@@ -160,7 +161,11 @@ export async function releasePosApprovalClaim(tenantId: string, requestId: strin
  * ส่วนลดที่อนุมัติแล้วของบิลพักนี้ (ยังไม่ถูกใช้): คำขอ APPROVED · snapshot ยังไม่มี outcome (หรือถูกยึดด้วยคีย์นี้เอง — ส่งซ้ำพร้อมกัน) ·
  * คืน discountBp ที่อนุมัติ + ผู้ตัดสิน · อื่น = null (มติ 5: ใช้แล้ว/ไม่ได้อนุมัติ ⇒ DISCOUNT_EXCEEDS_LIMIT ไม่ยื่นใหม่)
  */
-export async function approvedDiscountOf(tenantId: string, approvedRequestId: string | null, saleKey: string): Promise<{ requestId: string; discountBp: number; deciderId: string } | null> {
+export async function approvedDiscountOf(
+  tenantId: string,
+  approvedRequestId: string | null,
+  saleKey: string,
+): Promise<{ requestId: string; discountBp: number; discountSatang: number; cartHash: string; deciderId: string } | null> {
   if (!approvedRequestId) return null;
   const snap = await posApprovalPayload(tenantId, approvedRequestId);
   if (!snap || snap.kind !== "POS_DISCOUNT_OVER") return null;
@@ -168,9 +173,22 @@ export async function approvedDiscountOf(tenantId: string, approvedRequestId: st
   if (out && !(out === "CONSUMED" && snap.payload.consumedBySaleKey === saleKey)) return null;
   if ((await posApprovalStatus(tenantId, approvedRequestId)) !== "APPROVED") return null;
   const bp = snap.payload.discountBp;
+  const satang = snap.payload.discountSatang;
+  const cartHash = snap.payload.cartHash;
   const deciderId = await posApprovalDecider(tenantId, approvedRequestId);
   if (typeof bp !== "number" || !Number.isInteger(bp) || bp < 0 || !deciderId) return null;
-  return { requestId: approvedRequestId, discountBp: bp, deciderId };
+  if (typeof satang !== "number" || !Number.isInteger(satang) || satang < 0 || typeof cartHash !== "string" || !cartHash) return null; // snapshot ก่อน fix รอบ 1 = ใช้ไม่ได้
+  return { requestId: approvedRequestId, discountBp: bp, discountSatang: satang, cartHash, deciderId };
+}
+
+/** fix รอบ 1 F5: คำขอส่วนลดเกินสิทธิ์ที่ยื่นจาก submit คีย์นี้แล้ว (ส่งซ้ำ = คำขอ/บิลพักเดิม) */
+export async function discountRequestBySubmitKey(tenantId: string, submitKey: string): Promise<{ requestId: string; heldCartId: string } | null> {
+  const row = await prisma.posApprovalPayload.findFirst({
+    where: { tenantId, kind: "POS_DISCOUNT_OVER", payload: { path: ["submitKey"], equals: submitKey } },
+    orderBy: [{ createdAt: "asc" }, { requestId: "asc" }],
+  });
+  const held = row && isRecord(row.payload) && typeof row.payload.heldCartId === "string" ? row.payload.heldCartId : null;
+  return row && held ? { requestId: row.requestId, heldCartId: held } : null;
 }
 
 /** ยึดส่วนลดที่อนุมัติไว้ให้บิลคีย์นี้ (ครั้งเดียว) — ถูกยึดด้วยคีย์เดียวกันอยู่แล้ว = true (ส่งซ้ำ) */

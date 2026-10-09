@@ -417,6 +417,7 @@ import { posPaymentSettings, type PosPaymentSettings } from "./payment-settings"
 import { isShiftDeviceId, registerShiftStatus, resolveRegisterShift } from "./shift";
 import { posDeviceRevoked, touchPosDevice } from "./device"; // POS P1.10 ▸ การ์ดเครื่องที่ถูกเพิกถอน + heartbeat ◂
 // POS P1.15 ▸ โทเคนผู้ขาย (R3) · PIN ผู้จัดการ (R4) · สายอนุมัติส่วนลดเกินสิทธิ์ (R5/R6) ◂
+import { createHash } from "node:crypto";
 import { writeAudit } from "@/lib/core/audit";
 import { staffActorFromToken, verifyManagerPin } from "./staff-pin";
 import {
@@ -425,6 +426,7 @@ import {
   auditPinOverride,
   cancelOpenPosRequest,
   claimApprovedDiscount,
+  discountRequestBySubmitKey,
   posApprovalPolicyExists,
   releasePosApprovalClaim,
   submitPosApproval,
@@ -526,6 +528,7 @@ const REG_MESSAGE: Record<RegisterRefusalCode, string> = {
   STAFF_TOKEN_INVALID: "การเข้าใช้งานของพนักงานบนเครื่องนี้หมดอายุหรือไม่ถูกต้อง — ใส่ PIN อีกครั้ง",
   APPROVAL_REQUIRED: POS_APPROVAL_MESSAGE.APPROVAL_REQUIRED,
   PENDING_APPROVAL: POS_APPROVAL_MESSAGE.PENDING_APPROVAL,
+  APPROVAL_MISMATCH: POS_APPROVAL_MESSAGE.APPROVAL_MISMATCH,
 };
 const REG_ROLE_LABEL: Record<RegisterRole, string> = { OWNER: "เจ้าของร้าน", MANAGER: "ผู้จัดการ", STAFF: "แคชเชียร์" };
 
@@ -1476,6 +1479,8 @@ function regParseSubmit(raw: unknown): RegParsedSubmit | RegisterRefusal {
   const heldCartId = optStr(raw.heldCartId, 200);
   if (staffToken === undefined) return regRefuse("STAFF_TOKEN_INVALID");
   if (managerPin === undefined || managerUserId === undefined) return regRefuse("VALIDATION", "PIN ผู้จัดการไม่ถูกต้อง");
+  // fix รอบ 1 F2: PIN ผู้จัดการต้องมาคู่ managerUserId เสมอ (ไม่มีทาง "จับทุกแถว" สำหรับ PIN ผู้จัดการ)
+  if (managerPin !== null && managerUserId === null) return regRefuse("VALIDATION", "เลือกผู้จัดการก่อนใส่ PIN");
   if (heldCartId === undefined) return regRefuse("VALIDATION", "รหัสบิลที่พักไม่ถูกต้อง");
   const rawCart: Record<string, unknown> = { lines: raw.lines };
   if (raw.billDiscount !== undefined && raw.billDiscount !== null) rawCart.billDiscount = raw.billDiscount;
@@ -1757,8 +1762,8 @@ export async function submitRegisterSale(ctx: RegisterCtx, actor: RegisterActor,
         targetId: res.saleId,
         after: { saleId: res.saleId, byUserId: over.byUserId, forUserId: s.actor.userId, discountBp: over.discountBp, ...(over.claimRequestId ? { requestId: over.claimRequestId, via: "approval" } : { via: "pin" }) },
       });
-      if (over.viaPin && over.cancelledRequestId !== undefined) {
-        await auditPinOverride({ tenantId: s.tenantId, action: "POS_DISCOUNT_OVER", requestId: over.cancelledRequestId, byUserId: over.byUserId, forUserId: s.actor.userId, targetType: "PosSale", targetId: res.saleId, extra: { saleId: res.saleId } });
+      if (over.viaPin) {
+        await auditPinOverride({ tenantId: s.tenantId, action: "POS_DISCOUNT_OVER", requestId: over.cancelledRequestId ?? null, byUserId: over.byUserId, forUserId: s.actor.userId, targetType: "PosSale", targetId: res.saleId, extra: { saleId: res.saleId } });
       }
     }
     return res;
@@ -1772,9 +1777,21 @@ type RegDiscountOverride = {
   /** คำขอ POS_DISCOUNT_OVER ที่อนุมัติแล้ว (ยึดก่อนบันทึก · ใช้ได้ครั้งเดียว) */
   claimRequestId?: string;
   viaPin?: true;
-  /** PIN ผู้จัดการ: คำขอที่รออยู่ของบิลพักนี้ซึ่งถูกยกเลิก (null = ไม่มี · undefined = ไม่มีกติกา/ไม่เกี่ยว) */
+  /** PIN ผู้จัดการ: คำขอที่รออยู่ของบิลพักนี้ซึ่งถูกยกเลิก (null = ไม่มี) */
   cancelledRequestId?: string | null;
 };
+
+/**
+ * fix รอบ 1 F1: แฮชของตะกร้า (sha256 ของบรรทัดเรียงแล้ว `สินค้า|ตัวแปร|จำนวน|ราคาต่อหน่วย|ตัวเลือก` + ยอดก่อนส่วนลด) — ผูกส่วนลดที่อนุมัติกับตะกร้านั้น ·
+ * ไม่รวม discountBp ในแฮช: ส่วนลดเทียบแยก (≤ ที่อนุมัติ) เพื่อให้ตะกร้าเดิมที่ลดมากกว่าได้ DISCOUNT_EXCEEDS_LIMIT (AP9) ไม่ใช่ APPROVAL_MISMATCH
+ * (ตัวแปร = สินค้าคนละแถวในแคตตาล็อกเดียว ⇒ ช่อง variant = "-")
+ */
+function regCartHash(p: RegPriced): string {
+  const lines = p.resolved
+    .map((l) => `${l.productId ?? `custom:${l.name}`}|-|${l.qty}|${l.unitPriceSatang}|${l.options.map((o) => o.choiceId).sort().join(",")}`)
+    .sort();
+  return createHash("sha256").update(`${lines.join("\n")}\nsubtotal=${p.quote.subtotalSatang}`).digest("hex");
+}
 
 /** ส่วนลดรวม (บรรทัด + ท้ายบิล) เป็น basis point ของยอดก่อนส่วนลด — ปัดขึ้น (เพดานเท่านี้ครอบส่วนลดนี้เสมอ) */
 const regDiscountBpOf = (q: RegisterQuoteTotals) => (q.subtotalSatang > 0 ? Math.ceil(((q.lineDiscountSatang + q.billDiscountSatang) * 10_000) / q.subtotalSatang) : 0);
@@ -1799,14 +1816,22 @@ async function regDiscountOver(
   const discountSatang = free.quote.lineDiscountSatang + free.quote.billDiscountSatang;
   const discountBp = regDiscountBpOf(free.quote);
   const exceeds = regRefuse("DISCOUNT_EXCEEDS_LIMIT");
-  // ①
+  // ① (fix รอบ 1 F1) ส่วนลดที่อนุมัติผูกกับตะกร้า + ยอด + เจ้าของบิลพัก: บิลพักของสาขานี้ที่ยังไม่ถูกทิ้ง · ผู้ขาย = คนพักบิล (หรือมี pos.sale.manage) ·
+  //    ตะกร้าเดิม (แฮชบรรทัด + ยอดก่อนส่วนลด) ⇒ ไม่ตรง = APPROVAL_MISMATCH · ส่วนลด (สตางค์) เกินที่อนุมัติ = DISCOUNT_EXCEEDS_LIMIT
   if (req.heldCartId !== null) {
-    const cart = await db.posHeldCart.findFirst({ where: { id: req.heldCartId, tenantId: s.tenantId, systemId: s.systemId, unitId: s.unitId }, select: { approvedRequestId: true } });
-    const ap = cart ? await approvedDiscountOf(s.tenantId, cart.approvedRequestId, req.idempotencyKey) : null;
-    if (ap) {
-      const priced = await regPrice(db, s, req.cart, pay, ap.discountBp >= 10_000 ? null : ap.discountBp);
-      if (!isRegRefusal(priced)) return { ok: true, priced, override: { byUserId: ap.deciderId, discountBp, claimRequestId: ap.requestId } };
-      if (priced.code !== "DISCOUNT_EXCEEDS_LIMIT") return priced;
+    const cart = await db.posHeldCart.findFirst({
+      where: { id: req.heldCartId, tenantId: s.tenantId, systemId: s.systemId, unitId: s.unitId },
+      select: { approvedRequestId: true, status: true, heldByUserId: true },
+    });
+    const ap = cart && cart.status !== "DISCARDED" ? await approvedDiscountOf(s.tenantId, cart.approvedRequestId, req.idempotencyKey) : null;
+    if (cart && ap) {
+      const mine = cart.heldByUserId === s.actor.userId || evaluate(s.actor, { module: "pos", action: "pos.sale.manage", unitId: s.unitId });
+      if (!mine || ap.cartHash !== regCartHash(free)) return regRefuse("APPROVAL_MISMATCH");
+      if (discountSatang <= ap.discountSatang) {
+        const priced = await regPrice(db, s, req.cart, pay, ap.discountBp >= 10_000 ? null : ap.discountBp);
+        if (!isRegRefusal(priced)) return { ok: true, priced, override: { byUserId: ap.deciderId, discountBp, claimRequestId: ap.requestId } };
+        if (priced.code !== "DISCOUNT_EXCEEDS_LIMIT") return priced;
+      }
     }
     if (req.managerPin === null) return exceeds;
   }
@@ -1816,11 +1841,13 @@ async function regDiscountOver(
     if (isRegRefusal(v)) return v;
     const priced = await regPrice(db, s, req.cart, pay, regMaxDiscountBp(v.actor, caps));
     if (isRegRefusal(priced)) return priced;
-    // CD4: PIN ชนะคำขอที่รอของบิลพักนี้ (ถ้ามี)
-    const cancelledRequestId = req.heldCartId !== null ? await cancelOpenPosRequest(s.tenantId, "POS_DISCOUNT_OVER", req.heldCartId) : undefined;
-    return { ok: true, priced, override: { byUserId: v.actor.userId, discountBp, viaPin: true, ...(cancelledRequestId !== undefined ? { cancelledRequestId } : {}) } };
+    // CD4: PIN ชนะคำขอที่รอของบิลพักนี้ (ถ้ามี) · fix รอบ 1 F8: audit pin_override ทุกครั้งที่ใช้ PIN (requestId null เมื่อไม่มีคำขอ)
+    const cancelledRequestId = req.heldCartId !== null ? await cancelOpenPosRequest(s.tenantId, "POS_DISCOUNT_OVER", req.heldCartId) : null;
+    return { ok: true, priced, override: { byUserId: v.actor.userId, discountBp, viaPin: true, cancelledRequestId } };
   }
-  // ③
+  // ③ (fix รอบ 1 F5) ส่งซ้ำด้วยคีย์เดิม = คำขอ/บิลพักเดิม (ไม่พักใหม่ ไม่ยื่นใหม่)
+  const prev = await discountRequestBySubmitKey(s.tenantId, req.idempotencyKey);
+  if (prev) return { ok: false, code: "PENDING_APPROVAL", message: POS_APPROVAL_MESSAGE.PENDING_APPROVAL, requestId: prev.requestId, heldCartId: prev.heldCartId };
   if (!(await posApprovalPolicyExists(s.tenantId, "POS_DISCOUNT_OVER", s.unitId, s.systemId, discountSatang))) return exceeds;
   const held = await (await import("./held-cart")).holdCartForApproval({ tenantId: s.tenantId, systemId: s.systemId, unitId: s.unitId }, s.actor, req.rawCart, db);
   if (held.ok === false) return held;
@@ -1835,6 +1862,8 @@ async function regDiscountOver(
     requestedById: s.actor.userId,
     payload: {
       heldCartId: held.id,
+      submitKey: req.idempotencyKey,
+      cartHash: regCartHash(free),
       discountBp,
       discountSatang,
       subtotalSatang: free.quote.subtotalSatang,

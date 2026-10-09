@@ -142,7 +142,9 @@ export type RegisterRefusalCode =
   | "WEAK_PIN"
   | "STAFF_TOKEN_INVALID"
   | "APPROVAL_REQUIRED"
-  | "PENDING_APPROVAL";
+  | "PENDING_APPROVAL"
+  // fix รอบ 1 F1: บิลที่ส่งพร้อม heldCartId ไม่ตรงกับที่อนุมัติ (ตะกร้า/ยอด/เจ้าของบิลพัก)
+  | "APPROVAL_MISMATCH";
 
 /** คำปฏิเสธ — คืนค่า ไม่ throw · `lineIndex` = บรรทัดที่ผิด (ลำดับเดียวกับที่ส่งมา) ถ้าระบุได้ */
 export type RegisterRefusal = { ok: false; code: RegisterRefusalCode; message: string; lineIndex?: number };
@@ -590,6 +592,7 @@ const REFUSAL_KEY: Readonly<Record<string, string>> = {
   STAFF_TOKEN_INVALID: "errors.staffTokenInvalid",
   APPROVAL_REQUIRED: "errors.approvalRequired",
   PENDING_APPROVAL: "errors.pendingApproval",
+  APPROVAL_MISMATCH: "errors.approvalMismatch",
 };
 
 /**
