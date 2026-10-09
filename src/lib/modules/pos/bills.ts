@@ -11,7 +11,7 @@ import type { PosSaleStatus } from "@prisma/client";
 import { canAccessUnit, evaluate } from "@/lib/core/rbac";
 import * as account from "@/lib/modules/account";
 import { prisma } from "./db";
-import { receiptReadScope } from "./receipt";
+import { receiptReadScope, saleMemberBenefits, saleMemberSnapshot } from "./receipt";
 import { receiptKindOf } from "./receipt-shared";
 import { snapshotBuyer } from "./tax-invoice-shared"; // POS P1.13 ▸ R7 ◂
 import { saleForRefund } from "./refund";
@@ -373,6 +373,10 @@ export async function billDetail(ctx: RegisterCtx, actor: RegisterActor, input: 
     const lineDiscount = sale.lines.reduce((t, l) => t + l.discountSatang, 0);
     const coupon = coupons.reduce((t, x) => t + x.discountSatang, 0);
     const tierDisc = sale.tierDiscountSatang;
+    // POS P1.12 ▸ R15: สำเนาสมาชิก/สิทธิ์ของบิล — ส่วนลดท้ายบิล = discount − คูปอง − Σ สิทธิ์ (บิลเก่า: − ระดับ เหมือนเดิม) ◂
+    const snap = saleMemberSnapshot(sale.memberSnapshot);
+    const benefitLines = saleMemberBenefits(sale.memberBenefits);
+    const memberPart = benefitLines ? benefitLines.reduce((t, b) => t + b.discountSatang, 0) : tierDisc;
     const hasVat = sale.vatSatang > 0;
     const receiptKind = receiptKindOf({ vatRegistered: !!vat?.vatRegistered, posAbbreviatedInvoice: !!vat?.posAbbreviatedInvoice, taxId: book?.taxId, vatSatang: sale.vatSatang });
     const staffName = nameOf(sale.soldByUserId);
@@ -438,7 +442,7 @@ export async function billDetail(ctx: RegisterCtx, actor: RegisterActor, input: 
       totals: {
         subtotal,
         lineDiscount,
-        billDiscount: sale.discountSatang - coupon - tierDisc,
+        billDiscount: sale.discountSatang - coupon - memberPart,
         coupon,
         tier: tierDisc,
         serviceCharge: sale.serviceChargeSatang,
@@ -455,9 +459,17 @@ export async function billDetail(ctx: RegisterCtx, actor: RegisterActor, input: 
         ...(p.changeSatang !== null ? { changeSatang: p.changeSatang } : {}),
         ...(nonEmpty(p.reference) ? { reference: nonEmpty(p.reference)! } : {}),
       })),
-      member: customer
-        ? { name: customerName(customer), memberCode: customer.memberCode, ...(tier?.name ? { tierName: tier.name } : {}), pointsEarned: sale.pointEarned, customerId: customer.id }
-        : null,
+      member:
+        customer || (snap && sale.memberId)
+          ? {
+              name: snap ? (nonEmpty(snap.name ?? undefined) ?? "-") : customerName(customer!),
+              memberCode: snap ? snap.memberCode : (customer?.memberCode ?? null),
+              ...((snap ? snap.tierName : tier?.name) ? { tierName: (snap ? snap.tierName : tier?.name)! } : {}),
+              pointsEarned: sale.pointEarned,
+              customerId: customer?.id ?? sale.memberId!,
+              benefits: benefitLines ?? [],
+            }
+          : null,
       accounting: accounting ? { docNo: accounting.docNo, docId: accounting.docId } : null,
       receiptKind,
       taxInvoice: sale.taxInvoiceDocId

@@ -90,6 +90,11 @@ export type ReceiptPayload = {
     couponDiscountSatang: number;
     couponCode?: string;
     tierDiscountSatang: number;
+    /**
+     * POS P1.12 (R15): สิทธิ์สมาชิกที่ใช้กับบิล (สำเนา PosSale.memberBenefits · ไม่รวมคูปอง) — มีเมื่อบิลมีสำเนา ·
+     * billDiscountSatang = discount − คูปอง − Σ บรรทัดนี้ · ไม่มี = บิลเก่า (ส่วนลดระดับอยู่ที่ tierDiscountSatang)
+     */
+    memberBenefits?: { kind: string; label: string; discountSatang: number }[];
     serviceChargeSatang: number;
     grandTotalSatang: number;
     vatBaseSatang: number;
@@ -98,7 +103,8 @@ export type ReceiptPayload = {
     tipSatang: number;
   };
   payments: ReceiptPayment[];
-  member?: { name: string; tierName?: string; pointEarned: number; pointBalance?: number };
+  /** POS P1.12 (R15): ชื่อ/รหัส/เบอร์ปิดบัง/ระดับ จากสำเนาตอนขาย (บิลเก่า = ข้อมูลสด) · pointBalance = ยอดสดของระบบแต้มของสาขา */
+  member?: { name: string; memberCode?: string; phoneMasked?: string; tierName?: string; pointEarned: number; pointBalance?: number };
   footer: { text: string; qrEReceiptUrl: string | null; fullTaxInvoiceHint: boolean };
   labels: { th: ReceiptLabels; en: ReceiptLabels };
 };
@@ -259,7 +265,10 @@ function totalRows(p: ReceiptPayload, L: ReceiptLabels): { label: string; satang
   if (t.lineDiscountSatang > 0) rows.push({ label: L.lineDiscount, satang: t.lineDiscountSatang, minus: true });
   if (t.billDiscountSatang > 0) rows.push({ label: L.billDiscount, satang: t.billDiscountSatang, minus: true });
   if (t.couponDiscountSatang > 0) rows.push({ label: t.couponCode ? `${L.coupon} ${t.couponCode}` : L.coupon, satang: t.couponDiscountSatang, minus: true });
-  if (t.tierDiscountSatang > 0) rows.push({ label: L.tierDiscount, satang: t.tierDiscountSatang, minus: true });
+  // POS P1.12 ▸ R15: สิทธิ์สมาชิกแยกบรรทัด (ระดับ · ว่อชเชอร์ · แต้ม) เมื่อบิลมีสำเนา — ระดับใช้ป้ายเดิม · บิลเก่า = แถวส่วนลดระดับเดิม ◂
+  if (t.memberBenefits && t.memberBenefits.length) {
+    for (const b of t.memberBenefits) if (b.discountSatang > 0) rows.push({ label: b.kind === "TIER" ? L.tierDiscount : b.label, satang: b.discountSatang, minus: true });
+  } else if (t.tierDiscountSatang > 0) rows.push({ label: L.tierDiscount, satang: t.tierDiscountSatang, minus: true });
   if (t.serviceChargeSatang > 0) rows.push({ label: L.serviceCharge, satang: t.serviceChargeSatang });
   rows.push({ label: L.grandTotal, satang: t.grandTotalSatang, grand: true });
   return rows;
