@@ -35,6 +35,8 @@
 //   Q6/Q9 สินค้า: requiredOptionGroupCount · soldOutReason "UNAVAILABLE"|"NO_STOCK"|null (S1.23 S1.24 S3.26 S3.27)
 //   Q8  pos.sale.priceOverride (OWNER/MANAGER ได้ · STAFF ไม่ได้) ตรวจที่ quote และ submit (S3.28)
 //   Q12 ไม่มีคูปองใน P1.3: quote/submit ที่ client ส่ง couponCode/couponDiscountSatang = VALIDATION (S3.29)
+//     ⮕ ORACLE-EDIT P1.12 (มติ Q7): couponCode ถูกตรวจจริงแล้ว (โค้ดใช้ไม่ได้ = COUPON_INVALID) · couponDiscountSatang ยัง VALIDATION ·
+//       S3.42 สมาชิกที่มีส่วนลดระดับขายได้แล้ว (MEMBER_RIGHTS_UNSUPPORTED ไม่ถูกคืน)
 //   Q21 registerCatalog {cursor?, limit?} → nextCursor (ปริยาย 100 · สูงสุด 500 · ลำดับคงที่) (S1.25 S1.26)
 //   Q22 quote lines[i] = {productId?, unitPriceSatang, grossSatang, discountSatang, lineTotalSatang} ตามลำดับที่ส่ง (S3.30 S3.31)
 //   Q23 registerStatus.user.role = OWNER|MANAGER|STAFF (S4.5) · Q25 registerVatConfig(ctx) (S4.6)
@@ -152,7 +154,7 @@ const CHECKS: readonly (readonly [string, string, string])[] = [
   ["P1.3-S3.26", "X4", "[Q6 + มติ 3.1 ข้อ 1] สินค้ามีกลุ่มตัวเลือกบังคับ: quote และ submit → OPTIONS_REQUIRED ไม่มียอด ไม่มีบิล · กลุ่มเลือกได้อย่างเดียว → quote/บิลที่ราคาฐาน"],
   ["P1.3-S3.27", "X4", "[Q9] หมดสต็อก (NO_STOCK) ยังขายได้ตามนโยบายปริยาย: PAID · OUT 1 · onHand 0 → −1 · ปิดขายสาขา (UNAVAILABLE) และทั้งปิดขาย+หมด → quote/submit PRODUCT_UNAVAILABLE ไม่มียอด ไม่มีบิล"],
   ["P1.3-S3.28", "X3", "[Q8] รายการกำหนดเอง/ราคาเปิด: STAFF ไม่มี pos.sale.priceOverride → quote PERMISSION_DENIED ทั้งสองแบบ · STAFF ที่มีคีย์ → quote+PAID ที่ราคาที่กรอก · MANAGER (ปริยายตามบทบาท) → PAID · คีย์อยู่ในแคตตาล็อกสิทธิ์"],
-  ["P1.3-S3.29", "X4", "[Q12] client ส่ง couponCode / couponDiscountSatang มากับ quote หรือ submit → VALIDATION (ไม่เมิน ไม่เชื่อ) · ไม่มีบิล · ไม่มี CouponRedemption"],
+  ["P1.3-S3.29", "X4", "[Q12 → P1.12 ORACLE-EDIT] couponDiscountSatang จาก client → VALIDATION (ไม่เมิน ไม่เชื่อ) · couponCode ที่ใช้ไม่ได้ → quote ไม่มีส่วนลดคูปอง + memberConflicts COUPON_INVALID (หรือปฏิเสธ COUPON_INVALID) · submit COUPON_INVALID · ไม่มีบิล · ไม่มี CouponRedemption"],
   ["P1.3-S3.30", "X4", "[Q22+Q7] quote lines ตรงลำดับที่ส่ง: [สินค้า+ส่วนลด, รายการเอง, สินค้า×2 ราคา client ปลอม] → {productId?, unitPriceSatang (ราคาเซิร์ฟเวอร์), grossSatang, discountSatang, lineTotalSatang} ทุกช่อง Int · subtotal = Σ gross ก่อนส่วนลดบรรทัด"],
   ["P1.3-S3.31", "X4", "ราคาเปลี่ยนระหว่าง quote กับ submit (มติ 3.1 ข้อ 2): expectedGrandTotalSatang เก่า → PRICE_CHANGED (จ่ายยอดเก่าหรือยอดใหม่ก็ตาม) พร้อมยอด/บรรทัดสดของเซิร์ฟเวอร์ · ไม่มีบิล · quote ใหม่ได้ราคาใหม่ · คาด+จ่ายยอดใหม่ → PAID ที่ราคาใหม่ · ไม่มีบรรทัดราคาเก่า"],
   ["P1.3-S3.32", "X4", "Σ payMethods = ยอดเป๊ะ (หลายวิธี): เงินสด+พร้อมเพย์ ครบ → PAID 2 แถวรวม = ยอด · ขาด 1 สตางค์ → PAYMENT_MISMATCH · ยอดติดลบชดเชย / เศษสตางค์ / ไม่มีวิธีจ่าย → ปฏิเสธ · ไม่มีบิล"],
@@ -165,7 +167,7 @@ const CHECKS: readonly (readonly [string, string, string])[] = [
   ["P1.3-S3.39", "X4", "[มติ 3.1 ข้อ 4] เงินสด: ไม่ส่ง cashReceivedSatang / รับน้อยกว่าส่วนเงินสด 1 สตางค์ → PAYMENT_MISMATCH ไม่มีบิล · เงินสด 4,000 + พร้อมเพย์ รับ 5,000 → PAID changeSatang 1,000 (คิดจากส่วนเงินสด)"],
   ["P1.3-S3.40", "X1", "[3.2 ข้อ 1] idempotency ไม่ขึ้นกับลำดับบรรทัด: [ราคาเปิด 60.00 ของ P, P ปกติ] สลับลำดับ → ok duplicated บิลเดียว · ต่างจริง (สินค้าอื่นราคาเท่ากัน / สมาชิกอื่น / แบ่งส่วนลดต่างแต่ยอดเท่า / แบ่งวิธีจ่ายต่าง) → IDEMPOTENCY_CONFLICT พร้อม saleId ของบิลเดิม"],
   ["P1.3-S3.41", "X1", "[3.2 ข้อ 2] ส่งซ้ำ key ของบิลที่ VOIDED แล้ว → ไม่ใช่ ok: IDEMPOTENCY_CONFLICT พร้อม saleId และสถานะบิล (VOIDED)"],
-  ["P1.3-S3.42", "X8", "[3.2 ข้อ 3] สมาชิกที่ระดับมีส่วนลดอัตโนมัติ → quote และ submit MEMBER_RIGHTS_UNSUPPORTED ไม่มีแถวใดถูกเขียน · สมาชิกที่ระดับไม่มีส่วนลด → แนบและขายได้"],
+  ["P1.3-S3.42", "X8", "[3.2 ข้อ 3 → P1.12 ORACLE-EDIT] สมาชิกที่ระดับมีส่วนลดอัตโนมัติ → quote ok + tierDiscountSatang > 0 (MEMBER_RIGHTS_UNSUPPORTED ไม่ถูกคืนแล้ว) · submit ตามยอด quote → PAID ส่วนลดระดับ = quote · สมาชิกที่ระดับไม่มีส่วนลด → แนบและขายได้"],
   ["P1.3-S3.43", "X4", "[3.2 ข้อ 5] รูปวิธีจ่าย: มีรายการยอด 0 → VALIDATION · บิลยอด 0 (ลด 100% โดย OWNER / ราคาเปิด 0 ที่มีสิทธิ์) ส่งวิธีจ่ายว่าง → PAID · วิธีจ่ายว่างกับยอด ≠ 0 → PAYMENT_MISMATCH"],
   ["P1.3-S3.44", "X1", "[3.2 ข้อ 6] ส่งซ้ำ payload เดิมทุกไบต์ → changeSatang เท่าคำตอบแรก (duplicated)"],
   ["P1.3-S3.45", "X4", "[3.2 ข้อ 9] สุ่ม ≥500 ตะกร้า (seed คงที่ · ส่วนลด/จำนวน/ราคาเปิด/รายการเอง · OWNER+STAFF): priceCart ฝั่ง client = quoteRegisterCart ทุกช่องยอดและทุกบรรทัด (หรือปฏิเสธรหัสเดียวกัน) · 0 ต่าง"],
@@ -1815,7 +1817,7 @@ async function runDb() {
   chk("P1.3-S3.28", refused(q28a, ["PERMISSION_DENIED"]) && noTotals(q28a) && refused(q28b, ["PERMISSION_DENIED"]) && noTotals(q28b) && s28c?.ok === true && l28c?.unitPriceSatang === 2000 && !l28c?.productId
       && s28d?.ok === true && l28d?.unitPriceSatang === 4200 && l28d?.productId === NOPRICE?.id && s28e?.ok === true && permKey,
     "STAFF quote ×2 PERMISSION_DENIED · STAFF+คีย์ PAID @2000/@4200 · MANAGER PAID · คีย์ในแคตตาล็อก", `${codeOf(q28a)} · ${codeOf(q28b)} · ${codeOf(s28c)} @${l28c?.unitPriceSatang} · ${codeOf(s28d)} @${l28d?.unitPriceSatang} · mgr ${codeOf(s28e)} · key ${permKey}`);
-  // S3.29 Q12 คูปองจาก client = VALIDATION
+  // S3.29 Q12 คูปองจาก client — ORACLE-EDIT P1.12: ส่วนลดคูปองเป็นสตางค์ = VALIDATION · โค้ดที่ใช้ไม่ได้ = COUPON_INVALID (quote รายงานใน memberConflicts)
   const crBefore = await P.couponRedemption.count({ where: { tenantId: tid } });
   const tA = qA?.grandTotalSatang ?? 6500;
   const q29a = await quote(owner, { lines: [{ productId: A?.id, qty: 1 }], couponCode: "WELCOME50" });
@@ -1825,8 +1827,12 @@ async function runDb() {
   const k29d = key("coupon-disc");
   const s29d = await sub(owner, { idempotencyKey: k29d, lines: [{ productId: A?.id, qty: 1 }], couponDiscountSatang: 1000, payMethods: pay(tA - 1000) });
   const crAfter = await P.couponRedemption.count({ where: { tenantId: tid } });
-  chk("P1.3-S3.29", [q29a, q29b, s29c, s29d].every((r) => refused(r, ["VALIDATION"])) && noTotals(q29a) && noTotals(q29b) && !(await saleByKey(k29c)) && !(await saleByKey(k29d)) && crAfter === crBefore,
-    "VALIDATION ×4 · ไม่มียอด · ไม่มีบิล · CouponRedemption คงเดิม", `${[q29a, q29b, s29c, s29d].map(codeOf).join(",")} · redemption ${crBefore}→${crAfter}`);
+  const q29aOk =
+    (refused(q29a, ["COUPON_INVALID"]) && noTotals(q29a)) ||
+    (q29a?.ok === true && q29a.couponDiscountSatang === 0 && (q29a.memberConflicts ?? []).some((c: Any) => c?.code === "COUPON_INVALID"));
+  chk("P1.3-S3.29", q29aOk && refused(q29b, ["VALIDATION"]) && noTotals(q29b) && refused(s29c, ["COUPON_INVALID"]) && refused(s29d, ["VALIDATION"]) && !(await saleByKey(k29c)) && !(await saleByKey(k29d)) && crAfter === crBefore,
+    "โค้ดใช้ไม่ได้: quote ไม่มีส่วนลด + COUPON_INVALID · submit COUPON_INVALID · ส่วนลดสตางค์ VALIDATION ×2 · ไม่มีบิล · CouponRedemption คงเดิม",
+    `${[q29a, q29b, s29c, s29d].map(codeOf).join(",")} · q29a coupon ${q29a?.couponDiscountSatang} conflicts ${JSON.stringify(q29a?.memberConflicts ?? null).slice(0, 80)} · redemption ${crBefore}→${crAfter}`);
   // S3.30 Q22 ทรงบรรทัด quote ตรงลำดับ + Q7 subtotal ก่อนส่วนลดบรรทัด
   const q30 = await quote(owner, { lines: [
     { productId: B?.id, qty: 1, discount: { type: "AMOUNT", value: 1000 } },
@@ -2061,7 +2067,7 @@ async function runDb() {
   const status41 = s41b?.saleStatus ?? s41b?.status;
   chk("P1.3-S3.41", s41?.ok === true && !void41 && st41 === "VOIDED" && refused(s41b, ["IDEMPOTENCY_CONFLICT"]) && s41b.saleId === s41.saleId && status41 === "VOIDED" && (await salesByKey(k41)) === 1,
     "VOIDED → IDEMPOTENCY_CONFLICT + saleId + สถานะ VOIDED", `${codeOf(s41)} void:${void41 || "ok"} st ${st41} · retry ${codeOf(s41b)} saleId:${s41b?.saleId === s41?.saleId} status:${status41}`);
-  // S3.42 สิทธิ์สมาชิกอัตโนมัติ (ส่วนลดระดับ) ยังไม่รองรับในหน้าขาย P1.3 — ปฏิเสธตั้งแต่ quote · ไม่มีแถวใดถูกเขียน
+  // S3.42 สิทธิ์สมาชิกอัตโนมัติ (ส่วนลดระดับ) — ORACLE-EDIT P1.12: หน้าขายคิดส่วนลดระดับเองแล้ว (quote = บิล) · MEMBER_RIGHTS_UNSUPPORTED ไม่ถูกคืน
   let cDisc: Any = null, cPlain: Any = null, fx42 = "";
   try {
     const sMem = await P.appSystem.create({ data: { tenantId: tid, type: "MEMBER", name: `${TAG} MEMBER` } });
@@ -2087,16 +2093,21 @@ async function runDb() {
   const c42a = await snapshotCounts();
   const q42 = await quote(owner, { lines: [{ productId: A?.id, qty: 1 }], memberId: cDisc?.id ?? "-" });
   const k42 = key("member-tier");
-  const s42 = await sub(owner, { idempotencyKey: k42, lines: [{ productId: A?.id, qty: 1 }], memberId: cDisc?.id ?? "-", payMethods: pay(tA) });
+  const g42 = q42?.ok === true ? Number(q42.grandTotalSatang) : tA;
+  const s42 = await sub(owner, { idempotencyKey: k42, lines: [{ productId: A?.id, qty: 1 }], memberId: cDisc?.id ?? "-", payMethods: pay(g42) });
+  const sale42 = await saleByKey(k42);
   await quiet();
   const c42b = await snapshotCounts();
   const drift42 = Object.keys(c42a).filter((k) => c42a[k] !== c42b[k]).map((k) => `${k}:${c42a[k]}→${c42b[k]}`);
   const k42p = key("member-plain");
   const s42p = await sub(owner, { idempotencyKey: k42p, lines: [{ productId: A?.id, qty: 1 }], memberId: cPlain?.id ?? "-", payMethods: pay(tA) });
   const sale42p = await saleByKey(k42p);
-  const MRU = ["MEMBER_RIGHTS_UNSUPPORTED"];
-  chk("P1.3-S3.42", !fx42 && refused(q42, MRU) && noTotals(q42) && refused(s42, MRU) && drift42.length === 0 && s42p?.ok === true && sale42p?.memberId === cPlain?.id && sale42p?.grandTotalSatang === tA,
-    "มีส่วนลดระดับ: quote+submit MEMBER_RIGHTS_UNSUPPORTED · ไม่มีแถวใหม่ · ไม่มีส่วนลด: PAID แนบสมาชิก", `${fx42 ? `fixture:${fx42} · ` : ""}${codeOf(q42)} · ${codeOf(s42)} · drift ${drift42.join(",") || "0"} · plain ${codeOf(s42p)} member:${sale42p?.memberId === cPlain?.id}`);
+  const tier42 = Number(q42?.tierDiscountSatang ?? 0);
+  const tierOk = q42?.ok === true && tier42 > 0 && q42.memberDiscountSatang === tier42 && q42.grandTotalSatang === tA - tier42
+    && s42?.ok === true && sale42?.memberId === cDisc?.id && sale42?.tierDiscountSatang === tier42 && sale42?.grandTotalSatang === q42.grandTotalSatang;
+  chk("P1.3-S3.42", !fx42 && tierOk && codeOf(q42) !== "MEMBER_RIGHTS_UNSUPPORTED" && codeOf(s42) !== "MEMBER_RIGHTS_UNSUPPORTED" && s42p?.ok === true && sale42p?.memberId === cPlain?.id && sale42p?.grandTotalSatang === tA,
+    "มีส่วนลดระดับ: quote ok ส่วนลดระดับ = บิล · ไม่มี MEMBER_RIGHTS_UNSUPPORTED · ไม่มีส่วนลด: PAID แนบสมาชิก",
+    `${fx42 ? `fixture:${fx42} · ` : ""}${codeOf(q42)} tier ${tier42} grand ${q42?.grandTotalSatang}/${tA} · ${codeOf(s42)} sale tier ${sale42?.tierDiscountSatang} grand ${sale42?.grandTotalSatang} · drift(ข้อมูล) ${drift42.join(",") || "0"} · plain ${codeOf(s42p)} member:${sale42p?.memberId === cPlain?.id}`);
   // S3.43 รูปวิธีจ่าย
   const r43: string[] = [];
   const zeroEntry = await sub(owner, { idempotencyKey: key("pay-zero-entry"), lines: [{ productId: A?.id, qty: 1 }], payMethods: [{ type: "CASH", amountSatang: 0 }, { type: "PROMPTPAY", amountSatang: tA }] });
