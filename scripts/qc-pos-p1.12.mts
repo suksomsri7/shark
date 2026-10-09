@@ -22,7 +22,8 @@
 //   readers: receiptPayload.member {name, memberCode, phoneMasked, tierName?, pointEarned, pointBalance?} + totals.memberBenefits[] ·
 //     BillDetail.member.benefits[] · publicReceipt.receipt.memberBenefits[] · แต้มคงเหลือจากระบบแต้มของสาขา (สด)
 //   outbox: member.erased + ส่วน POS (หลังตัวรับของ CRM) ล้าง memberSnapshot.name/phoneMasked ของบิลของคนนั้น (idempotent)
-//   refusal: MEMBER_SYSTEM_MISSING MEMBER_SUSPENDED PHONE_INVALID VOUCHER_INVALID VOUCHER_LIMIT VOUCHER_COUPON_CONFLICT COUPON_INVALID POINTS_DISABLED
+//   refusal: MEMBER_SYSTEM_MISSING MEMBER_SUSPENDED PHONE_INVALID VOUCHER_INVALID VOUCHER_COUPON_CONFLICT COUPON_INVALID POINTS_DISABLED
+//     (ORACLE-EDIT มติผู้คุมงาน 1: เลิก VOUCHER_LIMIT — voucherId เป็นสตริงเดียว ⇒ ไปไม่ถึง · อาร์เรย์ = VALIDATION)
 //     POINTS_BELOW_MIN POINTS_INSUFFICIENT POINTS_CAPPED BENEFITS_EXCEED_TOTAL MEMBER_RIGHTS_CHANGED (+ MEMBER_NOT_FOUND เดิม) → pos.register.errors.<camel>
 //
 // ขอบเขต: ST สถิต · B ตัวแกะ/ตรวจรูป · M สมาชิก/ค้น/สมัคร/ผูก · T ระดับ · V ว่อชเชอร์/คูปอง · P แต้ม · S สแตมป์ · W รางวัล · X ย้อนครบ ·
@@ -55,7 +56,7 @@ const CHECKS: readonly Def[] = [
   D("ST2", "S", "[hard rule · R17 · มติ Q2] pos/** ไม่ import voucher/point/stamp/giftcard (static+dynamic · ยกเว้นเดิม public-receipt.ts→point) · ไม่ import member/<ไฟล์ใน> · register-member.ts มีจริง · ผู้กระทำแทนมีคีย์ member.* ตรง 3 ตัว (customer.read · customer.create · loyalty.fulfil) · ไม่เรียกฟังก์ชันผู้ดูแลของสมาชิก"),
   D("ST3", "S", "[hard rule · §7] ทุกไฟล์ \"use server\" ใน modules/pos export async function ล้วน · register-actions.ts มี registerMemberLookupAction registerQuickMemberAction registerMemberBenefitsAction registerFulfilRewardAction (แต่ละตัวเรียกฟังก์ชันบริการของตัวเอง + catch)"),
   D("ST4", "S", "[CD3 · มติ Q1] ไม่มี GIFT_CARD/VOUCHER/STORE_CREDIT ใน enum PosPayType · REGISTER_PAY_TYPES ไม่มี GIFT_CARD · ไม่มี migration ALTER TYPE \"PosPayType\" … GIFT_CARD"),
-  D("ST5", "S", "[R6 R7 R9 R16 Q8] รหัสปฏิเสธใหม่ 13 ตัวอยู่ใน RegisterRefusalCode + REFUSAL_KEY → errors.<camel> + ข้อความ th/en (th ไทย) · MEMBER_RIGHTS_UNSUPPORTED คงไว้แต่ register.ts ไม่คืนแล้ว · REG_QUOTE_KEYS มี couponCode/memberChoices · ตัวช่วย saleWalletCart export และถูกเรียกทั้งใน createSale และฝั่ง quote · CreateSaleInput.memberSnapshot? · createSale เขียน memberBenefits · submit ส่ง memberSystemId · member.erased: ตัวรับ CRM มาก่อนส่วน POS"),
+  D("ST5", "S", "[R6 R7 R9 R16 Q8] รหัสปฏิเสธใหม่ 12 ตัว (มติ 1: ไม่มี VOUCHER_LIMIT)อยู่ใน RegisterRefusalCode + REFUSAL_KEY → errors.<camel> + ข้อความ th/en (th ไทย) · MEMBER_RIGHTS_UNSUPPORTED คงไว้แต่ register.ts ไม่คืนแล้ว · REG_QUOTE_KEYS มี couponCode/memberChoices · ตัวช่วย saleWalletCart export และถูกเรียกทั้งใน createSale และฝั่ง quote · CreateSaleInput.memberSnapshot? · createSale เขียน memberBenefits · submit ส่ง memberSystemId · member.erased: ตัวรับ CRM มาก่อนส่วน POS"),
   // ── B ตัวแกะ/ตรวจรูป ──
   D("B1", "-", "[R6] quote รับ couponCode (สตริง) และ memberChoices {voucherId, points} ตรงตัว · couponCode ไม่ใช่สตริง / memberChoices คีย์แปลก / voucherIds (รูปเดิม) / ไม่ใช่ออบเจกต์ → VALIDATION"),
   D("B2", "-", "[R6 CD3 มติ Q1] memberChoices.giftCard → VALIDATION ทั้ง quote และ submit · ไม่มีบิล · ยอดบัตรของขวัญไม่เปลี่ยน"),
@@ -84,7 +85,7 @@ const CHECKS: readonly Def[] = [
   // ── V ว่อชเชอร์/คูปอง ──
   D("V1", "X5", "[R7 R8 R11] ว่อชเชอร์ ฿30 → USED usedRef.saleId · PosSale.voucherUseIds [v] · memberBenefits มี VOUCHER 3,000 · ยอด 16,000"),
   D("V2", "-", "[R11] ว่อชเชอร์หมดอายุ / ของ Y → quote memberConflicts VOUCHER_INVALID · submit VOUCHER_INVALID ข้อความไทย · ไม่มีบิล · ว่อชเชอร์ไม่เปลี่ยน"),
-  D("V3", "-", "[R11 CD5 · CONTROLLER-DECISION 1] ส่งว่อชเชอร์ 2 ใบ (voucherId เป็นอาร์เรย์ 2 id) → VOUCHER_LIMIT · ไม่มีบิล · ทั้งสองใบ ACTIVE"),
+  D("V3", "-", "[R11 CD5 · มติผู้คุมงาน 1 (ORACLE-EDIT)] voucherId เป็นอาร์เรย์ (1 หรือ 2 id) → VALIDATION ทั้ง quote และ submit · ไม่มีบิล · ทั้งสองใบ ACTIVE"),
   D("V4", "-", "[R11] ว่อชเชอร์ห้ามซ้อน + คูปอง → quote memberConflicts VOUCHER_COUPON_CONFLICT · submit VOUCHER_COUPON_CONFLICT · ไม่มีบิล/การใช้คูปอง · ว่อชเชอร์ ACTIVE"),
   D("V5", "X5", "[R6 R8] คูปอง WELCOME50 ที่หน้าขายกับสมาชิก → quote couponDiscountSatang 5,000 · CouponRedemption REDEEMED 5,000 ของบิล · ยอด 42,500"),
   D("V6", "X5", "[R6] คูปอง walk-in (PCT10 + ลดท้ายบิล ฿20) → ฐานคูปอง = subtotal − bill · REDEEMED · ยอด 25,200"),
@@ -235,7 +236,7 @@ const F = {
 const SVC_FNS = ["registerMemberLookup", "registerQuickMember", "registerMemberBenefits", "registerFulfilReward"] as const;
 const ACTIONS: [string, string][] = SVC_FNS.map((f) => [`${f}Action`, f]);
 const NEW_CODES = [
-  "MEMBER_SYSTEM_MISSING", "MEMBER_SUSPENDED", "PHONE_INVALID", "VOUCHER_INVALID", "VOUCHER_LIMIT", "VOUCHER_COUPON_CONFLICT", "COUPON_INVALID",
+  "MEMBER_SYSTEM_MISSING", "MEMBER_SUSPENDED", "PHONE_INVALID", "VOUCHER_INVALID", "VOUCHER_COUPON_CONFLICT", "COUPON_INVALID",
   "POINTS_DISABLED", "POINTS_BELOW_MIN", "POINTS_INSUFFICIENT", "POINTS_CAPPED", "BENEFITS_EXCEED_TOTAL", "MEMBER_RIGHTS_CHANGED",
 ];
 const DELEGATED_KEYS = ["member.customer.read", "member.customer.create", "member.loyalty.fulfil"];
@@ -1212,13 +1213,16 @@ async function runDb() {
   {
     const p: string[] = [];
     const two = [V.lim2 ?? "a", V.xns ?? "b"];
+    // ORACLE-EDIT (มติผู้คุมงาน 1): VOUCHER_LIMIT ถูกเลิก — voucherId ที่เป็นอาร์เรย์ (ความยาวใดก็ได้) = VALIDATION ไม่มีอะไรถูกเขียน
     const q = await quote("A", { lines: L200, memberId: X, memberChoices: { voucherId: two } });
-    if (!(refused(q, "VOUCHER_LIMIT") || (q?.ok === true && conflictCodes(q).includes("VOUCHER_LIMIT")))) p.push(`quote 2 ใบ → ${codeOf(q)} ${short(conflictCodes(q), 60)}`);
-    const s = await submit("A", { lines: L200, memberId: X, memberChoices: { voucherId: two } }, q?.ok === true ? Number(q.grandTotalSatang) : 16_000);
-    if (!refused(s.r, "VOUCHER_LIMIT")) p.push(`submit 2 ใบ → ${codeOf(s.r)}`);
+    if (!refused(q, "VALIDATION")) p.push(`quote 2 ใบ → ${codeOf(q)} ${short(conflictCodes(q), 60)}`);
+    const q1 = await quote("A", { lines: L200, memberId: X, memberChoices: { voucherId: [two[0]] } });
+    if (!refused(q1, "VALIDATION")) p.push(`quote อาร์เรย์ 1 ใบ → ${codeOf(q1)}`);
+    const s = await submit("A", { lines: L200, memberId: X, memberChoices: { voucherId: two } }, 16_000);
+    if (!refused(s.r, "VALIDATION")) p.push(`submit 2 ใบ → ${codeOf(s.r)}`);
     if (await saleByKey(s.key)) p.push("มีบิล");
     for (const vid of two) if ((await vrow(vid))?.status !== "ACTIVE") p.push(`ว่อชเชอร์ ${vid.slice(-6)} ไม่ ACTIVE`);
-    chk("V3", p.length === 0, "VOUCHER_LIMIT · ไม่เขียน", FXB(joinP(p)));
+    chk("V3", p.length === 0, "voucherId อาร์เรย์ = VALIDATION · ไม่เขียน", FXB(joinP(p)));
   }
   {
     const p: string[] = [];
