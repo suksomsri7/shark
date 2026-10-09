@@ -12,8 +12,9 @@
 
 import { prisma } from "@/lib/core/db";
 import type { Prisma, PrismaClient } from "@prisma/client";
-import { quoteRegisterCart, registerCanonicalCart, registerProductsByIds, registerScopeCheck } from "./register";
+import { quoteRegisterCart, quoteRegisterCartWithCap, registerCanonicalCart, registerProductsByIds, registerScopeCheck } from "./register";
 import { posDeviceRevoked } from "./device"; // POS P1.10 ▸ การ์ดเครื่องที่ถูกเพิกถอน ◂
+import { staffActorFromToken } from "./staff-pin"; // POS P1.15 ▸ R3 โทเคนผู้ขาย ◂
 import {
   HELD_CART_EXPIRE_DAYS,
   HELD_CART_LABEL_MAX,
@@ -44,6 +45,7 @@ const MSG: Partial<Record<RegisterRefusalCode, string>> = {
   ALREADY_RECALLED: "บิลที่พักนี้ถูกเรียกคืนไปแล้ว (อาจจากอีกเครื่อง)",
   INTERNAL: "ระบบพักบิลขัดข้องชั่วคราว — ลองอีกครั้ง",
   DEVICE_REVOKED: "เครื่องนี้ถูกเพิกถอนแล้ว — พัก/เรียกคืนบิลไม่ได้ ติดต่อผู้จัดการ",
+  STAFF_TOKEN_INVALID: "การเข้าใช้งานของพนักงานบนเครื่องนี้หมดอายุหรือไม่ถูกต้อง — ใส่ PIN อีกครั้ง",
 };
 const refuse = (code: RegisterRefusalCode, message?: string): RegisterRefusal => ({ ok: false, code, message: message ?? MSG[code] ?? "ทำรายการไม่ได้" });
 const isRefusal = (v: unknown): v is RegisterRefusal => !!v && typeof v === "object" && (v as { ok?: unknown }).ok === false;
@@ -68,6 +70,17 @@ async function revokedDevice(db: Db, ctx: unknown, s: Scoped): Promise<RegisterR
   return (await posDeviceRevoked(db, s.ctx.tenantId, s.ctx.unitId, code)) ? refuse("DEVICE_REVOKED") : null;
 }
 const rowWhere = (s: Scoped) => ({ tenantId: s.ctx.tenantId, systemId: s.ctx.systemId, unitId: s.ctx.unitId });
+/**
+ * POS P1.15 ▸ R3: staffToken (ไม่ส่ง = ผู้ใช้ session เดิม) → ขอบเขตของคนในโทเคน (heldBy/recalledBy + เพดานส่วนลดของเขา) ·
+ * ผิด/หมดอายุ/เครื่องอื่น/ถูกถอดสิทธิ์ = STAFF_TOKEN_INVALID (ไม่ถอยไปใช้ session เงียบ ๆ) ◂
+ */
+async function tokenScope(db: Db, ctx: unknown, s: Scoped, token: unknown): Promise<Scoped | RegisterRefusal> {
+  if (token === undefined || token === null) return s;
+  const deviceId = isRecord(ctx) ? ctx.deviceId : undefined;
+  const a = await staffActorFromToken({ tenantId: s.ctx.tenantId, unitId: s.ctx.unitId, deviceId }, token, db);
+  const t = a ? await scope(db, s.ctx, a) : null;
+  return t && !isRefusal(t) ? t : refuse("STAFF_TOKEN_INVALID");
+}
 
 /** N วันของระบบ POS นี้ (settings.pos.heldCart.expireDays · จำนวนเต็ม 1–365) — ไม่ตั้ง/ผิดรูป = HELD_CART_EXPIRE_DAYS */
 async function expireCutoff(db: Db, s: Scoped): Promise<Date> {
@@ -116,47 +129,78 @@ async function summaries(db: Db, rows: Row[]): Promise<HeldCartSummary[]> {
 const ROW_SELECT = { id: true, label: true, lineCount: true, approxTotalSatang: true, heldByUserId: true, createdAt: true, cartJson: true } as const;
 
 // ═══════════════════ พักบิล ═══════════════════
-export async function holdRegisterCart(ctx: RegisterCtx, actor: RegisterActor, input: { cart: RegisterQuoteInput; label?: string | null }, client?: Db): Promise<HoldRegisterCartResult> {
+export async function holdRegisterCart(ctx: RegisterCtx, actor: RegisterActor, input: { cart: RegisterQuoteInput; label?: string | null; staffToken?: string | null }, client?: Db): Promise<HoldRegisterCartResult> {
   return guard("holdRegisterCart", async (): Promise<HoldRegisterCartResult> => {
+    const db: Db = client ?? prisma;
+    const s0 = await scope(db, ctx, actor);
+    if (isRefusal(s0)) return s0;
+    const revoked = await revokedDevice(db, ctx, s0);
+    if (revoked) return revoked;
+    if (!isRecord(input)) return refuse("VALIDATION");
+    const s = await tokenScope(db, ctx, s0, input.staffToken);
+    if (isRefusal(s)) return s;
+    const label = cleanLabel(input.label);
+    if (label === undefined) return refuse("VALIDATION", `ป้ายบิลต้องเป็นข้อความไม่เกิน ${HELD_CART_LABEL_MAX} ตัวอักษร`);
+    const row = await holdCore(db, s, input.cart, label, undefined);
+    if (isRefusal(row)) return row;
+    const [heldCart] = await summaries(db, [row]);
+    return { ok: true, heldCart: heldCart! };
+  });
+}
+
+/**
+ * POS P1.15 ▸ R4/R5: พักบิลส่วนลดเกินสิทธิ์ไว้รออนุมัติ POS_DISCOUNT_OVER (ภายในเท่านั้น — ผู้เรียก: register.ts#submitRegisterSale) ·
+ * ตรวจครบแบบ quote ยกเว้นเพดานส่วนลด (คำขออนุมัติคือการขอเกินเพดาน) · heldBy = ผู้ขาย ◂
+ */
+export async function holdCartForApproval(ctx: RegisterCtx, actor: RegisterActor, cartRaw: unknown, client?: Db): Promise<{ ok: true; id: string } | RegisterRefusal> {
+  return guard("holdCartForApproval", async (): Promise<{ ok: true; id: string } | RegisterRefusal> => {
     const db: Db = client ?? prisma;
     const s = await scope(db, ctx, actor);
     if (isRefusal(s)) return s;
-    const revoked = await revokedDevice(db, ctx, s);
-    if (revoked) return revoked;
-    if (!isRecord(input)) return refuse("VALIDATION");
-    const label = cleanLabel(input.label);
-    if (label === undefined) return refuse("VALIDATION", `ป้ายบิลต้องเป็นข้อความไม่เกิน ${HELD_CART_LABEL_MAX} ตัวอักษร`);
-    const cart = registerCanonicalCart(input.cart);
-    if (isRefusal(cart)) return cart;
-    if (!cart.lines.length) return refuse("VALIDATION", "ตะกร้าว่าง — ไม่มีอะไรให้พัก");
-    // ตรวจครบแบบ quote (สินค้าขายได้ที่สาขานี้ · สิทธิ์ราคาเอง · เพดานส่วนลด · สมาชิก) — ยอดที่เก็บ = ยอดของเซิร์ฟเวอร์
-    const q = await quoteRegisterCart(s.ctx, s.actor, cart, db);
-    if (!q.ok) return q;
-    const productIds = [...new Set(cart.lines.flatMap((l) => ("productId" in l && typeof l.productId === "string" ? [l.productId] : [])))];
-    const names = new Map(
-      productIds.length ? (await db.posProduct.findMany({ where: { id: { in: productIds }, tenantId: s.ctx.tenantId }, select: { id: true, name: true } })).map((p) => [p.id, p.name]) : [],
-    );
-    const preview = cart.lines
-      .map((l) => {
-        const nm = "productId" in l && typeof l.productId === "string" ? (names.get(l.productId) ?? "-") : (l as { name: string }).name;
-        return l.qty > 1 ? `${nm} ×${l.qty}` : nm;
-      })
-      .join(" · ")
-      .slice(0, PREVIEW_MAX);
-    const stored: Stored = { cart, heldUnitPrices: q.lines.map((l) => l.unitPriceSatang), preview };
-    const row = await db.posHeldCart.create({
-      data: {
-        ...rowWhere(s),
-        label,
-        cartJson: stored as unknown as Prisma.InputJsonValue,
-        lineCount: cart.lines.length,
-        approxTotalSatang: q.grandTotalSatang,
-        heldByUserId: s.actor.userId,
-      },
-      select: ROW_SELECT,
-    });
-    const [heldCart] = await summaries(db, [row]);
-    return { ok: true, heldCart: heldCart! };
+    const row = await holdCore(db, s, cartRaw, "รออนุมัติส่วนลด", null);
+    return isRefusal(row) ? row : { ok: true, id: row.id };
+  });
+}
+
+/**
+ * POS P1.15 ▸ R6: ตัวรับคิวผูกคำขอ POS_DISCOUNT_OVER ที่อนุมัติแล้วกับบิลพัก — เขียนครั้งเดียว (approvedRequestId ยังว่าง) ⇒ เล่นซ้ำไม่เปิดสิทธิ์ใหม่ ◂
+ */
+export async function armHeldCartApproval(tenantId: string, heldCartId: string, requestId: string, client?: Db): Promise<boolean> {
+  const db: Db = client ?? prisma;
+  const r = await db.posHeldCart.updateMany({ where: { id: heldCartId, tenantId, approvedRequestId: null }, data: { approvedRequestId: requestId } });
+  return r.count === 1;
+}
+
+/** ตะกร้า → แถวบิลพัก (ตัวตรวจเดียวกับ quote) · maxDiscountBp: undefined = เพดานของผู้ขาย · null = ไม่จำกัด (รออนุมัติ) */
+async function holdCore(db: Db, s: Scoped, cartRaw: unknown, label: string | null, maxDiscountBp: null | undefined): Promise<Row | RegisterRefusal> {
+  const cart = registerCanonicalCart(cartRaw);
+  if (isRefusal(cart)) return cart;
+  if (!cart.lines.length) return refuse("VALIDATION", "ตะกร้าว่าง — ไม่มีอะไรให้พัก");
+  // ตรวจครบแบบ quote (สินค้าขายได้ที่สาขานี้ · สิทธิ์ราคาเอง · เพดานส่วนลด · สมาชิก) — ยอดที่เก็บ = ยอดของเซิร์ฟเวอร์
+  const q = maxDiscountBp === undefined ? await quoteRegisterCart(s.ctx, s.actor, cart, db) : await quoteRegisterCartWithCap(s.ctx, s.actor, cart, maxDiscountBp, db);
+  if (!q.ok) return q;
+  const productIds = [...new Set(cart.lines.flatMap((l) => ("productId" in l && typeof l.productId === "string" ? [l.productId] : [])))];
+  const names = new Map(
+    productIds.length ? (await db.posProduct.findMany({ where: { id: { in: productIds }, tenantId: s.ctx.tenantId }, select: { id: true, name: true } })).map((p) => [p.id, p.name]) : [],
+  );
+  const preview = cart.lines
+    .map((l) => {
+      const nm = "productId" in l && typeof l.productId === "string" ? (names.get(l.productId) ?? "-") : (l as { name: string }).name;
+      return l.qty > 1 ? `${nm} ×${l.qty}` : nm;
+    })
+    .join(" · ")
+    .slice(0, PREVIEW_MAX);
+  const stored: Stored = { cart, heldUnitPrices: q.lines.map((l) => l.unitPriceSatang), preview };
+  return db.posHeldCart.create({
+    data: {
+      ...rowWhere(s),
+      label,
+      cartJson: stored as unknown as Prisma.InputJsonValue,
+      lineCount: cart.lines.length,
+      approxTotalSatang: q.grandTotalSatang,
+      heldByUserId: s.actor.userId,
+    },
+    select: ROW_SELECT,
   });
 }
 
@@ -188,13 +232,15 @@ const idOf = (input: unknown): string | null => {
   return typeof id === "string" && id.length > 0 && id.length <= 200 ? id : null;
 };
 
-export async function recallHeldCart(ctx: RegisterCtx, actor: RegisterActor, input: { id: string }, client?: Db): Promise<RecallHeldCartResult> {
+export async function recallHeldCart(ctx: RegisterCtx, actor: RegisterActor, input: { id: string; staffToken?: string | null }, client?: Db): Promise<RecallHeldCartResult> {
   return guard("recallHeldCart", async (): Promise<RecallHeldCartResult> => {
     const db: Db = client ?? prisma;
-    const s = await scope(db, ctx, actor);
-    if (isRefusal(s)) return s;
-    const revoked = await revokedDevice(db, ctx, s);
+    const s0 = await scope(db, ctx, actor);
+    if (isRefusal(s0)) return s0;
+    const revoked = await revokedDevice(db, ctx, s0);
     if (revoked) return revoked;
+    const s = await tokenScope(db, ctx, s0, isRecord(input) ? input.staffToken : undefined);
+    if (isRefusal(s)) return s;
     const id = idOf(input);
     if (!id) return refuse("NOT_FOUND");
     const row = await db.posHeldCart.findFirst({ where: { id, ...rowWhere(s) }, select: { status: true, createdAt: true, cartJson: true } });

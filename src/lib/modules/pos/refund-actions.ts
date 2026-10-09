@@ -70,7 +70,9 @@ export async function refundSaleAction(args: Target & { refund: RefundSaleInput 
   const auth = await session("refundSaleAction");
   if ("ok" in auth) return auth;
   try {
-    const s = sessionScope(auth, args, ["pos.sale.refund"]);
+    // POS P1.15 ▸ มติ 11: managerPin = ผู้จัดการอนุญาตที่เครื่องนี้ — ผู้ขอที่มีแค่ pos.sale.create ส่งได้ (refund.ts ตรวจ PIN + สิทธิ์ของผู้จัดการ) ◂
+    const withPin = !!args?.refund && typeof args.refund === "object" && typeof (args.refund as { managerPin?: unknown }).managerPin === "string";
+    const s = sessionScope(auth, args, withPin ? ["pos.sale.refund", "pos.sale.create"] : ["pos.sale.refund"]);
     if ("ok" in s) return s;
     const res = await refundSale(s.ctx, s.actor, args.refund);
     if (res.ok) {

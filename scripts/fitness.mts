@@ -304,6 +304,7 @@ const ALLOWED_EDGES = new Set([
   // chokepoint (WO-0049b): PO/ใบลา เข้าสายอนุมัติผ่าน approval facade
   "inventory→approval",
   "hr→approval",
+  "pos→approval", // POS P1.15 ▸ void/คืนเงิน/ส่วนลดเกินสิทธิ์เข้าสายอนุมัติผ่าน facade `@/lib/modules/approval` เท่านั้น (มติผู้คุมงาน 6) ◂
   // contract C-2 (13 ส.ค. 2026): availability = ของ HR — ระบบจองถาม hr.employeesOnLeave
   // ลาอนุมัติแล้ว → ช่องจองของช่างคนนั้นปิดเอง · ห้าม copy สูตรวันลาไปไว้ในโมดูลจอง
   "booking→hr",

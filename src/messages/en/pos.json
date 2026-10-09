@@ -292,7 +292,15 @@
       "intentNotPaid": "Payment not received yet — wait for it, or confirm manually when you see the money arrive",
       "intentConsumed": "This payment was already used for another bill",
       "intentExpired": "Payment arrived more than 24 hours ago — it can't be used for a bill; ask a manager",
-      "amountMismatch": "The amount doesn't match the payment request — check the amount again"
+      "amountMismatch": "The amount doesn't match the payment request — check the amount again",
+      "pinInvalid": "Incorrect PIN",
+      "pinLocked": "This PIN is locked for now — ask a manager to unlock it or wait 15 minutes",
+      "pinTaken": "Someone at this branch already uses this PIN — choose another",
+      "weakPin": "This PIN is too easy to guess — choose another",
+      "staffTokenInvalid": "Staff sign-in expired — enter your PIN again",
+      "approvalRequired": "Approval requested — wait for an approver or enter a manager PIN on this device",
+      "pendingApproval": "An approval request for this is already pending — wait or enter a manager PIN",
+      "approvalMismatch": "This bill doesn't match what was approved — request approval again or enter a manager PIN"
     },
     "held": {
       "title": "Held bills",
