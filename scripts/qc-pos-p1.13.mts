@@ -59,7 +59,7 @@ const CHECKS: readonly Def[] = [
   D("S1", "X5", "[R1 R2] submitRegisterSale + taxInvoice → PosSale.taxInvoice = ผู้ซื้อที่แกะแล้ว + requestedAt ISO (ช่วงที่รัน) · (POS ไม่ผูกสมุด → S5) · ผู้ซื้อหลักตรวจผิด → TAX_ID_INVALID / ไม่มีชื่อ → VALIDATION ก่อนเขียนอะไร (ไม่มีบิลของคีย์นั้น · ไม่มี outbox)"),
   D("S2", "X5", "[R2 CD1 CD4] consumer pos.sale.paid → เอกสาร TAX_INVOICE 1 ใบ (ไม่มี ABB) refType PosSale refId บิล · เลขชุด TX · grandTotal/vatAmount = บิล · issueDate = paidAt · ผู้ติดต่อมี taxId/branchCode/address ของผู้ซื้อ · PosSale.taxInvoiceDocId = เอกสาร · บิลที่สองเลขเดียวกันชื่อต่าง → ผู้ติดต่อเดิม (taxId ชนะชื่อ) · ORACLE-EDIT มติ F4: contactSnapshot = ผู้ซื้อตามที่พิมพ์ (บิลที่สอง = ชื่อที่พิมพ์ · contactId เดิม)"),
   D("S3", "X4", "[R2 CD6] GL ของบิลที่มีผู้ซื้อ = บิลเดียวกันไม่มีผู้ซื้อ ทุกรหัสบัญชี (Σ Dr−Cr ต่อรหัส · จำนวน JV · สมดุล) · ไม่มี JV ของตัวเอกสาร TAX_INVOICE"),
-  D("S4", "X1", "[R2 COMMON-4] outbox pos.sale.taxInvoiceIssued 1 แถว {saleId, docId} DONE · เล่น consumers[pos.sale.paid] ซ้ำ 2 รอบ → ยังเอกสาร 1 · event 1 · JV เท่าเดิม · taxInvoiceDocId เดิม · consumers[pos.sale.taxInvoiceIssued] ×2 ไม่ throw · POS ไม่ผูกสมุด: taxInvoiceDocId null · ไม่มีเอกสาร · ไม่มี event"),
+  D("S4", "X1", "[R2 COMMON-4] outbox pos.sale.taxInvoiceIssued 1 แถว {saleId, docId} DONE · เล่น consumers[pos.sale.paid] ซ้ำ 2 รอบ → ยังเอกสาร 1 · event 1 · JV เท่าเดิม · taxInvoiceDocId เดิม · consumers[pos.sale.taxInvoiceIssued] ×2 ไม่ throw (ส่วน POS ไม่ผูกสมุด ย้ายไป S5 · ORACLE-EDIT N3)"),
   D("S5", "-", "[follow-up 3 · ORACLE-EDIT] ตอนชำระ: ผู้ซื้อ + บิลที่จะไม่ได้ใบกำกับ (POS ไม่ผูกสมุด) → NOT_ELIGIBLE ข้อความไทย ก่อนเขียนอะไร (ไม่มีบิลของคีย์ · ไม่มี outbox/เอกสาร/event)"),
   // ── L ออกทีหลัง ──
   D("L1", "X5", "[R3 CD1 CD2] issueFullTaxInvoice บิล ABB (paidAt 2 วันก่อน) → {ok:true, docId, docNo} · ABB CANCELLED + supersededByDocId = ใบใหม่ · TAX_INVOICE sourceDocId = ABB · refType/refId บิล · ยอด/VAT/ฐาน/บรรทัด = ABB · issueDate = ABB.issueDate · เลขชุด TX ≠ เลข ABB · เอกสารมีผล 1 ใบต่อบิล · GL เท่าเดิมทุกรหัส · snapshot + taxInvoiceDocId · audit pos.taxinvoice.issued 1"),
@@ -997,7 +997,7 @@ async function runDb() {
     } else p.push("ไม่มี TAX_INVOICE ของ bT");
     chk("S3", p.length === 0, "GL เท่าบิลไม่มีผู้ซื้อ", FXB(p.join(" · ") || `ครบ ${short(nT, 120)}`));
   }
-  // ════════ S4 event + เล่นซ้ำ + ไม่ผูกสมุด ════════
+  // ════════ S4 event + เล่นซ้ำ ════════
   {
     const p: string[] = [];
     const ev = await events(EV_ISSUED, (pl) => pl.saleId === B.bT!.id);
@@ -1034,13 +1034,7 @@ async function runDb() {
         } catch (e) {
           p.push(`${EV_ISSUED} ×${i + 1} throw ${(e as Error).message.slice(0, 50)}`);
         }
-    // ไม่ผูกสมุด
-    const tn = await saleTax(B.bTN!.id);
-    if (tn.docId !== null) p.push(`bTN taxInvoiceDocId ${tn.docId} (คาด null)`);
-    const nDocs = Number(await P.accountDocument.count({ where: { tenantId: T, refType: "PosSale", refId: B.bTN!.id || "x" } }).catch(() => -1));
-    if (nDocs !== 0) p.push(`bTN เอกสาร ${nDocs}`);
-    if ((await events(EV_ISSUED, (pl) => pl.saleId === B.bTN!.id)).length !== 0) p.push("bTN มี event");
-    chk("S4", NS === "" && p.length === 0, "event 1 DONE · เล่นซ้ำไม่เพิ่ม · ไม่ผูกสมุดไม่มีเอกสาร", FXB(NS + (p.join(" · ") || "ครบ")));
+    chk("S4", NS === "" && p.length === 0, "event 1 DONE · เล่นซ้ำไม่เพิ่ม", FXB(NS + (p.join(" · ") || "ครบ")));
   }
 
   // ════════ S5 ตอนชำระแต่ออกใบกำกับไม่ได้ (ORACLE-EDIT · follow-up 3) ════════
