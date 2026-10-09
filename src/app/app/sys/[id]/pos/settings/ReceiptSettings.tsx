@@ -6,7 +6,8 @@
 //   ขวา: ตัวอย่างสด (renderReceiptHtml ของ payload ตัวอย่างจากฟอร์ม · iframe srcdoc · อัปเดตทันที) · การ์ดภาษี (อ่านอย่างเดียวจากสมุดบัญชี)
 // 🔴 โหลดหน้า = receiptSettingsPageDataAction คำขอเดียว · บันทึก = updatePosReceiptSettingsAction (patch เฉพาะคีย์ของฟอร์มนี้)
 // 🔴 คำปฏิเสธแสดงผ่านคีย์ pos.settings.errors.* / fieldErrors.* (ไม่แสดงข้อความไทยของเซิร์ฟเวอร์) · ผู้อ่านอย่างเดียว = ช่องปิด + "เฉพาะผู้จัดการแก้ได้"
-// ไม่ทำในใบนี้: อัปโหลดโลโก้ (P1.18/media) · สมัคร e-Tax (รอผู้ให้บริการ) · QR ใบเสร็จออนไลน์ (P1.11) · ตั้งรูปแบบเลขเอกสาร (ระบบกำหนด · O2)
+// ไม่ทำในใบนี้: อัปโหลดโลโก้ (P1.18/media) · สมัคร e-Tax (รอผู้ให้บริการ) · ตั้งรูปแบบเลขเอกสาร (ระบบกำหนด · O2)
+// POS P1.11U ▸ สวิตช์ "QR ใบเสร็จออนไลน์" เปิดใช้ (ฟอร์ม + patch qrEReceipt) · คำอธิบาย "ยังไม่พิมพ์จนถึง P1.11" เอาออก ◂
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
@@ -25,7 +26,7 @@ import { CardHead, Chip, InlineNote, SettingsCard, SwitchKnob, TabHead } from ".
 
 type PageData = Awaited<ReturnType<typeof receiptSettingsPageDataAction>>;
 type PageOk = Extract<PageData, { ok: true }>;
-type Form = { name: string; phone: string; address: string; logoUrl: string; footer: string; showPoints: boolean; showCashier: boolean };
+type Form = { name: string; phone: string; address: string; logoUrl: string; footer: string; showPoints: boolean; showCashier: boolean; qrEReceipt: boolean };
 type Props = { systemId: string; unitId: string; branchName: string; canEdit: boolean; canManageDevices: boolean };
 
 const FIELD_KEYS = new Set(["name", "phone", "address", "logoUrl", "footer"]);
@@ -54,6 +55,7 @@ const formOf = (d: PageOk): Form => ({
   footer: d.settings.footer,
   showPoints: d.settings.showPoints,
   showCashier: d.settings.showCashier,
+  qrEReceipt: d.settings.qrEReceipt,
 });
 
 export function ReceiptSettings({ systemId, unitId, branchName, canEdit, canManageDevices }: Props) {
@@ -146,6 +148,7 @@ export function ReceiptSettings({ systemId, unitId, branchName, canEdit, canMana
           footer: form.footer,
           showPoints: form.showPoints,
           showCashier: form.showCashier,
+          qrEReceipt: form.qrEReceipt,
         },
       });
       if (r.ok) {
@@ -341,17 +344,18 @@ export function ReceiptSettings({ systemId, unitId, branchName, canEdit, canMana
               )}
               {toggleRow(
                 tr("qrEReceipt"),
-                tr("qrEReceiptHint"),
+                null,
                 <button
                   data-testid="pos-settings-qr-ereceipt"
                   type="button"
                   role="switch"
-                  aria-checked={data.settings.qrEReceipt}
+                  aria-checked={form.qrEReceipt}
                   aria-label={tr("qrEReceipt")}
-                  disabled
+                  disabled={ro}
                   className="grid min-h-11 min-w-11 place-items-center"
+                  onClick={() => set("qrEReceipt", !form.qrEReceipt)}
                 >
-                  <SwitchKnob on={data.settings.qrEReceipt} disabled />
+                  <SwitchKnob on={form.qrEReceipt} disabled={ro} />
                 </button>,
               )}
               {toggleRow(

@@ -1,0 +1,25 @@
+# Prompt — P1.15U fix round 1. Controller: reviewer verdict on `wip/pos-p1.15u` 7af05531 = MERGEABLE-AFTER-FIXES (F1–F10). Rulings below are binding. Tree `/root/projects/shark-pos-b`, branch `wip/pos-p1.15u`.
+
+---
+
+You are the P1.15U BUILDER continuing on `wip/pos-p1.15u` (head 7af05531). Apply the fixes below, each as its own commit (`fix(pos P1.15U): F<n> …`), typecheck before every push, push after each commit. Scratch/logs only in `scratchpad/p115u/` (never a bare file in the scratchpad root). Same rules as before: no build/server/deploy/.env/Telegram, no `pkill -f`, gate commands via `bash scripts/iso.sh env QC_FORCE=1 bash scripts/qc4.sh env GATE_LOCK_FILE=/tmp/shark-gate-pos.lock bash scripts/with-gate-lock.sh pnpm exec tsx scripts/<suite>.mts`.
+
+## Fixes (controller rulings)
+- **F1 (HIGH)** Lock screen may set a PIN **only for the session user's own card**: add `setOwnStaffPinAction` (new `"use server"` function in `staff-pin-actions.ts` or the existing actions file) that ignores any `userId` and uses the session user; it refuses `ALREADY_SET` when that user already has a PIN (changing an existing PIN stays in ตั้งค่า → พนักงาน). Every other no-PIN card shows `lock.forgotBody` ("ให้ผู้จัดการตั้ง PIN ที่ ตั้งค่า → พนักงาน"). "ลืม PIN" never offers set-PIN. Remove the `setStaffPin` call path from `LockScreen.tsx`.
+- **F2 (HIGH)** No-PIN shop rule (ruling from the review prompt): when every row of `listStaffForDevice` has `hasPin:false`, the register stays usable by the session user with a dismissible banner "ตั้ง PIN พนักงานเพื่อเปิดการล็อกหน้าจอ" (dismissal remembered in `sessionStorage` per device). As soon as any PIN exists the lock applies. An unregistered device keeps the register-device message. Idle lock is off in that mode.
+- **F3 (MED-HIGH)** `savePending` must strip `managerPin` and `managerUserId` from the stored copy (keep `staffToken`; it already lives in sessionStorage). Add a one-line comment why.
+- **F4 (MED)** `confirmPay` and `send` return early when the screen is locked; the F4 key handler in `InterimPayDialog.tsx` ignores keys while the dialog sits under `[inert]`/locked; locking in the form phase closes the pay layer. Never send without a token on a registered device with PINs (ruling 1 of the U prompt: no silent fallback).
+- **F5 (MED)** `discAuth` stores the approved discount (bp and amount); when the cart's discount goes above it, clear `discAuth` and reopen the discount-over sheet. `localCap` is not nulled.
+- **F6 (MED)** 21B: on the first EXPIRED read call `cancelPosApprovalAction` once and stop polling; stop polling on FAILED too. Server-side "consumer ignores decisions after `POS_APPROVAL_WAIT_MS`" is a follow-up — write it in the notes, do not build it now.
+- **F7 (MED)** `cancelPosApprovalRequest` takes `staffToken`; allowed only when `payload.requestedById === token user` or the user holds `pos.staff.manage`; refuse `PERMISSION_DENIED` otherwise; write audit `pos.approval.cancel` (requestId, saleId, by). Update the action + the client caller.
+- **F8 (MED)** Bills page on a registered device: void/refund require a live token, else show "ใส่ PIN ที่หน้าขายก่อน" with a link to `/pos/register`; on `STAFF_TOKEN_INVALID` clear the stored token and show that same message; on `NO_PERMISSION` offer the manager PIN pad (reuse the register's pad component; same `managerPin`+`managerUserId` input the server already accepts). Unregistered device: unchanged.
+- **F9 (LOW-MED)** `visual-pos.mts`: collect every seeded request id (per viewport) and delete all of them + their `PosApprovalPayload` rows, or delete by `policyId`, before deleting the policy.
+- **F10 (LOW)** Staff switch: when the previous token is dead, hold with the **new** token labelled "สลับพนักงาน · <prev name>"; the cart never stays on screen for the new user.
+- **Deviation 3 (small server hunk, approved)** in `register.ts` near the discount-over `APPROVAL_REQUIRED` payload: add `capBp: regMaxDiscountBp(s.actor, caps)` and `capRole: s.actor.role` so `posApprovalCards` shows the over-cap chip in 21A.
+- **ORACLE-EDIT (approved, separate commit `test(pos P1.15U): ORACLE-EDIT TK-U1/AP-U1 gaps`)**: TK-U1 adds a refund with a valid token; AP-U1 adds "consumed approval no longer quotes the cap". Update the count in the oracle notes.
+
+## Gates before "done" (logs with `tree=/root/projects/shark-pos-b head=<sha>` header; the typecheck log must contain the exit line)
+`qc-pos-p1.15` forced ×2 + unforced (residue 0) · `qc-pos-p1.9`, `qc-pos-p1.10`, `qc-pos-p1.3`, `qc-pos-p1.17`, `qc-hf-pos-page-authz` · `pnpm fitness` with/without env · `scripts/fitness-pos.mts` · typecheck 0. Then merge `origin/session/pos` into your branch (it now carries P1.10U and P1.7/P1.15 S; resolve conflicts yourself, re-run typecheck + `qc-pos-p1.15` after the merge).
+
+## Done =
+Append "## Fix round 1" to `ledger/wo-notes/pos-P1.15U.md` (per-finding: commit, what changed, how verified) · push · report ≤25 lines with the head SHA. Do not merge into `session/pos`, never touch `main`.
