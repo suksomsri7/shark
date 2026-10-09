@@ -192,8 +192,14 @@ export async function posIntegrationCards(ctx: UnitCtx, actor: Actor, _input: un
       const target = line ? byId.get(line.systemId) : chats[0];
       const manage = target ? { href: `/app/sys/${target.id}/chat/channels`, canManage: evaluate(m, { module: "chat", action: "chat.connection.create" }) } : null;
       if (line && target) {
-        const sent = await prisma.auditLog.findFirst({ where: { tenantId, action: "pos.receipt.sent", after: { path: ["via"], equals: "LINE" } }, orderBy: { createdAt: "desc" }, select: { createdAt: true } });
-        cards.set("CHAT", card("CHAT", "LINKED", { scope: "TENANT", target: { systemId: target.id, name: target.name }, lastActivityAt: iso(sent?.createdAt), manage }));
+        // แก้รอบ 1 F8: ใบเสร็จที่ส่งทาง LINE "ของ POS นี้" เท่านั้น (audit targetId = PosSale.id → บิลของระบบนี้) — ไม่ใช่ทั้งร้าน
+        const sent = await prisma.$queryRaw<{ at: Date }[]>`
+          SELECT a."createdAt" AS at FROM "AuditLog" a
+          JOIN "PosSale" s ON s.id = a."targetId" AND s."tenantId" = a."tenantId"
+          WHERE a."tenantId" = ${tenantId} AND a.action = 'pos.receipt.sent' AND a."targetType" = 'PosSale'
+            AND a.after->>'via' = 'LINE' AND s."systemId" = ${systemId}
+          ORDER BY a."createdAt" DESC LIMIT 1`;
+        cards.set("CHAT", card("CHAT", "LINKED", { scope: "TENANT", target: { systemId: target.id, name: target.name }, lastActivityAt: iso(sent[0]?.at), manage }));
       } else cards.set("CHAT", card("CHAT", ofType("CHAT").length ? "OFF" : "NO_SYSTEM", { scope: "TENANT", manage }));
     }
 
