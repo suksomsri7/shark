@@ -245,9 +245,10 @@ export async function decide(
     return { ok: false, status: req?.status ?? "NOT_FOUND", note: null };
   }
   // POS P1.18 ▸ K4 (P1.15 close item): ผู้ยื่นตัดสินคำขอของตัวเองไม่ได้ — ที่แกน (ทุกทาง: หน้าอนุมัติ · bulkDecide · ผู้ช่วย AI) ·
-  //   คำขอคง PENDING · ไม่มีแถวตัดสิน · ไม่มี outbox · ยกเว้น ① เจ้าของร้าน (ผู้มีอำนาจสุดท้าย — ร้านเจ้าของคนเดียวต้องอนุมัติของตัวเองได้)
-  //   ② ชนิดที่ต้นทางจัดการ "ตัดสินของตัวเอง" เองแล้ว (crm.commission: มติ C3.3 S3 — คง PENDING + โน้ต + แจ้งเจ้าของ) ◂
-  if (req.requestedById === m.userId && m.role !== "OWNER" && !SELF_DECISION_HANDLED_BY_SOURCE.has(req.entityType)) {
+  //   คำขอคง PENDING · ไม่มีแถวตัดสิน · ไม่มี outbox · ใช้กับทุกบทบาทรวมเจ้าของร้าน (แก้รอบ 1 F3: ไม่ยกเว้น OWNER — ร้านหลายเจ้าของ
+  //   ต้องให้เจ้าของอีกคนตัดสิน) · ยกเว้นเฉพาะชนิดที่ต้นทางจัดการ "ตัดสินของตัวเอง" เองแล้ว
+  //   (crm.commission: มติ C3.3 S3 — คง PENDING + โน้ต + แจ้งเจ้าของ · qc-crm-c3.3 S4.8) ◂
+  if (req.requestedById === m.userId && !SELF_DECISION_HANDLED_BY_SOURCE.has(req.entityType)) {
     return { ok: false, status: req.status, note: null, code: "SELF_APPROVAL", message: "อนุมัติคำขอของตัวเองไม่ได้ — ให้ผู้อนุมัติคนอื่นตัดสิน" };
   }
   const steps = await tenantDb(ctx).approvalStep.findMany({
