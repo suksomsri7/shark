@@ -53,7 +53,7 @@ function membership(a: PosReceiptSettingsActor): MembershipCtx | null {
 }
 
 /** F9: สิทธิ์ pos.device.manage ครบทุกสาขา (ไม่เก็บถาวร) ที่ผูก POS นี้ — แบบเดียวกับ posCanSetTenantPrice (access.ts) */
-async function canManageAllLinkedUnits(db: Db, ctx: Ctx, m: MembershipCtx): Promise<boolean> {
+export async function canManageAllLinkedUnits(db: Db, ctx: Ctx, m: MembershipCtx): Promise<boolean> {
   if (m.role === "OWNER" || m.unitAccess.includes("*")) return true;
   const links = await db.appSystemUnit.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, type: "POS" }, select: { unitId: true } });
   const live = links.length

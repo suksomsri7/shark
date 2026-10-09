@@ -18,7 +18,7 @@ export type PosSettingsTab = {
 export const POS_SETTINGS_TABS: readonly PosSettingsTab[] = [
   { key: "general", msg: "general", icon: "gear", live: false, owner: "P1.18" },
   { key: "receipt", msg: "receipt", icon: "doc", live: true, owner: "P1.10U" },
-  { key: "payments", msg: "payments", icon: "wallet", live: false, owner: "P1.18" },
+  { key: "payments", msg: "payments", icon: "wallet", live: true, owner: "P1.7U" },
   { key: "devices", msg: "devices", icon: "print", live: true, owner: "P1.10U" },
   { key: "staff", msg: "staff", icon: "users", live: false, owner: "P1.15/P1.18" },
   { key: "shark", msg: "shark", icon: "grid", live: false, owner: "P1.18" },

@@ -6968,6 +6968,222 @@
       "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-pay-intent-manual",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "confirmPaymentIntentManualAction",
+        "resultTarget": "pos-pay-intent-paid",
+        "db": "PosPaymentIntent PAID confirmedVia MANUAL + AuditLog pos.payment.manual_confirm",
+        "note": "ใบ PROMPTPAY_STATIC/PROMPTPAY_BEAM ที่ PENDING · ปิด + คำใบ้เมื่อต้องเป็นผู้จัดการ (BEAM เสมอ · STATIC เมื่อ manualConfirmRequiresManager) · CARD_BEAM ไม่มีปุ่ม"
+      },
+      "wo": "P1.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-pay-intent-regenerate",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "createPaymentIntentAction",
+        "resultTarget": "pos-pay-intent",
+        "db": "PosPaymentIntent ใบใหม่ (คีย์ _r<n>)",
+        "note": "แสดงเมื่อใบ EXPIRED/CANCELLED — \"สร้าง QR ใหม่\""
+      },
+      "wo": "P1.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-pay-intent-retry",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "createPaymentIntentAction",
+        "resultTarget": "pos-pay-intent",
+        "note": "สร้างใบไม่สำเร็จ (ยกเว้น CARD_UNAVAILABLE = ทาง EDC · PROMPTPAY_NOT_CONFIGURED = ลิงก์ตั้งค่า)"
+      },
+      "wo": "P1.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-pay-intent-open-link",
+      "kind": "link",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "https://<Beam hosted card page>",
+        "note": "ใบ CARD_BEAM PENDING · qrPayload = URL หน้าชำระบัตรของ Beam (แท็บใหม่)"
+      },
+      "wo": "P1.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-pay-intent-setup-link",
+      "kind": "link",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/settings/payment",
+        "note": "PROMPTPAY_NOT_CONFIGURED — ตั้ง PromptPay ID ของร้าน (PaymentProfile)"
+      },
+      "wo": "P1.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-pay-save",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "updatePosIntentSettingsAction",
+        "db": "AppSystem(POS).settings.pos.payment {beam.enabled · qrExpiryMinutes · manualConfirmRequiresManager}",
+        "note": "pos.device.manage ทุกสาขาที่ผูก · ปฏิเสธ = pos-settings-pay-error · ผู้อ่านอย่างเดียว (แคชเชียร์) = ปุ่มปิด + pos-settings-readonly"
+      },
+      "wo": "P1.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-pay-expiry",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-pay-save",
+        "note": "อายุ QR 5–60 นาที (จำนวนเต็ม) · ผิด = pos-settings-pay-error"
+      },
+      "wo": "P1.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-pay-beam",
+      "kind": "toggle",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-pay-save",
+        "note": "รับเงินผ่าน Beam — ปิดเมื่อแพลตฟอร์มยังไม่มีคีย์ (ชิป \"ยังไม่ตั้งคีย์\") และยังไม่เคยเปิด"
+      },
+      "wo": "P1.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-pay-manual",
+      "kind": "toggle",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-settings-pay-save",
+        "note": "manualConfirmRequiresManager — ยืนยันเงินเข้าเองต้องเป็นผู้จัดการ (pos.shift.manage)"
+      },
+      "wo": "P1.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-pay-link",
+      "kind": "link",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/settings/payment",
+        "note": "PromptPay ID ของร้าน (PaymentProfile · อ่านอย่างเดียวในแท็บนี้)"
+      },
+      "wo": "P1.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-pay-intent-overpaid",
+      "kind": "form",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "inline-error",
+        "target": "pos-reg-paydlg-confirm",
+        "state": "disabled",
+        "note": "ข้อความแสดงผลในฟอร์มชำระ (ไม่ใช่ปุ่ม) — ยอดบิลลดลงต่ำกว่าเงินที่เข้าแล้ว: \"เงินเข้าเกินยอด ฿X — คืนเงินเอง\" · ยืนยันรับเงินปิด · ปิดกล่องได้"
+      },
+      "wo": "P1.7U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
     }
   ],
   "$roles": "roles/hiddenFor ที่อนุญาต: owner · manager · cashier · kind/expect.type ชุดเดียวกับทะเบียน CRM (F15.3b ตรวจ)"

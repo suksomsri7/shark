@@ -45,6 +45,16 @@ export function parsePosIntentSettings(settings: unknown): PosIntentSettings {
   return { beam: { enabled: beam.enabled === true }, qrExpiryMinutes, manualConfirmRequiresManager: pay.manualConfirmRequiresManager === true };
 }
 
+/** POS P1.7U ▸ แพตช์ค่าตั้ง 17A "วิธีรับเงิน" (ส่งเฉพาะคีย์ที่แก้ · คีย์อื่น = VALIDATION) ◂ */
+export type PosIntentSettingsPatch = { beam?: { enabled?: boolean }; qrExpiryMinutes?: number; manualConfirmRequiresManager?: boolean };
+export type PosIntentSettingsRefusal = {
+  ok: false;
+  code: "NOT_FOUND" | "PERMISSION_DENIED" | "VALIDATION" | "UNKNOWN";
+  message: string;
+  field?: "beam" | "qrExpiryMinutes" | "manualConfirmRequiresManager";
+};
+export type PosIntentSettingsResult = { ok: true; settings: PosIntentSettings } | PosIntentSettingsRefusal;
+
 /** รหัสปฏิเสธของใบขอรับเงิน (R8) — คืนเป็นข้อมูลเสมอ ไม่โยน */
 export type PaymentIntentRefusalCode =
   | "NOT_FOUND"

@@ -1,5 +1,6 @@
 // QC — POS RUN ใบ P1.7: PromptPay ไดนามิก (QR ล็อกยอด) · Beam (PromptPay ยืนยันอัตโนมัติ + บัตร) · PosPaymentIntent · ยืนยันเงินเข้าแบบ idempotent · ปิดสุภาพเมื่อไม่มีกุญแจ
-//   เขียนก่อนสร้าง (fail-before) · ผู้เขียนข้อสอบ · ORACLE-EDIT C31 (fix round 1 F1 อนุมัติ 9 ต.ค.) → 31 ข้อ
+//   เขียนก่อนสร้าง (fail-before) · ผู้เขียนข้อสอบ · ORACLE-EDIT C31 (fix round 1 F1 อนุมัติ 9 ต.ค.) → 31 ข้อ ·
+//   ORACLE-EDIT S1-U (P1.7U มติ 6 · อนุมัติในพรอมต์ P1.7U) → 32 ข้อ: ค่าตั้ง 17A "วิธีรับเงิน" ไป-กลับ + STAFF ถูกปฏิเสธ
 // requires: pos-seed
 //
 // สัญญา: ledger/pos-briefs/pos-brief-P1.7.md §2 R1–R8 · §4 แผนข้อสอบ · §5 CD1–CD6 · pos-brief-COMMON · pos-brief-LANE-RULES
@@ -91,6 +92,8 @@ const CHECKS: readonly Def[] = [
   D("X1", "-", "[R3c] cancelPaymentIntent PENDING → ok · CANCELLED · audit pos.payment.cancel 1 แถว · PAID → INTENT_PAID คง PAID · id มั่ว → INTENT_NOT_FOUND"),
   // ── NC ตัวควบคุมลบ ──
   D("NC", "-", "ตัวควบคุมลบ: ตัวตรวจของข้อสอบจับคำตอบที่ผิดโดยตั้งใจได้ (EMV CRC ผิด · ยอด 54 ผิดรูป · 01=11 แบบไม่ล็อกยอด · ไม่มี 54 · proxy ผิด · id ไม่มี pi_ · payload event ไม่มี via/ยอดเป็นสตริง · note ผิดรูป)"),
+  // ── S1-U ค่าตั้ง 17A (ORACLE-EDIT P1.7U มติ 6) ──
+  D("S1-U", "X3", "[P1.7U มติ 6] updatePosIntentSettings(ctx, actor, patch) (payment-settings.ts · ตัวเขียนพี่น้องของ updatePosPaymentSettings): เจ้าของร้าน {beam.enabled true, qrExpiryMinutes 30, manualConfirmRequiresManager true} → ok · settings ที่คืน = parsePosIntentSettings ของแถว · คีย์อื่นใน settings.pos ไม่หาย · patch บางส่วน {qrExpiryMinutes 20} คงคีย์อื่น · intent ใหม่หมดอายุ +20 นาที · 61 / 4 / \"20\" / beam.enabled \"yes\" / คีย์แปลก → VALIDATION ไม่เปลี่ยน · STAFF มีแค่ pos.sale.create → PERMISSION_DENIED ไม่เปลี่ยน · ปิดกลับ → ok"),
   // ── Z คืนสภาพ ──
   D("Z1", "-", "QC4 คืนสภาพ: ร้านชั่วคราวเหลือ 0 แถวทุกตารางที่มี tenantId + แถว Tenant ถูกลบ + OpsEvent ไม่มีร้าน (route 401 ฯลฯ) ของรอบนี้ถูกลบ"),
   D("Z2", "-", "QC4 ลายนิ้วมือ: แถวของร้าน QC POS (seed) ก่อน = หลัง (นับ + hash · รวม posPaymentIntent)"),
@@ -498,6 +501,9 @@ const sysSvc = await tryImport("@/lib/modules/system/service");
 const accSvc = await tryImport("@/lib/modules/account/service");
 const glMod = await tryImport("@/lib/modules/account/gl");
 const consMod = await tryImport("@/lib/outbox-consumers");
+// ORACLE-EDIT S1-U (P1.7U): ตัวเขียนค่าตั้ง 17A + ตัวอ่าน (client-safe)
+const paySetMod = await tryImport("@/lib/modules/pos/payment-settings");
+const intentShared = await tryImport("@/lib/modules/pos/payment-intent-shared");
 const pick = (name: string, ...mods: Any[]): Any => mods.find((m) => typeof m?.[name] === "function") ?? null;
 const M = {
   createPaymentIntent: pick("createPaymentIntent", intentMod),
@@ -1290,6 +1296,57 @@ async function runDb() {
       const c = await cancel(`pi_qc17${RAND}nothere`);
       if (!refused(c, "INTENT_NOT_FOUND")) p.push(`id มั่ว ${codeOf(c)}`);
       chk("X1", !fx && !NI() && !NC_ && p.length === 0, "CANCELLED + audit · INTENT_PAID · INTENT_NOT_FOUND", FX(NI() + NC_ + (p.join(" · ") || "ครบ")));
+    }
+
+    // ════════ S1-U ค่าตั้ง 17A "วิธีรับเงิน" (ORACLE-EDIT P1.7U มติ 6) ════════
+    {
+      const p: string[] = [];
+      const NU = NEED([paySetMod?.updatePosIntentSettings, "updatePosIntentSettings (payment-settings.ts)"], [intentShared?.parsePosIntentSettings, "parsePosIntentSettings"]);
+      const sctx = { tenantId: T, systemId: S.POS };
+      const up = (label: string, actor: Any, patch: unknown) => call(paySetMod, "updatePosIntentSettings", sctx, actor, patch).then((r) => keep(label, r));
+      const rawPos = async (): Promise<Any> => {
+        const sys = S.POS ? await P.appSystem.findUnique({ where: { id: S.POS }, select: { settings: true } }) : null;
+        return isRecord(sys?.settings) && isRecord(sys.settings.pos) ? sys.settings.pos : {};
+      };
+      const readSet = async (): Promise<Any> => (typeof intentShared?.parsePosIntentSettings === "function" ? intentShared.parsePosIntentSettings({ pos: await rawPos() }) : null);
+      const same = (a: Any, b: Any) => JSON.stringify(a) === JSON.stringify(b);
+      const want = (beam: boolean, q: number, m: boolean) => ({ beam: { enabled: beam }, qrExpiryMinutes: q, manualConfirmRequiresManager: m });
+      // คีย์อื่นของ settings.pos (ใบอื่นเป็นเจ้าของ) ต้องรอด
+      if (S.POS) {
+        const sys = await P.appSystem.findUnique({ where: { id: S.POS }, select: { settings: true } });
+        const base = isRecord(sys?.settings) ? sys.settings : {};
+        const pos = isRecord(base.pos) ? { ...base.pos } : {};
+        delete pos.payment;
+        pos.qcMarkS1U = RAND;
+        await P.appSystem.update({ where: { id: S.POS }, data: { settings: { ...base, pos } } });
+      }
+      const a = await up("S1-U owner", owner, { beam: { enabled: true }, qrExpiryMinutes: 30, manualConfirmRequiresManager: true });
+      if (a?.ok !== true || !same(a.settings, want(true, 30, true))) p.push(`เจ้าของร้าน ${codeOf(a)} ${short(a?.settings, 100)}`);
+      if (!same(await readSet(), want(true, 30, true))) p.push(`แถวหลังบันทึก ${short(await readSet(), 100)}`);
+      if ((await rawPos()).qcMarkS1U !== RAND) p.push("คีย์อื่นของ settings.pos หาย");
+      const b = await up("S1-U partial", owner, { qrExpiryMinutes: 20 });
+      if (b?.ok !== true || !same(await readSet(), want(true, 20, true))) p.push(`patch บางส่วน ${codeOf(b)} ${short(await readSet(), 100)}`);
+      // ค่าที่บันทึกถึงตัวสร้างใบจริง (ไม่ฉีด Beam ที่เปิด ⇒ STATIC · ไม่มีเครือข่าย)
+      const x = await mk("S1-U intent", { amount: 6300, deps: { beam: fakeBeam("off") } });
+      const exp = tms(x.row?.expiresAt);
+      if (!x.id || !(exp >= x.t0 + 20 * MIN - 2000 && exp <= x.t1 + 20 * MIN + 2000)) p.push(`intent หมดอายุไม่ใช่ +20 นาที (${x.id ? Math.round((exp - x.t0) / 1000) + "s" : codeOf(x.r)})`);
+      for (const [lbl, patch] of [
+        ["61", { qrExpiryMinutes: 61 }],
+        ["4", { qrExpiryMinutes: 4 }],
+        ["\"20\"", { qrExpiryMinutes: "20" }],
+        ["beam yes", { beam: { enabled: "yes" } }],
+        ["คีย์แปลก", { tip: { enabled: true } }],
+      ] as [string, unknown][]) {
+        const r = await up(`S1-U ${lbl}`, owner, patch);
+        if (!refused(r, "VALIDATION")) p.push(`${lbl} ${codeOf(r)}`);
+      }
+      const c = await up("S1-U staff", cashier, { qrExpiryMinutes: 45 });
+      if (!refused(c, "PERMISSION_DENIED")) p.push(`STAFF ${codeOf(c)}`);
+      if (!same(await readSet(), want(true, 20, true))) p.push(`ปฏิเสธแล้วค่าเปลี่ยน ${short(await readSet(), 100)}`);
+      const d = await up("S1-U off", owner, { beam: { enabled: false }, qrExpiryMinutes: 15, manualConfirmRequiresManager: false });
+      if (d?.ok !== true || !same(await readSet(), want(false, 15, false))) p.push(`ปิดกลับ ${codeOf(d)}`);
+      await setPay(null);
+      chk("S1-U", !fx && !NI() && !NU && p.length === 0, "ไป-กลับครบ · คีย์อื่นรอด · +20 นาที · VALIDATION ×5 · STAFF PERMISSION_DENIED · ไม่เปลี่ยนเมื่อปฏิเสธ", FX(NI() + NU + (p.join(" · ") || "ครบ")));
     }
   } finally {
     removeFetchGuard();
