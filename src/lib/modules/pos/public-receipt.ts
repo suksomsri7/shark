@@ -97,7 +97,7 @@ async function pointsOf(tenantId: string, memberId: string | null, earned: numbe
 
 /**
  * ลูกค้าให้คะแนนร้านจากหน้าใบเสร็จ (R6) — เฉพาะบิลที่มีสมาชิก · ผ่าน member.submitReviewForRef (CD3 · มติ 8)
- * {ok:true, reviewId} | TOKEN_NOT_FOUND · VALIDATION · NO_MEMBER · ALREADY_REVIEWED · INTERNAL — ไม่ throw
+ * {ok:true, reviewId} | TOKEN_NOT_FOUND · VALIDATION · NO_MEMBER · ALREADY_REVIEWED · REVIEW_EXPIRED (F2: เกิน 30 วัน) · INTERNAL — ไม่ throw
  */
 export async function submitReceiptReview(token: string, input: unknown): Promise<ReceiptReviewResult> {
   try {
