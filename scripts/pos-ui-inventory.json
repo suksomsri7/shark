@@ -9979,25 +9979,6 @@
     },
     {
       "page": "/app/sys/[id]/pos/settings",
-      "testid": "pos-settings-channel-storefront-state",
-      "kind": "toggle",
-      "roles": [
-        "owner",
-        "cashier"
-      ],
-      "hiddenFor": [],
-      "expect": {
-        "type": "ui",
-        "target": "pos-settings-channels-panel",
-        "note": "สถานะเว็บร้าน SHARK Shop (อ่านอย่างเดียว · R11: สาขา SHOP ที่เปิดและมีสินค้า)"
-      },
-      "wo": "P1.18U",
-      "oracle": "",
-      "system": "POS",
-      "query": "unit=[unitId]"
-    },
-    {
-      "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-settings-pay-panel-edit",
       "kind": "link",
       "roles": [
@@ -10129,6 +10110,367 @@
       "wo": "P1.18U",
       "oracle": "",
       "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-channel-open-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "modal",
+        "target": "pos-channel-drawer",
+        "note": "แถวช่องทาง (code ตัวเล็ก) → ลิ้นชักช่องทาง · ไม่มี pos.channel.manage = ลิ้นชักอ่านอย่างเดียว"
+      },
+      "wo": "P2.1U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-channel-toggle-*",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "saveChannelAction",
+        "note": "สวิตช์ active (ส่ง id + ชื่อเดิม + active) · หน้าร้านล็อก · แคชเชียร์ = ปิด (ไม่มี pos.channel.manage)"
+      },
+      "wo": "P2.1U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-channel-connect-*",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "saveChannelAction",
+        "note": "เชื่อมต่อแพลตฟอร์มสำเร็จรูปที่ยังไม่สร้าง (LINEMAN GRAB SHOPEE FOODPANDA) = สร้างด้วยรหัส + ชื่อแบรนด์ · ค่าตั้งต้นของเซิร์ฟเวอร์ · ไม่เปิดลิ้นชัก"
+      },
+      "wo": "P2.1U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-channel-add",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "pos-channel-drawer",
+        "note": "+ เพิ่มช่องทางอื่น → ลิ้นชักโหมดสร้าง · ครบ 30 = ปิด + หมายเหตุ pos-channel-limit"
+      },
+      "wo": "P2.1U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-channel-show-archived",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-channel-list",
+        "note": "แสดง/ซ่อนช่องทางที่เก็บแล้ว (n)"
+      },
+      "wo": "P2.1U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-channel-retry",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-channels-panel",
+        "note": "โหลดรายการช่องทางใหม่หลังโหลดไม่สำเร็จ"
+      },
+      "wo": "P2.1U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-channel-drawer-close",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-channels-panel",
+        "note": "ปิดลิ้นชักช่องทาง (✕) — Esc/แตะม่านทำเหมือนกัน"
+      },
+      "wo": "P2.1U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-channel-drawer-cancel",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-channels-panel",
+        "note": "ปุ่มปิดท้ายลิ้นชัก (ไม่บันทึก)"
+      },
+      "wo": "P2.1U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-channel-drawer-name",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-channel-drawer",
+        "note": "ชื่อช่องทาง 1–60 ตัว · แคชเชียร์/หน้าร้าน/เก็บแล้ว = ปิด"
+      },
+      "wo": "P2.1U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-channel-drawer-code",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-channel-drawer",
+        "note": "รหัสช่องทาง (โหมดสร้างเท่านั้น) ตัวพิมพ์ใหญ่ A–Z 0–9 _ ≤ 20 · datalist รหัสแพลตฟอร์มสำเร็จรูป"
+      },
+      "wo": "P2.1U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-channel-drawer-payout-*",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-channel-example",
+        "note": "การรับเงิน platform | direct | none (none = DIRECT + ค่าคอมฯ 0) · ตัวอย่างสดคิดใหม่"
+      },
+      "wo": "P2.1U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-channel-drawer-commission",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-channel-example",
+        "note": "ค่าคอมฯ % ทศนิยม 2 ตำแหน่ง ↔ bp"
+      },
+      "wo": "P2.1U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-channel-drawer-fixed",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-channel-example",
+        "note": "ค่าคอมฯ คงที่ต่อออเดอร์ (บาท ↔ สตางค์)"
+      },
+      "wo": "P2.1U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-channel-drawer-vat-*",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-channel-example",
+        "note": "VAT ค่าคอมฯ 0 % | 7 %"
+      },
+      "wo": "P2.1U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-channel-drawer-sort",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-channel-drawer",
+        "note": "ลำดับ 0–9999 (ว่าง = ต่อท้ายอัตโนมัติตอนสร้าง)"
+      },
+      "wo": "P2.1U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-channel-drawer-save",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "saveChannelAction",
+        "note": "parseChannelInput ก่อน · แก้ = id + ชื่อ + คีย์ที่เปลี่ยน · ปฏิเสธ = บรรทัดแดงที่ช่อง (CHANNEL_CODE_TAKEN · VALIDATION field) หรือแถบบน"
+      },
+      "wo": "P2.1U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-channel-drawer-archive",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-channel-drawer-archive-confirm-box",
+        "note": "เก็บช่องทาง (ไม่ใช่ช่องทางพื้นฐาน) → ยืนยันในบรรทัด"
+      },
+      "wo": "P2.1U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-channel-drawer-archive-cancel",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-channel-drawer",
+        "note": "ยกเลิกการเก็บ"
+      },
+      "wo": "P2.1U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-channel-drawer-archive-confirm",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "archiveChannelAction",
+        "note": "ยืนยันเก็บช่องทาง (soft) — บิลเก่ายังอ้างอิงได้"
+      },
+      "wo": "P2.1U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
     }
   ],
   "$roles": "roles/hiddenFor ที่อนุญาต: owner · manager · cashier · kind/expect.type ชุดเดียวกับทะเบียน CRM (F15.3b ตรวจ)"

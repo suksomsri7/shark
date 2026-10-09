@@ -1,10 +1,11 @@
 "use client";
 
 // shark-ui.tsx — ชิ้นส่วนร่วมของแท็บ "การเชื่อมต่อระบบ SHARK" · "ช่องทางขายภายนอก" · "ออฟไลน์และการซิงก์" (POS P1.18U · ภาพ 10 · มติ 4 7)
-//   ChannelsPanel (5 แถว: LINE MAN · Grab · Shopee · foodpanda = PLANNED · เว็บร้าน SHARK Shop = อ่านจากร้านจริง R11) ·
+//   ChannelsPanel → ย้ายไป ChannelsPanel.tsx (POS P2.1U ▸ แผงช่องทางขายจริง — ไฟล์นี้แค่ส่งต่อให้แท็บช่องทาง) ·
 //   PaymentsPanel (สรุป settings.pos.payment + พร้อมเพย์แบบปิดบัง · ว่อชเชอร์/เครดิตร้าน PLANNED P2.9 · ไม่มี MDR % / ตรวจสลิป — ไม่มีข้อมูล) ·
-//   OfflineCard (สวิตช์ปิด · 3 บรรทัด P3.4 · รายการรอซิงก์ 0) · ChannelsTab / OfflineTab = แบนเนอร์ "เปิดใช้ในเฟสถัดไป" + เนื้อหาเดียวกันเต็มความกว้าง
-//   สวิตช์ทุกตัวในไฟล์นี้ = ตัวแสดงสถานะอ่านอย่างเดียว (aria-disabled) — ไม่มีอะไรสลับได้จากไฟล์นี้
+//   OfflineCard (สวิตช์ปิด · 3 บรรทัด P3.4 · รายการรอซิงก์ 0) · OfflineTab = แบนเนอร์ "เปิดใช้ในเฟสถัดไป" + เนื้อหาเดียวกันเต็มความกว้าง ·
+//   ChannelsTab = แผงช่องทางขายจริงเต็มความกว้าง (P2.1U · ไม่มีแบนเนอร์แล้ว)
+//   สวิตช์ทุกตัวในไฟล์นี้ = ตัวแสดงสถานะอ่านอย่างเดียว (aria-disabled) — สวิตช์ช่องทางขายที่สลับได้อยู่ใน ChannelsPanel.tsx
 // 🔴 ไม่มีข้อความไทยนอกคอมเมนต์ · testid ตัวอักษรตรงบนแท็ก · ลิงก์ ≥ 44px
 
 import type { ReactNode } from "react";
@@ -13,8 +14,10 @@ import { useTranslations } from "next-intl";
 import { RegisterIcon, type RegisterIconName } from "@/components/pos/register/RegisterIcon";
 import { posSettingsHref } from "@/components/pos/settings/settings-tabs";
 import { TabHead } from "./settings-ui";
+// POS P2.1U ▸ แผงช่องทางขายจริง (มติ 1) — แทนแถว PLANNED ของ P1.18U ◂
+import { ChannelsPanel, type Storefront } from "./ChannelsPanel";
 
-export type Storefront = { name: string; path: string } | null;
+export type { Storefront };
 export type PaySummary = { promptpayMasked: string | null; beamOn: boolean };
 
 // POS P1.18U ▸ แก้รอบ 2 V3/V4: หัวการ์ด (การ์ดระบบ · ใบเสร็จและภาษี · ออฟไลน์) ชิดบน — ไอคอน 26px · ชื่อ pt 3px ให้บรรทัดแรกอยู่กลางไอคอน ·
@@ -72,50 +75,6 @@ function LRow({ tile, title, sub, testid, children }: { tile: ReactNode; title: 
         <span className="block truncate text-[11.5px] text-[color:var(--color-muted)]">{sub}</span>
       </span>
       {children}
-    </div>
-  );
-}
-
-/** ช่องทางขายภายนอก (ภาพ 10 ซ้ายล่าง) — มติ 4: ทุกแถว PLANNED ยกเว้นเว็บร้าน (UI ช่องทาง = P2.1U) */
-export function ChannelsPanel({ storefront }: { storefront: Storefront }) {
-  const t = useTranslations("pos.settings.channels");
-  // ชื่อแบรนด์ = ชื่อเฉพาะ (ไม่แปล) · คำอธิบายผ่าน t
-  const planned: { key: "lineman" | "grab" | "shopee" | "foodpanda"; name: string; tile: string; phase: string }[] = [
-    { key: "lineman", name: "LINE MAN", tile: "LM", phase: "P2.1" },
-    { key: "grab", name: "Grab", tile: "G", phase: "P2.1" },
-    { key: "shopee", name: "Shopee", tile: "S", phase: "P3" },
-    { key: "foodpanda", name: "foodpanda", tile: "fp", phase: "P3" },
-  ];
-  return (
-    <div data-testid="pos-settings-channels-panel" className="flex min-w-0 flex-1 flex-col gap-2">
-      <PanelHead icon="truck" title={t("title")} sub={t("sub")} />
-      <div className="overflow-hidden rounded-[12px] border bg-[color:var(--color-surface)]">
-        {planned.map((c) => (
-          <LRow key={c.key} testid={`pos-settings-channel-${c.key}`} tile={<Tile>{c.tile}</Tile>} title={c.name} sub={t(`${c.key}.sub`)}>
-            <SoonChip phase={c.phase} />
-          </LRow>
-        ))}
-        <LRow
-          testid="pos-settings-channel-storefront"
-          tile={
-            <Tile>
-              <RegisterIcon name="shop" size={14} />
-            </Tile>
-          }
-          title={t("storefront.name")}
-          sub={storefront ? `${storefront.name} · ${storefront.path}` : t("storefront.none")}
-        >
-          <span className="inline-flex shrink-0 items-center gap-3">
-            <span className={`inline-flex h-7 items-center whitespace-nowrap rounded-[8px] border px-2.5 text-[12px] ${storefront ? "border-[color:var(--color-ink)] font-bold" : "text-[color:var(--color-muted)]"}`}>
-              {storefront ? t("storefront.on") : t("storefront.off")}
-            </span>
-            <span data-testid="pos-settings-channel-storefront-state" role="switch" aria-checked={!!storefront} aria-disabled="true" aria-label={t("storefront.name")} title={t("storefront.manageAt")} className="grid min-h-11 place-items-center">
-              <MiniKnob on={!!storefront} />
-            </span>
-          </span>
-        </LRow>
-      </div>
-      <p className="text-[12px] text-[color:var(--color-muted)]">{t("note")}</p>
     </div>
   );
 }
@@ -206,14 +165,13 @@ function PhaseBanner({ text }: { text: string }) {
   );
 }
 
-/** ?tab=channels — มติ 7 */
-export function ChannelsPane({ storefront }: { storefront: Storefront }) {
+/** ?tab=channels — มติ 7 · POS P2.1U ▸ มติ 1: แผงช่องทางขายจริงเต็มความกว้าง (แบนเนอร์ "เปิดใช้ในเฟสถัดไป" ออกแล้ว — ออฟไลน์ยังมีแบนเนอร์) ◂ */
+export function ChannelsPane({ systemId, unitId, canManage, storefront }: { systemId: string; unitId: string; canManage: boolean; storefront: Storefront }) {
   const t = useTranslations("pos.settings.channels");
   return (
     <div data-testid="pos-settings-channels" className="flex min-w-0 flex-col gap-6 md:gap-8">
       <TabHead title={t("tabTitle")} desc={t("tabSub")} />
-      <PhaseBanner text={t("banner")} />
-      <ChannelsPanel storefront={storefront} />
+      <ChannelsPanel systemId={systemId} unitId={unitId} canManage={canManage} storefront={storefront} wide />
     </div>
   );
 }
