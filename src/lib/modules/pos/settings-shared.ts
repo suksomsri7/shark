@@ -100,6 +100,15 @@ export function settingsAuditDiff(section: string, before: Record<string, unknow
   const pick = (o: Record<string, unknown>) => Object.fromEntries([["section", section], ...keys.map((k) => [k, o[k] ?? null])]);
   return { before: pick(before), after: pick(after) };
 }
+/** POS P1.18 ▸ F5: ค่าในประวัติ/บันทึกตรวจสอบห้ามมีเบอร์โทรดิบ — ทุกคีย์ชื่อ "phone" (ชั้นบนหรือใต้ก้อนซ้อน เช่น header.phone) ผ่านตัวปิดบังที่ผู้เรียกส่งมา
+ *  (ผู้เรียกใช้ maskPhone ของ facade member — รูปแบบเดียวกับที่อื่น) · ไม่แก้ก้อนเดิม คืนสำเนา ◂ */
+export function maskAuditPhones<T>(v: T, mask: (phone: string) => string): T {
+  if (Array.isArray(v)) return v.map((x) => maskAuditPhones(x, mask)) as T;
+  if (!isRecord(v)) return v;
+  return Object.fromEntries(
+    Object.entries(v).map(([k, x]) => [k, k === "phone" && typeof x === "string" && x ? mask(x) : maskAuditPhones(x, mask)]),
+  ) as T;
+}
 function canonJson(v: unknown): string {
   if (Array.isArray(v)) return `[${v.map(canonJson).join(",")}]`;
   if (isRecord(v)) return `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${canonJson(v[k])}`).join(",")}}`;

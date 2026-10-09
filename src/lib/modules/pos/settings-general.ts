@@ -18,6 +18,7 @@ import { posDiscountCaps, posHeldCartExpireDays, posRegisterAutoLockMinutes, typ
 import { parseShiftSettings } from "./shift";
 import { weighedBarcodeSettings } from "./scan-shared";
 import {
+  maskAuditPhones,
   POS_GENERAL_LIMITS,
   posDayCutoffMinutes,
   posReceiptLocale,
@@ -387,14 +388,15 @@ function decodeCursor(v: unknown): { at: Date; id: string } | null {
   }
 }
 /** after/before → พารามิเตอร์ประโยคแบบแบน (ค่าพื้นฐาน · ซ้อนได้ 2 ชั้น "shift.blindClose") */
-function summaryOf(after: unknown): Record<string, string | number | boolean | null> {
+function summaryOf(after: unknown, maskPhone: (phone: string) => string): Record<string, string | number | boolean | null> {
   const out: Record<string, string | number | boolean | null> = {};
   const put = (k: string, v: unknown) => {
     if (Object.keys(out).length >= 24) return;
     if (v === null || typeof v === "boolean" || typeof v === "number") out[k] = v as never;
     else if (typeof v === "string") out[k] = v.slice(0, 120);
   };
-  for (const [k, v] of Object.entries(recOf(after))) {
+  // POS P1.18 ▸ F5: แถวเก่าก่อนแก้อาจเก็บ header.phone ดิบ — ปิดบังตอนอ่านด้วย (ไม่คืนเบอร์ดิบไม่ว่าแถวไหน) ◂
+  for (const [k, v] of Object.entries(recOf(maskAuditPhones(after, maskPhone)))) {
     if (SUMMARY_DROP.has(k)) continue;
     if (isRecord(v)) {
       for (const [k2, v2] of Object.entries(v)) if (!SUMMARY_DROP.has(k2)) put(`${k}.${k2}`, isRecord(v2) || Array.isArray(v2) ? null : v2);
@@ -448,6 +450,7 @@ export async function posSettingsHistory(ctx: Ctx, actor: PosSettingsWriterActor
       select: { id: true, createdAt: true, actorId: true, action: true, before: true, after: true },
     });
     const page = rows.slice(0, HISTORY_PAGE);
+    const { maskPhone } = await import("@/lib/modules/member"); // POS P1.18 ▸ F5 ◂
     const actorIds = [...new Set(page.map((r) => r.actorId).filter((x): x is string => !!x))];
     const users = actorIds.length ? await prisma.user.findMany({ where: { id: { in: actorIds } }, select: { id: true, name: true, email: true } }) : [];
     const nameOf = new Map(users.map((u) => [u.id, u.name ?? u.email]));
@@ -457,7 +460,7 @@ export async function posSettingsHistory(ctx: Ctx, actor: PosSettingsWriterActor
       actorName: (r.actorId && nameOf.get(r.actorId)) || null,
       action: r.action,
       section: sectionOf(r.action, r.before, r.after),
-      summary: summaryOf(r.after),
+      summary: summaryOf(r.after, maskPhone),
     }));
     const last = page[page.length - 1];
     return { ok: true, items, nextCursor: rows.length > HISTORY_PAGE && last ? encodeCursor(last.createdAt, last.id) : null };

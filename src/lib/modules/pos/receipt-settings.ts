@@ -10,7 +10,7 @@ import type { Prisma } from "@prisma/client";
 import { evaluate, type MembershipCtx } from "@/lib/core/rbac";
 import { prisma } from "./db";
 import { writeAudit } from "@/lib/core/audit"; // POS P1.18 ▸ R6 ◂
-import { settingsAuditDiff } from "./settings-shared"; // POS P1.18 ▸ R6 ◂
+import { maskAuditPhones, settingsAuditDiff } from "./settings-shared"; // POS P1.18 ▸ R6 · F5 ◂
 import {
   mergeReceiptSettings,
   parseReceiptSettings,
@@ -113,7 +113,12 @@ export async function updatePosReceiptSettings(ctx: Ctx, actor: PosReceiptSettin
       diff = settingsAuditDiff("receipt", cur as unknown as Record<string, unknown>, parsed.settings as unknown as Record<string, unknown>);
       return { ok: true, settings: parsed.settings };
     });
-    if (res.ok && diff) await writeAudit({ tenantId: ctx.tenantId, actorId: actor.userId, action: "pos.settings.updated", targetType: "AppSystem", targetId: ctx.systemId, before: diff.before, after: diff.after });
+    if (res.ok && diff) {
+      // POS P1.18 ▸ F5: header.phone ในบันทึกตรวจสอบ = แบบปิดบัง (maskPhone ของ member · เหมือนที่อื่น) — ประวัติไม่เคยได้เบอร์ดิบ ◂
+      const { maskPhone } = await import("@/lib/modules/member");
+      const d = diff as NonNullable<typeof diff>;
+      await writeAudit({ tenantId: ctx.tenantId, actorId: actor.userId, action: "pos.settings.updated", targetType: "AppSystem", targetId: ctx.systemId, before: maskAuditPhones(d.before, maskPhone), after: maskAuditPhones(d.after, maskPhone) });
+    }
     return res;
   } catch (e) {
     console.error("[pos/receipt-settings] update", e);
