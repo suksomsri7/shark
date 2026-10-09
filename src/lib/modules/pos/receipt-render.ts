@@ -107,6 +107,8 @@ export type ReceiptPayload = {
   member?: { name: string; memberCode?: string; phoneMasked?: string; tierName?: string; pointEarned: number; pointBalance?: number };
   footer: { text: string; qrEReceiptUrl: string | null; fullTaxInvoiceHint: boolean };
   labels: { th: ReceiptLabels; en: ReceiptLabels };
+  /** POS P1.18 ▸ R12 มติ Q7: ภาษาที่ "พิมพ์" = ค่าตั้งของระบบ POS (settings.pos.receiptLocale · ปริยาย th) — ภาษาจอของแคชเชียร์ไม่ตัดสิน ◂ */
+  printLocale?: "th" | "en";
 };
 
 // ═══════════════════ คำบรรยาย (ชุดคีย์เดียวกันทั้งสองภาษา) ═══════════════════

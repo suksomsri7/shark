@@ -4,8 +4,8 @@ Branch `wip/pos-p1.18` from `origin/session/pos` d46b8e89 (oracle b93f0623 merge
 Tree `/root/projects/shark-pos-c` · QC4 (`ep-frosty-lab`) · logs under `scratchpad/p118/runs/`.
 
 ## Checkpoint
-- done: step 1 (d4ccb98c) · step 2 (af6ae94a + ORACLE-EDIT 29d5b747 + a887a2a6) · step 3 (aaaaf455 + ORACLE-EDIT p1.15) · step 4 (8c08c2ec + ORACLE-EDIT I8 aa88aca1) · step 5 (staff overview + approval facade)
-- next: step 6 (locale cookies/action · printLocale in the print path · pos.nav.* in posTabs/childrenFor · qc-nav-functions ORACLE-EDIT if needed) then the final gate set
+- done: steps 1–6 (d4ccb98c · af6ae94a · aaaaf455 · 8c08c2ec · 34511c2e · step 6) + 4 ORACLE-EDIT commits
+- next: final gate set (p1.18 forced ×2 + unforced · listed suites · fitness ×2 · fitness-pos · typecheck)
 - commands:
   - oracle forced: `bash scripts/iso.sh env QC_FORCE=1 bash scripts/qc4.sh env GATE_LOCK_FILE=/tmp/shark-gate-pos.lock bash scripts/with-gate-lock.sh pnpm exec tsx scripts/qc-pos-p1.18.mts`
   - typecheck: `env NODE_OPTIONS=--max-old-space-size=5632 ISO_MEM=6500M bash scripts/iso.sh flock -w 3600 /tmp/pos-gate.lock pnpm typecheck`
@@ -24,11 +24,21 @@ Tree `/root/projects/shark-pos-c` · QC4 (`ep-frosty-lab`) · logs under `scratc
   ORACLE-EDIT `qc-pos-p1.18` I8 (own commit aa88aca1): I8 demanded every BOOKING fact carry P2.4 while I12 + names table #20 give `advanceBookingBill` P2.7 — contradictory; I8 now requires all facts planned with a phase and ≥1 with the card's phase. Count unchanged.
   oracle forced: 65/77 (I1–I13 A1–A5 H2 green) · typecheck 0.
 - **Step 5** (R10): `settings-overview.ts` posStaffOverview (listStaffForDevice items as-is · roleMatrix 12 rows · STAFF holders/total from accepted memberships with unit access · approvals = active POS_* policies applying to this POS/unit) · `approval/index.ts` listPoliciesForEntities · action posStaffOverviewAction.
-  oracle forced: 71/77 (S1–S4 green) · scoped tsc 0.
+  oracle forced: 71/77 (S1–S4 green) · scoped tsc 0 · full typecheck 0.
+- **Step 6** (R12 R13c): `src/i18n/locale-cookies.ts` nextLocaleCookies (pure) · `src/i18n/locale-actions.ts` setUiLocaleAction (sets LOCALE + lang, httpOnly false like the old switcher, secure in production) · `ReceiptPayload.printLocale` set in `receipt.ts` from `posReceiptLocale` · `print/browser.ts` + `print/escpos.ts` print in `payload.printLocale ?? locale` (UI locale only for old payloads) · `pos/tabs.ts` labels from `pos.nav.*` (`posTabs(id, t?)`, default = th messages; exports POS_NAV_KEYS) · `app/layout.tsx` POS block `label: posNav("nav.<k>")` with `getTranslations("pos")` (hrefs literal, qc-nav-functions needs no edit).
+  ORACLE-EDIT `qc-hr-roster` NM-2 (own commit 781c440b): it searched layout.tsx for the Thai literals of posTabs labels; now checks the same nav keys. HR-owned suite — not run here (static check verified with a one-off script: true).
+  oracle forced: **77/77** (ST7 = SKIP-until-U, baseline 61 lines / 4 files) · scoped tsc 0.
 
 ## Deviations
 1. **K4 self-approval guard exempts (a) OWNER and (b) entity type `crm.commission`** (ruling text: "refuse requester = approver inside the core"). (a) the OWNER is the last authority — a one-owner shop could never close its own OWNER-step request, and `qc-crm-c3.3` S4.8 asserts the owner approving the owner's own commission works; (b) CRM ruling C3.3 S3 handles a self-decided commission downstream (row stays PENDING + note + one owner escalation) and `qc-crm-c3.3` S4.8 asserts `decide().ok === true` for the MANAGER's own commission. Everything else (incl. K4's `QC_P118_SELF`, all POS_*) is refused in the core. Controller: confirm, or rule that CRM moves its rule into the core guard (then drop the set).
 2. **ORACLE-EDIT `qc-hf-pos-page-authz` S-8** (not in the prompt's list): it asserted the literal `posSalesScope(...)` on the sales page that ruling Q9 replaces with `posSalesReadScope`; only the function name changed (own `test(...)` commit, 56 checks unchanged).
+3. **ORACLE-EDIT `qc-pos-p1.18` I8** (own commit): I8 vs I12/names table #20 contradiction on BOOKING `advanceBookingBill` (P2.7 vs P2.4). Needs controller confirmation.
+4. **ORACLE-EDIT `qc-hr-roster` NM-2** (HR suite, own commit): literal-label search replaced by nav-key equality (same spirit as the allowed qc-nav-functions edit, which turned out unnecessary).
+5. **Sent receipts (LINE / e-mail, `receipt-send.ts`) stay `th`** (ruling 13) — only print/browser + ESC/POS follow `receiptLocale`. Follow-up for P1.18U/controller.
+6. **Unit-card `lastActivityAt`**: MEMBER (newest sale with memberId), POINT (pointEarned > 0), INVENTORY (a line with itemId), ACCOUNT (newest DONE `pos.sale.paid`), CHAT (newest `pos.receipt.sent` via LINE). COUPON / REWARD / CRM / KANBAN = null (no column or no cheap POS-side trace: PosSale has no coupon column; reward-fulfil / CRM-counted / POS-made card would need foreign internals). Only ACCOUNT is oracle-checked.
+7. **KANBAN void-card rule** is read from the KANBAN system's `settings.integrations.cardOnVoidedSale` JSON in the composition root (kanban has no facade; ST2 forbids `kanban/integrations`). Same fields the kanban bridge reads; if kanban's schema validation rejects the stored object the bridge treats the rule as off while the card could show LINKED — follow-up: a kanban facade read.
+8. **`posTabs(id, t?)`**: pages still call `posTabs(id)` (th labels from messages) — P1.18U passes `t` so EN shows EN tabs; `childrenFor("POS")` already follows the user locale.
+9. **Close-day / reports "today"** on pages (`close/page.tsx` bkkToday, `reports/page.tsx` bkkBusinessDate(now)) still default to the calendar day; the server functions honour the cut-off for any explicit date and `posBusinessToday(ctx)` is exported for the pages (P1.18U).
 
 ## Foreign-module edits (each also one line in `ledger/POS-OWNER-PENDING.md` under "แจ้งเจ้าของโมดูลบัญชี/อนุมัติ" — heading renamed from "…บัญชี" to "…บัญชี/อนุมัติ")
 - `src/lib/modules/account/index.ts` — marked block: `setPosLinkEnabled(ctx, posSystemId, enabled, actorUserId)` wraps `connections.connect/disconnect` (kind POS).
@@ -37,10 +47,23 @@ Tree `/root/projects/shark-pos-c` · QC4 (`ep-frosty-lab`) · logs under `scratc
 - `src/lib/core/permissions.ts` — 2 keys in the POS block (marked).
 
 ## Contract for P1.18U
-(filled at the end)
+All refusals: `{ok:false, code, message(th, log only), field?}` → screen text via `settingsRefusalMessageKey(code)` (keys under `pos.settings`) or `refusalMessageKey` (register). Codes: `PosSettingsRefusalCode` = NOT_FOUND · PERMISSION_DENIED · VALIDATION · UNKNOWN · SETTINGS_SECTION_LOCKED · CONFIRM_REQUIRED; register adds PIN_THROTTLED.
+- **`posSettingsOverviewAction({systemId, unitId})`** → `{ok, canEdit:{general, caps, unitStock, staff, payment, receipt}, general: PosGeneralSettings, caps:{STAFF,MANAGER,OWNER}, unitStock:{unitId, oversellPolicy}, serviceCharge:{enabled, rateBp}, tip:{enabled, ledgerAccountId}}` (cashier = read-only).
+- **`updatePosGeneralSettingsAction({systemId, patch})`** patch keys exactly: `heldCartExpireDays` 1–365 · `autoLockMinutes` 0–60 · `shift:{requiredRegister?, requiredOtherSources?, blindClose?, overShortReasonSatang? 0–10 000 000, forceCloseAfterHours? 1–72}` (partial) · `weighedBarcode:{enabled, rules:[{prefix "20"–"29" unique, kind WEIGHT|PRICE}]}` (both required) · `receiptLocale "th"|"en"` · `dayCutoffMinutes 0–360` → `{ok, general}`; VALIDATION `field` dotted (e.g. `shift.forceCloseAfterHours`). Send only changed keys; unchanged patch = ok, no history row.
+- **`updatePosDiscountCapsAction({systemId, patch:{STAFF?, MANAGER?}})`** bp 0–10 000 → `{ok, caps}`; MANAGER only by OWNER; non-owner STAFF ≤ own role cap; `OWNER` key = VALIDATION.
+- **`updatePosUnitStockPolicyAction({systemId, unitId, oversellPolicy})`** → `{ok, unitStock}` (pos.settings.manage at that unit).
+- **`updatePosUnitPromptpayAction({systemId, unitId, promptpayId|null})`** → `{ok, unitId, promptpayMasked}` (OWNER only, others SETTINGS_SECTION_LOCKED; null removes).
+- **`posSettingsHistoryAction({systemId, cursor?})`** → `{ok, items:[{id, at ISO, actorName, action, section, summary:{flat params}}], nextCursor}` 20/page; sections general · caps · unitStock · receipt · payment · intent · integration · devices · staff; summary keys = changed fields (e.g. `autoLockMinutes`, `shift.blindClose`, `STAFF`, `oversellPolicy`, `promptpayMasked`, `enabled`).
+- **`posStaffOverviewAction({systemId, unitId})`** → `{ok, staff: StaffListItem[] {userId,name,role,hasPin,shift}, roleMatrix:[{task, permission, planned, owner, manager, staff:{holders,total}, needsApproval}] (12 rows: sell discount priceOverride void refund shiftOperate shiftManage productManage stockCount reports settings onlineOrders), caps, approvals:[{id, entityType, name, thresholdSatang, systemId, unitId, steps[]}]}` — PIN set/unlock = existing P1.15 actions.
+- **`posIntegrationCardsAction({systemId, unitId})`** → `{ok, cards: Card[13], header:{linked, total:13, backlog:{pending, failed}|null}}`; `Card = {code, state LINKED|OFF|NO_SYSTEM|PLANNED, scope UNIT|POS|TENANT|null, target:{systemId,name}|null, facts:[{key, live, phase, params?}], lastActivityAt, manage:{href, canManage}|null}`; order MEMBER POINT COUPON REWARD ACCOUNT INVENTORY HR CRM CHAT KANBAN MARKETING BOOKING AI; fact keys = names table #20 (`pointRate.params.satangPerPoint`, `oversellPolicy.params.policy`).
+- **`setPosAccountLinkAction({systemId, enabled, confirm?})`** → `{ok, enabled, changed}`; disabling needs `confirm:true` (else CONFIRM_REQUIRED → show "บิลใหม่จะไม่ลงบัญชีจนกว่าจะเปิดอีกครั้ง"); never-linked = NOT_FOUND ("เชื่อมที่หน้าบัญชีก่อน").
+- **`setUiLocaleAction({locale})`** → sets LOCALE + lang; then `router.refresh()`.
+- Print: `ReceiptPayload.printLocale` already drives browser/ESC-POS; `posTabs(id, t)` takes `getTranslations("pos")`; messages `pos.nav.*`, `pos.settings.errors.{settingsSectionLocked, confirmRequired}`, `pos.register.errors.pinThrottled` exist (U adds the tab texts).
 
 ## Follow-ups
-(filled)
+- Controller: confirm deviations 1 (K4 exemptions), 3 (I8 ORACLE-EDIT), 4 (qc-hr-roster NM-2 edit) · run `qc-crm-c3.3`, `qc-approval`, `qc-bulk-ops`, `qc-approval-wiring`, `qc-hr-roster` (not run from this lane) to confirm the core decide guard / NM-2 change.
+- P1.18U: pass `t` to `posTabs` on every POS page · page-level business "today" via `posBusinessToday` · sent receipts locale (ruling 13) · show `pinThrottled`.
+- kanban facade read for the void-card rule (deviation 7) · CRM-counted lastActivity via a crm facade read.
 
 ## Gate exit codes
 (filled at the end)

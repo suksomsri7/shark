@@ -23,6 +23,7 @@ import { crmCan, parseCrmSettings } from "@/lib/modules/crm";
 import { membershipOf, CHAT_READ_ACTION } from "@/lib/modules/chat/guard";
 // POS P1.3 B2.1 ▸ ตัวอ่านธงหน้าขายใหม่ (บริสุทธิ์ · ตัวเดียวกับ register/page.tsx) ◂
 import { posRegisterV2On } from "@/lib/modules/pos/register-shared";
+import { getTranslations } from "next-intl/server"; // POS P1.18 ▸ R13c ◂
 
 // ฟังก์ชันย่อยของ "ระบบหน้า fixed" (เช่น KB /app/kb) → กาง accordion เหมือนระบบอื่น
 // ⚠️ ทุก href ต้องมี page.tsx จริง — ตรวจโดย scripts/qc-nav-functions.mts (บล็อก KB)
@@ -63,6 +64,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // "แตกฟังก์ชันย่อยในเมนู" — ทุกระบบที่มี sub-route จริงจะกาง submenu (accordion) ใต้ชื่อระบบ
   // business = ต่อด้วย slug (/app/u/<slug>/...) · feature = ต่อด้วย id (/app/sys/<id>/...)
   // ⚠️ ทุก href ที่นี่ต้องมี page.tsx จริง (กัน dead link) — ตรวจโดย scripts/qc-nav-functions.mts
+  const posNav = await getTranslations("pos"); // POS P1.18 ▸ R13c ป้ายแท็บ POS จาก messages ◂
   const childrenFor = (
     type: string,
     slugOrId: string,
@@ -117,16 +119,17 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     const s = `/app/sys/${slugOrId}`;
     switch (type) {
       case "POS":
+        // POS P1.18 ▸ R13c: ป้ายจาก messages pos.nav.* (ชุดเดียวกับ posTabs · ตามภาษาของผู้ใช้) — href ต้องตรงกับ posTabs ◂
         return [
-          { href: s, label: "ภาพรวม" },
-          { href: `${s}/pos/register`, label: "ขายหน้าร้าน" },
-          { href: `${s}/pos/products`, label: "สินค้า/บริการ" },
-          { href: `${s}/pos/stock`, label: "สต็อก" }, // POS P1.14 U ▸ ต้องตรงกับ posTabs ◂
-          { href: `${s}/pos/sales`, label: "บิลวันนี้" },
-          { href: `${s}/pos/shifts`, label: "กะ" }, // POS P1.9 U ▸ ต้องตรงกับ posTabs ◂
-          { href: `${s}/pos/close`, label: "ปิดวัน" },
-          { href: `${s}/pos/reports`, label: "รายงาน" }, // POS P1.17 U ▸ ต้องตรงกับ posTabs ◂
-          { href: `${s}/pos/settings`, label: "ตั้งค่า" }, // POS P1.10 U ▸ ต้องตรงกับ posTabs ◂
+          { href: s, label: posNav("nav.overview") },
+          { href: `${s}/pos/register`, label: posNav("nav.register") },
+          { href: `${s}/pos/products`, label: posNav("nav.products") },
+          { href: `${s}/pos/stock`, label: posNav("nav.stock") }, // POS P1.14 U ▸ ต้องตรงกับ posTabs ◂
+          { href: `${s}/pos/sales`, label: posNav("nav.sales") },
+          { href: `${s}/pos/shifts`, label: posNav("nav.shifts") }, // POS P1.9 U ▸ ต้องตรงกับ posTabs ◂
+          { href: `${s}/pos/close`, label: posNav("nav.close") },
+          { href: `${s}/pos/reports`, label: posNav("nav.reports") }, // POS P1.17 U ▸ ต้องตรงกับ posTabs ◂
+          { href: `${s}/pos/settings`, label: posNav("nav.settings") }, // POS P1.10 U ▸ ต้องตรงกับ posTabs ◂
         ];
       case "ACCOUNT":
         // เจ้าของสั่ง 6 ก.ย. 2569: ไม่เอาเมนูย่อยของบัญชีในแถบเมนู — หมวดทั้ง 9 อยู่ในหน้าหลักของระบบบัญชีแล้ว
