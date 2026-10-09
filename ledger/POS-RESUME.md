@@ -994,7 +994,7 @@
 # 🤝 HANDOVER → บัญชี A — 9 ต.ค. 2026 11:45Z (เจ้าของสั่ง "เตรียมส่งไม้ต่อ" · weekly B 95%)
 
 ## 0. เริ่มงานในบัญชี A
-เปิด Claude Code ที่ `/root/projects/shark-pos` (branch `session/pos`) แล้วสั่ง **"อ่านท้าย ledger/POS-RESUME.md แล้วทำต่อ"** · อ่านก่อน: `ledger/pos-briefs/pos-brief-LANE-RULES.md`, `pos-brief-COMMON.md`, memory ของบัญชี A (ถ้ามี) · agent ของบัญชี B ย้ายข้ามบัญชีไม่ได้ → spawn ใหม่จากสาขา `wip/*` ที่ push แล้ว · โควตา A ดูที่ `/root/tools/claude-usage-watch/state-a.json` (`grep -oE '"pct": ?[0-9]+'` ตัวแรก = session, ตัวสอง = weekly) · A weekly 61% รีเซ็ต 14 ต.ค. 11:00Z
+เปิด Claude Code ที่ `/root/projects/shark-pos` (branch `session/pos`) แล้วสั่ง **"อ่านท้าย ledger/POS-RESUME.md แล้วทำต่อ"** · อ่านก่อน: `ledger/pos-briefs/pos-brief-LANE-RULES.md`, `pos-brief-COMMON.md`, memory ของบัญชี A (ถ้ามี) · agent ของบัญชี B ย้ายข้ามบัญชีไม่ได้ → spawn ใหม่จากสาขา `wip/*` ที่ push แล้ว · โควตา A ดูที่ `/root/tools/claude-usage-watch/state.json` (B = `state-b.json`; คีย์ `limits.session.pct` / `limits.weekly_all.pct` / `limits.weekly_fable.pct` — ตัวที่สามคือ Fable ไม่ใช่บัญชี A) · A ตอนนี้ weekly_all **27%** (รีเซ็ต 14 ต.ค. 20:59Z) · B 95% (รีเซ็ต 14 ต.ค. 10:59Z)
 
 ## 1. สถานะ
 - **21/55** รับแล้ว (นับเมื่อครึ่ง U ปิด) · `session/pos` head = commit นี้ (ก่อนหน้า b682cd43) · **gates45 เขียวทั้งหมดบน 789498c4** (typecheck · build · fitness ×3 · p1.13 p1.15 p1.7 p1.11 p1.16 p1.3 p1.10 p1.9 p1.8 pos-account account-cpa authz) → `/root/pos-runs/gates45-c-*/SUMMARY.txt`
