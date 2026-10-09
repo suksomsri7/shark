@@ -439,7 +439,12 @@ export function RegisterScreen(props: RegisterScreenProps) {
   const pendingStoreKey = `pos-reg-pending:${systemId}:${unitId}:${userId}`;
   const savePending = (sale: RegisterSubmitInput, phase: "sending" | "unknown") => {
     try {
-      window.sessionStorage.setItem(pendingStoreKey, JSON.stringify({ v: 1, userId, idempotencyKey: sale.idempotencyKey, sale, phase }));
+      // POS P1.15U ▸ fix รอบ 1 F3: PIN ผู้จัดการห้ามลง storage (อ่านได้จากเครื่อง) — สำเนาที่เก็บไม่มี managerPin/managerUserId ·
+      //   โหลดกลับแล้วลองซ้ำ = บิลเดิมถ้าบันทึกแล้ว · ไม่งั้นได้ DISCOUNT_EXCEEDS_LIMIT ชัด ๆ (ไม่มีบิล) แล้วใส่ PIN ใหม่ · staffToken อยู่ใน sessionStorage อยู่แล้ว ◂
+      const { managerPin: _pin, managerUserId: _mgr, ...stored } = sale;
+      void _pin;
+      void _mgr;
+      window.sessionStorage.setItem(pendingStoreKey, JSON.stringify({ v: 1, userId, idempotencyKey: stored.idempotencyKey, sale: stored, phase }));
     } catch {
       /* เก็บไม่ได้ — ลองซ้ำในหน้านี้ยังได้ */
     }
