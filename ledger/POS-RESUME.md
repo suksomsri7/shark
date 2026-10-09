@@ -916,3 +916,8 @@
 ## 9 ต.ค. 07:40 UTC — P1.15U รอบแก้ 1 ส่งแล้ว (9cb8ca49) → re-review + build40-b + ภาพ
 - **L3 P1.15U**: head **9cb8ca49** (F1–F10 commit แยก · deviation 3 capBp/capRole · ORACLE-EDIT TK-U1/AP-U1 39 ข้อ · merge session/pos 9ba7834b ที่ ede913ba) · ด่านเขียว (p1.15 39/39 ×3 · p1.9/p1.10/p1.17/authz · p1.3 128 เมื่อรันซ้ำ) · ผู้ตรวจ (a2a396d…) ดูซ้ำแล้ว · build40-b @9cb8ca49 `/root/pos-runs/build40-b-20261009T073522Z` → vis40 (`scratchpad/ctl/vis40-p115u.sh` wo p1.15u-r1 พอร์ต 3227 · register owner/cashier + sales owner · waiter task b55kunp3w) → เทียบ 13B lock-screen · 21B approval-wait · discount-over → merge
 - session หน้าต่างใหม่ 6% · weekly 87%
+
+## 9 ต.ค. 07:50 UTC — ✅ P1.7U merge แล้ว → **19/55**
+- **L1 P1.7U ปิด**: builder merge session/pos 9ba7834b เอง (de130460 · inventory 356→367 · visual-pos ทั้งสองฝั่ง · typecheck 0 · p1.7 32/32 · dry rc 0) → merge เข้า session/pos **87f61ec9** push แล้ว (ไม่ build ซ้ำ: โค้ด UI เท่ากับ build39 ที่ถ่ายภาพผ่าน + ส่วนต่างคือ P1.11U ที่ build38 ผ่านแล้ว) · follow-ups ในโน้ต: "เงินเข้าไม่มีบิล" report · over-cap guard รับ approved held cart/PIN หลัง P1.15U · N1 (Beam เท่านั้น) แก้แล้วรอบ 2
+- ทรี p11 ว่าง → ใช้ build/ภาพ session/pos รวมตอนปิดชุด
+- เหลือ: L2 ORACLE-EDIT p1.3 · L3 P1.15U รอบ 2 + ภาพ · L4 P1.13 รอบแก้ 1
