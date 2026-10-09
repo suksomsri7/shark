@@ -15,6 +15,7 @@ import { receiptReadScope, saleMemberBenefits, saleMemberSnapshot } from "./rece
 import { receiptKindOf } from "./receipt-shared";
 import { snapshotBuyer } from "./tax-invoice-shared"; // POS P1.13 ▸ R7 ◂
 import { saleForRefund } from "./refund";
+import { saleChannelResolver } from "./channel"; // POS P2.1 ▸ R11 ◂
 import { PAY_TYPE_ORDER, PosSaleError, voidSale, type VoidSaleAudit } from "./service";
 // POS P1.15 ▸ R5: ยกเลิกบิลผ่านสายอนุมัติ (POS_VOID) · PIN ผู้จัดการชนะคำขอที่รอ (CD4) ◂
 import { POS_APPROVAL_MESSAGE, auditPinOverride, cancelOpenPosRequest, submitPosApproval } from "./pos-approval";
@@ -109,7 +110,7 @@ type CustomerLite = { id: string; name: string | null; firstName: string | null;
 const customerName = (c: CustomerLite) => nonEmpty(c.name) ?? nonEmpty([c.firstName, c.lastName].filter(Boolean).join(" ")) ?? nonEmpty(c.memberCode) ?? "-";
 
 // ═══════════ billsPageData (R1) ═══════════
-type CleanQuery = { unitId: string; date: string; status: BillStatusFilter; q: string; channel: string | null; staffUserId: string | null; page: number; pageSize: number };
+type CleanQuery = { unitId: string; date: string; status: BillStatusFilter; q: string; channel: string | null; staffUserId: string | null; page: number; pageSize: number; salesChannelId: string | null };
 function cleanQuery(raw: unknown): CleanQuery | BillsRefusal {
   if (!isRecord(raw)) return refuse("VALIDATION");
   if (!isId(raw.unitId)) return refuse("VALIDATION");
@@ -129,6 +130,12 @@ function cleanQuery(raw: unknown): CleanQuery | BillsRefusal {
     if (typeof raw.channel !== "string" || raw.channel.length > 40) return refuse("VALIDATION");
     channel = raw.channel;
   }
+  // POS P2.1 ▸ R11: ตัวกรองช่องทางขาย (id) — ตัวกรอง channel เดิม (= sourceModule) คงความหมาย (Q4) ◂
+  let salesChannelId: string | null = null;
+  if (!absent(raw.salesChannelId) && raw.salesChannelId !== "") {
+    if (!isId(raw.salesChannelId)) return refuse("VALIDATION");
+    salesChannelId = raw.salesChannelId;
+  }
   let staffUserId: string | null = null;
   if (!absent(raw.staffUserId) && raw.staffUserId !== "") {
     if (!isId(raw.staffUserId)) return refuse("VALIDATION");
@@ -144,7 +151,7 @@ function cleanQuery(raw: unknown): CleanQuery | BillsRefusal {
     if (typeof raw.pageSize !== "number" || !(BILL_PAGE_SIZES as readonly number[]).includes(raw.pageSize)) return refuse("VALIDATION");
     pageSize = raw.pageSize;
   }
-  return { unitId: raw.unitId, date: raw.date, status, q, channel, staffUserId, page, pageSize };
+  return { unitId: raw.unitId, date: raw.date, status, q, channel, staffUserId, page, pageSize, salesChannelId };
 }
 
 const emptyPage = (x: CleanQuery): BillsPageData => ({
@@ -158,6 +165,7 @@ const emptyPage = (x: CleanQuery): BillsPageData => ({
   pageSize: x.pageSize,
   channels: [],
   staff: [],
+  salesChannels: [],
 });
 
 /** ยอดสุทธิ/เฉลี่ยของชุดบิล (ไม่นับ VOIDED) — "หลังหักคืนเงินและยกเลิก" */
@@ -196,6 +204,11 @@ export async function billsPageData(ctx: RegisterCtx, actor: RegisterActor, q: u
           refundedSatang: true,
           status: true,
           payments: { select: { type: true } },
+          // POS P2.1 ▸ R11 ◂
+          unitId: true,
+          channelId: true,
+          channelCode: true,
+          channelRef: true,
         },
       }),
       prisma.posSale.findMany({
@@ -242,8 +255,10 @@ export async function billsPageData(ctx: RegisterCtx, actor: RegisterActor, q: u
     };
     const matchesStatus = (r: (typeof rows)[number]) =>
       x.status === "ALL" ? true : x.status === "OFF_SHIFT_CASH" ? offShift(r) : r.status === x.status;
+    // POS P2.1 ▸ R11: ช่องทางขายของทุกแถว (บิลเดิม = ช่องทางปริยายของสาขา) — ใช้ทั้งตัวกรอง salesChannelId และแสดงผล ◂
+    const chOf = await saleChannelResolver(prisma, tenantId, rows);
     const filtered = rows
-      .filter((r) => matchesStatus(r) && (!x.channel || r.sourceModule === x.channel) && (!x.staffUserId || r.soldByUserId === x.staffUserId) && matchesQ(r))
+      .filter((r) => matchesStatus(r) && (!x.channel || r.sourceModule === x.channel) && (!x.salesChannelId || chOf(r).id === x.salesChannelId) && (!x.staffUserId || r.soldByUserId === x.staffUserId) && matchesQ(r))
       .sort((p, n) => timeOf(n).getTime() - timeOf(p).getTime() || (n.id < p.id ? -1 : n.id > p.id ? 1 : 0));
     const pageRows = filtered.slice((x.page - 1) * x.pageSize, x.page * x.pageSize);
 
@@ -292,6 +307,8 @@ export async function billsPageData(ctx: RegisterCtx, actor: RegisterActor, q: u
         offShiftCash: offShift(r),
         ...(approver ? { voidApprovedBy: names.get(approver) ?? "-" } : {}),
         refunds: refundDocs.filter((d) => d.refSaleId === r.id).map((d) => ({ id: d.id, receiptNo: d.receiptNo, grandTotalSatang: d.grandTotalSatang })),
+        salesChannel: (({ code, name }) => ({ code, name }))(chOf(r)), // POS P2.1 ▸ R11 ◂
+        channelRef: r.channelRef ?? null,
       };
     });
 
@@ -300,7 +317,14 @@ export async function billsPageData(ctx: RegisterCtx, actor: RegisterActor, q: u
       .map((userId) => ({ userId, name: names.get(userId) ?? "-" }))
       .sort((p, n) => p.name.localeCompare(n.name, "th"));
 
-    return { ok: true, date: x.date, counts, summary, items, total: filtered.length, page: x.page, pageSize: x.pageSize, channels, staff };
+    // POS P2.1 ▸ R11: ช่องทางที่มีบิลวันนี้ (บิลเดิมที่สาขายังไม่มีแถว builtin ไม่มี id ⇒ ไม่อยู่ในตัวกรอง) ◂
+    const scSeen = new Map<string, { id: string; code: string; name: string }>();
+    for (const r of rows) {
+      const v = chOf(r);
+      if (v.id && !scSeen.has(v.id)) scSeen.set(v.id, { id: v.id, code: v.code, name: v.name });
+    }
+    const salesChannels = [...scSeen.values()].sort((p, n) => (p.code === "STORE" ? -1 : n.code === "STORE" ? 1 : p.name.localeCompare(n.name, "th")));
+    return { ok: true, date: x.date, counts, summary, items, total: filtered.length, page: x.page, pageSize: x.pageSize, channels, staff, salesChannels };
   } catch (e) {
     console.error("[pos/bills] billsPageData", e);
     return refuse("UNKNOWN");
@@ -423,6 +447,17 @@ export async function billDetail(ctx: RegisterCtx, actor: RegisterActor, input: 
       canRefund = fr.ok === true && fr.canRefund && fr.sale.refundable && fr.lines.some((l) => l.refundableQty > 0);
     }
 
+    // POS P2.1 ▸ R11 มติ 7: ช่องทางของบิล · ตัวเลขค่าคอมฯ เฉพาะผู้มี pos.report.view ที่สาขา (เจ้าของ/ผู้จัดการได้ตามบทบาท) ◂
+    const chView = (await saleChannelResolver(prisma, tenantId, [sale]))(sale);
+    const seeCommission = evaluate(a, { module: "pos", action: "pos.report.view", unitId });
+    const billChannel: BillDetail["channel"] = {
+      code: chView.code,
+      name: chView.name,
+      ref: sale.channelRef ?? null,
+      payout: sale.channelPayout ?? "DIRECT",
+      ...(seeCommission ? { commissionSatang: sale.channelCommissionSatang, commissionVatSatang: sale.channelCommissionVatSatang } : {}),
+    };
+
     const bill: BillDetail = {
       id: sale.id,
       receiptNo: sale.receiptNo,
@@ -473,6 +508,7 @@ export async function billDetail(ctx: RegisterCtx, actor: RegisterActor, input: 
             }
           : null,
       accounting: accounting ? { docNo: accounting.docNo, docId: accounting.docId } : null,
+      channel: billChannel, // POS P2.1 ▸ R11 มติ 7 ◂
       receiptKind,
       taxInvoice: sale.taxInvoiceDocId
         ? {

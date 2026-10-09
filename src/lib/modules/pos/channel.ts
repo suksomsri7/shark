@@ -331,6 +331,41 @@ export async function saleChannelName(db: Db, tenantId: string, channelId: strin
   return code ? channelFallbackName(code) : "";
 }
 
+// ═══════════ ตัวอ่าน (R11 · มติ 14 · CD9) ═══════════
+/** ช่องทางของบิลที่ตัวอ่านแสดง — id = SalesChannel.id (บิลเดิมที่สาขายังไม่มีแถว builtin = null) */
+export type SaleChannelView = { id: string | null; code: string; name: string };
+export type SaleChannelSource = { unitId: string; channelId: string | null; channelCode: string | null; sourceModule: string | null };
+/**
+ * ตัวแปลงช่องทางของบิลชุดหนึ่ง (อ่านอย่างเดียว · query เดียว · ไม่สร้างแถว): บิลที่มี channelId = แถวนั้น (ชื่อปัจจุบัน) ·
+ * บิลเดิม (channelId null) = defaultChannelCode(sourceModule) → แถว builtin ของสาขา (ถ้ามี) หรือชื่อสำรองจากรหัส
+ */
+export async function saleChannelResolver(db: Db, tenantId: string, sales: readonly SaleChannelSource[]): Promise<(s: SaleChannelSource) => SaleChannelView> {
+  const ids = [...new Set(sales.map((s) => s.channelId).filter((x): x is string => !!x))];
+  const legacyUnits = [...new Set(sales.filter((s) => !s.channelId).map((s) => s.unitId))];
+  const rows =
+    ids.length || legacyUnits.length
+      ? await db.salesChannel.findMany({
+          where: {
+            tenantId,
+            OR: [...(ids.length ? [{ id: { in: ids } }] : []), ...(legacyUnits.length ? [{ unitId: { in: legacyUnits }, kind: "BUILTIN" as const }] : [])],
+          },
+          select: { id: true, unitId: true, code: true, name: true, kind: true },
+        })
+      : [];
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  const builtin = new Map(rows.filter((r) => r.kind === "BUILTIN").map((r) => [`${r.unitId}|${r.code}`, r]));
+  return (s) => {
+    if (s.channelId) {
+      const r = byId.get(s.channelId);
+      const code = r?.code ?? s.channelCode ?? defaultChannelCode(s.sourceModule);
+      return { id: s.channelId, code, name: r?.name ?? channelFallbackName(code) };
+    }
+    const code = s.channelCode ?? defaultChannelCode(s.sourceModule);
+    const r = builtin.get(`${s.unitId}|${code}`);
+    return { id: r?.id ?? null, code, name: r?.name ?? channelFallbackName(code) };
+  };
+}
+
 /** ธุรกรรม — client ที่เป็น tx อยู่แล้ว = ทำในtx นั้นเลย */
 function runTx<T>(db: Db, fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
   return "$transaction" in db ? (db as PrismaClient).$transaction((tx) => fn(tx), { timeout: 20_000, maxWait: 10_000 }) : fn(db);

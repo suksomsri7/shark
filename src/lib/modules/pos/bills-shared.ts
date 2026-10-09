@@ -37,6 +37,8 @@ export type BillsPageQuery = {
   q?: string;
   /** sourceModule (POS · BOOKING · HOTEL …) */
   channel?: string;
+  /** POS P2.1 ▸ R11 Q4: ช่องทางขาย (SalesChannel.id ของสาขา) — บิลเดิมนับเป็นช่องทางปริยายตาม sourceModule ◂ */
+  salesChannelId?: string;
   staffUserId?: string;
   /** เริ่มที่ 1 */
   page?: number;
@@ -62,6 +64,10 @@ export type BillRow = {
   /** ชื่อผู้ยกเลิกบิล (จาก AuditLog pos.sale.void) — ไม่มี audit = ไม่มีช่องนี้ */
   voidApprovedBy?: string;
   refunds: { id: string; receiptNo: string | null; grandTotalSatang: number }[];
+  /** POS P2.1 ▸ R11: ช่องทางขายของบิล (บิลเดิม = defaultChannelCode(sourceModule) · "หน้าร้าน"/"เว็บร้าน …") ◂ */
+  salesChannel: { code: string; name: string } | null;
+  /** POS P2.1 ▸ R11: เลขออเดอร์แพลตฟอร์ม (แสดงแทนลูกค้าเมื่อไม่มีสมาชิก · mockup 12) ◂ */
+  channelRef: string | null;
 };
 export type BillsCounts = { all: number; paid: number; voided: number; refunded: number; offShiftCash: number };
 export type BillsSummary = { netSatang: number; billCount: number; storeCount: number; onlineCount: number; avgSatang: number; yesterdayAvgSatang: number };
@@ -76,6 +82,8 @@ export type BillsPageData = {
   pageSize: number;
   channels: string[];
   staff: { userId: string; name: string }[];
+  /** POS P2.1 ▸ R11: ตัวเลือกของตัวกรอง "ทุกช่องทาง" = ช่องทางของบิลวันนี้ (id ใช้กับ salesChannelId) ◂ */
+  salesChannels: { id: string; code: string; name: string }[];
 };
 export type BillsPageDataResult = BillsPageData | BillsRefusal;
 
@@ -119,6 +127,11 @@ export type BillDetail = {
     benefits: { kind: string; label: string; discountSatang: number }[];
   } | null;
   accounting: { docNo: string | null; docId: string } | null;
+  /**
+   * POS P2.1 ▸ R11 มติ 7: ช่องทางขาย + เลขออเดอร์ + การรับเงิน · commission* เฉพาะผู้มี pos.report.view (เจ้าของ/ผู้จัดการ) —
+   * คนอื่นไม่มีคีย์เหล่านี้ · บิลเดิม = ช่องทางปริยายตาม sourceModule (ค่าคอมฯ 0) ◂
+   */
+  channel: { code: string; name: string; ref: string | null; payout: "PLATFORM" | "DIRECT"; commissionSatang?: number; commissionVatSatang?: number } | null;
   receiptKind: "TAX_INVOICE_ABB" | "RECEIPT";
   /** POS P1.13 ▸ R7: ใบกำกับภาษีเต็มรูปของบิล — ISSUED (เลข + ชื่อผู้ซื้อ) · REQUESTED (ลูกค้าขอจากใบเสร็จออนไลน์ รอออก) · NONE ◂ */
   taxInvoice: {

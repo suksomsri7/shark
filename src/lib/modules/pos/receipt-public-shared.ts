@@ -40,6 +40,8 @@ export type PublicReceipt = {
   points: { earned: number; balance: number } | null;
   /** POS P1.12 (R15 · มติ 8): สิทธิ์สมาชิกที่ใช้กับบิล (ระดับ/ว่อชเชอร์/แต้ม · ไม่รวมคูปอง) — ไม่มีชื่อ/รหัส/เบอร์สมาชิก · ไม่มี = [] */
   memberBenefits: { kind: string; label: string; discountSatang: number }[];
+  /** POS P2.1 ▸ R11 มติ 8: ช่องทางขาย (หน้าร้าน = null) — ชื่อ + เลขออเดอร์ · ไม่มีค่าคอมฯ ◂ */
+  channel: { name: string; ref: string | null } | null;
   actions: { taxInvoice: PublicTaxInvoiceAction; review: boolean; report: true };
 };
 

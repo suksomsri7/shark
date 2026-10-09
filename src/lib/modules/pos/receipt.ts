@@ -28,6 +28,7 @@ import { receiptSettingsOf } from "./receipt-settings";
 // POS P1.16 ▸ R2: กติกาชนิดใบเสร็จตัวเดียวกับหน้าบิลวันนี้ (billDetail.receiptKind) ◂
 import { receiptKindOf } from "./receipt-shared";
 import { ensureReceiptToken } from "./receipt-token";
+import { saleChannelResolver } from "./channel"; // POS P2.1 ▸ R11 ◂
 import type { RegisterActor } from "./register-shared";
 
 // ── POS P1.12 ▸ R9 R15: สำเนาสมาชิก/สิทธิ์บนบิล (อ่านอย่างปลอดภัยจาก Json · ผิดรูป = ไม่มี) — ใบเสร็จ · หน้าบิล · ใบเสร็จออนไลน์ใช้ชุดเดียว ◂
@@ -279,6 +280,9 @@ async function buildReceipt(db: Db, tenantId: string, systemId: string, sale: Re
   const phoneMasked = snap ? nonEmpty(snap.phoneMasked ?? undefined) : customer?.phone ? (await import("@/lib/modules/member")).maskPhone(customer.phone) : undefined;
   const tierName = snap ? nonEmpty(snap.tierName ?? undefined) : nonEmpty(tier?.name);
   const couponCode = coupons.map((c) => c.coupon?.code).filter((c): c is string => !!c).join(", ");
+  // POS P2.1 ▸ R11 มติ 8: ช่องทางของบิล (หน้าร้าน/บิลเดิม = null) — ชื่อ + เลขออเดอร์เท่านั้น ห้ามมีค่าคอมฯ ◂
+  const chView = (await saleChannelResolver(db, tenantId, [sale]))(sale);
+  const channel = chView.code === "STORE" ? null : { code: chView.code, name: chView.name, ref: sale.channelRef ?? null };
 
   const payload: ReceiptPayload = {
     docType,
@@ -354,6 +358,7 @@ async function buildReceipt(db: Db, tenantId: string, systemId: string, sale: Re
     // POS P1.11 ▸ R3: qrEReceipt เปิด (ค่าปริยาย) = `${origin}/r/<token>` · บิลเก่าไม่มีโทเคน = สร้างตอนนี้ (UPDATE เดียว · client เดียวกัน) ◂
     footer: { text: rs.footer, qrEReceiptUrl: rs.qrEReceipt ? await eReceiptUrl(db, tenantId, sale) : null, fullTaxInvoiceHint: kind === "TAX_INVOICE_ABB" && docType === "SALE" && status === "PAID" }, // R2: บิลยกเลิก/คืนแล้วไม่ชวนขอใบกำกับเต็มรูป
     labels: { th: RECEIPT_LABELS.th, en: RECEIPT_LABELS.en },
+    channel, // POS P2.1 ◂
   };
   return { payload, kind, sale, bookId: bookId ?? null };
 }
