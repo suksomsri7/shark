@@ -81,18 +81,25 @@ export function GeneralSettings({ systemId, unitId, unitName, multiUnit, unitPro
   const [ppInput, setPpInput] = useState("");
   const [ppMasked, setPpMasked] = useState<string | null>(unitPromptpayMasked);
 
-  const fill = useCallback((g: PosGeneralSettings) => {
-    setAutoLock(String(g.autoLockMinutes));
-    setHeldDays(String(g.heldCartExpireDays));
-    setReceiptLocale(g.receiptLocale);
-    setReqRegister(g.shift.requiredRegister);
-    setReqOther(g.shift.requiredOtherSources);
-    setBlind(g.shift.blindClose);
-    setOverShort(bahtText(g.shift.overShortReasonSatang));
-    setForceClose(String(g.shift.forceCloseAfterHours));
-    setCutoff(g.dayCutoffMinutes);
-    setWbOn(g.weighedBarcode.enabled);
-    setRules(g.weighedBarcode.rules.map((r) => ({ ...r })));
+  /** ร่างจากค่าที่บันทึก — part = เฉพาะการ์ดนั้น (บันทึกการ์ดหนึ่งไม่ล้างร่างที่ยังไม่บันทึกของการ์ดอื่น) · ไม่ส่ง = ทุกการ์ด */
+  const fill = useCallback((g: PosGeneralSettings, part?: "register" | "shift" | "reports" | "weighed") => {
+    if (!part || part === "register") {
+      setAutoLock(String(g.autoLockMinutes));
+      setHeldDays(String(g.heldCartExpireDays));
+      setReceiptLocale(g.receiptLocale);
+    }
+    if (!part || part === "shift") {
+      setReqRegister(g.shift.requiredRegister);
+      setReqOther(g.shift.requiredOtherSources);
+      setBlind(g.shift.blindClose);
+      setOverShort(bahtText(g.shift.overShortReasonSatang));
+      setForceClose(String(g.shift.forceCloseAfterHours));
+    }
+    if (!part || part === "reports") setCutoff(g.dayCutoffMinutes);
+    if (!part || part === "weighed") {
+      setWbOn(g.weighedBarcode.enabled);
+      setRules(g.weighedBarcode.rules.map((r) => ({ ...r })));
+    }
   }, []);
 
   const load = useCallback(async () => {
@@ -176,7 +183,7 @@ export function GeneralSettings({ systemId, unitId, unitName, multiUnit, unitPro
       const r = await updatePosGeneralSettingsAction({ systemId, patch });
       if (!r.ok) return refuse(k, r);
       setData((d) => (d ? { ...d, general: r.general } : d));
-      fill(r.general);
+      fill(r.general, k);
       savedFor3s(k);
     } catch {
       patchCard(k, { saving: false, error: "errors.unknown" });
