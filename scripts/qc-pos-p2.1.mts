@@ -90,6 +90,8 @@ const CHECKS: readonly Def[] = [
   D("R4", "X5", "[R9] บิล PLATFORM คืนด้วย CASH / บิล CASH คืนด้วย PLATFORM → REFUND_METHOD_INVALID · ไม่มีใบคืน"),
   D("R5", "X1", "[R9 X1] เล่น consumers[pos.sale.refunded] ของใบคืนแรกซ้ำ 2 รอบ → REFUNDED 1 + COMMISSION_REFUNDED 1 (ไม่เบิ้ล)"),
   D("R6", "X4", "[R9] คืน AGENT (DIRECT · CASH) บรรทัด 21000 → ส่วนแบ่ง 2100 · COMMISSION_REFUNDED Dr 2100 2100 / Cr 6500 2100"),
+  // ORACLE-EDIT (fix round 1 · reviewer F1): ค่าคอมฯ ที่ไม่เคยลงห้ามถูก "กลับ" — ตัวรับคืนเงินต้องลง COMMISSION ที่ขาดก่อน COMMISSION_REFUNDED
+  D("R7", "X4", "[R9 F1] บิล LINEMAN ฿420 มี PAID แต่ JV COMMISSION หาย (ข้อสอบลบเองในร้านชั่วคราว) → คืนครบด้วย PLATFORM → หลัง drain มีทั้ง COMMISSION และ COMMISSION_REFUNDED (อย่างละ 1) · 1100 ของบิล+ใบคืนสุทธิ 0 บนผู้ติดต่อแพลตฟอร์ม (ทุกบรรทัด 1100 มีผู้ติดต่อ) · 6500 สุทธิ 0 · เล่น consumers[pos.sale.refunded] + [pos.sale.paid] ซ้ำ 2 รอบ → ไม่มีรายการเพิ่ม"),
   // ── P หน้าขาย ──
   D("P1", "X2", "[R10] quoteRegisterCart: ไม่ส่ง channelId → channel {id STORE ของสาขา, code STORE, name หน้าร้าน, payout DIRECT} · channelId LINEMAN → channel LINEMAN PLATFORM · channelId ของสาขาอื่น / ที่ archive → CHANNEL_INVALID (ไม่ throw)"),
   D("P2", "X5", "[R10 R5] submitRegisterSale LINEMAN + PLATFORM + channelRef → บิล snapshot (ref · 12600 · ผูกกะ) · STORE + PLATFORM → CHANNEL_PAY_MISMATCH · LINEMAN + CASH → CHANNEL_PAY_MISMATCH · channelRef 41 ตัว → VALIDATION · คำขอที่ถูกปฏิเสธไม่มีบิล"),
@@ -1673,6 +1675,56 @@ async function runDb() {
     const cr = byKey(await jv([rid]), K(rid, "COMMISSION_REFUNDED"))[0];
     if (shape(cr) !== "2100:2100/0 6500:0/2100") p.push(`COMMISSION_REFUNDED ${shape(cr)} (คาด 2100:2100/0 6500:0/2100)`);
     chk("R6", NS === "" && p.length === 0, "DIRECT คืน: Dr 2100 / Cr 6500 2100", FX(NS + (p.join(" · ") || "ครบ")));
+  }
+  // R7 (ORACLE-EDIT · reviewer F1) ค่าคอมฯ หาย → ตัวรับคืนเงินลง COMMISSION ก่อนกลับ
+  {
+    const p: string[] = [];
+    const sLMh = await sale("A", { lines: [["ซ่อมค่าคอม P21", 42000]], pays: [["PLATFORM", 42000]], channelId: CH.LM_A, channelRef: "LM-48156" });
+    if (!sLMh.id) p.push(`บิล → ${codeOf(sLMh.res)} ${short(sLMh.res?.message ?? "", 60)}`);
+    await drain();
+    const e0 = await jv([sLMh.id]);
+    const com0 = byKey(e0, K(sLMh.id, "COMMISSION"))[0];
+    if (byKey(e0, K(sLMh.id, "PAID")).length !== 1 || !com0) p.push(`ก่อนลบ PAID ${byKey(e0, K(sLMh.id, "PAID")).length} · COMMISSION ${com0 ? 1 : 0} (คาด 1/1)`);
+    // จำลองขั้น COMMISSION ล้มหลัง PAID (คิวยังไม่ได้ลองใหม่) — ลบเฉพาะ JV นี้ของร้านชั่วคราว
+    if (com0) {
+      await P.accountJournalLine.deleteMany({ where: { tenantId: T, entryId: com0.id } }).catch((e: Error) => p.push(`ลบบรรทัด ${short(e.message, 50)}`));
+      await P.accountJournalEntry.deleteMany({ where: { tenantId: T, id: com0.id } }).catch((e: Error) => p.push(`ลบ JV ${short(e.message, 50)}`));
+    }
+    if (byKey(await jv([sLMh.id]), K(sLMh.id, "COMMISSION")).length !== 0) p.push("ลบ COMMISSION ไม่สำเร็จ");
+    const r = await doRefund(sLMh, "ซ่อมค่าคอม P21", ["PLATFORM", 42000]);
+    const rid = r?.ok === true ? String(r.refund?.id ?? "") : "";
+    if (!rid) p.push(`refundSale → ${codeOf(r)} ${short(r?.message ?? "", 60)}`);
+    await drain();
+    const es = await jv([sLMh.id, rid]);
+    const nCom = byKey(es, K(sLMh.id, "COMMISSION")).length;
+    const nComR = byKey(es, K(rid, "COMMISSION_REFUNDED")).length;
+    if (nCom !== 1 || nComR !== 1) p.push(`COMMISSION ${nCom} · COMMISSION_REFUNDED ${nComR} (คาด 1/1)`);
+    const com = byKey(es, K(sLMh.id, "COMMISSION"))[0];
+    if (com && shape(com) !== "1100:0/12600 6500:12600/0") p.push(`COMMISSION ${shape(com)}`);
+    const ar = es.flatMap((e) => e.lines).filter((l) => l.code === "1100");
+    const byContact = new Map<string, number>();
+    for (const l of ar) byContact.set(l.contactId ?? "(ไม่มี)", (byContact.get(l.contactId ?? "(ไม่มี)") ?? 0) + l.debit - l.credit);
+    if (byContact.has("(ไม่มี)")) p.push("มีบรรทัด 1100 ไม่มีผู้ติดต่อ");
+    if (byContact.size !== 1 || [...byContact.values()].some((v) => v !== 0)) p.push(`1100 ต่อผู้ติดต่อ ${short(Object.fromEntries(byContact), 120)} (คาด ผู้ติดต่อเดียว สุทธิ 0)`);
+    const n = net(es);
+    if ((n["6500"] ?? 0) !== 0) p.push(`6500 สุทธิ ${n["6500"]} (คาด 0)`);
+    const hR = consMod?.consumers?.[EV_REFUNDED];
+    const hP = consMod?.consumers?.[EV_PAID];
+    const evR = rid ? (await events(EV_REFUNDED, (pl) => pl.refundSaleId === rid))[0] : null;
+    const evP = sLMh.id ? (await events(EV_PAID, (pl) => pl.saleId === sLMh.id))[0] : null;
+    if (!evR || !evP || typeof hR !== "function" || typeof hP !== "function") p.push("ไม่มี event/consumer ให้เล่นซ้ำ");
+    else
+      for (let i = 0; i < 2; i++)
+        for (const [h, ev, lbl] of [[hR, evR, "refunded"], [hP, evP, "paid"]] as const)
+          try {
+            await h(ev);
+          } catch (e) {
+            p.push(`เล่นซ้ำ ${lbl} ${i + 1} throw ${(e as Error).message.slice(0, 40)}`);
+          }
+    await drain();
+    const es2 = await jv([sLMh.id, rid]);
+    if (es2.length !== es.length) p.push(`เล่นซ้ำแล้ว JV ${es.length} → ${es2.length}`);
+    chk("R7", NS === "" && p.length === 0, "COMMISSION ถูกลงก่อนกลับ · 1100/6500 สุทธิ 0 · เล่นซ้ำไม่เพิ่ม", FX(NS + (p.join(" · ") || "ครบ")));
   }
 
   // ════════ P หน้าขาย ════════
