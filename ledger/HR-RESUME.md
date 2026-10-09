@@ -153,3 +153,4 @@
 - 2026-10-09T00:27:01Z heartbeat: ⏸️ still PAUSED by owner (no reply yet) — no spawn; lanes idle (H0.5 1517ad7f · H0.6 1083a96f); no HR process/unit; load back to 53 (other sessions busy again); quota session 24 %. No tg.
 - 2026-10-09T00:49:14Z heartbeat: ⏸️ still PAUSED by owner (no reply yet) — no spawn; lanes idle (H0.5 1517ad7f · H0.6 1083a96f); no HR process/unit; load 56; quota session 27 %. Last tg 23:47Z; next tg only on change or by ~01:00Z.
 - 2026-10-09T01:03:41Z heartbeat: ⏸️ still PAUSED by owner (no reply yet) — no spawn; lanes idle (H0.5 1517ad7f · H0.6 1083a96f); no HR process/unit; load 45; quota session 29 %. No tg (sent 00:48Z).
+- 2026-10-09T01:27:41Z heartbeat: ⏸️ still PAUSED by owner (no reply yet) — no spawn; lanes idle (H0.5 1517ad7f · H0.6 1083a96f); no HR process/unit; load 62; quota session 32 %. No tg (sent 00:48Z).
