@@ -858,3 +858,7 @@
 - L4: oracle P1.13 **0a049f30** (30 ข้อ · forced 1/30 แดงตามคาด · residue 0) merge **75d98874** · คำตัดสิน 1–15 ใน `pos-prompt-accountB-P1.13-S.md` (ff4e559f · ใช้ `accountDocId` เดิม · ABB CANCELLED+supersededByDocId ไม่แตะ GL · HAS_REFUNDS + ORACLE-EDIT L6 = 31) · builder S เริ่ม ทรี d `wip/pos-p1.13`
 - L1: builder P1.7U เริ่ม ทรี p11 `wip/pos-p1.7u` (prompt cc16520c · rulings 1–8 · server hunk อนุญาต: `updatePosIntentSettingsAction` + oracle S1-U = 32)
 - L2: build35-c (ทรี c @2d545ea4) กำลังรัน → vis receipt-public/sales :3226
+
+### 9 ต.ค. 05:30 UTC — P1.11U ภาพตรง 11C/12 · merge ชน P1.10U → ให้ builder รวมเอง + follow-up รอบ 2
+- L2: build35-c 0 · vis35 (:3226) receipt-public paid/refunded-partial/voided/issue-sent + sales list/drawer/void/refund/empty ✅ ตรง 11C/12 · แดง 2 state = fixture (`rpub-taxinvoice-form`: ร้าน QC ไม่เปิด ABB ⇒ taxInvoice NOT_AVAILABLE · `rpub-not-found`: console 404 ของตัวเอง) ไม่ใช่ UI · merge 2d545ea4 เข้า session/pos ชน 4 ไฟล์กับ P1.10U (pos-qc-env/inventory/visual-pos/BillsClient) → abort · ส่ง builder รอบ 2: merge session/pos + PayDone share row (02b) + 17A qrEReceipt toggle + visual fixes (print-pair รับ 2 สถานะ · เปิด ABB บนร้าน QC ชั่วคราว + บิลสมาชิก · not-found ยอม console 404) → ด่าน + ภาพซ้ำ → merge
+- โควตา 05:12Z: session 51% (รีเซ็ต 07:29Z) · weekly_all 78% · weekly_fable 53%
