@@ -561,18 +561,27 @@ export async function submitReview(
 //   🔴 โมดูลอื่นห้ามเขียน MemberReview เอง — ทางนี้ทางเดียว · ส่งแล้ว = alreadyReviewed (ไม่เขียนทับ)
 
 export type SubmitReviewForRefInput = { customerId: string; refType: ReviewRefType; refId: string; rating: number; body?: string | null };
-export type SubmitReviewForRefResult = (ReviewSubmitResult & { alreadyReviewed: false }) | { alreadyReviewed: true; reviewId: string };
+export type SubmitReviewForRefResult =
+  | (ReviewSubmitResult & { alreadyReviewed: false; expired?: false })
+  | { alreadyReviewed: true; reviewId: string }
+  // POS P1.11 F2 ▸ แถว REQUESTED ที่ลิงก์ขอรีวิวหมดอายุแล้ว (requestSentAt + 30 วัน) — ไม่รับรีวิว · ไม่แตะ hash ของ journey ◂
+  | { alreadyReviewed: false; expired: true; reviewId: string };
 
-/** สถานะรีวิวของรายการอ้างอิง (อ่านอย่างเดียว) — NONE ไม่มีแถว · REQUESTED ขอไว้ยังไม่ส่ง · SUBMITTED ส่งแล้ว (สถานะอื่นทั้งหมด) */
-export async function reviewStateForRef(ctx: { tenantId: string }, input: { refType: ReviewRefType; refId: string }): Promise<"NONE" | "REQUESTED" | "SUBMITTED"> {
+/**
+ * สถานะรีวิวของรายการอ้างอิง (อ่านอย่างเดียว) — NONE ไม่มีแถว · REQUESTED ขอไว้ยังไม่ส่ง · EXPIRED ขอไว้แต่ลิงก์หมดอายุ (30 วัน · F2) ·
+ * SUBMITTED ส่งแล้ว (สถานะอื่นทั้งหมด)
+ */
+export async function reviewStateForRef(ctx: { tenantId: string }, input: { refType: ReviewRefType; refId: string }, now = new Date()): Promise<"NONE" | "REQUESTED" | "EXPIRED" | "SUBMITTED"> {
   const refType = String(input?.refType ?? "") as ReviewRefType;
   const refId = String(input?.refId ?? "").trim();
   if (!(REVIEW_REF_TYPES as readonly string[]).includes(refType) || !refId) return "NONE";
   const row = await prisma.memberReview.findUnique({
     where: { tenantId_refType_refId: { tenantId: ctx.tenantId, refType, refId } },
-    select: { status: true },
+    select: { status: true, requestSentAt: true },
   });
-  return !row ? "NONE" : row.status === "REQUESTED" ? "REQUESTED" : "SUBMITTED";
+  if (!row) return "NONE";
+  if (row.status !== "REQUESTED") return "SUBMITTED";
+  return reviewTokenExpired(row, now) ? "EXPIRED" : "REQUESTED";
 }
 
 /**
@@ -594,21 +603,24 @@ export async function submitReviewForRef(ctx: MemberCtx, input: SubmitReviewForR
   if (!customer) throw new MemberNotFoundError();
   const key = { tenantId_refType_refId: { tenantId: ctx.tenantId, refType, refId } };
 
-  let row = await prisma.memberReview.findUnique({ where: key, select: { id: true, status: true, customerId: true, systemId: true } });
+  const sel = { id: true, status: true, customerId: true, systemId: true, requestSentAt: true } as const;
+  let row = await prisma.memberReview.findUnique({ where: key, select: sel });
   if (row && (row.customerId !== customer.id || row.systemId !== ctx.systemId)) throw new MemberNotFoundError("ไม่พบรายการนี้ของลูกค้ารายนี้");
   if (row && row.status !== "REQUESTED") return { alreadyReviewed: true, reviewId: row.id };
+  // F2: ลิงก์ที่ journey ส่งไปหมดอายุแล้ว = ไม่รับรีวิว (ไม่ออกโทเคนใหม่ทับ hash ของ journey)
+  if (row && reviewTokenExpired(row, opts.now ?? new Date())) return { alreadyReviewed: false, expired: true, reviewId: row.id };
   if (!row) {
     const ref = await resolveRef(ctx.tenantId, refType, refId);
     try {
       // แถว REQUESTED แบบเดียวกับ requestReview (ยังไม่ส่งลิงก์ ⇒ requestSentAt null = ไม่มีอายุลิงก์)
       row = await prisma.memberReview.create({
         data: { tenantId: ctx.tenantId, systemId: ctx.systemId, customerId: customer.id, unitId: ref.unitId, refType, refId, serviceId: ref.serviceId, staffEmployeeId: ref.staffEmployeeId, rating: 0, status: "REQUESTED", source: "LIFF" },
-        select: { id: true, status: true, customerId: true, systemId: true },
+        select: sel,
       });
     } catch (e) {
       // ยิงพร้อมกันชน unique(tenantId, refType, refId) → ใช้แถวที่ชนะ
       if (!(e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002")) throw e;
-      row = await prisma.memberReview.findUnique({ where: key, select: { id: true, status: true, customerId: true, systemId: true } });
+      row = await prisma.memberReview.findUnique({ where: key, select: sel });
       if (!row) throw e;
       if (row.status !== "REQUESTED") return { alreadyReviewed: true, reviewId: row.id };
     }

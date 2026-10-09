@@ -198,6 +198,7 @@ const RECEIPT_REFUSAL_KEY: Readonly<Record<string, string>> = {
   TOKEN_NOT_FOUND: "public.errors.tokenNotFound",
   NO_MEMBER: "public.errors.noMember",
   ALREADY_REVIEWED: "public.errors.alreadyReviewed",
+  REVIEW_EXPIRED: "public.errors.reviewExpired",
   NOT_ELIGIBLE: "taxInvoice.errors.notEligible",
   ALREADY_REQUESTED: "taxInvoice.errors.alreadyRequested",
   SALE_VOIDED: "send.errors.saleVoided",

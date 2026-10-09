@@ -30,6 +30,9 @@ export type PublicReceipt = {
   lines: PublicReceiptLine[];
   /** ส่วนลดท้ายบิล + คูปอง + สิทธิ์สมาชิก รวมก้อนเดียว (ป้าย "ส่วนลด + คูปอง" · CD6) */
   discountSatang: number;
+  /** F3: ค่าบริการ (อยู่ในยอดสุทธิ) · ทิป (นอกยอดสุทธิ) — Σบรรทัด − ส่วนลด + ค่าบริการ = ยอดสุทธิ · Σจ่าย = ยอดสุทธิ + ทิป */
+  serviceChargeSatang: number;
+  tipSatang: number;
   vat: { rateBp: number; satang: number; included: true } | null;
   grandTotalSatang: number;
   payments: { method: string; satang: number }[];
@@ -46,6 +49,7 @@ export type PublicReceiptRefusalCode =
   | "ALREADY_REQUESTED"
   | "NO_MEMBER"
   | "ALREADY_REVIEWED"
+  | "REVIEW_EXPIRED"
   | "INTERNAL";
 export type SendReceiptRefusalCode =
   | "PERMISSION_DENIED"
@@ -80,6 +84,7 @@ export const RECEIPT_ONLINE_MESSAGES: Readonly<Record<PublicReceiptRefusalCode |
   ALREADY_REQUESTED: "บิลนี้ส่งคำขอใบกำกับภาษีเต็มรูปไว้แล้ว — ร้านกำลังดำเนินการ",
   NO_MEMBER: "บิลนี้ไม่ได้ผูกสมาชิก — ให้คะแนนร้านได้เฉพาะบิลของสมาชิก",
   ALREADY_REVIEWED: "บิลนี้ให้คะแนนร้านไปแล้ว — ขอบคุณค่ะ",
+  REVIEW_EXPIRED: "ลิงก์ให้คะแนนของบิลนี้หมดอายุแล้ว (30 วัน) — ขอบคุณที่อุดหนุนค่ะ",
   PERMISSION_DENIED: "บัญชีนี้ยังไม่มีสิทธิ์ดูบิล/ส่งใบเสร็จ — ขอสิทธิ์จากเจ้าของร้าน",
   SALE_NOT_FOUND: "ไม่พบบิลนี้ (อาจเป็นของสาขาอื่น)",
   SALE_VOIDED: "บิลนี้ถูกยกเลิกแล้ว — ส่งใบเสร็จไม่ได้",

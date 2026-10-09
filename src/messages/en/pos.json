@@ -917,7 +917,8 @@
       "errors": {
         "tokenNotFound": "This receipt wasn't found — check the link or scan the QR code again",
         "noMember": "Only member bills can rate the shop",
-        "alreadyReviewed": "This bill has already been rated — thank you"
+        "alreadyReviewed": "This bill has already been rated — thank you",
+        "reviewExpired": "Rating for this bill has expired (30 days) — thank you for your visit"
       }
     },
     "send": {

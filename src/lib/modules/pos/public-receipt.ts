@@ -69,12 +69,15 @@ export async function publicReceipt(token: string): Promise<PublicReceiptResult>
       })),
       // CD6: ส่วนลดท้ายบิล + คูปอง + สิทธิ์สมาชิก (ระดับ/ว่อชเชอร์) = PosSale.discountSatang ก้อนเดียว ("ส่วนลด + คูปอง")
       discountSatang: built.sale.discountSatang,
+      // F3: ค่าบริการ/ทิปจากตัวประกอบเดียวกับใบที่พิมพ์ (ไม่มี = 0 ตามแถวบิล)
+      serviceChargeSatang: t.serviceChargeSatang,
+      tipSatang: t.tipSatang,
       vat: t.vatRateBp > 0 && t.vatSatang > 0 ? { rateBp: t.vatRateBp, satang: t.vatSatang, included: true } : null,
       grandTotalSatang: t.grandTotalSatang,
       payments: payload.payments.map((p) => ({ method: p.type, satang: p.amountSatang })),
       points,
-      // review: บิลมีสมาชิกที่ยังอยู่ในระบบสมาชิก (points ไม่ null) + ยังไม่ได้ส่งรีวิว
-      actions: { taxInvoice, review: reviewState !== null && reviewState !== "SUBMITTED" && points !== null, report: true },
+      // review: บิลมีสมาชิกที่ยังอยู่ในระบบสมาชิก (points ไม่ null) + ยังไม่ได้ส่งรีวิว + ลิงก์ขอรีวิวของ journey ยังไม่หมดอายุ (F2)
+      actions: { taxInvoice, review: (reviewState === "NONE" || reviewState === "REQUESTED") && points !== null, report: true },
     };
     return { ok: true, receipt };
   } catch (e) {
@@ -119,6 +122,7 @@ export async function submitReceiptReview(token: string, input: unknown): Promis
         { customerId: c.id, refType: "PosSale", refId: sale.id, rating, body },
       );
       if (r.alreadyReviewed) return refuse("ALREADY_REVIEWED");
+      if (r.expired) return refuse("REVIEW_EXPIRED");
       return { ok: true, reviewId: r.reviewId };
     } catch (e) {
       if (e instanceof member.MemberNotFoundError) return refuse("NO_MEMBER");

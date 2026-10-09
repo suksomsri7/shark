@@ -6,6 +6,7 @@
 // 🔴 บอร์ดงาน: ประตูเดียว `kanban/links.createCardFromExternal` (sourceType AUTOMATION · sourceKey "pos-receipt-issue:<issueId>" กันซ้ำ)
 //    บอร์ดมาจาก AppSystem(POS).settings.pos.receipt.issueBoardId เท่านั้น — ไม่มี fallback ไป "บอร์ดแรกของร้าน" (มติ 5)
 //    ไม่มีบอร์ด/บอร์ดถูกเก็บ = {posted:false, reason:"no-board"} ไม่ throw
+//    บอร์ดไม่มีคอลัมน์ที่ใช้งาน / createCardFromExternal throw ใด ๆ = no-board เช่นกัน (F5 — ไม่ให้คิว retry วนไม่จบ · ยังตอบรับ LINE)
 // 🔴 idempotent ต่อ issueId: PosReceiptIssue.kanbanCardId มีแล้ว = {posted:false, reason:"already-posted"} (ไม่เปิดการ์ด/ไม่ตอบรับซ้ำ)
 // 🔴 ตอบรับทาง LINE (sendLineToParty) เมื่อบิลมีสมาชิกที่มี Party — ok:false ถูกเพิกเฉย · ไม่ throw ไม่ว่ากรณีใด
 // 🔴 PDPA: ไม่พิมพ์ข้อความลูกค้า/ช่องทางติดต่อลง log
@@ -47,10 +48,17 @@ export async function onReceiptIssueReported(evt: IssueEvt): Promise<ReceiptIssu
     const card = await createCardFromExternal(
       { tenantId, systemId: board.systemId, actorUserId: null },
       { boardId: board.id, title: `แจ้งปัญหาบิล ${receiptNo}`, description, sourceType: "AUTOMATION", sourceKey: `pos-receipt-issue:${issue.id}` },
-    );
-    // เขียนครั้งเดียว (kanbanCardId IS NULL) — เล่นซ้ำพร้อมกันได้การ์ดเดิม (sourceKey) และ id เดิม
-    await prisma.posReceiptIssue.updateMany({ where: { id: issue.id, tenantId, kanbanCardId: null }, data: { kanbanCardId: card.cardId } });
-    result = { posted: true, cardId: card.cardId };
+    ).catch(async (e: unknown) => {
+      // F5: บอร์ดใช้ไม่ได้ (ไม่มีคอลัมน์ ฯลฯ) = ข้ามแบบ no-board · บันทึกสถานะลง ops (ไม่มีข้อความลูกค้า)
+      const { logOps } = await import("@/lib/core/ops");
+      await logOps("WARN", "pos.receipt", "เปิดการ์ดแจ้งปัญหาบิลไม่สำเร็จ — ข้าม (no-board)", { tenantId, detail: (e instanceof Error ? e.message : "error").slice(0, 120) }).catch(() => {});
+      return null;
+    });
+    if (card) {
+      // เขียนครั้งเดียว (kanbanCardId IS NULL) — เล่นซ้ำพร้อมกันได้การ์ดเดิม (sourceKey) และ id เดิม
+      await prisma.posReceiptIssue.updateMany({ where: { id: issue.id, tenantId, kanbanCardId: null }, data: { kanbanCardId: card.cardId } });
+      result = { posted: true, cardId: card.cardId };
+    }
   }
 
   // ── ตอบรับทาง LINE (สมาชิกที่มี Party เท่านั้น · ผลไม่สำเร็จถูกเพิกเฉย) ──

@@ -2,13 +2,12 @@
 //
 // 🔴 สิทธิ์ pos.sale.read (pos.sale.create ได้โดยนัย · ตัวเดียวกับ receiptPayload) + บิลต้องอยู่ในขอบเขตสาขาของผู้เรียก ·
 //    ไม่มีสิทธิ์ = PERMISSION_DENIED · บิลนอกขอบเขต/id มั่ว = SALE_NOT_FOUND · บิลยกเลิก = SALE_VOIDED
-// 🔴 เพดาน 5 ครั้ง/บิล/24 ชม. นับจาก AuditLog pos.receipt.sent (CD4 — ไม่มีตารางตัวนับ) · audit เขียนเฉพาะที่ส่งสำเร็จ ·
+// 🔴 เพดาน 5 ครั้ง/บิล/24 ชม. นับจาก AuditLog pos.receipt.sent (CD4 — ไม่มีตารางตัวนับ) ใต้ล็อกแถวบิล (F6a) · audit เขียนเฉพาะที่ส่งสำเร็จ (ใน tx เดียวกับการนับ) ·
 //    ที่อยู่ปลายทางใน audit ถูกปิดบัง (ไม่มีชื่อ/เบอร์/อีเมลดิบ/LINE id)
 // 🔴 LINE: โมดูล POS ไม่รู้จักแชท (fitness F2) ⇒ ตัวส่งจริงอยู่ที่ composition root `src/lib/pos-receipt-bridges.ts`
 //    (ฉีดผ่าน opts.deps.line โดย sendReceiptAction · ไม่ฉีด = โหลดตัวเดียวกันแบบ dynamic import) · ข้อสอบฉีดตัวปลอม
 // 🔴 EMAIL: core/email.sendEmailRich (โหลดตอนใช้ — lib/env ตรวจ env ตอน import) · deps.fetch ฉีดแทน fetch ได้ (ข้อสอบไม่แตะเครือข่าย)
 // 🔴 ปฏิเสธเป็นข้อมูลภาษาไทย ไม่ throw
-import { writeAudit } from "@/lib/core/audit";
 import { posSaleWhere } from "./access";
 import { prisma } from "./db";
 import { eReceiptUrl, receiptActorOf, receiptForSale, receiptReadScope, type ReceiptCtx } from "./receipt";
@@ -86,21 +85,29 @@ export async function sendReceipt(ctx: ReceiptCtx, actor: RegisterActor, input: 
     });
     if (!sale) return refuse("SALE_NOT_FOUND");
     if (sale.status === "VOIDED") return refuse("SALE_VOIDED");
-    const sent = await prisma.auditLog.count({ where: { tenantId, action: "pos.receipt.sent", targetType: "PosSale", targetId: sale.id, createdAt: { gt: new Date(Date.now() - DAY_MS) } } });
-    if (sent >= RECEIPT_SEND_LIMIT_PER_DAY) return refuse("RATE_LIMITED");
     const customer = sale.memberId ? await prisma.customer.findFirst({ where: { id: sale.memberId, tenantId }, select: { partyId: true, email: true } }) : null;
     const receiptNo = sale.receiptNo ?? "";
+    // โทเคน/URL ก่อนเข้า tx (บิลเก่าได้โทเคนตอนนี้ — ห้ามเขียนแถวบิลจากอีก connection ระหว่างถือล็อก FOR UPDATE)
+    const url = await eReceiptUrl(prisma, tenantId, sale);
+    if (!url) return refuse("SALE_NOT_FOUND");
 
-    let to: string;
+    // ── เตรียมการส่ง (ยังไม่แตะเครือข่าย) ──
+    type Prepared = { to: string; send: () => Promise<ReceiptRefusal<SendReceiptRefusalCode> | null> };
+    let prepared: Prepared;
     if (via === "LINE") {
       // ไม่มีสมาชิก / สมาชิกไม่มีตัวตนกลาง (Party) = ไม่มีไลน์ให้ส่ง (ไม่เรียกตัวส่ง)
       if (!customer?.partyId) return refuse("NO_LINE_IDENTITY");
-      const url = await eReceiptUrl(prisma, tenantId, sale);
-      if (!url) return refuse("SALE_NOT_FOUND");
+      const partyId = customer.partyId;
+      // POS P1.11 ▸ composition-root link (controller-accepted F4)
       const line = opts?.deps?.line ?? (await import("@/lib/pos-receipt-bridges")).posReceiptLineSender;
-      const r = await line({ tenantId, actorUserId: a.userId }, { partyId: customer.partyId, text: receiptLineText(receiptNo, sale.grandTotalSatang - sale.refundedSatang, url) });
-      if (!r.ok) return r.code === "NO_LINE_IDENTITY" ? refuse("NO_LINE_IDENTITY") : refuse("SEND_FAILED", r.reason ? `ส่งทางไลน์ไม่สำเร็จ — ${r.reason}` : undefined);
-      to = "LINE:member";
+      prepared = {
+        to: "LINE:member",
+        send: async () => {
+          const r = await line({ tenantId, actorUserId: a.userId }, { partyId, text: receiptLineText(receiptNo, sale.grandTotalSatang - sale.refundedSatang, url) });
+          if (r.ok) return null;
+          return r.code === "NO_LINE_IDENTITY" ? refuse("NO_LINE_IDENTITY") : refuse("SEND_FAILED", r.reason ? `ส่งทางไลน์ไม่สำเร็จ — ${r.reason}` : undefined);
+        },
+      };
     } else {
       const addr = givenEmail ?? (customer?.email?.trim() || null);
       if (!addr) return refuse("NO_EMAIL");
@@ -108,24 +115,40 @@ export async function sendReceipt(ctx: ReceiptCtx, actor: RegisterActor, input: 
       // ใบเสร็จฉบับอีเมล = ต้นฉบับดิจิทัล (ไม่ใช่การพิมพ์ซ้ำ ⇒ ไม่ประทับสำเนา ไม่มี audit reprint) · สูตรเดียวกับใบที่พิมพ์
       const built = await receiptForSale(tenantId, systemId, sale.id, { copy: false });
       if (!built) return refuse("SALE_NOT_FOUND");
-      const url = built.payload.footer.qrEReceiptUrl ?? (await eReceiptUrl(prisma, tenantId, sale));
-      if (!url) return refuse("SALE_NOT_FOUND");
-      const html = withLink(renderReceiptHtml(built.payload, { paper: "80", locale: "th" }), url);
+      // F6b: อีเมลที่แคชเชียร์พิมพ์เอง (อาจไม่ใช่สมาชิก) = ไม่ใส่ส่วนสมาชิก/แต้มในใบ
+      const payload = givenEmail ? { ...built.payload, member: undefined } : built.payload;
+      const html = withLink(renderReceiptHtml(payload, { paper: "80", locale: "th" }), url);
+      const subject = `ใบเสร็จ ${receiptNo} · ${built.payload.shop.name}`;
       const { sendEmailRich } = await import("@/lib/core/email");
-      const r = await sendEmailRich({ to: [addr], subject: `ใบเสร็จ ${receiptNo} · ${built.payload.shop.name}`, html }, opts?.deps?.fetch ? { fetch: opts.deps.fetch } : undefined);
-      if (!r.ok) return refuse("SEND_FAILED");
-      to = maskEmail(addr);
+      prepared = {
+        to: maskEmail(addr),
+        send: async () => ((await sendEmailRich({ to: [addr], subject, html }, opts?.deps?.fetch ? { fetch: opts.deps.fetch } : undefined)).ok ? null : refuse("SEND_FAILED")),
+      };
     }
 
-    await writeAudit({
-      tenantId,
-      actorId: a.userId,
-      action: "pos.receipt.sent",
-      targetType: "PosSale",
-      targetId: sale.id,
-      after: { via: via satisfies SendReceiptVia, to, receiptNo },
-    });
-    return { ok: true, via };
+    // ── F6a: นับ + ส่ง + audit ใต้ล็อกแถวบิล (FOR UPDATE) ⇒ ส่งพร้อมกันไม่ทะลุ 5/24 ชม. · นับเฉพาะที่ส่งสำเร็จ (แถว audit) ──
+    return await prisma.$transaction(
+      async (tx): Promise<SendReceiptResult> => {
+        await tx.$queryRaw`SELECT id FROM "PosSale" WHERE id = ${sale.id} AND "tenantId" = ${tenantId} FOR UPDATE`;
+        const sent = await tx.auditLog.count({ where: { tenantId, action: "pos.receipt.sent", targetType: "PosSale", targetId: sale.id, createdAt: { gt: new Date(Date.now() - DAY_MS) } } });
+        if (sent >= RECEIPT_SEND_LIMIT_PER_DAY) return refuse("RATE_LIMITED");
+        const failed = await prepared.send();
+        if (failed) return failed;
+        await tx.auditLog.create({
+          data: {
+            tenantId,
+            actorType: "USER",
+            actorId: a.userId,
+            action: "pos.receipt.sent",
+            targetType: "PosSale",
+            targetId: sale.id,
+            after: { via: via satisfies SendReceiptVia, to: prepared.to, receiptNo },
+          },
+        });
+        return { ok: true, via };
+      },
+      { timeout: 60_000 },
+    );
   } catch (e) {
     console.error("[pos/receipt-send] INTERNAL", e instanceof Error ? e.name : "Error");
     return refuse("INTERNAL");
