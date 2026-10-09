@@ -434,11 +434,6 @@ export function RegisterScreen(props: RegisterScreenProps) {
     // มติ 3: คนอื่นปลดล็อก ⇒ ตะกร้าที่ค้างพักไว้ในชื่อคนก่อน (ด้วยโทเคนของคนก่อน) · ว่าง = ไม่พัก · ระหว่างส่งบิล = ไม่แตะ
     //   fix รอบ 1 F10: โทเคนคนก่อนตาย ⇒ พักด้วยโทเคนของคนใหม่ ป้าย "สลับพนักงาน · <ชื่อคนก่อน>" · พักไม่ได้ทั้งสองทาง = ไม่สลับ (จอยังล็อก)
     //   ตะกร้าของคนก่อนไม่ค้างบนจอของคนใหม่เด็ดขาด
-    // merge P1.15U ข้อ 10e (มติ 1): สลับพนักงาน = ทิ้งผู้ซื้อใบกำกับที่จอเก็บไว้ (ทั้งของตะกร้าและที่ผูกบิลรออนุมัติ)
-    if (prev && prev.userId !== next.userId && !frozenRef.current) {
-      setTaxInv(null);
-      parkedTaxInv.current = null;
-    }
     if (prev && prev.userId !== next.userId && cartRef.current.lines.length && !frozenRef.current) {
       const who = prev.name ?? "-";
       const hold = async (token: string, label: string) => {
@@ -458,6 +453,12 @@ export function RegisterScreen(props: RegisterScreenProps) {
       setLayers([]);
       showToast({ key: "lock.switchHeld", values: { name: who } });
       void refreshHeld();
+    }
+    // merge P1.15U ข้อ 10e (มติ 1) · fix F7: สลับพนักงานสำเร็จแล้วเท่านั้น ⇒ ทิ้งผู้ซื้อใบกำกับที่จอเก็บไว้ (ของตะกร้า + ที่ผูกบิลรออนุมัติ)
+    //   พักตะกร้าไม่ได้ (lock.switchHeldFailed → return ข้างบน) = ไม่สลับ ⇒ ผู้ซื้อของคนก่อนยังอยู่กับตะกร้าเดิม
+    if (prev && prev.userId !== next.userId && !frozenRef.current) {
+      setTaxInv(null);
+      parkedTaxInv.current = null;
     }
     if (deviceId) writeStaffSession(deviceId, next);
     lastStaffRef.current = next;
