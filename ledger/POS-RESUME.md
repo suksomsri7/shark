@@ -867,3 +867,8 @@
 - L1: P1.7U **52b0713b** (32/32 ×3 · typecheck 0 · deviations 5 ข้อ: key ใช้ `_` · ไม่มี "via Beam" ใน PayDone · ลิงก์พร้อมเพย์ไป /app/settings/payment · ปิด dialog ทิ้ง intent PENDING · non-cash = intent rows) → ผู้ตรวจ Opus (prompt `pos-prompt-accountB-P1.7U-R.md` dab6072e) · build/ภาพ p11 รอผลตรวจ
 - เจ้าของ: บัญชี A อยู่ VPS เดียวกัน (A session 0% · weekly 27% · รีเซ็ต 14 ต.ค. 20:59Z) → ตอบ: **ไม่เปิด A ทำ POS พร้อมกัน** (CPU เต็ม · ตัวคุมงานซ้อน · ร้าน QC ร่วม) · ส่งไม้เมื่อ B ใกล้ 90%: หยุด spawn → ผู้สร้าง push ขั้นล่าสุด → เขียนบล็อก HANDOVER ท้ายไฟล์นี้ → เจ้าของเปิด A ที่ /root/projects/shark-pos สั่ง "อ่านท้าย ledger/POS-RESUME.md แล้วทำต่อ" (agent ย้ายข้ามบัญชีไม่ได้ เปิดใหม่จาก branch wip/*) · memory ใช้ร่วมกัน (symlink) · เตือน tg ที่ weekly 85%
 - โควตา 05:47Z: session 65% (รีเซ็ต 07:29Z) · weekly_all 81% · weekly_fable 54%
+
+### 9 ต.ค. 05:58 UTC — P1.11U รอบ 2 ส่ง · 🔴 scratchpad ร่วมทำสคริปต์ด่านชนกัน
+- L2: P1.11U รอบ 2 **da826682** (merge session/pos 96ecfe56 + PayDone share row + 17A qrEReceipt + visual fixes · typecheck 0 · 38/38 ×3 · p1.10 40 · print 8/8) → re-review สั้น (reviewer เดิม) · build36-c unit pos-build36-c-1791525462 → vis: register sale-done/paydone + settings receipt + receipt-public (:3226) → merge
+- 🔴 builder P1.11U (c) และ P1.15U (b) ต่างใช้ `scratchpad/gates.sh` → ถูกเขียนทับขณะรัน ⇒ ด่านอาจรันผิดทรี · สั่ง P1.15U ย้ายไป `scratchpad/p115u/` และพิสูจน์ทุก log ว่ามาจากทรี b (รันซ้ำถ้าพิสูจน์ไม่ได้) · กฎใหม่: ทุก prompt ระบุ subdir ต่อใบงาน · memory `reference_subagents_share_scratchpad`
+- L1: P1.7U reviewer MERGEABLE-AFTER-FIXES (F1 split reuse PAID intent · F2 cancel vs PAID race · F3 ปิด dialog ทิ้ง intent/PRICE_CHANGED ลบ via rows · F4 caps) → fix round 1 ส่งแล้ว
