@@ -1,5 +1,5 @@
 // QC — POS RUN ใบ P1.7: PromptPay ไดนามิก (QR ล็อกยอด) · Beam (PromptPay ยืนยันอัตโนมัติ + บัตร) · PosPaymentIntent · ยืนยันเงินเข้าแบบ idempotent · ปิดสุภาพเมื่อไม่มีกุญแจ
-//   เขียนก่อนสร้าง (fail-before) · ผู้เขียนข้อสอบ
+//   เขียนก่อนสร้าง (fail-before) · ผู้เขียนข้อสอบ · ORACLE-EDIT C31 (fix round 1 F1 อนุมัติ 9 ต.ค.) → 31 ข้อ
 // requires: pos-seed
 //
 // สัญญา: ledger/pos-briefs/pos-brief-P1.7.md §2 R1–R8 · §4 แผนข้อสอบ · §5 CD1–CD6 · pos-brief-COMMON · pos-brief-LANE-RULES
@@ -81,6 +81,8 @@ const CHECKS: readonly Def[] = [
   D("S3", "X4", "[R4] PROMPTPAY 15,000 อ้าง intent PAID 20,000 (+ เงินสด 5,000) → AMOUNT_MISMATCH · ไม่มีบิล · intent คง PAID"),
   D("S4", "X1", "[R4] ส่งสองบิล (คีย์ต่างกัน) อ้าง intent เดียวพร้อมกันบน 2 connection → บิลเกิด 1 ใบพอดี · อีกคำขอ INTENT_CONSUMED · saleId ของ intent = ผู้ชนะ · PosPayment ที่อ้าง intent 1 แถว · ส่งครั้งที่สามคีย์ใหม่ → INTENT_CONSUMED"),
   D("S5", "X1", "[R4] ส่งบิล S1 ซ้ำ (คีย์เดิม payload เดิม) → ok saleId เดิม duplicated true · intent คง CONSUMED โดยบิลเดิม · PosPayment อ้าง intent ยัง 1 · จำนวนบิลไม่เพิ่ม"),
+  // ORACLE-EDIT C31 (fix round 1 F1 · อนุมัติโดยผู้คุมงาน) — pi_ บนโอน = VALIDATION + intent ถูกใช้ครั้งเดียว
+  D("C31", "X4", "[R4 F1] submit [{TRANSFER 100 ref pi_X}, {PROMPTPAY A ref pi_X}] → VALIDATION ไม่มีบิล · pi_X คง PAID saleId null · submit ที่ถูก → CONSUMED saleId = บิล · PosPayment อ้าง pi_X 1 แถว · บิลที่สองอ้าง pi_X → INTENT_CONSUMED"),
   D("S6", "X4", "[R4 CD-A] ทาง P1.6 ไม่เปลี่ยน: PROMPTPAY ไม่มี reference → PAID reference null · CARD + EDC \"EDC-778899\" → PAID reference ตรงตัว · TRANSFER + reference → PAID · PROMPTPAY + reference ที่ไม่ใช่ pi_ → VALIDATION ไม่มีบิล · ไม่มี intent เกิด"),
   // ── E หมดอายุ ──
   D("E1", "X1", "[R5] expirePaymentIntents(tenantId) → จำนวน = PENDING ที่หมดเวลาของร้านนี้ · แถวเหล่านั้น EXPIRED · PENDING ที่ยังไม่หมด / PAID ที่ expiresAt ผ่านแล้ว ไม่ถูกแตะ · เรียกซ้ำ → 0 · /api/cron/hourly เรียก expirePaymentIntents"),
@@ -1206,6 +1208,25 @@ async function runDb() {
       const i1 = await intentCount();
       if (PI && i1 !== i0) p.push(`intent เพิ่ม ${i0}→${i1}`);
       chk("S6", !fx && p.length === 0, "PROMPTPAY เปล่า PAID · CARD EDC PAID · TRANSFER PAID · PROMPTPAY+ref อื่น VALIDATION · ไม่มี intent", FX(p.join(" · ") || "ครบ (ทาง P1.6 เดิม)"));
+    }
+
+    // ════════ C31 (ORACLE-EDIT · fix round 1 F1) pi_ บนโอน + ใช้ครั้งเดียว ════════
+    {
+      const p: string[] = [];
+      const x = await mkPaid("C31", 4100, "MANUAL");
+      const n0 = await saleCount();
+      const a = await sell("C31 TRANSFER+pi", [["ของ C31 a", 4200]], [{ type: "TRANSFER", amountSatang: 100, reference: x.id }, { ...pi(x.id), amountSatang: 4100 }]);
+      const r0 = await intentRow(x.id);
+      if (!refused(a.r, "VALIDATION") || (await saleCount()) !== n0) p.push(`TRANSFER pi_: ${codeOf(a.r)} บิล ${n0}→${await saleCount()}`);
+      if (r0?.status !== "PAID" || r0?.saleId !== null) p.push(`intent หลังปฏิเสธ ${r0?.status}/${r0?.saleId}`);
+      const b = await sell("C31 ถูก", [["ของ C31 b", 4100]], [{ ...pi(x.id), amountSatang: 4100 }]);
+      const r1 = await intentRow(x.id);
+      if (b.r?.ok !== true || r1?.status !== "CONSUMED" || !b.saleId || r1?.saleId !== b.saleId) p.push(`ถูก ${codeOf(b.r)} ${r1?.status}/${r1?.saleId === b.saleId}`);
+      const refs = await refRows(x.id);
+      if (refs.length !== 1 || refs[0]?.type !== "PROMPTPAY" || !noteOk(refs[0]?.note, "MANUAL")) p.push(`PosPayment อ้าง ${refs.length} ${short(refs.map((r) => [r.type, r.note]), 80)}`);
+      const c = await sell("C31 ซ้ำ", [["ของ C31 c", 4100]], [{ ...pi(x.id), amountSatang: 4100 }]);
+      if (!refused(c.r, "INTENT_CONSUMED")) p.push(`บิลที่สอง ${codeOf(c.r)}`);
+      chk("C31", !fx && !NM() && p.length === 0, "VALIDATION ไม่มีบิล คง PAID · ถูก → CONSUMED 1 แถว · บิลที่สอง INTENT_CONSUMED", FX(NM() + (p.join(" · ") || "ครบ")));
     }
 
     // ════════ E หมดอายุ ════════

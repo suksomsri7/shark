@@ -577,4 +577,34 @@ model PosTaxInvoiceRequest {
 
   @@index([tenantId, saleId])
   @@index([tenantId, status, createdAt])
+// POS P1.7 — ใบขอรับเงิน (payment intent) ของส่วนที่ไม่ใช่เงินสด ก่อนบิลเกิด
+//   PromptPay ไดนามิก (QR ล็อกยอด) · Beam (PromptPay ยืนยันอัตโนมัติ + บัตร) · ยืนยันเอง (มี audit)
+//   ผู้เขียนเดียว = src/lib/modules/pos/payment-intent.ts · บิลใช้ intent ได้ครั้งเดียวใน submitRegisterSale (FOR UPDATE)
+//   id = "pi_" + สุ่ม (ไม่ใช่ cuid) ⇒ เลขอ้างอิงในวิธีจ่ายบอกได้ทันทีว่าเป็น intent
+model PosPaymentIntent {
+  id                String    @id
+  tenantId          String
+  unitId            String
+  systemId          String // ระบบ POS
+  kind              String // "PROMPTPAY_STATIC" | "PROMPTPAY_BEAM" | "CARD_BEAM"
+  amountSatang      Int
+  status            String // "PENDING" | "PAID" | "CONSUMED" | "EXPIRED" | "CANCELLED"
+  qrPayload         String? // EMV ของ QR (STATIC/Beam) · บัตร = URL หน้าชำระของ Beam
+  beamChargeId      String?
+  beamRef           String? // chargeId ที่ webhook ยืนยัน
+  deviceId          String
+  createdByUserId   String
+  confirmedVia      String? // "WEBHOOK" | "MANUAL"
+  confirmedByUserId String?
+  paidAt            DateTime?
+  expiresAt         DateTime
+  saleId            String? // บิลที่ใช้ intent นี้ (CONSUMED)
+  lateWebhook       Boolean   @default(false) // เงินเข้าหลังหมดเวลา (เงินจริง — ยังใช้ได้ใน 24 ชม.)
+  idempotencyKey    String
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, unitId, status, createdAt])
+  @@index([beamChargeId])
 }

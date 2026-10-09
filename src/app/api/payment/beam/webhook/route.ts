@@ -9,6 +9,7 @@ import { verifyWebhook } from "@/lib/payment/beam";
 import { creditFromCharge } from "@/lib/ai/topup";
 import { handleAccountCharge } from "@/lib/modules/account/index";
 import { logOps } from "@/lib/core/ops";
+import { onBeamWebhookEvent } from "@/lib/modules/pos/payment-webhook"; // POS P1.7 ▸ ใบขอรับเงินของหน้าขาย ◂
 
 export const dynamic = "force-dynamic";
 
@@ -66,6 +67,14 @@ export async function POST(req: Request): Promise<Response> {
       detail: `charge ${chargeId} · ref ${referenceId} · status ${status} · handled ${accRes.handled}`,
     });
     return Response.json({ ok: true, handled: accRes.handled }, { status: 200 });
+  }
+
+  // POS P1.7 ▸ "pos-<id ใบขอรับเงิน>" = หน้าขาย (PromptPay/บัตรผ่าน Beam) · facade ไม่โยน · ตอบ 200 เสมอ (ไม่บอกว่ารู้จัก ref ไหม) ◂
+  if (referenceId.startsWith("pos-")) {
+    const posRes = await onBeamWebhookEvent({ referenceId, chargeId, status, amountSatang: paidSatang, raw });
+    // fix F2: ขัดข้องภายใน = 503 ให้ Beam ส่งซ้ำ (การยืนยันเป็น idempotent) · คำปฏิเสธทางธุรกิจ/ref ไม่รู้จัก = 200
+    if (posRes.ok === false && posRes.code === "INTERNAL") return Response.json({ ok: false }, { status: 503 });
+    return Response.json({ ok: true }, { status: 200 });
   }
 
   // เติมเฉพาะรายการที่จ่ายสำเร็จจริง — สถานะอื่น (PENDING/FAILED/EXPIRED) แค่รับทราบ

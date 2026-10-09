@@ -145,6 +145,8 @@ Actual count is 18 `createSale(` calls in 15 files. The 19th grep hit is the dea
 | modules/pos/api/ops/sales.ts:129 | 1 | actor.systemId + posUnitIsLinked (new since REVIEW) | explicit |
 | modules/pos/register.ts:1131 | 1 | regScope (new since REVIEW, P1.3) | explicit |
 
+P1.7 note (fix round 1 F4): the register.ts site is now the single call inside `regCreateSale`, which runs in two modes — its own tx (P1.6 path; createSale does the after-commit stock cut + drain) or the caller's tx (`regSubmitWithIntents`, P1.7 `pi_` intents), where the after-commit `consumeSaleInventory` + `scheduleDrain()` are duplicated at the caller. Count stays 18 sites / 15 files.
+
 How the guard is covered in the DB tests: the guard lives in createSale, so U1–U3 exercise it directly for every caller. The five first-POS callers are behaviourally the U2 case (2+ POS, unit not linked → refuse) or the U3 case (1 POS → works). No per-module fixtures (shop orders, clinic visits, …) were built. Their own suites in the COMMON §7 money set must be run by the controller after the build.
 
 ## Drift found in brief §1 (re-verified on 315da19e)

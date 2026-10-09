@@ -34,6 +34,8 @@ export const AUTOMATION_EVENTS: AutomationEventDef[] = [
   { value: "pos.stockCount.confirmed", label: "เมื่อยืนยันผลตรวจนับสต็อก (POS)" },
   // POS P1.8 ▸ คืนเงิน (consumer = refund-consumer.ts ครอบ withAutomation) ◂
   { value: "pos.sale.refunded", label: "เมื่อคืนเงิน (POS)" },
+  // POS P1.7 ▸ เงินเข้าใบขอรับเงิน PromptPay/Beam (consumer = withAutomation เปล่า) ◂
+  { value: "pos.payment.intent_paid", label: "เมื่อเงินเข้า (PromptPay/บัตร · POS)" },
   { value: "inventory.lot.expiring", label: "เมื่อสินค้าใกล้หมดอายุ" },
   // ── บอร์ดงาน (K1.4 → ครบ 8 ตัวใน K2.9 · พิมพ์เขียว 13-kanban-v2 §7.2) ─────
   // 🔴 ประกาศที่ `KANBAN_AUTOMATION_EVENTS` ข้างบนที่เดียว แล้ว spread เข้ามาที่นี่
