@@ -59,10 +59,10 @@ Check families (prompt): ST · B · M · T · V · P · S · W · X · R · Z. T
 - Messages live in split files `src/messages/{th,en}/pos.json`; `register.errors.couponInvalid` already exists.
 - Stamp module: a stamp in a **completed** cycle cannot be voided — fixture card uses `minSatang 60,000` so only 5 bills of X stamp (no completion in a run).
 
-## Check list (64 · S=5 −=24 X1=10 X2=3 X3=3 X4=7 X5=12)
+## Check list (65 since ORACLE-EDIT U1 · S=5 −=25 X1=10 X2=3 X3=3 X4=7 X5=12)
 ST1 migration additive (2 nullable Json) · ST2 pos→loyalty only via member facade (public-receipt allowlist) + register-member.ts + delegated keys + no admin calls · ST3 "use server" + 4 actions · ST4 no GIFT_CARD tender · ST5 codes/keys/messages, MEMBER_RIGHTS_UNSUPPORTED retired, REG_QUOTE_KEYS, saleWalletCart in createSale + quote, CreateSaleInput.memberSnapshot, createSale writes memberBenefits, submit passes memberSystemId, member.erased POS after CRM ·
 B1 new keys exact · B2 giftCard VALIDATION · B3 points type · B4 client snapshot VALIDATION · B5 quick-register parser · B6 held cart memberId+couponCode ·
-M1 phone lookup (prefix/dashed/legacy) + DTO + masking + short q · M2 name/code/sort/merged/other-system · M3 SHARK-MC token · M4 404-not-403 same message · M5 SUSPENDED · M6 MEMBER_SYSTEM_MISSING ×5 · M7 STAFF w/o member.* + benefits DTO read-only · M8 no pos.sale.create ⇒ PERMISSION_DENIED ×5 · M9 quick register side effects + audit · M10 dup phone / replay key · M11 PHONE_INVALID + snapshot ·
+M1 phone lookup (prefix/dashed/legacy) + DTO + masking + short q · M2 name/code/sort/merged/other-system · M3 SHARK-MC token · M4 404-not-403 same message · M5 SUSPENDED · M6 MEMBER_SYSTEM_MISSING ×5 · U1 registerStatus.memberEnabled A true / B false (P1.12U) · M7 STAFF w/o member.* + benefits DTO read-only · M8 no pos.sale.create ⇒ PERMISSION_DENIED ×5 · M9 quick register side effects + audit · M10 dup phone / replay key · M11 PHONE_INVALID + snapshot ·
 T1 Gold tier 2,500 · T2 no MEMBER_RIGHTS_UNSUPPORTED · T3 tier base before bill discount · T4 tier outside cashier cap (+ control) · T5 quote = bill for 6 mixed carts ·
 V1 voucher USED · V2 VOUCHER_INVALID · V3 VOUCHER_LIMIT · V4 VOUCHER_COUPON_CONFLICT · V5 member coupon · V6 walk-in coupon · V7 COUPON_INVALID · V8 parallel race ·
 P1 benefits points · P2 burn 500 · P3 below min · P4 insufficient · P5 capped (+ 475 control) · P6 disabled · P7 earn = pointsExpected · P8 GL points = bill discount ·
@@ -92,3 +92,9 @@ Z1 residue 0 + seed markers · Z2 legacy createSale (points + gift card) unchang
 ## Follow-ups
 - Member owner: phone index / trigram for lookup (ruling Q4) — today `listMembers` uses `contains` and phones are stored as typed.
 - Controller: POS-CONTRACTS C-10 names → wallet (ruling Q5); POS-OWNER-PENDING gift-card output VAT (ruling Q1).
+
+## ORACLE-EDIT U1 (P1.12U · controller ruling 2, 9 Oct)
+- New check `P1.12-U1` ("-"): `registerStatus(ctxOf("A"), owner).memberEnabled === true` (unit A has a MEMBER system) and
+  `registerStatus(ctxOf("B"), owner).memberEnabled === false` (unit B without MEMBER). Count **64 → 65** (`-` 24 → 25).
+  Server: `register.ts registerStatus` returns `memberEnabled = !!systemForUnit(unitId, "MEMBER")` (read error ⇒ false) +
+  `RegisterStatus.memberEnabled: boolean`. Builder P1.12U, tree d, branch `wip/pos-p1.12u`.

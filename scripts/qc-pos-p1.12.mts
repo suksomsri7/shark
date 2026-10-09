@@ -71,6 +71,7 @@ const CHECKS: readonly Def[] = [
   D("M4", "X2", "[R1] 404-not-403: quote/benefits ด้วยสมาชิกระบบอื่น (Z) / ร้านอื่น / M ที่ถูกรวม / id มั่ว → MEMBER_NOT_FOUND ข้อความเดียวกันทุกกรณี"),
   D("M5", "-", "[R1] S (SUSPENDED): quote / benefits / submit → MEMBER_SUSPENDED · ค้นแล้วขึ้นพร้อม suspended:true · ไม่มีบิล"),
   D("M6", "-", "[R1] สาขา B (ไม่มีระบบสมาชิก): lookup / quick register / benefits / fulfil / quote+memberId → MEMBER_SYSTEM_MISSING"),
+  D("U1", "-", "[P1.12U มติ 2 · ORACLE-EDIT] registerStatus.memberEnabled: สาขา A (มีระบบสมาชิก) → true · สาขา B (ไม่มีระบบสมาชิก) → false (จอไม่มีแถวสมาชิก/ส่วนสิทธิ์)"),
   D("M7", "X3", "[CD2 มติ Q2 · R5] พนักงานมีแค่ pos.sale.create (ไม่มี member.*) ค้น · ดูสิทธิ์ · สมัครด่วนได้ · benefits อ่านอย่างเดียว (นับแถวเท่าเดิม) · คีย์ผลตรง R5 · tier 5%/cap ฿100 · ว่อชเชอร์ applicable/reason · giftCards {numberMasked, balanceSatang, expiresAt} ไม่มีเลขเต็ม/PIN · stamps"),
   D("M8", "X3", "[มติ Q2] ผู้ใช้ไม่มี pos.sale.create (มี pos.sale.read + member.*) → PERMISSION_DENIED จาก lookup / quick register / benefits / fulfil / quote · ไม่มีอะไรถูกเขียน"),
   D("M9", "X5", "[R4] สมัครด่วน → Customer (source POS · homeUnitId A · sourceDetail.heardFrom/unitId) + consent LINE/EMAIL/SMS ตาม marketingConsent (source STAFF) + attribution FIRST/LAST (POS · staffUserId = ผู้กระทำจริง · unitId A) + audit pos.member.registered {customerId, created:true, unitId} ผู้กระทำจริง ไม่มีเบอร์เต็ม · ผล {ok, created:true, member (DTO R2)}"),
@@ -1005,6 +1006,17 @@ async function runDb() {
     ];
     for (const [lbl, r] of rs) if (!refused(r, "MEMBER_SYSTEM_MISSING")) p.push(`${lbl} → ${codeOf(r)}`);
     chk("M6", p.length === 0, "สาขาไม่มีระบบสมาชิก = MEMBER_SYSTEM_MISSING ×5", FXB(joinP(p)));
+  }
+  // ════════ U1 สถานะจอขาย: สาขามีระบบสมาชิกไหม (ORACLE-EDIT · P1.12U มติ 2) ════════
+  {
+    const p: string[] = [];
+    const sa = await call(regMod, "registerStatus", ctxOf("A"), owner);
+    const sb = await call(regMod, "registerStatus", ctxOf("B"), owner);
+    if (sa?.ok !== true) p.push(`สาขา A ${codeOf(sa)} ${short(sa?.message ?? "", 60)}`);
+    else if (sa.memberEnabled !== true) p.push(`สาขา A memberEnabled ${short(sa.memberEnabled, 20)} (คาด true)`);
+    if (sb?.ok !== true) p.push(`สาขา B ${codeOf(sb)} ${short(sb?.message ?? "", 60)}`);
+    else if (sb.memberEnabled !== false) p.push(`สาขา B memberEnabled ${short(sb.memberEnabled, 20)} (คาด false)`);
+    chk("U1", p.length === 0, "สาขา A true · สาขา B false", FXB(joinP(p)));
   }
   {
     const p: string[] = [];
