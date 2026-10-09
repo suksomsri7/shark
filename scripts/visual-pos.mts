@@ -1233,6 +1233,8 @@ const TAXINV = {
   docId: "",
   docNo: "" as string | null,
   reused: [] as string[],
+  /** fix F5: คำขอ REQUESTED ค้างจากรอบก่อนที่ลบก่อนสร้างคำขอของรอบนี้ */
+  leftover: 0,
   close: null as null | { ok: boolean; detail: string },
   cleanup: null as null | { requests: number; outbox: number; error?: string },
 };
@@ -1351,6 +1353,10 @@ async function seedTaxInvBillsOnce(): Promise<void> {
       const row = await prisma.posSale.findFirst({ where: { id: have.req.id, tenantId: T.tenantId }, select: { publicToken: true } });
       const tok = row?.publicToken ?? (await ensureReceiptToken(T.tenantId, have.req.id));
       if (!tok) throw new StepError("บิล req ไม่มีโทเคนใบเสร็จ");
+      // fix F5: รอบที่ถูก kill ทิ้งคำขอ REQUESTED ค้างบนบิลที่ใช้ซ้ำ ⇒ คำขอใหม่ได้ ALREADY_REQUESTED ทั้งวัน — ลบคำขอค้าง (+ outbox ของมัน) ก่อน
+      const left = await prisma.posTaxInvoiceRequest.findMany({ where: { tenantId: T.tenantId, saleId: have.req.id, status: "REQUESTED" }, select: { id: true } });
+      for (const l of left) await prisma.outboxEvent.deleteMany({ where: { tenantId: T.tenantId, type: "pos.receipt.taxInvoiceRequested", payload: { path: ["requestId"], equals: l.id } } });
+      if (left.length) TAXINV.leftover = (await prisma.posTaxInvoiceRequest.deleteMany({ where: { tenantId: T.tenantId, id: { in: left.map((l) => l.id) } } })).count;
       const rq = await requestFullTaxInvoice(tok, { name: TAXINV_BUYER.name, taxId: TAXINV_BUYER.taxId, branchCode: TAXINV_BUYER.branchCode, address: TAXINV_BUYER.address });
       if (!rq.ok) throw new StepError(`คำขอใบกำกับ (P1.11): ${rq.code}`);
       TAXINV.requestId = rq.requestId;
