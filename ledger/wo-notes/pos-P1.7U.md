@@ -74,3 +74,26 @@ Code = 5d7ed29f + visual type fix (same push). DB suites: `bash scripts/iso.sh [
 | visual `--page register --states --dry` owner / cashier | exit 0 · 45 shots each |
 | visual `--page settings --states --dry` owner / cashier | exit 0 · 16 shots each |
 Not run here: real visual (needs a server) — CONTROLLER-RUN; `next build`.
+
+## Fix round 1 (reviewer MERGEABLE-AFTER-FIXES on 52b0713b · controller rulings F1–F5) — commit 5125193d (+ merge 0e55892a, ledger only)
+- **F1**: intent key = `<cart>_s<row index>_<METHOD>_<amount>[_r<n>]` (row index = number of split rows already taken). A `reused:true` intent whose id is already on another row ⇒ next round, retried once; a second hit ⇒ "สร้าง QR ไม่สำเร็จหลายครั้ง — กดลองใหม่". A reused PAID intent is never shown as paid for a new row.
+- **F2**: the cancel helper returns its result. `INTENT_PAID` ⇒ stop, re-read status (`paymentIntentStatusAction`), the intent becomes the current PAID/locked one, the dialog restores its method/amount and shows "เงินเข้าแล้ว ใช้กับบิลนี้ หรือคืนเงินเอง"; no new intent is created over it. Same path when the target becomes null (method switched to cash/transfer). The PENDING intent stays on screen until its cancel is answered.
+- **F3a**: unmounting the dialog (close) cancels the current intent unless it is PAID (a late Beam payment ⇒ server `refund_needed` instead of an orphan). Replaces deviation 6 above.
+- **F3b**: while the current intent is PAID or any row has `via`, Esc / ✕ / back show the locked notice instead of closing. A due change (PRICE_CHANGED) keeps `via` rows, moves a current PAID intent into a row, and re-plans only the unpaid remainder (replaces deviation 9). If the new due is below the paid total ⇒ "เงินเข้าเกินยอด ฿X — คืนเงินเอง" (`pos-pay-intent-overpaid`) and confirm is blocked. **Deviation:** in that over-paid state closing is allowed (otherwise the cashier is stuck with no way to confirm or leave; the PAID intents stay PAID for the manual refund).
+- **F4**: `register/page.tsx` → `registerSellerLimits(actor, unit, await registerDiscountCaps({tenantId, systemId}))`.
+- **F5**: `IDEMPOTENCY_CONFLICT` bumps the round · rounds exhausted ⇒ real error + "ลองอีกครั้ง" · polling stops on any non-INTERNAL refusal (DEVICE_REVOKED etc.) and shows it · unused `pay.intent.cardHint` removed (th+en; added `overPaid`, `roundsExhausted`) · visual: a PAID-unused intent left after the run ⇒ cleanup not ok ⇒ rc 1; PromptPay restore goes through `savePaymentProfile` when the old value is valid, else delete (no old row) / raw update (old value invalid — the updater refuses it), noted in `summary.intentState`.
+- **Follow-up (P1.15U):** after P1.15U merges, the ruling-5 over-cap guard must also accept an approved held cart / manager-PIN path (today it blocks any cart whose local price check or quote says DISCOUNT_EXCEEDS_LIMIT).
+
+| gate (fix round 1, code 5125193d / 0e55892a) | result |
+|---|---|
+| typecheck | exit 0 |
+| `qc-pos-p1.7` QC_FORCE=1 ×2 / unforced | exit 0 · 32/32 · residue 0 (all three) |
+| `qc-pos-p1.6` | exit 0 · 48/48 |
+| `qc-pos-p1.3` | run 1 exit 1 · 127/128 (S9.1 coffee-tenant row drift: +1 PosSale/PosPayment/pointLedger from lane 2's P1.11U visual on :3227 running at the same time, outside the POS lock) · run 2 same drift (+1 sale) · run 3 (no visual running) exit 0 · 128/128 |
+| `qc-pos-p1.10` | run 1 exit 1 · 39/40 (Z2 PosReceiptCounter fingerprint drift — same concurrent visual sale) · run 2 exit 0 · 40/40 |
+| `qc-pos-p1.15` | exit 0 · 36/36 · residue 0 |
+| `qc-pos-p1.16` | exit 0 · 28/28 · residue 0 |
+| `qc-pos-account` · `qc-hf-pos-page-authz` · `qc-nav-functions` | exit 0 · 16/16 · 56/56 · 11/11 |
+| `pnpm fitness` without env / with qc4 | exit 0 · 41/41 / exit 0 · 41/41 |
+| `fitness-pos` | exit 0 · 8/8 |
+| visual `--dry` register / settings × owner, cashier | exit 0 · 45 / 16 shots |
