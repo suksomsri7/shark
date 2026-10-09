@@ -848,3 +848,8 @@
 - L3: P1.15U builder เริ่ม ทรี b `wip/pos-p1.15u` (prompt `pos-prompt-accountB-P1.15U.md` 3127fa07 · rulings 1–10 · server hunks อนุญาต: staffToken void/refund · status read · recall approved cap · discard on reject)
 - L4: P1.13 brief `pos-brief-P1.13.md` (R1–R9 · CD1–CD6 · ใบกำกับเต็มรูปแทน ABB · DBD facade stub · PosBuyerProfile · AccountDocument.supersededByDocId) + oracle writer เริ่ม ทรี d `wip/pos-p1.13-oracle`
 - ⚠️ unit ที่ใช้ iso.sh: stop wrapper ไม่พอ ต้อง stop unit iso-<pid> ของมันด้วย (ดู cwd ใน /proc)
+
+### 9 ต.ค. 05:14 UTC — ✅ รับ P1.10U → **17/55** · P1.11U re-review MERGEABLE รอภาพ
+- L1: vis23 ภาพ settings-receipt/devices/device-revoke/print-pair + register (sale-done/paydone-print) owner+cashier · เทียบ 17A/17B/02b ตรงโครงสร้าง (ข้อมูล QC ว่าง = ปกติ) · settings-owner exit 1 เฉพาะ state `settings-print-pair` คาด "ไม่รองรับ" แต่ Chromium headless มี WebUSB ⇒ กล่องแสดงปุ่มค้นหา — ปัญหา assertion ของสคริปต์ ไม่ใช่ UI → ให้ builder P1.11U แก้ให้รับทั้งสองสถานะตอน follow-up · merge **d4b856ef** + nit chip "เพิกถอนแล้ว" **ff5fc5cd** PUSHED · comment nits (PayDone.tsx:8 / printReceipt.ts:2) ข้าม (cosmetic)
+- L2: P1.11U re-review **MERGEABLE** (2d545ea4) · build35-c unit pos-build35-c-1791522726 (ทรี c @2d545ea4) → server :3226 → `--page receipt-public --states` + `--page sales --states` → ดูภาพเทียบ 11C/12 → merge → follow-up round: PayDone share row + 17A qrEReceipt toggle + print-pair state robustness
+- ถัดไปเลน 1 (p11 ว่าง): brief P1.7U (จอชำระ QR/Beam · 02 ขวา · 17A วิธีรับเงิน)
