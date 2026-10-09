@@ -8,7 +8,7 @@
 // ชื่อทุกตัวที่ยังไม่มีในโค้ดถูก "ตั้ง" ในไฟล์นี้และลงทะเบียนในตารางชื่อของโน้ต — ผู้สร้างห้ามแก้ข้อสอบนี้ (ORACLE-EDIT เท่านั้น)
 //
 // ของที่ใบ P1.13 ต้องส่ง (ย่อ):
-//   schema: PosSale.taxInvoice Json? · PosSale.taxInvoiceDocId String? · PosTaxInvoiceRequest.issuedDocId String? ·
+//   schema: PosSale.taxInvoice Json? · PosSale.taxInvoiceDocId String? · (มติ 8: เอกสารที่ออกอยู่ที่ PosTaxInvoiceRequest.accountDocId เดิม — ไม่มี issuedDocId) ·
 //     model PosBuyerProfile (customerId @unique · @@index([tenantId, taxId])) · AccountDocument.supersededByDocId String? (migration เพิ่มอย่างเดียว)
 //   src/lib/modules/pos/tax-invoice-shared.ts (บริสุทธิ์ ไม่แตะ prisma): parseTaxInvoiceBuyer(input) · taxInvoiceRefusalKey(code)
 //   src/lib/modules/pos/tax-invoice.ts: issueFullTaxInvoice(ctx, actor, {saleId, buyer, requestId?, rememberBuyer?}) ·
@@ -46,7 +46,7 @@ type Def = readonly [string, string, string];
 const D = (id: string, x: string, title: string): Def => [`P1.13-${id}`, x, title] as const;
 const CHECKS: readonly Def[] = [
   // ── ST สถิต ──
-  D("ST1", "S", "[R1 R3 R6 §3 CD5] schema + migration เพิ่มอย่างเดียว: PosSale.taxInvoice Json? · PosSale.taxInvoiceDocId String? · PosTaxInvoiceRequest.issuedDocId String? · model PosBuyerProfile (id tenantId customerId @unique kind name taxId branchCode address email? updatedAt · @@index([tenantId, taxId])) · AccountDocument.supersededByDocId String? · SQL มีแต่ CREATE / ALTER TABLE … ADD"),
+  D("ST1", "S", "[R1 R3 R6 §3 CD5] schema + migration เพิ่มอย่างเดียว: PosSale.taxInvoice Json? · PosSale.taxInvoiceDocId String? · model PosBuyerProfile (id tenantId customerId @unique kind name taxId branchCode address email? updatedAt · @@index([tenantId, taxId])) · AccountDocument.supersededByDocId String? · SQL มีแต่ CREATE / ALTER TABLE … ADD"),
   D("ST2", "S", "[R2 R3 R6 R9 §3 COMMON-4] ลงทะเบียนครบ: scope.ts PosBuyerProfile · pos-qc-env POS_MODELS posBuyerProfile · outbox-consumers \"pos.sale.taxInvoiceIssued\" ห่อ withAutomation · automation/labels.ts ป้าย · permissions.ts \"pos.taxinvoice.issue\" · messages th+en taxInvoice.errors.* ทุกรหัส (th เป็นไทย) · taxInvoiceRefusalKey ใน tax-invoice-shared.ts · POS-OWNER-PENDING.md บันทึก supersededByDocId"),
   D("ST3", "S", "[hard rule F2.2 CD3 CD4 R6] ขอบเขต: ไฟล์ใน modules/pos import บัญชีผ่าน \"@/lib/modules/account\" เท่านั้น (ไม่มี account/<ไฟล์ใน> ทั้ง static/dynamic) · account/index.ts export convertAbbToTaxInvoice + lookupJuristic · applyExternalSale รับ buyer? · ไฟล์ tax-invoice* ไม่เขียน accountDocument/customer ตรง · ไม่อ่าน DBD_API_KEY · ไม่เรียก fetch · tax-invoice-shared.ts ไม่ import prisma/db"),
   D("ST4", "S", "[hard rule] ทุกไฟล์ \"use server\" ใน modules/pos export async function ล้วน · tax-invoice-actions.ts มี issueFullTaxInvoiceAction issueFromTaxInvoiceRequestAction rejectTaxInvoiceRequestAction lookupBuyerByTaxIdAction buyerProfileForMemberAction (แต่ละตัวเรียกฟังก์ชันบริการของตัวเอง + catch) + requireTenant"),
@@ -68,7 +68,7 @@ const CHECKS: readonly Def[] = [
   D("L5", "X3", "[R3] NOT_ELIGIBLE บิล POS ไม่ผูกสมุด · ACCOUNT_PENDING บิลผูกสมุดที่ยังไม่มี ABB (ไม่เขียนอะไร) · PERMISSION_DENIED พนักงานมีแค่ pos.sale.read · ผ่านด่านสิทธิ์ (ได้ ACCOUNT_PENDING): พนักงาน pos.sale.read+pos.taxinvoice.issue · MANAGER ปริยาย · SALE_NOT_FOUND id มั่ว · TAX_ID_INVALID"),
   D("L6", "-", "[R3 มติ 15 · ORACLE-EDIT] คืนเงินบางส่วนแล้วออกเต็มรูป → HAS_REFUNDS (ไม่มี snapshot/docId · ไม่มี TAX_INVOICE · ABB ยังมีผล · ไม่มี audit pos.taxinvoice.issued)"),
   // ── Q จากคำขอ P1.11 ──
-  D("Q1", "X5", "[R4 R3] issueFromTaxInvoiceRequest(คำขอ REQUESTED) → ok docId · คำขอ ISSUED + issuedDocId = docId (accountDocId null หรือ = docId) · ผู้ซื้อจากแถวคำขอ (ชื่อ/เลข/สาขา/ที่อยู่/อีเมล · kind JURISTIC เมื่อเลขขึ้นต้น 0) · ABB superseded · audit pos.taxinvoice.issued"),
+  D("Q1", "X5", "[R4 R3] issueFromTaxInvoiceRequest(คำขอ REQUESTED) → ok docId · คำขอ ISSUED + accountDocId = docId (มติ 8) · ผู้ซื้อจากแถวคำขอ (ชื่อ/เลข/สาขา/ที่อยู่/อีเมล · kind JURISTIC เมื่อเลขขึ้นต้น 0) · ABB superseded · audit pos.taxinvoice.issued"),
   D("Q2", "X5", "[R4] rejectTaxInvoiceRequest → ok · REJECTED · audit pos.taxinvoice.rejected (มีเหตุผล) · ไม่มีเอกสารใหม่ · ABB ยังมีผล · เหตุผลว่าง → VALIDATION"),
   D("Q3", "X2", "[R4] คำขอของสาขา A เรียกด้วย ctx สาขา A2 (ระบบ POS เดียวกัน) → NOT_FOUND ทั้ง issue/reject · requestId มั่ว → NOT_FOUND · คำขอยัง REQUESTED · ไม่มีเอกสาร"),
   // ── D ค้น DBD ──
@@ -276,7 +276,6 @@ async function runStatic(): Promise<void> {
     };
     need("PosSale", "taxInvoice", /^taxInvoice\s+Json\?(\s|$)/, "Json?");
     need("PosSale", "taxInvoiceDocId", /^taxInvoiceDocId\s+String\?(\s|$)/, "String?");
-    need("PosTaxInvoiceRequest", "issuedDocId", /^issuedDocId\s+String\?(\s|$)/, "String?");
     need("AccountDocument", "supersededByDocId", /^supersededByDocId\s+String\?(\s|$)/, "String?");
     const prof = prismaBlock(schemaSrc, "model", "PosBuyerProfile");
     if (!prof) p.push("ไม่มี model PosBuyerProfile");
@@ -289,12 +288,12 @@ async function runStatic(): Promise<void> {
       if (!/@updatedAt\b/.test(fieldLine(prof, "updatedAt"))) p.push("PosBuyerProfile.updatedAt ไม่ใช่ @updatedAt");
       if (!/@@index\(\s*\[\s*tenantId\s*,\s*taxId\s*\]/.test(prof)) p.push("PosBuyerProfile ไม่มี @@index([tenantId, taxId])");
     }
-    const files = walk("prisma/migrations", [], /\.sql$/).filter((f) => /"PosBuyerProfile"|ADD\s+COLUMN\s+"(taxInvoice|taxInvoiceDocId|issuedDocId|supersededByDocId)"/i.test(rd(f)));
-    if (!files.length) p.push("ไม่มี migration ที่แตะ PosBuyerProfile / taxInvoice / taxInvoiceDocId / issuedDocId / supersededByDocId");
+    const files = walk("prisma/migrations", [], /\.sql$/).filter((f) => /"PosBuyerProfile"|ADD\s+COLUMN\s+"(taxInvoice|taxInvoiceDocId|supersededByDocId)"/i.test(rd(f)));
+    if (!files.length) p.push("ไม่มี migration ที่แตะ PosBuyerProfile / taxInvoice / taxInvoiceDocId / supersededByDocId");
     const all = files.map((f) => rd(f).replace(/--.*$/gm, "")).join("\n");
     if (files.length) {
       if (!/CREATE\s+TABLE\s+"PosBuyerProfile"/i.test(all)) p.push('ไม่มี CREATE TABLE "PosBuyerProfile"');
-      for (const [t, c] of [["PosSale", "taxInvoice"], ["PosSale", "taxInvoiceDocId"], ["PosTaxInvoiceRequest", "issuedDocId"], ["AccountDocument", "supersededByDocId"]] as const)
+      for (const [t, c] of [["PosSale", "taxInvoice"], ["PosSale", "taxInvoiceDocId"], ["AccountDocument", "supersededByDocId"]] as const)
         if (!new RegExp(`ALTER\\s+TABLE\\s+"${t}"[^;]*ADD\\s+COLUMN\\s+"${c}"`, "i").test(all)) p.push(`ไม่มี ${t} ADD COLUMN "${c}"`);
       if (!/CREATE\s+UNIQUE\s+INDEX[^;]*ON\s+"PosBuyerProfile"\s*\(\s*"customerId"\s*\)/i.test(all)) p.push("ไม่มี unique index PosBuyerProfile(customerId)");
     }
@@ -595,7 +594,7 @@ const COL = {
   sup: dbCols.has("AccountDocument.supersededByDocId"),
   prof: dbCols.has("PosBuyerProfile.customerId"),
 };
-for (const [k, lbl] of [["snap", "PosSale.taxInvoice"], ["docId", "PosSale.taxInvoiceDocId"], ["issued", "PosTaxInvoiceRequest.issuedDocId"], ["sup", "AccountDocument.supersededByDocId"], ["prof", "ตาราง PosBuyerProfile"]] as const)
+for (const [k, lbl] of [["snap", "PosSale.taxInvoice"], ["docId", "PosSale.taxInvoiceDocId"], ["sup", "AccountDocument.supersededByDocId"], ["prof", "ตาราง PosBuyerProfile"]] as const)
   if (!COL[k]) skipReasons.push(`ฐาน QC4 ยังไม่มี ${lbl}`);
 
 const COUNT_MODELS = ["posSale", "posSaleLine", "posPayment", "posShift", "posDevice", "posTaxInvoiceRequest", "outboxEvent", "auditLog", "customer", "accountDocument", "accountContact", "accountJournalEntry"] as const;
@@ -1190,7 +1189,7 @@ async function runDb() {
   const rqQ2 = await reqOf("bQ2", { ...REQ_Q });
   const rqQ3 = await reqOf("bQ3", { ...REQ_Q });
   await drain();
-  const NQ = NEED([M.fromReq, "issueFromTaxInvoiceRequest"], [M.reject, "rejectTaxInvoiceRequest"]) + NCOL("issued", "snap", "docId", "sup") + (rqQ && rqQ2 && rqQ3 ? "" : "คำขอตั้งต้นล้ม · ");
+  const NQ = NEED([M.fromReq, "issueFromTaxInvoiceRequest"], [M.reject, "rejectTaxInvoiceRequest"]) + NCOL("snap", "docId", "sup") + (rqQ && rqQ2 && rqQ3 ? "" : "คำขอตั้งต้นล้ม · ");
   {
     const p: string[] = [];
     const abb0 = await abbOf(B.bQ!.id);
@@ -1200,8 +1199,7 @@ async function runDb() {
     if (!ti) p.push("ไม่มี TAX_INVOICE");
     const q = await reqRow(rqQ);
     if (q?.status !== "ISSUED") p.push(`คำขอ ${q?.status} (คาด ISSUED)`);
-    if (!ti || q?.issuedDocId !== ti.id) p.push(`issuedDocId ${short(q?.issuedDocId, 30)} (คาด ${ti?.id})`);
-    if (q && q.accountDocId !== null && q.accountDocId !== ti?.id) p.push(`accountDocId ${q.accountDocId}`);
+    if (!ti || q?.accountDocId !== ti.id) p.push(`accountDocId ${short(q?.accountDocId, 30)} (คาด ${ti?.id} · มติ 8)`);
     const st = await saleTax(B.bQ!.id);
     snapOk(st.snap, { kind: "JURISTIC", ...REQ_Q }, p, "bQ");
     if (ti) {
@@ -1211,7 +1209,7 @@ async function runDb() {
       if (ti.grandTotal !== 5100) p.push(`grandTotal ${ti.grandTotal}`);
     }
     if ((await audits(AUDIT_ISSUED, (a) => a.targetId === B.bQ!.id)).length !== 1) p.push(`audit ${AUDIT_ISSUED} ≠ 1`);
-    chk("Q1", NQ === "" && p.length === 0, "คำขอ ISSUED + issuedDocId · ผู้ซื้อจากคำขอ · ABB superseded", FXB(NQ + (p.join(" · ") || "ครบ")));
+    chk("Q1", NQ === "" && p.length === 0, "คำขอ ISSUED + accountDocId · ผู้ซื้อจากคำขอ · ABB superseded", FXB(NQ + (p.join(" · ") || "ครบ")));
   }
   {
     const p: string[] = [];

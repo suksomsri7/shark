@@ -7,7 +7,7 @@ Contract: `ledger/pos-briefs/pos-brief-P1.13.md` + controller rulings 1–15 (`p
 Ruling 8 (binding): no `PosTaxInvoiceRequest.issuedDocId` column — the issued doc goes into the existing `accountDocId`. The oracle as written
 requires the column: ST1 (schema + migration), Q1 (`issuedDocId = docId`) and — through the `NCOL("issued", …)` gate — Q2 and Q3 too
 (both are functionally green: "ครบ"). I followed ruling 8 and did **not** edit those checks (only L6 was approved).
-Proposed edit = `ledger/wo-notes/pos-P1.13-ORACLE-EDIT-ruling8.patch` (drop issuedDocId from ST1/COL gate; Q1 asserts `accountDocId = docId`).
+**Approved by the controller and committed** as its own ORACLE-EDIT commit (drop issuedDocId from ST1/COL gate; Q1 asserts `accountDocId = docId`).
 Verified with that patch applied locally (uncommitted, reverted): forced run **31/31, residue 0**.
 If the controller prefers the column instead: add `issuedDocId String?` + one migration and write it next to `accountDocId` in `tax-invoice.ts#issueCore`.
 

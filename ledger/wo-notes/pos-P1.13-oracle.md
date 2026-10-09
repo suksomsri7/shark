@@ -87,3 +87,6 @@ R1 credit note references TAX_INVOICE (ABB control) · E1 13 refusal codes as Th
 
 ## ORACLE-EDIT L6 (builder S · 9 Oct · controller ruling 15)
 Added check `L6`: fixture bill `bR6` (2 lines, POS-A), partial refund of one line, then `issueFullTaxInvoice` ⇒ `HAS_REFUNDS`; no snapshot/docId, no TAX_INVOICE, ABB still live, no `pos.taxinvoice.issued` audit. Count 30 → 31.
+
+## ORACLE-EDIT ST1/Q1/Q2/Q3 (builder S · 9 Oct · controller ruling 8, approved)
+The issued document lives in the existing `PosTaxInvoiceRequest.accountDocId`; there is no `issuedDocId` column. ST1 no longer requires `issuedDocId` in schema/migration; the DB-column gate (`COL.issued`) and its SKIP reason are dropped, so Q2/Q3 are no longer red on a missing column; Q1 asserts `accountDocId = docId`. Names-table row 3 (`PosTaxInvoiceRequest.issuedDocId`) is withdrawn. Count stays 31.
