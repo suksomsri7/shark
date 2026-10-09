@@ -46,5 +46,17 @@ Contract: `ledger/pos-briefs/pos-prompt-accountB-P1.13U.md` rulings 1–9 + revi
 2. P1.15U merge: any approval/held re-submit path must resend `taxInvoice` (follow-up (d) of P1.13 S) — checked at merge time (see Merge).
 3. DBD result `status` is shown raw from the facade (Thai on prod per `account/dbd.ts`).
 
-## Gates
-(filled at the end)
+## Commits (each pushed after `pnpm typecheck` TC_EXIT=0 on a `git archive` copy of that commit · logs `scratchpad/p113u/tc-<sha>.log`)
+32ea615f N1/N2/N4/N5 · 12f4cba7 ORACLE-EDIT N3 · 15676205 server hunks (ruling 2 + 4) · dbcd251a ORACLE-EDIT U1 · 6de37219 15A + cart/pay wiring + PayDone + keys · 1aa31548 bills drawer · 95f63f3c visual states · b503410b notes · 4d37b210 merge `origin/session/pos` 1e32b118.
+
+## Merge
+`origin/session/pos` at finish = 1e32b118 (ledger-only since f84d10f3) → merge 4d37b210, no conflicts; diff b503410b..4d37b210 = `ledger/POS-RESUME.md` only, so the code gates below (run on b503410b) hold for the merged head.
+**P1.15U was not in `session/pos` when this WO finished** (polled until 09:38Z; `origin/wip/pos-p1.15u` still 9cb8ca49). A `git merge-tree` trial of HEAD × `origin/wip/pos-p1.15u` shows overlaps in RegisterScreen, BillsClient, register-shared/register.ts (refusal-code unions), messages th/en, pos-ui-inventory.json, visual-pos.mts and register/page.tsx — whichever merges second keeps both features (P1.13U: `taxInv` state + `TaxInvoiceDialog` layer + `taxInvoice` props; P1.15U: lock screen / token flow / approvals). When P1.15U's approval/held re-submit lands, it must spread `taxInvoice`/`rememberBuyer` like `confirmPay` does (follow-up (d) of P1.13 S).
+
+## Gates (QC4 `ep-frosty-lab-aoylqlv8-pooler…` · POS gate lock · head b503410b ≡ merged 4d37b210 code · logs `scratchpad/p113u/g1/`)
+- typecheck (iso + `/tmp/pos-gate.lock`, 5632 MB): TC_EXIT=0 for 12f4cba7, 6de37219, 1aa31548, b503410b.
+- `qc-pos-p1.13` forced #1 **0 · 33/33** · forced #2 **0 · 33/33** · unforced **0 · 33/33** (32 + U1 · residue 0 each run).
+- `qc-pos-p1.11` 0 · 38/38 · `qc-pos-p1.16` 0 · 28/28 · `qc-pos-p1.3` 0 · 128/128 · `qc-pos-p1.10` 0 · 40/40 · `qc-pos-p1.15` 0 · 36/36 (S suite on this base; P1.15U not merged yet) · `qc-pos-p1.7` 0 · 32/32 · `qc-hf-pos-page-authz` 0 · 56/56.
+- `pnpm fitness` without env 0 · 41/41 · with QC4 env 0 · 41/41 · `scripts/fitness-pos.mts` 0 · 8/8.
+- visual `--page register --states --dry` owner 0 · cashier 0 · `--page sales --states --dry` owner 0 · cashier 0 (plans include the 4 new states × 3 viewports).
+- Real visual shots = CONTROLLER-RUN (needs a running server): `pnpm exec tsx scripts/visual-pos.mts p113u --page register --states --user owner|cashier` and `--page sales --states --user owner|cashier`; the sales owner run leaves one TX document in QC4 accounting (docId/docNo printed and in `summary-owner.json taxInvoiceState`).
