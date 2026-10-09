@@ -909,7 +909,36 @@
     "errors": {
       "saleNotFound": "This bill wasn't found, or it belongs to another branch",
       "permissionDenied": "This account can't view bills or print receipts yet — ask the owner for access",
-      "internal": "Receipts are temporarily unavailable — please try again"
+      "internal": "Receipts are temporarily unavailable — please try again",
+      "validation": "Some details aren't valid — check and try again",
+      "rateLimited": "Too many requests — please try again later"
+    },
+    "public": {
+      "errors": {
+        "tokenNotFound": "This receipt wasn't found — check the link or scan the QR code again",
+        "noMember": "Only member bills can rate the shop",
+        "alreadyReviewed": "This bill has already been rated — thank you",
+        "reviewExpired": "Rating for this bill has expired (30 days) — thank you for your visit"
+      }
+    },
+    "send": {
+      "errors": {
+        "saleVoided": "This bill was voided — the receipt cannot be sent",
+        "noLineIdentity": "This customer hasn't linked a LINE account with the shop — send by email or let them scan the QR code",
+        "noEmail": "There's no email for this customer — enter an address to send to",
+        "sendFailed": "The receipt couldn't be sent — please try again"
+      }
+    },
+    "issue": {
+      "errors": {
+        "rateLimited": "You've reported this bill 3 times in 24 hours — staff will contact you"
+      }
+    },
+    "taxInvoice": {
+      "errors": {
+        "notEligible": "A full tax invoice is not available for this bill (paid abbreviated tax invoices only, within 7 days)",
+        "alreadyRequested": "A full tax invoice has already been requested for this bill"
+      }
     }
   },
   "bills": {

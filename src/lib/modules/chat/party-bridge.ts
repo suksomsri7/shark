@@ -31,7 +31,8 @@ export type SendLineToPartyInput = {
   preferSystemId?: string | null;
 };
 
-export type SendLineToPartyResult = { ok: boolean; reason?: string; externalMessageId?: string };
+// POS P1.11 ▸ มติผู้คุมงาน 3: code (เพิ่มอย่างเดียว) ให้ผู้เรียกแยก "ลูกค้าไม่มีไลน์" ได้โดยไม่ต้องเทียบข้อความไทย ◂
+export type SendLineToPartyResult = { ok: boolean; reason?: string; externalMessageId?: string; code?: "NO_LINE_IDENTITY" };
 
 /** ไม่มีตัวตนไลน์ของลูกค้ารายนี้เลย — คนละเรื่องกับ "ร้านยังไม่ได้เชื่อมไลน์" (ข้อสอบ C0.3-SB.4) */
 const NO_LINE_IDENTITY = "ผู้ติดต่อรายนี้ยังไม่มีบัญชีไลน์ที่ผูกไว้ — ให้ลูกค้าทักเข้ามาทางไลน์ก่อน จึงจะส่งหาได้";
@@ -54,7 +55,7 @@ export async function sendLineToParty(
     const tenantId = (ctx?.tenantId ?? "").trim();
     const partyId = (input?.partyId ?? "").trim();
     const text = String(input?.text ?? "").trim();
-    if (!tenantId || !partyId) return { ok: false, reason: NO_LINE_IDENTITY };
+    if (!tenantId || !partyId) return { ok: false, reason: NO_LINE_IDENTITY, code: "NO_LINE_IDENTITY" };
     if (!text) return { ok: false, reason: "ข้อความว่าง — ไม่มีอะไรให้ส่ง" };
 
     // ผู้ติดต่อไลน์ล่าสุดของ Party รายนี้ — ทั่วทั้งร้าน (ลูกค้าอาจทักเข้ามาที่ระบบแชทไหนก็ได้)
@@ -66,7 +67,7 @@ export async function sendLineToParty(
     const contact =
       (prefer ? await prisma.chatContact.findFirst({ where: { ...where, systemId: prefer }, orderBy: [{ lastSeenAt: "desc" }, { createdAt: "desc" }], select }) : null) ??
       (await prisma.chatContact.findFirst({ where, orderBy: [{ lastSeenAt: "desc" }, { createdAt: "desc" }], select }));
-    if (!contact) return { ok: false, reason: NO_LINE_IDENTITY };
+    if (!contact) return { ok: false, reason: NO_LINE_IDENTITY, code: "NO_LINE_IDENTITY" };
 
     const res = await pushToContact({
       tenantId,

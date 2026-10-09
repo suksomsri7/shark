@@ -554,6 +554,91 @@ export async function submitReview(
   return { reviewId: row.id, pointsEarned, escalated };
 }
 
+// ───────────────────────── POS P1.11 ▸ รีวิวจากหน้าใบเสร็จออนไลน์ (มติผู้คุมงาน 8 · CD3) ─────────────────────────
+//   หน้า /r/<token> ของ POS ไม่มีโทเคนรีวิว (โทเคนใบเสร็จคือสิทธิ์ · POS ตัดสินแล้วว่าบิลเป็นของสมาชิกรายนี้) ⇒ ประกอบจากของเดิมล้วน:
+//   แถว REQUESTED ที่มีอยู่ (journey ขอไว้แล้ว) → แถวเดิม · ไม่มี → สร้างแถว REQUESTED แบบ requestReview (ไม่ส่ง LINE · ไม่มี event ขอรีวิว)
+//   แล้วส่งผ่าน submitReview ตัวเดิม (NEW + แต้มรีวิว + ส่งต่อคะแนนต่ำ + review.received) ด้วยโทเคนครั้งเดียวที่ออกให้ตรงนี้
+//   🔴 โมดูลอื่นห้ามเขียน MemberReview เอง — ทางนี้ทางเดียว · ส่งแล้ว = alreadyReviewed (ไม่เขียนทับ)
+
+export type SubmitReviewForRefInput = { customerId: string; refType: ReviewRefType; refId: string; rating: number; body?: string | null };
+export type SubmitReviewForRefResult =
+  | (ReviewSubmitResult & { alreadyReviewed: false; expired?: false })
+  | { alreadyReviewed: true; reviewId: string }
+  // POS P1.11 F2 ▸ แถว REQUESTED ที่ลิงก์ขอรีวิวหมดอายุแล้ว (requestSentAt + 30 วัน) — ไม่รับรีวิว · ไม่แตะ hash ของ journey ◂
+  | { alreadyReviewed: false; expired: true; reviewId: string };
+
+/**
+ * สถานะรีวิวของรายการอ้างอิง (อ่านอย่างเดียว) — NONE ไม่มีแถว · REQUESTED ขอไว้ยังไม่ส่ง · EXPIRED ขอไว้แต่ลิงก์หมดอายุ (30 วัน · F2) ·
+ * SUBMITTED ส่งแล้ว (สถานะอื่นทั้งหมด)
+ */
+export async function reviewStateForRef(ctx: { tenantId: string }, input: { refType: ReviewRefType; refId: string }, now = new Date()): Promise<"NONE" | "REQUESTED" | "EXPIRED" | "SUBMITTED"> {
+  const refType = String(input?.refType ?? "") as ReviewRefType;
+  const refId = String(input?.refId ?? "").trim();
+  if (!(REVIEW_REF_TYPES as readonly string[]).includes(refType) || !refId) return "NONE";
+  const row = await prisma.memberReview.findUnique({
+    where: { tenantId_refType_refId: { tenantId: ctx.tenantId, refType, refId } },
+    select: { status: true, requestSentAt: true },
+  });
+  if (!row) return "NONE";
+  if (row.status !== "REQUESTED") return "SUBMITTED";
+  return reviewTokenExpired(row, now) ? "EXPIRED" : "REQUESTED";
+}
+
+/**
+ * ลูกค้าส่งรีวิวของรายการอ้างอิง (บิล/นัด) จากหน้าของโมดูลต้นทาง — ไม่ต้องมีโทเคนรีวิว (ผู้เรียกพิสูจน์สิทธิ์แล้ว)
+ * ค่าผิด = MemberInputError (ข้อความไทย) · ลูกค้าไม่อยู่ในระบบสมาชิกนี้ = MemberNotFoundError · ส่งแล้ว = { alreadyReviewed: true }
+ */
+export async function submitReviewForRef(ctx: MemberCtx, input: SubmitReviewForRefInput, opts: { now?: Date; deps?: ReviewDeps } = {}): Promise<SubmitReviewForRefResult> {
+  const refType = String(input?.refType ?? "") as ReviewRefType;
+  if (!(REVIEW_REF_TYPES as readonly string[]).includes(refType)) throw new MemberInputError("รีวิวได้เฉพาะบิลขาย (PosSale) หรือนัดหมาย (Appointment)");
+  const refId = String(input?.refId ?? "").trim();
+  if (!refId) throw new MemberInputError("ต้องระบุรายการที่รีวิว (บิลหรือนัด)");
+  const rating = input?.rating;
+  if (typeof rating !== "number" || !Number.isInteger(rating) || rating < 1 || rating > 5) throw new MemberInputError("ให้คะแนนได้ 1–5 ดาว — แตะดาวที่ต้องการอีกครั้ง");
+  if (input.body !== undefined && input.body !== null && (typeof input.body !== "string" || input.body.length > REVIEW_BODY_MAX)) {
+    throw new MemberInputError(`ข้อความรีวิวยาวได้ไม่เกิน ${REVIEW_BODY_MAX.toLocaleString("th-TH")} ตัวอักษร`);
+  }
+  const customerId = String(input?.customerId ?? "");
+  const customer = await prisma.customer.findFirst({ where: { id: customerId, tenantId: ctx.tenantId, memberSystemId: ctx.systemId }, select: { id: true } });
+  if (!customer) throw new MemberNotFoundError();
+  const key = { tenantId_refType_refId: { tenantId: ctx.tenantId, refType, refId } };
+
+  const sel = { id: true, status: true, customerId: true, systemId: true, requestSentAt: true } as const;
+  let row = await prisma.memberReview.findUnique({ where: key, select: sel });
+  if (row && (row.customerId !== customer.id || row.systemId !== ctx.systemId)) throw new MemberNotFoundError("ไม่พบรายการนี้ของลูกค้ารายนี้");
+  if (row && row.status !== "REQUESTED") return { alreadyReviewed: true, reviewId: row.id };
+  // F2: ลิงก์ที่ journey ส่งไปหมดอายุแล้ว = ไม่รับรีวิว (ไม่ออกโทเคนใหม่ทับ hash ของ journey)
+  if (row && reviewTokenExpired(row, opts.now ?? new Date())) return { alreadyReviewed: false, expired: true, reviewId: row.id };
+  if (!row) {
+    const ref = await resolveRef(ctx.tenantId, refType, refId);
+    try {
+      // แถว REQUESTED แบบเดียวกับ requestReview (ยังไม่ส่งลิงก์ ⇒ requestSentAt null = ไม่มีอายุลิงก์)
+      row = await prisma.memberReview.create({
+        data: { tenantId: ctx.tenantId, systemId: ctx.systemId, customerId: customer.id, unitId: ref.unitId, refType, refId, serviceId: ref.serviceId, staffEmployeeId: ref.staffEmployeeId, rating: 0, status: "REQUESTED", source: "LIFF" },
+        select: sel,
+      });
+    } catch (e) {
+      // ยิงพร้อมกันชน unique(tenantId, refType, refId) → ใช้แถวที่ชนะ
+      if (!(e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002")) throw e;
+      row = await prisma.memberReview.findUnique({ where: key, select: sel });
+      if (!row) throw e;
+      if (row.status !== "REQUESTED") return { alreadyReviewed: true, reviewId: row.id };
+    }
+  }
+  // โทเคนครั้งเดียว (ไม่ออกจากเซิร์ฟเวอร์) → submitReview ตัวเดิม · แถวถูกส่งไปก่อนหน้าเสี้ยววินาที = alreadyReviewed
+  const token = `${row.id}.${randomToken(32)}`;
+  const armed = await prisma.memberReview.updateMany({ where: { id: row.id, status: "REQUESTED" }, data: { requestTokenHash: sha256(token) } });
+  if (armed.count === 0) return { alreadyReviewed: true, reviewId: row.id };
+  try {
+    const r = await submitReview({ token, rating, body: input.body ?? null }, opts);
+    return { ...r, alreadyReviewed: false };
+  } catch (e) {
+    const now = await prisma.memberReview.findUnique({ where: { id: row.id }, select: { status: true } });
+    if (now && now.status !== "REQUESTED") return { alreadyReviewed: true, reviewId: row.id };
+    throw e;
+  }
+}
+
 // ───────────────────────── ส่งต่อ (≤ N ดาว → การ์ดบอร์ดงาน) ─────────────────────────
 
 export type EscalateResult = { cardId: string | null; created: boolean; cardNo: number | null; boardId: string | null; notified: number };
