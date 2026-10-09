@@ -1469,7 +1469,8 @@ async function runDb() {
       const c = cardOf(r, code);
       if (c?.state !== state) p.push(`${code} ${short(c?.state, 12)} (คาด ${state})`);
       if (c && (c.scope !== null || c.target !== null || c.manage !== null || c.lastActivityAt !== null)) p.push(`${code} scope/target/manage/lastActivity ไม่ใช่ null`);
-      if (phase && c && !(Array.isArray(c.facts) && c.facts.length > 0 && c.facts.every((f: Any) => f?.live === false && f?.phase === PLANNED_PHASE[code]))) p.push(`${code} facts ไม่ใช่ planned ${phase}`);
+      // ORACLE-EDIT P1.18 S (ขัดกันเองกับ I12/ตารางชื่อ: BOOKING advanceBookingBill = P2.7 ไม่ใช่ P2.4) — ทุกข้อ live:false มี phase · และมีอย่างน้อยหนึ่งข้อเป็นเฟสของการ์ด
+      if (phase && c && !(Array.isArray(c.facts) && c.facts.length > 0 && c.facts.every((f: Any) => f?.live === false && typeof f?.phase === "string" && !!f.phase) && c.facts.some((f: Any) => f?.phase === PLANNED_PHASE[code]))) p.push(`${code} facts ไม่ใช่ planned ${phase}`);
     }
     chk("I8", NI === "" && p.length === 0, "PLANNED (HR BOOKING AI) · NO_SYSTEM (MARKETING CHAT)", FX(NI + (p.join(" · ") || "ครบ")));
   }
