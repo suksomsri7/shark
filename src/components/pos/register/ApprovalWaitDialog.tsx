@@ -14,6 +14,7 @@ import { formatThaiTime } from "@/lib/ui/date";
 import { moneyText, POS_APPROVAL_WAIT_MS, refusalMessageKey, type PosApprovalView, type StaffListItem } from "@/lib/modules/pos/register-shared";
 import { cancelPosApprovalAction, posApprovalStatusAction } from "@/lib/modules/pos/pos-approval-actions";
 import { listStaffForDeviceAction } from "@/lib/modules/pos/staff-pin-actions";
+import { readStaffSession } from "@/lib/modules/pos/staff-session";
 import { RegisterDialog } from "./RegisterDialog";
 import { RegisterIcon } from "./RegisterIcon";
 
@@ -118,11 +119,16 @@ export function ApprovalWaitDialog(p: {
       return next;
     });
   };
+  /** fix รอบ 1 F7: ยกเลิกในนามคนในโทเคนของเครื่องนี้ (ผู้ขอ/ผู้จัดการเท่านั้น — เซิร์ฟเวอร์ตัดสิน) */
+  const cancelRequestNow = async () => {
+    const st = p.deviceId ? readStaffSession(p.deviceId) : null;
+    return cancelPosApprovalAction({ systemId: p.systemId, unitId: p.unitId, requestId: p.requestId, ...(st && p.deviceId ? { staffToken: st.staffToken, deviceId: p.deviceId } : {}) });
+  };
   const cancel = async () => {
     if (busy) return;
     setBusy(true);
     try {
-      if (view && (view.status === "PENDING" || view.status === "EXPIRED")) await cancelPosApprovalAction({ systemId: p.systemId, unitId: p.unitId, requestId: p.requestId });
+      if (view && (view.status === "PENDING" || view.status === "EXPIRED")) await cancelRequestNow();
     } catch {
       /* ปิดกล่องอยู่ดี — คำขอที่ค้างไม่มีผลต่อบิล */
     } finally {

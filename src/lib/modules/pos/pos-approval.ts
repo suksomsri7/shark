@@ -10,6 +10,7 @@
 // 🔴 outcome (ตัวรับคิวเขียนครั้งเดียว): EXECUTED · BLOCKED_SELF_APPROVAL · FAILED:<code> · CONSUMED (ส่วนลดที่ใช้แล้ว)
 import { Prisma } from "@prisma/client";
 import { writeAudit } from "@/lib/core/audit";
+import { evaluate } from "@/lib/core/rbac";
 import { cancelRequest, lastDecisionOf, requestStatuses, resolvePolicy, submitForApproval } from "@/lib/modules/approval";
 import { prisma } from "./db";
 import { POS_APPROVAL_WAIT_MS, type PosApprovalView, type PosApprovalWaitStatus } from "./register-shared";
@@ -244,11 +245,29 @@ export async function posApprovalView(scope: { tenantId: string; systemId: strin
   };
 }
 
-/** ผู้ขอ/เครื่องของสาขานี้ยกเลิกคำขอที่ยัง PENDING (facade cancelRequest) — คำขอของสาขาอื่น/ไม่ใช่ POS = false */
-export async function cancelPosApprovalRequest(scope: { tenantId: string; systemId: string; unitId: string }, requestId: string): Promise<boolean> {
+/**
+ * ยกเลิกคำขอที่ยัง PENDING (facade cancelRequest) — fix รอบ 1 F7: เฉพาะผู้ขอเอง (actor = คนในโทเคน/ผู้ใช้ session) หรือผู้มี pos.staff.manage ·
+ * คำขอของสาขาอื่น/ไม่ใช่ POS/ปิดแล้ว = NOT_FOUND · audit pos.approval.cancel {requestId, saleId, byUserId}
+ */
+export async function cancelPosApprovalRequest(
+  scope: { tenantId: string; systemId: string; unitId: string },
+  requestId: string,
+  actor: { userId: string; role: "OWNER" | "MANAGER" | "STAFF"; unitAccess: string[]; permissions: Record<string, unknown> },
+): Promise<"OK" | "NOT_FOUND" | "PERMISSION_DENIED"> {
   const snap = await posApprovalPayload(scope.tenantId, requestId);
-  if (!snap || snap.payload.unitId !== scope.unitId || snap.payload.systemId !== scope.systemId) return false;
-  return cancelRequest({ tenantId: scope.tenantId }, requestId);
+  if (!snap || snap.payload.unitId !== scope.unitId || snap.payload.systemId !== scope.systemId) return "NOT_FOUND";
+  if (snap.payload.requestedById !== actor.userId && !evaluate(actor, { module: "pos", action: "pos.staff.manage", unitId: scope.unitId })) return "PERMISSION_DENIED";
+  if (!(await cancelRequest({ tenantId: scope.tenantId }, requestId))) return "NOT_FOUND";
+  const str = (v: unknown) => (typeof v === "string" && v ? v : null);
+  await writeAudit({
+    tenantId: scope.tenantId,
+    actorId: actor.userId,
+    action: "pos.approval.cancel",
+    targetType: "ApprovalRequest",
+    targetId: requestId,
+    after: { requestId, kind: snap.kind, saleId: str(snap.payload.saleId), heldCartId: str(snap.payload.heldCartId), byUserId: actor.userId },
+  });
+  return "OK";
 }
 
 
