@@ -942,3 +942,7 @@
 - **ด่านปิดชุด** (`/root/pos-runs/gates41-c-*` ทรี c @d9fec398 = P1.7U+P1.11U+P1.13 S+p1.3-counter): generate 0 · typecheck 0 · build 0 · fitness ×3 0 · p1.13/p1.7/p1.11/p1.3/p1.10/p1.15/pos-account/account-cpa/authz ทั้งหมด exit 0
 - **เจ้าของสั่ง 08:25Z**: "Weekly limit ถึง 97% ค่อยเริ่มเตรียมตัวส่งไม้ต่อให้บัญชี A ตอนนี้ 89%" → เกณฑ์ HANDOVER = weekly ≥97% (session ยัง 90%) · บันทึก memory `feedback_pos_handover_at_97_weekly`
 - ต่อไป: รอ P1.15U รอบ 2 → merge (20/55) · เริ่ม P1.13U (prompt + rulings + visual states; builder เพิ่ม U checks ใน qc-pos-p1.13) ในทรี d · weekly 89%
+
+## 9 ต.ค. 09:10 UTC — เปิด P1.13U (L4 ทรี d)
+- prompt `pos-prompt-accountB-P1.13U.md` f84d10f3 (rulings 1–9: 15A จาก cart footer + pay toggle · `registerStatus.taxInvoiceEligible` (server hunk ≤20 บรรทัด + ORACLE-EDIT U1) · DBD ปุ่มเฉพาะนิติบุคคล/checksum ผ่าน · drawer NONE/REQUESTED/ISSUED + issue/approve/reject · PayDone cell "กำลังออกในบัญชี" · visual taxinvoice-dialog/taxinvoice-set/bill-taxinvoice-requested/issued · step 0 = reviewer lows N1–N5) · builder Opus เปิดแล้ว สาขา `wip/pos-p1.13u` จาก session/pos · scratch `scratchpad/p113u/`
+- รอ P1.15U รอบ 2 (696a86f4 push แล้ว รอรายงาน) → merge → 20/55 · weekly 89%
