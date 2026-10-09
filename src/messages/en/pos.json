@@ -1069,7 +1069,8 @@
       "sentEmail": "Receipt sent by email",
       "copied": "Receipt link copied",
       "copyFailed": "Could not copy automatically — link: {url}",
-      "qrOff": "Turn on the online receipt QR in settings first"
+      "qrOff": "Turn on the online receipt QR in settings first",
+      "lineVia": "Send via LINE"
     },
     "issue": {
       "errors": {
@@ -1334,7 +1335,6 @@
       "showPoints": "Show points balance",
       "showPointsHint": "Bills with a member only · needs the points programme",
       "qrEReceipt": "Online receipt QR",
-      "qrEReceiptHint": "Customers scan to view the receipt or ask for a full tax invoice — not printed until online receipts arrive (P1.11)",
       "showCashier": "Show cashier name",
       "numbersCard": "POS numbers & document numbering",
       "devicesTitle": "POS number per device",

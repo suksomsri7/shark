@@ -62,7 +62,9 @@
 //   ครบ = ใช้ซ้ำ ไม่เขียนบิล/กะเพิ่ม · ขาดชนิดไหน = เปิดกะเครื่องคงที่ `posqc-p111u-dev` แล้วขายเฉพาะชนิดนั้นผ่านบริการหน้าขาย (submitRegisterSale ลาเต้×2 ·
 //   อเมริกาโน่ · ครัวซองต์ − ส่วนลดท้ายบิล ฿10 · เงินสด ฿100 + PromptPay ส่วนที่เหลือ) → คืนบางส่วน (refundSale) · ยกเลิก (voidSaleByActor) · โทเคนอ่านด้วย prisma
 //   🔴 finally/signal: ลบ PosReceiptIssue/PosTaxInvoiceRequest ของบิลชุดนี้ (+ OutboxEvent ของมัน) · เก็บการ์ดบอร์ดงานที่ consumer เปิดเข้าคลัง (archiveCard) ·
-//   ปิดกะที่รอบนี้ใช้ขาย (นับ = ยอดคาด) · บิลขาย/ใบคืนคงอยู่ (ข้อมูลเงิน ห้ามลบ — แต่ไม่งอกเพราะใช้ชุดของวันซ้ำ) ◂
+//   ปิดกะที่รอบนี้ใช้ขาย (นับ = ยอดคาด) · บิลขาย/ใบคืนคงอยู่ (ข้อมูลเงิน ห้ามลบ — แต่ไม่งอกเพราะใช้ชุดของวันซ้ำ)
+//   รอบ 2: บิล paid ผูกสมาชิก QC (แต้ม + ปุ่มให้คะแนน) · เปิด posAbbreviated ของสมุดที่ผูก POS ชั่วคราว (saveDocSettings · คืนค่าใน finally/signal) ·
+//   rpub-not-found ไม่นับ console "status of 404" ของหน้านั้น 1 บรรทัด (HTTP 404 ยังตรวจ) ◂
 // POS P1.10 U ▸ หน้า settings (ภาพ 17A/17B) + `--states` (เฉพาะร้าน coffee · --page settings หรือ wo p1.10u*):
 //   settings-receipt (17A + ตัวอย่างสด · แคชเชียร์ = อ่านอย่างเดียว) · settings-devices (17B · 2 เครื่อง QC `posqc-vis-dev-<pid>-{1,2}` ลงทะเบียนด้วย
 //   registerDevice ของบริการ · เครื่อง 1 มี printerConfig USB 80 มม. + ลิ้นชัก + พิมพ์อัตโนมัติ) · settings-device-revoke (กล่องยืนยันเพิกถอนเปิด · ไม่กดยืนยัน) ·
@@ -1345,6 +1347,10 @@ const RPUB = {
   actions: {} as Record<string, unknown>,
   close: null as null | { ok: boolean; detail: string },
   cleanup: null as null | { issues: number; taxRequests: number; outbox: number; kanbanCards: string[]; error?: string },
+  /** รอบ 2 (มติ 3b): สมาชิก QC ของบิล paid (แต้ม + ปุ่มให้คะแนนแบบภาพ 11C) */
+  memberId: "",
+  /** รอบ 2 (มติ 3b): เปิด posAbbreviatedInvoice ของสมุด QC ชั่วคราวผ่าน saveDocSettings (คืนค่าเดิมใน finally) */
+  abb: null as null | { bookId: string; prev: unknown; toggled: boolean; vatRegistered: boolean; hasTaxId: boolean; restored?: string },
 };
 /** F3: คีย์กันซ้ำของ "ชุดวันนี้" (วันที่ไทย) — รอบซ้ำวันเดียวกันใช้บิลชุดเดิม (แบบ existingBillsSet ของ P1.16) · ข้ามวัน = ชุดใหม่ 1 ชุด */
 const RPUB_PREFIX = `posqc-p111u-${new Date(Date.now() + 7 * 3_600_000).toISOString().slice(0, 10).replace(/-/g, "")}-`;
@@ -1353,7 +1359,7 @@ async function existingRpubSet(): Promise<Record<string, string>> {
   const start = new Date(Date.parse(`${new Date(Date.now() + 7 * 3_600_000).toISOString().slice(0, 10)}T00:00:00+07:00`));
   const rows = await prisma.posSale.findMany({
     where: { tenantId: T.tenantId, systemId: SYS, unitId, docType: "SALE", idempotencyKey: { startsWith: RPUB_PREFIX }, createdAt: { gte: start } },
-    select: { id: true, status: true, refundedSatang: true, idempotencyKey: true },
+    select: { id: true, status: true, refundedSatang: true, idempotencyKey: true, memberId: true },
     orderBy: { createdAt: "desc" },
   });
   const out: Record<string, string> = {};
@@ -1361,7 +1367,7 @@ async function existingRpubSet(): Promise<Record<string, string>> {
     const kind = r.idempotencyKey.slice(RPUB_PREFIX.length).split("-")[0] ?? "";
     if (out[kind]) continue;
     const ok =
-      kind === "paid" ? r.status === "PAID" && r.refundedSatang === 0 : kind === "partial" ? r.status === "PAID" && r.refundedSatang > 0 : kind === "voided" ? r.status === "VOIDED" : false;
+      kind === "paid" ? r.status === "PAID" && r.refundedSatang === 0 && r.memberId !== null : kind === "partial" ? r.status === "PAID" && r.refundedSatang > 0 : kind === "voided" ? r.status === "VOIDED" : false;
     if (ok) out[kind] = r.id;
   }
   return out;
@@ -1372,6 +1378,28 @@ async function seedRpubOnce(): Promise<void> {
   const need = new Set(rpubPlan.map((st) => st.bill).filter((b) => b !== "none"));
   try {
     if (need.size) {
+      // รอบ 2 (มติ 3b): ใบกำกับอย่างย่อต้องเปิดที่สมุดที่ผูก POS — เปิด posAbbreviated ชั่วคราวผ่านตัวบันทึกตั้งค่าบัญชีเดิม (saveDocSettings) · คืนค่าใน finally
+      {
+        const account = await import("@/lib/modules/account");
+        const { saveDocSettings } = await import("@/lib/modules/account/doc-settings");
+        const { parseDocSettings } = await import("@/lib/modules/account/settings-schema");
+        const bookId = await account.posAccountSystemId(T.tenantId, SYS);
+        if (bookId) {
+          const row = await prisma.accountSettings.findFirst({ where: { systemId: bookId, tenantId: T.tenantId }, select: { docConfig: true, taxId: true } });
+          const prev = parseDocSettings(row?.docConfig ?? null).autoTaxInvoice;
+          let toggled = false;
+          if (row && !prev.posAbbreviated) {
+            const sv = await saveDocSettings({ tenantId: T.tenantId, systemId: bookId }, { autoTaxInvoice: { ...prev, posAbbreviated: true } });
+            if (!sv.ok) throw new StepError(`เปิดใบกำกับอย่างย่อของสมุด QC ไม่ได้: ${sv.reason}`);
+            toggled = true;
+          }
+          const vat = await account.vatConfigOf(bookId);
+          RPUB.abb = { bookId, prev, toggled, vatRegistered: vat.vatRegistered, hasTaxId: !!row?.taxId?.trim() };
+        }
+      }
+      const mem = await prisma.customer.findFirst({ where: { tenantId: T.tenantId, phone: PQC.coffee.member.phone }, select: { id: true } });
+      if (!mem) throw new StepError(`ไม่พบสมาชิก QC ${PQC.coffee.member.phone} (seed-pos-qc)`);
+      RPUB.memberId = mem.id;
       const { openShift } = await import("@/lib/modules/pos/shift");
       const { quoteRegisterCart, submitRegisterSale } = await import("@/lib/modules/pos/register");
       const { refundSale, saleForRefund } = await import("@/lib/modules/pos/refund");
@@ -1404,8 +1432,10 @@ async function seedRpubOnce(): Promise<void> {
         return id;
       };
       // ใกล้ภาพ 11C: ลาเต้ ×2 · อเมริกาโน่ · ครัวซองต์ − ส่วนลดท้ายบิล ฿10 · เงินสด ฿100 + PromptPay ส่วนที่เหลือ (สินค้ามี VAT ของร้าน QC)
-      const cart = { lines: [{ productId: idOf("ลาเต้ร้อน"), qty: 2 }, { productId: idOf("อเมริกาโน่เย็น"), qty: 1 }, { productId: idOf("ครัวซองต์เนยสด"), qty: 1 }], billDiscount: { type: "AMOUNT" as const, value: 1000 } };
+      const cart0 = { lines: [{ productId: idOf("ลาเต้ร้อน"), qty: 2 }, { productId: idOf("อเมริกาโน่เย็น"), qty: 1 }, { productId: idOf("ครัวซองต์เนยสด"), qty: 1 }], billDiscount: { type: "AMOUNT" as const, value: 1000 } };
       const sell = async (k: string): Promise<string> => {
+        // รอบ 2 (มติ 3b): บิล paid ผูกสมาชิก QC ⇒ หน้าแสดง "ดูแต้มของฉัน" + "ให้คะแนนร้าน" แบบภาพ 11C
+        const cart = k === "paid" ? { ...cart0, memberId: RPUB.memberId } : cart0;
         const q = await quoteRegisterCart(ctx, actor, cart);
         if (!q.ok) throw new StepError(`quote บิล ${k}: ${q.code}`);
         const cash = Math.min(10000, q.grandTotalSatang);
@@ -1506,6 +1536,16 @@ async function runRpubState(page: Any, state: RpubStateKey): Promise<void> {
 /** finally/signal: ลบแถวแจ้งปัญหา/คำขอใบกำกับของบิลชุดนี้ (+ OutboxEvent ของแจ้งปัญหา) แล้วปิดกะ — เรียกซ้ำได้ · ผลใน summary ไม่โยน */
 async function cleanRpub(): Promise<void> {
   if (!rpubOn || RPUB.cleanup) return;
+  // รอบ 2 (มติ 3b): คืนค่า posAbbreviated เดิมของสมุด QC (เฉพาะเมื่อรอบนี้เป็นคนเปิด)
+  if (RPUB.abb?.toggled && !RPUB.abb.restored) {
+    try {
+      const { saveDocSettings } = await import("@/lib/modules/account/doc-settings");
+      const sv = await saveDocSettings({ tenantId: T.tenantId, systemId: RPUB.abb.bookId }, { autoTaxInvoice: RPUB.abb.prev as never });
+      RPUB.abb.restored = sv.ok ? "ok" : `fail: ${sv.reason}`;
+    } catch (e) {
+      RPUB.abb.restored = `fail: ${e instanceof Error ? e.message.slice(0, 120) : String(e)}`;
+    }
+  }
   const ids = Object.values(RPUB.sales);
   try {
     let issues = 0;
@@ -1538,7 +1578,7 @@ async function cleanRpub(): Promise<void> {
 }
 const rpubCleanupLine = () =>
   RPUB.cleanup
-    ? `${RPUB.cleanup.error ? "⚠️" : "🧹"} ใบเสร็จออนไลน์: ลบแจ้งปัญหา ${RPUB.cleanup.issues} · คำขอใบกำกับ ${RPUB.cleanup.taxRequests} · OutboxEvent ${RPUB.cleanup.outbox}${RPUB.cleanup.kanbanCards.length ? ` · เก็บการ์ดบอร์ดงานเข้าคลัง ${RPUB.cleanup.kanbanCards.length}` : ""}${RPUB.cleanup.error ? ` · ${RPUB.cleanup.error}` : ""}${RPUB.close ? ` · ${RPUB.close.detail}` : ""}`
+    ? `${RPUB.cleanup.error ? "⚠️" : "🧹"} ใบเสร็จออนไลน์: ลบแจ้งปัญหา ${RPUB.cleanup.issues} · คำขอใบกำกับ ${RPUB.cleanup.taxRequests} · OutboxEvent ${RPUB.cleanup.outbox}${RPUB.cleanup.kanbanCards.length ? ` · เก็บการ์ดบอร์ดงานเข้าคลัง ${RPUB.cleanup.kanbanCards.length}` : ""}${RPUB.cleanup.error ? ` · ${RPUB.cleanup.error}` : ""}${RPUB.close ? ` · ${RPUB.close.detail}` : ""}${RPUB.abb?.toggled ? ` · คืนค่าใบกำกับอย่างย่อของสมุด QC: ${RPUB.abb.restored ?? "ยังไม่คืน"}` : ""}`
     : "";
 // ◂
 // ═══════════════════ POS P1.10 U ▸ ข้อมูล + ขั้นตอนของหน้าตั้งค่า (เครื่อง SETTINGS_DEVICE_CODES · actor = เจ้าของร้าน) ═══════════════════
@@ -1634,8 +1674,9 @@ async function runSettingsState(page: Any, state: SettingsStateKey, device: Devi
   await clickEl(page, tid(`pos-device-card-${SETTINGS.devices[0]!.id}`));
   await clickEl(page, tid("pos-device-pair"));
   await visibleEl(page, tid("pos-print-pair"), 0, 5_000);
-  await visibleEl(page, tid("pos-print-pair-unsupported"), 0, 5_000).catch(() => {
-    throw new StepError("กล่องจับคู่ไม่ขึ้นสถานะ \"ไม่รองรับ\" (pos-print-pair-unsupported)");
+  // P1.11U รอบ 2 (มติข้อ 3a): chromium headless เปิด WebUSB ให้เสมอแม้ซ่อน navigator.usb ⇒ ยอมรับกล่อง "ไม่รองรับ" หรือปุ่มค้นหาเครื่องพิมพ์ อย่างใดอย่างหนึ่ง
+  await visibleEl(page, `${tid("pos-print-pair-unsupported")},${tid("pos-print-pair-find")}`, 0, 5_000).catch(() => {
+    throw new StepError("กล่องจับคู่ไม่ขึ้นทั้งสถานะ \"ไม่รองรับ\" (pos-print-pair-unsupported) และปุ่มค้นหา (pos-print-pair-find)");
   });
 }
 /** finally: ปิดกะของเครื่อง 2 (นับ = ยอดคาด) + เพิกถอนเครื่อง QC ของรอบนี้ — เรียกซ้ำได้ · ไม่โยน */
@@ -1708,7 +1749,8 @@ try {
 
   if (rpubOn) {
     await seedRpubOnce(); // POS P1.11U — พังไม่โยน (ทุกสถานะ rpub-* ที่ต้องใช้บิลตกพร้อมเหตุผล)
-    console.log(RPUB.error ? `  ⚠️ บิลชุดภาพใบเสร็จ: ${RPUB.error}` : `  บิลชุดภาพใบเสร็จ: ${Object.keys(RPUB.sales).join(" · ") || "-"}${RPUB.reused.length ? ` (ใช้ชุดวันนี้ซ้ำ: ${RPUB.reused.join(" · ")})` : ""} · actions ${JSON.stringify(RPUB.actions)}`);
+    console.log(RPUB.error ? `  ⚠️ บิลชุดภาพใบเสร็จ: ${RPUB.error}` : `  บิลชุดภาพใบเสร็จ: ${Object.keys(RPUB.sales).join(" · ") || "-"}${RPUB.reused.length ? ` (ใช้ชุดวันนี้ซ้ำ: ${RPUB.reused.join(" · ")})` : ""} · actions ${JSON.stringify(RPUB.actions)} · abb ${JSON.stringify(RPUB.abb && { toggled: RPUB.abb.toggled, vatRegistered: RPUB.abb.vatRegistered, hasTaxId: RPUB.abb.hasTaxId })}`);
+  }
   if (settingsStatesOn && pages.includes("settings")) {
     await seedSettingsOnce(); // POS P1.10 U — พังไม่โยน (ทุกสถานะ settings-* ตกพร้อมเหตุผล)
     console.log(SETTINGS.error ? `  ⚠️ เครื่อง QC ของหน้าตั้งค่า: ${SETTINGS.error}` : `  เครื่อง QC ของหน้าตั้งค่า: ${SETTINGS.devices.map((d) => d.id).join(" · ")} · กะ ${SETTINGS.shiftId || "-"}`);
@@ -1807,6 +1849,11 @@ try {
         const exp = job.expect ?? PAGE_EXPECT[p][userKey];
         const statusOk = exp === "record" ? true : status === exp && !redirectedToLogin;
         const judged = exp === "record" ? status > 0 && status < 400 : true; // record-only: หน้าที่ถูกปฏิเสธ ไม่ตัดสินเลย์เอาต์/console
+        // รอบ 2 (มติ 3c): rpub-not-found คาด HTTP 404 ของตัวหน้าเอง ⇒ ข้อความ console "status of 404" ของหน้านั้น 1 บรรทัดไม่นับ (สถานะ 404 ยังตรวจที่ statusOk)
+        if (job.state === "rpub-not-found") {
+          const i = consoleErrors.findIndex((e) => /status of 404/.test(e));
+          if (i >= 0) consoleErrors.splice(i, 1);
+        }
         const ok = statusOk && !stepError && (!judged || (consoleErrors.length === 0 && !ov.over && http5xx.length === 0));
         if (!ok) failures++;
         shots.push({ page: p, state: job.state, stepError, viewport: `${v.w}x${v.h}`, file, status, expect: exp, finalUrl, redirectedToLogin, overflow: ov.over, overflowEl: ov.el, consoleErrors, httpErrors: [...http5xx, ...httpErrors], http5xx: http5xx.length, ok });
@@ -1833,7 +1880,7 @@ try {
   await closeBillsShift(); // POS P1.16 U
   await cleanRpub(); // POS P1.11U
   if (RPUB.cleanup) console.error(rpubCleanupLine());
-  if (RPUB.cleanup?.error || (RPUB.close && !RPUB.close.ok)) failures++;
+  if (RPUB.cleanup?.error || (RPUB.close && !RPUB.close.ok) || (RPUB.abb?.toggled && RPUB.abb.restored !== "ok")) failures++;
   if (BILLS.close) console.error(`${BILLS.close.ok ? "🧹" : "⚠️"} ${BILLS.close.detail}`);
   if (BILLS.close && !BILLS.close.ok) failures++;
   await cleanupSettingsState(); // POS P1.10 U

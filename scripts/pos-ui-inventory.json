@@ -5661,7 +5661,7 @@
       "expect": {
         "type": "ui",
         "target": "pos-settings-qr-ereceipt",
-        "note": "แสดงค่าที่เก็บแต่ปิดไว้ (disabled) — QR ใบเสร็จออนไลน์ยังไม่พิมพ์จนถึง P1.11"
+        "note": "qrEReceipt — เปิด = ใบเสร็จพิมพ์ QR ลิงก์ใบเสร็จออนไลน์ /r/<token> + ลิ้นชักคัดลอกลิงก์ได้ · ปิด = ไม่พิมพ์ QR (P1.11U เปิดใช้สวิตช์)"
       },
       "wo": "P1.10U",
       "oracle": "",
@@ -6861,6 +6861,108 @@
       "expect": {
         "type": "mutation",
         "note": "สำเร็จ = toast \"ส่งใบเสร็จทางอีเมลแล้ว\" + ปิดแผ่น · ปฏิเสธ = ข้อความในแผ่น (pos-receipt-send-error)"
+      },
+      "wo": "P1.11U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-receipt-send-paydone-line",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "note": "จอสำเร็จ (ภาพ 02b): ส่งทาง LINE — เปิดเมื่อบิลมีสมาชิก · sendReceiptAction via LINE · ผล/คำปฏิเสธใต้ปุ่ม (pos-receipt-send-paydone-result)"
+      },
+      "wo": "P1.11U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-receipt-send-paydone-email",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "จอสำเร็จ: ส่งอีเมล → กาง/พับแผ่นช่องเดียว (นับถอยหลังหยุดระหว่างแผ่นเปิด)"
+      },
+      "wo": "P1.11U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-receipt-send-paydone-email-form",
+      "kind": "form",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "note": "ส่งฟอร์ม = sendReceiptAction via EMAIL (ว่าง = อีเมลสมาชิกของบิล)"
+      },
+      "wo": "P1.11U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-receipt-send-paydone-email-input",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "อีเมลลูกค้า (ตรวจรูปแบบก่อนส่ง)"
+      },
+      "wo": "P1.11U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-receipt-send-paydone-email-close",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "ปิดแผ่นอีเมล (นับถอยหลังกลับมานับต่อ)"
+      },
+      "wo": "P1.11U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-receipt-send-paydone-email-submit",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "note": "สำเร็จ = \"ส่งใบเสร็จทางอีเมลแล้ว\" + ปิดแผ่น · ปฏิเสธ = ข้อความใต้ปุ่ม"
       },
       "wo": "P1.11U",
       "oracle": "",
