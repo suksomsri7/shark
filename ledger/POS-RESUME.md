@@ -816,3 +816,10 @@
 - L2 gates27 (8b6227ea): generate/typecheck/fitness×3/p1.11×3 38/38/p1.10 40/p1.16 28/p1.8 49/p1.3 128/page-authz 56/nav เขียว · เหลือ build (iso-3189617)
 - L3 P1.15 S ส่ง **1386a2f9** 34/34 ×3+u · typecheck 0 · ORACLE-EDIT? P1.9-ST8 (ห้ามมี PosStaffPin — ขัด R1) ⇒ **คำตัดสิน: ตัดเงื่อนไขนั้นออก คงอีก 2 ข้อ** (ทำตอน merge) · p0.2 แดงจาก residue REFUND ของ P1.8/P1.16 ในร้าน seed (ไม่ใช่ของ P1.15) · ผู้ตรวจ Opus เปิดแล้ว (prompt `pos-prompt-accountB-P1.15-R.md`)
 - L4 P1.7 S ส่ง **0fc35040** 30/30 ×2+u · typecheck 0 · ผู้ตรวจ Opus เปิดแล้ว (prompt `pos-prompt-accountB-P1.7-R.md`) · เจ้าของ: Beam PromptPay ยังไม่เคยยิง API จริง (ไม่มีคีย์) · card ไม่ส่ง returnUrl ต้องเช็กกับ Beam
+
+### 9 ต.ค. 04:00 UTC — P1.11 S รับเข้า session/pos · ผู้ตรวจ P1.15/P1.7 = MERGEABLE-AFTER-FIXES · bisect ชี้ขั้น 6 หรือ fix round
+- L2: gates27 **build 0** ⇒ merge `wip/pos-p1.11` 8aff5684 → 861005e0 + nit 3 ข้อ (REVIEW_EXPIRED ใน doc · ops log e.name+code · โน้ตบอก 36/38 เป็นประวัติ) = **0bf5c3e3** PUSHED · (pre-commit fitness แดง "model ไม่มีใน schema" = Prisma client ทรี shark-pos เก่า → `prisma generate` แล้วเขียว) · P1.11 **S รับแล้ว** (ใบนับเมื่อ U จบ) · เปิด builder **P1.11U** ทรี c `wip/pos-p1.11u` (prompt `pos-prompt-accountB-P1.11U.md` 943b1278 · dispatcher regex 12 ตัว · PayDone share row มีเงื่อนไขรอ P1.10U)
+- L3 P1.15: ผู้ตรวจ F1 ส่วนลดอนุมัติผูกแค่ % (High) · F2 managerPin ไม่มี id ไม่นับผิด (High) · F3–F9 → fix round 1 ส่งแล้ว (`pos-prompt-accountB-P1.15-S-fix.md` 2d3339c4 · ORACLE-EDIT อนุมัติ: p1.15 +AP-F1/PN-F2 = 36 ข้อ · p1.9 ST8 ตัดเงื่อนไข PosStaffPin)
+- L4 P1.7: ผู้ตรวจ F1 `pi_` บน TRANSFER ทำ intent ไม่ถูก consume → จ่ายซ้ำ 2 บิล (Medium) · F2 INTERNAL ตอบ 200 Beam ไม่ retry · F3 manual confirm CARD_BEAM → fix round 1 ส่งแล้ว (`pos-prompt-accountB-P1.7-S-fix.md` · ORACLE-EDIT C31 = 31 ข้อ · คำตัดสิน: manual ห้าม CARD_BEAM · PROMPTPAY_BEAM ต้อง pos.shift.manage)
+- L1 bisect: build30 @c864a48d (ขั้น 5) **0** ⇒ ค้างอยู่ที่ 56e80a44 (ขั้น 6 = scripts/visual-pos.mts เท่านั้น) หรือ 8dfab705 (fix round) → build31 @56e80a44 unit pos-build31-bisect-1791518330 กำลัง compile
+- โควตา 04:00Z: session 26% · weekly_all 74% · weekly_fable 51%
