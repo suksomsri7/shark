@@ -249,6 +249,8 @@ export type RegisterProduct = {
   listPriceSatang?: number | null;
   priceSource?: PriceSource | null;
   priceRule?: { id: string; name: string; endsAt: string | null } | null;
+  /** รีวิว F6: true = แถว STORE ที่ชนะเป็น "ไม่ขาย" (รวมสินค้าไม่มีราคาฐาน) — จอแสดง "ไม่ขายหน้าร้าน" และไม่เปิดราคาเปิด · เซิร์ฟเวอร์เติมเสมอ ⇒ optional */
+  notSold?: boolean;
 };
 export type RegisterCategory = { id: string; name: string; nameEn: string | null; productCount: number };
 

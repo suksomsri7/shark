@@ -237,6 +237,16 @@ function pickRule(cands: { rule: PriceRuleLike; price: number }[]): { rule: Pric
   return best;
 }
 
+/**
+ * รีวิว F6: แถวที่ชนะ (ลำดับเดียวกับ ③④) บนช่องทาง+สาขานี้เป็น "ไม่ขาย" ไหม — ไม่ดูราคาฐาน
+ *   (resolveUnitPrice คืน PRICE_NOT_SET ก่อนดูแถว ⇒ สินค้าไม่ตั้งราคาที่ปิดขายรายช่องทางต้องใช้ตัวนี้ · ราคาเปิด/ไทล์)
+ */
+export function channelRowNotSold(rows: readonly ChannelPriceRow[], product: PriceProductLike, parent: PriceParentLike | null, channelCode: string, unitId: string): boolean {
+  const par = product.parentId && parent && parent.id === product.parentId ? parent : null;
+  const win = winningRow(rows, product.id, par ? par.id : null, channelCode, unitId);
+  return !!win && (win.row.notSold || win.row.priceSatang === null);
+}
+
 /** ③④ แถวที่ชนะ: (code, unit) → (code, ทุกสาขา) → (ทุกช่องทาง, unit) · ระดับเดียวกันแถวของตัวเองชนะแถวของแม่ */
 function winningRow(rows: readonly ChannelPriceRow[], ownId: string, parentId: string | null, channelCode: string, unitId: string): { row: ChannelPriceRow; level: "CHANNEL" | "BRANCH" } | null {
   const levels: [string | null, string | null, "CHANNEL" | "BRANCH"][] = [

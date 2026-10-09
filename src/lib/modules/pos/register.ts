@@ -428,7 +428,7 @@ import { posDeviceRevoked, touchPosDevice } from "./device"; // POS P1.10 ▸ �
 import { resolveSaleChannel } from "./channel"; // POS P2.1 ▸ R10 ช่องทางของตะกร้า ◂
 import { CHANNEL_REF_MAX } from "./channel-shared"; // POS P2.1 ◂
 // POS P2.2 ▸ ราคาตามช่องทาง/สาขา/ช่วงเวลา (R5 R6) — ชุดราคาโหลดครั้งเดียวต่อคำขอ · ตัวแก้บริสุทธิ์ price-shared.ts ◂
-import { loadPriceBook, priceBookValidUntil, priceOf, type PriceBook } from "./price";
+import { channelNotSold, loadPriceBook, priceBookValidUntil, priceOf, type PriceBook } from "./price";
 import { priceRuleActiveUntil, type PriceSource } from "./price-shared";
 // POS P1.15 ▸ โทเคนผู้ขาย (R3) · PIN ผู้จัดการ (R4) · สายอนุมัติส่วนลดเกินสิทธิ์ (R5/R6) ◂
 import { createHash } from "node:crypto";
@@ -771,6 +771,8 @@ async function regViews(db: RegDb, s: RegScope, rows: PosProduct[], book?: Price
             priceRule: rp.ruleId ? { id: rp.ruleId, name: rp.ruleName ?? "", endsAt: tileRule ? (priceRuleActiveUntil(tileRule, pb.at)?.toISOString() ?? null) : null } : null,
           }
         : { priceSatang: null, listPriceSatang: rp?.code === "CHANNEL_NOT_SOLD" ? own : null, priceSource: null, priceRule: null };
+    // รีวิว F6: ไม่ขายหน้าร้าน (แถว STORE ที่ชนะเป็นไม่ขาย) — รวมสินค้าไม่ตั้งราคาฐาน (listPriceSatang null) · จอแสดง "ไม่ขายหน้าร้าน" ไม่เปิดราคาเปิด
+    const tileNotSold = !weighed && (rp?.code === "CHANNEL_NOT_SOLD" || (rp?.code === "PRICE_NOT_SET" && channelNotSold(pb, p, "STORE")));
     return {
       id: p.id,
       invItemId: p.invItemId,
@@ -797,6 +799,7 @@ async function regViews(db: RegDb, s: RegScope, rows: PosProduct[], book?: Price
       listPriceSatang: tilePrice.listPriceSatang,
       priceSource: tilePrice.priceSource,
       priceRule: tilePrice.priceRule,
+      notSold: tileNotSold,
     };
   });
 }
@@ -1409,10 +1412,9 @@ async function regPrice(
       //   POS P2.2 ▸ R4 R5: ราคาเปิด = OPEN · อื่น ๆ = ตัวแก้ราคา (โปร > ช่องทาง+สาขา > ช่องทาง > สาขา > ฐาน) บนช่องทางของตะกร้า ณ book.at
       //   · ไม่ตั้งราคา = PRICE_NOT_SET · แถวที่ชนะเป็น "ไม่ขาย" = CHANNEL_NOT_SOLD (บรรทัดนี้) ◂
       if (l.openPrice !== null) {
-        // รีวิว F1: ราคาเปิดไม่ข้ามแถว "ไม่ขาย" — แถวที่ชนะบนช่องทางของตะกร้าเป็นไม่ขาย = CHANNEL_NOT_SOLD (บรรทัดนี้ · เหมือนทางปกติ)
-        //   ผลอื่น (มีราคา / PRICE_NOT_SET) ไม่สนใจ — บรรทัดคงเป็น OPEN ราคาที่กรอก (Q7)
-        const rp = priceOf(book, row, priceChannelCode);
-        if (!rp.ok && rp.code === "CHANNEL_NOT_SOLD") return regRefuse(rp.code, undefined, i);
+        // รีวิว F1/F6: ราคาเปิดไม่ข้ามแถว "ไม่ขาย" — แถวที่ชนะบนช่องทางของตะกร้าเป็นไม่ขาย = CHANNEL_NOT_SOLD (บรรทัดนี้ · เหมือนทางปกติ)
+        //   ดูแถวตรง ๆ ไม่ผ่านราคาฐาน (สินค้าไม่ตั้งราคาก็ปิดขายรายช่องทางได้) · ไม่ใช่ไม่ขาย = บรรทัดคงเป็น OPEN ราคาที่กรอก (Q7)
+        if (channelNotSold(book, row, priceChannelCode)) return regRefuse("CHANNEL_NOT_SOLD", undefined, i);
         base = l.openPrice;
         priceSource = "OPEN";
       } else {

@@ -7,6 +7,7 @@
 import type { PrismaClient, Prisma } from "@prisma/client";
 import { CHANNEL_CODE_RE } from "./channel-shared";
 import {
+  channelRowNotSold,
   nextPriceEdge,
   resolveUnitPrice,
   type ChannelPriceRow,
@@ -88,6 +89,12 @@ export async function loadPriceBook(db: Db, scope: PriceScope, products: readonl
     }),
   ]);
   return { at, unitId: scope.unitId, rows, rules, parents };
+}
+
+/** รีวิว F6: แถวที่ชนะบนช่องทาง (รหัส) + สาขาของชุดเป็น "ไม่ขาย" ไหม — ไม่ขึ้นกับราคาฐาน (ราคาเปิด · ไทล์ของสินค้าไม่ตั้งราคา) */
+export function channelNotSold(book: PriceBook, product: PriceProductLike, channelCode: string): boolean {
+  const parent = product.parentId ? (book.parents.get(product.parentId) ?? null) : null;
+  return channelRowNotSold(book.rows, product, parent, channelCode, book.unitId);
 }
 
 /** ราคาของสินค้า 1 รายการจากชุดที่โหลดแล้ว (ช่องทาง = รหัส) */
