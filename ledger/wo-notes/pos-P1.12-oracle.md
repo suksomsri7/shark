@@ -59,16 +59,16 @@ Check families (prompt): ST · B · M · T · V · P · S · W · X · R · Z. T
 - Messages live in split files `src/messages/{th,en}/pos.json`; `register.errors.couponInvalid` already exists.
 - Stamp module: a stamp in a **completed** cycle cannot be voided — fixture card uses `minSatang 60,000` so only 5 bills of X stamp (no completion in a run).
 
-## Check list (64 · S=5 −=24 X1=10 X2=3 X3=3 X4=7 X5=12)
+## Check list (67 · S=5 −=25 X1=12 X2=3 X3=3 X4=7 X5=12) — fix round 1 (reviewer F1–F4 · F7) added M12 · P9 · W3 (64 → 67)
 ST1 migration additive (2 nullable Json) · ST2 pos→loyalty only via member facade (public-receipt allowlist) + register-member.ts + delegated keys + no admin calls · ST3 "use server" + 4 actions · ST4 no GIFT_CARD tender · ST5 codes/keys/messages, MEMBER_RIGHTS_UNSUPPORTED retired, REG_QUOTE_KEYS, saleWalletCart in createSale + quote, CreateSaleInput.memberSnapshot, createSale writes memberBenefits, submit passes memberSystemId, member.erased POS after CRM ·
 B1 new keys exact · B2 giftCard VALIDATION · B3 points type · B4 client snapshot VALIDATION · B5 quick-register parser · B6 held cart memberId+couponCode ·
-M1 phone lookup (prefix/dashed/legacy) + DTO + masking + short q · M2 name/code/sort/merged/other-system · M3 SHARK-MC token · M4 404-not-403 same message · M5 SUSPENDED · M6 MEMBER_SYSTEM_MISSING ×5 · M7 STAFF w/o member.* + benefits DTO read-only · M8 no pos.sale.create ⇒ PERMISSION_DENIED ×5 · M9 quick register side effects + audit · M10 dup phone / replay key · M11 PHONE_INVALID + snapshot ·
+M1 phone lookup (prefix/dashed/legacy) + DTO + masking + short q · M2 name/code/sort/merged/other-system · M3 SHARK-MC token · M4 404-not-403 same message · M5 SUSPENDED · M6 MEMBER_SYSTEM_MISSING ×5 · M7 STAFF w/o member.* + benefits DTO read-only · M8 no pos.sale.create ⇒ PERMISSION_DENIED ×5 · M9 quick register side effects + audit · M10 dup phone / replay key · M11 PHONE_INVALID + snapshot + `0066…` → `0…` (F2) · M12 legacy dashed L + same digits typed with spaces ⇒ created:false, same id, Customer count same, no audit (F1) ·
 T1 Gold tier 2,500 · T2 no MEMBER_RIGHTS_UNSUPPORTED · T3 tier base before bill discount · T4 tier outside cashier cap (+ control) · T5 quote = bill for 6 mixed carts ·
 V1 voucher USED · V2 VOUCHER_INVALID · V3 VOUCHER_LIMIT · V4 VOUCHER_COUPON_CONFLICT · V5 member coupon · V6 walk-in coupon · V7 COUPON_INVALID · V8 parallel race ·
-P1 benefits points · P2 burn 500 · P3 below min · P4 insufficient · P5 capped (+ 475 control) · P6 disabled · P7 earn = pointsExpected · P8 GL points = bill discount ·
+P1 benefits points · P2 burn 500 · P3 below min · P4 insufficient · P5 capped (+ 475 control) · P6 disabled · P7 earn = pointsExpected · P8 GL points = bill discount · P9 cap below min ⇒ POINTS_BELOW_MIN quote+submit, nothing written (F3) ·
 S1 stampsToAdd · S2 one ADD · S3 replay ×2 · S4 void ⇒ VOID ·
-W1 fulfil + audit · W2 idempotent / other member ·
-X1 void full chain · X2 replay voided ×2 · X3 full refund · X4 partial refund · X5 replay refunded ×2 · X6 void racing paid · X7 GL of void nets 0 ·
+W1 fulfil + audit · W2 idempotent / other member · W3 fulfilled in back office first ⇒ POS ok, 0 audits (F4) ·
+X1 void full chain · X2 replay voided ×2 · X3 full refund · X4 partial refund (F7: exactly one `pos-refund-<refundId>:` row, delta = −floor(pointEarned × refund grand / sale grand)) · X5 replay refunded ×2 · X6 void racing paid · X7 GL of void nets 0 ·
 R1 receipt lines · R2 live balance + snapshot name · R3 public receipt · R4 BillDetail.member · R5 immutability · R6 PDPA erase ×2 ·
 Z1 residue 0 + seed markers · Z2 legacy createSale (points + gift card) unchanged + memberBenefits for all callers.
 
@@ -92,3 +92,7 @@ Z1 residue 0 + seed markers · Z2 legacy createSale (points + gift card) unchang
 ## Follow-ups
 - Member owner: phone index / trigram for lookup (ruling Q4) — today `listMembers` uses `contains` and phones are stored as typed.
 - Controller: POS-CONTRACTS C-10 names → wallet (ruling Q5); POS-OWNER-PENDING gift-card output VAT (ruling Q1).
+
+## ORACLE-EDIT — fix round 1 (controller prompt `pos-prompt-accountB-P1.12-S-fix.md`, reviewer `pos-P1.12-review-S.md`)
+One `test(pos P1.12)` commit by builder S, as ruled: **M12** new (F1) · **M11** + `0066` case (F2) · **P9** new (F3) · **W3** new (F4) ·
+**X4** exact count + pro-rata amount (F7) · **M1** logs `M1 lookup ms=…` (F6, info only, no assertion). Count **64 → 67** (`--list`).
