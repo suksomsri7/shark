@@ -2,7 +2,9 @@
 // สัญญา = scripts/qc-pos-p1.15.mts (PN0–PN8 · TK1–TK5) · brief ledger/pos-briefs/pos-brief-P1.15.md · ตารางชื่อ ledger/wo-notes/pos-P1.15-oracle.md
 //
 // 🔴 ผู้เขียนตาราง PosStaffPin ที่เดียว · ไม่ใช่ไฟล์ "use server" (action อยู่ที่ staff-pin-actions.ts)
-// 🔴 ไม่เก็บ PIN ดิบ: pinHash = "<salt 16 ไบต์ hex>:<scrypt(pin, salt) hex>" (node scryptSync ค่าปริยาย) · ไม่มีการสุ่มด้วย Math
+// 🔴 ไม่เก็บ PIN ดิบ: pinHash = "<salt 16 ไบต์ hex>:<scrypt(pin, salt) hex>" (พารามิเตอร์ปริยายของ node) · ไม่มีการสุ่มด้วย Math
+//    ทางรับคำขอใช้ scrypt แบบ async เท่านั้น (fix รอบ 1 F6 — ไม่บล็อก event loop) · ตัวแบบ sync มีไว้ให้สคริปต์เท่านั้น
+// 🔴 log ขัดข้องพิมพ์แค่ชื่อ/รหัสของ error (ไม่พิมพ์อาร์กิวเมนต์ที่อาจมี pinHash/salt)
 // 🔴 PIN ซ้ำในสาขาเดียวกันไม่ได้ (PIN_TAKEN) ⇒ ใส่ PIN แบบไม่ระบุคนจับได้ไม่เกิน 1 แถว · คำปฏิเสธไม่บอกว่าเป็นของใคร
 // 🔴 ผิดติดกัน 5 ครั้ง (นับเฉพาะเมื่อระบุ userId — มติผู้คุมงาน 1) ⇒ lockedUntil = ตอนนี้ + 15 นาที · ผู้จัดการปลดได้ (unlockStaffPin)
 //    ไม่ระบุคน = จับทุกแถวของสาขาและไม่นับให้ใคร (ด่านกันเดาแบบต่อเครื่อง = งานตามหลัง)
@@ -11,7 +13,8 @@
 //    คนในโทเคนต้องยังมี pos.sale.create ที่สาขานั้น ณ ตอนใช้ · เครื่องถูกเพิกถอน = โทเคนตาย
 //    (ไม่ใช้ updatedAt ของแถวเป็นรุ่น: ตัวนับผิด/ปลดล็อกก็ขยับ updatedAt ⇒ คนอื่นกด PIN ผิดแล้วพนักงานที่ใช้งานอยู่หลุด)
 // 🔴 คำปฏิเสธ "คืน" {ok:false, code, message ไทย} — ไม่ throw (ขัดข้องที่ไม่คาดคิด = INTERNAL)
-import { createHash, createHmac, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, randomBytes, scrypt, scryptSync, timingSafeEqual } from "node:crypto";
+import { promisify } from "node:util";
 import type { PrismaClient } from "@prisma/client";
 import { writeAudit } from "@/lib/core/audit";
 import { canAccessUnit, evaluate } from "@/lib/core/rbac";
@@ -63,7 +66,7 @@ async function guard<T>(name: string, body: () => Promise<T>): Promise<T | Regis
   try {
     return await body();
   } catch (e) {
-    console.error(`[pos/staff-pin] ${name} INTERNAL`, e);
+    logSafe(name, e);
     return refuse("INTERNAL");
   }
 }
@@ -109,16 +112,29 @@ export async function posMemberActor(tenantId: string, userId: string, client?: 
 }
 
 // ═══════════ hash ═══════════
-function hashPin(pin: string): string {
+const scryptAsync = promisify(scrypt) as (pin: string, salt: Buffer, len: number) => Promise<Buffer>;
+async function hashPin(pin: string): Promise<string> {
   const salt = randomBytes(16);
-  return `${salt.toString("hex")}:${scryptSync(pin, salt, HASH_BYTES).toString("hex")}`;
+  return `${salt.toString("hex")}:${(await scryptAsync(pin, salt, HASH_BYTES)).toString("hex")}`;
 }
-function pinMatches(pin: string, stored: string): boolean {
+async function pinMatches(pin: string, stored: string): Promise<boolean> {
   const m = /^([0-9a-f]{32}):([0-9a-f]{32,256})$/.exec(stored);
   if (!m || m[2]!.length % 2) return false;
   const want = Buffer.from(m[2]!, "hex");
-  const got = scryptSync(pin, Buffer.from(m[1]!, "hex"), want.length);
+  const got = await scryptAsync(pin, Buffer.from(m[1]!, "hex"), want.length);
   return got.length === want.length && timingSafeEqual(got, want);
+}
+/**
+ * แบบ sync สำหรับสคริปต์ (seed/ซ่อมข้อมูล) เท่านั้น — ห้ามเรียกจากทางรับคำขอ (fix รอบ 1 F6) · รูปแบบเดียวกับ hashPin
+ */
+export function hashStaffPinForScript(pin: string): string {
+  const salt = randomBytes(16);
+  return `${salt.toString("hex")}:${scryptSync(pin, salt, HASH_BYTES).toString("hex")}`;
+}
+/** log ขัดข้องแบบไม่มีข้อมูลลับ: ชื่อ + รหัสของ error เท่านั้น */
+function logSafe(where: string, e: unknown): void {
+  const o = (e ?? {}) as { name?: unknown; code?: unknown };
+  console.error(`[pos/staff-pin] ${where} INTERNAL ${typeof o.name === "string" ? o.name : "Error"}${typeof o.code === "string" ? ` ${o.code}` : ""}`);
 }
 /** รุ่นของ PIN ในโทเคน — เปลี่ยนทุกครั้งที่ตั้ง PIN ใหม่ (salt ใหม่) · ไม่เปิดเผย hash */
 const pinVersionOf = (pinHash: string) => createHash("sha256").update(`pos-staff-pin-version:${pinHash}`).digest("base64url").slice(0, 16);
@@ -147,8 +163,8 @@ export async function setStaffPin(ctx: StaffPinCtx, actor: RegisterActor, input:
     if (!target || !canSellAt(target, s.unitId)) return refuse("NOT_FOUND", "พนักงานคนนี้ยังขายที่สาขานี้ไม่ได้ — ให้สิทธิ์ขายก่อนตั้ง PIN");
     // CD1 + R2: PIN ซ้ำในสาขาเดียวกันไม่ได้ (เทียบกับทุกแถวของสาขายกเว้นแถวของคนนี้เอง) — ข้อความไม่บอกว่าเป็นของใคร
     const others = await db.posStaffPin.findMany({ where: { tenantId: s.tenantId, unitId: s.unitId, userId: { not: userId } }, select: { pinHash: true } });
-    if (others.some((r) => pinMatches(pin, r.pinHash))) return refuse("PIN_TAKEN");
-    const pinHash = hashPin(pin);
+    for (const r of others) if (await pinMatches(pin, r.pinHash)) return refuse("PIN_TAKEN");
+    const pinHash = await hashPin(pin);
     const row = await db.posStaffPin.upsert({
       where: { unitId_userId: { unitId: s.unitId, userId } },
       create: { tenantId: s.tenantId, unitId: s.unitId, userId, pinHash, failedCount: 0, lockedUntil: null, setById: a.userId },
@@ -199,7 +215,7 @@ export async function matchStaffPin(scope: { tenantId: string; unitId: string },
     const actor = await posMemberActor(scope.tenantId, userId, db);
     if (!actor || !canSellAt(actor, scope.unitId)) return refuse("PIN_INVALID");
     if (locked(row)) return refuse("PIN_LOCKED");
-    if (!pinMatches(pin, row.pinHash)) {
+    if (!(await pinMatches(pin, row.pinHash))) {
       await countFailure(db, row.id, now);
       return refuse("PIN_INVALID");
     }
@@ -208,10 +224,11 @@ export async function matchStaffPin(scope: { tenantId: string; unitId: string },
   }
   const rows = await db.posStaffPin.findMany({ where: { tenantId: scope.tenantId, unitId: scope.unitId }, orderBy: { createdAt: "asc" } });
   for (const row of rows) {
-    if (!pinMatches(pin, row.pinHash)) continue;
+    if (!(await pinMatches(pin, row.pinHash))) continue;
     const actor = await posMemberActor(scope.tenantId, row.userId, db);
     if (!actor || !canSellAt(actor, scope.unitId)) continue;
-    if (locked(row)) return refuse("PIN_LOCKED");
+    // fix รอบ 1 F3: ไม่ระบุคน + แถวที่ล็อกอยู่ = PIN_INVALID (ไม่บอกว่า PIN นี้มีเจ้าของที่ถูกล็อก)
+    if (locked(row)) return refuse("PIN_INVALID");
     await clearFailures(db, row);
     return { ok: true, rowId: row.id, pinHash: row.pinHash, actor };
   }
@@ -319,20 +336,26 @@ export async function verifyStaffPin(
 }
 
 /**
- * PIN ผู้จัดการที่เครื่องนี้ (managerPin + managerUserId — มติผู้คุมงาน 1) → ผู้กระทำของผู้จัดการ (สิทธิ์สด) ·
- * ผิด = PIN_INVALID (+1 บนแถวของ managerUserId) · ล็อก = PIN_LOCKED · เครื่องถูกเพิกถอน = DEVICE_REVOKED · ไม่ออกโทเคน ไม่เขียน pin_verified
+ * PIN ผู้จัดการที่เครื่องนี้ (managerPin + managerUserId บังคับ — มติผู้คุมงาน 1 · fix รอบ 1 F2) → ผู้กระทำของผู้จัดการ (สิทธิ์สด) ·
+ * ไม่มี managerUserId = VALIDATION · ผิด = PIN_INVALID (+1 บนแถวของ managerUserId) · ล็อก = PIN_LOCKED · เครื่องถูกเพิกถอน = DEVICE_REVOKED · ไม่ออกโทเคน ไม่เขียน pin_verified
  */
 export async function verifyManagerPin(
   scope: { tenantId: string; unitId: string; deviceId?: string | null },
   input: { managerPin: unknown; managerUserId?: unknown },
   client?: Db,
 ): Promise<{ ok: true; actor: RegisterActor } | RegisterRefusal> {
-  const db = client ?? prisma;
-  if (scope.deviceId && (await posDeviceRevoked(db, scope.tenantId, scope.unitId, scope.deviceId))) return refuse("DEVICE_REVOKED");
-  const uid = input.managerUserId === undefined || input.managerUserId === null ? null : input.managerUserId;
-  if (uid !== null && !isId(uid)) return refuse("PIN_INVALID");
-  const m = await matchStaffPin(scope, input.managerPin, uid as string | null, db);
-  return isRefusal(m) ? m : { ok: true, actor: m.actor };
+  try {
+    const db = client ?? prisma;
+    // fix รอบ 1 F2: PIN ผู้จัดการต้องระบุผู้จัดการเสมอ (ไม่มีทาง "จับทุกแถว") ⇒ ทุกครั้งที่ผิดนับบนแถวของคนนั้น
+    const uid = input.managerUserId;
+    if (uid === undefined || uid === null || !isId(uid)) return refuse("VALIDATION", "เลือกผู้จัดการก่อนใส่ PIN");
+    if (scope.deviceId && (await posDeviceRevoked(db, scope.tenantId, scope.unitId, scope.deviceId))) return refuse("DEVICE_REVOKED");
+    const m = await matchStaffPin(scope, input.managerPin, uid, db);
+    return isRefusal(m) ? m : { ok: true, actor: m.actor };
+  } catch (e) {
+    logSafe("verifyManagerPin", e);
+    return refuse("INTERNAL");
+  }
 }
 
 // ═══════════ ปลดล็อก (R2) ═══════════
