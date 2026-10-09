@@ -99,7 +99,21 @@ export type BillDetail = {
   deviceName: string | null;
   shiftNo: number | null;
   sourceModule: string;
-  lines: { name: string; qty: number; unitPriceSatang: number; discountSatang: number; lineTotalSatang: number; options: string[] }[];
+  /**
+   * POS P2.2 ▸ R11: priceSource = ชั้นราคาที่ชนะตอนขาย (บิลเดิม/ผู้เรียกเดิม = null) · priceRuleName = ชื่อโปร (อ่านตาม id · ไม่พบ = null) ·
+   * listPriceSatang = ราคาปกติตอนขาย (ไม่รวมตัวเลือก) — ลิ้นชักบิลเขียน "ราคา LINE MAN" / "Happy hour · บ่ายชิล (ปกติ ฿75)" ◂
+   */
+  lines: {
+    name: string;
+    qty: number;
+    unitPriceSatang: number;
+    discountSatang: number;
+    lineTotalSatang: number;
+    options: string[];
+    priceSource: "BASE" | "BRANCH" | "CHANNEL" | "RULE" | "OPEN" | "CUSTOM" | "WEIGHED" | null;
+    priceRuleName: string | null;
+    listPriceSatang: number | null;
+  }[];
   /** สตางค์ทั้งหมด · subtotal − lineDiscount − billDiscount − coupon − tier + serviceCharge = grandTotal */
   totals: {
     subtotal: number;

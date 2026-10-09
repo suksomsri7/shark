@@ -351,6 +351,11 @@ export async function billDetail(ctx: RegisterCtx, actor: RegisterActor, input: 
       include: { lines: { orderBy: { id: "asc" }, include: { options: { orderBy: { id: "asc" } } } }, payments: { orderBy: { id: "asc" } } },
     });
     if (!sale) return refuse("SALE_NOT_FOUND");
+    // POS P2.2 ▸ R11: ชื่อโปรของบรรทัด (อ่านตาม id ของร้าน/ระบบนี้ · โปรที่เก็บถาวรยังอ่านได้ · ไม่พบ = null) ◂
+    const ruleIds = [...new Set(sale.lines.map((l) => l.priceRuleId).filter((x): x is string => !!x))];
+    const ruleNames = new Map(
+      ruleIds.length ? (await prisma.posPriceRule.findMany({ where: { tenantId, systemId, id: { in: ruleIds } }, select: { id: true, name: true } })).map((r) => [r.id, r.name]) : [],
+    );
 
     const [bookId, shift, customer, coupons, refundDocs, audits] = await Promise.all([
       account.posAccountSystemId(tenantId, systemId),
@@ -479,6 +484,10 @@ export async function billDetail(ctx: RegisterCtx, actor: RegisterActor, input: 
         discountSatang: l.discountSatang,
         lineTotalSatang: l.lineTotalSatang,
         options: l.options.map((o) => o.choiceName),
+        // POS P2.2 ▸ R11 ◂
+        priceSource: l.priceSource ?? null,
+        priceRuleName: l.priceRuleId ? (ruleNames.get(l.priceRuleId) ?? null) : null,
+        listPriceSatang: l.listPriceSatang ?? null,
       })),
       totals: {
         subtotal,

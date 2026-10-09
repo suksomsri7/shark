@@ -18,6 +18,7 @@ import type { TaxInvoiceSnapshot } from "./tax-invoice-shared"; // POS P1.13 ▸
 // POS P2.1 ▸ ช่องทางขาย: ตัวแก้ช่องทางของบิล (ผู้เขียนตาราง = channel.ts) + คณิตค่าคอมฯ (บริสุทธิ์) ◂
 import { resolveSaleChannel } from "./channel";
 import { CHANNEL_REF_MAX, channelCommission, defaultChannelCode } from "./channel-shared";
+import { PRICE_RULE_ID_MAX, PRICE_SOURCES } from "./price-shared"; // POS P2.2 ▸ R7 ◂
 
 // POS createSale — contract 2.1 (จุดตัดเงินกลาง). MVP: PAID_NOW
 //
@@ -89,6 +90,11 @@ export type CreateSaleInput = {
     options?: SaleLineOption[];
     components?: SaleLineComponent[];
     weightGrams?: number;
+    // POS P2.2 ▸ R7 (เพิ่มล้วน · ไม่ส่ง = null = BASE/ไม่ทราบ · ไม่อยู่ใน samePayload · createSale ไม่คิดราคาเอง — CD3):
+    //   สำเนาชั้นราคาที่ผู้เรียกใช้ (ตัวแก้ราคา price-shared.ts / resolvePrices) · ผิดรูป = VALIDATION ไม่มีบิล ◂
+    priceSource?: "BASE" | "BRANCH" | "CHANNEL" | "RULE" | "OPEN" | "CUSTOM" | "WEIGHED";
+    priceRuleId?: string;
+    listPriceSatang?: number;
   }[];
   billDiscountSatang?: number;
   // คูปอง (contract 2.3) — ต้องมาคู่กันเสมอ · ระบุแล้วใช้ไม่ได้ = โยน error (ห้ามขายต่อเงียบ ๆ)
@@ -205,6 +211,10 @@ function validateSaleInput(input: CreateSaleInput): void {
     if (l.weightGrams !== undefined && l.weightGrams !== null && (!Number.isInteger(l.weightGrams) || l.weightGrams < 1 || l.qty !== 1)) {
       throw bad("น้ำหนักต้องเป็นจำนวนเต็มกรัมตั้งแต่ 1 และจำนวนต้องเป็น 1");
     }
+    // POS P2.2 ▸ R7: ตรวจเฉพาะเมื่อส่งมา (ผู้เรียกเดิมไม่ส่ง = ไม่ถูกตรวจเพิ่ม) ◂
+    if (l.priceSource !== undefined && l.priceSource !== null && !(PRICE_SOURCES as readonly unknown[]).includes(l.priceSource)) throw bad("ที่มาของราคาไม่ถูกต้อง");
+    if (l.priceRuleId !== undefined && l.priceRuleId !== null && (typeof l.priceRuleId !== "string" || !l.priceRuleId || l.priceRuleId.length > PRICE_RULE_ID_MAX)) throw bad("รหัสโปรราคาไม่ถูกต้อง");
+    if (l.listPriceSatang !== undefined && l.listPriceSatang !== null && !(isNonNegInt(l.listPriceSatang) && l.listPriceSatang <= 2_147_483_647)) throw bad("ราคาปกติต้องเป็นจำนวนเต็มสตางค์ไม่ติดลบ");
   }
   // POS P2.1 ▸ R4: ตรวจเฉพาะเมื่อส่งมา (ผู้เรียกเดิมไม่ส่ง = ไม่ถูกตรวจเพิ่ม) ◂
   if (input.channelId !== undefined && input.channelId !== null && (typeof input.channelId !== "string" || !input.channelId || input.channelId.length > 200)) throw bad("รหัสช่องทางขายไม่ถูกต้อง");
@@ -624,6 +634,10 @@ async function createSaleOnce(input: CreateSaleInput, client: Client, ownsTx: bo
         tenantId: input.tenantId, unitId: input.unitId, saleId: sale.id, name: l.name, qty: l.qty, unitPriceSatang: l.unitPriceSatang, discountSatang: l.discountSatang, lineTotalSatang: l.lineTotalSatang, itemId: l.itemId ?? null, serviceId: l.serviceId ?? null, productId: l.productId ?? null, note: l.note ?? null,
         weightGrams: l.weightGrams ?? null,
         ...(l.components && l.components.length ? { components: l.components.map((c) => ({ invItemId: c.invItemId, qty: c.qty })) } : {}),
+        // POS P2.2 ▸ R7: สำเนาชั้นราคา (ไม่ส่ง = null) ◂
+        priceSource: l.priceSource ?? null,
+        priceRuleId: l.priceRuleId ?? null,
+        listPriceSatang: l.listPriceSatang ?? null,
       })),
     });
     const optionRows = lines.flatMap((l, i) =>
