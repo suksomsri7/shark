@@ -521,11 +521,11 @@
       ],
       "hiddenFor": [],
       "expect": {
-        "type": "toast",
-        "target": "pos-reg-toast",
-        "note": "เร็ว ๆ นี้ — P1.12 เลือกสมาชิก"
+        "type": "modal",
+        "target": "pos-member-panel",
+        "note": "P1.12U: แถว + เพิ่มสมาชิก เปิดแผงสมาชิก 14A (สาขาไม่มีระบบสมาชิก = ไม่มีแถว)"
       },
-      "wo": "P1.3",
+      "wo": "P1.3 · P1.12U",
       "oracle": "qc-pos-p1.3",
       "system": "POS",
       "query": "unit=[unitId]"
@@ -1172,9 +1172,9 @@
       "expect": {
         "type": "modal",
         "target": "pos-reg-coupon-dialog",
-        "note": "ในกล่องส่วนลดท้ายบิล · คูปอง = เร็ว ๆ นี้ (มติ Q12 DEFER → P1.12) · กล่องบอกสถานะเท่านั้น ไม่ส่งโค้ดไปเซิร์ฟเวอร์"
+        "note": "แถวคูปองในกล่องส่วนลดท้ายบิล → กล่องใส่โค้ดคูปองจริง (P1.12U มติ 8)"
       },
-      "wo": "P1.3",
+      "wo": "P1.3 · P1.12U",
       "oracle": "qc-pos-p1.3",
       "system": "POS",
       "query": "unit=[unitId]"
@@ -1713,26 +1713,6 @@
         "type": "navigate",
         "target": "/app/sys/[id]/pos/sales",
         "note": "ตรวจบิลเดิมเมื่อ IDEMPOTENCY_CONFLICT"
-      },
-      "wo": "P1.3",
-      "oracle": "",
-      "system": "POS",
-      "query": "unit=[unitId]"
-    },
-    {
-      "page": "/app/sys/[id]/pos/register",
-      "testid": "pos-reg-paydlg-remove-member",
-      "kind": "button",
-      "roles": [
-        "owner",
-        "cashier"
-      ],
-      "hiddenFor": [],
-      "expect": {
-        "type": "ui",
-        "target": "pos-reg-paydlg-error",
-        "state": "disappears",
-        "note": "แสดงเมื่อ MEMBER_RIGHTS_UNSUPPORTED และบิลมีสมาชิก (P1.3 ใส่สมาชิกไม่ได้ — โค้ดเตรียมไว้)"
       },
       "wo": "P1.3",
       "oracle": "",
@@ -8327,6 +8307,589 @@
       },
       "wo": "P1.13U",
       "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-member-chip-open",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "modal",
+        "target": "pos-member-panel",
+        "note": "การ์ดสมาชิก (01): แตะชื่อ/วงกลม = แผงสมาชิกแบบมีสมาชิกแล้ว (รางวัลรอรับ · เปลี่ยนคน)"
+      },
+      "wo": "P1.12U",
+      "oracle": "qc-pos-p1.12",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-member-chip-usepoints",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "modal",
+        "target": "pos-reg-paydlg",
+        "note": "ปุ่ม ใช้แต้ม = เปิดจอชำระโฟกัสช่องแต้ม · ซ่อนเมื่อไม่มีระบบแต้มหรือแต้ม 0"
+      },
+      "wo": "P1.12U",
+      "oracle": "qc-pos-p1.12",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-member-chip-detach",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-member-pick",
+        "note": "ถอด = ล้างสมาชิก + สิทธิ์ที่เลือก (คูปองคงไว้) · quote ใหม่"
+      },
+      "wo": "P1.12U",
+      "oracle": "qc-pos-p1.12",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-member-coupon-remove",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-member-coupon-line",
+        "note": "✕ ข้างแถวคูปองในยอด = ลบคูปอง · quote ใหม่"
+      },
+      "wo": "P1.12U",
+      "oracle": "qc-pos-p1.12",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-member-panel-close",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-member-panel",
+        "note": "✕ ปิดแผงสมาชิก (Esc/แตะม่านเหมือนกัน)"
+      },
+      "wo": "P1.12U",
+      "oracle": "qc-pos-p1.12",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-member-panel-detach",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-member-panel",
+        "note": "ถอดในโหมดมีสมาชิกแล้ว = ล้างสมาชิก + สิทธิ์ที่เลือก (คูปองคงไว้) · แผงอยู่ต่อเพื่อเลือกคนใหม่"
+      },
+      "wo": "P1.12U",
+      "oracle": "qc-pos-p1.12",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-member-fulfil-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "note": "R13 ส่งมอบรางวัลรอรับ (registerFulfilRewardAction) → แถวเป็น ส่งมอบแล้ว จนปิดแผง · ปฏิเสธ = บรรทัดแดง"
+      },
+      "wo": "P1.12U",
+      "oracle": "qc-pos-p1.12",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-member-search",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-member-row-*",
+        "note": "ค้นด้วยเบอร์/ชื่อ/รหัส/บัตร SHARK-MC (หน่วง 250ms) · พบ N รายชื่อ · Enter = ผูกเมื่อเจอคนเดียว"
+      },
+      "wo": "P1.12U",
+      "oracle": "qc-pos-p1.12",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-member-scan",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "modal",
+        "target": "pos-reg-scan-sheet",
+        "note": "สแกน QR สมาชิก = กล้อง (P1.4) · รหัสที่อ่านได้ไปทางค้นสมาชิก · เจอคนเดียว = ผูก + ปิด"
+      },
+      "wo": "P1.12U",
+      "oracle": "qc-pos-p1.12",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-member-row-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-member-chip",
+        "note": "แตะแถว = ผูกสมาชิกกับบิล + ปิดแผง + ข้อความชื่อ · ถูกระงับ = แตะไม่ได้"
+      },
+      "wo": "P1.12U",
+      "oracle": "qc-pos-p1.12",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-member-register",
+      "kind": "form",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "note": "ฟอร์มสมัครด่วน (registerQuickMemberAction) · created true/false = ผูก + ปิด + ข้อความ · ปฏิเสธ = บรรทัดแดง"
+      },
+      "wo": "P1.12U",
+      "oracle": "qc-pos-p1.12",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-member-register-phone",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "note": "เบอร์โทร (เติมจากคำค้นตัวเลขล้วน) · ปุ่มสมัครเปิดเมื่อ 9–10 หลัก"
+      },
+      "wo": "P1.12U",
+      "oracle": "qc-pos-p1.12",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-member-register-name",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "note": "ชื่อ (ชื่อเล่นหรือชื่อจริง ≤ 80)"
+      },
+      "wo": "P1.12U",
+      "oracle": "qc-pos-p1.12",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-member-register-birthdate",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "inline-error",
+        "target": "pos-member-register-birthdate-error",
+        "note": "วันเกิด วว / ดด / ปปปป (ไม่บังคับ · พ.ศ. แปลงให้) · ผิด = วันเกิดไม่ถูกต้อง ไม่ส่ง"
+      },
+      "wo": "P1.12U",
+      "oracle": "qc-pos-p1.12",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-member-register-consent",
+      "kind": "toggle",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "note": "ยินยอมรับข่าวสาร (PDPA) · ปริยายปิด · LINE/EMAIL/SMS ตามค่านี้"
+      },
+      "wo": "P1.12U",
+      "oracle": "qc-pos-p1.12",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-member-register-heard-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "note": "ที่มา: หน้าร้าน (ปริยาย) · LINE · บอกต่อ · โฆษณา"
+      },
+      "wo": "P1.12U",
+      "oracle": "qc-pos-p1.12",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-member-register-submit",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-member-chip",
+        "note": "+ สมัครและผูกกับบิลนี้ (เปิดเมื่อเบอร์ 9–10 หลัก + ชื่อ)"
+      },
+      "wo": "P1.12U",
+      "oracle": "qc-pos-p1.12",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-coupon-input",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-coupon-dialog",
+        "note": "โค้ดคูปอง (ตัวพิมพ์ใหญ่ · ตัดช่องว่าง) · Enter = ใช้คูปอง"
+      },
+      "wo": "P1.12U",
+      "oracle": "qc-pos-p1.12",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-coupon-apply",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-reg-coupon-error",
+        "note": "ใช้คูปอง = ตั้ง couponCode + quote ใหม่ · ไม่มีข้อขัด = กล่องปิด · มี = ข้อความในกล่อง (ตะกร้าคืนโค้ดเดิม)"
+      },
+      "wo": "P1.12U",
+      "oracle": "qc-pos-p1.12",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-coupon-remove",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-coupon-dialog",
+        "note": "ลบคูปองที่ใช้อยู่ + quote ใหม่ · กล่องปิด"
+      },
+      "wo": "P1.12U",
+      "oracle": "qc-pos-p1.12",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-member-points-input",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-member-points-preview",
+        "note": "จำนวนแต้ม (ตัวเลข) · Enter = ใช้ส่วนลด · ตัวอย่าง ลด ฿x = แต้ม × อัตรา"
+      },
+      "wo": "P1.12U",
+      "oracle": "qc-pos-p1.12",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-member-points-apply",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-member-points-note",
+        "note": "ใช้ส่วนลด ฿x = memberChoices.points + quote ใหม่ · ใช้แล้ว = ✓ ใช้แล้ว · เกินเพดาน = แก้เป็น allowedPoints + บรรทัดบอก"
+      },
+      "wo": "P1.12U",
+      "oracle": "qc-pos-p1.12",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-member-points-cancel",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-member-points",
+        "note": "ยกเลิกแต้มที่ใช้ + quote ใหม่"
+      },
+      "wo": "P1.12U",
+      "oracle": "qc-pos-p1.12",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-member-coupon-clear",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-member-coupon",
+        "note": "✕ / ลบคูปอง ในจอชำระ (คูปองใช้ไม่ได้ = แถวแดง + ปุ่ม ลบคูปอง) · quote ใหม่"
+      },
+      "wo": "P1.12U",
+      "oracle": "qc-pos-p1.12",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-member-coupon-enter",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "modal",
+        "target": "pos-reg-coupon-dialog",
+        "note": "ใส่คูปอง (ยังไม่มีโค้ด) → กล่องคูปอง"
+      },
+      "wo": "P1.12U",
+      "oracle": "qc-pos-p1.12",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-member-voucher-*",
+      "kind": "toggle",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-member-voucher-error",
+        "note": "เลือกว่อชเชอร์ 1 ใบ (แตะซ้ำ = ยกเลิก) · ใช้ไม่ได้ = จาง + เหตุผล · ข้อขัดตอน quote = บรรทัดแดง + ล้างที่เลือก"
+      },
+      "wo": "P1.12U",
+      "oracle": "qc-pos-p1.12",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-paydlg-method-giftcard",
+      "kind": "toggle",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-member-giftcards",
+        "note": "ว่อชเชอร์/บัตรของขวัญ — ปิดเสมอ เร็ว ๆ นี้ (CD3 · P2.9) · บัตรของขวัญของสมาชิกแสดงอ่านอย่างเดียวใต้แถว"
+      },
+      "wo": "P1.12U",
+      "oracle": "qc-pos-p1.12",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-paydlg-method-deposit",
+      "kind": "toggle",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-paydlg",
+        "note": "มัดจำที่ชำระไว้ — ปิดเสมอ เร็ว ๆ นี้ (P2.9)"
+      },
+      "wo": "P1.12U",
+      "oracle": "qc-pos-p1.12",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-paydlg-method-roomcharge",
+      "kind": "toggle",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-paydlg",
+        "note": "ลงบิลห้องพัก (โรงแรม) — ปิดเสมอ เร็ว ๆ นี้ (P2.9)"
+      },
+      "wo": "P1.12U",
+      "oracle": "qc-pos-p1.12",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-paydlg-method-storecredit",
+      "kind": "toggle",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-paydlg",
+        "note": "เครดิตร้าน (ลูกค้าประจำ) — ปิดเสมอ เร็ว ๆ นี้ (P2.9)"
+      },
+      "wo": "P1.12U",
+      "oracle": "qc-pos-p1.12",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-coupon-form",
+      "kind": "form",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-reg-coupon-dialog",
+        "note": "ฟอร์มโค้ดคูปอง (Enter/ใช้คูปอง)"
+      },
+      "wo": "P1.12U",
+      "oracle": "qc-pos-p1.12",
       "system": "POS",
       "query": "unit=[unitId]"
     }

@@ -470,6 +470,7 @@ import {
   type RegisterProduct,
   type RegisterProductOptionsResult,
   type RegisterQuoteInput,
+  type RegisterQuoteOverrideInput,
   type RegisterQuoteLine,
   type RegisterQuoteLineInput,
   type RegisterQuoteLineOption,
@@ -1460,6 +1461,58 @@ export async function quoteRegisterCartWithCap(ctx: RegisterCtx, actor: Register
   });
 }
 
+const REG_OVERRIDE_KEYS: ReadonlySet<string> = new Set(["cart", "staffToken", "managerPin", "managerUserId", "heldCartId", "idempotencyKey"]);
+/**
+ * POS P1.12U fix รอบ 1 (F1) — quote ของจอสำหรับตะกร้าที่มีสิทธิ์เกินเพดาน (PIN ผู้จัดการที่เตรียมไว้ · บิลพักที่อนุมัติแล้ว) — อ่านอย่างเดียว:
+ *   quote ปกติก่อน (เพดานของผู้ขาย) ⇒ ไม่ใช่ DISCOUNT_EXCEEDS_LIMIT = คืนตามนั้นทุกไบต์ · เป็น = ตัดสินเพดานด้วย regResolveOverrideCap (①/② ชุดเดียวกับ submit)
+ *   แล้วคิดราคาด้วยเพดานนั้น (สิทธิ์สมาชิก/แต้ม/ว่อชเชอร์/คูปองครบเหมือน quote ปกติ)
+ *   ปฏิเสธ: VALIDATION (คีย์แปลก · ชนิดผิด · PIN ไม่มีผู้จัดการ · คีย์บิลผิดรูป) · PIN_INVALID/PIN_LOCKED/DEVICE_REVOKED (verifyManagerPin — นับผิดเหมือน submit) ·
+ *   APPROVAL_MISMATCH · DISCOUNT_EXCEEDS_LIMIT (ไม่มีสิทธิ์/สิทธิ์ไม่ครอบ/อนุมัติถูกใช้แล้ว) · รหัสอื่นของ quote ปกติ
+ *   ไม่มีผลข้างเคียงของ ③/④: ไม่พักบิล ไม่ยื่นคำขอ ไม่ cancelOpenPosRequest ไม่ยึดสิทธิ์ ไม่ audit pos.discount.override
+ *   fix รอบ 2 (F1): staffToken = ผู้กระทำแบบเดียวกับ submitRegisterSale (ตรวจก่อนคิดราคา · ผิดชนิด/ผิด/หมดอายุ/เครื่องอื่น = STAFF_TOKEN_INVALID ·
+ *   ไม่ถอยไปใช้ผู้ใช้ session) ⇒ เพดานของผู้ขาย + ด่าน "คนพักบิล/pos.sale.manage" ของบิลพักที่อนุมัติ = คนในโทเคน
+ */
+export async function quoteRegisterCartOverride(ctx: RegisterCtx, actor: RegisterActor, input: RegisterQuoteOverrideInput, client?: RegDb): Promise<RegisterQuoteResult> {
+  return regGuard("quoteRegisterCartOverride", async (): Promise<RegisterQuoteResult> => {
+    const db: RegDb = client ?? prisma;
+    const s0 = await regScope(db, ctx, actor);
+    if (isRegRefusal(s0)) return s0;
+    const deviceId = regDeviceOf(ctx);
+    if (deviceId === false) return regRefuse("VALIDATION", "รหัสเครื่องไม่ถูกต้อง");
+    if (!regIsRecord(input) || !regOnlyKeys(input, REG_OVERRIDE_KEYS)) return regRefuse("VALIDATION");
+    // fix รอบ 2 (F1): โทเคนผู้ขาย — ตัวตรวจชนิดเดียวกับ regParseSubmit (ผิดชนิด = STAFF_TOKEN_INVALID)
+    const staffToken = regOptStr(input.staffToken, 1000);
+    if (staffToken === undefined) return regRefuse("STAFF_TOKEN_INVALID");
+    const auth = regParseOverrideAuth(input);
+    if (isRegRefusal(auth)) return auth;
+    let idempotencyKey = "";
+    if (input.idempotencyKey !== undefined && input.idempotencyKey !== null) {
+      if (!regIsIdemKey(input.idempotencyKey)) return regRefuse("VALIDATION", "ข้อมูลบิลไม่ครบ — ลองใหม่อีกครั้ง");
+      idempotencyKey = REG_KEY_PREFIX + input.idempotencyKey;
+    }
+    const cart = regParseCart(input.cart, REG_QUOTE_KEYS);
+    if (isRegRefusal(cart)) return cart;
+    // fix รอบ 2 (F1): ผู้ขาย = คนในโทเคน เหมือน submitRegisterSale (R3 ของ P1.15) — ตรวจก่อนคิดราคา · ไม่ส่งโทเคน = ผู้ใช้ session เหมือนเดิม
+    let s: RegScope = s0;
+    if (staffToken !== null) {
+      const ta = deviceId ? await staffActorFromToken({ tenantId: s0.tenantId, unitId: s0.unitId, deviceId }, staffToken, db) : null;
+      const st = ta ? await regScope(db, ctx, ta) : null;
+      if (!st || isRegRefusal(st)) return regRefuse("STAFF_TOKEN_INVALID");
+      s = st;
+    }
+    // quote ปกติ (ตัวเดียวกับ quoteRegisterCart) — ไม่เกินเพดานของผู้ขาย = ไม่แตะ PIN/บิลพักเลย
+    const p = await regPrice(db, s, cart);
+    if (!isRegRefusal(p)) return { ok: true, ...p.quote };
+    if (p.code !== "DISCOUNT_EXCEEDS_LIMIT") return p;
+    const pay = await regPaySettings(db, s);
+    const caps = await regDiscountCaps(db, s);
+    const c = await regResolveOverrideCap(db, s, cart, { ...auth, idempotencyKey }, pay, caps, deviceId);
+    if (isRegRefusal(c)) return c;
+    if (c.via === "none") return p;
+    return { ok: true, ...c.priced.quote };
+  });
+}
+
 // ── POS P1.5 ▸ ตัวช่วยของ held-cart.ts (พัก/เรียกคืน) — ใช้ด่านขอบเขต + ตัวตรวจตะกร้า "ชุดเดียว" กับ quote/submit ◂ ──
 /** ด่านขอบเขตเดียวกับหน้าขาย (ร้าน · ระบบ POS · สาขา · เข้าสาขาได้ · pos.sale.create) — ok = ctx/actor ที่ตรวจแล้ว */
 export async function registerScopeCheck(
@@ -1559,6 +1612,24 @@ type RegParsedSubmit = {
   rememberBuyer: boolean;
 };
 
+/** POS P1.15: สตริงเสริม — ไม่ส่ง/null = null · สตริง 1…max ตัวที่สะอาด = ค่า · อื่น = undefined (ผู้เรียกปฏิเสธ) */
+const regOptStr = (v: unknown, max: number): string | null | undefined => (v === undefined || v === null ? null : typeof v === "string" && v.length > 0 && v.length <= max && regCleanText(v) ? v : undefined);
+type RegOverrideAuth = { managerPin: string | null; managerUserId: string | null; heldCartId: string | null };
+/**
+ * POS P1.12U fix รอบ 1 (F1) — ตัวตรวจ "สิทธิ์เกินเพดาน" ชุดเดียวของ submit และ quoteRegisterCartOverride (ย้ายมาจาก regParseSubmit · ข้อความ/ลำดับเดิมทุกตัว):
+ *   PIN/ผู้จัดการผิดชนิด = VALIDATION · PIN ไม่มีผู้จัดการ = VALIDATION (fix รอบ 1 F2 ของ P1.15) · heldCartId ผิดชนิด = VALIDATION
+ */
+function regParseOverrideAuth(raw: Record<string, unknown>): RegOverrideAuth | RegisterRefusal {
+  const managerPin = regOptStr(raw.managerPin, 32);
+  const managerUserId = regOptStr(raw.managerUserId, 200);
+  const heldCartId = regOptStr(raw.heldCartId, 200);
+  if (managerPin === undefined || managerUserId === undefined) return regRefuse("VALIDATION", "PIN ผู้จัดการไม่ถูกต้อง");
+  // fix รอบ 1 F2: PIN ผู้จัดการต้องมาคู่ managerUserId เสมอ (ไม่มีทาง "จับทุกแถว" สำหรับ PIN ผู้จัดการ)
+  if (managerPin !== null && managerUserId === null) return regRefuse("VALIDATION", "เลือกผู้จัดการก่อนใส่ PIN");
+  if (heldCartId === undefined) return regRefuse("VALIDATION", "รหัสบิลที่พักไม่ถูกต้อง");
+  return { managerPin, managerUserId, heldCartId };
+}
+
 /** โครงของ submit (ไม่แตะ DB) — วิธีจ่าย CASH/PROMPTPAY เท่านั้น (Addendum 2) · expected ต้องเป็นจำนวนเต็ม ≥ 0 */
 function regParseSubmit(raw: unknown): RegParsedSubmit | RegisterRefusal {
   if (!regIsRecord(raw)) return regRefuse("VALIDATION");
@@ -1611,16 +1682,12 @@ function regParseSubmit(raw: unknown): RegParsedSubmit | RegisterRefusal {
     note = raw.note.length > 0 ? raw.note : null;
   }
   // POS P1.15 ▸ คีย์ใหม่ (ตรงตัว) — ผิดชนิด = VALIDATION · PIN ผิดรูปไม่ใช่ VALIDATION (= PIN_INVALID ตอนตรวจ) ◂
-  const optStr = (v: unknown, max: number): string | null | undefined => (v === undefined || v === null ? null : typeof v === "string" && v.length > 0 && v.length <= max && regCleanText(v) ? v : undefined);
-  const staffToken = optStr(raw.staffToken, 1000);
-  const managerPin = optStr(raw.managerPin, 32);
-  const managerUserId = optStr(raw.managerUserId, 200);
-  const heldCartId = optStr(raw.heldCartId, 200);
+  const staffToken = regOptStr(raw.staffToken, 1000);
   if (staffToken === undefined) return regRefuse("STAFF_TOKEN_INVALID");
-  if (managerPin === undefined || managerUserId === undefined) return regRefuse("VALIDATION", "PIN ผู้จัดการไม่ถูกต้อง");
-  // fix รอบ 1 F2: PIN ผู้จัดการต้องมาคู่ managerUserId เสมอ (ไม่มีทาง "จับทุกแถว" สำหรับ PIN ผู้จัดการ)
-  if (managerPin !== null && managerUserId === null) return regRefuse("VALIDATION", "เลือกผู้จัดการก่อนใส่ PIN");
-  if (heldCartId === undefined) return regRefuse("VALIDATION", "รหัสบิลที่พักไม่ถูกต้อง");
+  // POS P1.12U fix รอบ 1 (F1): PIN ผู้จัดการ · ผู้จัดการ · บิลพัก — ตัวตรวจชุดเดียวกับ quoteRegisterCartOverride ◂
+  const auth = regParseOverrideAuth(raw);
+  if (isRegRefusal(auth)) return auth;
+  const { managerPin, managerUserId, heldCartId } = auth;
   // POS P1.13 ▸ R2: ผู้ซื้อของใบกำกับเต็มรูป — ผิด = TAX_ID_INVALID / VALIDATION ก่อนเขียนอะไรทั้งสิ้น (ก่อนค้นคีย์ซ้ำ) ◂
   let taxInvoice: TaxInvoiceBuyer | null = null;
   if (raw.taxInvoice !== undefined && raw.taxInvoice !== null) {
@@ -2091,6 +2158,62 @@ function regCartHash(p: RegPriced): string {
 const regDiscountBpOf = (q: RegisterQuoteTotals) => (q.subtotalSatang > 0 ? Math.ceil(((q.lineDiscountSatang + q.billDiscountSatang) * 10_000) / q.subtotalSatang) : 0);
 
 /**
+ * POS P1.12U fix รอบ 1 (F1) — ①/② ของ regDiscountOver แยกเป็นตัวช่วยเดียว (ใช้ทั้ง submit และ quoteRegisterCartOverride):
+ *   free = ราคาไม่จำกัดเพดาน (ปฏิเสธอื่น = คืนตามนั้น)
+ *   ① heldCartId: บิลพักของสาขานี้ (ยังไม่ถูกทิ้ง) ที่อนุมัติ POS_DISCOUNT_OVER (ยังไม่ถูกใช้ — หรือถูกใช้โดยคีย์บิลนี้เอง) ⇒ ผู้ขายเป็นคนพักบิล/มี pos.sale.manage +
+ *      แฮชตะกร้าตรง ไม่งั้น APPROVAL_MISMATCH · ส่วนลด ≤ ที่อนุมัติ ⇒ ราคาด้วยเพดานที่อนุมัติ · ไม่ผ่าน + ไม่มี PIN = DISCOUNT_EXCEEDS_LIMIT
+ *   ② managerPin: verifyManagerPin (ตัวนับผิด/ล็อกเดียวกับ submit) ⇒ ราคาด้วยเพดานของผู้จัดการคนนั้น (ไม่ครอบ = DISCOUNT_EXCEEDS_LIMIT)
+ *   ไม่มีทั้งคู่ ⇒ via "none" (submit ไปต่อ ③/④ · quote = DISCOUNT_EXCEEDS_LIMIT)
+ * ไม่เขียนอะไรเลยนอกจากตัวนับ PIN ผิดของ verifyManagerPin — ไม่พักบิล ไม่ยื่น/ยกเลิกคำขอ ไม่ยึดสิทธิ์ ไม่ audit (ผลข้างเคียงอยู่ที่ submit)
+ */
+type RegOverrideCap =
+  | { via: "approved"; free: RegPriced; priced: RegPriced; approved: { requestId: string; deciderId: string } }
+  | { via: "pin"; free: RegPriced; priced: RegPriced; manager: RegisterActor }
+  | { via: "none"; free: RegPriced };
+async function regResolveOverrideCap(
+  db: RegDb,
+  s: RegScope,
+  cart: RegParsedCart,
+  auth: RegOverrideAuth & { idempotencyKey: string },
+  pay: PosPaymentSettings,
+  caps: PosDiscountCaps,
+  deviceId: string | undefined,
+): Promise<RegOverrideCap | RegisterRefusal> {
+  const free = await regPrice(db, s, cart, pay, null);
+  if (isRegRefusal(free)) return free;
+  const discountSatang = free.quote.lineDiscountSatang + free.quote.billDiscountSatang;
+  const exceeds = regRefuse("DISCOUNT_EXCEEDS_LIMIT");
+  // ① (fix รอบ 1 F1) ส่วนลดที่อนุมัติผูกกับตะกร้า + ยอด + เจ้าของบิลพัก: บิลพักของสาขานี้ที่ยังไม่ถูกทิ้ง · ผู้ขาย = คนพักบิล (หรือมี pos.sale.manage) ·
+  //    ตะกร้าเดิม (แฮชบรรทัด + ยอดก่อนส่วนลด) ⇒ ไม่ตรง = APPROVAL_MISMATCH · ส่วนลด (สตางค์) เกินที่อนุมัติ = DISCOUNT_EXCEEDS_LIMIT
+  if (auth.heldCartId !== null) {
+    const held = await db.posHeldCart.findFirst({
+      where: { id: auth.heldCartId, tenantId: s.tenantId, systemId: s.systemId, unitId: s.unitId },
+      select: { approvedRequestId: true, status: true, heldByUserId: true },
+    });
+    const ap = held && held.status !== "DISCARDED" ? await approvedDiscountOf(s.tenantId, held.approvedRequestId, auth.idempotencyKey) : null;
+    if (held && ap) {
+      const mine = held.heldByUserId === s.actor.userId || evaluate(s.actor, { module: "pos", action: "pos.sale.manage", unitId: s.unitId });
+      if (!mine || ap.cartHash !== regCartHash(free)) return regRefuse("APPROVAL_MISMATCH");
+      if (discountSatang <= ap.discountSatang) {
+        const priced = await regPrice(db, s, cart, pay, ap.discountBp >= 10_000 ? null : ap.discountBp);
+        if (!isRegRefusal(priced)) return { via: "approved", free, priced, approved: { requestId: ap.requestId, deciderId: ap.deciderId } };
+        if (priced.code !== "DISCOUNT_EXCEEDS_LIMIT") return priced;
+      }
+    }
+    if (auth.managerPin === null) return exceeds;
+  }
+  // ②
+  if (auth.managerPin !== null) {
+    const v = await verifyManagerPin({ tenantId: s.tenantId, unitId: s.unitId, deviceId: deviceId ?? null }, { managerPin: auth.managerPin, managerUserId: auth.managerUserId });
+    if (isRegRefusal(v)) return v;
+    const priced = await regPrice(db, s, cart, pay, regMaxDiscountBp(v.actor, caps));
+    if (isRegRefusal(priced)) return priced;
+    return { via: "pin", free, priced, manager: v.actor };
+  }
+  return { via: "none", free };
+}
+
+/**
  * POS P1.15 R4–R6 — ตะกร้าเกินเพดานของผู้ขาย:
  *   ① heldCartId ที่ได้รับอนุมัติ POS_DISCOUNT_OVER (ยังไม่ถูกใช้) และส่วนลด ≤ ที่อนุมัติ = ผ่านด้วยเพดานที่อนุมัติ · ใช้แล้ว/เกิน = DISCOUNT_EXCEEDS_LIMIT (มติ 5 — ไม่ยื่นใหม่)
  *   ② managerPin (+ managerUserId) = ผ่านเมื่อเพดานของผู้จัดการคนนั้นครอบ · PIN ผิด = PIN_INVALID (+1 บนแถวของเขา) · เพดานไม่ครอบ = DISCOUNT_EXCEEDS_LIMIT
@@ -2105,39 +2228,18 @@ async function regDiscountOver(
   caps: PosDiscountCaps,
   deviceId: string | undefined,
 ): Promise<{ ok: true; priced: RegPriced; override: RegDiscountOverride } | RegisterRefusal | PosApprovalRefusal> {
-  const free = await regPrice(db, s, req.cart, pay, null);
-  if (isRegRefusal(free)) return free;
+  // ①② POS P1.12U fix รอบ 1 (F1): ตัดสินเพดานด้วยตัวช่วยเดียวกับ quoteRegisterCartOverride (ความจริงชุดเดียว · พฤติกรรมเดิมทุกทาง)
+  const c = await regResolveOverrideCap(db, s, req.cart, req, pay, caps, deviceId);
+  if (isRegRefusal(c)) return c;
+  const free = c.free;
   const discountSatang = free.quote.lineDiscountSatang + free.quote.billDiscountSatang;
   const discountBp = regDiscountBpOf(free.quote);
   const exceeds = regRefuse("DISCOUNT_EXCEEDS_LIMIT");
-  // ① (fix รอบ 1 F1) ส่วนลดที่อนุมัติผูกกับตะกร้า + ยอด + เจ้าของบิลพัก: บิลพักของสาขานี้ที่ยังไม่ถูกทิ้ง · ผู้ขาย = คนพักบิล (หรือมี pos.sale.manage) ·
-  //    ตะกร้าเดิม (แฮชบรรทัด + ยอดก่อนส่วนลด) ⇒ ไม่ตรง = APPROVAL_MISMATCH · ส่วนลด (สตางค์) เกินที่อนุมัติ = DISCOUNT_EXCEEDS_LIMIT
-  if (req.heldCartId !== null) {
-    const cart = await db.posHeldCart.findFirst({
-      where: { id: req.heldCartId, tenantId: s.tenantId, systemId: s.systemId, unitId: s.unitId },
-      select: { approvedRequestId: true, status: true, heldByUserId: true },
-    });
-    const ap = cart && cart.status !== "DISCARDED" ? await approvedDiscountOf(s.tenantId, cart.approvedRequestId, req.idempotencyKey) : null;
-    if (cart && ap) {
-      const mine = cart.heldByUserId === s.actor.userId || evaluate(s.actor, { module: "pos", action: "pos.sale.manage", unitId: s.unitId });
-      if (!mine || ap.cartHash !== regCartHash(free)) return regRefuse("APPROVAL_MISMATCH");
-      if (discountSatang <= ap.discountSatang) {
-        const priced = await regPrice(db, s, req.cart, pay, ap.discountBp >= 10_000 ? null : ap.discountBp);
-        if (!isRegRefusal(priced)) return { ok: true, priced, override: { byUserId: ap.deciderId, discountBp, claimRequestId: ap.requestId } };
-        if (priced.code !== "DISCOUNT_EXCEEDS_LIMIT") return priced;
-      }
-    }
-    if (req.managerPin === null) return exceeds;
-  }
-  // ②
-  if (req.managerPin !== null) {
-    const v = await verifyManagerPin({ tenantId: s.tenantId, unitId: s.unitId, deviceId: deviceId ?? null }, { managerPin: req.managerPin, managerUserId: req.managerUserId });
-    if (isRegRefusal(v)) return v;
-    const priced = await regPrice(db, s, req.cart, pay, regMaxDiscountBp(v.actor, caps));
-    if (isRegRefusal(priced)) return priced;
-    // CD4: PIN ชนะคำขอที่รอของบิลพักนี้ (ถ้ามี) · fix รอบ 1 F8: audit pin_override ทุกครั้งที่ใช้ PIN (requestId null เมื่อไม่มีคำขอ)
+  if (c.via === "approved") return { ok: true, priced: c.priced, override: { byUserId: c.approved.deciderId, discountBp, claimRequestId: c.approved.requestId } };
+  if (c.via === "pin") {
+    // CD4: PIN ชนะคำขอที่รอของบิลพักนี้ (ถ้ามี) · fix รอบ 1 F8: audit pin_override ทุกครั้งที่ใช้ PIN (requestId null เมื่อไม่มีคำขอ) — ผลข้างเคียงของ submit เท่านั้น
     const cancelledRequestId = req.heldCartId !== null ? await cancelOpenPosRequest(s.tenantId, "POS_DISCOUNT_OVER", req.heldCartId) : null;
-    return { ok: true, priced, override: { byUserId: v.actor.userId, discountBp, viaPin: true, cancelledRequestId } };
+    return { ok: true, priced: c.priced, override: { byUserId: c.manager.userId, discountBp, viaPin: true, cancelledRequestId } };
   }
   // ③ (fix รอบ 1 F5) ส่งซ้ำด้วยคีย์เดิม = คำขอ/บิลพักเดิม (ไม่พักใหม่ ไม่ยื่นใหม่)
   const prev = await discountRequestBySubmitKey(s.tenantId, req.idempotencyKey);
@@ -2257,6 +2359,8 @@ export async function registerStatus(ctx: RegisterCtx, actor: RegisterActor, cli
         )`;
     // POS P1.13U ▸ มติ 2: ปุ่ม "ใบกำกับเต็มรูป" บนจอ — เงื่อนไขเดียวกับ NOT_ELIGIBLE ตอนชำระ (ไม่นับ VAT ของบิล) · อ่านพลาด = false ◂
     const taxInvoiceEligible = await taxInvoiceEligibleForSystem(s.tenantId, s.systemId).catch(() => false);
+    // POS P1.12U ▸ มติ 2: สาขานี้มีระบบสมาชิก (R1) — false = จอไม่มีแถวสมาชิก/ส่วนสิทธิ์เลย · อ่านพลาด = false ◂
+    const memberEnabled = await systemForUnit(s.tenantId, s.unitId, "MEMBER").then((id) => !!id, () => false);
     return {
       ok: true,
       unit: { id: s.unitId, name: s.unitName },
@@ -2267,6 +2371,7 @@ export async function registerStatus(ctx: RegisterCtx, actor: RegisterActor, cli
       pendingSyncCount: 0,
       deviceStatus,
       taxInvoiceEligible,
+      memberEnabled,
     };
   });
 }

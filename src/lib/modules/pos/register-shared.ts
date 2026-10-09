@@ -320,6 +320,13 @@ export type RegisterMemberConflictCode =
 export type RegisterMemberConflict = { kind: "VOUCHER" | "COUPON" | "POINTS"; code: RegisterMemberConflictCode; message: string; allowedPoints?: number };
 export type RegisterQuote = { ok: true } & RegisterQuoteTotals;
 export type RegisterQuoteResult = RegisterQuote | RegisterRefusal;
+/**
+ * POS P1.12U fix รอบ 1 (F1): quote ของตะกร้าที่มีสิทธิ์เกินเพดาน (quoteRegisterCartOverrideAction) — cart = รูปเดียวกับ quote ปกติ ·
+ * managerPin + managerUserId = PIN ผู้จัดการที่เตรียมไว้ (คู่กันเสมอ) · heldCartId = บิลพักที่อนุมัติแล้ว · idempotencyKey = คีย์บิลของจอชำระ (ไม่บังคับ) ·
+ * อ่านอย่างเดียว (ไม่พักบิล ไม่ยื่นคำขอ ไม่ audit) · PIN ผิดนับเหมือน submit ·
+ * fix รอบ 2 (F1): staffToken = โทเคนผู้ขายบนเครื่อง (ผู้กระทำเหมือน submit · ผิด/หมดอายุ = STAFF_TOKEN_INVALID)
+ */
+export type RegisterQuoteOverrideInput = { cart: RegisterQuoteInput; staffToken?: string; managerPin?: string; managerUserId?: string; heldCartId?: string; idempotencyKey?: string };
 
 export type RegisterPayType = (typeof REGISTER_PAY_TYPES)[number];
 /** reference = เลขอ้างอิงบัตร/EDC หรือโอน (P1.6 · ≤ REGISTER_REFERENCE_MAX · เงินสดไม่มี) · P1.7: "pi_…" บน PROMPTPAY/CARD = id ใบขอรับเงินที่ PAID แล้ว (พร้อมเพย์รับเฉพาะ pi_…) */
@@ -431,6 +438,8 @@ export type RegisterStatus = {
   deviceStatus?: "ACTIVE" | "REVOKED" | null;
   /** POS P1.13U มติ 2: ระบบนี้ออกใบกำกับภาษีเต็มรูปได้ (สมุดผูก · จด VAT · เปิดใบอย่างย่อ · มีเลขภาษี) — false = ปุ่ม/สวิตช์ใบกำกับจางพร้อมเหตุผล */
   taxInvoiceEligible: boolean;
+  /** POS P1.12U มติ 2: สาขานี้มีระบบสมาชิก (systemForUnit MEMBER) — false = ไม่มีแถวสมาชิก/ส่วนสิทธิ์บนจอ · สแกนบัตรสมาชิก = memberSystemMissing */
+  memberEnabled: boolean;
 };
 export type RegisterStatusResult = RegisterStatus | RegisterRefusal;
 /** POS P1.9 (S15) — กะของเครื่องบนแถบสถานะ */
@@ -500,8 +509,12 @@ export type RegisterCartLine =
       note?: string;
     }
   | { key: string; kind: "custom"; name: string; unitPriceSatang: number; qty: number; discount?: PriceDiscount; note?: string };
-/** couponCode อยู่ในสถานะได้ (P1.12) แต่ `cartToQuoteInput` ไม่ส่งไปเซิร์ฟเวอร์ใน P1.3 · note = หมายเหตุบิล (P1.6 R5 · ส่งตอน submit เท่านั้น) */
-export type RegisterCart = { lines: RegisterCartLine[]; billDiscount?: PriceDiscount; couponCode?: string; memberId?: string; note?: string };
+/**
+ * note = หมายเหตุบิล (P1.6 R5 · ส่งตอน submit เท่านั้น) ·
+ * POS P1.12U มติ 1: couponCode = โค้ดที่ลูกค้ายื่น (ส่งทุก quote/submit · ไปกับบิลพัก) · memberChoices = แต้ม/ว่อชเชอร์ที่เลือกบนจอชำระเท่านั้น
+ *   (มีเฉพาะตอนกล่องชำระเปิดและมีสมาชิก · ปิดกล่อง/ถอดสมาชิก = ล้าง · บิลพักไม่เก็บ)
+ */
+export type RegisterCart = { lines: RegisterCartLine[]; billDiscount?: PriceDiscount; couponCode?: string; memberId?: string; memberChoices?: RegisterMemberChoices; note?: string };
 
 /** ชุดตัวเลือกแบบไม่ขึ้นกับลำดับ (multiset · undefined ≡ []) */
 const optionSetKey = (o: readonly string[] | undefined): string => [...(o ?? [])].sort().join("\u0000");
@@ -591,12 +604,22 @@ export function quoteInputToCart(input: RegisterQuoteInput, newLineKey: () => st
     const c = l as { name: string; qty: number; unitPriceSatang: number };
     return { key: newLineKey(), kind: "custom", name: c.name, unitPriceSatang: c.unitPriceSatang, qty: c.qty, ...discount };
   });
-  return { lines, ...(input.billDiscount ? { billDiscount: { ...input.billDiscount } } : {}), ...(input.memberId ? { memberId: input.memberId } : {}) };
+  return {
+    lines,
+    ...(input.billDiscount ? { billDiscount: { ...input.billDiscount } } : {}),
+    ...(input.memberId ? { memberId: input.memberId } : {}),
+    // POS P1.12U มติ 1: บิลพักเก็บโค้ดคูปองไว้ (เซิร์ฟเวอร์ตรวจซ้ำตอน quote) · สิทธิ์ที่เลือกไม่ถูกเก็บ ⇒ เรียกคืนแล้วไม่มี memberChoices
+    ...(typeof input.couponCode === "string" && input.couponCode ? { couponCode: input.couponCode } : {}),
+  };
 }
 
 
-/** ตะกร้าบนจอ → คำขอ quote (ชุดเดียวกับที่ submit ส่ง · ไม่ส่งคูปอง · ไม่ส่งราคาของสินค้าแคตตาล็อก) */
-export function cartToQuoteInput(cart: RegisterCart): RegisterQuoteInput {
+/**
+ * ตะกร้าบนจอ → คำขอ quote (ชุดเดียวกับที่ submit ส่ง · ไม่ส่งราคาของสินค้าแคตตาล็อก)
+ * POS P1.12U มติ 1: couponCode ส่งเสมอเมื่อมี · memberChoices ส่งเมื่อมีสมาชิก + เลือกไว้ (มีได้เฉพาะตอนกล่องชำระเปิด) ·
+ *   choices:false = ตัดสิทธิ์ที่เลือกออก (พักบิล · ขอสิทธิ์ของสมาชิก · เทียบตะกร้า)
+ */
+export function cartToQuoteInput(cart: RegisterCart, opts?: { choices?: boolean }): RegisterQuoteInput {
   const lines: RegisterQuoteLineInput[] = cart.lines.map((l) => {
     // P1.6 R5: หมายเหตุบรรทัดไปกับคำขอ (ว่าง = ไม่ส่ง)
     const note = l.note && l.note.trim() ? { note: l.note } : {};
@@ -619,6 +642,15 @@ export function cartToQuoteInput(cart: RegisterCart): RegisterQuoteInput {
     lines,
     ...(cart.billDiscount ? { billDiscount: { ...cart.billDiscount } } : {}),
     ...(cart.memberId ? { memberId: cart.memberId } : {}),
+    ...(cart.couponCode ? { couponCode: cart.couponCode } : {}),
+    ...(opts?.choices !== false && cart.memberId && cart.memberChoices && (cart.memberChoices.voucherId || (cart.memberChoices.points ?? 0) > 0)
+      ? {
+          memberChoices: {
+            ...(cart.memberChoices.voucherId ? { voucherId: cart.memberChoices.voucherId } : {}),
+            ...((cart.memberChoices.points ?? 0) > 0 ? { points: cart.memberChoices.points } : {}),
+          },
+        }
+      : {}),
   };
 }
 

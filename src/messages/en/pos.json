@@ -163,7 +163,12 @@
     "coupon": {
       "label": "Coupon",
       "placeholder": "Coupon code",
-      "soonBody": "Coupons at the register are coming soon — they arrive together with member rights"
+      "soonBody": "Coupons at the register are coming soon — they arrive together with member rights",
+      "apply": "Apply coupon",
+      "remove": "Remove coupon",
+      "checking": "Checking coupon...",
+      "hint": "Enter the customer's code — it is checked against this bill right away (walk-in or member)",
+      "current": "Coupon on this bill: {code}"
     },
     "custom": {
       "name": "Item name",
@@ -1687,7 +1692,12 @@
       "points": "{points} pts",
       "purchaseNo": "Purchase #{count}",
       "tierLine": "{tier} tier discount",
-      "couponLine": "Coupon {code}"
+      "couponLine": "Coupon {code}",
+      "general": "General",
+      "voucherLine": "Voucher {name}",
+      "pointsLine": "Points {points}",
+      "removeCoupon": "Remove coupon {code}",
+      "open": "Member details {name}"
     },
     "panel": {
       "title": "Member",
@@ -1703,7 +1713,25 @@
       "divider": "Not found? Sign up takes 20 seconds",
       "rewardsPending": "Rewards to collect",
       "fulfil": "Hand over",
-      "fulfilled": "Handed over"
+      "fulfilled": "Handed over",
+      "noRewards": "No rewards to collect",
+      "attachedToast": "{name} attached to this bill",
+      "detached": "Member removed from the bill",
+      "searchLabel": "Search members",
+      "searching": "Searching...",
+      "close": "Close",
+      "expires": "Expires {date}",
+      "noExpiry": "No expiry",
+      "attachedTitle": "Member on this bill",
+      "switchTitle": "Change member",
+      "fulfilling": "Handing over...",
+      "ago": {
+        "today": "today",
+        "days": "{count, plural, one {# day ago} other {# days ago}}",
+        "weeks": "{count, plural, one {# week ago} other {# weeks ago}}",
+        "months": "{count, plural, one {# month ago} other {# months ago}}",
+        "years": "{count, plural, one {# year ago} other {# years ago}}"
+      }
     },
     "register": {
       "phone": "Phone",
@@ -1718,12 +1746,17 @@
       "heardAds": "Ads",
       "submit": "+ Sign up and attach to this bill",
       "footnote": "Data goes to the member system · points start with this bill",
-      "existing": "A member with this phone already exists — attached to the bill"
+      "existing": "A member with this phone already exists — attached to the bill",
+      "registered": "Member signed up · {name}",
+      "birthDatePlaceholder": "DD / MM / YYYY",
+      "birthDateInvalid": "Invalid birthday",
+      "submitting": "Signing up...",
+      "phonePlaceholder": "0812345678"
     },
     "pay": {
       "pointsTitle": "Use points as a discount",
       "rate": "{points} pts = ฿{baht}",
-      "balance": "{name} has {points} pts (= {value})",
+      "balance": "{name} has <b>{points} pts</b> (= {value})",
       "pointsUnit": "pts",
       "discountPreview": "Save {amount}",
       "applyPoints": "Apply {amount} discount",
@@ -1735,11 +1768,37 @@
       "stampHint": "This bill earns {count} stamp(s) ({stamps}/{slots})",
       "giftCards": "Gift cards",
       "comingSoon": "Coming soon",
-      "rightsChanged": "Benefits changed — total recalculated"
+      "rightsChanged": "Benefits changed — total recalculated",
+      "minPoints": "Needs at least {min} pts",
+      "enterCoupon": "Enter coupon",
+      "removeCoupon": "Remove coupon",
+      "couponLine": "Coupon {code}",
+      "pointsApplied": "✓ Applied",
+      "cancelPoints": "Cancel",
+      "chip": "{name} · {tier}",
+      "voucherExpires": "expires {date}",
+      "bdCoupon": "Coupon {amount}",
+      "bdTier": "Tier {amount}",
+      "bdVoucher": "Voucher {amount}",
+      "bdPoints": "Points {amount}",
+      "giftCardLine": "Gift card {number} · {amount}",
+      "pointsInput": "Points to use",
+      "tiles": {
+        "giftcard": "Voucher/gift card",
+        "deposit": "Paid deposit",
+        "roomcharge": "Charge to room",
+        "roomchargeSub": "Hotel",
+        "storecredit": "Store credit",
+        "storecreditSub": "Regulars",
+        "title": "Payment methods coming soon"
+      }
     },
     "done": {
       "pointsEarned": "Points earned {points} (total {total})",
-      "pointsExpected": "Points to earn {points}"
+      "pointsExpected": "Points to earn {points}",
+      "pointsLabel": "Points earned",
+      "pointsValue": "<b>{points} pts</b> (total {total})",
+      "expectedNote": "Expected — the point system records it within seconds"
     }
   }
 }

@@ -16,7 +16,7 @@ import { unstable_rethrow } from "next/navigation";
 import { requireTenant } from "@/lib/core/context";
 import { assertCan, canAccessUnit } from "@/lib/core/rbac";
 import { posMembership } from "./access";
-import { registerCatalog, registerScan, quoteRegisterCart, submitRegisterSale, registerStatus, registerProductOptions } from "./register";
+import { registerCatalog, registerScan, quoteRegisterCart, quoteRegisterCartOverride, submitRegisterSale, registerStatus, registerProductOptions } from "./register";
 import { discardHeldCart, holdRegisterCart, listHeldCarts, recallHeldCart } from "./held-cart";
 import { registerFulfilReward, registerMemberBenefits, registerMemberLookup, registerQuickMember } from "./register-member"; // POS P1.12 ◂
 import type {
@@ -35,6 +35,7 @@ import type {
   RegisterQuickMemberInput,
   RegisterQuickMemberResult,
   RegisterQuoteInput,
+  RegisterQuoteOverrideInput,
   RegisterQuoteResult,
   RegisterRefusal,
   RegisterScanResult,
@@ -114,6 +115,25 @@ export async function quoteRegisterCartAction(args: Target & { cart: RegisterQuo
     return await quoteRegisterCart(s.ctx, s.actor, args.cart);
   } catch (e) {
     return unexpected("quoteRegisterCartAction", e);
+  }
+}
+
+/**
+ * POS P1.12U fix รอบ 1 (F1): quote ของตะกร้าที่มีสิทธิ์เกินเพดาน (PIN ผู้จัดการที่เตรียมไว้ · บิลพักที่อนุมัติแล้ว) — ด่านเดียวกับ quoteRegisterCartAction ·
+ * ส่งต่อเฉพาะคีย์ของ RegisterQuoteOverrideInput (systemId/unitId/deviceId เป็นของ ctx) · อ่านอย่างเดียว
+ */
+export async function quoteRegisterCartOverrideAction(args: Target & RegisterQuoteOverrideInput): Promise<RegisterQuoteResult> {
+  const auth = await session("quoteRegisterCartOverrideAction");
+  if ("ok" in auth) return auth;
+  try {
+    const s = sessionScope(auth, args);
+    if ("ok" in s) return s;
+    const a = (args ?? {}) as Partial<RegisterQuoteOverrideInput>;
+    const input: Record<string, unknown> = { cart: a.cart };
+    for (const k of ["staffToken", "managerPin", "managerUserId", "heldCartId", "idempotencyKey"] as const) if (a[k] !== undefined) input[k] = a[k];
+    return await quoteRegisterCartOverride(s.ctx, s.actor, input as RegisterQuoteOverrideInput);
+  } catch (e) {
+    return unexpected("quoteRegisterCartOverrideAction", e);
   }
 }
 
