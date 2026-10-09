@@ -112,7 +112,7 @@ const CHECKS: readonly Def[] = [
   D("X1", "X5", "[R14] void บิล (ระดับ + ว่อชเชอร์ + คูปอง + 200 แต้ม + ดวง) → ว่อชเชอร์ ACTIVE · Σ แต้มของบิล = 0 · ยอดแต้ม = ก่อนขาย · คูปอง RELEASED · ดวงถูก VOID · ยอดสะสม = ก่อนขาย"),
   D("X2", "X1", "[R14] เล่น consumers[pos.sale.voided] ซ้ำ 2 รอบ + ระบาย → แถวแต้ม/ยอดแต้ม/VOID ดวง/ยอดสะสม/คูปองไม่เปลี่ยน"),
   D("X3", "X5", "[R14 CD7] คืนเงินครบ → ว่อชเชอร์ ACTIVE · Σ แต้มของบิล = 0 · คูปอง RELEASED · ดวงถูก VOID · ยอดสะสม = ก่อนขาย"),
-  D("X4", "X5", "[R14 P1.8] คืนบางส่วน → ว่อชเชอร์ยัง USED · BURN ยังอยู่ (ไม่มี +100 คืน) · หักแต้มที่ได้ตามสัดส่วน (คีย์ pos-refund-<refundId>) · ดวงไม่ถูก VOID"),
+  D("X4", "X5", "[R14 P1.8] คืนบางส่วน → ว่อชเชอร์ยัง USED · BURN ยังอยู่ (ไม่มี +100 คืน) · หักแต้มที่ได้ตามสัดส่วน (คีย์ pos-refund-<refundId>:<earnId>) · ดวงไม่ถูก VOID"),
   D("X5", "X1", "[R14] เล่น consumers[pos.sale.refunded] ซ้ำ 2 รอบ (ครบ + บางส่วน) + ระบาย → แถวแต้ม/ยอดแต้มไม่เปลี่ยน"),
   D("X6", "X1", "[R14 AUDIT M11] void ทันทีหลังขาย (แข่งกับคิว pos.sale.paid) → หลังระบาย 2 รอบ Σ แต้มของบิล = 0 · ว่อชเชอร์ ACTIVE · ดวงสุทธิ 0 · ยอดสะสมสุทธิ 0"),
   D("X7", "X4", "[R14 COMMON-1] GL ของบิลที่ void: Σ ต่อรหัสบัญชี = 0 (ขาย + กลับรายการ) · ทุก JV สมดุล"),
@@ -1568,7 +1568,8 @@ async function runDb() {
       const ls = await ledger(bPR.id);
       if (!ls.some((l) => Number(l.delta) === -100 && l.idempotencyKey === `pos-burn-${bPR.id}`)) p.push("BURN −100 หาย");
       if (ls.filter((l) => Number(l.delta) > 0).length !== 1) p.push(`แถวบวก ${ls.filter((l) => Number(l.delta) > 0).length} (คาด EARN 1 · ไม่คืน BURN)`);
-      const part = ls.find((l) => l.idempotencyKey === `pos-refund-${rfPR.refundId}`);
+      // PROPOSED ORACLE-EDIT: point.reversePartialEarn เก็บคีย์ต่อแถว EARN = `pos-refund-<refundId>:<earnLedgerId>` (lots.ts · P1.8) — เทียบคำนำหน้า
+      const part = ls.find((l) => String(l.idempotencyKey ?? "").startsWith(`pos-refund-${rfPR.refundId}:`));
       if (!(earnPR > 0 && part && Number(part.delta) < 0 && -Number(part.delta) < earnPR)) p.push(`หักตามสัดส่วน ${short(part?.delta, 10)} จาก EARN ${earnPR}`);
       if (addsPR.length !== 1 || (await voidsOf(addsPR)) !== 0) p.push(`ดวง ADD ${addsPR.length} VOID ${await voidsOf(addsPR)} (คาด 1/0)`);
     }
