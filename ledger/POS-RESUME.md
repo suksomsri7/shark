@@ -808,3 +808,11 @@
 ### 9 ต.ค. 03:10 UTC — ✅ build28 control เขียว 14 นาที ⇒ **P1.10U ทำ Turbopack ค้างจริง** → bisect build29 @397cb135 (ขั้น 4) · P1.7 oracle รับ (30 ข้อ, 3ac74097) → builder S ใน tree d
 - เลน 1: build28 (session/pos 1c7bb5c5+oracle-edit, ไม่มี P1.10U) = 0 ใน ~14 นาที · build23/24/25/27 ที่มี P1.10U ค้างทุกรอบ ⇒ โค้ด P1.10U · bisect: build29 @397cb135 (ขั้น 1–4 รวม print module, timeout 25 นาที) → ถ้าค้าง → 3ebda612 (ขั้น 1–2) → ชี้ขั้นผิด แล้วให้ builder/ตัวเองหาไฟล์
 - เลน 4: oracle P1.7 CD-A..K+12 ตัดสินใน `pos-prompt-accountB-P1.7-S.md` (pi_ บน CARD = Beam, EDC เดิมคง · PaymentProfile.promptpayId · beam.ts ขยาย method/qr แบบเผื่อ + ติดป้าย "ยังไม่ทดสอบกับ Beam จริง" · G ปฏิเสธทั้ง 3 · scheduleDrain หลัง commit · cron hourly เรียก expirePaymentIntents)
+
+### 9 ต.ค. 03:40 UTC — เจ้าของถาม "4 เลน CPU/RAM เหลือไหม เปิดเพิ่มเร็วขึ้นไหม" → ตอบ: ไม่แนะนำเลน 5
+- วัด 03:30Z: CPU 4 คอร์ user 97–99% (build ทรี c 2.7 คอร์) · RAM ว่าง 6.5 GB swap 1.7 GB · session 16% · **weekly_all 73%** (68%→73% ใน 2.7 ชม. ≈ 45%/วัน ⇒ ชนเพดานราว 17–18 UTC 9 ต.ค. · รีเซ็ต 14 ต.ค. 11:00Z) · weekly_fable 50%
+- เหตุผล: build/typecheck ต่อคิว pos-gate lock อยู่แล้ว · โควตารายสัปดาห์เป็นตัวจำกัด · ใบที่ขนานได้จริงเหลือ P1.13/P2.1 · คอขวดผู้คุมงาน ⇒ คง 4 เลน หยุด spawn ที่ 90%
+- L1 bisect: build29 @397cb135 (ขั้น 4) **build 0** ⇒ ค้างอยู่ขั้น 5–6 → build30 @c864a48d (ขั้น 5) unit pos-build30-bisect-1791516646 ต่อคิวหลัง build ทรี c
+- L2 gates27 (8b6227ea): generate/typecheck/fitness×3/p1.11×3 38/38/p1.10 40/p1.16 28/p1.8 49/p1.3 128/page-authz 56/nav เขียว · เหลือ build (iso-3189617)
+- L3 P1.15 S ส่ง **1386a2f9** 34/34 ×3+u · typecheck 0 · ORACLE-EDIT? P1.9-ST8 (ห้ามมี PosStaffPin — ขัด R1) ⇒ **คำตัดสิน: ตัดเงื่อนไขนั้นออก คงอีก 2 ข้อ** (ทำตอน merge) · p0.2 แดงจาก residue REFUND ของ P1.8/P1.16 ในร้าน seed (ไม่ใช่ของ P1.15) · ผู้ตรวจ Opus เปิดแล้ว (prompt `pos-prompt-accountB-P1.15-R.md`)
+- L4 P1.7 S ส่ง **0fc35040** 30/30 ×2+u · typecheck 0 · ผู้ตรวจ Opus เปิดแล้ว (prompt `pos-prompt-accountB-P1.7-R.md`) · เจ้าของ: Beam PromptPay ยังไม่เคยยิง API จริง (ไม่มีคีย์) · card ไม่ส่ง returnUrl ต้องเช็กกับ Beam
