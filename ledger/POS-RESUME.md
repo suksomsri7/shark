@@ -925,3 +925,6 @@
 ## 9 ต.ค. 07:58 UTC — ORACLE-EDIT p1.3 counter merge แล้ว
 - `wip/pos-p1.3-counter` be39c536 (4 บรรทัด: cleanup คืน seq = max(snapshot, เลขใบเสร็จสูงสุดที่ออกจริงของ unit/period) · typecheck 0 · p1.3 128/128 ×2) → merge session/pos · ข้อที่ยังเปิด (บันทึกไว้): cleanup ยังลบ counter ที่ไม่อยู่ใน snapshot (เดือน/สาขาใหม่ที่เกิดจากขายจริงระหว่างรัน) — follow-up ไม่เร่ง
 - ทรี c ว่าง · เหลือ L3 P1.15U รอบ 2 + ภาพ (build40-b) · L4 P1.13 รอบแก้ 1
+
+## 9 ต.ค. 08:05 UTC — P1.13 รอบแก้ 1 ส่งแล้ว (0d45a6d0) → ผู้ตรวจดูซ้ำ
+- **L4 P1.13**: head **0d45a6d0** (F1 64c0e33d · F2 9e837395 · F3 0fd07421 · F4 b0efc9a9 + ORACLE-EDIT S2 b340f16a · F5 f5aa62c2 · fu1 14d87c87 · fu2 cf6adbfe/0e16a906 · fu3 801a3542 + ORACLE-EDIT S5 c82d9b8f (ย้ายบิล unlinked จาก S1 → S5 — รับ) · fu4–5 บันทึก 0d7553cc · merge session/pos 9ba7834b f2545922) · ด่านก่อน merge: p1.13 32/32 ×3 · p1.11/p1.8/p1.16/p1.3/p1.10/authz เขียว · money set เท่าเดิม · fitness · หลัง merge: typecheck 0 · p1.13 32/32 ×3 · p1.11 38 · race ที่เหลือ (refund ระหว่าง supersede กับ claim) บันทึกในโน้ต · ผู้ตรวจ (a8e7731…) ดูซ้ำแล้ว → ถ้า MERGEABLE: merge (money set ของ builder ก่อน merge ถือว่าพอ เพราะส่วนต่างหลัง merge = P1.11U ที่ gated แล้ว)
