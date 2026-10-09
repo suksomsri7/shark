@@ -853,3 +853,12 @@
 - L1: vis23 ภาพ settings-receipt/devices/device-revoke/print-pair + register (sale-done/paydone-print) owner+cashier · เทียบ 17A/17B/02b ตรงโครงสร้าง (ข้อมูล QC ว่าง = ปกติ) · settings-owner exit 1 เฉพาะ state `settings-print-pair` คาด "ไม่รองรับ" แต่ Chromium headless มี WebUSB ⇒ กล่องแสดงปุ่มค้นหา — ปัญหา assertion ของสคริปต์ ไม่ใช่ UI → ให้ builder P1.11U แก้ให้รับทั้งสองสถานะตอน follow-up · merge **d4b856ef** + nit chip "เพิกถอนแล้ว" **ff5fc5cd** PUSHED · comment nits (PayDone.tsx:8 / printReceipt.ts:2) ข้าม (cosmetic)
 - L2: P1.11U re-review **MERGEABLE** (2d545ea4) · build35-c unit pos-build35-c-1791522726 (ทรี c @2d545ea4) → server :3226 → `--page receipt-public --states` + `--page sales --states` → ดูภาพเทียบ 11C/12 → merge → follow-up round: PayDone share row + 17A qrEReceipt toggle + print-pair state robustness
 - ถัดไปเลน 1 (p11 ว่าง): brief P1.7U (จอชำระ QR/Beam · 02 ขวา · 17A วิธีรับเงิน)
+
+### 9 ต.ค. 05:16 UTC — 4 เลนเดินเต็ม: P1.7U (p11) · P1.11U รอภาพ (c) · P1.15U (b) · P1.13 S (d)
+- L4: oracle P1.13 **0a049f30** (30 ข้อ · forced 1/30 แดงตามคาด · residue 0) merge **75d98874** · คำตัดสิน 1–15 ใน `pos-prompt-accountB-P1.13-S.md` (ff4e559f · ใช้ `accountDocId` เดิม · ABB CANCELLED+supersededByDocId ไม่แตะ GL · HAS_REFUNDS + ORACLE-EDIT L6 = 31) · builder S เริ่ม ทรี d `wip/pos-p1.13`
+- L1: builder P1.7U เริ่ม ทรี p11 `wip/pos-p1.7u` (prompt cc16520c · rulings 1–8 · server hunk อนุญาต: `updatePosIntentSettingsAction` + oracle S1-U = 32)
+- L2: build35-c (ทรี c @2d545ea4) กำลังรัน → vis receipt-public/sales :3226
+
+### 9 ต.ค. 05:30 UTC — P1.11U ภาพตรง 11C/12 · merge ชน P1.10U → ให้ builder รวมเอง + follow-up รอบ 2
+- L2: build35-c 0 · vis35 (:3226) receipt-public paid/refunded-partial/voided/issue-sent + sales list/drawer/void/refund/empty ✅ ตรง 11C/12 · แดง 2 state = fixture (`rpub-taxinvoice-form`: ร้าน QC ไม่เปิด ABB ⇒ taxInvoice NOT_AVAILABLE · `rpub-not-found`: console 404 ของตัวเอง) ไม่ใช่ UI · merge 2d545ea4 เข้า session/pos ชน 4 ไฟล์กับ P1.10U (pos-qc-env/inventory/visual-pos/BillsClient) → abort · ส่ง builder รอบ 2: merge session/pos + PayDone share row (02b) + 17A qrEReceipt toggle + visual fixes (print-pair รับ 2 สถานะ · เปิด ABB บนร้าน QC ชั่วคราว + บิลสมาชิก · not-found ยอม console 404) → ด่าน + ภาพซ้ำ → merge
+- โควตา 05:12Z: session 51% (รีเซ็ต 07:29Z) · weekly_all 78% · weekly_fable 53%
