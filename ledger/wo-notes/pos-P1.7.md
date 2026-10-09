@@ -76,3 +76,26 @@ Types (client-safe): `src/lib/modules/pos/payment-intent-shared.ts`. Actions (`"
 - Report "เงินเข้าไม่มีบิล": PAID intents never consumed within 24 h (and `refund_needed` events).
 - Per-branch PromptPay IDs (P1.18 settings) — today one `PaymentProfile.promptpayId` per shop.
 - Settings UI for `pos.payment` (17A / P1.18).
+
+## Fix round 1 (reviewer MERGEABLE-AFTER-FIXES on 0fc35040 · controller rulings F1–F5)
+- **ORACLE-EDIT C31 (approved)** 08a6fa77: `scripts/qc-pos-p1.7.mts` + 1 check (C31, X4) — `[{TRANSFER 100 ref pi_X},{PROMPTPAY A ref pi_X}]` ⇒ VALIDATION, no bill, pi_X PAID with saleId null; a correct submit consumes it (one PosPayment row, note "via MANUAL"); a second bill ⇒ INTENT_CONSUMED. Oracle notes count 30→31.
+  - Positive control: C31 run forced against the pre-fix `register.ts` + `payment-intent.ts` (0fc35040, files restored afterwards) ⇒ exit 1 · 30/31 · C31 red ("TRANSFER pi_: OK บิล 8→9 · PosPayment อ้าง 3"), residue 0.
+- **F1** c9797733: (a) `regParseSubmit`: a `pi_…` reference on any type other than PROMPTPAY/CARD ⇒ VALIDATION. (b) The intent tx decides from the sale itself: it takes the same advisory key lock `createSale` uses (re-entrant in one tx), checks whether a sale with this key already exists, then calls `regCreateSale`; new sale ⇒ consume, existing sale (idempotent replay) ⇒ skip. The payment-row count is gone. `consumeSaleIntents` also only stamps notes on PROMPTPAY/CARD rows.
+- **F2** 44750808: route `pos-` branch: facade outcome `INTERNAL` ⇒ HTTP 503 (Beam redelivers; confirmation is idempotent). Business refusals and unknown references stay 200, a bad signature stays 401.
+- **F3** 256b28eb: `confirmPaymentIntentManual` refuses `CARD_BEAM` with new code `MANUAL_NOT_ALLOWED` (th/en `pos.payment.errors.manualNotAllowed`, `intentRefusalMessageKey`); `PROMPTPAY_BEAM` also needs `pos.shift.manage` (else PERMISSION_DENIED); STATIC unchanged; audit unchanged. Not covered by the oracle (M1–M3 use STATIC intents). The kind is read before the lock (immutable after create); unit/tenant mismatch ⇒ INTENT_NOT_FOUND.
+- **F4** 8ef8b8f9: `qc-pos-p1.6` CALL_SITES comment for `register.ts` and the P1.6 oracle notes table now say that `regCreateSale` has two modes (own tx = P1.6 path; caller tx = `regSubmitWithIntents`, with the after-commit `consumeSaleInventory` + `scheduleDrain()` duplicated at the caller). Count unchanged at 18/15.
+- **F5**: no code change; the "Beam PromptPay untested against the real API (no creds)" marker above stays.
+
+| gate (final code 8ef8b8f9) | result |
+|---|---|
+| typecheck (`iso … flock /tmp/pos-gate.lock pnpm typecheck`) | exit 0 |
+| `qc-pos-p1.7` QC_FORCE=1 ×2 | exit 0 · 31/31 · residue 0 (both) |
+| `qc-pos-p1.7` unforced | exit 0 · 31/31 · residue 0 |
+| `qc-pos-p1.6` | exit 0 · 48/48 (U4 18/15) |
+| `qc-pos-p1.3` | exit 0 · 128/128 |
+| `qc-pos-p1.8` | exit 0 · 49/49 |
+| `qc-pos-p1.10` | exit 0 · 40/40 |
+| `qc-pos-account` | exit 0 · 16/16 |
+| `qc-hf-pos-page-authz` | exit 0 · 56/56 |
+| `pnpm fitness` without env / with `qc4.sh` | exit 0 · 41/41 / exit 0 · 41/41 |
+| `fitness-pos.mts` | exit 0 · 8/8 (contract unchanged) |
