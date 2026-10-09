@@ -1640,7 +1640,7 @@ export async function submitRegisterSale(ctx: RegisterCtx, actor: RegisterActor,
     if (intentRefs.length) return regSubmitWithIntents(db, s, req, saleInput, intentRefs, startedAt);
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        const r = await createSale(saleInput, db);
+        const r = await regCreateSale(saleInput, db);
         // createSale คืนบิลเดิมเงียบ ๆ เมื่อคีย์ถูกบันทึกระหว่างที่เราตรวจ ⇒ อ่านบิลจริงมาเทียบ payload ทุกครั้ง
         const row = await regLoadSale(db, s.tenantId, req.idempotencyKey);
         if (!row || row.id !== r.saleId) return regRefuse("INTERNAL");
@@ -1672,6 +1672,14 @@ export async function submitRegisterSale(ctx: RegisterCtx, actor: RegisterActor,
   });
 }
 
+/**
+ * POS P1.7: จุดเรียก createSale จุดเดียวของหน้าขาย (ทะเบียนผู้เรียกของ qc-pos-p1.6 U4 นับต่อจุด) —
+ * client = prisma ของแอป/ของผู้เรียก (ทาง P1.6) หรือ tx ของธุรกรรมใบขอรับเงิน (createSale ไม่เปิด tx ซ้อน · ไม่ทำงานหลัง commit เอง)
+ */
+function regCreateSale(input: CreateSaleInput, client: RegDb | Prisma.TransactionClient) {
+  return createSale(input, client);
+}
+
 /** POS P1.7: ข้อผิดพลาดภายในธุรกรรมขายแบบใบขอรับเงิน (โยนเพื่อให้ธุรกรรมย้อนทั้งก้อน แล้วคืนเป็นคำปฏิเสธ) */
 class RegIntentRefusal extends Error {
   constructor(readonly refusal: RegisterRefusal) {
@@ -1698,7 +1706,7 @@ async function regSubmitWithIntents(
         async (tx) => {
           const locked = await lockSaleIntents(tx, s, refs);
           if (!locked.ok) throw new RegIntentRefusal(regRefuse(locked.code));
-          const r = await createSale(saleInput, tx);
+          const r = await regCreateSale(saleInput, tx);
           // createSale คืนบิลเดิมของคีย์นี้ได้ (บิลที่ไม่ได้อ้าง intent ชุดนี้ commit ไปก่อน) ⇒ ใช้ intent เฉพาะเมื่อบิลนี้อ้างครบทุกใบ
           const linked = await tx.posPayment.count({ where: { tenantId: s.tenantId, saleId: r.saleId, reference: { in: [...locked.notes.keys()] } } });
           if (linked === locked.notes.size) await consumeSaleIntents(tx, s, r.saleId, locked.notes);
