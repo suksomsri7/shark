@@ -27,3 +27,14 @@ X11 the probe itself charges through the normal path (no bypass); X10 no key in 
 ## Decisions for the controller
 - Expected mix weights (default: chat 50 %, quotation 10 %, summaries 20 %, content 10 %, teach 10 %).
 - Whether to also measure with `SHARK_AI_MODEL` forced to sonnet for the chat types (recommended: yes, 1 extra round each, if under cap).
+
+## Controller addendum + rulings (2026-10-08 · the oracle header [1]–[5] is the contract)
+- Base `wip/pos-ai-t0.1-oracle` @ session/ai-team 0ea0377f (T0.2 merged: AT-1 seed + `loadAiTeamQcEnv()`/`atIds()`). Builder branch `wip/pos-ai-t0.1`, tree `/root/projects/shark-ai-b`.
+- OQ-1…OQ-7, OQ-9 ✅ as fixed in the oracle header (daily-net give-back · mock refuses without PROBE_OUT · one user turn per run, history inserted as rows, single cleanup phase · type→category map · formulas/rounding · `toolCalls` · `cachedTokens: null`).
+- OQ-8: the 30-row file contains ONLY the default routing. No forced-sonnet round inside it (the brief's "recommended extra round" is dropped; if wanted later it is a second file with `PROBE_OUT` elsewhere).
+- Brief error 1 ✅ refund ref = `qc-ai-t0.1-refund-<runId>` (a fixed ref would refund only once). Error 2 ✅ the mobile type = `createConversation(ctx)` then `sendMobileChat` so AUTO_TITLE is charged. Error 3 ✅ cap test uses 0.000001.
+- Brief error 4: the ledger is LIST price (prompt tokens at full rate although caching is on). The cost file must say so in one line: "figures are list price from AiCreditTxn; the provider bill can be lower (cache)". Pack math stays on list price (conservative).
+- Brief error 5: before the REAL run the controller checks AT-1's wallet (≥ cap + US$1, otherwise the service degrades to haiku below $0.50) and funds it with an ADJUST txn `qc-ai-t0.1-fund-<date>` if needed — outside the probe, recorded in wo-notes. The probe prints `walletBefore` as "OK"/"LOW" only (no amount on stdout is required by the oracle; follow the header).
+- Gate: T0.1 is accepted only at **26/26** — i.e. after the controller's real run produced `ledger/AI-TEAM-COST-2026-10.md` and the oracle was re-run with S1.5/S2.3/S4.4 CRITICAL green. 23/26 under mock = "builder done, controller measurement pending".
+- After the real run the controller compares AT-1 table counts by hand (AiMemory/proposals created by real tool calls must be cleaned by the probe's cleanup; anything left is a probe bug).
+- Reference probe draft left by the oracle writer at `/tmp/qc-t01-notes/ref-probe.mts` (never executed): the builder may read it but must write and verify its own file.
