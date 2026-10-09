@@ -114,3 +114,88 @@ nothing deleted; summary `memberState`. Dry plans rc 0 for owner/cashier × th/L
 - `pnpm fitness` without env 0 · 41/41 · with QC4 env 0 · 41/41 · `scripts/fitness-pos.mts` 0 · 8/8 (F15.3a/b · F15.4 green).
 - visual `p112u --page register --states --dry` owner th 0 · owner LOCALE=en 0 · cashier th 0 · cashier LOCALE=en 0 (plans include the 6 new states).
 - Final merge: `origin/session/pos` 6d3e952a (ledger-only since 1bfa0ff9) — code gates above hold for the merged head.
+
+## Fix round 1 (reviewer F1–F10 + fixture · controller visual V1–V3 · tree p11 · 9 Oct)
+Prompt `ledger/pos-briefs/pos-prompt-accountB-P1.12U-fix.md` · review `ledger/wo-notes/pos-P1.12U-review.md` · rulings 1–11 of the original prompt still binding ·
+tree `/root/projects/shark-pos-p11` (no install/generate) · merged `origin/session/pos` eecbe591 (start) and 5664aa46 (before final gates, ledger only).
+Logs: `/tmp/claude-0/-root/ed31d917-ff51-51e8-bfad-e5b8bfa6fa15/scratchpad/p112u-fix/runs/` (every log starts with `tree=… head=… dirty=…`).
+
+### Commits
+| step | commit | what |
+|---|---|---|
+| 1 | `51deecb7` | server seam: `regParseOverrideAuth` + `regResolveOverrideCap` (①/② out of `regDiscountOver`) + `quoteRegisterCartOverride` + action + type |
+| 1 | `c9446939` | **test** ORACLE-EDIT U2 U3 U4 (`qc-pos-p1.12` · `pos-P1.12-oracle.md`) |
+| 2 | `e766b764` | UI: F1/F9 wiring · F2 · F3 · F4 · F8 (`RegisterScreen.tsx`) |
+| 3 | `0fd2db17` | F5 · F6 · F7 · fixture (top-up key, WELCOME50) · visual V1–V3 |
+
+### The new seam (ruling 1 · F1)
+- `register.ts:1473 quoteRegisterCartOverride(ctx, actor, input: RegisterQuoteOverrideInput, client?)` · `register-actions.ts:125 quoteRegisterCartOverrideAction(args: Target & RegisterQuoteOverrideInput)`
+  (same `session` + `sessionScope` guards as `quoteRegisterCartAction`; forwards only cart/managerPin/managerUserId/heldCartId/idempotencyKey) ·
+  `register-shared.ts:328 RegisterQuoteOverrideInput = { cart: RegisterQuoteInput; managerPin?; managerUserId?; heldCartId?; idempotencyKey? }`.
+- Input checks: unknown key / non-record ⇒ VALIDATION · `regParseOverrideAuth` (`register.ts:1609`, moved out of `regParseSubmit`, same texts/order: PIN or manager wrong type ⇒
+  VALIDATION, PIN without `managerUserId` ⇒ VALIDATION, `heldCartId` wrong type ⇒ VALIDATION) · `idempotencyKey` = submit key rules (`reg2:` prefix) · malformed device ⇒ VALIDATION.
+- Result: the normal quote (`regPrice(db, s, cart)` = `quoteRegisterCart`) unless it is DISCOUNT_EXCEEDS_LIMIT ⇒ returned unchanged (PIN never verified for a cart within the cap).
+  On DISCOUNT_EXCEEDS_LIMIT ⇒ `regResolveOverrideCap` (`register.ts:2160`): ① approved held cart of this unit (`approvedDiscountOf(…, key ?? "")`, holder or `pos.sale.manage`,
+  cart hash else APPROVAL_MISMATCH, discount ≤ approved) · ② `verifyManagerPin` (same failure counter / lock-out as submit ⇒ PIN_INVALID / PIN_LOCKED / DEVICE_REVOKED; manager cap
+  not covering ⇒ DISCOUNT_EXCEEDS_LIMIT) · nothing ⇒ DISCOUNT_EXCEEDS_LIMIT. Priced with that cap ⇒ member choices / coupon / tier applied like any quote.
+- **No side effects** (only the PIN failure counter): no hold, no request, no `cancelOpenPosRequest`, no claim, no `pos.discount.override` / `pin_override` audit — those stay in
+  `regDiscountOver` (`register.ts:2210`), which now calls the same helper (one truth; submit behaviour unchanged — p1.15 39/39, p1.3 128/128).
+
+### Per finding
+- **F1 / F9** (`RegisterScreen.tsx:861–918, 927, 1701`): `overrideAuthOf(cart, discAuth)` = PIN (+heldCartId from 21B) or approved heldCartId, only for carts with `memberId`
+  or `couponCode`; the debounced quote effect calls `quoteRegisterCartOverrideAction` (+ device id, + `idemKey`) instead of the normal action and re-runs when that auth changes
+  (`[cartVer, overrideKey]`). Refusals (`onOverrideRefused` :869): PIN_INVALID/PIN_LOCKED ⇒ disarm + `errorFor` toast · APPROVAL_MISMATCH ⇒ drop approval + toast ·
+  DISCOUNT_EXCEEDS_LIMIT ⇒ drop approval (the normal quote then shows the discount-over card as before). `overrideQuote` never uses the recalled quote for member/coupon carts
+  (F9: approved path shows the real quote with choices). `confirmPay` sends `heldCartId` for approved member/coupon carts (the override quote validated it).
+  Carts without member/coupon: unchanged (key stays `null`, localQuote / recalled quote as in P1.15U).
+- **F2** (`:496, 1731, 1175 area, 1561`): `parkedChoices` {heldCartId, choices} set at the approval handoff (before `resetBill`), kept only when the same bill comes back via
+  approval (`onRecallHeld(…, viaApproval)`), restored once in `openPay`/`openPayPoints` when `discAuth.heldCartId` matches; dropped on recall of another bill / drawer recall /
+  discard / reject-cancel (`approvalDone`) / staff switch. Re-quote validates (POINTS_CAPPED / below-min / voucher conflicts via the existing effects, PRICE_CHANGED guards). No new toast.
+- **F3** (`:1175` + effect `:1017`): recall strips `memberId` when `registerStatus.memberEnabled === false` (status known) and toasts `errors.memberSystemMissing` (replaces "recalled");
+  quote MEMBER_SYSTEM_MISSING with `cart.memberId` ⇒ `detachMember()` + same toast, once per cart version.
+- **F4** (`:971`): the choices effect does not clear the voucher while `couponWait` is pending for that cart version; the coupon wait reverts the code, the next quote decides.
+- **F5** (`QuickRegisterForm.tsx:30, 44`): `failedWith` {phone, name} recorded on refusal / network error; editing either afterwards calls `onRekey` (MemberPanel → RegisterScreen
+  `setMemberFormKey(newKey())` — keys still minted only in RegisterScreen, S5.21); plain retry keeps the key.
+- **F6**: `lib/ui/date.ts:24 formatShortDate(d, locale)` (th = `formatThaiDate`, en = en-GB "5 Feb 2026", Bangkok TZ) used at `PayBenefits.tsx:246`, `MemberPanel.tsx:241`.
+- **F7**: `register-member-shared.ts:112 tierBadgeColor` (hex 3–8 only) · `MemberPanel.tsx:140` non-hex ⇒ grey badge with the tier name (QC tiers use names like AMBER ⇒ grey).
+- **F8** (`:1608`): POINTS_CAPPED / MEMBER_RIGHTS_CHANGED auto-correct only when `cartRef.current.memberId === sale.memberId`; otherwise the normal `setPayError` path (restore ⇒ toast).
+- **F10**: accepted as-is (follow-up below).
+- **V1/V2 (controller visual, 390)** (`MemberPanel.tsx:200`): root cause reproduced in headless chromium (scratch `repro/repro.mjs`, positive control): the panel body was itself a
+  flex column inside the 88dvh sheet, so when the content exceeded the sheet the `overflow-hidden` result list (min-height auto ⇒ 0) shrank to 2 px — the row existed (puppeteer
+  "visible") but the tap hit the body. Fix: body = plain scroll container (`min-h-0 flex-1 overflow-y-auto overscroll-contain`, header fixed) with an inner column wrapper; repro
+  after: list 66 px, tap hits the row, submit reachable by scrolling the panel (page scroll 0). Also the phone search field was flex-basis 0 in the column (23 px) ⇒ `shrink-0 sm:flex-1`.
+- **V3**: member states (except capped / sale-done-member, unchanged) build Americano ×2 + Latte −฿10 (`addCart3(…, inStockOnly)` `visual-pos.mts:703`); member-register scrolls the
+  submit button into the panel and fails if the panel cannot scroll.
+
+### Fixture (ruling 10)
+- Top-up key `posqc-p112u-topup-<YYYYMMDD>-<balanceBefore>` (`MEMBER_TOPUP_PREFIX` :1524).
+- `prepQcCoupon()` (:1593, module functions only, no SQL, nothing deleted): COUPON system of the shot unit (`systemForUnit`) or a tenant system named "คูปอง · POS QC"
+  (`listSystems` / `createSystem`) linked with `linkUnit` (only when the unit has none) · `WELCOME50` FIXED ฿50, endAt 2030-12-31, found by code (`listCoupons`) else `createCoupon`;
+  inactive ⇒ `setCouponActive`; expired / not ฿50 ⇒ coupon states fail with the reason. `applyQcCoupon` (:1632): member-attached = cart → bill discount → coupon (01 row
+  `pos-member-coupon-line`), paydlg-member-points = pay dialog "ใส่คูปอง" (02 row `pos-member-coupon`). No state saves a bill with the coupon (no CouponRedemption).
+- Safety check: `qc-pos-p1.3` S3.29 expects WELCOME50 = COUPON_INVALID on the coffee tenant — it runs on its own sandbox unit (no COUPON link), so a silom-only link keeps it green.
+- Real shots = CONTROLLER-RUN (rebuild on tree d, `visual-pos.mts p112u --page register --states --user owner|cashier` + `LOCALE=en`).
+
+### Deviations (new)
+1. F2 restore also applies to the 21B **PIN** path (`discAuth.kind === "pin"` carrying the same `heldCartId` after `approvalPin` → `onRecallHeld(…, viaApproval)`); the ruling names
+   "approved" — same bug, same guard (heldCartId match), re-quote validates.
+2. F3 recall strip uses `status?.memberEnabled === false` (status known); unknown status ⇒ the quote-error path detaches instead.
+3. APPROVAL_MISMATCH from the override quote shows the `errorFor` toast (the cashier otherwise sees only the discount-over card).
+4. No new th/en keys were needed (all messages reuse existing `register.errors.*` / `member.*` keys); no new testids.
+
+### Follow-ups
+- F10 (accepted): the coupon wait treats any whole-quote refusal (UNKNOWN, BENEFITS_EXCEED_TOTAL, a PIN cart's DISCOUNT_EXCEEDS_LIMIT) as a coupon failure and reverts the code — toast text can mislead.
+- The override quote uses the session actor's cap and "holder" check (like `quoteRegisterCart`), submit uses the staff-token actor; same person in the normal flow.
+- `HeldBillsDrawer` / `TaxInvoiceDialog` share the flex-column body pattern that broke 14A at 390 (short content today) — worth the same wrapper when touched (P1.5/P1.13 owners).
+
+### Gates (QC4 `ep-frosty-lab-…` · POS gate lock · final code head 3ff5fe25 = 0fd2db17 + ledger merge · logs `runs/`)
+- Fail-before: `qc-pos-p1.12` forced on pre-seam code **68/71** exit 1 (U2 U3 U4 `MISSING:quoteRegisterCartOverride`), residue 0 (`p112-failbefore.log`).
+- typecheck (iso + `/tmp/pos-gate.lock`, 5632 MB): TC_EXIT=0 on the working tree with every change of this round (`tc-1.log` server+oracle+UI WIP, `tc-2.log` final code).
+  Step-2 commit is the RegisterScreen subset of that tree (no onRekey prop) — self-consistent against step 1.
+- `qc-pos-p1.12` forced #1 **0 · 71/71** · forced #2 **0 · 71/71** · unforced **0 · 71/71** (residue 0 each).
+- `qc-pos-p1.15` 0 · 39/39 · `qc-pos-p1.13` 0 · 33/33 · `qc-pos-p1.3` 0 · 128/128 · `qc-pos-p1.5` 0 · 21/21 · `qc-pos-p1.16` 0 · 28/28 · `qc-pos-p1.11` 0 · 38/38 ·
+  `qc-hf-pos-page-authz` 0 · 56/56. (Step-1 first runs of p1.15 Z2 / p1.3 S1.9 S9.1 S9.2 were red only from seed drift of the controller's vis47 run on `posqc-coffee`
+  — `PQC-VIS-*` product, +2 sales; re-run once ⇒ 39/39 and 128/128.)
+- `pnpm fitness` without env 0 · 41/41 · with QC4 env 0 · 41/41 · `scripts/fitness-pos.mts` 0 · 8/8.
+- visual `p112u --page register --states --dry`: owner th 0 · owner LOCALE=en 0 · cashier th 0 · cashier LOCALE=en 0 — all 6 member states listed (th 16 jobs / en 6), notes
+  show WELCOME50 on member-attached + paydlg-member-points and the fixture line (`dry-*.log`). Real shots + 390 re-run = CONTROLLER-RUN.
