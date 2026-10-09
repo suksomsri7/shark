@@ -61,6 +61,8 @@ export type PaymentIntentRefusalCode =
   | "INTENT_EXPIRED"
   | "INTENT_CANCELLED"
   | "INTENT_PAID"
+  // fix F3: ยืนยันเองไม่ได้กับใบชนิดนี้ (บัตรผ่าน Beam)
+  | "MANUAL_NOT_ALLOWED"
   | "INTERNAL";
 export type PaymentIntentRefusal = { ok: false; code: PaymentIntentRefusalCode; message: string };
 
@@ -111,6 +113,7 @@ const INTENT_KEY: Partial<Record<PaymentIntentRefusalCode, string>> = {
   INTENT_EXPIRED: "payment.errors.intentExpired",
   INTENT_CANCELLED: "payment.errors.intentCancelled",
   INTENT_PAID: "payment.errors.intentPaid",
+  MANUAL_NOT_ALLOWED: "payment.errors.manualNotAllowed",
   IDEMPOTENCY_CONFLICT: "register.errors.idempotencyConflict",
   PERMISSION_DENIED: "register.errors.permissionDenied",
   DEVICE_REVOKED: "register.errors.deviceRevoked",

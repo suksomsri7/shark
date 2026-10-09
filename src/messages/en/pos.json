@@ -1088,7 +1088,8 @@
       "intentConsumed": "This payment was already used for another bill",
       "intentExpired": "QR expired — create a new one",
       "intentCancelled": "This payment request was cancelled",
-      "intentPaid": "Payment already received — it can't be cancelled; use it for this bill or refund the customer"
+      "intentPaid": "Payment already received — it can't be cancelled; use it for this bill or refund the customer",
+      "manualNotAllowed": "Beam card payments can't be confirmed manually — wait for Beam, or use the EDC terminal"
     }
   }
 }

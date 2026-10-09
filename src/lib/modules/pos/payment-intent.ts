@@ -74,6 +74,7 @@ const MSG: Record<PaymentIntentRefusalCode, string> = {
   INTENT_EXPIRED: "QR หมดอายุแล้ว — สร้างใหม่ (ถ้าลูกค้าโอนแล้ว ให้ผู้จัดการตรวจยอดเงินเข้า)",
   INTENT_CANCELLED: "รายการรับเงินนี้ถูกยกเลิกแล้ว",
   INTENT_PAID: "เงินของรายการนี้เข้าแล้ว — ยกเลิกไม่ได้ ใช้กับบิล หรือคืนเงินลูกค้าเอง",
+  MANUAL_NOT_ALLOWED: "รายการบัตรผ่าน Beam ยืนยันเองไม่ได้ — รอผลจาก Beam หรือรับบัตรด้วยเครื่อง EDC",
   INTERNAL: "ระบบรับเงินขัดข้องชั่วคราว — ลองอีกครั้ง",
 };
 const refuse = (code: PaymentIntentRefusalCode, message?: string): PaymentIntentRefusal => ({ ok: false, code, message: message ?? MSG[code] });
@@ -423,6 +424,14 @@ export async function confirmPaymentIntentManual(ctx: IntentCtx, actor: IntentAc
     if (dev && (await posDeviceRevoked(prisma, s.tenantId, s.unitId, dev))) return refuse("DEVICE_REVOKED");
     const intentId = isRecord(input) ? input.intentId : undefined;
     if (!isPaymentIntentId(intentId)) return refuse("INTENT_NOT_FOUND");
+    // fix F3 (มติผู้คุมงาน): บัตรผ่าน Beam ยืนยันเองไม่ได้ (MANUAL_NOT_ALLOWED) · PromptPay ผ่าน Beam ยืนยันเองได้เฉพาะผู้มี pos.shift.manage · QR นิ่งเหมือนเดิม
+    //   ชนิดของใบไม่เปลี่ยนหลังสร้าง ⇒ อ่านก่อนล็อกได้ (สาขาอื่น/ไม่มี = INTENT_NOT_FOUND เหมือนในล็อก)
+    const pre = await prisma.posPaymentIntent.findUnique({ where: { id: intentId }, select: { tenantId: true, unitId: true, kind: true } });
+    if (!pre || pre.tenantId !== s.tenantId || pre.unitId !== s.unitId) return refuse("INTENT_NOT_FOUND");
+    if (pre.kind === "CARD_BEAM") return refuse("MANUAL_NOT_ALLOWED");
+    if (pre.kind === "PROMPTPAY_BEAM" && !evaluate(s.actor, { module: "pos", action: "pos.shift.manage", unitId: s.unitId })) {
+      return refuse("PERMISSION_DENIED", "QR ผ่าน Beam ยืนยันอัตโนมัติ — ยืนยันเองได้เฉพาะผู้จัดการ");
+    }
     const opts: PaidOpts = { via: "MANUAL", userId: s.actor.userId };
     const out = await markPaidCore(intentId, opts, { tenantId: s.tenantId, unitId: s.unitId }, true);
     await opsAfter(out, opts);
