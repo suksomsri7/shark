@@ -70,3 +70,31 @@ DB: QC4 only (`ep-frosty-lab-aoylqlv8…`) via `iso.sh → qc4.sh → env GATE_L
 - The page still calls `registerSellerLimits(actor, unitId)` without caps — pass `await registerDiscountCaps(ctx)` in P1.15U so the client-side preview uses the settings caps.
 - `BillsClient` / refund modal map unknown codes to `unknown` — P1.15U must route `PIN_* / APPROVAL_REQUIRED / PENDING_APPROVAL` to `refusalMessageKey`.
 - HR→POS PIN sync (H3.x) · 21A title/subtitle: `payload.title` is stored; the subtitle (staff · device · minutes ago) is composed at display time.
+
+## Fix round 1 (reviewer verdict MERGEABLE-AFTER-FIXES on 1386a2f9 · prompt `pos-prompt-accountB-P1.15-S-fix.md`)
+Commits: 8f5a11d1 (F6 F3 F2 core + safe logs) · 424c71c7 (F2 void/refund) · 33b628cd (F1 F5 F8 + F2 submit) · c5af4e9f (F9) · 453cf4c2 (ORACLE-EDIT qc-pos-p1.15) · 36cbe67e (ORACLE-EDIT qc-pos-p1.9 ST8) · notes commit.
+- **F1** `regDiscountOver` ①: held cart of this unit/system, not DISCARDED; `heldByUserId` = the effective seller (token user) or seller holds `pos.sale.manage`; snapshot `cartHash` = sha256 of sorted `productId|-|qty|unitPriceSatang|options` + `subtotal` must equal the submitted cart's ⇒ else **`APPROVAL_MISMATCH`** (new code · `pos.register.errors.approvalMismatch` th/en); then discount satang ≤ snapshot `discountSatang` (else `DISCOUNT_EXCEEDS_LIMIT`, unchanged ruling 5). Deviation: `discountBp` is stored and compared separately, not hashed — hashing it would turn AP9's oracle-required `DISCOUNT_EXCEEDS_LIMIT` (same cart, 20 %) into `APPROVAL_MISMATCH`. Snapshots without `cartHash`/`discountSatang` (pre-fix) are unusable.
+- **F2** `verifyManagerPin` requires `managerUserId` (else `VALIDATION`, no all-rows branch); submit/void/refund return `VALIDATION` before any PIN work when `managerPin` comes without `managerUserId`. Every miss counts on that manager's row.
+- **F3** anonymous `verifyStaffPin` matching a locked row ⇒ `PIN_INVALID` (never `PIN_LOCKED`).
+- **F5** auto-hold idempotent on the submit key: snapshot stores `submitKey`; a retry with the same key returns `PENDING_APPROVAL` with the same `requestId`/`heldCartId` and creates nothing (lookup before the policy check). Residual: two *concurrent* first submits with one key can both hold (no cross-call lock) — P1.18 close item.
+- **F6** request paths use promisified async `crypto.scrypt`; the only `scryptSync` left is `hashStaffPinForScript` (scripts only — kept also because oracle PN0 greps `scryptSync(` in staff-pin.ts; an ORACLE-EDIT to accept `scrypt(` would let it go).
+- **F8** every manager-PIN discount override writes `pos.approval.pin_override` (`requestId` = cancelled request of the held cart, else `null`).
+- **F9** shift.ts header comment. **Audit leak**: staff-pin logs only `e.name` + `e.code`; `verifyManagerPin` catches internally so no caller logs a Prisma error carrying `pinHash`.
+- **F7**: follow-up only.
+
+| gate (fix round 1) | result |
+|---|---|
+| `qc-pos-p1.15` forced #1 / #2 / unforced | 0 · 36/36 / 0 · 36/36 / 0 · 36/36 — residue 0 each (319 tables) · guardHits 0 |
+| `qc-pos-p1.9` | 0 · 53/53 (ST8 edited) |
+| qc-pos-p1.3 / p1.5 / p1.6 / p1.8 / p1.10 / p1.16 / p1.17 | 0 · 128/128 / 0 · 21/21 / 0 · 48/48 / 0 · 49/49 / 0 · 40/40 / 0 · 28/28 / 0 · 40/40 |
+| qc-approval / -wiring / -edit · qc-hf-pos-page-authz | 0 · 16/16 / 0 · 7/7 / 0 · 12/12 · 0 · 56/56 |
+| `pnpm fitness` without env / with QC4 env · `fitness-pos.mts` | 0 · 41/41 / 0 · 41/41 · 0 · 8/8 |
+| `pnpm typecheck` (full, final tree) | 0 |
+
+### P1.15U follow-ups (from the review)
+- F4: `staffToken` on void/refund (seller identity on those screens).
+- 13B must always send ids: `userId` on the lock-screen PIN pad, `managerUserId` with every `managerPin`.
+- Recall of an approved held cart should quote with the approved cap (today `ok:true` + refused quote).
+- Discard the held cart when its POS_DISCOUNT_OVER request is rejected (today it stays HELD until expiry).
+### P1.18 close items
+- F7 (reviewer). · Per-device throttle for anonymous PIN guesses (ruling 1). · `PIN_TAKEN` as an existence probe for a PIN (setStaffPin). · Concurrent same-key auto-hold race (F5 residual). · Core-level self-approval block. · ORACLE-EDIT PN0 to accept async `scrypt(`.
