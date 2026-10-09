@@ -320,7 +320,7 @@ export function PosReceiptActions({ token, actions, points }: { token: string; a
             <p className="text-[13px] text-[color:var(--color-muted)]">{t("taxInvoice.hint", { days: TAX_INVOICE_REQUEST_DAYS })}</p>
             <label className={labelCls}>
               {t("taxInvoice.name")}
-              <input data-testid="pos-rpub-taxinvoice-name" className={inputCls} value={tf.name} maxLength={200} autoComplete="organization" onChange={(e) => setTf({ ...tf, name: e.target.value })} />
+              <input data-testid="pos-rpub-taxinvoice-name" className={inputCls} value={tf.name} maxLength={120} autoComplete="organization" onChange={(e) => setTf({ ...tf, name: e.target.value })} />
             </label>
             <label className={labelCls}>
               {t("taxInvoice.taxId")}
@@ -332,7 +332,7 @@ export function PosReceiptActions({ token, actions, points }: { token: string; a
             </label>
             <label className={labelCls}>
               {t("taxInvoice.address")}
-              <textarea data-testid="pos-rpub-taxinvoice-address" className={inputCls} rows={3} maxLength={500} value={tf.address} autoComplete="street-address" onChange={(e) => setTf({ ...tf, address: e.target.value })} />
+              <textarea data-testid="pos-rpub-taxinvoice-address" className={inputCls} rows={3} maxLength={300} value={tf.address} autoComplete="street-address" onChange={(e) => setTf({ ...tf, address: e.target.value })} />
             </label>
             <label className={labelCls}>
               {t("taxInvoice.email")}

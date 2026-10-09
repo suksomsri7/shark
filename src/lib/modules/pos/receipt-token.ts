@@ -66,6 +66,7 @@ const TOKEN_SALE_SELECT = {
   refundedSatang: true,
   paidAt: true,
   createdAt: true,
+  taxInvoiceDocId: true, // POS P1.13 ▸ R7: ออกใบกำกับเต็มรูปแล้ว = ปุ่ม ISSUED ◂
 } as const;
 export type TokenSale = Prisma.PosSaleGetPayload<{ select: typeof TOKEN_SALE_SELECT }>;
 

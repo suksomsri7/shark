@@ -151,6 +151,7 @@ model AccountDocument {
   // ── อ้างอิง ──
   sourceDocId     String? // เอกสารต้นทางที่แปลงมา (quotation→invoice→receipt)
   sourcePaymentId String? // QC5-A1: ใบกำกับภาษี(บริการ) ออกต่อ payment งวดที่รับ (1 payment = 1 ใบกำกับ)
+  supersededByDocId String? // POS P1.13 (CD1 · CD5): ใบกำกับอย่างย่อของบิล POS ที่ถูกแทนด้วยใบกำกับเต็มรูป → id ของ TAX_INVOICE (สถานะ CANCELLED · ไม่แตะ GL)
   taxPointBasis   AccountVatTiming? // QC5-A1: จุดรับรู้ภาษี (GOODS=ON_ISSUE / SERVICE=ON_PAYMENT)
   refSystemId     String? // ระบบต้นทาง (POS system / business unit) เมื่อไหลจาก link
   refType         String? // ชื่อ Prisma model ตรงตัว (เช่น "PosSale")

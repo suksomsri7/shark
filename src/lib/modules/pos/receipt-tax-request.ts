@@ -24,8 +24,8 @@ import {
 
 type Db = typeof prisma | Prisma.TransactionClient;
 const DAY_MS = 86_400_000;
-const NAME_MAX = 200;
-const ADDRESS_MAX = 500;
+const NAME_MAX = 120; // POS P1.13 follow-up 2: เท่าใบกำกับเต็มรูป (tax-invoice-shared)
+const ADDRESS_MAX = 300; // POS P1.13 follow-up 2
 const EMAIL_MAX = 254;
 const OPEN_STATUSES: PosTaxInvoiceRequestStatus[] = ["REQUESTED", "ISSUED"];
 const INPUT_KEYS = new Set(["name", "taxId", "branchCode", "address", "email"]);
@@ -73,6 +73,7 @@ export function taxInvoiceEligible(sale: Pick<TokenSale, "docType" | "status" | 
 
 /** ปุ่ม "ขอใบกำกับภาษีเต็มรูป" บนหน้า (R2 actions.taxInvoice) — คำขอที่มีอยู่ชนะ (ISSUED > REQUESTED) · ไม่มี = ตามสิทธิ์ขอ */
 export async function taxInvoiceActionOf(sale: TokenSale, kind: string, client?: Db): Promise<PublicTaxInvoiceAction> {
+  if (sale.taxInvoiceDocId) return "ISSUED"; // POS P1.13 ▸ R7: ออกเต็มรูปแล้ว (ตอนชำระ · ทีหลัง · จากคำขอ) ◂
   const db = client ?? prisma;
   const open = await db.posTaxInvoiceRequest.findMany({
     where: { tenantId: sale.tenantId, saleId: sale.id, status: { in: OPEN_STATUSES } },

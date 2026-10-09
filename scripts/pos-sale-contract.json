@@ -192,6 +192,10 @@
       "soldByUserId": {
         "optional": true,
         "type": "string"
+      },
+      "taxInvoice": {
+        "optional": true,
+        "type": "TaxInvoiceSnapshot"
       }
     },
     "MemberSaleChoices": {
