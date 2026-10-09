@@ -151,13 +151,21 @@ export async function holdRegisterCart(ctx: RegisterCtx, actor: RegisterActor, i
  * POS P1.15 ▸ R4/R5: พักบิลส่วนลดเกินสิทธิ์ไว้รออนุมัติ POS_DISCOUNT_OVER (ภายในเท่านั้น — ผู้เรียก: register.ts#submitRegisterSale) ·
  * ตรวจครบแบบ quote ยกเว้นเพดานส่วนลด (คำขออนุมัติคือการขอเกินเพดาน) · heldBy = ผู้ขาย ◂
  */
-export async function holdCartForApproval(ctx: RegisterCtx, actor: RegisterActor, cartRaw: unknown, client?: Db): Promise<{ ok: true; id: string } | RegisterRefusal> {
+export async function holdCartForApproval(ctx: RegisterCtx, actor: RegisterActor, cartRaw: unknown, client?: Db, opts?: { id?: string }): Promise<{ ok: true; id: string } | RegisterRefusal> {
   return guard("holdCartForApproval", async (): Promise<{ ok: true; id: string } | RegisterRefusal> => {
     const db: Db = client ?? prisma;
     const s = await scope(db, ctx, actor);
     if (isRefusal(s)) return s;
-    const row = await holdCore(db, s, cartRaw, "รออนุมัติส่วนลด", null);
-    return isRefusal(row) ? row : { ok: true, id: row.id };
+    // POS P1.18 ▸ K3 (F5 ที่เหลือ): ผู้เรียกส่ง id ที่คิดจากคีย์ส่งบิล ⇒ ส่งพร้อมกันคีย์เดียว = แถวเดียว (ตัวที่ชนคีย์หลักใช้แถวของผู้ชนะ) ◂
+    try {
+      const row = await holdCore(db, s, cartRaw, "รออนุมัติส่วนลด", null, opts?.id);
+      return isRefusal(row) ? row : { ok: true, id: row.id };
+    } catch (e) {
+      if (!opts?.id || (e as { code?: unknown } | null)?.code !== "P2002") throw e;
+      const won = await db.posHeldCart.findFirst({ where: { id: opts.id, ...rowWhere(s) }, select: { id: true } });
+      if (!won) throw e;
+      return { ok: true, id: won.id };
+    }
   });
 }
 
@@ -171,7 +179,7 @@ export async function armHeldCartApproval(tenantId: string, heldCartId: string, 
 }
 
 /** ตะกร้า → แถวบิลพัก (ตัวตรวจเดียวกับ quote) · maxDiscountBp: undefined = เพดานของผู้ขาย · null = ไม่จำกัด (รออนุมัติ) */
-async function holdCore(db: Db, s: Scoped, cartRaw: unknown, label: string | null, maxDiscountBp: null | undefined): Promise<Row | RegisterRefusal> {
+async function holdCore(db: Db, s: Scoped, cartRaw: unknown, label: string | null, maxDiscountBp: null | undefined, id?: string): Promise<Row | RegisterRefusal> {
   const cart = registerCanonicalCart(cartRaw);
   if (isRefusal(cart)) return cart;
   if (!cart.lines.length) return refuse("VALIDATION", "ตะกร้าว่าง — ไม่มีอะไรให้พัก");
@@ -192,6 +200,7 @@ async function holdCore(db: Db, s: Scoped, cartRaw: unknown, label: string | nul
   const stored: Stored = { cart, heldUnitPrices: q.lines.map((l) => l.unitPriceSatang), preview };
   return db.posHeldCart.create({
     data: {
+      ...(id ? { id } : {}), // POS P1.18 ▸ K3 ◂
       ...rowWhere(s),
       label,
       cartJson: stored as unknown as Prisma.InputJsonValue,

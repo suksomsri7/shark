@@ -21,6 +21,8 @@ import { canAccessUnit, evaluate } from "@/lib/core/rbac";
 import { prisma } from "./db";
 import { isPosDeviceCode, posDeviceRevoked } from "./device";
 import {
+  STAFF_PIN_DEVICE_THROTTLE_AFTER,
+  STAFF_PIN_DEVICE_THROTTLE_MS,
   STAFF_PIN_LOCK_AFTER,
   STAFF_PIN_LOCK_MS,
   STAFF_PIN_RE,
@@ -54,6 +56,7 @@ const MSG: Partial<Record<RegisterRefusalCode, string>> = {
   PIN_TAKEN: "PIN นี้มีคนในสาขาใช้อยู่แล้ว — เลือก PIN อื่น",
   PIN_INVALID: "PIN ไม่ถูกต้อง",
   PIN_LOCKED: "PIN นี้ถูกล็อกชั่วคราวเพราะใส่ผิดหลายครั้ง — ให้ผู้จัดการปลดล็อก หรือรอ 15 นาที",
+  PIN_THROTTLED: "ลองผิดหลายครั้ง — รอ 15 นาทีแล้วลองใหม่", // POS P1.18 ▸ K1 ◂
   DEVICE_REVOKED: "เครื่องนี้ถูกเพิกถอนแล้ว — ใช้งานไม่ได้ ติดต่อผู้จัดการ",
   INTERNAL: "ระบบ PIN ขัดข้องชั่วคราว — ลองอีกครั้ง",
 };
@@ -162,8 +165,10 @@ export async function setStaffPin(ctx: StaffPinCtx, actor: RegisterActor, input:
     const target = self ? a : await posMemberActor(s.tenantId, userId, db);
     if (!target || !canSellAt(target, s.unitId)) return refuse("NOT_FOUND", "พนักงานคนนี้ยังขายที่สาขานี้ไม่ได้ — ให้สิทธิ์ขายก่อนตั้ง PIN");
     // CD1 + R2: PIN ซ้ำในสาขาเดียวกันไม่ได้ (เทียบกับทุกแถวของสาขายกเว้นแถวของคนนี้เอง) — ข้อความไม่บอกว่าเป็นของใคร
+    // POS P1.18 ▸ K2 (มติ 1 · ทางสำรอง): คงความไม่ซ้ำต่อสาขา (จอ PIN แบบไม่ระบุคนต้องจับได้ไม่เกิน 1 แถว) แต่ปฏิเสธด้วย
+    //   {code, message} เดียวกับ PIN อ่อนทุกตัวอักษร ⇒ แยกไม่ออกว่ามีคนใช้ PIN นี้อยู่ (ไม่คืน PIN_TAKEN แล้ว) ◂
     const others = await db.posStaffPin.findMany({ where: { tenantId: s.tenantId, unitId: s.unitId, userId: { not: userId } }, select: { pinHash: true } });
-    for (const r of others) if (await pinMatches(pin, r.pinHash)) return refuse("PIN_TAKEN");
+    for (const r of others) if (await pinMatches(pin, r.pinHash)) return refuse("WEAK_PIN");
     const pinHash = await hashPin(pin);
     const row = await db.posStaffPin.upsert({
       where: { unitId_userId: { unitId: s.unitId, userId } },
@@ -324,6 +329,21 @@ export async function staffFromToken(ctx: StaffPinCtx, token: string, client?: D
   return a ? { userId: a.userId } : null;
 }
 
+// ═══════════ POS P1.18 ▸ K1 ด่านต่อเครื่อง (PIN แบบไม่ระบุคน) ◂ ═══════════
+const PIN_FAILED_AUDIT = "pos.staff.pin_failed";
+/** จำนวนครั้งที่ใส่ PIN แบบไม่ระบุคนผิดบนเครื่องนี้ (สาขานี้) ภายในหน้าต่าง STAFF_PIN_DEVICE_THROTTLE_MS */
+async function anonymousPinFailures(db: Db, s: UnitScope, deviceId: string): Promise<number> {
+  const since = new Date(Date.now() - STAFF_PIN_DEVICE_THROTTLE_MS);
+  return db.auditLog.count({
+    where: {
+      tenantId: s.tenantId,
+      action: PIN_FAILED_AUDIT,
+      createdAt: { gte: since },
+      AND: [{ after: { path: ["deviceId"], equals: deviceId } }, { after: { path: ["unitId"], equals: s.unitId } }],
+    },
+  });
+}
+
 // ═══════════ ยืนยัน PIN บนเครื่อง (R2) ═══════════
 /**
  * ใส่ PIN ที่เครื่อง (ไม่มี actor — เครื่องคือผู้เรียก · deviceId = รหัสเครื่องของ P1.9/P1.10) → โทเคนผู้ขาย 12 ชม. ·
@@ -344,8 +364,17 @@ export async function verifyStaffPin(
     if (await posDeviceRevoked(db, s.tenantId, s.unitId, deviceId)) return refuse("DEVICE_REVOKED");
     const key = tokenKey();
     if (!key) return refuse("INTERNAL");
+    // POS P1.18 ▸ K1 (มติ 2): ด่านกันเดาต่อเครื่องของการใส่ PIN แบบไม่ระบุคน — นับแถว AuditLog pos.staff.pin_failed ของเครื่องนี้
+    //   ในหน้าต่าง "ก่อน" ตรวจ PIN · ครบ N = PIN_THROTTLED (PIN ถูกก็ไม่ผ่าน · ไม่เขียนแถวผิดเพิ่ม ⇒ หน้าต่างหมดเอง) ·
+    //   ระบุคน (userId) ไม่ผ่านด่านนี้ (ใช้ตัวนับ/ล็อกต่อแถวเดิม) · เก็บใน AuditLog ⇒ ไม่มี migration และถูกต้องข้ามหลายเครื่องเซิร์ฟเวอร์ ◂
+    const anonymous = input.userId === undefined || input.userId === null;
+    if (anonymous && (await anonymousPinFailures(db, s, deviceId)) >= STAFF_PIN_DEVICE_THROTTLE_AFTER) return refuse("PIN_THROTTLED");
     const m = await matchStaffPin(s, input.pin, input.userId ?? null, db);
-    if (isRefusal(m)) return m;
+    if (isRefusal(m)) {
+      if (anonymous && m.code === "PIN_INVALID")
+        await writeAudit({ tenantId: s.tenantId, actorId: null, action: PIN_FAILED_AUDIT, targetType: "PosDevice", after: { deviceId, unitId: s.unitId } });
+      return m;
+    }
     const t = makeToken(key, s.tenantId, s.unitId, deviceId, m.actor.userId, m.pinHash, Date.now());
     await writeAudit({ tenantId: s.tenantId, actorId: m.actor.userId, action: "pos.staff.pin_verified", targetType: "PosStaffPin", targetId: m.rowId, after: { userId: m.actor.userId, unitId: s.unitId, deviceId } });
     return { ok: true, userId: m.actor.userId, role: m.actor.role, staffToken: t.staffToken, expiresAt: t.expiresAt };

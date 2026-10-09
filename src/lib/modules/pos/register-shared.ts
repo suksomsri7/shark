@@ -59,6 +59,9 @@ export const STAFF_PIN_RE = /^[0-9]{4,6}$/;
 export const STAFF_PIN_LOCK_AFTER = 5;
 export const STAFF_PIN_LOCK_MS = 15 * 60_000;
 export const STAFF_TOKEN_TTL_MS = 12 * 3_600_000;
+/** POS P1.18 ▸ K1 (มติ 2): ใส่ PIN แบบไม่ระบุคนผิดครบ N ครั้งบนเครื่องเดียวภายในหน้าต่าง ⇒ PIN_THROTTLED ทุกครั้งถัดไปของเครื่องนั้นจนพ้นหน้าต่าง ◂ */
+export const STAFF_PIN_DEVICE_THROTTLE_AFTER = 10;
+export const STAFF_PIN_DEVICE_THROTTLE_MS = 15 * 60_000;
 export type StaffPinOk = { ok: true };
 /** ผล verifyStaffPin: staffToken ส่งต่อใน staffToken ของ submit/พัก/เรียกคืน/เปิดกะ · expiresAt = ISO */
 export type VerifyStaffPinOk = { ok: true; userId: string; role: RegisterRole; staffToken: string; expiresAt: string };
@@ -160,6 +163,9 @@ export type RegisterRefusalCode =
   // POS P1.15: PIN พนักงาน · โทเคนผู้ขายบนเครื่อง · สายอนุมัติ (R9)
   | "PIN_INVALID"
   | "PIN_LOCKED"
+  // POS P1.18 ▸ K1: เครื่องนี้ใส่ PIN แบบไม่ระบุคนผิดเกินกำหนด (รอพ้นหน้าต่าง 15 นาที) ◂
+  | "PIN_THROTTLED"
+  // PIN_TAKEN คงไว้ให้ client เก่า — P1.18 K2: ไม่ถูกคืนแล้ว (PIN ซ้ำ = คำปฏิเสธเดียวกับ PIN อ่อน)
   | "PIN_TAKEN"
   | "WEAK_PIN"
   | "STAFF_TOKEN_INVALID"
@@ -730,6 +736,7 @@ const REFUSAL_KEY: Readonly<Record<string, string>> = {
   // POS P1.15 ▸ PIN · โทเคนผู้ขาย · สายอนุมัติ (R9 · คีย์ใต้ pos.register — CONTROLLER-DECISION 12) ◂
   PIN_INVALID: "errors.pinInvalid",
   PIN_LOCKED: "errors.pinLocked",
+  PIN_THROTTLED: "errors.pinThrottled", // POS P1.18 ▸ K1 ◂
   PIN_TAKEN: "errors.pinTaken",
   WEAK_PIN: "errors.weakPin",
   STAFF_TOKEN_INVALID: "errors.staffTokenInvalid",
