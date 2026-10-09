@@ -4256,7 +4256,9 @@ export async function supersedeExternalSaleAbb(input: {
   systemId: string; // สมุดบัญชี
   abbDocId: string;
   contactId: string | null;
-}): Promise<{ ok: true; docId: string; docNo: string | null; created: boolean } | { ok: false; reason: string; code: "NOT_FOUND" | "NOT_LIVE" | "INTERNAL" }> {
+  /** POS P1.13 fix F1: ผู้ซื้อของคำขอนี้ — ABB ถูกแทนไปแล้ว (created:false) ⇒ บอกว่าใบเดิมเป็นของผู้ซื้อคนนี้ไหม (taxId · สาขา · ชื่อ) */
+  buyer?: { name: string; taxId: string; branchCode: string };
+}): Promise<{ ok: true; docId: string; docNo: string | null; created: boolean; buyerMatches?: boolean } | { ok: false; reason: string; code: "NOT_FOUND" | "NOT_LIVE" | "INTERNAL" }> {
   try {
     const contact = input.contactId
       ? await prisma.accountContact.findFirst({
@@ -4272,8 +4274,15 @@ export async function supersedeExternalSaleAbb(input: {
       });
       if (!abb) return { ok: false as const, code: "NOT_FOUND" as const, reason: "ไม่พบใบกำกับภาษีอย่างย่อของบิลนี้" };
       if (abb.supersededByDocId) {
-        const prev = await tx.accountDocument.findFirst({ where: { id: abb.supersededByDocId, systemId: input.systemId }, select: { id: true, docNo: true } });
-        if (prev) return { ok: true as const, docId: prev.id, docNo: prev.docNo, created: false };
+        const prev = await tx.accountDocument.findFirst({ where: { id: abb.supersededByDocId, systemId: input.systemId }, select: { id: true, docNo: true, contactSnapshot: true } });
+        if (prev) {
+          // POS P1.13 fix F1: ใบเดิมเป็นของผู้ซื้อคนนี้ไหม (กันคำขอสองตัวแข่งกันแล้วผู้แพ้ได้เอกสารของอีกคน) ◂
+          const snap = (prev.contactSnapshot && typeof prev.contactSnapshot === "object" ? prev.contactSnapshot : {}) as Record<string, unknown>;
+          const buyerMatches = input.buyer
+            ? snap.taxId === input.buyer.taxId && ((snap.branchCode as string | null | undefined) || "00000") === (input.buyer.branchCode || "00000") && snap.name === input.buyer.name
+            : undefined;
+          return { ok: true as const, docId: prev.id, docNo: prev.docNo, created: false, ...(buyerMatches !== undefined ? { buyerMatches } : {}) };
+        }
       }
       if (abb.status === "CANCELLED" || abb.status === "VOIDED") return { ok: false as const, code: "NOT_LIVE" as const, reason: "ใบกำกับภาษีอย่างย่อนี้ถูกยกเลิกแล้ว" };
       const docNo = await nextDocNo(tx, input.tenantId, input.systemId, "TAX_INVOICE", abb.issueDate);

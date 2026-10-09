@@ -140,12 +140,15 @@ async function issueCore(x: IssueCore): Promise<TaxInvoiceIssueResult> {
     if (conv.code === "INTERNAL") return internal("supersede", conv.reason);
     return taxInvoiceRefuse("NOT_ELIGIBLE");
   }
+  // fix F1: ABB ถูกแทนไปแล้วด้วยใบของผู้ซื้อคนอื่น (คำขอแข่งกัน) ⇒ ALREADY_ISSUED และไม่เขียนอะไรฝั่ง POS
+  if (!conv.created && conv.buyerMatches === false) return taxInvoiceRefuse("ALREADY_ISSUED");
 
   const snapshot: TaxInvoiceSnapshot = { ...buyer, requestedAt: new Date().toISOString() };
   // ธุรกรรมเดียว: สำเนา + เลขเอกสาร (เฉพาะเมื่อยังว่าง — แข่งกันได้ผู้ชนะคนเดียว) · คำขอ P1.11 → ISSUED · event
   const won = await prisma.$transaction(async (tx) => {
     const n = await tx.posSale.updateMany({
-      where: { id: sale.id, tenantId: ctx.tenantId, taxInvoiceDocId: null },
+      // fix F1: ยึดเลขเอกสารได้เฉพาะบิลที่ยัง PAID และไม่มีการคืนเงิน (ปิดช่องแข่งกับการคืนเงิน)
+      where: { id: sale.id, tenantId: ctx.tenantId, taxInvoiceDocId: null, status: "PAID", refundedSatang: 0 },
       data: { taxInvoice: snapshot as unknown as Prisma.InputJsonValue, taxInvoiceDocId: conv.docId },
     });
     if (n.count !== 1) return false;
@@ -165,10 +168,15 @@ async function issueCore(x: IssueCore): Promise<TaxInvoiceIssueResult> {
     return true;
   });
   if (!won) {
-    // อีกคำขอออกให้บิลนี้ไปก่อนเสี้ยววินาที — ตัดสินเหมือนยิงซ้ำ
-    const again = await prisma.posSale.findFirst({ where: { id: sale.id, tenantId: ctx.tenantId }, select: { taxInvoice: true, taxInvoiceDocId: true } });
-    const prev = snapshotBuyer(again?.taxInvoice);
-    if (again?.taxInvoiceDocId && prev && sameTaxInvoiceBuyer(prev, buyer)) return { ok: true, docId: again.taxInvoiceDocId, docNo: await docNoOf(ctx, sale.id, again.taxInvoiceDocId) };
+    // อีกคำขอออกให้บิลนี้ไปก่อนเสี้ยววินาที / บิลถูกคืนเงิน-ยกเลิกระหว่างทาง — ตัดสินจากแถวล่าสุด
+    const again = await prisma.posSale.findFirst({ where: { id: sale.id, tenantId: ctx.tenantId }, select: { taxInvoice: true, taxInvoiceDocId: true, status: true, refundedSatang: true } });
+    if (again?.taxInvoiceDocId) {
+      const prev = snapshotBuyer(again.taxInvoice);
+      if (prev && sameTaxInvoiceBuyer(prev, buyer)) return { ok: true, docId: again.taxInvoiceDocId, docNo: await docNoOf(ctx, sale.id, again.taxInvoiceDocId) };
+      return taxInvoiceRefuse("ALREADY_ISSUED");
+    }
+    if (again?.status === "VOIDED") return taxInvoiceRefuse("SALE_VOIDED");
+    if (again && (again.refundedSatang > 0 || again.status === "REFUNDED")) return taxInvoiceRefuse("HAS_REFUNDS");
     return taxInvoiceRefuse("ALREADY_ISSUED");
   }
   await writeAudit({

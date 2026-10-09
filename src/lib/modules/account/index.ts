@@ -279,7 +279,7 @@ export async function supersedeAbbWithTaxInvoice(input: {
   sourceSystemId: string; // POS AppSystem.id
   refId: string; // PosSale.id
   buyer: { kind: "PERSON" | "JURISTIC"; name: string; taxId: string; branchCode: string; address: string; email: string | null };
-}): Promise<{ ok: true; docId: string; docNo: string | null; created: boolean } | { ok: false; code: "UNLINKED" | "NOT_VAT" | "NO_ABB" | "NOT_LIVE" | "INTERNAL"; reason: string }> {
+}): Promise<{ ok: true; docId: string; docNo: string | null; created: boolean; buyerMatches?: boolean } | { ok: false; code: "UNLINKED" | "NOT_VAT" | "NO_ABB" | "NOT_LIVE" | "INTERNAL"; reason: string }> {
   try {
     const link = await findAccountLinkForPos(input.tenantId, input.sourceSystemId);
     if (!link) return { ok: false, code: "UNLINKED", reason: "POS นี้ยังไม่ผูกสมุดบัญชี" };
@@ -289,7 +289,13 @@ export async function supersedeAbbWithTaxInvoice(input: {
     const abb = await findDocByRef(link.systemId, "TAX_INVOICE_ABB", "PosSale", input.refId);
     if (!abb) return { ok: false, code: "NO_ABB", reason: "ระบบบัญชียังไม่มีใบกำกับภาษีอย่างย่อของบิลนี้" };
     const contactId = await resolveBuyerContact(ctx, input.buyer);
-    const res = await supersedeExternalSaleAbb({ tenantId: input.tenantId, systemId: link.systemId, abbDocId: abb.id, contactId });
+    const res = await supersedeExternalSaleAbb({
+      tenantId: input.tenantId,
+      systemId: link.systemId,
+      abbDocId: abb.id,
+      contactId,
+      buyer: { name: input.buyer.name, taxId: input.buyer.taxId, branchCode: input.buyer.branchCode }, // POS P1.13 fix F1 ◂
+    });
     if (!res.ok) return { ok: false, code: res.code === "NOT_FOUND" ? "NO_ABB" : res.code, reason: res.reason };
     return res;
   } catch (e) {
