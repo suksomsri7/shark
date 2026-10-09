@@ -59,7 +59,7 @@ Contract: `ledger/pos-briefs/pos-brief-P1.13.md` §2 R1–R9, §3, §4, §5 CD1�
 | 23 | messages | `src/messages/{th,en}/pos.json` → `taxInvoice.errors.{validation, taxIdInvalid, tooLate, saleVoided, alreadyIssued, notEligible, accountPending, permissionDenied, saleNotFound, notFound, dbdNotConfigured, dbdUnavailable, rateLimited, internal, unknown}` |
 | 24 | ledger | `ledger/POS-OWNER-PENDING.md` mentions `supersededByDocId` (account-schema touch, CD5) |
 
-## Check list (32 · S=4 P=4 X1=2 X2=3 X3=1 X4=2 X5=7 functional=9 — L6 added by ORACLE-EDIT (ruling 15) · S5 added by ORACLE-EDIT (fix round 1 follow-up 3))
+## Check list (33 · S=4 P=4 X1=2 X2=3 X3=1 X4=2 X5=7 functional=10 — L6 added by ORACLE-EDIT (ruling 15) · S5 added by ORACLE-EDIT (fix round 1 follow-up 3) · U1 added by ORACLE-EDIT (P1.13U ruling 8))
 ST1 schema + additive migration · ST2 registrations/labels/permission/messages/owner-pending · ST3 pos→account facade only, facade exports, no direct account/customer writes, no DBD key/fetch, pure shared file · ST4 "use server" only async functions + 5 actions ·
 B1 parser happy paths/defaults/trim · B2 mod-11 (4 good, 7 bad; oracle self-control) · B3 branch/kind/source · B4 length/shape limits + message-key mapper ·
 S1 snapshot at pay time (linked + unlinked) + invalid buyer writes nothing · S2 TAX_INVOICE (no ABB) + contact by taxId + taxInvoiceDocId · S3 GL equal to identical sale without buyer · S4 event once + replay ×2 + unlinked no doc ·
@@ -96,3 +96,9 @@ S2 also asserts the documents' `contactSnapshot` = the buyer as typed: bT2 (same
 
 ## ORACLE-EDIT S5 (fix round 1 · follow-up 3)
 New check `S5`: pay-time buyer on a bill that would get no tax invoice (POS-N, unlinked) ⇒ `NOT_ELIGIBLE` (Thai message) before any write — no sale for the key, no tax-invoice event. The former unlinked-snapshot part of S1 (bTN) moved here (bTN is refused now, so it is excluded from the fixture-error prefix); S4's unlinked lines stay and hold vacuously. Count 31 → 32.
+
+## ORACLE-EDIT N3 (P1.13U step 0 · reviewer low N3)
+S4 no longer carries the vacuous "unlinked POS has no doc/event" lines (bTN is refused at submit since S5, so they held trivially); S5 owns the unlinked case. Count unchanged.
+
+## ORACLE-EDIT U1 (P1.13U · controller ruling 2/8)
+New check `U1`: `registerStatus(ctx, owner).taxInvoiceEligible` = true on POS-A (linked VAT book, ABB on, book taxId) and false on POS-N (unlinked). Count 32 → 33.

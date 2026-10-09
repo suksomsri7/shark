@@ -61,6 +61,7 @@ const CHECKS: readonly Def[] = [
   D("S3", "X4", "[R2 CD6] GL ของบิลที่มีผู้ซื้อ = บิลเดียวกันไม่มีผู้ซื้อ ทุกรหัสบัญชี (Σ Dr−Cr ต่อรหัส · จำนวน JV · สมดุล) · ไม่มี JV ของตัวเอกสาร TAX_INVOICE"),
   D("S4", "X1", "[R2 COMMON-4] outbox pos.sale.taxInvoiceIssued 1 แถว {saleId, docId} DONE · เล่น consumers[pos.sale.paid] ซ้ำ 2 รอบ → ยังเอกสาร 1 · event 1 · JV เท่าเดิม · taxInvoiceDocId เดิม · consumers[pos.sale.taxInvoiceIssued] ×2 ไม่ throw (ส่วน POS ไม่ผูกสมุด ย้ายไป S5 · ORACLE-EDIT N3)"),
   D("S5", "-", "[follow-up 3 · ORACLE-EDIT] ตอนชำระ: ผู้ซื้อ + บิลที่จะไม่ได้ใบกำกับ (POS ไม่ผูกสมุด) → NOT_ELIGIBLE ข้อความไทย ก่อนเขียนอะไร (ไม่มีบิลของคีย์ · ไม่มี outbox/เอกสาร/event)"),
+  D("U1", "-", "[P1.13U มติ 2 · ORACLE-EDIT] registerStatus.taxInvoiceEligible: POS ผูกสมุด VAT (ABB · มีเลขภาษี) → true · POS ไม่ผูกสมุด → false (ปุ่ม/สวิตช์ใบกำกับบนจอจาง)"),
   // ── L ออกทีหลัง ──
   D("L1", "X5", "[R3 CD1 CD2] issueFullTaxInvoice บิล ABB (paidAt 2 วันก่อน) → {ok:true, docId, docNo} · ABB CANCELLED + supersededByDocId = ใบใหม่ · TAX_INVOICE sourceDocId = ABB · refType/refId บิล · ยอด/VAT/ฐาน/บรรทัด = ABB · issueDate = ABB.issueDate · เลขชุด TX ≠ เลข ABB · เอกสารมีผล 1 ใบต่อบิล · GL เท่าเดิมทุกรหัส · snapshot + taxInvoiceDocId · audit pos.taxinvoice.issued 1"),
   D("L2", "X1", "[R3] ยิงซ้ำ saleId+ผู้ซื้อเดิม → ok docId เดิม (เอกสาร/audit ไม่เพิ่ม · ABB ไม่เปลี่ยน) · ผู้ซื้อคนอื่น → ALREADY_ISSUED และ snapshot/เอกสารไม่เปลี่ยน"),
@@ -1048,6 +1049,21 @@ async function runDb() {
     // ไม่มีบิล ⇒ ไม่มี outbox ของบิล (outbox เขียนใน tx เดียวกับบิล) · ไม่มี event ใบกำกับของ POS-N
     if ((await events(EV_ISSUED, () => true)).some((e) => e.systemId === S.POSN)) p.push("มี event ใบกำกับของ POS-N");
     chk("S5", NS === "" && p.length === 0, "NOT_ELIGIBLE ไทย · ไม่มีบิล/outbox", FXB(NS + (p.join(" · ") || "ครบ")));
+  }
+
+  // ════════ U1 สถานะจอขาย: ออกใบกำกับเต็มรูปได้ไหม (ORACLE-EDIT · P1.13U มติ 2) ════════
+  {
+    const p: string[] = [];
+    if (fx) p.push("fixture");
+    else {
+      const sa = await call(register, "registerStatus", ctxOf("A"), owner);
+      const sn = await call(register, "registerStatus", ctxOf("N"), owner);
+      if (sa?.ok !== true) p.push(`POS-A ${codeOf(sa)} ${short(sa?.message ?? "", 60)}`);
+      else if (sa.taxInvoiceEligible !== true) p.push(`POS-A taxInvoiceEligible ${short(sa.taxInvoiceEligible, 20)} (คาด true)`);
+      if (sn?.ok !== true) p.push(`POS-N ${codeOf(sn)} ${short(sn?.message ?? "", 60)}`);
+      else if (sn.taxInvoiceEligible !== false) p.push(`POS-N taxInvoiceEligible ${short(sn.taxInvoiceEligible, 20)} (คาด false)`);
+    }
+    chk("U1", p.length === 0, "ผูกสมุด true · ไม่ผูก false", p.join(" · ") || "ครบ");
   }
 
   // ─── ย้ายเวลา ───
