@@ -100,3 +100,12 @@ bash scripts/iso.sh bash scripts/qc4.sh bash scripts/with-gate-lock.sh env AI_CO
 
 ## 9. QC4 state
 Left on AT-1 by design: the USAGE rows of every probe run + one `ADJUST qc-ai-t0.1-refund-<runId>` per run (append-only ledger). Wallet balance, AiUsage of the day and the row count of every other tenant table are equal before/after each run (oracle S5.1–S5.5 green).
+
+## Controller measurement + acceptance run (2026-10-08/09)
+- REAL run 1 (20:57Z): stopped at run 9/30 with `over_budget/day` — the tenant daily net (400,000 tokens, `provider.ts` dailyLimits) was full after 8 real tasks. Spend US$0.942669 list. Cleanup complete, residue none. Partial file kept outside the repo (`/tmp/ai-t0.1-real/run1/`).
+- REAL run 2 (21:2x–21:45Z): `SHARK_AI_DAILY_TOKENS=8000000 SHARK_AI_DAILY_REQ=2000 COST_CAP_USD=3.9` (env knobs of provider.ts, no code change). 29/30 rows, `stoppedByCap: true` (teach-back round 3 not measured), spend US$4.038957 list. Cleanup: 29 conversations, wallet restored, residue none. Result = `ledger/AI-TEAM-COST-2026-10.md`.
+- Total real spend of T0.1: **US$4.98 list price** (brief budget 3; KICKOFF cap 5). Cap overshoot of one task is by design (cap is checked before a run starts).
+- ORACLE-EDIT T0.1-S1.5 (controller): a cap-stopped real file is accepted when every type has ≥ 2 runs (AI-TEAM-RUN §4).
+- Controller re-run after the real file exists: oracle forced 26/26 ×2 exit 0 · unforced 26/26 exit 0 · qc-ai-t0.2 41/41 · qc-ai-credit 32/32 · qc-ai-usage exit 0 · fitness 42/42 · `pnpm typecheck` exit 0.
+- NOT done: fresh reviewer (gate D9) — the owner ordered a pause before it could be spawned ⇒ T0.1 stays 🔍 until a read-only review of `scripts/ai-team-cost-probe.mts` (cleanup scoping!) is done at resume. Hunter not required.
+- Findings for later WOs: weighted mean 99,449 micro/task (≈ 3.58 THB list) · input tokens 8k–131k per task (tool definitions + context dominate) · packs at 50 % margin ≈ 68 / 208 / 557 tasks · the daily net blocks a shop after ~8 real tool tasks (owner question Q5; T3.1 must scale it with the pack) · `cachedTokens` not read by the provider layer, so list price overstates the bill by an unknown amount.
