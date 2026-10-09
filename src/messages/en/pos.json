@@ -1002,7 +1002,54 @@
         "noMember": "Only member bills can rate the shop",
         "alreadyReviewed": "This bill has already been rated — thank you",
         "reviewExpired": "Rating for this bill has expired (30 days) — thank you for your visit"
-      }
+      },
+      "title": "Online receipt",
+      "status": {
+        "PAID": "Paid",
+        "VOIDED": "Voided",
+        "REFUNDED_PARTIAL": "Partly refunded {amount}",
+        "REFUNDED": "Refunded"
+      },
+      "receiptNo": "Receipt {no}",
+      "abbNo": "Abbreviated tax invoice {no}",
+      "discount": "Discount + coupons",
+      "serviceCharge": "Service charge",
+      "vatIncluded": "VAT {rate}% included",
+      "net": "Net total",
+      "tip": "Tip",
+      "refunded": "Refunded",
+      "pay": {
+        "CASH": "Cash",
+        "TRANSFER": "Transfer",
+        "PROMPTPAY": "PromptPay",
+        "DEPOSIT": "Deposit",
+        "ROOM_CHARGE": "Room charge",
+        "CARD": "Card",
+        "OTHER": "Other"
+      },
+      "footer": "Sent by SHARK · no other personal data on this page",
+      "lang": {
+        "th": "Thai",
+        "en": "English"
+      },
+      "notFound": {
+        "title": "Receipt not found",
+        "desc": "Check the link or scan the QR code on the receipt again"
+      },
+      "unavailable": {
+        "title": "Receipt temporarily unavailable",
+        "desc": "The receipt service is having trouble — open this link again in a moment"
+      },
+      "points": {
+        "open": "My points ({balance})",
+        "earned": "Earned on this bill",
+        "balance": "Points balance",
+        "unit": "{n} pts"
+      },
+      "close": "Close",
+      "sending": "Sending…",
+      "required": "Fill in this field first",
+      "counter": "{n}/{max}"
     },
     "send": {
       "errors": {
@@ -1010,18 +1057,62 @@
         "noLineIdentity": "This customer hasn't linked a LINE account with the shop — send by email or let them scan the QR code",
         "noEmail": "There's no email for this customer — enter an address to send to",
         "sendFailed": "The receipt couldn't be sent — please try again"
-      }
+      },
+      "line": "Send via LINE",
+      "email": "Send email",
+      "copyLink": "Copy receipt link",
+      "emailTitle": "Send the receipt by email",
+      "emailLabel": "Customer email",
+      "emailHint": "Leave empty = send to the bill's member email",
+      "emailInvalid": "The email address is not valid",
+      "submit": "Send receipt",
+      "close": "Close",
+      "sentLine": "Receipt sent via LINE",
+      "sentEmail": "Receipt sent by email",
+      "copied": "Receipt link copied",
+      "copyFailed": "Could not copy automatically — link: {url}",
+      "qrOff": "Turn on the online receipt QR in settings first",
+      "lineVia": "Send via LINE"
     },
     "issue": {
       "errors": {
         "rateLimited": "You've reported this bill 3 times in 24 hours — staff will contact you"
-      }
+      },
+      "open": "Report a problem with this bill",
+      "title": "Report a problem with this bill",
+      "message": "What went wrong with this bill",
+      "contact": "How to reach you, e.g. phone (optional)",
+      "submit": "Send report",
+      "sent": "Sent — our staff will get back to you"
     },
     "taxInvoice": {
       "errors": {
         "notEligible": "A full tax invoice is not available for this bill (paid abbreviated tax invoices only, within 7 days)",
         "alreadyRequested": "A full tax invoice has already been requested for this bill"
-      }
+      },
+      "open": "Request a full tax invoice",
+      "requested": "Requested · waiting for the shop",
+      "issued": "Full tax invoice issued",
+      "title": "Request a full tax invoice",
+      "hint": "Available within {days} days of payment · the shop issues the invoice from these details",
+      "name": "Buyer / company name",
+      "taxId": "Tax ID (13 digits)",
+      "branchCode": "Branch code (head office = 00000)",
+      "address": "Registered address",
+      "email": "Email for the invoice (optional)",
+      "submit": "Send request",
+      "done": "Request sent — the shop will issue your full tax invoice",
+      "taxIdInvalid": "The tax ID must be 13 digits",
+      "branchInvalid": "The branch code must be 5 digits"
+    },
+    "review": {
+      "open": "Rate the shop",
+      "title": "Rate the shop",
+      "star": "{n} stars",
+      "body": "Tell us more (optional)",
+      "submit": "Send rating",
+      "pick": "Pick a star rating first",
+      "done": "Thanks for your rating"
     }
   },
   "bills": {
@@ -1246,7 +1337,6 @@
       "showPoints": "Show points balance",
       "showPointsHint": "Bills with a member only · needs the points programme",
       "qrEReceipt": "Online receipt QR",
-      "qrEReceiptHint": "Customers scan to view the receipt or ask for a full tax invoice — not printed until online receipts arrive (P1.11)",
       "showCashier": "Show cashier name",
       "numbersCard": "POS numbers & document numbering",
       "devicesTitle": "POS number per device",
