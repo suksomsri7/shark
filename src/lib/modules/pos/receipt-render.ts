@@ -7,7 +7,8 @@
 
 // ═══════════════════ ชนิดข้อมูล (สัญญา R5) ═══════════════════
 export type ReceiptDocType = "SALE" | "REFUND";
-export type ReceiptKind = "TAX_INVOICE_ABB" | "RECEIPT";
+// POS P1.13 ▸ R7: TAX_INVOICE_FULL = บิลที่ออกใบกำกับภาษีเต็มรูปแล้ว (สลิปเป็นใบเสร็จ + "ออกใบกำกับภาษีเต็มรูปแล้ว เลขที่ …" · ไม่ใช่หัวใบกำกับอย่างย่อ) ◂
+export type ReceiptKind = "TAX_INVOICE_ABB" | "TAX_INVOICE_FULL" | "RECEIPT";
 export type ReceiptPayType = "CASH" | "TRANSFER" | "PROMPTPAY" | "DEPOSIT" | "ROOM_CHARGE" | "CARD";
 /** สถานะบิล (PosSale.status · แก้รอบ 1 F2) — VOIDED = ประทับ "ยกเลิก / VOID" · REFUNDED พิมพ์ปกติ (ใบลดหนี้แยก · P1.16) */
 export type ReceiptSaleStatus = "PAID" | "VOIDED" | "REFUNDED";
@@ -50,6 +51,8 @@ export type ReceiptLabels = {
   note: string;
   weight: string;
   fullTaxInvoiceHint: string;
+  /** POS P1.13 ▸ R7 ◂ */
+  fullTaxInvoiceIssued: string;
   eReceipt: string;
   pay: Record<ReceiptPayType, string>;
 };
@@ -76,7 +79,8 @@ export type ReceiptPayload = {
   paper: null;
   shop: { name: string; branchName: string; address: string; phone: string; taxId?: string; branchNo?: string; logoUrl?: string };
   device: { posRegNo?: string; name?: string };
-  doc: { receiptNo: string; issuedAt: string; cashierName?: string; shiftNo?: number; refReceiptNo?: string };
+  /** fullTaxInvoiceNo = เลขใบกำกับภาษีเต็มรูป (kind TAX_INVOICE_FULL · P1.13) */
+  doc: { receiptNo: string; issuedAt: string; cashierName?: string; shiftNo?: number; refReceiptNo?: string; fullTaxInvoiceNo?: string };
   lines: ReceiptLine[];
   totals: {
     /** Σ qty × ราคาต่อหน่วย (ก่อนส่วนลดรายการ) */
@@ -139,6 +143,7 @@ export const RECEIPT_LABELS: { readonly th: ReceiptLabels; readonly en: ReceiptL
     note: "หมายเหตุ",
     weight: "น้ำหนัก",
     fullTaxInvoiceHint: "ขอใบกำกับเต็มรูปได้ภายใน 7 วัน",
+    fullTaxInvoiceIssued: "ออกใบกำกับภาษีเต็มรูปแล้ว เลขที่",
     eReceipt: "สแกนรับใบเสร็จอิเล็กทรอนิกส์",
     pay: { CASH: "เงินสด", TRANSFER: "โอนเงิน", PROMPTPAY: "พร้อมเพย์", DEPOSIT: "มัดจำ", ROOM_CHARGE: "ลงบัญชีห้องพัก", CARD: "บัตร" },
   },
@@ -180,6 +185,7 @@ export const RECEIPT_LABELS: { readonly th: ReceiptLabels; readonly en: ReceiptL
     note: "Note",
     weight: "Weight",
     fullTaxInvoiceHint: "Full tax invoice available on request within 7 days",
+    fullTaxInvoiceIssued: "Full tax invoice issued, no.",
     eReceipt: "Scan for e-receipt",
     pay: { CASH: "Cash", TRANSFER: "Transfer", PROMPTPAY: "PromptPay", DEPOSIT: "Deposit", ROOM_CHARGE: "Room charge", CARD: "Card" },
   },
@@ -259,7 +265,7 @@ function totalRows(p: ReceiptPayload, L: ReceiptLabels): { label: string; satang
   return rows;
 }
 function vatRows(p: ReceiptPayload, L: ReceiptLabels): { label: string; satang: number }[] {
-  if (p.kind !== "TAX_INVOICE_ABB") return [];
+  if (p.kind !== "TAX_INVOICE_ABB" && p.kind !== "TAX_INVOICE_FULL") return [];
   return [
     { label: L.vatBase, satang: p.totals.vatBaseSatang },
     { label: `${L.vat} ${vatRateText(p.totals.vatRateBp)}`, satang: p.totals.vatSatang },
@@ -324,7 +330,8 @@ export function renderReceiptHtml(payload: ReceiptPayload, opts: RenderHtmlOptio
 
   // title
   const ti: string[] = [line(titleOf(p, L), "c b")];
-  if (p.kind === "TAX_INVOICE_ABB") ti.push(line(L.vatIncluded, "c s"));
+  if (p.kind === "TAX_INVOICE_ABB" || p.kind === "TAX_INVOICE_FULL") ti.push(line(L.vatIncluded, "c s"));
+  if (p.kind === "TAX_INVOICE_FULL" && p.doc.fullTaxInvoiceNo) ti.push(line(`${L.fullTaxInvoiceIssued} ${p.doc.fullTaxInvoiceNo}`, "c s")); // POS P1.13 ▸ R7 ◂
   if (p.status === "VOIDED") ti.push(`<div class="c"><span class="stamp void">${esc(L.voided)}</span></div>`);
   if (p.copy) ti.push(`<div class="c"><span class="stamp">${esc(L.copy)}</span></div>`);
   out.push(`<section data-section="title">${ti.join("")}</section>`);
@@ -511,7 +518,8 @@ function layout(p: ReceiptPayload, L: ReceiptLabels, cols: number, locale: Local
   rule();
   // title
   add(wrap(titleOf(p, L), cols), "center", true);
-  if (p.kind === "TAX_INVOICE_ABB") add(wrap(L.vatIncluded, cols), "center");
+  if (p.kind === "TAX_INVOICE_ABB" || p.kind === "TAX_INVOICE_FULL") add(wrap(L.vatIncluded, cols), "center");
+  if (p.kind === "TAX_INVOICE_FULL" && p.doc.fullTaxInvoiceNo) add(wrap(`${L.fullTaxInvoiceIssued} ${p.doc.fullTaxInvoiceNo}`, cols), "center"); // POS P1.13 ▸ R7 ◂
   if (p.status === "VOIDED") add(wrap(`*** ${L.voided} ***`, cols), "center", true);
   if (p.copy) add(wrap(`*** ${L.copy} ***`, cols), "center", true);
   rule();

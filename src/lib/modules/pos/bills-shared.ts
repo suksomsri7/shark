@@ -110,6 +110,8 @@ export type BillDetail = {
   member: { name: string; memberCode: string | null; tierName?: string; pointsEarned: number; customerId: string } | null;
   accounting: { docNo: string | null; docId: string } | null;
   receiptKind: "TAX_INVOICE_ABB" | "RECEIPT";
+  /** POS P1.13 ▸ R7: ใบกำกับภาษีเต็มรูปของบิล — ISSUED (เลข + ชื่อผู้ซื้อ) · REQUESTED (ลูกค้าขอจากใบเสร็จออนไลน์ รอออก) · NONE ◂ */
+  taxInvoice: { status: "NONE" | "REQUESTED" | "ISSUED"; docNo?: string | null; buyerName?: string; requestId?: string };
   refunds: { id: string; receiptNo: string | null; grandTotalSatang: number; time: string; reasonCode: string | null; reason: string | null; byName: string; accounting: { docNo: string | null } | null }[];
   timeline: { time: string; text: string }[];
   can: { void: boolean; refund: boolean; reprint: boolean };

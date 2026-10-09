@@ -653,7 +653,7 @@ function readInventory(ROOT: string): Inv {
 // F15.4 — ข้อความ pos.* สองภาษา
 // ═══════════════════════════════════════════════════════════════
 /** คำสากลที่ใช้ทับศัพท์ได้โดยไม่ต้องมีอักษรไทย (สั้นไว้ — เพิ่มต้องมีเหตุผล) */
-export const UNIVERSAL_TOKENS = ["VAT", "QR", "PIN", "OK", "SKU", "POS", "PromptPay", "ID", "CSV", "PDF", "LINE", "KDS", "EAN", "Wi-Fi", "Bluetooth", "USB", "x", "X", "Z", "%"];
+export const UNIVERSAL_TOKENS = ["VAT", "QR", "PIN", "OK", "SKU", "POS", "PromptPay", "Beam", "ID", "CSV", "PDF", "LINE", "KDS", "EAN", "Wi-Fi", "Bluetooth", "USB", "x", "X", "Z", "%"];
 const THAI_RE = /[฀-๿]/;
 function thaiValueProblem(v: string): string | null {
   if (THAI_RE.test(v)) return null;

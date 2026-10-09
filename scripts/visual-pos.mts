@@ -76,6 +76,14 @@
 //   🔴 เขียน: เครื่อง 2 เครื่อง + กะ 1 กะของเครื่อง 2 (openShift ของบริการ) + บิลขายเงินสด 1 ใบ · finally/signal ปิดกะนี้ (นับ = ยอดคาด) +
 //   เพิกถอนเครื่อง QC ของรอบนี้ (ซากของรอบที่ถูก kill เกิน 1 ชม. ถูกเพิกถอนตอนเริ่ม) · แคชเชียร์ QC ไม่มี pos.device.manage ⇒ แท็บเครื่อง = การ์ดปฏิเสธ ◂
 //
+// POS P1.7U ▸ ใบขอรับเงิน (มติ 8): หน้า register `--states` เพิ่ม paydlg-promptpay-qr (cart3 → ชำระ → พร้อมเพย์ = ใบ PROMPTPAY_STATIC + QR ล็อกยอด) ·
+//   paydlg-promptpay-paid (desktop/mobile · กด "ยืนยันเองเมื่อเห็นเงินเข้า" ผ่าน confirmPaymentIntentManualAction → ✓ เงินเข้าแล้ว · หลังถ่ายกดยืนยันรับเงิน
+//   = บิลขายจริง 1 ใบที่ใช้ใบนั้น (CONSUMED)) · paydlg-card-edc (Beam ปิด ⇒ ช่องบัตร "EDC · ใส่เลขอ้างอิง" + ช่องเลขอ้างอิงแบบ P1.6) ·
+//   หน้า settings `--states` เพิ่ม settings-payments (17A "วิธีรับเงิน" · แคชเชียร์ = อ่านอย่างเดียว)
+//   ร้าน coffee ไม่มี PaymentProfile.promptpayId ที่ใช้ได้ ⇒ ตั้งด้วย savePaymentProfile (ตัวแก้เดิมของร้าน) แล้วคืนค่าเดิมใน finally/signal
+//   🔴 finally/signal: ใบที่รอบนี้สร้าง (เครื่องของรอบนี้ · หลังเริ่มรอบ) ที่ยัง PENDING = cancelPaymentIntent ของบริการ (ตัวทำงานของ cancelPaymentIntentAction) ·
+//      ห้ามลบใบด้วย SQL (แถวเงิน) · ใบ PAID ที่ไม่ได้ใช้ = บันทึกใน summary (intentState) ◂
+//
 // 🔴 ไม่มีค่าปริยายของ base — ไม่ส่ง `--base`/`QC_BASE` = exit 2 · ต่อไม่ได้ = exit 2 · `:3215` = exit 2
 //    (พอร์ต 3215 เป็นของเซิร์ฟเวอร์ CRM RUN — LANE-RULES ข้อ 4 · ตั้ง POS_VISUAL_ALLOW_3215=1 เมื่อ CRM ปิดแล้วเท่านั้น)
 // 🔴 ชื่อไฟล์จงใจไม่ขึ้นต้น qc- (ต้องมีเซิร์ฟเวอร์ + chromium — ไม่เข้า qc:all)
@@ -149,7 +157,7 @@ const fileOf = (p: PosPage, w: number, h: number) => `${OUT}/${p}-${userKey}-${w
 const STATES_ON = /^p1\.3/i.test(WO) || argv.includes("--states");
 const LOCALE_EN = process.env.LOCALE === "en";
 type Device = (typeof POS_VIEWPORTS)[number]["name"];
-type StateKey = "default" | "cart3" | "cart4-01" | "line-editor" | "bill-discount" | "custom-item" | "paydlg-cash" | "sale-done" | "search-empty" | "stock-warn" | "offline" | "mobile-sheet" | "options-popover" | "weigh" | P115StateKey | StockStateKey | ShiftsStateKey | BillsStateKey | SettingsStateKey | RpubStateKey;
+type StateKey = "default" | "cart3" | "cart4-01" | "line-editor" | "bill-discount" | "custom-item" | "paydlg-cash" | "paydlg-promptpay-qr" | "paydlg-promptpay-paid" | "paydlg-card-edc" | "sale-done" | "search-empty" | "stock-warn" | "offline" | "mobile-sheet" | "options-popover" | "weigh" | P115StateKey | StockStateKey | ShiftsStateKey | BillsStateKey | SettingsStateKey | RpubStateKey;
 const STATE_PLAN: { key: StateKey; devices: readonly Device[]; note: string }[] = [
   { key: "default", devices: ["desktop", "ipad", "mobile"], note: "เปิดหน้า (ตะกร้าว่าง) — การ์ดเหลือน้อย/หมด/ปิดขายของ fixture อยู่ในกริด" },
   { key: "cart3", devices: ["desktop", "ipad", "mobile"], note: "อเมริกาโน่×2 · ลาเต้ (ลด ฿10) · ครัวซองต์ (สต็อก N → N−1)" },
@@ -160,6 +168,10 @@ const STATE_PLAN: { key: StateKey; devices: readonly Device[]; note: string }[] 
   { key: "bill-discount", devices: ["desktop", "ipad", "mobile"], note: "cart3 + กล่องส่วนลดท้ายบิล" },
   { key: "custom-item", devices: ["desktop", "ipad", "mobile"], note: "owner = กล่องรายการกำหนดเอง · cashier = ข้อความเหตุผล (ไม่มีสิทธิ์ตั้งราคา)" },
   { key: "paydlg-cash", devices: ["desktop", "ipad", "mobile"], note: "cart3 + กล่องชำระ เงินสด รับพอดี" },
+  // POS P1.7U ▸ ภาพ 02 แผงขวา: ใบขอรับเงิน (QR ล็อกยอด · ยืนยันเอง · บัตรแบบ EDC เมื่อ Beam ปิด) ◂
+  { key: "paydlg-promptpay-qr", devices: ["desktop", "ipad", "mobile"], note: "cart3 + ชำระ → พร้อมเพย์ = ใบ PROMPTPAY_STATIC (QR ล็อกยอด · นับถอยหลัง · ปุ่มยืนยันเอง)" },
+  { key: "paydlg-promptpay-paid", devices: ["desktop", "mobile"], note: "⚠️ ใบ STATIC → ยืนยันเอง → ✓ เงินเข้าแล้ว (หลังถ่ายกดยืนยันรับเงิน = บิลขายจริง 1 ใบ ใช้ใบนั้น)" },
+  { key: "paydlg-card-edc", devices: ["desktop", "ipad", "mobile"], note: "cart3 + ชำระ → บัตร (Beam ปิด) = EDC · ใส่เลขอ้างอิง" },
   { key: "sale-done", devices: ["desktop"], note: "⚠️ ขายจริง 1 บิล (อเมริกาโน่×2 + ลาเต้ · เงินสด) → ขายสำเร็จ" },
   { key: "search-empty", devices: ["desktop", "ipad", "mobile"], note: "ค้นคำที่ไม่มี → กล่องไม่พบ" },
   { key: "stock-warn", devices: ["desktop", "ipad", "mobile"], note: "สินค้าเหลือ 2 ×3 → กล่องเตือนสต็อกในบรรทัด (19ฉ)" },
@@ -206,9 +218,10 @@ const BILLS_STATE_PLAN: { key: BillsStateKey; devices: readonly Device[]; note: 
   { key: "bills-empty", devices: ["desktop", "ipad", "mobile"], note: "?date= วันที่ไม่มีบิล → ข้อความว่าง" },
 ];
 // POS P1.10 U ▸ สถานะของหน้าตั้งค่า (เครื่อง QC 2 เครื่องลงทะเบียนครั้งเดียวก่อนเปิด chromium · ไม่กดยืนยันเพิกถอน/ไม่กดพิมพ์) ◂
-type SettingsStateKey = "settings-receipt" | "settings-devices" | "settings-device-revoke" | "settings-print-pair" | "paydone-print";
+type SettingsStateKey = "settings-receipt" | "settings-payments" | "settings-devices" | "settings-device-revoke" | "settings-print-pair" | "paydone-print";
 const SETTINGS_STATE_PLAN: { key: SettingsStateKey; devices: readonly Device[]; note: string }[] = [
   { key: "settings-receipt", devices: ["desktop", "ipad", "mobile"], note: "17A ใบเสร็จและภาษี + ตัวอย่างสด (แคชเชียร์ = ช่องปิด · อ่านอย่างเดียว)" },
+  { key: "settings-payments", devices: ["desktop", "ipad", "mobile"], note: "P1.7U 17A วิธีรับเงิน: พร้อมเพย์ (อ่านอย่างเดียว) · อายุ QR · Beam + ชิปคีย์ · ยืนยันเอง (แคชเชียร์ = อ่านอย่างเดียว)" },
   { key: "settings-devices", devices: ["desktop", "ipad", "mobile"], note: "17B เครื่องและเครื่องพิมพ์ · 2 เครื่อง QC (เครื่อง 1 = USB 80 มม. + ลิ้นชัก) · แคชเชียร์ = การ์ดปฏิเสธ" },
   { key: "settings-device-revoke", devices: ["desktop", "ipad", "mobile"], note: "เลือกเครื่อง 2 → กล่องยืนยันเพิกถอน (ไม่กดยืนยัน)" },
   { key: "settings-print-pair", devices: ["desktop", "ipad", "mobile"], note: "เครื่อง 1 (เบราว์เซอร์นี้) → กล่องเลือกเครื่องพิมพ์ = \"เบราว์เซอร์นี้ไม่รองรับ\" (ซ่อน navigator.usb)" },
@@ -259,7 +272,9 @@ const billsStatesOn = STATES_ON && tenantKey === "coffee" && (onlyPage === "sale
 // สถานะหน้าตั้งค่าเฉพาะ --page settings หรือ wo p1.10u* (รอบ --states ทุกหน้าเดิมไม่ลงทะเบียนเครื่อง/ไม่ขายเพิ่ม)
 const settingsStatesOn = STATES_ON && tenantKey === "coffee" && (onlyPage === "settings" || /^p1\.10u/i.test(WO));
 const settingsPath = (st: SettingsStateKey) =>
-  st === "paydone-print" ? `/app/sys/${SYS}/pos/register?unit=${encodeURIComponent(unitId)}` : `/app/sys/${SYS}/pos/settings?tab=${st === "settings-receipt" ? "receipt" : "devices"}&unit=${encodeURIComponent(unitId)}`;
+  st === "paydone-print"
+    ? `/app/sys/${SYS}/pos/register?unit=${encodeURIComponent(unitId)}`
+    : `/app/sys/${SYS}/pos/settings?tab=${st === "settings-receipt" ? "receipt" : st === "settings-payments" ? "payments" : "devices"}&unit=${encodeURIComponent(unitId)}`;
 const billsPath = (st: BillsStateKey) => `/app/sys/${SYS}/pos/sales?unit=${encodeURIComponent(unitId)}${st === "bills-empty" ? `&date=${BILLS_EMPTY_DATE}` : ""}`;
 // POS P1.11U ▸ หน้าใบเสร็จออนไลน์: ร้าน coffee เท่านั้น (ร้านอื่น = ข้ามหน้า) · 390×844 เสมอ (LOCALE=en ⇒ ?lang=en) · path จริงรู้หลังสร้างบิล (rpubPath) ◂
 const RPUB_VIEWPORT = POS_VIEWPORTS.find((v) => v.name === "mobile")!;
@@ -343,6 +358,8 @@ if (DRY) {
       console.log("  เขียน: เครื่อง QC 2 เครื่อง (registerDevice · เพิกถอนใน finally) + กะ 1 กะของเครื่อง 2 (openShift · ปิดใน finally นับ = ยอดคาด) + บิลขายเงินสด 1 ใบ (paydone-print)");
     }
     if (pages.includes("register")) console.log(`  P1.15U: เครื่อง ${DEVICE_ID} (registerDevice · เพิกถอนใน finally) · PIN 6 หลักสุ่มของเจ้าของ/แคชเชียร์ (setStaffPin · ไม่พิมพ์ · คืนแถวเดิมใน finally) · โทเคนผู้ขายฉีดลง sessionStorage · บิลพัก 1 ใบ · กติกา POS_VOID ที่ปิดไว้ + คำขอ PENDING 1 ใบ (approval-wait) — ลบใน finally`);
+    if (pages.includes("register") && jobs.some((j) => j.state === "paydlg-promptpay-qr" || j.state === "paydlg-promptpay-paid"))
+      console.log("  P1.7U: ใบขอรับเงินของเครื่องรอบนี้ (PENDING = ยกเลิกใน finally) + บิลขายจริงที่ใช้ใบ PAID (paydlg-promptpay-paid) · PromptPay ID ของร้าน QC ตั้ง/คืนค่าเมื่อยังไม่มี");
     if (needFixtures) console.log(`  fixture: สินค้าชั่วคราว 11 ตัว (เหลือ 2 · หมดสต็อก · ปิดขาย + 4 ตัวของภาพ 01 + ลาเต้มีตัวแปร 1+2 + สินค้าชั่ง 1) + กลุ่มตัวเลือก 4 กลุ่ม ที่สาขา ${unitKey} — ลบใน finally`);
   }
   console.log(`รวม ${plan.length} ภาพ (${pages.length} หน้า × ${viewports.length} ขนาด${STATES_ON ? " · หน้าขายแยกตามสถานะ" : ""} × 1 ผู้ใช้)`);
@@ -519,6 +536,13 @@ for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
         if (BILLS.close) console.error(`${BILLS.close.ok ? "🧹" : "⚠️"} ${BILLS.close.detail}`);
       } catch (e) {
         console.error(`❌ ปิดกะของหน้าบิลไม่สำเร็จ: ${e instanceof Error ? e.message : e}`);
+      }
+      // POS P1.7U: ยกเลิกใบขอรับเงิน PENDING ของรอบนี้ + คืน PromptPay ID (เหมือน finally)
+      try {
+        await cleanupIntents();
+        if (INTENTS.cleanup) console.error(`${INTENTS.cleanup.ok ? "🧹" : "⚠️"} ${INTENTS.cleanup.detail}`);
+      } catch (e) {
+        console.error(`❌ เก็บกวาดใบขอรับเงินไม่สำเร็จ: ${e instanceof Error ? e.message : e}`);
       }
       // POS P1.10 U: ปิดกะ + เพิกถอนเครื่อง QC ของหน้าตั้งค่า (เหมือน finally)
       try {
@@ -1082,6 +1106,37 @@ async function runState(page: Any, state: StateKey, device: Device): Promise<voi
       await clickPay(page, device);
       await clickEl(page, tid("pos-reg-paydlg-quick-exact"));
       await visibleEl(page, tid("pos-reg-paydlg-change"));
+      return;
+    // POS P1.7U ▸ ใบขอรับเงิน ◂
+    case "paydlg-promptpay-qr":
+    case "paydlg-promptpay-paid":
+      await addCart3(page, device);
+      await clickPay(page, device);
+      await clickEl(page, tid("pos-reg-paydlg-method-promptpay"));
+      await visibleEl(page, `${tid("pos-pay-intent")}[data-status="PENDING"]`, 0, 15_000).catch(async () => {
+        const st = await page.$eval(tid("pos-pay-intent"), (e: Element) => `${e.getAttribute("data-status")} ${e.textContent?.slice(0, 120)}`).catch(() => "ไม่มีแผง");
+        throw new StepError(`ใบขอรับเงินไม่ขึ้น PENDING (${st})`);
+      });
+      await visibleEl(page, tid("pos-pay-intent-countdown"), 0, 5_000);
+      if (state === "paydlg-promptpay-qr") return;
+      await clickEl(page, tid("pos-pay-intent-manual"));
+      await visibleEl(page, tid("pos-pay-intent-paid"), 0, 10_000).catch(() => {
+        throw new StepError("ยืนยันเองแล้วไม่ขึ้น ✓ เงินเข้าแล้ว (pos-pay-intent-paid)");
+      });
+      await page
+        .waitForFunction(() => !(document.querySelector('[data-testid="pos-reg-paydlg-confirm"]') as HTMLButtonElement | null)?.disabled, { timeout: 5_000 })
+        .catch(() => {
+          throw new StepError("ใบ PAID แล้วแต่ปุ่มยืนยันรับเงินยังปิด");
+        });
+      return;
+    case "paydlg-card-edc":
+      await addCart3(page, device);
+      await clickPay(page, device);
+      await clickEl(page, tid("pos-reg-paydlg-method-card"));
+      await visibleEl(page, tid("pos-reg-paydlg-reference"), 0, 5_000).catch(() => {
+        throw new StepError("บัตร (Beam ปิด) ไม่ขึ้นช่องเลขอ้างอิง EDC");
+      });
+      if (await page.$(tid("pos-pay-intent"))) throw new StepError("บัตรตอน Beam ปิดไม่ควรมีแผงใบขอรับเงิน");
       return;
     case "sale-done":
       return cashSaleAmerLatte(page, device);
@@ -1953,6 +2008,17 @@ async function seedSettingsOnce(): Promise<void> {
   }
 }
 async function runSettingsState(page: Any, state: SettingsStateKey, device: Device): Promise<void> {
+  // POS P1.7U ▸ แท็บวิธีรับเงิน ไม่ใช้เครื่อง QC ของหน้าตั้งค่า ◂
+  if (state === "settings-payments") {
+    await visibleEl(page, tid("pos-settings-payments"), 0, 15_000).catch(() => {
+      throw new StepError("แท็บวิธีรับเงินไม่ขึ้น (pos-settings-payments)");
+    });
+    await visibleEl(page, tid("pos-settings-pay-beam-chip"), 0, 5_000);
+    if (userKey === "cashier") await visibleEl(page, tid("pos-settings-readonly"), 0, 5_000).catch(() => {
+      throw new StepError("แคชเชียร์ไม่เห็นป้ายอ่านอย่างเดียว (pos-settings-readonly)");
+    });
+    return;
+  }
   if (SETTINGS.error || !SETTINGS.seeded) throw new StepError(`ไม่มีเครื่อง QC ของหน้าตั้งค่า: ${SETTINGS.error ?? "ยังไม่ได้สร้าง"}`);
   if (state === "paydone-print") {
     await visibleEl(page, tid("pos-reg-root"), 0, 15_000).catch(() => {
@@ -2033,6 +2099,90 @@ async function cleanupSettingsState(): Promise<void> {
   SETTINGS.cleanup = { ok, detail: parts.join(" · ") };
 }
 
+// ═══════════════════ POS P1.7U ▸ ใบขอรับเงินของภาพ (PromptPay ID ของร้าน QC · เก็บกวาดใบของรอบนี้) ═══════════════════
+const INTENT_STATES: ReadonlySet<string> = new Set(["paydlg-promptpay-qr", "paydlg-promptpay-paid"]);
+const INTENTS = {
+  /** PaymentProfile ก่อนรอบนี้ (null = ไม่มีแถว · undefined = ไม่ได้แตะ) */
+  ppBefore: undefined as undefined | null | { promptpayId: string | null; displayName: string | null },
+  ppNote: "",
+  consumed: 0,
+  cleanup: null as null | { ok: boolean; detail: string },
+};
+/** ร้าน QC ต้องมี PromptPay ID ที่ใช้ได้ — ไม่มี/ผิดรูป = ตั้งด้วย savePaymentProfile (ตัวแก้เดิม) · คืนค่าใน cleanupIntents · พังไม่โยน */
+async function ensureQcPromptPay(): Promise<void> {
+  try {
+    const { getPaymentProfile, savePaymentProfile } = await import("@/lib/payment/service");
+    const { isValidPromptPayId } = await import("@/lib/payment/promptpay");
+    const cur = await getPaymentProfile({ tenantId: T.tenantId });
+    if (cur?.promptpayId && isValidPromptPayId(cur.promptpayId)) {
+      INTENTS.ppNote = "ร้าน QC มี PromptPay ID อยู่แล้ว (ไม่แตะ)";
+      return;
+    }
+    INTENTS.ppBefore = cur ? { promptpayId: cur.promptpayId, displayName: cur.displayName } : null;
+    await savePaymentProfile({ tenantId: T.tenantId, actorUserId: T.users.owner.userId }, { promptpayId: "0812345678", displayName: "ร้าน QC (ภาพ P1.7U)" });
+    INTENTS.ppNote = `ตั้ง PromptPay ID ชั่วคราว (${cur ? "แทนค่าผิดรูป" : "ร้านยังไม่มี"})`;
+  } catch (e) {
+    INTENTS.ppNote = `ตั้ง PromptPay ID ไม่ได้: ${e instanceof Error ? e.message.slice(0, 120) : String(e)}`;
+  }
+}
+/** หลังถ่าย paydlg-promptpay-paid: กดยืนยันรับเงิน ⇒ บิลขายใช้ใบ PAID (CONSUMED) — ไม่ทิ้งเงินเข้าไม่มีบิล */
+async function finishPaidIntentSale(page: Any): Promise<void> {
+  await clickEl(page, tid("pos-reg-paydlg-confirm"));
+  await visibleEl(page, tid("pos-reg-done"), 0, 20_000);
+  INTENTS.consumed++;
+}
+/** finally/signal: ยกเลิกใบ PENDING ของเครื่องรอบนี้ (บริการ cancelPaymentIntent) + คืน PromptPay ID — เรียกซ้ำได้ · ไม่โยน */
+async function cleanupIntents(): Promise<void> {
+  if (INTENTS.cleanup) return;
+  const parts: string[] = [];
+  let ok = true;
+  try {
+    const rows = await prisma.posPaymentIntent.findMany({
+      where: { tenantId: T.tenantId, unitId, deviceId: DEVICE_ID, createdAt: { gte: RUN_STARTED } },
+      select: { id: true, status: true },
+    });
+    if (rows.length) {
+      const { cancelPaymentIntent } = await import("@/lib/modules/pos/payment-intent");
+      const actor = await ownerActor();
+      let cancelled = 0;
+      for (const r of rows.filter((x) => x.status === "PENDING")) {
+        const c = await cancelPaymentIntent({ tenantId: T.tenantId, systemId: SYS, unitId }, actor, { intentId: r.id });
+        if (c.ok) cancelled++;
+        else ok = false;
+      }
+      const paidLeft = rows.filter((x) => x.status === "PAID").length;
+      if (paidLeft) ok = false; // แก้รอบ 1 F5: เงินเข้าไม่มีบิล = ภาพรอบนี้ตก (rc 1)
+      parts.push(`ใบขอรับเงินของรอบนี้ ${rows.length} · ยกเลิก ${cancelled} · ใช้ในบิล ${INTENTS.consumed}${paidLeft ? ` · ⚠️ PAID ไม่ได้ใช้ ${paidLeft}` : ""}`);
+    }
+  } catch (e) {
+    ok = false;
+    parts.push(`เก็บกวาดใบขอรับเงินล้ม: ${e instanceof Error ? e.message.slice(0, 160) : String(e)}`);
+  }
+  if (INTENTS.ppBefore !== undefined) {
+    try {
+      // แก้รอบ 1 F5: คืนผ่านตัวแก้เดิม (savePaymentProfile) เมื่อค่าเดิมผ่านตัวตรวจของมัน · ไม่มีแถวเดิม = ลบแถว (ตัวแก้ไม่มีทางลบ) ·
+      //   ค่าเดิมผิดรูป = เขียนตรง (ตัวแก้ปฏิเสธค่าผิดรูป) — บันทึกใน summary
+      const { savePaymentProfile } = await import("@/lib/payment/service");
+      const { isValidPromptPayId } = await import("@/lib/payment/promptpay");
+      const before = INTENTS.ppBefore;
+      if (before === null) {
+        await prisma.paymentProfile.deleteMany({ where: { tenantId: T.tenantId } });
+        parts.push("คืน PromptPay ID: ลบแถวที่รอบนี้สร้าง (ร้าน QC ไม่มีแถวเดิม · เขียนตรง)");
+      } else if (before.promptpayId && isValidPromptPayId(before.promptpayId)) {
+        await savePaymentProfile({ tenantId: T.tenantId, actorUserId: T.users.owner.userId }, { promptpayId: before.promptpayId, displayName: before.displayName ?? undefined });
+        parts.push("คืน PromptPay ID ผ่าน savePaymentProfile");
+      } else {
+        await prisma.paymentProfile.update({ where: { tenantId: T.tenantId }, data: before });
+        parts.push("คืน PromptPay ID ค่าเดิมที่ผิดรูป (เขียนตรง — savePaymentProfile ไม่รับค่าผิดรูป)");
+      }
+    } catch (e) {
+      ok = false;
+      parts.push(`คืน PromptPay ID ไม่ได้: ${e instanceof Error ? e.message.slice(0, 120) : String(e)}`);
+    }
+  }
+  if (parts.length) INTENTS.cleanup = { ok, detail: parts.join(" · ") };
+}
+
 type Shot = { page: string; state: string | null; stepError: string | null; viewport: string; file: string; status: number; expect: number | "record"; http5xx: number; finalUrl: string; redirectedToLogin: boolean; overflow: boolean; overflowEl: string | null; consoleErrors: string[]; httpErrors: string[]; ok: boolean };
 const shots: Shot[] = [];
 let failures = 0;
@@ -2087,6 +2237,10 @@ try {
   if (jobs.some((j) => j.page === "register" || j.state === "paydone-print")) {
     await seedP115Once();
     console.log(P115.error ? `  ⚠️ ข้อมูลภาพ P1.15U: ${P115.error}` : `  ข้อมูลภาพ P1.15U: เครื่อง ${DEVICE_ID} · PIN ${Object.keys(P115.pins).join("/")} (ไม่พิมพ์ค่า) · บิลพัก ${P115.heldId || "-"}`);
+  }
+  if (jobs.some((j) => j.state && INTENT_STATES.has(j.state))) {
+    await ensureQcPromptPay(); // POS P1.7U
+    console.log(`  PromptPay ของร้าน QC: ${INTENTS.ppNote}`);
   }
   if (settingsStatesOn && pages.includes("settings")) {
     await seedSettingsOnce(); // POS P1.10 U — พังไม่โยน (ทุกสถานะ settings-* ตกพร้อมเหตุผล)
@@ -2190,6 +2344,12 @@ try {
           .catch(() => ({ over: false, el: null }))) as { over: boolean; el: string | null };
         const file = job.file;
         await page.screenshot({ path: file, fullPage: true });
+        // POS P1.7U ▸ ใบที่ PAID แล้วต้องถูกใช้ในบิล (ไม่ทิ้งเงินเข้าไม่มีบิล) — พัง = ภาพนี้ตก ◂
+        if (job.state === "paydlg-promptpay-paid" && !stepError) {
+          await finishPaidIntentSale(page).catch((e: unknown) => {
+            stepError = `หลังถ่าย: ยืนยันรับเงินด้วยใบ PAID ไม่สำเร็จ — ${e instanceof Error ? e.message.slice(0, 160) : String(e)}`;
+          });
+        }
         const status = resp?.status() ?? 0;
         const redirectedToLogin = /\/login\b/.test(finalUrl);
         const exp = job.expect ?? PAGE_EXPECT[p][userKey];
@@ -2232,6 +2392,9 @@ try {
   if (RPUB.cleanup?.error || (RPUB.close && !RPUB.close.ok) || (RPUB.abb?.toggled && RPUB.abb.restored !== "ok") || (RPUB.abb?.taxIdSet && RPUB.abb.taxIdRestored !== "ok")) failures++;
   if (BILLS.close) console.error(`${BILLS.close.ok ? "🧹" : "⚠️"} ${BILLS.close.detail}`);
   if (BILLS.close && !BILLS.close.ok) failures++;
+  await cleanupIntents(); // POS P1.7U
+  if (INTENTS.cleanup) console.error(`${INTENTS.cleanup.ok ? "🧹" : "⚠️"} ${INTENTS.cleanup.detail}`);
+  if (INTENTS.cleanup && !INTENTS.cleanup.ok) failures++;
   await cleanupSettingsState(); // POS P1.10 U
   if (SETTINGS.cleanup) console.error(`${SETTINGS.cleanup.ok ? "🧹" : "⚠️"} ${SETTINGS.cleanup.detail}`);
   if (SETTINGS.cleanup && !SETTINGS.cleanup.ok) failures++;
@@ -2246,7 +2409,7 @@ try {
   }
   await prisma.$disconnect();
   cleanProfiles();
-  writeFileSync(`${OUT}/summary-${userKey}.json`, JSON.stringify({ wo: WO, user: userKey, tenant: tenantKey, base: BASE, at: new Date().toISOString(), deviceId: DEVICE_ID, shiftOpenError: SHIFT.openError, shiftClose: SHIFT.close, stockCount: STOCK, shiftsState: SHIFTS, billsState: BILLS, settingsState: SETTINGS, rpubState: RPUB, counterLag: COUNTER_LAG, p115State: p115Summary(), shots }, null, 2));
+  writeFileSync(`${OUT}/summary-${userKey}.json`, JSON.stringify({ wo: WO, user: userKey, tenant: tenantKey, base: BASE, at: new Date().toISOString(), deviceId: DEVICE_ID, shiftOpenError: SHIFT.openError, shiftClose: SHIFT.close, stockCount: STOCK, shiftsState: SHIFTS, billsState: BILLS, settingsState: SETTINGS, rpubState: RPUB, intentState: INTENTS, counterLag: COUNTER_LAG, p115State: p115Summary(), shots }, null, 2));
   console.log(`\n🧹 ลบ session ของรอบนี้ ${removed}${stale ? ` (+ซากหมดอายุ ${stale})` : ""}${fixOut} · ลบโปรไฟล์ chromium ${PROFILE_DIRS[0]} · ภาพ ${shots.length} ใบใน ${OUT}`);
 }
 if (fatal) console.error(`❌ ${fatal}`);

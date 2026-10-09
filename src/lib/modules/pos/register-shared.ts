@@ -7,6 +7,7 @@
 
 import { formatBaht } from "@/lib/ui/money";
 import type { PriceDiscount, PriceCartInput, PriceVat } from "./pricing-shared";
+import type { TaxInvoiceBuyerInput } from "./tax-invoice-shared"; // POS P1.13 ◂
 
 // ═══════════ ค่าคงที่ ═══════════
 export const REGISTER_MAX_LINES = 200;
@@ -160,7 +161,11 @@ export type RegisterRefusalCode =
   // fix รอบ 1 F1: บิลที่ส่งพร้อม heldCartId ไม่ตรงกับที่อนุมัติ (ตะกร้า/ยอด/เจ้าของบิลพัก)
   | "APPROVAL_MISMATCH"
   // POS P1.15U fix รอบ 1 F1: ตั้ง PIN ของตัวเองซ้ำจากจอล็อก
-  | "ALREADY_SET";
+  | "ALREADY_SET"
+  // POS P1.13: เลขผู้เสียภาษีของผู้ซื้อ (ใบกำกับเต็มรูปตอนชำระ) ผิด checksum/รูปแบบ
+  | "TAX_ID_INVALID"
+  // POS P1.13 follow-up 3: ขอใบกำกับเต็มรูปตอนชำระแต่ร้านออกใบกำกับไม่ได้ (ไม่ผูกสมุดจด VAT / ไม่มีเลขภาษี / ปิดใบอย่างย่อ / บิลไม่มี VAT)
+  | "NOT_ELIGIBLE";
 
 /** คำปฏิเสธ — คืนค่า ไม่ throw · `lineIndex` = บรรทัดที่ผิด (ลำดับเดียวกับที่ส่งมา) ถ้าระบุได้ */
 export type RegisterRefusal = { ok: false; code: RegisterRefusalCode; message: string; lineIndex?: number };
@@ -287,6 +292,10 @@ export type RegisterSubmitInput = RegisterQuoteInput & {
   managerUserId?: string;
   /** POS P1.15 R6: บิลพักที่ได้รับอนุมัติ POS_DISCOUNT_OVER แล้ว — ผ่านเพดานได้ 1 บิล สำหรับส่วนลด ≤ ที่อนุมัติ */
   heldCartId?: string;
+  /** POS P1.13 R2: ผู้ซื้อขอใบกำกับภาษีเต็มรูป (parseTaxInvoiceBuyer) — ผิด = TAX_ID_INVALID / VALIDATION ไม่มีบิล */
+  taxInvoice?: TaxInvoiceBuyerInput;
+  /** POS P1.13 R6: จำผู้ซื้อไว้กับสมาชิกของบิล (มี memberId เท่านั้น) */
+  rememberBuyer?: boolean;
 };
 export type RegisterSubmitOk = { ok: true; saleId: string; receiptNo: string | null; grandTotalSatang: number; changeSatang: number; duplicated: boolean };
 /** PRICE_CHANGED พกยอดสดของเซิร์ฟเวอร์มาด้วย (จอแสดงใหม่ได้ทันทีไม่ต้อง quote ซ้ำ) */
@@ -654,6 +663,9 @@ const REFUSAL_KEY: Readonly<Record<string, string>> = {
   PENDING_APPROVAL: "errors.pendingApproval",
   APPROVAL_MISMATCH: "errors.approvalMismatch",
   ALREADY_SET: "errors.alreadySet", // POS P1.15U F1
+  // POS P1.13 ▸ ผู้ซื้อของใบกำกับเต็มรูปตอนชำระ — เลขผู้เสียภาษีผิด (ข้อมูลผู้ซื้ออื่นผิด = VALIDATION เดิม) ◂
+  TAX_ID_INVALID: "errors.taxIdInvalid",
+  NOT_ELIGIBLE: "errors.taxInvoiceNotEligible", // POS P1.13 follow-up 3 ◂
 };
 
 /**

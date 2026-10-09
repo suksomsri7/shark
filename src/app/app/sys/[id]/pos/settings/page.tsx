@@ -13,6 +13,11 @@ import { SettingsShell } from "@/components/pos/settings/SettingsShell";
 import { posSettingsTabOf } from "@/components/pos/settings/settings-tabs";
 import { ReceiptSettings } from "./ReceiptSettings";
 import { DeviceSettings } from "./DeviceSettings";
+// POS P1.7U ▸ แท็บ "วิธีรับเงิน" (มติ 6): ค่าตั้ง settings.pos.payment · คีย์ Beam ของแพลตฟอร์มเป็น boolean เท่านั้น · PromptPay ID จาก PaymentProfile ◂
+import { PaymentSettings } from "./PaymentSettings";
+import { beamEnabled } from "@/lib/payment/beam";
+import { getPaymentProfile, maskPromptPayId } from "@/lib/payment/service";
+import { parsePosIntentSettings } from "@/lib/modules/pos/payment-intent-shared";
 import { SettingsRefusal } from "./settings-ui";
 
 // POS P1.10 U — หน้าตั้งค่าหน้าขาย /pos/settings (ภาพ 17A ใบเสร็จและภาษี · 17B เครื่องและเครื่องพิมพ์) · โครง = SettingsShell + ทะเบียนแท็บ (มติ CD1)
@@ -37,6 +42,8 @@ export default async function PosSettingsPage({ params, searchParams }: { params
   const canEditReceipt = evaluate(m, { module: "pos", action: "pos.device.manage" });
   const def = systemDef(sys.type);
   const t = await getTranslations("pos.settings");
+  const payProfile = tab === "payments" && canRead ? await getPaymentProfile({ tenantId }) : null;
+  const ppId = payProfile?.promptpayId?.trim() || null;
   return (
     <div className="flex w-full min-w-0 max-w-7xl flex-col gap-5">
       <PageHeader title={`${def?.icon ?? ""} ${sys.name}`.trim()} desc={t("desc")} />
@@ -44,6 +51,15 @@ export default async function PosSettingsPage({ params, searchParams }: { params
       <SettingsShell systemId={id} active={tab} units={units} unitId={unitId}>
         {!canRead ? (
           <SettingsRefusal message={t("refusal")} />
+        ) : tab === "payments" ? (
+          <PaymentSettings
+            systemId={id}
+            canEdit={canEditReceipt}
+            initial={parsePosIntentSettings(sys.settings)}
+            beamConfigured={beamEnabled()}
+            promptpayId={canEditReceipt ? ppId : maskPromptPayId(ppId)}
+            promptpayLink="/app/settings/payment"
+          />
         ) : tab === "receipt" ? (
           <ReceiptSettings systemId={id} unitId={unitId} branchName={units.find((u) => u.id === unitId)?.name ?? ""} canEdit={canEditReceipt} canManageDevices={canManageDevices} />
         ) : canManageDevices ? (

@@ -9,7 +9,18 @@
 // 🔴 patch = รวมทับบางส่วน (ส่งเฉพาะ {serviceCharge:{enabled:false}} = อัตราเดิมยังอยู่) · ค่าอื่นใน settings ของระบบไม่ถูกแตะ
 
 import type { Prisma } from "@prisma/client";
+import { evaluate, type MembershipCtx } from "@/lib/core/rbac";
 import { prisma } from "./db";
+import {
+  parsePosIntentSettings,
+  POS_QR_EXPIRY_MAX,
+  POS_QR_EXPIRY_MIN,
+  type PosIntentSettings,
+  type PosIntentSettingsPatch,
+  type PosIntentSettingsRefusal,
+  type PosIntentSettingsResult,
+} from "./payment-intent-shared";
+import { canManageAllLinkedUnits } from "./receipt-settings";
 
 type Db = typeof prisma | Prisma.TransactionClient;
 
@@ -147,5 +158,78 @@ export async function updatePosPaymentSettings(
   } catch (e) {
     console.error("[pos/payment-settings] update", e);
     return refuse("UNKNOWN");
+  }
+}
+
+// ═══════ POS P1.7U ▸ มติ 6: ค่าตั้งใบขอรับเงิน settings.pos.payment (หน้า 17A "วิธีรับเงิน") ═══════
+//   ตัวเขียนพี่น้องของ updatePosPaymentSettings (ตัวนั้นไม่แตะ · มันคง pos.payment ไว้อยู่แล้ว — CD-H) — ทางเขียนเดียวกัน:
+//   ธุรกรรม + ล็อกแถวระบบ FOR UPDATE + รวม settings ทับเฉพาะ pos.payment (คีย์อื่นของ pos/settings ไม่ถูกแตะ · คีย์ที่ไม่รู้จักใน pos.payment คงไว้)
+//   สิทธิ์ = pos.device.manage แบบค่าตั้งใบเสร็จ (ระดับร้าน + ครบทุกสาขาที่ผูก POS นี้ — F9) · ตัวอ่าน = parsePosIntentSettings
+// 🔴 ปฏิเสธ = ค่าเดิมไม่เปลี่ยนแม้แต่ฟิลด์เดียว · คืนเป็นข้อมูลเสมอ ไม่โยน ◂
+const INTENT_MSG: Record<PosIntentSettingsRefusal["code"], string> = {
+  NOT_FOUND: "ไม่พบจุดขายนี้",
+  PERMISSION_DENIED: "บัญชีนี้ยังไม่มีสิทธิ์ตั้งค่าการรับเงิน — ต้องมีสิทธิ์จัดการเครื่องขายทุกสาขาของจุดขายนี้",
+  VALIDATION: "ค่าตั้งการรับเงินไม่ถูกต้อง",
+  UNKNOWN: "เกิดข้อผิดพลาด — ลองอีกครั้ง",
+};
+const intentRefuse = (code: PosIntentSettingsRefusal["code"], message?: string, field?: PosIntentSettingsRefusal["field"]): PosIntentSettingsRefusal =>
+  field ? { ok: false, code, message: message ?? INTENT_MSG[code], field } : { ok: false, code, message: message ?? INTENT_MSG[code] };
+const INTENT_PATCH_KEYS = new Set(["beam", "qrExpiryMinutes", "manualConfirmRequiresManager"]);
+
+function intentMembership(a: PosSettingsActor): MembershipCtx | null {
+  if (!isRecord(a) || typeof a.userId !== "string" || (a.role !== "OWNER" && a.role !== "MANAGER" && a.role !== "STAFF")) return null;
+  return {
+    role: a.role,
+    unitAccess: Array.isArray(a.unitAccess) ? a.unitAccess.filter((u): u is string => typeof u === "string") : [],
+    permissions: isRecord(a.permissions) ? a.permissions : {},
+  };
+}
+
+/** แก้ค่าตั้งใบขอรับเงิน (beam.enabled · qrExpiryMinutes 5..60 · manualConfirmRequiresManager) — คืนค่าหลังแก้ (ตัวอ่านเดียวกับ createPaymentIntent) */
+export async function updatePosIntentSettings(
+  ctx: { tenantId: string; systemId: string },
+  actor: PosSettingsActor,
+  patch: PosIntentSettingsPatch,
+): Promise<PosIntentSettingsResult> {
+  try {
+    if (!isRecord(ctx) || typeof ctx.tenantId !== "string" || !ctx.tenantId || typeof ctx.systemId !== "string" || !ctx.systemId) return intentRefuse("NOT_FOUND");
+    const m = intentMembership(actor);
+    if (!m || !evaluate(m, { module: "pos", action: "pos.device.manage" })) return intentRefuse("PERMISSION_DENIED");
+    if (!(await canManageAllLinkedUnits(prisma, ctx, m))) return intentRefuse("PERMISSION_DENIED");
+    if (!isRecord(patch) || Object.keys(patch).some((k) => !INTENT_PATCH_KEYS.has(k))) return intentRefuse("VALIDATION");
+    const beam: unknown = patch.beam;
+    const q: unknown = patch.qrExpiryMinutes;
+    const mc: unknown = patch.manualConfirmRequiresManager;
+    if (beam !== undefined && (!isRecord(beam) || Object.keys(beam).some((k) => k !== "enabled") || (beam.enabled !== undefined && typeof beam.enabled !== "boolean")))
+      return intentRefuse("VALIDATION", undefined, "beam");
+    if (q !== undefined && !(typeof q === "number" && Number.isInteger(q) && q >= POS_QR_EXPIRY_MIN && q <= POS_QR_EXPIRY_MAX))
+      return intentRefuse("VALIDATION", `อายุ QR ต้องเป็นจำนวนเต็ม ${POS_QR_EXPIRY_MIN}–${POS_QR_EXPIRY_MAX} นาที`, "qrExpiryMinutes");
+    if (mc !== undefined && typeof mc !== "boolean") return intentRefuse("VALIDATION", undefined, "manualConfirmRequiresManager");
+
+    return await prisma.$transaction(async (tx): Promise<PosIntentSettingsResult> => {
+      // ล็อกแถวระบบก่อนอ่าน settings (แบบ updatePosPaymentSettings — แก้พร้อมกันสองหน้าจอ = ไม่ทับกันหาย)
+      const locked = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM "AppSystem" WHERE id = ${ctx.systemId} AND "tenantId" = ${ctx.tenantId} AND type = 'POS' FOR UPDATE`;
+      if (locked.length === 0) return intentRefuse("NOT_FOUND");
+      const sys = await loadPos(tx, ctx);
+      if (!sys) return intentRefuse("NOT_FOUND");
+      const cur = parsePosIntentSettings(sys.settings);
+      const b = beam as { enabled?: boolean } | undefined;
+      const next: PosIntentSettings = {
+        beam: { enabled: b?.enabled ?? cur.beam.enabled },
+        qrExpiryMinutes: (q as number | undefined) ?? cur.qrExpiryMinutes,
+        manualConfirmRequiresManager: (mc as boolean | undefined) ?? cur.manualConfirmRequiresManager,
+      };
+      const base = isRecord(sys.settings) ? sys.settings : {};
+      const pos = isRecord(base.pos) ? base.pos : {};
+      const rawPay = isRecord(pos.payment) ? pos.payment : {};
+      const rawBeam = isRecord(rawPay.beam) ? rawPay.beam : {};
+      const payment = { ...rawPay, beam: { ...rawBeam, enabled: next.beam.enabled }, qrExpiryMinutes: next.qrExpiryMinutes, manualConfirmRequiresManager: next.manualConfirmRequiresManager };
+      const settings = { ...base, pos: { ...pos, payment } } as Prisma.InputJsonValue;
+      await tx.appSystem.update({ where: { id: sys.id }, data: { settings } });
+      return { ok: true, settings: parsePosIntentSettings(settings) };
+    });
+  } catch (e) {
+    console.error("[pos/payment-settings] update intent", e);
+    return intentRefuse("UNKNOWN");
   }
 }

@@ -13,6 +13,10 @@ import { unitOversellPolicy } from "@/lib/modules/pos/service";
 import { posTabs } from "@/lib/modules/pos/tabs";
 import { posMembership, posRegisterView } from "@/lib/modules/pos/access";
 import { RegisterScreen } from "@/components/pos/register/RegisterScreen";
+// POS P1.7U ▸ ใบขอรับเงิน: ค่าตั้ง settings.pos.payment + คีย์ Beam ของแพลตฟอร์ม (boolean เท่านั้น) + สิทธิ์ยืนยันเอง ◂
+import { evaluate } from "@/lib/core/rbac";
+import { beamEnabled } from "@/lib/payment/beam";
+import { parsePosIntentSettings } from "@/lib/modules/pos/payment-intent-shared";
 
 // หน้าขาย POS (cashier) — เปิดบิลเก็บเงิน walk-in เงินสด/พร้อมเพย์
 //
@@ -74,6 +78,7 @@ export default async function PosRegisterPage({
     ]);
     const limits = registerSellerLimits(actor, active.id, caps);
     const ppId = profile?.promptpayId && isValidPromptPayId(profile.promptpayId) ? profile.promptpayId : null;
+    const intentSet = parsePosIntentSettings(sys.settings);
     return (
       <RegisterScreen
         key={active.id}
@@ -91,6 +96,12 @@ export default async function PosRegisterPage({
         oversellBlock={oversell === "BLOCK"}
         autoLockMinutes={posRegisterAutoLockMinutes(sys.settings)}
         discountCaps={caps}
+        payIntent={{
+          beamCard: intentSet.beam.enabled && beamEnabled(),
+          manualRequiresManager: intentSet.manualConfirmRequiresManager,
+          canManageShift: evaluate(posMembership(auth.active), { module: "pos", action: "pos.shift.manage", unitId: active.id }),
+          promptpayLink: "/app/settings/payment",
+        }}
       />
     );
   }

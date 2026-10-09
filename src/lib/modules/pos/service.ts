@@ -13,6 +13,7 @@ import { parsePosPaymentSettings } from "./payment-settings";
 import { parseShiftSettings } from "./shift";
 // POS P1.11 ▸ R1: โทเคนใบเสร็จออนไลน์ตั้งใน tx เดียวกับบิล (ทุก sourceModule) ◂
 import { newReceiptToken } from "./receipt-token";
+import type { TaxInvoiceSnapshot } from "./tax-invoice-shared"; // POS P1.13 ▸ R1 ◂
 
 // POS createSale — contract 2.1 (จุดตัดเงินกลาง). MVP: PAID_NOW
 //
@@ -109,6 +110,12 @@ export type CreateSaleInput = {
    * ไม่อยู่ใน payload ของคีย์ซ้ำ (samePayload) ⇒ ความหมาย idempotency เดิมทุกไบต์ · รายงานพนักงาน (reports.ts) อ่าน
    */
   soldByUserId?: string;
+  /**
+   * POS P1.13 (R1 R2 · เพิ่มล้วน): สำเนาผู้ซื้อใบกำกับภาษีเต็มรูป (ผู้เรียกแกะด้วย parseTaxInvoiceBuyer แล้ว + requestedAt ISO)
+   * เขียนลง PosSale.taxInvoice ใน tx ของบิล · consumer pos.sale.paid ออก TAX_INVOICE แทน ABB · ไม่ส่ง = null (ผู้เรียกเดิมไม่กระทบ)
+   * ไม่อยู่ใน payload ของคีย์ซ้ำ (samePayload) ⇒ ความหมาย idempotency เดิมทุกไบต์
+   */
+  taxInvoice?: TaxInvoiceSnapshot;
 };
 
 export type SaleResult = {
@@ -503,6 +510,7 @@ async function createSaleOnce(input: CreateSaleInput, client: Client, ownsTx: bo
         paidAt: new Date(),
         shiftId,
         soldByUserId: input.soldByUserId ?? null, // POS P1.17 ▸ R6 ◂
+        ...(input.taxInvoice ? { taxInvoice: input.taxInvoice as unknown as Prisma.InputJsonValue } : {}), // POS P1.13 ▸ R1 ◂
       },
     });
     // POS P1.2: บรรทัดที่มีตัวเลือกต้องรู้ id ตั้งแต่ตอนเขียน (ผูก PosSaleLineOption ในtx เดียวกัน)

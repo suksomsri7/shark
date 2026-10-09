@@ -139,6 +139,8 @@ export type RegisterScreenProps = {
   autoLockMinutes?: number;
   /** POS P1.15U: เพดานส่วนลดตามบทบาทของระบบนี้ (registerDiscountCaps) — ผู้ขายในโทเคนที่ไม่ใช่ผู้ใช้ session ใช้ค่านี้คิดยอดบนจอ */
   discountCaps?: PosDiscountCaps;
+  /** POS P1.7U ▸ ใบขอรับเงิน (พร้อมเพย์ QR ล็อกยอด · Beam) — ค่าตั้ง + สิทธิ์จากหน้าเพจ · ไม่ส่ง = QR นิ่งแบบ P1.6 ◂ */
+  payIntent?: { beamCard: boolean; manualRequiresManager: boolean; canManageShift: boolean; promptpayLink: string };
 };
 
 type Msg = { key: string; values?: Record<string, string | number> };
@@ -731,6 +733,16 @@ export function RegisterScreen(props: RegisterScreenProps) {
   const shiftBlocked = !!status?.shiftRequired && !status?.shift;
   // POS P1.10 U ▸ เครื่องถูกเพิกถอน (registerStatus.deviceStatus) = ล็อกการขาย (เซิร์ฟเวอร์ปฏิเสธ DEVICE_REVOKED อยู่แล้ว — จอไม่ให้เริ่ม) ◂
   const deviceRevoked = status?.deviceStatus === "REVOKED";
+  // POS P1.7U ▸ มติ 5: ส่วนลดเกินเพดานของผู้ขาย (เพดานบนหน้า · ตัวตัดสินจริงคือเซิร์ฟเวอร์) ⇒ กล่องชำระไม่สร้าง QR ◂
+  const discountOverCap = useMemo(() => {
+    if (quoteFailed === "DISCOUNT_EXCEEDS_LIMIT") return true;
+    if (limits.maxDiscountBp === null || !cart.lines.length || cart.lines.some(isPricedByServer)) return false;
+    const input = cartToPriceInput(cart, known.current, vat, limits.maxDiscountBp);
+    if ("ok" in input) return false;
+    const r = priceCart(input);
+    return !r.ok && r.code === "DISCOUNT_EXCEEDS_LIMIT";
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- known เปลี่ยนพร้อม cartVer
+  }, [cart, cartVer, vat, limits.maxDiscountBp, quoteFailed]);
   const payEnabled = cart.lines.length > 0 && !!quoteFresh && online && limits.canSell && payPhase === "form" && !frozen && !shiftBlocked && !deviceRevoked;
   const lastAmount = quoteFresh?.grandTotalSatang ?? local?.grandTotalSatang ?? quote?.q.grandTotalSatang ?? 0;
   const payAmount = quoteSlow && !quoteFresh ? tc("loading") : totalsPending ? PENDING : moneyText(cart.lines.length ? lastAmount : 0);
@@ -1765,6 +1777,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
               changeCart(next);
               setPayError(null);
             }}
+            intent={props.payIntent ? { ...props.payIntent, systemId, unitId, cartKey: idemKey, discountOverCap } : null}
           />
         );
       case "scanChoose":

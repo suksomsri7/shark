@@ -905,3 +905,44 @@
 - **L2 P1.11U ปิด**: vis38 (`/root/pos-runs/vis38-p111u-*`, ภาพ `shark-pos-c/.qc-shots/pos/p1.11u-r3/`) rpub 6/6 · register 37/37 · settings 13/13 ผ่าน · sale-done/paydone-print ขึ้นกล่อง "ชำระแล้ว" พร้อมแถวแชร์ (ส่งทาง LINE / ส่งอีเมล) · rpub-taxinvoice-form ขึ้นฟอร์มตรง 11C · merge `origin/wip/pos-p1.11u` a19918d3 → session/pos **f8d0c233** (โค้ดเท่ากับหัวที่ builder typecheck 0 · ต่างกันแค่ ledger) · nit `RPUB.abb` ก่อน `vatConfigOf` ทำแล้วในรอบ 3 · follow-up: useRef send guard ใน PosReceiptActions (ถ้ายังไม่มี) · preview ตามสวิตช์ · **ORACLE-EDIT? p1.3 counter restore = max(snapshot, issued)** → อนุมัติ รอส่ง builder a59379dd4c3a431b0 หลังรีเซ็ต 07:29Z (ทรี c ว่าง)
 - **L1 P1.7U**: รอบ 2 head **67efb7ac** (N1 close-path paid guard · N3 terminal refusal ปิดได้ (+SHIFT_REQUIRED ยอมรับ) · N4 inventory · QR panel compact ~200px · แป้น 46–52px) · chain39 (task bfraj7cuc): build39 p11 → vis39 register owner wo p1.7u-r2 → ดู paydlg-promptpay-qr 1440/1024 ไม่ตัด → merge
 - L3 P1.15U รอบแก้ 1 · L4 P1.13 รอบแก้ 1 ยังรัน · session 94% รอรีเซ็ต 07:29Z
+
+## 9 ต.ค. 07:35 UTC — session ชนเพดาน 07:28Z (builder P1.15U/P1.13 ถูกตัด 429) → รีเซ็ต 07:30Z ปลุก 4 เลนแล้ว
+- **L1 P1.7U**: vis39 (`shark-pos-p11/.qc-shots/pos/p1.7u-r2/`) register owner 45/45 · paydlg-promptpay-qr 1440/1024 **ตรง 02 แล้ว** (QR panel ~200px · แป้น+แถว 100/500/1,000/พอดี ครบ) → อนุมัติ merge · ผมลอง merge 67efb7ac → conflict `scripts/pos-ui-inventory.json` + `scripts/visual-pos.mts` (กับ P1.11U) → abort · ส่ง builder (af989d…) merge origin/session/pos 9ba7834b เอง + typecheck/p1.7/dry → push → ผม merge (ไม่ต้อง build ซ้ำ)
+- **L2 (ทรี c)**: ส่ง builder P1.11U เดิม ทำ ORACLE-EDIT `qc-pos-p1.3` restore counter = max(snapshot, issued) บนสาขา `wip/pos-p1.3-counter` จาก session/pos → เมื่อ push: ผมดู diff แล้ว merge (ไม่ต้องผู้ตรวจ — เป็นสคริปต์ด่าน)
+- **L3 P1.15U**: ถูกตัด 429 ระหว่างรอด่าน · ทรี b ที่ ede913ba (merge session/pos 9ba7834b แล้ว) + notes ยังไม่ commit → ปลุกให้รันด่านที่ค้างต่อ (p1.3 ซ้ำเพราะชนกับ vis ของผมบน coffee)
+- **L4 P1.13**: ถูกตัด 429 · ทรี d ที่ 0d7553cc (F-fixes + ORACLE-EDIT S5 + follow-ups บันทึกแล้ว) → ปลุกให้ทำที่เหลือ + ด่าน + merge session/pos
+- โควตา: session รีเซ็ต 07:30Z (watcher ยังแสดง 100% ของหน้าต่างเก่า) · weekly 87%
+
+## 9 ต.ค. 07:40 UTC — P1.15U รอบแก้ 1 ส่งแล้ว (9cb8ca49) → re-review + build40-b + ภาพ
+- **L3 P1.15U**: head **9cb8ca49** (F1–F10 commit แยก · deviation 3 capBp/capRole · ORACLE-EDIT TK-U1/AP-U1 39 ข้อ · merge session/pos 9ba7834b ที่ ede913ba) · ด่านเขียว (p1.15 39/39 ×3 · p1.9/p1.10/p1.17/authz · p1.3 128 เมื่อรันซ้ำ) · ผู้ตรวจ (a2a396d…) ดูซ้ำแล้ว · build40-b @9cb8ca49 `/root/pos-runs/build40-b-20261009T073522Z` → vis40 (`scratchpad/ctl/vis40-p115u.sh` wo p1.15u-r1 พอร์ต 3227 · register owner/cashier + sales owner · waiter task b55kunp3w) → เทียบ 13B lock-screen · 21B approval-wait · discount-over → merge
+- session หน้าต่างใหม่ 6% · weekly 87%
+
+## 9 ต.ค. 07:50 UTC — ✅ P1.7U merge แล้ว → **19/55**
+- **L1 P1.7U ปิด**: builder merge session/pos 9ba7834b เอง (de130460 · inventory 356→367 · visual-pos ทั้งสองฝั่ง · typecheck 0 · p1.7 32/32 · dry rc 0) → merge เข้า session/pos **87f61ec9** push แล้ว (ไม่ build ซ้ำ: โค้ด UI เท่ากับ build39 ที่ถ่ายภาพผ่าน + ส่วนต่างคือ P1.11U ที่ build38 ผ่านแล้ว) · follow-ups ในโน้ต: "เงินเข้าไม่มีบิล" report · over-cap guard รับ approved held cart/PIN หลัง P1.15U · N1 (Beam เท่านั้น) แก้แล้วรอบ 2
+- ทรี p11 ว่าง → ใช้ build/ภาพ session/pos รวมตอนปิดชุด
+- เหลือ: L2 ORACLE-EDIT p1.3 · L3 P1.15U รอบ 2 + ภาพ · L4 P1.13 รอบแก้ 1
+
+## 9 ต.ค. 07:58 UTC — ORACLE-EDIT p1.3 counter merge แล้ว
+- `wip/pos-p1.3-counter` be39c536 (4 บรรทัด: cleanup คืน seq = max(snapshot, เลขใบเสร็จสูงสุดที่ออกจริงของ unit/period) · typecheck 0 · p1.3 128/128 ×2) → merge session/pos · ข้อที่ยังเปิด (บันทึกไว้): cleanup ยังลบ counter ที่ไม่อยู่ใน snapshot (เดือน/สาขาใหม่ที่เกิดจากขายจริงระหว่างรัน) — follow-up ไม่เร่ง
+- ทรี c ว่าง · เหลือ L3 P1.15U รอบ 2 + ภาพ (build40-b) · L4 P1.13 รอบแก้ 1
+
+## 9 ต.ค. 08:05 UTC — P1.13 รอบแก้ 1 ส่งแล้ว (0d45a6d0) → ผู้ตรวจดูซ้ำ
+- **L4 P1.13**: head **0d45a6d0** (F1 64c0e33d · F2 9e837395 · F3 0fd07421 · F4 b0efc9a9 + ORACLE-EDIT S2 b340f16a · F5 f5aa62c2 · fu1 14d87c87 · fu2 cf6adbfe/0e16a906 · fu3 801a3542 + ORACLE-EDIT S5 c82d9b8f (ย้ายบิล unlinked จาก S1 → S5 — รับ) · fu4–5 บันทึก 0d7553cc · merge session/pos 9ba7834b f2545922) · ด่านก่อน merge: p1.13 32/32 ×3 · p1.11/p1.8/p1.16/p1.3/p1.10/authz เขียว · money set เท่าเดิม · fitness · หลัง merge: typecheck 0 · p1.13 32/32 ×3 · p1.11 38 · race ที่เหลือ (refund ระหว่าง supersede กับ claim) บันทึกในโน้ต · ผู้ตรวจ (a8e7731…) ดูซ้ำแล้ว → ถ้า MERGEABLE: merge (money set ของ builder ก่อน merge ถือว่าพอ เพราะส่วนต่างหลัง merge = P1.11U ที่ gated แล้ว)
+
+## 9 ต.ค. 08:10 UTC — ✅ P1.13 S merge แล้ว (ยัง 19/55 — นับเมื่อ P1.13U ปิด) → ด่านปิดชุด gates41-c
+- **L4 P1.13 S ปิด**: re-review 0d45a6d0 = **MERGEABLE** (F1–F5 + fu1–3 ปิด · N1–N5 low → ใส่ prompt P1.13U: N1 `buyerMatches` เทียบฟิลด์เท่ากับ `sameTaxInvoiceBuyer` · N2 logOps WARN ที่ claim-lost branch (saleId+docId) · N3 ลบส่วน S4 ที่ว่างเปล่า · N4 email limit P1.11 → 120 · N5 WARN ใน account-bridge แยกตาม res.reason) → merge session/pos **d9fec398** push แล้ว (merge สะอาดกับ P1.7U/p1.3-counter)
+- **ด่านปิดชุด**: `scratchpad/ctl/gates41-c.sh` ทรี c @origin/session/pos d9fec398 → generate · typecheck · build · fitness ×3 · p1.13/p1.7/p1.11/p1.3/p1.10/p1.15/pos-account/account-cpa/authz → `/root/pos-runs/gates41-c-*/SUMMARY.txt` (ครั้งแรกที่ P1.7U+P1.13 อยู่ด้วยกัน)
+- เหลือ L3 P1.15U รอบ 2 + ภาพ vis40 (กำลังถ่าย) · ต่อไป (ถ้าโควตาเหลือ): P1.13U brief/oracle · weekly 89%
+
+## 9 ต.ค. 08:20 UTC — ภาพ P1.15U ผ่าน (รอรอบ 2 เล็กแล้ว merge)
+- **L3 P1.15U**: vis40 (`/root/pos-runs/vis40-p115u-20261009T074734Z`, ภาพ `shark-pos-b/.qc-shots/pos/p1.15u-r1/`) register owner 50/50 · cashier 50/50 · sales 15/15 ผ่าน · เทียบ 13B lock-screen **ตรงแบบ** (tile/ชื่อ/6 จุด/แป้น ลืม PIN·0·⌫/hint · คอลัมน์ขวา การ์ด+ใช้งานอยู่+สลับพนักงาน+บิลพัก+footer) · lock-pin-locked แดง "ล็อกชั่วคราว 15 นาที" + ปุ่มผู้จัดการปลดล็อก · 21B approval-wait (owner) ตรง 21B (ผู้อนุมัติ ส่งแล้ว · กำลังรอ 4:57 · หรือ · PIN 4 ช่อง+แป้น · ยกเลิกคำขอ; cashier = ปุ่ม "ยกเลิกบิล — รออนุมัติ…" ตาม ruling) · discount-over-sheet ตรง checklist · staff-switch ตรง → **ภาพผ่าน** · รอรอบ 2 (N1 Bills fail-closed · N2 · N3) จาก builder a593959… → builder merge session/pos (ตอนนี้มี P1.7U + P1.13 S) เอง → ผม merge → **20/55**
+- gates41-c กำลัง typecheck/build session/pos d9fec398 · weekly 89% (ใกล้ 90% = HANDOVER)
+
+## 9 ต.ค. 09:00 UTC — ✅ gates41-c เขียวทั้งชุด · เจ้าของปรับเกณฑ์ handover = weekly 97%
+- **ด่านปิดชุด** (`/root/pos-runs/gates41-c-*` ทรี c @d9fec398 = P1.7U+P1.11U+P1.13 S+p1.3-counter): generate 0 · typecheck 0 · build 0 · fitness ×3 0 · p1.13/p1.7/p1.11/p1.3/p1.10/p1.15/pos-account/account-cpa/authz ทั้งหมด exit 0
+- **เจ้าของสั่ง 08:25Z**: "Weekly limit ถึง 97% ค่อยเริ่มเตรียมตัวส่งไม้ต่อให้บัญชี A ตอนนี้ 89%" → เกณฑ์ HANDOVER = weekly ≥97% (session ยัง 90%) · บันทึก memory `feedback_pos_handover_at_97_weekly`
+- ต่อไป: รอ P1.15U รอบ 2 → merge (20/55) · เริ่ม P1.13U (prompt + rulings + visual states; builder เพิ่ม U checks ใน qc-pos-p1.13) ในทรี d · weekly 89%
+
+## 9 ต.ค. 09:10 UTC — เปิด P1.13U (L4 ทรี d)
+- prompt `pos-prompt-accountB-P1.13U.md` f84d10f3 (rulings 1–9: 15A จาก cart footer + pay toggle · `registerStatus.taxInvoiceEligible` (server hunk ≤20 บรรทัด + ORACLE-EDIT U1) · DBD ปุ่มเฉพาะนิติบุคคล/checksum ผ่าน · drawer NONE/REQUESTED/ISSUED + issue/approve/reject · PayDone cell "กำลังออกในบัญชี" · visual taxinvoice-dialog/taxinvoice-set/bill-taxinvoice-requested/issued · step 0 = reviewer lows N1–N5) · builder Opus เปิดแล้ว สาขา `wip/pos-p1.13u` จาก session/pos · scratch `scratchpad/p113u/`
+- รอ P1.15U รอบ 2 (696a86f4 push แล้ว รอรายงาน) → merge → 20/55 · weekly 89%
