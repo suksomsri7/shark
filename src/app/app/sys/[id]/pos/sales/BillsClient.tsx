@@ -14,6 +14,7 @@ import { useLocale, useTranslations } from "next-intl";
 import { billDetailAction, billsPageDataAction, voidSaleAction } from "@/lib/modules/pos/bills-actions";
 import { BILLS_ERROR_KEYS, BILL_STATUS_FILTERS, VOID_REASON_MAX, addBillDays, type BillDetailResult, type BillRow, type BillStatusFilter, type BillsPageDataResult } from "@/lib/modules/pos/bills-shared";
 import { getPosDeviceId } from "@/lib/modules/pos/device-id";
+import { heartbeatAction } from "@/lib/modules/pos/device-actions"; // POS P1.15U F8: เครื่องลงทะเบียนไหม
 import { reprintReceiptAction } from "@/lib/modules/pos/receipt-actions";
 import { receiptRefusalMessageKey } from "@/lib/modules/pos/receipt-render";
 // POS P1.10 U ▸ พิมพ์สำเนาผ่านโมดูลพิมพ์ (มติ CD4) — วิธีพิมพ์/กระดาษตามค่าตั้งเครื่องนี้ (heartbeat) ◂
@@ -26,7 +27,9 @@ import { REFUND_ERROR_KEYS, REFUND_REASON_CODES, REFUND_REASON_MAX, type RefundP
 import { currentShiftAction } from "@/lib/modules/pos/shift-actions";
 // POS P1.15U ▸ ผู้ขอ = คนในโทเคนของเครื่องนี้ (มติ 2) · รหัสปฏิเสธของ PIN/สายอนุมัติ (มติ 6) · กล่องรอผู้จัดการอนุมัติ 21B ◂
 import { refusalMessageKey, type PosApprovalView } from "@/lib/modules/pos/register-shared";
-import { readStaffSession } from "@/lib/modules/pos/staff-session";
+import { clearStaffSession, readStaffSession } from "@/lib/modules/pos/staff-session";
+import { listStaffForDeviceAction } from "@/lib/modules/pos/staff-pin-actions";
+import { ManagerPinPad, type ManagerPinResult } from "@/components/pos/register/ManagerPinPad";
 import { posApprovalStatusAction } from "@/lib/modules/pos/pos-approval-actions";
 import { ApprovalWaitDialog, type ApprovalPinResult } from "@/components/pos/register/ApprovalWaitDialog";
 import { BillIcon, ChannelChip, StatusChip, SummaryCard, bkkHm, billsCsv, channelLabel, chipOf, dateLabel, methodLabel, money, payText, type T } from "./bills-ui";
@@ -257,6 +260,71 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
     return { ok: true };
   };
 
+  // ── POS P1.15U ▸ fix รอบ 1 F8: เครื่องที่ลงทะเบียน (+ ร้านมี PIN แล้ว) = ยกเลิก/คืนเงินต้องมีโทเคนที่ยังใช้ได้ · ไม่มี/ตาย = "ใส่ PIN ที่หน้าขายก่อน" ·
+  //    NO_PERMISSION = แป้น PIN ผู้จัดการ (managerPin + managerUserId) · เครื่องไม่ลงทะเบียน = เหมือนเดิม ◂
+  const [pinShop, setPinShop] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      const dev = getPosDeviceId();
+      if (!dev) return;
+      const hb = await heartbeatAction({ systemId, unitId, deviceCode: dev }).catch(() => null);
+      if (!alive || !hb?.ok || !hb.device || hb.device.status !== "ACTIVE") return;
+      const ls = await listStaffForDeviceAction({ systemId, unitId, deviceId: dev }).catch(() => null);
+      if (alive) setPinShop(!ls || !ls.ok || ls.items.some((x) => x.hasPin));
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [systemId, unitId]);
+  const [needPin, setNeedPin] = useState(false);
+  /** ต้องมีโทเคน แต่ไม่มี = เปิดข้อความ "ใส่ PIN ที่หน้าขายก่อน" แล้วคืน false */
+  const requireToken = (): boolean => {
+    if (pinShop && !tokenFields().staffToken) {
+      setNeedPin(true);
+      return false;
+    }
+    return true;
+  };
+  const tokenDead = () => {
+    clearStaffSession(getPosDeviceId());
+    setVoidOpen(false);
+    setRefundOpen(false);
+    setNeedPin(true);
+  };
+  const [mgrPin, setMgrPin] = useState<{ kind: "void" } | { kind: "refund"; refund: Parameters<typeof refundSaleAction>[0]["refund"] } | null>(null);
+  const mgrPinSubmit = async (managerUserId: string, managerPin: string): Promise<ManagerPinResult> => {
+    if (!mgrPin || !bill) return { ok: false, code: "NOT_FOUND" };
+    if (mgrPin.kind === "void") {
+      const r = await voidSaleAction({ systemId, unitId, saleId: bill.id, reason: voidReason.trim(), idempotencyKey: voidKey, managerPin, managerUserId, ...tokenFields() });
+      if (!r.ok) {
+        if (r.code === "STAFF_TOKEN_INVALID") {
+          setMgrPin(null);
+          tokenDead();
+        }
+        return { ok: false, code: r.code };
+      }
+      setMgrPin(null);
+      setVoidOpen(false);
+      setToast(t("toastVoided"));
+      refreshAll();
+      return { ok: true };
+    }
+    const r = await refundSaleAction({ systemId, unitId, ...(mgrPin.refund.deviceId ? { deviceId: mgrPin.refund.deviceId } : {}), refund: { ...mgrPin.refund, managerPin, managerUserId } });
+    if (!r.ok) {
+      if (r.code === "STAFF_TOKEN_INVALID") {
+        setMgrPin(null);
+        tokenDead();
+      }
+      return { ok: false, code: r.code };
+    }
+    setMgrPin(null);
+    setRefundOpen(false);
+    setToast(t("toastRefunded", { no: r.refund.receiptNo ?? "" }));
+    refreshAll();
+    return { ok: true };
+  };
+
   // ── ยกเลิกบิล ──
   const [voidOpen, setVoidOpen] = useState(false);
   const [voidReason, setVoidReason] = useState("");
@@ -264,6 +332,7 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
   const [voidErr, setVoidErr] = useState<string | null>(null);
   const [voidBusy, setVoidBusy] = useState(false);
   const openVoid = () => {
+    if (!requireToken()) return; // F8
     setVoidReason("");
     setVoidErr(null);
     setVoidKey(newKey("void"));
@@ -280,6 +349,10 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
       setVoidErr(te("reasonRequired"));
       return;
     }
+    if (!requireToken()) {
+      setVoidOpen(false);
+      return;
+    }
     setVoidBusy(true);
     setVoidErr(null);
     try {
@@ -293,7 +366,9 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
         setVoidOpen(false);
         setOpenReq({ saleId: bill.id, requestId: r.requestId, kind: "void" });
         setWait({ requestId: r.requestId, kind: "void", saleId: bill.id, void: { reason, key: voidKey } });
-      } else setVoidErr(errKey(r.code) !== "unknown" ? te(errKey(r.code)) : posErr(r.code));
+      } else if (r.code === "STAFF_TOKEN_INVALID") tokenDead(); // F8
+      else if (r.code === "NO_PERMISSION" && pinShop) setMgrPin({ kind: "void" }); // F8: ผู้จัดการอนุญาตด้วย PIN ที่เครื่องนี้
+      else setVoidErr(errKey(r.code) !== "unknown" ? te(errKey(r.code)) : posErr(r.code));
     } catch {
       setVoidErr(te("unknown"));
     } finally {
@@ -370,6 +445,7 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
   );
   const openRefund = async () => {
     if (!bill) return;
+    if (!requireToken()) return; // F8
     setMenuFor(null);
     setRf(null);
     setRfErr(null);
@@ -434,6 +510,10 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
   const payTypeOf = (): RefundPayType => (rfMethod === "CASH" ? "CASH" : rfMethod === "CARD" ? "CARD" : originalPay?.type === "TRANSFER" ? "TRANSFER" : "PROMPTPAY");
   const submitRefund = async () => {
     if (!rf || rfBusy || draft.lines.length === 0) return;
+    if (!requireToken()) {
+      setRefundOpen(false);
+      return;
+    }
     if (rfReason === "OTHER" && !rfReasonText.trim()) {
       setRfErr(tr("reasonRequired"));
       return;
@@ -481,7 +561,9 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
       else if (r.code === "UNKNOWN") {
         setRfErr(tr("unknown"));
         setRfRetry(true);
-      } else setRfErr(refundErrKey(r.code) !== "unknown" ? tr(refundErrKey(r.code)) : posErr(r.code));
+      } else if (r.code === "STAFF_TOKEN_INVALID") tokenDead(); // F8
+      else if (r.code === "NO_PERMISSION" && pinShop) setMgrPin({ kind: "refund", refund: refundIn }); // F8
+      else setRfErr(refundErrKey(r.code) !== "unknown" ? tr(refundErrKey(r.code)) : posErr(r.code));
     } catch {
       setRfErr(tr("unknown"));
       setRfRetry(true);
@@ -1399,6 +1481,40 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
         </BillDialog>
       ) : null}
 
+      {/* POS P1.15U ▸ fix รอบ 1 F8: ใส่ PIN ที่หน้าขายก่อน · PIN ผู้จัดการแทนสิทธิ์ที่ขาด ◂ */}
+      {needPin ? (
+        <BillDialog labelledBy="pos-bills-need-pin-title" testid="pos-bills-need-pin" onClose={() => setNeedPin(false)}>
+          <div className="flex flex-col gap-3 px-5 py-5">
+            <h2 id="pos-bills-need-pin-title" className="text-[17px] font-bold">
+              {trg("lock.needPinBills")}
+            </h2>
+            <p className="text-[13.5px] text-[color:var(--color-ink-soft)]">{trg("lock.needPinBillsBody")}</p>
+            <div className="flex justify-end gap-2 pt-2">
+              <button type="button" data-testid="pos-bills-need-pin-close" className="btn btn-ghost h-12 rounded-[12px] px-5" onClick={() => setNeedPin(false)}>
+                {t("drawer.close")}
+              </button>
+              <Link data-testid="pos-bills-need-pin-link" href={`/app/sys/${systemId}/pos/register?unit=${encodeURIComponent(unitId)}`} className="btn btn-primary inline-flex h-12 items-center rounded-[12px] px-5">
+                {trg("lock.goRegister")}
+              </Link>
+            </div>
+          </div>
+        </BillDialog>
+      ) : null}
+      {mgrPin ? (
+        <BillDialog labelledBy="pos-bills-mgr-pin-title" testid="pos-bills-mgr-pin" wide onClose={() => setMgrPin(null)}>
+          <div className="flex items-center gap-3 border-b px-5 pb-3 pt-4">
+            <h2 id="pos-bills-mgr-pin-title" className="flex-1 text-[17px] font-bold">
+              {trg("lock.managerAllow")}
+            </h2>
+            <button type="button" data-testid="pos-bills-mgr-pin-close" aria-label={t("drawer.close")} className="-mr-2 grid h-11 w-11 place-items-center rounded-lg hover:bg-[color:var(--color-surface-2)]" onClick={() => setMgrPin(null)}>
+              <BillIcon name="x" />
+            </button>
+          </div>
+          <div className="px-5 py-4">
+            <ManagerPinPad systemId={systemId} unitId={unitId} deviceId={getPosDeviceId()} onPinEntered={mgrPinSubmit} />
+          </div>
+        </BillDialog>
+      ) : null}
       {/* POS P1.15U ▸ กล่องรอผู้จัดการอนุมัติ 21B (ยกเลิกบิล/คืนเงิน) ◂ */}
       {wait ? (
         <ApprovalWaitDialog

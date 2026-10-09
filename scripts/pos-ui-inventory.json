@@ -6758,120 +6758,6 @@
     },
     {
       "page": "/app/sys/[id]/pos/register",
-      "testid": "pos-approval-wait-manager",
-      "kind": "button",
-      "roles": [
-        "owner",
-        "cashier"
-      ],
-      "hiddenFor": [],
-      "expect": {
-        "type": "ui",
-        "target": "pos-approval-wait-dots",
-        "note": "เลือกผู้จัดการที่อยู่หน้าร้าน (MANAGER/OWNER ที่มี PIN)"
-      },
-      "wo": "P1.15U",
-      "oracle": "",
-      "system": "POS",
-      "query": "unit=[unitId]"
-    },
-    {
-      "page": "/app/sys/[id]/pos/register",
-      "testid": "pos-approval-wait-key-*",
-      "kind": "button",
-      "roles": [
-        "owner",
-        "cashier"
-      ],
-      "hiddenFor": [],
-      "expect": {
-        "type": "ui",
-        "target": "pos-approval-wait-dots",
-        "note": "แป้น PIN ผู้จัดการ 1–9 · ครบ 6 หลัก = ส่งเอง"
-      },
-      "wo": "P1.15U",
-      "oracle": "",
-      "system": "POS",
-      "query": "unit=[unitId]"
-    },
-    {
-      "page": "/app/sys/[id]/pos/register",
-      "testid": "pos-approval-wait-key-0",
-      "kind": "button",
-      "roles": [
-        "owner",
-        "cashier"
-      ],
-      "hiddenFor": [],
-      "expect": {
-        "type": "ui",
-        "target": "pos-approval-wait-dots",
-        "note": "แป้น 0"
-      },
-      "wo": "P1.15U",
-      "oracle": "",
-      "system": "POS",
-      "query": "unit=[unitId]"
-    },
-    {
-      "page": "/app/sys/[id]/pos/register",
-      "testid": "pos-approval-wait-key-del",
-      "kind": "button",
-      "roles": [
-        "owner",
-        "cashier"
-      ],
-      "hiddenFor": [],
-      "expect": {
-        "type": "ui",
-        "target": "pos-approval-wait-dots",
-        "note": "ลบตัวเลขตัวท้าย"
-      },
-      "wo": "P1.15U",
-      "oracle": "",
-      "system": "POS",
-      "query": "unit=[unitId]"
-    },
-    {
-      "page": "/app/sys/[id]/pos/register",
-      "testid": "pos-approval-wait-clear",
-      "kind": "button",
-      "roles": [
-        "owner",
-        "cashier"
-      ],
-      "hiddenFor": [],
-      "expect": {
-        "type": "ui",
-        "target": "pos-approval-wait-dots",
-        "note": "ล้าง PIN"
-      },
-      "wo": "P1.15U",
-      "oracle": "",
-      "system": "POS",
-      "query": "unit=[unitId]"
-    },
-    {
-      "page": "/app/sys/[id]/pos/register",
-      "testid": "pos-approval-wait-submit",
-      "kind": "button",
-      "roles": [
-        "owner",
-        "cashier"
-      ],
-      "hiddenFor": [],
-      "expect": {
-        "type": "mutation",
-        "target": "recallHeldCartAction",
-        "note": "PIN 4–5 หลัก: ส่วนลด = เรียกคืนบิลที่พักรอ + เตรียม PIN ไว้กับบิล (ส่งพร้อม heldCartId) · ยกเลิกบิล/คืนเงิน (หน้าบิลวันนี้) = ส่งคำขอเดิมซ้ำพร้อม managerPin + managerUserId"
-      },
-      "wo": "P1.15U",
-      "oracle": "",
-      "system": "POS",
-      "query": "unit=[unitId]"
-    },
-    {
-      "page": "/app/sys/[id]/pos/register",
       "testid": "pos-approval-wait-cancel",
       "kind": "button",
       "roles": [
@@ -6938,6 +6824,175 @@
       "expect": {
         "type": "ui",
         "note": "โหมดร้านยังไม่มี PIN: ปิดจอล็อกกลับไปขาย (ผู้ใช้ session)"
+      },
+      "wo": "P1.15U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-mgr-pin-manager",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-mgr-pin-dots",
+        "note": "แป้น PIN ผู้จัดการ (21B · หน้าบิลวันนี้): เลือกผู้จัดการ MANAGER/OWNER ที่มี PIN"
+      },
+      "wo": "P1.15U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-mgr-pin-key-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-mgr-pin-dots",
+        "note": "แป้น 1–9 · ครบ 6 หลัก = ส่งเอง"
+      },
+      "wo": "P1.15U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-mgr-pin-key-0",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-mgr-pin-dots",
+        "note": "แป้น 0"
+      },
+      "wo": "P1.15U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-mgr-pin-key-del",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-mgr-pin-dots",
+        "note": "ลบตัวเลขตัวท้าย"
+      },
+      "wo": "P1.15U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-mgr-pin-clear",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-mgr-pin-dots",
+        "note": "ล้าง PIN"
+      },
+      "wo": "P1.15U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-mgr-pin-submit",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "voidSaleAction",
+        "note": "PIN 4–5 หลัก: ส่งคำขอเดิมพร้อม managerPin + managerUserId (ยกเลิก/คืนเงิน) · ส่วนลด = เรียกคืนบิลที่พักรอ + เตรียม PIN"
+      },
+      "wo": "P1.15U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-need-pin-close",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "note": "ปิดข้อความ \"ใส่ PIN ที่หน้าขายก่อน\""
+      },
+      "wo": "P1.15U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-need-pin-link",
+      "kind": "link",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]/pos/register",
+        "note": "ไปหน้าขายเพื่อปลดล็อกด้วย PIN (เครื่องลงทะเบียนที่ไม่มีโทเคน)"
+      },
+      "wo": "P1.15U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-bills-mgr-pin-close",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "note": "ปิดแป้น PIN ผู้จัดการ (NO_PERMISSION ของยกเลิก/คืนเงิน)"
       },
       "wo": "P1.15U",
       "oracle": "",

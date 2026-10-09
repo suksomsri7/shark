@@ -401,7 +401,11 @@
       "holdLabel": "Staff switch",
       "switchHeld": "{name}'s bill was held (staff switch)",
       "switchHeldFailed": "Could not hold {name}'s bill — it is still on screen",
-      "backToSale": "Back to selling"
+      "backToSale": "Back to selling",
+      "needPinBills": "Enter your PIN on the register first",
+      "needPinBillsBody": "This device needs to know who is acting — unlock the register with your PIN, then come back to void or refund",
+      "goRegister": "Go to the register",
+      "managerAllow": "Manager approves with a PIN"
     },
     "staff": {
       "title": "Who is using this register",

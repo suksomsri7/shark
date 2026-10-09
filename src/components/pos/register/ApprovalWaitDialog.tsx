@@ -11,14 +11,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { formatThaiTime } from "@/lib/ui/date";
-import { moneyText, POS_APPROVAL_WAIT_MS, refusalMessageKey, type PosApprovalView, type StaffListItem } from "@/lib/modules/pos/register-shared";
+import { moneyText, POS_APPROVAL_WAIT_MS, type PosApprovalView } from "@/lib/modules/pos/register-shared";
 import { cancelPosApprovalAction, posApprovalStatusAction } from "@/lib/modules/pos/pos-approval-actions";
-import { listStaffForDeviceAction } from "@/lib/modules/pos/staff-pin-actions";
 import { readStaffSession } from "@/lib/modules/pos/staff-session";
 import { RegisterDialog } from "./RegisterDialog";
 import { RegisterIcon } from "./RegisterIcon";
+import { ManagerPinPad } from "./ManagerPinPad";
 
-const KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9"] as const;
 const POLL_MS = 5_000;
 
 export type ApprovalPinResult = { ok: true } | { ok: false; code: string };
@@ -38,10 +37,6 @@ export function ApprovalWaitDialog(p: {
   const t = useTranslations("pos.register");
   const [view, setView] = useState<PosApprovalView | null>(null);
   const [loadErr, setLoadErr] = useState(false);
-  const [managers, setManagers] = useState<StaffListItem[] | null>(null);
-  const [mgr, setMgr] = useState<string | null>(null);
-  const [pin, setPin] = useState("");
-  const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const doneRef = useRef(false);
@@ -84,51 +79,11 @@ export function ApprovalWaitDialog(p: {
       clearInterval(tick);
     };
   }, [poll]);
-  useEffect(() => {
-    void (async () => {
-      try {
-        const r = await listStaffForDeviceAction({ systemId: p.systemId, unitId: p.unitId, ...(p.deviceId ? { deviceId: p.deviceId } : {}) });
-        const list = r.ok ? r.items.filter((s) => (s.role === "MANAGER" || s.role === "OWNER") && s.hasPin) : [];
-        setManagers(list);
-        if (list.length === 1) setMgr(list[0]!.userId);
-      } catch {
-        setManagers([]);
-      }
-    })();
-  }, [p.systemId, p.unitId, p.deviceId]);
-
   const created = view ? Date.parse(view.createdAt) : now;
   const left = Math.max(0, created + POS_APPROVAL_WAIT_MS - now);
   const expired = view?.status === "EXPIRED" || (view?.status === "PENDING" && left === 0);
   const clock = `${Math.floor(left / 60_000)}:${String(Math.floor((left % 60_000) / 1000)).padStart(2, "0")}`;
 
-  const submitPin = async (value: string) => {
-    if (busy || !mgr || value.length < 4 || doneRef.current) return;
-    setBusy(true);
-    setPin("");
-    setErr(null);
-    try {
-      const r = await p.onPin(mgr, value, view);
-      if (r.ok) doneRef.current = true;
-      else setErr(t(r.code === "PIN_LOCKED" ? "lock.pinLocked" : refusalMessageKey(r.code)));
-    } catch {
-      setErr(t("errors.unknown"));
-    } finally {
-      setBusy(false);
-    }
-  };
-  const press = (k: string) => {
-    if (busy) return;
-    setErr(null);
-    if (k === "del") return setPin((v) => v.slice(0, -1));
-    if (k === "clear") return setPin("");
-    setPin((v) => {
-      if (v.length >= 6) return v;
-      const next = v + k;
-      if (next.length === 6) queueMicrotask(() => void submitPin(next));
-      return next;
-    });
-  };
   /** fix รอบ 1 F7: ยกเลิกในนามคนในโทเคนของเครื่องนี้ (ผู้ขอ/ผู้จัดการเท่านั้น — เซิร์ฟเวอร์ตัดสิน) */
   const cancelRequestNow = async () => {
     const st = p.deviceId ? readStaffSession(p.deviceId) : null;
@@ -149,13 +104,11 @@ export function ApprovalWaitDialog(p: {
     }
   };
 
-  const mgrName = (id: string | null) => managers?.find((m) => m.userId === id)?.name ?? "-";
   const roleText = (r: string | null) => (r === "OWNER" ? t("roles.owner") : r === "MANAGER" ? t("roles.manager") : r ? t("approval.roleAny") : "");
   const summary = view
     ? t("approval.sent", { title: view.title ?? "-", amount: view.amountSatang !== null ? moneyText(view.amountSatang) : "-", time: formatThaiTime(new Date(view.createdAt)) }) +
       (view.reason ? ` · ${t("approval.reason", { reason: view.reason })}` : "")
     : t("approval.loading");
-  const boxes = Math.max(4, Math.min(6, pin.length + (pin.length < 6 ? 1 : 0)));
 
   return (
     <RegisterDialog onDismiss={p.onClose} locked={busy}>
@@ -215,71 +168,18 @@ export function ApprovalWaitDialog(p: {
           </div>
           )}
           {p.allowPin !== false && (
-          <div className="grid gap-4 md:grid-cols-[1fr_auto]">
-            <div className="flex flex-col gap-3">
-              <h3 className="text-[15px] font-bold">{t("approval.pinTitle")}</h3>
-              <p className="text-[12.5px] leading-[1.5] text-[color:var(--color-muted)]">{t("approval.pinBody")}</p>
-              {managers === null ? (
-                <p className="text-[13px] text-[color:var(--color-muted)]">{t("staff.loading")}</p>
-              ) : managers.length === 0 ? (
-                <p data-testid="pos-approval-wait-no-manager" className="text-[13px] text-[color:var(--color-muted)]">
-                  {t("approval.noManager")}
-                </p>
-              ) : (
-                <div className="flex flex-wrap gap-2">
-                  {managers.map((m) => (
-                    <button
-                      key={m.userId}
-                      data-testid="pos-approval-wait-manager"
-                      type="button"
-                      aria-pressed={mgr === m.userId}
-                      className={`h-11 rounded-[11px] border px-3.5 text-[13.5px] ${mgr === m.userId ? "border-2 border-[color:var(--color-ink)] font-bold" : "text-[color:var(--color-ink-soft)]"}`}
-                      onClick={() => {
-                        setMgr(m.userId);
-                        setPin("");
-                        setErr(null);
-                      }}
-                    >
-                      {m.name ?? "-"}
-                    </button>
-                  ))}
-                </div>
-              )}
-              <div data-testid="pos-approval-wait-dots" className="flex gap-2.5" aria-label={mgr ? t("approval.pinFor", { name: mgrName(mgr) }) : t("approval.pinTitle")}>
-                {Array.from({ length: boxes }, (_, i) => (
-                  <span key={i} aria-hidden className={`grid size-[46px] place-items-center rounded-[11px] border-[1.5px] ${i < pin.length ? "border-[color:var(--color-ink)]" : ""}`}>
-                    {i < pin.length ? <i className="inline-block size-3 rounded-full bg-[color:var(--color-ink)]" /> : null}
-                  </span>
-                ))}
-              </div>
-              {err && (
-                <p data-testid="pos-approval-wait-error" role="alert" className="text-[13px] font-semibold text-[color:var(--color-danger)]">
-                  {err}
-                </p>
-              )}
-              {pin.length >= 4 && pin.length < 6 && (
-                <button data-testid="pos-approval-wait-submit" type="button" disabled={busy || !mgr} className="btn btn-primary h-11 self-start rounded-[11px] px-5 text-[14px] disabled:opacity-50" onClick={() => void submitPin(pin)}>
-                  {t("lock.confirm")}
-                </button>
-              )}
-            </div>
-            <div className="grid grid-cols-3 gap-2 md:w-[230px]">
-              {KEYS.map((k) => (
-                <button key={k} data-testid={`pos-approval-wait-key-${k}`} type="button" disabled={busy || !mgr} className="h-12 rounded-[11px] border text-[17px] font-semibold disabled:opacity-40" onClick={() => press(k)}>
-                  {k}
-                </button>
-              ))}
-              <button data-testid="pos-approval-wait-clear" type="button" disabled={busy || !pin} className="h-12 rounded-[11px] border bg-[color:var(--color-surface-2)] text-[14px] font-semibold disabled:opacity-40" onClick={() => press("clear")}>
-                {t("approval.clear")}
-              </button>
-              <button data-testid="pos-approval-wait-key-0" type="button" disabled={busy || !mgr} className="h-12 rounded-[11px] border text-[17px] font-semibold disabled:opacity-40" onClick={() => press("0")}>
-                0
-              </button>
-              <button data-testid="pos-approval-wait-key-del" type="button" disabled={busy || !pin} aria-label={t("lock.del")} className="grid h-12 place-items-center rounded-[11px] border bg-[color:var(--color-surface-2)] disabled:opacity-40" onClick={() => press("del")}>
-                <RegisterIcon name="del" size={18} />
-              </button>
-            </div>
-          </div>
+            <ManagerPinPad
+              systemId={p.systemId}
+              unitId={p.unitId}
+              deviceId={p.deviceId}
+              disabled={busy}
+              onPinEntered={async (m, pin) => {
+                if (doneRef.current) return { ok: true };
+                const r = await p.onPin(m, pin, view);
+                if (r.ok) doneRef.current = true;
+                return r;
+              }}
+            />
           )}
         </div>
         <footer className="flex items-center gap-3 border-t px-6 py-4">
