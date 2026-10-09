@@ -7,7 +7,9 @@
 // 🔴 โหลดหน้า = shiftsPageDataAction คำขอเดียว (Server Action เรียงคิวต่อ client) · หลังทำรายการสำเร็จโหลดใหม่ด้วยคำขอเดียวกัน
 // 🔴 เงินเป็นสตางค์ Int ทุกที่ (ช่องกรอกเป็นบาท) · คำปฏิเสธแสดงผ่าน refusalMessageKey (ไม่แสดง message ไทยของเซิร์ฟเวอร์)
 // 🔴 คีย์กันซ้ำ (ปิดกะ/เงินเข้าออก/นับย้อนหลัง) เก็บใน state หมุนเฉพาะหลังสำเร็จ (R2 F6)
-// ไม่ทำในใบนี้: ปุ่มเปิดลิ้นชัก + แถวเครื่องพิมพ์/ลิ้นชัก (P1.10) · ส่งสรุปกะ LINE/PDF (P3) · พิมพ์ X/ใบเปิดกะ (P1.10) ·
+// POS P1.10 U ▸ ปุ่ม "เปิดลิ้นชัก" ในการ์ดเครื่องนี้ — แสดงเฉพาะเมื่อค่าตั้งเครื่อง drawerKick + จับคู่เครื่องพิมพ์ USB/BT ในเบราว์เซอร์นี้แล้ว ·
+//   ส่ง ESC p 0 25 250 ล้วน (kickDrawer) · ไม่ลง audit (คำสั่งฮาร์ดแวร์ · มติ CD4) · หน้านี้เปิดได้เฉพาะ pos.shift.operate/manage อยู่แล้ว ◂
+// ไม่ทำในใบนี้: ส่งสรุปกะ LINE/PDF (P3) · พิมพ์ X/ใบเปิดกะ (P1.10) ·
 //   รายชื่อพนักงานจาก HR / PIN (P1.15/P3.5) · สถานะพร้อมเพย์/Beam ต่อวิธีชำระ (P1.7) · ตั้งค่า blind (P1.18)
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -15,6 +17,10 @@ import { useRouter } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { RegisterIcon, type RegisterIconName } from "@/components/pos/register/RegisterIcon";
 import { getPosDeviceId } from "@/lib/modules/pos/device-id";
+import { thisDevicePrinter, type ThisDevicePrinter } from "@/components/pos/print/device-printer";
+import { PrintStatus } from "@/components/pos/print/PrintStatus";
+import { kickDrawer, printerPaired } from "@/components/pos/print/printReceipt";
+import type { PrintResult } from "@/components/pos/print/types";
 import { refusalMessageKey } from "@/lib/modules/pos/register-shared";
 // POS P1.15U ▸ มติ 2: เปิดกะด้วยโทเคนผู้ขายของเครื่องนี้ (ผู้เปิดกะ = คนในโทเคน) — เฉพาะเมื่อเป็นเครื่องเดียวกับที่ออกโทเคน ◂
 import { readStaffSession } from "@/lib/modules/pos/staff-session";
@@ -193,6 +199,31 @@ export function ShiftsClient({ systemId, units, unitId, canManage, meName }: Pro
     setDeviceId(dev);
     void load(dev).catch(() => setLoadFailed(true));
   }, [load]);
+
+  // POS P1.10 U ▸ ลิ้นชัก: ค่าตั้งเครื่องนี้ (heartbeat) + จับคู่ในเบราว์เซอร์นี้ ◂
+  const tpr = useTranslations("pos.print") as T;
+  const [drawerDev, setDrawerDev] = useState<ThisDevicePrinter | null>(null);
+  const [drawerRes, setDrawerRes] = useState<PrintResult | null>(null);
+  const [drawerBusy, setDrawerBusy] = useState(false);
+  useEffect(() => {
+    void thisDevicePrinter(systemId, unitId)
+      .then(setDrawerDev)
+      .catch(() => setDrawerDev(null));
+  }, [systemId, unitId]);
+  const canKick = !!drawerDev && drawerDev.config.drawerKick && printerPaired(drawerDev.config.mode, drawerDev.deviceCode);
+  const openDrawer = async () => {
+    if (!drawerDev || drawerBusy) return;
+    setDrawerBusy(true);
+    try {
+      // อ่านค่าตั้งเครื่องใหม่ก่อนส่ง (ผู้จัดการปิด drawerKick/เปลี่ยนวิธีพิมพ์ระหว่างหน้าเปิดอยู่ได้)
+      const dev = await thisDevicePrinter(systemId, unitId);
+      setDrawerDev(dev);
+      if (!dev.config.drawerKick || !printerPaired(dev.config.mode, dev.deviceCode)) return;
+      setDrawerRes(await kickDrawer(dev.config, dev.deviceCode));
+    } finally {
+      setDrawerBusy(false);
+    }
+  };
 
   useEffect(() => {
     const on = () => setOnline(navigator.onLine);
@@ -930,6 +961,21 @@ export function ShiftsClient({ systemId, units, unitId, canManage, meName }: Pro
           )}
         </span>
       </div>
+      {canKick && (
+        <div className="flex flex-col gap-2 border-t pt-3">
+          <button data-testid="pos-print-drawer-open" type="button" className="btn btn-ghost h-11 gap-2 rounded-[11px] px-4 text-[14px]" disabled={drawerBusy} onClick={() => void openDrawer()}>
+            <RegisterIcon name="cash" size={15} />
+            {tpr("drawer.open")}
+          </button>
+          {drawerRes?.ok ? (
+            <span data-testid="pos-print-drawer-opened" role="status" className="text-[12.5px] text-[color:var(--color-muted)]">
+              {tpr("drawer.opened")}
+            </span>
+          ) : (
+            <PrintStatus result={drawerRes} onRetry={() => void openDrawer()} />
+          )}
+        </div>
+      )}
     </section>
   );
 
