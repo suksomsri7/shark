@@ -65,3 +65,6 @@ Actions (`src/lib/modules/pos/tax-invoice-actions.ts`, all return data, never th
 3. Credit notes created **before** a later issue cannot exist (HAS_REFUNDS, ruling 15) — no re-pointing needed.
 4. `createSale` callers other than the register (hotel/restaurant/…) can pass `taxInvoice` but nothing validates it there (only the register parses it).
 5. Account session: review `supersedeExternalSaleAbb`, `upsertExternalSaleDocument({fullTaxInvoice})`, `findOrCreateCustomerContact({address, legalType})` (POS-OWNER-PENDING).
+
+## After ORACLE-EDIT ST1/Q1/Q2/Q3 (ruling 8 · approved)
+- `qc-pos-p1.13` forced #1 **0 · 31/31** · forced #2 **0 · 31/31** · unforced **0 · 31/31** (no SKIP) — residue 0, Tenant 0, guardHits 0 each run · typecheck 0.
