@@ -919,7 +919,15 @@ export function RegisterScreen(props: RegisterScreenProps) {
         setPointsNote({ key: "pay.capped", ns: "member", values: { points: allowed.toLocaleString("th-TH") } });
         setChoices((c) => ({ ...c, points: allowed }));
       } else if (allowed !== ch.points) {
-        setPointsNote(errorFor(pc.code));
+        // fix รอบ 1 F3 ของ S: เพดานตัดเหลือ > 0 แต่ต่ำกว่าขั้นต่ำ = POINTS_BELOW_MIN (บิลเล็กเกินไป) · ตัดเหลือ 0 = POINTS_CAPPED {allowedPoints: 0}
+        const min = benefits?.points?.burnMinPoints ?? null;
+        setPointsNote(
+          pc.code === "POINTS_BELOW_MIN" && min !== null && (ch.points ?? 0) >= min
+            ? { key: "errors.pointsBelowMinBill", values: { min: min.toLocaleString("th-TH") } }
+            : pc.code === "POINTS_CAPPED"
+              ? { key: "pay.capped", ns: "member", values: { points: 0 } }
+              : errorFor(pc.code),
+        );
         setChoices((c) => ({ ...c, points: 0 }));
       }
     }
