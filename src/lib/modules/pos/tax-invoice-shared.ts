@@ -77,6 +77,8 @@ export const taxInvoiceRefuse = (code: TaxInvoiceRefusalCode, message?: string):
 export const TAX_INVOICE_LATE_DAYS = 7;
 /** เพดานค้นกรมพัฒน์ฯ ต่อสาขาต่อนาที (R5 · มติ 11) */
 export const TAX_INVOICE_DBD_PER_MINUTE = 30;
+/** เพดานรวมต่อร้านต่อนาที (fix F2) */
+export const TAX_INVOICE_DBD_PER_MINUTE_TENANT = 100;
 export const TAX_INVOICE_NAME_MAX = 120;
 export const TAX_INVOICE_ADDRESS_MAX = 300;
 export const TAX_INVOICE_EMAIL_MAX = 120;

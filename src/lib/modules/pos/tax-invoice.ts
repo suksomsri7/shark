@@ -8,7 +8,7 @@
 //    ยิงซ้ำด้วยผู้ซื้อเดิม = เอกสารเดิม (ไม่มี audit/event ใหม่ · มติ 5) · ผู้ซื้อคนอื่น = ALREADY_ISSUED · สำเนาผู้ซื้อไม่เปลี่ยนหลังออกแล้ว (R1)
 // 🔴 event pos.sale.taxInvoiceIssued {saleId, docId} ทุกการออก "ครั้งแรก" (ตอนชำระ = account-bridge · ทีหลัง/จากคำขอ = ที่นี่ · มติ 12)
 // 🔴 ค้นกรมพัฒน์ฯ (R5): ผ่าน facade lookupJuristic (ฉีด deps.lookup ได้ · ไม่มีกุญแจ = DBD_NOT_CONFIGURED ไม่แตะเครือข่าย) ·
-//    30 ครั้ง/นาที/สาขา นับจาก AuditLog pos.taxinvoice.dbd_lookup (targetId = สาขา) · audit ทุกครั้งด้วยเลขที่ปิดแล้ว (ห้ามเลขดิบ)
+//    ตรวจสาขา↔ระบบ POS ก่อน · 30 ครั้ง/นาที/สาขา + 100/นาที/ร้าน (ตรวจก่อนเขียน audit ใด ๆ) นับจาก AuditLog pos.taxinvoice.dbd_lookup (targetId = สาขา) · audit ทุกครั้งด้วยเลขที่ปิดแล้ว (ห้ามเลขดิบ)
 import type { Prisma } from "@prisma/client";
 import { writeAudit } from "@/lib/core/audit";
 import { emitOutbox } from "@/lib/core/outbox";
@@ -21,6 +21,7 @@ import { receiptKindOf } from "./receipt-shared";
 import type { RegisterActor } from "./register-shared";
 import {
   TAX_INVOICE_DBD_PER_MINUTE,
+  TAX_INVOICE_DBD_PER_MINUTE_TENANT,
   TAX_INVOICE_LATE_DAYS,
   buyerKindFromTaxId,
   isValidThaiTaxIdChecksum,
@@ -297,20 +298,27 @@ export async function lookupBuyerByTaxId(ctx: TaxInvoiceCtx, actor: RegisterActo
     const c = ctxOf(ctx);
     const a = receiptActorOf(actor);
     if (!c) return taxInvoiceRefuse("PERMISSION_DENIED");
+    // fix F2: สาขาต้องผูกกับระบบ POS ของ ctx ในร้านนี้ก่อนอย่างอื่นทั้งหมด (กันนับ/เขียน audit ใส่สาขาของคนอื่น)
+    const link = await prisma.appSystemUnit.findFirst({ where: { tenantId: c.tenantId, systemId: c.systemId, unitId: c.unitId, type: "POS" }, select: { unitId: true } });
+    if (!link) return taxInvoiceRefuse("PERMISSION_DENIED");
     if (!a || !evaluate(a, { module: "pos", action: "pos.sale.create", unitId: c.unitId })) return taxInvoiceRefuse("PERMISSION_DENIED");
     if (!isRecord(input) || !onlyKeys(input, ["taxId"])) return taxInvoiceRefuse("VALIDATION");
-    const taxId = typeof input.taxId === "string" ? input.taxId.trim() : "";
+    const taxId = typeof input.taxId === "string" ? input.taxId.replace(/[\s-]/g, "") : "";
     const audit = (outcome: string) =>
       writeAudit({ tenantId: c.tenantId, actorId: a.userId, action: AUDIT_DBD, targetType: "BusinessUnit", targetId: c.unitId, after: { unitId: c.unitId, taxId: maskTaxId(taxId), outcome } });
+    // fix F2: เพดานก่อนทุกอย่างที่เขียน audit — 30 ครั้ง/นาที/สาขา + 100 ครั้ง/นาที/ร้าน (นับแถว audit ของหนึ่งนาทีล่าสุด)
+    const since = new Date(Date.now() - 60_000);
+    const [perUnit, perTenant] = await Promise.all([
+      prisma.auditLog.count({ where: { tenantId: c.tenantId, action: AUDIT_DBD, targetType: "BusinessUnit", targetId: c.unitId, createdAt: { gte: since } } }),
+      prisma.auditLog.count({ where: { tenantId: c.tenantId, action: AUDIT_DBD, createdAt: { gte: since } } }),
+    ]);
+    if (perUnit >= TAX_INVOICE_DBD_PER_MINUTE || perTenant >= TAX_INVOICE_DBD_PER_MINUTE_TENANT) {
+      await audit("RATE_LIMITED");
+      return taxInvoiceRefuse("RATE_LIMITED");
+    }
     if (!isValidThaiTaxIdChecksum(taxId)) {
       await audit("TAX_ID_INVALID");
       return taxInvoiceRefuse("TAX_ID_INVALID");
-    }
-    // เพดานต่อสาขา: นับแถว audit ของสาขานี้ในหนึ่งนาทีล่าสุด (ก่อนแตะกรมพัฒน์ฯ)
-    const recent = await prisma.auditLog.count({ where: { tenantId: c.tenantId, action: AUDIT_DBD, targetType: "BusinessUnit", targetId: c.unitId, createdAt: { gte: new Date(Date.now() - 60_000) } } });
-    if (recent >= TAX_INVOICE_DBD_PER_MINUTE) {
-      await audit("RATE_LIMITED");
-      return taxInvoiceRefuse("RATE_LIMITED");
     }
     const lookup: DbdLookup = opts?.deps?.lookup ?? ((id: string) => account.lookupJuristic(id));
     let res: account.DbdLookupResult;
