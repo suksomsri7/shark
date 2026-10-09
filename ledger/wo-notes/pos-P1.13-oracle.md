@@ -90,3 +90,6 @@ Added check `L6`: fixture bill `bR6` (2 lines, POS-A), partial refund of one lin
 
 ## ORACLE-EDIT ST1/Q1/Q2/Q3 (builder S · 9 Oct · controller ruling 8, approved)
 The issued document lives in the existing `PosTaxInvoiceRequest.accountDocId`; there is no `issuedDocId` column. ST1 no longer requires `issuedDocId` in schema/migration; the DB-column gate (`COL.issued`) and its SKIP reason are dropped, so Q2/Q3 are no longer red on a missing column; Q1 asserts `accountDocId = docId`. Names-table row 3 (`PosTaxInvoiceRequest.issuedDocId`) is withdrawn. Count stays 31.
+
+## ORACLE-EDIT S2 (fix round 1 · controller ruling F4)
+S2 also asserts the documents' `contactSnapshot` = the buyer as typed: bT2 (same taxId, other name) keeps the existing `contactId` but its snapshot name/taxId/address = what bT2's buyer typed; bT snapshot name/email = BUY_T. The contact row is unchanged.

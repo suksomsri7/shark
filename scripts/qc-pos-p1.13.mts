@@ -57,7 +57,7 @@ const CHECKS: readonly Def[] = [
   D("B4", "P", "[R1 R9] ขอบความยาว/รูปร่าง: name 120 ผ่าน 121 VALIDATION · address 300/301 · email 120 ผ่าน 121 / ผิดรูป → VALIDATION · name ช่องว่างล้วน · ไม่มี address · คีย์แปลก (saleId) · null/สตริง/อาร์เรย์ → VALIDATION ไม่ throw · taxInvoiceRefusalKey(\"TOO_LATE\") = \"taxInvoice.errors.tooLate\" · รหัสแปลก → \"taxInvoice.errors.unknown\""),
   // ── S ตอนชำระ ──
   D("S1", "X5", "[R1 R2] submitRegisterSale + taxInvoice → PosSale.taxInvoice = ผู้ซื้อที่แกะแล้ว + requestedAt ISO (ช่วงที่รัน) · POS ไม่ผูกสมุดก็เก็บ snapshot · ผู้ซื้อหลักตรวจผิด → TAX_ID_INVALID / ไม่มีชื่อ → VALIDATION ก่อนเขียนอะไร (ไม่มีบิลของคีย์นั้น · ไม่มี outbox)"),
-  D("S2", "X5", "[R2 CD1 CD4] consumer pos.sale.paid → เอกสาร TAX_INVOICE 1 ใบ (ไม่มี ABB) refType PosSale refId บิล · เลขชุด TX · grandTotal/vatAmount = บิล · issueDate = paidAt · ผู้ติดต่อมี taxId/branchCode/address ของผู้ซื้อ · PosSale.taxInvoiceDocId = เอกสาร · บิลที่สองเลขเดียวกันชื่อต่าง → ผู้ติดต่อเดิม (taxId ชนะชื่อ)"),
+  D("S2", "X5", "[R2 CD1 CD4] consumer pos.sale.paid → เอกสาร TAX_INVOICE 1 ใบ (ไม่มี ABB) refType PosSale refId บิล · เลขชุด TX · grandTotal/vatAmount = บิล · issueDate = paidAt · ผู้ติดต่อมี taxId/branchCode/address ของผู้ซื้อ · PosSale.taxInvoiceDocId = เอกสาร · บิลที่สองเลขเดียวกันชื่อต่าง → ผู้ติดต่อเดิม (taxId ชนะชื่อ) · ORACLE-EDIT มติ F4: contactSnapshot = ผู้ซื้อตามที่พิมพ์ (บิลที่สอง = ชื่อที่พิมพ์ · contactId เดิม)"),
   D("S3", "X4", "[R2 CD6] GL ของบิลที่มีผู้ซื้อ = บิลเดียวกันไม่มีผู้ซื้อ ทุกรหัสบัญชี (Σ Dr−Cr ต่อรหัส · จำนวน JV · สมดุล) · ไม่มี JV ของตัวเอกสาร TAX_INVOICE"),
   D("S4", "X1", "[R2 COMMON-4] outbox pos.sale.taxInvoiceIssued 1 แถว {saleId, docId} DONE · เล่น consumers[pos.sale.paid] ซ้ำ 2 รอบ → ยังเอกสาร 1 · event 1 · JV เท่าเดิม · taxInvoiceDocId เดิม · consumers[pos.sale.taxInvoiceIssued] ×2 ไม่ throw · POS ไม่ผูกสมุด: taxInvoiceDocId null · ไม่มีเอกสาร · ไม่มี event"),
   // ── L ออกทีหลัง ──
@@ -967,6 +967,15 @@ async function runDb() {
     const ti2 = await tiOf(B.bT2!.id);
     if (!ti2) p.push("bT2 ไม่มี TAX_INVOICE");
     else if (!tiT || ti2.contactId !== tiT.contactId) p.push(`bT2 ผู้ติดต่อ ${ti2.contactId} ≠ ${tiT?.contactId} (CD4 taxId ชนะชื่อ)`);
+    // ORACLE-EDIT S2 (มติ F4): ใบกำกับแสดงชื่อที่ผู้ซื้อพิมพ์ — ผู้ติดต่อเดิม (contactId) แต่ contactSnapshot = ชื่อ/เลขของบิลนั้น
+    if (ti2) {
+      const s2 = isRecord(ti2.contactSnapshot) ? ti2.contactSnapshot : {};
+      if (s2.name !== `ห้าง ชื่ออื่น ${RAND}` || s2.taxId !== TX_T || !String(s2.address ?? "").includes(BUY_T.address)) p.push(`bT2 contactSnapshot ${short({ name: s2.name, taxId: s2.taxId }, 80)} (คาด ชื่อที่พิมพ์ · มติ F4)`);
+    }
+    if (tiT) {
+      const sT = isRecord(tiT.contactSnapshot) ? tiT.contactSnapshot : {};
+      if (sT.name !== BUY_T.name || sT.email !== BUY_T.email) p.push(`bT contactSnapshot ${short({ name: sT.name, email: sT.email }, 80)}`);
+    }
     const nContacts = Number(await P.accountContact.count({ where: { tenantId: T, taxId: TX_T } }).catch(() => -1));
     if (nContacts !== 1) p.push(`ผู้ติดต่อเลข ${TX_T} มี ${nContacts} (คาด 1)`);
     chk("S2", NS === "" && p.length === 0, "TAX_INVOICE 1 · ไม่มี ABB · ผู้ติดต่อจากเลข · docId", FXB(NS + (p.join(" · ") || "ครบ")));
