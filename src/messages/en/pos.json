@@ -207,6 +207,7 @@
       "methodsTitle": "Method for the remaining amount",
       "transfer": "Bank transfer",
       "card": "Credit/debit card",
+      "platform": "Platform",
       "promptpayHint": "Scan QR",
       "transferHint": "Enter a reference",
       "cardHint": "EDC terminal",

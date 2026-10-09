@@ -18,7 +18,7 @@ export const REGISTER_LOW_STOCK = 5;
 export const REGISTER_PAGE_SIZE = 100;
 export const REGISTER_PAGE_MAX = 500;
 /** วิธีจ่ายที่หน้าขายรับ (P1.3 Addendum 2 + P1.6 R2: โอน + บัตรแบบกรอกเลขอ้างอิง EDC · ไม่มีเกตเวย์ = P1.7) */
-export const REGISTER_PAY_TYPES = ["CASH", "PROMPTPAY", "TRANSFER", "CARD"] as const;
+export const REGISTER_PAY_TYPES = ["CASH", "PROMPTPAY", "TRANSFER", "CARD", "PLATFORM"] as const; // POS P2.1 ▸ PLATFORM เฉพาะช่องทาง payout PLATFORM (R5 · CHANNEL_PAY_MISMATCH) ◂
 /** P1.6 R2: แบ่งจ่ายได้ไม่เกินกี่รายการ (ชนิดซ้ำได้ · เงินสดได้รายการเดียว) — เกิน = SPLIT_INVALID */
 export const REGISTER_MAX_PAY_METHODS = 10;
 /** P1.6 R5: หมายเหตุบิล/บรรทัดยาวได้ไม่เกิน (ตัวอักษร) */

@@ -153,6 +153,8 @@ export const POS_PAY_TYPE_LABEL: Record<string, string> = {
   TRANSFER: "โอน",
   DEPOSIT: "มัดจำ",
   ROOM_CHARGE: "ลงบิลห้องพัก",
+  CARD: "บัตร",
+  PLATFORM: "แพลตฟอร์ม", // POS P2.1 ▸ แพลตฟอร์มเก็บเงินแทน ◂
 };
 
 export const PAY_CHANNEL_LABEL: Record<string, string> = {

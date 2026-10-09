@@ -1,6 +1,6 @@
 // receipt-render.ts — ข้อมูลใบเสร็จ (ชนิด + คำบรรยาย th/en) และตัวเรนเดอร์ HTML / ESC-POS (POS P1.10 · มติ R5 R6 · ภาพ 11B)
 //
-// 🔴 บริสุทธิ์ + ใช้ร่วม client: ห้าม import prisma / server-only / next/* / node:* / ไฟล์ฝั่งเซิร์ฟเวอร์ของ pos
+// 🔴 บริสุทธิ์ + ใช้ร่วม client: ห้าม import prisma / server-only / next/(ทุกตัว) / node:(ทุกตัว) / ไฟล์ฝั่งเซิร์ฟเวอร์ของ pos
 //    (P1.10U import ไฟล์นี้ในเบราว์เซอร์: พรีวิว · WebUSB/Bluetooth · rasterize ภาษาไทยด้วย canvas)
 // 🔴 ไม่มี Date.now() / new Date() ไม่มีอาร์กิวเมนต์ / Math.random() — ทุกอย่างมาจาก payload ⇒ เรียกซ้ำได้ผลเดิมทุกไบต์
 // 🔴 คำบรรยายทุกคำมาจาก payload.labels[locale] (en = ไม่มีอักษรไทยเลย) · ข้อมูลร้าน/สินค้าพิมพ์ตามที่เก็บ
@@ -9,7 +9,7 @@
 export type ReceiptDocType = "SALE" | "REFUND";
 // POS P1.13 ▸ R7: TAX_INVOICE_FULL = บิลที่ออกใบกำกับภาษีเต็มรูปแล้ว (สลิปเป็นใบเสร็จ + "ออกใบกำกับภาษีเต็มรูปแล้ว เลขที่ …" · ไม่ใช่หัวใบกำกับอย่างย่อ) ◂
 export type ReceiptKind = "TAX_INVOICE_ABB" | "TAX_INVOICE_FULL" | "RECEIPT";
-export type ReceiptPayType = "CASH" | "TRANSFER" | "PROMPTPAY" | "DEPOSIT" | "ROOM_CHARGE" | "CARD";
+export type ReceiptPayType = "CASH" | "TRANSFER" | "PROMPTPAY" | "DEPOSIT" | "ROOM_CHARGE" | "CARD" | "PLATFORM"; // POS P2.1 ▸ PLATFORM ◂
 /** สถานะบิล (PosSale.status · แก้รอบ 1 F2) — VOIDED = ประทับ "ยกเลิก / VOID" · REFUNDED พิมพ์ปกติ (ใบลดหนี้แยก · P1.16) */
 export type ReceiptSaleStatus = "PAID" | "VOIDED" | "REFUNDED";
 
@@ -151,7 +151,7 @@ export const RECEIPT_LABELS: { readonly th: ReceiptLabels; readonly en: ReceiptL
     fullTaxInvoiceHint: "ขอใบกำกับเต็มรูปได้ภายใน 7 วัน",
     fullTaxInvoiceIssued: "ออกใบกำกับภาษีเต็มรูปแล้ว เลขที่",
     eReceipt: "สแกนรับใบเสร็จอิเล็กทรอนิกส์",
-    pay: { CASH: "เงินสด", TRANSFER: "โอนเงิน", PROMPTPAY: "พร้อมเพย์", DEPOSIT: "มัดจำ", ROOM_CHARGE: "ลงบัญชีห้องพัก", CARD: "บัตร" },
+    pay: { CASH: "เงินสด", TRANSFER: "โอนเงิน", PROMPTPAY: "พร้อมเพย์", DEPOSIT: "มัดจำ", ROOM_CHARGE: "ลงบัญชีห้องพัก", CARD: "บัตร", PLATFORM: "ชำระผ่านแพลตฟอร์ม" },
   },
   en: {
     receipt: "RECEIPT",
@@ -193,7 +193,7 @@ export const RECEIPT_LABELS: { readonly th: ReceiptLabels; readonly en: ReceiptL
     fullTaxInvoiceHint: "Full tax invoice available on request within 7 days",
     fullTaxInvoiceIssued: "Full tax invoice issued, no.",
     eReceipt: "Scan for e-receipt",
-    pay: { CASH: "Cash", TRANSFER: "Transfer", PROMPTPAY: "PromptPay", DEPOSIT: "Deposit", ROOM_CHARGE: "Room charge", CARD: "Card" },
+    pay: { CASH: "Cash", TRANSFER: "Transfer", PROMPTPAY: "PromptPay", DEPOSIT: "Deposit", ROOM_CHARGE: "Room charge", CARD: "Card", PLATFORM: "Paid via platform" },
   },
 };
 

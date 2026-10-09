@@ -207,6 +207,7 @@
       "methodsTitle": "วิธีชำระสำหรับยอดคงเหลือ",
       "transfer": "โอนธนาคาร",
       "card": "บัตรเครดิต/เดบิต",
+      "platform": "แพลตฟอร์ม",
       "promptpayHint": "สแกน QR",
       "transferHint": "กรอกเลขอ้างอิง",
       "cardHint": "เครื่อง EDC",
