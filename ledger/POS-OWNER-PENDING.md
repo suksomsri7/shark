@@ -47,3 +47,4 @@
 
 ## แจ้งเจ้าของโมดูลบัญชี (session บัญชีพักอยู่)
 - 9 ต.ค. · **P1.13** แตะ schema บัญชี 1 คอลัมน์: `AccountDocument.supersededByDocId String?` (nullable · เพิ่มอย่างเดียว · migration `20261201100000_pos_p113_tax_invoice` · QC4 เท่านั้น) — ใบกำกับอย่างย่อของบิล POS ที่ถูกแทนด้วยใบกำกับเต็มรูป (สถานะ CANCELLED + id ของ TAX_INVOICE · ไม่แตะ GL) · facade ใหม่ `supersedeAbbWithTaxInvoice`/`convertAbbToTaxInvoice` + `applyExternalSale({buyer})` + `findOrCreateCustomerContact({address, legalType})` ใน `account/` — ให้ session บัญชีตรวจรับตอนกลับมา
+- 9 ต.ค. · **P1.13 fix F3** แตะ `account/dashboard.ts` `SALES_WHERE`: + `{ docType: "TAX_INVOICE", source: "POS" }` — บิล POS ที่ออกใบกำกับเต็มรูป (ABB ถูก CANCELLED) ยังอยู่ในยอดขายของแดชบอร์ดบัญชี · ให้ session บัญชีตรวจรับ
