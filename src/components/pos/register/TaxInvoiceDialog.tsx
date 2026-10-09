@@ -151,6 +151,7 @@ export function TaxInvoiceDialog(p: Props) {
   };
   const onTaxId = (v: string) => {
     const next = cleanTaxId(v);
+    if (next !== taxId) lookupFor.current = null; // F1: คำตอบ DBD ที่ค้างอยู่ใช้ไม่ได้แล้ว
     setTaxId(next);
     edited();
     if (dbd.state !== "idle" && dbd.state !== "manual") setDbd({ state: "idle" });
@@ -163,21 +164,28 @@ export function TaxInvoiceDialog(p: Props) {
     setErrKey(null);
   };
 
+  // F1: คำตอบ DBD ผูกกับเลขที่ส่งไป — ช่องเลขเปลี่ยนระหว่างรอ = ทิ้งคำตอบ (คำตอบช้าห้ามเติมชื่อ/ที่อยู่ของอีกเลข) · ช่องยังแก้ได้ระหว่างรอ
+  const taxIdNow = useRef(taxId);
+  taxIdNow.current = taxId;
+  const lookupFor = useRef<string | null>(null);
   const lookup = async () => {
     if (!taxOk || dbd.state === "busy") return;
+    const sent = taxId;
+    lookupFor.current = sent;
     setDbd({ state: "busy" });
+    const stale = () => lookupFor.current !== sent || taxIdNow.current !== sent;
     try {
-      const r = await lookupBuyerByTaxIdAction({ systemId, unitId, taxId });
+      const r = await lookupBuyerByTaxIdAction({ systemId, unitId, taxId: sent });
+      if (r.ok === false && r.code === "DBD_NOT_CONFIGURED") p.onDbdOff(); // ไม่มีกุญแจ = ทั้งร้าน ไม่ขึ้นกับเลข
+      if (stale()) return;
       if (r.ok) setDbd(r.found ? { state: "hit", buyer: r.buyer } : { state: "miss" });
-      else if (r.code === "DBD_NOT_CONFIGURED") {
-        p.onDbdOff();
-        setDbd({ state: "manual" });
-      } else setDbd({ state: "err", key: taxInvoiceRefusalKey(r.code) });
+      else if (r.code === "DBD_NOT_CONFIGURED") setDbd({ state: "manual" }); else setDbd({ state: "err", key: taxInvoiceRefusalKey(r.code) });
     } catch {
-      setDbd({ state: "err", key: taxInvoiceRefusalKey("DBD_UNAVAILABLE") });
+      if (!stale()) setDbd({ state: "err", key: taxInvoiceRefusalKey("DBD_UNAVAILABLE") });
     }
   };
   const applyHit = (b: DbdHit) => {
+    if (b.taxId !== taxIdNow.current) return; // F1: การ์ดของเลขอื่น
     setKind("JURISTIC");
     kindTouched.current = true;
     setName(b.name);
