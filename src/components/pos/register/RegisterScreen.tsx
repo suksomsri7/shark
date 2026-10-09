@@ -173,9 +173,10 @@ type Layer =
  * POS P1.15U ▸ สิทธิ์ส่วนลดเกินเพดานของบิลนี้: pin = PIN ผู้จัดการที่เครื่อง (ส่งพร้อม submit · heldCartId = บิลส่วนลดที่พักรอ) ·
  * approved = เรียกคืนบิลพักที่อนุมัติแล้ว (quote ด้วยเพดานที่อนุมัติ · ใช้ได้เฉพาะตะกร้าเดิมทุกไบต์ — inputJson) ◂
  */
+//   fix รอบ 1 F5: ทุกสิทธิ์จำส่วนลดที่อนุญาต (bp ของยอดก่อนส่วนลด + สตางค์) — ส่วนลดของตะกร้าเกินนี้ = ล้างสิทธิ์แล้วเปิดแผ่นใหม่
 type DiscountAuth =
-  | { kind: "pin"; managerUserId: string; managerName: string; managerPin: string; heldCartId?: string }
-  | { kind: "approved"; heldCartId: string; inputJson: string; quote: RegisterQuote };
+  | { kind: "pin"; managerUserId: string; managerName: string; managerPin: string; heldCartId?: string; bp: number; satang: number }
+  | { kind: "approved"; heldCartId: string; inputJson: string; quote: RegisterQuote; bp: number; satang: number };
 
 const newKey = () => {
   try {
@@ -424,7 +425,8 @@ export function RegisterScreen(props: RegisterScreenProps) {
   /** ส่งต่อจาก send/ขออนุมัติ: บิลถูกพักที่เซิร์ฟเวอร์รออนุมัติ ⇒ ล้างจอ (resetBill นอก send) แล้วเปิด 21B */
   const [approvalHandoff, setApprovalHandoff] = useState<{ requestId: string; heldCartId?: string } | null>(null);
   /** เพดานที่ใช้คิดยอดบนจอ — มีสิทธิ์เกินเพดานแล้ว = ไม่จำกัด (เซิร์ฟเวอร์ตัดสินจริง) */
-  const localCap = discAuth ? null : sellerCap;
+  // fix รอบ 1 F5: มีสิทธิ์เกินเพดาน = เพดานบนจอขยายเท่าที่อนุญาต (ไม่ปลดเพดาน) · เกินกว่านั้น = แผ่นส่วนลดเกินสิทธิ์อีกครั้ง
+  const localCap = discAuth && sellerCap !== null ? Math.max(sellerCap, discAuth.bp) : sellerCap;
 
   // ═══════ การส่งบิล ═══════
   const [idemKey, setIdemKey] = useState(newKey);
@@ -803,7 +805,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
       setHeldBusy(false);
     }
   };
-  const onRecallHeld = async (id: string): Promise<true | string> => {
+  const onRecallHeld = async (id: string, armPin?: { managerUserId: string; pin: string }): Promise<true | string> => {
     if (frozenRef.current || heldBusyRef.current) return "BUSY";
     heldBusyRef.current = true;
     setHeldBusy(true);
@@ -825,7 +827,14 @@ export function RegisterScreen(props: RegisterScreenProps) {
       changeCart(next);
       setHeldNotices(r.notices.flatMap((n) => (next.lines[n.lineIndex] ? [{ key: next.lines[n.lineIndex]!.key, code: n.code, from: n.heldUnitPriceSatang, to: n.unitPriceSatang }] : [])));
       // POS P1.15U ▸ มติ 5: บิลพักที่อนุมัติส่วนลดแล้ว ⇒ ยอดจาก quote ที่เรียกคืน (เพดานที่อนุมัติ) + heldCartId ตอนชำระ ◂
-      if (r.approvedRequestId && r.quote.ok) setDiscAuth({ kind: "approved", heldCartId: r.heldCartId, inputJson: JSON.stringify(cartToQuoteInput(next)), quote: r.quote });
+      if (r.approvedRequestId && r.quote.ok) {
+        const q = r.quote;
+        const satang = q.lineDiscountSatang + q.billDiscountSatang;
+        setDiscAuth({ kind: "approved", heldCartId: r.heldCartId, inputJson: JSON.stringify(cartToQuoteInput(next)), quote: q, satang, bp: q.subtotalSatang > 0 ? Math.ceil((satang * 10_000) / q.subtotalSatang) : 0 });
+      } else if (armPin) {
+        const d = discountOf(next);
+        setDiscAuth({ kind: "pin", managerUserId: armPin.managerUserId, managerName: "", managerPin: armPin.pin, heldCartId: r.heldCartId, ...d });
+      }
       setLayers([]);
       showToast({ key: "held.recalled" });
       void refreshHeld();
@@ -1040,7 +1049,13 @@ export function RegisterScreen(props: RegisterScreenProps) {
   /** ทดลองตะกร้าใหม่ด้วย priceCart ก่อนใช้จริง — ไม่ผ่าน = คืนข้อความ (กล่องค้าง ไม่ตัดเลขให้พอดี) */
   const tryCart = (next: RegisterCart): Msg | null => {
     const r = priceLocal(next, localCap);
-    return !r || r.ok ? null : errorFor(r.code);
+    if (r && !r.ok) return errorFor(r.code);
+    // fix รอบ 1 F5: เกินส่วนลดที่ผู้จัดการ/สายอนุมัติอนุญาต (bp หรือสตางค์) = เท่ากับเกินเพดาน
+    if (discAuth) {
+      const d = discountOf(next);
+      if (d.bp > discAuth.bp || d.satang > discAuth.satang) return errorFor("DISCOUNT_EXCEEDS_LIMIT");
+    }
+    return null;
   };
   /**
    * priceCart ของตะกร้า (เพดาน cap) — null = ราคายังไม่รู้ (สินค้าใหม่จากเซิร์ฟเวอร์ / บรรทัดตัวเลือกที่ยังไม่มี quote) ให้ quote ตัดสิน
@@ -1068,7 +1083,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
   }
   /** POS P1.15U ▸ ยอดสำหรับชำระของส่วนลดที่ผู้จัดการอนุญาตด้วย PIN (ไม่จำกัดเพดาน) — รูปเดียวกับ quote ของเซิร์ฟเวอร์ ◂ */
   function localQuote(c: RegisterCart): RegisterQuote | null {
-    const r = priceLocal(c, null);
+    const r = priceLocal(c, localCap);
     if (!r || !r.ok) return null;
     return {
       ok: true,
@@ -1089,14 +1104,19 @@ export function RegisterScreen(props: RegisterScreenProps) {
     };
   }
   /** ส่วนลดรวม (bp ของยอดก่อนส่วนลด) ของตะกร้า — แสดงบนแผ่นส่วนลดเกินสิทธิ์ */
-  const discountBpOf = (c: RegisterCart): number => {
+  const discountBpOf = (c: RegisterCart): number => discountOf(c).bp;
+  /** ส่วนลดรวมของตะกร้า (สตางค์ + bp ปัดขึ้น) — ราคายังไม่รู้ = 0 (quote ของเซิร์ฟเวอร์ตัดสิน) */
+  function discountOf(c: RegisterCart): { bp: number; satang: number } {
     const r = priceLocal(c, null);
-    return r && r.ok && r.subtotalSatang > 0 ? Math.round(((r.lineDiscountSatang + r.billDiscountSatang) * 10_000) / r.subtotalSatang) : 0;
-  };
+    if (!r || !r.ok) return { bp: 0, satang: 0 };
+    const satang = r.lineDiscountSatang + r.billDiscountSatang;
+    return { satang, bp: r.subtotalSatang > 0 ? Math.ceil((satang * 10_000) / r.subtotalSatang) : 0 };
+  }
   /** ส่วนลดเกินเพดานของผู้ขาย (มีโทเคน) ⇒ เปิดแผ่นส่วนลดเกินสิทธิ์แทนข้อความผิด — คืน true เมื่อเปิดแผ่นแล้ว */
   const openDiscountOver = (next: RegisterCart, err: Msg | null): boolean => {
     if (err?.key !== "errors.discountExceedsLimit" || !staffRef.current) return false;
     setDiscErr(null);
+    setDiscAuth(null); // fix รอบ 1 F5: สิทธิ์เดิมไม่ครอบคลุมแล้ว — ขอใหม่
     setLayers((s) => [...s.filter((l) => l.kind !== "billDiscount" && l.kind !== "line" && l.kind !== "discountOver"), { kind: "discountOver", next, wantBp: discountBpOf(next) }]);
     return true;
   };
@@ -1327,7 +1347,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
   };
   /** (ก) PIN ผู้จัดการ: เก็บไว้กับบิลนี้ (ส่งพร้อม submit) แล้วใช้ส่วนลด */
   const armManagerPin = (next: RegisterCart, managerUserId: string, managerName: string, pin: string) => {
-    setDiscAuth({ kind: "pin", managerUserId, managerName, managerPin: pin });
+    setDiscAuth({ kind: "pin", managerUserId, managerName, managerPin: pin, ...discountOf(next) });
     changeCart(next);
     setLayers((s) => s.filter((l) => l.kind !== "discountOver"));
     showToast({ key: "discountOver.pinArmed", values: { name: managerName } });
@@ -1335,10 +1355,8 @@ export function RegisterScreen(props: RegisterScreenProps) {
   /** 21B ของส่วนลด: PIN ผู้จัดการ = เรียกคืนบิลที่พักรอ แล้วเตรียม PIN ไว้กับบิลนั้น (ส่งพร้อม heldCartId ⇒ เซิร์ฟเวอร์ยกเลิกคำขอที่รอ) */
   const approvalPin = async (heldCartId: string | undefined, managerUserId: string, pin: string): Promise<ApprovalPinResult> => {
     if (!heldCartId) return { ok: false, code: "NOT_FOUND" };
-    const r = await onRecallHeld(heldCartId);
-    if (r !== true) return { ok: false, code: r };
-    setDiscAuth({ kind: "pin", managerUserId, managerName: "", managerPin: pin, heldCartId });
-    return { ok: true };
+    const r = await onRecallHeld(heldCartId, { managerUserId, pin });
+    return r === true ? { ok: true } : { ok: false, code: r };
   };
   /** 21B จบ: อนุมัติ = เรียกคืนบิลด้วยเพดานที่อนุมัติ · ปฏิเสธ = แจ้งเหตุผล (เซิร์ฟเวอร์ทิ้งบิลพักแล้ว) · ยกเลิก = แจ้ง */
   const approvalDone = (view: PosApprovalView, heldCartId: string | undefined) => {
