@@ -45,6 +45,11 @@ type Props = {
   memberAttached?: boolean;
   /** POS P1.13U ▸ มติ 5: บิลส่งไปพร้อมผู้ซื้อใบกำกับเต็มรูป ⇒ ช่อง "ใบกำกับเต็มรูป · กำลังออกในบัญชี" (consumer ออกเอง · ไม่ poll) ◂ */
   taxInvoicePending?: boolean;
+  /**
+   * POS P1.12U ▸ มติ 9: ผล submit ของบิลที่มีสมาชิก ⇒ ช่อง "แต้มที่ได้รับ {pointsExpected} แต้ม (รวม {balanceAfterBurn + expected})" หลังเงินทอน
+   *   ตัวเลขเป็นค่าที่คาด (quote.pointsToEarn) — แต้มจริงเขียนหลังคิว pos.sale.paid ระบาย (ไม่ poll) ◂
+   */
+  member?: { pointsBurned: number; pointsExpected: number; pointsBalanceAfterBurn: number };
 };
 
 /** บิลที่สั่งพิมพ์อัตโนมัติไปแล้ว (ระดับโมดูล — จอสำเร็จถูกวาดใหม่/StrictMode ก็ไม่พิมพ์ซ้ำ) */
@@ -56,8 +61,9 @@ const autoPrinted = new Set<string>();
  */
 const printedOriginal = new Set<string>();
 
-export function PayDone({ receiptNo, totalSatang, changeSatang, payMethods, onNext, systemId, saleId, printer, locale, memberAttached = false, taxInvoicePending = false }: Props) {
+export function PayDone({ receiptNo, totalSatang, changeSatang, payMethods, onNext, systemId, saleId, printer, locale, memberAttached = false, taxInvoicePending = false, member }: Props) {
   const t = useTranslations("pos.register");
+  const tm = useTranslations("pos.member");
   const tp = useTranslations("pos.print");
   const trc = useTranslations("pos.receipt");
   const [printing, setPrinting] = useState<"receipt" | "copy" | null>(null);
@@ -161,6 +167,22 @@ export function PayDone({ receiptNo, totalSatang, changeSatang, payMethods, onNe
               {moneyText(changeSatang)}
             </span>
           </div>
+          {member && (
+            <div className={cell} title={tm("done.expectedNote")}>
+              <span className="text-[11.5px] text-[color:var(--color-muted)]">{tm("done.pointsLabel")}</span>
+              <span
+                data-testid="pos-member-done-points"
+                className="text-[15px] tabular-nums text-[color:var(--color-ink-soft)] [&_b]:font-bold [&_b]:text-[color:var(--color-ink)]"
+                aria-label={tm("done.pointsEarned", { points: member.pointsExpected.toLocaleString("th-TH"), total: (member.pointsBalanceAfterBurn + member.pointsExpected).toLocaleString("th-TH") })}
+              >
+                {tm.rich("done.pointsValue", {
+                  points: member.pointsExpected.toLocaleString("th-TH"),
+                  total: (member.pointsBalanceAfterBurn + member.pointsExpected).toLocaleString("th-TH"),
+                  b: (c) => <b>{c}</b>,
+                })}
+              </span>
+            </div>
+          )}
           <div className={cell}>
             <span className="text-[11.5px] text-[color:var(--color-muted)]">{t("done.receiptNo")}</span>
             <span data-testid="pos-reg-done-receipt" className="text-[15px] font-bold tabular-nums">

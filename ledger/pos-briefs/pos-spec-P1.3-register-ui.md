@@ -630,3 +630,23 @@ Accepted deltas (C): web Topbar; 44 px camera; chip row alignment (*Q20*); membe
 5. Fullscreen toggle (DESIGN M1 "โหมดเต็มจอ") — no WO, no mockup.
 6. "ครัวแจ้ง 11:00" (86 timestamp on a sold-out card, 19ฉ) — needs an availability-change time; nearest owner P2.6 (KDS 86).
 7. Product image upload for cards (cards show `images[0]`; nobody owns uploading in P1 — products page P1.2?).
+
+---
+
+## Addendum P1.12U — member chip · member panel 14A · pay benefits · disabled P2 tiles (builder U, 9 Oct 2026)
+Rows added to `scripts/pos-ui-inventory.json` (page `/app/sys/[id]/pos/register`, roles owner + cashier, wo `P1.12U`); display-only ids listed for the reviewer.
+- 01 cart: `pos-reg-member-pick` (now opens `pos-member-panel`; no row at all when `registerStatus.memberEnabled` is false) · `pos-member-chip` (display) ·
+  `pos-member-chip-open` · `pos-member-chip-usepoints` · `pos-member-chip-detach` · totals `pos-member-coupon-line` (display) + `pos-member-coupon-remove` ·
+  `pos-member-tier-line` / `pos-member-voucher-line` / `pos-member-points-line` (display). `pos-reg-member-remove` stays in code as the P1.3 fallback (S5.4).
+- 14A: `pos-member-panel` (display) · `pos-member-panel-close` · `pos-member-search` · `pos-member-found` / `pos-member-empty` / `pos-member-lookup-error` (display) ·
+  `pos-member-scan` · `pos-member-row-<id>` · attached mode `pos-member-panel-attached` (display) · `pos-member-panel-detach` · `pos-member-fulfil-<redemptionId>` ·
+  `pos-member-fulfilled-<redemptionId>` / `pos-member-rewards-empty` / `pos-member-fulfil-error` (display) · form `pos-member-register` · `-phone` · `-name` ·
+  `-birthdate` (+ `-birthdate-error`) · `-consent` · `-heard-walk_in|line|referral|ads` · `-submit` · `-error` (display).
+- 02: `pos-member-pay` (display) · `pos-member-pay-chip` (display) · `pos-member-rights-changed` (display) · `pos-member-points` (display, `data-state`) ·
+  `pos-member-points-input` · `pos-member-points-apply` · `pos-member-points-cancel` · `pos-member-points-preview` / `-min` / `-note` (display) ·
+  `pos-member-coupon` (display, `data-state`) · `pos-member-coupon-clear` · `pos-member-coupon-enter` · `pos-member-voucher-<id>` (+ `pos-member-voucher-error`) ·
+  `pos-member-tier` / `pos-member-stamp` (display) · disabled tiles `pos-reg-paydlg-method-giftcard|deposit|roomcharge|storecredit` · `pos-member-giftcards` (display).
+  Retired: `pos-reg-paydlg-remove-member` (MEMBER_RIGHTS_UNSUPPORTED branch; key kept).
+- Coupon dialog (real entry): `pos-reg-coupon-dialog` · `pos-reg-coupon-form` · `pos-reg-coupon-input` · `pos-reg-coupon-apply` · `pos-reg-coupon-remove` ·
+  `pos-reg-coupon-current` / `pos-reg-coupon-error` (display) · `pos-reg-coupon-close`.
+- 02b: `pos-member-done-points` (display).

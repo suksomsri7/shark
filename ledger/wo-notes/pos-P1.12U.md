@@ -7,7 +7,8 @@ Builder U · VPS account B · 9 Oct 2026 · tree `/root/projects/shark-pos-d` (l
 ## Checkpoint
 - Done: step 1 (ruling 2 server hunk + ORACLE-EDIT U1 · cart state/quote guards · MemberChip + totals rows) · step 2 (MemberPanel 14A +
   QuickRegisterForm + SHARK-MC scan routing: camera from panel, wedge with panel on top, wedge/camera outside the panel).
-- Next: step 3 (PayBenefits + disabled P2 tiles + CouponDialog real entry + PayDone cell + keys/inventory).
+  Step 3 (PayBenefits 02 + disabled P2 tiles + CouponDialog real entry + PayDone 02b cell + keys/inventory + spec addendum).
+- Next: step 4 (visual states + fixture · merge origin/session/pos · final gates · notes).
 - Commands: typecheck `env NODE_OPTIONS=--max-old-space-size=5632 ISO_MEM=6500M bash scripts/iso.sh flock -w 3600 /tmp/pos-gate.lock pnpm typecheck` ·
   keys `python3 <scratch>/add_keys.py <tree>` · inventory `python3 <scratch>/inv.py <tree> [testid-to-remove…]`.
 

@@ -22,6 +22,9 @@
 // POS P1.7U ▸ พร้อมเพย์ (และบัตรเมื่อร้านเปิด Beam) = ใบขอรับเงินต่อรอบ (PayIntentPanel · usePayIntent):
 //   รอบนี้ยืนยัน/แยกจ่ายได้เมื่อใบเป็น PAID เท่านั้น · แถวที่มาจากใบ PAID มี reference = id ของใบ และล็อก (เอาออก/แก้ไม่ได้ — มติ 2) ·
 //   บัตรเมื่อ Beam ปิด/CARD_UNAVAILABLE = ทาง EDC + เลขอ้างอิงเดิมของ P1.6 (มติ 3) · ส่วนลดเกินเพดาน = ไม่สร้าง QR (มติ 5) ◂
+// POS P1.12U ▸ ส่วนสิทธิ์สมาชิก (memberSection = PayBenefits) ระหว่างยอดกับแถวแยกจ่าย · ชิป "{ชื่อ} · {ระดับ}" บนหัว ·
+//   รายละเอียดยอดเพิ่มคูปอง/ระดับ/ว่อชเชอร์/แต้ม ตามลำดับภาพ 02 · แถวช่องที่ 2 (ว่อชเชอร์/บัตรของขวัญ · มัดจำ · ลงบิลห้องพัก · เครดิตร้าน)
+//   ปิดเสมอ "เร็ว ๆ นี้" (CD3 · P2.9) ไม่มีผลกับยอด/แป้นตัวเลข · เลิกปุ่ม "ถอดสมาชิก" ของ MEMBER_RIGHTS_UNSUPPORTED (คีย์คงไว้) ◂
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
@@ -56,7 +59,19 @@ export type PayBreakdown = {
   vatSatang: number;
   vatMode: "INCLUDED" | "EXCLUDED" | "NONE";
   vatRateBp: number;
+  /** POS P1.12U: คูปอง · ส่วนลดระดับ · บรรทัดสิทธิ์ (ว่อชเชอร์/แต้ม) จาก quote ของเซิร์ฟเวอร์ */
+  couponDiscountSatang?: number;
+  tierDiscountSatang?: number;
+  memberLines?: { kind: string; discountSatang: number }[];
 };
+
+/** POS P1.12U มติ 7: ช่องวิธีชำระแถวที่ 2 — ปิดเสมอ (P2.9) · sub = บรรทัดรองตามภาพ */
+const SOON_TILES: { id: "giftcard" | "deposit" | "roomcharge" | "storecredit"; label: string; sub: string | null }[] = [
+  { id: "giftcard", label: "pay.tiles.giftcard", sub: null },
+  { id: "deposit", label: "pay.tiles.deposit", sub: null },
+  { id: "roomcharge", label: "pay.tiles.roomcharge", sub: "pay.tiles.roomchargeSub" },
+  { id: "storecredit", label: "pay.tiles.storecredit", sub: "pay.tiles.storecreditSub" },
+];
 
 type Props = {
   /** ยอดบิล (grandTotal ของ quote · ไม่รวมทิป) */
@@ -75,13 +90,15 @@ type Props = {
   error: PayError | null;
   /** R4 K2: saleStatus null = CONFLICT เปล่า (บิลอยู่นอกสาขา/ระบบนี้) */
   conflict: { receiptNo: string | null; saleStatus: RegisterSaleStatus | null } | null;
-  memberAttached: boolean;
   salesHref: string;
   onConfirm: (c: PayChoice) => void;
   onRetry: () => void;
   onClose: () => void;
   onNewBill: () => void;
-  onRemoveMember: () => void;
+  /** POS P1.12U ▸ ส่วนสิทธิ์สมาชิก (PayBenefits) · ชิปสมาชิกบนหัว · บัตรของขวัญ (อ่านอย่างเดียว ใต้ช่องว่อชเชอร์/บัตรของขวัญ) ◂ */
+  memberSection?: React.ReactNode;
+  memberChip?: string | null;
+  giftCards?: { numberMasked: string; balanceSatang: number }[];
   /** POS P1.7U ▸ ใบขอรับเงิน (ไม่ส่ง = พร้อมเพย์แบบ QR นิ่ง + ยืนยันเองของ P1.6) */
   intent?: PayIntentSetup | null;
   /** POS P1.13U ▸ สวิตช์ "ออกใบกำกับภาษีเต็มรูป" ท้ายจอ (ภาพ 02) — buyer = ผู้ซื้อที่ตั้งไว้ (สวิตช์เปิด) · ปิดสวิตช์ = onClear · แก้/เปิด = onOpen (กล่อง 15A) ◂ */
@@ -140,6 +157,7 @@ export function payRoundPlan(remaining: number, type: RegisterPayType, entry: nu
 
 export function PayDialog(p: Props) {
   const t = useTranslations("pos.register");
+  const tm = useTranslations("pos.member");
   const tc = useTranslations("common");
   const busy = p.phase !== "form";
   const err = p.error ?? p.quoteError;
@@ -362,6 +380,12 @@ export function PayDialog(p: Props) {
         `${t("totals.subtotal")} ${moneyText(b.subtotalSatang)}`,
         b.lineDiscountSatang > 0 ? `${t("totals.lineDiscounts")} ${moneyText(-b.lineDiscountSatang)}` : null,
         b.billDiscountSatang > 0 ? `${t("totals.billDiscount")} ${moneyText(-b.billDiscountSatang)}` : null,
+        // POS P1.12U: ลำดับภาพ 02 — คูปอง → ระดับ → ว่อชเชอร์ → แต้ม (ตัวเลขจาก quote)
+        (b.couponDiscountSatang ?? 0) > 0 ? tm("pay.bdCoupon", { amount: moneyText(-(b.couponDiscountSatang ?? 0)) }) : null,
+        (b.tierDiscountSatang ?? 0) > 0 ? tm("pay.bdTier", { amount: moneyText(-(b.tierDiscountSatang ?? 0)) }) : null,
+        ...(b.memberLines ?? [])
+          .filter((l) => (l.kind === "VOUCHER" || l.kind === "POINTS") && l.discountSatang > 0)
+          .map((l) => tm(l.kind === "VOUCHER" ? "pay.bdVoucher" : "pay.bdPoints", { amount: moneyText(-l.discountSatang) })),
         b.serviceChargeSatang > 0 ? `${t("totals.serviceCharge")} ${moneyText(b.serviceChargeSatang)}` : null,
         tip > 0 ? `${t("totals.tip")} ${moneyText(tip)}` : null,
         b.vatMode === "INCLUDED" ? t("pay.breakdownVat", { rate: ratePct(b.vatRateBp), amount: formatBaht(b.vatSatang, { decimals: true }) }) : null,
@@ -399,6 +423,11 @@ export function PayDialog(p: Props) {
           <RegisterIcon name="wallet" size={18} className="hidden md:block" />
           <h2 className="text-[19px] font-bold md:text-[17px]">{t("pay.title")}</h2>
           <span className="inline-flex h-7 items-center rounded-[8px] border px-[11px] text-[13px] text-[color:var(--color-ink-soft)]">{t("cart.itemCount", { count: p.itemCount })}</span>
+          {p.memberChip && (
+            <span data-testid="pos-member-pay-chip" className="inline-flex h-7 min-w-0 max-w-[260px] items-center truncate rounded-[8px] border px-[11px] text-[13px] text-[color:var(--color-ink-soft)] max-md:hidden">
+              {p.memberChip}
+            </span>
+          )}
           <span className="flex-1" />
           <span className="hidden text-[12px] text-[color:var(--color-muted)] md:inline">{t("pay.escClose")}</span>
           {!busy && (
@@ -451,16 +480,6 @@ export function PayDialog(p: Props) {
                     <RegisterIcon name="warn" size={18} className="mt-0.5" />
                     <span>{t.rich(err.key, { ...(err.values ?? {}), b: (c) => <b>{c}</b> })}</span>
                   </div>
-                  {err.code === "MEMBER_RIGHTS_UNSUPPORTED" && p.memberAttached && (
-                    <button
-                      data-testid="pos-reg-paydlg-remove-member"
-                      className="btn btn-ghost h-11 self-start rounded-[13px] px-5 text-[15px]"
-                      type="button"
-                      onClick={p.onRemoveMember}
-                    >
-                      {t("pay.removeMember")}
-                    </button>
-                  )}
                 </div>
               )}
 
@@ -497,6 +516,8 @@ export function PayDialog(p: Props) {
                   </button>
                 </div>
               )}
+
+              {showForm && p.memberSection}
 
               {showForm && !zero && (
                 <div>
@@ -579,6 +600,28 @@ export function PayDialog(p: Props) {
                       );
                     })}
                   </div>
+                  {/* POS P1.12U มติ 7 ▸ ช่องแถวที่ 2 ปิดเสมอ (CD3 · P2.9) — แป้น/ยอดคงเหลือไม่เกี่ยว ◂ */}
+                  <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4 xl:mt-4 xl:gap-4" role="group" aria-label={tm("pay.tiles.title")}>
+                    {SOON_TILES.map((s) => (
+                      <button
+                        key={s.id}
+                        data-testid={`pos-reg-paydlg-method-${s.id}`}
+                        className={`${tile(false)} text-[color:var(--color-muted)] opacity-80`}
+                        type="button"
+                        disabled
+                        aria-disabled="true"
+                        title={tm("pay.comingSoon")}
+                      >
+                        <span>{tm(s.label)}</span>
+                        <small className="text-[12px] font-normal">{s.sub ? `${tm(s.sub)} \u00b7 ${tm("pay.comingSoon")}` : tm("pay.comingSoon")}</small>
+                      </button>
+                    ))}
+                  </div>
+                  {(p.giftCards?.length ?? 0) > 0 && (
+                    <p data-testid="pos-member-giftcards" className="mt-1.5 text-[12.5px] text-[color:var(--color-muted)]">
+                      {(p.giftCards ?? []).map((g) => tm("pay.giftCardLine", { number: g.numberMasked, amount: moneyText(g.balanceSatang) })).join(" \u00b7 ")}
+                    </p>
+                  )}
                 </div>
               )}
             </div>
