@@ -7195,7 +7195,7 @@
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "note": "ปิดกล่องใบกำกับเต็มรูป (ไม่เก็บค่า)"
+        "note": "ปิดกล่องใบกำกับเต็มรูป (ไม่เก็บค่า) · กล่องเดียวกันใช้ในลิ้นชักบิล /pos/sales (โหมดออกทีหลัง — เจ้าของ/ผู้จัดการ/ผู้มีสิทธิ์ pos.taxinvoice.issue)"
       },
       "wo": "P1.13U",
       "oracle": "",
@@ -7213,7 +7213,7 @@
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "note": "ฟอร์ม 15A — ตรวจด้วย parseTaxInvoiceBuyer ก่อนส่ง"
+        "note": "ฟอร์ม 15A — ตรวจด้วย parseTaxInvoiceBuyer ก่อนส่ง · กล่องเดียวกันใช้ในลิ้นชักบิล /pos/sales (โหมดออกทีหลัง — เจ้าของ/ผู้จัดการ/ผู้มีสิทธิ์ pos.taxinvoice.issue)"
       },
       "wo": "P1.13U",
       "oracle": "",
@@ -7231,7 +7231,7 @@
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "note": "ชนิดผู้ซื้อ บุคคลธรรมดา"
+        "note": "ชนิดผู้ซื้อ บุคคลธรรมดา · กล่องเดียวกันใช้ในลิ้นชักบิล /pos/sales (โหมดออกทีหลัง — เจ้าของ/ผู้จัดการ/ผู้มีสิทธิ์ pos.taxinvoice.issue)"
       },
       "wo": "P1.13U",
       "oracle": "",
@@ -7249,7 +7249,7 @@
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "note": "ชนิดผู้ซื้อ นิติบุคคล (ตั้งเองจากเลขขึ้นต้น 0 เมื่อครบ 13 หลัก)"
+        "note": "ชนิดผู้ซื้อ นิติบุคคล (ตั้งเองจากเลขขึ้นต้น 0 เมื่อครบ 13 หลัก) · กล่องเดียวกันใช้ในลิ้นชักบิล /pos/sales (โหมดออกทีหลัง — เจ้าของ/ผู้จัดการ/ผู้มีสิทธิ์ pos.taxinvoice.issue)"
       },
       "wo": "P1.13U",
       "oracle": "",
@@ -7267,7 +7267,7 @@
       "hiddenFor": [],
       "expect": {
         "type": "inline-error",
-        "note": "เลขผู้เสียภาษี 13 หลัก (ตัดช่องว่าง/ขีด) · ✓ เมื่อหลักตรวจถูก · แดง \"เลขไม่ถูกต้อง\""
+        "note": "เลขผู้เสียภาษี 13 หลัก (ตัดช่องว่าง/ขีด) · ✓ เมื่อหลักตรวจถูก · แดง \"เลขไม่ถูกต้อง\" · กล่องเดียวกันใช้ในลิ้นชักบิล /pos/sales (โหมดออกทีหลัง — เจ้าของ/ผู้จัดการ/ผู้มีสิทธิ์ pos.taxinvoice.issue)"
       },
       "wo": "P1.13U",
       "oracle": "",
@@ -7285,7 +7285,7 @@
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "note": "ค้นจากกรมพัฒน์ (นิติบุคคล + เลขถูก) → lookupBuyerByTaxIdAction · พบ = การ์ดผล · ไม่พบ/ไม่มีกุญแจ = กรอกเอง"
+        "note": "ค้นจากกรมพัฒน์ (นิติบุคคล + เลขถูก) → lookupBuyerByTaxIdAction · พบ = การ์ดผล · ไม่พบ/ไม่มีกุญแจ = กรอกเอง · กล่องเดียวกันใช้ในลิ้นชักบิล /pos/sales (โหมดออกทีหลัง — เจ้าของ/ผู้จัดการ/ผู้มีสิทธิ์ pos.taxinvoice.issue)"
       },
       "wo": "P1.13U",
       "oracle": "",
@@ -7303,7 +7303,7 @@
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "note": "ใช้ข้อมูลจาก DBD (ชื่อ/ที่อยู่/สำนักงานใหญ่ · source DBD)"
+        "note": "ใช้ข้อมูลจาก DBD (ชื่อ/ที่อยู่/สำนักงานใหญ่ · source DBD) · กล่องเดียวกันใช้ในลิ้นชักบิล /pos/sales (โหมดออกทีหลัง — เจ้าของ/ผู้จัดการ/ผู้มีสิทธิ์ pos.taxinvoice.issue)"
       },
       "wo": "P1.13U",
       "oracle": "",
@@ -7321,7 +7321,7 @@
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "note": "ชื่อผู้ซื้อ ≤120"
+        "note": "ชื่อผู้ซื้อ ≤120 · กล่องเดียวกันใช้ในลิ้นชักบิล /pos/sales (โหมดออกทีหลัง — เจ้าของ/ผู้จัดการ/ผู้มีสิทธิ์ pos.taxinvoice.issue)"
       },
       "wo": "P1.13U",
       "oracle": "",
@@ -7339,7 +7339,7 @@
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "note": "ที่อยู่ ≤300"
+        "note": "ที่อยู่ ≤300 · กล่องเดียวกันใช้ในลิ้นชักบิล /pos/sales (โหมดออกทีหลัง — เจ้าของ/ผู้จัดการ/ผู้มีสิทธิ์ pos.taxinvoice.issue)"
       },
       "wo": "P1.13U",
       "oracle": "",
@@ -7357,7 +7357,7 @@
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "note": "สาขา = สำนักงานใหญ่ (00000)"
+        "note": "สาขา = สำนักงานใหญ่ (00000) · กล่องเดียวกันใช้ในลิ้นชักบิล /pos/sales (โหมดออกทีหลัง — เจ้าของ/ผู้จัดการ/ผู้มีสิทธิ์ pos.taxinvoice.issue)"
       },
       "wo": "P1.13U",
       "oracle": "",
@@ -7375,7 +7375,7 @@
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "note": "สาขาที่ (รหัส 5 หลัก)"
+        "note": "สาขาที่ (รหัส 5 หลัก) · กล่องเดียวกันใช้ในลิ้นชักบิล /pos/sales (โหมดออกทีหลัง — เจ้าของ/ผู้จัดการ/ผู้มีสิทธิ์ pos.taxinvoice.issue)"
       },
       "wo": "P1.13U",
       "oracle": "",
@@ -7393,7 +7393,7 @@
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "note": "รหัสสาขา 5 หลัก"
+        "note": "รหัสสาขา 5 หลัก · กล่องเดียวกันใช้ในลิ้นชักบิล /pos/sales (โหมดออกทีหลัง — เจ้าของ/ผู้จัดการ/ผู้มีสิทธิ์ pos.taxinvoice.issue)"
       },
       "wo": "P1.13U",
       "oracle": "",
@@ -7411,7 +7411,7 @@
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "note": "อีเมลรับ e-Tax (ไม่บังคับ ≤120)"
+        "note": "อีเมลรับ e-Tax (ไม่บังคับ ≤120) · กล่องเดียวกันใช้ในลิ้นชักบิล /pos/sales (โหมดออกทีหลัง — เจ้าของ/ผู้จัดการ/ผู้มีสิทธิ์ pos.taxinvoice.issue)"
       },
       "wo": "P1.13U",
       "oracle": "",
@@ -7429,7 +7429,7 @@
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "note": "จำไว้กับสมาชิก (มีสมาชิกเท่านั้น) → rememberBuyer"
+        "note": "จำไว้กับสมาชิก (มีสมาชิกเท่านั้น) → rememberBuyer · กล่องเดียวกันใช้ในลิ้นชักบิล /pos/sales (โหมดออกทีหลัง — เจ้าของ/ผู้จัดการ/ผู้มีสิทธิ์ pos.taxinvoice.issue)"
       },
       "wo": "P1.13U",
       "oracle": "",
@@ -7447,7 +7447,7 @@
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "note": "ยกเลิก (ปิดกล่อง)"
+        "note": "ยกเลิก (ปิดกล่อง) · กล่องเดียวกันใช้ในลิ้นชักบิล /pos/sales (โหมดออกทีหลัง — เจ้าของ/ผู้จัดการ/ผู้มีสิทธิ์ pos.taxinvoice.issue)"
       },
       "wo": "P1.13U",
       "oracle": "",
@@ -7465,7 +7465,7 @@
       "hiddenFor": [],
       "expect": {
         "type": "ui",
-        "note": "บันทึกและกลับไปชำระ — เก็บผู้ซื้อในตะกร้า (ฝั่งจอ) · ส่งไปกับ submitRegisterSaleAction"
+        "note": "หน้าขาย: บันทึกและกลับไปชำระ (เก็บผู้ซื้อในตะกร้า · ส่งกับ submitRegisterSaleAction) · ลิ้นชักบิล: ออกใบกำกับ = issueFullTaxInvoiceAction / issueFromTaxInvoiceRequestAction (ข้อมูลคำขอไม่แก้) → toast + รีเฟรชลิ้นชัก · ปฏิเสธ = ข้อความในกล่อง"
       },
       "wo": "P1.13U",
       "oracle": "",
@@ -7502,6 +7502,150 @@
       "expect": {
         "type": "modal",
         "note": "แก้ผู้ซื้อ (เปิด 15A พร้อมค่าเดิม)"
+      },
+      "wo": "P1.13U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-taxinv-request-full",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "modal",
+        "note": "ขอใบเต็มรูป (บิล ABB ยังไม่ออก) → 15A โหมดออกทีหลัง · ผู้ที่ไม่มีสิทธิ์ pos.taxinvoice.issue ไม่เห็น"
+      },
+      "wo": "P1.13U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-taxinv-request-issue",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "modal",
+        "note": "ออกใบกำกับจากคำขอของลูกค้า → 15A เติมข้อมูลคำขอ"
+      },
+      "wo": "P1.13U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-taxinv-request-reject",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "modal",
+        "note": "ปฏิเสธคำขอ → แผ่นเหตุผล"
+      },
+      "wo": "P1.13U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-taxinv-reject-close",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "note": "ปิดแผ่นปฏิเสธ"
+      },
+      "wo": "P1.13U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-taxinv-reject-form",
+      "kind": "form",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "note": "ส่งฟอร์ม = rejectTaxInvoiceRequestAction"
+      },
+      "wo": "P1.13U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-taxinv-reject-reason",
+      "kind": "textarea",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "note": "เหตุผล ≤200 (บังคับ)"
+      },
+      "wo": "P1.13U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-taxinv-reject-cancel",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "note": "ยกเลิก"
+      },
+      "wo": "P1.13U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/sales",
+      "testid": "pos-taxinv-reject-submit",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "note": "ยืนยันปฏิเสธ → toast + รีเฟรชลิ้นชัก · ปฏิเสธ = ข้อความในแผ่น"
       },
       "wo": "P1.13U",
       "oracle": "",

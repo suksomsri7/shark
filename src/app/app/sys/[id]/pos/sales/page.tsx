@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
-import { canAccessUnit } from "@/lib/core/rbac";
+import { canAccessUnit, evaluate } from "@/lib/core/rbac";
 import { systemDef } from "@/lib/systems";
 import { posTabs } from "@/lib/modules/pos/tabs";
 import { posMembership, posSalesScope, posSaleWhere } from "@/lib/modules/pos/access";
@@ -42,13 +42,15 @@ export default async function PosSalesPage({ params, searchParams }: { params: P
   // ?date=YYYY-MM-DD (ลิงก์ตรงไปวันที่ · ไม่เกินวันนี้) — ไม่ระบุ/ผิดรูป = วันนี้ตามเวลาไทย
   const today = bkkDateOf();
   const initialDate = isBillDate(date) && date <= today ? date : today;
+  // POS P1.13U มติ 4: ปุ่มออก/ปฏิเสธใบกำกับเต็มรูปในลิ้นชัก = สิทธิ์ pos.taxinvoice.issue ที่สาขานี้ (เจ้าของ/ผู้จัดการโดยปริยาย) — บริการตรวจซ้ำทุกครั้ง
+  const canIssueTaxInvoice = !!unitId && evaluate(m, { module: "pos", action: "pos.taxinvoice.issue", unitId });
 
   return (
     <div className="flex w-full min-w-0 max-w-[1600px] flex-col gap-5">
       <PageHeader title={`${def?.icon ?? ""} ${sys.name}`.trim()} desc={t("desc")} />
       <ModuleTabs items={posTabs(id)} />
       {unitId ? (
-        <BillsClient systemId={id} units={units} unitId={unitId} today={today} initialDate={initialDate} hasAnyBill={!!anyBill} accountSystemId={accountSystemId} />
+        <BillsClient systemId={id} units={units} unitId={unitId} today={today} initialDate={initialDate} hasAnyBill={!!anyBill} accountSystemId={accountSystemId} canIssueTaxInvoice={canIssueTaxInvoice} />
       ) : (
         <div className="card text-sm text-[color:var(--color-muted)]" data-testid="pos-bills-no-unit">
           {t("noUnits")}
