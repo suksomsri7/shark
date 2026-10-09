@@ -163,7 +163,12 @@
     "coupon": {
       "label": "คูปอง",
       "placeholder": "โค้ดคูปอง",
-      "soonBody": "ใช้คูปองที่หน้าขายได้เร็ว ๆ นี้ — จะมาพร้อมสิทธิ์สมาชิกที่หน้าขาย"
+      "soonBody": "ใช้คูปองที่หน้าขายได้เร็ว ๆ นี้ — จะมาพร้อมสิทธิ์สมาชิกที่หน้าขาย",
+      "apply": "ใช้คูปอง",
+      "remove": "ลบคูปอง",
+      "checking": "กำลังตรวจคูปอง...",
+      "hint": "ใส่โค้ดของลูกค้า — ระบบตรวจกับบิลนี้ทันที (ใช้ได้ทั้งลูกค้าทั่วไปและสมาชิก)",
+      "current": "คูปองของบิลนี้: {code}"
     },
     "custom": {
       "name": "ชื่อรายการ",
@@ -1686,7 +1691,12 @@
       "points": "{points} แต้ม",
       "purchaseNo": "ซื้อครั้งที่ {count}",
       "tierLine": "ส่วนลดระดับ {tier}",
-      "couponLine": "คูปอง {code}"
+      "couponLine": "คูปอง {code}",
+      "general": "ทั่วไป",
+      "voucherLine": "ว่อชเชอร์ {name}",
+      "pointsLine": "ใช้แต้ม {points}",
+      "removeCoupon": "ลบคูปอง {code}",
+      "open": "ข้อมูลสมาชิก {name}"
     },
     "panel": {
       "title": "สมาชิก",
@@ -1702,7 +1712,25 @@
       "divider": "ไม่พบ? สมัครใหม่ใช้เวลา 20 วินาที",
       "rewardsPending": "รางวัลรอรับ",
       "fulfil": "ส่งมอบ",
-      "fulfilled": "ส่งมอบแล้ว"
+      "fulfilled": "ส่งมอบแล้ว",
+      "noRewards": "ไม่มีรางวัลรอรับ",
+      "attachedToast": "ผูก {name} กับบิลนี้แล้ว",
+      "detached": "ถอดสมาชิกออกจากบิลแล้ว",
+      "searchLabel": "ค้นสมาชิก",
+      "searching": "กำลังค้นหา...",
+      "close": "ปิด",
+      "expires": "หมดอายุ {date}",
+      "noExpiry": "ไม่มีวันหมดอายุ",
+      "attachedTitle": "สมาชิกของบิลนี้",
+      "switchTitle": "เปลี่ยนสมาชิก",
+      "fulfilling": "กำลังส่งมอบ...",
+      "ago": {
+        "today": "วันนี้",
+        "days": "{count} วันก่อน",
+        "weeks": "{count} สัปดาห์ก่อน",
+        "months": "{count} เดือนก่อน",
+        "years": "{count} ปีก่อน"
+      }
     },
     "register": {
       "phone": "เบอร์โทร",
@@ -1717,12 +1745,17 @@
       "heardAds": "โฆษณา",
       "submit": "+ สมัครและผูกกับบิลนี้",
       "footnote": "ข้อมูลไปที่ระบบสมาชิก · แต้มเริ่มสะสมบิลนี้",
-      "existing": "มีสมาชิกเบอร์นี้แล้ว — ผูกกับบิลให้แล้ว"
+      "existing": "มีสมาชิกเบอร์นี้แล้ว — ผูกกับบิลให้แล้ว",
+      "registered": "สมัครสมาชิกแล้ว · {name}",
+      "birthDatePlaceholder": "วว / ดด / ปปปป",
+      "birthDateInvalid": "วันเกิดไม่ถูกต้อง",
+      "submitting": "กำลังสมัคร...",
+      "phonePlaceholder": "0812345678"
     },
     "pay": {
       "pointsTitle": "ใช้แต้มเป็นส่วนลด",
       "rate": "{points} แต้ม = ฿{baht}",
-      "balance": "{name} มี {points} แต้ม (= {value})",
+      "balance": "{name} มี <b>{points} แต้ม</b> (= {value})",
       "pointsUnit": "แต้ม",
       "discountPreview": "ลด {amount}",
       "applyPoints": "ใช้ส่วนลด {amount}",
@@ -1734,11 +1767,37 @@
       "stampHint": "บิลนี้ได้ {count} ดวง ({stamps}/{slots})",
       "giftCards": "บัตรของขวัญ",
       "comingSoon": "เร็ว ๆ นี้",
-      "rightsChanged": "สิทธิ์เปลี่ยน — คิดยอดใหม่แล้ว"
+      "rightsChanged": "สิทธิ์เปลี่ยน — คิดยอดใหม่แล้ว",
+      "minPoints": "ต้องมีอย่างน้อย {min} แต้ม",
+      "enterCoupon": "ใส่คูปอง",
+      "removeCoupon": "ลบคูปอง",
+      "couponLine": "คูปอง {code}",
+      "pointsApplied": "✓ ใช้แล้ว",
+      "cancelPoints": "ยกเลิก",
+      "chip": "{name} · {tier}",
+      "voucherExpires": "หมดอายุ {date}",
+      "bdCoupon": "คูปอง {amount}",
+      "bdTier": "ส่วนลดระดับ {amount}",
+      "bdVoucher": "ว่อชเชอร์ {amount}",
+      "bdPoints": "แต้ม {amount}",
+      "giftCardLine": "บัตรของขวัญ {number} · {amount}",
+      "pointsInput": "จำนวนแต้มที่ใช้",
+      "tiles": {
+        "giftcard": "ว่อชเชอร์/บัตรของขวัญ",
+        "deposit": "มัดจำที่ชำระไว้",
+        "roomcharge": "ลงบิลห้องพัก",
+        "roomchargeSub": "โรงแรม",
+        "storecredit": "เครดิตร้าน",
+        "storecreditSub": "ลูกค้าประจำ",
+        "title": "วิธีชำระที่จะเปิดเร็ว ๆ นี้"
+      }
     },
     "done": {
       "pointsEarned": "แต้มที่ได้รับ {points} แต้ม (รวม {total})",
-      "pointsExpected": "แต้มที่จะได้รับ {points} แต้ม"
+      "pointsExpected": "แต้มที่จะได้รับ {points} แต้ม",
+      "pointsLabel": "แต้มที่ได้รับ",
+      "pointsValue": "<b>{points} แต้ม</b> (รวม {total})",
+      "expectedNote": "ตัวเลขที่คาดไว้ — ระบบแต้มบันทึกจริงภายในไม่กี่วินาที"
     }
   }
 }

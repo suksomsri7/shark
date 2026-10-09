@@ -28,6 +28,19 @@ export type CartTotalsModel = {
   vatMode: "INCLUDED" | "EXCLUDED" | "NONE";
   vatRateBp: number;
   grandTotalSatang: number;
+  /** POS P1.12U มติ 3: ส่วนลดระดับ + บรรทัดสิทธิ์ (ว่อชเชอร์/แต้ม) — มาจาก quote ของเซิร์ฟเวอร์เท่านั้น */
+  tierDiscountSatang?: number;
+  memberLines?: { kind: string; ref: string | null; label: string; discountSatang: number }[];
+};
+
+/** POS P1.12U มติ 3: แถวคูปอง/ระดับ/สิทธิ์ในยอด — couponInvalid = quote รายงาน COUPON conflict (แถวแดงพร้อมเหตุผล) */
+export type CartMemberTotals = {
+  couponCode: string | null;
+  couponInvalid: boolean;
+  tierName: string | null;
+  /** แต้มที่เลือกใช้ (มีเฉพาะตอนเลือกในจอชำระ) */
+  pointsUsed: number;
+  onRemoveCoupon: () => void;
 };
 
 type Props = {
@@ -42,7 +55,9 @@ type Props = {
   /** เหตุผลที่ชำระไม่ได้ (ออฟไลน์/ไม่มีสิทธิ์/ยอดล้ม) — แสดงใต้ยอด */
   error: React.ReactNode | null;
   frozen: boolean;
+  /** POS P1.12U: การ์ดสมาชิก (MemberChip) · null = สาขาไม่มีระบบสมาชิก (ไม่มีแถวเลย) · undefined = แถวเดิมของ P1.3 */
   memberSlot?: React.ReactNode;
+  member?: CartMemberTotals;
   /** บิลมี memberId (P1.3 ไม่มีทางใส่ — ทางเลือกสมาชิกคือ P1.12 · โค้ดแถว "ถอด" เตรียมไว้ตามสเปก §4.4) */
   memberAttached?: boolean;
   onRemoveMember?: () => void;
@@ -73,6 +88,7 @@ const ratePct = (bp: number) => String(Number((bp / 100).toFixed(2)));
 
 export function CartPanel(p: Props) {
   const t = useTranslations("pos.register");
+  const tm = useTranslations("pos.member");
   const sheet = p.variant === "sheet";
   const empty = p.lines.length === 0;
   const tt = p.totals;
@@ -136,6 +152,7 @@ export function CartPanel(p: Props) {
         )}
       </div>
 
+      {p.memberSlot !== null && (
       <div className="mx-[14px] mb-0.5 mt-2 shrink-0 xl:mx-4 xl:mb-0 xl:mt-2">
         {p.memberSlot ??
           (p.memberAttached ? (
@@ -168,6 +185,7 @@ export function CartPanel(p: Props) {
           </button>
           ))}
       </div>
+      )}
 
       {p.notice && <div className="mx-[14px] mt-2 shrink-0 xl:mx-4">{p.notice}</div>}
 
@@ -213,6 +231,45 @@ export function CartPanel(p: Props) {
               {tt.billDiscountSatang > 0 ? moneyText(-tt.billDiscountSatang) : moneyText(0)}
             </span>
           </div>
+          {/* POS P1.12U มติ 3 ▸ คูปอง (แดง · ✕ ลบ) → ส่วนลดระดับ → ว่อชเชอร์/แต้มที่เลือก (ตัวเลขจาก quote ของเซิร์ฟเวอร์เท่านั้น) ◂ */}
+          {p.member?.couponCode && (tt.couponDiscountSatang > 0 || p.member.couponInvalid) && (
+            <div data-testid="pos-member-coupon-line" data-state={p.member.couponInvalid ? "invalid" : "ok"} className="flex items-center justify-between gap-2 py-px text-[color:var(--color-ink-soft)] xl:py-1">
+              <span className="flex min-w-0 items-center gap-1">
+                <span className="truncate">{tm("chip.couponLine", { code: p.member.couponCode })}</span>
+                <button
+                  data-testid="pos-member-coupon-remove"
+                  className="-my-2 grid size-11 shrink-0 place-items-center rounded-[11px] text-[color:var(--color-muted)] disabled:opacity-50"
+                  type="button"
+                  disabled={p.frozen}
+                  aria-label={tm("chip.removeCoupon", { code: p.member.couponCode })}
+                  onClick={p.member.onRemoveCoupon}
+                >
+                  <RegisterIcon name="x" size={12} />
+                </button>
+              </span>
+              <span className="shrink-0 tabular-nums text-[color:var(--color-danger)]">
+                {p.member.couponInvalid ? t("errors.couponInvalid") : moneyText(-tt.couponDiscountSatang)}
+              </span>
+            </div>
+          )}
+          {(tt.tierDiscountSatang ?? 0) > 0 && (
+            <div data-testid="pos-member-tier-line" className="flex justify-between py-px text-[color:var(--color-ink-soft)] xl:py-1">
+              <span className="truncate">{tm("chip.tierLine", { tier: p.member?.tierName ?? tm("chip.general") })}</span>
+              <span className="tabular-nums text-[color:var(--color-danger)]">{moneyText(-(tt.tierDiscountSatang ?? 0))}</span>
+            </div>
+          )}
+          {(tt.memberLines ?? [])
+            .filter((l) => (l.kind === "VOUCHER" || l.kind === "POINTS") && l.discountSatang > 0)
+            .map((l) => (
+              <div
+                key={`${l.kind}-${l.ref ?? ""}`}
+                data-testid={l.kind === "VOUCHER" ? "pos-member-voucher-line" : "pos-member-points-line"}
+                className="flex justify-between py-px text-[color:var(--color-ink-soft)] xl:py-1"
+              >
+                <span className="truncate">{l.kind === "VOUCHER" ? tm("chip.voucherLine", { name: l.label }) : tm("chip.pointsLine", { points: (p.member?.pointsUsed ?? 0).toLocaleString("th-TH") })}</span>
+                <span className="tabular-nums text-[color:var(--color-danger)]">{moneyText(-l.discountSatang)}</span>
+              </div>
+            ))}
           {(tt.serviceChargeSatang ?? 0) > 0 && (
             <div data-testid="pos-reg-service-charge-line" className="flex justify-between py-px text-[color:var(--color-ink-soft)] xl:py-1">
               <span>{t("totals.serviceCharge")}</span>

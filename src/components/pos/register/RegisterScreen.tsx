@@ -54,8 +54,12 @@ import {
   type RegisterCartLine,
   type RegisterPayMethod,
   type RegisterCategory,
+  type RegisterMemberBenefits,
+  type RegisterMemberChoices,
+  type RegisterMemberItem,
   type RegisterProduct,
   type RegisterQuote,
+  type RegisterQuoteInput,
   type RegisterSaleStatus,
   type RegisterScanResult,
   type RegisterStatus,
@@ -70,6 +74,7 @@ import {
   quoteRegisterCartAction,
   recallHeldCartAction,
   registerCatalogAction,
+  registerMemberBenefitsAction,
   registerScanAction,
   registerStatusAction,
   submitRegisterSaleAction,
@@ -102,6 +107,8 @@ import { ScanCameraDialog } from "./ScanCameraDialog";
 import { ScanChooserDialog } from "./ScanChooserDialog";
 import { SearchRow } from "./SearchRow";
 import { WeighDialog } from "./WeighDialog";
+// POS P1.12U ▸ สมาชิกที่ตะกร้า (01) · แผงสมาชิก 14A · สิทธิ์ที่จอชำระ (02) ◂
+import { MemberChip } from "./MemberChip";
 // POS P1.13U ▸ กล่องใบกำกับภาษีเต็มรูป (ภาพ 15A) — ผู้ซื้ออยู่ในตะกร้าฝั่ง client เท่านั้น ส่งไปกับ submit ◂
 import { TaxInvoiceDialog } from "./TaxInvoiceDialog";
 import { taxInvoiceRefusalKey, type TaxInvoiceBuyerInput } from "@/lib/modules/pos/tax-invoice-shared";
@@ -159,7 +166,8 @@ type Layer =
   | { kind: "custom" }
   | { kind: "openPrice"; productId: string }
   | { kind: "clear" }
-  | { kind: "pay" }
+  // POS P1.12U: focusPoints = เปิดจากปุ่ม "ใช้แต้ม" ของการ์ดสมาชิก (โฟกัสช่องแต้ม)
+  | { kind: "pay"; focusPoints?: boolean }
   | { kind: "done"; result: RegisterSubmitOk; payMethods: RegisterPayMethod[]; memberAttached?: boolean; taxInvoice?: boolean }
   // POS P1.13U: กล่องใบกำกับเต็มรูป (15A) · errorKey = คำปฏิเสธจาก submit (คีย์ใต้ pos) ที่ทำให้เปิดซ้ำ
   | { kind: "taxInvoice"; errorKey?: string }
@@ -184,6 +192,9 @@ type Layer =
 type DiscountAuth =
   | { kind: "pin"; managerUserId: string; managerName: string; managerPin: string; heldCartId?: string; bp: number; satang: number }
   | { kind: "approved"; heldCartId: string; inputJson: string; quote: RegisterQuote; bp: number; satang: number };
+
+/** POS P1.12U: สมาชิกที่ผูกอยู่แต่ยังไม่รู้ชื่อ (เช่น เพิ่งเรียกคืนบิลพัก) — การ์ดแสดง "…" จนกว่า benefits จะมา */
+const placeholderMember = (id: string): RegisterMemberItem => ({ id, memberCode: "", name: "\u2026", phoneMasked: "", tier: null, points: 0, lastPurchaseAt: null, purchaseCount: 0, suspended: false });
 
 const newKey = () => {
   try {
@@ -325,6 +336,107 @@ export function RegisterScreen(props: RegisterScreenProps) {
     return () => document.removeEventListener("visibilitychange", onVis);
   }, [refreshHeld]);
 
+  // ═══════ POS P1.12U สมาชิกที่ตะกร้า + สิทธิ์ที่จอชำระ (มติ 1–9) ═══════
+  //   memberEnabled = สาขามีระบบสมาชิก (registerStatus) — false = ไม่มีแถวสมาชิก/ส่วนสิทธิ์บนจอเลย · สแกนบัตรสมาชิก = memberSystemMissing
+  //   memberInfo = แถวของสมาชิกที่ผูก (จากแถวที่แตะใน 14A ทันที แล้ว benefits ทับ) · benefits = สิทธิ์ของสมาชิกคนนี้กับตะกร้า (อ่านอย่างเดียว)
+  //   ขอ benefits เมื่อ: ผูกคนใหม่ · กล่องชำระเปิด/ตะกร้าเปลี่ยนระหว่างเปิด (ว่อชเชอร์ใช้ได้ไหมขึ้นกับตะกร้า) · หลัง MEMBER_RIGHTS_CHANGED / ส่งมอบรางวัล
+  const memberEnabled = status?.memberEnabled === true;
+  const [memberInfo, setMemberInfo] = useState<RegisterMemberItem | null>(null);
+  const [benefits, setBenefits] = useState<RegisterMemberBenefits | null>(null);
+  const benefitsSeq = useRef(0);
+  const payOpen = layers.some((l) => l.kind === "pay");
+  /** ตะกร้าที่ใช้ถามสิทธิ์ (ไม่มีสิทธิ์ที่เลือก) — เปลี่ยน = ถามใหม่เฉพาะตอนกล่องชำระเปิด */
+  const benefitsCartJson = useMemo(() => JSON.stringify(cartToQuoteInput(cart, { choices: false })), [cart]);
+  const refreshBenefits = useCallback(
+    async (memberId: string, cartJson: string) => {
+      const seq = ++benefitsSeq.current;
+      try {
+        const r = await registerMemberBenefitsAction({ systemId, unitId, memberId, cart: JSON.parse(cartJson) as RegisterQuoteInput });
+        if (seq !== benefitsSeq.current || cartRef.current.memberId !== memberId) return;
+        if (r.ok) {
+          setBenefits(r);
+          setMemberInfo(r.member);
+        }
+      } catch {
+        /* เครือข่ายล้ม — การ์ดแสดงชื่ออย่างเดียวต่อไป */
+      }
+    },
+    [systemId, unitId],
+  );
+  const benefitsFor = useRef<{ memberId: string | null; cartJson: string; pay: boolean }>({ memberId: null, cartJson: "", pay: false });
+  useEffect(() => {
+    const memberId = cart.memberId ?? null;
+    const prev = benefitsFor.current;
+    benefitsFor.current = { memberId, cartJson: benefitsCartJson, pay: payOpen };
+    if (!memberId || !memberEnabled) {
+      if (!memberId) {
+        benefitsSeq.current++;
+        setBenefits(null);
+        setMemberInfo(null);
+      }
+      return;
+    }
+    const changedMember = prev.memberId !== memberId;
+    if (changedMember) {
+      setBenefits((b) => (b && b.member.id === memberId ? b : null));
+      setMemberInfo((m) => (m && m.id === memberId ? m : null));
+    }
+    const needed = changedMember || (payOpen && (!prev.pay || prev.cartJson !== benefitsCartJson));
+    if (!needed) return;
+    const id = setTimeout(() => void refreshBenefits(memberId, benefitsCartJson), changedMember ? 0 : 300);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- ตัวกระตุ้น = สมาชิก · ตะกร้า (ไม่รวมสิทธิ์ที่เลือก) · กล่องชำระ
+  }, [cart.memberId, benefitsCartJson, payOpen, memberEnabled]);
+  const memberReady = !!benefits && !!cart.memberId && benefits.member.id === cart.memberId;
+  /** ผูกสมาชิกกับบิล (แตะแถว 14A · สแกนบัตร · สมัครด่วน) — สิทธิ์ที่เลือกของคนก่อนหาย · คูปองคงไว้ */
+  const attachMember = (m: RegisterMemberItem) => {
+    if (frozenRef.current) return;
+    setMemberInfo(m);
+    updateCart((prev) => {
+      const next: RegisterCart = { ...prev, memberId: m.id };
+      delete next.memberChoices;
+      return next;
+    });
+  };
+  /** ถอด (มติ 1): ล้าง memberId + สิทธิ์ที่เลือก · คูปองคงไว้ · quote ใหม่ */
+  const detachMember = () => {
+    if (frozenRef.current) return;
+    updateCart((prev) => {
+      const next: RegisterCart = { ...prev };
+      delete next.memberId;
+      delete next.memberChoices;
+      return next;
+    });
+  };
+  /** สิทธิ์ที่เลือกบนจอชำระ (แต้ม/ว่อชเชอร์) — ทุกครั้ง = quote ใหม่ · ว่างทั้งคู่ = ไม่ส่ง memberChoices */
+  const setChoices = (fn: (c: RegisterMemberChoices) => RegisterMemberChoices) => {
+    if (frozenRef.current) return;
+    updateCart((prev) => {
+      if (!prev.memberId) return prev;
+      const c = fn({ ...(prev.memberChoices ?? {}) });
+      const next: RegisterCart = { ...prev };
+      const clean: RegisterMemberChoices = { ...(c.voucherId ? { voucherId: c.voucherId } : {}), ...((c.points ?? 0) > 0 ? { points: c.points } : {}) };
+      if (clean.voucherId || clean.points) next.memberChoices = clean;
+      else delete next.memberChoices;
+      return next;
+    });
+  };
+  // มติ 1: สิทธิ์ที่เลือกมีเฉพาะตอนกล่องชำระเปิด — ปิดกล่อง (ย้อนกลับ/Esc/ล็อก) = ล้าง แล้ว quote ใหม่
+  useEffect(() => {
+    if (!payOpen && cartRef.current.memberChoices) setChoices(() => ({}));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- ตัวกระตุ้น = กล่องชำระเปิด/ปิด
+  }, [payOpen]);
+  /** คูปอง (มติ 8): ตั้ง/ลบโค้ด — ทั้งลูกค้าทั่วไปและสมาชิก · quote ใหม่ */
+  const setCoupon = (code: string | null) => {
+    if (frozenRef.current) return;
+    updateCart((prev) => {
+      const next: RegisterCart = { ...prev };
+      if (code) next.couponCode = code;
+      else delete next.couponCode;
+      return next;
+    });
+  };
+
   // ═══════ POS P1.13U ใบกำกับภาษีเต็มรูป (มติ 1–3) ═══════
   //   ผู้ซื้อ + จำไว้กับสมาชิก อยู่ในหน่วยความจำของจอเท่านั้น — บิลใหม่/พักบิล/เรียกคืน (resetBill) = หาย (บิลที่พักไม่เก็บผู้ซื้อ · ไม่มีข้อผิดพลาด)
   const [taxInv, setTaxInv] = useState<{ buyer: TaxInvoiceBuyerInput; remember: boolean } | null>(null);
@@ -438,7 +550,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
       const who = prev.name ?? "-";
       const hold = async (token: string, label: string) => {
         try {
-          return await holdRegisterCartAction({ systemId, unitId, ...(deviceId ? { deviceId } : {}), cart: cartToQuoteInput(cartRef.current), label, staffToken: token });
+          return await holdRegisterCartAction({ systemId, unitId, ...(deviceId ? { deviceId } : {}), cart: cartToQuoteInput(cartRef.current, { choices: false }), label, staffToken: token });
         } catch {
           return null;
         }
@@ -677,6 +789,8 @@ export function RegisterScreen(props: RegisterScreenProps) {
     if (!cart.lines.length) return null;
     // P1.2: ส่วนต่างของตัวเลือก/ราคาตามน้ำหนักอยู่ที่เซิร์ฟเวอร์เท่านั้น ⇒ ตะกร้าที่มีบรรทัดแบบนั้นใช้ quote (ไม่เดายอด)
     if (cart.lines.some(isPricedByServer)) return null;
+    // POS P1.12U มติ 1: มีสมาชิก/คูปอง = ยอดมาจากเซิร์ฟเวอร์เท่านั้น (ส่วนลดระดับ · คูปอง · สิทธิ์) — ไม่เดายอดในเครื่อง
+    if (cart.memberId || cart.couponCode) return null;
     const input = cartToPriceInput(cart, known.current, vat, localCap);
     if ("ok" in input) return null; // สินค้าไม่รู้จัก/ไม่มีราคา — รอ quote ของเซิร์ฟเวอร์ตัดสิน
     const r = priceCart(input);
@@ -736,7 +850,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
   // POS P1.15U ▸ ส่วนลดเกินเพดานที่มีสิทธิ์แล้ว: quote ของเซิร์ฟเวอร์ปฏิเสธ (quote ไม่รู้จัก PIN/บิลที่อนุมัติ) ⇒ ยอดสำหรับชำระ =
   //   อนุมัติแล้ว: quote ที่เรียกคืนด้วยเพดานที่อนุมัติ (ตะกร้าเดิมทุกไบต์) · PIN: priceCart ไม่จำกัดเพดาน (ราคาบรรทัดตัวเลือก/ชั่งจาก quote ล่าสุด) —
   //   ยอดไม่ตรงเซิร์ฟเวอร์ = PRICE_CHANGED พร้อมยอดจริง (ยืนยันอีกครั้ง) ◂
-  const cartInputJson = useMemo(() => JSON.stringify(cartToQuoteInput(cart)), [cart]);
+  const cartInputJson = useMemo(() => JSON.stringify(cartToQuoteInput(cart, { choices: false })), [cart]);
   const overrideQuote: RegisterQuote | null =
     quoteServer || quoteErrNow !== "DISCOUNT_EXCEEDS_LIMIT" || !discAuth
       ? null
@@ -748,7 +862,8 @@ export function RegisterScreen(props: RegisterScreenProps) {
   const quoteFresh = quoteServer ?? overrideQuote;
   const quoteFailed = quoteErrNow && !overrideQuote ? quoteErrNow : null;
   // R3 F1: ตะกร้าที่มีบรรทัดราคาฝั่งเซิร์ฟเวอร์ (ตัวเลือก/ชั่ง) และ quote ยังไม่ตรงรุ่น = ยอดรอ (—) — ห้ามโชว์ยอดของตะกร้าเก่าค้าง
-  const totalsPending = !quoteFresh && cart.lines.some(isPricedByServer);
+  // POS P1.12U มติ 1: มีสมาชิก/คูปอง = ยอดของเซิร์ฟเวอร์เท่านั้น ⇒ quote ยังไม่ตรงรุ่น = ยอดรอ (—) เหมือนบรรทัดตัวเลือก
+  const totalsPending = !quoteFresh && (cart.lines.some(isPricedByServer) || !!cart.memberId || !!cart.couponCode);
   const shownTotals: CartTotalsModel | null = totalsPending ? null : (quoteFresh ?? (local ? { ...local } : quote?.q ?? null));
   // POS P1.9 (S15): จุดขายบังคับเปิดกะ แต่เครื่องนี้ยังไม่มีกะ = ล็อกปุ่มชำระ + การ์ด "เปิดกะก่อนเริ่มขาย"
   const shiftBlocked = !!status?.shiftRequired && !status?.shift;
@@ -847,7 +962,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
     heldBusyRef.current = true;
     setHeldBusy(true);
     try {
-      const r = await holdRegisterCartAction({ systemId, unitId, ...tokenArgs(), cart: cartToQuoteInput(cart), label: label?.trim() || null });
+      const r = await holdRegisterCartAction({ systemId, unitId, ...tokenArgs(), cart: cartToQuoteInput(cart, { choices: false }), label: label?.trim() || null });
       if (!r.ok) {
         if (r.code === "STAFF_TOKEN_INVALID") staffTokenDead();
         else showToast(errorFor(r.code));
@@ -898,7 +1013,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
       if (r.approvedRequestId && r.quote.ok) {
         const q = r.quote;
         const satang = q.lineDiscountSatang + q.billDiscountSatang;
-        setDiscAuth({ kind: "approved", heldCartId: r.heldCartId, inputJson: JSON.stringify(cartToQuoteInput(next)), quote: q, satang, bp: q.subtotalSatang > 0 ? Math.ceil((satang * 10_000) / q.subtotalSatang) : 0 });
+        setDiscAuth({ kind: "approved", heldCartId: r.heldCartId, inputJson: JSON.stringify(cartToQuoteInput(next, { choices: false })), quote: q, satang, bp: q.subtotalSatang > 0 ? Math.ceil((satang * 10_000) / q.subtotalSatang) : 0 });
       } else if (armPin) {
         const d = discountOf(next);
         setDiscAuth({ kind: "pin", managerUserId: armPin.managerUserId, managerName: "", managerPin: armPin.pin, heldCartId: r.heldCartId, ...d });
@@ -1151,6 +1266,8 @@ export function RegisterScreen(props: RegisterScreenProps) {
   }
   /** POS P1.15U ▸ ยอดสำหรับชำระของส่วนลดที่ผู้จัดการอนุญาตด้วย PIN (ไม่จำกัดเพดาน) — รูปเดียวกับ quote ของเซิร์ฟเวอร์ ◂ */
   function localQuote(c: RegisterCart): RegisterQuote | null {
+    // POS P1.12U มติ 1: ตะกร้าที่มีสมาชิก/คูปอง ยอดต้องมาจากเซิร์ฟเวอร์ (ส่วนลดระดับ/คูปอง/สิทธิ์) — ไม่สร้างยอดแทน
+    if (c.memberId || c.couponCode) return null;
     const r = priceLocal(c, localCap);
     if (!r || !r.ok) return null;
     return {
@@ -1207,7 +1324,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
     // R3 F8: ลบบรรทัดสุดท้าย = บิลใหม่ ⇒ ล้างหมายเหตุบิล + ส่วนลดท้ายบิลด้วย (สมาชิกคงไว้)
     if (!lines.length) {
       const next: RegisterCart = { lines: [] };
-      if (cart.memberId) next.memberId = cart.memberId;
+      if (cart.memberId) next.memberId = cart.memberId; // P1.12U: สมาชิกคงไว้ · สิทธิ์ที่เลือก/คูปองหายไปกับบิล
       changeCart(next);
       pop();
       return;
@@ -1257,6 +1374,13 @@ export function RegisterScreen(props: RegisterScreenProps) {
     setPayError(null);
     setPayPhase("form");
     setLayers((s) => (s.some((l) => l.kind === "pay") ? s : [...s, { kind: "pay" }]));
+  };
+  /** POS P1.12U มติ 3: "ใช้แต้ม" บนการ์ดสมาชิก = เปิดจอชำระโดยโฟกัสช่องแต้ม (เงื่อนไขเดียวกับปุ่มชำระ) */
+  const openPayPoints = () => {
+    if (!payEnabled || layersRef.current.some((l) => l.kind === "pay")) return;
+    setPayError(null);
+    setPayPhase("form");
+    setLayers((s) => (s.some((l) => l.kind === "pay") ? s : [...s, { kind: "pay", focusPoints: true }]));
   };
   const send = async (sale: RegisterSubmitInput, opts?: { restore?: boolean }) => {
     if (sendingRef.current) return; // กดซ้ำ/Enter ซ้ำ = คำขอเดียวระหว่างทาง
@@ -1321,6 +1445,13 @@ export function RegisterScreen(props: RegisterScreenProps) {
             lines: r.lines,
             vatMode: r.vatMode,
             vatRateBp: r.vatRateBp,
+            // POS P1.12U: ยอดสดมีสิทธิ์สมาชิก/คูปองด้วย — จอชำระอ่านจากตรงนี้เหมือน quote ปกติ
+            ...(r.tierDiscountSatang !== undefined ? { tierDiscountSatang: r.tierDiscountSatang } : {}),
+            ...(r.memberDiscountSatang !== undefined ? { memberDiscountSatang: r.memberDiscountSatang } : {}),
+            ...(r.memberLines ? { memberLines: r.memberLines } : {}),
+            ...(r.pointsToEarn !== undefined ? { pointsToEarn: r.pointsToEarn } : {}),
+            ...(r.stampsToAdd ? { stampsToAdd: r.stampsToAdd } : {}),
+            ...(r.memberConflicts ? { memberConflicts: r.memberConflicts } : {}),
           },
         });
       } else if (r.code === "PAYMENT_MISMATCH") {
@@ -1412,7 +1543,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
     try {
       const grand = priceLocal(next, null);
       const sale: RegisterSubmitInput = {
-        ...cartToQuoteInput(next),
+        ...cartToQuoteInput(next, { choices: false }),
         idempotencyKey: idemKey,
         payMethods: [],
         expectedGrandTotalSatang: (grand && grand.ok ? grand.grandTotalSatang : 0) + 1,
@@ -1689,11 +1820,26 @@ export function RegisterScreen(props: RegisterScreenProps) {
       onKeep={keepSelling}
       onReduce={reduceTo}
       onClose={variant === "sheet" ? pop : undefined}
-      memberAttached={!!cart.memberId}
-      onRemoveMember={() => {
-        const next = { ...cart };
-        delete next.memberId;
-        changeCart(next);
+      memberSlot={
+        memberEnabled ? (
+          <MemberChip
+            member={cart.memberId ? ((memberInfo && memberInfo.id === cart.memberId ? memberInfo : null) ?? placeholderMember(cart.memberId)) : null}
+            ready={memberReady}
+            points={memberReady ? (benefits?.points?.balance ?? null) : null}
+            frozen={frozen}
+            onPick={() => showToast({ key: "soon" })}
+            onOpen={() => showToast({ key: "soon" })}
+            onUsePoints={openPayPoints}
+            onDetach={detachMember}
+          />
+        ) : null
+      }
+      member={{
+        couponCode: cart.couponCode ?? null,
+        couponInvalid: !!quoteFresh?.memberConflicts?.some((c) => c.kind === "COUPON"),
+        tierName: memberInfo?.tier?.name ?? null,
+        pointsUsed: cart.memberChoices?.points ?? 0,
+        onRemoveCoupon: () => setCoupon(null),
       }}
     />
   );
