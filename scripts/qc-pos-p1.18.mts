@@ -144,6 +144,8 @@ const CHECKS: readonly Def[] = [
   D("K2", "X2", "[มติ Q9 P1.15] ตั้ง PIN ซ้ำกับคนอื่นในสาขา → ไม่ใช่ PIN_TAKEN และแยกไม่ออก: ok (แล้ว PIN นั้นแบบไม่ระบุคน → PIN_INVALID · ระบุคน → คนนั้น) หรือ ปฏิเสธด้วย code+message เดียวกับ PIN อ่อน · ข้อความไม่บอกว่ามีคนใช้"),
   D("K3", "X1", "[มติ Q9 P1.15 F5] กติกา POS_DISCOUNT_OVER · submit พร้อมกัน 2 ครั้งคีย์เดียว (3 รอบ) → requestId เดียวกัน · บิลพัก +1 · คำขอ +1 ต่อรอบ · ไม่มีบิล · อนุมัติ → submit พร้อมกันคีย์เดียว → บิล 1 ใบ อีกตัว = บิลเดิม หรือ IDEMPOTENCY_CONFLICT"),
   D("K4", "X3", "[มติ Q9 P1.15] approval decide โดยผู้ยื่นเอง (MANAGER ที่ผ่าน canDecideStep) → ok:false · คำขอยัง PENDING · ไม่มี ApprovalDecision/outbox approved · OWNER ตัดสินได้ (ตัวควบคุม)"),
+  // ORACLE-EDIT (แก้รอบ 2 F3 · มติผู้คุมงาน 9 ต.ค.): ร้านเจ้าของคนเดียวต้องไม่ค้างคำขอของตัวเอง · ร้านหลายเจ้าของยังห้าม
+  D("K4b", "X3", "[แก้รอบ 2 F3] ร้านมี OWNER (รับคำเชิญแล้ว) คนเดียว: OWNER ยื่นเอง (ขั้น OWNER) แล้ว decide เอง → ok:true APPROVED · เพิ่ม OWNER คนที่ 2 (รับคำเชิญแล้ว) → OWNER คนเดิมยื่นใหม่แล้ว decide เอง → ok:false code SELF_APPROVAL · คำขอยัง PENDING · ไม่มี ApprovalDecision · bulkDecide → done 0 failed 1 · OWNER คนที่ 2 ตัดสินได้ (ตัวควบคุม)"),
   // ── E ปฏิเสธเป็นข้อมูล ──
   D("E1", "-", "[R16] คำปฏิเสธที่เก็บได้ {ok:false, code, message ไทย} ไม่ throw · มีรหัสใหม่ครบ SETTINGS_SECTION_LOCKED CONFIRM_REQUIRED PIN_THROTTLED · settingsRefusalMessageKey ของทุกรหัสที่เห็น → คีย์ที่มีใน pos.settings th+en"),
   // ── Z คืนสภาพ ──
@@ -2098,6 +2100,52 @@ async function runDb() {
       if (o?.ok !== true) p.push(`(ตัวควบคุม) OWNER → ${short(o, 60)}`);
     }
     chk("K4", !!rid && p.length === 0, "decide ของผู้ยื่น = ok:false ที่แกน", FX(p.join(" · ") || "ครบ"));
+  }
+  // ORACLE-EDIT (แก้รอบ 2 F3): K4b — เจ้าของคนเดียวอนุมัติของตัวเองได้ · มีเจ้าของคนที่ 2 แล้วห้าม (ร้านชั่วคราว T · ลบไปกับ T/ผู้ใช้ชั่วคราว)
+  {
+    const p: string[] = [];
+    let r1 = "", r2 = "", owner2 = "", owner2Mid = "";
+    const owners = async () => (T ? Number(await P.membership.count({ where: { tenantId: T, role: "OWNER", acceptedAt: { not: null } } }).catch(() => -1)) : -1);
+    const submitOwn = async (tag: string) =>
+      String((await apSvc.submitForApproval({ tenantId: T }, { entityType: "QC_P118_SOLE", entityId: `qc118-${RAND}-${tag}`, amountSatang: 100, requestedById: uid("OWNER") }))?.requestId ?? "");
+    try {
+      await apSvc.createPolicy({ tenantId: T }, { name: `QC เจ้าของคนเดียว ${RAND}`, entityType: "QC_P118_SOLE", steps: [{ order: 1, approverRole: "OWNER" }] });
+      r1 = await submitOwn("sole1");
+    } catch (e) {
+      p.push(`(fixture) ${(e as Error).message.slice(0, 60)}`);
+    }
+    if (r1) {
+      const n1 = await owners();
+      if (n1 !== 1) p.push(`(fixture) เจ้าของ ${n1} คน (คาด 1)`);
+      const d1 = await call(apSvc, "decide", { ...A("OWNER") }, { tenantId: T }, r1, { decision: "APPROVED" });
+      if (d1?.ok !== true || d1?.status !== "APPROVED") p.push(`เจ้าของคนเดียวอนุมัติของตัวเอง → ${short(d1, 70)}`);
+      // เพิ่มเจ้าของคนที่ 2 (รับคำเชิญแล้ว) — prisma ตรงในร้านชั่วคราว
+      try {
+        const u2 = await P.user.create({ data: { email: `${EMAIL_PREFIX}owner2@qc.invalid`, name: `OWNER2 คิวซี${RAND}` } });
+        owner2 = u2.id;
+        owner2Mid = (await P.membership.create({ data: { userId: u2.id, tenantId: T, role: "OWNER", unitAccess: ["*"], permissions: {}, acceptedAt: new Date() } })).id;
+        r2 = await submitOwn("sole2");
+      } catch (e) {
+        p.push(`(fixture เจ้าของ 2) ${(e as Error).message.slice(0, 60)}`);
+      }
+      if (r2) {
+        const n2 = await owners();
+        if (n2 !== 2) p.push(`(fixture) เจ้าของ ${n2} คน (คาด 2)`);
+        const d2 = await call(apSvc, "decide", { ...A("OWNER") }, { tenantId: T }, r2, { decision: "APPROVED" });
+        if (d2?.ok !== false || d2?.code !== "SELF_APPROVAL") p.push(`มีเจ้าของ 2 คน อนุมัติของตัวเอง → ${short(d2, 70)}`);
+        const b2 = await call(apSvc, "bulkDecide", { ...A("OWNER") }, { tenantId: T }, [r2], "APPROVED");
+        if (b2?.done !== 0 || b2?.failed?.length !== 1) p.push(`bulkDecide → ${short(b2, 70)}`);
+        const rq = await P.approvalRequest.findUnique({ where: { id: r2 } }).catch(() => null);
+        if (rq?.status !== "PENDING") p.push(`สถานะ ${rq?.status}`);
+        const dec = Number(await P.approvalDecision.count({ where: { requestId: r2 } }).catch(() => -1));
+        if (dec !== 0) p.push(`ApprovalDecision ${dec}`);
+        const o = await call(apSvc, "decide", { userId: owner2, role: "OWNER", unitAccess: ["*"], permissions: {} }, { tenantId: T }, r2, { decision: "APPROVED" });
+        if (o?.ok !== true) p.push(`(ตัวควบคุม) OWNER คนที่ 2 → ${short(o, 60)}`);
+      }
+    }
+    // คืนสภาพ "เจ้าของคนเดียว" ของ T สำหรับข้อถัดไป (ผู้ใช้ชั่วคราวลบตอนล้างร้าน)
+    if (owner2Mid) await P.membership.delete({ where: { id: owner2Mid } }).catch(() => null);
+    chk("K4b", !!r1 && !!r2 && p.length === 0, "เจ้าของคนเดียว = ok · เจ้าของ 2 คน = SELF_APPROVAL", FX(p.join(" · ") || "ครบ"));
   }
 
   // ════════ E1 ปฏิเสธเป็นข้อมูล ════════
