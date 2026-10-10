@@ -33,6 +33,9 @@ import { prisma } from "./db";
 // POS P2.2 ▸ ราคาตามช่องทาง/สาขา (ตัวแก้บริสุทธิ์ + รหัสช่องทาง) ◂
 import { CHANNEL_BUILTIN_CODES, CHANNEL_CODE_RE, isChannelBuiltinCode } from "./channel-shared";
 import { BULK_MARKUP_BP_MAX, BULK_MARKUP_PRODUCTS_MAX, CHANNEL_PRICE_ROWS_MAX, channelMarkupPrice, type ChannelPriceInputRow, type ChannelPriceView } from "./price-shared";
+// POS P2.3 ▸ สูตร/BOM: ตัวโหลดสูตรที่ใช้จริง (อ่านอย่างเดียว) + จำนวนหน่วยที่ทำได้ (บริสุทธิ์) ◂
+import { loadRowRecipes, type RowRecipe } from "./recipe";
+import { recipePortions } from "./recipe-shared";
 
 // ═══════════════════ ชนิดข้อมูล + error ═══════════════════
 
@@ -111,6 +114,9 @@ export type PosProductView = {
   soldByWeight: boolean;
   scalePlu: string | null;
   recipe: { invItemId: string; qty: number }[];
+  /** POS P2.3 ▸ ตัดสต็อกตามสูตรเปิดไหม (แถวนี้ · ชุดไม่ใช้) · ส่วนต่างของสูตรต่อตัวเลือกของแถวนี้ (ตัวแปรอ่านจากแม่ตอนขาย — มติ 3) ◂ */
+  bomEnabled: boolean;
+  recipeChoiceLines: { choiceId: string; invItemId: string; qtyDelta: number }[];
   /**
    * POS P2.2 ▸ R6 มติ 11: แถวราคาตามช่องทาง/สาขาที่ใช้กับสาขานี้ (ทุกสาขา + ของสาขานี้) · channelId = ช่องทางของสาขานี้ที่รหัสตรง
    * (ไม่มี/แถวราคาสาขา = null) · notSold = ไม่ขายในช่องทางนี้ (priceSatang null) ◂
@@ -118,7 +124,7 @@ export type PosProductView = {
   channelPrices: ChannelPriceView[];
   /** ขายได้ที่สาขานี้ไหม (key = unitId ที่ขอ) */
   availability: Record<string, boolean>;
-  /** สต็อกคงเหลือ (key = unitId ที่ขอ · = InvItem.onHand ของคลังที่สาขานี้ใช้ · C3) */
+  /** สต็อกคงเหลือ (key = unitId ที่ขอ · = InvItem.onHand ของคลังที่สาขานี้ใช้ · C3) · POS P2.3 ▸ แถวที่ตัดตามสูตร = จำนวนหน่วยที่ทำได้ (min ⌊onHand/qty⌋ ของสูตรฐาน · R9) ◂ */
   stock: Record<string, number>;
 };
 export type PosOptionGroupView = {
@@ -589,6 +595,54 @@ export function effectiveTrackStock(
   return { trackStock: !!p.invItemId && p.kind === "PRODUCT" && !!inv && (inv.hasMovement || inv.onHand !== 0), mode: "auto" };
 }
 
+/**
+ * POS P2.3 ▸ R9 จำนวนหน่วยที่ทำได้ต่อแถว (ไทล์หน้าขาย · listForUnit.stock) — ตัวเดียวของ register.ts และ catalog.ts
+ *   แถวที่ตัดตามสูตร (live: ชุด · เมนู bomEnabled) = min ⌊onHand/qty⌋ ของสูตรฐานในคลังของสาขา · สาขาไม่มีคลัง/ไม่ใช่แถวสูตร = null
+ *   fix round 1 (รีวิว F3 · มติผู้คุมงาน): ส่วนประกอบของ "ชุด" ใช้กติกา C2 แบบไทล์สินค้า (effectiveTrackStock ของแถว PRODUCT ที่ผูก
+ *     InvItem นั้นใน POS นี้ · ไม่มีแถว = AUTO) — ไม่ติดตามสต็อก (ปิดเอง หรือ AUTO ที่ onHand 0 และไม่เคยเคลื่อนไหว) = ไม่รู้ ⇒ null
+ *     (ไทล์ไม่แสดงอะไร แบบ P1.2) · ติดตามแล้วติดลบภายใต้ ALLOW = 0 เหมือนเดิม · เมนู bomEnabled = ร้านเปิดเอง ⇒ ใช้ onHand ตรง (A2: ใบชา 0 = หมด) ◂
+ */
+export async function loadRowPortions(
+  db: CatalogClient,
+  tenantId: string,
+  posSystemId: string,
+  unitInv: string | null,
+  rows: readonly { id: string; kind: PosProductKind }[],
+  rowRecipes: ReadonlyMap<string, RowRecipe>,
+): Promise<(rowId: string) => number | null> {
+  if (!unitInv) return () => null;
+  const liveRows = rows.filter((r) => rowRecipes.get(r.id)?.live);
+  const idsOf = (rs: readonly { id: string }[]) => [...new Set(rs.flatMap((r) => rowRecipes.get(r.id)!.lines.map((l) => l.invItemId)))];
+  const portionIds = idsOf(liveRows);
+  if (!portionIds.length) return () => null;
+  const stock = new Map(
+    (await db.invItem.findMany({ where: { tenantId, systemId: unitInv, id: { in: portionIds } }, select: { id: true, onHand: true } })).map((i) => [i.id, i.onHand]),
+  );
+  const bundleIds = idsOf(liveRows.filter((r) => r.kind === "BUNDLE")).filter((id) => stock.has(id));
+  const untracked = new Set<string>();
+  if (bundleIds.length) {
+    const prodRows = await db.posProduct.findMany({ where: { tenantId, systemId: posSystemId, invItemId: { in: bundleIds } }, select: { invItemId: true, trackStock: true, kind: true } });
+    const rowOf = new Map(prodRows.map((r) => [r.invItemId!, r]));
+    const needMove = bundleIds.filter((id) => (rowOf.get(id)?.trackStock ?? null) === null && stock.get(id) === 0);
+    const moved = needMove.length
+      ? await db.$queryRaw<{ id: string }[]>`SELECT i.id FROM "InvItem" i WHERE i.id = ANY(${needMove}::text[]) AND i."tenantId" = ${tenantId}
+          AND EXISTS (SELECT 1 FROM "InvMovement" m WHERE m."itemId" = i.id AND m."tenantId" = ${tenantId} AND m."systemId" = ${unitInv} LIMIT 1)`
+      : [];
+    const movedSet = new Set(moved.map((m) => m.id));
+    for (const id of bundleIds) {
+      const row = rowOf.get(id) ?? { trackStock: null, invItemId: id, kind: "PRODUCT" as PosProductKind };
+      if (!effectiveTrackStock({ trackStock: row.trackStock, invItemId: id, kind: row.kind }, { hasMovement: movedSet.has(id), onHand: stock.get(id)! }).trackStock) untracked.add(id);
+    }
+  }
+  const bundleRows = new Set(liveRows.filter((r) => r.kind === "BUNDLE").map((r) => r.id));
+  return (rowId) => {
+    const rr = rowRecipes.get(rowId);
+    if (!rr?.live) return null;
+    const bundle = bundleRows.has(rowId);
+    return recipePortions(rr.lines, (iid) => (bundle && untracked.has(iid) ? undefined : stock.get(iid)));
+  };
+}
+
 /** สมุดบัญชีที่ผูก POS (findAccountLinkForPos — account/service.ts:551) + จด VAT ไหม (vatConfigOf :602 · ไม่มีตั้งค่า = จด) */
 type BookInfo = { accountSystemId: string | null; vatRegistered: boolean };
 async function bookOfPos(tenantId: string, posSystemId: string, db: CatalogClient): Promise<BookInfo> {
@@ -972,6 +1026,14 @@ async function toViews(tenantId: string, unitId: string, unitInv: string | null,
   for (const l of links) linksBy.set(l.productId, [...(linksBy.get(l.productId) ?? []), l]);
   const recipesBy = new Map<string, { invItemId: string; qty: number }[]>();
   for (const r of recipes) recipesBy.set(r.productId, [...(recipesBy.get(r.productId) ?? []), { invItemId: r.invItemId, qty: r.qty }]);
+  // POS P2.3 ▸ R9: แถวที่ตัดตามสูตร (ชุด · เมนูที่เปิด bomEnabled · ตัวแปรสืบแม่) → จำนวนหน่วยที่ทำได้จากคลังของสาขานี้ · ส่วนต่างต่อตัวเลือกของแถวนี้ ◂
+  const [rowRecipes, choiceRows] = await Promise.all([
+    loadRowRecipes(db, tenantId, rows),
+    db.posRecipeChoiceLine.findMany({ where: { tenantId, productId: { in: ids } }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { productId: true, choiceId: true, invItemId: true, qtyDelta: true } }),
+  ]);
+  const choiceLinesBy = new Map<string, { choiceId: string; invItemId: string; qtyDelta: number }[]>();
+  for (const c of choiceRows) choiceLinesBy.set(c.productId, [...(choiceLinesBy.get(c.productId) ?? []), { choiceId: c.choiceId, invItemId: c.invItemId, qtyDelta: c.qtyDelta }]);
+  const portionsOf = await loadRowPortions(db, tenantId, systemId, unitInv, rows, rowRecipes); // fix round 1 F3: ชุดใช้กติกา C2 ◂
   return rows.map((p) => {
     const inv = p.invItemId ? itemById.get(p.invItemId) : undefined;
     const optionGroups: PosOptionGroupView[] = (linksBy.get(p.id) ?? []).flatMap((l) => {
@@ -1010,9 +1072,11 @@ async function toViews(tenantId: string, unitId: string, unitInv: string | null,
       soldByWeight: p.soldByWeight,
       scalePlu: p.scalePlu,
       recipe: recipesBy.get(p.id) ?? [],
+      bomEnabled: p.bomEnabled,
+      recipeChoiceLines: choiceLinesBy.get(p.id) ?? [],
       channelPrices: cpSort(cpBy.get(p.id) ?? []),
       availability: { [unitId]: rowAvailable(p, unitId, menuSoldOut) },
-      stock: inv ? { [unitId]: inv.onHand } : {},
+      stock: ((portions) => (portions !== null ? { [unitId]: portions } : inv ? { [unitId]: inv.onHand } : {}))(portionsOf(p.id)),
     };
   });
 }
@@ -1704,7 +1768,7 @@ export async function ensureForInvItem(ctx: CatalogCtx, invItemId: string, clien
 // ═══════════════════ POS P1.2 ▸ ตัวเขียนตัวเลือก · ชุด/คอมโบ (R5 · R8) — ผู้เขียนเดียว F15.1 ◂ ═══════════════════
 // กลุ่ม/ตัวเลือกยังเป็นตารางของร้านอาหาร (MenuOptionGroup/Choice · ต่อสาขา) อ่านสด ไม่มีสำเนา (brief §3)
 //   "ใช้ร่วม" = กลุ่มเดียวผูกหลายสินค้า · กลุ่มเป็นของสาขาเดียว (ที่แก้) แต่ลิงก์ใช้ได้ทุกสาขาที่สินค้าขาย
-// สูตรชุด (RecipeLine) ของ BUNDLE เท่านั้นใน P1.2 — BOM ของเมนู = P2.3
+// สูตรชุด (RecipeLine) ของ BUNDLE ใน P1.2 · POS P2.3 ▸ เมนู (MENU) ตั้งสูตรได้ + ส่วนต่างต่อตัวเลือก + bomEnabled (ด้านล่าง setRecipe) ◂
 
 const OPTION_GROUP_KEYS: ReadonlySet<string> = new Set(["unitId", "name", "nameEn", "minSelect", "maxSelect", "choices"]);
 const OPTION_CHOICE_KEYS: ReadonlySet<string> = new Set(["name", "nameEn", "priceDelta", "isDefault"]);
@@ -1842,7 +1906,9 @@ export async function setRecipe(
       const actor = await actorOf(ctx, tx);
       const before = await loadProduct(ctx, actor, productId, tx, true);
       await requireRowWrite(ctx, actor, before, PERM_MANAGE, tx);
-      if (before.kind !== "BUNDLE") throw invalid("ตั้งส่วนประกอบได้เฉพาะชุดสินค้า (สูตรเมนูมาในรอบถัดไป)");
+      // POS P2.3 ▸ R1: เมนู (MENU) ตั้งสูตรได้แล้ว · สินค้า/บริการ/สินค้าชั่ง = VALIDATION (PRODUCT ตัด InvItem ของตัวเอง 1:1 · หมุด P1.2 B1 คงเดิม) ◂
+      if (before.kind !== "BUNDLE" && before.kind !== "MENU") throw invalid(RECIPE_KIND_MESSAGE);
+      if (before.soldByWeight) throw invalid(RECIPE_KIND_MESSAGE);
       if (!Array.isArray(lines) || lines.length > MAX_RECIPE_LINES) throw invalid(`ส่วนประกอบต้องเป็นรายการ ไม่เกิน ${MAX_RECIPE_LINES} รายการ`);
       const want = (lines as unknown[]).map((raw) => {
         const l = ownFields(raw, new Set(["invItemId", "qty"]), "ส่วนประกอบ", "มีช่องของส่วนประกอบที่รับไม่ได้ — ยังไม่ได้บันทึกอะไร");
@@ -1851,19 +1917,132 @@ export async function setRecipe(
         return { invItemId: l.invItemId, qty: l.qty };
       });
       if (new Set(want.map((w) => w.invItemId)).size !== want.length) throw invalid("ส่วนประกอบซ้ำกัน — รวมจำนวนไว้ในรายการเดียว");
-      for (const w of want) {
-        const inv = await loadSellableItem(ctx, w.invItemId, tx);
-        if (inv.archivedAt) throw invalid("สินค้าคลังในส่วนประกอบถูกเก็บถาวรแล้ว");
-        if (inv.kind === "SERVICE") throw invalid("บริการเป็นส่วนประกอบของชุดไม่ได้ (ไม่มีสต็อก)");
-      }
+      for (const w of want) await assertRecipeItem(ctx, w.invItemId, tx);
       const have = await tx.recipeLine.findMany({ where: { tenantId: ctx.tenantId, productId: before.id }, select: { invItemId: true, qty: true } });
       const key = (xs: { invItemId: string; qty: number }[]) => xs.map((x) => `${x.invItemId}:${x.qty}`).sort().join(",");
-      if (key(have) !== key(want)) {
-        await tx.recipeLine.deleteMany({ where: { tenantId: ctx.tenantId, productId: before.id } });
-        if (want.length) await tx.recipeLine.createMany({ data: want.map((w) => ({ tenantId: ctx.tenantId, productId: before.id, invItemId: w.invItemId, qty: w.qty })) });
-        await audit(tx, ctx, "pos.product.recipe", "PosProduct", before.id, { recipe: key(have) }, { recipe: key(want) });
+      // POS P2.3 ▸ R2: เมนู — บันทึกสูตรครั้งแรก (ว่าง → มีสูตร) = เปิดตัดสต็อกตามสูตร · ล้างสูตร ([]) = ปิด · แก้สูตรที่มีอยู่ = bomEnabled คงเดิม
+      //   (ผู้ใช้ปิดเองผ่าน setBomEnabled แล้วแก้สูตร = ยังปิด) · ชุด (BUNDLE) ไม่ใช้คอลัมน์นี้ (ตัดตามสูตรเสมอ · audit เดิมทุกไบต์) ◂
+      const isMenu = before.kind === "MENU";
+      const bomAfter = isMenu ? (want.length === 0 ? false : have.length === 0 ? true : before.bomEnabled) : before.bomEnabled;
+      if (key(have) !== key(want) || bomAfter !== before.bomEnabled) {
+        if (key(have) !== key(want)) {
+          await tx.recipeLine.deleteMany({ where: { tenantId: ctx.tenantId, productId: before.id } });
+          if (want.length) await tx.recipeLine.createMany({ data: want.map((w) => ({ tenantId: ctx.tenantId, productId: before.id, invItemId: w.invItemId, qty: w.qty })) });
+        }
+        if (bomAfter !== before.bomEnabled) await tx.posProduct.update({ where: { id: before.id }, data: { bomEnabled: bomAfter } });
+        await audit(
+          tx,
+          ctx,
+          "pos.product.recipe",
+          "PosProduct",
+          before.id,
+          isMenu ? { recipe: key(have), bomEnabled: before.bomEnabled } : { recipe: key(have) },
+          isMenu ? { recipe: key(want), bomEnabled: bomAfter } : { recipe: key(want) },
+        );
       }
       return { id: before.id, recipe: want };
+    });
+  });
+}
+
+// ═══════════════════ POS P2.3 ▸ สูตร/BOM ของเมนู — ส่วนต่างต่อตัวเลือก + สวิตช์ตัดสต็อกตามสูตร (ผู้เขียนเดียว F15.1) ◂ ═══════════════════
+const RECIPE_KIND_MESSAGE = "ตั้งสูตรได้เฉพาะเมนูและชุดสินค้า — สินค้าที่ผูกคลังตัดสต็อกของตัวเองอยู่แล้ว (บริการ/สินค้าชั่งไม่มีสูตร)";
+const RECIPE_NO_LINES_MESSAGE = "เมนูนี้ยังไม่มีสูตร — ใส่วัตถุดิบในสูตรก่อนเปิดตัดสต็อกตามสูตร";
+/** เพดานส่วนต่างต่อสินค้า (กันคำขอใหญ่ผิดปกติ) · |ส่วนต่าง| ≤ 1,000,000 (เท่าเพดานจำนวนของสูตร) */
+const MAX_RECIPE_CHOICE_LINES = 100;
+const MAX_RECIPE_QTY = 1_000_000;
+
+/** วัตถุดิบของสูตร: InvItem ในคลังที่ขายผ่าน POS นี้ (ไม่ใช่ = NOT_FOUND) · ยังใช้งาน · ไม่ใช่บริการ (= VALIDATION) */
+async function assertRecipeItem(ctx: CatalogCtx, invItemId: string, db: CatalogClient): Promise<void> {
+  const inv = await loadSellableItem(ctx, invItemId, db);
+  if (inv.archivedAt) throw invalid("สินค้าคลังในสูตร/ส่วนประกอบถูกเก็บถาวรแล้ว");
+  if (inv.kind === "SERVICE") throw invalid("บริการใส่ในสูตร/ส่วนประกอบไม่ได้ (ไม่มีสต็อก)");
+}
+
+/**
+ * POS P2.3 R2 — ส่วนต่างของสูตรต่อตัวเลือก "แทนทั้งชุด" ({choiceId, invItemId, qtyDelta}) · ชุดเดิม = ไม่เขียน ไม่ audit
+ *   • เฉพาะ MENU/BUNDLE (อื่น = VALIDATION) · สิทธิ์ pos.product.manage ตามขอบเขตแถว (D1)
+ *   • มติ 5 ลำดับตรวจ: รูปร่างทั้งชุดก่อน (รายการ ≤ 100 · คีย์พอดี · qtyDelta จำนวนเต็ม ≠ 0 และ |v| ≤ 1,000,000 · (ตัวเลือก, ของ) ไม่ซ้ำ) = VALIDATION
+ *     แล้วจึงค้น: ตัวเลือกต้องอยู่ในกลุ่มที่ผูกกับแถวนี้ (PosProductOptionGroup · ไม่เก็บถาวร) ไม่งั้น NOT_FOUND · วัตถุดิบนอกคลังของ POS = NOT_FOUND ·
+ *     บริการ/เก็บถาวร = VALIDATION — ตรวจครบก่อนเขียน ⇒ ถูกปฏิเสธ = แถวเดิมไม่เปลี่ยน ไม่มี audit
+ *   • มติ 3: ตัวแปรผูกกลุ่มเองไม่ได้ ⇒ ตั้งส่วนต่างที่ตัวแปรได้เฉพาะ [] (ส่วนต่างอ่านจากแถวเจ้าของสูตร)
+ *   • audit "pos.product.recipeChoices" (before/after = ชุดเรียงแล้ว)
+ */
+export async function setRecipeChoiceLines(
+  ctx: CatalogCtx,
+  productId: string,
+  rows: { choiceId: string; invItemId: string; qtyDelta: number }[],
+  client: CatalogClient = prisma,
+): Promise<{ id: string; recipeChoiceLines: { choiceId: string; invItemId: string; qtyDelta: number }[] }> {
+  return boundary(async () => {
+    assertCleanInputs(ctx, productId, rows);
+    return inTx(client, async (tx) => {
+      await assertPosSystem(ctx, tx);
+      const actor = await actorOf(ctx, tx);
+      const before = await loadProduct(ctx, actor, productId, tx, true);
+      await requireRowWrite(ctx, actor, before, PERM_MANAGE, tx);
+      if (before.kind !== "BUNDLE" && before.kind !== "MENU") throw invalid(RECIPE_KIND_MESSAGE);
+      if (before.soldByWeight) throw invalid(RECIPE_KIND_MESSAGE);
+      if (!Array.isArray(rows) || rows.length > MAX_RECIPE_CHOICE_LINES) throw invalid(`ส่วนต่างของสูตรต้องเป็นรายการ ไม่เกิน ${MAX_RECIPE_CHOICE_LINES} รายการ`);
+      const want = (rows as unknown[]).map((raw) => {
+        const r = ownFields(raw, new Set(["choiceId", "invItemId", "qtyDelta"]), "ส่วนต่างของสูตร", "มีช่องของส่วนต่างสูตรที่รับไม่ได้ — ยังไม่ได้บันทึกอะไร");
+        if (typeof r.choiceId !== "string" || !r.choiceId) throw invalid("ส่วนต่างของสูตรต้องระบุตัวเลือก");
+        if (typeof r.invItemId !== "string" || !r.invItemId) throw invalid("ส่วนต่างของสูตรต้องระบุสินค้าคลัง");
+        if (typeof r.qtyDelta !== "number" || !Number.isInteger(r.qtyDelta) || r.qtyDelta === 0 || Math.abs(r.qtyDelta) > MAX_RECIPE_QTY) {
+          throw invalid(`ส่วนต่างของสูตรต้องเป็นจำนวนเต็มที่ไม่ใช่ 0 (บวกหรือลบ ไม่เกิน ${MAX_RECIPE_QTY.toLocaleString("en-US")})`);
+        }
+        return { choiceId: r.choiceId, invItemId: r.invItemId, qtyDelta: r.qtyDelta };
+      });
+      if (new Set(want.map((w) => `${w.choiceId}\u0000${w.invItemId}`)).size !== want.length) throw invalid("ส่วนต่างของตัวเลือกเดียวกันกับสินค้าเดียวกันซ้ำกัน — รวมจำนวนไว้ในรายการเดียว");
+      // ตัวเลือกต้องอยู่ในกลุ่มที่ผูกกับแถวนี้ (กลุ่ม/ตัวเลือกไม่เก็บถาวร · ร้านนี้)
+      const choiceIds = [...new Set(want.map((w) => w.choiceId))];
+      if (choiceIds.length) {
+        const links = await tx.posProductOptionGroup.findMany({ where: { tenantId: ctx.tenantId, productId: before.id }, select: { groupId: true } });
+        const ok = links.length
+          ? await tx.menuOptionChoice.findMany({
+              where: { tenantId: ctx.tenantId, id: { in: choiceIds }, archivedAt: null, groupId: { in: links.map((l) => l.groupId) }, group: { archivedAt: null } },
+              select: { id: true },
+            })
+          : [];
+        if (ok.length !== choiceIds.length) throw notFound();
+      }
+      for (const itemId of [...new Set(want.map((w) => w.invItemId))]) await assertRecipeItem(ctx, itemId, tx);
+      const have = await tx.posRecipeChoiceLine.findMany({ where: { tenantId: ctx.tenantId, productId: before.id }, select: { choiceId: true, invItemId: true, qtyDelta: true } });
+      const key = (xs: { choiceId: string; invItemId: string; qtyDelta: number }[]) => xs.map((x) => `${x.choiceId}:${x.invItemId}:${x.qtyDelta}`).sort().join(",");
+      if (key(have) !== key(want)) {
+        await tx.posRecipeChoiceLine.deleteMany({ where: { tenantId: ctx.tenantId, productId: before.id } });
+        if (want.length) await tx.posRecipeChoiceLine.createMany({ data: want.map((w) => ({ tenantId: ctx.tenantId, productId: before.id, ...w })) });
+        await audit(tx, ctx, "pos.product.recipeChoices", "PosProduct", before.id, { recipeChoices: key(have) }, { recipeChoices: key(want) });
+      }
+      return { id: before.id, recipeChoiceLines: want };
+    });
+  });
+}
+
+/**
+ * POS P2.3 R2 — สวิตช์ "ตัดสต็อกตามสูตร" ของเมนู (bomEnabled) · เฉพาะ MENU (ชุด/อื่น = VALIDATION) · สิทธิ์ pos.product.manage ตามขอบเขตแถว
+ *   เปิดตอนยังไม่มีสูตร (RecipeLine ของแถวนี้ 0 แถว) = VALIDATION "ยังไม่มีสูตร" · ปิด = สูตรคงอยู่ (แค่ไม่ตัด) · ค่าเดิม = ไม่เขียน ไม่ audit
+ *   audit "pos.product.recipe" (before/after.bomEnabled — action เดียวกับ setRecipe · มติ 2)
+ */
+export async function setBomEnabled(ctx: CatalogCtx, productId: string, on: boolean, client: CatalogClient = prisma): Promise<{ id: string; bomEnabled: boolean }> {
+  return boundary(async () => {
+    assertCleanInputs(ctx, productId);
+    return inTx(client, async (tx) => {
+      await assertPosSystem(ctx, tx);
+      const actor = await actorOf(ctx, tx);
+      const before = await loadProduct(ctx, actor, productId, tx, true);
+      await requireRowWrite(ctx, actor, before, PERM_MANAGE, tx);
+      if (before.kind !== "MENU") throw invalid("สวิตช์ตัดสต็อกตามสูตรใช้ได้เฉพาะเมนู — ชุดสินค้าตัดตามส่วนประกอบเสมอ");
+      if (typeof on !== "boolean") throw invalid("ค่าตัดสต็อกตามสูตรต้องเป็น เปิด/ปิด");
+      if (on && !before.bomEnabled) {
+        const n = await tx.recipeLine.count({ where: { tenantId: ctx.tenantId, productId: before.id } });
+        if (n === 0) throw invalid(RECIPE_NO_LINES_MESSAGE);
+      }
+      if (on !== before.bomEnabled) {
+        await tx.posProduct.update({ where: { id: before.id }, data: { bomEnabled: on } });
+        await audit(tx, ctx, "pos.product.recipe", "PosProduct", before.id, { bomEnabled: before.bomEnabled }, { bomEnabled: on });
+      }
+      return { id: before.id, bomEnabled: on };
     });
   });
 }

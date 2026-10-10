@@ -7,17 +7,16 @@
 //   2. คลัง (O12): บรรทัด restock === true ที่มี OUT ของบิลเดิม → รับคืนที่ "ต้นทุน/คลัง/ล็อตของ OUT เดิม" คีย์ pos-refund-<refundSaleId>-<refundLineId>[-<invItemId>]
 //      (มีคำว่า refund ⇒ สะพานคลัง→บัญชีลง Dr1200/Cr5000) · restock false/null = ไม่มี movement (ต้นทุนขายคงอยู่ = ความเสียหาย)
 //   3. สมาชิก (member-bridges.onPosSaleRefunded): แต้ม/ยอดสะสม/ตรา/ระดับ — ล้ม = WARN (บิล/บัญชีไม่กระทบ · แบบ memberSaleBridge)
-// 🔴 ขั้น 1–2 ล้ม ⇒ โยนท้ายสุด (คิวลองใหม่ · ทางที่ REVIEW #10 ขอ) หลังวิ่งทุกขั้นครบแล้ว · voidSale เดิมไม่เปลี่ยน
+// 🔴 ขั้น 1–2 ล้ม ⇒ โยนท้ายสุด (คิวลองใหม่ · ทางที่ REVIEW #10 ขอ) หลังวิ่งทุกขั้นครบแล้ว · POS P2.3 ▸ ทางคืนของขั้น 2 = service.returnStockAtOriginalCost (voidSale ใช้ตัวเดียวกัน · มติ Q5) · fix round 1: ขั้น 2 ทั้งขั้น = service.restockRefundDoc ◂
 // 🔴 CRM/บอร์ดงาน: ไม่แตะในใบนี้ (ไฟล์ร้อนของ CRM) — follow-up ของ session CRM
 import type { OutboxHandler } from "@/lib/core/outbox";
 import { logOps } from "@/lib/core/ops";
-import * as inventory from "@/lib/modules/inventory/service";
 import { systemForUnit } from "@/lib/modules/system/service";
 import { prisma } from "./db";
 import { applyExternalChannelCommission, posSalePosted } from "@/lib/modules/account";
 import { saleChannelName } from "./channel"; // POS P2.1 ◂
 import { bridgePosSaleCommission, bridgePosSalePaid, bridgePosSaleRefunded } from "./account-bridge";
-import { lineConsumption } from "./service";
+import { restockRefundDoc } from "./service";
 
 type Evt = Parameters<OutboxHandler>[0];
 
@@ -127,54 +126,16 @@ export const posSaleRefunded: OutboxHandler = async (evt: Evt) => {
   }
 
   // 2. คลัง — รับคืนที่ต้นทุนของ OUT เดิม (O12)
+  //   POS P2.3 ▸ fix round 1 (รีวิว F1): ขั้นนี้ย้ายเป็นตัวเดียว service.restockRefundDoc — ตัดบิลค้างสำเร็จทีหลัง (retryPendingStockCuts) เรียกตัวเดียวกันด้วยคีย์เดิม ◂
   try {
-    const wanted = refund.lines.filter((l) => l.restock === true && l.refLineId && origById.has(l.refLineId));
-    if (wanted.length) {
+    if (refund.lines.some((l) => l.restock === true && l.refLineId && origById.has(l.refLineId))) {
       const invSystemId = await systemForUnit(evt.tenantId, sale.unitId, "INVENTORY");
       if (invSystemId) {
-        const invCtx = { tenantId: evt.tenantId, systemId: invSystemId };
-        // ส่วนที่ต้องคืนต่อบรรทัดใบคืน = ส่วนตัดของบรรทัดเดิม (lineConsumption · ตัวกำหนดเดียวกับตอนขาย) ตามจำนวนที่คืน
-        //   บรรทัดชั่งคืนทั้งบรรทัด (กรัมเดิม) · ชุดคืนส่วนประกอบ qty × จำนวนชุดที่คืน
-        const parts = wanted.flatMap((rl) => {
-          const ol = origById.get(rl.refLineId!)!;
-          const mine = lineConsumption("", { id: ol.id, itemId: ol.itemId, qty: rl.qty, weightGrams: ol.weightGrams, components: ol.components });
-          const orig = lineConsumption(sale.id, { id: ol.id, itemId: ol.itemId, qty: ol.qty, weightGrams: ol.weightGrams, components: ol.components });
-          // ลำดับเดียวกันเสมอ (บรรทัดผูกคลังก่อน แล้วส่วนประกอบตามลำดับ) ⇒ จับคู่ด้วยตำแหน่ง
-          return mine.map((x, i) => ({
-            itemId: x.itemId,
-            qty: x.qty,
-            outKey: orig[i]!.key,
-            key: ol.itemId && i === 0 ? `pos-refund-${refund.id}-${rl.id}` : `pos-refund-${refund.id}-${rl.id}-${x.itemId}`,
-          }));
+        await restockRefundDoc({ tenantId: evt.tenantId, systemId: invSystemId }, refund, sale, (part, e) => {
+          // HF-INV-1 R3.3 ▸ ทิ้งร่องรอย (ไม่มีข้อมูลลูกค้า) แล้วให้คิวลองใหม่ (คีย์เดิมไม่รับซ้ำ) ◂
+          console.error("[pos] refund restock failed — event will retry", { refundSaleId: refund.id, itemId: part.itemId, qty: part.qty, code: errCode(e) });
+          errors.push(e);
         });
-        const outs = await prisma.invMovement.findMany({
-          where: { tenantId: evt.tenantId, type: "OUT", idempotencyKey: { in: parts.map((x) => x.outKey) } },
-          select: { idempotencyKey: true, itemId: true, costSatang: true, locationId: true, lotCode: true },
-        });
-        const outOf = new Map(outs.map((m) => [m.idempotencyKey, m]));
-        for (const part of parts) {
-          const out = outOf.get(part.outKey);
-          if (!out || out.itemId !== part.itemId) continue; // ไม่เคยตัดสต็อก (ไม่ผูกคลัง/ตัดล้ม) = ไม่มีอะไรให้คืน
-          try {
-            await inventory.receive(invCtx, {
-              itemId: part.itemId,
-              qty: part.qty,
-              costSatang: out.costSatang, // O12: ต้นทุนของการตัดเดิม ไม่ใช่ถัวเฉลี่ยปัจจุบัน
-              // F9: คืนเข้าคลัง/ล็อตเดียวกับที่ตัดออก (หลายคลังไม่เพี้ยน) · OUT แถว legacy ไม่มีคลัง = คลัง default
-              locationId: out.locationId,
-              lotCode: out.lotCode,
-              idempotencyKey: part.key,
-              sourceModule: "POS",
-              refType: "PosSale",
-              refId: refund.id,
-              note: `รับคืนจากใบคืนเงิน ${refund.receiptNo ?? refund.id}`,
-            });
-          } catch (e) {
-            // HF-INV-1 R3.3 ▸ ทิ้งร่องรอย (ไม่มีข้อมูลลูกค้า) แล้วให้คิวลองใหม่ (คีย์เดิมไม่รับซ้ำ) ◂
-            console.error("[pos] refund restock failed — event will retry", { refundSaleId: refund.id, itemId: part.itemId, qty: part.qty, code: errCode(e) });
-            errors.push(e);
-          }
-        }
       }
     }
   } catch (e) {

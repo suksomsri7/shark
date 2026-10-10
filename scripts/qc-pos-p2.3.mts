@@ -99,6 +99,8 @@ const CHECKS: readonly Def[] = [
   D("V3", "X5", "[R7] ลาเต้ S ×1 คืน 1 restock false → ไม่มี IN ของใบคืน · สต็อกไม่ขยับ"),
   D("V4", "X1", "[R7] เล่น consumers[pos.sale.refunded] ของใบคืนแรก (V2) ซ้ำ 2 รอบ → IN ไม่เพิ่ม · voidSale บิล V1 ซ้ำ → ปฏิเสธ · IN ของ V1 ไม่เพิ่ม"),
   D("V5", "X4", "[§9 Q5 O12] บิลลาเต้ S + น้ำดื่ม → รับนม (ต้นทุน 11) + น้ำ (ต้นทุน 1000) เพิ่มจนถัวเฉลี่ยเปลี่ยน → void → IN ทุกแถวต้นทุน = OUT เดิม (นม 5 · น้ำ 400 ไม่ใช่ถัวเฉลี่ยใหม่) + คลังเดียวกัน · GL Dr 1200 ของ IN จาก void Σ = Σ ต้นทุน OUT = 2720"),
+  // ORACLE-ADD (fix round 1 · รีวิว F1 · มติผู้คุมงาน ทาง B): ลองตัดใหม่หลังคืนเงินบางส่วนต้องไม่ตัดส่วนที่คืนไปแล้ว
+  D("V6", "X4", "[รีวิว F1 · §9 Q8 + R7] บิลค้างตัด (createSale ใน tx ของผู้เรียก · ลาเต้ S ×2) → คืน 1 แก้ว restock (ตัวรับคิวไม่พบ OUT = ไม่มี IN) → retryPendingStockCuts โดยเจ้าของ → {ok, cut ≥ 1, stillPending 0} · OUT ของบิล = ×2 · IN ของใบคืน = เมล็ด 18 นม 150 แก้ว12 1 ฝา 1 ที่ต้นทุน OUT เดิม · สต็อกสุทธิ = ก่อนขาย − 1 แก้ว (เมล็ด −18 นม −150 แก้ว12 −1 ฝา −1) · เรียกซ้ำ → InvMovement ของร้านไม่เพิ่ม"),
   // ── Z คืนสภาพ ──
   D("Z1", "-", "QC4 คืนสภาพ: ร้านชั่วคราว T + T2 เหลือ 0 แถวทุกตารางที่มี tenantId (RecipeLine PosRecipeChoiceLine PosProduct InvItem InvMovement InvLocationStock PosSale/Line/Payment OutboxEvent AuditLog AccountJournalEntry/Line …) · แถว Tenant ถูกลบ · ผู้ใช้ชั่วคราว 0"),
   D("Z2", "-", "รอยของรอบนี้นอกร้านชั่วคราว = 0 (PosSale คีย์ · InvMovement ของบิลรอบนี้ · AuditLog/OutboxEvent ที่มีรหัสรอบ · Tenant slug) · ลายนิ้วมือร้านอื่น (RecipeLine/PosProduct/InvItem/PosRecipeChoiceLine นับ + แฮช) ก่อน/หลังพิมพ์เป็นข้อมูล"),
@@ -1811,6 +1813,49 @@ async function runDb() {
       if (dr !== outCost || outCost !== 2720) p.push(`GL Dr 1200 ของ void ${dr} · Σ ต้นทุน OUT ${outCost} (คาด 2720 ทั้งคู่)`);
     }
     chk("V5", p.length === 0, "void คืนที่ต้นทุน OUT เดิม · GL = Σ เดิม", FX(P8(p) || "ครบ"));
+  });
+  // ORACLE-ADD (fix round 1 · รีวิว F1): บิลค้างตัด → คืนบางส่วนพร้อม restock (ตอนนั้นยังไม่มี OUT ⇒ ตัวรับคิวข้าม) → ลองตัดใหม่
+  //   ⇒ ต้องตัดครบบิลแล้วรับคืนส่วนที่คืนไปแล้ว (คีย์ของใบคืน) — สุทธิ = ส่วนที่ยังไม่คืนเท่านั้น
+  await step("V6", async () => {
+    const p: string[] = [];
+    const s0 = await stock();
+    let saleId = "";
+    try {
+      const r = await P.$transaction(
+        (tx: Any) =>
+          svc.createSale(
+            { tenantId: T, unitId: U.A, systemId: S.POS, sourceModule: "POS", idempotencyKey: newKey("pend-rf"), shiftId: null, lines: [{ name: `ลาเต้ ${RAND}`, qty: 2, unitPriceSatang: 7500, productId: PR.latte, components: expComps(LATTE_S) }], payMethods: [{ type: "CASH", amountSatang: 15000 }] },
+            tx,
+          ),
+        { timeout: 30000, maxWait: 10000 },
+      );
+      saleId = String(r?.saleId ?? "");
+      if (saleId) MY_SALES.push(saleId);
+    } catch (e) {
+      p.push(`(fixture) createSale ใน tx → ${errCode(e)} ${String((e as Error).message).slice(0, 60)}`);
+    }
+    if (saleId) {
+      if ((await mvs(saleId, "OUT")).length !== 0) p.push("(fixture) บิลค้างถูกตัดไปแล้ว");
+      const line = (await linesOf(saleId))[0];
+      const rid = await doRefund(saleId, String(line?.id ?? ""), 1, true, 7500);
+      if ((await mvs(rid, "IN")).length !== 0) p.push("(fixture) ใบคืนรับของคืนทั้งที่บิลยังไม่ถูกตัด");
+      const r1 = await call(svc, "retryPendingStockCuts", rctx("OWNER"), U.A);
+      if (r1?.ok !== true || !(r1.cut >= 1) || r1.stillPending !== 0) p.push(`ลองใหม่ → ${codeOf(r1)} ${short({ s: r1?.scanned, c: r1?.cut, sp: r1?.stillPending }, 80)}`);
+      const o = await mvs(saleId, "OUT");
+      if (perItem(o) !== "beans36,cup122,lid2,milk300") p.push(`OUT [${perItem(o)}] (คาด beans36,cup122,lid2,milk300)`);
+      const ins = await mvs(rid, "IN");
+      if (perItem(ins) !== "beans18,cup121,lid1,milk150") p.push(`IN ของใบคืน [${perItem(ins)}] (คาด beans18,cup121,lid1,milk150)`);
+      for (const m of ins) {
+        const src = o.find((x) => x.itemId === m.itemId);
+        if (!src || m.costSatang !== src.costSatang) p.push(`${nm(m.itemId)} ต้นทุน IN ${m.costSatang} ≠ OUT ${src?.costSatang}`);
+      }
+      const d = dstr(delta(s0, await stock()));
+      if (d !== "beans-18,cup12-1,lid-1,milk-150") p.push(`สต็อกสุทธิ ${d} (คาด beans-18,cup12-1,lid-1,milk-150)`);
+      const c0 = await mvCount();
+      const r2 = await call(svc, "retryPendingStockCuts", rctx("OWNER"), U.A);
+      if (r2?.ok !== true || (await mvCount()) !== c0) p.push(`ซ้ำ → ${codeOf(r2)} · แถว ${c0}→${await mvCount()}`);
+    }
+    chk("V6", p.length === 0, "ลองตัดใหม่หลังคืนบางส่วน = ตัดเฉพาะส่วนที่ยังไม่คืน", FX(P8(p) || "ครบ"));
   });
 }
 
