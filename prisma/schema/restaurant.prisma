@@ -108,6 +108,9 @@ model RestaurantSetting {
   pickupSlotMins Int     @default(15)
   pickupLeadMins Int     @default(20)
 
+  // POS P2.6 ▸ พักรับออเดอร์ออนไลน์อัตโนมัติเมื่อครัวค้าง (ต่อสถานี ≥ N ตั๋วที่ยังไม่พร้อม) · null = ปิด (R13 · มติ 10) ◂
+  autoAcceptMaxOpen Int?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -398,6 +401,15 @@ model RestaurantOrder {
 
   placedByUserId String? // staff ที่คีย์ (null = ลูกค้าสั่งเอง)
   cancelReason   String?
+
+  // POS P2.6 ▸ ลิงก์ของรอบครัวกับแหล่งขาย (R1 · มติ 1) — partial unique ของ posSaleId/posOrderId อยู่ใน SQL ของ migration
+  //   20261208100000_pos_p26_kds (WHERE … IS NOT NULL · prisma มองไม่เห็น) ⇒ หนึ่งบิล/ออเดอร์ = หนึ่งรอบ ◂
+  posSaleId     String? // PosSale.id (บิลหน้าร้าน "ซื้อกลับ" · id หลวม)
+  posOrderId    String? // PosOrder.id (ออเดอร์ออนไลน์ · id หลวม)
+  channelCode   String? // SalesChannel.code ณ ตอนรับ
+  channelName   String? // ชื่อช่องทาง ณ ตอนรับ (ป้ายตั๋ว)
+  externalRef   String? // เลขออเดอร์แพลตฟอร์ม (≤ 40)
+  targetMinutes Int? // เป้าเวลาเตรียมของรอบ (ออนไลน์ = PosOrder.prepMinutes) · null = ตามเมนู/kdsCriticalMins
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 

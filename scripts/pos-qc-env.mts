@@ -174,6 +174,8 @@ export const POS_MODELS = {
   posOrder: { model: "PosOrder", file: "pos_order.prisma", role: "ออเดอร์ทุกช่องทาง (P2.8 · NEW→ACCEPTED→PREPARING→READY→HANDED / REJECTED / CANCELLED · X1 (channel, ref) + คีย์)" },
   posOrderLine: { model: "PosOrderLine", file: "pos_order.prisma", role: "บรรทัดออเดอร์ (P2.8 · ราคาแช่แข็งตอนรับ · options สำเนา)" },
   posOrderEvent: { model: "PosOrderEvent", file: "pos_order.prisma", role: "บันทึกการเปลี่ยนสถานะออเดอร์ (P2.8 · 1 แถวต่อการเปลี่ยน · actor null = อัตโนมัติ)" },
+  // POS P2.6 ▸ 86 → ทุกช่องทาง (migration 20261208100000_pos_p26_kds) — ผู้เขียน pos/catalog.ts (setAvailability) + catalog-legacy.ts ◂
+  posAvailabilityMark: { model: "PosAvailabilityMark", file: "pos.prisma", role: "86/ของหมดต่อสินค้าต่อสาขา (P2.6 · ใคร/เมื่อไร/จากไหน KDS STOCK MANUAL · ความจริงยังอยู่ที่ MenuItem/unavailableUnitIds)" },
 } as const;
 export type PosModelKey = keyof typeof POS_MODELS;
 
