@@ -5,7 +5,7 @@ Contract: `ledger/pos-briefs/pos-prompt-accountB-P2.2U.md` (rulings 1–11) + `p
 Run logs (each with a `tree=… head=…` header): `/tmp/claude-0/-root/ed31d917-ff51-51e8-bfad-e5b8bfa6fa15/scratchpad/p22u/runs/` (`summary.txt`, `final-*.log`, `dry-*.log`, `tc-*.log`).
 
 ## Checkpoint (restart from here)
-- DONE: steps 1–5 · gates (below) · NEXT: controller review / real screenshots on QC5 (CONTROLLER-RUN) · builder does not merge.
+- DONE: steps 1–5 · gates (below) · **fix round 1 done (section at the end, head 6e55ba60 code)** · NEXT: reviewer R2 on the fix diff, then controller build + QC5 shots · was: controller review / real screenshots on QC5 (CONTROLLER-RUN) · builder does not merge.
 - Commands: typecheck `env NODE_OPTIONS=--max-old-space-size=5632 ISO_MEM=6500M bash scripts/iso.sh flock -w 3600 /tmp/pos-gate.lock pnpm typecheck` ·
   suites `bash scripts/iso.sh env QC_FORCE=1 bash scripts/qc4.sh env GATE_LOCK_FILE=/tmp/shark-gate-pos.lock bash scripts/with-gate-lock.sh pnpm exec tsx scripts/<suite>.mts` ·
   visual plan `[LOCALE=en] pnpm exec tsx scripts/visual-pos.mts p22u --page products|register|sales --states --user owner|cashier --dry`.
