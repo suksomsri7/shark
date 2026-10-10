@@ -24,3 +24,7 @@ Another Claude account is running the CRM RUN on this machine right now (4 lanes
 - **เพิ่ม 1 — hunter เลนเงินทุกจุด merge** (ไม่รอ P5.1): หลังผู้ตรวจ R-final MERGEABLE และก่อน merge ใบ S ที่แตะเงิน/สต็อก/บัญชี เปิดผู้ตรวจอ่านอย่างเดียว 1 คน (Opus) ไล่เฉพาะ race · idempotency · ตัดสต็อก · ลงบัญชี · void/refund ของใบนั้น (prompt `pos-prompt-accountB-<wo>-H.md`) → ผลลง `wo-notes/pos-<wo>-hunt.md` · พบ Medium+ = รอบแก้ก่อน merge · นับเป็นเลน
 - **เพิ่ม 2 — ผู้คุมดูภาพเต็มเองที่จุด merge** เฉพาะหน้าที่แตะเงิน: หน้าขาย (01/05) · จอชำระ (07) · บิลวันนี้ (12) · ใบเสร็จ/ใบกำกับ — ทุก state ที่ใบงานแตะ ทุกจอ th (en สุ่ม) · หน้าอื่นให้ harness ตัดสิน (มติเลนภาพ)
 - ผลต่อแผน: +~ครึ่งวันต่อใบใหญ่ · token +~10% · ประมาณการปิด RUN ~26–28 ต.ค.
+
+## ด่านจุด merge (บทเรียน 10 ต.ค. 08:3xZ — S2.33 แดงเงียบหลัง merge P2.3U)
+- ด่านจุด merge **ทุกใบ** (S และ U) ต้องมี `qc-pos-p1.1` (CONTROLLER-RUN · มี static G4 ตรวจไฟล์ `pos/catalog*.ts` และการ import ข้ามโมดูล) + `qc-pos-p1.3` + fitness ±env + typecheck — ไม่ว่าใบนั้นจะ "แตะแต่ UI"
+- ไฟล์ action ของ POS ห้ามตั้งชื่อขึ้นต้น `catalog-` ถ้า import โมดูลผู้เขียนเดิม (inventory · account · menu · order · shop · booking · register) — ใช้ `<topic>-actions.ts`
