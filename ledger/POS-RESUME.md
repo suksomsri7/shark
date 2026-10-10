@@ -1304,3 +1304,9 @@
 - เปิด: ผู้ตรวจ P2.4U R (p11 อ่าน · `pos-prompt-accountB-P2.4U-R.md`) · **HF-TX builder** (ทรี c · base d85ea5c3 · `pos-prompt-accountB-HF-TX-S.filled.md`) · chain63 (ทรี d build daa0296d → vis64 = tables ×7 states × owner/cashier/en + register table-mode/billtype + ถ่ายซ้ำ register default/cart3/line-editor + shifts-current + close)
 - ลำดับ merge ถัดไป: MAIN-MERGE (b) → ff session/pos → QC5 deploy 4 migrations ของ main → HF-TX merge upstream → P2.4U (หลัง R + ภาพ + ผู้คุมดู 03) → **26/55**
 - เลน 3/3: MAIN-MERGE (b) · HF-TX (c) · P2.4U R (p11 อ่าน) · chain63 (d ไม่นับเลน)
+
+## 10 ต.ค. 08:3xZ — MAIN-MERGE รายงาน (head bfac8165 · merge 2c64d972 · ชน 7 ไฟล์แก้แล้ว · fitness 50/50 · p1.x/p2.x/เงิน เขียว · QC4 มี 4 migrations ของ main อยู่แล้ว (0 applied) · **O24 แก้ฝั่งบัญชีแล้ว** (sequence + lock · เพิ่มบรรทัดใน OWNER-PENDING) · ใบกำกับ VAT บัตรของขวัญ (O24 บรรทัด 63) ยังเปิด)
+- แดง 2: **S5.12** (main HF-O23 แก้ไฟล์ legacy) → ตัดสิน ORACLE-EDIT LEGACY_SHA · **S2.33** (P2.3U `catalog-recipe-actions.ts` import inventory — แดงบน session/pos ตั้งแต่ merge P2.3U เพราะด่าน merge ไม่ได้รัน p1.1 ❗บทเรียน: ด่าน merge ทุกใบต้องมี p1.1) → ตัดสินย้ายไฟล์เป็น `recipe-actions.ts` (ไม่แก้ oracle)
+- **P1.1b ส่วน B** พร้อมแล้ว → สั่งทำในเลนนี้ (2 จุดใน account/service.ts + ล้าง CATALOG_WRITER_BASELINE · เปิด S2.11b/S2.19)
+- member m2.6–m2.8 crash null.role = seed QC4 (เหมือน 9 ต.ค.) → บรรทัดเจ้าของสมาชิก · `ciEquals` (F15.1 ของ main) รับ
+- ส่ง go รอบแก้ 1 ให้ MAIN-MERGE builder แล้ว → ผล → ff session/pos → QC5 `migrate deploy` (idempotent) → HF-TX/P2.4U merge upstream
