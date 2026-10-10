@@ -100,7 +100,7 @@ const CHECKS: readonly Def[] = [
   D("W7", "X1", "[R9 มติ 4] backfillWebPrices: รอบแรกเขียนแถว WEB ที่หาย (25000) · รอบสองเขียน 0 · แก้วขายสองสาขาคนละราคา → webPriceConflict ≥ 1 (มี posProductId) · createOrder สาขา S 9000 / S2 9500 (ราคาของตัวเอง)"),
   D("W8", "X4", "[R9 มติ 4] บรรทัดบิลยืนยันของเว็บร้าน: productId = posProductId · ไม่มี itemId · priceSource มีค่า · สต็อกเสื้อตัดครั้งเดียวทางเว็บร้าน (ecom-<order>-<line>) −2 · ไม่มีแถวตัดสต็อกของบิล"),
   // ORACLE-ADD (P2.8 fix รอบ 2 · รีวิว F1 F2 · มติผู้คุม 10 ต.ค. 05:1xZ)
-  D("W9", "X5", "[R5 มติ 13 · F1] ออเดอร์เว็บที่ร้านยืนยันรับเงินแล้ว (PAID · ยัง NEW) → rejectOrder ORDER_STATE_INVALID (ข้อความให้คืนเงิน/ยกเลิกที่หน้าเว็บร้าน) · ออเดอร์/ShopOrder/บิล ECOM ไม่เปลี่ยน · ตัวควบคุม: ออเดอร์เว็บที่ยังไม่จ่าย reject → ShopOrder CANCELLED"),
+  D("W9", "X5", "[R5 มติ 13 · F1] ออเดอร์เว็บที่ร้านยืนยันรับเงินแล้ว (PAID · ยัง NEW) → rejectOrder และ cancelOrder ORDER_STATE_INVALID (ข้อความให้คืนเงิน/ยกเลิกที่หน้าเว็บร้าน) · ออเดอร์/ShopOrder/บิล ECOM ไม่เปลี่ยน · ตัวควบคุม: ออเดอร์เว็บที่ยังไม่จ่าย reject → ShopOrder CANCELLED"),
   D("W10", "X4", "[R9 CD4 มติ 4 · F2] หน้าเว็บอ่านชั้นราคาเฉพาะของช่องทาง WEB: ไม่มีแถว WEB + แถวสาขา (ทุกช่องทาง) ฿170 + กติกาทุกช่องทาง −10% → storefront/createOrder = ราคา ShopProduct ฿200 · กติกาที่ระบุ WEB −20% → ฿160 ทั้ง storefront และ createOrder"),
   // ── R ตัวอ่าน ──
   D("R1", "-", "[R8] listOrders สาขา A: counts.byColumn {new preparing ready done} + counts.byChannel ตรงความจริงใน DB · summary {count totalSatang rejectedCancelled avgAcceptSeconds onTime{n m}} · การ์ด LM-48213 (ref itemCount 3 · 42000 · channel {code name}) · กรอง status/channelId"),
@@ -2096,6 +2096,9 @@ async function runDb() {
     const r = o ? await O("rejectOrder", ctxU("S"), A("MGR"), { id: o.id, reasonCode: "OUT_OF_STOCK" }) : null;
     if (!refused(r, "ORDER_STATE_INVALID")) p.push(`reject ออเดอร์เว็บที่จ่ายแล้ว → ${codeOf(r)} (คาด ORDER_STATE_INVALID)`);
     else if (!/คืนเงิน|หน้าเว็บร้าน/.test(String(r?.message ?? ""))) p.push(`ข้อความ ${short(r?.message, 60)} (คาดบอกให้คืนเงิน/ยกเลิกที่หน้าเว็บร้าน)`);
+    // EDIT (P2.8 fix รอบ 3 · R2 nit): ยกเลิกออเดอร์เว็บที่จ่ายแล้วก็ถูกปฏิเสธด้วยเหตุเดียวกัน
+    const rc = o ? await O("cancelOrder", ctxU("S"), A("MGR"), { id: o.id, reason: "ลูกค้าขอยกเลิก" }) : null;
+    if (!refused(rc, "ORDER_STATE_INVALID") || !/คืนเงิน|หน้าเว็บร้าน/.test(String(rc?.message ?? ""))) p.push(`cancel ออเดอร์เว็บที่จ่ายแล้ว → ${codeOf(rc)} ${short(rc?.message ?? "", 40)} (คาด ORDER_STATE_INVALID · คืนเงิน/ยกเลิกที่หน้าเว็บร้าน)`);
     await drain();
     const o1 = o ? await row(o.id) : null;
     if (o && (o1?.status !== "NEW" || o1?.paymentState !== "PAID" || o1?.version !== v0)) p.push(`ออเดอร์หลังปฏิเสธ ${ordStr(o1)} (คาดไม่เปลี่ยน v${v0})`);
