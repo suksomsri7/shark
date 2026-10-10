@@ -69,11 +69,20 @@ export function dateText(iso: string, locale: string): string {
   return new Intl.DateTimeFormat(locale.startsWith("en") ? "en-GB" : "th-TH", { timeZone: "Asia/Bangkok", day: "numeric", month: "short", year: "numeric" }).format(new Date(iso));
 }
 
-/** ข้อความช่วงเวลาโปร: "จ.–ศ. 14:00–16:00" (+ ช่วงวันที่ถ้ามี) */
+/**
+ * วันสุดท้ายที่รวมของ endsAt (P2.2U fix รอบ 1 F2): endsAt = เที่ยงคืนถัดไป (ไม่รวม) ⇒ แสดง endsAt − 1 มิลลิวินาทีตามเวลาไทย =
+ * วันเดียวกับที่ตัวแก้โปรแสดง (bkkDate(…, true)) — ทุกจุดที่แสดง endsAt ใช้ตัวนี้
+ */
+export function endDateText(iso: string, locale: string): string {
+  const ms = Date.parse(iso);
+  return Number.isFinite(ms) ? dateText(new Date(ms - 1).toISOString(), locale) : dateText(iso, locale);
+}
+
+/** ข้อความช่วงเวลาโปร: "จ.–ศ. 14:00–16:00" (+ ช่วงวันที่ถ้ามี · วันจบ = วันสุดท้ายที่รวม) */
 export function ruleWindowText(r: Pick<PriceRuleItem, "weekdays" | "timeFrom" | "timeTo" | "startsAt" | "endsAt">, tr: PT, locale: string): string {
   const parts = [weekdaysText(r.weekdays, tr)];
   if (r.timeFrom && r.timeTo) parts.push(`${r.timeFrom}–${r.timeTo}`);
-  if (r.startsAt || r.endsAt) parts.push(`${r.startsAt ? dateText(r.startsAt, locale) : "…"} – ${r.endsAt ? dateText(r.endsAt, locale) : "…"}`);
+  if (r.startsAt || r.endsAt) parts.push(`${r.startsAt ? dateText(r.startsAt, locale) : "…"} – ${r.endsAt ? endDateText(r.endsAt, locale) : "…"}`);
   return parts.join(" ");
 }
 
