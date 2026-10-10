@@ -370,6 +370,13 @@
       "channelNotSold": "This item isn't sold on this channel — remove it from the bill or switch channel",
       "priceRuleNotFound": "This price promotion wasn't found — it may have been archived",
       "priceRuleLimit": "You already have 100 price promotions — archive ones you no longer use first",
+      "tableNotFound": "This table was not found at this branch",
+      "tableInactive": "This table is inactive — activate it first or choose another table",
+      "tableSessionClosed": "This table is already closed — open the table again first",
+      "tableEmpty": "This table has no unpaid items that were sent to the kitchen",
+      "tableItemsChanged": "The table's items changed during checkout — review the total again; no money was taken",
+      "tableHasUnpaid": "This table still has unpaid items — check out before closing the table",
+      "versionChanged": "This table's draft was just changed, sent or discarded on another device — reload the latest draft and try again",
       "orderNotFound": "This order was not found at this branch",
       "orderStateInvalid": "The order is in a state that does not allow this",
       "orderStateChanged": "This order was just changed on another device — check its latest status",
@@ -2731,7 +2738,8 @@
       "out": "Out of stock",
       "noCost": "No cost yet",
       "noCostSub": "Margin unknown",
-      "diff": "Prices differ by channel"
+      "diff": "Prices differ by channel",
+      "noMarginSub": "Margin unavailable {count}"
     },
     "col": {
       "select": "Select",
@@ -2827,7 +2835,178 @@
       "duplicate": "An ingredient is listed twice — combine it into one line",
       "service": "A service cannot be an ingredient (it has no stock)",
       "archived": "An ingredient in the recipe is archived",
-      "notFound": "Ingredient or option not found in this POS"
+      "notFound": "Ingredient or option not found in this POS",
+      "serverValidation": "Could not save the recipe — {message}",
+      "permission": "This account cannot edit recipes — ask the owner for access",
+      "tooManyLines": "A recipe can have at most {max} ingredients",
+      "tooManyDeltas": "At most {max} option change rows",
+      "loadCost": "Could not load the cost — try again",
+      "search": "Ingredient search failed — try again"
+    },
+    "notForKind": "This item has no recipe — only menus and bundles can have one (items sold by weight cannot)",
+    "autoNote": "Selling 1 cup deducts its ingredients from stock automatically",
+    "bomOffNote": "Not deducting stock by recipe yet — sales do not cut ingredients",
+    "bundleNote": "Bundles always deduct their components from stock",
+    "choiceChip": "{group} {choice}",
+    "parentRecipe": "Using the main product's recipe",
+    "variantLabel": "Recipe for",
+    "mainProduct": "Main product",
+    "variantNoChoice": "A variant with its own recipe does not use option changes",
+    "backfilledAction": "Turn on recipe deduction",
+    "notAtBranchHint": "Some ingredients are not in this branch's stock — this branch's register hides the menu",
+    "noCostHint": "Some ingredients have no cost in stock yet — margin cannot be calculated",
+    "archivedHint": "Remove archived ingredients from the recipe or restore them in Inventory",
+    "costLoading": "Calculating cost…",
+    "searchPlaceholder": "Search stock ingredients · name · SKU",
+    "searchEmpty": "No ingredient found",
+    "searching": "Searching…",
+    "pickMeta": "{onHand} {unit} in stock",
+    "pickCost": "{cost} per {unit}",
+    "decrease": "Decrease quantity",
+    "increase": "Increase quantity",
+    "noDelta": "This option uses the base recipe (no changes yet)",
+    "deltaFor": "Changes for {choice}",
+    "save": "Save recipe",
+    "cancel": "Cancel",
+    "otherBranch": "another branch",
+    "chips": {
+      "low": "Low stock {count}",
+      "out": "Out {count}",
+      "noCost": "No cost {count}",
+      "noMargin": "Margin unavailable {count}"
+    },
+    "bomOnDone": "Recipe deduction is on"
+  },
+  "tables": {
+    "title": "Tables",
+    "modeTab": "Tables",
+    "zoneAll": "All zones",
+    "zoneCount": "{name} ({n})",
+    "tapToOpen": "Tap a table to open it",
+    "dragHint": "Drag a table to move or merge",
+    "summary": {
+      "used": "{used} of {total} tables in use",
+      "guests": "{n} guests in store",
+      "avgMinutes": "Average stay {n} min",
+      "unpaid": "Open on tables now {amount}",
+      "openTablesInfo": "Tables still open {n} · {amount}"
+    },
+    "state": {
+      "FREE": "Free",
+      "DINING": "Dining",
+      "BILL_REQUESTED": "Bill requested",
+      "NEEDS_CLEARING": "Needs clearing",
+      "RESERVED": "Reserved",
+      "INACTIVE": "Inactive"
+    },
+    "card": {
+      "seats": "{n} seats",
+      "guests": "{n} guests",
+      "open": "Open table",
+      "minutes": "{n} min",
+      "sentAt": "Sent to kitchen {time}",
+      "unsent": "{n} items not sent yet",
+      "ready": "{n} ready to serve",
+      "viaQr": "Requested via QR",
+      "atTable": "Called at table",
+      "dirtyFor": "Not cleared · {n} min",
+      "cleared": "Cleared",
+      "reservedLine": "Reserved {time} · {name} {n} guests",
+      "holdFrom": "Held from {time}",
+      "fromBooking": "From bookings"
+    },
+    "legend": "Table status",
+    "reservationsToday": "Reservations today {n}",
+    "queue": {
+      "title": "Walk-in queue",
+      "fromQueue": "From queue system",
+      "callNext": "Call next",
+      "planned": "Coming soon"
+    },
+    "panel": {
+      "title": "Table {name}",
+      "openedLine": "Opened {time} · {minutes} min · {guests} guests · staff {staff}",
+      "byQrGuest": "Opened by guest via QR",
+      "memberLine": "{name} · {tier}",
+      "round": "Order #{no} ({time})",
+      "roundByStaff": "Taken at table by {staff}",
+      "roundByQr": "Self-ordered via QR",
+      "kds": {
+        "NEW": "Waiting",
+        "COOKING": "Cooking",
+        "READY": "Ready",
+        "SERVED": "Served",
+        "CANCELLED": "Cancelled"
+      },
+      "servedMore": "{n} more served items",
+      "paid": "Paid",
+      "draft": "Draft round (not sent)",
+      "unsentWarning": "Some items are not sent to the kitchen — they are not on the bill",
+      "subtotal": "Subtotal",
+      "serviceCharge": "Service charge {rate}%",
+      "net": "Total",
+      "stockNotCut": "Stock not cut",
+      "serviceChargeDiffers": "Table mode uses the register service charge ({pos}%), not the restaurant setting ({restaurant}%)"
+    },
+    "actions": {
+      "orderMore": "Order more",
+      "sendRound": "Send to kitchen",
+      "moveTable": "Move table",
+      "mergeTable": "Merge tables",
+      "splitBill": "Split bill",
+      "printList": "Print item list",
+      "checkout": "Check out {amount}",
+      "closeTable": "Close table",
+      "clearTable": "Mark cleared",
+      "linkMember": "Link member",
+      "cancelItem": "Cancel item",
+      "planned": "Coming soon"
+    },
+    "alerts": {
+      "title": "Table alerts",
+      "callStaff": "Table {table} is calling staff",
+      "requestBill": "Table {table} asks for the bill · {amount}",
+      "payPromptpay": "Table {table} says they paid by PromptPay",
+      "fromQr": "Pressed from the table QR",
+      "minutesAgo": "{n} min",
+      "ack": "Acknowledge",
+      "done": "Done",
+      "openTable": "Open table",
+      "confirmPayment": "Confirm payment"
+    },
+    "billType": {
+      "label": "New bill",
+      "takeaway": "Takeaway",
+      "dineIn": "Dine in",
+      "pickTable": "Pick a table"
+    },
+    "reservation": {
+      "new": "Reserve a table",
+      "name": "Guest name",
+      "phone": "Phone",
+      "partySize": "Party size",
+      "at": "Time",
+      "holdFrom": "Hold table from (minutes before)",
+      "seat": "Seat guests",
+      "cancel": "Cancel reservation",
+      "overridden": "This table had a reservation — it was opened for other guests"
+    },
+    "empty": {
+      "title": "No tables at this branch yet",
+      "body": "Add zones and tables first, then table mode becomes available",
+      "setup": "Set up tables",
+      "noPermission": "Ask a manager to add tables"
+    },
+    "errors": {
+      "occupied": "This table has guests — close their bill before seating the reservation",
+      "draftModeRequired": "Specify the draft and its version"
+    },
+    "toast": {
+      "opened": "Table {table} opened",
+      "sent": "Sent to kitchen · order #{no}",
+      "closed": "Table {table} closed",
+      "cleared": "Table {table} cleared",
+      "draftSaved": "Draft round saved"
     }
   },
   "orders": {

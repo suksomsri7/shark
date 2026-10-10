@@ -90,7 +90,8 @@ export default async function PosProductsPage({
     <div className="flex w-full min-w-0 max-w-[1600px] flex-col gap-5">
       {head(stockLink)}
 
-      <ProductsClient systemId={id} data={productsData} canEdit={canEditPrices} initialUnit={unit ?? null} />
+      {/* POS P2.3U ▸ มติ 1: แก้สูตรได้ = pos.product.manage (ตัวเขียน catalog.ts ตรวจซ้ำตามขอบเขตแถว) ◂ */}
+      <ProductsClient systemId={id} data={productsData} canEdit={canEditPrices} initialUnit={unit ?? null} canEditRecipe={evaluate(m, { module: "pos", action: "pos.product.manage" })} />
 
       {/* POS P2.2U ▸ หน้าเดิม (บริการ + ราคาขายในคลัง) — พับไว้ · เปิดเองเมื่อมีผลจากฟอร์มเดิม (?err / ?ok) ◂ */}
       <details data-testid="pos-products-legacy" open={!!(err || ok)} className="max-w-2xl">

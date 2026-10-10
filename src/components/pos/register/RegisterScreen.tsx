@@ -98,6 +98,9 @@ import { MobileCartBar } from "./MobileCartBar";
 // ชื่อลงท้าย Sheet/Tabs = ตัวสแกนปุ่ม (F15.3) นับเป็น "คอมโพเนนต์กดได้" ⇒ ใช้ชื่อแฝงตอนวาง (ตัวที่กดได้จริงข้างในมี testid ครบแล้ว)
 import { MobileCartSheet as CartSheetFrame } from "./MobileCartSheet";
 import { OpenPriceDialog } from "./OpenPriceDialog";
+// POS P2.3U ▸ มติ 5: ชิปหัวจอ "ตัดสต็อกค้าง N บิล · ลองอีกครั้ง" ◂
+import { retryPendingStockCutsAction } from "@/lib/modules/pos/register-actions";
+import { PendingCutsChip } from "./PendingCutsChip";
 import { OptionsDialog, type OptionsPick } from "./OptionsDialog";
 import { ProductGrid } from "./ProductGrid";
 import type { PickAnchor } from "./ProductCard";
@@ -159,10 +162,12 @@ export type RegisterScreenProps = {
   payIntent?: { beamCard: boolean; manualRequiresManager: boolean; canManageShift: boolean; promptpayLink: string };
   /** POS P1.18U ▸ มติ 11: ผู้ใช้ session มี pos.product.manage ที่สาขานี้ — สถานะร้านไม่มีสินค้า (19ก) แสดงปุ่ม "เพิ่มสินค้า" · ไม่มี = ข้อความอย่างเดียว ◂ */
   canManageProducts?: boolean;
+  /** POS P2.3U ▸ มติ 5: ผู้ใช้ session มี pos.settings.manage ที่สาขานี้ — ปุ่ม "ลองอีกครั้ง" ของชิปตัดสต็อกค้าง · ไม่มี = เห็นจำนวนอย่างเดียว ◂ */
+  canRetryStockCuts?: boolean;
 };
 
-/** ns "member" = คีย์ใต้ pos.member (P1.12U) · ไม่ระบุ = ใต้ pos.register */
-type Msg = { key: string; values?: Record<string, string | number>; ns?: "member" };
+/** ns "member" = คีย์ใต้ pos.member (P1.12U) · "recipe" = ใต้ pos.recipe (POS P2.3U) · ไม่ระบุ = ใต้ pos.register */
+type Msg = { key: string; values?: Record<string, string | number>; ns?: "member" | "recipe" };
 /** ข้อความลอย — offerCustom = ปุ่ม "เพิ่มเป็นรายการกำหนดเอง?" (สแกนไม่พบ · เฉพาะผู้มีสิทธิ์ราคาเปิด · P1.4 B4) */
 type ToastMsg = Msg & { offerCustom?: boolean };
 /** บรรทัดใหม่ (ยังไม่มี key) — Omit แบบกระจายทีละสมาชิกของ union */
@@ -257,6 +262,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
   const ts = useTranslations("pos.shift");
   const tc = useTranslations("common");
   const tm = useTranslations("pos.member");
+  const tRecipe = useTranslations("pos.recipe"); // POS P2.3U ▸ ชิป/แจ้งผลตัดสต็อกค้าง ◂
   const tPrice = useTranslations("pos.price"); // POS P2.2U ▸ ป้ายบรรทัด "ราคาตามช่องทาง" ◂
   const locale = useLocale();
   const wide = useMedia("(min-width: 768px)");
@@ -1109,7 +1115,24 @@ export function RegisterScreen(props: RegisterScreenProps) {
     if (key === "errors.stockInsufficient") return { key, values: { count: 0 } };
     return { key };
   }
-  const msgNode = (m: Msg) => (m.ns === "member" ? tm : t).rich(m.key, { ...(m.values ?? {}), b: (c) => <b>{c}</b> });
+  const msgNode = (m: Msg) => (m.ns === "member" ? tm : m.ns === "recipe" ? tRecipe : t).rich(m.key, { ...(m.values ?? {}), b: (c) => <b>{c}</b> });
+
+  // POS P2.3U ▸ มติ 5: ลองตัดสต็อกที่ค้างของวันนี้ (retryPendingStockCutsAction — ขอบเขตเดียวกับตัวนับ) → แจ้ง recipe.retryDone {cut, left} · ปฏิเสธ = errorFor ◂
+  const [retryingCuts, setRetryingCuts] = useState(false);
+  const retryCuts = async () => {
+    if (retryingCuts) return;
+    setRetryingCuts(true);
+    try {
+      const r = await retryPendingStockCutsAction({ systemId, unitId });
+      if (r.ok) showToast({ key: "retryDone", ns: "recipe", values: { cut: r.cut, left: r.stillPending } });
+      else showToast(errorFor(r.code));
+      void refreshStatus();
+    } catch {
+      showToast({ key: "errors.unknown" });
+    } finally {
+      setRetryingCuts(false);
+    }
+  };
 
   // ── แบบจำลองบรรทัดสำหรับวาด (ราคาเซิร์ฟเวอร์ทับราคากริดเมื่อ quote ตรงตะกร้า — มติ Q22) ──
   /** P1.2 U: บรรทัดรองของตัวเลือก/น้ำหนัก — ชื่อตามภาษาจอจากกล่องตัวเลือกก่อน แล้วค่อยชื่อจาก quote · น้ำหนักจาก quote (ป้าย) หรือที่กรอก */
@@ -2559,6 +2582,8 @@ export function RegisterScreen(props: RegisterScreenProps) {
             </a>
           </div>
         )}
+        {/* POS P2.3U ▸ มติ 5: ตัดสต็อกค้าง N บิล (ปุ่มเฉพาะ pos.settings.manage) ◂ */}
+        {(status?.pendingStockCount ?? 0) > 0 && <PendingCutsChip count={status!.pendingStockCount} canRetry={props.canRetryStockCuts === true} busy={retryingCuts} onRetry={() => void retryCuts()} />}
         <div className="flex min-h-0 flex-1 flex-col md:flex-row">
           <div className="flex min-w-0 flex-1 flex-col px-[22px] md:min-h-0 md:border-r md:px-0">
             <SearchRow

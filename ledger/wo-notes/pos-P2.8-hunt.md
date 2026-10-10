@@ -86,3 +86,44 @@ cancelOrder `order.ts:978–1010` (WEB DIRECT, no sale) moves the PosOrder to CA
 - Count 57 → **59** (+W11, W12; +W13 if added ⇒ 60). Gates: p2.8 ×3 forced + unforced, `--no-db`, p2.1, p2.2, p1.3, p1.6, p1.8, p1.12, p1.16, shop, shop-refund, pos-account, account-cpa, fitness ±env, fitness-pos, typecheck.
 - Owner lines (`POS-OWNER-PENDING.md`): บัญชี (O24 docNo race now has two more COGS callers — PLATFORM accept, payOrder; blocker before go-live) · เว็บช็อป (storefront should show rejected/cancelled; payment claim refused after POS reject/cancel) · ร้านอาหาร (POS cancel cancels the unpaid web order).
 - Then R3 = same hunter re-verifies H1–H5 (read-only) → merge.
+
+---
+## R3 (hunter re-verify, 10 Oct 07:0xZ) — head 0d34fd6d (code c47c5727)
+# P2.8 S — R3 re-verify of hunt H1–H5 (head 0d34fd6d · code c47c5727 · diff 1b84db06..c47c5727, 9 files)
+**R3: OK.** No findings, two nits with no severity.
+(1) **H1** — the claim is atomic.
+- `shop/service.ts:256–268`: in one tx, the ShopOrder `updateMany PENDING→PAID` runs, then `orders.webClaimInTx` (`order.ts:844`). The PosOrder is locked `FOR UPDATE` at `:833–838`. REJECTED/CANCELLED (`:848`) throws `PosOrderClosedError`, which rolls the claim back, and returns `{ok:false, code:"POS_ORDER_CLOSED"}` at `:270`. This happens before createSale, `inventory.consume` and `shop.order.paid`, so nothing is posted.
+- Otherwise the claim does `touch` to PAID with a version bump. A reject that read v1 earlier then loses its versioned UPDATE and gets ORDER_STATE_CHANGED with a PAID card. A reject that commits first makes the claim wait on the row lock, see REJECTED, and roll back.
+- Lock order is ShopOrder→PosOrder in every path (claim, revert, bind, `shop.cancelOrder`), so there is no deadlock.
+- `webSaleBoundInTx` runs in the posSaleId tx (`:321`).
+- **Revert** (`:283–289` → `order.ts:866`):
+  - It runs only when no `ecom-<id>` sale exists (`:309`).
+  - It reverts the PosOrder only if the ShopOrder revert hit a row and the PosOrder is PAID with no `saleId`, so it is idempotent; a second call is a no-op.
+  - Revert → reject is allowed again. That is correct: no money moved, ShopOrder is back to PENDING_PAYMENT, and the posOrderRejected consumer then cancels it.
+  - Reject during the claim→revert window is refused (webPaid). That is the correct, conservative outcome.
+- `onShopOrderPaid` (`:1362`) skips closed orders (`:1369`) and VOIDED sales, logging a warning in both cases. W11(c) proves PAID + `saleId` without the consumer.
+- Markers: every shop hunk is inside `POS P2.8 ▸ … ◂`, and the catalog `:2969` hunk is marked. `order.ts` is a P2.8-owned file.
+(2) **H2** `outbox-consumers.ts:738` `pos.order.cancelled` → `posOrderRejected`. It is idempotent: `shop.cancelOrder` acts on PENDING_PAYMENT only, and `sourceCancelledInTx` is a no-op on closed orders. SHOP- and SALE_VOIDED-sourced cancels are harmless no-ops.
+(3) **H3** `order.ts:962–967`: when the bound sale is VOIDED, HANDED is refused with ORDER_STATE_INVALID (`orders.errors.saleVoided` th/en). The swallowed-retry gap is logged as follow-up P2.11 plus an owner line, as ruled.
+- *Nit:* the sale read is outside the tx, so a void committing between that read and the transition can still slip through. The window is milliseconds and P2.11 is the real fix.
+(4) **H4** `order.ts:815–828`: the retry loop runs inside the caller tx, is bounded at 5, and re-reads each time. OrderRaced ⇒ retry. OrderAbort (now closed) ⇒ `changed:false`. If all 5 attempts fail it throws, the shop tx rolls back, and the consumer retries. W4 shows the race now ends CANCELLED.
+(5) **H5** metadata passes through without recomputing money:
+- `catalog.ts:2969` → `webLineMeta` (`shop/service.ts:201`, `:370`) → parser (`order-shared.ts:292–327`, source door only, values validated) → `order.ts:785`.
+- The sale line takes its price from `ShopOrderLine` (snapshot) and only its source fields from the mirror. `listPriceSatang` is stored only (`pos/service.ts:645`); there is no accounting use.
+- W10 now asserts RULE + ruleId + 16000.
+(6) **Oracle** (each in its own commit):
+- Only D() descriptions and the W4 chk line changed; every other change is an addition. Nothing is removed or weakened.
+- W11 (a)(b)(c), W12 and W13 assert what I proposed. W4 adds the accept-race case.
+- Red-before is one combined pre-fix run (`p28-W*-redbefore.log` are identical copies): head 99b4a809, dirty=1 (oracle only), 55/60. Each of W4, W10, W11, W12 and W13 fails with the expected pre-fix symptom:
+  - W11: `confirm ok:true` plus an ecom sale; reject OK; REJECTED UNPAID.
+  - W12: PENDING_PAYMENT, ecom sale, stock 48→47.
+  - W13: HANDED.
+  - W10: CHANNEL/null.
+  - W4: ACCEPTED.
+- W9 green-before is acceptable. At 1b84db06, `cancelOrder` already refused PAID WEB orders at `order.ts:981` (`isPaidWeb` before the NEW rule), with the webPaid message the assertion matches.
+(7) Owner lines (accounting O24, web shop H1/H2, restaurant H2, shop H3) and the P2.8U `saleVoided` addition are present. `register.ts`, `pos/service.ts`, `channel.ts`, chat and `pos-sale-contract.json` show an empty diff.
+- Gates at c47c5727 (dirty=0): p2.8 60/60 ×3, no-db 9/9, all 19 gates exit 0 (`fix3-SUMMARY.txt`).
+- *Nit:* `webOrderForUpdate` locks by `shopOrderId` without a tenant predicate and filters the tenant afterwards. This is harmless because cuid ids are unique.
+**Merge verdict: MERGEABLE.**
+
+Controller: accepted — **MERGEABLE**; nits (handOver sale read outside tx · webOrderForUpdate tenant filter after lock) → P2.11 lines.

@@ -106,6 +106,8 @@ export default async function PosRegisterPage({
           promptpayLink: "/app/settings/payment",
         }}
         canManageProducts={evaluate(posMembership(auth.active), { module: "pos", action: "pos.product.manage", unitId: active.id })}
+        // POS P2.3U ▸ มติ 5: ปุ่ม "ลองอีกครั้ง" ของตัดสต็อกค้าง = pos.settings.manage ที่สาขานี้ (บริการตัดสินซ้ำ) ◂
+        canRetryStockCuts={evaluate(posMembership(auth.active), { module: "pos", action: "pos.settings.manage", unitId: active.id })}
       />
     );
   }

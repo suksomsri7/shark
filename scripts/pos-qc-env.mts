@@ -168,6 +168,8 @@ export const POS_MODELS = {
   posPriceRule: { model: "PosPriceRule", file: "pos.prisma", role: "กติการาคา happy hour/โปร (P2.2 · CD1 POS เป็นเจ้าของ · เขียนผ่าน price-rule.ts)" },
   // POS P2.3 ▸ สูตร/BOM (migration 20261205100000_pos_p23_recipe) — ผู้เขียนเดียว pos/catalog.ts ◂
   posRecipeChoiceLine: { model: "PosRecipeChoiceLine", file: "pos.prisma", role: "ส่วนต่างสูตรต่อตัวเลือก (P2.3 · (สินค้า, ตัวเลือก, InvItem) · qtyDelta ≠ 0 มีเครื่องหมาย)" },
+  // POS P2.4 ▸ โหมดโต๊ะ (migration 20261206100000_pos_p24_tables) — ผู้เขียนเดียว restaurant/reservation.ts · POS เรียกผ่าน facade restaurant/index.ts ◂
+  restaurantReservation: { model: "RestaurantReservation", file: "restaurant.prisma", role: "โต๊ะจองแบบย่อ (P2.4 · BOOKED/SEATED/CANCELLED/NO_SHOW · RESERVED บนผัง at−hold ≤ ตอนนี้ ≤ at+30 นาที)" },
   // POS P2.8 ▸ ออเดอร์ทุกช่องทาง (migration 20261207100000_pos_p28_orders) — ผู้เขียนเดียว pos/order.ts ◂
   posOrder: { model: "PosOrder", file: "pos_order.prisma", role: "ออเดอร์ทุกช่องทาง (P2.8 · NEW→ACCEPTED→PREPARING→READY→HANDED / REJECTED / CANCELLED · X1 (channel, ref) + คีย์)" },
   posOrderLine: { model: "PosOrderLine", file: "pos_order.prisma", role: "บรรทัดออเดอร์ (P2.8 · ราคาแช่แข็งตอนรับ · options สำเนา)" },

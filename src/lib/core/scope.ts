@@ -494,6 +494,7 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   RestaurantOrderItem: unit,
   RestaurantOrderItemOption: unit,
   RestaurantServiceRequest: unit,
+  RestaurantReservation: unit, // POS P2.4 ▸ โต๊ะจองแบบย่อ (มติ Q2 · ผู้เขียนเดียว restaurant/reservation.ts) ◂
   // Queue
   QueueType: unit,
   QueueCounter: unit,

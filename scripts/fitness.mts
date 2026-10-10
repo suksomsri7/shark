@@ -249,6 +249,7 @@ const ALLOWED_EDGES = new Set([
   "booking→pos", // chokepoint (WO-Wave3-A): มัดจำ booking ปิดเงินผ่าน pos.createSale DEPOSIT (C-2)
   "pos→member", "pos→point", "pos→system",
   "restaurant→member", "restaurant→pos", "restaurant→system",
+  "pos→restaurant", // POS P2.4 ▸ โหมดโต๊ะ: modules/pos เรียกข้อมูลร้านอาหารผ่าน facade restaurant/index.ts เท่านั้น (import() แบบ lazy · กันวงโหลด restaurant→pos) ◂
   "reward→point",
   // chokepoint ที่อนุมัติ (BLUEPRINT_CONNECTIONS §3.2): เงินทุกบาทผ่าน POS → Account
   // — อนุมัติโดย Fable 2026-07-16 สำหรับ WO-0002 (contract 2.4) · import ได้เฉพาะ account/index
