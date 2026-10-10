@@ -1350,3 +1350,9 @@
 - ใบถัดไป: P2.8U (ทรี b, base c81f5bbf) เปิดเลน · ต่อด้วย HF-PP → HF-GC → P2.6 S
 - TG ส่ง 47% (26/55)
 - 11:1xZ เปิดเลน P2.8U (ทรี b, `wip/pos-p2.8u` จาก c81f5bbf, prompt `pos-prompt-accountB-P2.8U.filled.md`) · เลน 2/3: HF-TX fix1 (c) · P2.8U (b) · ว่าง 1 (reviewer/hunter)
+
+### ⏱ 10 ต.ค. 11:2xZ — **HF-TX merged → session/pos 831ad163**
+- wip/pos-hf-tx 1eba9bc4 (code 088e78ed): review R1 MERGEABLE · hunt OK · fix1 (F1 xid 32-bit · HT2.5 parallel sell · F3/F4/F5 · H1/H2 owner lines) · merge upstream fe69efe6 สะอาด · gates qc-hf-tx 18/18 ×2 · p1.1 180 · p1.3 128 · p1.6 48 · p1.7 32 · p2.4 49 · p2.8 59/60 (ST6 = merge-base logic, คาดเขียวบน tip ที่ push แล้ว — ผู้คุมรัน p2.8 บนทรีผู้คุม 831ad163 ยืนยัน log `scratchpad/ctl/p28-831ad163.log`) · fitness 50/50 · typecheck 0 · ทรีนอก ledger = 088e78ed ทุกไบต์
+- ตัวนับยัง 26/55 (HF ไม่ใช่แถวแผน) · กฎ callerTx อยู่ใน LANE-RULES §HF-TX
+- เลน: P2.8U (b) · เปิด HF-PP (c, base 831ad163) · P2.6 S รอช่อง builder (prompt `pos-prompt-accountB-P2.6-S.md` __BASE__/__TREE__)
+- 11:2xZ ยืนยัน qc-pos-p2.8 บนทรีผู้คุม 831ad163 = **60/60** (ST6 เขียวตามคาด) · HF-TX ปิดสมบูรณ์
