@@ -70,3 +70,9 @@ Final at code head **2fc89cab** (`runs/summary.txt` second block, logs `runs/fin
 - `qc-pos-p2.1` **0 · 55/55** · `qc-pos-p1.18` (`QC_P118_PHASE=U`) **0 · 81/81** (ST7 = 0, :319 edit in) · `qc-pos-p1.3` **0 · 128/128** · `qc-pos-p1.5` **0 · 21/21** · `qc-pos-p1.9` **0 · 53/53** · `qc-pos-p1.12` **0 · 72/72** · `qc-pos-p1.13` **0 · 33/33** · `qc-pos-p1.16` **0 · 28/28** · `qc-pos-p1.1` **0 · 178/178** · `qc-pos-products` **0 · 24/24** · `qc-hf-pos-page-authz` **0 · 56/56**.
 - **Red by contract — ORACLE-EDIT needed (controller):** `qc-pos-p2.2` **1 · 41/42** (both runs) — only **P2.2-ST3**, whose static clause `scripts/qc-pos-p2.2.mts:475` still requires `["happyHourPricing", false, "P2.2"]` (S phase). Ruling 7 flips it to live and authorised the edit of `qc-pos-p1.18.mts:319` only. Proposed edit: `:475` accept `["happyHourPricing", true, null]` (P2.2U, Q8) — count unchanged. Every functional check (B/C/P/Q/S/H/R/Z) green.
 - visual `--dry` rc **0** for products/register/sales × owner/cashier × th/LOCALE=en (`runs/dry-*.log`: products 24/8 owner, 3/1 cashier · register 105/37 · 102/36 · sales 30/10 ×2). Real screenshots = CONTROLLER-RUN (QC5).
+
+## Fix round 1 (review `pos-P2.2U-review.md` F1–F7 + controller rulings · prompt `pos-prompt-accountB-P2.2U-fix.md`)
+Logs: `/tmp/claude-0/-root/ed31d917-ff51-51e8-bfad-e5b8bfa6fa15/scratchpad/p22u/runs/fix1/` (each with `tree=/root/projects/shark-pos-p11 head=<sha>` header + `rc=` footer · `summary.txt`).
+
+### F6 — visual `--dry` re-run on the fix code head 6e55ba60
+`runs/fix1/dry-<page>-<user>-<th|en>.log` (12 logs, header `tree=/root/projects/shark-pos-p11 head=6e55ba60` + `rc=`): all **rc 0** · shots products 24/8 owner, 3/1 cashier · register 105/37 owner, 102/36 cashier · sales 30/10 ×2 (= the 01:24 plan counts). The old `runs/dry-*.log` (no header, review F6) are superseded.
