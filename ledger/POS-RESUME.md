@@ -1328,3 +1328,9 @@
 - O24: ฝั่งบัญชีปิด → P2.9 ปลดบล็อกได้เมื่อถึงคิว · VAT gift card (O24 บรรทัด 63) ยังเปิด
 - เลน 2/3: HF-TX (c, a92f3a5e ยังรัน · ต้อง merge upstream 0d581286 ก่อน gates) · P2.4U fix1 (p11, post-V1 gates) · เลน b ว่าง
 - จุดต่อ: P2.4U รายงาน → reviewer R2 → chain64 (เติม __HEAD__) → merge upstream 0d581286 → gates (p1.1 S2.33 จะเขียวหลัง merge) → merge → 26/55 → TG · HF-TX รายงาน → reviewer → merge upstream → gates → merge
+
+### ⏱ 10 ต.ค. 09:1xZ — P2.4U fix1 ส่งแล้ว (34aff664 / code 5c09ef4e) → R2 + chain64
+- fix1: F1–F7 + V1 (6a1e0fd1 shrink-0) + harness 5c09ef4e (cashier `--page tables` ให้เจ้าของเปิดกะของเครื่อง = สาเหตุ tables-checkout-dialog cashier ❌ · owner ❌ = V1) · 2 คีย์ใหม่ th/en · gates 22d68cb0: typecheck 0 · p2.4 49 · p1.3 128 · p1.18 81 · products 24 · authz 62 · fitness 41 ±env · p1.1 177/178 (S2.33 base-red, จะเขียวหลัง merge upstream 0d581286) · post-V1 5c09ef4e: typecheck 0 · p1.18 81 · p2.4 49 · --dry rc 0
+- reviewer R2 (a5aea681 resume) กำลังอ่าน · chain64 unit `pos-chain64-1791623715` (build 34aff664 ทรี d หลัง flock gate lock → vis65: tables `tables-floor,tables-panel-rounds,tables-alerts,tables-checkout-dialog,tables-draft-unsent` × owner/cashier th + owner en · register th `register-table-mode,register-billtype-menu` owner/cashier) · typecheck ทรีผู้คุม 0d581286 ยังรัน
+- เลน 3/3: HF-TX (c) · P2.4U R2+ภาพ (p11/d) · typecheck ผู้คุม
+- จุดต่อ: R2 OK + vis65 ❌ 0 + ผู้คุมดูภาพ → builder merge upstream 0d581286 → gates (p1.1 178 เขียวเต็ม · p1.3 · p2.4 · p1.18 · fitness · typecheck) → merge → 26/55 → TG
