@@ -145,3 +145,42 @@ Gates (head be3a0699 · `runs/gate-C-*.log`):
 | qc-pos-p2.4 unforced | 43/43 · PAR 4/4 · residue 0 | 0 |
 | qc-pos-p2.4 --no-db | 7/7 (ST1–ST5 · L2 · L3; L1 = DB, green above) | 0 |
 | pnpm typecheck | 0 errors | 0 |
+
+## Fix round 2 (review R1 `wo-notes/pos-P2.4-review.md` F1–F8 · controller rulings 10 Oct 05:0xZ)
+ORACLE-ADD (own commits · red-before on head 12f834b6 + the one new check, forced, QC4):
+| id | commit | finding | red-before log (`scratchpad/p24/runs/`) | red reason |
+|---|---|---|---|---|
+| D7 | 819ff1b9 | F1 draft race | `red-before-D7.log` 43/44 | B overwrote A (ข้าว lost) · both parallel holds ok · newDraft while HELD ok · hold after send created a new HELD draft |
+| V5 | a56e66a5 | F2 close/last-pay vs round | `red-before-V5.log` 43/45 | `lockOpenSessionInTx` missing · last-item pay closed the session while a round committed (1 item stranded, dirtySince set) |
+| R4 | 8766a038 | F3 seat at occupied table | `red-before-R4.log` 43/46 | seat ok, reservation SEATED into the occupant's session |
+Count 43 → **46**. Fix commit **85d3bcfe** (one commit — F2/F3/F4c/F7 share `pos/table.ts`):
+- **F1** `held-cart.ts:243–330` table-draft input `{tableSessionId, cart, expectedVersion?, heldCartId?, newDraft?}`: `newDraft:true` creates only when no HELD draft exists (P2002 race ⇒ VERSION_CHANGED); `heldCartId`/`expectedVersion` = conditional update of that HELD row (`updateMany … version` — parallel holds: one winner); mismatch / RECALLED / DISCARDED ⇒ new refusal code **`VERSION_CHANGED`** (`register-shared.ts:218`, `register.ts:597`, `errors.versionChanged` th/en); never creates a row in this mode. Result adds `draftVersion`. **Interpretation:** a hold with none of the three fields keeps the P2.4 S upsert (D1/D4–D6/B6/P6/V4/T6 fixtures use it); the P2.4U contract requires the fields on every call. `holdTableDraftAction` forwards them (`table-actions.ts:140`).
+- **F2** `pos-tables.ts:288` `settleTableItemsInTx` locks `TableSession` FOR UPDATE before counting `remaining`; new facade **`lockOpenSessionInTx`** (`pos-tables.ts:325`, FOR SHARE + OPEN ⇒ NOT_OPEN/NOT_FOUND) called first in the send tx (`table.ts:350`, before the draft claim ⇒ lock order session → draft, same as close) ⇒ `TABLE_SESSION_CLOSED`. Owner line for the QR/legacy doors (R11/P2.7).
+- **F3** `table.ts:541` seat: `!o.created` ⇒ VALIDATION "โต๊ะนี้มีลูกค้าอยู่ — ปิดบิลก่อนจึงนั่งจองได้" (nothing written; `tables.errors.occupied` th/en for the screen).
+- **F4** (a) owner line "POS⇄หน้าเดิม เก็บเงินซ้ำได้" + cancel race · (b) P2.4U contract below · (c) `registerCancelTableItem` → facade **`cancelTableItemInTx`** (`pos-tables.ts:336`: item FOR UPDATE · `saleId` set ⇒ PAID → `TABLE_ITEMS_CHANGED` · legacy rules/messages · menu stock restore via catalog-legacy `restoreMenuStock`) in its own tx (`table.ts:472`). Legacy `cancelOrderItem` untouched.
+- **F5** `held-cart.ts:457, :521, :570` recall + discard filter `tableSessionId: null` (table draft id ⇒ NOT_FOUND; non-table behaviour unchanged).
+- **F6** `register.ts:1428` table line: product not visible ⇒ `NOT_VISIBLE`; recipe expansion error ⇒ bill **without** components + `RECIPE` (was INVALID_LINE); quote line `stockCut: false` (`register-shared.ts:348` · DTO only, `tables.panel.stockNotCut` badge text); after the bill commits (new bills only) `console.error("[pos] STOCK_CUT_FAILED", {saleId, productId, code})` one line per line (`register.ts:2543`).
+- **F7** `table.ts:293` `isTxConflict` (40P01 / P2034 / TransactionWriteConflict) — send (`:393`) and close (`:430`) retry once, second conflict ⇒ `BUSY`.
+- **F8** run `qc-pos-p1.15` + the §4/COMMON §7 suites not run before: `qc-shop-refund`, `qc-hotel-money`, `qc-ticket-money`, `qc-subscription-money` (gates below).
+Not oracle-covered (code review + typecheck only): F4c, F5, F6 log/flag, F7 retry.
+
+P2.4U contract additions:
+- Draft: first save `holdTableDraftAction({tableSessionId, cart, newDraft: true})`; later saves `{heldCartId, expectedVersion: draftVersion|detail.draft.version}`; `VERSION_CHANGED` ⇒ reload `registerTableDetailAction` and re-apply the cashier's edit (never a blind overwrite).
+- Units in table mode: hide the legacy restaurant page's "เช็คบิล" and "ยกเลิกรายการ" (F4b — owner line; legacy page removal P2.14).
+- Quote lines with `stockCut: false` show `tables.panel.stockNotCut` ("ไม่ตัดสต็อก").
+- Seat refusal `VALIDATION` with `tables.errors.occupied`; `BUSY` on send/close = retry button.
+Owner lines added (`POS-OWNER-PENDING.md` P2.4 section): F4 POS⇄legacy double charge + cancel race · F2 QR/legacy doors don't hold the session.
+
+Gates (final · head 7f915ad2 = fix 85d3bcfe + merge `origin/session/pos` 750e98c8 (ledger only, no conflicts) · `scratchpad/p24/runs/gate-D-*.log`, each with tree/head header):
+| gate | result | exit |
+|---|---|---|
+| qc-pos-p2.4 forced #1 / #2 / unforced | **46/46** ×3 · PAR 4/4 · residue 0 · leaks 0 | 0 / 0 / 0 |
+| qc-pos-p2.4 --no-db | 7/7 | 0 |
+| qc-pos-p2.3 · p2.2 · p2.1 | 46/46 (PAR 2/2) · 42/42 · 55/55 | 0 · 0 · 0 |
+| qc-pos-p1.3 · p1.5 · p1.6 · p1.9 · p1.12 | 128/128 · 21/21 · 48/48 · 53/53 · 72/72 | 0 ×5 |
+| **qc-pos-p1.15** (F8) · p1.16 · p1.1 | 39/39 · 28/28 · 178/178 | 0 ×3 |
+| qc-restaurant · -money · -pay · -void | pass · 6/6 · 19/19 · 11/11 | 0 ×4 |
+| qc-pos-account · qc-account-cpa | 16/16 · 107/107 | 0 · 0 |
+| **qc-shop-refund · qc-hotel-money · qc-ticket-money · qc-subscription-money** (F8 · COMMON §7) | 12/12 · 5/5 · 6/6 · 14/14 | 0 ×4 |
+| pnpm fitness (no env · QC4 env) · fitness-pos | 41/41 · 41/41 · pass | 0 ×3 |
+| pnpm typecheck (iso · flock /tmp/pos-gate.lock) | 0 errors | 0 |
