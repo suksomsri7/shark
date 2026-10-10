@@ -94,7 +94,7 @@ const CHECKS: readonly Def[] = [
   D("W1", "-", "[R4 R9] createOrder เว็บร้านสาขา S → PosOrder 1 แถว: WEB (channel WEB ของสาขา S) adapter WEB · ref = รหัส SO · shopOrderId · NEW · UNPAID · ยอด = ShopOrder · บรรทัด productId = ShopOrderLine.posProductId (เขียนแล้ว) · received 1"),
   D("W2", "X5", "[R4] ร้านไม่มี POS (T3): createOrder ได้ ShopOrder · PosOrder 0 · ไม่ throw"),
   D("W3", "X1", "[R4 R10] confirmOrderPaid → ระบายคิว ×2 → PosOrder saleId = posSaleId · PAID · channelId = ช่องทางของบิล · เล่น consumers[shop.order.paid] ซ้ำ → version เดิม"),
-  D("W4", "-", "[R4] shop cancelOrder (รอชำระ) → PosOrder CANCELLED · outbox cancelled 1"),
+  D("W4", "-", "[R4 · H4] shop cancelOrder (รอชำระ) → PosOrder CANCELLED · outbox cancelled 1 · แข่งกับ acceptOrder (accept ชนะก่อน) → ออเดอร์ยังถูกยกเลิก (อ่านใหม่แล้วลองอีกครั้ง)"),
   D("W5", "X1", "[R5 มติ 13] rejectOrder ออเดอร์เว็บ (MANAGER) → REJECTED → ระบายคิว → ShopOrder CANCELLED · เล่นซ้ำ → ไม่เปลี่ยน"),
   D("W6", "X4", "[R9 CD4 มติ 4] แถวร่วม InvItem (ฐาน ฿200) ขายเว็บ ฿250: dual-write แถว (WEB, null) 25000 · storefront listProducts({storefront}) 25000 · createOrder 25000 · ราคา STORE ยัง 20000 · แก้แถว WEB 26000 → storefront + createOrder 26000 · ShopProduct.priceSatang ยัง 25000"),
   D("W7", "X1", "[R9 มติ 4] backfillWebPrices: รอบแรกเขียนแถว WEB ที่หาย (25000) · รอบสองเขียน 0 · แก้วขายสองสาขาคนละราคา → webPriceConflict ≥ 1 (มี posProductId) · createOrder สาขา S 9000 / S2 9500 (ราคาของตัวเอง)"),
@@ -2057,7 +2057,31 @@ async function runDb() {
     const o1 = (await poOfShop(so2?.id ?? ""))[0];
     if (!o1 || o1.status !== "CANCELLED" || !o1.closedAt) p.push(`หลังยกเลิก ${ordStr(o1)}`);
     if (o1 && (await obx("pos.order.cancelled", o1.id)).length !== 1) p.push("cancelled ไม่ใช่ 1");
-    chk("W4", good(p), "shop cancel → PosOrder CANCELLED · cancelled 1", why(p));
+    // EDIT (P2.8 fix รอบ 3 · H4): เว็บร้านยกเลิกแข่งกับการรับ — ล็อกแถวออเดอร์ (FOR UPDATE · ข้อสอบเท่านั้น) ให้ accept เข้าคิวก่อน แล้ว shop cancel อ่านเวอร์ชันเดิม
+    //   แล้วรอ · ปล่อยล็อก ⇒ accept ชนะ ⇒ การยกเลิกจากต้นทางต้องอ่านใหม่แล้วยกเลิกจาก ACCEPTED (ไม่ใช่ ShopOrder CANCELLED + ออเดอร์ ACCEPTED)
+    const so4 = await shopTry("createOrder", () => shop.createOrder(sctx("S"), { customerName: "คุณแข่งยกเลิก", customerPhone: "0811114445", lines: [{ productId: SP.hat, qty: 1 }] }), p);
+    const o4 = (await poOfShop(so4?.id ?? ""))[0];
+    if (!fx && o4 && so4?.id) {
+      let accP: Any = null;
+      let canP: Any = null;
+      await P.$transaction(
+        async (tx: Any) => {
+          await tx.$queryRawUnsafe(`SELECT id FROM "PosOrder" WHERE id = $1 FOR UPDATE`, o4.id);
+          accP = O("acceptOrder", ctxU("S"), A("MGR"), { id: o4.id });
+          await sleep(500);
+          canP = shop.cancelOrder(sctx("S"), so4.id).catch((e: Error) => `throw ${e.message.slice(0, 60)}`);
+          await sleep(800);
+        },
+        { timeout: 15_000, maxWait: 10_000 },
+      );
+      const accR = await accP;
+      const canR = await canP;
+      const st4 = (await P.shopOrder.findUnique({ where: { id: so4.id } }).catch(() => null))?.status;
+      const r4 = await row(o4.id);
+      if (accR?.ok !== true || canR !== true || st4 !== "CANCELLED") p.push(`(แข่ง) accept ${codeOf(accR)} · shop cancel ${short(canR, 40)} · ShopOrder ${st4} (คาด OK · true · CANCELLED)`);
+      if (r4?.status !== "CANCELLED") p.push(`(แข่ง) ออเดอร์หลังเว็บร้านยกเลิก ${ordStr(r4)} (คาด CANCELLED — ต้นทางยกเลิกต้องอ่านใหม่แล้วลองอีกครั้ง)`);
+    } else if (!fx) p.push("(ตั้งต้น แข่ง) ไม่มีออเดอร์เว็บ");
+    chk("W4", good(p), "shop cancel → PosOrder CANCELLED · cancelled 1 · แข่งกับ accept แล้วยังยกเลิก", why(p));
   });
   await step("W5", async () => {
     const p: string[] = [];
