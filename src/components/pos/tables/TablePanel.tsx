@@ -42,6 +42,8 @@ type Props = {
   onUnlinkMember: (() => void) | null;
   onViewBooking: () => void;
   onClose?: () => void;
+  /** fix 1 V1: แผงในคอลัมน์ขวา (xl) ห้ามหด — คอลัมน์เลื่อนทั้งก้อน (แผงแล้วตามด้วยแจ้งเตือน · ภาพ 03) · แผ่น iPad/มือถือ = ค่าเดิม */
+  noShrink?: boolean;
 };
 
 const KDS_TONE: Record<TableRoundItem["kdsStatus"], string> = {
@@ -173,7 +175,7 @@ export function TablePanel(p: Props) {
   if (!c.sessionId) {
     const res = c.reservation;
     return (
-      <section data-testid="pos-tbl-panel" data-state={c.state} aria-label={t("panel.title", { name: c.name })} className="flex min-h-0 flex-col">
+      <section data-testid="pos-tbl-panel" data-state={c.state} aria-label={t("panel.title", { name: c.name })} className={`flex flex-col ${p.noShrink ? "shrink-0" : "min-h-0"}`}>
         {head}
         <div className="flex flex-col gap-3 px-4 py-4 text-[14px] text-[color:var(--color-ink-soft)]">
           {c.state === "INACTIVE" ? (
@@ -283,7 +285,7 @@ export function TablePanel(p: Props) {
   };
 
   return (
-    <section data-testid="pos-tbl-panel" data-state={c.state} aria-label={t("panel.title", { name: c.name })} className="flex min-h-0 flex-col">
+    <section data-testid="pos-tbl-panel" data-state={c.state} aria-label={t("panel.title", { name: c.name })} className={`flex flex-col ${p.noShrink ? "shrink-0" : "min-h-0"}`}>
       {head}
       <div className="border-b px-4 py-2.5 text-[12.5px] leading-[1.6] text-[color:var(--color-ink-soft)]">
         <p data-testid="pos-tbl-panel-opened">{opened || " "}</p>

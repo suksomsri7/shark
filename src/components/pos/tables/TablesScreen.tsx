@@ -638,8 +638,9 @@ export function TablesScreen(p: TablesScreenProps) {
   );
   const orderMoreHref = selSession && p.limits.canSell ? `${base}/pos/register?${unitQ}&table=${encodeURIComponent(selSession)}` : null;
   const memberInfo = shownDetail?.session.member ?? null;
-  const panel = selCard ? (
+  const panelOf = (inAside: boolean) => selCard ? (
     <TablePanel
+      noShrink={inAside} // fix 1 V1: คอลัมน์ขวาเลื่อนทั้งก้อน แผงไม่หดทับแจ้งเตือน
       card={selCard}
       detail={shownDetail}
       detailError={detailErr}
@@ -670,6 +671,7 @@ export function TablesScreen(p: TablesScreenProps) {
       onClose={xl ? undefined : closePanel}
     />
   ) : null;
+  const panel = panelOf(false);
 
   const layerNode = (() => {
     if (!layer) return null;
@@ -848,7 +850,7 @@ export function TablesScreen(p: TablesScreenProps) {
           <div className="min-w-0 flex-1 md:overflow-y-auto">{floorBody}</div>
           {xl && floor && !empty && (
             <aside data-testid="pos-tbl-side" className="flex w-[380px] shrink-0 flex-col overflow-y-auto border-l">
-              {panel ?? (
+              {panelOf(true) ?? (
                 <p data-testid="pos-tbl-pick-hint" className="px-6 py-10 text-center text-[14px] text-[color:var(--color-muted)]">
                   {t("page.pickHint")}
                 </p>
