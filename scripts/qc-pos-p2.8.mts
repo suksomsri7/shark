@@ -101,6 +101,7 @@ const CHECKS: readonly Def[] = [
   D("W8", "X4", "[R9 มติ 4] บรรทัดบิลยืนยันของเว็บร้าน: productId = posProductId · ไม่มี itemId · priceSource มีค่า · สต็อกเสื้อตัดครั้งเดียวทางเว็บร้าน (ecom-<order>-<line>) −2 · ไม่มีแถวตัดสต็อกของบิล"),
   // ORACLE-ADD (P2.8 fix รอบ 2 · รีวิว F1 F2 · มติผู้คุม 10 ต.ค. 05:1xZ)
   D("W9", "X5", "[R5 มติ 13 · F1] ออเดอร์เว็บที่ร้านยืนยันรับเงินแล้ว (PAID · ยัง NEW) → rejectOrder ORDER_STATE_INVALID (ข้อความให้คืนเงิน/ยกเลิกที่หน้าเว็บร้าน) · ออเดอร์/ShopOrder/บิล ECOM ไม่เปลี่ยน · ตัวควบคุม: ออเดอร์เว็บที่ยังไม่จ่าย reject → ShopOrder CANCELLED"),
+  D("W10", "X4", "[R9 CD4 มติ 4 · F2] หน้าเว็บอ่านชั้นราคาเฉพาะของช่องทาง WEB: ไม่มีแถว WEB + แถวสาขา (ทุกช่องทาง) ฿170 + กติกาทุกช่องทาง −10% → storefront/createOrder = ราคา ShopProduct ฿200 · กติกาที่ระบุ WEB −20% → ฿160 ทั้ง storefront และ createOrder"),
   // ── R ตัวอ่าน ──
   D("R1", "-", "[R8] listOrders สาขา A: counts.byColumn {new preparing ready done} + counts.byChannel ตรงความจริงใน DB · summary {count totalSatang rejectedCancelled avgAcceptSeconds onTime{n m}} · การ์ด LM-48213 (ref itemCount 3 · 42000 · channel {code name}) · กรอง status/channelId"),
   D("R2", "X4", "[R8] getOrder: commission LM-48213 {12600 · 0 · net 29400} = channelCommission · GRAB {7950 · 557 · net 22493} · บรรทัด 3 แถว (options note) · history {count avgSatang} ของเบอร์เดียวกันที่สาขา = ความจริงใน DB"),
@@ -2128,6 +2129,46 @@ async function runDb() {
     const oS2 = await shopTry("createOrder S2", () => shop.createOrder(sctx("S2"), { customerName: "คุณแก้วสอง", customerPhone: "0811117777", lines: [{ productId: SP.cupS2, qty: 1 }] }), p);
     if (oS?.totalSatang !== 9000 || oS2?.totalSatang !== 9500) p.push(`แก้ว S ${short(oS?.totalSatang)} · S2 ${short(oS2?.totalSatang)} (คาด 9000 · 9500)`);
     chk("W7", good(p) && !!PCP, "backfill เขียนแถวที่หาย · รอบสอง 0 · conflict นับ + ราคาของตัวเอง", why(p) + SOFT());
+  });
+
+  await step("W10", async () => {
+    const p: string[] = [];
+    const ruleMod = await tryImport("@/lib/modules/pos/price-rule");
+    let sp10 = "";
+    if (!fx)
+      try {
+        sp10 = String((await shop.createProduct(sctx("B"), { name: `ของชั้นราคา ${RAND}`, priceSatang: 20000 }))?.id ?? "");
+      } catch (e) {
+        p.push(`(ตั้งต้น) สินค้าเว็บสาขา B throw ${(e as Error).message.slice(0, 60)}`);
+      }
+    const row10 = sp10 ? String((await P.shopProduct.findUnique({ where: { id: sp10 } }).catch(() => null))?.posProductId ?? "") : "";
+    if (!fx && !row10) p.push("(ตั้งต้น) ไม่มีแถวแคตตาล็อก");
+    const webRows = PCP && row10 ? Number(await PCP.count({ where: { tenantId: T, productId: row10, channelCode: "WEB" } }).catch(() => -1)) : -1;
+    if (!fx && webRows !== 0) p.push(`(ตั้งต้น) แถว WEB ${webRows} (คาด 0 — ราคาเว็บ = ราคาฐาน)`);
+    const br = fx || !row10 ? null : await setCp(row10, [{ channelCode: null, unitId: U.B, priceSatang: 17000 }]);
+    if (br?.ok === false) p.push(`(ตั้งต้น) แถวสาขา B → ${codeOf(br)}`);
+    const ruleIn = (o: Any): Any => ({ name: `โปร ${RAND}`, kind: "PROMO", active: true, priority: 0, productIds: [row10 || "none"], categoryIds: [], channelCodes: [], unitIds: [], adjust: "PERCENT_OFF", valueSatang: null, valueBp: 1000, startsAt: null, endsAt: null, weekdays: [], timeFrom: null, timeTo: null, ...o });
+    const ruleIds: string[] = [];
+    const save = async (lbl: string, o: Any) => {
+      const r = fx ? null : await call(ruleMod, "savePriceRule", ctxU("A"), A("OWNER"), ruleIn(o));
+      if (r?.ok !== true) p.push(`(ตั้งต้น) ${lbl} → ${codeOf(r)} ${short(r?.message ?? "", 50)}`);
+      else ruleIds.push(String(r.rule?.id ?? ""));
+    };
+    const priceIn = async (): Promise<number | undefined> => {
+      const ls = await shopTry("listProducts", () => shop.listProducts(sctx("B"), { activeOnly: true, storefront: true }), p);
+      return (Array.isArray(ls) ? ls : []).find((x: Any) => x.id === sp10)?.priceSatang;
+    };
+    const orderTotal = async (): Promise<number | undefined> => (await shopTry("createOrder", () => shop.createOrder(sctx("B"), { customerName: "คุณชั้นราคา", customerPhone: "0811110010", lines: [{ productId: sp10, qty: 1 }] }), p))?.totalSatang;
+    await save("กติกาทุกช่องทาง −10%", { name: `ทุกช่องทาง −10% ${RAND}` });
+    const l0 = fx ? undefined : await priceIn();
+    const t0 = fx ? undefined : await orderTotal();
+    if (l0 !== 20000 || t0 !== 20000) p.push(`แถวสาขา + กติกาทุกช่องทาง: storefront ${short(l0)} · createOrder ${short(t0)} (คาด 20000 · 20000 = ราคา ShopProduct)`);
+    await save("กติกา WEB −20%", { name: `WEB −20% ${RAND}`, channelCodes: ["WEB"], valueBp: 2000, priority: 10 });
+    const l1 = fx ? undefined : await priceIn();
+    const t1 = fx ? undefined : await orderTotal();
+    if (l1 !== 16000 || t1 !== 16000) p.push(`กติกาที่ระบุ WEB: storefront ${short(l1)} · createOrder ${short(t1)} (คาด 16000 · 16000)`);
+    for (const id of ruleIds) if (id) await call(ruleMod, "archivePriceRule", ctxU("A"), A("OWNER"), { id });
+    chk("W10", good(p) && !!PCP, "ไม่มีแถว WEB: แถวสาขา/กติกาทุกช่องทางไม่ถึงหน้าเว็บ · กติกา WEB ถึง", why(p));
   });
 
   // ════════ R ตัวอ่าน ════════
