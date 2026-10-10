@@ -466,6 +466,7 @@ import {
   REGISTER_PAGE_MAX,
   REGISTER_PAGE_SIZE,
   REGISTER_PAY_TYPES,
+  REGISTER_MANUAL_MANAGER_MESSAGE, // POS HF-PP ▸ fix 1 ◂
   POS_DISCOUNT_CAPS_DEFAULT,
   posDiscountCaps,
   type PosDiscountCaps,
@@ -681,7 +682,7 @@ const REG_SELL_PERMS: readonly string[] = ["pos.sale.create"];
 // POS HF-PP ▸ (มติ 3) วิธีจ่ายที่ "รับเงินแล้ว" ได้โดยไม่มีใบขอรับเงิน = ต้องผ่านด่าน manualConfirmRequiresManager ที่ submit ·
 //   เจ้าของร้านค้านเรื่องบัตร = ถอด "CARD" ออกจากชุดนี้ที่เดียว (POS-OWNER-PENDING · P1.7) · ข้อความ = payment-intent.ts confirmPaymentIntentManual ◂
 const REG_MANUAL_METHODS: ReadonlySet<string> = new Set(["PROMPTPAY", "CARD"]);
-const REG_MANUAL_MANAGER_MESSAGE = "ร้านตั้งให้ผู้จัดการเป็นผู้ยืนยันเงินเข้าเท่านั้น";
+const REG_MANUAL_MANAGER_MESSAGE = REGISTER_MANUAL_MANAGER_MESSAGE; // POS HF-PP ▸ fix 1: ข้อความชุดเดียวกับที่จอใช้แปลงเป็นคีย์ (register-shared) ◂
 
 // ── กติกามองเห็นสินค้า (ชุดเดียวกับ catalog.listForUnit) ──
 function regVisibleWhere(s: RegScope): Prisma.Sql {

@@ -44,6 +44,7 @@ import {
   moneyText,
   quoteInputToCart,
   refusalMessageKey,
+  submitRefusalMessageKey, // POS HF-PP ▸ fix 1 ◂
   REGISTER_MAX_LINES,
   REGISTER_MAX_PAY_METHODS,
   REGISTER_MAX_QTY,
@@ -1762,7 +1763,8 @@ export function RegisterScreen(props: RegisterScreenProps) {
         if (sale.memberId) void refreshBenefits(sale.memberId, JSON.stringify(cartToQuoteInput(cartRef.current, { choices: false })));
         return;
       }
-      setPayError({ code: r.code, ...errorFor(r.code) });
+      // POS HF-PP ▸ fix 1: ด่านผู้จัดการของพร้อมเพย์/บัตรที่ไม่มีใบขอรับเงิน = ข้อความเฉพาะ (refusal.manualConfirmManager) ◂
+      setPayError({ code: r.code, ...(submitRefusalMessageKey(r) === "refusal.manualConfirmManager" ? { key: "refusal.manualConfirmManager" } : errorFor(r.code)) });
       if (r.code === "STAFF_TOKEN_INVALID") staffTokenDead(); // POS P1.15U ▸ โทเคนตาย = ล็อก (ไม่มีบิล · คีย์เดิม) ◂
       // POS P1.15U ▸ PIN ผู้จัดการผิด/ล็อก = ล้างสิทธิ์ที่เตรียมไว้ (ใส่ใหม่ผ่านแผ่นส่วนลดเกินสิทธิ์) · ต้องรออนุมัติ = บิลถูกพักแล้ว ⇒ 21B (ล้างจอนอก send) ◂
       if (r.code === "PIN_INVALID" || r.code === "PIN_LOCKED" || r.code === "PIN_THROTTLED" || r.code === "APPROVAL_MISMATCH") setDiscAuth(null); // POS P1.18U ▸ 10a ◂

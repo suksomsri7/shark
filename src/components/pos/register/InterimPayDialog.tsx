@@ -237,8 +237,11 @@ export function PayDialog(p: Props) {
   /** POS P2.1U ▸ มติ 6: ช่องแพลตฟอร์ม = ยอดล็อกเต็มยอด (แป้น/ปุ่มด่วน/ช่องจำนวนปิด) ◂ */
   const platformLock = method === "PLATFORM";
   const presetBlocked = !!p.lockedMethod?.managerOnly; // POS P2.4U ▸ fix 1 F4: ด่านผู้จัดการของการยืนยันเอง ◂
-  const canConfirm = ready && !presetBlocked && (zero || plan.state === "complete") && (!intentMode || zero || remaining <= 0 || piPaid);
-  const canSplit = ready && !presetBlocked && !zero && plan.state === "partial" && !rowsFull && (!intentMode || piPaid);
+  // POS HF-PP ▸ fix 1 F1: บัตรทาง EDC (Beam บัตรปิด/CARD_UNAVAILABLE) = ยืนยันรับเงินเอง — ค่าตั้ง manualConfirmRequiresManager และผู้ใช้ไม่มี
+  //   pos.shift.manage ⇒ ยืนยัน/แยกจ่าย/F4 ไม่ได้ (ก่อนรูดบัตรลูกค้า) · คำใบ้ชุดเดียวกับปุ่มยืนยันเองของ QR (pay.intent.managerOnly) ◂
+  const edcManagerOnly = method === "CARD" && !intentMode && !!p.intent?.manualRequiresManager && !p.intent?.canManageShift;
+  const canConfirm = ready && !presetBlocked && !edcManagerOnly && (zero || plan.state === "complete") && (!intentMode || zero || remaining <= 0 || piPaid);
+  const canSplit = ready && !presetBlocked && !edcManagerOnly && !zero && plan.state === "partial" && !rowsFull && (!intentMode || piPaid);
   /** F3b: เงินเข้าเกินยอดบิล (ยอดบิลลดลงหลังมีแถวที่เงินเข้าแล้ว) — ยืนยันไม่ได้ · ต้องคืนเงินเอง */
   const overPaid = remaining < 0 && rows.some((r) => r.via !== undefined);
   /** F3b: มีเงินเข้าแล้วในกล่องนี้ (ใบปัจจุบัน PAID หรือแถวที่มาจากใบ) ⇒ ปิดกล่องไม่ได้ (ยกเว้นเงินเกินยอด — ต้องออกไปคืนเงิน) */
@@ -713,6 +716,7 @@ export function PayDialog(p: Props) {
                       autoComplete="off"
                       onChange={(e) => setReference(e.target.value)}
                     />
+                    {edcManagerOnly && <small data-testid="pos-reg-paydlg-edc-manager-only" className="text-[12px] text-[color:var(--color-muted)]">{t("pay.intent.managerOnly")}</small>}
                   </label>
                 )}
 
@@ -922,7 +926,7 @@ export function PayDialog(p: Props) {
                   type="submit"
                   aria-keyshortcuts="F4"
                   disabled={!canConfirm}
-                  title={intentMode && !piPaid && !zero ? t("pay.intent.waitPaid") : undefined}
+                  title={edcManagerOnly ? t("pay.intent.managerOnly") : intentMode && !piPaid && !zero ? t("pay.intent.waitPaid") : undefined}
                 >
                   {primaryLabel}
                   {!busy && !p.quotePending && <span className="ml-1.5 hidden opacity-70 md:inline">(F4)</span>}
