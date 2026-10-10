@@ -32,6 +32,7 @@ import { useLocale, useTranslations } from "next-intl";
 import { formatThaiTime } from "@/lib/ui/date";
 import { useInApp } from "@/lib/ui/use-in-app";
 import { priceCart, type PriceDiscount } from "@/lib/modules/pos/pricing-shared";
+import { shownPriceSource } from "@/components/pos/products/price-ui"; // POS P2.2U fix รอบ 1 F7
 import {
   cartAddProduct,
   cartAddWeighed,
@@ -140,7 +141,7 @@ export type RegisterScreenProps = {
   userId: string;
   units: { id: string; name: string }[];
   /** หน้าแรกของกริด (เซิร์ฟเวอร์) · null = โหลดไม่สำเร็จ (จอแจ้ง + ลองใหม่) */
-  initialCatalog: { categories: RegisterCategory[]; products: RegisterProduct[]; nextCursor: string | null } | null;
+  initialCatalog: { categories: RegisterCategory[]; products: RegisterProduct[]; nextCursor: string | null; priceValidUntil?: string | null } | null;
   initialStatus: RegisterStatus | null;
   vat: { mode: "INCLUDED" | "NONE"; rateBp: number };
   limits: { canSell: boolean; canOverridePrice: boolean; maxDiscountBp: number | null };
@@ -256,6 +257,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
   const ts = useTranslations("pos.shift");
   const tc = useTranslations("common");
   const tm = useTranslations("pos.member");
+  const tPrice = useTranslations("pos.price"); // POS P2.2U ▸ ป้ายบรรทัด "ราคาตามช่องทาง" ◂
   const locale = useLocale();
   const wide = useMedia("(min-width: 768px)");
   const xl = useMedia("(min-width: 1280px)") === true;
@@ -270,6 +272,9 @@ export function RegisterScreen(props: RegisterScreenProps) {
   const [q, setQ] = useState("");
   /** q ที่ผลในกริดตอนนี้เป็นของมัน (Enter ตัดสินจากผลของคำค้นเดียวกันเท่านั้น) */
   const [shownQ, setShownQ] = useState("");
+  // POS P2.2U ▸ มติ 5: ขอบหน้าต่างโปรถัดไป (ISO) ของแคตตาล็อกล่าสุด — ถึงเวลา = โหลดกริดใหม่ (ราคาไทล์/ชิปโปรเปลี่ยน) ◂
+  //   P2.2U fix รอบ 1 F1: เก็บเป็น {iso, seq} — seq ใหม่ทุกครั้งที่โหลดหน้าแรกเสร็จ ⇒ ขอบเดิมซ้ำ (เซิร์ฟเวอร์ตอบ nextPriceEdge เดิม) ก็ตั้งตัวจับเวลาใหม่
+  const [priceEdge, setPriceEdge] = useState<{ iso: string | null; seq: number }>(() => ({ iso: props.initialCatalog?.priceValidUntil ?? null, seq: 0 }));
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [catalogPending, startCatalog] = useTransition();
   const catalogSeq = useRef(0);
@@ -287,7 +292,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
   cartRef.current = cart;
   /** keys = คีย์บรรทัดของตะกร้ารุ่นที่ quote นี้ตอบ (บรรทัดที่ i ของ quote ↔ keys[i]) — R3 F2 จับคู่ราคาบรรทัดตามคีย์ ไม่ใช่ตำแหน่ง */
   const [quote, setQuote] = useState<{ ver: number; q: RegisterQuote; keys: string[] } | null>(null);
-  const [quoteErr, setQuoteErr] = useState<{ ver: number; code: string } | null>(null);
+  const [quoteErr, setQuoteErr] = useState<{ ver: number; code: string; lineIndex?: number } | null>(null); // POS P2.2U ▸ lineIndex = บรรทัดที่ถูกปฏิเสธ (CHANNEL_NOT_SOLD) ◂
   const [quoteSlow, setQuoteSlow] = useState(false);
   const quoteSeq = useRef(0);
   const [warnAck, setWarnAck] = useState<Record<string, number>>({});
@@ -786,14 +791,15 @@ export function RegisterScreen(props: RegisterScreenProps) {
 
   // ── โหลดกริด: คำค้น (หน่วง 200ms) · หมวด (ทันที) · หน้าถัดไป ──
   const loadCatalog = useCallback(
-    (nq: string, cat: string | null, cursor?: string) => {
+    (nq: string, cat: string | null, cursor?: string, silent = false) => {
+      // P2.2U fix รอบ 2 N1: silent = โหลดจากตัวจับเวลาราคา — ล้ม/ถูกปฏิเสธไม่ขึ้น toast (ตัวจับเวลาตั้งรอบถัดไปเองอยู่แล้ว)
       const seq = ++catalogSeq.current;
       startCatalog(async () => {
         try {
           const r = await registerCatalogAction({ systemId, unitId, q: nq.trim() || undefined, categoryId: cat ?? undefined, cursor });
           if (seq !== catalogSeq.current) return; // คำตอบเก่า
           if (!r.ok) {
-            showToast({ key: refusalMessageKey(r.code) === "errors.invalidLine" ? "errors.loadFailed" : refusalMessageKey(r.code) });
+            if (!silent) showToast({ key: refusalMessageKey(r.code) === "errors.invalidLine" ? "errors.loadFailed" : refusalMessageKey(r.code) });
             return;
           }
           synced();
@@ -802,14 +808,35 @@ export function RegisterScreen(props: RegisterScreenProps) {
           setProducts((prev) => (cursor ? [...prev, ...r.products.filter((p) => !prev.some((x) => x.id === p.id))] : r.products));
           setNextCursor(r.nextCursor);
           setShownQ(nq);
+          if (!cursor) setPriceEdge((e) => ({ iso: r.priceValidUntil ?? null, seq: e.seq + 1 })); // POS P2.2U (fix F1: วัตถุใหม่ทุกครั้ง) ◂
         } catch {
-          if (seq === catalogSeq.current) showToast({ key: "errors.loadFailed" });
+          if (seq === catalogSeq.current && !silent) showToast({ key: "errors.loadFailed" });
         }
       });
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps -- remember/synced อ่าน ref/setter เท่านั้น
     [systemId, unitId, showToast],
   );
+  // POS P2.2U ▸ มติ 5: โหลดแคตตาล็อกใหม่ที่ priceValidUntil (หน่วงอย่างน้อย 15 วิ · อย่างมาก 1 ชม.) — คำค้น/หมวดที่แสดงอยู่เดิม ◂
+  const catalogArgs = useRef({ q: "", cat: null as string | null });
+  catalogArgs.current = { q: shownQ, cat: categoryId };
+  const onlineNow = useRef(online); // P2.2U fix รอบ 2 N1: ตัวจับเวลาอ่านสถานะออนไลน์ล่าสุด (ไม่ใส่ online ใน deps ⇒ ไม่ตั้งเวลาใหม่ทุกครั้งที่เน็ตกระพริบ)
+  onlineNow.current = online;
+  //   P2.2U fix รอบ 1 F1: คีย์ effect = วัตถุ {iso, seq} · ตัวจับเวลายิงแล้วตั้งรอบถัดไปเองเสมอ (seq+1 จากขอบเดิม) — คำตอบที่มาถึงทับด้วยขอบใหม่ ·
+  //   โหลดล้ม/ถูกคำค้นใหม่แซง = สายไม่ขาด (ยิงซ้ำหลัง 15 วิ เมื่อขอบผ่านแล้ว) · นาฬิกาเครื่องเร็ว = ยิงก่อน ⇒ ได้ขอบเดิม ⇒ ตั้งใหม่ตามขอบ
+  useEffect(() => {
+    const edge = priceEdge;
+    if (!edge.iso) return;
+    const at = Date.parse(edge.iso);
+    if (!Number.isFinite(at)) return;
+    const wait = Math.min(Math.max(at - Date.now(), 15_000), 3_600_000);
+    const h = setTimeout(() => {
+      // P2.2U fix รอบ 2 N1: ออฟไลน์ = ข้ามการโหลด (ยังตั้งรอบถัดไป) · โหลดจากตัวจับเวลาเงียบเสมอ (ไม่ toast ทุก 15 วิ)
+      if (onlineNow.current) loadCatalog(catalogArgs.current.q, catalogArgs.current.cat, undefined, true);
+      setPriceEdge((e) => (e === edge ? { iso: e.iso, seq: e.seq + 1 } : e));
+    }, wait);
+    return () => clearTimeout(h);
+  }, [priceEdge, loadCatalog]);
   const firstQ = useRef(true);
   /** P1.4: สแกนจากช่องค้นหาล้างคำค้น (ตัวอักษรของเครื่องสแกน) — กริดยังเป็นของคำค้นว่างอยู่แล้ว ⇒ ไม่ต้องโหลดซ้ำ */
   const qClearedByScan = useRef(false);
@@ -841,12 +868,14 @@ export function RegisterScreen(props: RegisterScreenProps) {
     if (cart.lines.some(isPricedByServer)) return null;
     // POS P1.12U มติ 1: มีสมาชิก/คูปอง = ยอดมาจากเซิร์ฟเวอร์เท่านั้น (ส่วนลดระดับ · คูปอง · สิทธิ์) — ไม่เดายอดในเครื่อง
     if (cart.memberId || cart.couponCode) return null;
+    // POS P2.2U fix รอบ 1 F3: ราคาโปร/ช่องทาง ≠ หน้าร้าน = ยอดของเซิร์ฟเวอร์เท่านั้น (ราคาไทล์คือราคาหน้าร้าน — ห้ามเดายอดบิล LINE MAN/โปร) ◂
+    if (cartUsesPriceLayer(cart)) return null;
     const input = cartToPriceInput(cart, known.current, vat, localCap);
     if ("ok" in input) return null; // สินค้าไม่รู้จัก/ไม่มีราคา — รอ quote ของเซิร์ฟเวอร์ตัดสิน
     const r = priceCart(input);
     return r.ok ? r : null;
     // eslint-disable-next-line react-hooks/exhaustive-deps -- known เปลี่ยนพร้อม cartVer
-  }, [cart, cartVer, vat, localCap]);
+  }, [cart, cartVer, vat, localCap, quote]);
 
   const changeCart = (next: RegisterCart) => {
     setCart(next);
@@ -918,7 +947,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
           setQuoteErr(null);
           synced();
         } else {
-          setQuoteErr({ ver, code: r.code });
+          setQuoteErr({ ver, code: r.code, ...(typeof r.lineIndex === "number" ? { lineIndex: r.lineIndex } : {}) });
           if (ov) onOverrideRefused(r.code);
         }
       } catch {
@@ -1042,7 +1071,9 @@ export function RegisterScreen(props: RegisterScreenProps) {
 
   // R3 F1: ตะกร้าที่มีบรรทัดราคาฝั่งเซิร์ฟเวอร์ (ตัวเลือก/ชั่ง) และ quote ยังไม่ตรงรุ่น = ยอดรอ (—) — ห้ามโชว์ยอดของตะกร้าเก่าค้าง
   // POS P1.12U มติ 1: มีสมาชิก/คูปอง = ยอดของเซิร์ฟเวอร์เท่านั้น ⇒ quote ยังไม่ตรงรุ่น = ยอดรอ (—) เหมือนบรรทัดตัวเลือก
-  const totalsPending = !quoteFresh && (cart.lines.some(isPricedByServer) || !!cart.memberId || !!cart.couponCode);
+  // POS P2.2U fix รอบ 1 F3: ตะกร้าที่ใช้ชั้นราคา (โปร/ช่องทาง ≠ หน้าร้าน) = ยอดรอ (—) จน quote ของเซิร์ฟเวอร์ตรงรุ่น · ชำระ/ส่งขายใช้ quote เท่านั้นเหมือนเดิม
+  const priceLayer = cartUsesPriceLayer(cart);
+  const totalsPending = !quoteFresh && (cart.lines.some(isPricedByServer) || !!cart.memberId || !!cart.couponCode || priceLayer);
   const shownTotals: CartTotalsModel | null = totalsPending ? null : (quoteFresh ?? (local ? { ...local } : quote?.q ?? null));
   // POS P1.9 (S15): จุดขายบังคับเปิดกะ แต่เครื่องนี้ยังไม่มีกะ = ล็อกปุ่มชำระ + การ์ด "เปิดกะก่อนเริ่มขาย"
   const shiftBlocked = !!status?.shiftRequired && !status?.shift;
@@ -1099,12 +1130,27 @@ export function RegisterScreen(props: RegisterScreenProps) {
       serverPriced && !ql && l.kind === "product" && l.weightGrams !== undefined && !(l.options?.length ?? 0) && typeof prod?.priceSatang === "number"
         ? weighedEstimate(l.weightGrams, prod.priceSatang)
         : null;
-    const pending = serverPriced && !ql && est === null;
+    const pending = (serverPriced && !ql && est === null) || (priceLayer && !ql); // P2.2U fix F3: ราคาบรรทัดชั้นราคา = ของ quote เท่านั้น
     const unit = ql?.unitPriceSatang ?? est ?? ll?.unitPriceSatang ?? (l.kind === "custom" ? l.unitPriceSatang : (l.openPriceSatang ?? prod?.priceSatang ?? 0));
     const stockLeft = prod && prod.trackStock && prod.stockLeft !== null ? prod.stockLeft : null;
     const over = stockLeft !== null && l.qty > stockLeft;
+    // POS P2.2U ▸ มติ 5: ป้ายบรรทัด — โปร (ชื่อโปร) / ราคาตามช่องทาง (CHANNEL) จาก quote ของเซิร์ฟเวอร์ · ไทล์โปรระหว่างรอ quote · บรรทัดที่ถูกปฏิเสธ CHANNEL_NOT_SOLD ◂
+    const ruleName = ql?.priceRule?.name ?? (!ql && prod?.priceSource === "RULE" ? (prod.priceRule?.name ?? null) : null);
+    // P2.2U fix รอบ 1 F7: แถว (STORE, *) ไม่ใช่ "ราคาตามช่องทาง" — (STORE, สาขา) = "ราคาสาขา" · (STORE, ทุกสาขา) = ไม่มีป้าย (shownPriceSource)
+    const shownSource = ql ? shownPriceSource(ql.priceSource, quoteFresh?.channel?.code ?? null, ql.unitPriceSatang - ql.optionsSatang, ql.listPriceSatang) : null;
+    const badge = ruleName
+      ? { kind: "RULE" as const, text: ruleName }
+      : shownSource === "CHANNEL"
+        ? { kind: "CHANNEL" as const, text: tPrice("badge.channel") }
+        : shownSource === "BRANCH"
+          ? { kind: "BRANCH" as const, text: tPrice("badge.branch") }
+          : null;
+    const lineError = quoteErrNow === "CHANNEL_NOT_SOLD" && quoteErr?.lineIndex === i ? t("errors.channelNotSold") : null;
     return {
       key: l.key,
+      index: i,
+      ...(badge ? { badge } : {}),
+      ...(lineError ? { error: lineError } : {}),
       name: l.kind === "custom" ? l.name : prod ? displayName(prod, locale) : (heldNames.current.get(l.productId) ?? "-"),
       qty: l.qty,
       unitPriceSatang: unit,
@@ -1273,6 +1319,8 @@ export function RegisterScreen(props: RegisterScreenProps) {
     known.current.set(p.id, p);
     if (frozenRef.current) return;
     if (p.soldOutReason === "UNAVAILABLE") return showToast({ key: "errors.productUnavailable" });
+    // POS P2.2U ▸ มติ 5: ไม่ขายหน้าร้าน = เพิ่มไม่ได้ และไม่เปิดกล่องราคาเปิด (เซิร์ฟเวอร์ปฏิเสธ CHANNEL_NOT_SOLD อยู่แล้ว) ◂
+    if (p.notSold) return showToast({ key: "errors.channelNotSold" });
     // P1.2 R16: มีกลุ่มตัวเลือก (optionGroupCount) หรือตัวแปร (variantCount) ⇒ กล่องเลือก · สินค้าชั่ง ⇒ กล่องน้ำหนัก
     if (p.optionGroupCount > 0 || p.variantCount > 0) return push({ kind: "options", product: p, ...(anchor ? { anchor } : {}) });
     if (p.soldByWeight) return push({ kind: "weigh", product: p, options: [] });
@@ -1451,10 +1499,23 @@ export function RegisterScreen(props: RegisterScreenProps) {
     if ("ok" in input) return null; // ราคายังไม่รู้ (สินค้าใหม่จากเซิร์ฟเวอร์) — ให้ quote ตัดสิน
     return priceCart(input);
   }
+  /** POS P2.2U ▸ มติ 5: ตะกร้านี้มีบรรทัดราคาโปร (ไทล์ priceSource RULE หรือ quote ล่าสุดมี priceRule) หรือช่องทางไม่ใช่หน้าร้าน ◂ */
+  function cartUsesPriceLayer(c: RegisterCart): boolean {
+    if (c.channelId && (!quote || quote.q.channel?.code !== "STORE")) return true;
+    if (quote?.q.channel && quote.q.channel.code !== "STORE") return true;
+    return c.lines.some((l) => {
+      if (l.kind !== "product") return false;
+      if (known.current.get(l.productId)?.priceSource === "RULE") return true;
+      const qi = quote ? quote.keys.indexOf(l.key) : -1;
+      return qi >= 0 && !!quote?.q.lines[qi]?.priceRule;
+    });
+  }
   /** POS P1.15U ▸ ยอดสำหรับชำระของส่วนลดที่ผู้จัดการอนุญาตด้วย PIN (ไม่จำกัดเพดาน) — รูปเดียวกับ quote ของเซิร์ฟเวอร์ ◂ */
   function localQuote(c: RegisterCart): RegisterQuote | null {
     // POS P1.12U มติ 1: ตะกร้าที่มีสมาชิก/คูปอง ยอดต้องมาจากเซิร์ฟเวอร์ (ส่วนลดระดับ/คูปอง/สิทธิ์) — ไม่สร้างยอดแทน
     if (c.memberId || c.couponCode) return null;
+    // POS P2.2U ▸ มติ 5: ราคาโปร/ช่องทางอื่น = ยอดจากเซิร์ฟเวอร์เท่านั้น (บรรทัดที่ไทล์/quote ล่าสุดบอกว่ามาจากโปร · บิลที่มีช่องทาง ≠ หน้าร้าน) ◂
+    if (cartUsesPriceLayer(c)) return null;
     const r = priceLocal(c, localCap);
     if (!r || !r.ok) return null;
     return {

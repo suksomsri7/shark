@@ -57,7 +57,7 @@ const FACTS: Record<PosIntegrationCode, readonly (readonly [string, boolean, str
   CRM: [["dealPaidCount", true, null], ["bigBillDeal", false, "P3.6"], ["corporateCredit", false, "P3.6"]],
   CHAT: [["lineReceipt", true, null], ["chatOrders", true, null], ["orderStatusBot", false, "P3.7"]],
   KANBAN: [["voidBillCard", true, null], ["issueReportCard", true, null], ["stockOutShiftDiffCard", false, "P3.8"], ["shiftCloseCashCheck", false, "P3.8"]],
-  MARKETING: [["happyHourPricing", false, "P2.2"], ["couponAfterPurchase", false, "P3"]],
+  MARKETING: [["happyHourPricing", true, null], ["couponAfterPurchase", false, "P3"]],
   BOOKING: [["tableReservationsOnMap", false, "P2.4"], ["callQueueFromTable", false, "P2.4"], ["advanceBookingBill", false, "P2.7"]],
   AI: [["shiftDaySummary", false, "P3.9"], ["purchaseSuggestion", false, "P3.9"], ["anomalyDetection", false, "P3.9"]],
 };

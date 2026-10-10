@@ -8,6 +8,8 @@
 // P1.2 U: มีตัวแปร = ป้าย "N แบบ" · ขายตามน้ำหนัก = ราคาต่อ กก. (ราคาใน priceSatang คือราคาต่อกิโลกรัม — R9)
 // 🔴 การแตะทุกแบบไปตัดสินที่ RegisterScreen.pick (ปิดขาย = เตือน · ตัวเลือกบังคับ = เตือน · ไม่มีราคา = ราคาเปิด/เตือน) — จุดต่อ P1.2 (onPick)
 // 🔴 ชื่อสินค้าเป็นข้อมูล (อังกฤษ = nameEn ถ้ามี) · เงินผ่าน moneyText เท่านั้น (ห้ามพิมพ์สัญลักษณ์บาทในไฟล์นี้ — ข้อสอบ S5.3)
+// POS P2.2U ▸ มติ 5: ราคาบนการ์ด = ราคาหน้าร้านที่ใช้จริง (priceSatang) · โปรราคา (priceSource RULE) = ชิปสีเน้นชื่อโปร + ราคาปกติขีดฆ่า ·
+//   notSold (แถว STORE ที่ชนะ = ไม่ขาย) = "ไม่ขายหน้าร้าน" แทนราคา · จาง · เพิ่มลงตะกร้าไม่ได้ (RegisterScreen.pick ไม่เปิดกล่องราคาเปิด) ◂
 
 import { useLocale, useTranslations } from "next-intl";
 import { displayName, moneyText, REGISTER_LOW_STOCK, type RegisterProduct } from "@/lib/modules/pos/register-shared";
@@ -27,6 +29,7 @@ export function ProductCard({
   onPick: (p: RegisterProduct, anchor?: PickAnchor) => void;
 }) {
   const t = useTranslations("pos.register");
+  const tp = useTranslations("pos.price");
   const locale = useLocale();
   const name = displayName(product, locale);
   const out = product.soldOut;
@@ -42,20 +45,24 @@ export function ProductCard({
         ? t("product.service")
         : null;
   const price = product.priceSatang === null ? null : product.soldByWeight ? t("weigh.perKg", { price: moneyText(product.priceSatang) }) : moneyText(product.priceSatang);
-  const label = [name, price ?? t("product.noPrice"), out ? t("product.soldOut") : null].filter(Boolean).join(" · ");
+  // POS P2.2U ▸ มติ 5 ◂
+  const notSold = product.notSold === true;
+  const rule = product.priceSource === "RULE" && product.priceRule ? product.priceRule : null;
+  const listStruck = rule && typeof product.listPriceSatang === "number" && product.listPriceSatang !== product.priceSatang ? moneyText(product.listPriceSatang) : null;
+  const label = [name, rule ? tp("rule.label", { name: rule.name }) : null, notSold ? t("product.notSoldStore") : (price ?? t("product.noPrice")), out ? t("product.soldOut") : null].filter(Boolean).join(" · ");
   const inCart = inCartQty > 0;
   return (
     <button
       data-testid={`pos-reg-product-${product.id}`}
       className={`relative flex min-h-[120px] min-w-0 flex-col justify-between rounded-[18px] border bg-[color:var(--color-surface)] p-3 text-left transition-colors hover:border-[color:var(--color-ink-soft)] md:min-h-0 md:rounded-[15px] md:p-[11px] xl:min-h-[170px] xl:rounded-[18px] xl:p-4 ${
-        out ? "opacity-45" : ""
+        out || notSold ? "opacity-45" : ""
       } ${inCart ? "max-md:border-[color:var(--color-ink)] max-md:shadow-[inset_0_0_0_1px_var(--color-ink)]" : ""} ${
         selected ? "md:border-[color:var(--color-accent)] md:shadow-[inset_0_0_0_1px_var(--color-accent)]" : ""
       }`}
       type="button"
       title={name}
       aria-label={label}
-      aria-disabled={product.soldOutReason === "UNAVAILABLE" ? true : undefined}
+      aria-disabled={product.soldOutReason === "UNAVAILABLE" || notSold ? true : undefined}
       onClick={(e) => {
         const r = e.currentTarget.getBoundingClientRect();
         onPick(product, { left: r.left, top: r.top, right: r.right, bottom: r.bottom });
@@ -76,8 +83,27 @@ export function ProductCard({
         {name}
         {out && <span className="font-semibold text-[color:var(--color-danger)]">{` · ${t("product.soldOut")}`}</span>}
       </span>
+      {rule && (
+        <span
+          data-testid={`pos-reg-tile-rule-${product.id}`}
+          className="mt-1 inline-flex max-w-full self-start truncate rounded-[6px] border border-[color:var(--color-accent)] bg-[color:var(--color-accent-soft)] px-1.5 py-px text-[11px] font-bold text-[color:var(--color-accent)]"
+        >
+          {rule.name}
+        </span>
+      )}
       <span className="mt-1.5 flex items-baseline justify-between gap-2 text-[16px] tabular-nums text-[color:var(--color-ink-soft)] md:mt-0.5 md:text-[15px] xl:mt-1.5 xl:text-[16px]">
-        {price !== null ? <span className="whitespace-nowrap">{price}</span> : <span className="text-[13.5px] text-[color:var(--color-muted)]">{t("product.noPrice")}</span>}
+        {notSold ? (
+          <span data-testid={`pos-reg-tile-notsold-${product.id}`} className="text-[13.5px] font-semibold text-[color:var(--color-muted)]">
+            {t("product.notSoldStore")}
+          </span>
+        ) : price !== null ? (
+          <span className="whitespace-nowrap">
+            {price}
+            {listStruck && <s className="ml-1.5 text-[12.5px] text-[color:var(--color-muted)]">{listStruck}</s>}
+          </span>
+        ) : (
+          <span className="text-[13.5px] text-[color:var(--color-muted)]">{t("product.noPrice")}</span>
+        )}
         {side && (
           <span className={`whitespace-nowrap text-[12.5px] ${low ? "font-bold text-[color:var(--color-ink-soft)]" : "text-[color:var(--color-muted)]"}`}>{side}</span>
         )}
