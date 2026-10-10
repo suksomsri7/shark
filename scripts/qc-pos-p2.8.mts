@@ -103,6 +103,7 @@ const CHECKS: readonly Def[] = [
   D("W9", "X5", "[R5 มติ 13 · F1] ออเดอร์เว็บที่ร้านยืนยันรับเงินแล้ว (PAID · ยัง NEW) → rejectOrder และ cancelOrder ORDER_STATE_INVALID (ข้อความให้คืนเงิน/ยกเลิกที่หน้าเว็บร้าน) · ออเดอร์/ShopOrder/บิล ECOM ไม่เปลี่ยน · ตัวควบคุม: ออเดอร์เว็บที่ยังไม่จ่าย reject → ShopOrder CANCELLED"),
   D("W11", "X1", "[R4 R5 · H1] การยืนยันรับเงินของเว็บร้านสะท้อนเข้าออเดอร์ในธุรกรรมของมันเอง (ไม่พึ่งคิว): (a) ปฏิเสธก่อน (ยังไม่ระบาย) → confirmOrderPaid ok:false ไม่มีบิล ecom-<id> · ระบายแล้ว ShopOrder CANCELLED (b) ยืนยันก่อน → ก่อนระบายออเดอร์ PAID → reject ORDER_STATE_INVALID webPaid (c) แถว shop.order.paid DONE โดยไม่รันตัวผูก → ยัง PAID + saleId"),
   D("W12", "X5", "[R5 R10 · H2] ร้านรับแล้วยกเลิกออเดอร์เว็บที่ยังไม่จ่าย → ระบาย → ShopOrder CANCELLED (ตัวรับ pos.order.cancelled) → confirmOrderPaid ok:false · ไม่มีบิล ecom-<id> · สต็อกไม่เปลี่ยน"),
+  D("W13", "X5", "[R5 · H3] บิล PLATFORM ของออเดอร์ READY ถูกยกเลิกจากลิ้นชักบิล + ตัวรับ pos.sale.voided ไม่ทำงาน (แถว DONE โดยไม่รัน) → handOver ORDER_STATE_INVALID · ออเดอร์ไม่เปลี่ยน"),
   D("W10", "X4", "[R9 CD4 มติ 4 · F2] หน้าเว็บอ่านชั้นราคาเฉพาะของช่องทาง WEB: ไม่มีแถว WEB + แถวสาขา (ทุกช่องทาง) ฿170 + กติกาทุกช่องทาง −10% → storefront/createOrder = ราคา ShopProduct ฿200 · กติกาที่ระบุ WEB −20% → ฿160 ทั้ง storefront และ createOrder · บรรทัดบิลยืนยันรับเงิน priceSource RULE + priceRuleId (H5)"),
   // ── R ตัวอ่าน ──
   D("R1", "-", "[R8] listOrders สาขา A: counts.byColumn {new preparing ready done} + counts.byChannel ตรงความจริงใน DB · summary {count totalSatang rejectedCancelled avgAcceptSeconds onTime{n m}} · การ์ด LM-48213 (ref itemCount 3 · 42000 · channel {code name}) · กรอง status/channelId"),
@@ -2240,6 +2241,31 @@ async function runDb() {
     const oh1 = Number((await P.invItem.findUnique({ where: { id: INV.tee } }).catch(() => null))?.onHand);
     if (!fx && oh1 !== oh0) p.push(`สต็อกเสื้อ ${oh0}→${oh1} (คาดไม่เปลี่ยน)`);
     chk("W12", good(p), "ร้านยกเลิกออเดอร์เว็บ → ShopOrder CANCELLED · ยืนยันไม่ได้ · ไม่มีบิล/ตัดสต็อก", why(p));
+  });
+  await step("W13", async () => {
+    const p: string[] = [];
+    // ตัวรับ pos.sale.voided (ขั้นเสริม) ล้มเงียบ ⇒ ออเดอร์ยัง READY ⇒ ส่งมอบต้องถูกปฏิเสธเพราะบิลถูกยกเลิกแล้ว
+    const v13 = await mk("LM-48350", "A", "STAFF", lmInput("LM-48350", { startStatus: "ACCEPTED" }), DEV1);
+    for (const fn of ["markPreparing", "markReady"]) {
+      const r = fx || !v13.id ? null : await O(fn, ctxU("A", DEV1), A("STAFF2"), { id: v13.id });
+      if (!fx && r?.ok !== true) p.push(`(ตั้งต้น) ${fn} → ${codeOf(r)}`);
+    }
+    const s13 = (await salesOf(v13.id))[0];
+    const h = swapConsumer("pos.sale.voided", "skip", false);
+    try {
+      const vr = s13 ? await call(billsMod, "voidSaleByActor", ctxU("A", DEV1), A("OWNER"), { unitId: U.A, saleId: s13.id, idempotencyKey: newKey("void13"), reason: "ทดสอบตัวรับล้ม" }) : null;
+      if (!fx && vr?.ok !== true) p.push(`(ตั้งต้น) voidSaleByActor → ${codeOf(vr)}`);
+      await drain();
+    } finally {
+      h.restore();
+    }
+    const o0 = await row(v13.id);
+    if (!fx && (o0?.status !== "READY" || o0?.paymentState !== "PLATFORM_PAID")) p.push(`(ตั้งต้น) ออเดอร์หลัง void ที่ตัวรับไม่ทำงาน ${ordStr(o0)} (คาด READY PLATFORM_PAID)`);
+    const ho = fx || !v13.id ? null : await O("handOver", ctxU("A", DEV1), A("STAFF2"), { id: v13.id });
+    if (!refused(ho, "ORDER_STATE_INVALID")) p.push(`handOver ออเดอร์ที่บิลถูกยกเลิก → ${codeOf(ho)} (คาด ORDER_STATE_INVALID)`);
+    const o1 = await row(v13.id);
+    if (o0 && (o1?.status !== "READY" || o1?.version !== o0.version)) p.push(`หลังปฏิเสธส่งมอบ ${ordStr(o1)} (คาดไม่เปลี่ยน)`);
+    chk("W13", good(p) && h.ok, "บิลถูก void + ตัวรับไม่ทำงาน → handOver ORDER_STATE_INVALID · ไม่เปลี่ยน", why(p));
   });
   await step("W10", async () => {
     const p: string[] = [];
