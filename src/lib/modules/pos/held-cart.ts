@@ -12,10 +12,11 @@
 
 import { prisma } from "@/lib/core/db";
 import type { Prisma, PrismaClient } from "@prisma/client";
-import { quoteRegisterCart, quoteRegisterCartWithCap, registerCanonicalCart, registerProductsByIds, registerScopeCheck } from "./register";
+import { quoteRegisterCart, quoteRegisterCartWithCap, registerCanonicalCart, registerProductsByIds, registerRefuse, registerScopeCheck, registerTableChannelId } from "./register";
 import { posDeviceRevoked } from "./device"; // POS P1.10 ▸ การ์ดเครื่องที่ถูกเพิกถอน ◂
 import { staffActorFromToken } from "./staff-pin"; // POS P1.15 ▸ R3 โทเคนผู้ขาย ◂
 import { approvedDiscountOf } from "./pos-approval"; // POS P1.15U ▸ มติ 5 เรียกคืนบิลที่อนุมัติส่วนลดแล้ว ◂
+import { REGISTER_NOTE_MAX } from "./register-shared"; // POS P2.4 ▸ หมายเหตุบรรทัดของรอบร่าง (ไปถึงครัว) ◂
 import {
   HELD_CART_LABEL_MAX,
   posHeldCartExpireDays,
@@ -128,7 +129,14 @@ async function summaries(db: Db, rows: Row[]): Promise<HeldCartSummary[]> {
 const ROW_SELECT = { id: true, label: true, lineCount: true, approxTotalSatang: true, heldByUserId: true, createdAt: true, cartJson: true } as const;
 
 // ═══════════════════ พักบิล ═══════════════════
-export async function holdRegisterCart(ctx: RegisterCtx, actor: RegisterActor, input: { cart: RegisterQuoteInput; label?: string | null; staffToken?: string | null }, client?: Db): Promise<HoldRegisterCartResult> {
+// POS P2.4 ▸ tableSessionId (พี่น้องของ cart · CONTROLLER-DECISION 6) = รอบร่างของโต๊ะ (holdTableDraft) · ไม่ส่ง = บิลพักปกติเหมือนเดิมทุกไบต์ ·
+//   คีย์อื่นที่ไม่รู้จักของ input ยังถูกเมินเหมือนเดิม (drift ของ P1.5 · โน้ต P2.4) ◂
+export async function holdRegisterCart(
+  ctx: RegisterCtx,
+  actor: RegisterActor,
+  input: { cart: RegisterQuoteInput; label?: string | null; staffToken?: string | null; tableSessionId?: string | null },
+  client?: Db,
+): Promise<HoldRegisterCartResult> {
   return guard("holdRegisterCart", async (): Promise<HoldRegisterCartResult> => {
     const db: Db = client ?? prisma;
     const s0 = await scope(db, ctx, actor);
@@ -140,6 +148,8 @@ export async function holdRegisterCart(ctx: RegisterCtx, actor: RegisterActor, i
     if (isRefusal(s)) return s;
     const label = cleanLabel(input.label);
     if (label === undefined) return refuse("VALIDATION", `ป้ายบิลต้องเป็นข้อความไม่เกิน ${HELD_CART_LABEL_MAX} ตัวอักษร`);
+    // POS P2.4 ▸ รอบร่างของโต๊ะ ◂
+    if (input.tableSessionId !== undefined && input.tableSessionId !== null) return holdTableDraft(db, s, input.cart, input.tableSessionId, label);
     const row = await holdCore(db, s, input.cart, label, undefined);
     if (isRefusal(row)) return row;
     const [heldCart] = await summaries(db, [row]);
@@ -215,6 +225,150 @@ async function holdCore(db: Db, s: Scoped, cartRaw: unknown, label: string | nul
   });
 }
 
+// ═══════════════════ POS P2.4 ▸ รอบร่างของโต๊ะ (R4 · CD6) ═══════════════════
+// รอบร่าง = บิลพักที่ผูก TableSession (HELD ≤ 1 แถวต่อ session = partial unique) · พักซ้ำ = แก้แถวเดิม (version + 1) ·
+// ตะกร้า = บรรทัดสินค้า/รายการกำหนดเองเท่านั้น (คูปอง · สิทธิ์ที่เลือก · ส่วนลดท้ายบิล/บรรทัด · สมาชิก · ช่องทาง · สินค้าชั่ง = VALIDATION) ·
+// หมายเหตุบรรทัดถูกเก็บ (ไปถึงครัวตอนส่งรอบ) · ลำดับปฏิเสธ: ขอบเขต (TABLE_NOT_FOUND) → รูปตะกร้า (VALIDATION) → session ไม่ OPEN (TABLE_SESSION_CLOSED)
+// ปฏิเสธ = ไม่เขียนอะไร · ราคาที่เก็บ = quote ของเซิร์ฟเวอร์บนช่องทางของโต๊ะ (แสดงอย่างเดียว · ราคาจริงคิดตอนส่งครัว)
+const DRAFT_FORBIDDEN_KEYS = ["couponCode", "memberChoices", "billDiscount", "memberId", "channelId", "tableSessionId"] as const;
+async function holdTableDraft(db: Db, s: Scoped, cartRaw: unknown, tableSessionIdRaw: unknown, label: string | null): Promise<HoldRegisterCartResult> {
+  if (typeof tableSessionIdRaw !== "string" || !tableSessionIdRaw || tableSessionIdRaw.length > 200) return refuse("VALIDATION", "รหัสโต๊ะไม่ถูกต้อง");
+  const rest = await import("@/lib/modules/restaurant");
+  const sess = await rest.tableSessionForPos(db, { tenantId: s.ctx.tenantId, unitId: s.ctx.unitId, sessionId: tableSessionIdRaw });
+  if (!sess) return registerRefuse("TABLE_NOT_FOUND");
+  if (!isRecord(cartRaw)) return refuse("VALIDATION");
+  for (const k of DRAFT_FORBIDDEN_KEYS) if (cartRaw[k] !== undefined && cartRaw[k] !== null) return refuse("VALIDATION", "รอบร่างของโต๊ะเก็บได้เฉพาะรายการ — ส่วนลด คูปอง สมาชิก ใส่ตอนเช็คบิล");
+  const rawLines = Array.isArray(cartRaw.lines) ? (cartRaw.lines as unknown[]) : null;
+  if (!rawLines) return refuse("VALIDATION");
+  for (const l of rawLines) {
+    if (!isRecord(l)) return refuse("VALIDATION");
+    if ((l.discount !== undefined && l.discount !== null) || (l.weighedBarcode !== undefined && l.weighedBarcode !== null) || (l.weightGrams !== undefined && l.weightGrams !== null)) {
+      return refuse("VALIDATION", "รอบร่างของโต๊ะใส่ส่วนลดรายการหรือสินค้าชั่งไม่ได้");
+    }
+  }
+  const canon = registerCanonicalCart({ lines: rawLines });
+  if (isRefusal(canon)) return canon;
+  if (!canon.lines.length) return refuse("VALIDATION", "ตะกร้าว่าง — ไม่มีอะไรให้พัก");
+  // หมายเหตุบรรทัด (ตรวจรูปแล้วโดย registerCanonicalCart → regParseCart) ไปกับรอบร่าง
+  const cart: RegisterQuoteInput = {
+    lines: canon.lines.map((l, i) => {
+      const n = (rawLines[i] as Record<string, unknown>).note;
+      return typeof n === "string" && n.trim() && n.length <= REGISTER_NOTE_MAX ? { ...l, note: n } : l;
+    }),
+  };
+  if (sess.status !== "OPEN") return registerRefuse("TABLE_SESSION_CLOSED");
+  const channelId = await registerTableChannelId(db, s.ctx, sess.openedByUserId === null);
+  const q = await quoteRegisterCart(s.ctx, s.actor, { ...cart, ...(channelId ? { channelId } : {}) }, db);
+  if (!q.ok) return q;
+  const productIds = [...new Set(cart.lines.flatMap((l) => ("productId" in l && typeof l.productId === "string" ? [l.productId] : [])))];
+  const names = new Map(
+    productIds.length ? (await db.posProduct.findMany({ where: { id: { in: productIds }, tenantId: s.ctx.tenantId }, select: { id: true, name: true } })).map((p) => [p.id, p.name]) : [],
+  );
+  const preview = cart.lines
+    .map((l) => {
+      const nm = "productId" in l && typeof l.productId === "string" ? (names.get(l.productId) ?? "-") : (l as { name: string }).name;
+      return l.qty > 1 ? `${nm} ×${l.qty}` : nm;
+    })
+    .join(" · ")
+    .slice(0, PREVIEW_MAX);
+  const stored: Stored = { cart, heldUnitPrices: q.lines.map((l) => l.unitPriceSatang), preview };
+  const data = { cartJson: stored as unknown as Prisma.InputJsonValue, lineCount: cart.lines.length, approxTotalSatang: q.grandTotalSatang, label };
+  const where = { ...rowWhere(s), tableSessionId: sess.id, status: "HELD" as const };
+  for (let attempt = 0; attempt < 3; attempt++) {
+    // พักซ้ำ = แถวเดิม (version + 1) · ไม่มีแถว HELD = สร้าง (ชนกันสองเครื่อง = partial unique P2002 → รอบถัดไปแก้แถวของผู้ชนะ)
+    const upd = await db.posHeldCart.updateMany({ where, data: { ...data, heldByUserId: s.actor.userId, version: { increment: 1 } } });
+    if (upd.count === 0) {
+      try {
+        await db.posHeldCart.create({ data: { ...rowWhere(s), ...data, tableSessionId: sess.id, heldByUserId: s.actor.userId }, select: { id: true } });
+      } catch (e) {
+        if ((e as { code?: unknown } | null)?.code === "P2002") continue;
+        throw e;
+      }
+    }
+    const row = await db.posHeldCart.findFirst({ where, select: ROW_SELECT });
+    if (!row) continue; // ถูกส่งครัว/ทิ้งระหว่างทาง — ลองใหม่ (สร้างแถวใหม่)
+    const [heldCart] = await summaries(db, [row]);
+    return { ok: true, heldCart: heldCart! };
+  }
+  return refuse("INTERNAL");
+}
+
+/**
+ * POS P2.4 ▸ R5: ยึดรอบร่างเพื่อส่งครัว (ในธุรกรรมของผู้ส่ง — ยึด + สร้างออเดอร์ = ธุรกรรมเดียว): HELD → RECALLED ผู้ชนะคนเดียว ·
+ * expectVersion ≠ ปัจจุบัน (ถูกพักซ้ำระหว่างคิดราคา) = VERSION_CHANGED (ผู้เรียกคิดราคาใหม่) · RECALLED = ALREADY_RECALLED · ไม่พบ/ทิ้งแล้ว/โต๊ะอื่น = NOT_FOUND ◂
+ */
+export async function claimTableDraftInTx(
+  tx: Prisma.TransactionClient,
+  s: { tenantId: string; systemId: string; unitId: string; tableSessionId: string; heldCartId: string; userId: string; expectVersion: number },
+): Promise<{ ok: true } | { ok: false; code: "NOT_FOUND" | "ALREADY_RECALLED" | "VERSION_CHANGED" }> {
+  const where = { id: s.heldCartId, tenantId: s.tenantId, systemId: s.systemId, unitId: s.unitId, tableSessionId: s.tableSessionId };
+  const won = await tx.posHeldCart.updateMany({
+    where: { ...where, status: "HELD", version: s.expectVersion },
+    data: { status: "RECALLED", recalledAt: new Date(), recalledByUserId: s.userId, version: { increment: 1 } },
+  });
+  if (won.count === 1) return { ok: true };
+  const now = await tx.posHeldCart.findFirst({ where, select: { status: true } });
+  if (!now || now.status === "DISCARDED") return { ok: false, code: "NOT_FOUND" };
+  return { ok: false, code: now.status === "RECALLED" ? "ALREADY_RECALLED" : "VERSION_CHANGED" };
+}
+
+/** POS P2.4 ▸ รอบร่างของโต๊ะ (อ่าน): แถว HELD ของ session — cart = ตะกร้าที่ตรวจแล้วตอนพัก (ผู้ใช้ต้องผ่านตัวตรวจอีกรอบก่อนใช้) ◂ */
+export async function tableDraftOf(
+  client: Db | Prisma.TransactionClient,
+  s: { tenantId: string; systemId: string; unitId: string; tableSessionId: string; heldCartId?: string },
+): Promise<{ id: string; version: number; lineCount: number; approxTotalSatang: number; cart: unknown; heldByUserId: string; createdAt: Date; status: "HELD" | "RECALLED" | "DISCARDED" } | null> {
+  const r = await client.posHeldCart.findFirst({
+    where: { tenantId: s.tenantId, systemId: s.systemId, unitId: s.unitId, tableSessionId: s.tableSessionId, ...(s.heldCartId ? { id: s.heldCartId } : { status: "HELD" }) },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    select: { id: true, version: true, lineCount: true, approxTotalSatang: true, cartJson: true, heldByUserId: true, createdAt: true, status: true },
+  });
+  if (!r) return null;
+  const j = r.cartJson as { cart?: unknown } | null;
+  return { id: r.id, version: r.version, lineCount: r.lineCount, approxTotalSatang: r.approxTotalSatang, cart: j?.cart ?? null, heldByUserId: r.heldByUserId, createdAt: r.createdAt, status: r.status };
+}
+
+/** POS P2.4 ▸ R9 (CONTROLLER-DECISION 8): ปิดโต๊ะ ⇒ รอบร่าง HELD ของ session = DISCARDED + audit pos.heldCart.discard (ธุรกรรมเดียวกับการปิดโต๊ะ) ◂ */
+export async function discardTableDraftsInTx(
+  tx: Prisma.TransactionClient,
+  s: { tenantId: string; systemId: string; unitId: string; tableSessionId: string; actorUserId: string },
+): Promise<number> {
+  const where = { tenantId: s.tenantId, systemId: s.systemId, unitId: s.unitId, tableSessionId: s.tableSessionId, status: "HELD" as const };
+  const rows = await tx.posHeldCart.findMany({ where, select: { id: true, label: true, heldByUserId: true, lineCount: true, approxTotalSatang: true } });
+  let n = 0;
+  for (const r of rows) {
+    const u = await tx.posHeldCart.updateMany({ where: { ...where, id: r.id }, data: { status: "DISCARDED", version: { increment: 1 } } });
+    if (u.count !== 1) continue;
+    n++;
+    const { id, ...before } = r;
+    await tx.auditLog.create({
+      data: {
+        tenantId: s.tenantId,
+        unitId: s.unitId,
+        actorType: "USER",
+        actorId: s.actorUserId,
+        action: "pos.heldCart.discard",
+        targetType: "PosHeldCart",
+        targetId: id,
+        before: { status: "HELD", ...before } as Prisma.InputJsonValue,
+        after: { status: "DISCARDED", via: "table_closed", tableSessionId: s.tableSessionId } as Prisma.InputJsonValue,
+      },
+    });
+  }
+  return n;
+}
+
+/** POS P2.4 ▸ R2: จำนวนบรรทัดของรอบร่าง HELD ต่อ session (การ์ด "ยังไม่ส่งครัว N รายการ") ◂ */
+export async function tableDraftLineCounts(client: Db, s: { tenantId: string; systemId: string; unitId: string; sessionIds: string[] }): Promise<Map<string, number>> {
+  if (!s.sessionIds.length) return new Map();
+  const rows = await client.posHeldCart.findMany({
+    where: { tenantId: s.tenantId, systemId: s.systemId, unitId: s.unitId, status: "HELD", tableSessionId: { in: s.sessionIds } },
+    select: { tableSessionId: true, lineCount: true },
+  });
+  const out = new Map<string, number>();
+  for (const r of rows) if (r.tableSessionId) out.set(r.tableSessionId, (out.get(r.tableSessionId) ?? 0) + r.lineCount);
+  return out;
+}
+
 // ═══════════════════ รายการ (+ หมดอายุแบบขี้เกียจ) ═══════════════════
 export async function listHeldCarts(ctx: RegisterCtx, actor: RegisterActor, client?: Db): Promise<ListHeldCartsResult> {
   return guard("listHeldCarts", async (): Promise<ListHeldCartsResult> => {
@@ -222,12 +376,13 @@ export async function listHeldCarts(ctx: RegisterCtx, actor: RegisterActor, clie
     const s = await scope(db, ctx, actor);
     if (isRefusal(s)) return s;
     const { days, cutoff } = await expireOf(db, s);
+    // POS P2.4 ▸ รอบร่างของโต๊ะ (tableSessionId) ไม่อยู่ในลิ้นชัก และไม่หมดอายุแบบบิลพัก (อยู่กับโต๊ะจนส่งครัว/ปิดโต๊ะ) ◂
     await db.posHeldCart.updateMany({
-      where: { ...rowWhere(s), status: "HELD", createdAt: { lt: cutoff } },
+      where: { ...rowWhere(s), status: "HELD", createdAt: { lt: cutoff }, tableSessionId: null },
       data: { status: "DISCARDED", version: { increment: 1 } },
     });
     const rows = await db.posHeldCart.findMany({
-      where: { ...rowWhere(s), status: "HELD", createdAt: { gte: cutoff } },
+      where: { ...rowWhere(s), status: "HELD", createdAt: { gte: cutoff }, tableSessionId: null },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       take: LIST_MAX,
       select: ROW_SELECT,

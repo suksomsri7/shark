@@ -115,6 +115,25 @@ export async function registerMemberGate(s: { tenantId: string; unitId: string; 
   return { ...ms, ok: true, brief };
 }
 
+/**
+ * POS P2.4 ▸ ผังโต๊ะ (R2): ชื่อ + ระดับของสมาชิกที่ผูกโต๊ะ (อ่านอย่างเดียว · ผู้เรียกมี pos.sale.create หรือ pos.sale.read ที่สาขา ⇒ อ่านแทนด้วยสิทธิ์
+ * member.customer.read เท่านั้น) · สาขาไม่มีระบบสมาชิก/ไม่มีสิทธิ์/มองไม่เห็น = ไม่อยู่ในผล (ไม่บอกว่ามีคนนี้) ◂
+ */
+export async function registerMemberBriefs(s: { tenantId: string; unitId: string; actor: RegisterActor }, ids: string[]): Promise<Map<string, { id: string; name: string; tier: string | null }>> {
+  const out = new Map<string, { id: string; name: string; tier: string | null }>();
+  const want = [...new Set(ids.filter(isId))].slice(0, 500);
+  if (!want.length) return out;
+  if (!evaluate(s.actor, { module: "pos", action: "pos.sale.create", unitId: s.unitId }) && !evaluate(s.actor, { module: "pos", action: "pos.sale.read", unitId: s.unitId })) return out;
+  const memberSystemId = await systemForUnit(s.tenantId, s.unitId, "MEMBER");
+  if (!memberSystemId) return out;
+  const member = await memberFacade();
+  const reader: MemberActor = { userId: s.actor.userId, role: "STAFF", unitAccess: [], permissions: { "member.customer.read": true } };
+  for (const b of await member.briefFor({ tenantId: s.tenantId, systemId: memberSystemId, actorUserId: s.actor.userId }, reader, want)) {
+    out.set(b.id, { id: b.id, name: b.name, tier: b.tier?.name ?? null });
+  }
+  return out;
+}
+
 // ═══════════════════ แถวสมาชิกบนจอ (R2 DTO) ═══════════════════
 async function itemsOf(ms: MemberScope, briefs: MemberBrief[], pointsOf?: Map<string, UnitPointsDto>): Promise<RegisterMemberItem[]> {
   if (!briefs.length) return [];

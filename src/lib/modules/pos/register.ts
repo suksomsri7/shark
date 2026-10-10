@@ -428,7 +428,8 @@ import { posPaymentSettings, type PosPaymentSettings } from "./payment-settings"
 // POS P1.9 ▸ กะของเครื่อง (S5/S6/S15) ◂
 import { isShiftDeviceId, registerShiftStatus, resolveRegisterShift } from "./shift";
 import { posDeviceRevoked, touchPosDevice } from "./device"; // POS P1.10 ▸ การ์ดเครื่องที่ถูกเพิกถอน + heartbeat ◂
-import { resolveSaleChannel } from "./channel"; // POS P2.1 ▸ R10 ช่องทางของตะกร้า ◂
+import { ensureUnitChannels, resolveSaleChannel } from "./channel"; // POS P2.1 ▸ R10 ช่องทางของตะกร้า ◂ · POS P2.4 ▸ ช่องทางของบิลโต๊ะ (Q4) ◂
+import { tableItemsHash } from "./table-shared"; // POS P2.4 ▸ แฮชชุดรายการของบิลโต๊ะ (CONTROLLER-DECISION 3) ◂
 import { CHANNEL_REF_MAX } from "./channel-shared"; // POS P2.1 ◂
 // POS P2.2 ▸ ราคาตามช่องทาง/สาขา/ช่วงเวลา (R5 R6) — ชุดราคาโหลดครั้งเดียวต่อคำขอ · ตัวแก้บริสุทธิ์ price-shared.ts ◂
 import { channelNotSold, loadPriceBook, priceBookValidUntil, priceOf, type PriceBook } from "./price";
@@ -586,6 +587,13 @@ const REG_MESSAGE: Record<RegisterRefusalCode, string> = {
   CHANNEL_NOT_SOLD: "สินค้านี้ไม่ขายในช่องทางนี้ — เอาออกจากบิล หรือเปลี่ยนช่องทาง",
   PRICE_RULE_NOT_FOUND: "ไม่พบโปรราคานี้",
   PRICE_RULE_LIMIT: "ระบบนี้มีโปรราคาครบ 100 รายการแล้ว — เก็บถาวรโปรที่ไม่ใช้ก่อน",
+  // POS P2.4 ▸ โหมดโต๊ะ (R12) ◂
+  TABLE_NOT_FOUND: "ไม่พบโต๊ะนี้ในสาขานี้",
+  TABLE_INACTIVE: "โต๊ะนี้ปิดใช้งานอยู่ — เปิดใช้งานก่อน หรือเลือกโต๊ะอื่น",
+  TABLE_SESSION_CLOSED: "โต๊ะนี้ปิดไปแล้ว — เปิดโต๊ะใหม่ก่อน",
+  TABLE_EMPTY: "โต๊ะนี้ยังไม่มีรายการที่ส่งครัวและยังไม่จ่าย — ไม่มีอะไรให้เช็คบิล",
+  TABLE_ITEMS_CHANGED: "รายการของโต๊ะเปลี่ยนระหว่างเช็คบิล (มีรอบใหม่ หรืออีกเครื่องจ่ายไปแล้ว) — ตรวจยอดใหม่ ยังไม่ได้เก็บเงิน",
+  TABLE_HAS_UNPAID: "โต๊ะนี้ยังมีรายการค้างจ่าย — เช็คบิลก่อนปิดโต๊ะ",
 };
 const REG_ROLE_LABEL: Record<RegisterRole, string> = { OWNER: "เจ้าของร้าน", MANAGER: "ผู้จัดการ", STAFF: "แคชเชียร์" };
 
@@ -651,7 +659,7 @@ function regActorOf(a: unknown): RegisterActor | null {
  * ctx ผิดรูป / ระบบไม่ใช่ POS ที่เปิดใช้งานของร้านนี้ / สาขาไม่ผูกระบบนี้ / สาขาเก็บถาวร / ผู้ขายเข้าสาขาไม่ได้ = NOT_FOUND
  * · actor ผิดรูป หรือไม่มี pos.sale.create ที่สาขานี้ = PERMISSION_DENIED (ด่านเดียวกับหน้า posRegisterView)
  */
-async function regScope(db: RegDb, ctx: unknown, actorRaw: unknown): Promise<RegScope | RegisterRefusal> {
+async function regScope(db: RegDb, ctx: unknown, actorRaw: unknown, perms: readonly string[] = REG_SELL_PERMS): Promise<RegScope | RegisterRefusal> {
   if (!regIsRecord(ctx) || !regIsId(ctx.tenantId) || !regIsId(ctx.systemId) || !regIsId(ctx.unitId)) return regRefuse("NOT_FOUND");
   const { tenantId, systemId, unitId } = ctx as RegisterCtx;
   const actor = regActorOf(actorRaw);
@@ -664,9 +672,11 @@ async function regScope(db: RegDb, ctx: unknown, actorRaw: unknown): Promise<Reg
   ]);
   if (!sys || !link || link.systemId !== systemId || !unit) return regRefuse("NOT_FOUND");
   if (!canAccessUnit(actor, unitId)) return regRefuse("NOT_FOUND");
-  if (!evaluate(actor, { module: "pos", action: "pos.sale.create", unitId })) return regRefuse("PERMISSION_DENIED");
+  // POS P2.4 ▸ perms = สิทธิ์ใดสิทธิ์หนึ่งที่ต้องมี (ปริยาย pos.sale.create เหมือนเดิม · ผังโต๊ะ = pos.sale.create หรือ pos.sale.read · CONTROLLER-DECISION 7) ◂
+  if (!perms.some((action) => evaluate(actor, { module: "pos", action, unitId }))) return regRefuse("PERMISSION_DENIED");
   return { tenantId, systemId, unitId, unitName: unit.name, unitInv: inv?.systemId ?? null, actor };
 }
+const REG_SELL_PERMS: readonly string[] = ["pos.sale.create"];
 
 // ── กติกามองเห็นสินค้า (ชุดเดียวกับ catalog.listForUnit) ──
 function regVisibleWhere(s: RegScope): Prisma.Sql {
@@ -1066,7 +1076,9 @@ type RegParsedLine =
       weighedBarcode: string | null;
       weightGrams: number | null;
     }
-  | { kind: "custom"; name: string; qty: number; unitPriceSatang: number; discount: PriceDiscount | null; note?: string | null };
+  | { kind: "custom"; name: string; qty: number; unitPriceSatang: number; discount: PriceDiscount | null; note?: string | null }
+  // POS P2.4 ▸ R6: บรรทัดของบิลโต๊ะ = รายการที่ส่งครัวแล้ว (เซิร์ฟเวอร์สร้างจาก session · ราคาสำเนาตอนส่งรอบ ไม่คิดใหม่ · CD3) ◂
+  | { kind: "table"; tableItemId: string; productId: string | null; name: string; qty: number; unitPriceSatang: number; options: RegPickedOption[]; choiceIds: string[]; discount: null; note?: null };
 /** POS P1.12: couponCode = โค้ดที่ลูกค้ายื่น (ตัดช่องว่าง · null = ไม่มี) · memberChoices = สิทธิ์ที่เลือกบนจอชำระ (null = ไม่เลือก · ไม่ถูกเก็บในบิลพัก) */
 type RegMemberChoices = { voucherId: string | null; points: number };
 type RegParsedCart = {
@@ -1076,10 +1088,15 @@ type RegParsedCart = {
   couponCode?: string | null;
   memberChoices?: RegMemberChoices | null;
   channelId?: string | null; // POS P2.1 ▸ R10 ◂
+  /** POS P2.4 ▸ R6: บิลของโต๊ะ (TableSession.id) — lines ต้องเป็น [] · table = ชุดรายการที่เซิร์ฟเวอร์สร้าง (หลัง regTableLines) ◂ */
+  tableSessionId?: string | null;
+  table?: RegTableBill | null;
 };
+/** POS P2.4 ▸ บิลโต๊ะที่สร้างแล้ว: session · ชื่อโต๊ะ · id รายการที่ยังไม่จ่าย (ลำดับ createdAt, id) · แฮชชุดรายการ ◂ */
+type RegTableBill = { sessionId: string; tableName: string; itemIds: string[]; itemsHash: string };
 
 // POS P1.12 ▸ R3 R6: couponCode + memberChoices (ยก Q12) — บิลพักเก็บ couponCode แต่ทิ้ง memberChoices (registerCanonicalCart · มติ 12) ◂
-const REG_QUOTE_KEYS: ReadonlySet<string> = new Set(["lines", "billDiscount", "memberId", "couponCode", "memberChoices", "channelId"]); // POS P2.1 ▸ + channelId ◂
+const REG_QUOTE_KEYS: ReadonlySet<string> = new Set(["lines", "billDiscount", "memberId", "couponCode", "memberChoices", "channelId", "tableSessionId"]); // POS P2.1 ▸ + channelId ◂ · POS P2.4 ▸ + tableSessionId (R6) ◂
 /** POS P1.12: คีย์ของ memberChoices (ตรงตัว · giftCard/voucherIds/อื่น = VALIDATION · มติ Q1 CD3) */
 const REG_CHOICE_KEYS: ReadonlySet<string> = new Set(["voucherId", "points"]);
 /** POS P1.12: เพดานแต้มที่รับในคำขอ (กันเลขล้น — เกินยอดคงเหลือจริง = POINTS_INSUFFICIENT) */
@@ -1089,6 +1106,7 @@ const REG_SUBMIT_KEYS: ReadonlySet<string> = new Set([
   "staffToken", "managerPin", "managerUserId", "heldCartId", // POS P1.15 ▸ R3 R4 R6 ◂
   "taxInvoice", "rememberBuyer", // POS P1.13 ▸ R2 R6 ◂
   "channelRef", // POS P2.1 ▸ R10 ◂
+  "expectedTableItemsHash", // POS P2.4 ▸ R7 แฮชชุดรายการจาก quote ของโต๊ะ ◂
 ]);
 const REG_PAY_KEYS: ReadonlySet<string> = new Set(["type", "amountSatang", "reference"]);
 const REG_LINE_KEYS: ReadonlySet<string> = new Set(["productId", "name", "qty", "unitPriceSatang", "openPrice", "discount", "note", "options", "weighedBarcode", "weightGrams"]);
@@ -1167,6 +1185,14 @@ function regParseCart(raw: unknown, allowed: ReadonlySet<string>): RegParsedCart
     if (!regIsId(raw.channelId)) return regRefuse("VALIDATION", "รหัสช่องทางขายไม่ถูกต้อง");
     channelId = raw.channelId;
   }
+  // POS P2.4 ▸ R6: บิลของโต๊ะ — รายการมาจาก session เท่านั้น (lines ต้องว่าง) · ช่องทางมาจากโต๊ะ (Q4 · ส่งเองไม่ได้) ◂
+  let tableSessionId: string | null = null;
+  if (raw.tableSessionId !== undefined && raw.tableSessionId !== null) {
+    if (!regIsId(raw.tableSessionId)) return regRefuse("VALIDATION", "รหัสโต๊ะไม่ถูกต้อง");
+    if (raw.lines.length > 0) return regRefuse("VALIDATION", "บิลของโต๊ะคิดจากรายการที่ส่งครัวแล้วเท่านั้น — ไม่ต้องส่งรายการมา");
+    if (channelId !== null) return regRefuse("VALIDATION", "ช่องทางขายของบิลโต๊ะมาจากโต๊ะ — ไม่ต้องส่งช่องทาง");
+    tableSessionId = raw.tableSessionId;
+  }
   const lines: RegParsedLine[] = [];
   for (let i = 0; i < raw.lines.length; i++) {
     const l: unknown = raw.lines[i];
@@ -1229,7 +1255,7 @@ function regParseCart(raw: unknown, allowed: ReadonlySet<string>): RegParsedCart
       lines.push({ kind: "custom", name, qty: l.qty, unitPriceSatang: l.unitPriceSatang, discount, note });
     }
   }
-  return { lines, billDiscount, memberId, couponCode, memberChoices, channelId };
+  return { lines, billDiscount, memberId, couponCode, memberChoices, channelId, tableSessionId };
 }
 
 /**
@@ -1295,8 +1321,9 @@ type RegResolvedLine = {
   options: RegPickedOption[];
   components: { invItemId: string; qty: number }[];
   weightGrams: number | null;
-  /** POS P2.2 ▸ R5 R7: ชั้นราคาที่ชนะ (สำเนาลงบิล) · โปรที่ชนะ · ราคาปกติขั้น ② (OPEN/CUSTOM/WEIGHED = null) ◂ */
-  priceSource: PriceSource;
+  /** POS P2.2 ▸ R5 R7: ชั้นราคาที่ชนะ (สำเนาลงบิล) · โปรที่ชนะ · ราคาปกติขั้น ② (OPEN/CUSTOM/WEIGHED = null) ◂ ·
+   *  POS P2.4 ▸ บรรทัดบิลโต๊ะ = null (ราคาสำเนาตอนส่งรอบ · ไม่รู้ชั้นราคา — ไม่ส่ง priceSource เข้าบิล) ◂ */
+  priceSource: PriceSource | null;
   priceRule: { id: string; name: string } | null;
   listPriceSatang: number | null;
 };
@@ -1331,7 +1358,8 @@ async function regPrice(
 ): Promise<RegPriced | RegisterRefusal> {
   // Q8: รายการกำหนดเอง / ราคาเปิด ต้องมี pos.sale.priceOverride (OWNER/MANAGER ได้ตามบทบาท · STAFF ต้องได้รับ)
   // P1.2 R12 (มติ P4): กรอกน้ำหนักเอง = ตั้งราคาเอง (กันโกงตาชั่ง) · สแกนป้ายชั่งไม่ต้องมีสิทธิ์
-  const needOverride = cart.lines.findIndex((l) => l.kind === "custom" || l.openPrice !== null || l.weightGrams !== null);
+  // POS P2.4 ▸ บรรทัดบิลโต๊ะ (kind table) ราคาสำเนาจากรอบที่ส่ง — ไม่ใช่ราคาเอง ◂
+  const needOverride = cart.lines.findIndex((l) => l.kind === "custom" || (l.kind === "product" && (l.openPrice !== null || l.weightGrams !== null)));
   if (!opts.display && needOverride >= 0 && !evaluate(s.actor, { module: "pos", action: "pos.sale.priceOverride", unitId: s.unitId })) {
     return regRefuse("PERMISSION_DENIED", "ต้องมีสิทธิ์ตั้งราคาเอง — ให้ผู้จัดการทำรายการนี้", needOverride);
   }
@@ -1351,7 +1379,7 @@ async function regPrice(
     if (isRegRefusal(g)) return g;
     gate = g;
   }
-  const wantIds = [...new Set(cart.lines.flatMap((l) => (l.kind === "product" ? [l.productId] : [])))];
+  const wantIds = [...new Set(cart.lines.flatMap((l) => (l.kind === "product" ? [l.productId] : l.kind === "table" && l.productId ? [l.productId] : [])))];
   const visibleIds = wantIds.length
     ? (await db.$queryRaw<{ id: string }[]>`SELECT p.id FROM "PosProduct" p WHERE ${regVisibleWhere(s)} AND p.id = ANY(${wantIds}::text[])`).map((r) => r.id)
     : [];
@@ -1383,6 +1411,28 @@ async function regPrice(
     if (l.kind === "custom") {
       priceLines.push({ qty: l.qty, unitPriceSatang: l.unitPriceSatang, discount: l.discount });
       meta.push({ name: l.name, qty: l.qty, productId: null, itemId: null, serviceId: null, note: l.note ?? null, options: [], components: [], weightGrams: null, priceSource: "CUSTOM", priceRule: null, listPriceSatang: null });
+      continue;
+    }
+    // POS P2.4 ▸ R6: บรรทัดบิลโต๊ะ — ราคา/ตัวเลือก = สำเนาตอนส่งรอบ (ไม่คิดราคาใหม่ · ไม่ตรวจเปิดขาย/ตัวแปร/ตัวเลือก — อาหารสั่งไปแล้ว) ·
+    //   itemId/components จากสินค้าปัจจุบันด้วยกติกาเดียวกับบรรทัดหน้าขาย (C2 · สูตร P2.3 + ส่วนต่างตัวเลือก) ⇒ ตัดสต็อกเหมือนบิลหน้าขาย ·
+    //   สินค้าที่ขายที่สาขานี้ไม่ได้แล้ว = ไม่มี itemId/components (ไม่ตัดสต็อก · ไม่ปฏิเสธบิลของอาหารที่ส่งไปแล้ว — โน้ต P2.4 ข้อคลาดเคลื่อน) ◂
+    if (l.kind === "table") {
+      priceLines.push({ qty: l.qty, unitPriceSatang: l.unitPriceSatang, discount: null });
+      const tv = l.productId ? views.get(l.productId) : undefined;
+      let itemId: string | null = null;
+      let serviceId: string | null = null;
+      let components: { invItemId: string; qty: number }[] = [];
+      if (tv) {
+        itemId = tv.kind === "PRODUCT" && tv.invItemId && tv.trackStock ? tv.invItemId : null;
+        serviceId = tv.kind === "SERVICE" && tv.invItemId ? tv.invItemId : null;
+        const trc = rowRecipes.get(tv.id);
+        if (trc?.live) {
+          const x = expandRecipe({ lines: trc.lines, choiceLines: trc.choiceLines, choiceIds: l.choiceIds });
+          if (!x.ok) return regRefuse("INVALID_LINE", x.message, i);
+          components = x.components;
+        }
+      }
+      meta.push({ name: l.name, qty: l.qty, productId: l.productId, itemId, serviceId, note: null, options: l.options, components, weightGrams: null, priceSource: null, priceRule: null, listPriceSatang: null });
       continue;
     }
     const v = views.get(l.productId);
@@ -1521,8 +1571,8 @@ async function regPrice(
       optionsSatang: m.options.reduce((t, o) => t + o.priceDeltaSatang, 0),
       options,
       weightGrams: m.weightGrams,
-      // POS P2.2 ▸ R5 ◂
-      priceSource: m.priceSource,
+      // POS P2.2 ▸ R5 ◂ · POS P2.4 ▸ บรรทัดบิลโต๊ะไม่มีชั้นราคา (ไม่มีคีย์ priceSource) ◂
+      ...(m.priceSource !== null ? { priceSource: m.priceSource } : {}),
       listPriceSatang: m.listPriceSatang,
       priceRule: m.priceRule ? { ...m.priceRule } : null,
     };
@@ -1558,17 +1608,86 @@ async function regPaySettings(db: RegDb, s: RegScope): Promise<PosPaymentSetting
   return r.ok ? { serviceCharge: r.serviceCharge, tip: r.tip } : { serviceCharge: { enabled: false, rateBp: 0 }, tip: { enabled: false, ledgerAccountId: null } };
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════
+// POS P2.4 ▸ บิลของโต๊ะ (R6 R7 · มติ CD3 CD4 Q4) — quote/submit ของหน้าขายรับ tableSessionId (lines ต้องเป็น []):
+//   บรรทัด = รายการที่ส่งครัวแล้วและยังไม่จ่ายของ session (ราคาสำเนาตอนส่งรอบ · ตัวเลือกจากสำเนา) · สมาชิก = ที่ส่งมา ?? ของโต๊ะ ·
+//   ช่องทาง = QR_TABLE เมื่อแขกเปิดโต๊ะเองผ่าน QR ไม่งั้น STORE · ค่าบริการ/VAT/ส่วนลดท้ายบิล/คูปอง/สิทธิ์สมาชิก = คณิตของหน้าขายตามเดิม ·
+//   submit = ยึดรายการ (FOR UPDATE) + createSale (จุดเรียกเดิม regCreateSale) + ผูกรายการ + ปิดโต๊ะ ในธุรกรรมเดียว (CONTROLLER-DECISION 9)
+//   ข้อมูลร้านอาหารผ่าน facade `restaurant/index.ts` แบบ lazy เท่านั้น (CD1 · วงโหลด restaurant → pos) ◂
+type RestFacade = typeof import("@/lib/modules/restaurant");
+const regRestaurant = (): Promise<RestFacade> => import("@/lib/modules/restaurant");
+type RegTableSession = Awaited<ReturnType<RestFacade["tableSessionForPos"]>> & {};
+
+/**
+ * POS P2.4 ▸ Q4: ช่องทางของบิลโต๊ะ — แขกเปิดโต๊ะเองผ่าน QR (openedByUserId null) = QR_TABLE · อื่น ๆ = STORE ·
+ * QR_TABLE ถูกปิด/เก็บ = STORE (ไม่ปฏิเสธบิลของอาหารที่สั่งไปแล้ว) · ไม่มีแถวเลย = null (ตัวแก้ช่องทางเลือก STORE เอง) ◂
+ */
+export async function registerTableChannelId(client: RegDb, s: { tenantId: string; systemId: string; unitId: string }, guestOpened: boolean): Promise<string | null> {
+  const rows = await ensureUnitChannels(client, s);
+  const pick = (code: string) => rows.find((r) => r.code === code && r.kind === "BUILTIN" && r.active && !r.archivedAt);
+  return (guestOpened ? pick("QR_TABLE") : undefined)?.id ?? pick("STORE")?.id ?? null;
+}
+
+/** session ของโต๊ะในสาขานี้ — ร้านอื่น/สาขาอื่น/ไม่มีจริง = TABLE_NOT_FOUND (404-not-403) */
+async function regTableSession(db: RegDb, s: RegScope, sessionId: string): Promise<RegTableSession | RegisterRefusal> {
+  const sess = await (await regRestaurant()).tableSessionForPos(db, { tenantId: s.tenantId, unitId: s.unitId, sessionId });
+  return sess ?? regRefuse("TABLE_NOT_FOUND");
+}
+
+/** รายการค้างจ่ายของโต๊ะ → บรรทัดบิล (R6): ไม่ OPEN = TABLE_SESSION_CLOSED · ไม่มีรายการ = TABLE_EMPTY · เกินเพดานบรรทัด = TOO_MANY_LINES (แยกบิล = P2.5) */
+async function regTableLines(db: RegDb, s: RegScope, sess: RegTableSession): Promise<{ lines: RegParsedLine[]; table: RegTableBill } | RegisterRefusal> {
+  if (sess.status !== "OPEN") return regRefuse("TABLE_SESSION_CLOSED");
+  const items = await (await regRestaurant()).tableUnpaidItemsForPos(db, { tenantId: s.tenantId, unitId: s.unitId, sessionId: sess.id });
+  if (!items.length) return regRefuse("TABLE_EMPTY");
+  if (items.length > REGISTER_MAX_LINES) return regRefuse("TOO_MANY_LINES");
+  const lines: RegParsedLine[] = items.map((it) => {
+    // ตัวเลือกที่ยังรู้กลุ่ม = สำเนาลงบิล (PosSaleLineOption) · ตัวเลือกที่ถูกลบไปแล้ว = ต่อท้ายชื่อบรรทัด (ราคาอยู่ในราคาต่อหน่วยแล้ว)
+    const kept = it.options.filter((o) => !!o.choiceId && !!o.groupId);
+    const lost = it.options.filter((o) => !o.choiceId || !o.groupId).map((o) => o.choiceName);
+    return {
+      kind: "table" as const,
+      tableItemId: it.id,
+      productId: it.productId,
+      name: lost.length ? `${it.name} (${lost.join(", ")})` : it.name,
+      qty: it.qty,
+      unitPriceSatang: it.unitPrice + it.optionsTotal,
+      options: kept.map((o) => ({ choiceId: o.choiceId!, groupId: o.groupId!, groupName: o.groupName, name: o.choiceName, priceDeltaSatang: o.priceDelta })),
+      choiceIds: it.options.flatMap((o) => (o.choiceId ? [o.choiceId] : [])),
+      discount: null,
+    };
+  });
+  const itemIds = items.map((i) => i.id);
+  return { lines, table: { sessionId: sess.id, tableName: sess.tableName, itemIds, itemsHash: tableItemsHash(itemIds) } };
+}
+
+/** ตะกร้าของบิลโต๊ะ (quote): session → บรรทัด · สมาชิก = ที่ส่งมา ?? ของโต๊ะ · ช่องทาง = ของโต๊ะ */
+async function regTableCart(db: RegDb, s: RegScope, cart: RegParsedCart): Promise<RegParsedCart | RegisterRefusal> {
+  const sess = await regTableSession(db, s, cart.tableSessionId!);
+  if (isRegRefusal(sess)) return sess;
+  const tl = await regTableLines(db, s, sess);
+  if (isRegRefusal(tl)) return tl;
+  return { ...cart, lines: tl.lines, table: tl.table, memberId: cart.memberId ?? sess.memberId, channelId: await registerTableChannelId(db, s, sess.openedByUserId === null) };
+}
+const regTableOut = (c: RegParsedCart) => (c.table ? { table: { sessionId: c.table.sessionId, tableName: c.table.tableName, itemIds: [...c.table.itemIds], itemsHash: c.table.itemsHash } } : {});
+// ◂ POS P2.4
+
 /** ยอดบนจอจากราคาฝั่งเซิร์ฟเวอร์ (ไม่บันทึกอะไร) — ปฏิเสธไม่มียอดติดมา */
 export async function quoteRegisterCart(ctx: RegisterCtx, actor: RegisterActor, input: RegisterQuoteInput, client?: RegDb): Promise<RegisterQuoteResult> {
   return regGuard("quoteRegisterCart", async (): Promise<RegisterQuoteResult> => {
     const db: RegDb = client ?? prisma;
     const s = await regScope(db, ctx, actor);
     if (isRegRefusal(s)) return s;
-    const cart = regParseCart(input, REG_QUOTE_KEYS);
+    let cart = regParseCart(input, REG_QUOTE_KEYS);
     if (isRegRefusal(cart)) return cart;
+    // POS P2.4 ▸ R6: บิลของโต๊ะ ◂
+    if (cart.tableSessionId) {
+      const tc = await regTableCart(db, s, cart);
+      if (isRegRefusal(tc)) return tc;
+      cart = tc;
+    }
     const p = await regPrice(db, s, cart);
     if (isRegRefusal(p)) return p;
-    return { ok: true, ...p.quote };
+    return { ok: true, ...p.quote, ...regTableOut(cart) };
   });
 }
 
@@ -1583,6 +1702,7 @@ export async function quoteRegisterCartWithCap(ctx: RegisterCtx, actor: Register
     if (isRegRefusal(s)) return s;
     const cart = regParseCart(input, REG_QUOTE_KEYS);
     if (isRegRefusal(cart)) return cart;
+    if (cart.tableSessionId) return regRefuse("VALIDATION"); // POS P2.4 ▸ ภายใน (บิลพักรออนุมัติ) — บิลโต๊ะไม่ผ่านทางนี้ ◂
     const p = await regPrice(db, s, cart, undefined, maxDiscountBp);
     if (isRegRefusal(p)) return p;
     return { ok: true, ...p.quote };
@@ -1618,8 +1738,10 @@ export async function quoteRegisterCartOverride(ctx: RegisterCtx, actor: Registe
       if (!regIsIdemKey(input.idempotencyKey)) return regRefuse("VALIDATION", "ข้อมูลบิลไม่ครบ — ลองใหม่อีกครั้ง");
       idempotencyKey = REG_KEY_PREFIX + input.idempotencyKey;
     }
-    const cart = regParseCart(input.cart, REG_QUOTE_KEYS);
+    let cart = regParseCart(input.cart, REG_QUOTE_KEYS);
     if (isRegRefusal(cart)) return cart;
+    // POS P2.4 ▸ บิลโต๊ะ: PIN ผู้จัดการได้ · บิลพักที่อนุมัติไม่ได้ (บิลโต๊ะไม่มีบิลพักรออนุมัติ) ◂
+    if (cart.tableSessionId && auth.heldCartId !== null) return regRefuse("VALIDATION", "บิลของโต๊ะใช้บิลพักที่อนุมัติไม่ได้ — ใช้ PIN ผู้จัดการ");
     // fix รอบ 2 (F1): ผู้ขาย = คนในโทเคน เหมือน submitRegisterSale (R3 ของ P1.15) — ตรวจก่อนคิดราคา · ไม่ส่งโทเคน = ผู้ใช้ session เหมือนเดิม
     let s: RegScope = s0;
     if (staffToken !== null) {
@@ -1628,16 +1750,21 @@ export async function quoteRegisterCartOverride(ctx: RegisterCtx, actor: Registe
       if (!st || isRegRefusal(st)) return regRefuse("STAFF_TOKEN_INVALID");
       s = st;
     }
+    if (cart.tableSessionId) {
+      const tc = await regTableCart(db, s, cart);
+      if (isRegRefusal(tc)) return tc;
+      cart = tc;
+    }
     // quote ปกติ (ตัวเดียวกับ quoteRegisterCart) — ไม่เกินเพดานของผู้ขาย = ไม่แตะ PIN/บิลพักเลย
     const p = await regPrice(db, s, cart);
-    if (!isRegRefusal(p)) return { ok: true, ...p.quote };
+    if (!isRegRefusal(p)) return { ok: true, ...p.quote, ...regTableOut(cart) };
     if (p.code !== "DISCOUNT_EXCEEDS_LIMIT") return p;
     const pay = await regPaySettings(db, s);
     const caps = await regDiscountCaps(db, s);
     const c = await regResolveOverrideCap(db, s, cart, { ...auth, idempotencyKey }, pay, caps, deviceId);
     if (isRegRefusal(c)) return c;
     if (c.via === "none") return p;
-    return { ok: true, ...c.priced.quote };
+    return { ok: true, ...c.priced.quote, ...regTableOut(cart) };
   });
 }
 
@@ -1667,9 +1794,12 @@ export function registerCanonicalCart(raw: unknown): RegisterQuoteInput | Regist
   }
   const c = regParseCart(held, REG_QUOTE_KEYS);
   if (isRegRefusal(c)) return c;
+  // POS P2.4 ▸ tableSessionId อยู่นอกตะกร้า (holdRegisterCart({cart, tableSessionId})) — ในตะกร้า = VALIDATION ไม่เงียบทิ้ง ◂
+  if (c.tableSessionId) return regRefuse("VALIDATION", "ระบุโต๊ะนอกตะกร้า (tableSessionId) — ไม่ใช่ในตะกร้า");
   const lines: RegisterQuoteLineInput[] = c.lines.map((l) => {
     const discount = l.discount ? { discount: { ...l.discount } } : {};
     if (l.kind === "custom") return { name: l.name, qty: l.qty, unitPriceSatang: l.unitPriceSatang, ...discount };
+    if (l.kind === "table") return { name: l.name, qty: l.qty, unitPriceSatang: l.unitPriceSatang }; // POS P2.4 ▸ ไม่เกิดจากตัวแกะ (บรรทัดเซิร์ฟเวอร์สร้าง) — กันชนิดเท่านั้น ◂
     return {
       productId: l.productId,
       qty: l.qty,
@@ -1699,8 +1829,14 @@ export async function registerBenefitsCart(ctx: RegisterCtx, actor: RegisterActo
   const db: RegDb = client ?? prisma;
   const s = await regScope(db, ctx, actor);
   if (isRegRefusal(s)) return s;
-  const cart = regParseCart(raw, REG_QUOTE_KEYS);
+  let cart = regParseCart(raw, REG_QUOTE_KEYS);
   if (isRegRefusal(cart)) return cart;
+  // POS P2.4 ▸ แผงสิทธิ์ของบิลโต๊ะ = บรรทัดจากรายการค้างจ่ายของโต๊ะ (อ่านอย่างเดียว) ◂
+  if (cart.tableSessionId) {
+    const tc = await regTableCart(db, s, cart);
+    if (isRegRefusal(tc)) return tc;
+    cart = tc;
+  }
   const p = await regPrice(db, s, { lines: cart.lines, billDiscount: cart.billDiscount, memberId: null }, undefined, null, { display: true });
   if (isRegRefusal(p)) return p;
   return { ok: true, cart: saleWalletCart(p.resolved, s.unitId, null) };
@@ -1741,6 +1877,9 @@ type RegParsedSubmit = {
   rememberBuyer: boolean;
   /** POS P2.1 ▸ R10: เลขออเดอร์แพลตฟอร์ม (แกะแล้ว · null = ไม่มี) ◂ */
   channelRef: string | null;
+  /** POS P2.4 ▸ R7: แฮชชุดรายการจาก quote ของโต๊ะ (บังคับเมื่อมี tableSessionId) · แฮชของรายการที่ผูกบิลเดิม (เทียบคำขอซ้ำ) ◂ */
+  expectedTableItemsHash: string | null;
+  tableReplayHash?: string | null;
 };
 
 /** POS P1.15: สตริงเสริม — ไม่ส่ง/null = null · สตริง 1…max ตัวที่สะอาด = ค่า · อื่น = undefined (ผู้เรียกปฏิเสธ) */
@@ -1766,7 +1905,7 @@ function regParseSubmit(raw: unknown): RegParsedSubmit | RegisterRefusal {
   if (!regIsRecord(raw)) return regRefuse("VALIDATION");
   const cart = regParseCart(raw, REG_SUBMIT_KEYS);
   if (isRegRefusal(cart)) return cart;
-  if (cart.lines.length === 0) return regRefuse("VALIDATION", "ยังไม่มีสินค้าในตะกร้า");
+  if (cart.lines.length === 0 && !cart.tableSessionId) return regRefuse("VALIDATION", "ยังไม่มีสินค้าในตะกร้า"); // POS P2.4 ▸ บิลโต๊ะ lines = [] ◂
   if (!regIsIdemKey(raw.idempotencyKey)) return regRefuse("VALIDATION", "ข้อมูลบิลไม่ครบ — ลองใหม่อีกครั้ง");
   if (!regIsMoney(raw.expectedGrandTotalSatang)) return regRefuse("VALIDATION", "ยอดที่ต้องชำระไม่ถูกต้อง — ตรวจยอดใหม่อีกครั้ง");
   const pmRaw: unknown = raw.payMethods;
@@ -1834,6 +1973,14 @@ function regParseSubmit(raw: unknown): RegParsedSubmit | RegisterRefusal {
     if (typeof raw.channelRef !== "string" || [...raw.channelRef.trim()].length > CHANNEL_REF_MAX || !regCleanText(raw.channelRef)) return regRefuse("VALIDATION", `เลขออเดอร์แพลตฟอร์มยาวได้ไม่เกิน ${CHANNEL_REF_MAX} ตัวอักษร`);
     channelRef = raw.channelRef.trim() || null;
   }
+  // POS P2.4 ▸ R7: แฮชชุดรายการ (บังคับคู่ tableSessionId · ไม่มีโต๊ะ = ห้ามส่ง) · บิลโต๊ะไม่ใช้บิลพักที่อนุมัติ ◂
+  let expectedTableItemsHash: string | null = null;
+  if (raw.expectedTableItemsHash !== undefined && raw.expectedTableItemsHash !== null) {
+    if (!cart.tableSessionId || !regIsId(raw.expectedTableItemsHash)) return regRefuse("VALIDATION", "ข้อมูลรายการของโต๊ะไม่ถูกต้อง — ตรวจยอดใหม่อีกครั้ง");
+    expectedTableItemsHash = raw.expectedTableItemsHash;
+  }
+  if (cart.tableSessionId && expectedTableItemsHash === null) return regRefuse("VALIDATION", "ข้อมูลรายการของโต๊ะไม่ครบ — ตรวจยอดใหม่อีกครั้ง");
+  if (cart.tableSessionId && heldCartId !== null) return regRefuse("VALIDATION", "บิลของโต๊ะใช้บิลพักที่อนุมัติไม่ได้ — ใช้ PIN ผู้จัดการ");
   const rawCart: Record<string, unknown> = { lines: raw.lines };
   if (raw.billDiscount !== undefined && raw.billDiscount !== null) rawCart.billDiscount = raw.billDiscount;
   if (raw.memberId !== undefined && raw.memberId !== null) rawCart.memberId = raw.memberId;
@@ -1855,6 +2002,7 @@ function regParseSubmit(raw: unknown): RegParsedSubmit | RegisterRefusal {
     taxInvoice,
     rememberBuyer,
     channelRef, // POS P2.1 ◂
+    expectedTableItemsHash, // POS P2.4 ◂
   };
 }
 
@@ -1985,6 +2133,8 @@ function regSameSubmission(s: RegScope, req: RegParsedSubmit, sale: RegSaleRow):
   if (regBag(sale.coupons.map((c) => c.code)) !== regBag(req.cart.couponCode ? [req.cart.couponCode.toUpperCase()] : [])) return false;
   if ((ben && typeof ben.pointsBurned === "number" ? ben.pointsBurned : 0) !== (req.cart.memberChoices?.points ?? 0)) return false;
   if ((sale.voucherUseIds[0] ?? null) !== (req.cart.memberChoices?.voucherId ?? null)) return false;
+  // POS P2.4 ▸ R7: บิลโต๊ะ = คำขอเดียวกันเมื่อเป็นบิลของ session เดียวกัน และชุดรายการที่ผูกบิลเดิม = ชุดที่ quote ให้มา (แฮช) ◂
+  if (req.cart.tableSessionId) return sale.sourceId === req.cart.tableSessionId && !!req.tableReplayHash && req.tableReplayHash === req.expectedTableItemsHash;
   return regLinesEqual(req.cart.lines, sale.lines, req.wb ?? null);
 }
 
@@ -2038,9 +2188,19 @@ export async function submitRegisterSale(ctx: RegisterCtx, actor: RegisterActor,
     }
     // P1.2 R14: ป้ายชั่งเป็นส่วนหนึ่งของตัวตนบรรทัด — โหลดค่าตั้งไว้เทียบคำขอซ้ำ (เฉพาะเมื่อมีบรรทัดป้ายชั่ง)
     req.wb = req.cart.lines.some((l) => l.kind === "product" && l.weighedBarcode !== null) ? await regWeighedSettings(db, s0) : null;
+    // POS P2.4 ▸ R7: บิลโต๊ะ — session ของสาขานี้ก่อนค้นคีย์ (ไม่พบ = TABLE_NOT_FOUND) · สมาชิกของบิล = ที่ส่งมา ?? ของโต๊ะ · ช่องทาง = ของโต๊ะ
+    //   (คำขอซ้ำเทียบด้วยค่าชุดเดียวกับบิลจริง) ◂
+    let tableSess: RegTableSession | null = null;
+    if (req.cart.tableSessionId) {
+      const ts = await regTableSession(db, s0, req.cart.tableSessionId);
+      if (isRegRefusal(ts)) return ts;
+      tableSess = ts;
+      req.cart.memberId = req.cart.memberId ?? ts.memberId;
+      req.cart.channelId = await registerTableChannelId(db, s0, ts.openedByUserId === null);
+    }
     // ① คีย์เดิมก่อนคิดราคา (ลองซ้ำหลังราคาเปลี่ยนต้องได้บิลเดิม)
     const prior = await regLoadSale(db, s0.tenantId, req.idempotencyKey);
-    if (prior) return regDuplicate(s0, req, prior, true);
+    if (prior) return tableSess ? regTableDuplicate(db, s0, req, prior, true) : regDuplicate(s0, req, prior, true);
     // POS P1.15 ▸ R3: โทเคนผู้ขายบนเครื่อง — ผู้ขาย/สิทธิ์/เพดานส่วนลด = คนในโทเคน (มติ 2) · ผิด/หมดอายุ/เครื่องอื่น/ถูกถอดสิทธิ์ = STAFF_TOKEN_INVALID
     //   (ไม่ถอยไปใช้ผู้ใช้ session เงียบ ๆ) · ไม่ส่งโทเคน = ผู้ใช้ session เหมือนเดิม ◂
     let s: RegScope = s0;
@@ -2059,12 +2219,22 @@ export async function submitRegisterSale(ctx: RegisterCtx, actor: RegisterActor,
     // P1.6: ค่าตั้งการชำระเงิน (ค่าบริการ · ทิป) — ทิปส่งมาตอนระบบไม่เปิดรับทิป = VALIDATION (ไม่มีบิล)
     const paySettings = await regPaySettings(db, s);
     if (req.tipSatang > 0 && !paySettings.tip.enabled) return regRefuse("VALIDATION", "จุดขายนี้ยังไม่เปิดรับทิป");
+    // POS P2.4 ▸ R7 (CONTROLLER-DECISION 3): บิลโต๊ะ — โต๊ะยัง OPEN · มีรายการค้างจ่าย · ชุดรายการปัจจุบัน = ที่ quote ให้มา (ก่อนคิดราคา ⇒
+    //   รอบใหม่ระหว่าง quote กับ submit = TABLE_ITEMS_CHANGED ไม่ใช่ PRICE_CHANGED · ไม่เขียนอะไร) ◂
+    if (tableSess) {
+      const tl = await regTableLines(db, s, tableSess);
+      if (isRegRefusal(tl)) return tl;
+      if (tl.table.itemsHash !== req.expectedTableItemsHash) return regRefuse("TABLE_ITEMS_CHANGED");
+      req.cart.lines = tl.lines;
+      req.cart.table = tl.table;
+    }
     // ②
     const caps = await regDiscountCaps(db, s);
     let p = await regPrice(db, s, req.cart, paySettings, regMaxDiscountBp(s.actor, caps));
     // POS P1.15 ▸ R4/R5/R6: ส่วนลดเกินเพดานของผู้ขาย — บิลพักที่อนุมัติแล้ว · PIN ผู้จัดการ · กติกา POS_DISCOUNT_OVER (พักบิล + ยื่นคำขอ) ◂
+    //   POS P2.4 ▸ บิลโต๊ะ: PIN ผู้จัดการเท่านั้น (ไม่พักบิลรออนุมัติ — ตะกร้ามาจากโต๊ะ) ◂
     let over: RegDiscountOverride | null = null;
-    if (isRegRefusal(p) && p.code === "DISCOUNT_EXCEEDS_LIMIT") {
+    if (isRegRefusal(p) && p.code === "DISCOUNT_EXCEEDS_LIMIT" && !(req.cart.table && req.managerPin === null)) {
       const o = await regDiscountOver(db, s, req, paySettings, caps, deviceId);
       if (o.ok === false) return o;
       p = o.priced;
@@ -2113,6 +2283,7 @@ export async function submitRegisterSale(ctx: RegisterCtx, actor: RegisterActor,
         : {}),
       ...(p.coupon ? { couponSystemId: p.coupon.systemId, couponCode: p.coupon.code } : {}),
       sourceModule: "POS",
+      ...(req.cart.table ? { sourceId: req.cart.table.sessionId } : {}), // POS P2.4 ▸ CD4: บิลโต๊ะ = บิลหน้าขายปกติ · sourceId = TableSession.id ◂
       idempotencyKey: req.idempotencyKey,
       ...(req.cart.channelId ? { channelId: req.cart.channelId } : {}), // POS P2.1 ▸ R10 (ไม่ส่ง = createSale เลือก STORE เอง) ◂
       ...(req.channelRef ? { channelRef: req.channelRef } : {}),
@@ -2131,8 +2302,8 @@ export async function submitRegisterSale(ctx: RegisterCtx, actor: RegisterActor,
           : {}),
         ...(l.components.length ? { components: l.components.map((c) => ({ ...c })) } : {}),
         ...(l.weightGrams !== null ? { weightGrams: l.weightGrams } : {}),
-        // POS P2.2 ▸ R7: สำเนาชั้นราคา (เพิ่มล้วน · ไม่อยู่ใน samePayload · createSale ไม่คิดราคาเอง) ◂
-        priceSource: l.priceSource,
+        // POS P2.2 ▸ R7: สำเนาชั้นราคา (เพิ่มล้วน · ไม่อยู่ใน samePayload · createSale ไม่คิดราคาเอง) ◂ · POS P2.4 ▸ บรรทัดบิลโต๊ะ = ไม่ส่ง (null) ◂
+        ...(l.priceSource !== null ? { priceSource: l.priceSource } : {}),
         ...(l.priceRule ? { priceRuleId: l.priceRule.id } : {}),
         ...(l.listPriceSatang !== null ? { listPriceSatang: l.listPriceSatang } : {}),
       })),
@@ -2158,7 +2329,11 @@ export async function submitRegisterSale(ctx: RegisterCtx, actor: RegisterActor,
     );
     let res: RegisterSubmitResult;
     try {
-      res = intentRefs.length ? await regSubmitWithIntents(db, s, req, saleInput, intentRefs, startedAt) : await regCreate(db, s, req, saleInput, startedAt);
+      res = req.cart.table
+        ? await regSubmitTable(db, s, req, saleInput, intentRefs, startedAt) // POS P2.4 ▸ ยึดรายการ + บิล + ปิดโต๊ะ ธุรกรรมเดียว ◂
+        : intentRefs.length
+          ? await regSubmitWithIntents(db, s, req, saleInput, intentRefs, startedAt)
+          : await regCreate(db, s, req, saleInput, startedAt);
     } catch (e) {
       if (over?.claimRequestId) await releasePosApprovalClaim(s.tenantId, over.claimRequestId, req.idempotencyKey).catch(() => undefined);
       throw e;
@@ -2283,6 +2458,172 @@ async function regSubmitWithIntents(
     }
   }
   return regRefuse("BUSY");
+}
+
+/**
+ * POS P2.4 ▸ Prisma 7: client ของ interactive tx มี `$transaction` (เรียกซ้อน = SAVEPOINT) ⇒ createSale คิดว่า "เป็นเจ้าของธุรกรรม" (ownsTx) —
+ *   แถวบิลถูกเขียนใต้ savepoint (xid ย่อยคนละตัวกับแถวโต๊ะ) และงานหลัง commit (ตัดสต็อก/ระบายคิว) วิ่งก่อนธุรกรรมนอก commit
+ *   ⇒ ซ่อน `$transaction` ให้ createSale ทำงานในธุรกรรมของผู้เรียกตรง ๆ ตามที่ service.ts ออกแบบ ("ถูกเรียกใน tx ผู้อื่น") —
+ *   บิล + ยึดรายการ + ปิดโต๊ะ = xid เดียว (CONTROLLER-DECISION 9) · งานหลัง commit ทำที่ regSubmitTable หลังธุรกรรม ◂
+ */
+function regCallerTx(tx: Prisma.TransactionClient): Prisma.TransactionClient {
+  return new Proxy(tx, {
+    has: (t, k) => (k === "$transaction" ? false : Reflect.has(t, k)),
+    get: (t, k) => {
+      if (k === "$transaction") return undefined;
+      const v: unknown = Reflect.get(t, k);
+      return typeof v === "function" ? (v as (...a: unknown[]) => unknown).bind(t) : v;
+    },
+  });
+}
+
+/** POS P2.4 ▸ คำขอซ้ำของบิลโต๊ะ: แฮชของรายการที่ผูกบิลเดิม (บิล POS ของระบบ+สาขานี้เท่านั้น) แล้วเทียบแบบ regDuplicate ◂ */
+async function regTableDuplicate(db: RegDb, s: RegScope, req: RegParsedSubmit, sale: RegSaleRow, duplicated: boolean): Promise<RegisterSubmitResult> {
+  req.tableReplayHash = null;
+  if (sale.sourceModule === "POS" && sale.unitId === s.unitId && sale.systemId === s.systemId && sale.sourceId) {
+    const ids = await (await regRestaurant()).tableItemIdsOfSale(db, { tenantId: s.tenantId, unitId: s.unitId, saleId: sale.id });
+    req.tableReplayHash = ids.length ? tableItemsHash(ids) : null;
+  }
+  return regDuplicate(s, req, sale, duplicated);
+}
+
+/**
+ * POS P2.4 ▸ R7 — ส่งบิลของโต๊ะ: ธุรกรรมเดียว = (ล็อกใบขอรับเงิน ถ้ามี) → ล็อกคีย์บิล → ยึดรายการ FOR UPDATE (ได้ไม่ครบ = TABLE_ITEMS_CHANGED + rollback) →
+ *   regCreateSale(…, tx) (จุดเรียกเดิม · sourceModule "POS" · sourceId = session) → (ใช้ใบขอรับเงิน) → ผูกรายการ saleId/settledAt →
+ *   ไม่มีรายการค้างจ่าย + ไม่มีรอบร่าง HELD ⇒ session CLOSED + โต๊ะ dirtySince (CONTROLLER-DECISION 9: แถวรายการ/session/บรรทัดบิล xmin เดียวกัน)
+ *   สองเครื่องจ่ายโต๊ะเดียวกันพร้อมกัน (คนละคีย์) = บิลเดียว · ผู้แพ้รอล็อกรายการแล้วยึดไม่ได้ ⇒ ไม่มีบิล/เลขใบเสร็จ/event (rollback ทั้งก้อน)
+ *   หลัง commit: ตัดสต็อก + scheduleDrain (ชุดเดียวกับทางใบขอรับเงิน) ◂
+ */
+async function regSubmitTable(
+  db: RegDb,
+  s: RegScope,
+  req: RegParsedSubmit,
+  saleInput: CreateSaleInput,
+  refs: SaleIntentRef[],
+  startedAt: number,
+): Promise<RegisterSubmitResult> {
+  const t = req.cart.table!;
+  const rest = await regRestaurant();
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const saleId = await db.$transaction(
+        async (tx) => {
+          const locked = refs.length ? await lockSaleIntents(tx, s, refs) : null;
+          if (locked && !locked.ok) throw new RegIntentRefusal(regRefuse(locked.code));
+          await tx.$queryRaw`SELECT 1 AS x FROM (SELECT pg_advisory_xact_lock(hashtext(${saleInput.tenantId}::text || ':' || ${saleInput.idempotencyKey}::text))) l`;
+          const existed = await tx.posSale.findUnique({ where: { tenantId_idempotencyKey: { tenantId: saleInput.tenantId, idempotencyKey: saleInput.idempotencyKey } }, select: { id: true } });
+          // คีย์นี้ถูกบันทึกระหว่างที่เราตรวจ (คำขอซ้ำพร้อมกัน) = บิลเดิม — ไม่ยึดรายการ/ไม่ใช้ intent ซ้ำ (เทียบ payload หลัง commit)
+          if (existed) return existed.id;
+          const scope = { tenantId: s.tenantId, unitId: s.unitId, sessionId: t.sessionId };
+          const claimed = await rest.claimTableItemsInTx(tx, { ...scope, itemIds: t.itemIds });
+          if (claimed.length !== t.itemIds.length) throw new RegIntentRefusal(regRefuse("TABLE_ITEMS_CHANGED"));
+          const r = await regCreateSale(saleInput, regCallerTx(tx));
+          if (locked) await consumeSaleIntents(tx, s, r.saleId, locked.notes);
+          const drafts = await tx.posHeldCart.count({ where: { tenantId: s.tenantId, systemId: s.systemId, unitId: s.unitId, tableSessionId: t.sessionId, status: "HELD" } });
+          const st = await rest.settleTableItemsInTx(tx, { ...scope, itemIds: t.itemIds, saleId: r.saleId, closeWhenPaid: drafts === 0 });
+          if (st.settled !== t.itemIds.length) throw new RegIntentRefusal(regRefuse("TABLE_ITEMS_CHANGED"));
+          return r.saleId;
+        },
+        { timeout: 20_000, maxWait: 10_000 },
+      );
+      if (saleInput.lines.some((l) => l.itemId || (l.components && l.components.length))) await consumeSaleInventory(s.tenantId, s.unitId, saleId);
+      scheduleDrain();
+      const row = await regLoadSale(db, s.tenantId, req.idempotencyKey);
+      if (!row || row.id !== saleId) return regRefuse("INTERNAL");
+      return regTableDuplicate(db, s, req, row, row.createdAt.getTime() < startedAt);
+    } catch (e) {
+      if (e instanceof RegIntentRefusal) {
+        if (e.refusal.code === "INTENT_CONSUMED") {
+          const row = await regLoadSale(db, s.tenantId, req.idempotencyKey);
+          if (row) return regTableDuplicate(db, s, req, row, true);
+        }
+        return e.refusal;
+      }
+      const code = (e as { code?: unknown } | null)?.code;
+      if (code === "P2002") {
+        const row = await regLoadSale(db, s.tenantId, req.idempotencyKey);
+        if (row) return regTableDuplicate(db, s, req, row, true);
+        continue;
+      }
+      if (code === "P2034" || code === "P2028") continue;
+      if (e instanceof PosSaleError) {
+        if (e.code === "IDEMPOTENCY_CONFLICT") {
+          const row = await regLoadSale(db, s.tenantId, req.idempotencyKey);
+          return row ? regTableDuplicate(db, s, req, row, true) : regRefuse("IDEMPOTENCY_CONFLICT");
+        }
+        return regRefuse(e.code === "HAS_REFUNDS" ? "VALIDATION" : e.code, e.code === "STOCK_INSUFFICIENT" ? e.message : undefined);
+      }
+      if (e instanceof Error && e.message.startsWith("PAYMENT_MISMATCH")) return regRefuse("PAYMENT_MISMATCH");
+      if (e instanceof Error && e.message.startsWith("INTENT_CONSUMED")) return regRefuse("INTENT_CONSUMED");
+      const race = regRightsRace(e);
+      if (race) return race;
+      throw e;
+    }
+  }
+  return regRefuse("BUSY");
+}
+
+/**
+ * POS P2.4 ▸ R5 — ราคาของรอบร่างตอนส่งครัว (ตัวแก้ราคาของหน้าขาย · ช่องทางของโต๊ะ · ราคาแช่แข็งตั้งแต่นี้ CD3):
+ *   ตัวตรวจตะกร้า + regPrice ชุดเดียวกับ quote (สินค้าขายได้ที่สาขา · เปิดขาย · ตัวเลือก · ราคาเอง = pos.sale.priceOverride · สูตรที่วัตถุดิบไม่อยู่สาขา = PRODUCT_NOT_FOUND
+ *   มติผู้คุม 14) · คืนบรรทัดพร้อมส่ง createOrderInTx: unitPrice = ราคาไม่รวมตัวเลือก · optionsTotal = Σ ส่วนต่าง · สำเนาตัวเลือก · หมายเหตุ ◂
+ */
+export type RegisterTableRoundLine = {
+  productId: string | null;
+  name: string;
+  qty: number;
+  unitPrice: number;
+  optionsTotal: number;
+  choiceIds: string[];
+  options: { choiceId: string; groupName: string; name: string; priceDeltaSatang: number }[];
+  note: string | null;
+};
+export async function registerPriceTableRound(
+  ctx: RegisterCtx,
+  actor: RegisterActor,
+  input: { cart: unknown; channelId: string | null },
+  client?: RegDb,
+): Promise<{ ok: true; lines: RegisterTableRoundLine[] } | RegisterRefusal> {
+  return regGuard("registerPriceTableRound", async () => {
+    const db: RegDb = client ?? prisma;
+    const s = await regScope(db, ctx, actor);
+    if (isRegRefusal(s)) return s;
+    const cart = regParseCart(input?.cart, REG_QUOTE_KEYS);
+    if (isRegRefusal(cart)) return cart;
+    if (cart.tableSessionId || cart.billDiscount || cart.memberId || cart.couponCode || cart.memberChoices || cart.channelId || !cart.lines.length) return regRefuse("VALIDATION");
+    const bad = cart.lines.findIndex((l) => l.discount !== null || (l.kind === "product" && (l.weighedBarcode !== null || l.weightGrams !== null)));
+    if (bad >= 0) return regRefuse("VALIDATION", undefined, bad);
+    const p = await regPrice(db, s, { ...cart, channelId: input.channelId }, undefined, null);
+    if (isRegRefusal(p)) return p;
+    return {
+      ok: true as const,
+      lines: p.resolved.map((l) => {
+        const optionsTotal = l.options.reduce((t, o) => t + o.priceDeltaSatang, 0);
+        return {
+          productId: l.productId,
+          name: l.name,
+          qty: l.qty,
+          unitPrice: l.unitPriceSatang - optionsTotal,
+          optionsTotal,
+          choiceIds: l.options.map((o) => o.choiceId),
+          options: l.options.map((o) => ({ choiceId: o.choiceId, groupName: o.groupName, name: o.name, priceDeltaSatang: o.priceDeltaSatang })),
+          note: l.note,
+        };
+      }),
+    };
+  });
+}
+
+/** POS P2.4 ▸ ขอบเขตของหน้าขายด้วยสิทธิ์ใดสิทธิ์หนึ่งที่ระบุ (โหมดโต๊ะ: ผัง = pos.sale.create หรือ pos.sale.read) — ok = ctx/actor ที่ตรวจแล้ว ◂ */
+export async function registerScopeFor(
+  ctx: RegisterCtx,
+  actor: RegisterActor,
+  perms: readonly string[],
+  client?: RegDb,
+): Promise<{ ok: true; ctx: RegisterCtx; actor: RegisterActor; unitName: string } | RegisterRefusal> {
+  const s = await regScope(client ?? prisma, ctx, actor, perms.length ? perms : REG_SELL_PERMS);
+  if (isRegRefusal(s)) return s;
+  return { ok: true, ctx: { tenantId: s.tenantId, systemId: s.systemId, unitId: s.unitId }, actor: s.actor, unitName: s.unitName };
 }
 
 /** POS P1.15: ผู้อนุญาตส่วนลดเกินเพดาน (audit pos.discount.override) */

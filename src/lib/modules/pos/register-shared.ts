@@ -206,7 +206,15 @@ export type RegisterRefusalCode =
   // POS P2.2 ▸ ราคาตามช่องทาง (R12) — สินค้าไม่ขายในช่องทางนี้ (lineIndex) · โปรราคาไม่พบ · โปรราคาครบเพดาน ◂
   | "CHANNEL_NOT_SOLD"
   | "PRICE_RULE_NOT_FOUND"
-  | "PRICE_RULE_LIMIT";
+  | "PRICE_RULE_LIMIT"
+  // POS P2.4 ▸ โหมดโต๊ะ (R12) — โต๊ะ/session/การจอง/คำขอของสาขาอื่นหรือไม่มีจริง · โต๊ะปิดใช้งาน · session ปิดแล้ว · ไม่มีรายการให้เช็คบิล ·
+  //   รายการของโต๊ะเปลี่ยนระหว่างเช็คบิล · ปิดโต๊ะที่ยังมีรายการค้างจ่าย ◂
+  | "TABLE_NOT_FOUND"
+  | "TABLE_INACTIVE"
+  | "TABLE_SESSION_CLOSED"
+  | "TABLE_EMPTY"
+  | "TABLE_ITEMS_CHANGED"
+  | "TABLE_HAS_UNPAID";
 
 /** คำปฏิเสธ — คืนค่า ไม่ throw · `lineIndex` = บรรทัดที่ผิด (ลำดับเดียวกับที่ส่งมา) ถ้าระบุได้ */
 export type RegisterRefusal = { ok: false; code: RegisterRefusalCode; message: string; lineIndex?: number };
@@ -302,7 +310,14 @@ export type RegisterQuoteInput = {
   memberChoices?: RegisterMemberChoices;
   /** POS P2.1 ▸ R10: ช่องทางขาย (SalesChannel.id ของสาขานี้) — ไม่ส่ง = หน้าร้าน (STORE) · อื่น/เก็บแล้ว/ปิด = CHANNEL_INVALID · บิลพักเก็บไว้ ◂ */
   channelId?: string;
+  /**
+   * POS P2.4 ▸ R6: บิลของโต๊ะ (TableSession.id) — lines ต้องเป็น [] (บรรทัด = รายการที่ส่งครัวแล้วและยังไม่จ่าย · ราคาสำเนาตอนส่ง) ·
+   * ห้ามส่ง channelId (ช่องทางมาจากโต๊ะ) · ผล quote มี `table` · ไม่ใช่ของบิลพัก (บิลพักของโต๊ะใช้ holdRegisterCart({cart, tableSessionId})) ◂
+   */
+  tableSessionId?: string;
 };
+/** POS P2.4 ▸ บิลของโต๊ะใน quote: itemIds = รายการที่จะถูกคิดเงิน (ลำดับ createdAt, id) · itemsHash = tableItemsHash(itemIds) — submit ส่งกลับเป็น expectedTableItemsHash ◂ */
+export type RegisterQuoteTable = { sessionId: string; tableName: string; itemIds: string[]; itemsHash: string };
 
 /** POS P2.1 ▸ R10: ช่องทางของ quote (ปริยาย = STORE ของสาขา) — คีย์ตายตัว 4 ตัว ◂ */
 export type RegisterQuoteChannel = { id: string; code: string; name: string; payout: "PLATFORM" | "DIRECT" };
@@ -358,6 +373,8 @@ export type RegisterQuoteTotals = {
   memberConflicts?: RegisterMemberConflict[];
   /** POS P2.1 ▸ R10: ช่องทางของบิล (เซิร์ฟเวอร์เติมทุก quote · ยอดที่จอคิดเองไม่มี ⇒ optional) ◂ */
   channel?: RegisterQuoteChannel;
+  /** POS P2.4 ▸ R6: มีเฉพาะ quote ของบิลโต๊ะ (tableSessionId) ◂ */
+  table?: RegisterQuoteTable;
 };
 /** POS P1.12: บรรทัดสิทธิ์สมาชิกบนยอด (ลำดับกระเป๋า) · ref = id ว่อชเชอร์ (ระดับ/แต้ม = null) · note = คำอธิบายเมื่อระบบปรับให้ */
 export type RegisterMemberLine = { kind: "TIER" | "VOUCHER" | "POINTS" | "GIFTCARD"; ref: string | null; label: string; discountSatang: number; note: string | null };
@@ -398,6 +415,8 @@ export type RegisterSubmitInput = RegisterQuoteInput & {
   expectedGrandTotalSatang: number;
   /** POS P2.1 ▸ R10: เลขออเดอร์แพลตฟอร์ม (ตัดช่องว่าง · ≤ CHANNEL_REF_MAX 40 ไม่งั้น VALIDATION) ◂ */
   channelRef?: string;
+  /** POS P2.4 ▸ R7: บังคับเมื่อมี tableSessionId — `table.itemsHash` จาก quote ล่าสุด (ชุดรายการเปลี่ยน = TABLE_ITEMS_CHANGED ไม่มีบิล) ◂ */
+  expectedTableItemsHash?: string;
   /** POS P1.15 R3: โทเคนผู้ขายจาก verifyStaffPin (ผูกเครื่อง · 12 ชม.) — ผู้ขาย/เพดานส่วนลด = คนในโทเคน · ผิด/หมดอายุ = STAFF_TOKEN_INVALID */
   staffToken?: string;
   /** POS P1.15 R4/R5: PIN ผู้จัดการที่เครื่องนี้ (คู่ managerUserId) — อนุญาตส่วนลดเกินสิทธิ์ทันที (audit pos.discount.override) */
@@ -864,6 +883,13 @@ const REFUSAL_KEY: Readonly<Record<string, string>> = {
   CHANNEL_NOT_SOLD: "errors.channelNotSold",
   PRICE_RULE_NOT_FOUND: "errors.priceRuleNotFound",
   PRICE_RULE_LIMIT: "errors.priceRuleLimit",
+  // POS P2.4 ▸ โหมดโต๊ะ ◂
+  TABLE_NOT_FOUND: "errors.tableNotFound",
+  TABLE_INACTIVE: "errors.tableInactive",
+  TABLE_SESSION_CLOSED: "errors.tableSessionClosed",
+  TABLE_EMPTY: "errors.tableEmpty",
+  TABLE_ITEMS_CHANGED: "errors.tableItemsChanged",
+  TABLE_HAS_UNPAID: "errors.tableHasUnpaid",
 };
 
 /**

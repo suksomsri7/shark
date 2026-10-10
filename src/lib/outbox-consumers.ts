@@ -681,8 +681,26 @@ const baseConsumers: Record<string, OutboxHandler> = {
   // M2.3: + ยกเลิกตราของบิลใบนั้น (voidStampsForSale)
   // M2.8: + คืนสิทธิ์ทุกชนิด + ย้อนแต้ม/ยอดสะสม/ไทม์ไลน์ของบิลที่ถูกยกเลิก
   // CRM C2.7 ▸ + ถอนคืนยอดของบิลที่ถูกยกเลิก (เฉพาะที่เคยนับ) — ต่อท้ายสุดเช่นกัน ◂
+  // POS P2.4 ▸ บิลโต๊ะ (CD5): งานหลักคู่บัญชี = ปลดรายการของบิลที่ถูก void + เปิดโต๊ะกลับ (pos/table.tableSaleVoided → facade ร้านอาหาร ·
+  //   บิลที่ไม่ใช่ POS+sourceId ไม่แตะ) · ทั้งสองวิ่งเสมอ · ล้มขั้นใด = event retry (ทั้งคู่ idempotent) ◂
   "pos.sale.voided": withAutomation(
-    compose(compose(compose(compose(posSaleVoided, kanbanBridge("onVoidedSale")), stampVoidForSale), memberSaleBridge("onPosSaleVoided")), crmBridge("onPosSaleVoided")),
+    compose(compose(compose(compose(async (evt) => {
+      let failed = false;
+      let err: unknown = null;
+      try {
+        await posSaleVoided(evt);
+      } catch (e) {
+        failed = true;
+        err = e;
+      }
+      try {
+        await (await import("@/lib/modules/pos/table")).tableSaleVoided(evt);
+      } catch (e) {
+        if (!failed) err = e;
+        failed = true;
+      }
+      if (failed) throw err;
+    }, kanbanBridge("onVoidedSale")), stampVoidForSale), memberSaleBridge("onPosSaleVoided")), crmBridge("onPosSaleVoided")),
   ),
   // POS P1.8 ▸ คืนเงิน: ใบลดหนี้ + JV ตามสัดส่วน · รับของคืนที่ต้นทุนเดิม · แต้ม/ยอดสะสม/ตรา (ตัวรับอยู่ pos/refund-consumer.ts · โหลดตอนใช้ กันวงโหลดไฟล์) ◂
   "pos.sale.refunded": withAutomation(async (evt) => (await import("@/lib/modules/pos/refund-consumer")).posSaleRefunded(evt)),
