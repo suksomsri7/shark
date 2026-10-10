@@ -996,6 +996,14 @@ export async function pendingStockParts(
 
 /** มติ §9 Q8: เพดานบิลต่อการกด 1 ครั้ง (เก่าสุดก่อน) */
 export const RETRY_STOCK_CUTS_MAX = 200;
+/**
+ * POS P2.3 ▸ fix round 1 (รีวิว F2): เริ่ม "วันนี้" ตามเวลาไทย (00:00 Asia/Bangkok · UTC+7 ไม่มีเวลาออมแสง) — ขอบเขตเดียวของ
+ *   ตัวนับ registerStatus.pendingStockCount และ retryPendingStockCuts ⇒ "ตัดสต็อกค้าง N บิล" ตัดเฉพาะ N บิลที่จอนับ ◂
+ */
+export function posDayStart(now: Date = new Date()): Date {
+  const bkk = new Date(now.getTime() + 7 * 3600000).toISOString().slice(0, 10);
+  return new Date(new Date(`${bkk}T00:00:00Z`).getTime() - 7 * 3600000);
+}
 export type RetryStockCutsActor = { userId: string; role: Role; unitAccess: string[]; permissions: Record<string, unknown> };
 
 /**
@@ -1003,10 +1011,13 @@ export type RetryStockCutsActor = { userId: string; role: Role; unitAccess: stri
  *   ctx = {tenantId, systemId (POS), actor} (มติ 1) · สิทธิ์ pos.settings.manage ที่สาขา · สาขาไม่ผูก POS นี้/เก็บถาวร/เข้าไม่ได้ = NOT_FOUND
  *   คืน {scanned (บิลที่ค้างตอนเริ่ม), cut (บิลที่หายค้างหลังรอบนี้), stillPending (บิลในรอบนี้ที่ยังค้าง)} · audit "pos.stock.retry" เมื่อมีบิลให้ลอง
  *   ปฏิเสธ = คืน {ok:false, code, message} ไม่ throw (มติ 1) · ทุกบิลตัดครบแล้ว = {scanned 0, cut 0, stillPending 0} ไม่มีแถวใหม่ ไม่มี audit
+ *   fix round 1 (รีวิว F2 · มติผู้คุมงาน): ขอบเขต = ขอบเขตของตัวนับ — `opts.since` ไม่ส่ง = วันนี้ (posDayStart · ตัวเดียวกับ registerStatus) ·
+ *     สแกนทุกช่วงเวลาเฉพาะเมื่อผู้เรียกส่ง `since: null` ตรง ๆ (ไม่เปิดให้จอ U) ⇒ บิลค้างเก่าที่เจ้าของแก้ด้วยการนับสต็อกไปแล้วไม่ถูกตัดซ้ำ
  */
 export async function retryPendingStockCuts(
   ctx: { tenantId: string; systemId: string; actor: RetryStockCutsActor },
   unitId: string,
+  opts: { since?: Date | null } = {},
 ): Promise<RetryPendingStockCutsResult> {
   try {
     const c = ctx as unknown as Record<string, unknown> | null;
@@ -1023,7 +1034,9 @@ export async function retryPendingStockCuts(
     ]);
     if (!sys || !link || link.systemId !== systemId || !unit || !canAccessUnit(actor, unitId)) return { ok: false, code: "NOT_FOUND", message: RETRY_MSG.NOT_FOUND };
     if (!evaluate(actor, { module: "pos", action: "pos.settings.manage", unitId })) return { ok: false, code: "PERMISSION_DENIED", message: RETRY_MSG.PERMISSION_DENIED };
-    const pend = await pendingStockParts(prisma, { tenantId, unitId });
+    const o = opts && typeof opts === "object" ? opts : {};
+    const since = o.since === null ? undefined : o.since instanceof Date && !Number.isNaN(o.since.getTime()) ? o.since : posDayStart();
+    const pend = await pendingStockParts(prisma, { tenantId, unitId, since });
     const pendingIds = [...new Set(pend.map((p) => p.saleId))];
     if (pendingIds.length === 0) return { ok: true, scanned: 0, cut: 0, stillPending: 0 };
     const order = await prisma.posSale.findMany({

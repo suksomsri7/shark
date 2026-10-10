@@ -19,7 +19,7 @@ import { posMembership } from "./access";
 import { registerCatalog, registerScan, quoteRegisterCart, quoteRegisterCartOverride, submitRegisterSale, registerStatus, registerProductOptions } from "./register";
 import { discardHeldCart, holdRegisterCart, listHeldCarts, recallHeldCart } from "./held-cart";
 import { registerFulfilReward, registerMemberBenefits, registerMemberLookup, registerQuickMember } from "./register-member"; // POS P1.12 ◂
-import { retryPendingStockCuts } from "./service"; // POS P2.3 ▸ §9 Q8 ตัดสต็อกค้าง ◂
+import { posDayStart, retryPendingStockCuts } from "./service"; // POS P2.3 ▸ §9 Q8 ตัดสต็อกค้าง · fix round 1 F2: ขอบเขตวันนี้ = ตัวนับ ◂
 import type {
   DiscardHeldCartResult,
   HoldRegisterCartResult,
@@ -317,7 +317,7 @@ export async function registerFulfilRewardAction(args: Target & { memberId: stri
 // ═══════ POS P2.3 ▸ §9 Q8 — "ตัดสต็อกค้าง N บิล · ลองอีกครั้ง" (ปุ่ม = P2.3U) · ปฏิเสธคืนเป็นข้อมูล ไม่ throw ◂ ═══════
 
 /**
- * ตัดซ้ำบิลค้างตัดสต็อกของสาขา (เก่าสุดก่อน ≤ 200) — สิทธิ์ pos.settings.manage ที่สาขา ตัดสินที่ service.retryPendingStockCuts
+ * ตัดซ้ำบิลค้างตัดสต็อกของสาขา "วันนี้" (เก่าสุดก่อน ≤ 200 · ขอบเขตเดียวกับตัวนับ · fix round 1 F2) — สิทธิ์ pos.settings.manage ที่สาขา ตัดสินที่ service.retryPendingStockCuts
  * (ไม่ต้องมี pos.sale.create: ผู้จัดการที่ไม่ขายก็กดได้) · เข้าสาขาไม่ได้ = NOT_FOUND · ขัดข้อง = UNKNOWN
  */
 export async function retryPendingStockCutsAction(args: { systemId: string; unitId: string }): Promise<RetryPendingStockCutsResult> {
@@ -332,6 +332,7 @@ export async function retryPendingStockCutsAction(args: { systemId: string; unit
     const r = await retryPendingStockCuts(
       { tenantId: auth.active.tenantId, systemId, actor: { userId: auth.user.id, role: m.role, unitAccess: m.unitAccess, permissions: m.permissions } },
       unitId,
+      { since: posDayStart() }, // fix round 1 (รีวิว F2): ขอบเขตเดียวกับ registerStatus.pendingStockCount — จอไม่มีทางสแกนทุกช่วงเวลา
     );
     if (r.ok) revalidatePath(`/app/sys/${systemId}/pos`);
     return r;

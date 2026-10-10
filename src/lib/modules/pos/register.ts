@@ -417,7 +417,7 @@ import * as couponSvc from "@/lib/modules/coupon/service";
 import { splitIncludedVat } from "@/lib/money/vat";
 import type { RegisterMemberGate, RegisterMemberQuote } from "./register-member";
 // POS P1.7 ▸ ใบขอรับเงิน (pi_…) ใช้ในธุรกรรมขายของหน้าขาย · งานหลัง commit ชุดเดียวกับ createSale (ตัดสต็อก + ระบายคิว · มติ I) ◂
-import { consumeSaleInventory, pendingStockParts } from "./service";
+import { consumeSaleInventory, pendingStockParts, posDayStart } from "./service";
 // POS P2.3 ▸ สูตร/BOM: สูตรที่ใช้จริงของแถว (อ่านอย่างเดียว) · กระจายสูตร/จำนวนหน่วยที่ทำได้ (บริสุทธิ์) ◂
 import { loadRowRecipes } from "./recipe";
 import { expandRecipe, recipePortions } from "./recipe-shared";
@@ -2501,8 +2501,8 @@ export async function registerStatus(ctx: RegisterCtx, actor: RegisterActor, cli
     }
     const sh = await registerShiftStatus(db, s, deviceId);
     const user = await db.user.findUnique({ where: { id: s.actor.userId }, select: { name: true, email: true } });
-    const bkk = new Date(Date.now() + 7 * 3600000).toISOString().slice(0, 10);
-    const dayStart = new Date(new Date(`${bkk}T00:00:00Z`).getTime() - 7 * 3600000);
+    // POS P2.3 ▸ fix round 1 (รีวิว F2): "วันนี้" ตัวเดียวกับ retryPendingStockCuts (service.posDayStart) ◂
+    const dayStart = posDayStart();
     // คีย์ตัดสต็อกต่อบรรทัดของ createSale = `pos-consume-<saleId>-<lineId>` (service.ts consumeSaleInventory) — ใช้ unique (tenantId, idempotencyKey)
     // POS P1.8 ▸ R3: เฉพาะบิลขาย (docType SALE) — บรรทัดใบคืนถือ itemId ของบรรทัดเดิมแต่ไม่มีการตัดสต็อก ◂
     // P1.2 R8: บรรทัดชุดนับจนกว่าคีย์ของ "ทุก" ส่วนประกอบ `pos-consume-<saleId>-<lineId>-<invItemId>` จะมีครบ
