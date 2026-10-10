@@ -863,12 +863,14 @@ export function RegisterScreen(props: RegisterScreenProps) {
     if (cart.lines.some(isPricedByServer)) return null;
     // POS P1.12U มติ 1: มีสมาชิก/คูปอง = ยอดมาจากเซิร์ฟเวอร์เท่านั้น (ส่วนลดระดับ · คูปอง · สิทธิ์) — ไม่เดายอดในเครื่อง
     if (cart.memberId || cart.couponCode) return null;
+    // POS P2.2U fix รอบ 1 F3: ราคาโปร/ช่องทาง ≠ หน้าร้าน = ยอดของเซิร์ฟเวอร์เท่านั้น (ราคาไทล์คือราคาหน้าร้าน — ห้ามเดายอดบิล LINE MAN/โปร) ◂
+    if (cartUsesPriceLayer(cart)) return null;
     const input = cartToPriceInput(cart, known.current, vat, localCap);
     if ("ok" in input) return null; // สินค้าไม่รู้จัก/ไม่มีราคา — รอ quote ของเซิร์ฟเวอร์ตัดสิน
     const r = priceCart(input);
     return r.ok ? r : null;
     // eslint-disable-next-line react-hooks/exhaustive-deps -- known เปลี่ยนพร้อม cartVer
-  }, [cart, cartVer, vat, localCap]);
+  }, [cart, cartVer, vat, localCap, quote]);
 
   const changeCart = (next: RegisterCart) => {
     setCart(next);
@@ -1064,7 +1066,9 @@ export function RegisterScreen(props: RegisterScreenProps) {
 
   // R3 F1: ตะกร้าที่มีบรรทัดราคาฝั่งเซิร์ฟเวอร์ (ตัวเลือก/ชั่ง) และ quote ยังไม่ตรงรุ่น = ยอดรอ (—) — ห้ามโชว์ยอดของตะกร้าเก่าค้าง
   // POS P1.12U มติ 1: มีสมาชิก/คูปอง = ยอดของเซิร์ฟเวอร์เท่านั้น ⇒ quote ยังไม่ตรงรุ่น = ยอดรอ (—) เหมือนบรรทัดตัวเลือก
-  const totalsPending = !quoteFresh && (cart.lines.some(isPricedByServer) || !!cart.memberId || !!cart.couponCode);
+  // POS P2.2U fix รอบ 1 F3: ตะกร้าที่ใช้ชั้นราคา (โปร/ช่องทาง ≠ หน้าร้าน) = ยอดรอ (—) จน quote ของเซิร์ฟเวอร์ตรงรุ่น · ชำระ/ส่งขายใช้ quote เท่านั้นเหมือนเดิม
+  const priceLayer = cartUsesPriceLayer(cart);
+  const totalsPending = !quoteFresh && (cart.lines.some(isPricedByServer) || !!cart.memberId || !!cart.couponCode || priceLayer);
   const shownTotals: CartTotalsModel | null = totalsPending ? null : (quoteFresh ?? (local ? { ...local } : quote?.q ?? null));
   // POS P1.9 (S15): จุดขายบังคับเปิดกะ แต่เครื่องนี้ยังไม่มีกะ = ล็อกปุ่มชำระ + การ์ด "เปิดกะก่อนเริ่มขาย"
   const shiftBlocked = !!status?.shiftRequired && !status?.shift;
@@ -1121,7 +1125,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
       serverPriced && !ql && l.kind === "product" && l.weightGrams !== undefined && !(l.options?.length ?? 0) && typeof prod?.priceSatang === "number"
         ? weighedEstimate(l.weightGrams, prod.priceSatang)
         : null;
-    const pending = serverPriced && !ql && est === null;
+    const pending = (serverPriced && !ql && est === null) || (priceLayer && !ql); // P2.2U fix F3: ราคาบรรทัดชั้นราคา = ของ quote เท่านั้น
     const unit = ql?.unitPriceSatang ?? est ?? ll?.unitPriceSatang ?? (l.kind === "custom" ? l.unitPriceSatang : (l.openPriceSatang ?? prod?.priceSatang ?? 0));
     const stockLeft = prod && prod.trackStock && prod.stockLeft !== null ? prod.stockLeft : null;
     const over = stockLeft !== null && l.qty > stockLeft;
