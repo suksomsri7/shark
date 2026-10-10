@@ -1279,3 +1279,7 @@
 ## 10 ต.ค. 06:5xZ — P2.4 R4 OK → merge GO (เลนเงิน) · เปิด gates67 ทรี c @b2c2aa84 = CONTROLLER-RUN p1.1 + ชุด regression ที่ fix4 ไม่ได้รัน (p2.3/p2.2/p2.1/p1.18/p1.12/p1.5/p1.9/p1.15/products/authz)
 - ลำดับ merge: รอ vis63 → merge P2.3U ก่อน (ภาพเต็มถ่ายบน head นั้น) → ให้ builder P2.4 merge origin/session/pos (มี P2.3U UI) → รัน p2.4+p2.3+p1.18+typecheck+fitness บนทรี c → ff session/pos → P2.8 ตาม
 - เลน 2/3: P2.8 fix3 (b) · gates67 (c · ไม่นับเลน) · p11 ว่าง
+
+## 10 ต.ค. 06:5xZ — P2.8 fix3 ส่งแล้ว (0d34fd6d · code c47c5727 · p2.8 60/60 ×3 · W11/W12/W13 + EDIT W4/W10/W9 · H1 = POS_ORDER_CLOSED claim refusal + webClaimRevertInTx) → hunter คนเดิมตรวจซ้ำ R3 (b อ่าน)
+- หลัง R3 OK: builder P2.8 merge origin/session/pos (หลัง P2.3U + P2.4 เข้าแล้ว) → ด่านสั้น (p2.8 ×1 + p2.4 + p2.3 + typecheck + fitness) → ff → `git merge origin/main` → ตรวจ P1.1b ส่วน B + ORACLE-EDIT P1.3 S5.12 → deploy p28 QC5
+- เลน 2/3: P2.8 R3 (b อ่าน) · gates67 (c) · p11 ว่าง · รอ vis63
