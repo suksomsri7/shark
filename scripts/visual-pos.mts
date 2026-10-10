@@ -112,6 +112,18 @@
 //   รอบ th/en พร้อมกันไม่ชนกัน · F7) · finally และ SIGINT/SIGTERM/SIGHUP ลบทั้งชุด (เครื่อง · ลิงก์ · ระบบ · สาขา + AuditLog ที่ชี้แถวเหล่านี้) ·
 //   ซากสาขา posqc-vis-empty-* อายุ > 1 ชม. (รอบที่ถูก kill -9) กวาดตอนสร้าง ◂
 //
+// POS P2.1U ▸ ช่องทางขาย (มติ 8 · wo p21u · --page settings|sales|register --states · 3 ขนาด · th + LOCALE=en · owner + cashier):
+//   settings: settings-channels (รายการจริง: 4 ช่องทางพื้นฐาน + LINE MAN + Grab ที่สร้างผ่าน saveChannel · Shopee/foodpanda = แถว "เชื่อมต่อ") ·
+//   settings-channel-drawer (ลิ้นชัก LINE MAN + ตัวอย่างสด · ไม่บันทึก · แคชเชียร์ = อ่านอย่างเดียว) · settings-channel-create (เจ้าของ: โหมดสร้าง พิมพ์ "ตลาดนัด" · ไม่บันทึก) ·
+//   settings-channels-readonly (แคชเชียร์: สวิตช์ปิด · ไม่มีปุ่มเพิ่ม/เชื่อมต่อ)
+//   fixture ช่องทาง (ensureChannelFixture): LINEMAN (PLATFORM 30%) + GRAB (PLATFORM 25% + ฿2 · VAT 7%) ของสาขาที่ถ่าย — หาตามรหัส · ไม่มี = สร้าง ·
+//   ค่าไม่ตรง = แก้ผ่าน saveChannel (เจ้าของร้าน) · ตรงแล้ว = ไม่เขียน · ไม่ลบ (บิลภาพอ้าง id) · SHOPEE/FOODPANDA มีอยู่แล้ว = ไม่ลบ (แจ้งใน log)
+//   sales: bills-channels (วันนี้มีบิลหน้าร้าน + เว็บร้าน + LINE MAN PLATFORM "LM-48152") · bills-drawer-commission (ลิ้นชักบิล LINE MAN — เจ้าของเห็นบล็อกค่าคอมฯ ·
+//   แคชเชียร์ = บรรทัดช่องทางอย่างเดียว) — บิล 2 ใบสร้างด้วย createSale (fix รอบ 1 F1: คีย์ต่อรอบ posqc-vis-p21u-<pid>-<n>-web|lineman · เจ้าของสร้างคู่ใหม่ทุกรอบ ·
+//   แคชเชียร์ใช้คู่ล่าสุดของวันนี้ซ้ำเมื่ออยู่หน้าแรก · ก่อนถ่ายยืนยันหน้าแรกด้วย billsPageData (หลุด = สร้างคู่ใหม่ + โหลดหน้าใหม่) · ไม่ลบ)
+//   register: paydlg-platform (บิลพักที่มี channelId ของ LINE MAN · holdRegisterCart ต่อภาพ → เรียกคืน → ชำระ → ช่อง "แพลตฟอร์ม" เลือกไว้ · ไม่ยืนยัน ·
+//   บิลพักที่ยังค้างลบใน finally) ◂
+//
 // 🔴 ไม่มีค่าปริยายของ base — ไม่ส่ง `--base`/`QC_BASE` = exit 2 · ต่อไม่ได้ = exit 2 · `:3215` = exit 2
 //    (พอร์ต 3215 เป็นของเซิร์ฟเวอร์ CRM RUN — LANE-RULES ข้อ 4 · ตั้ง POS_VISUAL_ALLOW_3215=1 เมื่อ CRM ปิดแล้วเท่านั้น)
 // 🔴 ชื่อไฟล์จงใจไม่ขึ้นต้น qc- (ต้องมีเซิร์ฟเวอร์ + chromium — ไม่เข้า qc:all)
@@ -185,7 +197,7 @@ const fileOf = (p: PosPage, w: number, h: number) => `${OUT}/${p}-${userKey}-${w
 const STATES_ON = /^p1\.3/i.test(WO) || argv.includes("--states");
 const LOCALE_EN = process.env.LOCALE === "en";
 type Device = (typeof POS_VIEWPORTS)[number]["name"];
-type StateKey = "register-en" | "register-empty-catalogue" | "default" | "cart3" | "cart4-01" | "line-editor" | "bill-discount" | "custom-item" | "paydlg-cash" | "paydlg-promptpay-qr" | "paydlg-promptpay-paid" | "paydlg-card-edc" | "sale-done" | "search-empty" | "stock-warn" | "offline" | "mobile-sheet" | "options-popover" | "weigh" | "taxinvoice-dialog" | "taxinvoice-set" | MemberStateKey | P115StateKey | StockStateKey | ShiftsStateKey | BillsStateKey | SettingsStateKey | RpubStateKey;
+type StateKey = "paydlg-platform" | "register-en" | "register-empty-catalogue" | "default" | "cart3" | "cart4-01" | "line-editor" | "bill-discount" | "custom-item" | "paydlg-cash" | "paydlg-promptpay-qr" | "paydlg-promptpay-paid" | "paydlg-card-edc" | "sale-done" | "search-empty" | "stock-warn" | "offline" | "mobile-sheet" | "options-popover" | "weigh" | "taxinvoice-dialog" | "taxinvoice-set" | MemberStateKey | P115StateKey | StockStateKey | ShiftsStateKey | BillsStateKey | SettingsStateKey | RpubStateKey;
 const STATE_PLAN: { key: StateKey; devices: readonly Device[]; note: string }[] = [
   { key: "default", devices: ["desktop", "ipad", "mobile"], note: "เปิดหน้า (ตะกร้าว่าง) — การ์ดเหลือน้อย/หมด/ปิดขายของ fixture อยู่ในกริด" },
   { key: "cart3", devices: ["desktop", "ipad", "mobile"], note: "อเมริกาโน่×2 · ลาเต้ (ลด ฿10) · ครัวซองต์ (สต็อก N → N−1)" },
@@ -229,6 +241,8 @@ const STATE_PLAN: { key: StateKey; devices: readonly Device[]; note: string }[] 
   // POS P1.18U ▸ มติ 8 ตัวสลับภาษาบนแถบบน · มติ 11 ร้านไม่มีสินค้า (ภาพ 19ก) ◂
   { key: "register-en", devices: ["desktop", "ipad", "mobile"], note: "แตะ EN ที่ตัวสลับภาษาแถบบน (md+) → ทั้งจอภาษาอังกฤษ · 390 = คุกกี้ LOCALE=en (ไม่มีตัวสลับในหัว 05ก) · หลังถ่ายคืนภาษาไทย" },
   { key: "register-empty-catalogue", devices: ["desktop", "ipad", "mobile"], note: "ภาพ 19ก: สาขา fixture ของระบบ POS ที่ไม่มีสินค้า → ไอคอน + \"ยังไม่มีสินค้าให้ขาย\" + ปุ่มเพิ่มสินค้า (เจ้าของเท่านั้น)" },
+  // POS P2.1U ▸ มติ 6: ช่อง "แพลตฟอร์ม" ที่จอชำระ — ถึงได้ทางบิลพักที่มี channelId เท่านั้น (ไม่มีตัวเลือกช่องทางบนจอ Q3) ◂
+  { key: "paydlg-platform", devices: ["desktop", "ipad"], note: "บิลพัก LINE MAN (holdRegisterCart + channelId) → บิลที่พัก → เรียกคืน → ชำระ → ช่อง \"แพลตฟอร์ม\" เลือกไว้เต็มยอด ช่องอื่นปิด (ไม่ยืนยัน)" },
 ];
 /** POS P1.18U ▸ สถานะหน้าขายที่แคชเชียร์ QC ถ่ายไม่ได้ (เข้าสาขา fixture ไม่ได้ · ห้ามแก้ membership ของ seed) ◂ */
 const OWNER_ONLY_STATES: ReadonlySet<string> = new Set(["register-empty-catalogue"]);
@@ -253,7 +267,7 @@ const SHIFTS_STATE_PLAN: { key: ShiftsStateKey; devices: readonly Device[]; note
   { key: "shifts-z", devices: ["desktop", "ipad", "mobile"], note: "ปิดกะ → แผง Z + กะที่ปิดแล้ว (ขนาดถัดไป = เปิด Z จากแถวในรายการ)" },
 ];
 // POS P1.16 ▸ สถานะของหน้าบิลวันนี้ (ข้อมูลสร้างครั้งเดียวก่อนเปิด chromium · ทุกสถานะอ่านอย่างเดียว ไม่กดยืนยัน) ◂
-type BillsStateKey = "bills-list" | "bills-drawer" | "bills-void" | "bills-refund" | "bills-empty" | "bill-taxinvoice-requested" | "bill-taxinvoice-issued";
+type BillsStateKey = "bills-list" | "bills-drawer" | "bills-void" | "bills-refund" | "bills-empty" | "bill-taxinvoice-requested" | "bill-taxinvoice-issued" | "bills-channels" | "bills-drawer-commission";
 const BILLS_STATE_PLAN: { key: BillsStateKey; devices: readonly Device[]; note: string }[] = [
   { key: "bills-list", devices: ["desktop", "ipad", "mobile"], note: "วันนี้ ≥ 6 บิล: ยกเลิก 1 · คืนบางส่วน 1 · คืนครบ 1 · เงินสดนอกกะ 1 · ปกติ/จ่ายผสม" },
   { key: "bills-drawer", devices: ["desktop", "ipad", "mobile"], note: "เลือกบิลปกติ → ลิ้นชักบิล (390 = แผ่นเต็มจอ)" },
@@ -263,11 +277,16 @@ const BILLS_STATE_PLAN: { key: BillsStateKey; devices: readonly Device[]; note: 
   // POS P1.13U ▸ แถวใบกำกับในลิ้นชัก (ภาพ 12) — บิล ABB ของวันนี้ (ใช้ซ้ำได้) · คำขอ P1.11 ลบใน finally · ใบ TX ที่ออกค้างในบัญชี QC4 (docId ใน summary) ◂
   { key: "bill-taxinvoice-requested", devices: ["desktop", "ipad", "mobile"], note: "บิลกาแฟ ABB + คำขอ P1.11 (requestFullTaxInvoice) → ลิ้นชัก \"ลูกค้าขอใบกำกับเต็มรูป\" · เจ้าของ = [ออกใบกำกับ][ปฏิเสธ] · แคชเชียร์ = ไม่มีปุ่ม" },
   { key: "bill-taxinvoice-issued", devices: ["desktop", "ipad", "mobile"], note: "⚠️ บิลกาแฟ ABB → issueFullTaxInvoice (ใบ TX ค้างในบัญชี QC4) → ลิ้นชัก \"ใบกำกับเต็มรูป <เลข> · ผู้ซื้อ\"" },
+  // POS P2.1U ▸ มติ 3–4 (ภาพ 12 คอลัมน์ช่องทาง · ภาพ 09 บล็อกค่าคอมฯ) ◂
+  { key: "bills-channels", devices: ["desktop", "ipad", "mobile"], note: "วันนี้มีบิลหน้าร้าน + เว็บร้าน + LINE MAN (PLATFORM · LM-48152 ในช่องลูกค้า · จ่าย \"แพลตฟอร์ม\") · บรรทัด \"หน้าร้าน N · ออนไลน์ M\"" },
+  { key: "bills-drawer-commission", devices: ["desktop", "ipad", "mobile"], note: "แตะบิล LINE MAN → ลิ้นชัก: บล็อกค่าคอมฯ ฿420 −฿126 รับจริง ฿294 (เจ้าของ) · แคชเชียร์ = บรรทัดช่องทางอย่างเดียว" },
 ];
 // POS P1.10 U ▸ สถานะของหน้าตั้งค่า (เครื่อง QC 2 เครื่องลงทะเบียนครั้งเดียวก่อนเปิด chromium · ไม่กดยืนยันเพิกถอน/ไม่กดพิมพ์) ◂
 type SettingsStateKey = "settings-receipt" | "settings-payments" | "settings-devices" | "settings-device-revoke" | "settings-print-pair" | "paydone-print" | P118uSettingsKey;
 // POS P1.18U ▸ แท็บตั้งค่าที่เหลือ 5 แท็บ + กล่อง PIN · ยืนยันปิดบัญชี · ลิ้นชักประวัติ ◂
-type P118uSettingsKey = "settings-general" | "settings-staff" | "settings-staff-pin" | "settings-shark" | "settings-shark-account-off" | "settings-history" | "settings-channels" | "settings-offline";
+type P118uSettingsKey = "settings-general" | "settings-staff" | "settings-staff-pin" | "settings-shark" | "settings-shark-account-off" | "settings-history" | "settings-channels" | "settings-offline" | P21uSettingsKey;
+// POS P2.1U ▸ มติ 8: แท็บช่องทางขาย (ลิ้นชัก LINE MAN · โหมดสร้าง · แคชเชียร์อ่านอย่างเดียว) ◂
+type P21uSettingsKey = "settings-channel-drawer" | "settings-channel-create" | "settings-channels-readonly";
 const SETTINGS_STATE_PLAN: { key: SettingsStateKey; devices: readonly Device[]; note: string }[] = [
   { key: "settings-receipt", devices: ["desktop", "ipad", "mobile"], note: "17A ใบเสร็จและภาษี + ตัวอย่างสด (แคชเชียร์ = ช่องปิด · อ่านอย่างเดียว)" },
   { key: "settings-payments", devices: ["desktop", "ipad", "mobile"], note: "P1.7U 17A วิธีรับเงิน: พร้อมเพย์ (อ่านอย่างเดียว) · อายุ QR · Beam + ชิปคีย์ · ยืนยันเอง (แคชเชียร์ = อ่านอย่างเดียว)" },
@@ -281,7 +300,10 @@ const SETTINGS_STATE_PLAN: { key: SettingsStateKey; devices: readonly Device[]; 
   { key: "settings-shark", devices: ["desktop", "ipad", "mobile"], note: "P1.18U ภาพ 10: 13 การ์ด + ใบเสร็จและภาษี + ออฟไลน์ · ช่องทางขายภายนอก + วิธีรับเงิน" },
   { key: "settings-shark-account-off", devices: ["desktop", "ipad", "mobile"], note: "P1.18U สวิตช์บัญชี (เปิดอยู่) → กล่อง \"ปิดการลงบัญชี?\" (ไม่กดยืนยัน) · แคชเชียร์ = สวิตช์ปิด" },
   { key: "settings-history", devices: ["desktop", "ipad", "mobile"], note: "P1.18U ปุ่ม \"ประวัติการเปลี่ยน\" → ลิ้นชัก ≥ 3 แถว (seedHistoryOnce) · แคชเชียร์ = ไม่มีปุ่มประวัติ" },
-  { key: "settings-channels", devices: ["desktop", "ipad", "mobile"], note: "P1.18U ช่องทางขายภายนอก: แบนเนอร์ P2.1U + 5 แถว (เว็บร้านอ่านจริง)" },
+  { key: "settings-channels", devices: ["desktop", "ipad", "mobile"], note: "P2.1U ช่องทางขายภายนอก (แผงจริง · ไม่มีแบนเนอร์): หน้าร้าน · QR โต๊ะ · เว็บร้าน · แชท · LINE MAN · Grab + แถว \"เชื่อมต่อ\" Shopee/foodpanda" },
+  { key: "settings-channel-drawer", devices: ["desktop", "ipad", "mobile"], note: "P2.1U แตะ LINE MAN → ลิ้นชักช่องทาง (PLATFORM 30% · ตัวอย่างสด ฿420 → ฿126 · รับจริง ฿294) ไม่บันทึก · แคชเชียร์ = อ่านอย่างเดียว" },
+  { key: "settings-channel-create", devices: ["desktop", "ipad", "mobile"], note: "P2.1U เจ้าของ: + เพิ่มช่องทางอื่น → โหมดสร้าง พิมพ์ชื่อ \"ตลาดนัด\" + รหัส MARKET (CUSTOM · ไม่มีค่าคอมฯ) ไม่บันทึก" },
+  { key: "settings-channels-readonly", devices: ["desktop", "ipad", "mobile"], note: "P2.1U แคชเชียร์: สวิตช์ปิดทุกแถว · ไม่มีปุ่มเพิ่ม/เชื่อมต่อ · หมายเหตุอ่านอย่างเดียว" },
   { key: "settings-offline", devices: ["desktop", "ipad", "mobile"], note: "P1.18U ออฟไลน์และการซิงก์: แบนเนอร์ P3.4 + การ์ดออฟไลน์" },
 ];
 const P118U_SETTINGS_TAB: Record<P118uSettingsKey, string> = {
@@ -293,8 +315,23 @@ const P118U_SETTINGS_TAB: Record<P118uSettingsKey, string> = {
   "settings-history": "shark",
   "settings-channels": "channels",
   "settings-offline": "offline",
+  "settings-channel-drawer": "channels",
+  "settings-channel-create": "channels",
+  "settings-channels-readonly": "channels",
 };
 const isP118uSettings = (k: string): k is P118uSettingsKey => Object.prototype.hasOwnProperty.call(P118U_SETTINGS_TAB, k);
+/** POS P2.1U ▸ สถานะที่ถ่ายได้บทบาทเดียว (แคชเชียร์ไม่มีปุ่มเพิ่มช่องทาง · ภาพอ่านอย่างเดียวเป็นของแคชเชียร์) ◂ */
+const OWNER_ONLY_SETTINGS: ReadonlySet<string> = new Set(["settings-channel-create"]);
+const CASHIER_ONLY_SETTINGS: ReadonlySet<string> = new Set(["settings-channels-readonly"]);
+/** POS P2.1U ▸ สถานะที่ต้องมี fixture ช่องทาง (LINEMAN · GRAB) — ค่าคงที่อยู่ก่อน --dry (แผนพิมพ์ใช้) ◂ */
+/** ช่องทางของภาพ (หาตามรหัสของสาขาที่ถ่าย · ค่าที่ต้องเป็น) — LINE MAN ตรงภาพ 09 (30% · ไม่มี VAT) · Grab โชว์ค่าคงที่ + VAT */
+const P21U_CHANNELS = [
+  { code: "LINEMAN", name: "LINE MAN", payout: "PLATFORM", commissionBp: 3000, commissionFixedSatang: 0, commissionVatBp: 0 },
+  { code: "GRAB", name: "Grab", payout: "PLATFORM", commissionBp: 2500, commissionFixedSatang: 200, commissionVatBp: 700 },
+] as const;
+/** เลขออเดอร์แพลตฟอร์มของบิลภาพ (ภาพ 12 แถว LINE MAN) */
+const P21U_REF = "LM-48152";
+const P21U_FIXTURE_STATES: ReadonlySet<string> = new Set(["settings-channels", "settings-channel-drawer", "settings-channel-create", "settings-channels-readonly", "bills-channels", "bills-drawer-commission", "paydlg-platform"]);
 const SETTINGS_STATE_KEYS: ReadonlySet<string> = new Set(SETTINGS_STATE_PLAN.map((s) => s.key));
 const isSettingsState = (k: StateKey): k is SettingsStateKey => SETTINGS_STATE_KEYS.has(k);
 /** เครื่อง QC ของหน้าตั้งค่า (brief §6) — 1 = มี printerConfig (ภาพจับคู่) · 2 = เบราว์เซอร์ (กะ + บิลของ paydone-print) */
@@ -364,7 +401,7 @@ const jobs: Job[] = pages.flatMap((p: PosPage): Job[] =>
       ? rpubPlan.map((st): Job => ({ page: p, v: RPUB_VIEWPORT, state: st.key, expect: st.expect, path: `/r/${st.bill === "none" ? RPUB_MISSING_TOKEN : `<token:${st.bill}>`}${LOCALE_EN ? "?lang=en" : ""}`, file: `${OUT}/${p}-${st.key.replace(/^rpub-/, "")}-${userKey}-${RPUB_VIEWPORT.w}x${RPUB_VIEWPORT.h}${LOCALE_EN ? "-en" : ""}.png` }))
       : []
     : settingsStatesOn && p === "settings"
-    ? SETTINGS_STATE_PLAN.flatMap((st): Job[] =>
+    ? SETTINGS_STATE_PLAN.filter((st) => !(userKey === "owner" ? CASHIER_ONLY_SETTINGS : OWNER_ONLY_SETTINGS).has(st.key)).flatMap((st): Job[] =>
         viewports
           .filter((v) => st.devices.includes(v.name))
           .map((v): Job => ({ page: p, v, state: st.key, path: settingsPath(st.key), file: `${OUT}/${p}-${st.key.replace(/^settings-/, "")}-${userKey}-${v.w}x${v.h}${LOCALE_EN ? "-en" : ""}.png` })),
@@ -447,6 +484,14 @@ if (DRY) {
       console.log("  P1.7U: ใบขอรับเงินของเครื่องรอบนี้ (PENDING = ยกเลิกใน finally) + บิลขายจริงที่ใช้ใบ PAID (paydlg-promptpay-paid) · PromptPay ID ของร้าน QC ตั้ง/คืนค่าเมื่อยังไม่มี");
     if (pages.includes("register") && jobs.some((j) => j.state && /^(member-|paydlg-member-|sale-done-member)/.test(j.state)))
       console.log("  P1.12U: สมาชิก QC (ค่าตั้งแต้ม · เติมแต้มคีย์ posqc-p112u-topup-<วันที่>-<ยอดก่อนเติม>) · fix รอบ 1: ระบบคูปองของร้าน QC ผูกสาขาที่ถ่าย + WELCOME50 ฿50 (find-or-create · ไม่ลบ) — member-attached/paydlg-member-points ใส่คูปอง (ไม่บันทึกบิล)");
+    if (jobs.some((j) => j.state && P21U_FIXTURE_STATES.has(j.state)))
+      console.log(
+        `  P2.1U: ช่องทาง ${P21U_CHANNELS.map((c) => `${c.code} (${c.payout} ${c.commissionBp / 100}%${c.commissionFixedSatang ? ` + ฿${c.commissionFixedSatang / 100}` : ""}${c.commissionVatBp ? ` · VAT ${c.commissionVatBp / 100}%` : ""})`).join(" · ")} ของสาขา ${unitKey} — หาตามรหัส · ไม่มี = สร้าง · ค่าไม่ตรง = แก้ (saveChannel เจ้าของร้าน) · ไม่ลบ`,
+      );
+    if (billsStatesOn && pages.includes("sales") && jobs.some((j) => j.state === "bills-channels" || j.state === "bills-drawer-commission"))
+      console.log(`  P2.1U: บิลช่องทางของวันนี้ 2 ใบ (createSale คีย์ต่อรอบ posqc-vis-p21u-<pid>-<n>-web|lineman · เจ้าของ = สร้างคู่ใหม่ทุกรอบ · แคชเชียร์ = ใช้คู่ล่าสุดของวันนี้ (${P21U_REF} + แท็กภาพบิล) ซ้ำเมื่ออยู่หน้าแรก ไม่งั้นสร้าง · ยืนยันหน้าแรกด้วย billsPageData · ไม่ลบ): เว็บร้าน ฿235 PROMPTPAY · LINE MAN ฿420 PLATFORM ${P21U_REF}`);
+    if (pages.includes("register") && jobs.some((j) => j.state === "paydlg-platform"))
+      console.log("  P2.1U: paydlg-platform พักบิล LINE MAN (holdRegisterCart + channelId) ใหม่ต่อภาพ → เรียกคืนผ่าน UI · ที่ค้างทิ้งใน finally (discardHeldCart)");
     if (needFixtures) console.log(`  fixture: สินค้าชั่วคราว 11 ตัว (เหลือ 2 · หมดสต็อก · ปิดขาย + 4 ตัวของภาพ 01 + ลาเต้มีตัวแปร 1+2 + สินค้าชั่ง 1) + กลุ่มตัวเลือก 4 กลุ่ม ที่สาขา ${unitKey} — ลบใน finally`);
   }
   console.log(`รวม ${plan.length} ภาพ (${pages.length} หน้า × ${viewports.length} ขนาด${STATES_ON ? " · หน้าขายแยกตามสถานะ" : ""} × 1 ผู้ใช้)`);
@@ -664,6 +709,13 @@ for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
         if (SHIFT.close) console.error(`${SHIFT.close.ok ? "🧹" : "⚠️"} ${SHIFT.close.detail}`);
       } catch (e) {
         console.error(`❌ ปิดกะไม่สำเร็จ: ${e instanceof Error ? e.message : e}`);
+      }
+      // POS P2.1U: ทิ้งบิลพัก LINE MAN ที่ยังค้าง (เหมือน finally)
+      try {
+        await cleanupP21u();
+        if (P21U.cleanup) console.error(`${P21U.cleanup.ok ? "🧹" : "⚠️"} ${P21U.cleanup.detail}`);
+      } catch (e) {
+        console.error(`❌ ทิ้งบิลพัก P2.1U ไม่สำเร็จ: ${e instanceof Error ? e.message : e}`);
       }
       // POS P1.15U: ลบคำขอ/กติกา · ทิ้งบิลพัก · คืนแถว PIN · เพิกถอนเครื่อง (เหมือน finally)
       try {
@@ -1170,6 +1222,8 @@ async function runState(page: Any, state: StateKey, device: Device): Promise<voi
   switch (state) {
     case "default":
       return;
+    case "paydlg-platform":
+      return runPlatformPayState(page, device); // POS P2.1U
     case "cart3":
       return addCart3(page, device);
     case "cart4-01": {
@@ -2232,6 +2286,7 @@ async function openTargetBill(page: Any): Promise<void> {
 }
 async function runBillsState(page: Any, state: BillsStateKey): Promise<void> {
   if (TAXINV_BILL_STATES.has(state)) return runTaxInvoiceBillState(page, state); // POS P1.13U
+  if (state === "bills-channels" || state === "bills-drawer-commission") return runP21uBillsState(page, state); // POS P2.1U
   if (state === "bills-empty") {
     await visibleEl(page, tid("pos-bills-empty"), 0, 15_000).catch(() => {
       throw new StepError(`วันที่ ${BILLS_EMPTY_DATE} ไม่ขึ้นข้อความว่าง (pos-bills-empty)`);
@@ -2967,14 +3022,283 @@ async function runP118uSettingsState(page: Any, state: P118uSettingsKey): Promis
         await visibleEl(page, tid("pos-settings-account-confirm"), 0, 5_000);
       }
       return;
+    // POS P2.1U ▸ แท็บช่องทางขายเป็นแผงจริงแล้ว (ไม่มีแบนเนอร์ · ไม่มีแถว PLANNED) — ตรวจแถวจริง + ลิ้นชัก/โหมดสร้าง/อ่านอย่างเดียว ◂
     case "settings-channels":
-      await visibleEl(page, tid("pos-settings-channels"), 0, 15_000);
-      await visibleEl(page, tid("pos-settings-channel-storefront"), 0, 5_000);
-      return;
+    case "settings-channel-drawer":
+    case "settings-channel-create":
+    case "settings-channels-readonly":
+      return runP21uSettingsState(page, state);
     case "settings-offline":
       await visibleEl(page, tid("pos-settings-offline"), 0, 15_000);
       await visibleEl(page, tid("pos-settings-card-offline"), 0, 5_000);
       return;
+  }
+}
+// ◂
+
+// ═══════════════════ POS P2.1U ▸ ช่องทางขาย: fixture ช่องทาง · บิลช่องทาง · สถานะหน้าตั้งค่า/บิล/จอชำระ (มติ 8) ═══════════════════
+const P21U = {
+  done: false,
+  error: null as string | null,
+  /** code → SalesChannel.id ของสาขาที่ถ่าย */
+  ids: {} as Record<string, string>,
+  notes: [] as string[],
+  bills: { done: false, error: null as string | null, web: "", lineman: "", reused: 0, page: "" },
+  /** บิลพักของสถานะ paydlg-platform (ทิ้งใน finally ถ้ายังไม่ถูกเรียกคืน) */
+  held: [] as string[],
+  cleanup: null as null | { ok: boolean; detail: string },
+};
+/** fixture ช่องทาง: LINEMAN + GRAB ตามค่าใน P21U_CHANNELS (หาตามรหัส · ไม่มี = สร้าง · ค่าไม่ตรง = แก้ · ตรง = ไม่เขียน) — ผ่านบริการ (เจ้าของร้าน) · พังไม่โยน */
+async function ensureChannelFixture(): Promise<void> {
+  if (P21U.done || P21U.error) return;
+  try {
+    const { listChannels, saveChannel } = await import("@/lib/modules/pos/channel");
+    const actor = await ownerActor();
+    const ctx = { tenantId: T.tenantId, systemId: SYS, unitId };
+    const l = await listChannels(ctx, actor, { includeArchived: true });
+    if (!l.ok) throw new StepError(`listChannels: ${l.code}`);
+    for (const c of l.items) P21U.ids[c.code] = c.id;
+    for (const want of P21U_CHANNELS) {
+      const row = l.items.find((c) => c.code === want.code);
+      if (row?.archived) throw new StepError(`ช่องทาง ${want.code} ของสาขา QC ถูกเก็บแล้ว (ไม่มีทางเปิดคืนผ่านบริการ — ผู้คุมงานตัดสิน)`);
+      if (!row) {
+        const r = await saveChannel(ctx, actor, { code: want.code, name: want.name, payout: want.payout, commissionBp: want.commissionBp, commissionFixedSatang: want.commissionFixedSatang, commissionVatBp: want.commissionVatBp });
+        if (!r.ok) throw new StepError(`สร้างช่องทาง ${want.code}: ${r.code}`);
+        P21U.ids[want.code] = r.channel.id;
+        P21U.notes.push(`สร้าง ${want.code}`);
+        continue;
+      }
+      const diff: Record<string, unknown> = {};
+      for (const k of ["payout", "commissionBp", "commissionFixedSatang", "commissionVatBp"] as const) if (row[k] !== want[k]) diff[k] = want[k];
+      if (!row.active) diff.active = true;
+      if (row.name !== want.name || Object.keys(diff).length) {
+        const r = await saveChannel(ctx, actor, { id: row.id, name: want.name, ...diff });
+        if (!r.ok) throw new StepError(`แก้ช่องทาง ${want.code}: ${r.code}`);
+        P21U.notes.push(`แก้ ${want.code} (${[row.name !== want.name ? "name" : "", ...Object.keys(diff)].filter(Boolean).join(",")})`);
+      }
+    }
+    for (const code of ["SHOPEE", "FOODPANDA"]) if (P21U.ids[code]) P21U.notes.push(`${code} มีอยู่แล้วในสาขา QC — แถว "เชื่อมต่อ" ของ ${code} จะไม่ขึ้น (ไม่ลบ)`);
+    P21U.done = true;
+  } catch (e) {
+    P21U.error = e instanceof Error ? e.message.slice(0, 200) : String(e);
+  }
+}
+/** วันที่ไทยวันนี้ (หน้าบิลวันนี้ของภาพ) */
+const bkkToday = () => new Date(Date.now() + 7 * 3_600_000).toISOString().slice(0, 10);
+/** POS P2.1U fix รอบ 1 ▸ F1: ตำแหน่งบิลในหน้าแรกของ "บิลวันนี้" (ตัวอ่านเดียวกับหน้าจอ · ค่าปริยาย = ทุกสถานะ · 10 แถว · ไม่กรอง) ◂ */
+async function p21uPageOnePos(saleIds: string[]): Promise<{ pos: number[]; total: number }> {
+  const { billsPageData } = await import("@/lib/modules/pos/bills");
+  const r = (await billsPageData({ tenantId: T.tenantId, systemId: SYS, unitId, deviceId: BILLS_DEVICE_ID } as never, (await ownerActor()) as never, { unitId, date: bkkToday(), page: 1, pageSize: 10 })) as Any;
+  if (!r?.ok) throw new StepError(`อ่านหน้าบิลวันนี้ไม่ได้: ${r?.code ?? "?"}`);
+  const ids = (r.items as { id: string }[]).map((i) => i.id);
+  return { pos: saleIds.map((id) => ids.indexOf(id) + 1), total: r.total as number };
+}
+/**
+ * POS P2.1U fix รอบ 1 ▸ F1: สร้างคู่บิลช่องทาง (เว็บร้าน PROMPTPAY ฿235 + LINE MAN PLATFORM ฿420 · LM-48152) ด้วยคีย์ต่อรอบ
+ * (`${process.pid}` เหมือนบิลชุดภาพ P1.16) ⇒ คู่ใหม่ = บิลใหม่สุดของวันเสมอ · ไม่ลบ (บิลขายจริงของวันใน QC4 เหมือนบิลชุดภาพ) ◂
+ */
+let p21uPairN = 0;
+async function createP21uPair(): Promise<{ web: string; lineman: string }> {
+  const web = P21U.ids.WEB;
+  const lm = P21U.ids.LINEMAN;
+  if (!web || !lm) throw new StepError("ไม่มีช่องทาง WEB/LINEMAN ของสาขา QC");
+  const { createSale } = await import("@/lib/modules/pos/service");
+  const actor = await ownerActor();
+  const k = `${FIX.prefix}p21u-${process.pid}-${++p21uPairN}`;
+  const base = { tenantId: T.tenantId, unitId, systemId: SYS, sourceModule: "POS", shiftId: BILLS.shiftId || null, soldByUserId: actor.userId };
+  const w = await createSale({
+    ...base,
+    idempotencyKey: `${k}-web`,
+    channelId: web,
+    lines: [{ name: `ลาเต้เย็น ${BILL_TAG}`, qty: 2, unitPriceSatang: 7500 }, { name: `ครัวซองต์อัลมอนด์ ${BILL_TAG}`, qty: 1, unitPriceSatang: 8500 }],
+    payMethods: [{ type: "PROMPTPAY", amountSatang: 23500 }],
+  } as never);
+  const m = await createSale({
+    ...base,
+    idempotencyKey: `${k}-lineman`,
+    channelId: lm,
+    channelRef: P21U_REF,
+    lines: [
+      { name: `ผัดไทยกุ้ง ${BILL_TAG}`, qty: 1, unitPriceSatang: 12000 },
+      { name: `ต้มยำกุ้งน้ำข้น ${BILL_TAG}`, qty: 1, unitPriceSatang: 18000 },
+      { name: `ชาไทยเย็น ${BILL_TAG}`, qty: 2, unitPriceSatang: 6000 },
+    ],
+    payMethods: [{ type: "PLATFORM", amountSatang: 42000 }],
+  } as never);
+  return { web: w.saleId, lineman: m.saleId };
+}
+/** POS P2.1U fix รอบ 1 ▸ F1: คู่ล่าสุดของวันนี้ (LINE MAN หาตาม channelRef LM-48152 + BILL_TAG · เว็บร้าน = บิลเว็บร้านล่าสุดที่ไม่ใหม่กว่า LINE MAN) ◂ */
+async function newestP21uPair(): Promise<{ web: string; lineman: string } | null> {
+  const start = new Date(Date.parse(`${bkkToday()}T00:00:00+07:00`));
+  const where = { tenantId: T.tenantId, systemId: SYS, unitId, docType: "SALE" as const, status: "PAID" as const, createdAt: { gte: start }, lines: { some: { name: { endsWith: BILL_TAG } } } };
+  const m = await prisma.posSale.findFirst({ where: { ...where, channelId: P21U.ids.LINEMAN, channelRef: P21U_REF }, select: { id: true, createdAt: true }, orderBy: [{ createdAt: "desc" }, { id: "desc" }] });
+  if (!m) return null;
+  const w = await prisma.posSale.findFirst({ where: { ...where, channelId: P21U.ids.WEB, createdAt: { gte: start, lte: m.createdAt } }, select: { id: true }, orderBy: [{ createdAt: "desc" }, { id: "desc" }] });
+  return w ? { web: w.id, lineman: m.id } : null;
+}
+/**
+ * บิลช่องทางของภาพ 12/09 (หลังบิลชุดภาพของ P1.16): POS P2.1U fix รอบ 1 ▸ F1 — รอบเจ้าของ = สร้างคู่ใหม่ด้วยคีย์ต่อรอบเสมอ
+ * (บิลชุดภาพของรอบนี้ใหม่กว่าคู่เดิม) · รอบแคชเชียร์ = ใช้คู่ล่าสุดของวันนี้ซ้ำเมื่ออยู่ในหน้าแรกทั้งคู่ · ไม่มี/หลุดหน้าแรก = สร้างคู่ใหม่ ·
+ * ยืนยันตำแหน่งหน้าแรกด้วยตัวอ่าน billsPageData (บันทึกใน log) ◂
+ */
+async function seedChannelBillsOnce(): Promise<void> {
+  if (P21U.bills.done || P21U.bills.error) return;
+  try {
+    await ensureChannelFixture();
+    if (P21U.error) throw new StepError(`fixture ช่องทาง: ${P21U.error}`);
+    let pair = userKey === "owner" ? null : await newestP21uPair();
+    if (pair && (await p21uPageOnePos([pair.web, pair.lineman])).pos.some((n) => n === 0)) pair = null;
+    P21U.bills.reused = pair ? 2 : 0;
+    pair ??= await createP21uPair();
+    P21U.bills.web = pair.web;
+    P21U.bills.lineman = pair.lineman;
+    const at = await p21uPageOnePos([pair.web, pair.lineman]);
+    if (at.pos.some((n) => n === 0)) throw new StepError(`คู่บิลช่องทางไม่อยู่หน้าแรก (เว็บร้าน #${at.pos[0]} · LINE MAN #${at.pos[1]} จาก ${at.total})`);
+    P21U.bills.page = `หน้าแรก: เว็บร้าน #${at.pos[0]} · LINE MAN #${at.pos[1]} จาก ${at.total} บิลของวันนี้`;
+    P21U.bills.done = true;
+  } catch (e) {
+    P21U.bills.error = e instanceof Error ? e.message.slice(0, 200) : String(e);
+  }
+}
+/**
+ * POS P2.1U fix รอบ 1 ▸ F1: ก่อนถ่าย — ยืนยันว่าคู่บิลยังอยู่หน้าแรก (บิลที่สถานะก่อนหน้า/เลนอื่นขายหลัง seed ดันลงได้) ·
+ * หลุด = สร้างคู่ใหม่ (คีย์ต่อรอบ) แล้วโหลดหน้าใหม่ ⇒ สถานะไม่ล้มเพราะตำแหน่งหน้า · บอกตำแหน่งใน log ◂
+ */
+async function ensureP21uOnPageOne(page: Any): Promise<void> {
+  let at = await p21uPageOnePos([P21U.bills.web, P21U.bills.lineman]);
+  if (at.pos.some((n) => n === 0)) {
+    const was = `เว็บร้าน #${at.pos[0] || "-"} · LINE MAN #${at.pos[1] || "-"}`;
+    const pair = await createP21uPair();
+    P21U.bills.web = pair.web;
+    P21U.bills.lineman = pair.lineman;
+    at = await p21uPageOnePos([pair.web, pair.lineman]);
+    if (at.pos.some((n) => n === 0)) throw new StepError(`คู่บิลช่องทางใหม่ยังไม่อยู่หน้าแรก (เว็บร้าน #${at.pos[0]} · LINE MAN #${at.pos[1]} จาก ${at.total})`);
+    console.log(`    P2.1U: คู่บิลเดิมหลุดหน้าแรก (${was}) → สร้างคู่ใหม่ ${pair.web} · ${pair.lineman}`);
+    await page.reload({ waitUntil: "networkidle2", timeout: 60_000 });
+  }
+  console.log(`    P2.1U: บิล LINE MAN อยู่หน้าแรก #${at.pos[1]} (เว็บร้าน #${at.pos[0]}) จาก ${at.total} บิลของวันนี้`);
+}
+/** ป้ายช่องทางของแถวบิล (ตาราง md+ / การ์ด 390) ที่มองเห็น */
+async function visibleChannelPill(page: Any, saleId: string): Promise<string> {
+  const sel = `${tid(`pos-bill-channel-${saleId}`)},${tid(`pos-bill-channel-card-${saleId}`)}`;
+  return page
+    .$$eval(sel, (els: Element[]) => els.filter((e) => e.getClientRects().length > 0).map((e) => (e.textContent ?? "").trim())[0] ?? "")
+    .catch(() => "");
+}
+async function runP21uBillsState(page: Any, state: "bills-channels" | "bills-drawer-commission"): Promise<void> {
+  if (P21U.bills.error || !P21U.bills.lineman) throw new StepError(`ไม่มีบิลช่องทางของภาพ: ${P21U.bills.error ?? "ยังไม่ได้สร้าง"}`);
+  await ensureP21uOnPageOne(page); // POS P2.1U fix รอบ 1 ▸ F1 ◂
+  await visibleEl(page, tid("pos-bills-list"), 0, 15_000).catch(() => {
+    throw new StepError("หน้าบิลวันนี้ไม่ขึ้น (pos-bills-list)");
+  });
+  await visibleEl(page, `[data-bill-id="${P21U.bills.lineman}"]`, 0, 15_000).catch(() => {
+    throw new StepError("ตัวอ่านบอกว่าบิล LINE MAN อยู่หน้าแรก แต่หน้าจอไม่แสดงแถวนี้ (pos-bills-list)");
+  });
+  const lm = await visibleChannelPill(page, P21U.bills.lineman);
+  if (!/LINE MAN/.test(lm)) throw new StepError(`ป้ายช่องทางของบิล LINE MAN = "${lm}"`);
+  if (state === "bills-channels") {
+    const web = await visibleChannelPill(page, P21U.bills.web);
+    if (!web) throw new StepError("ไม่เห็นป้ายช่องทางของบิลเว็บร้านในหน้าแรก");
+    const ref = await page.$$eval(`[data-bill-id="${P21U.bills.lineman}"]`, (els: Element[]) => els.some((e) => e.getClientRects().length > 0 && (e.textContent ?? "").includes("LM-48152"))).catch(() => false);
+    if (!ref) throw new StepError(`แถว LINE MAN ไม่มีเลขออเดอร์ ${P21U_REF} ในช่องลูกค้า`);
+    await page
+      .waitForFunction(() => /\d/.test(document.querySelector('[data-testid="pos-bills-channel-summary"]')?.textContent ?? ""), { timeout: 15_000 })
+      .catch(() => {
+        throw new StepError("บรรทัด \"หน้าร้าน N · ออนไลน์ M\" ไม่ขึ้น (pos-bills-channel-summary)");
+      });
+    return;
+  }
+  await clickEl(page, `[data-bill-id="${P21U.bills.lineman}"]`);
+  await visibleEl(page, tid("pos-bill-commission"), 0, 15_000).catch(() => {
+    throw new StepError("ลิ้นชักบิล LINE MAN ไม่มีบล็อกช่องทาง (pos-bill-commission)");
+  });
+  const fee = await page.$(tid("pos-bill-commission-fee"));
+  if (userKey === "owner" && !fee) throw new StepError("เจ้าของไม่เห็นตัวเลขค่าคอมฯ (pos-bill-commission-fee) — ต้องเห็น (pos.report.view)");
+  if (userKey !== "owner" && fee) throw new StepError("แคชเชียร์เห็นตัวเลขค่าคอมฯ (ต้องไม่เห็น — ไม่มี pos.report.view)");
+  if (userKey === "owner") {
+    const net = await page.$eval(tid("pos-bill-commission-net"), (e: Element) => e.textContent ?? "").catch(() => "");
+    if (!/294/.test(net)) throw new StepError(`รับจริงของบิล LINE MAN = "${net}" (คาด ฿294)`);
+  }
+}
+async function runP21uSettingsState(page: Any, state: "settings-channels" | P21uSettingsKey): Promise<void> {
+  const cashier = userKey === "cashier";
+  if (P21U.error) throw new StepError(`fixture ช่องทาง: ${P21U.error}`);
+  await visibleEl(page, tid("pos-settings-channels"), 0, 15_000);
+  await visibleEl(page, tid("pos-channel-list"), 0, 15_000).catch(() => {
+    throw new StepError("รายการช่องทางขายไม่ขึ้น (pos-channel-list)");
+  });
+  for (const code of ["store", "qr_table", "web", "chat", "lineman", "grab"])
+    await visibleEl(page, tid(`pos-channel-row-${code}`), 0, 5_000).catch(() => {
+      throw new StepError(`ไม่มีแถวช่องทาง ${code}`);
+    });
+  const presets = await page.$$eval('[data-testid^="pos-channel-preset-"]', (els: Element[]) => els.map((e) => e.getAttribute("data-testid"))).catch(() => [] as string[]);
+  if (state === "settings-channels" || state === "settings-channels-readonly") {
+    const connect = await page.$$('[data-testid^="pos-channel-connect-"]');
+    if (cashier) {
+      if (connect.length || (await page.$(tid("pos-channel-add")))) throw new StepError("แคชเชียร์เห็นปุ่มเชื่อมต่อ/เพิ่มช่องทาง (ต้องไม่เห็น — ไม่มี pos.channel.manage)");
+      const enabled = await page.$$eval('[data-testid^="pos-channel-toggle-"]', (els: Element[]) => els.filter((e) => !(e as HTMLButtonElement).disabled).length).catch(() => 0);
+      if (enabled) throw new StepError(`แคชเชียร์กดสวิตช์ช่องทางได้ ${enabled} ตัว (ต้องปิดทุกตัว)`);
+      await visibleEl(page, tid("pos-channel-readonly"), 0, 5_000);
+    } else if (presets.length !== connect.length) throw new StepError(`แถวแพลตฟอร์มที่ยังไม่เชื่อม ${presets.length} แถว แต่ปุ่มเชื่อมต่อ ${connect.length}`);
+    return;
+  }
+  if (state === "settings-channel-drawer") {
+    await clickEl(page, tid("pos-channel-open-lineman"));
+    await visibleEl(page, tid("pos-channel-drawer"), 0, 10_000);
+    const ex = await visibleEl(page, tid("pos-channel-example"), 0, 5_000);
+    const txt = (await ex.evaluate((e: Element) => e.textContent ?? "")) as string;
+    if (!/126/.test(txt) || !/294/.test(txt)) throw new StepError(`ตัวอย่างสดของ LINE MAN = "${txt}" (คาด ฿126 · ฿294)`);
+    if (cashier && (await page.$(tid("pos-channel-drawer-save")))) throw new StepError("แคชเชียร์เห็นปุ่มบันทึกในลิ้นชักช่องทาง (ต้องอ่านอย่างเดียว)");
+    return;
+  }
+  // settings-channel-create (เจ้าของ)
+  await clickEl(page, tid("pos-channel-add"));
+  await visibleEl(page, tid("pos-channel-drawer"), 0, 10_000);
+  await typeInto(page, tid("pos-channel-drawer-name"), "ตลาดนัด");
+  await typeInto(page, tid("pos-channel-drawer-code"), "MARKET");
+  await visibleEl(page, `${tid("pos-channel-drawer-payout-none")}[aria-checked="true"]`, 0, 5_000).catch(() => {
+    throw new StepError("โหมดสร้างช่องทางของร้านไม่ได้เลือก \"ไม่มีค่าคอมฯ\" ไว้ก่อน");
+  });
+  await visibleEl(page, tid("pos-channel-example"), 0, 5_000);
+}
+/** paydlg-platform: บิลพัก LINE MAN ใหม่ต่อภาพ (holdRegisterCart · ทิ้งใน finally ถ้ายังค้าง) → บิลที่พัก → เรียกคืน → ชำระ → ช่อง "แพลตฟอร์ม" */
+async function runPlatformPayState(page: Any, device: Device): Promise<void> {
+  await ensureChannelFixture();
+  if (P21U.error || !P21U.ids.LINEMAN) throw new StepError(`fixture ช่องทาง: ${P21U.error ?? "ไม่มี LINEMAN"}`);
+  if (!QC_IDS.amer || !QC_IDS.latte) throw new StepError("ไม่มีสินค้า QC (อเมริกาโน่/ลาเต้) ของร้านกาแฟ");
+  const { holdRegisterCart } = await import("@/lib/modules/pos/held-cart");
+  const h = await holdRegisterCart({ tenantId: T.tenantId, systemId: SYS, unitId }, await ownerActor(), {
+    cart: { lines: [{ productId: QC_IDS.amer, qty: 2 }, { productId: QC_IDS.latte, qty: 1 }], channelId: P21U.ids.LINEMAN },
+    label: `LINE MAN ${P21U_REF} (ภาพ QC)`,
+  });
+  if (!h.ok) throw new StepError(`พักบิล LINE MAN ไม่ได้: ${h.code}`);
+  P21U.held.push(h.heldCart.id);
+  await openCartOnMobile(page, device);
+  await clickEl(page, tid("pos-reg-held-bills"));
+  await visibleEl(page, tid("pos-reg-held-drawer"), 0, 10_000);
+  await clickEl(page, tid(`pos-reg-held-recall-${h.heldCart.id}`)).catch(() => {
+    throw new StepError("ไม่เห็นบิลพัก LINE MAN ในลิ้นชักบิลที่พัก");
+  });
+  await expectLines(page, 2);
+  await waitPayReady(page);
+  await clickPay(page, device);
+  await visibleEl(page, `${tid("pos-reg-paydlg-method-platform")}[aria-pressed="true"]`, 0, 15_000).catch(() => {
+    throw new StepError("จอชำระไม่มีช่อง \"แพลตฟอร์ม\" ที่เลือกไว้ (quote.channel.payout ไม่ใช่ PLATFORM?)");
+  });
+  const cashOff = await page.$eval(tid("pos-reg-paydlg-method-cash"), (e: Element) => (e as HTMLButtonElement).disabled).catch(() => false);
+  if (!cashOff) throw new StepError("บิลแพลตฟอร์มยังเลือกเงินสดได้ (ต้องปิด — R5)");
+}
+/** finally/signal: ทิ้งบิลพักของ paydlg-platform ที่ยังไม่ถูกเรียกคืน (บริการ discardHeldCart · เรียกซ้ำได้ · ไม่โยน) */
+async function cleanupP21u(): Promise<void> {
+  if (P21U.cleanup || !P21U.held.length) return;
+  try {
+    const { discardHeldCart } = await import("@/lib/modules/pos/held-cart");
+    const actor = await ownerActor();
+    let n = 0;
+    for (const id of P21U.held) if ((await discardHeldCart({ tenantId: T.tenantId, systemId: SYS, unitId }, actor, { id })).ok) n++;
+    P21U.cleanup = { ok: true, detail: `P2.1U: บิลพัก LINE MAN ${P21U.held.length} ใบ · ทิ้ง ${n} (ที่เหลือถูกเรียกคืนแล้ว)` };
+  } catch (e) {
+    P21U.cleanup = { ok: false, detail: `P2.1U: ทิ้งบิลพักไม่สำเร็จ — ${e instanceof Error ? e.message.slice(0, 160) : e}` };
   }
 }
 // ◂
@@ -3152,6 +3476,15 @@ try {
     await seedBillsOnce(); // POS P1.16 U — พังไม่โยน (ทุกสถานะ bills-* ตกพร้อมเหตุผล)
     console.log(BILLS.error ? `  ⚠️ บิลชุดภาพ: ${BILLS.error}` : `  บิลชุดภาพ: ${BILLS.reused ? "ใช้ชุดของวันนี้ซ้ำ" : `สร้าง ${Object.keys(BILLS.ids).length} ใบ`} · เป้าหมาย ${BILLS.target}`);
   }
+  // POS P2.1U ▸ fixture ช่องทาง (หน้าตั้งค่า · บิล · จอชำระ) + บิลช่องทางของวันนี้ (หลังบิลชุดภาพ = ใหม่สุดในรายการ) ◂
+  if (jobs.some((j) => j.state && P21U_FIXTURE_STATES.has(j.state))) {
+    await ensureChannelFixture();
+    console.log(P21U.error ? `  ⚠️ ช่องทาง QC: ${P21U.error}` : `  ช่องทาง QC: ${Object.keys(P21U.ids).sort().join(" · ")}${P21U.notes.length ? ` · ${P21U.notes.join(" · ")}` : " · ไม่เขียน"}`);
+  }
+  if (billsStatesOn && pages.includes("sales") && jobs.some((j) => j.state === "bills-channels" || j.state === "bills-drawer-commission")) {
+    await seedChannelBillsOnce();
+    console.log(P21U.bills.error ? `  ⚠️ บิลช่องทาง: ${P21U.bills.error}` : `  บิลช่องทาง: เว็บร้าน ${P21U.bills.web} · LINE MAN ${P21U.bills.lineman} (${P21U_REF})${P21U.bills.reused ? ` · ใช้คู่ล่าสุดของวันนี้ซ้ำ ${P21U.bills.reused} ใบ` : " · สร้างคู่ใหม่ (คีย์ต่อรอบ)"} · ${P21U.bills.page}`);
+  }
   const pptr = (await import("/root/dive3d/node_modules/puppeteer-core/lib/esm/puppeteer/puppeteer-core.js" as string).catch((e: unknown) => {
     throw new Fatal(`เปิด puppeteer-core ไม่ได้ (${e instanceof Error ? e.message : e}) — ต้องมี /root/dive3d/node_modules/puppeteer-core`);
   })) as Any;
@@ -3313,6 +3646,9 @@ try {
   await cleanupSettingsState(); // POS P1.10 U
   if (SETTINGS.cleanup) console.error(`${SETTINGS.cleanup.ok ? "🧹" : "⚠️"} ${SETTINGS.cleanup.detail}`);
   if (SETTINGS.cleanup && !SETTINGS.cleanup.ok) failures++;
+  await cleanupP21u(); // POS P2.1U (บิลพัก LINE MAN ที่ยังค้าง)
+  if (P21U.cleanup) console.error(`${P21U.cleanup.ok ? "🧹" : "⚠️"} ${P21U.cleanup.detail}`);
+  if (P21U.cleanup && !P21U.cleanup.ok) failures++;
   const { removed, stale } = await cleanSessions();
   let fixOut = "";
   try {

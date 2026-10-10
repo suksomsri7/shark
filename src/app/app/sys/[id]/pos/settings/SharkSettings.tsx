@@ -22,7 +22,8 @@ import { RegisterIcon, type RegisterIconName } from "@/components/pos/register/R
 import { posSettingsHref } from "@/components/pos/settings/settings-tabs";
 import { useSettingsHistory } from "@/components/pos/settings/HistoryDrawer";
 import { InlineNote, TabHead } from "./settings-ui";
-import { CARD_HEAD, ChannelsPanel, HEAD_SWITCH, HEAD_TITLE, MiniKnob, OfflineCard, PaymentsPanel, SOON_ROW, SoonChip, type PaySummary, type Storefront } from "./shark-ui";
+import { CARD_HEAD, HEAD_SWITCH, HEAD_TITLE, MiniKnob, OfflineCard, PaymentsPanel, SOON_ROW, SoonChip, type PaySummary, type Storefront } from "./shark-ui";
+import { ChannelsPanel } from "./ChannelsPanel"; // POS P2.1U ▸ แผงช่องทางขายจริง (มติ 1) ◂
 
 type CardsOk = Extract<PosIntegrationCardsResult, { ok: true }>;
 type ReceiptData = Extract<Awaited<ReturnType<typeof receiptSettingsPageDataAction>>, { ok: true }>;
@@ -46,7 +47,7 @@ const ADD_SYSTEM_HREF = "/app/settings/systems";
 /** ชื่อการ์ดที่เป็นชื่อเฉพาะ (ไม่แปล) */
 const PROPER_TITLE: Partial<Record<PosIntegrationCard["code"], string>> = { CRM: "CRM" };
 
-type Props = { systemId: string; unitId: string; storefront: Storefront; pay: PaySummary; canAddSystem: boolean };
+type Props = { systemId: string; unitId: string; storefront: Storefront; pay: PaySummary; canAddSystem: boolean; /** POS P2.1U ▸ pos.channel.manage ที่สาขานี้ ◂ */ canManageChannels?: boolean };
 
 function relTime(iso: string, locale: string): string {
   const at = new Date(iso);
@@ -76,7 +77,7 @@ function IconTile({ icon, accent }: { icon: RegisterIconName; accent?: boolean }
   );
 }
 
-export function SharkSettings({ systemId, unitId, storefront, pay, canAddSystem }: Props) {
+export function SharkSettings({ systemId, unitId, storefront, pay, canAddSystem, canManageChannels = false }: Props) {
   const t = useTranslations("pos.settings");
   const tk = useTranslations("pos.settings.shark");
   const tc = useTranslations("pos.settings.cards");
@@ -341,7 +342,7 @@ export function SharkSettings({ systemId, unitId, storefront, pay, canAddSystem 
       )}
       {/* POS P1.18U ▸ แก้รอบ 2 V3: สองแผงวางคู่กันตั้งแต่ xl (เดิม lg) — ที่ 1024 แผงละ ~200px ชิป "เร็ว ๆ นี้" เบียดชื่อจนเหลือ ~8px · ใต้ xl = เรียงลงเต็มความกว้าง ◂ */}
       <div className="flex min-w-0 flex-col items-stretch gap-6 xl:flex-row xl:items-start xl:gap-3">
-        <ChannelsPanel storefront={storefront} />
+        <ChannelsPanel systemId={systemId} unitId={unitId} canManage={canManageChannels} storefront={storefront} />
         <PaymentsPanel systemId={systemId} unitId={unitId} pay={pay} />
       </div>
       {confirmOff && (

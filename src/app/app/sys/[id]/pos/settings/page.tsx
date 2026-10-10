@@ -60,6 +60,8 @@ export default async function PosSettingsPage({ params, searchParams }: { params
   // POS P1.18U ▸ แก้รอบ 3 N1: ลิงก์ "เปิดใช้" บนการ์ดที่ร้านยังไม่มีระบบ = กติกาเดียวกับการสร้างระบบจริง
   //   (addSystemAction → assertSystemsCan(auth, "systems.system.create") · lib/actions/systems.ts:49) ◂
   const canAddSystem = evaluate(m, { module: "systems", action: "systems.system.create" });
+  // POS P2.1U ▸ มติ 1: แผงช่องทางขาย — แก้ได้เมื่อมี pos.channel.manage ที่สาขานี้ (action ตรวจซ้ำทุกครั้ง) · ไม่มี = อ่านอย่างเดียว ◂
+  const canManageChannels = evaluate(m, { module: "pos", action: "pos.channel.manage", unitId });
   const needProfile = canRead && (tab === "payments" || tab === "general" || tab === "shark");
   const payProfile = needProfile ? await getPaymentProfile({ tenantId }) : null;
   const ppId = payProfile?.promptpayId?.trim() || null;
@@ -105,9 +107,9 @@ export default async function PosSettingsPage({ params, searchParams }: { params
             <SettingsRefusal message={t("staff.refusal")} />
           )
         ) : tab === "shark" ? (
-          <SharkSettings key={unitId} systemId={id} unitId={unitId} storefront={storefront} canAddSystem={canAddSystem} pay={{ promptpayMasked: maskPromptpayId(unitPp ?? ppId), beamOn: intent.beam.enabled && beamEnabled() }} />
+          <SharkSettings key={unitId} systemId={id} unitId={unitId} storefront={storefront} canAddSystem={canAddSystem} canManageChannels={canManageChannels} pay={{ promptpayMasked: maskPromptpayId(unitPp ?? ppId), beamOn: intent.beam.enabled && beamEnabled() }} />
         ) : tab === "channels" ? (
-          <ChannelsPane storefront={storefront} />
+          <ChannelsPane key={unitId} systemId={id} unitId={unitId} canManage={canManageChannels} storefront={storefront} />
         ) : tab === "offline" ? (
           <OfflinePane />
         ) : tab === "payments" ? (

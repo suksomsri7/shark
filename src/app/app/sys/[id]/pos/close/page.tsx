@@ -44,6 +44,9 @@ export default async function PosCloseDayPage({
   const tPos = await getTranslations("pos");
   const locale = (await getLocale()).startsWith("en") ? "en-GB" : "th-TH";
   const methodText = (types: string[] | undefined, fallback: string) => (types && types.length ? types.map((x) => (t.has(`method.${x}`) ? t(`method.${x}`) : x)).join(" + ") : fallback);
+  // POS P2.1U ▸ มติ 5: แถวยอดตามวิธีชำระของวัน — PLATFORM ใช้ป้ายของจอกะ "แพลตฟอร์ม · รอแพลตฟอร์มโอน" (แถวไม่ใช่เงินสด) · แถวบิลใช้คำสั้นเดิม ◂
+  const tShift = await getTranslations("pos.shift");
+  const tenderText = (type: string, fallback: string) => (type === "PLATFORM" ? tShift("method.PLATFORM") : methodText([type], fallback));
   const dateText = (d: string) => new Intl.DateTimeFormat(locale, { timeZone: "Asia/Bangkok", day: "numeric", month: "short", year: "numeric" }).format(new Date(`${d}T12:00:00+07:00`));
   const today = await posBusinessToday({ tenantId, systemId: id, unitIds });
   const businessDate = dateParam && isDate(dateParam) ? dateParam : today;
@@ -137,7 +140,7 @@ export default async function PosCloseDayPage({
               <tbody>
                 {summary.byMethod.map((m) => (
                   <tr key={m.type} className="border-b last:border-0">
-                    <td className="px-3 py-2">{methodText([m.type], m.label)}</td>
+                    <td className="px-3 py-2">{tenderText(m.type, m.label)}</td>
                     <td className="px-3 py-2 text-right tabular-nums">{m.count}</td>
                     <td className="px-3 py-2 text-right">
                       <MoneyText satang={m.amountSatang} decimals />

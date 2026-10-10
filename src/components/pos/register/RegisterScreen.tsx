@@ -2196,6 +2196,11 @@ export function RegisterScreen(props: RegisterScreenProps) {
             key={k}
             dueSatang={quoteFresh?.grandTotalSatang ?? quote?.q.grandTotalSatang ?? pendingSubmit.current?.expectedGrandTotalSatang ?? 0}
             breakdown={quoteFresh ?? quote?.q ?? null}
+            platform={(() => {
+              // POS P2.1U ▸ มติ 6: ช่องทาง payout PLATFORM ของ quote (ถึงได้ทางบิลพักที่มี channelId) ⇒ ช่อง "แพลตฟอร์ม" ◂
+              const ch = (quoteFresh ?? quote?.q)?.channel;
+              return ch && ch.payout === "PLATFORM" ? { name: ch.name } : null;
+            })()}
             tipEnabled={!!props.tipEnabled}
             billNote={cart.note ?? null}
             quotePending={!quoteFresh && !quoteFailed}

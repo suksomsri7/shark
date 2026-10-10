@@ -573,7 +573,7 @@ export function ReportsOverview({ systemId, unitCount, from, to, unitId, today, 
             const bp = shareBp(r.amountSatang, payments.v.totals.totalPaidSatang) ?? 0;
             return (
               <div key={r.type} className="flex min-w-0 items-center gap-3 py-2 text-sm sm:gap-4" data-testid="pos-report-ov-pay-row">
-                <span className="w-24 shrink-0 truncate text-[color:var(--color-ink-soft)]">{METHOD_KEYS.has(r.type) ? tc(`method.${r.type}`) : r.label}</span>
+                <span className="w-24 shrink-0 truncate text-[color:var(--color-ink-soft)]">{r.type === "PLATFORM" ? t("closeDay.method.PLATFORM") /* POS P2.1U ▸ มติ 5 ◂ */ : METHOD_KEYS.has(r.type) ? tc(`method.${r.type}`) : r.label}</span>
                 <span className="h-2.5 min-w-0 flex-1 overflow-hidden rounded-full bg-[color:var(--color-surface-2)]">
                   <i className="block h-full rounded-full bg-[color:var(--color-ink)]" style={{ width: `${Math.min(100, Math.max(bp > 0 ? 2 : 0, bp / 100))}%` }} />
                 </span>

@@ -25,6 +25,8 @@
 // POS P1.12U ▸ ส่วนสิทธิ์สมาชิก (memberSection = PayBenefits) ระหว่างยอดกับแถวแยกจ่าย · ชิป "{ชื่อ} · {ระดับ}" บนหัว ·
 //   รายละเอียดยอดเพิ่มคูปอง/ระดับ/ว่อชเชอร์/แต้ม ตามลำดับภาพ 02 · แถวช่องที่ 2 (ว่อชเชอร์/บัตรของขวัญ · มัดจำ · ลงบิลห้องพัก · เครดิตร้าน)
 //   ปิดเสมอ "เร็ว ๆ นี้" (CD3 · P2.9) ไม่มีผลกับยอด/แป้นตัวเลข · เลิกปุ่ม "ถอดสมาชิก" ของ MEMBER_RIGHTS_UNSUPPORTED (คีย์คงไว้) ◂
+// POS P2.1U ▸ มติ 6 (R5): บิลของช่องทาง payout PLATFORM (quote.channel — ถึงได้ทางบิลพักที่มี channelId / P2.8) = ช่อง "แพลตฟอร์ม"
+//   เลือกไว้แล้วเต็มยอด · ช่องอื่นปิด · แป้น/ปุ่มด่วน/ทิปปิด (แถวเดียว = ยอดบิล) · ช่องทางอื่น = ไม่มีช่องนี้เลย ◂
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
@@ -101,6 +103,8 @@ type Props = {
   giftCards?: { numberMasked: string; balanceSatang: number }[];
   /** POS P1.7U ▸ ใบขอรับเงิน (ไม่ส่ง = พร้อมเพย์แบบ QR นิ่ง + ยืนยันเองของ P1.6) */
   intent?: PayIntentSetup | null;
+  /** POS P2.1U ▸ มติ 6: ช่องทางของบิลรับเงินผ่านแพลตฟอร์ม (quote.channel.payout = PLATFORM) — null/ไม่ส่ง = ไม่มีช่อง "แพลตฟอร์ม" ◂ */
+  platform?: { name: string } | null;
   /** POS P1.13U ▸ สวิตช์ "ออกใบกำกับภาษีเต็มรูป" ท้ายจอ (ภาพ 02) — buyer = ผู้ซื้อที่ตั้งไว้ (สวิตช์เปิด) · ปิดสวิตช์ = onClear · แก้/เปิด = onOpen (กล่อง 15A) ◂ */
   taxInvoice?: { eligible: boolean; buyer: TaxInvoiceBuyerInput | null; onOpen: () => void; onClear: () => void } | null;
 };
@@ -134,8 +138,10 @@ const KEYS: { id: string; label: string; digits: string | null }[] = [
 const MAX_DIGITS = 7;
 /** แก้รอบ 2 N3: รหัสปฏิเสธของการบันทึกบิลที่บิลนี้ไปต่อไม่ได้ (ต้องคืนเงินที่เข้าแล้วเอง) */
 const TERMINAL_SUBMIT: ReadonlySet<string> = new Set(["DEVICE_REVOKED", "SHIFT_CLOSED", "SHIFT_REQUIRED", "INTENT_CONSUMED", "INTENT_EXPIRED"]);
-const methodLabelKey = (type: RegisterPayType) => METHODS.find((m) => m.type === type)?.label ?? "pay.cash";
-const methodIcon = (type: RegisterPayType): RegisterIconName => METHODS.find((m) => m.type === type)?.icon ?? "cash";
+/** POS P2.1U ▸ มติ 6: ช่องแพลตฟอร์ม (แสดงเฉพาะบิลช่องทาง payout PLATFORM) ◂ */
+const PLATFORM_METHOD: { type: RegisterPayType; label: string; icon: RegisterIconName } = { type: "PLATFORM", label: "pay.platform", icon: "truck" };
+const methodLabelKey = (type: RegisterPayType) => (type === "PLATFORM" ? PLATFORM_METHOD.label : METHODS.find((m) => m.type === type)?.label ?? "pay.cash");
+const methodIcon = (type: RegisterPayType): RegisterIconName => (type === "PLATFORM" ? PLATFORM_METHOD.icon : METHODS.find((m) => m.type === type)?.icon ?? "cash");
 const ratePct = (bp: number) => String(Number((bp / 100).toFixed(2)));
 const isFinePointer = () => typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(pointer: fine)").matches;
 
@@ -166,14 +172,16 @@ export function PayDialog(p: Props) {
 
   // ═══════ สถานะของกล่อง ═══════
   const [rows, setRows] = useState<PayRow[]>([]);
-  const [method, setMethod] = useState<RegisterPayType>("CASH");
+  // POS P2.1U ▸ มติ 6: บิลแพลตฟอร์มเริ่มที่ช่อง "แพลตฟอร์ม" เต็มยอด (entry null = ยอดคงเหลือพอดี) ◂
+  const platformOn = !!p.platform;
+  const [method, setMethod] = useState<RegisterPayType>(platformOn ? "PLATFORM" : "CASH");
   /** ค่าที่กรอก (บาท ทศนิยม ≤ 2) · null = ใช้ยอดคงเหลือพอดี (ค่าเริ่มของบัตร/โอน/พร้อมเพย์) */
-  const [entry, setEntry] = useState<string | null>("");
+  const [entry, setEntry] = useState<string | null>(platformOn ? null : "");
   const [reference, setReference] = useState("");
   const [tipOn, setTipOn] = useState(false);
   const [tipText, setTipText] = useState("");
 
-  const tipParsed = tipOn ? parseHundredths(tipText) : 0;
+  const tipParsed = tipOn && !platformOn ? parseHundredths(tipText) : 0;
   const tipOk = tipParsed !== null;
   const tip = tipParsed ?? 0;
   const due = p.dueSatang + tip;
@@ -217,6 +225,8 @@ export function PayDialog(p: Props) {
   const panelOn = intentMode && !!p.intent;
   const piPaid = intentMode && pi.intent?.status === "PAID" && pi.intent.amountSatang === roundAmount;
   const piLocked = intentMode && pi.intent?.status === "PAID";
+  /** POS P2.1U ▸ มติ 6: ช่องแพลตฟอร์ม = ยอดล็อกเต็มยอด (แป้น/ปุ่มด่วน/ช่องจำนวนปิด) ◂ */
+  const platformLock = method === "PLATFORM";
   const canConfirm = ready && (zero || plan.state === "complete") && (!intentMode || zero || remaining <= 0 || piPaid);
   const canSplit = ready && !zero && plan.state === "partial" && !rowsFull && (!intentMode || piPaid);
   /** F3b: เงินเข้าเกินยอดบิล (ยอดบิลลดลงหลังมีแถวที่เงินเข้าแล้ว) — ยืนยันไม่ได้ · ต้องคืนเงินเอง */
@@ -262,7 +272,19 @@ export function PayDialog(p: Props) {
   }, [p.dueSatang, method]);
 
   // เลือกวิธีจ่าย: เงินสด = ช่องว่างรอรับเงิน · อื่น ๆ = ยอดคงเหลือพอดี · โฟกัสช่องจำนวนเฉพาะเมาส์/คีย์บอร์ด (จอสัมผัสไม่เด้งคีย์บอร์ด)
+  // POS P2.1U ▸ มติ 6: quote เปลี่ยนเป็น/จากช่องทางแพลตฟอร์มระหว่างกล่องเปิด ⇒ ตั้งช่องใหม่ (แถวแยกจ่ายที่ยังไม่ส่งทิ้งได้ — ไม่มีเงินเข้า) ◂
+  useEffect(() => {
+    if (platformOn === (method === "PLATFORM")) return;
+    if (rows.some((r) => r.via !== undefined) || pi.intent?.status === "PAID") return;
+    setRows([]);
+    setMethod(platformOn ? "PLATFORM" : "CASH");
+    setEntry(platformOn ? null : "");
+    setReference("");
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- เฉพาะเมื่อช่องทางของ quote เปลี่ยน
+  }, [platformOn]);
+
   const pickMethod = (m: RegisterPayType) => {
+    if (platformOn && m !== "PLATFORM") return; // POS P2.1U ▸ มติ 6 (R5): บิลแพลตฟอร์มจ่ายได้ช่องเดียว ◂
     if (piLocked && m !== method) return flash("pay.intent.locked"); // มติ 2: ใบที่เงินเข้าแล้วเปลี่ยนวิธีไม่ได้
     setMethod(m);
     setEntry(m === "CASH" ? "" : null);
@@ -276,7 +298,7 @@ export function PayDialog(p: Props) {
 
   // ── แป้นตัวเลข: ต่อท้ายหลักบาท · ค่าที่มีทศนิยม (จาก "พอดี") หรือค่าอัตโนมัติ = เริ่มใหม่ · ⌫ ลบทีละตัว ──
   const press = (k: (typeof KEYS)[number]) => {
-    if (busy || piLocked) return;
+    if (busy || piLocked || platformLock) return;
     if (k.digits === null) {
       setEntry(entryText.slice(0, -1));
       return;
@@ -287,11 +309,11 @@ export function PayDialog(p: Props) {
     setEntry(next);
   };
   const quick = (v: number) => {
-    if (busy || piLocked) return;
+    if (busy || piLocked || platformLock) return;
     setEntry(hundredthsText(v));
   };
   const exact = () => {
-    if (busy || piLocked) return;
+    if (busy || piLocked || platformLock) return;
     setEntry(method === "CASH" ? hundredthsText(Math.max(remaining, 0)) : null);
   };
 
@@ -567,9 +589,23 @@ export function PayDialog(p: Props) {
               {showForm && !zero && (
                 <div>
                   <div className="mb-1.5 text-[12px] text-[color:var(--color-muted)]">{t("pay.methodsTitle")}</div>
-                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 xl:gap-4" role="group" aria-label={t("pay.methodsTitle")}>
+                  <div className={`grid grid-cols-2 gap-3 xl:gap-4 ${platformOn ? "sm:grid-cols-5" : "sm:grid-cols-4"}`} role="group" aria-label={t("pay.methodsTitle")}>
+                    {platformOn && (
+                      // POS P2.1U ▸ มติ 6: ช่อง "แพลตฟอร์ม" (ช่องทาง payout PLATFORM เท่านั้น) — เลือกไว้แล้ว เต็มยอด ◂
+                      <button
+                        data-testid="pos-reg-paydlg-method-platform"
+                        className={tile(method === "PLATFORM" && !busy)}
+                        type="button"
+                        aria-pressed={method === "PLATFORM"}
+                        disabled={busy}
+                        onClick={() => pickMethod("PLATFORM")}
+                      >
+                        <span>{t(PLATFORM_METHOD.label)}</span>
+                        <small className="text-[12.5px] font-normal text-[color:var(--color-muted)]">{p.platform?.name ? t("pay.platformVia", { name: p.platform.name }) : t("pay.platformHint")}</small>
+                      </button>
+                    )}
                     {METHODS.map((m) => {
-                      const off = busy || (m.type === "CASH" && !!cashRow) || (m.type === "PROMPTPAY" && !p.promptpayId);
+                      const off = busy || platformOn || (m.type === "CASH" && !!cashRow) || (m.type === "PROMPTPAY" && !p.promptpayId);
                       const sub =
                         m.type === "CASH"
                           ? cashRow
@@ -675,7 +711,7 @@ export function PayDialog(p: Props) {
                     autoComplete="off"
                     value={entryText}
                     placeholder="0"
-                    disabled={busy || piLocked}
+                    disabled={busy || piLocked || platformLock}
                     aria-invalid={plan.state === "invalid" || plan.state === "over"}
                     onChange={(e) => setEntry(e.target.value)}
                   />
@@ -729,7 +765,7 @@ export function PayDialog(p: Props) {
                         k.id === "00" || k.id === "back" ? "bg-[color:var(--color-surface-2)] text-[18px]" : "bg-[color:var(--color-surface)]"
                       }`}
                       type="button"
-                      disabled={busy || piLocked}
+                      disabled={busy || piLocked || platformLock}
                       aria-label={k.id === "back" ? t("pay.backspace") : k.label}
                       onClick={() => press(k)}
                     >
@@ -744,7 +780,7 @@ export function PayDialog(p: Props) {
                       data-testid={`pos-reg-paydlg-quick-${v / 100}`}
                       className="h-11 rounded-[8px] border bg-[color:var(--color-surface)] text-[13px] font-semibold tabular-nums disabled:opacity-50"
                       type="button"
-                      disabled={busy || piLocked || (method !== "CASH" && v > remaining)}
+                      disabled={busy || piLocked || platformLock || (method !== "CASH" && v > remaining)}
                       onClick={() => quick(v)}
                     >
                       {(v / 100).toLocaleString("th-TH")}
@@ -754,7 +790,7 @@ export function PayDialog(p: Props) {
                     data-testid="pos-reg-paydlg-quick-exact"
                     className="h-11 rounded-[8px] border bg-[color:var(--color-surface)] text-[13px] font-semibold disabled:opacity-50"
                     type="button"
-                    disabled={busy || piLocked}
+                    disabled={busy || piLocked || platformLock}
                     onClick={exact}
                   >
                     {t("pay.exact")}
@@ -815,7 +851,7 @@ export function PayDialog(p: Props) {
                   type="button"
                   role="switch"
                   aria-checked={tipOn}
-                  disabled={!p.tipEnabled || busy || rows.length > 0}
+                  disabled={!p.tipEnabled || busy || rows.length > 0 || platformOn}
                   onClick={() => {
                     setTipOn((v) => !v);
                     setTipText("");

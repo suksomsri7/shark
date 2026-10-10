@@ -112,6 +112,14 @@ export function channelCommission(grossSatang: number, rates: ChannelCommissionR
 }
 
 /**
+ * POS P2.1U fix รอบ 1 ▸ F5: ยอดที่ร้านได้รับจริงของบิลช่องทาง = ยอดบิล − ค่าคอมฯ − VAT ค่าคอมฯ (สตางค์จำนวนเต็ม · ไม่ปัด ·
+ * ติดลบได้เมื่อค่าคอมฯ ชนเพดานยอดบิลแล้วยังมี VAT — แสดงตามจริง) · ค่าที่ไม่ใช่จำนวนเต็มบวก = 0 (เหมือน channelCommission) ◂
+ */
+export function channelNet(grossSatang: number, commissionSatang: number, commissionVatSatang: number): number {
+  return nonNegInt(grossSatang) - nonNegInt(commissionSatang) - nonNegInt(commissionVatSatang);
+}
+
+/**
  * ส่วนแบ่งค่าคอมฯ ของใบคืนเงิน (R9 · CD10): ใบที่ทำให้คืนครบ (full) = ส่วนที่เหลือ (ค่าคอมฯ บิล − Σ ส่วนแบ่งก่อนหน้า) ·
  * ใบบางส่วน = ครึ่งขึ้น(ค่าคอมฯ บิล × ยอดคืน / ยอดบิล) จำกัดไม่เกินส่วนที่เหลือ ⇒ Σ ส่วนแบ่งทุกใบ = ค่าคอมฯ ของบิลเป๊ะ
  */

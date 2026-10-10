@@ -236,7 +236,8 @@ function ReportBody({ rep, t, tc, locale }: { rep: Loaded; t: T; tc: T; locale: 
       const x = rep as Report<"payments", PaymentRow, PaymentTotals>;
       if (x.rows.length === 0) return empty;
       const cols: Col<PaymentRow>[] = [
-        { key: "method", header: c("method"), cell: (r) => (METHOD_KEYS.has(r.type) ? tc(`method.${r.type}`) : r.label) },
+        // POS P2.1U ▸ มติ 5: PLATFORM = "แพลตฟอร์ม" (คำสั้นของรายงาน pos.report.closeDay.method.PLATFORM — ป้ายยาว "รอแพลตฟอร์มโอน" อยู่ที่จอกะ) ◂
+        { key: "method", header: c("method"), cell: (r) => (r.type === "PLATFORM" ? t("closeDay.method.PLATFORM") : METHOD_KEYS.has(r.type) ? tc(`method.${r.type}`) : r.label) },
         { key: "count", header: c("payments"), num: true, cell: (r) => r.count },
         { key: "bills", header: c("bills"), num: true, cell: (r) => r.billCount },
         { key: "amount", header: c("amount"), num: true, cell: (r) => <b>{M(r.amountSatang)}</b> },

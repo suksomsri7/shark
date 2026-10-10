@@ -264,7 +264,9 @@
         "overPaid": "Received {amount} more than the bill — refund it yourself",
         "roundsExhausted": "Could not create the QR after several tries — try again",
         "refundYourself": "This bill can no longer be saved but the money has arrived — refund the customer yourself"
-      }
+      },
+      "platformHint": "Paid in full via the platform",
+      "platformVia": "Full amount via {name}"
     },
     "done": {
       "title": "Sale complete",
@@ -1559,7 +1561,9 @@
         "card": "Card",
         "cardSub": "Back to the original card (reference)",
         "credit": "Store credit",
-        "creditSub": "Coming next (member wallet)"
+        "creditSub": "Coming next (member wallet)",
+        "platform": "Platform",
+        "platformSub": "The platform refunds the customer"
       },
       "reference": "Reference (optional)",
       "summary": "Refund {amount}",
@@ -1598,6 +1602,13 @@
       "cancel": "Cancel",
       "close": "Close",
       "requestTaxIdChanged": "The tax ID differs from the customer's request — the request will be rejected and the invoice issued as entered"
+    },
+    "channel": {
+      "platformPay": "Platform",
+      "allSources": "All sources"
+    },
+    "summary": {
+      "channel": "In store {store} · Online {online}"
     }
   },
   "payment": {
@@ -2435,20 +2446,76 @@
       "commission": "Commission {rate} · {payout}",
       "none": "No commission",
       "platformPays": "platform pays out",
-      "directPays": "shop collects"
+      "directPays": "shop collects",
+      "full": "Commission {rate} · VAT {vat}% · {payout}",
+      "noneWith": "No commission · {payout}"
     },
     "example": "Total {gross} → commission {commission} · net {net}",
     "commissionBlock": {
       "gross": "Total",
       "commission": "Platform commission",
       "net": "Net received",
-      "note": "Paid via platform → recorded as payment \"Platform\" and the commission is posted automatically"
+      "note": "Paid via platform → recorded as payment \"Platform\" and the commission is posted automatically",
+      "channel": "Channel {name}",
+      "commissionRate": "Platform commission {rate}",
+      "vat": "VAT on commission",
+      "noteDirect": "The shop collected the payment · the commission is booked as owed to the platform"
     },
     "label": "Channel",
     "all": "All channels",
     "empty": "No external sales channels yet",
     "error": "Couldn't load sales channels — try again",
-    "saved": "Channel saved"
+    "saved": "Channel saved",
+    "row": {
+      "open": "Open channel {name}",
+      "toggle": "Turn channel {name} on or off",
+      "notCreated": "Not connected",
+      "connecting": "Connecting…",
+      "showArchived": "Show archived ({n})",
+      "hideArchived": "Hide archived",
+      "limit": "This branch already has {max} channels (archived ones included) — no more can be added",
+      "readOnly": "View only — the owner or a manager sets up sales channels",
+      "loading": "Loading sales channels…",
+      "retry": "Try again"
+    },
+    "badge": {
+      "label": "{name} channel badge"
+    },
+    "drawer": {
+      "titleCreate": "Add a sales channel",
+      "titleView": "Sales channel details",
+      "close": "Close",
+      "cancel": "Cancel",
+      "save": "Save",
+      "saving": "Saving…",
+      "codeHint": "A–Z, 0–9 and _, starting with a letter, up to 20 characters · can't be changed later",
+      "payoutHint": {
+        "PLATFORM": "Customers pay in the platform's app · bills are recorded as \"Platform\" until the platform pays out",
+        "DIRECT": "Customers pay the shop directly · the commission is booked as owed to the platform",
+        "NONE": "The shop's own channel, no fees"
+      },
+      "sort": "Sort order",
+      "sortAuto": "Added at the end",
+      "exampleTitle": "Example bill",
+      "exampleVat": "Total {gross} → commission {commission} (+VAT {vat}) · net {net}",
+      "archiveNote": "Once archived it no longer appears as an option; past bills still refer to it",
+      "archiveConfirm": "Archive channel",
+      "archivedNote": "This channel is archived — view only",
+      "lockedStore": "Store is the built-in channel — always on, no commission, can't be edited",
+      "lockedBuiltin": "Built-in channel — only the name can be changed",
+      "readOnly": "View only — this account can't set up sales channels",
+      "denied": "This account can't set up sales channels — ask the owner for access",
+      "notFound": "This branch isn't available to this account",
+      "invalid": {
+        "generic": "The channel details aren't valid — nothing was saved",
+        "name": "Enter a channel name of 1–60 characters",
+        "code": "The code must be 2–20 characters of A–Z, 0–9 or _, starting with a letter",
+        "commissionBp": "Commission must be between 0 and 100% (up to 2 decimals)",
+        "commissionFixedSatang": "The fixed commission must be between ฿0 and ฿10,000",
+        "commissionVatBp": "Choose 0% or 7% VAT on commission",
+        "sortOrder": "Sort order must be a whole number from 0 to 9999"
+      }
+    }
   },
   "nav": {
     "overview": "Overview",
