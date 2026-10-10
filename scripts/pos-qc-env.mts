@@ -166,6 +166,8 @@ export const POS_MODELS = {
   salesChannel: { model: "SalesChannel", file: "pos.prisma", role: "ช่องทางขายต่อสาขา (P2.1 · BUILTIN STORE/QR_TABLE/WEB/CHAT · EXTERNAL · CUSTOM · ค่าคอมฯ สำเนาลงบิล)" },
   posProductChannelPrice: { model: "PosProductChannelPrice", file: "pos.prisma", role: "ราคาตามช่องทาง/สาขาต่อสินค้า (P2.2 · (code,unit) · notSold · เขียนผ่าน catalog.ts)" },
   posPriceRule: { model: "PosPriceRule", file: "pos.prisma", role: "กติการาคา happy hour/โปร (P2.2 · CD1 POS เป็นเจ้าของ · เขียนผ่าน price-rule.ts)" },
+  // POS P2.3 ▸ สูตร/BOM (migration 20261205100000_pos_p23_recipe) — ผู้เขียนเดียว pos/catalog.ts ◂
+  posRecipeChoiceLine: { model: "PosRecipeChoiceLine", file: "pos.prisma", role: "ส่วนต่างสูตรต่อตัวเลือก (P2.3 · (สินค้า, ตัวเลือก, InvItem) · qtyDelta ≠ 0 มีเครื่องหมาย)" },
 } as const;
 export type PosModelKey = keyof typeof POS_MODELS;
 

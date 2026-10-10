@@ -417,7 +417,10 @@ import * as couponSvc from "@/lib/modules/coupon/service";
 import { splitIncludedVat } from "@/lib/money/vat";
 import type { RegisterMemberGate, RegisterMemberQuote } from "./register-member";
 // POS P1.7 ▸ ใบขอรับเงิน (pi_…) ใช้ในธุรกรรมขายของหน้าขาย · งานหลัง commit ชุดเดียวกับ createSale (ตัดสต็อก + ระบายคิว · มติ I) ◂
-import { consumeSaleInventory } from "./service";
+import { consumeSaleInventory, pendingStockParts, posDayStart } from "./service";
+// POS P2.3 ▸ สูตร/BOM: สูตรที่ใช้จริงของแถว (อ่านอย่างเดียว) · กระจายสูตร/จำนวนหน่วยที่ทำได้ (บริสุทธิ์) ◂
+import { loadRowRecipes } from "./recipe";
+import { expandRecipe } from "./recipe-shared";
 import { consumeSaleIntents, lockSaleIntents, type SaleIntentRef } from "./payment-intent";
 import { isPaymentIntentId } from "./payment-intent-shared";
 import { scheduleDrain } from "@/lib/outbox-consumers";
@@ -447,7 +450,7 @@ import {
   releasePosApprovalClaim,
   submitPosApproval,
 } from "./pos-approval";
-import { effectiveTrackStock, menuSoldOutIds, rowAvailable } from "./catalog";
+import { effectiveTrackStock, loadRowPortions, menuSoldOutIds, rowAvailable } from "./catalog";
 import { priceCart, roundHalfUp, PRICE_MAX_SATANG, type PriceDiscount } from "./pricing-shared";
 // POS P1.2 ▸ R10 ป้ายเครื่องชั่ง (ตัวถอดบริสุทธิ์ชุดเดียวกับจอ) ◂
 import { parseWeighedBarcode, weighedBarcodeSettings, weighedGramsFromPrice, weighedPriceSatang, type WeighedBarcodeSettings } from "./scan-shared";
@@ -676,10 +679,21 @@ function regVisibleWhere(s: RegScope): Prisma.Sql {
     ? Prisma.sql`NOT EXISTS (SELECT 1 FROM "RecipeLine" r WHERE r."productId" = p.id AND r."tenantId" = ${s.tenantId}
         AND NOT EXISTS (SELECT 1 FROM "InvItem" ci WHERE ci.id = r."invItemId" AND ci."tenantId" = ${s.tenantId} AND ci."systemId" = ${s.unitInv}))`
     : Prisma.sql`NOT EXISTS (SELECT 1 FROM "RecipeLine" r WHERE r."productId" = p.id AND r."tenantId" = ${s.tenantId})`;
+  // POS P2.3 ▸ R4 มติ Q4: เมนูที่ตัดตามสูตร (เจ้าของสูตร bomEnabled · ตัวแปรไม่มีสูตรเอง = สูตรแม่ · มติ 3) กติกาเดียวกับชุด — วัตถุดิบฐานนอกคลังของสาขา
+  //   (หรือสาขาไม่มีคลัง) = มองไม่เห็น · ไม่มีการขายแล้วตัดไม่ครบเงียบ ๆ · เมนูที่ bomEnabled ปิด (สูตร backfill เดิม) = เหมือนเดิมทุกประการ ◂
+  const menuRecipeLines = Prisma.sql`SELECT 1 FROM "RecipeLine" r JOIN "PosProduct" o ON o.id = r."productId"
+        WHERE r."tenantId" = ${s.tenantId} AND o."tenantId" = ${s.tenantId} AND o."bomEnabled"
+          AND (r."productId" = p.id OR (p."parentId" IS NOT NULL AND r."productId" = p."parentId"
+            AND NOT EXISTS (SELECT 1 FROM "RecipeLine" r2 WHERE r2."productId" = p.id AND r2."tenantId" = ${s.tenantId})))`;
+  const menuOk = s.unitInv
+    ? Prisma.sql`NOT EXISTS (${menuRecipeLines}
+        AND NOT EXISTS (SELECT 1 FROM "InvItem" ci WHERE ci.id = r."invItemId" AND ci."tenantId" = ${s.tenantId} AND ci."systemId" = ${s.unitInv}))`
+    : Prisma.sql`NOT EXISTS (${menuRecipeLines})`;
   // P1.2 R6: แม่เก็บถาวร = ตัวแปรขายไม่ได้ (PRODUCT_NOT_FOUND · สแกน none)
   return Prisma.sql`p."tenantId" = ${s.tenantId} AND p."systemId" = ${s.systemId} AND p."archivedAt" IS NULL
     AND (p."unitId" IS NULL OR p."unitId" = ${s.unitId}) AND ${wh}
     AND (p."kind" <> 'BUNDLE' OR ${bundleOk})
+    AND (p."kind" <> 'MENU' OR ${menuOk})
     AND (p."parentId" IS NULL OR EXISTS (SELECT 1 FROM "PosProduct" pp WHERE pp.id = p."parentId" AND pp."tenantId" = ${s.tenantId} AND pp."archivedAt" IS NULL))`;
 }
 const regLike = (q: string) => `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
@@ -747,11 +761,16 @@ async function regViews(db: RegDb, s: RegScope, rows: PosProduct[], book?: Price
           AND EXISTS (SELECT 1 FROM "InvMovement" m WHERE m."itemId" = i.id AND m."tenantId" = ${s.tenantId} AND m."systemId" = ${s.unitInv} LIMIT 1)`
       : [];
   const movedSet = new Set(moved.map((m) => m.id));
+  // POS P2.3 ▸ R9: แถวที่ตัดตามสูตร (ชุด · เมนู bomEnabled) → "เหลือ N" = จำนวนหน่วยที่ทำได้ min ⌊onHand/qty⌋ ของสูตรฐานในคลังของสาขา (แสดงผลอย่างเดียว · CD6) ◂
+  const rowRecipes = await loadRowRecipes(db, s.tenantId, rows);
+  // fix round 1 (รีวิว F3): ตัวคำนวณเดียวกับ catalog.listForUnit — ส่วนประกอบชุดที่ไม่ติดตามสต็อก (C2) = ไม่รู้ ⇒ null ◂
+  const portionsOf = await loadRowPortions(db, s.tenantId, s.systemId, s.unitInv, rows, rowRecipes);
   return rows.map((p) => {
     const inv = p.invItemId ? itemById.get(p.invItemId) : undefined;
     const ts = effectiveTrackStock(p, inv ? { hasMovement: movedSet.has(inv.id), onHand: inv.onHand } : null);
     const grp = links.filter((l) => l.productId === (p.parentId ?? p.id)).map((l) => groupById.get(l.groupId)).filter((g): g is { id: string; minSelect: number } => !!g);
-    const stockLeft = ts.trackStock && inv ? inv.onHand : null;
+    const portions = portionsOf(p.id);
+    const stockLeft = portions !== null ? portions : ts.trackStock && inv ? inv.onHand : null;
     const unavailable = !rowAvailable(p, s.unitId, menuSoldOut);
     // มติ 3.1 ข้อ 12: ปิดขายมือชนะหมดสต็อก
     const soldOutReason = unavailable ? ("UNAVAILABLE" as const) : stockLeft !== null && stockLeft <= 0 ? ("NO_STOCK" as const) : null;
@@ -1344,18 +1363,18 @@ async function regPrice(
   const rowById = new Map(rows.map((r) => [r.id, r]));
   // P1.2: กลุ่มตัวเลือก (สด) ของเจ้าของกลุ่ม · สูตรชุด · ค่าตั้งป้ายชั่ง (อ่านเมื่อมีบรรทัดที่ต้องใช้เท่านั้น)
   const optCat = await regOptionCatalog(db, s.tenantId, [...new Set(rows.map((r) => r.parentId ?? r.id))]);
-  const bundleIds = rows.filter((r) => r.kind === "BUNDLE").map((r) => r.id);
-  const recipes = bundleIds.length
-    ? await db.recipeLine.findMany({ where: { tenantId: s.tenantId, productId: { in: bundleIds } }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { productId: true, invItemId: true, qty: true } })
-    : [];
+  // POS P2.3 ▸ R4: สูตรที่ใช้จริงของชุด (เสมอ) และเมนูที่ตัดตามสูตร (เจ้าของสูตร · มติ 3) — อ่านครั้งเดียวต่อการคิดราคา ◂
+  const rowRecipes = await loadRowRecipes(db, s.tenantId, rows);
+  const liveRecipes = [...rowRecipes.values()].filter((r) => r.live);
   // P1.2 R2 F1: ตรวจซ้ำบนสูตรที่อ่านจริง (สูตรถูกแก้ระหว่างตรวจมองเห็น) — ส่วนประกอบนอกคลังของสาขานี้ = ชุดนั้นขายไม่ได้ที่นี่
-  const compIds = [...new Set(recipes.map((r) => r.invItemId))];
+  //   POS P2.3 ▸ มติ Q4: กติกาเดียวกันกับวัตถุดิบของเมนู (สูตรฐาน · และส่วนต่างของตัวเลือกที่เลือก — ตรวจต่อบรรทัดด้านล่าง) ◂
+  const compIds = [...new Set(liveRecipes.flatMap((r) => [...r.lines.map((l) => l.invItemId), ...r.choiceLines.map((c) => c.invItemId)]))];
   const compHere = new Set(
     compIds.length && s.unitInv
       ? (await db.invItem.findMany({ where: { tenantId: s.tenantId, systemId: s.unitInv, id: { in: compIds } }, select: { id: true } })).map((x) => x.id)
       : [],
   );
-  const bundleBlocked = new Set(recipes.filter((r) => !compHere.has(r.invItemId)).map((r) => r.productId));
+  const bundleBlocked = new Set(rows.filter((r) => { const rc = rowRecipes.get(r.id); return !!rc?.live && rc.lines.some((l) => !compHere.has(l.invItemId)); }).map((r) => r.id));
   const wbs = cart.lines.some((l) => l.kind === "product" && l.weighedBarcode !== null) ? await regWeighedSettings(db, s) : null;
   const priceLines: { qty: number; unitPriceSatang: number; discount: PriceDiscount | null }[] = [];
   const meta: Omit<RegResolvedLine, "discountSatang" | "unitPriceSatang">[] = [];
@@ -1434,7 +1453,17 @@ async function regPrice(
     //   P1.2: ตัวแปรตัด InvItem ของตัวเอง · ชุด (BUNDLE) ไม่มี itemId — ตัดส่วนประกอบตามสูตร ณ ตอนขาย (R8) · สินค้าชั่งตัดเป็นกรัม (P3)
     const itemId = v.kind === "PRODUCT" && v.invItemId && v.trackStock ? v.invItemId : null;
     const serviceId = v.kind === "SERVICE" && v.invItemId ? v.invItemId : null;
-    const components = v.kind === "BUNDLE" ? recipes.filter((r) => r.productId === v.id).map((r) => ({ invItemId: r.invItemId, qty: r.qty })) : [];
+    // POS P2.3 ▸ R3 R4: ชุด + เมนูที่ตัดตามสูตร → components = expandRecipe(สูตรฐาน + ส่วนต่างของตัวเลือกที่เลือก) ต่อ 1 หน่วย (ตัด = qty × จำนวน) ·
+    //   วัตถุดิบของตัวเลือกที่เลือกอยู่นอกคลังของสาขา = PRODUCT_NOT_FOUND · เกิน 50 รายการหลังรวม = INVALID_LINE · อื่น ๆ = [] (บรรทัดเดิมทุกไบต์) ◂
+    const rc = rowRecipes.get(v.id);
+    let components: { invItemId: string; qty: number }[] = [];
+    if (rc?.live) {
+      const picked = new Set(opt.picked.map((c) => c.choiceId));
+      if (rc.choiceLines.some((c) => picked.has(c.choiceId) && !compHere.has(c.invItemId))) return regRefuse("PRODUCT_NOT_FOUND", undefined, i);
+      const x = expandRecipe({ lines: rc.lines, choiceLines: rc.choiceLines, choiceIds: [...picked] });
+      if (!x.ok) return regRefuse("INVALID_LINE", x.message, i);
+      components = x.components;
+    }
     meta.push({ name: v.name, qty: l.qty, productId: v.id, itemId, serviceId, note: l.note ?? null, options: opt.picked, components, weightGrams, priceSource, priceRule, listPriceSatang });
   }
   const vat = await regVat(db, s.tenantId, s.systemId);
@@ -2469,22 +2498,13 @@ export async function registerStatus(ctx: RegisterCtx, actor: RegisterActor, cli
     }
     const sh = await registerShiftStatus(db, s, deviceId);
     const user = await db.user.findUnique({ where: { id: s.actor.userId }, select: { name: true, email: true } });
-    const bkk = new Date(Date.now() + 7 * 3600000).toISOString().slice(0, 10);
-    const dayStart = new Date(new Date(`${bkk}T00:00:00Z`).getTime() - 7 * 3600000);
+    // POS P2.3 ▸ fix round 1 (รีวิว F2): "วันนี้" ตัวเดียวกับ retryPendingStockCuts (service.posDayStart) ◂
+    const dayStart = posDayStart();
     // คีย์ตัดสต็อกต่อบรรทัดของ createSale = `pos-consume-<saleId>-<lineId>` (service.ts consumeSaleInventory) — ใช้ unique (tenantId, idempotencyKey)
     // POS P1.8 ▸ R3: เฉพาะบิลขาย (docType SALE) — บรรทัดใบคืนถือ itemId ของบรรทัดเดิมแต่ไม่มีการตัดสต็อก ◂
     // P1.2 R8: บรรทัดชุดนับจนกว่าคีย์ของ "ทุก" ส่วนประกอบ `pos-consume-<saleId>-<lineId>-<invItemId>` จะมีครบ
-    const pend = await db.$queryRaw<{ n: number }[]>`
-      SELECT count(DISTINCT s.id)::int AS n FROM "PosSale" s JOIN "PosSaleLine" l ON l."saleId" = s.id
-      WHERE s."tenantId" = ${s.tenantId} AND s."unitId" = ${s.unitId} AND s.status = 'PAID' AND s."docType" = 'SALE' AND s."createdAt" >= ${dayStart}
-        AND (
-          (l."itemId" IS NOT NULL
-            AND NOT EXISTS (SELECT 1 FROM "InvMovement" m WHERE m."tenantId" = ${s.tenantId} AND m."idempotencyKey" = 'pos-consume-' || s.id || '-' || l.id))
-          OR (l."components" IS NOT NULL AND jsonb_typeof(l."components") = 'array'
-            AND EXISTS (SELECT 1 FROM jsonb_array_elements(l."components") c
-              WHERE NOT EXISTS (SELECT 1 FROM "InvMovement" m WHERE m."tenantId" = ${s.tenantId}
-                AND m."idempotencyKey" = 'pos-consume-' || s.id || '-' || l.id || '-' || (c->>'invItemId'))))
-        )`;
+    // POS P2.3 ▸ มติ 4: ตัวนับเดียวกับ retryPendingStockCuts (pendingStockParts) — ส่วนที่สินค้าไม่อยู่ในคลังของสาขา/เป็นบริการ ไม่นับ (consumeBatch ข้ามเหมือนกัน) ◂
+    const pendingSales = new Set((await pendingStockParts(db, { tenantId: s.tenantId, unitId: s.unitId, since: dayStart })).map((x) => x.saleId));
     // POS P1.13U ▸ มติ 2: ปุ่ม "ใบกำกับเต็มรูป" บนจอ — เงื่อนไขเดียวกับ NOT_ELIGIBLE ตอนชำระ (ไม่นับ VAT ของบิล) · อ่านพลาด = false ◂
     const taxInvoiceEligible = await taxInvoiceEligibleForSystem(s.tenantId, s.systemId).catch(() => false);
     // POS P1.12U ▸ มติ 2: สาขานี้มีระบบสมาชิก (R1) — false = จอไม่มีแถวสมาชิก/ส่วนสิทธิ์เลย · อ่านพลาด = false ◂
@@ -2495,7 +2515,7 @@ export async function registerStatus(ctx: RegisterCtx, actor: RegisterActor, cli
       user: { name: user?.name?.trim() || user?.email || "-", roleLabel: REG_ROLE_LABEL[s.actor.role], role: s.actor.role },
       shift: sh.shift,
       shiftRequired: sh.required,
-      pendingStockCount: Number(pend[0]?.n ?? 0),
+      pendingStockCount: pendingSales.size,
       pendingSyncCount: 0,
       deviceStatus,
       taxInvoiceEligible,

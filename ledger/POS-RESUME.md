@@ -1141,3 +1141,52 @@
 - vis58b: register owner/cashier/en · sales owner/en · shifts owner th/en = 0 แดง · sales-cashier bills-* 12 = เป้าตกหน้า 1 (harness · addendum อยู่ใน db5af8c2 → vis59) · settings ×3 = DEVICE_LIMIT (เครื่องค้าง · ล้างแล้ว → vis58c กำลังถ่าย)
 - **07 กะ owner**: 4 แถว OPEN → DEVIATION (โครงสร้างตรงแบบ · Z state/Z list/ผลต่าง −฿15 "มีเหตุผล" ตรง · deviation: เปลือกแอป · ไม่มีปุ่ม "เปิดลิ้นชัก" ที่หัว · การ์ดส่งสรุป LINE = ข้อความรอรอบหน้า · "ดู X report" แทน "พิมพ์") · 1024/390/en ผ่าน
 - **approval-wait 1024 (P2.1U fix2 15c8781c)**: register-owner-th 88/0 (vis57 แดง 1) ⇒ ล้นหาย · ภาพ p21u ที่ 00:49–01:03 ใช้บันทึก P2.1U ได้
+
+- 01:13Z ✅ vis58c (QC5 @711b6d5e): settings owner 46/46 · cashier 46/46 · en 16/16 = 0 แดง ⇒ DEVICE_LIMIT ใน vis58b เป็นเครื่องค้างจาก snapshot จริง (ล้างแล้ว) · chain59: build59-d @db5af8c2 เริ่ม 01:13Z (`/root/pos-runs/build59-d-20261010T011305Z`) → vis59 ชุดปิดเฟสตามหลัง
+
+## 2026-10-10T01:32Z · ✅ P2.3 S ส่ง (`wip/pos-p2.3` 14dec332 · code 276a1934 · 45/45 ×3 · ด่านเขียว) → ผู้ตรวจเปิด · ✅ oracle P2.6 ส่ง (d2af0152 · 51 ข้อ) → cherry-pick เข้า session/pos
+- P2.3 S: migration `20261205100000_pos_p23_recipe` deploy บน QC4 แล้ว (QC5 ยังไม่ — ต้อง migrate deploy ก่อนภาพ P2.3U) · deviation 1–14 ในโน้ต (ให้ผู้ตรวจชี้ 7/8/10/13 ที่เปลี่ยนพฤติกรรม P1 + GL ซ้ำที่ D11 + restore หลัง commit D13) · `qc-pos-p1.1` = CONTROLLER-RUN ที่ด่าน merge (gates63) · prompt ผู้ตรวจ `pos-prompt-accountB-P2.3-R.md`
+- oracle P2.6 (ทรี b · ฐาน f71f4e30): 51 ข้อ · forced 7/51 (PAR 5/5 + Z) แดงด้วยเหตุผล 44 · SKIP-until-export 8 (K5 รอ P2.4 S · K7/O1–O4/A5/A6 รอ P2.8 S) · 21 CONTROLLER-DECISION ใน `wo-notes/pos-P2.6-oracle.md` — เคาะตอนเขียน prompt P2.6 S (หลัง P2.4 S + P2.8 S merge)
+- เลน = 2: P2.2U (p11) · ผู้ตรวจ P2.3 S (read-only ทรี c) · ว่าง 1 — ไม่มีงานพร้อม (P2.4 S/P2.8 S รอ P2.3 S merge) · ทรี b ว่าง
+- ค้าง: build59 → vis59 → HANDOVER §3 → ปิดเฟส P1
+
+- 01:41Z ผู้ตรวจ P2.3 S = **MERGEABLE-AFTER-FIXES** (`wo-notes/pos-P2.3-review.md` + มติ): F1 retry ตัดซ้ำของที่คืนแล้ว → ทาง B (retry รัน restock ของ REFUND docs ซ้ำ + ORACLE-ADD) · F2 retry ใช้หน้าต่างเดียวกับตัวนับ (today) · F3 bundle portions ตามกติกา C2 (untracked ⇒ null) · F4 = สัญญา P2.3U (setBomEnabled จาก banner) · F5 งบล็อก 5 s · F6 อ่านสถานะซ้ำหลัง batch → restore · F7 ติดตาม (pending-restore) · F8 บรรทัดเจ้าของบัญชี (COGS void ที่ต้นทุนเดิม · retry ลงวันที่ retry) → **fix round 1 เปิด** (ทรี c · prompt `P2.3-S-fix.md`) · เลน = 2 (P2.2U · fix P2.3) · gates63pre (ทรี b @276a1934) กำลังรัน
+
+- 01:48Z ✅ gates63pre (ทรี b @276a1934 = โค้ด P2.3 S): p1.1 178 · p1.5 21 · p1.9 53 · p1.13 33 · p1.15 39 · p1.18 81 · authz 56 · p0.2 56 · closeday 22 = 0 ทั้งหมด (`/root/pos-runs/gates63pre-b-20261010T013308Z`) ⇒ CONTROLLER-RUN p1.1 ผ่าน · gates63 จริงหลัง fix round 1 รันเฉพาะชุดที่ fix แตะ + ชุดนี้ซ้ำเฉพาะ p1.1 · vis59: register owner/cashier เขียว กำลังถ่ายต่อ
+
+## 2026-10-10T01:51Z · ✅ P2.2U ส่ง (`wip/pos-p2.2u` d95ea560 · code 2fc89cab รวม HF-P1CLOSE) → ผู้ตรวจเปิด · มติ ORACLE-EDIT `qc-pos-p2.2.mts:475` happyHourPricing → `[…, true, null]`
+- builder: typecheck 0 · p2.2 41/42 (ST3 = fact flip รอ ORACLE-EDIT ที่เคาะแล้ว · ใส่ในรอบ fix) · p1.18 81 phase U ST7 0 · p1.3/p1.5/p1.9/p1.12/p1.13/p1.16/p1.1/products/authz เขียว · fitness ±env · `--dry` 0 · ไฟล์ server ใหม่ไฟล์เดียว `catalog-price-actions.ts` · deviation: type tabs/CSV/add/filter ไม่ทำ (มติ 1) · "—" แทน low-stock/cost · QR/chat ไม่เป็น chip · variant ใช้ราคาแม่ · end date inclusive → endsAt วันถัดไป 00:00+07
+- QC5 `migrate status` = up to date (มี `20261204100000_pos_p22_prices`) ⇒ build P2.2U บนทรี d ถ่ายบน QC5 ได้หลัง vis59 จบ (ไม่ต้อง migrate) · P2.3 migration ยังไม่อยู่บน QC5 (ค่อย deploy ก่อน P2.3U)
+- เลน = 2: fix P2.3 (c) · ผู้ตรวจ P2.2U (read-only p11) · ทรี b ว่าง · vis59: register owner/cashier เขียว กำลังถ่ายต่อ
+
+- 01:58Z ผู้ตรวจ P2.2U = **MERGEABLE-AFTER-FIXES** (`wo-notes/pos-P2.2U-review.md` + มติ): F1 refetch ที่ priceValidUntil หยุดหลังรอบแรก (key เดิมซ้ำ) → key {iso,seq}+reschedule · F2 วันสิ้นสุดโชว์เกิน 1 วัน → endsAt−1ms · F3 `local` memo ใช้ราคาหน้าร้านบนตะกร้าแพลตฟอร์ม → null+pending · F4 VALIDATION ไร้ field → ข้อความไม่ผูกช่อง (แถวช่องทาง/สาขาที่ archive → P2.11) · F5 >500 → bulk.tooMany · F6 dry logs header · F7 แถว STORE ไม่ขึ้น badge ช่องทาง · ORACLE-EDIT p2.2 :475/:477 ตามที่ผู้ตรวจเขียน → **fix round 1 เปิด** (p11 · prompt `P2.2U-fix.md`) · เลน = 2 (fix P2.3 c · fix P2.2U p11) · vis59: register ×3 + settings ×3 เขียว กำลังถ่ายต่อ
+
+## 2026-10-10T02:17Z · 🏁 **ปิดเฟส P1** — vis59 เขียวทุกหน้า · HANDOVER-P1 เติม §3 ครบ · parity addendum vis59
+- vis59 (QC5 @db5af8c2 · `/root/pos-runs/vis59-qc5-20261010T012628Z`): ทุกหน้า × owner-th/cashier-th/owner-en = 0 ❌ · #418 = 0 · sales-cashier bills-* 27/27 (addendum ค้นเลขบิลทำงาน)
+- ผู้คุมดูภาพ: O5 เลื่อนถึง (1291>844) · O6 14B deviation ย่อย (ไม่มีชิปเครื่อง · footer 2 วัน) · O7 17B = ACTIVE 3 + เพิกถอน (97) พับ ตรงแบบ · O8 11C **MATCH** · O9 รับ · O11 19ค PromptPay/print-failed = deviation (ฟังก์ชันครบ ข้อความ/ตำแหน่งต่าง) → **P2.12** · O1/O2/O4/O13 harness ยืนยัน · 07 ยืนยัน · ตาราง `wo-notes/pos-P1.18-parity.md` "vis59 addendum"
+- `ledger/HANDOVER-2026-10-10-POS-P1.md` commit แล้ว (§0–§7 · §3 vis59 addendum · gates62 12/12) · แผน §4 เก็บตก (ข) ตัดสินแล้ว → P2.12
+- **สถานะ 23/55 (42%)** · เฟส P2 เดินอยู่: fix P2.3 S (c · ด่านใกล้จบ) · fix P2.2U (p11) · oracle P2.6 บนฐาน · P2.4 S/P2.8 S รอ P2.3 S merge
+
+- 02:23Z R2 P2.2U = **MERGEABLE** (`wo-notes/pos-P2.2U-review-R2.md`) · N1 toast ทุก 15 วิ เมื่อโหลดล้ม → fix round 2 (builder เดิม p11 · เงียบเมื่อ timer เรียก + ข้ามตอนออฟไลน์) · N2 → P2.11 · chain60: build60 @6e55ba60 ทรี d → vis60 p22u (products/register/sales × owner/cashier th + owner en) บน QC5 กำลังรัน · fix P2.3 รอ typecheck
+
+- 02:25Z ✅ P2.3 S fix round 1 ส่ง `wip/pos-p2.3` 8cd0dc24 (code 0eec926f · ORACLE-ADD V6 red-before 45/46 → 46/46 ×3 · F1 restockRefundDoc ร่วม · F2 posDayStart · F3 loadRowPortions untracked ⇒ null · F5 lock 5 s · F6 re-read → restore (REFUNDED ⇒ ผ่าน refund-doc) · F8 บรรทัดบัญชี) · ด่านเขียวรอบแรกทั้งหมด · **มติ AT-24.1** (`qc-hf-inventory-atomic` 142/143): คง oracle · โค้ด log ต่อรายการเมื่อ cut ล้ม → fix round 2 (builder เดิม) · ต่อไป R2 บน diff 14dec332..head → gates63 (p1.1 ซ้ำ + ชุดที่ fix แตะ) → merge → เปิด P2.4 S + P2.8 S
+
+- 02:35Z ✅ P2.2U fix round 2 (N1) `wip/pos-p2.2u` **36bba738** (code cdd700fc · timer reload เงียบ + ข้ามออฟไลน์ · typecheck 0 · p1.18 U 81/81 ST7 0 · dry register 0) → รอ vis60 (ภาพ @6e55ba60 ใช้ได้ ไม่กระทบหน้าจอ) เทียบ 06/01/12/10 → gates merge (p2.2 · p2.1 · p1.18 U · p1.3 · p1.16 · products · authz · typecheck · fitness) บน cdd700fc → merge → 24/55 · เลน = 1 (fix2 P2.3)
+
+- 02:38Z ✅ P2.3 S fix round 2 `wip/pos-p2.3` **06f2d825** (code 09e2ca11 · log ต่อรายการ · `qc-hf-inventory-atomic` 143/143 · p2.3 46/46 · p1.3 128 · typecheck 0) → **R2 เปิด** (prompt `P2.3-R2.md`) + **gates63** ทรี b @09e2ca11 (typecheck · p2.3 · p1.1 · p2.2 · p2.1 · p1.8 · p1.2 · p1.5 · p1.9 · p1.13 · p1.15 · p1.18 · p0.2 · closeday · authz · hf-inventory-atomic · inventory · pos-account · account-cpa · fitness ×3) · เลน = 1 (R2 P2.3)
+
+- 02:42Z R2 P2.3 = **MERGEABLE** (`wo-notes/pos-P2.3-review-R2.md`) · N1/N3 → ติดตาม P2.3U (รวม F7 pending-restore) · รอ gates63 เขียว → merge 06f2d825 → QC5 migrate deploy → เปิด P2.4 S + P2.8 S
+
+- 02:43Z 🔴 เจ้าของสั่ง "ทำตามแนะนำ" (คำถาม DB): **คง A + QC5 · ไม่เปิด QC6** · ใช้ด่านล่วงหน้าบนทรี b ขณะ builder แก้ · เปิด P2.4 S + P2.8 S พร้อมกันหลัง P2.3 S merge (คนละโมดูล) · เงื่อนไขเปลี่ยน = HR/AI กลับมาเดินพร้อม POS
+
+### ⏱ 2026-10-10 02:5xZ — มติเจ้าของ: นโยบายเลน (ทำตามที่แนะนำ)
+- **builder ≤ 2 เลนพร้อมกัน** (P2.4 S ทรี c + P2.8 S ทรี b) — คอขวดคือ QC4 gate lock + RAM ไม่ใช่จำนวนเลน
+- **เลน 3 ใช้เฉพาะงานอ่านอย่างเดียว** (ผู้ตรวจ / คนเขียน oracle P2.5·P2.7) หรืองาน U ที่อยู่คนละไฟล์กับ S (P2.3U หลัง migration ขึ้น QC5)
+- เพดานรวมยัง 3 เลน · พอ builder ใบแรกส่งงาน → เปิดผู้ตรวจเป็นเลน 3 ทันที · รักษา builder ≤ 2 ตลอด
+- จุดต่อ: รอ gates63 (ทรี b) เขียว → merge `wip/pos-p2.3` 06f2d825 → QC5 `migrate deploy` p23 → แทน `__BASE__` ใน prompt P2.4-S/P2.8-S → เปิด 2 builder · vis60 จบ → เทียบ 01/12 → gates merge P2.2U → merge 36bba738 → 24/55
+
+### ⏱ 2026-10-10 02:5xZ — vis60 register: 104/105 · แดง 1 = harness
+- ❌ `register-line-badges` 390 = ตะกร้าว่างไม่มีปุ่ม `pos-reg-cart-view` ⇒ `openCartOnMobile` ตกก่อนถึงบิลที่พัก (เหตุเดียวกับ paydlg-platform P2.1U ที่ถ่ายเฉพาะ desktop/ipad) — ไม่ใช่บั๊ก UI ของ P2.2U
+- ผู้คุมแก้ harness เอง: state นี้ถ่าย desktop+ipad → `wip/pos-p2.2u` **d9385328** (โค้ด cdd700fc ไม่เปลี่ยน · ไม่ต้อง build ใหม่) · เทียบ 01: ป้ายบรรทัด RULE (ชื่อโปร) + CHANNEL "ราคาตามช่องทาง" ✓ · ไทล์โปร chip+ขีดฆ่า ฿60 ✓ · ไทล์ไม่ขายหน้าร้าน จาง ✓
+- 📌 ติดตาม P2.12: มือถือ ตะกร้าว่าง = เข้าบิลที่พักไม่ได้ (05-mobile ไม่มีปุ่ม) — ให้เจ้าของตัดสิน
+- ถัดไป: vis60 จบ (sales) → checkout ทรี d ที่ d9385328 → vis61 register owner th (QC5) → gates merge P2.2U → merge

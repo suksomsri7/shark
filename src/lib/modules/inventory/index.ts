@@ -22,3 +22,7 @@ export {
   /** CRM C1.5 ▸ สินค้าหลายตัวในคำสั่งเดียว (id · priceSatang) — ของเลิกขาย/ข้ามร้าน-ข้ามระบบไม่คืน ◂ */
   getItemsByIds,
 } from "./service";
+
+// POS P2.3 ▸ ตัดสต็อกหลายรายการใน tx เดียว (บิล POS 1 ใบ = 1 ชุด · ข้ามสินค้าที่ไม่มีในคลังนี้/บริการ) — ทางเขียนเดียวที่ facade เปิด (เจ้าของโมดูลคลังรับทราบ: POS-OWNER-PENDING.md) ◂
+export { consumeBatch } from "./service";
+export type { ConsumeBatchInput, ConsumeBatchPart, ConsumeBatchResult, ConsumeBatchSkip } from "./service";

@@ -497,6 +497,13 @@ export type RegisterStatus = {
   memberEnabled: boolean;
 };
 export type RegisterStatusResult = RegisterStatus | RegisterRefusal;
+/**
+ * POS P2.3 ▸ §9 Q8 ปุ่ม "ตัดสต็อกค้าง N บิล · ลองอีกครั้ง" (service.retryPendingStockCuts · สิทธิ์ pos.settings.manage) —
+ * scanned = บิลค้างที่ลองรอบนี้ (เก่าสุดก่อน ≤ 200) · cut = บิลที่หายค้าง · stillPending = บิลในรอบนี้ที่ยังค้าง ◂
+ */
+export type RetryPendingStockCutsResult =
+  | { ok: true; scanned: number; cut: number; stillPending: number }
+  | { ok: false; code: "NOT_FOUND" | "PERMISSION_DENIED" | "INTERNAL" | "UNKNOWN"; message: string };
 /** POS P1.9 (S15) — กะของเครื่องบนแถบสถานะ */
 export type RegisterShiftInfo = { id: string; shiftNo: number; openedAt: string; openedByName: string; deviceLabel: string | null };
 
