@@ -1368,3 +1368,31 @@
 - HF-PP b34ebc08 (code 33072250): R1 MERGEABLE (F1 → fix1 UI gate EDC + key `register.refusal.manualConfirmManager` + settings copy + 2 owner lines) → R2 MERGEABLE · gates a42718c0 เขียวหมด · ทรีนอก ledger = 33072250 ทุกไบต์ · ผู้คุมรัน p2.8 บน ca5a07b4 (ST6) log `scratchpad/ctl/p28-ca5a07b4.log`
 - เปิด **P2.6 S** ทรี c `wip/pos-p2.6` base ca5a07b4 (prompt `pos-prompt-accountB-P2.6-S.filled.md`; step 0 = red-before บนฐานใหม่ ต้องไม่มี SKIP-until-export)
 - เลน 3/3: P2.6 S (c) · P2.8U reviewer (a4136ac0) + chain65 ภาพ (d) · ถัดไป HF-GC เมื่อมีช่อง builder (หลัง P2.8U merge)
+
+---
+## ⏸ PAUSE 10 ต.ค. 12:2xZ — เจ้าของสั่งพัก (weekly ~90%) · ▶️ RESUME STEPS หลังรีเซ็ต
+**สถานะ:** 26/55 (47%) · `session/pos` = **c083d5da** (โค้ดล่าสุด = ca5a07b4 HF-PP; ledger ต่อท้าย) · push แล้ว · ⛔ ห้าม push main · main = 71a1f363 (merged เข้า session/pos แล้ว)
+**merged วันนี้:** P2.3U a7561b5c · P2.4 S 7365d4db · P2.8 S d85ea5c3 · MAIN-MERGE 0d581286 · P2.4U c81f5bbf (26/55) · HF-TX 831ad163 · HF-PP ca5a07b4
+**subagent ทุกตัวตายเมื่อ session หยุด** — งานค้างต้องเปิดใหม่จาก branch ที่ push ไว้ (อ่าน "⏸ PAUSED" ท้าย wo-notes ของแต่ละใบ)
+
+### เลนที่ค้าง (ตอนสั่งพัก)
+1. **P2.8U** (ทรี b `wip/pos-p2.8u`, ส่งแล้ว c95012a0 / code 02c1a6d7, R1 = MERGEABLE-AFTER-FIXES) — fix round 1 กำลังทำ (F1 UI manager gate บน OrderPay · F2 channel filter · F4 md-only poll · F5 cancel+voidSale · F6 default channel · F8 harness · F9 pause targets) · rulings `wo-notes/pos-P2.8U-review.md` · builder ได้รับคำสั่งพัก → ดู "⏸ PAUSED" ท้าย `wo-notes/pos-P2.8U.md` (ทรี b) และ head ล่าสุดของ `origin/wip/pos-p2.8u`
+   - ภาพ: chain65 unit `pos-chain65-1791634245` (build c95012a0 ทรี d → vis66 orders ทุก state × owner/cashier th + owner en · register `register-tab-badge,default` · tables `tables-floor`) รันอยู่ตอนพัก ผลจะอยู่ `/root/pos-runs/vis66-qc5-*/SUMMARY.txt` (+ shots `shark-pos-d/.qc-shots/pos/p2.8u[-en]/`) — **ผู้คุมยังไม่ได้ดู 09 เต็ม** (หน้าเงิน: ค่าคอม/ยอดสุทธิ/จ่าย) → ดูตอนกลับมา
+2. **P2.6 S** (ทรี c `wip/pos-p2.6` จาก ca5a07b4, prompt `pos-briefs/pos-prompt-accountB-P2.6-S.filled.md`, เพิ่งเริ่ม ~12:1xZ) — builder ได้รับคำสั่งพัก → ดู "⏸ PAUSED" ท้าย `wo-notes/pos-P2.6.md` (ทรี c) · ตรวจ `P2.6-red.txt` (step 0) และสถานะ migration `20261208100000_pos_p26_kds` บน QC4 (`prisma migrate status` ผ่าน qc4.sh) ก่อนเปิดใหม่
+3. ว่าง: reviewer/hunter
+
+### ▶️ ขั้นตอนกลับมาทำ (ตามลำดับ)
+1. `date -u` · `git -C /root/projects/shark-pos fetch origin` · อ่านบล็อกนี้ + "⏸ PAUSED" ใน wo-notes P2.8U/P2.6 · ตรวจ `ls -td /root/pos-runs/vis66-qc5-*` → `SUMMARY.txt` + `grep -h '❌' *.log`
+2. **P2.8U:** ถ้า fix1 ยังไม่ครบ → เปิด builder ใหม่ (Opus) ทรี b ด้วยคำสั่งเดิม (rulings ใน `pos-P2.8U-review.md` §Controller rulings 1) ต่อจากจุดที่ PAUSED · ผู้คุมดูภาพ vis66 เต็ม (09) → V findings → fix1 → R2 (reviewer ใหม่ อ่าน hunks) → ถ่ายซ้ำ `orders-pay-dialog,orders-manual-sheet,orders-paused-banner,orders-detail-direct-unpaid` + register `register-tab-badge` (chain แบบ chain64 บนทรี d, **ห้ามครอบ flock ซ้อน**) → builder merge upstream → gates (p1.1 p1.3 p2.8 p1.18 authz fitness typecheck --dry) → ผู้คุม merge → **27/55** → TG `📊 POS · 49% (27/55) …`
+3. **HF-PP2** (brief `pos-briefs/pos-brief-HF-PP2.md`): เปิดบนทรี b หลัง P2.8U merge (builder เล็ก + reviewer) → merge · รัน p2.8 บน tip ยืนยัน ST6
+4. **P2.6 S:** เปิด builder ใหม่ทรี c จาก head `origin/wip/pos-p2.6` (หรือจาก base ใหม่ถ้ายังไม่มีอะไร) · prompt เดิม + "resume from PAUSED section" · หลังส่ง: reviewer + hunter (stock/order) → merge → ไม่นับ (U รวมนับ) → P2.6U
+5. ถัดไป: HF-GC (giftcard H1/H2, brief ยังไม่เขียน — ข้อมูลใน `pos-HF-TX-review.md` §hunt) · P2.5 · P2.7 · P2.9 (O24 ฝั่งบัญชีปิดแล้ว) · P2.11/P2.12 follow-ups
+6. ทุกครั้งก่อนเปิดเลน: ยืนยันทรีว่าง (`git -C <tree> status --short`), ห้าม `prisma generate`/`pnpm install` ในทรี p11 (node_modules ร่วมกับทรีผู้คุม), QC4 = ข้อสอบ / QC5 = ภาพ (`qc5.sh`), ล็อก gate POS `/tmp/shark-gate-pos.lock`, typecheck/build ใช้ `/tmp/pos-gate.lock` ชั้นเดียว
+
+### กฎที่เพิ่มวันนี้ (อยู่ใน `pos-brief-LANE-RULES.md`)
+- §ด่านจุด merge: ทุก merge ต้องมี p1.1 + p1.3 + fitness ±env + typecheck · ไฟล์ action ใน pos ห้ามชื่อ `catalog-*` ถ้า import โมดูลผู้เขียนเดิม
+- §HF-TX: ใน tx ของผู้เรียกต้องส่ง `callerTx(tx)` + `afterSaleCommitted` หลัง commit · `qc-hf-tx` อยู่ในด่านของใบที่แตะ register/order/giftcard
+- memory: `reference_nested_flock_same_file_self_deadlock.md`
+
+### ค้างเจ้าของ (ใหม่วันนี้, อยู่ใน `POS-OWNER-PENDING.md` แล้ว)
+บัญชี: ciEquals (รับแล้ว) · VAT gift card O24 บรรทัด 63 ยังเปิด · สมาชิก: seed QC4 null.role (m2.6–m2.8 รันไม่ได้) · P1.7: TRANSFER ไม่มีอ้างอิงไม่มีเกต · REST ops/sales PROMPTPAY ผ่าน API key ไม่มีเกต · CARD รวมในเกต (flip ได้ที่ `REG_MANUAL_METHODS`) · gift card: H1 balanceAfter stale · H2 liability post ไม่ crash-safe (→ HF-GC) · ร้านอาหาร/เว็บช็อป/คลัง ตามเดิม
