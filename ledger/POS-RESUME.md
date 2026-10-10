@@ -1294,3 +1294,8 @@
 - P2.8: ส่ง builder merge upstream 7365d4db (ชน 5 ไฟล์ เก็บทั้งสองฝั่ง) + prisma generate ทรี b + ด่านสั้น → รายงาน → ผู้คุม ff `session/pos` → `git merge origin/main` (350 commits) → ตรวจ P1.1b ส่วน B + ORACLE-EDIT P1.3 S5.12 → deploy p28 QC5 → P2.8U
 - **P2.4U เปิดแล้ว** (p11 · base 7365d4db · prompt `pos-prompt-accountB-P2.4U.filled.md` rulings 1–13) · HF-TX รอ P2.8 merge (prompt `pos-prompt-accountB-HF-TX-S.md` พร้อม)
 - เลน 2/3: P2.8 merge-upstream (b) · P2.4U (p11) · gates68 (c · ไม่นับเลน)
+
+## 10 ต.ค. 07:3xZ — ✅ merge P2.8 S (d85ea5c3) · gates68 เขียวหมด (ต้นไม้รวม P2.3U+P2.4) · QC5 deploy p28 แล้ว · P2.4/P2.8 นับเมื่อ U เข้า → ตัวนับยัง 25/55
+- main 71a1f363 vs session/pos: 1430 ไฟล์ · ชน 7 ไฟล์ · 4 migrations (crm_perf_indexes + **account_journal_no_sequence/alloc_lock v1/v2 = O24 แก้ฝั่งบัญชี**) · ไม่มี package/lock เปลี่ยน → เปิดเลน MAIN-MERGE บนทรี b (`pos-briefs/pos-prompt-accountB-MAIN-MERGE.md`) → ผล: merge head + ด่านเต็ม → ผู้คุม ff session/pos → QC5 deploy 4 migrations → O24/P2.9 ปลดบล็อก?
+- HF-TX รอ MAIN-MERGE (builder ≤ 2) · P2.8U รอ MAIN-MERGE merge
+- เลน 2/3: P2.4U (p11) · MAIN-MERGE (b)
