@@ -368,7 +368,12 @@
       "channelLimit": "สาขานี้มีช่องทางขายครบ 30 ช่องทางแล้ว",
       "channelNotSold": "สินค้านี้ไม่ขายในช่องทางนี้ — เอาออกจากบิล หรือเปลี่ยนช่องทาง",
       "priceRuleNotFound": "ไม่พบโปรราคานี้ — อาจถูกเก็บถาวรไปแล้ว",
-      "priceRuleLimit": "มีโปรราคาครบ 100 รายการแล้ว — เก็บถาวรโปรที่ไม่ใช้ก่อน"
+      "priceRuleLimit": "มีโปรราคาครบ 100 รายการแล้ว — เก็บถาวรโปรที่ไม่ใช้ก่อน",
+      "orderNotFound": "ไม่พบออเดอร์นี้ในสาขานี้",
+      "orderStateInvalid": "ออเดอร์อยู่ในสถานะที่ทำรายการนี้ไม่ได้",
+      "orderStateChanged": "ออเดอร์นี้เพิ่งถูกเปลี่ยนจากอีกเครื่อง — ดูสถานะล่าสุดก่อน",
+      "orderUnpaid": "ออเดอร์นี้ยังไม่ได้รับเงิน — รับเงินก่อนส่งมอบ",
+      "channelPaused": "ช่องทางนี้ปิดรับออเดอร์ชั่วคราว"
     },
     "held": {
       "title": "บิลที่พัก",
@@ -2132,7 +2137,7 @@
         "manageAt": "จัดการที่หน้าแชท",
         "facts": {
           "lineReceipt": "ส่งใบเสร็จทาง LINE",
-          "chatOrders": "รับออเดอร์จากแชท",
+          "chatOrders": "คีย์ออเดอร์จากแชทโดยพนักงาน",
           "orderStatusBot": "ลูกค้าถามสถานะออเดอร์ตอบอัตโนมัติ"
         }
       },
@@ -2659,6 +2664,148 @@
       "service": "บริการใส่ในสูตรไม่ได้ (ไม่มีสต็อก)",
       "archived": "วัตถุดิบในสูตรถูกเก็บถาวรแล้ว",
       "notFound": "ไม่พบวัตถุดิบหรือตัวเลือกนี้ในระบบขาย"
+    }
+  },
+  "orders": {
+    "title": "ออเดอร์ออนไลน์",
+    "todayCount": "ออเดอร์วันนี้ {count}",
+    "todayTotal": "ยอดรวม {amount}",
+    "updatedAt": "อัปเดต {time}",
+    "empty": "ยังไม่มีออเดอร์วันนี้",
+    "newOrderToast": "ออเดอร์ใหม่จาก {channel}",
+    "pausedBanner": "{channel} ปิดรับออเดอร์ถึง {time}",
+    "planned": "เร็ว ๆ นี้",
+    "sound": {
+      "label": "เสียงเตือนออเดอร์ใหม่",
+      "on": "เปิด",
+      "off": "ปิด"
+    },
+    "columns": {
+      "new": "ใหม่",
+      "newHint": "ต้องรับใน {time}",
+      "preparing": "กำลังเตรียม",
+      "ready": "พร้อม / รอไรเดอร์",
+      "done": "เสร็จวันนี้"
+    },
+    "rail": {
+      "all": "ทุกช่องทาง",
+      "autoAccept": "รับอัตโนมัติ",
+      "autoPauseHint": "พักรับอัตโนมัติเองเมื่อครัวค้างเกิน {n} ใบ",
+      "prepDefault": "เวลาเตรียมมาตรฐาน",
+      "prepMinutes": "{n} นาที",
+      "prepToPlatform": "ส่งให้แพลตฟอร์มเป็นเวลาพร้อมรับของ",
+      "pause": "ปิดรับชั่วคราว",
+      "pauseFor": "ปิดรับ {n} นาที",
+      "pauseUntilReopen": "จนกว่าจะเปิดเอง",
+      "reopen": "เปิดรับอีกครั้ง",
+      "pausedUntil": "ปิดรับถึง {time}",
+      "qrTable": "หน้าร้าน QR"
+    },
+    "card": {
+      "items": "{count} รายการ · {amount}",
+      "acceptWithin": "รับภายใน {time}",
+      "acceptLate": "เลยเวลารับ",
+      "prepDue": "เตรียม · พร้อมใน {n} นาที",
+      "prepLate": "เลยเวลาเตรียม {n} นาที",
+      "pickupAt": "รับที่ร้าน {time}",
+      "chatPayNote": "สั่งผ่านแชท · รอยืนยันชำระ {amount}",
+      "kitchenProgress": "ครัวกำลังทำ {done}/{total}"
+    },
+    "actions": {
+      "accept": "รับออเดอร์",
+      "acceptWithPrep": "รับออเดอร์ · เตรียม {n} นาที",
+      "editPrep": "แก้เวลา",
+      "reject": "ปฏิเสธ",
+      "rejectOutOfStock": "ปฏิเสธ (ของหมด)",
+      "startPrep": "เริ่มเตรียม",
+      "ready": "พร้อมแล้ว",
+      "handOver": "ส่งมอบแล้ว",
+      "pay": "รับเงิน",
+      "cancel": "ยกเลิกออเดอร์",
+      "viewBill": "ดูบิล",
+      "printLabel": "พิมพ์ใบปะหน้า",
+      "keyOrder": "+ คีย์ออเดอร์"
+    },
+    "status": {
+      "NEW": "ใหม่",
+      "ACCEPTED": "รับแล้ว",
+      "PREPARING": "กำลังเตรียม",
+      "READY": "พร้อม",
+      "HANDED": "ส่งมอบแล้ว",
+      "REJECTED": "ปฏิเสธแล้ว",
+      "CANCELLED": "ยกเลิกแล้ว"
+    },
+    "payment": {
+      "UNPAID": "รอชำระ",
+      "PAY_ON_PICKUP": "จ่ายตอนรับ",
+      "PLATFORM_PAID": "ชำระผ่านแพลตฟอร์ม",
+      "PAID": "ชำระแล้ว",
+      "REFUNDED": "คืนเงินแล้ว"
+    },
+    "fulfilment": {
+      "PICKUP": "รับที่ร้าน",
+      "DELIVERY": "ส่งถึงบ้าน",
+      "DINE_IN": "ทานที่ร้าน"
+    },
+    "reject": {
+      "title": "ปฏิเสธออเดอร์",
+      "reason": "เหตุผล",
+      "OUT_OF_STOCK": "ของหมด",
+      "CLOSING": "ใกล้ปิดร้าน",
+      "TOO_BUSY": "ออเดอร์เยอะเกิน",
+      "OTHER": "อื่น ๆ",
+      "note": "หมายเหตุ",
+      "confirm": "ยืนยันปฏิเสธ"
+    },
+    "cancel": {
+      "title": "ยกเลิกออเดอร์",
+      "reason": "เหตุผลที่ยกเลิก",
+      "voidNote": "บิล {receipt} จะถูกยกเลิกด้วย",
+      "pendingApproval": "ส่งคำขอยกเลิกบิลแล้ว — รอผู้จัดการอนุมัติ",
+      "confirm": "ยืนยันยกเลิก"
+    },
+    "detail": {
+      "title": "รายละเอียด {ref}",
+      "received": "เข้า {time}",
+      "deliverTo": "ส่งถึง",
+      "customerNote": "หมายเหตุลูกค้า",
+      "lines": "รายการ",
+      "total": "ยอดรวม",
+      "commission": "ค่าคอมมิชชันแพลตฟอร์ม {rate}",
+      "net": "รับจริง",
+      "onAccept": "เมื่อกดรับออเดอร์ ระบบจะ",
+      "onAcceptSale": "เปิดบิล · ช่องทาง {channel}",
+      "onAcceptStock": "ตัดสต็อกวัตถุดิบตามสูตร",
+      "onAcceptKitchen": "ส่งรายการเข้าครัว",
+      "onAcceptPlatform": "แจ้งแพลตฟอร์มว่ารับแล้ว",
+      "historyCount": "สั่งกับร้านนี้ ครั้งที่ {count}",
+      "historyAvg": "เฉลี่ย {amount}",
+      "member": "สมาชิก",
+      "notMember": "ยังไม่เป็นสมาชิก"
+    },
+    "manual": {
+      "title": "คีย์ออเดอร์",
+      "channel": "ช่องทาง",
+      "platformRef": "เลขออเดอร์แพลตฟอร์ม",
+      "customerName": "ชื่อลูกค้า",
+      "phone": "เบอร์โทร",
+      "fulfilment": "วิธีรับ",
+      "address": "ที่อยู่",
+      "note": "หมายเหตุ",
+      "startStatus": "สถานะเริ่ม",
+      "startNew": "ออเดอร์ใหม่ (ยังไม่รับ)",
+      "startAccepted": "รับแล้ว (รับบนแท็บเล็ตแพลตฟอร์ม)",
+      "paymentState": "การชำระ",
+      "addItem": "เพิ่มรายการ",
+      "customItem": "รายการกำหนดเอง",
+      "platformTotal": "ยอดตามแพลตฟอร์ม",
+      "totalMismatch": "ยอดที่กรอก {typed} ไม่ตรงกับยอดรายการ {sum}",
+      "submit": "บันทึกออเดอร์"
+    },
+    "summary": {
+      "rejectedCancelled": "ยกเลิก/ปฏิเสธวันนี้ {count}",
+      "avgAccept": "รับออเดอร์เฉลี่ย {seconds} วินาที",
+      "onTime": "เสร็จตรงเวลา {n} จาก {m} ออเดอร์"
     }
   },
   "nav": {
