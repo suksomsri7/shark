@@ -1349,3 +1349,4 @@
 - HF-TX: review R1 MERGEABLE + hunt OK (H1/H2 Low → HF-GC) · fix round 1 (suite-only F1–F5 + owner lines) กำลังทำ → หลังรายงาน: merge upstream c81f5bbf → gates (qc-hf-tx 18 · p2.4 · p2.8 ST6 เขียวหลัง push · p1.1 · p1.3) → merge
 - ใบถัดไป: P2.8U (ทรี b, base c81f5bbf) เปิดเลน · ต่อด้วย HF-PP → HF-GC → P2.6 S
 - TG ส่ง 47% (26/55)
+- 11:4xZ เปิดเลน P2.8U (ทรี b, `wip/pos-p2.8u` จาก c81f5bbf, prompt `pos-prompt-accountB-P2.8U.filled.md`) · เลน 2/3: HF-TX fix1 (c) · P2.8U (b) · ว่าง 1 (reviewer/hunter)
