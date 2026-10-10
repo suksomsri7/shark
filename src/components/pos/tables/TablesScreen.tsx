@@ -266,6 +266,8 @@ export function TablesScreen(p: TablesScreenProps) {
   const [quoteErr, setQuoteErr] = useState<string | null>(null);
   const quoteSeq = useRef(0);
   const itemsHash = shownDetail && shownDetail.unpaidItemIds.length ? shownDetail.itemsHash : null;
+  /** สมาชิกของโต๊ะ (ผูก/ถอดแล้วยอดเปลี่ยนได้ — ส่วนลดระดับ) = ตัวกระตุ้น quote อีกตัว */
+  const tableMemberKey = shownDetail?.session.member?.id ?? "";
   const requoteTable = useCallback(async () => {
     const seq = ++quoteSeq.current;
     if (!selSession || !itemsHash) {
@@ -286,7 +288,8 @@ export function TablesScreen(p: TablesScreenProps) {
     } catch {
       if (seq === quoteSeq.current) setQuoteErr("errors.loadFailed");
     }
-  }, [p.systemId, p.unitId, selSession, itemsHash]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- tableMemberKey = ตัวกระตุ้น (สมาชิกเปลี่ยน ⇒ ยอดใหม่)
+  }, [p.systemId, p.unitId, selSession, itemsHash, tableMemberKey]);
   // ยอดของโต๊ะ = quote ใหม่ทุกครั้งที่ชุดรายการ (itemsHash) เปลี่ยน
   useEffect(() => {
     void requoteTable();
