@@ -102,6 +102,7 @@ const CHECKS: readonly Def[] = [
   // ORACLE-ADD (P2.8 fix รอบ 2 · รีวิว F1 F2 · มติผู้คุม 10 ต.ค. 05:1xZ)
   D("W9", "X5", "[R5 มติ 13 · F1] ออเดอร์เว็บที่ร้านยืนยันรับเงินแล้ว (PAID · ยัง NEW) → rejectOrder และ cancelOrder ORDER_STATE_INVALID (ข้อความให้คืนเงิน/ยกเลิกที่หน้าเว็บร้าน) · ออเดอร์/ShopOrder/บิล ECOM ไม่เปลี่ยน · ตัวควบคุม: ออเดอร์เว็บที่ยังไม่จ่าย reject → ShopOrder CANCELLED"),
   D("W11", "X1", "[R4 R5 · H1] การยืนยันรับเงินของเว็บร้านสะท้อนเข้าออเดอร์ในธุรกรรมของมันเอง (ไม่พึ่งคิว): (a) ปฏิเสธก่อน (ยังไม่ระบาย) → confirmOrderPaid ok:false ไม่มีบิล ecom-<id> · ระบายแล้ว ShopOrder CANCELLED (b) ยืนยันก่อน → ก่อนระบายออเดอร์ PAID → reject ORDER_STATE_INVALID webPaid (c) แถว shop.order.paid DONE โดยไม่รันตัวผูก → ยัง PAID + saleId"),
+  D("W12", "X5", "[R5 R10 · H2] ร้านรับแล้วยกเลิกออเดอร์เว็บที่ยังไม่จ่าย → ระบาย → ShopOrder CANCELLED (ตัวรับ pos.order.cancelled) → confirmOrderPaid ok:false · ไม่มีบิล ecom-<id> · สต็อกไม่เปลี่ยน"),
   D("W10", "X4", "[R9 CD4 มติ 4 · F2] หน้าเว็บอ่านชั้นราคาเฉพาะของช่องทาง WEB: ไม่มีแถว WEB + แถวสาขา (ทุกช่องทาง) ฿170 + กติกาทุกช่องทาง −10% → storefront/createOrder = ราคา ShopProduct ฿200 · กติกาที่ระบุ WEB −20% → ฿160 ทั้ง storefront และ createOrder · บรรทัดบิลยืนยันรับเงิน priceSource RULE + priceRuleId (H5)"),
   // ── R ตัวอ่าน ──
   D("R1", "-", "[R8] listOrders สาขา A: counts.byColumn {new preparing ready done} + counts.byChannel ตรงความจริงใน DB · summary {count totalSatang rejectedCancelled avgAcceptSeconds onTime{n m}} · การ์ด LM-48213 (ref itemCount 3 · 42000 · channel {code name}) · กรอง status/channelId"),
@@ -2218,6 +2219,27 @@ async function runDb() {
     const obb = obId ? await row(obId) : null;
     if (!fx && (obb?.paymentState !== "PAID" || obb?.saleId !== cfB?.posSaleId || obb?.status !== "NEW")) p.push(`(c) ออเดอร์ ${ordStr(obb)} saleId ${obb?.saleId === cfB?.posSaleId ? "ตรง" : "ไม่ตรง"} (คาด NEW PAID + saleId จากธุรกรรมของเว็บร้าน)`);
     chk("W11", good(p) && hRej.ok && hPaid.ok, "ปฏิเสธก่อน → ยืนยันถูกปฏิเสธ ไม่มีบิล · ยืนยันก่อน → PAID ทันที → ปฏิเสธไม่ได้ · ไม่พึ่งตัวรับคิว", why(p));
+  });
+  await step("W12", async () => {
+    const p: string[] = [];
+    // ร้านยกเลิกออเดอร์เว็บที่รับแล้ว (ยังไม่จ่าย) ⇒ ระบาย ⇒ ShopOrder CANCELLED ⇒ ยืนยันรับเงินไม่ได้ ไม่มีบิล ECOM สต็อกไม่ขยับ
+    const soC = await shopTry("createOrder", () => shop.createOrder(sctx("S"), { customerName: "คุณไม่มารับ", customerPhone: "0811110031", lines: [{ productId: SP.tee, qty: 1 }] }), p);
+    const oc = (await poOfShop(soC?.id ?? ""))[0];
+    const acc = oc ? await O("acceptOrder", ctxU("S"), A("MGR"), { id: oc.id }) : null;
+    if (!fx && acc?.ok !== true) p.push(`(ตั้งต้น) accept → ${codeOf(acc)}`);
+    const cx = oc ? await O("cancelOrder", ctxU("S"), A("MGR"), { id: oc.id, reason: "ลูกค้าไม่มารับ" }) : null;
+    if (!fx && cx?.ok !== true) p.push(`cancelOrder → ${codeOf(cx)} ${short(cx?.message ?? "", 40)}`);
+    await drain();
+    const stC = soC?.id ? (await P.shopOrder.findUnique({ where: { id: soC.id } }).catch(() => null))?.status : null;
+    if (!fx && stC !== "CANCELLED") p.push(`ShopOrder หลังร้านยกเลิก + ระบาย ${stC} (คาด CANCELLED)`);
+    const oh0 = Number((await P.invItem.findUnique({ where: { id: INV.tee } }).catch(() => null))?.onHand);
+    const cfC = soC?.id ? await shopTry("confirmOrderPaid", () => shop.confirmOrderPaid(sctx("S"), soC.id), p) : null;
+    if (!fx && cfC?.ok !== false) p.push(`confirmOrderPaid หลังยกเลิก → ${short(cfC, 60)} (คาด ok:false)`);
+    const nC = soC?.id ? Number(await P.posSale.count({ where: { tenantId: T, idempotencyKey: `ecom-${soC.id}` } }).catch(() => -1)) : -1;
+    if (!fx && nC !== 0) p.push(`บิล ecom-<id> ${nC} (คาด 0)`);
+    const oh1 = Number((await P.invItem.findUnique({ where: { id: INV.tee } }).catch(() => null))?.onHand);
+    if (!fx && oh1 !== oh0) p.push(`สต็อกเสื้อ ${oh0}→${oh1} (คาดไม่เปลี่ยน)`);
+    chk("W12", good(p), "ร้านยกเลิกออเดอร์เว็บ → ShopOrder CANCELLED · ยืนยันไม่ได้ · ไม่มีบิล/ตัดสต็อก", why(p));
   });
   await step("W10", async () => {
     const p: string[] = [];
