@@ -4549,7 +4549,7 @@ try {
   if (needFixtures) await makeFixtures();
   // R3 V4: session ของเจ้าของร้าน (เปิดกะให้เครื่องของรอบนี้) — รอบ owner ใช้คุกกี้เดียวกัน · รอบ cashier mint เพิ่ม (ลบใน finally เหมือนกัน)
   let ownerCookies: Any[] = cookies;
-  if (STATES_ON && pages.includes("register") && userKey !== "owner") {
+  if (STATES_ON && (pages.includes("register") || pages.includes("tables")) && userKey !== "owner") { // POS P2.4U ▸ fix 1: --page tables ของแคชเชียร์ก็ต้องให้เจ้าของเปิดกะของเครื่อง (ไม่งั้นเปิดด้วยคุกกี้แคชเชียร์ = ไม่มีสิทธิ์ ⇒ ไม่มีกะ ⇒ เช็คบิลปิด) ◂
     const ownTok = "pos" + Math.random().toString(36).slice(2) + Date.now().toString(36);
     const ownRow = await prisma.session.create({ data: { userId: T.users.owner.userId, tokenHash: sha256(ownTok), userAgent: UA, idleExpiresAt: ttl, expiresAt: ttl }, select: { id: true } });
     MINE.push(ownRow.id);
