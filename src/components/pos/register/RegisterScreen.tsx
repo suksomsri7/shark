@@ -2294,6 +2294,16 @@ export function RegisterScreen(props: RegisterScreenProps) {
       ) : null}
     </>
   ) : null;
+  // POS P2.4U ▸ มติ 4: ส่งครัวได้ BUSY ⇒ ข้อความ + ปุ่มลองอีกครั้ง (โหนดแยก — ปุ่มซ้อนในพร็อพของ CartPanel ทำให้ตัวสแกน F15.3 นับ CartPanel เป็นปุ่มไร้ testid) ◂
+  const tableRetryNode =
+    tableOn && tblErr?.retry ? (
+      <>
+        {t("errors.busy")}
+        <button data-testid="pos-tbl-send-retry" className="ml-2 min-h-[44px] font-semibold underline underline-offset-2" type="button" disabled={tblBusy} onClick={() => void tableRun(true)}>
+          {t("pay.retry")}
+        </button>
+      </>
+    ) : null;
   const cartPanel = (variant: "inline" | "sheet") => (
     <CartPanel
       variant={variant}
@@ -2302,18 +2312,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
       totalsPending={totalsPending}
       payAmount={payAmount}
       payEnabled={payEnabled}
-      error={
-        tableOn && tblErr?.retry ? ( // POS P2.4U ▸ มติ 4: BUSY = ปุ่มลองอีกครั้ง ◂
-          <>
-            {t("errors.busy")}
-            <button data-testid="pos-tbl-send-retry" className="ml-2 min-h-[44px] font-semibold underline underline-offset-2" type="button" disabled={tblBusy} onClick={() => void tableRun(true)}>
-              {t("pay.retry")}
-            </button>
-          </>
-        ) : (
-          errorNode
-        )
-      }
+      error={tableRetryNode ?? errorNode} // POS P2.4U ▸ มติ 4: BUSY = ปุ่มลองอีกครั้ง ◂
       frozen={frozen}
       onPay={openPay}
       onSoon={soon}
