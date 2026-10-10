@@ -2362,6 +2362,8 @@ async function seedBillsOnce(): Promise<void> {
     BILLS.error = e instanceof Error ? e.message.slice(0, 200) : String(e);
   }
 }
+/** HF-P1CLOSE fix รอบ 1: สถานะหน้าบิลที่ต้องค้นเลขบิลเป้าหมาย (เป้าหมายตกหน้าแรก) — ลงท้ายรายงาน */
+const BILLS_SEARCHED: string[] = [];
 /** แตะบิลเป้าหมาย (แถวที่ md+ · การ์ดที่ 390) แล้วรอลิ้นชักที่มีไทม์ไลน์ */
 async function openTargetBill(page: Any): Promise<void> {
   await visibleEl(page, tid("pos-bills-list"), 0, 15_000);
@@ -2383,11 +2385,22 @@ async function runBillsState(page: Any, state: BillsStateKey): Promise<void> {
   await visibleEl(page, tid("pos-bills-list"), 0, 15_000).catch(() => {
     throw new StepError("หน้าบิลวันนี้ไม่ขึ้น (pos-bills-list)");
   });
-  await visibleEl(page, `[data-bill-id="${BILLS.target}"]`, 0, 15_000).catch(() => {
-    throw new StepError("ไม่เห็นบิลเป้าหมายในหน้าแรกของรายการ");
-  });
+  // HF-P1CLOSE fix รอบ 1 (ภาคผนวก): ชุดบิลภาพของวันนี้ถูกใช้ซ้ำ + บิลใหม่กว่าดันบิลเป้าหมายตกหน้าแรก (10 แถว/หน้า) ⇒
+  //   ไม่อยู่หน้าแรก = พิมพ์เลขบิลของเป้าหมายลงช่องค้นหา (pos-bills-search · ค้นเลขบิลขึ้นต้น) แล้วรอรายการที่กรองแล้ว ·
+  //   อยู่หน้าแรกแล้ว = ไม่ค้น (ภาพเหมือนรายการวันนี้) · นับ ≥ 6 แถวจากหน้าแรกก่อนค้นเสมอ ◂
+  const targetSel = `[data-bill-id="${BILLS.target}"]`;
+  const onPage1 = await visibleEl(page, targetSel, 0, 8_000).then(() => true).catch(() => false);
   const n = await page.$$eval('[data-testid="pos-bills-row"],[data-testid="pos-bills-card"]', (els: Element[]) => els.filter((e) => e.getClientRects().length > 0).length).catch(() => 0);
   if (n < 6) throw new StepError(`รายการวันนี้มี ${n} บิล (คาด ≥ 6)`);
+  if (!onPage1) {
+    const rn = (await prisma.posSale.findFirst({ where: { id: BILLS.target, tenantId: T.tenantId }, select: { receiptNo: true } }))?.receiptNo;
+    if (!rn) throw new StepError("บิลเป้าหมายไม่อยู่หน้าแรกและไม่มีเลขบิลให้ค้น");
+    await typeInto(page, tid("pos-bills-search"), rn);
+    await visibleEl(page, targetSel, 0, 15_000).catch(() => {
+      throw new StepError(`ไม่เห็นบิลเป้าหมายในหน้าแรก และค้นเลขบิล ${rn} แล้วก็ไม่เห็น`);
+    });
+    BILLS_SEARCHED.push(`${state}@${rn}`);
+  }
   if (state === "bills-list") return;
   await openTargetBill(page);
   if (state === "bills-drawer") return;
@@ -3836,6 +3849,7 @@ try {
   if (HFP1.cleanup && !HFP1.cleanup.ok) failures++;
   if (HFP1.printerRestore) console.error(`🧹 ${HFP1.printerRestore}`);
   for (const l of LOCK_SCROLL) console.log(`  O5 lock-screen-scroll: ${l}`);
+  if (BILLS_SEARCHED.length) console.log(`  หน้าบิล: บิลเป้าหมายไม่อยู่หน้าแรก → ค้นเลขบิล (${BILLS_SEARCHED.join(" · ")})`);
   const { removed, stale } = await cleanSessions();
   let fixOut = "";
   try {
