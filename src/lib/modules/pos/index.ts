@@ -56,6 +56,9 @@ import {
   // POS P2.2 ▸ R2 ราคาตามช่องทาง/สาขา (แทนทั้งชุด) · บวกราคาทั้งช่องทางเป็น % (ราคาตายตัว) ◂
   setChannelPrices as catalogSetChannelPrices,
   bulkChannelMarkup as catalogBulkChannelMarkup,
+  // POS P2.3 ▸ R2 สูตร/BOM ของเมนู: ส่วนต่างต่อตัวเลือก (แทนทั้งชุด) · สวิตช์ตัดสต็อกตามสูตร ◂
+  setRecipeChoiceLines as catalogSetRecipeChoiceLines,
+  setBomEnabled as catalogSetBomEnabled,
 } from "./catalog";
 export const catalog = {
   createProduct: catalogCreateProduct,
@@ -73,8 +76,12 @@ export const catalog = {
   /** P1.2 R5 — กลุ่มตัวเลือก (ตารางร้านอาหาร · ต่อสาขา) · ผูกกลุ่มกับสินค้าแทนทั้งชุด (MENU เขียน MenuItemOptionGroup ด้วย) */
   createOptionGroup: catalogCreateOptionGroup,
   setProductOptionGroups: catalogSetProductOptionGroups,
-  /** P1.2 R8 — ส่วนประกอบของชุด/คอมโบ (BUNDLE เท่านั้น) */
+  /** P1.2 R8 — ส่วนประกอบของชุด/คอมโบ · P2.3 R2 — สูตรของเมนู (MENU: บันทึกสูตรแรก = เปิดตัดสต็อกตามสูตร · [] = ปิด) */
   setRecipe: catalogSetRecipe,
+  /** P2.3 R2 — ส่วนต่างของสูตรต่อตัวเลือก (ขนาด/นม/ท็อปปิ้ง · จำนวนเต็มมีเครื่องหมาย · แทนทั้งชุด) */
+  setRecipeChoiceLines: catalogSetRecipeChoiceLines,
+  /** P2.3 R2 — เปิด/ปิดตัดสต็อกตามสูตรของเมนู (ไม่มีสูตร = เปิดไม่ได้) */
+  setBomEnabled: catalogSetBomEnabled,
   /** P2.2 R2 — แถวราคาตามช่องทาง/สาขาของสินค้า 1 รายการ (แทนทั้งชุด · pos.product.setPrice ตามขอบเขตแถว) */
   setChannelPrices: catalogSetChannelPrices,
   /** P2.2 R2 CD6 — ราคาช่องทาง = ฐาน + X% ปัดครั้งเดียว เขียนเป็นราคาตายตัว (≤ 500 สินค้า หรือ 1 หมวด) */
@@ -87,3 +94,8 @@ export { CatalogError } from "./catalog";
 export { resolvePrices } from "./price";
 export type { ResolvePricesInput, ResolvePricesResult, ResolvedPriceItem, PriceScope } from "./price";
 export type { PriceSource, ChannelPriceView, ChannelPriceInputRow } from "./price-shared";
+
+// POS P2.3 ▸ สูตร/BOM — กระจายสูตรต่อ 1 หน่วย (บริสุทธิ์ · ผู้เรียกร้านอาหาร/เว็บ/QR ส่ง components จากตัวเดียวกันใน P2.4/P2.7/P2.8) ·
+//   ต้นทุนตามสูตร (R8 · เห็นต้นทุนเฉพาะ pos.product.manage / pos.report.view) ◂
+export { expandRecipe, RECIPE_MAX_COMPONENTS } from "./recipe-shared";
+export type { RecipeBaseLine, RecipeChoiceLine, RecipeComponent, ExpandRecipeResult } from "./recipe-shared";
