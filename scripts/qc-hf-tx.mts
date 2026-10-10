@@ -10,6 +10,8 @@
 //       OUT 1 แถว + onHand −1 · pos.sale.paid 1 แถว · ตัวสอดแนม prisma.posSale.findFirst (select status) ไม่เห็นการอ่านก่อน commit (ไม่มี found:false)
 //   HT2 บัตรกำนัล sell + reload: PosSale/PosSaleLine/PosPayment xmin = GiftCard/GiftCardTxn xmin (outbox ไม่นับ — การระบายแก้แถว) · pos.sale.paid 1 แถว → DONE
 //       (ระบายหลัง commit) · PosSale.giftCardId ตั้งแล้ว
+//   HT2.5 (fix 1 · F2) ขายบัตรพร้อมกันสองคำขอด้วยคีย์เดียว ⇒ GiftCard 1 · PosSale 1 · SELL GiftCardTxn 1 · ผลของคำขอที่แพ้ pin = null (ทางลองใหม่ P2002 → ผลเดิม)
+//   หมายเหตุ fix 1 (F1): xid ของผู้เรียก = `pg_current_xact_id()::xid` (32 บิตแบบเดียวกับ xmin · ไม่ใช่ txid_current() 64 บิตที่มี epoch)
 //   HT3 สัญญา callerTx: (a) ผู้เรียก throw หลัง createSale(…, callerTx(tx)) ⇒ บิล 0 แถว · OUT 0 · (b) commit แล้ว afterSaleCommitted ⇒ xmin = xid ผู้เรียก ·
 //       ไม่มีการอ่านในธุรกรรม · OUT 1 หลัง afterSaleCommitted
 //   HT4 positive control: หน้าขายเงินสด (createSale เป็นเจ้าของ tx) xmin เดียว + OUT 1 (ไม่เปลี่ยน)
@@ -37,6 +39,7 @@ const CHECKS: [string, string][] = [
   ["HT2.2", "บัตรกำนัล sell: pos.sale.paid 1 แถว → DONE (ระบายหลัง commit)"],
   ["HT2.3", "บัตรกำนัล reload: PosSale/Line/Payment xmin = GiftCard/GiftCardTxn xmin · giftCardId ตั้งแล้ว"],
   ["HT2.4", "บัตรกำนัล reload: pos.sale.paid 1 แถว → DONE (ระบายหลัง commit)"],
+  ["HT2.5", "บัตรกำนัล sell พร้อมกัน 2 คำขอคีย์เดียว ⇒ GiftCard 1 · PosSale 1 · SELL 1 · ผลที่เล่นซ้ำ pin null"],
   ["HT3.1", "callerTx + ผู้เรียก rollback ⇒ บิล 0 แถว · OUT 0"],
   ["HT3.2", "callerTx + commit + afterSaleCommitted ⇒ xmin = xid ผู้เรียก · ไม่มีการอ่านในธุรกรรม · OUT 1"],
   ["HT4", "positive control: หน้าขายเงินสด xmin เดียว + OUT 1"],
@@ -337,6 +340,25 @@ try {
     chk("HT2.3", allR.length === 1 && Object.values(xr).every((v) => v.length > 0) && saleR?.giftCardId === s.giftCardId,
       `xmin ${JSON.stringify(xr)} · giftCardId ${saleR?.giftCardId === s.giftCardId ? "ตั้งแล้ว" : saleR?.giftCardId}`);
     chk("HT2.4", evR.length === 1 && evR[0].status === "DONE", `pos.sale.paid ${evR.length} แถว · ${evR.map((e) => `${e.status}/${e.attempts}`).join(",") || "-"}`);
+
+    // HT2.5 (fix 1 · F2) — สองคำขอขายพร้อมกันด้วยคีย์เดียว: ผู้แพ้รอ advisory lock ของ createSale → ได้บิลเดิม → GiftCardTxn ชน P2002
+    //   → ธุรกรรมทั้งก้อน rollback (บัตรใบที่สอง + ธงบนบิลหายไปด้วย) → ทางลองใหม่เห็นคีย์แล้วคืนผลเดิม (pin null)
+    phase = "gc-parallel";
+    const cards0 = await P.giftCard.count({ where: { tenantId: T } });
+    const idem = `hftx-${RAND}-gp`;
+    const one = () => G.sell(gctx, owner, { satang: 70_000, payMethods: [{ type: "CASH", amountSatang: 70_000 }], unitId: U, recipient: { print: true }, idempotencyKey: idem });
+    const settled = await Promise.allSettled([one(), one()]);
+    const ok = settled.filter((x): x is PromiseFulfilledResult<Any> => x.status === "fulfilled").map((x) => x.value);
+    const errs = settled.filter((x): x is PromiseRejectedResult => x.status === "rejected").map((x) => String((x.reason as Error)?.message ?? x.reason).slice(0, 80));
+    const pkey = `giftcard-sell-${idem}`;
+    const nCards = (await P.giftCard.count({ where: { tenantId: T } })) - cards0;
+    const nSales = await P.posSale.count({ where: { tenantId: T, idempotencyKey: pkey } });
+    const nSell = await P.giftCardTxn.count({ where: { tenantId: T, idempotencyKey: pkey, type: "SELL" } });
+    const pins = ok.map((r) => (r.pin === null ? "null" : "set"));
+    const sameCard = ok.length === 2 && ok[0].giftCardId === ok[1].giftCardId && ok[0].saleId === ok[1].saleId;
+    const flag = ok.length ? await P.posSale.findUnique({ where: { id: ok[0].saleId }, select: { giftCardId: true } }) : null;
+    chk("HT2.5", ok.length === 2 && nCards === 1 && nSales === 1 && nSell === 1 && sameCard && pins.filter((x) => x === "null").length === 1 && pins.filter((x) => x === "set").length === 1 && flag?.giftCardId === ok[0].giftCardId,
+      `สำเร็จ ${ok.length}/2${errs.length ? ` (ล้ม: ${errs.join(" · ")})` : ""} · GiftCard +${nCards} · PosSale ${nSales} · SELL ${nSell} · บัตร/บิลเดียวกัน ${sameCard ? "ใช่" : "ไม่"} · pin ${pins.join("/")} · ธงบิล ${flag?.giftCardId === ok[0]?.giftCardId ? "ตรง" : "ไม่ตรง"}`);
   }
 
   // ── HT4 positive control: หน้าขายเงินสด (createSale เป็นเจ้าของ tx) ──
@@ -411,7 +433,7 @@ try {
     let inside: Read[] = [];
     phase = "ht3-in-tx";
     const saleId: string = await P.$transaction(async (tx: Any) => {
-      callerXid = String(((await tx.$queryRawUnsafe(`SELECT txid_current()::text AS x`)) as Any[])[0].x);
+      callerXid = String(((await tx.$queryRawUnsafe(`SELECT pg_current_xact_id()::xid::text AS x`)) as Any[])[0].x);
       const r = await svc.createSale(input, wrap(tx));
       inside = [...readsOf(r.saleId)];
       return r.saleId;
@@ -433,7 +455,7 @@ try {
     let inside: Read[] = [];
     phase = "ht5-in-tx";
     const saleId: string = await P.$transaction(async (tx: Any) => {
-      callerXid = String(((await tx.$queryRawUnsafe(`SELECT txid_current()::text AS x`)) as Any[])[0].x);
+      callerXid = String(((await tx.$queryRawUnsafe(`SELECT pg_current_xact_id()::xid::text AS x`)) as Any[])[0].x);
       const r = await svc.createSale(stocked("raw"), tx);
       inside = [...readsOf(r.saleId)];
       return r.saleId;

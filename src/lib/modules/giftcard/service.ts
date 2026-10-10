@@ -332,7 +332,8 @@ export type SellResult = {
   accountingDocId: string | null;
 };
 
-/** ขายด้วยคีย์นี้ไปแล้ว → ผลเดิม (pin null) · ยังไม่มี = null — ใช้ทั้งตอนเข้า และตอนลองใหม่หลัง P2002 (HF-TX) */
+// POS HF-TX ▸ ตัวคืนผลเดิมของการขาย (แยกจากด่านทางเข้าเดิม) — ใช้ซ้ำในทางลองใหม่หลัง P2002 ◂
+/** ขายด้วยคีย์นี้ไปแล้ว → ผลเดิม (pin null) · ยังไม่มี = null — ใช้ทั้งตอนเข้า และตอนลองใหม่หลัง P2002 */
 async function sellReplay(tenantId: string, key: string): Promise<SellResult | null> {
   const done = await prisma.giftCardTxn.findUnique({
     where: { tenantId_idempotencyKey: { tenantId, idempotencyKey: key } },
@@ -509,6 +510,7 @@ export async function sell(ctx: GiftCardCtx, actor: MemberActor, input: SellInpu
     }
   }
 
+  // POS HF-TX ▸ หมายเลข/PIN มาจากรอบที่ commit จริง (ออกใหม่ทุกรอบที่ลองซ้ำ) ◂
   return { giftCardId: created.card.id, number: created.number, pin: created.pin, saleId: created.saleId, expiresAt, accountingDocId };
 }
 
@@ -653,7 +655,8 @@ export type ReloadInput = {
   idempotencyKey: string;
 };
 
-/** เติมด้วยคีย์นี้ไปแล้ว → ผลเดิม · ยังไม่มี = null — ใช้ทั้งตอนเข้า และตอนลองใหม่หลัง P2002 (HF-TX) */
+// POS HF-TX ▸ ตัวคืนผลเดิมของการเติมเงิน (แยกจากด่านทางเข้าเดิม) — ใช้ซ้ำในทางลองใหม่หลัง P2002 ◂
+/** เติมด้วยคีย์นี้ไปแล้ว → ผลเดิม · ยังไม่มี = null — ใช้ทั้งตอนเข้า และตอนลองใหม่หลัง P2002 */
 async function reloadReplay(tenantId: string, key: string): Promise<{ txnId: string; saleId: string; balanceAfter: number } | null> {
   const done = await prisma.giftCardTxn.findUnique({
     where: { tenantId_idempotencyKey: { tenantId, idempotencyKey: key } },

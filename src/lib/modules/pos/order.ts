@@ -463,7 +463,8 @@ async function deviceShift(db: PrismaClient, s: { tenantId: string; systemId: st
   return { shiftId: st.shift?.id ?? null, required: st.required };
 }
 
-/** งานหลัง commit ของบิล: afterSaleCommitted (ตัดสต็อกบรรทัดผูกคลัง/ส่วนประกอบ + ระบายคิว) — ชุดเดียวกับ createSale ตอนเป็นเจ้าของ tx (HF-TX) */
+// POS HF-TX ▸ afterSaleCommit ส่งต่อ afterSaleCommitted (ตัวกลาง · เพิ่ม scheduleDrain — ผู้เรียกระบายซ้ำได้ ไม่มีผล) ◂
+/** งานหลัง commit ของบิล: afterSaleCommitted (ตัดสต็อกบรรทัดผูกคลัง/ส่วนประกอบ + ระบายคิว) — ชุดเดียวกับ createSale ตอนเป็นเจ้าของ tx */
 async function afterSaleCommit(tenantId: string, unitId: string, saleId: string | null, lines: CreateSaleInput["lines"] | null): Promise<void> {
   if (saleId && lines) await afterSaleCommitted({ tenantId, unitId, lines }, saleId);
 }
