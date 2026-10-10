@@ -215,8 +215,10 @@ function idInput(input: unknown, keys: readonly string[]): Record<string, unknow
 }
 
 // ═══════════ ช่องทาง ═══════════
-/** adapter ที่พนักงานคีย์เอง (แท็บเล็ตแพลตฟอร์ม / ช่องทางกำหนดเอง) — ปริยายรับแล้ว · ไม่โดนพัก · ไม่รับอัตโนมัติ */
-const staffKeyed = (adapter: string) => adapter === "MANUAL" || adapter === "NONE";
+/** MANUAL = พนักงานคีย์จากแท็บเล็ตแพลตฟอร์ม (รับบนแท็บเล็ตแล้ว) ⇒ สถานะเริ่มปริยาย ACCEPTED · รับอัตโนมัติไม่ใช้กับ MANUAL (มติ CD2 · CD11) */
+const isManual = (adapter: string) => adapter === "MANUAL";
+/** พักรับ (pausedUntil > ตอนนี้) ปฏิเสธเฉพาะช่องทางที่ลูกค้า/ระบบส่งเข้ามาเอง — WEB · CHAT · API (R3: MANUAL ได้ · ช่องทางกำหนดเองที่พนักงานคีย์ได้) */
+const pauseRefuses = (adapter: string) => adapter === "WEB" || adapter === "CHAT" || adapter === "API";
 const isPaused = (ch: { pausedUntil: Date | null }, now: Date) => !!ch.pausedUntil && ch.pausedUntil.getTime() > now.getTime();
 
 async function channelOfUnit(db: Db, s: { tenantId: string; systemId: string; unitId: string }, by: { channelId: string | null; channelCode: string | null }): Promise<SalesChannel | null> {
@@ -554,7 +556,7 @@ async function ingestInsideTx(tx: Tx, plan: IngestPlan): Promise<IngestDone | Or
   const now = new Date();
   const dayStart = posDayStart(now);
   const seq = (await tx.posOrder.count({ where: { tenantId: s.tenantId, unitId: s.unitId, receivedAt: { gte: dayStart } } })) + 1;
-  const start: "NEW" | "ACCEPTED" = input.startStatus ?? (staffKeyed(ch.adapter) ? "ACCEPTED" : "NEW");
+  const start: "NEW" | "ACCEPTED" = input.startStatus ?? (isManual(ch.adapter) ? "ACCEPTED" : "NEW");
   const paymentState = ch.payout === "PLATFORM" ? "PLATFORM_PAID" : (input.paymentState ?? "UNPAID");
   const total = input.lines.length ? plan.lines.reduce((t, l) => t + lineTotal(l), 0) : 0;
   const order = await tx.posOrder.create({
@@ -606,8 +608,8 @@ async function ingestInsideTx(tx: Tx, plan: IngestPlan): Promise<IngestDone | Or
   });
   await addEvent(tx, order, { type: "received", from: null, to: "NEW", actorUserId: plan.createdByUserId, payload: input.payload === null || input.payload === undefined ? undefined : input.payload, at: now });
   await emitOrderEvent(tx, order, "pos.order.received", start);
-  // รับทันที: สถานะเริ่ม ACCEPTED (พนักงาน) หรือรับอัตโนมัติของช่องทาง (ไม่ใช่ช่องทางคีย์เอง · มติ 11 · ผู้รับ = null)
-  const auto = start === "NEW" && ch.autoAccept && !staffKeyed(ch.adapter);
+  // รับทันที: สถานะเริ่ม ACCEPTED (พนักงาน) หรือรับอัตโนมัติของช่องทาง (ไม่ใช่ MANUAL · มติ 11 · ผู้รับ = null)
+  const auto = start === "NEW" && ch.autoAccept && !isManual(ch.adapter);
   if (start !== "ACCEPTED" && !auto) return { orderId: order.id, duplicated: false, saleId: null, saleLines: null, accepted: "none" };
   const prep = input.prepMinutes ?? ch.prepMinutes ?? ORDER_PREP_DEFAULT_MIN;
   const who = auto ? { actorUserId: null, shiftId: null, prepMinutes: prep, auto: true } : { actorUserId: plan.acceptor.actorUserId, shiftId: plan.acceptor.deviceShiftId, prepMinutes: prep, auto: false };
@@ -659,13 +661,13 @@ export async function ingestOrder(ctx: RegisterCtx, actor: RegisterActor, input:
     if (ch.payout === "PLATFORM" && inp.paymentState) return refuse("VALIDATION", "ออเดอร์แพลตฟอร์มชำระผ่านแพลตฟอร์มแล้ว — ไม่ต้องระบุสถานะชำระ");
     const custom = inp.lines.findIndex((l) => l.kind === "custom");
     if (custom >= 0 && !can(s.actor, "pos.sale.priceOverride", s.unitId)) return refuse("PERMISSION_DENIED", "รายการกำหนดเองต้องมีสิทธิ์ตั้งราคาเอง — ให้ผู้จัดการทำรายการนี้", { lineIndex: custom });
-    if (isPaused(ch, new Date()) && !staffKeyed(ch.adapter)) return refuse("CHANNEL_PAUSED", `ช่องทาง ${ch.name} ปิดรับออเดอร์ชั่วคราว`);
-    const linkBad = await assertCustomerLinks(prisma, s.tenantId, inp);
-    if (linkBad) return linkBad;
     const plan0 = { s, ch, input: inp, source: false };
-    // คำขอซ้ำ (ไม่ล็อก — ถูกตรวจซ้ำในธุรกรรม) ⇒ ไม่คิดราคาซ้ำ ไม่เขียนอะไร
+    // คำขอซ้ำ (ไม่ล็อก — ถูกตรวจซ้ำในธุรกรรม) ⇒ ผลเดิมแม้ช่องทางถูกพักทีหลัง · ไม่คิดราคาซ้ำ ไม่เขียนอะไร
     const pre = await existingOrder(prisma, plan0);
     if (pre) return isRefusal(pre) ? pre : { ok: true, orderId: pre.orderId, duplicated: true, saleId: pre.saleId };
+    if (isPaused(ch, new Date()) && pauseRefuses(ch.adapter)) return refuse("CHANNEL_PAUSED", `ช่องทาง ${ch.name} ปิดรับออเดอร์ชั่วคราว`);
+    const linkBad = await assertCustomerLinks(prisma, s.tenantId, inp);
+    if (linkBad) return linkBad;
     // ราคา (ตัวคิดราคาของหน้าขาย บนช่องทางนี้ — สินค้ามองเห็นได้ · 86 · ตัวแปร · ตัวเลือก · ราคาช่องทาง/โปร · ไม่ขาย)
     const q = await quoteRegisterCart({ tenantId: s.tenantId, systemId: s.systemId, unitId: s.unitId }, s.actor, {
       channelId: ch.id,
@@ -750,7 +752,7 @@ export async function ingestInTx(tx: Tx, scope: { tenantId: string; unitId: stri
   const inp = parsed.value;
   const ch = await channelOfUnit(tx, s, inp);
   if (!ch) return refuse("CHANNEL_INVALID");
-  if (isPaused(ch, new Date()) && !staffKeyed(ch.adapter)) return refuse("CHANNEL_PAUSED", `ช่องทาง ${ch.name} ปิดรับออเดอร์ชั่วคราว`);
+  if (isPaused(ch, new Date()) && pauseRefuses(ch.adapter)) return refuse("CHANNEL_PAUSED", `ช่องทาง ${ch.name} ปิดรับออเดอร์ชั่วคราว`);
   if (ch.payout === "PLATFORM" && inp.startStatus === "ACCEPTED") return refuse("VALIDATION", "ออเดอร์แพลตฟอร์มผ่านประตูระบบต้องเริ่มเป็นออเดอร์ใหม่ (รับที่จอออเดอร์)");
   // สินค้าของบรรทัด (POS นี้) + 86 ที่สาขา (ตัวอ่านเดียวกับหน้าขาย)
   const pids = [...new Set(inp.lines.flatMap((l) => (l.kind === "custom" ? [] : [l.productId])))];
