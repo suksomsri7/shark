@@ -1,0 +1,1764 @@
+{
+ "at": "2026-10-08T01:28:15.263Z",
+ "which": "DATABASE_URL",
+ "hostMark": "ep-royal-night…",
+ "tenantId": "cmtazbpjh000004lcjikxju2i",
+ "crmSystemId": "cmtdvoopr000004jpf1vaply9",
+ "ownerUserId": "cmtazbehq000004l77f899ulm",
+ "tempMembershipsNow": 0,
+ "counts": {
+  "tenantTables": 299,
+  "childTables": 0,
+  "unreachable": 12
+ },
+ "tables": {
+  "AccountAttachment": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "AccountBankStatement": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "AccountBankStatementLine": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "AccountCategory": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "AccountCheque": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "AccountContact": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "AccountContactGroup": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "AccountContactGroupMember": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "AccountDepreciation": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "AccountDocSequence": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "AccountDocTag": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "AccountDocument": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "AccountDocumentLine": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "AccountDocumentPayment": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "AccountDocumentRelation": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "AccountFinance": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "AccountFinanceOpening": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "AccountFinanceTransfer": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "AccountFixedAsset": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "AccountJournalEntry": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "AccountJournalLine": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "AccountLedger": {
+   "n": 41,
+   "maxCreated": "2026-08-27 03:45:52.953",
+   "maxUpdated": "2026-08-27 03:45:52.953",
+   "idHash": "00eb6c49233dcc921b9b4228500a22f0"
+  },
+  "AccountMapping": {
+   "n": 28,
+   "maxCreated": "2026-08-27 03:45:53.042",
+   "maxUpdated": "2026-08-27 03:45:53.042",
+   "idHash": "a89c84e8bb5015fe8e953d8ec4104717"
+  },
+  "AccountPaymentRequest": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "AccountPeriod": {
+   "n": 4,
+   "maxCreated": "2026-09-30 20:00:38.7",
+   "maxUpdated": "2026-09-30 20:00:38.7",
+   "idHash": "35be0d7b6fbde57b340a4e895807a00a"
+  },
+  "AccountProduct": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "AccountProductBundleItem": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "AccountProductOpeningLot": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "AccountRecurringRule": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "AccountRecurringRun": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "AccountSettings": {
+   "n": 1,
+   "maxCreated": "2026-08-27 03:45:52.874",
+   "maxUpdated": "2026-08-27 03:45:52.874",
+   "idHash": "a5e73f6af8b978961d2e07fc0a09d970"
+  },
+  "AccountSystemLink": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "AccountUndoToken": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "AccountUnit": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "AccountVatFiling": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "AccountWhtFiling": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "AcquisitionLink": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "AiConversation": {
+   "n": 1,
+   "maxCreated": "2026-08-29 05:22:07.675",
+   "maxUpdated": "2026-09-06 08:09:40.695",
+   "idHash": "d2116d61d41c7d3ad0afd04fbc799c58"
+  },
+  "AiCreditTxn": {
+   "n": 1,
+   "maxCreated": "2026-08-29 05:22:13.738",
+   "maxUpdated": null,
+   "idHash": "69fd5ab781f607165e554c15effd3b30"
+  },
+  "AiCreditWallet": {
+   "n": 1,
+   "maxCreated": "2026-08-29 05:22:13.73",
+   "maxUpdated": "2026-08-29 05:22:13.73",
+   "idHash": "b1fd0ed0a72e3b8383aa88b1883e59de"
+  },
+  "AiFeedback": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "AiMemory": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "AiMessage": {
+   "n": 1,
+   "maxCreated": "2026-08-29 05:22:07.683",
+   "maxUpdated": null,
+   "idHash": "330bdc6ac79c9d45dd797b3a8ecb8d83"
+  },
+  "AiPlan": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "AiProposal": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "AiScheduledTask": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "AiSettings": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "AiTrainingSample": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "AiUsage": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "AiUsageWindow": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "AnnouncementDismiss": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "ApiIdempotency": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "ApiKey": {
+   "n": 1,
+   "maxCreated": "2026-08-29 04:17:46.769",
+   "maxUpdated": null,
+   "idHash": "80a9b215f6723001b1cc33b1edca0562",
+   "rowHash": "831763c5cc4c462b19933aa9cacb862c"
+  },
+  "AppNotification": {
+   "n": 111,
+   "maxCreated": "2026-10-07 10:53:33.412",
+   "maxUpdated": null,
+   "idHash": "37f0811afb2dd27affabbfe08889682b"
+  },
+  "AppSystem": {
+   "n": 10,
+   "maxCreated": "2026-09-06 08:09:15.124",
+   "maxUpdated": "2026-10-08 01:00:42.26",
+   "idHash": "5edee82db33b9fcf7839637c2e3214be",
+   "rowHash": "1a5e1f17fc8be951cc337c6ff6c9de61"
+  },
+  "AppSystemUnit": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "Appointment": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "ApprovalDecision": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "ApprovalPolicy": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "ApprovalRequest": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "ApprovalStep": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "AuditLog": {
+   "n": 1,
+   "maxCreated": "2026-10-08 00:39:37.542",
+   "maxUpdated": null,
+   "idHash": "d7ec492c03b907fe28c19b119b7afd62"
+  },
+  "AutomationRule": {
+   "n": 3,
+   "maxCreated": "2026-09-10 06:27:32.516",
+   "maxUpdated": "2026-09-10 06:27:32.516",
+   "idHash": "f04c12f09482cf5130e8df152f6ce807",
+   "rowHash": "42c7b79eb2c1f6b55d1903217c9cb3bd"
+  },
+  "AutomationRun": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "BookingClosure": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "BookingHours": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "BookingService": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "BookingStaff": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "BookingStaffHours": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "BusinessUnit": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "CampaignVariantStat": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "ChatAiSuggestion": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "ChatAnswerExample": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "ChatAttachment": {
+   "n": 4,
+   "maxCreated": "2026-09-02 07:53:30.684",
+   "maxUpdated": "2026-09-02 09:12:55.346",
+   "idHash": "b33d06251c089dd93795be56971098aa"
+  },
+  "ChatChannelConnection": {
+   "n": 1,
+   "maxCreated": "2026-08-27 03:47:04.836",
+   "maxUpdated": "2026-10-07 10:54:35.604",
+   "idHash": "2bfd83f2852b7d345da3528244821028"
+  },
+  "ChatContact": {
+   "n": 153,
+   "maxCreated": "2026-10-07 11:18:18.839",
+   "maxUpdated": "2026-10-07 11:18:18.842",
+   "idHash": "b58b0cdf137d0fd98085b8be5563fa1e"
+  },
+  "ChatConversation": {
+   "n": 43,
+   "maxCreated": "2026-10-07 10:53:33.372",
+   "maxUpdated": "2026-10-07 10:54:35.597",
+   "idHash": "49713a1132a919d97155c03bf19364c2"
+  },
+  "ChatConversationEvent": {
+   "n": 47,
+   "maxCreated": "2026-10-07 10:53:33.375",
+   "maxUpdated": "2026-10-07 10:53:33.375",
+   "idHash": "71b7aff7f06ca8e7982929b9231f2c4d"
+  },
+  "ChatConversationPref": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "ChatMessage": {
+   "n": 211,
+   "maxCreated": "2026-10-07 10:54:35.572",
+   "maxUpdated": "2026-10-07 10:54:35.589",
+   "idHash": "8018384e90e797c2c66fc2f8dbe6e1eb"
+  },
+  "ChatQuickReply": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "ChatReadState": {
+   "n": 15,
+   "maxCreated": "2026-10-07 10:54:22.162",
+   "maxUpdated": "2026-10-07 10:54:50.623",
+   "idHash": "e21ffabe69a3bb887113175faf35a4c9"
+  },
+  "ChatSetting": {
+   "n": 1,
+   "maxCreated": "2026-08-27 03:48:46.907",
+   "maxUpdated": "2026-09-09 06:41:16.11",
+   "idHash": "7593e6e38595fd9b274f5ff980aefa23"
+  },
+  "ClinicAppointment": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "ClinicVisit": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "Coupon": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "CouponRedemption": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "CrmActivity": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "CrmAssignmentRule": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "CrmCommission": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "CrmCommissionRule": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "CrmCompany": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "CrmCompanyContact": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "CrmContact": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "CrmContactConsent": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "CrmDeal": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "CrmDealContact": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "CrmDealLine": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "CrmDealPayment": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "CrmDealStageHistory": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "CrmEmailEvent": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "CrmEmailMessage": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "CrmEmailTemplate": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "CrmEmailUserSetting": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "CrmFileLink": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "CrmImportJob": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "CrmLostReason": {
+   "n": 5,
+   "maxCreated": "2026-10-08 00:39:37.526",
+   "maxUpdated": null,
+   "idHash": "a1df25cdbd6ebdd8b6708ad16bfa22d8",
+   "rowHash": "24e44b6cb1b4ed981b5d81cd409c5648"
+  },
+  "CrmMailProvider": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "CrmPipeline": {
+   "n": 2,
+   "maxCreated": "2026-08-29 04:26:18.288",
+   "maxUpdated": null,
+   "idHash": "d9e464c236bcc445cf1337e0fc9fd008",
+   "rowHash": "2fa68d816aa3f08df62d0f6b963197b2"
+  },
+  "CrmPortalAccess": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "CrmPortalRequest": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "CrmQuota": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "CrmScoreLog": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "CrmScoreRule": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "CrmSequence": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "CrmSequenceEnrollment": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "CrmSequenceStep": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "CrmStage": {
+   "n": 10,
+   "maxCreated": null,
+   "maxUpdated": null,
+   "idHash": "f85b5219e8342908c511c11851459c14",
+   "rowHash": "d80a454ffae775f949d385f51f23633a"
+  },
+  "CrmTrackedClick": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "CrmTrackedLink": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "CrmUserPref": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "CrmVisibilityPolicy": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "CrmWebEvent": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "CrmWebSession": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "CustomObject": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "CustomRecord": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "CustomRecordValue": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "CustomRecordValueHistory": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "Customer": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "CustomerOtp": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "CustomerSession": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "DnaBlueprint": {
+   "n": 1,
+   "maxCreated": "2026-08-27 03:45:46.271",
+   "maxUpdated": null,
+   "idHash": "504d88273380c78105726655f0c9b261"
+  },
+  "DnaProfile": {
+   "n": 1,
+   "maxCreated": "2026-08-27 03:45:46.207",
+   "maxUpdated": "2026-08-27 03:45:46.207",
+   "idHash": "6a725a993ea3bf0739f03b4923dfb860"
+  },
+  "EmailDomain": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "FileAsset": {
+   "n": 4,
+   "maxCreated": "2026-09-02 07:53:30.641",
+   "maxUpdated": null,
+   "idHash": "dd53e6ed637f1df3670183074ba5da8f"
+  },
+  "FormDef": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "FormSubmission": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "GiftCard": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "GiftCardSettings": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "GiftCardTxn": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "HotelReservation": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "HotelRoom": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "HotelRoomType": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "HrAttendance": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "HrEmployee": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "HrEmployeeDoc": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "HrLeave": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "HrPayAdjustment": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "HrPayrollItem": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "HrPayrollRun": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "HrSalaryProfile": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "HrWorkSchedule": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "InvCategory": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "InvItem": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "InvItemImage": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "InvLocation": {
+   "n": 1,
+   "maxCreated": "2026-08-27 03:47:49.02",
+   "maxUpdated": null,
+   "idHash": "94bdc731a91abb8f9841e655e2b0ed23"
+  },
+  "InvLocationStock": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "InvLot": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "InvMovement": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "InvSettings": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "IssueReport": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "KanbanActivity": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "KanbanAttachment": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "KanbanBoard": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "KanbanBoardMember": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "KanbanBoardStar": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "KanbanBoardTemplate": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "KanbanBoardView": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "KanbanCard": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "KanbanCardAssignee": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "KanbanCardLabel": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "KanbanCardLink": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "KanbanCardTemplate": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "KanbanChecklist": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "KanbanChecklistItem": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "KanbanColumn": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "KanbanComment": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "KanbanCustomField": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "KanbanCustomFieldValue": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "KanbanDigestSent": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "KanbanInboxItem": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "KanbanLabel": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "KanbanUndoToken": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "KanbanWatcher": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "KbArticle": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "KdsStation": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "MeetingChannel": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "MeetingChannelMember": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "MeetingMessage": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "MemberAccessLog": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "MemberActivity": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "MemberAddress": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "MemberAttribution": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "MemberChannelIdentity": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "MemberConsent": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "MemberField": {
+   "n": 26,
+   "maxCreated": "2026-09-10 06:27:38.182",
+   "maxUpdated": "2026-09-10 08:53:44.826",
+   "idHash": "239eae96bb76c3c825ab7ae8ec3ee481",
+   "rowHash": "27780ab382a0f9737c10bcae6b335601"
+  },
+  "MemberFieldValue": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "MemberFieldValueHistory": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "MemberNotification": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "MemberPlan": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "MemberPrivacyPolicy": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "MemberPrivacyRequest": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "MemberPushDevice": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "MemberReview": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "MemberSavedView": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "MemberSection": {
+   "n": 4,
+   "maxCreated": "2026-09-10 06:27:37.692",
+   "maxUpdated": "2026-09-10 06:27:37.692",
+   "idHash": "704c470327cd647cfe2f53271bdd9e1b",
+   "rowHash": "819d0ba1547a853acdd86bcf767dd281"
+  },
+  "MemberSegment": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "MemberSensitivePolicy": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "MemberSubscription": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "MemberTag": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "MemberTierBenefit": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "MemberTierConfig": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "MemberTierDef": {
+   "n": 4,
+   "maxCreated": "2026-09-10 06:27:32.437",
+   "maxUpdated": "2026-09-10 06:27:32.526",
+   "idHash": "d5cda8593ea73faa11138ccf7df9c437"
+  },
+  "MemberTierHistory": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "Membership": {
+   "n": 1,
+   "maxCreated": "2026-08-27 03:44:52.51",
+   "maxUpdated": "2026-08-27 03:44:52.51",
+   "idHash": "1ce3bb628781c972a3f36f6094d3ee97",
+   "rowHash": "d12049dec696c25eea39cc63c9f5301b"
+  },
+  "MenuCategory": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "MenuItem": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "MenuItemOptionGroup": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "MenuOptionChoice": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "MenuOptionGroup": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "MktCampaign": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "MktRecipient": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "OpsEvent": {
+   "n": 3,
+   "maxCreated": "2026-08-29 13:18:41.705",
+   "maxUpdated": null,
+   "idHash": "6b18592416a4c978392a61b83bae8a4d"
+  },
+  "OutboxEvent": {
+   "n": 243,
+   "maxCreated": "2026-10-07 10:54:35.601",
+   "maxUpdated": null,
+   "idHash": "10e898d096e7df8893db82d165d5650e"
+  },
+  "Page": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "PageMember": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "PageWidget": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "Party": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "PartyMergeCandidate": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "PatientRecord": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "PaymentProfile": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "PlatformInvoice": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "PoLine": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "PointAdjustRequest": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "PointBalance": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "PointLedger": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "PointLot": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "PointRule": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "PointSettings": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "PointTransfer": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "PortalSession": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "PosPayment": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "PosReceiptCounter": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "PosSale": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "PosSaleLine": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "PurchaseOrder": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "PushDevice": {
+   "n": 2,
+   "maxCreated": "2026-09-05 13:45:32.709",
+   "maxUpdated": "2026-10-07 10:53:40.191",
+   "idHash": "23b677f96dc0786eaf7184ad70f2a87b"
+  },
+  "QueueCounter": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "QueueCounterType": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "QueueDailySequence": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "QueueDisplay": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "QueuePolicy": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "QueueTicket": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "QueueTicketEvent": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "QueueType": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "Referral": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "ReferralProgram": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "RentalAsset": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "RentalBooking": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "ReportDef": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "RestaurantDailyCounter": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "RestaurantOrder": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "RestaurantOrderItem": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "RestaurantOrderItemOption": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "RestaurantServiceRequest": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "RestaurantSetting": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "RestaurantTable": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "RestaurantZone": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "Reward": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "RewardRedemption": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "SchoolAttendance": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "SchoolClass": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "SchoolCourse": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "SchoolEnrollment": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "Shipment": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "ShopOrder": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "ShopOrderLine": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "ShopProduct": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "StampCard": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "StampCardProgress": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "StampEvent": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "Supplier": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "SupportCase": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "SupportMessage": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "TableSession": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "Team": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "TeamMember": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "TenantBranding": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "TenantDashboard": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "TenantInstall": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "TicketAdmission": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "TicketEvent": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "TicketOrder": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "TicketType": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "Voucher": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "VoucherIssueBatch": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "VoucherTemplate": {
+   "n": 0,
+   "maxCreated": null,
+   "maxUpdated": null
+  },
+  "WebhookDelivery": {
+   "n": 78,
+   "maxCreated": "2026-10-07 10:54:22.959",
+   "maxUpdated": "2026-10-07 10:54:22.959",
+   "idHash": "965cd50a772277d2200f310c8431d152",
+   "rowHash": "0ac712bda762d8e2ead6eb1920f9bdfd"
+  },
+  "WebhookEndpoint": {
+   "n": 1,
+   "maxCreated": "2026-08-29 04:50:19.389",
+   "maxUpdated": "2026-08-30 01:52:39.025",
+   "idHash": "49dca4ba70da5757646029f024d89b91",
+   "rowHash": "a9e6d3480416d748add10df9f0068c27"
+  },
+  "Tenant": {
+   "n": 1,
+   "maxUpdated": "2026-08-27 03:44:52.493",
+   "rowHash": "1948bdfe53a4387533f1cf3cd451bcdb"
+  }
+ },
+ "unreachable": [
+  "AiPromptTweak",
+  "AuthToken",
+  "ChatRateBucket",
+  "ChatWebhookLog",
+  "OpsAlertState",
+  "PlatformAnnouncement",
+  "PlatformAuditLog",
+  "PlatformAuthToken",
+  "PlatformSession",
+  "PlatformUser",
+  "Session",
+  "User"
+ ],
+ "global": {
+  "tempUsers": {
+   "n": 0
+  },
+  "tempUserSessions": {
+   "n": 0
+  },
+  "taggedSessions": {
+   "n": 0
+  },
+  "ownerSessions": {
+   "n": 105,
+   "live": 105
+  },
+  "tempAuthTokens": {
+   "n": 0
+  },
+  "ownerMembershipHash": {
+   "h": "cb2522190b920bc216af0f773c3b61c4"
+  },
+  "ownerUserHash": {
+   "h": "2cb7df70874ab40359008f0bdc8506d3"
+  }
+ },
+ "facts": {
+  "units": [],
+  "systems": [
+   {
+    "id": "cmtazd03r000604lcwz2xo3dw",
+    "type": "ACCOUNT",
+    "active": true,
+    "name": "บัญชี",
+    "units": 0
+   },
+   {
+    "id": "cmtazd03m000504lcafn3ctyn",
+    "type": "CHAT",
+    "active": true,
+    "name": "แชทลูกค้า",
+    "units": 0
+   },
+   {
+    "id": "cmtpj4z2c000004lf8ofh4ozb",
+    "type": "COUPON",
+    "active": true,
+    "name": "คูปอง & Voucher",
+    "units": 0
+   },
+   {
+    "id": "cmtdvo8h1000004l1d5tl5ej5",
+    "type": "CRM",
+    "active": false,
+    "name": "CRM (ลูกค้า/ดีล)",
+    "units": 0
+   },
+   {
+    "id": "cmtdvoopr000004jpf1vaply9",
+    "type": "CRM",
+    "active": true,
+    "name": "CRM (ลูกค้า/ดีล)",
+    "units": 0
+   },
+   {
+    "id": "cmtazd036000404lcimtvalga",
+    "type": "HR",
+    "active": true,
+    "name": "พนักงาน HR",
+    "units": 0
+   },
+   {
+    "id": "cmtazfh44000204i9skf66zu0",
+    "type": "INVENTORY",
+    "active": true,
+    "name": "บริการ",
+    "units": 0
+   },
+   {
+    "id": "cmtdvp4t4000004lhchopw61c",
+    "type": "KANBAN",
+    "active": true,
+    "name": "บอร์ดงาน",
+    "units": 0
+   },
+   {
+    "id": "cmtpj48g8000004l4xsld2v31",
+    "type": "MEMBER",
+    "active": true,
+    "name": "สมาชิก (Member)",
+    "units": 0
+   },
+   {
+    "id": "cmtpj67w4000004juk39jglt1",
+    "type": "REWARD",
+    "active": true,
+    "name": "รางวัล (Reward)",
+    "units": 0
+   }
+  ],
+  "crmUnits": [],
+  "crmSettingsKeys": [
+   {
+    "key": "uiVersion",
+    "type": "number"
+   }
+  ],
+  "crmSettingsTopKeys": [
+   {
+    "key": "crm"
+   }
+  ],
+  "teams": [],
+  "pipelines": [
+   {
+    "id": "cmtdvooxc000104jpgmflgqzh",
+    "name": "ไปป์ไลน์การขาย",
+    "isDefault": true,
+    "stages": 5
+   }
+  ],
+  "stages": [
+   {
+    "id": "cmtdvooxe000204jp5gxkgraz",
+    "pipelineId": "cmtdvooxc000104jpgmflgqzh",
+    "name": "ผู้สนใจใหม่",
+    "kind": "OPEN",
+    "sortOrder": 0
+   },
+   {
+    "id": "cmtdvooxe000304jpmffzftmw",
+    "pipelineId": "cmtdvooxc000104jpgmflgqzh",
+    "name": "ติดต่อแล้ว",
+    "kind": "OPEN",
+    "sortOrder": 1
+   },
+   {
+    "id": "cmtdvooxe000404jpz8uxj7y4",
+    "pipelineId": "cmtdvooxc000104jpgmflgqzh",
+    "name": "เสนอราคา",
+    "kind": "OPEN",
+    "sortOrder": 2
+   },
+   {
+    "id": "cmtdvooxe000504jpbqao2ssr",
+    "pipelineId": "cmtdvooxc000104jpgmflgqzh",
+    "name": "ปิดการขายได้",
+    "kind": "WON",
+    "sortOrder": 3
+   },
+   {
+    "id": "cmtdvooxe000604jpxscgmhh7",
+    "pipelineId": "cmtdvooxc000104jpgmflgqzh",
+    "name": "ไม่สำเร็จ",
+    "kind": "LOST",
+    "sortOrder": 4
+   }
+  ],
+  "lostReasons": [
+   {
+    "n": 5
+   }
+  ],
+  "markerRows": {
+   "contacts": [
+    {
+     "n": 0
+    }
+   ],
+   "companies": [
+    {
+     "n": 0
+    }
+   ],
+   "deals": [
+    {
+     "n": 0
+    }
+   ],
+   "teams": [
+    {
+     "n": 0
+    }
+   ]
+  },
+  "opsWarnErr24h": [],
+  "outboxNotDone": []
+ }
+}

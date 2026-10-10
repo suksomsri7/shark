@@ -35,6 +35,8 @@ export default function BulkApprovals({ items }: { items: Item[] }) {
     });
   const toggleAll = () => setSelected(allChecked ? new Set() : new Set(items.map((i) => i.id)));
   const labelOf = (id: string) => items.find((i) => i.id === id)?.label ?? id;
+  // HF-HR-0 ▸ รอบ 5b (H3 · มติ D2): เหตุผลที่คำขอนี้ถูกปฏิเสธ (เช่น คำขอของตัวเอง) แสดงในแถวของมันเอง — เลือก 1 ใบ = ทางรายใบ ◂
+  const refusedOf = (id: string) => (state.status === "done" ? state.failed.find((f) => f.id === id)?.reason : undefined);
 
   return (
     <form action={formAction} className="flex flex-col gap-3">
@@ -66,6 +68,11 @@ export default function BulkApprovals({ items }: { items: Item[] }) {
                     {i.pos.amount ? <span className="shrink-0 font-bold tabular-nums">{i.pos.amount}</span> : null}
                   </span>
                   <span className="block truncate text-xs text-[color:var(--color-muted)]">{i.meta}</span>
+                  {refusedOf(i.id) && ( // MAIN-MERGE ▸ HF-HR-0 รอบ 5b เหตุผลรายแถวบนการ์ด POS ด้วย ◂
+                    <span role="alert" className="block text-xs text-[color:var(--color-danger)]">
+                      ไม่สำเร็จ: {refusedOf(i.id)}
+                    </span>
+                  )}
                 </span>
               </label>
               {i.pos.chip ? (
@@ -105,6 +112,11 @@ export default function BulkApprovals({ items }: { items: Item[] }) {
               <span className="min-w-0">
                 <span className="block truncate font-medium">{i.label}</span>
                 <span className="block truncate text-xs text-[color:var(--color-muted)]">{i.meta}</span>
+                {refusedOf(i.id) && (
+                  <span role="alert" className="block text-xs text-[color:var(--color-danger)]">
+                    ไม่สำเร็จ: {refusedOf(i.id)}
+                  </span>
+                )}
               </span>
             </label>
           ),

@@ -54,7 +54,7 @@ export type SubmitInput = {
 };
 
 export type DecideInput = { decision: "APPROVED" | "REJECTED"; note?: string | null };
-export type DecideResult = { ok: boolean; status: string; note: string | null; code?: string; message?: string };
+export type DecideResult = { ok: boolean; status: string; note: string | null; code?: string; message?: string; reason?: string }; // POS P1.18 code/message (SELF_APPROVAL) + HF-HR-0 ▸ รอบ 5: reason = เหตุผลไทยเมื่อปฏิเสธ ◂
 
 // ── กติกา (policy) ──────────────────────────────────────────────
 
@@ -136,8 +136,11 @@ export async function listPolicies(ctx: Ctx) {
 }
 
 // เลือกกติกาที่ตรงกับคำขอ — เจาะจงสุดชนะ · null = ไม่ต้องอนุมัติ
-export async function resolvePolicy(ctx: Ctx, input: ResolveInput): Promise<ApprovalPolicy | null> {
-  const policies = await tenantDb(ctx).approvalPolicy.findMany({
+// HF-HR-0 ▸ รอบ 5d (N1): `tx` = อ่านผ่านธุรกรรมของผู้เรียก (ห้ามยืม connection ที่สองจาก pool ระหว่างธุรกรรมเปิด) · ไม่ส่ง = เหมือนเดิม ◂
+export async function resolvePolicy(ctx: Ctx, input: ResolveInput, tx?: Prisma.TransactionClient): Promise<ApprovalPolicy | null> {
+  const policies = tx
+    ? await tx.approvalPolicy.findMany({ where: { tenantId: ctx.tenantId, entityType: input.entityType, active: true } })
+    : await tenantDb(ctx).approvalPolicy.findMany({
     where: { entityType: input.entityType, active: true },
   });
   const amount = input.amountSatang ?? null;
@@ -168,21 +171,25 @@ const specificity = (p: ApprovalPolicy): number => (p.unitId != null ? 2 : 0) + 
 export async function submitForApproval(
   ctx: Ctx,
   input: SubmitInput,
+  // HF-HR-0 ▸ รอบ 5c (F2): `tx` = ผู้เรียกเขียน entity ในธุรกรรมนี้ (hr requestLeave) ⇒ คำขอ + outbox เกิดพร้อม entity (ไม่ส่ง = เหมือนเดิม) ◂
+  opts: { tx?: Prisma.TransactionClient } = {},
 ): Promise<{ autoApproved: true } | { requestId: string }> {
   const policy = await resolvePolicy(ctx, {
     entityType: input.entityType,
     unitId: input.unitId ?? null,
     systemId: input.systemId ?? null,
     amountSatang: input.amountSatang ?? null,
-  });
+  }, opts.tx); // HF-HR-0 ▸ รอบ 5d (N1): มี tx ⇒ ทุกคำสั่งของฟังก์ชันนี้ผ่าน tx ◂
   if (!policy) return { autoApproved: true };
 
   const idempotencyKey = `approval-${input.entityType}-${input.entityId}`;
-  const existing = await tenantDb(ctx).approvalRequest.findFirst({ where: { idempotencyKey } });
+  const existing = opts.tx
+    ? await opts.tx.approvalRequest.findFirst({ where: { tenantId: ctx.tenantId, idempotencyKey } })
+    : await tenantDb(ctx).approvalRequest.findFirst({ where: { idempotencyKey } });
   if (existing) return { requestId: existing.id };
 
   try {
-    const requestId = await prisma.$transaction(async (tx) => {
+    const write = async (tx: Prisma.TransactionClient) => {
       const req = await tx.approvalRequest.create({
         data: {
           tenantId: ctx.tenantId,
@@ -206,11 +213,12 @@ export async function submitForApproval(
         systemId: input.systemId ?? null,
       });
       return req.id;
-    });
+    };
+    const requestId = opts.tx ? await write(opts.tx) : await prisma.$transaction(write);
     return { requestId };
   } catch (e) {
-    // แข่งกันยื่นพร้อมกัน → ชน @@unique(tenantId, idempotencyKey) → คืนของที่มีอยู่
-    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+    // แข่งกันยื่นพร้อมกัน → ชน @@unique(tenantId, idempotencyKey) → คืนของที่มีอยู่ (ใน tx ของผู้เรียก ธุรกรรมพังแล้ว ⇒ โยนต่อ)
+    if (!opts.tx && e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
       const row = await tenantDb(ctx).approvalRequest.findFirst({ where: { idempotencyKey } });
       if (row) return { requestId: row.id };
     }
@@ -231,6 +239,24 @@ function canDecideStep(m: MembershipCtx & { userId: string }, step: { approverRo
   if (m.role === "MANAGER") return step.approverRole === "MANAGER";
   return false;
 }
+
+// HF-HR-0 ▸ รอบ 5 (R5.1): ห้ามตัดสิน (อนุมัติ/ปฏิเสธ · ทุกขั้น · รายใบ/หลายใบ/ผู้ช่วย AI) คำขอที่เป็นเรื่อง HR ของ "แถวพนักงานที่ผูกกับบัญชีผู้ตัดสินเอง"
+//   ตรวจก่อนเปิดธุรกรรมเขียนการตัดสิน (ไม่ใช่ใน effect — คำขอต้องไม่จบ APPROVED ขณะใบลายังรอ) · ApprovalRequest.requestedById ของใบลา
+//   = id พนักงาน (ไม่ใช่ user) ⇒ หาเจ้าของจาก entity เอง · ชนิด HR ที่เข้าสายอนุมัติวันนี้มีชนิดเดียว = HrLeave (hr/service.ts requestLeave)
+//   อ่านด้วย prisma + tenantId เอง: HrLeave เป็นตาราง system-scoped แต่คำขอไม่บังคับ systemId · พนักงานที่ไม่ผูกบัญชี = ตรวจไม่ได้ (ข้อจำกัดเดิม)
+export const SELF_DECIDE_REFUSED = "อนุมัติคำขอของตัวเองไม่ได้ — ให้ผู้อนุมัติคนอื่นตัดสิน";
+async function isOwnHrSubject(ctx: Ctx, req: Pick<ApprovalRequest, "entityType" | "entityId">, userId: string): Promise<boolean> {
+  if (!userId) return false;
+  if (req.entityType === "HrLeave") {
+    const leave = await prisma.hrLeave.findFirst({
+      where: { id: req.entityId, tenantId: ctx.tenantId },
+      select: { employee: { select: { linkedUserId: true } } },
+    });
+    return !!leave && leave.employee.linkedUserId === userId;
+  }
+  return false;
+}
+// ◂ HF-HR-0
 
 // ตัดสินคำขอที่ step ปัจจุบัน — บันทึก Decision (append-only) + เลื่อน/ปิดสถานะ
 // APPROVED ขั้นสุดท้าย → APPROVED + emit approved · REJECT ขั้นใด → REJECTED ทันที + emit rejected
@@ -267,6 +293,7 @@ export async function decide(
 
   // สิทธิ์ไม่ผ่าน → คง PENDING (คนมีสิทธิ์มากดทีหลังได้)
   if (!canDecideStep(m, step)) return { ok: false, status: req.status, note: null };
+  if (await isOwnHrSubject(ctx, req, m.userId)) return { ok: false, status: req.status, note: null, reason: SELF_DECIDE_REFUSED }; // HF-HR-0 ▸ R5.1 ◂
 
   const decision: ApprovalDecisionValue = input.decision === "REJECTED" ? "REJECTED" : "APPROVED";
   const note = input.note?.trim() ? input.note.trim() : null;
@@ -333,6 +360,7 @@ export async function decide(
 // ── ตัดสินหลายใบพร้อมกัน (bulk) ──────────────────────────────────
 
 export type BulkDecideResult = { done: number; failed: { id: string; reason: string }[] };
+export const UNEXPECTED_REFUSAL = "ระบบขัดข้องชั่วคราว ลองใหม่อีกครั้ง"; // HF-HR-0 ▸ รอบ 5c (F3) ◂
 
 // เหตุผลไทยที่ decide คืน ok:false — status ไม่ใช่ PENDING หรือสิทธิ์/สถานะเปลี่ยนระหว่างกด
 function bulkFailReason(status: string): string {
@@ -358,9 +386,12 @@ export async function bulkDecide(
     try {
       const r = await decide(m, ctx, id, { decision, note: note ?? null });
       if (r.ok) result.done += 1;
-      else result.failed.push({ id, reason: r.code === "SELF_APPROVAL" && r.message ? r.message : bulkFailReason(r.status) }); // POS P1.18 ▸ K4 ◂
+      else result.failed.push({ id, reason: r.code === "SELF_APPROVAL" && r.message ? r.message : (r.reason ?? bulkFailReason(r.status)) }); // POS P1.18 ▸ K4 ◂ · HF-HR-0 ▸ R5.1 ◂
     } catch (e) {
-      result.failed.push({ id, reason: e instanceof Error ? e.message.slice(0, 120) : "เกิดข้อผิดพลาด" });
+      // HF-HR-0 ▸ รอบ 5c (F3): decide ไม่โยนเหตุผลที่คาดไว้ (คืนเป็น reason) ⇒ ที่หลุดมาถึงนี่ = ข้อผิดพลาดที่ไม่คาดคิด (เช่น Prisma — มี path ไฟล์/รหัส)
+      //   ผลนี้คืนเป็นข้อมูล production ไม่ปิดให้ ⇒ log ฝั่ง server + ข้อความกลาง ◂
+      console.error("[approval.bulkDecide]", e);
+      result.failed.push({ id, reason: UNEXPECTED_REFUSAL });
     }
   }
   return result;
@@ -402,6 +433,23 @@ export async function listMyRequests(ctx: Ctx, userId: string): Promise<MyReques
     const p = policies.find((x) => x.id === r.policyId);
     return { ...r, policyName: p?.name ?? "", totalSteps: p?.steps.length ?? 0 };
   });
+}
+
+// CRM C5.5-fix9 r2 (review M3): ยกเลิกหลายคำขอในคราวเดียว — semantics เดียวกับ cancelRequest (สถานะ PENDING→CANCELLED เท่านั้น ·
+//   ไม่มี event/แจ้งเตือนเพิ่ม) แต่คำสั่งละ ≤ 1,000 id · เฉพาะแถวที่ยัง PENDING ⇒ ทำซ้ำ/ทำต่อได้ (idempotent) · คืนจำนวนที่เพิ่งยกเลิก
+const CANCEL_CHUNK = 1_000;
+export async function cancelRequests(ctx: Ctx, requestIds: readonly string[]): Promise<number> {
+  const ids = [...new Set(requestIds.filter((x) => typeof x === "string" && !!x))];
+  let n = 0;
+  const at = new Date();
+  for (let i = 0; i < ids.length; i += CANCEL_CHUNK) {
+    const res = await tenantDb(ctx).approvalRequest.updateMany({
+      where: { id: { in: ids.slice(i, i + CANCEL_CHUNK) }, status: "PENDING" },
+      data: { status: "CANCELLED", decidedAt: at },
+    });
+    n += res.count;
+  }
+  return n;
 }
 
 // ต้นทางยกเลิก entity → PENDING→CANCELLED (สถานะอื่น/ไม่พบ → false)

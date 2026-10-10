@@ -46,6 +46,7 @@ const ERROR_CODE_TH: Record<ApiErrorCode, string> = {
   idempotency_required: "คำสั่งเขียนที่ไม่ได้แนบส่วนหัว Idempotency-Key",
   idempotency_conflict: "ใช้ Idempotency-Key เดิมกับเนื้อคำขอที่ต่างออกไป",
   idempotency_in_progress: "คำขอที่ใช้คีย์กันซ้ำใบนี้ยังทำงานค้างอยู่",
+  idempotency_outcome_unknown: "คำขอเขียนที่ใช้คีย์นี้สะดุดกลางทาง ไม่รู้ว่าบันทึกแล้วหรือยัง — ตรวจรายการก่อน แล้วส่งใหม่ด้วยคีย์ใหม่",
   confirm_required: "คำสั่งอันตรายที่ไม่ได้ส่ง confirm: true มาด้วย",
   customer_session_required: "เส้นทาง /me เป็นของลูกค้าเอง (เข้าผ่านไลน์/แอป) — คีย์ของร้านใช้ไม่ได้ ไม่มี scope ไหนเปิดให้",
   customer_scope: "token ของลูกค้า (cs_…) เรียก operation ของร้าน — เลนลูกค้าใช้ได้เฉพาะ /me",
@@ -560,7 +561,7 @@ export default function MemberApiDocsPage() {
         <p className="text-sm text-neutral-700">
           ร้านสมัครปลายทางได้ที่ <strong>ตั้งค่า › แอปภายนอก / API</strong> · ทุกครั้งที่ส่งจะเป็น{" "}
           <code>POST</code> พร้อมส่วนหัว <code>X-Shark-Event</code> · เนื้อ{" "}
-          <code>{"{ type, payload, sentAt }"}</code> · และ <code>X-Shark-Signature</code> ={" "}
+          <code>{"{ id, type, payload, sentAt }"}</code> · และ <code>X-Shark-Signature</code> ={" "}
           HMAC-SHA256 ของเนื้อคำขอดิบด้วยความลับของปลายทาง (hex ตัวพิมพ์เล็ก) · ส่งอย่างน้อยหนึ่งครั้ง (retry 5 ครั้ง)
           ⇒ ตัวรับต้องทนการส่งซ้ำ
         </p>

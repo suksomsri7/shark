@@ -95,6 +95,11 @@ const ERROR_CODE_DOCS: Record<ApiErrorCode, CodeDoc> = {
     meaning: "A request with this key is still running.",
     action: "Wait a moment and retry with the same key; you will get the original response.",
   },
+  idempotency_outcome_unknown: {
+    status: 409,
+    meaning: "A temporary database or network failure hit the request after it had started, so it is unknown whether it took effect. The key is kept in this state until it expires (24 h); retries with the same key return this answer and never run the request again.",
+    action: "Check whether the record exists (read or list it). If it does not, send the request again with a NEW `Idempotency-Key`; never reuse this key for a retry.",
+  },
   confirm_required: {
     status: 409,
     meaning: "A danger operation was called without `confirm: true`.",
@@ -266,7 +271,7 @@ const VERIFY_SAMPLE = [
   "  if (got.length !== expected.length || !timingSafeEqual(Buffer.from(got), Buffer.from(expected))) {",
   "    return { status: 401 };",
   "  }",
-  "  const event = JSON.parse(rawBody.toString(\"utf8\")) as { type: string; payload: unknown; sentAt: string };",
+  "  const event = JSON.parse(rawBody.toString(\"utf8\")) as { id: string; type: string; payload: unknown; sentAt: string };",
   "  // Answer 2xx fast, then do the work. Anything else is retried up to 5 times.",
   "  void enqueue(event);",
   "  return { status: 200 };",
@@ -309,12 +314,14 @@ function webhookSection(): string[] {
     "| --- | --- |",
     "| `X-Shark-Event` | The event type, for example `kanban.card.moved`. |",
     "| `X-Shark-Signature` | `HMAC-SHA256(secret, raw request body)` as lowercase hex. |",
+    "| `X-Shark-Event-Id` | The event id (same as `id` in the body). It stays the same on every retry of that event - store it and drop duplicates. |",
     "",
-    "The body is always the same three fields:",
+    "The body is always the same four fields (`id` = the event id, see `X-Shark-Event-Id`):",
     "",
     "```json",
     JSON.stringify(
       {
+        id: "cmf1evt0001",
         type: "kanban.card.moved",
         payload: { cardId: "cmf1crd0001", boardId: "cmf1brd0001" },
         sentAt: "2026-09-06T09:15:00.000Z",
@@ -356,7 +363,7 @@ function webhookSection(): string[] {
       doc.when,
       "",
       "```json",
-      JSON.stringify({ type: value, payload: doc.payload, sentAt: "2026-09-06T09:15:00.000Z" }, null, 2),
+      JSON.stringify({ id: "cmf1evt0001", type: value, payload: doc.payload, sentAt: "2026-09-06T09:15:00.000Z" }, null, 2),
       "```",
       "",
     );

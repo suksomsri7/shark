@@ -14,7 +14,7 @@
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { recipeCostAction, saveRecipeAction, searchRecipeItemsAction, setBomEnabledAction } from "@/lib/modules/pos/catalog-recipe-actions";
+import { recipeCostAction, saveRecipeAction, searchRecipeItemsAction, setBomEnabledAction } from "@/lib/modules/pos/recipe-actions";
 import { expandRecipe, recipeOwnerId } from "@/lib/modules/pos/recipe-shared";
 import { moneyText } from "@/lib/modules/pos/register-shared";
 import { type PT } from "@/components/pos/products/price-ui";

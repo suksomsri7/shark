@@ -65,6 +65,7 @@
 | `idempotency_required` | 400 | คำขอเขียนไม่มี `Idempotency-Key` |
 | `idempotency_conflict` | 409 | คีย์ซ้ำ แต่ body ต่างจากครั้งก่อน |
 | `idempotency_in_progress` | 409 | คำขอคีย์เดียวกันกำลังทำงานอยู่ |
+| `idempotency_outcome_unknown` | 409 | งานเขียนเริ่มแล้วแต่ฐาน/เครือข่ายสะดุดกลางทาง — ไม่รู้ผล · คีย์เดิมตอบซ้ำ (ไม่รันซ้ำ) จนหมดอายุ · ตรวจรายการแล้วส่งใหม่ด้วยคีย์ใหม่ |
 | `confirm_required` | 409 | op อันตรายไม่ได้ส่ง `confirm:true` |
 | `not_found` | 404 | ไม่มี op นี้ หรือไม่พบข้อมูลในสมุดนี้ |
 | `method_not_allowed` | 405 | path มีจริงแต่ method ผิด (header `Allow` บอกที่ใช้ได้) |

@@ -1,0 +1,1066 @@
+diff --git a/ledger/wo-notes/crm-C5.5-authz-sweep-review.md b/ledger/wo-notes/crm-C5.5-authz-sweep-review.md
+new file mode 100644
+index 00000000..fc43b926
+--- /dev/null
++++ b/ledger/wo-notes/crm-C5.5-authz-sweep-review.md
+@@ -0,0 +1,116 @@
++# crm-C5.5-authz-sweep — independent review
++
++Branch `wip/crm-cf8` · reviewed tip ad720fec (base 6280997b) · DB QC3 only · review written 2026-10-01 20:51 UTC · local commit, no push.
++Scope read: `git diff 6280997b ad720fec` (10 files), builder note, hotfix reviewer note (route sweep), every sibling door named below.
++
++## Verdict on the 6 fixes
++| fix | same key / helper as the web door? | before any write / side effect? | tenant + system + branch scope | bypass attempts | result |
++|---|---|---|---|---|---|
++| W1 `GET /api/mobile/proposals` | yes: `mobileDenied(g, AI_CHAT)` = `evaluate` (same as `assertCan`) on `ai.chat.send`, same as `listPendingProposalsAction` (`lib/ai/actions.ts:130`) | first statement after `requireMobile` | tenant from token + X-Tenant-Id membership (unchanged) | other verbs: none exported; siblings `conversations/**`, `chat/send`, `.../read` already gated; `proposals/confirm` checks per kind in `executeProposal`; `dna/questions` is a static list | holds |
++| W2 `GET /api/mobile/usage` | yes (`loadAiQuotaAction:82`) | before `ensureWallet` (which can create a wallet row) | same | STAFF with `ai.*` and a branch-limited MANAGER still get 200 (V4) | holds |
++| W3 `POST /api/mobile/chat/welcome` | yes (creating a room = `POST conversations` / `loadAiChatAction`) | before the room/message create | same | — | holds |
++| S1 `createApiKeyAction` | `ACCOUNT_SCOPE_KEYS` = the list the page renders (`ConnectionsPanel.tsx:605`) | inside the scope loop, before `createApiKey` | key bound to the account system (unchanged) | whitespace (trimmed then refused), upper case, `crm.*`/`member.*`/`kanban.*`/`*`, mixed account+member, `crm.filter.team:` pseudo-scope, `member-admin`/`kanban-admin`/`crm.readonly` bundles, `account.approve.limit` → all refused, no key row (V1.1); duplicates de-duplicated, ticked scopes win over a foreign bundle (V1.2) | holds (see F2/F3/F4 for the other minting paths) |
++| S2 `testWebhookAction` | registry `WEBHOOK_EVENTS` filtered to `account.` | before `dispatchWebhooks` | tenant from session | upper case, a CRM event's Thai label, bare `account.`, unknown `account.qc.fake` → refused, 0 delivery rows (V2.1); value with spaces is trimmed by `s()` and works (V2.2); 21 account labels are unique, each maps back to its own value, no non-account event shares an account label (R2) | holds (see F5/F6) |
++| S3 v1 `addActivityAction` | `tenantDb({tenantId, systemId})` (CrmContact/CrmDeal are `sys()` in `scope.ts:60,63`), i.e. tenant + system | before `addActivity` | v1 has no per-user visibility, by design | own contact + deal of another CRM system of the same shop → 0 rows; that deal alone → 0 (V3.1); id with spaces → trimmed, 1 row (V3.2); `completeActivityAction` with shop B's activity id → B untouched (V3.3); `refuseOnV2` still runs first | holds |
++
++No other caller of the v1 `addActivity` exists (`grep`: only `crm/actions.ts:156`). The v2 activity writers are separate (`activities.ts`).
++
++## Findings
++| # | sev | where | finding | repro |
++|---|---|---|---|---|
++| F1 | **HIGH** (already there before this card, also on prod 929c39ce, outside the diff) | `src/app/api/v1/customers/route.ts:11-34` · `src/app/api/v1/ai/tools/[name]/route.ts:34` → `src/lib/ai/skills.ts:340 toolAllowedForApiKey` · tools `recent_leads` (`ai/tools.ts:1860`), `financial_summary` (:1808), `kb_auto_save` (:2272), `remember_fact`/`forget_fact` | The legacy `/api/v1/*` routes ignore key scopes. **Any** API key of the shop works: account-only, scope-less, kanban, and `crm.readonly` keys (which promise masked phones). `/customers` returns member name, phone, e-mail and spend. `toolAllowedForApiKey` lets through every tool outside the account / kanban / member / CRM-registry maps. So `recent_leads` returns CRM leads with full phone numbers (all CRM systems, no team filter, no masking). `kb_auto_save` and `remember_fact` write straight away, with no proposal. Two consequences: (a) S1 closes the account-REST viewer path, but a branch-limited MANAGER with `api.key.create` can still get member and CRM lead PII through any key; (b) the builder note line 42 ("v1 API-key routes … covered by the hotfix reviewer's 100-route sweep") is wrong. The hotfix review (line 313) says "excluded: v1 API-key routes". | `probe-cf8-review` X1.2: a key scoped only `[account.doc.view]`, minted on the account page by a branch-limited MANAGER, gets `GET /api/v1/customers` 200 with the member's phone. X1.3: the same key gets `POST /api/v1/ai/tools/recent_leads` 200 with the CRM lead's phone. X1.4: an account-only key and a scope-less key can both call `recent_leads`, `financial_summary`, `kb_auto_save`, `remember_fact` and `forget_fact`. |
++| F2 | LOW | `account/connections-actions.ts:108-124` | A crafted form with no `scope` and no `bundle` still mints a scope-less `[]` ("legacy") key. The account UI never offers this. The platform page `/app/settings/api` (`createKeyAction`, same `api.key.create`) mints only `[]` keys, so this grants nothing new. Its weight comes from F1. Fix: refuse `scopes.length === 0` on the account page. | X1.1 |
++| F3 | LOW | `connections-actions.ts:165-182 rotateApiKeyAction` → `connections.ts:391-399 accountManagedKey` → `api-keys/service.ts:212` (copies `scopesJson`) | Rotation accepts any ACCOUNT-bound key whatever its scopes. So an account-bound key with `crm.*`/`member.*` scopes minted before S1 can be renewed from the account page indefinitely, and S1 does not cover it. Fix: refuse rotation (or strip) when scopes ⊄ `ACCOUNT_SCOPE_KEYS`. | read only (no such key in QC) |
++| F4 | LOW (impact not verified) | `kanban/settings-actions.ts:53-66 createKanbanApiKeyAction` | A sibling minting door with the same class of gap as S1. It does `expandBundles([bundle])` with no family check. The member door checks `MEMBER_BUNDLE_IDS` (`member/api-actions.ts:67`); the CRM door checks `BUNDLES` + `crmKeyWiderThanCreator`. A holder of `kanban.board.member.manage` + `api.key.create` can mint a KANBAN-bound key carrying `crm.admin` / `member-admin`. CRM REST rejects a key bound to a non-CRM system (`crm/api/config.ts systemType`). I did not verify whether member REST and the scope-only gate of `/api/v1/ai/tools` then run CRM/member tools for it. Fix: a `KANBAN_BUNDLE_IDS` check. | read only |
++| F5 | LOW | `account/api/ops/webhooks.ts:165-183` (`webhooks.test`, action `account.settings.manage`) | The REST twin of S2 is still family-blind. It accepts any registered event (`crm.deal.won`, `member.*`) and sends it to any endpoint id of the shop, including CRM-only endpoints. This is milder than the S2 hole because `testEndpoint` marks the call (`test_…` id, `{test:true}` payload). The builder's wording ("accepts only registered events and one named endpoint") is accurate but this door is not account-only. Fix: same `account.` filter as S2. | X2: a branch-limited MANAGER's account key `[account.settings.manage]` sends `crm.deal.won` to a CRM-only endpoint → 200 and one delivery row |
++| F6 | INFO | `connections-actions.ts:248` | The fixed path still uses `dispatchWebhooks` (every active endpoint subscribed to that event or to "all events", with a real-looking `evt_` id and `{test:true, at}`), not the clicked row's endpoint. The button is on a row but tests every matching endpoint. Already the behaviour before this card. Consider `testEndpoint(id)` as REST does. | V2.2 |
++| F7 | INFO | `ConnectionsPanel.tsx:691`, page `connections/page.tsx:112-118` | S2 regression check: the page lists every endpoint of the shop. For an endpoint whose first event is not an account event, the button now answers "ยิงทดสอบได้เฉพาะเหตุการณ์ของระบบบัญชี". Before the fix it answered "ยังไม่มีปลายทาง…": the label was dispatched as a literal type, so the button never worked for such rows either. No working flow is lost; account rows now work (the label bug is fixed). | V2.2, builder A2.2 |
++| F8 | INFO | `crm/service.ts:113-117` | S3 accepts an archived contact of the same system. v1 never filtered archived contacts, so this is not a leak. The comment's "same as v2 logActivity (visible)" means tenant + system only here; v1 has no visibility model. | V3.2 |
++| F9 | LOW (note accuracy) | builder note line 42 | See F1(b). | — |
++
++No BLOCKER. No regression found: the OWNER can still tick the whole `ACCOUNT_SCOPE_KEYS` list (35) (R3). Every bundle the account page offers (read-only, issue-and-collect, accountant, danger, settings) ⊆ `ACCOUNT_SCOPE_KEYS`, so the default bundle-only submit still works (R1). STAFF with `ai.*` and branch-limited MANAGER keep the mobile doors (V4).
++
++### Mobile app (source `apps/mobile`, read only)
++- `src/api/client.ts`: a 403 only throws `ApiError`. There is no global logout or redirect.
++- `QuotaBar.tsx:45` catches the error and renders nothing.
++- `app/(app)/index.tsx:39-56 openAssistant` catches it and goes to `/sessions`. That list is itself gated since the hotfix, so a key-less STAFF sees the existing "ไม่มีสิทธิ์เข้าถึงกิจการนี้" text, the same as before this card (wording is misleading; pre-existing).
++- `chat/[id].tsx:67-82 loadProposals` swallows the error.
++- Nobody rightly permitted loses anything.
++
++### Existing keys with crm.* / member.* scopes minted on the account page
++- Nothing re-checks a key's scopes when it is used, so any such key keeps working. Through F3 it can also be rotated.
++- None exist on session/crm QC (the probes sweep their tenants).
++- Prod could only hold one if someone hand-built the form. Prod has the same action, but there account REST passes no viewer (`contacts-read.ts:104` at 929c39ce).
++
++**OWNER QUESTION:** allow one read-only query on prod (ApiKey rows bound to an ACCOUNT system with any scope not starting with `account.`)? Revoke any found?
++
++## S4 — judgement
++- **Confirmed, MED, on prod too.**
++  - `contact-profile.ts:602` calls `findCustomerByPartyId` (`member/service.ts:482`) with no viewer. Every holder of `account.contact.manage` (web) or of an account key with the profile op (REST `contacts-read.ts:106`) sees the member's code and tier.
++  - The **POS card** (`contact-profile.ts:650`) shows that same row's visit count and total spend, so it must be hidden as well.
++  - Two more siblings have the same gap and should go into the same card: `listPartyIdsWithCustomer` (`member/service.ts:445`, the "member" badge in the account contact list) and `findMemberCodesByPartyIds` (`:462`, the merge page).
++  - Their CRM twins (`listPartyIdsWithContact`, `findContactByPartyId`) already take a viewer and fail closed.
++- **The ORACLE-EDIT is legitimate.**
++  - Q7.5 (`scripts/qc-acc-v2-contact-profile.mts:214`) loads the profile through `load()` (`:100-101`) with **no viewer**, then asserts that the member card is linked and shows details.
++  - That means it asserts the leaky behaviour: a caller with no member rights sees member data.
++  - Edit: give `load()` an OWNER `MemberActor` viewer, so Q7.5 stays green for a rightly-permitted viewer. Add a negative check Q7.5b: with no viewer, and with STAFF without `member.customer.read`, the member card is `linked=false` / `detail=null` and the POS card's `detail=null`.
++- **Fix shape:**
++  - `findCustomerByPartyId(tenantId, memberSystemId, partyId, viewer: MemberLinkViewer)`: fail closed on `undefined`/`null`; for an actor, filter through `visibleCustomerIds` (`canReadMember` + branch `briefFor`), exactly like `findCustomersForLink`.
++  - `loadConnections` passes the same actor it already receives as `crmViewer` (rename it to a link viewer).
++  - REST passes a member viewer built from the key's scopes (the counterpart of `crmViewerOfApi`).
++  - Callers: `account/contacts/[contactId]/page.tsx:14`, `account/actions.ts:799`, `account/api/ops/contacts-read.ts:106`.
++- Run it on QC1 (acc-v2 seed).
++
++## G1 — judgement
++**Confirmed, HIGH, on prod too.**
++- `ToolCtx` (`ai/tools.ts:35`) carries only `tenantId`/`conversationId`/`systemId`, and `runTool` (`:2381`) never sees the caller.
++- **Concrete case (session):** a cashier STAFF is given `ai.chat.send` only, so they can use the assistant. They ask "มีลูกค้ามุ่งหวังใหม่ไหม". They get up to 50 of the newest CRM leads with **full phone numbers** across every CRM system, even though they hold no `crm.contact.read` and CRM visibility is set to own-records.
++  - "เดือนนี้กำไรเท่าไหร่" returns revenue and expenses with no account key.
++  - "จำไว้ว่า…" writes shop AI memory.
++  - `kb_auto_save` writes KB articles without `kb.article.create`.
++- **Concrete case (REST, = F1):** any third party holding any key of the shop (for example the accounting firm's account-only key) gets the same, with no membership at all.
++- **Fix:** pass the caller (MemberActor or API actor) into `runTool`, give each tool a permission key and the module's visibility filter, and deny unmapped tools to scoped keys. This touches every AI entry, so it needs its own card. F1's `/api/v1/customers` part can ship separately and quickly.
++
++## Owner decisions D1–D11, ranked (first = closest to "a clear bug with an obvious door rule")
++1. **D11 (MED).** Here the twin door is *stricter*, not permissive.
++   - The member webhook door requires `member.api.manage` (`member/api-actions.ts:138`). The platform page (`webhooks/actions.ts:52`) and the account page need only `webhook.endpoint.create` to receive `member.*` (explicitly, or through "empty = all"), plus `chat.*`/`kanban.*`.
++   - Only the `crm` family is registered (`webhooks/labels.ts:128`, `webhook-guards.ts`), so adding a `member` guard is mechanical.
++   - The part that matters more is S8: a holder of `webhook.endpoint.delete`/`update` can delete or disable CRM- and member-owned integration endpoints. Only re-enabling runs the guard.
++   - Data exposure is low: `member.created` carries `customerId/partyId/source/referrerId`; chat events carry ids.
++   - The card's own rule says this should be fixed. Deferring it is defensible only because fix3a recorded the "empty = all, central guard decides" ruling.
++2. **D3 (MED-LOW).** `interviewTurnAction` spends AI credit with no key. Every other credit-spending door requires `ai.chat.send`, so that is the obvious minimum. DNA facts also feed the AI context and the blueprint.
++3. **D5 (MED, policy).** A branch-limited MANAGER can change the shop-wide PromptPay ID, which redirects customer payments. The hotfix already ruled on it; it is the highest-impact item but a trust decision.
++4. **D2 (LOW).**
++   - After W1, a key-less member can no longer list proposal ids, so exposure is small.
++   - Requiring at least `ai.chat.send` (the same key as the listing) on web and mobile reject is an obvious alignment. The C3.4 per-kind rule is the full fix.
++   - The builder's I.1/I.2 evidence was reproduced here (200, row REJECTED).
++5. **D9 (LOW).** A read key (`crm.email.read`) performs a write (message link + EMAIL activity). Every other CRM e-mail write needs send/settings, so `crm.email.send` is the obvious rule.
++6. **D8.** Board-rule toggles without board ADMIN, and webhook URLs listed to every member. Policy plus SSRF, which belongs in its own card.
++7. **D6.** Template install and DNA apply both create systems but need different keys.
++8. **D1.** AI memory writes happen by persona design. The real gap is G1/F1, not D1.
++9. **D10.** Own notification preferences: no data at stake.
++10. **D7.** Low-value member-only doors.
++11. **D4.** Push token re-bind: needs an app change, low value.
++
++## What I ran (QC3 via `scripts/qc3.sh`, each heavy job through `scripts/iso.sh` + `scripts/with-gate-lock.sh`, one at a time; logs `/tmp/cf8-review-logs/`)
++| run | result |
++|---|---|
++| `scripts/pending/cf8/review/probe-cf8-review.mts` (new) | 19/19. 11 VERIFY/REGRESSION checks green: R1 R2 R3 V1.1 V1.2 V2.1 V2.2 V3.1 V3.2 V3.3 V4. 5 REPRO checks green, meaning the findings reproduced: X1.1 X1.2 X1.3 X1.4 X2. 3 CLEAN (0 rows left). |
++| builder `probe-cf8-mobile.mts` · `probe-cf8-actions.mts` | 8/8 · 9/9 (INFO I.1/I.2 = D2 evidence) |
++| `pnpm typecheck` (5 GB heap) | exit 0 |
++| `qc-crm-v1` | 17/17 |
++| `fitness` (QC3 env) | 39/39 |
++
++The QC3 log shows `account_jno_ensure_system … does not exist` warnings at account setup. That is environment noise from this QC branch, not related to the card.
++
++## Not verified
++- F4: what a KANBAN-bound key with `crm.admin`/`member-admin` scopes reaches through member REST and `/api/v1/ai/tools` (read only).
++- F3: no account-bound key with foreign scopes exists in QC to rotate (read only).
++- S4 fix and oracle edit: not run (need the acc-v2 seed on QC1).
++- Suites that load `.env.local` (`qc-mobile-chat`, `qc-ai-usage`, `qc-acc-v2-security`, `qc-crm-activity`, `qc-crm`, `qc-webhook`) were not run.
++- Mobile app: source read only, no device run.
++- No built app or browser. Server actions were exercised under a forged Next request scope, the same technique the builder used.
++- Prod key inventory (owner question above).
++- Payloads of member/chat events beyond `member.created` and `chat.message.received`.
++
++VERDICT: MERGEABLE
+diff --git a/ledger/wo-notes/crm-C5.5-authz-sweep.md b/ledger/wo-notes/crm-C5.5-authz-sweep.md
+new file mode 100644
+index 00000000..19bfdfd7
+--- /dev/null
++++ b/ledger/wo-notes/crm-C5.5-authz-sweep.md
+@@ -0,0 +1,86 @@
++# crm-C5.5-authz-sweep — lower-severity authorisation gaps left by the 1 Oct production hotfix (+ own sweep of session/crm doors)
++
++Worktree `/root/projects/shark-crm-cf2` · branch `wip/crm-cf8` from 6280997b (session/crm) · prod reference 929c39ce (read-only) · DB QC3 only · not pushed.
++Rule applied to every row: a door must enforce the same permission key + scope as the other door (web / REST / mobile) for the same operation (the hotfix principle). Where the twin door is itself permissive, or there is no twin, the row is an owner decision and behaviour is unchanged.
++Probes `scripts/pending/cf8/` · runner `run-verify.sh` (run from a /tmp copy) · logs `/tmp/cf8-logs/`.
++
++## Worklist (sources: hotfix review Items 2–4 + release follow-ups, hotfix note Item 3b/4 sweeps, fix1/fix1-review, fix4/fix4-review; plus this card's own sweep)
++| # | source | door (file:line on this branch) | behaviour at 6280997b | rule (twin door) | disposition |
++|---|---|---|---|---|---|
++| W1 | hotfix 4 sweep "proposals GET" (LOW) | `src/app/api/mobile/proposals/route.ts:9` GET | any member's token lists the room's pending AI proposals (summary/kind) | web `lib/ai/actions.ts listPendingProposalsAction` / `loadAiChatAction` → `ai.chat.send` | **FIXED** `mobileDenied(g, AI_CHAT)` — probe CF8-W1 |
++| W2 | hotfix 4 sweep "usage" (LOW) | `src/app/api/mobile/usage/route.ts:15` GET | any member's token reads the AI wallet balance | web chat quota bar `loadAiQuotaAction` → `ai.chat.send` (the app's only caller is the chat `QuotaBar`, which hides itself on error) | **FIXED** — CF8-W2 (see D7 for the separate web credit page) |
++| W3 | hotfix 4 sweep "chat/welcome" (LOW) | `src/app/api/mobile/chat/welcome/route.ts:22` POST | any member's token creates the shop's first AI room + message and gets the onboarding checklist + DNA summary | creating an AI room = `POST /api/mobile/conversations` (hotfix: `ai.chat.send`); web opens the room only via `loadAiChatAction`/`sendAiMessageAction` (`ai.chat.send`) | **FIXED** — CF8-W3 (app: `index.tsx openAssistant` catches → falls back to the sessions list) |
++| W4 | hotfix review M2 (mobile conversations read/rename/delete with token only) | `api/mobile/conversations/**` | fixed by hotfix Item 4 (forward-ported in fix4) | `ai.chat.send` | **ALREADY COVERED** — qc-mobile-authz-hotfix MZ-4b.1–4b.6 (re-run, see Verification) |
++| W5 | hotfix review DNA apply (MED) | `api/mobile/dna/apply` · `lib/dna/actions.ts applyStepAction/applyAction` | fixed by hotfix Item 4 | `systems.system.create` | **ALREADY COVERED** — MZ-4c.1–4c.3 |
++| W6 | fix1 L55-4 / fix1-review R2-1..R2-3, RV-4 (account + platform webhook doors) | `webhooks/service.ts` choke point · `account/connections-actions.ts:179-229` · account REST `api/ops/webhooks.ts` | fix1 r2 (author mandatory, event guards) + fix3a (R2-1 refuse foreign-only lists, R2-2 fail closed, R2-3 Thai reason) + fix3b (per-family registry, trim/refuse unknown events) | — | **ALREADY COVERED** — evidence: fix3a review rows R2-1/R2-2/R2-3 "✅ fixed" (probe-cf3 R21/R22/R23), fix3b review F4r-*; probe-fix1 WB re-run here. Residual R2-4 (stored endpoints) = owner decision D11 |
++| W7 | hotfix review M3 `remember_fact` (MED) | `lib/ai/tools.ts:2130` (+ `forget_fact :2153`) | writes shop AI memory at once (persona tells the model to, "no confirmation") — reachable only through AI chat, which since the hotfix needs `ai.chat.send` on web and app | no non-AI door to AI memory exists | **OWNER DECISION D1** (design, not a key gap) |
++| W8 | hotfix 4 sweep proposals/reject (LOW) | `api/mobile/proposals/reject/route.ts:6` · web `lib/ai/actions.ts:158 rejectProposalAction` | key-less STAFF rejects any non-CRM pending proposal (probe CF8-I.1: 200, row REJECTED) — web identical | web twin permissive (CRM kinds already: "cancel only if you could confirm", C3.4) | **OWNER DECISION D2** |
++| W9 | hotfix 4 sweep plans/reject + 3b `rejectPlanAction` (LOW) | `api/mobile/plans/reject/route.ts:5` · `lib/ai/actions.ts:207` | key-less STAFF rejects any pending plan (CF8-I.2) — web identical | web twin permissive | **OWNER DECISION D2** |
++| W10 | hotfix 4 sweep dna/answers + 3b `answerQuestion`/`proposeAction` (LOW) | `api/mobile/dna/answers/route.ts:7` · `lib/dna/actions.ts:25,79` (+ `interviewTurnAction :52` spends AI credit) | any member overwrites the shop's DNA facts / proposes a blueprint — web identical | web twin permissive | **OWNER DECISION D3** |
++| W11 | hotfix 4 sweep push/register (LOW) | `api/mobile/push/register/route.ts:6` | upsert by Expo token re-binds a token row to the caller (by design: "device moves user → row follows") | no permission key involved — needs proof of device possession | **OWNER DECISION D4** |
++| W12 | hotfix 3a NOTE / release follow-up 6 | `lib/payment/actions.ts:17` → `payment/service.ts:19 canManagePaymentProfile` | branch-limited MANAGER can change the shop-wide PromptPay ID | policy | **OWNER DECISION D5** |
++| W13 | hotfix 4 NOTE / follow-up 8 | `lib/marketplace/service.ts:156 applyBlueprint` | template install creates systems with `marketplace.template.install` only, DNA apply needs `systems.system.create` | two web doors, two keys — alignment is policy | **OWNER DECISION D6** |
++| W14 | hotfix 3b LOW web actions | `support/actions.ts:55,69,75,88,95,112,142` · `announce/actions.ts:11` · `coupon/actions.ts:98 testValidateAction` · `ai/credit-actions.ts:44 loadMoreTxnsAction` · `storage/actions.ts:8,36` · `payment/actions.ts:52 listMyInvoicesAction` | "member of the shop" only | no stricter twin door exists for any of them | **OWNER DECISION D7** (listMyInvoicesAction has no caller in src/ — not reachable from the client bundle, not verified by a build) |
++| W15 | hotfix 2 ruling + follow-up 7 | `lib/automation/service.ts:37 listRules` · `actions.ts:92,102` | board-level KANBAN rules toggle/deletable here without board ADMIN; webhook URLs listed to every member; no SSRF guard on WEBHOOK rules | ruling recorded in the hotfix as "kept" | **OWNER DECISION D8** (SSRF is not authz — not touched) |
++| W16 | fix4-review RV-3 | CRM AI assist / call summary / card scan | — | — | **EXCLUDED** by the card (owner decision pending) — not touched |
++| S1 | own sweep (new) | `account/connections-actions.ts:121` `createApiKeyAction` | account page accepted ANY `isApiScope` scope from a crafted form (`crm.*`, `member.*`, bundle `crm.admin`): a branch-limited MANAGER minted an ACCOUNT-bound key with `crm.contact.read`/`crm.deal.read`; account REST turns key scopes into a CRM/member viewer (`contact-links.ts crmViewerOfApi`, C5.4-A) ⇒ CRM contact/deal and member data without the CRM key door | CRM key door `crm/settings/api/actions.ts` (`crm.api.manage` owner-only + `crmKeyWiderThanCreator`), member door `member/api-actions.ts` (`member.api.manage`, member bundles only); the account page itself offers only `ACCOUNT_SCOPE_KEYS`/account bundles | **FIXED** — every scope must be in `ACCOUNT_SCOPE_KEYS` (Thai refusal pointing to the other system's API page) — CF8-A1 |
++| S2 | own sweep (new) | `account/connections-actions.ts:246` `testWebhookAction` | client `type` dispatched raw to every endpoint of the shop ⇒ forged `crm.deal.won`/`member.*`/arbitrary events to CRM/member integrations (all-events endpoints) | account REST `webhooks.test` accepts only registered events and one named endpoint; the page is account-only | **FIXED** — only registered `account.*` events (value, or the Thai label the panel actually sends) — CF8-A2 |
++| S3 | own sweep (new, v1) | `crm/actions.ts:155` `addActivityAction` → `crm/service.ts:112 activityTargetsInSystem` | client `contactId`/`dealId` written as raw FKs: shop A could hang an activity on shop B's contact (or another CRM system's) and the v1 lists `include: { contact, deal }` would show B's row to A | v2 door `activities.logActivity` requires the target to be visible in this system | **FIXED** — target must exist in this tenant+system (tenantDb, system-scoped), else no write (same silent no-op shape as the v1 neighbours) — CF8-A3 |
++| S4 | own sweep (new) | `account/contact-profile.ts:602` → `member/service.ts:482 findCustomerByPartyId` (web profile "links" tab + account REST `GET /contacts/{id}/profile`) | member card (code, tier, visits, total spend) shown with no member viewer — the sibling `findCustomersForLink` and the CRM card fail closed (C5.4 H2/L1-M3) | `findCustomersForLink` (`member/service.ts:522`) — `canReadMember` + branch visibility | **REPORTED, NOT FIXED**: the fix (viewer param, fail closed, `visibleCustomerIds`) turns `qc-acc-v2-contact-profile` Q7.5 red (it loads the profile without a viewer) ⇒ needs an ORACLE-EDIT authorisation; suite needs the acc-v2 seed (QC1) |
++| S5 | own sweep (UNSURE) | `crm/emails-actions.ts:140 attachCrmEmailToContactAction` | attaching an unmatched inbound mail to a contact (writes message link + EMAIL activity) needs only `crm.email.read` (plus OWNER or ALL-visibility whole-shop for unmatched mail, and the contact visible) | no REST twin | **OWNER DECISION D9** |
++| S6 | own sweep (LOW) | `crm/settings/notifications/actions.ts:65,77` → `notifications.ts:640 setMyPrefs` | own CRM notification prefs writable without any CRM key; REST twin needs `crm.contact.read` (here the web door is the permissive one, marked deliberate "C22") | — | **OWNER DECISION D10** |
++| S7 | own sweep (MED-LOW) | `account/connections-actions.ts:179` create with no events · `webhooks/actions.ts:52` platform create | an empty list = all events, so a holder of `webhook.endpoint.create` (+ `account.settings.manage` on the account page) receives `member.*`/`chat.*`/`kanban.*` events — the event guard registry has only the CRM family | member webhook door needs `member.api.manage`; fix3a ruled "empty = all events, central guard decides" | **OWNER DECISION D11** (prod-exposed via the platform page) |
++| S8 | own sweep (UNSURE) | `account/connections-actions.ts:208` `updateWebhookAction` | toggles/deletes any endpoint id of the shop (CRM/member ones too); same as the platform page and account REST | platform page equally permissive | **OWNER DECISION D11** |
++
++Counts: FIXED 6 (W1 W2 W3 S1 S2 S3) · ALREADY COVERED 3 (W4 W5 W6) · OWNER DECISIONS 11 (D1–D11) · EXCLUDED 1 (RV-3) · NEW GAP reported, not fixed 1 (S4) + 1 design gap (G1 below).
++
++## Own sweep (step 4) — scope and result
++- `src/app/api/mobile/**`: route set and contents identical to prod 929c39ce (`git diff 929c39ce 6280997b -- src/app/api/mobile src/lib/mobile` = empty). All 38 handlers: auth/webview/me/tenants by design; AI family now all `ai.chat.send` except reject (D2); dna apply `systems.system.create`; member/* `assertCan`/`canReadMember`; crm/* via `runMobileCrm` → CRM services `enter()` + `need()` (e.g. scan-card accept/reject `calls.ts:681/733` `crm.contact.create`, deals/tasks via `dealWhere`/`activityWhere`).
++- `"use server"` files touched since prod (`git diff --name-only 929c39ce 6280997b -- src/app src/lib`, 37 files): every mutating export resolves the actor from the session (`requireTenant` → membership; never a client tenant/user/role) and checks a key before writing — CRM v2 actions through `assertCanCrm`/service `enter()`+`need()` with system ownership checked via `assertCrmV2`/tenant-scoped `appSystem` lookup; account actions through `loadAccountSystem` + `assertAccountCan`; member api-actions `member.api.manage`; webhooks `webhook.endpoint.*` + the event-guard choke point; public form/portal actions token/OTP/cookie-scoped. Gaps found: S1, S2, S3 (fixed), S4 (reported), S5–S8 (owner decisions).
++- `src/app/api/cron/hourly`, `src/app/api/email/inbound` (the only other changed route files): secret-checked (unchanged doors).
++- **G1 (design gap, reported — not the simple class):** AI tools run with `{ tenantId }` only (`ai/tools.ts:35 ToolCtx`), so a member holding `ai.chat.send` gets every tool regardless of the module key: `kb_auto_save` (`tools.ts:2272`) writes KB articles without `kb.article.create` (web `app/kb/actions.ts:24` and the AI proposal `kb_create_article` (`proposals.ts:164`) both require it); read tools `customer_search`, `recent_leads`, `financial_summary` skip module keys/visibility (hotfix review M1 note). Fix = pass the caller's membership into `runTool` and check per tool — touches every AI entry (web, mobile, REST `/api/v1/ai/tools`, scheduled tasks) ⇒ its own card. On prod too.
++- Not swept (unchanged since prod, covered by the hotfix reviewer's 100-route sweep): v1 API-key routes, other cron/webhook routes.
++
++## Owner decisions (behaviour unchanged) — one-line recommendation each
++- **D1** AI memory (`remember_fact`/`forget_fact` write at once, by persona design): keep; it is behind `ai.chat.send` since the hotfix — optionally list memories on a settings page so owners can audit them.
++- **D2** Reject AI proposals/plans (web + mobile, non-CRM kinds): apply the CRM C3.4 rule to every kind — reject only if the caller could confirm it (the per-kind key `KIND_ACCESS` in `proposals.ts`), at least `ai.chat.send`; same check on both doors.
++- **D3** DNA answers / propose / interview (web + mobile): require `systems.system.create` (the apply key) — the facts drive the blueprint and the AI context; interview also spends AI credit (RV-3 family).
++- **D4** Push token re-bind: keep the upsert but clear the row on logout and only re-bind when the caller's session registered it (needs an app change) — low value, low risk.
++- **D5** Payment profile: OWNER-only, or MANAGER only with `unitAccess` `["*"]` (precedent: domain actions are OWNER-only); add a delegable key later if owners ask.
++- **D6** Marketplace template install: also require `systems.system.create` (it creates systems exactly like DNA apply).
++- **D7** Support cases / announcement dismiss / coupon test / credit ledger "more" / logo upload / image fetch / platform invoices: keep (low value, the pages already show the same data to members); if tightening, support cases → OWNER/MANAGER + case opener.
++- **D8** Platform automation page: filter `boardId: null` so board rules stay with board ADMINs; hide webhook URLs from non-managers; SSRF guard for WEBHOOK rules in its own card.
++- **D9** Attach unmatched inbound mail: require `crm.email.send` (every other e-mail write needs send/settings).
++- **D10** Own CRM notification prefs: align the two doors (either both need `crm.contact.read`, or REST drops it) — no data exposure either way.
++- **D11** Webhooks: register a `member` family guard (member events need `member.api.manage`) beside the CRM one, so empty "all events" endpoints and toggles from the platform/account pages cannot carry member PII events; list/pause stored `[]` endpoints for owner review (fix1 R2-4).
++
++## RED → GREEN (QC3)
++- `probe-cf8-mobile.mts` (real route handlers, Bearer from `issueMobileToken` + X-Tenant-Id; OWNER · MANAGER · STAFF no key · STAFF+`ai.chat.send` · STAFF+`systems.system.create`; cleans to 0): **RED 4/8** on the untouched tree (W1.1, W2.1, W3.1 denied-checks red; W3.2 red because the key-less STAFF had already created the welcome room) → **GREEN 8/8**. Logs `red-probe-cf8-mobile.log` → `g-probe-cf8-mobile.log`. INFO I.1/I.2 record D2 evidence (key-less STAFF rejects a proposal/plan: 200, row REJECTED — unchanged).
++- `probe-cf8-actions.mts` (real server actions under a forged Next request scope with a real session cookie, technique of probe-fix1/probe-cf3; QC3-pinned; network blocked; sweeps its tenants to 0): **RED 5/9** with the three pre-fix files checked out from 6280997b (A1.1 branch-limited MANAGER minted keys with `crm.contact.read`/`crm.deal.read`, bundle `crm.admin`, `member.customer.read`; A2.1 forged `crm.deal.won`/`member.created`/`qc.anything` dispatched — 3 delivery rows; A2.2 the panel's Thai label was dispatched as a literal type — 0 rows for the real event (pre-existing button bug, fixed with the label mapping); A3.1 2 activities written against shop B's contact and another CRM system's contact, unknown dealId threw a raw Prisma FK error) → **GREEN 9/9** on the fixed files. Logs `red-probe-cf8-actions.log` → `g-probe-cf8-actions.log`.
++- Totals: 9 red checks → 0; positive controls green on both trees except A2.2 (label) which was red before by the pre-existing bug.
++
++## Verification (runner `scripts/pending/cf8/run-verify.sh` from a /tmp copy · label v1 · QC3 · iso.sh + gate lock, one at a time · summary `/tmp/cf8-logs/v1.summary`, finished 2026-10-01 20:36 UTC)
++| check | result |
++|---|---|
++| `pnpm typecheck` (5 GB heap) | exit 0 (also exit 0 on the mobile-only state earlier) |
++| probe-cf8-mobile · probe-cf8-actions | 8/8 · 9/9 |
++| qc-mobile-authz-hotfix · qc-automation-authz-hotfix · qc-payment-authz-hotfix | 12/12 · 12/12 · 8/8 |
++| qc-security-hotfix (header read: pure rbac, no DB — run with DATABASE_URL unset) | 14/14 |
++| probe-fix1 (CRM automation + webhook choke point incl. account connections create/toggle, WB-*) | 71/71 |
++| qc-crm-v1 · qc-crm-c0.2 · qc-crm-c1.11 · qc-crm-c1.6 (v1 actions incl. addActivityAction, v1↔v2 switch, activities) | 17/17 · 27/27 · 66/66 · 79/79 |
++| gen-{crm,member,kanban,account}-api-docs --check | exit 0 ×4 (123/212/88/199 op) · no tracked file changed |
++| fitness (QC3 env) · fitness (no env) | 39/39 · 39/39 |
++No suite was red ⇒ no baseline run at 6280997b needed.
++
++## Also needed on prod main 929c39ce (code identical on prod, verified with `git show 929c39ce:<file>`)
++- W1/W2/W3 mobile routes — identical files on prod ⇒ same 3-line guards apply.
++- S2 `testWebhookAction` — identical on prod (connections-actions.ts:208-217).
++- S3 v1 `addActivityAction` — identical on prod (crm/actions.ts:125-143 there); v1 is the default UI for every prod shop.
++- S1 — the scope check applies on prod too (same action), but on prod account REST passes **no** viewer to the CRM/member link reads at all (`contacts-read.ts:104` there), i.e. any account key with the op key sees linked CRM/member data — the broader hole fixed by C5.4-A (L1-M3, `crmViewerOfApi`) which is not on prod yet. S1 matters once C5.4-A ships; ship them together.
++- S4/G1 and the owner decisions are prod-exposed as well.
++
++## Not verified
++- Server actions only through their real code with a forged Next request scope (probe technique of probe-fix1/probe-cf3), not through a built app / browser.
++- `qc-mobile-chat`, `qc-ai-usage`, `qc-acc-v2-security`, `qc-crm-activity`, `qc-crm`, `qc-webhook` not run — they load `.env.local` (`loadLegacyQcEnv`), forbidden here. Read instead: qc-mobile-chat personas are OWNER only (W1/W3 unaffected); qc-ai-usage AU-5.2/6.2 are static (`requireMobile` + GET still present); qc-acc-v2-security S3 regex (`createApiKeyAction … gate(`) still matches; qc-crm-activity calls the service `addActivity` directly (unchanged) and CA-6.1's static regex still matches.
++- `qc-acc-v2-contact-profile` (S4) and the account webhook suites that need the acc-v2 seed / N migration (QC1/QC2).
++- Mobile app behaviour on the new 403s (read from source: QuotaBar hides, welcome falls back to the sessions list, proposals load is silent).
+diff --git a/scripts/pending/cf8/probe-cf8-actions.mts b/scripts/pending/cf8/probe-cf8-actions.mts
+new file mode 100644
+index 00000000..f93bec35
+--- /dev/null
++++ b/scripts/pending/cf8/probe-cf8-actions.mts
+@@ -0,0 +1,187 @@
++// probe — CRM C5.5-authz-sweep: three server-action gaps found by the sweep, through the REAL actions with a real session cookie
++//   A1 account connections createApiKeyAction — key scopes outside the account system (crm.* / member.*) were accepted from a crafted form
++//      (the page offers only ACCOUNT_SCOPE_KEYS / account bundles) ⇒ a MANAGER minted an ACCOUNT-bound key that account REST turns into a CRM/member
++//      viewer (`crmViewerOfApi`), bypassing the CRM key door (crm.api.manage + crmKeyWiderThanCreator) and the member key door (member.api.manage)
++//   A2 account connections testWebhookAction — the client `type` was dispatched raw to every endpoint of the shop (fake crm.* / member.* events)
++//   A3 CRM v1 addActivityAction — client contactId/dealId written as raw FKs (another shop's contact/deal) and then `include`d by the v1 lists
++//   Each: RED shape = the wrong user/tenant succeeds today · GREEN = refused, nothing written · positive controls.
++// QC3 ONLY (ep-weathered-river) · throwaway tenants `qc-cf8-*` swept in done() · network blocked (fetch).
++// Run: bash scripts/iso.sh env NODE_OPTIONS=--max-old-space-size=3584 bash scripts/qc3.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/pending/cf8/probe-cf8-actions.mts
++/* eslint-disable @typescript-eslint/no-explicit-any */
++type Any = any;
++import { AsyncLocalStorage } from "node:async_hooks";
++import { randomBytes } from "node:crypto";
++
++(globalThis as Any).AsyncLocalStorage ??= AsyncLocalStorage;
++const accEnv = (await import("../../acc-v2-env.mts" as string)) as { loadQcEnv: () => { host: string } };
++const { host } = accEnv.loadQcEnv();
++if (!/ep-weathered-river/.test(host) || !/ep-weathered-river/.test(String(process.env.DATABASE_URL ?? ""))) {
++  console.log(`QC3 only — got ${host}`);
++  process.exit(1);
++}
++globalThis.fetch = (async () => {
++  throw new Error("network blocked");
++}) as typeof fetch;
++const { prisma } = await import("@/lib/core/db");
++const P = prisma as Any;
++const TAG = `qc-cf8-${randomBytes(4).toString("hex").replace(/[0-9]/g, (d) => "qrstuvwxyz"[Number(d)]!)}`;
++const res: { id: string; ok: boolean }[] = [];
++const chk = (id: string, ok: boolean, msg: string) => {
++  res.push({ id, ok });
++  console.log(`  ${ok ? "✅" : "❌"} [${id}] ${msg}`);
++};
++const j = (v: unknown) => JSON.stringify(v);
++const cut = (v: unknown, n = 120) => { const s = String(v ?? "").replace(/\s+/g, " "); return s.length > n ? `${s.slice(0, n)}…` : s; };
++const THAI = /[ก-๙]/;
++const USERS: string[] = [];
++const TENANTS: string[] = [];
++const sysSvc = (await import("@/lib/modules/system/service" as string)) as Any;
++const setCrm = (sysId: string, obj: Record<string, unknown>) =>
++  P.$executeRawUnsafe(
++    `UPDATE "AppSystem" SET "settings" = jsonb_set(CASE WHEN jsonb_typeof("settings") = 'object' THEN "settings" ELSE '{}'::jsonb END, '{crm}',
++      (CASE WHEN jsonb_typeof("settings"->'crm') = 'object' THEN "settings"->'crm' ELSE '{}'::jsonb END) || $1::jsonb, true) WHERE "id" = $2`,
++    JSON.stringify(obj),
++    sysId,
++  );
++const mkUser = async (suffix: string) => {
++  const u = await P.user.create({ data: { email: `${TAG}${suffix}@qc.invalid`, name: `QC ${suffix} ${TAG}` } });
++  USERS.push(u.id);
++  return u.id as string;
++};
++const member = (uid: string, tid: string, role: string, unitAccess: string[] = ["*"], permissions: Record<string, boolean> = {}) =>
++  P.membership.create({ data: { userId: uid, tenantId: tid, role, unitAccess, permissions, acceptedAt: new Date() } });
++const mkTenant = async (suffix: string) => {
++  const t = await P.tenant.create({ data: { name: `${TAG}-${suffix}`, slug: `${TAG}-${suffix}` } });
++  TENANTS.push(t.id);
++  return t.id as string;
++};
++// ── Next request scope (technique of probe-fix1 / probe-cf3): server actions run with a real session cookie ──
++const nextWork = (await import("next/dist/server/app-render/work-async-storage.external.js" as string)) as Any;
++const nextWorkUnit = (await import("next/dist/server/app-render/work-unit-async-storage.external.js" as string)) as Any;
++const nextCookies = (await import("next/dist/server/web/spec-extension/cookies.js" as string)) as Any;
++async function inScope<T>(cookie: string, pathname: string, fn: () => Promise<T>): Promise<T> {
++  const req = new Request(`http://qc.local${pathname}`, { headers: { cookie, "user-agent": "probe-cf8", "x-forwarded-for": "203.0.113.188" } });
++  const jar = new nextCookies.RequestCookies(req.headers);
++  const afterContext = { after: (_task: Any) => undefined };
++  const workStore = { route: pathname, page: `${pathname}/page`, forceStatic: false, dynamicShouldError: false, isStaticGeneration: false, fallbackRouteParams: null, incrementalCache: {}, pendingRevalidatedTags: [], afterContext };
++  const unit = { type: "request", phase: "action", implicitTags: [], cookies: jar, mutableCookies: jar, userspaceMutableCookies: jar, headers: req.headers, draftMode: undefined, rootParams: {}, url: { pathname, search: "" } };
++  return nextWork.workAsyncStorage.run(workStore, () => nextWorkUnit.workUnitAsyncStorage.run(unit, fn));
++}
++const coreHash = (await import("@/lib/core/hash" as string)) as Any;
++async function sessionCookie(uid: string, tid: string): Promise<string> {
++  const token = coreHash.randomToken(32) as string;
++  await P.session.create({ data: { userId: uid, tokenHash: coreHash.sha256(token), idleExpiresAt: new Date(Date.now() + 86_400_000), expiresAt: new Date(Date.now() + 86_400_000) } });
++  return `shark_session=${token}; __Host-shark_session=${token}; shark_tenant=${tid}`;
++}
++const fdx = (o: Record<string, string | string[]>) => {
++  const f = new FormData();
++  for (const [k, v] of Object.entries(o)) for (const x of Array.isArray(v) ? v : [v]) f.append(k, x);
++  return f;
++};
++const call = async (f: () => Promise<Any>): Promise<{ ok: boolean; v?: Any; err?: Any }> => {
++  try { return { ok: true, v: await f() }; } catch (err) { return { ok: false, err }; }
++};
++const errText = (r: { ok: boolean; v?: Any; err?: Any }) => (r.ok ? j(r.v) : `threw ${cut((r.err as Error)?.message ?? r.err, 80)}`);
++
++try {
++  // ═══ world: shop A (OWNER · MANAGER branch-limited · STAFF with account.settings.manage + api.key.create) + ACCOUNT book ═══
++  const tA = await mkTenant("a");
++  const owner = await mkUser("-owner"); await member(owner, tA, "OWNER");
++  const mgr = await mkUser("-mgr"); await member(mgr, tA, "MANAGER", ["qc-branch-only"]);
++  const A = (await sysSvc.createSystem(tA, "ACCOUNT", `บัญชี ${TAG}`)).id as string;
++  const accSvc = (await import("@/lib/modules/account/service" as string)) as Any;
++  await accSvc.saveSettings(tA, A, { orgName: `QC ${TAG}`, taxId: "0105561000003", vatRegistered: true, vatRateBp: 700, taxPointBasis: "ON_ISSUE" });
++  const oCookie = await sessionCookie(owner, tA);
++  const mCookie = await sessionCookie(mgr, tA);
++  const CONN = (await import("@/lib/modules/account/connections-actions" as string)) as Any;
++  const cp = `/app/sys/${A}/account/settings/connections`;
++  const keysOf = (name: string) => P.apiKey.findMany({ where: { tenantId: tA, name }, select: { id: true, scopesJson: true, systemId: true } });
++
++  // ── A1 createApiKeyAction: foreign scopes ──
++  console.log("\n── A1 account page API key scopes ──");
++  const a1 = await call(() => inScope(mCookie, cp, () => CONN.createApiKeyAction(fdx({ systemId: A, name: `${TAG}-crm`, scope: ["account.doc.view", "crm.contact.read", "crm.deal.read"], ttlDays: "30" }))));
++  const a1rows = await keysOf(`${TAG}-crm`);
++  const a1b = await call(() => inScope(mCookie, cp, () => CONN.createApiKeyAction(fdx({ systemId: A, name: `${TAG}-crmb`, bundle: "crm.admin", ttlDays: "30" }))));
++  const a1brows = await keysOf(`${TAG}-crmb`);
++  const a1m = await call(() => inScope(mCookie, cp, () => CONN.createApiKeyAction(fdx({ systemId: A, name: `${TAG}-mem`, scope: ["member.customer.read"], ttlDays: "30" }))));
++  const a1mrows = await keysOf(`${TAG}-mem`);
++  chk("CF8-A1.1", a1.ok && a1.v?.ok === false && THAI.test(String(a1.v?.reason)) && a1rows.length === 0 && a1b.v?.ok === false && a1brows.length === 0 && a1m.v?.ok === false && a1mrows.length === 0,
++    `branch-limited MANAGER on the account page: scopes [account.doc.view, crm.contact.read, crm.deal.read] → ${errText(a1)} keys=${a1rows.length} ${j(a1rows.map((k: Any) => k.scopesJson))} · bundle crm.admin → ${a1b.v?.ok === false ? "refused" : errText(a1b)} keys=${a1brows.length} · [member.customer.read] → ${a1m.v?.ok === false ? "refused" : errText(a1m)} keys=${a1mrows.length} (want refused, no key)`);
++  const a1c = await call(() => inScope(oCookie, cp, () => CONN.createApiKeyAction(fdx({ systemId: A, name: `${TAG}-acc`, bundle: "accountant", ttlDays: "30" }))));
++  const a1crows = await keysOf(`${TAG}-acc`);
++  const a1d = await call(() => inScope(mCookie, cp, () => CONN.createApiKeyAction(fdx({ systemId: A, name: `${TAG}-acc2`, scope: ["account.doc.view", "account.contact.manage"], ttlDays: "30" }))));
++  const a1drows = await keysOf(`${TAG}-acc2`);
++  const accOnly = (rows: Any[]) => rows.length === 1 && rows[0].systemId === A && (rows[0].scopesJson as string[]).length > 0 && (rows[0].scopesJson as string[]).every((s) => s.startsWith("account."));
++  chk("CF8-A1.2", a1c.v?.ok === true && typeof a1c.v?.rawKey === "string" && accOnly(a1crows) && a1d.v?.ok === true && accOnly(a1drows) && j(a1drows[0]?.scopesJson) === j(["account.doc.view", "account.contact.manage"]),
++    `positive control: OWNER bundle accountant → ${a1c.v?.ok ? "ok" : errText(a1c)} (${(a1crows[0]?.scopesJson as string[] | undefined)?.length ?? 0} account scopes) · MANAGER ticked [account.doc.view, account.contact.manage] → ${a1d.v?.ok ? "ok" : errText(a1d)} stored=${j(a1drows[0]?.scopesJson)}`);
++
++  // ── A2 testWebhookAction: event type ──
++  console.log("\n── A2 account page webhook test ──");
++  const allEp = await P.webhookEndpoint.create({ data: { tenantId: tA, url: "https://example.com/qc-cf8-all", secret: "x".repeat(48), eventsJson: [], active: true } });
++  const delOf = (type: string) => P.webhookDelivery.count({ where: { tenantId: tA, eventType: type } });
++  const a2 = await call(() => inScope(oCookie, cp, () => CONN.testWebhookAction(fdx({ systemId: A, type: "crm.deal.won" }))));
++  const a2m = await call(() => inScope(oCookie, cp, () => CONN.testWebhookAction(fdx({ systemId: A, type: "member.created" }))));
++  const a2x = await call(() => inScope(oCookie, cp, () => CONN.testWebhookAction(fdx({ systemId: A, type: "qc.anything" }))));
++  const forged = (await delOf("crm.deal.won")) + (await delOf("member.created")) + (await delOf("qc.anything"));
++  // network is blocked ⇒ every delivery FAILS and the action's own ok/"no endpoint" answer cannot tell "refused" from "sent and failed":
++  //   the evidence is the WebhookDelivery rows written for the requested type (a row = it was dispatched to the all-events endpoint)
++  chk("CF8-A2.1", a2.v?.ok === false && a2m.v?.ok === false && a2x.v?.ok === false && forged === 0,
++    `OWNER test with type crm.deal.won → ${errText(a2)} · member.created → ${errText(a2m)} · qc.anything → ${errText(a2x)} · deliveries of those types=${forged} (want refused, 0)`);
++  const a2ok = await call(() => inScope(oCookie, cp, () => CONN.testWebhookAction(fdx({ systemId: A, type: "account.document.issued" }))));
++  const a2lab = await call(() => inScope(oCookie, cp, () => CONN.testWebhookAction(fdx({ systemId: A, type: "เมื่อบันทึกรับ/จ่ายเงิน" }))));
++  const a2def = await call(() => inScope(oCookie, cp, () => CONN.testWebhookAction(fdx({ systemId: A }))));
++  const d1 = await delOf("account.document.issued"), d2 = await delOf("account.payment.recorded"), d3 = await delOf("account.document.approved");
++  chk("CF8-A2.2", a2ok.ok && a2def.ok && a2lab.ok && d1 >= 1 && d3 >= 1 && d2 >= 1,
++    `positive control: account.document.issued → ${errText(a2ok)} (deliveries ${d1}) · no type (default approved) → ${errText(a2def)} (${d3}) · the panel's Thai label of account.payment.recorded → ${errText(a2lab)} (${d2}) — a dispatch row per type = sent (deliveries fail: network blocked)`);
++  void allEp;
++
++  // ── A3 CRM v1 addActivityAction: another shop's contact / deal ──
++  console.log("\n── A3 CRM v1 add activity ──");
++  const S = (await sysSvc.createSystem(tA, "CRM", `CRM ${TAG}`)).id as string;
++  await setCrm(S, { uiVersion: 1 });
++  const tB = await mkTenant("b");
++  const SB = (await sysSvc.createSystem(tB, "CRM", `CRM B ${TAG}`)).id as string;
++  const foreignC = await P.crmContact.create({ data: { tenantId: tB, systemId: SB, name: "ลูกค้าลับร้าน B", phone: "0812345678" } });
++  const S2 = (await sysSvc.createSystem(tA, "CRM", `CRM2 ${TAG}`)).id as string; // another CRM system of the SAME shop
++  const otherSysC = await P.crmContact.create({ data: { tenantId: tA, systemId: S2, name: "ลูกค้าระบบอื่น" } });
++  const ownC = await P.crmContact.create({ data: { tenantId: tA, systemId: S, name: "ลูกค้าร้าน A" } });
++  const CRMV1 = (await import("@/lib/modules/crm/actions" as string)) as Any;
++  const actsOf = (contactId: string) => P.crmActivity.count({ where: { tenantId: tA, contactId } });
++  const vp = `/app/sys/${S}/crm`;
++  const a3 = await call(() => inScope(oCookie, vp, () => CRMV1.addActivityAction(fdx({ systemId: S, title: "QC งานผูกร้านอื่น", type: "TASK", contactId: foreignC.id }))));
++  const a3s = await call(() => inScope(oCookie, vp, () => CRMV1.addActivityAction(fdx({ systemId: S, title: "QC งานผูกระบบอื่น", type: "TASK", contactId: otherSysC.id }))));
++  const a3d = await call(() => inScope(oCookie, vp, () => CRMV1.addActivityAction(fdx({ systemId: S, title: "QC งานผูกดีลร้านอื่น", type: "TASK", dealId: "qc-nonexistent-deal" }))));
++  const leaked = (await actsOf(foreignC.id)) + (await actsOf(otherSysC.id)) + (await P.crmActivity.count({ where: { tenantId: tA, dealId: "qc-nonexistent-deal" } }));
++  chk("CF8-A3.1", leaked === 0,
++    `v1 OWNER of shop A: contactId of shop B → ${a3.ok ? "returned" : errText(a3)} · contactId of another CRM system of A → ${a3s.ok ? "returned" : errText(a3s)} · unknown dealId → ${a3d.ok ? "returned" : errText(a3d)} · activities written with those refs=${leaked} (want 0)`);
++  const a3ok = await call(() => inScope(oCookie, vp, () => CRMV1.addActivityAction(fdx({ systemId: S, title: "QC งานของร้าน A", type: "TASK", contactId: ownC.id }))));
++  const a3none = await call(() => inScope(oCookie, vp, () => CRMV1.addActivityAction(fdx({ systemId: S, title: "QC งานลอย", type: "TASK" }))));
++  const own = await actsOf(ownC.id);
++  const loose = await P.crmActivity.count({ where: { tenantId: tA, systemId: S, contactId: null, dealId: null, title: "QC งานลอย" } });
++  chk("CF8-A3.2", own === 1 && loose === 1, `positive control: own contact → ${a3ok.ok ? "ok" : errText(a3ok)} (${own} row) · no target → ${a3none.ok ? "ok" : errText(a3none)} (${loose} row)`);
++} catch (e) {
++  chk("CRASH", false, String((e as Error)?.stack ?? e).slice(0, 700));
++} finally {
++  for (const T of TENANTS) {
++    const tbs = ((await P.$queryRawUnsafe(`select table_name from information_schema.columns where table_schema='public' and column_name='tenantId'`)) as Any[]).map((r) => String(r.table_name)).filter((x) => /^[A-Za-z_]+$/.test(x));
++    for (let pass = 0; pass < 4; pass += 1) for (const t of tbs) await P.$executeRawUnsafe(`DELETE FROM "${t}" WHERE "tenantId" = $1`, T).catch(() => undefined);
++    await P.appSystem.deleteMany({ where: { tenantId: T } }).catch(() => undefined);
++    await P.tenant.delete({ where: { id: T } }).catch(() => undefined);
++    let left = 0;
++    for (const t of tbs) left += Number(((await P.$queryRawUnsafe(`SELECT count(*)::int AS n FROM "${t}" WHERE "tenantId" = $1`, T).catch(() => [{ n: 0 }])) as Any[])[0]?.n ?? 0);
++    chk(`CLEAN-${T.slice(-6)}`, left === 0 && (await P.tenant.count({ where: { id: T } })) === 0, `tenant rows left=${left}`);
++  }
++  for (const id of USERS) {
++    await P.session.deleteMany({ where: { userId: id } }).catch(() => undefined);
++    await P.membership.deleteMany({ where: { userId: id } }).catch(() => undefined);
++    await P.appNotification.deleteMany({ where: { recipientUserId: id } }).catch(() => undefined);
++    await P.user.delete({ where: { id } }).catch(() => undefined);
++  }
++  const usersLeft = await P.user.count({ where: { email: { startsWith: TAG } } });
++  chk("CLEAN-users", usersLeft === 0, `users left=${usersLeft}`);
++  await prisma.$disconnect();
++}
++const passed = res.filter((r) => r.ok).length;
++console.log(`\n${passed === res.length ? "🟢" : "🔴"} probe cf8 actions: ${passed}/${res.length}`);
++console.log(`JSON_SUMMARY ${JSON.stringify({ total: res.length, passed, findings: res.filter((r) => !r.ok).map((r) => r.id) })}`);
++process.exit(passed === res.length ? 0 : 1);
+diff --git a/scripts/pending/cf8/probe-cf8-mobile.mts b/scripts/pending/cf8/probe-cf8-mobile.mts
+new file mode 100644
+index 00000000..6eb44d9f
+--- /dev/null
++++ b/scripts/pending/cf8/probe-cf8-mobile.mts
+@@ -0,0 +1,177 @@
++// probe — CRM C5.5-authz-sweep: the three remaining mobile AI doors that the hotfix (2026-10-01 Item 4) left on "member of the shop"
++//   W1 GET  /api/mobile/proposals?conversationId=  → ai.chat.send  (web twin: lib/ai/actions.ts listPendingProposalsAction · loadAiChatAction)
++//   W2 GET  /api/mobile/usage                       → ai.chat.send  (web twin: lib/ai/actions.ts loadAiQuotaAction — the chat quota bar; the app's QuotaBar is the only caller)
++//   W3 POST /api/mobile/chat/welcome                → ai.chat.send  (creates an AI room + message like POST /api/mobile/conversations, gated by the hotfix;
++//                                                      web opens the AI room only through loadAiChatAction/sendAiMessageAction, both ai.chat.send)
++//   Matrix through the REAL route handlers (Bearer from issueMobileToken + X-Tenant-Id): OWNER · MANAGER · STAFF no keys · STAFF+ai.chat.send ·
++//   STAFF holding an unrelated key (systems.system.create) — denied = 403 {error:"forbidden"} and NO side effect; positive controls.
++//   INFO lines (not counted): proposals/reject + plans/reject by a key-less STAFF — evidence for the owner decision (web door rejectProposalAction /
++//   rejectPlanAction is equally permissive for non-CRM kinds ⇒ not changed by this card).
++// QC DATABASE ONLY (acc-v2-env loadQcEnv prod-host guard runs before the db import) · own tenant `qc-cf8-mob-<rand>` · cleans to 0.
++// Run: bash scripts/iso.sh env NODE_OPTIONS=--max-old-space-size=3584 bash scripts/qc3.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/pending/cf8/probe-cf8-mobile.mts
++// eslint-disable-next-line @typescript-eslint/no-explicit-any
++type Any = any;
++const accEnv = (await import("../../acc-v2-env.mts" as string)) as { loadQcEnv: () => { host: string } };
++accEnv.loadQcEnv();
++const { prisma } = await import("@/lib/core/db");
++const auth = (await import("@/lib/mobile/auth" as string)) as { issueMobileToken: (u: string) => Promise<{ token: string }> };
++const R = {
++  props: (await import("../../../src/app/api/mobile/proposals/route.ts" as string)) as Any,
++  usage: (await import("../../../src/app/api/mobile/usage/route.ts" as string)) as Any,
++  welcome: (await import("../../../src/app/api/mobile/chat/welcome/route.ts" as string)) as Any,
++  pReject: (await import("../../../src/app/api/mobile/proposals/reject/route.ts" as string)) as Any,
++  plReject: (await import("../../../src/app/api/mobile/plans/reject/route.ts" as string)) as Any,
++};
++type Sev = "CRITICAL" | "MAJOR" | "MINOR";
++const cks: { id: string; ok: boolean; sev: Sev }[] = [];
++const chk = (id: string, n: string, ok: unknown, e: string, a: string, s: Sev = "CRITICAL") => {
++  cks.push({ id, ok: !!ok, sev: s });
++  console.log(`  ${ok ? "✅" : "❌"} [${id}] ${n}${ok ? "" : ` — exp ${e} | act ${a}`}`);
++};
++const info = (id: string, n: string, a: string) => console.log(`  ℹ️  [${id}] ${n} — ${a}`);
++const P = prisma as Any;
++const TAG = `qc-cf8-mob-${Math.random().toString(36).slice(2, 8)}`;
++const tids: string[] = [];
++const userIds: string[] = [];
++try {
++  const mkTenant = async (suffix: string) => {
++    const t = await P.tenant.create({ data: { name: `${TAG}${suffix}`, slug: `${TAG}${suffix}` } });
++    tids.push(t.id);
++    return t.id as string;
++  };
++  const tid = await mkTenant("");
++  const tidWelcome = await mkTenant("-w"); // empty shop (no AI room yet) for chat/welcome
++  const mkUser = async (key: string, role: string, permissions: Record<string, boolean>) => {
++    const u = await P.user.create({ data: { email: `${TAG}-${key}@qc.invalid`, name: key } });
++    userIds.push(u.id);
++    for (const t of tids) await P.membership.create({ data: { userId: u.id, tenantId: t, role, unitAccess: ["*"], permissions, acceptedAt: new Date() } });
++    return (await auth.issueMobileToken(u.id)).token;
++  };
++  const tok = {
++    owner: await mkUser("owner", "OWNER", {}),
++    manager: await mkUser("manager", "MANAGER", {}),
++    staff: await mkUser("staff", "STAFF", {}),
++    staffAi: await mkUser("staffai", "STAFF", { "ai.chat.send": true }),
++    staffSys: await mkUser("staffsys", "STAFF", { "systems.system.create": true }),
++  };
++  type Who = keyof typeof tok;
++  const req = (who: Who, method: string, opts: { body?: unknown; qs?: string; tenant?: string } = {}) =>
++    new Request(`http://qc.invalid/api/mobile/x${opts.qs ?? ""}`, {
++      method,
++      headers: { authorization: `Bearer ${tok[who]}`, "x-tenant-id": opts.tenant ?? tid, "content-type": "application/json" },
++      body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
++    });
++  const drain = async (res: Response) => { try { await res.text(); } catch { /* closed */ } return res.status; };
++  const is403 = async (pr: Promise<Response>) => {
++    let res: Response;
++    try { res = await pr; } catch { return false; }
++    const st = res.status; const b = st === 403 ? await res.json().catch(() => ({})) : (await drain(res), {});
++    return st === 403 && (b as Any).error === "forbidden";
++  };
++  const statusOf = async (pr: Promise<Response>) => { try { return String(await drain(await pr)); } catch (e) { return `threw:${(e as Error).message.slice(0, 40)}`; } };
++
++  // fixtures: a shop AI room with a pending proposal + a pending plan; a wallet with a top-up
++  const conv = await P.aiConversation.create({ data: { tenantId: tid, title: "QC ห้อง" } });
++  const exp = new Date(Date.now() + 3_600_000);
++  const prop = await P.aiProposal.create({ data: { tenantId: tid, conversationId: conv.id, kind: "inventory_receive", summary: "QC รับของลับ 99 ชิ้น", payload: {}, expiresAt: exp } });
++  const plan = await P.aiPlan.create({ data: { tenantId: tid, conversationId: conv.id, title: "QC แผนลับ", stepsJson: [], expiresAt: exp } });
++  await P.aiCreditWallet.create({ data: { tenantId: tid, balanceMicro: 4_321_000, grantedAt: new Date() } });
++  await P.aiCreditTxn.create({ data: { tenantId: tid, kind: "TOPUP", source: "TOPUP", amountMicro: 10_000_000, balanceAfter: 4_321_000, note: "qc", ref: `${TAG}-topup` } }).catch(async () => {
++    // enum value names differ? fall back to GRANT (route reads kind in [GRANT, TOPUP])
++    await P.aiCreditTxn.create({ data: { tenantId: tid, kind: "GRANT", source: "GRANT", amountMicro: 10_000_000, balanceAfter: 4_321_000, note: "qc", ref: `${TAG}-grant` } });
++  });
++
++  // ═══ W1 proposals GET ═══
++  const qs = `?conversationId=${conv.id}`;
++  const w1No = await is403(R.props.GET(req("staff", "GET", { qs })));
++  const w1Sys = await is403(R.props.GET(req("staffSys", "GET", { qs })));
++  chk("CF8-W1.1", "GET proposals: STAFF without ai.chat.send → 403 (also STAFF holding only systems.system.create)", w1No && w1Sys, "403", `staff=${w1No} staffSys=${w1Sys}`);
++  const w1Ok: Record<string, string> = {};
++  for (const w of ["owner", "manager", "staffAi"] as Who[]) {
++    const r = await R.props.GET(req(w, "GET", { qs }));
++    const b = r.status === 200 ? JSON.stringify(await r.json()) : (await drain(r), "");
++    w1Ok[w] = `${r.status}:${b.includes(prop.id) && b.includes("QC รับของลับ")}`;
++  }
++  chk("CF8-W1.2", "positive control: OWNER / MANAGER / STAFF+ai.chat.send → 200 with the pending proposal", Object.values(w1Ok).every((s) => s === "200:true"), "200:true ×3", JSON.stringify(w1Ok));
++
++  // ═══ W2 usage GET ═══
++  const w2No = await is403(R.usage.GET(req("staff", "GET")));
++  const w2Sys = await is403(R.usage.GET(req("staffSys", "GET")));
++  chk("CF8-W2.1", "GET usage: STAFF without ai.chat.send → 403 (no AI wallet balance)", w2No && w2Sys, "403", `staff=${w2No} staffSys=${w2Sys}`, "MAJOR");
++  const w2Ok: Record<string, string> = {};
++  for (const w of ["owner", "manager", "staffAi"] as Who[]) {
++    const r = await R.usage.GET(req(w, "GET"));
++    const b = r.status === 200 ? ((await r.json()) as Any) : (await drain(r), {});
++    w2Ok[w] = `${r.status}:${b.balanceMicro === 4_321_000 && typeof b.pct === "number"}`;
++  }
++  chk("CF8-W2.2", "positive control: OWNER / MANAGER / STAFF+ai.chat.send → 200, same body shape (balanceMicro, pct)", Object.values(w2Ok).every((s) => s === "200:true"), "200:true ×3", JSON.stringify(w2Ok), "MAJOR");
++
++  // ═══ W3 chat/welcome POST ═══ (empty shop tidWelcome)
++  const rooms = () => P.aiConversation.count({ where: { tenantId: tidWelcome } });
++  const r0 = await rooms();
++  const w3No = await is403(R.welcome.POST(req("staff", "POST", { body: {}, tenant: tidWelcome })));
++  const w3Sys = await is403(R.welcome.POST(req("staffSys", "POST", { body: {}, tenant: tidWelcome })));
++  const r1 = await rooms();
++  chk("CF8-W3.1", "POST chat/welcome: STAFF without ai.chat.send → 403 and no AI room / message created (no onboarding checklist / DNA summary revealed)", w3No && w3Sys && r0 === 0 && r1 === 0, "403 + 0 rooms", `staff=${w3No} staffSys=${w3Sys} rooms=${r0}→${r1}`, "MAJOR");
++  const w3OkRes = await R.welcome.POST(req("staffAi", "POST", { body: {}, tenant: tidWelcome }));
++  const w3OkBody = w3OkRes.status === 200 ? ((await w3OkRes.json()) as Any) : (await drain(w3OkRes), {});
++  const r2 = await rooms();
++  const w3Again: Record<string, string> = {};
++  for (const w of ["owner", "manager"] as Who[]) {
++    const r = await R.welcome.POST(req(w, "POST", { body: {}, tenant: tidWelcome }));
++    const b = r.status === 200 ? ((await r.json()) as Any) : (await drain(r), {});
++    w3Again[w] = `${r.status}:${b.existing}`;
++  }
++  chk("CF8-W3.2", "positive control: STAFF+ai.chat.send → 200 creates the welcome room once · OWNER/MANAGER → 200 existing:true",
++    w3OkRes.status === 200 && w3OkBody.existing === false && !!w3OkBody.conversationId && r2 === 1 && Object.values(w3Again).every((s) => s === "200:true"),
++    "200 created + existing ×2", `staffAi=${w3OkRes.status}/${w3OkBody.existing} rooms=${r2} again=${JSON.stringify(w3Again)}`, "MAJOR");
++
++  // ═══ cross-tenant control: a valid token with a tenant the user is not a member of ═══
++  const foreign = await P.tenant.create({ data: { name: `${TAG}-x`, slug: `${TAG}-x` } });
++  tids.push(foreign.id);
++  const xs = await statusOf(R.props.GET(req("owner", "GET", { qs, tenant: foreign.id })));
++  chk("CF8-X.1", "control: OWNER token + X-Tenant-Id of a shop they are not a member of → not 200 (requireMobile)", xs !== "200", "≠200", xs, "MINOR");
++
++  // ═══ INFO (owner decision evidence — behaviour NOT changed by this card) ═══
++  const prej = await R.pReject.POST(req("staff", "POST", { body: { id: prop.id } }));
++  const prejB = prej.status === 200 ? JSON.stringify(await prej.json()) : (await drain(prej), "");
++  const propAfter = (await P.aiProposal.findUnique({ where: { id: prop.id } }))?.status;
++  info("CF8-I.1", "proposals/reject by a key-less STAFF (non-CRM kind)", `status=${prej.status} body=${prejB} row=${propAfter} (web rejectProposalAction: same, no key)`);
++  const plrej = await R.plReject.POST(req("staff", "POST", { body: { id: plan.id } }));
++  const plrejB = plrej.status === 200 ? JSON.stringify(await plrej.json()) : (await drain(plrej), "");
++  const planAfter = (await P.aiPlan.findUnique({ where: { id: plan.id } }))?.status;
++  info("CF8-I.2", "plans/reject by a key-less STAFF", `status=${plrej.status} body=${plrejB} row=${planAfter} (web rejectPlanAction: same, no key)`);
++} catch (e) {
++  chk("CRASH", "finished", false, "finished", e instanceof Error ? `${e.name}: ${e.message.slice(0, 240)}` : String(e));
++} finally {
++  try {
++    if (tids.length) {
++      const w = { tenantId: { in: tids } };
++      await P.aiProposal.deleteMany({ where: w });
++      await P.aiPlan.deleteMany({ where: w });
++      await P.aiMessage.deleteMany({ where: w });
++      await P.aiConversation.deleteMany({ where: w });
++      await P.aiCreditTxn.deleteMany({ where: w });
++      await P.aiCreditWallet.deleteMany({ where: w });
++      await P.membership.deleteMany({ where: w });
++    }
++    if (userIds.length) {
++      await P.session.deleteMany({ where: { userId: { in: userIds } } });
++      await P.user.deleteMany({ where: { id: { in: userIds } } });
++    }
++    if (tids.length) await P.tenant.deleteMany({ where: { id: { in: tids } } });
++    const w = { tenantId: { in: tids } };
++    const left = (tids.length
++      ? (await P.aiConversation.count({ where: w })) + (await P.aiProposal.count({ where: w })) + (await P.aiPlan.count({ where: w }))
++        + (await P.aiCreditWallet.count({ where: w })) + (await P.aiCreditTxn.count({ where: w })) + (await P.membership.count({ where: w }))
++        + (await P.tenant.count({ where: { id: { in: tids } } }))
++      : 0)
++      + (await P.user.count({ where: { email: { startsWith: TAG } } })) + (await P.session.count({ where: { userId: { in: userIds } } }));
++    chk("CF8-CLEAN", "cleanup → 0 rows of this run left", left === 0, "0", String(left), "MAJOR");
++  } catch (e) { console.log("⚠️ cleanup:", (e as Error).message.slice(0, 160)); }
++  await prisma.$disconnect();
++}
++const f = cks.filter((c) => !c.ok);
++console.log(`\n===== probe cf8 mobile =====\nผ่าน ${cks.length - f.length}/${cks.length}`);
++console.log(`JSON_SUMMARY ${JSON.stringify({ total: cks.length, passed: cks.length - f.length, findings: f.map((c) => c.id) })}`);
++process.exit(f.length > 0 ? 1 : 0);
+diff --git a/scripts/pending/cf8/review/probe-cf8-review.mts b/scripts/pending/cf8/review/probe-cf8-review.mts
+new file mode 100644
+index 00000000..e9416448
+--- /dev/null
++++ b/scripts/pending/cf8/review/probe-cf8-review.mts
+@@ -0,0 +1,290 @@
++// review probe — CRM C5.5-authz-sweep (independent reviewer). Two kinds of checks:
++//   V-*  VERIFY: the card's fixes hold under variants the builder probe did not try (whitespace/case/wildcard/bundle/pseudo-scope,
++//        label/value/case of webhook types, archived/other-system/foreign targets on v1 activities, wildcard ai.* on mobile) — pass = fix holds.
++//   X-*  REPRO of reviewer findings outside the card's diff — pass = the gap was REPRODUCED as described in the review note
++//        (i.e. a green X-* line is bad news, not good news).
++//   R-*  REGRESSION guards for rightly-permitted users (pure registry checks + positive controls).
++// QC3 ONLY (ep-weathered-river) · throwaway tenants `qc-cf8r-*` swept in finally · outbound network blocked (fetch).
++// Run: bash scripts/iso.sh env NODE_OPTIONS=--max-old-space-size=3584 bash scripts/pending/cd2/with-qc3-secret.sh bash scripts/qc3.sh \
++//        bash scripts/with-gate-lock.sh pnpm exec tsx scripts/pending/cf8/review/probe-cf8-review.mts
++/* eslint-disable @typescript-eslint/no-explicit-any */
++type Any = any;
++import { AsyncLocalStorage } from "node:async_hooks";
++import { randomBytes } from "node:crypto";
++
++(globalThis as Any).AsyncLocalStorage ??= AsyncLocalStorage;
++const accEnv = (await import("../../../acc-v2-env.mts" as string)) as { loadQcEnv: () => { host: string } };
++const { host } = accEnv.loadQcEnv();
++if (!/ep-weathered-river/.test(host) || !/ep-weathered-river/.test(String(process.env.DATABASE_URL ?? ""))) {
++  console.log(`QC3 only — got ${host}`);
++  process.exit(1);
++}
++globalThis.fetch = (async () => {
++  throw new Error("network blocked");
++}) as typeof fetch;
++const { prisma } = await import("@/lib/core/db");
++const P = prisma as Any;
++const TAG = `qc-cf8r-${randomBytes(4).toString("hex").replace(/[0-9]/g, (d) => "qrstuvwxyz"[Number(d)]!)}`;
++const res: { id: string; ok: boolean }[] = [];
++const chk = (id: string, ok: boolean, msg: string) => {
++  res.push({ id, ok });
++  console.log(`  ${ok ? "✅" : "❌"} [${id}] ${msg}`);
++};
++const j = (v: unknown) => JSON.stringify(v);
++const cut = (v: unknown, n = 160) => { const s = String(v ?? "").replace(/\s+/g, " "); return s.length > n ? `${s.slice(0, n)}…` : s; };
++const USERS: string[] = [];
++const TENANTS: string[] = [];
++const sysSvc = (await import("@/lib/modules/system/service" as string)) as Any;
++const mkUser = async (suffix: string) => {
++  const u = await P.user.create({ data: { email: `${TAG}${suffix}@qc.invalid`, name: `QC ${suffix} ${TAG}` } });
++  USERS.push(u.id);
++  return u.id as string;
++};
++const member = (uid: string, tid: string, role: string, unitAccess: string[] = ["*"], permissions: Record<string, boolean> = {}) =>
++  P.membership.create({ data: { userId: uid, tenantId: tid, role, unitAccess, permissions, acceptedAt: new Date() } });
++const mkTenant = async (suffix: string) => {
++  const t = await P.tenant.create({ data: { name: `${TAG}-${suffix}`, slug: `${TAG}-${suffix}` } });
++  TENANTS.push(t.id);
++  return t.id as string;
++};
++const setCrm = (sysId: string, obj: Record<string, unknown>) =>
++  P.$executeRawUnsafe(
++    `UPDATE "AppSystem" SET "settings" = jsonb_set(CASE WHEN jsonb_typeof("settings") = 'object' THEN "settings" ELSE '{}'::jsonb END, '{crm}',
++      (CASE WHEN jsonb_typeof("settings"->'crm') = 'object' THEN "settings"->'crm' ELSE '{}'::jsonb END) || $1::jsonb, true) WHERE "id" = $2`,
++    JSON.stringify(obj),
++    sysId,
++  );
++// ── Next request scope (technique of probe-fix1 / probe-cf3 / probe-cf8-actions) ──
++const nextWork = (await import("next/dist/server/app-render/work-async-storage.external.js" as string)) as Any;
++const nextWorkUnit = (await import("next/dist/server/app-render/work-unit-async-storage.external.js" as string)) as Any;
++const nextCookies = (await import("next/dist/server/web/spec-extension/cookies.js" as string)) as Any;
++async function inScope<T>(cookie: string, pathname: string, fn: () => Promise<T>): Promise<T> {
++  const req = new Request(`http://qc.local${pathname}`, { headers: { cookie, "user-agent": "probe-cf8-review", "x-forwarded-for": "203.0.113.189" } });
++  const jar = new nextCookies.RequestCookies(req.headers);
++  const afterContext = { after: (_task: Any) => undefined };
++  const workStore = { route: pathname, page: `${pathname}/page`, forceStatic: false, dynamicShouldError: false, isStaticGeneration: false, fallbackRouteParams: null, incrementalCache: {}, pendingRevalidatedTags: [], afterContext };
++  const unit = { type: "request", phase: "action", implicitTags: [], cookies: jar, mutableCookies: jar, userspaceMutableCookies: jar, headers: req.headers, draftMode: undefined, rootParams: {}, url: { pathname, search: "" } };
++  return nextWork.workAsyncStorage.run(workStore, () => nextWorkUnit.workUnitAsyncStorage.run(unit, fn));
++}
++const coreHash = (await import("@/lib/core/hash" as string)) as Any;
++async function sessionCookie(uid: string, tid: string): Promise<string> {
++  const token = coreHash.randomToken(32) as string;
++  await P.session.create({ data: { userId: uid, tokenHash: coreHash.sha256(token), idleExpiresAt: new Date(Date.now() + 86_400_000), expiresAt: new Date(Date.now() + 86_400_000) } });
++  return `shark_session=${token}; __Host-shark_session=${token}; shark_tenant=${tid}`;
++}
++const fdx = (o: Record<string, string | string[]>) => {
++  const f = new FormData();
++  for (const [k, v] of Object.entries(o)) for (const x of Array.isArray(v) ? v : [v]) f.append(k, x);
++  return f;
++};
++const call = async (f: () => Promise<Any>): Promise<{ ok: boolean; v?: Any; err?: Any }> => {
++  try { return { ok: true, v: await f() }; } catch (err) { return { ok: false, err }; }
++};
++const errText = (r: { ok: boolean; v?: Any; err?: Any }) => (r.ok ? cut(j(r.v), 120) : `threw ${cut((r.err as Error)?.message ?? r.err, 80)}`);
++
++try {
++  // ═══ R1/R2 pure registry checks (no DB) ═══
++  console.log("\n── R pure registry ──");
++  const SC = (await import("@/lib/api-keys/scopes" as string)) as Any;
++  const LB = (await import("@/lib/webhooks/labels" as string)) as Any;
++  const accBundles = (SC.API_SCOPE_BUNDLES as Any[]).filter((b) => (b.scopes as string[]).some((s) => s.startsWith("account.")));
++  const outside = accBundles.flatMap((b) => (b.scopes as string[]).filter((s) => !(SC.ACCOUNT_SCOPE_KEYS as string[]).includes(s)).map((s) => `${b.id}:${s}`));
++  chk("R1", accBundles.length >= 5 && outside.length === 0,
++    `every bundle the account page offers (${accBundles.map((b) => b.id).join(",")}) ⊆ ACCOUNT_SCOPE_KEYS (${(SC.ACCOUNT_SCOPE_KEYS as string[]).length} keys) — outside=${j(outside)} · wildcard account.* in list=${(SC.ACCOUNT_SCOPE_KEYS as string[]).includes("account.*")}`);
++  const accEv = (LB.WEBHOOK_EVENTS as Any[]).filter((w) => String(w.value).startsWith("account."));
++  const labels = accEv.map((w) => w.label);
++  const dupLabels = labels.filter((l, i) => labels.indexOf(l) !== i);
++  const mapBack = accEv.every((w) => accEv.find((x) => x.value === w.label || x.label === w.label)?.value === w.value);
++  const crossLabel = (LB.WEBHOOK_EVENTS as Any[]).filter((w) => !String(w.value).startsWith("account.") && labels.includes(w.label)).map((w) => w.value);
++  chk("R2", accEv.length > 0 && dupLabels.length === 0 && mapBack,
++    `${accEv.length} account events: duplicate Thai labels=${j(dupLabels)} · every label maps back to its own value=${mapBack} · non-account events sharing an account label=${j(crossLabel)}`);
++
++  // ═══ world ═══
++  const tA = await mkTenant("a");
++  const owner = await mkUser("-owner"); await member(owner, tA, "OWNER");
++  const mgr = await mkUser("-mgr"); await member(mgr, tA, "MANAGER", ["qc-branch-only"]);
++  const A = (await sysSvc.createSystem(tA, "ACCOUNT", `บัญชี ${TAG}`)).id as string;
++  const accSvc = (await import("@/lib/modules/account/service" as string)) as Any;
++  await accSvc.saveSettings(tA, A, { orgName: `QC ${TAG}`, taxId: "0105561000003", vatRegistered: true, vatRateBp: 700, taxPointBasis: "ON_ISSUE" });
++  const M = (await sysSvc.createSystem(tA, "MEMBER", `สมาชิก ${TAG}`)).id as string;
++  await P.customer.create({ data: { tenantId: tA, memberSystemId: M, name: "สมาชิกลับ QC", phone: "0899000111", email: `${TAG}-cust@qc.invalid` } });
++  const C = (await sysSvc.createSystem(tA, "CRM", `CRM ${TAG}`)).id as string;
++  await setCrm(C, { uiVersion: 1 });
++  const crmC = await P.crmContact.create({ data: { tenantId: tA, systemId: C, name: "ลีดลับ QC", phone: "0811000222" } });
++  const oCookie = await sessionCookie(owner, tA);
++  const mCookie = await sessionCookie(mgr, tA);
++  const CONN = (await import("@/lib/modules/account/connections-actions" as string)) as Any;
++  const cp = `/app/sys/${A}/account/settings/connections`;
++  const keysOf = (name: string) => P.apiKey.findMany({ where: { tenantId: tA, name }, select: { id: true, scopesJson: true, systemId: true } });
++
++  // ═══ V1 createApiKeyAction variants (branch-limited MANAGER) ═══
++  console.log("\n── V1 account page key scopes — variants ──");
++  const variants: [string, Record<string, string | string[]>][] = [
++    ["ws", { scope: [" crm.contact.read "] }],
++    ["case", { scope: ["CRM.CONTACT.READ"] }],
++    ["crmwild", { scope: ["crm.*"] }],
++    ["memwild", { scope: ["member.*"] }],
++    ["kanwild", { scope: ["kanban.*"] }],
++    ["star", { scope: ["*"] }],
++    ["mixed", { scope: ["account.doc.view", "member.customer.read"] }],
++    ["filter", { scope: ["account.doc.view", "crm.filter.team:abcdefgh12"] }],
++    ["bmember", { bundle: "member-admin" }],
++    ["bkanban", { bundle: "kanban-admin" }],
++    ["bcrmro", { bundle: "crm.readonly" }],
++    ["param", { scope: ["account.approve.limit"] }],
++  ];
++  const v1out: string[] = [];
++  let v1bad = 0;
++  for (const [k, extra] of variants) {
++    const r = await call(() => inScope(mCookie, cp, () => CONN.createApiKeyAction(fdx({ systemId: A, name: `${TAG}-v1-${k}`, ttlDays: "30", ...extra }))));
++    const rows = await keysOf(`${TAG}-v1-${k}`);
++    const refused = r.ok && r.v?.ok === false && rows.length === 0;
++    if (!refused) v1bad += 1;
++    v1out.push(`${k}:${refused ? "refused" : `${errText(r)} rows=${rows.length} ${j(rows.map((x: Any) => x.scopesJson))}`}`);
++  }
++  chk("V1.1", v1bad === 0, `whitespace/case/wildcards/*/mixed/crm filter pseudo-scope/member+kanban+crm bundles/param key → ${v1out.join(" · ")}`);
++  const dup = await call(() => inScope(mCookie, cp, () => CONN.createApiKeyAction(fdx({ systemId: A, name: `${TAG}-v1-dup`, ttlDays: "30", scope: ["account.doc.view", "account.doc.view"] }))));
++  const dupRows = await keysOf(`${TAG}-v1-dup`);
++  const mixB = await call(() => inScope(mCookie, cp, () => CONN.createApiKeyAction(fdx({ systemId: A, name: `${TAG}-v1-mixb`, ttlDays: "30", bundle: "crm.admin", scope: ["account.doc.view"] }))));
++  const mixRows = await keysOf(`${TAG}-v1-mixb`);
++  chk("V1.2", dup.v?.ok === true && dupRows.length === 1 && j(dupRows[0].scopesJson) === j(["account.doc.view"]) && mixB.v?.ok === true && j(mixRows[0]?.scopesJson) === j(["account.doc.view"]),
++    `positive: duplicate account scope → ${dup.v?.ok ? "ok" : errText(dup)} stored=${j(dupRows[0]?.scopesJson)} · bundle crm.admin + ticked account.doc.view (ticked wins) → ${mixB.v?.ok ? "ok" : errText(mixB)} stored=${j(mixRows[0]?.scopesJson)}`);
++  const ownerFull = await call(() => inScope(oCookie, cp, () => CONN.createApiKeyAction(fdx({ systemId: A, name: `${TAG}-v1-full`, ttlDays: "0", scope: [...(SC.ACCOUNT_SCOPE_KEYS as string[])] }))));
++  const fullRows = await keysOf(`${TAG}-v1-full`);
++  chk("R3", ownerFull.v?.ok === true && fullRows.length === 1 && (fullRows[0].scopesJson as string[]).length === (SC.ACCOUNT_SCOPE_KEYS as string[]).length,
++    `regression: OWNER ticks the whole ACCOUNT_SCOPE_KEYS list (${(SC.ACCOUNT_SCOPE_KEYS as string[]).length}) → ${ownerFull.v?.ok ? "ok" : errText(ownerFull)} stored ${(fullRows[0]?.scopesJson as string[] | undefined)?.length ?? 0}`);
++
++  // ═══ X1 scope-less key + legacy /api/v1/* routes ignore scopes ═══
++  console.log("\n── X1 legacy /api/v1/* routes with an account-page key ──");
++  const empty = await call(() => inScope(mCookie, cp, () => CONN.createApiKeyAction(fdx({ systemId: A, name: `${TAG}-x1-empty`, ttlDays: "30" }))));
++  const emptyRows = await keysOf(`${TAG}-x1-empty`);
++  const accKey = await call(() => inScope(mCookie, cp, () => CONN.createApiKeyAction(fdx({ systemId: A, name: `${TAG}-x1-acc`, ttlDays: "30", scope: ["account.doc.view"] }))));
++  chk("X1.1", empty.v?.ok === true && emptyRows.length === 1 && (emptyRows[0].scopesJson as string[]).length === 0,
++    `REPRO: no scope + no bundle from a crafted form → ${empty.v?.ok ? "minted" : errText(empty)} stored scopes=${j(emptyRows[0]?.scopesJson)} (a "legacy" key, label "อ่าน API กลาง (คีย์รุ่นเดิม)")`);
++  const rawAcc = accKey.v?.rawKey as string | undefined;
++  const CUST = (await import("../../../../src/app/api/v1/customers/route.ts" as string)) as Any;
++  const TOOLS = (await import("../../../../src/app/api/v1/ai/tools/[name]/route.ts" as string)) as Any;
++  const bearer = (k: string, extra: Record<string, string> = {}) => ({ authorization: `Bearer ${k}`, "content-type": "application/json", ...extra });
++  let custBody = "", leadsBody = "", custStatus = 0, leadsStatus = 0;
++  if (rawAcc) {
++    const r1 = await CUST.GET(new Request("http://qc.invalid/api/v1/customers?take=5", { headers: bearer(rawAcc) }));
++    custStatus = r1.status; custBody = await r1.text();
++    const r2 = await TOOLS.POST(new Request("http://qc.invalid/api/v1/ai/tools/recent_leads", { method: "POST", headers: bearer(rawAcc), body: j({ args: { limit: 5 } }) }), { params: Promise.resolve({ name: "recent_leads" }) });
++    leadsStatus = r2.status; leadsBody = await r2.text();
++  }
++  chk("X1.2", custStatus === 200 && custBody.includes("0899000111"),
++    `REPRO: account-page key scoped ONLY [account.doc.view] → GET /api/v1/customers ${custStatus} member phone visible=${custBody.includes("0899000111")} (${cut(custBody, 110)})`);
++  chk("X1.3", leadsStatus === 200 && leadsBody.includes("0811000222"),
++    `REPRO: same key → POST /api/v1/ai/tools/recent_leads ${leadsStatus} CRM lead phone visible=${leadsBody.includes("0811000222")} (${cut(leadsBody, 110)})`);
++  const SK = (await import("@/lib/ai/skills" as string)) as Any;
++  const openTools = ["recent_leads", "financial_summary", "kb_auto_save", "remember_fact", "forget_fact"].filter((t) => SK.toolAllowedForApiKey(t, ["account.doc.view"]) && SK.toolAllowedForApiKey(t, []));
++  chk("X1.4", openTools.length >= 3, `REPRO: tools callable by an account-only key AND a scope-less key through /api/v1/ai/tools: ${j(openTools)}`);
++
++  // ═══ V2 testWebhookAction variants + X2 REST twin ═══
++  console.log("\n── V2 account page webhook test — variants ──");
++  await P.webhookEndpoint.create({ data: { tenantId: tA, url: "https://example.com/qc-cf8r-all", secret: "x".repeat(48), eventsJson: [], active: true } });
++  const crmEp = await P.webhookEndpoint.create({ data: { tenantId: tA, url: "https://example.com/qc-cf8r-crm", secret: "y".repeat(48), eventsJson: ["crm.deal.won"], active: true } });
++  const delOf = (type: string) => P.webhookDelivery.count({ where: { tenantId: tA, eventType: type } });
++  const crmLabel = (LB.WEBHOOK_EVENTS as Any[]).find((w) => w.value === "crm.sequence.enrolled")?.label as string;
++  const bad = [
++    ["upper", "ACCOUNT.DOCUMENT.ISSUED"],
++    ["crmlabel", crmLabel],
++    ["prefixonly", "account."],
++    ["unknownacc", "account.qc.fake"],
++  ];
++  const v2out: string[] = [];
++  let v2bad = 0;
++  for (const [k, t] of bad) {
++    const r = await call(() => inScope(oCookie, cp, () => CONN.testWebhookAction(fdx({ systemId: A, type: t }))));
++    const refused = r.ok && r.v?.ok === false && r.v?.reason === "ยิงทดสอบได้เฉพาะเหตุการณ์ของระบบบัญชี";
++    if (!refused) v2bad += 1;
++    v2out.push(`${k}:${refused ? "refused" : errText(r)}`);
++  }
++  const strangeRows = (await delOf("ACCOUNT.DOCUMENT.ISSUED")) + (await delOf(crmLabel)) + (await delOf("account.")) + (await delOf("account.qc.fake")) + (await delOf("crm.sequence.enrolled"));
++  chk("V2.1", v2bad === 0 && strangeRows === 0, `${v2out.join(" · ")} · delivery rows of those types=${strangeRows} (want 0)`);
++  const ws = await call(() => inScope(oCookie, cp, () => CONN.testWebhookAction(fdx({ systemId: A, type: "  account.period.closed  " }))));
++  chk("V2.2", ws.ok && (await delOf("account.period.closed")) >= 1, `positive: value with surrounding spaces → ${errText(ws)} rows=${await delOf("account.period.closed")}`);
++  // X2 REST twin: account key with account.settings.manage → POST /api/v1/account/webhooks/{crmEp}/test {event: crm.deal.won}
++  const restKey = await call(() => inScope(mCookie, cp, () => CONN.createApiKeyAction(fdx({ systemId: A, name: `${TAG}-x2`, ttlDays: "30", scope: ["account.settings.manage"] }))));
++  const ACC = (await import("../../../../src/app/api/v1/account/[...path]/route.ts" as string)) as Any;
++  let x2Status = 0, x2Body = "";
++  if (restKey.v?.rawKey) {
++    const r = await ACC.POST(
++      new Request(`http://qc.invalid/api/v1/account/webhooks/${crmEp.id}/test`, { method: "POST", headers: bearer(restKey.v.rawKey, { "idempotency-key": `${TAG}-x2` }), body: j({ event: "crm.deal.won" }) }),
++      { params: Promise.resolve({ path: ["webhooks", crmEp.id, "test"] }) },
++    );
++    x2Status = r.status; x2Body = await r.text();
++  }
++  const x2rows = await P.webhookDelivery.count({ where: { tenantId: tA, endpointId: crmEp.id, eventType: "crm.deal.won" } });
++  chk("X2", x2Status === 200 && x2rows === 1,
++    `REPRO: branch-limited MANAGER's account key [account.settings.manage] → REST webhooks.test on a CRM-only endpoint with event crm.deal.won: ${x2Status} ${cut(x2Body, 90)} · delivery rows=${x2rows}`);
++
++  // ═══ V3 CRM v1 addActivityAction variants + completeActivityAction ═══
++  console.log("\n── V3 CRM v1 activities — variants ──");
++  const crmSvc = (await import("@/lib/modules/crm/service" as string)) as Any;
++  const S2 = (await sysSvc.createSystem(tA, "CRM", `CRM2 ${TAG}`)).id as string;
++  await setCrm(S2, { uiVersion: 1 });
++  const pipe2 = await crmSvc.ensureCrm({ tenantId: tA, systemId: S2 });
++  const c2 = await P.crmContact.create({ data: { tenantId: tA, systemId: S2, name: "ลูกค้าระบบ 2" } });
++  const deal2 = await P.crmDeal.create({ data: { tenantId: tA, systemId: S2, contactId: c2.id, pipelineId: pipe2.id, stageId: pipe2.stages[0].id, title: "ดีลระบบ 2" } });
++  const archived = await P.crmContact.create({ data: { tenantId: tA, systemId: C, name: "ลูกค้าเก็บแล้ว", archivedAt: new Date() } });
++  const tB = await mkTenant("b");
++  const SB = (await sysSvc.createSystem(tB, "CRM", `CRM B ${TAG}`)).id as string;
++  const actB = await P.crmActivity.create({ data: { tenantId: tB, systemId: SB, title: "งานร้าน B" } });
++  const CRMV1 = (await import("@/lib/modules/crm/actions" as string)) as Any;
++  const vp = `/app/sys/${C}/crm`;
++  const add = (o: Record<string, string>) => call(() => inScope(oCookie, vp, () => CRMV1.addActivityAction(fdx({ systemId: C, type: "TASK", ...o }))));
++  await add({ title: "QC own+deal2", contactId: crmC.id, dealId: deal2.id });
++  await add({ title: "QC deal2 only", dealId: deal2.id });
++  const leaked = await P.crmActivity.count({ where: { tenantId: tA, systemId: C, dealId: deal2.id } });
++  chk("V3.1", leaked === 0, `own contact + deal of another CRM system of the same shop / that deal alone → activities written=${leaked} (want 0)`);
++  await add({ title: "QC ws", contactId: `  ${crmC.id}  ` });
++  const wsRows = await P.crmActivity.count({ where: { tenantId: tA, systemId: C, contactId: crmC.id, title: "QC ws" } });
++  await add({ title: "QC archived", contactId: archived.id });
++  const arch = await P.crmActivity.count({ where: { tenantId: tA, systemId: C, contactId: archived.id } });
++  chk("V3.2", wsRows === 1, `positive: own contact id with surrounding spaces → ${wsRows} row · INFO archived contact of this system → ${arch} row (v1 never filtered archived; not a tenant/system leak)`);
++  await call(() => inScope(oCookie, vp, () => CRMV1.completeActivityAction(fdx({ systemId: C, activityId: actB.id }))));
++  const bDone = (await P.crmActivity.findFirst({ where: { id: actB.id }, select: { doneAt: true } }))?.doneAt;
++  chk("V3.3", bDone === null, `v1 completeActivityAction with shop B's activity id from shop A → B row doneAt=${bDone === null ? "null (untouched)" : String(bDone)}`);
++
++  // ═══ V4 mobile: ai.* wildcard + MANAGER branch-limited pass (same evaluate as web assertCan) ═══
++  console.log("\n── V4 mobile wildcard / branch-limited ──");
++  const mAuth = (await import("@/lib/mobile/auth" as string)) as Any;
++  const wild = await mkUser("-wild"); await member(wild, tA, "STAFF", ["*"], { "ai.*": true });
++  const mgrTok = (await mAuth.issueMobileToken(mgr)).token as string;
++  const wildTok = (await mAuth.issueMobileToken(wild)).token as string;
++  const USAGE = (await import("../../../../src/app/api/mobile/usage/route.ts" as string)) as Any;
++  const PROPS = (await import("../../../../src/app/api/mobile/proposals/route.ts" as string)) as Any;
++  const mreq = (tok: string, qs = "") => new Request(`http://qc.invalid/api/mobile/x${qs}`, { headers: { authorization: `Bearer ${tok}`, "x-tenant-id": tA } });
++  const st: number[] = [];
++  for (const tok of [wildTok, mgrTok]) {
++    const a = await USAGE.GET(mreq(tok)); st.push(a.status); await a.text().catch(() => "");
++    const b = await PROPS.GET(mreq(tok, "?conversationId=none")); st.push(b.status); await b.text().catch(() => "");
++  }
++  chk("V4", st.every((s) => s === 200), `STAFF with "ai.*" and branch-limited MANAGER → usage/proposals statuses ${j(st)} (want 200 — the web assertCan lets both through)`);
++} catch (e) {
++  chk("CRASH", false, String((e as Error)?.stack ?? e).slice(0, 900));
++} finally {
++  for (const T of TENANTS) {
++    const tbs = ((await P.$queryRawUnsafe(`select table_name from information_schema.columns where table_schema='public' and column_name='tenantId'`)) as Any[]).map((r) => String(r.table_name)).filter((x) => /^[A-Za-z_]+$/.test(x));
++    for (let pass = 0; pass < 4; pass += 1) for (const t of tbs) await P.$executeRawUnsafe(`DELETE FROM "${t}" WHERE "tenantId" = $1`, T).catch(() => undefined);
++    await P.appSystem.deleteMany({ where: { tenantId: T } }).catch(() => undefined);
++    await P.tenant.delete({ where: { id: T } }).catch(() => undefined);
++    let left = 0;
++    for (const t of tbs) left += Number(((await P.$queryRawUnsafe(`SELECT count(*)::int AS n FROM "${t}" WHERE "tenantId" = $1`, T).catch(() => [{ n: 0 }])) as Any[])[0]?.n ?? 0);
++    chk(`CLEAN-${T.slice(-6)}`, left === 0 && (await P.tenant.count({ where: { id: T } })) === 0, `tenant rows left=${left}`);
++  }
++  for (const id of USERS) {
++    await P.session.deleteMany({ where: { userId: id } }).catch(() => undefined);
++    await P.membership.deleteMany({ where: { userId: id } }).catch(() => undefined);
++    await P.appNotification.deleteMany({ where: { recipientUserId: id } }).catch(() => undefined);
++    await P.user.delete({ where: { id } }).catch(() => undefined);
++  }
++  const usersLeft = await P.user.count({ where: { email: { startsWith: TAG } } });
++  chk("CLEAN-users", usersLeft === 0, `users left=${usersLeft}`);
++  await prisma.$disconnect();
++}
++const passed = res.filter((r) => r.ok).length;
++console.log(`\n${passed === res.length ? "🟢" : "🔴"} probe cf8 review: ${passed}/${res.length} (X-* green = finding reproduced)`);
++console.log(`JSON_SUMMARY ${JSON.stringify({ total: res.length, passed, failed: res.filter((r) => !r.ok).map((r) => r.id) })}`);
++process.exit(passed === res.length ? 0 : 1);
+diff --git a/scripts/pending/cf8/run-verify.sh b/scripts/pending/cf8/run-verify.sh
+new file mode 100644
+index 00000000..da562381
+--- /dev/null
++++ b/scripts/pending/cf8/run-verify.sh
+@@ -0,0 +1,25 @@
++#!/usr/bin/env bash
++# C5.5-authz-sweep verification — QC3 · one heavy job at a time (iso.sh + gate lock) · run a /tmp copy of this file
++#   usage: bash /tmp/cf8-run-verify.sh <label>      (summary → /tmp/cf8-logs/<label>.summary)
++set -uo pipefail
++cd /root/projects/shark-crm-cf2
++LBL="${1:-v1}"
++D=/tmp/cf8-logs; mkdir -p "$D"
++SUM="$D/$LBL.summary"; : > "$SUM"
++echo "tree $(git rev-parse --short HEAD) + worktree diff: $(git status --short -- src | tr '\n' ' ')" >> "$SUM"
++r() { local name="$1"; shift; local log="$D/$LBL-${name//\//_}.log"; local t0; t0=$(date +%s); "$@" > "$log" 2>&1; local rc=$?; echo "$name exit=$rc $(( $(date +%s) - t0 ))s $(grep -E 'JSON_SUMMARY|🟢|🔴|ผ่าน [0-9]|found [0-9]+ error|error TS' "$log" | tail -1 | cut -c1-260)" >> "$SUM"; }
++q() { r "$1" bash scripts/iso.sh env CRM_V2_SWITCH=all NODE_OPTIONS=--max-old-space-size=3584 bash scripts/pending/cd2/with-qc3-secret.sh bash scripts/qc3.sh bash scripts/with-gate-lock.sh pnpm exec tsx "scripts/$1.mts" "${@:2}"; }
++r typecheck bash scripts/iso.sh env NODE_OPTIONS=--max-old-space-size=5120 bash scripts/with-gate-lock.sh pnpm typecheck
++q pending/cf8/probe-cf8-mobile
++q pending/cf8/probe-cf8-actions
++q qc-mobile-authz-hotfix
++q qc-automation-authz-hotfix
++q qc-payment-authz-hotfix
++r qc-security-hotfix bash scripts/iso.sh env -u DATABASE_URL -u DIRECT_URL bash scripts/with-gate-lock.sh pnpm exec tsx scripts/qc-security-hotfix.mts
++q pending/c55/probe-fix1
++for s in qc-crm-v1 qc-crm-c0.2 qc-crm-c1.11 qc-crm-c1.6; do q "$s"; done
++for g in crm member kanban account; do r "docs-$g" bash scripts/iso.sh bash scripts/qc3.sh bash scripts/with-gate-lock.sh pnpm exec tsx "scripts/gen-$g-api-docs.mts" --check; done
++echo "tracked diff after docs: $(git status --short | grep -v '^??' | grep -v expected.json | tr '\n' ' ')" >> "$SUM"
++r fitness bash scripts/iso.sh bash scripts/qc3.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/fitness.mts
++r fitness-noenv bash scripts/iso.sh env -u DATABASE_URL -u DIRECT_URL bash scripts/with-gate-lock.sh pnpm exec tsx scripts/fitness.mts
++echo ALLDONE >> "$SUM"
+diff --git a/src/app/api/mobile/chat/welcome/route.ts b/src/app/api/mobile/chat/welcome/route.ts
+index e307ab93..7c1284de 100644
+--- a/src/app/api/mobile/chat/welcome/route.ts
++++ b/src/app/api/mobile/chat/welcome/route.ts
+@@ -4,6 +4,7 @@ import { requireMobile, mobileError } from "@/lib/mobile/auth";
+ import { tenantDb } from "@/lib/core/db";
+ import { onboardingChecklist } from "@/lib/platform/onboarding-drip";
+ import { dnaFactsSummary } from "@/lib/ai/service";
++import { mobileDenied, AI_CHAT } from "@/lib/mobile/guard";
+ 
+ const WELCOME_TITLE = "เริ่มต้นกับผู้ช่วย AI";
+ 
+@@ -18,6 +19,8 @@ const CHOICE_MAP: Record<string, string> = {
+ export async function POST(req: Request) {
+   const g = await requireMobile(req);
+   if (!g.ok) return mobileError(g);
++  const denied = mobileDenied(g, AI_CHAT); // C5.5-authz-sweep: same key as the web door (creates an AI room like POST conversations; web opens it via loadAiChatAction)
++  if (denied) return denied;
+ 
+   const ctx = g.ctx;
+   const db = tenantDb(ctx);
+diff --git a/src/app/api/mobile/proposals/route.ts b/src/app/api/mobile/proposals/route.ts
+index 4a218718..795a64a4 100644
+--- a/src/app/api/mobile/proposals/route.ts
++++ b/src/app/api/mobile/proposals/route.ts
+@@ -1,10 +1,13 @@
+ // GET ข้อเสนอที่รอยืนยัน (PENDING) ของบทสนทนา — การ์ดยืนยันใต้แชท (ledger/MOBILE_PLAN.md M-11)
+ import { requireMobile, mobileError } from "@/lib/mobile/auth";
+ import { listPendingProposals } from "@/lib/ai/proposals";
++import { mobileDenied, AI_CHAT } from "@/lib/mobile/guard";
+ 
+ export async function GET(req: Request) {
+   const g = await requireMobile(req);
+   if (!g.ok) return mobileError(g);
++  const denied = mobileDenied(g, AI_CHAT); // C5.5-authz-sweep: same key as the web door (lib/ai/actions.ts listPendingProposalsAction)
++  if (denied) return denied;
+   const conversationId = new URL(req.url).searchParams.get("conversationId") ?? "";
+   if (!conversationId) return Response.json({ proposals: [] });
+   const rows = await listPendingProposals(g.ctx, conversationId);
+diff --git a/src/app/api/mobile/usage/route.ts b/src/app/api/mobile/usage/route.ts
+index 0c75e2c5..67e29244 100644
+--- a/src/app/api/mobile/usage/route.ts
++++ b/src/app/api/mobile/usage/route.ts
+@@ -7,10 +7,13 @@
+ import { requireMobile, mobileError } from "@/lib/mobile/auth";
+ import { prisma } from "@/lib/core/db";
+ import { ensureWallet } from "@/lib/ai/credit";
++import { mobileDenied, AI_CHAT } from "@/lib/mobile/guard";
+ 
+ export async function GET(req: Request): Promise<Response> {
+   const g = await requireMobile(req);
+   if (!g.ok) return mobileError(g);
++  const denied = mobileDenied(g, AI_CHAT); // C5.5-authz-sweep: same key as the web door (lib/ai/actions.ts loadAiQuotaAction — the chat quota bar)
++  if (denied) return denied;
+ 
+   const wallet = await ensureWallet(g.ctx.tenantId);
+   // ก้อนอ้างอิงล่าสุดที่เงินเข้ากระเป๋า — ใช้เป็นตัวหารของ % ที่แถบในแอปวาด
+diff --git a/src/lib/modules/account/connections-actions.ts b/src/lib/modules/account/connections-actions.ts
+index 4fe0e82e..a8531a96 100644
+--- a/src/lib/modules/account/connections-actions.ts
++++ b/src/lib/modules/account/connections-actions.ts
+@@ -11,7 +11,7 @@ import { safeReason } from "./errors";
+ import type { AccountLinkedKind } from "@prisma/client";
+ import { assertCan } from "@/lib/core/rbac";
+ import { createApiKey, revokeApiKey, rotateApiKey } from "@/lib/api-keys/service";
+-import { DEFAULT_KEY_TTL_DAYS, expandBundles, isApiScope } from "@/lib/api-keys/scopes";
++import { ACCOUNT_SCOPE_KEYS, DEFAULT_KEY_TTL_DAYS, expandBundles, isApiScope } from "@/lib/api-keys/scopes";
+ import { createEndpoint, deleteEndpoint, dispatchWebhooks, setEndpointActive } from "@/lib/webhooks/service";
+ import { WEBHOOK_EVENTS } from "@/lib/webhooks/labels"; // CRM C5.5 ▸ กรองเหตุการณ์ ◂
+ import { loadAccountSystem } from "./guard";
+@@ -115,6 +115,12 @@ export async function createApiKeyAction(
+   }
+   for (const sc of scopes) {
+     if (!isApiScope(sc)) return { ok: false, reason: `สิทธิ์ "${sc}" ใช้เป็นขอบเขตของคีย์ไม่ได้` };
++    // C5.5-authz-sweep ▸ หน้านี้ออกคีย์ได้เฉพาะสิทธิ์ของระบบบัญชี (ที่หน้าจอมีให้ติ๊ก = ACCOUNT_SCOPE_KEYS / ชุด account) — เดิมรับ `crm.*`/`member.*`
++    //   ที่ส่งมาเอง ⇒ ผู้จัดการบัญชีออกคีย์ที่ REST บัญชีแปลงเป็นผู้ดู CRM/สมาชิก (`crmViewerOfApi`) โดยไม่ผ่านด่านออกคีย์ของ CRM
++    //   (`crm.api.manage` + `crmKeyWiderThanCreator`) หรือของสมาชิก (`member.api.manage`) · สิทธิ์ของระบบอื่นออกที่หน้า API ของระบบนั้น ◂
++    if (!ACCOUNT_SCOPE_KEYS.includes(sc)) {
++      return { ok: false, reason: `หน้านี้ออกคีย์ได้เฉพาะสิทธิ์ของระบบบัญชี — สิทธิ์ "${sc}" ต้องออกที่หน้าตั้งค่า API ของระบบนั้น` };
++    }
+   }
+   const ttlRaw = s(fd, "ttlDays");
+   const ttlDays = ttlRaw === "" ? DEFAULT_KEY_TTL_DAYS : Number(ttlRaw);
+@@ -233,7 +239,13 @@ export async function testWebhookAction(fd: FormData): Promise<ConnResult> {
+   const systemId = s(fd, "systemId");
+   const { auth, tenantId, userId } = await gate(systemId);
+   assertCan(mc(auth), { module: "webhook", action: "webhook.endpoint.update" });
+-  const type = s(fd, "type") || "account.document.approved";
++  // C5.5-authz-sweep ▸ ยิงทดสอบได้เฉพาะเหตุการณ์ของระบบบัญชีที่มีในทะเบียน (เดิมส่ง `type` ดิบของ client ไปทุกปลายทางของร้าน ⇒ ปลอม
++  //   `crm.deal.won`/`member.*` ใส่ระบบเชื่อมต่อของ CRM/สมาชิกได้) — REST บัญชี `webhooks.test` ก็รับเฉพาะเหตุการณ์ที่รู้จัก ·
++  //   ปุ่มในหน้าส่ง "ป้ายไทย" ของเหตุการณ์มา ⇒ แปลงป้ายกลับเป็นค่าก่อน ◂
++  const asked = s(fd, "type") || "account.document.approved";
++  const ev = WEBHOOK_EVENTS.find((w) => w.value.startsWith("account.") && (w.value === asked || w.label === asked));
++  if (!ev) return { ok: false, reason: "ยิงทดสอบได้เฉพาะเหตุการณ์ของระบบบัญชี" };
++  const type = ev.value;
+   const n = await dispatchWebhooks({ tenantId, type, payload: { test: true, at: new Date().toISOString() } });
+   await writeAudit({ tenantId, actorId: userId, action: "account.settings.manage", targetType: "WebhookEndpoint", after: { test: type, sent: n } });
+   revalidatePath(PATH(systemId));
+diff --git a/src/lib/modules/crm/actions.ts b/src/lib/modules/crm/actions.ts
+index 7afef9dc..bd68cf69 100644
+--- a/src/lib/modules/crm/actions.ts
++++ b/src/lib/modules/crm/actions.ts
+@@ -6,6 +6,7 @@ import { requireTenant } from "@/lib/core/context";
+ import { assertCan } from "@/lib/core/rbac";
+ import type { CrmActivityType } from "@prisma/client";
+ import {
++  activityTargetsInSystem,
+   addActivity,
+   completeActivity,
+   createContact,
+@@ -148,9 +149,13 @@ export async function addActivityAction(formData: FormData) {
+   if (!systemId || !title) return;
+   const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
+   await refuseOnV2(ctx.tenantId, systemId);
++  const contactId = String(formData.get("contactId") ?? "").trim() || null;
++  const dealId = String(formData.get("dealId") ?? "").trim() || null;
++  // C5.5-authz-sweep ▸ ผู้ติดต่อ/ดีลต้องเป็นของร้าน + ระบบนี้ (ของร้านอื่น/ระบบอื่น = ไม่เขียน ไม่บอกว่ามีอยู่) ◂
++  if (!(await activityTargetsInSystem(ctx, { contactId, dealId }))) return;
+   await addActivity(ctx, {
+-    contactId: String(formData.get("contactId") ?? "").trim() || null,
+-    dealId: String(formData.get("dealId") ?? "").trim() || null,
++    contactId,
++    dealId,
+     type,
+     title,
+     dueAt: dateOrNull(formData.get("dueAt")),
+diff --git a/src/lib/modules/crm/service.ts b/src/lib/modules/crm/service.ts
+index 52cc5f0a..1f4dba93 100644
+--- a/src/lib/modules/crm/service.ts
++++ b/src/lib/modules/crm/service.ts
+@@ -104,6 +104,18 @@ export type AddActivityInput = {
+   dueAt?: Date | null;
+ };
+ 
++/**
++ * C5.5-authz-sweep ▸ (v1) `contactId`/`dealId` มาจากฟอร์มของ client ⇒ ต้องเป็นของร้าน + ระบบ CRM นี้ก่อนเขียน
++ *   (เดิมเขียน FK ดิบ ⇒ ร้าน A ผูกงานกับผู้ติดต่อ/ดีลของร้าน B ได้ถ้ารู้ id แล้วหน้ารายการงานของ A `include: { contact, deal }` ดึงแถวของ B มาโชว์)
++ *   ประตู v2 ทำแบบเดียวกัน (`activities.logActivity` → เป้าหมายต้องมองเห็นได้ในระบบนี้) · ไม่ผ่าน = false (ผู้เรียกไม่เขียนอะไร) ◂
++ */
++export async function activityTargetsInSystem(ctx: Ctx, input: Pick<AddActivityInput, "contactId" | "dealId">): Promise<boolean> {
++  const db = tenantDb(ctx);
++  if (input.contactId && !(await db.crmContact.findFirst({ where: { id: input.contactId }, select: { id: true } }))) return false;
++  if (input.dealId && !(await db.crmDeal.findFirst({ where: { id: input.dealId }, select: { id: true } }))) return false;
++  return true;
++}
++
+ export async function addActivity(ctx: Ctx, input: AddActivityInput): Promise<{ id: string }> {
+   const a = await tenantDb(ctx).crmActivity.create({
+     data: {

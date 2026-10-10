@@ -225,6 +225,13 @@ export type ContactProfileInput = {
   base: string;
   asOf?: Date;
   meter?: QueryMeter;
+  /**
+   * C5.4 (L1-M3): ผู้ดูโปรไฟล์ ในสายตาของ CRM — การ์ด "CRM" (ชื่อผู้ติดต่อ · ดีลล่าสุด · ขั้น) แสดงเฉพาะที่เขามีคีย์อ่าน +
+   * มองเห็น · `null` **หรือไม่ส่ง** = ไม่เห็นการ์ด CRM (fail-closed ของ facade CRM) · ทุกทางที่ผู้ใช้เปิดได้ต้องส่ง
+   * CRM C5.5-fix14 (S4): ตัวเดียวกันตัดสินการ์ด "สมาชิก"/"POS" ด้วย (`canReadMember` + ขอบเขตสาขา — เหมือน `findCustomersForLink`) ·
+   * ไม่ส่ง/null = การ์ดสมาชิก/POS ว่างเหมือนไม่มีสมาชิกผูก
+   */
+  crmViewer?: import("@/lib/modules/member").MemberActor | null;
 };
 
 const RECENT_DOCS_TAKE = 5;
@@ -428,7 +435,7 @@ export async function contactProfile(
   }
 
   if (tab === "links") {
-    profile.linksTab = { cards: await loadConnections(ctx, c, base, meter) };
+    profile.linksTab = { cards: await loadConnections(ctx, c, base, meter, input.crmViewer) };
   }
 
   return profile;
@@ -586,23 +593,26 @@ async function loadConnections(
   c: { id: string; partyId: string | null },
   base: string,
   meter?: QueryMeter,
+  crmViewer?: import("@/lib/modules/member").MemberActor | null,
 ): Promise<ProfileConnection[]> {
   bumpMeter(meter);
   const { memberSystemId, crmSystemId } = await findLinkedSystemIds(ctx.tenantId);
   const partyId = c.partyId;
 
   const [customer, crmContact] = await Promise.all([
+    // CRM C5.5-fix14 (S4): การ์ด "สมาชิก" + "POS" (รหัส · ระดับ · ครั้ง · ยอดซื้อ) ตามสิทธิ์สมาชิกของผู้ดูคนเดียวกับการ์ด CRM —
+    //   ไม่ส่ง/null/ไม่มีสิทธิ์อ่านสมาชิก/สมาชิกนอกขอบเขตสาขา ⇒ null = การ์ด "ยังไม่เชื่อม" (linked/detail/action ว่าง · REST `links.member=false`)
     memberSystemId && partyId
-      ? (bumpMeter(meter), memberSvc.findCustomerByPartyId(ctx.tenantId, memberSystemId, partyId))
+      ? (bumpMeter(meter), memberSvc.findCustomerByPartyId(ctx.tenantId, memberSystemId, partyId, crmViewer))
       : Promise.resolve(null),
     crmSystemId && partyId
-      ? (bumpMeter(meter), crmSvc.findContactByPartyId({ tenantId: ctx.tenantId, systemId: crmSystemId }, partyId))
+      ? (bumpMeter(meter), crmSvc.findContactByPartyId({ tenantId: ctx.tenantId, systemId: crmSystemId }, partyId, crmViewer))
       : Promise.resolve(null),
   ]);
 
   const deal =
     crmSystemId && crmContact
-      ? (bumpMeter(meter), await crmSvc.findLatestDealForContact({ tenantId: ctx.tenantId, systemId: crmSystemId }, crmContact.id))
+      ? (bumpMeter(meter), await crmSvc.findLatestDealForContact({ tenantId: ctx.tenantId, systemId: crmSystemId }, crmContact.id, crmViewer))
       : null;
 
   const baht = (satang: number) =>

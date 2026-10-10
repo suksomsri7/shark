@@ -21,10 +21,12 @@ import { writeAudit } from "@/lib/core/audit";
 import { crmCan } from "./access";
 import type { MemberActor } from "@/lib/modules/member";
 import { prisma } from "./db";
+import { lockLostReasons, normalizeLostReasonLabel } from "./lost-reasons";
 import { assertCrmLimit } from "./limits"; // CRM C3.9 ▸ เพดาน pipeline (รีวิว S5) ◂
 import * as objects from "./objects";
 import { OBJECT_TEMPLATES } from "./templates/objects";
 import { BUSINESS_TEMPLATE_LIST } from "./templates/business";
+import { CENTRAL_LOST_REASONS } from "./templates/business/central"; // CRM C5.4-E ▸ L6-m6 ◂
 import type { BusinessField, BusinessObjectSection, BusinessTemplate } from "./templates/business/types";
 import type { ObjectTemplateParent } from "./templates/objects";
 
@@ -116,6 +118,36 @@ async function ensureObjectSections(tx: Tx, ctx: BusinessTemplateCtx, obj: Resol
   return { sections, fields };
 }
 
+/**
+ * เหตุผลที่แพ้ของเทมเพลต → แถว CrmLostReason (ขั้น ③ ของการ apply · ใช้ร่วมกับ "ไม่ใช้เทมเพลต" และสวิตช์ v2)
+ * ถือล็อกเดียวกับ `lost-reasons.ts` · ข้าม key/ป้ายที่มีอยู่แล้ว · คืนจำนวนแถวที่เพิ่ม
+ * CRM C5.4-E ▸ L6-m6: `onlyIfNone` = เติมเฉพาะระบบที่ยังไม่มีเหตุผลสักแถว (ข้ามเทมเพลต/สลับเป็น v2) — ร้านที่ตั้งเองไว้แล้วไม่ถูกเติมของซ้อน ◂
+ */
+async function seedLostReasonsInTx(tx: Tx, ctx: BusinessTemplateCtx, reasons: readonly BusinessTemplate["lostReasons"][number][], opts: { onlyIfNone?: boolean } = {}): Promise<number> {
+  const scope = { tenantId: ctx.tenantId, systemId: ctx.systemId };
+  await lockLostReasons(tx, ctx.systemId);
+  const existing = await tx.crmLostReason.findMany({ where: scope, select: { key: true, label: true } });
+  if (opts.onlyIfNone && existing.length > 0) return 0;
+  const have = new Set(existing.map((r) => r.key));
+  const haveLabel = new Set(existing.map((r) => normalizeLostReasonLabel(r.label)));
+  const maxSort = (await tx.crmLostReason.aggregate({ where: scope, _max: { sortOrder: true } }))._max.sortOrder ?? -1;
+  const add = reasons.filter((r) => !have.has(r.key) && !haveLabel.has(normalizeLostReasonLabel(r.label)));
+  if (add.length === 0) return 0;
+  const r = await tx.crmLostReason.createMany({
+    data: add.map((x, i) => ({ ...scope, key: x.key, label: x.label, sortOrder: maxSort + 1 + i, active: true, isSystem: x.key === "other" })),
+    skipDuplicates: true,
+  });
+  return r.count;
+}
+
+/**
+ * CRM C5.4-E ▸ L6-m6: ระบบที่ยังไม่มีเหตุผลที่แพ้สักแถว ⇒ ใส่ชุดกลาง (ชุดเดียวกับเทมเพลต "ทั่วไป") — ไม่งั้นปิดดีลเป็น "แพ้" ไม่ได้เลย
+ * (หน้าต่างแพ้บังคับเลือกเหตุผล · REST/automation ได้ VALIDATION) · เรียกจากสวิตช์ v1→v2 · มีแล้ว = ไม่ทำอะไร · คืนจำนวนแถวที่เพิ่ม ◂
+ */
+export async function ensureLostReasons(ctx: BusinessTemplateCtx): Promise<number> {
+  return prisma.$transaction((tx) => seedLostReasonsInTx(tx, ctx, CENTRAL_LOST_REASONS, { onlyIfNone: true }), TX_OPTS);
+}
+
 async function applyInTx(tx: Tx, ctx: BusinessTemplateCtx, t: BusinessTemplate, designer: MemberActor | null): Promise<ApplyBusinessTemplateResult> {
   const created = { pipelines: 0, lostReasons: 0, sections: 0, fields: 0, objects: 0 };
   const keptObjects: string[] = [];
@@ -162,16 +194,9 @@ async function applyInTx(tx: Tx, ctx: BusinessTemplateCtx, t: BusinessTemplate, 
   }
 
   // ③ เหตุผลที่แพ้ (unique [systemId, key] — มีแล้ว = ข้าม · ร้านแก้ป้ายไว้ = คงป้ายของร้าน)
-  const have = new Set((await tx.crmLostReason.findMany({ where: scope, select: { key: true } })).map((r) => r.key));
-  const maxSort = (await tx.crmLostReason.aggregate({ where: scope, _max: { sortOrder: true } }))._max.sortOrder ?? -1;
-  const add = t.lostReasons.filter((r) => !have.has(r.key));
-  if (add.length > 0) {
-    const r = await tx.crmLostReason.createMany({
-      data: add.map((x, i) => ({ ...scope, key: x.key, label: x.label, sortOrder: maxSort + 1 + i, active: true, isSystem: x.key === "other" })),
-      skipDuplicates: true,
-    });
-    created.lostReasons += r.count;
-  }
+  //    C4.3-fix ▸ ถือล็อกเดียวกับการเพิ่มเหตุผลเอง (`lost-reasons.ts`) + ข้ามชื่อที่ร้านมีอยู่แล้ว (เทียบแบบ normalize) —
+  //    เดิมกันแค่ key ⇒ ร้านที่พิมพ์ "ไกลจากบ้าน/ที่ทำงาน" เองไว้ (key สุ่ม) ได้ชื่อซ้ำ 2 แถว ทั้งแบบพร้อมกันและแบบทีหลัง
+  created.lostReasons += await seedLostReasonsInTx(tx, ctx, t.lostReasons);
 
   // ④ วัตถุกำหนดเอง — key มีอยู่แล้ว = เก็บแบบที่ร้านมี · ยกเว้นวัตถุที่เป็น "ของเทมเพลตนี้เอง" (ป้าย+ผูกกับตรงกัน) ที่ฟิลด์ยังไม่ครบ
   //    (apply รอบก่อนล้มหลังสร้างวัตถุ) ⇒ เติมเฉพาะฟิลด์ที่ขาด
@@ -283,7 +308,10 @@ export async function applyBusinessTemplate(ctx: BusinessTemplateCtx, key: strin
  * ตัวเลือกบนหน้าแรกหายไป · ไม่มีแถวอื่นถูกเขียน · audit `crm.template.skip` · คืน true เมื่อเขียนจริง
  */
 export async function skipBusinessTemplate(ctx: BusinessTemplateCtx): Promise<boolean> {
-  const n = await prisma.$executeRaw`
+  // CRM C5.4-E ▸ L6-m6: ข้ามเทมเพลต = ไม่มีขั้น ③ ⇒ เหตุผลที่แพ้ 0 แถว ⇒ ปิดดีลเป็น "แพ้" ไม่ได้เลย · ใส่ชุดกลางใน tx เดียวกับตัวชี้
+  //   (เฉพาะตอนเขียนตัวชี้จริง และระบบยังไม่มีเหตุผลสักแถว) ◂
+  const { n, seeded } = await prisma.$transaction(async (tx) => {
+    const n = await tx.$executeRaw`
     UPDATE "AppSystem"
     SET "settings" = jsonb_set(
       CASE WHEN jsonb_typeof("settings") = 'object' THEN "settings" ELSE '{}'::jsonb END,
@@ -293,8 +321,11 @@ export async function skipBusinessTemplate(ctx: BusinessTemplateCtx): Promise<bo
       true)
     WHERE "id" = ${ctx.systemId} AND "tenantId" = ${ctx.tenantId} AND "type" = 'CRM'
       AND ("settings"->'crm'->'businessTemplate') IS NULL`;
+    const seeded = n > 0 ? await seedLostReasonsInTx(tx, ctx, CENTRAL_LOST_REASONS, { onlyIfNone: true }) : 0;
+    return { n, seeded };
+  }, TX_OPTS);
   if (n > 0) {
-    await writeAudit({ tenantId: ctx.tenantId, actorId: ctx.actorUserId, action: "crm.template.skip", targetType: "CrmSystem", targetId: ctx.systemId, after: { businessTemplate: "none" } });
+    await writeAudit({ tenantId: ctx.tenantId, actorId: ctx.actorUserId, action: "crm.template.skip", targetType: "CrmSystem", targetId: ctx.systemId, after: { businessTemplate: "none", lostReasons: seeded } });
   }
   return n > 0;
 }

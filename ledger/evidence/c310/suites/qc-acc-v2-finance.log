@@ -1,0 +1,62 @@
+
+===== QC WO 5.1 · ช่องทางการเงิน V2 =====
+[env] DB ep-plain-art-ao3djg4u-pooler.c-2.ap-southeast-1.aws.neon.tech
+
+FN1 fixture seed:
+  ❌ FN1.1 จำนวนช่องทางที่ใช้งาน = 4 (ไม่นับที่ปิดใช้งาน) — ได้ 0
+  ❌ FN1.2 ยอดรวมทุกช่องทาง = เฉลย — ได้ 0 · ควรได้ 132973000
+  ❌ FN1.3 กลุ่มเงินสด = เฉลย — ได้ -1 · ควรได้ 12488000
+  ❌ FN1.4 กลุ่มออมทรัพย์ = เฉลย — ได้ -1 · ควรได้ 90180000
+  ❌ FN1.5 กลุ่ม e-Wallet = เฉลย — ได้ -1 · ควรได้ 27335000
+  ❌ FN1.6 กลุ่มสำรองรับ-จ่าย = เฉลย — ได้ -1 · ควรได้ 2970000
+  ✅ FN1.7 ไม่มีกลุ่มกระแสรายวัน (ไม่มีบัญชีกระแสในชุดข้อมูล)
+  ❌ FN1.8 ช่องทางตัวอย่างที่ปิดใช้งานมี archivedAt — 
+  ✅ FN1.9 ช่องทางที่ปิดใช้งานไม่โผล่ใน financeBalances
+
+FN2 ยอดต่อช่องทาง vs ledger จริง:
+  ❌ CRASH — 
+Invalid `prisma.accountFinance.findUniqueOrThrow()` invocation in
+/root/projects/shark-crm/scripts/qc-acc-v2-finance.mts:81:42
+
+  78 
+  79 /** เฉลยอิสระ: ยอด ledger จริงของบัญชีเงิน (raw SQL — ไม่ผ่าน finance.ts ที่กำลังทดสอบ) */
+  80 async function ledgerBalanceOf(financeId: string, sysId = systemId): Promise<number> {
+→ 81   const fa = await prisma.accountFinance.findUniqueOrThrow(
+An operation failed because it depends on one or more records that were required but not found. No record was found for a query.
+Invalid `prisma.accountFinance.findUniqueOrThrow()` invocation in
+/root/projects/shark-crm/scripts/qc-acc-v2-finance.mts:81:42
+
+  78 
+
+===== QC WO 5.1 · ช่องทางการเงิน V2 สรุป =====
+ผ่าน 2 · ตก 8
+  - FN1.1 จำนวนช่องทางที่ใช้งาน = 4 (ไม่นับที่ปิดใช้งาน) — ได้ 0
+  - FN1.2 ยอดรวมทุกช่องทาง = เฉลย — ได้ 0 · ควรได้ 132973000
+  - FN1.3 กลุ่มเงินสด = เฉลย — ได้ -1 · ควรได้ 12488000
+  - FN1.4 กลุ่มออมทรัพย์ = เฉลย — ได้ -1 · ควรได้ 90180000
+  - FN1.5 กลุ่ม e-Wallet = เฉลย — ได้ -1 · ควรได้ 27335000
+  - FN1.6 กลุ่มสำรองรับ-จ่าย = เฉลย — ได้ -1 · ควรได้ 2970000
+  - FN1.8 ช่องทางตัวอย่างที่ปิดใช้งานมี archivedAt — 
+  - CRASH — 
+Invalid `prisma.accountFinance.findUniqueOrThrow()` invocation in
+/root/projects/shark-crm/scripts/qc-acc-v2-finance.mts:81:42
+
+  78 
+  79 /** เฉลยอิสระ: ยอด ledger จริงของบัญชีเงิน (raw SQL — ไม่ผ่าน finance.ts ที่กำลังทดสอบ) */
+  80 async function ledgerBalanceOf(financeId: string, sysId = systemId): Promise<number> {
+→ 81   const fa = await prisma.accountFinance.findUniqueOrThrow(
+An operation failed because it depends on one or more records that were required but not found. No record was found for a query.
+Invalid `prisma.accountFinance.findUniqueOrThrow()` invocation in
+/root/projects/shark-crm/scripts/qc-acc-v2-finance.mts:81:42
+
+  78 
+JSON_SUMMARY {"total":10,"passed":2,"findings":["FN1.1 จำนวนช่องทางที่ใช้งาน = 4 (ไม่นับที่ปิดใช้งาน) — ได้ 0","FN1.2 ยอดรวมทุกช่องทาง = เฉลย — ได้ 0 · ควรได้ 132973000","FN1.3 กลุ่มเงินสด = เฉลย — ได้ -1 · ควรได้ 12488000","FN1.4 กลุ่มออมทรัพย์ = เฉลย — ได้ -1 · ควรได้ 90180000","FN1.5 กลุ่ม e-Wallet = เฉลย — ได้ -1 · ควรได้ 27335000","FN1.6 กลุ่มสำรองรับ-จ่าย = เฉลย — ได้ -1 · ควรได้ 2970000","FN1.8 ช่องทางตัวอย่างที่ปิดใช้งานมี archivedAt — ","CRASH — \nInvalid `prisma.accountFinance.findUniqueOrThrow()` invocation in\n/root/projects/shark-crm/scripts/qc-acc-v2-finance.mts:81:42\n\n  78 \n  79 /** เฉลยอิสระ: ยอด ledger จริงของบัญชีเงิน (raw SQL — ไม่ผ่าน finance.ts ที่กำลังทดสอบ) */\n  80 async function ledgerBalanceOf(financeId: string, sysId = systemId): Promise<number> {\n→ 81   const fa = await prisma.accountFinance.findUniqueOrThrow(\nAn operation failed because it depends on one or more records that were required but not found. No record was found for a query.\nInvalid `prisma.accountFinance.findUniqueOrThrow()` invocation in\n/root/projects/shark-crm/scripts/qc-acc-v2-finance.mts:81:42\n\n  78 "]}
+(node:976259) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)

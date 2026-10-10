@@ -1,5 +1,8 @@
 import { prisma } from "@/lib/core/db";
 import { safeReason } from "./errors";
+// CRM C5.4-N ▸ เลข WTI / 50 ทวิ จองท้ายธุรกรรม (LOCK ORDER ขั้น 7 · service.ts หัวไฟล์) ◂
+import { deferDocNo, finalizeDocNos, openDocNumbering } from "./doc-numbering";
+import { fallbackPrefixOf } from "./settings-schema";
 import { csvCell } from "@/lib/core/csv";
 import type { AccountWhtIncomeType, AccountLegalType, AccountDocDirection, AccountDocStatus, Prisma } from "@prisma/client";
 
@@ -145,13 +148,13 @@ export async function issueWhtCreditCert(
     base: number;
     issueDate: Date; // = paidAt (tax point)
   },
-): Promise<{ id: string; docNo: string }> {
+): Promise<{ id: string }> {
   const doc = await tx.accountDocument.findFirst({
     where: { id: input.documentId, tenantId: ctx.tenantId, systemId: ctx.systemId },
     select: { id: true, contactId: true, contactSnapshot: true },
   });
   if (!doc) throw new Error("ไม่พบเอกสารต้นทางของภาษีถูกหัก ณ ที่จ่าย");
-  const docNo = await nextWhtCreditNo(tx, ctx, input.issueDate);
+  // CRM C5.4-N ▸ สร้างแบบยังไม่มีเลข — เลข WTI-YYYYMM-NNNN (เดือนไทย) ออกที่ finalizeDocNos ท้ายธุรกรรมของตัวห่อ ◂
   const cert = await tx.accountDocument.create({
     data: {
       tenantId: ctx.tenantId,
@@ -161,7 +164,7 @@ export async function issueWhtCreditCert(
       // 🔴 direction = OUT คือตัวแยกว่า "ถูกหัก (เครดิตเรา)" ไม่ใช่ "เราหักเขา (ต้องนำส่ง)"
       //    ภ.ง.ด.3/53 อ่านเฉพาะ direction IN ⇒ ใบนี้ไม่หลุดเข้ารายงานนำส่ง
       direction: "OUT",
-      docNo,
+      docNo: null,
       issueDate: input.issueDate,
       contactId: doc.contactId,
       contactSnapshot: (doc.contactSnapshot ?? undefined) as Prisma.InputJsonValue | undefined,
@@ -176,8 +179,9 @@ export async function issueWhtCreditCert(
       sourcePaymentId: input.paymentId,
       note: "เอกสารภาษีถูกหัก ณ ที่จ่าย (เครดิตภาษี)",
     },
-    select: { id: true, docNo: true },
+    select: { id: true },
   });
+  deferDocNo(tx, { docId: cert.id, tenantId: ctx.tenantId, systemId: ctx.systemId, date: input.issueDate, series: { kind: "wti" } });
   await tx.accountDocumentPayment.update({
     where: { id: input.paymentId },
     data: { whtCertDocId: cert.id, whtRateBp: input.whtRateBp },
@@ -185,7 +189,7 @@ export async function issueWhtCreditCert(
   await tx.accountDocumentRelation.create({
     data: { tenantId: ctx.tenantId, systemId: ctx.systemId, fromId: doc.id, toId: cert.id, type: "TAX_FOR", amount: input.whtAmount },
   });
-  return { id: cert.id, docNo: cert.docNo ?? docNo };
+  return { id: cert.id };
 }
 
 /** เวอร์ชันที่เปิด transaction เอง — ใช้ตอนออกใบให้ payment ที่สร้างไปแล้ว (ใบเสร็จขายสด §5.2 F) */
@@ -202,26 +206,21 @@ export async function issueWhtCreditCertStandalone(
   },
 ): Promise<{ ok: true; docNo: string } | { ok: false; reason: string }> {
   try {
-    const cert = await prisma.$transaction((tx) => issueWhtCreditCert(tx, ctx, input));
-    return { ok: true, docNo: cert.docNo };
+    const docNo = await prisma.$transaction(async (tx) => {
+      openDocNumbering(tx);
+      const cert = await issueWhtCreditCert(tx, ctx, input);
+      const nos = await finalizeDocNos(tx); // CRM C5.4-N ▸ คำสั่งสุดท้าย ◂
+      return nos.get(cert.id) ?? "";
+    });
+    return { ok: true, docNo };
   } catch (e) {
     return { ok: false, reason: safeReason(e, "ออกเอกสารภาษีถูกหัก ณ ที่จ่ายไม่สำเร็จ") };
   }
 }
 
-/** เลขรันเอกสารภาษีถูกหัก ฝั่งขาย — ใช้ตารางเลขรันร่วม แต่คนละ periodKey ("WTI:YYYY-MM")
- *  ⇒ ไม่กินเลขเดียวกับ 50 ทวิ ฝั่งซื้อ (`WHT-`) และไม่ต้องเพิ่ม docType ใหม่ใน enum */
-async function nextWhtCreditNo(tx: Prisma.TransactionClient, ctx: Ctx, date: Date): Promise<string> {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const periodKey = `WTI:${year}-${month}`;
-  const seq = await tx.accountDocSequence.upsert({
-    where: { systemId_docType_periodKey: { systemId: ctx.systemId, docType: "WHT_CERT", periodKey } },
-    create: { tenantId: ctx.tenantId, systemId: ctx.systemId, docType: "WHT_CERT", prefix: "WTI", periodKey, lastNo: 1 },
-    update: { lastNo: { increment: 1 } },
-  });
-  return `WTI-${year}${month}-${String(seq.lastNo).padStart(4, "0")}`;
-}
+// CRM C5.4-N ▸ เลขรันเอกสารภาษีถูกหัก ฝั่งขาย (WTI-YYYYMM-NNNN · periodKey "WTI:YYYY-MM" ในตารางเลขรันร่วม) ย้ายไป
+//   doc-numbering.ts finalizeDocNos ชุด "wti" — เดือนตาม**เวลาไทย** (เดิม date.getFullYear()/getMonth() = UTC ⇒ 00:00–06:59 ของวันที่ 1
+//   ได้เลขของเดือนก่อน) · จองท้ายธุรกรรม ◂
 
 // ─────────────────── ② WHT เราหัก vendor: ทะเบียน + ออก 50 ทวิ ───────────────────
 
@@ -301,23 +300,8 @@ export async function listWhtDeductions(
   return { rows, totalWht };
 }
 
-// เลขรัน 50 ทวิ (WHT_CERT) — reset รายเดือน · ใช้ AccountDocSequence ร่วม (ตารางกลาง)
-async function nextWhtCertNo(
-  tx: Prisma.TransactionClient,
-  tenantId: string,
-  systemId: string,
-  date: Date,
-): Promise<string> {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const periodKey = `${year}-${month}`;
-  const seq = await tx.accountDocSequence.upsert({
-    where: { systemId_docType_periodKey: { systemId, docType: "WHT_CERT", periodKey } },
-    create: { tenantId, systemId, docType: "WHT_CERT", prefix: "WHT", periodKey, lastNo: 1 },
-    update: { lastNo: { increment: 1 } },
-  });
-  return `WHT-${year}-${month}-${String(seq.lastNo).padStart(4, "0")}`;
-}
+// CRM C5.4-N ▸ เลขรัน 50 ทวิ = ตัวออกเลขตัวเดียวกับ expense.ts (doc-numbering ชุด WHT_CERT ตามตั้งค่า · ค่าปริยาย WHT-{ปี}-{เดือน}-{0000}
+//   เดือนไทย) — เดิม nextWhtCertNo ของไฟล์นี้ใช้เดือน UTC ⇒ คืนวันที่ 1 สองตัวออกเลขใช้คนละแถวตัวนับ ◂
 
 /**
  * ออกหนังสือรับรองหัก ณ ที่จ่าย (50 ทวิ) จาก payment ฝั่ง IN ที่หัก WHT ไว้แล้ว
@@ -351,8 +335,7 @@ export async function issueWhtCert(
       if (!rateBp || rateBp <= 0) throw new Error("กรุณาระบุอัตราภาษีหัก ณ ที่จ่าย");
       const base = baseFromWht(pay.whtAmountSatang, rateBp) ?? 0;
       const issueDate = pay.paidAt; // tax point = วันจ่าย
-      const docNo = await nextWhtCertNo(tx, tenantId, systemId, issueDate);
-
+      openDocNumbering(tx); // CRM C5.4-N ▸ เลข 50 ทวิ จองท้ายธุรกรรม ◂
       const cert = await tx.accountDocument.create({
         data: {
           tenantId,
@@ -360,7 +343,7 @@ export async function issueWhtCert(
           docType: "WHT_CERT",
           status: "ISSUED",
           direction: "IN",
-          docNo,
+          docNo: null,
           issueDate,
           contactId: pay.document.contactId,
           contactSnapshot: (pay.document.contactSnapshot ?? undefined) as Prisma.InputJsonValue | undefined,
@@ -374,13 +357,21 @@ export async function issueWhtCert(
           sourcePaymentId: pay.id,
           createdById: input.createdById ?? null,
         },
-        select: { id: true, docNo: true },
+        select: { id: true },
+      });
+      deferDocNo(tx, {
+        docId: cert.id,
+        tenantId,
+        systemId,
+        date: issueDate,
+        series: { kind: "configured", docType: "WHT_CERT", fallbackPrefix: fallbackPrefixOf("WHT_CERT") },
       });
       await tx.accountDocumentPayment.update({
         where: { id: pay.id },
         data: { whtCertDocId: cert.id, whtRateBp: rateBp },
       });
-      return { certId: cert.id, docNo: cert.docNo ?? docNo };
+      const nos = await finalizeDocNos(tx); // CRM C5.4-N ▸ คำสั่งสุดท้าย ◂
+      return { certId: cert.id, docNo: nos.get(cert.id) ?? "" };
     });
     return { ok: true, ...res };
   } catch (e) {

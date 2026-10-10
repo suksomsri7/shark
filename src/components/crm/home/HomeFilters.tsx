@@ -35,14 +35,15 @@ export function HomeFilters({
   const active = !!(current.pipeline || current.owner || current.period);
   return (
     <section className="card flex min-w-0 flex-col gap-3 p-4" aria-label="ค้นหาและกรอง">
-      <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-center">
-        <form action={dealsHref} method="get" className="min-w-0 lg:w-72" role="search" data-testid="crm-home-search-form">
+      {/* PARITY 01 (8 ต.ค.): แถวเดียวบนจอกว้าง (ค้นหายืดเต็มที่เหลือ · ช่องเลือกกว้างไม่เกิน 7.75–9.5rem) · ไม่พอ = ตัวกรองลงแถวใหม่ทั้งชุด ชิดซ้าย */}
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
+        <form action={dealsHref} method="get" className="min-w-0 flex-1 basis-full sm:basis-36" role="search" data-testid="crm-home-search-form">
           <input type="hidden" name="view" value="table" />
           <label className="sr-only" htmlFor="crm-home-search">ค้นหาดีล</label>
           <input id="crm-home-search" name="q" type="search" placeholder="ค้นดีล ผู้ติดต่อ บริษัท…" className="input" data-testid="crm-home-search" maxLength={100} />
         </form>
-        <form action={homeHref} method="get" className="flex min-w-0 flex-1 flex-wrap items-center gap-2" data-testid="crm-home-filter-form">
-          <label className="flex min-w-0 flex-1 basis-40 flex-col text-xs sm:flex-none sm:basis-auto">
+        <form action={homeHref} method="get" className="flex min-w-0 basis-full flex-wrap items-center gap-2 sm:basis-auto" data-testid="crm-home-filter-form">
+          <label className="flex min-w-0 flex-1 basis-40 flex-col text-xs sm:max-w-38 sm:flex-none sm:basis-auto">
             <span className="sr-only">pipeline</span>
             <select name="pipeline" defaultValue={current.pipeline} className="input" data-testid="crm-home-filter-pipeline" aria-label="pipeline">
               <option value="">pipeline: ทั้งหมด</option>
@@ -54,7 +55,7 @@ export function HomeFilters({
             </select>
           </label>
           {owners.length > 0 && (
-            <label className="flex min-w-0 flex-1 basis-40 flex-col text-xs sm:flex-none sm:basis-auto">
+            <label className="flex min-w-0 flex-1 basis-40 flex-col text-xs sm:max-w-31 sm:flex-none sm:basis-auto">
               <span className="sr-only">ผู้ดูแล</span>
               <select name="owner" defaultValue={current.owner} className="input" data-testid="crm-home-filter-owner" aria-label="ผู้ดูแล">
                 <option value="">ผู้ดูแล: ทั้งหมด</option>
@@ -66,7 +67,7 @@ export function HomeFilters({
               </select>
             </label>
           )}
-          <label className="flex min-w-0 flex-1 basis-40 flex-col text-xs sm:flex-none sm:basis-auto">
+          <label className="flex min-w-0 flex-1 basis-40 flex-col text-xs sm:max-w-34 sm:flex-none sm:basis-auto">
             <span className="sr-only">ช่วงเวลา</span>
             <select name="period" defaultValue={current.period} className="input" data-testid="crm-home-filter-range" aria-label="ช่วงเวลา">
               {periods.map((p) => (

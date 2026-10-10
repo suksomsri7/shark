@@ -10,7 +10,7 @@ import { OBJECT_PARENT_LABEL, ObjectsError, type RecordDto } from "@/lib/modules
 import { crmNavItems } from "@/lib/modules/crm/nav";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { ModuleTabs } from "@/components/module-tabs";
-import { customerLinks, formFieldsOf, objectViewFilters, objectViews, sensitivePresence } from "@/components/crm/objects/server";
+import { formFieldsOf, objectViewFilters, objectViews, parentLinks, sensitivePresence } from "@/components/crm/objects/server";
 import { ImportRecordsButton, ManageViewsButton, SaveViewButton } from "../_components/ListTools";
 import { NewRecordToggle } from "../_components/RecordForm";
 import { displayValue } from "@/components/crm/objects/types";
@@ -32,7 +32,6 @@ const FILTER_HINT: Record<string, string> = {
   SELECT: "ค่าตัวเลือก",
 };
 
-const PARENT_PATH: Record<string, string> = { CONTACT: "contacts", COMPANY: "companies", DEAL: "deals" };
 
 export default async function ObjectRecordsPage({
   params,
@@ -96,10 +95,11 @@ export default async function ObjectRecordsPage({
   const columns = all.filter((x) => x.showInList && x.key !== obj.titleFieldKey).slice(0, 6);
   // รีวิว note: ช่องกรองของฟิลด์อ่อนไหวไม่แสดงให้ผู้ที่ไม่มีสิทธิ์ (engine ปฏิเสธอยู่แล้ว — ไม่ชวนกด)
   const filterable = all.filter((x) => x.filterable && !x.hidden);
-  const [views, present, custHref] = await Promise.all([
+  const [views, present, parentHref] = await Promise.all([
     objectViews(ctx, actor, obj.key),
     sensitivePresence(tenantId, list.items.map((r) => r.id), columns.filter((c) => c.hidden).map((c) => c.id)),
-    obj.parentType === "CUSTOMER" ? customerLinks(tenantId, actor, list.items.map((r) => r.parentId ?? "").filter(Boolean)) : Promise.resolve(new Map<string, string>()),
+    // CRM C4.2-fix ▸ B4: ลิงก์แม่เฉพาะแม่ที่ผู้ดูเปิดได้ (ตัวเดียวกับหน้ารายการเดี่ยว) — ลูกค้ายังผ่าน customerLinks ข้างใน ◂
+    obj.parentType !== "NONE" ? parentLinks(ctx, actor, list.items.map((r) => ({ parentType: r.parentType, parentId: r.parentId ?? null }))) : Promise.resolve(new Map<string, string>()),
   ]);
   const formFields = obj.parentType === "NONE" && crmCan(actor, "crm.record.create") ? access : null;
   const canImport = crmCan(actor, "crm.record.create");
@@ -215,8 +215,8 @@ export default async function ObjectRecordsPage({
                   ))}
                   {obj.parentType !== "NONE" && (
                     <td className="px-3 py-2.5 text-xs">
-                      {r.parentId && (PARENT_PATH[r.parentType] || custHref.has(r.parentId)) ? (
-                        <Link href={PARENT_PATH[r.parentType] ? `/app/sys/${id}/crm/${PARENT_PATH[r.parentType]}/${r.parentId}` : (custHref.get(r.parentId) as string)} className="underline" data-testid="object-record-parent-link">
+                      {r.parentId && parentHref.has(`${r.parentType}:${r.parentId}`) ? (
+                        <Link href={parentHref.get(`${r.parentType}:${r.parentId}`) as string} className="underline" data-testid="object-record-parent-link">
                           เปิด{OBJECT_PARENT_LABEL[r.parentType]}
                         </Link>
                       ) : (

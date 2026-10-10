@@ -10,12 +10,16 @@
 // 🔴 ยกเลิกไม่เปลี่ยนข้อมูลของร้าน แต่มัน "ทำให้งานของคนอื่นหายไป" จึงต้องมีเจ้าของ — AiConversation
 //    ยังไม่มีคอลัมน์เจ้าของบทสนทนา (ดู prisma/schema/ai.prisma) จึงยังใช้กติกาสิทธิ์อย่างเดียว
 //    (หนี้: ถ้าเพิ่ม `AiConversation.createdById` เมื่อไหร่ ให้ยอมให้เจ้าของบทสนทนายกเลิกได้ด้วย)
+//    CRM C5.5-G2: ผู้สร้างบทสนทนาฝังอยู่ในรหัสแล้ว (lib/ai/conversation-owner.ts) ⇒ ข้อ (0) ด้านล่าง = ต้องเป็นบทสนทนาของคนกด ·
+//    ข้อ (3) คงไว้ตามเดิม (ไม่ผ่อนให้ผู้สร้างยกเลิกได้โดยไม่มีสิทธิ์ — นอกขอบเขตใบนี้)
 // 🔴 ไฟล์นี้ไม่ใช่ `"use server"` โดยตั้งใจ — เป็นตัวช่วยของ action ไม่ใช่ endpoint
 
 import { tenantDb } from "@/lib/core/db";
 import type { MembershipCtx } from "@/lib/core/rbac";
 import { assertCan } from "@/lib/core/rbac";
 import { memberKindAccess } from "./api/tools";
+import type { AiActor } from "@/lib/ai/actor";
+import { findVisibleConversation } from "@/lib/ai/conversations";
 
 const NOT_FOUND = "ไม่พบข้อเสนอนี้ในบทสนทนานี้ — รีเฟรชหน้าแล้วลองใหม่อีกครั้ง";
 
@@ -30,10 +34,13 @@ function isRecord(v: unknown): v is Record<string, unknown> {
 export async function assertProposalInScope(
   input: { tenantId: string; systemId: string; conversationId: string; proposalId: string },
   membership: MembershipCtx,
+  aiActor: AiActor,
 ): Promise<{ kind: string }> {
   const conversationId = String(input.conversationId ?? "").trim();
   const id = String(input.proposalId ?? "").trim();
   if (!conversationId || !id) throw new Error(NOT_FOUND);
+  // CRM C5.5-G2 ▸ (0) บทสนทนาต้องเป็นของคนกด (ผู้สร้าง · เจ้าของร้านสำหรับห้องเดิม) — ของคนอื่น = ไม่พบ ◂
+  if (!(await findVisibleConversation({ tenantId: input.tenantId, actor: aiActor }, conversationId))) throw new Error(NOT_FOUND);
 
   // (1) ร้านนี้ + บทสนทนานี้ (tenantDb ผูก tenantId ให้แล้ว ⇒ id ของร้านอื่นหาไม่เจอ)
   const row = await tenantDb({ tenantId: input.tenantId }).aiProposal.findFirst({

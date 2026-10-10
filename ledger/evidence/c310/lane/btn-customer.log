@@ -1,0 +1,94 @@
+== btn-customer start 2026-10-07T22:25:06Z · HEAD 9e4fe9a9 · iso ISO_MEM=5G · cmd: pnpm exec tsx scripts/qc-crm-buttons.mts --user customer
+
+═══ QC CRM v2 · C4.2 — press everything (registry-driven) ═══
+[env] DB tenant cmuy1cvc60000pgkzbjdrbtdz · system cmuy1gmlm0000jikz45h7xblz · answer key /root/projects/shark-crm-c310/scripts/crm-expected.json · users customer · devices desktop,mobile · dry=false · discover=false · pageFilter=-
+
+(node:1654978) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+── ตัวแปรบริบทที่หาค่าจริงไม่ได้ (หน้าที่ต้องใช้ค่านี้จะถูกข้าม) ──
+  · [slug (/p)] ไม่มี Page ที่เปิดอยู่และวาง widget CRM ในร้านนี้ (/p/[slug] ข้ามทั้งหน้า)
+  · [threadKey] ไม่มี CrmEmailMessage ในซีดนี้ (/emails/[threadKey] ข้ามทั้งหน้า)
+  · [sequenceId] ไม่มี CrmSequence ในซีดนี้ (/settings/sequences/[sequenceId] ข้ามทั้งหน้า)
+  · [docType/docId] ยังไม่ผูก resolver จริง (1 แถวในทะเบียน) — /app/sys/[id]/account/docs/… ข้ามทั้งหน้าเสมอในตอนนี้
+🧩 throwaway contacts (AUDIT-STATE rows): 2
+🧩 deal-with-lines fixtures: 0
+🧩 e-mail thread fixtures: 1
+🧩 extra fixtures (it4-A): 25 — crmEmailMessage · crmPipeline · crmStage · crmSequence · crmSequenceEnrollment · crmContact · team · crmEmailTemplate · crmCompany · party · crmPortalRequest · crmDeal · crmPortalAccess · crmCompanyContact · crmAssignmentRule · customObject · crmActivity
+── บันทึกที่แต่ละบทบาทเปิด (เลือกผ่านตัวกรองการมองเห็นของ product) ──
+  · owner deal cmuyef7ps00e1v5kze5t0qxhn — ของกลาง (shared pick) · ผ่าน dealWhere() ของ product · owner=thana team=cmuyeerz30002v5kzawz2jb5b
+  · owner contact cmuyeesmi001tv5kzqqrzt4wo — ของกลาง (shared pick) · ผ่าน contactWhere() ของ product · owner=thana team=cmuyeerz30002v5kzawz2jb5b
+  · owner company cmuyees7l000qv5kztjyrykgo — ของกลาง (shared pick) · ผ่าน companyWhere() ของ product · owner=thana team=cmuyeerz30002v5kzawz2jb5b
+  · manager deal cmuyef7ps00e1v5kze5t0qxhn — ของกลาง (shared pick) · ผ่าน dealWhere() ของ product · owner=thana team=cmuyeerz30002v5kzawz2jb5b
+  · manager contact cmuyeesmi001tv5kzqqrzt4wo — ของกลาง (shared pick) · ผ่าน contactWhere() ของ product · owner=thana team=cmuyeerz30002v5kzawz2jb5b
+  · manager company cmuyees7l000qv5kztjyrykgo — ของกลาง (shared pick) · ผ่าน companyWhere() ของ product · owner=thana team=cmuyeerz30002v5kzawz2jb5b
+  · nok deal cmuyefbav00gtv5kzj6ukodzk — ของตัวเอง (ownerUserId = ผู้ใช้) · ผ่าน dealWhere() ของ product · owner=nok team=cmuyees0e0006v5kz0ttc8zc0
+  · nok contact cmuyeez6t007dv5kz8isnqhih — ของตัวเอง (ownerUserId = ผู้ใช้) · ผ่าน contactWhere() ของ product · owner=nok team=cmuyees0e0006v5kz0ttc8zc0
+  · nok company cmuyeesd9001av5kzsgu5v9wk — ไม่มีคีย์ crm.company.read (companyWhere ว่าง) ⇒ ใช้ของตัวเอง owner=nok — หน้าต้อง 404 ตามคีย์ (registry hiddenFor)
+  · thana deal cmuyef7ps00e1v5kze5t0qxhn — ของตัวเอง (ownerUserId = ผู้ใช้) · ผ่าน dealWhere() ของ product · owner=thana team=cmuyeerz30002v5kzawz2jb5b
+  · thana contact cmuyeesmi001tv5kzqqrzt4wo — ของตัวเอง (ownerUserId = ผู้ใช้) · ผ่าน contactWhere() ของ product · owner=thana team=cmuyeerz30002v5kzawz2jb5b
+  · thana company cmuyees7l000qv5kztjyrykgo — ไม่มีคีย์ crm.company.read (companyWhere ว่าง) ⇒ ใช้ของตัวเอง owner=thana — หน้าต้อง 404 ตามคีย์ (registry hiddenFor)
+  · * emailThreadNoContact 34a2ea117f20883697d5102f34ebfb38 — ข้อความเข้าของตัวกด ไม่ผูกผู้ติดต่อ ผูกบริษัท cmuyees7l000qv5kztjyrykgo (qc-btn-) — แถว crm-email-attach-contact-* เปิดเธรดนี้
+  · * emptyPipeline/Stage cmuyolcx90003zmkzashis7zb — pipeline ว่าง + ขั้นว่างใน pipeline หลักของตัวกด (qc-btn-empty-) — แถว pl-archive-* / st-* กดตัวนี้
+  · * sequence cmuyold0l0006zmkzoyjt2ygt — ลำดับของตัวกด (qc-btn-seq-) 2 เวอร์ชัน · เปิดใช้ · ขั้นแรกรอ 30 วัน + ผู้อยู่ในลำดับ 2 คน (ACTIVE · PAUSED, ไม่มีอีเมล)
+  · * leadNow cmuyold3h000ezmkzsxhm5mgv — ผู้ติดต่อที่สร้างตอนนี้ (qc-btn-lead-) — กล่องที่มา lead นับเฉพาะงวดปัจจุบัน
+  · * archivedTeam cmuyold3u000fzmkz205jtilf — ทีมเก็บถาวรของตัวกด (qc-btn-archived-) — ซีดไม่มีทีมเก็บถาวร
+  · * emailTemplate cmuyold4b000gzmkzlluo7dcm — แม่แบบจดหมายของตัวกด (qc-btn-tpl-) — ซีดมี 0 ⇒ ตัวเลือกแม่แบบไม่มีอะไรให้เลือก
+  · * portalRequest cmuyold77000jzmkzitj27w6n — คำขอพอร์ทัล ISSUE PENDING ของตัวกด (qc-btn-req-) บนบริษัท cmuyees7l000qv5kztjyrykgo
+  · * unsubToken cmuyold9d000mzmkzlp6yp0iz — จดหมาย SENT ของตัวกด + token ยกเลิกรับ (routing.unsub) ของผู้ติดต่อ cmuyold92000lzmkz34ctnp8c
+  · customer inviteToken cmuyoldaz000pzmkzmbx2bnl5 — คำเชิญพอร์ทัลของตัวกด (ผู้ติดต่อ qc-btn-invitee-) บนบริษัท cmuyees7l000qv5kztjyrykgo หมดอายุพรุ่งนี้
+  · * recordings+files - — สาย 2 รายการ (มีไฟล์เสียงหลอก 1 · ไฟล์ที่ไม่มีในที่เก็บ 1) + ลิงก์ไฟล์ที่ไม่มีในที่เก็บ 1 ต่อผู้ติดต่อของแต่ละบทบาท (0) — ลบได้โดยไม่แตะที่เก็บจริง
+  · * assignmentRules - — กฎแจกงาน 2 กฎของตัวกด (qc-btn-assign-, ปิดใช้งาน) — ซีดมี 0 ⇒ ปุ่มเลื่อนขึ้น/ลงถูก disabled
+  · * archivedObject cmuyoldcr000szmkzfdhaum2m — วัตถุเก็บถาวรของตัวกด (qc-btn-archived-obj-) — ซีดไม่มี
+  · * emptyObjectLast cmuyolddf000tzmkze9b5o2s6 — วัตถุว่างของตัวกด qcbtnemptypj9mon (ไม่มีระเบียน) อยู่ท้ายรายการ — ทางที่แก้ชื่ออ้างอิงได้ของ object-edit-key
+  · * archivedPipeline cmuyolddz000uzmkzi8stna1q — pipeline เก็บถาวรของตัวกด (qc-btn-archived-pl-) — ซีดมี 0
+  · * companyActivity cmuyoldf0000wzmkz6f997x71 — กิจกรรมค้างผูกบริษัท cmuyees7l000qv5kztjyrykgo อย่างเดียว (qc-btn-act-co-) เจ้าของ manager — ซีดไม่มี
+🌐 QC server http://127.0.0.1:3215 ตอบ HTTP 200
+  ✅ pre-flight: ไม่มี webhook ที่เปิด · กฎอัตโนมัติที่เปิดและส่งออกนอกระบบ · โดเมนส่ง · ผู้ให้บริการอีเมล · อุปกรณ์ push ของ persona · payrollLink · ai=mock
+🧩 fixtures: portal เปิดชั่วคราว · เลขภาษีบริษัทตัวแทน 0105500000001 → 0105599000001 · โดเมนปลายทางลิงก์ null → ["*.example.com"] (คืนตอนจบ)
+📸 snapshot 75 ตาราง · 2664 แถว (tenant cmuy1cvc60000pgkzbjdrbtdz)
+  ♻️  คืนฐาน (/u/[token] desktop): ลบแถวใหม่ 2 · คืนค่า 2 · สร้างคืน 0
+  [1/18] customer desktop /u/[token] — 2/2 ok · 5 วิ
+  ♻️  คืนฐาน (/u/[token] mobile): ลบแถวใหม่ 2 · คืนค่า 1 · สร้างคืน 0
+  [2/18] customer mobile /u/[token] — 2/2 ok · 4 วิ
+  [3/18] customer desktop /b/[slug]/login — 7/7 ok · 11 วิ
+  [4/18] customer mobile /b/[slug]/login — 7/7 ok · 11 วิ
+  ♻️  คืนฐาน (/b/[slug]/invite/[token] desktop): ลบแถวใหม่ 1 · คืนค่า 1 · สร้างคืน 0
+  [5/18] customer desktop /b/[slug]/invite/[token] — 1/1 ok · 3 วิ
+  ♻️  คืนฐาน (/b/[slug]/invite/[token] mobile): ลบแถวใหม่ 1 · คืนค่า 1 · สร้างคืน 0
+  [6/18] customer mobile /b/[slug]/invite/[token] — 1/1 ok · 2 วิ
+  ♻️  คืนฐาน (/b/[slug] mobile): ลบแถวใหม่ 0 · คืนค่า 1 · สร้างคืน 0
+  [7/18] customer mobile /b/[slug] — 11/11 ok · 29 วิ
+  ♻️  คืนฐาน (/b/[slug] desktop): ลบแถวใหม่ 0 · คืนค่า 1 · สร้างคืน 0
+  [8/18] customer desktop /b/[slug] — 10/10 ok · 30 วิ
+  [9/18] customer desktop /b/[slug]/quotations — 1/1 ok · 4 วิ
+  [10/18] customer mobile /b/[slug]/quotations — 1/1 ok · 4 วิ
+  [11/18] customer desktop /b/[slug]/invoices — 3/3 ok · 9 วิ
+  [12/18] customer mobile /b/[slug]/invoices — 3/3 ok · 9 วิ
+  [13/18] customer desktop /b/[slug]/documents — 1/1 ok · 2 วิ
+  [14/18] customer mobile /b/[slug]/documents — 1/1 ok · 2 วิ
+  [15/18] customer desktop /b/[slug]/documents/[id] — 4/4 ok · 12 วิ
+  [16/18] customer mobile /b/[slug]/documents/[id] — 4/4 ok · 12 วิ
+  ♻️  คืนฐาน (/b/[slug]/requests desktop): ลบแถวใหม่ 2 · คืนค่า 0 · สร้างคืน 0
+  [17/18] customer desktop /b/[slug]/requests — 5/5 ok · 4 วิ
+  ♻️  คืนฐาน (/b/[slug]/requests mobile): ลบแถวใหม่ 2 · คืนค่า 0 · สร้างคืน 0
+  [18/18] customer mobile /b/[slug]/requests — 5/5 ok · 3 วิ
+  🔒 customer lock-out: 94/94 หน้าพนักงานถูกปฏิเสธ
+  ♻️  คืนฐาน (CLEAN (จบรอบ)): ลบแถวใหม่ 4 · คืนค่า 1 · สร้างคืน 0
+  ✅ ตรวจซ้ำหลังคืนฐาน (CLEAN): ทุกตาราง (75) ตรง snapshot ทั้งเนื้อหา
+🧩 ลบเธรดอีเมลของตัวกด 1
+🧩 ลบ extra fixtures 23/25
+🧩 fixtures คืนค่าเดิมแล้ว (portal false · เลขภาษี 0105500000001)
+🧩 ลบ throwaway 0
+
+🧹 คืนฐานครั้งสุดท้าย: ลบ 4 · คืนค่า 1 · สร้างคืน 0 · ค้าง 0 · กวาดแท็ก/session 3
+
+🟢 C4.2: 123/123 · cleanup 0 · outbox 0 · verify 0 · pageErrors 0 · tripwire 0 · hiddenWait 0 s/0 · dead 0 · wrongExpect 0 · hiddenLeak 0 · vacuous 0 · overflow 0 · skippedNeeds 36 · skippedSafety 4
+JSON_SUMMARY {"total":123,"passed":123,"disabled":0,"dead":0,"wrongExpect":0,"hiddenLeak":0,"vacuous":0,"consoleErrors":0,"overflow":0,"skippedNeeds":36,"skippedSafety":4,"restoreFailures":0,"cleanupFailures":0,"outboxUnsettled":0,"verifyFailures":0,"pageErrors":0,"tripwire":0,"fatal":null}
+== btn-customer end 2026-10-07T22:35:17Z rc=0

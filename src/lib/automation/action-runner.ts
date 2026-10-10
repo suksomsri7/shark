@@ -71,6 +71,12 @@ export type RunnerSendCore = {
   body: string;
   subject?: string;
   title?: string;
+  /**
+   * CRM C4.4-fix2 r2 ▸ (รีวิว BL-1) ข้อความของผู้เขียนกฎ "ก่อนแทนค่า" + ค่าตัวแปร — ตัวส่งที่แปลงข้อความเป็น HTML (อีเมล CRM)
+   * ต้องทำลิงก์จาก `bodyTemplate` เท่านั้น แล้วแทนค่าเป็นข้อความ escape (ค่าจากลูกค้าห้ามกลายเป็นลิงก์) · `body` = ผลแทนค่าแล้ว (ช่องทางอื่นใช้ตามเดิม) ◂
+   */
+  bodyTemplate?: string;
+  vars?: Record<string, string | undefined>;
 };
 
 /**
@@ -218,7 +224,8 @@ async function sendStep<S, E extends RunnerEnv<S>>(env: E, action: RunnerAction,
       to: await adapter.addressOf(env.subject, channel),
       consent,
       body: adapter.render(template, vars),
-      ...(action.type === "SEND_EMAIL" ? { subject: adapter.render(str(p.subject), vars) } : {}),
+      // CRM C4.4-fix2 r2 ▸ BL-1: ข้อความของผู้เขียน + ค่า แยกกัน (อีเมล CRM ทำลิงก์เฉพาะข้อความของผู้เขียน) ◂
+      ...(action.type === "SEND_EMAIL" ? { subject: adapter.render(str(p.subject), vars), bodyTemplate: template, vars } : {}),
       ...(action.type === "SEND_PUSH" ? { title: adapter.render(str(p.title), vars) } : {}),
     });
   } catch (e) {

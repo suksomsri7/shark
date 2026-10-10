@@ -1,0 +1,1875 @@
+diff --git a/ledger/wo-notes/crm-C5.5-fix10-review.md b/ledger/wo-notes/crm-C5.5-fix10-review.md
+new file mode 100644
+index 00000000..2e025976
+--- /dev/null
++++ b/ledger/wo-notes/crm-C5.5-fix10-review.md
+@@ -0,0 +1,135 @@
++# C5.5-fix10: independent review (FX7-1 names follow the viewer's visibility · FX7-3 `.sss` · DATE display)
++
++- Reviewed `wip/crm-cf13` `018b68bb` against base `ee40bfba`, worktree `/root/projects/shark-crm-cd2`, database QC2.
++- Window: 2026-10-02 02:35 → 03:13 UTC (`date -u`).
++- I did not edit any product source.
++
++## What I ran (QC2, each job in its own `iso.sh` unit under the gate lock, one at a time)
++
++Runner: `scripts/pending/cf13/review/run-review.sh`. Logs are in `/tmp/cf13-review-logs/`. Chain ran 02:43:04–03:09:31 UTC.
++
++| Job | Result |
++|---|---|
++| `probe-cf13-review` (new, this review) | **7/8**. The one red is `LK-create-duplicate-masked`: a pre-existing leak outside this card (RV10-1). Kept red on purpose as a finding. |
++| `probe-cf13` (builder), re-run against the builder's RED dump | **26/26**, including `NM-control-owner-identical` and `NM-control-visible-cards-identical` (0 differences). See the note below the table. |
++| `probe-cf10` | **34/34** |
++| `probe-cf10-review` | **18/18** |
++| `probe-cf7` | **30/30** |
++| `probe-cf7-review` | **27/27** |
++| `probe-cf7-review-r2` | **21/21** |
++| `qc-crm-c1.5` (deals) | **103/103** |
++| `qc-crm-c1.4` (contacts) | **110/110** |
++| `qc-crm-c1.3` (companies) | **89/89** |
++| `qc-crm-c1.10` (REST + AI) | **66/66** |
++| `qc-crm-c2.2` (sequences) | **73/73** |
++| `qc-crm-c2.11` (REST + AI 2) | **47/47** |
++| `qc-crm-c3.4` (AI) | **53/53** |
++| typecheck (5 GB heap) | exit 0 |
++| fitness | **36/36**: F2.3 ✅ · F14.1/F14.2 1066 / 1066 |
++
++**Note on the baseline.** In the chain I first pointed `probe-cf13` at `/tmp/cf13-logs/red-baseline.dump.json`, and it gave 24/26. That dump comes from an **earlier version of the probe**: its deal titles are "ดีลบริษัทลับ …", while the final probe uses "ดีลหนึ่ง …". So it cannot match. The builder's `red3.dump.json` (01:11 UTC) is the RED dump of the final probe: its titles match and its manager board still prints the unmasked "ทีมบีถือ". Against `red3`: 26/26. `run-review.sh` now points at `red3`.
++
++QC2 leftover check (`scripts/pending/cf13/review/leftover-check.mts`): `qc-cf13-*`, `qc-cf10-*` and `qc-cf7-*` tenants = 0, users = 0.
++
++## Attack results
++
++### (a) Leaks that remain for a viewer who cannot see the company or contact
++
++| Attack | Result |
++|---|---|
++| Sort | `DEAL_SORTS` and `CONTACT_SORTS` have no company or contact name key. The deal board orders by `stageEnteredAt`; there is no score sort on deals. |
++| `q` search | Deal `q` searches **titles only** (`deals.ts:1782`); contact `q` searches name, email and phone, never `company`. `LK-filters`: `q="<hidden company name>"` does not hit the deal. |
++| Company filter | It is id-based. A hidden `companyId` returns the deal with `companyName: null` (`LK-filters`). The id was already exposed (fix7 review). |
++| Group-by, totals | The board groups by stage only. Column counts and sums are unchanged (builder `NM-rollups`). No report groups by company (sweep #25). |
++| Hidden contact on a visible deal | The card shows `HIDDEN_CONTACT_NAME` with score 0, and neither the list nor the board contains the hidden name anywhere (`LK-hidden-contact`). A 0 next to a placeholder name reveals nothing more than the placeholder itself, and no ordering or at-risk logic reads the card's score. |
++| `crm_search`, AI tools, REST deal ops | All go through `listContacts`/`listDeals`, so they are covered (code read, `api/ops/core.ts:51-61`). |
++| Deal titles and activity titles that embed names | These are user or product data, not lookups. The builder's own probe renamed its titles for this reason. Not fixable by a visibility rule; INFO. |
++| **Writer echoes (sweep #22, measured)** | `LK-writer-echo-*`. A TEAM-level staff member, or a staff member without company read, edits a contact they can see whose linked company is hidden. Contact 360 shows `companyText: null`, but the response of **`updateContact` and of `setTags`** returns `companyText = "<hidden company name>"`. Rated in RV10-2. |
++| **Create with a duplicate phone (new, pre-existing)** | `LK-create-duplicate`. A staff member who **cannot see** the owner's contact calls `createContact` with that contact's phone. The service returns `{created: false, contact: toDto(<the existing contact>)}`: name, phone, `companyText` (the hidden company's name) and the rest. REST `contacts.create` passes `contact` through as-is (`api/ops/contacts.ts:163`), and the UI action returns `duplicates[].name` (`contacts-actions.ts:84`). Rated in RV10-1. |
++
++### (b) Regression for legitimate viewers
++**Free text** (`RG-legacy-text`), checked for owner, unit-scoped manager, a TEAM-level staff member (TeamMember of TA; STAFF default is TEAM) and their teammate:
++- **free text with no company link** stays visible on every contact surface: list `companyName`/`companyText`, Contact 360 `companyText`, `briefFor`, `companyTextsForViewer`, and the export where the persona holds the export key;
++- free text that **differs** from the linked visible company keeps the list name equal to the company's name and `companyText` equal to the free text, as before;
++- a contact linked to a **visible archived** company still falls back to its free text.
++
++**Deal cards for viewers with visibility** (`RG-cards-visible`). For owner, manager, the TEAM-level staff member and the teammate, cards on the list and the board, and the CSV, carry exactly the company name, contact name and score that the old system-scope lookup produced. The builder's byte comparison against the RED run (`red3`) shows 0 differences for every visible card, and the owner's list, board and CSV are byte-identical.
++
++**Performance:**
++- `toCards` makes 3 parallel reads per page: owners, `companyRefsInTx(viewer)` and one `contactWhere` read (builder `NM-batched`).
++- The board SQL only gains `d."contactId"` in the select list; WHERE and ORDER BY are unchanged, so index use is unchanged.
++- `exportDeals` runs outside `crmScope`, so its two `…Where` calls may each compute the visibility snapshot. That is a couple of small queries per export: INFO.
++
++### (c) Export `.sss` and the REST DATE `display`
++**`.sss` round-trip** (`DT-sss-edges`): every value comes back through `importContacts` as the same instant.
++
++| Stored value | Export cell |
++|---|---|
++| `1969-12-31T23:59:59.999Z` (negative epoch) | `1970-01-01T06:59:59.999+07:00` |
++| `1960-01-01T00:00:00.000Z` | `…T07:00:00+07:00` (no `.sss`) |
++| a whole-second value | `…T00:30:00+07:00` (no `.sss`) |
++| `.010Z` | `….010+07:00` |
++
++`t % 1000` on a negative epoch is `-0` for whole seconds, so it compares correctly.
++
++- **Importer:** `ISO_RE` accepts `.sss` (`member/fields.ts:165`).
++- **Pins:** no suite or doc pins the export or `display` text. c1.4, c1.9, c1.10 and c1.11 are green.
++- The only reader of `display` is the Contact 360 page (`page.tsx:353`). Mobile has no `display` reader, and `value` is unchanged.
++
++### (d) `CrmScopeCtx`
++`visibleCompanyStates(ctx: CrmScopeCtx, …)` changes only the parameter annotation; the body is unchanged. typecheck exit 0.
++
++### (e) The builder's "reported, not fixed" list
++| # | Item | My rating | Fix before release? |
++|---|---|---|---|
++| 19 | Kanban `CRM_CONTACT` link subtitle = raw `contact.company` (`kanban/link-resolvers.ts:205`) | LOW. Same class as FX7-1: a board member who can see the contact sees the hidden company's text. | **Yes, cheap.** Have `hideInvisibleCrm` also clear the subtitle when the linked company is hidden, using the same `visibleCompanyStates`. A separate kanban card is fine. |
++| 20 | Portal access lists name contacts on company-scoped rows | INFO. Needs `crm.portal.manage` (admin); revoke needs the name. | No. Keep. |
++| 21 | PDPA bundle lists all of the contact's companies | INFO. A data-subject export must be complete. | No. Keep. |
++| 22 | Writer echoes return the raw `companyText` (measured, `LK-writer-echo-*`) | LOW. This is the cheapest way round the new mask: any contact editor (UI action, REST, AI update tool) gets the hidden name back from `updateContact`, `setTags`, etc. (`contacts.ts:1176,1246`). | **Yes.** Return `viewerDto(row, states)` from those paths: one `visibleCompanyStates` read per write. Without it, FX7-1 is only cosmetic for the legacy text. |
++| 26 | `openDealCount`/`wonValueSatang` caches count every deal | INFO. Counts, not names; system-wide by design. | No. |
++| 27 | `recent_leads` AI tool: whole-shop names and phones | Confirmed the **same issue** that `session/crm` card G1 fixed (`05dc5f74`: `visibleCrmLeads` → `contactWhere` per CRM system + `maskPiiDeep`, replacing the tenant-wide `crmContact.findMany`, which is still present at `src/lib/ai/tools.ts:1875` on this branch). | Already fixed upstream; it arrives with the rebase or merge. |
++
++## Findings
++
++### RV10-1 · MED (pre-existing since C1.4, outside this card's sweep) · create-with-duplicate returns an invisible contact's details
++- **Where:**
++  - `contacts.ts:868`: `if (!res.created) return { contact: toDto(res.row) … }`, where `duplicateHits` (`:674`) reads in **identity scope**, not `contactWhere`;
++  - REST `contacts.create` returns `contact` (`api/ops/contacts.ts:163`);
++  - the UI action returns `duplicates[].name` (`contacts-actions.ts:84`).
++- **Repro:** `LK-create-duplicate`. A STAFF member who cannot see the owner's TB contact creates a contact with its phone and receives that contact's name, phone and `companyText` (= the hidden company's name).
++- **Effect:** anyone with `crm.contact.create` can look up any contact in the system by phone or e-mail and get its personal data back. This is a broader leak than FX7-1 (personal data, not just a company name).
++- **Not introduced by this card**, so it does not block it.
++- **Recommendation:** its own card before release. For hits the caller cannot see, return no contact data at all: only `{created: false, reason}`, or a neutral "a contact with this phone already exists (not in your view)". Keep the full DTO for visible hits.
++
++### RV10-2 · LOW · writer echoes leak the masked legacy text (sweep #22, measured)
++- See table row 22. It undercuts the fix in this card for the class C text.
++- Recommended in this card or the very next. The fix is cheap and the probe repro is ready.
++- Not a blocker by itself: the same viewer could already read the raw `companyId`, and the text only appears for contacts the writer can edit.
++
++### RV10-3 · LOW · kanban `CRM_CONTACT` subtitle (sweep #19)
++Same class C text through a viewer pass that does not cover the subtitle. Fix in a kanban card.
++
++### RV10-4 · INFO
++- `exportDeals` visibility snapshot is computed twice outside `crmScope` (minor).
++- Names embedded in titles are not maskable.
++- The builder's `red-baseline.dump.json` is stale (from an earlier probe version). Only `red3.dump.json` is valid; worth stating in the builder note, which does not say which dump the 26/26 GREEN used.
++
++## Not verified
++- No live :3215 build: deal table and board, contact 360, company 360 and e-mail pages were not rendered. The services they call were exercised.
++- The kanban subtitle (#19) was not exercised: rated from code (`link-resolvers.ts:205`).
++- No query-count instrumentation of my own; I relied on the builder's `NM-batched` and code reading.
++- `qc-crm-c3.5`/`c3.7` (QC3), the button runner and `qc-crm-forms` were not run.
++- An API-key actor without `crm.company.read` was not exercised; it goes through the same `companyWhere`.
++- Excel and Sheets with `.sss` cells were not tried.
++
++## Verdict
++- No BLOCKER or HIGH introduced by this card.
++- The one rule holds for every persona and surface I attacked:
++  - hidden names and text are gone from cards, board, CSV and contact surfaces;
++  - viewers with visibility, including manager unit scope and TEAM-level staff, see byte-identical output;
++  - legitimate free text survives;
++  - `.sss` round-trips, including negative epochs.
++- RV10-1 (MED, pre-existing contact lookup via duplicate create) should get its own card before release.
++- RV10-2 and RV10-3 (LOW) are cheap follow-ups that complete FX7-1's class C. RV10-2 is the one to do first.
++
++VERDICT: MERGEABLE
+diff --git a/ledger/wo-notes/crm-C5.5-fix10.md b/ledger/wo-notes/crm-C5.5-fix10.md
+new file mode 100644
+index 00000000..4bb5d824
+--- /dev/null
++++ b/ledger/wo-notes/crm-C5.5-fix10.md
+@@ -0,0 +1,133 @@
++# C5.5-fix10: names on deal surfaces follow the viewer's visibility (FX7-1 + sweep) · DATETIME export ms (FX7-3) · DATE on contact 360 (owner question 5). Builder note
++
++- Branch `wip/crm-cf13` from `ee40bfba` (fix7 + its review), worktree `/root/projects/shark-crm-cd2`, database QC2.
++- Window: 2026-10-02 00:43 → 02:34 UTC (`date -u`).
++- Probe: `scripts/pending/cf13/probe-cf13.mts` (+ `probe-cf13-sweep.mts`, fixture `_fx.mts`, runner `run-probe.sh`). RED/GREEN logs next to it.
++
++## The one rule
++
++A deal / contact / activity surface shows a company or contact **name** to a viewer only if that viewer can see that company / contact:
++- company: `companies.companyRefsInTx(prisma, ctx, viewer, ids)` = `companyWhere(viewer)` — the helper deal 360 already used;
++- contact: `contactWhere(viewer)` — the rule deal 360 already used;
++- hidden company ⇒ `companyName: null` (CSV cell `""`) — the UI then shows what it shows for "no company" (deal 360 prints "ไม่ผูกบริษัท"; cards fall back to the contact name);
++- hidden contact ⇒ `"ผู้ติดต่อที่มองไม่เห็น"` (now one constant, `HIDDEN_CONTACT_NAME` in `deals-shared.ts`, also used by deal 360) and `score: 0` on cards.
++- No text derived from the id is ever produced. `companyId` / `contactId` stay in the DTOs exactly as before: deal 360 (`deal.companyId`), `contacts.get` and the REST deal ops already returned these raw ids (pre-existing, noted in the fix7 review as "existence already distinguishable"); removing them would change the REST contract and is not a name leak.
++- Roll-ups are untouched: nothing is written, `deal.companyId` is kept, board column counts/sums and the company caches are identical (probe `NM-rollups`, board totals in every `NM-*`).
++- Batched: one company visibility read and one contact visibility read per page (probe `NM-batched`: 10 deals / 9 companies → 1 company read and 1 contact read for list, board and CSV each).
++
++## Sweep table
++
++Line numbers at `ee40bfba`. "Fixed" = same pattern (a name looked up without the viewer's visibility, on a row the viewer can see), fixed in this card. Classes: A company name on a deal row · B contact name on a deal row · C company name / legacy company text on a contact row · D contact name on an activity row.
++
++| # | Site | Class | Behaviour at `ee40bfba` | Disposition |
++|---|---|---|---|---|
++| 1 | `deals.ts:1867 companyNames` → `toCards` (list `listDeals`, board `getBoard`) | A | system scope (actor `null`) | **Fixed** — viewer passed (`companyRefsInTx(…, viewer, …)`) |
++| 2 | `deals.ts:1881/1890 toCards` contactName + score; board SQL `LEFT JOIN "CrmContact"` (`:1987`) | B | Prisma include / SQL join, no `contactWhere` | **Fixed** — `visibleContactIds` (one query); hidden ⇒ placeholder, score 0 (board SQL now also selects `contactId`) |
++| 3 | `deals.ts:2187 exportDeals` company + contact cells | A+B | system scope | **Fixed** — same helpers; hidden company `""`, hidden contact placeholder |
++| 4 | Consumers of 1–3: deals page table/board, REST `deals.list` / `deals.board` / `deals.stale.list`, AI `crm_pipeline_summary` / `crm_stale_deals`, REST `search` + AI `crm_search` (deal half: `contactName`), deal CSV action | A+B | via 1–3 | **Fixed** through 1–3 (same service functions) |
++| 5 | `contacts.ts:1767 listContacts` `companyName` = live visible name `?? r.company` (legacy text) and `companyText` in the DTO | C | the viewer-scoped lookup existed, but the fallback printed the legacy text `CrmContact.company` — which import/backfill set to the linked company's name — exactly when the company was hidden | **Fixed** — text shown only if no company link or the linked company is visible (`companies.visibleCompanyStates`, one query); visible archived company keeps the old fallback |
++| 6 | `contacts.ts:2598 exportContacts` company cell | C | same fallback | **Fixed** (same rule) |
++| 7 | `contacts.ts:1533 getContact360` `contact.companyText` (page shows "<text> (ยังไม่ผูกเป็นบริษัท)" and pre-fills the convert form) | C | raw text | **Fixed** (same rule; the 360's company reads now come from one `visibleCompanyStates` call that also yields the old live-name map) |
++| 8 | `contacts.ts:2657 briefFor` `companyName: row.company` (REST `contacts.briefs` / `contacts.byParty`, chat panel brief) | C | raw text | **Fixed** (same rule) |
++| 9 | `sequences.ts:1040 listEnrollments` `companyName` | C | fallback to `contact.company` (its own comment said hidden = no name) | **Fixed** (same rule) |
++| 10 | `app/…/crm/emails/page.tsx:67` inbox and `emails/[threadKey]/page.tsx:81` thread `companyName` | C | raw `contact.company` | **Fixed** — new `contacts.companyTextsForViewer` (same rule, one query) |
++| 11 | `companies.ts:1251/1302 getCompany360` timeline `contactName` (company 360 page, REST `companies.get`, AI `crm_company_360`) | D | include `contact.name`, no `contactWhere` (activities are visible by their own owner) | **Fixed** — `contactWhere` set (one query); hidden ⇒ `null` like `activities.enrich` |
++| 12 | `deals.ts getDeal360` | A+B | viewer-scoped | already correct (reference rule); placeholder now the shared constant |
++| 13 | `mobile.ts:91–117 toDealDtos` (`api/mobile/crm/deals`, `deals/[id]`), `todayTasks`, `callPrompt` | A+B / D | viewer-scoped | already correct |
++| 14 | `activities.ts:856 enrich` (activity list, calendar, notes; REST `activities.*`), `mergedAppointments`, `searchTargets` | C+D | viewer-scoped | already correct |
++| 15 | `brief.ts briefFor` (company) / `homeFor` (my deals + stale) | A/C | `visibleCompaniesByIds` | already correct (the contact-text field it reads is now masked via #8) |
++| 16 | `ai-bridges.ts atRiskDeals` (REST/AI `crm_deals_at_risk`, home at-risk widget), `dealFacts`, `contactFacts`, `unfurlDealLink` | A+B | `namesByIds` / `briefForAssist` (companyWhere / contactWhere) | already correct |
++| 17 | `ai-bridges.ts` team-room won post / stale digest | B | names stripped from output (system-sent) | already correct |
++| 18 | kanban `link-resolvers.ts` CRM_CONTACT / COMPANY / DEAL titles | self names | `hideInvisibleCrm` hides invisible targets | already correct for the title |
++| 19 | kanban `link-resolvers.ts:192–203` CRM_CONTACT **subtitle** = `contact.company` legacy text | C | raw text for a visible contact even when its company is hidden | **Reported, not fixed** — the resolver has no viewer (`resolve(ctx, ids)`); masking needs the viewer pass `hideInvisibleCrm` to also clear the subtitle. Kanban module, separate card |
++| 20 | `portal.ts:1212/1248 listAccess` / `listCompanyRequests` (CrmPortalBlock on company 360, REST `portal.access.list`) | contact name on a company-scoped row | company checked, contact via include | **Reported** — needs `crm.portal.manage` (an admin key); hiding the contact name would make "revoke access" ambiguous. Product decision |
++| 21 | `privacy.ts:1059 exportContact` (PDPA bundle) companies | C | system scope | **Reported** — a data-subject export of the contact's own links; arguably intended to be complete. Product decision |
++| 22 | Writer echoes: `createContact` / `updateContact` / `mutate` return `toDto(row)` with raw `companyText` | C | raw text to the writer | **Reported** — the writer just submitted the row; masking needs a visibility read on every write path |
++| 23 | `deals.ts:1393 dealDocInput` (quotation / invoice party name) | A/B | system scope | **Not a viewer surface** — writes the accounting document (system path, by design) |
++| 24 | `service.ts:143–211` v1 `getBoard` / `listDeals` / activities | A+B | `include contact` | **Out of scope** — CRM v1 UI only (uiVersion 1 has no visibility rules, R-E.14) |
++| 25 | Company-grouped reports / roll-ups | — | none exist: reports and forecast group by month / owner / team | n/a |
++| 26 | `CrmCompany.openDealCount` / `wonValueSatang` caches shown on the company list and `crm_search` | counts | count every deal of the system, incl. deals the viewer cannot see | **Reported** (not a name; caches are system-wide by design; company 360 KPIs use `dealWhere`) |
++| 27 | `src/lib/ai/tools.ts:1860–1890 recent_leads` AI tool | contact names **and phones** | `prisma.crmContact.findMany({ tenantId })` — no `contactWhere`, no key gate | **Reported — outside this class but more serious than FX7-1**: whole-shop contact names + phones to any AI-tool user. Recommend routing it through `contacts.listContacts(…, actor)` in its own card |
++
++## FX7-3: DATETIME export milliseconds
++
++- How the engine stores DATETIME (`member/fields.ts:649`): `ISO_RE` accepts `.sss` (up to 6 digits), and the value is stored as `new Date(text).toISOString()` → millisecond precision.
++- The UI never sends ms: `thaiInputToIso` (datetime-local) produces `…:00+07:00`, stored `…:00.000Z` (probe `DT-ui-whole-seconds`). The REST API and the importer do carry ms (`…45.678Z` stored as is — `DT-stored`).
++- Decision: **include ms only when the stored value has them** (`thaiIsoDateTime`: `…T00:30:45.678+07:00`; whole-second values keep the fix7 form byte for byte). So human data is unchanged and export → import is exact for every stored value.
++- Probe: `DT-export-exact` (5 values incl. `.001` and a pre-1970 `.250`) and `DT-roundtrip` (export cell → `importContacts` → stored instant identical, server TZ UTC and Asia/Bangkok): RED ❌ (ms dropped) → GREEN ✅. Whole-second cells byte-identical to the fix7 form ✅ on both.
++
++## Owner question 5: DATE on contact 360
++
++- New `formatThaiDateFull(ymd)` in `src/lib/ui/date.ts` (the old record-page inline code, moved): `"2026-10-09"` → `"9 ต.ค. 2569"`.
++- The record page (`components/crm/objects/types.ts displayValue`) and contact 360 (`contacts.ts displayOf`, page mode) both call it. Export mode and `value` are unchanged (`"2026-10-09"`).
++- Byte identity: probe `DA-byte-identical` compares the new helper and `displayValue` with the old record-page code for every day 1960–2040 (29,586 days) + 2 odd inputs: 0 mismatches. A non-date string is returned as is (the old code would have printed "Invalid Date"; the engine never stores one).
++- REST note: `contacts.get` returns the 360 including `fields.sections[].fields[].display`, so API readers see the Thai text in `display` for DATE (as fix7 did for DATETIME); `value` is unchanged.
++
++## Probe RED → GREEN
++
++`scripts/pending/cf13/probe-cf13.mts` (personas: owner · MANAGER limited to unit `u-a` · own-records STAFF with company read · read-only-company STAFF · STAFF without company read; every persona sees every deal):
++
++- RED on `ee40bfba` source (my `src` diff removed, probe unchanged): **11/24** — red: `NM-mgr`, `NM-staff`, `NM-ro`, `NM-noco`, `SW-contacts-mgr`, `SW-contacts-staff`, `SW-email-text` (helper missing), `SW-sequences`, `SW-company360-timeline`, `DT-export-exact`, `DT-roundtrip`, `DA-360-display`, `DA-byte-identical` (helper missing). Green on RED (controls): `NM-owner`, `NM-shapes`, `NM-rollups`, `NM-batched`, `SW-contacts-owner/ro/noco`, `DT-ui-whole-seconds`, `DA-export-unchanged`, `DA-empty`, CLEAN.
++- GREEN: **26/26** (the two extra rows are the positive controls that need the RED run's dump):
++  - `NM-control-owner-identical`: owner list / board / CSV (ids and timestamps normalised) byte-identical to the RED run;
++  - `NM-control-visible-cards-identical`: every card whose company and contact the viewer can see is byte-identical to the RED run (0 differences across 5 personas).
++- Logs: `scripts/pending/cf13/probe-cf13.red.log`, `probe-cf13.green.log`.
++
++## Regression (QC2, each job in its own `iso.sh` unit under the gate lock, one at a time)
++
++Runner `scripts/pending/cf13/run-cf13.sh` (run from a copy in `/tmp/cf13-logs/`), logs `/tmp/cf13-logs/regress/`.
++
++Chain 01:13:11 → 02:29:10 UTC (`scripts/pending/cf13/regress.summary`).
++
++| Job | Result |
++|---|---|
++| `probe-cf13` (this card; in-chain run without the RED baseline) | **24/24** |
++| `probe-cf10` | **34/34** |
++| `probe-cf10-review` | **18/18** (its `F6-names` row is an INFO line; it now reports no hidden name on the card / board / CSV) |
++| `probe-cf7` · `-r2` · `review` · `review-r2` | **30/30 · 14/14 · 27/27 · 21/21** |
++| `probe-cf5` · `-r2` | **22/22 · 14/14** |
++| `qc-crm-c1.5` (deals: list / board / CSV / 360) | **103/103** |
++| `qc-crm-c1.4` (contacts) | **110/110** |
++| `qc-crm-c1.3` (companies, 360) | **89/89** |
++| `qc-crm-c1.6` (activities, calendar) | **79/79** |
++| `qc-crm-c1.7` (visibility) | **57/57** |
++| `qc-crm-c1.9` (record pages, `displayValue`) | **45/45** |
++| `qc-crm-c1.10` (REST + AI, set 1) | **66/66** |
++| `qc-crm-c1.11` (import / merge) | **66/66** |
++| `qc-crm-c2.2` (sequences) | **73/73** |
++| `qc-crm-c2.4` (activity capture) | **91/91** |
++| `qc-crm-c2.10` (stale deals / digests) | **41/41** |
++| `qc-crm-c2.11` (REST + AI, set 2) | **47/47** |
++| `qc-crm-c3.1` (reports) | **56/56** |
++| `qc-crm-c3.2` (quotas / home) | **47/47** |
++| `qc-crm-c3.4` (AI tools, at-risk, briefs) | **53/53** |
++| `qc-crm-c5.3` | **56/56** |
++| docs gates | crm ✅ (123 op) · account ✅ (199 op) · member ❌ / kanban ❌ **only** because the gitignored `.claude/skills/shark-{member,kanban}-api/references/endpoints.md` do not exist in this worktree ("0 bytes on disk"); not created |
++| fitness (QC2 env) / fitness without env | **36/36 / 36/36** (F2.3 ✅ · F5.1 ✅ · F14.1/F14.2 1066/1066) |
++| typecheck (5 GB heap) | in-chain run **exit 2**: `sequences.ts(1020)` — `SequencesCtx` (optional `actorUserId`) not assignable to the new helper's `CompaniesCtx`. Fixed by typing `visibleCompanyStates(ctx: CrmScopeCtx, …)` (annotation only, no runtime change); re-run **exit 0** (`/tmp/cf13-logs/typecheck-2.log`). Every suite above ran on the identical runtime code |
++
++No suite was red, so no ee40bfba comparison was needed.
++
++## ORACLE-EDITs
++
++None. Every suite in the table is green on the changed code without any oracle edit, so none pins the old (leaky) behaviour.
++
++## Registry rows (`scripts/crm-ui-inventory.json`)
++
++None. No control changes visibility for any persona: only text changes (card / table company and contact text, CSV cells, contact 360 "บริษัท" row text and convert-form prefill, company 360 timeline contact text, inbox / thread company text, contact 360 DATE text).
++
++## Owner questions
++
++1. Legacy company text (`CrmContact.company`) is now hidden from viewers who cannot see the contact's linked company (sweep #5–#10). The text is the contact's own field, but import and the backfill set it to the linked company's name, so showing it defeated FX7-1. A STAFF who typed that text on their own contact and whose contact was later linked to a company they cannot see no longer sees their text. OK?
++2. Sweep #27 (`recent_leads` AI tool, whole-shop names + phones) — recommend its own card.
++3. Sweep #19–#22 — kanban subtitle, portal access lists, PDPA bundle, writer echoes: keep or align?
++
++## Not verified
++
++- No live :3215 build: the deal table / board, contact 360, company 360 and the e-mail inbox / thread pages were not rendered; the services they call are covered by the probe (the two e-mail pages through `contacts.companyTextsForViewer`, not the page code itself).
++- No button runner / `qc-crm-forms` (QC3 + browser); `qc-crm-c3.7` (mobile, QC3-only) and `qc-crm-c3.5` (portal, QC3) not run — the mobile deal routes were already viewer-scoped (sweep #13) and are untouched.
++- `qc-crm-c51fix-equiv` (before/after equivalence tool that needs `--tenant` and output files) not run; the probe's RED-vs-GREEN DTO comparison stands in for the board / list / CSV of owner and of viewers with visibility.
++- The REST ops (`deals.list` / `deals.board` / `contacts.briefs` / `companies.get` …) were exercised by c1.10 / c2.11 with their own fixtures, not with this card's hidden-company personas; they call the same service functions the probe drives.
++- A TEAM-level visibility policy persona and an API-key actor without `crm.company.read` were not exercised (same `companyWhere` / `contactWhere` path).
++- Excel / Google Sheets with the `.sss` DATETIME cell not tried.
++- Sweep #19–#22, #26, #27 are reported, not fixed.
+diff --git a/scripts/pending/cf13/_fx.mts b/scripts/pending/cf13/_fx.mts
+new file mode 100644
+index 00000000..d56d2086
+--- /dev/null
++++ b/scripts/pending/cf13/_fx.mts
+@@ -0,0 +1,120 @@
++// C5.5-fix10 probe fixture — copy of scripts/pending/cf7/_fx.mts pinned to QC2 (ep-cool-shadow) · throwaway tenants `qc-cf13-*` only ·
++//   swept in `done()` · prints a JSON_SUMMARY line
++// Run: bash scripts/qc2.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/pending/cf13/probe-cf13.mts
++/* eslint-disable @typescript-eslint/no-explicit-any */
++type Any = any;
++import { randomBytes } from "node:crypto";
++
++export async function fixture(label: string) {
++  const accEnv = (await import("../../acc-v2-env.mts" as string)) as { loadQcEnv: () => { host: string } };
++  const { host } = accEnv.loadQcEnv();
++  if (!/ep-cool-shadow/.test(host) || !/ep-cool-shadow/.test(String(process.env.DATABASE_URL ?? ""))) {
++    console.log(`QC2 only — got ${host}`);
++    process.exit(1);
++  }
++  globalThis.fetch = (async () => {
++    throw new Error("network blocked");
++  }) as typeof fetch;
++  const { prisma } = await import("@/lib/core/db");
++  const P = prisma as Any;
++  const TAG = `qc-cf13-${label}-${randomBytes(4).toString("hex").replace(/[0-9]/g, (d) => "qrstuvwxyz"[Number(d)]!)}`;
++  const res: { id: string; ok: boolean; msg: string }[] = [];
++  const chk = (id: string, ok: boolean, msg: string) => {
++    res.push({ id, ok, msg });
++    console.log(`  ${ok ? "✅" : "❌"} [${id}] ${msg}`);
++  };
++  const USERS: string[] = [];
++  const TENANTS: string[] = [];
++  const sysSvc = (await import("@/lib/modules/system/service" as string)) as Any;
++  const setCrm = (sysId: string, obj: Record<string, unknown>) =>
++    P.$executeRawUnsafe(
++      `UPDATE "AppSystem" SET "settings" = jsonb_set(CASE WHEN jsonb_typeof("settings") = 'object' THEN "settings" ELSE '{}'::jsonb END, '{crm}',
++        (CASE WHEN jsonb_typeof("settings"->'crm') = 'object' THEN "settings"->'crm' ELSE '{}'::jsonb END) || $1::jsonb, true) WHERE "id" = $2`,
++      JSON.stringify(obj),
++      sysId,
++    );
++  let n = 0;
++  const mkUser = async (suffix: string) => {
++    const u = await P.user.create({ data: { email: `${TAG}${suffix}@qc.invalid`, name: `QC ${suffix || "owner"} ${TAG}` } });
++    USERS.push(u.id);
++    return u.id as string;
++  };
++  /** a whole shop: tenant · OWNER · CRM v2 (bridges on) · ACCOUNT linked to the CRM · pipeline (3 OPEN · WON · LOST) */
++  const mkShop = async (suffix: string, opts: { account?: boolean; portal?: boolean } = {}) => {
++    const t = await P.tenant.create({ data: { name: `${TAG}-${suffix}`, slug: `${TAG}-${suffix}` } });
++    TENANTS.push(t.id);
++    const uid = await mkUser(`-${suffix}`);
++    await P.membership.create({ data: { userId: uid, tenantId: t.id, role: "OWNER", unitAccess: ["*"], permissions: {}, acceptedAt: new Date() } });
++    const S = (await sysSvc.createSystem(t.id, "CRM", `CRM ${TAG} ${++n}`)).id as string;
++    await setCrm(S, { uiVersion: 2, bridgesEnabled: true, ...(opts.portal ? { portal: { enabled: true, loginMethods: ["EMAIL_OTP"], showDeals: false, allowIssue: false, issueBoardId: null } } : {}) });
++    let A: string | null = null;
++    if (opts.account) {
++      A = (await sysSvc.createSystem(t.id, "ACCOUNT", `บัญชี ${TAG} ${n}`)).id as string;
++      const accSvc = (await import("@/lib/modules/account/service" as string)) as Any;
++      await accSvc.saveSettings(t.id, A, { orgName: `QC ${TAG}`, taxId: "0105561000003", vatRegistered: true, vatRateBp: 700, taxPointBasis: "ON_ISSUE" });
++      const connections = (await import("@/lib/modules/account/connections" as string)) as Any;
++      const r = await connections.connect({ tenantId: t.id, systemId: A }, "CRM", S, uid);
++      if (!r?.ok) throw new Error(`connections.connect failed: ${JSON.stringify(r)}`);
++    }
++    const pipe = await P.crmPipeline.create({
++      data: {
++        tenantId: t.id,
++        systemId: S,
++        name: `ขาย ${TAG}`,
++        isDefault: true,
++        stages: {
++          create: (
++            [
++              ["ใหม่", "OPEN", 10],
++              ["เสนอราคา", "OPEN", 60],
++              ["ตกลง", "OPEN", 90],
++              ["ชนะ", "WON", 100],
++              ["แพ้", "LOST", 0],
++            ] as const
++          ).map(([name, kind, probability], i) => ({ tenantId: t.id, systemId: S, sortOrder: i, name, kind, probability })),
++        },
++      },
++      include: { stages: { orderBy: { sortOrder: "asc" } } },
++    });
++    const owner = { userId: uid, role: "OWNER", unitAccess: ["*"], permissions: {} };
++    return { tid: t.id as string, slug: t.slug as string, uid, S, A, ctx: { tenantId: t.id as string, systemId: S, actorUserId: uid }, owner, pipe: pipe as Any, stages: pipe.stages as Any[] };
++  };
++  const call = async (f: () => Promise<Any>): Promise<Any> => {
++    try {
++      return { ok: true, v: await f() };
++    } catch (err) {
++      return { ok: false, err };
++    }
++  };
++  const done = async (name: string, before?: () => Promise<void>) => {
++    if (before) await before().catch((e) => chk("CLEAN-before", false, String((e as Error)?.message ?? e).slice(0, 200)));
++    for (const T of TENANTS) {
++      const tbs = ((await P.$queryRawUnsafe(`select table_name from information_schema.columns where table_schema='public' and column_name='tenantId'`)) as Any[]).map((r) => String(r.table_name)).filter((x) => /^[A-Za-z_]+$/.test(x));
++      for (let pass = 0; pass < 4; pass += 1) for (const t of tbs) await P.$executeRawUnsafe(`DELETE FROM "${t}" WHERE "tenantId" = $1`, T).catch(() => undefined);
++      await P.appSystem.deleteMany({ where: { tenantId: T } }).catch(() => undefined);
++      await P.tenant.delete({ where: { id: T } }).catch(() => undefined);
++      let left = 0;
++      for (const t of tbs) left += Number(((await P.$queryRawUnsafe(`SELECT count(*)::int AS n FROM "${t}" WHERE "tenantId" = $1`, T).catch(() => [{ n: 0 }])) as Any[])[0]?.n ?? 0);
++      chk(`CLEAN-${T.slice(-6)}`, left === 0 && (await P.tenant.count({ where: { id: T } })) === 0, `tenant rows left=${left}`);
++    }
++    for (const id of USERS) {
++      await P.membership.deleteMany({ where: { userId: id } }).catch(() => undefined);
++      await P.appNotification.deleteMany({ where: { recipientUserId: id } }).catch(() => undefined);
++      await P.user.delete({ where: { id } }).catch(() => undefined);
++    }
++    await prisma.$disconnect();
++    const passed = res.filter((r) => r.ok).length;
++    console.log(`\n${passed === res.length ? "🟢" : "🔴"} ${name}: ${passed}/${res.length}`);
++    console.log(`JSON_SUMMARY ${JSON.stringify({ total: res.length, passed, findings: res.filter((r) => !r.ok).map((r) => r.id) })}`);
++    process.exit(passed === res.length ? 0 : 1);
++  };
++  return { P, prisma, TAG, chk, call, mkShop, mkUser, setCrm, done };
++}
++
++/** a valid Thai tax id (mod-11) from a 12-digit prefix */
++export function validTaxId(prefix12: string): string {
++  const p = prefix12.replace(/\D/g, "").padEnd(12, "0").slice(0, 12);
++  let sum = 0;
++  for (let i = 0; i < 12; i += 1) sum += Number(p[i]) * (13 - i);
++  return `${p}${(11 - (sum % 11)) % 10}`;
++}
+diff --git a/scripts/pending/cf13/probe-cf13-sweep.mts b/scripts/pending/cf13/probe-cf13-sweep.mts
+new file mode 100644
+index 00000000..c4992a4a
+--- /dev/null
++++ b/scripts/pending/cf13/probe-cf13-sweep.mts
+@@ -0,0 +1,140 @@
++// C5.5-fix10 probe — SW: the sweep sites of the same class fixed in this card (loaded by probe-cf13.mts)
++//   SW-contacts-list / -export / -360 / -brief · SW-sequences · SW-company360-timeline · SW-email-text (companyTextsForViewer)
++//   rule under test (ONE rule): a name / legacy company text is shown to a viewer only if the viewer can see that company / contact
++//   (companyWhere / contactWhere) · a contact with no company link keeps its own text · a visible archived company keeps the old fallback
++/* eslint-disable @typescript-eslint/no-explicit-any */
++type Any = any;
++
++export async function run(e: Any): Promise<void> {
++  const { fx, shop, owner, staff, personas, coHid, coA, visCo, visK, info, j, codeOf, mkCompany, parseCsv } = e;
++  const { P, chk, call, TAG } = fx;
++  const CON = (await import("@/lib/modules/crm/contacts" as string)) as Any;
++  const CO = (await import("@/lib/modules/crm/companies" as string)) as Any;
++  const SEQ = (await import("@/lib/modules/crm/sequences" as string)) as Any;
++  const rand = TAG.slice(-8);
++  console.log("\n── SW · sweep sites ──");
++
++  // contacts owned by staff (visible to staff · teamless ⇒ mgr) whose LEGACY TEXT = the linked company's name (what import/backfill write)
++  const coArch = await mkCompany(shop, `บริษัทเก็บ ${rand}`, staff.uid, null);
++  await P.crmCompany.update({ where: { id: coArch.id }, data: { archivedAt: new Date() } });
++  const mk = async (first: string, companyId: string | null, text: string | null) => {
++    const name = `${first} ${TAG}`;
++    const party = await P.party.create({ data: { tenantId: shop.tid, name, kind: "PERSON" } });
++    const k = await P.crmContact.create({ data: { tenantId: shop.tid, systemId: shop.S, name, firstName: first, partyId: party.id, ownerUserId: staff.uid, companyId, company: text } });
++    if (companyId) await P.crmCompanyContact.create({ data: { tenantId: shop.tid, companyId, contactId: k.id, isPrimary: true } });
++    return k;
++  };
++  const kH = await mk("ข้อความลับ", coHid.id, coHid.name); // linked to the hidden company, text = its name
++  const kV = await mk("ข้อความเห็น", coA.id, "ข้อความเอเดิม"); // visible company (for staff/mgr/owner), text differs
++  const kArch = await mk("ข้อความเก็บ", coArch.id, "ข้อความเก็บเดิม"); // visible but archived → old fallback to the text
++  const kNo = await mk("ข้อความไม่ผูก", null, "พิมพ์เองไม่ผูก"); // no link → own text always
++  const SW = [kH, kV, kArch, kNo];
++  const allCos = new Map<string, Any>([[coHid.id, coHid], [coA.id, coA], [coArch.id, coArch]]);
++
++  for (const [label, who] of personas) {
++    const cos = await visCo(who);
++    const ks = await visK(who);
++    const want = (k: Any) => {
++      // the rule (deal-360 style): hidden linked company ⇒ nothing; visible live ⇒ its name; visible archived / no link ⇒ the text
++      if (k.companyId && !cos.has(k.companyId)) return { name: null, text: null };
++      const co = k.companyId ? allCos.get(k.companyId) : null;
++      return { name: co && co.id !== coArch.id ? co.name : k.company, text: k.company };
++    };
++    const bad: string[] = [];
++    const lst = await call(() => CON.listContacts(who.ctx, who.actor, { pageSize: 200 }));
++    const csv = await call(() => CON.exportContacts(who.ctx, who.actor, { confirm: true, reason: "ตรวจชื่อบริษัทตามการมองเห็น" }));
++    const rows = parseCsv(String(csv.v ?? ""));
++    const iCo = (rows[0] ?? []).indexOf("บริษัท");
++    let n = 0;
++    for (const k of SW) {
++      if (!ks.has(k.id)) continue;
++      n += 1;
++      const w = want(k);
++      const it = (lst.v?.items ?? []).find((x: Any) => x.id === k.id);
++      if (!it) bad.push(`list misses ${k.firstName}`);
++      else {
++        if (it.companyName !== w.name) bad.push(`list ${k.firstName} companyName=${j(it.companyName)} want ${j(w.name)}`);
++        if (it.companyText !== w.text) bad.push(`list ${k.firstName} companyText=${j(it.companyText)} want ${j(w.text)}`);
++      }
++      if (csv.ok) {
++        const row = rows.find((r: string[]) => r[0] === k.firstName);
++        if (!row) bad.push(`csv misses ${k.firstName}`);
++        else if (row[iCo] !== (w.name ?? "")) bad.push(`csv ${k.firstName} company=${j(row[iCo])} want ${j(w.name ?? "")}`);
++      }
++      const c360 = await call(() => CON.getContact360(who.ctx, who.actor, k.id));
++      if (!c360.ok) bad.push(`360 ${k.firstName} ${codeOf(c360)}`);
++      else {
++        if (c360.v.contact.companyText !== w.text) bad.push(`360 ${k.firstName} companyText=${j(c360.v.contact.companyText)} want ${j(w.text)}`);
++        if (k.id === kH.id && !cos.has(coHid.id) && j(c360.v).includes(coHid.name)) bad.push("360 payload has the hidden name");
++      }
++      const br = await call(() => CON.briefFor(who.ctx, who.actor, { contactId: k.id }));
++      if (br.ok && br.v && br.v.companyName !== w.text) bad.push(`brief ${k.firstName} companyName=${j(br.v.companyName)} want ${j(w.text)}`);
++    }
++    if (lst.ok && !cos.has(coHid.id) && j(lst.v).includes(coHid.name)) bad.push("contact list payload has the hidden name");
++    if (csv.ok && !cos.has(coHid.id) && String(csv.v).includes(coHid.name)) bad.push("contact CSV has the hidden name");
++    chk(`SW-contacts-${label}`, lst.ok && bad.length === 0, `list ${codeOf(lst)} · export ${codeOf(csv)} · ${n}/4 sweep contacts visible · ${bad.join(" · ") || "companyName / companyText / CSV cell / 360 companyText / brief = viewer rule"}`);
++  }
++
++  // companyTextsForViewer (email inbox + thread pages) — same rule
++  {
++    const rowsIn = [kH, kV, kArch, kNo].map((k: Any) => ({ id: k.id, companyId: k.companyId, company: k.company }));
++    const out: string[] = [];
++    let ok = true;
++    for (const [label, who] of personas) {
++      const cos = await visCo(who);
++      const m = await call(() => CON.companyTextsForViewer(who.ctx, who.actor, rowsIn));
++      for (const k of rowsIn) {
++        const w = k.companyId && !cos.has(k.companyId) ? null : k.company;
++        if (!m.ok || m.v.get(k.id) !== w) { ok = false; out.push(`${label} ${k.company}: ${m.ok ? j(m.v.get(k.id)) : codeOf(m)} want ${j(w)}`); }
++      }
++    }
++    chk("SW-email-text", ok, `companyTextsForViewer per persona · ${out.join(" · ") || "hidden link ⇒ null, else the contact's text"}`);
++  }
++
++  // sequences enrollment list ("บริษัท" column)
++  {
++    const seq = await P.crmSequence.create({ data: { tenantId: shop.tid, systemId: shop.S, name: `ลำดับ ${rand}` } });
++    for (const k of SW) await P.crmSequenceEnrollment.create({ data: { tenantId: shop.tid, sequenceId: seq.id, contactId: k.id, enrolledBy: "API", sequenceVersion: 1 } });
++    const out: string[] = [];
++    let ok = true;
++    for (const [label, who] of personas) {
++      const cos = await visCo(who);
++      const r = await call(() => SEQ.listEnrollments(who.ctx, who.actor, { sequenceId: seq.id }));
++      if (!r.ok) { out.push(`${label}: ${codeOf(r)}`); continue; }
++      for (const it of r.v.items) {
++        const k = SW.find((x: Any) => x.id === it.contactId);
++        if (!k) continue;
++        const w = k.companyId && !cos.has(k.companyId) ? null : k.companyId && k.companyId !== coArch.id ? allCos.get(k.companyId).name : k.company;
++        if (it.companyName !== w) { ok = false; out.push(`${label} ${k.firstName}: ${j(it.companyName)} want ${j(w)}`); }
++      }
++      if (!cos.has(coHid.id) && j(r.v).includes(coHid.name)) { ok = false; out.push(`${label}: hidden name in payload`); }
++      out.push(`${label} ${r.v.items.length} rows`);
++    }
++    chk("SW-sequences", ok, out.join(" · "));
++  }
++
++  // company 360 timeline: an activity the viewer sees, on a company the viewer sees, naming a contact the viewer cannot see
++  {
++    const kHidden = e.kOwner; // owned by the shop owner — hidden from staff
++    await P.crmActivity.create({ data: { tenantId: shop.tid, systemId: shop.S, type: "TASK", title: `งานบนบริษัทเอ ${rand}`, ownerUserId: staff.uid, companyId: coA.id, contactId: kHidden.id } });
++    await P.crmActivity.create({ data: { tenantId: shop.tid, systemId: shop.S, type: "TASK", title: `งานเห็นผู้ติดต่อ ${rand}`, ownerUserId: staff.uid, companyId: coA.id, contactId: e.kStaff.id } });
++    const out: string[] = [];
++    let ok = true;
++    for (const [label, who] of personas) {
++      const cos = await visCo(who);
++      const ks = await visK(who);
++      if (!cos.has(coA.id)) { out.push(`${label}: company not visible (skip)`); continue; }
++      const r = await call(() => CO.getCompany360(who.ctx, who.actor, coA.id));
++      if (!r.ok) { out.push(`${label}: ${codeOf(r)}`); ok = false; continue; }
++      const tl = (r.v.timeline ?? []).filter((t: Any) => String(t.title).endsWith(rand));
++      for (const t of tl) {
++        const w = ks.has(t.contactId) ? (t.contactId === kHidden.id ? kHidden.name : e.kStaff.name) : null;
++        if (t.contactName !== w) { ok = false; out.push(`${label} "${t.title}": ${j(t.contactName)} want ${j(w)}`); }
++      }
++      if (!ks.has(kHidden.id) && j(r.v).includes(kHidden.name)) { ok = false; out.push(`${label}: hidden contact name in payload`); }
++      out.push(`${label} ${tl.length} rows`);
++    }
++    chk("SW-company360-timeline", ok, out.join(" · "));
++  }
++  info("SW-done", "sweep checks finished");
++}
+diff --git a/scripts/pending/cf13/probe-cf13.green.log b/scripts/pending/cf13/probe-cf13.green.log
+new file mode 100644
+index 00000000..1abb961e
+--- /dev/null
++++ b/scripts/pending/cf13/probe-cf13.green.log
+@@ -0,0 +1,51 @@
++(node:2238415) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
++In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
++
++To prepare for this change:
++- If you want the current behavior, explicitly use 'sslmode=verify-full'
++- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
++
++See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
++(Use `node --trace-warnings ...` to show where the warning was created)
++
++── NM · deal list / board / CSV / 360 per persona ──
++  ✅ [NM-owner] OK/OK/OK · sees 3/3 companies, 4/4 contacts · names = viewer visibility on list/board/CSV, = deal 360, no hidden name in payload, totals 4 deals / ฿700
++  ✅ [NM-mgr] OK/OK/OK · sees 2/3 companies, 3/4 contacts · names = viewer visibility on list/board/CSV, = deal 360, no hidden name in payload, totals 4 deals / ฿700
++  ✅ [NM-staff] OK/OK/OK · sees 1/3 companies, 1/4 contacts · names = viewer visibility on list/board/CSV, = deal 360, no hidden name in payload, totals 4 deals / ฿700
++  ✅ [NM-ro] OK/OK/OK · sees 1/3 companies, 1/4 contacts · names = viewer visibility on list/board/CSV, = deal 360, no hidden name in payload, totals 4 deals / ฿700
++  ✅ [NM-noco] OK/OK/OK · sees 0/3 companies, 0/4 contacts · names = viewer visibility on list/board/CSV, = deal 360, no hidden name in payload, totals 4 deals / ฿700
++  ✅ [NM-shapes] hidden companies/contacts: owner 0/0 · mgr 1/1 · staff 2/3 · ro 2/3 · noco 3/4
++  ✅ [NM-rollups] company roll-up columns and every deal.companyId unchanged by reading
++  ℹ️  [NM-rest] REST deal ops module loaded (DEALS_OPS) — they call listDeals/getBoard/exportDeals (see SW)
++  ✅ [NM-batched] 10 deals / 9 companies on the page → company reads list=1 board=1 csv=1 · contact reads 1/1/1 (≤ 1 each = one visibility query per page)
++  ✅ [NM-control-owner-identical] owner DTOs (list · board · CSV, ids/timestamps normalised) byte-identical to the RED run: true · personas that changed: mgr: list ≠ board ≠ csv ≠ · staff: list ≠ board ≠ csv ≠ · ro: list ≠ board ≠ csv ≠ · noco: list ≠ board ≠ csv ≠
++  ✅ [NM-control-visible-cards-identical] every card whose company + contact the viewer can see is byte-identical to the RED run · 0 differences
++
++── SW · sweep sites ──
++  ✅ [SW-contacts-owner] list OK · export OK · 4/4 sweep contacts visible · companyName / companyText / CSV cell / 360 companyText / brief = viewer rule
++  ✅ [SW-contacts-mgr] list OK · export OK · 4/4 sweep contacts visible · companyName / companyText / CSV cell / 360 companyText / brief = viewer rule
++  ✅ [SW-contacts-staff] list OK · export OK · 4/4 sweep contacts visible · companyName / companyText / CSV cell / 360 companyText / brief = viewer rule
++  ✅ [SW-contacts-ro] list OK · export OK · 0/4 sweep contacts visible · companyName / companyText / CSV cell / 360 companyText / brief = viewer rule
++  ✅ [SW-contacts-noco] list OK · export OK · 0/4 sweep contacts visible · companyName / companyText / CSV cell / 360 companyText / brief = viewer rule
++  ✅ [SW-email-text] companyTextsForViewer per persona · hidden link ⇒ null, else the contact's text
++  ✅ [SW-sequences] owner 4 rows · mgr 4 rows · staff 4 rows · ro 0 rows · noco 0 rows
++  ✅ [SW-company360-timeline] owner 2 rows · mgr 2 rows · staff 2 rows · ro: company not visible (skip) · noco: company not visible (skip)
++  ℹ️  [SW-done] sweep checks finished
++
++── DT ──
++  ℹ️  [DT-stored] ui: sent 2026-10-09T00:30:00+07:00 → stored 2026-10-08T17:30:00.000Z · ms: sent 2026-10-08T17:30:45.678Z → stored 2026-10-08T17:30:45.678Z · ms1: sent 2026-10-08T17:30:45.001Z → stored 2026-10-08T17:30:45.001Z · sec: sent 2026-10-08T17:30:45.000Z → stored 2026-10-08T17:30:45.000Z · pre1970ms: sent 1965-03-01T03:00:00.250Z → stored 1965-03-01T03:00:00.250Z
++  ✅ [DT-ui-whole-seconds] the UI path (datetime-local → thaiInputToIso "2026-10-09T00:30:00+07:00") stores whole seconds (2026-10-08T17:30:00.000Z) · API/import can store ms (2026-10-08T17:30:45.678Z)
++  ℹ️  [DT-cells] ui=2026-10-09T00:30:00+07:00 · ms=2026-10-09T00:30:45.678+07:00 · ms1=2026-10-09T00:30:45.001+07:00 · sec=2026-10-09T00:30:45+07:00 · pre1970ms=1965-03-01T10:00:00.250+07:00
++  ✅ [DT-export-exact] every cell parses back to the stored instant exactly (ms included) · whole-second cells byte-identical to the fix7 form: true
++  ✅ [DT-roundtrip] export cell → importContacts → stored instant identical for 5 values × 2 server TZ · all exact
++  ✅ [DA-export-unchanged] DATE export cells = ["2026-10-09","2026-10-09","2026-10-09","2026-10-09","2026-10-09"]
++
++── DA ──
++  ✅ [DA-360-display] contact 360 display="9 ต.ค. 2569" · record page="9 ต.ค. 2569" · value="2026-10-09"
++  ✅ [DA-byte-identical] 29586 days 1960–2040 + 2 odd inputs: formatThaiDateFull == old record-page code, mismatches 0 · non-date text kept: "ไม่ใช่วันที่"
++  ✅ [DA-empty] empty DATE display="" value=null
++  ✅ [CLEAN-kj1m73] tenant rows left=0
++
++🟢 probe-cf13: 26/26
++JSON_SUMMARY {"total":26,"passed":26,"findings":[]}
++exit=0 2026-10-02T01:12:35Z
+diff --git a/scripts/pending/cf13/probe-cf13.mts b/scripts/pending/cf13/probe-cf13.mts
+new file mode 100644
+index 00000000..2acb5434
+--- /dev/null
++++ b/scripts/pending/cf13/probe-cf13.mts
+@@ -0,0 +1,337 @@
++// C5.5-fix10 probe (builder) — FX7-1 · FX7-3 · owner question 5
++//   NM   deal surfaces name a company / contact only when the VIEWER can see it (one rule = companyWhere / contactWhere, the deal 360 rule):
++//        list · board · CSV (UI + REST op) · deal 360 parity · per persona (owner · unit-limited manager · own-records staff ·
++//        read-only-company staff · staff without company read) · no hidden name anywhere in the payload · roll-ups unchanged ·
++//        batched (company reads per page) · positive controls: owner + viewers WITH visibility see what they saw before (normalised DTO
++//        dump compared byte-for-byte with the RED run's dump when CF13_BASELINE is set)
++//   SW   the sweep sites fixed in this card (see ledger/wo-notes/crm-C5.5-fix10.md)
++//   DT   DATETIME export keeps milliseconds when the stored value has them (export → import exact) · whole-second cells byte-identical
++//   DA   DATE on contact 360 = the record-page formatter ("9 ต.ค. 2569") · value + export unchanged ("2026-10-09")
++// QC2 only (ep-cool-shadow) · throwaway tenants `qc-cf13-*` (swept in done()) · network blocked.
++// Run: bash scripts/pending/cf13/run-probe.sh <logname> [baseline-json]
++/* eslint-disable @typescript-eslint/no-explicit-any */
++type Any = any;
++import { AsyncLocalStorage } from "node:async_hooks";
++import { createHash } from "node:crypto";
++import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
++const { fixture } = (await import("./_fx.mts" as string)) as { fixture: (label: string) => Promise<Any> };
++
++(globalThis as Any).AsyncLocalStorage ??= AsyncLocalStorage;
++const fx = await fixture("p");
++const { P, chk, call, mkShop, mkUser, done, TAG } = fx;
++const j = (v: Any) => JSON.stringify(v, (_k, x) => (typeof x === "bigint" ? x.toString() : x instanceof Date ? x.toISOString() : x));
++const codeOf = (r: Any) => (r.ok ? "OK" : String(r.err?.code ?? r.err?.name ?? "ERR"));
++const rand = TAG.slice(-8);
++const info = (id: string, msg: string) => console.log(`  ℹ️  [${id}] ${msg}`);
++const HIDDEN_CONTACT = "ผู้ติดต่อที่มองไม่เห็น";
++
++const MEM = (await import("@/lib/modules/member" as string)) as Any;
++const { toMemberActor } = MEM;
++const CON = (await import("@/lib/modules/crm/contacts" as string)) as Any;
++const DEALS = (await import("@/lib/modules/crm/deals" as string)) as Any;
++const WHERE = (await import("@/lib/modules/crm/where" as string)) as Any;
++const UID = (await import("@/lib/ui/date" as string)) as Any;
++const fmtDate = (v: string): string => (typeof UID.formatThaiDateFull === "function" ? UID.formatThaiDateFull(v) : "<formatThaiDateFull missing>");
++const TYPES = (await import("@/components/crm/objects/types" as string)) as Any;
++const extra = (await import("./probe-cf13-sweep.mts" as string)) as Any;
++
++async function member(shop: Any, suffix: string, role: "STAFF" | "MANAGER", unitAccess: string[], keys: string[]) {
++  const uid = await mkUser(`-${suffix}`);
++  const permissions = Object.fromEntries(keys.map((k) => [k, true]));
++  const m = await P.membership.create({ data: { userId: uid, tenantId: shop.tid, role, unitAccess, permissions, acceptedAt: new Date() } });
++  return { uid, actor: toMemberActor(uid, m), ctx: { tenantId: shop.tid, systemId: shop.S, actorUserId: uid } };
++}
++async function mkCompany(shop: Any, name: string, ownerUserId: string, teamId: string | null = null) {
++  const party = await P.party.create({ data: { tenantId: shop.tid, name, kind: "COMPANY" } });
++  return P.crmCompany.create({ data: { tenantId: shop.tid, systemId: shop.S, partyId: party.id, name, ownerUserId, teamId } });
++}
++async function mkContact(shop: Any, first: string, ownerUserId: string, opts: { companyId?: string | null; teamId?: string | null; score?: number } = {}) {
++  const name = `${first} ${TAG}`;
++  const party = await P.party.create({ data: { tenantId: shop.tid, name, kind: "PERSON" } });
++  const k = await P.crmContact.create({ data: { tenantId: shop.tid, systemId: shop.S, name, firstName: first, partyId: party.id, ownerUserId, teamId: opts.teamId ?? null, companyId: opts.companyId ?? null, score: opts.score ?? 0 } });
++  if (opts.companyId) await P.crmCompanyContact.create({ data: { tenantId: shop.tid, companyId: opts.companyId, contactId: k.id, isPrimary: true } });
++  return k;
++}
++function parseCsv(text: string): string[][] {
++  const out: string[][] = [];
++  let row: string[] = [];
++  let cell = "";
++  let q = false;
++  const s = text.replace(/^﻿/, "");
++  for (let i = 0; i < s.length; i += 1) {
++    const ch = s[i]!;
++    if (q) {
++      if (ch === '"' && s[i + 1] === '"') { cell += '"'; i += 1; } else if (ch === '"') q = false; else cell += ch;
++    } else if (ch === '"') q = true;
++    else if (ch === ",") { row.push(cell); cell = ""; }
++    else if (ch === "\r") { /* skip */ }
++    else if (ch === "\n") { row.push(cell); out.push(row); row = []; cell = ""; }
++    else cell += ch;
++  }
++  if (cell || row.length) { row.push(cell); out.push(row); }
++  return out;
++}
++
++try {
++  const shop = await mkShop("a");
++  const owner = { actor: shop.owner, ctx: shop.ctx, uid: shop.uid };
++  const TA = await P.team.create({ data: { tenantId: shop.tid, name: `TA ${TAG}`, unitIds: ["u-a"] } });
++  const TB = await P.team.create({ data: { tenantId: shop.tid, name: `TB ${TAG}`, unitIds: ["u-b"] } });
++  const BASE = ["crm.contact.read", "crm.contact.export", "crm.sequence.enroll", "crm.deal.read", "crm.deal.create", "crm.deal.update", "crm.deal.export", "crm.activity.read", "crm.report.view"];
++  const mgr = await member(shop, "mgr", "MANAGER", ["u-a"], []); // unit-limited manager (ALL within unit u-a)
++  const staff = await member(shop, "own", "STAFF", ["*"], [...BASE, "crm.company.read"]); // own-records staff (no team ⇒ TEAM = own)
++  const ro = await member(shop, "ro", "STAFF", ["*"], [...BASE, "crm.company.read"]); // read-only-company role (company read, no company write)
++  const noCo = await member(shop, "noco", "STAFF", ["*"], BASE); // no company read key at all
++  const personas = [["owner", owner], ["mgr", mgr], ["staff", staff], ["ro", ro], ["noco", noCo]] as const;
++
++  // companies: hidden (TB · owner) · visible-to-team-A (TA · owned by staff) · owned by ro
++  const coHid = await mkCompany(shop, `บริษัทลับ ${rand}`, shop.uid, TB.id);
++  const coA = await mkCompany(shop, `บริษัทเอ ${rand}`, staff.uid, TA.id);
++  const coRo = await mkCompany(shop, `บริษัทอาร์โอ ${rand}`, ro.uid, null);
++  // contacts: owned by owner (no team · hidden from the staff personas) · owned by staff · owned by ro · team B (hidden from mgr)
++  const kOwner = await mkContact(shop, "เจ้าของถือ", shop.uid, { companyId: coHid.id, score: 77 });
++  const kStaff = await mkContact(shop, "สตาฟถือ", staff.uid, { companyId: coA.id, score: 12 });
++  const kRo = await mkContact(shop, "อาร์โอถือ", ro.uid, { companyId: coRo.id, score: 5 });
++  const kTB = await mkContact(shop, "ทีมบีถือ", shop.uid, { teamId: TB.id, score: 40 });
++  // deals: every persona sees every deal (owned by staff · collaborators = ro + noco · no team ⇒ mgr ALL-in-unit sees teamless rows)
++  const mkDeal = async (title: string, contactId: string, companyId: string | null, stage = 0, value = 100_00) =>
++    P.crmDeal.create({ data: { tenantId: shop.tid, systemId: shop.S, pipelineId: shop.pipe.id, stageId: shop.stages[stage].id, title: `${title} ${rand}`, contactId, companyId, ownerUserId: staff.uid, collaboratorUserIds: [ro.uid, noCo.uid], valueSatang: value, kind: "OPEN" } });
++  const dHid = await mkDeal("ดีลหนึ่ง", kOwner.id, coHid.id, 0, 300_00);
++  const dA = await mkDeal("ดีลสอง", kStaff.id, coA.id, 1, 200_00);
++  const dRo = await mkDeal("ดีลสาม", kRo.id, coRo.id, 2, 150_00);
++  const dNone = await mkDeal("ดีลสี่", kTB.id, null, 0, 50_00);
++  const DEALS_ALL = [dHid, dA, dRo, dNone];
++  const companyOf = new Map<string, Any>([[coHid.id, coHid], [coA.id, coA], [coRo.id, coRo]]);
++  const contactOf = new Map<string, Any>([[kOwner.id, kOwner], [kStaff.id, kStaff], [kRo.id, kRo], [kTB.id, kTB]]);
++  const rollBefore = j(await P.crmCompany.findMany({ where: { tenantId: shop.tid }, orderBy: { id: "asc" }, select: { id: true, openDealCount: true, wonValueSatang: true, outstandingSatang: true } }));
++
++  // ground truth = the viewer's own company / contact visibility (companyWhere / contactWhere — the deal 360 rule)
++  const visCo = async (who: Any) => new Set((await P.crmCompany.findMany({ where: { AND: [await WHERE.companyWhere(who.ctx, who.actor), { tenantId: shop.tid }] }, select: { id: true } })).map((r: Any) => r.id));
++  const visK = async (who: Any) => new Set((await P.crmContact.findMany({ where: { AND: [await WHERE.contactWhere(who.ctx, who.actor), { tenantId: shop.tid }] }, select: { id: true } })).map((r: Any) => r.id));
++
++  console.log("\n── NM · deal list / board / CSV / 360 per persona ──");
++  const dump: Record<string, Any> = {};
++  const norm = (v: Any) => {
++    let s = j(v);
++    for (const [id, lbl] of [[shop.tid, "<tenant>"], [shop.S, "<sys>"], [shop.pipe.id, "<pipe>"], ...shop.stages.map((st: Any, i: number) => [st.id, `<stage${i}>`]), [coHid.id, "<coHid>"], [coA.id, "<coA>"], [coRo.id, "<coRo>"], [kOwner.id, "<kOwner>"], [kStaff.id, "<kStaff>"], [kRo.id, "<kRo>"], [kTB.id, "<kTB>"], [dHid.id, "<dHid>"], [dA.id, "<dA>"], [dRo.id, "<dRo>"], [dNone.id, "<dNone>"], [shop.uid, "<owner>"], [mgr.uid, "<mgr>"], [staff.uid, "<staff>"], [ro.uid, "<ro>"], [noCo.uid, "<noco>"], [TA.id, "<TA>"], [TB.id, "<TB>"], [TAG, "<TAG>"], [rand, "<rand>"]] as [string, string][]) s = s.split(id).join(lbl);
++    return s.replace(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z/g, "<ts>").replace(/"\d{4}-\d{2}-\d{2}"/g, '"<day>"');
++  };
++  for (const [label, who] of personas) {
++    const cos = await visCo(who);
++    const ks = await visK(who);
++    const lst = await call(() => DEALS.listDeals(who.ctx, who.actor, { pageSize: 50 }));
++    const board = await call(() => DEALS.getBoard(who.ctx, who.actor, { pipelineId: shop.pipe.id }));
++    const csv = await call(() => DEALS.exportDeals(who.ctx, who.actor, {}));
++    const items: Any[] = lst.v?.items ?? [];
++    const bcards: Any[] = (board.v?.columns ?? []).flatMap((c: Any) => c.cards);
++    const rows = parseCsv(String(csv.v ?? ""));
++    const hdr = rows[0] ?? [];
++    const iCo = hdr.indexOf("บริษัท");
++    const iK = hdr.indexOf("ผู้ติดต่อ");
++    const bad: string[] = [];
++    const seenIds = new Set(items.map((x) => x.id));
++    for (const d of DEALS_ALL) {
++      if (!seenIds.has(d.id)) bad.push(`list misses ${d.title}`);
++      const wantCo = d.companyId && cos.has(d.companyId) ? companyOf.get(d.companyId).name : null;
++      const k = contactOf.get(d.contactId);
++      const wantK = ks.has(d.contactId) ? k.name : HIDDEN_CONTACT;
++      const wantScore = ks.has(d.contactId) ? k.score : 0;
++      const card = items.find((x) => x.id === d.id);
++      const bc = bcards.find((x) => x.id === d.id);
++      const row = rows.find((r) => r[0] === d.title);
++      for (const [where, c] of [["list", card], ["board", bc]] as const) {
++        if (!c) { bad.push(`${where} missing ${d.title}`); continue; }
++        if (c.companyName !== wantCo) bad.push(`${where} ${d.title} company=${j(c.companyName)} want ${j(wantCo)}`);
++        if (c.contactName !== wantK) bad.push(`${where} ${d.title} contact=${j(c.contactName)} want ${j(wantK)}`);
++        if (c.score !== wantScore) bad.push(`${where} ${d.title} score=${c.score} want ${wantScore}`);
++        if (c.companyId !== d.companyId) bad.push(`${where} ${d.title} companyId changed`);
++      }
++      if (!row) bad.push(`csv missing ${d.title}`);
++      else {
++        if (row[iCo] !== (wantCo ?? "")) bad.push(`csv ${d.title} company=${j(row[iCo])} want ${j(wantCo ?? "")}`);
++        if (row[iK] !== wantK) bad.push(`csv ${d.title} contact=${j(row[iK])} want ${j(wantK)}`);
++      }
++      // deal 360 parity (the reference rule)
++      const d360 = await call(() => DEALS.getDeal360(who.ctx, who.actor, d.id));
++      if (!d360.ok) bad.push(`360 ${d.title} ${codeOf(d360)}`);
++      else {
++        if ((d360.v.company?.name ?? null) !== (card?.companyName ?? null)) bad.push(`360≠card company ${d.title}`);
++        if (d360.v.contact.name !== card?.contactName) bad.push(`360≠card contact ${d.title}`);
++      }
++    }
++    // no hidden name anywhere in what this viewer receives
++    const blob = `${j(lst.v)}\n${j(board.v)}\n${String(csv.v ?? "")}`;
++    for (const [id, c] of companyOf) if (!cos.has(id) && blob.includes(c.name)) bad.push(`hidden company name "${c.name}" in payload`);
++    for (const [id, k] of contactOf) if (!ks.has(id) && blob.includes(k.name)) bad.push(`hidden contact name "${k.name}" in payload`);
++    // board totals (roll-up per column) are unchanged by visibility of names: every deal counted
++    const cnt = (board.v?.columns ?? []).reduce((s: number, c: Any) => s + c.count, 0);
++    const sum = (board.v?.columns ?? []).reduce((s: number, c: Any) => s + c.sumSatang, 0);
++    if (cnt !== 4 || sum !== 700_00) bad.push(`board totals ${cnt}/${sum}`);
++    const hiddenCos = [...companyOf.keys()].filter((id) => !cos.has(id)).length;
++    const hiddenKs = [...contactOf.keys()].filter((id) => !ks.has(id)).length;
++    chk(`NM-${label}`, lst.ok && board.ok && csv.ok && bad.length === 0, `${codeOf(lst)}/${codeOf(board)}/${codeOf(csv)} · sees ${3 - hiddenCos}/3 companies, ${4 - hiddenKs}/4 contacts · ${bad.length ? bad.join(" · ") : "names = viewer visibility on list/board/CSV, = deal 360, no hidden name in payload, totals 4 deals / ฿700"}`);
++    dump[label] = { list: norm(lst.v), board: norm(board.v), csv: norm(String(csv.v ?? "").split("\n").sort()), hiddenCos, hiddenKs };
++  }
++  // persona shapes the brief asks for actually occur (otherwise the NM checks prove nothing)
++  chk("NM-shapes", dump.owner.hiddenCos === 0 && dump.owner.hiddenKs === 0 && dump.mgr.hiddenCos >= 1 && dump.staff.hiddenCos >= 1 && dump.staff.hiddenKs >= 1 && dump.noco.hiddenCos === 3,
++    `hidden companies/contacts: ${personas.map(([l]) => `${l} ${dump[l].hiddenCos}/${dump[l].hiddenKs}`).join(" · ")}`);
++  const rollAfter = j(await P.crmCompany.findMany({ where: { tenantId: shop.tid }, orderBy: { id: "asc" }, select: { id: true, openDealCount: true, wonValueSatang: true, outstandingSatang: true } }));
++  const dealsAfter = await P.crmDeal.findMany({ where: { tenantId: shop.tid }, select: { id: true, companyId: true } });
++  chk("NM-rollups", rollBefore === rollAfter && DEALS_ALL.every((d) => dealsAfter.find((x: Any) => x.id === d.id)?.companyId === d.companyId), "company roll-up columns and every deal.companyId unchanged by reading");
++
++  // REST op deals.export / deals.list (same service) — the API path a key user takes
++  {
++    const ops = (await import("@/lib/modules/crm/api/ops/deals" as string).catch(() => null)) as Any;
++    info("NM-rest", ops ? `REST deal ops module loaded (${Object.keys(ops).slice(0, 6).join(",")}) — they call listDeals/getBoard/exportDeals (see SW)` : "REST deal ops module not found at api/ops/deals");
++  }
++
++  // batched: company reads on one page do not grow with the number of companies
++  {
++    let nCo = 0;
++    let nK = 0;
++    const origCo = P.crmCompany.findMany;
++    const origK = P.crmContact.findMany;
++    let patched = true;
++    try {
++      P.crmCompany.findMany = (...args: Any[]) => { nCo += 1; return origCo.apply(P.crmCompany, args); };
++      P.crmContact.findMany = (...args: Any[]) => { nK += 1; return origK.apply(P.crmContact, args); };
++    } catch { patched = false; }
++    if (patched && P.crmCompany.findMany !== origCo) {
++      const more: Any[] = [];
++      for (let i = 0; i < 6; i += 1) {
++        const c = await mkCompany(shop, `บริษัทชุด${i} ${rand}`, shop.uid, i % 2 ? TB.id : TA.id);
++        more.push(await mkDeal(`ดีลชุด${i}`, kStaff.id, c.id));
++      }
++      nCo = 0; nK = 0;
++      const r = await call(() => DEALS.listDeals(mgr.ctx, mgr.actor, { pageSize: 50 }));
++      const a1 = [nCo, nK];
++      nCo = 0; nK = 0;
++      const b = await call(() => DEALS.getBoard(mgr.ctx, mgr.actor, { pipelineId: shop.pipe.id }));
++      const a2 = [nCo, nK];
++      nCo = 0; nK = 0;
++      const e = await call(() => DEALS.exportDeals(mgr.ctx, mgr.actor, {}));
++      const a3 = [nCo, nK];
++      P.crmCompany.findMany = origCo;
++      P.crmContact.findMany = origK;
++      chk("NM-batched", r.ok && b.ok && e.ok && [a1, a2, a3].every(([c, k]) => c! <= 1 && k! <= 1), `10 deals / 9 companies on the page → company reads list=${a1[0]} board=${a2[0]} csv=${a3[0]} · contact reads ${a1[1]}/${a2[1]}/${a3[1]} (≤ 1 each = one visibility query per page)`);
++      for (const d of more) await P.crmDeal.delete({ where: { id: d.id } });
++    } else info("NM-batched", "could not wrap the prisma delegate — not measured");
++  }
++
++  // positive control: owner + viewers WITH visibility get what they got before (RED dump vs GREEN dump)
++  {
++    const out = process.env.CF13_DUMP;
++    const base = process.env.CF13_BASELINE;
++    const sig = Object.fromEntries(Object.entries(dump).map(([k, v]) => [k, createHash("sha256").update(j(v)).digest("hex").slice(0, 16)]));
++    if (out) { mkdirSync(out.replace(/\/[^/]+$/, ""), { recursive: true }); writeFileSync(out, j(dump)); }
++    if (base && existsSync(base)) {
++      const old = JSON.parse(readFileSync(base, "utf8"));
++      const same = (l: string) => j(old[l]) === j(dump[l]);
++      // owner sees everything ⇒ byte-identical · personas: only rows whose company/contact they cannot see may differ
++      const diffs: string[] = [];
++      for (const [l] of personas) {
++        if (same(l)) continue;
++        const a = old[l];
++        const b = dump[l];
++        diffs.push(`${l}: list ${a.list === b.list ? "=" : "≠"} board ${a.board === b.board ? "=" : "≠"} csv ${j(a.csv) === j(b.csv) ? "=" : "≠"}`);
++      }
++      chk("NM-control-owner-identical", same("owner"), `owner DTOs (list · board · CSV, ids/timestamps normalised) byte-identical to the RED run: ${same("owner")} · personas that changed: ${diffs.join(" · ") || "none"}`);
++      // a viewer WITH visibility of a deal's company + contact gets that card byte-identical (per card)
++      const cardDiffs: string[] = [];
++      for (const [l] of personas) {
++        const a = JSON.parse(old[l].list)?.items ?? [];
++        const b = JSON.parse(dump[l].list)?.items ?? [];
++        for (const cb of b) {
++          const ca = a.find((x: Any) => x.id === cb.id);
++          const hiddenBefore = !ca;
++          if (hiddenBefore) continue;
++          const sees = cb.companyName === ca.companyName && cb.contactName === ca.contactName;
++          if (sees && j(ca) !== j(cb)) cardDiffs.push(`${l} ${cb.id}`);
++          if (!sees && cb.companyName !== null && cb.companyName !== ca.companyName) cardDiffs.push(`${l} ${cb.id} visible name changed`);
++        }
++      }
++      chk("NM-control-visible-cards-identical", cardDiffs.length === 0, `every card whose company + contact the viewer can see is byte-identical to the RED run · ${cardDiffs.join(" · ") || "0 differences"}`);
++    } else info("NM-control", `no baseline (${base ?? "unset"}) — signatures ${j(sig)}`);
++  }
++
++  // ═══════════ SW · sweep sites fixed in this card ═══════════
++  if (extra?.run) await extra.run({ fx, shop, owner, mgr, staff, ro, noCo, personas, coHid, coA, coRo, kOwner, kStaff, kRo, kTB, dHid, dA, dRo, dNone, visCo, visK, info, j, codeOf, member, mkCompany, mkContact, parseCsv, HIDDEN_CONTACT });
++
++  // ═══════════ DT · DATETIME export precision ═══════════
++  console.log("\n── DT ──");
++  {
++    const F = MEM.fields;
++    const fctx = { ...owner.ctx, objectKey: "contact", actor: owner.actor };
++    const sec = await F.createSection(fctx, { key: `qcP${rand.replace(/[^a-z]/g, "")}`.slice(0, 30), label: "เวลาทดสอบ" });
++    await F.createField(fctx, { sectionId: sec.id, key: "pAt", label: "เวลาทดสอบ", type: "DATETIME" });
++    await F.createField(fctx, { sectionId: sec.id, key: "pOn", label: "วันทดสอบ", type: "DATE" });
++    // what the UI sends (thaiInputToIso of a datetime-local value) vs what API / import may send
++    const uiValue = TYPES.thaiInputToIso("2026-10-09T00:30");
++    const cases: [string, string][] = [["ui", uiValue], ["ms", "2026-10-08T17:30:45.678Z"], ["ms1", "2026-10-08T17:30:45.001Z"], ["sec", "2026-10-08T17:30:45.000Z"], ["pre1970ms", "1965-03-01T03:00:00.250Z"]];
++    const made: Any[] = [];
++    for (const [n, v] of cases) {
++      const k = await mkContact(shop, `เวลา-${n}`, shop.uid);
++      const r = await call(() => CON.updateContact(owner.ctx, owner.actor, k.id, { fields: { pAt: v, pOn: "2026-10-09" } }));
++      const stored = await P.customRecordValue.findFirst({ where: { tenantId: shop.tid, recordId: k.id, field: { key: "pAt" } } });
++      made.push({ n, v, k, ok: r.ok, stored: stored?.valueDate ? new Date(stored.valueDate).toISOString() : null });
++    }
++    info("DT-stored", made.map((m) => `${m.n}: sent ${m.v} → stored ${m.stored}`).join(" · "));
++    chk("DT-ui-whole-seconds", made[0].stored?.endsWith(":00.000Z"), `the UI path (datetime-local → thaiInputToIso "${uiValue}") stores whole seconds (${made[0].stored}) · API/import can store ms (${made[1].stored})`);
++    const csv = await CON.exportContacts(owner.ctx, owner.actor, { confirm: true, reason: "ตรวจความละเอียดเวลา" });
++    const rows = parseCsv(csv);
++    const hdr = rows[0] ?? [];
++    const iAt = hdr.indexOf("เวลาทดสอบ");
++    const iOn = hdr.indexOf("วันทดสอบ");
++    const cellOf = (n: string) => (rows.find((r) => r[0] === `เวลา-${n}`) ?? [])[iAt] ?? "<missing>";
++    const oldCell = (iso: string) => `${new Date(Date.parse(iso) + 7 * 3_600_000).toISOString().slice(0, 19)}+07:00`; // fix7 format
++    const cells = made.map((m) => ({ ...m, cell: cellOf(m.n) }));
++    info("DT-cells", cells.map((c) => `${c.n}=${c.cell}`).join(" · "));
++    const wholeSame = cells.filter((c) => c.stored?.endsWith(".000Z")).every((c) => c.cell === oldCell(c.stored));
++    const exact = cells.every((c) => c.stored && new Date(c.cell).toISOString() === c.stored);
++    chk("DT-export-exact", exact && wholeSame, `every cell parses back to the stored instant exactly (ms included) · whole-second cells byte-identical to the fix7 form: ${wholeSame}`);
++    // export → import round trip through the real importer (TZ UTC and Asia/Bangkok)
++    const prevTz = process.env.TZ;
++    const back: string[] = [];
++    let rtOk = true;
++    for (const tz of ["UTC", "Asia/Bangkok"]) {
++      process.env.TZ = tz;
++      for (const c of cells) {
++        const nm = `กลับ-${c.n}-${tz.replace("/", "")}-${rand}`;
++        const imp = await call(() => CON.importContacts(owner.ctx, owner.actor, { rows: [{ ชื่อ: nm, เวลา: c.cell }], mapping: { ชื่อ: "firstName", เวลา: "f.pAt" }, options: { onDuplicate: "skip", source: "IMPORT" } }));
++        const k = await P.crmContact.findFirst({ where: { tenantId: shop.tid, firstName: nm } });
++        const v = k ? await P.customRecordValue.findFirst({ where: { tenantId: shop.tid, recordId: k.id, field: { key: "pAt" } } }) : null;
++        const got = v?.valueDate ? new Date(v.valueDate).toISOString() : null;
++        if (got !== c.stored) { rtOk = false; back.push(`${tz} ${c.n}: ${codeOf(imp)} got ${got} want ${c.stored}`); }
++      }
++    }
++    if (prevTz === undefined) delete process.env.TZ; else process.env.TZ = prevTz;
++    chk("DT-roundtrip", rtOk, `export cell → importContacts → stored instant identical for ${cells.length} values × 2 server TZ · ${back.join(" · ") || "all exact"}`);
++    // DATE column untouched by this card
++    chk("DA-export-unchanged", cells.every((c) => (rows.find((r) => r[0] === `เวลา-${c.n}`) ?? [])[iOn] === "2026-10-09"), `DATE export cells = ${j(cells.map((c) => (rows.find((r) => r[0] === `เวลา-${c.n}`) ?? [])[iOn]))}`);
++    // ═══════════ DA · DATE display on contact 360 ═══════════
++    console.log("\n── DA ──");
++    const c360 = await CON.getContact360(owner.ctx, owner.actor, made[0].k.id);
++    const f = c360.fields.sections.flatMap((s: Any) => s.fields).find((x: Any) => x.key === "pOn");
++    const rec = TYPES.displayValue("2026-10-09", [], "DATE");
++    chk("DA-360-display", f?.display === rec && rec === "9 ต.ค. 2569" && f?.value === "2026-10-09", `contact 360 display=${j(f?.display)} · record page=${j(rec)} · value=${j(f?.value)}`);
++    // the shared formatter is byte-identical to the record page's previous inline code for every day 1960–2040 + odd inputs
++    const oldRec = (v: string) => new Date(`${v.slice(0, 10)}T00:00:00Z`).toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
++    let mism = 0;
++    let n = 0;
++    for (let t = Date.UTC(1960, 0, 1); t <= Date.UTC(2040, 11, 31); t += 86_400_000) {
++      const ymd = new Date(t).toISOString().slice(0, 10);
++      n += 1;
++      if (fmtDate(ymd) !== oldRec(ymd) || TYPES.displayValue(ymd, [], "DATE") !== oldRec(ymd)) mism += 1;
++    }
++    const odd = ["2026-10-09T00:00:00.000Z", "2024-02-29"].filter((s) => fmtDate(s) !== oldRec(s));
++    chk("DA-byte-identical", mism === 0 && odd.length === 0, `${n} days 1960–2040 + 2 odd inputs: formatThaiDateFull == old record-page code, mismatches ${mism + odd.length} · non-date text kept: ${j(fmtDate("ไม่ใช่วันที่"))}`);
++    // the empty DATE still renders "—" on the page (display "" → page fallback)
++    const k0 = await mkContact(shop, "วันว่าง", shop.uid);
++    const c0 = await CON.getContact360(owner.ctx, owner.actor, k0.id);
++    const f0 = c0.fields.sections.flatMap((s: Any) => s.fields).find((x: Any) => x.key === "pOn");
++    chk("DA-empty", f0 && f0.display === "" && f0.value === null, `empty DATE display=${j(f0?.display)} value=${j(f0?.value)}`);
++  }
++} catch (e) {
++  chk("CRASH", false, String((e as Error)?.stack ?? e).slice(0, 600));
++}
++await done("probe-cf13");
+diff --git a/scripts/pending/cf13/probe-cf13.red.log b/scripts/pending/cf13/probe-cf13.red.log
+new file mode 100644
+index 00000000..5c4953c4
+--- /dev/null
++++ b/scripts/pending/cf13/probe-cf13.red.log
+@@ -0,0 +1,50 @@
++(node:2237701) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
++In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
++
++To prepare for this change:
++- If you want the current behavior, explicitly use 'sslmode=verify-full'
++- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
++
++See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
++(Use `node --trace-warnings ...` to show where the warning was created)
++
++── NM · deal list / board / CSV / 360 per persona ──
++  ✅ [NM-owner] OK/OK/OK · sees 3/3 companies, 4/4 contacts · names = viewer visibility on list/board/CSV, = deal 360, no hidden name in payload, totals 4 deals / ฿700
++  ❌ [NM-mgr] OK/OK/OK · sees 2/3 companies, 3/4 contacts · list ดีลหนึ่ง yurawbdq company="บริษัทลับ yurawbdq" want null · board ดีลหนึ่ง yurawbdq company="บริษัทลับ yurawbdq" want null · csv ดีลหนึ่ง yurawbdq company="บริษัทลับ yurawbdq" want "" · 360≠card company ดีลหนึ่ง yurawbdq · list ดีลสี่ yurawbdq contact="ทีมบีถือ qc-cf13-p-yurawbdq" want "ผู้ติดต่อที่มองไม่เห็น" · list ดีลสี่ yurawbdq score=40 want 0 · board ดีลสี่ yurawbdq contact="ทีมบีถือ qc-cf13-p-yurawbdq" want "ผู้ติดต่อที่มองไม่เห็น" · board ดีลสี่ yurawbdq score=40 want 0 · csv ดีลสี่ yurawbdq contact="ทีมบีถือ qc-cf13-p-yurawbdq" want "ผู้ติดต่อที่มองไม่เห็น" · 360≠card contact ดีลสี่ yurawbdq · hidden company name "บริษัทลับ yurawbdq" in payload · hidden contact name "ทีมบีถือ qc-cf13-p-yurawbdq" in payload
++  ❌ [NM-staff] OK/OK/OK · sees 1/3 companies, 1/4 contacts · list ดีลหนึ่ง yurawbdq company="บริษัทลับ yurawbdq" want null · list ดีลหนึ่ง yurawbdq contact="เจ้าของถือ qc-cf13-p-yurawbdq" want "ผู้ติดต่อที่มองไม่เห็น" · list ดีลหนึ่ง yurawbdq score=77 want 0 · board ดีลหนึ่ง yurawbdq company="บริษัทลับ yurawbdq" want null · board ดีลหนึ่ง yurawbdq contact="เจ้าของถือ qc-cf13-p-yurawbdq" want "ผู้ติดต่อที่มองไม่เห็น" · board ดีลหนึ่ง yurawbdq score=77 want 0 · csv ดีลหนึ่ง yurawbdq company="บริษัทลับ yurawbdq" want "" · csv ดีลหนึ่ง yurawbdq contact="เจ้าของถือ qc-cf13-p-yurawbdq" want "ผู้ติดต่อที่มองไม่เห็น" · 360≠card company ดีลหนึ่ง yurawbdq · 360≠card contact ดีลหนึ่ง yurawbdq · list ดีลสาม yurawbdq company="บริษัทอาร์โอ yurawbdq" want null · list ดีลสาม yurawbdq contact="อาร์โอถือ qc-cf13-p-yurawbdq" want "ผู้ติดต่อที่มองไม่เห็น" · list ดีลสาม yurawbdq score=5 want 0 · board ดีลสาม yurawbdq company="บริษัทอาร์โอ yurawbdq" want null · board ดีลสาม yurawbdq contact="อาร์โอถือ qc-cf13-p-yurawbdq" want "ผู้ติดต่อที่มองไม่เห็น" · board ดีลสาม yurawbdq score=5 want 0 · csv ดีลสาม yurawbdq company="บริษัทอาร์โอ yurawbdq" want "" · csv ดีลสาม yurawbdq contact="อาร์โอถือ qc-cf13-p-yurawbdq" want "ผู้ติดต่อที่มองไม่เห็น" · 360≠card company ดีลสาม yurawbdq · 360≠card contact ดีลสาม yurawbdq · list ดีลสี่ yurawbdq contact="ทีมบีถือ qc-cf13-p-yurawbdq" want "ผู้ติดต่อที่มองไม่เห็น" · list ดีลสี่ yurawbdq score=40 want 0 · board ดีลสี่ yurawbdq contact="ทีมบีถือ qc-cf13-p-yurawbdq" want "ผู้ติดต่อที่มองไม่เห็น" · board ดีลสี่ yurawbdq score=40 want 0 · csv ดีลสี่ yurawbdq contact="ทีมบีถือ qc-cf13-p-yurawbdq" want "ผู้ติดต่อที่มองไม่เห็น" · 360≠card contact ดีลสี่ yurawbdq · hidden company name "บริษัทลับ yurawbdq" in payload · hidden company name "บริษัทอาร์โอ yurawbdq" in payload · hidden contact name "เจ้าของถือ qc-cf13-p-yurawbdq" in payload · hidden contact name "อาร์โอถือ qc-cf13-p-yurawbdq" in payload · hidden contact name "ทีมบีถือ qc-cf13-p-yurawbdq" in payload
++  ❌ [NM-ro] OK/OK/OK · sees 1/3 companies, 1/4 contacts · list ดีลหนึ่ง yurawbdq company="บริษัทลับ yurawbdq" want null · list ดีลหนึ่ง yurawbdq contact="เจ้าของถือ qc-cf13-p-yurawbdq" want "ผู้ติดต่อที่มองไม่เห็น" · list ดีลหนึ่ง yurawbdq score=77 want 0 · board ดีลหนึ่ง yurawbdq company="บริษัทลับ yurawbdq" want null · board ดีลหนึ่ง yurawbdq contact="เจ้าของถือ qc-cf13-p-yurawbdq" want "ผู้ติดต่อที่มองไม่เห็น" · board ดีลหนึ่ง yurawbdq score=77 want 0 · csv ดีลหนึ่ง yurawbdq company="บริษัทลับ yurawbdq" want "" · csv ดีลหนึ่ง yurawbdq contact="เจ้าของถือ qc-cf13-p-yurawbdq" want "ผู้ติดต่อที่มองไม่เห็น" · 360≠card company ดีลหนึ่ง yurawbdq · 360≠card contact ดีลหนึ่ง yurawbdq · list ดีลสอง yurawbdq company="บริษัทเอ yurawbdq" want null · list ดีลสอง yurawbdq contact="สตาฟถือ qc-cf13-p-yurawbdq" want "ผู้ติดต่อที่มองไม่เห็น" · list ดีลสอง yurawbdq score=12 want 0 · board ดีลสอง yurawbdq company="บริษัทเอ yurawbdq" want null · board ดีลสอง yurawbdq contact="สตาฟถือ qc-cf13-p-yurawbdq" want "ผู้ติดต่อที่มองไม่เห็น" · board ดีลสอง yurawbdq score=12 want 0 · csv ดีลสอง yurawbdq company="บริษัทเอ yurawbdq" want "" · csv ดีลสอง yurawbdq contact="สตาฟถือ qc-cf13-p-yurawbdq" want "ผู้ติดต่อที่มองไม่เห็น" · 360≠card company ดีลสอง yurawbdq · 360≠card contact ดีลสอง yurawbdq · list ดีลสี่ yurawbdq contact="ทีมบีถือ qc-cf13-p-yurawbdq" want "ผู้ติดต่อที่มองไม่เห็น" · list ดีลสี่ yurawbdq score=40 want 0 · board ดีลสี่ yurawbdq contact="ทีมบีถือ qc-cf13-p-yurawbdq" want "ผู้ติดต่อที่มองไม่เห็น" · board ดีลสี่ yurawbdq score=40 want 0 · csv ดีลสี่ yurawbdq contact="ทีมบีถือ qc-cf13-p-yurawbdq" want "ผู้ติดต่อที่มองไม่เห็น" · 360≠card contact ดีลสี่ yurawbdq · hidden company name "บริษัทลับ yurawbdq" in payload · hidden company name "บริษัทเอ yurawbdq" in payload · hidden contact name "เจ้าของถือ qc-cf13-p-yurawbdq" in payload · hidden contact name "สตาฟถือ qc-cf13-p-yurawbdq" in payload · hidden contact name "ทีมบีถือ qc-cf13-p-yurawbdq" in payload
++  ❌ [NM-noco] OK/OK/OK · sees 0/3 companies, 0/4 contacts · list ดีลหนึ่ง yurawbdq company="บริษัทลับ yurawbdq" want null · list ดีลหนึ่ง yurawbdq contact="เจ้าของถือ qc-cf13-p-yurawbdq" want "ผู้ติดต่อที่มองไม่เห็น" · list ดีลหนึ่ง yurawbdq score=77 want 0 · board ดีลหนึ่ง yurawbdq company="บริษัทลับ yurawbdq" want null · board ดีลหนึ่ง yurawbdq contact="เจ้าของถือ qc-cf13-p-yurawbdq" want "ผู้ติดต่อที่มองไม่เห็น" · board ดีลหนึ่ง yurawbdq score=77 want 0 · csv ดีลหนึ่ง yurawbdq company="บริษัทลับ yurawbdq" want "" · csv ดีลหนึ่ง yurawbdq contact="เจ้าของถือ qc-cf13-p-yurawbdq" want "ผู้ติดต่อที่มองไม่เห็น" · 360≠card company ดีลหนึ่ง yurawbdq · 360≠card contact ดีลหนึ่ง yurawbdq · list ดีลสอง yurawbdq company="บริษัทเอ yurawbdq" want null · list ดีลสอง yurawbdq contact="สตาฟถือ qc-cf13-p-yurawbdq" want "ผู้ติดต่อที่มองไม่เห็น" · list ดีลสอง yurawbdq score=12 want 0 · board ดีลสอง yurawbdq company="บริษัทเอ yurawbdq" want null · board ดีลสอง yurawbdq contact="สตาฟถือ qc-cf13-p-yurawbdq" want "ผู้ติดต่อที่มองไม่เห็น" · board ดีลสอง yurawbdq score=12 want 0 · csv ดีลสอง yurawbdq company="บริษัทเอ yurawbdq" want "" · csv ดีลสอง yurawbdq contact="สตาฟถือ qc-cf13-p-yurawbdq" want "ผู้ติดต่อที่มองไม่เห็น" · 360≠card company ดีลสอง yurawbdq · 360≠card contact ดีลสอง yurawbdq · list ดีลสาม yurawbdq company="บริษัทอาร์โอ yurawbdq" want null · list ดีลสาม yurawbdq contact="อาร์โอถือ qc-cf13-p-yurawbdq" want "ผู้ติดต่อที่มองไม่เห็น" · list ดีลสาม yurawbdq score=5 want 0 · board ดีลสาม yurawbdq company="บริษัทอาร์โอ yurawbdq" want null · board ดีลสาม yurawbdq contact="อาร์โอถือ qc-cf13-p-yurawbdq" want "ผู้ติดต่อที่มองไม่เห็น" · board ดีลสาม yurawbdq score=5 want 0 · csv ดีลสาม yurawbdq company="บริษัทอาร์โอ yurawbdq" want "" · csv ดีลสาม yurawbdq contact="อาร์โอถือ qc-cf13-p-yurawbdq" want "ผู้ติดต่อที่มองไม่เห็น" · 360≠card company ดีลสาม yurawbdq · 360≠card contact ดีลสาม yurawbdq · list ดีลสี่ yurawbdq contact="ทีมบีถือ qc-cf13-p-yurawbdq" want "ผู้ติดต่อที่มองไม่เห็น" · list ดีลสี่ yurawbdq score=40 want 0 · board ดีลสี่ yurawbdq contact="ทีมบีถือ qc-cf13-p-yurawbdq" want "ผู้ติดต่อที่มองไม่เห็น" · board ดีลสี่ yurawbdq score=40 want 0 · csv ดีลสี่ yurawbdq contact="ทีมบีถือ qc-cf13-p-yurawbdq" want "ผู้ติดต่อที่มองไม่เห็น" · 360≠card contact ดีลสี่ yurawbdq · hidden company name "บริษัทลับ yurawbdq" in payload · hidden company name "บริษัทเอ yurawbdq" in payload · hidden company name "บริษัทอาร์โอ yurawbdq" in payload · hidden contact name "เจ้าของถือ qc-cf13-p-yurawbdq" in payload · hidden contact name "สตาฟถือ qc-cf13-p-yurawbdq" in payload · hidden contact name "อาร์โอถือ qc-cf13-p-yurawbdq" in payload · hidden contact name "ทีมบีถือ qc-cf13-p-yurawbdq" in payload
++  ✅ [NM-shapes] hidden companies/contacts: owner 0/0 · mgr 1/1 · staff 2/3 · ro 2/3 · noco 3/4
++  ✅ [NM-rollups] company roll-up columns and every deal.companyId unchanged by reading
++  ℹ️  [NM-rest] REST deal ops module loaded (DEALS_OPS) — they call listDeals/getBoard/exportDeals (see SW)
++  ✅ [NM-batched] 10 deals / 9 companies on the page → company reads list=1 board=1 csv=1 · contact reads 0/0/0 (≤ 1 each = one visibility query per page)
++  ℹ️  [NM-control] no baseline () — signatures {"owner":"d3ebb2a10a4a5e58","mgr":"4d9c34852c5bface","staff":"5dec79e42d07e208","ro":"5dec79e42d07e208","noco":"94250ff26d102936"}
++
++── SW · sweep sites ──
++  ✅ [SW-contacts-owner] list OK · export OK · 4/4 sweep contacts visible · companyName / companyText / CSV cell / 360 companyText / brief = viewer rule
++  ❌ [SW-contacts-mgr] list OK · export OK · 4/4 sweep contacts visible · list ข้อความลับ companyName="บริษัทลับ yurawbdq" want null · list ข้อความลับ companyText="บริษัทลับ yurawbdq" want null · csv ข้อความลับ company="บริษัทลับ yurawbdq" want "" · 360 ข้อความลับ companyText="บริษัทลับ yurawbdq" want null · 360 payload has the hidden name · brief ข้อความลับ companyName="บริษัทลับ yurawbdq" want null · contact list payload has the hidden name · contact CSV has the hidden name
++  ❌ [SW-contacts-staff] list OK · export OK · 4/4 sweep contacts visible · list ข้อความลับ companyName="บริษัทลับ yurawbdq" want null · list ข้อความลับ companyText="บริษัทลับ yurawbdq" want null · csv ข้อความลับ company="บริษัทลับ yurawbdq" want "" · 360 ข้อความลับ companyText="บริษัทลับ yurawbdq" want null · 360 payload has the hidden name · brief ข้อความลับ companyName="บริษัทลับ yurawbdq" want null · contact list payload has the hidden name · contact CSV has the hidden name
++  ✅ [SW-contacts-ro] list OK · export OK · 0/4 sweep contacts visible · companyName / companyText / CSV cell / 360 companyText / brief = viewer rule
++  ✅ [SW-contacts-noco] list OK · export OK · 0/4 sweep contacts visible · companyName / companyText / CSV cell / 360 companyText / brief = viewer rule
++  ❌ [SW-email-text] companyTextsForViewer per persona · owner บริษัทลับ yurawbdq: TypeError want "บริษัทลับ yurawbdq" · owner ข้อความเอเดิม: TypeError want "ข้อความเอเดิม" · owner ข้อความเก็บเดิม: TypeError want "ข้อความเก็บเดิม" · owner พิมพ์เองไม่ผูก: TypeError want "พิมพ์เองไม่ผูก" · mgr บริษัทลับ yurawbdq: TypeError want null · mgr ข้อความเอเดิม: TypeError want "ข้อความเอเดิม" · mgr ข้อความเก็บเดิม: TypeError want "ข้อความเก็บเดิม" · mgr พิมพ์เองไม่ผูก: TypeError want "พิมพ์เองไม่ผูก" · staff บริษัทลับ yurawbdq: TypeError want null · staff ข้อความเอเดิม: TypeError want "ข้อความเอเดิม" · staff ข้อความเก็บเดิม: TypeError want "ข้อความเก็บเดิม" · staff พิมพ์เองไม่ผูก: TypeError want "พิมพ์เองไม่ผูก" · ro บริษัทลับ yurawbdq: TypeError want null · ro ข้อความเอเดิม: TypeError want null · ro ข้อความเก็บเดิม: TypeError want null · ro พิมพ์เองไม่ผูก: TypeError want "พิมพ์เองไม่ผูก" · noco บริษัทลับ yurawbdq: TypeError want null · noco ข้อความเอเดิม: TypeError want null · noco ข้อความเก็บเดิม: TypeError want null · noco พิมพ์เองไม่ผูก: TypeError want "พิมพ์เองไม่ผูก"
++  ❌ [SW-sequences] owner 4 rows · mgr ข้อความลับ: "บริษัทลับ yurawbdq" want null · mgr: hidden name in payload · mgr 4 rows · staff ข้อความลับ: "บริษัทลับ yurawbdq" want null · staff: hidden name in payload · staff 4 rows · ro 0 rows · noco 0 rows
++  ❌ [SW-company360-timeline] owner 2 rows · mgr 2 rows · staff "งานบนบริษัทเอ yurawbdq": "เจ้าของถือ qc-cf13-p-yurawbdq" want null · staff: hidden contact name in payload · staff 2 rows · ro: company not visible (skip) · noco: company not visible (skip)
++  ℹ️  [SW-done] sweep checks finished
++
++── DT ──
++  ℹ️  [DT-stored] ui: sent 2026-10-09T00:30:00+07:00 → stored 2026-10-08T17:30:00.000Z · ms: sent 2026-10-08T17:30:45.678Z → stored 2026-10-08T17:30:45.678Z · ms1: sent 2026-10-08T17:30:45.001Z → stored 2026-10-08T17:30:45.001Z · sec: sent 2026-10-08T17:30:45.000Z → stored 2026-10-08T17:30:45.000Z · pre1970ms: sent 1965-03-01T03:00:00.250Z → stored 1965-03-01T03:00:00.250Z
++  ✅ [DT-ui-whole-seconds] the UI path (datetime-local → thaiInputToIso "2026-10-09T00:30:00+07:00") stores whole seconds (2026-10-08T17:30:00.000Z) · API/import can store ms (2026-10-08T17:30:45.678Z)
++  ℹ️  [DT-cells] ui=2026-10-09T00:30:00+07:00 · ms=2026-10-09T00:30:45+07:00 · ms1=2026-10-09T00:30:45+07:00 · sec=2026-10-09T00:30:45+07:00 · pre1970ms=1965-03-01T10:00:00+07:00
++  ❌ [DT-export-exact] every cell parses back to the stored instant exactly (ms included) · whole-second cells byte-identical to the fix7 form: true
++  ❌ [DT-roundtrip] export cell → importContacts → stored instant identical for 5 values × 2 server TZ · UTC ms: OK got 2026-10-08T17:30:45.000Z want 2026-10-08T17:30:45.678Z · UTC ms1: OK got 2026-10-08T17:30:45.000Z want 2026-10-08T17:30:45.001Z · UTC pre1970ms: OK got 1965-03-01T03:00:00.000Z want 1965-03-01T03:00:00.250Z · Asia/Bangkok ms: OK got 2026-10-08T17:30:45.000Z want 2026-10-08T17:30:45.678Z · Asia/Bangkok ms1: OK got 2026-10-08T17:30:45.000Z want 2026-10-08T17:30:45.001Z · Asia/Bangkok pre1970ms: OK got 1965-03-01T03:00:00.000Z want 1965-03-01T03:00:00.250Z
++  ✅ [DA-export-unchanged] DATE export cells = ["2026-10-09","2026-10-09","2026-10-09","2026-10-09","2026-10-09"]
++
++── DA ──
++  ❌ [DA-360-display] contact 360 display="2026-10-09" · record page="9 ต.ค. 2569" · value="2026-10-09"
++  ❌ [DA-byte-identical] 29586 days 1960–2040 + 2 odd inputs: formatThaiDateFull == old record-page code, mismatches 29588 · non-date text kept: "<formatThaiDateFull missing>"
++  ✅ [DA-empty] empty DATE display="" value=null
++  ✅ [CLEAN-n5gkv3] tenant rows left=0
++
++🔴 probe-cf13: 11/24
++JSON_SUMMARY {"total":24,"passed":11,"findings":["NM-mgr","NM-staff","NM-ro","NM-noco","SW-contacts-mgr","SW-contacts-staff","SW-email-text","SW-sequences","SW-company360-timeline","DT-export-exact","DT-roundtrip","DA-360-display","DA-byte-identical"]}
++exit=1 2026-10-02T01:11:55Z
+diff --git a/scripts/pending/cf13/regress.summary b/scripts/pending/cf13/regress.summary
+new file mode 100644
+index 00000000..3c217758
+--- /dev/null
++++ b/scripts/pending/cf13/regress.summary
+@@ -0,0 +1,34 @@
++start 2026-10-02T01:13:11Z
++typecheck exit=2 688s · src/lib/modules/crm/sequences.ts(1020,26): error TS2345: Argument of type 'SequencesCtx' is not assignable to parameter of type 'CompaniesCtx'.  ELIFECYCLE  Command failed with exit code 2. 
++probe-cf13 exit=0 239s · 🟢 probe-cf13: 24/24 JSON_SUMMARY {"total":24,"passed":24,"findings":[]} 
++probe-cf10 exit=0 62s · 🟢 probe-cf10: 34/34 JSON_SUMMARY {"total":34,"passed":34,"findings":[]} 
++probe-cf10-review exit=0 268s · 🟢 probe-cf10-review: 18/18 JSON_SUMMARY {"total":18,"passed":18,"findings":[]} 
++probe-cf7 exit=0 143s · 🟢 probe-cf7: 30/30 JSON_SUMMARY {"total":30,"passed":30,"findings":[]} 
++probe-cf7-r2 exit=0 23s · 🟢 probe-cf7-r2: 14/14 JSON_SUMMARY {"total":14,"passed":14,"findings":[]} 
++probe-cf7-review exit=0 121s · 🟢 probe-cf7-review: 27/27 JSON_SUMMARY {"total":27,"passed":27,"findings":[]} 
++probe-cf7-review-r2 exit=0 47s · 🟢 probe-cf7-review-r2: 21/21 JSON_SUMMARY {"total":21,"passed":21,"findings":[]} 
++probe-cf5 exit=0 88s · 🟢 probe-cf5: 22/22 JSON_SUMMARY {"total":22,"passed":22,"findings":[]} 
++probe-cf5-r2 exit=0 36s · 🟢 probe-cf5-r2: 14/14 JSON_SUMMARY {"total":14,"passed":14,"findings":[]} 
++qc-crm-c1.5 exit=0 203s · 🟢 C1.5: 103/103 JSON_SUMMARY {"total":103,"passed":103,"findings":[]} 
++qc-crm-c1.4 exit=0 197s · 🟢 C1.4: 110/110 JSON_SUMMARY {"total":110,"passed":110,"findings":[]} 
++qc-crm-c1.3 exit=0 278s · 🟢 C1.3: 89/89 JSON_SUMMARY {"total":89,"passed":89,"findings":[]} 
++qc-crm-c1.6 exit=0 619s · 🟢 C1.6: 79/79 JSON_SUMMARY {"total":79,"passed":79,"findings":[],"skippedChecks":[]} 
++qc-crm-c1.7 exit=0 306s · 🟢 C1.7: 57/57 JSON_SUMMARY {"total":57,"passed":57,"findings":[]} 
++qc-crm-c1.9 exit=0 211s · 🟢 C1.9: 45/45 JSON_SUMMARY {"total":45,"passed":45,"findings":[]} 
++qc-crm-c1.10 exit=0 130s · 🟢 C1.10: 66/66 · webhook fetch stubbed 4× · keyErrors filter-foreign-team=ทีมในตัวกรองของคีย์ไม่ใช่ทีมของร้านนี้ — เลือกทีมจากรายชื่อท… JSON_SUMMARY {"total":66,"passed":66,"fi
++qc-crm-c1.11 exit=0 73s · 🟢 C1.11: 66/66 JSON_SUMMARY {"total":66,"passed":66,"findings":[]} 
++qc-crm-c2.2 exit=0 64s · 🟢 C2.2: 73/73 · fake sends 37 · outbound fetch stubbed 0× JSON_SUMMARY {"total":73,"passed":73,"findings":[]} 
++qc-crm-c2.4 exit=0 75s · 🟢 C2.4: 91/91 · outbound fetch stubbed 0× JSON_SUMMARY {"total":91,"passed":91,"findings":[]} 
++qc-crm-c2.10 exit=0 32s · 🟢 C2.10: 41/41 JSON_SUMMARY {"total":41,"passed":41,"findings":[]} 
++qc-crm-c2.11 exit=0 27s · 🟢 C2.11: 47/47 JSON_SUMMARY {"total":47,"passed":47,"findings":[]} 
++qc-crm-c3.1 exit=0 28s · 🟢 C3.1: 56/56 JSON_SUMMARY {"total":56,"passed":56,"findings":[]} 
++qc-crm-c3.2 exit=0 91s · 🟢 C3.2: 47/47 JSON_SUMMARY {"total":47,"passed":47,"findings":[]} 
++qc-crm-c3.4 exit=0 41s · 🟢 C3.4: 53/53 JSON_SUMMARY {"total":53,"passed":53,"findings":[]} 
++qc-crm-c5.3 exit=0 174s · 🟢 C5.3: 56/56 JSON_SUMMARY {"total":56,"passed":56,"findings":[]} 
++docs-crm exit=0 2s · ✅ docs/api/CRM-API.md ตรงกับทะเบียน (123 op) 
++docs-member exit=1 3s · ❌ .claude/skills/shark-member-api/references/endpoints.md ไม่ตรงกับทะเบียน (0 ไบต์บนดิสก์ vs 18819 ไบต์ที่ควรเป็น) 
++docs-kanban exit=1 3s · ❌ .claude/skills/shark-kanban-api/references/endpoints.md ไม่ตรงกับทะเบียน (0 ไบต์บนดิสก์ vs 8244 ไบต์ที่ควรเป็น) 
++docs-account exit=0 2s · ✅ docs/api/ACCOUNT-API.md + skill endpoints.md ตรงกับทะเบียน (199 op) 
++fitness exit=0 6s · ผ่าน 36/36 JSON_SUMMARY {"total":36,"passed":36,"findings":[]} 
++fitness-noenv exit=0 279s · ผ่าน 36/36 JSON_SUMMARY {"total":36,"passed":36,"findings":[]} 
++ALLDONE 2026-10-02T02:29:10Z
+diff --git a/scripts/pending/cf13/review/leftover-check.mts b/scripts/pending/cf13/review/leftover-check.mts
+new file mode 100644
+index 00000000..806ca0f0
+--- /dev/null
++++ b/scripts/pending/cf13/review/leftover-check.mts
+@@ -0,0 +1,11 @@
++// QC2 leftover check for the C5.5-fix10 review — counts throwaway tenants/users tagged qc-cf13- / qc-cf10- / qc-cf7- (read-only)
++const { prisma } = await import("@/lib/core/db");
++if (!/ep-cool-shadow/.test(String(process.env.DATABASE_URL ?? ""))) { console.log("QC2 only"); process.exit(1); }
++const out: string[] = [];
++for (const p of ["qc-cf13-", "qc-cf10-", "qc-cf7-"]) {
++  const t = await prisma.tenant.count({ where: { slug: { startsWith: p } } });
++  const u = await prisma.user.count({ where: { email: { startsWith: p } } });
++  out.push(`${p} tenants=${t} users=${u}`);
++}
++console.log(`LEFTOVER ${out.join(" · ")}`);
++await prisma.$disconnect();
+diff --git a/scripts/pending/cf13/review/probe-cf13-review.mts b/scripts/pending/cf13/review/probe-cf13-review.mts
+new file mode 100644
+index 00000000..0b63b2cd
+--- /dev/null
++++ b/scripts/pending/cf13/review/probe-cf13-review.mts
+@@ -0,0 +1,210 @@
++// C5.5-fix10 REVIEW probe (independent reviewer) — attacks on 018b68bb
++//   LK   leaks that remain for a viewer who cannot see the company / contact: writer echoes (update returns raw companyText) ·
++//        create-with-duplicate-phone returns the EXISTING (possibly invisible) contact · deal list filtered by a hidden companyId ·
++//        deal title / q search · score on cards
++//   RG   regression for legitimate viewers: legacy free text with NO company link stays visible on every contact surface · free text
++//        that differs from the linked visible company · visible archived company falls back to the text · deal cards for viewers with
++//        visibility equal the system-scope names (model of the old output) for owner · unit-scoped manager · TEAM-level staff
++//   DT   DATETIME `.sss` export edges incl. negative epoch with ms, round-trip through import
++// QC2 only (ep-cool-shadow) · throwaway tenants `qc-cf13-rv-*` (swept in done()) · network blocked.
++// Run: bash scripts/iso.sh env CRM_V2_SWITCH=all NODE_OPTIONS=--max-old-space-size=3584 bash scripts/qc2.sh bash scripts/with-gate-lock.sh \
++//        pnpm exec tsx scripts/pending/cf13/review/probe-cf13-review.mts
++/* eslint-disable @typescript-eslint/no-explicit-any */
++type Any = any;
++import { AsyncLocalStorage } from "node:async_hooks";
++const { fixture } = (await import("../_fx.mts" as string)) as { fixture: (label: string) => Promise<Any> };
++
++(globalThis as Any).AsyncLocalStorage ??= AsyncLocalStorage;
++const fx = await fixture("rv");
++const { P, chk, call, mkShop, mkUser, done, TAG } = fx;
++const j = (v: Any) => JSON.stringify(v, (_k, x) => (typeof x === "bigint" ? x.toString() : x instanceof Date ? x.toISOString() : x));
++const cut = (v: unknown, n = 140) => { const s = String(v ?? "").replace(/\s+/g, " "); return s.length > n ? `${s.slice(0, n)}…` : s; };
++const codeOf = (r: Any) => (r.ok ? "OK" : String(r.err?.code ?? r.err?.name ?? "ERR"));
++const rand = TAG.slice(-8);
++const info = (id: string, msg: string) => console.log(`  ℹ️  [${id}] ${msg}`);
++
++const MEM = (await import("@/lib/modules/member" as string)) as Any;
++const { toMemberActor } = MEM;
++const CON = (await import("@/lib/modules/crm/contacts" as string)) as Any;
++const DEALS = (await import("@/lib/modules/crm/deals" as string)) as Any;
++const SEQ = (await import("@/lib/modules/crm/sequences" as string)) as Any;
++const { HIDDEN_CONTACT_NAME } = (await import("@/lib/modules/crm/deals-shared" as string)) as Any;
++
++async function member(shop: Any, suffix: string, role: "STAFF" | "MANAGER", unitAccess: string[], keys: string[]) {
++  const uid = await mkUser(`-${suffix}`);
++  const permissions = Object.fromEntries(keys.map((k) => [k, true]));
++  const m = await P.membership.create({ data: { userId: uid, tenantId: shop.tid, role, unitAccess, permissions, acceptedAt: new Date() } });
++  return { uid, actor: toMemberActor(uid, m), ctx: { tenantId: shop.tid, systemId: shop.S, actorUserId: uid } };
++}
++async function mkCompany(shop: Any, name: string, ownerUserId: string, teamId: string | null = null) {
++  const party = await P.party.create({ data: { tenantId: shop.tid, name, kind: "COMPANY" } });
++  return P.crmCompany.create({ data: { tenantId: shop.tid, systemId: shop.S, partyId: party.id, name, ownerUserId, teamId } });
++}
++async function mkContact(shop: Any, first: string, ownerUserId: string, opts: { companyId?: string | null; text?: string | null; teamId?: string | null; phone?: string | null; score?: number } = {}) {
++  const name = `${first} ${TAG}`;
++  const party = await P.party.create({ data: { tenantId: shop.tid, name, kind: "PERSON" } });
++  const k = await P.crmContact.create({ data: { tenantId: shop.tid, systemId: shop.S, name, firstName: first, partyId: party.id, ownerUserId, teamId: opts.teamId ?? null, companyId: opts.companyId ?? null, company: opts.text ?? null, phone: opts.phone ?? null, score: opts.score ?? 0 } });
++  if (opts.companyId) await P.crmCompanyContact.create({ data: { tenantId: shop.tid, companyId: opts.companyId, contactId: k.id, isPrimary: true } });
++  return k;
++}
++
++try {
++  const shop = await mkShop("a");
++  const owner = { actor: shop.owner, ctx: shop.ctx, uid: shop.uid };
++  const TA = await P.team.create({ data: { tenantId: shop.tid, name: `TA ${TAG}`, unitIds: ["u-a"] } });
++  const TB = await P.team.create({ data: { tenantId: shop.tid, name: `TB ${TAG}`, unitIds: ["u-b"] } });
++  const KEYS = ["crm.contact.read", "crm.contact.create", "crm.contact.update", "crm.deal.read", "crm.deal.create", "crm.activity.read", "crm.sequence.enroll"];
++  const mgr = await member(shop, "mgr", "MANAGER", ["u-a"], []);
++  const teamer = await member(shop, "teamer", "STAFF", ["*"], [...KEYS, "crm.company.read"]);
++  const mate = await member(shop, "mate", "STAFF", ["*"], [...KEYS, "crm.company.read"]);
++  const noCo = await member(shop, "noco", "STAFF", ["*"], KEYS);
++  await P.teamMember.createMany({ data: [{ tenantId: shop.tid, teamId: TA.id, userId: teamer.uid }, { tenantId: shop.tid, teamId: TA.id, userId: mate.uid }] });
++  // companies: V = mate's (TEAM-visible to teamer, TA for mgr) · H = owner's in TB (hidden to mgr/teamer/noCo)
++  const coV = await mkCompany(shop, `บริษัทเห็น ${rand}`, mate.uid, TA.id);
++  const coH = await mkCompany(shop, `บริษัทลับ ${rand}`, shop.uid, TB.id);
++  const coVA = await mkCompany(shop, `บริษัทเห็นเก็บ ${rand}`, mate.uid, TA.id);
++  await P.crmCompany.update({ where: { id: coVA.id }, data: { archivedAt: new Date() } });
++  const vis = async (who: Any, id: string) => !!(await P.crmCompany.findFirst({ where: { AND: [await (await import("@/lib/modules/crm/where" as string)).companyWhere(who.ctx, who.actor), { id }] } }));
++  chk("P-premise", (await vis(teamer, coV.id)) && !(await vis(teamer, coH.id)) && (await vis(mgr, coV.id)) && !(await vis(mgr, coH.id)) && !(await vis(noCo, coV.id)),
++    "TEAM-level staff sees its teammate's company, not TB's · unit-scoped manager sees TA not TB · noCo sees no company");
++
++  // ═══════════ LK · remaining leak paths ═══════════
++  console.log("\n── LK ──");
++  {
++    // writer echo: noCo / teamer edit their own visible contact linked to a hidden company whose legacy text = its name
++    for (const [label, who] of [["teamer", teamer], ["noco", noCo]] as const) {
++      const k = await mkContact(shop, `เขียนคืน ${label}`, (who as Any).uid, { companyId: coH.id, text: coH.name });
++      const d360 = (await CON.getContact360((who as Any).ctx, (who as Any).actor, k.id)) as Any;
++      const r = await call(() => CON.updateContact((who as Any).ctx, (who as Any).actor, k.id, { jobTitle: `j ${rand}` }));
++      const t = await call(() => CON.setTags((who as Any).ctx, (who as Any).actor, k.id, ["x"]));
++      info(`LK-writer-echo-${label}`, `360 companyText=${j(d360.contact.companyText)} (masked) · updateContact response companyText=${j(r.v?.companyText ?? r.err?.message ?? null)} · setTags response companyText=${j(t.v?.companyText ?? (t.ok ? null : codeOf(t)))} — hidden name returned to the writer=${j(r.v ?? null).includes(coH.name) || j(t.v ?? null).includes(coH.name)}`);
++    }
++  }
++  {
++    // create with the phone of an existing contact the creator cannot see → the existing contact's DTO comes back
++    const phone = `08${String(Math.floor(Math.random() * 1e8)).padStart(8, "0")}`;
++    const kO = await mkContact(shop, "เจ้าของเท่านั้น", shop.uid, { companyId: coH.id, text: coH.name, phone, teamId: TB.id });
++    const seen = !!(await P.crmContact.findFirst({ where: { AND: [await (await import("@/lib/modules/crm/where" as string)).contactWhere(noCo.ctx, noCo.actor), { id: kO.id }] } }));
++    const r = await call(() => CON.createContact(noCo.ctx, noCo.actor, { firstName: `ลองเบอร์ ${rand}`, phone }));
++    info("LK-create-duplicate", `noCo cannot see the owner's contact (visible=${seen}) · createContact with its phone → ${codeOf(r)} created=${r.v?.created} · returned contact id=existing ${r.v?.contact?.id === kO.id} · name=${j(r.v?.contact?.name)} phone=${j(r.v?.contact?.phone)} companyText=${j(r.v?.contact?.companyText)} · duplicates=${j(r.v?.duplicates)} (REST contacts.create returns this \`contact\` as-is · UI action returns duplicates[].name)`);
++    chk("LK-create-duplicate-masked", !(r.ok && r.v?.contact?.id === kO.id && String(r.v?.contact?.name ?? "").includes("เจ้าของเท่านั้น")),
++      "creating with the phone of an invisible contact does not return that contact's name/details (PRE-EXISTING since C1.4 — reported, not in this card's sweep)");
++  }
++  {
++    const kN = await mkContact(shop, "ดีลกรอง", noCo.uid, { companyId: coH.id });
++    const d = await DEALS.createDeal(noCo.ctx, noCo.actor, { pipelineId: shop.pipe.id, title: `กรอง ${rand}`, contactId: kN.id });
++    const byId = await call(() => DEALS.listDeals(noCo.ctx, noCo.actor, { companyId: coH.id }));
++    const card = (byId.v?.items ?? []).find((x: Any) => x.id === d.id);
++    const q = await call(() => DEALS.listDeals(noCo.ctx, noCo.actor, { q: "บริษัทลับ" }));
++    chk("LK-filters", !!card && card.companyName === null && (q.v?.items ?? []).every((x: Any) => !String(x.title).includes(coH.name)) && !(q.v?.items ?? []).some((x: Any) => x.id === d.id),
++      `listDeals({companyId: hidden}) → card present=${!!card} name=${j(card?.companyName)} (id-based filter, no name) · q="บริษัทลับ" hits this deal=${(q.v?.items ?? []).some((x: Any) => x.id === d.id)} (q searches titles only)`);
++  }
++  {
++    // hidden contact on a visible deal: card name placeholder + score 0 (and the board is ordered by stageEnteredAt, not score)
++    const kH = await mkContact(shop, "ผู้ติดต่อลับ", shop.uid, { teamId: TB.id, score: 77 });
++    const d = await DEALS.createDeal(owner.ctx, owner.actor, { pipelineId: shop.pipe.id, title: `ดีลคนลับ ${rand}`, contactId: kH.id, ownerUserId: noCo.uid });
++    const lst = await DEALS.listDeals(noCo.ctx, noCo.actor, {});
++    const card = lst.items.find((x: Any) => x.id === d.id);
++    const board = await DEALS.getBoard(noCo.ctx, noCo.actor, { pipelineId: shop.pipe.id });
++    chk("LK-hidden-contact", card?.contactName === HIDDEN_CONTACT_NAME && card?.score === 0 && !j(board).includes("ผู้ติดต่อลับ") && !j(lst).includes("ผู้ติดต่อลับ"),
++      `noCo sees the deal (owner assigned it to noCo) but not its contact → name ${j(card?.contactName)} score ${card?.score} · board/list contain the hidden name=${j(board).includes("ผู้ติดต่อลับ") || j(lst).includes("ผู้ติดต่อลับ")}`);
++  }
++
++  // ═══════════ RG · legitimate viewers ═══════════
++  console.log("\n── RG ──");
++  {
++    // legacy text without any company link — must stay visible on every contact surface to every viewer who sees the contact
++    const kT = await mkContact(shop, "ข้อความเอง", teamer.uid, { text: `ร้านป้าแดง ${rand}` });
++    const kD = await mkContact(shop, "ข้อความต่าง", teamer.uid, { companyId: coV.id, text: `ชื่อเล่นบริษัท ${rand}` });
++    const kA = await mkContact(shop, "บริษัทเก็บ", teamer.uid, { companyId: coVA.id, text: `ข้อความเก็บ ${rand}` });
++    const lines: string[] = [];
++    let ok = true;
++    for (const [label, who] of [["owner", owner], ["mgr", mgr], ["teamer", teamer], ["mate", mate]] as const) {
++      const w = who as Any;
++      const lst = await CON.listContacts(w.ctx, w.actor, { pageSize: 200 });
++      const it = (id: string) => lst.items.find((x: Any) => x.id === id);
++      const t = it(kT.id);
++      const dd = it(kD.id);
++      const aa = it(kA.id);
++      const d360 = (await CON.getContact360(w.ctx, w.actor, kT.id)) as Any;
++      const brief = await CON.briefFor(w.ctx, w.actor, { contactId: kT.id }).catch(() => null);
++      const texts = await CON.companyTextsForViewer(w.ctx, w.actor, [kT, kD]);
++      const csv = await CON.exportContacts(w.ctx, w.actor, { confirm: true, reason: "รีวิวข้อความบริษัท" }).catch((e: Any) => `ERR ${e?.code}`);
++      const good =
++        t?.companyName === `ร้านป้าแดง ${rand}` && t?.companyText === `ร้านป้าแดง ${rand}` &&
++        dd?.companyName === coV.name && dd?.companyText === `ชื่อเล่นบริษัท ${rand}` &&
++        aa?.companyName === `ข้อความเก็บ ${rand}` &&
++        d360.contact.companyText === `ร้านป้าแดง ${rand}` &&
++        (brief === null || brief.companyName === `ร้านป้าแดง ${rand}`) &&
++        texts.get(kT.id) === `ร้านป้าแดง ${rand}` && texts.get(kD.id) === `ชื่อเล่นบริษัท ${rand}` &&
++        (String(csv).startsWith("ERR ") || String(csv).includes(`ร้านป้าแดง ${rand}`));
++      ok = ok && good;
++      lines.push(`${label}${String(csv).startsWith("ERR ") ? ` (export ${String(csv)} — no export key)` : ""}: ${good ? "ok" : `list=${j([t?.companyName, t?.companyText, dd?.companyName, dd?.companyText, aa?.companyName])} 360=${j(d360.contact.companyText)} brief=${j(brief?.companyName)} csv=${String(csv).startsWith("ERR ") ? String(csv) : String(csv).includes(`ร้านป้าแดง ${rand}`)}`}`);
++    }
++    chk("RG-legacy-text", ok, `free text with no company / text ≠ linked visible company / visible archived company → unchanged for owner·mgr·teamer·mate · ${lines.join(" · ")}`);
++  }
++  {
++    // sequences enrollment list: free text with no link stays
++    const seq = await call(() => SEQ.listEnrollments(owner.ctx, owner.actor, {}));
++    info("RG-sequences", `listEnrollments (owner) → ${codeOf(seq)} (no enrollments in this fixture; builder SW-sequences covers the masking)`);
++  }
++  {
++    // deal cards for viewers WITH visibility = the names the old system-scope code produced (model of the old output)
++    const kV = await mkContact(shop, "ลูกค้าทีม", mate.uid, { companyId: coV.id, score: 33 });
++    const deals: Any[] = [];
++    for (let i = 0; i < 3; i += 1) deals.push(await DEALS.createDeal(owner.ctx, owner.actor, { pipelineId: shop.pipe.id, title: `ดีลทีม ${i} ${rand}`, contactId: kV.id, ownerUserId: mate.uid }));
++    const lines: string[] = [];
++    let ok = true;
++    for (const [label, who] of [["owner", owner], ["mgr", mgr], ["teamer", teamer], ["mate", mate]] as const) {
++      const w = who as Any;
++      const lst = await DEALS.listDeals(w.ctx, w.actor, { pageSize: 200 });
++      const board = await DEALS.getBoard(w.ctx, w.actor, { pipelineId: shop.pipe.id });
++      const csv = await call(() => DEALS.exportDeals(w.ctx, w.actor, {}));
++      const cards = lst.items.filter((x: Any) => deals.some((d) => d.id === x.id));
++      const bcards = (board.columns ?? board.stages ?? []).flatMap((c: Any) => c.cards ?? c.deals ?? []).filter((x: Any) => deals.some((d) => d.id === x.id));
++      const good = cards.length === 3 && cards.every((c: Any) => c.companyName === coV.name && c.contactName === kV.name && c.score === 33) &&
++        bcards.every((c: Any) => c.companyName === coV.name && c.contactName === kV.name && c.score === 33) &&
++        (!csv.ok || String(csv.v).split(coV.name).length - 1 >= 3);
++      ok = ok && good;
++      lines.push(`${label}: cards ${cards.length} board ${bcards.length} ${good ? "ok" : j(cards.map((c: Any) => [c.companyName, c.contactName, c.score]))}`);
++    }
++    chk("RG-cards-visible", ok, `viewers who can see company + contact get the same names/score the system-scope code produced · ${lines.join(" · ")}`);
++  }
++
++  // ═══════════ DT · .sss export edges ═══════════
++  console.log("\n── DT ──");
++  {
++    const F = MEM.fields;
++    const fctx = { ...owner.ctx, objectKey: "contact", actor: owner.actor };
++    const sec = await F.createSection(fctx, { key: `qcS${rand.replace(/[^a-z]/g, "")}`.slice(0, 30), label: "มิลลิ" });
++    await F.createField(fctx, { sectionId: sec.id, key: "msAt", label: "มิลลิเวลา", type: "DATETIME" });
++    const vals = ["1969-12-31T23:59:59.999Z", "1960-01-01T00:00:00.000Z", "2026-10-08T17:30:00.000Z", "2026-10-08T17:30:00.010Z"];
++    const ks: Any[] = [];
++    for (const [i, v] of vals.entries()) {
++      const k = await mkContact(shop, `มิลลิ${i}`, shop.uid);
++      await CON.updateContact(owner.ctx, owner.actor, k.id, { fields: { msAt: v } });
++      ks.push(k);
++    }
++    const csv = await CON.exportContacts(owner.ctx, owner.actor, { confirm: true, reason: "รีวิวมิลลิวินาที" });
++    const rows = csv.replace(/^﻿/, "").split(/\r?\n/).map((l: string) => l.split(","));
++    const iAt = rows[0].indexOf("มิลลิเวลา");
++    const out: string[] = [];
++    let ok = true;
++    for (const [i, v] of vals.entries()) {
++      const cell = (rows.find((r: string[]) => r[0] === `มิลลิ${i}`) ?? [])[iAt] ?? "";
++      const nm = `กลับมิลลิ${i} ${rand}`;
++      const imp = await call(() => CON.importContacts(owner.ctx, owner.actor, { rows: [{ ชื่อ: nm, เวลา: cell }], mapping: { ชื่อ: "firstName", เวลา: "f.msAt" }, options: { onDuplicate: "skip", source: "IMPORT" } }));
++      const c = await P.crmContact.findFirst({ where: { tenantId: shop.tid, firstName: nm } });
++      const sv = c ? await P.customRecordValue.findFirst({ where: { tenantId: shop.tid, recordId: c.id, field: { key: "msAt" } } }).catch(() => null) : null;
++      const back = sv?.valueDate ? new Date(sv.valueDate).toISOString() : null;
++      const whole = v.endsWith(".000Z");
++      const good = imp.ok && back === v && (whole ? !/\.\d{3}\+/.test(cell) : /\.\d{3}\+07:00$/.test(cell));
++      ok = ok && good;
++      out.push(`${v} → "${cell}" → ${back}${good ? "" : " ✗"}`);
++    }
++    chk("DT-sss-edges", ok, out.join(" · "));
++  }
++} catch (e) {
++  chk("FATAL", false, String((e as Error)?.stack ?? e).slice(0, 900));
++}
++await done("probe-cf13-review");
+diff --git a/scripts/pending/cf13/review/review.summary b/scripts/pending/cf13/review/review.summary
+new file mode 100644
+index 00000000..599d7ca3
+--- /dev/null
++++ b/scripts/pending/cf13/review/review.summary
+@@ -0,0 +1,19 @@
++start 2026-10-02T02:43:04Z
++probe-cf13-review exit=1 24s · 🔴 probe-cf13-review: 7/8 JSON_SUMMARY {"total":8,"passed":7,"findings":["LK-create-duplicate-masked"]} 
++probe-cf13-vs-red exit=1 37s · 🔴 probe-cf13: 24/26 JSON_SUMMARY {"total":26,"passed":24,"findings":["NM-control-owner-identical","NM-control-visible-cards-identical"]} 
++probe-cf10 exit=0 60s · 🟢 probe-cf10: 34/34 JSON_SUMMARY {"total":34,"passed":34,"findings":[]} 
++probe-cf10-review exit=0 252s · 🟢 probe-cf10-review: 18/18 JSON_SUMMARY {"total":18,"passed":18,"findings":[]} 
++probe-cf7 exit=0 35s · 🟢 probe-cf7: 30/30 JSON_SUMMARY {"total":30,"passed":30,"findings":[]} 
++probe-cf7-review exit=0 113s · 🟢 probe-cf7-review: 27/27 JSON_SUMMARY {"total":27,"passed":27,"findings":[]} 
++probe-cf7-review-r2 exit=0 44s · 🟢 probe-cf7-review-r2: 21/21 JSON_SUMMARY {"total":21,"passed":21,"findings":[]} 
++qc-crm-c1.5 exit=0 217s · 🟢 C1.5: 103/103 JSON_SUMMARY {"total":103,"passed":103,"findings":[]} 
++qc-crm-c1.4 exit=0 192s · 🟢 C1.4: 110/110 JSON_SUMMARY {"total":110,"passed":110,"findings":[]} 
++qc-crm-c1.3 exit=0 144s · 🟢 C1.3: 89/89 JSON_SUMMARY {"total":89,"passed":89,"findings":[]} 
++qc-crm-c1.10 exit=0 173s · 🟢 C1.10: 66/66 · webhook fetch stubbed 4× · keyErrors filter-foreign-team=ทีมในตัวกรองของคีย์ไม่ใช่ทีมของร้านนี้ — เลือกทีมจากรายชื่อท… JSON_SUMMARY {"total":66,"passed":66,"fi
++qc-crm-c2.2 exit=0 66s · 🟢 C2.2: 73/73 · fake sends 37 · outbound fetch stubbed 0× JSON_SUMMARY {"total":73,"passed":73,"findings":[]} 
++qc-crm-c2.11 exit=0 30s · 🟢 C2.11: 47/47 JSON_SUMMARY {"total":47,"passed":47,"findings":[]} 
++qc-crm-c3.4 exit=0 37s · 🟢 C3.4: 53/53 JSON_SUMMARY {"total":53,"passed":53,"findings":[]} 
++typecheck exit=0 158s · 
++fitness exit=0 5s · ผ่าน 36/36 JSON_SUMMARY {"total":36,"passed":36,"findings":[]} 
++ALLDONE 2026-10-02T03:09:31Z
++probe-cf13-vs-red3 (standalone re-run, baseline /tmp/cf13-logs/red3.dump.json) · 🟢 probe-cf13: 26/26 JSON_SUMMARY {"total":26,"passed":26,"findings":[]}
+diff --git a/scripts/pending/cf13/review/run-review.sh b/scripts/pending/cf13/review/run-review.sh
+new file mode 100644
+index 00000000..e30405e6
+--- /dev/null
++++ b/scripts/pending/cf13/review/run-review.sh
+@@ -0,0 +1,28 @@
++#!/usr/bin/env bash
++# C5.5-fix10 independent review runs — QC2 · one job at a time (gate lock) · each in its own systemd unit (iso.sh) ·
++#   logs /tmp/cf13-review-logs/ (SUMMARY) · same wrappers as scripts/pending/cf13/run-cf13.sh ·
++#   probe-cf13 is re-run against the builder's RED dump (/tmp/cf13-logs/red3.dump.json = the RED dump that matches the final probe, read only) so its two
++#   "identical for viewers with visibility" controls are re-checked on this tip
++set -uo pipefail
++cd /root/projects/shark-crm-cd2
++D=/tmp/cf13-review-logs; mkdir -p "$D"; S="$D/SUMMARY"; : > "$S"
++r() { local n="$1"; shift; local t0=$(date +%s); "$@" > "$D/$n.log" 2>&1; local rc=$?; echo "$n exit=$rc $(( $(date +%s) - t0 ))s · $(grep -aE '🟢|🔴|JSON_SUMMARY|error TS|Found [0-9]+ error|ผ่าน [0-9]+/[0-9]+' "$D/$n.log" | tail -2 | tr '\n' ' ' | cut -c1-300)" >> "$S"; }
++q2() { local n="$1"; local f="$2"; shift 2; r "$n" bash scripts/iso.sh env CRM_V2_SWITCH=all QC_BASE=http://127.0.0.1:9 NODE_OPTIONS=--max-old-space-size=3584 CF13_DUMP="$D/$n.dump.json" CF13_BASELINE="${BASELINE:-}" bash scripts/qc2.sh bash scripts/with-gate-lock.sh pnpm exec tsx "scripts/$f.mts" "$@"; }
++echo "start $(date -u +%FT%TZ)" >> "$S"
++q2 probe-cf13-review pending/cf13/review/probe-cf13-review
++BASELINE=/tmp/cf13-logs/red3.dump.json q2 probe-cf13-vs-red3 pending/cf13/probe-cf13
++q2 probe-cf10 pending/cf10/probe-cf10
++q2 probe-cf10-review pending/cf10/review/probe-cf10-review
++q2 probe-cf7 pending/cf7/probe-cf7
++q2 probe-cf7-review pending/cf7/review/probe-cf7-review
++q2 probe-cf7-review-r2 pending/cf7/review/probe-cf7-review-r2
++q2 qc-crm-c1.5 qc-crm-c1.5
++q2 qc-crm-c1.4 qc-crm-c1.4
++q2 qc-crm-c1.3 qc-crm-c1.3
++q2 qc-crm-c1.10 qc-crm-c1.10
++q2 qc-crm-c2.2 qc-crm-c2.2
++q2 qc-crm-c2.11 qc-crm-c2.11
++q2 qc-crm-c3.4 qc-crm-c3.4
++r typecheck bash scripts/iso.sh env NODE_OPTIONS=--max-old-space-size=5120 bash scripts/with-gate-lock.sh pnpm typecheck
++r fitness bash scripts/iso.sh bash scripts/qc2.sh pnpm exec tsx scripts/fitness.mts
++echo "ALLDONE $(date -u +%FT%TZ)" >> "$S"
+diff --git a/scripts/pending/cf13/run-cf13.sh b/scripts/pending/cf13/run-cf13.sh
+new file mode 100644
+index 00000000..94ca5233
+--- /dev/null
++++ b/scripts/pending/cf13/run-cf13.sh
+@@ -0,0 +1,39 @@
++#!/usr/bin/env bash
++# C5.5-fix10 verification (builder) — QC2 · one job at a time (gate lock) in its own systemd unit · logs /tmp/cf13-logs/regress/ (SUMMARY)
++#   the cf10 / cf7 / cf5 runners and the reviewers' runners are left untouched
++set -uo pipefail
++cd /root/projects/shark-crm-cd2
++D=/tmp/cf13-logs/regress; mkdir -p "$D"; S="$D/SUMMARY"; : > "$S"
++r() { local n="$1"; shift; local t0=$(date +%s); "$@" > "$D/$n.log" 2>&1; local rc=$?; echo "$n exit=$rc $(( $(date +%s) - t0 ))s · $(grep -aE '🟢|🔴|JSON_SUMMARY|ผ่าน [0-9]+/[0-9]+|error TS|Found [0-9]+ error|fitness|passed|failed|CHECK |ตรงกับทะเบียน|ไม่ตรง' "$D/$n.log" | tail -2 | tr '\n' ' ' | cut -c1-300)" >> "$S"; }
++q2() { local n="$1"; local f="$2"; shift 2; r "$n" bash scripts/iso.sh env CRM_V2_SWITCH=all QC_BASE=http://127.0.0.1:9 NODE_OPTIONS=--max-old-space-size=3584 bash scripts/qc2.sh bash scripts/with-gate-lock.sh pnpm exec tsx "scripts/$f.mts" "$@"; }
++echo "start $(date -u +%FT%TZ)" >> "$S"
++r typecheck bash scripts/iso.sh env NODE_OPTIONS=--max-old-space-size=5120 bash scripts/with-gate-lock.sh pnpm typecheck
++q2 probe-cf13 pending/cf13/probe-cf13
++q2 probe-cf10 pending/cf10/probe-cf10
++q2 probe-cf10-review pending/cf10/review/probe-cf10-review
++q2 probe-cf7 pending/cf7/probe-cf7
++q2 probe-cf7-r2 pending/cf7/probe-cf7-r2
++q2 probe-cf7-review pending/cf7/review/probe-cf7-review
++q2 probe-cf7-review-r2 pending/cf7/review/probe-cf7-review-r2
++q2 probe-cf5 pending/cf5/probe-cf5
++q2 probe-cf5-r2 pending/cf5/probe-cf5-r2
++q2 qc-crm-c1.5 qc-crm-c1.5
++q2 qc-crm-c1.4 qc-crm-c1.4
++q2 qc-crm-c1.3 qc-crm-c1.3
++q2 qc-crm-c1.6 qc-crm-c1.6
++q2 qc-crm-c1.7 qc-crm-c1.7
++q2 qc-crm-c1.9 qc-crm-c1.9
++q2 qc-crm-c1.10 qc-crm-c1.10
++q2 qc-crm-c1.11 qc-crm-c1.11
++q2 qc-crm-c2.2 qc-crm-c2.2
++q2 qc-crm-c2.4 qc-crm-c2.4
++q2 qc-crm-c2.10 qc-crm-c2.10
++q2 qc-crm-c2.11 qc-crm-c2.11
++q2 qc-crm-c3.1 qc-crm-c3.1
++q2 qc-crm-c3.2 qc-crm-c3.2
++q2 qc-crm-c3.4 qc-crm-c3.4
++q2 qc-crm-c5.3 qc-crm-c5.3
++for g in crm member kanban account; do r "docs-$g" bash scripts/iso.sh bash scripts/qc2.sh pnpm exec tsx "scripts/gen-$g-api-docs.mts" --check; done
++r fitness bash scripts/iso.sh bash scripts/qc2.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/fitness.mts
++r fitness-noenv bash scripts/iso.sh env -u DATABASE_URL -u DIRECT_URL bash scripts/with-gate-lock.sh pnpm exec tsx scripts/fitness.mts
++echo "ALLDONE $(date -u +%FT%TZ)" >> "$S"
+diff --git a/scripts/pending/cf13/run-probe.sh b/scripts/pending/cf13/run-probe.sh
+new file mode 100644
+index 00000000..2278f915
+--- /dev/null
++++ b/scripts/pending/cf13/run-probe.sh
+@@ -0,0 +1,12 @@
++#!/usr/bin/env bash
++# C5.5-fix10 — run probe-cf13 once (QC2 · gate lock · own systemd unit)
++#   usage: bash scripts/pending/cf13/run-probe.sh <logname> [baseline-dump.json]
++#   log → /tmp/cf13-logs/<logname>.log · DTO dump → /tmp/cf13-logs/<logname>.dump.json
++set -uo pipefail
++cd /root/projects/shark-crm-cd2
++D=/tmp/cf13-logs; mkdir -p "$D"
++N="${1:-probe-cf13}"
++B="${2:-}"
++bash scripts/iso.sh env CRM_V2_SWITCH=all QC_BASE=http://127.0.0.1:9 NODE_OPTIONS=--max-old-space-size=3584 CF13_DUMP="$D/$N.dump.json" CF13_BASELINE="$B" \
++  bash scripts/qc2.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/pending/cf13/probe-cf13.mts > "$D/$N.log" 2>&1
++echo "exit=$? $(date -u +%FT%TZ)" >> "$D/$N.log"
+diff --git a/src/app/app/sys/[id]/crm/emails/[threadKey]/page.tsx b/src/app/app/sys/[id]/crm/emails/[threadKey]/page.tsx
+index 32092d24..3ba16b6c 100644
+--- a/src/app/app/sys/[id]/crm/emails/[threadKey]/page.tsx
++++ b/src/app/app/sys/[id]/crm/emails/[threadKey]/page.tsx
+@@ -6,6 +6,7 @@ import { systemDef } from "@/lib/systems";
+ import { toMemberActor } from "@/lib/modules/member";
+ import { crmCan } from "@/lib/modules/crm/access";
+ import { getThread, listTemplates } from "@/lib/modules/crm/emails";
++import { companyTextsForViewer } from "@/lib/modules/crm/contacts"; // CRM C5.5-fix10 ◂
+ import { CRM_EMAIL_ATTACH_MAX_BYTES, CRM_EMAIL_ATTACH_MAX_COUNT, CRM_EMAIL_BODY_MAX_BYTES, CRM_EMAIL_BODY_TOO_LONG_MSG, CRM_EMAIL_COMPOSER_ATTACH_MAX_BYTES, CRM_EMAIL_SUBJECT_MAX, renderInboundHtml } from "@/lib/modules/crm/emails-shared";
+ import { crmNavItems } from "@/lib/modules/crm/nav";
+ import { thaiDateLabel, thaiTimeLabel } from "@/lib/modules/crm/activities-shared";
+@@ -43,7 +44,9 @@ export default async function CrmEmailThreadPage({ params }: { params: Promise<{
+   const first = thread.messages[0];
+   const last = thread.messages[thread.messages.length - 1];
+   const contactId = thread.messages.map((m) => m.contactId ?? null).find((x): x is string => !!x) ?? null;
+-  const contact = contactId ? await prisma.crmContact.findFirst({ where: { id: contactId, tenantId, systemId: id }, select: { name: true, email: true, company: true } }) : null;
++  const contact = contactId ? await prisma.crmContact.findFirst({ where: { id: contactId, tenantId, systemId: id }, select: { id: true, name: true, email: true, company: true, companyId: true } }) : null;
++  // CRM C5.5-fix10 ▸ (sweep FX7-1) ข้อความบริษัทตามการมองเห็นบริษัทของผู้ดู ◂
++  const contactCompany = contact ? ((await companyTextsForViewer(ctx, actor, [contact])).get(contact.id) ?? null) : null;
+ 
+   const messages: CrmEmailMessageView[] = thread.messages.map((m) => {
+     const at = m.sentAt ?? m.receivedAt;
+@@ -78,7 +81,7 @@ export default async function CrmEmailThreadPage({ params }: { params: Promise<{
+     contactId,
+     contactName: contact?.name ?? null,
+     contactEmail: contact?.email ?? null,
+-    companyName: contact?.company ?? null,
++    companyName: contactCompany,
+     messages,
+     canSend,
+     canAttach: !contactId,
+diff --git a/src/app/app/sys/[id]/crm/emails/page.tsx b/src/app/app/sys/[id]/crm/emails/page.tsx
+index b7291e45..12f01c66 100644
+--- a/src/app/app/sys/[id]/crm/emails/page.tsx
++++ b/src/app/app/sys/[id]/crm/emails/page.tsx
+@@ -6,6 +6,7 @@ import { systemDef } from "@/lib/systems";
+ import { toMemberActor } from "@/lib/modules/member";
+ import { crmCan } from "@/lib/modules/crm/access";
+ import { getUserSetting, listThreads } from "@/lib/modules/crm/emails";
++import { companyTextsForViewer } from "@/lib/modules/crm/contacts"; // CRM C5.5-fix10 ◂
+ import { crmEmailSettingsOf } from "@/lib/modules/crm/settings";
+ import { CRM_EMAIL_REPLY_MODES } from "@/lib/modules/crm/emails-shared";
+ import { crmNavItems } from "@/lib/modules/crm/nav";
+@@ -52,10 +53,11 @@ export default async function CrmEmailsPage({ params, searchParams }: { params:
+ 
+   const contactIds = [...new Set(listed.items.map((t) => t.contactId).filter((x): x is string => !!x))];
+   const contacts = contactIds.length
+-    ? await prisma.crmContact.findMany({ where: { id: { in: contactIds }, tenantId, systemId: id }, select: { id: true, name: true, company: true } })
++    ? await prisma.crmContact.findMany({ where: { id: { in: contactIds }, tenantId, systemId: id }, select: { id: true, name: true, company: true, companyId: true } })
+     : [];
+   const nameOf = new Map(contacts.map((c) => [c.id, c.name]));
+-  const companyOf = new Map(contacts.map((c) => [c.id, c.company]));
++  // CRM C5.5-fix10 ▸ (sweep FX7-1) ข้อความบริษัทของผู้ติดต่อ = ตามการมองเห็นบริษัทของผู้ดู (ผูกบริษัทที่มองไม่เห็น = ไม่แสดง) ◂
++  const companyOf = contacts.length ? await companyTextsForViewer(ctx, actor, contacts) : new Map<string, string | null>();
+ 
+   const items: CrmEmailThreadRow[] = listed.items.map((t) => ({
+     threadKey: t.threadKey,
+diff --git a/src/components/crm/objects/types.ts b/src/components/crm/objects/types.ts
+index 8fa5befb..44076c08 100644
+--- a/src/components/crm/objects/types.ts
++++ b/src/components/crm/objects/types.ts
+@@ -1,7 +1,7 @@
+ // types.ts — ชนิดข้อมูลกลางของหน้าวัตถุกำหนดเอง (CRM v2 · ใบ C1.9) — **บริสุทธิ์** (ไม่แตะ prisma/next)
+ // 🔴 คอมโพเนนต์ 'use client' ของโฟลเดอร์นี้ import ได้ตรง ๆ (บทเรียน reference_next_client_component_imports_server_module)
+ 
+-import { formatThaiDateTimeFull } from "@/lib/ui/date";
++import { formatThaiDateFull, formatThaiDateTimeFull } from "@/lib/ui/date";
+ 
+ export type ObjectValueView = string | number | boolean | string[] | null;
+ 
+@@ -64,9 +64,8 @@ export function displayValue(v: ObjectValueView | undefined, choices: { value: s
+   if (v === undefined || v === null || v === "") return "—";
+   if (type === "DATETIME" && typeof v === "string") return thaiDateTimeText(v);
+   // ACCEPTANCE-FIX C1.9 (controller · PARITY ภาพ 06): DATE = วันที่ไทยแบบย่อ ("28 ก.ย. 2569") · MONEY = ฿ + ทศนิยม 2 ตำแหน่ง (หน่วยบาท)
+-  if (type === "DATE" && typeof v === "string" && /^\d{4}-\d{2}-\d{2}/.test(v)) {
+-    return new Date(`${v.slice(0, 10)}T00:00:00Z`).toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+-  }
++  //   CRM C5.5-fix10 ▸ ตัวจัดรูปอยู่ที่ `lib/ui/date` (formatThaiDateFull) — หน้าผู้ติดต่อ 360 ใช้ตัวเดียวกัน (ผลเท่าเดิมไบต์ต่อไบต์) ◂
++  if (type === "DATE" && typeof v === "string" && /^\d{4}-\d{2}-\d{2}/.test(v)) return formatThaiDateFull(v);
+   if (type === "MONEY" && typeof v === "number") return `฿${v.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+   const label = (x: string) => choices.find((c) => c.value === x)?.label ?? x;
+   if (Array.isArray(v)) return v.length ? v.map(label).join(", ") : "—";
+diff --git a/src/lib/modules/crm/companies.ts b/src/lib/modules/crm/companies.ts
+index 31eaa1ea..2cc44afa 100644
+--- a/src/lib/modules/crm/companies.ts
++++ b/src/lib/modules/crm/companies.ts
+@@ -1292,6 +1292,12 @@ async function getCompany360In(ctx: CompaniesCtx, actor: MemberActor, id: string
+     .map((d) => ({ id: d.id, docNo: d.docNo, docType: d.docType, docLabel: d.docLabel, status: d.status, statusLabel: d.statusLabel, totalSatang: d.totalSatang, issuedAt: d.issuedAt, href: d.href }));
+   // CRM C5.5 ▸ (fix3b r2 · รีวิว RV-1) การ์ด "ไทม์ไลน์รวม" ขึ้นป้าย "ไม่ยืนยันผู้ส่ง" แบบเดียวกับบล็อกกิจกรรม (คิวรีเดียวต่อหน้า · ร้าน+ระบบเดียวกัน) ◂
+   const unverified = await unverifiedEmailRefs(ctx, activities);
++  // CRM C5.5-fix10 ▸ (sweep FX7-1) ชื่อผู้ติดต่อบนไทม์ไลน์ = ตามการมองเห็นของผู้ดู (contactWhere · คิวรีเดียว) — กิจกรรมที่ผู้ดูเห็น
++  //   ผูกผู้ติดต่อที่เขามองไม่เห็นได้ (การมองเห็นกิจกรรมตามผู้ดูแลกิจกรรม) · มองไม่เห็น = ไม่มีชื่อ (แบบรายการกิจกรรม `activities.enrich`) ◂
++  const tlContactIds = [...new Set(activities.map((t) => t.contactId).filter((x): x is string => !!x))];
++  const tlSeen = new Set(
++    tlContactIds.length ? (await prisma.crmContact.findMany({ where: { AND: [await contactWhere(ctx, a), { id: { in: tlContactIds } }] }, select: { id: true } })).map((r) => r.id) : [],
++  );
+   const timeline: CompanyTimelineItem[] = activities.map((t) => ({
+     id: t.id,
+     at: t.startAt ?? t.doneAt ?? t.createdAt,
+@@ -1299,7 +1305,7 @@ async function getCompany360In(ctx: CompaniesCtx, actor: MemberActor, id: string
+     title: t.title,
+     source: t.source,
+     contactId: t.contactId,
+-    contactName: t.contact?.name ?? null,
++    contactName: t.contactId && tlSeen.has(t.contactId) ? (t.contact?.name ?? null) : null,
+     dealId: t.dealId,
+     ...(unverified.has(t.id) ? { unverifiedFrom: true as const } : {}),
+   }));
+@@ -2363,6 +2369,16 @@ export async function liveCompanyRefs(ctx: CompaniesCtx, actor: MemberActor, ids
+ }
+ // ◂ CRM C1.4
+ 
++// CRM C5.5-fix10 ▸ (sweep FX7-1) บริษัทตาม id ที่ผู้ดูมองเห็น พร้อมสถานะยังใช้งาน — คิวรีเดียว (companyWhere) · ผู้ใช้: รายการ/ไฟล์ส่งออก/
++//   360/การ์ดย่อของผู้ติดต่อ และรายการลำดับติดตาม ตัดสินว่า "ข้อความบริษัทเดิม" (`CrmContact.company`) ของผู้ติดต่อแสดงได้ไหม:
++//   ไม่ผูกบริษัท หรือผูกบริษัทที่ผู้ดูเห็น = แสดงได้ · ผูกบริษัทที่ผู้ดูมองไม่เห็น = ไม่แสดง (ข้อความนั้นมักเป็นชื่อบริษัทเดียวกัน) ◂
++export async function visibleCompanyStates(ctx: CrmScopeCtx, actor: MemberActor, ids: readonly (string | null | undefined)[]): Promise<Map<string, { name: string; live: boolean }>> {
++  const list = [...new Set(ids.filter((x): x is string => typeof x === "string" && !!x))].slice(0, 5_000);
++  if (list.length === 0) return new Map();
++  const rows = await prisma.crmCompany.findMany({ where: { AND: [await companyWhere(ctx, actor), { id: { in: list } }] }, select: { id: true, name: true, archivedAt: true, mergedIntoId: true } });
++  return new Map(rows.map((r) => [r.id, { name: r.name, live: !r.archivedAt && !r.mergedIntoId }]));
++}
++
+ // CRM C1.5 ▸ ทางเข้าแคชดีลของบริษัทที่ "เข้าร่วม tx ของผู้เรียก" (บริการดีล `deals.ts`) — SQL ของแคชยังเป็นของไฟล์นี้ที่เดียว
+ //   ลำดับล็อก (หัวไฟล์): … → แถว CrmCompany (เรียง id) → แถว CrmContact → แถว CrmDeal ⇒ ดีลล็อกบริษัทก่อนเสมอด้วยตัวนี้
+ //   AUDIT-CLASS X3: ผู้เรียกถือล็อกแถวบริษัทไว้ตลอด tx (lockCompanyRowsInTx) แล้วค่อยคำนวณ ⇒ แคชเท่ากับความจริงหลัง commit เสมอ
+diff --git a/src/lib/modules/crm/contacts.ts b/src/lib/modules/crm/contacts.ts
+index 12015eb7..b2ab5144 100644
+--- a/src/lib/modules/crm/contacts.ts
++++ b/src/lib/modules/crm/contacts.ts
+@@ -58,7 +58,7 @@ import { auditSystemActivity, recordSystemActivityInTx } from "./activities";
+ import { isErasedContact } from "./erased"; // CRM C3.9-fix ▸ มติข้อ 4 ◂
+ import { unverifiedEmailRefs } from "./email-flags"; // CRM C5.5-fix3b r2 ▸ RV-1 ◂
+ import { customFieldErrorKey, missingRequiredCustom, requiredCustomMessage } from "./field-errors-shared";
+-import { formatThaiDateTimeFull, thaiIsoDateTime } from "@/lib/ui/date"; // CRM C5.5-fix7 ▸ RV-3 ◂
++import { formatThaiDateFull, formatThaiDateTimeFull, thaiIsoDateTime } from "@/lib/ui/date"; // CRM C5.5-fix7 ▸ RV-3 ◂ · C5.5-fix10 ▸ DATE ◂
+ import {
+   CONTACT_BULK_MAX,
+   CONTACT_PRIMARY_COMPANY_HIDDEN_MSG,
+@@ -267,6 +267,29 @@ async function lockContactRows(tx: Tx, ctx: ContactsCtx, ids: string[]): Promise
+   await tx.$queryRaw`SELECT "id" FROM "CrmContact" WHERE "id" = ANY(${sorted}::text[]) AND "tenantId" = ${ctx.tenantId} ORDER BY "id" FOR UPDATE`;
+ }
+ 
++// CRM C5.5-fix10 ▸ (sweep FX7-1) "ข้อความบริษัทเดิม" (`CrmContact.company` · มักเป็นชื่อบริษัทเดียวกับที่ผูก — ไฟล์นำเข้า/backfill) แสดงให้ผู้ดู
++//   เฉพาะเมื่อผู้ติดต่อไม่ผูกบริษัท หรือผูกบริษัทที่ผู้ดูเห็น (`companies.visibleCompanyStates`) — ผูกบริษัทที่มองไม่เห็น = ไม่แสดง
++//   (เดิมเป็นทางสำรองเมื่อหาชื่อบริษัทไม่ได้ ⇒ บอกชื่อบริษัทที่ซ่อนอยู่) · ผู้ดูที่เห็นบริษัท = ผลเท่าเดิมทุกไบต์ ◂
++type CompanyStates = Map<string, { name: string; live: boolean }>;
++function companyTextFor(row: Pick<CrmContact, "companyId" | "company">, states: CompanyStates): string | null {
++  if (row.companyId && !states.has(row.companyId)) return null;
++  return row.company ?? null;
++}
++/** ชื่อบริษัทที่ผู้ดูเห็นของแถวผู้ติดต่อ: ชื่อบริษัทที่ยังใช้งาน → ข้อความบริษัทเดิม (ตามกติกาด้านบน) */
++function companyNameFor(row: Pick<CrmContact, "companyId" | "company">, states: CompanyStates): string | null {
++  const st = row.companyId ? states.get(row.companyId) : undefined;
++  return (st?.live ? st.name : null) ?? companyTextFor(row, states);
++}
++function viewerDto(row: CrmContact, states: CompanyStates): ContactDto {
++  return { ...toDto(row), companyText: companyTextFor(row, states) };
++}
++/** ข้อความบริษัทเดิมของผู้ติดต่อหลายแถว ตามการมองเห็นของผู้ดู (คิวรีเดียว) — สำหรับหน้าที่อ่านแถวผู้ติดต่อเอง (กล่องจดหมาย/เธรด) */
++export async function companyTextsForViewer(ctx: ContactsCtx, actor: MemberActor, rows: readonly { id: string; companyId: string | null; company: string | null }[]): Promise<Map<string, string | null>> {
++  const a = await enter(ctx, actor);
++  const states = await companies.visibleCompanyStates(coCtx(ctx), a, rows.map((r) => r.companyId));
++  return new Map(rows.map((r) => [r.id, companyTextFor(r, states)]));
++}
++
+ function toDto(row: CrmContact): ContactDto {
+   return {
+     id: row.id,
+@@ -1424,7 +1447,8 @@ function displayOf(type: string, value: unknown, choices: { value: string; label
+   if (type === "SELECT") return choices?.find((c) => c.value === value)?.label ?? String(value);
+   if (type === "MONEY" && typeof value === "number") return `฿${(value / 100).toLocaleString("th-TH", { maximumFractionDigits: 2 })}`;
+   if (type === "DATETIME" && typeof value === "string") return mode === "export" ? thaiIsoDateTime(value) : formatThaiDateTimeFull(value);
+-  if (type === "DATE" && typeof value === "string") return value.slice(0, 10);
++  // CRM C5.5-fix10 ▸ (คำถามเจ้าของข้อ 5) หน้า 360 แสดง DATE แบบเดียวกับหน้าระเบียน ("9 ต.ค. 2569" · formatThaiDateFull) · ไฟล์ส่งออกยัง "YYYY-MM-DD" ◂
++  if (type === "DATE" && typeof value === "string") return mode === "export" ? value.slice(0, 10) : formatThaiDateFull(value);
+   return String(value);
+ }
+ 
+@@ -1511,7 +1535,9 @@ async function getContact360In(ctx: ContactsCtx, actor: MemberActor, id: string)
+     }
+   }
+   // ชื่อบริษัทผ่านบริการบริษัท (companyWhere · ยังใช้งาน) — ลิงก์ไปบริษัทที่ถูกรวม/เก็บถาวร/มองไม่เห็น ไม่แสดง
+-  const coRefs = new Map((await companies.liveCompanyRefs(coCtx(ctx), a, links.map((l) => l.companyId))).map((c) => [c.id, c.name]));
++  //   CRM C5.5-fix10 ▸ คิวรีเดียวได้ทั้ง "ยังใช้งาน" (ลิงก์ที่แสดง — เท่าเดิม) และ "เห็นไหม" (ข้อความบริษัทเดิมของผู้ติดต่อ) ◂
++  const coStates = await companies.visibleCompanyStates(coCtx(ctx), a, [...links.map((l) => l.companyId), row.companyId]);
++  const coRefs = new Map([...coStates].filter(([, v]) => v.live).map(([k, v]) => [k, v.name]));
+   const companiesOut: Contact360Company[] = links
+     .filter((l) => coRefs.has(l.companyId))
+     .map((l) => ({ id: l.companyId, name: coRefs.get(l.companyId) ?? "", role: l.role, jobTitle: l.jobTitle, isPrimary: l.isPrimary, current: !l.endedAt }));
+@@ -1529,7 +1555,7 @@ async function getContact360In(ctx: ContactsCtx, actor: MemberActor, id: string)
+   }));
+   timeline.sort((x, y) => y.at.getTime() - x.at.getTime());
+   return {
+-    contact: toDto(row),
++    contact: viewerDto(row, coStates),
+     owner: owner?.user ? { id: owner.user.id, name: owner.user.name ?? "ผู้ใช้" } : null,
+     member,
+     company: primary,
+@@ -1758,12 +1784,11 @@ async function listContactsIn(ctx: ContactsCtx, actor: MemberActor, input: Conta
+   const more = rows.length > pageSize;
+   const page = more ? rows.slice(0, pageSize) : rows;
+   const coIds = [...new Set(page.map((r) => r.companyId).filter((x): x is string => !!x))];
+-  const [cos, owners] = await Promise.all([
+-    companies.liveCompanyRefs(coCtx(ctx), a, coIds),
++  const [states, owners] = await Promise.all([
++    companies.visibleCompanyStates(coCtx(ctx), a, coIds), // CRM C5.5-fix10 ▸ เดิม liveCompanyRefs + ข้อความเดิมเสมอ ◂
+     ownerNames(ctx, page.map((r) => r.ownerUserId)),
+   ]);
+-  const coName = new Map(cos.map((c) => [c.id, c.name]));
+-  const items: ContactListItem[] = page.map((r) => ({ ...toDto(r), companyName: (r.companyId ? coName.get(r.companyId) : null) ?? r.company ?? null, ownerName: r.ownerUserId ? (owners.get(r.ownerUserId) ?? null) : null }));
++  const items: ContactListItem[] = page.map((r) => ({ ...viewerDto(r, states), companyName: companyNameFor(r, states), ownerName: r.ownerUserId ? (owners.get(r.ownerUserId) ?? null) : null }));
+   return { items, nextCursor: more ? (page[page.length - 1]?.id ?? null) : null };
+ }
+ 
+@@ -2578,11 +2603,10 @@ export async function exportContacts(ctx: ContactsCtx, actor: MemberActor, opts:
+     for (let i = 0; i < rows.length; i += 500) Object.assign(values, await eng.getFieldValues(fctx(ctx, a), rows.slice(i, i + 500).map((r) => r.id)));
+   }
+   const coIds = [...new Set(rows.map((r) => r.companyId).filter((x): x is string => !!x))];
+-  const [cos, owners] = await Promise.all([
+-    companies.liveCompanyRefs(coCtx(ctx), a, coIds),
++  const [states, owners] = await Promise.all([
++    companies.visibleCompanyStates(coCtx(ctx), a, coIds), // CRM C5.5-fix10 ▸ เดิม liveCompanyRefs + ข้อความเดิมเสมอ ◂
+     ownerNames(ctx, rows.map((r) => r.ownerUserId)),
+   ]);
+-  const coName = new Map(cos.map((c) => [c.id, c.name]));
+   const header = ["ชื่อจริง", "นามสกุล", "เบอร์โทร", "อีเมล", "ตำแหน่ง", "บริษัท", "ขั้น", "สถานะ lead", "ผู้ดูแล", "แท็ก", "ที่มา", "ไม่รับข่าวสาร", "รหัสสมาชิกที่ผูก", "เพิ่มเมื่อ", ...customFields.map((f) => f.label)];
+   const lines = [csvRow(header)];
+   for (const r of rows) {
+@@ -2594,7 +2618,7 @@ export async function exportContacts(ctx: ContactsCtx, actor: MemberActor, opts:
+         r.phone,
+         r.email,
+         r.jobTitle,
+-        (r.companyId ? coName.get(r.companyId) : null) ?? r.company,
++        companyNameFor(r, states),
+         LIFECYCLE_LABEL[r.lifecycleStage as ContactLifecycle],
+         LEAD_STATUS_LABEL[r.leadStatus as ContactLeadStatus],
+         r.ownerUserId ? (owners.get(r.ownerUserId) ?? "") : "",
+@@ -2644,7 +2668,10 @@ export async function briefFor(ctx: ContactsCtx, actor: MemberActor | null | und
+     orderBy: [{ createdAt: "asc" }],
+   });
+   if (!row) return null;
+-  const open = await prisma.crmDeal.count({ where: { AND: [await dealWhere(ctx, actor), { ...identityScope(ctx), contactId: row.id, kind: "OPEN" }] } });
++  const [open, coStates] = await Promise.all([
++    prisma.crmDeal.count({ where: { AND: [await dealWhere(ctx, actor), { ...identityScope(ctx), contactId: row.id, kind: "OPEN" }] } }),
++    companies.visibleCompanyStates(coCtx(ctx), actor, [row.companyId]), // CRM C5.5-fix10 ▸ ข้อความบริษัทเดิมตามการมองเห็นของผู้ดู ◂
++  ]);
+   return {
+     contactId: row.id,
+     name: contactLabel(row),
+@@ -2653,7 +2680,7 @@ export async function briefFor(ctx: ContactsCtx, actor: MemberActor | null | und
+     scoreBand: (row.scoreBand as ContactScoreBand | null) ?? null,
+     ownerUserId: row.ownerUserId,
+     companyId: row.companyId,
+-    companyName: row.company ?? null,
++    companyName: companyTextFor(row, coStates),
+     memberCustomerId: row.memberCustomerId,
+     openDealCount: open,
+   };
+diff --git a/src/lib/modules/crm/deals-shared.ts b/src/lib/modules/crm/deals-shared.ts
+index 7313b81d..1529d4c9 100644
+--- a/src/lib/modules/crm/deals-shared.ts
++++ b/src/lib/modules/crm/deals-shared.ts
+@@ -31,6 +31,8 @@ export const DEAL_PAGE_MAX = 200;
+ export const DEAL_EXPORT_MAX_ROWS = 5000;
+ /** การ์ดต่อคอลัมน์บนกระดาน (ตัวเลขรวมของคอลัมน์นับจากทุกดีลเสมอ) */
+ export const DEAL_BOARD_CARDS_MAX = 60;
++/** CRM C5.5-fix10 ▸ FX7-1: ชื่อแทนผู้ติดต่อที่ผู้ดูมองไม่เห็น บนพื้นผิวของดีล (ดีล 360 · การ์ด · กระดาน · CSV · ค้นหา · AI) — ข้อความเดียวทุกที่ ◂ */
++export const HIDDEN_CONTACT_NAME = "ผู้ติดต่อที่มองไม่เห็น";
+ export const PIPELINE_NAME_MAX = 100;
+ export const PIPELINE_STAGES_MAX = 20;
+ export const LOST_REASON_LABEL_MAX = 100;
+diff --git a/src/lib/modules/crm/deals.ts b/src/lib/modules/crm/deals.ts
+index 77722931..c3504d48 100644
+--- a/src/lib/modules/crm/deals.ts
++++ b/src/lib/modules/crm/deals.ts
+@@ -47,6 +47,7 @@ import { crmStaleDaysDefaultOf } from "./settings";
+ // CRM C1.6 ▸ การ์ดบอร์ดงานของดีลใน getDeal360 ◂
+ import { auditSystemActivity, dealKanbanCards, recordSystemActivityInTx, type DealKanbanCard } from "./activities";
+ import {
++  HIDDEN_CONTACT_NAME, // CRM C5.5-fix10 ◂
+   DEAL_BOARD_CARDS_MAX,
+   DEAL_BULK_MAX,
+   DEAL_COLLABORATORS_MAX,
+@@ -1864,28 +1865,44 @@ async function userNames(ctx: DealsCtx, ids: (string | null | undefined)[]): Pro
+   return new Map(rows.map((r) => [r.id, r.name ?? r.email ?? "ผู้ใช้"]));
+ }
+ 
+-async function companyNames(ctx: DealsCtx, ids: (string | null | undefined)[]): Promise<Map<string, string>> {
++// CRM C5.5-fix10 ▸ FX7-1: ชื่อบริษัท/ผู้ติดต่อบนพื้นผิวของดีล = ตามการมองเห็นของ **ผู้ดู** (กติกาเดียวกับดีล 360 · getDeal360):
++//   บริษัทผ่าน `companies.companyRefsInTx(…, ผู้ดู, …)` (companyWhere) · ผู้ติดต่อผ่าน contactWhere · มองไม่เห็น = ไม่มีชื่อ
++//   (บริษัท → null/"" = แสดงแบบ "ไม่ผูกบริษัท" · ผู้ติดต่อ → HIDDEN_CONTACT_NAME แบบดีล 360 · คะแนน 0) — ไม่มีข้อความที่ได้จาก id ·
++//   เดิมอ่านชื่อในขอบเขตระบบ ⇒ การ์ด/กระดาน/CSV บอกชื่อบริษัทที่ผู้ดูมองไม่เห็น (ตั้งแต่ C1.5) · ดีลยังถือ companyId เดิม
++//   (ยอดรวมของบริษัทไม่เปลี่ยน — เปลี่ยนเฉพาะสิ่งที่ "แสดง" ให้ผู้ดูคนนี้) · ต่อหน้า: การมองเห็น 1 ชุดต่อเอนทิตี (ไม่มี N+1) ◂
++async function companyNames(ctx: DealsCtx, viewer: MemberActor, ids: (string | null | undefined)[]): Promise<Map<string, string>> {
+   const uniq = [...new Set(ids.filter((x): x is string => !!x))];
+   if (uniq.length === 0) return new Map();
+-  const rows = await companies.companyRefsInTx(prisma, coCtx(ctx), null, uniq);
++  const rows = await companies.companyRefsInTx(prisma, coCtx(ctx), viewer, uniq);
+   return new Map(rows.map((r) => [r.id, r.name]));
+ }
++/** id ผู้ติดต่อ (ของดีลในหน้านี้) ที่ผู้ดูมองเห็น — คิวรีเดียว */
++async function visibleContactIds(ctx: DealsCtx, viewer: MemberActor, ids: (string | null | undefined)[]): Promise<Set<string>> {
++  const uniq = [...new Set(ids.filter((x): x is string => !!x))];
++  if (uniq.length === 0) return new Set();
++  const rows = await prisma.crmContact.findMany({ where: { AND: [await contactWhere(ctx, viewer), { id: { in: uniq } }] }, select: { id: true } });
++  return new Set(rows.map((r) => r.id));
++}
+ 
+-async function toCards(ctx: DealsCtx, rows: CardRow[]): Promise<DealCardDto[]> {
+-  const [owners, cos] = await Promise.all([userNames(ctx, rows.map((r) => r.ownerUserId)), companyNames(ctx, rows.map((r) => r.companyId))]);
++async function toCards(ctx: DealsCtx, viewer: MemberActor, rows: CardRow[]): Promise<DealCardDto[]> {
++  const [owners, cos, seen] = await Promise.all([
++    userNames(ctx, rows.map((r) => r.ownerUserId)),
++    companyNames(ctx, viewer, rows.map((r) => r.companyId)),
++    visibleContactIds(ctx, viewer, rows.map((r) => r.contactId)),
++  ]);
+   return rows.map((r) => ({
+     id: r.id,
+     title: r.title,
+     companyId: r.companyId,
+     companyName: r.companyId ? (cos.get(r.companyId) ?? null) : null,
+-    contactName: r.contact?.name ?? "",
++    contactName: seen.has(r.contactId) ? (r.contact?.name ?? "") : HIDDEN_CONTACT_NAME,
+     valueSatang: r.valueSatang,
+     ownerUserId: r.ownerUserId,
+     ownerName: r.ownerUserId ? (owners.get(r.ownerUserId) ?? null) : null,
+     expectedCloseAt: dayKey(r.expectedCloseAt),
+     stale: !!r.stalledAt,
+     stalledAt: iso(r.stalledAt),
+-    score: r.contact?.score ?? 0,
++    score: seen.has(r.contactId) ? (r.contact?.score ?? 0) : 0,
+     nextActivityAt: iso(r.nextActivityAt),
+     nextStep: r.nextStep,
+     kind: r.kind as DealKind,
+@@ -1936,14 +1953,14 @@ export async function listDeals(ctx: DealsCtx, actor: MemberActor, input: DealLi
+     }
+     const more = rows.length > pageSize;
+     const page = more ? rows.slice(0, pageSize) : rows;
+-    const cards = await toCards(ctx, page);
++    const cards = await toCards(ctx, a, page);
+     const items: DealListRow[] = cards.map((c, i) => ({ ...c, pipelineId: page[i]!.pipelineId, stageName: page[i]!.stage?.name ?? "", forecastCategory: page[i]!.forecastCategory as ForecastCategory }));
+     return { items, nextCursor: more ? (page[page.length - 1]?.id ?? null) : null };
+   });
+ }
+ 
+ type BoardCardSqlRow = {
+-  id: string; title: string; companyId: string | null; contactName: string | null; contactScore: number | null; valueSatang: number;
++  id: string; title: string; companyId: string | null; contactId: string; contactName: string | null; contactScore: number | null; valueSatang: number;
+   ownerUserId: string | null; expectedCloseAt: Date | null; stalledAt: Date | null; nextActivityAt: Date | null; nextStep: string | null;
+   kind: string; stageId: string; probabilityOverride: number | null; stageName: string | null; stageProbability: number | null; tags: string[];
+ };
+@@ -1984,7 +2001,7 @@ export async function getBoard(ctx: DealsCtx, actor: MemberActor, input: DealLis
+                 FROM "CrmDeal" d
+                WHERE ${where} AND d."stageId" = ANY(${stageIds}::text[])
+             )
+-            SELECT d."id", d."title", d."companyId", c."name" AS "contactName", c."score" AS "contactScore", d."valueSatang",
++            SELECT d."id", d."title", d."companyId", d."contactId", c."name" AS "contactName", c."score" AS "contactScore", d."valueSatang",
+                    d."ownerUserId", d."expectedCloseAt", d."stalledAt", d."nextActivityAt", d."nextStep", d."kind"::text AS "kind",
+                    d."stageId", d."probabilityOverride", st."name" AS "stageName", st."probability" AS "stageProbability", d."tags"
+               FROM ranked r
+@@ -2003,7 +2020,7 @@ export async function getBoard(ctx: DealsCtx, actor: MemberActor, input: DealLis
+         contact: r.contactName === null ? null : { name: r.contactName, score: r.contactScore ?? 0 },
+         stage: r.stageName === null ? null : { name: r.stageName, probability: r.stageProbability ?? 0 },
+       }) as unknown as CardRow;
+-    const cards = await toCards(ctx, cardRows.map(asCard));
++    const cards = await toCards(ctx, a, cardRows.map(asCard));
+     const byId = new Map(cards.map((c) => [c.id, c]));
+     const byStage = new Map<string, DealCardDto[]>();
+     for (const r of cardRows) {
+@@ -2165,7 +2182,7 @@ export async function getDeal360(ctx: DealsCtx, actor: MemberActor, id: string):
+       discountSatang: totals.discountSatang,
+       history,
+       company: company ? { id: company.id, name: company.name } : null,
+-      contact: { id: deal.contactId, name: contact?.name ?? "ผู้ติดต่อที่มองไม่เห็น" },
++      contact: { id: deal.contactId, name: contact?.name ?? HIDDEN_CONTACT_NAME },
+       owner: deal.ownerUserId ? { id: deal.ownerUserId, name: people.get(deal.ownerUserId) ?? "ผู้ใช้" } : null,
+       collaborators: deal.collaboratorUserIds.map((u) => ({ id: u, name: people.get(u) ?? "ผู้ใช้" })),
+       lostReason: lostReason ? { id: lostReason.id, label: lostReason.label } : null,
+@@ -2199,7 +2216,12 @@ export async function exportDeals(ctx: DealsCtx, actor: MemberActor, filters: De
+         return ids.length ? inOrder(ids, await prisma.crmDeal.findMany({ where: { id: { in: ids } }, include })) : [];
+       })()
+     : await prisma.crmDeal.findMany({ where, include, orderBy: [{ createdAt: "asc" }, { id: "asc" }], take: DEAL_EXPORT_MAX_ROWS });
+-  const [owners, cos] = await Promise.all([userNames(ctx, rows.map((r) => r.ownerUserId)), companyNames(ctx, rows.map((r) => r.companyId))]);
++  // CRM C5.5-fix10 ▸ FX7-1: ชื่อตามการมองเห็นของผู้ส่งออก (เหมือนการ์ด/ดีล 360) · บริษัทที่มองไม่เห็น = ช่องว่าง (เหมือนไม่ผูกบริษัท) ◂
++  const [owners, cos, seen] = await Promise.all([
++    userNames(ctx, rows.map((r) => r.ownerUserId)),
++    companyNames(ctx, a, rows.map((r) => r.companyId)),
++    visibleContactIds(ctx, a, rows.map((r) => r.contactId)),
++  ]);
+   const header = ["ชื่อดีล", "บริษัท", "ผู้ติดต่อ", "pipeline", "ขั้น", "สถานะ", "มูลค่า (บาท)", "หมวดพยากรณ์", "โอกาสปิด (%)", "วันที่คาดว่าจะปิด", "ผู้ดูแล", "แท็ก", "เพิ่มเมื่อ"];
+   const out = [csvRow(header)];
+   for (const r of rows) {
+@@ -2207,7 +2229,7 @@ export async function exportDeals(ctx: DealsCtx, actor: MemberActor, filters: De
+       csvRow([
+         r.title,
+         r.companyId ? (cos.get(r.companyId) ?? "") : "",
+-        r.contact?.name ?? "",
++        seen.has(r.contactId) ? (r.contact?.name ?? "") : HIDDEN_CONTACT_NAME,
+         r.pipeline?.name ?? "",
+         r.stage?.name ?? "",
+         DEAL_KIND_LABEL[r.kind as DealKind],
+diff --git a/src/lib/modules/crm/sequences.ts b/src/lib/modules/crm/sequences.ts
+index 6a706a6a..d30d5dd5 100644
+--- a/src/lib/modules/crm/sequences.ts
++++ b/src/lib/modules/crm/sequences.ts
+@@ -31,7 +31,7 @@ import { evaluate as rbacEvaluate } from "@/lib/core/rbac"; // CRM C5.5 ▸ H55-
+ import { assertCrmV2 } from "./ui-version";
+ import { canContact } from "./consents";
+ import { contactWhere, dealWhere } from "./where";
+-import { visibleLiveCompanyNames } from "./companies";
++import { visibleCompanyStates } from "./companies"; // CRM C5.5-fix10 ▸ เดิม visibleLiveCompanyNames ◂
+ import { mergeCrmHolidays, removeCrmHoliday, setCrmBusinessDays } from "./settings";
+ import { CRM_DEFAULT_DEPS, crmLineAddressOf } from "./automation";
+ import * as activities from "./activities";
+@@ -1017,11 +1017,10 @@ export async function listEnrollments(ctx: SequencesCtx, actor: MemberActor, opt
+     keys.length
+       ? prisma.crmSequenceStep.findMany({ where: { OR: keys.map((k) => ({ sequenceId: k.split(":")[0]!, version: Number(k.split(":")[1]) })) }, orderBy: { index: "asc" } })
+       : Promise.resolve([]),
+-    coIds.length
+-      ? visibleLiveCompanyNames(ctx, a, coIds)
+-      : Promise.resolve([] as { id: string; name: string }[]),
++    visibleCompanyStates(ctx, a, coIds),
+   ]);
+-  const coName = new Map(cos.map((c) => [c.id, c.name]));
++  // CRM C5.5-fix10 ▸ (sweep FX7-1) ชื่อที่พิมพ์เอง (ข้อความเดิม) ใช้ได้เฉพาะเมื่อไม่ผูกบริษัท หรือผูกบริษัทที่ผู้ดูเห็น — เดิมตกไปที่ข้อความเสมอ
++  //   ⇒ บริษัทที่มองไม่เห็นยังบอกชื่อผ่านข้อความเดิม (ขัดกับหมายเหตุ X1 ด้านบน) · ผู้ดูที่เห็นบริษัท = เท่าเดิม ◂
+   return {
+     items: rows.map((r) => {
+       const mine = steps.filter((s) => s.sequenceId === r.sequenceId && s.version === r.sequenceVersion);
+@@ -1030,7 +1029,9 @@ export async function listEnrollments(ctx: SequencesCtx, actor: MemberActor, opt
+         ...enrollmentHead(r, r.sequence.name, contactNameOf(r.contact)),
+         stepCount: mine.length,
+         currentStep: cur ? stepDto(cur).label : null,
+-        companyName: (r.contact?.companyId ? (coName.get(r.contact.companyId) ?? null) : null) ?? (str(r.contact?.company) || null),
++        companyName:
++          (r.contact?.companyId ? (cos.get(r.contact.companyId)?.live ? cos.get(r.contact.companyId)!.name : null) : null) ??
++          (r.contact?.companyId && !cos.has(r.contact.companyId) ? null : str(r.contact?.company) || null),
+       };
+     }),
+   };
+diff --git a/src/lib/ui/date.ts b/src/lib/ui/date.ts
+index 2ed77e32..9e000ba6 100644
+--- a/src/lib/ui/date.ts
++++ b/src/lib/ui/date.ts
+@@ -56,11 +56,25 @@ export function formatThaiDateTimeFull(d: Date | string): string {
+ /**
+  * ISO วันเวลาตามโซนไทยที่บอกเขตเวลาเอง "2026-10-09T00:30:00+07:00" — สำหรับ CSV/ไฟล์ส่งออก (อ่านด้วยเครื่องได้ ไม่กำกวม ·
+  * ตัวตรวจ DATETIME ของ engine ฟิลด์รับค่านี้ตรงตัว ⇒ นำเข้ากลับได้ขณะเดิมแม้เครื่องตั้งเวลาไทย) · ไทยไม่มีเวลาออมแสง ⇒ +07:00 คงที่
++ * CRM C5.5-fix10 ▸ FX7-3: engine เก็บมิลลิวินาทีที่มากับ API/ไฟล์นำเข้า (ISO_RE รับ .sss) ⇒ ค่าที่มีมิลลิวินาที = ใส่ ".sss" ด้วย
++ *   (ส่งออก → นำเข้า ได้ขณะเดิมตรงตัว) · ค่าที่ลงตัววินาที (ทุกค่าที่กรอกจากหน้าจอ) = รูปเดิมไบต์ต่อไบต์ ◂
+  */
+ export function thaiIsoDateTime(d: Date | string): string {
+   const t = new Date(d).getTime();
+   if (Number.isNaN(t)) return String(d);
+-  return `${new Date(t + 7 * 60 * 60 * 1000).toISOString().slice(0, 19)}+07:00`;
++  const iso = new Date(t + 7 * 60 * 60 * 1000).toISOString();
++  return `${iso.slice(0, 19)}${t % 1000 === 0 ? "" : iso.slice(19, 23)}+07:00`;
++}
++/**
++ * CRM C5.5-fix10 ▸ (คำถามเจ้าของข้อ 5) ค่าฟิลด์ DATE ของ CRM ("YYYY-MM-DD" = วันในปฏิทิน ไม่มีเวลา) → "9 ต.ค. 2569" ·
++ *   ตัวเดียวที่หน้าระเบียนของพนักงาน (components/crm/objects/types.ts) และหน้าผู้ติดต่อ 360 ใช้ · ตีความเป็นวัน UTC (ไม่เลื่อนวันตามเขตเวลา) ·
++ *   รูปแบบอื่น = คืนค่าเดิม · ใช้แสดงผลเท่านั้น (ไฟล์ส่งออกยังเป็น "YYYY-MM-DD") ◂
++ */
++export function formatThaiDateFull(ymd: string): string {
++  if (!/^\d{4}-\d{2}-\d{2}/.test(ymd)) return ymd;
++  const t = Date.parse(`${ymd.slice(0, 10)}T00:00:00Z`);
++  if (Number.isNaN(t)) return ymd;
++  return new Date(t).toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+ }
+ 
+ // ─────────────────── ปี ค.ศ. (โมดูลบัญชี V2) ───────────────────

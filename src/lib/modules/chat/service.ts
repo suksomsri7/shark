@@ -33,6 +33,7 @@ import { publishChat, EV_CHAT_NEW, EV_CHAT_READ } from "@/lib/realtime";
 // ตัวแปลง url → path บน storage zone ของเรา · คืน null เมื่อ url ไม่ได้อยู่ใต้ CDN ของเรา
 // (ใช้เป็นด่าน S1 ของ WO-CV13 — ห้ามเขียนกติกา "url นี้ของเราไหม" ซ้ำอีกชุด)
 import { storagePathFromCdnUrl } from "@/lib/storage/service";
+import { trimEndRun } from "@/lib/core/linear-text"; // CRM C5.5-fix5 ◂
 
 // Chat service (P1 = LINE + WEBCHAT). scope = systemId (AppSystem type CHAT)
 // query ทุกตัวผูก tenantId + systemId ตรง ๆ (ไม่พึ่ง tenantDb — เหมือน reward/meeting)
@@ -2470,7 +2471,7 @@ const sha256hex = (s: string) => createHash("sha256").update(s).digest("hex");
 /** origin ให้เทียบกันได้: ตัวพิมพ์เล็ก + ไม่มี / ปิดท้าย · ไม่ใช่ origin ที่ถูกต้อง → null */
 export function normalizeOrigin(value: unknown): string | null {
   if (typeof value !== "string") return null;
-  const raw = value.trim().replace(/\/+$/, "");
+  const raw = trimEndRun(value.trim(), "/"); // CRM C5.5-fix5 ▸ เดิม `/\/+$/` = n² บน Origin `////…x` (หัวคำขอสาธารณะของ widget) · ผลเท่าเดิม ◂
   if (!raw) return null;
   try {
     const u = new URL(raw);
@@ -2605,7 +2606,7 @@ export async function resolveChatSystemId(
     const sys = await prisma.appSystem.findFirst({
       where: { id: want, tenantId, type: "CHAT", active: true },
     });
-    return sys?.id ?? null; // ระบบของร้านอื่น/ไม่ใช่ CHAT → null (ผู้เรียกตอบ 403)
+    return sys?.id ?? null; // ระบบของร้านอื่น/ไม่ใช่ CHAT/ปิดใช้งาน → null (ผู้เรียก: คีย์กลาง → 404 · คีย์ผูกระบบ → 403)
   }
   const first = await prisma.appSystem.findFirst({
     where: { tenantId, type: "CHAT", active: true },

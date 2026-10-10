@@ -1,7 +1,7 @@
 // HomeKpis.tsx — แถว KPI 6 ช่องของหน้าแรก CRM (ใบ C3.2 · ภาพ 01 แถวบน) — คอมโพเนนต์แสดงผลล้วน (server · ไม่มี hook)
 // ตัวเลขทั้งหมดมาจาก `crm.home.homeData` ผ่าน `crm/home.tsx` (ระดับรายงานของผู้ดู ∩ การมองเห็นแล้ว) — ไฟล์นี้ไม่คิดอะไรเพิ่ม
 // 🔴 ไม่ import โมดูล CRM (ด่าน F2.3) — ชนิดของ props ประกาศที่นี่ · ไม่มีชื่อ/เบอร์/อีเมลของลูกค้า
-// 🔴 390 px: 2 คอลัมน์ · ≥ 640 px 3 คอลัมน์ · ≥ 1280 px 6 คอลัมน์ (ภาพ 01) · ข้อความยาวตัดด้วย truncate
+// 🔴 390 px: 2 คอลัมน์ · ≥ 640 px 3 คอลัมน์ · ≥ 1280 px 6 คอลัมน์ (ภาพ 01) · ป้าย/คำอธิบายยาวตัดด้วย truncate — ตัวเลขห้ามตัด (ย่อขนาดตามช่อง)
 
 import Link from "next/link";
 import type { ReactNode } from "react";
@@ -58,7 +58,8 @@ const ICON = {
   hot: "M12 3l2.2 5.8L20 11l-5.8 2.2L12 19l-2.2-5.8L4 11l5.8-2.2Z",
 } as const;
 
-const TILE = "card flex min-w-0 flex-col gap-1.5 p-4 hover:bg-[color:var(--color-surface-2)]";
+// PARITY 01 (8 ต.ค.): ช่องเป็น container — ตัวเลขย่อตามความกว้างช่อง (ช่องแคบสุด ~120 px ที่จอ 1440) แทนการตัดเป็น "฿19.…"
+const TILE = "card @container flex min-w-0 flex-col gap-1.5 p-4 xl:max-2xl:p-3 hover:bg-[color:var(--color-surface-2)]";
 
 /** เนื้อในของช่อง KPI — ตัวลิงก์ (พร้อม data-testid ตรงตัว · ด่าน F14.1 อ่านค่าจากโค้ด) เขียนที่ HomeKpis ทีละช่อง */
 function TileBody({ icon, label, value, sub, danger }: { icon: string; label: string; value: string; sub: ReactNode; danger?: boolean }) {
@@ -68,7 +69,7 @@ function TileBody({ icon, label, value, sub, danger }: { icon: string; label: st
         <Icon d={icon} />
         <span className="truncate">{label}</span>
       </span>
-      <span className={`truncate text-2xl font-semibold tabular-nums ${danger ? "text-[color:var(--color-danger)]" : ""}`}>{value}</span>
+      <span className={`min-w-0 text-[length:clamp(0.75rem,20cqw,1.5rem)] leading-8 font-semibold tabular-nums [overflow-wrap:anywhere] ${danger ? "text-[color:var(--color-danger)]" : ""}`}>{value}</span>
       <span className={`line-clamp-2 min-w-0 text-xs ${muted}`}>{sub}</span>
     </>
   );

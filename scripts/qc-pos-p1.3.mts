@@ -727,12 +727,12 @@ async function runStatic() {
   const seedOn = /registerV2["']?\s*:\s*true\b/.test(stripComments(rd(SEED)));
   chk("P1.3-S5.11", flagStrict && flagPath && bothScreens && guardKept && seedOn, "registerV2 === true · settings.pos · <RegisterScreen>+<PosRegister> · ด่าน HF-POS-PAGES · seed on",
     `strict:${flagStrict} path:${flagPath} screens:${bothScreens} guard:${guardKept} seed:${seedOn}`);
-  // S5.12 จอเดิมไม่ถูกแตะ — sha256 ตอนฐาน a670d313 (accepted P1.1a + hotfix/pos-page-authz)
+  // S5.12 จอเดิมไม่ถูกแตะ — sha256 ตอนฐาน a670d313 (accepted P1.1a + hotfix/pos-page-authz) + main HF-O23 (3a93a773 / 70ab5b86) ผ่าน MAIN-MERGE 2c64d972
   //   🔴 ตั้งใจเป็นสายสะดุด (มติ 3.1 ข้อ 7): merge ที่แก้สองไฟล์นี้อย่างชอบธรรม (เช่น CRM pos-deal-select · hotfix POS) ต้องเปลี่ยน hash
   //      ผ่าน ORACLE-EDIT ที่ผู้คุมงานเห็นเท่านั้น — ห้ามเปลี่ยนเป็น "diff กับ merge-base" (merge-base ของ session/pos ไม่มี hotfix ⇒ แดงหลอก)
   const LEGACY_SHA: Record<string, string> = {
-    [LEGACY_UI]: "c69cb3f2b374889f3d3825bd330b06ce85ecd74cf58a192a0820d76dfa3abf30",
-    [LEGACY_ACTIONS]: "49ef6de456953b100eaf2d0890d6438ff68e502d33b363b3436fbed5dc01fd24",
+    [LEGACY_UI]: "d661c7edf2abc93a35632e02b3dcc4fae9a6c1739739efa350ce451eafb66cfb", // ORACLE-EDIT MAIN-MERGE (ผู้คุม 10 ต.ค.) ▸ main HF-O23 3a93a773 ◂
+    [LEGACY_ACTIONS]: "e076ca3d82198583c0aedc0ccad8e57563d0b3606d44526c80fe9640aa563d14", // ORACLE-EDIT MAIN-MERGE ▸ main HF-O23 3a93a773 + R2 70ab5b86 ◂
   };
   const shaOf = (p: string) => (existsSync(join(ROOT, p)) ? createHash("sha256").update(readFileSync(join(ROOT, p))).digest("hex") : "absent");
   const shaBad = Object.entries(LEGACY_SHA).filter(([p, h]) => shaOf(p) !== h).map(([p]) => `${p}=${shaOf(p).slice(0, 12)}`);

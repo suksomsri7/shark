@@ -1,0 +1,27 @@
+  ✅ [M1.8-S4.1] createLink: STAFF → throw · auto code A–Z0–9 6–10 ตัว · url = {origin}/m/{tenantSlug}?src={code} · qrDataUrl data:image/png · custom code ได้ · code ซ้ำ/ผิดรูป/target ผิด → throw ไทย · hits/signups/firstPurchases 0 · active true
+  ✅ [M1.8-S4.2] hit(slug, code) สาธารณะ → {ok true, linkId, target} · hits +1 ต่อครั้ง (2) · ลิงก์ปิด/โค้ดไม่มี/ร้านผิด → {ok false} ไม่นับ · listLinks มี url + hits
+  ✅ [M1.8-S1.1] POS → {source POS, staffUserId, unitId} · LIFF+src ลิงก์ A → {source LIFF, linkId A, unitId ของลิงก์, sourceDetail.linkCode} · LIFF ไม่มี src → LIFF linkId null · LIFF+src ลิงก์ B (source CAMPAIGN) → source CAMPAIGN linkId B
+  ✅ [M1.8-S1.2] WEB_FORM → {WEB_FORM, sourceDetail.formId} · CHAT LINE → {LINE_OA, sourceChannel LINE} · CHAT WHATSAPP → {CHAT, sourceChannel WHATSAPP} · BOOKING → {BOOKING, unitId}
+  ✅ [M1.8-S1.3] IMPORT → {IMPORT, sourceDetail.fileName} · CRM → {CRM, sourceDetail.dealId} · API → {API, sourceDetail.apiKeyName} · REFERRAL referrerCode → {REFERRAL, referrerCustomerId = สมาชิก 1}
+  ✅ [M1.8-S1.4] MARKETPLACE SHOPEE → {MARKETPLACE, sourceChannel SHOPEE} (D19) · APP → {APP, sourceChannel APP} · via ไม่รู้จัก/ช่องทางนอกทะเบียน/marketplace ที่ไม่ใช่ kind MARKETPLACE/referrerCode ไม่มี → throw ไทย
+  ✅ [M1.8-S1.5] ลิงก์ปิด/โค้ดไม่มี → เหมือนไม่มี src (source LIFF · linkId null · sourceDetail.linkCode คงไว้เพื่อสืบ) ไม่ throw
+  ✅ [M1.8-S2.1] createMember(source LIFF · sourceDetail.linkCode A) → attribution FIRST+LAST {source LIFF, linkId A, unitId ป่าตอง} · Customer.source LIFF · sourceDetail มี linkId/linkCode · AcquisitionLink.signups +2 (c1,c2) · c3 ผ่าน referralCode → source REFERRAL (M1.4)
+  ✅ [M1.8-S2.2] recordTouch ×2 → FIRST ไม่เปลี่ยน (LIFF · linkId A) · LAST = ล่าสุด (POS · staffUserId · unitId กะตะ) · แถวยัง 2 · signups ของลิงก์ B ไม่เพิ่ม · recordFirstPurchase → link A.firstPurchases +1 ครั้งเดียว (ครั้งที่ 2 = false)
+  ✅ [M1.8-S3.1] reportBySource(1 ปี · นับ Customer.createdAt ในช่วง): rows LIFF {signups 2, firstTouch 2, lastTouch 1 (c2 — c1 ย้าย LAST ไป POS), costSatang 200000 (ลิงก์ A), costPerSignupSatang 100000} · WALK_IN signups 53 (ตรง DB) · REFERRAL 1 · links มี A {hits 2, signups 2, firstPurchases 1, costPerSignupSatang 100000} · total = Σ signups
+  ✅ [M1.8-S3.2] unitId=กะตะ → นับเฉพาะ FIRST.unitId กะตะ (WALK_IN 13 ตรง DB · LIFF 0) · ช่วงปี 2020 → total 0 · thana (ไม่มี member.report.view) → throw
+  ✅ [M1.8-S3.3] รายงานคิดจาก MemberAttribution + PosSale (buyers/repeatBuyers/avgSpent) ≤ 1,000 ms บน seed · rows มีคีย์ buyers/repeatBuyers/avgSpentSatang เป็นตัวเลข
+  ✅ [M1.8-S5.1] settings/sources/page.tsx: requireTenant · สิทธิ์ settings.manage (ไม่มี = notFound) · reportBySource + listLinks · testid 6 · โมดัลสร้างลิงก์ (ชื่อ/ที่มา/สาขา/แคมเปญ/ต้นทุน) + QR (img data:) + คัดลอกลิงก์ · แท่งต่อช่องทาง first vs last · sources-actions.ts 'use server' gate settings.manage · ป้ายช่องทางไทย (MemberSource label registry) · ไม่มีอีโมจิ
+  ❌ [M1.8-S5.2] ภาพ 13: settings-sources-owner desktop+mobile 200 ไม่มี console error · sources-link-new-modal (เปิดโมดัล) · PARITY: ผ่าน ใน wo-notes/member-M1.8.md — exp 200 · PARITY | act shots= o=undefined
+  ✅ [M1.8-S6.1] facade export resolveSource · recordTouch · recordFirstPurchase · sources.ts ไม่ import โมดูลอื่นตรง · ไม่มี any · QR ใช้ไลบรารี qrcode ที่มีอยู่ · origin จาก @/lib/core/origin (ไม่ฮาร์ดโค้ดโดเมน)
+
+🔴 M1.8: 14/15
+JSON_SUMMARY {"total":15,"passed":14,"findings":[{"id":"M1.8-S5.2","sev":"MAJOR"}]}
+(node:1477218) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)

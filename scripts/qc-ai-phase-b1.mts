@@ -14,6 +14,8 @@
 // validate-explain: pos_create_sale lines ว่าง/qty≤0/ราคาติดลบ → {error,suggestion} ไม่สร้าง proposal
 import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
 loadLegacyQcEnv("qc-ai-phase-b1"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
+// ORACLE-EDIT C5.5-G1: runTool/sendMessage now take a required actor (no actor = refusal) — these checks always meant "the shop OWNER asks"
+const qcOwner = (t: string) => ({ kind: "member" as const, tenantId: t, userId: "qc-owner", membership: { role: "OWNER" as const, unitAccess: ["*"], permissions: {} } });
 process.env.SHARK_AI_MOCK = "1";
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");
@@ -40,7 +42,7 @@ try {
   const sx = await props.executeProposal(OWNER, ctx, sp.id);
   const sale = await prisma.posSale.findFirst({ where: { tenantId: tid, status: "PAID" } });
   chk("B1-1.1", "pos_create_sale → PosSale PAID 150 บาทเกิดจริง + idempotencyKey ai-<proposalId>", sx?.ok === true && sale?.grandTotalSatang === 15000 && sale?.idempotencyKey === `ai-${sp.id}`);
-  const bad = await tools.runTool({ tenantId: tid, conversationId: conv.id }, "pos_create_sale", { lines: [{ name: "ผี", qty: 0, unitPriceSatang: 100 }], payType: "CASH" });
+  const bad = await tools.runTool({ tenantId: tid, actor: qcOwner(tid), conversationId: conv.id }, "pos_create_sale", { lines: [{ name: "ผี", qty: 0, unitPriceSatang: 100 }], payType: "CASH" });
   let badParsed: any = {}; try { badParsed = JSON.parse(bad); } catch {}
   chk("B1-1.2", "ขาย qty 0 → error+ไม่สร้าง proposal (validate-explain)", !!badParsed.error && (await prisma.aiProposal.count({ where: { tenantId: tid, kind: "pos_create_sale" } })) === 1);
 
@@ -88,8 +90,8 @@ try {
   chk("B1-5.1", "shop_confirm_order → ออเดอร์ PAID + เส้นเงินเดิน (PosSale ecom)", ox?.ok === true && (await prisma.shopOrder.findUnique({ where: { id: order.id } }))?.status === "PAID" && (await prisma.posSale.count({ where: { tenantId: tid, idempotencyKey: `ecom-${order.id}` } })) === 1);
 
   // 6) read tools ตอบข้อมูลจริง
-  const tq = await tools.runTool({ tenantId: tid }, "queue_waiting", {});
-  const ta = await tools.runTool({ tenantId: tid }, "shop_pending_orders", {});
+  const tq = await tools.runTool({ tenantId: tid, actor: qcOwner(tid) }, "queue_waiting", {});
+  const ta = await tools.runTool({ tenantId: tid, actor: qcOwner(tid) }, "shop_pending_orders", {});
   chk("B1-6.1", "read tools ตอบ JSON ไทยไม่ error", !JSON.parse(tq).error !== false && !String(ta).includes('"error"'), "MAJOR");
 } catch (e) { chk("CRASH", "จบ: " + (e instanceof Error ? e.message.slice(0, 140) : String(e)), false); }
 finally {

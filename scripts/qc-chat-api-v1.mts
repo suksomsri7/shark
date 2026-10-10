@@ -241,9 +241,10 @@ const ROUTES = ["identities", "messages", "thread", "read", "unread", "attachmen
 
 function resetAll(opts: { allowlist?: string[] } = {}) {
   for (const k of Object.keys(tables)) delete tables[k];
+  // ORACLE-EDIT HF-APIV1: แถว fake ต้องมีค่า default ของ schema (scopesJson NOT NULL DEFAULT [] · systemId null) เหมือนแถวจริง
   tables.apiKey = [
-    { id: "key-1", tenantId: "T1", name: "SiamDive", keyHash: sha(SECRET_KEY), prefix: SECRET_KEY.slice(0, 12), revokedAt: null, lastUsedAt: new Date(), createdAt: new Date() },
-    { id: "key-2", tenantId: "T2", name: "ร้านอื่น", keyHash: sha(SECRET_KEY_T2), prefix: SECRET_KEY_T2.slice(0, 12), revokedAt: null, lastUsedAt: new Date(), createdAt: new Date() },
+    { id: "key-1", tenantId: "T1", name: "SiamDive", keyHash: sha(SECRET_KEY), prefix: SECRET_KEY.slice(0, 12), revokedAt: null, lastUsedAt: new Date(), createdAt: new Date(), scopesJson: [], systemId: null },
+    { id: "key-2", tenantId: "T2", name: "ร้านอื่น", keyHash: sha(SECRET_KEY_T2), prefix: SECRET_KEY_T2.slice(0, 12), revokedAt: null, lastUsedAt: new Date(), createdAt: new Date(), scopesJson: [], systemId: null },
   ];
   tables.appSystem = [
     { id: "S1", tenantId: "T1", type: "CHAT", name: "แชทลูกค้า SiamDive", active: true, createdAt: new Date(1) },

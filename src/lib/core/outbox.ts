@@ -15,7 +15,9 @@ import { prisma } from "@/lib/core/db";
 type Tx = Prisma.TransactionClient;
 
 const MAX_ATTEMPTS = 5;
-const LEASE_MS = 60_000; // จองงาน 1 นาที กัน drainer ซ้อนหยิบ event เดียวกัน
+// C5.4 (hunter H4): 6 นาที > เพดานเวลาที่ฟังก์ชันหนึ่งรันได้จริง (Vercel 300 วิ) — lease สั้นกว่าชีวิตของ drainer ⇒ อีกตัวหยิบ event
+//   ที่ยังทำอยู่ไปทำซ้ำ (และความล้มของเจ้าของเดิมไม่มีวันลงแถว) · แลกกับ: event ของ drainer ที่ตายกลางคันรอ 6 นาทีแทน 1 นาที
+const LEASE_MS = 6 * 60_000;
 
 export type OutboxHandler = (evt: {
   id: string;
@@ -105,9 +107,10 @@ export async function emitOutboxMany(
     systemId?: string | null;
     unitId?: string | null;
   }[],
-): Promise<void> {
-  if (inputs.length === 0) return;
-  await tx.outboxEvent.createMany({
+): Promise<number> {
+  // CRM C5.5-fix13 ▸ คืนจำนวนแถวที่เพิ่มจริง (ซ้ำ = 0 · skipDuplicates) — ผู้เรียกที่ไม่ใช้ค่านี้ไม่ต้องแก้ ◂
+  if (inputs.length === 0) return 0;
+  const r = await tx.outboxEvent.createMany({
     data: inputs.map((input) => ({
       tenantId: input.tenantId,
       type: input.type,
@@ -118,6 +121,7 @@ export async function emitOutboxMany(
     })),
     skipDuplicates: true,
   });
+  return r.count;
 }
 
 // serialize drain ทั้งโปรเซส — drain 2 อันในโปรเซสเดียวห้ามซ้อน (best-effort ของ POS + cron + oracle)
@@ -145,7 +149,8 @@ export function drainOutbox(
   return run;
 }
 
-// รอบต่อการเรียก 1 ครั้ง × 50 event = 500 event · งบเวลา 20 วิ (แลมบ์ดา Vercel ตัดที่ ~60 วิ · cron รายชั่วโมงเก็บตกส่วนที่เหลือ)
+// รอบต่อการเรียก 1 ครั้ง × 50 event = 500 event · งบเวลา 20 วิ (แลมบ์ดา Vercel ตัดที่ ~60 วิ · ส่วนที่เหลือ = drain ครั้งถัดไป:
+// `scheduleDrain` หลังงานเขียนของโมดูล · `/api/cron/hourly` (C5.4 — ระบายทุกต้นชั่วโมงจริงแล้ว) · `/api/cron/tick` รายวัน)
 const MAX_ROUNDS = 10;
 const TIME_BUDGET_MS = 20_000;
 
@@ -183,7 +188,7 @@ async function drainUntilQuiet(
 }
 
 /**
- * สุขภาพของคิว event — ใช้โดย cron รายชั่วโมงเพื่อ "ส่งเสียง" เมื่อมีอะไรค้างผิดปกติ
+ * สุขภาพของคิว event — ใช้โดย cron รายวัน (`runDailyCron` หลัง drain) เพื่อ "ส่งเสียง" เมื่อมีอะไรค้างผิดปกติ
  *
  * 🔴 ทำไมต้องมี (30 ส.ค. 2026): คิวตันทั้งระบบเพราะ event ชนิดใหม่ไม่มีตัวรับ แล้ว
  *    **ไม่มีใครรู้เลย** จนลูกค้ามาบอกว่าข้อความไม่ถึง · ตาข่ายนิรภัย (cron ระบายคิว) มีอยู่แล้ว
@@ -216,9 +221,9 @@ async function drainOnce(
   opts?: { limit?: number },
 ): Promise<{ processed: number; failed: number; picked: number }> {
   const limit = opts?.limit ?? 50;
-  const now = new Date();
+  const roundStart = new Date();
   const candidates = await prisma.outboxEvent.findMany({
-    where: { status: "PENDING", availableAt: { lte: now } },
+    where: { status: "PENDING", availableAt: { lte: roundStart } },
     // CRM C2.7-fix ▸ แถวจาก emitOutboxMany คำสั่งเดียวมี createdAt เท่ากัน — id (cuid เรียงตามลำดับที่เขียน) ตัดสินให้แน่นอน
     //   (กันไว้อีกชั้นเท่านั้น: ตัวรับต้องไม่พึ่งลำดับ เพราะตัวระบายหลายตัว/การลองใหม่ทำให้ลำดับสลับได้เสมอ) ◂
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
@@ -230,9 +235,15 @@ async function drainOnce(
 
   for (const evt of candidates) {
     // ── claim (lease) — atomic กัน drainer ซ้อน ──
+    // 🔴 C5.4 (L3-M3): lease นับจาก **เวลาที่ claim ใบนี้** ไม่ใช่เวลาเริ่มรอบ — รอบหนึ่งทำได้ถึง 50 ใบทีละใบ
+    //    (webhook ที่ timeout 5 วิ × หลายใบ = เกิน 60 วิได้จริง) ⇒ แบบเดิมใบท้าย ๆ ได้ lease ที่ "หมดอายุตั้งแต่เกิด"
+    //    แล้ว drainer อีกตัว (after() ของแลมบ์ดาอื่น / cron) หยิบซ้ำทันที = ฮุคยิงซ้ำ · กฎ v1 ทำงานซ้ำ
+    //    `lease` เก็บค่าที่เขียนจริงไว้ ⇒ ขาปิดงานด้านล่างเขียนได้เฉพาะเมื่อ "ยังเป็นเจ้าของ lease นี้อยู่"
+    const claimAt = new Date();
+    const lease = new Date(claimAt.getTime() + LEASE_MS);
     const claim = await prisma.outboxEvent.updateMany({
-      where: { id: evt.id, status: "PENDING", availableAt: { lte: now } },
-      data: { availableAt: new Date(now.getTime() + LEASE_MS) },
+      where: { id: evt.id, status: "PENDING", availableAt: { lte: claimAt } },
+      data: { availableAt: lease },
     });
     if (claim.count === 0) continue; // คนอื่นคว้าไปแล้ว
 
@@ -265,8 +276,10 @@ async function drainOnce(
         systemId: evt.systemId,
         unitId: evt.unitId,
       });
-      await prisma.outboxEvent.update({
-        where: { id: evt.id },
+      // 🔴 C5.4 (L3-M3): ปิดงานแบบมีเงื่อนไข — แถวต้องยัง PENDING (ไม่มีใครปิดไปก่อน) · สำเร็จ = DONE ได้เสมอ
+      //    แม้ lease จะหลุดไปเป็นของ drainer อื่นแล้ว (งานเสร็จจริง · ตัวที่ถือ lease อยู่จะปิดไม่ได้เพราะไม่ใช่ PENDING แล้ว)
+      await prisma.outboxEvent.updateMany({
+        where: { id: evt.id, status: "PENDING" },
         data: { status: "DONE", processedAt: new Date(), lastError: null },
       });
       processed++;
@@ -274,8 +287,11 @@ async function drainOnce(
       const attempts = evt.attempts + 1;
       const backoffMin = Math.pow(2, attempts); // 2,4,8,16,32 นาที
       const dead = attempts >= MAX_ATTEMPTS;
-      await prisma.outboxEvent.update({
-        where: { id: evt.id },
+      // 🔴 C5.4 (L3-M3): ขาล้มเขียนได้เฉพาะเมื่อ **ยังถือ lease ของตัวเองอยู่** (status PENDING + availableAt = lease ที่เขียนไว้)
+      //    เดิมเขียนทับไม่มีเงื่อนไข ⇒ ตัวซ้ำที่ล้มหลังอีกตัวทำสำเร็จแล้ว พลิก DONE กลับเป็น PENDING (attempts+1) = รอบที่สาม
+      //    lease หลุดไปแล้ว = คนอื่นรับช่วงไปแล้ว ⇒ ความล้มของรอบนี้ไม่มีสิทธิ์ตัดสินสถานะของแถว (นับ failed ในสถิติของรอบเท่านั้น)
+      await prisma.outboxEvent.updateMany({
+        where: { id: evt.id, status: "PENDING", availableAt: lease },
         data: {
           attempts,
           status: dead ? "FAILED" : "PENDING",

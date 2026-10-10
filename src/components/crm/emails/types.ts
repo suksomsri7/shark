@@ -6,7 +6,8 @@
 
 export type CrmEmailOption = { value: string; label: string; hint?: string };
 
-export type CrmEmailActionResult<T = unknown> = ({ ok: true } & T) | { ok: false; error: string; code?: string };
+// C4.3-fix part 2 ▸ fieldErrors = ช่องที่ข้อความปฏิเสธเป็นของ (ช่องเขียนจดหมายแสดงใต้ช่อง + โฟกัส) ◂
+export type CrmEmailActionResult<T = unknown> = ({ ok: true } & T) | { ok: false; error: string; code?: string; fieldErrors?: Record<string, string> };
 
 // ───────────────────────── กล่องจดหมาย ─────────────────────────
 
@@ -22,6 +23,8 @@ export type CrmEmailThreadRow = {
   direction: "IN" | "OUT";
   snippet: string | null;
   unread: boolean;
+  /** CRM C5.5-fix2 ▸ รีวิว RV2-4: เธรดมีจดหมายที่ผู้ส่งยังไม่ได้พิสูจน์ — แถวขึ้นป้าย "ไม่ยืนยันผู้ส่ง" ◂ */
+  unverifiedFrom: boolean;
 };
 
 /**
@@ -38,6 +41,8 @@ export type CrmEmailMySendingData = {
   replyToMode: string;
   replyToAddr: string | null;
   signatureHtml: string | null;
+  /** CRM C5.5-fix5 r2 ▸ เพดานข้อความเข้าของลายเซ็น (`CRM_EMAIL_SIGNATURE_INPUT_MAX` — การ์ด import โมดูล CRM ไม่ได้ จึงมาทาง props) ◂ */
+  signatureInputMax?: number;
   replyModes: CrmEmailOption[];
 };
 
@@ -82,6 +87,8 @@ export type CrmEmailMessageView = {
   openCount: number;
   clickCount: number;
   repliedAtLabel: string | null;
+  /** CRM C5.5-fix2 ▸ hunter 2a-2: ผู้ส่งยังไม่ได้พิสูจน์ตัวตน (From ปลอมได้) — ขึ้นป้าย "ไม่ยืนยันผู้ส่ง" ◂ */
+  unverifiedFrom: boolean;
   purged: boolean;
 };
 
@@ -106,6 +113,9 @@ export type CrmEmailThreadData = {
   composerMaxBytes: number;
   attachMaxCount: number;
   subjectMax: number;
+  /** CRM C4.4-fix2 r2 ▸ SF-1: เพดานเนื้อความ (ไบต์) + ข้อความเดียวกับบริการ — ช่องเขียนตรวจก่อนส่ง ◂ */
+  bodyMaxBytes: number;
+  bodyTooLongMsg: string;
 };
 
 // ───────────────────────── ตั้งค่า (ภาพ 15) ─────────────────────────

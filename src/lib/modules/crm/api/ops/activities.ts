@@ -18,7 +18,7 @@ const list = defineCrmOp({
   path: "/activities",
   kind: "read",
   action: "crm.activity.read",
-  summary: "List activities (calls, meetings, tasks, notes, ...) this key can see, filtered by status, type, record or date range.",
+  summary: "List activities (calls, meetings, tasks, notes, ...) this key can see, filtered by status, type, record or date range. An EMAIL item with unverifiedFrom = true is inbound mail whose sender the system could not authenticate (the From can be forged).",
   label: "รายการกิจกรรม",
   input: z
     .object({
@@ -142,7 +142,7 @@ const reschedule = defineCrmOp({
   method: "PUT",
   path: "/activities/{id}/schedule",
   kind: "write",
-  action: "crm.activity.create",
+  action: "crm.activity.complete", // CRM C5.5 ▸ L55-3: คีย์เดียวกับหน้าจอและบริการ (พิมพ์เขียว §5.5) ◂
   summary: "Move an activity to another start/end or due time.",
   label: "เลื่อนนัด/กำหนดส่ง",
   input: z.object({ dueAt: when.nullable().optional(), startAt: when.nullable().optional(), endAt: when.nullable().optional() }).strict(),

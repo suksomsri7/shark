@@ -1,0 +1,7 @@
+tree 3ffb9026 + diff: 
+pending/cf11/review/probe-cf11-review-keys exit=1 119s JSON_SUMMARY {"total":9,"passed":8,"findings":["RK.6"]}
+pending/cf11/review/probe-cf11-review-mail exit=1 70s JSON_SUMMARY {"total":12,"passed":7,"findings":["RA.1","RA.2","RA.3","RB.1","RC.1"]}
+fitness exit=0 6s JSON_SUMMARY {"total":42,"passed":42,"findings":[]}
+fitness-noenv exit=0 101s JSON_SUMMARY {"total":42,"passed":42,"findings":[]}
+typecheck exit=0 809s 
+ALLDONE

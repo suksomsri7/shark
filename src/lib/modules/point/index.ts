@@ -122,13 +122,15 @@ export {
 } from "./transfer";
 
 // ── แต้ม v2: ปรับแต้มมือ + สายอนุมัติ (M2.2 · พิมพ์เขียว §5.5 §6.2 §11.4) ──
-export type { AdjustWithApprovalInput, AdjustWithApprovalResult } from "./adjust";
+export type { AdjustWithApprovalInput, AdjustWithApprovalResult, ManualAdjustVerdict } from "./adjust";
 
 export {
   /** เขียนการปรับแต้มจริง (ledger ADJUST + ต่อล็อต) — ใช้ตรง ๆ และจาก approval-effects */
   applyPointAdjust,
   /** ปรับแต้มมือ v2 — เกินเพดานเข้าสายอนุมัติ (ไม่มีนโยบาย = autoApproved) */
   adjustWithApproval,
+  // CRM C5.5 ▸ H55-2 r1b: คำตัดสินของประตูมือ (ใช้ร่วมกับกฎอัตโนมัติ CRM ผ่าน facade สมาชิก) ◂
+  manualAdjustVerdict,
   /** ผลของการอนุมัติ "ปรับแต้มมือ" — เรียกจาก src/lib/approval-effects.ts เท่านั้น */
   applyPointAdjustApproved,
 } from "./adjust";

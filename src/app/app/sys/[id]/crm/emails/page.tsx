@@ -6,8 +6,9 @@ import { systemDef } from "@/lib/systems";
 import { toMemberActor } from "@/lib/modules/member";
 import { crmCan } from "@/lib/modules/crm/access";
 import { getUserSetting, listThreads } from "@/lib/modules/crm/emails";
+import { companyTextsForViewer } from "@/lib/modules/crm/contacts"; // CRM C5.5-fix10 ◂
 import { crmEmailSettingsOf } from "@/lib/modules/crm/settings";
-import { CRM_EMAIL_REPLY_MODES } from "@/lib/modules/crm/emails-shared";
+import { CRM_EMAIL_REPLY_MODES, CRM_EMAIL_SIGNATURE_INPUT_MAX } from "@/lib/modules/crm/emails-shared";
 import { crmNavItems } from "@/lib/modules/crm/nav";
 import { thaiDateLabel, thaiTimeLabel } from "@/lib/modules/crm/activities-shared";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -52,10 +53,11 @@ export default async function CrmEmailsPage({ params, searchParams }: { params: 
 
   const contactIds = [...new Set(listed.items.map((t) => t.contactId).filter((x): x is string => !!x))];
   const contacts = contactIds.length
-    ? await prisma.crmContact.findMany({ where: { id: { in: contactIds }, tenantId, systemId: id }, select: { id: true, name: true, company: true } })
+    ? await prisma.crmContact.findMany({ where: { id: { in: contactIds }, tenantId, systemId: id }, select: { id: true, name: true, company: true, companyId: true } })
     : [];
   const nameOf = new Map(contacts.map((c) => [c.id, c.name]));
-  const companyOf = new Map(contacts.map((c) => [c.id, c.company]));
+  // CRM C5.5-fix10 ▸ (sweep FX7-1) ข้อความบริษัทของผู้ติดต่อ = ตามการมองเห็นบริษัทของผู้ดู (ผูกบริษัทที่มองไม่เห็น = ไม่แสดง) ◂
+  const companyOf = contacts.length ? await companyTextsForViewer(ctx, actor, contacts) : new Map<string, string | null>();
 
   const items: CrmEmailThreadRow[] = listed.items.map((t) => ({
     threadKey: t.threadKey,
@@ -68,6 +70,7 @@ export default async function CrmEmailsPage({ params, searchParams }: { params: 
     direction: t.direction,
     snippet: t.snippet,
     unread: t.unread,
+    unverifiedFrom: t.unverifiedFrom, // CRM C5.5-fix2 ▸ RV2-4 ◂
   }));
 
   // "การส่งของฉัน" — คนที่มีคีย์ส่งจดหมายแก้แถวทับค่าของตัวเองได้ (หน้า /settings/email เปิดได้เฉพาะคีย์ตั้งค่า)
@@ -85,6 +88,7 @@ export default async function CrmEmailsPage({ params, searchParams }: { params: 
       replyToMode: own?.replyToMode ?? shop.replyToMode,
       replyToAddr: own?.replyToAddr ?? null,
       signatureHtml: own?.signatureHtml ?? null,
+      signatureInputMax: CRM_EMAIL_SIGNATURE_INPUT_MAX, // CRM C5.5-fix5 r2 ◂
       replyModes: CRM_EMAIL_REPLY_MODES.map((m) => ({ value: m, label: REPLY_MODE_TH[m] ?? m })),
     };
   }

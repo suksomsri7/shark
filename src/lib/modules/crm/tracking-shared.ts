@@ -59,11 +59,14 @@ export const TRACKED_URL_MAX = 2048;
  * 🔴 ต่อ IP ต้องพอให้คนอ่านเว็บจริง ๆ (เปิดหลายหน้าติดกัน) แต่ไม่พอให้ยิงถล่ม · ต่อเว็บไซต์ตั้งสูงกว่ามาก
  *    (ร้านที่คนเข้าเยอะต้องไม่ถูกตัดข้อมูลทิ้งเพราะเพดานของตัวเอง)
  */
-export const TRACKING_RATE_LIMITS: Readonly<Record<"collectPerIp" | "collectPerSite" | "consentPerIp" | "linkPerIp", { limit: number; windowMs: number }>> = Object.freeze({
+export const TRACKING_RATE_LIMITS: Readonly<Record<"collectPerIp" | "collectPerSite" | "consentPerIp" | "linkPerIp" | "visitorTicketPerIp", { limit: number; windowMs: number }>> = Object.freeze({
   collectPerIp: Object.freeze({ limit: 60, windowMs: 60_000 }),
   collectPerSite: Object.freeze({ limit: 5000, windowMs: 60_000 }),
   consentPerIp: Object.freeze({ limit: 30, windowMs: 60_000 }),
   linkPerIp: Object.freeze({ limit: 30, windowMs: 60_000 }),
+  // CRM C4.4-fix3 ▸ `POST /t/v` (ตั๋วผู้เข้าชมให้ฟอร์มที่ฝังด้วย iframe) — หน้าหนึ่งมีฟอร์มไม่กี่อัน ตั๋วละครั้ง ⇒ เพดานต่ำกว่าการเก็บการเข้าชมมาก
+  //   (ถังต่อเว็บไซต์ใช้ถังเดียวกับ `/t/e` = collectPerSite) ◂
+  visitorTicketPerIp: Object.freeze({ limit: 20, windowMs: 60_000 }),
 });
 
 /** ชนิดของการระบุตัวตน (คอลัมน์ `CrmWebSession.identifiedBy`) */
@@ -78,12 +81,14 @@ export const isIdentifyBy = (v: unknown): v is IdentifyBy => typeof v === "strin
 export const isBotUserAgent = (ua: unknown): boolean => isTrackingBot(ua);
 
 const UTM_PARAMS = ["utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content"] as const;
+/** C5.4-B (รีวิว note f): ลิงก์ที่มาของผู้ติดต่อ (sourceDetail.pageUrl) เก็บเฉพาะ 3 ตัวนี้ — utm_term/utm_content พกอีเมล/คำค้นของลูกค้าได้ */
+export const SOURCE_PAGE_UTM_KEEP = ["utm_source", "utm_medium", "utm_campaign"] as const;
 
 /**
  * AUDIT-CLASS X8: url ที่เก็บได้ — http/https เท่านั้น · เก็บ **เฉพาะ** พารามิเตอร์ `utm_*` · ตัด `#fragment` · ยาวไม่เกิน 2048
  * 🔴 หน้าเว็บของร้านมักพ่วง token/อีเมลลูกค้ามาใน query (`?email=…&token=…`) — เก็บทั้งดุ้น = เก็บข้อมูลส่วนตัวโดยไม่ตั้งใจ
  */
-export function cleanTrackedUrl(raw: unknown): string | null {
+export function cleanTrackedUrl(raw: unknown, opts: { keep?: readonly string[] } = {}): string | null {
   const s = typeof raw === "string" ? raw.trim() : "";
   if (!s || s.length > TRACKED_URL_MAX * 2) return null;
   let u: URL;
@@ -96,7 +101,7 @@ export function cleanTrackedUrl(raw: unknown): string | null {
   if (scheme !== "http:" && scheme !== "https:") return null;
   if (!u.hostname) return null;
   const keep = new URLSearchParams();
-  for (const k of UTM_PARAMS) {
+  for (const k of opts.keep ?? UTM_PARAMS) {
     const v = u.searchParams.get(k);
     if (v !== null && v !== "") keep.set(k, v.slice(0, 200));
   }
@@ -188,6 +193,209 @@ export function urlHostAllowed(url: unknown, domains: readonly string[]): boolea
   } catch {
     return false;
   }
+}
+
+/**
+ * ค่า header `Location` ต้องเป็น ByteString — url ที่มีอักขระนอก ASCII (ทางเดินภาษาไทย/จีน) ต้องเข้ารหัสก่อน ไม่งั้นสร้าง
+ * Response ไม่ได้เลย (เดิมอยู่ใน route `/l` · CRM C5.4-F ▸ L4-m1: `/t/c` ใช้ตัวเดียวกัน — เดิมพาลูกค้าไปหน้าแรกของ SHARK)
+ * ASCII ล้วน = ไม่แตะ · อย่างอื่น = `new URL().href` (percent-encode แบบ UTF-8 · ไม่เข้ารหัส `%` ที่มีอยู่ซ้ำ) หรือ `encodeURI`
+ */
+export function headerSafeLocation(url: string): string {
+  const ascii = (v: string) => /^[ -~]*$/.test(v);
+  if (ascii(url)) return url;
+  try {
+    const href = new URL(url).href;
+    if (ascii(href)) return href;
+  } catch {
+    /* ตกไปใช้ encodeURI */
+  }
+  return encodeURI(url);
+}
+
+// ───────────────────────── นโยบายปลายทางของลิงก์ติดตาม (CRM C6.1-LINKPOLICY · มติเจ้าของ P11/Q15 ข้อ (ข)) ─────────────────────────
+//
+// 🔴 ทำไมต้องมี: `shark.in.th/l/<code>` เป็นตัวพาไปที่อื่นบนโดเมนของแพลตฟอร์ม — ร้านเดียวที่เอาไปพาคนเข้าเว็บหลอก/มัลแวร์
+//    = โดเมน shark.in.th ทั้งโดเมนติดบัญชีดำ ⇒ อีเมล CRM ของ **ทุกร้าน** ตกสแปม · ปลายทางจึงต้องอยู่ในรายการที่ร้านประกาศไว้
+// 🔴 กติกา (ตัวเดียวทั้งระบบ — ตอนสร้าง/แก้ลิงก์ · ตอน `/l/<code>` พาไป · ตัวนับ "ลิงก์ที่จะใช้ไม่ได้" ของหน้าตั้งค่า):
+//    1. scheme ต้องเป็น http: / https: · ไม่มี userinfo (`https://ร้าน.com@evil.test`)
+//    2. host ต้องไม่ใช่ IP (v4/v6 — ตัวแปลง URL ยุบ `0x7f.1`/`2130706433` เป็นรูป a.b.c.d ให้แล้ว) · ไม่ใช่ `localhost`/`*.local`/`*.internal`
+//       (และ `*.localhost` · `*.home.arpa`)
+//    3. host ต้องตรงกับรายการอนุญาต: รายการ `a.com` = ตรงตัวเท่านั้น · `*.a.com` = a.com และโดเมนย่อยทุกชั้น (เทียบที่ขอบจุด —
+//       `xa.com` / `a.com.evil.test` ไม่ผ่าน)
+
+/** จำนวนโดเมนปลายทางที่ร้านประกาศได้ต่อระบบ CRM (สูงสุด) */
+export const LINK_HOSTS_MAX = 50;
+
+/** host ที่ไม่มีวันเป็นปลายทางของลิงก์สาธารณะได้ (เครื่องในบ้าน/เครือข่ายภายใน) */
+export function isLocalOnlyHost(host: string): boolean {
+  const h = host.toLowerCase();
+  return (
+    h === "localhost" ||
+    h === "local" ||
+    h === "internal" ||
+    h.endsWith(".localhost") ||
+    h.endsWith(".local") ||
+    h.endsWith(".internal") ||
+    h === "home.arpa" ||
+    h.endsWith(".home.arpa")
+  );
+}
+
+/** host เป็น IP ล้วน ๆ ไหม (หลังผ่านตัวแปลง URL แล้ว: IPv6 = `[…]` · IPv4 = a.b.c.d) */
+export function isIpLiteralHost(host: string): boolean {
+  return host.startsWith("[") || /^\d{1,3}(\.\d{1,3}){3}$/.test(host) || /^[0-9.]+$/.test(host);
+}
+
+/**
+ * รายการหนึ่งบรรทัดของ "โดเมนปลายทางที่อนุญาต" → รูปมาตรฐาน (ตัวพิมพ์เล็ก · punycode · `*.` นำหน้าได้ครั้งเดียว) — ผิดแบบ = null
+ * ชื่อภาษาไทย (`ร้าน.com`) แปลงเป็น punycode แบบเดียวกับที่เบราว์เซอร์ทำ ⇒ เทียบกับ host ของลิงก์ได้ตรง
+ * 🔴 ไม่รับ: scheme/path/port · `*` ตรงกลาง/ท้าย · `*.` บนชื่อที่มีจุดเดียวแบบโดเมนสาธารณะ (`*.co.th` `*.com` = ทั้งประเทศ/ทั้งโลก) ·
+ *    IP · localhost/.local/.internal
+ */
+export function normalizeLinkHost(input: unknown): string | null {
+  let s = typeof input === "string" ? input.trim().toLowerCase() : "";
+  if (!s || s.length > 253) return null;
+  const wild = s.startsWith("*.");
+  if (wild) s = s.slice(2);
+  if (s.endsWith(".")) s = s.slice(0, -1);
+  if (!s || s.includes("*")) return null;
+  // eslint-disable-next-line no-control-regex
+  if (/[^\x00-\x7f]/.test(s)) {
+    // ชื่อโดเมนภาษาอื่น → punycode (ตัวแปลง URL ของ WHATWG — ใช้ได้ทั้งเบราว์เซอร์และ Node)
+    if (/[\s/\\:?#@]/.test(s)) return null;
+    try {
+      s = new URL(`http://${s}/`).hostname;
+    } catch {
+      return null;
+    }
+  }
+  const dom = normalizeDomain(s);
+  if (!dom || isLocalOnlyHost(dom) || isIpLiteralHost(dom)) return null;
+  if (wild && isPublicSuffixLike(dom)) return null;
+  return wild ? `*.${dom}` : dom;
+}
+
+/** ชื่อที่ "ใส่ดอกจันแล้วเท่ากับทั้งโดเมนสาธารณะ" — เช่น co.th · in.th · com.au (ป้องกันพลาดแบบ `*.co.th`) */
+const SECOND_LEVEL_PUBLIC = new Set(["co", "com", "net", "org", "or", "ac", "go", "gov", "edu", "mi", "in", "ne", "gr", "lg", "ltd", "plc", "nic"]);
+/**
+ * โดเมนของบริการฝากเว็บ/แพลตฟอร์มที่ "ทุกคนเปิดเว็บย่อยได้" (ส่วน PRIVATE ของ Public Suffix List ที่พบบ่อย · รายการคงที่ ไม่ยิงเครือข่าย)
+ * — `*.github.io` = เว็บของคนแปลกหน้านับล้าน ⇒ ห้ามใส่ดอกจัน (ชื่อเต็มอย่าง `myshop.github.io` ยังใส่ได้)
+ * CRM C6.1-LINKPOLICY รอบ 2 (RV-3/RV-4): ยังเป็นรายการสั้น ไม่ใช่ PSL เต็ม — PSL ทั้งชุดเป็นหนี้ที่ผู้คุมงานจดไว้
+ */
+const SHARED_HOSTING_SUFFIXES = new Set([
+  "github.io", "gitlab.io", "vercel.app", "netlify.app", "pages.dev", "workers.dev", "web.app", "firebaseapp.com", "herokuapp.com",
+  "blogspot.com", "wordpress.com", "wixsite.com", "myshopify.com", "s3.amazonaws.com", "cloudfront.net", "azurewebsites.net",
+  "appspot.com", "onrender.com", "fly.dev", "glitch.me", "ngrok.io", "ngrok-free.app", "trycloudflare.com", "nip.io", "sslip.io",
+]);
+function isPublicSuffixLike(dom: string): boolean {
+  const parts = dom.split(".");
+  if (parts.length < 2) return true;
+  if (SHARED_HOSTING_SUFFIXES.has(dom)) return true;
+  return parts.length === 2 && SECOND_LEVEL_PUBLIC.has(parts[0]!);
+}
+
+/** host นี้ตรงกับรายการหนึ่งรายการไหม (`a.com` = ตรงตัว · `*.a.com` = a.com + โดเมนย่อย · เทียบที่ขอบจุดเท่านั้น) */
+export function linkHostMatches(host: string, entry: string): boolean {
+  const h = host.toLowerCase();
+  const e = entry.toLowerCase();
+  if (!e) return false;
+  if (e.startsWith("*.")) {
+    const base = e.slice(2);
+    return !!base && (h === base || h.endsWith(`.${base}`));
+  }
+  return h === e;
+}
+
+export type LinkDestinationReason = "PARSE" | "SCHEME" | "USERINFO" | "IP" | "LOCAL" | "BLOCKLISTED" | "REDIRECTOR" | "HOST_NOT_ALLOWED";
+export type LinkDestinationVerdict = { ok: true; host: string } | { ok: false; reason: LinkDestinationReason; host: string };
+
+/**
+ * TODO(หนี้ C6.1-LINKPOLICY · Safe Browsing): จุดเสียบ "รายการเว็บอันตราย" ของปลายทางลิงก์ — **ตอนนี้ไม่มีรายการ (คืน false เสมอ)**
+ * มติเจ้าของ P11/Q15 ข้อ (ข) ให้มีการตรวจ Safe Browsing แต่ใบนี้ **ไม่เรียกบริการภายนอก** (ต้องมีคีย์ · ค่าใช้จ่าย · ความหน่วงบนทางร้อน
+ * `/l` และ `/t/c`) — ใบที่ทำต้องเป็นฟังก์ชัน sync/แคช (ห้ามยิงเครือข่ายตอนพาลูกค้าไป) และเสียบที่นี่ที่เดียว: ตัวตัดสินทุกจุด
+ * (`/l` · `/t/c` · สร้าง/แก้ลิงก์ · ห่อลิงก์ในอีเมล) เรียกผ่านที่นี่ (re-export จาก tracking.ts)
+ * (รอบ 2: ย้ายมาไว้ในไฟล์บริสุทธิ์นี้ เพื่อให้ `emails.ts` ใช้ตัวเดียวกันได้โดยไม่ต้องลาก tracking.ts)
+ */
+export function isDestinationBlocklisted(_host: string): boolean {
+  return false;
+}
+
+/**
+ * ด่าน "ห้ามเด็ดขาด" ของปลายทางที่แพลตฟอร์มพาลูกค้าไป (ไม่ขึ้นกับรายการอนุญาตของร้าน) — ใช้ร่วมกันโดย `/l/<code>` (ผ่าน
+ * `linkDestinationVerdict`) และ `/t/c/<token>` ของอีเมล (ตอนห่อลิงก์ + ตอนกด · CRM C6.1-LINKPOLICY รอบ 2 · RV-2)
+ * ไม่ผ่าน = `{ ok:false, reason }` · ผ่าน = `{ ok:true, host, url }` (url ที่แปลงแล้ว ให้ด่านถัดไปใช้ต่อ)
+ */
+export function linkHardVerdict(
+  url: unknown,
+  blocklisted: (host: string) => boolean = isDestinationBlocklisted,
+): { ok: true; host: string; url: URL } | { ok: false; reason: LinkDestinationReason; host: string } {
+  const s = typeof url === "string" ? url.trim() : "";
+  let u: URL;
+  try {
+    u = new URL(s);
+  } catch {
+    return { ok: false, reason: "PARSE", host: "" };
+  }
+  let host = u.hostname.toLowerCase();
+  if (host.endsWith(".")) host = host.slice(0, -1); // `a.com.` = a.com (ชื่อเดียวกันใน DNS)
+  if (u.protocol !== "http:" && u.protocol !== "https:") return { ok: false, reason: "SCHEME", host };
+  if (!host) return { ok: false, reason: "PARSE", host };
+  if (u.username || u.password) return { ok: false, reason: "USERINFO", host };
+  if (isIpLiteralHost(host)) return { ok: false, reason: "IP", host };
+  if (isLocalOnlyHost(host)) return { ok: false, reason: "LOCAL", host };
+  if (blocklisted(host)) return { ok: false, reason: "BLOCKLISTED", host };
+  return { ok: true, host, url: u };
+}
+
+/** host สาธารณะของแพลตฟอร์มที่รู้จักเสมอ (ทางพาไปของ `/t/` `/l/` บน host นี้ห้ามเป็นปลายทางของลิงก์ แม้ APP_URL ของเครื่องจะเป็นอย่างอื่น) */
+export const APP_PUBLIC_HOST = new URL(APP_PUBLIC_ORIGIN).hostname;
+
+/**
+ * ทางเดินนี้เป็น "ตัวพาไปที่อื่น" ของแพลตฟอร์มไหม (`/t/…` = ตัวนับคลิก/พิกเซล/สคริปต์ของอีเมลและเว็บ · `/l/…` = ลิงก์สั้น)
+ * 🔴 ตัดสินจาก pathname ของ URL ที่แปลงแล้ว (ไม่ใช่ค้นสตริง) — ถอด `%xx` ซ้ำ (สูงสุด 3 ชั้น) · `\` → `/` · ยุบ `//` · แก้ `.`/`..` ·
+ *    ตัวพิมพ์ไม่มีผล ⇒ `/T/C/x` `/%74/c/x` `//t//c` `/a/../t/c` `/l` ถือเป็นตัวพาไปทั้งหมด
+ */
+export function isPlatformRedirectorPath(pathname: string): boolean {
+  let p = typeof pathname === "string" ? pathname : "";
+  for (let i = 0; i < 3; i += 1) {
+    try {
+      const d = decodeURIComponent(p);
+      if (d === p) break;
+      p = d;
+    } catch {
+      break;
+    }
+  }
+  p = `/${p.replace(/\\/g, "/")}`.replace(/\/{2,}/g, "/");
+  try {
+    p = new URL(p, "http://x.invalid").pathname; // แก้ . / .. (สแลชถูกยุบแล้ว ⇒ ไม่มีทางกลายเป็น //host)
+  } catch {
+    /* ใช้ค่าที่ยุบแล้ว */
+  }
+  p = p.replace(/\/{2,}/g, "/").toLowerCase();
+  return /^\/(t|l)(\/|$)/.test(p);
+}
+
+/**
+ * ตัวตัดสินบริสุทธิ์ (ไม่แตะฐาน ไม่แตะ env ไม่มี async) — `entries` = รายการอนุญาตทั้งหมดในรูปมาตรฐาน (`a.com` / `*.a.com`)
+ * `blocklisted` = จุดเสียบรายการต้องห้าม (`isDestinationBlocklisted`) · `platformHosts` = host ของแพลตฟอร์ม (apex) — ทางเดิน `/t/` `/l/`
+ * บน host เหล่านี้ (และโดเมนย่อย) = REDIRECTOR **เสมอ** ไม่ว่ารายการไหนจะครอบคลุม (รอบ 2 · RV-2: ลิงก์ → `/t/c/<token>` ของอีเมลตัวเอง →
+ * เว็บไหนก็ได้ = อ้อมรายการ)
+ */
+export function linkDestinationVerdict(
+  url: unknown,
+  entries: readonly string[],
+  blocklisted: (host: string) => boolean = isDestinationBlocklisted,
+  platformHosts: readonly string[] = [APP_PUBLIC_HOST],
+): LinkDestinationVerdict {
+  const hard = linkHardVerdict(url, blocklisted);
+  if (!hard.ok) return hard;
+  const host = hard.host;
+  if (platformHosts.some((ph) => !!ph && linkHostMatches(host, `*.${ph.toLowerCase()}`)) && isPlatformRedirectorPath(hard.url.pathname)) {
+    return { ok: false, reason: "REDIRECTOR", host };
+  }
+  if (!entries.some((e) => typeof e === "string" && linkHostMatches(host, e))) return { ok: false, reason: "HOST_NOT_ALLOWED", host };
+  return { ok: true, host };
 }
 
 /** ที่อยู่สาธารณะของแอปที่สคริปต์บนเว็บร้านจะยิงกลับ — ต้องเป็น https เสมอ (http://127.0.0.1 ของเครื่องทดสอบ = ใช้ค่าสาธารณะ) */

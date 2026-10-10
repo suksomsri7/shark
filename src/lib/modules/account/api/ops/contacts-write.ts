@@ -26,7 +26,7 @@ import {
   type Ctx,
 } from "../../contacts-list";
 import { dismissMergeCandidate, mergeContacts } from "../../contact-merge";
-import { linkContactTo } from "../../contact-links";
+import { crmViewerOfApi, linkContactTo } from "../../contact-links";
 import {
   archiveContact,
   checkContactDuplicates,
@@ -384,7 +384,8 @@ const contactsLink = defineOp({
   test: "C3-M5.2",
   async handler({ actor, params, input }) {
     const ctx: Ctx = { tenantId: actor.tenantId, systemId: actor.systemId };
-    const res = await linkContactTo(ctx, { contactId: params.id ?? "", target: input.target, targetId: input.targetId });
+    // C5.4 (L1-M3): ผูกฝั่ง CRM ต้องผ่านด่านของ CRM (คีย์บัญชีไม่มี crm.contact.update ⇒ ปฏิเสธ)
+    const res = await linkContactTo(ctx, { contactId: params.id ?? "", target: input.target, targetId: input.targetId }, crmViewerOfApi(actor));
     if (!res.ok) failWith(res.reason);
     return { ok: true, partyId: res.partyId };
   },

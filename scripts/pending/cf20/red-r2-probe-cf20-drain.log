@@ -1,0 +1,78 @@
+
+── N0 Next AfterContext: when does a registered after() task run? ──
+  ✅ [N0.1] (control) control: Next runs an after() task only when the registering request's response emits 'close' (not before)
+        — ACTUAL before close=0 after close=1
+  ✅ [N0.2] (control) control (mechanism, real Next code): an after() task registered on a scope whose response already closed NEVER starts
+        — ACTUAL ran within 1 s = 0
+(node:3477551) ExperimentalWarning: The MockTimers API is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+── U1 normal: write → wake → the request's after() task drains it ──
+  ✅ [U1.1] (control) control: 3 wakes in one request ⇒ ONE after() task · it returns the drain promise (N9) · the row is drained · one drain
+        — ACTUAL tasks=1 returnsPromise=true settled=true pending=0 runs=1
+  ✅ [U1.2] (control) control: no extra drain later (nothing to cover)
+        — ACTUAL runs after 5 s = 1
+
+── U2 P-it6-2: a registered after() task never starts ──
+[after-drain] fallback drain: an after() task did not start within 3000 ms of its registration — draining from the timer
+  ✅ [U2a] (FINDING) FINDING: request A's after() task never starts; request B writes + wakes 1 s later ⇒ B's row (and A's) is drained within 5 s without any other wake
+        — ACTUAL B registered 0 after() task(s) · pending after 5 s = [] · drains=1
+[after-drain] fallback drain: an after() task did not start within 3000 ms of its registration — draining from the timer
+  ✅ [U2b] (FINDING) FINDING: the request's own after() task never starts and nothing else wakes ⇒ its row is still drained within 5 s
+        — ACTUAL pending after 5 s = [] · drains=1
+[after-drain] fallback drain: an after() task did not start within 3000 ms of its registration — draining from the timer
+  ℹ️  [U2c] after a never-starting registration, wakes at +1 s … +16 s registered after() tasks: [0,0,1,0,0,1,0,0,1,0,0,1,0,0,1,0] (first registration at +3 s) · drains run by then: 5
+  ✅ [U2c] (FINDING) FINDING: the blackout after a never-starting task is at most the fallback window (≤ 3 s), not 15 s
+        — ACTUAL first new registration at +3 s
+
+── U3 wake during a running drain ──
+  ✅ [U3] (control) control: a write + wake that arrives while a drain is running (after its candidate read) is still drained — by a drain that starts after the wake
+        — ACTUAL runs before=1 · second request registered 1 task(s) · pending=[] · drains=2
+
+── U4 burst of 50 wakes ──
+  ✅ [U4a] (FINDING) FINDING: 50 requests that each write + wake while one drain is running ⇒ every row drained with a BOUNDED number of drains (≤ 2: the running one + one queued re-run)
+        — ACTUAL drains=2 · after() tasks registered=50 · pending=0
+  ✅ [U4b] (control) control: 50 wakes in ONE request ⇒ one after() task, one drain
+        — ACTUAL tasks=1 drains=1 pending=0
+  ✅ [U4c] (control) control: 50 concurrent requests (none closed yet) ⇒ ONE after() task in total, one drain, every row drained
+        — ACTUAL tasks=1 drains=1 pending=0
+
+── U5 run() throws ──
+  ✅ [U5.1] (control) control: an async failure of run() never rejects the after() task, and the next wake still drains (state not stuck)
+        — ACTUAL calls=1 rejected=false nextTasks=1 pending=0
+  ✅ [U5.2] (FINDING) FINDING: even a run() that throws synchronously never fails the user's request or the after() task, in or out of a request; the next wake still drains
+        — ACTUAL threwInRequest=false taskRejected=false threwOutOfRequest=false nextPending=0
+
+── U6 out of request (scripts · cron · tests) ──
+  ✅ [U6.1] (control) control: outside a request scope the drain starts immediately (synchronously), not awaited, and drains
+        — ACTUAL runs right after the call=1 pending=0
+  ✅ [U6.2] (control) control: out of request, wakes while a drain is running ⇒ every row drained
+        — ACTUAL drains=2 pending=0
+  ℹ️  [U6.2] out-of-request: 3 wakes while the first drain ran ⇒ 2 drain(s) (before fix15: one chained drain per wake)
+
+── U7 after() throws inside a request ──
+  ✅ [U7] (control) control: after() throwing inside a request never fails the request and drains immediately
+        — ACTUAL threw=false pending=0 drains=1
+
+── U8 waitUntil gets the covering drain ──
+  ✅ [U8] (FINDING) FINDING: the after() task of a wake that arrived during a running drain resolves only after the drain that covers its write (started after D finished) has finished — guaranteed by after-drain itself
+        — ACTUAL tasks=1 settledWhileDHeld=false settledAtEnd=true pending=0
+
+── R2-5 synchronous after() callback ⇒ no fallback timer armed ──
+  ❌ [R2-5] (FINDING) FINDING (RV15-5): when after() runs the callback synchronously the registration has already started ⇒ no 3 s fallback timer is armed (I6 exact); the row is drained once
+        — ACTUAL timers armed=1 drains=1 pending=0
+  ✅ [R2-5b] (control) control: nothing more happens later (no second drain)
+        — ACTUAL drains after 5 s=1
+
+── R2-1 fallback drain handed to the platform (real timers, ~3 s per case) ──
+[after-drain] fallback drain: an after() task did not start within 3000 ms of its registration — draining from the timer
+  ❌ [R2-1a] (FINDING) FINDING (RV15-1): the after() task never starts ⇒ when the fallback timer fires it hands the drain promise to the platform (promise form of after() ⇒ waitUntil); that promise settles after the drain
+        — ACTUAL promise-form calls before 3 s=0 after=0 settled=false drains=1 pending=0
+  ✅ [R2-1b] (control) control: exactly-once start unchanged — the late task returns the same drain (no second run)
+        — ACTUAL tasks=1 drains=1 lateTaskReturnsPromise=true sameAsFallback=false
+[after-drain] fallback drain: an after() task did not start within 3000 ms of its registration — draining from the timer
+  ❌ [R2-1c] (FINDING) FINDING (RV15-1): the timer tries the promise form of after(); when it throws there (no usable scope) the fallback drain still runs, exactly once
+        — ACTUAL after(promise) attempted+threw=0 drains=1 pending=0
+
+controls 13/13 green · findings GREEN (fixed) 6/9
+JSON_SUMMARY {"controls":[["N0.1",true],["N0.2",true],["U1.1",true],["U1.2",true],["U3",true],["U4b",true],["U4c",true],["U5.1",true],["U6.1",true],["U6.2",true],["U7",true],["R2-5b",true],["R2-1b",true]],"findings":[["U2a","GREEN"],["U2b","GREEN"],["U2c","GREEN"],["U4a","GREEN"],["U5.2","GREEN"],["U8","GREEN"],["R2-5","RED"],["R2-1a","RED"],["R2-1c","RED"]]}

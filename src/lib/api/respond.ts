@@ -45,6 +45,9 @@ export const API_ERROR_CODES = [
   "forbidden",
   "unprocessable",
   "upstream_unavailable",
+  // C5.5-fix1 (H55-1) — งานเขียนเริ่มไปแล้วแต่ฐานข้อมูล/เครือข่ายสะดุดกลางทาง ⇒ ไม่รู้ว่าบันทึกสำเร็จหรือไม่ · คีย์เดิมตอบรหัสนี้ซ้ำ
+  //   (ไม่รันซ้ำ) จนหมดอายุ — ผู้เรียกต้องตรวจว่ารายการมีแล้วหรือยัง แล้วส่งใหม่ด้วยคีย์ใหม่
+  "idempotency_outcome_unknown",
 ] as const;
 
 export type ApiErrorCode = (typeof API_ERROR_CODES)[number];
@@ -202,6 +205,20 @@ export type MappedError = {
  * error ที่ handler ต้องการชี้ status/code ตรง ๆ (WO B2 — DBD ไม่มีกุญแจ/ล่ม ⇒ 503 `upstream_unavailable`,
  * ไม่ใช่ 422 ทั่วไปที่ `mapError` เดาจากคำไทย) · `mapError` มองหาชนิดนี้ก่อนสิ่งอื่นเสมอ
  */
+// CRM C5.5 ▸ RV-2 (มติผู้คุมงาน r2): สัญญาณชัดเจนจาก "ผู้โยน" ว่า error นี้เกิด **ก่อนเขียนอะไรเลย** — `withIdempotency` ปล่อยการจอง
+//   ของคำตอบ 409/429/503 ที่โยนออกมาก็ต่อเมื่อมีธงนี้เท่านั้น (ไม่มีธง = เก็บ + ตอบซ้ำคำตอบเดิม เพราะงานอาจเขียนไปแล้ว —
+//   เช่น `deals.reassign` ยื่นคำขออนุมัติแล้วจึงโยน 409 approval_required) · ใส่ธงเฉพาะจุดที่พิสูจน์ได้ว่าไม่มีการเขียนก่อนหน้า
+const NOTHING_WRITTEN = new WeakSet<object>();
+/** ติดธง "ยังไม่ได้เขียนอะไร" ให้ error (คืนตัวเดิม) — ใช้ตรงจุดโยนที่พิสูจน์ได้ว่าอยู่ก่อนการเขียนทุกอย่าง */
+export function nothingWritten<E extends object>(e: E): E {
+  NOTHING_WRITTEN.add(e);
+  return e;
+}
+export function isNothingWritten(e: unknown): boolean {
+  return typeof e === "object" && e !== null && NOTHING_WRITTEN.has(e);
+}
+// ◂ CRM C5.5
+
 export class ApiError extends Error {
   readonly status: number;
   readonly code: ApiErrorCode;
@@ -259,6 +276,18 @@ function isZodError(e: unknown): boolean {
   return o.name === "ZodError" || Array.isArray(o.issues);
 }
 
+/** C5.4 (hunter H3): รหัส Prisma ที่แปลว่า "ลองใหม่แล้วอาจผ่าน" ไม่ใช่ "ข้อมูลผิด" */
+const TRANSIENT_PRISMA_CODES = new Set(["P1001", "P1002", "P1008", "P1017", "P2024", "P2028", "P2034"]);
+const TRANSIENT_NET_CODES = new Set(["ECONNRESET", "ECONNREFUSED", "ETIMEDOUT", "EPIPE", "EAI_AGAIN", "UND_ERR_SOCKET", "UND_ERR_CONNECT_TIMEOUT"]);
+export function isTransientInfraError(e: unknown, depth = 0): boolean {
+  if (typeof e !== "object" || e === null || depth > 3) return false;
+  const o = e as { code?: unknown; name?: unknown; cause?: unknown; errorCode?: unknown };
+  const code = typeof o.code === "string" ? o.code : typeof o.errorCode === "string" ? o.errorCode : "";
+  if (TRANSIENT_PRISMA_CODES.has(code) || TRANSIENT_NET_CODES.has(code)) return true;
+  if (o.name === "PrismaClientInitializationError") return true;
+  return o.cause !== undefined ? isTransientInfraError(o.cause, depth + 1) : false;
+}
+
 /**
  * error จากชั้น service (ข้อความไทยที่เราเขียนเอง) → status + รหัสที่ผู้เรียกแยกแยะได้
  *
@@ -288,6 +317,19 @@ export function mapError(e: unknown): MappedError {
       code: "validation",
       message_th: "ข้อมูลที่ส่งมาไม่ถูกต้องตามรูปแบบที่กำหนด",
       message_en: "Request payload failed validation.",
+    };
+  }
+  // C5.4 (hunter H3): ฐานข้อมูล/เครือข่ายสะดุดชั่วคราว (write conflict/deadlock · pool หมดเวลา · ต่อฐานไม่ได้ · connection reset)
+  //   = 503 ให้ลองใหม่ — เดิมตกไปเป็น 422 "ข้อมูลไม่ถูกต้อง" แล้ว idempotency เก็บตอบซ้ำ 24 ชม. ⇒ คำขอที่ถูกต้องไม่เคยได้ทำ
+  //   (503 ไม่ถูกเก็บ — ดู `isTransientStatus` ใน idempotency.ts) · ต้องเช็คก่อน status ที่ประกาศเองและก่อนตัวจับคำไทย
+  if (isTransientInfraError(e)) {
+    return {
+      status: 503,
+      code: "upstream_unavailable", // รหัสเดิมของ 503 (ไม่เพิ่มรหัสใหม่ในสัญญา)
+      // C5.5-fix1 (H55-1): ตัวแปลงกลางไม่รู้ว่า error เกิด "ก่อน" หรือ "หลัง" งานเขียน commit ⇒ ห้ามบอกว่า "ยังไม่ได้บันทึก" ·
+      //   คำขอเขียนที่มีคีย์กันซ้ำได้คำตอบเฉพาะทางจาก `withIdempotency` (ยังไม่เริ่ม = 503 ลองคีย์เดิม · เริ่มแล้ว = 409 outcome_unknown)
+      message_th: "ระบบไม่ว่างชั่วคราว — กรุณาลองใหม่อีกครั้งในอีกสักครู่",
+      message_en: "Temporarily unavailable. Please try again shortly.",
     };
   }
   const raw = e instanceof Error ? e.message : "";

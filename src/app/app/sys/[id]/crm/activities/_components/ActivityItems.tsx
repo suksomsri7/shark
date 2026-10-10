@@ -11,6 +11,7 @@ import {
   ACTIVITY_REASON_MIN,
   ACTIVITY_TYPE_LABEL,
   durationLabel,
+  isActivityOverdue,
   isoToThaiLocalInput,
   thaiDateLabel,
   thaiLocalInputToIso,
@@ -35,6 +36,9 @@ export function ActivityRow({
   boards = [],
   showTarget = false,
   canComplete = true,
+  canLog = false,
+  canDelete = false,
+  nowMs,
 }: {
   systemId: string;
   item: ActivityListItem;
@@ -44,6 +48,12 @@ export function ActivityRow({
   showTarget?: boolean;
   /** มีสิทธิ์ crm.activity.complete ไหม (ไม่มี = ซ่อนปุ่มปิดงาน — มติผู้คุมงาน C1.6 S10) */
   canComplete?: boolean;
+  /** CRM C4.2-fix ▸ crm.activity.create (ปักหมุด/เลื่อนนัดใช้คีย์นี้ใน action/บริการ) — ไม่ส่ง = ไม่แสดง ◂ */
+  canLog?: boolean;
+  /** CRM C4.2-fix ▸ B2: crm.activity.delete (+ create ที่ action ตรวจ) — เดิมปุ่มลบอิงบทบาท/เจ้าของอย่างเดียว ⇒ พนักงานที่ไม่มีคีย์เห็นปุ่มแล้วโดนปฏิเสธ ◂ */
+  canDelete?: boolean;
+  /** CRM C5.4-E r2 ▸ SF-5: เวลาตอนเรนเดอร์จากเซิร์ฟเวอร์ (ตัดสิน "เลยกำหนด") ◂ */
+  nowMs?: number;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -55,7 +65,9 @@ export function ActivityRow({
   const [boardId, setBoardId] = useState(boards[0]?.id ?? "");
   const mine = item.ownerUserId === currentUserId;
   const canEdit = canManage || mine;
-  const overdue = !item.doneAt && item.dueAt && Date.parse(item.dueAt) < Date.now();
+  // CRM C5.4-E r2 ▸ รีวิว SF-5: ป้าย "เลยกำหนด" = นิยามเดียวกับแท็บ (`isActivityOverdue` — ก่อน 00:00 ไทยของวันนี้ · กำหนดส่ง ?? เวลาเริ่ม ·
+  //   ไม่นับโน้ต) · `nowMs` มาจากเซิร์ฟเวอร์ (ไม่ต่างกันตอน hydrate) ◂
+  const overdue = !item.doneAt && item.type !== "NOTE" && isActivityOverdue(Date.parse(item.dueAt ?? item.startAt ?? ""), nowMs ?? Date.now());
   const run = (fn: () => Promise<{ ok: true } | { ok: false; error: string }>) =>
     start(async () => {
       setError(null);
@@ -76,6 +88,12 @@ export function ActivityRow({
             <span className="rounded-md border px-1.5 text-[11px]">{ACTIVITY_TYPE_LABEL[item.type]}</span>
             {item.pinned && <span className="text-[11px]" style={{ color: "var(--color-accent)" }}>ปักหมุด</span>}
             <span className="min-w-0 break-words font-medium">{item.title}</span>
+            {/* CRM C5.5-fix3b ▸ รีวิว R2b-3: ป้ายเดียวกับหน้าเธรด/กล่องจดหมาย — จดหมายขาเข้าฉบับนี้ระบบยืนยันไม่ได้ว่ามาจากที่อยู่ที่แสดงจริง ◂ */}
+            {item.unverifiedFrom && (
+              <span className="shrink-0 rounded-full border border-amber-500 px-2 py-0.5 text-[11px] font-medium text-amber-700" title="ระบบยืนยันไม่ได้ว่าจดหมายนี้มาจากที่อยู่ที่แสดงจริง — ตรวจกับลูกค้าทางช่องทางอื่นก่อนทำตามคำขอเรื่องเงินหรือบัญชี">
+                ไม่ยืนยันผู้ส่ง
+              </span>
+            )}
           </span>
           <span className="text-xs text-[color:var(--color-muted)]">
             {when(item)}
@@ -104,7 +122,7 @@ export function ActivityRow({
           {item.body && <p className="whitespace-pre-wrap break-words text-sm text-[color:var(--color-muted)]">{item.body}</p>}
         </div>
         <div className="flex flex-wrap gap-1 sm:shrink-0 sm:justify-end">
-          {item.type === "NOTE" && canEdit && (
+          {item.type === "NOTE" && canEdit && canLog && (
             <button type="button" className="btn btn-ghost text-xs" disabled={pending} onClick={() => run(() => setPinnedAction(systemId, item.id, !item.pinned))} data-testid="activity-row-pin" aria-label={item.pinned ? "ถอดหมุดโน้ต" : "ปักหมุดโน้ต"}>
               {item.pinned ? "ถอดหมุด" : "ปักหมุด"}
             </button>
@@ -114,7 +132,11 @@ export function ActivityRow({
               ปิดงาน
             </button>
           )}
-          {!item.doneAt && item.type !== "NOTE" && canEdit && (
+          {/* CRM C4.2-fix r2 ▸ (รีวิว N-11) เลื่อนนัด: action ตรวจ crm.activity.complete (activities/_components/actions.ts:97
+              rescheduleActivityAction) + บริการตรวจ crm.activity.create (activities.ts:754) ⇒ ต้องผ่านทั้งคู่ — ถอด canComplete
+              = ปุ่มที่ action ปฏิเสธ (สำหรับคนที่มี create แต่ไม่มี complete) ◂ */}
+          {/* CRM C5.5 ▸ L55-3: action + บริการ + REST ตรวจคีย์เดียว crm.activity.complete แล้ว ⇒ ปุ่มอิง canComplete อย่างเดียว ◂ */}
+          {!item.doneAt && item.type !== "NOTE" && canEdit && canComplete && (
             <button type="button" className="btn btn-ghost text-xs" disabled={pending} onClick={() => setMode(mode === "reschedule" ? "" : "reschedule")} data-testid="activity-row-reschedule">
               เลื่อน
             </button>
@@ -124,7 +146,7 @@ export function ActivityRow({
               เปิดการ์ดงาน
             </button>
           )}
-          {canEdit && (
+          {canEdit && canDelete && (
             <button type="button" className="btn btn-ghost text-xs" disabled={pending} onClick={() => setMode(mode === "delete" ? "" : "delete")} data-testid="activity-row-delete" aria-label="ลบกิจกรรม">
               ลบ
             </button>

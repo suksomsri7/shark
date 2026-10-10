@@ -34,7 +34,11 @@ const STRIP = new Set<string>(STRIP_WITH_CONTENT);
 const OPEN = new Map([...ALLOWLIST].map((t) => [t, `<${t}>`] as const));
 const CLOSE = new Map([...ALLOWLIST].map((t) => [t, `</${t}>`] as const));
 
-/** ค่า attribute (ถอดรหัสครั้งเดียวแล้ว) · ไม่มี/quote ไม่ปิด = "" */
+/**
+ * ค่า attribute (ถอดรหัสครั้งเดียวแล้ว) · ไม่มี/quote ไม่ปิด = ""
+ * CRM C5.5-fix4 ▸ C5.4-E E1/SF-4 (ถอดรหัส entity ครั้งเดียว + escapeAttr ครบ & " < > ') ย้ายไปอยู่ใน `html-allowlist`
+ *   (`parseAttrs` → `decodeAttr` · `escapeAttr`) — ชุด entity เดียวกัน ⇒ ตัดซ้ำกี่รอบก็ได้ผลเดิม ◂
+ */
 function attrValue(attrs: readonly HtmlAttr[], name: string): string {
   return attrOf(attrs, name)?.value ?? "";
 }

@@ -22,6 +22,7 @@
 import { randomUUID } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import type { CrmCompany, CrmCompanySize, CrmContactRole, Role } from "@prisma/client";
+import { ciEquals, likeEscape } from "@/lib/core/ci-equals"; // CRM C5.5-fix2 ◂
 import { writeAudit } from "@/lib/core/audit";
 import { cell, columnIndex, csvRow, parseCsv } from "@/lib/core/csv";
 import { logOps } from "@/lib/core/ops";
@@ -36,13 +37,20 @@ import type { MemberActor } from "@/lib/modules/member";
 import { prisma } from "./db";
 import { assertCrmLimit } from "./limits"; // CRM C3.9 ▸ เพดานบริษัท ◂
 import { resolveCrmTargetsDetailed } from "./integrations"; // CRM C3.6 ▸ ตัวตัดสินปลายทางตัวเดียว ◂
-import { activityWhere, companyWhere, contactWhere, dealWhere, type CrmScopeCtx } from "./where";
+import { activityWhere, visibleCompanySql, companyWhere, contactWhere, dealWhere, type CrmScopeCtx } from "./where";
+import { andSql, containsSql, enumEqSql, inOrder, orSql, orderBySql, sqlSortOf, withThaiCollation } from "./list-sql"; // CRM C5.1-fix ◂
+import { normalizeThaiText, thaiSearchVariants } from "./thai-text"; // CRM C5.4-E ▸ L6-m3 ◂
+import { crmScope } from "./request-scope";
 import { resolveViewFilters, viewOptions } from "./views"; // CRM C3.2 ▸ มุมมองที่บันทึก (ทีมจริง) ◂
 // CRM C1.7 ▸ คีย์สิทธิ์ตัวเดียวของ CRM ◂
 import { crmCan, crmForbiddenMessage } from "./access";
 import * as objects from "./objects";
+import { customFieldErrorKey, missingRequiredCustom, requiredCustomMessage } from "./field-errors-shared";
 import {
+  COMPANY_DUPLICATE_HIDDEN_MSG, // CRM C5.5-fix12 ◂
   COMPANY_CONTACT_ROLES,
+  TAX_COMPANY_ARCHIVED_MSG,
+  TAX_COMPANY_HIDDEN_MSG,
   COMPANY_CONTACT_ROLE_LABEL,
   COMPANY_EXPORT_MAX_ROWS,
   COMPANY_IMPORT_ACCOUNT_MAX,
@@ -58,8 +66,10 @@ import {
   CompaniesError,
   MERGE_CHOICE_FIELDS,
   branchCodeProblem,
+  emailDomainFormatProblem,
   emailDomainProblem,
   emailProblem,
+  isFreeMailDomain,
   normalizeCompanyTaxId,
   normalizeEmailDomain,
   phoneProblem,
@@ -84,6 +94,8 @@ import {
   type ImportCompaniesResult,
   type MergeChoiceField,
 } from "./companies-shared";
+import { crmSystemRow } from "./visibility"; // CRM C5.1-fix ▸ ระบบ CRM ผ่านด่านรวมคำสั่งเดียว (memo ต่อคำขอ) ◂
+import { unverifiedEmailRefs } from "./email-flags"; // CRM C5.5-fix3b r2 ▸ RV-1 ◂
 
 export { COMPANY_IMPORT_MAX_ROWS, COMPANY_IMPORT_MAX_BYTES, CompaniesError };
 
@@ -173,7 +185,7 @@ const TX_OPTS = { maxWait: 15_000, timeout: 30_000 } as const;
 const NOT_FOUND_MSG = "ไม่พบบริษัทนี้ในระบบ CRM ที่เปิดอยู่ (อาจถูกลบหรืออยู่คนละระบบ) — รีเฟรชหน้าแล้วลองใหม่";
 const RACE_MSG = "ข้อมูลบริษัทนี้เพิ่งถูกแก้จากที่อื่นระหว่างบันทึก — รีเฟรชหน้าแล้วลองใหม่";
 
-const fail = (code: CompaniesError["code"], message: string, extra: { duplicateOf?: string } = {}) => new CompaniesError(code, message, extra);
+const fail = (code: CompaniesError["code"], message: string, extra: { duplicateOf?: string; field?: string } = {}) => new CompaniesError(code, message, extra);
 const str = (v: unknown): string | null => (typeof v === "string" && v.trim() ? v.trim() : null);
 const newSeq = () => randomUUID().replace(/-/g, "");
 const toNum = (v: bigint | number | null | undefined): number => (v === null || v === undefined ? 0 : Number(v));
@@ -197,7 +209,7 @@ function assertActor(actor: MemberActor | null | undefined): asserts actor is Me
 async function resolveSystem(ctx: CompaniesCtx, db: Db = prisma): Promise<void> {
   const sys =
     typeof ctx?.systemId === "string" && typeof ctx?.tenantId === "string" && ctx.systemId && ctx.tenantId
-      ? await db.appSystem.findFirst({ where: { id: ctx.systemId, tenantId: ctx.tenantId, type: "CRM" }, select: { id: true } })
+      ? await crmSystemRow(ctx, db)
       : null;
   if (!sys) throw fail("NOT_FOUND", "ไม่พบระบบ CRM นี้ในร้านที่เปิดอยู่ — รีเฟรชหน้าแล้วลองใหม่");
 }
@@ -271,7 +283,16 @@ async function recomputeCachesInTx(tx: Tx, ctx: CompaniesCtx, companyId: string,
       -- CRM C2.7 ▸ ดีลที่ชนะ = ภาพมูลค่าตอนชนะ (เดิม) · ดีลที่ยังไม่ปิดแต่ "รับเงินจริง" มาแล้ว = ยอดเอกสาร/บิลที่รับเงิน
       --   (wonValueSatang ของดีลที่ยังไม่ชนะเป็น NULL เสมอจนกว่า payments.ts จะนับเงินเข้า ⇒ ร้านที่ยังไม่ใช้ทางเดินเงินได้ค่าเดิมเป๊ะ)
       "wonValueSatang" = (SELECT COALESCE(sum(CASE WHEN d."kind" = 'WON'::"CrmStageKind" THEN COALESCE(d."wonValueSatang", d."valueSatang") ELSE COALESCE(d."wonValueSatang", 0) END), 0)::bigint FROM "CrmDeal" d WHERE d."companyId" = co."id" AND d."systemId" = co."systemId" AND (d."kind" = 'WON'::"CrmStageKind" OR d."wonValueSatang" IS NOT NULL)),
-      "outstandingSatang" = COALESCE(${out}::bigint, co."outstandingSatang")
+      "outstandingSatang" = COALESCE(${out}::bigint, co."outstandingSatang"),
+      -- CRM C5.4-E ▸ L6-M5: ขั้นของบริษัทตามดีลของมัน **เดินหน้าอย่างเดียว** (เดิมไม่มีใครเขียน ⇒ ทุกบริษัท "ผู้สนใจ" ตลอดไป):
+      --   มีดีลที่ชนะ ⇒ ลูกค้า (จาก ผู้สนใจ/มีโอกาส/ไม่ไปต่อ) · มีดีลที่เปิดอยู่ ⇒ มีโอกาส (จาก ผู้สนใจ/ไม่ไปต่อ) ·
+      --   ลูกค้า/เลิกเป็นลูกค้า ไม่แตะ · คำนวณในคำสั่งเดียวกับแคชใต้ล็อกแถวบริษัทเดิม (ไม่มีตัวเขียนที่สอง) ◂
+      "lifecycleStage" = CASE
+        WHEN co."lifecycleStage" IN ('LEAD'::"CrmLifecycleStage", 'PROSPECT'::"CrmLifecycleStage", 'LOST'::"CrmLifecycleStage")
+          AND EXISTS (SELECT 1 FROM "CrmDeal" d WHERE d."companyId" = co."id" AND d."systemId" = co."systemId" AND d."kind" = 'WON'::"CrmStageKind") THEN 'CUSTOMER'::"CrmLifecycleStage"
+        WHEN co."lifecycleStage" IN ('LEAD'::"CrmLifecycleStage", 'LOST'::"CrmLifecycleStage")
+          AND EXISTS (SELECT 1 FROM "CrmDeal" d WHERE d."companyId" = co."id" AND d."systemId" = co."systemId" AND d."kind" = 'OPEN'::"CrmStageKind") THEN 'PROSPECT'::"CrmLifecycleStage"
+        ELSE co."lifecycleStage" END
      WHERE co."id" = ${companyId} AND co."tenantId" = ${ctx.tenantId} AND co."systemId" = ${ctx.systemId}`;
 }
 
@@ -481,7 +502,7 @@ function cleanPatch(input: CompanyInput, mode: "create" | "update"): CleanPatch 
   if (mode === "create" || input.name !== undefined) {
     const name = textOrNull(input.name, "ชื่อบริษัท", COMPANY_NAME_MAX);
     if (!name) throw fail("VALIDATION", "ใส่ชื่อบริษัทก่อนบันทึก");
-    out.name = name;
+    out.name = normalizeThaiText(name); // CRM C5.4-E ▸ L6-m3: สระอำแบบแยก → "ำ" ◂
   }
   if (input.legalName !== undefined) out.legalName = textOrNull(input.legalName, "ชื่อตามทะเบียน", COMPANY_NAME_MAX);
   if (input.taxId !== undefined) {
@@ -495,7 +516,9 @@ function cleanPatch(input: CompanyInput, mode: "create" | "update"): CleanPatch 
     out.branchCode = String(input.branchCode ?? "").trim() || "00000";
   }
   if (input.emailDomain !== undefined) {
-    const p = emailDomainProblem(input.emailDomain);
+    // CRM C5.4-E ▸ L6-m8: สร้าง/นำเข้า = ห้ามโดเมนอีเมลสาธารณะ · แก้ไข = ตรวจรูปแบบที่นี่ ส่วนโดเมนสาธารณะตรวจเฉพาะเมื่อค่า "เปลี่ยน"
+    //   (updateCompany) — บริษัทเดิมที่เก็บ gmail.com ไว้ก่อนยังแก้ช่องอื่นได้ ◂
+    const p = mode === "create" ? emailDomainProblem(input.emailDomain) : emailDomainFormatProblem(input.emailDomain);
     if (p) throw fail("VALIDATION", p);
     out.emailDomain = normalizeEmailDomain(input.emailDomain) || null;
   }
@@ -586,7 +609,9 @@ async function findCandidates(ctx: CompaniesCtx, actor: MemberActor, input: { na
   const probe = nameProbe(input.name);
   const OR: Prisma.CrmCompanyWhereInput[] = [];
   if (probe) OR.push({ name: { contains: probe, mode: "insensitive" } });
-  if (input.emailDomain) OR.push({ emailDomain: input.emailDomain });
+  // CRM C5.4-E ▸ L6-m8: โดเมนสาธารณะไม่ใช่หลักฐานว่าเป็นบริษัทเดียวกัน ◂
+  const domain = input.emailDomain && !isFreeMailDomain(input.emailDomain) ? input.emailDomain : null;
+  if (domain) OR.push({ emailDomain: domain });
   if (OR.length === 0) return [];
   // ผลลัพธ์ส่งกลับให้ผู้ใช้เห็นชื่อ ⇒ ใช้ขอบเขตการมองเห็น (companyWhere) ไม่ใช่ identityScope
   const rows = await prisma.crmCompany.findMany({
@@ -597,7 +622,7 @@ async function findCandidates(ctx: CompaniesCtx, actor: MemberActor, input: { na
   });
   const out: CompanyCandidate[] = [];
   for (const r of rows) {
-    if (input.emailDomain && r.emailDomain === input.emailDomain) {
+    if (domain && r.emailDomain === domain) {
       out.push({ companyId: r.id, name: r.name, reason: "DOMAIN" });
       continue;
     }
@@ -689,6 +714,15 @@ async function lockRecordForEngine(tx: Tx, id: string): Promise<void> {
   await (await engine()).lockRecordForFieldWrite(tx, id);
 }
 
+/**
+ * C4.4-fix ▸ US3: หลัง "ออกเอกสารของดีลบริษัท" (deals.ts — ลูกค้าบนเอกสาร = Party ของบริษัท) สมุดบัญชีอาจเพิ่งมีผู้ติดต่อของ Party นี้
+ *   ⇒ ผูก accountContactId ให้บริษัทที่ยังไม่ผูก (เขียนแบบมีเงื่อนไข accountContactId = null · ไม่ทับของเดิม · ไม่มี event เหมือนตอนสร้างบริษัท) ◂
+ */
+export async function adoptAccountContactFromDoc(ctx: CompaniesCtx, companyId: string): Promise<void> {
+  const row = str(companyId) ? await prisma.crmCompany.findFirst({ where: { ...identityScope(ctx), id: companyId } }) : null;
+  if (row && !row.accountContactId) await linkExistingAccountContact(ctx, row);
+}
+
 /** ผูก accountContactId ถ้าตัวตนนี้มีผู้ติดต่อในสมุดบัญชีที่เชื่อมอยู่แล้ว (อ่านอย่างเดียว · นอกธุรกรรม · เขียนแบบมีเงื่อนไข) */
 async function linkExistingAccountContact(ctx: CompaniesCtx, row: CrmCompany): Promise<CrmCompany> {
   if (row.accountContactId) return row;
@@ -698,7 +732,20 @@ async function linkExistingAccountContact(ctx: CompaniesCtx, row: CrmCompany): P
   return (await prisma.crmCompany.findFirst({ where: { id: row.id, tenantId: ctx.tenantId, systemId: ctx.systemId } })) ?? row;
 }
 
-export async function createCompany(ctx: CompaniesCtx, actor: MemberActor, input: CreateCompanyInput): Promise<CreateCompanyResult> {
+/**
+ * `opts.requireCustom` (C4.3-fix part 2 · round 2): ทางเข้าที่ "คนกรอกฟอร์ม/เรียก API" (server action · REST `companies.create`)
+ * ต้องบังคับฟิลด์กำหนดเองที่ต้องกรอก — ทางเข้าอัตโนมัติ (นำเข้าผู้ติดต่อที่สร้างบริษัทจากชื่อ) ไม่มีค่าให้กรอก จึงไม่ส่งธงนี้
+ */
+/**
+ * CRM C5.5-fix12 ▸ (sweep RV10-1) ตัวซ้ำของบริษัทในทางแก้/กู้คืน/รวม: บริษัทที่ชนแต่ผู้กดมองไม่เห็น = ข้อความกลาง ไม่มี `duplicateOf`
+ *   (เดิมแอ็กชันส่งรหัสบริษัทที่ซ่อนอยู่กลับไป) · เห็น = ข้อความ + duplicateOf เดิม · ตรวจบน tx ของผู้เรียก ◂
+ */
+async function duplicateFail(db: Db, ctx: CompaniesCtx, viewer: MemberActor, dupId: string, message: string): Promise<CompaniesError> {
+  const seen = await db.crmCompany.findFirst({ where: { AND: [await companyWhere(ctx, viewer, { db }), { id: dupId }] }, select: { id: true } });
+  return seen ? fail("DUPLICATE", message, { duplicateOf: dupId }) : fail("DUPLICATE", COMPANY_DUPLICATE_HIDDEN_MSG);
+}
+
+export async function createCompany(ctx: CompaniesCtx, actor: MemberActor, input: CreateCompanyInput, opts: { requireCustom?: boolean } = {}): Promise<CreateCompanyResult> {
   const a = await enter(ctx, actor);
   need(a, "crm.company.create");
   const { merged, custom } = await splitFields(input ?? ({} as CreateCompanyInput));
@@ -713,10 +760,18 @@ export async function createCompany(ctx: CompaniesCtx, actor: MemberActor, input
     if (!parent) throw fail("VALIDATION", "ไม่พบบริษัทแม่ที่เลือกในระบบ CRM นี้ — เลือกใหม่จากรายการ");
   }
   await seedCompanyFields(ctx, a);
+  if (opts.requireCustom) {
+    // engine ตรวจเฉพาะ key ที่ส่งมา — ช่องบังคับที่ "ไม่ส่งเลย" ต้องตรวจที่นี่ (กติกาเดียวกับ objects.ts records.create)
+    const miss = missingRequiredCustom(await (await engine()).listLayout(fctx(ctx, a), {}), custom);
+    if (miss) throw fail("VALIDATION", requiredCustomMessage(miss.label), { field: customFieldErrorKey(miss.key) });
+  }
   // ไม่มีเลขภาษี: หาบริษัทที่ "อาจซ้ำ" (โดเมนอีเมล → ชื่อคล้าย) ไว้บอกผู้ใช้ — ไม่รวมเงียบ ๆ (§11.1)
   const candidates = clean.taxId ? [] : await findCandidates(ctx, a, { name: clean.name ?? "", emailDomain: clean.emailDomain ?? null });
   const res = await createCore(ctx, a, clean, { ownerUserId, teamId, parentCompanyId }, { custom });
   if (!res.created) {
+    // CRM C5.5-fix12 ▸ (sweep RV10-1) บริษัทเดิมที่ชนแต่ผู้สร้างมองไม่เห็น = ข้อความกลาง (เดิมคืน DTO เต็ม + duplicateOf ของบริษัทที่ซ่อน) ◂
+    const seen = await prisma.crmCompany.findFirst({ where: { AND: [await companyWhere(ctx, a), { id: res.row.id }] }, select: { id: true } });
+    if (!seen) throw fail("DUPLICATE", COMPANY_DUPLICATE_HIDDEN_MSG);
     return { company: toDto(res.row), created: false, duplicateOf: res.row.id, duplicateArchived: !!res.row.archivedAt, candidates: [] };
   }
   const row = await linkExistingAccountContact(ctx, res.row);
@@ -741,6 +796,10 @@ export async function updateCompany(ctx: CompaniesCtx, actor: MemberActor, id: s
   need(a, "crm.company.update");
   const { merged, custom } = await splitFields((patch ?? {}) as CompanyInput);
   const clean = cleanPatch(merged, "update");
+  if (clean.emailDomain && clean.emailDomain !== (current.emailDomain ?? null)) {
+    const p = emailDomainProblem(clean.emailDomain); // CRM C5.4-E ▸ L6-m8: เปลี่ยนเป็นโดเมนสาธารณะ = ไม่รับ ◂
+    if (p) throw fail("VALIDATION", p);
+  }
   await seedCompanyFields(ctx, a);
   const lockTax = clean.taxId && clean.taxId !== current.taxId ? clean.taxId : null;
   let changedKeys: string[] = [];
@@ -791,11 +850,11 @@ export async function updateCompany(ctx: CompaniesCtx, actor: MemberActor, id: s
           where: { ...identityScope(ctx), taxId: nextTax, branchCode: nextBranch, mergedIntoId: null, id: { not: row.id } },
           select: { id: true },
         });
-        if (dup) throw fail("DUPLICATE", "เลขภาษี (และสาขา) นี้เป็นของบริษัทอื่นในระบบนี้อยู่แล้ว — เปิดบริษัทนั้น หรือใช้เมนูรวมบริษัทซ้ำ", { duplicateOf: dup.id });
+        if (dup) throw await duplicateFail(tx, ctx, a, dup.id, "เลขภาษี (และสาขา) นี้เป็นของบริษัทอื่นในระบบนี้อยู่แล้ว — เปิดบริษัทนั้น หรือใช้เมนูรวมบริษัทซ้ำ"); // CRM C5.5-fix12 ◂
       }
       if (mode === "repoint" && targetParty !== row.partyId) {
         const holder = await tx.crmCompany.findFirst({ where: { ...identityScope(ctx), partyId: targetParty, id: { not: row.id } }, select: { id: true } });
-        if (holder) throw fail("DUPLICATE", "ตัวตนใหม่นี้เป็นของบริษัทอื่นในระบบนี้อยู่แล้ว — ใช้เมนูรวมบริษัทซ้ำแทน", { duplicateOf: holder.id });
+        if (holder) throw await duplicateFail(tx, ctx, a, holder.id, "ตัวตนใหม่นี้เป็นของบริษัทอื่นในระบบนี้อยู่แล้ว — ใช้เมนูรวมบริษัทซ้ำแทน"); // CRM C5.5-fix12 ◂
         bag.partyId = targetParty;
         // ผู้ติดต่อบัญชีเดิมเป็นของตัวตนเก่า — ผูกใหม่หลัง commit (ถ้าตัวตนใหม่มีผู้ติดต่อในสมุดที่เชื่อม)
         bag.accountContactId = null;
@@ -909,7 +968,7 @@ export async function restoreCompany(ctx: CompaniesCtx, actor: MemberActor, id: 
         where: { ...identityScope(ctx), taxId: row.taxId, branchCode: row.branchCode ?? "00000", mergedIntoId: null, archivedAt: null, id: { not: row.id } },
         select: { id: true },
       });
-      if (dup) throw fail("DUPLICATE", "เลขภาษีนี้มีบริษัทอื่นที่ใช้งานอยู่ในระบบนี้แล้ว — รวมสองบริษัทแทนการกู้คืน", { duplicateOf: dup.id });
+      if (dup) throw await duplicateFail(tx, ctx, a, dup.id, "เลขภาษีนี้มีบริษัทอื่นที่ใช้งานอยู่ในระบบนี้แล้ว — รวมสองบริษัทแทนการกู้คืน"); // CRM C5.5-fix12 ◂
     }
     await assertCrmLimit(ctx, "companies", 1, tx); // CRM C3.9 ▸ กู้คืน = กลับมานับในเพดานบริษัท (NOTE รีวิว) ◂
     await tx.crmCompany.update({ where: { id: row.id }, data: { archivedAt: null } });
@@ -935,6 +994,32 @@ export async function setOwner(ctx: CompaniesCtx, actor: MemberActor, id: string
     if ((row.ownerUserId ?? null) === next) return { changed: false };
     await tx.crmCompany.update({ where: { id: row.id }, data: { ownerUserId: next } });
     return { changed: true, before: { ownerUserId: row.ownerUserId }, after: { ownerUserId: next } };
+  });
+}
+
+/**
+ * CRM C5.4-E r2 ▸ มติผู้คุมงาน (คำถามเจ้าของข้อ 1): ขั้นของบริษัทคำนวณจากดีลแบบเดินหน้าอย่างเดียว (L6-M5) ⇒ ปิดดีลเป็นชนะผิดแล้ว
+ * บริษัทเป็น "ลูกค้า" ค้าง · ผู้จัดการ/เจ้าของร้าน **แก้ย้อน** ลูกค้า → มีโอกาส ได้ (เหมือนผู้ติดต่อ — audit `correction: true`) ·
+ * ทางเดียวที่เปิด (ขั้นอื่นมาจากดีลเอง) · r3 (รีวิว R2-2): ยังมีดีลที่ชนะอยู่ = ไม่รับ (`COMPANY_HAS_WON_DEAL_MSG`) ⇒ การแก้ที่รับแล้วไม่ถูกตั้งกลับเงียบ ๆ ◂
+ */
+export const COMPANY_HAS_WON_DEAL_MSG = "บริษัทนี้ยังมีดีลที่ชนะอยู่ — แก้สถานะดีลก่อน แล้วจึงปรับสถานะบริษัท";
+
+export async function setCompanyLifecycle(ctx: CompaniesCtx, actor: MemberActor, id: string, stage: string): Promise<CompanyDto> {
+  const a = await enter(ctx, actor);
+  await loadCompany(ctx, a, id, prisma, { live: true });
+  need(a, "crm.company.update");
+  if (a.role !== "OWNER" && a.role !== "MANAGER") throw fail("FORBIDDEN", "การแก้ขั้นของบริษัททำได้เฉพาะผู้จัดการหรือเจ้าของร้าน — ขอให้ผู้จัดการช่วยดำเนินการ");
+  const s = String(stage ?? "").trim().toUpperCase();
+  return simpleUpdate(ctx, a, id, "crm.company.lifecycle", ["lifecycleStage"], async (tx, row) => {
+    if (row.lifecycleStage === s) return { changed: false };
+    if (row.lifecycleStage !== "CUSTOMER" || s !== "PROSPECT") {
+      throw fail("VALIDATION", "ขั้นของบริษัทคำนวณจากดีลให้อัตโนมัติ — แก้เองได้ทางเดียวคือ \"ลูกค้า\" → \"มีโอกาส\" (กรณีปิดดีลเป็นชนะโดยไม่ตั้งใจ)");
+    }
+    // CRM C5.4-E r3 ▸ รีวิว R2-2: ยังมีดีลที่ชนะ = รอบคำนวณแคชครั้งถัดไปจะตั้งกลับเป็นลูกค้าเอง (ไม่มี audit) ⇒ ไม่รับตั้งแต่ตอนนี้ · การแก้ที่รับ = ติดถาวร ◂
+    const won = await tx.crmDeal.count({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, companyId: row.id, kind: "WON" } });
+    if (won > 0) throw fail("VALIDATION", COMPANY_HAS_WON_DEAL_MSG);
+    await tx.crmCompany.update({ where: { id: row.id }, data: { lifecycleStage: "PROSPECT" } });
+    return { changed: true, before: { lifecycleStage: row.lifecycleStage }, after: { lifecycleStage: "PROSPECT", correction: true } };
   });
 }
 
@@ -1014,6 +1099,8 @@ export async function addContact(ctx: CompaniesCtx, actor: MemberActor, companyI
         changed = true;
       }
     } else if (existing) {
+      // hunter H1: ลิงก์ที่จบแล้วถูกเปิดใหม่ ⇒ สิทธิ์พอร์ทัลรอบเก่าไม่ฟื้น
+      if (existing.endedAt) await revokePortalOfLinkInTx(tx, ctx.tenantId, company.id, contact.id, ctx.actorUserId, REOPENED);
       await tx.crmCompanyContact.update({
         where: { id: existing.id },
         data: { endedAt: null, startedAt: new Date(), isPrimary: false, role: wantRole ?? existing.role, ...(jobTitle !== undefined ? { jobTitle } : {}) },
@@ -1076,14 +1163,35 @@ async function linkMutation(
   await writeAudit({ tenantId: ctx.tenantId, actorId: ctx.actorUserId, action, targetType: "CrmCompany", targetId: company.id, before: audit.before, after: { ...(audit.after as object), contactId: cid } });
 }
 
+// CRM C5.4-B ▸ L1-M2 + hunter H1: ถอนสิทธิ์พอร์ทัล + ปิด session ของ (บริษัท, ผู้ติดต่อ) ใน tx ของผู้เรียก · audit crm.portal.revoke ต่อสิทธิ์
+//   ใช้ตอน "ออกจากบริษัท" และตอน "เพิ่มกลับ/รวม" ลิงก์ที่เคยจบ (สิทธิ์ของรอบเก่าต้องไม่ฟื้น — เชิญใหม่เท่านั้น)
+async function revokePortalOfLinkInTx(tx: Tx, tenantId: string, companyId: string, contactId: string, actorId: string | null | undefined, reason: string, now = new Date()): Promise<number> {
+  const accesses = await tx.crmPortalAccess.findMany({ where: { tenantId, companyId, contactId, revokedAt: null }, select: { id: true } });
+  for (const acc of accesses) {
+    await tx.crmPortalAccess.update({ where: { id: acc.id }, data: { revokedAt: now, inviteTokenHash: null } });
+    const s = await tx.portalSession.updateMany({ where: { portalAccessId: acc.id, revokedAt: null }, data: { revokedAt: now } });
+    await tx.auditLog.create({ data: { tenantId, actorType: actorId ? "USER" : "SYSTEM", actorId: actorId || null, action: "crm.portal.revoke", targetType: "CrmPortalAccess", targetId: acc.id, after: { sessionsRevoked: s.count, reason } } });
+  }
+  return accesses.length;
+}
+const LEFT_COMPANY = "ผู้ติดต่อออกจากบริษัทนี้แล้ว";
+const MERGED_AWAY = "บริษัทถูกรวมเข้ากับบริษัทที่คนนี้มีสิทธิ์พอร์ทัลอยู่แล้ว"; // CRM C5.4-E ▸ L6-M3 ◂
+const MERGED_REPLACED = "รวมบริษัท — แถวสิทธิ์พอร์ทัลของบริษัทที่ถูกรวมใช้ได้ดีกว่า จึงย้ายมาแทน"; // CRM C5.4-E r3 ▸ R2-1 ◂
+const REOPENED = "ลิงก์บริษัทที่เคยจบถูกเปิดใหม่ — สิทธิ์พอร์ทัลรอบเก่าไม่ใช้ต่อ (เชิญใหม่)";
+
 /** ถอดผู้ติดต่อ — แถวคงอยู่ (endedAt = ประวัติ) · หลุดจากการเป็นหลัก · แคช companyId ของเขาคำนวณใหม่ */
 export async function removeContact(ctx: CompaniesCtx, actor: MemberActor, companyId: string, contactId: string): Promise<{ ok: true }> {
   const a = await enter(ctx, actor);
   await loadCompany(ctx, a, companyId);
   need(a, "crm.company.update");
   await linkMutation(ctx, a, companyId, contactId, "crm.company.contact.remove", async (tx, link) => {
-    await tx.crmCompanyContact.updateMany({ where: { id: link.id, endedAt: null }, data: { endedAt: new Date(), isPrimary: false } });
-    return { affected: [], changed: true, before: { role: link.role, isPrimary: link.isPrimary }, after: { endedAt: "now" } };
+    const now = new Date();
+    await tx.crmCompanyContact.updateMany({ where: { id: link.id, endedAt: null }, data: { endedAt: now, isPrimary: false } });
+    // CRM C5.4-B ▸ L1-M2: คนที่ออกจากบริษัทแล้วต้องเข้าพอร์ทัลของบริษัทนั้นไม่ได้อีก — ถอนสิทธิ์พอร์ทัล + ปิด session ใน tx เดียวกัน
+    //   (ประตูอ่าน `portalAccessUsable`/listContacts/invite ก็กรอง endedAt อีกชั้น) · audit crm.portal.revoke เหตุผล "ออกจากบริษัท"
+    const revoked = await revokePortalOfLinkInTx(tx, ctx.tenantId, link.companyId, link.contactId, ctx.actorUserId, LEFT_COMPANY, now);
+    // ◂ CRM C5.4-B
+    return { affected: [], changed: true, before: { role: link.role, isPrimary: link.isPrimary }, after: { endedAt: "now", ...(revoked ? { portalRevoked: revoked } : {}) } };
   });
   return { ok: true };
 }
@@ -1116,6 +1224,10 @@ export async function setRole(ctx: CompaniesCtx, actor: MemberActor, companyId: 
 // ═════════════════════════ 360 ═════════════════════════
 
 export async function getCompany360(ctx: CompaniesCtx, actor: MemberActor, id: string): Promise<Company360> {
+  return crmScope(() => getCompany360In(ctx, actor, id));
+}
+
+async function getCompany360In(ctx: CompaniesCtx, actor: MemberActor, id: string): Promise<Company360> {
   const a = await enter(ctx, actor);
   const row = await loadCompany(ctx, a, id);
   const acc = await crmAccountBook(ctx.tenantId, ctx.systemId);
@@ -1144,12 +1256,22 @@ export async function getCompany360(ctx: CompaniesCtx, actor: MemberActor, id: s
       : Promise.resolve(null),
     row.teamId ? prisma.team.findFirst({ where: { id: row.teamId, tenantId: ctx.tenantId }, select: { id: true, name: true } }) : Promise.resolve(null),
     // ไทม์ไลน์ = กิจกรรม "เกี่ยวกับบริษัทนี้" เท่านั้น (ผูกบริษัท หรือผูกดีลของบริษัท) — ไม่ใช่ทุกกิจกรรมของผู้ติดต่อ (SF8)
-    prisma.crmActivity.findMany({
-      where: { AND: [await activityWhere(ctx, a), { OR: [{ companyId: row.id }, { deal: { companyId: row.id } }] }] },
-      include: { contact: { select: { name: true } } },
-      orderBy: [{ createdAt: "desc" }],
-      take: 50,
-    }),
+    // CRM C5.1-fix ▸ F4: เดิม OR(companyId, deal.companyId) = LEFT JOIN + OR ⇒ สแกนกิจกรรมทั้งร้าน · ใหม่ = สองกิ่งที่ใช้ดัชนีได้
+    //   (companyId · ดีลของบริษัทนี้) วิ่งพร้อมกัน แล้วรวม/ตัดซ้ำ/เรียง (createdAt desc, id desc) เหลือ 50 ◂
+    (async () => {
+      const vis = await activityWhere(ctx, a);
+      const orderBy: Prisma.CrmActivityOrderByWithRelationInput[] = [{ createdAt: "desc" }, { id: "desc" }];
+      const include = { contact: { select: { name: true } } } as const;
+      const [x, y] = await Promise.all([
+        prisma.crmActivity.findMany({ where: { AND: [vis, { companyId: row.id }] }, include, orderBy, take: 50 }),
+        prisma.crmActivity.findMany({ where: { AND: [vis, { deal: { companyId: row.id } }] }, include, orderBy, take: 50 }),
+      ]);
+      const seen = new Set<string>();
+      return [...x, ...y]
+        .filter((r) => (seen.has(r.id) ? false : (seen.add(r.id), true)))
+        .sort((p, q) => q.createdAt.getTime() - p.createdAt.getTime() || (q.id < p.id ? -1 : q.id > p.id ? 1 : 0))
+        .slice(0, 50);
+    })(),
   ]);
 
   const [outstanding, docs, objectTabs] = await Promise.all([
@@ -1181,6 +1303,14 @@ export async function getCompany360(ctx: CompaniesCtx, actor: MemberActor, id: s
   const documents: CompanyDocRow[] = docs
     .filter((d) => d.systemId === acc?.systemId)
     .map((d) => ({ id: d.id, docNo: d.docNo, docType: d.docType, docLabel: d.docLabel, status: d.status, statusLabel: d.statusLabel, totalSatang: d.totalSatang, issuedAt: d.issuedAt, href: d.href }));
+  // CRM C5.5 ▸ (fix3b r2 · รีวิว RV-1) การ์ด "ไทม์ไลน์รวม" ขึ้นป้าย "ไม่ยืนยันผู้ส่ง" แบบเดียวกับบล็อกกิจกรรม (คิวรีเดียวต่อหน้า · ร้าน+ระบบเดียวกัน) ◂
+  const unverified = await unverifiedEmailRefs(ctx, activities);
+  // CRM C5.5-fix10 ▸ (sweep FX7-1) ชื่อผู้ติดต่อบนไทม์ไลน์ = ตามการมองเห็นของผู้ดู (contactWhere · คิวรีเดียว) — กิจกรรมที่ผู้ดูเห็น
+  //   ผูกผู้ติดต่อที่เขามองไม่เห็นได้ (การมองเห็นกิจกรรมตามผู้ดูแลกิจกรรม) · มองไม่เห็น = ไม่มีชื่อ (แบบรายการกิจกรรม `activities.enrich`) ◂
+  const tlContactIds = [...new Set(activities.map((t) => t.contactId).filter((x): x is string => !!x))];
+  const tlSeen = new Set(
+    tlContactIds.length ? (await prisma.crmContact.findMany({ where: { AND: [await contactWhere(ctx, a), { id: { in: tlContactIds } }] }, select: { id: true } })).map((r) => r.id) : [],
+  );
   const timeline: CompanyTimelineItem[] = activities.map((t) => ({
     id: t.id,
     at: t.startAt ?? t.doneAt ?? t.createdAt,
@@ -1188,8 +1318,9 @@ export async function getCompany360(ctx: CompaniesCtx, actor: MemberActor, id: s
     title: t.title,
     source: t.source,
     contactId: t.contactId,
-    contactName: t.contact?.name ?? null,
+    contactName: t.contactId && tlSeen.has(t.contactId) ? (t.contact?.name ?? null) : null,
     dealId: t.dealId,
+    ...(unverified.has(t.id) ? { unverifiedFrom: true as const } : {}),
   }));
   timeline.sort((x, y) => y.at.getTime() - x.at.getTime());
   const open = agg.find((g) => g.kind === "OPEN");
@@ -1233,7 +1364,8 @@ const SORTS: Record<CompanySort, Prisma.CrmCompanyOrderByWithRelationInput[]> = 
   "-wonValueSatang": [{ wonValueSatang: "desc" }, { id: "desc" }],
 };
 
-async function listWhere(ctx: CompaniesCtx, actor: MemberActor, raw: CompanyListInput): Promise<Prisma.CrmCompanyWhereInput> {
+/** ตัวกรองที่ใช้จริง = มุมมองที่บันทึก (ถ้ามี) ทับด้วยตัวกรองที่ส่งมา — ใช้ร่วมกันทั้ง where ของ Prisma และ SQL (C5.1-fix) */
+async function effectiveListInput(ctx: CompaniesCtx, actor: MemberActor, raw: CompanyListInput): Promise<CompanyListInput> {
   // CRM C3.2 ▸ มุมมองที่บันทึก (`savedViewId` · objectKey "company") — กติกาการมองเห็นที่ `views.ts` ที่เดียว (TEAM = เจ้าของ +
   //   สมาชิกปัจจุบันของทีม · มองไม่เห็น = NOT_FOUND ไม่ใช่ "ไม่กรอง") · ตัวกรองที่ส่งมาตรง ๆ ทับค่าของมุมมอง ◂
   let input: CompanyListInput = raw ?? {};
@@ -1245,6 +1377,10 @@ async function listWhere(ctx: CompaniesCtx, actor: MemberActor, raw: CompanyList
     const vfF = (vf.f && typeof vf.f === "object" ? vf.f : {}) as Record<string, string>;
     input = { ...(vf as CompanyListInput), ...explicit, f: { ...vfF, ...(explicit.f ?? {}) } };
   }
+  return input;
+}
+
+async function listWhereFrom(ctx: CompaniesCtx, actor: MemberActor, input: CompanyListInput): Promise<Prisma.CrmCompanyWhereInput> {
   // AUDIT-CLASS X1: ขอบเขตผ่าน companyWhere เสมอ · บริษัทที่ถูกรวมไม่โผล่ในรายการ (แถวคงอยู่เป็นประวัติ)
   const AND: Prisma.CrmCompanyWhereInput[] = [await companyWhere(ctx, actor), { mergedIntoId: null }];
   if (!input.includeArchived) AND.push({ archivedAt: null });
@@ -1253,8 +1389,7 @@ async function listWhere(ctx: CompaniesCtx, actor: MemberActor, raw: CompanyList
     const digits = q.replace(/[\s-]/g, "");
     AND.push({
       OR: [
-        { name: { contains: q, mode: "insensitive" } },
-        { legalName: { contains: q, mode: "insensitive" } },
+        ...thaiSearchVariants(q).flatMap((v): Prisma.CrmCompanyWhereInput[] => [{ name: { contains: v, mode: "insensitive" } }, { legalName: { contains: v, mode: "insensitive" } }]), // CRM C5.4-E ▸ L6-m3 ◂
         { emailDomain: { contains: q.toLowerCase() } },
         ...(/^\d{3,13}$/.test(digits) ? [{ taxId: { contains: digits } }] : []),
       ],
@@ -1265,7 +1400,7 @@ async function listWhere(ctx: CompaniesCtx, actor: MemberActor, raw: CompanyList
   const team = str(input.team);
   if (team) AND.push({ teamId: team });
   const industry = str(input.industry);
-  if (industry) AND.push({ industry: { equals: industry, mode: "insensitive" } });
+  if (industry) AND.push({ industry: ciEquals(industry) }); // CRM C5.5-fix2 ▸ ไม่มี wildcard ◂
   if (input.size !== undefined && input.size !== null && input.size !== "") AND.push({ size: parseSize(input.size) });
   if (input.hasOpenDeals === true) AND.push({ openDealCount: { gt: 0 } });
   if (input.hasOpenDeals === false) AND.push({ openDealCount: 0 });
@@ -1281,20 +1416,91 @@ async function listWhere(ctx: CompaniesCtx, actor: MemberActor, raw: CompanyList
   return { AND };
 }
 
+const hasFieldFilters = (input: CompanyListInput) => Object.keys(input.f ?? {}).length > 0;
+
+// CRM C5.1-fix ▸ F1: where เดียวกับ listWhere ในรูป SQL ของแถว alias — ใช้เมื่อมีตัวกรองฟิลด์ (`f.<key>`) เท่านั้น ◂
+async function listSqlWhere(ctx: CompaniesCtx, actor: MemberActor, input: CompanyListInput, co = "co"): Promise<Prisma.Sql> {
+  const A = Prisma.raw(co);
+  const AND: Prisma.Sql[] = [await visibleCompanySql(ctx, actor, co), Prisma.sql`${A}."mergedIntoId" IS NULL`];
+  if (!input.includeArchived) AND.push(Prisma.sql`${A}."archivedAt" IS NULL`);
+  const q = str(input.q)?.slice(0, 100);
+  if (q) {
+    const digits = q.replace(/[\s-]/g, "");
+    AND.push(
+      orSql([
+        ...thaiSearchVariants(q).flatMap((v) => [containsSql(co, "name", v, true), containsSql(co, "legalName", v, true)]), // CRM C5.4-E ▸ L6-m3 ◂
+        containsSql(co, "emailDomain", q.toLowerCase(), false),
+        ...(/^\d{3,13}$/.test(digits) ? [containsSql(co, "taxId", digits, false)] : []),
+      ]),
+    );
+  }
+  const owner = str(input.owner);
+  if (owner) AND.push(owner === "none" ? Prisma.sql`${A}."ownerUserId" IS NULL` : Prisma.sql`${A}."ownerUserId" = ${owner}`);
+  const team = str(input.team);
+  if (team) AND.push(Prisma.sql`${A}."teamId" = ${team}`);
+  const industry = str(input.industry);
+  if (industry) AND.push(Prisma.sql`${A}."industry" ILIKE ${likeEscape(industry)}`); // CRM C5.5-fix2 ▸ = ciEquals ของทาง Prisma (ทางเดียวกันทุกตัวอักษร) ◂
+  if (input.size !== undefined && input.size !== null && input.size !== "") {
+    const size = parseSize(input.size);
+    AND.push(size === null ? Prisma.sql`${A}."size" IS NULL` : enumEqSql(co, "size", "CrmCompanySize", size));
+  }
+  if (input.hasOpenDeals === true) AND.push(Prisma.sql`${A}."openDealCount" > 0`);
+  if (input.hasOpenDeals === false) AND.push(Prisma.sql`${A}."openDealCount" = 0`);
+  const filters = input.f ?? {};
+  if (Object.keys(filters).length > 0) {
+    try {
+      AND.push(await (await engine()).fieldFilterSql({ ...fctx(ctx, actor), objectKey: "company" }, filters, co));
+    } catch (e) {
+      throw engineError(e);
+    }
+  }
+  return andSql(AND);
+}
+
+async function countSql(where: Prisma.Sql): Promise<number> {
+  return (await prisma.$queryRaw<{ n: number }[]>`SELECT count(*)::int AS "n" FROM "CrmCompany" co WHERE ${where}`)[0]?.n ?? 0;
+}
+
+async function pageIdsSql(where: Prisma.Sql, orderBy: readonly Record<string, unknown>[], limit: number, offset: number, after?: string | null): Promise<string[]> {
+  const rows = await prisma.$queryRaw<{ id: string }[]>`
+    SELECT co."id" FROM "CrmCompany" co WHERE ${where} ${after ? Prisma.sql`AND co."id" > ${after}` : Prisma.empty}
+     ORDER BY ${orderBySql("co", withThaiCollation(sqlSortOf(orderBy), ["name"]))} LIMIT ${limit} OFFSET ${offset}`; // CRM C5.4-E ▸ L6-m3 ◂
+  return rows.map((r) => r.id);
+}
+
 // CRM C3.2 ▸ (รีวิวรอบ 2 NOTE-6) ตรวจตัวกรองของมุมมองที่บันทึก "โดยไม่โหลดแถว" — where เดียวกับ listCompanies + id 1 แถว ◂
 /** ตรวจว่าตัวกรองชุดนี้ใช้กับรายชื่อบริษัทได้ (อ่าน 1 id · ไม่นับทั้งหมด) */
 export async function probeCompanyFilters(ctx: CompaniesCtx, actor: MemberActor, input: CompanyListInput): Promise<void> {
   const a = await enter(ctx, actor);
-  await prisma.crmCompany.findFirst({ where: await listWhere(ctx, a, input ?? {}), select: { id: true } });
+  const eff = await effectiveListInput(ctx, a, input ?? {});
+  // CRM C5.1-fix ▸ มีตัวกรองฟิลด์ = ตรวจด้วย SQL (ไม่มีรายการ id) ◂
+  if (hasFieldFilters(eff)) {
+    await pageIdsSql(await listSqlWhere(ctx, a, eff), [{ id: "asc" }], 1, 0);
+    return;
+  }
+  await prisma.crmCompany.findFirst({ where: await listWhereFrom(ctx, a, eff), select: { id: true } });
 }
 
 export async function listCompanies(ctx: CompaniesCtx, actor: MemberActor, input: CompanyListInput = {}): Promise<CompanyListResult> {
+  return crmScope(() => listCompaniesIn(ctx, actor, input));
+}
+
+async function listCompaniesIn(ctx: CompaniesCtx, actor: MemberActor, input: CompanyListInput = {}): Promise<CompanyListResult> {
   const a = await enter(ctx, actor);
-  const where = await listWhere(ctx, a, input ?? {});
+  const eff = await effectiveListInput(ctx, a, input ?? {});
   const pageSize = Math.min(COMPANY_PAGE_MAX, Math.max(1, Math.floor(Number(input?.pageSize) || 50)));
   const page = Math.max(1, Math.floor(Number(input?.page) || 1));
   const sortKey = input?.sort;
   const orderBy = typeof sortKey === "string" && Object.hasOwn(SORTS, sortKey) ? SORTS[sortKey] : SORTS.name;
+  // CRM C5.1-fix ▸ F1: มีตัวกรองฟิลด์ = นับ + id ของหน้าด้วย SQL แล้วอ่านแถวเต็มด้วย Prisma ◂
+  // CRM C5.4-E ▸ L6-m3: เรียงตามชื่อ (ค่าเริ่มต้น) = ทาง SQL ด้วย — collation ภาษาไทย (เ แ โ ใ ไ ไม่ไปอยู่หลัง ฮ) ◂
+  if (hasFieldFilters(eff) || "name" in (orderBy[0] ?? {})) {
+    const sw = await listSqlWhere(ctx, a, eff);
+    const [total, ids] = await Promise.all([countSql(sw), pageIdsSql(sw, orderBy as Record<string, unknown>[], pageSize, (page - 1) * pageSize)]);
+    const rows = ids.length ? inOrder(ids, await prisma.crmCompany.findMany({ where: { id: { in: ids } } })) : [];
+    return { items: rows.map(toDto), total, page, pageSize };
+  }
+  const where = await listWhereFrom(ctx, a, eff);
   const [total, rows] = await Promise.all([
     prisma.crmCompany.count({ where }),
     prisma.crmCompany.findMany({ where, orderBy, skip: (page - 1) * pageSize, take: pageSize }),
@@ -1308,8 +1514,11 @@ export async function listCompanies(ctx: CompaniesCtx, actor: MemberActor, input
  */
 export async function exportCompanies(ctx: CompaniesCtx, actor: MemberActor, opts: Omit<CompanyListInput, "page" | "pageSize" | "sort"> = {}): Promise<string> {
   const a = await enter(ctx, actor);
-  const where = await listWhere(ctx, a, opts ?? {});
-  const total = await prisma.crmCompany.count({ where });
+  const eff = await effectiveListInput(ctx, a, opts ?? {});
+  // CRM C5.1-fix ▸ F1: มีตัวกรองฟิลด์ = นับ/อ่านเป็นชุดด้วย SQL (id > ตัวสุดท้าย · ลำดับ id เดิม) ◂
+  const sw = hasFieldFilters(eff) ? await listSqlWhere(ctx, a, eff) : null;
+  const where = sw ? null : await listWhereFrom(ctx, a, eff);
+  const total = sw ? await countSql(sw) : await prisma.crmCompany.count({ where: where! });
   if (total > COMPANY_EXPORT_MAX_ROWS) {
     throw fail("VALIDATION", `ส่งออกได้ครั้งละไม่เกิน ${COMPANY_EXPORT_MAX_ROWS.toLocaleString("th-TH")} บริษัท (ตัวกรองนี้มี ${total.toLocaleString("th-TH")} บริษัท) — กรองให้แคบลงแล้วส่งออกเป็นรอบ`);
   }
@@ -1317,7 +1526,12 @@ export async function exportCompanies(ctx: CompaniesCtx, actor: MemberActor, opt
   let cursor: string | null = null;
   let count = 0;
   for (;;) {
-    const batch: CrmCompany[] = await prisma.crmCompany.findMany({ where, orderBy: { id: "asc" }, take: 1_000, ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}) });
+    const batch: CrmCompany[] = sw
+      ? await (async () => {
+          const ids = await pageIdsSql(sw, [{ id: "asc" }], 1_000, 0, cursor);
+          return ids.length ? inOrder(ids, await prisma.crmCompany.findMany({ where: { id: { in: ids } } })) : [];
+        })()
+      : await prisma.crmCompany.findMany({ where: where!, orderBy: { id: "asc" }, take: 1_000, ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}) });
     for (const r of batch) {
       if (count >= COMPANY_EXPORT_MAX_ROWS) break;
       lines.push(
@@ -1368,7 +1582,7 @@ export async function findDuplicates(ctx: CompaniesCtx, actor: MemberActor, opts
     for (const ids of m.values()) for (let i = 0; i < ids.length; i += 1) for (let j = i + 1; j < ids.length; j += 1) add(ids[i]!, ids[j]!, reason);
   };
   group((r) => (r.taxId ? `${r.taxId}#${r.branchCode ?? "00000"}` : null), "TAX_ID");
-  group((r) => r.emailDomain, "DOMAIN");
+  group((r) => (r.emailDomain && !isFreeMailDomain(r.emailDomain) ? r.emailDomain : null), "DOMAIN"); // CRM C5.4-E ▸ L6-m8 ◂
   // ชื่อคล้าย: เทียบในกลุ่มที่ชื่อแกนขึ้นต้นเหมือนกัน (2 ตัวแรก) — O(n²) เฉพาะในถัง ไม่ใช่ทั้งระบบ
   const buckets = new Map<string, { id: string; name: string }[]>();
   for (const r of rows) {
@@ -1413,6 +1627,8 @@ export async function mergeCompanies(ctx: CompaniesCtx, actor: MemberActor, inpu
   const choices = input.fieldChoices ?? {};
   const moved = { contacts: 0, contactsDeduped: 0, deals: 0, activities: 0, subsidiaries: 0, records: 0 };
   let customValuesMoved = 0; // CRM C1.10 ▸ ค่าฟิลด์กำหนดเองที่ย้ายมา (ลง audit) ◂
+  // CRM C5.4-E ▸ L6-M3: ของที่ย้ายเพิ่ม (ลง audit — รูปผลลัพธ์ `moved` ของ REST คงเดิม) ◂
+  const movedMore = { files: 0, emails: 0, portalRequests: 0, portalAccessMoved: 0, portalAccessRevoked: 0, portalAccessReplaced: 0, portalAccessDuplicateClosed: 0 };
   let keptAc: string | null = keep.accountContactId;
   await prisma.$transaction(async (tx) => {
     await treeLock(tx, ctx);
@@ -1428,7 +1644,7 @@ export async function mergeCompanies(ctx: CompaniesCtx, actor: MemberActor, inpu
         where: { ...identityScope(ctx), taxId: carryTax.taxId, branchCode: carryTax.branchCode, mergedIntoId: null, id: { notIn: [k.id, m.id] } },
         select: { id: true },
       });
-      if (dup) throw fail("DUPLICATE", "เลขภาษีของบริษัทที่ถูกรวมเป็นของบริษัทที่สามในระบบนี้ด้วย — รวมบริษัทนั้นก่อน", { duplicateOf: dup.id });
+      if (dup) throw await duplicateFail(tx, ctx, a, dup.id, "เลขภาษีของบริษัทที่ถูกรวมเป็นของบริษัทที่สามในระบบนี้ด้วย — รวมบริษัทนั้นก่อน"); // CRM C5.5-fix12 ◂
     }
     const mLinks = await tx.crmCompanyContact.findMany({ where: { companyId: m.id, endedAt: null } });
     const kLinks = await tx.crmCompanyContact.findMany({ where: { companyId: k.id } });
@@ -1445,6 +1661,7 @@ export async function mergeCompanies(ctx: CompaniesCtx, actor: MemberActor, inpu
         await tx.crmCompanyContact.update({ where: { id: l.id }, data: { endedAt: now, isPrimary: false } });
         moved.contactsDeduped += 1;
       } else if (kl) {
+        if (kl.endedAt) await revokePortalOfLinkInTx(tx, ctx.tenantId, kl.companyId, kl.contactId, ctx.actorUserId, REOPENED, now); // hunter H1
         await tx.crmCompanyContact.update({ where: { id: kl.id }, data: { endedAt: null, startedAt: now, role: l.role, jobTitle: l.jobTitle ?? kl.jobTitle, isPrimary: false } });
         await tx.crmCompanyContact.update({ where: { id: l.id }, data: { endedAt: now, isPrimary: false } });
         moved.contacts += 1;
@@ -1462,6 +1679,47 @@ export async function mergeCompanies(ctx: CompaniesCtx, actor: MemberActor, inpu
       WHERE v."tenantId" = ${ctx.tenantId} AND v."recordType" = 'COMPANY' AND v."recordId" = ${m.id}
         AND NOT EXISTS (SELECT 1 FROM "CustomRecordValue" kv WHERE kv."recordId" = ${k.id} AND kv."fieldId" = v."fieldId")`;
     // ◂ CRM C1.10
+    // CRM C5.4-E ▸ L6-M3 (พิมพ์เขียว §11.1 "บริษัท: วัตถุ · portal access" · §5.2): ไฟล์ · อีเมล · คำขอจากพอร์ทัล ย้ายมาที่บริษัทที่เก็บไว้ ·
+    //   สิทธิ์พอร์ทัลของคนในบริษัทที่ถูกรวม **ย้ายตาม** (session เดิมใช้ต่อได้ — เป็นบริษัทเดียวกัน) · ทั้งหมดใน tx ของการรวม
+    //   r2 รีวิว SF-2: คนเดียวกันมีแถวที่บริษัทที่เก็บไว้ด้วย (unique บริษัท+คน) — แถวของบริษัทที่เก็บไว้ "ใช้ได้" (ยังไม่ถอน + รับคำเชิญแล้ว)
+    //   ⇒ ใช้แถวนั้นต่อ แล้วถอนแถวซ้ำของบริษัทที่ถูกรวม (คนนั้นยังเข้าได้) · แถวของบริษัทที่เก็บไว้ใช้ไม่ได้ (ถอนแล้ว/ยังไม่รับเชิญ) ⇒ ลบแถวที่ตายนั้น
+    //   แล้วย้ายแถวของบริษัทที่ถูกรวมมาแทน (เดิมถอนแถวที่ยังใช้ได้ทิ้ง ⇒ คนนั้นหลุดพอร์ทัลทั้งที่ข้อความบอกว่า "ยังอยู่") ◂
+    movedMore.files = (await tx.crmFileLink.updateMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, entityType: "COMPANY", entityId: m.id }, data: { entityId: k.id } })).count;
+    movedMore.emails = (await tx.crmEmailMessage.updateMany({ where: { tenantId: ctx.tenantId, companyId: m.id }, data: { companyId: k.id } })).count;
+    movedMore.portalRequests = (await tx.crmPortalRequest.updateMany({ where: { tenantId: ctx.tenantId, companyId: m.id }, data: { companyId: k.id } })).count;
+    const accSel = { id: true, contactId: true, revokedAt: true, acceptedAt: true, inviteExpiresAt: true } as const;
+    const mAccess = await tx.crmPortalAccess.findMany({ where: { tenantId: ctx.tenantId, companyId: m.id }, select: accSel });
+    if (mAccess.length > 0) {
+      const kRows = await tx.crmPortalAccess.findMany({ where: { tenantId: ctx.tenantId, companyId: k.id, contactId: { in: mAccess.map((x) => x.contactId) } }, select: accSel });
+      const kByContact = new Map(kRows.map((x) => [x.contactId, x]));
+      // CRM C5.4-E r3 ▸ รีวิว R2-1: อันดับของแถว — ใช้ได้ (ยังไม่ถอน + รับคำเชิญแล้ว) > รอรับคำเชิญ (ยังไม่ถอน + คำเชิญยังไม่หมดอายุ) > ใช้ไม่ได้
+      //   (ถอนแล้ว/คำเชิญหมดอายุ) · แทนแถวของบริษัทที่เก็บไว้ **เฉพาะเมื่อแถวของบริษัทที่ถูกรวมอันดับสูงกว่า** (ไม่ทิ้งคำเชิญที่รออยู่เพื่อแถวที่ถอนแล้ว) ◂
+      const rank = (r: { revokedAt: Date | null; acceptedAt: Date | null; inviteExpiresAt: Date | null }): number =>
+        r.revokedAt ? 0 : r.acceptedAt ? 2 : !r.inviteExpiresAt || r.inviteExpiresAt > now ? 1 : 0;
+      for (const acc of mAccess) {
+        const kRow = kByContact.get(acc.contactId);
+        if (kRow && rank(kRow) >= rank(acc)) {
+          // แถวของบริษัทที่เก็บไว้ดีเท่าหรือดีกว่า — ใช้แถวนั้นต่อ · แถวซ้ำของบริษัทที่ถูกรวมถูกถอน (ถ้ายังไม่ถอน) · คนที่ใช้ได้อยู่แล้วยังเข้าได้ตามเดิม
+          if (!acc.revokedAt) {
+            const n = await revokePortalOfLinkInTx(tx, ctx.tenantId, m.id, acc.contactId, ctx.actorUserId, MERGED_AWAY, now);
+            if (rank(kRow) === 2) movedMore.portalAccessRevoked += n;
+            else movedMore.portalAccessDuplicateClosed += n;
+          }
+          continue;
+        }
+        if (kRow) {
+          // แถวของบริษัทที่ถูกรวมดีกว่า — ลบแถวของบริษัทที่เก็บไว้ (cascade ลบประวัติ session ของมัน) · audit 1 แถวต่อแถวที่ลบ (รีวิว R2-1) แล้วย้ายแถวที่ดีกว่ามาแทน
+          await tx.portalSession.updateMany({ where: { portalAccessId: kRow.id, revokedAt: null }, data: { revokedAt: now } });
+          await tx.crmPortalAccess.delete({ where: { id: kRow.id } });
+          await tx.auditLog.create({
+            data: { tenantId: ctx.tenantId, actorType: ctx.actorUserId ? "USER" : "SYSTEM", actorId: ctx.actorUserId || null, action: "crm.portal.replace", targetType: "CrmPortalAccess", targetId: kRow.id, after: { replacedBy: acc.id, reason: MERGED_REPLACED, keptCompanyId: k.id, mergedCompanyId: m.id } },
+          });
+          movedMore.portalAccessReplaced += 1;
+        }
+        await tx.crmPortalAccess.update({ where: { id: acc.id }, data: { companyId: k.id } });
+        movedMore.portalAccessMoved += 1;
+      }
+    }
     if (children.length) {
       moved.subsidiaries = (await tx.crmCompany.updateMany({ where: { ...identityScope(ctx), id: { in: children }, parentCompanyId: m.id }, data: { parentCompanyId: k.id } })).count;
     }
@@ -1555,8 +1813,16 @@ export async function mergeCompanies(ctx: CompaniesCtx, actor: MemberActor, inpu
   } catch {
     warnings.push("ยังไม่ได้ย้ายรายการที่ผูกกับบริษัทที่ถูกรวม — ลองรวมผู้ติดต่อ/รายการเองภายหลัง");
   }
+  if (movedMore.portalAccessRevoked > 0) {
+    // CRM C5.4-E r2 ▸ SF-2: บอกสิ่งที่เกิดขึ้นจริง — คนเหล่านี้ยังเข้าพอร์ทัลได้ด้วยสิทธิ์ที่บริษัทที่เก็บไว้ (ไม่มีใครหลุด) ◂
+    warnings.push(`มี ${movedMore.portalAccessRevoked.toLocaleString("th-TH")} คนที่มีสิทธิ์เข้าพอร์ทัลทั้งสองบริษัท — ยังเข้าได้ตามปกติด้วยสิทธิ์ของบริษัทที่เก็บไว้ (สิทธิ์ซ้ำของบริษัทที่ถูกรวมถูกปิดแล้ว ไม่ต้องเชิญใหม่)`);
+  }
+  if (movedMore.portalAccessDuplicateClosed > 0) {
+    // CRM C5.4-E r3 ▸ R2-1: ทั้งสองแถวยังรอรับคำเชิญ — ใช้คำเชิญของบริษัทที่เก็บไว้ (บอกตามจริง) ◂
+    warnings.push(`มี ${movedMore.portalAccessDuplicateClosed.toLocaleString("th-TH")} คนที่ได้รับคำเชิญเข้าพอร์ทัลจากทั้งสองบริษัท — ใช้คำเชิญของบริษัทที่เก็บไว้ (ลิงก์เชิญของบริษัทที่ถูกรวมใช้ไม่ได้แล้ว)`);
+  }
   await recomputeCaches(ctx, keep.id).catch(() => undefined);
-  const auditBody = { keptId: keep.id, mergedId: drop.id, reason, moved, customValuesMoved /* CRM C1.10 */, accountMerge, accountMergeSkipped, warnings: warnings.length };
+  const auditBody = { keptId: keep.id, mergedId: drop.id, reason, moved, movedMore /* CRM C5.4-E */, customValuesMoved /* CRM C1.10 */, accountMerge, accountMergeSkipped, warnings: warnings.length };
   await writeAudit({ tenantId: ctx.tenantId, actorId: ctx.actorUserId, action: "crm.company.merge", targetType: "CrmCompany", targetId: keep.id, before: { mergedName: drop.name }, after: auditBody });
   await writeAudit({ tenantId: ctx.tenantId, actorId: ctx.actorUserId, action: "crm.company.merged", targetType: "CrmCompany", targetId: drop.id, before: { mergedIntoId: null }, after: auditBody });
   return { keptId: keep.id, mergedId: drop.id, moved, accountMerge, accountMergeSkipped, warnings };
@@ -1641,6 +1907,12 @@ export async function importCompanies(ctx: CompaniesCtx, actor: MemberActor, inp
         if (v !== "") (raw as Record<string, unknown>)[k] = v;
       }
       try {
+        // CRM C5.4-E r2 ▸ มติผู้คุมงาน (ข้อ 4): โดเมนอีเมลสาธารณะในไฟล์นำเข้า = นำเข้าแถวนั้น **โดยไม่ใส่โดเมน** + คำเตือนรายแถว
+        //   (สร้าง/แก้ไขทีละบริษัทยังปฏิเสธพร้อมข้อความ) — บริษัทไม่หายจากไฟล์เพราะช่องเสริมช่องเดียว ◂
+        if (typeof raw.emailDomain === "string" && isFreeMailDomain(raw.emailDomain)) {
+          (result.warnings ??= []).push({ row: rowNo, reason: `ไม่ได้ใส่โดเมนอีเมล "${normalizeEmailDomain(raw.emailDomain)}" เพราะเป็นอีเมลสาธารณะ (ใช้จับคู่อีเมลกับบริษัทไม่ได้) — บริษัทนำเข้าแล้วตามปกติ` });
+          delete raw.emailDomain;
+        }
         const clean = cleanPatch({ ...raw, name: raw.name ?? "" }, "create");
         if (clean.taxId) {
           const key = `${clean.taxId}#${clean.branchCode ?? "00000"}`;
@@ -1941,16 +2213,43 @@ export async function repointAccountContactFromBridge(ctx: { tenantId: string; s
 //   🔴 ไม่ resolve ระบบ/ไม่ตรวจ actor — ผู้เรียก (บริการผู้ติดต่อ) ทำแล้วก่อนเปิด tx · ทุก where ผูก tenant + ระบบ (AUDIT-CLASS X1)
 
 /** สร้างบริษัทใหม่ (Party ชนิด COMPANY เท่านั้น — B1) ใน tx ของผู้เรียก · Party เดิมของระบบนี้ = คืนบริษัทเดิม · event created ใน tx เดียวกัน */
-export async function createInTx(tx: Tx, ctx: CompaniesCtx, input: { name: string; ownerUserId?: string | null }): Promise<{ id: string; partyId: string; created: boolean }> {
+export async function createInTx(
+  tx: Tx,
+  ctx: CompaniesCtx,
+  // C4.4-fix รอบ 3: `visible` = การมองเห็นของผู้กด (companyVisibility) — ตัวซ้ำที่เก็บถาวรแต่ผู้กดมองไม่เห็น = ข้อความเดียวกับ "มองไม่เห็น"
+  input: { name: string; taxId?: string | null; ownerUserId?: string | null; visible?: Prisma.CrmCompanyWhereInput | null },
+): Promise<{ id: string; partyId: string; created: boolean }> {
   const name = textOrNull(input?.name, "ชื่อบริษัท", COMPANY_NAME_MAX);
   if (!name) throw fail("VALIDATION", "ใส่ชื่อบริษัทก่อนบันทึก");
-  const partyId = (await party.findOrCreateCompany(ctx.tenantId, { name }, tx)).id;
+  // C4.4-fix ▸ US2 (แปลง lead): เลขภาษีของบริษัทใหม่ — ตัวตรวจ + กติกาตัวซ้ำเดียวกับ createCore (ลำดับล็อก: เลขภาษี → Party → แถว)
+  //   เลขภาษี+สาขาเดียวกันมีอยู่แล้วในระบบนี้ = ใช้บริษัทเดิม (ไม่สร้างแถวที่สอง) · ตัวเดิมถูกเก็บถาวร = บอกให้กู้คืน/เลือกบริษัทเดิม ◂
+  let taxId: string | null = null;
+  if (input?.taxId !== undefined && input?.taxId !== null) {
+    const p = taxIdProblem(input.taxId);
+    if (p) throw fail("VALIDATION", p);
+    taxId = normalizeCompanyTaxId(input.taxId) || null;
+  }
+  const branchCode = "00000";
+  if (taxId) {
+    await taxLock(tx, ctx, taxId);
+    const dup = await tx.crmCompany.findFirst({
+      where: { ...identityScope(ctx), taxId, branchCode, mergedIntoId: null },
+      orderBy: [{ archivedAt: { sort: "asc", nulls: "first" } }, { createdAt: "asc" }],
+      select: { id: true, partyId: true, archivedAt: true },
+    });
+    if (dup?.archivedAt) {
+      const seen = input.visible ? await tx.crmCompany.findFirst({ where: { AND: [input.visible, { id: dup.id }] }, select: { id: true } }) : dup;
+      throw fail("VALIDATION", seen ? TAX_COMPANY_ARCHIVED_MSG : TAX_COMPANY_HIDDEN_MSG);
+    }
+    if (dup) return { id: dup.id, partyId: dup.partyId, created: false };
+  }
+  const partyId = (await party.findOrCreateCompany(ctx.tenantId, { name, ...(taxId ? { taxId, branchCode } : {}) }, tx)).id;
   await partyLock(tx, ctx, partyId);
   const same = await tx.crmCompany.findFirst({ where: { ...identityScope(ctx), partyId }, select: { id: true } });
   if (same) return { id: same.id, partyId, created: false };
   await assertCrmLimit(ctx, "companies", 1, tx); // CRM C3.9 ▸ เพดานบริษัท (ทางสร้างใน tx ของผู้ติดต่อ) ◂
   const row = await tx.crmCompany.create({
-    data: { tenantId: ctx.tenantId, systemId: ctx.systemId, partyId, name, branchCode: "00000", ownerUserId: str(input?.ownerUserId) ?? ctx.actorUserId ?? null },
+    data: { tenantId: ctx.tenantId, systemId: ctx.systemId, partyId, name, taxId, branchCode, ownerUserId: str(input?.ownerUserId) ?? ctx.actorUserId ?? null },
   });
   await emitCompanyEvent(tx, ctx, "created", row.id, "1", { companyId: row.id, partyId: row.partyId });
   return { id: row.id, partyId, created: true };
@@ -1965,8 +2264,11 @@ export async function linkContactInTx(
   ctx: CompaniesCtx,
   companyId: string,
   contactId: string,
-  opts: { primaryIfNone?: boolean; jobTitle?: string | null } = {},
+  opts: { primaryIfNone?: boolean; jobTitle?: string | null; role?: CompanyContactRole | null } = {},
 ): Promise<{ created: boolean; isPrimary: boolean }> {
+  // C4.4-fix ▸ US2: บทบาทที่ผู้เรียกระบุ (เช่น แปลง lead → "ผู้ตัดสินใจ") · ไม่ระบุ = พฤติกรรมเดิม (ลิงก์ใหม่ OTHER · ลิงก์เดิมไม่แตะ) ◂
+  const role = opts.role ?? null;
+  if (role !== null && !(COMPANY_CONTACT_ROLES as readonly string[]).includes(role)) throw fail("VALIDATION", "บทบาทในบริษัทที่เลือกไม่อยู่ในรายการ — เลือกใหม่จากรายการ");
   await lockCompanies(tx, ctx, [companyId]);
   const co = await tx.crmCompany.findFirst({ where: { ...identityScope(ctx), id: companyId, mergedIntoId: null, archivedAt: null }, select: { id: true } });
   if (!co) throw fail("NOT_FOUND", NOT_FOUND_MSG);
@@ -1985,12 +2287,17 @@ export async function linkContactInTx(
       await tx.crmCompanyContact.update({ where: { id: link.id }, data: { isPrimary: true } });
       isPrimary = changed = true;
     }
+    if (role && link.role !== role) {
+      await tx.crmCompanyContact.update({ where: { id: link.id }, data: { role } });
+      changed = true;
+    }
   } else if (link) {
-    await tx.crmCompanyContact.update({ where: { id: link.id }, data: { endedAt: null, startedAt: now, isPrimary: asPrimary, jobTitle: link.jobTitle ?? jobTitle ?? null } });
+    if (link.endedAt) await revokePortalOfLinkInTx(tx, ctx.tenantId, companyId, contactId, ctx.actorUserId, REOPENED, now); // hunter H1
+    await tx.crmCompanyContact.update({ where: { id: link.id }, data: { endedAt: null, startedAt: now, isPrimary: asPrimary, jobTitle: link.jobTitle ?? jobTitle ?? null, ...(role ? { role } : {}) } });
     isPrimary = asPrimary;
     created = changed = true;
   } else {
-    await tx.crmCompanyContact.create({ data: { tenantId: ctx.tenantId, companyId, contactId, role: "OTHER", jobTitle: jobTitle ?? null, isPrimary: asPrimary, startedAt: now } });
+    await tx.crmCompanyContact.create({ data: { tenantId: ctx.tenantId, companyId, contactId, role: role ?? "OTHER", jobTitle: jobTitle ?? null, isPrimary: asPrimary, startedAt: now } });
     isPrimary = asPrimary;
     created = changed = true;
   }
@@ -2027,7 +2334,8 @@ export async function transferContactLinksInTx(tx: Tx, ctx: CompaniesCtx, fromCo
     const kl = kBy.get(l.companyId);
     if (kl) {
       if (kl.endedAt && !l.endedAt) {
-        await tx.crmCompanyContact.update({ where: { id: kl.id }, data: { endedAt: null, startedAt: l.startedAt ?? now, role: l.role, jobTitle: l.jobTitle ?? kl.jobTitle, isPrimary: l.isPrimary } });
+        if (kl.endedAt) await revokePortalOfLinkInTx(tx, ctx.tenantId, kl.companyId, kl.contactId, ctx.actorUserId, REOPENED, now); // hunter H1
+        await tx.crmCompanyContact.update({ where: { id: kl.id }, data: { endedAt: null, startedAt: kl.endedAt ? now : (l.startedAt ?? now), role: l.role, jobTitle: l.jobTitle ?? kl.jobTitle, isPrimary: l.isPrimary } });
       } else if (!kl.endedAt && !l.endedAt && l.isPrimary && !kl.isPrimary) {
         // บทบาทชน: แถวของคนที่เก็บไว้ชนะ แต่ถ้าแถวที่ถูกลบเป็น "ผู้ติดต่อหลัก" — บริษัทต้องไม่เสียผู้ติดต่อหลัก ⇒ ยกธงหลักให้แถวที่เหลือ
         await tx.crmCompanyContact.update({ where: { id: kl.id }, data: { isPrimary: true } });
@@ -2042,7 +2350,30 @@ export async function transferContactLinksInTx(tx: Tx, ctx: CompaniesCtx, fromCo
   return { moved, companyIds };
 }
 
+/**
+ * C4.4-fix รอบ 2 (M2): การมองเห็นบริษัทของ actor แบบ "คำนวณก่อนเปิด tx" + ตรวจใน tx ของผู้เรียก (เห็นบริษัทที่เพิ่งสร้างใน tx เดียวกัน)
+ *   กติกาเดียวกับ liveCompanyRefs (companyWhere) · แยกสองขั้นเพราะ companyWhere/enter อ่านฐานผ่าน connection อื่น —
+ *   ทำระหว่างถือ tx = แย่ง pool กับคำขอแปลงที่ยิงพร้อมกัน (P2028) · ผู้เรียก: แปลง lead (contacts.ts) ◂
+ */
+export async function companyVisibility(ctx: CompaniesCtx, actor: MemberActor): Promise<Prisma.CrmCompanyWhereInput> {
+  const a = await enter(ctx, actor);
+  return companyWhere(ctx, a);
+}
+export async function visibleCompanyInTx(tx: Tx, visible: Prisma.CrmCompanyWhereInput, id: string): Promise<{ id: string; name: string } | null> {
+  if (!str(id)) return null;
+  return tx.crmCompany.findFirst({ where: { AND: [visible, { id, mergedIntoId: null, archivedAt: null }] }, select: { id: true, name: true } });
+}
+
 /** ชื่อบริษัทที่ยังใช้งาน (ไม่ถูกรวม/เก็บถาวร) ที่ actor มองเห็น — อ่านอย่างเดียว (companyWhere) · id ที่ไม่อยู่ในผลลัพธ์ = ไม่พบ/ไม่ใช้งานแล้ว */
+// CRM C5.5-fix6 r2 ▸ F6-2/F6-3: บริการผู้ติดต่อถามก่อนเปิด tx ว่า actor มองเห็นบริษัทปัจจุบันของผู้ติดต่อไหม — ตัวเดียวกับที่ removeContact
+//   ใช้ (loadCompany · ไม่บังคับ live) ⇒ มองไม่เห็น = CompaniesError NOT_FOUND ข้อความเดิม (ไม่บอกว่าบริษัทมีอยู่ที่อื่นไหม) ◂
+/** AUDIT-CLASS X1: actor มองเห็นบริษัทนี้ (ระบบเดียวกัน) — ไม่เห็น = NOT_FOUND */
+// CRM C5.5-fix7 ▸ R2F-2: `live` = ต้องยังใช้งานด้วย (ตัวเดียวกับที่ removeContact/linkMutation บังคับ) — มองไม่เห็นยังตัดสินก่อนเสมอ (NOT_FOUND) ◂
+export async function assertCompanyVisible(ctx: CompaniesCtx, actor: MemberActor, companyId: string, opts: { live?: boolean } = {}): Promise<void> {
+  const a = await enter(ctx, actor);
+  await loadCompany(ctx, a, companyId, prisma, { live: opts.live === true });
+}
+
 export async function liveCompanyRefs(ctx: CompaniesCtx, actor: MemberActor, ids: string[]): Promise<{ id: string; name: string }[]> {
   const a = await enter(ctx, actor);
   const list = [...new Set((ids ?? []).filter((x) => typeof x === "string" && x))].slice(0, 5_000);
@@ -2050,6 +2381,16 @@ export async function liveCompanyRefs(ctx: CompaniesCtx, actor: MemberActor, ids
   return prisma.crmCompany.findMany({ where: { AND: [await companyWhere(ctx, a), { id: { in: list }, mergedIntoId: null, archivedAt: null }] }, select: { id: true, name: true } });
 }
 // ◂ CRM C1.4
+
+// CRM C5.5-fix10 ▸ (sweep FX7-1) บริษัทตาม id ที่ผู้ดูมองเห็น พร้อมสถานะยังใช้งาน — คิวรีเดียว (companyWhere) · ผู้ใช้: รายการ/ไฟล์ส่งออก/
+//   360/การ์ดย่อของผู้ติดต่อ และรายการลำดับติดตาม ตัดสินว่า "ข้อความบริษัทเดิม" (`CrmContact.company`) ของผู้ติดต่อแสดงได้ไหม:
+//   ไม่ผูกบริษัท หรือผูกบริษัทที่ผู้ดูเห็น = แสดงได้ · ผูกบริษัทที่ผู้ดูมองไม่เห็น = ไม่แสดง (ข้อความนั้นมักเป็นชื่อบริษัทเดียวกัน) ◂
+export async function visibleCompanyStates(ctx: CrmScopeCtx, actor: MemberActor, ids: readonly (string | null | undefined)[]): Promise<Map<string, { name: string; live: boolean }>> {
+  const list = [...new Set(ids.filter((x): x is string => typeof x === "string" && !!x))].slice(0, 5_000);
+  if (list.length === 0) return new Map();
+  const rows = await prisma.crmCompany.findMany({ where: { AND: [await companyWhere(ctx, actor), { id: { in: list } }] }, select: { id: true, name: true, archivedAt: true, mergedIntoId: true } });
+  return new Map(rows.map((r) => [r.id, { name: r.name, live: !r.archivedAt && !r.mergedIntoId }]));
+}
 
 // CRM C1.5 ▸ ทางเข้าแคชดีลของบริษัทที่ "เข้าร่วม tx ของผู้เรียก" (บริการดีล `deals.ts`) — SQL ของแคชยังเป็นของไฟล์นี้ที่เดียว
 //   ลำดับล็อก (หัวไฟล์): … → แถว CrmCompany (เรียง id) → แถว CrmContact → แถว CrmDeal ⇒ ดีลล็อกบริษัทก่อนเสมอด้วยตัวนี้
@@ -2262,8 +2603,10 @@ export async function companySystemRef(tenantId: string, id: string): Promise<{ 
  *   คง where เดิมของจุดเรียกทุกตัวอักษร (ไม่เติม tenantId: หนี้ใบนี้ห้ามเปลี่ยน SQL)
  */
 export async function companyByEmailDomain(systemId: string, domain: string): Promise<CrmCompany | null> {
+  // CRM C5.4-E ▸ L6-m8: โดเมนสาธารณะ (gmail.com …) ไม่ใช่ของบริษัทใด — แถวเก่าที่ตั้งไว้ก่อนไม่ดึงคนแปลกหน้าเข้าบริษัท ◂
+  if (isFreeMailDomain(domain)) return null;
   return prisma.crmCompany.findFirst({
-    where: { systemId, mergedIntoId: null, archivedAt: null, emailDomain: { equals: domain, mode: "insensitive" } },
+    where: { systemId, mergedIntoId: null, archivedAt: null, emailDomain: ciEquals(domain) }, // CRM C5.5-fix2 ▸ From `x@dom_…`/`x@%` (ปลอมได้) เคยถูกแปะบริษัทอื่น ◂
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
   });
 }
@@ -2322,7 +2665,7 @@ export async function countVisibleByIds(ctx: CrmScopeCtx, actor: MemberActor, id
 
 export async function matchByExactName(ctx: CrmScopeCtx, actor: MemberActor, name: string): Promise<{ id: string } | null> {
   return prisma.crmCompany.findFirst({
-    where: { AND: [await companyWhere(ctx, actor), { name: { equals: name, mode: "insensitive" }, archivedAt: null, mergedIntoId: null }] },
+    where: { AND: [await companyWhere(ctx, actor), { name: ciEquals(name) /* CRM C5.5-fix2 ◂ */, archivedAt: null, mergedIntoId: null }] },
     select: { id: true },
     orderBy: { createdAt: "asc" },
   });

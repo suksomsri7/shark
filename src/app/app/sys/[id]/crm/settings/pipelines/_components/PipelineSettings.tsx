@@ -1,6 +1,7 @@
 "use client";
 
 // PipelineSettings.tsx — ตั้งค่า pipeline (CRM v2 · ใบ C1.5 · R-A): สร้าง · แก้ชื่อ · ตั้งค่าเริ่มต้น · เก็บถาวร (ยืนยัน + เหตุผล) · กู้คืน
+// C4.4-fix ▸ US3: ต่อ pipeline — "ลูกค้าตอบรับ/ปฏิเสธใบเสนอราคา → ย้ายดีลไปขั้น…" (ขั้นของ pipeline นั้น · ไม่ย้าย = ค่าว่าง) ◂
 // 🔴 เก็บถาวรได้เฉพาะเมื่อไม่มีดีลที่เปิดอยู่ (บริการตรวจใต้ล็อก — ข้อความไทยแสดงในหน้าต่าง) · ไม่ใช้ alert()
 
 import Link from "next/link";
@@ -8,6 +9,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { archivePipelineAction, createPipelineAction, restorePipelineAction, updatePipelineAction } from "@/lib/modules/crm/pipelines-actions";
 import { DEAL_REASON_MIN, type PipelineDto } from "@/lib/modules/crm/deals-shared";
+import { FieldError, useFieldErrors } from "@/components/crm/form/field-errors";
 
 type Row = PipelineDto & { openDeals: number };
 
@@ -35,6 +37,11 @@ const TEMPLATES: Record<string, { label: string; stages: { name: string; kind: "
 export function PipelineSettings({ systemId, pipelines }: { systemId: string; pipelines: Row[] }) {
   const router = useRouter();
   const [names, setNames] = useState<Record<string, string>>(() => Object.fromEntries(pipelines.map((p) => [p.id, p.name])));
+  const [quote, setQuote] = useState<Record<string, { accepted: string; rejected: string }>>(() =>
+    Object.fromEntries(pipelines.map((p) => [p.id, { accepted: p.stageOnQuoteAcceptedId ?? "", rejected: p.stageOnQuoteRejectedId ?? "" }])),
+  );
+  // ค่าที่แสดง = ที่แก้ค้างไว้ หรือค่าที่บันทึกอยู่ (pipeline ที่เพิ่งโผล่หลังรีเฟรชยังไม่มีในสถานะ)
+  const quoteOf = (p: Row) => quote[p.id] ?? { accepted: p.stageOnQuoteAcceptedId ?? "", rejected: p.stageOnQuoteRejectedId ?? "" };
   const [newName, setNewName] = useState("");
   const [tpl, setTpl] = useState("standard");
   const [archive, setArchive] = useState<Row | null>(null);
@@ -43,6 +50,8 @@ export function PipelineSettings({ systemId, pipelines }: { systemId: string; pi
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [modalErr, setModalErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // C4.3-fix part 2 ▸ ฟอร์มสร้าง: ข้อความใต้ช่องชื่อ + โฟกัส (pl-msg คงไว้สำหรับผลของปุ่มในแถว/ผลสำเร็จ) ◂
+  const fe = useFieldErrors(["name"] as const);
 
   const run = async (f: () => Promise<{ ok: true } | { ok: false; error: string }>, okText: string) => {
     setBusy(true);
@@ -106,6 +115,56 @@ export function PipelineSettings({ systemId, pipelines }: { systemId: string; pi
                 </button>
               )}
             </div>
+            {!p.archivedAt && (
+              <div className="flex flex-wrap items-end gap-2">
+                <label className="flex min-w-0 flex-1 flex-col gap-1 text-xs text-[color:var(--color-muted)]">
+                  <span>ลูกค้าตอบรับใบเสนอราคา → ย้ายดีลไปขั้น</span>
+                  <select
+                    value={quoteOf(p).accepted}
+                    onChange={(e) => setQuote((q) => ({ ...q, [p.id]: { ...(q[p.id] ?? quoteOf(p)), accepted: e.target.value } }))}
+                    className="input text-sm"
+                    data-testid={`pl-quote-accept-${p.id}`}
+                  >
+                    <option value="">ไม่ย้าย</option>
+                    {p.stages.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex min-w-0 flex-1 flex-col gap-1 text-xs text-[color:var(--color-muted)]">
+                  <span>ลูกค้าปฏิเสธใบเสนอราคา → ย้ายดีลไปขั้น</span>
+                  <select
+                    value={quoteOf(p).rejected}
+                    onChange={(e) => setQuote((q) => ({ ...q, [p.id]: { ...(q[p.id] ?? quoteOf(p)), rejected: e.target.value } }))}
+                    className="input text-sm"
+                    data-testid={`pl-quote-reject-${p.id}`}
+                  >
+                    <option value="">ไม่ย้าย</option>
+                    {p.stages.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button
+                  type="button"
+                  className="btn btn-ghost text-sm"
+                  disabled={busy || (quoteOf(p).accepted === (p.stageOnQuoteAcceptedId ?? "") && quoteOf(p).rejected === (p.stageOnQuoteRejectedId ?? ""))}
+                  onClick={() =>
+                    void run(
+                      () => updatePipelineAction(systemId, p.id, { stageOnQuoteAcceptedId: quoteOf(p).accepted || null, stageOnQuoteRejectedId: quoteOf(p).rejected || null }),
+                      "บันทึกการย้ายขั้นตามใบเสนอราคาแล้ว",
+                    )
+                  }
+                  data-testid={`pl-quote-save-${p.id}`}
+                >
+                  บันทึก
+                </button>
+              </div>
+            )}
           </li>
         ))}
       </ul>
@@ -114,9 +173,16 @@ export function PipelineSettings({ systemId, pipelines }: { systemId: string; pi
         className="card flex flex-col gap-2 p-4"
         onSubmit={(e) => {
           e.preventDefault();
-          if (!newName.trim()) return setMsg({ ok: false, text: "ใส่ชื่อ pipeline ก่อน" });
-          void run(() => createPipelineAction(systemId, { name: newName.trim(), stages: TEMPLATES[tpl]!.stages }), "สร้าง pipeline แล้ว").then((ok) => {
-            if (ok) setNewName("");
+          setMsg(null);
+          if (fe.show({ name: !newName.trim() ? "ใส่ชื่อ pipeline ก่อน" : undefined })) return;
+          setBusy(true);
+          void createPipelineAction(systemId, { name: newName.trim(), stages: TEMPLATES[tpl]!.stages }).then((r) => {
+            setBusy(false);
+            if (r.ok) {
+              setNewName("");
+              setMsg({ ok: true, text: "สร้าง pipeline แล้ว" });
+              router.refresh();
+            } else if (!fe.show(r.fieldErrors)) setMsg({ ok: false, text: r.error });
           });
         }}
         data-testid="pl-new-form"
@@ -125,7 +191,18 @@ export function PipelineSettings({ systemId, pipelines }: { systemId: string; pi
         <div className="grid gap-2 sm:grid-cols-2">
           <label className="flex flex-col gap-1 text-xs text-[color:var(--color-muted)]">
             <span>ชื่อ</span>
-            <input value={newName} onChange={(e) => setNewName(e.target.value)} className="input text-sm" placeholder="เช่น ขายองค์กร (B2B)" data-testid="pl-new-name" />
+            <input
+              {...fe.field("name")}
+              value={newName}
+              onChange={(e) => {
+                setNewName(e.target.value);
+                fe.clear("name");
+              }}
+              className="input text-sm"
+              placeholder="เช่น ขายองค์กร (B2B)"
+              data-testid="pl-new-name"
+            />
+            <FieldError id={fe.errorId("name")} message={fe.errors.name} testid="pl-new-name-error" />
           </label>
           <label className="flex flex-col gap-1 text-xs text-[color:var(--color-muted)]">
             <span>ขั้นตั้งต้น (แก้ทีหลังได้)</span>

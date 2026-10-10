@@ -1,0 +1,40 @@
+{
+  "wo": "3.7",
+  "user": "thana",
+  "at": "2026-10-08T00:12:18.434Z",
+  "results": [
+    {
+      "name": "c37-390-home-thana",
+      "device": "mobile",
+      "status": 200,
+      "missing": [],
+      "errors": [],
+      "httpErrors": [],
+      "file": ".qc-shots/crm/3.7/c37-390-home-thana-mobile.png",
+      "overflow": false,
+      "overflowEl": null
+    },
+    {
+      "name": "c37-390-commissions-thana",
+      "device": "mobile",
+      "status": 200,
+      "missing": [],
+      "errors": [],
+      "httpErrors": [],
+      "file": ".qc-shots/crm/3.7/c37-390-commissions-thana-mobile.png",
+      "overflow": false,
+      "overflowEl": null
+    },
+    {
+      "name": "c37-390-settings-notifications-thana",
+      "device": "mobile",
+      "status": 200,
+      "missing": [],
+      "errors": [],
+      "httpErrors": [],
+      "file": ".qc-shots/crm/3.7/c37-390-settings-notifications-thana-mobile.png",
+      "overflow": false,
+      "overflowEl": null
+    }
+  ]
+}

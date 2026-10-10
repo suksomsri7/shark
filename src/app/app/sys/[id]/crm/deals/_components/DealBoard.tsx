@@ -12,7 +12,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePointerBoardDrag } from "@/components/shared/usePointerBoardDrag";
 import { formatBaht, formatThaiDay, type BoardColumnDto, type DealCardDto, type DealKind } from "@/lib/modules/crm/deals-shared";
-import { useDealMover } from "./DealMoveDialogs";
+import { useDealMover, type DealFieldInput } from "./DealMoveDialogs";
 
 /** ระยะห่างการ์ดในกอง (ต้องตรงกับ gap ของกองการ์ด — `gap-2` = 8px) */
 const CARD_GAP = 8;
@@ -96,6 +96,7 @@ export function DealBoard({
   canReopen,
   lostReasons,
   fieldLabels,
+  fieldInputs,
   nowKey,
 }: {
   systemId: string;
@@ -105,6 +106,8 @@ export function DealBoard({
   canReopen: boolean;
   lostReasons: { id: string; label: string }[];
   fieldLabels: Record<string, string>;
+  /** CRM C5.4-E ▸ L6-M1: ชนิด/ตัวเลือกของฟิลด์ดีล → ช่องตามชนิดในหน้าต่างเงื่อนไข ◂ */
+  fieldInputs?: Record<string, DealFieldInput>;
   /** วันนี้ตามปฏิทินไทย "YYYY-MM-DD" (เซิร์ฟเวอร์ส่งมา — กัน hydration ต่างกัน) */
   nowKey: string;
 }) {
@@ -126,7 +129,7 @@ export function DealBoard({
   const [active, setActive] = useState<string>(initial[0]?.stageId ?? "");
   const scroller = useRef<HTMLDivElement | null>(null);
 
-  const mover = useDealMover({ systemId, lostReasons, fieldLabels, canReopen, onMoved: () => router.refresh() });
+  const mover = useDealMover({ systemId, lostReasons, fieldLabels, fieldInputs, canReopen, onMoved: () => router.refresh() });
 
   const onDrop = useCallback(
     (card: DealCardDto, fromColumnId: string, toColumnId: string) => {
@@ -188,6 +191,7 @@ export function DealBoard({
             onClick={() => scrollToStage(c.stageId)}
             className="whitespace-nowrap rounded-full border px-3 py-1 text-xs"
             style={active === c.stageId ? { background: "var(--color-ink, #111)", color: "#fff" } : undefined}
+            aria-current={active === c.stageId ? "true" : undefined} // CRM C5.5-fix2 ▸ it4 F2: ขั้นที่เลือกอยู่บอกได้ด้วยโปรแกรมอ่านจอ ◂
             data-testid={`deal-stage-tab-${c.stageId}`}
           >
             {c.name} · {c.count.toLocaleString("th-TH")}

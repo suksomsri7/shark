@@ -6,7 +6,7 @@
 // 🔴 ด่าน: uiVersion 2 (assertCrmV2) → คีย์อ่านของวัตถุนั้น (assertCanCrm) → บริการตรวจซ้ำ (ทีมที่แชร์ได้ · เจ้าของมุมมอง)
 // 🔴 ข้อความ error ไม่โทษผู้ใช้ · error ที่ไม่รู้จัก = ข้อความกลาง
 
-import { revalidatePath } from "next/cache";
+import { revalidateAndWake } from "./outbox-wake"; // CRM C5.4-D ▸ L3-M1b: รีเฟรชหน้า + ปลุกคิว outbox หลังเขียนสำเร็จ ◂
 import { requireTenant } from "@/lib/core/context";
 import { ForbiddenError } from "@/lib/core/rbac";
 import { toMemberActor } from "@/lib/modules/member";
@@ -44,7 +44,7 @@ export async function createCrmViewAction(
     const objectKey = String(input?.objectKey ?? "");
     const { ctx, actor } = await session(systemId, objectKey);
     const v = await createView(ctx, actor, { objectKey, name: String(input?.name ?? ""), scope: input?.scope === "TEAM" ? "TEAM" : "PRIVATE", teamId: input?.teamId ?? null, filters: input?.filters ?? {} });
-    if (isCrmViewObjectKey(objectKey)) revalidatePath(`/app/sys/${systemId}/crm/${PAGE[objectKey]}`);
+    if (isCrmViewObjectKey(objectKey)) revalidateAndWake(`/app/sys/${systemId}/crm/${PAGE[objectKey]}`);
     return { ok: true, id: v.id };
   } catch (e) {
     return failOf(e);
@@ -56,7 +56,7 @@ export async function deleteCrmViewAction(systemId: string, objectKey: string, v
   try {
     const { ctx, actor } = await session(systemId, String(objectKey ?? ""));
     await deleteView(ctx, actor, String(viewId ?? ""));
-    if (isCrmViewObjectKey(objectKey)) revalidatePath(`/app/sys/${systemId}/crm/${PAGE[objectKey]}`);
+    if (isCrmViewObjectKey(objectKey)) revalidateAndWake(`/app/sys/${systemId}/crm/${PAGE[objectKey]}`);
     return { ok: true };
   } catch (e) {
     return failOf(e);

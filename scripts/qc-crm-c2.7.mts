@@ -86,7 +86,9 @@
 //   C. DEALS `src/lib/modules/crm/deals.ts` (additions only):
 //        issueQuotation / issueInvoice keep their C1.5 signatures · `autoInvoiceOnWon` of the pipeline issues the invoice when a
 //        deal enters WON, exactly once per deal (idempotent under parallel moves and redelivery), audited `crm.deal.invoice.auto`
-//        · `autoWonOnPaid` moves the deal to the pipeline's WON stage when Σ COUNTED ≥ deal value, exactly once, audited
+//        · `autoWonOnPaid` moves the deal to the pipeline's WON stage when Σ COUNTED ≥ the anchor document total (after deposit
+//        correction, net of live credit notes) for a deal with a document anchor; deal value otherwise (Q14 decides the basis) — ORACLE-EDIT 5
+//        (C5.4-C · controller ruling 5) · was "when Σ COUNTED ≥ deal value" — exactly once, audited
 //        `crm.deal.won.auto` (actorType SYSTEM) · `applyQuotationResponse` additionally writes ONE AUTO activity per (document,
 //        answer) and ONE `AppNotification` for the deal owner (Thai, ids only, no PII) — both under the existing X4 flag
 //        · `quotationDiffers(ctx, actor, dealId) → boolean` and `Deal360.quotationDiffers` / `Deal360.documentVoided`
@@ -579,6 +581,17 @@ try {
   const dealRow = async (id: string): Promise<Any> => (id ? await P.crmDeal.findFirst({ where: { id } }) : null);
   const paysOf = async (dealId: string): Promise<Any[]> => { try { return (await P.crmDealPayment.findMany({ where: { dealId }, orderBy: { createdAt: "asc" } })) ?? []; } catch { return []; } };
   const docRow = async (id: string): Promise<Any> => (id ? await P.accountDocument.findFirst({ where: { id }, include: { lines: true } }) : null);
+  // ORACLE-EDIT C2.7-S3.1/S9.5 (C5.4-C · won basis = before VAT · Q14): the won value of a document anchor on the product's single basis constant
+  //   (PRE_VAT = subTotal − discountAmount · VAT_INCL = grandTotal + depositDeducted) minus live credit notes of that document (none in these fixtures)
+  const WON_BASIS = String(((await import("@/lib/modules/crm/payments-shared" as string)) as Any).WON_VALUE_BASIS ?? "PRE_VAT");
+  const wonBasisOf = async (id: string): Promise<number> => {
+    const d = await docRow(id);
+    if (!d) return -1;
+    const cn = await P.accountDocument.findMany({ where: { tenantId: d.tenantId, docType: "CREDIT_NOTE", sourceDocId: id, status: { notIn: ["DRAFT", "VOIDED", "CANCELLED"] } }, select: { subTotal: true, discountAmount: true, grandTotal: true } });
+    return WON_BASIS === "VAT_INCL"
+      ? Number(d.grandTotal) + Number(d.depositDeducted ?? 0) - cn.reduce((a: number, c: Any) => a + Number(c.grandTotal), 0)
+      : Number(d.subTotal) - Number(d.discountAmount) - cn.reduce((a: number, c: Any) => a + Number(c.subTotal) - Number(c.discountAmount), 0);
+  };
 
   // ─── outbox pump / single delivery ───
   const evtOf = (row: Any) => ({ id: row.id, tenantId: row.tenantId, type: row.type, payload: row.payload, systemId: row.systemId, unitId: row.unitId });
@@ -831,10 +844,11 @@ try {
     const rows = await paysOf(F.d);
     const ct = await P.crmContact.findFirst({ where: { id: F.ct.id } });
     const co = await P.crmCompany.findFirst({ where: { id: F.co } });
-    chk("C2.7-S3.1", "a real partial payment of the deal's invoice ⇒ ONE CrmDealPayment(refType PAYMENT · refId = paymentId · status COUNTED · countedAt) · paidSatang = the amount · wonValueSatang = the invoice grand total (R-E.7) · contact lifecycleStage CUSTOMER · company cache updated",
+    const wonF = await wonBasisOf(F.inv); // ORACLE-EDIT C2.7-S3.1/S9.5 (C5.4-C · won basis = before VAT · Q14) · was F.grand (VAT-incl grand total)
+    chk("C2.7-S3.1", `a real partial payment of the deal's invoice ⇒ ONE CrmDealPayment(refType PAYMENT · refId = paymentId · status COUNTED · countedAt) · paidSatang = the amount · wonValueSatang = the invoice's won value on the ${WON_BASIS} basis (R-E.7 · ORACLE-EDIT C5.4-C) · contact lifecycleStage CUSTOMER · company cache updated`,
       pr.ok && pr.v?.ok === true && rows.length === 1 && rows[0]?.refType === "PAYMENT" && rows[0]?.status === "COUNTED" && !!rows[0]?.countedAt &&
-        B(rows[0]?.satang) === part && B(deal?.paidSatang) === part && B(deal?.wonValueSatang) === F.grand && ct?.lifecycleStage === "CUSTOMER" && B(co?.wonValueSatang) >= F.grand,
-      `1 COUNTED row · paid ${part} · won ${F.grand} · CUSTOMER`,
+        B(rows[0]?.satang) === part && B(deal?.paidSatang) === part && wonF > 0 && B(deal?.wonValueSatang) === wonF && ct?.lifecycleStage === "CUSTOMER" && B(co?.wonValueSatang) >= wonF,
+      `1 COUNTED row · paid ${part} · won ${wonF} (${WON_BASIS}) · CUSTOMER`,
       `${rd(pr)} rows=${j(rows.map((r) => ({ t: r.refType, s: r.status, v: B(r.satang) })))} paid=${B(deal?.paidSatang)} won=${B(deal?.wonValueSatang)} life=${ct?.lifecycleStage} coWon=${B(co?.wonValueSatang)}`);
   }
   {
@@ -1089,10 +1103,14 @@ try {
   }
   {
     const accSrc = read(ACC_SVC);
-    const rp = /export async function recordPayment\([\s\S]*?\n}\n/.exec(accSrc)?.[0] ?? "";
-    const vp = /export async function voidPayment\([\s\S]*?\n}\n/.exec(accSrc)?.[0] ?? "";
+    // ORACLE-EDIT (controller, 30 Sep · C5.4-C round 10): the transaction bodies were extracted into `recordPaymentInTx` /
+    //   `voidPaymentInTx` / `unwindPaymentInTx` (group payments run them in ONE tx) — the contract is unchanged, so the check
+    //   reads the wrapper AND the in-tx bodies. Old: wrapper text only.
+    const fnOf = (name: string) => new RegExp(`export async function ${name}\\([\\s\\S]*?\\n}\\n`).exec(accSrc)?.[0] ?? "";
+    const rp = fnOf("recordPayment") + fnOf("recordPaymentInTx");
+    const vp = fnOf("voidPayment") + fnOf("voidPaymentInTx") + fnOf("unwindPaymentInTx");
     chk("C2.7-S7.2", "account transactions are untouched: `recordPayment` / `voidPayment` contain no CRM call (CRM only listens to their events) and still emit `account.payment.recorded` / `account.payment.voided` inside the transaction [static]",
-      rp.length > 0 && vp.length > 0 && !/modules\/crm/.test(rp) && !/modules\/crm/.test(vp) && /account\.payment\.recorded/.test(rp),
+      fnOf("recordPayment").length > 0 && fnOf("recordPaymentInTx").length > 0 && fnOf("voidPayment").length > 0 && fnOf("unwindPaymentInTx").length > 0 && !/modules\/crm/.test(rp) && !/modules\/crm/.test(vp) && /account\.payment\.recorded/.test(fnOf("recordPaymentInTx")) && /emitPaymentVoided/.test(fnOf("unwindPaymentInTx")),
       "no CRM inside", `recordPayment=${rp.length > 0}/${/modules\/crm/.test(rp)} voidPayment=${vp.length > 0}/${/modules\/crm/.test(vp)}`);
   }
   {
@@ -1396,6 +1414,7 @@ try {
     let counted = 0;
     let moves = 0;
     let lastWon = 0;
+    const wonW = await wonBasisOf(W.inv); // ORACLE-EDIT C2.7-S3.1/S9.5 (C5.4-C · won basis = before VAT · Q14) · was W.grand
     for (let i = 0; i < rounds; i += 1) {
       const [mv, rp] = await Promise.all([
         call(CRM.deals?.moveDeal, cA, owner, W.d, { stageId: pQuote.st[i % 2] }),
@@ -1408,15 +1427,15 @@ try {
       if (counted > 0) {
         if (won === null || won === undefined) bad = bad || `round ${i}: wonValue null after ${counted} counted`;
         else if (B(won) < lastWon) bad = bad || `round ${i}: wonValue regressed ${lastWon}→${B(won)}`;
-        else if (B(won) !== W.grand) bad = bad || `round ${i}: wonValue ${B(won)} ≠ anchor ${W.grand}`;
+        else if (B(won) !== wonW) bad = bad || `round ${i}: wonValue ${B(won)} ≠ anchor ${wonW}`; // ORACLE-EDIT C2.7-S3.1/S9.5 (C5.4-C · won basis = before VAT · Q14)
         lastWon = Math.max(lastWon, B(won));
       }
       if (!mv.ok && !bad && mv.code !== "CONFLICT") bad = bad || `round ${i}: move ${mv.err.slice(0, 40)}`;
     }
     const deal = await dealRow(W.d);
-    chk("C2.7-S9.5", `SF-3 — ${rounds} rounds of \`moveDeal\` OPEN→OPEN racing \`recordDocPayment\` on separate connections: \`wonValueSatang\` is never null and never regresses once money has been counted (it stays the anchor document's grand total), and paidSatang ends at the exact sum of the payments that were counted`,
-      counted >= rounds - 1 && moves >= rounds - 1 && bad === "" && B(deal?.paidSatang) === counted * each && B(deal?.wonValueSatang) === W.grand,
-      `won stable at ${W.grand} · paid = ${rounds} × ${each}`,
+    chk("C2.7-S9.5", `SF-3 — ${rounds} rounds of \`moveDeal\` OPEN→OPEN racing \`recordDocPayment\` on separate connections: \`wonValueSatang\` is never null and never regresses once money has been counted (it stays the anchor document's won value on the single product basis — ORACLE-EDIT C5.4-C), and paidSatang ends at the exact sum of the payments that were counted`,
+      counted >= rounds - 1 && moves >= rounds - 1 && bad === "" && B(deal?.paidSatang) === counted * each && wonW > 0 && B(deal?.wonValueSatang) === wonW, // ORACLE-EDIT C2.7-S3.1/S9.5 (C5.4-C · won basis = before VAT · Q14)
+      `won stable at ${wonW} (${WON_BASIS}) · paid = ${rounds} × ${each}`,
       `counted=${counted}/${rounds} moves=${moves}/${rounds} paid=${B(deal?.paidSatang)} won=${j(deal?.wonValueSatang)} ${bad || "no anomaly"}`, "MAJOR");
   }
   {

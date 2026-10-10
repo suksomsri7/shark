@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/core/db";
 import { csvCell } from "@/lib/core/csv";
-import type { AccountLedgerType, AccountCashflowActivity } from "@prisma/client";
+import type { AccountLedgerType, AccountCashflowActivity, Prisma } from "@prisma/client";
 
 // ─────────────────────────────────────────────────────────────
 // reports.ts — งบการเงิน + รายงาน (P3) · READ-ONLY (ไม่โพสต์ GL)
@@ -729,6 +729,7 @@ export async function agingReport(
       ...(opts.contactId ? { contactId: opts.contactId } : {}),
     },
     select: {
+      id: true,
       contactId: true,
       grandTotal: true,
       paidTotal: true,
@@ -737,6 +738,13 @@ export async function agingReport(
       contact: { select: { name: true } },
     },
   });
+  // CRM C5.4-C ▸ (review round 2) ยอดค้าง = grand − paid − ใบลดหนี้ที่ยังมีผล (F-05/F-06 — ตรงกับ overviewStats และ GL 1100) ◂
+  const creditOf = new Map<string, number>();
+  if (opts.direction === "OUT" && docs.length > 0) {
+    // hunt F1: ทั้งครอบครัวใบแจ้งหนี้ (ใบลดหนี้อ้างใบเสร็จ/ใบกำกับด้วย)
+    const fam = await (await import("./service")).familyCreditByInvoice(prisma as unknown as Prisma.TransactionClient, ctx.systemId, docs.map((d) => d.id));
+    for (const [k, v] of fam) creditOf.set(k, v);
+  }
 
   // key ต่อคู่ค้า — null → แถวรวม "ไม่ระบุคู่ค้า"
   const byContact = new Map<
@@ -747,7 +755,7 @@ export async function agingReport(
   const docCounts = new Map<string, AgingDocCount>();
 
   for (const d of docs) {
-    const outstanding = d.grandTotal - d.paidTotal;
+    const outstanding = d.grandTotal - d.paidTotal - (creditOf.get(d.id) ?? 0);
     if (outstanding <= 0) continue; // จ่ายครบ/เกิน — ไม่นับ
 
     const due = d.dueDate ?? d.issueDate;

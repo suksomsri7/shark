@@ -14,6 +14,7 @@
 //
 // fail-open: ตัวจำกัดล่ม **ห้าม** ทำให้แชททั้งระบบใช้ไม่ได้ (เหมือน siamdive2 `rate-limit.ts`)
 
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/core/db";
 import { logOps } from "@/lib/core/ops";
 
@@ -80,6 +81,67 @@ export async function checkRateLimitDb(
       detail: e instanceof Error ? `${e.name}: ${e.message}` : String(e),
     }).catch(() => {});
     return { ok: true };
+  }
+}
+
+/**
+ * C5.1-fix — CTE ของถังเดียว (`<name> AS (INSERT … ON CONFLICT … RETURNING "count", "windowStart")`) — ตรรกะเดียวกับ checkRateLimitDb
+ * ให้คำสั่ง "นับ + เขียน" ของทางร้อน (tracking) ใส่ถังไว้ในคำสั่งเดียวกับงานเขียน · `after` = นับเฉพาะเมื่อถังก่อนหน้าผ่าน
+ * ผู้เรียกตัดสินผ่าน/ไม่ผ่านจาก `"count" <= limit` ของ CTE นี้ (ความหมายเดียวกับ RateVerdict.ok)
+ */
+export function rateBucketCte(name: string, key: string, windowMs: number, now: number, after?: { after: string; limit: number }): Prisma.Sql {
+  if (!/^[a-z][a-z0-9_]{0,15}$/.test(name) || (after && !/^[a-z][a-z0-9_]{0,15}$/.test(after.after))) throw new Error("rateBucketCte: ชื่อ CTE ไม่ถูกต้อง");
+  const at = new Date(now);
+  const cut = new Date(now - windowMs);
+  const src = after
+    ? Prisma.sql`SELECT gen_random_uuid()::text, ${key}, 1, ${at}, NOW(), NOW() FROM ${Prisma.raw(after.after)} p WHERE p."count" <= ${after.limit}`
+    : Prisma.sql`VALUES (gen_random_uuid()::text, ${key}, 1, ${at}, NOW(), NOW())`;
+  return Prisma.sql`${Prisma.raw(name)} AS (
+    INSERT INTO "ChatRateBucket" ("id", "key", "count", "windowStart", "createdAt", "updatedAt")
+    ${src}
+    ON CONFLICT ("key") DO UPDATE SET
+      "count" = CASE WHEN "ChatRateBucket"."windowStart" <= ${cut} THEN 1 ELSE "ChatRateBucket"."count" + 1 END,
+      "windowStart" = CASE WHEN "ChatRateBucket"."windowStart" <= ${cut} THEN ${at} ELSE "ChatRateBucket"."windowStart" END,
+      "updatedAt" = NOW()
+    RETURNING "count", "windowStart")`;
+}
+
+/**
+ * C5.1-fix (CRM tracking) — นับหลายถังใน **คำสั่งเดียว** (INSERT … ON CONFLICT ต่อถังเป็น CTE ของคำสั่งเดียวกัน)
+ * ความหมายต่อถังเท่า `checkRateLimitDb` ทุกประการ (fixed window · atomic ต่อแถว · กติกา "ห้ามแตกเป็นหลายคำสั่ง" ยังจริง)
+ * `chain: true` = ถังถัดไปนับเฉพาะเมื่อถังก่อนหน้า "ผ่าน" (ลำดับเดิมของ gate ที่ถาม IP ก่อนแล้วค่อยถามถังของเว็บ — IP ที่เกินเพดานแล้ว
+ *   ไม่กินโควตาของเว็บร้าน) · ถังที่ไม่ได้นับ = `{ ok: false, skipped: true }`
+ * fail-open แบบเดียวกัน: ฐานล่ม = ผ่านทุกถัง (มีบันทึก ops)
+ * 🔴 กุญแจซ้ำกันในชุดเดียว = ปฏิเสธ (ON CONFLICT แตะแถวเดิมสองครั้งในคำสั่งเดียวไม่ได้)
+ */
+export async function checkRateLimitDbMany(
+  entries: readonly { key: string; limit: number; windowMs: number }[],
+  opts: { chain?: boolean; now?: number } = {},
+): Promise<(RateVerdict & { skipped?: boolean })[]> {
+  const now = opts.now ?? Date.now();
+  if (entries.length === 0) return [];
+  if (new Set(entries.map((e) => e.key)).size !== entries.length) throw new Error("checkRateLimitDbMany: กุญแจซ้ำกันในชุดเดียว");
+  try {
+    const ctes = entries.map((e, i) =>
+      rateBucketCte(`r${i}`, e.key, e.windowMs, now, opts.chain && i > 0 ? { after: `r${i - 1}`, limit: entries[i - 1]!.limit } : undefined),
+    );
+    const cols = entries.map((_, i) => Prisma.sql`(SELECT "count" FROM ${Prisma.raw(`r${i}`)}) AS ${Prisma.raw(`"c${i}"`)}, (SELECT "windowStart" FROM ${Prisma.raw(`r${i}`)}) AS ${Prisma.raw(`"w${i}"`)}`);
+    const rows = await prisma.$queryRaw<Record<string, number | Date | null>[]>`WITH ${Prisma.join(ctes, ", ")} SELECT ${Prisma.join(cols, ", ")}`;
+    const r = rows[0] ?? {};
+    return entries.map((e, i) => {
+      const count = r[`c${i}`];
+      const ws = r[`w${i}`];
+      if (count === null || count === undefined) return { ok: false, skipped: true };
+      const n = Number(count);
+      if (n <= e.limit) return { ok: true, count: n };
+      const resetAt = (ws instanceof Date ? ws.getTime() : now) + e.windowMs;
+      return { ok: false, count: n, retryAfterSec: Math.max(1, Math.ceil((resetAt - now) / 1000)) };
+    });
+  } catch (e) {
+    void logOps("WARN", "rate-limit-db", "ตัวจำกัดอัตราบน DB ทำงานไม่ได้ — ปล่อยผ่านชั่วคราว", {
+      detail: e instanceof Error ? `${e.name}: ${e.message}` : String(e),
+    }).catch(() => {});
+    return entries.map(() => ({ ok: true }));
   }
 }
 

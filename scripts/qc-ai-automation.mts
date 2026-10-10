@@ -10,6 +10,8 @@
 // 🔴 M1.9 (10 ก.ย.): ย้ายจาก `.env` (= prod) มาใช้ .env.qc ผ่านด่านเดียวกับชุดบัญชี/บอร์ดงาน
 const accEnv = (await import("./acc-v2-env.mts" as string)) as { loadQcEnv: () => { host: string } };
 accEnv.loadQcEnv();
+// ORACLE-EDIT C5.5-G1 r2: AiTool.execute without an actor now refuses — these checks always meant "the shop OWNER asks"
+const qcOwner = (t: string) => ({ kind: "member" as const, tenantId: t, userId: "qc-owner", membership: { role: "OWNER" as const, unitAccess: ["*"], permissions: {} } });
 import { readFileSync } from "node:fs";
 const { prisma } = await import("@/lib/core/db");
 type Sev = "CRITICAL" | "MAJOR" | "MINOR";
@@ -29,12 +31,12 @@ try {
   if (!tool) chk("AA-1.0", "มี tool automation_create_rule", false, "มี", "ยังไม่สร้าง");
   else {
     // เสนอกฎถูกต้อง → เกิด AiProposal PENDING (ยังไม่สร้างกฎจริง)
-    const res = await tool.execute({ tenantId: t.id, conversationId: conv.id }, { name: "เตือนบิลใหญ่", event: "pos.sale.paid", minAmountBaht: 1000, notifyTitle: "มีบิลเกิน 1,000 บาท" });
+    const res = await tool.execute({ tenantId: t.id, actor: qcOwner(t.id), conversationId: conv.id }, { name: "เตือนบิลใหญ่", event: "pos.sale.paid", minAmountBaht: 1000, notifyTitle: "มีบิลเกิน 1,000 บาท" });
     const prop = await prisma.aiProposal.findFirst({ where: { tenantId: t.id, kind: "automation_create_rule", status: "PENDING" } });
     chk("AA-1.1", "เสนอ → AiProposal PENDING (ห้ามสร้างกฎทันที)", !!prop && (await prisma.automationRule.count({ where: { tenantId: t.id } })) === 0, "PENDING/0 กฎ", String(res).slice(0, 80));
 
     // event นอก whitelist → ไม่สร้าง proposal + อธิบาย
-    const bad = await tool.execute({ tenantId: t.id, conversationId: conv.id }, { name: "x", event: "event.ปลอม" });
+    const bad = await tool.execute({ tenantId: t.id, actor: qcOwner(t.id), conversationId: conv.id }, { name: "x", event: "event.ปลอม" });
     const propCount = await prisma.aiProposal.count({ where: { tenantId: t.id, kind: "automation_create_rule" } });
     chk("AA-1.2", "event เพี้ยน → validate-explain ไม่สร้าง proposal เพิ่ม", propCount === 1 && /event|เหตุการณ์/i.test(String(bad)), "1", `${propCount}/${String(bad).slice(0, 60)}`);
 

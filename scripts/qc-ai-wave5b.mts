@@ -11,6 +11,8 @@
 // read ใหม่: kanban_my_tasks {assignee?} → resolve userId ผ่าน membership (ข้อจำกัด: ctx ไม่มี userId)
 import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
 loadLegacyQcEnv("qc-ai-wave5b"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
+// ORACLE-EDIT C5.5-G1: runTool/sendMessage now take a required actor (no actor = refusal) — these checks always meant "the shop OWNER asks"
+const qcOwner = (t: string) => ({ kind: "member" as const, tenantId: t, userId: "qc-owner", membership: { role: "OWNER" as const, unitAccess: ["*"], permissions: {} } });
 process.env.SHARK_AI_MOCK = "1";
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");
@@ -74,9 +76,9 @@ try {
   chk("W5B-1.5", "หักเกินแต้ม → FAILED ไม่แตะยอด", pa4?.ok === false && bal4 === bal2);
 
   // eval tool-level: สร้าง proposal + validate delta=0
-  const paTool = parse(await tools.runTool({ tenantId: tid, conversationId: conv.id }, "point_adjust", { delta: 50, customerName: "สมชาย" }));
+  const paTool = parse(await tools.runTool({ tenantId: tid, actor: qcOwner(tid), conversationId: conv.id }, "point_adjust", { delta: 50, customerName: "สมชาย" }));
   chk("W5B-1.6", "tool point_adjust → proposal (waiting user_confirm)", !!paTool.proposalId && paTool.waiting === "user_confirm", "MAJOR");
-  const paZero = parse(await tools.runTool({ tenantId: tid, conversationId: conv.id }, "point_adjust", { delta: 0, customerName: "สมชาย" }));
+  const paZero = parse(await tools.runTool({ tenantId: tid, actor: qcOwner(tid), conversationId: conv.id }, "point_adjust", { delta: 0, customerName: "สมชาย" }));
   chk("W5B-1.7", "delta=0 → error ไม่สร้าง proposal", !!paZero.error && !paZero.proposalId, "MAJOR");
 
   // ══ ticket_mark_paid ══
@@ -102,9 +104,9 @@ try {
   // eval tool-level: resolve ด้วย eventName+buyer → proposal
   const ord2 = await ticket.createOrder(tctx, { eventId: ev.id, buyerName: "คุณสอง", lines: [{ ticketTypeId: tt.id, qty: 1 }] });
   void ord2;
-  const tmTool = parse(await tools.runTool({ tenantId: tid, conversationId: conv.id }, "ticket_mark_paid", { eventName: "คอนเสิร์ต", buyerName: "คุณสอง" }));
+  const tmTool = parse(await tools.runTool({ tenantId: tid, actor: qcOwner(tid), conversationId: conv.id }, "ticket_mark_paid", { eventName: "คอนเสิร์ต", buyerName: "คุณสอง" }));
   chk("W5B-2.4", "tool ticket_mark_paid (event+buyer) → proposal", !!tmTool.proposalId, "MAJOR");
-  const tmEmpty = parse(await tools.runTool({ tenantId: tid, conversationId: conv.id }, "ticket_mark_paid", {}));
+  const tmEmpty = parse(await tools.runTool({ tenantId: tid, actor: qcOwner(tid), conversationId: conv.id }, "ticket_mark_paid", {}));
   chk("W5B-2.5", "ไม่ระบุอะไรเลย → error", !!tmEmpty.error && !tmEmpty.proposalId, "MAJOR");
 
   // ══ restaurant_close_bill (DESTRUCTIVE) ══
@@ -135,7 +137,7 @@ try {
   const rc2 = await run("restaurant_close_bill", { tableName: "Z9" }, { confirm2x: true });
   chk("W5B-3.4", "โต๊ะไม่พบ → ok:false (guard)", rc2?.ok === false);
 
-  const rcTool = parse(await tools.runTool({ tenantId: tid, conversationId: conv.id }, "restaurant_close_bill", { tableName: "A1" }));
+  const rcTool = parse(await tools.runTool({ tenantId: tid, actor: qcOwner(tid), conversationId: conv.id }, "restaurant_close_bill", { tableName: "A1" }));
   chk("W5B-3.5", "tool restaurant_close_bill → proposal", !!rcTool.proposalId, "MAJOR");
 
   // ══ kanban_my_tasks (READ) ══
@@ -148,17 +150,17 @@ try {
   await kanban.createCard({ tenantId: tid, systemId: kSys.id, columnId: col0.id, title: "จัดของหน้าร้าน", assigneeUserId: u.id });
   await kanban.createCard({ tenantId: tid, systemId: kSys.id, columnId: col0.id, title: "งานไร้เจ้าของ" }); // unassigned
 
-  const kt1 = parse(await tools.runTool({ tenantId: tid, conversationId: conv.id }, "kanban_my_tasks", { assignee: "พนักงานเอ" }));
+  const kt1 = parse(await tools.runTool({ tenantId: tid, actor: qcOwner(tid), conversationId: conv.id }, "kanban_my_tasks", { assignee: "พนักงานเอ" }));
   chk("W5B-4.1", "assignee ชื่อ → คืนงานของคนนั้น 1 งาน", kt1.จำนวนงาน === 1 && Array.isArray(kt1.งานของฉัน) && kt1.งานของฉัน.length === 1);
 
-  const kt2 = parse(await tools.runTool({ tenantId: tid, conversationId: conv.id }, "kanban_my_tasks", {}));
+  const kt2 = parse(await tools.runTool({ tenantId: tid, actor: qcOwner(tid), conversationId: conv.id }, "kanban_my_tasks", {}));
   chk("W5B-4.2", "ไม่ระบุ → มีงานไร้เจ้าของ + งานทั้งหมด + หมายเหตุข้อจำกัด",
     !!kt2.หมายเหตุ && Array.isArray(kt2.งานที่ยังไม่มีผู้รับ) && kt2.งานที่ยังไม่มีผู้รับ.length === 1 && Array.isArray(kt2.งานทั้งหมดที่กำลังทำ) && kt2.งานทั้งหมดที่กำลังทำ.length === 2);
 
-  const kt3 = parse(await tools.runTool({ tenantId: tid, conversationId: conv.id }, "kanban_my_tasks", { assignee: "ไม่มีพนักงานคนนี้" }));
+  const kt3 = parse(await tools.runTool({ tenantId: tid, actor: qcOwner(tid), conversationId: conv.id }, "kanban_my_tasks", { assignee: "ไม่มีพนักงานคนนี้" }));
   chk("W5B-4.3", "assignee ไม่พบ → error", !!kt3.error, "MAJOR");
 
-  const kt4 = parse(await tools.runTool({ tenantId: tid, conversationId: conv.id }, "kanban_my_tasks", { assignee: "พนักงานเอ" }));
+  const kt4 = parse(await tools.runTool({ tenantId: tid, actor: qcOwner(tid), conversationId: conv.id }, "kanban_my_tasks", { assignee: "พนักงานเอ" }));
   void kt4; // (no KANBAN check moved earlier)
 } catch (e) { chk("CRASH", "จบ: " + (e instanceof Error ? (e.stack ?? e.message).slice(0, 300) : String(e)), false); }
 finally {

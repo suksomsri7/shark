@@ -54,8 +54,17 @@ const isP2002 = (e: unknown) => e instanceof Prisma.PrismaClientKnownRequestErro
 
 type Tx = Prisma.TransactionClient;
 
-async function assertUsers(tx: Tx, tenantId: string, userIds: (string | null | undefined)[]): Promise<void> {
-  const ids = [...new Set(userIds.filter((v): v is string => !!v))];
+// C4.3-fix ▸ ค่าว่าง ("" / ช่องว่างล้วน / ไม่ใช่ string) เคยถูก `filter(!!v)` ทิ้งแล้วผ่าน ⇒ addMember(team, "") เขียน
+//   TeamMember{userId:""} (ไม่มี FK) ⇒ round-robin แจกลีดให้ "ไม่มีใคร" · ตอนนี้: null/undefined = "ไม่ระบุ" (ช่องไม่บังคับ
+//   เช่นหัวหน้าทีม) · อย่างอื่นที่ไม่ใช่ id จริง = ปฏิเสธเป็นภาษาไทย ก่อนแตะฐานข้อมูล
+const NO_USER_MSG = "ยังไม่ได้เลือกพนักงาน — เลือกชื่อพนักงานจากรายการก่อน แล้วลองอีกครั้ง";
+function requireUserId(v: unknown): string {
+  if (typeof v !== "string" || !v.trim()) throw new TeamError(NO_USER_MSG, "VALIDATION");
+  return v;
+}
+
+async function assertUsers(tx: Tx, tenantId: string, userIds: unknown[]): Promise<void> {
+  const ids = [...new Set(userIds.filter((v) => v !== null && v !== undefined).map(requireUserId))];
   if (ids.length === 0) return;
   const n = await tx.membership.count({ where: { tenantId, userId: { in: ids } } });
   if (n !== ids.length) throw new TeamError("ไม่พบผู้ใช้นี้ในร้าน", "NOT_FOUND");
@@ -220,6 +229,7 @@ export async function addMember(ctx: TeamCtx, teamId: string, input: { userId: s
   await audit(ctx, "team.member.add", teamId, { userId: input.userId, role });
 }
 
+// C4.3-fix: ไม่ตรวจ requireUserId ที่นี่โดยตั้งใจ — ลบอย่างเดียว ไม่สร้างแถว ⇒ ใช้เก็บกวาดแถว userId:"" ที่อาจค้างจากก่อนแก้ได้
 export async function removeMember(ctx: TeamCtx, teamId: string, userId: string): Promise<void> {
   await prisma.$transaction(async (tx) => {
     const t = await lockTeam(tx, ctx, teamId);
@@ -246,6 +256,7 @@ export async function setLead(ctx: TeamCtx, teamId: string, userId: string | nul
 export async function setAcceptingLeads(ctx: TeamCtx, teamId: string, userId: string, accepting: boolean): Promise<void> {
   await prisma.$transaction(async (tx) => {
     await lockTeam(tx, ctx, teamId);
+    requireUserId(userId);
     const n = await tx.teamMember.updateMany({ where: { teamId, userId }, data: { acceptingLeads: accepting } });
     if (n.count === 0) throw new TeamError("ผู้ใช้นี้ไม่ได้อยู่ในทีม", "NOT_FOUND");
     await changed(tx, ctx, teamId, "member.accepting_leads", userId);
@@ -261,7 +272,7 @@ export async function setMembers(
   teamId: string,
   members: { userId: string; role?: TeamRole; acceptingLeads?: boolean }[],
 ): Promise<TeamMemberDto[]> {
-  const ids = members.map((m) => m.userId);
+  const ids = members.map((m) => requireUserId(m?.userId));
   if (new Set(ids).size !== ids.length) throw new TeamError("รายชื่อสมาชิกมีคนซ้ำ — ใส่แต่ละคนครั้งเดียว", "VALIDATION");
   const leads = members.filter((m) => m.role === "LEAD");
   if (leads.length > 1) throw new TeamError("ทีมหนึ่งมีหัวหน้าได้คนเดียว — เลือกหัวหน้า 1 คน ที่เหลือเป็นสมาชิก", "VALIDATION");

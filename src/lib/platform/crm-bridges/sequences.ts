@@ -19,10 +19,10 @@ import { bridgeOpen, crmGate, payloadOf, str, type BridgeEvent } from "./core";
 //    เหตุผล: คนอ่าน/ข้อสอบต้องเห็นประตูที่เดียวกับการหยุด — ประตูที่ถูกซ่อนในฟังก์ชันช่วยเคยถูกลบทิ้งพร้อมการรีแฟกเตอร์เงียบ ๆ
 
 /** ดีลของ event ในร้านของ event (AUDIT-CLASS X1 — id ข้ามร้าน = ไม่พบ) */
-async function dealOf(evt: BridgeEvent): Promise<{ id: string; systemId: string; contactId: string | null } | null> {
+async function dealOf(evt: BridgeEvent): Promise<{ id: string; systemId: string; contactId: string | null; closedAt: Date | null } | null> {
   const dealId = str(payloadOf(evt.payload).dealId);
   if (!dealId) return null;
-  return prisma.crmDeal.findFirst({ where: { id: dealId, tenantId: evt.tenantId }, select: { id: true, systemId: true, contactId: true } });
+  return prisma.crmDeal.findFirst({ where: { id: dealId, tenantId: evt.tenantId }, select: { id: true, systemId: true, contactId: true, closedAt: true } });
 }
 
 /** ผู้ติดต่อของ event ในร้านของ event — ค่า marketingOptOut อ่านสดจากฐาน (ไม่เชื่อ payload) */
@@ -33,8 +33,11 @@ async function contactOf(evt: BridgeEvent): Promise<{ id: string; systemId: stri
 }
 
 /** ขั้นตอนหยุด (ผู้เรียกอ่านประตูของระบบแถวนั้นมาก่อนแล้ว) — ทางเข้าเดียวคือ `sequences.stopFor` */
-async function stopByDeal(evt: BridgeEvent, deal: { id: string; systemId: string; contactId: string | null }, reason: "WON" | "LOST"): Promise<void> {
-  await crm.sequences.stopFor({ tenantId: evt.tenantId, systemId: deal.systemId }, deal.contactId ?? "", reason, { dealId: deal.id });
+// CRM C5.4-D r2 ▸ S1 (มติผู้คุมงาน): กติกาเวลาเดียวกับด่าน ณ เวลาส่งใน `sequences.runClaimed` — หยุดเฉพาะแถวที่ลงทะเบียนก่อน/พร้อมการปิดดีล
+//   (แถวที่ลงทะเบียนหลังปิด = ลำดับหลังการขาย/win-back ที่พนักงานตั้งใจ ไม่ถูก event การปิดเดิมหยุด) · closedAt ว่าง (ดีลถูกเปิดใหม่ก่อน event
+//   ถูกระบาย) = พฤติกรรมเดิม (หยุดทุกแถวของดีลตามธง) ◂
+async function stopByDeal(evt: BridgeEvent, deal: { id: string; systemId: string; contactId: string | null; closedAt: Date | null }, reason: "WON" | "LOST"): Promise<void> {
+  await crm.sequences.stopFor({ tenantId: evt.tenantId, systemId: deal.systemId }, deal.contactId ?? "", reason, { dealId: deal.id, enrolledAtOrBefore: deal.closedAt });
 }
 
 /** crm.deal.won → หยุดลำดับของดีลนี้ (ลำดับที่ตั้ง stopOnWon) */

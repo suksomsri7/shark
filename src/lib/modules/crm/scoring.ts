@@ -869,6 +869,28 @@ async function reconcile(tx: Tx, ctx: ScoringCtx, contactId: string, at: Date, s
   return { from, to, fromBand, toBand: (rows[0]?.scoreBand ?? bandOf(to, s)) as ScoreBand };
 }
 
+/**
+ * CRM C5.4-E ▸ L6-M3: รวมผู้ติดต่อ (ใน tx ของ `contacts.mergeContacts` · ถือล็อกแถวผู้ติดต่อทั้งสองแล้ว) — แถวแต้มของคนที่ถูกรวมย้ายมาที่
+ * คนที่เก็บไว้ + คะแนนของคนที่เก็บไว้คิดใหม่จากแถวแต้มที่ยังไม่หมดอายุ (`reconcile` · ระดับตามเกณฑ์ของระบบ) ·
+ * เดิมแถวแต้มค้างที่แถวที่ถูกรวม ⇒ lead ที่รวมแล้วคะแนนหาย · คะแนนเปลี่ยน = `crm.score.changed`/`threshold` กุญแจต่อการรวม (id ล้วน) ◂
+ */
+export async function transferScoreInTx(tx: Prisma.TransactionClient, ctx: ScoringCtx, fromContactId: string, toContactId: string, at: Date): Promise<{ logs: number; from: number; to: number }> {
+  const logs = (await tx.crmScoreLog.updateMany({ where: { tenantId: ctx.tenantId, contactId: fromContactId }, data: { contactId: toContactId } })).count;
+  const sys = await tx.appSystem.findFirst({ where: { id: ctx.systemId, tenantId: ctx.tenantId, type: "CRM" }, select: { settings: true } });
+  const s = crmScoringSettingsOf(sys?.settings ?? {});
+  // CRM C5.4-E r2 ▸ รีวิว SF-1: คะแนนของคนที่เก็บไว้ = GREATEST(0, Σ แต้มที่ยังไม่หมดอายุ) ด้วย `reconcile` ตัวเดิม (กติกาเดียวของไฟล์นี้) —
+  //   รอบแรกบวก KEEP + DROP ⇒ แต้มติดลบของคนที่ถูกรวม (เช่น +30/−40 = 0) ทำให้ผลรวมเกินจริงจนกว่างานรายวันจะคิดใหม่ ◂
+  const r = await reconcile(tx, ctx, toContactId, at, s);
+  if (!r) return { logs, from: 0, to: 0 };
+  if (r.to !== r.from) {
+    await emitOutbox(tx, { tenantId: ctx.tenantId, systemId: ctx.systemId, type: "crm.score.changed", idempotencyKey: `crm.score.changed#${toContactId}#merge-${fromContactId}`, payload: { contactId: toContactId, from: r.from, to: r.to, band: r.toBand, ruleId: null } });
+  }
+  if (r.fromBand !== r.toBand) {
+    await emitOutbox(tx, { tenantId: ctx.tenantId, systemId: ctx.systemId, type: "crm.score.threshold", idempotencyKey: `crm.score.threshold#${toContactId}#${r.toBand}#merge-${fromContactId}`, payload: { contactId: toContactId, band: r.toBand } });
+  }
+  return { logs, from: r.from, to: r.to };
+}
+
 const liveSumSql = (contactId: string) => Prisma.sql`
   GREATEST(0, COALESCE((SELECT SUM(l."points") FROM "CrmScoreLog" l WHERE l."contactId" = ${contactId} AND l."expired" = false), 0))::int`;
 

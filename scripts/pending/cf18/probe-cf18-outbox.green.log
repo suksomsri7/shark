@@ -1,0 +1,43 @@
+(node:2865706) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+── C0 control: no background drain ──
+  ✅ [C0.1] (control) control: a row written with no wake stays PENDING (attempts 0) for 6 s — nothing else drains this tenant
+        — ACTUAL {"status":"PENDING","attempts":0}
+
+── W1 teams action ──
+  ✅ [W1.1] (FINDING) FINDING: createTeamAction's outbox rows are picked up by a drain within 15 s (the action wakes the queue)
+        — ACTUAL action={"ok":true} rows=["team.updated:DONE"]
+
+── W2 chat CRM panel ──
+  ✅ [W2.1] (FINDING) FINDING: chat panel 'create lead' — its outbox rows are drained within 15 s
+        — ACTUAL action={"ok":true,"contactId":"cmuqtzfyo000t6ykz3bkx3gvm","created":true} rows=["crm.contact.assigned:DONE","crm.contact.created:DONE"]
+  ✅ [W2.2] (FINDING) FINDING: chat panel 'log activity' — its outbox rows are drained within 15 s
+        — ACTUAL action={"ok":true,"activityId":"cmuqtzhue000x6ykzipknzhbp"} rows=["crm.activity.logged:DONE"]
+
+── W3/W4 /u routes ──
+  ✅ [W3.0] (control) control (premise): the sent mail carries a /u/<token> link
+        — ACTUAL token=found sent=1
+  ✅ [W4.1] (FINDING) FINDING: /u/<token>/no-track — the opt-out is written and its outbox rows (if any) are drained within 15 s
+        — ACTUAL status=200 optOut=true rows=["crm.contact.updated:DONE"]
+  ✅ [W3.1] (FINDING) FINDING: /u/<token>/one-click — the unsubscribe is written and its outbox rows are drained within 15 s
+        — ACTUAL status=200 optOut=true rows=["crm.contact.updated:DONE"]
+  ✅ [V1] (FINDING) FINDING (P-it5-3): both /u done pages carry the mobile viewport meta tag
+        — ACTUAL one-click=true no-track=true
+
+── W5 portal view ──
+  ✅ [W5.1] (FINDING) FINDING: a portal page view writes crm.portal.viewed and it is drained within 15 s
+        — ACTUAL home=ok rows=["crm.portal.viewed:DONE"]
+  ℹ️  never-attempted PENDING rows left in the tenant at the end: []
+  ✅ [CLEAN] (control) throwaway tenant and user removed (0 rows left)
+        — ACTUAL -
+
+controls 3/3 green · findings GREEN (fixed) 7/7
+JSON_SUMMARY {"controls":[["C0.1",true],["W3.0",true],["CLEAN",true]],"findings":[["W1.1","GREEN"],["W2.1","GREEN"],["W2.2","GREEN"],["W4.1","GREEN"],["W3.1","GREEN"],["V1","GREEN"],["W5.1","GREEN"]]}

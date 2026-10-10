@@ -1,0 +1,14 @@
+# round 3 run-r3-regress.sh
+start 2026-10-02T08:11:20Z src-md5 2c43927443324ba41b8d2a885295b6c1
+typecheck exit=0 135s · 
+probe-cf16-r3 exit=0 18s · 🟢 probe-cf16-r3: 8/8 JSON_SUMMARY {"total":8,"passed":8,"findings":[]} 
+probe-cf16-r2 exit=0 18s · 🟢 probe-cf16-r2: 8/8 JSON_SUMMARY {"total":8,"passed":8,"findings":[]} 
+probe-cf16-vs-red3 exit=0 30s · 🟢 probe-cf16: 22/22 JSON_SUMMARY {"total":22,"passed":22,"findings":[]} 
+probe-cf16-review exit=0 42s · 🟢 probe-cf16-review: 10/10 JSON_SUMMARY {"total":10,"passed":10,"findings":[]} 
+probe-cf16-review-r2 exit=0 43s · 🟢 probe-cf16-review-r2: 6/6 JSON_SUMMARY {"total":6,"passed":6,"findings":[]} 
+qc-crm-c2.4 exit=0 69s · 🟢 C2.4: 91/91 · outbound fetch stubbed 0× JSON_SUMMARY {"total":91,"passed":91,"findings":[]} 
+docs-crm exit=0 1s · ✅ docs/api/CRM-API.md ตรงกับทะเบียน (123 op) 
+docs-account exit=0 2s · ✅ docs/api/ACCOUNT-API.md + skill endpoints.md ตรงกับทะเบียน (199 op) 
+fitness exit=0 5s · ผ่าน 36/36 JSON_SUMMARY {"total":36,"passed":36,"findings":[]} 
+fitness-noenv exit=0 176s · ผ่าน 36/36 JSON_SUMMARY {"total":36,"passed":36,"findings":[]} 
+ALLDONE 2026-10-02T08:20:19Z src-md5 2c43927443324ba41b8d2a885295b6c1

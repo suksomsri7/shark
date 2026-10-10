@@ -49,18 +49,24 @@ const ASSISTANT_READ_SCOPES = [
   "account.asset.manage",
 ] as const;
 
-function assistantActor(tenantId: string, systemId: string): ApiActor {
-  const membership = membershipFromScopes([...ASSISTANT_READ_SCOPES]);
+// CRM C5.5-G1 ▸ `viewer` = Membership ของ "คนที่ถาม" (ส่งมา = ชุดอ่านของผู้ช่วย ∩ สิทธิ์บัญชีของคนนั้น · ตัดสินด้วย
+//   `membershipCanAccount` ตัวเดียวกับหน้าจอ/REST) · ไม่ส่ง = คีย์ API ที่ผ่านด่าน scope มาแล้ว (ชุดอ่านของผู้ช่วยแบบเดิม) ◂
+function assistantActor(tenantId: string, systemId: string, viewer?: MembershipCtx | null, asker?: ApiActor["asker"]): ApiActor {
+  //   (actorCan ของบัญชีอ่าน `membership` ไม่ใช่ `can` ⇒ ตัดชุดสิทธิ์ตั้งแต่ membership · IMPLIES ของบัญชีมีแต่ "กว้าง ⇒ อ่าน" จึงตัดตรงตัวได้)
+  const scopes = viewer ? ASSISTANT_READ_SCOPES.filter((s) => membershipCanAccount(viewer, s)) : [...ASSISTANT_READ_SCOPES];
+  const membership = membershipFromScopes(scopes);
   return {
     kind: "assistant",
     module: "account",
     tenantId,
     systemId,
     keyName: "ผู้ช่วย AI",
-    scopes: [...ASSISTANT_READ_SCOPES],
+    scopes,
     membership,
     can: (action) => membershipCanAccount(membership, action),
     denyMessageTh: ACCOUNT_DENY_TH,
+    // CRM C5.5-fix14 r3 (RV14-2): ผู้ถามตัวจริง สำหรับการ์ด/ป้ายสมาชิก·CRM ที่ op บัญชีอ่านข้ามโมดูล (ไม่ส่ง = ปิด)
+    asker: asker ?? null,
   };
 }
 
@@ -785,7 +791,7 @@ export async function runAccountTool(
   tenantId: string,
   name: string,
   rawArgs: unknown,
-  opts: { systemId?: string } = {},
+  opts: { systemId?: string; viewer?: MembershipCtx | null; asker?: ApiActor["asker"] } = {},
 ): Promise<AccountToolOutcome> {
   const op = accountToolOps().find((o) => o.tool?.name === name);
   if (!op) return { mode: "error", error: `ไม่รู้จักเครื่องมือ "${name}"` };
@@ -810,7 +816,7 @@ export async function runAccountTool(
     };
   }
 
-  const actor = assistantActor(tenantId, system.id);
+  const actor = assistantActor(tenantId, system.id, opts.viewer, opts.asker);
   if (!actorCan(actor, prepared.op.action)) {
     return { mode: "error", error: "ผู้ช่วยไม่มีสิทธิ์อ่านข้อมูลส่วนนี้" };
   }

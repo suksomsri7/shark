@@ -1,0 +1,408 @@
+{
+ "startedAt": "2026-10-08T01:28:22.082Z",
+ "tenantId": "cmtazbpjh000004lcjikxju2i",
+ "crmSystemId": "cmtdvoopr000004jpf1vaply9",
+ "ownerUserId": "cmtazbehq000004l77f899ulm",
+ "users": {
+  "manager": "qcprod19a83e0308d81cc485f",
+  "lead": "qcprodbfab0692895ba890bc7",
+  "staff": "qcprode04f51fe031dd38ee54"
+ },
+ "teamId": "qcprodee7a4d8230b8fc6e9c4",
+ "sessions": {
+  "owner": "qcprode13d77acccd923121e6",
+  "manager": "qcprodc0a0b995bf1cb138c4c",
+  "lead": "qcprodd78c59949ccec72c656",
+  "staff": "qcprod4bd32529d5a3ba8d4e8",
+  "customer": "qcprodb439dc852e481e8200e"
+ },
+ "touchedSettingsPaths": [
+  "crm.email",
+  "crm.assignment",
+  "crm.scoring",
+  "crm.portal"
+ ],
+ "sessionExpiresAt": "2026-10-08T04:28:21.883Z",
+ "appSystemBefore": {
+  "settings": "{\"crm\": {\"uiVersion\": 2}}",
+  "updatedAt": "2026-08-29 04:26:18.015",
+  "hash": "1aba968f55d757430c13495b86fc615c"
+ },
+ "rows": {
+  "User": [
+   {
+    "id": "qcprod19a83e0308d81cc485f",
+    "at": "2026-10-08T01:28:22.083Z",
+    "phase": "setup"
+   },
+   {
+    "id": "qcprodbfab0692895ba890bc7",
+    "at": "2026-10-08T01:28:22.083Z",
+    "phase": "setup"
+   },
+   {
+    "id": "qcprode04f51fe031dd38ee54",
+    "at": "2026-10-08T01:28:22.084Z",
+    "phase": "setup"
+   }
+  ],
+  "Membership": [
+   {
+    "id": "qcprod5c626c562bf334bce96",
+    "at": "2026-10-08T01:28:22.083Z",
+    "phase": "setup"
+   },
+   {
+    "id": "qcprodf338c8bca1ab56dd30d",
+    "at": "2026-10-08T01:28:22.084Z",
+    "phase": "setup"
+   },
+   {
+    "id": "qcprodb86fdc3528ed138317c",
+    "at": "2026-10-08T01:28:22.084Z",
+    "phase": "setup"
+   }
+  ],
+  "Team": [
+   {
+    "id": "qcprodee7a4d8230b8fc6e9c4",
+    "at": "2026-10-08T01:28:22.085Z",
+    "phase": "setup"
+   }
+  ],
+  "TeamMember": [
+   {
+    "id": "qcprodd804ecc342040bda1c5",
+    "at": "2026-10-08T01:28:22.085Z",
+    "phase": "setup"
+   },
+   {
+    "id": "qcprod0267c361a1030703558",
+    "at": "2026-10-08T01:28:22.085Z",
+    "phase": "setup"
+   }
+  ],
+  "Session": [
+   {
+    "id": "qcprode13d77acccd923121e6",
+    "at": "2026-10-08T01:28:22.085Z",
+    "phase": "setup"
+   },
+   {
+    "id": "qcprodc0a0b995bf1cb138c4c",
+    "at": "2026-10-08T01:28:22.085Z",
+    "phase": "setup"
+   },
+   {
+    "id": "qcprodd78c59949ccec72c656",
+    "at": "2026-10-08T01:28:22.086Z",
+    "phase": "setup"
+   },
+   {
+    "id": "qcprod4bd32529d5a3ba8d4e8",
+    "at": "2026-10-08T01:28:22.086Z",
+    "phase": "setup"
+   }
+  ],
+  "CrmCompany": [
+   {
+    "id": "cmuyvd8z8000e05jyuebqu58f",
+    "at": "2026-10-08T01:40:17.196Z",
+    "phase": "walk"
+   }
+  ],
+  "CrmContact": [
+   {
+    "id": "cmuyvdctm000y05jy57wk9ejw",
+    "at": "2026-10-08T01:40:22.356Z",
+    "phase": "walk"
+   },
+   {
+    "id": "cmuyvdg7t000106jpdhunpdx6",
+    "at": "2026-10-08T01:40:27.428Z",
+    "phase": "walk"
+   }
+  ],
+  "CrmDeal": [
+   {
+    "id": "cmuyvdod3000006mqqh8fqpso",
+    "at": "2026-10-08T01:41:54.783Z",
+    "phase": "walk"
+   },
+   {
+    "id": "cmuyvh0i4000006qm7rgq0jyg",
+    "at": "2026-10-08T01:43:12.793Z",
+    "phase": "walk"
+   },
+   {
+    "id": "cmuyvhauq000006mkjyiigwyh",
+    "at": "2026-10-08T01:43:26.057Z",
+    "phase": "walk"
+   }
+  ],
+  "CrmActivity": [
+   {
+    "id": "cmuyvfhyk000006l2gsbmqhji",
+    "at": "2026-10-08T01:42:01.792Z",
+    "phase": "walk"
+   }
+  ],
+  "CrmLostReason": [
+   {
+    "id": "cmuyvhshc000006lbyb2qgejs",
+    "at": "2026-10-08T01:43:50.773Z",
+    "phase": "walk"
+   }
+  ],
+  "CustomObject": [
+   {
+    "id": "cmuyvhxe1000006mj878v81rz",
+    "at": "2026-10-08T01:43:54.964Z",
+    "phase": "walk"
+   }
+  ],
+  "CrmSequence": [
+   {
+    "id": "cmuyvi2xk000006p1avrt6xvl",
+    "at": "2026-10-08T01:44:02.775Z",
+    "phase": "walk"
+   }
+  ],
+  "CrmQuota": [
+   {
+    "id": "cmuyvi68u000306l5f3szkrgl",
+    "at": "2026-10-08T01:44:09.008Z",
+    "phase": "walk"
+   }
+  ],
+  "CrmAssignmentRule": [
+   {
+    "id": "cmuyvib5e000306p1ktyfbyxy",
+    "at": "2026-10-08T01:44:15.357Z",
+    "phase": "walk"
+   }
+  ],
+  "CrmScoreRule": [
+   {
+    "id": "cmuyvij83000006pjpx3xudf0",
+    "at": "2026-10-08T01:44:25.916Z",
+    "phase": "walk"
+   }
+  ],
+  "MemberSavedView": [
+   {
+    "id": "cmuyvinib000606l56kqkk5dn",
+    "at": "2026-10-08T01:44:31.358Z",
+    "phase": "walk"
+   }
+  ],
+  "CustomRecord": [
+   {
+    "id": "cmuyvje46000806l5kohmg8mb",
+    "at": "2026-10-08T01:45:05.824Z",
+    "phase": "walk"
+   }
+  ],
+  "CrmPortalAccess": [
+   {
+    "id": "qcprod17bb6baf10763b924fe",
+    "at": "2026-10-08T01:58:04.050Z",
+    "phase": "setup-portal"
+   }
+  ],
+  "PortalSession": [
+   {
+    "id": "qcprodb439dc852e481e8200e",
+    "at": "2026-10-08T01:58:04.050Z",
+    "phase": "setup-portal"
+   }
+  ]
+ },
+ "ui": [
+  {
+   "code": "S01",
+   "role": "owner",
+   "at": "2026-10-08T01:40:13.160Z",
+   "end": "2026-10-08T01:40:17.450Z"
+  },
+  {
+   "code": "S02",
+   "role": "owner",
+   "at": "2026-10-08T01:40:17.649Z",
+   "end": "2026-10-08T01:40:22.647Z"
+  },
+  {
+   "code": "S03",
+   "role": "manager",
+   "at": "2026-10-08T01:40:22.860Z",
+   "end": "2026-10-08T01:40:27.766Z"
+  },
+  {
+   "code": "S04",
+   "role": "staff",
+   "at": "2026-10-08T01:40:28.197Z",
+   "end": "2026-10-08T01:40:32.055Z"
+  },
+  {
+   "code": "S05",
+   "role": "staff",
+   "at": "2026-10-08T01:40:32.398Z",
+   "end": "2026-10-08T01:41:06.184Z"
+  },
+  {
+   "code": "S05",
+   "role": "staff",
+   "at": "2026-10-08T01:41:54.734Z",
+   "end": "2026-10-08T01:41:54.954Z"
+  },
+  {
+   "code": "S06",
+   "role": "staff",
+   "at": "2026-10-08T01:41:55.326Z",
+   "end": "2026-10-08T01:42:04.075Z"
+  },
+  {
+   "code": "S07",
+   "role": "lead",
+   "at": "2026-10-08T01:42:04.527Z",
+   "end": "2026-10-08T01:42:50.396Z"
+  },
+  {
+   "code": "S08",
+   "role": "manager",
+   "at": "2026-10-08T01:42:50.744Z",
+   "end": "2026-10-08T01:42:59.205Z"
+  },
+  {
+   "code": "S09",
+   "role": "manager",
+   "at": "2026-10-08T01:42:59.434Z",
+   "end": "2026-10-08T01:43:05.256Z"
+  },
+  {
+   "code": "S10",
+   "role": "lead",
+   "at": "2026-10-08T01:43:05.856Z",
+   "end": "2026-10-08T01:43:13.092Z"
+  },
+  {
+   "code": "S10",
+   "role": "staff",
+   "at": "2026-10-08T01:43:13.509Z",
+   "end": "2026-10-08T01:43:20.016Z"
+  },
+  {
+   "code": "S11",
+   "role": "owner",
+   "at": "2026-10-08T01:43:20.325Z",
+   "end": "2026-10-08T01:43:26.414Z"
+  },
+  {
+   "code": "S20",
+   "role": "owner",
+   "at": "2026-10-08T01:43:45.841Z",
+   "end": "2026-10-08T01:43:50.972Z"
+  },
+  {
+   "code": "S21",
+   "role": "owner",
+   "at": "2026-10-08T01:43:51.298Z",
+   "end": "2026-10-08T01:43:55.320Z"
+  },
+  {
+   "code": "S21",
+   "role": "manager",
+   "at": "2026-10-08T01:43:55.633Z",
+   "end": "2026-10-08T01:43:58.044Z"
+  },
+  {
+   "code": "S22",
+   "role": "manager",
+   "at": "2026-10-08T01:43:58.392Z",
+   "end": "2026-10-08T01:44:03.188Z"
+  },
+  {
+   "code": "S23",
+   "role": "manager",
+   "at": "2026-10-08T01:44:03.554Z",
+   "end": "2026-10-08T01:44:09.210Z"
+  },
+  {
+   "code": "S24",
+   "role": "manager",
+   "at": "2026-10-08T01:44:09.466Z",
+   "end": "2026-10-08T01:44:19.472Z"
+  },
+  {
+   "code": "S25",
+   "role": "manager",
+   "at": "2026-10-08T01:44:19.893Z",
+   "end": "2026-10-08T01:44:26.166Z"
+  },
+  {
+   "code": "S26",
+   "role": "staff",
+   "at": "2026-10-08T01:44:26.361Z",
+   "end": "2026-10-08T01:44:31.540Z"
+  },
+  {
+   "code": "S21",
+   "role": "manager",
+   "at": "2026-10-08T01:45:00.416Z",
+   "end": "2026-10-08T01:45:06.067Z"
+  },
+  {
+   "code": "S14",
+   "role": "owner",
+   "at": "2026-10-08T01:57:52.391Z",
+   "end": "2026-10-08T01:57:58.635Z"
+  },
+  {
+   "code": "S14",
+   "role": "owner",
+   "at": "2026-10-08T01:58:29.940Z",
+   "end": "2026-10-08T01:58:36.123Z"
+  }
+ ],
+ "setupDoneAt": "2026-10-08T01:28:22.254Z",
+ "story": {
+  "company": "cmuyvd8z8000e05jyuebqu58f",
+  "contactA": "cmuyvdctm000y05jy57wk9ejw",
+  "contactB": "cmuyvdg7t000106jpdhunpdx6",
+  "deal1": "cmuyvdod3000006mqqh8fqpso",
+  "deal2": "cmuyvh0i4000006qm7rgq0jyg",
+  "deal3": "cmuyvhauq000006mkjyiigwyh",
+  "object": "cmuyvhxe1000006mj878v81rz"
+ },
+ "done": [
+  "S01",
+  "S02",
+  "S03",
+  "S04",
+  "S05",
+  "S06",
+  "S07",
+  "S08",
+  "S09",
+  "S10",
+  "S10b",
+  "S11",
+  "S20",
+  "S21",
+  "S22",
+  "S23",
+  "S24",
+  "S25",
+  "S26",
+  "S21b"
+ ],
+ "portalWindow": {
+  "on": "2026-10-08T01:57:58.269Z",
+  "off": "2026-10-08T01:58:35.890Z"
+ },
+ "portal": {
+  "accessId": "qcprod17bb6baf10763b924fe",
+  "companyId": "cmuyvd8z8000e05jyuebqu58f",
+  "contactId": "cmuyvdctm000y05jy57wk9ejw"
+ }
+}

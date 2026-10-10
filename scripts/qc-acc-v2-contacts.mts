@@ -100,7 +100,9 @@ const XO = E.contactsOverview;
 
 // ═══════════════ P1 ตัวนับกลุ่มมาตรฐาน + ลูกค้าประจำ ═══════════════
 console.log("P1 ตัวนับกลุ่มมาตรฐาน:");
-const sidebar = await cl.loadContactsSidebar(ctx);
+const ownerM = await prisma.membership.findFirst({ where: { tenantId: ctx.tenantId, role: "OWNER" }, orderBy: { createdAt: "asc" }, select: { userId: true, role: true, unitAccess: true, permissions: true } }); // ORACLE-EDIT C5.5-fix14: P3.1 always meant "the shop OWNER looks" — the member count is now viewer-gated (fail-closed without a viewer)
+const ownerViewer = ownerM ? { userId: ownerM.userId, role: ownerM.role, unitAccess: Array.isArray(ownerM.unitAccess) ? (ownerM.unitAccess as string[]) : [], permissions: (ownerM.permissions ?? {}) as Record<string, unknown> } : null; // ORACLE-EDIT C5.5-fix14: the seed OWNER's real membership as the viewer (same shape as crmViewerOfSession)
+const sidebar = await cl.loadContactsSidebar(ctx, undefined, ownerViewer); // ORACLE-EDIT C5.5-fix14: pass the OWNER viewer to the sidebar that P1–P3 read (was: no viewer)
 eq("P1.1 ทั้งหมด = เฉลย", sidebar.counts.all, XC.all);
 eq("P1.2 ลูกค้า = เฉลย", sidebar.counts.customer, XC.customer);
 eq("P1.3 ผู้ขาย = เฉลย", sidebar.counts.vendor, XC.vendor);

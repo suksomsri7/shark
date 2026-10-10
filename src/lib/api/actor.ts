@@ -47,6 +47,12 @@ export type ApiActor = {
   can: (action: string) => boolean;
   /** ข้อความไทยเมื่อสิทธิ์ไม่พอ (ต่างกันตามโมดูล — "ในระบบบัญชี" / "ในบอร์ดงาน") */
   denyMessageTh?: string;
+  /**
+   * CRM C5.5-fix14 r3 (รีวิว RV14-2) — เฉพาะ kind `assistant`: **ผู้ถามตัวจริง** ในสายตาของโมดูลอื่น (การ์ด/ป้ายสมาชิก · CRM ที่ op ของโมดูลนี้อ่านข้ามไป)
+   *   = รูปเดียวกับ `MemberActor` (คน = สมาชิกภาพของเขา · คีย์ = scope ของคีย์) · ไม่มี/null = ปิด (ไม่เห็นข้อมูลข้ามโมดูล)
+   *   ไม่ใช้ตัดสินสิทธิ์ของ op เอง (นั่นคือ `membership`/`can` ที่ตัดเหลือชุดอ่านของผู้ช่วยแล้ว)
+   */
+  asker?: { userId: string; role: MembershipCtx["role"] | "CUSTOMER"; unitAccess: string[]; permissions: Record<string, unknown>; apiRole?: string; keyId?: string; customerId?: string } | null;
 };
 
 /** id ที่ลง `AuditLog.actorId` — คีย์ = id คีย์ · คนกดยืนยัน = userId · ผู้ช่วยล้วน = null */

@@ -1,0 +1,3 @@
+// print state of one deployment (token from .env in-process). Usage: node vercel-deploy-state.cjs <dpl_id>
+const fs=require("node:fs"),path=require("node:path");const env={};for(const l of fs.readFileSync(path.join(__dirname,"../../../.env"),"utf8").split("\n")){const m=/^\s*(?:export\s+)?([A-Z0-9_]+)\s*=\s*(.*)\s*$/.exec(l);if(m)env[m[1]]=m[2].replace(/^"(.*)"$/,"$1");}
+(async()=>{const r=await fetch(`https://api.vercel.com/v13/deployments/${process.argv[2]}?teamId=${encodeURIComponent(env.SHARK_VERCEL_TEAM)}`,{headers:{Authorization:`Bearer ${env.SHARK_VERCEL_TOKEN}`}});const j=await r.json();console.log(`${new Date().toISOString().slice(11,19)} ${j.id||"?"} ${j.readyState||j.state||r.status} ${j.url||""} ${(j.errorMessage||"").slice(0,120)}`);})();

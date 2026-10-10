@@ -1,0 +1,26 @@
+# T1.8 — Recurring tasks v2 (frequency · days · channels · employee · lease) (Opus · server lane)
+Read `ai-brief-COMMON.md` + RESOLUTIONS R-C2, R-E C12 first. Contract: AI-TEAM-RUN §2 T1.8. Mockup A6 (form), A3 (งานประจำ tab).
+
+## Verified facts (REVIEW §2.2)
+- `scheduled.ts`: `MAX_TASKS_PER_TENANT 10` `:18`, `createTask(ctx, {instruction, hourBkk})` `:22`, `listTasks/setTaskActive/deleteTask` `:43–54` (no callers), `runScheduledTasks(now, deps?)` `:66` called from `src/app/api/cron/hourly/route.ts:29`; selection `findMany({active, hourBkk == BKK hour, lastRunDay ≠ today})` `:78–86`, **no claim/lease**, `lastRunDay` written after the run `:118`; runs as `aiSystemActor(tenantId, "scheduled-task")` (`SHOP_AUDIENCE` STAFF with empty permissions) → proposal tools filtered out, but `writesNow` tools with `needs: []` (`remember_fact forget_fact support_open_case`, `tool-access.ts:71–75`) still execute (leak); output → `AppNotification{recipientUserId:null}` + `sendPushToTenant`.
+- AI tool `schedule_task` `tools.ts:899` → kind `ai_schedule_task` → `scheduledSvc.createTask` (`proposals.ts:1362`); permission `ai.schedule.create`.
+- Columns added by T1.1: `aiEmployeeId createdById frequency daysJson minute channelsJson outputMode claimedAt skippedForQuotaAt`.
+- Lease example: `crm/sequences.ts#runDue` `:1790` (claim via `updateMany`, 15-min lease).
+- Bangkok helpers: `rules.ts#dayKeyBangkok` `:8`; `usage.ts#weekStartBangkok` `:43`; use these, never raw `getDay()`.
+
+## Deliverables (`src/lib/ai/team/schedule.ts` + hunks in `scheduled.ts`)
+- `createSchedule(ctx, { aiEmployeeId, title, instruction, frequency: "DAILY"|"WEEKLY"|"MONTHLY", days: number[] /* 1–7 for WEEKLY, 1–28 for MONTHLY */, minuteOfDay: 0–1439, channels: ("APP"|"LINE"|"EMAIL")[], outputMode: "DRAFT"|"AUTO" }) → { id }` — `assertCan(ai.schedule.manage)` (legacy `ai.schedule.create` also accepted), caller must be a commander of the employee; AUTO → refuse `employee_auto_not_granted` (T4.2); per-tenant cap = `FREE_PACK.maxScheduled` (via `packs.ts`; legacy `MAX_TASKS_PER_TENANT` stays for non-employee tasks) → refusal `schedule_cap_reached` (Thai message from i18n); writes `AiScheduledTask{ aiEmployeeId, createdById, frequency, daysJson, minute, channelsJson, outputMode, hourBkk = floor(minute/60), active }`.
+- `updateSchedule`, `setActive`, `deleteSchedule` (same checks), `listSchedules(ctx, aiEmployeeId?)` with `nextRunAt` computed (BKK), `estimateQuotaPct(aiEmployeeId, frequency, days) → number` = `avgTaskMicro (packs/COST constant) × runsPerMonth ÷ allowanceMicro × 100` (one decimal).
+- `runScheduledTasks(now)` rewrite in `scheduled.ts`: (1) **claim**: `updateMany({ where: { active, due(now) , lastRunDay ≠ today, OR: [claimedAt null, claimedAt < now − 15 min] }, data: { claimedAt: now } })` per row (loop with `findMany` of candidates then individual conditional `updateMany` returning count 1 = won); (2) due = DAILY every day · WEEKLY `days` ∋ BKK weekday · MONTHLY `days` ∋ BKK day-of-month, and `minute` within the current hour window (`hourBkk` match + minute ≤ now minute — run at most once per day); legacy rows (`frequency null`) keep `hourBkk` semantics; (3) employee-bound rows run `sendMessage({ tenantId, actor: aiMemberActor(createdById, freshMembership) , aiEmployeeId }, { text: instruction }, { provider, source: "SCHEDULED" })` in a fresh `e~` task room per run (title = schedule title + date) → any write becomes a proposal (DRAFT); if `createdById` lost membership/permissions → skip, set `active=false`, notify owner, audit; (4) delivery: APP = `AppNotification` to `createdById` (+ commanders) + push; LINE/EMAIL = through the chat/notification facades if a "notify staff via LINE/e-mail" function exists (check `modules/chat` `notifications.notifyStaff` in CRM — REVIEW §5) else mark `DEFERRED` in notes and deliver APP only; (5) `lastRunDay = today`, `claimedAt = null` at the end (also on failure after logging).
+- Legacy system-actor runs: close the `writesNow` leak — in `tool-access.ts#toolVerdict` (or `HAND_TOOL_ACCESS` rules) refuse `writesNow` tools for `AiSystemActor` (hunk; keep read tools).
+- `now` is injectable everywhere (`runScheduledTasks(now)` already is).
+
+## Files you own
+`src/lib/ai/team/schedule.ts`, hunks: `src/lib/ai/scheduled.ts` (runner), `src/lib/ai/tool-access.ts` (system-actor writesNow), `src/app/api/cron/hourly/route.ts` (if the signature changes), `index.ts`.
+
+## Acceptance (oracle `qc-ai-t1.8`)
+S1 CRUD + validation · S2 pack cap · S3 X5 overlap/lease/crash · S4 due matrix with 6 injected `now` values, no double run per day · S5 employee run → proposal PENDING in an `e~` room · S6 legacy system actor cannot `remember_fact`/`support_open_case`; read tools unchanged · S7 estimate reproducible · S8 creator lost rights → skip + deactivate + notify · S9 X1/X11 charge attributed to `aiEmployeeId`. Regressions: `qc-ai-schedule` `qc-ai-proposals` `qc-ai-automation` `qc-push`.
+
+## Controller rulings
+- One run per schedule per day (no "hourly" frequency in v2; legacy hourly rows keep working).
+- Each run creates a new task room (keeps A3's "งานประจำ" list meaningful); rooms older than `historyDays` of the pack are archived by T4.5's daily job (note for T4.5).

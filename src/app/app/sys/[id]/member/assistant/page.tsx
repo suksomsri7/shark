@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
 import { aiEnabled } from "@/lib/ai/service";
+import { aiMemberActor } from "@/lib/ai/actor";
 import { canReadMember, toMemberActor } from "@/lib/modules/member/access";
 import { assistantState } from "@/lib/modules/member/assistant";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -35,7 +36,8 @@ export default async function MemberAssistantPage({
   if (!canReadMember(actor)) notFound();
 
   // ชื่อสมาชิกในตารางผลค้นหา resolve ที่นี่ด้วยสิทธิ์ของคนเปิดหน้า (ไม่เข้า prompt ของ AI · ตีกลับรอบ 1)
-  const state = await assistantState(tenantId, typeof sp.conversation === "string" ? sp.conversation : null, {
+  // CRM C5.5-G2 ▸ `?conversation=` ของคนอื่น = บทสนทนาว่าง (ผู้ดู = คนที่เปิดหน้า) ◂
+  const state = await assistantState(tenantId, typeof sp.conversation === "string" ? sp.conversation : null, aiMemberActor(tenantId, auth.user.id, auth.active), {
     systemId: id,
     actor,
     userId: auth.user.id,

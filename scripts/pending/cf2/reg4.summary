@@ -1,0 +1,8 @@
+pending/cf2/review/probe-cf2-review-r2 exit=0 JSON_SUMMARY {"total":10,"passed":10,"findings":[]}
+qc-crm-c3.5 exit=0 JSON_SUMMARY {"total":67,"passed":67,"findings":[]}
+qc-crm-c2.5 exit=1 JSON_SUMMARY {"total":105,"passed":104,"findings":[{"id":"C2.5-U.5","sev":"CRITICAL"}]}
+typecheck exit=0 
+fitness exit=0 JSON_SUMMARY {"total":36,"passed":36,"findings":[]}
+fitness-noenv exit=0 JSON_SUMMARY {"total":36,"passed":36,"findings":[]}
+docs-crm exit=0 ✅ docs/api/CRM-API.md ตรงกับทะเบียน (123 op)
+ALLDONE

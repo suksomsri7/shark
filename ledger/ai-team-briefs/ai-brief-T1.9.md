@@ -1,0 +1,27 @@
+# T1.9 — Cross-tenant approval inbox + decide + stale reminders (Opus · server lane)
+Read `ai-brief-COMMON.md` + RESOLUTIONS R-E C9/C21/C26/C33 first. Contract: AI-TEAM-RUN §2 T1.9. Mockups A7 (inbox, filters, cards with risk tags), D8 (approver view counts, "เกิน ฿X ส่งต่อเจ้าของ"), C8 (rules: threshold, 4 h reminder).
+
+## Verified facts (REVIEW §2.1, §5)
+- `executeProposal(m: MembershipCtx, ctx, id, { confirm2x?, userId? })` `proposals.ts:363` (checks visibility `:393`, `assertCan(m, KIND_ACCESS[kind])` `:417`, claim PENDING→EXECUTED `:439`, dispatch `:447`); `rejectProposal(ctx: ConvCtx, id)` `:350` (no actor/reason stored — T1.1 added `decidedById decidedAt`; a `note` goes to `resultNote` or `AiTeachNote` in T4.1 — here store reason in `resultNote` prefixed `REJECT:`).
+- `membershipCan(m, q, userId)` `tool-access.ts:163`; `kindAccessOf(kind)` `proposals.ts:468`; `classOfKind` (T1.6).
+- Approval policies: `resolvePolicy(ctx, { entityType, unitId?, systemId?, amountSatang? }, tx?)` `modules/approval/service.ts:140` (facade `@/lib/modules/approval`), `ApprovalPolicy.thresholdSatang`, `ApprovalStep.approverRole MANAGER|OWNER` — read-only use with `entityType: "ai.<kind>"`; fallback `entityType` of the underlying document (e.g. `AccountDocument` for `account.*` quotation kinds) so existing shop policies apply.
+- `AiSettings` columns `defaultApproverUserId`, `undoWindowSec`, `teamPausedUntil` (T1.1); add `approvalStaleHours Int?` **no** — keep 4 h in `packs.ts` constant `APPROVAL_STALE_HOURS = 4` unless a policy says otherwise (no new column).
+- Notifications: `AppNotification` create directly (28 call sites do), `sendPushToUser(userId, msg, {tenantId?})` `core/push.ts:145`.
+- Mobile multi-tenant: `mobileUser(req)` `auth.ts:53` gives the user; memberships via `Membership` with `acceptedAt ≠ null` — `requireMobileUser` helper lands in T1.10; this WO delivers the service.
+
+## Deliverables (`src/lib/ai/team/inbox.ts` + `scripts/ai-team-cron.mts`)
+- `listPendingForUser(userId, { tenantId?, filter: "ALL"|"MONEY"|"CUSTOMER"|"POST", cursor? }) → InboxRow[]` — for each accepted membership (or the given tenant): proposals `status PENDING` whose conversation is an `e~` room with `canSeeTask(userId)` and `membershipCan(m, kindAccessOf(kind), userId)`; `InboxRow = { tenantId, tenantName, proposalId, conversationId, aiEmployee: { id, name, positionLabelTh, orbColor }, kind, class: classOfKind, summary, amountSatang?, riskTags: string[], needsOwner: boolean, createdAt }`; `amountSatang` from `amountOfKind(kind, payload)` (new helper in `kind-class.ts`: reads `payload.amountSatang | totalSatang | lines Σ` for account/crm/member kinds; null otherwise); `needsOwner` = policy resolved with amount has a step `approverRole OWNER` and viewer is not OWNER; `riskTags` v1 rules: `price_up_vs_last` (account PO/expense amount > 110 % of last same-vendor doc — through the account facade if a lookup exists, else skip), `discount_over_policy` (crm discount > tenant cap), `coupon_offered` (member voucher kinds) — each rule a pure function over payload + a facade read; tags are i18n keys.
+- `decide(tenantCtx, userId, proposalId, decision: "APPROVE"|"REJECT", { note?, edits? })` — loads the row within `tenantId`; APPROVE → `executeProposal(membershipOf(user, tenant), ctx, id, { userId })` (never `confirm2x` from the inbox; DESTRUCTIVE kinds return `needsSecondConfirm` and the app shows the 2-step button → second call passes `confirm2x: true` explicitly from the client); REJECT → `rejectProposal` + `decidedById/decidedAt` + `resultNote "REJECT:<note>"`; `edits` (v1: `amountSatang`, `text`) applied to `payload` before execute **only for kinds whose payload schema allows it** (account quotation lines total, chat reply text) — else refused `edit_not_supported`; writes `decidedById/decidedAt` on APPROVE too; `AiActionLog{ mode DRAFT, decidedById, kind, amountSatang }`.
+- `countToday(userId, tenantId) → { approved, rejected }` (BKK day).
+- `remindStaleApprovals(now)` in `scripts/ai-team-cron.mts` (runner script with `--job=stale` and lease via `pg_try_advisory_lock`): proposals PENDING older than 4 h without a reminder (`AiActionLog`? no — use `resultNote` marker `REMINDED#<ts>` consistent with CRM's `WORKING#` convention, or a `AiProposal.remindedAt`? **no new column** → marker in `resultNote`) → notify all users who can confirm it; older than 8 h and not yet escalated → notify OWNERs once (marker `ESCALATED#`).
+- Facade exports + `src/lib/actions/ai-team.ts` actions for the web inbox (list/decide).
+
+## Files you own
+`src/lib/ai/team/inbox.ts`, `src/lib/ai/team/kind-class.ts` (`amountOfKind` + riskTags helpers), `scripts/ai-team-cron.mts`, hunk in `src/lib/ai/proposals.ts#rejectProposal` (decidedById/decidedAt/resultNote), `src/lib/actions/ai-team.ts`.
+
+## Acceptance (oracle `qc-ai-t1.9`)
+S1 cross-tenant list matrix · S2 filters by class · S3 decide outcomes + unauthorised keeps PENDING · S4 X3 two approvers → one execute · S5 needsOwner from policy threshold · S6 X5 reminders (overlap, 4 h, 8 h, once) · S7 countToday · S8 row tenant used for checks · S9 X8 DTO without PII (summary from the proposal `summary` field is already short; names truncated to first name + initial). Regressions: `qc-approval` `qc-approval-wiring` `qc-ai-proposals` `qc-crm-c1.11`.
+
+## Controller rulings
+- The inbox never shows legacy `u~` rooms' proposals of other users (G2); own `u~` proposals appear for the user themselves.
+- Reminder channels: in-app + push only (LINE/e-mail = T2.11 prefs + facade availability).

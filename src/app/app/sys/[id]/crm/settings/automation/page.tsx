@@ -59,7 +59,11 @@ export default async function CrmAutomationPage({ params }: { params: Promise<{ 
 
   const conditionFields: { value: string; label: string }[] = [];
   for (const prefix of ["c", "co", "d"] as const) {
-    for (const [col, label] of Object.entries(CRM_CONDITION_FIELDS[prefix])) conditionFields.push({ value: `${prefix}.${col}`, label: `${PREFIX_LABEL[prefix]} · ${label}` });
+    for (const [col, label] of Object.entries(CRM_CONDITION_FIELDS[prefix])) {
+      // CRM C5.4-E ▸ L6-M5: "คะแนนบริษัท" ยังไม่มีตัวเขียน (= 0 ทุกบริษัท) ⇒ ไม่ให้เลือกในตัวสร้างกฎใหม่ (กฎเดิมที่ใช้อยู่ยังตรวจผ่านเหมือนเดิม) ◂
+      if (prefix === "co" && col === "score") continue;
+      conditionFields.push({ value: `${prefix}.${col}`, label: `${PREFIX_LABEL[prefix]} · ${label}` });
+    }
   }
   for (const f of opts.contactFields) conditionFields.push({ value: `f.${f.key}`, label: `ผู้ติดต่อ · ${f.label} (ฟิลด์กำหนดเอง)` });
   for (const o of opts.objects) conditionFields.push({ value: `o.${o.key}`, label: `มี${o.label}` });

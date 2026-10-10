@@ -55,7 +55,7 @@ Conventions that apply to every operation:
 9. A board the key cannot see answers 404 `not_found`, never 403 - the API never confirms that a private board exists.
 10. Rate limits are per key and per class: 300 reads and 60 writes per minute. A 429 response carries `Retry-After`; successful responses carry `X-RateLimit-Remaining`.
 11. Some list operations can also render CSV: send `Accept: text/csv` and, when the operation lists `text/csv` under its 200 response, you get `text/csv; charset=utf-8` with a UTF-8 BOM and `Content-Disposition: attachment` instead of the JSON envelope. Every cell is safe against spreadsheet formula injection.
-12. Outgoing webhooks. The shop can subscribe an endpoint to any of these events: `kanban.card.created`, `kanban.card.moved`, `kanban.card.assigned`, `kanban.card.completed`, `kanban.card.due_soon`, `kanban.card.overdue`, `kanban.checklist.completed`, `kanban.comment.added`, `kanban.card.archived`. Each delivery is `POST` with `X-Shark-Event`, a body of `{ type, payload, sentAt }` and header `X-Shark-Signature` = HMAC-SHA256 of the raw body with the endpoint secret, lowercase hex. Delivery is at least once (5 retries), so handlers must be idempotent. Full list with one example body per event: docs/api/KANBAN-API.md, section Webhooks.
+12. Outgoing webhooks. The shop can subscribe an endpoint to any of these events: `kanban.card.created`, `kanban.card.moved`, `kanban.card.assigned`, `kanban.card.completed`, `kanban.card.due_soon`, `kanban.card.overdue`, `kanban.checklist.completed`, `kanban.comment.added`, `kanban.card.archived`. Each delivery is `POST` with `X-Shark-Event`, a body of `{ id, type, payload, sentAt }` and header `X-Shark-Signature` = HMAC-SHA256 of the raw body with the endpoint secret, lowercase hex. Delivery is at least once (5 retries), so handlers must be idempotent. `id` (also sent as header `X-Shark-Event-Id`) is the event id and stays the same on every retry of that event - use it to drop duplicates. Redirects (3xx) are not followed and count as a failed delivery: register the final URL. Full list with one example body per event: docs/api/KANBAN-API.md, section Webhooks.
 
 ### Shapes of a reply
 
@@ -93,6 +93,7 @@ Branch on `error.code`, never on the message text. The list is shared by every S
 | `forbidden` | 403 | The operation is refused by a business rule, not by the scope check: the key's board role is too low, the key has no owning user (comments, `my-tasks`), or it asked for someone else's task inbox. | Read `message_en`. A wider bundle (`kanban-admin`) or a key created by the right user usually fixes it. |
 | `unprocessable` | 422 | The request was understood but cannot be completed as asked, for example archiving a column that still holds cards. | Read `message_en` and `message_th`; the Thai message is safe to show to the shop owner. |
 | `upstream_unavailable` | 503 | An external service an operation depends on is not configured or not reachable right now. | Retry later; this is not caused by the request itself. |
+| `idempotency_outcome_unknown` | 409 | A temporary database or network failure hit the request after it had started, so it is unknown whether it took effect. The key is kept in this state until it expires (24 h); retries with the same key return this answer and never run the request again. | Check whether the record exists (read or list it). If it does not, send the request again with a NEW `Idempotency-Key`; never reuse this key for a retry. |
 
 ## Operations
 
@@ -1713,11 +1714,13 @@ Every event below fires wherever the change came from - a person dragging a card
 | --- | --- |
 | `X-Shark-Event` | The event type, for example `kanban.card.moved`. |
 | `X-Shark-Signature` | `HMAC-SHA256(secret, raw request body)` as lowercase hex. |
+| `X-Shark-Event-Id` | The event id (same as `id` in the body). It stays the same on every retry of that event - store it and drop duplicates. |
 
-The body is always the same three fields:
+The body is always the same four fields (`id` = the event id, see `X-Shark-Event-Id`):
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "kanban.card.moved",
   "payload": {
     "cardId": "cmf1crd0001",
@@ -1746,7 +1749,7 @@ export function handleSharkWebhook(rawBody: Buffer, headers: Record<string, stri
   if (got.length !== expected.length || !timingSafeEqual(Buffer.from(got), Buffer.from(expected))) {
     return { status: 401 };
   }
-  const event = JSON.parse(rawBody.toString("utf8")) as { type: string; payload: unknown; sentAt: string };
+  const event = JSON.parse(rawBody.toString("utf8")) as { id: string; type: string; payload: unknown; sentAt: string };
   // Answer 2xx fast, then do the work. Anything else is retried up to 5 times.
   void enqueue(event);
   return { status: 200 };
@@ -1773,6 +1776,7 @@ A card was created, whichever way it was created (a person on the board, this RE
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "kanban.card.created",
   "payload": {
     "cardId": "cmf1crd0001",
@@ -1792,6 +1796,7 @@ A card moved to another column. Reordering inside the same column does not fire,
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "kanban.card.moved",
   "payload": {
     "cardId": "cmf1crd0001",
@@ -1811,6 +1816,7 @@ Somebody became responsible for a card. One delivery per person added, so a card
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "kanban.card.assigned",
   "payload": {
     "cardId": "cmf1crd0001",
@@ -1827,6 +1833,7 @@ A card entered the column flagged as the done column and got its `completedAt`. 
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "kanban.card.completed",
   "payload": {
     "cardId": "cmf1crd0001",
@@ -1847,6 +1854,7 @@ A card is approaching its due date. Declared so integrators can build their side
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "kanban.card.due_soon",
   "payload": {
     "cardId": "cmf1crd0001",
@@ -1868,6 +1876,7 @@ A card passed its due date. Same as above: declared now, delivered once the remi
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "kanban.card.overdue",
   "payload": {
     "cardId": "cmf1crd0001",
@@ -1885,6 +1894,7 @@ The last open item of one checklist was ticked off. Fires on the transition only
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "kanban.checklist.completed",
   "payload": {
     "checklistId": "cmf1chk0001",
@@ -1900,6 +1910,7 @@ A new comment was written on a card. `mentions` holds the user ids mentioned wit
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "kanban.comment.added",
   "payload": {
     "commentId": "cmf1cmt0001",
@@ -1920,6 +1931,7 @@ A card was archived. Archiving, restoring and archiving again produces one deliv
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "kanban.card.archived",
   "payload": {
     "cardId": "cmf1crd0001",

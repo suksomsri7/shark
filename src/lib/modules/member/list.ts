@@ -149,8 +149,9 @@ function displayNameOf(r: Pick<CustomerRow, "name" | "firstName" | "lastName" | 
   return r.name ?? ([r.firstName, r.lastName].filter(Boolean).join(" ") || r.memberCode || "");
 }
 
-/** ขอบเขตสาขาของ actor (§6.1) — homeUnitId ในสิทธิ์ตน หรือเคยมีกิจกรรมที่สาขาตน */
-function actorScopeWhere(actor: MemberActor): Prisma.CustomerWhereInput | null {
+/** ขอบเขตสาขาของ actor (§6.1) — homeUnitId ในสิทธิ์ตน หรือเคยมีกิจกรรมที่สาขาตน
+ *  CRM C5.5-fix14 ▸ export ให้ `service.ts memberLinkScope` (การอ่านสมาชิกตาม Party จากโมดูลอื่น) ใช้ตัวตัดสินเดียวกับหน้ารายชื่อ ◂ */
+export function actorScopeWhere(actor: MemberActor): Prisma.CustomerWhereInput | null {
   if (!isUnitScoped(actor)) return null;
   // M3.7 — นับเฉพาะแถว "ซื้อ/จอง/ใช้บริการ" (VISIT_SCOPE_MODULES) ด่านเดียวกับ profile.assertVisible
   return { OR: [{ homeUnitId: { in: actor.unitAccess } }, { activities: { some: { unitId: { in: actor.unitAccess }, module: { in: [...VISIT_SCOPE_MODULES] } } } }] };

@@ -173,6 +173,32 @@ function parseYmd(raw: string): Date | null {
   return dt;
 }
 
+/**
+ * C5.4 (L6-m2): ปี ≥ 2400 ในรูป ISO = ปี **พ.ศ.** ที่พิมพ์ผิดช่อง (ค.ศ. 2400 ยังอีก 370 กว่าปี) — เดิมรับไว้เป็น ค.ศ. 2569
+ * ⇒ กฎ "ต่อสัญญา/วันหมดอายุ" ไม่ทำงาน และจอแสดงปี 3112 · **ปฏิเสธ** พร้อมบอกปี ค.ศ. ที่ถูก (ไม่แปลงเงียบ ๆ:
+ * ช่องนี้เป็นสัญญา ISO ของ API/นำเข้าด้วย — เดาแทนผู้ใช้แล้วผิดตัวเดียวแก้ย้อนยาก) · ตรวจรูปแบบแล้วจึงเรียก
+ */
+const BUDDHIST_YEAR_MIN = 2400;
+/**
+ * มติผู้คุมงานรอบ 2: ตรวจเฉพาะค่าที่ **เปลี่ยน** — แถวเก่าที่เก็บปี พ.ศ. ไว้ก่อน C5.4 ต้องไม่ทำให้ฟอร์มที่ส่งค่าเดิมกลับมา
+ * (แก้ช่องอื่น) บันทึกไม่ได้ · ผู้ใช้เปลี่ยนค่าช่องนั้นเมื่อไร ค่าใหม่ต้องเป็น ค.ศ.
+ */
+function assertChangedDatesNotBuddhist(pending: { field: MemberField; value: MemberFieldValueInput; changed: boolean }[]): void {
+  for (const p of pending) {
+    if (!p.changed || (p.field.type !== "DATE" && p.field.type !== "DATETIME") || typeof p.value !== "string") continue;
+    assertNotBuddhistYear(p.field.label, p.value);
+  }
+}
+function assertNotBuddhistYear(label: string, text: string): void {
+  const year = Number(text.slice(0, 4));
+  if (Number.isInteger(year) && year >= BUDDHIST_YEAR_MIN) {
+    const ad = year - 543;
+    throw new MemberInputError(
+      `ค่าของฟิลด์ "${label}" ใส่ปีเป็น พ.ศ. ${year} — ช่องวันที่ใช้ปี ค.ศ. กรุณาใส่ ${ad}${text.slice(4, 10)} แทน`,
+    );
+  }
+}
+
 /** Date → "YYYY-MM-DD" อ่านด้วย getUTC* เสมอ (ค่าที่เก็บคือเที่ยงคืน UTC ของวันนั้น) */
 function ymdOf(d: Date): string {
   return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`;
@@ -1532,6 +1558,7 @@ export async function setFieldValues(
       : readCell(field.type, existingBy.get(field.id) ?? null);
     return { field, value, oldValue, changed: !sameValue(oldValue, value) };
   });
+  assertChangedDatesNotBuddhist(pending); // C5.4 (L6-m2)
   const changedWrites = pending.filter((p) => p.changed);
   if (changedWrites.length === 0) return { changed: [] };
 
@@ -2292,6 +2319,7 @@ async function setRecordValues(
       const oldValue = spec ? columnToValue(field, row?.[spec.key]) : readCell(field.type, existingBy.get(field.id) ?? null);
       return { field, value, spec, oldValue, changed: !sameValue(oldValue, value) };
     });
+    assertChangedDatesNotBuddhist(pending); // C5.4 (L6-m2)
     const changedWrites = pending.filter((p) => p.changed);
     if (changedWrites.length === 0) return;
 
@@ -2358,20 +2386,50 @@ export async function lockRecordForFieldWrite(tx: Prisma.TransactionClient, reco
  * key ไม่รู้จัก / ไม่เปิดกรอง / ของวัตถุอื่น = ปฏิเสธ (VALIDATION) — ไม่มีทาง "คืนทุกแถว" เพราะตัวกรองหาย
  */
 async function recordFilterWhere(ctx: FieldCtx, scope: CrmScope, filters: Record<string, string>, db: Client): Promise<CrmRecordWhere> {
+  const plan = await planRecordFilters(ctx, scope, filters, db);
+  if (plan.length === 0) return {};
+  const scopeWhere = recordScopeWhere(ctx, scope);
+  const AND: Record<string, unknown>[] = [];
+  for (const step of plan) {
+    if (step.kind === "system") {
+      AND.push({ AND: [scopeWhere, step.where as Record<string, unknown>] });
+      continue;
+    }
+    const rows = await db.customRecordValue.findMany({
+      where: { tenantId: ctx.tenantId, recordType: scope.recordType, fieldId: step.field.id, ...(step.where as Prisma.CustomRecordValueWhereInput) },
+      select: { recordId: true },
+    });
+    const ids = [...new Set(rows.map((r) => r.recordId))];
+    AND.push(step.negate ? { AND: [scopeWhere, { id: { notIn: ids } }] } : { id: { in: ids } });
+  }
+  return { AND } as CrmRecordWhere;
+}
+
+function recordScopeWhere(ctx: FieldCtx, scope: CrmScope): Record<string, unknown> {
+  return scope.kind === "custom"
+    ? { tenantId: ctx.tenantId, systemId: ctx.systemId, objectId: scope.objectId }
+    : { tenantId: ctx.tenantId, systemId: ctx.systemId };
+}
+
+type RecordFilterStep =
+  | { kind: "system"; field: MemberField; column: string; where: Prisma.CustomerWhereInput }
+  | { kind: "value"; field: MemberField; where: Prisma.MemberFieldValueWhereInput; negate: boolean };
+
+/**
+ * ตรวจตัวกรอง f.<key> ของวัตถุ CRM ทั้งชุด (ลำดับ/ข้อความผิดพลาดเดิมทุกตัว) → ขั้นของตัวกรองแต่ละตัว
+ * ใช้ร่วมกันโดยตัวแปลงสองแบบ: where ของ Prisma (`recordFilterWhere` เดิม) และ SQL ของแถว (`fieldFilterSql` — C5.1-fix)
+ */
+async function planRecordFilters(ctx: FieldCtx, scope: CrmScope, filters: Record<string, string>, db: Client): Promise<RecordFilterStep[]> {
   const keys = Object.keys(filters ?? {});
-  if (keys.length === 0) return {};
+  if (keys.length === 0) return [];
   const fields = await db.memberField.findMany({ where: { ...defWhere(ctx, scope), key: { in: keys } } });
   const byKey = new Map(fields.map((f) => [f.key, f]));
-  const scopeWhere: Record<string, unknown> =
-    scope.kind === "custom"
-      ? { tenantId: ctx.tenantId, systemId: ctx.systemId, objectId: scope.objectId }
-      : { tenantId: ctx.tenantId, systemId: ctx.systemId };
 
   const sensitiveSections = new Set(
     (await db.memberSection.findMany({ where: { ...defWhere(ctx, scope), sensitive: true }, select: { id: true } })).map((r) => r.id),
   );
 
-  const AND: Record<string, unknown>[] = [];
+  const out: RecordFilterStep[] = [];
   for (const key of keys) {
     const field = byKey.get(key);
     // AUDIT-CLASS X1: ค้นฟิลด์ด้วย tenant + ระบบ CRM + วัตถุ ⇒ key ของระบบอื่น/วัตถุอื่น = ไม่รู้จัก
@@ -2394,19 +2452,119 @@ async function recordFilterWhere(ctx: FieldCtx, scope: CrmScope, filters: Record
           throw new MemberInputError(`ค่า "${off.join(", ")}" ไม่อยู่ในตัวเลือกของฟิลด์ "${field.label}" — เลือกได้ ${choices.map((c) => c.value).join(" / ")}`);
         }
       }
-      AND.push({ AND: [scopeWhere, systemWhereOf(field, spec.key, raw) as Record<string, unknown>] });
+      out.push({ kind: "system", field, column: spec.key, where: systemWhereOf(field, spec.key, raw) });
       continue;
     }
-
     const { where, negate } = valueWhereOf(field, raw);
-    const rows = await db.customRecordValue.findMany({
-      where: { tenantId: ctx.tenantId, recordType: scope.recordType, fieldId: field.id, ...(where as Prisma.CustomRecordValueWhereInput) },
-      select: { recordId: true },
-    });
-    const ids = [...new Set(rows.map((r) => r.recordId))];
-    AND.push(negate ? { AND: [scopeWhere, { id: { notIn: ids } }] } : { id: { in: ids } });
+    out.push({ kind: "value", field, where, negate });
   }
-  return { AND } as CrmRecordWhere;
+  return out;
+}
+
+// ── C5.1-fix ▸ ตัวกรองเดียวกันในรูป SQL (EXISTS ในฐานข้อมูล — ไม่มีรายการ id · ไม่ติดเพดาน bind 32,766 ของ Postgres) ──
+//   ตัวแปลงรับ "where ที่ valueWhereOf/systemWhereOf สร้าง" แล้วเขียนเป็น SQL ตามรูปที่ Prisma 7 สร้างจริง (ตรวจแล้ว C5.1-fix):
+//   contains = `::text LIKE ('%' || $ || '%')` (ไม่ escape ตัวแทน — เหมือน Prisma) · hasSome = `&&` · in บน enum = เทียบเป็นข้อความ
+//   ⇒ ความหมายเท่าตัวกรองเดิมทุกชนิด (ข้อสอบเทียบผล: scripts/qc-crm-c51fix-equiv.mts)
+
+const SQL_IDENT = /^[A-Za-z][A-Za-z0-9_]{0,62}$/;
+const sqlTs = (d: Date): Prisma.Sql => Prisma.sql`(${d.toISOString()}::timestamptz AT TIME ZONE 'UTC')`;
+
+function sqlScalar(v: unknown): Prisma.Sql {
+  if (v instanceof Date) return sqlTs(v);
+  if (typeof v === "number") return Prisma.sql`${String(v)}::numeric`;
+  if (typeof v === "boolean") return v ? Prisma.sql`TRUE` : Prisma.sql`FALSE`;
+  if (typeof v === "string") return Prisma.sql`${v}`;
+  throw new MemberInputError("ตัวกรองนี้ใช้กับฐานข้อมูลไม่ได้ — เลือกตัวกรองใหม่");
+}
+
+/**
+ * ชนิด enum ของคอลัมน์ระบบที่เป็นตัวเลือก (SELECT บนคอลัมน์ enum) — เทียบเป็นชนิด enum ตรง ๆ (`= ANY(CAST(… AS "Enum"[]))`) ไม่ใช่ `::text`
+ * ⇒ planner ใช้สถิติของคอลัมน์ได้ (นิพจน์ `::text` ได้ค่าเดาตายตัว 0.5% ทำให้เลือกแผนผิด — วัดแล้ว C5.1-fix)
+ */
+const CRM_ENUM_COLUMN: Readonly<Record<string, string>> = {
+  "contact.leadStatus": "CrmLeadStatus",
+  "contact.sourceKind": "MemberSource",
+  "company.size": "CrmCompanySize",
+  "deal.forecastCategory": "CrmForecastCategory",
+  "deal.sourceKind": "MemberSource",
+};
+
+/** เงื่อนไขของคอลัมน์ 1 ตัว ตามรูปของ where ที่ valueWhereOf / systemWhereOf คืน */
+function columnCondSql(col: Prisma.Sql, cond: unknown, enumType?: string): Prisma.Sql {
+  if (cond === null) return Prisma.sql`${col} IS NULL`;
+  if (typeof cond !== "object" || cond instanceof Date) return Prisma.sql`${col} = ${sqlScalar(cond)}`;
+  const parts: Prisma.Sql[] = [];
+  for (const [op, v] of Object.entries(cond as Record<string, unknown>)) {
+    if (v === undefined) continue;
+    if (op === "gte") parts.push(Prisma.sql`${col} >= ${sqlScalar(v)}`);
+    else if (op === "gt") parts.push(Prisma.sql`${col} > ${sqlScalar(v)}`);
+    else if (op === "lte") parts.push(Prisma.sql`${col} <= ${sqlScalar(v)}`);
+    else if (op === "lt") parts.push(Prisma.sql`${col} < ${sqlScalar(v)}`);
+    else if (op === "equals") parts.push(v === null ? Prisma.sql`${col} IS NULL` : Prisma.sql`${col} = ${sqlScalar(v)}`);
+    else if (op === "in") {
+      parts.push(
+        enumType && SQL_IDENT.test(enumType)
+          ? Prisma.sql`${col} = ANY(CAST(${(v as unknown[]).map(String)} AS ${Prisma.raw(`"${enumType}"[]`)}))`
+          : Prisma.sql`${col}::text = ANY(${(v as unknown[]).map(String)}::text[])`,
+      );
+    }
+    else if (op === "not" && v === null) parts.push(Prisma.sql`${col} IS NOT NULL`);
+    else if (op === "contains") parts.push(Prisma.sql`${col}::text LIKE ('%' || ${String(v)} || '%')`);
+    else if (op === "hasSome") parts.push(Prisma.sql`${col} && ${(v as unknown[]).map(String)}::text[]`);
+    else if (op === "array_contains") parts.push(Prisma.sql`${col}::jsonb @> ${JSON.stringify(v)}::jsonb`);
+    else throw new MemberInputError("ตัวกรองนี้ใช้กับฐานข้อมูลไม่ได้ — เลือกตัวกรองใหม่");
+  }
+  return parts.length ? Prisma.sql`(${Prisma.join(parts, " AND ")})` : Prisma.sql`TRUE`;
+}
+
+/** where ของ Prisma (รูปที่สร้างในไฟล์นี้: คอลัมน์ · OR · NOT) → SQL บนแถว alias */
+function whereObjSql(alias: string, where: unknown, enumOf: (col: string) => string | undefined = () => undefined): Prisma.Sql {
+  if (!where || typeof where !== "object") return Prisma.sql`TRUE`;
+  const parts: Prisma.Sql[] = [];
+  for (const [k, v] of Object.entries(where as Record<string, unknown>)) {
+    if (k === "OR") parts.push(Prisma.sql`(${Prisma.join((v as unknown[]).map((x) => whereObjSql(alias, x, enumOf)), " OR ")})`);
+    else if (k === "AND") parts.push(Prisma.sql`(${Prisma.join((v as unknown[]).map((x) => whereObjSql(alias, x, enumOf)), " AND ")})`);
+    else if (k === "NOT") parts.push(Prisma.sql`NOT (${whereObjSql(alias, v, enumOf)})`);
+    else {
+      if (!SQL_IDENT.test(k)) throw new MemberInputError("ตัวกรองนี้ใช้กับฐานข้อมูลไม่ได้ — เลือกตัวกรองใหม่");
+      parts.push(columnCondSql(Prisma.raw(`${alias}."${k}"`), v, enumOf(k)));
+    }
+  }
+  return parts.length ? Prisma.sql`(${Prisma.join(parts, " AND ")})` : Prisma.sql`TRUE`;
+}
+
+async function recordFilterSql(ctx: FieldCtx, scope: CrmScope, filters: Record<string, string>, alias: string, db: Client): Promise<Prisma.Sql> {
+  if (!/^[a-z][a-z0-9_]{0,15}$/.test(alias)) throw new MemberInputError("ตัวกรองนี้ใช้กับฐานข้อมูลไม่ได้ — เลือกตัวกรองใหม่");
+  const plan = await planRecordFilters(ctx, scope, filters, db);
+  if (plan.length === 0) return Prisma.sql`TRUE`;
+  const A = Prisma.raw(alias);
+  const scopeSql =
+    scope.kind === "custom"
+      ? Prisma.sql`${A}."tenantId" = ${ctx.tenantId} AND ${A}."systemId" = ${ctx.systemId} AND ${A}."objectId" = ${scope.objectId}`
+      : Prisma.sql`${A}."tenantId" = ${ctx.tenantId} AND ${A}."systemId" = ${ctx.systemId}`;
+  const parts: Prisma.Sql[] = [];
+  for (const step of plan) {
+    if (step.kind === "system") {
+      parts.push(Prisma.sql`(${scopeSql} AND ${whereObjSql(alias, step.where, (col) => CRM_ENUM_COLUMN[`${scope.objectKey}.${col}`])})`);
+      continue;
+    }
+    const exists = Prisma.sql`EXISTS (SELECT 1 FROM "CustomRecordValue" fv
+      WHERE fv."recordId" = ${A}."id" AND fv."tenantId" = ${ctx.tenantId} AND fv."recordType" = CAST(${scope.recordType} AS "CustomRecordType")
+        AND fv."fieldId" = ${step.field.id} AND ${whereObjSql("fv", step.where)})`;
+    parts.push(step.negate ? Prisma.sql`(${scopeSql} AND NOT ${exists})` : exists);
+  }
+  return Prisma.sql`(${Prisma.join(parts, " AND ")})`;
+}
+
+/**
+ * C5.1-fix ▸ ตัวกรอง `f.<key>` ของวัตถุ CRM (ผู้ติดต่อ · บริษัท · ดีล · วัตถุกำหนดเอง) ในรูป **SQL ของแถว alias** — ตรวจ/ข้อความผิดพลาด
+ * เดียวกับ `fieldFilterWhere` ทุกตัว แต่ไม่ดึงรายการ id ออกมา (เดิม `id IN (…)` ⇒ P2029 เมื่อเกิน 32,766 แถว) · objectKey "customer" = ปฏิเสธ
+ */
+export async function fieldFilterSql(ctx: FieldCtx & { objectKey: string }, filters: Record<string, string>, alias: string, tx?: Client): Promise<Prisma.Sql> {
+  const db = clientOf(tx);
+  const scope = await resolveScope(ctx, db);
+  if (scope.kind === "customer") throw new MemberInputError("ตัวกรองแบบ SQL ใช้ได้กับวัตถุของ CRM เท่านั้น");
+  return recordFilterSql(ctx, scope, filters ?? {}, alias, db);
 }
 
 /**

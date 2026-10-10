@@ -191,6 +191,10 @@ export async function legacyMaxSeq(
   reset: SeqReset,
   year: string,
   month: string,
+  /** CRM C5.4-N ▸ (N-1) นับเฉพาะเลขของ "ชุดเดียวกัน" — regex จาก `seriesMatcher` (กลุ่มที่ 1 = ลำดับ)
+   *  เดิมนับทุกเอกสารชนิดเดียวกันในงวด ⇒ WHT_CERT ฝั่งลูกค้าหัก (WTI-…) ถูกนับเข้าเลข 50 ทวิ (WHT-…) ⇒ 50 ทวิ ใบแรกของเดือนได้เลข 21
+   *  ไม่ส่ง = พฤติกรรมเดิม (ตัวเลขท้ายของทุกเลข) ◂ */
+  series?: RegExp | null,
 ): Promise<number> {
   const where: Record<string, unknown> = { systemId, docType, docNo: { not: null } };
   if (reset !== "NONE") {
@@ -209,13 +213,76 @@ export async function legacyMaxSeq(
   });
   let max = 0;
   for (const r of rows) {
-    const m = /(\d+)\s*$/.exec(r.docNo ?? "");
+    const m = (series ?? /(\d+)\s*$/).exec(r.docNo ?? "");
     if (!m) continue;
     const n = Number.parseInt(m[1], 10);
     if (Number.isFinite(n) && n > max && n < 1_000_000) max = n;
   }
   return max;
 }
+
+const reEscape = (v: string) => v.replace(/[.*+?^${}()|[\]\\/-]/g, "\\$&");
+
+/**
+ * CRM C5.4-N ▸ (N-1) regex ของ "ชุดเลข" ที่รูปแบบนี้ออกในงวดนี้ — ใช้กรองเลขเดิมตอนเริ่มตัวนับใหม่ (`legacyMaxSeq`)
+ *   ตัวแปรที่ละเอียดกว่างวดรีเซ็ต (วัน · เดือนเมื่อรีเซ็ตรายปี · ปีเมื่อไม่รีเซ็ต) = ตัวเลขอะไรก็ได้ ⇒ ทุกเลขที่รูปแบบนี้ออกในงวดนี้ match เสมอ
+ *   (ไม่มีทางพลาดเลขที่ชนได้) · ลำดับตัวแรก = กลุ่มที่ 1 · ไม่มีช่องลำดับในรูปแบบ = null (ใช้พฤติกรรมเดิม) ◂
+ */
+export function seriesMatcher(
+  pattern: string,
+  vars: { prefix: string; date: Date; branchCode?: string | null },
+  reset: SeqReset,
+): RegExp | null {
+  const { year, month } = bkkParts(vars.date);
+  const branch = (vars.branchCode ?? "").trim() || "00000";
+  let out = "";
+  let seq = false;
+  let last = 0;
+  const tok = /\{([^{}]*)\}/g;
+  for (let m = tok.exec(pattern); m; m = tok.exec(pattern)) {
+    out += reEscape(pattern.slice(last, m.index));
+    last = m.index + m[0].length;
+    const t = m[1].trim();
+    if (/^0+$/.test(t) || t === "SEQ") {
+      out += seq ? "\\d+" : "(\\d+)";
+      seq = true;
+      continue;
+    }
+    switch (t) {
+      case "ปี":
+      case "YYYY":
+        out += reset === "NONE" ? "\\d{4}" : year;
+        break;
+      case "ปีสั้น":
+      case "YY":
+        out += reset === "NONE" ? "\\d{2}" : year.slice(2);
+        break;
+      case "เดือน":
+      case "MM":
+        out += reset === "MONTH" ? month : "\\d{2}";
+        break;
+      case "วัน":
+      case "DD":
+        out += "\\d{2}";
+        break;
+      case "สาขา":
+      case "BR":
+        out += reEscape(branch);
+        break;
+      case "คำนำหน้า":
+      case "PREFIX":
+        out += reEscape(vars.prefix);
+        break;
+      default:
+        out += reEscape(m[0]);
+    }
+  }
+  out += reEscape(pattern.slice(last));
+  return seq ? new RegExp(`^${out}\\s*$`) : null;
+}
+
+const seriesOfCfg = (cfg: ResolvedSeq, date: Date) =>
+  seriesMatcher(cfg.effectivePattern, { prefix: cfg.prefix, date, branchCode: cfg.branchCode }, cfg.reset);
 
 /**
  * จองลำดับถัดไปของ (systemId, docType, periodKey) — **จบใน SQL คำสั่งเดียว**
@@ -271,7 +338,7 @@ export async function issueDocNo(
   });
   const startNo = existing
     ? existing.lastNo + 1
-    : (await legacyMaxSeq(db, input.systemId, input.docType, cfg.reset, year, month)) + 1;
+    : (await legacyMaxSeq(db, input.systemId, input.docType, cfg.reset, year, month, seriesOfCfg(cfg, input.date))) + 1;
   const seq = await reserveSeq(db, {
     tenantId: input.tenantId,
     systemId: input.systemId,
@@ -320,7 +387,7 @@ export async function peekDocNo(
   });
   const next = existing
     ? existing.lastNo + 1
-    : (await legacyMaxSeq(db, input.systemId, input.docType, cfg.reset, year, month)) + 1;
+    : (await legacyMaxSeq(db, input.systemId, input.docType, cfg.reset, year, month, seriesOfCfg(cfg, input.date))) + 1;
   return formatDocNo(cfg.effectivePattern, {
     prefix: cfg.prefix,
     date: input.date,
@@ -355,7 +422,7 @@ export async function setNextNo(
   });
   const used = existing
     ? existing.lastNo
-    : await legacyMaxSeq(db, input.systemId, input.docType, cfg.reset, year, month);
+    : await legacyMaxSeq(db, input.systemId, input.docType, cfg.reset, year, month, seriesOfCfg(cfg, input.date));
   if (input.nextNo <= used)
     return {
       ok: false,
@@ -419,3 +486,162 @@ export async function findSeqGaps(
 
 /** ชนิดของ transaction client ที่ service.ts/expense.ts ส่งเข้ามา (แปลงให้ตรงกับ NumberingDb) */
 export type NumberingTx = Prisma.TransactionClient;
+
+// ═══════════════════ CRM C5.4-N ▸ เลขเอกสารภาษี/ทางกฎหมาย จองที่ "ท้ายธุรกรรม" (LOCK ORDER ขั้น 7 · service.ts หัวไฟล์) ═══════════════════
+//
+// ทำไม: แถวตัวนับ AccountDocSequence = ล็อกแถวที่ถือจนธุรกรรม commit (ต้องเป็นอย่างนั้น — เลขต้องต่อเนื่อง ไม่หายเมื่อย้อนกลับ)
+//   เดิมจองกลางธุรกรรมเงิน (ก่อน/ระหว่างลงบัญชี) ⇒ ชุดรับชำระ 40 ใบ (18 วินาที) ถือแถวตัวนับใบกำกับภาษีทั้ง 18 วินาที
+//   ⇒ ทุกคนที่ออกใบกำกับภาษีของร้านรอ 16–18 วินาที (probe H · oracle N6) และล็อกนี้อยู่กลางลำดับล็อก (เสี่ยงวงจรรอกัน)
+// วิธี: เอกสารที่สร้างในธุรกรรมเงิน (ใบกำกับภาษีอัตโนมัติ · WTI · 50 ทวิ · ใบกำกับภาษีซื้อรอรับ) สร้างด้วย docNo = null แล้ว
+//   `deferDocNo` จดไว้ → ตัวห่อธุรกรรมเรียก `finalizeDocNos(tx)` เป็นคำสั่งสุดท้าย: จองทีละกลุ่ม (ชนิด, งวด) ตามลำดับคงที่
+//   (ลำดับ enum AccountDocType แล้ว periodKey) กลุ่มละ 1 คำสั่ง แล้วประทับเลขตามลำดับที่สร้างด้วย UPDATE เดียว
+//   ⇒ ถือแถวตัวนับแค่ช่วงท้าย (1 UPSERT + 1 UPDATE + commit) · เป็นล็อกสุดท้ายเสมอ ⇒ ไม่มีวงจรรอผ่านตัวนับ
+// ด่าน: `deferDocNo` บนธุรกรรมที่ไม่ได้ `openDocNumbering` = throw (ลืมห่อ = ล้มดัง ๆ ไม่ใช่ใบกำกับภาษีไม่มีเลข)
+// ยังไม่ย้าย (phase 2 · ใบติดตามใน ledger/wo-notes/crm-C5.4-N.md): เลขของตัวเอกสารเองใน issueDocument / issueExpenseDoc (ใช้ issueDocNo)
+
+/** ชุดเลขของเอกสารที่รอเลข — "configured" = ตามตั้งค่าเลขที่เอกสาร (เหมือน issueDocNo) · "wti" = เอกสารภาษีถูกหัก ฝั่งขาย */
+export type DeferredSeries =
+  | { kind: "configured"; docType: AccountDocType; fallbackPrefix: string }
+  | { kind: "wti" };
+
+type PendingDocNo = { docId: string; tenantId: string; systemId: string; date: Date; series: DeferredSeries };
+
+/** ลำดับล็อกของแถวตัวนับ = ลำดับ enum AccountDocType ใน schema (คอมไพล์ล้มถ้า enum มีชนิดใหม่ที่ไม่อยู่ในรายการ) */
+const DOC_TYPE_LOCK_ORDER = [
+  "QUOTATION", "INVOICE", "RECEIPT", "TAX_INVOICE", "TAX_INVOICE_ABB", "DEPOSIT_RECEIPT", "CREDIT_NOTE", "DEBIT_NOTE",
+  "BILLING_NOTE", "PURCHASE", "EXPENSE", "PURCHASE_ORDER", "ASSET_PURCHASE_ORDER", "ASSET_PURCHASE", "PURCHASE_TAX_INVOICE",
+  "DEPOSIT_PAYMENT", "CREDIT_NOTE_RECEIVED", "DEBIT_NOTE_RECEIVED", "COMBINED_PAYMENT", "GOODS_ISSUE", "GOODS_ISSUE_RETURN",
+  "COST_ADJUSTMENT", "WHT_CERT",
+] as const satisfies readonly AccountDocType[];
+type MissingFromLockOrder = Exclude<AccountDocType, (typeof DOC_TYPE_LOCK_ORDER)[number]>;
+const lockOrderIsComplete: MissingFromLockOrder extends never ? true : false = true;
+void lockOrderIsComplete;
+
+const pendingByTx = new WeakMap<object, PendingDocNo[]>();
+
+/** เปิด "ตัวออกเลขท้ายธุรกรรม" ให้ธุรกรรมนี้ — เรียกเป็นคำสั่งแรกของตัวห่อ (คู่กับ finalizeDocNos ท้ายสุด) */
+export function openDocNumbering(tx: NumberingDb): void {
+  if (!pendingByTx.has(tx)) pendingByTx.set(tx, []);
+}
+
+/** จดเอกสารที่เพิ่งสร้าง (docNo = null) ไว้ออกเลขตอนท้ายธุรกรรม */
+export function deferDocNo(
+  tx: NumberingDb,
+  input: { docId: string; tenantId: string; systemId: string; date: Date; series: DeferredSeries },
+): void {
+  const list = pendingByTx.get(tx);
+  if (!list)
+    throw new Error("ระบบออกเลขเอกสารยังไม่พร้อมในรายการนี้ — ไม่มีอะไรถูกบันทึก กรุณาลองใหม่ (C5.4-N: deferDocNo without openDocNumbering)");
+  list.push({ ...input });
+}
+
+type ResolvedPending = PendingDocNo & {
+  docType: AccountDocType;
+  periodKey: string;
+  prefix: string;
+  format: (n: number) => string;
+  series: DeferredSeries;
+  seriesRe: RegExp | null;
+  reset: SeqReset;
+  year: string;
+  month: string;
+};
+
+/**
+ * ออกเลขให้ทุกเอกสารที่ `deferDocNo` จดไว้ในธุรกรรมนี้ — **ต้องเป็นคำสั่งสุดท้ายของธุรกรรม** (หลังจากนี้แตะได้แค่แถวที่ธุรกรรมนี้สร้างเอง/outbox)
+ * คืน docId → docNo (ให้ตัวห่อใส่ในผลลัพธ์ เช่น whtCertNo / certNos)
+ */
+export async function finalizeDocNos(tx: NumberingDb): Promise<Map<string, string>> {
+  const list = pendingByTx.get(tx) ?? [];
+  pendingByTx.set(tx, []);
+  const out = new Map<string, string>();
+  if (list.length === 0) return out;
+
+  // 1) ชุดเลขของแต่ละใบ (อ่านตั้งค่าครั้งเดียวต่อชนิด) — ยังไม่ล็อกอะไร
+  const cfgCache = new Map<string, ResolvedSeq>();
+  const resolved: ResolvedPending[] = [];
+  for (const p of list) {
+    const { year, month } = bkkParts(p.date);
+    if (p.series.kind === "wti") {
+      // เอกสารภาษีถูกหัก ณ ที่จ่าย (ฝั่งขาย) — ตารางเลขรันร่วม คนละ periodKey ("WTI:YYYY-MM") ⇒ ไม่กินเลข 50 ทวิ (WHT-) · เดือนไทย
+      const ym = `${year}${month}`;
+      resolved.push({
+        ...p, docType: "WHT_CERT", periodKey: `WTI:${year}-${month}`, prefix: "WTI",
+        format: (n) => `WTI-${ym}-${String(n).padStart(4, "0")}`,
+        seriesRe: new RegExp(`^WTI-${ym}-(\\d+)\\s*$`), reset: "MONTH", year, month,
+      });
+      continue;
+    }
+    const { docType, fallbackPrefix } = p.series;
+    const ck = `${p.systemId}|${docType}`;
+    let cfg = cfgCache.get(ck);
+    if (!cfg) {
+      cfg = await loadNumberingContext(tx, p.systemId, docType, fallbackPrefix);
+      cfgCache.set(ck, cfg);
+    }
+    const c = cfg;
+    resolved.push({
+      ...p, docType, periodKey: periodKeyOf(c.reset, year, month), prefix: c.prefix,
+      format: (n) => formatDocNo(c.effectivePattern, { prefix: c.prefix, date: p.date, seq: n, branchCode: c.branchCode }),
+      seriesRe: seriesOfCfg(c, p.date), reset: c.reset, year, month,
+    });
+  }
+
+  // 2) กลุ่ม (ระบบ, ชนิด, งวด) เรียงตามลำดับล็อกคงที่ — ลำดับในกลุ่ม = ลำดับที่สร้าง
+  const groups = new Map<string, ResolvedPending[]>();
+  for (const r of resolved) {
+    const k = `${r.systemId}\u0000${r.docType}\u0000${r.periodKey}`;
+    groups.set(k, [...(groups.get(k) ?? []), r]);
+  }
+  const ordered = [...groups.values()].sort((a, b) => {
+    const x = a[0], y = b[0];
+    if (x.systemId !== y.systemId) return x.systemId < y.systemId ? -1 : 1;
+    const dx = DOC_TYPE_LOCK_ORDER.indexOf(x.docType), dy = DOC_TYPE_LOCK_ORDER.indexOf(y.docType);
+    if (dx !== dy) return dx - dy;
+    return x.periodKey < y.periodKey ? -1 : x.periodKey > y.periodKey ? 1 : 0;
+  });
+
+  // 3) จองช่วงเลขกลุ่มละ 1 คำสั่ง (INSERT … ON CONFLICT DO UPDATE lastNo + k) แล้วประทับเลขทั้งหมดด้วย UPDATE เดียว
+  const stamps: [string, string][] = [];
+  for (const g of ordered) {
+    const h = g[0];
+    const k = g.length;
+    // ยังไม่มีแถวของงวดนี้ = งวดใหม่ → เริ่มต่อจากเลขที่ออกไปแล้วจริง "ของชุดเดียวกัน" (N-1) · มีแถวแล้ว = ค่านี้ไม่ถูกใช้ (ON CONFLICT)
+    const existing = await tx.accountDocSequence.findUnique({
+      where: { systemId_docType_periodKey: { systemId: h.systemId, docType: h.docType, periodKey: h.periodKey } },
+      select: { lastNo: true },
+    });
+    const startNo = existing ? 0 : (await legacyMaxSeq(tx, h.systemId, h.docType, h.reset, h.year, h.month, h.seriesRe)) + 1;
+    const rows = (await tx.$queryRawUnsafe(
+      `INSERT INTO "AccountDocSequence" ("id","tenantId","systemId","docType","prefix","periodKey","lastNo","createdAt","updatedAt")
+       VALUES ($1,$2,$3,$4::"AccountDocType",$5,$6,$7,NOW(),NOW())
+       ON CONFLICT ("systemId","docType","periodKey")
+       DO UPDATE SET "lastNo" = "AccountDocSequence"."lastNo" + $8, "updatedAt" = NOW()
+       RETURNING "lastNo"`,
+      `seq_${h.systemId.slice(-8)}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`,
+      h.tenantId,
+      h.systemId,
+      h.docType,
+      h.prefix,
+      h.periodKey,
+      Math.max(1, startNo) + k - 1,
+      k,
+    )) as { lastNo: number }[];
+    const last = Number(rows[0]?.lastNo);
+    if (!Number.isFinite(last)) throw new Error("จองเลขที่เอกสารไม่สำเร็จ");
+    g.forEach((r, i) => {
+      const no = r.format(last - k + 1 + i);
+      stamps.push([r.docId, no]);
+      out.set(r.docId, no);
+    });
+  }
+  const params: string[] = [];
+  const values = stamps.map(([id, no], i) => { params.push(id, no); return `($${2 * i + 1}, $${2 * i + 2})`; }).join(", ");
+  const stamped = await tx.$executeRawUnsafe(
+    `UPDATE "AccountDocument" AS d SET "docNo" = v.no, "updatedAt" = NOW() FROM (VALUES ${values}) AS v(id, no) WHERE d."id" = v.id AND d."docNo" IS NULL`,
+    ...params,
+  );
+  // ใบที่จดไว้ต้องได้เลขครบทุกใบ — ไม่ครบ = ย้อนทั้งธุรกรรม (ไม่มีทางมีเอกสารภาษีออกแล้วแต่ไม่มีเลข / เลขถูกจองแต่ไม่ได้ใช้)
+  if (Number(stamped) !== stamps.length) throw new Error("ออกเลขที่เอกสารไม่ครบ — ไม่มีอะไรถูกบันทึก กรุณาลองใหม่");
+  return out;
+}

@@ -1,0 +1,31 @@
+  ✅ [K2.3-S1.1] listBoardTimeline(ctx, actor, boardId, {from, to, now, filters?, group?}) → { range:{from,to}, zoomDays, rows:[{key,label,bars:[{cardId,cardNo,title,startAt,dueAt,startDay,endDay (YYYY-MM-DD ไทย),isOverdue,isDone,color,columnName,assignees[]}]}], unscheduled: n }
+  ✅ [K2.3-S1.2] แถบตรงช่วงวันจริง (วันไทย): k1 startDay = วันนี้-3 · endDay = วันนี้+2 · k2 ไม่มี startAt → แถบยาว 1 วัน (startDay = endDay = วันครบกำหนด)
+  ✅ [K2.3-S1.3] จำนวนแถบ = การ์ด active ที่มี dueAt ในช่วง (12) · แถบไม่ซ้ำข้ามกลุ่ม (group ปริยาย = column) · unscheduled = การ์ดไม่มี dueAt (7) · แถบเรียงตาม startDay
+  ✅ [K2.3-S1.4] group=column ปริยาย: rows ตามลำดับคอลัมน์ (key = columnId · label = ชื่อ) รวมคอลัมน์ว่าง · isOverdue = dueAt < now และยังไม่เสร็จ · isDone = completedAt
+  ✅ [K2.3-S1.5] group=assignee: การ์ดหลายคนอยู่หลายแถว + แถว 'ไม่มีผู้รับผิดชอบ' (key none) · group=label: + 'ไม่มีป้าย' · ทั้งสองแบบยังครอบคลุมทุกการ์ดที่มีแถบ
+  ✅ [K2.3-S1.6] filters ใช้ filterBoardCards เดิม: label ด่วน → แถบ 3
+  ✅ [K2.3-S1.7] thana มองไม่เห็นบอร์ด → ไม่พบ · ช่วง > 366 วัน → throw ไทย (กันดึงทั้งประวัติ)
+  ✅ [K2.3-S2.1] 🔴 setCardRange(ctx, cardId, {startAt, dueAt}) → {ok, startAt, dueAt} · ค่าใน DB เปลี่ยนตาม (ลากขอบซ้าย/ขวา) · activity CARD_DUE_SET · ผ่าน updateCardFields เดิม (reminderSentAt reset)
+  ✅ [K2.3-S2.2] startAt > dueAt → throw ไทย · startAt null ได้ (ล้างวันเริ่ม)
+  ✅ [K2.3-S2.3] shiftCardRange(ctx, cardId, {days}) → เลื่อนทั้งแถบ (ลากตัวแถบ) คงเวลาเดิม: k2 due +2 วัน = วันนี้+7 18:00
+  ✅ [K2.3-S2.4] thana (มองไม่เห็น) ลากขอบ → ไม่พบ/Forbidden
+  ✅ [K2.3-S3.1] TimelineView.tsx (client) testid timeline-view · timeline-bar (แถบต่อการ์ด · คลิก → ?card=) · timeline-zoom (สัปดาห์/เดือน/ไตรมาส) · timeline-group (คอลัมน์/คน/ป้าย) · timeline-today (เส้นวันนี้) · ‹ › เลื่อนช่วง + ปุ่ม 'วันนี้' · หัวตารางวันไทย (ชื่อเดือนไทย + พ.ศ. คำนวณเอง ห้าม toLocale*)
+  ❌ [K2.3-S3.2] ลากขอบซ้าย/ขวา (resize handle testid timeline-handle) → setCardRangeAction · ลากตัวแถบ → shiftCardRangeAction · optimistic + rollback เมื่อพัง · ไม่มี lib ใหม่ (pointer events เอง) — exp ครบ | act ขาด
+  ✅ [K2.3-S3.3] มือถือ <md: ไม่แสดงไทม์ไลน์ — ข้อความ testid timeline-mobile-hint 'ไทม์ไลน์ใช้บนจอกว้าง — บนมือถือลองมุมมองตาราง' + ลิงก์ ?view=table
+  ✅ [K2.3-S3.4] ?view=timeline&zoom=week|month|quarter&group=&from=YYYY-MM-DD → server เรียก listBoardTimeline (ช่วงตามซูม: สัปดาห์ 2 สัปดาห์ · เดือน 6 สัปดาห์ · ไตรมาส 13 สัปดาห์) · แท็บ 'ไทม์ไลน์' เปิดใช้ (เลิก 'เร็ว ๆ นี้') · มุมมองที่บันทึกไว้ (K2.5) รับ view=timeline
+  ✅ [K2.3-S3.5] แถบใช้สีป้ายแรกของการ์ด (token --color-tag-*) · เลยกำหนด = ขอบแดง · เสร็จ = จาง · ไม่ hard-code น้ำเงิน
+  ❌ [K2.3-S3.6] ภาพจริง ≥ 4 ใบใน .qc-shots/kanban/2.3 (เดือน · ไตรมาส · จัดกลุ่มตามคน · หลังลากขอบ (ค่าเปลี่ยน) · มือถือ=ข้อความชวน) — exp ≥4 | act 0
+
+===== QC Kanban K2.3 =====
+ผ่าน 15/17
+FINDINGS: CRITICAL 1 · MAJOR 1 · MINOR 0
+JSON_SUMMARY {"total":17,"passed":15,"findings":["K2.3-S3.2","K2.3-S3.6"]}
+(node:1470233) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)

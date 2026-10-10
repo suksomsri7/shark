@@ -1,0 +1,85 @@
+prod-walk-cleanup · APPLY (WRITES) · manifest + marker · since 2026-10-08T01:28:22.082Z · DATABASE_URL · host ep-royal-night… · 2026-10-08T01:59:40.934Z
+
+temp users: 3 · CRM-owned tables with temp rows: 19 · temp ids total: 34 · Party to delete: 3
+sets: CrmActivity=2 · CrmAssignmentRule=1 · CrmCompany=1 · CrmCompanyContact=1 · CrmContact=2 · CrmDeal=3 · CrmDealLine=2 · CrmDealStageHistory=7 · CrmLostReason=1 · CrmPortalAccess=1 · CrmQuota=1 · CrmScoreRule=1 · CrmSequence=1 · CrmSequenceStep=1 · CustomObject=1 · CustomRecord=1 · PortalSession=1 · Team=1 · TeamMember=2
+  DELETE AppNotification            cap  400 — rows addressed to a temp user
+  DELETE MemberSavedView            cap  300 — rows addressed to a temp user
+  DELETE AppNotification            cap  400 — notifications about qc-prod- records (any recipient) created during the walk
+  DELETE MemberFieldValueHistory    cap  300 — values/history of fields of the pilot CRM system
+  DELETE MemberFieldValue           cap  300 — values/history of fields of the pilot CRM system
+  DELETE MemberSavedView            cap  300 — rows the CRM wrote under the pilot CRM systemId during the walk (field designer seed / views / logs)
+  DELETE MemberField                cap  120 — rows the CRM wrote under the pilot CRM systemId during the walk (field designer seed / views / logs)
+  DELETE MemberSection              cap   30 — rows the CRM wrote under the pilot CRM systemId during the walk (field designer seed / views / logs)
+  DELETE PartyMergeCandidate        cap  300 — merge candidates of temp parties
+  DELETE MemberSavedView            cap  300 — saved views of the pilot CRM system carrying the qc-prod- marker
+  DELETE ChatRateBucket             cap   60 — rate-limit buckets whose key contains a temp user id
+  DELETE OutboxEvent                cap 1500 — event history rows whose payload points at a temp id (crm.* / custom.* / team.*)
+  DELETE AuditLog                   cap 1500 — audit rows whose actor is a temp user or whose target is a temp row
+  DELETE AuditLog                   cap 1500 — owner-SESSION audit rows written inside the walk's own owner-step time windows (crm.* / custom.* only; never crm.settings.uiVersion)
+  DELETE CrmActivity                cap  300 · expect 2 — qc-prod- CRM data / temp team rows
+  DELETE CrmAssignmentRule          cap  300 · expect 1 — qc-prod- CRM data / temp team rows
+  DELETE CrmCompanyContact          cap  300 · expect 1 — qc-prod- CRM data / temp team rows
+  DELETE PortalSession              cap    6 · expect 1 — qc-prod- CRM data / temp team rows
+  DELETE CrmPortalAccess            cap    4 · expect 1 — qc-prod- CRM data / temp team rows
+  DELETE CrmCompany                 cap   20 · expect 1 — qc-prod- CRM data / temp team rows
+  DELETE CrmDealLine                cap  300 · expect 2 — qc-prod- CRM data / temp team rows
+  DELETE CrmDealStageHistory        cap  300 · expect 7 — qc-prod- CRM data / temp team rows
+  DELETE CrmDeal                    cap   40 · expect 3 — qc-prod- CRM data / temp team rows
+  DELETE CrmContact                 cap   40 · expect 2 — qc-prod- CRM data / temp team rows
+  DELETE CrmLostReason              cap  300 · expect 1 — qc-prod- CRM data / temp team rows
+  DELETE CrmQuota                   cap  300 · expect 1 — qc-prod- CRM data / temp team rows
+  DELETE CrmScoreRule               cap  300 · expect 1 — qc-prod- CRM data / temp team rows
+  DELETE CrmSequenceStep            cap  300 · expect 1 — qc-prod- CRM data / temp team rows
+  DELETE CrmSequence                cap  300 · expect 1 — qc-prod- CRM data / temp team rows
+  DELETE CustomRecord               cap  300 · expect 1 — qc-prod- CRM data / temp team rows
+  DELETE CustomObject               cap  300 · expect 1 — qc-prod- CRM data / temp team rows
+  DELETE TeamMember                 cap    6 · expect 2 — qc-prod- CRM data / temp team rows
+  DELETE Team                       cap    3 · expect 1 — qc-prod- CRM data / temp team rows
+  DELETE Party                      cap   60 · expect 3 — Party rows created for qc-prod- contacts/companies (marker + created during the walk + held by nothing else)
+  DELETE Session                    cap   12 — sessions of temp users + the tagged owner session(s) of this walk
+  DELETE Membership                 cap    3 · expect 3 — temp memberships
+  DELETE User                       cap    3 · expect 3 — temp users (marker e-mail)
+  AppSystem(pilot CRM): WHOLE-ROW restore (reverting the walk's paths [crm.email, crm.assignment, crm.scoring, crm.portal] reproduces the pre-walk JSON exactly)
+
+OpsEvent since start (never deleted here): none
+  deleted    3  AppNotification
+  deleted    1  MemberSavedView
+  deleted    0  AppNotification
+  deleted    0  MemberFieldValueHistory
+  deleted    0  MemberFieldValue
+  deleted    0  MemberSavedView
+  deleted   26  MemberField
+  deleted    2  MemberSection
+  deleted    0  PartyMergeCandidate
+  deleted    0  MemberSavedView
+  deleted    0  ChatRateBucket
+  deleted   19  OutboxEvent
+  deleted   22  AuditLog
+  deleted    2  AuditLog
+  deleted    2  CrmActivity
+  deleted    1  CrmAssignmentRule
+  deleted    1  CrmCompanyContact
+  deleted    1  PortalSession
+  deleted    1  CrmPortalAccess
+  deleted    1  CrmCompany
+  deleted    2  CrmDealLine
+  deleted    7  CrmDealStageHistory
+  deleted    3  CrmDeal
+  deleted    2  CrmContact
+  deleted    1  CrmLostReason
+  deleted    1  CrmQuota
+  deleted    1  CrmScoreRule
+  deleted    1  CrmSequenceStep
+  deleted    1  CrmSequence
+  deleted    1  CustomRecord
+  deleted    1  CustomObject
+  deleted    2  TeamMember
+  deleted    1  Team
+  deleted    3  Party
+  deleted    4  Session
+  deleted    3  Membership
+  deleted    3  User
+  restored AppSystem(pilot CRM) → hash equals the pre-walk hash
+  evidence: 46 AuditLog/OutboxEvent/AppNotification row(s) dumped → /tmp/c63-walk/deleted-rows.json (written BEFORE commit)
+
+COMMITTED · 119 rows deleted · next: prod-walk-snapshot --out after.json, then --compare before after

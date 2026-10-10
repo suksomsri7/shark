@@ -1,0 +1,30 @@
+(node:2035459) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+── C0 premise + helper semantics on this DB ──
+  ✅ [C0.1] premise: raw contains "%" (ILIKE) → 9 rows · "gamma_x …" → 2 (gamma.x too) · case-sensitive contains "_" (LIKE) → 9 (want ≥9 · 2 · ≥9 = wildcards)
+  ❌ [C0.2] helpers ciContains/likeContains not exported by core/ci-equals.ts (exports: ciEquals,likeEscape)
+
+── C1 real list / picker functions ──
+  ❌ [C1.contacts.list] "%" → 9 ["filler 3 crbqwtqd","filler 2 crbqwtqd","filler 1 crbqwtqd","filler 0 crbqwtqd","ACME Trading crbqwtqd","บริษัท ทดสอบ crbqwtqd","50%_off\\x crbqwtqd","gamma_x crbqwtqd","gamma.x crbqwtqd"] (want 1) · "gamma_x crbqwtqd" → 2 ["gamma_x crbqwtqd","gamma.x crbqwtqd"] (want 1) · "\\" → 0 [] (want 1)
+  ❌ [C1.contacts.picker] "%" → 9 ["50%_off\\x crbqwtqd","ACME Trading crbqwtqd","filler 0 crbqwtqd","filler 1 crbqwtqd","filler 2 crbqwtqd","filler 3 crbqwtqd","gamma.x crbqwtqd","gamma_x crbqwtqd","บริษัท ทดสอบ crbqwtqd"] (want 1) · "_x" → 3 ["50%_off\\x crbqwtqd","gamma.x crbqwtqd","gamma_x crbqwtqd"] (want 1)
+  ❌ [C1.documents.list] "%" → 3 ["IV%crbqwtqd-3","IV_crbqwtqd-2","IV.crbqwtqd-1"] (want 1) · "IV_crbqwtqd" → 3 ["IV%crbqwtqd-3","IV_crbqwtqd-2","IV.crbqwtqd-1"] (want 1)
+  ❌ [C1.expense.list] "_" → 2 ["EX_crbqwtqd-2","EX.crbqwtqd-1"] (want 1)
+  ❌ [C1.products.list] "%" → 6 ["pfill 2 crbqwtqd","pfill 1 crbqwtqd","pfill 0 crbqwtqd","100%_cotton\\y crbqwtqd","ชุด_ดำน้ำ crbqwtqd","ชุด.ดำน้ำ crbqwtqd"] (want 1) · "ชุด_ดำน้ำ" → 2 ["ชุด_ดำน้ำ crbqwtqd","ชุด.ดำน้ำ crbqwtqd"] (want 1)
+  ❌ [C1.products.picker] "%" → 6 ["100%_cotton\\y crbqwtqd","pfill 0 crbqwtqd","pfill 1 crbqwtqd","pfill 2 crbqwtqd","ชุด.ดำน้ำ crbqwtqd","ชุด_ดำน้ำ crbqwtqd"] (want 1) · "SKU_A" → 2 ["ชุด.ดำน้ำ crbqwtqd","ชุด_ดำน้ำ crbqwtqd"] (want 1) · "cotton\\" → 0 [] (want 1)
+  ❌ [C1.attachments.list] "%" → 3 ["bill%crbqwtqd.pdf","bill_crbqwtqd.pdf","bill.crbqwtqd.pdf"] (want 1) · "bill_crbqwtqd" → 3 ["bill%crbqwtqd.pdf","bill_crbqwtqd.pdf","bill.crbqwtqd.pdf"] (want 1)
+
+── C2 static — every listed account search site uses the helper ──
+  ❌ [C2.1] raw contains/startsWith/endsWith left: expense.ts:370 · expense.ts:371 · contacts-list.ts:345 · contacts-list.ts:346 · contacts-list.ts:347 · contacts-list.ts:348 · contacts-list.ts:349 · attachment.ts:117 · attachment.ts:380 · attachment.ts:381 · attachment.ts:428 · attachment.ts:536 · attachment.ts:537 · service.ts:1472 · service.ts:1473 · service.ts:1557 · service.ts:1558 · service.ts:1618 · service.ts:1619 · service.ts:5136 · service.ts:5137 · service.ts:5138 · service.ts:5139 · product.ts:1371 · product.ts:1372 · product.ts:1373 · product.ts:1467 · product.ts:1468 · product.ts:1783 · product.ts:1784 · product.ts:1785 · product.ts:1786 · product.ts:1787 · journal-v2.ts:229 · journal-v2.ts:230
+  ✅ [CLEAN-hpzyyb] tenant rows left=0
+  ✅ [CLEAN-users] users left=0
+
+🔴 probe-cf11-contains: 3/12
+JSON_SUMMARY {"total":12,"passed":3,"findings":["C0.2","C1.contacts.list","C1.contacts.picker","C1.documents.list","C1.expense.list","C1.products.list","C1.products.picker","C1.attachments.list","C2.1"]}

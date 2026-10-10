@@ -1,0 +1,2134 @@
+diff --git a/ledger/wo-notes/crm-C5.5-fix7-review.md b/ledger/wo-notes/crm-C5.5-fix7-review.md
+new file mode 100644
+index 00000000..6d9ccd78
+--- /dev/null
++++ b/ledger/wo-notes/crm-C5.5-fix7-review.md
+@@ -0,0 +1,202 @@
++# C5.5-fix7: independent review (R2F-1 · R2F-2 · F6-5 · F6-6 · RV-3 · R2F-3)
++
++- Reviewed `wip/crm-cf10` `8ac89741` against base `fbd7ca2c`, worktree `/root/projects/shark-crm-cd2`, database QC2.
++- Window: 2026-10-01 23:5x → 2026-10-02 00:42 UTC (`date -u`).
++- I did not edit any product source.
++
++## What I ran (QC2, each job in its own `iso.sh` unit under the gate lock, one at a time)
++
++Runner: `scripts/pending/cf10/review/run-review.sh`. Logs are in `/tmp/cf10-review-logs/`. Chain ran 00:12:56–00:41:25 UTC.
++
++| Job | Result |
++|---|---|
++| `probe-cf10-review` (new, this review) | **18/18** (also an earlier standalone run: 18/18) |
++| `probe-cf10` (builder) | **34/34** |
++| `probe-cf7` | **30/30** |
++| `probe-cf7-r2` | **14/14** |
++| `probe-cf7-review` | **27/27** |
++| `probe-cf7-review-r2` | **21/21** |
++| `probe-cf5` (portal DATETIME) | **22/22** |
++| `qc-crm-c1.4` | **110/110** |
++| `qc-crm-c1.11` (import/merge) | **66/66** |
++| `qc-crm-c1.10` (REST) | **66/66** |
++| `qc-crm-c1.9` (record pages, `displayValue`) | **45/45** |
++| `qc-crm-c3.5` (portal) | **67/67** |
++| typecheck (5 GB heap) | exit 0 |
++| fitness | **36/36**: F2.3 ✅ · F14.1/F14.2 1066 / 1066 |
++
++- Not run: `qc-crm-c3.9`, which is QC3-only (`qc3.sh`) and outside this brief's QC2 rule.
++- QC2 leftover check (`scripts/pending/cf10/review/leftover-check.mts`): `qc-cf10-*` and `qc-cf7-*` tenants = 0, users = 0.
++
++## Attack results
++
++### (a) RV-3: DATETIME display and export (the riskiest change)
++
++**Consumers of the contact export.** There are only two: the UI action (`contacts-actions.ts:261`) and the REST op `contacts.export` (`api/ops/contacts.ts:432`). Both return the CSV text, so both get the new cell.
++- There is no scheduled contact export and no XLSX path.
++- The PDPA per-contact export does not use `displayOf`.
++- The record-page export (`OBJ.records.export`) goes through `thaiDateTimeText`, which is byte-identical (see below).
++- No suite or doc pins the old cell. I searched every `qc-crm-*`; the only DATETIME mentions are in c1.2a/c1.2b/c3.8/c51fix-equiv, and none checks the export text.
++
++**Edge instants** (`DT-export-edges`). Every cell has the exact form `YYYY-MM-DDTHH:mm:ss+07:00`.
++
++| Case | Cell | Round-trip |
++|---|---|---|
++| Thai midnight | `2026-10-09T00:00:00+07:00` | exact |
++| Year rollover | `2027-01-01T00:59:00+07:00` | exact |
++| 1965 | `1965-03-01T10:00:00+07:00` | exact |
++| Stored value with milliseconds | `…T00:30:45+07:00` | same second, **ms dropped** (FX7-3) |
++| Empty value | `""` | — |
++
++Thailand has no DST since 1920, so a fixed +07:00 is correct for every value the product can hold.
++
++**DATE is untouched** (`DT-export-date`): `2026-10-09`, empty stays empty.
++
++**Shared formatter is byte-identical** (`DT-byte-identical`). On strings (valid, `+07:00`, leap day, invalid, empty, date-only) and on Dates, `formatThaiDateTimeFull` gives exactly the old record-page `thaiDateTimeText` and the old portal `PORTAL_DATETIME_FMT` output, with 0 mismatches. So the record page and the portal are unchanged byte for byte. c1.9 (45/45) and c3.5 (67/67) agree.
++
++**Files exported before the change still import** (`DT-old-cell-import`). The importer is unchanged (`member/fields.ts:165` `ISO_RE` accepts the space form):
++
++| Server TZ | `"2026-10-08 17:30"` (meant 17:30Z) is stored as |
++|---|---|
++| UTC | 17:30Z, **correct** |
++| Asia/Bangkok | 10:30Z, 7 h off |
++
++So the builder's "the old value did not round-trip" is true only on a Thai-time server. On a UTC host it round-tripped. See FX7-2.
++
++**Acceptable without the owner?** Yes, in my judgement, with a heads-up. The change fixes a real error that people could see:
++- the old CSV showed **UTC wall-clock** time to Thai users (an 00:30 appointment printed as "2026-10-08 17:30");
++- the new cell is Thai wall time, carries its own offset, and survives Excel as text;
++- old files keep importing.
++
++The cost is that spreadsheets which parsed the old cell as a date now see text. That is a heads-up for owner question 3, not a reason to block.
++
++### (b) R2F-1: `isCurrentCompanyHidden` vs the server refusal
++
++**Predicate parity** (`R1-parity-*`). For each persona, the six contact shapes give UI predicate ⇔ server outcome 6/6. The shapes:
++1. primary visible;
++2. primary hidden;
++3. hidden + archived;
++4. hidden + merged;
++5. visible + archived;
++6. no primary but a hidden secondary.
++
++| Persona | Result |
++|---|---|
++| owner | Never hidden; every move OK. |
++| MANAGER with `unitAccess ["u-a"]` | The other unit's team is hidden. hidden ⇒ `NOT_FOUND` with `CONTACT_PRIMARY_COMPANY_HIDDEN_MSG` and **zero writes**; visible ⇒ move OK. |
++| OWN-scoped STAFF linker | Same as the manager. |
++
++For both the manager and the linker, "no primary + hidden secondary" is not hidden and the move is OK, as the brief expects.
++
++**One text for every hidden case** (`R1-clear-same-text`). Clearing a hidden live, archived or merged company gives the same text with zero writes, and so does moving. There is no liveness oracle.
++
++**Existence oracle** (`R1-oracle-preexisting`). `contacts.get` / `getContact360().contact.companyId` already hands the raw hidden id to the linker and to a read-only role, versus `null` for a contact without a company. "This contact has a company I cannot see" was therefore already distinguishable. The locked line and the new text add no id and no name, and the hidden name appears nowhere in the 360 payload.
++
++**Wiring:**
++- `page.tsx:88` computes the predicate only for linkers on a live contact.
++- `can.company` (`:179`) and the raw `companyId` (`:194`) are both gated by it.
++- `companyLocked` (`:199`) drives the `<p data-testid="contact-edit-company-locked">` (`Contact360Actions.tsx:526`), which is not interactive, so it needs no registry row.
++- Read-only and no-read personas keep their fix6 branches, because the locked branch only renders when `can.company` is false and `companyLocked` is true.
++
++### (c) R2F-2: clearing an archived or merged visible company
++- **Refusals** (`R2-archived-merged`):
++  - clearing an archived visible company is `VALIDATION` "เก็บถาวรแล้ว…กู้คืน", writes: none;
++  - clearing a merged visible company is `VALIDATION` "ถูกรวม…", writes: none;
++  - moving off either is OK.
++- **Restore then clear:** builder `F2-control-restore-then-clear` ✅.
++- **Real flows** (`R2-real-flows`) never go through this path:
++  - `archiveCompany` on a company with a linked contact is OK, and the contact's cache becomes `null`;
++  - `mergeCompanies` is OK, and the cache points at the kept company.
++- **Import** never clears a company: it only links through `addContact`. Contact merge moves links through `transferContactLinksInTx`. Neither touches the new check.
++- The residual race (an archive landing between the pre-check and `removeContact`) is documented by the builder and was not exercised (FX7-4).
++
++### (d) F6-5: echo semantics
++**Echoes** (`F5-echo-all-personas`). Echoes are accepted for every persona: owner, unit-scoped manager, linker, read-only and no-read. The variants:
++- exact and padded (`" <id>\t"`) on a **hidden** current company, plus `jobTitle` and `moveOpenDeals:true`: OK, the company and the owner's open deal are kept, and there is no `companyId` audit key;
++- `null`, `""` or the key omitted on a contact without a company: OK.
++
++**Real changes are never taken for echoes** (`F5-real-change`):
++- a linker's padded move V→T is applied;
++- a linker's `""` on a visible company clears it;
++- a read-only real change is still `FORBIDDEN` with zero writes;
++- the builder's `UPPER(id)` control also holds.
++
++### (e) F6-6 and owner question 1
++`F6-names`. A STAFF without company read creates a deal on its own contact whose company is hidden. The server default sets `deal.companyId` = the hidden company (unchanged). Where the creator then sees its name:
++
++| View | Hidden company name shown? |
++|---|---|
++| `listDeals` card | **yes** |
++| board | **yes** |
++| deal CSV | **yes** |
++| deal 360 | no |
++
++The cause is `companyNames` (`deals.ts:1867`), which reads names in system scope. This is pre-existing since C1.5 and deal-wide. It is rated in FX7-1.
++
++### (f) R2F-3: import entry kinds
++- **Caps** (`IM-cap-failures-first`). A 513-row file: 510 rows each need a new company the linker cannot create, so 510 notes; 3 empty rows at the **end** are real failures.
++  - Result: `created=510 failed=3`, 500 entries; entries 1–3 are `kind:"error"` (rows 511–513), and the rest are notes.
++  - `getImportJob` keeps 50 entries, the first 3 of them errors.
++  - The import took 85 s (QC2 over the network).
++- A legacy audit row without `kind` reads as `"error"` (`IM-legacy`).
++- Both import screens label notes "(หมายเหตุ)" (`IM-ui-both-screens`).
++- The API change is additive (`row`/`message` unchanged), and c1.10/c1.11 are green.
++
++### (g) Fitness F2.3: the formatter in `src/lib/ui/date.ts`
++- The file has **no imports at all**: pure `Intl` and `Date`. It is already used in 77 places, client components included.
++- Putting the helper there keeps `components/crm/**` off deep `crm/*` imports.
++- F2.3 is ✅ in my fitness run.
++
++## Findings
++
++### FX7-1 · LOW (pre-existing since C1.5, owner question 1) · deal list, board and CSV name a company the viewer cannot see
++- **Where:** `deals.ts:1867` `companyNames` reads in system scope for `listDeals`, `getBoard` and `exportDeals`. Deal 360 already hides the name.
++- **Repro:** `F6-names`.
++- **Assessment:**
++  - Not introduced or widened by this card: the F6-6 default is unchanged.
++  - It is an inconsistency in the visibility model, and the probe confirms it is the one channel through which such a creator learns the hidden company's name.
++- **Fix (debt, owner's call):** resolve names through `companyWhere(viewer)` and show "—" otherwise, the same as deal 360.
++
++### FX7-2 · INFO · builder note wording: "the old export did not round-trip" holds only on a Thai-time server
++- **Measured:** an old cell imported on a UTC host stores the right instant (`DT-old-cell-import`).
++- **Real user-facing gain:** the cell now shows Thai wall time instead of UTC wall time.
++- The decision stands; only the stated reason needs correcting when owner question 3 is put to the owner.
++
++### FX7-3 · INFO · the export drops milliseconds
++- Values written with milliseconds (API or engine) come back from export + import at the same second.
++- This does not matter for human data, which is entered to the minute.
++
++### FX7-4 · INFO · residual race (R2F-2, documented)
++An archive landing between the pre-transaction check and `removeContact` can still half-write. Closing it needs the contact write and the link write in one transaction.
++
++### FX7-5 · INFO · minor
++- Contact 360 now runs one extra `loadCompany` per view, for linkers only. Negligible.
++- `getImportJob` still keeps only 50 entries (pre-existing audit design). Failures now come first, so nothing important is lost.
++- Not covered by my probe: a STAFF whose visibility level is TEAM through a visibility policy. The predicate and the server call are the same function (`assertCompanyVisible` → `companyWhere`), so parity holds by construction. I only exercised OWN- and unit-scoped actors.
++
++## The builder's 5 owner questions: my view
++1. **Deal cards, board and CSV name hidden companies.** Recommend scoping names to the viewer's company visibility, as deal 360 does (FX7-1). It is a small, consistent fix with no roll-up impact. Not urgent: pre-existing, and only names leak.
++2. **The `/deals/new` default.** Keep the contact's primary company. Stripping it would silently break company roll-ups for almost every STAFF deal, and the only leak path is FX7-1's names, which should be fixed there.
++3. **Export DATETIME format.** Accept. It fixes a 7-hour error a human reading the CSV would see; the cells are machine-safe and survive Excel; files exported earlier still import. Tell the owner as a heads-up, with FX7-2's corrected reasoning.
++4. **R2F-4: duplicate company from an import naming a company the importer cannot see.** Keep it and rely on company merge. Deduplicating across visibility would turn import into an existence oracle for hidden companies.
++5. **DATE display on the contact page.** Align it to "9 ต.ค. 2569" in a later UI pass, for consistency with the record page. Cosmetic.
++
++## Not verified
++- No live :3215 build. The 360 page and the import panels were checked through the builder's component render, my source checks and the service calls, not as rendered pages.
++- No button runner and no `qc-crm-forms` (QC3 + browser).
++- `qc-crm-c3.9` was not run (QC3-only).
++- Excel and Google Sheets were not tried with the new cell.
++- The R2F-2 residual race and the builder's `F5-race-no-false-audit` interleaving were not driven with two real concurrent requests.
++- No TEAM-level visibility policy persona (FX7-5).
++
++## Verdict
++- No BLOCKER, HIGH or MED.
++- Every claim held under attack:
++  - the UI predicate equals the server rule for every persona and shape tested;
++  - refusals write nothing;
++  - the echo rule never swallows a real change;
++  - RV-3 is byte-identical for the record page and the portal, and old files still import;
++  - import failures are never crowded out.
++- FX7-1 (LOW, pre-existing) and the INFO items go to the debt and owner lists.
++
++VERDICT: MERGEABLE
+diff --git a/ledger/wo-notes/crm-C5.5-fix7.md b/ledger/wo-notes/crm-C5.5-fix7.md
+new file mode 100644
+index 00000000..aff7c007
+--- /dev/null
++++ b/ledger/wo-notes/crm-C5.5-fix7.md
+@@ -0,0 +1,282 @@
++# C5.5-fix7: small LOW findings left by the fix6 / fix3b reviews (contacts · companies · deals). Builder note
++
++Branch `wip/crm-cf10`, from `fbd7ca2c` (fix6 + its two review rounds). Worktree `/root/projects/shark-crm-cd2`. Database **QC2**.
++No schema change, no migration.
++- Probe: `scripts/pending/cf10/probe-cf10.mts`. Its fixture `_fx.mts` is the cf7 fixture with the tag `qc-cf10-*`.
++- Runners:
++  - `run-probe.sh` runs the probe alone.
++  - `run-cf10.sh` is round 1 of the verification chain.
++  - `run-cf10-r2.sh` is round 2, after the helper move described under item 5.
++- Logs in the repo: `probe-cf10.red.log`, `probe-cf10.green.log`, `regress.summary`. Full logs are in `/tmp/cf10-logs/`.
++
++**probe-cf10: RED 18/34 on the untouched src → GREEN 34/34.**
++- **RED:**
++  - The final probe ran against the `fbd7ca2c` versions of all 12 changed src files (2026-10-01 23:59:55 to 2026-10-02 00:01:14 UTC).
++  - The swap: the files were backed up to `/tmp/cf10-logs/bak`, the base versions were written with `git show fbd7ca2c:<f>`, the probe ran, and the backups were copied back. `cmp` then showed every restored file identical to the backup.
++  - An earlier RED run, made before any source edit, gave the same 18/34 with the same 16 findings.
++- **GREEN:** 34/34, at the start of round 2 (23:36 UTC).
++- **Checks that flipped:** 16 went ❌ → ✅, and each item has at least one.
++- **Unchanged:** the premise, the positive controls and CLEAN (throwaway tenants left with 0 rows) were ✅ in both runs.
++
++## Item 1 · R2F-1: a linker whose contact's PRIMARY company is outside their visibility saw a picker that always refused
++
++**Decision.**
++- Hide the picker and show one explanatory line instead.
++- Give the server refusal its own text, and use the same text for that line.
++- The server check is unchanged in strength.
++
++**Why.** Every pick was refused, including promoting the user's own visible secondary company, so the control was dead. The old "refresh the page" text could never help.
++
++**Where.**
++- `contacts.isCurrentCompanyHidden(ctx, actor, companyId)` (`contacts.ts:1446`) is the same gate the server uses (`companies.assertCompanyVisible`, non-live). If the read fails, it returns "hidden", so the picker is hidden and the server still decides.
++- The page (`contacts/[contactId]/page.tsx:86,178,198`) computes `primaryCompanyHidden` for users who can link.
++  - It passes `can.company = crmCanLinkCompany && !primaryCompanyHidden` and `companyLocked`.
++  - It sends the raw `companyId` only when the picker is shown.
++- `Contact360Actions.tsx` `ContactMenu` renders `<p data-testid="contact-edit-company-locked">` with `CONTACT_PRIMARY_COMPANY_HIDDEN_MSG`.
++- `updateContactCore` (`contacts.ts:1009-1020`) maps the companies service's `NOT_FOUND` for the current company to that text. The code stays `NOT_FOUND`, so the REST status is unchanged.
++
++**The text** ("the current primary company of this contact is outside what this account can see, so this account cannot move or remove it; ask the team lead or shop owner"):
++> บริษัทหลักปัจจุบันของผู้ติดต่อนี้อยู่นอกขอบเขตที่บัญชีนี้มองเห็น จึงย้ายหรือถอดบริษัทหลักจากบัญชีนี้ไม่ได้ — ให้หัวหน้าทีมหรือเจ้าของร้านย้ายให้
++
++**What this reveals.**
++- No company name or id.
++- It does confirm that there is a primary company the user cannot see. The user can already deduce that today: the contact DTO carries `companyId`, and it is not in the user's visible company list (REST `contacts.get`).
++- Visibility is still judged before liveness, so a hidden live company and a hidden archived company give the same text for both move and clear (`F1-oracle-same-text`).
++- Read-only and no-read personas are unchanged: they keep the fix6 read-only line, or no line (`F1-control-readonly-line`, `F1-control-noread`).
++
++**Probe:**
++
++| Check | RED → GREEN |
++|---|---|
++| `F1-ui-no-dead-picker` | ❌ → ✅ |
++| `F1-srv-own-text` (writes: none) | ❌ → ✅ |
++| `F1-wiring` | ❌ → ✅ |
++| `F1-oracle-same-text` | ✅ → ✅ |
++| controls: linker with a visible primary keeps the picker · owner promotes the secondary · read-only line · no-read | ✅ → ✅ |
++
++## Item 2 · R2F-2: clearing an ARCHIVED but visible current company half-wrote
++
++**Decision.** Refuse the clear before any write.
++
++**Why (the companies service's own rules).**
++- The links of an archived or merged company cannot be edited: `linkMutation`/`removeContact` load the company `live` and say "restore first".
++- The real `archiveCompany` recomputes every linked contact's `companyId` cache off the archived company (`companies.ts:910-930`). So a contact pointing at an archived company is a stale cache: a race or old data. The review repro wrote `archivedAt` directly.
++- Allowing the clear would leave an active link on the archived company, and a restore would bring the contact back. That is not a detach.
++
++**A legitimate user can still detach:**
++- move the contact to another company: ✅, unchanged;
++- or restore → clear (`F2-control-restore-then-clear` ✅);
++- after a real archive, the cache is already off the company, and a clear is a no-op OK (`F2-control-real-archive` ✅).
++
++**Where.**
++- `updateContactCore` calls `companies.assertCompanyVisible(…, { live: wantCompany === null })` before the transaction (`contacts.ts:1014`).
++- `assertCompanyVisible` gained `opts.live` (`companies.ts:2352`).
++- A clear of an archived company now gets the companies service's own `VALIDATION` text ("บริษัทนี้ถูกเก็บถาวรแล้ว … กู้คืนก่อน…") **before** any write.
++
++**Probe:**
++
++| Check | RED → GREEN |
++|---|---|
++| `F2-archived-clear-atomic` | ❌ → ✅. RED: `AuditLog 2→3 · OutboxEvent 2→3 · contact row changed`. GREEN: `writes: none`, comparing every tenant-scoped table, the contact row and its links. |
++| `F2-control-move-off`, `F2-control-live-clear` | ✅ → ✅ |
++
++**Residual (pre-existing, documented).** The company step still runs in its own transaction after ours commits. If someone archives the company between our pre-check and `removeContact`, the old half-write can still happen. The window is narrow; closing it needs the contact write and the link write in one transaction (a restructure, not cheap).
++
++## Item 3 · F6-6: the `/deals/new` default company ignored the creator's company visibility
++
++**Decision: keep the server default** (`deals.ts:722`, comment only).
++
++**Why.**
++- The design docs are silent on visibility here. Blueprint `docs/modules/20-crm-v2.md` §4.4 says only "the company the primary contact belongs to, or null". `ledger/DESIGN-CRM.md`, `CRM-OWNER-QUESTIONS.md` and `CRM-OWNER-PENDING.md` have nothing on it.
++- STAFF hold **no company keys by default**. Defaulting to "only what the creator can see" would leave almost every staff deal without a company. The company's roll-ups (`openDealCount` / `wonValueSatang`, company 360 deals) would silently lose them.
++
++**Nothing new goes back to the creator.**
++- The UI action returns only the deal id.
++- The REST DTO carries `companyId` and no name. That id equals the `companyId` the creator already reads on the contact DTO.
++- Deal 360 shows no company for an invisible one (`F6-no-name-back` ✅).
++
++**UX debt fixed.** The empty option of the deal form said "ไม่ผูกบริษัท" ("no company"), but empty has always meant "use the contact's primary company". It now reads "ตามบริษัทหลักของผู้ติดต่อ (ถ้ามี)" ("as the contact's primary company, if any") (`NewDealForm.tsx`). `F6-label` ❌ → ✅.
++
++**Trade-off and owner question (below).** `listDeals` cards, the board and the deal CSV name the deal's company through system scope, not the viewer's company visibility. That is pre-existing since C1.5 and deal-wide. So the creator does see the hidden company's **name** on the deal card (`F6-board-card` INFO). I did not change it, because it is a product rule for every deal card, not for this default.
++
++**Probe:** `F6-default-kept` ✅ → ✅ (deal company = the contact's company; company `openDealCount` 0→1).
++
++## Item 4 · F6-5: echo of the current companyId
++
++**Decision.** An unchanged `companyId` is never a change, for any user.
++- `contacts.ts:1003` sets `wantCompany = undefined` whenever it equals `current.companyId`. Before, this applied only to users without company read.
++- So a user with company read who sends back a DTO whose company they cannot see now gets OK. Before, the whole patch was refused with VALIDATION.
++
++**The race is fixed as well, cheaply.**
++- An echo is now "not sent" before the transaction.
++- So a concurrent company move between our pre-read and our transaction can no longer make the in-transaction comparison (`pre.companyId`) record `companyId` in the audit and event while no link is touched.
++
++**Probe:**
++
++| Check | RED → GREEN |
++|---|---|
++| `F5-echo-invisible-ro` | ❌ → ✅ |
++| `F5-echo-invisible-linker` | ❌ → ✅ |
++| `F5-race-no-false-audit` | ❌ → ✅ |
++| `F5-control-real-change-refused`, `F5-control-upper-not-echo` | ✅ → ✅ |
++
++`F5-race-no-false-audit` simulates the race by wrapping `prisma.$transaction` once, so that it moves the contact's company just before the service's transaction. RED: audit and event keys `["jobTitle","companyId"]`. GREEN: `["jobTitle"]`. The controls show a real change by a read-only user is still FORBIDDEN with no writes, and `UPPER(id)` is still not treated as an echo.
++
++## Item 5 · RV-3: DATETIME custom fields on the contact page and in the export
++
++**Page.** Contact 360 now shows DATETIME the same way as the staff record page, e.g. "9 ต.ค. 2569 00:30". Before, it showed "2026-10-08 17:30" (UTC).
++
++**One shared pure helper.**
++- `formatThaiDateTimeFull` lives in `src/lib/ui/date.ts`, the app's central Thai date file (UI_STANDARD §3.4). These now use it:
++  - the staff record page (`components/crm/objects/types.ts` `thaiDateTimeText` is now a thin wrapper);
++  - contacts (`displayOf`);
++  - the portal (`portal.ts`; the copied `PORTAL_DATETIME_FMT` is gone).
++- **Why not a `crm/*-shared.ts` file, as the brief preferred:**
++  - Round 1 used `src/lib/modules/crm/datetime-shared.ts`, and fitness **F2.3** went red. `src/components/crm/**` may not import deep `crm/*` files: only the facade or `crm/ui`, and the facade is server-only.
++  - `lib/ui/date.ts` is importable from both sides and is already imported by several `lib/modules`.
++  - The file was deleted before commit.
++- `DT-control-portal-equal` ✅ shows that the old portal options and the shared helper give identical text on 4 instants.
++
++**Export decision: changed to unambiguous Thai-time ISO** (`thaiIsoDateTime` in `lib/ui/date.ts`), e.g. `2026-10-09T00:30:00+07:00`.
++- **Why it is safe and better:**
++  - **Import round-trips it exactly.** The engine's DATETIME check (`member/fields.ts:165` `ISO_RE`, then `Date.parse`) accepts the value as-is. `DT-roundtrip-thai-server` imports the exported cell with `TZ=Asia/Bangkok` and stores the same instant.
++  - **The old value did not round-trip.** "2026-10-08 17:30" has no zone, so it is parsed as server-local time. On a Thai-time server it came back **7 hours off** (RED: stored `10:30Z` instead of `17:30Z`). It only round-tripped by luck on a UTC server.
++  - **No suite or doc pins the old format.** I checked c1.4 X6.6/X9.4, c1.10, c1.11 and c3.9, and the `contacts.export` op summary.
++- **What can break:** spreadsheets that parsed "YYYY-MM-DD HH:mm" as a date. The ISO+offset string is text to Excel. This is an owner heads-up, below.
++- DATE export is unchanged ("2026-10-09"). So is DATE on the contact page (still "2026-10-09"); the staff record page shows "9 ต.ค. 2569". That was not in scope (`DT-360-date` INFO).
++
++**Probe:**
++
++| Check | RED → GREEN |
++|---|---|
++| `DT-360-thai` | ❌ → ✅ |
++| `DT-export-iso-th` | ❌ → ✅ |
++| `DT-roundtrip-thai-server` | ❌ → ✅ |
++| `DT-one-helper` | ❌ → ✅ |
++| `DT-export-date-unchanged`, `DT-control-portal-equal` | ✅ → ✅ |
++
++**REST-visible:**
++- `contacts.get` `fields.sections[].fields[].display` for DATETIME is now Thai text. That field is display text, like the portal's `value` change in fix3b.
++- The `contacts.export` CSV DATETIME cells change format.
++
++## Item 6 · R2F-3: import notes shared `errors` with real failures
++
++**Decision.**
++- Every entry now carries `kind: "error" | "note"` (`ImportResultEntry` in `contacts-shared.ts`). Entries still carry `row` and `message`, so the change is additive and backward compatible.
++- Failures and notes are collected separately, each capped at 500. The result is `[...failures, ...notes].slice(0, 500)`, so real failures always come first. They are never pushed out of the 500 cap, the 50 rows the UI shows, or the 50 rows the audit (and so `getImportJob`) keeps.
++- `getImportJob` maps audit rows written before this change (no `kind`) to `"error"`. Before fix6 r2, there were no notes.
++- Both import result lists (`ContactImportPanel.tsx`, `ContactListTools.tsx`) label notes "แถว N (หมายเหตุ): …"; testids are unchanged.
++
++**Docs.** The CRM API docs do not document op output shapes (the generator covers input and summary only), and the op summary is unchanged. `gen-crm-api-docs --check` ✅, nothing to regenerate.
++
++**Probe:**
++
++| Check | RED → GREEN |
++|---|---|
++| `IM-kind` | ❌ → ✅ |
++| `IM-failures-first` | ❌ → ✅. 55 notes + 5 failures. RED positions 55–59 (outside the first 50); GREEN 0–4. |
++| `IM-job-failures-kept` | ❌ → ✅ |
++| `IM-ui-label` | ❌ → ✅ |
++| `IM-compat` | ✅ → ✅ |
++
++## Out of scope: R2F-4 (restated)
++- An import row naming a company the importer cannot see creates a **second** company with that name.
++- `companyOptions` searches only visible companies, and `createCompany` does not deduplicate by name.
++- Owner/product decision: deduplicate by name across visibility (which would leak existence through "linked to a company you can't see"), or keep it and rely on company merge.
++
++## Verification (all QC2, each job in its own `iso.sh` unit under the gate lock, one at a time)
++
++**Round 1: `run-cf10.sh`, 22:35–23:34 UTC.**
++
++Probes:
++
++| Job | Result |
++|---|---|
++| probe-cf10 | **34/34** |
++| probe-cf7 | 30/30 |
++| probe-cf7-r2 | 14/14 |
++| probe-cf7-review | 27/27 |
++| probe-cf7-review-r2 | 21/21 |
++| probe-cf5 (portal DATETIME H25) | 22/22 |
++| probe-cf5-r2 | 14/14 |
++
++Suites:
++
++| Suite | Result |
++|---|---|
++| qc-crm-c1.4 | 110/110 |
++| qc-crm-c1.3 | 89/89 |
++| qc-crm-c1.5 | 103/103 |
++| qc-crm-c1.10 | 66/66 |
++| qc-crm-c1.11 (import/merge) | 66/66 |
++| qc-crm-c2.4 | 91/91 |
++| qc-crm-c1.9 (custom-object pages, `displayValue`) | 45/45 |
++| qc-crm-c3.5 (portal) | 67/67 |
++
++Gates:
++
++| Gate | Result |
++|---|---|
++| typecheck | exit 0 |
++| docs crm | ✅ 123 op |
++| docs account | ✅ 199 op |
++| fitness with env | 35/36 — **F2.3** red (the `datetime-shared` import; fixed in round 2) |
++| fitness without env | 35/36 — same F2.3 |
++
++**Round 2: `run-cf10-r2.sh`, 23:36–23:59 UTC**, after moving the helper to `lib/ui/date.ts`:
++
++| Job | Result |
++|---|---|
++| probe-cf10 | **34/34** |
++| probe-cf5 | 22/22 |
++| qc-crm-c1.4 | 110/110 |
++| qc-crm-c1.9 | 45/45 |
++| qc-crm-c3.5 | 67/67 |
++| docs crm / account | ✅ |
++| typecheck | exit 0 |
++| fitness with env | **36/36** (F2.3 ✅; F14.1/F14.2: 1066 testids / 1066 rows) |
++| fitness without env | **36/36** |
++
++- Round 2 changed only where the formatter lives; the output text is identical. That is why the other round-1 jobs were not repeated.
++- **docs member / kanban:** ❌ in both rounds, only because the gitignored `.claude/skills/shark-{member,kanban}-api/references/endpoints.md` is missing in this worktree (0 bytes vs expected), as in the fix3b and fix6 runs. The generators wrote nothing: `.claude/skills` still holds only `shark-account-api/references/endpoints.md`.
++- QC2 leftovers: every probe's CLEAN rows report 0 rows left in its `qc-cf10-*` / `qc-cf7-*` tenants.
++
++### Reviewer probe INFO rows that changed
++
++`probe-cf7-review`:
++
++| Row | Before | After |
++|---|---|---|
++| `KNOWN-invisible-clear` | NOT_FOUND "ไม่พบบริษัทนี้ … รีเฟรช" | NOT_FOUND with the new R2F-1 text; still no writes |
++| `KNOWN-echo-invisible` | VALIDATION, nothing written | **OK**; jobTitle saved (AuditLog +1, OutboxEvent +1); company kept (F6-5) |
++| `KNOWN-ro-create`, `KNOWN-invisible-move`, `KNOWN-deal-default`, `LEAK-label` | | unchanged |
++
++`probe-cf7-review-r2`:
++
++| Row | Before | After |
++|---|---|---|
++| `VIS-archived-clear` | VALIDATION after a half-write | VALIDATION, **writes: none** (R2F-2) |
++| `VIS-primary-hidden` | refusal text "ไม่พบบริษัทนี้ …" | the new R2F-1 text; writes none. The row's own label still says "picker shown": that is the reviewer's static wiring copy. The real page now hides it; see `F1-ui-no-dead-picker`. |
++| `IMP-*` | entries without `kind` | entries carry `kind`; failures (row 7) listed first |
++
++## Registry rows changed (`scripts/crm-ui-inventory.json`)
++- **None.**
++- The new `contact-edit-company-locked` is a `<p>`, not interactive under the testid scan, like fix6's `contact-edit-company-readonly`, so it needs no row.
++- No control's visibility changes for the four seed personas:
++  - owner and manager see every company, so they never meet a hidden primary company;
++  - nok and thana hold no company keys, so the picker was already hidden for them.
++- F14.1/F14.2 are green at 1066/1066. There is nothing to mirror into the c42b `next/` copy.
++
++## Owner questions
++1. **Deal cards, board and deal CSV name a company the viewer cannot see** (system-scoped `companyNames`, pre-existing since C1.5). Keep it ("a deal you can see shows its company"), or scope names to the viewer's company visibility, as deal 360 already does?
++2. **The `/deals/new` default** keeps the contact's primary company even when the creator cannot see it, which keeps roll-ups right. Confirm that, or default to "no company" when it is invisible; most STAFF deals would then lose their company.
++3. **Contact CSV export DATETIME** is now `2026-10-09T00:30:00+07:00` (machine-readable, round-trips through import, Thai wall time) instead of the ambiguous UTC "2026-10-08 17:30". Spreadsheets that parsed the old cell as a date will now see text. OK?
++4. **R2F-4** (above): an import naming an invisible company creates a duplicate company.
++5. **Optional follow-up:** DATE custom fields on the contact page still show "2026-10-09", while the staff record page shows "9 ต.ค. 2569".
++
++## Not verified
++- No live :3215 build. The 360 page and the import panels were not rendered as pages: the probe renders `ContactMenu` with the page's own wiring (it calls the same `isCurrentCompanyHidden`) and checks the page source. The button runner and `qc-crm-forms` (it needs the QC3 answer key and a browser) were not run.
++- The R2F-2 residual race (an archive landing between the pre-check and `removeContact`) was not exercised.
++- `F5-race-no-false-audit` simulates the interleaving by wrapping `prisma.$transaction`; it does not use two real concurrent requests.
++- The import cap at 500 entries was not driven with a file of more than 500 rows. The "failures first" ordering was shown on the 50-row window, and the cap uses the same concatenation.
++- Excel and Sheets behaviour with the new export cell was not tried.
+diff --git a/scripts/pending/cf10/_fx.mts b/scripts/pending/cf10/_fx.mts
+new file mode 100644
+index 00000000..ce01730f
+--- /dev/null
++++ b/scripts/pending/cf10/_fx.mts
+@@ -0,0 +1,120 @@
++// C5.5-fix7 probe fixture — copy of scripts/pending/cf7/_fx.mts pinned to QC2 (ep-cool-shadow) · throwaway tenants `qc-cf10-*` only ·
++//   swept in `done()` · prints a JSON_SUMMARY line
++// Run: bash scripts/qc2.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/pending/cf10/probe-cf10.mts
++/* eslint-disable @typescript-eslint/no-explicit-any */
++type Any = any;
++import { randomBytes } from "node:crypto";
++
++export async function fixture(label: string) {
++  const accEnv = (await import("../../acc-v2-env.mts" as string)) as { loadQcEnv: () => { host: string } };
++  const { host } = accEnv.loadQcEnv();
++  if (!/ep-cool-shadow/.test(host) || !/ep-cool-shadow/.test(String(process.env.DATABASE_URL ?? ""))) {
++    console.log(`QC2 only — got ${host}`);
++    process.exit(1);
++  }
++  globalThis.fetch = (async () => {
++    throw new Error("network blocked");
++  }) as typeof fetch;
++  const { prisma } = await import("@/lib/core/db");
++  const P = prisma as Any;
++  const TAG = `qc-cf10-${label}-${randomBytes(4).toString("hex").replace(/[0-9]/g, (d) => "qrstuvwxyz"[Number(d)]!)}`;
++  const res: { id: string; ok: boolean; msg: string }[] = [];
++  const chk = (id: string, ok: boolean, msg: string) => {
++    res.push({ id, ok, msg });
++    console.log(`  ${ok ? "✅" : "❌"} [${id}] ${msg}`);
++  };
++  const USERS: string[] = [];
++  const TENANTS: string[] = [];
++  const sysSvc = (await import("@/lib/modules/system/service" as string)) as Any;
++  const setCrm = (sysId: string, obj: Record<string, unknown>) =>
++    P.$executeRawUnsafe(
++      `UPDATE "AppSystem" SET "settings" = jsonb_set(CASE WHEN jsonb_typeof("settings") = 'object' THEN "settings" ELSE '{}'::jsonb END, '{crm}',
++        (CASE WHEN jsonb_typeof("settings"->'crm') = 'object' THEN "settings"->'crm' ELSE '{}'::jsonb END) || $1::jsonb, true) WHERE "id" = $2`,
++      JSON.stringify(obj),
++      sysId,
++    );
++  let n = 0;
++  const mkUser = async (suffix: string) => {
++    const u = await P.user.create({ data: { email: `${TAG}${suffix}@qc.invalid`, name: `QC ${suffix || "owner"} ${TAG}` } });
++    USERS.push(u.id);
++    return u.id as string;
++  };
++  /** a whole shop: tenant · OWNER · CRM v2 (bridges on) · ACCOUNT linked to the CRM · pipeline (3 OPEN · WON · LOST) */
++  const mkShop = async (suffix: string, opts: { account?: boolean; portal?: boolean } = {}) => {
++    const t = await P.tenant.create({ data: { name: `${TAG}-${suffix}`, slug: `${TAG}-${suffix}` } });
++    TENANTS.push(t.id);
++    const uid = await mkUser(`-${suffix}`);
++    await P.membership.create({ data: { userId: uid, tenantId: t.id, role: "OWNER", unitAccess: ["*"], permissions: {}, acceptedAt: new Date() } });
++    const S = (await sysSvc.createSystem(t.id, "CRM", `CRM ${TAG} ${++n}`)).id as string;
++    await setCrm(S, { uiVersion: 2, bridgesEnabled: true, ...(opts.portal ? { portal: { enabled: true, loginMethods: ["EMAIL_OTP"], showDeals: false, allowIssue: false, issueBoardId: null } } : {}) });
++    let A: string | null = null;
++    if (opts.account) {
++      A = (await sysSvc.createSystem(t.id, "ACCOUNT", `บัญชี ${TAG} ${n}`)).id as string;
++      const accSvc = (await import("@/lib/modules/account/service" as string)) as Any;
++      await accSvc.saveSettings(t.id, A, { orgName: `QC ${TAG}`, taxId: "0105561000003", vatRegistered: true, vatRateBp: 700, taxPointBasis: "ON_ISSUE" });
++      const connections = (await import("@/lib/modules/account/connections" as string)) as Any;
++      const r = await connections.connect({ tenantId: t.id, systemId: A }, "CRM", S, uid);
++      if (!r?.ok) throw new Error(`connections.connect failed: ${JSON.stringify(r)}`);
++    }
++    const pipe = await P.crmPipeline.create({
++      data: {
++        tenantId: t.id,
++        systemId: S,
++        name: `ขาย ${TAG}`,
++        isDefault: true,
++        stages: {
++          create: (
++            [
++              ["ใหม่", "OPEN", 10],
++              ["เสนอราคา", "OPEN", 60],
++              ["ตกลง", "OPEN", 90],
++              ["ชนะ", "WON", 100],
++              ["แพ้", "LOST", 0],
++            ] as const
++          ).map(([name, kind, probability], i) => ({ tenantId: t.id, systemId: S, sortOrder: i, name, kind, probability })),
++        },
++      },
++      include: { stages: { orderBy: { sortOrder: "asc" } } },
++    });
++    const owner = { userId: uid, role: "OWNER", unitAccess: ["*"], permissions: {} };
++    return { tid: t.id as string, slug: t.slug as string, uid, S, A, ctx: { tenantId: t.id as string, systemId: S, actorUserId: uid }, owner, pipe: pipe as Any, stages: pipe.stages as Any[] };
++  };
++  const call = async (f: () => Promise<Any>): Promise<Any> => {
++    try {
++      return { ok: true, v: await f() };
++    } catch (err) {
++      return { ok: false, err };
++    }
++  };
++  const done = async (name: string, before?: () => Promise<void>) => {
++    if (before) await before().catch((e) => chk("CLEAN-before", false, String((e as Error)?.message ?? e).slice(0, 200)));
++    for (const T of TENANTS) {
++      const tbs = ((await P.$queryRawUnsafe(`select table_name from information_schema.columns where table_schema='public' and column_name='tenantId'`)) as Any[]).map((r) => String(r.table_name)).filter((x) => /^[A-Za-z_]+$/.test(x));
++      for (let pass = 0; pass < 4; pass += 1) for (const t of tbs) await P.$executeRawUnsafe(`DELETE FROM "${t}" WHERE "tenantId" = $1`, T).catch(() => undefined);
++      await P.appSystem.deleteMany({ where: { tenantId: T } }).catch(() => undefined);
++      await P.tenant.delete({ where: { id: T } }).catch(() => undefined);
++      let left = 0;
++      for (const t of tbs) left += Number(((await P.$queryRawUnsafe(`SELECT count(*)::int AS n FROM "${t}" WHERE "tenantId" = $1`, T).catch(() => [{ n: 0 }])) as Any[])[0]?.n ?? 0);
++      chk(`CLEAN-${T.slice(-6)}`, left === 0 && (await P.tenant.count({ where: { id: T } })) === 0, `tenant rows left=${left}`);
++    }
++    for (const id of USERS) {
++      await P.membership.deleteMany({ where: { userId: id } }).catch(() => undefined);
++      await P.appNotification.deleteMany({ where: { recipientUserId: id } }).catch(() => undefined);
++      await P.user.delete({ where: { id } }).catch(() => undefined);
++    }
++    await prisma.$disconnect();
++    const passed = res.filter((r) => r.ok).length;
++    console.log(`\n${passed === res.length ? "🟢" : "🔴"} ${name}: ${passed}/${res.length}`);
++    console.log(`JSON_SUMMARY ${JSON.stringify({ total: res.length, passed, findings: res.filter((r) => !r.ok).map((r) => r.id) })}`);
++    process.exit(passed === res.length ? 0 : 1);
++  };
++  return { P, prisma, TAG, chk, call, mkShop, mkUser, setCrm, done };
++}
++
++/** a valid Thai tax id (mod-11) from a 12-digit prefix */
++export function validTaxId(prefix12: string): string {
++  const p = prefix12.replace(/\D/g, "").padEnd(12, "0").slice(0, 12);
++  let sum = 0;
++  for (let i = 0; i < 12; i += 1) sum += Number(p[i]) * (13 - i);
++  return `${p}${(11 - (sum % 11)) % 10}`;
++}
+diff --git a/scripts/pending/cf10/probe-cf10.green.log b/scripts/pending/cf10/probe-cf10.green.log
+new file mode 100644
+index 00000000..c4d73bca
+--- /dev/null
++++ b/scripts/pending/cf10/probe-cf10.green.log
+@@ -0,0 +1,61 @@
++(node:2127114) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
++In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
++
++To prepare for this change:
++- If you want the current behavior, explicitly use 'sslmode=verify-full'
++- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
++
++See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
++(Use `node --trace-warnings ...` to show where the warning was created)
++  ✅ [P-premise] keys: linker can link · ro/noCo cannot · coHidden invisible to linker, visible to owner · coLink visible to linker
++
++── F1 · R2F-1 ──
++  ✅ [F1-ui-no-dead-picker] linker, primary hidden: picker shown=false · locked line=true "บริษัทหลักปัจจุบันของผู้ติดต่อนี้อยู่นอกขอบเขตที่บัญชีนี้มองเห็น จึงย้ายหรือถอดบริษัทหลักจ…" · hidden name in html=false (want no picker · explanatory line · no hidden name)
++  ✅ [F1-srv-own-text] linker promotes its visible secondary, primary hidden → NOT_FOUND "บริษัทหลักปัจจุบันของผู้ติดต่อนี้อยู่นอกขอบเขตที่บัญชีนี้มองเห็น จึงย้ายหรือถอดบริษัทหลักจากบัญชีนี้ไม่ได้ — ใ…" · writes: none (want NOT_FOUND · own text about visibility, no "refresh" · no hidden name · none)
++  ✅ [F1-oracle-same-text] hidden live (move) / hidden archived (move) / hidden archived (clear) → NOT_FOUND / NOT_FOUND / NOT_FOUND · same text=true
++  ✅ [F1-control-linker-visible] linker, primary visible → picker, no locked line
++  ✅ [F1-control-owner] owner on the same contact → picker=true · promote secondary OK → primary=coLink
++  ✅ [F1-control-readonly-line] read-only role keeps the fix6 r2 read-only line ('บริษัท: <visible secondary>'), no locked line, no hidden name
++  ✅ [F1-control-noread] no company read → no picker, no line (unchanged)
++  ✅ [F1-wiring] page computes primaryCompanyHidden via contacts.isCurrentCompanyHidden and passes can.company / companyLocked from it
++
++── F2 · R2F-2 ──
++  ✅ [F2-archived-clear-atomic] clear an ARCHIVED (visible) current company + firstName → VALIDATION "บริษัทนี้ถูกเก็บถาวรแล้ว จึงแก้ไขไม่ได้ — กู้คืนก่อนถ้าต้องการใช้งานต่อ" · writes: none (want VALIDATION · none — refused before any write)
++  ✅ [F2-control-move-off] move off the archived company → OK · now coFull=true
++  ✅ [F2-control-restore-then-clear] restore OK → clear OK · companyId=null · link ended=true
++  ✅ [F2-control-real-archive] archiveCompany (service) → contact cache null (want null) · clear afterwards OK
++  ✅ [F2-control-live-clear] clear a live visible company → OK · companyId=null
++
++── F5 · F6-5 ──
++  ✅ [F5-echo-invisible-ro] ro (company read) echoes its contact's current INVISIBLE company + jobTitle → OK "" · jobTitle saved=true · company kept=true · audit keys ["jobTitle"] (want OK · ["jobTitle"])
++  ✅ [F5-echo-invisible-linker] linker (company read) echoes its contact's current INVISIBLE company + jobTitle → OK "" · jobTitle saved=true · company kept=true · audit keys ["jobTitle"] (want OK · ["jobTitle"])
++  ✅ [F5-race-no-false-audit] read user echoes the OLD company while another writer moved it in between → OK "" · audit keys ["jobTitle"] · event keys ["jobTitle"] (want no "companyId")
++  ✅ [F5-control-real-change-refused] read-only user REALLY changes the company → FORBIDDEN · writes: none
++  ✅ [F5-control-upper-not-echo] no-read user sends UPPER(current id) → FORBIDDEN (not an echo)
++
++── F6 · F6-6 ──
++  ✅ [F6-default-kept] no-read creator, contact at a company they cannot see → OK · deal company = contact's (true) · company openDealCount 0→1 (roll-up)
++  ✅ [F6-no-name-back] create returns no company name (keys: companyId) · deal 360 company=null · hidden name anywhere=false
++  ℹ️  [F6-board-card] listDeals card for the creator → companyName "บริษัทลับ xufcfxef" (pre-existing deal-wide rule: deal cards/CSV name the deal's company via system scope — owner question)
++  ✅ [F6-label] deal form's empty company option says it uses the contact's primary company (it never meant 'no company')
++
++── DT · RV-3 ──
++  ✅ [DT-360-thai] contact 360 DATETIME display "9 ต.ค. 2569 00:30" · staff record page "9 ต.ค. 2569 00:30" (want equal, Thai time)
++  ℹ️  [DT-360-date] contact 360 DATE display "2026-10-09" (unchanged; the staff page shows "9 ต.ค. 2569")
++  ✅ [DT-export-iso-th] export DATETIME cell "2026-10-09T00:30:00+07:00" (want "2026-10-09T00:30:00+07:00" — Thai wall time with its own offset)
++  ✅ [DT-export-date-unchanged] export DATE cell "2026-10-09" (want "2026-10-09", unchanged)
++  ✅ [DT-roundtrip-thai-server] TZ premise true · import exported "2026-10-09T00:30:00+07:00" with TZ=Asia/Bangkok → OK errors [] · stored 2026-10-08T17:30:00.000Z (want 2026-10-08T17:30:00.000Z)
++  ✅ [DT-one-helper] portal.ts, contacts.ts and the staff record page take formatThaiDateTimeFull from lib/ui/date (no copied format options)
++  ✅ [DT-control-portal-equal] old portal format options = shared helper text on 4 instants
++
++── IM · R2F-3 ──
++  ℹ️  [IM-shape] OK created=55 failed=5 entries=60 · first entry {"row":56,"message":"แถวนี้ว่าง (ไม่มีชื่อ เบอร์ หรืออีเมล) — ระบบข้ามให้แล้ว","kind":"error"} · kinds ["error","note"]
++  ✅ [IM-kind] every entry has kind · errors=5 (=failed 5) · notes=55 (want 55)
++  ✅ [IM-failures-first] all 5 real failures inside the first 50 entries the UI shows → rows [56,57,58,59,60] (positions [0,1,2,3,4])
++  ✅ [IM-compat] entries still carry row + message (additive change)
++  ✅ [IM-job-failures-kept] getImportJob (audit keeps the first 50) still lists the 5 failures with kind "error" → [[56,"error"],[57,"error"],[58,"error"],[59,"error"],[60,"error"]]
++  ✅ [IM-ui-label] both import result lists label notes apart from failures
++  ✅ [CLEAN-isp48o] tenant rows left=0
++
++🟢 probe-cf10: 34/34
++JSON_SUMMARY {"total":34,"passed":34,"findings":[]}
+diff --git a/scripts/pending/cf10/probe-cf10.mts b/scripts/pending/cf10/probe-cf10.mts
+new file mode 100644
+index 00000000..595a72a4
+--- /dev/null
++++ b/scripts/pending/cf10/probe-cf10.mts
+@@ -0,0 +1,376 @@
++// C5.5-fix7 probe (builder) — small LOW findings left by the fix6 / fix3b reviews (contacts · companies · deals)
++//   F1  R2F-1  a linker on a contact whose PRIMARY company is outside their visibility: no dead picker (explanatory line instead) ·
++//              the server refusal has its own clear text · same text for hidden live / hidden archived (no new oracle) · nothing written
++//   F2  R2F-2  clearing an ARCHIVED (visible) current company: refused BEFORE any write (was: contact row + audit + outbox, then
++//              VALIDATION from removeContact) · move-off still OK · the legitimate detach routes (restore → clear · real archive) work
++//   F5  F6-5   an unchanged companyId is never a change, for any user (read users echoing an invisible current company) ·
++//              the pre-read/tx race cannot record a false "companyId changed" audit/event
++//   F6  F6-6   /deals/new default company: kept (roll-ups) · nothing new returned to a creator who cannot see the company ·
++//              the empty option of the deal form says what it does
++//   DT  RV-3   contact 360 shows DATETIME custom fields in Thai time (= staff record page) · the export is unambiguous ISO +07:00 that the
++//              importer reads back to the same instant even on a Thai-time server · portal uses the same helper
++//   IM  R2F-3  import result entries carry kind "error" | "note" · real failures listed first (never crowded out of the first 50)
++// Rows that describe behaviour (not a pass/fail claim) print as ℹ️ INFO.
++// QC2 only (ep-cool-shadow) · throwaway tenants `qc-cf10-*` (swept in done()) · network blocked.
++// Run: bash scripts/iso.sh env CRM_V2_SWITCH=all NODE_OPTIONS=--max-old-space-size=3584 bash scripts/qc2.sh bash scripts/with-gate-lock.sh \
++//        pnpm exec tsx scripts/pending/cf10/probe-cf10.mts
++/* eslint-disable @typescript-eslint/no-explicit-any */
++type Any = any;
++import { AsyncLocalStorage } from "node:async_hooks";
++import { readFileSync } from "node:fs";
++const { fixture } = (await import("./_fx.mts" as string)) as { fixture: (label: string) => Promise<Any> };
++
++(globalThis as Any).AsyncLocalStorage ??= AsyncLocalStorage;
++const fx = await fixture("p");
++const { P, chk, call, mkShop, mkUser, done, TAG } = fx;
++const j = (v: Any) => JSON.stringify(v, (_k, x) => (typeof x === "bigint" ? x.toString() : x instanceof Date ? x.toISOString() : x));
++const cut = (v: unknown, n = 140) => { const s = String(v ?? "").replace(/\s+/g, " "); return s.length > n ? `${s.slice(0, n)}…` : s; };
++const codeOf = (r: Any) => (r.ok ? "OK" : String(r.err?.code ?? r.err?.name ?? "ERR"));
++const rand = TAG.slice(-8);
++const info = (id: string, msg: string) => console.log(`  ℹ️  [${id}] ${msg}`);
++const src = (p: string) => readFileSync(p, "utf8").replace(/\s+/g, " ");
++
++const { toMemberActor } = (await import("@/lib/modules/member" as string)) as Any;
++const MEM = (await import("@/lib/modules/member" as string)) as Any;
++const CON = (await import("@/lib/modules/crm/contacts" as string)) as Any;
++const CO = (await import("@/lib/modules/crm/companies" as string)) as Any;
++const DEALS = (await import("@/lib/modules/crm/deals" as string)) as Any;
++const { crmCanLinkCompany } = (await import("@/lib/modules/crm/access" as string)) as Any;
++const TYPES = (await import("@/components/crm/objects/types" as string)) as Any;
++
++async function staff(shop: Any, suffix: string, keys: string[]) {
++  const uid = await mkUser(`-${suffix}`);
++  const permissions = Object.fromEntries(keys.map((k) => [k, true]));
++  const m = await P.membership.create({ data: { userId: uid, tenantId: shop.tid, role: "STAFF", unitAccess: ["*"], permissions, acceptedAt: new Date() } });
++  return { uid, actor: toMemberActor(uid, m), ctx: { tenantId: shop.tid, systemId: shop.S, actorUserId: uid } };
++}
++async function mkCompany(shop: Any, name: string, ownerUserId: string) {
++  const party = await P.party.create({ data: { tenantId: shop.tid, name, kind: "COMPANY" } });
++  return P.crmCompany.create({ data: { tenantId: shop.tid, systemId: shop.S, partyId: party.id, name, ownerUserId } });
++}
++async function mkContact(shop: Any, first: string, ownerUserId: string, opts: { companyId?: string | null; extra?: string[] } = {}) {
++  const name = `${first} ${TAG}`;
++  const party = await P.party.create({ data: { tenantId: shop.tid, name, kind: "PERSON" } });
++  const k = await P.crmContact.create({ data: { tenantId: shop.tid, systemId: shop.S, name, firstName: first, partyId: party.id, ownerUserId, companyId: opts.companyId ?? null } });
++  if (opts.companyId) await P.crmCompanyContact.create({ data: { tenantId: shop.tid, companyId: opts.companyId, contactId: k.id, isPrimary: true } });
++  for (const c of opts.extra ?? []) await P.crmCompanyContact.create({ data: { tenantId: shop.tid, companyId: c, contactId: k.id, isPrimary: false } });
++  return k;
++}
++const TABLES = ((await P.$queryRawUnsafe(`select distinct table_name from information_schema.columns where table_schema='public' and column_name='tenantId'`)) as Any[])
++  .map((r) => String(r.table_name)).filter((x) => /^[A-Za-z_]+$/.test(x)).sort();
++async function snap(tid: string, contactId: string | null) {
++  const counts: Record<string, number> = {};
++  for (const t of TABLES) {
++    const n = Number(((await P.$queryRawUnsafe(`SELECT count(*)::int AS n FROM "${t}" WHERE "tenantId" = $1`, tid)) as Any[])[0]?.n ?? 0);
++    if (n) counts[t] = n;
++  }
++  const row = contactId ? await P.crmContact.findUnique({ where: { id: contactId } }) : null;
++  const links = contactId ? await P.crmCompanyContact.findMany({ where: { contactId }, orderBy: { companyId: "asc" } }) : [];
++  return { counts, row: j(row), links: j(links) };
++}
++function diff(a: Any, b: Any): string {
++  const out: string[] = [];
++  for (const k of new Set([...Object.keys(a.counts), ...Object.keys(b.counts)])) if ((a.counts[k] ?? 0) !== (b.counts[k] ?? 0)) out.push(`${k} ${a.counts[k] ?? 0}→${b.counts[k] ?? 0}`);
++  if (a.row !== b.row) out.push("contact row changed");
++  if (a.links !== b.links) out.push("company links changed");
++  return out.join(" · ") || "none";
++}
++const lastUpdateKeys = async (tid: string, contactId: string): Promise<string[]> => {
++  const a = await P.auditLog.findFirst({ where: { tenantId: tid, action: "crm.contact.update", targetId: contactId }, orderBy: { createdAt: "desc" } });
++  return ((a?.after as Any)?.changedKeys ?? []) as string[];
++};
++/** minimal RFC-4180 CSV reader (quoted cells, "" escape, CRLF) */
++function parseCsv(text: string): string[][] {
++  const out: string[][] = [];
++  let row: string[] = [];
++  let cell = "";
++  let q = false;
++  const s = text.replace(/^﻿/, "");
++  for (let i = 0; i < s.length; i += 1) {
++    const ch = s[i]!;
++    if (q) {
++      if (ch === '"' && s[i + 1] === '"') { cell += '"'; i += 1; } else if (ch === '"') q = false; else cell += ch;
++    } else if (ch === '"') q = true;
++    else if (ch === ",") { row.push(cell); cell = ""; }
++    else if (ch === "\r") { /* skip */ }
++    else if (ch === "\n") { row.push(cell); out.push(row); row = []; cell = ""; }
++    else cell += ch;
++  }
++  if (cell || row.length) { row.push(cell); out.push(row); }
++  return out;
++}
++
++// ── React SSR of the 360 menu with the page's own wiring ──
++const React = (await import("react" as string)) as Any;
++const R = (React.default ?? React) as Any;
++const RDS = (await import("react-dom/server" as string)) as Any;
++const ctxMod = (await import("next/dist/shared/lib/app-router-context.shared-runtime.js" as string)) as Any;
++const C3 = (await import("@/app/app/sys/[id]/crm/contacts/_components/Contact360Actions" as string)) as Any;
++const router = { push() {}, replace() {}, refresh() {}, back() {}, forward() {}, prefetch() {} };
++/** mirror of contacts/[contactId]/page.tsx ContactMenu wiring (fix7: primary-hidden lock via contacts.isCurrentCompanyHidden) */
++async function sheet(shop: Any, who: Any, contactId: string): Promise<string> {
++  const d = (await CON.getContact360(who.ctx, who.actor, contactId)) as Any;
++  const c = await P.crmContact.findUnique({ where: { id: contactId } });
++  const canLink = crmCanLinkCompany(who.actor);
++  const hidden = canLink && typeof CON.isCurrentCompanyHidden === "function" ? await CON.isCurrentCompanyHidden(who.ctx, who.actor, c.companyId) : false;
++  const canCompany = canLink && !hidden;
++  const orig = R.useState;
++  let calls = 0;
++  R.useState = (init: unknown) => { calls += 1; const p = orig(init); return calls === 2 ? ["edit", p[1]] : p; };
++  try {
++    return String(RDS.renderToStaticMarkup(R.createElement(ctxMod.AppRouterContext.Provider, { value: router }, R.createElement(C3.ContactMenu, {
++      systemId: shop.S, owners: [],
++      can: { update: true, assign: true, merge: false, archive: false, company: canCompany },
++      contact: { id: c.id, firstName: c.firstName, lastName: "", phone: "", email: "", jobTitle: "", ownerUserId: c.ownerUserId, lifecycleStage: "LEAD", leadStatus: "NEW", tags: [], archived: false,
++        companyId: canCompany ? c.companyId : null, companyName: d.company?.name ?? null, companyIsPrimary: !!d.company && d.company.id === c.companyId, companyLocked: canLink && hidden },
++    }))));
++  } finally {
++    R.useState = orig;
++  }
++}
++
++try {
++  const shop = await mkShop("a");
++  const BASE = ["crm.contact.read", "crm.contact.create", "crm.contact.update", "crm.contact.import", "crm.deal.read", "crm.deal.create", "crm.activity.read"];
++  const linker = await staff(shop, "link", [...BASE, "crm.company.read", "crm.company.update"]); // no company.create
++  const full = await staff(shop, "full", [...BASE, "crm.company.read", "crm.company.update", "crm.company.create"]);
++  const ro = await staff(shop, "ro", [...BASE, "crm.company.read"]);
++  const noCo = await staff(shop, "noco", BASE);
++  const owner = { actor: shop.owner, ctx: shop.ctx, uid: shop.uid };
++  const coLink = await mkCompany(shop, `บริษัทลิงก์ ${rand}`, linker.uid);
++  const coFull = await mkCompany(shop, `บริษัทฟูล ${rand}`, full.uid);
++  const coRo = await mkCompany(shop, `บริษัทอาร์โอ ${rand}`, ro.uid);
++  const coHidden = await mkCompany(shop, `บริษัทลับ ${rand}`, shop.uid); // owner's: invisible to every STAFF
++  const vis = async (who: Any, id: string) => (await call(() => CO.assertCompanyVisible(CO_CTX(who), who.actor, id))).ok;
++  const CO_CTX = (who: Any) => who.ctx;
++  chk("P-premise", crmCanLinkCompany(linker.actor) && !crmCanLinkCompany(ro.actor) && !crmCanLinkCompany(noCo.actor) && (await vis(linker, coLink.id)) && !(await vis(linker, coHidden.id)) && (await vis(owner, coHidden.id)),
++    "keys: linker can link · ro/noCo cannot · coHidden invisible to linker, visible to owner · coLink visible to linker");
++
++  // ═══════════ F1 · R2F-1 primary company hidden from a linker ═══════════
++  console.log("\n── F1 · R2F-1 ──");
++  {
++    const kP = await mkContact(shop, "หลักลับรอง", linker.uid, { companyId: coHidden.id, extra: [coLink.id] });
++    const h = await sheet(shop, linker, kP.id);
++    chk("F1-ui-no-dead-picker", h.includes("contact-edit-modal") || h.includes("contact-edit-firstName") ? !h.includes("contact-pick-edit-company-q") && h.includes("contact-edit-company-locked") && !h.includes(coHidden.name) : false,
++      `linker, primary hidden: picker shown=${h.includes("contact-pick-edit-company-q")} · locked line=${h.includes("contact-edit-company-locked")} "${cut((/data-testid="contact-edit-company-locked"[^>]*>([^<]*)/.exec(h) ?? [])[1], 90)}" · hidden name in html=${h.includes(coHidden.name)} (want no picker · explanatory line · no hidden name)`);
++    const s0 = await snap(shop.tid, kP.id);
++    const r = await call(() => CON.updateContact(linker.ctx, linker.actor, kP.id, { companyId: coLink.id }));
++    const s1 = await snap(shop.tid, kP.id);
++    const msg = String(r.err?.message ?? "");
++    chk("F1-srv-own-text", codeOf(r) === "NOT_FOUND" && /นอกขอบเขต/.test(msg) && !/รีเฟรช/.test(msg) && !msg.includes(coHidden.name) && diff(s0, s1) === "none",
++      `linker promotes its visible secondary, primary hidden → ${codeOf(r)} "${cut(msg, 110)}" · writes: ${diff(s0, s1)} (want NOT_FOUND · own text about visibility, no "refresh" · no hidden name · none)`);
++    // oracle: same refusal for a hidden live vs a hidden archived current company
++    const coQ = await mkCompany(shop, `ลับเก็บ ${rand}`, shop.uid);
++    const kQ = await mkContact(shop, "ลับเก็บ", linker.uid, { companyId: coQ.id });
++    await P.crmCompany.update({ where: { id: coQ.id }, data: { archivedAt: new Date() } });
++    const rq = await call(() => CON.updateContact(linker.ctx, linker.actor, kQ.id, { companyId: coLink.id }));
++    const rc = await call(() => CON.updateContact(linker.ctx, linker.actor, kQ.id, { companyId: null }));
++    chk("F1-oracle-same-text", codeOf(r) === codeOf(rq) && r.err?.message === rq.err?.message && r.err?.message === rc.err?.message,
++      `hidden live (move) / hidden archived (move) / hidden archived (clear) → ${codeOf(r)} / ${codeOf(rq)} / ${codeOf(rc)} · same text=${r.err?.message === rq.err?.message && rq.err?.message === rc.err?.message}`);
++    // controls: linker on a contact whose primary IS visible keeps the picker and can move; owner can move the hidden-primary contact
++    const kV = await mkContact(shop, "หลักเห็น", linker.uid, { companyId: coLink.id });
++    const hv = await sheet(shop, linker, kV.id);
++    chk("F1-control-linker-visible", hv.includes("contact-pick-edit-company-q") && !hv.includes("contact-edit-company-locked"), "linker, primary visible → picker, no locked line");
++    const ho = await sheet(shop, owner, kP.id);
++    const ro2 = await call(() => CON.updateContact(owner.ctx, owner.actor, kP.id, { companyId: coLink.id }));
++    const rowP = await P.crmContact.findUnique({ where: { id: kP.id } });
++    chk("F1-control-owner", ho.includes("contact-pick-edit-company-q") && !ho.includes("contact-edit-company-locked") && ro2.ok && rowP.companyId === coLink.id,
++      `owner on the same contact → picker=${ho.includes("contact-pick-edit-company-q")} · promote secondary ${codeOf(ro2)} → primary=${rowP.companyId === coLink.id ? "coLink" : rowP.companyId}`);
++    const kR = await mkContact(shop, "อาร์โอหลักลับ", ro.uid, { companyId: coHidden.id, extra: [coRo.id] });
++    const hr = await sheet(shop, ro, kR.id);
++    chk("F1-control-readonly-line", hr.includes("contact-edit-company-readonly") && hr.includes(`บริษัท: ${coRo.name}`) && !hr.includes("contact-edit-company-locked") && !hr.includes(coHidden.name),
++      "read-only role keeps the fix6 r2 read-only line ('บริษัท: <visible secondary>'), no locked line, no hidden name");
++    const hn = await sheet(shop, noCo, (await mkContact(shop, "ไม่มีสิทธิ์อ่าน", noCo.uid, { companyId: coHidden.id })).id);
++    chk("F1-control-noread", !hn.includes("contact-edit-company-locked") && !hn.includes("contact-edit-company-readonly") && !hn.includes("contact-pick-edit-company-q"), "no company read → no picker, no line (unchanged)");
++    const p360 = src("src/app/app/sys/[id]/crm/contacts/[contactId]/page.tsx");
++    chk("F1-wiring", /isCurrentCompanyHidden\(/.test(p360) && /company: crmCanLinkCompany\(actor\) && !primaryCompanyHidden/.test(p360) && /companyLocked:/.test(p360),
++      "page computes primaryCompanyHidden via contacts.isCurrentCompanyHidden and passes can.company / companyLocked from it");
++  }
++
++  // ═══════════ F2 · R2F-2 clear an ARCHIVED visible current company ═══════════
++  console.log("\n── F2 · R2F-2 ──");
++  {
++    const coArch = await mkCompany(shop, `บริษัทเก็บ ${rand}`, full.uid);
++    const kA = await mkContact(shop, "ล้างเก็บถาวร", full.uid, { companyId: coArch.id });
++    await P.crmCompany.update({ where: { id: coArch.id }, data: { archivedAt: new Date() } }); // stale cache, as in the review repro
++    const s0 = await snap(shop.tid, kA.id);
++    const r = await call(() => CON.updateContact(full.ctx, full.actor, kA.id, { firstName: `ล้าง ${rand}`, companyId: null }));
++    const s1 = await snap(shop.tid, kA.id);
++    chk("F2-archived-clear-atomic", codeOf(r) === "VALIDATION" && diff(s0, s1) === "none",
++      `clear an ARCHIVED (visible) current company + firstName → ${codeOf(r)} "${cut(r.err?.message, 90)}" · writes: ${diff(s0, s1)} (want VALIDATION · none — refused before any write)`);
++    const r2 = await call(() => CON.updateContact(full.ctx, full.actor, kA.id, { companyId: coFull.id }));
++    const row2 = await P.crmContact.findUnique({ where: { id: kA.id } });
++    chk("F2-control-move-off", r2.ok && row2.companyId === coFull.id, `move off the archived company → ${codeOf(r2)} · now coFull=${row2.companyId === coFull.id}`);
++    // legitimate detach: owner restores the company, then the editor clears it
++    const kB = await mkContact(shop, "กู้แล้วถอด", full.uid, { companyId: coArch.id });
++    const rs = await call(() => CO.restoreCompany(owner.ctx, owner.actor, coArch.id, { confirm: true, reason: "กู้คืนเพื่อถอดผู้ติดต่อ" }));
++    const rb = await call(() => CON.updateContact(full.ctx, full.actor, kB.id, { companyId: null }));
++    const rowB = await P.crmContact.findUnique({ where: { id: kB.id } });
++    const linkB = await P.crmCompanyContact.findFirst({ where: { contactId: kB.id, companyId: coArch.id } });
++    chk("F2-control-restore-then-clear", rs.ok && rb.ok && rowB.companyId === null && !!linkB?.endedAt, `restore ${codeOf(rs)} → clear ${codeOf(rb)} · companyId=${rowB.companyId} · link ended=${!!linkB?.endedAt}`);
++    // the real archive service never leaves the cache on an archived company ⇒ clearing afterwards is a no-op
++    const coArch2 = await mkCompany(shop, `บริษัทเก็บจริง ${rand}`, full.uid);
++    const kC = await mkContact(shop, "เก็บจริง", full.uid, { companyId: coArch2.id });
++    const ra = await call(() => CO.archiveCompany(owner.ctx, owner.actor, coArch2.id, { confirm: true, reason: "ทดสอบเก็บถาวร" }));
++    const rowC0 = await P.crmContact.findUnique({ where: { id: kC.id } });
++    const rcl = await call(() => CON.updateContact(full.ctx, full.actor, kC.id, { companyId: null, jobTitle: `หลังเก็บ ${rand}` }));
++    chk("F2-control-real-archive", ra.ok && rowC0.companyId === null && rcl.ok, `archiveCompany (service) → contact cache ${rowC0.companyId} (want null) · clear afterwards ${codeOf(rcl)}`);
++    // plain clear of a live visible company
++    const kD = await mkContact(shop, "ล้างปกติ", full.uid, { companyId: coFull.id });
++    const rd = await call(() => CON.updateContact(full.ctx, full.actor, kD.id, { companyId: null }));
++    const rowD = await P.crmContact.findUnique({ where: { id: kD.id } });
++    chk("F2-control-live-clear", rd.ok && rowD.companyId === null, `clear a live visible company → ${codeOf(rd)} · companyId=${rowD.companyId}`);
++  }
++
++  // ═══════════ F5 · F6-5 echo is never a change ═══════════
++  console.log("\n── F5 · F6-5 ──");
++  {
++    for (const [label, who] of [["ro", ro], ["linker", linker]] as const) {
++      const k = await mkContact(shop, `เอคโค่ ${label}`, (who as Any).uid, { companyId: coHidden.id });
++      const s0 = await snap(shop.tid, k.id);
++      const r = await call(() => CON.updateContact((who as Any).ctx, (who as Any).actor, k.id, { jobTitle: `echo ${rand}`, companyId: coHidden.id, moveOpenDeals: true }));
++      const s1 = await snap(shop.tid, k.id);
++      const row = await P.crmContact.findUnique({ where: { id: k.id } });
++      const keys = r.ok ? await lastUpdateKeys(shop.tid, k.id) : [];
++      chk(`F5-echo-invisible-${label}`, r.ok && row.jobTitle === `echo ${rand}` && row.companyId === coHidden.id && j(keys) === j(["jobTitle"]) && s0.links === s1.links,
++        `${label} (company read) echoes its contact's current INVISIBLE company + jobTitle → ${codeOf(r)} "${cut(r.err?.message, 60)}" · jobTitle saved=${row.jobTitle === `echo ${rand}`} · company kept=${row.companyId === coHidden.id} · audit keys ${j(keys)} (want OK · ["jobTitle"])`);
++    }
++    // race: someone moves the company between the service's pre-read and its transaction; a read user's echo of the OLD id must not be
++    //   recorded as "companyId changed" (no link was touched)
++    const kR = await mkContact(shop, "เรซ", ro.uid, { companyId: coRo.id });
++    const origTx = P.$transaction;
++    let armed = true;
++    let patched = false;
++    try {
++      P.$transaction = async (...args: Any[]) => {
++        if (armed) {
++          armed = false;
++          await P.$executeRawUnsafe(`UPDATE "CrmContact" SET "companyId" = $1 WHERE "id" = $2`, coHidden.id, kR.id);
++        }
++        return origTx.apply(P, args);
++      };
++      patched = P.$transaction !== origTx;
++    } catch {
++      patched = false;
++    }
++    if (patched) {
++      const r = await call(() => CON.updateContact(ro.ctx, ro.actor, kR.id, { jobTitle: `race ${rand}`, companyId: coRo.id }));
++      P.$transaction = origTx;
++      const keys = r.ok ? await lastUpdateKeys(shop.tid, kR.id) : [];
++      const ev = await P.outboxEvent.findMany({ where: { tenantId: shop.tid, type: "crm.contact.updated" }, orderBy: { createdAt: "desc" }, take: 5 });
++      const evKeys = ((ev.find((e: Any) => (e.payload as Any)?.contactId === kR.id)?.payload as Any)?.changedKeys ?? []) as string[];
++      chk("F5-race-no-false-audit", r.ok && !keys.includes("companyId") && !evKeys.includes("companyId"),
++        `read user echoes the OLD company while another writer moved it in between → ${codeOf(r)} "${cut(r.err?.message, 60)}" · audit keys ${j(keys)} · event keys ${j(evKeys)} (want no "companyId")`);
++    } else {
++      info("F5-race-no-false-audit", "prisma.$transaction could not be wrapped in this process — race not simulated");
++    }
++    // control: an ACTUAL change by a read-only user is still refused before any write
++    const kX = await mkContact(shop, "เปลี่ยนจริง", ro.uid, { companyId: coRo.id });
++    const s0 = await snap(shop.tid, kX.id);
++    const rx = await call(() => CON.updateContact(ro.ctx, ro.actor, kX.id, { jobTitle: `x ${rand}`, companyId: coFull.id }));
++    const s1 = await snap(shop.tid, kX.id);
++    chk("F5-control-real-change-refused", codeOf(rx) === "FORBIDDEN" && diff(s0, s1) === "none", `read-only user REALLY changes the company → ${codeOf(rx)} · writes: ${diff(s0, s1)}`);
++    const kU = await mkContact(shop, "ตัวใหญ่", noCo.uid, { companyId: coRo.id });
++    const ru = await call(() => CON.updateContact(noCo.ctx, noCo.actor, kU.id, { jobTitle: `u ${rand}`, companyId: coRo.id.toUpperCase() }));
++    chk("F5-control-upper-not-echo", codeOf(ru) === "FORBIDDEN", `no-read user sends UPPER(current id) → ${codeOf(ru)} (not an echo)`);
++  }
++
++  // ═══════════ F6 · F6-6 /deals/new default company ═══════════
++  console.log("\n── F6 · F6-6 ──");
++  {
++    const kD = await mkContact(shop, "ดีลบริษัทลับ", noCo.uid, { companyId: coHidden.id });
++    const before = (await P.crmCompany.findUnique({ where: { id: coHidden.id } })).openDealCount;
++    const r = await call(() => DEALS.createDeal(noCo.ctx, noCo.actor, { pipelineId: shop.pipe.id, title: `ดีล ${rand}`, contactId: kD.id, valueSatang: 1000 }));
++    const after = (await P.crmCompany.findUnique({ where: { id: coHidden.id } })).openDealCount;
++    chk("F6-default-kept", r.ok && r.v.companyId === coHidden.id && after === before + 1,
++      `no-read creator, contact at a company they cannot see → ${codeOf(r)} · deal company = contact's (${r.v?.companyId === coHidden.id}) · company openDealCount ${before}→${after} (roll-up)`);
++    const dto = r.v ?? {};
++    const g = r.ok ? await call(() => DEALS.getDeal360(noCo.ctx, noCo.actor, dto.id)) : { ok: false };
++    const txt = j(dto) + j(g.v?.company ?? null);
++    chk("F6-no-name-back", r.ok && !("companyName" in dto) && g.ok && g.v.company === null && !txt.includes(coHidden.name),
++      `create returns no company name (keys: ${cut(Object.keys(dto).filter((x) => /compan/i.test(x)).join(","), 60)}) · deal 360 company=${g.ok ? j(g.v.company) : `ERR ${codeOf(g)}`} · hidden name anywhere=${txt.includes(coHidden.name)}`);
++    const lst = await call(() => DEALS.listDeals(noCo.ctx, noCo.actor, {}));
++    const card = (lst.v?.items ?? lst.v?.cards ?? []).find((x: Any) => x.id === dto.id);
++    info("F6-board-card", `listDeals card for the creator → companyName ${j(card?.companyName ?? null)} (pre-existing deal-wide rule: deal cards/CSV name the deal's company via system scope — owner question)`);
++    const nd = src("src/app/app/sys/[id]/crm/deals/_components/NewDealForm.tsx");
++    chk("F6-label", !/<option value="">ไม่ผูกบริษัท<\/option>/.test(nd) && /<option value="">[^<]*บริษัทหลักของผู้ติดต่อ[^<]*<\/option>/.test(nd),
++      "deal form's empty company option says it uses the contact's primary company (it never meant 'no company')");
++  }
++
++  // ═══════════ DT · RV-3 DATETIME on the contact page and in the export ═══════════
++  console.log("\n── DT · RV-3 ──");
++  {
++    const F = MEM.fields;
++    const fctx = { ...owner.ctx, objectKey: "contact", actor: owner.actor };
++    const sec = await F.createSection(fctx, { key: `qcT${rand.replace(/[^a-z]/g, "")}`.slice(0, 30), label: "เวลา" });
++    await F.createField(fctx, { sectionId: sec.id, key: "qcAt", label: "นัดหมายเมื่อ", type: "DATETIME" });
++    await F.createField(fctx, { sectionId: sec.id, key: "qcOn", label: "วันเริ่ม", type: "DATE" });
++    const ISO = "2026-10-09T00:30:00+07:00"; // = 2026-10-08T17:30Z
++    const k = await mkContact(shop, "วันเวลา", shop.uid);
++    await CON.updateContact(owner.ctx, owner.actor, k.id, { fields: { qcAt: ISO, qcOn: "2026-10-09" } });
++    const d = (await CON.getContact360(owner.ctx, owner.actor, k.id)) as Any;
++    const f = d.fields.sections.flatMap((s: Any) => s.fields).find((x: Any) => x.key === "qcAt");
++    const fd = d.fields.sections.flatMap((s: Any) => s.fields).find((x: Any) => x.key === "qcOn");
++    const staffPage = TYPES.displayValue(new Date(ISO).toISOString(), [], "DATETIME");
++    chk("DT-360-thai", f?.display === staffPage && /2569/.test(String(f?.display)) && /00:30/.test(String(f?.display)),
++      `contact 360 DATETIME display "${f?.display}" · staff record page "${staffPage}" (want equal, Thai time)`);
++    info("DT-360-date", `contact 360 DATE display "${fd?.display}" (unchanged; the staff page shows "${TYPES.displayValue("2026-10-09", [], "DATE")}")`);
++    const csv = await CON.exportContacts(owner.ctx, owner.actor, { confirm: true, reason: "ตรวจรูปแบบวันเวลา" });
++    const rows = parseCsv(csv);
++    const hdr = rows[0] ?? [];
++    const iAt = hdr.indexOf("นัดหมายเมื่อ");
++    const iOn = hdr.indexOf("วันเริ่ม");
++    const line = rows.find((rr) => rr[0] === "วันเวลา") ?? [];
++    const cell = line[iAt] ?? "";
++    chk("DT-export-iso-th", cell === ISO, `export DATETIME cell "${cell}" (want "${ISO}" — Thai wall time with its own offset)`);
++    chk("DT-export-date-unchanged", (line[iOn] ?? "") === "2026-10-09", `export DATE cell "${line[iOn]}" (want "2026-10-09", unchanged)`);
++    // round trip: import the exported cell back on a server running in Thai time
++    const prevTz = process.env.TZ;
++    process.env.TZ = "Asia/Bangkok";
++    const tzOk = new Date("2026-10-08 17:30").toISOString() === "2026-10-08T10:30:00.000Z";
++    const imp = await call(() => CON.importContacts(owner.ctx, owner.actor, { rows: [{ ชื่อ: `กลับเข้า ${rand}`, เวลา: cell }], mapping: { ชื่อ: "firstName", เวลา: "f.qcAt" }, options: { onDuplicate: "skip", source: "IMPORT" } }));
++    if (prevTz === undefined) delete process.env.TZ; else process.env.TZ = prevTz;
++    const back = await P.crmContact.findFirst({ where: { tenantId: shop.tid, firstName: `กลับเข้า ${rand}` } });
++    const v = back ? await P.customRecordValue.findFirst({ where: { tenantId: shop.tid, recordId: back.id, field: { key: "qcAt" } } }).catch(() => null) : null;
++    const got = v?.valueDate ? new Date(v.valueDate).toISOString() : null;
++    chk("DT-roundtrip-thai-server", tzOk && imp.ok && got === new Date(ISO).toISOString(),
++      `TZ premise ${tzOk} · import exported "${cell}" with TZ=Asia/Bangkok → ${codeOf(imp)} errors ${cut(j(imp.v?.result?.errors ?? []), 120)} · stored ${got} (want ${new Date(ISO).toISOString()})`);
++    const portalSrc = src("src/lib/modules/crm/portal.ts");
++    const typesSrc = src("src/components/crm/objects/types.ts");
++    const conSrc = src("src/lib/modules/crm/contacts.ts");
++    const one = (t: string) => /import \{[^}]*formatThaiDateTimeFull[^}]*\} from "@\/lib\/ui\/date"/.test(t);
++    chk("DT-one-helper", one(portalSrc) && one(typesSrc) && one(conSrc) && !/PORTAL_DATETIME_FMT/.test(portalSrc) && !/hour: "2-digit"/.test(typesSrc + portalSrc),
++      "portal.ts, contacts.ts and the staff record page take formatThaiDateTimeFull from lib/ui/date (no copied format options)");
++    // equivalence of the portal's old format and the shared helper (control: same text)
++    const fmt: Intl.DateTimeFormatOptions = { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Bangkok" };
++    const samples = ["2026-10-08T17:30:00Z", "2026-01-01T00:00:00Z", "2026-12-31T16:59:00Z", "2027-02-28T23:15:00Z"];
++    chk("DT-control-portal-equal", samples.every((s) => new Date(s).toLocaleString("th-TH", fmt) === TYPES.thaiDateTimeText(s)), "old portal format options = shared helper text on 4 instants");
++  }
++
++  // ═══════════ IM · R2F-3 notes vs failures ═══════════
++  console.log("\n── IM · R2F-3 ──");
++  {
++    const rows: Any[] = [];
++    for (let i = 1; i <= 55; i += 1) rows.push({ ชื่อ: `นำเข้า${i} ${rand}`, อีเมล: `im${i}-${rand}@imp.test`, บริษัท: `ใหม่ ${i} ${rand}` }); // linker cannot create ⇒ note per row
++    for (let i = 56; i <= 60; i += 1) rows.push({ ชื่อ: "", อีเมล: "", บริษัท: `ว่าง ${i}` }); // real failures (empty row)
++    const r = await call(() => CON.importContacts(linker.ctx, linker.actor, { rows, mapping: { ชื่อ: "firstName", อีเมล: "email", บริษัท: "company" }, options: { onDuplicate: "skip", source: "IMPORT" } }));
++    const res = r.v?.result ?? {};
++    const errs = (res.errors ?? []) as Any[];
++    const first50 = errs.slice(0, 50);
++    const failRows = [56, 57, 58, 59, 60];
++    info("IM-shape", `${codeOf(r)} created=${res.created} failed=${res.failed} entries=${errs.length} · first entry ${cut(j(errs[0]), 120)} · kinds ${j([...new Set(errs.map((e) => e.kind))])}`);
++    chk("IM-kind", r.ok && errs.length > 0 && errs.every((e) => e.kind === "error" || e.kind === "note") && errs.filter((e) => e.kind === "error").length === res.failed && errs.filter((e) => e.kind === "note").length === 55,
++      `every entry has kind · errors=${errs.filter((e) => e.kind === "error").length} (=failed ${res.failed}) · notes=${errs.filter((e) => e.kind === "note").length} (want 55)`);
++    chk("IM-failures-first", r.ok && res.failed === 5 && failRows.every((n) => first50.some((e) => e.row === n && /ว่าง/.test(e.message))),
++      `all 5 real failures inside the first 50 entries the UI shows → rows ${j(first50.filter((e) => failRows.includes(e.row)).map((e) => e.row))} (positions ${j(errs.map((e, i) => (failRows.includes(e.row) ? i : -1)).filter((i) => i >= 0))})`);
++    chk("IM-compat", errs.every((e) => typeof e.row === "number" && typeof e.message === "string"), "entries still carry row + message (additive change)");
++    const job = r.ok ? ((await CON.getImportJob(linker.ctx, linker.actor, r.v.jobId)) as Any).result : null;
++    chk("IM-job-failures-kept", !!job && job.failed === 5 && failRows.every((n) => (job.errors as Any[]).some((e) => e.row === n && e.kind === "error")),
++      `getImportJob (audit keeps the first 50) still lists the 5 failures with kind "error" → ${j((job?.errors ?? []).filter((e: Any) => failRows.includes(e.row)).map((e: Any) => [e.row, e.kind]))}`);
++    const ui = src("src/app/app/sys/[id]/crm/contacts/_components/ContactImportPanel.tsx") + src("src/app/app/sys/[id]/crm/contacts/_components/ContactListTools.tsx");
++    chk("IM-ui-label", (ui.match(/e\.kind === "note"/g) ?? []).length >= 2, "both import result lists label notes apart from failures");
++  }
++} catch (e) {
++  chk("FATAL", false, String((e as Error)?.stack ?? e).slice(0, 900));
++}
++await done("probe-cf10");
+diff --git a/scripts/pending/cf10/probe-cf10.red.log b/scripts/pending/cf10/probe-cf10.red.log
+new file mode 100644
+index 00000000..aa1f6fbe
+--- /dev/null
++++ b/scripts/pending/cf10/probe-cf10.red.log
+@@ -0,0 +1,62 @@
++(node:2153337) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
++In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
++
++To prepare for this change:
++- If you want the current behavior, explicitly use 'sslmode=verify-full'
++- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
++
++See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
++(Use `node --trace-warnings ...` to show where the warning was created)
++  ✅ [P-premise] keys: linker can link · ro/noCo cannot · coHidden invisible to linker, visible to owner · coLink visible to linker
++
++── F1 · R2F-1 ──
++  ❌ [F1-ui-no-dead-picker] linker, primary hidden: picker shown=true · locked line=false "" · hidden name in html=false (want no picker · explanatory line · no hidden name)
++  ❌ [F1-srv-own-text] linker promotes its visible secondary, primary hidden → NOT_FOUND "ไม่พบบริษัทนี้ในระบบ CRM ที่เปิดอยู่ (อาจถูกลบหรืออยู่คนละระบบ) — รีเฟรชหน้าแล้วลองใหม่" · writes: none (want NOT_FOUND · own text about visibility, no "refresh" · no hidden name · none)
++  ✅ [F1-oracle-same-text] hidden live (move) / hidden archived (move) / hidden archived (clear) → NOT_FOUND / NOT_FOUND / NOT_FOUND · same text=true
++  ✅ [F1-control-linker-visible] linker, primary visible → picker, no locked line
++  ✅ [F1-control-owner] owner on the same contact → picker=true · promote secondary OK → primary=coLink
++  ✅ [F1-control-readonly-line] read-only role keeps the fix6 r2 read-only line ('บริษัท: <visible secondary>'), no locked line, no hidden name
++  ✅ [F1-control-noread] no company read → no picker, no line (unchanged)
++  ❌ [F1-wiring] page computes primaryCompanyHidden via contacts.isCurrentCompanyHidden and passes can.company / companyLocked from it
++
++── F2 · R2F-2 ──
++  ❌ [F2-archived-clear-atomic] clear an ARCHIVED (visible) current company + firstName → VALIDATION "บริษัทนี้ถูกเก็บถาวรแล้ว จึงแก้ไขไม่ได้ — กู้คืนก่อนถ้าต้องการใช้งานต่อ" · writes: AuditLog 2→3 · OutboxEvent 2→3 · contact row changed (want VALIDATION · none — refused before any write)
++  ✅ [F2-control-move-off] move off the archived company → OK · now coFull=true
++  ✅ [F2-control-restore-then-clear] restore OK → clear OK · companyId=null · link ended=true
++  ✅ [F2-control-real-archive] archiveCompany (service) → contact cache null (want null) · clear afterwards OK
++  ✅ [F2-control-live-clear] clear a live visible company → OK · companyId=null
++
++── F5 · F6-5 ──
++  ❌ [F5-echo-invisible-ro] ro (company read) echoes its contact's current INVISIBLE company + jobTitle → VALIDATION "ไม่พบบริษัทที่เลือกในระบบ CRM นี้ (อาจถูกเก็บถาวรหรือรวมไปแล…" · jobTitle saved=false · company kept=true · audit keys [] (want OK · ["jobTitle"])
++  ❌ [F5-echo-invisible-linker] linker (company read) echoes its contact's current INVISIBLE company + jobTitle → VALIDATION "ไม่พบบริษัทที่เลือกในระบบ CRM นี้ (อาจถูกเก็บถาวรหรือรวมไปแล…" · jobTitle saved=false · company kept=true · audit keys [] (want OK · ["jobTitle"])
++  ❌ [F5-race-no-false-audit] read user echoes the OLD company while another writer moved it in between → OK "" · audit keys ["jobTitle","companyId"] · event keys ["jobTitle","companyId"] (want no "companyId")
++  ✅ [F5-control-real-change-refused] read-only user REALLY changes the company → FORBIDDEN · writes: none
++  ✅ [F5-control-upper-not-echo] no-read user sends UPPER(current id) → FORBIDDEN (not an echo)
++
++── F6 · F6-6 ──
++  ✅ [F6-default-kept] no-read creator, contact at a company they cannot see → OK · deal company = contact's (true) · company openDealCount 0→1 (roll-up)
++  ✅ [F6-no-name-back] create returns no company name (keys: companyId) · deal 360 company=null · hidden name anywhere=false
++  ℹ️  [F6-board-card] listDeals card for the creator → companyName "บริษัทลับ fzvdbzbr" (pre-existing deal-wide rule: deal cards/CSV name the deal's company via system scope — owner question)
++  ❌ [F6-label] deal form's empty company option says it uses the contact's primary company (it never meant 'no company')
++
++── DT · RV-3 ──
++  ❌ [DT-360-thai] contact 360 DATETIME display "2026-10-08 17:30" · staff record page "9 ต.ค. 2569 00:30" (want equal, Thai time)
++  ℹ️  [DT-360-date] contact 360 DATE display "2026-10-09" (unchanged; the staff page shows "9 ต.ค. 2569")
++  ❌ [DT-export-iso-th] export DATETIME cell "2026-10-08 17:30" (want "2026-10-09T00:30:00+07:00" — Thai wall time with its own offset)
++  ✅ [DT-export-date-unchanged] export DATE cell "2026-10-09" (want "2026-10-09", unchanged)
++  ❌ [DT-roundtrip-thai-server] TZ premise true · import exported "2026-10-08 17:30" with TZ=Asia/Bangkok → OK errors [] · stored 2026-10-08T10:30:00.000Z (want 2026-10-08T17:30:00.000Z)
++  ❌ [DT-one-helper] portal.ts, contacts.ts and the staff record page take formatThaiDateTimeFull from lib/ui/date (no copied format options)
++  ✅ [DT-control-portal-equal] old portal format options = shared helper text on 4 instants
++
++── IM · R2F-3 ──
++  ℹ️  [IM-shape] OK created=55 failed=5 entries=60 · first entry {"row":1,"message":"เพิ่มผู้ติดต่อแล้ว แต่ผูกบริษัทไม่สำเร็จ — บัญชีนี้ยังไม่ได้รับสิทธิ์ \"เพิ่มบริษัท\" ในระบบ CRM — ข… · kinds [null]
++  ❌ [IM-kind] every entry has kind · errors=0 (=failed 5) · notes=0 (want 55)
++  ❌ [IM-failures-first] all 5 real failures inside the first 50 entries the UI shows → rows [] (positions [55,56,57,58,59])
++  ✅ [IM-compat] entries still carry row + message (additive change)
++  ❌ [IM-job-failures-kept] getImportJob (audit keeps the first 50) still lists the 5 failures with kind "error" → []
++  ❌ [IM-ui-label] both import result lists label notes apart from failures
++  ✅ [CLEAN-q91ymn] tenant rows left=0
++
++🔴 probe-cf10: 18/34
++JSON_SUMMARY {"total":34,"passed":18,"findings":["F1-ui-no-dead-picker","F1-srv-own-text","F1-wiring","F2-archived-clear-atomic","F5-echo-invisible-ro","F5-echo-invisible-linker","F5-race-no-false-audit","F6-label","DT-360-thai","DT-export-iso-th","DT-roundtrip-thai-server","DT-one-helper","IM-kind","IM-failures-first","IM-job-failures-kept","IM-ui-label"]}
++exit=1 2026-10-02T00:01:14Z
+diff --git a/scripts/pending/cf10/regress.summary b/scripts/pending/cf10/regress.summary
+new file mode 100644
+index 00000000..efb55b2c
+--- /dev/null
++++ b/scripts/pending/cf10/regress.summary
+@@ -0,0 +1,45 @@
++# round 1 (full chain) — /tmp/cf10-logs/regress/
++start 2026-10-01T22:35:57Z
++probe-cf10 exit=0 205s · 🟢 probe-cf10: 34/34 JSON_SUMMARY {"total":34,"passed":34,"findings":[]} 
++probe-cf7 exit=0 102s · 🟢 probe-cf7: 30/30 JSON_SUMMARY {"total":30,"passed":30,"findings":[]} 
++probe-cf7-r2 exit=0 21s · 🟢 probe-cf7-r2: 14/14 JSON_SUMMARY {"total":14,"passed":14,"findings":[]} 
++probe-cf7-review exit=0 143s · 🟢 probe-cf7-review: 27/27 JSON_SUMMARY {"total":27,"passed":27,"findings":[]} 
++probe-cf7-review-r2 exit=0 341s · 🟢 probe-cf7-review-r2: 21/21 JSON_SUMMARY {"total":21,"passed":21,"findings":[]} 
++probe-cf5 exit=0 268s · 🟢 probe-cf5: 22/22 JSON_SUMMARY {"total":22,"passed":22,"findings":[]} 
++probe-cf5-r2 exit=0 287s · 🟢 probe-cf5-r2: 14/14 JSON_SUMMARY {"total":14,"passed":14,"findings":[]} 
++qc-crm-c1.4 exit=0 354s · 🟢 C1.4: 110/110 JSON_SUMMARY {"total":110,"passed":110,"findings":[]} 
++qc-crm-c1.3 exit=0 201s · 🟢 C1.3: 89/89 JSON_SUMMARY {"total":89,"passed":89,"findings":[]} 
++qc-crm-c1.5 exit=0 206s · 🟢 C1.5: 103/103 JSON_SUMMARY {"total":103,"passed":103,"findings":[]} 
++qc-crm-c1.10 exit=0 299s · 🟢 C1.10: 66/66 · webhook fetch stubbed 4× · keyErrors filter-foreign-team=ทีมในตัวกรองของคีย์ไม่ใช่ทีมของร้านนี้ — เลือกทีมจากรายชื่อท… JSON_SUMMARY {"total":66,"passed":66,"fi
++qc-crm-c1.11 exit=0 127s · 🟢 C1.11: 66/66 JSON_SUMMARY {"total":66,"passed":66,"findings":[]} 
++qc-crm-c2.4 exit=0 241s · 🟢 C2.4: 91/91 · outbound fetch stubbed 0× JSON_SUMMARY {"total":91,"passed":91,"findings":[]} 
++qc-crm-c1.9 exit=0 143s · 🟢 C1.9: 45/45 JSON_SUMMARY {"total":45,"passed":45,"findings":[]} 
++qc-crm-c3.5 exit=0 97s · 🟢 C3.5: 67/67 JSON_SUMMARY {"total":67,"passed":67,"findings":[]} 
++docs-crm exit=0 2s · ✅ docs/api/CRM-API.md ตรงกับทะเบียน (123 op) 
++docs-member exit=1 2s · ❌ .claude/skills/shark-member-api/references/endpoints.md ไม่ตรงกับทะเบียน (0 ไบต์บนดิสก์ vs 18819 ไบต์ที่ควรเป็น) 
++docs-kanban exit=1 3s · ❌ .claude/skills/shark-kanban-api/references/endpoints.md ไม่ตรงกับทะเบียน (0 ไบต์บนดิสก์ vs 8244 ไบต์ที่ควรเป็น) 
++docs-account exit=0 2s · ✅ docs/api/ACCOUNT-API.md + skill endpoints.md ตรงกับทะเบียน (199 op) 
++typecheck exit=0 100s · 
++fitness exit=1 5s · ผ่าน 35/36 JSON_SUMMARY {"total":36,"passed":35,"findings":[{"id":"F2.3","name":"โค้ดอื่นแตะ crm ได้เฉพาะผ่าน crm/index (facade) หรือ crm/ui (ทางเข้าคอมโพเนนต์)","detail":"ล้วงลึก: src/compo
++fitness-noenv exit=1 363s · ผ่าน 35/36 JSON_SUMMARY {"total":36,"passed":35,"findings":[{"id":"F2.3","name":"โค้ดอื่นแตะ crm ได้เฉพาะผ่าน crm/index (facade) หรือ crm/ui (ทางเข้าคอมโพเนนต์)","detail":"ล้วงลึก: src/compo
++ALLDONE 2026-10-01T23:34:29Z
++
++# round 2 (after moving the DATETIME helper to lib/ui/date — fitness F2.3) — /tmp/cf10-logs/regress2/
++start 2026-10-01T23:36:42Z
++probe-cf10 exit=0 67s · 🟢 probe-cf10: 34/34 JSON_SUMMARY {"total":34,"passed":34,"findings":[]} 
++probe-cf5 exit=0 81s · 🟢 probe-cf5: 22/22 JSON_SUMMARY {"total":22,"passed":22,"findings":[]} 
++qc-crm-c1.4 exit=0 181s · 🟢 C1.4: 110/110 JSON_SUMMARY {"total":110,"passed":110,"findings":[]} 
++qc-crm-c1.9 exit=0 45s · 🟢 C1.9: 45/45 JSON_SUMMARY {"total":45,"passed":45,"findings":[]} 
++qc-crm-c3.5 exit=0 95s · 🟢 C3.5: 67/67 JSON_SUMMARY {"total":67,"passed":67,"findings":[]} 
++docs-crm exit=0 2s · ✅ docs/api/CRM-API.md ตรงกับทะเบียน (123 op) 
++docs-member exit=1 2s · ❌ .claude/skills/shark-member-api/references/endpoints.md ไม่ตรงกับทะเบียน (0 ไบต์บนดิสก์ vs 18819 ไบต์ที่ควรเป็น) 
++docs-kanban exit=1 3s · ❌ .claude/skills/shark-kanban-api/references/endpoints.md ไม่ตรงกับทะเบียน (0 ไบต์บนดิสก์ vs 8244 ไบต์ที่ควรเป็น) 
++docs-account exit=0 2s · ✅ docs/api/ACCOUNT-API.md + skill endpoints.md ตรงกับทะเบียน (199 op) 
++typecheck exit=0 323s · 
++fitness exit=0 6s · ผ่าน 36/36 JSON_SUMMARY {"total":36,"passed":36,"findings":[]} 
++fitness-noenv exit=0 558s · ผ่าน 36/36 JSON_SUMMARY {"total":36,"passed":36,"findings":[]} 
++ALLDONE 2026-10-01T23:59:27Z
++
++# RED with the final probe on the fbd7ca2c src (swap + restore) — /tmp/cf10-logs/probe-cf10.red-final.log
++JSON_SUMMARY {"total":34,"passed":18,"findings":["F1-ui-no-dead-picker","F1-srv-own-text","F1-wiring","F2-archived-clear-atomic","F5-echo-invisible-ro","F5-echo-invisible-linker","F5-race-no-false-audit","F6-label","DT-360-thai","DT-export-iso-th","DT-roundtrip-thai-server","DT-one-helper","IM-kind","IM-failures-first","IM-job-failures-kept","IM-ui-label"]}
++exit=1 2026-10-02T00:01:14Z
+diff --git a/scripts/pending/cf10/review/leftover-check.mts b/scripts/pending/cf10/review/leftover-check.mts
+new file mode 100644
+index 00000000..41ee1be2
+--- /dev/null
++++ b/scripts/pending/cf10/review/leftover-check.mts
+@@ -0,0 +1,11 @@
++// QC2 leftover check for the C5.5-fix7 review — counts throwaway tenants/users tagged qc-cf10- / qc-cf7- (read-only)
++const { prisma } = await import("@/lib/core/db");
++if (!/ep-cool-shadow/.test(String(process.env.DATABASE_URL ?? ""))) { console.log("QC2 only"); process.exit(1); }
++const out: string[] = [];
++for (const p of ["qc-cf10-", "qc-cf7-"]) {
++  const t = await prisma.tenant.count({ where: { slug: { startsWith: p } } });
++  const u = await prisma.user.count({ where: { email: { startsWith: p } } });
++  out.push(`${p} tenants=${t} users=${u}`);
++}
++console.log(`LEFTOVER ${out.join(" · ")}`);
++await prisma.$disconnect();
+diff --git a/scripts/pending/cf10/review/probe-cf10-review.mts b/scripts/pending/cf10/review/probe-cf10-review.mts
+new file mode 100644
+index 00000000..2d8bf550
+--- /dev/null
++++ b/scripts/pending/cf10/review/probe-cf10-review.mts
+@@ -0,0 +1,373 @@
++// C5.5-fix7 REVIEW probe (independent reviewer) — attacks on 8ac89741
++//   R1   isCurrentCompanyHidden ⇔ the server refusal, per persona (owner · unit-scoped manager · OWN-scoped staff linker) × contact shape
++//        (primary visible · primary hidden · hidden+archived · hidden+merged · visible+archived · no primary but hidden secondary) ·
++//        what the user already sees (contact DTO companyId) · same refusal text for move / clear / live / archived / merged
++//   R2   clear of an archived / merged VISIBLE current company: zero writes · move-off OK · restore → clear OK · company archive/merge flows
++//   F5   echo variants (padded · null / "" / omitted · + moveOpenDeals) for every persona · a real change is never treated as an echo
++//   F6   deal list / board / CSV name the deal's company to a creator who cannot see it (pre-existing — measured)
++//   DT   DATETIME: old export cells still import (and to which instant, per server TZ) · edge instants · ms precision · byte-identity of the
++//        shared formatter with the two old implementations · empty cells · DATE untouched
++//   IM   import entry kinds: failures first at the 500 cap (513-row file) · getImportJob 50 · legacy audit rows without kind
++// QC2 only (ep-cool-shadow) · throwaway tenants `qc-cf10-rv-*` (swept in done()) · network blocked.
++// Run: bash scripts/iso.sh env CRM_V2_SWITCH=all NODE_OPTIONS=--max-old-space-size=3584 bash scripts/qc2.sh bash scripts/with-gate-lock.sh \
++//        pnpm exec tsx scripts/pending/cf10/review/probe-cf10-review.mts
++/* eslint-disable @typescript-eslint/no-explicit-any */
++type Any = any;
++import { AsyncLocalStorage } from "node:async_hooks";
++const { fixture } = (await import("../_fx.mts" as string)) as { fixture: (label: string) => Promise<Any> };
++
++(globalThis as Any).AsyncLocalStorage ??= AsyncLocalStorage;
++const fx = await fixture("rv");
++const { P, chk, call, mkShop, mkUser, done, TAG } = fx;
++const j = (v: Any) => JSON.stringify(v, (_k, x) => (typeof x === "bigint" ? x.toString() : x instanceof Date ? x.toISOString() : x));
++const cut = (v: unknown, n = 140) => { const s = String(v ?? "").replace(/\s+/g, " "); return s.length > n ? `${s.slice(0, n)}…` : s; };
++const codeOf = (r: Any) => (r.ok ? "OK" : String(r.err?.code ?? r.err?.name ?? "ERR"));
++const rand = TAG.slice(-8);
++const info = (id: string, msg: string) => console.log(`  ℹ️  [${id}] ${msg}`);
++
++const MEM = (await import("@/lib/modules/member" as string)) as Any;
++const { toMemberActor } = MEM;
++const CON = (await import("@/lib/modules/crm/contacts" as string)) as Any;
++const CO = (await import("@/lib/modules/crm/companies" as string)) as Any;
++const DEALS = (await import("@/lib/modules/crm/deals" as string)) as Any;
++const SHARED = (await import("@/lib/modules/crm/contacts-shared" as string)) as Any;
++const UID = (await import("@/lib/ui/date" as string)) as Any;
++const { crmCanLinkCompany } = (await import("@/lib/modules/crm/access" as string)) as Any;
++const HIDDEN = SHARED.CONTACT_PRIMARY_COMPANY_HIDDEN_MSG as string;
++
++async function member(shop: Any, suffix: string, role: "STAFF" | "MANAGER", unitAccess: string[], keys: string[]) {
++  const uid = await mkUser(`-${suffix}`);
++  const permissions = Object.fromEntries(keys.map((k) => [k, true]));
++  const m = await P.membership.create({ data: { userId: uid, tenantId: shop.tid, role, unitAccess, permissions, acceptedAt: new Date() } });
++  return { uid, actor: toMemberActor(uid, m), ctx: { tenantId: shop.tid, systemId: shop.S, actorUserId: uid } };
++}
++async function mkCompany(shop: Any, name: string, ownerUserId: string, teamId: string | null = null) {
++  const party = await P.party.create({ data: { tenantId: shop.tid, name, kind: "COMPANY" } });
++  return P.crmCompany.create({ data: { tenantId: shop.tid, systemId: shop.S, partyId: party.id, name, ownerUserId, teamId } });
++}
++async function mkContact(shop: Any, first: string, ownerUserId: string, opts: { companyId?: string | null; extra?: string[] } = {}) {
++  const name = `${first} ${TAG}`;
++  const party = await P.party.create({ data: { tenantId: shop.tid, name, kind: "PERSON" } });
++  const k = await P.crmContact.create({ data: { tenantId: shop.tid, systemId: shop.S, name, firstName: first, partyId: party.id, ownerUserId, companyId: opts.companyId ?? null } });
++  if (opts.companyId) await P.crmCompanyContact.create({ data: { tenantId: shop.tid, companyId: opts.companyId, contactId: k.id, isPrimary: true } });
++  for (const c of opts.extra ?? []) await P.crmCompanyContact.create({ data: { tenantId: shop.tid, companyId: c, contactId: k.id, isPrimary: false } });
++  return k;
++}
++const TABLES = ((await P.$queryRawUnsafe(`select distinct table_name from information_schema.columns where table_schema='public' and column_name='tenantId'`)) as Any[])
++  .map((r) => String(r.table_name)).filter((x) => /^[A-Za-z_]+$/.test(x)).sort();
++async function snap(tid: string, contactId: string | null) {
++  const counts: Record<string, number> = {};
++  for (const t of TABLES) {
++    const n = Number(((await P.$queryRawUnsafe(`SELECT count(*)::int AS n FROM "${t}" WHERE "tenantId" = $1`, tid)) as Any[])[0]?.n ?? 0);
++    if (n) counts[t] = n;
++  }
++  const row = contactId ? await P.crmContact.findUnique({ where: { id: contactId } }) : null;
++  const links = contactId ? await P.crmCompanyContact.findMany({ where: { contactId }, orderBy: { companyId: "asc" } }) : [];
++  return { counts, row: j(row), links: j(links) };
++}
++function diff(a: Any, b: Any): string {
++  const out: string[] = [];
++  for (const k of new Set([...Object.keys(a.counts), ...Object.keys(b.counts)])) if ((a.counts[k] ?? 0) !== (b.counts[k] ?? 0)) out.push(`${k} ${a.counts[k] ?? 0}→${b.counts[k] ?? 0}`);
++  if (a.row !== b.row) out.push("contact row changed");
++  if (a.links !== b.links) out.push("company links changed");
++  return out.join(" · ") || "none";
++}
++function parseCsv(text: string): string[][] {
++  const out: string[][] = [];
++  let row: string[] = [];
++  let cell = "";
++  let q = false;
++  const s = text.replace(/^﻿/, "");
++  for (let i = 0; i < s.length; i += 1) {
++    const ch = s[i]!;
++    if (q) {
++      if (ch === '"' && s[i + 1] === '"') { cell += '"'; i += 1; } else if (ch === '"') q = false; else cell += ch;
++    } else if (ch === '"') q = true;
++    else if (ch === ",") { row.push(cell); cell = ""; }
++    else if (ch === "\r") { /* skip */ }
++    else if (ch === "\n") { row.push(cell); out.push(row); row = []; cell = ""; }
++    else cell += ch;
++  }
++  if (cell || row.length) { row.push(cell); out.push(row); }
++  return out;
++}
++
++try {
++  const shop = await mkShop("a");
++  const owner = { actor: shop.owner, ctx: shop.ctx, uid: shop.uid };
++  // unit-scoped manager: sees companies with no team or a team of unit u-a; team TB (unit u-b) is outside
++  const TA = await P.team.create({ data: { tenantId: shop.tid, name: `TA ${TAG}`, unitIds: ["u-a"] } });
++  const TB = await P.team.create({ data: { tenantId: shop.tid, name: `TB ${TAG}`, unitIds: ["u-b"] } });
++  const mgr = await member(shop, "mgr", "MANAGER", ["u-a"], []);
++  const BASE = ["crm.contact.read", "crm.contact.create", "crm.contact.update", "crm.contact.import", "crm.deal.read", "crm.deal.create", "crm.activity.read"];
++  const linker = await member(shop, "link", "STAFF", ["*"], [...BASE, "crm.company.read", "crm.company.update"]);
++  const ro = await member(shop, "ro", "STAFF", ["*"], [...BASE, "crm.company.read"]);
++  const noCo = await member(shop, "noco", "STAFF", ["*"], BASE);
++  // companies
++  const coLinkV = await mkCompany(shop, `ลิงก์เห็น ${rand}`, linker.uid, TA.id); // linker (own) + mgr (TA) + owner
++  const coLinkT = await mkCompany(shop, `ลิงก์ปลายทาง ${rand}`, linker.uid, TA.id);
++  const coB = await mkCompany(shop, `ทีมบี ${rand}`, shop.uid, TB.id); // owner only (mgr: TB outside unit · staff: not own)
++  const vis = async (who: Any, id: string) => !!(await P.crmCompany.findFirst({ where: { AND: [await (await import("@/lib/modules/crm/where" as string)).companyWhere(who.ctx, who.actor), { id }] } }));
++  chk("P-premise", (await vis(mgr, coLinkV.id)) && !(await vis(mgr, coB.id)) && (await vis(linker, coLinkV.id)) && !(await vis(linker, coB.id)) && (await vis(owner, coB.id)) && crmCanLinkCompany(mgr.actor),
++    `visibility: mgr sees TA not TB · linker sees own not TB · owner all · mgr can link=${crmCanLinkCompany(mgr.actor)}`);
++
++  // ═══════════ R1 · predicate parity per persona × shape ═══════════
++  console.log("\n── R1 ──");
++  const shapes = async (who: Any, tag: string) => {
++    const hidden = await mkCompany(shop, `ซ่อน ${tag} ${rand}`, shop.uid, TB.id);
++    const hiddenArch = await mkCompany(shop, `ซ่อนเก็บ ${tag} ${rand}`, shop.uid, TB.id);
++    const hiddenMerged = await mkCompany(shop, `ซ่อนรวม ${tag} ${rand}`, shop.uid, TB.id);
++    const visArch = await mkCompany(shop, `เห็นเก็บ ${tag} ${rand}`, who.uid, TA.id);
++    await P.crmCompany.update({ where: { id: hiddenArch.id }, data: { archivedAt: new Date() } });
++    await P.crmCompany.update({ where: { id: hiddenMerged.id }, data: { mergedIntoId: coB.id } });
++    await P.crmCompany.update({ where: { id: visArch.id }, data: { archivedAt: new Date() } });
++    return [
++      ["primary-visible", { companyId: coLinkV.id }],
++      ["primary-hidden", { companyId: hidden.id }],
++      ["hidden-archived", { companyId: hiddenArch.id }],
++      ["hidden-merged", { companyId: hiddenMerged.id }],
++      ["visible-archived", { companyId: visArch.id }],
++      ["no-primary-hidden-secondary", { companyId: null, extra: [hidden.id] }],
++    ] as const;
++  };
++  const texts = new Set<string>();
++  for (const [label, who] of [["owner", owner], ["mgr-unit", mgr], ["linker-own", linker]] as const) {
++    let agree = 0;
++    const lines: string[] = [];
++    const list = await shapes(who, label);
++    for (const [shape, opts] of list) {
++      const k = await mkContact(shop, `${label}-${shape}`, (who as Any).uid, opts as Any);
++      const hid = await CON.isCurrentCompanyHidden((who as Any).ctx, (who as Any).actor, k.companyId);
++      const s0 = await snap(shop.tid, k.id);
++      const r = await call(() => CON.updateContact((who as Any).ctx, (who as Any).actor, k.id, { companyId: coLinkT.id }));
++      const s1 = await snap(shop.tid, k.id);
++      const refusedHidden = codeOf(r) === "NOT_FOUND" && r.err?.message === HIDDEN;
++      if (refusedHidden) texts.add(r.err.message);
++      const ok = hid ? refusedHidden && diff(s0, s1) === "none" : r.ok;
++      if (ok) agree += 1;
++      lines.push(`${shape}: hidden=${hid} move→${codeOf(r)}${r.ok ? "" : `(${r.err?.message === HIDDEN ? "HIDDEN_MSG" : cut(r.err?.message, 30)})`}`);
++    }
++    chk(`R1-parity-${label}`, agree === list.length, `${label}: UI predicate ⇔ server (hidden ⇒ NOT_FOUND own text + no writes · visible ⇒ move OK) ${agree}/${list.length} · ${lines.join(" · ")}`);
++  }
++  {
++    // clear variants by the linker: hidden live / hidden archived / hidden merged → same text, zero writes
++    const out: string[] = [];
++    let allSame = true;
++    for (const st of ["live", "archived", "merged"]) {
++      const c = await mkCompany(shop, `ล้างซ่อน ${st} ${rand}`, shop.uid, TB.id);
++      if (st === "archived") await P.crmCompany.update({ where: { id: c.id }, data: { archivedAt: new Date() } });
++      if (st === "merged") await P.crmCompany.update({ where: { id: c.id }, data: { mergedIntoId: coB.id } });
++      const k = await mkContact(shop, `ล้าง ${st}`, linker.uid, { companyId: c.id });
++      const s0 = await snap(shop.tid, k.id);
++      const r = await call(() => CON.updateContact(linker.ctx, linker.actor, k.id, { firstName: `x ${rand}`, companyId: null }));
++      const s1 = await snap(shop.tid, k.id);
++      allSame = allSame && codeOf(r) === "NOT_FOUND" && r.err?.message === HIDDEN && diff(s0, s1) === "none";
++      out.push(`${st}: ${codeOf(r)} ${r.err?.message === HIDDEN ? "HIDDEN_MSG" : cut(r.err?.message, 40)} writes ${diff(s0, s1)}`);
++    }
++    chk("R1-clear-same-text", allSame && texts.size === 1, `linker clears a hidden live/archived/merged company → ${out.join(" · ")} (want one text, no writes — no liveness oracle)`);
++  }
++  {
++    // what the linker already sees without the new line: the contact DTO's raw companyId, and no hidden name anywhere
++    const hidden = await mkCompany(shop, `ซ่อนดีทีโอ ${rand}`, shop.uid, TB.id);
++    const k = await mkContact(shop, "ดีทีโอ", linker.uid, { companyId: hidden.id });
++    const kNone = await mkContact(shop, "ดีทีโอว่าง", linker.uid);
++    const d = (await CON.getContact360(linker.ctx, linker.actor, k.id)) as Any;
++    const dn = (await CON.getContact360(linker.ctx, linker.actor, kNone.id)) as Any;
++    const dRo = (await CON.getContact360(ro.ctx, ro.actor, (await mkContact(shop, "ดีทีโออาร์โอ", ro.uid, { companyId: hidden.id })).id)) as Any;
++    chk("R1-oracle-preexisting", d.contact.companyId === hidden.id && dn.contact.companyId === null && d.company === null && !j(d).includes(hidden.name) && dRo.contact.companyId === hidden.id,
++      `contacts.get DTO already exposes companyId=${d.contact.companyId === hidden.id ? "<hidden id>" : d.contact.companyId} (vs null for a contact without company) to the linker and to a read-only role · 360 company=${j(d.company)} · hidden name present=${j(d).includes(hidden.name)} ⇒ "has a hidden company" was already distinguishable; the locked line adds no id/name`);
++  }
++
++  // ═══════════ R2 · clear of archived / merged visible company ═══════════
++  console.log("\n── R2 ──");
++  {
++    const res: string[] = [];
++    let ok = true;
++    for (const st of ["archived", "merged"]) {
++      const c = await mkCompany(shop, `เห็น${st} ${rand}`, linker.uid, TA.id);
++      const k = await mkContact(shop, `เห็น${st}`, linker.uid, { companyId: c.id });
++      await P.crmCompany.update({ where: { id: c.id }, data: st === "archived" ? { archivedAt: new Date() } : { mergedIntoId: coLinkV.id } });
++      const s0 = await snap(shop.tid, k.id);
++      const r = await call(() => CON.updateContact(linker.ctx, linker.actor, k.id, { firstName: `y ${rand}`, jobTitle: "z", companyId: null }));
++      const s1 = await snap(shop.tid, k.id);
++      ok = ok && codeOf(r) === "VALIDATION" && diff(s0, s1) === "none";
++      res.push(`${st}: ${codeOf(r)} "${cut(r.err?.message, 40)}" writes ${diff(s0, s1)}`);
++      const m = await call(() => CON.updateContact(linker.ctx, linker.actor, k.id, { companyId: coLinkT.id }));
++      const row = await P.crmContact.findUnique({ where: { id: k.id } });
++      ok = ok && m.ok && row.companyId === coLinkT.id;
++      res.push(`${st} move-off: ${codeOf(m)} now T=${row.companyId === coLinkT.id}`);
++    }
++    chk("R2-archived-merged", ok, res.join(" · "));
++  }
++  {
++    // the real company flows: archive (service) and merge (service) never go through updateContact's clear path
++    const c = await mkCompany(shop, `เก็บจริง ${rand}`, shop.uid);
++    const k = await mkContact(shop, "เก็บจริง", shop.uid, { companyId: c.id });
++    const ra = await call(() => CO.archiveCompany(owner.ctx, owner.actor, c.id, { confirm: true, reason: "ทดสอบเก็บถาวรรีวิว" }));
++    const row = await P.crmContact.findUnique({ where: { id: k.id } });
++    const c1 = await mkCompany(shop, `รวมจาก ${rand}`, shop.uid);
++    const c2 = await mkCompany(shop, `รวมเข้า ${rand}`, shop.uid);
++    const k2 = await mkContact(shop, "รวมจริง", shop.uid, { companyId: c1.id });
++    const rm = await call(() => CO.mergeCompanies(owner.ctx, owner.actor, { keepId: c2.id, mergeId: c1.id, confirm: true, reason: "ทดสอบรวมรีวิว" }));
++    const row2 = await P.crmContact.findUnique({ where: { id: k2.id } });
++    info("R2-real-flows", `archiveCompany → ${codeOf(ra)} "${cut(ra.err?.message, 60)}" contact cache=${row.companyId === null ? "null" : row.companyId === c.id ? "still archived co" : row.companyId} · mergeCompanies → ${codeOf(rm)} "${cut(rm.err?.message, 60)}" contact cache=${row2.companyId === c2.id ? "keep" : row2.companyId === c1.id ? "drop" : row2.companyId}`);
++    chk("R2-archive-flow", ra.ok, `archiveCompany with linked contacts still works → ${codeOf(ra)}`);
++  }
++
++  // ═══════════ F5 · echo variants ═══════════
++  console.log("\n── F5 ──");
++  {
++    const rows: string[] = [];
++    let ok = true;
++    for (const [label, who] of [["owner", owner], ["mgr", mgr], ["linker", linker], ["ro", ro], ["noco", noCo]] as const) {
++      const w = who as Any;
++      const hid = await mkCompany(shop, `เอคโค ${label} ${rand}`, shop.uid, TB.id);
++      const k = await mkContact(shop, `เอคโค ${label}`, w.uid, { companyId: hid.id });
++      const d = await DEALS.createDeal(owner.ctx, owner.actor, { pipelineId: shop.pipe.id, title: `เอคโคดีล ${label} ${rand}`, contactId: k.id, companyId: hid.id, ownerUserId: shop.uid });
++      const variants: [string, Any][] = [["padded", ` ${hid.id}\t`], ["exact", hid.id]];
++      for (const [vn, val] of variants) {
++        const r = await call(() => CON.updateContact(w.ctx, w.actor, k.id, { jobTitle: `${vn} ${label}`, companyId: val, moveOpenDeals: true }));
++        const row = await P.crmContact.findUnique({ where: { id: k.id } });
++        const dd = await P.crmDeal.findUnique({ where: { id: d.id }, select: { companyId: true } });
++        const au = (await P.auditLog.findMany({ where: { tenantId: shop.tid, targetId: k.id, action: "crm.contact.update" }, orderBy: { createdAt: "desc" }, take: 1 })) as Any[];
++        const keys = (au[0]?.after as Any)?.changedKeys ?? [];
++        const good = r.ok && row.companyId === hid.id && dd.companyId === hid.id && !keys.includes("companyId") && row.jobTitle === `${vn} ${label}`;
++        ok = ok && good;
++        if (!good) rows.push(`${label}/${vn}: ${codeOf(r)} ${cut(r.err?.message, 40)} keys=${j(keys)}`);
++      }
++      // no company: null / "" / omitted
++      const k0 = await mkContact(shop, `ว่าง ${label}`, w.uid);
++      for (const v of [null, "", undefined]) {
++        const r = await call(() => CON.updateContact(w.ctx, w.actor, k0.id, { jobTitle: `v${String(v)}`, ...(v === undefined ? {} : { companyId: v }) }));
++        ok = ok && r.ok;
++        if (!r.ok) rows.push(`${label}/none ${j(v)}: ${codeOf(r)}`);
++      }
++    }
++    chk("F5-echo-all-personas", ok, `echo (exact · padded) + jobTitle + moveOpenDeals on a HIDDEN current company, and null/""/omitted on no company, for owner·mgr·linker·ro·noco → OK, company + deal kept, no companyId audit key ${rows.length ? `· failures: ${rows.join(" · ")}` : ""}`);
++  }
++  {
++    // a real change is never an echo: linker moves visible V → T with padding; read-only real change refused
++    const k = await mkContact(shop, "เปลี่ยนจริง", linker.uid, { companyId: coLinkV.id });
++    const r = await call(() => CON.updateContact(linker.ctx, linker.actor, k.id, { companyId: `  ${coLinkT.id} ` }));
++    const row = await P.crmContact.findUnique({ where: { id: k.id } });
++    const kc = await mkContact(shop, "ถอดจริง", linker.uid, { companyId: coLinkV.id });
++    const rc = await call(() => CON.updateContact(linker.ctx, linker.actor, kc.id, { companyId: "" }));
++    const rowc = await P.crmContact.findUnique({ where: { id: kc.id } });
++    const kr = await mkContact(shop, "อาร์โอจริง", ro.uid, { companyId: coLinkV.id });
++    const s0 = await snap(shop.tid, kr.id);
++    const rr = await call(() => CON.updateContact(ro.ctx, ro.actor, kr.id, { jobTitle: "q", companyId: coLinkT.id }));
++    const s1 = await snap(shop.tid, kr.id);
++    chk("F5-real-change", r.ok && row.companyId === coLinkT.id && rc.ok && rowc.companyId === null && codeOf(rr) === "FORBIDDEN" && diff(s0, s1) === "none",
++      `linker padded move V→T → ${codeOf(r)} now T=${row.companyId === coLinkT.id} · linker "" clear → ${codeOf(rc)} now null=${rowc.companyId === null} · read-only real change → ${codeOf(rr)} writes ${diff(s0, s1)}`);
++  }
++
++  // ═══════════ F6 · deal card / board / CSV company name for a creator who cannot see it ═══════════
++  console.log("\n── F6 ──");
++  {
++    const hid = await mkCompany(shop, `ชื่อลับดีล ${rand}`, shop.uid, TB.id);
++    const k = await mkContact(shop, "ดีลชื่อลับ", noCo.uid, { companyId: hid.id });
++    const d = await DEALS.createDeal(noCo.ctx, noCo.actor, { pipelineId: shop.pipe.id, title: `ดีลชื่อลับ ${rand}`, contactId: k.id });
++    const lst = await call(() => DEALS.listDeals(noCo.ctx, noCo.actor, {}));
++    const card = (lst.v?.items ?? []).find((x: Any) => x.id === d.id);
++    const board = await call(() => DEALS.getBoard(noCo.ctx, noCo.actor, { pipelineId: shop.pipe.id }));
++    const csv = await call(() => DEALS.exportDeals(noCo.ctx, noCo.actor, {}));
++    const d360 = await call(() => DEALS.getDeal360 ? DEALS.getDeal360(noCo.ctx, noCo.actor, d.id) : Promise.resolve(null));
++    info("F6-names", `creator without company read: deal.companyId=${d.companyId === hid.id ? "<hidden>" : d.companyId} · list card name=${j(card?.companyName ?? null)} · board has name=${j(board.v ?? null).includes(hid.name)} · CSV has name=${String(csv.v ?? "").includes(hid.name)} (${codeOf(csv)}) · deal 360 has name=${j(d360.v ?? null).includes(hid.name)} (${codeOf(d360)})`);
++    chk("F6-default-kept", d.companyId === hid.id, "server default still the contact's company (behaviour unchanged)");
++  }
++
++  // ═══════════ DT · DATETIME ═══════════
++  console.log("\n── DT ──");
++  {
++    const F = MEM.fields;
++    const fctx = { ...owner.ctx, objectKey: "contact", actor: owner.actor };
++    const sec = await F.createSection(fctx, { key: `qcR${rand.replace(/[^a-z]/g, "")}`.slice(0, 30), label: "เวลารีวิว" });
++    await F.createField(fctx, { sectionId: sec.id, key: "rvAt", label: "เวลารีวิว", type: "DATETIME" });
++    await F.createField(fctx, { sectionId: sec.id, key: "rvOn", label: "วันรีวิว", type: "DATE" });
++    const cases: [string, string][] = [
++      ["midnight", "2026-10-08T17:00:00.000Z"],
++      ["ms", "2026-10-08T17:30:45.678Z"],
++      ["year-end", "2026-12-31T17:59:00.000Z"],
++      ["pre-1970", "1965-03-01T03:00:00.000Z"],
++    ];
++    const made: Any[] = [];
++    for (const [n, iso] of cases) {
++      const k = await mkContact(shop, `เวลา-${n}`, shop.uid);
++      await CON.updateContact(owner.ctx, owner.actor, k.id, { fields: { rvAt: iso, rvOn: "2026-10-09" } });
++      made.push({ n, iso, k });
++    }
++    const kEmpty = await mkContact(shop, "เวลา-ว่าง", shop.uid);
++    const csv = await CON.exportContacts(owner.ctx, owner.actor, { confirm: true, reason: "รีวิวรูปแบบวันเวลา" });
++    const rows = parseCsv(csv);
++    const hdr = rows[0] ?? [];
++    const iAt = hdr.indexOf("เวลารีวิว");
++    const iOn = hdr.indexOf("วันรีวิว");
++    const cellOf = (first: string) => (rows.find((r) => r[0] === first) ?? [])[iAt] ?? "<missing>";
++    const out: string[] = [];
++    let rt = true;
++    for (const m of made) {
++      const cell = cellOf(`เวลา-${m.n}`);
++      const back = new Date(cell).toISOString();
++      const same = back === m.iso;
++      const sameSec = back.slice(0, 19) === m.iso.slice(0, 19);
++      rt = rt && sameSec;
++      out.push(`${m.n}: ${cell} → ${same ? "exact" : sameSec ? "same second (ms dropped)" : `DIFFERENT ${back}`}`);
++    }
++    const emptyCell = cellOf("เวลา-ว่าง");
++    chk("DT-export-edges", rt && emptyCell === "" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\+07:00$/.test(cellOf("เวลา-midnight")) && cellOf("เวลา-midnight").startsWith("2026-10-09T00:00:00"),
++      `${out.join(" · ")} · empty="${emptyCell}"`);
++    info("DT-export-date", `DATE column for those rows = ${j(rows.filter((r) => String(r[0]).startsWith("เวลา-")).map((r) => r[iOn]))}`);
++    // byte identity of the shared formatter with the two old implementations
++    const oldTypes = (iso: string) => { const t = Date.parse(iso); if (Number.isNaN(t)) return iso; return new Date(t).toLocaleString("th-TH", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Bangkok" }); };
++    const oldPortal = (d: Date) => d.toLocaleString("th-TH", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Bangkok" });
++    const inputs = [...cases.map((c) => c[1]), "2026-10-09T00:30:00+07:00", "2026-02-29T00:00:00Z", "not a date", "", "2026-10-08"];
++    const mism: string[] = [];
++    for (const s of inputs) if (UID.formatThaiDateTimeFull(s) !== oldTypes(s)) mism.push(`types "${s}": ${UID.formatThaiDateTimeFull(s)} vs ${oldTypes(s)}`);
++    for (const s of cases.map((c) => c[1])) if (UID.formatThaiDateTimeFull(new Date(s)) !== oldPortal(new Date(s))) mism.push(`portal ${s}`);
++    chk("DT-byte-identical", mism.length === 0, `formatThaiDateTimeFull == old thaiDateTimeText (strings incl. invalid/empty/date-only) and == old portal format (Dates) · mismatches ${j(mism)}`);
++    // importing an OLD export cell ("YYYY-MM-DD HH:mm", UTC wall time) after this change, per server TZ
++    const prevTz = process.env.TZ;
++    const imported: string[] = [];
++    for (const tz of ["UTC", "Asia/Bangkok"]) {
++      process.env.TZ = tz;
++      const nm = `เก่า-${tz.replace("/", "")}-${rand}`;
++      const imp = await call(() => CON.importContacts(owner.ctx, owner.actor, { rows: [{ ชื่อ: nm, เวลา: "2026-10-08 17:30" }], mapping: { ชื่อ: "firstName", เวลา: "f.rvAt" }, options: { onDuplicate: "skip", source: "IMPORT" } }));
++      const c = await P.crmContact.findFirst({ where: { tenantId: shop.tid, firstName: nm } });
++      const v = c ? await P.customRecordValue.findFirst({ where: { tenantId: shop.tid, recordId: c.id, field: { key: "rvAt" } } }).catch(() => null) : null;
++      imported.push(`${tz}: ${codeOf(imp)} failed=${imp.v?.result?.failed} stored=${v?.valueDate ? new Date(v.valueDate).toISOString() : null}`);
++    }
++    if (prevTz === undefined) delete process.env.TZ; else process.env.TZ = prevTz;
++    info("DT-old-cell-import", `old export cell "2026-10-08 17:30" (meant 17:30Z) imported now → ${imported.join(" · ")} (importer unchanged: zone-less = server-local)`);
++    chk("DT-old-cell-still-accepted", imported.every((x) => / OK failed=0 /.test(x)), "files exported before the change still import (no rejection)");
++  }
++
++  // ═══════════ IM · import entry kinds at the caps ═══════════
++  console.log("\n── IM ──");
++  {
++    // 510 rows that each need a new company (the linker cannot create companies → 510 notes) + 3 empty rows at the END (real failures)
++    const rows: Any[] = [];
++    for (let i = 1; i <= 510; i += 1) rows.push({ ชื่อ: `ใหญ่${i} ${rand}`, บริษัท: `ใหม่ใหญ่ ${i} ${rand}` });
++    for (let i = 0; i < 3; i += 1) rows.push({ ชื่อ: "", บริษัท: "" });
++    const t0 = Date.now();
++    const r = await call(() => CON.importContacts(linker.ctx, linker.actor, { rows, mapping: { ชื่อ: "firstName", บริษัท: "company" }, options: { onDuplicate: "skip", source: "IMPORT" } }));
++    const ms = Date.now() - t0;
++    const e = (r.v?.result?.errors ?? []) as Any[];
++    const firstErr = e.slice(0, 3).every((x) => x.kind === "error" && x.row >= 511);
++    const job = r.ok ? ((await CON.getImportJob(linker.ctx, linker.actor, r.v.jobId)) as Any).result : null;
++    chk("IM-cap-failures-first", r.ok && r.v.result.failed === 3 && r.v.result.created === 510 && e.length === 500 && firstErr && e.slice(3).every((x) => x.kind === "note") && job?.errors?.length === 50 && job.errors.slice(0, 3).every((x: Any) => x.kind === "error"),
++      `513-row file (510 notes + 3 failures last) → ${codeOf(r)} created=${r.v?.result?.created} failed=${r.v?.result?.failed} entries=${e.length} first3=${j(e.slice(0, 3).map((x) => [x.row, x.kind]))} · job entries=${job?.errors?.length} job first3 kinds=${j(job?.errors?.slice(0, 3).map((x: Any) => x.kind))} · ${ms} ms`);
++    // a legacy audit row (no kind) is read as errors
++    const jobId = `legacy-${rand}`;
++    await P.auditLog.create({ data: { tenantId: shop.tid, actorType: "USER", actorId: shop.uid, action: "crm.contact.import", targetType: "CrmSystem", targetId: shop.S, after: { jobId, status: "DONE", created: 1, updated: 0, skipped: 0, candidates: 0, failed: 1, errors: [{ row: 2, message: "แถวนี้ว่าง" }] } } });
++    const lj = (await CON.getImportJob(owner.ctx, owner.actor, jobId)) as Any;
++    chk("IM-legacy", lj.result.errors.length === 1 && lj.result.errors[0].kind === "error" && lj.result.errors[0].row === 2, `legacy audit row without kind → ${j(lj.result.errors)}`);
++    const { readFileSync } = await import("node:fs");
++    const p1 = readFileSync("src/app/app/sys/[id]/crm/contacts/_components/ContactImportPanel.tsx", "utf8");
++    const p2 = readFileSync("src/app/app/sys/[id]/crm/contacts/_components/ContactListTools.tsx", "utf8");
++    const lab = (t: string) => /e\.kind === "note" \? " \(หมายเหตุ\)" : ""/.test(t);
++    chk("IM-ui-both-screens", lab(p1) && lab(p2), "both import result lists label notes '(หมายเหตุ)'");
++  }
++} catch (e) {
++  chk("FATAL", false, String((e as Error)?.stack ?? e).slice(0, 900));
++}
++await done("probe-cf10-review");
+diff --git a/scripts/pending/cf10/review/review.summary b/scripts/pending/cf10/review/review.summary
+new file mode 100644
+index 00000000..be3a887a
+--- /dev/null
++++ b/scripts/pending/cf10/review/review.summary
+@@ -0,0 +1,16 @@
++start 2026-10-02T00:12:56Z
++probe-cf10-review exit=0 255s · 🟢 probe-cf10-review: 18/18 JSON_SUMMARY {"total":18,"passed":18,"findings":[]} 
++probe-cf10 exit=0 181s · 🟢 probe-cf10: 34/34 JSON_SUMMARY {"total":34,"passed":34,"findings":[]} 
++probe-cf7 exit=0 203s · 🟢 probe-cf7: 30/30 JSON_SUMMARY {"total":30,"passed":30,"findings":[]} 
++probe-cf7-r2 exit=0 22s · 🟢 probe-cf7-r2: 14/14 JSON_SUMMARY {"total":14,"passed":14,"findings":[]} 
++probe-cf7-review exit=0 108s · 🟢 probe-cf7-review: 27/27 JSON_SUMMARY {"total":27,"passed":27,"findings":[]} 
++probe-cf7-review-r2 exit=0 47s · 🟢 probe-cf7-review-r2: 21/21 JSON_SUMMARY {"total":21,"passed":21,"findings":[]} 
++probe-cf5 exit=0 82s · 🟢 probe-cf5: 22/22 JSON_SUMMARY {"total":22,"passed":22,"findings":[]} 
++qc-crm-c1.4 exit=0 184s · 🟢 C1.4: 110/110 JSON_SUMMARY {"total":110,"passed":110,"findings":[]} 
++qc-crm-c1.11 exit=0 154s · 🟢 C1.11: 66/66 JSON_SUMMARY {"total":66,"passed":66,"findings":[]} 
++qc-crm-c1.10 exit=0 127s · 🟢 C1.10: 66/66 · webhook fetch stubbed 4× · keyErrors filter-foreign-team=ทีมในตัวกรองของคีย์ไม่ใช่ทีมของร้านนี้ — เลือกทีมจากรายชื่อท… JSON_SUMMARY {"total":66,"passed":66,"fi
++qc-crm-c1.9 exit=0 46s · 🟢 C1.9: 45/45 JSON_SUMMARY {"total":45,"passed":45,"findings":[]} 
++qc-crm-c3.5 exit=0 96s · 🟢 C3.5: 67/67 JSON_SUMMARY {"total":67,"passed":67,"findings":[]} 
++typecheck exit=0 199s · 
++fitness exit=0 5s · ผ่าน 36/36 JSON_SUMMARY {"total":36,"passed":36,"findings":[]} 
++ALLDONE 2026-10-02T00:41:25Z
+diff --git a/scripts/pending/cf10/review/run-review.sh b/scripts/pending/cf10/review/run-review.sh
+new file mode 100644
+index 00000000..3be31433
+--- /dev/null
++++ b/scripts/pending/cf10/review/run-review.sh
+@@ -0,0 +1,24 @@
++#!/usr/bin/env bash
++# C5.5-fix7 independent review runs — QC2 · one job at a time (gate lock) · each in its own systemd unit (iso.sh) ·
++#   logs /tmp/cf10-review-logs/ (SUMMARY) · same wrappers as scripts/pending/cf10/run-cf10.sh
++set -uo pipefail
++cd /root/projects/shark-crm-cd2
++D=/tmp/cf10-review-logs; mkdir -p "$D"; S="$D/SUMMARY"; : > "$S"
++r() { local n="$1"; shift; local t0=$(date +%s); "$@" > "$D/$n.log" 2>&1; local rc=$?; echo "$n exit=$rc $(( $(date +%s) - t0 ))s · $(grep -aE '🟢|🔴|JSON_SUMMARY|error TS|Found [0-9]+ error|ผ่าน [0-9]+/[0-9]+' "$D/$n.log" | tail -2 | tr '\n' ' ' | cut -c1-300)" >> "$S"; }
++q2() { local n="$1"; local f="$2"; shift 2; r "$n" bash scripts/iso.sh env CRM_V2_SWITCH=all QC_BASE=http://127.0.0.1:9 NODE_OPTIONS=--max-old-space-size=3584 bash scripts/qc2.sh bash scripts/with-gate-lock.sh pnpm exec tsx "scripts/$f.mts" "$@"; }
++echo "start $(date -u +%FT%TZ)" >> "$S"
++q2 probe-cf10-review pending/cf10/review/probe-cf10-review
++q2 probe-cf10 pending/cf10/probe-cf10
++q2 probe-cf7 pending/cf7/probe-cf7
++q2 probe-cf7-r2 pending/cf7/probe-cf7-r2
++q2 probe-cf7-review pending/cf7/review/probe-cf7-review
++q2 probe-cf7-review-r2 pending/cf7/review/probe-cf7-review-r2
++q2 probe-cf5 pending/cf5/probe-cf5
++q2 qc-crm-c1.4 qc-crm-c1.4
++q2 qc-crm-c1.11 qc-crm-c1.11
++q2 qc-crm-c1.10 qc-crm-c1.10
++q2 qc-crm-c1.9 qc-crm-c1.9
++q2 qc-crm-c3.5 qc-crm-c3.5
++r typecheck bash scripts/iso.sh env NODE_OPTIONS=--max-old-space-size=5120 bash scripts/with-gate-lock.sh pnpm typecheck
++r fitness bash scripts/iso.sh bash scripts/qc2.sh pnpm exec tsx scripts/fitness.mts
++echo "ALLDONE $(date -u +%FT%TZ)" >> "$S"
+diff --git a/scripts/pending/cf10/run-cf10-r2.sh b/scripts/pending/cf10/run-cf10-r2.sh
+new file mode 100644
+index 00000000..5213121d
+--- /dev/null
++++ b/scripts/pending/cf10/run-cf10-r2.sh
+@@ -0,0 +1,19 @@
++#!/usr/bin/env bash
++# C5.5-fix7 verification round 2 (after moving the DATETIME helper to lib/ui/date for fitness F2.3) — QC2 · one job at a time (gate lock) in its own systemd unit · logs /tmp/cf10-logs/regress/ (SUMMARY)
++#   the cf7 / cf5 runners and the reviewers' runners are left untouched
++set -uo pipefail
++cd /root/projects/shark-crm-cd2
++D=/tmp/cf10-logs/regress2; mkdir -p "$D"; S="$D/SUMMARY"; : > "$S"
++r() { local n="$1"; shift; local t0=$(date +%s); "$@" > "$D/$n.log" 2>&1; local rc=$?; echo "$n exit=$rc $(( $(date +%s) - t0 ))s · $(grep -aE '🟢|🔴|JSON_SUMMARY|ผ่าน [0-9]+/[0-9]+|error TS|Found [0-9]+ error|fitness|passed|failed|CHECK |ตรงกับทะเบียน|ไม่ตรง' "$D/$n.log" | tail -2 | tr '\n' ' ' | cut -c1-300)" >> "$S"; }
++q2() { local n="$1"; local f="$2"; shift 2; r "$n" bash scripts/iso.sh env CRM_V2_SWITCH=all QC_BASE=http://127.0.0.1:9 NODE_OPTIONS=--max-old-space-size=3584 bash scripts/qc2.sh bash scripts/with-gate-lock.sh pnpm exec tsx "scripts/$f.mts" "$@"; }
++echo "start $(date -u +%FT%TZ)" >> "$S"
++q2 probe-cf10 pending/cf10/probe-cf10
++q2 probe-cf5 pending/cf5/probe-cf5
++q2 qc-crm-c1.4 qc-crm-c1.4
++q2 qc-crm-c1.9 qc-crm-c1.9
++q2 qc-crm-c3.5 qc-crm-c3.5
++for g in crm member kanban account; do r "docs-$g" bash scripts/iso.sh bash scripts/qc2.sh pnpm exec tsx "scripts/gen-$g-api-docs.mts" --check; done
++r typecheck bash scripts/iso.sh env NODE_OPTIONS=--max-old-space-size=5120 bash scripts/with-gate-lock.sh pnpm typecheck
++r fitness bash scripts/iso.sh bash scripts/qc2.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/fitness.mts
++r fitness-noenv bash scripts/iso.sh env -u DATABASE_URL -u DIRECT_URL bash scripts/with-gate-lock.sh pnpm exec tsx scripts/fitness.mts
++echo "ALLDONE $(date -u +%FT%TZ)" >> "$S"
+diff --git a/scripts/pending/cf10/run-cf10.sh b/scripts/pending/cf10/run-cf10.sh
+new file mode 100644
+index 00000000..79788b79
+--- /dev/null
++++ b/scripts/pending/cf10/run-cf10.sh
+@@ -0,0 +1,29 @@
++#!/usr/bin/env bash
++# C5.5-fix7 verification (builder) — QC2 · one job at a time (gate lock) in its own systemd unit · logs /tmp/cf10-logs/regress/ (SUMMARY)
++#   the cf7 / cf5 runners and the reviewers' runners are left untouched
++set -uo pipefail
++cd /root/projects/shark-crm-cd2
++D=/tmp/cf10-logs/regress; mkdir -p "$D"; S="$D/SUMMARY"; : > "$S"
++r() { local n="$1"; shift; local t0=$(date +%s); "$@" > "$D/$n.log" 2>&1; local rc=$?; echo "$n exit=$rc $(( $(date +%s) - t0 ))s · $(grep -aE '🟢|🔴|JSON_SUMMARY|ผ่าน [0-9]+/[0-9]+|error TS|Found [0-9]+ error|fitness|passed|failed|CHECK |ตรงกับทะเบียน|ไม่ตรง' "$D/$n.log" | tail -2 | tr '\n' ' ' | cut -c1-300)" >> "$S"; }
++q2() { local n="$1"; local f="$2"; shift 2; r "$n" bash scripts/iso.sh env CRM_V2_SWITCH=all QC_BASE=http://127.0.0.1:9 NODE_OPTIONS=--max-old-space-size=3584 bash scripts/qc2.sh bash scripts/with-gate-lock.sh pnpm exec tsx "scripts/$f.mts" "$@"; }
++echo "start $(date -u +%FT%TZ)" >> "$S"
++q2 probe-cf10 pending/cf10/probe-cf10
++q2 probe-cf7 pending/cf7/probe-cf7
++q2 probe-cf7-r2 pending/cf7/probe-cf7-r2
++q2 probe-cf7-review pending/cf7/review/probe-cf7-review
++q2 probe-cf7-review-r2 pending/cf7/review/probe-cf7-review-r2
++q2 probe-cf5 pending/cf5/probe-cf5
++q2 probe-cf5-r2 pending/cf5/probe-cf5-r2
++q2 qc-crm-c1.4 qc-crm-c1.4
++q2 qc-crm-c1.3 qc-crm-c1.3
++q2 qc-crm-c1.5 qc-crm-c1.5
++q2 qc-crm-c1.10 qc-crm-c1.10
++q2 qc-crm-c1.11 qc-crm-c1.11
++q2 qc-crm-c2.4 qc-crm-c2.4
++q2 qc-crm-c1.9 qc-crm-c1.9
++q2 qc-crm-c3.5 qc-crm-c3.5
++for g in crm member kanban account; do r "docs-$g" bash scripts/iso.sh bash scripts/qc2.sh pnpm exec tsx "scripts/gen-$g-api-docs.mts" --check; done
++r typecheck bash scripts/iso.sh env NODE_OPTIONS=--max-old-space-size=5120 bash scripts/with-gate-lock.sh pnpm typecheck
++r fitness bash scripts/iso.sh bash scripts/qc2.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/fitness.mts
++r fitness-noenv bash scripts/iso.sh env -u DATABASE_URL -u DIRECT_URL bash scripts/with-gate-lock.sh pnpm exec tsx scripts/fitness.mts
++echo "ALLDONE $(date -u +%FT%TZ)" >> "$S"
+diff --git a/scripts/pending/cf10/run-probe.sh b/scripts/pending/cf10/run-probe.sh
+new file mode 100644
+index 00000000..07fbbf75
+--- /dev/null
++++ b/scripts/pending/cf10/run-probe.sh
+@@ -0,0 +1,9 @@
++#!/usr/bin/env bash
++# C5.5-fix7 — run probe-cf10 once (QC2 · gate lock · own systemd unit) · usage: bash scripts/pending/cf10/run-probe.sh <logname>
++#   log → /tmp/cf10-logs/<logname>.log
++set -uo pipefail
++cd /root/projects/shark-crm-cd2
++D=/tmp/cf10-logs; mkdir -p "$D"
++N="${1:-probe-cf10}"
++bash scripts/iso.sh env CRM_V2_SWITCH=all QC_BASE=http://127.0.0.1:9 NODE_OPTIONS=--max-old-space-size=3584 bash scripts/qc2.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/pending/cf10/probe-cf10.mts > "$D/$N.log" 2>&1
++echo "exit=$? $(date -u +%FT%TZ)" >> "$D/$N.log"
+diff --git a/src/app/app/sys/[id]/crm/contacts/[contactId]/page.tsx b/src/app/app/sys/[id]/crm/contacts/[contactId]/page.tsx
+index 4dd8246b..7abfd214 100644
+--- a/src/app/app/sys/[id]/crm/contacts/[contactId]/page.tsx
++++ b/src/app/app/sys/[id]/crm/contacts/[contactId]/page.tsx
+@@ -4,7 +4,7 @@ import { requireCrmV2Page } from "@/lib/modules/crm/ui-version";
+ import { requireTenant } from "@/lib/core/context";
+ import { prisma } from "@/lib/core/db";
+ import { hasMemberPerm, toMemberActor } from "@/lib/modules/member";
+-import { convertOptions, getContact360, ownerOptions } from "@/lib/modules/crm/contacts";
++import { convertOptions, getContact360, isCurrentCompanyHidden, ownerOptions } from "@/lib/modules/crm/contacts";
+ import {
+   CONTACT_SOURCE_LABEL,
+   ContactsError,
+@@ -83,6 +83,9 @@ export default async function Contact360Page({
+   const live = !c.archivedAt && !c.mergedIntoId;
+   const noOptions: ConvertOptions = { memberSystems: [], pipelines: [] };
+   const [owners, options]: [{ id: string; name: string }[], ConvertOptions] = live ? await Promise.all([ownerOptions(ctx, actor), convertOptions(ctx, actor)]) : [[], noOptions];
++  // CRM C5.5-fix7 ▸ R2F-1: คนที่ผูกบริษัทได้ แต่บริษัทหลักปัจจุบันของผู้ติดต่ออยู่นอกการมองเห็น — ทุกการเลือกถูกบริการปฏิเสธ ⇒ ไม่แสดงช่องเลือก
++  //   (แสดงบรรทัดอธิบายแทน · ไม่บอกชื่อ/รหัสบริษัท) · ด่านเดียวกับบริการ (contacts.isCurrentCompanyHidden) ◂
++  const primaryCompanyHidden = crmCanLinkCompany(actor) && live ? await isCurrentCompanyHidden(ctx, actor, c.companyId) : false;
+   // CRM C2.2 ▸ ลำดับการติดตามของผู้ติดต่อคนนี้ (อ่านล้ม/ไม่มีคีย์ = ไม่แสดงบล็อก · หน้าไม่ล้ม)
+   const [seqOptions, seqEnrollments] = await Promise.all([
+     sequenceOptions(ctx, actor).catch(() => []),
+@@ -172,7 +175,8 @@ export default async function Contact360Page({
+             merge: crmCan(actor, "crm.contact.merge"),
+             archive: crmCan(actor, "crm.contact.delete"),
+             // CRM C5.5-fix6 ▸ F3: ช่องย้ายบริษัทในแผ่นแก้ไข = ผูกบริษัทได้ (อ่าน + แก้บริษัท) — ไม่ได้ = ซ่อน (§15(b)) ◂
+-            company: crmCanLinkCompany(actor),
++            // CRM C5.5-fix7 ▸ R2F-1: + บริษัทหลักปัจจุบันต้องอยู่ในการมองเห็น (ไม่งั้นทุกการเลือกถูกปฏิเสธ) ◂
++            company: crmCanLinkCompany(actor) && !primaryCompanyHidden,
+           }}
+           contact={{
+             id: c.id,
+@@ -187,10 +191,12 @@ export default async function Contact360Page({
+             tags: c.tags,
+             archived: !!c.archivedAt,
+             // CRM C5.5-fix6 ▸ F3: id ของบริษัทใช้แค่ช่อง "ย้ายดีลตาม" ของคนที่ย้ายบริษัทได้ · ชื่อ = บริษัทที่ผู้ดูมองเห็น (companyWhere) เท่านั้น ◂
+-            companyId: crmCanLinkCompany(actor) ? c.companyId : null,
++            companyId: crmCanLinkCompany(actor) && !primaryCompanyHidden ? c.companyId : null,
+             companyName: data.company?.name ?? null,
+             // CRM C5.5-fix6 r2 ▸ F6-4: ป้าย "บริษัทหลัก" เฉพาะเมื่อบริษัทที่แสดงคือบริษัทหลักของผู้ติดต่อจริง (ไม่ใช่ลิงก์อื่นที่มองเห็นแทน) ◂
+             companyIsPrimary: !!data.company && data.company.id === c.companyId,
++            // CRM C5.5-fix7 ▸ R2F-1: บรรทัดอธิบายแทนช่องเลือก (เฉพาะคนที่ผูกบริษัทได้ — คนอื่นเห็นบรรทัดอ่านอย่างเดียวของ fix6 เหมือนเดิม) ◂
++            companyLocked: primaryCompanyHidden,
+           }}
+         />
+       </div>
+diff --git a/src/app/app/sys/[id]/crm/contacts/_components/Contact360Actions.tsx b/src/app/app/sys/[id]/crm/contacts/_components/Contact360Actions.tsx
+index 50150d8c..795de985 100644
+--- a/src/app/app/sys/[id]/crm/contacts/_components/Contact360Actions.tsx
++++ b/src/app/app/sys/[id]/crm/contacts/_components/Contact360Actions.tsx
+@@ -8,6 +8,7 @@
+ import { useEffect, useState, useTransition } from "react";
+ import { useRouter } from "next/navigation";
+ import {
++  CONTACT_PRIMARY_COMPANY_HIDDEN_MSG,
+   CONTACT_REASON_MIN,
+   // CRM C1.11 ▸ เลือกค่าต่อฟิลด์ตอนรวม ◂
+   MERGE_CHOICE_FIELDS,
+@@ -378,6 +379,8 @@ type MenuContact = {
+   companyName?: string | null;
+   /** CRM C5.5-fix6 r2 ▸ F6-4: บริษัทที่แสดงคือบริษัทหลักจริงไหม (getContact360 ใช้ลิงก์อื่นที่มองเห็นแทนเมื่อบริษัทหลักมองไม่เห็น) ◂ */
+   companyIsPrimary?: boolean;
++  /** CRM C5.5-fix7 ▸ R2F-1: ผู้ดูผูกบริษัทได้ แต่บริษัทหลักปัจจุบันอยู่นอกการมองเห็น ⇒ ไม่มีช่องเลือก (ทุกการเลือกถูกปฏิเสธ) · แสดงบรรทัดอธิบายแทน ◂ */
++  companyLocked?: boolean;
+ };
+ 
+ // CRM C4.2-fix ▸ `can` = คีย์เดียวกับ server action ของแต่ละเมนู (หน้าคำนวณด้วย crmCan · C1.7) — ไม่มีสิทธิ์ = ไม่มีเมนูนั้น ·
+@@ -519,6 +522,10 @@ export function ContactMenu({ systemId, contact, owners, can }: { systemId: stri
+           </div>
+           {can.company ? (
+             <ContactPicker kind="edit-company" label="ย้ายไปบริษัทหลัก (ไม่เลือก = คงเดิม)" placeholder="พิมพ์ชื่อบริษัท" emptyLabel="— คงบริษัทเดิม —" value={companyId} onChange={setCompanyId} search={(q) => searchCompaniesAction(systemId, q)} />
++          ) : contact.companyLocked ? (
++            <p className="text-xs text-[color:var(--color-muted)]" data-testid="contact-edit-company-locked">
++              {CONTACT_PRIMARY_COMPANY_HIDDEN_MSG}
++            </p>
+           ) : contact.companyName ? (
+             <p className="text-xs text-[color:var(--color-muted)]" data-testid="contact-edit-company-readonly">
+               {contact.companyIsPrimary ? "บริษัทหลัก" : "บริษัท"}: {contact.companyName} (ย้ายบริษัทได้เฉพาะบัญชีที่มีสิทธิ์แก้ไขบริษัท)
+diff --git a/src/app/app/sys/[id]/crm/contacts/_components/ContactImportPanel.tsx b/src/app/app/sys/[id]/crm/contacts/_components/ContactImportPanel.tsx
+index e47c44a9..08275ee7 100644
+--- a/src/app/app/sys/[id]/crm/contacts/_components/ContactImportPanel.tsx
++++ b/src/app/app/sys/[id]/crm/contacts/_components/ContactImportPanel.tsx
+@@ -187,7 +187,7 @@ export function ContactImportPanel({ systemId, targets, modes }: { systemId: str
+             <ul className="flex max-h-40 flex-col gap-1 overflow-y-auto text-xs text-[color:var(--color-muted)]">
+               {result.errors.slice(0, 50).map((e, i) => (
+                 <li key={`${e.row}-${i}`}>
+-                  แถว {e.row}: {e.message}
++                  แถว {e.row}{e.kind === "note" ? " (หมายเหตุ)" : ""}: {e.message}
+                 </li>
+               ))}
+             </ul>
+diff --git a/src/app/app/sys/[id]/crm/contacts/_components/ContactListTools.tsx b/src/app/app/sys/[id]/crm/contacts/_components/ContactListTools.tsx
+index ead1828b..bc730900 100644
+--- a/src/app/app/sys/[id]/crm/contacts/_components/ContactListTools.tsx
++++ b/src/app/app/sys/[id]/crm/contacts/_components/ContactListTools.tsx
+@@ -425,7 +425,7 @@ export function ContactImportButton({ systemId, customFields }: { systemId: stri
+                 <ul className="mt-2 flex max-h-40 flex-col gap-1 overflow-y-auto text-xs text-[color:var(--color-muted)]">
+                   {result.errors.slice(0, 50).map((e, i) => (
+                     <li key={`${e.row}-${i}`}>
+-                      แถว {e.row}: {e.message}
++                      แถว {e.row}{e.kind === "note" ? " (หมายเหตุ)" : ""}: {e.message}
+                     </li>
+                   ))}
+                 </ul>
+diff --git a/src/app/app/sys/[id]/crm/deals/_components/NewDealForm.tsx b/src/app/app/sys/[id]/crm/deals/_components/NewDealForm.tsx
+index e080ec3e..69e2b83c 100644
+--- a/src/app/app/sys/[id]/crm/deals/_components/NewDealForm.tsx
++++ b/src/app/app/sys/[id]/crm/deals/_components/NewDealForm.tsx
+@@ -160,7 +160,8 @@ export function NewDealForm({
+           <label className="flex min-w-0 flex-col gap-1 text-sm">
+             <span>บริษัท</span>
+             <select value={companyId} onChange={(e) => setCompanyId(e.target.value)} className="input text-sm" data-testid="deal-new-company">
+-              <option value="">ไม่ผูกบริษัท</option>
++              {/* CRM C5.5-fix7 ▸ F6-6: ค่าว่าง = บริการใช้บริษัทหลักของผู้ติดต่อ (createDeal) — ป้ายเดิม "ไม่ผูกบริษัท" ไม่ตรงกับสิ่งที่เกิดขึ้น ◂ */}
++              <option value="">ตามบริษัทหลักของผู้ติดต่อ (ถ้ามี)</option>
+               {companies.map((c) => (
+                 <option key={c.id} value={c.id}>
+                   {c.name}
+diff --git a/src/components/crm/objects/types.ts b/src/components/crm/objects/types.ts
+index 6972079c..8fa5befb 100644
+--- a/src/components/crm/objects/types.ts
++++ b/src/components/crm/objects/types.ts
+@@ -1,6 +1,8 @@
+ // types.ts — ชนิดข้อมูลกลางของหน้าวัตถุกำหนดเอง (CRM v2 · ใบ C1.9) — **บริสุทธิ์** (ไม่แตะ prisma/next)
+ // 🔴 คอมโพเนนต์ 'use client' ของโฟลเดอร์นี้ import ได้ตรง ๆ (บทเรียน reference_next_client_component_imports_server_module)
+ 
++import { formatThaiDateTimeFull } from "@/lib/ui/date";
++
+ export type ObjectValueView = string | number | boolean | string[] | null;
+ 
+ /** ฟิลด์ 1 ตัวที่ฟอร์มรายการต้องรู้ (ย่อจาก FieldDef ของ engine — ไม่มีค่าอ่อนไหวติดมา) */
+@@ -34,11 +36,10 @@ export function thaiInputToIso(value: string): string {
+   const m = /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(value.trim());
+   return m ? `${m[1]}T${m[2]}:${m[3]}:${m[4] ?? "00"}+07:00` : value;
+ }
+-/** ISO → ข้อความวันเวลาไทยสำหรับแสดงผล */
++/** ISO → ข้อความวันเวลาไทยสำหรับแสดงผล — CRM C5.5-fix7 ▸ RV-3: ตัวจัดรูปอยู่ที่ `lib/ui/date` (formatThaiDateTimeFull) ที่เดียว ·
++ *  หน้าผู้ติดต่อ 360 + ไฟล์ส่งออก + พอร์ทัลใช้ตัวเดียวกัน (เดิมพอร์ทัลคัดลอกตัวเลือกรูปแบบ · หน้า 360 ตัดสตริง UTC) ◂ */
+ export function thaiDateTimeText(iso: string): string {
+-  const t = Date.parse(iso);
+-  if (Number.isNaN(t)) return iso;
+-  return new Date(t).toLocaleString("th-TH", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Bangkok" });
++  return formatThaiDateTimeFull(iso);
+ }
+ // ◂ CRM C1.9
+ 
+diff --git a/src/lib/modules/crm/companies.ts b/src/lib/modules/crm/companies.ts
+index 604b3ff2..31eaa1ea 100644
+--- a/src/lib/modules/crm/companies.ts
++++ b/src/lib/modules/crm/companies.ts
+@@ -2349,9 +2349,10 @@ export async function visibleCompanyInTx(tx: Tx, visible: Prisma.CrmCompanyWhere
+ // CRM C5.5-fix6 r2 ▸ F6-2/F6-3: บริการผู้ติดต่อถามก่อนเปิด tx ว่า actor มองเห็นบริษัทปัจจุบันของผู้ติดต่อไหม — ตัวเดียวกับที่ removeContact
+ //   ใช้ (loadCompany · ไม่บังคับ live) ⇒ มองไม่เห็น = CompaniesError NOT_FOUND ข้อความเดิม (ไม่บอกว่าบริษัทมีอยู่ที่อื่นไหม) ◂
+ /** AUDIT-CLASS X1: actor มองเห็นบริษัทนี้ (ระบบเดียวกัน) — ไม่เห็น = NOT_FOUND */
+-export async function assertCompanyVisible(ctx: CompaniesCtx, actor: MemberActor, companyId: string): Promise<void> {
++// CRM C5.5-fix7 ▸ R2F-2: `live` = ต้องยังใช้งานด้วย (ตัวเดียวกับที่ removeContact/linkMutation บังคับ) — มองไม่เห็นยังตัดสินก่อนเสมอ (NOT_FOUND) ◂
++export async function assertCompanyVisible(ctx: CompaniesCtx, actor: MemberActor, companyId: string, opts: { live?: boolean } = {}): Promise<void> {
+   const a = await enter(ctx, actor);
+-  await loadCompany(ctx, a, companyId);
++  await loadCompany(ctx, a, companyId, prisma, { live: opts.live === true });
+ }
+ 
+ export async function liveCompanyRefs(ctx: CompaniesCtx, actor: MemberActor, ids: string[]): Promise<{ id: string; name: string }[]> {
+diff --git a/src/lib/modules/crm/contacts-shared.ts b/src/lib/modules/crm/contacts-shared.ts
+index eb1784f8..eba15393 100644
+--- a/src/lib/modules/crm/contacts-shared.ts
++++ b/src/lib/modules/crm/contacts-shared.ts
+@@ -24,6 +24,13 @@ export const CONTACT_IMPORT_INLINE_MAX_ROWS = 5_000;
+ export const CONTACT_IMPORT_BATCH = 200;
+ /** แถวผิดที่รายงานกลับได้สูงสุด (ที่เหลือนับใน failed) */
+ export const CONTACT_IMPORT_ERRORS_MAX = 500;
++/**
++ * CRM C5.5-fix7 ▸ R2F-1: บริษัทหลักปัจจุบันของผู้ติดต่ออยู่นอกการมองเห็นของผู้แก้ — ข้อความเดียวทั้งบรรทัดอธิบายในแผ่นแก้ไข (แทนช่องเลือกที่
++ *   กดอะไรก็ถูกปฏิเสธ) และคำปฏิเสธของบริการ (เดิม "ไม่พบบริษัทนี้ … รีเฟรชหน้า" ซึ่งรีเฟรชแล้วก็ไม่หาย) · ไม่บอกชื่อ/รหัสบริษัท ·
++ *   "มีบริษัทหลักที่มองไม่เห็น" ผู้ใช้รู้อยู่แล้วจาก companyId ใน DTO ของผู้ติดต่อ ◂
++ */
++export const CONTACT_PRIMARY_COMPANY_HIDDEN_MSG =
++  "บริษัทหลักปัจจุบันของผู้ติดต่อนี้อยู่นอกขอบเขตที่บัญชีนี้มองเห็น จึงย้ายหรือถอดบริษัทหลักจากบัญชีนี้ไม่ได้ — ให้หัวหน้าทีมหรือเจ้าของร้านย้ายให้";
+ export const CONTACT_BULK_MAX = CRM_HARD_CAPS.contactBulk; // CRM C3.9 ▸ ค่าเดิม 500 ◂
+ export const CONTACT_REASON_MIN = 5;
+ export const CONTACT_TAGS_MAX = 50;
+@@ -278,8 +285,13 @@ export type ImportContactsResult = {
+   skipped: number;
+   candidates: number;
+   failed: number;
+-  errors: { row: number; message: string }[];
++  /**
++   * CRM C5.5-fix7 ▸ R2F-3: `kind` แยกแถวที่ล้มจริง ("error" · นับใน failed) ออกจากหมายเหตุของแถวที่บันทึกแล้ว ("note" · เช่น ผูกบริษัทไม่ได้)
++   *   แถวที่ล้มจริงเรียงก่อนเสมอ (เพดาน CONTACT_IMPORT_ERRORS_MAX และหน้าจอที่แสดง 50 แถวแรกจึงไม่ดันมันหาย) · เพิ่มช่องอย่างเดียว (row/message เดิม) ◂
++   */
++  errors: ImportResultEntry[];
+ };
++export type ImportResultEntry = { row: number; message: string; kind: "error" | "note" };
+ export type ImportJobStatus = "PENDING" | "RUNNING" | "DONE" | "FAILED";
+ export type ImportJob = { jobId: string; status: ImportJobStatus; result: ImportContactsResult };
+ 
+diff --git a/src/lib/modules/crm/contacts.ts b/src/lib/modules/crm/contacts.ts
+index 58752829..12015eb7 100644
+--- a/src/lib/modules/crm/contacts.ts
++++ b/src/lib/modules/crm/contacts.ts
+@@ -58,8 +58,10 @@ import { auditSystemActivity, recordSystemActivityInTx } from "./activities";
+ import { isErasedContact } from "./erased"; // CRM C3.9-fix ▸ มติข้อ 4 ◂
+ import { unverifiedEmailRefs } from "./email-flags"; // CRM C5.5-fix3b r2 ▸ RV-1 ◂
+ import { customFieldErrorKey, missingRequiredCustom, requiredCustomMessage } from "./field-errors-shared";
++import { formatThaiDateTimeFull, thaiIsoDateTime } from "@/lib/ui/date"; // CRM C5.5-fix7 ▸ RV-3 ◂
+ import {
+   CONTACT_BULK_MAX,
++  CONTACT_PRIMARY_COMPANY_HIDDEN_MSG,
+   LEGACY_NOTE_PREFIX,
+   CONTACT_EXPORT_MAX_ROWS,
+   CONTACT_IMPORT_BATCH,
+@@ -118,6 +120,7 @@ import {
+   type ImportDuplicateMode,
+   type ImportJob,
+   type ImportJobStatus,
++  type ImportResultEntry,
+   type MergeChoiceField,
+ } from "./contacts-shared";
+ import { crmScope } from "./request-scope";
+@@ -994,16 +997,25 @@ async function updateContactCore(ctx: ContactsCtx, actor: MemberActor, id: strin
+   // CRM C5.5-fix6 ▸ F3: บริษัทหลักเปลี่ยน (ผูก · ย้าย · ถอด) ได้เฉพาะคนที่ผูกบริษัทได้ (crmCanLinkCompany: อ่าน + แก้บริษัท — คีย์เดียวกับ
+   //   ช่องเลือกในหน้า) — ตรวจ **ก่อนเขียนอะไร** (เดิม: ช่องอื่น commit + audit/event บอกว่า companyId เปลี่ยน แล้วขั้นบริษัทล้มทีหลัง) ·
+   //   ค่าเดิมที่ส่งกลับมา (client ที่ส่ง DTO ที่อ่านไปคืน) ไม่ใช่การเปลี่ยน ⇒ คนที่ไม่มีสิทธิ์อ่านบริษัทไม่โดนปฏิเสธและบริษัทเดิมคงอยู่ ◂
+-  if (wantCompany !== undefined && wantCompany === current.companyId && !crmCan(a, "crm.company.read")) wantCompany = undefined;
+-  if (wantCompany !== undefined && wantCompany !== current.companyId) {
++  // CRM C5.5-fix7 ▸ F6-5: ค่าเดิมที่ส่งกลับมา **ไม่ใช่การเปลี่ยน สำหรับทุกคน** (เดิมยกเว้นเฉพาะคนที่ไม่มีสิทธิ์อ่านบริษัท ⇒ คนที่อ่านได้แต่
++  //   มองไม่เห็นบริษัทปัจจุบันส่ง DTO คืน = VALIDATION ทั้งก้อน) · ตัดเป็น "ไม่ได้ส่ง" ตั้งแต่ตรงนี้ ⇒ ใน tx ไม่มีทางบันทึก companyId ว่าเปลี่ยน
++  //   เพราะมีคนย้ายบริษัทระหว่างที่เราอ่าน `current` กับเปิด tx (เดิม audit/event บอกว่าเปลี่ยนทั้งที่ไม่มีลิงก์ไหนถูกแตะ) ◂
++  if (wantCompany !== undefined && wantCompany === current.companyId) wantCompany = undefined;
++  if (wantCompany !== undefined) {
+     need(a, "crm.company.read");
+     need(a, "crm.company.update");
+     // CRM C5.5-fix6 r2 ▸ F6-2/F6-3: ถอด/ย้ายออกจากบริษัทปัจจุบัน = ต้องมองเห็นบริษัทปัจจุบัน — ตรวจก่อน tx (เดิม: ช่องอื่น commit แล้ว
+-    //   removeContact ล้ม NOT_FOUND · หรือย้ายผู้ติดต่อ+ดีลที่เปิดออกจากบริษัทที่มองไม่เห็นได้) · ข้อความ NOT_FOUND เดียวกับที่บริการบริษัทตอบอยู่แล้ว
+-    //   (ไม่บอกอะไรเพิ่มจากเดิม) · บริษัทปลายทางตรวจด้วย assertCompany ด้านล่างเหมือนเดิม ◂
++    //   removeContact ล้ม NOT_FOUND · หรือย้ายผู้ติดต่อ+ดีลที่เปิดออกจากบริษัทที่มองไม่เห็นได้) · บริษัทปลายทางตรวจด้วย assertCompany ด้านล่างเหมือนเดิม ◂
++    // CRM C5.5-fix7 ▸ R2F-1: มองไม่เห็น = ข้อความของตัวเอง (เดิม "ไม่พบบริษัทนี้ … รีเฟรชหน้า" ซึ่งรีเฟรชแล้วก็ไม่หาย) — ข้อความเดียวกันไม่ว่า
++    //   บริษัทที่ซ่อนอยู่ยังใช้งาน/เก็บถาวร/ถูกรวม (การมองเห็นตัดสินก่อนสถานะ ⇒ ไม่มีช่องให้เดา) · ไม่มีชื่อ/รหัสบริษัทในข้อความ ◂
++    // CRM C5.5-fix7 ▸ R2F-2: "ถอด" (ค่าว่าง) ต้องผ่าน removeContact ซึ่งแก้ลิงก์ของบริษัทที่เก็บถาวร/ถูกรวมไม่ได้ (กติกาของบริการบริษัท:
++    //   กู้คืนก่อน) ⇒ ตรวจสถานะนั้น **ก่อน tx** ด้วย (เดิม: แถวผู้ติดต่อ + audit + event commit แล้วค่อยล้ม VALIDATION) · "ย้าย" ไปบริษัทอื่น
++    //   ไม่แตะลิงก์เดิม (addContact ของบริษัทปลายทาง) ⇒ ย้ายออกจากบริษัทที่เก็บถาวรได้เหมือนเดิม ◂
+     if (current.companyId) {
+-      await companies.assertCompanyVisible(coCtx(ctx), a, current.companyId).catch((e: unknown) => {
+-        throw mapError(e);
++      await companies.assertCompanyVisible(coCtx(ctx), a, current.companyId, { live: wantCompany === null }).catch((e: unknown) => {
++        const m = mapError(e);
++        if (m instanceof ContactsError && m.code === "NOT_FOUND") throw fail("NOT_FOUND", CONTACT_PRIMARY_COMPANY_HIDDEN_MSG);
++        throw m;
+       });
+     }
+   }
+@@ -1402,13 +1414,17 @@ export async function restoreContact(ctx: ContactsCtx, actor: MemberActor, id: s
+ 
+ // ═════════════════════════ 360 ═════════════════════════
+ 
+-function displayOf(type: string, value: unknown, choices: { value: string; label: string }[] | undefined): string {
++// CRM C5.5-fix7 ▸ RV-3: DATETIME = ขณะจริง (เก็บเป็น UTC) — หน้า 360 แสดงวันเวลาไทยแบบเดียวกับหน้าระเบียนของพนักงาน (formatThaiDateTimeFull ·
++//   lib/ui/date) · ไฟล์ส่งออก (`mode: "export"`) เป็นข้อมูล ⇒ ISO เวลาไทยที่บอกเขตเวลาเอง (thaiIsoDateTime) ซึ่งนำเข้ากลับได้ขณะเดิม ·
++//   เดิมทั้งสองทางตัดสตริง UTC "2026-10-08 17:30" (ไม่บอกเขตเวลา · นำเข้าบนเครื่องเวลาไทยเพี้ยน 7 ชม.) · DATE ไม่เปลี่ยน ◂
++function displayOf(type: string, value: unknown, choices: { value: string; label: string }[] | undefined, mode: "page" | "export" = "page"): string {
+   if (value === null || value === undefined || value === "") return "";
+   if (Array.isArray(value)) return value.map((v) => choices?.find((c) => c.value === v)?.label ?? String(v)).join(", ");
+   if (typeof value === "boolean") return value ? "ใช่" : "ไม่ใช่";
+   if (type === "SELECT") return choices?.find((c) => c.value === value)?.label ?? String(value);
+   if (type === "MONEY" && typeof value === "number") return `฿${(value / 100).toLocaleString("th-TH", { maximumFractionDigits: 2 })}`;
+-  if ((type === "DATE" || type === "DATETIME") && typeof value === "string") return value.slice(0, type === "DATE" ? 10 : 16).replace("T", " ");
++  if (type === "DATETIME" && typeof value === "string") return mode === "export" ? thaiIsoDateTime(value) : formatThaiDateTimeFull(value);
++  if (type === "DATE" && typeof value === "string") return value.slice(0, 10);
+   return String(value);
+ }
+ 
+@@ -1426,6 +1442,20 @@ async function unionActivities(vis: Prisma.CrmActivityWhereInput, a: Prisma.CrmA
+     .slice(0, take);
+ }
+ 
++/**
++ * CRM C5.5-fix7 ▸ R2F-1: บริษัทหลักปัจจุบันของผู้ติดต่อ (`contact.companyId`) อยู่นอกการมองเห็นของ actor ไหม — ด่านเดียวกับที่ updateContact ใช้
++ *   ปฏิเสธการย้าย/ถอด (assertCompanyVisible · ไม่บังคับ live) ⇒ หน้า 360 ซ่อนช่องเลือกบริษัทที่กดอะไรก็ถูกปฏิเสธ · อ่านไม่สำเร็จ = ถือว่ามองไม่เห็น
++ *   (ซ่อนช่องไว้ก่อน — บริการยังเป็นผู้ตัดสินจริง) · ไม่มีบริษัท = false ◂
++ */
++export async function isCurrentCompanyHidden(ctx: ContactsCtx, actor: MemberActor, companyId: string | null | undefined): Promise<boolean> {
++  const id = str(companyId);
++  if (!id) return false;
++  return companies.assertCompanyVisible(coCtx(ctx), actor, id).then(
++    () => false,
++    () => true,
++  );
++}
++
+ export async function getContact360(ctx: ContactsCtx, actor: MemberActor, id: string): Promise<Contact360> {
+   return crmScope(() => getContact360In(ctx, actor, id));
+ }
+@@ -2361,8 +2391,13 @@ export async function importContacts(ctx: ContactsCtx, actor: MemberActor, input
+   //   ผูกบริษัทไม่ได้ (crmCanLinkCompany ไม่ผ่าน) = ไม่ค้น/ไม่สร้างบริษัทเลย (ไม่มีบริษัทกำพร้า) + บอกครั้งเดียว ◂
+   const canLink = crmCanLinkCompany(a);
+   let linkDeniedNoted = false;
++  // CRM C5.5-fix7 ▸ R2F-3: แถวที่ล้มจริง (นับใน failed) กับหมายเหตุของแถวที่บันทึกแล้ว แยกกองกัน · ต่อกันตอนจบโดยแถวที่ล้มขึ้นก่อน ⇒
++  //   หมายเหตุจำนวนมาก (เช่น ทุกแถวผูกบริษัทไม่ได้) ดันแถวที่ล้มจริงออกจากเพดาน 500 / 50 แถวแรกที่หน้าจอและ audit เก็บไม่ได้ ·
++  //   แต่ละรายการบอก `kind` ("error" | "note") — ช่อง row/message เดิมครบ (เพิ่มอย่างเดียว) ◂
++  const fails: ImportResultEntry[] = [];
++  const notes: ImportResultEntry[] = [];
+   const addNote = (row: number, message: string) => {
+-    if (result.errors.length < CONTACT_IMPORT_ERRORS_MAX) result.errors.push({ row, message });
++    if (notes.length < CONTACT_IMPORT_ERRORS_MAX) notes.push({ row, message, kind: "note" });
+   };
+   const linkRow = async (companyName: string, contactId: string, rowNo: number, done: string): Promise<void> => {
+     if (!canLink) {
+@@ -2380,7 +2415,7 @@ export async function importContacts(ctx: ContactsCtx, actor: MemberActor, input
+   };
+   const addError = (row: number, message: string) => {
+     result.failed += 1;
+-    if (result.errors.length < CONTACT_IMPORT_ERRORS_MAX) result.errors.push({ row, message });
++    if (fails.length < CONTACT_IMPORT_ERRORS_MAX) fails.push({ row, message, kind: "error" });
+   };
+ 
+   const companyFor = async (name: string): Promise<string | null> => {
+@@ -2465,6 +2500,7 @@ export async function importContacts(ctx: ContactsCtx, actor: MemberActor, input
+     status = "FAILED";
+     addError(0, importMessage(e));
+   } finally {
++    result.errors = [...fails, ...notes].slice(0, CONTACT_IMPORT_ERRORS_MAX); // CRM C5.5-fix7 ▸ R2F-3 ◂
+     await writeAudit({
+       tenantId: ctx.tenantId,
+       actorId: actorId(ctx),
+@@ -2489,7 +2525,10 @@ export async function getImportJob(ctx: ContactsCtx, actor: MemberActor, jobId:
+   if (!row || !isObj(row.after)) throw fail("NOT_FOUND", "ไม่พบงานนำเข้านี้ในระบบ CRM นี้");
+   const x = row.after;
+   const n = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : 0);
+-  const errors = Array.isArray(x.errors) ? (x.errors as { row: number; message: string }[]) : [];
++  // CRM C5.5-fix7 ▸ R2F-3: แถว audit ก่อนใบนี้ไม่มี `kind` = รายการที่ล้ม (ก่อน fix6 r2 ไม่มีหมายเหตุ) ◂
++  const errors: ImportResultEntry[] = Array.isArray(x.errors)
++    ? (x.errors as { row?: unknown; message?: unknown; kind?: unknown }[]).map((e): ImportResultEntry => ({ row: Number(e?.row ?? 0), message: String(e?.message ?? ""), kind: e?.kind === "note" ? "note" : "error" }))
++    : [];
+   return {
+     jobId: String(x.jobId),
+     status: (x.status === "DONE" || x.status === "FAILED" || x.status === "RUNNING" ? x.status : "DONE") as ImportJobStatus,
+@@ -2564,7 +2603,7 @@ export async function exportContacts(ctx: ContactsCtx, actor: MemberActor, opts:
+         r.marketingOptOut ? "ใช่" : "",
+         r.memberCustomerId ? "ผูกแล้ว" : "",
+         r.createdAt.toISOString().slice(0, 10),
+-        ...customFields.map((f) => displayOf(f.type, bag[f.key] ?? null, f.choices)),
++        ...customFields.map((f) => displayOf(f.type, bag[f.key] ?? null, f.choices, "export")),
+       ]),
+     );
+   }
+diff --git a/src/lib/modules/crm/deals.ts b/src/lib/modules/crm/deals.ts
+index 2bd54a15..77722931 100644
+--- a/src/lib/modules/crm/deals.ts
++++ b/src/lib/modules/crm/deals.ts
+@@ -719,6 +719,10 @@ async function createCore(ctx: DealsCtx, who: Who, input: CreateDealInput, opts:
+     if (!co) throw fail("NOT_FOUND", "ไม่พบบริษัทที่เลือกในระบบ CRM นี้ (อาจถูกเก็บถาวรหรือรวมไปแล้ว) — เลือกใหม่จากรายการ");
+     companyId = co.id;
+   } else {
++    // CRM C5.5-fix7 ▸ F6-6 (ตัดสินแล้ว · ไม่เปลี่ยนพฤติกรรม): ไม่ระบุ = บริษัทหลักของผู้ติดต่อ **ไม่ขึ้นกับว่าผู้สร้างมองเห็นบริษัทนั้นไหม** —
++    //   พิมพ์เขียว §4.4 (docs/modules/20-crm-v2.md) บอกแค่ "บริษัทที่ผู้ติดต่อหลักสังกัด หรือ null" · STAFF ค่าเริ่มต้นไม่มีคีย์บริษัทเลย ⇒ ถ้าตัดตาม
++    //   การมองเห็นของผู้สร้าง ดีลของพนักงานแทบทั้งหมดจะไม่มีบริษัท (ยอดรวม/ดีลในบริษัท 360 ของเจ้าของบริษัทหาย) · ผู้สร้างไม่ได้ชื่อบริษัทกลับไป
++    //   (ผลลัพธ์มีแค่ companyId ซึ่งเท่ากับ companyId ใน DTO ผู้ติดต่อที่เขาอ่านได้อยู่แล้ว · ดีล 360 ไม่แสดงชื่อบริษัทที่มองไม่เห็น) ◂
+     companyId = contact.companyId ?? null;
+   }
+   const owner = str(input?.ownerUserId) ?? actorIdOf(ctx) ?? (who && who.userId ? who.userId : null);
+diff --git a/src/lib/modules/crm/portal.ts b/src/lib/modules/crm/portal.ts
+index 402940c5..b03e090f 100644
+--- a/src/lib/modules/crm/portal.ts
++++ b/src/lib/modules/crm/portal.ts
+@@ -47,6 +47,7 @@ import { crmCan, crmForbiddenMessage } from "./access";
+ import * as companies from "./companies";
+ import { bindPortalLineUserIdInTx } from "./contacts";
+ import { thaiDayStartMs } from "./activities-shared";
++import { formatThaiDateTimeFull } from "@/lib/ui/date"; // CRM C5.5-fix7 ▸ RV-3 ◂
+ import { checkRateLimitDb } from "@/lib/core/rate-limit-db";
+ import { ciEquals } from "@/lib/core/ci-equals"; // CRM C5.5-fix2 ◂
+ import { logOps } from "@/lib/core/ops";
+@@ -812,14 +813,14 @@ export async function listDocuments(token: string): Promise<{ items: PortalDocum
+ }
+ 
+ // CRM C5.5 ▸ (fix3b · H2b-5) ฟิลด์ DATETIME เก็บเป็นขณะจริง ⇒ แสดงเป็นวันเวลาไทย รูปแบบเดียวกับหน้าระเบียนของพนักงาน
+-//   (`thaiDateTimeText` ใน components/crm/objects/types.ts — "9 ต.ค. 2569 00:30") · เดิมตัดเป็นวันที่ UTC (00:00–06:59 น. = วันก่อนหน้า · ไม่มีเวลา)
++//   ("9 ต.ค. 2569 00:30") · เดิมตัดเป็นวันที่ UTC (00:00–06:59 น. = วันก่อนหน้า · ไม่มีเวลา)
+ //   DATE เก็บเป็นเที่ยงคืน UTC ของวันในปฏิทิน ⇒ ตัดสตริงแบบเดิม (ค่าที่ลูกค้าเห็นและใช้ตั้งต้นช่อง "ขอแก้ข้อมูล" ไม่เปลี่ยน) ◂
+-const PORTAL_DATETIME_FMT: Intl.DateTimeFormatOptions = { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Bangkok" };
++// CRM C5.5-fix7 ▸ RV-3: ตัวจัดรูปตัวเดียวกับหน้าระเบียนของพนักงานและหน้าผู้ติดต่อ 360 (`formatThaiDateTimeFull` · lib/ui/date) — เลิกคัดลอกตัวเลือกรูปแบบ ◂
+ function valueText(v: { valueText: string | null; valueNumber: { toString(): string } | null; valueDate: Date | null; valueBool: boolean | null; valueOptions: string[] } | undefined, type?: string): string {
+   if (!v) return "";
+   if (v.valueText !== null && v.valueText !== undefined) return v.valueText;
+   if (v.valueNumber !== null && v.valueNumber !== undefined) return v.valueNumber.toString();
+-  if (v.valueDate && type === "DATETIME") return v.valueDate.toLocaleString("th-TH", PORTAL_DATETIME_FMT);
++  if (v.valueDate && type === "DATETIME") return formatThaiDateTimeFull(v.valueDate);
+   if (v.valueDate) return v.valueDate.toISOString().slice(0, 10);
+   if (v.valueBool !== null && v.valueBool !== undefined) return v.valueBool ? "ใช่" : "ไม่ใช่";
+   return v.valueOptions.join(", ");
+diff --git a/src/lib/ui/date.ts b/src/lib/ui/date.ts
+index ff86dc31..2ed77e32 100644
+--- a/src/lib/ui/date.ts
++++ b/src/lib/ui/date.ts
+@@ -44,6 +44,25 @@ export const thaiDateKey = (d: Date | string = new Date()) =>
+ /** งวดบัญชี "2026-07" ตามโซนไทย */
+ export const thaiPeriodKey = (d: Date | string = new Date()) => thaiDateKey(d).slice(0, 7);
+ 
++// CRM C5.5-fix7 ▸ RV-3: ค่าฟิลด์ DATETIME ของ CRM (ขณะจริง เก็บเป็น UTC) — ตัวเดียวที่หน้าระเบียนของพนักงาน (components/crm/objects/types.ts) ·
++//   หน้าผู้ติดต่อ 360 + ไฟล์ส่งออก (crm/contacts.ts) · พอร์ทัล (crm/portal.ts) ใช้ร่วมกัน · อยู่ที่นี่เพราะทั้งคอมโพเนนต์และโมดูล import ได้
++//   (คอมโพเนนต์ import ไฟล์ลึกของ crm ไม่ได้ — fitness F2.3) · ค่าที่อ่านไม่ได้ = คืนค่าเดิม (ไม่ขึ้น "Invalid Date") ◂
++/** วันที่+เวลา ปี พ.ศ. เต็ม "9 ต.ค. 2569 00:30" — ค่าฟิลด์ DATETIME ของ CRM */
++export function formatThaiDateTimeFull(d: Date | string): string {
++  const t = new Date(d).getTime();
++  if (Number.isNaN(t)) return String(d);
++  return new Date(t).toLocaleString("th-TH", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: TZ });
++}
++/**
++ * ISO วันเวลาตามโซนไทยที่บอกเขตเวลาเอง "2026-10-09T00:30:00+07:00" — สำหรับ CSV/ไฟล์ส่งออก (อ่านด้วยเครื่องได้ ไม่กำกวม ·
++ * ตัวตรวจ DATETIME ของ engine ฟิลด์รับค่านี้ตรงตัว ⇒ นำเข้ากลับได้ขณะเดิมแม้เครื่องตั้งเวลาไทย) · ไทยไม่มีเวลาออมแสง ⇒ +07:00 คงที่
++ */
++export function thaiIsoDateTime(d: Date | string): string {
++  const t = new Date(d).getTime();
++  if (Number.isNaN(t)) return String(d);
++  return `${new Date(t + 7 * 60 * 60 * 1000).toISOString().slice(0, 19)}+07:00`;
++}
++
+ // ─────────────────── ปี ค.ศ. (โมดูลบัญชี V2) ───────────────────
+ // account-v2 ใช้ปี "คริสต์ศักราช" ไม่ใช่ พ.ศ. (ต่างจาก formatThaiDate ด้านบนที่ th-TH ให้ พ.ศ. อัตโนมัติ)
+ // ตามมติเจ้าของ (DESIGN-SPEC-V2/BLUEPRINT-ACCOUNT-V2 §1 "Christian-era dates") — ห้ามใช้ toLocaleDateString("th-TH")

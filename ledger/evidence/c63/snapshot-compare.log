@@ -1,0 +1,2 @@
+compare /tmp/c63-walk/snapshot-before.json (2026-10-08T01:28:15.263Z) ↔ /tmp/c63-walk/snapshot-after.json (2026-10-08T02:00:03.486Z) · tables 300 · drifting 0
+IDENTICAL

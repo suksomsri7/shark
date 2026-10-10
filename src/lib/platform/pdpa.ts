@@ -101,6 +101,11 @@ export async function sweepPendingDeletes(now: Date = new Date(), graceDays = 30
   let purged = 0;
   for (const { id: tenantId } of due) {
     try {
+      // CRM C5.4-N ▸ ลำดับเลขที่ใบสำคัญ (SEQUENCE ต่อระบบบัญชี · ตั้งชื่อตาม systemId) ไม่มี tenantId ⇒ ต้องลบเอง ก่อนแถว AppSystem หาย
+      //   (DROP SEQUENCE IF EXISTS · รันซ้ำได้ · ล้ม = ไม่หยุดการลบร้าน — เหลือแค่ลำดับกำพร้าที่ไม่มีใครอ้าง) ◂
+      const accountSystems = await prisma.appSystem.findMany({ where: { tenantId, type: "ACCOUNT" }, select: { id: true } });
+      for (const sys of accountSystems)
+        await prisma.$executeRawUnsafe(`SELECT account_jno_drop($1)`, sys.id).catch(() => undefined);
       // 1) ลบข้อมูลทุกตารางของร้าน (children-first วนซ้ำ)
       const leftover = await purgeTenantRows(tenantId);
       if (leftover.length > 0) continue; // ยังลบไม่หมด → ทิ้งไว้รอบหน้า ไม่ลบ Tenant
