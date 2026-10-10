@@ -1320,3 +1320,11 @@
 - MAIN-MERGE fix1 (b99dd2b5): p1.1 179/180 — S2.33 เขียวแล้ว · **S2.19a แดง** (Part B ใช้แล้ว baseline = 0) → มติ ORACLE-EDIT: S2.19a = baseline ว่าง + ให้ Part B รันจริง (ไม่ข้าม) · own commit · รัน p1.1/p1.3/fitness ซ้ำ · ส่ง builder a733eb8e แล้ว
 - เลน 3/3: MAIN-MERGE fix1 (b) · HF-TX (c, a92f3a5e ยังรัน) · P2.4U fix1 (p11)
 - จุดต่อ: MAIN-MERGE รายงาน → merge-tree → ff/merge session/pos → merge gates (p1.1 p1.3 fitness typecheck) → QC5 `migrate deploy` 4 migrations ของ main → `prisma generate` ทรีผู้คุม · P2.4U รายงาน head สุดท้าย → reviewer R2 (a5aea681 resume) → chain64 build ทรี d + ถ่ายซ้ำตามรายการ → merge upstream → gates → merge → 26/55 → TG
+
+### ⏱ 10 ต.ค. 09:1xZ — MAIN-MERGE merged → session/pos **0d581286**
+- wip/pos-main-merge b873b2a1 (fix1 b99dd2b5 + fix2 5b24f8b3): S2.33 rename `recipe-actions.ts` · S5.12 + S2.19a ORACLE-EDIT (own commits, นับเท่าเดิม 128/180) · P1.1b Part B (account sale-price → catalog-legacy, S2.11b รันจริง partBStarted=true) · O24 ฝั่งบัญชีแก้แล้ว (C5.4-N/C5.5) · ciEquals + member-seed owner lines · gates: p1.1 180/180 · p1.3 128/128 · fitness 50/50 ±env · p2.3/p2.4/p2.8/p1.18/products/authz/pos-account/account-cpa เขียว · typecheck clean (b99dd2b5)
+- ผู้คุม: merge-tree สะอาด · ทรีนอก ledger = b873b2a1 ทุกไบต์ (gates ใช้แทนด่าน merge ได้) · merge --no-ff + `prisma generate` ทรีผู้คุม (crm.prisma เปลี่ยน) · pre-commit fitness ผ่าน · push แล้ว · typecheck ทรีผู้คุม 0d581286 กำลังรัน (b2d8h6tz0, log `scratchpad/ctl/typecheck-0d581286.log`)
+- QC5 `migrate deploy`: 172 migrations · **No pending** (4 ของ main อยู่บน QC5 แล้ว — ข้อสันนิษฐานเดิมผิด) ✓
+- O24: ฝั่งบัญชีปิด → P2.9 ปลดบล็อกได้เมื่อถึงคิว · VAT gift card (O24 บรรทัด 63) ยังเปิด
+- เลน 2/3: HF-TX (c, a92f3a5e ยังรัน · ต้อง merge upstream 0d581286 ก่อน gates) · P2.4U fix1 (p11, post-V1 gates) · เลน b ว่าง
+- จุดต่อ: P2.4U รายงาน → reviewer R2 → chain64 (เติม __HEAD__) → merge upstream 0d581286 → gates (p1.1 S2.33 จะเขียวหลัง merge) → merge → 26/55 → TG · HF-TX รายงาน → reviewer → merge upstream → gates → merge
