@@ -202,3 +202,30 @@ Gates (head d4ecad76 · `scratchpad/p24/runs/gate-E-*.log`):
 | pnpm fitness (no env · QC4 env) · fitness-pos | 41/41 · 41/41 · pass | 0 ×3 |
 | pnpm typecheck | 0 errors | 0 |
 Not re-run (the fix-3 code touches only `held-cart.ts holdTableDraft` and `cancelTableItemInTx`): p2.3 46 · p2.2 42 · p2.1 55 · p1.6 48 · p1.9 53 · p1.12 72 · p1.16 28 · p1.1 178 · restaurant ×4 · pos-account 16 · account-cpa 107 · shop-refund 12 · hotel-money 5 · ticket-money 6 · subscription-money 14 — results as in fix round 2 (`gate-D-*`).
+
+## Fix round 4 (money-lane hunt `wo-notes/pos-P2.4-hunt.md` H1/H2 · controller rulings 10 Oct 06:1xZ)
+ORACLE-ADD (own commits · red-before on the fix-3 code + only that check, forced, QC4 · `scratchpad/p24/runs/`):
+| id | commit | finding | red-before | red reason |
+|---|---|---|---|---|
+| V6a | d97f6456 | H1a void-unlink ⇄ pay of the remaining round | `red-before-fix4-V6a.log` 46/47 | session CLOSED with I1 unpaid · quote TABLE_SESSION_CLOSED |
+| V6b | 379a9325 | H1b void-unlink reopen ⇄ registerOpenTable | `red-before-fix4-V6b.log` 46/48 | open = INTERNAL (P2002) — QC4 carries a **manual** `one_open_session_per_table` partial unique (not in migrations; probed read-only via pg_indexes), so on QC4 the race shows as a failed open instead of two OPEN sessions |
+| V7 | 478bcb5e | H2 void after legacy `mergeSession(B ← A)` | `red-before-fix4-V7.log` 46/49 | I1 keeps the voided saleId · B's quote TABLE_EMPTY |
+V6a/V6b drive `unlinkTableSaleInTx` directly in a held tx (≈3 s) to control the interleaving (`voidSale` schedules a background drain outside Next, so a real void cannot be held), then void X + drain afterwards (consumer = no-op). Count 46 → **49**; no existing assertion changed.
+
+Fix **8de9cb70** — `restaurant/pos-tables.ts:309` `unlinkTableSaleInTx`:
+- **H2**: owners = distinct `order.sessionId` of rows with `saleId = X` (tenant+unit+saleId only — `order.sessionId` filter dropped); the update filters tenant+unit+saleId; every owning session that is CLOSED is reopened (if its table has no other OPEN session) + `dirtySince` cleared. Replay with 0 rows = no-op. `sessionId` input is now optional/unused.
+- **H1**: owners' `TableSession` rows locked `FOR UPDATE` (ORDER BY id, status read under the lock; owners re-read under the lock — a merge in between ⇒ lock the new set, ≤ 3 rounds) → `pg_advisory_xact_lock(hashtext('restaurant-table:'||tableId))` per table (same key as `restaurant/table.ts` openSession/openTableSessionInTx) → item update → reopen. Order session → table → items; pay is items → session but never touches the voided bill's items ⇒ no cycle.
+- Docstring `pos/table-actions.ts` holdTableDraftAction → "newDraft หรือ heldCartId+expectedVersion".
+- Owner lines (`POS-OWNER-PENDING.md` P2.4): บัญชี (priceSource null · void → re-bill = new receipt) · คลัง (cut at bill time, cancelled-after-cooking waste not recorded · legacy เช็คบิล cuts no inventory) · ร้านอาหาร (PENDING QR items in the POS bill · void after re-seat leaves food on a closed session · paid intent after TABLE_ITEMS_CHANGED stays unconsumed · QC4 manual `one_open_session_per_table` ⇒ P6.1 runbook checks prod first).
+- Merged `origin/session/pos` f7b94693 (ledger only, no conflicts) → code head 3bbb4a51.
+
+Gates (head 3bbb4a51 · `scratchpad/p24/runs/gate-fix4-*.log`, `fix4-*.log`):
+| gate | result | exit |
+|---|---|---|
+| qc-pos-p2.4 forced #1 / #2 / unforced | **49/49** ×3 · PAR 4/4 · residue 0 | 0 / 0 / 0 |
+| qc-pos-p2.4 --no-db | 7/7 | 0 |
+| qc-pos-p1.3 · p1.8 · p1.16 | 128/128 · 49/49 · 28/28 | 0 ×3 |
+| qc-restaurant · -money · -pay · -void | pass · 6/6 · 19/19 · 11/11 | 0 ×4 |
+| qc-pos-account | 16/16 | 0 |
+| pnpm fitness (no env · QC4 env) · fitness-pos | 41/41 · 41/41 · pass | 0 ×3 |
+| pnpm typecheck | 0 errors | 0 |
