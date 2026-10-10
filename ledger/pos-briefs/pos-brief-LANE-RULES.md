@@ -18,3 +18,9 @@ Another Claude account is running the CRM RUN on this machine right now (4 lanes
 - ผู้คุมเปิดดูภาพเฉพาะ state ใหม่ + สุ่ม 1–2 ใบ · ที่เหลือให้ harness ตัดสิน (testid-step · console · overflow · 5xx)
 - แก้แค่ harness/ledger = ไม่ build ใหม่ (server เดิมเสิร์ฟโค้ดเดิม) · builder ระบุรายการ `--state` ที่ผู้คุมต้องถ่ายไว้ท้ายโน้ต
 - ฝั่ง builder: brief/prompt ต้องตัดสินทุกข้อเปิดล่วงหน้า (rulings) — รอบแก้ 1 รอบแพงกว่าภาพทั้งรอบ
+
+## คุณภาพมาก่อน (มติเจ้าของ 10 ต.ค. 05:1xZ — "ทำตามที่แนะนำ")
+- คง: Fable คุม / Opus ทำ (builder + ผู้ตรวจทุกใบ ไม่ลดเป็น Sonnet) · oracle แดงก่อนสร้าง → builder → ด่านเต็ม → ผู้ตรวจอิสระ → รอบแก้ → R2 → ภาพเต็มที่ merge · เพดาน 3 เลน (builder ≤ 2)
+- **เพิ่ม 1 — hunter เลนเงินทุกจุด merge** (ไม่รอ P5.1): หลังผู้ตรวจ R-final MERGEABLE และก่อน merge ใบ S ที่แตะเงิน/สต็อก/บัญชี เปิดผู้ตรวจอ่านอย่างเดียว 1 คน (Opus) ไล่เฉพาะ race · idempotency · ตัดสต็อก · ลงบัญชี · void/refund ของใบนั้น (prompt `pos-prompt-accountB-<wo>-H.md`) → ผลลง `wo-notes/pos-<wo>-hunt.md` · พบ Medium+ = รอบแก้ก่อน merge · นับเป็นเลน
+- **เพิ่ม 2 — ผู้คุมดูภาพเต็มเองที่จุด merge** เฉพาะหน้าที่แตะเงิน: หน้าขาย (01/05) · จอชำระ (07) · บิลวันนี้ (12) · ใบเสร็จ/ใบกำกับ — ทุก state ที่ใบงานแตะ ทุกจอ th (en สุ่ม) · หน้าอื่นให้ harness ตัดสิน (มติเลนภาพ)
+- ผลต่อแผน: +~ครึ่งวันต่อใบใหญ่ · token +~10% · ประมาณการปิด RUN ~26–28 ต.ค.
