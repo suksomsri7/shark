@@ -47,6 +47,14 @@ enum TableStatus {
   INACTIVE // ปิดใช้ชั่วคราว (ชำรุด) — ไม่รับ session ใหม่
 }
 
+// POS P2.4 ▸ สถานะโต๊ะจอง (มติ Q2: โต๊ะจองแบบย่อของร้านอาหารเอง · ระบบจอง/คิว = PLANNED) ◂
+enum RestReservationStatus {
+  BOOKED
+  SEATED
+  CANCELLED
+  NO_SHOW
+}
+
 enum ServiceRequestType {
   CALL_STAFF
   REQUEST_BILL
@@ -285,6 +293,8 @@ model RestaurantTable {
   qrToken    String         @unique @default(cuid()) // QR ถาวร — rotate ได้
   status     TableStatus    @default(ACTIVE)
   archivedAt DateTime?
+  // POS P2.4 ▸ "ต้องเก็บโต๊ะ": เวลาที่โต๊ะว่างแต่ยังไม่ได้เก็บ (ตั้งตอนชำระครบแล้วปิดโต๊ะ · ล้างตอนกด "เก็บแล้ว"/เปิดโต๊ะใหม่) · null = สะอาด ◂
+  dirtySince DateTime?
   createdAt  DateTime       @default(now())
   updatedAt  DateTime       @updatedAt
 
@@ -293,6 +303,28 @@ model RestaurantTable {
   @@unique([unitId, name])
   @@index([tenantId])
   @@index([unitId, zoneId])
+}
+
+// POS P2.4 ▸ โต๊ะจองแบบย่อ (มติ Q2 · R10) — ผู้เขียนเดียว = restaurant/reservation.ts (POS เรียกผ่าน facade restaurant/index.ts) ·
+//   RESERVED บนผังเมื่อ at − holdFromMinutes ≤ ตอนนี้ ≤ at + 30 นาที (pos/table-shared reservationHolds) · tableId/sessionId = id หลวม (ไม่มี FK) ◂
+model RestaurantReservation {
+  id              String                @id @default(cuid())
+  tenantId        String
+  unitId          String
+  tableId         String? // RestaurantTable.id (null = ยังไม่ระบุโต๊ะ)
+  name            String
+  phone           String?
+  partySize       Int
+  at              DateTime
+  holdFromMinutes Int                   @default(15) // กันโต๊ะก่อนเวลาจองกี่นาที
+  status          RestReservationStatus @default(BOOKED)
+  sessionId       String? // TableSession.id ที่เปิดตอนพาลูกค้านั่ง (SEATED)
+  createdByUserId String?
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  @@index([tenantId])
+  @@index([unitId, at])
 }
 
 // ─────────────────────── Session โต๊ะ ───────────────────────
