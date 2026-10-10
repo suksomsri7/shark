@@ -1,0 +1,10 @@
+# Prompt — P2.8 S fix round 2 (review R1 findings F1–F5). Controller (account A, 10 Oct 05:1xZ): head bca735ad on `wip/pos-p2.8`, tree b. Builder cap = 2 ⇒ this round starts when the controller sends the go (P2.4 fix 2 + P2.3U are building).
+
+Read `cat /root/projects/shark-pos/ledger/wo-notes/pos-P2.8-review.md` — findings F1–F5 with file:line and the **Controller rulings** section are binding. Build:
+1. F1 PAID WEB order ⇒ `rejectOrder`/`cancelOrder` refuse `ORDER_STATE_INVALID` (th/en as ruled); ORACLE-ADD with red-before; P2.8U contract line (hide reject sheet for PAID WEB).
+2. F2 storefront dual-read + `createOrder` snapshot use the resolver only when a `(WEB,*)` row exists or the winning rule lists `WEB` explicitly; all-channel rules / BRANCH rows never reach the storefront; ORACLE-ADD W6 variant with red-before; owner line + deploy note (`backfillWebPrices` before the storefront flag).
+3. F3 web door parent-archived check ⇒ `PRODUCT_UNAVAILABLE`; P2.14 follow-up line for C3 visibility.
+4. F4 map `HAS_REFUNDS` → `ORDER_STATE_INVALID` (own message), `REASON_REQUIRED` → `VALIDATION`, `UNKNOWN` → `INTERNAL`.
+5. F5 `listOrders` desc + reverse, `since` capped to 7 days.
+6. Notes: deviation 7 follow-up (P2.7 + owner line), p2.2 ST1 gap → P2.11 line, fix round 2 section (per-finding change + file:line, ORACLE-ADD ids, contract additions, owner lines, gates).
+Rules: `register.ts`/`service.ts`/`channel.ts`/`chat/**` untouched; `createSale` contract unchanged; foreign hunks inside `// POS P2.8 ▸ … ◂`; th+en keys; one own commit per ORACLE-ADD with the red-before log path. Gates: `qc-pos-p2.8` **57/57** forced ×2 + unforced (PAR 4/4, residue 0) · p2.2 42 · p2.1 55 · p2.3 46 · p1.3 128 · p1.6 48 · p1.12 72 · p1.16 28 · p1.18 81 · shop 15 · shop-refund 12 · pos-account 16 · account-cpa 107 · fitness ±env · fitness-pos · typecheck. `git -C /root/projects/shark-pos-b merge origin/session/pos` before final gates (P2.4 may land — keep both behaviours, note conflicts). Commit explicit paths, push `wip/pos-p2.8`, report ≤ 20 lines (head SHA first). Same hard rules as the S prompt.
