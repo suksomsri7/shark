@@ -1262,3 +1262,7 @@
 - chain62 ปล่อยแล้ว (unit pos-chain62-1791612474): build a59655ac ทรี d → vis63 ถ่ายเต็มจุด merge (products/register/sales/stock/settings × owner-th/cashier-th/owner-en + close/reports/shifts/receipt-public owner-th · wo `p23u-m`/`p23u-m-en`) · waiter พื้นหลัง bkemkfgua
 - หลัง vis63 เขียว: ด่าน merge P2.3U = ด่านของ fix1 (p11 head ac598727) ถือเป็นด่าน merge ได้ (ไม่มี commit อื่นบน session/pos ตั้งแต่ 1636da3c นอกจาก ledger) → ff/merge `wip/pos-p2.3u` → **25/55** → TG
 - เลน 2/3: P2.4 R3+H (c อ่าน) · P2.8 R2+H (b อ่าน) · p11 ว่าง
+
+## 10 ต.ค. 06:1xZ — P2.4 R3+H ผล: R3 OK · hunt = 2 Low (H1 void consumer ไม่ล็อก session/โต๊ะ → บิลค้างบน session ปิด / 2 session เปิดบนโต๊ะเดียว · H2 หลัง legacy merge void ไม่ปลด saleId) → **ตัดสินแก้ก่อน merge** (รอบแก้ 4 · V6a/V6b/V7 · 46→49) — `wo-notes/pos-P2.4-hunt.md` + prompt `pos-briefs/pos-prompt-accountB-P2.4-S-fix4.md`
+- หลัง fix4: hunter คนเดิมตรวจซ้ำ H1/H2 (R4 อ่าน) → merge → P2.4U (prompt `pos-prompt-accountB-P2.4U.md` เตรียมแล้ว · แทน __BASE__/__TREE__)
+- เลน 2/3: P2.4 fix4 (c) · P2.8 R2+H (b อ่าน) · chain62 (ทรี d build/ภาพ · ไม่นับเลน)
