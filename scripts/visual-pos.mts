@@ -449,7 +449,7 @@ const billsPath = (st: BillsStateKey) => `/app/sys/${SYS}/pos/sales?unit=${encod
 const RPUB_VIEWPORT = POS_VIEWPORTS.find((v) => v.name === "mobile")!;
 const rpubOn = tenantKey === "coffee" && pages.includes("receipt-public");
 const rpubPlan = RPUB_STATE_PLAN.filter((st) => STATES_ON || st.key === "rpub-paid");
-const jobs: Job[] = pages.flatMap((p: PosPage): Job[] =>
+const jobsPlanned: Job[] = pages.flatMap((p: PosPage): Job[] =>
   p === "receipt-public"
     ? rpubOn
       ? rpubPlan.flatMap((st): Job[] =>
@@ -494,6 +494,16 @@ const jobs: Job[] = pages.flatMap((p: PosPage): Job[] =>
       )
     : viewports.map((v): Job => ({ page: p, v, state: null, file: LOCALE_EN ? fileOf(p, v.w, v.h).replace(/\.png$/, "-en.png") : fileOf(p, v.w, v.h) })),
 );
+// POS ผู้คุม 10 ต.ค. ▸ --state a,b,c = ถ่ายเฉพาะสถานะที่ระบุ (ต้องคู่กับ --states) — รอบแก้ถ่ายเฉพาะ state ที่ใบงานแตะ · รอบ merge/ปิดเฟสถ่ายเต็ม
+//   คีย์ที่ไม่อยู่ในแผนของหน้า/ผู้ใช้/ภาษานี้ = หยุดพร้อมรายชื่อที่ใช้ได้ (กันพิมพ์ผิดแล้วได้ 0 ภาพเงียบ ๆ) ◂
+const onlyStates = flag("--state")?.split(",").map((x) => x.trim()).filter(Boolean) ?? null;
+if (onlyStates && !STATES_ON) die("--state ใช้คู่กับ --states เท่านั้น");
+if (onlyStates) {
+  const known = new Set(jobsPlanned.flatMap((j) => (j.state ? [String(j.state)] : [])));
+  const unknown = onlyStates.filter((x) => !known.has(x));
+  if (unknown.length) die(`--state ไม่รู้จัก/ไม่อยู่ในแผนของหน้า-ผู้ใช้นี้: ${unknown.join(", ")} — ใช้ได้: ${[...known].join(" · ")}`);
+}
+const jobs: Job[] = onlyStates ? jobsPlanned.filter((j) => j.state && onlyStates.includes(String(j.state))) : jobsPlanned;
 const needFixtures = STATES_ON && tenantKey === "coffee" && jobs.some((j) => j.state && j.page === "register");
 if (STATES_ON && tenantKey !== "coffee" && pages.includes("register")) die("สถานะหน้าขาย P1.3 ถ่ายได้เฉพาะ --tenant coffee (มี PromptPay + สินค้าตายตัวที่ขั้นตอนใช้)");
 // ◂
