@@ -1363,3 +1363,8 @@
 - chain65 unit `pos-chain65-1791634245`: build c95012a0 ทรี d → vis66 orders ทุก state × owner/cashier th + owner en · register `register-tab-badge,default` · tables `tables-floor` (wo p2.8u/p2.8u-en) · fixture ทิ้ง LINE MAN order + PLATFORM sale ไว้บน QC5 ต่อรอบ (เหมือน P2.1U)
 - HF-PP fix1 (UI gate EDC) กำลังทำ (c) → R2 → merge → เปิด P2.6 S ทรี c
 - เลน 3/3: HF-PP fix1 (c) · P2.8U reviewer · chain65 ภาพ · ผู้คุมดู 09 เต็ม (หน้าเงิน: ค่าคอม/ยอดสุทธิ/จ่าย) เมื่อ vis66 เสร็จ
+
+### ⏱ 10 ต.ค. 12:1xZ — **HF-PP merged → session/pos ca5a07b4** · เปิด P2.6 S
+- HF-PP b34ebc08 (code 33072250): R1 MERGEABLE (F1 → fix1 UI gate EDC + key `register.refusal.manualConfirmManager` + settings copy + 2 owner lines) → R2 MERGEABLE · gates a42718c0 เขียวหมด · ทรีนอก ledger = 33072250 ทุกไบต์ · ผู้คุมรัน p2.8 บน ca5a07b4 (ST6) log `scratchpad/ctl/p28-ca5a07b4.log`
+- เปิด **P2.6 S** ทรี c `wip/pos-p2.6` base ca5a07b4 (prompt `pos-prompt-accountB-P2.6-S.filled.md`; step 0 = red-before บนฐานใหม่ ต้องไม่มี SKIP-until-export)
+- เลน 3/3: P2.6 S (c) · P2.8U reviewer (a4136ac0) + chain65 ภาพ (d) · ถัดไป HF-GC เมื่อมีช่อง builder (หลัง P2.8U merge)
