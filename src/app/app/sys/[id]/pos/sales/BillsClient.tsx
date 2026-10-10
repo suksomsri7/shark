@@ -1112,8 +1112,9 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
             </div>
           ) : (
             <>
-              {/* md+ ตาราง */}
-              <div className="hidden overflow-x-auto md:block">
+              {/* md+ ตาราง · POS P2.1U fix รอบ 2 ▸ V1: relative = กรอบเลื่อนเป็นฐานของลูก absolute (sr-only หัวคอลัมน์เมนู) —
+                  เดิมฐานอยู่นอกกรอบ ⇒ ตารางกว้างเกินคอลัมน์ข้างลิ้นชักที่ 1024 แล้ว sr-only ไม่ถูกตัด ดัน html ล้นแนวนอน · ตารางเลื่อนในการ์ดเท่านั้น ◂ */}
+              <div className="relative hidden overflow-x-auto md:block">
                 <table className="w-full min-w-[720px] text-[13px]">
                   <thead>
                     <tr className="border-b text-left text-[12px] text-[color:var(--color-muted)]">
