@@ -1248,3 +1248,7 @@
 - prompt: `pos-briefs/pos-prompt-accountB-P2.4-H.filled.md` (Part A = ตรวจ N1–N3 + ORACLE-EDIT 5fdb8da7 · Part B = ล่าเลนเงิน) → ผลลง `wo-notes/pos-P2.4-hunt.md`
 - ถ้า R3 OK + hunt ไม่มี Medium+ → merge `wip/pos-p2.4` → ด่าน merge (p1.1 CONTROLLER-RUN) → deploy p24 migration บน QC5 → P2.4U ต่อคิว
 - เลน 3/3: P2.8 fix2 (b) · P2.3U fix1 (p11) · P2.4 R3+H (c อ่าน)
+
+## 10 ต.ค. 06:0xZ — chain61 เสร็จ: build 0364d26a ทรี d OK · vis62 30/30 เขียว (`shark-pos-d/.qc-shots/pos/p2.3u{,-en}/`)
+- ผู้คุมดูเอง: 06 recipe-view/edit/backfilled/incomplete-cost/table-chips ×1440 th + edit en + view มือถือ · register pending-cuts chip + แถบสถานะ "รอตัดสต็อก 1" · settings-shark การ์ดคลัง "ตัดตามสูตร BOM" เปิดแล้ว → **ตรง mockup 06** (ชิปขนาด/แท็บเทา = D9/D10 ที่รับแล้ว) · ไม่มีแก้ภาพในรอบแก้ 1
+- ค้าง: P2.3U fix1 (p11) → chain62 build head ใหม่ + ถ่ายเต็ม → merge
