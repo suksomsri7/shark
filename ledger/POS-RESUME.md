@@ -1166,3 +1166,5 @@
 - ผู้คุมดูภาพ: O5 เลื่อนถึง (1291>844) · O6 14B deviation ย่อย (ไม่มีชิปเครื่อง · footer 2 วัน) · O7 17B = ACTIVE 3 + เพิกถอน (97) พับ ตรงแบบ · O8 11C **MATCH** · O9 รับ · O11 19ค PromptPay/print-failed = deviation (ฟังก์ชันครบ ข้อความ/ตำแหน่งต่าง) → **P2.12** · O1/O2/O4/O13 harness ยืนยัน · 07 ยืนยัน · ตาราง `wo-notes/pos-P1.18-parity.md` "vis59 addendum"
 - `ledger/HANDOVER-2026-10-10-POS-P1.md` commit แล้ว (§0–§7 · §3 vis59 addendum · gates62 12/12) · แผน §4 เก็บตก (ข) ตัดสินแล้ว → P2.12
 - **สถานะ 23/55 (42%)** · เฟส P2 เดินอยู่: fix P2.3 S (c · ด่านใกล้จบ) · fix P2.2U (p11) · oracle P2.6 บนฐาน · P2.4 S/P2.8 S รอ P2.3 S merge
+
+- 02:23Z R2 P2.2U = **MERGEABLE** (`wo-notes/pos-P2.2U-review-R2.md`) · N1 toast ทุก 15 วิ เมื่อโหลดล้ม → fix round 2 (builder เดิม p11 · เงียบเมื่อ timer เรียก + ข้ามตอนออฟไลน์) · N2 → P2.11 · chain60: build60 @6e55ba60 ทรี d → vis60 p22u (products/register/sales × owner/cashier th + owner en) บน QC5 กำลังรัน · fix P2.3 รอ typecheck
