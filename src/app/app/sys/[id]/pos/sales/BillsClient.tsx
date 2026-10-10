@@ -62,6 +62,8 @@ type Props = {
   accountSystemId: string | null;
   /** POS P1.13U มติ 4: ผู้ใช้มีสิทธิ์ pos.taxinvoice.issue ที่สาขานี้ (เจ้าของ/ผู้จัดการโดยปริยาย) — false = ไม่มีปุ่มออก/ปฏิเสธ */
   canIssueTaxInvoice?: boolean;
+  /** POS P2.8U ▸ ?bill=<saleId> (ปุ่ม "ดูบิล" ของจอออเดอร์) — เปิดลิ้นชักบิลนั้นตอนโหลดหน้า · null = ไม่เปิด ◂ */
+  initialBillId?: string | null;
 };
 /** P1.13U: เหตุผลที่ปฏิเสธคำขอใบกำกับ (มติ 4 — แผ่นเหตุผล ≤200 · เซิร์ฟเวอร์รับ ≤500) */
 const TAX_REJECT_MAX = 200;
@@ -123,7 +125,7 @@ function BillDialog({ labelledBy, testid, wide, onClose, children }: { labelledB
   );
 }
 
-export function BillsClient({ systemId, units, unitId, today, initialDate, hasAnyBill, accountSystemId, canIssueTaxInvoice = false }: Props) {
+export function BillsClient({ systemId, units, unitId, today, initialDate, hasAnyBill, accountSystemId, canIssueTaxInvoice = false, initialBillId = null }: Props) {
   const t = useTranslations("pos.bills") as T;
   const ts = useTranslations("pos.shift") as T;
   const te = useTranslations("pos.bills.errors") as T;
@@ -246,6 +248,13 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
     },
     [loadDetail, detail],
   );
+  // POS P2.8U ▸ ?bill= เปิดลิ้นชักครั้งเดียวตอนโหลดหน้า (ลิ้นชักไม่ต้องอยู่ในหน้าแรกของรายการ · billDetailAction ตรวจสาขา/สิทธิ์) ◂
+  const openedInitial = useRef(false);
+  useEffect(() => {
+    if (openedInitial.current || !initialBillId) return;
+    openedInitial.current = true;
+    openBill(initialBillId);
+  }, [initialBillId, openBill]);
   const closeDrawer = useCallback(() => {
     wantedRef.current = null;
     setSelectedId(null);
