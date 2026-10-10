@@ -1283,3 +1283,6 @@
 ## 10 ต.ค. 06:5xZ — P2.8 fix3 ส่งแล้ว (0d34fd6d · code c47c5727 · p2.8 60/60 ×3 · W11/W12/W13 + EDIT W4/W10/W9 · H1 = POS_ORDER_CLOSED claim refusal + webClaimRevertInTx) → hunter คนเดิมตรวจซ้ำ R3 (b อ่าน)
 - หลัง R3 OK: builder P2.8 merge origin/session/pos (หลัง P2.3U + P2.4 เข้าแล้ว) → ด่านสั้น (p2.8 ×1 + p2.4 + p2.3 + typecheck + fitness) → ff → `git merge origin/main` → ตรวจ P1.1b ส่วน B + ORACLE-EDIT P1.3 S5.12 → deploy p28 QC5
 - เลน 2/3: P2.8 R3 (b อ่าน) · gates67 (c) · p11 ว่าง · รอ vis63
+
+## 10 ต.ค. 07:0xZ — P2.8 R3 OK → MERGEABLE (เลนเงิน) · ทั้ง 3 ใบพร้อม merge: P2.3U (รอ vis63) → P2.4 (รอ gates67) → P2.8 (builder merge upstream หลัง 2 ใบแรก)
+- เลน 0/3 (ผู้ตรวจจบหมด) · gates67 (c) · vis63 (d)
