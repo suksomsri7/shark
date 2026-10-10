@@ -1151,3 +1151,5 @@
 - ค้าง: build59 → vis59 → HANDOVER §3 → ปิดเฟส P1
 
 - 01:41Z ผู้ตรวจ P2.3 S = **MERGEABLE-AFTER-FIXES** (`wo-notes/pos-P2.3-review.md` + มติ): F1 retry ตัดซ้ำของที่คืนแล้ว → ทาง B (retry รัน restock ของ REFUND docs ซ้ำ + ORACLE-ADD) · F2 retry ใช้หน้าต่างเดียวกับตัวนับ (today) · F3 bundle portions ตามกติกา C2 (untracked ⇒ null) · F4 = สัญญา P2.3U (setBomEnabled จาก banner) · F5 งบล็อก 5 s · F6 อ่านสถานะซ้ำหลัง batch → restore · F7 ติดตาม (pending-restore) · F8 บรรทัดเจ้าของบัญชี (COGS void ที่ต้นทุนเดิม · retry ลงวันที่ retry) → **fix round 1 เปิด** (ทรี c · prompt `P2.3-S-fix.md`) · เลน = 2 (P2.2U · fix P2.3) · gates63pre (ทรี b @276a1934) กำลังรัน
+
+- 01:48Z ✅ gates63pre (ทรี b @276a1934 = โค้ด P2.3 S): p1.1 178 · p1.5 21 · p1.9 53 · p1.13 33 · p1.15 39 · p1.18 81 · authz 56 · p0.2 56 · closeday 22 = 0 ทั้งหมด (`/root/pos-runs/gates63pre-b-20261010T013308Z`) ⇒ CONTROLLER-RUN p1.1 ผ่าน · gates63 จริงหลัง fix round 1 รันเฉพาะชุดที่ fix แตะ + ชุดนี้ซ้ำเฉพาะ p1.1 · vis59: register owner/cashier เขียว กำลังถ่ายต่อ
