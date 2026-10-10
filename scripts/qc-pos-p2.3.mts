@@ -52,7 +52,7 @@ const CHECKS: readonly Def[] = [
   D("ST1", "S", "[§3 CD1 CD3] schema + migration เพิ่มอย่างเดียว: PosProduct.bomEnabled Boolean @default(false) + ฟิลด์ลิสต์ PosRecipeChoiceLine[] · model PosRecipeChoiceLine ฟิลด์พอดี {id tenantId productId product(onDelete Cascade) choiceId invItemId qtyDelta Int createdAt updatedAt} + @@unique([productId, choiceId, invItemId]) + @@index([tenantId]) + @@index([invItemId]) · RecipeLine ไม่เปลี่ยน · migration เดียว `20261205100000_pos_p23_recipe`: lock_timeout · ADD COLUMN \"bomEnabled\" BOOLEAN NOT NULL DEFAULT false · CREATE TABLE \"PosRecipeChoiceLine\" (ครบคอลัมน์) · CHECK (\"qtyDelta\" <> 0) · unique/index ครบ · FK productId → PosProduct ON DELETE CASCADE · ไม่มีคำสั่งอื่น (DROP/UPDATE/DELETE/RENAME/backfill)"),
   D("ST2", "S", "[§3 R10] ลงทะเบียน: core/scope.ts PosRecipeChoiceLine: tenant (RecipeLine: tenant คงเดิม) · pos-qc-env POS_MODELS posRecipeChoiceLine {model \"PosRecipeChoiceLine\"} + ไม่อยู่ใน POS_FUTURE_MODELS · messages th+en pos.json ก้อน recipe.* (คีย์ชุดเดียวกัน · th มีอักษรไทย · en ไม่มีอักษรไทย)"),
   D("ST3", "S", "[R5 C-1 F15.1 hard rules] ขอบเขต: recipe-shared.ts บริสุทธิ์ (ไม่ import prisma/db/โมดูลเซิร์ฟเวอร์) + export expandRecipe RECIPE_MAX_COMPONENTS · recipe.ts export recipeCost · catalog.ts export setRecipeChoiceLines setBomEnabled · service.ts export retryPendingStockCuts · inventory/service.ts export consumeBatch · inventory/index.ts re-export consumeBatch ในรอยต่อ `// POS P2.3 ▸ … ◂` · ไฟล์ pos ที่ใช้ consumeBatch import จาก @/lib/modules/inventory เท่านั้น · consumeSaleInventory เรียก consumeBatch( และไม่มี .consume( · เขียน RecipeLine เฉพาะ catalog.ts/catalog-legacy.ts · เขียน PosRecipeChoiceLine เฉพาะ catalog.ts · modules/pos ไม่เขียน InvMovement/onHand · ไฟล์ 'use client' ไม่ import pos/recipe·catalog·service หรือ inventory · POS-OWNER-PENDING.md มีบรรทัด P2.3 (consumeBatch + หน่วยซื้อ + ความละเอียดต้นทุน)"),
-  D("ST4", "S", "[CD1 §9 Q7 Q8] scripts/pos-sale-contract.json ตรงฐาน b694aea0 ทุกไบต์ (sha256) · pos-integrations INVENTORY bomDeduct ยัง false \"P2.3\" (S · พลิกใน P2.3U) · ไฟล์ \"use server\" ใน modules/pos export async function ล้วน · register-actions.ts มี retryPendingStockCutsAction (เรียก retryPendingStockCuts + catch)"),
+  D("ST4", "S", "[CD1 §9 Q7 Q8] scripts/pos-sale-contract.json ตรงฐาน b694aea0 ทุกไบต์ (sha256) · pos-integrations INVENTORY [\"bomDeduct\", true, null] (พลิกเป็น live แล้วใน P2.3U มติ 8) · ไฟล์ \"use server\" ใน modules/pos export async function ล้วน · register-actions.ts มี retryPendingStockCutsAction (เรียก retryPendingStockCuts + catch)"),
   // ── E กระจายสูตร (recipe-shared.ts · บริสุทธิ์ + E5 ตัวแปรผ่านหน้าขาย) ──
   D("E1", "P", "[R3] expandRecipe ฐานล้วน (ไม่เลือกตัวเลือก · choiceLines ของตัวเลือกที่ไม่เลือกไม่มีผล) → {ok:true, components} เรียง invItemId น้อยไปมาก · แต่ละตัวคีย์ {invItemId, qty} พอดี · จำนวนเต็ม"),
   D("E2", "P", "[R3 CD3] M + โอ๊ต + ช็อตเพิ่ม: เมล็ด 18+6+9 = 33 · นม 150+50−150 = 50 · แก้ว12 1−1 = 0 (ทิ้ง) · แก้ว16 +1 · ฝา 1 · โอ๊ต +150 → 5 รายการรวมต่อสินค้า · choiceId ที่ไม่มี choiceLines/ไม่รู้จัก = ไม่มีผล"),
@@ -505,7 +505,8 @@ async function runStatic(): Promise<void> {
     const raw = existsSync(join(ROOT, F.contract)) ? readFileSync(join(ROOT, F.contract)) : Buffer.from("");
     const h = createHash("sha256").update(raw).digest("hex");
     if (h !== CONTRACT_SHA_B694) p.push(`pos-sale-contract.json เปลี่ยน (sha ${h.slice(0, 12)} ≠ ${CONTRACT_SHA_B694.slice(0, 12)})`);
-    if (!/\["bomDeduct",\s*false,\s*"P2\.3"\]/.test(srcOf(F.integrations))) p.push('pos-integrations INVENTORY ไม่ใช่ ["bomDeduct", false, "P2.3"] (พลิกใน P2.3U)');
+    // ORACLE-EDIT P2.3U (ข้อเสนอ · นอกมติ 8 — ผู้คุมตัดสิน): P2.3U พลิก bomDeduct เป็น live ตามมติ 8 ⇒ ST4 ยึดค่าหลังพลิก · เดิม ["bomDeduct", false, "P2.3"]
+    if (!/\["bomDeduct",\s*true,\s*null\]/.test(srcOf(F.integrations))) p.push('pos-integrations INVENTORY ไม่ใช่ ["bomDeduct", true, null] (พลิกแล้วใน P2.3U)');
     const files = walk(POS_DIR).filter((f) => /^["']use server["']/.test(rd(f).replace(/^\s*(\/\/[^\n]*\n|\/\*[\s\S]*?\*\/\s*)*/, "").trimStart()));
     for (const f of files) {
       const bad = [...srcOf(f).matchAll(/^\s*export\s+[^\n]*/gm)].map((m) => m[0].trim()).filter((l) => !/^export\s+async\s+function\s+\w+/.test(l));
@@ -520,7 +521,7 @@ async function runStatic(): Promise<void> {
       if (!/\bretryPendingStockCuts\s*\(/.test(body)) p.push("retryPendingStockCutsAction ไม่เรียก retryPendingStockCuts");
       if (!/\bcatch\b/.test(body)) p.push("retryPendingStockCutsAction ไม่มี catch");
     }
-    chk("ST4", p.length === 0, "สัญญา createSale ตรงฐาน · bomDeduct false · use server · action ตัดสต็อกค้าง", P8(p) || `ครบ (${files.length} ไฟล์ use server)`);
+    chk("ST4", p.length === 0, "สัญญา createSale ตรงฐาน · bomDeduct true (live) · use server · action ตัดสต็อกค้าง", P8(p) || `ครบ (${files.length} ไฟล์ use server)`);
   }
 }
 

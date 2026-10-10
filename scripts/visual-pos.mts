@@ -210,7 +210,7 @@ const fileOf = (p: PosPage, w: number, h: number) => `${OUT}/${p}-${userKey}-${w
 const STATES_ON = /^p1\.3/i.test(WO) || argv.includes("--states");
 const LOCALE_EN = process.env.LOCALE === "en";
 type Device = (typeof POS_VIEWPORTS)[number]["name"];
-type StateKey = "held-drawer" | "paydlg-promptpay-timeout" | "paydlg-platform" | "register-en" | "register-empty-catalogue" | "default" | "cart3" | "cart4-01" | "line-editor" | "bill-discount" | "custom-item" | "paydlg-cash" | "paydlg-promptpay-qr" | "paydlg-promptpay-paid" | "paydlg-card-edc" | "sale-done" | "search-empty" | "stock-warn" | "offline" | "mobile-sheet" | "options-popover" | "weigh" | "taxinvoice-dialog" | "taxinvoice-set" | MemberStateKey | P115StateKey | StockStateKey | ShiftsStateKey | BillsStateKey | SettingsStateKey | RpubStateKey | P22uProductsKey | P22uRegKey;
+type StateKey = "held-drawer" | "paydlg-promptpay-timeout" | "paydlg-platform" | "register-en" | "register-empty-catalogue" | "default" | "cart3" | "cart4-01" | "line-editor" | "bill-discount" | "custom-item" | "paydlg-cash" | "paydlg-promptpay-qr" | "paydlg-promptpay-paid" | "paydlg-card-edc" | "sale-done" | "search-empty" | "stock-warn" | "offline" | "mobile-sheet" | "options-popover" | "weigh" | "taxinvoice-dialog" | "taxinvoice-set" | MemberStateKey | P115StateKey | StockStateKey | ShiftsStateKey | BillsStateKey | SettingsStateKey | RpubStateKey | P22uProductsKey | P22uRegKey | P23uProductsKey | P23uRegKey;
 const STATE_PLAN: { key: StateKey; devices: readonly Device[]; note: string }[] = [
   { key: "default", devices: ["desktop", "ipad", "mobile"], note: "เปิดหน้า (ตะกร้าว่าง) — การ์ดเหลือน้อย/หมด/ปิดขายของ fixture อยู่ในกริด" },
   { key: "cart3", devices: ["desktop", "ipad", "mobile"], note: "อเมริกาโน่×2 · ลาเต้ (ลด ฿10) · ครัวซองต์ (สต็อก N → N−1)" },
@@ -265,10 +265,12 @@ const STATE_PLAN: { key: StateKey; devices: readonly Device[]; note: string }[] 
   // POS P2.2U ▸ มติ 5/11 (ท้ายแผน: fixture ราคา/โปรตั้งก่อนงานแรกของ P2.2U และคืนหลังงานสุดท้าย — สถานะก่อนหน้าไม่เห็นราคาโปร) ◂
   { key: "register-tile-rule", devices: ["desktop", "ipad", "mobile"], note: "โปร PRICE ที่กำลังใช้บนลาเต้ (fixture P2.2U) → ไทล์: ชิปชื่อโปร + ราคาปกติขีดฆ่า" },
   { key: "register-tile-notsold", devices: ["desktop", "ipad", "mobile"], note: "ครัวซองต์ (STORE, ทุกสาขา) ไม่ขาย → ไทล์ \"ไม่ขายหน้าร้าน\" (เพิ่มลงตะกร้าไม่ได้)" },
+  // POS P2.3U ▸ มติ 5/10: ชิปหัวจอตัดสต็อกค้าง (fixture P2.3U: บิลค้างตัด 1 ใบ = createSale ใน tx ของสคริปต์ ไม่ตัดสต็อก · ยกเลิกบิลหลังภาพ) ◂
+  { key: "register-pending-cuts", devices: ["desktop", "ipad", "mobile"], note: "บิลค้างตัด 1 ใบ (fixture P2.3U · ลาเต้สูตร) → ชิป \"ตัดสต็อกค้าง N บิล · ลองอีกครั้ง\" (เจ้าของ = มีปุ่ม · ไม่กด)" },
   { key: "register-line-badges", devices: ["desktop", "ipad"], note: "(มือถือไม่ถ่าย — ตะกร้าว่างไม่มีปุ่มดูตะกร้า ⇒ ถึงบิลที่พักไม่ได้ เหมือน paydlg-platform P2.1U · ติดตาม P2.12) บิลพัก LINE MAN (holdRegisterCart) ลาเต้ + อเมริกาโน่ → เรียกคืน → ป้ายบรรทัด: ชื่อโปร (RULE) + \"ราคาตามช่องทาง\" (CHANNEL)" },
 ];
 /** POS P1.18U ▸ สถานะหน้าขายที่แคชเชียร์ QC ถ่ายไม่ได้ (เข้าสาขา fixture ไม่ได้ · ห้ามแก้ membership ของ seed) ◂ */
-const OWNER_ONLY_STATES: ReadonlySet<string> = new Set(["register-empty-catalogue"]);
+const OWNER_ONLY_STATES: ReadonlySet<string> = new Set(["register-empty-catalogue", "register-pending-cuts"]); // POS P2.3U ▸ มติ 10: register-pending-cuts = เจ้าของ ◂
 type MemberStateKey = "member-panel" | "member-register" | "member-attached" | "paydlg-member-points" | "paydlg-member-capped" | "sale-done-member";
 type P115StateKey = "lock-screen" | "lock-screen-scroll" | "lock-pin-locked" | "staff-switch" | "discount-over-sheet" | "approval-wait";
 const P115_STATE_KEYS: ReadonlySet<string> = new Set<string>(["lock-screen", "lock-screen-scroll", "lock-pin-locked", "staff-switch", "discount-over-sheet", "approval-wait"]);
@@ -383,7 +385,23 @@ const isP22uProducts = (k: StateKey): k is P22uProductsKey => P22U_PRODUCTS_KEYS
 const P22U_FIXTURE_STATES: ReadonlySet<string> = new Set([...P22U_PRODUCTS_PLAN.filter((p) => p.key !== "products-readonly").map((p) => p.key), ...P22U_REG_KEYS, P22U_BILL_STATE]);
 /** ชื่อโปร fixture (ขึ้นต้นด้วยค่านี้ — กวาดซากรอบก่อนด้วยชื่อ) */
 const P22U_RULE_PREFIX = "QC ภาพ P2.2U";
-const productsStatesOn = STATES_ON && tenantKey === "coffee" && (onlyPage === "products" || /^p2\.?2u/i.test(WO));
+// ── POS P2.3U ▸ สูตร/วัตถุดิบ (มติ 10 · --page products --states · 3 ขนาด · th + LOCALE=en · เจ้าของ) — fixture ของตัวเอง (สินค้า/วัตถุดิบชั่วคราว) ◂
+type P23uProductsKey = "products-recipe-view" | "products-recipe-edit" | "products-recipe-empty" | "products-recipe-backfilled" | "products-recipe-incomplete-cost" | "products-table-chips";
+type P23uRegKey = "register-pending-cuts";
+const P23U_PRODUCTS_PLAN: { key: P23uProductsKey; devices: readonly Device[]; note: string }[] = [
+  { key: "products-recipe-view", devices: ["desktop", "ipad", "mobile"], note: "ลิ้นชักลาเต้สูตร (fixture) แท็บสูตรและวัตถุดิบ: ชิป สูตรพื้นฐาน/ขนาด S M L · เมล็ด 18 g ฿11.70 · นม 150 ml ฿7.50 · แก้ว 12 oz 1 ใบ ฿2.80 · ฝา 1 ชิ้น ฿1.20 · ต้นทุนตามสูตร ฿23.20 · กำไรขั้นต้น 69%" },
+  { key: "products-recipe-edit", devices: ["desktop", "ipad", "mobile"], note: "\"แก้สูตร\" → สวิตช์ตัดสต็อกตามสูตร · แท็บ ขนาด M (ส่วนต่าง +6 g / +50 ml / −1 ใบ / +1 ใบ) · ค้น \"ไซรัป\" → รายการวัตถุดิบ (ไม่บันทึก)" },
+  { key: "products-recipe-empty", devices: ["desktop", "ipad", "mobile"], note: "เมนูยังไม่มีสูตร (fixture) → \"ยังไม่มีสูตร\" + แก้สูตร" },
+  { key: "products-recipe-backfilled", devices: ["desktop", "ipad", "mobile"], note: "โค้กสูตรเดิม (fixture · สูตร 1 บรรทัด · สวิตช์ปิด) → ป้าย \"สูตรจากเมนูเดิม … ยังไม่ตัดสต็อก\" + ปุ่มเปิดตัดสต็อกตามสูตร (ไม่กด)" },
+  { key: "products-recipe-incomplete-cost", devices: ["desktop", "ipad", "mobile"], note: "คาราเมลมัคคิอาโต้ (fixture · ไซรัปต้นทุน 0) → ป้ายยังไม่ใส่ต้นทุน + ชิป ยังไม่ใส่ต้นทุน / กำไรคำนวณไม่ได้" },
+  { key: "products-table-chips", devices: ["desktop", "ipad", "mobile"], note: "ตาราง 06 ค้น \"P2.3U\": ต้นทุน ฿ + ตามสูตร · กำไร % · สต็อก ตามสูตร (ลาเต้ 3 = ใกล้หมด) · ชิป ใกล้หมด/หมด/ยังไม่ใส่ต้นทุน/กำไรคำนวณไม่ได้ ≥ 1" },
+];
+const P23U_PRODUCTS_KEYS: ReadonlySet<string> = new Set(P23U_PRODUCTS_PLAN.map((s) => s.key));
+const isP23uProducts = (k: StateKey): k is P23uProductsKey => P23U_PRODUCTS_KEYS.has(k);
+const P23U_REG_STATE: P23uRegKey = "register-pending-cuts";
+/** สถานะที่ต้องมี fixture สูตรของ P2.3U (สร้างก่อนงานแรกของช่วง · เก็บหลังงานสุดท้ายของช่วงติดกัน — หน้าอื่นไม่เห็นสินค้าชั่วคราว) */
+const P23U_FIXTURE_STATES: ReadonlySet<string> = new Set([...P23U_PRODUCTS_KEYS, P23U_REG_STATE]);
+const productsStatesOn = STATES_ON && tenantKey === "coffee" && (onlyPage === "products" || /^p2\.?2u/i.test(WO) || /^p2\.?3u/i.test(WO)); // POS P2.3U ▸ + wo p2.3u ◂
 const productsPath = (k: P22uProductsKey) => `/app/sys/${SYS}/pos/products${P22U_PRODUCTS_PLAN.find((p) => p.key === k)?.rules ? "/price-rules" : ""}?unit=${encodeURIComponent(unitId)}`;
 const SETTINGS_STATE_KEYS: ReadonlySet<string> = new Set(SETTINGS_STATE_PLAN.map((s) => s.key));
 const isSettingsState = (k: StateKey): k is SettingsStateKey => SETTINGS_STATE_KEYS.has(k);
@@ -463,11 +481,19 @@ const jobsPlanned: Job[] = pages.flatMap((p: PosPage): Job[] =>
           .map((v): Job => ({ page: p, v, state: st.key, path: settingsPath(st.key), file: `${OUT}/${p}-${st.key.replace(/^settings-/, "")}-${userKey}-${v.w}x${v.h}${LOCALE_EN ? "-en" : ""}.png` })),
       )
     : productsStatesOn && p === "products"
-    ? P22U_PRODUCTS_PLAN.filter((st) => (userKey === "owner" ? st.key !== "products-readonly" : st.key === "products-readonly")).flatMap((st): Job[] =>
-        viewports
-          .filter((v) => st.devices.includes(v.name))
-          .map((v): Job => ({ page: p, v, state: st.key, path: productsPath(st.key), file: `${OUT}/${p}-${st.key.replace(/^products-/, "")}-${userKey}-${v.w}x${v.h}${LOCALE_EN ? "-en" : ""}.png` })),
-      )
+    ? [
+        ...(/^p2\.?3u/i.test(WO) ? [] : P22U_PRODUCTS_PLAN).filter((st) => (userKey === "owner" ? st.key !== "products-readonly" : st.key === "products-readonly")).flatMap((st): Job[] =>
+          viewports
+            .filter((v) => st.devices.includes(v.name))
+            .map((v): Job => ({ page: p, v, state: st.key, path: productsPath(st.key), file: `${OUT}/${p}-${st.key.replace(/^products-/, "")}-${userKey}-${v.w}x${v.h}${LOCALE_EN ? "-en" : ""}.png` })),
+        ),
+        // POS P2.3U ▸ มติ 10: สถานะสูตร/วัตถุดิบ — เจ้าของเท่านั้น (แคชเชียร์ = การ์ดปฏิเสธของหน้า 06) ◂
+        ...(/^p2\.?2u/i.test(WO) || userKey !== "owner" ? [] : P23U_PRODUCTS_PLAN).flatMap((st): Job[] =>
+          viewports
+            .filter((v) => st.devices.includes(v.name))
+            .map((v): Job => ({ page: p, v, state: st.key, path: `/app/sys/${SYS}/pos/products?unit=${encodeURIComponent(unitId)}`, file: `${OUT}/${p}-${st.key.replace(/^products-/, "")}-${userKey}-${v.w}x${v.h}${LOCALE_EN ? "-en" : ""}.png` })),
+        ),
+      ]
     : billsStatesOn && p === "sales"
     ? BILLS_STATE_PLAN.flatMap((st): Job[] =>
         viewports
@@ -522,9 +548,11 @@ if (LIST) {
   for (const st of BILLS_STATE_PLAN) row(st.key, st.devices, st.note);
   console.log("settings (--page settings --states):");
   for (const st of SETTINGS_STATE_PLAN) row(st.key, st.devices, st.note);
+  console.log("products P2.3U (--page products --states · เจ้าของ):"); // POS P2.3U
+  for (const st of P23U_PRODUCTS_PLAN) row(st.key, st.devices, st.note);
   console.log("receipt-public (--page receipt-public · ไม่ส่ง --states = rpub-paid):");
   for (const st of RPUB_STATE_PLAN) row(st.key, st.key === "rpub-issue-sent" ? "mobile" : POS_VIEWPORTS.map((v) => v.name), `คาด ${st.expect} · ${st.note}`);
-  const ids = [STATE_PLAN, STOCK_STATE_PLAN, SHIFTS_STATE_PLAN, BILLS_STATE_PLAN, SETTINGS_STATE_PLAN, RPUB_STATE_PLAN].flatMap((pl) => pl.map((x) => x.key));
+  const ids = [STATE_PLAN, STOCK_STATE_PLAN, SHIFTS_STATE_PLAN, BILLS_STATE_PLAN, SETTINGS_STATE_PLAN, RPUB_STATE_PLAN, P23U_PRODUCTS_PLAN].flatMap((pl) => pl.map((x) => x.key)); // POS P2.3U ▸ + P23U_PRODUCTS_PLAN ◂
   console.log(`JSON_SUMMARY ${JSON.stringify({ list: true, pages: POS_PAGES, states: ids.length, ids })}`);
   process.exit(0);
 }
@@ -598,6 +626,17 @@ if (DRY) {
         `  P2.2U: fixture ราคา (catalog.setChannelPrices · เจ้าของร้าน) ลาเต้ (LINEMAN, ทุกสาขา) = ฐาน +27% ปัดบาท · (GRAB, ทุกสาขา) ไม่ขาย · อเมริกาโน่ (LINEMAN, ทุกสาขา) = ฐาน +25% · ครัวซองต์ (STORE, ทุกสาขา) ไม่ขาย — ` +
           `แถวเดิมจำไว้และคืนทั้งชุดหลังงาน P2.2U สุดท้าย/finally · โปร 3 ตัว "${P22U_RULE_PREFIX} · …" (savePriceRule: กำลังใช้ PRICE ฿59 บนลาเต้ · รอเริ่ม พรุ่งนี้ · หมดแล้ว เมื่อวาน) เก็บถาวรใน finally (ซากชื่อเดียวกันถูกเก็บก่อนสร้าง) · ` +
           `ช่องทาง LINEMAN/GRAB = ensureChannelFixture (P2.1U)${jobs.some((j) => j.state === P22U_BILL_STATE) ? ` · บิล LINE MAN 1 ใบ (createSale คีย์ posqc-vis-p22u-bill-<วันที่ไทย> · ไม่ลบ)` : ""}${jobs.some((j) => j.state === "register-line-badges") ? " · บิลพัก LINE MAN ต่อภาพ (holdRegisterCart · ทิ้งใน finally)" : ""}`,
+      );
+    // POS P2.3U ▸ มติ 10 ◂
+    if (productsStatesOn && pages.includes("products") && jobs.some((j) => j.state && isP23uProducts(j.state))) {
+      console.log("สถานะหน้า 06 สูตร/วัตถุดิบ P2.3U (เจ้าของ):");
+      for (const st of P23U_PRODUCTS_PLAN) console.log(`  · ${st.key.padEnd(31)} ${st.devices.join("/").padEnd(20)} ${st.note}`);
+    }
+    if (jobs.some((j) => j.state && P23U_FIXTURE_STATES.has(j.state)))
+      console.log(
+        `  P2.3U: fixture สูตร (ไอดี posqc-vis-<pid>-p23u-* · สาขา ${unitKey}) — วัตถุดิบชั่วคราว 7 ตัวในคลัง QC (เมล็ด g ฿0.65 · นม ml ฿0.05 · แก้ว 12/16 oz · ฝา (คงเหลือ 3 = ใกล้หมด) · ไซรัปต้นทุน 0 · โค้ก) + กลุ่ม "ขนาด" S/M/L + เมนูชั่วคราว 4 ตัว (ลาเต้สูตร ฿75 · โค้กสูตรเดิม · เมนูยังไม่มีสูตร · คาราเมลมัคคิอาโต้) — ` +
+          `สูตร/ส่วนต่าง/สวิตช์ผ่าน catalog.setRecipe · setRecipeChoiceLines · setBomEnabled (เจ้าของร้าน) · สร้างก่อนงานแรกของช่วงที่ใช้ · ลบทั้งชุดหลังงานสุดท้ายของช่วง/finally/สัญญาณ (ซากเกิน 1 ชม. ถูกกวาดก่อนสร้าง)` +
+          `${jobs.some((j) => j.state === P23U_REG_STATE) ? ` · register-pending-cuts: บิลค้างตัด 1 ใบ (createSale ใน tx ของสคริปต์ = ไม่ตัดสต็อก · คีย์ posqc-vis-p23u-pend-<pid> · เงินสดนอกกะ ฿75) → ยกเลิกบิล (voidSale) หลังภาพ — บิล VOIDED ค้างใน QC4 แบบบิลชุดภาพอื่น` : ""}`,
       );
     if (pages.includes("register") && jobs.some((j) => j.state === "paydlg-platform"))
       console.log("  P2.1U: paydlg-platform พักบิล LINE MAN (holdRegisterCart + channelId) ใหม่ต่อภาพ → เรียกคืนผ่าน UI · ที่ค้างทิ้งใน finally (discardHeldCart)");
@@ -825,6 +864,13 @@ for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
         if (P22U.cleanup) console.error(`${P22U.cleanup.ok ? "🧹" : "⚠️"} ${P22U.cleanup.detail}`);
       } catch (e) {
         console.error(`❌ เก็บกวาด P2.2U ไม่สำเร็จ: ${e instanceof Error ? e.message : e}`);
+      }
+      // POS P2.3U: ยกเลิกบิลค้างตัด · ลบสินค้า/วัตถุดิบชั่วคราว (เหมือน finally)
+      try {
+        await cleanupP23u();
+        if (P23U.log.length) console.error(p23uCleanupLine());
+      } catch (e) {
+        console.error(`❌ เก็บกวาด P2.3U ไม่สำเร็จ: ${e instanceof Error ? e.message : e}`);
       }
       // POS P2.1U: ทิ้งบิลพัก LINE MAN ที่ยังค้าง (เหมือน finally)
       try {
@@ -1353,6 +1399,7 @@ async function runState(page: Any, state: StateKey, device: Device): Promise<voi
   // R3: แยกด้วยสมาชิกชุดที่แน่นอน ไม่ใช่คำนำหน้า — สถานะหน้าขาย "stock-warn" ขึ้นต้น "stock-" แต่ไม่ใช่สถานะหน้าสต็อก
   if (isStockState(state)) return runStockState(page, state); // POS P1.14 U
   if (isShiftsState(state)) return runShiftsState(page, state); // POS P1.9 U
+  if (isP23uProducts(state)) return runP23uProductsState(page, state, device); // POS P2.3U
   if (isP22uProducts(state)) return runP22uProductsState(page, state, device); // POS P2.2U
   if (state === P22U_BILL_STATE) return runP22uBillNote(page); // POS P2.2U
   if (isBillsState(state)) return runBillsState(page, state); // POS P1.16 U
@@ -1379,6 +1426,8 @@ async function runState(page: Any, state: StateKey, device: Device): Promise<voi
     case "register-tile-notsold":
     case "register-line-badges":
       return runP22uRegisterState(page, state, device); // POS P2.2U
+    case "register-pending-cuts":
+      return runP23uPendingCuts(page); // POS P2.3U
     case "cart3":
       return addCart3(page, device);
     case "cart4-01": {
@@ -3812,6 +3861,248 @@ async function runP22uBillNote(page: Any): Promise<void> {
 }
 // ◂
 
+// ═══════════════════ POS P2.3U ▸ fixture สูตร/วัตถุดิบ + ขั้นตอนของสถานะ (มติ 10) ═══════════════════
+//   วัตถุดิบ (InvItem) + กลุ่ม "ขนาด" + เมนูชั่วคราว = เขียนตรงด้วย prisma แบบ fixture P1.3 (สคริปต์ · F15.1 สแกนเฉพาะ src/) · ไอดี posqc-vis-<pid>-p23u-<รอบ>-* ·
+//   สูตร/ส่วนต่าง/สวิตช์ = catalog.setRecipe / setRecipeChoiceLines / setBomEnabled ในนามเจ้าของร้าน (ตัวเขียนจริงของ S) ·
+//   บิลค้างตัด (register-pending-cuts) = createSale ใน tx ของสคริปต์ (ไม่มีขั้นตัดสต็อกหลัง commit — แบบ V6 ของ qc-pos-p2.3) → voidSale หลังภาพ ·
+//   สร้างก่อนงานแรกของ "ช่วงติดกัน" ที่ใช้ · ลบทั้งชุดหลังงานสุดท้ายของช่วง/finally/สัญญาณ (หน้าอื่นไม่เห็นสินค้าชั่วคราว) · ซากเกิน 1 ชม. ถูกกวาดก่อนสร้าง
+const P23U = {
+  round: 0,
+  done: false,
+  error: null as string | null,
+  ids: { latte: "", coke: "", empty: "", caramel: "" },
+  items: { beans: "", milk: "", cup12: "", cup16: "", lid: "", syrup: "", coke: "" },
+  choice: { S: "", M: "", L: "" },
+  products: [] as string[],
+  itemIds: [] as string[],
+  groups: [] as string[],
+  pendingSale: "",
+  log: [] as string[],
+  ok: true,
+};
+const P23U_PEND_PREFIX = `${FIX.prefix}p23u-pend-`;
+/** ซากของรอบที่ถูก kill (เกิน 1 ชม.): บิลค้างตัด PAID → ยกเลิก · สินค้า/กลุ่ม/วัตถุดิบ → ลบ (เฉพาะไอดี/คีย์ของ P2.3U) */
+async function sweepP23u(): Promise<string> {
+  const old = new Date(Date.now() - 60 * 60 * 1000);
+  const { voidSale } = await import("@/lib/modules/pos/service");
+  const actor = await ownerActor();
+  const sales = await prisma.posSale.findMany({ where: { tenantId: T.tenantId, unitId, status: "PAID", idempotencyKey: { startsWith: P23U_PEND_PREFIX }, createdAt: { lt: old } }, select: { id: true } });
+  for (const x of sales) await voidSale(T.tenantId, unitId, x.id, { actorUserId: actor.userId, reason: "ภาพ QC P2.3U — ซากบิลค้างตัดของรอบก่อน" });
+  const like = { startsWith: FIX.prefix, contains: "-p23u-" };
+  const groups = (await prisma.menuOptionGroup.findMany({ where: { tenantId: T.tenantId, id: like, createdAt: { lt: old } }, select: { id: true } })).map((g) => g.id);
+  if (groups.length) await prisma.posProductOptionGroup.deleteMany({ where: { tenantId: T.tenantId, groupId: { in: groups } } });
+  const products = (await prisma.posProduct.deleteMany({ where: { tenantId: T.tenantId, id: like, createdAt: { lt: old } } })).count;
+  if (groups.length) {
+    await prisma.menuOptionChoice.deleteMany({ where: { tenantId: T.tenantId, groupId: { in: groups } } });
+    await prisma.menuOptionGroup.deleteMany({ where: { tenantId: T.tenantId, id: { in: groups } } });
+  }
+  const items = (await prisma.invItem.deleteMany({ where: { tenantId: T.tenantId, id: like, createdAt: { lt: old } } })).count;
+  return sales.length || products || items || groups.length ? `ซาก: บิล ${sales.length} · สินค้า ${products} · กลุ่ม ${groups.length} · วัตถุดิบ ${items}` : "";
+}
+async function ensureP23uFixture(): Promise<void> {
+  if (P23U.done || P23U.error) return;
+  try {
+    const swept = await sweepP23u();
+    if (swept) P23U.log.push(swept);
+    const inv = (T.systems as Record<string, { id: string }>).INVENTORY!.id;
+    const round = ++P23U.round;
+    const tag = `${FIX.prefix}${process.pid}-p23u-${round}`;
+    const mkItem = async (k: string, name: string, unitLabel: string, onHand: number, costSatang: number) => {
+      const id = `${tag}-i-${k}`;
+      P23U.itemIds.push(id);
+      await prisma.invItem.create({ data: { id, tenantId: T.tenantId, systemId: inv, sku: `PQC-P23U-${process.pid}-${round}-${k}`.toUpperCase(), name, unitLabel, onHand, costSatang, kind: "PRODUCT" } });
+      return id;
+    };
+    // ต้นทุนต่อหน่วยตามภาพ 06/16 (เมล็ด ฿0.65/g · นม ฿0.05/ml ปัดสตางค์เต็ม — Q6) · ฝาคงเหลือ 3 ⇒ ลาเต้ทำได้ 3 แก้ว = ใกล้หมด · ไซรัปต้นทุน 0 ⇒ ยังไม่ใส่ต้นทุน
+    P23U.items.beans = await mkItem("beans", "เมล็ดกาแฟ (คั่วกลาง) · QC P2.3U", "g", 1_200, 65);
+    P23U.items.milk = await mkItem("milk", "นมสด · QC P2.3U", "ml", 3_000, 5);
+    P23U.items.cup12 = await mkItem("cup12", "แก้ว 12 oz · QC P2.3U", "ใบ", 40, 280);
+    P23U.items.cup16 = await mkItem("cup16", "แก้ว 16 oz · QC P2.3U", "ใบ", 30, 350);
+    P23U.items.lid = await mkItem("lid", "ฝา · QC P2.3U", "ชิ้น", 3, 120);
+    P23U.items.syrup = await mkItem("syrup", "ไซรัปคาราเมล · QC P2.3U", "ml", 500, 0);
+    P23U.items.coke = await mkItem("coke", "โค้กกระป๋อง · QC P2.3U", "กระป๋อง", 24, 1_200);
+    // กลุ่ม "ขนาด" S/M/L ของสาขา (ชื่อซ้ำในสาขา = @@unique ⇒ ชื่อสำรอง)
+    const gid = `${tag}-g-size`;
+    const makeGroup = (name: string) => prisma.menuOptionGroup.create({ data: { id: gid, tenantId: T.tenantId, unitId, name, nameEn: "Size", minSelect: 1, maxSelect: 1 } });
+    try {
+      await makeGroup("ขนาด");
+    } catch {
+      try {
+        await makeGroup("ขนาดแก้ว");
+      } catch {
+        await makeGroup(`ขนาด (QC ${process.pid}-${round})`);
+      }
+    }
+    P23U.groups.push(gid);
+    let co = 0;
+    for (const [k, delta] of [["S", 0], ["M", 1_000], ["L", 2_000]] as const) {
+      const cid = `${gid}-c${k}`;
+      await prisma.menuOptionChoice.create({ data: { id: cid, tenantId: T.tenantId, unitId, groupId: gid, name: k, nameEn: k, priceDelta: delta, sortOrder: co++ } });
+      P23U.choice[k] = cid;
+    }
+    const mkMenu = async (k: string, name: string, nameEn: string, price: number) => {
+      const id = `${tag}-p-${k}`;
+      P23U.products.push(id);
+      await prisma.posProduct.create({ data: { id, tenantId: T.tenantId, systemId: SYS, unitId, kind: "MENU", name, nameEn, basePriceSatang: price } });
+      return id;
+    };
+    P23U.ids.latte = await mkMenu("latte", "ลาเต้สูตร (QC P2.3U)", "Recipe latte (QC P2.3U)", 7_500);
+    P23U.ids.coke = await mkMenu("coke", "โค้กสูตรเดิม (QC P2.3U)", "Coke old recipe (QC P2.3U)", 2_500);
+    P23U.ids.empty = await mkMenu("empty", "ชาไทยยังไม่มีสูตร (QC P2.3U)", "Thai tea no recipe (QC P2.3U)", 5_500);
+    P23U.ids.caramel = await mkMenu("caramel", "คาราเมลมัคคิอาโต้ (QC P2.3U)", "Caramel macchiato (QC P2.3U)", 8_500);
+    await prisma.posProductOptionGroup.create({ data: { tenantId: T.tenantId, productId: P23U.ids.latte, groupId: gid, sortOrder: 0 } });
+    // สูตรผ่านตัวเขียนจริง (เจ้าของร้าน)
+    const { setRecipe, setRecipeChoiceLines, setBomEnabled } = await import("@/lib/modules/pos/catalog");
+    const actor = await ownerActor();
+    const cctx = { tenantId: T.tenantId, systemId: SYS, actorUserId: actor.userId };
+    const it = P23U.items;
+    await setRecipe(cctx, P23U.ids.latte, [{ invItemId: it.beans, qty: 18 }, { invItemId: it.milk, qty: 150 }, { invItemId: it.cup12, qty: 1 }, { invItemId: it.lid, qty: 1 }]);
+    await setRecipeChoiceLines(cctx, P23U.ids.latte, [
+      ...[[it.beans, 6], [it.milk, 50], [it.cup12, -1], [it.cup16, 1]].map(([invItemId, qtyDelta]) => ({ choiceId: P23U.choice.M, invItemId: invItemId as string, qtyDelta: qtyDelta as number })),
+      ...[[it.beans, 12], [it.milk, 100], [it.cup12, -1], [it.cup16, 1]].map(([invItemId, qtyDelta]) => ({ choiceId: P23U.choice.L, invItemId: invItemId as string, qtyDelta: qtyDelta as number })),
+    ]);
+    // โค้กสูตรเดิม = สูตร 1 บรรทัด + สวิตช์ปิด (สภาพเดียวกับแถว backfill ของ P1.1a/b)
+    await setRecipe(cctx, P23U.ids.coke, [{ invItemId: it.coke, qty: 1 }]);
+    await setBomEnabled(cctx, P23U.ids.coke, false);
+    await setRecipe(cctx, P23U.ids.caramel, [{ invItemId: it.beans, qty: 18 }, { invItemId: it.milk, qty: 150 }, { invItemId: it.syrup, qty: 20 }, { invItemId: it.cup12, qty: 1 }]);
+    P23U.done = true;
+  } catch (e) {
+    P23U.error = e instanceof Error ? e.message.slice(0, 200) : String(e);
+  }
+}
+/** register-pending-cuts: บิลค้างตัด 1 ใบของลาเต้สูตร (createSale ใน tx ของสคริปต์ ⇒ ไม่มีขั้นตัดสต็อกหลัง commit · registerStatus นับเป็นค้าง) */
+async function ensureP23uPending(): Promise<void> {
+  if (P23U.pendingSale || !P23U.done || P23U.error) return;
+  try {
+    const svc = (await import("@/lib/modules/pos/service")) as Any;
+    const { expandRecipe } = await import("@/lib/modules/pos/recipe-shared");
+    const it = P23U.items;
+    const x = expandRecipe({ lines: [{ invItemId: it.beans, qty: 18 }, { invItemId: it.milk, qty: 150 }, { invItemId: it.cup12, qty: 1 }, { invItemId: it.lid, qty: 1 }], choiceLines: [], choiceIds: [] });
+    if (!x.ok) throw new StepError(x.message);
+    const actor = await ownerActor();
+    const r = (await prisma.$transaction(
+      (tx) =>
+        svc.createSale(
+          {
+            tenantId: T.tenantId,
+            unitId,
+            systemId: SYS,
+            sourceModule: "POS",
+            shiftId: null,
+            soldByUserId: actor.userId,
+            idempotencyKey: `${P23U_PEND_PREFIX}${process.pid}-${P23U.round}`,
+            lines: [{ productId: P23U.ids.latte, name: "ลาเต้สูตร (QC P2.3U)", qty: 1, unitPriceSatang: 7_500, components: x.components }],
+            payMethods: [{ type: "CASH", amountSatang: 7_500 }],
+          },
+          tx,
+        ),
+      { timeout: 30_000, maxWait: 10_000 },
+    )) as { saleId: string };
+    P23U.pendingSale = r.saleId;
+  } catch (e) {
+    P23U.error = `บิลค้างตัด: ${e instanceof Error ? e.message.slice(0, 180) : String(e)}`;
+  }
+}
+/** ยกเลิกบิลค้างตัดของรอบนี้ (voidSale · ไม่มี OUT ให้คืน) — เรียกซ้ำได้ · ไม่โยน */
+async function voidP23uPending(): Promise<void> {
+  if (!P23U.pendingSale) return;
+  try {
+    const { voidSale } = await import("@/lib/modules/pos/service");
+    await voidSale(T.tenantId, unitId, P23U.pendingSale, { actorUserId: (await ownerActor()).userId, reason: "ภาพ QC P2.3U — บิลค้างตัดของ fixture" });
+    P23U.log.push(`ยกเลิกบิลค้างตัด ${P23U.pendingSale}`);
+  } catch (e) {
+    P23U.ok = false;
+    P23U.log.push(`ยกเลิกบิลค้างตัด ${P23U.pendingSale} ล้ม: ${e instanceof Error ? e.message.slice(0, 120) : String(e)}`);
+  }
+  P23U.pendingSale = "";
+}
+/** หลังงานสุดท้ายของช่วง / finally / สัญญาณ: ยกเลิกบิลค้างตัด · ลบสินค้า (สูตร/ส่วนต่างตาม FK) · กลุ่ม · วัตถุดิบ — เรียกซ้ำได้ · ไม่โยน · สร้างใหม่ได้ในช่วงถัดไป */
+async function cleanupP23u(): Promise<void> {
+  await voidP23uPending();
+  if (!P23U.products.length && !P23U.itemIds.length && !P23U.groups.length) {
+    P23U.done = false;
+    return;
+  }
+  try {
+    if (P23U.groups.length) await prisma.posProductOptionGroup.deleteMany({ where: { tenantId: T.tenantId, groupId: { in: P23U.groups } } });
+    const products = P23U.products.length ? (await prisma.posProduct.deleteMany({ where: { tenantId: T.tenantId, id: { in: P23U.products } } })).count : 0;
+    if (P23U.groups.length) {
+      await prisma.menuOptionChoice.deleteMany({ where: { tenantId: T.tenantId, groupId: { in: P23U.groups } } });
+      await prisma.menuOptionGroup.deleteMany({ where: { tenantId: T.tenantId, id: { in: P23U.groups } } });
+    }
+    const items = P23U.itemIds.length ? (await prisma.invItem.deleteMany({ where: { tenantId: T.tenantId, id: { in: P23U.itemIds } } })).count : 0;
+    P23U.log.push(`รอบ ${P23U.round}: ลบสินค้า ${products}/${P23U.products.length} · กลุ่ม ${P23U.groups.length} · วัตถุดิบ ${items}/${P23U.itemIds.length}`);
+    if (products !== P23U.products.length || items !== P23U.itemIds.length) P23U.ok = false;
+  } catch (e) {
+    P23U.ok = false;
+    P23U.log.push(`รอบ ${P23U.round} ล้ม: ${e instanceof Error ? e.message.slice(0, 160) : String(e)}`);
+  }
+  P23U.products = [];
+  P23U.itemIds = [];
+  P23U.groups = [];
+  P23U.done = false;
+  P23U.error = null;
+}
+const p23uCleanupLine = () => `${P23U.ok ? "🧹" : "⚠️"} P2.3U: ${P23U.log.join(" · ")}`;
+async function openP23uRecipe(page: Any, device: Device, id: string): Promise<void> {
+  await visibleEl(page, tid(device === "mobile" ? "pos-prod-cards" : "pos-prod-table"), 0, 15_000);
+  await typeInto(page, tid("pos-prod-search"), "P2.3U"); // ให้แถว fixture อยู่ในจอ (ร้าน QC มีสินค้าเยอะ)
+  await clickEl(page, tid(device === "mobile" ? `pos-prod-copen-${id}` : `pos-prod-open-${id}`));
+  await visibleEl(page, tid("pos-prod-drawer"), 0, 10_000);
+  await clickEl(page, tid("pos-prod-tab-recipe"));
+  await visibleEl(page, tid("pos-prod-recipe"), 0, 10_000);
+}
+const textOf = async (page: Any, id: string, timeout = 10_000): Promise<string> => (await (await visibleEl(page, tid(id), 0, timeout)).evaluate((e: Element) => e.textContent ?? "")) as string;
+async function runP23uProductsState(page: Any, state: P23uProductsKey, device: Device): Promise<void> {
+  if (P23U.error || !P23U.done) throw new StepError(`fixture P2.3U: ${P23U.error ?? "ยังไม่ได้สร้าง"}`);
+  const it = P23U.items;
+  if (state === "products-table-chips") {
+    await visibleEl(page, tid(device === "mobile" ? "pos-prod-cards" : "pos-prod-table"), 0, 15_000);
+    await typeInto(page, tid("pos-prod-search"), "P2.3U");
+    for (const k of ["low", "nocost", "nomargin"]) {
+      const n = Number((/\d+/.exec(await textOf(page, `pos-prod-recipe-chip-${k}`)) ?? ["0"])[0]);
+      if (!(n >= 1)) throw new StepError(`ชิป ${k} = ${n} (คาด ≥ 1 จาก fixture)`);
+    }
+    if (device !== "mobile") {
+      const c = await textOf(page, `pos-prod-cost-${P23U.ids.latte}`);
+      if (!/23\.20/.test(c)) throw new StepError(`ต้นทุนลาเต้ในตาราง = "${c}" (คาด ฿23.20 ตามสูตร)`);
+    }
+    return;
+  }
+  const target = state === "products-recipe-empty" ? P23U.ids.empty : state === "products-recipe-backfilled" ? P23U.ids.coke : state === "products-recipe-incomplete-cost" ? P23U.ids.caramel : P23U.ids.latte;
+  await openP23uRecipe(page, device, target);
+  if (state === "products-recipe-view") {
+    for (const id of [it.beans, it.milk, it.cup12, it.lid]) await visibleEl(page, tid(`pos-prod-recipe-row-${id}`), 0, 5_000);
+    const tot = await textOf(page, "pos-prod-recipe-total");
+    if (!/23\.20/.test(tot) || !/69%/.test(tot)) throw new StepError(`ท้ายสูตร = "${tot}" (คาด ฿23.20 · 69%)`);
+  } else if (state === "products-recipe-edit") {
+    await clickEl(page, tid("pos-prod-recipe-edit"));
+    await visibleEl(page, tid(`pos-prod-recipe-qty-${it.beans}`), 0, 5_000);
+    await visibleEl(page, tid("pos-prod-recipe-bom"), 0, 5_000);
+    await clickEl(page, tid(`pos-prod-recipe-tab-${P23U.choice.M}`));
+    await visibleEl(page, tid(`pos-prod-recipe-delta-${P23U.choice.M}-${it.cup16}`), 0, 5_000);
+    await typeInto(page, tid("pos-prod-recipe-search"), "ไซรัป");
+    await visibleEl(page, tid(`pos-prod-recipe-pick-${it.syrup}`), 0, 10_000).catch(() => {
+      throw new StepError("ตัวเลือกวัตถุดิบไม่แสดงไซรัปของ fixture (pos-prod-recipe-pick-…)");
+    });
+  } else if (state === "products-recipe-empty") {
+    await visibleEl(page, tid("pos-prod-recipe-empty"), 0, 5_000);
+  } else if (state === "products-recipe-backfilled") {
+    await visibleEl(page, tid("pos-prod-recipe-backfilled"), 0, 5_000);
+    await visibleEl(page, tid("pos-prod-recipe-bom-on"), 0, 5_000);
+  } else if (state === "products-recipe-incomplete-cost") {
+    await visibleEl(page, tid("pos-prod-recipe-nocost"), 0, 5_000);
+    await visibleEl(page, tid("pos-prod-recipe-flag-nomargin"), 0, 5_000);
+  }
+}
+async function runP23uPendingCuts(page: Any): Promise<void> {
+  if (P23U.error || !P23U.pendingSale) throw new StepError(`fixture P2.3U: ${P23U.error ?? "ไม่มีบิลค้างตัด"}`);
+  const txt = await textOf(page, "pos-reg-pending-cuts", 15_000);
+  if (!/[1-9]/.test(txt)) throw new StepError(`ชิปตัดสต็อกค้าง = "${txt}" (คาด ≥ 1 บิล)`);
+  if (userKey === "owner") await visibleEl(page, tid("pos-reg-pending-cuts-retry"), 0, 5_000);
+}
+// ◂
+
 // ═══════════════════ POS P1.7U ▸ ใบขอรับเงินของภาพ (PromptPay ID ของร้าน QC · เก็บกวาดใบของรอบนี้) ═══════════════════
 const INTENT_STATES: ReadonlySet<string> = new Set(["paydlg-promptpay-qr", "paydlg-promptpay-paid", "paydlg-promptpay-timeout"]); // POS HF-P1CLOSE ▸ + timeout ◂
 const INTENTS = {
@@ -4058,6 +4349,17 @@ try {
           await ensureP22uFixture(jobs.some((j) => j.state === P22U_BILL_STATE));
           console.log(P22U.error ? `  ⚠️ fixture P2.2U: ${P22U.error}` : `  fixture P2.2U: โปร ${P22U.rules.map((r) => r.state).join("/")} · แถวราคา ${P22U.rowsBefore.size} สินค้า${P22U.sale ? ` · บิล ${P22U.sale}` : ""}`);
         }
+        // POS P2.3U ▸ fixture สูตรก่อนงานแรกของช่วง + บิลค้างตัดก่อนภาพ register-pending-cuts (พังไม่โยน — สถานะตกพร้อมเหตุผล) ◂
+        if (job.state && P23U_FIXTURE_STATES.has(job.state)) {
+          if (!P23U.done && !P23U.error) {
+            await ensureP23uFixture();
+            console.log(P23U.error ? `  ⚠️ fixture P2.3U: ${P23U.error}` : `  fixture P2.3U รอบ ${P23U.round}: เมนู ${P23U.products.length} · วัตถุดิบ ${P23U.itemIds.length} · กลุ่มขนาด S/M/L`);
+          }
+          if (job.state === P23U_REG_STATE && !P23U.pendingSale && !P23U.error) {
+            await ensureP23uPending();
+            console.log(P23U.error ? `  ⚠️ fixture P2.3U: ${P23U.error}` : `  fixture P2.3U: บิลค้างตัด ${P23U.pendingSale}`);
+          }
+        }
         const resp = await page.goto(`${BASE}${p === "receipt-public" && job.state && isRpubState(job.state) ? rpubPath(job.state) : job.state === "register-empty-catalogue" ? emptyPath() : (job.path ?? pathOf(p))}`, { waitUntil: "networkidle2", timeout: 60_000 }).catch(() => null);
         await new Promise((r) => setTimeout(r, 800));
         // POS P1.3 ▸ ขั้นตอนของสถานะ (พัง = บันทึก stepError แล้วถ่าย ณ จุดนั้น) ◂
@@ -4100,6 +4402,12 @@ try {
         await page.screenshot({ path: file, fullPage: job.state !== "lock-screen-scroll" }); // POS HF-P1CLOSE ▸ จอล็อกที่เลื่อนแล้ว = ภาพเท่าจอ (overlay fixed) ◂
         if (job.state === "register-en") await restoreThaiLocale(page); // POS P1.18U
         if (job.state && P22U_FIXTURE_STATES.has(job.state) && job === jobs.filter((j) => j.state && P22U_FIXTURE_STATES.has(j.state)).at(-1)) await cleanupP22u(); // POS P2.2U
+        // POS P2.3U ▸ บิลค้างตัดยกเลิกหลังภาพสุดท้ายของ register-pending-cuts · fixture ลบหลังงานสุดท้ายของช่วงติดกัน ◂
+        if (job.state && P23U_FIXTURE_STATES.has(job.state)) {
+          const nx = jobs[jobs.indexOf(job) + 1];
+          if (job.state === P23U_REG_STATE && nx?.state !== P23U_REG_STATE) await voidP23uPending();
+          if (!nx?.state || !P23U_FIXTURE_STATES.has(nx.state)) await cleanupP23u();
+        }
         if (job.state === "register-empty-catalogue" && job === jobs.filter((j) => j.state === "register-empty-catalogue").at(-1)) await cleanupEmptyCatalogue(); // POS P1.18U
         // POS P1.7U ▸ ใบที่ PAID แล้วต้องถูกใช้ในบิล (ไม่ทิ้งเงินเข้าไม่มีบิล) — พัง = ภาพนี้ตก ◂
         if (job.state === "paydlg-promptpay-paid" && !stepError) {
@@ -4164,6 +4472,9 @@ try {
   await cleanupP22u(); // POS P2.2U (ก่อน P2.1U — บิลพักของภาพป้ายบรรทัด · แถวราคา · โปร)
   if (P22U.cleanup) console.error(`${P22U.cleanup.ok ? "🧹" : "⚠️"} ${P22U.cleanup.detail}`);
   if (P22U.cleanup && !P22U.cleanup.ok) failures++;
+  await cleanupP23u(); // POS P2.3U (บิลค้างตัด · สินค้า/วัตถุดิบชั่วคราว ที่ยังค้าง)
+  if (P23U.log.length) console.error(p23uCleanupLine());
+  if (!P23U.ok) failures++;
   await cleanupP21u(); // POS P2.1U (บิลพัก LINE MAN ที่ยังค้าง)
   if (P21U.cleanup) console.error(`${P21U.cleanup.ok ? "🧹" : "⚠️"} ${P21U.cleanup.detail}`);
   if (P21U.cleanup && !P21U.cleanup.ok) failures++;

@@ -2726,7 +2726,8 @@
       "out": "Out of stock",
       "noCost": "No cost yet",
       "noCostSub": "Margin unknown",
-      "diff": "Prices differ by channel"
+      "diff": "Prices differ by channel",
+      "noMarginSub": "Margin unavailable {count}"
     },
     "col": {
       "select": "Select",
@@ -2822,8 +2823,47 @@
       "duplicate": "An ingredient is listed twice — combine it into one line",
       "service": "A service cannot be an ingredient (it has no stock)",
       "archived": "An ingredient in the recipe is archived",
-      "notFound": "Ingredient or option not found in this POS"
-    }
+      "notFound": "Ingredient or option not found in this POS",
+      "serverValidation": "Could not save the recipe — {message}",
+      "permission": "This account cannot edit recipes — ask the owner for access",
+      "tooManyLines": "A recipe can have at most {max} ingredients",
+      "tooManyDeltas": "At most {max} option change rows",
+      "loadCost": "Could not load the cost — try again",
+      "search": "Ingredient search failed — try again"
+    },
+    "notForKind": "This item has no recipe — only menus and bundles can have one (items sold by weight cannot)",
+    "autoNote": "Selling 1 cup deducts its ingredients from stock automatically",
+    "bomOffNote": "Not deducting stock by recipe yet — sales do not cut ingredients",
+    "bundleNote": "Bundles always deduct their components from stock",
+    "choiceChip": "{group} {choice}",
+    "parentRecipe": "Using the main product's recipe",
+    "variantLabel": "Recipe for",
+    "mainProduct": "Main product",
+    "variantNoChoice": "A variant with its own recipe does not use option changes",
+    "backfilledAction": "Turn on recipe deduction",
+    "notAtBranchHint": "Some ingredients are not in this branch's stock — this branch's register hides the menu",
+    "noCostHint": "Some ingredients have no cost in stock yet — margin cannot be calculated",
+    "archivedHint": "Remove archived ingredients from the recipe or restore them in Inventory",
+    "costLoading": "Calculating cost…",
+    "searchPlaceholder": "Search stock ingredients · name · SKU",
+    "searchEmpty": "No ingredient found",
+    "searching": "Searching…",
+    "pickMeta": "{onHand} {unit} in stock",
+    "pickCost": "{cost} per {unit}",
+    "decrease": "Decrease quantity",
+    "increase": "Increase quantity",
+    "noDelta": "This option uses the base recipe (no changes yet)",
+    "deltaFor": "Changes for {choice}",
+    "save": "Save recipe",
+    "cancel": "Cancel",
+    "otherBranch": "another branch",
+    "chips": {
+      "low": "Low stock {count}",
+      "out": "Out {count}",
+      "noCost": "No cost {count}",
+      "noMargin": "Margin unavailable {count}"
+    },
+    "bomOnDone": "Recipe deduction is on"
   },
   "nav": {
     "overview": "Overview",
