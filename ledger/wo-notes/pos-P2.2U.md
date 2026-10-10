@@ -19,7 +19,8 @@ Run logs (each with a `tree=… head=…` header): `/tmp/claude-0/-root/ed31d917
 | 3 | df5edcbf | price-rules page + `PriceRulesClient` + SharkSettings marketing link |
 | 4 | bea2617d | register tile chip/struck base · notSold tile · line badges · localQuote guard · priceValidUntil refetch · bills drawer note (typecheck 0 `runs/tc-step34.log`) · pushed |
 | 5 | acc403e0 | `visual-pos.mts` p22u states + fixtures |
-| notes | (last) | this file + addendum in `pos-spec-P1.3-register-ui.md` + hook-deps fix in PriceRulesClient |
+| notes | 1df8cb72 | this file + addendum in `pos-spec-P1.3-register-ui.md` + hook-deps fix in PriceRulesClient |
+| merge | 2fc89cab | `git merge origin/session/pos` 5c7f73f9 (HF-P1CLOSE) before final gates — conflicts kept both: `products/page.tsx` (HF O13 cashier refusal card returns first + P2.2U 06 body; `head(stockLink)` wrapper in the 1600 container) · `visual-pos.mts` (HF StateKey/dry lines + P2.2U union/dry lines) |
 
 ## Components
 - **Server (ruling 9, only new server file):** `src/lib/modules/pos/catalog-price-actions.ts` ("use server", async only): `setChannelPricesAction({systemId, productId, rows})` → `{ok, productId, rows, changed}` · `bulkChannelMarkupAction({systemId, channelCode, unitId|null, markupBp, roundTo, productIds|categoryId})` → `{ok, written, skipped, productIds}` · refusals `{ok:false, code (CatalogErrorCode|INTERNAL), message}`. Session actor (`actorUserId = auth.user.id`), first gate `assertCan pos.product.setPrice` (role level), row-scope rights stay in `catalog.ts`. No list action — the page reads server-side.
@@ -63,4 +64,8 @@ Listed in `ledger/pos-briefs/pos-spec-P1.3-register-ui.md` "Addendum P2.2U"; 61 
 - F6 a full-replace save from 06 drops rows of archived branches (server removes rows not sent) — edge case, P2.11.
 
 ## Gate exit codes
-(filled below)
+Final at code head **2fc89cab** (`runs/summary.txt` second block, logs `runs/final-*.log`); first block = same results at acc403e0 before the HF-P1CLOSE merge.
+- typecheck **0** · `pnpm fitness` no env **0 · 41/41** · QC4 env **0 · 41/41** · `scripts/fitness-pos.mts` **0 · 8/8**.
+- `qc-pos-p2.1` **0 · 55/55** · `qc-pos-p1.18` (`QC_P118_PHASE=U`) **0 · 81/81** (ST7 = 0, :319 edit in) · `qc-pos-p1.3` **0 · 128/128** · `qc-pos-p1.5` **0 · 21/21** · `qc-pos-p1.9` **0 · 53/53** · `qc-pos-p1.12` **0 · 72/72** · `qc-pos-p1.13` **0 · 33/33** · `qc-pos-p1.16` **0 · 28/28** · `qc-pos-p1.1` **0 · 178/178** · `qc-pos-products` **0 · 24/24** · `qc-hf-pos-page-authz` **0 · 56/56**.
+- **Red by contract — ORACLE-EDIT needed (controller):** `qc-pos-p2.2` **1 · 41/42** (both runs) — only **P2.2-ST3**, whose static clause `scripts/qc-pos-p2.2.mts:475` still requires `["happyHourPricing", false, "P2.2"]` (S phase). Ruling 7 flips it to live and authorised the edit of `qc-pos-p1.18.mts:319` only. Proposed edit: `:475` accept `["happyHourPricing", true, null]` (P2.2U, Q8) — count unchanged. Every functional check (B/C/P/Q/S/H/R/Z) green.
+- visual `--dry` rc **0** for products/register/sales × owner/cashier × th/LOCALE=en (`runs/dry-*.log`: products 24/8 owner, 3/1 cashier · register 105/37 · 102/36 · sales 30/10 ×2). Real screenshots = CONTROLLER-RUN (QC5).
