@@ -59,6 +59,8 @@ import {
   // POS P2.3 ▸ R2 สูตร/BOM ของเมนู: ส่วนต่างต่อตัวเลือก (แทนทั้งชุด) · สวิตช์ตัดสต็อกตามสูตร ◂
   setRecipeChoiceLines as catalogSetRecipeChoiceLines,
   setBomEnabled as catalogSetBomEnabled,
+  // POS P2.8 ▸ R9 ราคาหน้าเว็บร้าน (อ่านสองทาง: แถว WEB ของแถวแคตตาล็อก หรือราคา ShopProduct) ◂
+  webPricesForShop as catalogWebPricesForShop,
 } from "./catalog";
 export const catalog = {
   createProduct: catalogCreateProduct,
@@ -86,6 +88,8 @@ export const catalog = {
   setChannelPrices: catalogSetChannelPrices,
   /** P2.2 R2 CD6 — ราคาช่องทาง = ฐาน + X% ปัดครั้งเดียว เขียนเป็นราคาตายตัว (≤ 500 สินค้า หรือ 1 หมวด) */
   bulkChannelMarkup: catalogBulkChannelMarkup,
+  /** P2.8 R9 — ราคาหน้าเว็บร้านของ ShopProduct ชุดหนึ่ง (เว็บร้านเรียก · อ่านอย่างเดียว · ชน = ราคา ShopProduct ของตัวเอง) */
+  webPricesForShop: catalogWebPricesForShop,
 } as const;
 export type { CatalogCtx, CatalogActor, CatalogClient, CatalogErrorCode, CatalogRowScope, CatalogWriteVerdict, PosProductView, PosOptionGroupView, TrackStockMode } from "./catalog";
 export { CatalogError } from "./catalog";
@@ -101,3 +105,55 @@ export { expandRecipe, RECIPE_MAX_COMPONENTS } from "./recipe-shared";
 export type { RecipeBaseLine, RecipeChoiceLine, RecipeComponent, ExpandRecipeResult } from "./recipe-shared";
 export { recipeCost } from "./recipe";
 export type { RecipeCostCtx, RecipeCostItem, RecipeCostLine, RecipeCostResult } from "./recipe";
+
+// POS P2.8 ▸ ออเดอร์ทุกช่องทาง (จอ 09) — ผู้เขียนเดียว pos/order.ts · ผู้เรียกนอกโมดูล (เว็บร้าน · composition root) ใช้ `orders.<fn>` ·
+//   ฟังก์ชันผู้ใช้รับ (ctx, actor, input) คืน {ok:false, code, message} ไม่ throw · ingestInTx/sourceCancelledInTx = ประตูระบบในธุรกรรมของผู้เรียก ◂
+import {
+  ingestOrder as orderIngestOrder,
+  ingestInTx as orderIngestInTx,
+  sourceCancelledInTx as orderSourceCancelledInTx,
+  afterCommit as orderAfterCommit,
+  acceptOrder as orderAcceptOrder,
+  rejectOrder as orderRejectOrder,
+  markPreparing as orderMarkPreparing,
+  markReady as orderMarkReady,
+  handOver as orderHandOver,
+  cancelOrder as orderCancelOrder,
+  payOrder as orderPayOrder,
+  setPrepMinutes as orderSetPrepMinutes,
+  setChannelOrderSettings as orderSetChannelOrderSettings,
+  listOrders as orderListOrders,
+  getOrder as orderGetOrder,
+  onShopOrderPaid as orderOnShopOrderPaid,
+  onSaleVoided as orderOnSaleVoided,
+  webLineSources as orderWebLineSources,
+} from "./order";
+export const orders = {
+  /** R3 — พนักงานคีย์ออเดอร์ (MANUAL/CHAT/ช่องทางกำหนดเอง) · X1 idempotency */
+  ingestOrder: orderIngestOrder,
+  /** R4 — ประตูระบบ (เว็บร้านเรียกใน tx ของ createOrder) · ไม่มี POS = {ok:true, skipped:true} */
+  ingestInTx: orderIngestInTx,
+  /** R4 — ต้นทางยกเลิก (เว็บร้านยกเลิกออเดอร์รอชำระ) ใน tx ของผู้เรียก */
+  sourceCancelledInTx: orderSourceCancelledInTx,
+  /** หลัง commit ของผู้เรียกประตูระบบ — ระบายคิว pos.order.* */
+  afterCommit: orderAfterCommit,
+  acceptOrder: orderAcceptOrder,
+  rejectOrder: orderRejectOrder,
+  markPreparing: orderMarkPreparing,
+  markReady: orderMarkReady,
+  handOver: orderHandOver,
+  cancelOrder: orderCancelOrder,
+  payOrder: orderPayOrder,
+  setPrepMinutes: orderSetPrepMinutes,
+  setChannelOrderSettings: orderSetChannelOrderSettings,
+  listOrders: orderListOrders,
+  getOrder: orderGetOrder,
+  /** ตัวรับคิว (composition root): shop.order.paid → ผูกบิล ECOM · pos.sale.voided → ยกเลิก/คืนเงินของออเดอร์ */
+  onShopOrderPaid: orderOnShopOrderPaid,
+  onSaleVoided: orderOnSaleVoided,
+  /** ที่มาของราคาบรรทัดเว็บร้าน (บรรทัดบิลตอนยืนยันรับเงิน) */
+  webLineSources: orderWebLineSources,
+} as const;
+export type * from "./order-shared";
+export { ORDER_ADAPTERS } from "./order-adapters";
+export type { OrderAdapter, OrderAdapterCode } from "./order-adapters";
