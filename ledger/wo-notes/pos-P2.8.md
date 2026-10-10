@@ -203,3 +203,17 @@ Gates (scratch `scratchpad/p28/runs/fix3-*.log`, head `c47c5727`, clean tree, 06
 - Shop and account suites: qc-shop 15/15 · qc-shop-refund 12/12 · qc-pos-account 16/16 · qc-account-cpa 107/107.
 - Static: fitness with env ✅ · without env ✅ · fitness-pos 8/8 · typecheck clean.
 - All exits 0.
+
+## Final upstream merge (coordinator: R3 OK, mergeable)
+Merge `origin/session/pos` **7365d4db** (P2.3U UI a59655ac + P2.4 S b2c2aa84) → **`1d676836`**. Every conflict was resolved by keeping both sides. Key sets were checked against both parents: 0 missing.
+- `scripts/pos-qc-env.mts` — `POS_MODELS` is the union: P2.4 `restaurantReservation` + P2.8 `posOrder`/`posOrderLine`/`posOrderEvent`.
+- `src/lib/modules/pos/register-shared.ts` — the refusal → message-key map is the union: P2.4 `TABLE_*` + `VERSION_CHANGED`, then P2.8 `ORDER_*` + `CHANNEL_PAUSED`.
+- `src/lib/outbox-consumers.ts` — `"pos.sale.voided"` keeps P2.4's chain unchanged and appends P2.8's `posOrderOnSaleVoided` outermost as an extra (WARN-only), as before. P2.4's chain is: posSaleVoided + `tableSaleVoided` core with retry → kanban → stamps → member → crm. Both comment blocks are kept.
+- `src/messages/{en,th}/pos.json` — `register.errors` is the union: P2.4 `table*` + `versionChanged`, then P2.8 `order*` + `channelPaused`. That gives 2600 leaf keys, no duplicates.
+- `ledger/POS-OWNER-PENDING.md` — auto-merged.
+`prisma generate` was run (schema p24 + p28).
+
+Gates on `1d676836` (logs `scratchpad/p28/runs/merge-*.log`, all exits 0):
+- qc-pos-p2.8: forced **60/60** · unforced **60/60** (PAR 4/4, residue 0).
+- qc-pos-p2.4 49/49 (PAR 4/4) · p2.3 46/46 · p2.2 42/42 · p1.18 81/81 · p1.3 128/128 · p1.16 28/28 · qc-shop 15/15.
+- fitness with env ✅ · without env ✅ · fitness-pos 8/8 · typecheck clean.
