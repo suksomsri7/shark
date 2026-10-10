@@ -1356,3 +1356,4 @@
 - ตัวนับยัง 26/55 (HF ไม่ใช่แถวแผน) · กฎ callerTx อยู่ใน LANE-RULES §HF-TX
 - เลน: P2.8U (b) · เปิด HF-PP (c, base 831ad163) · P2.6 S รอช่อง builder (prompt `pos-prompt-accountB-P2.6-S.md` __BASE__/__TREE__)
 - 11:2xZ ยืนยัน qc-pos-p2.8 บนทรีผู้คุม 831ad163 = **60/60** (ST6 เขียวตามคาด) · HF-TX ปิดสมบูรณ์
+- 11:5xZ HF-PP ส่งแล้ว head 447d4477 (code 49bb6ea7, gates บน 8a8e0a8d เขียวหมด: p1.7 33 ×2 · p2.4 50 · red-before 32/33 + 49/50) → reviewer อ่านอย่างเดียว · ไม่ใช้ hunter (guard เดียว) · หลัง merge → เปิด P2.6 S ทรี c
