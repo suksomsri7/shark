@@ -1266,3 +1266,7 @@
 ## 10 ต.ค. 06:1xZ — P2.4 R3+H ผล: R3 OK · hunt = 2 Low (H1 void consumer ไม่ล็อก session/โต๊ะ → บิลค้างบน session ปิด / 2 session เปิดบนโต๊ะเดียว · H2 หลัง legacy merge void ไม่ปลด saleId) → **ตัดสินแก้ก่อน merge** (รอบแก้ 4 · V6a/V6b/V7 · 46→49) — `wo-notes/pos-P2.4-hunt.md` + prompt `pos-briefs/pos-prompt-accountB-P2.4-S-fix4.md`
 - หลัง fix4: hunter คนเดิมตรวจซ้ำ H1/H2 (R4 อ่าน) → merge → P2.4U (prompt `pos-prompt-accountB-P2.4U.md` เตรียมแล้ว · แทน __BASE__/__TREE__)
 - เลน 2/3: P2.4 fix4 (c) · P2.8 R2+H (b อ่าน) · chain62 (ทรี d build/ภาพ · ไม่นับเลน)
+
+## 10 ต.ค. 06:1xZ — P2.8 R2+H ผล: R2 OK · hunt = 2 Medium (H1 การยืนยันจ่ายฝั่งเว็บไม่เช็ค PosOrder ที่ reject/cancel → เงิน+สต็อกค้าง · H2 cancel ออเดอร์เว็บที่รับแล้วไม่ยกเลิก ShopOrder) + 3 Low (H3 handOver หลัง void · H4 race cancel/accept · H5 priceSource mirror) → **รอบแก้ 3 ก่อน merge** (W11/W12/+W13 · 57→59/60) — `wo-notes/pos-P2.8-hunt.md` + prompt `pos-briefs/pos-prompt-accountB-P2.8-S-fix3.md`
+- หลัง fix3: hunter คนเดิมตรวจซ้ำ (R3 อ่าน) → merge (+ `git merge origin/main` ที่จุดนี้) → deploy p28 บน QC5 → P2.8U
+- เลน 2/3: P2.4 fix4 (c) · P2.8 fix3 (b) · chain62 ทรี d (ไม่นับเลน) · p11 ว่าง
