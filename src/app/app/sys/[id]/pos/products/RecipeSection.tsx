@@ -166,7 +166,7 @@ export function RecipeSection({ systemId, product: p, data, unit, canEdit, onSav
         const inv = data.unitInventory[u] ?? null;
         return ownerLines.some((l) => {
           const it = ing(l.invItemId);
-          return !inv || (it !== undefined && it.systemId !== inv);
+          return !inv || it === undefined || it.systemId !== inv; // fix รอบ 1 (nit): ไม่พบวัตถุดิบ = ซ่อนแบบหน้าขาย (register.ts NOT EXISTS InvItem)
         });
       })
     : [];
@@ -175,7 +175,9 @@ export function RecipeSection({ systemId, product: p, data, unit, canEdit, onSav
   const startEdit = () => {
     const base = (inherited ? p.recipe : lines).map((l) => ({ invItemId: l.invItemId, text: String(l.qty) }));
     const deltas: Record<string, DraftLine[]> = {};
-    if (!v) for (const c of p.recipeChoiceLines) (deltas[c.choiceId] ??= []).push({ invItemId: c.invItemId, text: deltaText(c.qtyDelta, "", "en-US").trim() });
+    // fix รอบ 1 (รีวิว F1): เฉพาะส่วนต่างของตัวเลือกที่ยังผูกอยู่ (ชิป = กลุ่มที่ผูก · ไม่เก็บถาวร) — แถวค้างของกลุ่มที่ถอด/เก็บถาวรหลุดตอนบันทึก (แทนทั้งชุด)
+    const linked = new Set(chips.map((c) => c.id));
+    if (!v) for (const c of p.recipeChoiceLines.filter((x) => linked.has(x.choiceId))) (deltas[c.choiceId] ??= []).push({ invItemId: c.invItemId, text: deltaText(c.qtyDelta, "", "en-US").trim() });
     // ตั้งต้นสวิตช์: สูตรใหม่ = เปิด (ตามกติกาบันทึกครั้งแรกของ S) · สูตรเดิม/สูตรจากเมนูเดิม = ค่าเดิม (F4: บันทึกไม่พลิกเอง)
     setDraft({ lines: base, deltas, bom: lines.length === 0 ? true : bom });
     setEditTab(null);
@@ -229,7 +231,9 @@ export function RecipeSection({ systemId, product: p, data, unit, canEdit, onSav
     try {
       const r = await saveRecipeAction({ systemId, productId: targetId, lines: outLines, ...(v ? {} : { choiceLines: outDeltas }), ...(wantBom === undefined ? {} : { bomEnabled: wantBom }) });
       if (!r.ok) return setErr(recipeRefusalText(r, tr, tp, treg));
-      setCosts((c) => Object.fromEntries(Object.entries(c).filter(([k]) => !k.startsWith(`${targetId}|`))));
+      // fix รอบ 1 (รีวิว F4): บันทึกสินค้าหลัก = ล้างต้นทุนที่จำไว้ของตัวแปรที่ใช้สูตรของแม่ด้วย
+      const stale = new Set([targetId, ...(v ? [] : p.recipeVariants.filter((x) => x.recipe.length === 0).map((x) => x.id))]);
+      setCosts((c) => Object.fromEntries(Object.entries(c).filter(([k]) => !stale.has(k.slice(0, k.indexOf("|"))))));
       setDraft(null);
       setQ("");
       onSaved(p.id, { targetId, recipe: r.recipe, recipeChoiceLines: r.recipeChoiceLines, bomEnabled: r.bomEnabled }, tr("saved"));

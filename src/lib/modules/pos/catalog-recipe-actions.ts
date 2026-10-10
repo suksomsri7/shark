@@ -11,7 +11,7 @@
 
 import { unstable_rethrow } from "next/navigation";
 import { requireTenant } from "@/lib/core/context";
-import { assertCan, evaluate } from "@/lib/core/rbac";
+import { assertCan, canAccessUnit, evaluate } from "@/lib/core/rbac";
 import { searchItems } from "@/lib/modules/inventory";
 import { prisma } from "./db";
 import { posMembership } from "./access";
@@ -147,13 +147,16 @@ export async function searchRecipeItemsAction(args: { systemId: string; q: strin
     const sys = await prisma.appSystem.findFirst({ where: { id: ctx.systemId, tenantId: ctx.tenantId, type: "POS" }, select: { id: true } });
     if (!sys) return { ok: false, code: "NOT_FOUND", message: "ไม่พบรายการนี้ในระบบขาย" };
     // คลังที่ผูกสาขา (ไม่เก็บถาวร) ของ POS นี้ — ชุดเดียวกับที่ catalog.setRecipe ยอมรับ
+    // fix รอบ 1 (รีวิว F2): รายชื่อสาขาเลียนแบบ inventorySystemsOfPos (catalog.ts · private) + กรองเฉพาะสาขาที่ผู้เรียกเข้าได้ (canAccessUnit)
+    const m = posMembership(auth.active);
     const posLinks = await prisma.appSystemUnit.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, type: "POS" }, select: { unitId: true } });
-    const live = posLinks.length
-      ? await prisma.businessUnit.findMany({ where: { tenantId: ctx.tenantId, id: { in: posLinks.map((l) => l.unitId) }, status: { not: "ARCHIVED" } }, select: { id: true } })
-      : [];
+    const live = (
+      posLinks.length
+        ? await prisma.businessUnit.findMany({ where: { tenantId: ctx.tenantId, id: { in: posLinks.map((l) => l.unitId) }, status: { not: "ARCHIVED" } }, select: { id: true } })
+        : []
+    ).filter((u) => canAccessUnit(m, u.id));
     const invLinks = live.length ? await prisma.appSystemUnit.findMany({ where: { tenantId: ctx.tenantId, type: "INVENTORY", unitId: { in: live.map((u) => u.id) } }, select: { systemId: true } }) : [];
     const invIds = [...new Set(invLinks.map((l) => l.systemId))].sort();
-    const m = posMembership(auth.active);
     const seeCost = evaluate(m, { module: "pos", action: "pos.product.manage" }) || evaluate(m, { module: "pos", action: "pos.report.view" });
     const items: { id: string; systemId: string; name: string; sku: string; unitLabel: string; onHand: number; costSatang?: number }[] = [];
     for (const systemId of invIds) {
