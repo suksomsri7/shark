@@ -460,7 +460,7 @@ const isP28uState = (k: StateKey): k is P28uOrdersKey | P28uRegKey => P28U_ORDER
 const P28U_FIXTURE_STATES: ReadonlySet<string> = new Set([...P28U_ORDERS_PLAN.filter((s) => s.key !== "orders-empty").map((s) => s.key), ...P28U_REG_KEYS]);
 const p28uOn = STATES_ON && tenantKey === "coffee";
 const P28U_OWNER_ONLY: ReadonlySet<string> = new Set(["orders-empty"]);
-/** ช่องทาง DIRECT ของภาพ (โทรสั่ง · adapter MANUAL · หาตามรหัส · ไม่มี = สร้าง · ไม่ลบ — แบบ ensureChannelFixture) */
+/** ช่องทาง DIRECT ของภาพ (โทรสั่ง · ช่องทางที่ร้านสร้างเอง adapter ปริยาย NONE — fix 1 F2 · หาตามรหัส · ไม่มี = สร้าง · ไม่ลบ — แบบ ensureChannelFixture) */
 const P28U_PHONE = { code: "QCPHONE", name: "โทรสั่ง (ภาพ QC)" } as const;
 /** orders-empty: สาขาที่สอง (อารีย์) ของเจ้าของ */
 const P28U_EMPTY_UNIT = (T.units as Record<string, { id: string }>).ari?.id ?? unitId;
@@ -752,7 +752,7 @@ if (DRY) {
       for (const st of [...P28U_ORDERS_PLAN, ...P28U_REG_PLAN]) console.log(`  · ${st.key.padEnd(27)} ${st.devices.join("/").padEnd(20)} ${st.note}`);
       if (jobs.some((j) => j.state && P28U_FIXTURE_STATES.has(j.state)))
         console.log(
-          `  P2.8U: fixture ออเดอร์ของรอบ (สาขา ${unitKey}) — ช่องทาง LINEMAN/GRAB = ensureChannelFixture (P2.1U) + แชท (พื้นฐาน) + "${P28U_PHONE.name}" ${P28U_PHONE.code} (DIRECT · MANUAL · หาตามรหัส · ไม่มี = สร้าง · ไม่ลบ) · ` +
+          `  P2.8U: fixture ออเดอร์ของรอบ (สาขา ${unitKey}) — ช่องทาง LINEMAN/GRAB = ensureChannelFixture (P2.1U) + แชท (พื้นฐาน) + "${P28U_PHONE.name}" ${P28U_PHONE.code} (DIRECT · ช่องทางกำหนดเอง adapter NONE · หาตามรหัส · ไม่มี = สร้าง · ไม่ลบ) · ` +
             `ออเดอร์ผ่าน ingestOrder (เจ้าของร้าน · คีย์ต่อรอบ posqc-vis-p28u-<pid>-<เวลา>-<n> · เลขแพลตฟอร์มต่อรอบ): ใหม่ LINE MAN/Grab/แชท · โทรสั่งรับแล้ว→กำลังเตรียม ×2 (เวลาเตรียม 1 = เลยเวลา · 30) · โทรสั่ง→พร้อม · Grab ปฏิเสธ 1 · ` +
             `⚠️ LINE MAN รับ 1 ใบ (เปิดบิล PLATFORM 1 ใบต่อรอบ · ไม่ลบทั้งออเดอร์และบิล — แบบบิลภาพ P2.1U) → เตรียม → พร้อม → ส่งมอบ · ไม่มีการรับเงิน · ` +
             `ออเดอร์อื่นของรอบ (+ PosOrderLine/Event · OutboxEvent pos.order.* · AuditLog ของออเดอร์) ลบตามไอดีหลังงานสุดท้าย/finally/สัญญาณ · orders-paused-banner ปิดรับแชท 30 นาที แล้วคืน pausedUntil เดิม`,
@@ -4325,12 +4325,13 @@ async function ensureP28uFixture(): Promise<void> {
     let phone = l.items.find((c) => c.code === P28U_PHONE.code);
     if (phone?.archived) throw new Error(`ช่องทาง ${P28U_PHONE.code} ถูกเก็บแล้ว (ผู้คุมงานตัดสิน)`);
     if (!phone) {
-      const r = await saveChannel(ctx, actor, { code: P28U_PHONE.code, name: P28U_PHONE.name, payout: "DIRECT", adapter: "MANUAL" });
+      const r = await saveChannel(ctx, actor, { code: P28U_PHONE.code, name: P28U_PHONE.name, payout: "DIRECT" }); // fix 1 F2: adapter ปริยายของช่องทางกำหนดเอง (NONE)
       if (!r.ok) throw new Error(`สร้างช่องทาง ${P28U_PHONE.code}: ${r.code}`);
       phone = r.channel;
       P28U.log.push(`สร้างช่องทาง ${P28U_PHONE.code}`);
-    } else if (!phone.active || phone.payout !== "DIRECT" || phone.adapter !== "MANUAL") {
-      const r = await saveChannel(ctx, actor, { id: phone.id, name: P28U_PHONE.name, active: true, payout: "DIRECT", adapter: "MANUAL" });
+    } else if (!phone.active || phone.payout !== "DIRECT" || phone.adapter !== "NONE") {
+      // fix 1 F2: แถวของรอบก่อน (vis66) ถูกบังคับเป็น MANUAL — คืนเป็น adapter ปริยาย NONE
+      const r = await saveChannel(ctx, actor, { id: phone.id, name: P28U_PHONE.name, active: true, payout: "DIRECT", adapter: "NONE" });
       if (!r.ok) throw new Error(`แก้ช่องทาง ${P28U_PHONE.code}: ${r.code}`);
     }
     P28U.phone = phone.id;

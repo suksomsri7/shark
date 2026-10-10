@@ -27,9 +27,9 @@ type Line =
   | { kind: "product"; productId: string; name: string; qty: number; choiceIds: string[]; optionNames: string[] }
   | { kind: "custom"; name: string; qty: number; unitPriceSatang: number };
 
-/** ช่องทางที่คีย์ออเดอร์ได้ (มติ 6): adapter MANUAL (แพลตฟอร์ม/กำหนดเอง) หรือ CHAT · ไม่ใช่หน้าร้าน/QR/เว็บร้าน · เปิดใช้อยู่ */
-export const manualChannels = (items: readonly OrdersChannel[]): OrdersChannel[] =>
-  items.filter((c) => !c.archived && c.active && c.code !== "STORE" && c.code !== "QR_TABLE" && c.code !== "WEB" && (c.adapter === "MANUAL" || c.adapter === "CHAT"));
+/** ช่องทางที่คีย์ออเดอร์ได้ (มติ 6 · fix 1 F2 = กติกาประตูพนักงานของเซิร์ฟเวอร์ order.ts ingestOrder):
+ *  เปิดใช้ · ไม่เก็บ · ไม่ใช่ช่องทางพื้นฐาน ยกเว้นแชท ⇒ แพลตฟอร์ม (EXTERNAL) + ช่องทางที่ร้านสร้างเอง (CUSTOM · adapter ปริยาย NONE) + CHAT */
+export const manualChannels = (items: readonly OrdersChannel[]): OrdersChannel[] => items.filter((c) => !c.archived && c.active && (c.kind !== "BUILTIN" || c.code === "CHAT"));
 
 const MAX_QTY = 99;
 
@@ -65,7 +65,8 @@ export function ManualOrderEntry(p: {
   const [member, setMember] = useState<RegisterMemberItem | null>(null);
   const [memberQ, setMemberQ] = useState("");
   const [memberHits, setMemberHits] = useState<RegisterMemberItem[] | null>(null);
-  const [start, setStart] = useState<"ACCEPTED" | "NEW">("ACCEPTED");
+  // fix 1 F2: สถานะเริ่มเลือกได้ทุกช่องทาง · ค่าปริยาย = ของเซิร์ฟเวอร์ (adapter MANUAL = รับแล้ว · อื่น = ออเดอร์ใหม่) · เปลี่ยนช่องทาง = กลับไปค่าปริยาย
+  const [startPick, setStartPick] = useState<"ACCEPTED" | "NEW" | null>(null);
   const [payState, setPayState] = useState<"UNPAID" | "PAY_ON_PICKUP">("UNPAID");
   const [lines, setLines] = useState<Line[]>([]);
   const [badLine, setBadLine] = useState<number | null>(null);
@@ -135,6 +136,14 @@ export function ManualOrderEntry(p: {
   const refRequired = ch?.kind === "CUSTOM";
   const isChat = ch?.adapter === "CHAT";
   const isManual = ch?.adapter === "MANUAL";
+  const start: "ACCEPTED" | "NEW" = startPick ?? (isManual ? "ACCEPTED" : "NEW");
+  const setStart = setStartPick;
+  // fix 1 F6: แผ่นเปิดก่อนรายการช่องทางมา / ช่องที่เลือกหายจากรายการ ⇒ ใช้ช่องที่ส่งมา (ถ้าคีย์ได้) หรือช่องแรก
+  useEffect(() => {
+    if (list.some((c) => c.id === channelId)) return;
+    setChannelId(p.initialChannelId && list.some((c) => c.id === p.initialChannelId) ? p.initialChannelId : (list[0]?.id ?? ""));
+    setStartPick(null);
+  }, [list, channelId, p.initialChannelId]);
   const direct = ch?.payout === "DIRECT";
 
   const addProduct = (prod: RegisterProduct) => {
@@ -201,7 +210,7 @@ export function ManualOrderEntry(p: {
       ...(fulfilment === "DELIVERY" && address.trim() ? { address: address.trim() } : {}),
       ...(note.trim() ? { note: note.trim() } : {}),
       ...(isChat && conv.trim() ? { chatConversationId: conv.trim() } : {}),
-      ...(isManual ? { startStatus: start } : {}),
+      startStatus: start,
       ...(direct ? { paymentState: payState } : {}),
     };
     try {
@@ -253,7 +262,10 @@ export function ManualOrderEntry(p: {
           ) : null}
           <label className={label}>
             {t("manual.channel")}
-            <select data-testid="pos-ord-man-channel" value={channelId} onChange={(e) => setChannelId(e.target.value)} className={field}>
+            <select data-testid="pos-ord-man-channel" value={channelId} onChange={(e) => {
+                setChannelId(e.target.value);
+                setStartPick(null);
+              }} className={field}>
               {list.map((c) => (
                 <option key={c.id} value={c.id}>
                   {channelDisplayName(c.code, c.name, tch)}
@@ -455,7 +467,7 @@ export function ManualOrderEntry(p: {
             ) : null}
           </section>
 
-          {isManual ? (
+          {ch ? (
             <fieldset className="flex flex-col gap-2">
               <legend className="mb-1 text-[12.5px] font-bold text-[color:var(--color-ink-soft)]">{t("manual.startStatus")}</legend>
               {(["ACCEPTED", "NEW"] as const).map((s) => (
