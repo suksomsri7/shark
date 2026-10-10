@@ -11121,6 +11121,542 @@
       "wo": "P2.2U",
       "oracle": "",
       "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products/price-rules",
+      "testid": "pos-price-rules-module-tabs",
+      "kind": "tab",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "navigate",
+        "note": "แท็บโมดูล POS (ป้ายตามภาษาจอ) บนจอโปรราคา"
+      },
+      "wo": "P2.2U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products/price-rules",
+      "testid": "pos-price-rules-back",
+      "kind": "link",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]/pos/products",
+        "note": "กลับจอสินค้า 06"
+      },
+      "wo": "P2.2U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products/price-rules",
+      "testid": "pos-price-rule-add",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "pos-price-rule-drawer",
+        "note": "\"เพิ่มโปร\" — เฉพาะ pos.price.rule ที่สาขา (ไม่มี = pos-price-rules-readonly)"
+      },
+      "wo": "P2.2U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products/price-rules",
+      "testid": "pos-price-rules-show-archived",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-price-rules",
+        "note": "\"แสดงที่เก็บแล้ว (n)\" / ซ่อน"
+      },
+      "wo": "P2.2U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products/price-rules",
+      "testid": "pos-price-rule-open-*",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "pos-price-rule-drawer",
+        "note": "เปิดลิ้นชักแก้โปร (?rule=<id> เปิดให้เองตอนโหลด)"
+      },
+      "wo": "P2.2U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products/price-rules",
+      "testid": "pos-price-rule-active-*",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "note": "สวิตช์เปิดใช้ = savePriceRuleAction ทั้งชุดเดิม + active กลับค่า · ไม่มีสิทธิ์ = ปิด"
+      },
+      "wo": "P2.2U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products/price-rules",
+      "testid": "pos-price-rule-close",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "ปิดลิ้นชัก (ไม่บันทึก)"
+      },
+      "wo": "P2.2U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products/price-rules",
+      "testid": "pos-price-rule-cancel",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "ยกเลิก (ไม่บันทึก)"
+      },
+      "wo": "P2.2U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products/price-rules",
+      "testid": "pos-price-rule-name",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "inline-error",
+        "target": "pos-price-rule-err-name",
+        "note": "ชื่อโปร 1–60 ตัวอักษร"
+      },
+      "wo": "P2.2U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products/price-rules",
+      "testid": "pos-price-rule-kind-*",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "ชนิด HAPPY_HOUR / PROMO"
+      },
+      "wo": "P2.2U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products/price-rules",
+      "testid": "pos-price-rule-picked-*",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "เอาสินค้าที่เลือกออก (รหัสที่ไม่พบ = \"สินค้าถูกเก็บถาวร\" · F3)"
+      },
+      "wo": "P2.2U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products/price-rules",
+      "testid": "pos-price-rule-product-search",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "ค้นสินค้าในตัวเลือก (60 รายการแรก)"
+      },
+      "wo": "P2.2U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products/price-rules",
+      "testid": "pos-price-rule-product-*",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "เลือก/เอาออก สินค้าของโปร (≤ 500)"
+      },
+      "wo": "P2.2U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products/price-rules",
+      "testid": "pos-price-rule-category-*",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "เลือก/เอาออก หมวดของโปร (≤ 50)"
+      },
+      "wo": "P2.2U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products/price-rules",
+      "testid": "pos-price-rule-channel-*",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "ช่องทางของโปร (ไม่เลือก = ทุกช่องทาง)"
+      },
+      "wo": "P2.2U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products/price-rules",
+      "testid": "pos-price-rule-unit-*",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "สาขาของโปร (ไม่เลือก = ทุกสาขา · ต้องมีสิทธิ์ทุกสาขา) — แสดงเมื่อมี > 1 สาขา"
+      },
+      "wo": "P2.2U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products/price-rules",
+      "testid": "pos-price-rule-day-*",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "วันในสัปดาห์ 0=อา…6=ส (ไม่เลือก = ทุกวัน)"
+      },
+      "wo": "P2.2U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products/price-rules",
+      "testid": "pos-price-rule-time-from",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "inline-error",
+        "target": "pos-price-rule-err-timeFrom",
+        "note": "เวลาเริ่ม HH:MM เวลาไทย"
+      },
+      "wo": "P2.2U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products/price-rules",
+      "testid": "pos-price-rule-time-to",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "inline-error",
+        "target": "pos-price-rule-err-timeTo",
+        "note": "เวลาจบ HH:MM (ถึง 23:59 · ไม่ข้ามเที่ยงคืน CD8)"
+      },
+      "wo": "P2.2U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products/price-rules",
+      "testid": "pos-price-rule-date-from",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "inline-error",
+        "target": "pos-price-rule-err-startsAt",
+        "note": "วันเริ่ม → startsAt = YYYY-MM-DDT00:00:00+07:00"
+      },
+      "wo": "P2.2U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products/price-rules",
+      "testid": "pos-price-rule-date-to",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "inline-error",
+        "target": "pos-price-rule-err-endsAt",
+        "note": "วันสุดท้าย (รวมวันนั้น) → endsAt = เที่ยงคืนของวันถัดไป +07:00"
+      },
+      "wo": "P2.2U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products/price-rules",
+      "testid": "pos-price-rule-adjust-*",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "วิธีปรับ PRICE / PERCENT_OFF / AMOUNT_OFF"
+      },
+      "wo": "P2.2U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products/price-rules",
+      "testid": "pos-price-rule-value",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "inline-error",
+        "target": "pos-price-rule-err-value",
+        "note": "ค่าโปร (บาท หรือ %)"
+      },
+      "wo": "P2.2U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products/price-rules",
+      "testid": "pos-price-rule-advanced",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "กล่องพับ \"ลำดับความสำคัญ (ขั้นสูง)\""
+      },
+      "wo": "P2.2U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products/price-rules",
+      "testid": "pos-price-rule-priority",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "inline-error",
+        "target": "pos-price-rule-err-priority",
+        "note": "ลำดับความสำคัญ 0–100"
+      },
+      "wo": "P2.2U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products/price-rules",
+      "testid": "pos-price-rule-active",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "เปิดใช้ (ในลิ้นชัก)"
+      },
+      "wo": "P2.2U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products/price-rules",
+      "testid": "pos-price-rule-save",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-price-rule-toast",
+        "note": "บันทึก = savePriceRuleAction (ตรวจ parsePriceRuleInput ก่อน) · VALIDATION{field} = ข้อความใต้ช่อง · PRICE_RULE_LIMIT = pos-price-rule-limit · อื่น = pos-price-rule-error"
+      },
+      "wo": "P2.2U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products/price-rules",
+      "testid": "pos-price-rule-archive",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-price-rule-toast",
+        "note": "เก็บถาวร = archivePriceRuleAction (โปรที่มีอยู่ · ไม่ใช่ที่เก็บแล้ว)"
+      },
+      "wo": "P2.2U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-settings-marketing-price-rules",
+      "kind": "link",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]/pos/products/price-rules",
+        "note": "ข้อ \"โปรราคา / Happy hour ตั้งใน สินค้า › โปรราคา\" (happyHourPricing live) → จอโปรราคา"
+      },
+      "wo": "P2.2U",
+      "oracle": "",
+      "system": "POS",
+      "query": "tab=shark"
     }
   ],
   "$roles": "roles/hiddenFor ที่อนุญาต: owner · manager · cashier · kind/expect.type ชุดเดียวกับทะเบียน CRM (F15.3b ตรวจ)"

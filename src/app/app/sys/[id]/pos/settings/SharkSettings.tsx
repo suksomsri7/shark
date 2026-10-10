@@ -214,10 +214,20 @@ export function SharkSettings({ systemId, unitId, storefront, pay, canAddSystem,
             const params: Record<string, string | number> = {};
             for (const [k, v] of Object.entries(f.params ?? {})) if (v !== null) params[k] = typeof v === "boolean" ? String(v) : v;
             if (f.key === "pointRate" && typeof f.params?.satangPerPoint === "number") params.baht = (f.params.satangPerPoint / 100).toLocaleString("en-US", { maximumFractionDigits: 2 });
-            const key = f.key === "autoPost" && typeof f.params?.linkCount === "number" ? `${c.code}.facts.autoPostMulti` : `${c.code}.facts.${f.key}`;
+            // POS P2.2U ▸ มติ 7 (Q8): happy hour live = ข้อความ "โปรราคา / Happy hour ตั้งใน สินค้า › โปรราคา" + ลิงก์ไปจอโปรราคา ◂
+            const hhLive = c.code === "MARKETING" && f.key === "happyHourPricing" && f.live;
+            const key = hhLive ? `${c.code}.facts.happyHourPricingLive` : f.key === "autoPost" && typeof f.params?.linkCount === "number" ? `${c.code}.facts.autoPostMulti` : `${c.code}.facts.${f.key}`;
             return (
               <li key={f.key} data-testid={`pos-settings-fact-${code}-${f.key}`} className={f.live ? "" : "text-[color:var(--color-muted)] opacity-80"}>
-                {tc.has(key) ? tc(key, params) : f.key}
+                {hhLive ? (
+                  <Link data-testid="pos-settings-marketing-price-rules" href={`/app/sys/${systemId}/pos/products/price-rules`} className="text-[color:var(--color-accent)] underline-offset-2 hover:underline">
+                    {tc(key)}
+                  </Link>
+                ) : tc.has(key) ? (
+                  tc(key, params)
+                ) : (
+                  f.key
+                )}
                 {!f.live && f.phase && <span className="ml-1.5 text-[10.5px] text-[color:var(--color-muted)]">{f.phase}</span>}
               </li>
             );
