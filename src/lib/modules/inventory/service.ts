@@ -157,13 +157,20 @@ async function lockItemForStock(db: Db, ctx: Ctx, itemId: string): Promise<Locke
  * HF-INV-1 — ล็อกสินค้าหลายตัวตามลำดับ id ที่ตายตัว ภายใน tx ของผู้เรียก (กัน deadlock ของ tx ที่แตะหลายสินค้า)
  * เรียกก่อน `consumeInTx`/`receiveInTx` ตัวแรกของ tx นั้น · id ซ้ำ/ว่างตัดทิ้ง · id ที่ไม่มีในระบบนี้ข้ามเงียบ
  * R3.2: รอล็อกได้ไม่เกิน 15 วิ (เอกสารบัญชีไม่มีตัวห่อลองใหม่) · หลังได้ล็อก lock_timeout ของ tx กลับเป็นค่าเดิม
+ * POS P2.3 ▸ fix round 1 (รีวิว F5): อาร์กิวเมนต์ที่ 4 (ไม่บังคับ) = งบรอล็อก — consumeBatch (มีตัวห่อลองใหม่ · รันในจังหวะส่งบิลของแคชเชียร์)
+ *   ส่ง STOCK_LOCK_WAIT_WRAPPER 5 วิ เท่าทางตัดทีละรายการเดิม · ผู้เรียกเดิม (3 อาร์กิวเมนต์) = 15 วิ ไม่เปลี่ยน ◂
  */
-export async function lockItemsInTx(tx: Db, ctx: Ctx, itemIds: readonly string[]): Promise<void> {
+export async function lockItemsInTx(
+  tx: Db,
+  ctx: Ctx,
+  itemIds: readonly string[],
+  wait: typeof STOCK_LOCK_WAIT_WRAPPER | typeof STOCK_LOCK_WAIT_ACCOUNT_DOC = STOCK_LOCK_WAIT_ACCOUNT_DOC,
+): Promise<void> {
   const ids = [...new Set(itemIds.filter((x) => typeof x === "string" && x))].sort();
   if (ids.length === 0) return;
   await tx.$queryRaw`
     WITH prev AS MATERIALIZED (SELECT current_setting('lock_timeout') AS v),
-    lt AS MATERIALIZED (SELECT set_config('lock_timeout', ${STOCK_LOCK_WAIT_ACCOUNT_DOC}, true) AS v FROM prev),
+    lt AS MATERIALIZED (SELECT set_config('lock_timeout', ${wait}, true) AS v FROM prev),
     locked AS MATERIALIZED (
       SELECT i."id" FROM "InvItem" i, lt
       WHERE i."tenantId" = ${ctx.tenantId} AND i."systemId" = ${ctx.systemId} AND i."id" IN (${Prisma.join(ids)})
@@ -736,7 +743,7 @@ export async function consumeInTx(tx: Db, ctx: Ctx, input: ConsumeInput): Promis
 //   ทำไม: บิลที่มีสูตร (BOM) ตัดวัตถุดิบหลายตัวต่อบรรทัด — เดิมตัดทีละส่วน (tx ละส่วน) ⇒ ล็อกพลาดกลางทาง = บิลตัดครึ่งเดียว
 //   กติกา: tx เดียว · ล็อกทุกสินค้าตามลำดับ id ตายตัว (lockItemsInTx) ก่อนแตะตัวใด ⇒ ไม่มีวงล็อก · consumeInTx ต่อส่วนด้วยคีย์ของส่วนนั้น
 //     (แถว movement เหมือนตัดทีละส่วนทุกค่า) · ส่วนที่สินค้าไม่มีในระบบคลังนี้ / เป็นบริการ = ข้าม (คืนใน skipped · ไม่ล้มทั้งชุด)
-//     ล็อกชนกัน = ลองใหม่ทั้งชุด 1 ครั้ง (withStockRetry) · ล้มทั้งชุด = ไม่มีส่วนใดถูกตัด (ผู้เรียกนับเป็น "ค้างตัด" แล้วลองใหม่ได้)
+//     ล็อกชนกัน (งบรอ 5 วิ = ตัวห่อ · fix round 1 F5) = ลองใหม่ทั้งชุด 1 ครั้ง (withStockRetry) · ล้มทั้งชุด = ไม่มีส่วนใดถูกตัด (ผู้เรียกนับเป็น "ค้างตัด" แล้วลองใหม่ได้)
 //     หลัง commit: GL ต่อ movement (รวมคีย์เดิมที่เคยตัดในtx ของบิลแบบ BLOCK — GL idempotent ต่อ movement) + sync สินค้าบัญชีต่อสินค้า
 //   idempotent: เรียกซ้ำด้วยคีย์เดิม = movementIds เดิม ไม่มีแถวเพิ่ม
 export type ConsumeBatchPart = { itemId: string; qty: number; idempotencyKey: string };
@@ -756,7 +763,8 @@ export async function consumeBatch(ctx: Ctx, input: ConsumeBatchInput): Promise<
     db.$transaction(
       async (tx) => {
         const txc = tx as unknown as Db;
-        await lockItemsInTx(txc, ctx, ids);
+        // fix round 1 (รีวิว F5): งบรอล็อก 5 วิ (เท่าทางเดิมต่อรายการ) — ชนนาน = ล้มชุด ⇒ ผู้เรียกนับค้างตัด + ลองใหม่ได้ ไม่ให้แคชเชียร์รอ 15 วิ
+        await lockItemsInTx(txc, ctx, ids, STOCK_LOCK_WAIT_WRAPPER);
         const found = await txc.invItem.findMany({ where: { ...scope(ctx), id: { in: ids } }, select: { id: true, kind: true } });
         const kindOf = new Map(found.map((i) => [i.id, String(i.kind)]));
         const rows: MovementRow[] = [];
