@@ -298,12 +298,16 @@ model PosProduct {
   /// รหัสสินค้าบนป้ายเครื่องชั่ง (5 หลัก) · ไม่ซ้ำในแถวที่ยังไม่เก็บถาวรของระบบ POS เดียว =
   /// partial unique `PosProduct_systemId_scalePlu_active_key` (SQL เขียนมือใน migration 20261124000000_pos_p12_options · prisma มองไม่เห็น WHERE)
   scalePlu           String?
+  // POS P2.3 ▸ สูตร/BOM ของเมนูตัดวัตถุดิบจริงไหม (opt-in · มติ Q1/CD2) — false = แถว RecipeLine ของเมนู (เช่น backfill จาก MenuItem.invItemId) ยังไม่ตัดสต็อก ·
+  //   BUNDLE ตัดตามสูตรเสมอ (ไม่อ่านคอลัมน์นี้) · ตัวแปรที่ไม่มีสูตรเองอ่านจากแม่ (มติ 3) ◂
+  bomEnabled         Boolean        @default(false)
   archivedAt         DateTime?
   createdAt          DateTime       @default(now())
   updatedAt          DateTime       @updatedAt
 
-  optionGroups PosProductOptionGroup[]
-  recipeLines  RecipeLine[]
+  optionGroups      PosProductOptionGroup[]
+  recipeLines       RecipeLine[]
+  recipeChoiceLines PosRecipeChoiceLine[] // POS P2.3 ◂
 
   @@unique([systemId, invItemId])
   @@index([tenantId])
@@ -339,6 +343,25 @@ model RecipeLine {
   updatedAt DateTime   @updatedAt
 
   @@unique([productId, invItemId])
+  @@index([tenantId])
+  @@index([invItemId])
+}
+
+// POS P2.3 ▸ ส่วนต่างของสูตรต่อตัวเลือก (ขนาด M = เมล็ด +6 g · นมโอ๊ต = นม −150 ml / โอ๊ต +150 ml) — จำนวนเต็มมีเครื่องหมายในหน่วยของสินค้าคลัง (มติ Q2/CD3)
+//   ต่อ (สินค้าเจ้าของสูตร, ตัวเลือก, InvItem) · choiceId = MenuOptionChoice.id · invItemId = InvItem.id (id หลวมแบบ RecipeLine) ·
+//   CHECK ("qtyDelta" <> 0) เขียนมือใน migration 20261205100000_pos_p23_recipe · ผู้เขียนเดียว = pos/catalog.ts (setRecipeChoiceLines) ◂
+model PosRecipeChoiceLine {
+  id        String     @id @default(cuid())
+  tenantId  String
+  productId String
+  product   PosProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+  choiceId  String
+  invItemId String
+  qtyDelta  Int
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  @@unique([productId, choiceId, invItemId])
   @@index([tenantId])
   @@index([invItemId])
 }
