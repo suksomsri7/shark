@@ -101,6 +101,7 @@ const CHECKS: readonly Def[] = [
   D("W8", "X4", "[R9 มติ 4] บรรทัดบิลยืนยันของเว็บร้าน: productId = posProductId · ไม่มี itemId · priceSource มีค่า · สต็อกเสื้อตัดครั้งเดียวทางเว็บร้าน (ecom-<order>-<line>) −2 · ไม่มีแถวตัดสต็อกของบิล"),
   // ORACLE-ADD (P2.8 fix รอบ 2 · รีวิว F1 F2 · มติผู้คุม 10 ต.ค. 05:1xZ)
   D("W9", "X5", "[R5 มติ 13 · F1] ออเดอร์เว็บที่ร้านยืนยันรับเงินแล้ว (PAID · ยัง NEW) → rejectOrder และ cancelOrder ORDER_STATE_INVALID (ข้อความให้คืนเงิน/ยกเลิกที่หน้าเว็บร้าน) · ออเดอร์/ShopOrder/บิล ECOM ไม่เปลี่ยน · ตัวควบคุม: ออเดอร์เว็บที่ยังไม่จ่าย reject → ShopOrder CANCELLED"),
+  D("W11", "X1", "[R4 R5 · H1] การยืนยันรับเงินของเว็บร้านสะท้อนเข้าออเดอร์ในธุรกรรมของมันเอง (ไม่พึ่งคิว): (a) ปฏิเสธก่อน (ยังไม่ระบาย) → confirmOrderPaid ok:false ไม่มีบิล ecom-<id> · ระบายแล้ว ShopOrder CANCELLED (b) ยืนยันก่อน → ก่อนระบายออเดอร์ PAID → reject ORDER_STATE_INVALID webPaid (c) แถว shop.order.paid DONE โดยไม่รันตัวผูก → ยัง PAID + saleId"),
   D("W10", "X4", "[R9 CD4 มติ 4 · F2] หน้าเว็บอ่านชั้นราคาเฉพาะของช่องทาง WEB: ไม่มีแถว WEB + แถวสาขา (ทุกช่องทาง) ฿170 + กติกาทุกช่องทาง −10% → storefront/createOrder = ราคา ShopProduct ฿200 · กติกาที่ระบุ WEB −20% → ฿160 ทั้ง storefront และ createOrder · บรรทัดบิลยืนยันรับเงิน priceSource RULE + priceRuleId (H5)"),
   // ── R ตัวอ่าน ──
   D("R1", "-", "[R8] listOrders สาขา A: counts.byColumn {new preparing ready done} + counts.byChannel ตรงความจริงใน DB · summary {count totalSatang rejectedCancelled avgAcceptSeconds onTime{n m}} · การ์ด LM-48213 (ref itemCount 3 · 42000 · channel {code name}) · กรอง status/channelId"),
@@ -2158,6 +2159,66 @@ async function runDb() {
     chk("W7", good(p) && !!PCP, "backfill เขียนแถวที่หาย · รอบสอง 0 · conflict นับ + ราคาของตัวเอง", why(p) + SOFT());
   });
 
+  /** แทนตัวรับคิวชั่วคราว (ข้อสอบเท่านั้น · fix รอบ 3): "run" = รอประตูเปิดแล้วรันตัวจริง · "skip" = รอประตูเปิดแล้วไม่รัน (จำลองขั้นเสริมที่ล้มเงียบ/แถว DONE โดยไม่รัน)
+   *  ห้ามเรียก drain() ก่อน open() (ตัวระบายในโปรเซสต่อคิวกัน) · restore() คืนตัวจริง */
+  const swapConsumer = (type: string, mode: "run" | "skip", gated = true) => {
+    const cons = consMod?.consumers as Record<string, Any> | undefined;
+    const orig = cons?.[type];
+    let opened = !gated;
+    let openFn: () => void = () => {};
+    const gate = gated ? new Promise<void>((r) => (openFn = r)) : Promise.resolve();
+    if (cons && orig) cons[type] = async (e: Any) => {
+      await gate;
+      if (mode === "run") await orig(e);
+    };
+    return { ok: !!(cons && orig), open: () => { if (!opened) { opened = true; openFn(); } }, restore: () => { if (cons && orig) cons[type] = orig; } };
+  };
+  await step("W11", async () => {
+    const p: string[] = [];
+    // (a) ปฏิเสธก่อน (คิวยังไม่ระบาย) → ยืนยันรับเงิน ⇒ ปฏิเสธการยืนยัน ไม่มีบิล ECOM · ระบายแล้ว ShopOrder CANCELLED
+    const hRej = swapConsumer("pos.order.rejected", "run");
+    let soA: Any = null;
+    try {
+      soA = await shopTry("createOrder", () => shop.createOrder(sctx("S"), { customerName: "คุณถูกปฏิเสธก่อนจ่าย", customerPhone: "0811110021", lines: [{ productId: SP.hat, qty: 1 }] }), p);
+      const oa = (await poOfShop(soA?.id ?? ""))[0];
+      const rj = oa ? await O("rejectOrder", ctxU("S"), A("MGR"), { id: oa.id, reasonCode: "TOO_BUSY" }) : null;
+      if (!fx && rj?.ok !== true) p.push(`(a ตั้งต้น) reject → ${codeOf(rj)}`);
+      const cfA = soA?.id ? await shopTry("confirmOrderPaid", () => shop.confirmOrderPaid(sctx("S"), soA.id), p) : null;
+      if (!fx && cfA?.ok !== false) p.push(`(a) confirmOrderPaid หลังปฏิเสธ → ${short(cfA, 60)} (คาด ok:false)`);
+      const nA = soA?.id ? Number(await P.posSale.count({ where: { tenantId: T, idempotencyKey: `ecom-${soA.id}` } }).catch(() => -1)) : -1;
+      if (!fx && nA !== 0) p.push(`(a) บิล ecom-<id> ${nA} (คาด 0)`);
+    } finally {
+      hRej.open();
+      hRej.restore();
+    }
+    await drain();
+    const stA = soA?.id ? (await P.shopOrder.findUnique({ where: { id: soA.id } }).catch(() => null))?.status : null;
+    if (!fx && stA !== "CANCELLED") p.push(`(a) ShopOrder หลังระบาย ${stA} (คาด CANCELLED)`);
+    // (b) ยืนยันรับเงินก่อน (ไม่ระบาย) ⇒ ออเดอร์ PAID ทันที ⇒ ปฏิเสธ = webPaid · (c) แถว shop.order.paid DONE โดยไม่รันตัวผูก ⇒ ยัง PAID + saleId
+    const hPaid = swapConsumer("shop.order.paid", "skip");
+    let soB: Any = null;
+    let cfB: Any = null;
+    let obId = "";
+    try {
+      soB = await shopTry("createOrder", () => shop.createOrder(sctx("S"), { customerName: "คุณจ่ายก่อน", customerPhone: "0811110022", lines: [{ productId: SP.hat, qty: 1 }] }), p);
+      cfB = soB?.id ? await shopTry("confirmOrderPaid", () => shop.confirmOrderPaid(sctx("S"), soB.id), p) : null;
+      if (!fx && cfB?.ok !== true) p.push(`(b ตั้งต้น) confirmOrderPaid → ${short(cfB, 60)}`);
+      const ob = (await poOfShop(soB?.id ?? ""))[0];
+      obId = String(ob?.id ?? "");
+      if (!fx && ob?.paymentState !== "PAID") p.push(`(b) ก่อนระบายคิว ออเดอร์ ${ordStr(ob)} (คาด PAID ทันทีที่ยืนยัน)`);
+      const rjB = ob ? await O("rejectOrder", ctxU("S"), A("MGR"), { id: ob.id, reasonCode: "OUT_OF_STOCK" }) : null;
+      if (!refused(rjB, "ORDER_STATE_INVALID") || !/คืนเงิน|หน้าเว็บร้าน/.test(String(rjB?.message ?? ""))) p.push(`(b) reject หลังยืนยัน (ก่อนระบาย) → ${codeOf(rjB)} (คาด ORDER_STATE_INVALID webPaid)`);
+    } finally {
+      hPaid.open();
+    }
+    await drain();
+    hPaid.restore();
+    const ev = soB?.id ? (await obx("shop.order.paid", soB.id))[0] : null;
+    if (!fx && ev?.status !== "DONE") p.push(`(c) แถว shop.order.paid ${short(ev?.status)} (คาด DONE โดยไม่รันตัวผูก)`);
+    const obb = obId ? await row(obId) : null;
+    if (!fx && (obb?.paymentState !== "PAID" || obb?.saleId !== cfB?.posSaleId || obb?.status !== "NEW")) p.push(`(c) ออเดอร์ ${ordStr(obb)} saleId ${obb?.saleId === cfB?.posSaleId ? "ตรง" : "ไม่ตรง"} (คาด NEW PAID + saleId จากธุรกรรมของเว็บร้าน)`);
+    chk("W11", good(p) && hRej.ok && hPaid.ok, "ปฏิเสธก่อน → ยืนยันถูกปฏิเสธ ไม่มีบิล · ยืนยันก่อน → PAID ทันที → ปฏิเสธไม่ได้ · ไม่พึ่งตัวรับคิว", why(p));
+  });
   await step("W10", async () => {
     const p: string[] = [];
     const ruleMod = await tryImport("@/lib/modules/pos/price-rule");
