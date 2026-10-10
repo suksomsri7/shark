@@ -1310,3 +1310,7 @@
 - **P1.1b ส่วน B** พร้อมแล้ว → สั่งทำในเลนนี้ (2 จุดใน account/service.ts + ล้าง CATALOG_WRITER_BASELINE · เปิด S2.11b/S2.19)
 - member m2.6–m2.8 crash null.role = seed QC4 (เหมือน 9 ต.ค.) → บรรทัดเจ้าของสมาชิก · `ciEquals` (F15.1 ของ main) รับ
 - ส่ง go รอบแก้ 1 ให้ MAIN-MERGE builder แล้ว → ผล → ff session/pos → QC5 `migrate deploy` (idempotent) → HF-TX/P2.4U merge upstream
+
+## 10 ต.ค. 08:3xZ — P2.4U R1: MERGEABLE-AFTER-FIXES (F1 Medium UI รวมเงินเอง · F3 PromptPay เปิดผิด session · F2 · F4 ruling P1.7 manager gate บน preset · F5–F7 nits) → รอบแก้ 1 ส่ง go แล้ว (`pos-prompt-accountB-P2.4U-fix.md`)
+- chain63 build กำลังรัน → vis64 (daa0296d) = ผู้คุมดู 03 เต็ม (หน้าเงิน) · หลังแก้ถ่ายซ้ำเฉพาะ tables-panel-rounds,tables-alerts,tables-checkout-dialog
+- เลน 3/3: MAIN-MERGE fix1 (b) · HF-TX (c) · P2.4U fix1 (p11 = U แยกไฟล์)
