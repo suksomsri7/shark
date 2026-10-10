@@ -201,10 +201,12 @@ const PAGE_EXPECT: Record<PosPage, Record<UserKey, number | "record">> = {
   settings: { owner: 200, cashier: 200 },
   // POS P2.4U ▸ หน้าโต๊ะ: แคชเชียร์ QC มี pos.sale.create ⇒ หน้า 200 (เปิดโต๊ะ/ส่งครัวถูกปฏิเสธที่เซิร์ฟเวอร์ — ไม่มีคีย์ restaurant.*) ◂
   tables: { owner: 200, cashier: 200 },
+  // POS P2.8U ▸ หน้าออเดอร์: แคชเชียร์ QC มี pos.sale.create (อ่านออเดอร์ได้) ⇒ หน้า 200 · ไม่มี pos.order.accept/reject ⇒ กระดานอ่านอย่างเดียว (ปุ่มปิด + tooltip) ◂
+  orders: { owner: 200, cashier: 200 },
 };
 // POS P1.17 U ▸ wo ขึ้นต้น p1.17: REPORT_QUERY (env) ต่อท้ายหน้า reports เช่น "kind=daily&from=2026-10-01&to=2026-10-07" (ภาพจาก URL เดียวกันได้มุมมองเดียวกัน) ◂
 const REPORT_QUERY = /^p1\.17/i.test(WO) && /^[A-Za-z0-9=&_.-]+$/.test(process.env.REPORT_QUERY ?? "") ? `?${process.env.REPORT_QUERY}` : "";
-const pathOf = (p: PosPage) => `/app/sys/${SYS}/pos/${p}${p === "register" || p === "stock" || p === "shifts" || p === "settings" || p === "tables" ? `?unit=${unitId}` : p === "reports" ? REPORT_QUERY : ""}`; // POS P2.4U ▸ + tables ◂
+const pathOf = (p: PosPage) => `/app/sys/${SYS}/pos/${p}${p === "register" || p === "stock" || p === "shifts" || p === "settings" || p === "tables" || p === "orders" ? `?unit=${unitId}` : p === "reports" ? REPORT_QUERY : ""}`; // POS P2.4U ▸ + tables ◂ · POS P2.8U ▸ + orders ◂
 const OUT = `${PQC.shotsDir}/${WO}`;
 const fileOf = (p: PosPage, w: number, h: number) => `${OUT}/${p}-${userKey}-${w}x${h}.png`;
 
@@ -212,7 +214,7 @@ const fileOf = (p: PosPage, w: number, h: number) => `${OUT}/${p}-${userKey}-${w
 const STATES_ON = /^p1\.3/i.test(WO) || argv.includes("--states");
 const LOCALE_EN = process.env.LOCALE === "en";
 type Device = (typeof POS_VIEWPORTS)[number]["name"];
-type StateKey = "held-drawer" | "paydlg-promptpay-timeout" | "paydlg-platform" | "register-en" | "register-empty-catalogue" | "default" | "cart3" | "cart4-01" | "line-editor" | "bill-discount" | "custom-item" | "paydlg-cash" | "paydlg-promptpay-qr" | "paydlg-promptpay-paid" | "paydlg-card-edc" | "sale-done" | "search-empty" | "stock-warn" | "offline" | "mobile-sheet" | "options-popover" | "weigh" | "taxinvoice-dialog" | "taxinvoice-set" | MemberStateKey | P115StateKey | StockStateKey | ShiftsStateKey | BillsStateKey | SettingsStateKey | RpubStateKey | P22uProductsKey | P22uRegKey | P23uProductsKey | P23uRegKey | P24uTablesKey | P24uRegKey; // POS P2.4U ▸ + P24u ◂
+type StateKey = "held-drawer" | "paydlg-promptpay-timeout" | "paydlg-platform" | "register-en" | "register-empty-catalogue" | "default" | "cart3" | "cart4-01" | "line-editor" | "bill-discount" | "custom-item" | "paydlg-cash" | "paydlg-promptpay-qr" | "paydlg-promptpay-paid" | "paydlg-card-edc" | "sale-done" | "search-empty" | "stock-warn" | "offline" | "mobile-sheet" | "options-popover" | "weigh" | "taxinvoice-dialog" | "taxinvoice-set" | MemberStateKey | P115StateKey | StockStateKey | ShiftsStateKey | BillsStateKey | SettingsStateKey | RpubStateKey | P22uProductsKey | P22uRegKey | P23uProductsKey | P23uRegKey | P24uTablesKey | P24uRegKey | P28uOrdersKey | P28uRegKey; // POS P2.4U ▸ + P24u ◂ · POS P2.8U ▸ + P28u ◂
 const STATE_PLAN: { key: StateKey; devices: readonly Device[]; note: string }[] = [
   { key: "default", devices: ["desktop", "ipad", "mobile"], note: "เปิดหน้า (ตะกร้าว่าง) — การ์ดเหลือน้อย/หมด/ปิดขายของ fixture อยู่ในกริด" },
   { key: "cart3", devices: ["desktop", "ipad", "mobile"], note: "อเมริกาโน่×2 · ลาเต้ (ลด ฿10) · ครัวซองต์ (สต็อก N → N−1)" },
@@ -433,6 +435,35 @@ const p24uOn = STATES_ON && tenantKey === "coffee";
 /** tables-empty: เจ้าของ = สาขาที่สอง (อารีย์ · ไม่มีโต๊ะ) · แคชเชียร์ = สาขาของตัวเอง (ก่อนสร้าง fixture) */
 const P24U_EMPTY_UNIT = userKey === "owner" ? ((T.units as Record<string, { id: string }>).ari?.id ?? unitId) : unitId;
 const P24U_REG_TABLE_PLACEHOLDER = `/app/sys/${SYS}/pos/register?unit=${unitId}&table=<session:${"X4"}>`;
+// ── POS P2.8U ▸ ออเดอร์ทุกช่องทาง (มติ 7 · wo p2.8u · --page orders|register --states · 3 ขนาด · th + LOCALE=en · owner + cashier) — fixture ของตัวเอง ◂
+type P28uOrdersKey = "orders-empty" | "orders-mixed" | "orders-new-late" | "orders-detail-platform" | "orders-detail-direct-unpaid" | "orders-paused-banner" | "orders-reject-sheet" | "orders-manual-sheet" | "orders-pay-dialog";
+type P28uRegKey = "register-tab-badge";
+const P28U_ORDERS_PLAN: { key: P28uOrdersKey; devices: readonly Device[]; note: string }[] = [
+  { key: "orders-empty", devices: ["desktop", "ipad", "mobile"], note: "เจ้าของเท่านั้น · ถ่ายก่อน fixture: สาขาอารีย์ (ไม่มีออเดอร์วันนี้) → \"ยังไม่มีออเดอร์วันนี้\" (แคชเชียร์เข้าได้สาขาเดียว และสาขานั้นมีออเดอร์ HANDED ที่ fixture รอบก่อนเก็บไว้)" },
+  { key: "orders-mixed", devices: ["desktop", "ipad", "mobile"], note: "กระดานผสม: ใหม่ (LINE MAN · Grab · แชทรอชำระ) · กำลังเตรียม (โทรสั่ง เลยเวลาเตรียม · โทรสั่งปกติ) · พร้อม (โทรสั่ง) · เสร็จวันนี้ (LINE MAN ที่รับ+ส่งมอบแล้ว) + ท้ายคอลัมน์ ยกเลิก/ปฏิเสธ 1 · เลือกการ์ด LINE MAN (1440)" },
+  { key: "orders-new-late", devices: ["desktop", "ipad", "mobile"], note: "ออเดอร์ Grab ใหม่ที่เข้ามาแล้ว > 60 วิ → \"รับภายใน 0:xx\" สีแดง (รอจนตัวนับ < 60 วิ · ใกล้หมด = สร้างใบใหม่ด้วยคีย์ใหม่)" },
+  { key: "orders-detail-platform", devices: ["desktop", "ipad", "mobile"], note: "แตะการ์ด LINE MAN ใหม่ → แผง: รายการ · ยอด + ค่าคอมฯ 30% + รับจริง (pos-bill-commission) · \"เมื่อกดรับออเดอร์ ระบบจะ\" · ปุ่มรับออเดอร์ · เตรียม N นาที" },
+  { key: "orders-detail-direct-unpaid", devices: ["desktop", "ipad", "mobile"], note: "แตะการ์ดโทรสั่งที่กำลังเตรียม (ร้านเก็บเงินเอง · รอชำระ) → แผง: ปุ่มพร้อมแล้ว + รับเงิน ฿x + ยกเลิกออเดอร์" },
+  { key: "orders-paused-banner", devices: ["desktop", "ipad", "mobile"], note: "ช่องทางแชทปิดรับ 30 นาที (setChannelOrderSettings · คืนค่าหลังงานสุดท้าย/finally) → แบนเนอร์ \"ปิดรับถึง hh:mm\" + เปิดรับ (เจ้าของ) + ชิปในราง" },
+  { key: "orders-reject-sheet", devices: ["desktop", "ipad", "mobile"], note: "เจ้าของ: ปฏิเสธบนการ์ด LINE MAN → แผ่นเหตุผล (ไม่กดยืนยัน) · แคชเชียร์: แผง LINE MAN ปุ่มรับ/ปฏิเสธปิด (ไม่มี pos.order.accept/reject)" },
+  { key: "orders-manual-sheet", devices: ["desktop", "ipad", "mobile"], note: "+ คีย์ออเดอร์ → แผ่นขวา (derived) · เพิ่มอเมริกาโน่ 1 → ยอดจาก quote ของช่องทาง · ยอดตามแพลตฟอร์ม ฿1 → คำเตือนยอดไม่ตรง (ไม่บันทึก)" },
+  { key: "orders-pay-dialog", devices: ["desktop", "ipad", "mobile"], note: "แผงโทรสั่งที่รอชำระ → รับเงิน → จอชำระเดิมผูก payOrderAction (ไม่กดยืนยัน)" },
+];
+const P28U_REG_PLAN: { key: P28uRegKey; devices: readonly Device[]; note: string }[] = [
+  { key: "register-tab-badge", devices: ["desktop", "ipad"], note: "หน้าขาย: แท็บ \"ออเดอร์ออนไลน์\" เป็นลิงก์ + ป้ายนับออเดอร์ใหม่ (pos-reg-tab-orders-badge · ดึงทุก 10 วิ) — มือถือไม่มีแถบโหมด" },
+];
+const P28U_WO = /^p2\.?8u/i.test(WO);
+const P28U_ORDERS_KEYS: ReadonlySet<string> = new Set(P28U_ORDERS_PLAN.map((s) => s.key));
+const P28U_REG_KEYS: ReadonlySet<string> = new Set(P28U_REG_PLAN.map((s) => s.key));
+const isP28uState = (k: StateKey): k is P28uOrdersKey | P28uRegKey => P28U_ORDERS_KEYS.has(k) || P28U_REG_KEYS.has(k);
+/** สถานะที่ต้องมี fixture ออเดอร์ (ทุกสถานะ P2.8U ยกเว้น orders-empty) — สร้างก่อนงานแรก · ลบหลังงานสุดท้าย */
+const P28U_FIXTURE_STATES: ReadonlySet<string> = new Set([...P28U_ORDERS_PLAN.filter((s) => s.key !== "orders-empty").map((s) => s.key), ...P28U_REG_KEYS]);
+const p28uOn = STATES_ON && tenantKey === "coffee";
+const P28U_OWNER_ONLY: ReadonlySet<string> = new Set(["orders-empty"]);
+/** ช่องทาง DIRECT ของภาพ (โทรสั่ง · adapter MANUAL · หาตามรหัส · ไม่มี = สร้าง · ไม่ลบ — แบบ ensureChannelFixture) */
+const P28U_PHONE = { code: "QCPHONE", name: "โทรสั่ง (ภาพ QC)" } as const;
+/** orders-empty: สาขาที่สอง (อารีย์) ของเจ้าของ */
+const P28U_EMPTY_UNIT = (T.units as Record<string, { id: string }>).ari?.id ?? unitId;
 const productsPath = (k: P22uProductsKey) => `/app/sys/${SYS}/pos/products${P22U_PRODUCTS_PLAN.find((p) => p.key === k)?.rules ? "/price-rules" : ""}?unit=${encodeURIComponent(unitId)}`;
 const SETTINGS_STATE_KEYS: ReadonlySet<string> = new Set(SETTINGS_STATE_PLAN.map((s) => s.key));
 const isSettingsState = (k: StateKey): k is SettingsStateKey => SETTINGS_STATE_KEYS.has(k);
@@ -556,6 +587,19 @@ const jobsPlanned: Job[] = pages.flatMap((p: PosPage): Job[] =>
           .filter((v) => st.devices.includes(v.name))
           .map((v): Job => ({ page: p, v, state: st.key, ...(st.key === "register-table-mode" ? { path: P24U_REG_TABLE_PLACEHOLDER } : {}), file: `${OUT}/${p}-${st.key}-${userKey}-${v.w}x${v.h}${LOCALE_EN ? "-en" : ""}.png` })),
       )
+    // POS P2.8U ▸ มติ 7: หน้าออเดอร์ (--states) · หน้าขายของ wo p2.8u = ป้ายนับบนแท็บเท่านั้น ◂
+    : p28uOn && p === "orders"
+    ? P28U_ORDERS_PLAN.filter((st) => userKey === "owner" || !P28U_OWNER_ONLY.has(st.key)).flatMap((st): Job[] =>
+        viewports
+          .filter((v) => st.devices.includes(v.name))
+          .map((v): Job => ({ page: p, v, state: st.key, path: `/app/sys/${SYS}/pos/orders?unit=${encodeURIComponent(st.key === "orders-empty" ? P28U_EMPTY_UNIT : unitId)}`, file: `${OUT}/${p}-${st.key.replace(/^orders-/, "")}-${userKey}-${v.w}x${v.h}${LOCALE_EN ? "-en" : ""}.png` })),
+      )
+    : p28uOn && P28U_WO && p === "register"
+    ? P28U_REG_PLAN.flatMap((st): Job[] =>
+        viewports
+          .filter((v) => st.devices.includes(v.name))
+          .map((v): Job => ({ page: p, v, state: st.key, file: `${OUT}/${p}-${st.key}-${userKey}-${v.w}x${v.h}${LOCALE_EN ? "-en" : ""}.png` })),
+      )
     : STATES_ON && p === "register"
     ? STATE_PLAN.filter((st) => userKey === "owner" || !OWNER_ONLY_STATES.has(st.key)).flatMap((st): Job[] =>
         viewports
@@ -574,7 +618,7 @@ if (onlyStates) {
   if (unknown.length) die(`--state ไม่รู้จัก/ไม่อยู่ในแผนของหน้า-ผู้ใช้นี้: ${unknown.join(", ")} — ใช้ได้: ${[...known].join(" · ")}`);
 }
 const jobs: Job[] = onlyStates ? jobsPlanned.filter((j) => j.state && onlyStates.includes(String(j.state))) : jobsPlanned;
-const needFixtures = STATES_ON && tenantKey === "coffee" && jobs.some((j) => j.state && j.page === "register" && !P24U_REG_KEYS.has(j.state)); // POS P2.4U ▸ สถานะโต๊ะไม่ใช้สินค้าชั่วคราวของ P1.3 ◂
+const needFixtures = STATES_ON && tenantKey === "coffee" && jobs.some((j) => j.state && j.page === "register" && !P24U_REG_KEYS.has(j.state) && !P28U_REG_KEYS.has(j.state)); // POS P2.4U ▸ สถานะโต๊ะไม่ใช้สินค้าชั่วคราวของ P1.3 ◂ · POS P2.8U ▸ ป้ายแท็บก็ไม่ใช้ ◂
 if (STATES_ON && tenantKey !== "coffee" && pages.includes("register")) die("สถานะหน้าขาย P1.3 ถ่ายได้เฉพาะ --tenant coffee (มี PromptPay + สินค้าตายตัวที่ขั้นตอนใช้)");
 // ◂
 
@@ -598,9 +642,13 @@ if (LIST) {
   for (const st of P24U_TABLES_PLAN) row(st.key, st.devices, st.note);
   console.log("register P2.4U (wo p2.4u --page register --states):"); // POS P2.4U
   for (const st of P24U_REG_PLAN) row(st.key, st.devices, st.note);
+  console.log("orders P2.8U (--page orders --states):"); // POS P2.8U
+  for (const st of P28U_ORDERS_PLAN) row(st.key, st.devices, st.note);
+  console.log("register P2.8U (wo p2.8u --page register --states):"); // POS P2.8U
+  for (const st of P28U_REG_PLAN) row(st.key, st.devices, st.note);
   console.log("receipt-public (--page receipt-public · ไม่ส่ง --states = rpub-paid):");
   for (const st of RPUB_STATE_PLAN) row(st.key, st.key === "rpub-issue-sent" ? "mobile" : POS_VIEWPORTS.map((v) => v.name), `คาด ${st.expect} · ${st.note}`);
-  const ids = [STATE_PLAN, STOCK_STATE_PLAN, SHIFTS_STATE_PLAN, BILLS_STATE_PLAN, SETTINGS_STATE_PLAN, RPUB_STATE_PLAN, P23U_PRODUCTS_PLAN, P24U_TABLES_PLAN, P24U_REG_PLAN].flatMap((pl) => pl.map((x) => x.key)); // POS P2.4U ▸ + P24U ◂ // POS P2.3U ▸ + P23U_PRODUCTS_PLAN ◂
+  const ids = [STATE_PLAN, STOCK_STATE_PLAN, SHIFTS_STATE_PLAN, BILLS_STATE_PLAN, SETTINGS_STATE_PLAN, RPUB_STATE_PLAN, P23U_PRODUCTS_PLAN, P24U_TABLES_PLAN, P24U_REG_PLAN, P28U_ORDERS_PLAN, P28U_REG_PLAN].flatMap((pl) => pl.map((x) => x.key)); // POS P2.4U ▸ + P24U ◂ · POS P2.8U ▸ + P28U ◂ // POS P2.3U ▸ + P23U_PRODUCTS_PLAN ◂
   console.log(`JSON_SUMMARY ${JSON.stringify({ list: true, pages: POS_PAGES, states: ids.length, ids })}`);
   process.exit(0);
 }
@@ -697,6 +745,19 @@ if (DRY) {
             `คำขอ REQUEST_BILL/CALL_STAFF/PAY_PROMPTPAY (createServiceRequest) · จอง 2 (registerCreateReservation) — ไม่จ่ายบิลใด ๆ · ลบทั้งชุดตามไอดีหลังงานสุดท้ายที่ใช้/finally/สัญญาณ (ซากเกิน 1 ชม. ถูกกวาดก่อนสร้าง) · สถานีครัวที่ถูกสร้างให้ลบเมื่อไม่มีรายการอ้างถึง · ตัวนับเลขออเดอร์ของวัน (RestaurantDailyCounter) คงไว้`,
         );
       if (jobs.some((j) => j.state === "tables-empty")) console.log(`  P2.4U: tables-empty ${userKey === "owner" ? `สาขาอารีย์ ${P24U_EMPTY_UNIT}` : `สาขาสีลม ${unitId} ก่อนสร้าง fixture (รอบอื่นที่มี fixture อยู่ในสาขานี้ = ภาพตก)`}`);
+    }
+    // POS P2.8U ▸ มติ 7 ◂
+    if (jobs.some((j) => j.state && isP28uState(j.state))) {
+      console.log(`สถานะออเดอร์ทุกช่องทาง P2.8U (${userKey}${userKey === "cashier" ? " · ไม่มี pos.order.accept/reject — กระดานอ่านอย่างเดียว · orders-empty = เจ้าของเท่านั้น" : ""}):`);
+      for (const st of [...P28U_ORDERS_PLAN, ...P28U_REG_PLAN]) console.log(`  · ${st.key.padEnd(27)} ${st.devices.join("/").padEnd(20)} ${st.note}`);
+      if (jobs.some((j) => j.state && P28U_FIXTURE_STATES.has(j.state)))
+        console.log(
+          `  P2.8U: fixture ออเดอร์ของรอบ (สาขา ${unitKey}) — ช่องทาง LINEMAN/GRAB = ensureChannelFixture (P2.1U) + แชท (พื้นฐาน) + "${P28U_PHONE.name}" ${P28U_PHONE.code} (DIRECT · MANUAL · หาตามรหัส · ไม่มี = สร้าง · ไม่ลบ) · ` +
+            `ออเดอร์ผ่าน ingestOrder (เจ้าของร้าน · คีย์ต่อรอบ posqc-vis-p28u-<pid>-<เวลา>-<n> · เลขแพลตฟอร์มต่อรอบ): ใหม่ LINE MAN/Grab/แชท · โทรสั่งรับแล้ว→กำลังเตรียม ×2 (เวลาเตรียม 1 = เลยเวลา · 30) · โทรสั่ง→พร้อม · Grab ปฏิเสธ 1 · ` +
+            `⚠️ LINE MAN รับ 1 ใบ (เปิดบิล PLATFORM 1 ใบต่อรอบ · ไม่ลบทั้งออเดอร์และบิล — แบบบิลภาพ P2.1U) → เตรียม → พร้อม → ส่งมอบ · ไม่มีการรับเงิน · ` +
+            `ออเดอร์อื่นของรอบ (+ PosOrderLine/Event · OutboxEvent pos.order.* · AuditLog ของออเดอร์) ลบตามไอดีหลังงานสุดท้าย/finally/สัญญาณ · orders-paused-banner ปิดรับแชท 30 นาที แล้วคืน pausedUntil เดิม`,
+        );
+      if (jobs.some((j) => j.state === "orders-empty")) console.log(`  P2.8U: orders-empty สาขาอารีย์ ${P28U_EMPTY_UNIT} (มีออเดอร์วันนี้ = ภาพตก)`);
     }
     if (pages.includes("register") && jobs.some((j) => j.state === "paydlg-platform"))
       console.log("  P2.1U: paydlg-platform พักบิล LINE MAN (holdRegisterCart + channelId) ใหม่ต่อภาพ → เรียกคืนผ่าน UI · ที่ค้างทิ้งใน finally (discardHeldCart)");
@@ -931,6 +992,13 @@ for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
         if (P23U.log.length) console.error(p23uCleanupLine());
       } catch (e) {
         console.error(`❌ เก็บกวาด P2.3U ไม่สำเร็จ: ${e instanceof Error ? e.message : e}`);
+      }
+      // POS P2.8U: ลบออเดอร์ของรอบ + คืนค่าปิดรับแชท (เหมือน finally)
+      try {
+        await cleanupP28u();
+        if (P28U.log.length) console.error(p28uCleanupLine());
+      } catch (e) {
+        console.error(`❌ เก็บกวาด P2.8U ไม่สำเร็จ: ${e instanceof Error ? e.message : e}`);
       }
       // POS P2.4U: ลบ fixture โต๊ะของรอบนี้ (เหมือน finally)
       try {
@@ -1465,6 +1533,7 @@ async function cleanupP115(): Promise<void> {
 async function runState(page: Any, state: StateKey, device: Device): Promise<void> {
   // R3: แยกด้วยสมาชิกชุดที่แน่นอน ไม่ใช่คำนำหน้า — สถานะหน้าขาย "stock-warn" ขึ้นต้น "stock-" แต่ไม่ใช่สถานะหน้าสต็อก
   if (isP24uState(state)) return runP24uState(page, state, device); // POS P2.4U
+  if (isP28uState(state)) return runP28uState(page, state, device); // POS P2.8U
   if (isStockState(state)) return runStockState(page, state); // POS P1.14 U
   if (isShiftsState(state)) return runShiftsState(page, state); // POS P1.9 U
   if (isP23uProducts(state)) return runP23uProductsState(page, state, device); // POS P2.3U
@@ -4197,6 +4266,291 @@ async function runP24uState(page: Any, state: P24uTablesKey | P24uRegKey, device
   }
 }
 
+// ═══════════════════ POS P2.8U ▸ fixture ออเดอร์ทุกช่องทาง + ขั้นตอนของสถานะ (มติ 7) ═══════════════════
+//   สร้างผ่านฟังก์ชันของโมดูลเท่านั้น (pos/order: ingestOrder · acceptOrder · markPreparing · markReady · handOver · rejectOrder · setChannelOrderSettings
+//   ในนามเจ้าของร้าน · pos/channel saveChannel สำหรับช่องทางโทรสั่ง) — ลบดิบได้เฉพาะตอนเก็บกวาด (แบบข้อสอบ)
+//   คีย์/เลขแพลตฟอร์มผูกรอบ (pid + เวลา) ⇒ รอบซ้ำ/รอบพร้อมกันไม่ชนกัน · กำลังเตรียม/พร้อม = ช่องทาง DIRECT เท่านั้น ·
+//   ⚠️ รับ PLATFORM 1 ใบต่อรอบ (LINE MAN → บิล PLATFORM จริง 1 ใบ) — ออเดอร์นั้น + บิลไม่ลบ (แบบบิลภาพ P2.1U) · ไม่มีการรับเงินใด ๆ
+const P28U = {
+  done: false,
+  error: null as string | null,
+  stamp: `${process.pid}-${Date.now().toString(36)}`,
+  seq: 0,
+  ids: [] as string[],
+  kept: [] as string[],
+  refs: {} as Record<string, string>,
+  orderIds: {} as Record<string, string>,
+  chat: "" as string,
+  phone: "" as string,
+  pausedBefore: undefined as string | null | undefined,
+  pausedOn: false,
+  log: [] as string[],
+  ok: true,
+};
+const p28uKey = () => `posqc-vis-p28u-${P28U.stamp}-${++P28U.seq}`;
+/** เลขแพลตฟอร์มของรอบ (≤ 40 · ไม่ซ้ำข้ามรอบ — ออเดอร์ที่เก็บไว้ของรอบก่อนยังถือเลขเดิม) */
+const p28uRef = (prefix: string) => `${prefix}-${(Date.now() % 100000).toString().padStart(5, "0")}${String(++P28U.seq).padStart(2, "0")}`;
+async function p28uCtx() {
+  return { ctx: { tenantId: T.tenantId, systemId: SYS, unitId }, actor: await memberActorOf("owner") };
+}
+async function p28uIngest(tag: string, input: Record<string, unknown>): Promise<string> {
+  const ord = await import("@/lib/modules/pos/order");
+  const { ctx, actor } = await p28uCtx();
+  const r = await ord.ingestOrder(ctx, actor, { idempotencyKey: p28uKey(), ...input });
+  if (!r.ok) throw new Error(`ingestOrder ${tag}: ${r.code} ${r.message ?? ""}`.slice(0, 200));
+  P28U.ids.push(r.orderId);
+  P28U.orderIds[tag] = r.orderId;
+  return r.orderId;
+}
+async function p28uStep(tag: string, fn: "acceptOrder" | "markPreparing" | "markReady" | "handOver", extra: Record<string, unknown> = {}): Promise<void> {
+  const ord = await import("@/lib/modules/pos/order");
+  const { ctx, actor } = await p28uCtx();
+  const id = P28U.orderIds[tag]!;
+  const r = await (ord[fn] as (c: unknown, a: unknown, i: unknown) => Promise<{ ok: boolean; code?: string }>)(ctx, actor, { id, ...extra });
+  if (!r.ok) throw new Error(`${fn} ${tag}: ${r.code}`);
+}
+async function ensureP28uFixture(): Promise<void> {
+  if (P28U.done || P28U.error) return;
+  try {
+    await ensureChannelFixture();
+    if (P21U.error) throw new Error(`ช่องทาง P2.1U: ${P21U.error}`);
+    if (!QC_IDS.amer || !QC_IDS.latte) throw new Error("ไม่พบอเมริกาโน่เย็น/ลาเต้ร้อนของร้าน QC (seed-pos-qc)");
+    const { listChannels, saveChannel } = await import("@/lib/modules/pos/channel");
+    const { ctx, actor } = await p28uCtx();
+    const l = await listChannels(ctx, actor, { includeArchived: true });
+    if (!l.ok) throw new Error(`listChannels: ${l.code}`);
+    const chat = l.items.find((c) => c.code === "CHAT");
+    if (!chat || chat.archived || !chat.active) throw new Error("ช่องทางแชท (CHAT) ของสาขา QC ไม่พร้อม (ปิด/เก็บแล้ว)");
+    P28U.chat = chat.id;
+    let phone = l.items.find((c) => c.code === P28U_PHONE.code);
+    if (phone?.archived) throw new Error(`ช่องทาง ${P28U_PHONE.code} ถูกเก็บแล้ว (ผู้คุมงานตัดสิน)`);
+    if (!phone) {
+      const r = await saveChannel(ctx, actor, { code: P28U_PHONE.code, name: P28U_PHONE.name, payout: "DIRECT", adapter: "MANUAL" });
+      if (!r.ok) throw new Error(`สร้างช่องทาง ${P28U_PHONE.code}: ${r.code}`);
+      phone = r.channel;
+      P28U.log.push(`สร้างช่องทาง ${P28U_PHONE.code}`);
+    } else if (!phone.active || phone.payout !== "DIRECT" || phone.adapter !== "MANUAL") {
+      const r = await saveChannel(ctx, actor, { id: phone.id, name: P28U_PHONE.name, active: true, payout: "DIRECT", adapter: "MANUAL" });
+      if (!r.ok) throw new Error(`แก้ช่องทาง ${P28U_PHONE.code}: ${r.code}`);
+    }
+    P28U.phone = phone.id;
+    const lm = P21U.ids.LINEMAN!;
+    const grab = P21U.ids.GRAB!;
+    const A = QC_IDS.amer;
+    const LT = QC_IDS.latte;
+    const cust = (name: string, phoneNo?: string) => ({ name, ...(phoneNo ? { phone: phoneNo } : {}) });
+    // กำลังเตรียม "เลยเวลา" ก่อน (เวลาเตรียม 1 นาที ⇒ เลยเมื่อผ่านไป > 1 นาที — orders-mixed รอได้)
+    P28U.refs.late = p28uRef("TEL");
+    await p28uIngest("late", { channelId: P28U.phone, externalRef: P28U.refs.late, lines: [{ productId: LT, qty: 2 }], customer: cust("คุณนิด (ภาพ QC)", "0891112222"), fulfilment: "PICKUP", startStatus: "ACCEPTED", paymentState: "UNPAID", prepMinutes: 1 });
+    await p28uStep("late", "markPreparing");
+    P28U.refs.prep = p28uRef("TEL");
+    await p28uIngest("prep", { channelId: P28U.phone, externalRef: P28U.refs.prep, lines: [{ productId: A, qty: 2 }, { productId: LT, qty: 1, note: "หวานน้อย" }], customer: cust("คุณมาลี (ภาพ QC)", "0893334444"), fulfilment: "PICKUP", startStatus: "ACCEPTED", paymentState: "UNPAID", prepMinutes: 30 });
+    await p28uStep("prep", "markPreparing");
+    P28U.refs.ready = p28uRef("TEL");
+    await p28uIngest("ready", { channelId: P28U.phone, externalRef: P28U.refs.ready, lines: [{ productId: A, qty: 1 }], customer: cust("คุณบอย (ภาพ QC)"), fulfilment: "DELIVERY", address: "ซอยสีลม 5 ชั้น 2 (ภาพ QC)", startStatus: "ACCEPTED", paymentState: "PAY_ON_PICKUP", prepMinutes: 15 });
+    await p28uStep("ready", "markPreparing");
+    await p28uStep("ready", "markReady");
+    // ⚠️ PLATFORM 1 ใบต่อรอบ: LINE MAN รับ → บิลจริง → เตรียม → พร้อม → ส่งมอบ (คอลัมน์เสร็จวันนี้) — ไม่ลบ
+    P28U.refs.done = p28uRef("LM");
+    await p28uIngest("done", { channelId: lm, externalRef: P28U.refs.done, lines: [{ productId: A, qty: 1 }, { productId: LT, qty: 1 }], customer: cust("คุณต้น (ภาพ QC)", "0815556666"), fulfilment: "DELIVERY", address: "อาคารสาทร (ภาพ QC)", startStatus: "NEW" });
+    await p28uStep("done", "acceptOrder", { prepMinutes: 10 });
+    await p28uStep("done", "markPreparing");
+    await p28uStep("done", "markReady");
+    await p28uStep("done", "handOver");
+    P28U.kept.push(P28U.orderIds.done!);
+    P28U.ids = P28U.ids.filter((x) => x !== P28U.orderIds.done);
+    // Grab ปฏิเสธ 1 ใบ (ท้ายคอลัมน์ "ยกเลิก/ปฏิเสธวันนี้")
+    P28U.refs.rejected = p28uRef("GF");
+    await p28uIngest("rejected", { channelId: grab, externalRef: P28U.refs.rejected, lines: [{ productId: A, qty: 1 }], customer: cust("คุณเจ (ภาพ QC)"), fulfilment: "DELIVERY", startStatus: "NEW" });
+    {
+      const ord = await import("@/lib/modules/pos/order");
+      const r = await ord.rejectOrder(ctx, actor, { id: P28U.orderIds.rejected!, reasonCode: "TOO_BUSY" });
+      if (!r.ok) throw new Error(`rejectOrder: ${r.code}`);
+    }
+    // ใหม่ 3 ใบ (ไม่รับ): LINE MAN (แผง PLATFORM · ค่าคอมฯ 30%) · Grab · แชทรอชำระ
+    P28U.refs.lm = p28uRef("LM");
+    await p28uIngest("lm", { channelId: lm, externalRef: P28U.refs.lm, lines: [{ productId: A, qty: 2 }, { productId: LT, qty: 1, note: "ร้อนมาก" }], customer: cust("คุณเอก (ภาพ QC)", "0812341234"), fulfilment: "DELIVERY", address: "ซอยศาลาแดง 2 · ตึก B (ภาพ QC)", note: "ไม่ใส่น้ำแข็ง · ขอหลอด", startStatus: "NEW" });
+    P28U.refs.grab = p28uRef("GF");
+    await p28uIngest("grab", { channelId: grab, externalRef: P28U.refs.grab, lines: [{ productId: LT, qty: 2 }], customer: cust("คุณมายด์ (ภาพ QC)", "0898765521"), fulfilment: "DELIVERY", startStatus: "NEW" });
+    await p28uIngest("chat", { channelId: P28U.chat, lines: [{ productId: A, qty: 1 }, { productId: LT, qty: 1 }], customer: cust("คุณแพร (ภาพ QC)"), fulfilment: "PICKUP", paymentState: "UNPAID" });
+    {
+      const ord = await import("@/lib/modules/pos/order");
+      const g = await ord.getOrder(ctx, actor, { id: P28U.orderIds.chat! });
+      P28U.refs.chat = g.ok ? g.order.ref : "";
+    }
+    P28U.done = true;
+    P28U.log.push(`สร้าง: ออเดอร์ ${P28U.ids.length + P28U.kept.length} (เก็บไว้ ${P28U.kept.length} = LINE MAN ${P28U.refs.done} + บิล PLATFORM)`);
+  } catch (e) {
+    P28U.error = e instanceof Error ? e.message.slice(0, 200) : String(e);
+  }
+}
+/** orders-new-late: Grab ใหม่ที่เหลือเวลารับ < 60 วิ — ใบเดิมใกล้หมด (< 8 วิ) หรือยังไม่มี = สร้างใบใหม่ (คีย์ใหม่) แล้วรอ */
+async function p28uLateOrder(): Promise<{ ref: string; receivedMs: number }> {
+  const ord = await import("@/lib/modules/pos/order");
+  const { ctx, actor } = await p28uCtx();
+  const cur = P28U.orderIds.newLate ? await ord.getOrder(ctx, actor, { id: P28U.orderIds.newLate }) : null;
+  if (cur && cur.ok && cur.order.status === "NEW" && (cur.order.acceptRemainingSec ?? 0) >= 8) return { ref: cur.order.ref, receivedMs: Date.parse(cur.order.receivedAt) };
+  const ref = p28uRef("GF");
+  await p28uIngest("newLate", { channelId: P21U.ids.GRAB!, externalRef: ref, lines: [{ productId: QC_IDS.amer, qty: 1 }], customer: { name: "คุณโอ๊ต (ภาพ QC)", phone: "0861239876" }, fulfilment: "DELIVERY", startStatus: "NEW" });
+  return { ref, receivedMs: Date.now() };
+}
+async function p28uPause(on: boolean): Promise<void> {
+  const ord = await import("@/lib/modules/pos/order");
+  const { ctx, actor } = await p28uCtx();
+  if (on) {
+    if (P28U.pausedOn) return;
+    const before = await prisma.salesChannel.findFirst({ where: { id: P28U.chat, tenantId: T.tenantId }, select: { pausedUntil: true } });
+    P28U.pausedBefore = before?.pausedUntil ? before.pausedUntil.toISOString() : null;
+    const r = await ord.setChannelOrderSettings(ctx, actor, { channelId: P28U.chat, pausedUntil: new Date(Date.now() + 30 * 60_000).toISOString() });
+    if (!r.ok) throw new StepError(`setChannelOrderSettings (ปิดรับแชท): ${r.code}`);
+    P28U.pausedOn = true;
+    return;
+  }
+  if (!P28U.pausedOn) return;
+  const back = P28U.pausedBefore && Date.parse(P28U.pausedBefore) > Date.now() ? P28U.pausedBefore : null;
+  const r = await ord.setChannelOrderSettings(ctx, actor, { channelId: P28U.chat, pausedUntil: back });
+  if (!r.ok) throw new Error(`คืนค่าปิดรับแชท: ${r.code}`);
+  P28U.pausedOn = false;
+  P28U.log.push("คืนค่าปิดรับแชท");
+}
+async function cleanupP28u(): Promise<void> {
+  try {
+    await p28uPause(false);
+  } catch (e) {
+    P28U.ok = false;
+    P28U.log.push(`คืนค่าปิดรับไม่สำเร็จ: ${e instanceof Error ? e.message.slice(0, 120) : String(e)}`);
+  }
+  const ids = [...new Set(P28U.ids)];
+  if (!ids.length) return;
+  try {
+    const tenantId = T.tenantId;
+    const sales = await prisma.posOrder.findMany({ where: { tenantId, id: { in: ids }, saleId: { not: null } }, select: { id: true } });
+    if (sales.length) throw new Error(`ออเดอร์ของรอบมีบิลแล้ว ${sales.length} ใบ (${sales.map((x) => x.id).join(",")}) — ไม่ลบ (ตรวจด้วยมือ)`);
+    const ev = (await prisma.posOrderEvent.deleteMany({ where: { tenantId, orderId: { in: ids } } })).count;
+    const ln = (await prisma.posOrderLine.deleteMany({ where: { tenantId, orderId: { in: ids } } })).count;
+    const ob = (await prisma.outboxEvent.deleteMany({ where: { tenantId, type: { startsWith: "pos.order." }, OR: ids.map((id) => ({ idempotencyKey: { endsWith: `#${id}` } })) } })).count;
+    const au = (await prisma.auditLog.deleteMany({ where: { tenantId, targetType: "PosOrder", targetId: { in: ids } } })).count;
+    const od = (await prisma.posOrder.deleteMany({ where: { tenantId, id: { in: ids } } })).count;
+    P28U.log.push(`ลบ: ออเดอร์ ${od} · บรรทัด ${ln} · เหตุการณ์ ${ev} · outbox ${ob} · audit ${au}`);
+    P28U.ids = [];
+    P28U.orderIds = {};
+    P28U.done = false;
+  } catch (e) {
+    P28U.ok = false;
+    P28U.log.push(`ลบไม่สำเร็จ: ${e instanceof Error ? e.message.slice(0, 160) : String(e)}`);
+  }
+}
+const p28uCleanupLine = () => `${P28U.ok ? "🧹" : "⚠️"} P2.8U: ${P28U.log.join(" · ")}${P28U.kept.length ? ` · เก็บไว้ (บิล PLATFORM): ${P28U.kept.join(",")}` : ""}`;
+async function runP28uState(page: Any, state: P28uOrdersKey | P28uRegKey, device: Device): Promise<void> {
+  if (state === "register-tab-badge") {
+    await visibleEl(page, tid("pos-reg-root"), 0, 15_000);
+    await ensureShift(page);
+    if (P28U.error) throw new StepError(`fixture P2.8U: ${P28U.error}`);
+    await visibleEl(page, tid("pos-reg-tab-online-orders"), 0, 10_000);
+    await visibleEl(page, tid("pos-reg-tab-orders-badge"), 0, 20_000).catch(() => {
+      throw new StepError("ป้ายนับออเดอร์ใหม่บนแท็บไม่ขึ้นภายใน 20 วิ");
+    });
+    return;
+  }
+  await visibleEl(page, tid("pos-ord-root"), 0, 15_000);
+  if (state === "orders-empty") {
+    await visibleEl(page, tid("pos-ord-empty"), 0, 20_000).catch(() => {
+      throw new StepError("สาขาอารีย์มีออเดอร์วันนี้ (ไม่ใช่สถานะว่าง)");
+    });
+    return;
+  }
+  if (P28U.error) throw new StepError(`fixture P2.8U: ${P28U.error}`);
+  const card = (k: string) => tid(`pos-ord-card-${P28U.refs[k]}`);
+  const openPanel = async (k: string) => {
+    if (device === "mobile" && k !== "lm" && k !== "grab") {
+      // มือถือ = ทีละคอลัมน์ — การ์ดที่ไม่ใช่ "ใหม่" อยู่คอลัมน์อื่น
+      await clickEl(page, tid("pos-ord-coltab-preparing"));
+    }
+    await clickEl(page, card(k));
+    await visibleEl(page, tid("pos-ord-panel"), 0, 15_000);
+    await page
+      .waitForFunction(() => Array.from(document.querySelectorAll('[data-testid="pos-ord-panel"]')).some((e) => e.getClientRects().length > 0 && e.getAttribute("data-status")), { timeout: 15_000 })
+      .catch(() => {
+        throw new StepError("แผงรายละเอียดไม่โหลด (getOrderAction)");
+      });
+  };
+  await visibleEl(page, card("lm"), 0, 20_000);
+  switch (state) {
+    case "orders-mixed": {
+      if (device === "mobile") {
+        await visibleEl(page, card("grab"), 0, 5_000);
+        await clickEl(page, tid("pos-ord-coltab-preparing"));
+        await visibleEl(page, card("prep"), 0, 5_000);
+      } else {
+        for (const k of ["grab", "late", "prep", "ready"]) await visibleEl(page, card(k), 0, 10_000);
+        await visibleEl(page, tid(`pos-ord-done-${P28U.refs.done}`), 0, 10_000);
+      }
+      // กำลังเตรียม "เลยเวลา" (เวลาเตรียม 1 นาที) — รอให้เลยจริง (≤ 90 วิ · ตัวนับเดินฝั่ง client)
+      await page
+        .waitForFunction((sel: string) => document.querySelector(sel)?.getAttribute("data-late") === "1", { timeout: 90_000 }, card("late"))
+        .catch(() => {
+          throw new StepError("การ์ด \"เลยเวลาเตรียม\" ไม่ขึ้นภายใน 90 วิ");
+        });
+      if (device === "desktop") await clickEl(page, card("lm"));
+      return;
+    }
+    case "orders-new-late": {
+      const sel = card("newLate");
+      await visibleEl(page, sel, 0, 20_000);
+      await page
+        .waitForFunction((s: string) => {
+          const n = Number(document.querySelector(s.replace("pos-ord-card-", "pos-ord-card-timer-"))?.getAttribute("data-left") ?? "999");
+          return n > 0 && n < 60;
+        }, { timeout: 75_000 }, sel)
+        .catch(() => {
+          throw new StepError("ตัวนับของออเดอร์ใหม่ไม่ลงต่ำกว่า 60 วิ ภายใน 75 วิ");
+        });
+      return;
+    }
+    case "orders-detail-platform":
+      await openPanel("lm");
+      await visibleEl(page, tid("pos-bill-commission"), 0, 10_000);
+      return;
+    case "orders-detail-direct-unpaid":
+      await openPanel("prep");
+      await visibleEl(page, tid("pos-ord-pay"), 0, 10_000);
+      return;
+    case "orders-paused-banner":
+      await visibleEl(page, tid("pos-ord-paused-CHAT"), 0, 20_000);
+      return;
+    case "orders-reject-sheet":
+      if (userKey === "owner") {
+        await clickEl(page, tid(`pos-ord-card-reject-${P28U.refs.lm}`));
+        await visibleEl(page, tid("pos-ord-reject-sheet"), 0, 10_000);
+      } else {
+        await openPanel("lm");
+        const off = await page.$eval(tid("pos-ord-accept"), (e: Element) => (e as HTMLButtonElement).disabled).catch(() => null);
+        if (off !== true) throw new StepError("แคชเชียร์: ปุ่มรับออเดอร์ในแผงไม่ได้ถูกปิด");
+      }
+      return;
+    case "orders-manual-sheet": {
+      await clickEl(page, tid("pos-ord-manual"));
+      await visibleEl(page, tid("pos-ord-manual-sheet"), 0, 10_000);
+      await visibleEl(page, tid(`pos-ord-man-product-${QC_IDS.amer}`), 0, 15_000);
+      await clickEl(page, tid(`pos-ord-man-product-${QC_IDS.amer}`));
+      await page
+        .waitForFunction(() => /\d/.test(document.querySelector('[data-testid="pos-ord-man-total"]')?.textContent ?? ""), { timeout: 15_000 })
+        .catch(() => {
+          throw new StepError("ยอดรายการ (quote ของช่องทาง) ไม่มา");
+        });
+      await page.type(tid("pos-ord-man-name"), "คุณทดสอบ (ภาพ QC)");
+      await page.type(tid("pos-ord-man-platform-total"), "1");
+      await visibleEl(page, tid("pos-ord-man-mismatch"), 0, 5_000);
+      return;
+    }
+    case "orders-pay-dialog":
+      await openPanel("prep");
+      await clickEl(page, tid("pos-ord-pay"));
+      await visibleEl(page, tid("pos-reg-paydlg"), 0, 15_000);
+      return;
+  }
+}
+
 // ═══════════════════ POS P2.3U ▸ fixture สูตร/วัตถุดิบ + ขั้นตอนของสถานะ (มติ 10) ═══════════════════
 //   วัตถุดิบ (InvItem) + กลุ่ม "ขนาด" + เมนูชั่วคราว = เขียนตรงด้วย prisma แบบ fixture P1.3 (สคริปต์ · F15.1 สแกนเฉพาะ src/) · ไอดี posqc-vis-<pid>-p23u-<รอบ>-* ·
 //   สูตร/ส่วนต่าง/สวิตช์ = catalog.setRecipe / setRecipeChoiceLines / setBomEnabled ในนามเจ้าของร้าน (ตัวเขียนจริงของ S) ·
@@ -4696,6 +5050,13 @@ try {
             console.log(P23U.error ? `  ⚠️ fixture P2.3U: ${P23U.error}` : `  fixture P2.3U: บิลค้างตัด ${P23U.pendingSale}`);
           }
         }
+        // POS P2.8U ▸ fixture ออเดอร์ก่อนงานแรกที่ใช้ · ออเดอร์ใกล้หมดเวลารับก่อน orders-new-late · ปิดรับแชทก่อน orders-paused-banner (พังไม่โยน) ◂
+        if (job.state && P28U_FIXTURE_STATES.has(job.state) && !P28U.done && !P28U.error) {
+          await ensureP28uFixture();
+          console.log(P28U.error ? `  ⚠️ fixture P2.8U: ${P28U.error}` : `  fixture P2.8U: ${P28U.log.join(" · ")}`);
+        }
+        if (job.state === "orders-new-late" && P28U.done) await p28uLateOrder().then((o) => (P28U.refs.newLate = o.ref)).catch((e: unknown) => (P28U.error = `ออเดอร์ใกล้หมดเวลารับ: ${e instanceof Error ? e.message.slice(0, 120) : String(e)}`));
+        if (job.state === "orders-paused-banner" && P28U.done) await p28uPause(true).catch((e: unknown) => console.error(`  ⚠️ ปิดรับแชทไม่สำเร็จ: ${e instanceof Error ? e.message : e}`));
         // POS P2.4U ▸ fixture โต๊ะก่อนงานแรกที่ใช้ (พังไม่โยน — สถานะตกพร้อมเหตุผล) ◂
         if (job.state && P24U_FIXTURE_STATES.has(job.state) && !P24U.done && !P24U.error) {
           await ensureP24uFixture();
@@ -4751,6 +5112,8 @@ try {
         }
         if (job.state === "register-empty-catalogue" && job === jobs.filter((j) => j.state === "register-empty-catalogue").at(-1)) await cleanupEmptyCatalogue(); // POS P1.18U
         if (job.state && P24U_FIXTURE_STATES.has(job.state) && job === jobs.filter((j) => j.state && P24U_FIXTURE_STATES.has(j.state)).at(-1)) await cleanupP24u(); // POS P2.4U
+        if (job.state === "orders-paused-banner" && job === jobs.filter((j) => j.state === "orders-paused-banner").at(-1)) await p28uPause(false).catch(() => undefined); // POS P2.8U
+        if (job.state && P28U_FIXTURE_STATES.has(job.state) && job === jobs.filter((j) => j.state && P28U_FIXTURE_STATES.has(j.state)).at(-1)) await cleanupP28u(); // POS P2.8U
         // POS P1.7U ▸ ใบที่ PAID แล้วต้องถูกใช้ในบิล (ไม่ทิ้งเงินเข้าไม่มีบิล) — พัง = ภาพนี้ตก ◂
         if (job.state === "paydlg-promptpay-paid" && !stepError) {
           await finishPaidIntentSale(page).catch((e: unknown) => {
@@ -4820,6 +5183,9 @@ try {
   await cleanupP24u(); // POS P2.4U (โซน/โต๊ะ/session/รอบ/คำขอ/จอง ของรอบนี้ที่ยังค้าง)
   if (P24U.log.length) console.error(p24uCleanupLine());
   if (!P24U.ok) failures++;
+  await cleanupP28u(); // POS P2.8U (ออเดอร์ของรอบที่ยังค้าง · คืนค่าปิดรับแชท)
+  if (P28U.log.length) console.error(p28uCleanupLine());
+  if (!P28U.ok) failures++;
   await cleanupP21u(); // POS P2.1U (บิลพัก LINE MAN ที่ยังค้าง)
   if (P21U.cleanup) console.error(`${P21U.cleanup.ok ? "🧹" : "⚠️"} ${P21U.cleanup.detail}`);
   if (P21U.cleanup && !P21U.cleanup.ok) failures++;
