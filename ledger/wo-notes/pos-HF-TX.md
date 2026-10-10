@@ -10,7 +10,8 @@ Branch `wip/pos-hf-tx` · base `session/pos` d85ea5c3 · tree `shark-pos-c` · b
 | 3 | 7e186c27 | register intent path + giftcard sell/reload switched · giftcard P2002 retry · P1.7 comment corrected |
 | 4 | 874cde70 | P2.4 table submit + P2.8 `orderCreateSale` switched · both local proxies deleted |
 | 5 | 3de80ed3 (+ this file) | owner lines (`POS-OWNER-PENDING.md`) · notes |
-| 6 | a140c628 | merge `origin/session/pos` eaae6ecd (ledger only — no src/scripts change) · gates |
+| 6 | a140c628 | merge `origin/session/pos` eaae6ecd (ledger only — no src/scripts change) · gates round 1 |
+| 6b | 6319bc34 | merge `origin/session/pos` 97cdf1c8 = MAIN-MERGE 0d581286 (origin/main 71a1f363 · 1011 files incl. `core/outbox.ts`, new `core/after-drain.ts`, `crm.prisma` +5) — clean, none of the HF files touched; `prisma generate` re-run · gates round 2 (final) |
 
 ## Per-site diff (file:line at head)
 - `src/lib/core/caller-tx.ts:15` — `callerTx` (new).
@@ -35,25 +36,23 @@ Branch `wip/pos-hf-tx` · base `session/pos` d85ea5c3 · tree `shark-pos-c` · b
 - `scripts/pos-sale-contract.json` unchanged (sha 7a418de1…). F15.2 green; its info line "createSale callers +1 order.ts" predates this HF (P2.8) and is not refreshed — ruling 4 pins the JSON.
 - P1.6 U4 registry unchanged (19 sites / 16 files, = qc-pos-p1.6 CALL_SITES; HT6.4).
 
-## Gates
-Run at a140c628 (merged head; src = 874cde70 + ledger only), QC4 via iso → qc4 → POS gate lock.
-
+## Gates (final — round 2 at 6319bc34, QC4 via iso → qc4 → POS gate lock)
 | gate | result |
 |---|---|
-| typecheck | 0 (at 874cde70; the merge changed no src/scripts) |
-| qc-hf-tx forced / unforced | 17/17 · 17/17 (plus an earlier unforced 17/17 at 3de80ed3) · residue 0 |
+| typecheck | 0 (at 6319bc34; first attempt timed out on the shared POS gate lock behind builds, re-queued) · DB gates ran twice at 6319bc34 with identical results |
+| qc-hf-tx forced / unforced | 17/17 · 17/17 · residue 0 |
 | qc-pos-p1.6 (U4 + F15.2) | 48/48 |
 | qc-pos-p1.7 | 32/32 |
-| qc-pos-p1.1 (lane rule 1d843e0c) | 177/178 — S2.33 red = pre-existing on session/pos since the P2.3U merge (`pos/catalog-recipe-actions.ts` imports inventory); fixed by the MAIN-MERGE lane (file rename, POS-RESUME :1309/:1320), not by this HF |
+| qc-pos-p1.1 (lane rule 1d843e0c) | 180/180 (round 1 on eaae6ecd: 177/178 — S2.33 pre-existing, fixed by MAIN-MERGE rename) |
 | qc-pos-p1.3 | 128/128 |
 | qc-pos-p2.3 | 46/46 |
 | qc-pos-p2.4 | 49/49 |
-| qc-pos-p2.8 | 59/60 — ST6 (PAR) red by design: it pins `register.ts`/`service.ts` sha to the P2.8 base or to the merge-base with origin/session/pos; HF-TX changes both on purpose (rulings 1/3). Turns green once HF-TX is merged into session/pos (merge-base moves). No behavioural check red |
+| qc-pos-p2.8 | 59/60 — ST6 (PAR) red by design: pins `register.ts`/`service.ts` sha to the P2.8 base or the merge-base with origin/session/pos; HF-TX changes both on purpose (rulings 1/3) ⇒ green once HF-TX is merged into session/pos. No behavioural check red |
 | qc-pos-p1.12 | 72/72 |
 | qc-pos-account | 16/16 |
-| fitness no-env / env | 41/41 · 41/41 |
-| fitness-pos | 8/8 (F15.2 green, contract JSON unchanged) |
-| qc-member-m2.6 / m2.7 / m2.8 (R14, run last) | crash at fixture `actorOf` (null membership.role) = QC4 member seed missing; pre-existing (POS-RESUME :476, :1311). Giftcard sell/reload covered by qc-hf-tx HT2 on its own tenant |
+| fitness no-env / env | 50/50 · 50/50 (round 1: 41/41 · 41/41) |
+| fitness-pos | 8/8 (F15.2 green · contract JSON unchanged) |
+| qc-member-m2.6 / m2.7 / m2.8 (R14, run last) | crash at fixture `actorOf` (null membership.role) = QC4 member seed missing; pre-existing (POS-RESUME :476, :1311 — MAIN-MERGE owner line). Giftcard sell/reload covered by qc-hf-tx HT2 on its own tenant |
 
 ## Follow-ups
 - Out-of-scope `"$transaction" in` helpers listed in `POS-OWNER-PENDING.md` (HF-TX · HT7 line) — HT7 fails if one is added/removed without updating the list.
