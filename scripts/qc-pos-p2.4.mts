@@ -1771,7 +1771,8 @@ async function runDb() {
       const line = ((await P.posSaleLine.findMany({ where: { saleId } }).catch(() => [])) as Any[]).find((l) => l.qty === 3);
       const s0 = await snapA("A7");
       const input = (amt: number): Any => ({ saleId, lines: [{ lineId: line?.id ?? "none", qty: 1, restock: false }], payMethods: [{ type: "CASH", amountSatang: amt }], reasonCode: "CHANGED_MIND", reason: "ลูกค้าเปลี่ยนใจ", idempotencyKey: newKey("rf") });
-      const probe = await call(refundMod, "refundSale", ctxA(DEV1), A("OWNER"), input(0));
+      // ORACLE-EDIT ผู้คุม 10 ต.ค. (P2.4 S fix 1 · มติ 2): probe 1 สตางค์ — 0 ถูกปฏิเสธ VALIDATION ที่ refund.ts:158 ก่อนถึงด่าน Σ (PAYMENT_MISMATCH พกยอดคืน)
+      const probe = await call(refundMod, "refundSale", ctxA(DEV1), A("OWNER"), input(1));
       const amt = Number(/ยอดคืน (\d+)/.exec(String(probe?.message ?? ""))?.[1] ?? NaN);
       const r = await call(refundMod, "refundSale", ctxA(DEV1), A("OWNER"), input(amt));
       if (r?.ok !== true) p.push(`refundSale → ${codeOf(r)} ${short(r?.message ?? "", 60)} (probe ${codeOf(probe)} ${amt})`);
