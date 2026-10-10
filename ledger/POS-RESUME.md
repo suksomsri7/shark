@@ -1243,3 +1243,8 @@
 - ภาพ: vis62 (`--state` P2.3U บน 0364d26a, chain61 กำลัง build ทรี d) ใช้ดู state ใหม่ · ถ่ายเต็มจุด merge บน head หลังแก้ (chain62)
 - ลำดับ P2.3U: fix1 → gates → chain62 (build head ใหม่ ทรี d + ถ่ายเต็ม) → ผู้คุมดูภาพ 06 ×6 th/en + register pending-cuts + settings-shark เทียบ mockup → merge → 25/55 → TG
 - เลน 3/3: P2.8 fix2 (b, กำลังรันด่าน) · P2.4 fix3 (c, กำลังรันด่าน) · P2.3U fix1 (p11)
+
+## 10 ต.ค. 05:5xZ — P2.4 fix3 ส่งแล้ว (29ea05d5 · code d4ecad76 · p2.4 46/46 ×3 · red-before 45/46 D7) → เปิด R3+hunter รวมคนเดียว (อ่านอย่างเดียว, ทรี c)
+- prompt: `pos-briefs/pos-prompt-accountB-P2.4-H.filled.md` (Part A = ตรวจ N1–N3 + ORACLE-EDIT 5fdb8da7 · Part B = ล่าเลนเงิน) → ผลลง `wo-notes/pos-P2.4-hunt.md`
+- ถ้า R3 OK + hunt ไม่มี Medium+ → merge `wip/pos-p2.4` → ด่าน merge (p1.1 CONTROLLER-RUN) → deploy p24 migration บน QC5 → P2.4U ต่อคิว
+- เลน 3/3: P2.8 fix2 (b) · P2.3U fix1 (p11) · P2.4 R3+H (c อ่าน)
