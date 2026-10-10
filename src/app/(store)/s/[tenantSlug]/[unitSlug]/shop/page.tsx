@@ -17,7 +17,7 @@ export default async function StoreShopPage({
   const resolved = await resolveUnit(tenantSlug, unitSlug);
   if (!resolved) notFound();
   const [products, branding] = await Promise.all([
-    listProducts({ tenantId: resolved.tenant.id, unitId: resolved.unit.id }, { activeOnly: true }),
+    listProducts({ tenantId: resolved.tenant.id, unitId: resolved.unit.id }, { activeOnly: true, storefront: true }), // POS P2.8 ▸ R9 ราคาหน้าเว็บ = ช่องทาง WEB (อ่านสองทาง) ◂
     getPublicBranding(resolved.tenant.id),
   ]);
   const accentStyle = publicThemeStyle(branding);
