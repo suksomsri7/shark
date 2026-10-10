@@ -124,6 +124,17 @@
 //   register: paydlg-platform (บิลพักที่มี channelId ของ LINE MAN · holdRegisterCart ต่อภาพ → เรียกคืน → ชำระ → ช่อง "แพลตฟอร์ม" เลือกไว้ · ไม่ยืนยัน ·
 //   บิลพักที่ยังค้างลบใน finally) ◂
 //
+// POS HF-P1CLOSE ▸ สถานะเพิ่มของ vis58 (มติผู้คุม O5/O6/O8/O9/O11 · --states):
+//   register: held-drawer (14B · พักบิลใหม่ต่อภาพด้วย holdRegisterCart → ลิ้นชัก "บิลที่พัก" · 390 = ใส่สินค้า 1 ชิ้นก่อนเปิดแผ่นตะกร้า
+//   เพราะมือถือเปิดแผ่นตะกร้าได้เมื่อมีรายการเท่านั้น · ที่ค้างทิ้งใน finally/signal ด้วย discardHeldCart) ·
+//   sale-done เพิ่ม 390 (th) · lock-screen-scroll (390 · 13B เลื่อนจอล็อกลงสุด → การ์ดพนักงาน/สลับพนักงาน/บิลพักต้องอยู่ในจอ · ภาพเท่าจอ ไม่ fullPage) ·
+//   paydlg-promptpay-timeout (19ค · ใบ PROMPTPAY_STATIC ของเครื่องรอบนี้ → เลื่อน expiresAt ของใบนั้นเป็นอดีต (แถวของรอบนี้เท่านั้น) →
+//   โพลของจอเขียน EXPIRED เอง (CD-E) → การ์ด "QR หมดอายุ" + ปุ่มสร้างใหม่)
+//   settings: paydone-print-failed (19ค · เครื่อง 2 สลับ printerConfig เป็น USB ด้วย updateDevice (เบราว์เซอร์นี้ไม่ได้จับคู่) → ขายเงินสด 1 บิล →
+//   พิมพ์ใบเสร็จ → NO_DEVICE = การ์ด "พิมพ์ไม่สำเร็จ" + ลองใหม่ + พิมพ์ผ่านเบราว์เซอร์ · คืน printerConfig เบราว์เซอร์ทันทีหลังการ์ดขึ้น)
+//   receipt-public: rpub-* ถ่าย 3 ขนาด (th + LOCALE=en) ยกเว้น rpub-issue-sent = 390 เท่านั้น (เขียนแถวแจ้งปัญหาจริง · เพดาน 3 แถว/บิล/วัน)
+//   `--list` = พิมพ์รายการหน้า + id สถานะทั้งหมด (ไม่ต่อ DB · ไม่ต้องมี <wo>) ◂
+//
 // 🔴 ไม่มีค่าปริยายของ base — ไม่ส่ง `--base`/`QC_BASE` = exit 2 · ต่อไม่ได้ = exit 2 · `:3215` = exit 2
 //    (พอร์ต 3215 เป็นของเซิร์ฟเวอร์ CRM RUN — LANE-RULES ข้อ 4 · ตั้ง POS_VISUAL_ALLOW_3215=1 เมื่อ CRM ปิดแล้วเท่านั้น)
 // 🔴 ชื่อไฟล์จงใจไม่ขึ้นต้น qc- (ต้องมีเซิร์ฟเวอร์ + chromium — ไม่เข้า qc:all)
@@ -141,7 +152,9 @@ type Any = any;
 const argv = process.argv.slice(2);
 const flag = (name: string): string | null => (argv.includes(name) ? (argv[argv.indexOf(name) + 1] ?? null) : null);
 const DRY = argv.includes("--dry");
-const WO = argv[0] && !argv[0].startsWith("--") ? argv[0] : null;
+// POS HF-P1CLOSE ▸ --list ไม่ต้องมี <wo> (ใช้ชื่อ "list" ผ่านด่านตรวจชื่อเดิม) ◂
+const LIST = argv.includes("--list");
+const WO = argv[0] && !argv[0].startsWith("--") ? argv[0] : LIST ? "list" : null;
 const USERS = ["owner", "cashier"] as const;
 type UserKey = (typeof USERS)[number];
 const userKey = (flag("--user") ?? "owner") as UserKey;
@@ -197,7 +210,7 @@ const fileOf = (p: PosPage, w: number, h: number) => `${OUT}/${p}-${userKey}-${w
 const STATES_ON = /^p1\.3/i.test(WO) || argv.includes("--states");
 const LOCALE_EN = process.env.LOCALE === "en";
 type Device = (typeof POS_VIEWPORTS)[number]["name"];
-type StateKey = "paydlg-platform" | "register-en" | "register-empty-catalogue" | "default" | "cart3" | "cart4-01" | "line-editor" | "bill-discount" | "custom-item" | "paydlg-cash" | "paydlg-promptpay-qr" | "paydlg-promptpay-paid" | "paydlg-card-edc" | "sale-done" | "search-empty" | "stock-warn" | "offline" | "mobile-sheet" | "options-popover" | "weigh" | "taxinvoice-dialog" | "taxinvoice-set" | MemberStateKey | P115StateKey | StockStateKey | ShiftsStateKey | BillsStateKey | SettingsStateKey | RpubStateKey;
+type StateKey = "held-drawer" | "paydlg-promptpay-timeout" | "paydlg-platform" | "register-en" | "register-empty-catalogue" | "default" | "cart3" | "cart4-01" | "line-editor" | "bill-discount" | "custom-item" | "paydlg-cash" | "paydlg-promptpay-qr" | "paydlg-promptpay-paid" | "paydlg-card-edc" | "sale-done" | "search-empty" | "stock-warn" | "offline" | "mobile-sheet" | "options-popover" | "weigh" | "taxinvoice-dialog" | "taxinvoice-set" | MemberStateKey | P115StateKey | StockStateKey | ShiftsStateKey | BillsStateKey | SettingsStateKey | RpubStateKey;
 const STATE_PLAN: { key: StateKey; devices: readonly Device[]; note: string }[] = [
   { key: "default", devices: ["desktop", "ipad", "mobile"], note: "เปิดหน้า (ตะกร้าว่าง) — การ์ดเหลือน้อย/หมด/ปิดขายของ fixture อยู่ในกริด" },
   { key: "cart3", devices: ["desktop", "ipad", "mobile"], note: "อเมริกาโน่×2 · ลาเต้ (ลด ฿10) · ครัวซองต์ (สต็อก N → N−1)" },
@@ -211,8 +224,10 @@ const STATE_PLAN: { key: StateKey; devices: readonly Device[]; note: string }[] 
   // POS P1.7U ▸ ภาพ 02 แผงขวา: ใบขอรับเงิน (QR ล็อกยอด · ยืนยันเอง · บัตรแบบ EDC เมื่อ Beam ปิด) ◂
   { key: "paydlg-promptpay-qr", devices: ["desktop", "ipad", "mobile"], note: "cart3 + ชำระ → พร้อมเพย์ = ใบ PROMPTPAY_STATIC (QR ล็อกยอด · นับถอยหลัง · ปุ่มยืนยันเอง)" },
   { key: "paydlg-promptpay-paid", devices: ["desktop", "mobile"], note: "⚠️ ใบ STATIC → ยืนยันเอง → ✓ เงินเข้าแล้ว (หลังถ่ายกดยืนยันรับเงิน = บิลขายจริง 1 ใบ ใช้ใบนั้น)" },
+  // POS HF-P1CLOSE ▸ มติ O11 (19ค): ใบ STATIC ของรอบนี้หมดเวลา (expiresAt อดีต) → โพลเขียน EXPIRED → การ์ด "QR หมดอายุ" + สร้างใหม่ ◂
+  { key: "paydlg-promptpay-timeout", devices: ["desktop", "ipad", "mobile"], note: "cart3 + ชำระ → พร้อมเพย์ (PENDING) → เลื่อน expiresAt ของใบรอบนี้เป็นอดีต → การ์ด \"QR หมดอายุ\" + ปุ่มสร้างใหม่" },
   { key: "paydlg-card-edc", devices: ["desktop", "ipad", "mobile"], note: "cart3 + ชำระ → บัตร (Beam ปิด) = EDC · ใส่เลขอ้างอิง" },
-  { key: "sale-done", devices: ["desktop"], note: "⚠️ ขายจริง 1 บิล (อเมริกาโน่×2 + ลาเต้ · เงินสด) → ขายสำเร็จ" },
+  { key: "sale-done", devices: ["desktop", "mobile"], note: "⚠️ ขายจริง 1 บิลต่อภาพ (อเมริกาโน่×2 + ลาเต้ · เงินสด) → ขายสำเร็จ · HF-P1CLOSE: + 390 (มติ O9)" },
   { key: "search-empty", devices: ["desktop", "ipad", "mobile"], note: "ค้นคำที่ไม่มี → กล่องไม่พบ" },
   { key: "stock-warn", devices: ["desktop", "ipad", "mobile"], note: "สินค้าเหลือ 2 ×3 → กล่องเตือนสต็อกในบรรทัด (19ฉ)" },
   // B2.5 (ภาพ 19ง): ออฟไลน์ = puppeteer setOfflineMode → แถบดำ + ปุ่มชำระปิด
@@ -234,6 +249,8 @@ const STATE_PLAN: { key: StateKey; devices: readonly Device[]; note: string }[] 
   { key: "sale-done-member", devices: ["desktop"], note: "⚠️ ขายจริง 1 บิลผูกสมาชิก QC (อเมริกาโน่×2 + ลาเต้ · เงินสด) → 02b ช่องแต้มที่ได้รับ" },
   // POS P1.15U ▸ ภาพ 13B / 21B + แผ่นส่วนลดเกินสิทธิ์ (ข้อมูล: seedP115Once · ลบ/คืนค่าใน finally) ◂
   { key: "lock-screen", devices: ["desktop", "ipad", "mobile"], note: "13B: กดล็อก → จอล็อก (ผู้ใช้รอบนี้ · ล็อกเมื่อ HH:MM) + จุด 3 ดวง · ขวา: พนักงาน 2 คน + บิลที่พัก 1 ใบ" },
+  // POS HF-P1CLOSE ▸ มติ O5: 13B ที่ 390 เลื่อนถึงการ์ดพนักงาน / สลับพนักงาน / บิลพัก (ตรวจตำแหน่งหลังเลื่อน · ภาพเท่าจอ) ◂
+  { key: "lock-screen-scroll", devices: ["mobile"], note: "13B 390: กดล็อก → เลื่อนจอล็อกลงสุด → ปุ่มสลับพนักงาน + การ์ดบิลพักอยู่ในจอ (scrollHeight > clientHeight) · ภาพเท่าจอ" },
   { key: "lock-pin-locked", devices: ["desktop"], note: "แถว PIN ของผู้ใช้รอบนี้ถูกล็อก → ใส่ PIN ถูก → \"ล็อกชั่วคราว 15 นาที\" + ปุ่มผู้จัดการปลดล็อก" },
   { key: "staff-switch", devices: ["desktop", "ipad", "mobile"], note: "จอล็อก → แตะการ์ดอีกคน → แป้น PIN ของคนนั้น (ยังไม่ใส่ครบ)" },
   { key: "discount-over-sheet", devices: ["desktop", "ipad", "mobile"], note: "โทเคนแคชเชียร์ · cart3 + ส่วนลดท้ายบิล 20% (> เพดาน 10%) → แผ่นส่วนลดเกินสิทธิ์" },
@@ -242,13 +259,15 @@ const STATE_PLAN: { key: StateKey; devices: readonly Device[]; note: string }[] 
   { key: "register-en", devices: ["desktop", "ipad", "mobile"], note: "แตะ EN ที่ตัวสลับภาษาแถบบน (md+) → ทั้งจอภาษาอังกฤษ · 390 = คุกกี้ LOCALE=en (ไม่มีตัวสลับในหัว 05ก) · หลังถ่ายคืนภาษาไทย" },
   { key: "register-empty-catalogue", devices: ["desktop", "ipad", "mobile"], note: "ภาพ 19ก: สาขา fixture ของระบบ POS ที่ไม่มีสินค้า → ไอคอน + \"ยังไม่มีสินค้าให้ขาย\" + ปุ่มเพิ่มสินค้า (เจ้าของเท่านั้น)" },
   // POS P2.1U ▸ มติ 6: ช่อง "แพลตฟอร์ม" ที่จอชำระ — ถึงได้ทางบิลพักที่มี channelId เท่านั้น (ไม่มีตัวเลือกช่องทางบนจอ Q3) ◂
+  // POS HF-P1CLOSE ▸ มติ O6 (14B): บิลพักใหม่ต่อภาพ (holdRegisterCart) → ลิ้นชักบิลที่พัก ◂
+  { key: "held-drawer", devices: ["desktop", "ipad", "mobile"], note: "พักบิล 1 ใบ (holdRegisterCart อเมริกาโน่×2 + ลาเต้ · ทิ้งใน finally) → ปุ่มบิลที่พัก → ลิ้นชัก 14B (390 = ใส่สินค้า 1 ชิ้น → แผ่นตะกร้า → บิลที่พัก)" },
   { key: "paydlg-platform", devices: ["desktop", "ipad"], note: "บิลพัก LINE MAN (holdRegisterCart + channelId) → บิลที่พัก → เรียกคืน → ชำระ → ช่อง \"แพลตฟอร์ม\" เลือกไว้เต็มยอด ช่องอื่นปิด (ไม่ยืนยัน)" },
 ];
 /** POS P1.18U ▸ สถานะหน้าขายที่แคชเชียร์ QC ถ่ายไม่ได้ (เข้าสาขา fixture ไม่ได้ · ห้ามแก้ membership ของ seed) ◂ */
 const OWNER_ONLY_STATES: ReadonlySet<string> = new Set(["register-empty-catalogue"]);
 type MemberStateKey = "member-panel" | "member-register" | "member-attached" | "paydlg-member-points" | "paydlg-member-capped" | "sale-done-member";
-type P115StateKey = "lock-screen" | "lock-pin-locked" | "staff-switch" | "discount-over-sheet" | "approval-wait";
-const P115_STATE_KEYS: ReadonlySet<string> = new Set<string>(["lock-screen", "lock-pin-locked", "staff-switch", "discount-over-sheet", "approval-wait"]);
+type P115StateKey = "lock-screen" | "lock-screen-scroll" | "lock-pin-locked" | "staff-switch" | "discount-over-sheet" | "approval-wait";
+const P115_STATE_KEYS: ReadonlySet<string> = new Set<string>(["lock-screen", "lock-screen-scroll", "lock-pin-locked", "staff-switch", "discount-over-sheet", "approval-wait"]);
 // POS P1.14 U ▸ สถานะของหน้าสต็อก (ลำดับสำคัญ: default ก่อนเปิดรอบ · count-open รอบแรกเปิด+บันทึก · ที่เหลือใช้รอบเดิม) ◂
 type StockStateKey = "stock-default" | "stock-count-open" | "stock-count-confirm" | "stock-receive" | "stock-adjust";
 const STOCK_STATE_PLAN: { key: StockStateKey; tab: string | null; devices: readonly Device[]; note: string }[] = [
@@ -282,7 +301,9 @@ const BILLS_STATE_PLAN: { key: BillsStateKey; devices: readonly Device[]; note: 
   { key: "bills-drawer-commission", devices: ["desktop", "ipad", "mobile"], note: "แตะบิล LINE MAN → ลิ้นชัก: บล็อกค่าคอมฯ ฿420 −฿126 รับจริง ฿294 (เจ้าของ) · แคชเชียร์ = บรรทัดช่องทางอย่างเดียว" },
 ];
 // POS P1.10 U ▸ สถานะของหน้าตั้งค่า (เครื่อง QC 2 เครื่องลงทะเบียนครั้งเดียวก่อนเปิด chromium · ไม่กดยืนยันเพิกถอน/ไม่กดพิมพ์) ◂
-type SettingsStateKey = "settings-receipt" | "settings-payments" | "settings-devices" | "settings-device-revoke" | "settings-print-pair" | "paydone-print" | P118uSettingsKey;
+type SettingsStateKey = "settings-receipt" | "settings-payments" | "settings-devices" | "settings-device-revoke" | "settings-print-pair" | "paydone-print" | "paydone-print-failed" | P118uSettingsKey;
+/** POS HF-P1CLOSE ▸ สถานะจอสำเร็จบนเครื่อง 2 (หน้าขาย · กะของเครื่อง 2) ◂ */
+const isPaydoneState = (k: string | null | undefined): boolean => k === "paydone-print" || k === "paydone-print-failed";
 // POS P1.18U ▸ แท็บตั้งค่าที่เหลือ 5 แท็บ + กล่อง PIN · ยืนยันปิดบัญชี · ลิ้นชักประวัติ ◂
 type P118uSettingsKey = "settings-general" | "settings-staff" | "settings-staff-pin" | "settings-shark" | "settings-shark-account-off" | "settings-history" | "settings-channels" | "settings-offline" | P21uSettingsKey;
 // POS P2.1U ▸ มติ 8: แท็บช่องทางขาย (ลิ้นชัก LINE MAN · โหมดสร้าง · แคชเชียร์อ่านอย่างเดียว) ◂
@@ -294,6 +315,8 @@ const SETTINGS_STATE_PLAN: { key: SettingsStateKey; devices: readonly Device[]; 
   { key: "settings-device-revoke", devices: ["desktop", "ipad", "mobile"], note: "เลือกเครื่อง 2 → กล่องยืนยันเพิกถอน (ไม่กดยืนยัน)" },
   { key: "settings-print-pair", devices: ["desktop", "ipad", "mobile"], note: "เครื่อง 1 (เบราว์เซอร์นี้) → กล่องเลือกเครื่องพิมพ์ = \"เบราว์เซอร์นี้ไม่รองรับ\" (ซ่อน navigator.usb)" },
   { key: "paydone-print", devices: ["desktop"], note: "⚠️ ขายจริง 1 บิลบนเครื่อง 2 (พิมพ์ผ่านเบราว์เซอร์) → จอสำเร็จ + ปุ่มพิมพ์ใบเสร็จ/สำเนา" },
+  // POS HF-P1CLOSE ▸ มติ O11 (19ค): ต้องอยู่หลัง paydone-print (สลับ printerConfig ของเครื่อง 2 ชั่วคราว) ◂
+  { key: "paydone-print-failed", devices: ["desktop"], note: "⚠️ เครื่อง 2 → USB (ไม่ได้จับคู่ในเบราว์เซอร์นี้) · ขายจริง 1 บิล → พิมพ์ใบเสร็จ → การ์ด \"พิมพ์ไม่สำเร็จ\" + ลองใหม่ + พิมพ์ผ่านเบราว์เซอร์ · คืนค่าเบราว์เซอร์ทันที" },
   { key: "settings-general", devices: ["desktop", "ipad", "mobile"], note: "P1.18U ทั่วไป: หน้าขาย · กะและลิ้นชัก · รายงาน · สต็อกของสาขา · บาร์โค้ดชั่ง · พร้อมเพย์สาขา · ค่าบริการ · ภาษาของแอป (แคชเชียร์ = อ่านอย่างเดียว ไม่มีปุ่มบันทึก)" },
   { key: "settings-staff", devices: ["desktop", "ipad", "mobile"], note: "P1.18U 17C พนักงานและสิทธิ์: ตารางสิทธิ์ · นโยบายอนุมัติ · พนักงานและ PIN (แคชเชียร์ = การ์ดปฏิเสธ)" },
   { key: "settings-staff-pin", devices: ["desktop", "ipad", "mobile"], note: "P1.18U 17C → ตั้ง/เปลี่ยน PIN ของแถวแรก → กล่อง PIN ใส่ 3 หลัก (ไม่ส่ง) · แคชเชียร์ = การ์ดปฏิเสธ" },
@@ -385,20 +408,23 @@ const billsStatesOn = STATES_ON && tenantKey === "coffee" && (onlyPage === "sale
 // สถานะหน้าตั้งค่าเฉพาะ --page settings หรือ wo p1.10u* (รอบ --states ทุกหน้าเดิมไม่ลงทะเบียนเครื่อง/ไม่ขายเพิ่ม)
 const settingsStatesOn = STATES_ON && tenantKey === "coffee" && (onlyPage === "settings" || /^p1\.10u/i.test(WO) || /^p1\.?18u/i.test(WO));
 const settingsPath = (st: SettingsStateKey) =>
-  st === "paydone-print"
+  isPaydoneState(st)
     ? `/app/sys/${SYS}/pos/register?unit=${encodeURIComponent(unitId)}`
     : isP118uSettings(st)
     ? `/app/sys/${SYS}/pos/settings?tab=${P118U_SETTINGS_TAB[st]}&unit=${encodeURIComponent(unitId)}`
     : `/app/sys/${SYS}/pos/settings?tab=${st === "settings-receipt" ? "receipt" : st === "settings-payments" ? "payments" : "devices"}&unit=${encodeURIComponent(unitId)}`;
 const billsPath = (st: BillsStateKey) => `/app/sys/${SYS}/pos/sales?unit=${encodeURIComponent(unitId)}${st === "bills-empty" ? `&date=${BILLS_EMPTY_DATE}` : ""}`;
-// POS P1.11U ▸ หน้าใบเสร็จออนไลน์: ร้าน coffee เท่านั้น (ร้านอื่น = ข้ามหน้า) · 390×844 เสมอ (LOCALE=en ⇒ ?lang=en) · path จริงรู้หลังสร้างบิล (rpubPath) ◂
+// POS P1.11U ▸ หน้าใบเสร็จออนไลน์: ร้าน coffee เท่านั้น (ร้านอื่น = ข้ามหน้า) · LOCALE=en ⇒ ?lang=en · path จริงรู้หลังสร้างบิล (rpubPath) ◂
+// POS HF-P1CLOSE ▸ มติ O8: 3 ขนาดทั้ง th/en (เดิม 390 เท่านั้น) · rpub-issue-sent คง 390 (RPUB_VIEWPORT · เขียนแถวแจ้งปัญหาจริง) ◂
 const RPUB_VIEWPORT = POS_VIEWPORTS.find((v) => v.name === "mobile")!;
 const rpubOn = tenantKey === "coffee" && pages.includes("receipt-public");
 const rpubPlan = RPUB_STATE_PLAN.filter((st) => STATES_ON || st.key === "rpub-paid");
 const jobs: Job[] = pages.flatMap((p: PosPage): Job[] =>
   p === "receipt-public"
     ? rpubOn
-      ? rpubPlan.map((st): Job => ({ page: p, v: RPUB_VIEWPORT, state: st.key, expect: st.expect, path: `/r/${st.bill === "none" ? RPUB_MISSING_TOKEN : `<token:${st.bill}>`}${LOCALE_EN ? "?lang=en" : ""}`, file: `${OUT}/${p}-${st.key.replace(/^rpub-/, "")}-${userKey}-${RPUB_VIEWPORT.w}x${RPUB_VIEWPORT.h}${LOCALE_EN ? "-en" : ""}.png` }))
+      ? rpubPlan.flatMap((st): Job[] =>
+          (st.key === "rpub-issue-sent" ? [RPUB_VIEWPORT] : [...POS_VIEWPORTS]).map((v): Job => ({ page: p, v, state: st.key, expect: st.expect, path: `/r/${st.bill === "none" ? RPUB_MISSING_TOKEN : `<token:${st.bill}>`}${LOCALE_EN ? "?lang=en" : ""}`, file: `${OUT}/${p}-${st.key.replace(/^rpub-/, "")}-${userKey}-${v.w}x${v.h}${LOCALE_EN ? "-en" : ""}.png` })),
+        )
       : []
     : settingsStatesOn && p === "settings"
     ? SETTINGS_STATE_PLAN.filter((st) => !(userKey === "owner" ? CASHIER_ONLY_SETTINGS : OWNER_ONLY_SETTINGS).has(st.key)).flatMap((st): Job[] =>
@@ -436,6 +462,27 @@ const needFixtures = STATES_ON && tenantKey === "coffee" && jobs.some((j) => j.s
 if (STATES_ON && tenantKey !== "coffee" && pages.includes("register")) die("สถานะหน้าขาย P1.3 ถ่ายได้เฉพาะ --tenant coffee (มี PromptPay + สินค้าตายตัวที่ขั้นตอนใช้)");
 // ◂
 
+// ═══════════════════ POS HF-P1CLOSE ▸ --list: หน้า + id สถานะทั้งหมด (ไม่ต่อ DB · ไม่เปิด chromium) ═══════════════════
+if (LIST) {
+  const row = (k: string, d: readonly string[] | string, n: string) => console.log(`  · ${k.padEnd(28)} ${(Array.isArray(d) ? d.join("/") : d).padEnd(20)} ${n}`);
+  console.log(`หน้า (POS_PAGES): ${POS_PAGES.join(" · ")}`);
+  console.log("register (--states):");
+  for (const st of STATE_PLAN) row(st.key, st.devices, st.note);
+  console.log("stock (--page stock --states):");
+  for (const st of STOCK_STATE_PLAN) row(st.key, st.devices, st.note);
+  console.log("shifts (--page shifts --states):");
+  for (const st of SHIFTS_STATE_PLAN) row(st.key, st.devices, st.note);
+  console.log("sales (--page sales --states):");
+  for (const st of BILLS_STATE_PLAN) row(st.key, st.devices, st.note);
+  console.log("settings (--page settings --states):");
+  for (const st of SETTINGS_STATE_PLAN) row(st.key, st.devices, st.note);
+  console.log("receipt-public (--page receipt-public · ไม่ส่ง --states = rpub-paid):");
+  for (const st of RPUB_STATE_PLAN) row(st.key, st.key === "rpub-issue-sent" ? "mobile" : POS_VIEWPORTS.map((v) => v.name), `คาด ${st.expect} · ${st.note}`);
+  const ids = [STATE_PLAN, STOCK_STATE_PLAN, SHIFTS_STATE_PLAN, BILLS_STATE_PLAN, SETTINGS_STATE_PLAN, RPUB_STATE_PLAN].flatMap((pl) => pl.map((x) => x.key));
+  console.log(`JSON_SUMMARY ${JSON.stringify({ list: true, pages: POS_PAGES, states: ids.length, ids })}`);
+  process.exit(0);
+}
+
 // ═══════════════════ 2. --dry: แผนการถ่าย (ไม่แตะอะไรเลย) ═══════════════════
 const BASE_RAW = flag("--base") ?? process.env.QC_BASE ?? "";
 if (DRY) {
@@ -460,7 +507,7 @@ if (DRY) {
         console.log(`  HF-VIS-SHIFTS: ข้อมูล P1.15U (เครื่อง ${DEVICE_ID} · PIN 6 หลักสุ่ม · บิลพัก 1 ใบ — คืนค่า/ลบใน finally) + เครื่อง ${SHIFTS_DEVICE_ID} (registerDevice · เพิกถอนใน finally) + โทเคนผู้ขายของเครื่องนั้นก่อนขายบิลของกะ`);
     }
     if (rpubOn && STATES_ON) {
-      console.log(`สถานะหน้าใบเสร็จออนไลน์ P1.11U (สาธารณะ · 390×844 · เครื่อง ${RPUB_DEVICE_ID}):`);
+      console.log(`สถานะหน้าใบเสร็จออนไลน์ P1.11U (สาธารณะ · 3 ขนาด · issue-sent 390 · เครื่อง ${RPUB_DEVICE_ID}):`);
       for (const st of RPUB_STATE_PLAN) console.log(`  · ${st.key.padEnd(22)} คาด ${st.expect} ${st.note}`);
       console.log("  เขียน: ชุดบิลของวันนี้ครบ = ไม่เขียนบิล/กะ · ขาด = กะ 1 กะ (ปิดใน finally) + บิลที่ขาด (สูงสุด 3 ใบ + ใบคืน 1) · แจ้งปัญหา 1 แถว (ลบใน finally พร้อม OutboxEvent · การ์ดบอร์ดงาน = เก็บเข้าคลัง)");
     }
@@ -490,6 +537,12 @@ if (DRY) {
       );
     if (billsStatesOn && pages.includes("sales") && jobs.some((j) => j.state === "bills-channels" || j.state === "bills-drawer-commission"))
       console.log(`  P2.1U: บิลช่องทางของวันนี้ 2 ใบ (createSale คีย์ต่อรอบ posqc-vis-p21u-<pid>-<n>-web|lineman · เจ้าของ = สร้างคู่ใหม่ทุกรอบ · แคชเชียร์ = ใช้คู่ล่าสุดของวันนี้ (${P21U_REF} + แท็กภาพบิล) ซ้ำเมื่ออยู่หน้าแรก ไม่งั้นสร้าง · ยืนยันหน้าแรกด้วย billsPageData · ไม่ลบ): เว็บร้าน ฿235 PROMPTPAY · LINE MAN ฿420 PLATFORM ${P21U_REF}`);
+    if (pages.includes("register") && jobs.some((j) => j.state === "held-drawer"))
+      console.log("  HF-P1CLOSE: held-drawer พักบิลใหม่ต่อภาพ (holdRegisterCart อเมริกาโน่×2 + ลาเต้ \"โต๊ะ 4 (ภาพ QC)\") · ที่ค้างทิ้งใน finally/signal (discardHeldCart)");
+    if (pages.includes("register") && jobs.some((j) => j.state === "paydlg-promptpay-timeout"))
+      console.log("  HF-P1CLOSE: paydlg-promptpay-timeout เลื่อน expiresAt ของใบ PENDING ล่าสุดของเครื่องรอบนี้เป็นอดีต (แถวของรอบนี้ · ไม่แตะใบอื่น)");
+    if (settingsStatesOn && jobs.some((j) => j.state === "paydone-print-failed"))
+      console.log("  HF-P1CLOSE: paydone-print-failed สลับ printerConfig เครื่อง 2 เป็น USB (updateDevice) · ขายเงินสด 1 บิล · คืนค่าปริยาย (null) ทันทีหลังการ์ดขึ้น");
     if (pages.includes("register") && jobs.some((j) => j.state === "paydlg-platform"))
       console.log("  P2.1U: paydlg-platform พักบิล LINE MAN (holdRegisterCart + channelId) ใหม่ต่อภาพ → เรียกคืนผ่าน UI · ที่ค้างทิ้งใน finally (discardHeldCart)");
     if (needFixtures) console.log(`  fixture: สินค้าชั่วคราว 11 ตัว (เหลือ 2 · หมดสต็อก · ปิดขาย + 4 ตัวของภาพ 01 + ลาเต้มีตัวแปร 1+2 + สินค้าชั่ง 1) + กลุ่มตัวเลือก 4 กลุ่ม ที่สาขา ${unitKey} — ลบใน finally`);
@@ -716,6 +769,13 @@ for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
         if (P21U.cleanup) console.error(`${P21U.cleanup.ok ? "🧹" : "⚠️"} ${P21U.cleanup.detail}`);
       } catch (e) {
         console.error(`❌ ทิ้งบิลพัก P2.1U ไม่สำเร็จ: ${e instanceof Error ? e.message : e}`);
+      }
+      // POS HF-P1CLOSE: ทิ้งบิลพักของ held-drawer ที่ยังค้าง (เหมือน finally)
+      try {
+        await cleanupHfP1();
+        if (HFP1.cleanup) console.error(`${HFP1.cleanup.ok ? "🧹" : "⚠️"} ${HFP1.cleanup.detail}`);
+      } catch (e) {
+        console.error(`❌ ทิ้งบิลพัก HF-P1CLOSE ไม่สำเร็จ: ${e instanceof Error ? e.message : e}`);
       }
       // POS P1.15U: ลบคำขอ/กติกา · ทิ้งบิลพัก · คืนแถว PIN · เพิกถอนเครื่อง (เหมือน finally)
       try {
@@ -1092,6 +1152,26 @@ async function runP115State(page: Any, state: StateKey, device: Device): Promise
     await clickPinDigits(page, "123"); // จุด 3 ดวง (ยังไม่ครบ 6 = ไม่ส่ง)
     return;
   }
+  // POS HF-P1CLOSE ▸ มติ O5: จอล็อกที่ 390 ต้องเลื่อนถึงปุ่มสลับพนักงาน + การ์ดบิลพัก (ตรวจตำแหน่งจริงหลังเลื่อน) ◂
+  if (state === "lock-screen-scroll") {
+    await lockFromRegister(page, device);
+    const m = (await page.$eval(tid("pos-lock-screen"), (el: Element) => {
+      el.scrollTop = el.scrollHeight;
+      return { sh: el.scrollHeight, ch: el.clientHeight, top: el.scrollTop };
+    })) as { sh: number; ch: number; top: number };
+    await new Promise((r) => setTimeout(r, 300));
+    const inView = async (id: string) =>
+      (await page.$eval(tid(id), (el: Element) => {
+        const r = el.getBoundingClientRect();
+        return r.height > 0 && r.top >= 0 && r.bottom <= window.innerHeight;
+      }).catch(() => null)) as boolean | null;
+    const sw = await inView("pos-staff-switch");
+    const held = P115.heldId ? await inView("pos-staff-held") : true;
+    if (!(m.sh > m.ch && m.top > 0) || !sw || !held)
+      throw new StepError(`จอล็อก 390 เลื่อนไม่ถึง: scrollHeight ${m.sh} · clientHeight ${m.ch} · scrollTop ${m.top} · สลับพนักงานในจอ ${sw} · บิลพักในจอ ${held}`);
+    LOCK_SCROLL.push(`${userKey}: scrollHeight ${m.sh} > clientHeight ${m.ch} · scrollTop ${m.top} · สลับพนักงาน/บิลพักอยู่ในจอ`);
+    return;
+  }
   if (state === "lock-pin-locked") {
     await prisma.posStaffPin.updateMany({ where: { tenantId: T.tenantId, unitId, userId: T.users[userKey].userId }, data: { failedCount: 5, lockedUntil: new Date(Date.now() + 15 * 60_000) } });
     await lockFromRegister(page, device);
@@ -1222,6 +1302,10 @@ async function runState(page: Any, state: StateKey, device: Device): Promise<voi
   switch (state) {
     case "default":
       return;
+    case "held-drawer":
+      return runHeldDrawerState(page, device); // POS HF-P1CLOSE
+    case "paydlg-promptpay-timeout":
+      return runPromptPayTimeout(page, device); // POS HF-P1CLOSE
     case "paydlg-platform":
       return runPlatformPayState(page, device); // POS P2.1U
     case "cart3":
@@ -2687,7 +2771,7 @@ async function seedSettingsOnce(): Promise<void> {
     if (!u1.ok) throw new StepError(`ตั้ง printerConfig เครื่อง 1 ไม่ได้: ${u1.code}`);
     const u2 = await updateDevice(ctx, actor, { id: SETTINGS.devices[1]!.id, posRegNo: "POS002" });
     if (!u2.ok) throw new StepError(`ตั้งเลขเครื่อง 2 ไม่ได้: ${u2.code}`);
-    if (jobs.some((j) => j.state === "paydone-print")) {
+    if (jobs.some((j) => isPaydoneState(j.state))) {
       const code = SETTINGS_DEVICE_CODES[1];
       const op = await openShift({ ...ctx, deviceId: code }, actor, { deviceId: code, deviceLabel: names[1]!, floatSatang: 100000 });
       if (!op.ok) throw new StepError(`เปิดกะของเครื่อง 2 ไม่ได้: ${op.code}`);
@@ -2730,6 +2814,7 @@ async function runSettingsState(page: Any, state: SettingsStateKey, device: Devi
     await visibleEl(page, tid("pos-print-copy"), 0, 5_000);
     return;
   }
+  if (state === "paydone-print-failed") return runPaydonePrintFailed(page, device); // POS HF-P1CLOSE
   await visibleEl(page, tid("pos-settings-root"), 0, 15_000).catch(() => {
     throw new StepError("หน้าตั้งค่าไม่ขึ้น (pos-settings-root)");
   });
@@ -3301,10 +3386,105 @@ async function cleanupP21u(): Promise<void> {
     P21U.cleanup = { ok: false, detail: `P2.1U: ทิ้งบิลพักไม่สำเร็จ — ${e instanceof Error ? e.message.slice(0, 160) : e}` };
   }
 }
+
+// ═══════════════════ POS HF-P1CLOSE ▸ held-drawer · paydlg-promptpay-timeout · paydone-print-failed · lock-screen-scroll ═══════════════════
+const HFP1 = {
+  /** บิลพักที่ held-drawer สร้าง (ทิ้งใน finally/signal) */
+  held: [] as string[],
+  /** ผลคืน printerConfig ของเครื่อง 2 (paydone-print-failed) */
+  printerRestore: null as null | string,
+  cleanup: null as null | { ok: boolean; detail: string },
+};
+/** ผลตรวจ lock-screen-scroll ต่อรอบ (ลง summary) */
+const LOCK_SCROLL: string[] = [];
+/** held-drawer (14B): พักบิลใหม่ 1 ใบต่อภาพ → ปุ่มบิลที่พัก → ลิ้นชัก · 390 เปิดแผ่นตะกร้าได้เมื่อมีรายการ ⇒ ใส่อเมริกาโน่ 1 ชิ้นก่อน */
+async function runHeldDrawerState(page: Any, device: Device): Promise<void> {
+  if (!QC_IDS.amer || !QC_IDS.latte) throw new StepError("ไม่มีสินค้า QC (อเมริกาโน่/ลาเต้) ของร้านกาแฟ");
+  const { holdRegisterCart } = await import("@/lib/modules/pos/held-cart");
+  const h = await holdRegisterCart({ tenantId: T.tenantId, systemId: SYS, unitId }, await ownerActor(), {
+    cart: { lines: [{ productId: QC_IDS.amer, qty: 2 }, { productId: QC_IDS.latte, qty: 1 }] },
+    label: "โต๊ะ 4 (ภาพ QC)",
+  });
+  if (!h.ok) throw new StepError(`พักบิลไม่ได้: ${h.code}`);
+  HFP1.held.push(h.heldCart.id);
+  if (device === "mobile") {
+    await clickEl(page, tid(`pos-reg-product-${QC_IDS.amer}`));
+    await expectLines(page, 1);
+    await openCartOnMobile(page, device);
+  }
+  await clickEl(page, tid("pos-reg-held-bills"));
+  await visibleEl(page, tid("pos-reg-held-drawer"), 0, 10_000);
+  await visibleEl(page, tid(`pos-reg-held-recall-${h.heldCart.id}`), 0, 10_000).catch(() => {
+    throw new StepError("ลิ้นชักบิลที่พักไม่มีบิลที่เพิ่งพัก");
+  });
+}
+/** paydlg-promptpay-timeout (19ค): ใบ STATIC ของเครื่องรอบนี้ → expiresAt อดีต (แถวล่าสุดของรอบนี้เท่านั้น) → โพลของจอเขียน EXPIRED → การ์ดหมดอายุ */
+async function runPromptPayTimeout(page: Any, device: Device): Promise<void> {
+  await addCart3(page, device);
+  await clickPay(page, device);
+  await clickEl(page, tid("pos-reg-paydlg-method-promptpay"));
+  await visibleEl(page, `${tid("pos-pay-intent")}[data-status="PENDING"]`, 0, 15_000).catch(() => {
+    throw new StepError("ใบขอรับเงินไม่ขึ้น PENDING");
+  });
+  const row = await prisma.posPaymentIntent.findFirst({
+    where: { tenantId: T.tenantId, unitId, deviceId: DEVICE_ID, status: "PENDING", createdAt: { gte: RUN_STARTED } },
+    orderBy: { createdAt: "desc" },
+    select: { id: true },
+  });
+  if (!row) throw new StepError("ไม่พบใบ PENDING ของเครื่องรอบนี้");
+  await prisma.posPaymentIntent.updateMany({ where: { id: row.id, tenantId: T.tenantId, status: "PENDING" }, data: { expiresAt: new Date(Date.now() - 1_000) } });
+  await visibleEl(page, tid("pos-pay-intent-expired"), 0, 20_000).catch(() => {
+    throw new StepError("เลื่อน expiresAt แล้วจอไม่ขึ้นการ์ดหมดอายุ (pos-pay-intent-expired)");
+  });
+  await visibleEl(page, tid("pos-pay-intent-regenerate"), 0, 5_000);
+}
+/** paydone-print-failed (19ค): เครื่อง 2 → USB ที่เบราว์เซอร์นี้ไม่ได้จับคู่ → ขาย 1 บิล → พิมพ์ = NO_DEVICE · คืนค่าปริยาย (null) ทันทีหลังการ์ดขึ้น */
+async function runPaydonePrintFailed(page: Any, device: Device): Promise<void> {
+  const dev2 = SETTINGS.devices[1];
+  if (!dev2) throw new StepError("ไม่มีเครื่อง QC 2");
+  const { updateDevice } = await import("@/lib/modules/pos/device");
+  const ctx = { tenantId: T.tenantId, systemId: SYS, unitId };
+  const actor = await ownerActor();
+  const u = await updateDevice(ctx, actor, { id: dev2.id, printerConfig: { mode: "escpos-usb", paper: "80", drawerKick: false, autoPrint: false, thaiText: "raster", copies: 1 } });
+  if (!u.ok) throw new StepError(`สลับเครื่อง 2 เป็น USB ไม่ได้: ${u.code}`);
+  try {
+    await page.reload({ waitUntil: "networkidle2", timeout: 60_000 });
+    await visibleEl(page, tid("pos-reg-root"), 0, 15_000).catch(() => {
+      throw new StepError("หน้าขายใหม่ไม่ขึ้น (pos-reg-root)");
+    });
+    await ensureShift(page);
+    await cashSaleAmerLatte(page, device);
+    await clickEl(page, tid("pos-print-receipt"));
+    await visibleEl(page, tid("pos-print-error"), 0, 15_000).catch(() => {
+      throw new StepError("พิมพ์ผ่าน USB ที่ไม่ได้จับคู่แล้วไม่ขึ้นการ์ดพิมพ์ไม่สำเร็จ (pos-print-error)");
+    });
+    await visibleEl(page, tid("pos-print-retry"), 0, 5_000);
+    await visibleEl(page, tid("pos-print-browser"), 0, 5_000).catch(() => {
+      throw new StepError("การ์ดพิมพ์ไม่สำเร็จไม่มีปุ่มพิมพ์ผ่านเบราว์เซอร์ (pos-print-browser)");
+    });
+  } finally {
+    const r = await updateDevice(ctx, actor, { id: dev2.id, printerConfig: null }).catch((e: unknown) => ({ ok: false as const, code: e instanceof Error ? e.message.slice(0, 80) : String(e) }));
+    HFP1.printerRestore = r.ok ? "เครื่อง 2 คืนค่าพิมพ์ผ่านเบราว์เซอร์แล้ว" : `คืน printerConfig เครื่อง 2 ไม่ได้: ${(r as { code?: string }).code ?? "?"} (เครื่องถูกเพิกถอนใน finally อยู่ดี)`;
+  }
+}
+/** finally/signal: ทิ้งบิลพักของ held-drawer ที่ยังค้าง (discardHeldCart · เรียกซ้ำได้ · ไม่โยน) */
+async function cleanupHfP1(): Promise<void> {
+  if (HFP1.cleanup || !HFP1.held.length) return;
+  try {
+    const { discardHeldCart } = await import("@/lib/modules/pos/held-cart");
+    const actor = await ownerActor();
+    let n = 0;
+    for (const id of HFP1.held) if ((await discardHeldCart({ tenantId: T.tenantId, systemId: SYS, unitId }, actor, { id })).ok) n++;
+    HFP1.cleanup = { ok: n === HFP1.held.length, detail: `HF-P1CLOSE: บิลพัก held-drawer ${HFP1.held.length} ใบ · ทิ้ง ${n}` };
+  } catch (e) {
+    HFP1.cleanup = { ok: false, detail: `HF-P1CLOSE: ทิ้งบิลพักไม่สำเร็จ — ${e instanceof Error ? e.message.slice(0, 160) : e}` };
+  }
+}
+// ◂
 // ◂
 
 // ═══════════════════ POS P1.7U ▸ ใบขอรับเงินของภาพ (PromptPay ID ของร้าน QC · เก็บกวาดใบของรอบนี้) ═══════════════════
-const INTENT_STATES: ReadonlySet<string> = new Set(["paydlg-promptpay-qr", "paydlg-promptpay-paid"]);
+const INTENT_STATES: ReadonlySet<string> = new Set(["paydlg-promptpay-qr", "paydlg-promptpay-paid", "paydlg-promptpay-timeout"]); // POS HF-P1CLOSE ▸ + timeout ◂
 const INTENTS = {
   /** PaymentProfile ก่อนรอบนี้ (null = ไม่มีแถว · undefined = ไม่ได้แตะ) */
   ppBefore: undefined as undefined | null | { promptpayId: string | null; displayName: string | null },
@@ -3439,7 +3619,7 @@ try {
   }
   // POS P1.15U ▸ หน้าขายล็อกเมื่อไม่มีโทเคนผู้ขาย/เครื่องไม่ลงทะเบียน ⇒ ลงทะเบียนเครื่อง + PIN + โทเคน (+ ข้อมูลของสถานะ 13B/21B) ก่อนเปิด chromium ◂
   // HF-VIS-SHIFTS ▸ + เจ้าของที่มีสถานะหน้ากะนอกจาก shifts-noshift (shiftsSale ขายผ่านหน้าขายของ SHIFTS_DEVICE_ID ⇒ ต้องมี PIN/โทเคน) ◂
-  if (jobs.some((j) => j.page === "register" || j.state === "paydone-print" || (userKey === "owner" && j.page === "shifts" && !!j.state && j.state !== "shifts-noshift"))) {
+  if (jobs.some((j) => j.page === "register" || isPaydoneState(j.state) || (userKey === "owner" && j.page === "shifts" && !!j.state && j.state !== "shifts-noshift"))) {
     await seedP115Once();
     console.log(P115.error ? `  ⚠️ ข้อมูลภาพ P1.15U: ${P115.error}` : `  ข้อมูลภาพ P1.15U: เครื่อง ${DEVICE_ID} · PIN ${Object.keys(P115.pins).join("/")} (ไม่พิมพ์ค่า) · บิลพัก ${P115.heldId || "-"}`);
   }
@@ -3501,13 +3681,13 @@ try {
         const page = await browser.newPage();
         await pinDevice(
           page,
-          job.state === "register-empty-catalogue" ? EMPTY_DEVICE_ID : p === "settings" && job.state ? SETTINGS_DEVICE_CODES[job.state === "paydone-print" ? 1 : 0] : p === "shifts" && job.state ? SHIFTS_DEVICE_ID : p === "sales" && job.state ? BILLS_DEVICE_ID : DEVICE_ID,
+          job.state === "register-empty-catalogue" ? EMPTY_DEVICE_ID : p === "settings" && job.state ? SETTINGS_DEVICE_CODES[isPaydoneState(job.state) ? 1 : 0] : p === "shifts" && job.state ? SHIFTS_DEVICE_ID : p === "sales" && job.state ? BILLS_DEVICE_ID : DEVICE_ID,
         ); // P1.10 U: หน้าตั้งค่าใช้เครื่อง QC 1 (paydone-print = เครื่อง 2 ที่มีกะ) // P1.16 U: หน้าบิลใช้เครื่องของกะภาพบิล (การ์ดเงินสด "จากลิ้นชักกะ #N") // R3 V4: เครื่องเดียวกับที่เจ้าของเปิดกะให้ · P1.9 U: สถานะหน้ากะใช้เครื่องแยก
         await page.setViewport({ width: v.w, height: v.h, deviceScaleFactor: 2, isMobile: v.mobile, hasTouch: v.name !== "desktop" });
         // POS P1.15U ▸ หน้าขาย = โทเคนผู้ขายของเครื่องที่หน้านี้ใช้ (discount-over-sheet = แคชเชียร์ · เพดาน 10%) · ปลดล็อกแถว PIN ที่ lock-pin-locked ตั้งไว้ ◂
-        if ((p === "register" || job.state === "paydone-print") && P115.seeded && job.state !== "register-empty-catalogue") {
+        if ((p === "register" || isPaydoneState(job.state)) && P115.seeded && job.state !== "register-empty-catalogue") {
           await unlockRunPin().catch(() => undefined);
-          const dev = job.state === "paydone-print" ? SETTINGS_DEVICE_CODES[1] : DEVICE_ID;
+          const dev = isPaydoneState(job.state) ? SETTINGS_DEVICE_CODES[1] : DEVICE_ID;
           const who: UserKey = job.state === "discount-over-sheet" && P115.pins.cashier ? "cashier" : userKey;
           const json = await staffSessionJson(who, dev).catch(() => null);
           if (json) await injectStaff(page, dev, json);
@@ -3583,7 +3763,7 @@ try {
           })
           .catch(() => ({ over: false, el: null }))) as { over: boolean; el: string | null };
         const file = job.file;
-        await page.screenshot({ path: file, fullPage: true });
+        await page.screenshot({ path: file, fullPage: job.state !== "lock-screen-scroll" }); // POS HF-P1CLOSE ▸ จอล็อกที่เลื่อนแล้ว = ภาพเท่าจอ (overlay fixed) ◂
         if (job.state === "register-en") await restoreThaiLocale(page); // POS P1.18U
         if (job.state === "register-empty-catalogue" && job === jobs.filter((j) => j.state === "register-empty-catalogue").at(-1)) await cleanupEmptyCatalogue(); // POS P1.18U
         // POS P1.7U ▸ ใบที่ PAID แล้วต้องถูกใช้ในบิล (ไม่ทิ้งเงินเข้าไม่มีบิล) — พัง = ภาพนี้ตก ◂
@@ -3649,6 +3829,11 @@ try {
   await cleanupP21u(); // POS P2.1U (บิลพัก LINE MAN ที่ยังค้าง)
   if (P21U.cleanup) console.error(`${P21U.cleanup.ok ? "🧹" : "⚠️"} ${P21U.cleanup.detail}`);
   if (P21U.cleanup && !P21U.cleanup.ok) failures++;
+  await cleanupHfP1(); // POS HF-P1CLOSE (บิลพักของ held-drawer ที่ยังค้าง)
+  if (HFP1.cleanup) console.error(`${HFP1.cleanup.ok ? "🧹" : "⚠️"} ${HFP1.cleanup.detail}`);
+  if (HFP1.cleanup && !HFP1.cleanup.ok) failures++;
+  if (HFP1.printerRestore) console.error(`🧹 ${HFP1.printerRestore}`);
+  for (const l of LOCK_SCROLL) console.log(`  O5 lock-screen-scroll: ${l}`);
   const { removed, stale } = await cleanSessions();
   let fixOut = "";
   try {
