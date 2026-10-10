@@ -163,3 +163,43 @@ Follow-ups added: P2.7 (WEB `active` semantics · deviation 7) · P2.14 (C3 visi
 Deploy note (repeat): run `backfillWebPrices({tenantIds, dryRun:false})` per tenant before the storefront reads WEB rows in production.
 Merge: `origin/session/pos` fdb8d54c (ledger only; P2.4 not yet merged) — no conflicts.
 Gates (scratch `runs/gates-fix2-20261010T053716Z/`, head `1b84db06`, clean tree): qc-pos-p2.8 forced #1 **57/57** · forced #2 **57/57** · unforced **57/57** (PAR 4/4, residue 0 each) · p2.1 55/55 · p2.2 42/42 · p2.3 46/46 · p1.3 128/128 · p1.6 48/48 · p1.12 72/72 · p1.16 28/28 · p1.18 81/81 · qc-shop 15/15 · qc-shop-refund 12/12 · qc-pos-account 16/16 · qc-account-cpa 107/107 · fitness env 41/41 · fitness no-env 41/41 · fitness-pos ✅ · typecheck clean — all exit 0.
+
+## Fix round 3 (hunt H1–H5 · controller rulings in `pos-P2.8-hunt.md`, 10 Oct 06:1xZ)
+Merge first: `origin/session/pos` f7b94693 (ledger only) → `99b4a809`, no conflicts. Code commit **`c47c5727`**.
+Per finding:
+- **H1** `shop/service.ts:244–270` `confirmOrderPaid` — the claim tx (raw `prisma.$transaction`, tenant+unit filtered) runs `shopOrder.updateMany(PENDING_PAYMENT→PAID)`, then `orders.webClaimInTx` (`order.ts:844`): the PosOrder is locked `FOR UPDATE`. If it is REJECTED/CANCELLED, `PosOrderClosedError` rolls back the whole claim and the call returns `{ok:false, code:"POS_ORDER_CLOSED"}` — nothing is posted, no `ecom-<id>` sale, no stock. Otherwise `paymentState PAID` + version bump + event `paid` happen in the same tx. `revertClaim` (`service.ts:288`) is a tx too: `webClaimRevertInTx` (`order.ts:866`) returns PAID-without-sale to UNPAID (event `paid_reverted`). The posSaleId tx calls `orders.webSaleBoundInTx` (`service.ts:321` → `order.ts:854`, event `sale_bound`). `onShopOrderPaid` (`order.ts:1362`) is now a confirmer only: for REJECTED/CANCELLED orders or a VOIDED sale it logs a `console.warn` line and returns, so it never writes PAID onto them. Facade: `pos/index.ts:131–133, 161–165`.
+- **H2** `outbox-consumers.ts:738` — `"pos.order.cancelled": withAutomation(posOrderRejected)`. This is the same consumer as rejected: it cancels a PENDING_PAYMENT ShopOrder and is idempotent.
+- **H3** `order.ts:966` (`step` → HANDED) — a bound sale with status VOIDED ⇒ `ORDER_STATE_INVALID`, message `ORDER_SALE_VOIDED_MESSAGE` (`order-shared.ts:145`), key `orders.errors.saleVoided` (th/en `pos.json:2977`).
+- **H4** `order.ts:810–823` `sourceCancelledInTx` — loops up to 5 times; on `OrderRaced` it re-reads the order and decides again. If accept wins, the order is CANCELLED from ACCEPTED.
+- **H5** `catalog.ts:2930/2969` — `WebShopPrice` carries `priceRuleId`/`listPriceSatang` when CHANNEL/RULE wins. `shop/service.ts:201` + `webLineMeta` (`:370`) pass `priceSource/priceRuleId/listPriceSatang` into the mirror lines. `order-shared.ts:113, 253, 292, 322–326` accepts those keys only from a source door (`opts.source`) and validates them against `PRICE_SOURCE_VALUES`/`isId`. `order.ts:785` puts them on the sale line (default CHANNEL as before).
+
+ORACLE-ADD/EDIT (one commit each; red-before = one forced run on the pre-fix code (head `99b4a809` + the 60-check oracle as committed), combined log `scratchpad/p28/runs/p28-fix3-redbefore.log` 55/60, copied per id to `runs/p28-<id>-redbefore.log`):
+- `92b8c35d` **W9 edit** — adds cancelOrder of a PAID WEB order ⇒ webPaid. This was already green before (F1 covers cancel). It is the nit and gives no red-before; the log is still kept: `runs/p28-W9-redbefore.log`.
+- `6a5d4d6b` **W4 edit** — adds a deterministic race: a `FOR UPDATE` row lock is held, accept starts, then `shop.cancelOrder` starts 500 ms later ⇒ the PosOrder must end CANCELLED. Red before: ShopOrder CANCELLED / PosOrder ACCEPTED. Log `runs/p28-W4-redbefore.log`.
+- `8ce3ebfa` **W10 edit** — adds confirmOrderPaid of the WEB-rule order ⇒ sale line RULE, `priceRuleId` = the WEB rule, 16000. Red before: CHANNEL / null. Log `runs/p28-W10-redbefore.log`.
+- `0ca4b3b2` **W11 add** — (a) reject → confirm ⇒ ok:false, no ecom sale, ShopOrder CANCELLED after drain · (b) confirm ⇒ PosOrder PAID before any drain, then reject ⇒ webPaid · (c) `shop.order.paid` row marked DONE without running ⇒ still PAID. Red before: confirm succeeded after reject; not PAID before drain. Log `runs/p28-W11-redbefore.log`.
+- `c3deb95e` **W12 add** — accept → cancel → drain ⇒ ShopOrder CANCELLED; confirm ⇒ ok:false, no ECOM sale, stock unchanged. Red before: ShopOrder still PENDING_PAYMENT, confirm `{ok:true}`, 1 `ecom-<id>` sale, stock 48→47. Log `runs/p28-W12-redbefore.log`.
+- `98110095` **W13 add** — PLATFORM order READY, its sale voided from the bill drawer, and the `pos.sale.voided` consumer withheld ⇒ handOver ORDER_STATE_INVALID `orders.errors.saleVoided`. Red before: handOver OK. Log `runs/p28-W13-redbefore.log`.
+Count: 57 → **60**. No existing assertion was weakened.
+
+P2.8U contract additions:
+- Message `orders.errors.saleVoided` on the hand-over button (offer "ยกเลิกออเดอร์" instead).
+- `shop.confirmOrderPaid` may now return `{ok:false, code:"POS_ORDER_CLOSED"}`; the shop admin screen should show "ร้านปฏิเสธ/ยกเลิกออเดอร์นี้ในจอ POS แล้ว".
+- The storefront should show rejected/cancelled (owner line).
+- New PosOrderEvent types `sale_bound` and `paid_reverted` (timeline labels).
+
+Follow-ups:
+- **P2.11** — `onSaleVoided` is an extra step whose failure is swallowed with no retry, so a voided order can stay READY. Give it its own retryable event/consumer. H3 is the guard until then.
+- O24 (account owner) now has two more post-commit COGS callers (PLATFORM accept, payOrder).
+
+Owner lines added (`POS-OWNER-PENDING.md`, P2.8 section):
+- บัญชี O24 blocker.
+- เว็บร้าน: claim refused after POS reject/cancel + storefront shows rejected/cancelled.
+- ร้านอาหาร: POS cancel cancels the unpaid web order.
+- H3: hand-over refused on a voided bill + P2.11.
+Gates (scratch `scratchpad/p28/runs/fix3-*.log`, head `c47c5727`, clean tree, 06:27–06:49Z):
+- qc-pos-p2.8: forced #1 **60/60** · forced #2 **60/60** · unforced **60/60** (PAR 4/4, residue 0 each) · `--no-db` 9/9.
+- POS suites: p2.1 55/55 · p2.2 42/42 · p1.3 128/128 · p1.6 48/48 · p1.8 49/49 · p1.12 72/72 · p1.16 28/28.
+- Shop and account suites: qc-shop 15/15 · qc-shop-refund 12/12 · qc-pos-account 16/16 · qc-account-cpa 107/107.
+- Static: fitness with env ✅ · without env ✅ · fitness-pos 8/8 · typecheck clean.
+- All exits 0.
