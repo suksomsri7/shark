@@ -2913,7 +2913,11 @@
       "cleared": "Cleared",
       "reservedLine": "Reserved {time} · {name} {n} guests",
       "holdFrom": "Held from {time}",
-      "fromBooking": "From bookings"
+      "fromBooking": "From bookings",
+      "hoursMinutes": "{h} h {m} min",
+      "viewBooking": "View booking",
+      "callStaff": "Calling staff",
+      "payNotified": "Says paid by PromptPay"
     },
     "legend": "Table status",
     "reservationsToday": "Reservations today {n}",
@@ -2945,8 +2949,27 @@
       "subtotal": "Subtotal",
       "serviceCharge": "Service charge {rate}%",
       "net": "Total",
-      "stockNotCut": "Stock not cut",
-      "serviceChargeDiffers": "Table mode uses the register service charge ({pos}%), not the restaurant setting ({restaurant}%)"
+      "stockNotCut": "Recipe ingredients not cut",
+      "serviceChargeDiffers": "Table mode uses the register service charge ({pos}%), not the restaurant setting ({restaurant}%)",
+      "close": "Close panel",
+      "more": "More actions",
+      "openedLineNoStaff": "Opened {time} · {minutes} min · {guests} guests",
+      "roundByStaffAnon": "Taken at table by staff",
+      "memberPrefix": "Member",
+      "noRounds": "No orders yet — tap Order more",
+      "draftCount": "{n} items not sent to the kitchen",
+      "editDraft": "Review & send",
+      "freeBody": "{seats} seats · ready for guests",
+      "inactiveBody": "This table is inactive",
+      "cancelTitle": "Cancel {name}?",
+      "cancelBody": "The item is removed from the bill and the kitchen is told",
+      "cancelReason": "Reason",
+      "cancelConfirm": "Cancel item",
+      "back": "Back",
+      "closeTitle": "Close table {name}?",
+      "closeBody": "Only tables with nothing unpaid can close · an unsent draft round is discarded",
+      "unlinkMember": "Unlink member",
+      "guestsNone": "-"
     },
     "actions": {
       "orderMore": "Order more",
@@ -2972,13 +2995,29 @@
       "ack": "Acknowledge",
       "done": "Done",
       "openTable": "Open table",
-      "confirmPayment": "Confirm payment"
+      "confirmPayment": "Confirm payment",
+      "stale": "The table changed — reloaded"
     },
     "billType": {
       "label": "New bill",
       "takeaway": "Takeaway",
       "dineIn": "Dine in",
-      "pickTable": "Pick a table"
+      "pickTable": "Pick a table",
+      "menu": "Bill type",
+      "stripTitle": "Move the cart to a table",
+      "stripBody": "These will be removed — add them again at checkout",
+      "strip": {
+        "discount": "Discounts",
+        "member": "Member",
+        "coupon": "Coupon",
+        "channel": "Sales channel",
+        "weighed": "{n} weighed items",
+        "note": "Bill note"
+      },
+      "continue": "Remove and pick a table",
+      "moved": "Moved the items to table {table} — send them to the kitchen",
+      "empty": "No tables to pick yet",
+      "hasDraft": "Has a draft"
     },
     "reservation": {
       "new": "Reserve a table",
@@ -2989,7 +3028,23 @@
       "holdFrom": "Hold table from (minutes before)",
       "seat": "Seat guests",
       "cancel": "Cancel reservation",
-      "overridden": "This table had a reservation — it was opened for other guests"
+      "overridden": "This table had a reservation — it was opened for other guests",
+      "title": "Today's reservations",
+      "add": "+ Reserve",
+      "empty": "No upcoming reservations today",
+      "table": "Table",
+      "anyTable": "No table yet",
+      "save": "Save reservation",
+      "row": "{time} · {name} · {n} guests",
+      "pickTable": "Pick a table to seat them",
+      "cancelConfirm": "Cancel {name}'s reservation?",
+      "created": "Reservation saved",
+      "seated": "Seated at table {table}",
+      "cancelled": "Reservation cancelled",
+      "close": "Close",
+      "keep": "Keep",
+      "nameRequired": "Enter the guest name",
+      "invalid": "Check the party size, time and hold minutes"
     },
     "empty": {
       "title": "No tables at this branch yet",
@@ -3006,7 +3061,63 @@
       "sent": "Sent to kitchen · order #{no}",
       "closed": "Table {table} closed",
       "cleared": "Table {table} cleared",
-      "draftSaved": "Draft round saved"
+      "draftSaved": "Draft round saved",
+      "cancelled": "Item cancelled",
+      "memberLinked": "Linked member {name} to the table",
+      "memberUnlinked": "Unlinked the member from the table",
+      "acked": "Acknowledged",
+      "done": "Marked done"
+    },
+    "page": {
+      "refusal": "This account cannot use the register yet — ask the owner to add the permission",
+      "loadFailed": "Could not load the floor",
+      "retry": "Try again",
+      "pickHint": "Pick a table to see its details",
+      "backToFloor": "Floor"
+    },
+    "zoneNote": {
+      "entrance": "Entrance",
+      "counter": "Counter",
+      "kitchen": "Kitchen (back)"
+    },
+    "legendItem": {
+      "selected": "Selected",
+      "unsent": "Items not sent",
+      "count": "{label} {n}"
+    },
+    "open": {
+      "title": "Open table {name}",
+      "guests": "Guests",
+      "confirm": "Open table",
+      "reserved": "Reserved at {time} · {name} — you can still open it for other guests",
+      "less": "Fewer guests",
+      "more": "More guests"
+    },
+    "checkout": {
+      "needUnlock": "Unlock the register with your PIN before checking out",
+      "openRegister": "Open register",
+      "itemsChanged": "Table items changed — check the new total",
+      "coupon": "Coupon",
+      "couponSet": "Coupon {code}",
+      "discountSet": "Discount {amount}",
+      "done": "Table {table} checked out",
+      "presetLocked": "Confirming the PromptPay the table reported — tap another method for a normal checkout"
+    },
+    "order": {
+      "chip": "Table {name} · order more",
+      "send": "Send {n} items to kitchen",
+      "save": "Save for later",
+      "back": "Back to floor",
+      "loading": "Loading table…",
+      "closed": "This table is closed or missing — go back to the floor",
+      "noWeighed": "Weighed items can't go on a table — sell them as takeaway",
+      "lineRefused": "This line can't be sent — edit or remove it, then send again",
+      "priceNote": "Prices shown are store prices · the round is priced when sent",
+      "noMember": "Link the member from the table panel (⋯ Link member) at checkout"
+    },
+    "legacy": {
+      "manageAtPos": "Manage in POS › Tables",
+      "note": "This branch uses POS table mode — check out and cancel items in POS"
     }
   },
   "orders": {

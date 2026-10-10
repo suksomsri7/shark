@@ -11,6 +11,8 @@
 // 🔴 ปุ่มชำระ (pos-reg-pay) ต้องเป็นที่แรกในไฟล์นี้ที่สตริงนี้ปรากฏ และอยู่บนแท็กที่มีคลาส ≥44px (S5.9 · G4)
 // 🔴 ยอดบนจอ = priceCart ทันใจ แล้ว quote ของเซิร์ฟเวอร์ทับ · เงินที่จ่ายจริง = quote เสมอ (RegisterScreen ตัดสิน payEnabled)
 
+import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { formatBaht } from "@/lib/ui/money";
 import { moneyText } from "@/lib/modules/pos/register-shared";
@@ -81,7 +83,73 @@ type Props = {
   onKeep: (key: string) => void;
   onReduce: (key: string, qty: number) => void;
   onClose?: () => void;
+  /**
+   * POS P2.4U ▸ มติ 6: ชิป "บิลใหม่ · ซื้อกลับ ▾" — undefined = ชิป "เร็ว ๆ นี้" เดิม (สาขาไม่มีโหมดโต๊ะ) · ส่งมา = เมนู ซื้อกลับ / ทานที่ร้าน ·
+   * null = ซ่อน (โหมดโต๊ะ) ◂
+   */
+  billType?: { onDineIn: () => void } | null;
+  /**
+   * POS P2.4U ▸ มติ 4: หน้าขายผูกโต๊ะ — หัว = ชิป "โต๊ะ A5 · สั่งเพิ่ม" + ลิงก์กลับผังโต๊ะ (ไม่มีพักบิล/บิลที่พัก) · ไม่มีส่วนลด/หมายเหตุบิล/ใบกำกับ ·
+   * ปุ่มหลัก = "ส่งครัว N รายการ" · ปุ่มรอง = "บันทึกไว้ก่อน" · note = บรรทัดเล็กใต้ยอด ◂
+   */
+  tableMode?: { chip: string; backHref: string; backLabel: string; sendLabel: string; saveLabel: string; note: string; canSend: boolean; busy: boolean; onSend: () => void; onSave: () => void } | null;
 };
+
+/** POS P2.4U ▸ มติ 6: เมนูชนิดบิล (ซื้อกลับ = ค่าเริ่ม · ทานที่ร้าน = เลือกโต๊ะ) — ปุ่มชิปคง testid pos-reg-bill-type (ข้อสอบ P1.3) ◂ */
+function BillTypeChip({ onDineIn, frozen }: { onDineIn: () => void; frozen: boolean }) {
+  const t = useTranslations("pos.register");
+  const tt = useTranslations("pos.tables");
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => {
+      if (box.current && !box.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [open]);
+  const item = "flex h-11 w-full items-center gap-2 rounded-[8px] px-2.5 text-left text-[14px] hover:bg-[color:var(--color-surface-2)]";
+  return (
+    <div ref={box} data-testid="pos-reg-billtype" className="relative">
+      <button
+        data-testid="pos-reg-bill-type"
+        className="inline-flex h-11 items-center gap-[5px] whitespace-nowrap rounded-[8px] border border-[color:var(--color-ink)] px-[11px] text-[13px] font-bold xl:h-7"
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={tt("billType.menu")}
+        disabled={frozen}
+        onClick={() => setOpen((o) => !o)}
+      >
+        {`${t("cart.newBill")} · ${t("cart.billType.takeaway")}`}
+        <RegisterIcon name="chevron" size={12} />
+      </button>
+      {open && (
+        <div role="menu" className="absolute left-0 top-[calc(100%+6px)] z-30 w-52 rounded-[12px] border bg-[color:var(--color-surface)] p-1.5 shadow-xl">
+          <button data-testid="pos-reg-billtype-takeaway" role="menuitemradio" aria-checked="true" type="button" className={`${item} font-bold`} onClick={() => setOpen(false)}>
+            <RegisterIcon name="check" size={13} />
+            {tt("billType.takeaway")}
+          </button>
+          <button
+            data-testid="pos-reg-billtype-dinein"
+            role="menuitemradio"
+            aria-checked="false"
+            type="button"
+            className={item}
+            onClick={() => {
+              setOpen(false);
+              onDineIn();
+            }}
+          >
+            <span className="inline-block w-[13px]" />
+            {tt("billType.dineIn")}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
 
 /** VAT 700 bp → "7" · 750 → "7.5" (ไม่มี .00 ท้าย) */
 const ratePct = (bp: number) => String(Number((bp / 100).toFixed(2)));
@@ -98,6 +166,22 @@ export function CartPanel(p: Props) {
       className={`flex min-h-0 flex-col bg-[color:var(--color-surface)] ${sheet ? "max-h-[85dvh] w-full" : "h-full w-full"}`}
     >
       <div className="flex shrink-0 items-center gap-2 border-b px-[14px] py-[9px] xl:gap-3 xl:px-4 xl:py-1.5">
+        {/* POS P2.4U ▸ มติ 4/6: โหมดโต๊ะ = ชิปโต๊ะ + ลิงก์กลับ · สาขามีโหมดโต๊ะ = เมนูชนิดบิล · อื่น ๆ = ชิป "เร็ว ๆ นี้" เดิม ◂ */}
+        {p.tableMode ? (
+          <>
+            <span data-testid="pos-tbl-order-chip" className="inline-flex h-7 min-w-0 items-center gap-[5px] truncate rounded-[8px] border border-[color:var(--color-accent)] bg-[color:var(--color-accent-soft)] px-[11px] text-[13px] font-bold text-[color:var(--color-accent)]">
+              <RegisterIcon name="grid" size={12} />
+              <span className="truncate">{p.tableMode.chip}</span>
+            </span>
+            <span className="flex-1" />
+            <Link data-testid="pos-tbl-order-back" href={p.tableMode.backHref} className="btn-sm inline-flex h-11 shrink-0 items-center gap-1.5 rounded-[11px] px-[11px] text-[13px] xl:text-[14px]">
+              <RegisterIcon name="back" size={14} />
+              {p.tableMode.backLabel}
+            </Link>
+          </>
+        ) : p.billType ? (
+          <BillTypeChip onDineIn={p.billType.onDineIn} frozen={p.frozen} />
+        ) : p.billType === null ? null : (
         <button
           data-testid="pos-reg-bill-type"
           className="inline-flex h-7 items-center gap-[5px] whitespace-nowrap rounded-[8px] border border-[color:var(--color-ink)] px-[11px] text-[13px] font-bold"
@@ -109,6 +193,9 @@ export function CartPanel(p: Props) {
           {`${t("cart.newBill")} · ${t("cart.billType.takeaway")}`}
           <RegisterIcon name="chevron" size={12} />
         </button>
+        )}
+        {!p.tableMode && (
+        <>
         <span className="flex-1" />
         <button
           data-testid="pos-reg-hold"
@@ -139,6 +226,8 @@ export function CartPanel(p: Props) {
             </span>
           )}
         </button>
+        </>
+        )}
         {sheet && p.onClose && (
           <button
             data-testid="pos-reg-sheet-close"
@@ -214,6 +303,7 @@ export function CartPanel(p: Props) {
               <span className="tabular-nums text-[color:var(--color-danger)]">{moneyText(-tt.lineDiscountSatang)}</span>
             </div>
           )}
+          {!p.tableMode && ( // POS P2.4U ▸ โหมดโต๊ะไม่มีส่วนลดท้ายบิล ◂
           <div data-testid="pos-reg-bill-discount-line" className="flex items-baseline justify-between py-px text-[color:var(--color-ink-soft)] xl:py-1">
             <span>
               {t("totals.billDiscount")}
@@ -231,6 +321,7 @@ export function CartPanel(p: Props) {
               {tt.billDiscountSatang > 0 ? moneyText(-tt.billDiscountSatang) : moneyText(0)}
             </span>
           </div>
+          )}
           {/* POS P1.12U มติ 3 ▸ คูปอง (แดง · ✕ ลบ) → ส่วนลดระดับ → ว่อชเชอร์/แต้มที่เลือก (ตัวเลขจาก quote ของเซิร์ฟเวอร์เท่านั้น) ◂ */}
           {p.member?.couponCode && (tt.couponDiscountSatang > 0 || p.member.couponInvalid) && (
             <div data-testid="pos-member-coupon-line" data-state={p.member.couponInvalid ? "invalid" : "ok"} className="flex items-center justify-between gap-2 py-px text-[color:var(--color-ink-soft)] xl:py-1">
@@ -286,6 +377,7 @@ export function CartPanel(p: Props) {
             <span>{t("totals.total")}</span>
             <span className="whitespace-nowrap tabular-nums">{moneyText(tt.grandTotalSatang)}</span>
           </div>
+          {p.tableMode && <p data-testid="pos-tbl-order-price-note" className="pt-1 text-[12px] text-[color:var(--color-muted)]">{p.tableMode.note}</p>}
         </div>
       )}
 
@@ -305,7 +397,7 @@ export function CartPanel(p: Props) {
       )}
 
       {/* B2.2 S3: แถวปุ่มรอง สูง 40 ทุกความกว้าง (สเปก §4/§7 · ขั้นต่ำ .btn-sm) — เดิมต่ำกว่า xl เหลือ 36 */}
-      {!empty && (
+      {!empty && !p.tableMode && (
         <div className="grid shrink-0 grid-cols-3 gap-2 px-[14px] xl:gap-3 xl:px-4">
           <button
             data-testid="pos-reg-bill-discount"
@@ -356,6 +448,7 @@ export function CartPanel(p: Props) {
         </div>
       )}
 
+      {!p.tableMode ? (
       <button
         data-testid="pos-reg-pay"
         className={`btn btn-primary mx-[14px] mb-3 mt-2.5 shrink-0 justify-between rounded-[18px] px-[22px] font-bold disabled:cursor-not-allowed disabled:border disabled:bg-[color:var(--color-surface-2)] disabled:text-[color:var(--color-muted)] xl:mx-6 xl:mb-3 xl:mt-3 xl:px-6 ${
@@ -372,6 +465,29 @@ export function CartPanel(p: Props) {
           {!sheet && <span className="ml-2.5 hidden text-[12px] font-semibold opacity-70 xl:inline">(F4)</span>}
         </span>
       </button>
+      ) : (
+        // POS P2.4U ▸ มติ 4: บันทึกไว้ก่อน (พักรอบร่างอย่างเดียว) · ส่งครัว N รายการ (พักแล้วส่งรอบ) ◂
+        <div className={`mx-[14px] mb-3 mt-2.5 grid shrink-0 grid-cols-[auto_1fr] gap-2 xl:mx-6 xl:mt-3`}>
+          <button
+            data-testid="pos-tbl-order-save"
+            className="btn btn-ghost h-14 rounded-[16px] px-4 text-[14.5px] font-bold disabled:opacity-50"
+            type="button"
+            disabled={!p.tableMode.canSend || p.tableMode.busy || p.frozen}
+            onClick={p.tableMode.onSave}
+          >
+            {p.tableMode.saveLabel}
+          </button>
+          <button
+            data-testid="pos-tbl-order-send"
+            className={`btn btn-primary justify-center rounded-[18px] px-5 font-bold disabled:cursor-not-allowed disabled:border disabled:bg-[color:var(--color-surface-2)] disabled:text-[color:var(--color-muted)] ${sheet ? "h-14 text-[16px]" : "h-14 text-[17px] xl:text-[18px]"}`}
+            type="button"
+            disabled={!p.tableMode.canSend || p.tableMode.busy || p.frozen}
+            onClick={p.tableMode.onSend}
+          >
+            {p.tableMode.sendLabel}
+          </button>
+        </div>
+      )}
     </section>
   );
 }

@@ -36,13 +36,16 @@ type Props = {
   /** กะ OPEN ของเครื่องนี้ (registerStatus.shift) · null = ยังไม่เปิด/ยังไม่รู้ */
   shift: RegisterShiftInfo | null;
   onCamera: () => void;
+  /** POS P2.4U ▸ หน้าโต๊ะ: ลิงก์สลับสาขาไปหน้าเดียวกัน (ไม่ส่ง = หน้าขาย) · noCamera = ไม่มีปุ่มกล้องบนหัวมือถือ ◂ */
+  unitHref?: (unitId: string) => string;
+  noCamera?: boolean;
   /** POS P1.15U ▸ ปุ่มล็อกจอ (ชิปผู้ขาย = คนในโทเคน) · ไม่ส่ง = ไม่มีปุ่ม ◂ */
   onLock?: () => void;
 };
 
 const ROLE_KEY: Record<RegisterRole, string> = { OWNER: "roles.owner", MANAGER: "roles.manager", STAFF: "roles.cashier" };
 
-function UnitChooser({ systemId, units, activeUnitId, label, mobile }: { systemId: string; units: Unit[]; activeUnitId: string; label: string; mobile: boolean }) {
+function UnitChooser({ systemId, units, activeUnitId, label, mobile, unitHref }: { systemId: string; units: Unit[]; activeUnitId: string; label: string; mobile: boolean; unitHref?: (unitId: string) => string }) {
   const t = useTranslations("pos.register");
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
@@ -94,7 +97,7 @@ function UnitChooser({ systemId, units, activeUnitId, label, mobile }: { systemI
               className={`flex h-11 items-center rounded-[8px] px-2.5 text-[14px] hover:bg-[color:var(--color-surface-2)] ${u.id === activeUnitId ? "font-bold" : ""}`}
               role="menuitem"
               aria-current={u.id === activeUnitId ? "true" : undefined}
-              href={`/app/sys/${systemId}/pos/register?unit=${u.id}`}
+              href={unitHref ? unitHref(u.id) : `/app/sys/${systemId}/pos/register?unit=${u.id}`} // POS P2.4U ▸ โหมดโต๊ะ ◂
               onClick={() => setOpen(false)}
             >
               <span className="truncate">{u.name}</span>
@@ -141,9 +144,10 @@ export function RegisterTopContext(p: Props) {
   // ── มือถือ (05ก) — ในหน้า ใต้แถบบนของเว็บ ──
   const mobile = (
     <div className="flex items-center gap-4 px-5 pb-[14px] pt-2 md:hidden">
-      <UnitChooser systemId={p.systemId} units={p.units} activeUnitId={p.activeUnitId} label={unitName} mobile />
+      <UnitChooser systemId={p.systemId} units={p.units} activeUnitId={p.activeUnitId} label={unitName} mobile unitHref={p.unitHref} />
       {shiftChip("inline-flex", true)}
       <span className="flex-1" />
+      {!p.noCamera && ( // POS P2.4U ▸ หน้าโต๊ะไม่มีกล้อง ◂
       <button
         data-testid="pos-reg-scan-camera"
         className="grid size-11 shrink-0 place-items-center rounded-[10px] border text-[color:var(--color-ink-soft)]"
@@ -155,6 +159,7 @@ export function RegisterTopContext(p: Props) {
       >
         <RegisterIcon name="cam" size={14} />
       </button>
+      )}
       {p.onLock && (
         <button
           data-testid="pos-lock-now-mobile"
@@ -183,7 +188,7 @@ export function RegisterTopContext(p: Props) {
   // ── md+ — ช่องในแถบบน (หรือแถว 48 ในหน้าเมื่อไม่มีช่อง) ──
   const desktop = (inline: boolean) => (
     <div className={`flex min-w-0 flex-1 items-center gap-3 ${inline ? "h-12 shrink-0 border-b px-4 xl:px-[26px]" : ""}`}>
-      <UnitChooser systemId={p.systemId} units={p.units} activeUnitId={p.activeUnitId} label={`${p.tenantName} · ${unitName}`} mobile={false} />
+      <UnitChooser systemId={p.systemId} units={p.units} activeUnitId={p.activeUnitId} label={`${p.tenantName} · ${unitName}`} mobile={false} unitHref={p.unitHref} />
       <span className="flex-1" />
       <span data-testid="pos-reg-status-online" className="inline-flex shrink-0 items-center gap-2 whitespace-nowrap text-[12.5px] text-[color:var(--color-muted)]" role="status">
         {dot}

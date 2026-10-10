@@ -135,6 +135,13 @@ import { useIdleLock } from "./use-idle-lock";
 import { heartbeatAction } from "@/lib/modules/pos/device-actions";
 import { POS_PRINTER_DEFAULTS, parsePrinterConfig, type PosDeviceView } from "@/lib/modules/pos/device-shared";
 import { printerPaired } from "@/components/pos/print/printReceipt";
+// POS P2.4U ▸ หน้าขายผูกโต๊ะ ?table= (มติ 4) + ชิปชนิดบิล "ทานที่ร้าน" (มติ 6) ◂
+import { useRouter } from "next/navigation";
+import { holdTableDraftAction, registerOpenTableAction, registerSendTableRoundAction, registerTableDetailAction, registerTableModeAction } from "@/lib/modules/pos/table-actions";
+import { registerProductsByIdsAction } from "@/lib/modules/pos/table-ui-actions";
+import type { TableCard } from "@/lib/modules/pos/table-shared";
+import { BillStripDialog, TablePickDialog } from "@/components/pos/tables/TablePickDialog";
+import { cartStripOf, stripCart, stripNeeded } from "@/components/pos/tables/table-ui";
 
 export type RegisterScreenProps = {
   systemId: string;
@@ -164,10 +171,14 @@ export type RegisterScreenProps = {
   canManageProducts?: boolean;
   /** POS P2.3U ▸ มติ 5: ผู้ใช้ session มี pos.settings.manage ที่สาขานี้ — ปุ่ม "ลองอีกครั้ง" ของชิปตัดสต็อกค้าง · ไม่มี = เห็นจำนวนอย่างเดียว ◂ */
   canRetryStockCuts?: boolean;
+  /** POS P2.4U ▸ มติ 4: ?table=<TableSession.id> = หน้าขายผูกโต๊ะ (สั่งเพิ่ม → ส่งครัว) · ไม่ส่ง = ขายปกติ ◂ */
+  tableSessionId?: string | null;
+  /** POS P2.4U ▸ มติ 1/6 (Q5): registerTableMode ของสาขา (เซิร์ฟเวอร์อ่านตอนโหลดหน้า) — visible = แท็บ "โต๊ะ" เป็นลิงก์ · tableCount > 0 = ชิป "ทานที่ร้าน" ◂ */
+  tableMode?: { visible: boolean; tableCount: number } | null;
 };
 
 /** ns "member" = คีย์ใต้ pos.member (P1.12U) · "recipe" = ใต้ pos.recipe (POS P2.3U) · ไม่ระบุ = ใต้ pos.register */
-type Msg = { key: string; values?: Record<string, string | number>; ns?: "member" | "recipe" };
+type Msg = { key: string; values?: Record<string, string | number>; ns?: "member" | "recipe" | "tables" }; // POS P2.4U ▸ + tables ◂
 /** ข้อความลอย — offerCustom = ปุ่ม "เพิ่มเป็นรายการกำหนดเอง?" (สแกนไม่พบ · เฉพาะผู้มีสิทธิ์ราคาเปิด · P1.4 B4) */
 type ToastMsg = Msg & { offerCustom?: boolean };
 /** บรรทัดใหม่ (ยังไม่มี key) — Omit แบบกระจายทีละสมาชิกของ union */
@@ -200,7 +211,10 @@ type Layer =
   | { kind: "heldConfirm"; item: HeldCartSummary }
   // POS P1.15U: แผ่นส่วนลดเกินสิทธิ์ (next = ตะกร้าที่จะใช้ถ้าได้สิทธิ์) · กล่องรอผู้จัดการอนุมัติ 21B (heldCartId = บิลส่วนลดที่พักรอ)
   | { kind: "discountOver"; next: RegisterCart; wantBp: number }
-  | { kind: "approval"; requestId: string; heldCartId?: string };
+  | { kind: "approval"; requestId: string; heldCartId?: string }
+  // POS P2.4U ▸ มติ 6: ถามก่อนตัดของที่รอบร่างโต๊ะเก็บไม่ได้ · แผ่นเลือกโต๊ะ ◂
+  | { kind: "billStrip" }
+  | { kind: "tablePick" };
 /**
  * POS P1.15U ▸ สิทธิ์ส่วนลดเกินเพดานของบิลนี้: pin = PIN ผู้จัดการที่เครื่อง (ส่งพร้อม submit · heldCartId = บิลส่วนลดที่พักรอ) ·
  * approved = เรียกคืนบิลพักที่อนุมัติแล้ว (quote ด้วยเพดานที่อนุมัติ · ใช้ได้เฉพาะตะกร้าเดิมทุกไบต์ — inputJson) ◂
@@ -263,6 +277,23 @@ export function RegisterScreen(props: RegisterScreenProps) {
   const tc = useTranslations("common");
   const tm = useTranslations("pos.member");
   const tRecipe = useTranslations("pos.recipe"); // POS P2.3U ▸ ชิป/แจ้งผลตัดสต็อกค้าง ◂
+  // ═══════ POS P2.4U ▸ โหมดโต๊ะ (มติ 4): สถานะ — ตัวโหลด/บันทึก/ส่งครัวอยู่หลัง nextSale ═══════
+  const tTables = useTranslations("pos.tables");
+  const router = useRouter();
+  const tableOn = !!props.tableSessionId;
+  /** loading = กำลังโหลดรอบร่าง · ready = ใช้งานได้ · closed = โต๊ะปิด/ไม่พบ (แถบแจ้ง + ลิงก์กลับ) */
+  const [tbl, setTbl] = useState<{ phase: "loading" | "ready" | "closed"; tableName: string }>({ phase: tableOn ? "loading" : "ready", tableName: "" });
+  /** รอบร่าง HELD ล่าสุดที่จอรู้ (id + version) — null = ยังไม่มีร่าง (บันทึกครั้งแรก = newDraft:true) */
+  const draftRef = useRef<{ id: string; version: number } | null>(null);
+  /** คีย์บรรทัดที่เป็นของรอบร่างที่บันทึก/โหลดล่าสุด — VERSION_CHANGED: บรรทัดที่แคชเชียร์เพิ่มเอง = คีย์ที่ไม่อยู่ในชุดนี้ */
+  const draftKeys = useRef<Set<string>>(new Set());
+  const [tblBusy, setTblBusy] = useState(false);
+  const tblBusyRef = useRef(false);
+  /** ส่งครัวไม่ผ่าน: lineIndex = บรรทัดที่ถูกปฏิเสธ (PRODUCT_UNAVAILABLE/OPTIONS_INVALID · ร่างยังอยู่) · retry = BUSY */
+  const [tblErr, setTblErr] = useState<{ code: string; lineIndex?: number; retry?: boolean } | null>(null);
+  /** แท็บ "โต๊ะ" + ชิปทานที่ร้าน (มติ 1/6) — ค่าจากหน้าเพจ แล้วถามซ้ำหลัง mount (เครื่องอื่นเพิ่มโต๊ะ) */
+  const [tableModeNow, setTableModeNow] = useState(props.tableMode ?? null);
+  const [moving, setMoving] = useState(false);
   const tPrice = useTranslations("pos.price"); // POS P2.2U ▸ ป้ายบรรทัด "ราคาตามช่องทาง" ◂
   const locale = useLocale();
   const wide = useMedia("(min-width: 768px)");
@@ -473,6 +504,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
    *   เจอคนเดียว = ผูก + ปิดแผง + ข้อความชื่อ · ไม่เจอ = "ไม่พบสมาชิก" · ถูกระงับ = ข้อความ · สาขาไม่มีระบบสมาชิก = memberSystemMissing
    */
   const memberScan = async (code: string) => {
+    if (tableOn) return showToast({ key: "order.noMember", ns: "tables" }); // POS P2.4U ▸ สมาชิกผูกที่แผงโต๊ะ ◂
     if (!memberEnabled) return showToast({ key: "errors.memberSystemMissing" });
     if (frozenRef.current || layersRef.current.some((l) => l.kind === "pay" || l.kind === "done")) return showToast({ key: "scan.ignoredWhileDialog" });
     const gen = billGen.current;
@@ -606,7 +638,8 @@ export function RegisterScreen(props: RegisterScreenProps) {
     // มติ 3: คนอื่นปลดล็อก ⇒ ตะกร้าที่ค้างพักไว้ในชื่อคนก่อน (ด้วยโทเคนของคนก่อน) · ว่าง = ไม่พัก · ระหว่างส่งบิล = ไม่แตะ
     //   fix รอบ 1 F10: โทเคนคนก่อนตาย ⇒ พักด้วยโทเคนของคนใหม่ ป้าย "สลับพนักงาน · <ชื่อคนก่อน>" · พักไม่ได้ทั้งสองทาง = ไม่สลับ (จอยังล็อก)
     //   ตะกร้าของคนก่อนไม่ค้างบนจอของคนใหม่เด็ดขาด
-    if (prev && prev.userId !== next.userId && cartRef.current.lines.length && !frozenRef.current) {
+    // POS P2.4U ▸ โหมดโต๊ะ: ตะกร้าเป็นรอบร่างของโต๊ะ (ไม่ใช่ของพนักงาน) ⇒ ไม่พักเข้าลิ้นชักตอนสลับคน ◂
+    if (prev && prev.userId !== next.userId && cartRef.current.lines.length && !frozenRef.current && !tableOn) {
       const who = prev.name ?? "-";
       const hold = async (token: string, label: string) => {
         try {
@@ -886,11 +919,13 @@ export function RegisterScreen(props: RegisterScreenProps) {
   const changeCart = (next: RegisterCart) => {
     setCart(next);
     setCartVer((v) => v + 1);
+    if (tableOn) setTblErr(null); // POS P2.4U ▸ fix 1 F6: ตะกร้าเปลี่ยน = ไฮไลต์บรรทัดที่ส่งครัวไม่ได้หมดความหมาย (ตำแหน่งเลื่อน) ◂
   };
   /** แก้ตะกร้าจากค่าล่าสุดเสมอ (setCart แบบฟังก์ชัน) — ใช้กับการเพิ่มสินค้าที่อาจมาจากงาน async (B2.2 S1) */
   const updateCart = (fn: (prev: RegisterCart) => RegisterCart) => {
     setCart(fn);
     setCartVer((v) => v + 1);
+    if (tableOn) setTblErr(null); // POS P2.4U ▸ fix 1 F6 ◂
   };
   // ═══════ POS P1.12U fix รอบ 1 (F1 · F9) ▸ ตะกร้าที่มีสมาชิก/คูปอง + สิทธิ์เกินเพดาน (PIN ผู้จัดการที่เตรียมไว้ · บิลพักที่อนุมัติแล้ว) ═══════
   //   ยอดในเครื่องใช้ไม่ได้ (มติ 1) ⇒ quote ฝั่งเซิร์ฟเวอร์ด้วยสิทธิ์นั้น (quoteRegisterCartOverrideAction · อ่านอย่างเดียว · ทางเดียวกับ quote ปกติ ⇒
@@ -1095,7 +1130,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
     return !r.ok && r.code === "DISCOUNT_EXCEEDS_LIMIT";
     // eslint-disable-next-line react-hooks/exhaustive-deps -- known เปลี่ยนพร้อม cartVer
   }, [cart, cartVer, vat, limits.maxDiscountBp, quoteFailed]);
-  const payEnabled = cart.lines.length > 0 && !!quoteFresh && online && limits.canSell && payPhase === "form" && !frozen && !shiftBlocked && !deviceRevoked;
+  const payEnabled = cart.lines.length > 0 && !!quoteFresh && online && limits.canSell && payPhase === "form" && !frozen && !shiftBlocked && !deviceRevoked && !tableOn; // POS P2.4U ▸ โหมดโต๊ะไม่ชำระที่นี่ ◂
   const lastAmount = quoteFresh?.grandTotalSatang ?? local?.grandTotalSatang ?? quote?.q.grandTotalSatang ?? 0;
   const payAmount = quoteSlow && !quoteFresh ? tc("loading") : totalsPending ? PENDING : moneyText(cart.lines.length ? lastAmount : 0);
 
@@ -1115,7 +1150,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
     if (key === "errors.stockInsufficient") return { key, values: { count: 0 } };
     return { key };
   }
-  const msgNode = (m: Msg) => (m.ns === "member" ? tm : m.ns === "recipe" ? tRecipe : t).rich(m.key, { ...(m.values ?? {}), b: (c) => <b>{c}</b> });
+  const msgNode = (m: Msg) => (m.ns === "member" ? tm : m.ns === "recipe" ? tRecipe : m.ns === "tables" ? tTables : t).rich(m.key, { ...(m.values ?? {}), b: (c) => <b>{c}</b> }); // POS P2.4U ▸ + tables ◂
 
   // POS P2.3U ▸ มติ 5: ลองตัดสต็อกที่ค้างของวันนี้ (retryPendingStockCutsAction — ขอบเขตเดียวกับตัวนับ) → แจ้ง recipe.retryDone {cut, left} · ปฏิเสธ = errorFor ◂
   const [retryingCuts, setRetryingCuts] = useState(false);
@@ -1168,7 +1203,12 @@ export function RegisterScreen(props: RegisterScreenProps) {
         : shownSource === "BRANCH"
           ? { kind: "BRANCH" as const, text: tPrice("badge.branch") }
           : null;
-    const lineError = quoteErrNow === "CHANNEL_NOT_SOLD" && quoteErr?.lineIndex === i ? t("errors.channelNotSold") : null;
+    const lineError =
+      quoteErrNow === "CHANNEL_NOT_SOLD" && quoteErr?.lineIndex === i
+        ? t("errors.channelNotSold")
+        : tableOn && tblErr?.lineIndex === i
+          ? tTables("order.lineRefused") // POS P2.4U ▸ มติ 4: บรรทัดที่ส่งครัวไม่ได้ ◂
+          : null;
     return {
       key: l.key,
       index: i,
@@ -1206,6 +1246,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
   // H5: พักสำเร็จ ⇒ resetBill() (ล้างจอ + หมุนคีย์บิล "ที่เดียว" ตาม S5.21) · เรียกคืน ⇒ resetBill() ก่อนวางตะกร้าที่คืน (คีย์ใหม่เสมอ ·
   //     บิลที่พักไม่เคยพกคีย์ไปด้วย — cartToQuoteInput ไม่มีคีย์) · พักล้ม = ตะกร้าเดิมอยู่ครบ
   const onHold = async (label?: string): Promise<boolean> => {
+    if (tableOn) return false; // POS P2.4U ▸ โหมดโต๊ะ: พัก = "บันทึกไว้ก่อน" ของรอบร่างโต๊ะ (F8 ไม่ทำงาน) ◂
     if (frozenRef.current || frozen || !cart.lines.length || heldBusyRef.current) return false;
     heldBusyRef.current = true;
     setHeldBusy(true);
@@ -1344,6 +1385,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
     if (p.soldOutReason === "UNAVAILABLE") return showToast({ key: "errors.productUnavailable" });
     // POS P2.2U ▸ มติ 5: ไม่ขายหน้าร้าน = เพิ่มไม่ได้ และไม่เปิดกล่องราคาเปิด (เซิร์ฟเวอร์ปฏิเสธ CHANNEL_NOT_SOLD อยู่แล้ว) ◂
     if (p.notSold) return showToast({ key: "errors.channelNotSold" });
+    if (tableOn && p.soldByWeight) return showToast({ key: "order.noWeighed", ns: "tables" }); // POS P2.4U ▸ รอบร่างโต๊ะไม่รับสินค้าชั่ง ◂
     // P1.2 R16: มีกลุ่มตัวเลือก (optionGroupCount) หรือตัวแปร (variantCount) ⇒ กล่องเลือก · สินค้าชั่ง ⇒ กล่องน้ำหนัก
     if (p.optionGroupCount > 0 || p.variantCount > 0) return push({ kind: "options", product: p, ...(anchor ? { anchor } : {}) });
     if (p.soldByWeight) return push({ kind: "weigh", product: p, options: [] });
@@ -1394,6 +1436,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
   /** P1.2 U: บรรทัดชั่ง (ป้ายเครื่องชั่ง หรือน้ำหนักที่กรอก) — qty 1 ไม่รวมกับบรรทัดใด · ราคาจริงจาก quote */
   const addWeighed = (p: RegisterProduct, weight: { weighedBarcode: string } | { weightGrams: number }, options: string[], note?: string) => {
     if (frozenRef.current) return;
+    if (tableOn) return showToast({ key: "order.noWeighed", ns: "tables" }); // POS P2.4U ▸ โหมดโต๊ะ ◂
     if (cartRef.current.lines.length >= REGISTER_MAX_LINES) return showToast({ key: "errors.tooManyLines", values: { max: REGISTER_MAX_LINES } });
     known.current.set(p.id, p);
     const key = newKey();
@@ -1811,6 +1854,157 @@ export function RegisterScreen(props: RegisterScreenProps) {
     resetBill();
     setLayers([]);
   };
+
+  // ═══════ POS P2.4U ▸ โหมดโต๊ะ (มติ 4) + ชิปชนิดบิล (มติ 6) ═══════
+  //   โหลด: registerTableDetailAction → รอบร่าง (detail.draft.cart) เป็นตะกร้า + ชื่อสินค้าที่ไม่อยู่ในกริด (registerProductsByIdsAction)
+  //   บันทึก: holdTableDraftAction — ครั้งแรก newDraft:true · ครั้งถัดไป heldCartId + expectedVersion (สัญญา fix-3: ไม่มีการพักแบบไม่ระบุร่าง)
+  //   ส่งครัว: บันทึกก่อนแล้ว registerSendTableRoundAction → /pos/tables?open=<session>&sent=<เลขออเดอร์> (toast "ส่งครัวแล้ว · ออเดอร์ #N")
+  //   VERSION_CHANGED / ALREADY_RECALLED ⇒ โหลดร่างล่าสุด แล้วต่อท้ายด้วยบรรทัดที่แคชเชียร์เพิ่มเอง (ไม่เขียนทับร่างของอีกเครื่อง) + ข้อความ errors.versionChanged
+  //   PRODUCT_UNAVAILABLE / OPTIONS_INVALID + lineIndex ⇒ ไฮไลต์บรรทัด (ร่างยังอยู่) · BUSY ⇒ ปุ่มลองอีกครั้ง · โต๊ะปิด ⇒ แถบแจ้ง + ลิงก์กลับ
+  const tableSid = props.tableSessionId ?? "";
+  const tablesHref = `${base}/pos/tables?unit=${encodeURIComponent(unitId)}`;
+  const loadTableDraft = async (mine: RegisterCartLine[]): Promise<boolean> => {
+    const r = await registerTableDetailAction({ systemId, unitId, tableSessionId: tableSid });
+    if (!r.ok || r.session.status !== "OPEN") {
+      setTbl({ phase: "closed", tableName: r.ok ? r.session.tableName : "" });
+      return false;
+    }
+    let lines: RegisterCartLine[] = [];
+    if (r.draft) {
+      const stored = r.draft.cart as RegisterQuoteInput;
+      const want = stored.lines.flatMap((l) => ("productId" in l && typeof l.productId === "string" && !known.current.has(l.productId) ? [l.productId] : []));
+      if (want.length) {
+        const pr = await registerProductsByIdsAction({ systemId, unitId, ids: want }).catch(() => null);
+        if (pr && pr.ok) remember(pr.products);
+      }
+      lines = quoteInputToCart({ lines: stored.lines }, newKey).lines;
+      draftRef.current = { id: r.draft.heldCartId, version: r.draft.version };
+    } else draftRef.current = null;
+    draftKeys.current = new Set(lines.map((l) => l.key));
+    changeCart({ lines: [...lines, ...mine].slice(0, REGISTER_MAX_LINES) });
+    setTbl({ phase: "ready", tableName: r.session.tableName });
+    return true;
+  };
+  useEffect(() => {
+    if (!tableOn) return;
+    void loadTableDraft([]).catch(() => setTbl({ phase: "closed", tableName: "" }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- ครั้งเดียวตอนเปิดจอ (key ของจอ = สาขา + โต๊ะ)
+  }, []);
+  useEffect(() => {
+    if (tableOn) return;
+    void registerTableModeAction({ systemId, unitId })
+      .then((r) => {
+        if (r.ok) setTableModeNow({ visible: r.visible, tableCount: r.tableCount });
+      })
+      .catch(() => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- ครั้งเดียวตอนเปิดจอ
+  }, []);
+  /** ปฏิเสธจากการบันทึก/ส่งครัว → ทำตามมติ 4 */
+  const tableRefused = async (r: { code: string; lineIndex?: number }) => {
+    if (r.code === "VERSION_CHANGED" || r.code === "ALREADY_RECALLED") {
+      const mine = cartRef.current.lines.filter((l) => !draftKeys.current.has(l.key));
+      await loadTableDraft(mine);
+      showToast({ key: r.code === "VERSION_CHANGED" ? "errors.versionChanged" : "errors.alreadyRecalled" });
+      return;
+    }
+    if (r.code === "TABLE_SESSION_CLOSED" || r.code === "TABLE_NOT_FOUND") {
+      setTbl((v) => ({ ...v, phase: "closed" }));
+      showToast(errorFor(r.code));
+      return;
+    }
+    if (r.code === "STAFF_TOKEN_INVALID") return staffTokenDead();
+    if (r.code === "BUSY") return setTblErr({ code: r.code, retry: true });
+    setTblErr({ code: r.code, ...(typeof r.lineIndex === "number" ? { lineIndex: r.lineIndex } : {}) });
+    showToast(errorFor(r.code));
+  };
+  /** บันทึกตะกร้าปัจจุบันเป็นรอบร่างของโต๊ะ — true = บันทึกแล้ว (draftRef เป็นรุ่นล่าสุด) */
+  const tableSave = async (): Promise<boolean> => {
+    const cur = cartRef.current;
+    if (!cur.lines.length) return false;
+    const d = draftRef.current;
+    const r = await holdTableDraftAction({
+      systemId,
+      unitId,
+      ...tokenArgs(),
+      tableSessionId: tableSid,
+      cart: { lines: cartToQuoteInput({ lines: cur.lines }, { choices: false }).lines },
+      ...(d ? { heldCartId: d.id, expectedVersion: d.version } : { newDraft: true }),
+    });
+    if (!r.ok) {
+      await tableRefused(r);
+      return false;
+    }
+    draftRef.current = { id: r.heldCart.id, version: r.draftVersion ?? (d ? d.version + 1 : 1) };
+    draftKeys.current = new Set(cur.lines.map((l) => l.key));
+    return true;
+  };
+  const tableRun = async (send: boolean) => {
+    if (!tableOn || tbl.phase !== "ready" || tblBusyRef.current || frozenRef.current || !cartRef.current.lines.length) return;
+    tblBusyRef.current = true;
+    setTblBusy(true);
+    setTblErr(null);
+    try {
+      if (!(await tableSave())) return;
+      if (!send) {
+        showToast({ key: "toast.draftSaved", ns: "tables" });
+        return;
+      }
+      const d = draftRef.current!;
+      const r = await registerSendTableRoundAction({ systemId, unitId, ...(deviceId ? { deviceId } : {}), tableSessionId: tableSid, heldCartId: d.id });
+      if (!r.ok) return void (await tableRefused(r));
+      resetBill();
+      router.push(`${tablesHref}&open=${encodeURIComponent(tableSid)}&sent=${r.dailyNo}`);
+    } catch {
+      showToast({ key: "errors.unknown" });
+    } finally {
+      tblBusyRef.current = false;
+      setTblBusy(false);
+    }
+  };
+  /** มติ 6: ทานที่ร้าน — ตะกร้ามีของที่รอบร่างเก็บไม่ได้ ⇒ ถามก่อน · แล้วเลือกโต๊ะ */
+  const billTypeOn = !tableOn && !!tableModeNow?.visible && (tableModeNow?.tableCount ?? 0) > 0;
+  const startDineIn = () => {
+    if (frozenRef.current || layersRef.current.some((l) => l.kind === "billStrip" || l.kind === "tablePick")) return;
+    push(stripNeeded(cartStripOf(cartRef.current)) ? { kind: "billStrip" } : { kind: "tablePick" });
+  };
+  /** ย้ายตะกร้า (ตัดของที่เก็บไม่ได้แล้ว) ไปเป็นรอบร่างของโต๊ะ c แล้วเปิดหน้าขายผูกโต๊ะ */
+  const moveCartToTable = async (c: TableCard) => {
+    if (moving || frozenRef.current) return;
+    setMoving(true);
+    try {
+      let sid = c.sessionId;
+      if (!sid) {
+        const o = await registerOpenTableAction({ systemId, unitId, ...(deviceId ? { deviceId } : {}), tableId: c.id });
+        if (!o.ok) return showToast(errorFor(o.code));
+        sid = o.sessionId;
+        if (o.reservationOverridden) showToast({ key: "reservation.overridden", ns: "tables" });
+      }
+      const mine = cartToQuoteInput(stripCart(cartRef.current), { choices: false }).lines;
+      if (mine.length) {
+        let r = await holdTableDraftAction({ systemId, unitId, ...tokenArgs(), tableSessionId: sid, cart: { lines: mine }, newDraft: true });
+        if (!r.ok && r.code === "VERSION_CHANGED") {
+          // โต๊ะนี้มีรอบร่างอยู่แล้ว ⇒ ต่อท้ายร่างล่าสุดแบบมีเงื่อนไขรุ่น (ร่างเดิม + ตะกร้านี้ · ไม่เขียนทับของเครื่องอื่น)
+          const dt = await registerTableDetailAction({ systemId, unitId, tableSessionId: sid });
+          if (dt.ok && dt.draft) {
+            const prev = (dt.draft.cart as RegisterQuoteInput).lines;
+            r = await holdTableDraftAction({ systemId, unitId, ...tokenArgs(), tableSessionId: sid, cart: { lines: [...prev, ...mine] }, heldCartId: dt.draft.heldCartId, expectedVersion: dt.draft.version });
+          }
+        }
+        if (!r.ok) {
+          if (r.code === "STAFF_TOKEN_INVALID") staffTokenDead();
+          else showToast(errorFor(r.code));
+          return;
+        }
+      }
+      resetBill();
+      setLayers([]);
+      router.push(`${base}/pos/register?unit=${encodeURIComponent(unitId)}&table=${encodeURIComponent(sid)}`);
+    } catch {
+      showToast({ key: "errors.unknown" });
+    } finally {
+      setMoving(false);
+    }
+  };
   /** P1.13U มติ 1–2: เปิดกล่อง 15A (ปุ่มท้ายตะกร้า · สวิตช์/แก้ในจอชำระ) — ร้านออกใบกำกับไม่ได้ = ข้อความแทนการเปิด */
   const taxEligible = status?.taxInvoiceEligible === true;
   const openTaxInvoice = () => {
@@ -2102,6 +2296,16 @@ export function RegisterScreen(props: RegisterScreenProps) {
       ) : null}
     </>
   ) : null;
+  // POS P2.4U ▸ มติ 4: ส่งครัวได้ BUSY ⇒ ข้อความ + ปุ่มลองอีกครั้ง (โหนดแยก — ปุ่มซ้อนในพร็อพของ CartPanel ทำให้ตัวสแกน F15.3 นับ CartPanel เป็นปุ่มไร้ testid) ◂
+  const tableRetryNode =
+    tableOn && tblErr?.retry ? (
+      <>
+        {t("errors.busy")}
+        <button data-testid="pos-tbl-send-retry" className="ml-2 min-h-[44px] font-semibold underline underline-offset-2" type="button" disabled={tblBusy} onClick={() => void tableRun(true)}>
+          {t("pay.retry")}
+        </button>
+      </>
+    ) : null;
   const cartPanel = (variant: "inline" | "sheet") => (
     <CartPanel
       variant={variant}
@@ -2110,7 +2314,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
       totalsPending={totalsPending}
       payAmount={payAmount}
       payEnabled={payEnabled}
-      error={errorNode}
+      error={tableRetryNode ?? errorNode} // POS P2.4U ▸ มติ 4: BUSY = ปุ่มลองอีกครั้ง ◂
       frozen={frozen}
       onPay={openPay}
       onSoon={soon}
@@ -2132,8 +2336,26 @@ export function RegisterScreen(props: RegisterScreenProps) {
       onKeep={keepSelling}
       onReduce={reduceTo}
       onClose={variant === "sheet" ? pop : undefined}
+      // POS P2.4U ▸ มติ 6: ชิปชนิดบิล (ทานที่ร้าน) · มติ 4: หน้าขายผูกโต๊ะ (ส่งครัว/บันทึกไว้ก่อน) ◂
+      billType={tableOn ? null : billTypeOn ? { onDineIn: startDineIn } : undefined}
+      tableMode={
+        tableOn
+          ? {
+              chip: tTables("order.chip", { name: tbl.tableName || "\u2026" }),
+              backHref: `${tablesHref}&open=${encodeURIComponent(tableSid)}`,
+              backLabel: tTables("order.back"),
+              sendLabel: tTables("order.send", { n: cart.lines.length }),
+              saveLabel: tTables("order.save"),
+              note: tTables("order.priceNote"),
+              canSend: tbl.phase === "ready" && cart.lines.length > 0 && limits.canSell,
+              busy: tblBusy,
+              onSend: () => void tableRun(true),
+              onSave: () => void tableRun(false),
+            }
+          : null
+      }
       memberSlot={
-        memberEnabled ? (
+        memberEnabled && !tableOn ? (
           <MemberChip
             member={cart.memberId ? ((memberInfo && memberInfo.id === cart.memberId ? memberInfo : null) ?? placeholderMember(cart.memberId)) : null}
             ready={memberReady}
@@ -2178,6 +2400,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
             discount={line.discount}
             note={line.note}
             focus={l.focus}
+            noDiscount={tableOn} // POS P2.4U ▸ รอบร่างโต๊ะไม่มีส่วนลดรายการ ◂
             onApply={(r) => applyLine(l.key, r)}
             onRemove={() => removeLine(l.key)}
             onClose={pop}
@@ -2505,6 +2728,11 @@ export function RegisterScreen(props: RegisterScreenProps) {
             onClose={pop}
           />
         );
+      // POS P2.4U ▸ มติ 6: ถามก่อนตัด → เลือกโต๊ะ → ย้ายตะกร้าเป็นรอบร่างของโต๊ะ ◂
+      case "billStrip":
+        return <BillStripDialog key={k} strip={cartStripOf(cart)} onContinue={() => setLayers((s) => [...s.filter((x) => x.kind !== "billStrip"), { kind: "tablePick" }])} onClose={pop} />;
+      case "tablePick":
+        return <TablePickDialog key={k} systemId={systemId} unitId={unitId} busy={moving} onPick={(c) => void moveCartToTable(c)} onClose={pop} />;
       case "note":
         return (
           <BillNoteDialog
@@ -2550,7 +2778,8 @@ export function RegisterScreen(props: RegisterScreenProps) {
           onCamera={openCamera}
           onLock={staff || noPinMode ? lockNow : undefined}
         />
-        <ModeTabsNav systemId={systemId} />
+        {/* POS P2.4U ▸ มติ 1: แท็บ "โต๊ะ" เป็นลิงก์เมื่อสาขามีโหมดโต๊ะ ◂ */}
+        <ModeTabsNav systemId={systemId} tablesHref={tableModeNow?.visible || tableOn ? tablesHref : null} />
         {!online && (
           <div data-testid="pos-reg-offline-banner" className="flex shrink-0 items-center gap-3 bg-[color:var(--color-ink)] px-5 py-[13px] text-[14px] leading-[1.5] text-[color:var(--color-surface)]" role="status">
             <RegisterIcon name="warn" size={18} />
@@ -2580,6 +2809,18 @@ export function RegisterScreen(props: RegisterScreenProps) {
             <a data-testid="pos-reg-shift-open-link" href={`/app/sys/${systemId}/pos/shifts?unit=${encodeURIComponent(unitId)}`} className="btn btn-primary min-h-[44px] text-sm">
               {ts("open")}
             </a>
+          </div>
+        )}
+        {/* POS P2.4U ▸ มติ 4: โหลดรอบร่างของโต๊ะ / โต๊ะปิดแล้ว ◂ */}
+        {tableOn && tbl.phase !== "ready" && (
+          <div data-testid="pos-tbl-order-state" data-phase={tbl.phase} className="flex shrink-0 flex-wrap items-center gap-3 border-b bg-[color:var(--color-surface-2)] px-5 py-[10px] text-[14px] text-[color:var(--color-ink)]" role="status">
+            <RegisterIcon name={tbl.phase === "closed" ? "warn" : "grid"} size={16} />
+            <span className="flex-1">{tbl.phase === "closed" ? tTables("order.closed") : tTables("order.loading")}</span>
+            {tbl.phase === "closed" && (
+              <a data-testid="pos-tbl-order-closed-back" href={tablesHref} className="btn btn-ghost min-h-[44px] text-sm">
+                {tTables("order.back")}
+              </a>
+            )}
           </div>
         )}
         {/* POS P2.3U ▸ มติ 5: ตัดสต็อกค้าง N บิล (ปุ่มเฉพาะ pos.settings.manage) ◂ */}
@@ -2631,10 +2872,11 @@ export function RegisterScreen(props: RegisterScreenProps) {
                 peek={peek}
                 count={cart.lines.length}
                 totalText={payAmount}
-                payEnabled={payEnabled}
+                payEnabled={tableOn ? tbl.phase === "ready" && cart.lines.length > 0 && !tblBusy : payEnabled}
                 empty={cart.lines.length === 0}
                 onOpen={() => push({ kind: "sheet" })}
-                onPay={openPay}
+                onPay={tableOn ? () => void tableRun(true) : openPay}
+                {...(tableOn ? { payLabel: tTables("actions.sendRound") } : {})}
               />
             )}
           </div>

@@ -9,6 +9,9 @@ import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { formatBaht } from "@/lib/ui/money";
+// POS P2.4U ▸ มติ 10 (F4b): สาขาที่ใช้โหมดโต๊ะของ POS ⇒ ซ่อน "เช็คบิล" (รวม "ยืนยันรับเงิน" พร้อมเพย์ = เช็คบิลเดิม) + โน้ต "จัดการที่ POS › โต๊ะ" ◂
+import { getTranslations } from "next-intl/server";
+import { posTableModeForUnit } from "@/lib/modules/pos/table-legacy";
 
 function minsSince(d: Date | null) {
   if (!d) return 0;
@@ -34,6 +37,8 @@ export default async function RestaurantPage({
     billsToday(tenantId, unit.id),
   ]);
   const kitchen = kitchenOpenNow(setting);
+  const posTables = await posTableModeForUnit(auth, unit.id); // POS P2.4U ▸ F4b ◂
+  const tl = await getTranslations("pos.tables"); // POS P2.4U ▸ โหมดโต๊ะ ◂
   const byZone = new Map<string, typeof tables>();
   for (const t of tables) {
     const arr = byZone.get(t.zoneName) ?? [];
@@ -67,6 +72,16 @@ export default async function RestaurantPage({
       {err && (
         <div className="rounded-lg border border-[color:var(--color-danger)] bg-rose-50 px-3 py-2 text-sm text-[color:var(--color-danger)]">
           {err}
+        </div>
+      )}
+
+      {/* POS P2.4U ▸ F4b: โน้ตย้ายเช็คบิลไป POS ◂ */}
+      {posTables && (
+        <div data-testid="rest-pos-tables-note" className="flex flex-wrap items-center justify-between gap-2 rounded-xl border px-3 py-2 text-sm">
+          <span>{tl("legacy.note")}</span>
+          <Link data-testid="rest-pos-tables-link" href={posTables.href} className="btn-sm">
+            {tl("legacy.manageAtPos")}
+          </Link>
         </div>
       )}
 
@@ -113,7 +128,7 @@ export default async function RestaurantPage({
                   {isPay && <div className="text-xs text-[color:var(--color-muted)]">ตรวจยอดเงินเข้าบัญชีก่อน แล้วกดยืนยันรับเงินเพื่อปิดบิล</div>}
                 </div>
                 <div className="flex gap-2">
-                  {isPay && (
+                  {isPay && !posTables && ( // POS P2.4U ▸ F4b: ยืนยันรับเงิน = เช็คบิลเดิม ⇒ ที่ POS ◂
                     <ConfirmDialog
                       triggerLabel="ยืนยันรับเงิน"
                       triggerClassName="btn-sm btn-primary"
@@ -192,12 +207,18 @@ export default async function RestaurantPage({
                             >
                               ดูโต๊ะ
                             </Link>
+                            {posTables ? ( // POS P2.4U ▸ F4b: สาขาโหมดโต๊ะ = ลิงก์ไป POS แทนเช็คบิลเดิม
+                              <Link href={`${posTables.href}&open=${t.sessionId}`} className="btn-sm">
+                                {tl("legacy.manageAtPos")}
+                              </Link>
+                            ) : ( // POS P2.4U ▸ F4b: สาขาที่ไม่ใช้โหมดโต๊ะ = ปุ่มเดิม
                             <Link
                               href={`/app/u/${unitSlug}/restaurant/checkout/${t.sessionId}`}
                               className="btn-sm"
                             >
                               เช็คบิล
                             </Link>
+                            )}{/* ◂ POS P2.4U F4b */}
                           </div>
                         </div>
                       ) : (

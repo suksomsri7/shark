@@ -17,7 +17,8 @@ import type { NavItem } from "./NavDrawer";
 // 🔴 ตัวราง **ไม่รู้จักโมดูลไหนเลย** — รับ items ชุดเดียวกับ NavDrawer จาก layout (DB-driven)
 // POS P1.3 B2.1 ▸ หน้าขายบังคับรางเฉพาะระบบที่ธง registerV2 เปิด (layout ส่ง id มา · SSR ตรงกับหน้า ไม่กระพริบ) · ไม่ส่ง = เหมือน main ◂
 export function isRailPath(pathname: string, posRegisterV2Ids: readonly string[] = []): boolean {
-  const pos = /^\/app\/sys\/([^/]+)\/pos\/register\/?$/.exec(pathname);
+  // POS P2.4U ▸ หน้าโต๊ะ (/pos/tables) ใช้กรอบเดียวกับหน้าขาย — ธงเดียวกัน ◂
+  const pos = /^\/app\/sys\/([^/]+)\/pos\/register\/?$/.exec(pathname) ?? /^\/app\/sys\/([^/]+)\/pos\/tables\/?$/.exec(pathname);
   return /^\/app\/sys\/[^/]+\/kanban\/b\//.test(pathname) || (!!pos && posRegisterV2Ids.includes(pos[1]));
 }
 
