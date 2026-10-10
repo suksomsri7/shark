@@ -52,7 +52,8 @@ const FACTS: Record<PosIntegrationCode, readonly (readonly [string, boolean, str
   COUPON: [["couponCode", true, null], ["voucherPayment", false, "P2.9"], ["couponUnitLimit", true, null]],
   REWARD: [["rewardRedeem", true, null], ["rewardNearCustomerDisplay", false, "P2.10"]],
   ACCOUNT: [["autoPost", true, null], ["taxInvoice", true, null], ["platformCommission", false, "P2.1"], ["promptpayReconcile", false, "P3.10"]],
-  INVENTORY: [["stockDeduct", true, null], ["bomDeduct", false, "P2.3"], ["oversellPolicy", true, null], ["lowStockReorder", false, "P3"]],
+  // POS P2.3U ▸ มติ 8: ตัดตามสูตร BOM ใช้งานจริงแล้ว (P2.3 S ตัด + P2.3U จอ 06 ตั้งสูตร/สวิตช์) ◂
+  INVENTORY: [["stockDeduct", true, null], ["bomDeduct", true, null], ["oversellPolicy", true, null], ["lowStockReorder", false, "P3"]],
   HR: [["shiftPinSchedule", false, "P3.5"], ["salesCommission", false, "P3.5"], ["leaveHidesShift", false, "P3.5"]],
   CRM: [["dealPaidCount", true, null], ["bigBillDeal", false, "P3.6"], ["corporateCredit", false, "P3.6"]],
   CHAT: [["lineReceipt", true, null], ["chatOrders", false, "P2.8"], ["orderStatusBot", false, "P3.7"]],
