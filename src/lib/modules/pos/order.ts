@@ -19,7 +19,8 @@ import { emitOutbox } from "@/lib/core/outbox";
 import { canAccessUnit, evaluate } from "@/lib/core/rbac";
 import { scheduleDrain } from "@/lib/outbox-consumers";
 import { prisma } from "./db";
-import { consumeSaleInventory, createSale, posDayStart, posSystemForSale, PosSaleError, type CreateSaleInput } from "./service";
+import { afterSaleCommitted, createSale, posDayStart, posSystemForSale, PosSaleError, type CreateSaleInput } from "./service";
+import { callerTx } from "@/lib/core/caller-tx"; // HF-TX ▸ มุมมองธุรกรรมของผู้เรียก (แทน proxy เฉพาะที่ของ P2.8) ◂
 import { ensureUnitChannels } from "./channel";
 import { channelCommission, channelNet } from "./channel-shared";
 import { quoteRegisterCart } from "./register";
@@ -431,27 +432,10 @@ async function saleLinesOf(tx: Tx, s: { tenantId: string; systemId: string; unit
   });
 }
 
-/**
- * มุมมองของธุรกรรมที่ "ไม่มี $transaction" — Prisma 7 ให้ client ของ interactive tx มี $transaction (ซ้อนเป็น savepoint) ⇒ createSale
- * (`withTx` ตรวจ `"$transaction" in client`) จะเปิดธุรกรรมซ้อน + ถือว่าเป็นเจ้าของ tx (ตัดสต็อก/ระบายคิวก่อนธุรกรรมของออเดอร์ commit ·
- * แถวบิลได้ xid ของ savepoint ไม่ใช่ของการรับ) — ซ่อน $transaction ให้ createSale ทำงานใน tx เดียวกันตามสัญญาเดิม ("tx ของผู้เรียก")
- * แล้วงานหลัง commit (ตัดสต็อก · ระบายคิว) ทำที่นี่เองแบบเดียวกับ register.ts · ไม่แตะ service.ts (มติ 3)
- */
-// POS P2.8 ▸ HF-TX: ผู้คุมจะรวมเป็น helper กลางหลัง HF ◂
-function flatTx(tx: Tx): Tx {
-  return new Proxy(tx, {
-    has: (t, p) => p !== "$transaction" && Reflect.has(t, p),
-    get: (t, p) => {
-      if (p === "$transaction") return undefined;
-      const v = Reflect.get(t, p);
-      return typeof v === "function" ? v.bind(t) : v;
-    },
-  });
-}
-
-/** จุดเดียวที่ออเดอร์สร้างบิล (มติ 3 · ทะเบียน qc-pos-p1.6) — ในธุรกรรมของออเดอร์เสมอ (ไม่ซ้อน · flatTx) */
+/** จุดเดียวที่ออเดอร์สร้างบิล (มติ 3 · ทะเบียน qc-pos-p1.6) — ในธุรกรรมของออเดอร์เสมอ (ไม่ซ้อน · callerTx) */
+// POS P2.8 ▸ HF-TX: switched — proxy เฉพาะที่ของ P2.8 ถูกลบ ใช้ callerTx กลาง (core/caller-tx) · งานหลัง commit = afterSaleCommit → afterSaleCommitted ◂
 function orderCreateSale(tx: Tx, input: CreateSaleInput) {
-  return createSale(input, flatTx(tx));
+  return createSale(input, callerTx(tx));
 }
 
 /** ฐานของบิลออเดอร์: sourceModule POS · sourceId = ออเดอร์ · คีย์ posorder-<id> · ช่องทาง + เลขอ้างอิง · ไม่มีค่าบริการ/ทิป/ส่วนลด (P2.1 CD8) */
@@ -479,9 +463,9 @@ async function deviceShift(db: PrismaClient, s: { tenantId: string; systemId: st
   return { shiftId: st.shift?.id ?? null, required: st.required };
 }
 
-/** งานหลัง commit ของบิล: ตัดสต็อก (บรรทัดผูกคลัง/ส่วนประกอบ) — ชุดเดียวกับ createSale ตอนเป็นเจ้าของ tx */
+/** งานหลัง commit ของบิล: afterSaleCommitted (ตัดสต็อกบรรทัดผูกคลัง/ส่วนประกอบ + ระบายคิว) — ชุดเดียวกับ createSale ตอนเป็นเจ้าของ tx (HF-TX) */
 async function afterSaleCommit(tenantId: string, unitId: string, saleId: string | null, lines: CreateSaleInput["lines"] | null): Promise<void> {
-  if (saleId && lines && lines.some((l) => l.itemId || (l.components && l.components.length))) await consumeSaleInventory(tenantId, unitId, saleId);
+  if (saleId && lines) await afterSaleCommitted({ tenantId, unitId, lines }, saleId);
 }
 
 /**

@@ -417,14 +417,13 @@ import * as couponSvc from "@/lib/modules/coupon/service";
 import { splitIncludedVat } from "@/lib/money/vat";
 import type { RegisterMemberGate, RegisterMemberQuote } from "./register-member";
 // POS P1.7 ▸ ใบขอรับเงิน (pi_…) ใช้ในธุรกรรมขายของหน้าขาย · งานหลัง commit ชุดเดียวกับ createSale (ตัดสต็อก + ระบายคิว · มติ I) ◂
-import { afterSaleCommitted, consumeSaleInventory, pendingStockParts, posDayStart } from "./service";
+import { afterSaleCommitted, pendingStockParts, posDayStart } from "./service";
 import { callerTx } from "@/lib/core/caller-tx"; // HF-TX ▸ มุมมองธุรกรรมของผู้เรียก (ซ่อน $transaction) ◂
 // POS P2.3 ▸ สูตร/BOM: สูตรที่ใช้จริงของแถว (อ่านอย่างเดียว) · กระจายสูตร/จำนวนหน่วยที่ทำได้ (บริสุทธิ์) ◂
 import { loadRowRecipes } from "./recipe";
 import { expandRecipe } from "./recipe-shared";
 import { consumeSaleIntents, lockSaleIntents, type SaleIntentRef } from "./payment-intent";
 import { isPaymentIntentId } from "./payment-intent-shared";
-import { scheduleDrain } from "@/lib/outbox-consumers";
 import { posPaymentSettings, type PosPaymentSettings } from "./payment-settings";
 // POS P1.9 ▸ กะของเครื่อง (S5/S6/S15) ◂
 import { isShiftDeviceId, registerShiftStatus, resolveRegisterShift } from "./shift";
@@ -2472,24 +2471,6 @@ async function regSubmitWithIntents(
   return regRefuse("BUSY");
 }
 
-/**
- * POS P2.4 ▸ Prisma 7: client ของ interactive tx มี `$transaction` (เรียกซ้อน = SAVEPOINT) ⇒ createSale คิดว่า "เป็นเจ้าของธุรกรรม" (ownsTx) —
- *   แถวบิลถูกเขียนใต้ savepoint (xid ย่อยคนละตัวกับแถวโต๊ะ) และงานหลัง commit (ตัดสต็อก/ระบายคิว) วิ่งก่อนธุรกรรมนอก commit
- *   ⇒ ซ่อน `$transaction` ให้ createSale ทำงานในธุรกรรมของผู้เรียกตรง ๆ ตามที่ service.ts ออกแบบ ("ถูกเรียกใน tx ผู้อื่น") —
- *   บิล + ยึดรายการ + ปิดโต๊ะ = xid เดียว (CONTROLLER-DECISION 9) · งานหลัง commit ทำที่ regSubmitTable หลังธุรกรรม ◂
- */
-// POS P2.4 ▸ HF-TX: ผู้คุมจะรวมเป็น helper กลางหลัง HF ◂
-function regCallerTx(tx: Prisma.TransactionClient): Prisma.TransactionClient {
-  return new Proxy(tx, {
-    has: (t, k) => (k === "$transaction" ? false : Reflect.has(t, k)),
-    get: (t, k) => {
-      if (k === "$transaction") return undefined;
-      const v: unknown = Reflect.get(t, k);
-      return typeof v === "function" ? (v as (...a: unknown[]) => unknown).bind(t) : v;
-    },
-  });
-}
-
 /** POS P2.4 ▸ คำขอซ้ำของบิลโต๊ะ: แฮชของรายการที่ผูกบิลเดิม (บิล POS ของระบบ+สาขานี้เท่านั้น) แล้วเทียบแบบ regDuplicate ◂ */
 async function regTableDuplicate(db: RegDb, s: RegScope, req: RegParsedSubmit, sale: RegSaleRow, duplicated: boolean): Promise<RegisterSubmitResult> {
   req.tableReplayHash = null;
@@ -2505,7 +2486,7 @@ async function regTableDuplicate(db: RegDb, s: RegScope, req: RegParsedSubmit, s
  *   regCreateSale(…, tx) (จุดเรียกเดิม · sourceModule "POS" · sourceId = session) → (ใช้ใบขอรับเงิน) → ผูกรายการ saleId/settledAt →
  *   ไม่มีรายการค้างจ่าย + ไม่มีรอบร่าง HELD ⇒ session CLOSED + โต๊ะ dirtySince (CONTROLLER-DECISION 9: แถวรายการ/session/บรรทัดบิล xmin เดียวกัน)
  *   สองเครื่องจ่ายโต๊ะเดียวกันพร้อมกัน (คนละคีย์) = บิลเดียว · ผู้แพ้รอล็อกรายการแล้วยึดไม่ได้ ⇒ ไม่มีบิล/เลขใบเสร็จ/event (rollback ทั้งก้อน)
- *   หลัง commit: ตัดสต็อก + scheduleDrain (ชุดเดียวกับทางใบขอรับเงิน) ◂
+ *   หลัง commit: afterSaleCommitted (ตัดสต็อก + scheduleDrain · ชุดเดียวกับทางใบขอรับเงิน) ◂
  */
 async function regSubmitTable(
   db: RegDb,
@@ -2531,7 +2512,8 @@ async function regSubmitTable(
           const scope = { tenantId: s.tenantId, unitId: s.unitId, sessionId: t.sessionId };
           const claimed = await rest.claimTableItemsInTx(tx, { ...scope, itemIds: t.itemIds });
           if (claimed.length !== t.itemIds.length) throw new RegIntentRefusal(regRefuse("TABLE_ITEMS_CHANGED"));
-          const r = await regCreateSale(saleInput, regCallerTx(tx));
+          // POS P2.4 ▸ HF-TX: switched — proxy เฉพาะที่ของ P2.4 ถูกลบ ใช้ callerTx กลาง (core/caller-tx) · บิล + ยึดรายการ + ปิดโต๊ะ = xid เดียว (CONTROLLER-DECISION 9) ◂
+          const r = await regCreateSale(saleInput, callerTx(tx));
           if (locked) await consumeSaleIntents(tx, s, r.saleId, locked.notes);
           const drafts = await tx.posHeldCart.count({ where: { tenantId: s.tenantId, systemId: s.systemId, unitId: s.unitId, tableSessionId: t.sessionId, status: "HELD" } });
           const st = await rest.settleTableItemsInTx(tx, { ...scope, itemIds: t.itemIds, saleId: r.saleId, closeWhenPaid: drafts === 0 });
@@ -2540,8 +2522,7 @@ async function regSubmitTable(
         },
         { timeout: 20_000, maxWait: 10_000 },
       );
-      if (saleInput.lines.some((l) => l.itemId || (l.components && l.components.length))) await consumeSaleInventory(s.tenantId, s.unitId, saleId);
-      scheduleDrain();
+      await afterSaleCommitted(saleInput, saleId); // HF-TX ▸ งานหลัง commit ชุดเดียว (ตัดสต็อก + scheduleDrain) ◂
       const row = await regLoadSale(db, s.tenantId, req.idempotencyKey);
       if (!row || row.id !== saleId) return regRefuse("INTERNAL");
       // POS P2.4 ▸ fix 2 F6: บรรทัดที่ตัดสต็อกไม่ได้ — 1 บรรทัด log ต่อสินค้า (เฉพาะบิลที่เกิดในคำขอนี้ · ไม่มีข้อมูลลูกค้า) ◂
