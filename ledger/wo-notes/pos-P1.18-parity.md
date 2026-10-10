@@ -242,3 +242,21 @@ Global facts checked on the shots: ฿ with thousands separators and `.00` only 
 | O13 | **fix-now** → HF-P1CLOSE: cashier `products` renders the same refusal card (HTTP 200) as stock/shifts/reports; harness expectation stays "record". |
 | 07 | **re-shoot in vis58** on QC5 (HF-VIS-SHIFTS merged at 1768467c); compare to 07 before the handover. |
 Sheet status: frozen as the R15 artefact at vis56 (b694aea0); vis58 adds the re-shot/new rows as an addendum, not a rewrite. P1 phase close = HF-P1CLOSE merged + vis58 addendum + HANDOVER-P1.
+
+## vis59 addendum (controller · 10 Oct 02:2xZ · QC5 @db5af8c2 = merge HF-P1CLOSE · run `/root/pos-runs/vis59-qc5-20261010T012628Z` · 0 ❌ in every log · #418 = 0)
+| item | evidence | result |
+|---|---|---|
+| O1 reports tab + branch chip | register-*-{th,en} 96/93/34 ok · HF state asserts `href=/pos/reports` and chip text | harness-verified · DEVIATION closed |
+| O2 coupon row enabled | `register-bill-discount-*` 3 sizes ok (no `aria-disabled`) | harness-verified · closed |
+| O4 SHARK card 1024 | `settings-shark-owner-1024x768` ok (stackBelowXl) | harness-verified · closed |
+| O5 13B lock-screen scroll 390 | log: `scrollHeight 1291 > clientHeight 844 · scrollTop 447 · สลับพนักงาน/บิลพักอยู่ในจอ` (owner + cashier) | **closed** — reachable |
+| O6 14B held drawer | `register-held-drawer-owner-1440x900` (+1024/390/en): title "บิลที่พัก (3) ทั้งสาขา", cards name/฿/items/time/staff, "เรียกคืน" + "ทิ้ง", footer note | **DEVIATION** — no "เครื่องนี้" chip / device label per card; footer "พักเกิน 2 วันถูกทิ้งอัตโนมัติ" vs 14B "หมดอายุสิ้นวัน" (P1.5 rule); recall-conflict modal not shot (state not in harness) → P2.12 polish line |
+| O7 17A/17B devices | `settings-devices-owner-1440x900`: 3 ACTIVE cards + dashed "ลงทะเบียนเครื่องอื่น" + collapsed "เพิกถอนแล้ว (97)"; right panel = 17B (paper 58/80, Bluetooth/USB/เบราว์เซอร์, Thai raster, auto-print, drawer, copy, test print, revoke) | **DEVIATION** (matches 17B except: status chip "ยังไม่เคยออนไลน์" vs "ออนไลน์"; no kitchen-printer row = P2.6/P3.11; no device OS subtitle) |
+| O8 11C receipt-public | `receipt-public-paid-owner-390x844` (+1024/1440, cashier, en; states paid/refunded-partial/not-found/issue-sent) | **MATCH** 11C (header+chip, lines, discount/VAT/net, payment split, 4 action rows, footer; extra ไทย/อังกฤษ switch) |
+| O9 02b sale-done 390 | `register-sale-done-owner-390x844`: sheet with ✓, ฿190, เงินทอน/เลขใบเสร็จ/วิธีชำระ, "ขายต่อ (อัตโนมัติ 5 วินาที)", email/LINE/copy/print | accepted (no 390 frame in 02b) |
+| O11 19ค PromptPay card | `register-paydlg-promptpay-timeout-owner-1440x900`: QR card shows "QR หมดอายุ" + "สร้าง QR ใหม่"; other methods via tiles; "ยืนยันรับเงิน" stays available | **DEVIATION** — 19ค = red card "ยังไม่ได้รับเงิน PromptPay" + reason + ลองใหม่/เลือกวิธีอื่น/ยืนยันเองเมื่อเห็นเงินเข้า + ref code · functions exist, copy/structure differ → **P2.12 line** (plan §4 เก็บตก (ข) resolved as deviation) |
+| O11 19ค print-failed | `settings-paydone-print-failed-owner-1440x900`: red card inside PayDone "ยังไม่ได้จับคู่เครื่องพิมพ์ หรือหาเครื่องพิมพ์ไม่พบ — จับคู่ใหม่ที่หน้าตั้งค่าเครื่อง" + พิมพ์ซ้ำ + พิมพ์ผ่านระบบแทน | **DEVIATION** — 19ค = black bottom toast "พิมพ์ไม่สำเร็จ — เครื่องพิมพ์ไม่ตอบสนอง (Bluetooth) · ลองใหม่ · พิมพ์ผ่านเบราว์เซอร์"; same actions, in-dialog card instead of toast |
+| O13 products cashier | `products-cashier-{390,1024,1440}` ok (refusal card HTTP 200) | harness-verified · closed |
+| 07 shifts owner | re-verified at db5af8c2 (same as vis58b rows above) | DEVIATION rows above stand |
+| sales-cashier bills-* | 27/27 ok (receipt-no search addendum works) | closed |
+P1 phase-close verdict: all OPEN rows resolved (closed / DEVIATION with owner or P2.12 line). Remaining design follow-ups: 14B device chip + conflict modal shot · 19ค PromptPay card copy · print-failed toast position → P2.12.

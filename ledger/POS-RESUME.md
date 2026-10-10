@@ -1160,3 +1160,9 @@
 - เลน = 2: fix P2.3 (c) · ผู้ตรวจ P2.2U (read-only p11) · ทรี b ว่าง · vis59: register owner/cashier เขียว กำลังถ่ายต่อ
 
 - 01:58Z ผู้ตรวจ P2.2U = **MERGEABLE-AFTER-FIXES** (`wo-notes/pos-P2.2U-review.md` + มติ): F1 refetch ที่ priceValidUntil หยุดหลังรอบแรก (key เดิมซ้ำ) → key {iso,seq}+reschedule · F2 วันสิ้นสุดโชว์เกิน 1 วัน → endsAt−1ms · F3 `local` memo ใช้ราคาหน้าร้านบนตะกร้าแพลตฟอร์ม → null+pending · F4 VALIDATION ไร้ field → ข้อความไม่ผูกช่อง (แถวช่องทาง/สาขาที่ archive → P2.11) · F5 >500 → bulk.tooMany · F6 dry logs header · F7 แถว STORE ไม่ขึ้น badge ช่องทาง · ORACLE-EDIT p2.2 :475/:477 ตามที่ผู้ตรวจเขียน → **fix round 1 เปิด** (p11 · prompt `P2.2U-fix.md`) · เลน = 2 (fix P2.3 c · fix P2.2U p11) · vis59: register ×3 + settings ×3 เขียว กำลังถ่ายต่อ
+
+## 2026-10-10T02:17Z · 🏁 **ปิดเฟส P1** — vis59 เขียวทุกหน้า · HANDOVER-P1 เติม §3 ครบ · parity addendum vis59
+- vis59 (QC5 @db5af8c2 · `/root/pos-runs/vis59-qc5-20261010T012628Z`): ทุกหน้า × owner-th/cashier-th/owner-en = 0 ❌ · #418 = 0 · sales-cashier bills-* 27/27 (addendum ค้นเลขบิลทำงาน)
+- ผู้คุมดูภาพ: O5 เลื่อนถึง (1291>844) · O6 14B deviation ย่อย (ไม่มีชิปเครื่อง · footer 2 วัน) · O7 17B = ACTIVE 3 + เพิกถอน (97) พับ ตรงแบบ · O8 11C **MATCH** · O9 รับ · O11 19ค PromptPay/print-failed = deviation (ฟังก์ชันครบ ข้อความ/ตำแหน่งต่าง) → **P2.12** · O1/O2/O4/O13 harness ยืนยัน · 07 ยืนยัน · ตาราง `wo-notes/pos-P1.18-parity.md` "vis59 addendum"
+- `ledger/HANDOVER-2026-10-10-POS-P1.md` commit แล้ว (§0–§7 · §3 vis59 addendum · gates62 12/12) · แผน §4 เก็บตก (ข) ตัดสินแล้ว → P2.12
+- **สถานะ 23/55 (42%)** · เฟส P2 เดินอยู่: fix P2.3 S (c · ด่านใกล้จบ) · fix P2.2U (p11) · oracle P2.6 บนฐาน · P2.4 S/P2.8 S รอ P2.3 S merge
