@@ -99,6 +99,8 @@ const CHECKS: readonly Def[] = [
   D("W6", "X4", "[R9 CD4 มติ 4] แถวร่วม InvItem (ฐาน ฿200) ขายเว็บ ฿250: dual-write แถว (WEB, null) 25000 · storefront listProducts({storefront}) 25000 · createOrder 25000 · ราคา STORE ยัง 20000 · แก้แถว WEB 26000 → storefront + createOrder 26000 · ShopProduct.priceSatang ยัง 25000"),
   D("W7", "X1", "[R9 มติ 4] backfillWebPrices: รอบแรกเขียนแถว WEB ที่หาย (25000) · รอบสองเขียน 0 · แก้วขายสองสาขาคนละราคา → webPriceConflict ≥ 1 (มี posProductId) · createOrder สาขา S 9000 / S2 9500 (ราคาของตัวเอง)"),
   D("W8", "X4", "[R9 มติ 4] บรรทัดบิลยืนยันของเว็บร้าน: productId = posProductId · ไม่มี itemId · priceSource มีค่า · สต็อกเสื้อตัดครั้งเดียวทางเว็บร้าน (ecom-<order>-<line>) −2 · ไม่มีแถวตัดสต็อกของบิล"),
+  // ORACLE-ADD (P2.8 fix รอบ 2 · รีวิว F1 F2 · มติผู้คุม 10 ต.ค. 05:1xZ)
+  D("W9", "X5", "[R5 มติ 13 · F1] ออเดอร์เว็บที่ร้านยืนยันรับเงินแล้ว (PAID · ยัง NEW) → rejectOrder ORDER_STATE_INVALID (ข้อความให้คืนเงิน/ยกเลิกที่หน้าเว็บร้าน) · ออเดอร์/ShopOrder/บิล ECOM ไม่เปลี่ยน · ตัวควบคุม: ออเดอร์เว็บที่ยังไม่จ่าย reject → ShopOrder CANCELLED"),
   // ── R ตัวอ่าน ──
   D("R1", "-", "[R8] listOrders สาขา A: counts.byColumn {new preparing ready done} + counts.byChannel ตรงความจริงใน DB · summary {count totalSatang rejectedCancelled avgAcceptSeconds onTime{n m}} · การ์ด LM-48213 (ref itemCount 3 · 42000 · channel {code name}) · กรอง status/channelId"),
   D("R2", "X4", "[R8] getOrder: commission LM-48213 {12600 · 0 · net 29400} = channelCommission · GRAB {7950 · 557 · net 22493} · บรรทัด 3 แถว (options note) · history {count avgSatang} ของเบอร์เดียวกันที่สาขา = ความจริงใน DB"),
@@ -2080,6 +2082,34 @@ async function runDb() {
     await drain();
     if ((await st()) !== "CANCELLED" || (o && (await row(o.id))?.version !== v0)) p.push("เล่นซ้ำแล้วเปลี่ยน");
     chk("W5", good(p), "REJECTED → ShopOrder CANCELLED · เล่นซ้ำไม่เปลี่ยน", why(p));
+  });
+  await step("W9", async () => {
+    const p: string[] = [];
+    const so9 = await shopTry("createOrder", () => shop.createOrder(sctx("S"), { customerName: "คุณจ่ายแล้ว", customerPhone: "0811119999", lines: [{ productId: SP.hat, qty: 1 }] }), p);
+    const cf = so9?.id ? await shopTry("confirmOrderPaid", () => shop.confirmOrderPaid(sctx("S"), so9.id), p) : null;
+    if (!fx && cf?.ok !== true) p.push(`(ตั้งต้น) confirmOrderPaid → ${short(cf, 60)}`);
+    await drain();
+    const o = (await poOfShop(so9?.id ?? ""))[0];
+    if (!fx && (!o || o.status !== "NEW" || o.paymentState !== "PAID" || o.saleId !== cf?.posSaleId)) p.push(`(ตั้งต้น) ออเดอร์เว็บที่จ่ายแล้ว ${ordStr(o)} (คาด NEW PAID + saleId)`);
+    const v0 = o?.version;
+    const r = o ? await O("rejectOrder", ctxU("S"), A("MGR"), { id: o.id, reasonCode: "OUT_OF_STOCK" }) : null;
+    if (!refused(r, "ORDER_STATE_INVALID")) p.push(`reject ออเดอร์เว็บที่จ่ายแล้ว → ${codeOf(r)} (คาด ORDER_STATE_INVALID)`);
+    else if (!/คืนเงิน|หน้าเว็บร้าน/.test(String(r?.message ?? ""))) p.push(`ข้อความ ${short(r?.message, 60)} (คาดบอกให้คืนเงิน/ยกเลิกที่หน้าเว็บร้าน)`);
+    await drain();
+    const o1 = o ? await row(o.id) : null;
+    if (o && (o1?.status !== "NEW" || o1?.paymentState !== "PAID" || o1?.version !== v0)) p.push(`ออเดอร์หลังปฏิเสธ ${ordStr(o1)} (คาดไม่เปลี่ยน v${v0})`);
+    const shopSt = so9?.id ? (await P.shopOrder.findUnique({ where: { id: so9.id } }).catch(() => null))?.status : null;
+    const saleSt = cf?.posSaleId ? (await P.posSale.findUnique({ where: { id: cf.posSaleId } }).catch(() => null))?.status : null;
+    if (!fx && (shopSt !== "PAID" || saleSt !== "PAID")) p.push(`ShopOrder ${shopSt} · บิล ${saleSt} (คาด PAID · PAID)`);
+    // ตัวควบคุม: ออเดอร์เว็บที่ยังไม่จ่าย → ปฏิเสธได้ → ตัวรับคิวยกเลิก ShopOrder
+    const so9b = await shopTry("createOrder", () => shop.createOrder(sctx("S"), { customerName: "คุณยังไม่จ่าย", customerPhone: "0811119998", lines: [{ productId: SP.hat, qty: 1 }] }), p);
+    const ob = (await poOfShop(so9b?.id ?? ""))[0];
+    const rb = ob ? await O("rejectOrder", ctxU("S"), A("MGR"), { id: ob.id, reasonCode: "OUT_OF_STOCK" }) : null;
+    if (!fx && rb?.ok !== true) p.push(`(ตัวควบคุม) reject ออเดอร์เว็บที่ยังไม่จ่าย → ${codeOf(rb)}`);
+    await drain();
+    const sb = so9b?.id ? (await P.shopOrder.findUnique({ where: { id: so9b.id } }).catch(() => null))?.status : null;
+    if (!fx && sb !== "CANCELLED") p.push(`(ตัวควบคุม) ShopOrder ${sb} (คาด CANCELLED)`);
+    chk("W9", good(p), "PAID WEB → ORDER_STATE_INVALID · ไม่มีอะไรเปลี่ยน · ยังไม่จ่าย → ยกเลิก ShopOrder", why(p));
   });
   await step("W7", async () => {
     const p: string[] = [];
