@@ -45,3 +45,22 @@ New state ids: **`held-drawer`** (register · desktop/ipad/mobile) · **`paydlg-
 - ST7 (Thai outside `t()` under `src/components/pos/**` + `src/app/app/sys/[id]/pos/**`, same strip regexes as `qc-pos-p1.18`): **0**. Positive control: a string literal "ไทย" counts 1, comment/JSX-comment 0 (`st7.py`).
 - `qc-hf-pos-page-authz` (iso → QC_FORCE qc4 → `GATE_LOCK_FILE=/tmp/shark-gate-pos.lock` with-gate-lock) at 6647cbdf: **EXIT 0 · 56/56** (`authz.log`). Static-only mutation: P-7 red when the refusal moves after `posServices`.
 - `visual-pos.mts --list` **EXIT 0**, showing the new ids above.
+
+## Fix round 1 (review `pos-HF-P1CLOSE-review.md` · controller rulings 10 Oct 00:4xZ)
+| # | commit | change |
+|---|---|---|
+| F3 fix | 441b6891 | `visual-pos.mts` `lock-screen-scroll` now throws `StepError` when `P115.heldId` is missing. Before, it silently passed the held-card check. Now the held card (`pos-staff-held`) must always be in view after the scroll. The switch button must be too, and since the staff cards sit above it they are covered. |
+| F4 fix | bb764a01 | `RegisterTopContext.tsx:63` mobile `capW` = `min-w-[96px] max-w-[50%]` (no `shrink-0`). The unit chip shrinks with a 96 px floor and long names truncate. The mobile shift chip keeps `min-w-0` + truncate. md+ `capW` and the desktop shift chip are unchanged. Real unit-name check is in vis59. |
+| F6 fix | 2ca2fb89 | (a) `pos-ui-inventory.json` `pos-reg-tab-*` note now reads: reports → `/pos/reports`; only tables/online orders are "soon". (b) `ReceiptSettings.tsx` 17A drops the dead `REVOKED` branches (opacity, revoked chip, `disabled`) after the ACTIVE filter. (c) `DeviceSettings.tsx` `load()` selection order: kept selection if ACTIVE → this device if ACTIVE → first ACTIVE → kept/first revoked only when no device is ACTIVE. In that last case the "เพิกถอนแล้ว (n)" fold opens so the selected card is visible. After revoking the selected device, the selection moves to an ACTIVE one; the "revoked" note still shows at the top. |
+| addendum | a1c8c4c3 | `visual-pos.mts` `runBillsState` (bills-list/drawer/void/refund, owner + cashier). It first waits up to 8 s for the target row on page 1 and still asserts ≥ 6 rows on page 1. If the target is **not** on page 1, it happens when today's seed set is reused and newer bills push the target off page 1 (vis57 QC4 / vis58b QC5 cashier, 99 bills today, 10 per page). The state then reads the target's `receiptNo` (prisma read, no write), types it into `pos-bills-search` (receipt-number prefix match, 300 ms debounce) and waits for the filtered row before asserting or opening the drawer. If the target is already on page 1, there is no search, so the shots look like today's list. Searched states are listed at the end of the run ("หน้าบิล: … → ค้นเลขบิล"). Not a product bug. |
+
+Accepted by the controller (recorded as deviations, no code):
+- **F1:** a member with zero accessible POS units gets a 404 on `/pos/products`, before the price guard. This also applies to an owner on a POS with no linked units. It is the house grammar of stock/reports/shifts (`units.length === 0 → notFound`). The P-7 string stays.
+- **F2:** `paydlg-promptpay-timeout` writes `expiresAt` directly on this run's own newest PENDING intent of `DEVICE_ID` since `RUN_STARTED`, scoped by tenant. Precedent: `lock-pin-locked` → `posStaffPin.updateMany`. The row is covered by `cleanupIntents` (INTENT_STATES). No product hook.
+- **F5:** the P-7 ORACLE-EDIT stays in 057fb075 with the page change; the static mutation check is in the log and the count is 56. Future ORACLE-EDITs get their own commit.
+- **Info:** `paydone-print-failed` restores `printerConfig: null`, equivalent to the seed (device 2 only sets `posRegNo`). The log headers are present from this round on.
+
+Gates (logs `scratchpad/hf-p1close/fix1-*.log`, header `tree= head= dirty=`):
+- typecheck (iso + `flock /tmp/pos-gate.lock`) at a1c8c4c3: **EXIT 0 · 0 errors**.
+- `scripts/fitness-pos.mts` **0 · 8/8** · `pnpm fitness` (no env) **0 · 41/41** · ST7 **0** · `visual-pos.mts --list` **EXIT 0** (78 ids).
+- `qc-hf-pos-page-authz` **not re-run**: no product page changed in this round (only harness, register top-context chip, settings 17A/17B), and 56/56 at 6647cbdf stands. Fitness with QC4 env is still CONTROLLER-RUN.
