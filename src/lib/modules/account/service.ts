@@ -33,6 +33,8 @@ import { safeReason } from "./errors";
 //   taken before postDocument) and inventory goods-doc numbers (product.ts) — they still hold their counter for the whole transaction.
 // ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════
 import { prisma } from "@/lib/core/db";
+// POS P1.1b Part B (MAIN-MERGE fix1 · มติผู้คุม) ▸ ราคาขาย POS หน้า "สินค้า/ราคา" เขียนผ่าน catalog-legacy — ราคา C7 ของแถวแคตตาล็อก POS ตามในธุรกรรมเดียว ◂
+import * as legacy from "@/lib/modules/pos/catalog-legacy";
 import { ciContains, ciEquals, likeContains, likeStartsWith } from "@/lib/core/ci-equals"; // CRM C5.5-fix4 ◂ · C5.5-fix8 คำค้น ◂
 import { emitOutbox, emitOutboxMany } from "@/lib/core/outbox";
 // WO C4 — ตัวประกอบ payload + คีย์กันซ้ำของเหตุการณ์บัญชีที่ออกทาง webhook (ที่เดียวทั้งโมดูล)
@@ -615,11 +617,7 @@ export async function updateAccountProductSalePrice(
   productId: string,
   salePriceSatang: number,
 ): Promise<boolean> {
-  const r = await prisma.accountProduct.updateMany({
-    where: { id: productId, tenantId },
-    data: { salePrice: Math.max(0, Math.round(salePriceSatang)) },
-  });
-  return r.count > 0;
+  return prisma.$transaction((tx) => legacy.writeAccountProductSalePrice(tx, tenantId, productId, salePriceSatang)); // POS P1.1b Part B ◂
 }
 
 /**
@@ -631,15 +629,10 @@ export async function createAccountProductWithSalePrice(
   accountSystemId: string,
   input: { name: string; salePriceSatang: number },
 ): Promise<string> {
-  const p = await prisma.accountProduct.create({
-    data: {
-      tenantId,
-      systemId: accountSystemId,
-      name: input.name.trim() || "สินค้า",
-      type: "GOODS",
-      salePrice: Math.max(0, Math.round(input.salePriceSatang)),
-    },
-  });
+  // POS P1.1b Part B ◂
+  const p = await prisma.$transaction((tx) =>
+    legacy.createAccountProduct(tx, { tenantId, systemId: accountSystemId, name: input.name.trim() || "สินค้า", type: "GOODS", salePrice: Math.max(0, Math.round(input.salePriceSatang)) }),
+  );
   return p.id;
 }
 
