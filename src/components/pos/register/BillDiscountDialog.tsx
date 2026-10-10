@@ -1,6 +1,6 @@
 "use client";
 
-// BillDiscountDialog.tsx — ส่วนลดท้ายบิล ฿ / % (สเปก §1.1 แถว 21 · §4.6) + ทางเข้าคูปอง (เร็ว ๆ นี้ — มติ Q12 = DEFER ไป P1.12)
+// BillDiscountDialog.tsx — ส่วนลดท้ายบิล ฿ / % (สเปก §1.1 แถว 21 · §4.6) + ทางเข้าคูปอง (ใช้งานจริงตั้งแต่ P1.12U มติ 8 · HF-P1CLOSE O2 เอาชิป "เร็ว ๆ นี้" ออก)
 //   เกินเพดานส่วนลดของบัญชี = ข้อความใต้ช่อง (errors.discountExceedsLimit {limit}%) ไม่ตัดให้พอดี (P1.15 = PIN ผู้จัดการ)
 // 🔴 ตรวจด้วย priceCart ก่อนใช้ (RegisterScreen.tryBill) — คืนข้อผิดพลาด = กล่องค้าง
 
@@ -103,12 +103,10 @@ export function BillDiscountDialog({ current, capBp, onApply, onCoupon, onClose 
             data-testid="pos-reg-coupon"
             className="btn btn-ghost h-11 gap-2 rounded-[13px] px-4 text-[14px] text-[color:var(--color-ink-soft)]"
             type="button"
-            aria-disabled="true"
             onClick={onCoupon}
           >
             <RegisterIcon name="tag" size={14} />
             {t("coupon.placeholder")}
-            <span className="rounded-[6px] border px-1.5 text-[11px] leading-[18px] text-[color:var(--color-muted)]">{t("soonChip")}</span>
           </button>
         </div>
       </div>
