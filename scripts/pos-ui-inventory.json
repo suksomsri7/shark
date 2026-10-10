@@ -10530,6 +10530,26 @@
       "query": "unit=[unitId]"
     },
     {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-pending-cuts-retry",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-reg-toast",
+        "note": "ชิปหัวจอ \"ตัดสต็อกค้าง N บิล · ลองอีกครั้ง\" (registerStatus.pendingStockCount > 0) — ปุ่มเฉพาะ pos.settings.manage (แคชเชียร์เห็นจำนวนอย่างเดียว) → retryPendingStockCutsAction → แจ้ง recipe.retryDone {cut, left}"
+      },
+      "wo": "P2.3U",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
       "page": "/app/sys/[id]/pos/sales",
       "testid": "pos-bills-refund-method-platform",
       "kind": "toggle",
