@@ -563,7 +563,8 @@ async function runStatic(): Promise<void> {
     const edgeLines = fit.split("\n").filter((l) => /"pos→restaurant"/.test(l));
     if (edgeLines.length !== 1) p.push(`fitness.mts มี "pos→restaurant" ${edgeLines.length} บรรทัด (คาด 1)`);
     else if (!/POS P2\.4\s*▸/.test(edgeLines[0]!)) p.push('บรรทัด "pos→restaurant" ไม่มีรอยต่อ // POS P2.4 ▸ … ◂');
-    if (!/"pos→restaurant"/.test(constBody(stripComments(fit), "const ALLOWED_EDGES"))) p.push('"pos→restaurant" ไม่อยู่ใน ALLOWED_EDGES');
+    // ORACLE-EDIT ผู้คุม 10 ต.ค. (P2.4 S fix 1 · มติ 1): ตัดเฉพาะคอมเมนต์บรรทัด — stripComments มองสตริง "/*" ใน F1.3 ของ fitness.mts เป็นคอมเมนต์ก้อน แล้วกลืน ALLOWED_EDGES ทั้งก้อน
+    if (!/"pos→restaurant"/.test(constBody(fit.replace(/(^|[^:"'`\\])\/\/.*$/gm, "$1"), "const ALLOWED_EDGES"))) p.push('"pos→restaurant" ไม่อยู่ใน ALLOWED_EDGES');
     // advisory lock ใน openSession
     if (!/pg_advisory_xact_lock/.test(fnBody(srcOf(F.restTable), "openSession"))) p.push("restaurant/table.ts openSession ไม่มี pg_advisory_xact_lock (Q9)");
     // table-actions
