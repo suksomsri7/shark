@@ -170,13 +170,17 @@ export const POS_MODELS = {
   posRecipeChoiceLine: { model: "PosRecipeChoiceLine", file: "pos.prisma", role: "ส่วนต่างสูตรต่อตัวเลือก (P2.3 · (สินค้า, ตัวเลือก, InvItem) · qtyDelta ≠ 0 มีเครื่องหมาย)" },
   // POS P2.4 ▸ โหมดโต๊ะ (migration 20261206100000_pos_p24_tables) — ผู้เขียนเดียว restaurant/reservation.ts · POS เรียกผ่าน facade restaurant/index.ts ◂
   restaurantReservation: { model: "RestaurantReservation", file: "restaurant.prisma", role: "โต๊ะจองแบบย่อ (P2.4 · BOOKED/SEATED/CANCELLED/NO_SHOW · RESERVED บนผัง at−hold ≤ ตอนนี้ ≤ at+30 นาที)" },
+  // POS P2.8 ▸ ออเดอร์ทุกช่องทาง (migration 20261207100000_pos_p28_orders) — ผู้เขียนเดียว pos/order.ts ◂
+  posOrder: { model: "PosOrder", file: "pos_order.prisma", role: "ออเดอร์ทุกช่องทาง (P2.8 · NEW→ACCEPTED→PREPARING→READY→HANDED / REJECTED / CANCELLED · X1 (channel, ref) + คีย์)" },
+  posOrderLine: { model: "PosOrderLine", file: "pos_order.prisma", role: "บรรทัดออเดอร์ (P2.8 · ราคาแช่แข็งตอนรับ · options สำเนา)" },
+  posOrderEvent: { model: "PosOrderEvent", file: "pos_order.prisma", role: "บันทึกการเปลี่ยนสถานะออเดอร์ (P2.8 · 1 แถวต่อการเปลี่ยน · actor null = อัตโนมัติ)" },
 } as const;
 export type PosModelKey = keyof typeof POS_MODELS;
 
 /** ตารางที่แผน POS จะสร้าง (POS-MIGRATION-PLAN §1) — **ยังไม่มี** ณ P0.1 · ใบที่สร้างย้ายเข้า POS_MODELS */
 export const POS_FUTURE_MODELS = [
   "PosVariant", // POS P2.2 ▸ ย้าย PosProductChannelPrice ไป POS_MODELS แล้ว ◂ · POS P2.1 ▸ ย้าย SalesChannel ไป POS_MODELS แล้ว ◂ · P1.10 ย้าย PosDevice ไป POS_MODELS แล้ว · P1.1a ย้าย PosProduct/PosCategory/RecipeLine/PosProductOptionGroup ไป POS_MODELS แล้ว
-  "ExternalOrder", "ExternalOrderEvent", "PosShift", "PosReceiptToken", // P1.7 ย้าย PosPaymentIntent ไป POS_MODELS แล้ว
+  "PosShift", "PosReceiptToken", // POS P2.8 ▸ ExternalOrder/ExternalOrderEvent → PosOrder/PosOrderLine/PosOrderEvent ใน POS_MODELS แล้ว (มติ 1) ◂ · P1.7 ย้าย PosPaymentIntent ไป POS_MODELS แล้ว
   "PosStockCount", "PosStockCountLine", // P1.8 ย้าย PosDocCounter ไป POS_MODELS แล้ว · P1.15 ย้าย PosStaffPin ไป POS_MODELS แล้ว
 ] as const;
 

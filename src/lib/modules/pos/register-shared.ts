@@ -896,6 +896,12 @@ const REFUSAL_KEY: Readonly<Record<string, string>> = {
   TABLE_ITEMS_CHANGED: "errors.tableItemsChanged",
   TABLE_HAS_UNPAID: "errors.tableHasUnpaid",
   VERSION_CHANGED: "errors.versionChanged", // POS P2.4 ▸ fix 2 F1 ◂
+  // POS P2.8 ▸ ออเดอร์ทุกช่องทาง (R11) — รหัสอยู่ใน OrderRefusalCode (order-shared.ts) · คีย์ข้อความชุดเดียวกับหน้าขาย ◂
+  ORDER_NOT_FOUND: "errors.orderNotFound",
+  ORDER_STATE_INVALID: "errors.orderStateInvalid",
+  ORDER_STATE_CHANGED: "errors.orderStateChanged",
+  ORDER_UNPAID: "errors.orderUnpaid",
+  CHANNEL_PAUSED: "errors.channelPaused",
 };
 
 /**

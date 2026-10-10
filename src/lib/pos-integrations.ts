@@ -56,7 +56,7 @@ const FACTS: Record<PosIntegrationCode, readonly (readonly [string, boolean, str
   INVENTORY: [["stockDeduct", true, null], ["bomDeduct", true, null], ["oversellPolicy", true, null], ["lowStockReorder", false, "P3"]],
   HR: [["shiftPinSchedule", false, "P3.5"], ["salesCommission", false, "P3.5"], ["leaveHidesShift", false, "P3.5"]],
   CRM: [["dealPaidCount", true, null], ["bigBillDeal", false, "P3.6"], ["corporateCredit", false, "P3.6"]],
-  CHAT: [["lineReceipt", true, null], ["chatOrders", false, "P2.8"], ["orderStatusBot", false, "P3.7"]],
+  CHAT: [["lineReceipt", true, null], ["chatOrders", true, null], ["orderStatusBot", false, "P3.7"]],
   KANBAN: [["voidBillCard", true, null], ["issueReportCard", true, null], ["stockOutShiftDiffCard", false, "P3.8"], ["shiftCloseCashCheck", false, "P3.8"]],
   MARKETING: [["happyHourPricing", true, null], ["couponAfterPurchase", false, "P3"]],
   BOOKING: [["tableReservationsOnMap", false, "P2.4"], ["callQueueFromTable", false, "P2.4"], ["advanceBookingBill", false, "P2.7"]],

@@ -184,6 +184,17 @@ const posSaleVoided: OutboxHandler = async (evt) => {
   await bridgePosSaleVoided(sale);
 };
 
+// POS P2.8 ▸ ออเดอร์ทุกช่องทาง — โหลดตอนใช้ (pos/order → … → scheduleDrain ที่ไฟล์นี้ = วงโหลดไฟล์) · ตัวรับทุกตัว idempotent ◂
+const posOrderOnSaleVoided: OutboxHandler = async (evt) => (await import("@/lib/modules/pos")).orders.onSaleVoided(evt.tenantId, evt.payload);
+const posOrderOnShopOrderPaid: OutboxHandler = async (evt) => (await import("@/lib/modules/pos")).orders.onShopOrderPaid(evt.tenantId, evt.payload);
+/** ออเดอร์เว็บร้านถูกปฏิเสธที่จอ 09 → ยกเลิก ShopOrder (รอชำระ) ผ่านประตูของเว็บร้านเอง · ซ้ำ/ชำระแล้ว = cancelOrder คืน false (ไม่ทำอะไร) */
+const posOrderRejected: OutboxHandler = async (evt) => {
+  const p = (evt.payload ?? {}) as { shopOrderId?: unknown; unitId?: unknown };
+  if (typeof p.shopOrderId !== "string" || !p.shopOrderId || typeof p.unitId !== "string" || !p.unitId) return;
+  const shop = await import("@/lib/modules/shop/service");
+  await shop.cancelOrder({ tenantId: evt.tenantId, unitId: p.unitId }, p.shopOrderId);
+};
+
 // ห่อ handler หลักด้วย Automation (WO-0026): หลัง handler หลักสำเร็จ (event กำลังจะ DONE)
 // เรียก engine แบบ best-effort — engine พัง (rule/webhook ล่ม) ห้ามล้ม consumer หลัก
 // (ไม่งั้น event จะถูก retry แล้ว post บัญชีซ้ำ) → ครอบ try/catch เงียบ
@@ -681,10 +692,11 @@ const baseConsumers: Record<string, OutboxHandler> = {
   // M2.3: + ยกเลิกตราของบิลใบนั้น (voidStampsForSale)
   // M2.8: + คืนสิทธิ์ทุกชนิด + ย้อนแต้ม/ยอดสะสม/ไทม์ไลน์ของบิลที่ถูกยกเลิก
   // CRM C2.7 ▸ + ถอนคืนยอดของบิลที่ถูกยกเลิก (เฉพาะที่เคยนับ) — ต่อท้ายสุดเช่นกัน ◂
+  // POS P2.8 ▸ + บิลของออเดอร์ถูกยกเลิก (ลิ้นชักบิล/อนุมัติ/คืนเงินเว็บร้าน) → ออเดอร์ REFUNDED + CANCELLED ถ้ายังไม่ส่งมอบ (idempotent · มติ 13) — ต่อท้ายสุด ◂
   // POS P2.4 ▸ บิลโต๊ะ (CD5): งานหลักคู่บัญชี = ปลดรายการของบิลที่ถูก void + เปิดโต๊ะกลับ (pos/table.tableSaleVoided → facade ร้านอาหาร ·
   //   บิลที่ไม่ใช่ POS+sourceId ไม่แตะ) · ทั้งสองวิ่งเสมอ · ล้มขั้นใด = event retry (ทั้งคู่ idempotent) ◂
   "pos.sale.voided": withAutomation(
-    compose(compose(compose(compose(async (evt) => {
+    compose(compose(compose(compose(compose(async (evt) => {
       let failed = false;
       let err: unknown = null;
       try {
@@ -700,7 +712,7 @@ const baseConsumers: Record<string, OutboxHandler> = {
         failed = true;
       }
       if (failed) throw err;
-    }, kanbanBridge("onVoidedSale")), stampVoidForSale), memberSaleBridge("onPosSaleVoided")), crmBridge("onPosSaleVoided")),
+    }, kanbanBridge("onVoidedSale")), stampVoidForSale), memberSaleBridge("onPosSaleVoided")), crmBridge("onPosSaleVoided")), posOrderOnSaleVoided),
   ),
   // POS P1.8 ▸ คืนเงิน: ใบลดหนี้ + JV ตามสัดส่วน · รับของคืนที่ต้นทุนเดิม · แต้ม/ยอดสะสม/ตรา (ตัวรับอยู่ pos/refund-consumer.ts · โหลดตอนใช้ กันวงโหลดไฟล์) ◂
   "pos.sale.refunded": withAutomation(async (evt) => (await import("@/lib/modules/pos/refund-consumer")).posSaleRefunded(evt)),
@@ -735,6 +747,13 @@ const baseConsumers: Record<string, OutboxHandler> = {
   "pos.payment.intent_paid": withAutomation(async () => {}),
   // POS P1.13 ▸ ออกใบกำกับภาษีเต็มรูปให้บิล (ตอนชำระ · ออกทีหลัง · จากคำขอ) — กฎอัตโนมัติเท่านั้น (ส่งอีเมลเอกสาร = งานต่อบน event เดิม) ◂
   "pos.sale.taxInvoiceIssued": withAutomation(async () => {}),
+  // POS P2.8 ▸ ออเดอร์ทุกช่องทาง (จอ 09) — กฎอัตโนมัติ/เว็บฮุคเท่านั้น · rejected ของออเดอร์เว็บร้าน = ยกเลิก ShopOrder ที่นี่ (composition root · มติ 13 — POS ไม่ import shop) ◂
+  "pos.order.received": withAutomation(async () => {}),
+  "pos.order.accepted": withAutomation(async () => {}),
+  "pos.order.rejected": withAutomation(posOrderRejected),
+  "pos.order.ready": withAutomation(async () => {}),
+  "pos.order.completed": withAutomation(async () => {}),
+  "pos.order.cancelled": withAutomation(posOrderRejected), // POS P2.8 ▸ fix รอบ 3 (H2): ร้านยกเลิกออเดอร์เว็บที่ยังไม่จ่าย ⇒ ยกเลิก ShopOrder (รอชำระเท่านั้น · idempotent) ◂
   // Wave4-A: AppNotification "ลูกค้าทักเข้ามา" ถูกสร้างแล้วใน chat.announceInbound (de-dup) —
   // consumer นี้ปิด event เป็น DONE + เป็นจุดให้ Automation rules / Webhooks ยิงราย inbound message
   // WO 7.2: + ดูดรูปบิลที่แนบมาในข้อความเข้ากล่องขาเข้าของบัญชี (เฉพาะร้านที่เปิด inboxFromChat)
@@ -1081,7 +1100,8 @@ const baseConsumers: Record<string, OutboxHandler> = {
   //   หา/สมัครสมาชิก (MARKETPLACE) + ผูกตัวตนช่องทาง + แต้ม (ShopOrder) + แถว PURCHASE
   // CRM C2.9 ▸ + ไทม์ไลน์ CRM ของ Party ที่ผูกออเดอร์ (กิจกรรม VISIT ใบเดียว + ขั้นลูกค้า) — ต่อ **ท้ายสุด** ใต้ compose:
   //   สะพานสมาชิกเดิมวิ่งก่อนเหมือนเดิมทุกประการ · CRM อ่าน **แต่ id** (ไม่แตะ customerName/customerPhone ใน payload — R-E.17) ◂
-  "shop.order.paid": withAutomation(compose(memberBridge("onShopOrderPaid"), crmBridge("onBusinessEvent"))),
+  // POS P2.8 ▸ + ออเดอร์เว็บในจอ POS: ผูกบิล ECOM (saleId = posSaleId · PAID · idempotent) — ต่อท้ายสุด ◂
+  "shop.order.paid": withAutomation(compose(compose(memberBridge("onShopOrderPaid"), crmBridge("onBusinessEvent")), posOrderOnShopOrderPaid)),
   // CRM C2.9 ▸ เหตุการณ์ธุรกิจอีก 6 โมดูล (มติ C11) — ยิงใน transaction เดียวกับการเปลี่ยนสถานะของโมดูลนั้น
   //   งานหลัก = **no-op**: โมดูลต้นทางเขียนของมันครบใน tx ของตัวเองแล้ว · บรรทัดพวกนี้มีไว้ (ก) ปิด event เป็น DONE
   //   — ขาดไปแม้ตัวเดียว = แถวค้าง PENDING ตลอดกาลและคิวทั้งระบบตันเงียบ ๆ [[reference_outbox_new_event_needs_consumer]] ·

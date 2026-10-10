@@ -350,7 +350,7 @@ POS ของเราวันนี้คือ **"จุดตัดเงิ
 | `PosProduct`/`PosVariant` เป็นตารางสต็อกของ POS เอง (`stockQty`) | `PosProduct` = ชั้น "ขาย" ผูก `InvItem` 1:1 · **สต็อกอยู่คลังที่เดียว** (C-1) · variant = `InvItem` ลูก | คลังกลางเกิดขึ้นหลังสเปกเขียน (WO-0037/38) — ห้ามมีสต็อก 2 ที่ |
 | `MenuItem` (ร้านอาหาร) · `ShopProduct` (เว็บ) แยก | ยุบเข้า `PosProduct` · `MenuOptionGroup/Choice` ใช้ต่อทั้งระบบ · `KdsStation`/`stockQty` รายวัน ย้ายมาเป็นฟิลด์ของ `PosProduct` | ต้นฉบับเดียว |
 | — | **`SalesChannel`** (tenant/unit · type · ค่าคอมฯ % · รับอัตโนมัติ · เวลาเตรียม · adapter config) · `PosSale.channelId` · `PosProductChannelPrice` (channel × สาขา × ช่วงเวลา) | ราคา/รายงาน/ค่าคอมฯ ต่อช่องทาง |
-| — | **`ExternalOrder`** (channel · externalId · payload · status · saleId?) + `ExternalOrderEvent` | ออเดอร์แพลตฟอร์มก่อนกลายเป็นบิล |
+| — | **`PosOrder`** (channel · externalRef · status · paymentState · saleId?) + `PosOrderLine` + `PosOrderEvent` (payload ดิบของ adapter) — P2.8 มติ 1 (เดิมชื่อ `ExternalOrder`/`ExternalOrderEvent`) | ออเดอร์ทุกช่องทาง (แพลตฟอร์ม · เว็บร้าน · แชท) ก่อนกลายเป็นบิล |
 | — | **`RecipeLine`** (productId · invItemId · qty · unit) — ร้านอาหารจองไว้แล้ว §4.9 | BOM |
 | `PosPayMethodType` | เพิ่ม `CARD` (เปิดใช้) · `VOUCHER` · `STORE_CREDIT` · `PLATFORM` · `TIP` เป็นฟิลด์แยกใน PosSale | วิธีชำระใหม่ |
 | — | `PosSale.offlineRef` · `syncedAt` · `PosDevice.offlineSeq` | ออฟไลน์ |
