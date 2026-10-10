@@ -108,3 +108,6 @@ Logs: `/tmp/claude-0/-root/ed31d917-ff51-51e8-bfad-e5b8bfa6fa15/scratchpad/p22u/
 | `pnpm fitness` no env / QC4 env | 0 / 0 | 41/41 · 41/41 |
 | `scripts/fitness-pos.mts` | 0 | 8/8 |
 | visual `--dry` p22u products/register/sales × owner/cashier × th/en | 0 ×12 | see F6 |
+
+### Fix round 2 (R2 N1)
+- cdd700fc: price-edge timer reloads call `loadCatalog(…, silent=true)` (no toast on refusal/throw) and skip the reload when offline (`onlineNow` ref); both still bump seq / reschedule · gates `runs/fix2/` at cdd700fc: typecheck **0** · `qc-pos-p1.18` U **0 · 81/81** (ST7 = 0) · `--dry` register owner/cashier th **0 / 0** (105 / 102 shots).
