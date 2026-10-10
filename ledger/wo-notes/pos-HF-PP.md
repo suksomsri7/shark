@@ -54,3 +54,35 @@ Base `session/pos` 831ad163 · branch `wip/pos-hf-pp` · tree `/root/projects/sh
 - Optional UI text for this refusal (deviation 2).
 - Visual lane: no UI change ⇒ no `--state` to shoot.
 - Reviewer (read-only) per brief; hunter not needed per brief (controller decides).
+
+## Fix round 1 (review R1 F1 + controller rulings 1–2, 10 Oct 11:5xZ)
+Commit 33072250 (code + owner lines) · upstream merges a42718c0 (eb402e91) and e8ad970e (203dec3e, ledger-only; src/scripts/prisma identical to a42718c0).
+| file:line | change |
+|---|---|
+| `InterimPayDialog.tsx:240–245` | `edcManagerOnly = method==="CARD" && !intentMode && intent.manualRequiresManager && !intent.canManageShift` → added to `canConfirm`/`canSplit` (button, Enter submit and F4 all go through `primary()` ⇒ blocked) |
+| `InterimPayDialog.tsx:719` | under the EDC reference input: `<small …muted>{t("pay.intent.managerOnly")}</small>` = same hint/presentation as `PayIntentPanel.tsx:418` (testid `pos-reg-paydlg-edc-manager-only`) |
+| `InterimPayDialog.tsx:929` | confirm `title` = managerOnly when gated (same as PayIntentPanel:413) |
+| `register-shared.ts:915–922` | `REGISTER_MANUAL_MANAGER_MESSAGE` (single source) + `submitRefusalMessageKey(r)`: PERMISSION_DENIED + that message ⇒ `refusal.manualConfirmManager`, else `refusalMessageKey(code)` |
+| `register.ts:469 · :685` | import the shared constant; `REG_MANUAL_MANAGER_MESSAGE` = it (no second literal; byte-identical to payment-intent.ts:424) |
+| `RegisterScreen.tsx:47 · :1766–1767` | pay-dialog submit refusal uses the new key when matched, else `errorFor(code)` as before |
+| `TableCheckout.tsx:19 · :255` | `setError({key: submitRefusalMessageKey(r)})` |
+| `pos.json th/en :386–388` | `register.refusal.manualConfirmManager` |
+| `pos.json th/en :1759–1760 · :1937` | settings label/hint + history line mention PromptPay **and card** (EDC) |
+| `POS-OWNER-PENDING.md` | 2 P1.7 owner lines: TRANSFER without reference not gated (owner decides) · REST `pos/api/ops/sales.ts` PROMPTPAY via API key not gated (owner-issued key trust) |
+
+Notes: no new component / visual state (reused hint). When the page passes no `payIntent` (`p.intent` null) the dialog does not know the setting ⇒ server backstop only (unchanged). 'use client' files import only `register-shared` (pure). ST7 0.
+
+### Gates fix 1 — head a42718c0 (dirty 0, headed logs `hfpp/gates-f1/`)
+| gate | result |
+|---|---|
+| typecheck | exit 0 |
+| qc-pos-p1.18 (ST7 U-phase = 0) | 81/81 |
+| qc-pos-p1.7 | 33/33 |
+| qc-pos-p2.4 | 50/50 |
+| qc-pos-p1.1 | 180/180 |
+| qc-pos-p1.3 | 128/128 |
+| fitness no-env / env | 50/50 · 50/50 |
+| fitness-pos | 8/8 |
+| visual-pos --dry register (states) owner / cashier | exit 0 · plan 101 shots each |
+| visual-pos --dry tables (resto) owner / cashier | exit 0 · 3 shots each |
+Controller visual: register pay dialog with CARD selected, Beam card off, setting on, cashier ⇒ hint under the reference + confirm disabled (no new state; existing pay-dialog state with method CARD). `qc-pos-p2.8` ST6 on the merged tip = controller.
