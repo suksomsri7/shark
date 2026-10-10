@@ -156,7 +156,8 @@ export function PriceRulesClient({ systemId, unitId, data, canEdit, initialRuleI
     } catch {
       setLoadErr(tp("errors.unknown"));
     }
-  }, [systemId, unitId, tp, treg]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- โหลดใหม่เมื่อเปลี่ยนระบบ/สาขาเท่านั้น (ฟังก์ชันแปลไม่ใช่ตัวกระตุ้น)
+  }, [systemId, unitId]);
   useEffect(() => {
     void load();
   }, [load]);
