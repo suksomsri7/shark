@@ -1207,3 +1207,9 @@
 - เลน: builder P2.4 S (c) · P2.8 S (b) = 2/3
 - 03:09Z vis60 จบ: products 35/35 · register owner 104/105 · cashier 101/102 · en 37/37 · sales 70/70 — แดง 2 ใบ = line-badges 390 (owner+cashier) เหตุ harness เดียวกัน (แก้แล้ว d9385328) · บิล 12: หมายเหตุบรรทัด "โปรราคา · <ชื่อโปร> (ปกติ ฿60)" + "ราคา LINE MAN" ✓ ตรงแบบ · เหลือรอ vis61 + gates64
 - 03:2xZ vis61 register owner th (harness d9385328) **104/104** ✓ · QC5 `migrate deploy` 20261205100000_pos_p23_recipe สำเร็จ (ทรีผู้คุม · status up to date) — P2.3U ถ่ายภาพได้แล้ว · gates64 10/15 เขียว (เหลือ p1.12 p1.5 fitness ×3) → เขียว = merge 2f8f1e67 → 24/55
+
+### ⏱ 2026-10-10 03:2xZ — 🏁 P2.2U merge · **24/55**
+- gates64 @2f8f1e67 **15/15 เขียว** · vis61 104/104 → `git merge --no-ff 2f8f1e67` = `session/pos` **1636da3c** · ตัวนับ **24/55** (P2.2 S+U ครบ) · ทรี p11 ว่าง
+- เลน: P2.4 S (c) · P2.8 S (b) = 2/3 · ช่อง 3 สำรองผู้ตรวจ
+- ค้างติดตาม: P2.3U (F4 setBomEnabled จาก banner · F7/N1/N3 pending-restore) · P2.11 (dead-row · scope field · category >500 field · N2) · P2.12 (19ค · 14B · ทางเข้าบิลที่พักบนมือถือ) · merge origin/main ที่จุด merge ถัดไป (P2.4/P2.8) แล้วตรวจ P1.1b B + ORACLE-EDIT P1.3 S5.12
+- ถัดไป: รอ builder P2.4 S / P2.8 S ส่งงาน → ผู้ตรวจ (เลน 3) · ภาพตาม --state ที่ builder ระบุ · QC5 ต้อง deploy migration P2.4/P2.8 ก่อน U
