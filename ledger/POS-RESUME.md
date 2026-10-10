@@ -1314,3 +1314,9 @@
 ## 10 ต.ค. 08:3xZ — P2.4U R1: MERGEABLE-AFTER-FIXES (F1 Medium UI รวมเงินเอง · F3 PromptPay เปิดผิด session · F2 · F4 ruling P1.7 manager gate บน preset · F5–F7 nits) → รอบแก้ 1 ส่ง go แล้ว (`pos-prompt-accountB-P2.4U-fix.md`)
 - chain63 build กำลังรัน → vis64 (daa0296d) = ผู้คุมดู 03 เต็ม (หน้าเงิน) · หลังแก้ถ่ายซ้ำเฉพาะ tables-panel-rounds,tables-alerts,tables-checkout-dialog
 - เลน 3/3: MAIN-MERGE fix1 (b) · HF-TX (c) · P2.4U fix1 (p11 = U แยกไฟล์)
+
+### ⏱ 10 ต.ค. 08:43Z — vis64 ดูแล้ว (03 เต็ม) · V1 แผงทับแจ้งเตือน · S2.19a oracle-edit
+- vis64 (daa0296d, QC5): 03 ตรงแบบ ยกเว้น **V1** = แผงโต๊ะในคอลัมน์ขวา (`pos-tbl-panel` `min-h-0`) หดแล้วยอด/ปุ่ม/เช็คบิลทับ "แจ้งเตือนจากโต๊ะ" (owner th+en, cashier draft-unsent) → มติ `shrink-0` ในคอลัมน์ · ส่งเข้า fix1 ของ P2.4U แล้ว (builder aa102b20 กำลัง gates 22d68cb0) · tables-checkout-dialog ❌ ก่อนแก้ (คาด F2–F4 แก้) · register th ไม่ได้ถ่าย (`--state` ผิดใน chain63) → ถ่ายซ้ำหลัง fix1: tables `tables-panel-rounds,tables-alerts,tables-checkout-dialog,tables-draft-unsent` × owner/cashier th + owner en · register th `register-table-mode,register-billtype-menu` · บันทึก `wo-notes/pos-P2.4U-review.md` ท้ายไฟล์
+- MAIN-MERGE fix1 (b99dd2b5): p1.1 179/180 — S2.33 เขียวแล้ว · **S2.19a แดง** (Part B ใช้แล้ว baseline = 0) → มติ ORACLE-EDIT: S2.19a = baseline ว่าง + ให้ Part B รันจริง (ไม่ข้าม) · own commit · รัน p1.1/p1.3/fitness ซ้ำ · ส่ง builder a733eb8e แล้ว
+- เลน 3/3: MAIN-MERGE fix1 (b) · HF-TX (c, a92f3a5e ยังรัน) · P2.4U fix1 (p11)
+- จุดต่อ: MAIN-MERGE รายงาน → merge-tree → ff/merge session/pos → merge gates (p1.1 p1.3 fitness typecheck) → QC5 `migrate deploy` 4 migrations ของ main → `prisma generate` ทรีผู้คุม · P2.4U รายงาน head สุดท้าย → reviewer R2 (a5aea681 resume) → chain64 build ทรี d + ถ่ายซ้ำตามรายการ → merge upstream → gates → merge → 26/55 → TG
