@@ -1143,3 +1143,9 @@
 - **approval-wait 1024 (P2.1U fix2 15c8781c)**: register-owner-th 88/0 (vis57 แดง 1) ⇒ ล้นหาย · ภาพ p21u ที่ 00:49–01:03 ใช้บันทึก P2.1U ได้
 
 - 01:13Z ✅ vis58c (QC5 @711b6d5e): settings owner 46/46 · cashier 46/46 · en 16/16 = 0 แดง ⇒ DEVICE_LIMIT ใน vis58b เป็นเครื่องค้างจาก snapshot จริง (ล้างแล้ว) · chain59: build59-d @db5af8c2 เริ่ม 01:13Z (`/root/pos-runs/build59-d-20261010T011305Z`) → vis59 ชุดปิดเฟสตามหลัง
+
+## 2026-10-10T01:32Z · ✅ P2.3 S ส่ง (`wip/pos-p2.3` 14dec332 · code 276a1934 · 45/45 ×3 · ด่านเขียว) → ผู้ตรวจเปิด · ✅ oracle P2.6 ส่ง (d2af0152 · 51 ข้อ) → cherry-pick เข้า session/pos
+- P2.3 S: migration `20261205100000_pos_p23_recipe` deploy บน QC4 แล้ว (QC5 ยังไม่ — ต้อง migrate deploy ก่อนภาพ P2.3U) · deviation 1–14 ในโน้ต (ให้ผู้ตรวจชี้ 7/8/10/13 ที่เปลี่ยนพฤติกรรม P1 + GL ซ้ำที่ D11 + restore หลัง commit D13) · `qc-pos-p1.1` = CONTROLLER-RUN ที่ด่าน merge (gates63) · prompt ผู้ตรวจ `pos-prompt-accountB-P2.3-R.md`
+- oracle P2.6 (ทรี b · ฐาน f71f4e30): 51 ข้อ · forced 7/51 (PAR 5/5 + Z) แดงด้วยเหตุผล 44 · SKIP-until-export 8 (K5 รอ P2.4 S · K7/O1–O4/A5/A6 รอ P2.8 S) · 21 CONTROLLER-DECISION ใน `wo-notes/pos-P2.6-oracle.md` — เคาะตอนเขียน prompt P2.6 S (หลัง P2.4 S + P2.8 S merge)
+- เลน = 2: P2.2U (p11) · ผู้ตรวจ P2.3 S (read-only ทรี c) · ว่าง 1 — ไม่มีงานพร้อม (P2.4 S/P2.8 S รอ P2.3 S merge) · ทรี b ว่าง
+- ค้าง: build59 → vis59 → HANDOVER §3 → ปิดเฟส P1
