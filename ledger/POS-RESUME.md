@@ -1149,3 +1149,5 @@
 - oracle P2.6 (ทรี b · ฐาน f71f4e30): 51 ข้อ · forced 7/51 (PAR 5/5 + Z) แดงด้วยเหตุผล 44 · SKIP-until-export 8 (K5 รอ P2.4 S · K7/O1–O4/A5/A6 รอ P2.8 S) · 21 CONTROLLER-DECISION ใน `wo-notes/pos-P2.6-oracle.md` — เคาะตอนเขียน prompt P2.6 S (หลัง P2.4 S + P2.8 S merge)
 - เลน = 2: P2.2U (p11) · ผู้ตรวจ P2.3 S (read-only ทรี c) · ว่าง 1 — ไม่มีงานพร้อม (P2.4 S/P2.8 S รอ P2.3 S merge) · ทรี b ว่าง
 - ค้าง: build59 → vis59 → HANDOVER §3 → ปิดเฟส P1
+
+- 01:41Z ผู้ตรวจ P2.3 S = **MERGEABLE-AFTER-FIXES** (`wo-notes/pos-P2.3-review.md` + มติ): F1 retry ตัดซ้ำของที่คืนแล้ว → ทาง B (retry รัน restock ของ REFUND docs ซ้ำ + ORACLE-ADD) · F2 retry ใช้หน้าต่างเดียวกับตัวนับ (today) · F3 bundle portions ตามกติกา C2 (untracked ⇒ null) · F4 = สัญญา P2.3U (setBomEnabled จาก banner) · F5 งบล็อก 5 s · F6 อ่านสถานะซ้ำหลัง batch → restore · F7 ติดตาม (pending-restore) · F8 บรรทัดเจ้าของบัญชี (COGS void ที่ต้นทุนเดิม · retry ลงวันที่ retry) → **fix round 1 เปิด** (ทรี c · prompt `P2.3-S-fix.md`) · เลน = 2 (P2.2U · fix P2.3) · gates63pre (ทรี b @276a1934) กำลังรัน
