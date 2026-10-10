@@ -1355,7 +1355,9 @@ async function runDb() {
     const r1 = fx ? null : await ingest("A", "STAFF", lmInput("LM-48213", { startStatus: "ACCEPTED", lines: [ln("tomyum", 2)] }), DEV1);
     if (!refused(r1, "IDEMPOTENCY_CONFLICT")) p.push(`ref เดิม บรรทัดต่าง → ${codeOf(r1)}`);
     const k = newKey("conf");
-    const r2a = fx ? null : await ingest("A", "STAFF", lmInput("LM-48300", { idempotencyKey: k, lines: [ln("tomyum", 1)] }), DEV1);
+    // ORACLE-EDIT (P2.8 fix รอบ 1 · มติผู้คุม 2): ออเดอร์ตั้งต้นเริ่ม NEW — MANUAL ปริยาย ACCEPTED (CD2) จะเปิดบิลซึ่งไม่ใช่สิ่งที่ข้อนี้วัด ·
+    //   การนับบิล before→after ยังครอบทั้งข้อ (คำปฏิเสธ IDEMPOTENCY_CONFLICT ต้องไม่สร้างบิล/ออเดอร์/outbox)
+    const r2a = fx ? null : await ingest("A", "STAFF", lmInput("LM-48300", { idempotencyKey: k, lines: [ln("tomyum", 1)], startStatus: "NEW" }), DEV1);
     const mid = await counts();
     const r2 = fx ? null : await ingest("A", "STAFF", lmInput("LM-48399", { idempotencyKey: k, lines: [ln("tomyum", 3)] }), DEV1);
     if (r2a?.ok !== true) p.push(`(ตั้งต้น) LM-48300 → ${codeOf(r2a)}`);
