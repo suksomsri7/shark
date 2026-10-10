@@ -791,14 +791,15 @@ export function RegisterScreen(props: RegisterScreenProps) {
 
   // ── โหลดกริด: คำค้น (หน่วง 200ms) · หมวด (ทันที) · หน้าถัดไป ──
   const loadCatalog = useCallback(
-    (nq: string, cat: string | null, cursor?: string) => {
+    (nq: string, cat: string | null, cursor?: string, silent = false) => {
+      // P2.2U fix รอบ 2 N1: silent = โหลดจากตัวจับเวลาราคา — ล้ม/ถูกปฏิเสธไม่ขึ้น toast (ตัวจับเวลาตั้งรอบถัดไปเองอยู่แล้ว)
       const seq = ++catalogSeq.current;
       startCatalog(async () => {
         try {
           const r = await registerCatalogAction({ systemId, unitId, q: nq.trim() || undefined, categoryId: cat ?? undefined, cursor });
           if (seq !== catalogSeq.current) return; // คำตอบเก่า
           if (!r.ok) {
-            showToast({ key: refusalMessageKey(r.code) === "errors.invalidLine" ? "errors.loadFailed" : refusalMessageKey(r.code) });
+            if (!silent) showToast({ key: refusalMessageKey(r.code) === "errors.invalidLine" ? "errors.loadFailed" : refusalMessageKey(r.code) });
             return;
           }
           synced();
@@ -809,7 +810,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
           setShownQ(nq);
           if (!cursor) setPriceEdge((e) => ({ iso: r.priceValidUntil ?? null, seq: e.seq + 1 })); // POS P2.2U (fix F1: วัตถุใหม่ทุกครั้ง) ◂
         } catch {
-          if (seq === catalogSeq.current) showToast({ key: "errors.loadFailed" });
+          if (seq === catalogSeq.current && !silent) showToast({ key: "errors.loadFailed" });
         }
       });
     },
@@ -819,6 +820,8 @@ export function RegisterScreen(props: RegisterScreenProps) {
   // POS P2.2U ▸ มติ 5: โหลดแคตตาล็อกใหม่ที่ priceValidUntil (หน่วงอย่างน้อย 15 วิ · อย่างมาก 1 ชม.) — คำค้น/หมวดที่แสดงอยู่เดิม ◂
   const catalogArgs = useRef({ q: "", cat: null as string | null });
   catalogArgs.current = { q: shownQ, cat: categoryId };
+  const onlineNow = useRef(online); // P2.2U fix รอบ 2 N1: ตัวจับเวลาอ่านสถานะออนไลน์ล่าสุด (ไม่ใส่ online ใน deps ⇒ ไม่ตั้งเวลาใหม่ทุกครั้งที่เน็ตกระพริบ)
+  onlineNow.current = online;
   //   P2.2U fix รอบ 1 F1: คีย์ effect = วัตถุ {iso, seq} · ตัวจับเวลายิงแล้วตั้งรอบถัดไปเองเสมอ (seq+1 จากขอบเดิม) — คำตอบที่มาถึงทับด้วยขอบใหม่ ·
   //   โหลดล้ม/ถูกคำค้นใหม่แซง = สายไม่ขาด (ยิงซ้ำหลัง 15 วิ เมื่อขอบผ่านแล้ว) · นาฬิกาเครื่องเร็ว = ยิงก่อน ⇒ ได้ขอบเดิม ⇒ ตั้งใหม่ตามขอบ
   useEffect(() => {
@@ -828,7 +831,8 @@ export function RegisterScreen(props: RegisterScreenProps) {
     if (!Number.isFinite(at)) return;
     const wait = Math.min(Math.max(at - Date.now(), 15_000), 3_600_000);
     const h = setTimeout(() => {
-      loadCatalog(catalogArgs.current.q, catalogArgs.current.cat);
+      // P2.2U fix รอบ 2 N1: ออฟไลน์ = ข้ามการโหลด (ยังตั้งรอบถัดไป) · โหลดจากตัวจับเวลาเงียบเสมอ (ไม่ toast ทุก 15 วิ)
+      if (onlineNow.current) loadCatalog(catalogArgs.current.q, catalogArgs.current.cat, undefined, true);
       setPriceEdge((e) => (e === edge ? { iso: e.iso, seq: e.seq + 1 } : e));
     }, wait);
     return () => clearTimeout(h);
