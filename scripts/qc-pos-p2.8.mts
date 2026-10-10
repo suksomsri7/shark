@@ -1296,6 +1296,9 @@ async function runDb() {
   const I1_IN = lmInput("LM-48213", { startStatus: "ACCEPTED" });
   const i1 = await mk("LM-48213", "A", "STAFF", I1_IN, DEV1);
   ORD.LM = i1.id;
+  // ORACLE-EDIT (P2.8 fix รอบ 1 · มติผู้คุม 3): ระบายคิวให้ pos.sale.paid ของบิล LM-48213 (PAID + COMMISSION) ลงก่อนข้อถัดไปเขียน JV อื่น —
+  //   เลข JV ของบัญชี (nextJournalNo = count+1) ชนกันเมื่อเขียนพร้อมกัน (เรื่องของเจ้าของบัญชี · POS-OWNER-PENDING) ⇒ S2 อ่าน JV ได้แน่นอน
+  await drain();
   await step("I1", async () => {
     const p: string[] = [];
     const r = i1.r;
@@ -1891,6 +1894,9 @@ async function runDb() {
     chk("V1", good(p), "void จากลิ้นชัก → CANCELLED REFUNDED · cancelled 1 · เล่นซ้ำไม่เปลี่ยน", why(p));
   });
   const v2 = await mk("LM-48311", "A", "STAFF", lmInput("LM-48311", { startStatus: "ACCEPTED" }), DEV1);
+  // ORACLE-EDIT (P2.8 fix รอบ 1 · มติผู้คุม 3): pos.sale.paid ของบิลนี้ (PAID + COMMISSION ต้นฉบับ) ต้องลงก่อน V3 ยกเลิกบิล —
+  //   บิลที่ถูก void ก่อนคิวมาถึงข้ามการลงบัญชีโดยออกแบบ (ไม่มี COMMISSION ให้กลับ) ⇒ V3 วัดการกลับรายการได้แน่นอน
+  await drain();
   await step("V2", async () => {
     const p: string[] = [];
     const o0 = await row(v2.id);
