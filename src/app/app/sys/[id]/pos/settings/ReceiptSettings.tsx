@@ -98,6 +98,8 @@ export function ReceiptSettings({ systemId, unitId, branchName, canEdit, canMana
 
   const book = data?.book ?? null;
   const firstDevice = devices.find((d) => d.status === "ACTIVE");
+  // POS HF-P1CLOSE ▸ O7: 17A "เลขเครื่อง POS ต่อเครื่อง" = เครื่องที่ใช้งานอยู่เท่านั้น (เครื่องเพิกถอนแล้วไม่มีเลขให้แก้ · ดูได้ที่แท็บเครื่อง) ◂
+  const activeDevices = devices.filter((d) => d.status === "ACTIVE");
   const sample = useCallback(
     (copy: boolean, receiptNo: string) =>
       form
@@ -385,15 +387,14 @@ export function ReceiptSettings({ systemId, unitId, branchName, canEdit, canMana
                 <div data-testid="pos-settings-device-list" className="rounded-[14px] border px-4 py-1 md:px-5">
                   {!canManageDevices ? (
                     <p className="py-3 text-[14px] text-[color:var(--color-muted)]">{tr("devicesHidden")}</p>
-                  ) : devices.length === 0 ? (
+                  ) : activeDevices.length === 0 ? (
                     <p className="py-3 text-[14px] text-[color:var(--color-muted)]">{tr("devicesEmpty")}</p>
                   ) : (
-                    devices.map((d) => (
-                      <div key={d.id} className={`flex flex-wrap items-center gap-x-[14px] gap-y-1 border-t py-2 text-[14.5px] first:border-t-0 ${d.status === "REVOKED" ? "opacity-60" : ""}`}>
+                    activeDevices.map((d) => (
+                      <div key={d.id} className="flex flex-wrap items-center gap-x-[14px] gap-y-1 border-t py-2 text-[14.5px] first:border-t-0">
                         <RegisterIcon name="print" size={14} className="text-[color:var(--color-muted)]" />
                         <span className="min-w-0 flex-1 truncate">
                           {d.name}
-                          {d.status === "REVOKED" ? ` · ${td("revokedChip")}` : ""}
                         </span>
                         <input
                           data-testid={`pos-settings-device-regno-${d.id}`}
@@ -402,7 +403,6 @@ export function ReceiptSettings({ systemId, unitId, branchName, canEdit, canMana
                           value={regNo[d.id] ?? ""}
                           placeholder={tr("posRegNoPlaceholder")}
                           maxLength={40}
-                          disabled={d.status === "REVOKED"}
                           onChange={(e) => setRegNo((m) => ({ ...m, [d.id]: e.target.value }))}
                           onBlur={() => void saveRegNo(d)}
                           onKeyDown={(e) => {

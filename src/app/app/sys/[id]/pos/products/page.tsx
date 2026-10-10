@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireTenant } from "@/lib/core/context";
@@ -7,6 +8,7 @@ import { listPosProducts, posUnits, posServices, posPriceUnitIds } from "@/lib/m
 import { setItemSalePriceAction } from "@/lib/actions/pos";
 import { posTabs } from "@/lib/modules/pos/tabs";
 import { posMembership, posCanSetTenantPrice } from "@/lib/modules/pos/access";
+import { canAccessUnit, evaluate } from "@/lib/core/rbac";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Section } from "@/components/ui/Section";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -14,7 +16,6 @@ import { MoneyText } from "@/components/ui/MoneyText";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import { ModuleTabs } from "@/components/module-tabs";
 import { getTranslations } from "next-intl/server";
-import { evaluate } from "@/lib/core/rbac";
 // POS P2.2U ▸ จอ 06 (มติ 1–3): ตาราง + ลิ้นชักราคาตามช่องทาง (ข้อมูลทุกสาขาโหลดฝั่งเซิร์ฟเวอร์ · ตัวเลือกสาขาอยู่ฝั่ง client) ◂
 import { loadProductsData } from "./products-data";
 import { ProductsClient } from "./ProductsClient";
@@ -40,13 +41,34 @@ export default async function PosProductsPage({
   const sys = await prisma.appSystem.findFirst({ where: { id, tenantId, type: "POS" } });
   if (!sys) notFound();
   // HF-POS-PAGES: ราคาขายใช้ทั้งร้าน ⇒ ต้องเข้าได้ทุกสาขา (เดิม assertCan ไม่ส่ง unit ⇒ คนสาขาเดียวก็เข้าได้)
-  if (!posCanSetTenantPrice(posMembership(auth.active), await posPriceUnitIds(tenantId, id))) notFound();
+  // POS HF-P1CLOSE ▸ O13: เข้าสาขา POS ไม่ได้เลย = 404 (แบบหน้าสต็อก/รายงาน) · เข้าได้แต่ตั้งราคาทั้งร้านไม่ได้ = การ์ดปฏิเสธ (หน้า 200)
+  //   การ์ดคืนก่อนอ่านข้อมูลสินค้า/บริการใด ๆ (listPosProducts/posServices) ⇒ ไม่รั่วข้อมูล ◂
+  const m = posMembership(auth.active);
+  if (!(await posUnits(tenantId, id)).some((u) => canAccessUnit(m, u.id))) notFound();
+  const canPrice = posCanSetTenantPrice(m, await posPriceUnitIds(tenantId, id));
   const def = systemDef(sys.type);
   const tStock = await getTranslations("pos.stock");
   const t = await getTranslations("pos.stock.productsPage");
   const tPos = await getTranslations("pos");
 
   const tabs = posTabs(id, tPos);
+  // หัวหน้า + แท็บโมดูล ชุดเดียวของทั้งสองทาง (การ์ดปฏิเสธ / หน้าปกติ)
+  const head = (actions?: ReactNode) => (
+    <>
+      <PageHeader title={`${def?.icon ?? ""} ${sys.name}`.trim()} desc={t("desc")} actions={actions} />
+      <ModuleTabs items={tabs} />
+    </>
+  );
+  if (!canPrice)
+    return (
+      <div className="flex max-w-2xl flex-col gap-5">
+        {head()}
+        <div role="alert" className="card flex max-w-2xl flex-col gap-1 text-sm" data-testid="pos-products-refusal">
+          <b className="text-[15px]">{tPos("nav.products")}</b>
+          <span className="text-[color:var(--color-muted)]">{t("permissionDenied")}</span>
+        </div>
+      </div>
+    );
   // POS P1.14 U ▸ ทางเข้าหน้าสต็อก (ตรวจนับ · รับ/โอน/ปรับ) ◂
   const stockLink = (
     <Link href={`/app/sys/${id}/pos/stock`} className="btn btn-ghost min-h-11" data-testid="pos-products-stock-link">
@@ -54,8 +76,7 @@ export default async function PosProductsPage({
     </Link>
   );
 
-  // POS P2.2U ▸ ข้อมูลจอ 06: ทุกสาขาที่ผูก POS นี้ (หน้านี้ต้องตั้งราคาได้ทุกสาขาอยู่แล้ว — P-7) ◂
-  const m = posMembership(auth.active);
+  // POS P2.2U ▸ ข้อมูลจอ 06: ทุกสาขาที่ผูก POS นี้ (ถึงตรงนี้ = ตั้งราคาได้ทุกสาขาแล้ว — การ์ดปฏิเสธของ HF-P1CLOSE คืนก่อน) ◂
   const units = (await posUnits(tenantId, id)).map((u) => ({ id: u.id, name: u.name }));
   const tProducts = await getTranslations("pos.products");
   const productsData = await loadProductsData({ tenantId, systemId: id }, { userId: auth.user.id, role: m.role, unitAccess: m.unitAccess, permissions: m.permissions }, units);
@@ -67,12 +88,7 @@ export default async function PosProductsPage({
 
   return (
     <div className="flex w-full min-w-0 max-w-[1600px] flex-col gap-5">
-      <PageHeader
-        title={`${def?.icon ?? ""} ${sys.name}`.trim()}
-        desc={t("desc")}
-        actions={stockLink}
-      />
-      <ModuleTabs items={tabs} />
+      {head(stockLink)}
 
       <ProductsClient systemId={id} data={productsData} canEdit={canEditPrices} initialUnit={unit ?? null} />
 
