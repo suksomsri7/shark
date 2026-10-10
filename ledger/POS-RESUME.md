@@ -1334,3 +1334,11 @@
 - reviewer R2 (a5aea681 resume) กำลังอ่าน · chain64 unit `pos-chain64-1791623715` (build 34aff664 ทรี d หลัง flock gate lock → vis65: tables `tables-floor,tables-panel-rounds,tables-alerts,tables-checkout-dialog,tables-draft-unsent` × owner/cashier th + owner en · register th `register-table-mode,register-billtype-menu` owner/cashier) · typecheck ทรีผู้คุม 0d581286 ยังรัน
 - เลน 3/3: HF-TX (c) · P2.4U R2+ภาพ (p11/d) · typecheck ผู้คุม
 - จุดต่อ: R2 OK + vis65 ❌ 0 + ผู้คุมดูภาพ → builder merge upstream 0d581286 → gates (p1.1 178 เขียวเต็ม · p1.3 · p2.4 · p1.18 · fitness · typecheck) → merge → 26/55 → TG
+
+### ⏱ 10 ต.ค. 10:3xZ — chain64 ล็อกตัวเอง (แก้แล้ว) · P2.4U merge-upstream gates เขียว 5 ตัวแรก · HF-TX merge upstream แล้ว
+- ❌ ผู้คุมพลาด: chain64 ครอบ build ด้วย `flock /tmp/pos-gate.lock` ซ้อนกับ flock ใน `build-d-inner.sh` ⇒ ล็อกตัวเอง 75 นาที (build.log 0 ไบต์) และถ่วง typecheck เลนอื่น → หยุด unit ตัวเอง (pos-chain64 + iso-1031601) · ตัด flock ชั้นนอก · รันใหม่ `pos-chain64b-1791628684` (build64 `/root/pos-runs/build64-d-20261010T103804Z` → vis65) · บันทึก memory `reference_nested_flock_same_file_self_deadlock.md`
+- typecheck ทรีผู้คุม 0d581286 = 0 ✓ (ด่าน MAIN-MERGE ครบ)
+- P2.4U merge upstream 0d581286 (ทรี p11, `runs/merge/`): p1.1 **180/180** · p1.3 128 · p2.4 49 · p2.3 46 · p2.8 60 เขียว · เหลือ p1.18/products/authz/fitness/--dry · typecheck รอ lock
+- HF-TX: ทรี c merge 97cdf1c8 (= 0d581286) เข้า `wip/pos-hf-tx` 6319bc34 สะอาด · notes abead49c · gates กำลังรัน (pos-account …)
+- R2 P2.4U = MERGEABLE · F8 → `pos-brief-HF-PP.md` (ใบ S เล็ก หลัง HF-TX)
+- จุดต่อ: vis65 ❌ 0 + ผู้คุมดู 03 ซ้ำ (panel-rounds/alerts/checkout-dialog/draft-unsent/floor) → P2.4U builder รายงาน head หลัง merge upstream → ผู้คุม merge → 26/55 → TG · HF-TX รายงาน → reviewer
