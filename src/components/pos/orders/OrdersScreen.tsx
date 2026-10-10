@@ -74,6 +74,8 @@ export type OrdersScreenProps = {
   tablesHref: string | null;
   perms: OrdersPerms;
   promptpayId: string | null;
+  /** fix 1 F1: ร้านตั้งให้ผู้จัดการยืนยันเงินเข้าเอง และผู้ใช้ไม่มี pos.shift.manage ⇒ ไม่มี QR พร้อมเพย์นิ่ง + บัตร EDC ยืนยันไม่ได้ */
+  payManagerOnly: boolean;
 };
 
 type Layer =
@@ -510,6 +512,7 @@ export function OrdersScreen(p: OrdersScreenProps) {
             order={shownDetail}
             idempotencyKey={layer.key}
             promptpayId={p.promptpayId}
+            managerOnly={p.payManagerOnly}
             salesHref={`${base}/pos/sales?unit=${encodeURIComponent(p.unitId)}`}
             onPaid={(_, dup) => {
               setLayer(null);

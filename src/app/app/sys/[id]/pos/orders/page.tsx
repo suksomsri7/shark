@@ -7,7 +7,7 @@ import { getPaymentProfile } from "@/lib/payment/service";
 import { isValidPromptPayId } from "@/lib/payment/promptpay";
 import { posUnits } from "@/lib/modules/pos/register";
 import { posRegisterV2On } from "@/lib/modules/pos/register-shared";
-import { promptpayIdForUnit } from "@/lib/modules/pos/payment-intent-shared";
+import { parsePosIntentSettings, promptpayIdForUnit } from "@/lib/modules/pos/payment-intent-shared";
 import { posMembership, posOrdersView } from "@/lib/modules/pos/access";
 import { registerTableMode } from "@/lib/modules/pos/table";
 import { OrdersScreen } from "@/components/pos/orders/OrdersScreen";
@@ -55,6 +55,8 @@ export default async function PosOrdersPage({ params, searchParams }: { params: 
   const can = (action: string) => evaluate(m, { module: "pos", action, unitId: active.id });
   const [mode, profile] = await Promise.all([registerTableMode(ctx, actor), getPaymentProfile({ tenantId })]);
   const unitPp = promptpayIdForUnit(sys.settings, active.id);
+  // fix 1 F1: ด่านผู้จัดการของการยืนยันเงินเข้าเอง — อ่านแบบเดียวกับหน้าขาย (manualConfirmRequiresManager + pos.shift.manage ที่สาขา)
+  const payManagerOnly = parsePosIntentSettings(sys.settings).manualConfirmRequiresManager && !can("pos.shift.manage");
   const ppId = unitPp && isValidPromptPayId(unitPp) ? unitPp : profile?.promptpayId && isValidPromptPayId(profile.promptpayId) ? profile.promptpayId : null;
 
   return (
@@ -73,6 +75,7 @@ export default async function PosOrdersPage({ params, searchParams }: { params: 
         voidSale: can("pos.sale.void"),
       }}
       promptpayId={ppId}
+      payManagerOnly={payManagerOnly}
     />
   );
 }

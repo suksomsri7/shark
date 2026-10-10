@@ -114,6 +114,11 @@ type Props = {
    * managerOnly = ด่านเดียวกับปุ่มยืนยันเองของ QR (manualConfirmRequiresManager และผู้ใช้ไม่มี pos.shift.manage) ⇒ ยืนยัน/แยกจ่ายไม่ได้ ◂
    */
   lockedMethod?: { managerOnly: boolean; onSwitch: (m: RegisterPayType) => void } | null;
+  /**
+   * POS P2.8U ▸ fix 1 F1: จอที่ไม่มีใบขอรับเงิน (intent = null · รับเงินออเดอร์) — ค่าตั้ง manualConfirmRequiresManager และผู้ใช้ไม่มี pos.shift.manage ⇒
+   *   บัตร (EDC) ยืนยัน/แยกจ่ายไม่ได้ด้วยคำใบ้เดียวกับ HF-PP (pay.intent.managerOnly) · ผู้เรียกไม่ส่ง promptpayId (ไม่มี QR นิ่ง) ◂
+   */
+  manualManagerOnly?: boolean;
 };
 
 /** แถวที่แยกจ่ายไว้แล้ว (ยังไม่ส่ง) · id = ตัวนับในกล่อง (ไม่ใช่คีย์บิล) */
@@ -239,7 +244,7 @@ export function PayDialog(p: Props) {
   const presetBlocked = !!p.lockedMethod?.managerOnly; // POS P2.4U ▸ fix 1 F4: ด่านผู้จัดการของการยืนยันเอง ◂
   // POS HF-PP ▸ fix 1 F1: บัตรทาง EDC (Beam บัตรปิด/CARD_UNAVAILABLE) = ยืนยันรับเงินเอง — ค่าตั้ง manualConfirmRequiresManager และผู้ใช้ไม่มี
   //   pos.shift.manage ⇒ ยืนยัน/แยกจ่าย/F4 ไม่ได้ (ก่อนรูดบัตรลูกค้า) · คำใบ้ชุดเดียวกับปุ่มยืนยันเองของ QR (pay.intent.managerOnly) ◂
-  const edcManagerOnly = method === "CARD" && !intentMode && !!p.intent?.manualRequiresManager && !p.intent?.canManageShift;
+  const edcManagerOnly = method === "CARD" && !intentMode && ((!!p.intent?.manualRequiresManager && !p.intent?.canManageShift) || (!p.intent && !!p.manualManagerOnly)); // POS P2.8U ▸ fix 1 F1: + manualManagerOnly ◂
   const canConfirm = ready && !presetBlocked && !edcManagerOnly && (zero || plan.state === "complete") && (!intentMode || zero || remaining <= 0 || piPaid);
   const canSplit = ready && !presetBlocked && !edcManagerOnly && !zero && plan.state === "partial" && !rowsFull && (!intentMode || piPaid);
   /** F3b: เงินเข้าเกินยอดบิล (ยอดบิลลดลงหลังมีแถวที่เงินเข้าแล้ว) — ยืนยันไม่ได้ · ต้องคืนเงินเอง */

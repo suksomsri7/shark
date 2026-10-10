@@ -5,11 +5,13 @@
 //     (ใบขอรับเงิน P1.7 ผูกกับตะกร้าของหน้าขาย — payOrder ไม่รับใบ ⇒ intent = null · deviation)
 //   🔴 คีย์กันซ้ำ 1 คีย์ต่อการเปิดกล่อง (ผู้เรียกสร้าง `key` ตอนเปิด · มติ 5) · ผลไม่แน่ใจ = ลองซ้ำด้วยชุดเดิมคีย์เดิม
 //   🔴 เงินสดไม่มีกะของเครื่อง = SHIFT_REQUIRED (ข้อความจาก refusalMessageKey) · ข้อความผิดพลาดจากคีย์เท่านั้น
+//   fix 1 F1: managerOnly (manualConfirmRequiresManager · ไม่มี pos.shift.manage) ⇒ ไม่ส่ง promptpayId (ไม่มี QR นิ่ง · ช่องพร้อมเพย์ปิด) +
+//     บัตร EDC ยืนยันไม่ได้ (PayDialog manualManagerOnly · คำใบ้ pay.intent.managerOnly ของ HF-PP) · คำปฏิเสธด่านผู้จัดการของเซิร์ฟเวอร์ = refusal.manualConfirmManager
 
 import { useRef, useState } from "react";
 import { payOrderAction } from "@/lib/modules/pos/order-actions";
 import type { OrderDetail, OrderRefusal } from "@/lib/modules/pos/order-shared";
-import { refusalMessageKey, REGISTER_MAX_PAY_METHODS } from "@/lib/modules/pos/register-shared";
+import { REGISTER_MAX_PAY_METHODS, submitRefusalMessageKey } from "@/lib/modules/pos/register-shared";
 import { PayDialog, type PayChoice, type PayError, type PayPhase } from "@/components/pos/register/InterimPayDialog";
 
 type Req = { payMethods: PayChoice["payMethods"]; cashReceivedSatang?: number };
@@ -21,6 +23,8 @@ export function OrderPay(p: {
   order: OrderDetail;
   idempotencyKey: string;
   promptpayId: string | null;
+  /** fix 1 F1 */
+  managerOnly: boolean;
   salesHref: string;
   onPaid: (saleId: string, duplicated: boolean) => void;
   /** คำปฏิเสธที่ทำให้กล่องนี้ใช้ต่อไม่ได้ (สถานะเปลี่ยน · ไม่พบ) — ผู้เรียกปิดกล่อง + แจ้ง + โหลดใหม่ */
@@ -57,7 +61,7 @@ export function OrderPay(p: {
         p.onGone(r);
         return;
       }
-      setError({ code: r.code, key: refusalMessageKey(r.code) });
+      setError({ code: r.code, key: submitRefusalMessageKey(r) }); // fix 1 F1: ด่านผู้จัดการ = refusal.manualConfirmManager (HF-PP) · อื่น ๆ = refusalMessageKey
     } catch {
       setPhase("unknown");
     } finally {
@@ -82,7 +86,7 @@ export function OrderPay(p: {
         quotePending={false}
         quoteError={null}
         itemCount={p.order.lines.length}
-        promptpayId={p.promptpayId}
+        promptpayId={p.managerOnly ? null : p.promptpayId}
         tipEnabled={false}
         billNote={null}
         phase={phase}
@@ -100,6 +104,7 @@ export function OrderPay(p: {
         intent={null}
         platform={null}
         taxInvoice={null}
+        manualManagerOnly={p.managerOnly}
       />
     </div>
   );
