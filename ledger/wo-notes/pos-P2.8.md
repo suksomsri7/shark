@@ -127,3 +127,24 @@ RESET lock_timeout;
 | scripts/fitness-pos.mts | ✅ | 0 |
 | pnpm typecheck (iso, flock /tmp/pos-gate.lock) | clean | 0 |
 Pre-commit fitness passed on every commit.
+
+## Fix round 1 (controller rulings `pos-prompt-accountB-P2.8-S-fix.md`, 10 Oct 04:3xZ)
+ORACLE-EDIT log (one commit each):
+- `47e5383d` ST2 (ruling 1) — the 5 codes are checked in `OrderRefusalCode` (order-shared.ts, must include `RegisterRefusalCode`) + th/en messages (unchanged) + `refusalMessageKey` (ST7); register.ts untouched · 55 checks.
+- `d98f3583` I3 (ruling 2) — setup ingest LM-48300 gets `startStatus: "NEW"`; the bill/order/outbox counts still span the whole check · 55 checks.
+- `88f8d58d` S2/V3 (ruling 3) — `await drain()` after I1 and after creating V2's order · 55 checks.
+- `6d51b1ff` qc-pos-p2.2 ST1 (ruling 4) — migration filter = P2.2 names **and** a CREATE/ALTER TABLE of `PosProductChannelPrice`/`PosPriceRule`/`PosSaleLine` (no filename exclusion) · 42 checks.
+- qc-pos-p2.4 L2 not edited (P2.4 lane, ruling 5).
+Code/ledger (`488fa30a`): HF-TX marker on `flatTx` (ruling 6, deviation 4 kept as built) · owner lines: account JV numbering race (O24 / P2.9 account owner: `nextJournalNo` count+1 ⇒ P2002 on `AccountJournalEntry_systemId_docNo_key`; stock-cost JV posted after a stock cut is not retried) + deviation 5 (no memberId on order sales; follow-up P2.12/P3.7). Deviations 5–11 accepted as built (ruling 7).
+
+Gates (scratch `runs/gates-fix1-20261010T043458Z/`, code head `488fa30a`):
+| gate | result | exit |
+|---|---|---|
+| qc-pos-p2.8 forced #1 / #2 | **55/55** · PAR 4/4 · residue 0 / **55/55** · PAR 4/4 · residue 0 | 0 / 0 |
+| qc-pos-p2.8 unforced | **55/55** · PAR 4/4 · residue 0 · leaks [] | 0 |
+| qc-pos-p2.2 | 42/42 | 0 |
+| qc-pos-p1.6 | 48/48 | 0 |
+| qc-pos-p1.18 | 81/81 | 0 |
+| pnpm fitness with env / without env · fitness-pos | ✅ ✅ ✅ | 0 0 0 |
+| pnpm typecheck | clean | 0 |
+Follow-ups (add): O24 / P2.9 account owner — atomic JV numbering (sequence or single-statement counter).
