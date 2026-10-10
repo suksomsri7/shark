@@ -464,7 +464,7 @@ if (STATES_ON && tenantKey !== "coffee" && pages.includes("register")) die("ส�
 
 // ═══════════════════ POS HF-P1CLOSE ▸ --list: หน้า + id สถานะทั้งหมด (ไม่ต่อ DB · ไม่เปิด chromium) ═══════════════════
 if (LIST) {
-  const row = (k: string, d: readonly string[] | string, n: string) => console.log(`  · ${k.padEnd(28)} ${(Array.isArray(d) ? d.join("/") : d).padEnd(20)} ${n}`);
+  const row = (k: string, d: readonly string[] | string, n: string) => console.log(`  · ${k.padEnd(28)} ${(typeof d === "string" ? d : d.join("/")).padEnd(20)} ${n}`);
   console.log(`หน้า (POS_PAGES): ${POS_PAGES.join(" · ")}`);
   console.log("register (--states):");
   for (const st of STATE_PLAN) row(st.key, st.devices, st.note);
