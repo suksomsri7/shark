@@ -3,6 +3,8 @@ import { prisma } from "@/lib/core/db";
 import type { Prisma, PrismaClient, PosPayType } from "@prisma/client";
 import * as coupon from "@/lib/modules/coupon/service";
 import * as inventory from "@/lib/modules/inventory/service";
+// POS P2.3 ▸ R5: ตัดสต็อกของบิลเป็นชุดเดียว (tx เดียว) ผ่าน facade ของคลัง — POS ห้ามเรียก consumeBatch จาก inventory/service ตรง (ST3) ◂
+import { consumeBatch } from "@/lib/modules/inventory";
 import { systemForUnit } from "@/lib/modules/system/service";
 import { emitOutbox } from "@/lib/core/outbox";
 import { scheduleDrain } from "@/lib/outbox-consumers";
@@ -854,34 +856,32 @@ export function lineConsumption(
 }
 
 // POS P1.7 ▸ export: register.ts เรียก createSale ในธุรกรรมของตัวเอง (ล็อกใบขอรับเงิน) ⇒ ทำงานหลัง commit ชุดเดียวกับตอน createSale เป็นเจ้าของ tx ◂
-export async function consumeSaleInventory(tenantId: string, unitId: string, saleId: string): Promise<void> {
+// POS P2.3 ▸ R5 (CD5 · มติ Q7): ทุกบิลตัดเป็น "ชุดเดียว" — inventory.consumeBatch (tx เดียว · ล็อกเรียง id · คีย์ต่อส่วนเดิมทุกตัว ⇒ แถว movement
+//   เหมือนเดิมทุกค่า เปลี่ยนแค่การรวม tx) · ล้มทั้งชุด = ไม่มีส่วนใดถูกตัด (บิลนับเป็น "ค้างตัด" ใน registerStatus · retryPendingStockCuts ตัดซ้ำได้) ·
+//   ส่วนที่สินค้าไม่มีในคลังของสาขา/เป็นบริการ = ข้าม (กติกาเดียวกับ pendingStockParts) · คืน true = ไม่มีอะไรล้ม ◂
+export async function consumeSaleInventory(tenantId: string, unitId: string, saleId: string): Promise<boolean> {
   const sale = await prisma.posSale.findFirst({ where: { id: saleId, tenantId }, select: { status: true } });
-  if (!sale || sale.status !== "PAID") return; // void แล้ว = อย่าตัด
+  if (!sale || sale.status !== "PAID") return true; // void แล้ว = อย่าตัด
   // POS P1.2: ทุกบรรทัดของบิล (บรรทัดชุดไม่มี itemId แต่มี components) → ส่วนที่ต้องตัด
   const lines = await prisma.posSaleLine.findMany({
     where: { tenantId, saleId },
     select: { id: true, itemId: true, qty: true, weightGrams: true, components: true },
   });
   const parts = lines.flatMap((l) => lineConsumption(saleId, l));
-  if (parts.length === 0) return;
+  if (parts.length === 0) return true;
   const inventorySystemId = await systemForUnit(tenantId, unitId, "INVENTORY");
-  if (!inventorySystemId) return;
-  const invCtx = { tenantId, systemId: inventorySystemId };
-  for (const p of parts) {
-    try {
-      await inventory.consume(invCtx, {
-        itemId: p.itemId,
-        qty: p.qty,
-        sourceModule: "POS",
-        refType: "PosSale",
-        refId: saleId,
-        idempotencyKey: p.key,
-      });
-    } catch (e) {
-      // ตัดสต็อกล้ม → บิลชำระแล้ว ปล่อยผ่าน (ไม่ล้มการขาย)
-      // HF-INV-1 ▸ R3.3: แต่ต้องทิ้งร่องรอย (เดิมเงียบ — ตอนนี้ล้มได้จริงเมื่อสินค้าถูกล็อกนาน ≈10 วิ) · ไม่มีข้อมูลลูกค้า ◂
-      console.error("[pos] stock cut failed — sale committed without stock movement", { saleId, itemId: p.itemId, qty: p.qty, code: stockErrorCode(e) });
-    }
+  if (!inventorySystemId) return true;
+  try {
+    await consumeBatch(
+      { tenantId, systemId: inventorySystemId },
+      { sourceModule: "POS", refType: "PosSale", refId: saleId, parts: parts.map((p) => ({ itemId: p.itemId, qty: p.qty, idempotencyKey: p.key })) },
+    );
+    return true;
+  } catch (e) {
+    // ตัดสต็อกล้ม → บิลชำระแล้ว ปล่อยผ่าน (ไม่ล้มการขาย)
+    // HF-INV-1 ▸ R3.3: แต่ต้องทิ้งร่องรอย (เดิมเงียบ — ตอนนี้ล้มได้จริงเมื่อสินค้าถูกล็อกนาน ≈10 วิ) · ไม่มีข้อมูลลูกค้า ◂
+    console.error("[pos] stock cut failed — sale committed without stock movement", { saleId, parts: parts.length, code: stockErrorCode(e) });
+    return false;
   }
 }
 
@@ -970,51 +970,67 @@ export async function voidSale(tenantId: string, unitId: string, saleId: string,
 }
 
 // ── คืนสต็อกของบิลที่ถูก void (perpetual) — mirror consumeSaleInventory ──
-// วนตาม InvMovement OUT ที่ตัดจริงตอนขาย (refType PosSale, sourceModule POS) → คืนตรงเป๊ะกับที่ตัด
-//   (แม้ line ซ้ำ itemId ก็คืนครบ) · คืนที่ต้นทุนปัจจุบันของ item → ต้นทุนถัวเฉลี่ยไม่เพี้ยน
+// วนตาม InvMovement OUT ที่ตัดจริงตอนขาย (refType PosSale, sourceModule POS) → คืนตรงเป๊ะกับที่ตัด (แม้ line ซ้ำ itemId ก็คืนครบ)
+// POS P2.3 ▸ มติ Q5 (O12): คืนที่ "ต้นทุน/คลัง/ล็อตของ OUT เดิม" ผ่านทางคืนของเดียวกับตัวรับคิวคืนเงิน (returnStockAtOriginalCost)
+//   — เดิมคืนที่ถัวเฉลี่ยปัจจุบัน ⇒ ต้นทุนขายที่กลับรายการ ≠ ต้นทุนที่ตัด (GL Dr 1200 ของ void = Σ ต้นทุน OUT เดิมแล้ว) ◂
 // idempotent ต่อ movement (pos-refund-<saleId>-<movementId>) → void/retry ซ้ำไม่คืนเบิ้ล
 //   (voidSale โยน error ถ้าบิลไม่ใช่ PAID อยู่แล้ว แต่ receive key ยังกันเบิ้ลอีกชั้น)
 // idempotencyKey มี "refund" + sourceModule POS → bridge ลง Dr1200/Cr5000 (กลับต้นทุนขาย)
-// ไม่มีระบบ INVENTORY / item ถูกลบ / receive ล้ม → ข้ามเงียบ (บัญชีขาย void แล้ว ห้ามล้มการคืนเงิน)
+// ไม่มีระบบ INVENTORY / item ถูกลบ / receive ล้ม → log แล้วข้าม (บัญชีขาย void แล้ว ห้ามล้มการคืนเงิน)
 async function restoreVoidedInventory(tenantId: string, unitId: string, saleId: string): Promise<void> {
   const inventorySystemId = await systemForUnit(tenantId, unitId, "INVENTORY");
   if (!inventorySystemId) return;
   const invCtx = { tenantId, systemId: inventorySystemId };
   const outMoves = await prisma.invMovement.findMany({
     where: { tenantId, systemId: inventorySystemId, type: "OUT", refType: "PosSale", refId: saleId, sourceModule: "POS" },
-    select: { id: true, itemId: true, qtyDelta: true },
+    select: { id: true, itemId: true, qtyDelta: true, costSatang: true, locationId: true, lotCode: true },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
   });
-  // N+1: เดิมยิงหา InvItem ทีละแถวในลูป → บิล 20 บรรทัด = 20 รอบเดินทางไป DB ระหว่างที่ลูกค้ารอ "ยกเลิกบิล"
-  // ดึงชุดเดียวด้วย id in [] (แพตเทิร์นเดียวกับที่ใช้ปิด N+1 ตะกร้าร้านค้า/สั่งอาหาร)
-  const itemIds = [...new Set(outMoves.map((m) => m.itemId).filter((id): id is string => !!id))];
-  const costById = new Map(
-    (
-      await prisma.invItem.findMany({
-        where: { id: { in: itemIds }, tenantId },
-        select: { id: true, costSatang: true },
-      })
-    ).map((i) => [i.id, i.costSatang]),
+  await returnStockAtOriginalCost(
+    invCtx,
+    outMoves
+      .filter((mv) => -mv.qtyDelta > 0) // qtyDelta ติดลบตอนตัด → คืนเท่าที่ตัดจริง
+      .map((mv) => ({ itemId: mv.itemId, qty: -mv.qtyDelta, out: mv, idempotencyKey: `pos-refund-${saleId}-${mv.id}`, refId: saleId, note: "คืนสต็อกจากการยกเลิกบิล POS" })),
+    (part, e) => console.error("[pos] stock restore failed — void committed without stock movement", { saleId, itemId: part.itemId, qty: part.qty, code: stockErrorCode(e) }),
   );
-  for (const mv of outMoves) {
-    const returnQty = -mv.qtyDelta; // qtyDelta ติดลบตอนตัด → คืนเท่าที่ตัดจริง
-    if (returnQty <= 0) continue;
-    const costSatang = mv.itemId ? costById.get(mv.itemId) : undefined;
-    if (costSatang === undefined) continue; // สินค้าถูกลบจากคลัง → ไม่มีที่ให้คืน
+}
+
+/**
+ * POS P1.8 O12 → P2.3 มติ Q5 — ทางคืนของเข้าคลัง "ที่ต้นทุน/คลัง/ล็อตของ OUT เดิม" (ตัวเดียว · ไม่มีชุดที่สอง):
+ *   ตัวรับคิวคืนเงิน (refund-consumer · คีย์ pos-refund-<ใบคืน>-<บรรทัด>[-<inv>]) และ voidSale (คีย์ pos-refund-<บิล>-<movement>)
+ *   รับเข้าทีละส่วน (inventory.receive · tx ของคลังเอง · GL Dr1200/Cr5000 = qty × ต้นทุน OUT เดิม) · OUT แถว legacy ไม่มีคลัง = คลัง default
+ *   ส่วนที่ล้ม = เรียก onError แล้วไปต่อ (ผู้เรียกตัดสินว่าจะโยนให้คิวลองใหม่หรือ log เฉย ๆ)
+ */
+export type StockReturnPart = {
+  itemId: string;
+  qty: number;
+  out: { costSatang: number; locationId: string | null; lotCode: string | null };
+  idempotencyKey: string;
+  refId: string;
+  note: string;
+};
+export async function returnStockAtOriginalCost(
+  invCtx: { tenantId: string; systemId: string },
+  parts: readonly StockReturnPart[],
+  onError: (part: StockReturnPart, e: unknown) => void,
+): Promise<void> {
+  for (const part of parts) {
     try {
       await inventory.receive(invCtx, {
-        itemId: mv.itemId,
-        qty: returnQty,
-        costSatang, // คืนที่ต้นทุนปัจจุบัน → ต้นทุนถัวเฉลี่ยไม่เพี้ยน
-        idempotencyKey: `pos-refund-${saleId}-${mv.id}`,
+        itemId: part.itemId,
+        qty: part.qty,
+        costSatang: part.out.costSatang, // O12: ต้นทุนของการตัดเดิม ไม่ใช่ถัวเฉลี่ยปัจจุบัน
+        // F9: คืนเข้าคลัง/ล็อตเดียวกับที่ตัดออก (หลายคลังไม่เพี้ยน) · OUT แถว legacy ไม่มีคลัง = คลัง default
+        locationId: part.out.locationId,
+        lotCode: part.out.lotCode,
+        idempotencyKey: part.idempotencyKey,
         sourceModule: "POS",
         refType: "PosSale",
-        refId: saleId,
-        note: "คืนสต็อกจากการยกเลิกบิล POS",
+        refId: part.refId,
+        note: part.note,
       });
     } catch (e) {
-      // คืนล้ม → ปล่อยผ่าน (บัญชีขาย void แล้ว)
-      // HF-INV-1 ▸ R3.3: ทิ้งร่องรอยแบบเดียวกับตอนตัด (ไม่มีข้อมูลลูกค้า) ◂
-      console.error("[pos] stock restore failed — void committed without stock movement", { saleId, itemId: mv.itemId, qty: returnQty, code: stockErrorCode(e) });
+      onError(part, e);
     }
   }
 }

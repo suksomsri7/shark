@@ -732,6 +732,67 @@ export async function consumeInTx(tx: Db, ctx: Ctx, input: ConsumeInput): Promis
   }
 }
 
+// POS P2.3 ▸ ตัดออกหลายรายการใน tx เดียว (consumeBatch) — ผู้เรียก: POS ตัดสต็อกของบิล (1 ชุดต่อบิล · C-1) · โน้ตเจ้าของโมดูลคลังใน ledger/POS-OWNER-PENDING.md
+//   ทำไม: บิลที่มีสูตร (BOM) ตัดวัตถุดิบหลายตัวต่อบรรทัด — เดิมตัดทีละส่วน (tx ละส่วน) ⇒ ล็อกพลาดกลางทาง = บิลตัดครึ่งเดียว
+//   กติกา: tx เดียว · ล็อกทุกสินค้าตามลำดับ id ตายตัว (lockItemsInTx) ก่อนแตะตัวใด ⇒ ไม่มีวงล็อก · consumeInTx ต่อส่วนด้วยคีย์ของส่วนนั้น
+//     (แถว movement เหมือนตัดทีละส่วนทุกค่า) · ส่วนที่สินค้าไม่มีในระบบคลังนี้ / เป็นบริการ = ข้าม (คืนใน skipped · ไม่ล้มทั้งชุด)
+//     ล็อกชนกัน = ลองใหม่ทั้งชุด 1 ครั้ง (withStockRetry) · ล้มทั้งชุด = ไม่มีส่วนใดถูกตัด (ผู้เรียกนับเป็น "ค้างตัด" แล้วลองใหม่ได้)
+//     หลัง commit: GL ต่อ movement (รวมคีย์เดิมที่เคยตัดในtx ของบิลแบบ BLOCK — GL idempotent ต่อ movement) + sync สินค้าบัญชีต่อสินค้า
+//   idempotent: เรียกซ้ำด้วยคีย์เดิม = movementIds เดิม ไม่มีแถวเพิ่ม
+export type ConsumeBatchPart = { itemId: string; qty: number; idempotencyKey: string };
+export type ConsumeBatchInput = { sourceModule?: string | null; refType?: string | null; refId?: string | null; parts: ConsumeBatchPart[] };
+export type ConsumeBatchSkip = { itemId: string; key: string; reason: "NOT_FOUND" | "SERVICE" };
+export type ConsumeBatchResult = { movementIds: string[]; skipped: ConsumeBatchSkip[] };
+/** เพดานต่อชุด (กันคำขอใหญ่ผิดปกติ — บิล POS ≤ 200 บรรทัด × ≤ 50 ส่วน) */
+const CONSUME_BATCH_MAX_PARTS = 10_000;
+
+export async function consumeBatch(ctx: Ctx, input: ConsumeBatchInput): Promise<ConsumeBatchResult> {
+  const parts = (input.parts ?? []).filter((p) => p && typeof p.itemId === "string" && p.itemId && typeof p.idempotencyKey === "string" && p.idempotencyKey);
+  if (parts.length === 0) return { movementIds: [], skipped: [] };
+  if (parts.length > CONSUME_BATCH_MAX_PARTS) throw new Error(`ตัดสต็อกชุดเดียวได้ไม่เกิน ${CONSUME_BATCH_MAX_PARTS} รายการ`);
+  const db = tenantDb(ctx);
+  const ids = [...new Set(parts.map((p) => p.itemId))].sort();
+  const run = () =>
+    db.$transaction(
+      async (tx) => {
+        const txc = tx as unknown as Db;
+        await lockItemsInTx(txc, ctx, ids);
+        const found = await txc.invItem.findMany({ where: { ...scope(ctx), id: { in: ids } }, select: { id: true, kind: true } });
+        const kindOf = new Map(found.map((i) => [i.id, String(i.kind)]));
+        const rows: MovementRow[] = [];
+        const skipped: ConsumeBatchSkip[] = [];
+        for (const p of parts) {
+          const kind = kindOf.get(p.itemId);
+          if (kind === undefined) {
+            skipped.push({ itemId: p.itemId, key: p.idempotencyKey, reason: "NOT_FOUND" });
+            continue;
+          }
+          if (kind === "SERVICE") {
+            skipped.push({ itemId: p.itemId, key: p.idempotencyKey, reason: "SERVICE" });
+            continue;
+          }
+          rows.push(
+            await consumeInTx(txc, ctx, {
+              itemId: p.itemId,
+              qty: p.qty,
+              sourceModule: input.sourceModule ?? null,
+              refType: input.refType ?? null,
+              refId: input.refId ?? null,
+              idempotencyKey: p.idempotencyKey,
+            }),
+          );
+        }
+        return { rows, skipped };
+      },
+      { timeout: 20_000, maxWait: 10_000 },
+    );
+  const { rows, skipped } = await withStockRetry("consumeBatch", ids[0]!, run);
+  for (const mv of rows) await postMovementGl(ctx, mv);
+  for (const itemId of [...new Set(rows.map((r) => r.itemId))]) await syncLinkedAccountProduct(ctx, itemId);
+  return { movementIds: rows.map((r) => r.id), skipped };
+}
+// ◂ POS P2.3
+
 // ── ปรับสต็อก (ADJUST) — ตั้ง onHand เป็นค่านับจริง (stock take) โดยตรง ──
 // qtyDelta = newQty - onHand เดิม · balanceAfter = newQty · idempotent เหมือน receive
 // ต้นทุนถัวเฉลี่ยไม่กระทบ (แค่ปรับจำนวน) · ปรับจนติดลบ = ตั้งธง needsReview
