@@ -301,6 +301,8 @@ export async function createShopProduct(tx: Tx, data: Prisma.ShopProductUnchecke
     }
   }
   await tx.shopProduct.updateMany({ where: { id: sp.id, tenantId: t }, data: { posProductId: productId } });
+  // POS P2.8 ▸ R9 เขียนคู่: ราคาเว็บ ≠ ราคาฐานของแถว ⇒ แถว (WEB, ทุกสาขา) = ShopProduct.priceSatang (ชนกับเว็บร้านอื่นบนแถวร่วม = ไม่เขียน · มติ 4) ◂
+  await C.syncWebPriceRow(tx, t, productId, who);
   return { ...sp, posProductId: productId };
 }
 
@@ -325,6 +327,8 @@ export async function updateShopProduct(tx: Tx, s: UnitScope, id: string, data: 
     const off = sp.active ? cur.filter((u) => u !== sp.unitId) : [...new Set([...cur, sp.unitId])].sort();
     await applySync(tx, who, row, { name: d.name, basePriceSatang: d.basePriceSatang, vatRateBp: d.vatRateBp, images: d.images, sortOrder: d.sortOrder, unavailableUnitIds: off });
   }
+  // POS P2.8 ▸ R9 เขียนคู่หลังแก้ราคา/เปิด-ปิดขาย: แถว (WEB, ทุกสาขา) ของแถวที่ผูก = ราคาเว็บ (แถวร่วมของ InvItem ด้วย — ราคาเว็บไม่แตะราคาฐาน · G5) ◂
+  for (const row of rows) await C.syncWebPriceRow(tx, s.tenantId, row.id, who);
   return r;
 }
 

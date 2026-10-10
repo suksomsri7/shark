@@ -37,6 +37,13 @@ export const AUTOMATION_EVENTS: AutomationEventDef[] = [
   // POS P1.7 ▸ เงินเข้าใบขอรับเงิน PromptPay/Beam (consumer = withAutomation เปล่า) ◂
   { value: "pos.payment.intent_paid", label: "เมื่อเงินเข้า (PromptPay/บัตร · POS)" },
   { value: "pos.sale.taxInvoiceIssued", label: "เมื่อออกใบกำกับภาษีเต็มรูปให้บิล (POS)" }, // POS P1.13 ▸ R2 R3 ◂
+  // POS P2.8 ▸ ออเดอร์ทุกช่องทาง (จอ 09 · consumer = withAutomation เปล่า · rejected ของเว็บร้าน = ยกเลิก ShopOrder ที่ composition root) ◂
+  { value: "pos.order.received", label: "เมื่อมีออเดอร์ออนไลน์เข้า (POS)" },
+  { value: "pos.order.accepted", label: "เมื่อรับออเดอร์ออนไลน์ (POS)" },
+  { value: "pos.order.rejected", label: "เมื่อปฏิเสธออเดอร์ออนไลน์ (POS)" },
+  { value: "pos.order.ready", label: "เมื่อออเดอร์ออนไลน์พร้อมส่ง (POS)" },
+  { value: "pos.order.completed", label: "เมื่อส่งมอบออเดอร์ออนไลน์แล้ว (POS)" },
+  { value: "pos.order.cancelled", label: "เมื่อยกเลิกออเดอร์ออนไลน์ (POS)" },
   { value: "inventory.lot.expiring", label: "เมื่อสินค้าใกล้หมดอายุ" },
   // ── บอร์ดงาน (K1.4 → ครบ 8 ตัวใน K2.9 · พิมพ์เขียว 13-kanban-v2 §7.2) ─────
   // 🔴 ประกาศที่ `KANBAN_AUTOMATION_EVENTS` ข้างบนที่เดียว แล้ว spread เข้ามาที่นี่

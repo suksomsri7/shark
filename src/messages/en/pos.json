@@ -376,7 +376,12 @@
       "tableEmpty": "This table has no unpaid items that were sent to the kitchen",
       "tableItemsChanged": "The table's items changed during checkout — review the total again; no money was taken",
       "tableHasUnpaid": "This table still has unpaid items — check out before closing the table",
-      "versionChanged": "This table's draft was just changed, sent or discarded on another device — reload the latest draft and try again"
+      "versionChanged": "This table's draft was just changed, sent or discarded on another device — reload the latest draft and try again",
+      "orderNotFound": "This order was not found at this branch",
+      "orderStateInvalid": "The order is in a state that does not allow this",
+      "orderStateChanged": "This order was just changed on another device — check its latest status",
+      "orderUnpaid": "This order has not been paid — take payment before handing over",
+      "channelPaused": "This channel is not taking orders right now"
     },
     "held": {
       "title": "Held bills",
@@ -2140,7 +2145,7 @@
         "manageAt": "Manage on the chat page",
         "facts": {
           "lineReceipt": "Send receipts via LINE",
-          "chatOrders": "Take orders from chat",
+          "chatOrders": "Staff key in orders from chat",
           "orderStatusBot": "Auto-answer order status questions"
         }
       },
@@ -3111,6 +3116,153 @@
     "legacy": {
       "manageAtPos": "Manage in POS › Tables",
       "note": "This branch uses POS table mode — check out and cancel items in POS"
+    }
+  },
+  "orders": {
+    "title": "Online orders",
+    "todayCount": "Orders today {count}",
+    "todayTotal": "Total {amount}",
+    "updatedAt": "Updated {time}",
+    "empty": "No orders yet today",
+    "newOrderToast": "New order from {channel}",
+    "pausedBanner": "{channel} is not taking orders until {time}",
+    "planned": "Coming soon",
+    "sound": {
+      "label": "New order sound",
+      "on": "On",
+      "off": "Off"
+    },
+    "columns": {
+      "new": "New",
+      "newHint": "Accept within {time}",
+      "preparing": "Preparing",
+      "ready": "Ready / waiting for rider",
+      "done": "Done today"
+    },
+    "rail": {
+      "all": "All channels",
+      "autoAccept": "Auto accept",
+      "autoPauseHint": "Pause automatically when the kitchen has more than {n} tickets",
+      "prepDefault": "Default prep time",
+      "prepMinutes": "{n} min",
+      "prepToPlatform": "Sent to the platform as the pickup-ready time",
+      "pause": "Pause orders",
+      "pauseFor": "Pause {n} min",
+      "pauseUntilReopen": "Until I reopen",
+      "reopen": "Take orders again",
+      "pausedUntil": "Paused until {time}",
+      "qrTable": "QR table orders"
+    },
+    "card": {
+      "items": "{count} items · {amount}",
+      "acceptWithin": "Accept within {time}",
+      "acceptLate": "Accept time passed",
+      "prepDue": "Preparing · ready in {n} min",
+      "prepLate": "Prep late by {n} min",
+      "pickupAt": "Pickup at {time}",
+      "chatPayNote": "Ordered in chat · awaiting payment {amount}",
+      "kitchenProgress": "Kitchen {done}/{total}"
+    },
+    "actions": {
+      "accept": "Accept order",
+      "acceptWithPrep": "Accept · prep {n} min",
+      "editPrep": "Edit time",
+      "reject": "Reject",
+      "rejectOutOfStock": "Reject (out of stock)",
+      "startPrep": "Start preparing",
+      "ready": "Ready",
+      "handOver": "Handed over",
+      "pay": "Take payment",
+      "cancel": "Cancel order",
+      "viewBill": "View bill",
+      "printLabel": "Print shipping label",
+      "keyOrder": "+ Key in order"
+    },
+    "status": {
+      "NEW": "New",
+      "ACCEPTED": "Accepted",
+      "PREPARING": "Preparing",
+      "READY": "Ready",
+      "HANDED": "Handed over",
+      "REJECTED": "Rejected",
+      "CANCELLED": "Cancelled"
+    },
+    "payment": {
+      "UNPAID": "Awaiting payment",
+      "PAY_ON_PICKUP": "Pay on pickup",
+      "PLATFORM_PAID": "Paid via platform",
+      "PAID": "Paid",
+      "REFUNDED": "Refunded"
+    },
+    "fulfilment": {
+      "PICKUP": "Pickup",
+      "DELIVERY": "Delivery",
+      "DINE_IN": "Dine in"
+    },
+    "reject": {
+      "title": "Reject order",
+      "reason": "Reason",
+      "OUT_OF_STOCK": "Out of stock",
+      "CLOSING": "Closing soon",
+      "TOO_BUSY": "Too busy",
+      "OTHER": "Other",
+      "note": "Note",
+      "confirm": "Confirm reject"
+    },
+    "cancel": {
+      "title": "Cancel order",
+      "reason": "Reason for cancelling",
+      "voidNote": "Bill {receipt} will be voided too",
+      "pendingApproval": "Void request sent — waiting for a manager",
+      "confirm": "Confirm cancel"
+    },
+    "detail": {
+      "title": "Details {ref}",
+      "received": "In {time}",
+      "deliverTo": "Deliver to",
+      "customerNote": "Customer note",
+      "lines": "Items",
+      "total": "Total",
+      "commission": "Platform commission {rate}",
+      "net": "You receive",
+      "onAccept": "When you accept, the system will",
+      "onAcceptSale": "Open a bill · channel {channel}",
+      "onAcceptStock": "Deduct ingredients by recipe",
+      "onAcceptKitchen": "Send items to the kitchen",
+      "onAcceptPlatform": "Tell the platform it was accepted",
+      "historyCount": "Order number {count} at this shop",
+      "historyAvg": "Average {amount}",
+      "member": "Member",
+      "notMember": "Not a member yet"
+    },
+    "manual": {
+      "title": "Key in order",
+      "channel": "Channel",
+      "platformRef": "Platform order number",
+      "customerName": "Customer name",
+      "phone": "Phone",
+      "fulfilment": "Fulfilment",
+      "address": "Address",
+      "note": "Note",
+      "startStatus": "Start as",
+      "startNew": "New order (not accepted yet)",
+      "startAccepted": "Accepted (on the platform tablet)",
+      "paymentState": "Payment",
+      "addItem": "Add item",
+      "customItem": "Custom item",
+      "platformTotal": "Platform total",
+      "totalMismatch": "Typed total {typed} does not match item total {sum}",
+      "submit": "Save order"
+    },
+    "summary": {
+      "rejectedCancelled": "Cancelled/rejected today {count}",
+      "avgAccept": "Average accept time {seconds} s",
+      "onTime": "On time {n} of {m} orders"
+    },
+    "errors": {
+      "webPaid": "This web shop order is already paid — refund or cancel it on the web shop",
+      "hasRefunds": "This bill already has a refund — the order cannot be cancelled",
+      "saleVoided": "This order's bill has been voided — it cannot be handed over; cancel the order instead"
     }
   },
   "nav": {

@@ -88,7 +88,7 @@ const ROLE_ROWS: readonly { task: string; permission: string | null; planned: st
   { task: "stockCount", permission: "pos.stock.count", planned: null, approval: null },
   { task: "reports", permission: "pos.report.view", planned: null, approval: null },
   { task: "settings", permission: PERM_SETTINGS_MANAGE, planned: null, approval: null },
-  { task: "onlineOrders", permission: null, planned: "P2.8", approval: null },
+  { task: "onlineOrders", permission: "pos.order.accept", planned: null, approval: null }, // POS P2.8 ▸ จอ 09 (CD9) ◂
 ];
 const POS_POLICY_TYPES = ["POS_VOID", "POS_REFUND", "POS_DISCOUNT_OVER"] as const;
 

@@ -36,6 +36,8 @@ import { BULK_MARKUP_BP_MAX, BULK_MARKUP_PRODUCTS_MAX, CHANNEL_PRICE_ROWS_MAX, c
 // POS P2.3 ▸ สูตร/BOM: ตัวโหลดสูตรที่ใช้จริง (อ่านอย่างเดียว) + จำนวนหน่วยที่ทำได้ (บริสุทธิ์) ◂
 import { loadRowRecipes, type RowRecipe } from "./recipe";
 import { recipePortions } from "./recipe-shared";
+import { loadPriceBook, priceOf } from "./price"; // POS P2.8 ▸ ราคาหน้าเว็บร้าน = ช่องทาง WEB (R9 อ่านสองทาง) ◂
+import type { PriceSource } from "./price-shared"; // POS P2.8 ◂
 
 // ═══════════════════ ชนิดข้อมูล + error ═══════════════════
 
@@ -2864,4 +2866,163 @@ function mergeSummary(into: BackfillSummary, from: BackfillSummary): void {
     cur.menuItem += v.menuItem;
     cur.shopProduct += v.shopProduct;
   }
+}
+
+// ═══════════════════ POS P2.8 ▸ ราคาเว็บร้าน = แถวราคาช่องทาง (WEB, ทุกสาขา) (R9 · มติ 4 · CD 14 15) ◂ ═══════════════════
+// ShopProduct ยังเป็นตัวตน/FK ของเว็บร้าน (CD4) · ราคาที่หน้าเว็บ = แถว (WEB, null) ของแถวแคตตาล็อกที่ ShopProduct ชี้ (อ่านสองทาง)
+//   เขียนคู่ (dual-write): catalog-legacy create/updateShopProduct เรียก syncWebPriceRow ในธุรกรรมเดิม · ข้อมูลเดิม: backfillWebPrices (รันซ้ำได้)
+//   ชน (webPriceConflict): แถวร่วมเดียวที่ ShopProduct ที่เปิดขายหลายตัวตั้งราคาต่างกัน ⇒ ไม่เขียนแถว WEB · แต่ละหน้าเว็บใช้ราคา ShopProduct ของตัวเอง
+//   🔴 ตัวเขียนแถวราคาช่องทางยังเป็นไฟล์นี้ไฟล์เดียว (เหมือน setChannelPrices) · ไม่แตะ ShopProduct.priceSatang
+const WEB_CODE = "WEB";
+type WebPriceDecision = { productId: string; systemId: string; price: number | null; conflict: boolean; shopProductIds: string[] };
+
+/** ราคาเว็บของแถวแคตตาล็อก: ShopProduct ที่เปิดขายทุกตัวที่ชี้แถวนี้ (ทุกสาขาของร้าน) — ราคาเดียว = ราคานั้น · หลายราคา = ชน · ไม่มี = null */
+async function webPriceDecisions(db: CatalogClient, tenantId: string, productIds: string[]): Promise<Map<string, WebPriceDecision>> {
+  const out = new Map<string, WebPriceDecision>();
+  const ids = [...new Set(productIds.filter(Boolean))];
+  if (!ids.length) return out;
+  const [rows, shops] = await Promise.all([
+    db.posProduct.findMany({ where: { tenantId, id: { in: ids } }, select: { id: true, systemId: true } }),
+    db.shopProduct.findMany({ where: { tenantId, active: true, posProductId: { in: ids } }, select: { id: true, posProductId: true, priceSatang: true }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] }),
+  ]);
+  for (const r of rows) {
+    const mine = shops.filter((x) => x.posProductId === r.id);
+    const prices = new Set(mine.map((x) => x.priceSatang));
+    out.set(r.id, { productId: r.id, systemId: r.systemId, price: prices.size === 1 ? mine[0]!.priceSatang : null, conflict: prices.size > 1, shopProductIds: mine.map((x) => x.id) });
+  }
+  return out;
+}
+
+/** ต้องเขียนแถว (WEB, null) ไหม: ไม่มีแถว + ราคาเว็บ ≠ ราคาฐาน = สร้าง · มีแถว + ราคาต่าง/ไม่ขาย = แก้ · อื่น = ไม่ต้อง */
+async function webRowPlan(db: CatalogClient, tenantId: string, d: WebPriceDecision): Promise<{ action: "create" | "update" | "none"; rowId?: string; before?: unknown }> {
+  if (d.conflict || d.price === null) return { action: "none" };
+  const [row, cur] = await Promise.all([
+    db.posProduct.findFirst({ where: { id: d.productId, tenantId }, select: { basePriceSatang: true } }),
+    db.posProductChannelPrice.findFirst({ where: { tenantId, systemId: d.systemId, productId: d.productId, channelCode: WEB_CODE, unitId: null }, orderBy: { createdAt: "asc" } }),
+  ]);
+  if (cur) return cur.priceSatang === d.price && !cur.notSold ? { action: "none" } : { action: "update", rowId: cur.id, before: { priceSatang: cur.priceSatang, notSold: cur.notSold } };
+  return row && row.basePriceSatang !== d.price ? { action: "create" } : { action: "none" };
+}
+
+async function applyWebRow(tx: Prisma.TransactionClient, tenantId: string, d: WebPriceDecision, plan: { action: "create" | "update" | "none"; rowId?: string; before?: unknown }, who: AuditActor): Promise<boolean> {
+  if (plan.action === "none" || d.price === null) return false;
+  const userId = who.id ?? "system";
+  if (plan.action === "update") await tx.posProductChannelPrice.update({ where: { id: plan.rowId! }, data: { priceSatang: d.price, notSold: false, updatedByUserId: userId } });
+  else await tx.posProductChannelPrice.create({ data: { tenantId, systemId: d.systemId, productId: d.productId, channelCode: WEB_CODE, unitId: null, priceSatang: d.price, notSold: false, updatedByUserId: userId } });
+  await auditSync(tx, tenantId, who, "pos.product.webPrice", "PosProduct", d.productId, plan.before ?? null, { channelCode: WEB_CODE, unitId: null, priceSatang: d.price, shopProductIds: d.shopProductIds });
+  return true;
+}
+
+/**
+ * เขียนคู่ของเว็บร้าน (catalog-legacy create/updateShopProduct · ในธุรกรรมเดิม): ล็อกแถว (G7) → ตัดสินจาก ShopProduct ที่เปิดขายทุกตัวของแถว →
+ * เขียน/แก้แถว (WEB, null) = ราคาเว็บ เมื่อจำเป็น · ชน = ไม่เขียน (คืน "conflict") · คืน "written" | "same" | "conflict" | "none"
+ */
+export async function syncWebPriceRow(tx: Prisma.TransactionClient, tenantId: string, productId: string | null | undefined, who: AuditActor): Promise<"written" | "same" | "conflict" | "none"> {
+  if (!productId) return "none";
+  await lockProductRows(tx, tenantId, [productId]);
+  const d = (await webPriceDecisions(tx, tenantId, [productId])).get(productId);
+  if (!d) return "none";
+  if (d.conflict) return "conflict";
+  if (d.price === null) return "none";
+  return (await applyWebRow(tx, tenantId, d, await webRowPlan(tx, tenantId, d), who)) ? "written" : "same";
+}
+
+export type WebShopPrice = { priceSatang: number; priceSource: PriceSource; posProductId: string | null; conflict: boolean; priceRuleId?: string | null; listPriceSatang?: number | null };
+/**
+ * ราคาหน้าเว็บร้าน (อ่านสองทาง · CD 14): ShopProduct ที่ผูกแถวแคตตาล็อกของ POS แรกของร้าน (ระบบเดียวกับที่ backfill/createShopProduct ใช้) และไม่ชน ⇒
+ * ราคาช่องทาง WEB ณ ตอนนี้ (แถว (WEB, สาขาเว็บ) / (WEB, ทุกสาขา) / โปรของช่องทาง WEB) · ไม่มีแถว/โปร (ฐาน) · ไม่ตั้งราคา · ไม่ขาย · สินค้าชั่ง · ไม่มี POS ⇒
+ * ShopProduct.priceSatang (วันนี้) · priceSource ของราคาที่ใช้ (ราคาเว็บร้านเอง = CHANNEL · เท่าราคาฐาน = BASE)
+ */
+export async function webPricesForShop(
+  scope: { tenantId: string; unitId: string },
+  products: readonly { id: string; posProductId: string | null; priceSatang: number }[],
+  client: CatalogClient = prisma,
+): Promise<Map<string, WebShopPrice>> {
+  const out = new Map<string, WebShopPrice>();
+  const fallback = (p: { id: string; posProductId: string | null; priceSatang: number }, base: number | null | undefined, conflict = false) =>
+    out.set(p.id, { priceSatang: p.priceSatang, priceSource: base !== undefined && base !== null && base === p.priceSatang ? "BASE" : "CHANNEL", posProductId: p.posProductId, conflict });
+  const sys = resolvePosSystem(await loadPosResolution(scope.tenantId, client), { kind: "shopProduct" }).systemId;
+  const ids = [...new Set(products.map((p) => p.posProductId).filter((x): x is string => !!x))];
+  if (!sys || !ids.length) {
+    for (const p of products) fallback(p, undefined);
+    return out;
+  }
+  const rows = await client.posProduct.findMany({ where: { tenantId: scope.tenantId, systemId: sys, id: { in: ids }, archivedAt: null } });
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  const [book0, decisions] = await Promise.all([loadPriceBook(client, { tenantId: scope.tenantId, systemId: sys, unitId: scope.unitId }, rows, new Date()), webPriceDecisions(client, scope.tenantId, ids)]);
+  // POS P2.8 fix รอบ 2 (รีวิว F2 · มติผู้คุม): หน้าเว็บอ่าน "ชั้นของช่องทาง WEB" เท่านั้น — แถว (WEB, *) + กติกาที่ระบุ WEB ใน channelCodes ·
+  //   แถวสาขา (ทุกช่องทาง) และกติกาทุกช่องทาง (channelCodes []) ไม่ถึงหน้าเว็บ (ราคาโปรของหน้าร้านไม่ไหลไปเว็บเอง · เจ้าของเว็บร้านเคาะภายหลัง)
+  const book = { ...book0, rows: book0.rows.filter((r) => r.channelCode === WEB_CODE), rules: book0.rules.filter((r) => r.channelCodes.includes(WEB_CODE)) };
+  for (const p of products) {
+    const row = p.posProductId ? byId.get(p.posProductId) : undefined;
+    if (!row) {
+      fallback(p, undefined);
+      continue;
+    }
+    if (decisions.get(row.id)?.conflict) {
+      fallback(p, row.basePriceSatang, true);
+      continue;
+    }
+    const rp = row.soldByWeight ? null : priceOf(book, row, WEB_CODE);
+    // ใช้ผลของตัวแก้ราคาเฉพาะเมื่อแถว WEB ชนะ (CHANNEL) หรือกติกาที่ระบุ WEB ชนะ (RULE) — อื่น (ฐาน) = ราคา ShopProduct วันนี้
+    if (rp && rp.ok && (rp.source === "CHANNEL" || rp.source === "RULE"))
+      out.set(p.id, { priceSatang: rp.unitPriceSatang, priceSource: rp.source, posProductId: row.id, conflict: false, priceRuleId: rp.ruleId, listPriceSatang: rp.listPriceSatang }); // POS P2.8 fix รอบ 3 (H5) ◂
+    else fallback(p, row.basePriceSatang);
+  }
+  return out;
+}
+
+export type BackfillWebPricesSummary = {
+  ok: true;
+  dryRun: boolean;
+  tenants: number;
+  /** แถวแคตตาล็อกที่มี ShopProduct เปิดขายชี้อยู่ */
+  scanned: number;
+  /** แถว (WEB, null) ที่สร้าง/แก้ (dryRun = ที่จะสร้าง/แก้) */
+  written: number;
+  /** แถวร่วมที่ ShopProduct หลายตัวตั้งราคาต่างกัน (ไม่เขียน · เจ้าของต้องตัดสิน) */
+  webPriceConflict: number;
+  conflicts: { posProductId: string; shopProductIds: string[] }[];
+  failedTenants: { tenantId: string; error: string }[];
+};
+/**
+ * P2.8 R9 — เติมแถว (WEB, null) ให้ข้อมูลเดิม (ShopProduct ที่สร้างก่อนเขียนคู่) · รันซ้ำได้: รอบสองเขียน 0 · ชน = นับ ไม่เขียน ·
+ * ทีละร้านในธุรกรรมเดียว (ล็อกแถวเรียง id) · ไม่อยู่บน facade (แบบ backfillCatalog · F15.5)
+ */
+export async function backfillWebPrices(opts: { tenantIds: string[]; dryRun: boolean }, client: PrismaClient = prisma): Promise<BackfillWebPricesSummary> {
+  const s: BackfillWebPricesSummary = { ok: true, dryRun: !!opts.dryRun, tenants: 0, scanned: 0, written: 0, webPriceConflict: 0, conflicts: [], failedTenants: [] };
+  for (const tenantId of [...new Set(opts.tenantIds)].sort()) {
+    s.tenants++;
+    try {
+      const linked = await client.shopProduct.findMany({ where: { tenantId, active: true, posProductId: { not: null } }, select: { posProductId: true } });
+      const ids = [...new Set(linked.map((x) => x.posProductId as string))].sort();
+      const run = async (db: CatalogClient, write: Prisma.TransactionClient | null) => {
+        if (write) await lockProductRows(write, tenantId, ids);
+        const ds = await webPriceDecisions(db, tenantId, ids);
+        let n = 0;
+        const conflicts: { posProductId: string; shopProductIds: string[] }[] = [];
+        for (const id of ids) {
+          const d = ds.get(id);
+          if (!d) continue;
+          if (d.conflict) {
+            conflicts.push({ posProductId: id, shopProductIds: d.shopProductIds });
+            continue;
+          }
+          const plan = await webRowPlan(db, tenantId, d);
+          if (plan.action === "none") continue;
+          if (write) await applyWebRow(write, tenantId, d, plan, SYSTEM_AUDIT);
+          n++;
+        }
+        return { scanned: ds.size, written: n, conflicts };
+      };
+      const r = opts.dryRun ? await run(client, null) : await client.$transaction((tx) => run(tx, tx), { timeout: 600_000, maxWait: 60_000 });
+      s.scanned += r.scanned;
+      s.written += r.written;
+      s.webPriceConflict += r.conflicts.length;
+      s.conflicts.push(...r.conflicts);
+    } catch (e) {
+      s.failedTenants.push({ tenantId, error: e instanceof Error ? e.message.split("\n").filter(Boolean).slice(-1)[0] ?? e.name : String(e) });
+    }
+  }
+  return s;
 }

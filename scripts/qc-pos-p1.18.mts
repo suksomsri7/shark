@@ -314,7 +314,7 @@ const FACTS: Record<(typeof CARD_CODES)[number], readonly Fact[]> = {
   INVENTORY: [["stockDeduct", true, null], ["bomDeduct", true, null], ["oversellPolicy", true, null], ["lowStockReorder", false, "P3"]], // ORACLE-EDIT P2.3U (มติ 8 ผู้คุม): bomDeduct live — เดิม ["bomDeduct", false, "P2.3"]
   HR: [["shiftPinSchedule", false, "P3.5"], ["salesCommission", false, "P3.5"], ["leaveHidesShift", false, "P3.5"]],
   CRM: [["dealPaidCount", true, null], ["bigBillDeal", false, "P3.6"], ["corporateCredit", false, "P3.6"]],
-  CHAT: [["lineReceipt", true, null], ["chatOrders", false, "P2.8"], ["orderStatusBot", false, "P3.7"]],
+  CHAT: [["lineReceipt", true, null], ["chatOrders", true, null], ["orderStatusBot", false, "P3.7"]], // ORACLE-EDIT P2.8 (มติ 5): พนักงานคีย์ออเดอร์จากแชท
   KANBAN: [["voidBillCard", true, null], ["issueReportCard", true, null], ["stockOutShiftDiffCard", false, "P3.8"], ["shiftCloseCashCheck", false, "P3.8"]],
   MARKETING: [["happyHourPricing", true, null], ["couponAfterPurchase", false, "P3"]],
   BOOKING: [["tableReservationsOnMap", false, "P2.4"], ["callQueueFromTable", false, "P2.4"], ["advanceBookingBill", false, "P2.7"]],
@@ -335,7 +335,7 @@ const ROLE_ROWS: readonly [string, string | null, string | null][] = [
   ["stockCount", "pos.stock.count", null],
   ["reports", "pos.report.view", null],
   ["settings", PERM_MANAGE, null],
-  ["onlineOrders", null, "P2.8"],
+  ["onlineOrders", "pos.order.accept", null], // ORACLE-EDIT P2.8 (CD9): จอ 09 = pos.order.accept
 ];
 const SETTINGS_CODES = ["NOT_FOUND", "PERMISSION_DENIED", "VALIDATION", "UNKNOWN", "SETTINGS_SECTION_LOCKED", "CONFIRM_REQUIRED"];
 const NEW_CODES = ["SETTINGS_SECTION_LOCKED", "CONFIRM_REQUIRED", "PIN_THROTTLED"];

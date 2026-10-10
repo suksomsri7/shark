@@ -5,7 +5,7 @@
 > ⚠️ เอกสารแบบ ยังไม่แตะโค้ด · ชื่อฟังก์ชันเป็นข้อเสนอ ให้ oracle writer/builder ยึดเป็นสัญญา
 
 ## 0. หลักการ 4 ข้อที่ทุก contract ต้องเป็นไปตาม
-1. **เงินทุกบาทผ่าน `createSale`** (contract 2.1 เดิม) — ช่องทางใหม่ (LINE MAN/Grab/เว็บ/แชท) สร้าง `ExternalOrder` ก่อน แล้วค่อยกลายเป็น `PosSale` ด้วย createSale เสมอ
+1. **เงินทุกบาทผ่าน `createSale`** (contract 2.1 เดิม) — ช่องทางใหม่ (LINE MAN/Grab/เว็บ/แชท) สร้าง `PosOrder` ก่อน (P2.8 มติ 1 · เดิมเขียน `ExternalOrder`) แล้วค่อยกลายเป็น `PosSale` ด้วย createSale เสมอ
 2. **สต็อกทุกชิ้นผ่าน Inventory C-1** — BOM = POS คำนวณบรรทัดวัตถุดิบแล้วเรียก `inv.consume` ชุดเดียว ไม่แตะ onHand เอง
 3. **ลูกค้า = `memberId` (Customer.id) + `partyId`** — ตามสมาชิก v2 · บิลเก็บ `memberSnapshot`
 4. **ของที่สมาชิก v2 สร้างไว้แล้ว ใช้ของเดิม**: ว่อชเชอร์ (`Voucher`/`VoucherTemplate`) · บัตรของขวัญ (`GiftCard`/`GiftCardTxn`) · สแตมป์ (`StampCard`/`StampEvent`) · ที่มาลูกค้า (`MemberAttribution`) · สิทธิ์ระดับ (`MemberTierBenefit`) — `PosSale` มีคอลัมน์รองรับแล้ว (`voucherUseIds` `giftCardTxnId` `tierDiscountSatang` `stampEventIds` `attributionId` `giftCardId`) **ห้ามสร้างตารางซ้ำ**
@@ -23,7 +23,8 @@ channel.commission({ channelId, grossSatang })        // → { commissionSatang,
 - รายงาน: ทุก aggregate group by `channelId` ได้
 - การตลาด (MktCampaign): แคมเปญชนิด `PRICE_RULE` ประกาศ `{productIds, channelIds, unitIds, from, to, priceSatang|discountBp}` → `channel.priceFor` อ่านผ่าน `marketing.activePriceRules(unitId, at)` (read-only facade ฝั่งการตลาด)
 
-## C-7 ออเดอร์ภายนอก (ExternalOrder) + adapter
+## C-7 ออเดอร์ทุกช่องทาง (`PosOrder` + `PosOrderLine` + `PosOrderEvent` — เดิมชื่อ ExternalOrder · P2.8 มติ 1) + adapter
+> **ตามที่สร้างจริง (P2.8 S):** facade `orders.*` (`pos/order.ts` ผู้เขียนเดียว) · adapter registry `ORDER_ADAPTERS` (`pos/order-adapters.ts` · MANUAL/WEB/CHAT = no-op) · บิล PLATFORM สร้างตอนรับ (`posorder-<id>`) · DIRECT สร้างตอนจ่าย (`payOrder` หรือ ECOM ของเว็บร้าน) · สถานะ NEW → ACCEPTED → PREPARING → READY → HANDED | REJECTED | CANCELLED · โค้ดด้านล่าง = ร่างเดิมของสัญญา (ชื่อ externalOrder.* อ่านเป็น orders.*)
 ```ts
 // src/lib/modules/pos/external/adapter.ts — interface เดียว ทุกแพลตฟอร์ม implement
 interface ChannelAdapter {
