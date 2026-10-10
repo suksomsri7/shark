@@ -2566,6 +2566,7 @@
       "roundBaht": "Round to baht",
       "category": "Category",
       "preview": "Preview of the first 5 items",
+      "previewCategory": "First 5 of the category (variants with their own price are written separately)",
       "apply": "Set prices",
       "done": "Set {count} prices · skipped {skipped}",
       "round": "Rounding",

@@ -12,7 +12,7 @@ import { bulkChannelMarkupAction } from "@/lib/modules/pos/catalog-price-actions
 import { BULK_MARKUP_PRODUCTS_MAX, channelMarkupPrice } from "@/lib/modules/pos/price-shared";
 import { moneyText } from "@/lib/modules/pos/register-shared";
 import { channelDisplayName } from "@/components/pos/settings/channel-text";
-import { PriceIcon, parsePctToBp, priceErrorText, type PT } from "@/components/pos/products/price-ui";
+import { PriceIcon, parsePctToBp, priceErrorText, priceRefusalText, type PT } from "@/components/pos/products/price-ui";
 import type { ProductsChannel, ProductsRow } from "./products-data";
 
 type Props = {
@@ -64,6 +64,10 @@ export function BulkMarkupDialog({ systemId, channels, unit, scopeName, category
         scope === "selected" ? { systemId, channelCode: code, unitId: unit, markupBp: bp, roundTo, productIds: selected.map((p) => p.id) } : { systemId, channelCode: code, unitId: unit, markupBp: bp, roundTo, categoryId: category!.id },
       );
       if (r.ok) onDone(tb("done", { count: r.written, skipped: r.skipped }));
+      // P2.2U fix รอบ 1 F5: หมวดเกิน BULK_MARKUP_PRODUCTS_MAX (เซิร์ฟเวอร์นับสินค้าทุกตัวของหมวดรวม variant) ⇒ bulk.tooMany ·
+      //   VALIDATION อื่นไม่มีช่องให้ชี้ ⇒ ข้อความของบริการ (F4) · รหัสอื่น = เดิม
+      else if (r.code === "VALIDATION" && scope === "category" && r.message.includes(String(BULK_MARKUP_PRODUCTS_MAX))) setErr(tb("tooMany", { max: BULK_MARKUP_PRODUCTS_MAX }));
+      else if (r.code === "VALIDATION") setErr(priceRefusalText(r, false, tp, treg));
       else setErr(priceErrorText(r.code, tp, treg));
     } catch {
       setErr(tp("errors.unknown"));
@@ -132,7 +136,7 @@ export function BulkMarkupDialog({ systemId, channels, unit, scopeName, category
           </div>
           {/* ตัวอย่าง 5 รายการแรก */}
           <div data-testid="pos-prod-bulk-preview" className="rounded-lg border">
-            <div className="border-b px-3 py-1.5 text-[11.5px] font-bold text-[color:var(--color-muted)]">{tb("preview")}</div>
+            <div className="border-b px-3 py-1.5 text-[11.5px] font-bold text-[color:var(--color-muted)]">{tb(scope === "category" ? "previewCategory" : "preview")}</div>
             {list.slice(0, 5).map((p) => (
               <div key={p.id} className="flex items-center gap-2 border-b px-3 py-1.5 text-[12.5px] last:border-b-0">
                 <span className="min-w-0 flex-1 truncate">{nameOf(p)}</span>
