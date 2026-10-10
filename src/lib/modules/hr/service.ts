@@ -1,6 +1,7 @@
 import { tenantDb } from "@/lib/core/db";
-import { emitOutboxOutsideTx } from "@/lib/core/outbox";
-import type { HrAttendanceKind, HrLeaveType } from "@prisma/client";
+import { emitOutbox } from "@/lib/core/outbox";
+import { writeAudit } from "@/lib/core/audit"; // HF-HR-0 ▸ ประวัติการตัดสินใบลา ◂
+import type { HrAttendanceKind, HrLeaveType, Prisma } from "@prisma/client";
 import * as approval from "@/lib/modules/approval/service";
 import { thaiDateKey } from "@/lib/ui/date";
 import { isAvailable as rulesIsAvailable, workedMinutes } from "./rules";
@@ -327,11 +328,12 @@ export async function setPin(ctx: Ctx, employeeId: string, pin: string): Promise
   if (!emp) return { ok: false, reason: "ไม่พบพนักงาน" };
   if (clean) {
     // PIN ซ้ำกับคนอื่นในร้านได้ (เลือกชื่อก่อนใส่ PIN อยู่แล้ว) แต่เตือนไว้ว่าอย่าซ้ำจะดีกว่า
+    // HF-HR-0 (D8): ห้ามบอกว่าใครถือ PIN นี้ — เดิมตอบชื่อเจ้าของ ⇒ ไล่เดา PIN ได้ว่าเป็นของใคร
     const dup = await tenantDb(ctx).hrEmployee.findFirst({
       where: { pinCode: clean, active: true, NOT: { id: employeeId } },
-      select: { name: true },
+      select: { id: true },
     });
-    if (dup) return { ok: false, reason: `PIN นี้ ${dup.name} ใช้อยู่ — ตั้งเลขอื่นเพื่อไม่ให้สับสน` };
+    if (dup) return { ok: false, reason: "PIN นี้ใช้ไม่ได้ กรุณาเลือก PIN อื่น" };
   }
   await tenantDb(ctx).hrEmployee.updateMany({ where: { id: employeeId }, data: { pinCode: clean || null } });
   return { ok: true };
@@ -387,7 +389,13 @@ export type RequestLeaveInput = {
 };
 
 export async function requestLeave(ctx: Ctx, input: RequestLeaveInput): Promise<{ id: string }> {
-  const l = await tenantDb(ctx).hrLeave.create({
+  // HF-HR-0 ▸ รอบ 5c (F2): ใบลา + event + คำขอในสายอนุมัติ (ถ้ามีสาย) เกิดใน **ธุรกรรมเดียว** — เดิมเป็นคนละคำสั่ง ⇒ ทางตรง (decideLeave)
+  //   ที่ตัดสินในช่วงระหว่างนั้นไม่เห็นคำขอ จึงตัดสินได้ แล้วคำขอก็ยังถูกสร้าง (สาย PENDING/REJECTED + ใบลา APPROVED) · ลำดับ event เดิม
+  //   (hr.leave.submitted ก่อน approval.request.submitted) · ใช้ tx จาก tenantDb (ไม่ลาก prisma ดิบเข้ามา — fitness F5.1) ◂
+  const policy = await approval.resolvePolicy({ tenantId: ctx.tenantId }, { entityType: "HrLeave", systemId: ctx.systemId });
+  return tenantDb(ctx).$transaction(async (t) => {
+  const tx = t as unknown as Prisma.TransactionClient;
+  const l = await tx.hrLeave.create({
     data: {
       tenantId: ctx.tenantId,
       systemId: ctx.systemId,
@@ -406,11 +414,8 @@ export async function requestLeave(ctx: Ctx, input: RequestLeaveInput): Promise<
   //      `AUTOMATION_EVENTS` · `WEBHOOK_EVENTS` — ขาดที่ใดที่หนึ่ง = event ค้าง PENDING แล้ว
   //      คิวทั้งระบบตันเงียบ ๆ (`reference_outbox_new_event_needs_consumer`)
   //   idempotencyKey ผูก leaveId ⇒ ใบลา 1 ใบ = event 1 ใบตลอดกาล (ยิงซ้ำไม่เพิ่มแถว)
-  //   🔴 ใช้ `emitOutboxOutsideTx` (เคอร์เนล) ไม่ใช่ `emitOutbox(tx, …)`: ไฟล์นี้เขียน DB ผ่าน
-  //      `tenantDb(ctx)` ทั้งไฟล์ และห้ามลาก prisma ดิบเข้ามา (chokepoint · fitness F5.1)
-  //      ⇒ event นี้ไม่ atomic กับแถวใบลา — ยอมรับได้เพราะพลาดแล้วแค่ "การ์ดหาคนแทนไม่เกิด"
-  //      (ใบลายังอยู่ในระบบ HR ให้หัวหน้าเห็นตามปกติ) ไม่ใช่เงินหาย
-  await emitOutboxOutsideTx({
+  //   HF-HR-0 รอบ 5c: ยิงใน tx ของ tenantDb เดียวกับแถวใบลาแล้ว (เดิม emitOutboxOutsideTx — ไม่ atomic)
+  await emitOutbox(tx, {
     tenantId: ctx.tenantId,
     type: "hr.leave.submitted",
     idempotencyKey: `hr.leave.submitted#${l.id}`,
@@ -425,29 +430,97 @@ export async function requestLeave(ctx: Ctx, input: RequestLeaveInput): Promise<
   });
   // WO-0049b: มีสายอนุมัติใบลา → ยื่นเข้าสาย (ใบลาคง PENDING จน effect ตัดสินหลังอนุมัติ/ปฏิเสธ)
   //   ไม่มีสายอนุมัติ → พฤติกรรมเดิม (ใบลารอ decideLeave ด้วยมือตามเดิม)
-  const policy = await approval.resolvePolicy(
-    { tenantId: ctx.tenantId },
-    { entityType: "HrLeave", systemId: ctx.systemId },
-  );
   if (policy) {
     await approval.submitForApproval(
       { tenantId: ctx.tenantId },
       { entityType: "HrLeave", entityId: l.id, systemId: ctx.systemId, requestedById: input.employeeId },
+      { tx },
     );
   }
   return { id: l.id };
+  });
 }
 
 // อนุมัติ/ปฏิเสธการลา — availability เปลี่ยนเฉพาะเมื่อ APPROVED (C-2)
+// HF-HR-0 (D10 · มติผู้คุมงาน C1): ทางที่อนุญาต = PENDING → APPROVED/REJECTED · APPROVED → REJECTED (ถอนอนุมัติ = "เปลี่ยนใจ"
+//   ช่องจองกลับมาเอง · qc-hr-leave-booking LV-9) — นอกนั้นปฏิเสธ · ผู้ตัดสินต้องไม่ใช่เจ้าของใบลา ·
+//   ใบที่อยู่ในสายอนุมัติต้องตัดสินที่สายอนุมัติ (effect ใน approval-effects.ts เขียนใบลาเอง) ·
+//   ใบที่อนุมัติผ่านสายแล้ว ถอนทางตรงไม่ได้ (approval core ยังไม่มีทางถอนผล)
+//   ⚠️ ตรวจ "ตัดสินใบของตัวเอง" ได้เฉพาะพนักงานที่ผูกบัญชีผู้ใช้ (linkedUserId) — ใบของพนักงานที่ไม่ผูกบัญชี ตรวจไม่ได้
+//   ไม่ผ่าน = โยน HrLeaveDecisionError (ข้อความไทย) — ผู้เรียกเดิม (action/bulk/ข้อเสนอ AI) โยนต่อ/เก็บเหตุผลได้ตามเดิม
+//   ทุกการตัดสิน/ถอน = AuditLog 1 แถว (before/after: สถานะ + ผู้ตัดสิน) — ผู้อนุมัติเดิมไม่หายแม้ถูกถอน
+export class HrLeaveDecisionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "HrLeaveDecisionError";
+  }
+}
+const LEAVE_STATUS_TH: Record<string, string> = { APPROVED: "อนุมัติแล้ว", REJECTED: "ไม่อนุมัติแล้ว", CANCELLED: "ยกเลิกแล้ว" };
+const LEAVE_STALE = "สถานะใบลาเปลี่ยนไปแล้ว กรุณาเปิดดูใหม่";
+
 export async function decideLeave(
   ctx: Ctx,
   leaveId: string,
   status: "APPROVED" | "REJECTED",
   decidedById?: string | null,
+  // from = สถานะที่ผู้ตัดสินเห็นบนจอ · ไม่ส่ง: มีผู้ตัดสิน (คน/ข้อเสนอ AI) = ถือว่าเห็น "รออนุมัติ" ·
+  //   ไม่มีผู้ตัดสินเลย (งานภายใน/ผู้เรียกรุ่นเก่า) = ใช้สถานะปัจจุบัน
+  opts: { from?: "PENDING" | "APPROVED" } = {},
 ): Promise<void> {
-  await tenantDb(ctx).hrLeave.update({
+  // HF-HR-0 ▸ รอบ 4 (R4.2): ผู้เรียกที่ "ส่งช่องผู้ตัดสินมาแต่ว่าง" (null / สตริงว่าง = ไม่รู้ว่าใครตัดสิน) ห้ามตัดสินทุกทาง —
+  //   กติกาห้ามตัดสินใบของตัวเอง + การถอนอนุมัติ ต้องรู้ตัวผู้ตัดสิน · ผู้เรียกใน src ทุกจุดส่ง user id จริง (oracle S-14) ·
+  //   ไม่ส่งช่องนี้เลย (undefined) = งานภายใน/ข้อสอบรุ่นเก่า (qc-hr · qc-hr-attendance · qc-hr-leave-booking LV-9) คงพฤติกรรมเดิม ◂
+  if (decidedById !== undefined && !(typeof decidedById === "string" && decidedById.trim())) {
+    throw new HrLeaveDecisionError("ระบบไม่ทราบผู้ตัดสินใบลานี้ จึงยังบันทึกผลไม่ได้ — กรุณาอนุมัติใบลาในหน้าระบบพนักงาน");
+  }
+  const db = tenantDb(ctx);
+  const leave = await db.hrLeave.findFirst({
     where: { id: leaveId },
+    select: { status: true, decidedById: true, employee: { select: { linkedUserId: true } } },
+  });
+  if (!leave) throw new HrLeaveDecisionError("ไม่พบใบลา หรืออยู่นอกร้านนี้");
+  const from = opts.from ?? (decidedById ? "PENDING" : leave.status);
+  // ข้อเสนอ/หน้าจอที่ค้าง (เห็นสถานะหนึ่ง แต่ตอนนี้เป็นอีกสถานะ) ห้ามเปลี่ยนผลแบบเงียบ ๆ
+  if (from !== leave.status) throw new HrLeaveDecisionError(LEAVE_STALE);
+  const allowed = from === "PENDING" || (from === "APPROVED" && status === "REJECTED");
+  if (!allowed) throw new HrLeaveDecisionError(`ใบลานี้${LEAVE_STATUS_TH[from] ?? "ตัดสินแล้ว"} — เปลี่ยนผลไม่ได้`);
+  if (decidedById && leave.employee.linkedUserId === decidedById) {
+    throw new HrLeaveDecisionError("ใบลานี้เป็นของบัญชีผู้ตัดสินเอง — ให้หัวหน้าหรือเจ้าของกิจการเป็นผู้ตัดสิน");
+  }
+  // สายอนุมัติ (requestLeave → submitForApproval) — อ่านอย่างเดียว ผูกร้าน
+  // HF-HR-0 ▸ รอบ 5b (H2): ใบลาที่มีคำขอในสายอนุมัติ "สถานะใดก็ได้" (รอ · อนุมัติ · ปฏิเสธ) = สายเป็นเจ้าของการตัดสิน — ทางตรงปฏิเสธทุกกรณี
+  //   (เดิมดูแค่ รอ/อนุมัติ ⇒ ช่วงระหว่าง "สายตัดสินแล้ว" กับ "effect เขียนใบลา" ทางตรงตัดสินสวนผลของสายได้) ·
+  //   ยกเว้นเดียว: CANCELLED (cancelRequest — สายจะไม่ตัดสินและไม่มี effect เขียนใบลาอีก) ⇒ ปล่อยให้ทางตรง ไม่งั้นใบลาค้างถาวร ◂
+  const chains = await tenantDb({ tenantId: ctx.tenantId }).approvalRequest.findMany({
+    where: { entityType: "HrLeave", entityId: leaveId, status: { in: ["PENDING", "APPROVED", "REJECTED"] } },
+    select: { status: true },
+    take: 20,
+  });
+  const chainHas = (s: string) => chains.some((c) => c.status === s);
+  if (chainHas("PENDING")) {
+    throw new HrLeaveDecisionError("ใบลานี้อยู่ในสายอนุมัติ — ตัดสินได้ที่หน้า “อนุมัติ” (คำขอรอตัดสิน)");
+  }
+  if (from === "APPROVED" && (chainHas("APPROVED") || leave.decidedById === "approval-engine")) {
+    throw new HrLeaveDecisionError("ใบลานี้อนุมัติผ่านสายอนุมัติแล้ว — ระบบยังไม่มีการถอนผลของสายอนุมัติ ดูรายละเอียดได้ที่หน้า “อนุมัติ” หรือติดต่อเจ้าของกิจการ");
+  }
+  if (chains.length > 0) {
+    throw new HrLeaveDecisionError("ใบลานี้ตัดสินผ่านสายอนุมัติแล้ว — ผลของใบลามาจากหน้า “อนุมัติ” เท่านั้น (ตัดสินซ้ำทางนี้ไม่ได้) หากต้องเปลี่ยนผล กรุณาติดต่อเจ้าของกิจการ");
+  }
+  // เงื่อนไข "สถานะต้นทางที่คาดไว้" ใน SQL เดียว ⇒ กดพร้อมกันสองทางได้ผลเดียว (อีกทางได้ 0 แถว)
+  const res = await db.hrLeave.updateMany({
+    where: { id: leaveId, status: from },
     data: { status, decidedById: decidedById ?? null },
+  });
+  if (res.count === 0) throw new HrLeaveDecisionError(LEAVE_STALE);
+  await writeAudit({
+    tenantId: ctx.tenantId,
+    actorType: decidedById ? "USER" : "SYSTEM",
+    actorId: decidedById ?? null,
+    action: "hr.leave.decide",
+    targetType: "HrLeave",
+    targetId: leaveId,
+    before: { status: from, decidedById: leave.decidedById },
+    after: { status, decidedById: decidedById ?? null },
   });
 }
 
@@ -459,15 +532,16 @@ export async function bulkDecideLeave(
   leaveIds: string[],
   status: "APPROVED" | "REJECTED",
   decidedById?: string | null,
+  opts: { from?: "PENDING" | "APPROVED" } = {},
 ): Promise<BulkLeaveResult> {
   const result: BulkLeaveResult = { done: 0, failed: [] };
   for (const id of leaveIds) {
     try {
-      await decideLeave(ctx, id, status, decidedById ?? null);
+      await decideLeave(ctx, id, status, decidedById ?? null, opts);
       result.done += 1;
-    } catch {
-      // id ข้ามร้าน/ไม่พบ → guard โยน P2025 (ข้อความอังกฤษ) → ใช้เหตุผลไทยแทน
-      result.failed.push({ id, reason: "ไม่พบใบลา หรืออยู่นอกร้านนี้" });
+    } catch (e) {
+      // HF-HR-0: เหตุผลไทยจาก decideLeave (ตัดสินแล้ว/ของตัวเอง/อยู่ในสายอนุมัติ) · อื่น ๆ (DB) → ข้อความกลาง
+      result.failed.push({ id, reason: e instanceof HrLeaveDecisionError ? e.message : "ไม่พบใบลา หรืออยู่นอกร้านนี้" });
     }
   }
   return result;

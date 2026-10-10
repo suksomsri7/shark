@@ -9,12 +9,15 @@ import { logOps } from "@/lib/core/ops";
 import { isCronAuthorized } from "@/lib/core/cron-auth";
 import { forceCloseStaleShifts } from "@/lib/modules/pos/shift";
 import { expirePaymentIntents } from "@/lib/modules/pos/payment-intent"; // POS P1.7 ▸ R5 ◂
+import { drainAll } from "@/lib/outbox-consumers";
 
 // GET /api/cron/hourly — งานประจำของผู้ช่วย AI (Vercel Cron เรียกทุกต้นชั่วโมง)
 // auth: isCronAuthorized (Bearer SHARK_CRON_SECRET หรือ X-Cron-Secret) — ผิด/ไม่มี → 401 สั้น ๆ
 // รัน runScheduledTasks(now): task ที่ถึงชั่วโมงไทยตอนนี้และยังไม่ได้รันวันนี้ → สรุปเป็น AppNotification
 // + WO-CV13: ตาข่ายเก็บตกข้อความเสียงที่ค้างรอส่งเข้าช่องทาง (เผื่อ cron บน VPS ตาย)
 // + K2.9: กฎอัตโนมัติของบอร์ดงานชนิด "ตั้งเวลา" (SCHEDULED) — เทียบ cron ไทยกับชั่วโมงนี้
+// + C5.4 (L3-M1 ส่วนแพลตฟอร์ม): ระบายคิว outbox จนเงียบ (ท้ายรอบ — เก็บ event ที่ sweep ด้านบนเพิ่งสร้างด้วย)
+//   ⇒ คอมเมนต์ของ kernel (`core/outbox.ts` "cron รายชั่วโมงเก็บตก") เป็นจริง: event ที่ไม่มีใครปลุก drain รอ ≤ 1 ชม. ไม่ใช่ ≤ 24 ชม.
 //   🔴 best-effort: ล้มห้ามทำให้ cron รอบนี้แดง · ไม่เพิ่ม cron ตัวใหม่ใน vercel.json (§7.6)
 export const dynamic = "force-dynamic";
 
@@ -98,6 +101,16 @@ export async function GET(req: Request) {
       detail: e instanceof Error ? (e.stack ?? e.message) : String(e),
     });
   }
+  // C5.4 (L3-M1 ส่วนแพลตฟอร์ม) — ระบายคิวจนเงียบด้วยตัวช่วยเดิม (`drainAll` → `drainUntilQuiet`: วนรอบละ 50 จนรอบหนึ่งหยิบไม่ได้เลย
+  //   · เพดาน 10 รอบ · งบเวลา 20 วิ เหมือนทุกทางที่ระบาย) · best-effort: ล้มห้ามทำให้รอบนี้แดง · ต้อง await (แลมบ์ดาจบ = งานค้างถูกแช่แข็ง)
+  let outboxDrained = -1;
+  try {
+    outboxDrained = (await drainAll()).processed;
+  } catch (e) {
+    await logOps("WARN", "cron", "drainAll (ระบายคิว outbox รายชั่วโมง) ล้ม", {
+      detail: e instanceof Error ? (e.stack ?? e.message) : String(e),
+    });
+  }
   return NextResponse.json({
     ok: true,
     ran,
@@ -112,6 +125,7 @@ export async function GET(req: Request) {
     memberReportsSent,
     posShiftsForced,
     posIntentsExpired,
+    outboxDrained,
     at: new Date().toISOString(),
   });
 }

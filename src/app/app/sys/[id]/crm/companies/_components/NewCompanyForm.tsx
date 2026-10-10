@@ -21,6 +21,7 @@ import {
 } from "@/lib/modules/crm/companies-shared";
 import { createCompanyAction, restoreCompanyAction, searchCompanyOptionsAction } from "@/lib/modules/crm/companies-actions";
 import { ServerPicker } from "./ServerPicker";
+import { FieldError, useFieldErrors } from "@/components/crm/form/field-errors";
 
 type Opt = { id: string; name: string };
 type CustomField = { key: string; label: string; type: string; required: boolean; choices: { value: string; label: string }[] };
@@ -43,7 +44,10 @@ export function NewCompanyForm({ systemId, owners, defaultOwner, customFields }:
   const base = `/app/sys/${systemId}/crm/companies`;
   const [values, setValues] = useState<Record<Key, string>>(() => ({ ...(Object.fromEntries(FIELDS.map((k) => [k, ""])) as Record<Key, string>), ownerUserId: defaultOwner }));
   const [custom, setCustom] = useState<Record<string, string>>({});
-  const [errors, setErrors] = useState<Partial<Record<Key, string>>>({});
+  // C4.3-fix part 2 ▸ ข้อความใต้ช่อง + โฟกัสช่องแรกที่ผิด (แบบแผนเดียวของฟอร์ม CRM) ◂
+  //   ช่องข้อมูลเพิ่มเติม (custom) ต่อท้ายลำดับ — key `cf:<fieldKey>` (reviewer S2: ช่องบังคับที่ว่างบอกใต้ช่องนั้น + โฟกัส)
+  const fe = useFieldErrors<string>([...FIELDS, ...customFields.map((f) => `cf:${f.key}`)]);
+  const errors = fe.errors;
   const [formError, setFormError] = useState<string | null>(null);
   const [dup, setDup] = useState<{ id: string; archived: boolean } | null>(null);
   const [restoreReason, setRestoreReason] = useState("");
@@ -54,11 +58,16 @@ export function NewCompanyForm({ systemId, owners, defaultOwner, customFields }:
 
   const set = (k: Key, v: string) => {
     setValues((s) => ({ ...s, [k]: v }));
-    if (errors[k]) setErrors((e) => ({ ...e, [k]: undefined }));
+    fe.clear(k);
   };
+  // ตรวจตอนออกจากช่อง: เพิ่ม/ลบข้อความของช่องนี้ช่องเดียว (ไม่ย้ายโฟกัส — ผู้ใช้กำลังไปช่องถัดไป)
+  // 🔴 ช่องว่าง = ไม่บอกตอน blur (บอกตอนกดบันทึก): ข้อความที่โผล่ตอน blur ดันปุ่มบันทึกลง ⇒ คลิกที่กดลงไปแล้วหลุดปุ่ม
+  //    (mousedown → blur → ข้อความเกิด → mouseup นอกปุ่ม = ไม่มี submit · C4.3-fix part 2 จับได้ด้วย oracle b)
   const blur = (k: Key) => {
+    if (!values[k].trim()) return fe.clear(k);
     const p = CHECK[k]?.(values[k]) ?? null;
-    setErrors((e) => ({ ...e, [k]: p ?? undefined }));
+    if (!p) fe.clear(k);
+    else if (errors[k] !== p) fe.set(k, p);
   };
 
   const submit = (ev: React.FormEvent) => {
@@ -68,15 +77,11 @@ export function NewCompanyForm({ systemId, owners, defaultOwner, customFields }:
       const p = CHECK[k]?.(values[k]) ?? null;
       if (p) next[k] = p;
     }
-    setErrors(next);
     setFormError(null);
     setDup(null);
-    if (Object.keys(next).length > 0) return;
-    const missing = customFields.find((f) => f.required && !String(custom[f.key] ?? "").trim());
-    if (missing) {
-      setFormError(`ช่อง "${missing.label}" เป็นข้อมูลที่ต้องกรอก`);
-      return;
-    }
+    const all: Record<string, string> = { ...(next as Record<string, string>) };
+    for (const f of customFields) if (f.required && !String(custom[f.key] ?? "").trim()) all[`cf:${f.key}`] = `ช่อง "${f.label}" เป็นข้อมูลที่ต้องกรอก`;
+    if (fe.show(all)) return;
     const fields: Record<string, unknown> = {};
     for (const f of customFields) {
       const raw = custom[f.key];
@@ -101,7 +106,7 @@ export function NewCompanyForm({ systemId, owners, defaultOwner, customFields }:
       });
       if (!r.ok) {
         if (r.code === "DUPLICATE" && r.duplicateOf) setDup({ id: r.duplicateOf, archived: false });
-        else setFormError(r.error);
+        else if (!fe.show(r.fieldErrors)) setFormError(r.error);
         return;
       }
       if (!r.created && r.duplicateOf) {
@@ -154,12 +159,12 @@ export function NewCompanyForm({ systemId, owners, defaultOwner, customFields }:
         placeholder={opts.placeholder}
         onChange={(e) => set(k, e.target.value)}
         onBlur={() => blur(k)}
-        aria-invalid={!!errors[k]}
+        {...fe.field(k)}
         className="input text-sm"
         data-testid={`company-new-${k}`}
       />
       {opts.hint && !errors[k] && <span>{opts.hint}</span>}
-      {errors[k] && <span className="text-[color:var(--color-danger)]">{errors[k]}</span>}
+      <FieldError id={fe.errorId(k)} message={errors[k]} testid={`company-new-${k}-error`} />
     </label>
   );
 
@@ -221,7 +226,11 @@ export function NewCompanyForm({ systemId, owners, defaultOwner, customFields }:
                 {f.required && <span className="text-[color:var(--color-danger)]"> *</span>}
               </span>
               {f.type === "SELECT" ? (
-                <select value={custom[f.key] ?? ""} onChange={(e) => setCustom((s) => ({ ...s, [f.key]: e.target.value }))} className="input text-sm" data-testid="company-new-field-select">
+                <select value={custom[f.key] ?? ""} onChange={(e) => {
+                    setCustom((s) => ({ ...s, [f.key]: e.target.value }));
+                    fe.clear(`cf:${f.key}`);
+                  }}
+                  {...fe.field(`cf:${f.key}`)} className="input text-sm" data-testid="company-new-field-select">
                   <option value="">ไม่ระบุ</option>
                   {f.choices.map((c) => (
                     <option key={c.value} value={c.value}>
@@ -230,22 +239,35 @@ export function NewCompanyForm({ systemId, owners, defaultOwner, customFields }:
                   ))}
                 </select>
               ) : f.type === "BOOLEAN" ? (
-                <select value={custom[f.key] ?? ""} onChange={(e) => setCustom((s) => ({ ...s, [f.key]: e.target.value }))} className="input text-sm" data-testid="company-new-field-bool">
+                <select value={custom[f.key] ?? ""} onChange={(e) => {
+                    setCustom((s) => ({ ...s, [f.key]: e.target.value }));
+                    fe.clear(`cf:${f.key}`);
+                  }}
+                  {...fe.field(`cf:${f.key}`)} className="input text-sm" data-testid="company-new-field-bool">
                   <option value="">ไม่ระบุ</option>
                   <option value="true">ใช่</option>
                   <option value="false">ไม่ใช่</option>
                 </select>
               ) : f.type === "LONG_TEXT" ? (
-                <textarea value={custom[f.key] ?? ""} onChange={(e) => setCustom((s) => ({ ...s, [f.key]: e.target.value }))} rows={2} className="input text-sm" data-testid="company-new-field-textarea" />
+                <textarea value={custom[f.key] ?? ""} onChange={(e) => {
+                    setCustom((s) => ({ ...s, [f.key]: e.target.value }));
+                    fe.clear(`cf:${f.key}`);
+                  }}
+                  {...fe.field(`cf:${f.key}`)} rows={2} className="input text-sm" data-testid="company-new-field-textarea" />
               ) : (
                 <input
                   type={f.type === "NUMBER" ? "number" : f.type === "DATE" ? "date" : "text"}
                   value={custom[f.key] ?? ""}
-                  onChange={(e) => setCustom((s) => ({ ...s, [f.key]: e.target.value }))}
+                  onChange={(e) => {
+                    setCustom((s) => ({ ...s, [f.key]: e.target.value }));
+                    fe.clear(`cf:${f.key}`);
+                  }}
+                  {...fe.field(`cf:${f.key}`)}
                   className="input text-sm"
                   data-testid="company-new-field-input"
                 />
               )}
+              <FieldError id={fe.errorId(`cf:${f.key}`)} message={fe.errors[`cf:${f.key}`]} testid={`company-new-f-${f.key}-error`} />
             </label>
           ))}
         </fieldset>

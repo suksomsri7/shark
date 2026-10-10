@@ -165,8 +165,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           ...(crmV2.has(slugOrId)
             ? [
               // CRM C1.3 ▸ บริษัท (รายชื่อ + เพิ่มบริษัท) — ทะเบียนเต็มอยู่ที่ `crm/nav.ts` (CRM_NAV · CRM_DEEP_NAV)
-              { href: `${s}/crm/companies`, label: "บริษัท" },
-              { href: `${s}/crm/companies/new`, label: "เพิ่มบริษัท" },
+              // CRM C5.5-fix2 ▸ it4 F1: หน้ารายชื่อ = 404 ถ้าไม่มี crm.company.read · หน้าเพิ่ม = 404 ถ้าไม่มี crm.company.create ⇒ ไม่โชว์ลิงก์ตาย ◂
+              ...(crmCan(membershipOf(auth), "crm.company.read") ? [{ href: `${s}/crm/companies`, label: "บริษัท" }] : []),
+              ...(crmCan(membershipOf(auth), "crm.company.create") ? [{ href: `${s}/crm/companies/new`, label: "เพิ่มบริษัท" }] : []),
               // ◂ CRM C1.3
               // CRM C1.4 ▸ เพิ่มผู้ติดต่อ (รายชื่อผู้ติดต่อข้างบนเป็นหน้า v2 แล้ว) — ทะเบียนเต็มอยู่ที่ `crm/nav.ts` (CRM_DEEP_NAV)
               { href: `${s}/crm/contacts/new`, label: "เพิ่มผู้ติดต่อ" },

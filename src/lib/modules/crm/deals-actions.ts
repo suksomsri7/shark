@@ -6,7 +6,7 @@
 // 🔴 F6: ทุก action ตรวจสิทธิ์ด้วย assertCan ก่อนลงมือ (convention crm.deal.<verb> — OWNER/MANAGER ผ่าน · STAFF ตามสิทธิ์)
 // 🔴 ไม่โยน error ดิบถึงหน้าจอ — คืน { ok:false, error } ภาษาไทยที่ไม่โทษผู้ใช้ (+ `missing` ของเงื่อนไขก่อนเข้าขั้น)
 
-import { revalidatePath } from "next/cache";
+import { revalidateAndWake } from "./outbox-wake"; // CRM C5.4-D ▸ L3-M1b: รีเฟรชหน้า + ปลุกคิว outbox หลังเขียนสำเร็จ ◂
 import { requireTenant } from "@/lib/core/context";
 import { ForbiddenError } from "@/lib/core/rbac";
 import { assertCanCrm } from "./access";
@@ -37,10 +37,11 @@ import {
   type UpdateDealInput,
 } from "./deals";
 import { contactOptions } from "./contacts";
-import { DealsError, type DealDto, type DealLineInput, type DealListInput } from "./deals-shared";
+import { DEAL_NOTE_MAX, DEAL_TITLE_MAX, DealsError, type DealDto, type DealLineInput, type DealListInput } from "./deals-shared";
+import { blank, withFieldError, type CrmFieldErrors } from "./field-errors-shared";
 import { CrmLimitError } from "./limits-shared"; // CRM C3.9 ◂
 
-type Fail = { ok: false; error: string; code?: string; missing?: string[] };
+type Fail = { ok: false; error: string; code?: string; missing?: string[]; fieldErrors?: CrmFieldErrors };
 
 async function session(systemId: string, action: string) {
   const auth = await requireTenant();
@@ -67,8 +68,8 @@ function failOf(e: unknown, multiStep = false): Fail {
 
 const base = (systemId: string) => `/app/sys/${systemId}/crm/deals`;
 const touch = (systemId: string, dealId?: string) => {
-  revalidatePath(base(systemId));
-  if (dealId) revalidatePath(`${base(systemId)}/${dealId}`);
+  revalidateAndWake(base(systemId));
+  if (dealId) revalidateAndWake(`${base(systemId)}/${dealId}`);
 };
 
 export async function createDealAction(systemId: string, input: CreateDealInput): Promise<{ ok: true; id: string } | Fail> {
@@ -78,7 +79,13 @@ export async function createDealAction(systemId: string, input: CreateDealInput)
     touch(systemId);
     return { ok: true, id: d.id };
   } catch (e) {
-    return failOf(e);
+    // C4.3-fix part 2 ▸ ข้อความปฏิเสธของบริการชี้กลับไปที่ช่อง (key = ชื่อช่องของ NewDealForm) ◂
+    const title = typeof input?.title === "string" ? input.title.trim() : "";
+    return withFieldError(failOf(e), {
+      title: !title || title.length > DEAL_TITLE_MAX,
+      contact: blank(input?.contactId),
+      nextStep: typeof input?.nextStep === "string" && input.nextStep.trim().length > DEAL_NOTE_MAX,
+    });
   }
 }
 
@@ -214,12 +221,14 @@ export async function deleteDealAction(systemId: string, dealId: string, confirm
   }
 }
 
-export async function bulkMoveAction(systemId: string, input: { ids: string[]; stageId: string; confirm: boolean; reason: string }): Promise<{ ok: true; done: number; failed: number } | Fail> {
+export async function bulkMoveAction(systemId: string, input: { ids: string[]; stageId: string; confirm: boolean; reason: string }): Promise<{ ok: true; done: number; failed: number; unchanged: number; reason: string | null } | Fail> {
   try {
     const { ctx, actor } = await session(systemId, "crm.deal.move");
     const r = await bulkMove(ctx, actor, input);
     touch(systemId);
-    return { ok: true, done: r.ok, failed: r.failed.length };
+    // CRM C5.5-fix15 ▸ O-it6-a · r2 RV15-6: `reason` = ข้อความของบริการเมื่อทุกดีลที่ย้ายไม่ได้ล้มด้วยเหตุเดียวกัน (ไม่มีข้อมูลลูกค้าในข้อความ) ◂
+    const reasons = [...new Set(r.failed.map((f) => f.error))];
+    return { ok: true, done: r.ok, failed: r.failed.length, unchanged: r.unchanged ?? 0, reason: reasons.length === 1 ? reasons[0]! : null };
   } catch (e) {
     return failOf(e, true);
   }

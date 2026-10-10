@@ -1,6 +1,6 @@
 // GET /api/v1/customers?take= — รายชื่อสมาชิกในระบบ MEMBER ตัวแรกของร้าน (WO-0061)
 import { tenantDb } from "@/lib/core/db";
-import { apiJson, authenticateApiRequest } from "@/lib/api-keys/route-auth";
+import { apiJson, authenticateApiRequest, requireLegacyFullAccessKey } from "@/lib/api-keys/route-auth";
 
 function parseTake(url: string): number {
   const raw = Number.parseInt(new URL(url).searchParams.get("take") ?? "", 10);
@@ -11,6 +11,8 @@ function parseTake(url: string): number {
 export async function GET(req: Request): Promise<Response> {
   const auth = await authenticateApiRequest(req);
   if (!auth.ok) return auth.response;
+  const denied = requireLegacyFullAccessKey(auth); // HF-APIV1: คีย์ที่มี scope/ผูกระบบ ใช้ route ข้อมูลรุ่นเดิมไม่ได้
+  if (denied) return denied;
   const take = parseTake(req.url);
   const db = tenantDb({ tenantId: auth.tenantId });
   // ระบบสมาชิก (MEMBER) ตัวแรกของร้าน — ไม่มีระบบ → คืนว่าง

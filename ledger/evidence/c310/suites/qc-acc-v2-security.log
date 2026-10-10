@@ -1,0 +1,372 @@
+[env] qc-acc-v2-security · ไฟล์ .env.qc · DB ep-plain-art-ao3djg4u-pooler.c-2.ap-southeast-1.aws.neon.tech
+
+===== QC WO 9.2 · audit ความปลอดภัยบัญชี V2 =====
+
+S1 ด่านสิทธิ์ของ server action ทุกตัว:
+  ✅ พบไฟล์ actions ครบทุกโฟลเดอร์ (≥ 20 ไฟล์)
+  ✅ นับ server action ได้ครบตามที่สำรวจไว้ (≥ 160 ตัว)
+  ✅ ทุก *Action มีด่านสิทธิ์ (ตรง / ผ่าน helper / delegate ไปตัวที่มีด่าน)
+  ✅ ข้อยกเว้น archiveFinanceFormAction ยังเป็น wrapper บาง ๆ (delegate → archiveFinanceActionDirect · ไม่แตะ prisma เอง)
+  ✅ ข้อยกเว้น refundDepositFormAction ยังเป็น wrapper บาง ๆ (delegate → refundDepositAction · ไม่แตะ prisma เอง)
+  ✅ S1 พบหน้าที่มี server action เขียนในตัวหน้า (inline)
+  ✅ S1 ทุก inline server action (4 ตัว) มีด่านสิทธิ์
+
+[seed] A cmuy31yrd0002fokz4b8umktv · A2 cmuy31yrn0003fokzvsjarc7n · B cmuy31yrx0004fokz1xci4s1f
+
+
+S2 IDOR — เรียกด้วย id ของร้าน A จากสโคป B และสโคป A2:
+  ✅ S2 [ร้าน B] getDocRef เอกสารของ A (คืน null)
+  ✅ S2 [ร้าน B] getDocDetailData เอกสารของ A (คืน null)
+  ✅ S2 [ร้าน B] getContactDetail ผู้ติดต่อของ A (คืน null)
+  ✅ S2 [ร้าน B] getProduct สินค้าของ A (คืน null)
+  ✅ S2 [ร้าน B] financeStatement บัญชีการเงินของ A (คืน null)
+  ✅ S2 [ร้าน B] recordPayment ใส่เอกสารของ A (ok:false)
+  ✅ S2 [ร้าน B] voidDocument เอกสารของ A (ok:false)
+  ✅ S2 [ร้าน B] issueDocument เอกสารของ A (ok:false)
+  ✅ S2 [ร้าน B] convertDocument เอกสารของ A (ok:false)
+  ✅ S2 [ร้าน B] updateDocument เอกสารของ A (ok:false)
+  ✅ S2 [ร้าน B] updateProduct สินค้าของ A (ok:false)
+  ✅ S2 [ร้าน B] archiveProduct สินค้าของ A (คืน null)
+  ✅ S2 [ร้าน B] moveAttachment ไฟล์แนบของ A (ok:false)
+  ✅ S2 [ร้าน B] archiveAttachment ไฟล์แนบของ A (ok:false)
+  ✅ S2 [ร้าน B] createPaymentRequest ให้เอกสารของ A (ok:false)
+  ✅ S2 [ร้าน B] mergeContacts ผู้ติดต่อของ A (ok:false)
+  ✅ S2 [ร้าน B] transferBetweenFinance บัญชีของ A (ok:false)
+  ✅ S2 [ร้าน B] listDocumentsPaged ไม่เห็นเอกสารของ A
+  ✅ S2 [ร้าน B] listAttachments ไม่เห็นไฟล์แนบของ A
+  ✅ S2 [ร้าน B] สมุดรายวันไม่เห็นรายการของ A
+  ✅ S2 [ระบบ A2 (ร้านเดียวกัน คนละระบบ)] getDocRef เอกสารของ A (คืน null)
+  ✅ S2 [ระบบ A2 (ร้านเดียวกัน คนละระบบ)] getDocDetailData เอกสารของ A (คืน null)
+  ✅ S2 [ระบบ A2 (ร้านเดียวกัน คนละระบบ)] getContactDetail ผู้ติดต่อของ A (คืน null)
+  ✅ S2 [ระบบ A2 (ร้านเดียวกัน คนละระบบ)] getProduct สินค้าของ A (คืน null)
+  ✅ S2 [ระบบ A2 (ร้านเดียวกัน คนละระบบ)] financeStatement บัญชีการเงินของ A (คืน null)
+  ✅ S2 [ระบบ A2 (ร้านเดียวกัน คนละระบบ)] recordPayment ใส่เอกสารของ A (ok:false)
+  ✅ S2 [ระบบ A2 (ร้านเดียวกัน คนละระบบ)] voidDocument เอกสารของ A (ok:false)
+  ✅ S2 [ระบบ A2 (ร้านเดียวกัน คนละระบบ)] issueDocument เอกสารของ A (ok:false)
+  ✅ S2 [ระบบ A2 (ร้านเดียวกัน คนละระบบ)] convertDocument เอกสารของ A (ok:false)
+  ✅ S2 [ระบบ A2 (ร้านเดียวกัน คนละระบบ)] updateDocument เอกสารของ A (ok:false)
+  ✅ S2 [ระบบ A2 (ร้านเดียวกัน คนละระบบ)] updateProduct สินค้าของ A (ok:false)
+  ✅ S2 [ระบบ A2 (ร้านเดียวกัน คนละระบบ)] archiveProduct สินค้าของ A (คืน null)
+  ✅ S2 [ระบบ A2 (ร้านเดียวกัน คนละระบบ)] moveAttachment ไฟล์แนบของ A (ok:false)
+  ✅ S2 [ระบบ A2 (ร้านเดียวกัน คนละระบบ)] archiveAttachment ไฟล์แนบของ A (ok:false)
+  ✅ S2 [ระบบ A2 (ร้านเดียวกัน คนละระบบ)] createPaymentRequest ให้เอกสารของ A (ok:false)
+  ✅ S2 [ระบบ A2 (ร้านเดียวกัน คนละระบบ)] mergeContacts ผู้ติดต่อของ A (ok:false)
+  ✅ S2 [ระบบ A2 (ร้านเดียวกัน คนละระบบ)] transferBetweenFinance บัญชีของ A (ok:false)
+  ✅ S2 [ระบบ A2 (ร้านเดียวกัน คนละระบบ)] listDocumentsPaged ไม่เห็นเอกสารของ A
+  ✅ S2 [ระบบ A2 (ร้านเดียวกัน คนละระบบ)] listAttachments ไม่เห็นไฟล์แนบของ A
+  ✅ S2 [ระบบ A2 (ร้านเดียวกัน คนละระบบ)] สมุดรายวันไม่เห็นรายการของ A
+  ✅ S2 เอกสารของ A ไม่ถูกแตะ (status)
+  ✅ S2 เอกสารของ A ไม่ถูกแตะ (note)
+  ✅ S2 เอกสารของ A ไม่ถูกแตะ (paidTotal)
+  ✅ S2 ผู้ติดต่อของ A ไม่ถูกเก็บ/แก้
+  ✅ S2 สินค้าของ A ไม่ถูกแก้ชื่อ
+  ✅ S2 สินค้าของ A ไม่ถูกเก็บ
+  ✅ S2 ไฟล์แนบของ A ไม่ถูกย้ายโฟลเดอร์
+  ✅ S2 ไฟล์แนบของ A ไม่ถูกเก็บ
+  ✅ S2 ไม่มี payment ใหม่ในเอกสารของ A
+  ✅ S2 ไม่มีรายการบัญชีใหม่ในระบบ A
+  ✅ S2 positive control: สโคปที่ถูกต้องยังอ่านเอกสารได้
+
+S3 บทบาท STAFF ไม่มีสิทธิ์ → ถูกปฏิเสธ:
+  ✅ S3 STAFF ไม่มีสิทธิ์ → ปฏิเสธ: บันทึกรับ/จ่ายเงิน (account.payment.record)
+  ✅ S3 STAFF ไม่มีสิทธิ์ → ปฏิเสธ: ยกเลิกเอกสาร (account.doc.void)
+  ✅ S3 STAFF ไม่มีสิทธิ์ → ปฏิเสธ: ยกเลิกการชำระ (account.payment.void)
+  ✅ S3 STAFF ไม่มีสิทธิ์ → ปฏิเสธ: อนุมัติเอกสาร (account.doc.approve)
+  ✅ S3 STAFF ไม่มีสิทธิ์ → ปฏิเสธ: ปิดงวดบัญชี (account.period.close)
+  ✅ S3 STAFF ไม่มีสิทธิ์ → ปฏิเสธ: บันทึกตั้งค่า (account.settings.manage)
+  ✅ S3 STAFF ไม่มีสิทธิ์ → ปฏิเสธ: จัดการผังบัญชี (account.chart.manage)
+  ✅ S3 STAFF ไม่มีสิทธิ์ → ปฏิเสธ: ปรับปรุงสมุดรายวัน (account.journal.adjust)
+  ✅ S3 STAFF ไม่มีสิทธิ์ → ปฏิเสธ: นำเข้าข้อมูล (account.import)
+  ✅ S3 STAFF ไม่มีสิทธิ์ → ปฏิเสธ: รวมผู้ติดต่อ (account.contact.merge)
+  ✅ S3 positive control: OWNER ผ่านทุก action ข้างต้น
+  ✅ S3 สิทธิ์แคบไม่ลามไปกว้าง: STAFF ที่ได้ payment.record บันทึกเงินได้ แต่ปิดงวด/แก้ตั้งค่าไม่ได้
+  ✅ S3 สร้าง API key ต้องมี account.settings.manage (connections-actions gate)
+  ✅ S3 บันทึกสิทธิ์ผู้ใช้ต้องมี account.settings.manage (permissions-actions gate)
+
+S4 ลิงก์สาธารณะ (/pay/<token> · /r/<token>):
+  ✅ S4 สร้างคำขอชำระเงินได้ (positive control)
+  ✅ S4 token ยาว 22 ตัว (128 บิต) และเป็น base64url
+  ✅ S4 เปิดหน้าจ่ายด้วย token ที่ถูกต้องได้
+  ✅ S4 หน้าจ่ายไม่มีชื่อลูกค้า
+  ✅ S4 หน้าจ่ายไม่มีเบอร์/อีเมลลูกค้า
+  ✅ S4 หน้าจ่ายไม่มี id ภายใน (documentId/tenantId/systemId)
+  ✅ S4 หน้าจ่ายบอกยอดเป็นสตางค์จำนวนเต็ม
+  ✅ S4 token ที่ไม่มีอยู่จริง → null
+  ✅ S4 token รูปแบบผิด (สั้น) → null (ไม่แตะ DB)
+  ✅ S4 token ที่มีอักขระนอกชุด → null
+  ✅ S4 ลิงก์หมดอายุ → status EXPIRED
+  ✅ S4 ลิงก์หมดอายุ → ไม่มี QR ให้สแกนต่อ
+  ✅ S4 ลิงก์หมดอายุ → ไม่มีลิงก์ผู้ให้บริการ
+  ✅ S4 ออกใบเสร็จสำหรับทดสอบลิงก์ได้
+  ✅ S4 สร้างลิงก์ขอใบกำกับได้
+  ✅ S4 publicToken ยาว 24 ตัว (144 บิต) เป็น base64url
+  ✅ S4 สร้างลิงก์ซ้ำ → token เดิม (idempotent ไม่งอก token)
+  ✅ S4 เปิดหน้าใบเสร็จสาธารณะได้ (positive control)
+  ✅ S4 หน้าใบเสร็จสาธารณะไม่มีเบอร์/อีเมลลูกค้า
+  ✅ S4 หน้าใบเสร็จสาธารณะไม่มีรายการสินค้า/บรรทัดเอกสาร
+  ✅ S4 token ใบเสร็จที่ไม่มีอยู่ → null
+  ✅ S4 ปิดลิงก์สาธารณะ → getPublicTaxContext = null
+  ✅ S4 🔴 ปิดลิงก์สาธารณะแล้ว ยิง server action ตรง ๆ ก็ต้องไม่ผ่าน
+  ✅ S4 🔴 ไม่มีใบกำกับ/คำขอถูกสร้างตอนปิดสวิตช์
+  ✅ S4 เปิดหน้าใหม่ → อ่านใบเสร็จได้ตามเดิม
+  ✅ S4 taxRequestEnabled = false ตามที่ตั้งไว้
+  ✅ S4 🔴 ปิดคำขอใบกำกับแล้ว ยิง action ตรงต้องไม่ผ่าน
+  ✅ S4 positive control: เปิดครบแล้วขอใบกำกับได้จริง
+  ✅ S4 เลขผู้เสียภาษี checksum ผิด → ปฏิเสธ
+  ✅ S4 เกินอายุลิงก์ตามตั้งค่า (7 วัน) → null
+  ✅ S4 🔴 ลิงก์หมดอายุแล้ว ยิง action ตรงต้องไม่ผ่าน
+  ✅ S4 /pay/<token> ต่อ rate limit ต่อ IP
+  ✅ S4 /r/<token> ต่อ rate limit ต่อ IP
+  ✅ S4 ฟอร์มขอใบกำกับต่อ rate limit ต่อ IP
+  ✅ S4 หน้า /pay ไม่แสดงชื่อ/ที่อยู่ลูกค้า (ไม่มีการอ้าง contact ในไฟล์)
+
+S5 webhook ผู้ให้บริการชำระเงิน:
+  ✅ S5 อ่าน raw body ก่อนตรวจลายเซ็น (ไม่ parse JSON ก่อน)
+  ✅ S5 ลายเซ็นไม่ผ่าน → 401 สั้น ๆ
+  ✅ S5 🔴 ไม่ทิ้ง body ดิบลง log ตอนลายเซ็นไม่ผ่าน
+  ✅ S5 JSON เพี้ยน → ตอบ 200 (กัน Beam ยิงซ้ำไม่รู้จบ)
+  ✅ S5 บันทึกไม่สำเร็จก็ยังตอบ 200 พร้อมเหตุผล
+  ✅ S5 ลายเซ็นถูก → verifyWebhook ผ่าน
+  ✅ S5 ลายเซ็นผิด → ไม่ผ่าน
+  ✅ S5 ไม่มีลายเซ็น → ไม่ผ่าน
+  ✅ S5 body ถูกแก้ 1 ตัวอักษร → ลายเซ็นเดิมใช้ไม่ได้ (คิดจากไบต์ดิบจริง)
+  ✅ S5 webhook จ่ายสำเร็จ → บันทึกรับชำระได้
+  ✅ S5 🔴 ยิง webhook ซ้ำ chargeId เดิม → duplicated ไม่บันทึกเงินซ้ำ
+  ✅ S5 เอกสารมี payment ใบเดียวหลังยิงซ้ำ
+  ✅ S5 paidTotal ไม่เบิ้ล
+  ✅ S5 referenceId ที่ไม่ใช่ของบัญชี → ปฏิเสธ
+  ✅ S5 ไม่มี chargeId → ปฏิเสธ
+
+S6 เงินเป็นสตางค์ (integer) ทุกทาง:
+  ✅ S6 bahtToSatang("1,234.56") = 123456
+  ✅ S6 bahtToSatang("1e3") = 100000 (จำนวนเต็ม)
+  ✅ S6 bahtToSatang("0.005") ปัดเป็นจำนวนเต็ม
+  ✅ S6 bahtToSatang("abc") = fallback 0
+  ✅ S6 bahtToSatang("") = fallback 0
+  ✅ S6 parseAmountSatang("1,234.56") = 123456
+  ✅ S6 parseAmountSatang("(250.00)") = -25000 (วงเล็บ = ติดลบ)
+  ✅ S6 parseAmountSatang("1e3") = null (ไม่ใช่รูปแบบเงิน)
+  ✅ S6 bahtFieldToSatang("50,000.00") = 5000000
+  ✅ S6 bahtFieldToSatang("฿ 1 234") ตัดสัญลักษณ์/ช่องว่าง
+  ✅ S6 bahtFieldToSatang("-1") = invalid (เพดานติดลบไม่ได้)
+  ✅ S6 ทุกยอดเงินของเอกสารในระบบ A เป็นจำนวนเต็ม
+  ✅ S6 ทุกบรรทัดสมุดรายวันเป็นจำนวนเต็ม
+  ✅ S6 รับชำระด้วยยอดทศนิยม → บันทึกได้
+  ✅ S6 🔴 ยอดที่เก็บลง DB เป็นจำนวนเต็ม (ไม่มีทศนิยมหลุดเข้าบัญชี)
+  ✅ S6 รับชำระยอดติดลบ → ปฏิเสธ
+
+S7 CSV injection (ตัวส่งออกทุกตัว):
+  ✅ S7 csvCell กันสูตร: "=SUM(A1:A9)"
+  ✅ S7 csvCell กันสูตร: "+66812345678"
+  ✅ S7 csvCell กันสูตร: "-2+3+cmd|'/c calc'!A0"
+  ✅ S7 csvCell กันสูตร: "@SUM(1)"
+  ✅ S7 csvCell กันสูตร: "\t=1+1"
+  ✅ S7 csvCell กันสูตร: "\r=1+1"
+  ✅ S7 ข้อความไทยปกติไม่ถูกแตะ
+  ✅ S7 ตัวเลขติดลบยังเป็นตัวเลข (ไม่ถูกเติม ')
+  ✅ S7 number ไม่ถูกแตะ
+  ✅ S7 มีคอมมา/quote → ครอบ quote + escape
+  ✅ S7 ขึ้นบรรทัดใหม่ → ครอบ quote
+  ✅ S7 csvRow ต่อบรรทัดผ่าน csvCell ทุกช่อง
+  ✅ S7 ภ.ง.ด. CSV ไม่มี cell ที่ขึ้นต้นด้วย = (ดิบ)
+  ✅ S7 CSV เครดิตภาษีถูกหัก ไม่มี cell ขึ้นต้นด้วย =
+  ✅ S7 ภ.พ.30 CSV ไม่มี cell ขึ้นต้นด้วย = (ดิบ)
+  ✅ S7 ภ.พ.30 CSV มี BOM ให้ Excel ไทยอ่านได้
+  ✅ S7 เทมเพลตนำเข้าไม่มี cell ขึ้นต้นด้วย =
+  ✅ S7 ไม่มีตัวหนี CSV เขียนมือที่ไม่กันสูตรหลงเหลือ
+  ✅ S7 ปุ่ม Excel ของทุกรายงานใช้ csvRow กลาง
+  ✅ S7 🔴 ชื่อไฟล์ CSV กรอง period/year ก่อนใส่ header (กัน header injection)
+
+S8 อัปโหลดไฟล์แนบ:
+  ✅ S8 sniff PDF
+  ✅ S8 sniff JPEG
+  ✅ S8 sniff PNG
+  ✅ S8 sniff HTML → null (ไม่ใช่ชนิดที่รับ)
+  ✅ S8 sniff SVG → null (ไม่รับ SVG เด็ดขาด — XSS)
+  ✅ S8 🔴 .html เปลี่ยนชื่อเป็น .jpg (แจ้ง image/jpeg) → ปฏิเสธ
+  ✅ S8 🔴 SVG แจ้งเป็น image/png → ปฏิเสธ
+  ✅ S8 positive control: JPEG จริงผ่าน
+  ✅ S8 PNG ที่แจ้งว่า jpeg → เก็บด้วยชนิดจริงจากไบต์ (image/png)
+  ✅ S8 ไฟล์ 21MB → ปฏิเสธ (เพดาน 20MB)
+  ✅ S8 เพดานคือ 20MB
+  ✅ S8 ชนิดนอก allowlist (text/html) → ปฏิเสธตั้งแต่ชนิดที่แจ้ง
+  ✅ S8 ไฟล์ว่าง → ปฏิเสธ
+  ✅ S8 allowlist ไม่มี svg/html/xml
+  ✅ S8 ชื่อไฟล์ตัดตัวคั่น path
+  ✅ S8 ชื่อไฟล์ตัด backslash
+  ✅ S8 ชื่อไฟล์ตัดอักขระควบคุม (กัน header injection)
+  ✅ S8 ชื่อไฟล์ภาษาไทย/อีโมจิยังใช้ได้
+  ✅ S8 ชื่อไฟล์ยาวเกินถูกตัดที่ 200
+  ✅ S8 สร้างไฟล์แนบชื่อมี path → เก็บชื่อที่ล้างแล้ว
+  ✅ S8 ชื่อไฟล์ที่เก็บไม่มี / หรือ \
+  ✅ S8 path ที่เก็บบน storage ประกอบจาก tenantId + uuid + ext ของ allowlist (ไม่ใช้ชื่อไฟล์ผู้ใช้)
+  ✅ S8 ext มาจากตาราง ALLOWED_TYPES เท่านั้น (ไม่มี fallback ให้ตกเป็นนามสกุลอื่น)
+  ✅ S8 🔴 action อัปโหลดตรวจไบต์จริง (validateAttachmentBytes) ไม่ใช่แค่ file.type
+  ✅ S8 ชนิดที่เก็บ/ส่งขึ้น storage ใช้ชนิดที่ sniff ได้ ไม่ใช่ที่ browser แจ้ง
+
+S9 คำค้น + SQL:
+  ✅ S9 MAX_SEARCH_LEN = 200
+  ✅ S9 clampSearch ตัดที่ 200 ตัว
+  ✅ S9 clampSearch trim หัวท้าย
+  ✅ S9 clampSearch null → ''
+  ✅ S9 คำค้นยาว 10,000 ตัว → ทำงานได้และไม่เจอ (ถูกตัดแล้ว)
+  ❌ S9 ค้น '%' ในร้านตัวเอง = เห็นของตัวเอง (positive control) — เจอ 0
+  ✅ S9 🔴 ค้น '%' จากร้านอื่น = 0 (wildcard ไม่ข้ามขอบเขตร้าน)
+  ✅ S9 คำค้นทรง SQL injection → 0 แถว (ไม่หลุดทั้งตาราง)
+  ✅ S9 src/lib/modules/account/doc-numbering.ts: ดึงสตริง SQL ของ raw call ได้ครบ
+  ✅ S9 src/lib/modules/account/doc-numbering.ts raw#1: SQL ไม่มี template interpolation (${...})
+  ✅ S9 src/lib/modules/account/doc-numbering.ts raw#1: ผูกค่าด้วย $1… (placeholder)
+  ✅ S9 src/lib/modules/account/doc-numbering.ts raw#2: SQL ไม่มี template interpolation (${...})
+  ✅ S9 src/lib/modules/account/doc-numbering.ts raw#2: ผูกค่าด้วย $1… (placeholder)
+  ✅ S9 src/lib/modules/account/doc-numbering.ts raw#3: SQL ไม่มี template interpolation (${...})
+  ✅ S9 src/lib/modules/account/doc-numbering.ts raw#3: ผูกค่าด้วย $1… (placeholder)
+  ❌ S9 src/lib/modules/account/doc-numbering.ts raw#4: SQL ไม่มี template interpolation (${...}) — UPDATE "AccountDocument" AS d SET "docNo" = v.no, "updatedAt" = NOW() FROM (VALU
+  ❌ S9 src/lib/modules/account/doc-numbering.ts raw#4: ผูกค่าด้วย $1… (placeholder) — UPDATE "AccountDocument" AS d SET "docNo" = v.no, "updatedAt" = NOW() FROM (VALU
+  ✅ S9 src/lib/modules/account/gl.ts: ดึงสตริง SQL ของ raw call ได้ครบ
+  ✅ S9 src/lib/modules/account/gl.ts raw#1: SQL ไม่มี template interpolation (${...})
+  ✅ S9 src/lib/modules/account/gl.ts raw#1: ผูกค่าด้วย $1… (placeholder)
+  ✅ S9 src/lib/modules/account/gl.ts raw#2: SQL ไม่มี template interpolation (${...})
+  ✅ S9 src/lib/modules/account/gl.ts raw#2: ผูกค่าด้วย $1… (placeholder)
+  ✅ S9 src/lib/modules/account/gl.ts raw#3: SQL ไม่มี template interpolation (${...})
+  ✅ S9 src/lib/modules/account/gl.ts raw#3: ผูกค่าด้วย $1… (placeholder)
+  ❌ S9 จำนวนจุดที่ใช้ raw SQL ยังจำกัด (≤ 4 จุด — เพิ่มเมื่อไหร่ต้องมาทบทวน) — src/lib/modules/account/doc-numbering.ts:300:  const rows = (await db.$queryRawUnsafe( | src/lib/modules/account/doc-numbering.ts:432:  await db.$queryRawUnsafe( | src/lib/modules/account/doc-numbering.ts:615:    const rows = (await tx.$queryRawUnsafe( | src/lib/modules/account/doc-numbering.ts:640:  const stamped = await tx.$executeRawUnsafe( | src/lib/modules/account/gl.ts:349:    rows = (await db.$queryRawUnsafe( | src/lib/modules/account/gl.ts:385:    await prisma.$queryRawUnsafe(`SELECT account_jno_ensure_system($1) AS c`, systemId); | src/lib/modules/account/gl.ts:400:  const rows = (await prisma.$queryRawUnsafe(
+  ✅ S9 🔴 ไม่มี raw SQL ที่ยัดค่าด้วย template string
+  ✅ S9 ORDER BY ของรายการเอกสารมาจากตารางคงที่ (DOC_SORT_ORDER)
+  ✅ S9 หน้ารายการกรอง sort จาก query ให้เหลือค่าที่รู้จักก่อนส่งเข้า service
+  ✅ S9 pageSize เกินเพดาน → 100
+
+S10 XSS:
+  ✅ S10 dangerouslySetInnerHTML ในขอบเขตบัญชี+หน้าสาธารณะ มีจุดเดียว
+  ✅ S10 จุดเดียวนั้นคือ AccountIcon (ไอคอน SVG คงที่ในไฟล์)
+  ✅ S10 เนื้อ HTML ของไอคอนมาจากตารางคงที่ (ICONS[name] ?? FALLBACK) ไม่ใช่ค่าจากผู้ใช้
+  ✅ S10 หน้าพิมพ์เอกสารไม่ใช้ dangerouslySetInnerHTML กับหมายเหตุ/เงื่อนไข
+  ✅ S10 ชื่อที่มีแท็ก HTML ถูกเก็บเป็นข้อความดิบ (ไม่ถูกตีความ/ไม่ถูกกลืน)
+
+S11 rate limit:
+  ✅ S11 เพดานส่งฟอร์มสาธารณะ = 10 ครั้ง/นาที
+  ✅ S11 ยิงเท่าเพดานพอดี → ยังผ่าน
+  ✅ S11 เกินเพดาน 1 ครั้ง → ถูกปฏิเสธ
+  ✅ S11 ข้อความปฏิเสธเป็นภาษาไทยและบอกเวลารอ
+  ✅ S11 มี retryAfterSec ให้ UI ใช้
+  ✅ S11 ถังแยกตาม scope (IP อื่นยังผ่าน)
+  ✅ S11 ตัวจำกัดอยู่บน DB (ทนหลาย instance) ไม่ใช่ Map ในโปรเซส
+  ✅ S11 ต่อ rate limit แล้ว: สร้างลิงก์ชำระเงิน (5.5)
+  ✅ S11 ต่อ rate limit แล้ว: นำเข้า CSV (1.8)
+  ✅ S11 ต่อ rate limit แล้ว: อ่านบิลด้วย AI (7.2)
+  ✅ S11 ต่อ rate limit แล้ว: ส่งอีเมลรายงาน (8.2)
+  ✅ S11 อ่านบิล AI มี credit gate (canSpend) ก่อนยิง provider
+  ✅ S11 เพดาน AI ถูกนับหลัง credit gate (cache/ปิด AI ไม่กินโควตา)
+
+S12 แข่งกันรับชำระ (Promise.all):
+  ✅ S12 🔴 ยิงรับชำระเต็มยอดพร้อมกัน 2 ครั้ง → สำเร็จ 1 ครั้งเท่านั้น
+  ✅ S12 paidTotal = ยอดเอกสาร (ไม่เกิน)
+  ✅ S12 สถานะเป็น PAID
+  ✅ S12 มี payment ใบเดียว
+  ✅ S12 สมุดรายวันของการรับชำระใบนี้สมดุล (Σdr = Σcr)
+  ✅ S12 จ่ายครึ่งยอด 3 ครั้งพร้อมกัน → ผ่าน 2 ตกไป 1
+  ✅ S12 ยอดที่ชำระไม่เกินยอดเอกสาร
+  ✅ S12 idempotencyKey เดียวกันยิงพร้อมกัน → payment ใบเดียว
+
+S13 แข่งกันออกเลขที่ (เอกสาร/ผู้ติดต่อ/สินค้า):
+  ✅ S13 ออกเอกสารพร้อมกัน 5 ใบ → สำเร็จครบ 5
+  ✅ S13 🔴 เลขที่เอกสารไม่ซ้ำกันเลย
+  ✅ S13 ตัวนับเดินครบ 5 (ไม่มีเลขหาย)
+  ✅ S13 สร้างผู้ติดต่อพร้อมกัน 5 ราย → มีเลขที่ครบ 5
+  ✅ S13 เลขที่ผู้ติดต่อไม่ซ้ำ
+  ✅ S13 สร้างสินค้าพร้อมกัน 5 ตัว → มีเลขที่ครบ 5
+  ✅ S13 เลขที่สินค้าไม่ซ้ำ
+  ✅ S13 สร้างสินค้าที่มี SKU ได้
+  ✅ S13 🔴 SKU ซ้ำ (P2002 คนละ index) → ปฏิเสธทันที ไม่วนขอเลขใหม่
+  ✅ S13 ข้อความบอกว่าเป็นเรื่อง SKU ไม่ใช่เลขที่
+  ✅ S13 ไม่มีแถวสินค้าไร้เลขที่ถูกสร้างจากการชน SKU
+  ✅ S13 การปฏิเสธเร็ว (ไม่ได้วนลอง 6 รอบ)
+  ✅ S13 เลขที่ผู้ติดต่อที่กรอกเองถูกใช้ตามนั้น
+  ✅ S13 เลขที่ผู้ติดต่อที่กรอกเองซ้ำ → เด้ง error ไม่เดาเลขใหม่ให้
+
+S14 กดออก/อนุมัติ/ยกเลิกรัว:
+  ✅ S14 🔴 กด 'ออกเอกสาร' พร้อมกัน 2 ครั้ง → สำเร็จ 1 ครั้ง
+  ✅ S14 มีรายการบัญชีชุดเดียว (ไม่โพสต์ซ้ำ)
+  ✅ S14 รับชำระเต็มยอดได้ (เตรียมทดสอบยกเลิก)
+  ✅ S14 🔴 ยกเลิกการชำระพร้อมกัน 2 ครั้ง → สำเร็จ 1 ครั้ง
+  ✅ S14 paidTotal กลับเป็น 0 (ไม่ลบซ้ำจนติดลบ)
+  ✅ S14 สถานะกลับเป็นรอชำระ
+  ✅ S14 มีรายการกลับรายการชุดเดียว
+  ✅ S14 🔴 ยกเลิกเอกสารพร้อมกัน 2 ครั้ง → สำเร็จ 1 ครั้ง
+  ✅ S14 เอกสารอยู่สถานะ VOIDED
+  ✅ S14 🔴 อนุมัติใบสั่งซื้อพร้อมกัน 2 ครั้ง → สำเร็จ 1 ครั้ง
+  ✅ S14 ใบสั่งซื้ออยู่สถานะ APPROVED
+
+S15 ล็อกงวด + ล็อกก่อนวันที่ (คอขวด GL):
+  ✅ S15 commitEntry (คอขวดเดียว) เรียกทั้ง assertPeriodOpen และ assertNotLockedGl
+  ✅ S15 ทุกตัวโพสต์บัญชี (17 ตัว) ลงท้ายที่ commitEntry
+  ✅ S15 ไม่มีตัวโพสต์บัญชีที่เลี่ยงคอขวด
+  ✅ S15 ปิดงวดปัจจุบันได้ (positive control)
+  ✅ S15 [ทาง 1 เอกสาร] งวดปิดแล้ว → ออกเอกสารลงงวดนั้นไม่ได้
+  ✅ S15 [ทาง 2 POS] applyExternalSale ลงงวดที่ปิดแล้ว → ปฏิเสธ (โยน error)
+  ✅ S15 [ทาง 3 JV กระทบยอด] postManualJV ลงงวดที่ปิดแล้ว → ปฏิเสธ (โยน error)
+  ✅ S15 positive control: เปิดงวดกลับแล้วออกเอกสารได้
+  ✅ S15 ล็อกข้อมูลก่อนวันที่ → รับชำระย้อนหลังไม่ได้
+  ✅ S15 positive control: ปลดล็อกแล้วรับชำระได้
+
+S16 audit trail:
+  ✅ S16 มี writeAudit สำหรับ: อนุมัติเอกสาร (account.doc.approve ใน expense-actions.ts)
+  ✅ S16 มี writeAudit สำหรับ: ยกเลิกเอกสาร (account.doc.void ใน actions.ts)
+  ✅ S16 มี writeAudit สำหรับ: บันทึกรับ/จ่ายเงิน (account.payment.record ใน actions.ts)
+  ✅ S16 มี writeAudit สำหรับ: ยกเลิกการชำระ (account.payment.void ใน actions.ts)
+  ✅ S16 มี writeAudit สำหรับ: รวมผู้ติดต่อ (account.contact.merge ใน contact-merge.ts)
+  ✅ S16 มี writeAudit สำหรับ: บันทึกตั้งค่า (account.settings ใน settings-actions.ts)
+  ✅ S16 มี writeAudit สำหรับ: สิทธิ์ผู้ใช้ (account.settings ใน permissions-actions.ts)
+  ✅ S16 มี writeAudit สำหรับ: เชื่อมต่อ/API key (account.settings ใน connections-actions.ts)
+  ✅ S16 มี writeAudit สำหรับ: คลังเอกสาร (เก็บไฟล์) (account.document.manage ใน attachment.ts)
+  ✅ S16 มี writeAudit สำหรับ: ลิงก์ขอใบกำกับ (account.doc.public_link ใน actions.ts)
+  ✅ S16 มี writeAudit สำหรับ: นำเข้าข้อมูล (account.import ใน import-core.ts)
+  ✅ S16 มี writeAudit สำหรับ: ปิดงวด (account.period.close ใน periods/page.tsx)
+  ✅ S16 มี writeAudit สำหรับ: เปิดงวดใหม่ (account.period.reopen ใน periods/page.tsx)
+  ✅ S16 writeAudit เขียนแถวจริงและผูก tenant ถูก
+  ✅ S16 อ่านประวัติของเอกสารได้
+  ✅ S16 ทุกแถวประวัติมีป้ายไทย (ไม่ใช่โค้ดดิบ)
+  ✅ S16 ประวัติมีรายการ 'บันทึกรับ/จ่ายเงิน' ที่เพิ่งเขียน
+  ✅ S16 🔴 ร้าน B อ่านประวัติของเอกสารร้าน A ไม่ได้
+  ✅ S16 writeAudit ถูกครอบ try/catch (audit ล้มห้ามทำงานหลักพัง)
+  ✅ S16 listAuditLogs ผูก tenantId ทุกครั้ง
+
+S17 สุขอนามัยโค้ด:
+  ✅ S17 grep 'color-(fg|bg)' ในขอบเขต 9.2 = ว่าง
+  ✅ S17 ไม่มี any ในโมดูลบัญชี
+  ✅ S17 ไม่มี console.log/info/debug (เหลือแค่ warn/error ที่ตั้งใจ)
+  ✅ S17 console.warn/error ไม่พิมพ์ข้อมูลลูกค้า (ชื่อ/เบอร์/อีเมล/เลขภาษี)
+  ✅ S17 ไม่มีคีย์/ความลับฝังในรีโป
+  ❌ S17 ไม่มีสี hex ดิบในไฟล์ใหม่ของส่วนประกอบ V2 (นอกรายการหนี้ที่รู้ตัว) — src/components/account-v2/DocEditorV2.tsx:1275:            <div className="rounded-lg border border-[color:var(--color-warning,#d97706)] p-3 text-sm" data-testid="pay-voided-warning">
+  ❌ S17 รายการหนี้สี hex ไม่โตขึ้น (ตอนนี้ 7 ไฟล์ / 24 บรรทัด) — DocEditorV2.tsx
+  ✅ S17 qc-account-cpa โหลด env ผ่านด่านกลาง (ไม่มีบรรทัดโค้ดที่เรียก loadEnvFile เอง)
+  ✅ S17 ข้อสอบบัญชีรุ่นเก่าทุกชุดผ่านด่าน env เดียวกัน
+  ✅ S17 qc:all มีด่านกัน production
+  ✅ S17 ด่าน env ไม่มี URL/รหัสผ่านจริงในไฟล์ (เก็บแค่ชิ้นส่วน host)
+
+S18 (ข้อ 19) entryId ของ payment:
+  ✅ S18 รับชำระเพื่อทดสอบ entryId ได้
+  ✅ S18 🔴 AccountDocumentPayment.entryId ถูกเขียนกลับ (เดิม null เสมอ)
+  ✅ S18 entryId ชี้ JV ของ payment ใบนั้นจริง
+  ✅ S18 entryId อยู่ในระบบเดียวกัน
+  ✅ S18 refType ถูกต้อง
+
+[cleanup] ลบ test data (2 ร้าน) เรียบร้อย
+
+===== สรุป: ผ่าน 303 · ไม่ผ่าน 6 =====
+  • S9 ค้น '%' ในร้านตัวเอง = เห็นของตัวเอง (positive control) — เจอ 0
+  • S9 src/lib/modules/account/doc-numbering.ts raw#4: SQL ไม่มี template interpolation (${...}) — UPDATE "AccountDocument" AS d SET "docNo" = v.no, "updatedAt" = NOW() FROM (VALU
+  • S9 src/lib/modules/account/doc-numbering.ts raw#4: ผูกค่าด้วย $1… (placeholder) — UPDATE "AccountDocument" AS d SET "docNo" = v.no, "updatedAt" = NOW() FROM (VALU
+  • S9 จำนวนจุดที่ใช้ raw SQL ยังจำกัด (≤ 4 จุด — เพิ่มเมื่อไหร่ต้องมาทบทวน) — src/lib/modules/account/doc-numbering.ts:300:  const rows = (await db.$queryRawUnsafe( | src/lib/modules/account/doc-numbering.ts:432:  await db.$queryRawUnsafe( | src/lib/modules/account/doc-numbering.ts:615:    const rows = (await tx.$queryRawUnsafe( | src/lib/modules/account/doc-numbering.ts:640:  const stamped = await tx.$executeRawUnsafe( | src/lib/modules/account/gl.ts:349:    rows = (await db.$queryRawUnsafe( | src/lib/modules/account/gl.ts:385:    await prisma.$queryRawUnsafe(`SELECT account_jno_ensure_system($1) AS c`, systemId); | src/lib/modules/account/gl.ts:400:  const rows = (await prisma.$queryRawUnsafe(
+  • S17 ไม่มีสี hex ดิบในไฟล์ใหม่ของส่วนประกอบ V2 (นอกรายการหนี้ที่รู้ตัว) — src/components/account-v2/DocEditorV2.tsx:1275:            <div className="rounded-lg border border-[color:var(--color-warning,#d97706)] p-3 text-sm" data-testid="pay-voided-warning">
+  • S17 รายการหนี้สี hex ไม่โตขึ้น (ตอนนี้ 7 ไฟล์ / 24 บรรทัด) — DocEditorV2.tsx
+⚠️ มีข้อไม่ผ่าน
+
+(node:982932) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)

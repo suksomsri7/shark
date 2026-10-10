@@ -75,6 +75,13 @@ export type MinuteJobsSummary = {
 };
 
 export const MINUTE_JOB_BUDGET_MS = 20_000;
+/**
+ * CRM C5.4-D ▸ L3-M4: เพดานนาฬิกาของ "หนึ่งการเรียก" รอบรายชั่วโมง/รายวัน — ในรอบเหล่านี้แต่ละงานได้งบของตัวเอง
+ * (MINUTE_JOB_BUDGET_MS) แทนงบรวมก้อนเดียว เพราะ crontab ยิงรายชั่วโมง/รายวันเพียงครั้งเดียวต่อหน้าต่าง ⇒ งานท้ายคิว
+ * (ล้างข้อมูลตาม PDPA · อายุเก็บ lead) ที่ถูกข้ามเพราะงบหมดจะไม่มีรอบอื่นในหน้าต่างนั้นอีกเลย
+ * 80 วิ + เวลารองานที่ถูกตัด (crm-cron รอไม่เกิน 110 วิ นับจากเริ่ม) + เริ่มโพรเซส < ตัวตัดตัวเอง 120 วิ ของ `scripts/crm-cron.mts` ◂
+ */
+export const WINDOW_CADENCE_WALL_MS = 80_000;
 // AUDIT-CLASS X5: lease ≤ 15 นาที (MASTER-PLAN §4 X5) — โพรเซสที่ตายขณะถือ lease ⇒ รอบที่ now ≥ หมด lease หยิบใหม่ได้
 export const MINUTE_JOB_LEASE_MS = 15 * 60_000;
 /** งบที่เหลือน้อยกว่านี้ = ไม่เริ่มงานใหม่ (ปล่อยให้รอบหน้า · ยังไม่จอง จึงยังถึงรอบอยู่) */
@@ -274,8 +281,10 @@ registerMinuteJob({
   everyMinutes: 60,
   cadence: "hourly",
   run: async (now, _budgetMs, ctrl) => {
-    const { activities } = await import("@/lib/modules/crm");
+    const { activities, notifySenders } = await import("@/lib/modules/crm");
     await activities.overdueSweep(now, { deadline: ctrl.deadline, signal: ctrl.signal });
+    // CRM C5.4-E ▸ L6-M4: สรุป "งานวันนี้" (tasks.today) 1 ใบ/คน/วัน หลังชั่วโมงสรุปของร้าน — งานรายชั่วโมงตัวเดิม (ไม่เพิ่มชื่องานใหม่ในทะเบียน) ◂
+    await notifySenders.tasksTodayDigest(now, { deadline: ctrl.deadline, signal: ctrl.signal });
   },
 });
 // 🔴 ชื่อคู่ของ C2.4: งานเตือนงาน/นัดถูกลงทะเบียนไว้แล้วในชื่อ `crm.activity.remind` (บล็อก C2.4 ข้างบน) —
@@ -560,6 +569,8 @@ function runWithin(job: MinuteJob, now: Date, budgetMs: number): { settled: Prom
 /**
  * หนึ่งรอบของตัวกระจาย — งานรันทีละตัวตามลำดับที่ลงทะเบียน ภายในงบรวม ≤ 20 วินาทีต่อการเรียก
  * งานที่เริ่มทีหลังได้ "งบที่เหลือ" ไม่ใช่ 20 วินาทีใหม่ · งานที่งบไม่พอ = ไม่รัน ไม่บันทึก ⇒ ยังถึงรอบในรอบหน้า
+ * CRM C5.4-D ▸ L3-M4: ข้างบนคือรอบ "minute" · รอบ "hourly"/"daily" ให้งานละ 20 วินาทีใต้เพดานรวม WINDOW_CADENCE_WALL_MS
+ *   เรียงงานที่จบรอบล่าสุดเก่าที่สุดก่อน (ดูคอมเมนต์ในตัวฟังก์ชัน) ◂
  * `entry`: "vps" = ตัวรัน crm-cron.mts (งาน vpsOnly รันเฉพาะทางนี้) · "route" = /api/cron/outbox
  * ไม่ throw เด็ดขาด (ความล้มของงานถูกบันทึก ไม่ถูกโยนออกไป · ความล้มฝั่งฐานบอกผ่าน stateReadFailed/dispatcherErrors)
  */
@@ -579,20 +590,29 @@ export async function runMinuteJobs(
     return summary;
   }
   // งบวัดด้วยนาฬิกาจริง (เวลาที่ผ่านไปจริง) · ถึงรอบ/lease วัดด้วย `now` เท่านั้น
-  const deadline = Date.now() + MINUTE_JOB_BUDGET_MS;
-  const jobs = [...registry.values()].filter(
+  // CRM C5.4-D ▸ L3-M4: รอบ "minute" = งบรวม 20 วิ ต่อการเรียกเหมือนเดิมทุกประการ (C0.5-S3 ตรึงไว้ · งานที่ถูกข้ามยังถึงรอบในนาทีถัดไป)
+  //   รอบ "hourly" / "daily" ไม่มีนาทีถัดไปในหน้าต่างเดียวกัน ⇒ แต่ละงานได้งบ 20 วิ ของตัวเอง ภายใต้เพดานรวม WINDOW_CADENCE_WALL_MS
+  //   และเรียง "งานที่จบรอบล่าสุดเก่าที่สุดก่อน" (เสมอกัน = ลำดับที่ลงทะเบียน — วันปกติทุกงานจบด้วย `now` เดียวกัน ลำดับจึงเท่าเดิม)
+  //   ⇒ งานที่ถูกข้ามเพราะเพดานรวม (ไม่บันทึก = ยังเป็นรอบเก่า) ได้ขึ้นหัวคิวในการเรียกครั้งถัดไป — ไม่มีงานไหนอดตลอดไป ◂
+  const perJob = cadence !== "minute";
+  const deadline = Date.now() + (perJob ? WINDOW_CADENCE_WALL_MS : MINUTE_JOB_BUDGET_MS);
+  const registered = [...registry.values()].filter(
     (j) => (j.cadence ?? "minute") === cadence && (!j.vpsOnly || opts?.entry === "vps"),
   );
-  if (jobs.length === 0) return summary;
+  if (registered.length === 0) return summary;
 
   let lastRuns: Map<string, Date>;
   try {
-    lastRuns = await readTimes(jobs.map((j) => runKey(j.name)));
+    lastRuns = await readTimes(registered.map((j) => runKey(j.name)));
   } catch (e) {
     summary.stateReadFailed = true;
     await logOps("WARN", OPS_SOURCE, "dispatcher could not read job state — tick skipped", { detail: errorText(e) });
     return summary;
   }
+  const lastRunMs = (j: MinuteJob) => lastRuns.get(runKey(j.name))?.getTime() ?? 0;
+  const jobs = perJob
+    ? registered.map((j, i) => ({ j, i })).sort((a, b) => lastRunMs(a.j) - lastRunMs(b.j) || a.i - b.i).map((x) => x.j)
+    : registered;
 
   for (const job of jobs) {
     // ตรวจเบื้องต้นจากที่อ่านไว้ (ประหยัดการจองงานที่ยังไม่ถึงรอบ) — ตัวตัดสินจริงคือการตรวจซ้ำหลังจอง
@@ -600,12 +620,14 @@ export async function runMinuteJobs(
       summary.results.push({ name: job.name, outcome: "not-due" });
       continue;
     }
-    if (deadline - Date.now() < MIN_START_BUDGET_MS) {
+    // CRM C5.4-D ▸ L3-M4: งบของงานนี้ = งบของตัวเอง (hourly/daily · ไม่เกินเพดานรวม) หรือ "งบที่เหลือ" ของรอบ (minute) ◂
+    const jobDeadline = perJob ? Math.min(Date.now() + MINUTE_JOB_BUDGET_MS, deadline) : deadline;
+    if (jobDeadline - Date.now() < MIN_START_BUDGET_MS) {
       summary.results.push({ name: job.name, outcome: "no-budget" });
       continue;
     }
     try {
-      summary.results.push({ name: job.name, outcome: await dispatchOne(job, now, deadline) });
+      summary.results.push({ name: job.name, outcome: await dispatchOne(job, now, jobDeadline) });
     } catch (e) {
       // พลาดที่ฝั่งบันทึก/ฐาน (ไม่ใช่ตัวงาน) — ห้ามลามไปงานอื่น
       summary.dispatcherErrors += 1;

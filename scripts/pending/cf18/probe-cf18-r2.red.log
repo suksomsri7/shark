@@ -1,0 +1,62 @@
+(node:2923615) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+── S1/S2/S4/S5 erase rules ──
+  ✅ [S0.1] (control) control: erase succeeded
+        — ACTUAL counts={"emails":0,"activities":0,"recordings":0,"files":0,"webSessions":0,"clicks":0,"portal":0,"proposals":0,"notifications":0,"customValues":0,"records":0,"consents":0,"fileLinks":0,"mergedContacts":0,"pa…
+  ❌ [S1.1] (FINDING) FINDING (RV13-1): the scheduled task's instruction no longer holds the name/phone (masked in place, rest kept)
+        — ACTUAL {"instruction":"ทุกเช้าเตือนให้โทรหา สมหญิง qc-cf18-ysyvuddz ที่เบอร์ 0857780513","active":false}
+  ❌ [S1.2] (FINDING) FINDING (RV13-1): a task whose instruction was only the person is deleted (same rule as mask-only memories)
+        — ACTUAL {"id":"cmuqvx9bu000fvjkzeqj85dd7","tenantId":"cmuqvx8e70000vjkzjn7iwwmy","instruction":"สมหญิง qc-cf18-ysyvuddz 0857780513","hourBkk":4,"active":false,"lastRunDay":null,"createdAt":"2026-10-02T11:33:40.602Z","updatedAt":"2026-10-02T11:33:40.602Z"}
+  ✅ [S1.3] (control) control: unrelated task and the other tenant's task untouched
+        — ACTUAL {"instruction":"สรุปยอดขายทุกเช้า qc-cf18-ysyvuddz"} {"instruction":"โทรหา สมหญิง qc-cf18-ysyvuddz 0857780513"}
+  ❌ [S2.1] (FINDING) FINDING (RV13-2): the role local part 'support' is not an erase token — unrelated memory and AI message keep 'ทีม support'
+        — ACTUAL memory="ลูกค้าส่วนใหญ่ติดต่อทีม [ข้อมูลถูกลบ] ทางไลน์ qc-cf18-ysyvuddz" msg="แจ้งทีม [ข้อมูลถูกลบ] ว่าระบบช้า qc-cf18-ysyvuddz"
+  ✅ [S2.2] (control) control: the FULL role address is still masked, and a personal local part (previous e-mail) still is a token
+        — ACTUAL addr="ส่งเอกสารไปที่ [ข้อมูลถูกลบ] ด้วย" local="ไลน์ไอดีลูกค้า [ข้อมูลถูกลบ] qc-cf18-ysyvuddz"
+  ❌ [S5.1] (FINDING) FINDING (RV13-4): the 081-2345678 spelling is masked in memories and AI messages
+        — ACTUAL memory="โทรกลับ 085-7780513 qc-cf18-ysyvuddz" msg="เบอร์ใหม่ 085-7780513"
+  ❌ [S5.2] (FINDING) FINDING (RV13-4): a token used as a JSON key in plan steps is masked; a colliding key is kept apart (no value lost); status kept
+        — ACTUAL {"status":"DONE","stepsJson":[{"kind":"booking_create_appointment","status":"DONE","payload":{"notes":{"[ข้อมูลถูกลบ]":"เดิม","สมหญิง qc-cf18-ysyvuddz":"vip"}},"summary":"โน้ต"}]}
+  ❌ [S4.1] (FINDING) FINDING (RV13-5): a PENDING non-CRM proposal naming the person is masked (summary + payload) and EXPIRED
+        — ACTUAL {"status":"PENDING","summary":"นัด สมหญิง qc-cf18-ysyvuddz โทร 0857780513","payload":{"phone":"0857780513","customerName":"สมหญิง qc-cf18-ysyvuddz"}}
+  ❌ [S4.2] (FINDING) FINDING (RV13-5): a finished non-CRM proposal is masked (resultNote + payload) and keeps EXECUTED
+        — ACTUAL {"status":"EXECUTED","resultNote":"นัด สมหญิง qc-cf18-ysyvuddz แล้ว","payload":{"phone":"0857780513"}}
+  ✅ [S4.3] (control) control: an unrelated pending proposal is untouched
+        — ACTUAL {"status":"PENDING","summary":"นัดคนอื่น qc-cf18-ysyvuddz"}
+
+── S3 public-route wakes ──
+  ❌ [S3.1] (FINDING) FINDING (RV13-3): garbage tokens on /u no-track, /u one-click and /t/o schedule no drain
+        — ACTUAL no-track=1 one-click=1 open=1
+  ✅ [S3.2] (control) control: real writes still wake — a counted open, the first no-track, the first one-click: one drain each
+        — ACTUAL open=1 noTrack#1=1 oneClick#1=1 tokens u=true o=true
+  ❌ [S3.3] (FINDING) FINDING (RV13-3): repeating no-track / one-click on an already-flipped contact writes nothing and schedules no drain
+        — ACTUAL noTrack#2=1 oneClick#2=1
+
+── S6 confirmProposalById parity ──
+  ❌ [S6.1] (FINDING) FINDING (RV13-7): confirmProposalById answers a hidden chat-room row byte-identically to an unknown id
+        — ACTUAL hidden={"handled":true,"ok":false,"note":"ไม่พบข้อเสนอนี้ในระบบ CRM ที่เปิดอยู่ (อาจถูกจัดการไปแล้วหรืออยู่คนละระบบ)"} ghost={"handled":false,"ok":false,"note":""}
+
+── S7 SEQ_TASK company text by assignee ──
+  ❌ [S7.1] (FINDING) FINDING (owner Q4): the task assigned to A (company hidden from A) does not name the company
+        — ACTUAL {"contactId":"cmuqvxcav001avjkz5pra42tf","title":"โทรหาฝ่ายจัดซื้อ บริษัทลับ qc-cf18-ysyvuddz","ownerUserId":"cmuqvx90b0003vjkz5129elio"}
+  ✅ [S7.2] (control) control: the task assigned to the OWNER (sees the company) names it
+        — ACTUAL {"contactId":"cmuqvxcby001dvjkzck8nw3ce","title":"โทรหาฝ่ายจัดซื้อ บริษัทลับ qc-cf18-ysyvuddz","ownerUserId":"cmuqvx8zi0002vjkzrv35cj85"}
+
+── S8 erase while a plan is running ──
+  ✅ [S8.0] (control) control (premise): the plan was RUNNING when the erase ran, the erase masked it, the run finished
+        — ACTUAL status@erase=RUNNING erased=true mid={"stepsJson":[{"kind":"kb_create_article","status":"PENDING","payload":{"body":"… run={"ok":true,"results":[{"summary":"บทความของ แผนวิ่ง qc-cf18-ysyvuddz โทร 0854905879","ok":true,"note":"เพิ่มบทความ \"บทค…
+  ❌ [S8.1] (FINDING) FINDING (RUNNING race): after the run's write-back the plan still holds no name/phone (step status written, masked text kept)
+        — ACTUAL {"status":"DONE","stepsJson":[{"kind":"kb_create_article","note":"เพิ่มบทความ \"บทความ qc-cf18-ysyvuddz\" เข้าคลังความรู้เรียบร้อยแล้ว","status":"DONE","payload":{"body":"ลูกค้า แผนวิ่ง qc-cf18-ysyvuddz","title":"บทความ …
+  ✅ [CLEAN] (control) throwaway tenants, users and rate buckets removed (0 rows left)
+        — ACTUAL - buckets=0
+
+controls 8/8 green · findings GREEN (fixed) 0/12
+JSON_SUMMARY {"controls":[["S0.1",true],["S1.3",true],["S2.2",true],["S4.3",true],["S3.2",true],["S7.2",true],["S8.0",true],["CLEAN",true]],"findings":[["S1.1","RED"],["S1.2","RED"],["S2.1","RED"],["S5.1","RED"],["S5.2","RED"],["S4.1","RED"],["S4.2","RED"],["S3.1","RED"],["S3.3","RED"],["S6.1","RED"],["S7.1","RED"],["S8.1","RED"]]}

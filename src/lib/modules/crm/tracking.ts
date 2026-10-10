@@ -9,6 +9,8 @@
 //    — ไม่มีเครื่องมือเดารหัสลิงก์/siteKey/token ของร้านอื่น
 // 🔴 AUDIT-CLASS X6: ปลายทางของ `/l/<code>` มาจากแถวในฐานเท่านั้น (พารามิเตอร์ในคำขอไม่มีทางเปลี่ยนได้) และ url ที่รับ
 //    ตอนสร้างต้องเป็น http/https จริง ๆ (javascript:/data:/`//host`/backslash ถูกปฏิเสธ)
+//    + CRM C6.1-LINKPOLICY (มติเจ้าของ P11/Q15 ข้อ ข): host ปลายทางต้องอยู่ใน "โดเมนปลายทางที่อนุญาต" ของร้าน
+//    (`settings.crm.tracking.linkHosts`) หรือเว็บของร้านในส่วนติดตามเว็บ หรือโดเมนของแพลตฟอร์มเอง — ตรวจตอนสร้าง/แก้ และตอนพาไปทุกครั้ง
 // 🔴 AUDIT-CLASS X3: ตัวนับทุกตัว (clicks · uniqueClicks · pageViews) จบใน **คำสั่ง SQL เดียว** พร้อมแถวเหตุการณ์
 //    (CTE) — ยิงพร้อมกันพันครั้งต้องได้พันพอดี
 // 🔴 AUDIT-CLASS X4: ระบุตัวตนซ้ำ/ขนานกัน = ผูกครั้งเดียว · กิจกรรม WEB 1 รายการต่อ "วันไทย" · event 1 ใบ
@@ -20,8 +22,9 @@ import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, 
 import type { Prisma } from "@prisma/client";
 import QRCode from "qrcode";
 import type { MemberActor } from "@/lib/modules/member";
-import { checkRateLimitDb } from "@/lib/core/rate-limit-db";
+import { checkRateLimitDb, rateBucketCte } from "@/lib/core/rate-limit-db";
 import { emitOutbox } from "@/lib/core/outbox";
+import { wakeOutbox } from "./outbox-wake"; // CRM C5.5-fix13 ▸ P-it5-2 sweep ◂
 import { writeAudit } from "@/lib/core/audit";
 import { logOps } from "@/lib/core/ops";
 import { prisma } from "./db";
@@ -51,9 +54,14 @@ import {
   cleanTrackedUrl,
   isBotUserAgent,
   isIdentifyBy,
+  APP_PUBLIC_HOST,
+  isDestinationBlocklisted,
   isVisitorId,
   jsLiteral,
+  LINK_HOSTS_MAX,
+  linkDestinationVerdict,
   normalizeDomain,
+  normalizeLinkHost,
   originAllowed,
   publicAppOrigin,
   thaiDayKey,
@@ -61,10 +69,11 @@ import {
   urlHostAllowed,
   utmOf,
   type IdentifyBy,
+  type LinkDestinationVerdict,
 } from "./tracking-shared";
 
 // ค่าคงที่ที่ route สาธารณะต้องใช้ — route แตะโมดูลได้ทางเดียวคือ facade (`@/lib/modules/crm`) ตามด่าน F2.3
-export { LINK_FALLBACK_URL, TRACKING_PAYLOAD_MAX_BYTES, VISITOR_COOKIE, CONSENT_COOKIE, cleanTrackedUrl, cleanReferrer } from "./tracking-shared";
+export { LINK_FALLBACK_URL, TRACKING_PAYLOAD_MAX_BYTES, VISITOR_COOKIE, CONSENT_COOKIE, cleanTrackedUrl, cleanReferrer, headerSafeLocation } from "./tracking-shared";
 
 type Tx = Prisma.TransactionClient;
 type Json = Prisma.InputJsonValue;
@@ -97,8 +106,23 @@ function appUrl(): string {
   const raw = str(process.env.APP_URL) || "http://localhost:3000";
   return raw.replace(/\/+$/, "");
 }
-/** ที่อยู่ที่ "สคริปต์บนเว็บของร้าน" ยิงกลับ — https เสมอ (เครื่องทดสอบที่ตั้ง APP_URL เป็น 127.0.0.1 ใช้โดเมนสาธารณะ) */
-export const trackerOrigin = (): string => publicAppOrigin(appUrl());
+/**
+ * ที่อยู่ที่ "สคริปต์บนเว็บของร้าน" ยิงกลับ
+ * - production (`APP_ENV=production`): https เสมอ — `APP_URL` ที่ไม่ใช่ https ถูกแทนด้วยโดเมนสาธารณะ (พฤติกรรมเดิม)
+ * - นอก production (dev · QC · preview): origin ของ `APP_URL` ของสภาพแวดล้อมนั้นเอง — CRM C5.4-F ▸ C4.4-I2: หน้า QC/dev
+ *   ต้องไม่มีวันยิงเหตุการณ์ติดตามเข้า shark.in.th ตัวจริง (เดิม APP_URL=http://127.0.0.1:… ⇒ สคริปต์ยิงไป prod) ◂
+ */
+export const trackerOrigin = (): string => {
+  if (str(process.env.APP_ENV) === "production") return publicAppOrigin(appUrl());
+  try {
+    const u = new URL(appUrl());
+    // origin "null" (scheme แปลก) / ไม่ใช่ http(s) = ตั้งค่าผิด ⇒ ค่าปลอดภัยของเครื่อง dev (ไม่ใช่ shark.in.th) · hunt INFO
+    if ((u.protocol === "http:" || u.protocol === "https:") && u.origin !== "null") return u.origin;
+  } catch {
+    /* ตกไปค่าปลอดภัย */
+  }
+  return "http://localhost:3000";
+};
 
 // ───────────────────────── กุญแจ/แฮช (แยกตามหน้าที่ — มติ C0.4) ─────────────────────────
 
@@ -150,23 +174,41 @@ export function emailClickTicket(input: { tenantId: string; systemId: string; em
     // AUDIT-CLASS X7 (รีวิวรอบ 2 · S2): เลขประจำตั๋ว — ถูก "เผา" ตอนใช้ ⇒ ตั๋วใบเดิมใช้ซ้ำไม่ได้แม้ยังไม่หมดอายุ
     j: randomBytes(12).toString("base64url"),
   };
+  return sealTicket(identifyKey(), payload);
+}
+
+// CRM C4.4-fix3 ▸ ตัวผนึก/ตัวเปิดตั๋ว AES-256-GCM ชุดเดียวของทั้งไฟล์ (รูปแบบ iv 12 ไบต์ | tag 16 ไบต์ | เนื้อ · base64url)
+//   ตั๋วอีเมล (`crm-identify:v1:`) และตั๋วผู้เข้าชม (`crm-visitor-ticket:v1:`) ใช้ตัวเดียวกันแต่ **คนละกุญแจ** ⇒ ตั๋วชนิดหนึ่ง
+//   เปิดด้วยกุญแจของอีกชนิดไม่ได้ (GCM ปฏิเสธ) — ใช้ข้ามทางกันไม่ได้แม้เนื้อในจะหน้าตาคล้ายกัน ◂
+function sealTicket(key: Buffer, payload: object): string {
   const iv = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", identifyKey(), iv);
+  const cipher = createCipheriv("aes-256-gcm", key, iv);
   const ct = Buffer.concat([cipher.update(JSON.stringify(payload), "utf8"), cipher.final()]);
   return Buffer.concat([iv, cipher.getAuthTag(), ct]).toString("base64url");
 }
 
-/** อ่านตั๋ว — ปลอม/แก้/หมดอายุ/ของระบบอื่น = null (ไม่บอกว่าเพราะอะไร) */
-export function readIdentifyTicket(ticket: unknown, expect: { tenantId: string; systemId: string }, now: Date = new Date()): TicketPayload | null {
+/** เปิดตั๋ว — ปลอม/แก้/ผิดกุญแจ/รูปแบบเพี้ยน = null (ไม่บอกว่าเพราะอะไร) */
+function openTicket(key: Buffer, ticket: unknown): Record<string, unknown> | null {
   const s = str(ticket);
   if (!s || s.length > 1024 || !/^[A-Za-z0-9_-]+$/.test(s)) return null;
   try {
     const raw = Buffer.from(s, "base64url");
     if (raw.length < 12 + 16 + 2) return null;
-    const decipher = createDecipheriv("aes-256-gcm", identifyKey(), raw.subarray(0, 12));
+    const decipher = createDecipheriv("aes-256-gcm", key, raw.subarray(0, 12));
     decipher.setAuthTag(raw.subarray(12, 28));
     const json = Buffer.concat([decipher.update(raw.subarray(28)), decipher.final()]).toString("utf8");
-    const p = JSON.parse(json) as TicketPayload;
+    const p = JSON.parse(json) as unknown;
+    return isObj(p) ? p : null;
+  } catch {
+    return null;
+  }
+}
+
+/** อ่านตั๋ว — ปลอม/แก้/หมดอายุ/ของระบบอื่น = null (ไม่บอกว่าเพราะอะไร) */
+export function readIdentifyTicket(ticket: unknown, expect: { tenantId: string; systemId: string }, now: Date = new Date()): TicketPayload | null {
+  try {
+    const p = openTicket(identifyKey(), ticket) as TicketPayload | null;
+    if (!p) return null;
     if (!isObj(p) || typeof p.x !== "number" || p.x < now.getTime()) return null;
     if (typeof p.j !== "string" || !/^[A-Za-z0-9_-]{8,40}$/.test(p.j)) return null; // ตั๋วรุ่นเก่า (ไม่มี jti) ใช้ไม่ได้
     if (!safeEqualHex(String(p.t ?? ""), String(expect.tenantId ?? "")) || !safeEqualHex(String(p.s ?? ""), String(expect.systemId ?? ""))) return null;
@@ -184,7 +226,9 @@ export function readIdentifyTicket(ticket: unknown, expect: { tenantId: string; 
 export async function consumeIdentifyTicket(jti: string, limiter?: (key: string, spec: { limit: number; windowMs: number }) => Promise<{ ok: boolean }>): Promise<boolean> {
   const key = `crm:tkt:${createHash("sha256").update(String(jti ?? "")).digest("hex").slice(0, 40)}`;
   const run = limiter ?? ((k: string, spec: { limit: number; windowMs: number }) => checkRateLimitDb(k, spec));
-  const r = await run(key, { limit: 1, windowMs: IDENTIFY_TICKET_MAX_AGE_MS });
+  // CRM C4.4-fix3 r2 ▸ (review N2) หน้าต่างการเผา = อายุตั๋ว + 2 นาที — ตัวอ่านรับตั๋วได้ถึง "ตอนนี้ + อายุ + 60 วิ" และเครื่องแต่ละตัว
+  //   นาฬิกาเหลื่อมกันได้ ⇒ ถ้าหน้าต่างเท่าอายุพอดี ตั๋วที่ถูกเผาช่วงต้นอาจถูกใช้ซ้ำได้ในวินาทีท้าย ๆ ◂
+  const r = await run(key, { limit: 1, windowMs: IDENTIFY_TICKET_MAX_AGE_MS + 120_000 });
   return r.ok;
 }
 
@@ -202,6 +246,53 @@ export function appendIdentifyTicket(url: string, ticket: string, domains: reado
     return parsed.toString();
   } catch {
     return url;
+  }
+}
+
+// ───────────────────────── ตั๋วผู้เข้าชม (ฟอร์มที่ฝังด้วย iframe) ─────────────────────────
+// CRM C4.4-fix3 ▸ ปัญหา (journey US9-3): ร้านฝังฟอร์มของเราด้วย `<iframe src="<APP_URL>/f/<token>">` บนเว็บของตัวเอง ·
+//   คุกกี้ `sd_vid` อยู่บนโดเมนของร้าน (host-only) ⇒ คำขอของฟอร์มบน APP_URL ไม่เคยมีคุกกี้นั้น ⇒ ผูกประวัติการเข้าชมไม่ได้เลย
+//   ทางแก้ (มติผู้คุมงาน option A): สคริปต์ติดตามบนหน้าของร้านขอ "ตั๋วผู้เข้าชม" จาก `POST /t/v` แล้วส่งให้ iframe ของฟอร์ม
+//   ทาง postMessage (ไม่ผ่าน url/คุกกี้/storage) · ฟอร์มแนบตั๋วมากับการส่ง · เซิร์ฟเวอร์ตรวจผนึก/อายุ/ร้าน/ระบบ แล้วเผาทิ้ง
+//   🔴 ตั๋ว **ทึบแสง** (AES-256-GCM · กุญแจแยก `crm-visitor-ticket:v1:`) · อายุ ≤ 15 นาที · ใช้ได้ครั้งเดียว (jti ใน store เดียวกับตั๋วอีเมล)
+//   🔴 ออกตั๋วเฉพาะผู้เข้าชมที่ "การเข้าชมล่าสุดถือความยินยอมเวอร์ชันปัจจุบัน" · ห้าม log ตั๋ว · ตั๋วอยู่ในเนื้อคำตอบของ `/t/v` เท่านั้น ◂
+
+/** กุญแจ AES ของตั๋วผู้เข้าชม (32 ไบต์) — โดเมนแยกจากตั๋วอีเมลด้วยคำนำหน้า `crm-visitor-ticket:v1:` */
+function visitorTicketKey(): Buffer {
+  return createHmac("sha256", `crm-visitor-ticket:v1:${sessionSecret()}`).update("aead").digest();
+}
+
+export type VisitorTicketPayload = { k: "vt"; t: string; s: string; sk: string; v: string; cv: number; x: number; j: string };
+
+/** ผนึกตั๋วผู้เข้าชม (ผู้เรียกจริงคือ `mintVisitorTicket` — export ไว้ให้ข้อสอบผนึกตั๋วหมดอายุ/ผิดระบบได้) */
+export function visitorTicket(
+  input: { tenantId: string; systemId: string; siteKey: string; visitorId: string; consentVersion: number },
+  now: Date = new Date(),
+): string {
+  const payload: VisitorTicketPayload = {
+    k: "vt",
+    t: String(input?.tenantId ?? ""),
+    s: String(input?.systemId ?? ""),
+    sk: String(input?.siteKey ?? ""),
+    v: String(input?.visitorId ?? ""),
+    cv: Number(input?.consentVersion ?? 0),
+    x: now.getTime() + IDENTIFY_TICKET_MAX_AGE_MS,
+    j: randomBytes(12).toString("base64url"),
+  };
+  return sealTicket(visitorTicketKey(), payload);
+}
+
+/** อ่านตั๋วผู้เข้าชม — ปลอม/แก้/หมดอายุ/ไม่ใช่ชนิด `vt`/เนื้อในเพี้ยน = null (ไม่บอกว่าเพราะอะไร) */
+export function readVisitorTicket(ticket: unknown, now: Date = new Date()): VisitorTicketPayload | null {
+  try {
+    const p = openTicket(visitorTicketKey(), ticket);
+    if (!p || p.k !== "vt") return null;
+    if (typeof p.x !== "number" || p.x < now.getTime() || p.x > now.getTime() + IDENTIFY_TICKET_MAX_AGE_MS + 60_000) return null;
+    if (typeof p.j !== "string" || !/^[A-Za-z0-9_-]{8,40}$/.test(p.j)) return null;
+    if (!str(p.t) || !str(p.s) || !str(p.sk) || !isVisitorId(p.v) || !Number.isInteger(p.cv) || Number(p.cv) < 1) return null;
+    return p as unknown as VisitorTicketPayload;
+  } catch {
+    return null;
   }
 }
 
@@ -271,6 +362,230 @@ const audit = (ctx: TrackingCtx, action: string, targetType: string, targetId: s
     targetId,
     after: after ?? undefined,
   });
+
+// ───────────────────────── นโยบายปลายทางของลิงก์ติดตาม (CRM C6.1-LINKPOLICY · มติเจ้าของ P11/Q15 ข้อ ข) ─────────────────────────
+//
+// รายการอนุญาตของระบบ CRM หนึ่งระบบ = (1) `settings.crm.tracking.linkHosts` ที่ร้านประกาศเอง (สูงสุด 50 · `a.com` ตรงตัว · `*.a.com`
+//   รวมโดเมนย่อย · ค่าเริ่มต้น = ว่าง) + (2) เว็บของร้านในส่วนติดตามเว็บ `settings.crm.tracking.web.domains` (รายการเดียวกับที่ใบ C2.6/J3
+//   ใช้ — ไม่มีรายการที่สอง · รวมโดเมนย่อยแบบเดียวกับ `originAllowed`) + (3) host ของแพลตฟอร์มเอง (`APP_URL`) และโดเมนย่อย
+// 🔴 ตัวตัดสินตัวเดียว (`linkDestinationVerdict` ใน tracking-shared) ใช้ทั้งตอนสร้าง/แก้ลิงก์ · ตอน `/l/<code>` พาไป · ตัวนับ "ลิงก์ที่จะใช้ไม่ได้"
+//    ⇒ สามจุดนี้ไม่มีวันตัดสินไม่ตรงกัน · ลบโดเมนออกจากรายการภายหลัง = ลิงก์ที่ชี้ไปที่นั่นหยุดพาไปทันที (คำตอบเดียวกับรหัสที่ไม่รู้จัก)
+
+/** ข้อความ "ไปเพิ่มที่ไหน" — หน้าตั้งค่าเดียวที่แก้รายการนี้ได้ */
+const LINK_HOSTS_WHERE = "เพิ่มโดเมนปลายทางที่ ตั้งค่า › ลิงก์ติดตาม";
+
+/** โดเมนปลายทางที่ร้านประกาศ (`settings.crm.tracking.linkHosts`) — ค่าเพี้ยน/ไม่ได้ตั้ง = ว่าง · รายการผิดรูปถูกทิ้ง (ไม่ throw) */
+export function linkHostsOf(raw: unknown): string[] {
+  const crm = isObj(raw) && isObj((raw as Record<string, unknown>).crm) ? ((raw as Record<string, unknown>).crm as Record<string, unknown>) : {};
+  const tr = isObj(crm.tracking) ? (crm.tracking as Record<string, unknown>) : {};
+  const list = Array.isArray(tr.linkHosts) ? tr.linkHosts : [];
+  const out: string[] = [];
+  for (const h of list) {
+    const n = normalizeLinkHost(h);
+    if (n && !out.includes(n)) out.push(n);
+    if (out.length >= LINK_HOSTS_MAX) break;
+  }
+  return out;
+}
+
+/** host ของแพลตฟอร์ม (จาก `APP_URL`) ในรูปรายการ `*.host` — APP_URL ที่เป็น IP/localhost (เครื่อง dev/QC) = ไม่มี */
+function platformLinkEntries(): string[] {
+  try {
+    const host = new URL(appUrl()).hostname.toLowerCase();
+    const n = normalizeLinkHost(`*.${host}`);
+    return n ? [n] : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * host ของแพลตฟอร์มที่ทางเดิน `/t/` `/l/` เป็น "ตัวพาไปที่อื่น" (รอบ 2 · RV-2) — shark.in.th เสมอ + host ของ APP_URL (ถ้าเป็นชื่อเว็บ)
+ * ปลายทางลิงก์ที่ชี้ไปที่ทางเดินเหล่านี้ = REDIRECTOR ไม่ว่ารายการไหนจะครอบคลุม (กันลิงก์ → `/t/c/<token>` ของอีเมลตัวเอง → เว็บไหนก็ได้)
+ */
+function platformRedirectorHosts(): string[] {
+  const out = [APP_PUBLIC_HOST];
+  for (const e of platformLinkEntries()) {
+    const h = e.slice(2);
+    if (!out.includes(h)) out.push(h);
+  }
+  return out;
+}
+
+/** web domain ที่ถูกตัดสิทธิ์ "ใช้ได้เสมอ" แล้ว — บันทึกครั้งเดียวต่อโปรเซส (ไม่ให้ log ท่วมทางร้อน `/l`) */
+const SKIPPED_WEB_DOMAINS = new Set<string>();
+
+/**
+ * รายการที่ร้าน "ไม่ต้องตั้งก็ใช้ได้" (เว็บของร้านในส่วนติดตามเว็บ + แพลตฟอร์ม) — รูป `*.host`
+ * 🔴 รอบ 2 · RV-3: web domain ผ่านด่านเดียวกับรายการ `*.` ของร้าน (`normalizeLinkHost`) — ชื่อแบบโดเมนสาธารณะ (`co.th`, `in.th`, `co.uk` …)
+ *    ไม่ได้สิทธิ์ใช้ได้เสมอสำหรับลิงก์ (ไม่งั้น `co.th` = ทุกเว็บ .co.th) · ไม่แตะพฤติกรรมการติดตามเว็บ (`originAllowed`) เลย
+ */
+function alwaysAllowedLinkEntries(settings: unknown): string[] {
+  const out: string[] = [];
+  for (const d of webSettingsOf(settings).domains) {
+    const n = normalizeLinkHost(`*.${d}`);
+    if (!n) {
+      if (!SKIPPED_WEB_DOMAINS.has(d)) {
+        SKIPPED_WEB_DOMAINS.add(d);
+        console.warn(`[crm.tracking] โดเมนเว็บ "${d}" กว้างเท่าโดเมนสาธารณะ — ไม่นับเป็นปลายทางลิงก์ที่ใช้ได้เสมอ (การติดตามเว็บไม่เปลี่ยน)`);
+      }
+      continue;
+    }
+    if (!out.includes(n)) out.push(n);
+  }
+  for (const p of platformLinkEntries()) if (!out.includes(p)) out.push(p);
+  return out;
+}
+
+/** รายการอนุญาตทั้งหมดของระบบนี้ (ที่ร้านประกาศ + ที่ใช้ได้เสมอ) */
+export function linkPolicyEntries(settings: unknown, linkHosts: readonly string[] = linkHostsOf(settings)): string[] {
+  return [...linkHosts, ...alwaysAllowedLinkEntries(settings)];
+}
+
+/** จุดเสียบ Safe Browsing (หนี้) — ตัวจริงอยู่ใน tracking-shared (รอบ 2: ใช้ร่วมกับ `/t/c` ของ emails.ts) · re-export ให้ผู้เรียกเดิม */
+export { isDestinationBlocklisted };
+
+/** ตัวตัดสินปลายทาง (บริสุทธิ์ · sync · ไม่แตะฐาน) — `settings` = `AppSystem.settings` ดิบของระบบ CRM เจ้าของลิงก์ */
+export function linkDestinationCheck(url: unknown, settings: unknown, linkHosts?: readonly string[]): LinkDestinationVerdict {
+  return linkDestinationVerdict(url, linkPolicyEntries(settings, linkHosts ?? linkHostsOf(settings)), isDestinationBlocklisted, platformRedirectorHosts());
+}
+
+/** ปลายทางนี้ใช้ได้ไหม (true/false) — ตัวเดียวกับที่ตอนสร้าง/แก้ลิงก์และ `/l/<code>` ใช้ */
+export function linkDestinationAllowed(url: unknown, settings: unknown): boolean {
+  return linkDestinationCheck(url, settings).ok;
+}
+
+/** ข้อความไทยของคำตัดสินที่ไม่ผ่าน — บอกชื่อเว็บและบอกว่าแก้ที่ไหน (ไม่โทษผู้ใช้) */
+function linkDestinationMessage(v: Exclude<LinkDestinationVerdict, { ok: true }>): string {
+  const host = v.host.length > 80 ? `${v.host.slice(0, 80)}…` : v.host;
+  switch (v.reason) {
+    case "HOST_NOT_ALLOWED":
+      return `ปลายทาง ${host} ยังไม่อยู่ในรายการโดเมนปลายทางที่อนุญาตของร้าน — ${LINK_HOSTS_WHERE} แล้วลองอีกครั้ง`;
+    case "IP":
+      return `ลิงก์ติดตามพาไปที่เลข IP (${host}) ไม่ได้ — ใช้ลิงก์ที่เป็นชื่อเว็บไซต์ แล้ว${LINK_HOSTS_WHERE}`;
+    case "LOCAL":
+      return `ปลายทาง ${host} เป็นชื่อเครื่องในเครือข่ายภายในซึ่งลูกค้าเปิดไม่ได้ — ใช้ลิงก์ของเว็บไซต์ที่เปิดได้จากอินเทอร์เน็ต`;
+    case "USERINFO":
+      return "ลิงก์ปลายทางมีชื่อผู้ใช้หรือรหัสผ่านฝังอยู่หน้าชื่อเว็บ (ส่วนก่อนเครื่องหมาย @) ซึ่งลิงก์ติดตามใช้ไม่ได้ — คัดลอกลิงก์จากแถบที่อยู่ของเบราว์เซอร์อีกครั้ง";
+    case "BLOCKLISTED":
+      return `ปลายทาง ${host} อยู่ในรายการเว็บไซต์ที่ไม่ปลอดภัย ระบบจึงสร้างลิงก์ติดตามไปที่นี่ไม่ได้`;
+    case "REDIRECTOR":
+      return `ลิงก์ติดตามชี้ไปที่ลิงก์ติดตามหรือลิงก์นับคลิกอีกตัวของ ${host} ไม่ได้ (ลิงก์ซ้อนลิงก์) — ใช้ลิงก์ของหน้าปลายทางจริงแทน`;
+    default:
+      return "รับเฉพาะลิงก์ที่ขึ้นต้นด้วย https:// หรือ http:// และต้องมีชื่อเว็บไซต์";
+  }
+}
+
+/** ด่านตอนสร้าง/แก้ลิงก์ — ไม่ผ่าน = VALIDATION พร้อมข้อความไทย (ไม่เขียนอะไร) */
+function assertLinkDestination(url: string, settings: unknown): void {
+  const v = linkDestinationCheck(url, settings);
+  if (!v.ok) throw fail("VALIDATION", linkDestinationMessage(v));
+}
+
+export type LinkPolicyDto = {
+  /** รายการที่ร้านประกาศ (รูปมาตรฐาน) */
+  linkHosts: string[];
+  /** ที่ใช้ได้เสมอโดยไม่ต้องตั้ง (เว็บของร้านในส่วนติดตามเว็บ + แพลตฟอร์ม) — รูป `*.host` */
+  alwaysAllowed: string[];
+  /** ลิงก์ที่เปิดอยู่ (active · ยังไม่หมดอายุ) ที่ปลายทางไม่ผ่านนโยบายภายใต้รายการนี้ */
+  blockedActiveLinks: number;
+  /** id ของลิงก์ข้างบน (สูงสุด 200 — หน้าตั้งค่าใช้ติดป้าย) */
+  blockedLinkIds: string[];
+  /** host ปลายทางของลิงก์ข้างบน (ไม่ซ้ำ · สูงสุด 10) */
+  blockedHosts: string[];
+  max: number;
+};
+
+/**
+ * ลิงก์ที่เปิดอยู่ของระบบนี้ที่ "จะใช้ไม่ได้" ภายใต้รายการ `linkHosts` — อ่านฐาน **คำสั่งเดียว** (url ของลิงก์ที่เปิดอยู่) แล้วตัดสินด้วยตัวตัดสินตัวเดียวกับ `/l`
+ * (ไม่เขียนกติกาชุดที่สองเป็น SQL — สองชุดที่วันหนึ่งไม่ตรงกัน = ตัวเลขบนหน้าจอโกหก)
+ */
+async function linkPolicyOf(ctx: TrackingCtx, settings: unknown, linkHosts: string[], now: Date = new Date()): Promise<LinkPolicyDto> {
+  const rows = await prisma.$queryRaw<{ id: string; url: string }[]>`
+    SELECT "id", "url" FROM "CrmTrackedLink"
+     WHERE "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId} AND "active" = true
+       AND ("expiresAt" IS NULL OR "expiresAt" > ${now})`;
+  const ids: string[] = [];
+  const hosts: string[] = [];
+  let n = 0;
+  for (const r of rows) {
+    const v = linkDestinationCheck(r.url, settings, linkHosts);
+    if (v.ok) continue;
+    n += 1;
+    if (ids.length < 200) ids.push(r.id);
+    if (v.host && hosts.length < 10 && !hosts.includes(v.host)) hosts.push(v.host);
+  }
+  return { linkHosts: [...linkHosts], alwaysAllowed: alwaysAllowedLinkEntries(settings), blockedActiveLinks: n, blockedLinkIds: ids, blockedHosts: hosts, max: LINK_HOSTS_MAX };
+}
+
+/**
+ * ข้อความจากช่องกรอก (บรรทัด/จุลภาค/ช่องว่างคั่น) หรืออาร์เรย์ → รายการมาตรฐาน (ตัวพิมพ์เล็ก · ไม่ซ้ำ · ≤ 50)
+ * 🔴 รายการผิดรูปแม้แต่รายการเดียว = ปฏิเสธทั้งชุดพร้อมบอกว่ารายการไหน (ไม่ทิ้งเงียบ ๆ — เจ้าของร้านจะคิดว่าบันทึกแล้ว)
+ */
+export function cleanLinkHostsInput(input: unknown): string[] {
+  const raw: unknown[] = Array.isArray(input) ? input : typeof input === "string" ? input.split(/[\s,;]+/) : [];
+  if (raw.length > 500) {
+    throw fail("VALIDATION", `ใส่โดเมนปลายทางได้ไม่เกิน ${LINK_HOSTS_MAX} รายการ (ตอนนี้ ${raw.length}) — ลบรายการที่ไม่ใช้ออกก่อน`);
+  }
+  const out: string[] = [];
+  for (const item of raw) {
+    const t = typeof item === "string" ? item.trim() : "";
+    if (!t) continue;
+    // รอบ 2 · RV-5: ชื่อยาวเกิน = ข้อความเรื่องความยาว (ไม่ใช่ "เกิน 50 รายการ") · `*.` นำหน้าไม่นับ
+    if ((t.startsWith("*.") ? t.length - 2 : t.length) > 253) {
+      throw fail("VALIDATION", `"${t.slice(0, 60)}…" ยาวเกินไปสำหรับชื่อโดเมน (ไม่เกิน 253 ตัวอักษร) — ตรวจว่าวางมาเฉพาะชื่อเว็บ ไม่ได้วางทั้งลิงก์`);
+    }
+    const n = normalizeLinkHost(t);
+    if (!n) {
+      const shown = t.length > 60 ? `${t.slice(0, 60)}…` : t;
+      throw fail(
+        "VALIDATION",
+        `"${shown}" ใช้เป็นโดเมนปลายทางไม่ได้ — ใส่ชื่อเว็บล้วน ๆ บรรทัดละหนึ่งชื่อ เช่น shop.example.com หรือ *.example.com (รวมโดเมนย่อย) · ไม่ต้องมี https:// พอร์ต หรือเส้นทาง · ไม่รับเลข IP ชื่อเครื่องภายใน หรือดอกจันครอบโดเมนสาธารณะ/บริการฝากเว็บทั้งหมด เช่น *.co.th *.github.io`,
+      );
+    }
+    if (!out.includes(n)) out.push(n);
+  }
+  if (out.length > LINK_HOSTS_MAX) throw fail("VALIDATION", `ใส่โดเมนปลายทางได้ไม่เกิน ${LINK_HOSTS_MAX} รายการ (ตอนนี้ ${out.length}) — ลบรายการที่ไม่ใช้ออก หรือใช้ *.โดเมน แทนการใส่โดเมนย่อยทีละชื่อ`);
+  return out;
+}
+
+/** นโยบายปลายทางปัจจุบัน + จำนวนลิงก์ที่เปิดอยู่แต่ใช้ไม่ได้ (คีย์ `crm.tracking.manage` — เดียวกับการตั้งค่าติดตามอื่น) */
+export async function getLinkPolicy(ctx: TrackingCtx, actor: MemberActor): Promise<LinkPolicyDto> {
+  const sys = await enter(ctx, actor);
+  return linkPolicyOf(ctx, sys.settings, linkHostsOf(sys.settings));
+}
+
+/** "ถ้าบันทึกรายการนี้ จะมีลิงก์ที่เปิดอยู่ใช้ไม่ได้กี่ลิงก์" — ไม่เขียนอะไร (ตรวจรูปแบบเหมือนตอนบันทึกทุกข้อ) */
+export async function previewLinkHosts(ctx: TrackingCtx, actor: MemberActor, input: { hosts: unknown }): Promise<LinkPolicyDto> {
+  const sys = await enter(ctx, actor);
+  return linkPolicyOf(ctx, sys.settings, cleanLinkHostsInput(input?.hosts));
+}
+
+/**
+ * บันทึก `settings.crm.tracking.linkHosts` ด้วย **คำสั่งเดียว** (jsonb ซ้อนสองชั้น — คีย์อื่นของ `crm` และของ `tracking` เช่น `web` รอดเสมอ)
+ * แล้วคืนนโยบายใหม่ + จำนวนลิงก์ที่เปิดอยู่ที่ใช้ไม่ได้ภายใต้รายการใหม่ · AuditLog `crm.tracking.link.hosts`
+ */
+export async function saveLinkHosts(ctx: TrackingCtx, actor: MemberActor, input: { hosts: unknown }): Promise<LinkPolicyDto> {
+  await enter(ctx, actor);
+  const hosts = cleanLinkHostsInput(input?.hosts);
+  const json = JSON.stringify(hosts);
+  const n = await prisma.$executeRaw`
+    UPDATE "AppSystem"
+    SET "settings" = jsonb_set(
+      CASE WHEN jsonb_typeof("settings") = 'object' THEN "settings" ELSE '{}'::jsonb END,
+      '{crm}',
+      (CASE WHEN jsonb_typeof("settings"->'crm') = 'object' THEN "settings"->'crm' ELSE '{}'::jsonb END)
+        || jsonb_build_object('tracking',
+             (CASE WHEN jsonb_typeof("settings"->'crm'->'tracking') = 'object' THEN "settings"->'crm'->'tracking' ELSE '{}'::jsonb END)
+               || jsonb_build_object('linkHosts', ${json}::jsonb)),
+      true)
+    WHERE "id" = ${ctx.systemId} AND "tenantId" = ${ctx.tenantId} AND "type" = 'CRM'`;
+  if (n === 0) throw fail("NOT_FOUND", "ไม่พบระบบ CRM นี้ในร้าน — ลองเปิดจากเมนูของระบบอีกครั้ง");
+  const after = await resolveSystem(ctx);
+  const policy = await linkPolicyOf(ctx, after.settings, linkHostsOf(after.settings));
+  await audit(ctx, "crm.tracking.link.hosts", "AppSystem", ctx.systemId, { linkHosts: policy.linkHosts, blockedActiveLinks: policy.blockedActiveLinks });
+  return policy;
+}
 
 // ───────────────────────── ลิงก์ติดตาม ─────────────────────────
 
@@ -342,8 +657,9 @@ function cleanCode(raw: unknown): string | null {
 }
 
 export async function createLink(ctx: TrackingCtx, actor: MemberActor, input: { url: string; name?: string | null; channel?: string | null; code?: string | null }): Promise<LinkDto> {
-  await enter(ctx, actor);
+  const sys = await enter(ctx, actor);
   const url = cleanLinkUrl(input?.url);
+  assertLinkDestination(url, sys.settings); // CRM C6.1-LINKPOLICY ▸ ปลายทางต้องอยู่ในรายการอนุญาตของร้าน ◂
   const custom = cleanCode(input?.code);
   const name = str(input?.name).slice(0, 120) || null;
   const channel = str(input?.channel).slice(0, 40) || null;
@@ -389,13 +705,20 @@ async function ownLink(ctx: TrackingCtx, id: string): Promise<LinkRow> {
 }
 
 export async function updateLink(ctx: TrackingCtx, actor: MemberActor, id: string, patch: { name?: string | null; url?: string; active?: boolean; channel?: string | null }): Promise<LinkDto> {
-  await enter(ctx, actor);
+  const sys = await enter(ctx, actor);
   const row = await ownLink(ctx, id);
   const data: Prisma.CrmTrackedLinkUpdateInput = {};
   if (patch?.url !== undefined) data.url = cleanLinkUrl(patch.url);
+  // CRM C6.1-LINKPOLICY ▸ เปลี่ยนปลายทาง หรือ "เปิด" ลิงก์ = ปลายทาง (ใหม่หรือเดิม) ต้องผ่านนโยบาย · แก้ชื่อ/ช่องทาง/ปิดลิงก์ทำได้เสมอ
+  //   (ลิงก์ที่โดเมนถูกถอดออกจากรายการยังเปลี่ยนชื่อหรือปิดได้ — แต่เปิดกลับต้องเพิ่มโดเมนก่อน ไม่งั้นเปิดแล้วก็พาไปไม่ได้อยู่ดี) ◂
+  // รอบ 2 · RV-1: `active` ต้องเป็น true/false จริง ๆ (server action รับ JSON จากหน้าจอ — `1`/`"yes"` เคยเปิดลิงก์ที่ถูกกันได้โดยไม่ผ่านด่าน)
+  //   ⇒ ค่า "เปิด" ตัดสินครั้งเดียว แล้วใช้ทั้งกับด่านและกับค่าที่เขียน
+  if (patch?.active !== undefined && typeof patch.active !== "boolean") throw fail("VALIDATION", "สถานะของลิงก์ต้องเป็นเปิดหรือปิดเท่านั้น — ลองกดสวิตช์อีกครั้ง");
+  const turnOn = patch?.active === true;
+  if (patch?.url !== undefined || turnOn) assertLinkDestination(typeof data.url === "string" ? data.url : row.url, sys.settings);
   if (patch?.name !== undefined) data.name = str(patch.name).slice(0, 120) || null;
   if (patch?.channel !== undefined) data.channel = str(patch.channel).slice(0, 40) || null;
-  if (patch?.active !== undefined) data.active = !!patch.active;
+  if (patch?.active !== undefined) data.active = turnOn;
   const next = await prisma.crmTrackedLink.update({
     where: { id: row.id },
     data,
@@ -594,10 +917,19 @@ export async function resolveSite(siteKey: unknown): Promise<SiteInfo | null> {
  * 🔴 ห้ามตอบ `*` และห้ามตอบว่า "โดเมนนี้เป็นของร้านอื่นที่เปิดติดตามอยู่" (ร้าน A เอา siteKey ไปวางบนเว็บร้าน B ไม่ได้)
  */
 export async function corsOriginForPayload(body: unknown, origin: unknown): Promise<string | null> {
+  if (!str(origin) || !isObj(body)) return null;
+  return corsOriginForSite(await resolveSite((body as CollectBody).k), body, origin);
+}
+
+/** C5.1-fix ▸ ตัวสินใจ CORS จาก site ที่ resolve แล้ว (route `/t/e` resolve ครั้งเดียวแล้วใช้ทั้ง CORS และ collect) — กติกาเดียวกับ corsOriginForPayload ◂ */
+export function siteKeyOfPayload(body: unknown): unknown {
+  return isObj(body) ? (body as CollectBody).k : undefined;
+}
+
+export function corsOriginForSite(site: SiteInfo | null, body: unknown, origin: unknown): string | null {
   const o = str(origin);
   if (!o || !isObj(body)) return null;
   const b = body as CollectBody;
-  const site = await resolveSite(b.k);
   if (!site) return null;
   if (!originAllowed(o, site.domains)) return null;
   // หน้าที่อ้างว่าอยู่คนละโดเมนกับที่ร้านประกาศ = คำขอที่เราไม่รับรู้ ⇒ ไม่ให้ header CORS ด้วย (ไม่ยืนยันอะไรกลับไปเลย)
@@ -634,7 +966,12 @@ export async function corsOriginForPreflight(origin: unknown): Promise<string | 
 }
 
 export type CollectMeta = { origin: string | null; ip: string; userAgent: string; bytes: number };
-export type CollectDeps = { limiter?: (key: string, spec: { limit: number; windowMs: number }) => Promise<{ ok: boolean }>; now?: Date };
+export type CollectDeps = {
+  limiter?: (key: string, spec: { limit: number; windowMs: number }) => Promise<{ ok: boolean }>;
+  now?: Date;
+  /** C5.1-fix ▸ site ที่ route resolve แล้ว (ส่งมา = ไม่ resolve ซ้ำ · null = siteKey ใช้ไม่ได้) ◂ */
+  site?: SiteInfo | null;
+};
 
 type SessionRow = { id: string; tenantId: string; systemId: string; visitorId: string; contactId: string | null; consentVersion: number | null; lastSeenAt: Date; identifiedBy: string | null };
 
@@ -644,12 +981,16 @@ async function latestSession(systemId: string, visitorId: string): Promise<Sessi
   return prisma.crmWebSession.findFirst({ where: { systemId, visitorId }, orderBy: [{ lastSeenAt: "desc" }, { id: "desc" }], select: SESSION_COLS });
 }
 
-/** ผู้ติดต่อคนล่าสุดที่ผู้เข้าชมรายนี้ถูกระบุว่าเป็น (เก็บเป็นเหตุการณ์ IDENTIFY — ไม่มีคอลัมน์ให้เก็บ) */
+/**
+ * ผู้ติดต่อคนล่าสุดที่ผู้เข้าชมรายนี้ถูกระบุว่าเป็น (เก็บเป็นเหตุการณ์ IDENTIFY — ไม่มีคอลัมน์ให้เก็บ)
+ * CRM C4.4-fix3 ▸ (finding c) ไม่นับ IDENTIFY ที่อยู่บนการเข้าชมที่ความยินยอมถูกถอน/ปฏิเสธแล้ว (consentVersion null) —
+ *   ตัวตนที่รู้มาก่อนการถอนเป็นข้อมูลของช่วงที่ถูกถอน ⇒ การเข้าชมรอบใหม่หลังยอมรับอีกครั้งต้องไม่สืบทอดตัวตนนั้น ◂
+ */
 async function lastIdentifiedContact(systemId: string, visitorId: string): Promise<{ contactId: string; by: string } | null> {
   const rows = await prisma.$queryRaw<{ contactId: string | null; by: string | null }[]>`
     SELECT e."meta"->>'contactId' AS "contactId", e."meta"->>'by' AS "by"
       FROM "CrmWebEvent" e JOIN "CrmWebSession" s ON s."id" = e."sessionId"
-     WHERE s."systemId" = ${systemId} AND s."visitorId" = ${visitorId} AND e."kind" = 'IDENTIFY'
+     WHERE s."systemId" = ${systemId} AND s."visitorId" = ${visitorId} AND e."kind" = 'IDENTIFY' AND s."consentVersion" IS NOT NULL
      ORDER BY e."at" DESC, e."id" DESC LIMIT 1`;
   const r = rows[0];
   return r?.contactId ? { contactId: r.contactId, by: r.by ?? "FORM" } : null;
@@ -667,7 +1008,9 @@ async function openSession(
   return prisma.$transaction(async (tx) => {
     await lockKey(tx, `crm:web-visitor:${site.systemId}:${visitorId}`);
     const again = await tx.crmWebSession.findFirst({ where: { systemId: site.systemId, visitorId }, orderBy: [{ lastSeenAt: "desc" }, { id: "desc" }], select: SESSION_COLS });
-    if (again && input.now.getTime() - new Date(again.lastSeenAt).getTime() <= WEB_SESSION_IDLE_MS) return again;
+    // CRM C4.4-fix3 ▸ (finding c) แถวที่ถูกถอน/ปฏิเสธ (consentVersion null) ไม่ถูกหยิบกลับมาใช้แม้ยังไม่พ้นเวลาว่าง ⇒ เปิดรอบใหม่
+    //   r2 (review N8): แถวที่ถือ **เวอร์ชันอื่น** (ก่อนร้านออกข้อความใหม่) ก็เช่นกัน — ต้องเป็นเวอร์ชันเดียวกับที่รอบนี้ยินยอม ◂
+    if (again && again.consentVersion !== null && again.consentVersion === input.consentVersion && input.now.getTime() - new Date(again.lastSeenAt).getTime() <= WEB_SESSION_IDLE_MS) return again;
     const utm = utmOf(input.url);
     return tx.crmWebSession.create({
       data: {
@@ -694,15 +1037,21 @@ async function openSession(
 /**
  * การเข้าชมล่าสุดของผู้เข้าชมรายนี้ **ที่ยังถือความยินยอมอยู่** ในระบบ CRM ที่ระบุ — ไม่มี = null
  * ผู้เรียก: โมดูลฟอร์ม (ผูกคำตอบฟอร์มเข้ากับการเข้าชม · ผ่าน facade เท่านั้น)
+ * CRM C4.4-fix3 ▸ (รีวิว finding c · PDPA) "ถือความยินยอม" = **เวอร์ชันปัจจุบันของร้าน** ไม่ใช่แค่ "ไม่ว่าง": ร้านออกข้อความ
+ *   คุกกี้เวอร์ชันใหม่แล้ว ผู้เข้าชมที่ยอมรับแค่เวอร์ชันเก่าต้องยังไม่ถูกผูก · และต้องเป็น **การเข้าชมล่าสุด** ของผู้เข้าชมรายนั้น
+ *   (ปฏิเสธ/ถอนล้างทุกแถวของผู้เข้าชมอยู่แล้ว ⇒ แถวล่าสุดคือสถานะความยินยอมตอนนี้) ◂
  */
 export async function latestConsentedSessionId(tenantId: string, systemId: string, visitorId: string): Promise<string | null> {
   if (!str(tenantId) || !str(systemId) || !isVisitorId(visitorId)) return null;
+  const sys = await prisma.appSystem.findFirst({ where: { id: systemId, tenantId, type: "CRM" }, select: { settings: true } });
+  if (!sys) return null;
+  const current = webSettingsOf(sys.settings).consentVersion;
   const row = await prisma.crmWebSession.findFirst({
-    where: { tenantId, systemId, visitorId, consentVersion: { not: null } },
+    where: { tenantId, systemId, visitorId },
     orderBy: [{ lastSeenAt: "desc" }, { id: "desc" }],
-    select: { id: true },
+    select: { id: true, consentVersion: true },
   });
-  return row?.id ?? null;
+  return row && row.consentVersion === current ? row.id : null;
 }
 
 /** ผู้ติดต่อที่ผูกกับการเข้าชมนี้ขอ "ไม่ให้ติดตาม" ไหม */
@@ -714,12 +1063,14 @@ async function sessionOptedOut(session: SessionRow): Promise<boolean> {
 
 type CollectBody = { k?: unknown; v?: unknown; cv?: unknown; t?: unknown; u?: unknown; ti?: unknown; r?: unknown; d?: unknown; n?: unknown; ct?: unknown };
 
-/** ด่านร่วมของ `/t/e` และ `/t/consent` — ผ่านแล้วได้ site + visitorId + url ที่สะอาด */
-async function gate(body: unknown, meta: CollectMeta, deps: CollectDeps, kind: "collect" | "consent"): Promise<{ site: SiteInfo; visitorId: string; url: string | null; body: CollectBody; now: Date; ipHash: string } | null> {
+type Gated = { site: SiteInfo; visitorId: string; url: string | null; body: CollectBody; now: Date; ipHash: string };
+
+/** ด่านร่วมของ `/t/e` และ `/t/consent` ส่วนที่ไม่อ่าน/เขียนฐาน (นอกจาก resolve site) — ผ่านแล้วได้ site + visitorId + url ที่สะอาด */
+async function preGate(body: unknown, meta: CollectMeta, deps: CollectDeps, kind: GateKind): Promise<Gated | null> {
   if (!isObj(body)) return null;
   const b = body as CollectBody;
   if (Number(meta?.bytes ?? 0) > TRACKING_PAYLOAD_MAX_BYTES) return null;
-  const site = await resolveSite(b.k);
+  const site = deps?.site !== undefined ? deps.site : await resolveSite(b.k);
   if (!site) return null;
   // AUDIT-CLASS X7: ต้องมาจากหน้าเว็บบนโดเมนที่ร้านประกาศไว้เท่านั้น (https) และ url ของหน้าก็ต้องอยู่โดเมนเดียวกัน
   if (!originAllowed(meta?.origin ?? null, site.domains)) return null;
@@ -730,12 +1081,80 @@ async function gate(body: unknown, meta: CollectMeta, deps: CollectDeps, kind: "
   if (b.u !== undefined && !urlHostAllowed(b.u, site.domains)) return null;
   const now = deps?.now ?? new Date();
   const ipHash = ipHashFor(String(meta?.ip ?? ""), now);
-  const limiter = deps?.limiter ?? ((key: string, spec: { limit: number; windowMs: number }) => checkRateLimitDb(key, spec));
-  const perIp = await limiter(`crm:t${kind === "collect" ? "e" : "c"}:${ipHash.slice(0, 32)}`, kind === "collect" ? TRACKING_RATE_LIMITS.collectPerIp : TRACKING_RATE_LIMITS.consentPerIp);
-  if (!perIp.ok) return null;
-  const perSite = await limiter(`crm:ts:${site.siteKey}`, TRACKING_RATE_LIMITS.collectPerSite);
-  if (!perSite.ok) return null;
   return { site, visitorId, url, body: b, now, ipHash };
+}
+
+// CRM C4.4-fix3 ▸ ชนิดที่สาม `ticket` (= `POST /t/v`) ใช้ด่านร่วมชุดเดียวกัน (siteKey · Origin https ในโดเมนของร้าน · url ในโดเมน ·
+//   รหัสผู้เข้าชม uuid) แต่มีถังต่อ IP ของตัวเอง `crm:tv:` · กุญแจของ `collect`/`consent` เดิมไม่เปลี่ยนแม้แต่ไบต์เดียว ◂
+type GateKind = "collect" | "consent" | "ticket";
+const ipBucketKey = (kind: GateKind, ipHash: string) => `crm:t${kind === "collect" ? "e" : kind === "consent" ? "c" : "v"}:${ipHash.slice(0, 32)}`;
+
+/** ด่านร่วมของ `/t/e` และ `/t/consent` — ผ่านแล้วได้ site + visitorId + url ที่สะอาด */
+async function gate(body: unknown, meta: CollectMeta, deps: CollectDeps, kind: "collect" | "consent"): Promise<Gated | null> {
+  const g = await preGate(body, meta, deps, kind);
+  if (!g) return null;
+  const limiter = deps?.limiter ?? ((key: string, spec: { limit: number; windowMs: number }) => checkRateLimitDb(key, spec));
+  const perIp = await limiter(ipBucketKey(kind, g.ipHash), kind === "collect" ? TRACKING_RATE_LIMITS.collectPerIp : TRACKING_RATE_LIMITS.consentPerIp);
+  if (!perIp.ok) return null;
+  const perSite = await limiter(`crm:ts:${g.site.siteKey}`, TRACKING_RATE_LIMITS.collectPerSite);
+  if (!perSite.ok) return null;
+  return g;
+}
+
+/**
+ * CRM C5.1-fix ▸ F5 ทางร้อนของ `/t/e` (พิมพ์เขียว §12 "เขียนอย่างเดียว"): ถังความถี่สองถัง (IP ก่อน · ถังของเว็บนับเมื่อ IP ผ่านเท่านั้น —
+ *   ลำดับเดิมของ gate) + การเข้าชมล่าสุด + ผู้ติดต่อปิดการติดตาม + ตัวนับ/แถว PAGEVIEW — **คำสั่งเดียว**
+ *   เขียนเฉพาะเมื่อเงื่อนไขเดิมครบทุกข้อ: ผ่านเพดาน · เป็น page · เวอร์ชัน consent ตรงของร้าน · การเข้าชมล่าสุดถือ consent เวอร์ชันนี้ ·
+ *   ยังไม่เกินเวลาว่าง · ผู้ติดต่อไม่ได้ปิดการติดตาม · ทางอื่น (เปิดรอบใหม่ · event · identify · ไม่ผ่านเงื่อนไข) = "slow" ให้ตรรกะเดิมตัดสิน
+ *   (ไม่นับถังซ้ำ) ◂
+ */
+async function collectHot(g: Gated, meta: CollectMeta): Promise<"done" | "blocked" | "slow"> {
+  const { site, visitorId, url, now } = g;
+  const b = g.body;
+  const type = str(b.t);
+  const isPage = type === "page" && Number(b.cv) === site.consentVersion;
+  const ipLim = TRACKING_RATE_LIMITS.collectPerIp;
+  const siteLim = TRACKING_RATE_LIMITS.collectPerSite;
+  const utm = isPage ? utmOf(url) : null;
+  const title = str(b.ti).slice(0, 300) || null;
+  const durationSec = Number.isFinite(Number(b.d)) ? Math.min(Math.max(Math.floor(Number(b.d)), 0), 86_400) : null;
+  const idleCut = new Date(now.getTime() - WEB_SESSION_IDLE_MS);
+  const rows = await prisma.$queryRaw<{ ipCount: number | null; siteCount: number | null; written: number }[]>`
+    WITH ${rateBucketCte("rip", ipBucketKey("collect", g.ipHash), ipLim.windowMs, now.getTime())},
+    ${rateBucketCte("rsite", `crm:ts:${site.siteKey}`, siteLim.windowMs, now.getTime(), { after: "rip", limit: ipLim.limit })},
+    s AS (
+      SELECT ws."id", ws."tenantId", ws."contactId", ws."consentVersion", ws."lastSeenAt"
+        FROM "CrmWebSession" ws
+       WHERE ws."systemId" = ${site.systemId} AND ws."visitorId" = ${visitorId}
+       ORDER BY ws."lastSeenAt" DESC, ws."id" DESC
+       LIMIT 1
+    ), go AS (
+      SELECT s."id" FROM s
+       WHERE ${isPage}::boolean
+         AND EXISTS (SELECT 1 FROM rsite WHERE rsite."count" <= ${siteLim.limit})
+         AND s."consentVersion" = ${site.consentVersion}
+         AND s."lastSeenAt" >= ${idleCut}
+         AND NOT EXISTS (SELECT 1 FROM "CrmContact" c WHERE c."id" = s."contactId" AND c."tenantId" = s."tenantId" AND c."trackingOptOut" = TRUE)
+    ), upd AS (
+      UPDATE "CrmWebSession" w
+         SET "pageViews" = w."pageViews" + 1,
+             "lastSeenAt" = ${now},
+             "firstUrl" = COALESCE(w."firstUrl", ${url}),
+             "utm" = COALESCE(w."utm", ${(utm ? JSON.stringify(utm) : null) as string | null}::jsonb)
+        FROM go WHERE w."id" = go."id"
+      RETURNING w."id", w."tenantId"
+    ), ins AS (
+      INSERT INTO "CrmWebEvent" ("id", "tenantId", "sessionId", "kind", "url", "title", "durationSec", "at")
+      SELECT gen_random_uuid()::text, upd."tenantId", upd."id", 'PAGEVIEW'::"CrmWebEventKind", ${url}, ${title}, ${durationSec}, ${now} FROM upd
+      RETURNING "id"
+    )
+    SELECT (SELECT "count" FROM rip) AS "ipCount", (SELECT "count" FROM rsite) AS "siteCount", (SELECT count(*) FROM ins)::int AS "written"`;
+  void meta;
+  const r = rows[0];
+  const ipOk = r?.ipCount !== null && r?.ipCount !== undefined && Number(r.ipCount) <= ipLim.limit;
+  const siteOk = r?.siteCount !== null && r?.siteCount !== undefined && Number(r.siteCount) <= siteLim.limit;
+  if (!ipOk || !siteOk) return "blocked";
+  return Number(r?.written ?? 0) > 0 ? "done" : "slow";
 }
 
 /**
@@ -745,7 +1164,16 @@ async function gate(body: unknown, meta: CollectMeta, deps: CollectDeps, kind: "
  */
 export async function collect(body: unknown, meta: CollectMeta, deps: CollectDeps = {}): Promise<void> {
   try {
-    const g = await gate(body, meta, deps, "collect");
+    // CRM C5.1-fix ▸ F5: ไม่มีตัวจำกัดที่ผู้เรียกฉีดมา (= route จริง) ⇒ ทางร้อนคำสั่งเดียว (collectHot) · ข้อสอบที่ฉีด limiter = ทางเดิม ◂
+    let g: Gated | null;
+    if (!deps?.limiter) {
+      g = await preGate(body, meta, deps, "collect");
+      if (!g) return;
+      const hot = await collectHot(g, meta);
+      if (hot !== "slow") return;
+    } else {
+      g = await gate(body, meta, deps, "collect");
+    }
     if (!g) return;
     const { site, visitorId, url, now, ipHash } = g;
     const b = g.body;
@@ -769,6 +1197,7 @@ export async function collect(body: unknown, meta: CollectMeta, deps: CollectDep
       //    (ถ้าเผาก่อนตรวจ ใครก็ยิงตั๋วที่ดักมาไปที่เว็บของร้านอื่นเพื่อ "เผาทิ้ง" ก่อนเจ้าของตัวจริงจะได้ใช้)
       if (!(await consumeIdentifyTicket(ticket.j, deps?.limiter))) return;
       await identify({ tenantId: site.tenantId, systemId: site.systemId }, { visitorId, contactId: ticket.c, by: "EMAIL_CLICK" }, { now });
+      wakeOutbox(); // CRM C5.5-fix13 ▸ P-it5-2 sweep: event ผูกผู้เข้าชม (identify commit แล้ว) — เฉพาะชนิด identify (ไม่ใช่ทุกการเข้าชม) ◂
       return;
     }
 
@@ -823,7 +1252,11 @@ export async function recordConsent(body: unknown, meta: CollectMeta, deps: Coll
     if (Number(g.body.cv) !== site.consentVersion) return;
 
     const existing = await latestSession(site.systemId, visitorId);
-    const fresh = existing && now.getTime() - new Date(existing.lastSeenAt).getTime() <= WEB_SESSION_IDLE_MS ? existing : null;
+    // CRM C4.4-fix3 ▸ (finding c) ยอมรับใหม่หลังถอน/ปฏิเสธ = การเข้าชมรอบใหม่เสมอ — แถวที่ถูกถอนเก็บหน้าที่ดูก่อนการถอนไว้
+    //   ถ้า "ต่ออายุ" แถวนั้นกลับมา หน้าเหล่านั้นจะกลายเป็นข้อมูลที่ยินยอมอีกครั้งทั้งที่เจ้าของถอนไปแล้ว (และถูกผูกเข้าลูกค้าได้) ◂
+    //   r2 (review N8) ▸ เช่นเดียวกัน: แถวที่ยินยอมไว้กับข้อความ **เวอร์ชันเก่า** ไม่ถูก "อัปเกรด" (หน้าที่ดูก่อนร้านออกเวอร์ชันใหม่ต้องไม่กลายเป็น
+    //   ข้อมูลที่ยินยอมตามข้อความใหม่ — มติ "ประวัติแบบไม่ระบุตัวก่อนเปลี่ยนเวอร์ชันไม่ถูกผูก") ⇒ ยอมรับเวอร์ชันใหม่ = รอบใหม่เสมอ ◂
+    const fresh = existing && existing.consentVersion === site.consentVersion && now.getTime() - new Date(existing.lastSeenAt).getTime() <= WEB_SESSION_IDLE_MS ? existing : null;
     const utm = utmOf(url);
     const session =
       fresh ??
@@ -850,6 +1283,94 @@ export async function recordConsent(body: unknown, meta: CollectMeta, deps: Coll
     await logOps("WARN", "crm", `บันทึกความยินยอมคุกกี้ไม่สำเร็จ — ${e instanceof Error ? e.name : "unknown"}`, {}).catch(() => {});
   }
 }
+
+// CRM C4.4-fix3 ▸ ตั๋วผู้เข้าชม: ออก (`/t/v`) · แลก (ฟอร์ม) · สวิตช์ของหน้า `/f` ─────────────────────────
+
+export type VisitorTicketMint = { ticket: string; origin: string };
+
+/**
+ * `POST /t/v` — ออกตั๋วผู้เข้าชม 1 ใบให้สคริปต์ติดตามบนหน้าของร้าน (ส่งต่อให้ iframe ฟอร์มของเราทาง postMessage)
+ * 🔴 AUDIT-CLASS X7: ด่านเดียวกับ `/t/e` ทุกข้อ (body ≤ เพดาน · siteKey ใช้ได้ (ไม่รู้จัก/ปิด/uiVersion 1 = null) · Origin https
+ *    ในโดเมนของร้าน · url ของหน้าในโดเมนของร้าน · รหัสผู้เข้าชม uuid · เวอร์ชัน consent ตรงของร้าน) + ถังต่อ IP ของตัวเอง + ถังต่อเว็บไซต์
+ *    ร่วมกับ `/t/e` · ไม่ผ่านข้อใด = `null` ⇒ route ตอบ 204 เปล่าแบบเดียวกันทุกไบต์ (ไม่มีทางรู้ว่า "ผู้เข้าชมนี้มีอยู่ไหม/ยินยอมไหม")
+ * 🔴 AUDIT-CLASS X8: ออกตั๋วเฉพาะเมื่อ **การเข้าชมล่าสุด** ของผู้เข้าชมรายนี้ถือ consent เวอร์ชันปัจจุบัน และผู้ติดต่อที่ผูกอยู่ (ถ้ามี)
+ *    ไม่ได้ขอหยุดติดตาม · ไม่เขียนแถวใด ๆ (นอกจากถังความถี่) · ไม่ log ตั๋ว
+ */
+export async function mintVisitorTicket(body: unknown, meta: CollectMeta, deps: CollectDeps = {}): Promise<VisitorTicketMint | null> {
+  try {
+    const g = await preGate(body, meta, deps, "ticket");
+    if (!g) return null;
+    const { site, visitorId, now } = g;
+    if (Number(g.body.cv) !== site.consentVersion) return null;
+    const limiter = deps?.limiter ?? ((key: string, spec: { limit: number; windowMs: number }) => checkRateLimitDb(key, spec));
+    if (!(await limiter(ipBucketKey("ticket", g.ipHash), TRACKING_RATE_LIMITS.visitorTicketPerIp)).ok) return null;
+    if (!(await limiter(`crm:ts:${site.siteKey}`, TRACKING_RATE_LIMITS.collectPerSite)).ok) return null;
+    const session = await latestSession(site.systemId, visitorId);
+    if (!session || session.consentVersion !== site.consentVersion) return null; // ไม่เคยยอมรับ · ปฏิเสธ · ถอน · เวอร์ชันเก่า
+    if (await sessionOptedOut(session)) return null;
+    const ticket = visitorTicket({ tenantId: site.tenantId, systemId: site.systemId, siteKey: site.siteKey, visitorId, consentVersion: site.consentVersion }, now);
+    return { ticket, origin: str(meta?.origin) };
+  } catch (e) {
+    await logOps("WARN", "crm", `ออกตั๋วผู้เข้าชมไม่สำเร็จ — ${e instanceof Error ? e.name : "unknown"}`, {}).catch(() => {});
+    return null;
+  }
+}
+
+/**
+ * แลกตั๋วผู้เข้าชมที่ฟอร์ม `/f/<token>` แนบมา → การเข้าชมที่จะผูกกับคำตอบ (ผู้เรียก: `forms/crm-source.ts` ผ่าน facade)
+ *   ลำดับ: เปิดผนึก/อายุ/ชนิด → ร้าน + ระบบ CRM ในตั๋ว **ต้องตรง** ระบบปลายทางของฟอร์ม (`ctx`) → siteKey ในตั๋วยังชี้ระบบเดิม และร้านยังไม่ได้
+ *   ออกข้อความคุกกี้เวอร์ชันใหม่ → **เผา** jti (store เดียวกับตั๋วอีเมล) → การเข้าชมล่าสุดที่ถือ consent เวอร์ชันปัจจุบัน
+ * 🔴 เผาหลังตรวจว่าเป็นตั๋วของระบบนี้จริงเท่านั้น (ตั๋วของร้าน B ที่ถูกยื่นบนฟอร์มร้าน A ต้องไม่ถูกเผาทิ้งแทนเจ้าของ) — แบบเดียวกับตั๋วอีเมล
+ * 🔴 ไม่ผ่าน = `null` + WARN หนึ่งแถว (เหตุผลเป็นรหัสสั้น ไม่มีตั๋ว/รหัสผู้เข้าชม) — ฟอร์มยังบันทึกได้ตามปกติ ผู้กรอกไม่เห็นอะไรเลย
+ */
+export async function redeemVisitorTicket(
+  ctx: { tenantId: string; systemId: string },
+  ticket: unknown,
+  opts: { now?: Date; limiter?: (key: string, spec: { limit: number; windowMs: number }) => Promise<{ ok: boolean }> } = {},
+): Promise<string | null> {
+  const now = opts?.now ?? new Date();
+  const warn = (why: string) =>
+    logOps("WARN", "crm", `ตั๋วผู้เข้าชมที่แนบมากับฟอร์มใช้ผูกประวัติการเข้าชมไม่ได้ (${why}) — คำตอบฟอร์มบันทึกตามปกติ แต่ไม่ผูกการเข้าชม · ระบบ ${str(ctx?.systemId)}`, {
+      ...(str(ctx?.tenantId) ? { tenantId: str(ctx?.tenantId) } : {}),
+    }).catch(() => {});
+  const refuse = async (why: string): Promise<null> => {
+    await warn(why);
+    return null;
+  };
+  try {
+    const p = readVisitorTicket(ticket, now);
+    if (!p) return refuse("INVALID");
+    if (!safeEqualHex(p.t, str(ctx?.tenantId)) || !safeEqualHex(p.s, str(ctx?.systemId))) return refuse("MISMATCH");
+    const site = await resolveSite(p.sk);
+    if (!site || site.tenantId !== p.t || site.systemId !== p.s || site.consentVersion !== p.cv) return refuse("STALE");
+    if (!(await consumeIdentifyTicket(p.j, opts?.limiter))) return refuse("REPLAY");
+    const sessionId = await latestConsentedSessionId(p.t, p.s, p.v);
+    if (!sessionId) return refuse("NO_CONSENT");
+    // CRM C4.4-fix3 r2 ▸ (review N8/N12) ผู้ติดต่อที่ผูกกับการเข้าชมนี้ขอหยุดติดตามหลังออกตั๋ว ⇒ ไม่ผูก (ตรวจซ้ำตอนแลก ไม่ใช่แค่ตอนออก) ◂
+    const row = await prisma.crmWebSession.findFirst({ where: { id: sessionId, tenantId: p.t, systemId: p.s }, select: SESSION_COLS });
+    if (!row || (await sessionOptedOut(row))) return refuse("OPT_OUT");
+    return sessionId;
+  } catch (e) {
+    await warn(e instanceof Error ? e.name : "unknown");
+    return null;
+  }
+}
+
+/**
+ * หน้า `/f/<token>` ควรเปิด "รับตั๋วจากหน้าเว็บที่ฝัง" ไหม และรับจากหน้าเว็บโดเมนไหนได้ — ระบบ CRM ปลายทางของฟอร์มต้องเป็น uiVersion 2 +
+ *   เปิดติดตามเว็บ + มี siteKey และโดเมน ⇒ คืน **โดเมนติดตามของระบบนั้น** · ไม่เข้าเงื่อนไข = `[]` (ร้าน uiVersion 1 ทุกร้านบน prod /
+ *   ปิดการติดตาม = หน้าฟอร์มไม่ติดตั้งตัวฟังและไม่ส่งข้อความใด ๆ — พฤติกรรมเดิมทุกอย่าง)
+ * CRM C4.4-fix3 r2 ▸ (review N6) หน้าฟอร์มรับตั๋วเฉพาะเมื่อ origin ของหน้าที่ฝังอยู่ในโดเมนชุดนี้ (กติกาเดียวกับ `originAllowed`) ⇒ เว็บอื่น
+ *   ที่ฝังฟอร์มของร้านไว้ "ยัดตั๋ว" ของผู้เข้าชมที่ตัวเองสร้างให้ผู้กรอกไม่ได้ · โดเมนชุดนี้คือเว็บของร้านเอง (ที่ฝังฟอร์มอยู่แล้ว) ◂
+ */
+export async function visitorHandoverHosts(tenantId: string, systemId: string): Promise<string[]> {
+  if (!str(tenantId) || !str(systemId)) return [];
+  const sys = await prisma.appSystem.findFirst({ where: { id: systemId, tenantId, type: "CRM" }, select: { settings: true } });
+  if (!sys) return [];
+  const web = webSettingsOf(sys.settings);
+  return web.enabled && !!web.siteKey && web.domains.length > 0 && parseCrmSettings(sys.settings).uiVersion === 2 ? [...web.domains] : [];
+}
+// ◂ CRM C4.4-fix3
 
 // ───────────────────────── ระบุตัวตน ─────────────────────────
 
@@ -883,22 +1404,28 @@ export async function identify(
   const day = thaiDayKey(now);
   const sourceRef = `web#${contactId}#${day}`;
   const cutoff = new Date(now.getTime() - IDENTIFY_LOOKBACK_DAYS * DAY_MS);
+  // CRM C4.4-fix3 ▸ (รีวิว finding c · PDPA · AUDIT-CLASS X8) ผูกได้เฉพาะการเข้าชมที่ **ความยินยอมยังใช้ได้ตอนนี้** = ถือ consent
+  //   เวอร์ชันปัจจุบันของร้าน · แถวที่ถูกถอน/ปฏิเสธ (null) หรือยอมรับแค่ข้อความเวอร์ชันเก่า ไม่ถูกผูก ไม่ถูกเขียน IDENTIFY ทับ ·
+  //   ผู้เข้าชมที่ไม่มีการเข้าชมที่ยินยอมอยู่เลย = NO_SESSIONS (ไม่เขียนอะไร) — ทางไหนเรียกมาก็ตาม (ฟอร์ม · อีเมล · ตั๋ว) ◂
+  const consentNow = webSettingsOf(sys.settings).consentVersion;
 
   const out = await prisma.$transaction(async (tx) => {
     for (const k of [`crm:web-visitor:${ctx.systemId}:${visitorId}`, `crm:web-day:${ctx.systemId}:${contactId}:${day}`].sort()) await lockKey(tx, k);
-    const all = await tx.crmWebSession.findMany({ where: { systemId: ctx.systemId, visitorId }, orderBy: [{ lastSeenAt: "desc" }, { id: "desc" }], select: SESSION_COLS });
+    const all = await tx.crmWebSession.findMany({ where: { systemId: ctx.systemId, visitorId, consentVersion: consentNow }, orderBy: [{ lastSeenAt: "desc" }, { id: "desc" }], select: SESSION_COLS });
     if (all.length === 0) return { bound: 0, activityId: null, skipped: "NO_SESSIONS" as const, sessionCount: 0, pageViews: 0, firstUrl: null as string | null };
     const bound = await tx.crmWebSession.updateMany({
       // AUDIT-CLASS X1 (รีวิวรอบ 2 · N10): ผูก tenantId ด้วยเสมอ — `systemId` เป็นของร้านนี้อยู่แล้ว แต่เงื่อนไขที่
       //   ครบทั้งคู่คือกติกาของทั้งโมดูล (วันที่ id ชนกันหรือคิวรีถูกคัดลอกไปใช้ที่อื่น ยังปลอดภัย)
-      where: { tenantId: ctx.tenantId, systemId: ctx.systemId, visitorId, contactId: null, startedAt: { gte: cutoff } },
+      where: { tenantId: ctx.tenantId, systemId: ctx.systemId, visitorId, contactId: null, startedAt: { gte: cutoff }, consentVersion: consentNow },
       data: { contactId, identifiedBy: by },
     });
     // เจตนา "ผู้เข้าชมรายนี้คือผู้ติดต่อคนนี้" — รอบใหม่ของผู้เข้าชมสืบทอดจากที่นี่ (ไม่มีคอลัมน์เก็บ · เก็บเป็นเหตุการณ์)
     const rows = await tx.$queryRaw<{ contactId: string | null }[]>`
       SELECT e."meta"->>'contactId' AS "contactId" FROM "CrmWebEvent" e JOIN "CrmWebSession" s ON s."id" = e."sessionId"
-       WHERE s."systemId" = ${ctx.systemId} AND s."visitorId" = ${visitorId} AND e."kind" = 'IDENTIFY'
+       WHERE s."systemId" = ${ctx.systemId} AND s."visitorId" = ${visitorId} AND e."kind" = 'IDENTIFY' AND s."consentVersion" IS NOT NULL
        ORDER BY e."at" DESC, e."id" DESC LIMIT 1`;
+    // CRM C4.4-fix3 r2 ▸ (review S1) กติกาเดียวกับ `lastIdentifiedContact`: IDENTIFY บนแถวที่ถูกถอนไม่นับ — ไม่งั้นระบุเป็นคนเดิมหลัง
+    //   ถอน→ยอมรับใหม่ จะ "เห็นว่ามีแล้ว" แต่ตัวสืบทอดมองไม่เห็น ⇒ รอบถัดไปไม่สืบทอดตัวตน ◂
     if (rows[0]?.contactId !== contactId) {
       await tx.crmWebEvent.create({ data: { tenantId: ctx.tenantId, sessionId: all[0].id, kind: "IDENTIFY", meta: { contactId, by } as Json, at: now } });
     }
@@ -933,13 +1460,14 @@ export async function identify(
         dealId: null,
         at: now,
       }));
-    // AUDIT-CLASS X8: payload เป็น id/ตัวเลขล้วน (ไม่มีชื่อ เบอร์ อีเมล)
+    // AUDIT-CLASS X8: payload เป็น id/ตัวเลขล้วน (ไม่มีชื่อ เบอร์ อีเมล) · CRM C5.4-B L5-m6: ไม่มี firstUrl (url เป็นพฤติกรรมของคน —
+    //   ไปถึง webhook/automation แล้วค้างใน WebhookDelivery หลังลบข้อมูล) · ผู้บริโภคที่ต้องการอ่านจาก CrmWebSession ตามสิทธิ์ ◂
     await emitOutbox(tx, {
       tenantId: ctx.tenantId,
       systemId: ctx.systemId,
       type: "crm.web.identified",
       idempotencyKey: `crm.web.identified#${contactId}#${day}`,
-      payload: { contactId, systemId: ctx.systemId, visitorId, sessionCount: bound.count, pageViews, ...(firstUrl ? { firstUrl } : {}), by },
+      payload: { contactId, systemId: ctx.systemId, visitorId, sessionCount: bound.count, pageViews, by },
     });
     return { bound: bound.count, activityId: activity.id, sessionCount: bound.count, pageViews, firstUrl };
   }, TX_OPTS);
@@ -949,7 +1477,7 @@ export async function identify(
 
 // ───────────────────────── ล้างตามอายุ (retention) ─────────────────────────
 
-export type PurgeResult = { sessionsDeleted: number; sessionsSummarised: number; eventsDeleted: number };
+export type PurgeResult = { sessionsDeleted: number; sessionsSummarised: number; eventsDeleted: number; /** C5.4-B L5-m5 */ clicksDeleted: number };
 
 /**
  * ล้างข้อมูลการเข้าชมที่เกินอายุเก็บของแต่ละระบบ (ค่าเริ่มต้น 180 วัน · นับจาก `lastSeenAt`)
@@ -971,7 +1499,7 @@ export async function purgeWeb(
 ): Promise<PurgeResult> {
   const tenantIds = Array.isArray(opts?.tenantIds) ? opts.tenantIds.filter((t) => typeof t === "string" && t) : null;
   const systemIds = Array.isArray(opts?.systemIds) ? opts.systemIds.filter((x) => typeof x === "string" && x) : null;
-  const out: PurgeResult = { sessionsDeleted: 0, sessionsSummarised: 0, eventsDeleted: 0 };
+  const out: PurgeResult = { sessionsDeleted: 0, sessionsSummarised: 0, eventsDeleted: 0, clicksDeleted: 0 };
   if ((tenantIds && tenantIds.length === 0) || (systemIds && systemIds.length === 0)) return out;
   const stop = () => !!opts.signal?.aborted || (typeof opts.deadline === "number" && Date.now() > opts.deadline - 500);
   const systems = await prisma.appSystem.findMany({
@@ -998,6 +1526,11 @@ export async function purgeWeb(
       UPDATE "CrmWebSession" SET "ipHash" = NULL, "userAgent" = NULL, "purgedAt" = ${now}
        WHERE "systemId" = ${sys.id} AND "lastSeenAt" < ${cutoff} AND "contactId" IS NOT NULL AND "purgedAt" IS NULL RETURNING "id"`;
     out.sessionsSummarised += summarised.length;
+    // CRM C5.4-B ▸ L5-m5: คลิกของลิงก์ติดตาม (ผู้ติดต่อ · user agent · เวลา) อายุเก็บเดียวกับการเข้าเว็บ — ตัวนับของลิงก์ (clicks/uniqueClicks) คงอยู่ ◂
+    const clicks = await prisma.$executeRaw`
+      DELETE FROM "CrmTrackedClick" c USING "CrmTrackedLink" l
+       WHERE c."linkId" = l."id" AND l."systemId" = ${sys.id} AND l."tenantId" = ${sys.tenantId} AND c."at" < ${cutoff}`;
+    out.clicksDeleted += Number(clicks);
   }
   return out;
 }
@@ -1195,31 +1728,54 @@ export type LinkHit = { url: string; code: string } | null;
  * 🔴 ไม่รู้จัก / ปิด / หมดอายุ = `null` ⇒ route ตอบเหมือนกันทุกไบต์ (X7)
  * 🔴 uiVersion 1 = ยัง redirect (QR ที่พิมพ์ไปแล้วต้องไม่ตาย) แต่ไม่นับอะไรเลย (R-E.14 · มติผู้คุมงาน ข้อ 6)
  */
+/**
+ * CRM C5.4-F ▸ L4-M3 — สถานะร้านที่ยังให้ `/l/<code>` redirect ได้: **รายการอนุญาต** (ACTIVE · PENDING) — สถานะอื่นทั้งหมด
+ * (SUSPENDED "login ไม่ได้ + storefront 410" · CLOSED · PENDING_DELETE · สถานะที่เพิ่มในอนาคต · ไม่พบร้าน) = ไม่ redirect
+ */
+const LINK_TENANT_OK: ReadonlySet<string> = new Set(["ACTIVE", "PENDING"]);
+function linkTenantMayRedirect(status: string | null): boolean {
+  return !!status && LINK_TENANT_OK.has(status);
+}
+
 export async function resolveLinkHit(code: unknown, meta: { ip: string; userAgent: string; hasUniqueCookie: boolean }, now: Date = new Date()): Promise<LinkHit> {
   const c = str(code);
   if (!c || c.length > 64) return null;
-  const link = await prisma.crmTrackedLink.findFirst({
-    where: { code: c },
-    select: { id: true, code: true, url: true, tenantId: true, systemId: true, active: true, expiresAt: true },
-  });
+  // CRM C5.1-fix ▸ F5: ลิงก์ + ระบบในคำสั่งเดียว (เดิม 2) · ถังความถี่ + ตัวนับ + แถวคลิกในคำสั่งเดียว (เดิม 2) ⇒ ทางร้อน 2 รอบไปกลับ ◂
+  // CRM C5.4-F ▸ L4-M3 (ส่วนที่เป็นข้อเท็จจริง): สถานะร้านมากับคำสั่งเดียวกัน (ไม่เพิ่มรอบไปกลับ) ◂
+  const found = await prisma.$queryRaw<{ id: string; code: string; url: string; tenantId: string; systemId: string; active: boolean; expiresAt: Date | null; settings: unknown; sys: boolean; tenantStatus: string | null }[]>`
+    SELECT l."id", l."code", l."url", l."tenantId", l."systemId", l."active", l."expiresAt", s."settings", (s."id" IS NOT NULL) AS "sys", t."status"::text AS "tenantStatus"
+      FROM "CrmTrackedLink" l
+      LEFT JOIN "AppSystem" s ON s."id" = l."systemId" AND s."tenantId" = l."tenantId" AND s."type" = 'CRM'
+      LEFT JOIN "Tenant" t ON t."id" = l."tenantId"
+     WHERE l."code" = ${c}
+     LIMIT 1`;
+  const link = found[0];
   if (!link || !link.active) return null;
   if (link.expiresAt && new Date(link.expiresAt).getTime() <= now.getTime()) return null;
+  // CRM C5.4-F ▸ L4-M3: สวิตช์ปิดของแพลตฟอร์ม — ร้านที่ไม่ได้ ACTIVE/PENDING (ระงับ/ปิด/รอลบ) ใช้ `shark.in.th/l/<code>` พาคนไปที่ไหนไม่ได้อีก
+  //   (คำตอบเดียวกับรหัสที่ไม่รู้จัก · ไม่นับคลิก) ◂
+  if (!linkTenantMayRedirect(link.tenantStatus)) return null;
+  // CRM C6.1-LINKPOLICY ▸ มติเจ้าของ P11/Q15 ข้อ (ข): ปลายทางต้องผ่านนโยบายของระบบเจ้าของลิงก์ **ตอนนี้** (settings มากับคำสั่งเดียวกันแล้ว
+  //   ไม่เพิ่มรอบไปกลับ) — โดเมนที่ถูกถอดออกจากรายการภายหลัง / ลิงก์เก่าก่อนมีนโยบาย = คำตอบเดียวกับรหัสที่ไม่รู้จัก ไม่นับคลิก ·
+  //   Safe Browsing = จุดเสียบ `isDestinationBlocklisted` (ยังไม่มีรายการ — หนี้) ◂
+  if (!linkDestinationAllowed(link.url, link.settings)) return null;
   try {
-    const sys = await prisma.appSystem.findFirst({ where: { id: link.systemId, tenantId: link.tenantId, type: "CRM" }, select: { settings: true } });
-    const v2 = !!sys && parseCrmSettings(sys.settings).uiVersion === 2;
+    const v2 = link.sys && parseCrmSettings(link.settings as Prisma.JsonValue).uiVersion === 2;
     if (v2 && !isBotUserAgent(meta?.userAgent)) {
-      const ok = await checkRateLimitDb(`crm:l:${ipHashFor(String(meta?.ip ?? ""), now).slice(0, 32)}`, TRACKING_RATE_LIMITS.linkPerIp);
-      if (ok.ok) {
-        const uniqueInc = meta?.hasUniqueCookie ? 0 : 1;
-        // AUDIT-CLASS X3: ตัวนับสองตัว + แถวคลิก จบในคำสั่งเดียว
-        await prisma.$executeRaw`
-          WITH l AS (
-            UPDATE "CrmTrackedLink" SET "clicks" = "clicks" + 1, "uniqueClicks" = "uniqueClicks" + ${uniqueInc}
-             WHERE "id" = ${link.id} RETURNING "id", "tenantId"
-          )
+      const uniqueInc = meta?.hasUniqueCookie ? 0 : 1;
+      const lim = TRACKING_RATE_LIMITS.linkPerIp;
+      // AUDIT-CLASS X3: ถังความถี่ (คำสั่งเดียวแบบ checkRateLimitDb) + ตัวนับสองตัว + แถวคลิก จบในคำสั่งเดียว — เกินเพดาน = ไม่นับ
+      await prisma.$queryRaw`
+        WITH ${rateBucketCte("rl", `crm:l:${ipHashFor(String(meta?.ip ?? ""), now).slice(0, 32)}`, lim.windowMs, now.getTime())},
+        l AS (
+          UPDATE "CrmTrackedLink" SET "clicks" = "clicks" + 1, "uniqueClicks" = "uniqueClicks" + ${uniqueInc}
+           WHERE "id" = ${link.id} AND (SELECT rl."count" FROM rl) <= ${lim.limit} RETURNING "id", "tenantId"
+        ), ins AS (
           INSERT INTO "CrmTrackedClick" ("id", "tenantId", "linkId", "userAgent", "at")
-          SELECT gen_random_uuid()::text, l."tenantId", l."id", ${str(meta?.userAgent).slice(0, 200) || null}, ${now} FROM l`;
-      }
+          SELECT gen_random_uuid()::text, l."tenantId", l."id", ${str(meta?.userAgent).slice(0, 200) || null}, ${now} FROM l
+          RETURNING "id"
+        )
+        SELECT (SELECT count(*) FROM ins)::int AS "n"`;
     }
   } catch (e) {
     // นับไม่ได้ = ตัวเลขในรายงานขาดไป 1 — ห้ามทำให้ลูกค้าที่กดลิงก์ไปต่อไม่ได้
@@ -1236,16 +1792,37 @@ export const linkUniqueCookie = (code: string): string =>
  * `/t/c/<token>` (route ของใบ C2.5) — ต่อท้ายตั๋วระบุตัวตนให้ลิงก์ที่ลูกค้ากดจากอีเมล
  * 🔴 ต่อให้เฉพาะ "คลิกที่นับจริง" ของจดหมายที่รู้ว่าเป็นของผู้ติดต่อคนไหน และปลายทางอยู่ในโดเมนของร้านเท่านั้น
  */
-export async function ticketedClickUrl(emailId: unknown, url: string, opts: { counted: boolean; userAgent?: string | null }, now: Date = new Date()): Promise<string> {
+export async function ticketedClickUrl(
+  emailId: unknown,
+  url: string,
+  opts: {
+    counted: boolean;
+    userAgent?: string | null;
+    /** C5.1-fix ▸ F5: แถวที่ `emails.trackClick` อ่านมาแล้วในคำสั่งนับ (อีเมล · ผู้ติดต่อ · ระบบ) — ส่งมา = ไม่อ่านฐานซ้ำ (ความหมายเดิมทุกข้อ) ◂ */
+    pre?: { emailId: string; tenantId: string; systemId: string; contactId: string | null; contactTenantId: string | null; trackingOptOut: boolean; settings: unknown } | null;
+  },
+  now: Date = new Date(),
+): Promise<string> {
   try {
     if (!opts?.counted || isBotUserAgent(opts?.userAgent ?? "")) return url;
     const id = str(emailId);
     if (!id) return url;
-    const msg = await prisma.crmEmailMessage.findFirst({ where: { id }, select: { id: true, tenantId: true, systemId: true, contactId: true } });
+    const pre = opts.pre && opts.pre.emailId === id ? opts.pre : null;
+    const msg = pre
+      ? { id: pre.emailId, tenantId: pre.tenantId, systemId: pre.systemId, contactId: pre.contactId }
+      : await prisma.crmEmailMessage.findFirst({ where: { id }, select: { id: true, tenantId: true, systemId: true, contactId: true } });
     if (!msg?.contactId) return url;
-    const contact = await prisma.crmContact.findFirst({ where: { id: msg.contactId, tenantId: msg.tenantId }, select: { trackingOptOut: true } });
+    const contact = pre
+      ? pre.contactTenantId === msg.tenantId
+        ? { trackingOptOut: pre.trackingOptOut }
+        : null
+      : await prisma.crmContact.findFirst({ where: { id: msg.contactId, tenantId: msg.tenantId }, select: { trackingOptOut: true } });
     if (contact?.trackingOptOut) return url;
-    const sys = await prisma.appSystem.findFirst({ where: { id: msg.systemId, tenantId: msg.tenantId, type: "CRM" }, select: { settings: true } });
+    const sys = pre
+      ? pre.settings === null || pre.settings === undefined
+        ? null
+        : { settings: pre.settings as Prisma.JsonValue }
+      : await prisma.appSystem.findFirst({ where: { id: msg.systemId, tenantId: msg.tenantId, type: "CRM" }, select: { settings: true } });
     if (!sys) return url;
     const web = webSettingsOf(sys.settings);
     if (!web.enabled || web.domains.length === 0) return url;
@@ -1276,10 +1853,14 @@ export function trackerScript(site: { siteKey: string; consentVersion: number; c
   //    ไฟล์ที่เสิร์ฟแล้วเห็นทันทีว่าสคริปต์ยิงไปที่ไหน — `EP+"/t/e"` ทำให้ "ไปที่ไหน" ซ่อนอยู่ในการต่อสตริงตอนรัน
   const EE = jsLiteral(`${origin}/t/e`);
   const EC = jsLiteral(`${origin}/t/consent`);
+  // CRM C4.4-fix3 ▸ ตั๋วผู้เข้าชมให้ฟอร์มของเราที่ร้านฝังด้วย iframe: ปลายทาง `/t/v` + origin ของแอป (ตัวเดียวกับที่เสิร์ฟสคริปต์นี้)
+  //   ฝังเป็นค่าคงที่ทั้งคู่ ⇒ ผู้ตรวจอ่านไฟล์ที่เสิร์ฟแล้วเห็นทันทีว่าตั๋วไปที่ไหนและตอบกลับไปหาใคร ◂
+  const EV = jsLiteral(`${origin}/t/v`);
+  const AO = jsLiteral(origin);
   return `/* shark.js — SHARK CRM web tracking (consent first) */
 (function(){
   "use strict";
-  var KEY=${K},CV=${CV},TXT=${TXT},EE=${EE},EC=${EC};
+  var KEY=${K},CV=${CV},TXT=${TXT},EE=${EE},EC=${EC},EV=${EV},AO=${AO};
   var VC="sd_vid",CC="sd_consent",MAXAGE=15552000,D=document,W=window;
   /* 🔴 (รีวิวรอบ 2 · N12) รายชื่อ utm ต้องเป็น "ห้าตัวตามมาตรฐาน" ชุดเดียวกับฝั่งเซิร์ฟเวอร์ (cleanTrackedUrl) —
      เดิมกรองด้วยคำนำหน้า "utm_" เฉย ๆ ⇒ "utm_userid=<อีเมล>" ที่เครื่องมือการตลาดบางตัวแปะมาก็หลุดออกจากเครื่องลูกค้า
@@ -1300,7 +1881,7 @@ export function trackerScript(site: { siteKey: string; consentVersion: number; c
   }
   function post(url,data){
     /* keepalive = คำขอไปต่อได้แม้ผู้ใช้กดไปหน้าอื่นทันที · text/plain = คำขอธรรมดา (ไม่ต้อง preflight) */
-    try{fetch(url,{method:"POST",body:JSON.stringify(data),headers:{"content-type":"text/plain;charset=UTF-8"},keepalive:true,mode:"cors",credentials:"omit"}).catch(function(){});}catch(e){}
+    try{return fetch(url,{method:"POST",body:JSON.stringify(data),headers:{"content-type":"text/plain;charset=UTF-8"},keepalive:true,mode:"cors",credentials:"omit"}).catch(function(){});}catch(e){return null;}
   }
   function decision(){var c=ck(CC);if(!c)return null;var m=/^([adr])(\\d+)$/.exec(c);if(!m||Number(m[2])!==CV)return null;return m[1];}
   function vid(){var v=ck(VC);if(!v){v=uuid();put(VC,v);}return v;}
@@ -1326,7 +1907,7 @@ export function trackerScript(site: { siteKey: string; consentVersion: number; c
   }
   function consent(what){
     var v=what==="accept"?vid():(ck(VC)||uuid());
-    post(EC,{k:KEY,v:v,cv:CV,d:what,u:clean(location.href)});
+    return post(EC,{k:KEY,v:v,cv:CV,d:what,u:clean(location.href)});
   }
   var banner=null;
   function closeBanner(){if(banner&&banner.parentNode)banner.parentNode.removeChild(banner);banner=null;}
@@ -1352,7 +1933,7 @@ export function trackerScript(site: { siteKey: string; consentVersion: number; c
     no.style.border="1px solid #6b7280";
     var yes=button("ยอมรับ","accept","#22c55e","#062a13");
     no.onclick=function(){put(CC,"d"+CV);closeBanner();consent("decline");};
-    yes.onclick=function(){put(CC,"a"+CV);vid();closeBanner();consent("accept");};
+    yes.onclick=function(){put(CC,"a"+CV);vid();closeBanner();afterAccept(consent("accept"));};
     box.appendChild(no);box.appendChild(yes);
     banner.appendChild(text);banner.appendChild(box);
     D.body.appendChild(banner);
@@ -1367,6 +1948,43 @@ export function trackerScript(site: { siteKey: string; consentVersion: number; c
     if(cmd==="identify"){var t=ticket();if(t)return send("identify",{ct:t});return;}
     if(cmd==="revoke"){put(CC,"r"+CV);consent("revoke");return;}
   };
+  /* CRM C4.4-fix3: ฟอร์มของ SHARK ที่ร้านฝังด้วย iframe (โหลดจาก origin ของแอป) ส่ง {type:"sd:form-ready"} มาขอตั๋วผู้เข้าชม
+     ตอบเฉพาะเมื่อ (1) ข้อความมาจาก origin ของแอปพอดี (2) ผู้ส่งเป็น iframe ของหน้านี้จริง (3) ผู้เข้าชมยอมรับคุกกี้แล้ว
+     ตั๋วถูกส่งกลับไปที่ iframe ตัวนั้นตัวเดียว ด้วย targetOrigin = origin ของแอป (ไม่ใช่ดาว) · ไม่มีตั๋วใน url/คุกกี้/storage
+     เซิร์ฟเวอร์ตรวจความยินยอมอีกชั้น (ปฏิเสธ/ถอน/เวอร์ชันเก่า = ไม่มีตั๋ว) · ห้ามใช้เครื่องหมาย backtick ในคอมเมนต์นี้
+     r2 (review S2): ฟอร์มที่ขอมาก่อนผู้เข้าชมกดยอมรับ ถูกจดไว้ (waiting) แล้วได้ตั๋วทันทีหลังคำขอยอมรับไปถึงเซิร์ฟเวอร์ (afterAccept)
+     กรณีกดยอมรับหลังฟอร์มโหลดแล้ว หรือกดยอมรับบนหน้าเดียวกับฟอร์ม จึงยังผูกได้ */
+  var waiting=[];
+  function ownFrame(src){
+    var fr=D.getElementsByTagName("iframe");
+    for(var i=0;i<fr.length;i++){if(fr[i].contentWindow===src)return true;}
+    return false;
+  }
+  function serve(src){
+    var v=ck(VC);
+    if(!v||!accepted())return;
+    fetch(EV,{credentials:"omit",mode:"cors",cache:"no-store",method:"POST",headers:{"content-type":"text/plain;charset=UTF-8"},body:JSON.stringify({k:KEY,v:v,cv:CV,u:clean(location.href)})})
+      .then(function(r){return r&&r.status===200?r.json():null;})
+      .then(function(j){if(j&&typeof j.t==="string"&&j.t)src.postMessage({type:"sd:visitor-ticket",ticket:j.t},AO);})
+      .catch(function(){});
+  }
+  function afterAccept(p){
+    var list=waiting;waiting=[];
+    var go=function(){for(var i=0;i<list.length;i++){try{if(ownFrame(list[i]))serve(list[i]);}catch(x){}}};
+    if(p&&typeof p.then==="function")p.then(go,go);else go();
+  }
+  function onMessage(e){
+    try{
+      if(!e||e.origin!==AO)return;
+      var m=e.data;
+      if(!m||typeof m!=="object"||m.type!=="sd:form-ready")return;
+      var src=e.source;
+      if(!src||!ownFrame(src))return;
+      if(!accepted()){if(waiting.indexOf(src)<0&&waiting.length<10)waiting.push(src);return;}
+      serve(src);
+    }catch(x){}
+  }
+  if(W.addEventListener)W.addEventListener("message",onMessage);
   function start(){
     if(accepted()){
       send("page");

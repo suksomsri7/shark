@@ -1,0 +1,6 @@
+== typecheck start 2026-10-07T22:44:31Z · HEAD 284614a6 · iso ISO_MEM=7000M · cmd: pnpm typecheck
+
+> shark-in-th@0.1.0 typecheck /root/projects/shark-crm-c310
+> tsc --noEmit
+
+== typecheck end 2026-10-07T22:47:26Z rc=0

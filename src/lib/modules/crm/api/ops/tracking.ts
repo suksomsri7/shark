@@ -38,7 +38,10 @@ const create = defineCrmOp({
   action: "crm.tracking.manage",
   summary:
     "Make a tracked short link to an http or https address. A code of 6-32 letters, digits, - and _ can be asked for; otherwise one is generated. " +
-    "Clicks are counted per link and, when the visitor is known, land on the contact's timeline.",
+    "Clicks are counted per link and, when the visitor is known, land on the contact's timeline. " +
+    "The destination host must be on the shop's allowed destination list (Settings > Tracked links: exact hosts or *.domain), " +
+    "one of the shop's web-tracking domains, or the SHARK host itself; IP addresses, local/internal hosts and URLs with a user name are refused (422 validation). " +
+    "A link whose host is later removed from the list stops redirecting.",
   label: "สร้างลิงก์ติดตาม",
   input: z.object({ url: httpUrl, name: optText(120), label: optText(120), channel: optText(40), code: optText(32) }).strict(),
   test: "C2.11-S2.11",

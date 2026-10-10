@@ -1,0 +1,47 @@
+# probe-hunt4 run on tree 189d81f1 (src unchanged) · QC3 · 2026-10-02T09:21:06Z · command: bash scripts/iso.sh env CRM_V2_SWITCH=all NODE_OPTIONS=--max-old-space-size=3584 bash scripts/pending/cd2/with-qc3-secret.sh bash scripts/qc3.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/pending/hunt4/probe-hunt4.mts · exit 0
+── E PDPA erase × AiMemory / AiPlan ──
+  ✅ [E0.1] (control) control (premise): staff A's remember_fact with the customer's phone is stored as a PRIVATE memory (u~<staffA>~…)
+        — ACTUAL tool={"จำแล้ว":"ลูกค้า สมหญิง qc-h4-xasxyfys โทร 0852883655 ชอบโปรวันศุกร์","id":"u~cmuqqt41q0002dckzpghf… rows=["u~cmuqqt41q0002dckzpghf2mnk~d1"]
+  ✅ [E0.2] (control) control (mechanism): before the erase staff A's system prompt carries the private note (phone) and the legacy fact (full name)
+        — ACTUAL phone=true name=true
+  ✅ [E1.0] (control) control: erase succeeded and the contact row is anonymised
+        — ACTUAL erase={"contactId":"cmuqqt45j000cdckz30z1ho4d","partyId":"cmuqqt456000bdckz8p8fg6wf","erased":true,"counts":{"emails":0,"activities":0,"recordings":0,"files":0,"webSessions":0,"clicks":0,"portal":0,"proposa… row={"name":"ลบตามคำขอ PDPA","phone":null,"email":null}
+  ✅ [E1.1] (control) control: the same erase masks the AI conversation (AiMessage.content, AiConversation.title) — the erase does reach AI rows
+        — ACTUAL messages=["ช่วยจำว่า [ข้อมูลถูกลบ] เบอร์ [ข้อมูลถูกลบ]"] title="นัด [ข้อมูลถูกลบ]"
+  ❌ [E1.2] (FINDING check) FINDING: after the PDPA erase no AiMemory row still holds the erased person's phone or full name
+        — ACTUAL rowsWithPhone=1 rowsWithName=2 · ["u~…: ลูกค้า สมหญิง qc-h4-xasxyfys โทร 0852883655 ชอบโปรวันศุกร์","cm…: สมหญิง qc-h4-xasxyfys เป็นลูกค้า VIP ของร้าน ให้ส่วนลดเสมอ"]
+  ❌ [E1.3] (FINDING check) FINDING: staff A's next chat turn no longer feeds the erased person's phone to the model (private memory → system prompt)
+        — ACTUAL phoneInPrompt=true
+  ❌ [E1.4] (FINDING check) FINDING: no other member's prompt carries the erased person's full name (legacy shop fact → every member's prompt)
+        — ACTUAL staffB=true owner=true
+  ❌ [E1.5] (FINDING check) FINDING (same erase site, pre-existing table): the pending AI plan in that room no longer holds the phone / full name (title, stepsJson)
+        — ACTUAL plan={"title":"โทรนัด สมหญิง qc-h4-xasxyfys","stepsJson":[{"kind":"booking_create_appointment","status":"PENDING","payload":{"phone":"0852883655","customerName":"สมหญิง qc-h4-xasxyfys"},"summary":"นัด สมหญิง qc-h4-xasxyfys โท…
+  ℹ️  [E1.6] files deleted by the erase follow-up: 0
+── C {{contact.companyName}} vs fix10 masking ──
+  ✅ [C0.1] (control) control (fix10 rule): staff A (no crm.company.read) gets NO company text for the contact; the OWNER gets it
+        — ACTUAL staffA=null owner="บริษัทลับ qc-h4-xasxyfys"
+  ✅ [C0.2] (control) control: staff A may send to this contact (visible, crm.email.send) — the mail is accepted (queued)
+        — ACTUAL {"emailId":"8ec91f6b5cd4406d8a5f752bf9a87631","messageId":"cmuqqt43f0007dckz17oge9ja:d52abc6820b0202e31ed4c69.muqqt684@shark.in.th","threadKey":"17b5648f7c78372…
+  ❌ [C1.1] (FINDING check) FINDING: the mail staff A reads back in the thread does not spell out the hidden company's name (fix10: hidden ⇒ no name anywhere for that viewer)
+        — ACTUAL outBody=<p>เรียนคุณ วิไล ฝ่ายจัดซื้อ บริษัทลับ qc-h4-xasxyfys — แนบใบเสนอราคาค่ะ</p>
+── K CRM-scoped key: manifest vs executor ──
+  ✅ [K0.1] (control) control (premise): the manifest lists the CRM skill and crm_search for this key
+        — ACTUAL skills=200 crm={"id":"crm","label":"ลูกค้ามุ่งหวังและการตลาด","summary":"Leads and marketing: recent leads, create a lead, launch a campaign, growth suggestions.","toolCount":3,"href":"/api/v1/ai/skills/crm"} skill/crm=200 tools=["crm_search","crm_contact_360","crm_score_explain"]
+  ✅ [K0.2] (control) control: the tool itself works for a person (OWNER, in-app actor)
+        — ACTUAL {"contacts":[{"id":"cmuqqt6ci0014dckzehstrru2","name":"กมล qc-h4-xasxyfys","leadStatus":"NEW","lifecycleStage":"LEAD","ownerName":"QC -owner…
+  ❌ [K1.1] (FINDING check) FINDING: a tool the manifest advertises to this key returns data (or the manifest does not list it) — not HTTP 200 with a refusal
+        — ACTUAL status=200 result={"error":"ผู้ช่วยอ่านข้อมูล CRM ได้เฉพาะเมื่อรู้ว่าใครเป็นคนถาม — เปิดผู้ช่วยจากหน้าแอปแล้วถามอีกครั้ง"}
+  ℹ️  [K1.2] other advertised CRM tools answering 200 + "open the assistant from the app": 0/2
+── P chat-room crm.* proposal cancelled by another member ──
+  ✅ [P0.1] (control) control (premise): staff A's chat turn left a pending crm.* proposal in A's own room
+        — ACTUAL tool={"proposalId":"cmuqqt6nk0016dckze8d5pet8","summary":"เพิ่มผู้ติดต่อ (lead) · \"ลูกค้าใหม่ qc-h4-xasx… proposal={"id":"cmuqqt6nk0016dckze8d5pet8","kind":"crm.contacts.create","status":"PENDING"}
+  ✅ [P0.2] (control) control (G2 rule): the generic doors refuse staff B on A's room — reject=false, confirm 'not found'
+        — ACTUAL reject=false confirm={"ok":false,"note":"ไม่พบข้อเสนอนี้ (อาจถูกลบไปแล้ว)"}
+  ❌ [P1.1] (FINDING check) FINDING: staff B (not a viewer of A's room) cannot cancel A's chat-room crm.* proposal through the reject door (web/mobile → cancelProposalById)
+        — ACTUAL door={"handled":true,"ok":true,"note":"ยกเลิกข้อเสนอแล้ว"} status=REJECTED
+  ❌ [P1.2] (FINDING check) FINDING: staff B cannot CONFIRM A's chat-room crm.* proposal through the CRM page door (confirmAssistProposalAction → confirmProposal)
+        — ACTUAL door={"ok":true,"note":"เพิ่มผู้ติดต่อ (lead)เรียบร้อยแล้ว — \"ลูกค้าใหม่สอง qc-h4-xasxyfys\""} proposal={"status":"EXECUTED","resultNote":"เพิ่มผู้ติดต่อ (lead)เรียบร้อยแล้ว — \"ลูกค้าใหม่สอง qc-h4-xasxyfys\""}
+  ✅ [CLEAN] (control) throwaway tenant, users, system rows and rate buckets removed (0 rows left)
+        — ACTUAL - buckets=0
+controls 11/11 green · finding checks RED (= finding reproduced) 8/8
+JSON_SUMMARY {"controls":[["E0.1",true],["E0.2",true],["E1.0",true],["E1.1",true],["C0.1",true],["C0.2",true],["K0.1",true],["K0.2",true],["P0.1",true],["P0.2",true],["CLEAN",true]],"findings":[["E1.2","REPRODUCED"],["E1.3","REPRODUCED"],["E1.4","REPRODUCED"],["E1.5","REPRODUCED"],["C1.1","REPRODUCED"],["K1.1","REPRODUCED"],["P1.1","REPRODUCED"],["P1.2","REPRODUCED"]]}

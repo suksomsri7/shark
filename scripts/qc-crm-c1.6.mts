@@ -58,7 +58,7 @@
 //        audit row keeps the reason (X9) · A.getActivity(ctx, actor, id) → ActivityDto
 //   A.listActivities(ctx, actor, { scope?: "mine"|"team", status?: "pending"|"today"|"week"|"overdue"|"done", type?, contactId?,
 //        companyId?, dealId?, customRecordId?, from?, to?, cursor?, pageSize? }) → { items, nextCursor }   (THAI time, +07:00)
-//        pending = not done · overdue = not done ∧ dueAt < now · today = not done ∧ dueAt in the Thai calendar day of now ·
+//        pending = not done · overdue = not done ∧ due before 00:00 Thai of today [ORACLE-EDIT C5.4-E R1] · today = not done ∧ dueAt in the Thai calendar day of now ·
 //        week = not done ∧ dueAt in [Thai today 00:00, +7 days) · done = doneAt set · mine = ownerUserId = actor
 //   A.calendar(ctx, actor, { from, to, mine?, team? }) → { items } | items[] — CRM activities whose (startAt ?? dueAt) ∈ [from, to)
 //   A.listNotes(ctx, actor, { contactId? | companyId? | dealId? | customRecordId? }) → NOTE items, pinned first, then newest first
@@ -780,8 +780,10 @@ try {
   }
   {
     const x = await ls("overdue");
-    chk("C1.6-S4.4", "status overdue (dueAt < now, not done) ⇒ −2 days and today 00:01 — not future items, not the done one",
-      x.r.ok && has(x.ids, "overdue", "todayEarly") && hasNone(x.ids, "week", "far", "done", "salesOwn"), "overdue", `${x.r.err} got=${cut(j(Object.entries(L).filter(([, v]) => x.ids.has(v)).map(([k]) => k)))}`);
+    // ORACLE-EDIT (controller ruling C5.4-E R1, 1 Oct): one today/overdue definition on every surface (C5.3-L6-m1) — overdue = due before
+    //   00:00 Thai of today, so "today 00:01" belongs to the today tab only (was: dueAt < now ⇒ listed in both tabs)
+    chk("C1.6-S4.4", "status overdue (due before 00:00 Thai today, not done) ⇒ −2 days only — not today 00:01 (today tab), not future items, not the done one",
+      x.r.ok && has(x.ids, "overdue") && hasNone(x.ids, "todayEarly", "week", "far", "done", "salesOwn"), "overdue", `${x.r.err} got=${cut(j(Object.entries(L).filter(([, v]) => x.ids.has(v)).map(([k]) => k)))}`);
   }
   {
     const x = await ls("done");

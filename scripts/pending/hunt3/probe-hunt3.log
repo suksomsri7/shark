@@ -1,0 +1,23 @@
+  ✅ [S1.0] (control) control: victim's genuine reply (cites our OUT Message-ID, From = its recipient) is stored before any flood
+        — ACTUAL {"ok":true,"handled":true,"emailId":"cmuq3g8q4000arrkz16qkxw05","attachmentsDropped":0}
+  ✅ [S1.1] (control) control (premise): the 99 forged mails are accepted and stored on the victim's timeline (flagged unverified)
+        — ACTUAL stored=99 rows=99 firstDrop=-1
+  ❌ [S1.2] (FINDING check) FINDING: after 99 forged mails in the victim's name, the victim's genuine thread-proven reply is still stored (RV2-3 promise: proven/thread mail always gets in)
+        — ACTUAL {"ok":true,"handled":false,"reason":"rate_limited","attachmentsDropped":0}
+  ❌ [S1.3] (FINDING check) FINDING: a DMARC-proven mail from the victim (A-R pass of our MTA) is still stored after the flood
+        — ACTUAL {"ok":true,"handled":false,"reason":"rate_limited","attachmentsDropped":0}
+  ✅ [S1.4] (control) control: another customer's thread-proven reply is stored (system bucket not involved)
+        — ACTUAL {"ok":true,"handled":true,"emailId":"cmuq3gtmy008prrkzqpclg82q","attachmentsDropped":0}
+  ✅ [S1.5] (control) control (mechanism): exactly one sender-bucket audit line, no owner notification for the sender bucket (owner is not told the customer's mail is being dropped)
+        — ACTUAL audits=[{"limit":100,"bucket":"sender","windowMs":3600000,"senderHash":"ddcf4d09bf0b"}] ownerNotices=0
+  ❌ [S1.6] (FINDING check) FINDING: both genuine victim replies exist as rows (the second one is lost with no bounce — provider got 200)
+        — ACTUAL genuineRepliesStored=1
+  ✅ [X1.0] (control) control: the contact really has more score-log rows than the export cap
+        — ACTUAL inDb=5100
+  ❌ [X1.1] (FINDING check) FINDING: the person export holds every CrmScoreLog row of the data subject, or says the table was truncated
+        — ACTUAL exported=5000 of 5100 · truncationMarker=false
+  ✅ [CLEAN] (control) throwaway tenant, user, system and rate buckets removed (0 rows left)
+        — ACTUAL - buckets=0
+controls 6/6 green · finding checks RED (= finding reproduced) 4/4
+JSON_SUMMARY {"controls":[["S1.0",true],["S1.1",true],["S1.4",true],["S1.5",true],["X1.0",true],["CLEAN",true]],"findings":[["S1.2","REPRODUCED"],["S1.3","REPRODUCED"],["S1.6","REPRODUCED"],["X1.1","REPRODUCED"]]}
+exit=0

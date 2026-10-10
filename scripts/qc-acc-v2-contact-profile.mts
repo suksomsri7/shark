@@ -207,7 +207,9 @@ console.log("\nQ7 แท็บไฟล์แนบ + การเชื่อ�
 const pf2 = (await load("files"))!;
 assert("Q7.1 filesTab ถูกเติมเมื่อ tab=files", !!pf2.filesTab);
 eq("Q7.2 จำนวนไฟล์ในแท็บ = ตัวนับแท็บ", pf2.filesTab!.rows.length, Math.min(X.filesCount, 100));
-const pl = (await load("links"))!;
+const ownerM = await prisma.membership.findFirst({ where: { tenantId: ctx.tenantId, role: "OWNER" }, orderBy: { createdAt: "asc" }, select: { userId: true, role: true, unitAccess: true, permissions: true } }); // ORACLE-EDIT C5.5-fix14: Q7.5 always meant "the shop OWNER looks" — the member card is now viewer-gated (S4, fail-closed without a viewer)
+const ownerViewer = ownerM ? { userId: ownerM.userId, role: ownerM.role, unitAccess: Array.isArray(ownerM.unitAccess) ? (ownerM.unitAccess as string[]) : [], permissions: (ownerM.permissions ?? {}) as Record<string, unknown> } : null; // ORACLE-EDIT C5.5-fix14: the seed OWNER's real membership as the profile viewer (same shape as crmViewerOfSession)
+const pl = (await load("links", { crmViewer: ownerViewer }))!; // ORACLE-EDIT C5.5-fix14: pass the OWNER viewer to the links tab (was: no viewer)
 assert("Q7.3 linksTab ถูกเติมเมื่อ tab=links", !!pl.linksTab);
 eq("Q7.4 การ์ดการเชื่อมต่อ 4 ใบ (สมาชิก/CRM/แชท/POS)", pl.linksTab!.cards.map((c) => c.key), ["member", "crm", "chat", "pos"]);
 const memberCard = pl.linksTab!.cards.find((c) => c.key === "member")!;

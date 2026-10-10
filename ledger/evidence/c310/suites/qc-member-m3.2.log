@@ -1,0 +1,39 @@
+  ✅ [M3.2-S1.1] migration member_v2_g2: MktCampaign +{channels content memberSystemId} · MktRecipient +{channel status error voucherId saleId} · CampaignVariantStat {campaignId variant sent opened used saleSatang costSatang} · MemberPushDevice {customerId token platform lastSeenAt} · MktChannel +PUSH · ระบบ MARKETING ของร้าน QC มี
+  ✅ [M3.2-S2.1] previewCampaign: audience 40 · willSend + holdout + byChannel.none = audience · byChannel.LINE ≤ 20 (ยินยอม LINE + มี LINE identity) · maxCostSatang = willSend × 30000 · expectedUsePct ตัวเลข · เรียกซ้ำผลเท่าเดิม
+  ✅ [M3.2-S2.2] holdout 50% deterministic: ผู้รับ HOLDOUT = ชุดที่ hashPct(campaignId:customerId) < 50 เป๊ะ (25 คน · ระหว่าง 10–30) · HOLDOUT ไม่ถูกส่ง (deps.line ไม่ถูกเรียก) · ไม่ได้ voucher · ผลส่ง {holdout 25}
+  ✅ [M3.2-S2.3] A/B: ผู้รับทุกคนมี variant A หรือ B (17/23 · ทั้งคู่ > 0) · ชุด B = hash(campaignId:v:customerId) ไบต์แรกคี่ เป๊ะ · ข้อความที่ส่งให้ B คือเนื้อหา B ('ข้อความ B') · holdout 0 → ไม่มี HOLDOUT
+  ✅ [M3.2-S2.4] ไม่มี variantB → ทุกคน variant A · ไม่มี Math.random ใน campaigns.ts · preview ก่อนส่ง = จำนวนหลังส่ง (willSend = SENT + FAILED)
+  ✅ [M3.2-S3.1] ช่องทาง LINE อย่างเดียว: ผู้รับ SENT ทุกคนยินยอม LINE + มี LINE identity · คนที่ไม่ยินยอม/ไม่มี LINE (นอก holdout) → SKIPPED reason ไทย · SENT + SKIPPED + HOLDOUT + FAILED = audience
+  ✅ [M3.2-S3.2] ถอนยินยอม LINE ของสมาชิกที่เคยส่งได้ก่อนส่งแคมเปญใหม่ → คนนั้น SKIPPED (reason ไทย) ไม่ถูกส่ง (consent ณ เวลาส่ง ไม่ใช่ตอนสร้าง)
+  ✅ [M3.2-S3.3] หลายช่องทาง [LINE, EMAIL, SMS, PUSH]: คนไม่มี LINE แต่ยินยอมอีเมล → SENT channel EMAIL (deps.email ถูกเรียกด้วยอีเมลของเขา) · คนไม่ยินยอมช่องไหนเลย → SKIPPED · SMS ไม่มี provider/ไม่ยินยอม → ไม่ถูกเรียก
+  ✅ [M3.2-S4.1] แนบ voucher ฿300: ผู้รับ SENT ทุกคนได้ voucher origin CAMPAIGN originRef.campaignId (7 ใบ) · MktRecipient.voucherId ชี้ใบนั้น · ข้อความที่ส่งแทน {voucher} ด้วยรหัส V- ของคนนั้น และ {ชื่อ} ไม่เหลือ · SKIPPED/HOLDOUT ไม่ได้ใบ
+  ✅ [M3.2-S4.2] ส่งซ้ำแคมเปญเดิม: ไม่ส่งซ้ำคนที่ SENT (deps.line 0 ครั้ง) · voucher ไม่ออกซ้ำ (จำนวนเท่าเดิม) · ผู้รับไม่ถูกสร้างซ้ำ (unique campaign+customer) · ผล {sent 0}
+  ✅ [M3.2-S5.1] trackOpen(recipient) → openedAt ตั้งครั้งแรก · ครั้งที่ 2 ไม่เปลี่ยน (เวลาเดิม) · route /api/m/track/o/[token] (pixel gif) มีจริง
+  ✅ [M3.2-S5.2] voucher ของแคมเปญถูกใช้ (voucher.used originRef.campaignId) → consumer → recipient.usedAt + saleId · CampaignVariantStat.used +1
+  ✅ [M3.2-S5.3] pos.sale.paid ของผู้รับ SENT ภายใน 30 วัน → usedAt + saleId + saleSatang = ยอดบิล (บิลแรกเท่านั้น) · ผู้รับที่ sentAt เก่ากว่า 30 วัน → ไม่นับ (usedAt null)
+  ✅ [M3.2-S6.1] เพดาน Tenant.limits.member.messagesPerDay = 3 (วันนี้ส่งไปแล้วหลายสิบ) → preview บอก remainingToday/overCap · send → throw ไทย LIMIT ไม่สร้าง recipient
+  ✅ [M3.2-S6.2] ตรวจ input: holdoutPct 80 (> 50) → throw ไทย · channels ว่าง → throw · thana (ไม่มี promo.manage) → throw · ปุ๊ก (marketing.campaign.create) สร้างได้ · เพดาน campaignsPerMonth อ้างในโค้ด
+  ✅ [M3.2-S7.1] ตั้งเวลา 2 ชม. ข้างหน้า: send → status SCHEDULED ไม่ส่ง (0 recipient) · cancel → CANCELLED · cron รายชั่วโมง sendDueCampaigns ข้ามที่ CANCELLED (ยัง 0 recipient) · cron.ts มี step campaignsDue
+  ✅ [M3.2-S7.2] ส่งแล้ว provider ล้มตั้งแต่คนที่ 3: 2 คนแรก SENT · ที่เหลือ FAILED/PENDING (ไม่ throw ทั้งก้อน · ผล {failed}) · cancel → PENDING/FAILED ที่เหลือ → SKIPPED 'ยกเลิก' · 2 คนที่ SENT คงเดิม · status CANCELLED
+  ✅ [M3.2-S8.1] campaignStats c1: variant A {sent = SENT, opened = openedAt≠null, used = usedAt≠null, saleSatang = Σ saleSatang} · HOLDOUT {sent 0, used = ผู้รับ holdout ที่ซื้อใน 30 วัน} · total.audience = ผู้รับทั้งหมด
+  ✅ [M3.2-S8.2] สูตร: costSatang(A) = Σ มูลค่า voucher ที่ USED (30000) + ค่าส่ง LINE 0 · roi = (saleSatang − costSatang)/max(costSatang,1) · usePct = used/sent×100 · uplift.usePct = usePct(A+B) − usePct(HOLDOUT)
+  ✅ [M3.2-S8.3] CampaignVariantStat มีแถว A และ HOLDOUT ของ c1 (ค่าตรง stats) · MktCampaign.stats Json สรุป {sent, opened, used, saleSatang, roi} · listCampaignsV2 แถว c1 มี sent/opened/used/saleSatang/costSatang/roi/status
+  ✅ [M3.2-S9.1] หน้า campaigns · new · [campaignId] requireTenant + สิทธิ์ · actions 'use server' gate promo.manage · testid 23 · ป้ายภาพ 21/07 ครบ · nav campaigns → ready · facade export createCampaignV2/updateCampaignV2/getCampaign/listCampaignsV2/previewCampaign/sendCampaignV2/sendDueCampaigns/cancelCampaign/campaignStats/trackOpen/trackUseFromVoucher/trackUseFromSale · campaigns.ts import ข้ามโมดูลผ่าน facade เท่านั้น · ไม่มี any/อีโมจิ/hex
+  ❌ [M3.2-S9.2] ภาพ 21: campaign-new-owner desktop+mobile 200 ไม่ล้น (3 ขั้น + แผงขวา) · campaigns-owner 200 — exp 200 ×3 | act undefined/undefined/undefined missing=undefined
+  ❌ [M3.2-S9.3] ภาพ 07 ล่าง/รายละเอียด: campaign-detail-owner 200 (สถิติ variant + holdout + uplift + ผู้รับ) · thana 200 อ่านอย่างเดียว · noperm 404 — exp 200/200/404 | act undefined/undefined/undefined
+  ✅ [M3.2-S9.4] 🔴 parity ภาพ 21 + 07 (ล่าง) — Fable ตรวจด้วยตา · wo-notes/member-M3.2.md มี 'PARITY: ผ่าน'
+  ✅ [M3.2-S10.1] event campaign.sent {campaignId, sent, holdout, variants} หลังส่ง c1 · ลง 3 ทะเบียน · drain แล้ว DONE
+  ✅ [M3.2-S10.2] consumer: voucher.used → marketing.trackUseFromVoucher (outbox-consumers หรือ member-bridges) · pos.sale.paid → marketing.trackUseFromSale ใน member-bridges (ครอบ try/catch) · ไม่มี event voucher./pos.sale. ค้าง
+  ✅ [M3.2-S10.3] fitness F2 มี marketing→member/voucher/coupon/chat · chat/index.ts facade export pushToContact · core/sms.ts provider interface (ไม่มี env = null provider) · marketing/segments.ts ยังผ่าน facade member
+
+🔴 M3.2: 25/27
+JSON_SUMMARY {"total":27,"passed":25,"findings":[{"id":"M3.2-S9.2","sev":"CRITICAL"},{"id":"M3.2-S9.3","sev":"CRITICAL"}]}
+(node:1482208) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)

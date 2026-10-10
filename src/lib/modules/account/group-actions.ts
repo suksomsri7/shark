@@ -20,6 +20,7 @@ import {
 } from "./group";
 import { DOC_LABEL } from "./service";
 import { EXP_DOC_LABEL } from "./expense";
+import { chequeDraftProblem } from "./cheque";
 
 // ─────────────────────────────────────────────────────────────
 // group-actions.ts — server actions ของ §5.2 K (ใบวางบิลรวม BN / ใบรวมจ่าย CP) · WO 1.7
@@ -162,6 +163,11 @@ export async function recordGroupPaymentAction(
   const { auth, tenantId, userId } = await loadAccountSystem(sys);
   assertAccountCan(auth, "account.payment.record");
   const id = trim(docId, 40);
+  // CRM C5.4-C ▸ round 10 · มติ B (R9-5): เลขเช็ค/ธนาคารที่ตัดช่องว่างแล้วว่าง ⇒ ปฏิเสธก่อนแตะอะไร (หน้าจอส่งเช็คมาเมื่อกรอกเลขเช็ค แม้ธนาคารว่าง) ◂
+  if (draft?.cheque) {
+    const bad = chequeDraftProblem({ chequeNo: draft.cheque.chequeNo, bankName: draft.cheque.bankName });
+    if (bad) return { ok: false, reason: bad };
+  }
   const res = await recordGroupPayment(
     tenantId,
     sys,

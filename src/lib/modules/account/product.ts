@@ -9,6 +9,7 @@
 //     ใบส่งคืนกลับด้าน · ใบปรับต้นทุน (CA) ลง JV กำไร/ขาดทุนจากการปรับมูลค่า
 // เจ้าของไฟล์นี้ = subagent Products
 import { prisma } from "@/lib/core/db";
+import { ciContains, ciEquals } from "@/lib/core/ci-equals"; // CRM C5.5-fix4 ◂ · C5.5-fix8 ciContains ◂
 import { safeReason } from "./errors";
 import type {
   AccountDocType,
@@ -478,8 +479,9 @@ export async function checkProductDuplicates(
   const name = (input.name ?? "").trim();
   const sku = (input.sku ?? "").trim();
   const or: Prisma.AccountProductWhereInput[] = [];
-  if (name) or.push({ name: { equals: name, mode: "insensitive" } });
-  if (sku) or.push({ sku: { equals: sku, mode: "insensitive" } });
+  // CRM C5.5-fix4 ▸ `equals … insensitive` = ILIKE ไม่ escape — ชื่อ/SKU ที่มี `%`/`_` เคยเท่ากับแถวอื่น · ciEquals = เท่ากันทุกตัวอักษร ◂
+  if (name) or.push({ name: ciEquals(name) });
+  if (sku) or.push({ sku: ciEquals(sku) });
   if (or.length === 0) return [];
   const rows = await prisma.accountProduct.findMany({
     where: {
@@ -1467,9 +1469,9 @@ export async function listGoodsIssuePaged(
     ...(q
       ? {
           OR: [
-            { docNo: { contains: q, mode: "insensitive" as const } },
-            { note: { contains: q, mode: "insensitive" as const } },
-            { contact: { is: { name: { contains: q, mode: "insensitive" as const } } } },
+            { docNo: ciContains(q) },
+            { note: ciContains(q) },
+            { contact: { is: { name: ciContains(q) } } },
           ],
         }
       : {}),
@@ -1563,8 +1565,8 @@ export async function searchProductPickerRows(
       ...(term
         ? {
             OR: [
-              { name: { contains: term, mode: "insensitive" as const } },
-              { sku: { contains: term, mode: "insensitive" as const } },
+              { name: ciContains(term) },
+              { sku: ciContains(term) },
             ],
           }
         : {}),
@@ -1880,11 +1882,11 @@ export async function listProductsPaged(
   const search: Prisma.AccountProductWhereInput = q
     ? {
         OR: [
-          { name: { contains: q, mode: "insensitive" } },
-          { nameEn: { contains: q, mode: "insensitive" } },
-          { code: { contains: q, mode: "insensitive" } },
-          { sku: { contains: q, mode: "insensitive" } },
-          { barcode: { contains: q, mode: "insensitive" } },
+          { name: ciContains(q) },
+          { nameEn: ciContains(q) },
+          { code: ciContains(q) },
+          { sku: ciContains(q) },
+          { barcode: ciContains(q) },
         ],
       }
     : {};

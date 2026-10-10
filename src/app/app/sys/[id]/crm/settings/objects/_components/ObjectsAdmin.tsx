@@ -14,8 +14,11 @@ import {
   OBJECT_PARENT_TYPES,
   OBJECT_REASON_MIN,
   objectKeyProblem,
+  objectTextProblem,
+  titleFieldKeyProblem,
   type ObjectParentType,
 } from "@/lib/modules/crm/objects-shared";
+import { FieldError, useFieldErrors } from "@/components/crm/form/field-errors";
 import { archiveObjectAction, createObjectAction, restoreObjectAction, updateObjectAction } from "@/lib/modules/crm/objects-actions";
 import type { ObjectListItem, ObjectTemplateChip } from "@/components/crm/objects/types";
 
@@ -131,7 +134,8 @@ function ArchiveObjectForm({ systemId, item, onDone }: { systemId: string; item:
   const [pending, startTransition] = useTransition();
   // CRM C1.9 ▸ รีวิว S6: ตัวนับในหน้าอาจเก่า — บริการตอบ CONFIRM_REQUIRED (มีรายการเกิดขึ้นระหว่างนั้น) ⇒ เปิดช่องพิมพ์ key + เหตุผลทันที ◂
   const [needs, setNeeds] = useState(item.recordCount > 0);
-  const ready = !needs || (confirmKey.trim() === item.key && reason.trim().length >= OBJECT_REASON_MIN);
+  // C4.3-fix part 2 ▸ ปุ่มไม่ปิดเงียบ ๆ อีกแล้ว: กดได้เสมอ → ช่องที่ยังไม่ครบบอกใต้ช่อง + โฟกัสช่องแรก (บริการตรวจซ้ำ) ◂
+  const fe = useFieldErrors(["confirmKey", "reason"] as const);
   return (
     <form
       className="flex flex-col gap-2 rounded-lg border p-3 text-sm"
@@ -140,11 +144,19 @@ function ArchiveObjectForm({ systemId, item, onDone }: { systemId: string; item:
       onSubmit={(e) => {
         e.preventDefault();
         setError(null);
+        if (
+          needs &&
+          fe.show({
+            confirmKey: confirmKey.trim() !== item.key ? `พิมพ์ชื่ออ้างอิง "${item.key}" ให้ตรงเพื่อยืนยันการเก็บถาวร` : undefined,
+            reason: reason.trim().length < OBJECT_REASON_MIN ? `ใส่เหตุผลอย่างน้อย ${OBJECT_REASON_MIN} ตัวอักษร เพื่อให้ทีมย้อนดูได้ว่าทำไม` : undefined,
+          })
+        )
+          return;
         startTransition(async () => {
           const res = await archiveObjectAction(systemId, item.key, needs ? { confirmKey: confirmKey.trim(), reason: reason.trim() } : {});
           if (!res.ok) {
             if (res.code === "CONFIRM_REQUIRED") setNeeds(true);
-            setError(res.error);
+            if (!fe.show(res.fieldErrors)) setError(res.error);
             return;
           }
           onDone();
@@ -161,11 +173,32 @@ function ArchiveObjectForm({ systemId, item, onDone }: { systemId: string; item:
             <span>
               พิมพ์ชื่ออ้างอิง <b>{item.key}</b> เพื่อยืนยัน
             </span>
-            <input value={confirmKey} onChange={(e) => setConfirmKey(e.target.value)} className="input text-sm" data-testid="object-archive-confirm-key" autoComplete="off" />
+            <input
+              {...fe.field("confirmKey")}
+              value={confirmKey}
+              onChange={(e) => {
+                setConfirmKey(e.target.value);
+                fe.clear("confirmKey");
+              }}
+              className="input text-sm"
+              data-testid="object-archive-confirm-key"
+              autoComplete="off"
+            />
+            <FieldError id={fe.errorId("confirmKey")} message={fe.errors.confirmKey} testid="object-archive-confirm-key-error" />
           </label>
           <label className="flex flex-col gap-1 text-xs text-[color:var(--color-muted)]">
             <span>เหตุผล (อย่างน้อย {OBJECT_REASON_MIN} ตัวอักษร)</span>
-            <input value={reason} onChange={(e) => setReason(e.target.value)} className="input text-sm" data-testid="object-archive-reason" />
+            <input
+              {...fe.field("reason")}
+              value={reason}
+              onChange={(e) => {
+                setReason(e.target.value);
+                fe.clear("reason");
+              }}
+              className="input text-sm"
+              data-testid="object-archive-reason"
+            />
+            <FieldError id={fe.errorId("reason")} message={fe.errors.reason} testid="object-archive-reason-error" />
           </label>
         </>
       )}
@@ -178,7 +211,7 @@ function ArchiveObjectForm({ systemId, item, onDone }: { systemId: string; item:
         <button type="button" className="btn btn-ghost btn-sm" onClick={onDone} data-testid="object-archive-cancel">
           ยกเลิก
         </button>
-        <button type="submit" className="btn btn-sm" disabled={!ready || pending} style={{ color: "var(--color-danger)", borderColor: "var(--color-danger)" }} data-testid="object-archive-submit">
+        <button type="submit" className="btn btn-sm" disabled={pending} style={{ color: "var(--color-danger)", borderColor: "var(--color-danger)" }} data-testid="object-archive-submit">
           {pending ? "กำลังเก็บ…" : "เก็บถาวร"}
         </button>
       </div>
@@ -197,6 +230,8 @@ function EditObjectForm({ systemId, item, onDone }: { systemId: string; item: Ob
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const keyProblem = key.trim() !== item.key ? objectKeyProblem(key) : null;
+  // C4.3-fix part 2 ▸ ตรวจช่องก่อนส่งด้วยตัวตรวจเดียวกับบริการ (objects-shared) · ข้อความใต้ช่อง + โฟกัสช่องแรกที่ผิด ◂
+  const fe = useFieldErrors(["label", "labelPlural", "key", "titleFieldKey"] as const);
   return (
     <form
       className="flex flex-col gap-2 rounded-lg border p-3 text-sm"
@@ -204,8 +239,16 @@ function EditObjectForm({ systemId, item, onDone }: { systemId: string; item: Ob
       data-testid="object-edit-form"
       onSubmit={(e) => {
         e.preventDefault();
-        if (keyProblem) return;
         setError(null);
+        if (
+          fe.show({
+            label: objectTextProblem(label, "ชื่อวัตถุ") ?? undefined,
+            labelPlural: objectTextProblem(plural, "ชื่อเรียกหลายรายการ") ?? undefined,
+            key: keyProblem ?? undefined,
+            titleFieldKey: titleFieldKeyProblem(titleFieldKey) ?? undefined,
+          })
+        )
+          return;
         startTransition(async () => {
           const res = await updateObjectAction(systemId, item.key, {
             label,
@@ -216,7 +259,7 @@ function EditObjectForm({ systemId, item, onDone }: { systemId: string; item: Ob
             ...(key.trim() !== item.key ? { key: key.trim() } : {}),
           });
           if (!res.ok) {
-            setError(res.error);
+            if (!fe.show(res.fieldErrors)) setError(res.error);
             return;
           }
           onDone();
@@ -227,26 +270,30 @@ function EditObjectForm({ systemId, item, onDone }: { systemId: string; item: Ob
       <div className="grid grid-cols-2 gap-2">
         <label className="flex flex-col gap-1 text-xs text-[color:var(--color-muted)]">
           <span>ชื่อเอกพจน์</span>
-          <input value={label} onChange={(e) => setLabel(e.target.value)} className="input text-sm" data-testid="object-edit-label" />
+          <input {...fe.field("label")} value={label} onChange={(e) => { setLabel(e.target.value); fe.clear("label"); }} className="input text-sm" data-testid="object-edit-label" />
+          <FieldError id={fe.errorId("label")} message={fe.errors.label} testid="object-edit-label-error" />
         </label>
         <label className="flex flex-col gap-1 text-xs text-[color:var(--color-muted)]">
           <span>พหูพจน์</span>
-          <input value={plural} onChange={(e) => setPlural(e.target.value)} className="input text-sm" data-testid="object-edit-plural" />
+          <input {...fe.field("labelPlural")} value={plural} onChange={(e) => { setPlural(e.target.value); fe.clear("labelPlural"); }} className="input text-sm" data-testid="object-edit-plural" />
+          <FieldError id={fe.errorId("labelPlural")} message={fe.errors.labelPlural} testid="object-edit-plural-error" />
         </label>
         <label className="flex flex-col gap-1 text-xs text-[color:var(--color-muted)]">
           <span>ชื่ออ้างอิง (เปลี่ยนได้เมื่อยังไม่มีรายการ)</span>
-          <input value={key} onChange={(e) => setKey(e.target.value)} className="input text-sm" data-testid="object-edit-key" disabled={item.recordCount > 0} />
+          <input {...fe.field("key")} value={key} onChange={(e) => { setKey(e.target.value); fe.clear("key"); }} className="input text-sm" data-testid="object-edit-key" disabled={item.recordCount > 0} />
+          {/* คำเตือนรูปแบบ key ขึ้นทันทีที่พิมพ์ (เดิม) · ตอนกดบันทึกข้อความเดียวกันผูกกับช่องผ่าน aria-describedby */}
+          {(fe.errors.key ?? keyProblem) && (
+            <span id={fe.errorId("key")} className="text-xs" style={{ color: "var(--color-danger)" }} data-testid="object-edit-key-hint">
+              {fe.errors.key ?? keyProblem}
+            </span>
+          )}
         </label>
         <label className="flex flex-col gap-1 text-xs text-[color:var(--color-muted)]">
           <span>ชื่อรายการคือฟิลด์</span>
-          <input value={titleFieldKey} onChange={(e) => setTitleFieldKey(e.target.value)} className="input text-sm" data-testid="object-edit-title-field" />
+          <input {...fe.field("titleFieldKey")} value={titleFieldKey} onChange={(e) => { setTitleFieldKey(e.target.value); fe.clear("titleFieldKey"); }} className="input text-sm" data-testid="object-edit-title-field" />
+          <FieldError id={fe.errorId("titleFieldKey")} message={fe.errors.titleFieldKey} testid="object-edit-title-field-error" />
         </label>
       </div>
-      {keyProblem && (
-        <span className="text-xs" style={{ color: "var(--color-danger)" }} data-testid="object-edit-key-hint">
-          {keyProblem}
-        </span>
-      )}
       <label className="flex items-center gap-2 text-sm">
         <input type="checkbox" role="switch" checked={showAsTab} onChange={(e) => setShowAsTab(e.target.checked)} data-testid="object-edit-show-as-tab" className="h-4 w-4" />
         <span>{`แสดงเป็นแท็บในหน้า 360 ของ${item.parentLabel}`}</span>
@@ -264,7 +311,7 @@ function EditObjectForm({ systemId, item, onDone }: { systemId: string; item: Ob
         <button type="button" className="btn btn-ghost btn-sm" onClick={onDone} data-testid="object-edit-cancel">
           ยกเลิก
         </button>
-        <button type="submit" className="btn btn-primary btn-sm" disabled={pending || !!keyProblem} data-testid="object-edit-save">
+        <button type="submit" className="btn btn-primary btn-sm" disabled={pending} data-testid="object-edit-save">
           {pending ? "กำลังบันทึก…" : "บันทึก"}
         </button>
       </div>
@@ -283,6 +330,8 @@ export function AddObjectForm({ systemId, baseHref, takenKeys, templates }: { sy
   const [touchedKey, setTouchedKey] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  // C4.3-fix part 2 ▸ ทุกช่องบังคับบอกใต้ช่องตัวเอง (รวม key ว่าง) + โฟกัสช่องแรกที่ผิด · ตัวตรวจเดียวกับบริการ ◂
+  const fe = useFieldErrors(["label", "labelPlural", "key", "titleFieldKey"] as const);
   const keyProblem = d.key ? objectKeyProblem(d.key) ?? (takenKeys.includes(d.key.trim()) ? `มีวัตถุที่ใช้ชื่ออ้างอิง "${d.key.trim()}" อยู่แล้ว — ตั้งชื่ออ้างอิงอื่น` : null) : null;
   const set = (p: Partial<Draft>) => setD((x) => ({ ...x, ...p }));
   const tpl = d.templateKey ? templates.find((t) => t.key === d.templateKey) ?? null : null;
@@ -294,17 +343,21 @@ export function AddObjectForm({ systemId, baseHref, takenKeys, templates }: { sy
     setD({ label: t.label, plural: t.labelPlural, key: takenKeys.includes(t.key) ? "" : t.key, parentType: t.parentType, titleFieldKey: t.titleFieldKey, showAsTab: true, portal: false, templateKey: t.key });
     setTouchedKey(takenKeys.includes(t.key));
     setError(null);
+    fe.reset();
   }
 
   function submit() {
     setError(null);
-    if (!d.label.trim()) {
-      setError("ตั้งชื่อวัตถุ (เอกพจน์) ก่อนสร้าง");
-      return;
-    }
-    if (!d.key.trim() || keyProblem) {
+    const label = d.label.trim();
+    if (
+      fe.show({
+        label: !label ? "ตั้งชื่อวัตถุ (เอกพจน์) ก่อนสร้าง" : (objectTextProblem(label, "ชื่อวัตถุ") ?? undefined),
+        labelPlural: d.plural.trim() ? (objectTextProblem(d.plural, "ชื่อเรียกหลายรายการ") ?? undefined) : undefined,
+        key: !d.key.trim() ? "ตั้งชื่ออ้างอิง (key) ภาษาอังกฤษพิมพ์เล็กก่อนสร้าง เช่น \"vehicle\"" : (keyProblem ?? undefined),
+        titleFieldKey: titleFieldKeyProblem(d.titleFieldKey) ?? undefined,
+      })
+    ) {
       setTouchedKey(true);
-      setError(keyProblem ?? "ตั้งชื่ออ้างอิง (key) ภาษาอังกฤษพิมพ์เล็กก่อนสร้าง เช่น \"vehicle\"");
       return;
     }
     startTransition(async () => {
@@ -319,7 +372,7 @@ export function AddObjectForm({ systemId, baseHref, takenKeys, templates }: { sy
         templateKey: d.templateKey,
       });
       if (!res.ok) {
-        setError(res.error);
+        if (!fe.show(res.fieldErrors)) setError(res.error);
         return;
       }
       setD(EMPTY);
@@ -343,27 +396,34 @@ export function AddObjectForm({ systemId, baseHref, takenKeys, templates }: { sy
         <div className="grid grid-cols-2 gap-2">
           <label className="flex min-w-0 flex-col gap-1 text-xs text-[color:var(--color-muted)]">
             <span>ชื่อเอกพจน์</span>
-            <input value={d.label} onChange={(e) => set({ label: e.target.value })} placeholder="กรมธรรม์" className="input text-sm" data-testid="object-add-singular" />
+            <input {...fe.field("label")} value={d.label} onChange={(e) => { set({ label: e.target.value }); fe.clear("label"); }} placeholder="กรมธรรม์" className="input text-sm" data-testid="object-add-singular" />
+            <FieldError id={fe.errorId("label")} message={fe.errors.label} testid="object-add-singular-error" />
           </label>
           <label className="flex min-w-0 flex-col gap-1 text-xs text-[color:var(--color-muted)]">
             <span>พหูพจน์</span>
-            <input value={d.plural} onChange={(e) => set({ plural: e.target.value })} placeholder="กรมธรรม์" className="input text-sm" data-testid="object-add-plural" />
+            <input {...fe.field("labelPlural")} value={d.plural} onChange={(e) => { set({ plural: e.target.value }); fe.clear("labelPlural"); }} placeholder="กรมธรรม์" className="input text-sm" data-testid="object-add-plural" />
+            <FieldError id={fe.errorId("labelPlural")} message={fe.errors.labelPlural} testid="object-add-plural-error" />
           </label>
         </div>
         <label className="flex min-w-0 flex-col gap-1 text-xs text-[color:var(--color-muted)]">
           <span>ชื่ออ้างอิง (key — ภาษาอังกฤษพิมพ์เล็ก ใช้ในลิงก์และตัวกรอง)</span>
           <input
+            {...fe.field("key")}
             value={d.key}
-            onChange={(e) => set({ key: e.target.value })}
+            onChange={(e) => {
+              set({ key: e.target.value });
+              fe.clear("key");
+            }}
             onBlur={() => setTouchedKey(true)}
             placeholder="policy"
             className="input text-sm"
             data-testid="object-add-key"
             autoComplete="off"
           />
-          {touchedKey && keyProblem && (
-            <span style={{ color: "var(--color-danger)" }} data-testid="object-add-key-hint">
-              {keyProblem}
+          {/* คำเตือนรูปแบบ key หลังออกจากช่อง (เดิม) + ข้อความตอนกดสร้าง (รวม key ว่าง) — จุดเดียวใต้ช่อง ผูก aria-describedby */}
+          {(fe.errors.key ?? (touchedKey ? keyProblem : null)) && (
+            <span id={fe.errorId("key")} style={{ color: "var(--color-danger)" }} data-testid="object-add-key-hint">
+              {fe.errors.key ?? keyProblem}
             </span>
           )}
         </label>
@@ -394,7 +454,7 @@ export function AddObjectForm({ systemId, baseHref, takenKeys, templates }: { sy
           <label className="flex min-w-0 flex-col gap-1 text-xs text-[color:var(--color-muted)]">
             <span>ชื่อรายการคือฟิลด์</span>
             {titleChoices.length > 0 ? (
-              <select value={d.titleFieldKey} onChange={(e) => set({ titleFieldKey: e.target.value })} className="input text-sm" data-testid="object-add-title-field">
+              <select {...fe.field("titleFieldKey")} value={d.titleFieldKey} onChange={(e) => { set({ titleFieldKey: e.target.value }); fe.clear("titleFieldKey"); }} className="input text-sm" data-testid="object-add-title-field">
                 {titleChoices.map((f) => (
                   <option key={f.key} value={f.key}>
                     {f.label}
@@ -402,8 +462,9 @@ export function AddObjectForm({ systemId, baseHref, takenKeys, templates }: { sy
                 ))}
               </select>
             ) : (
-              <input value={d.titleFieldKey} onChange={(e) => set({ titleFieldKey: e.target.value })} placeholder="name" className="input text-sm" data-testid="object-add-title-field" />
+              <input {...fe.field("titleFieldKey")} value={d.titleFieldKey} onChange={(e) => { set({ titleFieldKey: e.target.value }); fe.clear("titleFieldKey"); }} placeholder="name" className="input text-sm" data-testid="object-add-title-field" />
             )}
+            <FieldError id={fe.errorId("titleFieldKey")} message={fe.errors.titleFieldKey} testid="object-add-title-field-error" />
           </label>
         </div>
         <label className="flex items-center gap-2 text-sm">
@@ -427,6 +488,7 @@ export function AddObjectForm({ systemId, baseHref, takenKeys, templates }: { sy
               setD(EMPTY);
               setTouchedKey(false);
               setError(null);
+              fe.reset();
             }}
             data-testid="object-add-cancel"
           >

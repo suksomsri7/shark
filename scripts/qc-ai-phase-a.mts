@@ -17,6 +17,8 @@
 //   inventory_adjust: newQty < 0 → { error:"...ติดลบไม่ได้...", suggestion:"ตั้งเป็น 0?" } ไม่สร้าง proposal
 import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
 loadLegacyQcEnv("qc-ai-phase-a"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
+// ORACLE-EDIT C5.5-G1: runTool/sendMessage now take a required actor (no actor = refusal) — these checks always meant "the shop OWNER asks"
+const qcOwner = (t: string) => ({ kind: "member" as const, tenantId: t, userId: "qc-owner", membership: { role: "OWNER" as const, unitAccess: ["*"], permissions: {} } });
 process.env.SHARK_AI_MOCK = "1";
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");
@@ -77,7 +79,7 @@ try {
   // [3] validate-explain: inventory_adjust ติดลบ → error+suggestion ไม่สร้าง proposal
   const item = await (await import("@/lib/modules/inventory/service")).createItem({ tenantId: tid, systemId: inv.id } as never, { sku: "PA-ADJ", name: "ปรับ" } as never);
   const before = await prisma.aiProposal.count({ where: { tenantId: tid } });
-  const out = await tools.runTool({ tenantId: tid, conversationId: conv.id }, "inventory_adjust", { sku: "PA-ADJ", newQty: -5 });
+  const out = await tools.runTool({ tenantId: tid, actor: qcOwner(tid), conversationId: conv.id }, "inventory_adjust", { sku: "PA-ADJ", newQty: -5 });
   const after = await prisma.aiProposal.count({ where: { tenantId: tid } });
   let parsed: any = {}; try { parsed = JSON.parse(out); } catch {}
   chk("PA-3.1", "ปรับสต็อกติดลบ → คืน error (มี suggestion) + ไม่สร้าง proposal", !!parsed.error && after === before, "MAJOR");

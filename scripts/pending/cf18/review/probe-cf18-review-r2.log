@@ -1,0 +1,47 @@
+(node:2954056) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+── A role-mailbox local parts ──
+  ✅ [A1] (control) control: personal local parts that contain a role word (sales.somchai · somchai.sales · hr-anan · ann.hr) are still masked
+        — ACTUAL ["sales.somchai:masked","somchai.sales:masked","hr-anan:masked","ann.hr:masked","info2024:kept","Support_01:kept"]
+  ✅ [A2] (control) control: role words with digits / separators / capitals (info2024 · Support_01) are no longer standalone tokens
+        — ACTUAL ["sales.somchai:masked","somchai.sales:masked","hr-anan:masked","ann.hr:masked","info2024:kept","Support_01:kept"]
+
+── B scheduled tasks ──
+  ✅ [B1] (control) control: mask-only task deleted · task with other text kept + masked · unrelated pre-masked task kept byte-identical · other tenant's task untouched
+        — ACTUAL ["[ข้อมูลถูกลบ] สรุปยอดขายรายวัน qc-cf18r2-fetfsbeu","งานประจำ qc-cf18r2-fetfsbeu 0898097249","ทุกเช้าสรุปยอด และเตือนโทรหา [ข้อมูลถูกลบ]"]
+
+── C non-CRM proposals ──
+  ✅ [C1] (control) control: other tenant's PENDING proposal with the same tokens is untouched (status + text)
+        — ACTUAL {"status":"PENDING","summary":"นัด ข้อเสนอ qc-cf18r2-fetfsbeu","payload":{"phone":"0852922762"}}
+  ✅ [C2] (control) control: a finished (EXECUTED) proposal keeps its status; summary/resultNote/payload masked; key collisions keep all 3 values
+        — ACTUAL {"status":"EXECUTED","summary":"นัด [ข้อมูลถูกลบ]","resultNote":"นัดแล้ว [ข้อมูลถูกลบ]","payload":{"notes":{"[ข้อมูลถูกลบ]":"b","[ข้อมูลถูกลบ] #2":"c","[ข้อมูลถูกลบ] #3":"a"},"phone":"[ข้อมูลถูกลบ]"}}
+
+── D executePlan guard (no erase) ──
+  ✅ [D1] (control) control: no erase — the step's FAILED status AND its note are written back (guarded write path)
+        — ACTUAL run={"ok":false,"results":[{"summary":"ขั้นเดียว","ok":false,"note":"ไม่รู้จักประเภทงานนี้"}],"doneCount… step={"kind":"qc_unknown_kind","note":"ไม่รู้จักประเภทงานนี้","status":"FAILED","payload":{"n":1,"s":"x","nested":{"a":1,"b":2}},"summary":"ขั้นเดียว"}
+  ℹ️  [D2] payload integer > 2^53: status=FAILED step.status=FAILED note=null stored ref=12345678901234567000 (pre-existing precision loss on any write-back; the guard falls back to status-only when the round trip changes the number)
+
+── E route bytes valid vs garbage ──
+  ✅ [E0] (control) control (premise): the sent mail carries a /u token; the valid first requests flipped (one wake each), garbage none, repeat none
+        — ACTUAL wakes nt=1/0 oc=1/0 oc#2=0
+  ✅ [E1] (control) control: status + headers + body identical for a valid (flipping) request and a garbage token on both /u routes (no new token oracle)
+        — ACTUAL nt 200/200 oc 200/200
+
+── F SEQ_TASK assignee chain ──
+  ✅ [F1] (control) control: contact owner who is no longer a member ⇒ task title has no company text
+        — ACTUAL {"contactId":"cmuqwz0on001yd4kzoxj2fx9s","title":"โทรหาฝ่ายจัดซื้อ ","ownerUserId":"cmuqwyp8u0004d4kz8h1kgunj"}
+  ✅ [F2] (control) control: unassigned contact ⇒ shop OWNER is the assignee and sees the company name
+        — ACTUAL {"contactId":"cmuqwz0po0021d4kznj4zevcv","title":"โทรหาฝ่ายจัดซื้อ บริษัทลับ qc-cf18r2-fetfsbeu","ownerUserId":"cmuqwyp840002d4kzaa138h8v"}
+  ✅ [CLEAN] (control) throwaway tenants, users, system rows and rate buckets removed (0 rows left)
+        — ACTUAL - buckets=0
+
+controls 11/11 green · findings reproduced (RED) 0/0
+JSON_SUMMARY {"controls":[["A1",true],["A2",true],["B1",true],["C1",true],["C2",true],["D1",true],["E0",true],["E1",true],["F1",true],["F2",true],["CLEAN",true]],"findings":[]}

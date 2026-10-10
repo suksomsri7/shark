@@ -46,7 +46,8 @@ try {
       const after = await prisma.aiConversation.findUnique({ where: { id: conv.id } });
       chk("HA-2.2", "updatedAt ถูก touch (ห้องเด้งบนสุด)", !!after && !!before && after.updatedAt > before.updatedAt, "ใหม่กว่า", "?");
       const mconv = ((await dyn("@/lib/mobile/conversations")) ?? {}) as { listConversations?: (c: any) => Promise<{ id: string; unread: boolean }[]> };
-      const list = mconv.listConversations ? await mconv.listConversations(ctx) : [];
+      // ORACLE-EDIT C5.5-G2: the list takes the viewer — the AI room here was written without a creator (legacy) ⇒ the shop OWNER sees it
+      const list = mconv.listConversations ? await mconv.listConversations({ ...ctx, actor: { kind: "member", tenantId: t.id, userId: "qc-owner", membership: { role: "OWNER", unitAccess: ["*"], permissions: {} } } }) : [];
       chk("HA-2.3", "แอปเห็น unread=true (session สีต่าง — สัญญาเจ้าของ)", list.find((r) => r.id === conv.id)?.unread === true, "true", JSON.stringify(list.find((r) => r.id === conv.id)));
     }
   }

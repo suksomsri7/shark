@@ -8,6 +8,7 @@ import { requireTenant, type Auth } from "@/lib/core/context";
 import { assertCan, ForbiddenError } from "@/lib/core/rbac";
 import { posMembership, posSalesScope, posScopeUnitIds, posCanSetTenantPrice } from "@/lib/modules/pos/access";
 import { createSale, closeDayCsv } from "@/lib/modules/pos/service";
+import { isPosClientKey, lookupPosKey, posStoredKey } from "@/lib/modules/pos/legacy-key";
 import { posUnitIsLinked, resolvePosLinks, setItemSalePrice, posOpenDeals, posLinkSaleToDeal, posPriceUnitIds } from "@/lib/modules/pos/register";
 import type {
   PosDealOption,
@@ -362,17 +363,20 @@ export async function registerSaleAction(input: SaleInput): Promise<RegisterSale
   assertPosCan(auth, input.unitId);
   const tenantId = auth.active.tenantId;
 
-  const idempotencyKey = String(input.idempotencyKey ?? "").trim();
-  if (!idempotencyKey) return { status: "error", message: "ข้อมูลบิลไม่ครบ ลองใหม่อีกครั้ง" };
+  // HF-O23: คีย์ของ client = [A-Za-z0-9_-] 8–100 (UI ส่ง UUID) · เก็บ/ค้นเป็น "pos1:<คีย์>" เสมอ ⇒ ไม่ชน/ไม่อ่านคีย์ของโมดูลอื่น
+  //   (hotel-sale-… · booking-sale-… · ticket-sale-… · ecom-… ฯลฯ อยู่ช่อง unique เดียวกัน) — ดู src/lib/modules/pos/legacy-key.ts
+  const clientKey = String(input.idempotencyKey ?? "").trim();
+  if (!isPosClientKey(clientKey)) return { status: "error", message: "ข้อมูลบิลไม่ครบ ลองใหม่อีกครั้ง" };
+  const idempotencyKey = posStoredKey(clientKey);
 
   // idempotent short-circuit: บิลนี้เคยบันทึกแล้ว (กดยืนยันซ้ำ) → คืนผลเดิม ไม่คิดคูปอง/ยอดซ้ำ
-  const existing = await prisma.posSale.findUnique({
-    where: { tenantId_idempotencyKey: { tenantId, idempotencyKey } },
-    select: { receiptNo: true, grandTotalSatang: true, pointEarned: true },
-  });
-  if (existing) {
-    return { status: "ok", receiptNo: existing.receiptNo, grandTotalSatang: existing.grandTotalSatang, pointEarned: existing.pointEarned, changeSatang: 0 };
+  //   คืนเฉพาะบิล POS ของสาขานี้ · คีย์เปล่า (แท็บที่เปิดก่อน deploy) ค้นเฉพาะเมื่อไม่มีแถว "pos1:" และต้องเป็นบิล POS สาขานี้เท่านั้น
+  const prior = await lookupPosKey(prisma, tenantId, input.unitId, clientKey);
+  if (prior.kind === "replay") {
+    const p = prior.sale;
+    return { status: "ok", receiptNo: p.receiptNo, grandTotalSatang: p.grandTotalSatang, pointEarned: p.pointEarned, changeSatang: 0 };
   }
+  if (prior.kind === "taken") return { status: "error", message: "ข้อมูลบิลไม่ครบ ลองใหม่อีกครั้ง" };
 
   const norm = normalizeLines(input.lines);
   if (!norm.ok) return { status: "error", message: norm.message };
@@ -434,6 +438,12 @@ export async function registerSaleAction(input: SaleInput): Promise<RegisterSale
       couponCode: totals.couponSystemId ? input.couponCode?.trim().toUpperCase() : undefined,
       payMethods: [{ type: payType, amountSatang: grandTotal }],
     });
+    // HF-O23 R2: ปิดช่อง lookup→create race — createSale คืนบิลเดิมเมื่อคีย์ซ้ำ (ไม่ดู unit/sourceModule)
+    //   ถ้าแถว "pos1:<คีย์>" ถูกสร้างแทรกระหว่างนั้นโดยสาขาอื่น/โมดูลอื่น → error เดียวกับ taken (ไม่คืนเลขใบเสร็จ/ยอด · ไม่ผูกดีล)
+    const made = await prisma.posSale.findUnique({ where: { id: res.saleId }, select: { unitId: true, sourceModule: true } });
+    if (!made || made.unitId !== input.unitId || made.sourceModule !== "POS") {
+      return { status: "error", message: "ข้อมูลบิลไม่ครบ ลองใหม่อีกครั้ง" };
+    }
     // ── CRM C2.7: ผูกบิลที่ขายสำเร็จแล้วเข้ากับดีลที่แคชเชียร์เลือก (`crm.payments.linkSaleToDeal` ผ่าน `pos/register.ts`) ──
     // 🔴 ลูกค้าจ่ายเงินไปแล้ว: ความล้มของฝั่ง CRM **ห้าม** ทำให้การขายล้ม ⇒ ห่อไว้ที่นี่ แล้วบันทึกเป็น WARN (id ล้วน · X8)
     //    บิลที่ `createSale` ทำเป็น PAID แล้ว จะถูก "นับ" ในธุรกรรมเดียวกับการผูก (ตัวรับ `pos.sale.paid` วิ่งไปก่อนหน้านี้แล้ว)

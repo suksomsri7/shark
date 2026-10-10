@@ -7,6 +7,7 @@ import { requireApi, API_RATE_LIMITS, type ApiModuleConfig, type RequireResult }
 import type { ApiOp } from "@/lib/api/op";
 import { newRequestId } from "@/lib/api/respond";
 import { accountApiKeyActor } from "./actor";
+import { ensureJournalSequences } from "../gl";
 
 export { API_RATE_LIMITS };
 export type { RequireOk, RequireResult } from "@/lib/api/require";
@@ -37,5 +38,8 @@ export async function requireAccountApi(
   op: ApiOp,
   requestId: string = newRequestId(),
 ): Promise<RequireResult> {
-  return requireApi(req, op, ACCOUNT_API_CONFIG, requestId);
+  const r = await requireApi(req, op, ACCOUNT_API_CONFIG, requestId);
+  // CRM C5.4-N r2 ▸ sequence เลขที่ใบสำคัญของสมุดเล่มนี้ สร้าง autocommit ก่อน handler เปิดธุรกรรมเงิน (จำต่อโปรเซส · ล้มไม่ขวาง) ◂
+  if (r.ok) await ensureJournalSequences(r.actor.systemId);
+  return r;
 }

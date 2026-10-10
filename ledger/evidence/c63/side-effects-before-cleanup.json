@@ -1,0 +1,245 @@
+{
+ "outbox_since_start": [
+  {
+   "type": "crm.activity.logged",
+   "status": "DONE",
+   "n": 1
+  },
+  {
+   "type": "crm.company.created",
+   "status": "DONE",
+   "n": 1
+  },
+  {
+   "type": "crm.company.updated",
+   "status": "DONE",
+   "n": 1
+  },
+  {
+   "type": "crm.contact.assigned",
+   "status": "DONE",
+   "n": 2
+  },
+  {
+   "type": "crm.contact.created",
+   "status": "DONE",
+   "n": 2
+  },
+  {
+   "type": "crm.deal.created",
+   "status": "DONE",
+   "n": 3
+  },
+  {
+   "type": "crm.deal.lost",
+   "status": "DONE",
+   "n": 1
+  },
+  {
+   "type": "crm.deal.stage.changed",
+   "status": "DONE",
+   "n": 4
+  },
+  {
+   "type": "crm.deal.updated",
+   "status": "DONE",
+   "n": 1
+  },
+  {
+   "type": "crm.deal.won",
+   "status": "DONE",
+   "n": 1
+  },
+  {
+   "type": "crm.portal.viewed",
+   "status": "DONE",
+   "n": 1
+  },
+  {
+   "type": "custom.record.created",
+   "status": "DONE",
+   "n": 1
+  }
+ ],
+ "audit_since_start": [
+  {
+   "action": "crm.activity.log",
+   "at": "USER",
+   "actor": "temp",
+   "n": 1
+  },
+  {
+   "action": "crm.assignment.rule.create",
+   "at": "USER",
+   "actor": "temp",
+   "n": 1
+  },
+  {
+   "action": "crm.assignment.rule.toggle",
+   "at": "USER",
+   "actor": "temp",
+   "n": 1
+  },
+  {
+   "action": "crm.company.contact.add",
+   "at": "USER",
+   "actor": "owner",
+   "n": 1
+  },
+  {
+   "action": "crm.company.create",
+   "at": "USER",
+   "actor": "owner",
+   "n": 1
+  },
+  {
+   "action": "crm.contact.create",
+   "at": "USER",
+   "actor": "temp",
+   "n": 1
+  },
+  {
+   "action": "crm.contact.create",
+   "at": "USER",
+   "actor": "owner",
+   "n": 1
+  },
+  {
+   "action": "crm.deal.create",
+   "at": "USER",
+   "actor": "owner",
+   "n": 1
+  },
+  {
+   "action": "crm.deal.create",
+   "at": "USER",
+   "actor": "temp",
+   "n": 2
+  },
+  {
+   "action": "crm.deal.lines.set",
+   "at": "USER",
+   "actor": "temp",
+   "n": 1
+  },
+  {
+   "action": "crm.deal.move",
+   "at": "USER",
+   "actor": "temp",
+   "n": 4
+  },
+  {
+   "action": "crm.lost_reason.create",
+   "at": "USER",
+   "actor": "owner",
+   "n": 1
+  },
+  {
+   "action": "crm.object.create",
+   "at": "USER",
+   "actor": "owner",
+   "n": 1
+  },
+  {
+   "action": "crm.portal.settings",
+   "at": "USER",
+   "actor": "owner",
+   "n": 2
+  },
+  {
+   "action": "crm.quota.set",
+   "at": "USER",
+   "actor": "temp",
+   "n": 1
+  },
+  {
+   "action": "crm.record.create",
+   "at": "USER",
+   "actor": "temp",
+   "n": 1
+  },
+  {
+   "action": "crm.score.rule.create",
+   "at": "USER",
+   "actor": "temp",
+   "n": 1
+  },
+  {
+   "action": "crm.sequence.create",
+   "at": "USER",
+   "actor": "temp",
+   "n": 1
+  },
+  {
+   "action": "crm.view.create",
+   "at": "USER",
+   "actor": "temp",
+   "n": 1
+  }
+ ],
+ "notifications_since_start": [
+  {
+   "recipient": "temp",
+   "walk_text": false,
+   "title": "ดีลปิดแล้ว",
+   "n": 2
+  },
+  {
+   "recipient": "temp",
+   "walk_text": false,
+   "title": "มี lead ใหม่เข้ามาที่คุณ",
+   "n": 1
+  }
+ ],
+ "member_fields_crm": [
+  {
+   "objectKey": "company",
+   "n": 12,
+   "first": "2026-10-08 01:40:16.333"
+  },
+  {
+   "objectKey": "contact",
+   "n": 14,
+   "first": "2026-10-08 01:40:21.324"
+  }
+ ],
+ "member_sections_crm": [
+  {
+   "objectKey": "contact",
+   "n": 1
+  },
+  {
+   "objectKey": "company",
+   "n": 1
+  }
+ ],
+ "ops_since_start": [],
+ "other_modules": [
+  {
+   "customers": 0,
+   "acct_contacts": 0,
+   "docs": 0,
+   "cards": 0,
+   "emails": 0,
+   "webhooks_since": 0,
+   "ai_txn": 1,
+   "score_logs": 0,
+   "member_activity": 0,
+   "outbox_not_done": 0
+  }
+ ],
+ "settings_keys_now": [
+  {
+   "k": "email",
+   "v": "{\"inboundKey\": \"whksi352\"}"
+  },
+  {
+   "k": "portal",
+   "v": "{\"enabled\": false, \"showDeals\": false, \"statusMap\": {}, \"all"
+  },
+  {
+   "k": "uiVersion",
+   "v": "2"
+  }
+ ]
+}

@@ -8,7 +8,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { getTenantExportAction, listTenantExportsAction, saveRetentionAction, startTenantExportAction } from "@/lib/modules/crm/privacy-actions";
-import { LEAD_RETENTION_CONFIRM_WORD, type CrmExportDto } from "@/lib/modules/crm/privacy-shared";
+import { LEAD_RETENTION_CONFIRM_WORD, PRIVACY_REASON_MAX, PRIVACY_REASON_MIN, type CrmExportDto } from "@/lib/modules/crm/privacy-shared";
 
 const STATUS_LABEL: Record<CrmExportDto["status"], string> = {
   QUEUED: "รอคิว",
@@ -39,6 +39,10 @@ export function PrivacySettings({
   const [jobs, setJobs] = useState<CrmExportDto[]>(initialJobs);
   const [exportBusy, setExportBusy] = useState(false);
   const [exportMsg, setExportMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  // CRM C5.4-B ▸ L5-m7: ส่งออกทั้งระบบ = ติ๊กยืนยัน + เหตุผล (ด่านเดียวกับส่งออกรายชื่อผู้ติดต่อ · X9) ◂
+  const [exportConfirm, setExportConfirm] = useState(false);
+  const [exportReason, setExportReason] = useState("");
+  const [exportError, setExportError] = useState<string | null>(null);
 
   const [confirmLower, setConfirmLower] = useState(false);
   const [confirmText, setConfirmText] = useState("");
@@ -67,9 +71,13 @@ export function PrivacySettings({
   }
 
   async function start(format: "CSV" | "JSON") {
-    setExportBusy(true);
     setExportMsg(null);
-    const r = await startTenantExportAction(systemId, format);
+    const why = exportReason.trim();
+    if (!exportConfirm) return setExportError("ติ๊กยืนยันก่อน — ไฟล์นี้มีเบอร์ อีเมล และโน้ตของลูกค้าทุกคนที่คุณมองเห็น");
+    if (why.length < PRIVACY_REASON_MIN) return setExportError(`ใส่เหตุผลของการส่งออกอย่างน้อย ${PRIVACY_REASON_MIN} ตัวอักษร เพื่อให้ย้อนดูได้ว่าส่งออกไปเพราะอะไร`);
+    setExportError(null);
+    setExportBusy(true);
+    const r = await startTenantExportAction(systemId, format, { confirm: true, reason: why });
     setExportBusy(false);
     if (!r.ok) {
       setExportMsg({ ok: false, text: r.error });
@@ -146,6 +154,27 @@ export function PrivacySettings({
               ผู้ติดต่อ บริษัท ดีล กิจกรรม ความยินยอม หัวอีเมล และข้อมูลกำหนดเองที่คุณมองเห็น (ไม่มีเนื้ออีเมล · ฟิลด์อ่อนไหวเฉพาะเจ้าของร้าน) · ไฟล์เปิดได้เฉพาะคุณ และถูกลบอัตโนมัติตามอายุไฟล์ส่งออก
             </p>
           </div>
+          <label className="flex flex-col gap-1 text-xs" htmlFor="crm-export-reason">
+            เหตุผลของการส่งออก (อย่างน้อย {PRIVACY_REASON_MIN} ตัวอักษร)
+            <input
+              id="crm-export-reason"
+              className="input text-sm"
+              value={exportReason}
+              maxLength={PRIVACY_REASON_MAX}
+              onChange={(e) => setExportReason(e.target.value)}
+              aria-describedby={exportError ? "crm-export-error" : undefined}
+              data-testid="crm-export-reason"
+            />
+          </label>
+          <label className="flex items-center gap-2 text-xs">
+            <input type="checkbox" checked={exportConfirm} onChange={(e) => setExportConfirm(e.target.checked)} data-testid="crm-export-confirm" />
+            ฉันเข้าใจว่าไฟล์นี้มีข้อมูลส่วนบุคคลของลูกค้า และจะใช้ตามเหตุผลที่ระบุเท่านั้น
+          </label>
+          {exportError ? (
+            <p id="crm-export-error" className="text-xs text-[color:var(--color-danger)]" role="alert" data-testid="crm-export-error">
+              {exportError}
+            </p>
+          ) : null}
           <div className="flex flex-wrap gap-2">
             <button type="button" className="btn btn-ghost text-sm" disabled={exportBusy} onClick={() => start("CSV")} data-testid="crm-export-start-csv">
               ขอไฟล์ CSV

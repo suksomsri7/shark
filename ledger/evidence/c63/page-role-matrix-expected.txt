@@ -1,0 +1,75 @@
+pages × roles (expectation from scripts/crm-ui-inventory.json; 5xx always aborts):
+  home                     owner:200  manager:200  lead:200  staff:200
+  contacts                 owner:200  manager:200  lead:200  staff:200
+  contacts-new             owner:200  manager:200  lead:200  staff:200
+  contacts-import          owner:200  manager:200  lead:gated  staff:gated
+  contacts-duplicates      owner:200  manager:200  lead:gated  staff:gated
+  companies                owner:200  manager:200  lead:404  staff:404
+  companies-new            owner:200  manager:200  lead:404  staff:404
+  companies-duplicates     owner:200  manager:200  lead:404  staff:404
+  deals-board              owner:200  manager:200  lead:200  staff:200
+  deals-table              owner:200  manager:200  lead:200  staff:200
+  deals-new                owner:200  manager:200  lead:200  staff:200
+  pipelines                owner:200  manager:200  lead:200  staff:200
+  activities               owner:200  manager:200  lead:200  staff:200
+  calendar                 owner:200  manager:200  lead:200  staff:200
+  emails                   owner:200  manager:200  lead:gated  staff:gated
+  objects                  owner:200  manager:200  lead:gated  staff:gated
+  commissions              owner:200  manager:200  lead:200  staff:200
+  reports                  owner:200  manager:200  lead:gated  staff:gated
+  reports-overview         owner:200  manager:200  lead:gated  staff:gated
+  reports-forecast         owner:200  manager:200  lead:gated  staff:gated
+  reports-funnel           owner:200  manager:200  lead:gated  staff:gated
+  reports-reps             owner:200  manager:200  lead:gated  staff:gated
+  reports-activities       owner:200  manager:200  lead:gated  staff:gated
+  reports-lost             owner:200  manager:200  lead:gated  staff:gated
+  reports-sources          owner:200  manager:200  lead:gated  staff:gated
+  reports-scores           owner:200  manager:200  lead:gated  staff:gated
+  settings                 owner:200  manager:gated  lead:gated  staff:gated
+  settings-pipelines       owner:200  manager:gated  lead:gated  staff:gated
+  settings-stages          owner:200  manager:gated  lead:gated  staff:gated
+  settings-lost-reasons    owner:200  manager:gated  lead:gated  staff:gated
+  settings-visibility      owner:200  manager:gated  lead:gated  staff:gated
+  settings-objects         owner:200  manager:gated  lead:gated  staff:gated
+  settings-api             owner:200  manager:gated  lead:gated  staff:gated
+  settings-automation      owner:200  manager:200  lead:gated  staff:gated
+  settings-sequences       owner:200  manager:200  lead:gated  staff:gated
+  settings-holidays        owner:200  manager:200  lead:gated  staff:gated
+  settings-assignment      owner:200  manager:200  lead:gated  staff:gated
+  settings-scoring         owner:200  manager:200  lead:gated  staff:gated
+  settings-notifications   owner:200  manager:200  lead:200  staff:200
+  settings-quotas          owner:200  manager:200  lead:gated  staff:gated
+  settings-commissions     owner:200  manager:200  lead:gated  staff:gated
+  settings-portal          owner:200  manager:200  lead:gated  staff:gated
+  settings-tracking        owner:200  manager:200  lead:gated  staff:gated
+  settings-forms           owner:200  manager:200  lead:gated  staff:gated
+  settings-integrations    owner:200  manager:gated  lead:gated  staff:gated
+  settings-email           owner:200  manager:200  lead:gated  staff:gated
+  teams                    owner:200  manager:gated  lead:gated  staff:gated
+
+portal pages (customer): portal-home, portal-quotations, portal-invoices, portal-documents, portal-requests, portal-contacts
+
+scenario:
+  S01 [owner] create company qc-prod-Andaman Corporate Travel (no tax id, no phone/e-mail)  ⇒  CrmCompany +1 · Party(COMPANY) +1 marked · AccountContact 0
+  S02 [owner] create contact qc-prod-Wanna Buyer (e-mail @qc-prod.invalid, no phone) linked to the company, owner = owner  ⇒  CrmContact +1 · CrmCompanyContact +1 · Party(PERSON) +1
+  S03 [manager] create lead qc-prod-Somchai Lead (NO phone, NO e-mail) and assign it to the staff user  ⇒  CrmContact.ownerUserId = staff · AppNotification(lead.assigned) for the temp staff only
+  S04 [staff] visibility: sees S03 lead (own) · GET of the S02 contact ⇒ 404 (owner's record, policy STAFF=TEAM)  ⇒  HTTP 200 / 404
+  S05 [staff] open deal qc-prod-Corporate dive trip 20 pax (180,000 ฿) on the S03 lead  ⇒  CrmDeal +1 owner = staff · stage = first OPEN stage · history +1
+  S06 [staff] log a CALL activity on the deal (no due date, no reminder, no @mention)  ⇒  CrmActivity +1 · deal.lastActivityAt set
+  S07 [lead] team visibility: opens the staff's deal (same team) and moves it ผู้สนใจใหม่ → ติดต่อแล้ว → เสนอราคา  ⇒  CrmDealStageHistory +2 · stageId = เสนอราคา
+  S08 [manager] adds 2 deal lines (20 × 8,000 · 1 × 20,000), no discount  ⇒  CrmDealLine = 2 · value recomputed
+  S09 [manager] moves the deal to ปิดการขายได้ (WON)  ⇒  kind WON · closedAt set · crm.deal.won DONE · Customer 0 (contact has no phone/e-mail) · AccountDocument 0
+  S10 [lead] opens deal qc-prod-Liveaboard charter (95,000 ฿) on the S03 lead; staff marks it LOST with the first lost reason + note  ⇒  kind LOST · lostReasonId set · crm.deal.lost DONE
+  S11 [owner] opens deal qc-prod-Annual corporate contract (400,000 ฿) on the S02 contact (company deal, owner = owner)  ⇒  CrmDeal +1 companyId set
+  S12 [all] visibility matrix on the 3 deals / 2 contacts / company 360 (owner 200 · manager 200 · lead/staff: team deals 200, owner's deal 404, company 404)  ⇒  HTTP status per role
+  S13 [manager] reports reflect the story: overview / funnel / lost / reps tabs render; DB: won 180,000 · lost 1 · open 1  ⇒  SQL sums
+  S20 [owner] 2b: add lost reason qc-prod-…  ⇒  CrmLostReason +1 (marker)
+  S21 [owner/manager] 2b: custom object qcprodcontract (not bound) + one record by the manager  ⇒  CustomObject +1 · CustomRecord +1
+  S22 [manager] 2b: sequence definition with a single WAIT step — nobody enrolled  ⇒  CrmSequence +1 · enrolments 0
+  S23 [manager] 2b: monthly quota 500,000 ฿ for the temp staff user  ⇒  CrmQuota +1
+  S24 [manager] 2b: assignment rule (staff only) created then switched off  ⇒  CrmAssignmentRule +1 active=false
+  S25 [manager] 2b: score rule (1 point) created inactive  ⇒  CrmScoreRule inactive
+  S26 [staff] 2b: private saved view on contacts?q=qc-prod  ⇒  MemberSavedView +1
+  S14 [owner] portal: enable settings.crm.portal (UI) → setup --stage portal → customer walks /b/<slug>/* → customer cannot open /app/* → owner disables portal  ⇒  PortalSession valid · pages 200 · /app 307→/login · settings restored
+
+counts: static pages 47 × roles 4 × viewports 2 = 376 page loads (+ 360 pages after the scenario, + portal 6 × 2)

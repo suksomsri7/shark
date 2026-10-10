@@ -1,0 +1,46 @@
+== visual-c37-owner start 2026-10-08T00:08:59Z · HEAD a6a3f800 · iso ISO_MEM=5G · cmd: pnpm exec tsx scripts/visual-crm.mts 3.7 --user owner
+(node:1789153) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+🌐 QC server http://127.0.0.1:3215 ตอบ HTTP 200
+  ✅ c37-390-home-owner [mobile] HTTP 200 → .qc-shots/crm/3.7/c37-390-home-owner-mobile.png
+  ✅ c37-390-emails-owner [mobile] HTTP 200 → .qc-shots/crm/3.7/c37-390-emails-owner-mobile.png
+  ✅ c37-390-reports-owner [mobile] HTTP 200 → .qc-shots/crm/3.7/c37-390-reports-owner-mobile.png
+  ✅ c37-390-settings-automation-owner [mobile] HTTP 200 → .qc-shots/crm/3.7/c37-390-settings-automation-owner-mobile.png
+  ✅ c37-390-settings-sequences-owner [mobile] HTTP 200 → .qc-shots/crm/3.7/c37-390-settings-sequences-owner-mobile.png
+  ✅ c37-390-settings-holidays-owner [mobile] HTTP 200 → .qc-shots/crm/3.7/c37-390-settings-holidays-owner-mobile.png
+  ✅ c37-390-settings-assignment-owner [mobile] HTTP 200 → .qc-shots/crm/3.7/c37-390-settings-assignment-owner-mobile.png
+  ✅ c37-390-settings-email-owner [mobile] HTTP 200 → .qc-shots/crm/3.7/c37-390-settings-email-owner-mobile.png
+  ✅ c37-390-settings-tracking-owner [mobile] HTTP 200 → .qc-shots/crm/3.7/c37-390-settings-tracking-owner-mobile.png
+  ✅ c37-390-settings-forms-owner [mobile] HTTP 200 → .qc-shots/crm/3.7/c37-390-settings-forms-owner-mobile.png
+  ✅ c37-390-settings-scoring-owner [mobile] HTTP 200 → .qc-shots/crm/3.7/c37-390-settings-scoring-owner-mobile.png
+  ✅ c37-390-settings-commissions-owner [mobile] HTTP 200 → .qc-shots/crm/3.7/c37-390-settings-commissions-owner-mobile.png
+  ✅ c37-390-commissions-owner [mobile] HTTP 200 → .qc-shots/crm/3.7/c37-390-commissions-owner-mobile.png
+  ✅ c37-390-settings-notifications-owner [mobile] HTTP 200 → .qc-shots/crm/3.7/c37-390-settings-notifications-owner-mobile.png
+  ✅ c37-390-settings-quotas-owner [mobile] HTTP 200 → .qc-shots/crm/3.7/c37-390-settings-quotas-owner-mobile.png
+  ✅ c37-390-settings-portal-owner [mobile] HTTP 200 → .qc-shots/crm/3.7/c37-390-settings-portal-owner-mobile.png
+  ✅ c37-390-report-overview-owner [mobile] HTTP 200 → .qc-shots/crm/3.7/c37-390-report-overview-owner-mobile.png
+  ✅ c37-390-report-forecast-owner [mobile] HTTP 200 → .qc-shots/crm/3.7/c37-390-report-forecast-owner-mobile.png
+  ✅ c37-390-report-funnel-owner [mobile] HTTP 200 → .qc-shots/crm/3.7/c37-390-report-funnel-owner-mobile.png
+  ✅ c37-390-report-reps-owner [mobile] HTTP 200 → .qc-shots/crm/3.7/c37-390-report-reps-owner-mobile.png
+  ✅ c37-390-report-activities-owner [mobile] HTTP 200 → .qc-shots/crm/3.7/c37-390-report-activities-owner-mobile.png
+  ✅ c37-390-report-lost-owner [mobile] HTTP 200 → .qc-shots/crm/3.7/c37-390-report-lost-owner-mobile.png
+  ✅ c37-390-report-sources-owner [mobile] HTTP 200 → .qc-shots/crm/3.7/c37-390-report-sources-owner-mobile.png
+  ✅ c37-390-report-scores-owner [mobile] HTTP 200 → .qc-shots/crm/3.7/c37-390-report-scores-owner-mobile.png
+🧪 เตรียมของ C3.7: สร้างเธรดชั่วคราว ba3d3469b6f4ad0f7849c83b1ddf39f1 (ลบใน restoreSeed)
+  ✅ c37-390-email-thread-owner [mobile] HTTP 200 → .qc-shots/crm/3.7/c37-390-email-thread-owner-mobile.png
+🧪 เตรียมของ C3.7: สร้างลำดับชั่วคราว cmuys71nk0005ipkzr7dagyw7 (ลบใน restoreSeed)
+  ✅ c37-390-sequence-editor-owner [mobile] HTTP 200 → .qc-shots/crm/3.7/c37-390-sequence-editor-owner-mobile.png
+  🔢 คืนสภาพ: เวลาเคลื่อนไหวของผู้ติดต่อ 1 คน (+บริษัท/ดีล) เขียนค่าเดิมคืนแล้ว
+  🔢 คืนสภาพ: ลำดับ 0 → 0 · กฎมอบหมาย 0 → 0 (เท่าเดิม)
+  🔢 คืนสภาพ: จดหมาย 0 → 0 · แม่แบบ 0 → 0 (เท่าเดิม)
+
+🧹 ลบ session QC ของรอบนี้ 1 · ภาพ 26 ใบใน .qc-shots/crm/3.7 · สรุป summary-owner.json
+JSON_SUMMARY {"wo":"3.7","user":"owner","shots":[".qc-shots/crm/3.7/c37-390-home-owner-mobile.png",".qc-shots/crm/3.7/c37-390-emails-owner-mobile.png",".qc-shots/crm/3.7/c37-390-reports-owner-mobile.png",".qc-shots/crm/3.7/c37-390-settings-automation-owner-mobile.png",".qc-shots/crm/3.7/c37-390-settings-sequences-owner-mobile.png",".qc-shots/crm/3.7/c37-390-settings-holidays-owner-mobile.png",".qc-shots/crm/3.7/c37-390-settings-assignment-owner-mobile.png",".qc-shots/crm/3.7/c37-390-settings-email-owner-mobile.png",".qc-shots/crm/3.7/c37-390-settings-tracking-owner-mobile.png",".qc-shots/crm/3.7/c37-390-settings-forms-owner-mobile.png",".qc-shots/crm/3.7/c37-390-settings-scoring-owner-mobile.png",".qc-shots/crm/3.7/c37-390-settings-commissions-owner-mobile.png",".qc-shots/crm/3.7/c37-390-commissions-owner-mobile.png",".qc-shots/crm/3.7/c37-390-settings-notifications-owner-mobile.png",".qc-shots/crm/3.7/c37-390-settings-quotas-owner-mobile.png",".qc-shots/crm/3.7/c37-390-settings-portal-owner-mobile.png",".qc-shots/crm/3.7/c37-390-report-overview-owner-mobile.png",".qc-shots/crm/3.7/c37-390-report-forecast-owner-mobile.png",".qc-shots/crm/3.7/c37-390-report-funnel-owner-mobile.png",".qc-shots/crm/3.7/c37-390-report-reps-owner-mobile.png",".qc-shots/crm/3.7/c37-390-report-activities-owner-mobile.png",".qc-shots/crm/3.7/c37-390-report-lost-owner-mobile.png",".qc-shots/crm/3.7/c37-390-report-sources-owner-mobile.png",".qc-shots/crm/3.7/c37-390-report-scores-owner-mobile.png",".qc-shots/crm/3.7/c37-390-email-thread-owner-mobile.png",".qc-shots/crm/3.7/c37-390-sequence-editor-owner-mobile.png"],"failures":0,"fatal":null}
+== visual-c37-owner end 2026-10-08T00:11:31Z rc=0

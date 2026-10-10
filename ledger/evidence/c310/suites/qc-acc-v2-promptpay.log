@@ -1,0 +1,157 @@
+
+===== QC WO 5.5 · PromptPay ลิงก์ชำระเงิน =====
+[env] DB ep-plain-art-ao3djg4u-pooler.c-2.ap-southeast-1.aws.neon.tech
+
+PP1 คำขอโหมด QR นิ่ง (ไม่มีกุญแจ Beam):
+  ✅ PP1.0 ยอดใบแจ้งหนี้ = 214,000 สตางค์ (200,000 + VAT 7%)
+  ✅ PP1.1 โหมด = QR นิ่ง · ไม่มี provider · สถานะรอชำระ
+  ✅ PP1.2 ยอดของคำขอ = ยอดคงค้างของเอกสาร (ไม่รับยอดจาก client)
+  ✅ PP1.3 หมายเหตุบอกวิธียืนยัน
+  ✅ PP1.4 tag 00 = 01 · tag 01 = 12 (dynamic ล็อกยอด) · tag 53 = 764 · tag 58 = TH
+  ✅ PP1.5 tag 54 (ยอดเงิน) = 2140.00 บาท
+  ✅ PP1.6 tag 29 = AID พร้อมเพย์ + proxy เบอร์มือถือ (0066 + 9 หลักหลัง)
+  ✅ PP1.7 CRC ท้าย payload ถูกต้อง (คิดใหม่อิสระในข้อสอบ)
+  ✅ PP1.8 CRC ปิดท้ายด้วย tag+len '6304'
+  ✅ PP1.9 กดสร้างซ้ำ ยอด/ช่องทางเดิม → คืนใบเดิม (ไม่งอกลิงก์เป็นพรวน)
+  ✅ PP1.10 ช่องทางที่ไม่ได้กรอกพร้อมเพย์ → ปฏิเสธพร้อมบอกวิธีแก้ (เหตุผล: ช่องทาง “ธนาคารไม่มีพร้อมเพย์” ยังไม่ได้กรอกพร้อมเพย์ — ไปที่ การเงิน → แก้ไขช่องทาง แล้วกรอกเบอร์มือถือหรือเลขบัตรประชาชนก่อน)
+
+PP2 คำขอโหมด Beam (เสียบ createCharge ปลอม):
+  ✅ PP2.1 โหมด = Beam · provider = beam · เก็บ chargeId แล้ว
+  ✅ PP2.2 referenceId ที่ส่งให้ผู้ให้บริการ = 'acc:<id คำขอ>'
+  ✅ PP2.3 โหมด Beam ไม่ส่ง payload QR ให้หน้าจอ (ใช้ลิงก์ผู้ให้บริการแทน)
+
+PP3 หน้าสาธารณะ /pay/<token>:
+  ✅ PP3.1 เปิดด้วย token ได้ (ไม่ต้องล็อกอิน)
+  ✅ PP3.2 ยอด/เลขที่เอกสาร/สถานะ ถูกต้อง
+  ✅ PP3.3 โหมดนิ่งส่ง payload ไปวาด QR ให้ลูกค้า
+  ✅ PP3.4 ไม่มีชื่อลูกค้า/id ภายในหลุดในหน้าสาธารณะ
+  ✅ PP3.5 token ไม่รู้จัก → null (ข้อความเดียวกับหมดอายุ กันไล่เดา)
+  ✅ PP3.6 token รูปผิด (สั้น/มีอักขระแปลก) → null โดยไม่แตะฐานข้อมูล
+
+PP4 webhook เซ็นถูก + จ่ายสำเร็จ:
+  ✅ PP4.1 webhook ตอบ 200 + handled=paid
+  ✅ PP4.2 ใบแจ้งหนี้ = ชำระเงินแล้ว · ยอดครบ
+  ✅ PP4.3 มีรายการรับเงิน 1 ใบ
+  ✅ PP4.4 ช่องทาง PROMPTPAY · เข้าช่องทางของคำขอ · คีย์กันซ้ำ pp:<chargeId> · ผูกกลับคำขอ
+  ✅ PP4.5 JV ของการรับเงินสมดุลและเท่ายอดที่รับ
+  ✅ PP4.6 คำขอ = PAID · จดยอดที่จ่ายจริง · ผูก paymentId
+  ✅ PP4.7 หน้าสาธารณะกลายเป็นสถานะ 'จ่ายแล้ว' และเลิกโชว์ช่องทางจ่าย
+
+PP5 ยิง webhook เดิมซ้ำ:
+  ✅ PP5.1 ตอบ 200 เหมือนเดิม (ไม่ใช่ error)
+  ✅ PP5.2 ยังมีรายการรับเงินใบเดียว (idempotent ต่อ chargeId)
+  ✅ PP5.3 ยอดที่ชำระไม่เบิ้ล
+
+PP6 ลายเซ็นผิด:
+  ✅ PP6.1 ลายเซ็นไม่ผ่าน → 401
+  ✅ PP6.2 ไม่มีการบันทึกเงินเลย
+  ✅ PP6.3 สถานะคำขอไม่เปลี่ยน
+
+PP7 ยอดไม่ตรง:
+  ✅ PP7.1 จ่ายเกิน → รับไว้ (200) ไม่ตีกลับ
+  ✅ PP7.2 บันทึกได้แค่ยอดคงค้าง (ลูกหนี้ไม่ติดลบ) · เอกสาร PAID
+  ✅ PP7.3 จดยอดที่จ่ายมาจริง + หมายเหตุส่วนเกินให้คนตามคืนเงิน
+  ✅ PP7.4 จ่ายบางส่วน → เอกสาร PARTIAL · ยอดที่ชำระ = ที่จ่ายจริง
+  ✅ PP7.5 ยอด 0 → ไม่บันทึก (ตอบ 200 พร้อมเหตุผล ให้ผู้ให้บริการเลิกยิงซ้ำ)
+
+PP8 สถานะที่ไม่ใช่จ่ายสำเร็จ:
+  ✅ PP8.1 FAILED → 200 · handled=closed
+  ✅ PP8.2 คำขอถูกปิด (CANCELLED) · ไม่มีเงิน/JV
+  ✅ PP8.3 สถานะที่ไม่รู้จัก → รับทราบเฉย ๆ (ห้ามเดาว่าจ่ายแล้ว)
+  ✅ PP8.4 referenceId ของบัญชีที่ไม่มีคำขอจริง → 200 + ok:false (ไม่ 500)
+
+PP9 นำเข้า statement หลังจ่ายแล้ว → จับคู่อัตโนมัติ:
+  ✅ PP9.1 นำเข้า 1 แถว
+  ✅ PP9.2 จับคู่ได้ 1 แถว (ยอด+วันตรงกับ JV ของการรับเงินผ่านลิงก์)
+  ✅ PP9.3 แถว statement = MATCHED และผูกกับ JV ใบรับเงินจริง
+  ✅ PP9.4 บรรทัดสมุดรายวันถูกทำเครื่องหมายกระทบยอดแล้ว (เดบิตช่องทาง)
+
+PP10 statement ↔ คำขอ QR นิ่งที่ยังรอชำระ:
+  ✅ PP10.0 ก่อนนำเข้า: ยังไม่มีเงินของใบ QR นิ่ง
+  ✅ PP10.1 บันทึกรับชำระให้อัตโนมัติ 1 ใบ
+  ✅ PP10.2 คีย์กันซ้ำ = pp-stmt:<lineId> · ช่องทาง PROMPTPAY · ผูกกลับคำขอ
+  ✅ PP10.3 ใบแจ้งหนี้ = ชำระเงินแล้ว
+  ✅ PP10.4 คำขอ = PAID · ผูกแถว statement ที่เป็นต้นเหตุ
+  ✅ PP10.5 แถว statement = MATCHED (ตัวจับคู่รอบปกติเห็นบรรทัดใหม่แล้วผูกให้)
+  ✅ PP10.6 รัน autoMatch ซ้ำ → ไม่บันทึกเงินซ้ำ (idempotent ต่อ lineId)
+  ✅ PP10.7a คำขอนี้เป็นโหมด QR นิ่งจริง (positive control ของตะขอ)
+  ✅ PP10.7b ลิงก์อายุ 30 วัน ลูกค้าจ่ายหลังสร้าง 10 วัน → ยังจับคู่+บันทึกให้ (ใช้ช่วงอายุลิงก์ ไม่ใช่ ±3 วันจากวันสร้าง)
+
+PP11 statement นำเข้าก่อน แล้วค่อยจ่าย:
+  ✅ PP11.1 ก่อนจ่าย แถวนี้ยังไม่มีคู่
+  ✅ PP11.2 webhook สำเร็จ
+  ✅ PP11.3 ผูกแถว statement ที่มีอยู่แล้วให้ทันที (MATCHED)
+  ✅ PP11.4 คำขอจดว่าไปผูกกับแถวไหน
+
+PP12 ยืนยันรับเงินเอง (โหมด QR นิ่ง):
+  ✅ PP12.1 ยืนยันสำเร็จ
+  ✅ PP12.2 คีย์กันซ้ำ = pp-manual:<requestId>
+  ✅ PP12.3 กดยืนยันซ้ำ → คืนผลเดิม ไม่บันทึกเงินซ้ำ
+  ✅ PP12.4 คำขอโหมด Beam กด 'ยืนยันรับเงินแล้ว' เองไม่ได้ (เหตุผล: คำขอนี้ระบบยืนยันให้อัตโนมัติเมื่อผู้ให้บริการแจ้งผล)
+
+PP13 ปิดลิงก์ที่หมดอายุ (cron):
+  ✅ PP13.1 ปิดอย่างน้อย 1 ใบ
+  ✅ PP13.2 ใบที่เลยกำหนด = EXPIRED · ใบที่ยังไม่ถึง = PENDING
+  ✅ PP13.3 หน้าสาธารณะของใบหมดอายุ ไม่ปล่อย QR ให้จ่ายต่อ
+  ✅ PP13.4 ยกเลิกลิงก์ที่ยังรอชำระได้
+  ✅ PP13.5 ยืนยันรับเงินของลิงก์ที่ยกเลิกแล้วไม่ได้ (เหตุผล: คำขอนี้ไม่อยู่ในสถานะรอชำระแล้ว)
+  ✅ PP13.6 ยกเลิกซ้ำไม่ได้ (เหตุผล: ยกเลิกไม่ได้ — คำขอนี้ไม่อยู่ในสถานะรอชำระแล้ว)
+  ✅ PP13.7 ลิงก์ที่ยกเลิกแล้วไม่มีเงินเข้า
+
+PP14 referenceId ของเติมเครดิต AI (positive control):
+  ✅ PP14.1 ยังวิ่งไปทาง creditFromCharge (ไม่มี handled ของฝั่งบัญชี)
+  ✅ PP14.2 ตอบกลับเป็นผลของตัวเติมเครดิต ไม่ใช่ของบัญชี
+  ✅ PP14.3 คำขอชำระเงินฝั่งบัญชีไม่ถูกแตะเลย
+
+PP15 ด่านสิทธิ์และด่านเอกสาร:
+  ✅ PP15.1 พนักงานที่ไม่มี account.payment.record ถูกปฏิเสธ (โยน: ไม่มีสิทธิ์: account.payment.record)
+  ✅ PP15.2 เจ้าของผ่านด่านเดียวกัน (positive control)
+  ✅ PP15.3 เอกสารร่างยังสร้างลิงก์เก็บเงินไม่ได้ (เหตุผล: เอกสารนี้ไม่อยู่ในสถานะที่เก็บเงินได้ (ต้องออกเอกสารแล้วและยังค้างชำระ))
+  ✅ PP15.4 เอกสารที่ชำระครบแล้วสร้างลิงก์ไม่ได้ (เหตุผล: เอกสารนี้ไม่อยู่ในสถานะที่เก็บเงินได้ (ต้องออกเอกสารแล้วและยังค้างชำระ))
+  ✅ PP15.5 ใบเสนอราคาไม่อยู่ในชนิดที่เก็บเงินผ่านลิงก์ได้ (เหตุผล: เอกสารชนิดนี้ยังขอเก็บเงินผ่านลิงก์ไม่ได้ (รองรับใบแจ้งหนี้ · ใบรับเงินมัดจำ · ใบเพิ่มหนี้))
+  ✅ PP15.6 ช่องทางการเงินของร้านอื่นใช้ไม่ได้ (เหตุผล: ช่องทางการเงินไม่ถูกต้อง)
+
+PP16 แยกร้าน (tenant isolation):
+  ✅ PP16.1 ยืนยันรับเงินคำขอของร้าน QC จากร้านทดสอบไม่ได้ (เหตุผล: ไม่พบคำขอชำระเงิน)
+  ✅ PP16.2 ยกเลิกคำขอของร้าน QC จากร้านทดสอบไม่ได้ (เหตุผล: ยกเลิกไม่ได้ — คำขอนี้ไม่อยู่ในสถานะรอชำระแล้ว)
+  ❌ CRASH — 
+Invalid `prisma.accountPaymentRequest.findUniqueOrThrow()` invocation in
+/root/projects/shark-crm/scripts/qc-acc-v2-promptpay.mts:540:56
+
+  537 const seedReqId = E.promptPay.staticPending.requestId as string;
+  538 await rejected("PP16.1 ยืนยันรับเงินคำขอของร้าน QC จากร้านทดสอบไม่ได้", () => pr.confirmStaticPaymentRequest(S, seedReqId), "ไม่พบคำขอ");
+  539 await rejected("PP16.2 ยกเลิกคำขอของร้าน QC จากร้านทดสอบไม่ได้", () => pr.cancelPaymentRequest(S, seedReqId), "ยกเลิกไม่ได้");
+→ 540 const seedStill = await prisma.accountPaymentRequest.findUniqueOrThrow(
+An operation failed because it depends on one or more records that were required but not found. No record was found for a query.
+Invalid `prisma.accountPaymentRequest.findUniqueOrThrow()` invocation in
+/root/projects/shark-crm/scripts/qc-acc-v2-promptpay.mts:540:56
+
+  537 const seedReqId = E.promptPay.staticPending.requestId as string;
+
+🧹 ลบร้านทดสอบแล้ว
+
+===== QC WO 5.5 · PromptPay สรุป =====
+ผ่าน 81 · ตก 1
+  - CRASH — 
+Invalid `prisma.accountPaymentRequest.findUniqueOrThrow()` invocation in
+/root/projects/shark-crm/scripts/qc-acc-v2-promptpay.mts:540:56
+
+  537 const seedReqId = E.promptPay.staticPending.requestId as string;
+  538 await rejected("PP16.1 ยืนยันรับเงินคำขอของร้าน QC จากร้านทดสอบไม่ได้", () => pr.confirmStaticPaymentRequest(S, seedReqId), "ไม่พบคำขอ");
+  539 await rejected("PP16.2 ยกเลิกคำขอของร้าน QC จากร้านทดสอบไม่ได้", () => pr.cancelPaymentRequest(S, seedReqId), "ยกเลิกไม่ได้");
+→ 540 const seedStill = await prisma.accountPaymentRequest.findUniqueOrThrow(
+An operation failed because it depends on one or more records that were required but not found. No record was found for a query.
+Invalid `prisma.accountPaymentRequest.findUniqueOrThrow()` invocation in
+/root/projects/shark-crm/scripts/qc-acc-v2-promptpay.mts:540:56
+
+  537 const seedReqId = E.promptPay.staticPending.requestId as string;
+JSON_SUMMARY {"total":82,"passed":81,"findings":["CRASH — \nInvalid `prisma.accountPaymentRequest.findUniqueOrThrow()` invocation in\n/root/projects/shark-crm/scripts/qc-acc-v2-promptpay.mts:540:56\n\n  537 const seedReqId = E.promptPay.staticPending.requestId as string;\n  538 await rejected(\"PP16.1 ยืนยันรับเงินคำขอของร้าน QC จากร้านทดสอบไม่ได้\", () => pr.confirmStaticPaymentRequest(S, seedReqId), \"ไม่พบคำขอ\");\n  539 await rejected(\"PP16.2 ยกเลิกคำขอของร้าน QC จากร้านทดสอบไม่ได้\", () => pr.cancelPaymentRequest(S, seedReqId), \"ยกเลิกไม่ได้\");\n→ 540 const seedStill = await prisma.accountPaymentRequest.findUniqueOrThrow(\nAn operation failed because it depends on one or more records that were required but not found. No record was found for a query.\nInvalid `prisma.accountPaymentRequest.findUniqueOrThrow()` invocation in\n/root/projects/shark-crm/scripts/qc-acc-v2-promptpay.mts:540:56\n\n  537 const seedReqId = E.promptPay.staticPending.requestId as string;"]}
+(node:981876) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)

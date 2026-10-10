@@ -4,15 +4,16 @@ import {
   voidPayment,
   issueDocument,
   paymentTargetOf,
+  paymentOutstandingOf,
   listDocPayments,
-  attachDraftReceiptPayments,
   findPaymentsByKeys,
+  DRAFT_RECEIPT_ALREADY_ATTACHED_MSG,
   DOC_LABEL,
 
 } from "./service";
 import { recordVendorPayment, voidVendorPayment } from "./expense";
 import { listFinanceAccounts } from "./finance";
-import { createCheque } from "./cheque";
+import { attachReceiptPaymentsWithChequesInOneTx, chequeDraftProblem, recordPaymentWithChequeInOneTx } from "./cheque";
 import { issueWhtCreditCertStandalone } from "./wht";
 
 // ─────────────────────────────────────────────────────────────
@@ -151,7 +152,7 @@ export async function paymentPanelData(
     listDocPayments(tenantId, systemId, target.id),
     listPaymentChannels(tenantId, systemId),
   ]);
-  const outstanding = Math.max(0, target.grandTotal - target.paidTotal);
+  const outstanding = paymentOutstandingOf(target) /* CRM C5.4-C ▸ − ใบลดหนี้ (F-05) ◂ */;
   return {
     docId: doc.id,
     docType: doc.docType,
@@ -243,7 +244,7 @@ export async function recordPayments(
         targetDocId: target.id,
         status: after?.status ?? target.status,
         paidTotal: after?.paidTotal ?? 0,
-        outstanding: Math.max(0, (after?.grandTotal ?? 0) - (after?.paidTotal ?? 0)),
+        outstanding: (after ? paymentOutstandingOf(after) : 0) /* CRM C5.4-C ◂ */,
         certNos: [],
         recorded: 0,
         paymentIds: keys.map((k) => idByKey.get(k)).filter((v): v is string => !!v),
@@ -264,12 +265,19 @@ export async function recordPayments(
   const paymentIds: string[] = [];
   let recorded = 0;
 
+  // CRM C5.4-C ▸ round 10 · มติ B (R9-5): ด่านที่ไม่ต้องเขียนอะไร ตรวจครบ **ทุกครั้ง** ก่อนบันทึกครั้งแรก (เดิมตรวจทีละครั้งกลางลูป) ◂
   for (let i = 0; i < rows.length; i++) {
     const r = rows[i];
     if (r.financeAccountId && !financeTypes.has(r.financeAccountId))
       return { ok: false, reason: "ช่องทางการเงินไม่ถูกต้อง" };
     if (r.cheque && r.feeSatang > 0)
       return { ok: false, reason: "การชำระด้วยเช็คยังไม่รองรับค่าธรรมเนียมธนาคาร" };
+    const bad = r.cheque ? chequeDraftProblem({ chequeNo: r.cheque.chequeNo, bankName: r.cheque.bankName, amount: r.amountSatang }) : null;
+    if (bad) return { ok: false, reason: rows.length > 1 ? `ครั้งที่ ${i + 1}: ${bad}` : bad };
+  }
+
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
     const channel: AccountPayChannel = r.cheque ? "CHEQUE" : channelOfFinanceType(financeTypes.get(r.financeAccountId ?? ""));
     const idempotencyKey = opts.keyBase ? `${opts.keyBase}:${i}` : null;
     const common = {
@@ -285,31 +293,25 @@ export async function recordPayments(
       createdById: opts.userId ?? null,
       idempotencyKey,
     };
-    const res = isPayable
-      ? await recordVendorPayment(tenantId, systemId, target.id, { ...common, whtIncomeType: r.whtIncomeType })
-      : await recordPayment(tenantId, systemId, target.id, { ...common, whtIncomeType: r.whtIncomeType });
+    // CRM C5.4-C ▸ round 10 · มติ B (R9-4): รับ/จ่ายด้วยเช็ค = งวด + เช็ค + ผูก ในธุรกรรมเดียว (ไม่มีช่องให้ยกเลิกงวดแทรกก่อนผูก · เช็คล้ม = งวดไม่เกิด) ◂
+    const res = r.cheque
+      ? await recordPaymentWithChequeInOneTx(tenantId, systemId, target.id, isPayable ? "expense" : "revenue", { ...common, whtIncomeType: r.whtIncomeType }, {
+          chequeNo: r.cheque.chequeNo,
+          bankName: r.cheque.bankName,
+          chequeDate: dateOf(r.cheque.chequeDate),
+          amount: r.amountSatang,
+          financeAccountId: r.financeAccountId,
+          note: clampNote(r.note),
+        })
+      : isPayable
+        ? await recordVendorPayment(tenantId, systemId, target.id, { ...common, whtIncomeType: r.whtIncomeType })
+        : await recordPayment(tenantId, systemId, target.id, { ...common, whtIncomeType: r.whtIncomeType });
     if (!res.ok) return { ok: false, reason: `ครั้งที่ ${i + 1}: ${res.reason}` };
     recorded++;
     if (res.paymentId) paymentIds.push(res.paymentId);
     // ฝั่งขายคืนเลขใบภาษีถูกหัก (WTI) มาด้วย · ฝั่งจ่ายออก 50 ทวิ เองภายใน recordVendorPayment
     const certNo = (res as { whtCertNo?: string }).whtCertNo;
     if (certNo) certNos.push(certNo);
-    if (r.cheque && res.paymentId) {
-      const cq = await createCheque({
-        tenantId,
-        systemId,
-        direction: isPayable ? "OUT" : "IN",
-        chequeNo: r.cheque.chequeNo,
-        bankName: r.cheque.bankName,
-        chequeDate: dateOf(r.cheque.chequeDate),
-        amount: r.amountSatang,
-        financeAccountId: r.financeAccountId,
-        documentId: target.id,
-        paymentId: res.paymentId,
-        note: clampNote(r.note),
-      });
-      if (!cq.ok) return { ok: false, reason: `ครั้งที่ ${i + 1}: ${cq.reason}` };
-    }
   }
 
   const after = (await paymentTargetOf(tenantId, systemId, target.id))?.target;
@@ -318,7 +320,7 @@ export async function recordPayments(
     targetDocId: target.id,
     status: after?.status ?? target.status,
     paidTotal: after?.paidTotal ?? 0,
-    outstanding: Math.max(0, (after?.grandTotal ?? 0) - (after?.paidTotal ?? 0)),
+    outstanding: (after ? paymentOutstandingOf(after) : 0) /* CRM C5.4-C ◂ */,
     certNos,
     recorded,
     paymentIds,
@@ -372,24 +374,61 @@ export async function approveReceiptWithPayments(
   for (const r of rows)
     if (r.financeAccountId && !financeTypes.has(r.financeAccountId))
       return { ok: false, reason: "ช่องทางการเงินไม่ถูกต้อง" };
+  // CRM C5.4-C ▸ round 10 · มติ B: ร่างเช็คตรวจก่อนผูกรายการ/ออกเอกสาร (round 11: ผูกรายการ + เช็ค เป็นธุรกรรมเดียวแล้ว — ออกเอกสาร/หนังสือรับรองยังเป็นขั้นแยก) ◂
+  for (const r of rows) {
+    const bad = r.cheque ? chequeDraftProblem({ chequeNo: r.cheque.chequeNo, bankName: r.cheque.bankName, amount: r.amountSatang }) : null;
+    if (bad) return { ok: false, reason: bad };
+  }
 
-  const attached = await attachDraftReceiptPayments(
-    tenantId,
-    systemId,
-    docId,
-    rows.map((r, i) => ({
-      paidAt: dateOf(r.paidAt),
-      channel: (r.cheque ? "CHEQUE" : channelOfFinanceType(financeTypes.get(r.financeAccountId ?? ""))) as AccountPayChannel,
-      financeAccountId: r.cheque ? null : r.financeAccountId,
-      amount: r.amountSatang,
-      whtAmountSatang: r.whtAmountSatang,
-      whtRateBp: r.whtRateBp,
-      feeAmount: r.feeSatang,
-      note: clampNote(r.note),
-      createdById: opts.userId ?? null,
-      idempotencyKey: opts.keyBase ? `${opts.keyBase}:${i}` : null,
-    })),
-  );
+  // CRM C5.4-C ▸ round 11 · R10-6: รายการรับเงิน + เช็ค + ผูกเช็ค ในธุรกรรมเดียว (รายการรับที่เป็นเช็คไม่มีวันไม่มีเช็ค) ·
+  //   กดอนุมัติซ้ำหลังขั้นออกเอกสารล้ม (คีย์ชุดเดิมผูกไว้ครบแล้ว) ⇒ ข้ามการผูก ไปออกเอกสารต่อ (เดิมติด "บันทึกชุดนี้ไปแล้ว" ถาวร) ◂
+  const keys = opts.keyBase ? rows.map((_r, i) => `${opts.keyBase}:${i}`) : [];
+  const already = keys.length ? await findPaymentsByKeys(tenantId, systemId, keys) : [];
+  // round 12 · R11-1: รายการชุดเดิมถูกยกเลิกไปแล้ว (เช่น เช็คเด้งขณะใบเสร็จยังเป็นร่าง) ⇒ ห้ามข้ามไปออกเอกสารโดยไม่มีเงิน — ให้กรอกการรับเงินใหม่
+  if (keys.length > 0 && already.length === keys.length && already.some((p) => p.voidedAt))
+    return { ok: false, reason: "รายการรับเงินของร่างใบเสร็จนี้ถูกยกเลิกไปแล้ว (เช่น เช็คเด้ง) — กรอกการรับเงินใหม่แล้วกดอนุมัติอีกครั้ง" };
+  // round 13 · R12-1: ร่างมีรายการรับที่ยังมีผลอยู่แล้ว (ผูกสำเร็จแต่ออกเอกสารล้ม แล้วกลับมากดใหม่ด้วยคีย์ใหม่) —
+  //   รายการที่ส่งมาตรงกับที่ผูกไว้ (ยอด · WHT · ช่องทาง/บัญชีเงิน · เลขเช็ค) ⇒ ข้ามการผูก ไปออกเอกสาร · ไม่ตรง ⇒ ปฏิเสธ (ไม่ผูกชุดที่สอง)
+  //   (รายการว่าง ⇒ ออกเอกสารตรง ๆ ด้านบนแล้ว — ใช้รายการที่ผูกไว้)
+  const sameKeyRetry = keys.length > 0 && already.length === keys.length && already.every((p) => p.documentId === docId);
+  let matchedIds: string[] | null = null;
+  if (!sameKeyRetry) {
+    const live = (await listDocPayments(tenantId, systemId, docId)).filter((p) => !p.voidedAt);
+    if (live.length > 0) {
+      const sig = (x: { amount: number; wht: number; cheque: string | null; fin: string | null }) => `${x.amount}|${x.wht}|${x.cheque ?? `fin:${x.fin ?? ""}`}`;
+      const want = rows.map((r) => sig({ amount: r.amountSatang, wht: r.whtAmountSatang, cheque: r.cheque ? r.cheque.chequeNo : null, fin: r.financeAccountId }));
+      const have = live.map((p) => ({ id: p.id, s: sig({ amount: p.amount, wht: p.whtAmount, cheque: p.chequeNo, fin: p.financeAccountId }) }));
+      const pool = [...have];
+      const ids: string[] = [];
+      for (const w of want) { const i = pool.findIndex((h) => h.s === w); if (i < 0) break; ids.push(pool[i].id); pool.splice(i, 1); }
+      if (ids.length !== want.length || pool.length > 0) return { ok: false, reason: DRAFT_RECEIPT_ALREADY_ATTACHED_MSG };
+      matchedIds = ids;
+    }
+  }
+  const attached =
+    sameKeyRetry
+      ? { ok: true as const, paymentIds: keys.map((k) => already.find((p) => p.idempotencyKey === k)!.id) }
+      : matchedIds
+        ? { ok: true as const, paymentIds: matchedIds }
+        : await attachReceiptPaymentsWithChequesInOneTx(
+          tenantId,
+          systemId,
+          docId,
+          rows.map((r, i) => ({
+            paidAt: dateOf(r.paidAt),
+            channel: (r.cheque ? "CHEQUE" : channelOfFinanceType(financeTypes.get(r.financeAccountId ?? ""))) as AccountPayChannel,
+            financeAccountId: r.cheque ? null : r.financeAccountId,
+            amount: r.amountSatang,
+            whtAmountSatang: r.whtAmountSatang,
+            whtRateBp: r.whtRateBp,
+            feeAmount: r.feeSatang,
+            note: clampNote(r.note),
+            createdById: opts.userId ?? null,
+            idempotencyKey: keys[i] ?? null,
+            cheque: r.cheque ? { chequeNo: r.cheque.chequeNo, bankName: r.cheque.bankName, chequeDate: dateOf(r.cheque.chequeDate) } : null,
+            chequeFinanceAccountId: r.financeAccountId,
+          })),
+        );
   if (!attached.ok) return { ok: false, reason: attached.reason };
 
   const issued = await issueDocument(tenantId, systemId, docId);
@@ -419,22 +458,6 @@ export async function approveReceiptWithPayments(
       );
       if (!cert.ok) return { ok: false, reason: cert.reason };
       certNos.push(cert.docNo);
-    }
-    if (r.cheque) {
-      const cq = await createCheque({
-        tenantId,
-        systemId,
-        direction: "IN",
-        chequeNo: r.cheque.chequeNo,
-        bankName: r.cheque.bankName,
-        chequeDate: dateOf(r.cheque.chequeDate),
-        amount: r.amountSatang,
-        financeAccountId: r.financeAccountId,
-        documentId: docId,
-        paymentId,
-        note: clampNote(r.note),
-      });
-      if (!cq.ok) return { ok: false, reason: cq.reason };
     }
   }
   return { ok: true, docNo: issued.docNo, outstanding: 0, certNos };

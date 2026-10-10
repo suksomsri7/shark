@@ -65,7 +65,9 @@ try {
     const st = res.status; const b = st === 403 ? await res.json().catch(() => ({})) : (await drain(res), {});
     return st === 403 && (b as Any).error === "forbidden";
   };
-  const conv = await P.aiConversation.create({ data: { tenantId: tid, title: "QC ห้องเดิม" } });
+  // ORACLE-EDIT C5.5-G2: an AI room is its creator's (a room written without a creator is the OWNER's only) — the room the
+  //   STAFF+ai.chat.send positive controls below read/rename/delete is that STAFF's own room, opened through the real route
+  const conv = { id: String(((await (await R.convs.POST(req("staffAi", "POST", { title: "QC ห้องเดิม" }))).json()) as Any).id) };
   await P.aiMessage.create({ data: { tenantId: tid, conversationId: conv.id, role: "USER", content: "ข้อความลับของร้าน" } });
 
   // ═══ 4a chat/send ═══ (empty text ⇒ the allowed path stops before any model call / credit)
@@ -99,8 +101,8 @@ try {
   chk("MZ-4b.5", "POST [id]/read: STAFF no key → 403, lastReadAt untouched", readNo && readKept, "403", `no=${readNo} kept=${readKept}`, "MAJOR");
   const delNo = await is403(R.conv.DELETE(req("staff", "DELETE"), p(conv.id)));
   const notDeleted = (await P.aiConversation.findUnique({ where: { id: conv.id } }))?.deletedAt == null;
-  const delOk = (await R.conv.DELETE(req("owner", "DELETE"), p(conv.id))).status === 200 && (await P.aiConversation.findUnique({ where: { id: conv.id } }))?.deletedAt != null;
-  chk("MZ-4b.6", "DELETE [id]: STAFF no key → 403, room not deleted · OWNER → soft-deleted", delNo && notDeleted && delOk, "403+kept / deleted", `no=${delNo} kept=${notDeleted} ok=${delOk}`);
+  const delOk = (await R.conv.DELETE(req("staffAi", "DELETE"), p(conv.id))).status === 200 /* ORACLE-EDIT C5.5-G2: the room's creator deletes it */ && (await P.aiConversation.findUnique({ where: { id: conv.id } }))?.deletedAt != null;
+  chk("MZ-4b.6", "DELETE [id]: STAFF no key → 403, room not deleted · its creator (STAFF+ai.chat.send) → soft-deleted", delNo && notDeleted && delOk, "403+kept / deleted", `no=${delNo} kept=${notDeleted} ok=${delOk}`);
 
   // ═══ 4c dna/apply ═══ (unknown blueprint ⇒ an allowed caller passes the gate and then fails on the blueprint, creating nothing)
   const sysBefore = await P.appSystem.count({ where: { tenantId: tid } }).catch(() => -1);

@@ -1,0 +1,28 @@
+  ✅ [M3.11-S1.1] joinForm(slug) → {fields[] (customerEditable · required flag), consents 4, policyVersion, welcomePoints} · startJoin(เบอร์ใหม่, src) → {otpId, devOtp} · verifyJoin → {joinToken jt_, existing false} · completeJoin → {customerId, memberCode, token cs_, welcomePoints} · Customer source LIFF · ยินยอม LINE/PUSH granted, EMAIL/SMS ไม่ · CustomerSession 1 · แต้มต้อนรับ = welcomePoints (0 ถ้าร้านไม่ตั้ง)
+  ✅ [M3.11-S1.2] สมัครซ้ำเบอร์เดิม: startJoin ไม่เผยว่ามีสมาชิก (ยังคืน otpId) · verifyJoin → {existing true, token cs_, customerId เดิม} ไม่มี joinToken · Customer เบอร์นี้ยัง 1 คน
+  ✅ [M3.11-S1.3] OTP ผิด 5 ครั้ง → throw ไทยทุกครั้ง · ครั้งที่ 6 รหัสถูกก็ใช้ไม่ได้ (ล็อก · ขอใหม่) · joinToken มั่ว → throw ไทย
+  ✅ [M3.11-S1.4] ผู้แนะนำ: referralCode ของสมาชิก 1 → Customer.referredById = สมาชิก 1 · source REFERRAL (หรือ LIFF + sourceDetail.referrerCustomerId) · Referral แถว (M3.5) status PENDING/REWARDED · โค้ดมั่ว → throw ไทย (ไม่สร้างสมาชิก)
+  ✅ [M3.11-S1.5] ฟิลด์บังคับขาด (firstName) → throw ไทย · policyVersion เก่า → throw ไทย · slug ไม่มี → throw ไทย · joinToken ยังใช้ได้หลัง error (ไม่ถูกเผา)
+  ✅ [M3.11-S2.1] src ตรง AcquisitionLink: startJoin นับ hits ≥ 1 · completeJoin → link.signups 1 · MemberAttribution FIRST {source LIFF, linkId} ของคนที่ 1
+  ✅ [M3.11-S2.2] src ไม่รู้จัก → ยังสมัครได้ source LIFF · attribution FIRST linkId null · link.signups ไม่เพิ่ม
+  ✅ [M3.11-S3.1] หน้า join + done มีจริง · testid 23 · ป้ายภาพ 29 ครบ · actions 'use server' เรียก join.ts (ไม่แตะ prisma) · done ต้อง session ลูกค้า (customer-session) · ไม่มีอีโมจิ/hex
+  ❌ [M3.11-S3.2] ภาพ 29: m-join-welcome (owner · ?src=<TMP311>) mobile 200 (โลโก้ · รับ n แต้ม · มาจาก: … · ปุ่ม 2) · m-join-form (กดสมัครด้วยเบอร์ → ฟอร์ม: เบอร์+OTP · ฟิลด์ · ผู้แนะนำ prefill ?ref= · ยินยอม 4 · นโยบาย · ปุ่ม) · m-join-done (--user customer:สมาชิก 1) 200 (บัตร+QR · กล่องแต้ม · ปุ่มเปิดบัตร) — exp 200 ×3 | act undefined/undefined/undefined missing=undefined
+  ✅ [M3.11-S3.3] 🔴 parity ภาพ 29 (3 จอ) + 28 (3 จอแอปพนักงาน) — Fable ตรวจด้วยตา · wo-notes/member-M3.11.md มี 'PARITY: ผ่าน'
+  ✅ [M3.11-S4.1] route /api/mobile/member/{search,scan,summary,stamp} มีครบ · requireMobile + assertCan(member.customer.read | member.loyalty.stamp) · เรียก facade (ไม่ import prisma ตรง) · ไม่มี token → 401 · token ผิด → 401
+  ✅ [M3.11-S4.2] จอแอป 3 ไฟล์ · testID 15 · เรียก api('/api/mobile/member/…') ผ่าน src/api/client (ไม่ fetch ตรง shark.in.th) · Drawer มีเมนู 'สมาชิก' → /member · สแกน QR ใช้ expo-camera/barcode · ป้ายไทย (ประทับสแตมป์/ใช้สิทธิ์/ให้แต้ม/ออก voucher)
+  ✅ [M3.11-S4.3] QC render (Fable รัน apps/mobile/qc/shoot-member.mjs · web export + mock API): shots-member/{member-search,member-summary,member-stamp}-iphone.png มี · summary.json ทุกจอ ok errors 0
+  ✅ [M3.11-S5.1] layout /m ฝังสะพาน push (m-push-bridge · ฟัง message push-token · เรียก /api/v1/member/me/push-devices) · REST ลงทะเบียน (session ของคนที่เพิ่งสมัคร) → 201 → MemberPushDevice {customerId, expoToken, platform ios} · ลงซ้ำ token เดิม → 200 ไม่ซ้ำแถว
+  ✅ [M3.11-S5.2] notifications (M3.6) ส่ง VOUCHER_NEW ให้คนนี้ (ยินยอม PUSH · มี device) → ช่อง PUSH SENT · deps.push ได้ {to/token = expoToken, title, body} (ไม่มี M3.6 = ข้าม)
+  ✅ [M3.11-S6.1] apps/mobile/app.json version/runtimeVersion เท่า HEAD (ไม่มีบิลด์/OTA ใหม่) · ไม่มีไฟล์ build ใหม่ (apps/mobile/*.ipa|*.apk|*.aab) · wo-notes ระบุ 'ไม่ต้องบิลด์'
+
+🔴 M3.11: 15/16
+JSON_SUMMARY {"total":16,"passed":15,"findings":[{"id":"M3.11-S3.2","sev":"CRITICAL"}]}
+(node:1482034) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)

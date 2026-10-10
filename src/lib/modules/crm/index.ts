@@ -7,6 +7,7 @@
 //   • setContactPartyId          ← src/lib/modules/account/contact-links.ts (ผูก CrmContact เข้า Party)
 //   • findContactByPartyId       ← src/lib/modules/account/contact-profile.ts (การ์ด CRM ในโปรไฟล์)
 //   • findLatestDealForContact   ← src/lib/modules/account/contact-profile.ts (ดีลล่าสุด)
+//   • isCrmV1Closed              ← src/lib/ai/proposals.ts (crm_create_lead แบบเดิมห้ามยืนยันบนระบบ v2 · C5.4-B H5)
 // 🔴 CrmHub **ไม่อยู่ที่นี่** (มติผู้คุมงาน addendum 3): `index.ts` = ผิวฝั่งเซิร์ฟเวอร์ · `ui.tsx` = ทางเข้าคอมโพเนนต์
 //    เหมือนอีกสิบโมดูลที่ `src/app/app/sys/[id]/page.tsx` import Hub จาก `<module>/ui` (coupon · meeting · kanban ·
 //    chat · inventory · hr · marketing · member · point · reward) — ถ้าดึง ./ui เข้ามาที่นี่ ทุกคนที่ import facade
@@ -18,6 +19,7 @@ export {
   findContactByPartyId,
   findContactsForLink,
   findLatestDealForContact,
+  isCrmV1Closed,
   listPartyIdsWithContact,
   setContactPartyId,
 } from "./service";
@@ -180,6 +182,13 @@ export * as scoring from "./scoring";
 //   ผู้เรียกอื่นในใบนี้: `deals.markStale` (สรุปดีลนิ่งรายวัน) · ทะเบียนงานของ C0.5 (`platform/minute-jobs.ts`)
 export * as notifications from "./notifications";
 // ◂ CRM C2.10
+// CRM C5.4 ▸ (batch E · L6-M4) ตัวส่งของเทมเพลตแจ้งเตือนที่เดิมไม่มีใครส่ง (ตัวรับ outbox · สะพานเงิน · งานรายชั่วโมง เรียกผ่านที่นี่)
+export * as notifySenders from "./notify-senders";
+// ◂ CRM C5.4
+// CRM C5.4 ▸ (batch D2 · F6 = รีวิว C5.4-D รอบ 1 N5) ปลุกคิว outbox หลังงานเขียนของพอร์ทัลลูกค้า (`src/app/b/[slug]/actions.ts`) — ตัวเดียวกับ
+//   action หน้า v2 (`outbox-wake.ts` · เรียกหลังงานเขียน commit แล้วเท่านั้น · รวมการตั้งซ้อนที่ `core/after-drain.ts`)
+export { wakeOutbox } from "./outbox-wake";
+// ◂ CRM C5.4
 // CRM C3.3 ▸ export * as commissions from "./commissions" ◂
 //   คอมมิชชัน → เงินเดือน (`commissions.ts`) — namespace เดียว `commissions`:
 //   ทางเข้าของสะพาน (ไม่มี actor คน): onPaid · onWon · reverse · syncPayroll · afterPaymentCounted/afterPaymentsReversed (ทางเดินเงิน
@@ -281,3 +290,6 @@ export * as aiBridges from "./ai-bridges";
 export * as privacy from "./privacy";
 export * as limits from "./limits";
 // ◂ CRM C3.9
+// CRM C5.5 ▸ (fix1 r1b · L55-4 ต่อ) หน้าตั้งค่า webhook กลางของร้านตรวจ "สมัคร event ของ CRM ได้ไหม" ผ่านที่นี่
+export { crmPlatformWebhookProblem } from "./api/key-guard";
+// ◂ CRM C5.5

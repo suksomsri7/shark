@@ -9,47 +9,63 @@
 // 🔴 R-E.14 (กติกาถาวร): ไฟล์ server action ของ CRM ทุกไฟล์อ่านประตู uiVersion เอง ⇒ กันที่ปากทางก่อน แล้วตัวจริงกันซ้ำ
 
 import { requireTenant } from "@/lib/core/context";
-import { assertCrmV2 } from "@/lib/modules/crm/ui-version";
+import { assertCrmV2, CrmV2DisabledError } from "@/lib/modules/crm/ui-version";
 import {
   createCrmTrackedLinkAction as createLinkImpl,
   crmTrackedLinkQrAction as qrImpl,
   deleteCrmTrackedLinkAction as deleteLinkImpl,
+  previewCrmLinkHostsAction as previewLinkHostsImpl,
+  saveCrmLinkHostsAction as saveLinkHostsImpl,
   saveCrmFormTargetAction as saveFormTargetImpl,
   saveCrmTrackingWebAction as saveWebImpl,
   updateCrmTrackedLinkAction as updateLinkImpl,
 } from "@/lib/modules/crm/tracking-actions";
 
-async function gate(systemId: string): Promise<void> {
-  const auth = await requireTenant();
-  await assertCrmV2({ tenantId: auth.active.tenantId, systemId: String(systemId ?? "") });
+/**
+ * ประตู uiVersion ของทางเข้านี้ (R-E.14) — ปฏิเสธก่อนแตะตัวจริง · ตัวจริงยังกันซ้ำอีกชั้นเสมอ
+ * C4.3-fix ▸ เดิม "โยน" CrmV2DisabledError ออกนอก action ⇒ หน้าจอได้ error ดิบของ Next แทนข้อความไทย · ตอนนี้คืน
+ *   `{ ok:false, error, code }` รูปเดียวกับที่ตัวจริงคืน (แบบเดียวกับ `_actions/calls.ts`) · redirect ของ requireTenant ยังโยนต่อ
+ */
+async function gate(systemId: string): Promise<{ ok: false; error: string; code: string } | null> {
+  try {
+    const auth = await requireTenant();
+    await assertCrmV2({ tenantId: auth.active.tenantId, systemId: String(systemId ?? "") });
+    return null;
+  } catch (e) {
+    if (e instanceof CrmV2DisabledError) return { ok: false, error: e.message, code: e.code };
+    throw e;
+  }
 }
 
 export async function saveTrackingWeb(systemId: string, patch: Parameters<typeof saveWebImpl>[1]) {
-  await gate(systemId);
-  return saveWebImpl(systemId, patch);
+  return (await gate(systemId)) ?? saveWebImpl(systemId, patch);
+}
+
+// CRM C6.1-LINKPOLICY ▸ โดเมนปลายทางที่อนุญาต (ตรวจผลกระทบ = ไม่เขียน · บันทึก) ◂
+export async function previewLinkHosts(systemId: string, hosts: string) {
+  return (await gate(systemId)) ?? previewLinkHostsImpl(systemId, hosts);
+}
+
+export async function saveLinkHosts(systemId: string, hosts: string) {
+  return (await gate(systemId)) ?? saveLinkHostsImpl(systemId, hosts);
 }
 
 export async function createTrackedLink(systemId: string, input: Parameters<typeof createLinkImpl>[1]) {
-  await gate(systemId);
-  return createLinkImpl(systemId, input);
+  return (await gate(systemId)) ?? createLinkImpl(systemId, input);
 }
 
 export async function updateTrackedLink(systemId: string, id: string, patch: Parameters<typeof updateLinkImpl>[2]) {
-  await gate(systemId);
-  return updateLinkImpl(systemId, id, patch);
+  return (await gate(systemId)) ?? updateLinkImpl(systemId, id, patch);
 }
 
 export async function deleteTrackedLink(systemId: string, id: string, opts: Parameters<typeof deleteLinkImpl>[2]) {
-  await gate(systemId);
-  return deleteLinkImpl(systemId, id, opts);
+  return (await gate(systemId)) ?? deleteLinkImpl(systemId, id, opts);
 }
 
 export async function trackedLinkQr(systemId: string, id: string) {
-  await gate(systemId);
-  return qrImpl(systemId, id);
+  return (await gate(systemId)) ?? qrImpl(systemId, id);
 }
 
 export async function saveFormTarget(systemId: string, formId: string, patch: Parameters<typeof saveFormTargetImpl>[2]) {
-  await gate(systemId);
-  return saveFormTargetImpl(systemId, formId, patch);
+  return (await gate(systemId)) ?? saveFormTargetImpl(systemId, formId, patch);
 }

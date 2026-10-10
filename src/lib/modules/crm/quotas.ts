@@ -133,8 +133,9 @@ async function ledgerByOwner(ctx: QuotaCtx, owners: string[], range: { from: Dat
   const ids = [...new Set(owners.filter((x) => typeof x === "string" && x))];
   if (ids.length === 0) return out;
   const { tenantId, systemId } = ctx;
+  // CRM C5.4-C ▸ L2-M2: ยอดชนะ = มูลค่าที่ชนะ COALESCE(wonValueSatang, valueSatang) — นิยามเดียวกับรายงาน (WONV) และหน้าแรก ◂
   const won = await prisma.$queryRaw<{ u: string; n: number; v: bigint }[]>`
-    SELECT d."ownerUserId" AS "u", count(*)::int AS "n", COALESCE(sum(d."valueSatang"), 0)::bigint AS "v"
+    SELECT d."ownerUserId" AS "u", count(*)::int AS "n", COALESCE(sum(COALESCE(d."wonValueSatang", d."valueSatang"::bigint)), 0)::bigint AS "v"
       FROM "CrmDeal" d
       JOIN LATERAL (
         SELECT max(h."enteredAt") AS "at" FROM "CrmDealStageHistory" h JOIN "CrmStage" st ON st."id" = h."toStageId"

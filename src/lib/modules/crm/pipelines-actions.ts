@@ -4,7 +4,7 @@
 // 🔴 "use server" = export ได้เฉพาะ async function · tenantId จาก session · systemId ถูก resolve ใหม่ในบริการ
 // 🔴 F6: assertCan `crm.settings.manage` ก่อนลงมือทุกครั้ง · error เป็นข้อความไทยที่ไม่โทษผู้ใช้
 
-import { revalidatePath } from "next/cache";
+import { revalidateAndWake } from "./outbox-wake"; // CRM C5.4-D ▸ L3-M1b: รีเฟรชหน้า + ปลุกคิว outbox หลังเขียนสำเร็จ ◂
 import { requireTenant } from "@/lib/core/context";
 import { ForbiddenError } from "@/lib/core/rbac";
 import { assertCanCrm } from "./access";
@@ -19,14 +19,22 @@ import {
   restorePipeline,
   updatePipeline,
   updateStage,
+  type PipelinePatch,
   type PipelinesCtx,
   type StageInput,
   type StagePatch,
 } from "./pipelines";
-import { DealsError } from "./deals-shared";
+import { DealsError, PIPELINE_NAME_MAX } from "./deals-shared";
+import { withFieldError, type CrmFieldErrors } from "./field-errors-shared";
 import { CrmLimitError } from "./limits-shared"; // CRM C3.9 ◂
 
-type Fail = { ok: false; error: string; code?: string };
+type Fail = { ok: false; error: string; code?: string; fieldErrors?: CrmFieldErrors };
+
+// C4.3-fix part 2 ▸ ชื่อที่บริการจะปฏิเสธ (cleanName ใน pipelines.ts: ตัดช่องว่างซ้ำ · ว่าง/ยาวเกิน) — ไว้ชี้ข้อความกลับไปที่ช่อง ◂
+const nameBad = (v: unknown, max: number): boolean => {
+  const t = typeof v === "string" ? v.trim().replace(/\s+/g, " ") : "";
+  return !t || t.length > max;
+};
 
 async function session(systemId: string) {
   const auth = await requireTenant();
@@ -49,7 +57,7 @@ function failOf(e: unknown): Fail {
 }
 
 const touch = (systemId: string) => {
-  for (const p of ["settings/pipelines", "settings/stages", "pipelines", "deals"]) revalidatePath(`/app/sys/${systemId}/crm/${p}`);
+  for (const p of ["settings/pipelines", "settings/stages", "pipelines", "deals"]) revalidateAndWake(`/app/sys/${systemId}/crm/${p}`);
 };
 
 export async function createPipelineAction(systemId: string, input: { name: string; stages: StageInput[] }): Promise<{ ok: true; id: string } | Fail> {
@@ -59,11 +67,12 @@ export async function createPipelineAction(systemId: string, input: { name: stri
     touch(systemId);
     return { ok: true, id: p.id };
   } catch (e) {
-    return failOf(e);
+    return withFieldError(failOf(e), { name: nameBad(input?.name, PIPELINE_NAME_MAX) });
   }
 }
 
-export async function updatePipelineAction(systemId: string, pipelineId: string, patch: { name?: string | null; isDefault?: boolean | null }): Promise<{ ok: true } | Fail> {
+// C4.4-fix ▸ US3: patch รับ stageOnQuoteAcceptedId/RejectedId ด้วย (บริการตรวจว่าเป็นขั้นของ pipeline นี้ ร้าน/ระบบเดียวกัน · ด่านสิทธิ์เดิม) ◂
+export async function updatePipelineAction(systemId: string, pipelineId: string, patch: PipelinePatch): Promise<{ ok: true } | Fail> {
   try {
     const { ctx, actor } = await session(systemId);
     await updatePipeline(ctx, actor, pipelineId, patch);
@@ -103,7 +112,11 @@ export async function addStageAction(systemId: string, pipelineId: string, input
     touch(systemId);
     return { ok: true };
   } catch (e) {
-    return failOf(e);
+    const prob = input?.probability;
+    return withFieldError(failOf(e), {
+      name: nameBad(input?.name, 60),
+      probability: prob !== undefined && prob !== null && (typeof prob !== "number" || !Number.isInteger(prob) || prob < 0 || prob > 100),
+    });
   }
 }
 

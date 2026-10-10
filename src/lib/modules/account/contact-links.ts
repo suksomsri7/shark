@@ -16,10 +16,41 @@
 import { tenantDb } from "@/lib/core/db";
 import * as party from "@/lib/modules/party";
 import * as memberSvc from "@/lib/modules/member/service";
+import { toMemberActor } from "@/lib/modules/member";
+import type { MemberActor } from "@/lib/modules/member";
+/** C5.4 (L1-M3): ตัวตนที่ facade ของ CRM ใช้ตัดสินสิทธิ์ (= `CrmLinkViewer` ของ crm/service — ชนิดเดียวกัน) */
+type CrmViewer = MemberActor;
 import * as crmSvc from "@/lib/modules/crm";
+import type { ApiActor } from "@/lib/api/actor";
 import { findLinkedSystemIds, normalizePhoneTh } from "./service";
 
 export type Ctx = { tenantId: string; systemId: string };
+
+/**
+ * C5.4 (L1-M3 · H2) — ตัวตนที่ส่งให้ facade ของ CRM **และ** ของสมาชิก ("ใครถาม" — ชื่อพารามิเตอร์ `crmViewer` คงไว้ ใช้กับทั้งสองฝั่ง) · ทุกทางที่ผู้ใช้กดได้ต้องส่งค่านี้เสมอ
+ * (ไม่ส่ง/null = ไม่เห็น/ผูกฝั่ง CRM ไม่ได้ — fail-closed · งานระบบ/สคริปต์ต้องส่ง "system" ชัด ๆ ดู `CrmLinkViewer` ของ CRM)
+ * - หน้าจอ: สมาชิกภาพของผู้ใช้คนนั้น (คีย์ CRM + การมองเห็น OWN/TEAM/ALL ของ v2 ตัดสินตามหน้า CRM เป๊ะ)
+ * - REST ของบัญชี: คีย์ API = scope ของคีย์เท่านั้น (คีย์บัญชีไม่มี `crm.*` ⇒ ไม่เห็น/ผูก CRM ไม่ได้) ·
+ *   คำสั่งที่คนยืนยัน (ผู้ช่วย AI) = สมาชิกภาพของคนนั้น
+ */
+export function crmViewerOfSession(userId: string, membership: { role: MemberActor["role"]; unitAccess: unknown; permissions: unknown }): CrmViewer {
+  return toMemberActor(userId, membership as Parameters<typeof toMemberActor>[1]);
+}
+export function crmViewerOfApi(actor: Pick<ApiActor, "kind" | "userId" | "scopes" | "membership" | "keyId" | "asker">): CrmViewer | null {
+  // CRM C5.5-fix14 r3 (RV14-2): ผู้ช่วย AI = ผู้ถามตัวจริงที่ตัวห่อเครื่องมือส่งมา (ไม่มี = ปิด) — เดิมได้ null เสมอ ⇒ "ไม่ใช่สมาชิก" แม้เจ้าของร้านถาม
+  if (actor.kind === "assistant") return actor.asker ? (actor.asker as CrmViewer) : null;
+  if (actor.kind === "apikey") {
+    return {
+      userId: "",
+      role: "STAFF",
+      unitAccess: ["*"],
+      permissions: Object.fromEntries((actor.scopes ?? []).map((s) => [s, true])),
+      apiRole: "readonly",
+      keyId: actor.keyId,
+    } as CrmViewer;
+  }
+  return actor.userId && actor.membership ? toMemberActor(actor.userId, actor.membership) : null;
+}
 
 export type LinkSuggestion = {
   system: "member" | "crm";
@@ -60,6 +91,7 @@ export function phoneVariants(phone: string | null | undefined): string[] {
 export async function suggestLinks(
   ctx: Ctx,
   input: { phone?: string | null; email?: string | null; taxId?: string | null; partyId?: string | null },
+  crmViewer?: CrmViewer | "system" | null,
 ): Promise<LinkSuggestions> {
   const { memberSystemId, crmSystemId } = await findLinkedSystemIds(ctx.tenantId);
   const keys = {
@@ -73,8 +105,10 @@ export async function suggestLinks(
   }
 
   const [customers, crmContacts] = await Promise.all([
-    memberSystemId ? memberSvc.findCustomersForLink(ctx.tenantId, memberSystemId, keys) : Promise.resolve([]),
-    crmSystemId ? crmSvc.findContactsForLink({ tenantId: ctx.tenantId, systemId: crmSystemId }, keys) : Promise.resolve([]),
+    // C5.4 (hunter H2): ฝั่งสมาชิกก็ตามสิทธิ์ของผู้ถามเหมือนกัน (อ่านโมดูลสมาชิกได้ + มองเห็นตามสาขา) — ไม่มีสิทธิ์ = 0 แถว
+    memberSystemId ? memberSvc.findCustomersForLink(ctx.tenantId, memberSystemId, keys, crmViewer) : Promise.resolve([]),
+    // C5.4 (L1-M3): เฉพาะแถวที่ผู้ถามมีคีย์อ่าน + มองเห็นในระบบ CRM (ไม่มีสิทธิ์ = 0 แถว ไม่ใช่ error — บล็อกนี้เป็นแค่คำแนะนำ)
+    crmSystemId ? crmSvc.findContactsForLink({ tenantId: ctx.tenantId, systemId: crmSystemId }, keys, crmViewer) : Promise.resolve([]),
   ]);
 
   const reasonOf = (row: { phone: string | null; email: string | null; partyId: string | null }): string => {
@@ -136,6 +170,7 @@ export type LinkResult = { ok: true; partyId: string } | { ok: false; reason: st
 export async function linkContactTo(
   ctx: Ctx,
   input: { contactId: string; target: "member" | "crm"; targetId: string },
+  crmViewer?: CrmViewer | "system" | null,
 ): Promise<LinkResult> {
   const db = tenantDb(ctx);
   const contact = await db.accountContact.findFirst({
@@ -167,11 +202,30 @@ export async function linkContactTo(
     partyId = created.id;
   }
 
-  const wrote =
-    input.target === "member"
-      ? await memberSvc.setCustomerPartyId(ctx.tenantId, targetSystemId, input.targetId, partyId)
-      : await crmSvc.setContactPartyId({ tenantId: ctx.tenantId, systemId: targetSystemId }, input.targetId, partyId);
-  if (!wrote) return { ok: false, reason: "ไม่พบรายการปลายทาง (อาจถูกลบไปแล้ว)" };
+  if (input.target === "member") {
+    // C5.4 (hunter H2): กระจกของฝั่ง CRM — ต้องมีคีย์แก้ข้อมูลสมาชิก + เห็นรายนั้น · ไม่เขียนทับ Party ของคนอื่น
+    let wrote: boolean;
+    try {
+      wrote = await memberSvc.setCustomerPartyId(ctx.tenantId, targetSystemId, input.targetId, partyId, crmViewer);
+    } catch (e) {
+      const name = e instanceof Error ? e.name : "";
+      if (name === "MemberForbiddenError" || name === "MemberConflictError") return { ok: false, reason: (e as Error).message };
+      throw e;
+    }
+    if (!wrote) return { ok: false, reason: "ไม่พบรายการปลายทาง (อาจถูกลบไปแล้ว)" };
+  } else {
+    // C5.4 (L1-M3): ต้องมีคีย์แก้ผู้ติดต่อ CRM + เห็นรายนั้น · ไม่เขียนทับ Party ของคนอื่นที่ผูกอยู่แล้ว
+    let wrote: boolean;
+    try {
+      wrote = await crmSvc.setContactPartyId({ tenantId: ctx.tenantId, systemId: targetSystemId }, input.targetId, partyId, crmViewer);
+    } catch (e) {
+      // ปฏิเสธโดยด่านของ CRM (ไม่มีสิทธิ์ / ผูกกับบุคคลอื่นอยู่แล้ว) — ข้อความไทยพร้อมทางแก้จาก CRM เอง · error อื่นโยนต่อ
+      const name = e instanceof Error ? e.name : "";
+      if (name === "CrmForbiddenError" || name === "CrmPartyConflictError") return { ok: false, reason: (e as Error).message };
+      throw e;
+    }
+    if (!wrote) return { ok: false, reason: "ไม่พบรายการปลายทาง (อาจถูกลบไปแล้ว)" };
+  }
 
   if (contact.partyId !== partyId)
     await db.accountContact.updateMany({ where: { id: contact.id }, data: { partyId } });

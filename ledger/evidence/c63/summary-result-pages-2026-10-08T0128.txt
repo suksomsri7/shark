@@ -1,0 +1,91 @@
+owner     {"ok":92}
+manager   {"ok":76,"gated:404":18}
+lead      {"ok":22,"gated:404":66,"expected-404":6}
+staff     {"ok":22,"gated:404":66,"expected-404":6}
+
+status by page (1440 | 390) where not all 200:
+  contacts-import          o:200/200  m:200/200  l:404/404  s:404/404
+  contacts-duplicates      o:200/200  m:200/200  l:404/404  s:404/404
+  companies                o:200/200  m:200/200  l:404/404  s:404/404
+  companies-new            o:200/200  m:200/200  l:404/404  s:404/404
+  companies-duplicates     o:200/200  m:200/200  l:404/404  s:404/404
+  emails                   o:200/200  m:200/200  l:404/404  s:404/404
+  objects                  o:200/200  m:200/200  l:404/404  s:404/404
+  reports                  o:200/200  m:200/200  l:404/404  s:404/404
+  reports-overview         o:200/200  m:200/200  l:404/404  s:404/404
+  reports-forecast         o:200/200  m:200/200  l:404/404  s:404/404
+  reports-funnel           o:200/200  m:200/200  l:404/404  s:404/404
+  reports-reps             o:200/200  m:200/200  l:404/404  s:404/404
+  reports-activities       o:200/200  m:200/200  l:404/404  s:404/404
+  reports-lost             o:200/200  m:200/200  l:404/404  s:404/404
+  reports-sources          o:200/200  m:200/200  l:404/404  s:404/404
+  reports-scores           o:200/200  m:200/200  l:404/404  s:404/404
+  settings                 o:200/200  m:404/404  l:404/404  s:404/404
+  settings-pipelines       o:200/200  m:404/404  l:404/404  s:404/404
+  settings-stages          o:200/200  m:404/404  l:404/404  s:404/404
+  settings-lost-reasons    o:200/200  m:404/404  l:404/404  s:404/404
+  settings-visibility      o:200/200  m:404/404  l:404/404  s:404/404
+  settings-objects         o:200/200  m:404/404  l:404/404  s:404/404
+  settings-api             o:200/200  m:404/404  l:404/404  s:404/404
+  settings-automation      o:200/200  m:200/200  l:404/404  s:404/404
+  settings-sequences       o:200/200  m:200/200  l:404/404  s:404/404
+  settings-holidays        o:200/200  m:200/200  l:404/404  s:404/404
+  settings-assignment      o:200/200  m:200/200  l:404/404  s:404/404
+  settings-scoring         o:200/200  m:200/200  l:404/404  s:404/404
+  settings-quotas          o:200/200  m:200/200  l:404/404  s:404/404
+  settings-commissions     o:200/200  m:200/200  l:404/404  s:404/404
+  settings-portal          o:200/200  m:200/200  l:404/404  s:404/404
+  settings-tracking        o:200/200  m:200/200  l:404/404  s:404/404
+  settings-forms           o:200/200  m:200/200  l:404/404  s:404/404
+  settings-integrations    o:200/200  m:404/404  l:404/404  s:404/404
+  teams                    o:200/200  m:404/404  l:404/404  s:404/404
+  settings-email           o:  m:200/200  l:404/404  s:404/404
+
+overflow: 0
+
+console/page errors (excluding 'Failed to fetch' caused by our own POST block):
+   settings | 404 | console: Failed to load resource: the server responded with a status of 404 () ← manager/1440,manager/390,lead/1440,lead/390,staff/1440,staff/390
+   settings-pipelines | 404 | console: Failed to load resource: the server responded with a status of 404 () ← manager/1440,manager/390,lead/1440,lead/390,staff/1440,staff/390
+   settings-stages | 404 | console: Failed to load resource: the server responded with a status of 404 () ← manager/1440,manager/390,lead/1440,lead/390,staff/1440,staff/390
+   settings-lost-reasons | 404 | console: Failed to load resource: the server responded with a status of 404 () ← manager/1440,manager/390,lead/1440,lead/390,staff/1440,staff/390
+   settings-visibility | 404 | console: Failed to load resource: the server responded with a status of 404 () ← manager/1440,manager/390,lead/1440,lead/390,staff/1440,staff/390
+   settings-objects | 404 | console: Failed to load resource: the server responded with a status of 404 () ← manager/1440,manager/390,lead/1440,lead/390,staff/1440,staff/390
+   settings-api | 404 | console: Failed to load resource: the server responded with a status of 404 () ← manager/1440,manager/390,lead/1440,lead/390,staff/1440,staff/390
+   settings-integrations | 404 | console: Failed to load resource: the server responded with a status of 404 () ← manager/1440,manager/390,lead/1440,lead/390,staff/1440,staff/390
+   teams | 404 | console: Failed to load resource: the server responded with a status of 404 () ← manager/1440,manager/390,lead/1440,lead/390,staff/1440,staff/390
+   contacts-import | 404 | console: Failed to load resource: the server responded with a status of 404 () ← lead/1440,lead/390,staff/1440,staff/390
+   contacts-duplicates | 404 | console: Failed to load resource: the server responded with a status of 404 () ← lead/1440,lead/390,staff/1440,staff/390
+   companies | 404 | console: Failed to load resource: the server responded with a status of 404 () ← lead/1440,lead/390,staff/1440,staff/390
+   companies-new | 404 | console: Failed to load resource: the server responded with a status of 404 () ← lead/1440,lead/390,staff/1440,staff/390
+   companies-duplicates | 404 | console: Failed to load resource: the server responded with a status of 404 () ← lead/1440,lead/390,staff/1440,staff/390
+   emails | 404 | console: Failed to load resource: the server responded with a status of 404 () ← lead/1440,lead/390,staff/1440,staff/390
+   objects | 404 | console: Failed to load resource: the server responded with a status of 404 () ← lead/1440,lead/390,staff/1440,staff/390
+   reports | 404 | console: Failed to load resource: the server responded with a status of 404 () ← lead/1440,lead/390,staff/1440,staff/390
+   reports-overview | 404 | console: Failed to load resource: the server responded with a status of 404 () ← lead/1440,lead/390,staff/1440,staff/390
+   reports-forecast | 404 | console: Failed to load resource: the server responded with a status of 404 () ← lead/1440,lead/390,staff/1440,staff/390
+   reports-funnel | 404 | console: Failed to load resource: the server responded with a status of 404 () ← lead/1440,lead/390,staff/1440,staff/390
+   reports-reps | 404 | console: Failed to load resource: the server responded with a status of 404 () ← lead/1440,lead/390,staff/1440,staff/390
+   reports-activities | 404 | console: Failed to load resource: the server responded with a status of 404 () ← lead/1440,lead/390,staff/1440,staff/390
+   reports-lost | 404 | console: Failed to load resource: the server responded with a status of 404 () ← lead/1440,lead/390,staff/1440,staff/390
+   reports-sources | 404 | console: Failed to load resource: the server responded with a status of 404 () ← lead/1440,lead/390,staff/1440,staff/390
+   reports-scores | 404 | console: Failed to load resource: the server responded with a status of 404 () ← lead/1440,lead/390,staff/1440,staff/390
+   settings-automation | 404 | console: Failed to load resource: the server responded with a status of 404 () ← lead/1440,lead/390,staff/1440,staff/390
+   settings-sequences | 404 | console: Failed to load resource: the server responded with a status of 404 () ← lead/1440,lead/390,staff/1440,staff/390
+   settings-holidays | 404 | console: Failed to load resource: the server responded with a status of 404 () ← lead/1440,lead/390,staff/1440,staff/390
+   settings-assignment | 404 | console: Failed to load resource: the server responded with a status of 404 () ← lead/1440,lead/390,staff/1440,staff/390
+   settings-scoring | 404 | console: Failed to load resource: the server responded with a status of 404 () ← lead/1440,lead/390,staff/1440,staff/390
+   settings-quotas | 404 | console: Failed to load resource: the server responded with a status of 404 () ← lead/1440,lead/390,staff/1440,staff/390
+   settings-commissions | 404 | console: Failed to load resource: the server responded with a status of 404 () ← lead/1440,lead/390,staff/1440,staff/390
+   settings-portal | 404 | console: Failed to load resource: the server responded with a status of 404 () ← lead/1440,lead/390,staff/1440,staff/390
+   settings-tracking | 404 | console: Failed to load resource: the server responded with a status of 404 () ← lead/1440,lead/390,staff/1440,staff/390
+   settings-forms | 404 | console: Failed to load resource: the server responded with a status of 404 () ← lead/1440,lead/390,staff/1440,staff/390
+   settings-email | 404 | console: Failed to load resource: the server responded with a status of 404 () ← lead/1440,lead/390,staff/1440,staff/390
+
+hiddenFor leaks: 2
+   manager 1440 emails crm-emails-tab-unmatched
+   manager 390 emails crm-emails-tab-unmatched
+
+200 but no registry control present: owner:contacts-duplicates, owner:companies-duplicates, manager:contacts-duplicates, manager:companies-duplicates, manager:objects
+
+blocked on-load POST count pages: 212
+aborted: null skipped: 2

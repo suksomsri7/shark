@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { createLostReasonAction, updateLostReasonAction } from "@/lib/modules/crm/lost-reasons-actions";
 import { LOST_REASON_LABEL_MAX } from "@/lib/modules/crm/deals-shared";
+import { FieldError, useFieldErrors } from "@/components/crm/form/field-errors";
 
 type Row = { id: string; label: string; active: boolean; usedBy: number };
 
@@ -15,6 +16,8 @@ export function LostReasonSettings({ systemId, reasons }: { systemId: string; re
   const [newLabel, setNewLabel] = useState("");
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  // C4.3-fix part 2 ▸ ฟอร์มเพิ่ม: ข้อความใต้ช่อง + โฟกัส (lr-msg ยังเป็นของปุ่มในแถว/ผลสำเร็จ) ◂
+  const fe = useFieldErrors(["label"] as const);
   const run = async (f: () => Promise<{ ok: true } | { ok: false; error: string }>, okText: string) => {
     setBusy(true);
     const r = await f();
@@ -46,16 +49,36 @@ export function LostReasonSettings({ systemId, reasons }: { systemId: string; re
         className="card flex flex-wrap items-end gap-2 p-4"
         onSubmit={(e) => {
           e.preventDefault();
-          if (!newLabel.trim()) return setMsg({ ok: false, text: "ใส่ข้อความเหตุผลก่อน" });
-          void run(() => createLostReasonAction(systemId, newLabel.trim()), "เพิ่มเหตุผลแล้ว").then((ok) => {
-            if (ok) setNewLabel("");
+          setMsg(null);
+          const label = newLabel.trim();
+          // ค่าว่างตรวจที่จอ · ที่เหลือ (ยาวเกิน/ซ้ำ) บริการตัดสินแล้วชี้กลับมาที่ช่องนี้ (fieldErrors)
+          if (fe.show({ label: !label ? "ใส่ข้อความเหตุผลก่อน" : undefined })) return;
+          setBusy(true);
+          void createLostReasonAction(systemId, label).then((r) => {
+            setBusy(false);
+            if (r.ok) {
+              setNewLabel("");
+              setMsg({ ok: true, text: "เพิ่มเหตุผลแล้ว" });
+              router.refresh();
+            } else if (!fe.show(r.fieldErrors)) setMsg({ ok: false, text: r.error });
           });
         }}
         data-testid="lr-new-form"
       >
         <label className="flex min-w-0 flex-1 flex-col gap-1 text-xs text-[color:var(--color-muted)]">
           <span>เหตุผลใหม่</span>
-          <input value={newLabel} onChange={(e) => setNewLabel(e.target.value)} placeholder='เช่น "ราคาสูงไป"' className="input text-sm" data-testid="lr-new-label" />
+          <input
+            {...fe.field("label")}
+            value={newLabel}
+            onChange={(e) => {
+              setNewLabel(e.target.value);
+              fe.clear("label");
+            }}
+            placeholder='เช่น "ราคาสูงไป"'
+            className="input text-sm"
+            data-testid="lr-new-label"
+          />
+          <FieldError id={fe.errorId("label")} message={fe.errors.label} testid="lr-new-label-error" />
         </label>
         <button type="submit" className="btn btn-primary text-sm" disabled={busy} data-testid="lr-new-submit">
           เพิ่ม

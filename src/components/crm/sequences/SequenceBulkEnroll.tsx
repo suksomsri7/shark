@@ -10,8 +10,10 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { bulkEnrollContactsAction } from "@/app/app/sys/[id]/crm/settings/sequences/actions";
 import type { SeqOption } from "./types";
+import { FieldError, useFieldErrors } from "@/components/crm/form/field-errors";
 
 const MAX = 500;
+const REASON_MIN = 5; // = SEQ_REASON_MIN ของบริการ (บริการตรวจซ้ำเสมอ)
 
 export function SequenceBulkEnroll({ systemId, sequences, contactIds }: { systemId: string; sequences: SeqOption[]; contactIds: string[] }) {
   const router = useRouter();
@@ -21,15 +23,28 @@ export function SequenceBulkEnroll({ systemId, sequences, contactIds }: { system
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  // C4.3-fix part 2 ▸ ยืนยัน/เหตุผลไม่ครบ = ข้อความใต้ช่องนั้น + โฟกัสช่องแรก (ก่อนหน้านี้บริการตอบกลับมาในกล่องท้ายฟอร์ม) ◂
+  const fe = useFieldErrors(["confirm", "reason"] as const);
 
   if (sequences.length === 0 || contactIds.length === 0) return null;
   const ids = contactIds.slice(0, MAX);
 
   const submit = async () => {
+    setMsg(null);
+    if (
+      fe.show({
+        confirm: !confirm ? "ติ๊กช่องนี้เพื่อยืนยันว่าต้องการใส่ทั้งกลุ่มเข้าลำดับ" : undefined,
+        reason: reason.trim().length < REASON_MIN ? `ใส่เหตุผลอย่างน้อย ${REASON_MIN} ตัวอักษร (เก็บไว้ในประวัติการแก้ไข)` : undefined,
+      })
+    )
+      return;
     setBusy(true);
     const r = await bulkEnrollContactsAction(systemId, { sequenceId: pick, contactIds: ids, confirm, reason });
     setBusy(false);
-    if (!r.ok) return setMsg({ ok: false, text: r.error });
+    if (!r.ok) {
+      if (!fe.show(r.fieldErrors)) setMsg({ ok: false, text: r.error });
+      return;
+    }
     setMsg({
       ok: true,
       text: `ใส่เข้าลำดับแล้ว ${r.enrolled.toLocaleString("th-TH")} คน · ข้าม ${r.skipped.toLocaleString("th-TH")} คน · อยู่ในลำดับอยู่แล้ว ${r.conflicts.toLocaleString("th-TH")} คน`,
@@ -67,13 +82,39 @@ export function SequenceBulkEnroll({ systemId, sequences, contactIds }: { system
               ))}
             </select>
           </label>
-          <label className="flex items-center gap-1.5 text-sm">
-            <input type="checkbox" checked={confirm} disabled={busy} onChange={(e) => setConfirm(e.target.checked)} data-testid="crm-seq-bulk-confirm" />
-            ยืนยันว่าต้องการใส่ทั้งกลุ่มนี้เข้าลำดับ
-          </label>
+          <div className="flex flex-col gap-1">
+            <label className="flex items-center gap-1.5 text-sm">
+              <input
+                {...fe.field("confirm")}
+                type="checkbox"
+                checked={confirm}
+                disabled={busy}
+                onChange={(e) => {
+                  setConfirm(e.target.checked);
+                  fe.clear("confirm");
+                }}
+                data-testid="crm-seq-bulk-confirm"
+              />
+              ยืนยันว่าต้องการใส่ทั้งกลุ่มนี้เข้าลำดับ
+            </label>
+            <FieldError id={fe.errorId("confirm")} message={fe.errors.confirm} testid="crm-seq-bulk-confirm-error" />
+          </div>
           <label className="flex min-w-0 flex-col gap-1 text-xs text-[color:var(--color-muted)]">
             <span>เหตุผล (อย่างน้อย 5 ตัวอักษร · เก็บไว้ในประวัติการแก้ไข)</span>
-            <input value={reason} maxLength={500} disabled={busy} onChange={(e) => setReason(e.target.value)} placeholder='เช่น "ลงทะเบียนลูกค้างานแฟร์"' className="input text-sm" data-testid="crm-seq-bulk-reason" />
+            <input
+              {...fe.field("reason")}
+              value={reason}
+              maxLength={500}
+              disabled={busy}
+              onChange={(e) => {
+                setReason(e.target.value);
+                fe.clear("reason");
+              }}
+              placeholder='เช่น "ลงทะเบียนลูกค้างานแฟร์"'
+              className="input text-sm"
+              data-testid="crm-seq-bulk-reason"
+            />
+            <FieldError id={fe.errorId("reason")} message={fe.errors.reason} testid="crm-seq-bulk-reason-error" />
           </label>
           <div className="flex flex-wrap gap-2">
             <button type="submit" className="btn btn-primary text-sm" disabled={busy} data-testid="crm-seq-bulk-submit">

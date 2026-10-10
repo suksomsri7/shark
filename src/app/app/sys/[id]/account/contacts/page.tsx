@@ -1,6 +1,7 @@
 // WO 3.2 — หน้าผู้ติดต่อ V2 (เขียนใหม่ทั้งหน้า แทนลิสต์เดิม WO 0.1/0.2) — DESIGN-SPEC-V2 §7.1 · f5-contacts.png
 import { loadAccountSystem } from "@/lib/modules/account/guard";
 import { ContactsPage } from "@/lib/modules/account/contacts-ui";
+import { crmViewerOfSession } from "@/lib/modules/account/contact-links";
 
 export default async function Page({
   params,
@@ -19,6 +20,6 @@ export default async function Page({
 }) {
   const { id } = await params;
   const sp = await searchParams;
-  const { tenantId, systemId } = await loadAccountSystem(id, { can: "account.contact.manage" });
-  return <ContactsPage tenantId={tenantId} systemId={systemId} id={id} searchParams={sp} />;
+  const { tenantId, systemId, userId, auth } = await loadAccountSystem(id, { can: "account.contact.manage" });
+  return <ContactsPage tenantId={tenantId} systemId={systemId} id={id} searchParams={sp} crmViewer={crmViewerOfSession(userId, auth.active)} />;
 }

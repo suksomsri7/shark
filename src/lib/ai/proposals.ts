@@ -36,6 +36,8 @@ import * as accountFacade from "@/lib/modules/account";
 import * as automationSvc from "@/lib/automation/service";
 import { AUTOMATION_EVENTS, eventLabel } from "@/lib/automation/labels";
 import { createSystemAutoLink } from "@/lib/modules/system/service";
+import { canSeeConversationId, sightOf, sightOfConfirmer, type ConvCtx } from "./conversation-owner";
+import { findVisibleConversation } from "./conversations";
 import {
   accountDestructiveKinds,
   accountKindAccess,
@@ -329,9 +331,12 @@ export async function createProposal(
 }
 
 // ── ข้อเสนอที่ยังรออยู่ของบทสนทนา (PENDING + ยังไม่หมดอายุ) เรียงเก่า→ใหม่ ──
-export async function listPendingProposals(ctx: Ctx, conversationId: string) {
-  return tenantDb(ctx).aiProposal.findMany({
-    where: { conversationId, status: "PENDING", expiresAt: { gt: new Date() } },
+// CRM C5.5-G2 ▸ เฉพาะบทสนทนาที่ผู้ดูเห็น (ไม่เห็น / ไม่มีห้องจริง = ว่าง) ◂
+export async function listPendingProposals(ctx: ConvCtx, conversationId: string) {
+  const conv = await findVisibleConversation(ctx, conversationId);
+  if (!conv) return [];
+  return tenantDb({ tenantId: ctx.tenantId }).aiProposal.findMany({
+    where: { conversationId: conv.id, status: "PENDING", expiresAt: { gt: new Date() } },
     orderBy: { createdAt: "asc" },
   });
 }
@@ -341,11 +346,13 @@ export async function listPendingProposals(ctx: Ctx, conversationId: string) {
 //   `crm_create_lead` ที่มี systemId — นามบัตร): ข้อเสนอเหล่านั้นยกเลิกได้เฉพาะคนที่ยืนยันได้ ผ่าน `crm.aiBridges.cancelProposal`
 //   (ผู้เรียกสองราย — `ai/actions.ts#rejectProposalAction` · `/api/mobile/proposals/reject` — ส่งข้อเสนอ CRM ไปทางนั้นพร้อมตัวคนกดแล้ว)
 //   🔴 ช่องโหว่เดียวกันของ kind โมดูลอื่น (ปิดอะไรก็ได้ด้วย id) ยังอยู่ — จดเป็น finding ให้เลน AI/สมาชิก (CRM-RUN §4) ◂
-export async function rejectProposal(ctx: Ctx, id: string): Promise<boolean> {
-  const row = await tenantDb(ctx).aiProposal.findFirst({ where: { id }, select: { kind: true, payload: true } });
+// CRM C5.5-G2 ▸ ยกเลิกได้เฉพาะข้อเสนอในบทสนทนาที่ผู้กดเห็น (ของคนอื่น = false เหมือนไม่มีอยู่) ◂
+export async function rejectProposal(ctx: ConvCtx, id: string): Promise<boolean> {
+  const row = await tenantDb({ tenantId: ctx.tenantId }).aiProposal.findFirst({ where: { id }, select: { kind: true, payload: true, conversationId: true } });
   if (!row) return false;
   if (crmSvc.aiBridges.isCrmDoorKind(row.kind, row.payload)) return false; // CRM C3.4 ◂
-  const res = await tenantDb(ctx).aiProposal.updateMany({
+  if (!canSeeConversationId(sightOf(ctx), row.conversationId)) return false;
+  const res = await tenantDb({ tenantId: ctx.tenantId }).aiProposal.updateMany({
     where: { id, status: "PENDING" },
     data: { status: "REJECTED" },
   });
@@ -378,6 +385,13 @@ export async function executeProposal(
     if (!opts?.userId) return { ok: false, note: "ต้องรู้ตัวผู้กดยืนยันก่อนจึงจะทำรายการของ CRM ได้ — เปิดจากหน้าแอปแล้วลองอีกครั้ง" };
     const r = await crmSvc.aiBridges.confirmProposalById(ctx.tenantId, { userId: opts.userId, role: m.role, unitAccess: m.unitAccess, permissions: m.permissions }, id, { confirm2x: opts?.confirm2x === true });
     return { ok: r.ok, note: r.note };
+  }
+
+  // CRM C5.5-G2 ▸ ข้อเสนอเป็นของบทสนทนาที่มันเกิด: คนกดต้องเห็นบทสนทนานั้น (ผู้สร้าง · เจ้าของร้านสำหรับห้องที่ไม่ได้สร้างโดยคนในร้าน
+  //   เช่นห้องของคีย์ API ที่ route เขียนไว้ว่า "เจ้าของต้องกดยืนยันในแอป/เว็บ") — ไม่เห็น = ตอบแบบเดียวกับไม่มีข้อเสนอนี้
+  //   (ประตู CRM ข้างบนมีด่านการมองเห็นของตัวเองแล้ว — ข้อเสนอเหล่านั้นไม่ได้อยู่ในห้องแชท) ◂
+  if (!canSeeConversationId(sightOfConfirmer(m, opts?.userId ?? null), row.conversationId)) {
+    return { ok: false, note: "ไม่พบข้อเสนอนี้ (อาจถูกลบไปแล้ว)" };
   }
 
   // CRM C3.4 ▸ รีวิว S2: ใบที่ยังถูก "จองไว้ทำงาน" (`resultNote` = WORKING#<ms> — เนื้อยังไม่มา) ยืนยันไม่ได้ทุก kind ◂
@@ -447,6 +461,12 @@ export async function executeProposal(
 // ── kind ตรวจว่ารู้จักจริงไหม (มีใน KIND_ACCESS) — ใช้ตอนสร้างแผน (plans.ts) ปฏิเสธ kind ปลอม ──
 export function isKnownKind(kind: string): kind is ProposalKind {
   return Object.prototype.hasOwnProperty.call(KIND_ACCESS, kind);
+}
+
+// CRM C5.5-G1 ▸ คีย์สิทธิ์ที่คนกดยืนยันต้องมี (ตารางเดียวกับ executeProposal/runKind) — ด่านของ tool ใช้ตัดสินว่า "ผู้ถามเสนอ kind นี้ได้ไหม"
+//   (ผู้ถามที่ไม่มีคีย์นี้เอง ไม่ได้รับเครื่องมือเสนอของ kind นั้น · ไม่มี kind = null) ◂
+export function kindAccessOf(kind: string): { module: string; action: string } | null {
+  return isKnownKind(kind) ? KIND_ACCESS[kind] : null;
 }
 
 // ── รันงานหนึ่งชิ้น (kind) ด้วยสิทธิ์ของ "คนกด" — ห่อ assertCan (KIND_ACCESS) + dispatch เดิม ──
@@ -548,10 +568,13 @@ async function dispatch(
 
   if (kind === "hr_decide_leave") {
     const p = payload as DecideLeavePayload;
+    // HF-HR-0 ▸ รอบ 4 (R4.1a): ไม่รู้ตัวคนกดยืนยัน (เช่นแผนงานหลายขั้น — MembershipCtx ไม่มี user id) = ไม่มีผู้ตัดสินจริง
+    //   ⇒ ห้ามอนุมัติ/ไม่อนุมัติ/ถอน (กติกาห้ามตัดสินใบของตัวเอง + การถอนต้องมีผู้ตัดสิน จะถูกข้ามเงียบ ๆ) ◂
+    if (!userId) throw new Error("ทำรายการนี้ผ่านแผนงานอัตโนมัติไม่ได้ กรุณาอนุมัติใบลาในหน้าระบบพนักงาน");
     const system = await resolveSystem(tenantId, "HR");
     if (!system) throw new Error("ยังไม่ได้เปิดระบบพนักงาน");
     const decision = p.decision === "REJECTED" ? "REJECTED" : "APPROVED";
-    await hrSvc.decideLeave({ tenantId, systemId: system.id }, String(p.leaveId ?? ""), decision, null);
+    await hrSvc.decideLeave({ tenantId, systemId: system.id }, String(p.leaveId ?? ""), decision, userId ?? null); // HF-HR-0 ▸ ผู้กดยืนยัน = ผู้ตัดสิน (กันอนุมัติใบลาของตัวเอง) ◂
     return decision === "APPROVED" ? "อนุมัติใบลาเรียบร้อยแล้ว" : "ไม่อนุมัติใบลาเรียบร้อยแล้ว";
   }
 
@@ -977,6 +1000,11 @@ async function dispatch(
     const p = payload as CrmCreateLeadPayload;
     const system = await resolveSystem(tenantId, "CRM");
     if (!system) throw new Error("ยังไม่ได้เปิดระบบ CRM (ลูกค้ามุ่งหวัง)");
+    // CRM C5.4-B ▸ hunter H5: ข้อเสนอแบบเดิม (v1) ที่ค้างอยู่ ห้ามสร้างผู้ติดต่อผ่านทางลัด v1 บนระบบที่เปิด CRM ใหม่แล้ว (ไม่มีกันซ้ำ/การมองเห็น)
+    //   อ่านรุ่นไม่ได้ = ปฏิเสธเหมือนกัน (fail closed) · ให้ผู้ใช้ถามผู้ช่วยใหม่ (ข้อเสนอรุ่นใหม่ผ่านบริการ v2)
+    if (await crmSvc.isCrmV1Closed({ tenantId, systemId: system.id })) {
+      throw new Error("ข้อเสนอนี้สร้างจากระบบ CRM รุ่นเดิม จึงยืนยันไม่ได้แล้ว — ขอให้ผู้ช่วยเพิ่มลูกค้ามุ่งหวังใหม่อีกครั้ง");
+    }
     const name = String(p.name ?? "").trim();
     if (!name) throw new Error("ต้องระบุชื่อผู้ติดต่อ");
     // source = "AI" ระบุที่มาว่าผู้ช่วยสร้างให้ · note: service ไม่รับ (เก็บ company/source เท่านั้น) → ไม่ persist
@@ -1118,6 +1146,12 @@ async function dispatch(
 
   if (kind === "approval_decide") {
     if (!m) throw new Error("ต้องมีสิทธิ์ผู้ใช้เพื่ออนุมัติคำขอ");
+    // HF-HR-0 ▸ รอบ 5 (R5.5): ผู้ตัดสิน = ผู้กดยืนยันที่ระบบรู้ตัว (userId จากทางยืนยัน · ผู้เรียกบางรายใส่ไว้ใน m) — ไม่รู้ตัว (เช่นแผนงานอัตโนมัติ)
+    //   ⇒ ปฏิเสธไทยก่อนค้น/เขียน (เดิม cast m ทั้งที่ MembershipCtx ไม่มี userId ⇒ Prisma error ดิบพร้อม path/รหัสร้าน/รหัสคำขอหลุดถึงผู้ใช้)
+    const mUser = (m as { userId?: unknown }).userId;
+    const uid = userId || (typeof mUser === "string" && mUser.trim() ? mUser : null);
+    if (!uid) throw new Error("ทำรายการนี้ไม่ได้ เพราะระบบไม่ทราบว่าใครเป็นผู้กดยืนยัน — กรุณาตัดสินคำขอในหน้า “อนุมัติ”");
+    // ◂ HF-HR-0
     const p = payload as ApprovalDecidePayload;
     const decision = p.decision === "REJECTED" ? "REJECTED" : "APPROVED";
     let requestId = String(p.requestId ?? "").trim();
@@ -1141,12 +1175,12 @@ async function dispatch(
     }
     // decide ตรวจสิทธิ์ตาม step ด้วย (m ต้องมี userId ตอน runtime — คนกดยืนยันจริง)
     const res = await approvalSvc.decide(
-      m as MembershipCtx & { userId: string },
+      { ...m, userId: uid },
       { tenantId },
       requestId,
       { decision, note: p.note ? String(p.note).trim() : null },
     );
-    if (!res.ok) throw new Error("ตัดสินคำขอไม่สำเร็จ — คำขออาจถูกปิดไปแล้วหรือคุณไม่มีสิทธิ์ในขั้นนี้");
+    if (!res.ok) throw new Error(res.reason ?? "ตัดสินคำขอไม่สำเร็จ — คำขออาจถูกปิดไปแล้วหรือคุณไม่มีสิทธิ์ในขั้นนี้"); // HF-HR-0 ▸ R5.1: เหตุผลเฉพาะก่อน ◂
     if (res.status === "APPROVED") return "อนุมัติคำขอเรียบร้อยแล้ว";
     if (res.status === "REJECTED") return "ปฏิเสธคำขอเรียบร้อยแล้ว";
     return "บันทึกการพิจารณาแล้ว — รอผู้อนุมัติขั้นถัดไป";

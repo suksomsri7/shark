@@ -12,7 +12,7 @@ import {
   JOURNAL_PAGE_SIZE,
   type JournalRangeKey,
 } from "@/lib/modules/account/journal-v2";
-import { nextJournalNo } from "@/lib/modules/account/gl";
+import { peekJournalNo } from "@/lib/modules/account/gl";
 import { AccountIcon } from "@/components/account-v2/AccountIcon";
 import { StatusTabs } from "@/components/account-v2/StatusTabs";
 import { Pagination } from "@/components/account-v2/Pagination";
@@ -77,7 +77,8 @@ export default async function JournalPage({
   const [accounts, contacts] = openModal
     ? await Promise.all([jvAccountOptions(ctx), jvContactOptions(ctx)])
     : [[], []];
-  const nextDocNo = openModal ? await nextJournalNo(ctx, "GENERAL", now) : "";
+  // CRM C5.4-N ▸ ดูอย่างเดียว (ไม่กินเลข) — เปิดกล่องกี่ครั้งเลขก็ไม่ขยับ ◂
+  const nextDocNo = openModal ? await peekJournalNo(ctx, "GENERAL", now) : "";
 
   return (
     <div className="flex flex-col gap-5">

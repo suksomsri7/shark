@@ -19,12 +19,15 @@ import {
   setLeadAction,
   setTeamUnitsAction,
 } from "@/app/app/settings/teams/actions";
+import { FieldError, useFieldErrors } from "@/components/crm/form/field-errors";
 
 export type TeamMemberView = { userId: string; name: string; role: "LEAD" | "MEMBER"; acceptingLeads: boolean };
 export type TeamView = { id: string; name: string; leadUserId: string | null; unitIds: string[]; archived: boolean; members: TeamMemberView[] };
 type Person = { userId: string; name: string };
 type Unit = { id: string; name: string };
-type Result = { ok: true } | { ok: false; error: string };
+type Result = { ok: true } | { ok: false; error: string; fieldErrors?: Record<string, string> };
+/** ผู้เรียกจัดการข้อความปฏิเสธที่เป็นของช่องเองแล้ว (แสดงใต้ช่อง) — คืน true = ไม่ต้องขึ้นกล่อง teams-msg */
+type OnFail = (r: Extract<Result, { ok: false }>) => boolean;
 
 export function TeamsManager({ teams, people, units }: { teams: TeamView[]; people: Person[]; units: Unit[] }) {
   const router = useRouter();
@@ -35,17 +38,21 @@ export function TeamsManager({ teams, people, units }: { teams: TeamView[]; peop
   const [newUnits, setNewUnits] = useState<string[]>([]);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  // C4.3-fix part 2 ▸ ฟอร์มสร้างทีม: ชื่อว่าง/ซ้ำ/ยาวเกิน บอกใต้ช่องชื่อ + โฟกัส (teams-msg อยู่ท้ายหน้า — ไกลจากช่องเกินไป) ◂
+  const fe = useFieldErrors(["name"] as const);
 
   const unitName = new Map(units.map((u) => [u.id, u.name]));
   const personName = new Map(people.map((p) => [p.userId, p.name]));
   const visible = teams.filter((t) => showArchived || !t.archived);
   const selected = teams.find((t) => t.id === selectedId) ?? null;
 
-  const run = async (f: () => Promise<Result>, okText: string): Promise<boolean> => {
+  const run = async (f: () => Promise<Result>, okText: string, onFail?: OnFail): Promise<boolean> => {
     setBusy(true);
     const r = await f();
     setBusy(false);
-    setMsg(r.ok ? { ok: true, text: okText } : { ok: false, text: r.error });
+    if (r.ok) setMsg({ ok: true, text: okText });
+    else if (onFail?.(r)) setMsg(null);
+    else setMsg({ ok: false, text: r.error });
     if (r.ok) router.refresh();
     return r.ok;
   };
@@ -73,8 +80,11 @@ export function TeamsManager({ teams, people, units }: { teams: TeamView[]; peop
             className="flex min-w-0 flex-col gap-3 rounded-lg border p-3"
             onSubmit={(e) => {
               e.preventDefault();
-              if (!newName.trim()) return setMsg({ ok: false, text: "ตั้งชื่อทีมก่อน เช่น \"ทีมขาย — ภูเก็ต\"" });
-              void run(() => createTeamAction({ name: newName.trim(), unitIds: newUnits }), "สร้างทีมแล้ว").then((ok) => {
+              if (fe.show({ name: !newName.trim() ? "ตั้งชื่อทีมก่อน เช่น \"ทีมขาย — ภูเก็ต\"" : undefined })) {
+                setMsg(null);
+                return;
+              }
+              void run(() => createTeamAction({ name: newName.trim(), unitIds: newUnits }), "สร้างทีมแล้ว", (r) => fe.show(r.fieldErrors)).then((ok) => {
                 if (ok) {
                   setNewName("");
                   setNewUnits([]);
@@ -86,7 +96,19 @@ export function TeamsManager({ teams, people, units }: { teams: TeamView[]; peop
           >
             <label className="flex min-w-0 flex-col gap-1 text-xs text-[color:var(--color-muted)]">
               <span>ชื่อทีม</span>
-              <input value={newName} onChange={(e) => setNewName(e.target.value)} maxLength={80} placeholder="เช่น ทีมขาย — ภูเก็ต" className="input text-sm" data-testid="teams-create-name" />
+              <input
+                {...fe.field("name")}
+                value={newName}
+                onChange={(e) => {
+                  setNewName(e.target.value);
+                  fe.clear("name");
+                }}
+                maxLength={80}
+                placeholder="เช่น ทีมขาย — ภูเก็ต"
+                className="input text-sm"
+                data-testid="teams-create-name"
+              />
+              <FieldError id={fe.errorId("name")} message={fe.errors.name} testid="teams-create-name-error" />
             </label>
             {units.length > 0 && (
               <fieldset className="flex min-w-0 flex-col gap-1 text-xs text-[color:var(--color-muted)]">
@@ -111,7 +133,15 @@ export function TeamsManager({ teams, people, units }: { teams: TeamView[]; peop
               <button type="submit" className="btn btn-primary text-sm" disabled={busy} data-testid="teams-create-submit">
                 สร้างทีม
               </button>
-              <button type="button" className="btn btn-ghost text-sm" onClick={() => setCreating(false)} data-testid="teams-create-cancel">
+              <button
+                type="button"
+                className="btn btn-ghost text-sm"
+                onClick={() => {
+                  setCreating(false);
+                  fe.reset();
+                }}
+                data-testid="teams-create-cancel"
+              >
                 ยกเลิก
               </button>
             </div>
@@ -177,7 +207,7 @@ function TeamDetail({
   people: Person[];
   units: Unit[];
   busy: boolean;
-  run: (f: () => Promise<Result>, okText: string) => Promise<boolean>;
+  run: (f: () => Promise<Result>, okText: string, onFail?: OnFail) => Promise<boolean>;
 }) {
   const [name, setName] = useState(team.name);
   const [unitIds, setUnitIds] = useState<string[]>(team.unitIds);
@@ -186,6 +216,8 @@ function TeamDetail({
   const memberIds = new Set(team.members.map((m) => m.userId));
   const addable = people.filter((p) => !memberIds.has(p.userId));
   const unitsChanged = [...unitIds].sort().join("|") !== [...team.unitIds].sort().join("|");
+  // C4.3-fix part 2 ▸ ปุ่ม "เพิ่ม" ไม่ปิดเงียบ ๆ อีกแล้ว — ยังไม่เลือกพนักงาน = ข้อความใต้ช่องเลือก + โฟกัส ◂
+  const fe = useFieldErrors(["userId"] as const);
 
   return (
     <section className="card flex min-w-0 flex-col gap-4 p-4" aria-labelledby="team-detail-heading" data-testid="team-detail" data-id={team.id}>
@@ -311,8 +343,8 @@ function TeamDetail({
             className="flex min-w-0 flex-wrap items-end gap-2"
             onSubmit={(e) => {
               e.preventDefault();
-              if (!addUserId) return;
-              void run(() => addMemberAction(team.id, addUserId), "เพิ่มสมาชิกแล้ว").then((ok) => {
+              if (fe.show({ userId: !addUserId ? "เลือกพนักงานก่อน แล้วกดเพิ่ม" : undefined })) return;
+              void run(() => addMemberAction(team.id, addUserId), "เพิ่มสมาชิกแล้ว", (r) => fe.show(r.fieldErrors)).then((ok) => {
                 if (ok) setAddUserId("");
               });
             }}
@@ -320,7 +352,16 @@ function TeamDetail({
           >
             <label className="flex min-w-0 flex-1 flex-col gap-1 text-xs text-[color:var(--color-muted)]">
               <span>เพิ่มสมาชิก</span>
-              <select className="input text-sm" value={addUserId} onChange={(e) => setAddUserId(e.target.value)} data-testid="team-member-add-select">
+              <select
+                {...fe.field("userId")}
+                className="input text-sm"
+                value={addUserId}
+                onChange={(e) => {
+                  setAddUserId(e.target.value);
+                  fe.clear("userId");
+                }}
+                data-testid="team-member-add-select"
+              >
                 <option value="">— เลือกพนักงาน —</option>
                 {addable.map((p) => (
                   <option key={p.userId} value={p.userId}>
@@ -328,8 +369,9 @@ function TeamDetail({
                   </option>
                 ))}
               </select>
+              <FieldError id={fe.errorId("userId")} message={fe.errors.userId} testid="team-member-add-select-error" />
             </label>
-            <button type="submit" className="btn btn-ghost text-sm" disabled={busy || !addUserId} data-testid="team-member-add-submit">
+            <button type="submit" className="btn btn-ghost text-sm" disabled={busy} data-testid="team-member-add-submit">
               เพิ่ม
             </button>
           </form>

@@ -23,7 +23,7 @@ import * as point from "@/lib/modules/point";
 import * as approval from "@/lib/modules/approval/service";
 import { systemForUnit, unitsForSystem } from "@/lib/modules/system/service";
 import { prisma } from "./db";
-import { coversUnit, hasMemberPerm, isUnitScoped, VISIT_SCOPE_MODULES, type MemberActor } from "./access";
+import { canReadMember, coversUnit, hasMemberPerm, isUnitScoped, VISIT_SCOPE_MODULES, type MemberActor } from "./access";
 import { MemberConflictError, MemberForbiddenError, MemberInputError, MemberNotFoundError } from "./errors";
 import * as fields from "./fields";
 import * as sources from "./sources";
@@ -1400,6 +1400,9 @@ export async function memberRefs(ctx: MemberCtx, customerIds: string[]): Promise
 export async function briefFor(ctx: MemberCtx, actor: MemberActor, customerIds: string[]): Promise<MemberBrief[]> {
   const ids = [...new Set((customerIds ?? []).filter((x) => typeof x === "string" && x))];
   if (ids.length === 0) return [];
+  // CRM C5.5-fix14 r3 (รีวิว RV14-1) ▸ ด่านซ้อน: อ่านโมดูลสมาชิกไม่ได้ = ไม่เห็นใครเลย (เดิมตรวจแค่ขอบเขตสาขา ⇒ ผู้เรียกจากโมดูลอื่น
+  //   ที่ส่ง actor ไม่มีคีย์สมาชิก (การ์ดสมาชิกใน 360 ของ CRM) ได้ชื่อ/รหัส/เบอร์ปิดบัง) · ผู้เรียกในโมดูลสมาชิกผ่านด่านคีย์สมาชิกมาก่อนแล้ว ◂
+  if (!canReadMember(actor)) return [];
   const rows = await prisma.customer.findMany({
     where: { id: { in: ids }, tenantId: ctx.tenantId, memberSystemId: ctx.systemId },
   });

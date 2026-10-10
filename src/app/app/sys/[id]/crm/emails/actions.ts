@@ -14,7 +14,7 @@
 //    ⇒ ที่นี่กัน "ที่ปากทาง" ก่อน แล้วตัวจริงยังกันซ้ำอีกชั้น — ไม่มีทางที่ทางเข้าที่สองจะหลุดประตูไปได้
 
 import { requireTenant } from "@/lib/core/context";
-import { assertCrmV2 } from "@/lib/modules/crm/ui-version";
+import { assertCrmV2, CrmV2DisabledError } from "@/lib/modules/crm/ui-version";
 import {
   addCrmEmailDomainAction as addDomainImpl,
   attachCrmEmailToContactAction as attachImpl,
@@ -31,61 +31,58 @@ import {
   sendCrmEmailTestAction as sendTestImpl,
 } from "@/lib/modules/crm/emails-actions";
 
-/** ประตู uiVersion ของทางเข้านี้ (R-E.14) — ปฏิเสธก่อนแตะตัวจริง · ตัวจริงยังกันซ้ำอีกชั้นเสมอ */
-async function gate(systemId: string): Promise<void> {
-  const auth = await requireTenant();
-  await assertCrmV2({ tenantId: auth.active.tenantId, systemId: String(systemId ?? "") });
+/**
+ * ประตู uiVersion ของทางเข้านี้ (R-E.14) — ปฏิเสธก่อนแตะตัวจริง · ตัวจริงยังกันซ้ำอีกชั้นเสมอ
+ * C4.3-fix ▸ เดิม "โยน" CrmV2DisabledError ออกนอก action ⇒ หน้าจอได้ error ดิบของ Next แทนข้อความไทย · ตอนนี้คืน
+ *   `{ ok:false, error, code }` รูปเดียวกับที่ตัวจริงคืน (แบบเดียวกับ `_actions/calls.ts`) · redirect ของ requireTenant ยังโยนต่อ
+ */
+async function gate(systemId: string): Promise<{ ok: false; error: string; code: string } | null> {
+  try {
+    const auth = await requireTenant();
+    await assertCrmV2({ tenantId: auth.active.tenantId, systemId: String(systemId ?? "") });
+    return null;
+  } catch (e) {
+    if (e instanceof CrmV2DisabledError) return { ok: false, error: e.message, code: e.code };
+    throw e;
+  }
 }
 
 export async function sendCrmEmailAction(...a: Parameters<typeof sendImpl>) {
-  await gate(String(a[0] ?? ""));
-  return sendImpl(...a);
+  return (await gate(String(a[0] ?? ""))) ?? sendImpl(...a);
 }
 export async function crmEmailAttachmentUrlAction(...a: Parameters<typeof attachmentUrlImpl>) {
-  await gate(String(a[0] ?? ""));
-  return attachmentUrlImpl(...a);
+  return (await gate(String(a[0] ?? ""))) ?? attachmentUrlImpl(...a);
 }
 export async function searchCrmEmailContactsAction(...a: Parameters<typeof searchContactsImpl>) {
-  await gate(String(a[0] ?? ""));
-  return searchContactsImpl(...a);
+  return (await gate(String(a[0] ?? ""))) ?? searchContactsImpl(...a);
 }
 export async function attachCrmEmailToContactAction(...a: Parameters<typeof attachImpl>) {
-  await gate(String(a[0] ?? ""));
-  return attachImpl(...a);
+  return (await gate(String(a[0] ?? ""))) ?? attachImpl(...a);
 }
 export async function saveCrmEmailSettingsAction(...a: Parameters<typeof saveSettingsImpl>) {
-  await gate(String(a[0] ?? ""));
-  return saveSettingsImpl(...a);
+  return (await gate(String(a[0] ?? ""))) ?? saveSettingsImpl(...a);
 }
 export async function rotateCrmInboundKeyAction(...a: Parameters<typeof rotateKeyImpl>) {
-  await gate(String(a[0] ?? ""));
-  return rotateKeyImpl(...a);
+  return (await gate(String(a[0] ?? ""))) ?? rotateKeyImpl(...a);
 }
 export async function saveCrmEmailUserSettingAction(...a: Parameters<typeof saveUserSettingImpl>) {
-  await gate(String(a[0] ?? ""));
-  return saveUserSettingImpl(...a);
+  return (await gate(String(a[0] ?? ""))) ?? saveUserSettingImpl(...a);
 }
 export async function addCrmEmailDomainAction(...a: Parameters<typeof addDomainImpl>) {
-  await gate(String(a[0] ?? ""));
-  return addDomainImpl(...a);
+  return (await gate(String(a[0] ?? ""))) ?? addDomainImpl(...a);
 }
 export async function refreshCrmEmailDomainAction(...a: Parameters<typeof refreshDomainImpl>) {
-  await gate(String(a[0] ?? ""));
-  return refreshDomainImpl(...a);
+  return (await gate(String(a[0] ?? ""))) ?? refreshDomainImpl(...a);
 }
 export async function sendCrmEmailTestAction(...a: Parameters<typeof sendTestImpl>) {
-  await gate(String(a[0] ?? ""));
-  return sendTestImpl(...a);
+  return (await gate(String(a[0] ?? ""))) ?? sendTestImpl(...a);
 }
 export async function saveCrmEmailTemplateAction(...a: Parameters<typeof saveTemplateImpl>) {
-  await gate(String(a[0] ?? ""));
-  return saveTemplateImpl(...a);
+  return (await gate(String(a[0] ?? ""))) ?? saveTemplateImpl(...a);
 }
 export async function deleteCrmEmailTemplateAction(...a: Parameters<typeof deleteTemplateImpl>) {
-  await gate(String(a[0] ?? ""));
-  return deleteTemplateImpl(...a);
+  return (await gate(String(a[0] ?? ""))) ?? deleteTemplateImpl(...a);
 }
 export async function getCrmEmailTemplateAction(...a: Parameters<typeof getTemplateImpl>) {
-  await gate(String(a[0] ?? ""));
-  return getTemplateImpl(...a);
+  return (await gate(String(a[0] ?? ""))) ?? getTemplateImpl(...a);
 }

@@ -17,6 +17,7 @@ import { briefFor as contactBriefFor } from "./contacts";
 import { visibleCompaniesByIds } from "./companies";
 import { parseCrmSettings } from "./settings";
 import { activityWhere, dealWhere } from "./where";
+import { isActivityOverdue } from "./activities-shared"; // CRM C5.4-E ▸ L6-m1 ◂
 
 export type CrmBriefCtx = { tenantId: string; systemId: string; actorUserId?: string | null };
 
@@ -172,7 +173,7 @@ export async function homeFor(ctx: CrmBriefCtx, actor: MemberActor): Promise<Crm
       stalledDays: d.stalledAt ? Math.max(0, Math.floor((now.getTime() - d.stalledAt.getTime()) / DAY_MS)) : null,
     })),
     stages: [...stageMap.values()].sort((a, b) => a.sortOrder - b.sortOrder).map((s) => ({ id: s.id, name: s.name })),
-    tasks: tasks.map((t) => ({ id: t.id, title: t.title, type: t.type, dueAt: t.dueAt ? t.dueAt.toISOString() : null, overdue: !!t.dueAt && t.dueAt.getTime() < now.getTime() })),
+    tasks: tasks.map((t) => ({ id: t.id, title: t.title, type: t.type, dueAt: t.dueAt ? t.dueAt.toISOString() : null, overdue: isActivityOverdue(t.dueAt ? t.dueAt.getTime() : null, now.getTime()) })), // CRM C5.4-E ▸ L6-m1 ◂
     // CRM C2.10 ▸ ภาพ 01 "ดีลที่ต้องดู" ◂
     stale: staleRows.map((d) => ({
       id: d.id,

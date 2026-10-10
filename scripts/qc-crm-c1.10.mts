@@ -1023,8 +1023,9 @@ try {
     const pr = await tool(vO, "crm_create_deal", argsFor("crm_create_deal", null, { pipelineId: pMain.id, title, contactId: kP2.id }));
     const noRow = (await P.crmDeal.count({ where: { tenantId: T, title } })) === 0;
     const cId = await conv(T);
+    // ORACLE-EDIT C5.5-G1 r2: AiTool.execute without an actor now refuses (fail closed) — the owner is the asker here (S6.3 · S10.2); X2.6 keeps NO actor on purpose
     const execTool = (crmT as Any[]).find((t) => t?.def?.name === "crm_create_deal");
-    const ex = execTool ? await call(() => execTool.execute({ tenantId: T, systemId: S, conversationId: cId }, { pipelineId: pMain.id, title, contactId: kP2.id })) : ({ ok: false, err: "no crm_create_deal AiTool" } as Res);
+    const ex = execTool ? await call(() => execTool.execute({ tenantId: T, systemId: S, conversationId: cId, actor: { kind: "member", tenantId: T, userId: owner.userId, membership: { role: "OWNER", unitAccess: ["*"], permissions: {} } } }, { pipelineId: pMain.id, title, contactId: kP2.id })) : ({ ok: false, err: "no crm_create_deal AiTool" } as Res);
     const pid = String(((): Any => { try { return JSON.parse(String(ex.v ?? "{}")); } catch { return {}; } })().proposalId ?? "");
     const prow = pid ? ((await P.aiProposal.findFirst({ where: { id: pid, tenantId: T } })) as Any) : null;
     const denied = pid ? await call(PROP.executeProposal, membershipOf(reader), { tenantId: T }, pid, { userId: reader.userId }) : ({ ok: false } as Res);
@@ -1069,12 +1070,12 @@ try {
     const wPhone = phoneOf();
     const wEmail = `${TAG}-hook@mail.invalid`;
     CONTACT_PII.push(wPhone, wEmail);
+    const before = HOOKS.length; // ORACLE-EDIT C5.5-fix1 (review · S7.2 stale since C5.4-D: REST write wakes the outbox immediately)
     const c = await api("POST", "/contacts", kOP.raw, { firstName: wName, phone: wPhone, email: wEmail, sourceKind: "API" });
     const mv = await api("PUT", `/deals/${dWon}/stage`, kAD.raw, { stageId: pMain.st[2] });
     await deferOutbox();
     const evts = (await P.outboxEvent.findMany({ where: { tenantId: T, type: { in: ["crm.deal.won", "crm.contact.created"] }, createdAt: { gte: t0 } }, orderBy: { createdAt: "asc" } })) as Any[];
     const cons = (OBC.consumers ?? {}) as Record<string, Any>;
-    const before = HOOKS.length;
     for (const e of evts) await call(cons[e.type], e);
     await P.outboxEvent.updateMany({ where: { id: { in: evts.map((e) => e.id) } }, data: { status: "DONE", processedAt: new Date() } });
     const mine = HOOKS.slice(before);
@@ -1172,7 +1173,7 @@ try {
     const cB2 = await conv(TB);
     const props = Object.keys(lt?.def?.parameters?.properties ?? {});
     const args = props.includes("firstName") ? { firstName: leadName } : { name: leadName };
-    const lx = lt ? await call(() => lt.execute({ tenantId: TB, systemId: SB, conversationId: cB2 }, args)) : ({ ok: false, err: "no crm_create_lead tool" } as Res);
+    const lx = lt ? await call(() => lt.execute({ tenantId: TB, systemId: SB, conversationId: cB2, actor: { kind: "member", tenantId: TB, userId: ownerB.userId, membership: { role: "OWNER", unitAccess: ["*"], permissions: {} } } }, args)) : ({ ok: false, err: "no crm_create_lead tool" } as Res);
     const pid = String(((): Any => { try { return JSON.parse(String(lx.v ?? "{}")); } catch { return {}; } })().proposalId ?? "");
     const lr = pid ? await call(PROP.executeProposal, membershipOf(ownerB), { tenantId: TB }, pid, { userId: ownerB.userId }) : ({ ok: false } as Res);
     const leadRows = await P.crmContact.count({ where: { tenantId: TB, systemId: SB, OR: [{ name: leadName }, { firstName: leadName }] } });

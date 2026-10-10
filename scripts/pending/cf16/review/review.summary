@@ -1,0 +1,18 @@
+start 2026-10-02T06:00:47Z
+probe-cf16-review exit=0 46s · 🟢 probe-cf16-review: 10/10 JSON_SUMMARY {"total":10,"passed":10,"findings":[]} 
+probe-cf16-vs-red3 exit=0 32s · 🟢 probe-cf16: 22/22 JSON_SUMMARY {"total":22,"passed":22,"findings":[]} 
+probe-cf13-review exit=0 23s · 🟢 probe-cf13-review: 8/8 JSON_SUMMARY {"total":8,"passed":8,"findings":[]} 
+probe-cf13 exit=0 38s · 🟢 probe-cf13: 24/24 JSON_SUMMARY {"total":24,"passed":24,"findings":[]} 
+probe-cf10-review exit=0 262s · 🟢 probe-cf10-review: 18/18 JSON_SUMMARY {"total":18,"passed":18,"findings":[]} 
+probe-cf7-review exit=0 115s · 🟢 probe-cf7-review: 27/27 JSON_SUMMARY {"total":27,"passed":27,"findings":[]} 
+probe-cf7-review-r2 exit=0 348s · 🟢 probe-cf7-review-r2: 21/21 JSON_SUMMARY {"total":21,"passed":21,"findings":[]} 
+qc-crm-c1.4 exit=0 185s · 🟢 C1.4: 110/110 JSON_SUMMARY {"total":110,"passed":110,"findings":[]} 
+qc-crm-c1.3 exit=0 141s · 🟢 C1.3: 89/89 JSON_SUMMARY {"total":89,"passed":89,"findings":[]} 
+qc-crm-c1.11 exit=0 73s · 🟢 C1.11: 66/66 JSON_SUMMARY {"total":66,"passed":66,"findings":[]} 
+qc-crm-c1.10 exit=0 130s · 🟢 C1.10: 66/66 · webhook fetch stubbed 4× · keyErrors filter-foreign-team=ทีมในตัวกรองของคีย์ไม่ใช่ทีมของร้านนี้ — เลือกทีมจากรายชื่อท… JSON_SUMMARY {"total":66,"passed":66,"fi
+qc-crm-c2.4 exit=0 73s · 🟢 C2.4: 91/91 · outbound fetch stubbed 0× JSON_SUMMARY {"total":91,"passed":91,"findings":[]} 
+qc-crm-c1.7 exit=0 118s · 🟢 C1.7: 57/57 JSON_SUMMARY {"total":57,"passed":57,"findings":[]} 
+qc-kanban-k3.1 exit=0 5s · ผ่าน 19/20 JSON_SUMMARY {"total":20,"passed":19,"findings":["K3.1-S6.3"]} 
+typecheck exit=0 213s · 
+fitness exit=0 5s · ผ่าน 36/36 JSON_SUMMARY {"total":36,"passed":36,"findings":[]} 
+ALLDONE 2026-10-02T06:30:54Z

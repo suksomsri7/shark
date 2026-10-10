@@ -146,6 +146,11 @@ export default function DevelopersPage() {
           ถ้าไม่แนบคีย์ หรือคีย์ผิด/ถูกเพิกถอน จะได้สถานะ <code>401</code> พร้อม JSON{" "}
           <code>{`{ "error": "..." }`}</code>
         </p>
+        <p className="text-sm text-neutral-700">
+          endpoint ในหน้านี้ แชทโหมดเซิร์ฟเวอร์ (<code>/api/v1/chat/*</code>) และเครื่องมือ AI ที่ไม่ใช่ของระบบบัญชี บอร์ดงาน สมาชิก หรือ CRM
+          ใช้ได้กับคีย์จากเมนูนี้เท่านั้น — คีย์ที่ออกจากหน้าตั้งค่าของแต่ละระบบ (มีขอบเขตสิทธิ์หรือผูกระบบไว้) จะได้สถานะ{" "}
+          <code>403</code> พร้อม <code>{`"code": "key_not_general"`}</code>
+        </p>
       </section>
 
       <section className="flex flex-col gap-3">

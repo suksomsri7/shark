@@ -1,0 +1,150 @@
+
+===== QC WO 3.4 · รวมผู้ติดต่อซ้ำ =====
+[env] DB ep-plain-art-ao3djg4u-pooler.c-2.ap-southeast-1.aws.neon.tech
+
+M1 listMergeCandidates เจอคู่ที่ seed ตั้งใจใส่:
+  ✅ M1.1 เจอคู่ของ seed ในรายการ
+  ✅ M1.2 เหตุผล = เลขภาษีตรงกัน
+  ✅ M1.3 ป้ายเหตุผลภาษาไทย
+  ✅ M1.4 ตัวหลักโดยปริยาย = ฝั่งที่มีเอกสารมากกว่า (ย้ายน้อยที่สุด)
+  ✅ M1.5 จำนวนเอกสารบนการ์ด = เฉลย (ตัวรอง)
+  ✅ M1.6 จำนวน JV บนการ์ด = เฉลย (ตัวรอง)
+  ✅ M1.7 จำนวนกฎเอกสารประจำ = เฉลย (ตัวรอง)
+  ✅ M1.8 ไม่มีคู่ที่ id ซ้ำตัวเอง
+
+M2 เกณฑ์ทั้ง 3 แบบ (สร้างคู่ทดสอบเอง):
+  ✅ M2.1 คู่เบอร์เดียวกัน (normalize แล้ว) = PHONE
+  ✅ M2.2 คู่ชื่อคล้าย ≥90% = NAME_SIMILAR
+  ✅ M2.3 ป้ายชื่อคล้ายมี % จริง (ไม่ใช่ค่าคงที่)
+  ✅ M2.4 เลขภาษีต่างกัน + ชื่อไม่คล้าย = ไม่ถูกจับเป็นคู่
+
+M3 การปฏิเสธ:
+  ✅ M3.1 id เดียวกัน = ปฏิเสธ (ข้อความไทย)
+  ✅ M3.2 IDOR: เรียกจากระบบอื่น = ไม่พบ (ไม่ใช่รวมสำเร็จ)
+  ✅ M3.3 ตัวรองปิดใช้งานอยู่ = ปฏิเสธ
+  ✅ M3.4 มีเอกสารยกเลิกค้างกลางทาง = ปฏิเสธพร้อมบอกวิธีแก้
+
+M4 ล้มกลางทาง = ไม่มีอะไรขยับ:
+  ✅ M4.documents พังหลังย้าย "documents" → ทุกตารางกลับที่เดิม + ตัวหลักไม่ถูกแก้
+  ✅ M4.journalLines พังหลังย้าย "journalLines" → ทุกตารางกลับที่เดิม + ตัวหลักไม่ถูกแก้
+  ✅ M4.groups พังหลังย้าย "groups" → ทุกตารางกลับที่เดิม + ตัวหลักไม่ถูกแก้
+  ✅ M4.recurringRules พังหลังย้าย "recurringRules" → ทุกตารางกลับที่เดิม + ตัวหลักไม่ถูกแก้
+
+M5 เลือกค่าทีละฟิลด์:
+  ✅ M5.1 รวมสำเร็จ
+  ✅ M5.2 ชื่อของตัวหลักถูกแทนด้วยค่าที่เลือก
+  ✅ M5.3 เบอร์ถูกแทน
+  ✅ M5.4 phoneNorm ถูกเขียนคู่กับ phone เสมอ
+  ✅ M5.5 ตัวรอง archived + mergedIntoId = ตัวหลัก
+  ✅ M5.6 รวมซ้ำคู่เดิม = ปฏิเสธ (idempotent · ข้อความไทย)
+
+M6 รวมจริง: ย้ายครบทุกตาราง:
+  ✅ M6.1 รวมสำเร็จ
+  ✅ M6.2 ย้ายเอกสารครบ = จำนวนของตัวรอง (14 ใบ)
+  ✅ M6.3 ย้ายบรรทัดสมุดรายวันครบ
+  ✅ M6.4 ย้ายกฎเอกสารประจำครบ
+  ✅ M6.5 กลุ่มซ้ำถูกลบทิ้ง (ไม่ใช่ย้าย — unique(groupId,contactId))
+  ✅ M6.6 กลุ่มที่ไม่ซ้ำถูกย้าย
+  ✅ M6.7 ไม่เหลือเอกสารที่ตัวรอง
+  ✅ M6.8 ไม่เหลือบรรทัดสมุดรายวันที่ตัวรอง
+  ✅ M6.9 ไม่เหลือกลุ่มที่ตัวรอง
+  ✅ M6.10 ไม่เหลือกฎเอกสารประจำที่ตัวรอง
+  ✅ M6.11 ตัวรอง archived + mergedIntoId ชี้ตัวหลัก
+  ✅ M6.12 เอกสารตัวหลัก = ผลรวมสองฝั่ง (g7: 'หลังรวม เอกสาร N ใบ')
+  ✅ M6.13 JV ตัวหลัก = ผลรวมสองฝั่ง
+  ✅ M6.14 นับจาก DB: JV ที่ชี้ตัวหลัก = ผลรวม
+  ✅ M6.15 อายุหนี้ของตัวหลักหลังรวม = ผลรวมของสองฝั่งก่อนรวม
+  ✅ M6.16 โปรไฟล์ตัวหลัก: แท็บเอกสาร = ผลรวม
+  ✅ M6.17 เขียน audit 1 แถว (action=account.contact.merge)
+  ✅ M6.18 audit เก็บจำนวนที่ย้ายต่อตาราง (ก่อน/หลัง)
+  ✅ M6.19 Party ของตัวรองชี้ไป Party ของตัวหลัก
+  ✅ M6.20 PartyMergeCandidate ของคู่นี้ = MERGED
+  ✅ M6.21 คู่ที่รวมแล้วหายจากรายการ
+
+M7 ไม่ใช่คนเดียวกัน (ปุ่ม ข้าม):
+  ✅ M7.1 บันทึกสำเร็จ
+  ✅ M7.2 คู่ที่ข้ามแล้วหายจากรายการ
+  ✅ M7.3 สถานะใน PartyMergeCandidate = DISMISSED
+  ✅ M7.4 ข้ามด้วย id เดียวกัน = ปฏิเสธ
+  ✅ M7.5 คู่ที่ผูก Party เดียวกันอยู่แล้ว = ปฏิเสธพร้อมบอกเหตุ (ข้อจำกัดที่รู้ตัว ไม่ใช่พังเงียบ)
+
+M8 ตัวนับ badge + ทะเบียน route:
+  ✅ M8.1 countOpenMergeCandidates = เฉลยอิสระ (party OPEN + คู่เลขภาษี + คู่เบอร์)
+  ✅ M8.2 guard.ts มี contacts/merge/page.tsx + สิทธิ์แยก
+  ✅ M8.3 nav 'รวมผู้ติดต่อซ้ำ' = ready + href จริง (ไม่ใช่ 🕓)
+  ✅ M8.4 ฟิลด์ที่เลือกได้ = 9 ช่องตาม g7
+
+🧹 ลบผู้ติดต่อทดสอบ 6 ราย
+♻️  คืนสภาพชุดข้อมูล QC (seed ใหม่ + เขียนเฉลยใหม่) …
+   ✓ scripts/acc-v2-expected-dashboard.mts
+   ✓ scripts/acc-v2-expected-contacts.mts
+
+===== QC WO 3.4 · รวมผู้ติดต่อซ้ำ สรุป =====
+ผ่าน 56 · ตก 0
+(node:973073) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+   ❌ คืนสภาพล้มที่ scripts/seed-acc-v2-qc.mts (exit 1)
+      🧾 ผังบัญชี V2: +บัญชีสร้างเอง 2 (6301/4031) +ปิดใช้งาน 1 (6302)
+      📒 WO 6.2: สินทรัพย์ 2 ตัว · ค่าเสื่อม 6 แถว (2 ตัว × 3 งวด) (รวม 32,999.91) · JV มือ 1 · ⚑ 1 (9999 ค้าง 1,000.00) · กลับรายการ 1 คู่ · ปิดงวด 2026-08
+      ⚙️  ตั้งค่าเอกสาร §9.2: เลขที่ 3 ชนิด · หมายเหตุ 2 ชนิด · แท็ก 2 · เทมเพลตพิมพ์ กะทัดรัด
+      ⚙️  นโยบายบัญชี §9.3: ปีบัญชีเริ่ม เม.ย. · ล็อกก่อน 31 ส.ค. 2026 · ราคารวม VAT · สินค้าซ้ำ=ห้าม · QT→ใบรับมัดจำ · รายงานรายสัปดาห์
+      🔐 สิทธิ์/การเชื่อมต่อ §9.4–9.5: ผู้ใช้ +3 · บทบาท 2 (พนักงานขาย · ผู้อนุมัติ เพดาน ฿50,000) · เชื่อม 5 ระบบ · HR ยังไม่เชื่อม · คีย์ API shark_e3eea9… · webhook cmuy2v8gb09t2yjkz398qn7l1
+      (node:973243) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+      In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+      
+      To prepare for this change:
+      - If you want the current behavior, explicitly use 'sslmode=verify-full'
+      - If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+      
+      See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+      (Use `node --trace-warnings ...` to show where the warning was created)
+      /root/projects/shark-crm/scripts/seed-acc-v2-qc.mts:135
+        if (actual !== want) throw new Error(`❌ ${label}: ได้ ${actual} ต้องการ ${want}`);
+                                   ^
+      
+      
+      Error: ❌ พ้นกำหนด (จาก DB): ได้ 13640000 ต้องการ 12840000
+          at assertEq (/root/projects/shark-crm/scripts/seed-acc-v2-qc.mts:135:30)
+          at <anonymous> (/root/projects/shark-crm/scripts/seed-acc-v2-qc.mts:2076:1)
+          at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+      
+      Node.js v20.20.2
+
+   ❌ คืนสภาพล้มที่ scripts/acc-v2-expected-contact-profile.mts (exit 1)
+      🗄️  DB QC: ep-plain-art-ao3djg4u-pooler.c-2.ap-southeast-1.aws.neon.tech
+      (node:975014) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+      In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+      
+      To prepare for this change:
+      - If you want the current behavior, explicitly use 'sslmode=verify-full'
+      - If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+      
+      See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+      (Use `node --trace-warnings ...` to show where the warning was created)
+      /root/projects/shark-crm/scripts/acc-v2-expected-contact-profile.mts:43
+      if (target.length === 0) throw new Error("ไม่พบผู้ติดต่อ fixture 'ปิยธิดา อินสุ่ม' — seed ก่อน");
+                                     ^
+      
+      
+      Error: ไม่พบผู้ติดต่อ fixture 'ปิยธิดา อินสุ่ม' — seed ก่อน
+          at <anonymous> (/root/projects/shark-crm/scripts/acc-v2-expected-contact-profile.mts:43:32)
+          at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+      
+      Node.js v20.20.2
+
+🔴🔴🔴 คืนสภาพชุดข้อมูล QC **ไม่สำเร็จ** — DB ยังอยู่ในสภาพหลังรวมผู้ติดต่อของ M6
+   • scripts/seed-acc-v2-qc.mts
+   • scripts/acc-v2-expected-contact-profile.mts
+   ⇒ ชุดอื่นที่รันต่อจากนี้จะแดงแบบหาสาเหตุไม่เจอ (เฉลยไม่ตรงข้อมูล)
+   ⇒ แก้: QC_ENV_FILE=.env.qc pnpm exec tsx scripts/seed-acc-v2-qc.mts แล้วรันสร้างเฉลยทั้ง 3 ตัวใหม่:
+        pnpm exec tsx scripts/acc-v2-expected-dashboard.mts
+        pnpm exec tsx scripts/acc-v2-expected-contacts.mts
+        pnpm exec tsx scripts/acc-v2-expected-contact-profile.mts

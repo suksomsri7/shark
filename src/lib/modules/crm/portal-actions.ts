@@ -5,7 +5,7 @@
 // 🔴 tenantId มาจาก session เสมอ · systemId ถูกตรวจใหม่ในบริการ (ระบบ CRM ของร้านนี้จริง) — ไม่เชื่อ id จากหน้าจอ
 // 🔴 ด่าน: uiVersion 2 (assertCrmV2) → คีย์ `crm.portal.manage` (assertCanCrm) → บริการตรวจซ้ำ (บริษัทที่มองเห็น · audit)
 // 🔴 ข้อความ error ไม่โทษผู้ใช้ · error ที่ไม่รู้จัก = ข้อความกลาง
-import { revalidatePath } from "next/cache";
+import { revalidateAndWake } from "./outbox-wake"; // CRM C5.4-D ▸ L3-M1b: รีเฟรชหน้า + ปลุกคิว outbox หลังเขียนสำเร็จ ◂
 import { requireTenant } from "@/lib/core/context";
 import { ForbiddenError } from "@/lib/core/rbac";
 import { toMemberActor } from "@/lib/modules/member";
@@ -43,7 +43,7 @@ export async function inviteToPortalAction(
   try {
     const { ctx, actor } = await session(systemId);
     const r = await invite(ctx, actor, { companyId: String(input?.companyId ?? ""), contactId: String(input?.contactId ?? ""), role: String(input?.role ?? ""), loginMethods: Array.isArray(input?.loginMethods) ? input.loginMethods.map(String) : null });
-    revalidatePath(companyPath(systemId, String(input?.companyId ?? "")));
+    revalidateAndWake(companyPath(systemId, String(input?.companyId ?? "")));
     return { ok: true, inviteUrl: r.inviteUrl, emailed: r.emailed };
   } catch (e) {
     return failOf(e);
@@ -55,7 +55,7 @@ export async function revokePortalAccessAction(systemId: string, companyId: stri
   try {
     const { ctx, actor } = await session(systemId);
     const r = await revoke(ctx, actor, { accessId: String(accessId ?? "") });
-    revalidatePath(companyPath(systemId, String(companyId ?? "")));
+    revalidateAndWake(companyPath(systemId, String(companyId ?? "")));
     return { ok: true, sessionsRevoked: r.sessionsRevoked };
   } catch (e) {
     return failOf(e);
@@ -67,7 +67,7 @@ export async function decidePortalRequestAction(systemId: string, companyId: str
   try {
     const { ctx, actor } = await session(systemId);
     const r = await decideRequest(ctx, actor, { requestId: String(requestId ?? ""), approve: approve === true });
-    revalidatePath(companyPath(systemId, String(companyId ?? "")));
+    revalidateAndWake(companyPath(systemId, String(companyId ?? "")));
     return { ok: true, status: r.status };
   } catch (e) {
     return failOf(e);
@@ -82,7 +82,7 @@ export async function savePortalSettingsAction(
   try {
     const { ctx, actor } = await session(systemId);
     await savePortalSettings(ctx, actor, input);
-    revalidatePath(`/app/sys/${systemId}/crm/settings/portal`);
+    revalidateAndWake(`/app/sys/${systemId}/crm/settings/portal`);
     return { ok: true };
   } catch (e) {
     return failOf(e);

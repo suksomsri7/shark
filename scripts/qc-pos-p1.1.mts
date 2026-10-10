@@ -137,7 +137,7 @@ const CHECKS: readonly Def[] = [
   D("S2.17", "-", "G4c ไม่เขียนซ้อน: ผู้เขียนเดิม 4 ทาง ซิงก์ครั้งแรกจริง (คู่บวก) แล้วบันทึกค่าเดิมซ้ำ 2 รอบ → จำนวน PosProduct/AccountProduct/InvItem/MenuItem/ShopProduct ไม่เพิ่ม ราคาไม่เพี้ยน"),
   D("S2.18", "-", "เมนูที่ผูก InvItem (เมนู→โค้ก) แก้ basePrice → แถว MENU ตาม (2600) · แถว PRODUCT ของโค้กคง 2000 · RecipeLine ไม่เบิ้ล"),
   D("S2.19", "X12", "PART-B F15.1: CATALOG_WRITER_BASELINE ว่าง · ผู้เขียนแคตตาล็อก (ตัวสแกน) อยู่แค่ catalog.ts + catalog-legacy.ts (ข้ามจนกว่า account/service.ts import แคตตาล็อก)"),
-  D("S2.19a", "X12", "G1 F15.1 Part A: CATALOG_WRITER_BASELINE = { account/service.ts: { AccountProduct.price: 2 } } พอดี · ชุดผู้เขียน = catalog.ts + catalog-legacy.ts · ตัวสแกนพบนอกชุดนั้นตรงกับ baseline ทุกจุด"),
+  D("S2.19a", "X12", "G1 F15.1 Part A ยุบเข้า Part B (MAIN-MERGE fix1, main 71a1f363 · ORACLE-EDIT ผู้คุม 10 ต.ค.): CATALOG_WRITER_BASELINE = {} · ชุดผู้เขียน = catalog.ts + catalog-legacy.ts · ตัวสแกนพบ 0 จุดนอกชุดนั้น"),
   D("S2.20", "-", "inventory.updateItem ราคา SERVICE (InvItem.priceSatang) → PosProduct ตาม"),
   D("S2.21", "-", "account/inventory-link.linkProductToItem({createItem}) → PosProduct ของ InvItem ใหม่ ราคา = AccountProduct.salePrice (R2) ในระบบ POS ที่ขายคลังนั้น"),
   D("S2.22", "-", "G10 AI proposal inventory_create_item (ai/proposals.runKind) → InvItem + PosProduct 1 แถว · ai/proposals.ts ไม่ import แคตตาล็อก (ไม่แก้ไฟล์นั้นใน Part A)"),
@@ -2288,7 +2288,9 @@ try {
       }
       const wantSet = [CAT_FILE, LEGACY_FILE].sort().join(",");
       const setOk = [...allowed].sort().join(",") === wantSet;
-      const A_BASE = { "src/lib/modules/account/service.ts": { "AccountProduct.price": 2 } };
+      // ORACLE-EDIT MAIN-MERGE fix1 (ผู้คุม 10 ต.ค.) ▸ Part A ยุบเข้า Part B: account/service.ts ไม่เขียน AccountProduct.price ตรงแล้ว ⇒ baseline ต้องว่าง
+      //   (เดิม { "src/lib/modules/account/service.ts": { "AccountProduct.price": 2 } }) · id + จำนวนข้อคงเดิม ◂
+      const A_BASE: Record<string, Record<string, number>> = {};
       const baseA = !!base && hashOf(base) === hashOf(A_BASE);
       const scanA = !!writers && hashOf(outside) === hashOf(A_BASE);
       const show = (o: unknown) => JSON.stringify(o ?? null).slice(0, 260);

@@ -3,7 +3,7 @@
 // lost-reasons-actions.ts — server actions ของหน้าตั้งค่า "เหตุผลที่แพ้" (CRM v2 · ใบ C1.5)
 // 🔴 "use server" = export ได้เฉพาะ async function · F6: assertCan `crm.settings.manage` · error ไทยที่ไม่โทษผู้ใช้
 
-import { revalidatePath } from "next/cache";
+import { revalidateAndWake } from "./outbox-wake"; // CRM C5.4-D ▸ L3-M1b: รีเฟรชหน้า + ปลุกคิว outbox หลังเขียนสำเร็จ ◂
 import { requireTenant } from "@/lib/core/context";
 import { ForbiddenError } from "@/lib/core/rbac";
 import { assertCanCrm } from "./access";
@@ -11,8 +11,9 @@ import { toMemberActor } from "@/lib/modules/member";
 import { assertCrmV2, CrmV2DisabledError } from "./ui-version";
 import { createLostReason, updateLostReason, type LostReasonsCtx } from "./lost-reasons";
 import { DealsError } from "./deals-shared";
+import { withFieldError, type CrmFieldErrors } from "./field-errors-shared";
 
-type Fail = { ok: false; error: string; code?: string };
+type Fail = { ok: false; error: string; code?: string; fieldErrors?: CrmFieldErrors };
 
 async function session(systemId: string) {
   const auth = await requireTenant();
@@ -33,7 +34,7 @@ function failOf(e: unknown): Fail {
   return { ok: false, error: "บันทึกไม่สำเร็จ ระบบยกเลิกรายการให้แล้ว (ข้อมูลไม่เปลี่ยน) — ลองใหม่อีกครั้ง" };
 }
 
-const touch = (systemId: string) => revalidatePath(`/app/sys/${systemId}/crm/settings/lost-reasons`);
+const touch = (systemId: string) => revalidateAndWake(`/app/sys/${systemId}/crm/settings/lost-reasons`);
 
 export async function createLostReasonAction(systemId: string, label: string): Promise<{ ok: true } | Fail> {
   try {
@@ -42,7 +43,9 @@ export async function createLostReasonAction(systemId: string, label: string): P
     touch(systemId);
     return { ok: true };
   } catch (e) {
-    return failOf(e);
+    // C4.3-fix part 2 ▸ ฟอร์มนี้มีช่องเดียว: ค่าไม่ผ่าน/ซ้ำกับของเดิม = ข้อความของช่อง "เหตุผลใหม่" ◂
+    const f = failOf(e);
+    return withFieldError(f, { label: true }, { force: f.code === "CONFLICT" });
   }
 }
 

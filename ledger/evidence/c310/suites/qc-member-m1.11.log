@@ -1,0 +1,38 @@
+  ✅ [M1.11-S1.1] ทะเบียน MEMBER_OPS ≥ 55 op · id ไม่ซ้ำ · method+path ไม่ซ้ำ · ทุก op มี test (M<x>-S…) · kind ∈ read/write/danger · action ขึ้นต้น member. · registry ใช้แกนกลาง @/lib/api (matchOpIn/allowedMethodsIn) ไม่ก๊อป dispatch
+  ✅ [M1.11-S1.2] op หลักครบ 54 ตัว (MEMBER-API §2.1–2.5 + me.*)
+  ✅ [M1.11-S1.3] danger ops = members.merge · privacy.erase · tiers.setManual (kind danger) · write อื่นเป็น write · list/get/report เป็น read
+  ✅ [M1.11-S1.4] bundle member-read / member-operate / member-admin ใน scopes.ts · read = เฉพาะ *.read/*.view (ไม่มี sensitive.read · ไม่มี write) · operate ⊇ read + customer.create/update · loyalty.stamp · promo.issue (ไม่มี settings/privacy/api.manage) · admin ⊇ operate + settings.manage/privacy.manage/tier.manage/customer.delete/api.manage
+  ✅ [M1.11-S1.5] route [...path] ใช้ dispatch แกนกลาง (@/lib/api หรือ member/api/dispatch ที่ห่อแกนกลาง) · export GET/POST/PATCH/PUT/DELETE · openapi.json route มี · ไม่มี any
+  ✅ [M1.11-S2.1] GET /ping → 200 {ok, systemId, keyName} + requestId + X-RateLimit-Remaining · ไม่มีคีย์ → 401
+  ✅ [M1.11-S2.2] GET /members (คีย์ read) → 200 {items[20], total 60} · แถว MemberBrief+listFields (memberCode name tier phoneMasked points) · ไม่มีเบอร์เต็ม · ไม่มีค่าอ่อนไหว · Accept text/csv → BOM
+  ✅ [M1.11-S2.3] 🔴 GET /members/{id}: read/operate → 200 แต่ส่วน health visible=false ไม่มีค่าโรคประจำตัวใน JSON (§6.3 API ไม่เห็นอ่อนไหว) · admin → เห็น · DTO มี profile/sections/stats/tier/identities/consents/attribution
+  ✅ [M1.11-S2.4] POST /members (operate + Idempotency-Key) → 200 {customerId, memberCode, partyId, created true} · source API + sourceDetail.apiKeyName · consent LINE · fields · ยิงซ้ำคีย์เดิม → ตอบเดิม + Idempotent-Replayed · ไม่มี Idempotency-Key → 400 idempotency_required · สมาชิกใน DB 1 คน
+  ✅ [M1.11-S2.5] คีย์ read เขียน → 403 scope_missing (+hint) · body ผิด schema (เบอร์ 12 · source นอก enum) → 422 validation + details[] · คีย์ร้านอื่นดู/แก้สมาชิกเรา → 404 not_found (ไม่ leak) · nickname ไม่เปลี่ยน
+  ✅ [M1.11-S2.6] PATCH /members/{id} {fields, tags} → 200 · PUT /status SUSPENDED → 200 · PUT /tags {add,remove} → tags ['vip'] · AuditLog actorType API_KEY
+  ✅ [M1.11-S2.7] GET /fields/layout → sections[] (audience staff) · GET /channels → 15 {key,label,kind,canConsent,canNotify,connected} · GET /tiers → 4 · PUT /members/{id}/consents → 200 + แถว · GET /members/{id}/tier → {current,next,evidence,progressToNext}
+  ✅ [M1.11-S2.8] POST /members/resolve (operate) → {customerId สมาชิก 8, matchedBy PHONE} · GET /members/{id}/identities → externalId ปิดบัง (masked) · GET /sources/report → rows[] (report.view อยู่ใน read) · POST /sources/links (admin) → {link, url, qrDataUrl}
+  ✅ [M1.11-S2.9] danger tiers.setManual: ไม่มี confirm:true → 409 confirm_required · คีย์ operate → 403 (ต้อง tier.setManual = admin) · admin + confirm → 200 {applied true} · tierDefId platinum · history MANUAL · AuditLog API_KEY
+  ✅ [M1.11-S2.10] danger members.merge/privacy.erase ไม่มี confirm → 409 (ไม่แตะข้อมูล) · GET /me ด้วยคีย์ API → 401 customer_session_required (op me.* ต้อง session ลูกค้า — M2.9)
+  ✅ [M1.11-S2.11] GET /members/search?q=รหัส → 1 · GET /members/brief?ids= → 2 · GET /members/{id}/activity → items[] · POST /members/export (customer.export ∈ admin) → {jobId|csv, rows 10}
+  ✅ [M1.11-S2.12] rate limit: หัว X-RateLimit-Limit/Remaining มีทุกคำตอบ · ยิง 5 ครั้งไม่ถึงเพดาน (600/นาที) · เมื่อถึง → 429 rate_limited (โค้ดจากแกนกลาง — ตรวจว่า require.ts ใช้ API_RATE_LIMITS ต่อคีย์)
+  ✅ [M1.11-S3.1] GET /api/v1/member/openapi.json (ไม่ต้องมีคีย์) = จำนวน op ในทะเบียน · info.title มี Member
+  ✅ [M1.11-S3.2] gen-member-api-docs --check exit 0 · docs/api/MEMBER-API.md ถูก generator ทับ (ไม่ใช่ร่างเดิม: ไม่มี 'draft สำหรับสั่งทำ') · มี Webhooks (member.created …) · AI agents · Idempotency-Key · confirm · error codes · bundles 3
+  ✅ [M1.11-S3.3] สกิล .claude/skills/shark-member-api: SKILL.md (name: shark-member-api · EN · https://shark.in.th/api/v1/member · Bearer · Idempotency-Key · recipes curl ≥ 6) + references/endpoints.md ครบทุก op path · สำเนาที่ /root/.claude/skills/shark-member-api
+  ✅ [M1.11-S3.4] หน้า /developers/member (render จาก buildOpenApi/MEMBER_OPS) + /developers/member.md = docs เป๊ะ + ลิงก์จาก /developers · fitness F13.7 (ทุก op มี test ใน qc-member-*) F13.8 (docs ไม่ stale) F13.9 (tool มีบ้านในสกิล members)
+  ✅ [M1.11-S4.1] tools-member.ts generate จาก MEMBER_OPS.filter(o => o.tool) (read รันทันที · write = createProposal pendingConfirmation) · tool member_* ≥ 20 · สกิล members มีชื่อครบทุก tool + ชื่อเดิม 8 ตัวคง · danger ops มี risk DESTRUCTIVE · assertSkillRegistryComplete ผ่าน
+  ✅ [M1.11-S4.2] runMemberTool(member_search {q}) → mode read · result มีสมาชิก 9 (ไม่มีเบอร์เต็ม · ไม่มีอ่อนไหว) · member_get id ไม่มี → mode error ไทย (ไม่ throw)
+  ✅ [M1.11-S4.3] 🔴 write tool (member_set_tags) → mode propose {kind member.*, summary ไทย, payload} ไม่เขียน DB · dispatchMemberKind ด้วย STAFF ไม่มีคีย์ → throw ไทย (ตรวจสิทธิ์ Membership ของคนกดยืนยัน K3.5) · OWNER → ทำจริง แท็กเพิ่ม + AuditLog actorId owner + ข้อความผลไทย · memberKindAccess ของ kind ชี้ member.customer.update
+  ✅ [M1.11-S5.1] หน้า settings/api (ภาพ 27 ขวา): gate member.api.manage · คีย์ 3 ชุดสิทธิ์ (bundle member-*) ออก/ถอน (reuse api-keys service · pattern kanban ApiKeysPanel) · curl ตัวอย่าง 3 เส้น · ลิงก์ OpenAPI/developers/skill · webhook events member.* 8 ตัวใน WEBHOOK_EVENTS · testid 5
+  ❌ [M1.11-S5.2] ภาพ 27 (ครึ่งขวา): settings-api-owner desktop 200 · PARITY: ผ่าน ใน wo-notes/member-M1.11.md — exp 200 · PARITY | act shots= o=undefined
+
+🔴 M1.11: 25/26
+JSON_SUMMARY {"total":26,"passed":25,"findings":[{"id":"M1.11-S5.2","sev":"MAJOR"}]}
+(node:1475686) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)

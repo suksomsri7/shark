@@ -216,3 +216,26 @@ export async function addShopMessage(
   });
   return true;
 }
+
+// CRM C5.5-fix13 (hunt-4 H4-1) ▸ ลบข้อมูลส่วนบุคคลตาม PDPA (ผู้เรียก: crm/privacy.ts ใน tx ของการลบ) — หัวเคส + ข้อความในเคสของร้านนี้
+//   ที่มีคำระบุตัวของคนที่ถูกลบ (ชื่อเต็ม · เบอร์ · อีเมล …) → แทนด้วย `mask` · แถวคงอยู่ (ประวัติเคสกับทีมงาน) · ทุกฝั่งผู้เขียน
+//   (ร้าน · ทีมงาน · ผู้ช่วย AI ที่เปิดเคส) · หนึ่งคำสั่งต่อคำต่อตาราง (เขียนเป็นชุด) · `updatedAt` ไม่ขยับ (ไม่ดันเคสเก่าขึ้นบนสุดของรายการ)
+export async function maskSupportTextInTx(
+  tx: Pick<Prisma.TransactionClient, "$executeRaw">,
+  tenantId: string,
+  tokens: readonly string[],
+  mask: string,
+): Promise<number> {
+  let n = 0;
+  if (!tenantId) return 0;
+  for (const tk of tokens) {
+    if (!tk || tk.length < 4) continue;
+    n += Number(
+      await tx.$executeRaw`UPDATE "SupportCase" SET "subject" = replace("subject", ${tk}, ${mask}) WHERE "tenantId" = ${tenantId} AND strpos("subject", ${tk}) > 0`,
+    );
+    n += Number(
+      await tx.$executeRaw`UPDATE "SupportMessage" SET "body" = replace("body", ${tk}, ${mask}) WHERE "tenantId" = ${tenantId} AND strpos("body", ${tk}) > 0`,
+    );
+  }
+  return n;
+}

@@ -206,6 +206,10 @@ model CrmContact {
   @@index([systemId, lastActivityAt])
   @@index([tenantId, email])
   @@index([systemId, mergedIntoId])
+  // CRM C5.1-fix ▸ I1 รายการเรียง -createdAt · F7 previousEmails (GIN) · ดัชนีนิพจน์ ("systemId", lower("email")) อยู่ใน migration
+  //   20261103000000_crm_perf_indexes เท่านั้น (Prisma เขียนดัชนีนิพจน์ไม่ได้ · Prisma 7.8 migrate diff มองข้าม — ไม่ drift) ◂
+  @@index([systemId, createdAt(sort: Desc), id(sort: Desc)])
+  @@index([previousEmails], type: Gin)
 }
 
 model CrmPipeline {
@@ -627,6 +631,7 @@ model CustomRecord {
   @@index([objectId, title])
   @@index([partyId])
   @@index([objectId, updatedAt])
+  @@index([objectId, createdAt(sort: Desc), id(sort: Desc)]) // CRM C5.1-fix ▸ I2 รายการเรียง -createdAt ◂
   @@index([tenantId])
 }
 
