@@ -50,7 +50,7 @@ const D = (id: string, x: string, title: string): Def => [`P2.8-${id}`, x, title
 const CHECKS: readonly Def[] = [
   // ── ST สถิต ──
   D("ST1", "S", "[§3 R1 มติ 14] schema + migration เพิ่มอย่างเดียว: enum PosOrderStatus {NEW ACCEPTED PREPARING READY HANDED REJECTED CANCELLED} · PosOrderPaymentState {UNPAID PAY_ON_PICKUP PLATFORM_PAID PAID REFUNDED} · PosOrderFulfilment {PICKUP DELIVERY DINE_IN} · model PosOrder/PosOrderLine/PosOrderEvent ฟิลด์ตาม R1 (ไม่มี @relation/FK) + @@unique([tenantId, channelId, externalRef]) + @@unique([tenantId, idempotencyKey]) + @@index([tenantId, unitId, status, receivedAt]) · ShopOrder/ShopOrderLine/ShopProduct/SalesChannel/PosSale ไม่เปลี่ยน · migration เดียว `20261207100000_pos_p28_orders`: SET lock_timeout '3s' · CREATE TYPE ×3 · CREATE TABLE IF NOT EXISTS ×3 (ไม่มี REFERENCES) · CREATE UNIQUE INDEX IF NOT EXISTS ×2 · CREATE INDEX IF NOT EXISTS ×1 · ไม่มีคำสั่งอื่น"),
-  D("ST2", "S", "[R1 R11 §3 CD8] ลงทะเบียน: core/scope.ts PosOrder/PosOrderLine/PosOrderEvent: sys() · pos-qc-env POS_MODELS posOrder posOrderLine posOrderEvent + POS_FUTURE_MODELS ไม่มี ExternalOrder/ExternalOrderEvent · permissions.ts \"pos.order.accept\" (ป้าย รับ/เตรียม/พร้อม/ส่งมอบ/ตั้งเวลาเตรียมและพักรับออเดอร์ออนไลน์) + \"pos.order.reject\" (ปฏิเสธ/ยกเลิกออเดอร์ออนไลน์) · RegisterRefusalCode มี 5 รหัสใหม่ · pos.json th/en: register.errors.{orderNotFound orderStateInvalid orderStateChanged orderUnpaid channelPaused} + ก้อน orders.* (คีย์ชุดเดียวกัน · th มีอักษรไทย · en ไม่มี)"),
+  D("ST2", "S", "[R1 R11 §3 CD8] ลงทะเบียน: core/scope.ts PosOrder/PosOrderLine/PosOrderEvent: sys() · pos-qc-env POS_MODELS posOrder posOrderLine posOrderEvent + POS_FUTURE_MODELS ไม่มี ExternalOrder/ExternalOrderEvent · permissions.ts \"pos.order.accept\" (ป้าย รับ/เตรียม/พร้อม/ส่งมอบ/ตั้งเวลาเตรียมและพักรับออเดอร์ออนไลน์) + \"pos.order.reject\" (ปฏิเสธ/ยกเลิกออเดอร์ออนไลน์) · OrderRefusalCode (order-shared · = RegisterRefusalCode + 5 รหัสใหม่ · ORACLE-EDIT fix 1) · pos.json th/en: register.errors.{orderNotFound orderStateInvalid orderStateChanged orderUnpaid channelPaused} + ก้อน orders.* (คีย์ชุดเดียวกัน · th มีอักษรไทย · en ไม่มี)"),
   D("ST3", "S", "[R4 R10 CD1 CD7 มติ 1 3 13 hard rules] ขอบเขต: มี pos/order.ts order-shared.ts order-adapters.ts order-actions.ts · order.ts export ฟังก์ชันครบ 14 ตัว + createSale( จุดเดียวในฟังก์ชัน orderCreateSale · order-shared บริสุทธิ์ · order-adapters export ORDER_ADAPTERS (MANUAL WEB CHAT) · order-actions \"use server\" async ล้วน + catch + เรียกฟังก์ชันผู้ใช้ทุกตัว · pos/index.ts export `orders` (14 ตัว) · ผู้เขียน PosOrder* = pos/order.ts เท่านั้น · ไม่มีเส้น pos→shop/pos→chat (pos→restaurant ได้เฉพาะบรรทัด POS P2.4) และไฟล์ order* ไม่ import shop/chat/restaurant · shop/service.ts เรียก orders. ผ่าน @/lib/modules/pos ภายในรอยต่อ POS P2.8 ▸ … ◂ (ingestInTx ใน createOrder · sourceCancelledInTx ใน cancelOrder) · outbox-consumers มี 6 pos.order.* + รอยต่อ POS P2.8 ที่ shop.order.paid / pos.sale.voided และเรียก shop cancelOrder ที่ composition root · automation labels 6 event · catalog.ts export backfillWebPrices · catalog-legacy create/updateShopProduct มีรอยต่อ POS P2.8"),
   D("ST4", "S", "[มติ 8 15] POS-OWNER-PENDING.md มีบรรทัด P2.8: (ก) เจ้าของเว็บร้าน (shop/service.ts · ShopOrderLine.posProductId · ราคาเว็บ) (ข) แบบฟอร์มคีย์ออเดอร์ไม่มีในภาพ 09 (ค) webPriceConflict"),
   D("ST5", "S", "[มติ 5 CD9] facts: pos-integrations CHAT chatOrders = true (null) · orderStatusBot ยัง false \"P3.7\" · ป้าย th settings.cards.CHAT.facts.chatOrders = \"คีย์ออเดอร์จากแชทโดยพนักงาน\" · settings-overview แถว onlineOrders permission \"pos.order.accept\" planned null"),
@@ -568,9 +568,14 @@ async function runStatic(): Promise<void> {
       if (!m) p.push(`permissions.ts ไม่มี "${k}"`);
       else if (!m[1]!.startsWith(label)) p.push(`ป้าย ${k} = ${short(m[1], 60)} (คาดขึ้นต้น ${label})`);
     }
-    const rs = srcOf(F.regShared);
-    const union = rs.slice(rs.indexOf("export type RegisterRefusalCode"), rs.indexOf(";", rs.indexOf("export type RegisterRefusalCode")));
-    for (const c of NEW_CODES) if (!new RegExp(`"${c}"`).test(union)) p.push(`RegisterRefusalCode ไม่มี ${c}`);
+    // ORACLE-EDIT (P2.8 fix รอบ 1 · มติผู้คุม 1): รหัสใหม่อยู่ใน OrderRefusalCode ของ order-shared.ts (= RegisterRefusalCode + 5 รหัส) —
+    //   register.ts มี REG_MESSAGE: Record<RegisterRefusalCode, string> และห้ามแตะ (มติ 3) · ข้อความ th/en ตรวจด้านล่าง · refusalMessageKey ตรวจใน ST7
+    const os2 = srcOf(F.orderShared);
+    const i0 = os2.indexOf("export type OrderRefusalCode");
+    const union = i0 < 0 ? "" : os2.slice(i0, os2.indexOf(";", i0));
+    if (!union) p.push("order-shared.ts ไม่มี export type OrderRefusalCode");
+    else if (!/\bRegisterRefusalCode\b/.test(union)) p.push("OrderRefusalCode ไม่รวม RegisterRefusalCode");
+    for (const c of NEW_CODES) if (!new RegExp(`"${c}"`).test(union)) p.push(`OrderRefusalCode ไม่มี ${c}`);
     const leaves = (o: unknown, pre = ""): [string, string][] => (typeof o === "string" ? [[pre, o]] : isRecord(o) ? Object.entries(o).flatMap(([k, v]) => leaves(v, pre ? `${pre}.${k}` : k)) : []);
     const blocks: Record<string, [string, string][]> = {};
     for (const [lang, f] of [["th", F.msgTh], ["en", F.msgEn]] as const) {
