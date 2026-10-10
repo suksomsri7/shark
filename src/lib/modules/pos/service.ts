@@ -879,13 +879,84 @@ export async function consumeSaleInventory(tenantId: string, unitId: string, sal
       { tenantId, systemId: inventorySystemId },
       { sourceModule: "POS", refType: "PosSale", refId: saleId, parts: parts.map((p) => ({ itemId: p.itemId, qty: p.qty, idempotencyKey: p.key })) },
     );
-    return true;
   } catch (e) {
     // ตัดสต็อกล้ม → บิลชำระแล้ว ปล่อยผ่าน (ไม่ล้มการขาย)
     // HF-INV-1 ▸ R3.3: แต่ต้องทิ้งร่องรอย (เดิมเงียบ — ตอนนี้ล้มได้จริงเมื่อสินค้าถูกล็อกนาน ≈10 วิ) · ไม่มีข้อมูลลูกค้า ◂
     console.error("[pos] stock cut failed — sale committed without stock movement", { saleId, parts: parts.length, code: stockErrorCode(e) });
     return false;
   }
+  // POS P2.3 ▸ fix round 1 (รีวิว F1 · มติผู้คุมงาน ทาง B): อ่านบิลใหม่หลังตัด — มีใบคืนแล้ว (คืนก่อนตัดสำเร็จ เช่นบิลค้างตัดแล้วคืนบางส่วน
+  //   ⇒ ตัวรับคิวคืนเงินไม่พบ OUT จึงไม่รับของคืน) ⇒ รับคืนตามใบคืนทุกใบของบิลนี้ซ้ำ (คีย์ pos-refund-<ใบคืน>-<บรรทัด>[-<inv>] เดิม · idempotent)
+  //   ⇒ retryPendingStockCuts ตัดครบบิลแล้วคืนส่วนที่คืนไปแล้ว = สุทธิเฉพาะส่วนที่ยังไม่คืน (ไม่ตัดเกิน · ไม่ทิ้งส่วนที่ยังไม่คืนให้ค้างตลอดไป) ◂
+  const after = await prisma.posSale.findFirst({ where: { id: saleId, tenantId }, select: { refundedSatang: true } });
+  if (after && after.refundedSatang > 0) await restockSaleRefunds(tenantId, inventorySystemId, saleId);
+  return true;
+}
+
+/**
+ * POS P2.3 ▸ fix round 1 (รีวิว F1) — รับของคืนตามใบคืนเงิน (docType REFUND) ทุกใบของบิลหนึ่ง ด้วยขั้นคลังตัวเดียวกับตัวรับคิว (restockRefundDoc)
+ *   ใช้หลังตัดบิลสำเร็จ (consumeSaleInventory) · คีย์เดิมของใบคืน ⇒ ใบที่ตัวรับคิวรับคืนไปแล้วไม่รับซ้ำ · ล้ม = log (คิวของใบคืนปิดไปแล้ว — ไม่มีใครลองใหม่ · ดู F7)
+ */
+async function restockSaleRefunds(tenantId: string, inventorySystemId: string, saleId: string): Promise<void> {
+  const [sale, refunds] = await Promise.all([
+    prisma.posSale.findFirst({ where: { id: saleId, tenantId }, select: { id: true, lines: { select: { id: true, itemId: true, qty: true, weightGrams: true, components: true } } } }),
+    prisma.posSale.findMany({
+      where: { tenantId, refSaleId: saleId, docType: "REFUND" },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      select: { id: true, receiptNo: true, lines: { select: { id: true, refLineId: true, qty: true, restock: true }, orderBy: { id: "asc" } } },
+    }),
+  ]);
+  if (!sale) return;
+  for (const refund of refunds) {
+    await restockRefundDoc({ tenantId, systemId: inventorySystemId }, refund, sale, (part, e) =>
+      console.error("[pos] refund restock after stock cut failed", { saleId, refundSaleId: refund.id, itemId: part.itemId, qty: part.qty, code: stockErrorCode(e) }),
+    );
+  }
+}
+
+/**
+ * POS P1.8 R7 ขั้น 2 (ย้ายจาก refund-consumer.ts ใน fix round 1 · รีวิว F1 — ตัวเดียว ใช้ทั้งตัวรับคิวคืนเงินและหลังตัดบิลค้าง):
+ *   บรรทัดใบคืน restock === true ที่ชี้บรรทัดเดิม → ส่วนตัดของบรรทัดเดิม (lineConsumption ตามจำนวนที่คืน) ที่มี OUT ของบิลเดิม
+ *   → รับคืนที่ต้นทุน/คลัง/ล็อตของ OUT เดิม (returnStockAtOriginalCost) คีย์ pos-refund-<ใบคืน>-<บรรทัดใบคืน>[-<invItemId>]
+ *   ส่วนที่ยังไม่มี OUT (ไม่ผูกคลัง/ตัดล้ม) = ข้าม · ส่วนที่รับคืนล้ม = onError แล้วไปต่อ
+ */
+export type RefundDocForRestock = { id: string; receiptNo: string | null; lines: { id: string; refLineId: string | null; qty: number; restock: boolean | null }[] };
+export type SaleForRestock = { id: string; lines: { id: string; itemId: string | null; qty: number; weightGrams: number | null; components: unknown }[] };
+export async function restockRefundDoc(
+  invCtx: { tenantId: string; systemId: string },
+  refund: RefundDocForRestock,
+  sale: SaleForRestock,
+  onError: (part: StockReturnPart, e: unknown) => void,
+): Promise<void> {
+  const origById = new Map(sale.lines.map((l) => [l.id, l]));
+  const wanted = refund.lines.filter((l) => l.restock === true && l.refLineId && origById.has(l.refLineId));
+  if (!wanted.length) return;
+  // ส่วนที่ต้องคืนต่อบรรทัดใบคืน = ส่วนตัดของบรรทัดเดิม (lineConsumption · ตัวกำหนดเดียวกับตอนขาย) ตามจำนวนที่คืน
+  //   บรรทัดชั่งคืนทั้งบรรทัด (กรัมเดิม) · ชุดคืนส่วนประกอบ qty × จำนวนชุดที่คืน
+  const parts = wanted.flatMap((rl) => {
+    const ol = origById.get(rl.refLineId!)!;
+    const mine = lineConsumption("", { id: ol.id, itemId: ol.itemId, qty: rl.qty, weightGrams: ol.weightGrams, components: ol.components });
+    const orig = lineConsumption(sale.id, { id: ol.id, itemId: ol.itemId, qty: ol.qty, weightGrams: ol.weightGrams, components: ol.components });
+    // ลำดับเดียวกันเสมอ (บรรทัดผูกคลังก่อน แล้วส่วนประกอบตามลำดับ) ⇒ จับคู่ด้วยตำแหน่ง
+    return mine.map((x, i) => ({
+      itemId: x.itemId,
+      qty: x.qty,
+      outKey: orig[i]!.key,
+      key: ol.itemId && i === 0 ? `pos-refund-${refund.id}-${rl.id}` : `pos-refund-${refund.id}-${rl.id}-${x.itemId}`,
+    }));
+  });
+  const outs = await prisma.invMovement.findMany({
+    where: { tenantId: invCtx.tenantId, type: "OUT", idempotencyKey: { in: parts.map((x) => x.outKey) } },
+    select: { idempotencyKey: true, itemId: true, costSatang: true, locationId: true, lotCode: true },
+  });
+  const outOf = new Map(outs.map((m) => [m.idempotencyKey, m]));
+  const back: StockReturnPart[] = [];
+  for (const part of parts) {
+    const out = outOf.get(part.outKey);
+    if (!out || out.itemId !== part.itemId) continue; // ไม่เคยตัดสต็อก (ไม่ผูกคลัง/ตัดล้ม) = ไม่มีอะไรให้คืน
+    back.push({ itemId: part.itemId, qty: part.qty, out, idempotencyKey: part.key, refId: refund.id, note: `รับคืนจากใบคืนเงิน ${refund.receiptNo ?? refund.id}` });
+  }
+  await returnStockAtOriginalCost(invCtx, back, onError);
 }
 
 // ═══════ POS P2.3 ▸ มติ 4 + §9 Q8: บิลค้างตัดสต็อก — กติกาเดียว (pendingStockParts) ของ registerStatus · retryPendingStockCuts ◂ ═══════
