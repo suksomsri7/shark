@@ -2970,6 +2970,10 @@
       "rejectedCancelled": "Cancelled/rejected today {count}",
       "avgAccept": "Average accept time {seconds} s",
       "onTime": "On time {n} of {m} orders"
+    },
+    "errors": {
+      "webPaid": "This web shop order is already paid — refund or cancel it on the web shop",
+      "hasRefunds": "This bill already has a refund — the order cannot be cancelled"
     }
   },
   "nav": {

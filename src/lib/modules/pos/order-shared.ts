@@ -135,7 +135,12 @@ export type IngestInput = {
  *  🔴 ไม่เพิ่มเข้า RegisterRefusalCode: register.ts มี REG_MESSAGE: Record<RegisterRefusalCode, string> (ครบทุกรหัส) และ register.ts ห้ามแตะใน P2.8 (มติ 3)
  *     — ข้อเสนอ ORACLE-EDIT ST2 อยู่ใน ledger/wo-notes/pos-P2.8.md · ข้อความจอ = refusalMessageKey (register-shared) ครบทั้ง 5 รหัสแล้ว */
 export type OrderRefusalCode = RegisterRefusalCode | "ORDER_NOT_FOUND" | "ORDER_STATE_INVALID" | "ORDER_STATE_CHANGED" | "ORDER_UNPAID" | "CHANNEL_PAUSED";
-export type OrderRefusal = { ok: false; code: OrderRefusalCode; message: string; lineIndex?: number; order?: OrderCard; requestId?: string };
+/** messageKey = คีย์ข้อความเฉพาะกรณีใต้ `pos` (เช่น orders.errors.webPaid) — จอใช้แทน refusalMessageKey(code) เมื่อมี (P2.8 fix รอบ 2 F1 F4) */
+export type OrderRefusal = { ok: false; code: OrderRefusalCode; message: string; lineIndex?: number; order?: OrderCard; requestId?: string; messageKey?: string };
+/** ออเดอร์เว็บร้านที่ชำระแล้ว — ปฏิเสธ/ยกเลิกที่จอ POS ไม่ได้ (คืนเงิน/ยกเลิกที่หน้าเว็บร้าน · รีวิว F1) */
+export const ORDER_WEB_PAID_MESSAGE = "ออเดอร์เว็บร้านที่ชำระแล้ว — คืนเงิน/ยกเลิกที่หน้าเว็บร้าน";
+/** บิลของออเดอร์มีใบคืนเงินแล้ว — ยกเลิกออเดอร์ (void บิล) ไม่ได้ (รีวิว F4) */
+export const ORDER_HAS_REFUNDS_MESSAGE = "บิลนี้มีการคืนเงินแล้ว — ยกเลิกออเดอร์ไม่ได้";
 
 /** การ์ดออเดอร์ (คอลัมน์ของจอ 09) — ไม่มีเบอร์เต็ม (มติ 16) · เวลาเป็น ISO */
 export type OrderCard = {
@@ -205,7 +210,8 @@ export type IngestInTxResult = { ok: true; skipped: true } | { ok: true; skipped
 export type SourceCancelledResult = { ok: true; orderId: string | null; changed: boolean };
 export type OrderActionResult = { ok: true; order: OrderCard; saleId?: string | null } | OrderRefusal;
 export type PayOrderResult = { ok: true; saleId: string; duplicated?: boolean } | OrderRefusal;
-export type ListOrdersResult = { ok: true; orders: OrderCard[]; counts: OrderCounts; summary: OrderDaySummary; at: string } | OrderRefusal;
+/** since = ต้นช่วงที่ใช้จริง (ต้นวันไทย หรือ since ที่ส่งมา ตัดที่ 7 วัน · รีวิว F5) */
+export type ListOrdersResult = { ok: true; orders: OrderCard[]; counts: OrderCounts; summary: OrderDaySummary; at: string; since: string } | OrderRefusal;
 export type GetOrderResult = { ok: true; order: OrderDetail } | OrderRefusal;
 export type ChannelOrderSettingsView = {
   id: string;

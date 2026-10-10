@@ -2949,7 +2949,10 @@ export async function webPricesForShop(
   }
   const rows = await client.posProduct.findMany({ where: { tenantId: scope.tenantId, systemId: sys, id: { in: ids }, archivedAt: null } });
   const byId = new Map(rows.map((r) => [r.id, r]));
-  const [book, decisions] = await Promise.all([loadPriceBook(client, { tenantId: scope.tenantId, systemId: sys, unitId: scope.unitId }, rows, new Date()), webPriceDecisions(client, scope.tenantId, ids)]);
+  const [book0, decisions] = await Promise.all([loadPriceBook(client, { tenantId: scope.tenantId, systemId: sys, unitId: scope.unitId }, rows, new Date()), webPriceDecisions(client, scope.tenantId, ids)]);
+  // POS P2.8 fix รอบ 2 (รีวิว F2 · มติผู้คุม): หน้าเว็บอ่าน "ชั้นของช่องทาง WEB" เท่านั้น — แถว (WEB, *) + กติกาที่ระบุ WEB ใน channelCodes ·
+  //   แถวสาขา (ทุกช่องทาง) และกติกาทุกช่องทาง (channelCodes []) ไม่ถึงหน้าเว็บ (ราคาโปรของหน้าร้านไม่ไหลไปเว็บเอง · เจ้าของเว็บร้านเคาะภายหลัง)
+  const book = { ...book0, rows: book0.rows.filter((r) => r.channelCode === WEB_CODE), rules: book0.rules.filter((r) => r.channelCodes.includes(WEB_CODE)) };
   for (const p of products) {
     const row = p.posProductId ? byId.get(p.posProductId) : undefined;
     if (!row) {
@@ -2961,7 +2964,8 @@ export async function webPricesForShop(
       continue;
     }
     const rp = row.soldByWeight ? null : priceOf(book, row, WEB_CODE);
-    if (rp && rp.ok && rp.source !== "BASE") out.set(p.id, { priceSatang: rp.unitPriceSatang, priceSource: rp.source, posProductId: row.id, conflict: false });
+    // ใช้ผลของตัวแก้ราคาเฉพาะเมื่อแถว WEB ชนะ (CHANNEL) หรือกติกาที่ระบุ WEB ชนะ (RULE) — อื่น (ฐาน) = ราคา ShopProduct วันนี้
+    if (rp && rp.ok && (rp.source === "CHANNEL" || rp.source === "RULE")) out.set(p.id, { priceSatang: rp.unitPriceSatang, priceSource: rp.source, posProductId: row.id, conflict: false });
     else fallback(p, row.basePriceSatang);
   }
   return out;

@@ -39,6 +39,8 @@ import {
   ORDER_REJECT_REASONS,
   ORDER_STATUSES,
   ORDER_KEY_RE,
+  ORDER_HAS_REFUNDS_MESSAGE,
+  ORDER_WEB_PAID_MESSAGE,
   acceptRemainingSec,
   canTransition,
   isOrderClosed,
@@ -759,6 +761,11 @@ export async function ingestInTx(tx: Tx, scope: { tenantId: string; unitId: stri
   const pids = [...new Set(inp.lines.flatMap((l) => (l.kind === "custom" ? [] : [l.productId])))];
   const rows = pids.length ? await tx.posProduct.findMany({ where: { tenantId: s.tenantId, systemId: s.systemId, id: { in: pids }, archivedAt: null } }) : [];
   const rowById = new Map(rows.map((r) => [r.id, r]));
+  // POS P2.8 fix รอบ 2 (รีวิว F3): ตัวแปรที่แม่ถูกเก็บถาวร = ขายไม่ได้ (กติกาเดียวกับหน้าขาย) · การมองเห็นตามคลังของสาขา (C3) = P2.14
+  const parentIds = [...new Set(rows.map((r) => r.parentId).filter((x): x is string => !!x))];
+  const liveParents = new Set(
+    parentIds.length ? (await tx.posProduct.findMany({ where: { tenantId: s.tenantId, systemId: s.systemId, id: { in: parentIds }, archivedAt: null }, select: { id: true } })).map((x) => x.id) : [],
+  );
   const soldOut = await menuSoldOutIds(s.tenantId, rows, tx);
   const book = inp.lines.some((l) => l.kind === "catalog") ? await loadPriceBook(tx, s, rows, new Date()) : null;
   const lines: ResolvedLine[] = [];
@@ -770,7 +777,7 @@ export async function ingestInTx(tx: Tx, scope: { tenantId: string; unitId: stri
     }
     const row = rowById.get(l.productId);
     if (!row) return refuse("PRODUCT_NOT_FOUND", undefined, { lineIndex: i });
-    if (!rowAvailable(row, s.unitId, soldOut)) return refuse("PRODUCT_UNAVAILABLE", undefined, { lineIndex: i });
+    if (!rowAvailable(row, s.unitId, soldOut) || (row.parentId && !liveParents.has(row.parentId))) return refuse("PRODUCT_UNAVAILABLE", undefined, { lineIndex: i });
     if (l.kind === "priced") {
       // ราคาต้นทาง = ราคาของช่องทางนี้ ณ ตอนลูกค้าสั่ง (เว็บร้าน: ราคาหน้าเว็บที่ลูกค้าเห็น)
       lines.push({ productId: row.id, name: l.name ?? row.name, qty: l.qty, unitPriceSatang: l.unitPriceSatang, listPriceSatang: null, priceSource: "CHANNEL", priceRuleId: null, options: [], note: l.note });
@@ -833,8 +840,11 @@ async function mutate<T>(s: Scope, orderId: string, fn: (tx: Tx) => Promise<T>):
 async function cardOk(s: { tenantId: string }, o: PosOrder, extra: { saleId?: string | null } = {}): Promise<OrderActionResult> {
   return { ok: true, order: (await cardsOf(prisma, s.tenantId, [o], new Date()))[0]!, ...extra };
 }
-const stateInvalid = async (s: { tenantId: string }, o: PosOrder, message?: string): Promise<OrderRefusal> =>
-  refuse("ORDER_STATE_INVALID", message, { order: (await cardsOf(prisma, s.tenantId, [o], new Date()))[0] });
+const stateInvalid = async (s: { tenantId: string }, o: PosOrder, message?: string, messageKey?: string): Promise<OrderRefusal> =>
+  refuse("ORDER_STATE_INVALID", message, { order: (await cardsOf(prisma, s.tenantId, [o], new Date()))[0], ...(messageKey ? { messageKey } : {}) });
+/** POS P2.8 fix รอบ 2 (รีวิว F1): ออเดอร์เว็บร้านที่ร้านยืนยันรับเงินแล้ว — ปฏิเสธ/ยกเลิกที่จอ POS ไม่ได้ (ShopOrder + บิล ECOM ต้องคืนเงินที่หน้าเว็บร้าน) */
+const isPaidWeb = (o: PosOrder) => o.adapter === "WEB" && o.paymentState === "PAID";
+const webPaidRefusal = (s: { tenantId: string }, o: PosOrder) => stateInvalid(s, o, ORDER_WEB_PAID_MESSAGE, "orders.errors.webPaid");
 
 /**
  * รับออเดอร์ (pos.order.accept): NEW → ACCEPTED · เวลาเตรียม = ที่ส่งมา (1..180) ?? ของช่องทาง ?? 15 · ช่องทาง PLATFORM = บิลในธุรกรรมเดียวกัน
@@ -876,6 +886,7 @@ export async function rejectOrder(ctx: RegisterCtx, actor: RegisterActor, input:
     if (note === undefined) return refuse("VALIDATION", "หมายเหตุยาวได้ไม่เกิน 300 ตัวอักษร");
     const o = await orderInScope(prisma, s, inp.id);
     if (!o) return refuse("ORDER_NOT_FOUND");
+    if (isPaidWeb(o)) return webPaidRefusal(s, o);
     if (o.status !== "NEW") return stateInvalid(s, o, "ปฏิเสธได้เฉพาะออเดอร์ใหม่ — ออเดอร์ที่รับแล้วใช้ยกเลิกออเดอร์");
     const reason = `${inp.reasonCode as string}${note ? `: ${note}` : ""}`;
     const r = await mutate(s, o.id, (tx) => transition(tx, o, "REJECTED", { rejectReason: reason, closedAt: new Date() }, { actorUserId: s.actor.userId, payload: { reasonCode: inp.reasonCode, note } }));
@@ -936,6 +947,22 @@ export async function setPrepMinutes(ctx: RegisterCtx, actor: RegisterActor, inp
 }
 
 /**
+ * POS P2.8 fix รอบ 2 (รีวิว F4): คำปฏิเสธของ voidSaleByActor → รหัสของออเดอร์ (ไม่มีรหัสดิบของลิ้นชักบิลหลุดถึงจอ):
+ * NO_PERMISSION → PERMISSION_DENIED · SALE_NOT_FOUND/SALE_NOT_VOIDABLE → ORDER_STATE_INVALID · HAS_REFUNDS → ORDER_STATE_INVALID (ข้อความของตัวเอง) ·
+ * REASON_REQUIRED → VALIDATION · รหัสที่หน้าขายรู้จักอยู่แล้ว (รออนุมัติ · กะปิด · PIN/โทเคน/เครื่อง · VALIDATION) ผ่านตามเดิม · อื่น/UNKNOWN → INTERNAL
+ */
+const VOID_PASS = new Set<string>(["VALIDATION", "SHIFT_CLOSED", "PENDING_APPROVAL", "APPROVAL_REQUIRED", "STAFF_TOKEN_INVALID", "PIN_INVALID", "PIN_LOCKED", "DEVICE_REVOKED"]);
+async function voidRefusal(s: { tenantId: string }, o: PosOrder, v: { code: string; message?: string; requestId?: unknown }): Promise<OrderRefusal> {
+  const extra = typeof v.requestId === "string" ? { requestId: v.requestId } : {};
+  if (v.code === "NO_PERMISSION") return refuse("PERMISSION_DENIED", v.message);
+  if (v.code === "SALE_NOT_FOUND" || v.code === "SALE_NOT_VOIDABLE") return stateInvalid(s, o, v.message);
+  if (v.code === "HAS_REFUNDS") return stateInvalid(s, o, ORDER_HAS_REFUNDS_MESSAGE, "orders.errors.hasRefunds");
+  if (v.code === "REASON_REQUIRED") return refuse("VALIDATION", "ใส่เหตุผลที่ยกเลิก");
+  if (VOID_PASS.has(v.code)) return refuse(v.code as OrderRefusalCode, v.message, extra);
+  return refuse("INTERNAL");
+}
+
+/**
  * ยกเลิกออเดอร์ที่รับแล้ว (pos.order.reject + pos.sale.void เมื่อมีบิล PAID · มติ CD8): ACCEPTED|PREPARING|READY → CANCELLED ·
  * มีบิล = ยกเลิกบิลผ่านทางเดียวกับลิ้นชักบิล (voidSaleByActor · กติกาอนุมัติ P1.15 ใช้ — รออนุมัติ = ออเดอร์ยังไม่ถูกยกเลิก) แล้วจึงปิดออเดอร์ (REFUNDED) ·
  * ตัวรับ pos.sale.voided เจอออเดอร์ที่ปิดแล้ว = ไม่ทำซ้ำ (cancelled ครั้งเดียว) · NEW = ORDER_STATE_INVALID (ใช้ปฏิเสธ)
@@ -951,11 +978,12 @@ export async function cancelOrder(ctx: RegisterCtx, actor: RegisterActor, input:
     if (inp.idempotencyKey !== undefined && (typeof inp.idempotencyKey !== "string" || !ORDER_KEY_RE.test(inp.idempotencyKey))) return refuse("VALIDATION", "รหัสรายการ (idempotencyKey) ไม่ถูกต้อง");
     let o = await orderInScope(prisma, s, inp.id);
     if (!o) return refuse("ORDER_NOT_FOUND");
+    if (isPaidWeb(o)) return webPaidRefusal(s, o);
     if (o.status === "NEW") return stateInvalid(s, o, "ออเดอร์ใหม่ใช้ปฏิเสธแทนการยกเลิก");
     if (!canTransition(o.status, "CANCELLED")) return stateInvalid(s, o);
     const sale = o.saleId ? await prisma.posSale.findFirst({ where: { id: o.saleId, tenantId: s.tenantId }, select: { id: true, status: true, sourceModule: true } }) : null;
     if (sale && sale.status === "PAID") {
-      if (sale.sourceModule !== "POS") return stateInvalid(s, o, "ออเดอร์เว็บร้านที่ชำระแล้วยกเลิก/คืนเงินที่หน้าเว็บร้าน");
+      if (sale.sourceModule !== "POS") return webPaidRefusal(s, o);
       if (!can(s.actor, "pos.sale.void", s.unitId)) return refuse("PERMISSION_DENIED", "ยกเลิกออเดอร์ที่มีบิลแล้วต้องมีสิทธิ์ยกเลิกบิลด้วย — ให้ผู้จัดการทำรายการ");
       const v = await voidSaleByActor({ tenantId: s.tenantId, systemId: s.systemId, unitId: s.unitId, ...(s.deviceId ? { deviceId: s.deviceId } : {}) }, s.actor, {
         unitId: s.unitId,
@@ -963,10 +991,7 @@ export async function cancelOrder(ctx: RegisterCtx, actor: RegisterActor, input:
         idempotencyKey: (inp.idempotencyKey as string | undefined) ?? `posorder-cancel-${o.id}`,
         reason: `ยกเลิกออเดอร์ ${o.externalRef ?? o.code}: ${reason}`,
       });
-      if (v.ok !== true) {
-        const code = v.code === "NO_PERMISSION" ? "PERMISSION_DENIED" : v.code === "SALE_NOT_FOUND" || v.code === "SALE_NOT_VOIDABLE" ? "ORDER_STATE_INVALID" : (v.code as OrderRefusalCode);
-        return refuse(code, v.message, "requestId" in v && typeof v.requestId === "string" ? { requestId: v.requestId } : {});
-      }
+      if (v.ok !== true) return voidRefusal(s, o, v);
       // ตัวรับ pos.sale.voided อาจปิดออเดอร์ไปก่อนแล้ว (ระบายคิวขนาน) — อ่านใหม่
       o = (await prisma.posOrder.findUnique({ where: { id: o.id } })) ?? o;
     }
@@ -1167,6 +1192,7 @@ async function cardsOf(db: Db, tenantId: string, rows: PosOrder[], now: Date): P
 
 const LIST_KEYS = ["status", "channelId", "since"] as const;
 const OPEN_STATUSES: OrderStatus[] = ["NEW", "ACCEPTED", "PREPARING", "READY"];
+const ORDER_LIST_SINCE_MAX_MS = 7 * 24 * 3600 * 1000;
 /**
  * จอ 09 (pos.sale.read | pos.sale.create): ออเดอร์ของวัน (รับเข้าตั้งแต่ต้นวันไทย หรือ since) + ออเดอร์ที่ยังไม่ปิดของวันก่อน ·
  * counts.byColumn/byChannel + summary คิดจากชุดของวันทั้งหมด (ไม่ขึ้นกับตัวกรอง) · orders = หลังกรอง status/channelId · ไม่มีเบอร์เต็ม
@@ -1185,12 +1211,16 @@ export async function listOrders(ctx: RegisterCtx, actor: RegisterActor, input: 
       if (!since || !Number.isFinite(since.getTime())) return refuse("VALIDATION", "เวลาเริ่มไม่ถูกต้อง");
     }
     const now = new Date();
-    const from = since ?? posDayStart(now);
-    const rows = await prisma.posOrder.findMany({
-      where: { tenantId: s.tenantId, systemId: s.systemId, unitId: s.unitId, OR: [{ receivedAt: { gte: from } }, { status: { in: OPEN_STATUSES } }] },
-      orderBy: [{ receivedAt: "asc" }, { id: "asc" }],
-      take: 2000,
-    });
+    // POS P2.8 fix รอบ 2 (รีวิว F5): since ย้อนได้ไม่เกิน 7 วัน (เก่ากว่า = ตัดที่ 7 วัน · ผลบอก since ที่ใช้จริง) · อ่านใหม่สุดก่อน 2000 แถวแล้วกลับลำดับ ⇒ วันยุ่งไม่ทิ้งออเดอร์ล่าสุด
+    const floor = new Date(now.getTime() - ORDER_LIST_SINCE_MAX_MS);
+    const from = since ? (since.getTime() < floor.getTime() ? floor : since) : posDayStart(now);
+    const rows = (
+      await prisma.posOrder.findMany({
+        where: { tenantId: s.tenantId, systemId: s.systemId, unitId: s.unitId, OR: [{ receivedAt: { gte: from } }, { status: { in: OPEN_STATUSES } }] },
+        orderBy: [{ receivedAt: "desc" }, { id: "desc" }],
+        take: 2000,
+      })
+    ).reverse();
     const byColumn: Record<OrderColumn, number> = { new: 0, preparing: 0, ready: 0, done: 0 };
     const byChannel: Record<string, number> = {};
     for (const o of rows) {
@@ -1212,7 +1242,7 @@ export async function listOrders(ctx: RegisterCtx, actor: RegisterActor, input: 
       },
     };
     const shown = rows.filter((o) => (inp.status === undefined || o.status === inp.status) && (inp.channelId === undefined || o.channelId === inp.channelId));
-    return { ok: true, orders: await cardsOf(prisma, s.tenantId, shown, now), counts: { byColumn, byChannel }, summary, at: now.toISOString() };
+    return { ok: true, orders: await cardsOf(prisma, s.tenantId, shown, now), counts: { byColumn, byChannel }, summary, at: now.toISOString(), since: from.toISOString() };
   });
 }
 
