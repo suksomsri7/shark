@@ -2779,7 +2779,8 @@ export function RegisterScreen(props: RegisterScreenProps) {
           onLock={staff || noPinMode ? lockNow : undefined}
         />
         {/* POS P2.4U ▸ มติ 1: แท็บ "โต๊ะ" เป็นลิงก์เมื่อสาขามีโหมดโต๊ะ ◂ */}
-        <ModeTabsNav systemId={systemId} tablesHref={tableModeNow?.visible || tableOn ? tablesHref : null} />
+        {/* POS P2.8U ▸ มติ 1: unitId = ลิงก์แท็บออเดอร์ของสาขานี้ + ป้ายนับออเดอร์ใหม่ (ดึงทุก 10 วิ ขณะแถบ mount) ◂ */}
+        <ModeTabsNav systemId={systemId} tablesHref={tableModeNow?.visible || tableOn ? tablesHref : null} unitId={unitId} />
         {!online && (
           <div data-testid="pos-reg-offline-banner" className="flex shrink-0 items-center gap-3 bg-[color:var(--color-ink)] px-5 py-[13px] text-[14px] leading-[1.5] text-[color:var(--color-surface)]" role="status">
             <RegisterIcon name="warn" size={18} />

@@ -16,7 +16,8 @@
       "products": "Products",
       "reports": "Reports",
       "settings": "Settings",
-      "label": "Modes"
+      "label": "Modes",
+      "ordersBadge": "{count} new orders"
     },
     "tabsShort": {
       "sale": "Sale",
@@ -3139,7 +3140,9 @@
       "newHint": "Accept within {time}",
       "preparing": "Preparing",
       "ready": "Ready / waiting for rider",
-      "done": "Done today"
+      "done": "Done today",
+      "empty": "No orders",
+      "label": "Order columns"
     },
     "rail": {
       "all": "All channels",
@@ -3153,17 +3156,26 @@
       "pauseUntilReopen": "Until I reopen",
       "reopen": "Take orders again",
       "pausedUntil": "Paused until {time}",
-      "qrTable": "QR table orders"
+      "qrTable": "QR table orders",
+      "label": "Channels",
+      "autoAcceptFor": "Auto accept {channel}",
+      "autoNone": "No channel can auto accept yet",
+      "autoPauseKitchen": "Auto pause when the kitchen is backed up",
+      "prepMixed": "Mixed",
+      "appliesTo": "Applies to: {target}",
+      "pauseHint": "While paused, web shop and chat orders are refused · keyed-in orders are still accepted"
     },
     "card": {
-      "items": "{count} items · {amount}",
+      "items": "{count} items · <b>{amount}</b>",
       "acceptWithin": "Accept within {time}",
       "acceptLate": "Accept time passed",
       "prepDue": "Preparing · ready in {n} min",
       "prepLate": "Prep late by {n} min",
       "pickupAt": "Pickup at {time}",
       "chatPayNote": "Ordered in chat · awaiting payment {amount}",
-      "kitchenProgress": "Kitchen {done}/{total}"
+      "kitchenProgress": "Kitchen {done}/{total}",
+      "kitchenMeter": "Kitchen progress",
+      "rider": "Rider · arrival time"
     },
     "actions": {
       "accept": "Accept order",
@@ -3178,7 +3190,8 @@
       "cancel": "Cancel order",
       "viewBill": "View bill",
       "printLabel": "Print shipping label",
-      "keyOrder": "+ Key in order"
+      "keyOrder": "+ Key in order",
+      "viewBillNo": "View bill {no}"
     },
     "status": {
       "NEW": "New",
@@ -3231,11 +3244,21 @@
       "onAcceptSale": "Open a bill · channel {channel}",
       "onAcceptStock": "Deduct ingredients by recipe",
       "onAcceptKitchen": "Send items to the kitchen",
-      "onAcceptPlatform": "Tell the platform it was accepted",
+      "onAcceptPlatform": "Tell {channel} the order was accepted",
       "historyCount": "Order number {count} at this shop",
       "historyAvg": "Average {amount}",
       "member": "Member",
-      "notMember": "Not a member yet"
+      "notMember": "Not a member yet",
+      "close": "Close",
+      "customer": "Customer",
+      "customerNoteLine": "Customer note: {note}",
+      "onAcceptSaleNow": "Open a bill · channel {channel} (paid via the platform)",
+      "onAcceptSaleLater": "Open the bill when payment is taken (the shop collects)",
+      "customerSection": "Customer",
+      "historyLabel": "Orders at this shop",
+      "isMember": "Member",
+      "timeline": "Activity",
+      "webPaidNote": "Paid web shop order — refund or cancel it on the web shop"
     },
     "manual": {
       "title": "Key in order",
@@ -3254,7 +3277,26 @@
       "customItem": "Custom item",
       "platformTotal": "Platform total",
       "totalMismatch": "Typed total {typed} does not match item total {sum}",
-      "submit": "Save order"
+      "submit": "Save order",
+      "derivedNote": "This form is a draft by the build team (screen 09 has no such sheet yet) — waiting for the owner's design",
+      "noChannel": "No channel accepts keyed-in orders yet — add one in Settings › Sales channels",
+      "platformRefRequired": "Platform order number (required)",
+      "chatExtras": "Chat details (optional)",
+      "conversation": "Chat conversation ID",
+      "party": "Contact ID (party)",
+      "member": "Find member (phone/name)",
+      "memberClear": "Remove member",
+      "memberNone": "No member found",
+      "items": "Items (channel prices)",
+      "removeLine": "Remove item",
+      "searchPlaceholder": "Search products to add",
+      "noProducts": "No products found",
+      "hasOptions": "Has options",
+      "customName": "Item name",
+      "customPrice": "Price (baht)",
+      "customAdd": "Add",
+      "customNeedsPermission": "Custom or re-priced items need the price override permission",
+      "itemsTotal": "Item total (channel prices)"
     },
     "summary": {
       "rejectedCancelled": "Cancelled/rejected today {count}",
@@ -3265,6 +3307,57 @@
       "webPaid": "This web shop order is already paid — refund or cancel it on the web shop",
       "hasRefunds": "This bill already has a refund — the order cannot be cancelled",
       "saleVoided": "This order's bill has been voided — it cannot be handed over; cancel the order instead"
+    },
+    "page": {
+      "refusal": "This account cannot view online orders at this branch yet — ask the owner for bill or sale access",
+      "retry": "Try again",
+      "loadFailed": "Could not load — try again",
+      "loading": "Loading orders…",
+      "emptyBody": "Orders from the web shop, chat and platforms show up here as they arrive — tap \"+ Key in order\" to enter an order from a platform tablet or a phone call",
+      "pickHint": "Pick an order to see its details",
+      "readOnly": "View only — accepting or rejecting needs the online order permission"
+    },
+    "perm": {
+      "accept": "Needs the accept online orders permission",
+      "reject": "Needs the reject/cancel online orders permission",
+      "create": "Needs the sell permission"
+    },
+    "prep": {
+      "less": "Less",
+      "more": "More",
+      "confirm": "Use this time",
+      "title": "Prep time {ref}"
+    },
+    "event": {
+      "received": "Order received",
+      "accepted": "Accepted",
+      "preparing": "Started preparing",
+      "ready": "Ready",
+      "completed": "Handed over",
+      "rejected": "Rejected",
+      "cancelled": "Cancelled",
+      "paid": "Paid",
+      "paid_reverted": "Payment reverted (web shop)",
+      "sale_bound": "Bill linked",
+      "prep_changed": "Prep time changed",
+      "refunded": "Bill voided/refunded"
+    },
+    "toast": {
+      "accepted": "Accepted {ref}",
+      "rejected": "Rejected {ref}",
+      "ready": "{ref} is ready",
+      "handed": "Handed over {ref}",
+      "cancelled": "Cancelled {ref}",
+      "prepChanged": "Prep time set to {n} min",
+      "autoOn": "Auto accept on for {channel}",
+      "autoOff": "Auto accept off for {channel}",
+      "prepDefault": "Default prep time {n} min",
+      "paused": "Orders paused until {time}",
+      "reopened": "{channel} is taking orders again",
+      "paid": "Received {amount}",
+      "paidAlready": "This order was already paid",
+      "manualSaved": "Order saved",
+      "manualDuplicated": "This order was already saved"
     }
   },
   "nav": {
