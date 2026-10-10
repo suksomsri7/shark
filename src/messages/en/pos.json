@@ -2862,7 +2862,8 @@
       "out": "Out {count}",
       "noCost": "No cost {count}",
       "noMargin": "Margin unavailable {count}"
-    }
+    },
+    "bomOnDone": "Recipe deduction is on"
   },
   "nav": {
     "overview": "Overview",

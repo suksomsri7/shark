@@ -11200,6 +11200,291 @@
       "system": "POS"
     },
     {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-prod-recipe-edit",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-prod-recipe",
+        "note": "\"แก้สูตร\" → โหมดแก้ (ตัวเลือกวัตถุดิบ · ปริมาณ · ส่วนต่างตามตัวเลือก · สวิตช์ตัดสต็อกตามสูตร) · เฉพาะ pos.product.manage"
+      },
+      "wo": "P2.3U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-prod-recipe-bom-on",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-prod-toast",
+        "note": "ป้ายสูตรจากเมนูเดิม (มติ 2 · F4): \"เปิดตัดสต็อกตามสูตร\" → setBomEnabledAction(true) โดยตรง · สำเร็จ = pos-prod-toast · ปฏิเสธ = pos-prod-recipe-error"
+      },
+      "wo": "P2.3U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-prod-recipe-bom",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-prod-recipe",
+        "note": "โหมดแก้: สวิตช์ \"ตัดสต็อกตามสูตร\" (บันทึกพร้อมสูตร = setBomEnabled ใน tx เดียว)"
+      },
+      "wo": "P2.3U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-prod-recipe-tab-base",
+      "kind": "tab",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-prod-recipe",
+        "note": "โหมดแก้: แท็บสูตรพื้นฐาน (ปริมาณจำนวนเต็ม ≥ 1)"
+      },
+      "wo": "P2.3U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-prod-recipe-tab-*",
+      "kind": "tab",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-prod-recipe",
+        "note": "โหมดแก้: แท็บต่อตัวเลือก — ส่วนต่างมีเครื่องหมาย (+6 g / −1 ใบ)"
+      },
+      "wo": "P2.3U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-prod-recipe-search",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-prod-recipe",
+        "note": "โหมดแก้: ค้นวัตถุดิบในคลังที่ผูก POS (searchRecipeItemsAction · ชื่อ/SKU/บาร์โค้ด · ไม่รวมบริการ)"
+      },
+      "wo": "P2.3U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-prod-recipe-pick-*",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-prod-recipe",
+        "note": "โหมดแก้: เพิ่มวัตถุดิบที่ค้นเจอลงแท็บที่เปิด (สูตรพื้นฐาน = 1 · ตัวเลือก = +1)"
+      },
+      "wo": "P2.3U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-prod-recipe-qty-*",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-prod-recipe",
+        "note": "โหมดแก้: ปริมาณต่อหน่วยขาย (จำนวนเต็ม 1–1,000,000 · ผิด = ข้อความใต้แถว)"
+      },
+      "wo": "P2.3U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-prod-recipe-dec-*",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-prod-recipe",
+        "note": "โหมดแก้: ลดปริมาณ 1 (ไม่ต่ำกว่า 1)"
+      },
+      "wo": "P2.3U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-prod-recipe-inc-*",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-prod-recipe",
+        "note": "โหมดแก้: เพิ่มปริมาณ 1"
+      },
+      "wo": "P2.3U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-prod-recipe-remove-*",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-prod-recipe",
+        "note": "โหมดแก้: ลบวัตถุดิบออกจากสูตรพื้นฐาน"
+      },
+      "wo": "P2.3U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-prod-recipe-delta-*",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-prod-recipe",
+        "note": "โหมดแก้ แท็บตัวเลือก: ส่วนต่าง +/− จำนวนเต็ม ≠ 0"
+      },
+      "wo": "P2.3U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-prod-recipe-delta-remove-*",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-prod-recipe",
+        "note": "โหมดแก้ แท็บตัวเลือก: ลบส่วนต่างของวัตถุดิบนี้"
+      },
+      "wo": "P2.3U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-prod-recipe-save",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-prod-toast",
+        "note": "\"บันทึกสูตร\" = saveRecipeAction (setRecipe + setRecipeChoiceLines + setBomEnabled ใน tx เดียว · แทนทั้งชุด) · สำเร็จ = pos-prod-toast · ปฏิเสธ = pos-prod-recipe-error"
+      },
+      "wo": "P2.3U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-prod-recipe-cancel",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-prod-recipe",
+        "note": "ยกเลิกโหมดแก้ (ไม่บันทึก)"
+      },
+      "wo": "P2.3U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
       "page": "/app/sys/[id]/pos/products/price-rules",
       "testid": "pos-price-rules-module-tabs",
       "kind": "tab",

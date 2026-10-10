@@ -19,7 +19,7 @@ import { PriceIcon, SoonTag, markupText, parseMoneyInput, priceErrorText, priceR
 import type { ProductsChannel, ProductsData, ProductsPriceRow, ProductsRow } from "./products-data";
 import { channelsIn, draftOf, effectiveOf, rowsFromDraft, type DraftCell } from "./products-scope";
 // POS P2.3U ▸ มติ 1: แท็บ "สูตรและวัตถุดิบ" ใช้งานจริง (RecipeSection) ◂
-import { RecipeSection } from "./RecipeSection";
+import { RecipeSection, type RecipePatch } from "./RecipeSection";
 
 export type PanelTab = "general" | "options" | "recipe" | "prices" | "stock";
 const TABS: PanelTab[] = ["general", "options", "recipe", "prices", "stock"];
@@ -33,9 +33,12 @@ type Props = {
   canEdit: boolean;
   onClose: () => void;
   onSaved: (productId: string, rows: ProductsPriceRow[]) => void;
+  // POS P2.3U ▸ มติ 1/2: แก้สูตรได้ (pos.product.manage) · ผลบันทึกสูตร/สวิตช์ → ตาราง ◂
+  canEditRecipe?: boolean;
+  onRecipeSaved?: (productId: string, patch: RecipePatch, toast: string) => void;
 };
 
-export function ProductPanel({ systemId, product: p, data, unit, canEdit, onClose, onSaved }: Props) {
+export function ProductPanel({ systemId, product: p, data, unit, canEdit, onClose, onSaved, canEditRecipe = false, onRecipeSaved }: Props) {
   const t = useTranslations("pos.products") as PT;
   const tp = useTranslations("pos.price") as PT;
   const tr = useTranslations("pos.price.rule") as PT;
@@ -174,7 +177,7 @@ export function ProductPanel({ systemId, product: p, data, unit, canEdit, onClos
           </dl>
         ) : tab === "recipe" ? (
           // POS P2.3U ▸ มติ 1 ◂
-          <RecipeSection systemId={systemId} product={p} data={data} unit={unit} />
+          <RecipeSection systemId={systemId} product={p} data={data} unit={unit} canEdit={canEditRecipe} onSaved={(id, patch, toast) => onRecipeSaved?.(id, patch, toast)} />
         ) : (
           <section data-testid="pos-prod-prices">
             <h3 className="mb-2 flex items-center gap-2 text-[13px] font-bold">

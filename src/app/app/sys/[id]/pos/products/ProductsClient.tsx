@@ -15,14 +15,16 @@ import { useRouter } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { moneyText } from "@/lib/modules/pos/register-shared";
 import { ChannelChip, PriceIcon, channelShort, type PT } from "@/components/pos/products/price-ui";
-import type { ProductsData, ProductsPriceRow, ProductsRow } from "./products-data";
+import type { ProductsData, ProductsPriceRow, ProductsRecipeLine, ProductsRow } from "./products-data";
 import { channelsIn, chipChannels, differsByChannel, platformPriceOf } from "./products-scope";
 import { ProductPanel } from "./ProductPanel";
 import { BulkMarkupDialog } from "./BulkMarkupDialog";
+// POS P2.3U ▸ มติ 1/2: ผลบันทึกสูตร/สวิตช์จากลิ้นชัก ◂
+import type { RecipePatch } from "./RecipeSection";
 
-type Props = { systemId: string; data: ProductsData; canEdit: boolean; initialUnit: string | null };
+type Props = { systemId: string; data: ProductsData; canEdit: boolean; initialUnit: string | null; canEditRecipe?: boolean };
 
-export function ProductsClient({ systemId, data, canEdit, initialUnit }: Props) {
+export function ProductsClient({ systemId, data, canEdit, initialUnit, canEditRecipe = false }: Props) {
   const t = useTranslations("pos.products") as PT;
   const tp = useTranslations("pos.price") as PT;
   const tchip = useTranslations("pos.products.chip") as PT;
@@ -76,6 +78,19 @@ export function ProductsClient({ systemId, data, canEdit, initialUnit }: Props) 
   const onSaved = (productId: string, rows: ProductsPriceRow[]) => {
     setProducts((ps) => ps.map((p) => (p.id === productId ? { ...p, rows } : p)));
     setToast(tp("saved"));
+  };
+  // POS P2.3U ▸ บันทึกสูตร/สวิตช์แล้ว: แก้แถว (หรือตัวแปรในแถว) ทันที + อ่านหน้าใหม่ (ต้นทุน/จำนวนที่ทำได้ตามสูตรมาจากเซิร์ฟเวอร์) ◂
+  const onRecipeSaved = (productId: string, patch: RecipePatch, text: string) => {
+    const fields = <T extends { recipe: ProductsRecipeLine[]; bomEnabled: boolean }>(x: T): T => ({ ...x, ...(patch.recipe ? { recipe: patch.recipe } : {}), bomEnabled: patch.bomEnabled });
+    setProducts((ps) =>
+      ps.map((p) => {
+        if (p.id !== productId) return p;
+        if (patch.targetId === p.id) return { ...fields(p), ...(patch.recipeChoiceLines ? { recipeChoiceLines: patch.recipeChoiceLines } : {}), recipeCost: patch.recipe ? null : p.recipeCost };
+        return { ...p, recipeVariants: p.recipeVariants.map((v) => (v.id === patch.targetId ? fields(v) : v)) };
+      }),
+    );
+    setToast(text);
+    router.refresh();
   };
   const toggleSel = (id: string) =>
     setSelected((s) => {
@@ -290,7 +305,20 @@ export function ProductsClient({ systemId, data, canEdit, initialUnit }: Props) 
         </div>
       </div>
 
-      {open ? <ProductPanel key={`${open.id}|${unit ?? ""}`} systemId={systemId} product={open} data={data} unit={unit} canEdit={canEdit} onClose={() => setOpenId(null)} onSaved={onSaved} /> : null}
+      {open ? (
+        <ProductPanel
+          key={`${open.id}|${unit ?? ""}`}
+          systemId={systemId}
+          product={open}
+          data={data}
+          unit={unit}
+          canEdit={canEdit}
+          onClose={() => setOpenId(null)}
+          onSaved={onSaved}
+          canEditRecipe={canEditRecipe}
+          onRecipeSaved={onRecipeSaved}
+        />
+      ) : null}
 
       {bulkOpen ? (
         <BulkMarkupDialog
