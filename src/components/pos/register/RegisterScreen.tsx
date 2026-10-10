@@ -272,7 +272,8 @@ export function RegisterScreen(props: RegisterScreenProps) {
   /** q ที่ผลในกริดตอนนี้เป็นของมัน (Enter ตัดสินจากผลของคำค้นเดียวกันเท่านั้น) */
   const [shownQ, setShownQ] = useState("");
   // POS P2.2U ▸ มติ 5: ขอบหน้าต่างโปรถัดไป (ISO) ของแคตตาล็อกล่าสุด — ถึงเวลา = โหลดกริดใหม่ (ราคาไทล์/ชิปโปรเปลี่ยน) ◂
-  const [priceValidUntil, setPriceValidUntil] = useState<string | null>(props.initialCatalog?.priceValidUntil ?? null);
+  //   P2.2U fix รอบ 1 F1: เก็บเป็น {iso, seq} — seq ใหม่ทุกครั้งที่โหลดหน้าแรกเสร็จ ⇒ ขอบเดิมซ้ำ (เซิร์ฟเวอร์ตอบ nextPriceEdge เดิม) ก็ตั้งตัวจับเวลาใหม่
+  const [priceEdge, setPriceEdge] = useState<{ iso: string | null; seq: number }>(() => ({ iso: props.initialCatalog?.priceValidUntil ?? null, seq: 0 }));
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [catalogPending, startCatalog] = useTransition();
   const catalogSeq = useRef(0);
@@ -805,7 +806,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
           setProducts((prev) => (cursor ? [...prev, ...r.products.filter((p) => !prev.some((x) => x.id === p.id))] : r.products));
           setNextCursor(r.nextCursor);
           setShownQ(nq);
-          if (!cursor) setPriceValidUntil(r.priceValidUntil ?? null); // POS P2.2U ◂
+          if (!cursor) setPriceEdge((e) => ({ iso: r.priceValidUntil ?? null, seq: e.seq + 1 })); // POS P2.2U (fix F1: วัตถุใหม่ทุกครั้ง) ◂
         } catch {
           if (seq === catalogSeq.current) showToast({ key: "errors.loadFailed" });
         }
@@ -817,14 +818,20 @@ export function RegisterScreen(props: RegisterScreenProps) {
   // POS P2.2U ▸ มติ 5: โหลดแคตตาล็อกใหม่ที่ priceValidUntil (หน่วงอย่างน้อย 15 วิ · อย่างมาก 1 ชม.) — คำค้น/หมวดที่แสดงอยู่เดิม ◂
   const catalogArgs = useRef({ q: "", cat: null as string | null });
   catalogArgs.current = { q: shownQ, cat: categoryId };
+  //   P2.2U fix รอบ 1 F1: คีย์ effect = วัตถุ {iso, seq} · ตัวจับเวลายิงแล้วตั้งรอบถัดไปเองเสมอ (seq+1 จากขอบเดิม) — คำตอบที่มาถึงทับด้วยขอบใหม่ ·
+  //   โหลดล้ม/ถูกคำค้นใหม่แซง = สายไม่ขาด (ยิงซ้ำหลัง 15 วิ เมื่อขอบผ่านแล้ว) · นาฬิกาเครื่องเร็ว = ยิงก่อน ⇒ ได้ขอบเดิม ⇒ ตั้งใหม่ตามขอบ
   useEffect(() => {
-    if (!priceValidUntil) return;
-    const at = Date.parse(priceValidUntil);
+    const edge = priceEdge;
+    if (!edge.iso) return;
+    const at = Date.parse(edge.iso);
     if (!Number.isFinite(at)) return;
     const wait = Math.min(Math.max(at - Date.now(), 15_000), 3_600_000);
-    const h = setTimeout(() => loadCatalog(catalogArgs.current.q, catalogArgs.current.cat), wait);
+    const h = setTimeout(() => {
+      loadCatalog(catalogArgs.current.q, catalogArgs.current.cat);
+      setPriceEdge((e) => (e === edge ? { iso: e.iso, seq: e.seq + 1 } : e));
+    }, wait);
     return () => clearTimeout(h);
-  }, [priceValidUntil, loadCatalog]);
+  }, [priceEdge, loadCatalog]);
   const firstQ = useRef(true);
   /** P1.4: สแกนจากช่องค้นหาล้างคำค้น (ตัวอักษรของเครื่องสแกน) — กริดยังเป็นของคำค้นว่างอยู่แล้ว ⇒ ไม่ต้องโหลดซ้ำ */
   const qClearedByScan = useRef(false);
