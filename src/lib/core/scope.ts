@@ -79,6 +79,10 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   // POS P2.2 ▸ ราคาตามช่องทาง/สาขา (ผู้เขียนเดียว pos/catalog.ts) · กติการาคา happy hour/โปร (ผู้เขียนเดียว pos/price-rule.ts) · กรอง tenantId + systemId ◂
   PosProductChannelPrice: sys(),
   PosPriceRule: sys(),
+  // POS P2.8 ▸ ออเดอร์ทุกช่องทาง (ผู้เขียนเดียว = pos/order.ts · ทุกคำสั่งกรอง tenantId + systemId (+ unitId ในโค้ด) · บรรทัด/บันทึกมี systemId ของตัวเอง) ◂
+  PosOrder: sys(),
+  PosOrderLine: sys(),
+  PosOrderEvent: sys(),
   // Outbox (kernel — side effects post-commit · WO-0002)
   OutboxEvent: tenant,
   // Party (WO 3.1) — ตัวตนกลางระดับ tenant ข้ามทุกระบบ (ตรงข้าม AccountContact ที่ scope ต่อ systemId)

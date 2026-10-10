@@ -864,6 +864,12 @@ const REFUSAL_KEY: Readonly<Record<string, string>> = {
   CHANNEL_NOT_SOLD: "errors.channelNotSold",
   PRICE_RULE_NOT_FOUND: "errors.priceRuleNotFound",
   PRICE_RULE_LIMIT: "errors.priceRuleLimit",
+  // POS P2.8 ▸ ออเดอร์ทุกช่องทาง (R11) — รหัสอยู่ใน OrderRefusalCode (order-shared.ts) · คีย์ข้อความชุดเดียวกับหน้าขาย ◂
+  ORDER_NOT_FOUND: "errors.orderNotFound",
+  ORDER_STATE_INVALID: "errors.orderStateInvalid",
+  ORDER_STATE_CHANGED: "errors.orderStateChanged",
+  ORDER_UNPAID: "errors.orderUnpaid",
+  CHANNEL_PAUSED: "errors.channelPaused",
 };
 
 /**

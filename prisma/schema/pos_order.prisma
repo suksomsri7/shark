@@ -1,0 +1,105 @@
+// ═══════════════════ POS P2.8 — ออเดอร์ทุกช่องทาง (จอ 09 · R1 · มติผู้คุมงาน 1 12 14) ═══════════════════
+// POS เป็นเจ้าของ (CD1): ประตูรับเดียว pos/order.ts (ingestOrder / ingestInTx) · ผู้เขียนเดียวของ 3 ตารางนี้ = pos/order.ts
+//   ShopOrder ยังเป็นต้นฉบับของเว็บร้าน (สะท้อนเข้ามาผ่านเส้น shop→pos) · ไม่มี FK (id หลวมแบบตารางลูกอื่นของ POS · มติ 14)
+//   idempotency X1: (tenantId, channelId, externalRef) — NULL ไม่ชนกัน ⇒ ออเดอร์ที่ไม่มีเลขแพลตฟอร์มพึ่ง (tenantId, idempotencyKey)
+//   ทุกการเปลี่ยนสถานะ = UPDATE … WHERE status = จาก AND version = v (ผู้ชนะคนเดียว) + PosOrderEvent 1 แถว + outbox pos.order.* (tx เดียว)
+// ไฟล์แยกจาก pos.prisma โดยตั้งใจ (ใบ P2.4 S แก้ pos.prisma ขนานกัน — ลดการชนตอน merge) · migration 20261207100000_pos_p28_orders
+
+enum PosOrderStatus {
+  NEW
+  ACCEPTED
+  PREPARING
+  READY
+  HANDED
+  REJECTED
+  CANCELLED
+}
+
+enum PosOrderPaymentState {
+  UNPAID
+  PAY_ON_PICKUP
+  PLATFORM_PAID
+  PAID
+  REFUNDED
+}
+
+enum PosOrderFulfilment {
+  PICKUP
+  DELIVERY
+  DINE_IN
+}
+
+model PosOrder {
+  id                 String               @id @default(cuid())
+  tenantId           String
+  systemId           String // ระบบ POS ที่บิลของสาขานี้ลง (posSystemForSale)
+  unitId             String
+  channelId          String // SalesChannel.id ของสาขานี้
+  channelCode        String // สำเนารหัสช่องทาง ณ ตอนรับ
+  adapter            SalesChannelAdapter // สำเนา adapter ของช่องทาง ณ ตอนรับ (MANUAL · WEB · CHAT · API · NONE)
+  externalRef        String? // เลขออเดอร์ของแพลตฟอร์ม / SO-xxxx ของเว็บร้าน (≤ 40)
+  code               String // <PFX>-NNNN ต่อสาขาต่อวัน (แสดงเมื่อไม่มี externalRef)
+  idempotencyKey     String
+  status             PosOrderStatus
+  paymentState       PosOrderPaymentState
+  fulfilment         PosOrderFulfilment
+  customerName       String
+  customerPhone      String? // เบอร์เต็ม (ประวัติลูกค้า) — ตัวอ่านคืนเฉพาะ phoneMasked
+  memberId           String?
+  partyId            String?
+  address            String?
+  note               String?
+  chatConversationId String?
+  shopOrderId        String?
+  totalSatang        Int
+  prepMinutes        Int?
+  receivedAt         DateTime             @default(now())
+  acceptedAt         DateTime?
+  readyAt            DateTime?
+  handedAt           DateTime?
+  closedAt           DateTime?
+  rejectReason       String?
+  saleId             String?
+  acceptedByUserId   String? // null = รับอัตโนมัติ
+  createdByUserId    String? // null = adapter (เว็บร้าน/แพลตฟอร์ม)
+  version            Int                  @default(1)
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+
+  @@unique([tenantId, channelId, externalRef])
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, unitId, status, receivedAt])
+}
+
+// บรรทัดของออเดอร์ — ราคาแช่แข็ง ณ ตอนรับ (CD3) · options = สำเนาตัวเลือก [{choiceId, groupId, groupName, choiceName, priceDeltaSatang}]
+model PosOrderLine {
+  id              String          @id @default(cuid())
+  tenantId        String
+  systemId        String? // เขียนเสมอ (ทะเบียน scope = sys() · มติ 14) — nullable เพราะตารางชื่อของข้อสอบตรึงฟิลด์บังคับไว้
+  orderId         String
+  productId       String? // PosProduct.id · null = รายการกำหนดเอง
+  name            String
+  qty             Int
+  unitPriceSatang Int // รวมส่วนต่างตัวเลือกแล้ว
+  listPriceSatang Int?
+  priceSource     PosPriceSource?
+  priceRuleId     String?
+  options         Json            @default("[]")
+  note            String?
+  lineTotalSatang Int
+  sortOrder       Int             @default(0) // ลำดับบรรทัดตามที่ส่งมา
+}
+
+// บันทึกการเปลี่ยนสถานะ (รวมตอนรับเข้า: fromStatus null → toStatus NEW) · payload = ข้อมูลดิบของ adapter (P3) / เหตุผล / คีย์ชำระ
+model PosOrderEvent {
+  id          String          @id @default(cuid())
+  tenantId    String
+  systemId    String? // เขียนเสมอ (ทะเบียน scope = sys() · มติ 14)
+  orderId     String
+  type        String // received · accepted · rejected · preparing · ready · completed · cancelled · paid · prep_changed · refunded
+  fromStatus  PosOrderStatus?
+  toStatus    PosOrderStatus
+  actorUserId String? // null = ระบบ/อัตโนมัติ
+  payload     Json?
+  at          DateTime        @default(now())
+}
