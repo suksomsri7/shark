@@ -335,7 +335,7 @@ const ROLE_ROWS: readonly [string, string | null, string | null][] = [
   ["stockCount", "pos.stock.count", null],
   ["reports", "pos.report.view", null],
   ["settings", PERM_MANAGE, null],
-  ["onlineOrders", null, "P2.8"],
+  ["onlineOrders", "pos.order.accept", null], // ORACLE-EDIT P2.8 (CD9): จอ 09 = pos.order.accept
 ];
 const SETTINGS_CODES = ["NOT_FOUND", "PERMISSION_DENIED", "VALIDATION", "UNKNOWN", "SETTINGS_SECTION_LOCKED", "CONFIRM_REQUIRED"];
 const NEW_CODES = ["SETTINGS_SECTION_LOCKED", "CONFIRM_REQUIRED", "PIN_THROTTLED"];
