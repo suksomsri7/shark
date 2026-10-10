@@ -368,6 +368,8 @@ const CALL_SITES: Record<string, number> = {
   "src/lib/modules/rental/service.ts": 2, "src/lib/modules/restaurant/order.ts": 1, "src/lib/modules/school/service.ts": 1,
   "src/lib/modules/shop/service.ts": 1, "src/lib/modules/ticket/service.ts": 1,
 };
+/** ORACLE-EDIT ผู้คุม 10 ต.ค. (P2.4 S fix 1 · มติ 3): จุดเรียก createSale ที่ใบอื่นเพิ่มได้ (P2.8 S · pos/order.ts 1 จุด) — แบบเดียวกับ qc-pos-p2.6 · มี = ต้องเท่านี้พอดี · ไม่มี = ผ่าน */
+const CALL_SITES_ALLOWED_LATER: Record<string, number> = { "src/lib/modules/pos/order.ts": 1 };
 /** ลายเซ็น export ของโมดูลร้านอาหาร ณ 6dbcafe0 (exportSigs) — R11 แช่แข็ง */
 const SIGS_BASE: Record<string, Record<string, string>> = {
   table: { listZones: "c8e66837ad1f", createZone: "657bb8ee1f6f", archiveZone: "1336f49c9347", createTable: "7c7335ab1a16", updateTable: "b3b16d37834a", archiveTable: "47d96578b58e", rotateQr: "d5e7b11b54d8", floorPlan: "5d6efa1d21d5", openSession: "ab58a6782f51", getSession: "38a38ad81b0a", openSessionOfTable: "6e6fbb24512b", openSessionsList: "99cca1fa8063", linkMember: "c579f79820a7", closeSession: "05a2d36cbde3", moveSession: "ca73dc7db579", mergeSession: "e2678ceaf8ad", "type TableCard": "dd90e6b09769" },
@@ -636,7 +638,8 @@ async function runStatic(): Promise<void> {
       const n = (stripComments(rd(f)).match(/\bcreateSale\s*\(/g) ?? []).length;
       if (n) found[f] = n;
     }
-    const diff = [...new Set([...Object.keys(CALL_SITES), ...Object.keys(found)])].filter((f) => CALL_SITES[f] !== found[f]).map((f) => `${f.replace("src/lib/", "")}:${CALL_SITES[f] ?? 0}→${found[f] ?? 0}`);
+    const want = (f: string) => CALL_SITES[f] ?? (found[f] === CALL_SITES_ALLOWED_LATER[f] ? CALL_SITES_ALLOWED_LATER[f] : 0);
+    const diff = [...new Set([...Object.keys(CALL_SITES), ...Object.keys(found)])].filter((f) => want(f) !== (found[f] ?? 0)).map((f) => `${f.replace("src/lib/", "")}:${want(f)}→${found[f] ?? 0}`);
     if (diff.length) p.push(`ต่าง: ${diff.join(", ")}`);
     for (const f of [F.table, F.tableActions, F.tableShared, F.restIndex]) if (/\bcreateSale\b/.test(srcOf(f))) p.push(`${f.split("/").pop()} อ้าง createSale`);
     const total = sum(Object.values(found));
