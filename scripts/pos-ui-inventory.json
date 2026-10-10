@@ -10527,6 +10527,600 @@
       "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-prod-rules-link",
+      "kind": "link",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]/pos/products/price-rules",
+        "note": "ปุ่ม \"โปรราคา / Happy hour\" บนตาราง → จอโปรราคา (มติ 4)"
+      },
+      "wo": "P2.2U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-prod-bulk-open",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "pos-prod-bulk",
+        "note": "\"+X% ทั้งช่องทาง\" — เฉพาะผู้มี pos.product.setPrice (มติ 3)"
+      },
+      "wo": "P2.2U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-prod-search",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-prod-table",
+        "note": "ค้นชื่อ/SKU ฝั่ง client"
+      },
+      "wo": "P2.2U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-prod-category",
+      "kind": "filter",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-prod-table",
+        "note": "ตัวกรองหมวด (ขอบเขต bulk \"ทั้งหมวด\")"
+      },
+      "wo": "P2.2U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-prod-branch",
+      "kind": "filter",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-prod-table",
+        "note": "\"สาขา: …\" — ขอบเขตแถว (ช่องทาง, สาขา) ที่ตารางและลิ้นชักอ่าน · ว่าง = ทุกสาขา · ?unit= (history.replaceState)"
+      },
+      "wo": "P2.2U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-prod-filter-diff",
+      "kind": "filter",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-prod-table",
+        "note": "ชิป \"ราคาต่างกันตามช่องทาง N\" — สลับแสดงเฉพาะสินค้าที่ราคาต่างกัน (= การ์ด pos-prod-stat-channel-diff)"
+      },
+      "wo": "P2.2U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-prod-select-clear",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "ล้างสินค้าที่เลือก (ขอบเขต bulk \"ที่เลือก\")"
+      },
+      "wo": "P2.2U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-prod-select-*",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "เลือกสินค้าในตาราง (≤ 500 ต่อ bulk)"
+      },
+      "wo": "P2.2U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-prod-cselect-*",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "เลือกสินค้า (การ์ด 390)"
+      },
+      "wo": "P2.2U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-prod-open-*",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "pos-prod-drawer",
+        "note": "เปิดลิ้นชักสินค้า (แท็บราคาตามช่องทาง)"
+      },
+      "wo": "P2.2U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-prod-copen-*",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "pos-prod-drawer",
+        "note": "เปิดลิ้นชักสินค้า (การ์ด 390 · แผ่นเต็มจอ)"
+      },
+      "wo": "P2.2U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-products-legacy-toggle",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "กล่องพับ \"ราคาขายปกติและบริการ (คลังสินค้า)\" — หน้าเดิม (setItemSalePriceAction) ย้ายลงมา · เปิดเองเมื่อมี ?err/?ok"
+      },
+      "wo": "P2.2U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-prod-drawer-close",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "ปิดลิ้นชัก"
+      },
+      "wo": "P2.2U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-prod-tab-*",
+      "kind": "tab",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-prod-drawer",
+        "note": "แท็บ ทั่วไป · ตัวเลือก · สูตรและวัตถุดิบ · ราคาตามช่องทาง · สต็อก — ตัวเลือก/สูตร/สต็อก ปิด (เร็ว ๆ นี้ · P2.3)"
+      },
+      "wo": "P2.2U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-prod-price-edit",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-prod-prices",
+        "note": "\"แก้ราคา\" → โหมดแก้ (ช่องเงิน + ไม่ขาย + ใช้ราคาปกติ ต่อช่องทาง)"
+      },
+      "wo": "P2.2U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-prod-price-*",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "inline-error",
+        "target": "pos-prod-price-err-*",
+        "note": "ช่องราคาต่อช่องทาง (รหัสช่องทาง) — ผิดรูป = pos-prod-price-err-<code> · ช่องว่าง = ตามราคาปกติ/แถวระดับบน"
+      },
+      "wo": "P2.2U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-prod-notsold-*",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "\"ไม่ขาย\" ต่อช่องทาง (แถว notSold · ราคา null)"
+      },
+      "wo": "P2.2U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-prod-usebase-*",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "\"ใช้ราคาปกติ\" — ลบแถวของช่องทางนี้ในขอบเขตสาขา"
+      },
+      "wo": "P2.2U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-prod-rule-link-*",
+      "kind": "link",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]/pos/products/price-rules",
+        "note": "กล่องโปรราคาที่ครอบสินค้า → จอโปร ?rule=<id>"
+      },
+      "wo": "P2.2U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-prod-save",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-prod-toast",
+        "note": "บันทึก = setChannelPricesAction แทนทั้งชุด (มติ 9) · ปฏิเสธ = pos-prod-price-error ผ่านคีย์ · สำเร็จ = pos-prod-toast"
+      },
+      "wo": "P2.2U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-prod-cancel",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "ยกเลิกการแก้ (ไม่บันทึก)"
+      },
+      "wo": "P2.2U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-prod-duplicate",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "\"ทำสำเนา\" — ภาพเท่านั้น ปิดอยู่ (เร็ว ๆ นี้ · Q1)"
+      },
+      "wo": "P2.2U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-prod-archive",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "\"เก็บถาวร\" — ภาพเท่านั้น ปิดอยู่ (เร็ว ๆ นี้ · Q1)"
+      },
+      "wo": "P2.2U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-prod-bulk-close",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "ปิดกล่อง +X%"
+      },
+      "wo": "P2.2U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-prod-bulk-channel",
+      "kind": "select",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-prod-bulk-preview",
+        "note": "ช่องทาง (แพลตฟอร์มสำเร็จรูป + ช่องทางที่ร้านตั้งเอง)"
+      },
+      "wo": "P2.2U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-prod-bulk-pct",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "inline-error",
+        "target": "pos-prod-bulk-preview",
+        "note": "บวกเพิ่ม 1–200% (ทศนิยม 2 ตำแหน่ง ↔ bp)"
+      },
+      "wo": "P2.2U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-prod-bulk-round-100",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-prod-bulk-preview",
+        "note": "ปัดเป็นบาท (roundTo 100)"
+      },
+      "wo": "P2.2U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-prod-bulk-round-1",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-prod-bulk-preview",
+        "note": "ปัดเป็นสตางค์ (roundTo 1)"
+      },
+      "wo": "P2.2U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-prod-bulk-scope-category",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "ขอบเขต = หมวดที่กรองอยู่ (categoryId)"
+      },
+      "wo": "P2.2U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-prod-bulk-scope-selected",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "ขอบเขต = สินค้าที่เลือก (productIds ≤ 500)"
+      },
+      "wo": "P2.2U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-prod-bulk-run",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "pos-prod-toast",
+        "note": "ตั้งราคา = bulkChannelMarkupAction → แจ้ง \"ตั้งราคาแล้ว N รายการ · ข้าม M รายการ\" (pos-prod-toast) · ปฏิเสธ = pos-prod-bulk-error"
+      },
+      "wo": "P2.2U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-prod-bulk-cancel",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "note": "ยกเลิก"
+      },
+      "wo": "P2.2U",
+      "oracle": "",
+      "system": "POS"
     }
   ],
   "$roles": "roles/hiddenFor ที่อนุญาต: owner · manager · cashier · kind/expect.type ชุดเดียวกับทะเบียน CRM (F15.3b ตรวจ)"

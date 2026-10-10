@@ -61,7 +61,8 @@
       "sizes": "{count} sizes",
       "noPrice": "No price set",
       "variants": "{count} variants",
-      "byWeight": "per kg"
+      "byWeight": "per kg",
+      "notSoldStore": "Not sold in store"
     },
     "cart": {
       "title": "Cart",
@@ -2151,7 +2152,8 @@
         "manageAt": "Manage on the marketing page",
         "facts": {
           "happyHourPricing": "Happy-hour campaigns set prices automatically",
-          "couponAfterPurchase": "Give a coupon after a qualifying purchase"
+          "couponAfterPurchase": "Give a coupon after a qualifying purchase",
+          "happyHourPricingLive": "Price promotions / Happy hour are set in Products › Price promotions"
         }
       },
       "BOOKING": {
@@ -2563,7 +2565,21 @@
       "category": "Category",
       "preview": "Preview of the first 5 items",
       "apply": "Set prices",
-      "done": "Set {count} prices · skipped {skipped}"
+      "done": "Set {count} prices · skipped {skipped}",
+      "round": "Rounding",
+      "roundSatang": "Round to satang",
+      "pctInvalid": "Enter 1–200 (up to 2 decimals)",
+      "scopeLabel": "Products to price",
+      "scopeCategory": "Whole category {name}",
+      "scopeNoCategory": "Whole category (pick a category filter first)",
+      "scopeSelected": "{count} selected",
+      "branchScope": "Applies to: {scope}",
+      "tooMany": "Up to {max} products",
+      "needScope": "Pick a category filter or select products in the table",
+      "notSoldKept": "Rows already set to 'Not sold' stay as they are and count as skipped",
+      "noChannels": "No platform channels yet — connect one in Settings › Sales channels",
+      "skipRow": "No regular price — skipped",
+      "running": "Setting prices…"
     },
     "rule": {
       "title": "Price promotions / Happy hour",
@@ -2614,7 +2630,153 @@
       "archived": "Archived",
       "empty": "No price promotions yet",
       "overnightHint": "Split overnight windows into 2 promotions",
-      "saved": "Price promotion saved"
+      "saved": "Price promotion saved",
+      "open": "Open",
+      "desc": "Price promotions and happy hours — prices change by day and time",
+      "intro": "Promotions beat channel prices · no overnight windows · member discounts and coupons still stack",
+      "refusal": "This account cannot manage products — ask the owner for access",
+      "readOnly": "Read only — needs the price promotion permission",
+      "archivedReadOnly": "This promotion is archived — read only",
+      "loading": "Loading…",
+      "showArchived": "Show archived ({count})",
+      "hideArchived": "Hide archived",
+      "archivedRef": "Archived product",
+      "archivedCategory": "Archived category",
+      "scopeCategory": "Category {categories} · {channels}",
+      "productSearch": "Search products to include",
+      "timeFrom": "Start time",
+      "timeTo": "End time",
+      "timeHint": "The window can end at 23:59 at the latest",
+      "dateFrom": "Start date",
+      "dateTo": "Last day",
+      "dateHint": "The last day is included · empty = no limit",
+      "value": "Value",
+      "baht": "baht",
+      "priorityHint": "0–{max} · higher wins when several promotions match",
+      "exampleNone": "Pick a product and a value to preview the price",
+      "errors": {
+        "invalid": "The promotion is not valid — check again",
+        "name": "Name the promotion (up to 60 characters)",
+        "kind": "Pick a promotion type",
+        "active": "Invalid on/off state",
+        "priority": "Priority must be 0–100",
+        "productIds": "Pick at least one product or category (up to 500 products · 50 categories)",
+        "channelCodes": "Invalid channel",
+        "unitIds": "Invalid branch",
+        "adjust": "Pick how the price changes",
+        "value": "Enter an amount with up to 2 decimals (amount off must be above 0)",
+        "valuePct": "Enter 0.01–100 (up to 2 decimals)",
+        "startsAt": "Invalid start date",
+        "endsAt": "The last day cannot be before the start date",
+        "weekdays": "Invalid weekdays",
+        "timeFrom": "Start time must be HH:MM",
+        "timeTo": "Enter both times · the end must be after the start on the same day (up to 23:59)"
+      }
+    },
+    "markupPctMinus": "−{pct}%",
+    "drawer": {
+      "scope": "Prices for: {scope}",
+      "priceFor": "{channel} price",
+      "weighed": "Sold by weight — channel prices are not available yet",
+      "branchOnly": "This product is sold at {unit} only — pick that branch or all branches to edit",
+      "noChannels": "No active sales channels yet",
+      "saveHint": "Press \"Edit prices\" first"
+    },
+    "errors": {
+      "priceFormat": "Enter a number with up to 2 decimals",
+      "priceMax": "Price is too high",
+      "validation": "Some values are invalid — check the red fields",
+      "permission": "This account cannot set prices — ask the owner for access",
+      "notFound": "Not found — it may have been archived",
+      "busy": "The catalogue is busy — try again in a moment",
+      "conflict": "Changed at the same time — reload and try again",
+      "unknown": "Something went wrong — try again",
+      "tooManyRows": "More than {max} channel price rows for one product"
+    }
+  },
+  "products": {
+    "title": "Products & menu",
+    "desc": "Same source as inventory and accounting — set prices per channel here",
+    "legacyTitle": "Regular prices and services (inventory)",
+    "rulesLink": "Price promotions / Happy hour",
+    "search": "Search name · SKU",
+    "allCategories": "All categories",
+    "branchLabel": "Branch",
+    "selected": "{count} selected",
+    "clearSelection": "Clear selection",
+    "truncated": "Not all items shown — a branch has more than 2,000 items",
+    "showing": "Showing {count} of {total} items",
+    "empty": "No products in this POS yet",
+    "emptyFilter": "No products match the filters",
+    "plannedTip": "Coming soon · {phase}",
+    "sku": "SKU {sku}",
+    "options": "{count} options",
+    "variants": "{count} variants",
+    "noPrice": "No price",
+    "noStock": "Not stocked",
+    "notSoldHere": "Not sold",
+    "outOfStock": "Out",
+    "stat": {
+      "total": "All items",
+      "lowStock": "Low stock",
+      "out": "Out of stock",
+      "noCost": "No cost yet",
+      "noCostSub": "Margin unknown",
+      "diff": "Prices differ by channel"
+    },
+    "col": {
+      "select": "Select",
+      "product": "Product",
+      "category": "Category",
+      "price": "Price",
+      "cost": "Cost",
+      "margin": "Margin",
+      "stock": "Stock",
+      "channels": "Channels",
+      "status": "Status"
+    },
+    "status": {
+      "selling": "On sale",
+      "out": "Out of stock",
+      "off": "Not on sale"
+    },
+    "chip": {
+      "STORE": "Store",
+      "WEB": "Web",
+      "QR_TABLE": "QR",
+      "CHAT": "Chat"
+    },
+    "kind": {
+      "PRODUCT": "Product",
+      "SERVICE": "Service",
+      "MENU": "Menu item",
+      "BUNDLE": "Set / combo"
+    },
+    "drawer": {
+      "close": "Close",
+      "titleSku": "{name} · SKU {sku}",
+      "sub": "{category} · sold at {count} branches",
+      "subBranch": "{category} · {unit} only",
+      "noCategory": "No category",
+      "soon": "Coming soon · {phase}",
+      "soonTip": "Coming soon",
+      "duplicate": "Duplicate",
+      "archive": "Archive",
+      "tabs": {
+        "general": "General",
+        "options": "Options",
+        "recipe": "Recipe",
+        "prices": "Channel prices",
+        "stock": "Stock"
+      },
+      "general": {
+        "name": "Name",
+        "sku": "SKU",
+        "category": "Category",
+        "kind": "Type",
+        "base": "Price (regular)",
+        "status": "Status"
+      }
     }
   },
   "nav": {
