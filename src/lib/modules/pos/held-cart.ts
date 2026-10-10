@@ -134,7 +134,7 @@ const ROW_SELECT = { id: true, label: true, lineCount: true, approxTotalSatang: 
 export async function holdRegisterCart(
   ctx: RegisterCtx,
   actor: RegisterActor,
-  input: { cart: RegisterQuoteInput; label?: string | null; staffToken?: string | null; tableSessionId?: string | null },
+  input: { cart: RegisterQuoteInput; label?: string | null; staffToken?: string | null; tableSessionId?: string | null; expectedVersion?: number | null; heldCartId?: string | null; newDraft?: boolean | null },
   client?: Db,
 ): Promise<HoldRegisterCartResult> {
   return guard("holdRegisterCart", async (): Promise<HoldRegisterCartResult> => {
@@ -149,7 +149,7 @@ export async function holdRegisterCart(
     const label = cleanLabel(input.label);
     if (label === undefined) return refuse("VALIDATION", `ป้ายบิลต้องเป็นข้อความไม่เกิน ${HELD_CART_LABEL_MAX} ตัวอักษร`);
     // POS P2.4 ▸ รอบร่างของโต๊ะ ◂
-    if (input.tableSessionId !== undefined && input.tableSessionId !== null) return holdTableDraft(db, s, input.cart, input.tableSessionId, label);
+    if (input.tableSessionId !== undefined && input.tableSessionId !== null) return holdTableDraft(db, s, input.cart, input.tableSessionId, label, input);
     const row = await holdCore(db, s, input.cart, label, undefined);
     if (isRefusal(row)) return row;
     const [heldCart] = await summaries(db, [row]);
@@ -231,8 +231,27 @@ async function holdCore(db: Db, s: Scoped, cartRaw: unknown, label: string | nul
 // หมายเหตุบรรทัดถูกเก็บ (ไปถึงครัวตอนส่งรอบ) · ลำดับปฏิเสธ: ขอบเขต (TABLE_NOT_FOUND) → รูปตะกร้า (VALIDATION) → session ไม่ OPEN (TABLE_SESSION_CLOSED)
 // ปฏิเสธ = ไม่เขียนอะไร · ราคาที่เก็บ = quote ของเซิร์ฟเวอร์บนช่องทางของโต๊ะ (แสดงอย่างเดียว · ราคาจริงคิดตอนส่งครัว)
 const DRAFT_FORBIDDEN_KEYS = ["couponCode", "memberChoices", "billDiscount", "memberId", "channelId", "tableSessionId"] as const;
-async function holdTableDraft(db: Db, s: Scoped, cartRaw: unknown, tableSessionIdRaw: unknown, label: string | null): Promise<HoldRegisterCartResult> {
+async function holdTableDraft(
+  db: Db,
+  s: Scoped,
+  cartRaw: unknown,
+  tableSessionIdRaw: unknown,
+  label: string | null,
+  opt: { expectedVersion?: unknown; heldCartId?: unknown; newDraft?: unknown },
+): Promise<HoldRegisterCartResult> {
   if (typeof tableSessionIdRaw !== "string" || !tableSessionIdRaw || tableSessionIdRaw.length > 200) return refuse("VALIDATION", "รหัสโต๊ะไม่ถูกต้อง");
+  // POS P2.4 ▸ fix 2 F1: โหมดของการพัก — newDraft:true = สร้างรอบร่างใหม่ (ต้องไม่มี HELD อยู่) · heldCartId/expectedVersion = แก้รอบร่างเดิมแบบมีเงื่อนไข
+  //   (ไม่ตรง/ถูกส่งครัว/ถูกทิ้ง = VERSION_CHANGED · ไม่มีวันสร้างแถวใหม่) · ไม่ส่งทั้งสามอย่าง = ทาง P2.4 S เดิม (สร้างหรือแก้แถว HELD) — จอ P2.4U ต้องส่งเสมอ ◂
+  const ev = opt.expectedVersion;
+  const hid = opt.heldCartId;
+  const nd = opt.newDraft;
+  if (ev !== undefined && ev !== null && !(typeof ev === "number" && Number.isInteger(ev) && ev >= 1)) return refuse("VALIDATION", "เวอร์ชันของรอบร่างไม่ถูกต้อง");
+  if (hid !== undefined && hid !== null && !(typeof hid === "string" && hid.length > 0 && hid.length <= 200)) return refuse("VALIDATION", "รหัสรอบร่างไม่ถูกต้อง");
+  if (nd !== undefined && nd !== null && typeof nd !== "boolean") return refuse("VALIDATION");
+  const expectVersion = typeof ev === "number" ? ev : null;
+  const draftId = typeof hid === "string" ? hid : null;
+  const newDraft = nd === true;
+  if (newDraft && (expectVersion !== null || draftId !== null)) return refuse("VALIDATION", "สร้างรอบร่างใหม่ไม่ต้องส่งรหัส/เวอร์ชันของรอบร่างเดิม");
   const rest = await import("@/lib/modules/restaurant");
   const sess = await rest.tableSessionForPos(db, { tenantId: s.ctx.tenantId, unitId: s.ctx.unitId, sessionId: tableSessionIdRaw });
   if (!sess) return registerRefuse("TABLE_NOT_FOUND");
@@ -274,6 +293,32 @@ async function holdTableDraft(db: Db, s: Scoped, cartRaw: unknown, tableSessionI
   const stored: Stored = { cart, heldUnitPrices: q.lines.map((l) => l.unitPriceSatang), preview };
   const data = { cartJson: stored as unknown as Prisma.InputJsonValue, lineCount: cart.lines.length, approxTotalSatang: q.grandTotalSatang, label };
   const where = { ...rowWhere(s), tableSessionId: sess.id, status: "HELD" as const };
+  // POS P2.4 ▸ fix 2 F1 ◂
+  const done = async (id: string): Promise<HoldRegisterCartResult> => {
+    const row = await db.posHeldCart.findFirst({ where: { ...rowWhere(s), id }, select: { ...ROW_SELECT, version: true } });
+    if (!row) return registerRefuse("VERSION_CHANGED");
+    const { version, ...rest } = row;
+    const [heldCart] = await summaries(db, [rest]);
+    return { ok: true, heldCart: heldCart!, draftVersion: version };
+  };
+  if (newDraft) {
+    if (await db.posHeldCart.findFirst({ where, select: { id: true } })) return registerRefuse("VERSION_CHANGED");
+    try {
+      const c = await db.posHeldCart.create({ data: { ...rowWhere(s), ...data, tableSessionId: sess.id, heldByUserId: s.actor.userId }, select: { id: true } });
+      return done(c.id);
+    } catch (e) {
+      if ((e as { code?: unknown } | null)?.code === "P2002") return registerRefuse("VERSION_CHANGED"); // อีกเครื่องสร้างพร้อมกัน
+      throw e;
+    }
+  }
+  if (draftId !== null || expectVersion !== null) {
+    const cond = { ...where, ...(draftId !== null ? { id: draftId } : {}), ...(expectVersion !== null ? { version: expectVersion } : {}) };
+    const target = await db.posHeldCart.findFirst({ where: cond, select: { id: true } });
+    if (!target) return registerRefuse("VERSION_CHANGED");
+    const upd = await db.posHeldCart.updateMany({ where: { ...cond, id: target.id }, data: { ...data, heldByUserId: s.actor.userId, version: { increment: 1 } } });
+    if (upd.count !== 1) return registerRefuse("VERSION_CHANGED");
+    return done(target.id);
+  }
   for (let attempt = 0; attempt < 3; attempt++) {
     // พักซ้ำ = แถวเดิม (version + 1) · ไม่มีแถว HELD = สร้าง (ชนกันสองเครื่อง = partial unique P2002 → รอบถัดไปแก้แถวของผู้ชนะ)
     const upd = await db.posHeldCart.updateMany({ where, data: { ...data, heldByUserId: s.actor.userId, version: { increment: 1 } } });
@@ -409,7 +454,8 @@ export async function recallHeldCart(ctx: RegisterCtx, actor: RegisterActor, inp
     if (isRefusal(s)) return s;
     const id = idOf(input);
     if (!id) return refuse("NOT_FOUND");
-    const row = await db.posHeldCart.findFirst({ where: { id, ...rowWhere(s) }, select: { status: true, createdAt: true, cartJson: true, approvedRequestId: true } });
+    // POS P2.4 ▸ fix 2 F5: รอบร่างของโต๊ะเรียกคืนจากลิ้นชักไม่ได้ (NOT_FOUND · ทางของโต๊ะ = holdTableDraft/ส่งครัว) ◂
+    const row = await db.posHeldCart.findFirst({ where: { id, ...rowWhere(s), tableSessionId: null }, select: { status: true, createdAt: true, cartJson: true, approvedRequestId: true } });
     if (!row || row.status === "DISCARDED") return refuse("NOT_FOUND");
     if (row.status === "RECALLED") return refuse("ALREADY_RECALLED");
     const cutoff = await expireCutoff(db, s);
@@ -472,7 +518,7 @@ export async function recallHeldCart(ctx: RegisterCtx, actor: RegisterActor, inp
     // R2: งานอ่านอย่างเดียวทั้งหมด (quote · probe · ชื่อสินค้า) ทำก่อน — UPDATE ผู้ชนะคนเดียวเป็นคำสั่งสุดท้าย
     //     อะไรข้างบนล้ม = แถวยัง HELD (ไม่มีบิลหายแบบ RECALLED ไร้เจ้าของ)
     const won = await db.posHeldCart.updateMany({
-      where: { id, ...rowWhere(s), status: "HELD", createdAt: { gte: cutoff } },
+      where: { id, ...rowWhere(s), status: "HELD", createdAt: { gte: cutoff }, tableSessionId: null }, // POS P2.4 ▸ fix 2 F5 ◂
       data: { status: "RECALLED", recalledAt: new Date(), recalledByUserId: s.actor.userId, version: { increment: 1 } },
     });
     if (won.count !== 1) {
@@ -521,9 +567,10 @@ export async function discardHeldCart(ctx: RegisterCtx, actor: RegisterActor, in
     const id = idOf(input);
     if (!id) return refuse("NOT_FOUND");
     const done = await db.$transaction(async (tx) => {
-      const before = await tx.posHeldCart.findFirst({ where: { id, ...rowWhere(s), status: "HELD" }, select: { label: true, heldByUserId: true, lineCount: true, approxTotalSatang: true } });
+      // POS P2.4 ▸ fix 2 F5: ทิ้งจากลิ้นชักได้เฉพาะบิลพักปกติ (รอบร่างของโต๊ะทิ้งตอนปิดโต๊ะ) ◂
+      const before = await tx.posHeldCart.findFirst({ where: { id, ...rowWhere(s), status: "HELD", tableSessionId: null }, select: { label: true, heldByUserId: true, lineCount: true, approxTotalSatang: true } });
       if (!before) return false;
-      const r = await tx.posHeldCart.updateMany({ where: { id, ...rowWhere(s), status: "HELD" }, data: { status: "DISCARDED", version: { increment: 1 } } });
+      const r = await tx.posHeldCart.updateMany({ where: { id, ...rowWhere(s), status: "HELD", tableSessionId: null }, data: { status: "DISCARDED", version: { increment: 1 } } });
       if (r.count !== 1) return false;
       await tx.auditLog.create({
         data: {

@@ -214,7 +214,9 @@ export type RegisterRefusalCode =
   | "TABLE_SESSION_CLOSED"
   | "TABLE_EMPTY"
   | "TABLE_ITEMS_CHANGED"
-  | "TABLE_HAS_UNPAID";
+  | "TABLE_HAS_UNPAID"
+  // POS P2.4 ▸ fix 2 F1: รอบร่างของโต๊ะถูกแก้/ส่งครัว/ทิ้งโดยอีกเครื่อง (expectedVersion/heldCartId ไม่ตรง · newDraft ขณะมีรอบร่าง) ◂
+  | "VERSION_CHANGED";
 
 /** คำปฏิเสธ — คืนค่า ไม่ throw · `lineIndex` = บรรทัดที่ผิด (ลำดับเดียวกับที่ส่งมา) ถ้าระบุได้ */
 export type RegisterRefusal = { ok: false; code: RegisterRefusalCode; message: string; lineIndex?: number };
@@ -343,6 +345,8 @@ export type RegisterQuoteLine = {
   priceSource?: PriceSource;
   listPriceSatang?: number | null;
   priceRule?: { id: string; name: string } | null;
+  /** POS P2.4 ▸ fix 2 F6: เฉพาะบรรทัดบิลโต๊ะที่จะไม่ถูกตัดสต็อก (สินค้าขายที่สาขานี้ไม่ได้แล้ว/สูตรกระจายไม่ได้) — จอ P2.4U แสดงป้าย "ไม่ตัดสต็อก" ◂ */
+  stockCut?: false;
 };
 export type RegisterQuoteTotals = {
   /** Σ gross ก่อนส่วนลดบรรทัด = "รวม" บนจอ (มติ Q7 · ต่างจาก PosSale.subtotalSatang ที่หลังส่วนลดบรรทัด) */
@@ -553,7 +557,8 @@ export type HeldCartNoticeCode = "PRICE_CHANGED" | "PRODUCT_NOT_FOUND" | "PRODUC
 /** คำเตือนต่อบรรทัดตอนเรียกคืน (ลำดับบรรทัดเดียวกับ cart ที่คืน) — PRICE_CHANGED มีราคาตอนพัก/ราคาปัจจุบัน */
 export type HeldCartNotice = { lineIndex: number; code: HeldCartNoticeCode; heldUnitPriceSatang?: number; unitPriceSatang?: number };
 export type HoldRegisterCartInput = { cart: RegisterQuoteInput; label?: string | null };
-export type HoldRegisterCartResult = { ok: true; heldCart: HeldCartSummary } | RegisterRefusal;
+/** POS P2.4 ▸ fix 2 F1: draftVersion = เวอร์ชันของรอบร่างโต๊ะหลังพัก (ส่งกลับเป็น expectedVersion ครั้งถัดไป · บิลพักปกติไม่มี) ◂ */
+export type HoldRegisterCartResult = { ok: true; heldCart: HeldCartSummary; draftVersion?: number } | RegisterRefusal;
 /** expireDays = วันหมดอายุที่ระบบนี้ใช้จริง (settings หรือค่าปริยาย) — ลิ้นชักแสดงค่านี้ */
 export type ListHeldCartsResult = { ok: true; items: HeldCartSummary[]; count: number; expireDays: number } | RegisterRefusal;
 /** quote = ราคาปัจจุบัน (ไม่ใช่ราคาตอนพัก) · บรรทัดที่ขายไม่ได้แล้วยังอยู่ใน cart พร้อม notice (quote จึงไม่ ok จนกว่าจะเอาออก) ·
@@ -890,6 +895,7 @@ const REFUSAL_KEY: Readonly<Record<string, string>> = {
   TABLE_EMPTY: "errors.tableEmpty",
   TABLE_ITEMS_CHANGED: "errors.tableItemsChanged",
   TABLE_HAS_UNPAID: "errors.tableHasUnpaid",
+  VERSION_CHANGED: "errors.versionChanged", // POS P2.4 ▸ fix 2 F1 ◂
 };
 
 /**

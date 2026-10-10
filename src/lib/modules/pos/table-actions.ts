@@ -133,10 +133,21 @@ export async function registerLinkTableMemberAction(args: Target & { tableSessio
 }
 
 /** พักรอบร่างของโต๊ะ (ตะกร้าเดียวต่อโต๊ะ · พักซ้ำ = แก้แถวเดิม) */
-export async function holdTableDraftAction(args: Target & { tableSessionId: string; cart: RegisterQuoteInput; label?: string | null; staffToken?: string | null }): Promise<HoldRegisterCartResult> {
+export async function holdTableDraftAction(
+  args: Target & { tableSessionId: string; cart: RegisterQuoteInput; label?: string | null; staffToken?: string | null; expectedVersion?: number | null; heldCartId?: string | null; newDraft?: boolean | null },
+): Promise<HoldRegisterCartResult> {
   try {
+    // POS P2.4 ▸ fix 2 F1: จอส่ง newDraft:true (ยังไม่มีรอบร่าง) หรือ heldCartId + expectedVersion (แก้รอบร่างเดิม) เสมอ ◂
     return await run("holdTableDraftAction", args, (ctx, actor) =>
-      holdRegisterCart(ctx, actor, { cart: args.cart, tableSessionId: args.tableSessionId, label: args.label ?? null, ...(typeof args?.staffToken === "string" ? { staffToken: args.staffToken } : {}) }),
+      holdRegisterCart(ctx, actor, {
+        cart: args.cart,
+        tableSessionId: args.tableSessionId,
+        label: args.label ?? null,
+        ...(typeof args?.staffToken === "string" ? { staffToken: args.staffToken } : {}),
+        expectedVersion: args.expectedVersion ?? null,
+        heldCartId: args.heldCartId ?? null,
+        newDraft: args.newDraft ?? null,
+      }),
     );
   } catch (e) {
     return unexpected("holdTableDraftAction", e);

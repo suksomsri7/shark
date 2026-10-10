@@ -50,6 +50,7 @@ const MSG = {
   draftNotFound: "ไม่พบรอบร่างนี้ของโต๊ะ (อาจถูกส่งครัว ทิ้ง หรือเป็นของโต๊ะอื่น)",
   reservationClosed: "การจองนี้ถูกยกเลิกหรือปิดไปแล้ว",
   reservationNoTable: "ระบุโต๊ะที่จะพาลูกค้านั่งก่อน",
+  tableOccupied: "โต๊ะนี้มีลูกค้าอยู่ — ปิดบิลก่อนจึงนั่งจองได้", // POS P2.4 ▸ fix 2 F3 · จอใช้ pos.tables.errors.occupied ◂
 } as const;
 
 async function guard<T>(name: string, body: () => Promise<T>): Promise<T | RegisterRefusal> {
@@ -289,6 +290,20 @@ export async function registerLinkTableMember(ctx: RegisterCtx, actor: RegisterA
 
 // ═══════════════════ R5 ส่งรอบร่างเข้าครัว ═══════════════════
 
+/** POS P2.4 ▸ fix 2 F7: ธุรกรรมชน (deadlock 40P01 / Prisma P2034 write conflict) — ลองใหม่ 1 ครั้งแล้ว BUSY ◂ */
+function isTxConflict(e: unknown): boolean {
+  let cur: unknown = e;
+  for (let d = 0; d < 5 && cur && typeof cur === "object"; d++) {
+    const o = cur as { code?: unknown; originalCode?: unknown; kind?: unknown; message?: unknown; cause?: unknown; meta?: unknown };
+    if (o.code === "P2034" || o.code === "40P01" || o.originalCode === "40P01" || o.kind === "TransactionWriteConflict") return true;
+    if (typeof o.message === "string" && /deadlock detected/i.test(o.message)) return true;
+    const meta = o.meta && typeof o.meta === "object" ? (o.meta as { driverAdapterError?: unknown; code?: unknown }) : null;
+    if (meta?.code === "40P01") return true;
+    cur = o.cause ?? meta?.driverAdapterError;
+  }
+  return false;
+}
+
 /** ปฏิเสธที่โยนจากในธุรกรรม (ให้ธุรกรรม rollback ทั้งก้อน) แล้วคืนเป็นค่า */
 class TableTxRefusal extends Error {
   constructor(readonly refusal: RegisterRefusal | "RETRY") {
@@ -316,6 +331,7 @@ export async function registerSendTableRound(
     const sess = await rest.tableSessionForPos(db, { tenantId: s.tenantId, unitId: s.unitId, sessionId: input.tableSessionId });
     if (!sess) return refuse("TABLE_NOT_FOUND");
     const key = { tenantId: s.tenantId, systemId: s.systemId, unitId: s.unitId, tableSessionId: sess.id };
+    let conflicts = 0; // POS P2.4 ▸ fix 2 F7 ◂
     for (let attempt = 0; attempt < 3; attempt++) {
       const draft = await tableDraftOf(db, { ...key, heldCartId: input.heldCartId });
       if (!draft || draft.status === "DISCARDED") return refuse("NOT_FOUND", MSG.draftNotFound);
@@ -331,6 +347,10 @@ export async function registerSendTableRound(
       try {
         return await db.$transaction(
           async (tx: Prisma.TransactionClient) => {
+            // POS P2.4 ▸ fix 2 F2: ถือ session (FOR SHARE · OPEN) ก่อนยึดรอบร่าง/เขียนออเดอร์ — ปิดโต๊ะ/จ่ายรายการสุดท้ายรอรอบนี้ ·
+            //   ลำดับล็อกเดียวกับปิดโต๊ะ (session → รอบร่าง) ◂
+            const lk = await rest.lockOpenSessionInTx(tx, { tenantId: s.tenantId, unitId: s.unitId, sessionId: sess.id });
+            if (!lk.ok) throw new TableTxRefusal(lk.code === "NOT_OPEN" ? refuse("TABLE_SESSION_CLOSED") : refuse("TABLE_NOT_FOUND"));
             const c = await claimTableDraftInTx(tx, { ...key, heldCartId: draft.id, userId: s.actor.userId, expectVersion: draft.version });
             if (!c.ok) throw new TableTxRefusal(c.code === "VERSION_CHANGED" ? "RETRY" : c.code === "ALREADY_RECALLED" ? refuse("ALREADY_RECALLED") : refuse("NOT_FOUND", MSG.draftNotFound));
             try {
@@ -370,6 +390,12 @@ export async function registerSendTableRound(
           if (e.refusal === "RETRY") continue; // ถูกพักซ้ำระหว่างคิดราคา — อ่านรอบร่างใหม่แล้วคิดใหม่
           return e.refusal;
         }
+        // POS P2.4 ▸ fix 2 F7: deadlock/write conflict กับการปิดโต๊ะ → ลองใหม่ 1 ครั้ง แล้ว BUSY ◂
+        if (isTxConflict(e)) {
+          if (++conflicts > 1) return refuse("BUSY");
+          attempt--;
+          continue;
+        }
         throw e;
       }
     }
@@ -391,15 +417,29 @@ export async function registerCloseTable(ctx: RegisterCtx, actor: RegisterActor,
     if (!isRecord(input) || !isId(input.tableSessionId)) return refuse("VALIDATION");
     const rest = await restaurant();
     const sessionId = input.tableSessionId;
-    const r = await db.$transaction(
-      async (tx) => {
-        const c = await rest.closeTableSessionInTx(tx, { tenantId: s.tenantId, unitId: s.unitId, sessionId });
-        if (!c.ok) return c;
-        await discardTableDraftsInTx(tx, { tenantId: s.tenantId, systemId: s.systemId, unitId: s.unitId, tableSessionId: sessionId, actorUserId: s.actor.userId });
-        return c;
-      },
-      { maxWait: 10_000, timeout: 20_000 },
-    );
+    const once = () =>
+      db.$transaction(
+        async (tx) => {
+          const c = await rest.closeTableSessionInTx(tx, { tenantId: s.tenantId, unitId: s.unitId, sessionId });
+          if (!c.ok) return c;
+          await discardTableDraftsInTx(tx, { tenantId: s.tenantId, systemId: s.systemId, unitId: s.unitId, tableSessionId: sessionId, actorUserId: s.actor.userId });
+          return c;
+        },
+        { maxWait: 10_000, timeout: 20_000 },
+      );
+    // POS P2.4 ▸ fix 2 F7: deadlock/write conflict กับการส่งรอบ → ลองใหม่ 1 ครั้ง แล้ว BUSY ◂
+    let r: Awaited<ReturnType<typeof once>>;
+    try {
+      r = await once();
+    } catch (e) {
+      if (!isTxConflict(e)) throw e;
+      try {
+        r = await once();
+      } catch (e2) {
+        if (isTxConflict(e2)) return refuse("BUSY");
+        throw e2;
+      }
+    }
     if (!r.ok) return refuse(r.code === "HAS_UNPAID" ? "TABLE_HAS_UNPAID" : r.code === "NOT_OPEN" ? "TABLE_SESSION_CLOSED" : "TABLE_NOT_FOUND");
     return { ok: true as const, status: r.status };
   });
@@ -428,9 +468,10 @@ export async function registerCancelTableItem(ctx: RegisterCtx, actor: RegisterA
     const reason = typeof input.reason === "string" ? input.reason.trim() : "";
     if (!reason || reason.length > 200) return refuse("VALIDATION", "ระบุเหตุผลการยกเลิก (ไม่เกิน 200 ตัวอักษร)");
     const rest = await restaurant();
-    if (!(await rest.tableItemExistsForPos(db, { tenantId: s.tenantId, unitId: s.unitId, itemId: input.itemId }))) return refuse("TABLE_NOT_FOUND");
-    const r = await rest.cancelOrderItem(s.tenantId, s.unitId, input.itemId, reason, s.actor.userId);
-    if (!r.ok) return refuse("VALIDATION", r.reason);
+    const itemId = input.itemId;
+    // POS P2.4 ▸ fix 2 F4c: ล็อกรายการ + saleId IS NULL ในธุรกรรมเดียว (เรียงคิวกับการยึดรายการตอนจ่าย) — จ่ายไปแล้ว = TABLE_ITEMS_CHANGED ◂
+    const r = await db.$transaction((tx) => rest.cancelTableItemInTx(tx, { tenantId: s.tenantId, unitId: s.unitId, itemId, reason, byUserId: s.actor.userId }), { maxWait: 10_000, timeout: 20_000 });
+    if (!r.ok) return r.code === "NOT_FOUND" ? refuse("TABLE_NOT_FOUND") : r.code === "PAID" ? refuse("TABLE_ITEMS_CHANGED") : refuse("VALIDATION", r.reason);
     return { ok: true as const };
   });
 }
@@ -497,6 +538,8 @@ export async function registerSeatReservation(ctx: RegisterCtx, actor: RegisterA
         if (!tableId) return refuse("VALIDATION", MSG.reservationNoTable);
         const o = await rest.openTableSessionInTx(tx, { tenantId: s.tenantId, unitId: s.unitId, tableId, guestCount: row.partySize, openedByUserId: s.actor.userId, memberId: null });
         if (!o.ok) return refuse(o.code === "TABLE_INACTIVE" ? "TABLE_INACTIVE" : "TABLE_NOT_FOUND");
+        // POS P2.4 ▸ fix 2 F3: โต๊ะมีลูกค้าอยู่ (ไม่ได้เปิด session ใหม่) = ไม่นั่งรวมบิลของคนอื่น — ไม่เขียนอะไร ◂
+        if (!o.created) return refuse("VALIDATION", MSG.tableOccupied);
         await rest.markReservationSeatedInTx(tx, { tenantId: s.tenantId, unitId: s.unitId, reservationId, sessionId: o.sessionId, tableId });
         return { ok: true, sessionId: o.sessionId };
       },

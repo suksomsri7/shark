@@ -594,6 +594,7 @@ const REG_MESSAGE: Record<RegisterRefusalCode, string> = {
   TABLE_EMPTY: "โต๊ะนี้ยังไม่มีรายการที่ส่งครัวและยังไม่จ่าย — ไม่มีอะไรให้เช็คบิล",
   TABLE_ITEMS_CHANGED: "รายการของโต๊ะเปลี่ยนระหว่างเช็คบิล (มีรอบใหม่ หรืออีกเครื่องจ่ายไปแล้ว) — ตรวจยอดใหม่ ยังไม่ได้เก็บเงิน",
   TABLE_HAS_UNPAID: "โต๊ะนี้ยังมีรายการค้างจ่าย — เช็คบิลก่อนปิดโต๊ะ",
+  VERSION_CHANGED: "รอบร่างของโต๊ะนี้เพิ่งถูกแก้ ส่งครัว หรือทิ้งจากอีกเครื่อง — โหลดรอบร่างล่าสุดแล้วลองใหม่", // POS P2.4 ▸ fix 2 F1 ◂
 };
 const REG_ROLE_LABEL: Record<RegisterRole, string> = { OWNER: "เจ้าของร้าน", MANAGER: "ผู้จัดการ", STAFF: "แคชเชียร์" };
 
@@ -1326,6 +1327,8 @@ type RegResolvedLine = {
   priceSource: PriceSource | null;
   priceRule: { id: string; name: string } | null;
   listPriceSatang: number | null;
+  /** POS P2.4 ▸ fix 2 F6: บรรทัดบิลโต๊ะที่ตัดสต็อกไม่ได้ (สินค้าขายที่สาขานี้ไม่ได้แล้ว / กระจายสูตรไม่ได้) — บิลผ่าน · log STOCK_CUT_FAILED หลังบิลเกิด ◂ */
+  stockCutFail?: "NOT_VISIBLE" | "RECIPE";
 };
 
 /**
@@ -1422,17 +1425,19 @@ async function regPrice(
       let itemId: string | null = null;
       let serviceId: string | null = null;
       let components: { invItemId: string; qty: number }[] = [];
+      // POS P2.4 ▸ fix 2 F6: ไม่ปฏิเสธบิลของอาหารที่เสิร์ฟแล้ว — ตัดไม่ได้ = ธง (จอแสดง "ไม่ตัดสต็อก") + log หลังบิลเกิด ◂
+      let stockCutFail: "NOT_VISIBLE" | "RECIPE" | undefined = l.productId && !tv ? "NOT_VISIBLE" : undefined;
       if (tv) {
         itemId = tv.kind === "PRODUCT" && tv.invItemId && tv.trackStock ? tv.invItemId : null;
         serviceId = tv.kind === "SERVICE" && tv.invItemId ? tv.invItemId : null;
         const trc = rowRecipes.get(tv.id);
         if (trc?.live) {
           const x = expandRecipe({ lines: trc.lines, choiceLines: trc.choiceLines, choiceIds: l.choiceIds });
-          if (!x.ok) return regRefuse("INVALID_LINE", x.message, i);
-          components = x.components;
+          if (x.ok) components = x.components;
+          else stockCutFail = "RECIPE"; // บิลโดยไม่มีส่วนประกอบ
         }
       }
-      meta.push({ name: l.name, qty: l.qty, productId: l.productId, itemId, serviceId, note: null, options: l.options, components, weightGrams: null, priceSource: null, priceRule: null, listPriceSatang: null });
+      meta.push({ name: l.name, qty: l.qty, productId: l.productId, itemId, serviceId, note: null, options: l.options, components, weightGrams: null, priceSource: null, priceRule: null, listPriceSatang: null, ...(stockCutFail ? { stockCutFail } : {}) });
       continue;
     }
     const v = views.get(l.productId);
@@ -1575,6 +1580,7 @@ async function regPrice(
       ...(m.priceSource !== null ? { priceSource: m.priceSource } : {}),
       listPriceSatang: m.listPriceSatang,
       priceRule: m.priceRule ? { ...m.priceRule } : null,
+      ...(m.stockCutFail ? { stockCut: false as const } : {}), // POS P2.4 ▸ fix 2 F6 (บรรทัดบิลโต๊ะเท่านั้น) ◂
     };
   });
   const quote: RegisterQuoteTotals = {
@@ -1880,6 +1886,8 @@ type RegParsedSubmit = {
   /** POS P2.4 ▸ R7: แฮชชุดรายการจาก quote ของโต๊ะ (บังคับเมื่อมี tableSessionId) · แฮชของรายการที่ผูกบิลเดิม (เทียบคำขอซ้ำ) ◂ */
   expectedTableItemsHash: string | null;
   tableReplayHash?: string | null;
+  /** POS P2.4 ▸ fix 2 F6: บรรทัดบิลโต๊ะที่ตัดสต็อกไม่ได้ (จาก regPrice) — log หลังบิลเกิด ◂ */
+  tableStockCutFails?: { productId: string | null; code: "NOT_VISIBLE" | "RECIPE" }[];
 };
 
 /** POS P1.15: สตริงเสริม — ไม่ส่ง/null = null · สตริง 1…max ตัวที่สะอาด = ค่า · อื่น = undefined (ผู้เรียกปฏิเสธ) */
@@ -2330,7 +2338,7 @@ export async function submitRegisterSale(ctx: RegisterCtx, actor: RegisterActor,
     let res: RegisterSubmitResult;
     try {
       res = req.cart.table
-        ? await regSubmitTable(db, s, req, saleInput, intentRefs, startedAt) // POS P2.4 ▸ ยึดรายการ + บิล + ปิดโต๊ะ ธุรกรรมเดียว ◂
+        ? await regSubmitTable(db, s, { ...req, tableStockCutFails: p.resolved.flatMap((l) => (l.stockCutFail ? [{ productId: l.productId, code: l.stockCutFail }] : [])) }, saleInput, intentRefs, startedAt) // POS P2.4 ▸ ยึดรายการ + บิล + ปิดโต๊ะ ธุรกรรมเดียว ◂
         : intentRefs.length
           ? await regSubmitWithIntents(db, s, req, saleInput, intentRefs, startedAt)
           : await regCreate(db, s, req, saleInput, startedAt);
@@ -2505,6 +2513,7 @@ async function regSubmitTable(
 ): Promise<RegisterSubmitResult> {
   const t = req.cart.table!;
   const rest = await regRestaurant();
+  const failedCuts = (req.tableStockCutFails ?? []).filter((f) => !!f.productId);
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
       const saleId = await db.$transaction(
@@ -2531,6 +2540,10 @@ async function regSubmitTable(
       scheduleDrain();
       const row = await regLoadSale(db, s.tenantId, req.idempotencyKey);
       if (!row || row.id !== saleId) return regRefuse("INTERNAL");
+      // POS P2.4 ▸ fix 2 F6: บรรทัดที่ตัดสต็อกไม่ได้ — 1 บรรทัด log ต่อสินค้า (เฉพาะบิลที่เกิดในคำขอนี้ · ไม่มีข้อมูลลูกค้า) ◂
+      if (row.createdAt.getTime() >= startedAt) {
+        for (const f of failedCuts) console.error("[pos] STOCK_CUT_FAILED", { saleId, productId: f.productId, code: f.code });
+      }
       return regTableDuplicate(db, s, req, row, row.createdAt.getTime() < startedAt);
     } catch (e) {
       if (e instanceof RegIntentRefusal) {

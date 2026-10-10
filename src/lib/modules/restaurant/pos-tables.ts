@@ -6,6 +6,8 @@
 // สัญญา: ledger/pos-briefs/pos-brief-P2.4.md §2 R2 R3 R7 R8 R9 · ledger/wo-notes/pos-P2.4-oracle.md CONTROLLER-DECISION 2/4/8/9
 
 import { Prisma, type PrismaClient } from "@prisma/client";
+// POS P2.4 ▸ fix 2 F4c: คืนสต็อกเมนูตอนยกเลิกรายการ = ตัวเขียนเดียวกับ cancelOrderItem เดิม (catalog-legacy · F15.1) ◂
+import { restoreMenuStock } from "@/lib/modules/pos/catalog-legacy";
 import "./scope";
 
 type Db = Prisma.TransactionClient | PrismaClient;
@@ -283,6 +285,9 @@ export async function settleTableItemsInTx(
   });
   let sessionClosed = false;
   if (s.closeWhenPaid) {
+    // POS P2.4 ▸ fix 2 F2: ล็อกแถว session (FOR UPDATE) ก่อนนับ — รอบที่กำลังส่ง (lockOpenSessionInTx FOR SHARE) ต้อง commit ก่อน แล้วการนับจะเห็นรายการของรอบนั้น
+    //   (เดิม NO KEY UPDATE ไม่ชนกับ KEY SHARE ของ FK ⇒ ปิด session ทั้งที่รอบใหม่เพิ่ง commit) ◂
+    await tx.$queryRaw`SELECT id FROM "TableSession" WHERE id = ${s.sessionId} AND "tenantId" = ${s.tenantId} AND "unitId" = ${s.unitId} FOR UPDATE`;
     const remaining = await tx.restaurantOrderItem.count({ where: { tenantId: s.tenantId, unitId: s.unitId, order: { sessionId: s.sessionId }, saleId: null, kdsStatus: { not: "CANCELLED" } } });
     if (remaining === 0) {
       const sess = await tx.tableSession.updateMany({ where: { id: s.sessionId, tenantId: s.tenantId, unitId: s.unitId, status: "OPEN" }, data: { status: "CLOSED", closedAt: now } });
@@ -314,6 +319,46 @@ export async function unlinkTableSaleInTx(tx: Prisma.TransactionClient, s: Scope
   await tx.tableSession.update({ where: { id: sess.id }, data: { status: "OPEN", closedAt: null } });
   await tx.restaurantTable.updateMany({ where: { id: sess.tableId, tenantId: s.tenantId, unitId: s.unitId }, data: { dirtySince: null } });
   return { itemsReset: upd.count, sessionReopened: true };
+}
+
+/**
+ * POS P2.4 ▸ fix 2 F2: ถือ session ของรอบที่กำลังส่ง (FOR SHARE · ก่อน createOrderInTx ในธุรกรรมเดียวกัน) — ปิดโต๊ะ/จ่ายรายการสุดท้าย (FOR UPDATE)
+ *   รอจนรอบนี้ commit · session ไม่ OPEN = NOT_OPEN (รอบนี้ไม่ถูกเขียนลง session ที่ปิดแล้ว) · ไม่พบ/สาขาอื่น = NOT_FOUND ◂
+ */
+export async function lockOpenSessionInTx(tx: Prisma.TransactionClient, s: Scope & { sessionId: string }): Promise<{ ok: true } | { ok: false; code: "NOT_FOUND" | "NOT_OPEN" }> {
+  const rows = await tx.$queryRaw<{ status: string }[]>`
+    SELECT status::text AS status FROM "TableSession" WHERE id = ${s.sessionId} AND "tenantId" = ${s.tenantId} AND "unitId" = ${s.unitId} FOR SHARE`;
+  if (!rows[0]) return { ok: false, code: "NOT_FOUND" };
+  return rows[0].status === "OPEN" ? { ok: true } : { ok: false, code: "NOT_OPEN" };
+}
+
+/**
+ * POS P2.4 ▸ fix 2 F4c: ยกเลิกรายการจากโหมดโต๊ะ — ล็อกแถวรายการ (FOR UPDATE · เรียงคิวกับการยึดรายการตอนจ่าย) แล้วใช้กติกาเดียวกับ cancelOrderItem เดิม:
+ *   ไม่พบ/สาขาอื่น = NOT_FOUND · ผูกบิลแล้ว = PAID (ผู้เรียกตอบ TABLE_ITEMS_CHANGED) · ยกเลิกแล้ว/เสิร์ฟแล้ว = REFUSED + เหตุผลเดิม ·
+ *   ยังไม่เริ่มทำ (NEW) + เมนูนับสต็อก = คืนสต็อกเมนู (ตัวเขียนเดิม) · ประตูเดิม cancelOrderItem ไม่ถูกแตะ (R11) ◂
+ */
+export async function cancelTableItemInTx(
+  tx: Prisma.TransactionClient,
+  s: Scope & { itemId: string; reason: string; byUserId: string },
+): Promise<{ ok: true } | { ok: false; code: "NOT_FOUND" | "PAID" | "REFUSED"; reason: string }> {
+  const locked = await tx.$queryRaw<{ id: string }[]>`
+    SELECT id FROM "RestaurantOrderItem" WHERE id = ${s.itemId} AND "tenantId" = ${s.tenantId} AND "unitId" = ${s.unitId} FOR UPDATE`;
+  if (!locked.length) return { ok: false, code: "NOT_FOUND", reason: "ไม่พบรายการ" };
+  const it = await tx.restaurantOrderItem.findFirst({ where: { id: s.itemId, tenantId: s.tenantId, unitId: s.unitId } });
+  if (!it) return { ok: false, code: "NOT_FOUND", reason: "ไม่พบรายการ" };
+  if (it.saleId) return { ok: false, code: "PAID", reason: "รายการนี้ชำระแล้ว แก้ไม่ได้" };
+  if (it.kdsStatus === "CANCELLED") return { ok: false, code: "REFUSED", reason: "ยกเลิกไปแล้ว" };
+  if (it.kdsStatus === "SERVED") return { ok: false, code: "REFUSED", reason: "เสิร์ฟแล้ว ยกเลิกไม่ได้" };
+  if (it.menuItemId && it.kdsStatus === "NEW") {
+    const mi = await tx.menuItem.findFirst({ where: { id: it.menuItemId, tenantId: s.tenantId }, select: { stockQty: true } });
+    if (mi?.stockQty != null) await restoreMenuStock(tx, it.menuItemId, it.qty);
+  }
+  const u = await tx.restaurantOrderItem.updateMany({
+    where: { id: it.id, tenantId: s.tenantId, unitId: s.unitId, saleId: null, kdsStatus: it.kdsStatus },
+    data: { kdsStatus: "CANCELLED", cancelledAt: new Date(), cancelReason: s.reason, cancelledByUserId: s.byUserId },
+  });
+  if (u.count !== 1) return { ok: false, code: "PAID", reason: "รายการเปลี่ยนระหว่างยกเลิก" };
+  return { ok: true };
 }
 
 // ═══════════ เขียน: ปิด/เก็บโต๊ะ · ผูกสมาชิก (R9) ═══════════

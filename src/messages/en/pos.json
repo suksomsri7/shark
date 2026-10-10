@@ -375,7 +375,8 @@
       "tableSessionClosed": "This table is already closed — open the table again first",
       "tableEmpty": "This table has no unpaid items that were sent to the kitchen",
       "tableItemsChanged": "The table's items changed during checkout — review the total again; no money was taken",
-      "tableHasUnpaid": "This table still has unpaid items — check out before closing the table"
+      "tableHasUnpaid": "This table still has unpaid items — check out before closing the table",
+      "versionChanged": "This table's draft was just changed, sent or discarded on another device — reload the latest draft and try again"
     },
     "held": {
       "title": "Held bills",
@@ -2899,6 +2900,7 @@
       "subtotal": "Subtotal",
       "serviceCharge": "Service charge {rate}%",
       "net": "Total",
+      "stockNotCut": "Stock not cut",
       "serviceChargeDiffers": "Table mode uses the register service charge ({pos}%), not the restaurant setting ({restaurant}%)"
     },
     "actions": {
@@ -2949,6 +2951,9 @@
       "body": "Add zones and tables first, then table mode becomes available",
       "setup": "Set up tables",
       "noPermission": "Ask a manager to add tables"
+    },
+    "errors": {
+      "occupied": "This table has guests — close their bill before seating the reservation"
     },
     "toast": {
       "opened": "Table {table} opened",

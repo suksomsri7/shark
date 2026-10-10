@@ -29,6 +29,8 @@ export {
   setTableRequestStatusForPos,
   tableItemExistsForPos,
   tableCountForPos,
+  lockOpenSessionInTx, // POS P2.4 ▸ fix 2 F2 ◂
+  cancelTableItemInTx, // POS P2.4 ▸ fix 2 F4c ◂
   type PosFloorData,
   type PosFloorSession,
   type PosTableSession,
