@@ -1237,3 +1237,36 @@
 - 05:2xZ **P2.4 S fix 2** `wip/pos-p2.4` **74044c87** (โค้ด 7f915ad2): F1–F8 แก้ครบ · ORACLE-ADD D7/V5/R4 (red-before) → p2.4 **46/46** ×3 · ด่านเต็ม + money suites (shop-refund · hotel · ticket · subscription) เขียว · ข้อสงสัย: table-draft save ไม่ส่ง field = ยังใช้ทาง update-or-create เดิม → ให้ R2 ตัดสิน · **P2.4 R2 เปิด** (prompt `P2.4-R2.md`) · **P2.8 fix 2 ส่ง go แล้ว** (ทรี b) · เลน 3/3: P2.4 R2 (c อ่าน) · P2.8 fix2 (b) · P2.3U (p11) · builder 2 ✓ · ลำดับ: R2 → H (hunter) → merge
 - 05:3xZ **P2.4 R2 = MERGEABLE-AFTER-FIXES (เล็ก)**: F2–F8 แก้แล้ว · F1 ยังเหลือทาง save ไม่ส่ง field (N1) + heldCartId ไม่มี version (N2) + N3 throw แทน return → มติใน `pos-P2.4-review-R2.md` · prompt `P2.4-S-fix3.md` **รอช่อง builder** (b: P2.8 fix2 · p11: P2.3U) → fix3 → R3 สั้น → H → merge · เลน 2/3 (P2.4 เลนว่างรอ)
 - 05:4xZ **P2.3U ส่งงาน** `wip/pos-p2.3u` **0364d26a** (โค้ด 7e73e513): drawer tab BOM · ตาราง 06 ต้นทุน/กำไร/chips · chip ตัดสต็อกค้าง+retry · 10 bomDeduct live (ORACLE-EDIT p1.18:314 2c3cbe70 + **p2.3 ST4 27c6c8d5 — รับ** ตามมติ 8) · ไม่สร้าง: OptionsDialog 86 ต่อตัวเลือก (register ไม่ expose) · 16 label → P2.11 · ด่านเขียวหมด · incident authz --help ไร้ wrapper → ตรวจแล้ว ไม่มี .env ใน p11 + DB อยู่หลัง qc-env-guard = ไม่รั่ว · **P2.4 fix3 ส่ง go** (ช่องว่าง) · **chain61** = build 0364d26a ทรี d → vis62 ถ่ายเฉพาะ `--state` P2.3U (products ×6 th/en · register pending-cuts · settings-shark) บน QC5 · ถัดไป: ผู้ตรวจ P2.3U R (p11 อ่าน) · เลน 3/3: P2.8 fix2 (b) · P2.4 fix3 (c) · P2.3U R (p11)
+
+## 10 ต.ค. 05:5xZ — P2.3U ตรวจแล้ว: MERGEABLE-AFTER-FIXES (F1/F2 Medium · F4/F5 Low · nits) → รอบแก้ 1
+- รีวิว + rulings: `wo-notes/pos-P2.3U-review.md` · prompt รอบแก้: `pos-briefs/pos-prompt-accountB-P2.3U-fix.md` · builder เดิม (p11) ส่ง go แล้ว
+- ภาพ: vis62 (`--state` P2.3U บน 0364d26a, chain61 กำลัง build ทรี d) ใช้ดู state ใหม่ · ถ่ายเต็มจุด merge บน head หลังแก้ (chain62)
+- ลำดับ P2.3U: fix1 → gates → chain62 (build head ใหม่ ทรี d + ถ่ายเต็ม) → ผู้คุมดูภาพ 06 ×6 th/en + register pending-cuts + settings-shark เทียบ mockup → merge → 25/55 → TG
+- เลน 3/3: P2.8 fix2 (b, กำลังรันด่าน) · P2.4 fix3 (c, กำลังรันด่าน) · P2.3U fix1 (p11)
+
+## 10 ต.ค. 05:5xZ — P2.4 fix3 ส่งแล้ว (29ea05d5 · code d4ecad76 · p2.4 46/46 ×3 · red-before 45/46 D7) → เปิด R3+hunter รวมคนเดียว (อ่านอย่างเดียว, ทรี c)
+- prompt: `pos-briefs/pos-prompt-accountB-P2.4-H.filled.md` (Part A = ตรวจ N1–N3 + ORACLE-EDIT 5fdb8da7 · Part B = ล่าเลนเงิน) → ผลลง `wo-notes/pos-P2.4-hunt.md`
+- ถ้า R3 OK + hunt ไม่มี Medium+ → merge `wip/pos-p2.4` → ด่าน merge (p1.1 CONTROLLER-RUN) → deploy p24 migration บน QC5 → P2.4U ต่อคิว
+- เลน 3/3: P2.8 fix2 (b) · P2.3U fix1 (p11) · P2.4 R3+H (c อ่าน)
+
+## 10 ต.ค. 06:0xZ — chain61 เสร็จ: build 0364d26a ทรี d OK · vis62 30/30 เขียว (`shark-pos-d/.qc-shots/pos/p2.3u{,-en}/`)
+- ผู้คุมดูเอง: 06 recipe-view/edit/backfilled/incomplete-cost/table-chips ×1440 th + edit en + view มือถือ · register pending-cuts chip + แถบสถานะ "รอตัดสต็อก 1" · settings-shark การ์ดคลัง "ตัดตามสูตร BOM" เปิดแล้ว → **ตรง mockup 06** (ชิปขนาด/แท็บเทา = D9/D10 ที่รับแล้ว) · ไม่มีแก้ภาพในรอบแก้ 1
+- ค้าง: P2.3U fix1 (p11) → chain62 build head ใหม่ + ถ่ายเต็ม → merge
+
+## 10 ต.ค. 06:0xZ — P2.8 fix2 ส่งแล้ว (1db73b0c · code 1b84db06 · p2.8 57/57 ×3 · W9/W10 ORACLE-ADD red-before) → เปิด R2+hunter รวมคนเดียว (อ่านอย่างเดียว, ทรี b)
+- prompt: `pos-briefs/pos-prompt-accountB-P2.8-H.filled.md` (Part A = ตรวจ F1–F5 + W9/W10 · Part B = ล่าเลนเงิน) → ผลลง `wo-notes/pos-P2.8-hunt.md`
+- ถ้า R2 OK + ไม่มี Medium+ → merge `wip/pos-p2.8` (+ `git merge origin/main` ที่จุดนี้ แล้วตรวจ P1.1b ส่วน B + ORACLE-EDIT P1.3 S5.12) → ด่าน merge → deploy p28 migration บน QC5 → P2.8U ต่อคิว
+- เลน 3/3: P2.3U fix1 (p11) · P2.4 R3+H (c อ่าน) · P2.8 R2+H (b อ่าน)
+
+## 10 ต.ค. 06:0xZ — P2.3U fix1 ส่งแล้ว (a59655ac · code ac598727 · 17 บรรทัด · ด่านเขียวหมด · ไม่มี --state เปลี่ยนภาพ) → ผู้คุมตรวจ diff เอง: F1 กรอง chips ✓ · F2 canAccessUnit ✓ · F4 ล้าง cache ตัวแปร ✓ · banner nit ✓ · ORACLE-EDIT ข้อความล้วน (46 คง) ✓ → ไม่เปิด R2 แยก
+- chain62 ปล่อยแล้ว (unit pos-chain62-1791612474): build a59655ac ทรี d → vis63 ถ่ายเต็มจุด merge (products/register/sales/stock/settings × owner-th/cashier-th/owner-en + close/reports/shifts/receipt-public owner-th · wo `p23u-m`/`p23u-m-en`) · waiter พื้นหลัง bkemkfgua
+- หลัง vis63 เขียว: ด่าน merge P2.3U = ด่านของ fix1 (p11 head ac598727) ถือเป็นด่าน merge ได้ (ไม่มี commit อื่นบน session/pos ตั้งแต่ 1636da3c นอกจาก ledger) → ff/merge `wip/pos-p2.3u` → **25/55** → TG
+- เลน 2/3: P2.4 R3+H (c อ่าน) · P2.8 R2+H (b อ่าน) · p11 ว่าง
+
+## 10 ต.ค. 06:1xZ — P2.4 R3+H ผล: R3 OK · hunt = 2 Low (H1 void consumer ไม่ล็อก session/โต๊ะ → บิลค้างบน session ปิด / 2 session เปิดบนโต๊ะเดียว · H2 หลัง legacy merge void ไม่ปลด saleId) → **ตัดสินแก้ก่อน merge** (รอบแก้ 4 · V6a/V6b/V7 · 46→49) — `wo-notes/pos-P2.4-hunt.md` + prompt `pos-briefs/pos-prompt-accountB-P2.4-S-fix4.md`
+- หลัง fix4: hunter คนเดิมตรวจซ้ำ H1/H2 (R4 อ่าน) → merge → P2.4U (prompt `pos-prompt-accountB-P2.4U.md` เตรียมแล้ว · แทน __BASE__/__TREE__)
+- เลน 2/3: P2.4 fix4 (c) · P2.8 R2+H (b อ่าน) · chain62 (ทรี d build/ภาพ · ไม่นับเลน)
+
+## 10 ต.ค. 06:1xZ — P2.8 R2+H ผล: R2 OK · hunt = 2 Medium (H1 การยืนยันจ่ายฝั่งเว็บไม่เช็ค PosOrder ที่ reject/cancel → เงิน+สต็อกค้าง · H2 cancel ออเดอร์เว็บที่รับแล้วไม่ยกเลิก ShopOrder) + 3 Low (H3 handOver หลัง void · H4 race cancel/accept · H5 priceSource mirror) → **รอบแก้ 3 ก่อน merge** (W11/W12/+W13 · 57→59/60) — `wo-notes/pos-P2.8-hunt.md` + prompt `pos-briefs/pos-prompt-accountB-P2.8-S-fix3.md`
+- หลัง fix3: hunter คนเดิมตรวจซ้ำ (R3 อ่าน) → merge (+ `git merge origin/main` ที่จุดนี้) → deploy p28 บน QC5 → P2.8U
+- เลน 2/3: P2.4 fix4 (c) · P2.8 fix3 (b) · chain62 ทรี d (ไม่นับเลน) · p11 ว่าง
