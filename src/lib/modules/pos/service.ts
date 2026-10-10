@@ -888,8 +888,12 @@ export async function consumeSaleInventory(tenantId: string, unitId: string, sal
   // POS P2.3 ▸ fix round 1 (รีวิว F1 · มติผู้คุมงาน ทาง B): อ่านบิลใหม่หลังตัด — มีใบคืนแล้ว (คืนก่อนตัดสำเร็จ เช่นบิลค้างตัดแล้วคืนบางส่วน
   //   ⇒ ตัวรับคิวคืนเงินไม่พบ OUT จึงไม่รับของคืน) ⇒ รับคืนตามใบคืนทุกใบของบิลนี้ซ้ำ (คีย์ pos-refund-<ใบคืน>-<บรรทัด>[-<inv>] เดิม · idempotent)
   //   ⇒ retryPendingStockCuts ตัดครบบิลแล้วคืนส่วนที่คืนไปแล้ว = สุทธิเฉพาะส่วนที่ยังไม่คืน (ไม่ตัดเกิน · ไม่ทิ้งส่วนที่ยังไม่คืนให้ค้างตลอดไป) ◂
-  const after = await prisma.posSale.findFirst({ where: { id: saleId, tenantId }, select: { refundedSatang: true } });
-  if (after && after.refundedSatang > 0) await restockSaleRefunds(tenantId, inventorySystemId, saleId);
+  // POS P2.3 ▸ fix round 1 (รีวิว F6): บิลถูก void ระหว่างตรวจ PAID กับการตัด (retry ทำให้ช่องนี้เกิดได้จริง) ⇒ restoreVoidedInventory ตอน void
+  //   ไม่พบ OUT จึงไม่คืน ⇒ อ่านสถานะใหม่หลังตัด: VOIDED = คืนตอนนี้ (คีย์ pos-refund-<บิล>-<movement> · idempotent ถ้า void คืนไปแล้ว) ·
+  //   REFUNDED (คืนครบระหว่างนั้น) = refundedSatang > 0 ⇒ ทางใบคืนข้างล่าง (ไม่ใช้ทาง void — ตัวรับคิวอาจคืนด้วยคีย์ใบคืนไปแล้ว ⇒ คืนเบิ้ล) ◂
+  const after = await prisma.posSale.findFirst({ where: { id: saleId, tenantId }, select: { status: true, refundedSatang: true } });
+  if (after?.status === "VOIDED") await restoreVoidedInventory(tenantId, unitId, saleId);
+  else if (after && after.refundedSatang > 0) await restockSaleRefunds(tenantId, inventorySystemId, saleId);
   return true;
 }
 
