@@ -4,7 +4,7 @@
 //   D (≥1280): ไอคอน 14 ซ้ายป้าย 15px · padding 18/22/16 · สูง 58 · active = ตัวหนา + ขีดล่าง accent 2px
 //   T/M (768–1279): ไอคอน 19 เหนือป้ายสั้น 13px · padding 8/13/6 · กว้างขั้นต่ำ 64 · เลื่อนแนวนอนได้ถ้าไม่พอ
 //   C (<768): ไม่มีแถบนี้ (ภาพ 05ก)
-// 🔴 โต๊ะ · ออเดอร์ออนไลน์ = แบบ "เร็ว ๆ นี้" ของบ้าน (UI_STANDARD §2.9 · มติ Q13): จาง + ชิป ไม่ใช่ลิงก์ (ไม่พาไปหน้าเปล่า)
+// 🔴 ออเดอร์ออนไลน์ (และโต๊ะเมื่อสาขาไม่มีโหมดโต๊ะ) = แบบ "เร็ว ๆ นี้" ของบ้าน (UI_STANDARD §2.9 · มติ Q13): จาง + ชิป ไม่ใช่ลิงก์ (ไม่พาไปหน้าเปล่า)
 // 🔴 ป้ายนับออเดอร์ออนไลน์ "3" ซ่อนจนกว่า P2.8
 
 import Link from "next/link";
@@ -14,12 +14,15 @@ import { RegisterIcon, type RegisterIconName } from "./RegisterIcon";
 type TabKey = "sale" | "tables" | "online-orders" | "bills" | "shift" | "products" | "reports" | "settings";
 type Tab = { key: TabKey; msg: string; icon: RegisterIconName; href: string | null };
 
-export function RegisterModeTabs({ systemId }: { systemId: string }) {
+// POS P2.4U ▸ มติ 1 (Q5): "โต๊ะ" = ลิงก์จริงเมื่อ registerTableModeAction().visible (ผู้เรียกส่ง tablesHref) · ไม่ส่ง/null = ชิป "เร็ว ๆ นี้" เดิม ·
+//   active = แท็บของหน้านี้ (หน้า /pos/tables ส่ง "tables" ⇒ "หน้าขาย" กลายเป็นลิงก์กลับ) ◂
+export function RegisterModeTabs({ systemId, active = "sale", tablesHref = null, unitId }: { systemId: string; active?: "sale" | "tables"; tablesHref?: string | null; unitId?: string }) {
   const t = useTranslations("pos.register");
   const base = `/app/sys/${systemId}`;
+  const unitQ = unitId ? `?unit=${encodeURIComponent(unitId)}` : ""; // POS P2.4U ▸ โหมดโต๊ะ ◂
   const tabs: Tab[] = [
-    { key: "sale", msg: "sale", icon: "cash", href: null },
-    { key: "tables", msg: "tables", icon: "grid", href: null },
+    { key: "sale", msg: "sale", icon: "cash", href: active === "tables" ? `${base}/pos/register${unitQ}` : null }, // POS P2.4U ▸ โหมดโต๊ะ ◂
+    { key: "tables", msg: "tables", icon: "grid", href: tablesHref }, // POS P2.4U ▸ โหมดโต๊ะ ◂
     { key: "online-orders", msg: "onlineOrders", icon: "truck", href: null },
     { key: "bills", msg: "bills", icon: "doc", href: `${base}/pos/sales` },
     { key: "shift", msg: "shift", icon: "clock", href: `${base}/pos/close` },
@@ -27,7 +30,7 @@ export function RegisterModeTabs({ systemId }: { systemId: string }) {
     { key: "reports", msg: "reports", icon: "chart", href: `${base}/pos/reports` }, // POS HF-P1CLOSE ▸ หน้ารายงานเปิดแล้วตั้งแต่ P1.17U (O1) ◂
     { key: "settings", msg: "settings", icon: "gear", href: `${base}/pos/settings` }, // POS P1.10 U ▸ หน้าตั้งค่าหน้าขาย ◂
   ];
-  const soon = new Set<TabKey>(["tables", "online-orders"]);
+  const soon = new Set<TabKey>(tablesHref || active === "tables" ? ["online-orders"] : ["tables", "online-orders"]); // POS P2.4U ▸ โต๊ะ live ◂
   // ขีดล่าง 2px ทับเส้นขอบของแถบพอดี (mb-[-1px]) · โครงเดียวกันทุกแท็บ ต่างแค่สี/น้ำหนัก
   const cell =
     "-mb-px flex shrink-0 flex-col items-center justify-center gap-[3px] border-b-2 px-[13px] pb-1.5 pt-2 text-[13px] whitespace-nowrap min-w-16 xl:min-w-0 xl:flex-row xl:gap-[9px] xl:px-[22px] xl:pb-4 xl:pt-[18px] xl:text-[15px]";
@@ -45,7 +48,7 @@ export function RegisterModeTabs({ systemId }: { systemId: string }) {
             <span className="hidden xl:inline">{t(`tabs.${tab.msg}`)}</span>
           </>
         );
-        if (tab.key === "sale") {
+        if (tab.key === active) { // POS P2.4U ▸ แท็บของหน้านี้ (เดิม = "sale" เสมอ) ◂
           return (
             <span
               key={tab.key}

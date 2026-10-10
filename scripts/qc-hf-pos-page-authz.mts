@@ -95,6 +95,19 @@ console.log("── [static] หน้า/แอ็กชันใช้ผล�
       "const view = posRegisterView(posMembership(auth.active), await posUnits(tenantId, id), unitParam); if (!view.ok) notFound(); const units = view.units;",
       "const active = view.active;") && !reg.includes("units[0]"), "ครบ", "ไม่ครบ");
 
+  // ORACLE-ADD P2.4U (มติ 1): หน้าโต๊ะ /pos/tables — ไม่มีสาขา POS ที่เข้าได้ = notFound · posRegisterView ไม่ผ่าน (ไม่มี pos.sale.create ที่สาขา/ขอสาขาอื่น)
+  //   = การ์ดปฏิเสธ pos-tables-refusal ก่อนอ่านข้อมูลโต๊ะ (registerTableMode/registerTables) · ไม่มี assertCan
+  {
+    const tbl = norm("src/app/app/sys/[id]/pos/tables/page.tsx");
+    const gate = "const view = posRegisterView(m, linked, unitParam); if (!view.ok || !view.active) { return (";
+    const firstRead = Math.min(...["registerTableMode(ctx", "registerTables(ctx"].map((n) => (tbl.includes(n) ? tbl.indexOf(n) : Infinity)));
+    chk("T-1", "[static] หน้าโต๊ะ: ไม่มีสาขาที่เข้าได้ = notFound · posRegisterView ไม่ผ่าน = การ์ดปฏิเสธก่อนอ่านข้อมูลโต๊ะ (ไม่มี assertCan)",
+      has(tbl,
+        "const linked = await posUnits(tenantId, id); if (!linked.some((u) => canAccessUnit(m, u.id))) notFound();",
+        gate, 'data-testid="pos-tables-refusal"') &&
+        tbl.indexOf(gate) < firstRead && Number.isFinite(firstRead) && !tbl.includes("assertCan("), "ครบ", "ไม่ครบ");
+  }
+
   const ov = norm("src/app/app/sys/[id]/page.tsx");
   const posContent = ov.slice(ov.indexOf("async function PosContent"));
   chk("O-1", "[static] หน้าภาพรวม: posScope จาก posSalesScope · ไม่มีสิทธิ์ = ไม่ render PosContent",
@@ -325,6 +338,21 @@ try {
   chk("R-9", "POS ยังไม่ผูกสาขา → OWNER ยังเห็นหน้าชวนเชื่อม (active ว่าง)", !!vEmpty && vEmpty.ok && vEmpty.active === null, "ok/null", JSON.stringify(vEmpty));
   const vEmptyNo = view(P.noPerm, undefined, emptyUnits);
   chk("R-10", "POS ยังไม่ผูกสาขา → คนไม่มีสิทธิ์ ปฏิเสธ", !!vEmptyNo && !vEmptyNo.ok, "refused", JSON.stringify(vEmptyNo));
+
+  // ── 5) หน้าโต๊ะ /pos/tables (ORACLE-ADD P2.4U มติ 1) — ประตูเดียวกับหน้าขาย: 404 เมื่อเข้าสาขาใด ๆ ของ POS ไม่ได้ · การ์ดปฏิเสธเมื่อเข้าได้แต่ขายไม่ได้ ──
+  console.log("\n── /pos/tables ──");
+  const { canAccessUnit } = await import("@/lib/core/rbac");
+  const tablesPage = (m: M, param?: string): string => {
+    if (!linked.some((u) => canAccessUnit(m as never, u.id))) return "404";
+    const v = view(m, param);
+    return v && v.ok && v.active ? `page@${v.active.id === uA.id ? "A" : "B"}` : "card";
+  };
+  chk("T-2", "OWNER → หน้าโต๊ะสาขา A (control)", tablesPage(P.owner) === "page@A", "page@A", tablesPage(P.owner));
+  chk("T-3", "แคชเชียร์ A (pos.sale.create) → หน้าโต๊ะสาขา A", tablesPage(P.cashierA) === "page@A", "page@A", tablesPage(P.cashierA));
+  chk("T-4", "แคชเชียร์ A ขอ ?unit=B → การ์ดปฏิเสธ (ไม่อ่านโต๊ะของ B)", tablesPage(P.cashierA, uB.id) === "card", "card", tablesPage(P.cashierA, uB.id));
+  chk("T-5", "STAFF สาขา A ไม่มีสิทธิ์ POS → การ์ดปฏิเสธ (ไม่ใช่ 404 · O13)", tablesPage(P.noPermA) === "card", "card", tablesPage(P.noPermA));
+  const outsider: M = { role: "STAFF", unitAccess: ["unit-of-nobody"], permissions: { "pos.sale.create": true } };
+  chk("T-6", "เข้าสาขาใดของ POS นี้ไม่ได้เลย → 404", tablesPage(outsider) === "404", "404", tablesPage(outsider));
 } catch (e) {
   chk("CRASH", "harness ทำงานจนจบ", false, "จบปกติ", e instanceof Error ? e.message.slice(0, 160) : String(e));
 } finally {

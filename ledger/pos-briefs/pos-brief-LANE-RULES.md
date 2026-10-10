@@ -28,3 +28,6 @@ Another Claude account is running the CRM RUN on this machine right now (4 lanes
 ## ด่านจุด merge (บทเรียน 10 ต.ค. 08:3xZ — S2.33 แดงเงียบหลัง merge P2.3U)
 - ด่านจุด merge **ทุกใบ** (S และ U) ต้องมี `qc-pos-p1.1` (CONTROLLER-RUN · มี static G4 ตรวจไฟล์ `pos/catalog*.ts` และการ import ข้ามโมดูล) + `qc-pos-p1.3` + fitness ±env + typecheck — ไม่ว่าใบนั้นจะ "แตะแต่ UI"
 - ไฟล์ action ของ POS ห้ามตั้งชื่อขึ้นต้น `catalog-` ถ้า import โมดูลผู้เขียนเดิม (inventory · account · menu · order · shop · booking · register) — ใช้ `<topic>-actions.ts`
+
+## §HF-TX rule (10 Oct) — ตัวช่วยที่ตัดสิน "เป็นเจ้าของ tx" ด้วย `"$transaction" in client`
+ทุกจุดที่เรียก `createSale(input, tx)` (หรือตัวช่วยใน HT7: device · channel · payment-intent · catalog ×2 · stamp · ticket · point/internal · `ticket.cancelOrder`) จากใน tx ของผู้เรียก ต้องส่ง `callerTx(tx)` (`core/caller-tx.ts`) และเรียก `afterSaleCommitted(input, saleId)` หลัง `$transaction` resolve — ห้ามเขียน Proxy ซ่อน `$transaction` เอง (HT6 จับ) · ด่าน `qc-hf-tx` อยู่ในชุด merge ของใบที่แตะ `register.ts`/`order.ts`/`giftcard/service.ts`.

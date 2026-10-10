@@ -39,9 +39,11 @@ type Props = {
   onApply: (r: LineEditResult) => { key: string; values?: Record<string, string | number> } | null;
   onRemove: () => void;
   onClose: () => void;
+  /** POS P2.4U ▸ มติ 4: โหมดโต๊ะ = รอบร่างเก็บส่วนลดรายการไม่ได้ ⇒ ซ่อนช่องส่วนลด (ส่วนลดใส่ตอนเช็คบิล) ◂ */
+  noDiscount?: boolean;
 };
 
-export function LineEditor({ lineKey, name, qty, discount, note, focus, onApply, onRemove, onClose }: Props) {
+export function LineEditor({ lineKey, name, qty, discount, note, focus, onApply, onRemove, onClose, noDiscount = false }: Props) {
   const t = useTranslations("pos.register");
   const [q, setQ] = useState(String(qty));
   const [mode, setMode] = useState<"AMOUNT" | "PERCENT">(discount?.type ?? "AMOUNT");
@@ -51,8 +53,8 @@ export function LineEditor({ lineKey, name, qty, discount, note, focus, onApply,
   const qtyRef = useRef<HTMLInputElement>(null);
   const discRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
-    (focus === "qty" ? qtyRef : discRef).current?.focus();
-  }, [focus]);
+    (focus === "qty" || noDiscount ? qtyRef : discRef).current?.focus(); // POS P2.4U ▸ โหมดโต๊ะ ◂
+  }, [focus, noDiscount]);
 
   const n = /^\d+$/.test(q.trim()) ? Number(q.trim()) : NaN;
   const step = (d: number) => {
@@ -135,6 +137,7 @@ export function LineEditor({ lineKey, name, qty, discount, note, focus, onApply,
             </div>
           </div>
 
+          {!noDiscount && ( // POS P2.4U ▸ โหมดโต๊ะไม่มีส่วนลดรายการ ◂
           <div className="flex flex-col gap-1.5">
             <span className="text-[13px] text-[color:var(--color-muted)]">{t("editor.discount")}</span>
             <div className="flex gap-1 rounded-[13px] border p-1" role="group" aria-label={t("editor.discount")}>
@@ -159,6 +162,7 @@ export function LineEditor({ lineKey, name, qty, discount, note, focus, onApply,
               }}
             />
           </div>
+          )}
 
           <label className="flex flex-col gap-1.5 text-[13px] text-[color:var(--color-muted)]">
             {t("editor.note")}

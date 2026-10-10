@@ -107,6 +107,13 @@ type Props = {
   platform?: { name: string } | null;
   /** POS P1.13U ▸ สวิตช์ "ออกใบกำกับภาษีเต็มรูป" ท้ายจอ (ภาพ 02) — buyer = ผู้ซื้อที่ตั้งไว้ (สวิตช์เปิด) · ปิดสวิตช์ = onClear · แก้/เปิด = onOpen (กล่อง 15A) ◂ */
   taxInvoice?: { eligible: boolean; buyer: TaxInvoiceBuyerInput | null; onOpen: () => void; onClear: () => void } | null;
+  /** POS P2.4U ▸ มติ 8: วิธีจ่ายที่เลือกไว้ตอนเปิด (แจ้งเตือน PAY_PROMPTPAY "ยืนยันรับเงิน" = PROMPTPAY) · ไม่ส่ง = เงินสด (เดิม) · บิลแพลตฟอร์มชนะเสมอ ◂ */
+  initialMethod?: RegisterPayType;
+  /**
+   * POS P2.4U ▸ fix 1 F4 (มติผู้คุม): โหมด "ยืนยันพร้อมเพย์ที่แจ้งจากโต๊ะ" — วิธีจ่ายล็อกที่ initialMethod · แตะวิธีอื่น = onSwitch (ผู้เรียกปิดแล้วเปิดเช็คบิลปกติ) ·
+   * managerOnly = ด่านเดียวกับปุ่มยืนยันเองของ QR (manualConfirmRequiresManager และผู้ใช้ไม่มี pos.shift.manage) ⇒ ยืนยัน/แยกจ่ายไม่ได้ ◂
+   */
+  lockedMethod?: { managerOnly: boolean; onSwitch: (m: RegisterPayType) => void } | null;
 };
 
 /** แถวที่แยกจ่ายไว้แล้ว (ยังไม่ส่ง) · id = ตัวนับในกล่อง (ไม่ใช่คีย์บิล) */
@@ -174,9 +181,11 @@ export function PayDialog(p: Props) {
   const [rows, setRows] = useState<PayRow[]>([]);
   // POS P2.1U ▸ มติ 6: บิลแพลตฟอร์มเริ่มที่ช่อง "แพลตฟอร์ม" เต็มยอด (entry null = ยอดคงเหลือพอดี) ◂
   const platformOn = !!p.platform;
-  const [method, setMethod] = useState<RegisterPayType>(platformOn ? "PLATFORM" : "CASH");
+  // POS P2.4U ▸ มติ 8: initialMethod (ไม่ใช่เงินสด ⇒ ช่องจำนวนเริ่มที่ยอดคงเหลือพอดีแบบเดียวกับแตะช่องนั้น) ◂
+  const firstMethod: RegisterPayType = platformOn ? "PLATFORM" : (p.initialMethod ?? "CASH");
+  const [method, setMethod] = useState<RegisterPayType>(firstMethod);
   /** ค่าที่กรอก (บาท ทศนิยม ≤ 2) · null = ใช้ยอดคงเหลือพอดี (ค่าเริ่มของบัตร/โอน/พร้อมเพย์) */
-  const [entry, setEntry] = useState<string | null>(platformOn ? null : "");
+  const [entry, setEntry] = useState<string | null>(firstMethod === "CASH" ? "" : null);
   const [reference, setReference] = useState("");
   const [tipOn, setTipOn] = useState(false);
   const [tipText, setTipText] = useState("");
@@ -227,8 +236,9 @@ export function PayDialog(p: Props) {
   const piLocked = intentMode && pi.intent?.status === "PAID";
   /** POS P2.1U ▸ มติ 6: ช่องแพลตฟอร์ม = ยอดล็อกเต็มยอด (แป้น/ปุ่มด่วน/ช่องจำนวนปิด) ◂ */
   const platformLock = method === "PLATFORM";
-  const canConfirm = ready && (zero || plan.state === "complete") && (!intentMode || zero || remaining <= 0 || piPaid);
-  const canSplit = ready && !zero && plan.state === "partial" && !rowsFull && (!intentMode || piPaid);
+  const presetBlocked = !!p.lockedMethod?.managerOnly; // POS P2.4U ▸ fix 1 F4: ด่านผู้จัดการของการยืนยันเอง ◂
+  const canConfirm = ready && !presetBlocked && (zero || plan.state === "complete") && (!intentMode || zero || remaining <= 0 || piPaid);
+  const canSplit = ready && !presetBlocked && !zero && plan.state === "partial" && !rowsFull && (!intentMode || piPaid);
   /** F3b: เงินเข้าเกินยอดบิล (ยอดบิลลดลงหลังมีแถวที่เงินเข้าแล้ว) — ยืนยันไม่ได้ · ต้องคืนเงินเอง */
   const overPaid = remaining < 0 && rows.some((r) => r.via !== undefined);
   /** F3b: มีเงินเข้าแล้วในกล่องนี้ (ใบปัจจุบัน PAID หรือแถวที่มาจากใบ) ⇒ ปิดกล่องไม่ได้ (ยกเว้นเงินเกินยอด — ต้องออกไปคืนเงิน) */
@@ -285,6 +295,11 @@ export function PayDialog(p: Props) {
 
   const pickMethod = (m: RegisterPayType) => {
     if (platformOn && m !== "PLATFORM") return; // POS P2.1U ▸ มติ 6 (R5): บิลแพลตฟอร์มจ่ายได้ช่องเดียว ◂
+    // POS P2.4U ▸ fix 1 F4: วิธีจ่ายล็อก — แตะวิธีอื่น (ยังไม่มีแถวแยกจ่าย · ไม่ได้กำลังส่ง) = ให้ผู้เรียกเปิดเช็คบิลปกติ ◂
+    if (p.lockedMethod && m !== method) {
+      if (!busy && rows.length === 0) p.lockedMethod.onSwitch(m);
+      return;
+    }
     if (piLocked && m !== method) return flash("pay.intent.locked"); // มติ 2: ใบที่เงินเข้าแล้วเปลี่ยนวิธีไม่ได้
     setMethod(m);
     setEntry(m === "CASH" ? "" : null);
