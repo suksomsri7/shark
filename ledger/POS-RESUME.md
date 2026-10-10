@@ -1343,3 +1343,9 @@
 - R2 P2.4U = MERGEABLE · F8 → `pos-brief-HF-PP.md` (ใบ S เล็ก หลัง HF-TX)
 - จุดต่อ: vis65 ❌ 0 + ผู้คุมดู 03 ซ้ำ (panel-rounds/alerts/checkout-dialog/draft-unsent/floor) → P2.4U builder รายงาน head หลัง merge upstream → ผู้คุม merge → 26/55 → TG · HF-TX รายงาน → reviewer
 - 10:5xZ HF-TX ส่งแล้ว head 361ae11f (code 6319bc34, qc-hf-tx 17/17, red-before 6/17, p2.8 59/60 ST6 red = เทียบ merge-base → reviewer ตัดสิน a/b) → reviewer อ่านอย่างเดียว (a4d5ebc8, prompt `pos-prompt-accountB-HF-TX-R.md`) · build64 กำลัง build จริงแล้ว (10:48Z) · เลน 3/3: P2.4U gates (p11) · HF-TX reviewer · chain64b ภาพ
+
+### ⏱ 10 ต.ค. 11:3xZ — **P2.4U merged → session/pos c81f5bbf · 26/55 (47%)**
+- wip/pos-p2.4u d55366ba (code bdd7891a): R1 → fix1 (F1–F7 + V1 + harness) → R2 MERGEABLE (F8 → HF-PP) · vis64 เต็ม + vis65 ถ่ายซ้ำ ❌ 0 ผู้คุมดู 03 เต็ม PASS · merge upstream 0d581286 สะอาด · gates p1.1 180 · p1.3 128 · p2.4 49 · p2.3 46 · p2.8 60 · p1.18 81 · products 24 · authz 62 · fitness 50/50 ±env · fitness-pos 8 · typecheck 0 · --dry ×4 · ทรีนอก ledger = bdd7891a ทุกไบต์
+- HF-TX: review R1 MERGEABLE + hunt OK (H1/H2 Low → HF-GC) · fix round 1 (suite-only F1–F5 + owner lines) กำลังทำ → หลังรายงาน: merge upstream c81f5bbf → gates (qc-hf-tx 18 · p2.4 · p2.8 ST6 เขียวหลัง push · p1.1 · p1.3) → merge
+- ใบถัดไป: P2.8U (ทรี b, base c81f5bbf) เปิดเลน · ต่อด้วย HF-PP → HF-GC → P2.6 S
+- TG ส่ง 47% (26/55)
