@@ -265,7 +265,7 @@ const STATE_PLAN: { key: StateKey; devices: readonly Device[]; note: string }[] 
   // POS P2.2U ▸ มติ 5/11 (ท้ายแผน: fixture ราคา/โปรตั้งก่อนงานแรกของ P2.2U และคืนหลังงานสุดท้าย — สถานะก่อนหน้าไม่เห็นราคาโปร) ◂
   { key: "register-tile-rule", devices: ["desktop", "ipad", "mobile"], note: "โปร PRICE ที่กำลังใช้บนลาเต้ (fixture P2.2U) → ไทล์: ชิปชื่อโปร + ราคาปกติขีดฆ่า" },
   { key: "register-tile-notsold", devices: ["desktop", "ipad", "mobile"], note: "ครัวซองต์ (STORE, ทุกสาขา) ไม่ขาย → ไทล์ \"ไม่ขายหน้าร้าน\" (เพิ่มลงตะกร้าไม่ได้)" },
-  { key: "register-line-badges", devices: ["desktop", "ipad", "mobile"], note: "บิลพัก LINE MAN (holdRegisterCart) ลาเต้ + อเมริกาโน่ → เรียกคืน → ป้ายบรรทัด: ชื่อโปร (RULE) + \"ราคาตามช่องทาง\" (CHANNEL)" },
+  { key: "register-line-badges", devices: ["desktop", "ipad"], note: "(มือถือไม่ถ่าย — ตะกร้าว่างไม่มีปุ่มดูตะกร้า ⇒ ถึงบิลที่พักไม่ได้ เหมือน paydlg-platform P2.1U · ติดตาม P2.12) บิลพัก LINE MAN (holdRegisterCart) ลาเต้ + อเมริกาโน่ → เรียกคืน → ป้ายบรรทัด: ชื่อโปร (RULE) + \"ราคาตามช่องทาง\" (CHANNEL)" },
 ];
 /** POS P1.18U ▸ สถานะหน้าขายที่แคชเชียร์ QC ถ่ายไม่ได้ (เข้าสาขา fixture ไม่ได้ · ห้ามแก้ membership ของ seed) ◂ */
 const OWNER_ONLY_STATES: ReadonlySet<string> = new Set(["register-empty-catalogue"]);
