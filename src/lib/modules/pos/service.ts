@@ -858,6 +858,7 @@ export function lineConsumption(
   return out;
 }
 
+const STOCK_CUT_FAILED = "[pos] stock cut failed — sale committed without stock movement";
 // POS P1.7 ▸ export: register.ts เรียก createSale ในธุรกรรมของตัวเอง (ล็อกใบขอรับเงิน) ⇒ ทำงานหลัง commit ชุดเดียวกับตอน createSale เป็นเจ้าของ tx ◂
 // POS P2.3 ▸ R5 (CD5 · มติ Q7): ทุกบิลตัดเป็น "ชุดเดียว" — inventory.consumeBatch (tx เดียว · ล็อกเรียง id · คีย์ต่อส่วนเดิมทุกตัว ⇒ แถว movement
 //   เหมือนเดิมทุกค่า เปลี่ยนแค่การรวม tx) · ล้มทั้งชุด = ไม่มีส่วนใดถูกตัด (บิลนับเป็น "ค้างตัด" ใน registerStatus · retryPendingStockCuts ตัดซ้ำได้) ·
@@ -874,17 +875,25 @@ export async function consumeSaleInventory(tenantId: string, unitId: string, sal
   if (parts.length === 0) return true;
   const inventorySystemId = await systemForUnit(tenantId, unitId, "INVENTORY");
   if (!inventorySystemId) return true;
+  let batch: Awaited<ReturnType<typeof consumeBatch>>;
   try {
-    await consumeBatch(
+    batch = await consumeBatch(
       { tenantId, systemId: inventorySystemId },
       { sourceModule: "POS", refType: "PosSale", refId: saleId, parts: parts.map((p) => ({ itemId: p.itemId, qty: p.qty, idempotencyKey: p.key })) },
     );
   } catch (e) {
     // ตัดสต็อกล้ม → บิลชำระแล้ว ปล่อยผ่าน (ไม่ล้มการขาย)
     // HF-INV-1 ▸ R3.3: แต่ต้องทิ้งร่องรอย (เดิมเงียบ — ตอนนี้ล้มได้จริงเมื่อสินค้าถูกล็อกนาน ≈10 วิ) · ไม่มีข้อมูลลูกค้า ◂
-    console.error("[pos] stock cut failed — sale committed without stock movement", { saleId, parts: parts.length, code: stockErrorCode(e) });
+    // POS P2.3 ▸ fix round 2 (มติผู้คุมงาน AT-24.1): หนึ่งบรรทัดต่อรายการที่ตัดไม่ได้ {saleId, itemId, qty, code} แบบทางทีละบรรทัดเดิม + บรรทัดสรุปของชุด ◂
+    const code = stockErrorCode(e);
+    for (const p of parts) console.error(STOCK_CUT_FAILED, { saleId, itemId: p.itemId, qty: p.qty, code });
+    console.error(STOCK_CUT_FAILED, { saleId, parts: parts.length, code });
     return false;
   }
+  // POS P2.3 ▸ fix round 2 (AT-24.1): ส่วนที่ consumeBatch ข้าม (บริการ / ไม่มีในคลังของสาขา) = ตัดไม่ได้ ⇒ ทิ้งร่องรอยต่อรายการแบบทางเดิม
+  //   (ทางทีละบรรทัดก่อน P2.3 โยนแล้ว log ทีละรายการ) · code = เหตุผลที่ข้าม (SERVICE | NOT_FOUND) · บิลยังไม่ค้าง (มติ 4) ◂
+  const qtyOf = new Map(parts.map((p) => [p.key, p.qty]));
+  for (const sk of batch.skipped) console.error(STOCK_CUT_FAILED, { saleId, itemId: sk.itemId, qty: qtyOf.get(sk.key) ?? 0, code: sk.reason });
   // POS P2.3 ▸ fix round 1 (รีวิว F1 · มติผู้คุมงาน ทาง B): อ่านบิลใหม่หลังตัด — มีใบคืนแล้ว (คืนก่อนตัดสำเร็จ เช่นบิลค้างตัดแล้วคืนบางส่วน
   //   ⇒ ตัวรับคิวคืนเงินไม่พบ OUT จึงไม่รับของคืน) ⇒ รับคืนตามใบคืนทุกใบของบิลนี้ซ้ำ (คีย์ pos-refund-<ใบคืน>-<บรรทัด>[-<inv>] เดิม · idempotent)
   //   ⇒ retryPendingStockCuts ตัดครบบิลแล้วคืนส่วนที่คืนไปแล้ว = สุทธิเฉพาะส่วนที่ยังไม่คืน (ไม่ตัดเกิน · ไม่ทิ้งส่วนที่ยังไม่คืนให้ค้างตลอดไป) ◂
