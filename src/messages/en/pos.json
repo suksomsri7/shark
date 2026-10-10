@@ -1166,6 +1166,7 @@
     },
     "productsPage": {
       "desc": "Services/products — set up what the register sells",
+      "permissionDenied": "This account can’t set sale prices yet — prices apply to every branch. Ask the shop owner for the “Set product sale prices” permission (all branches).",
       "servicesTitle": "Services",
       "servicesIntro": "Services you can sell at the register — <b>add, reprice or remove them in the products/services system only</b> so the register and bookings always match",
       "servicesNoStock": "services don't deduct stock",
@@ -1241,6 +1242,7 @@
     "drawerOn": "Drawer",
     "drawerOff": "No drawer",
     "revokedChip": "Revoked",
+    "revokedFold": "Revoked ({count})",
     "panelTitle": "Settings · {name}",
     "paper": "Paper width",
     "paper58": "58 mm",

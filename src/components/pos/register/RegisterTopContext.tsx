@@ -59,10 +59,12 @@ function UnitChooser({ systemId, units, activeUnitId, label, mobile }: { systemI
     : "inline-flex h-8 w-full min-w-0 items-center gap-2.5 rounded-[8px] border px-2.5 text-[13px] text-[color:var(--color-ink-soft)] xl:gap-3";
   // B2.5 (§7.2.20 · 20A): เพดานความกว้างอยู่ที่ "กรอบ" ของชิป (flex item ตัวจริงในแถว) — เดิมอยู่ที่ปุ่มข้างใน div ⇒ div หดแต่ปุ่มไม่หด
   //   ล้นทับจุด "● ออนไลน์" ที่ 1024 · ไอคอน (RegisterIcon shrink-0 อยู่แล้ว) ไม่หด ⇒ ชื่อถูกตัด … ก่อน ลูกศรไม่โดนบีบ
-  const capW = mobile ? "min-w-0" : "min-w-0 max-w-[200px] lg:max-w-[240px] xl:max-w-[360px]";
+  // POS HF-P1CLOSE ▸ O1: มือถือ 390 (en) ชิปกะยาวเบียดชื่อสาขาจนเหลือ "⌄" เปล่า ⇒ ชิปสาขาหดได้แต่มีพื้นขั้นต่ำ 96px (กว้างได้ไม่เกินครึ่งแถว · ชื่อยาวตัด …)
+  //   ชิปกะหดและตัด … เหมือนกัน (fix รอบ 1 F4: เดิม shrink-0 ⇒ ชื่อสาขายาวดันแถวล้นจอ) ◂
+  const capW = mobile ? "min-w-[96px] max-w-[50%]" : "min-w-0 max-w-[200px] lg:max-w-[240px] xl:max-w-[360px]";
   if (units.length <= 1) {
     return (
-      <span data-testid="pos-reg-unit-switch" className={`${chip} ${mobile ? "" : capW}`} title={label}>
+      <span data-testid="pos-reg-unit-switch" className={`${chip} ${capW}`} title={label}>
         {!mobile && <RegisterIcon name="shop" size={14} />}
         <span className="truncate">{label}</span>
       </span>
@@ -121,15 +123,18 @@ export function RegisterTopContext(p: Props) {
       }`}
     />
   );
-  const shiftChip = (extra: string) => (
+  // POS HF-P1CLOSE ▸ O1: shrink = มือถือ — ชิปกะหดได้ ข้อความตัด … (เดิม shrink-0 ⇒ ชื่อสาขาโดนบีบเหลือ 0) ◂
+  const shiftChip = (extra: string, shrink = false) => (
     <span
       data-testid="pos-reg-status-shift"
-      className={`h-7 shrink-0 items-center gap-[5px] whitespace-nowrap rounded-[8px] border px-[11px] text-[13px] ${p.shift ? "text-[color:var(--color-ink-soft)]" : "text-[color:var(--color-muted)]"} ${extra}`}
+      className={`h-7 ${shrink ? "min-w-0" : "shrink-0"} items-center gap-[5px] whitespace-nowrap rounded-[8px] border px-[11px] text-[13px] ${p.shift ? "text-[color:var(--color-ink-soft)]" : "text-[color:var(--color-muted)]"} ${extra}`}
     >
       <RegisterIcon name="clock" size={12} />
-      {p.shift
-        ? `${t("status.shift", { no: p.shift.shiftNo, time: formatThaiTime(new Date(p.shift.openedAt)) })}${p.shift.deviceLabel ? ` · ${p.shift.deviceLabel}` : ""}`
-        : t("status.noShift")}
+      <span className="min-w-0 truncate">
+        {p.shift
+          ? `${t("status.shift", { no: p.shift.shiftNo, time: formatThaiTime(new Date(p.shift.openedAt)) })}${p.shift.deviceLabel ? ` · ${p.shift.deviceLabel}` : ""}`
+          : t("status.noShift")}
+      </span>
     </span>
   );
 
@@ -137,7 +142,7 @@ export function RegisterTopContext(p: Props) {
   const mobile = (
     <div className="flex items-center gap-4 px-5 pb-[14px] pt-2 md:hidden">
       <UnitChooser systemId={p.systemId} units={p.units} activeUnitId={p.activeUnitId} label={unitName} mobile />
-      {shiftChip("inline-flex")}
+      {shiftChip("inline-flex", true)}
       <span className="flex-1" />
       <button
         data-testid="pos-reg-scan-camera"

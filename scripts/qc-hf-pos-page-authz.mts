@@ -70,8 +70,19 @@ console.log("── [static] หน้า/แอ็กชันใช้ผล�
       "return closeDayCsv({ tenantId, systemId, unitIds: posScopeUnitIds(scope) }, date);") && !csv.includes("assertCan("), "ครบ", "ไม่ครบ");
 
   const prod = norm("src/app/app/sys/[id]/pos/products/page.tsx");
-  chk("P-7", "[static] หน้าสินค้า: posCanSetTenantPrice กับ posPriceUnitIds → notFound (ไม่มี assertCan)",
-    has(prod, "if (!posCanSetTenantPrice(posMembership(auth.active), await posPriceUnitIds(tenantId, id))) notFound();") && !prod.includes("assertCan("), "ครบ", "ไม่ครบ");
+  // ORACLE-EDIT HF-P1CLOSE (มติ O13 ของผู้คุม: แคชเชียร์ที่หน้าสินค้า = การ์ดปฏิเสธ HTTP 200 แบบสต็อก/กะ/รายงาน แทน 404) —
+  //   เดิม "ไม่ผ่าน posCanSetTenantPrice → notFound" · ใหม่ "ไม่ผ่าน → คืนการ์ดปฏิเสธ ก่อนอ่านข้อมูลสินค้า/บริการ (listPosProducts/posServices)" + ไม่มีสาขา POS ที่เข้าได้ = notFound
+  //   guard ตัวเดิม (posCanSetTenantPrice กับ posPriceUnitIds) · ไม่มี assertCan — กติกาอื่นเดิม
+  {
+    const gate = "const canPrice = posCanSetTenantPrice(m, await posPriceUnitIds(tenantId, id));";
+    const refuse = "if (!canPrice) return (";
+    const firstRead = Math.min(...["await listPosProducts(", "await posServices("].map((n) => (prod.includes(n) ? prod.indexOf(n) : Infinity)));
+    chk("P-7", "[static] หน้าสินค้า: posCanSetTenantPrice กับ posPriceUnitIds → การ์ดปฏิเสธก่อนอ่านข้อมูลสินค้า/บริการ · ไม่มีสาขา POS = notFound (ไม่มี assertCan)",
+      has(prod,
+        "const m = posMembership(auth.active); if (!(await posUnits(tenantId, id)).some((u) => canAccessUnit(m, u.id))) notFound();",
+        gate, refuse, 'data-testid="pos-products-refusal"') &&
+        prod.indexOf(gate) < prod.indexOf(refuse) && prod.indexOf(refuse) < firstRead && Number.isFinite(firstRead) && !prod.includes("assertCan("), "ครบ", "ไม่ครบ");
+  }
   const price = fnBody(actions, "export async function setItemSalePriceAction");
   chk("P-8", "[static] ตั้งราคา: posPriceUnitIds → ไม่ผ่าน throw ForbiddenError ก่อนเขียน (ไม่มี assertCan)",
     has(price,
