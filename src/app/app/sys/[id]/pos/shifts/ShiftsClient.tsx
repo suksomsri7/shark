@@ -33,6 +33,8 @@ import {
   shiftsPageDataAction,
   zReportAction,
 } from "@/lib/modules/pos/shift-actions";
+// POS P2.4U ▸ มติ 9 (Q10): บรรทัด "โต๊ะยังไม่ปิด N · ฿x" ในการ์ด X — แสดงอย่างเดียว ไม่บล็อกการปิดกะ ◂
+import { OpenTablesInfo } from "@/components/pos/tables/OpenTablesInfo";
 import { CARD, FigureBox, Kpi, NOTE_DENOMS, Pill, ShiftIcon, bahtToSatang, bkkDate, bkkDay, bkkHm, denomTotal, elapsed, money, signedMoney, type T } from "./shifts-ui";
 
 type Unit = { id: string; name: string };
@@ -539,6 +541,8 @@ export function ShiftsClient({ systemId, units, unitId, canManage, meName }: Pro
         </p>
       </div>
 
+      {/* POS P2.4U ▸ มติ 9 (Q10) ◂ */}
+      <OpenTablesInfo systemId={systemId} units={units.filter((u) => u.id === unitId)} />
       <div className="flex flex-col gap-1 @md:flex-row @md:items-center @md:justify-between">
         <h4 className="text-[13px] font-bold">{t("xHeading")}</h4>
         <button data-testid="pos-shift-refresh" type="button" className="min-h-11 text-left text-[12px] text-[color:var(--color-muted)] @md:text-right" disabled={busy} onClick={() => run(async () => true)}>

@@ -12,6 +12,9 @@ import { MoneyText } from "@/components/ui/MoneyText";
 import { ModuleTabs } from "@/components/module-tabs";
 import { CloseDayTools } from "./CloseDayTools";
 import { CloseDateField } from "./CloseDateField";
+// POS P2.4U ▸ มติ 9 (Q10): บรรทัด "โต๊ะยังไม่ปิด N · ฿x" ต่อสาขาในขอบเขต — แสดงอย่างเดียว ไม่บล็อกการปิดวัน ◂
+import { posUnits } from "@/lib/modules/pos/register";
+import { OpenTablesInfo } from "@/components/pos/tables/OpenTablesInfo";
 
 const fmtTime = (d: Date) =>
   new Intl.DateTimeFormat("th-TH", { timeZone: "Asia/Bangkok", hour: "2-digit", minute: "2-digit" }).format(d);
@@ -54,6 +57,7 @@ export default async function PosCloseDayPage({
     closeDaySummary({ tenantId, systemId: id, unitIds }, businessDate),
     closeDayBills({ tenantId, systemId: id, unitIds }, businessDate),
   ]);
+  const tableUnits = (await posUnits(tenantId, id)).filter((u) => !unitIds || unitIds.includes(u.id)).map((u) => ({ id: u.id, name: u.name })); // POS P2.4U ◂
 
   return (
     <div className="flex max-w-2xl flex-col gap-5">
@@ -98,6 +102,9 @@ export default async function PosCloseDayPage({
           </div>
         </div>
       </Section>
+
+      {/* POS P2.4U ▸ มติ 9 (Q10): โต๊ะที่ยังไม่ปิด (วันนี้เท่านั้น) ◂ */}
+      {businessDate === today && <OpenTablesInfo systemId={id} units={tableUnits} className="-mt-2 px-1" />}
 
       {/* แยกตามชนิดรายการ — ธุรกิจที่มีทั้งสินค้าและบริการต้องรู้ว่ารายได้มาจากทางไหน
           ซ่อนทั้งบล็อกถ้ายังไม่มียอด (ร้านที่ขายอย่างเดียวไม่ต้องเห็นตัวเลข 0 สามช่อง) */}
