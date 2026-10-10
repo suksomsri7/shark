@@ -80,3 +80,34 @@ Batch A started on head fce75068 (step 10 + merge); f56f6502 and 2136e3c2 (UI-on
 | visual-pos p2.4u --states --dry · tables/register × owner/cashier | 21 · 6 · 21 · 6 shots planned | 0 ×4 |
 | pnpm typecheck (iso · flock /tmp/pos-gate.lock · `gate-B-typecheck.log`) | 0 errors (head 2136e3c2) | 0 |
 Mid-way typecheck (before the merge, `typecheck-mid.log`): 0 errors.
+
+## Fix round 1 (review R1 `wo-notes/pos-P2.4U-review.md` F1–F7 · controller rulings 10 Oct 08:4xZ) · code d79ea868
+- **F1** `TablePanel.tsx:~330` collapsed "เสิร์ฟแล้วอีก N รายการ" row = count + names; the client-side `reduce` of `lineTotalSatang` is gone (no satang sum left in `components/pos/tables/**` except the PayDone/confirm Σ payMethods that mirror RegisterScreen). Round-sum follow-up → P2.5 (S DTO).
+- **F2** `TablesScreen.tsx:464` (panel "พาลูกค้านั่ง") and `ReservationsDialog.tsx:81` (sheet): a VALIDATION seat refusal runs `refreshFloor()` (now returns the fresh floor) and shows `tables.errors.occupied` when the **fresh** card has a session, else the generic text. Distinct code → P2.5.
+- **F3** `TablesScreen.tsx:610/631`: alerts resolve the card by `sessionId === request.sessionId` (PromptPay confirm and "เปิดโต๊ะ"); no match ⇒ toast `tables.alerts.stale` ("โต๊ะเปลี่ยนสถานะแล้ว — โหลดใหม่") + `refreshFloor()`. `refreshFloor` (`:202`) and the first requests fetch clear the alerts list when the requests call fails or is refused (no stale list).
+- **F4** (ruling: keep D4 + honour P1.7) `InterimPayDialog.tsx:113/239/298` new prop `lockedMethod {managerOnly, onSwitch}` (marked): method locked to the preset; tapping another method (no rows, not sending) ⇒ `onSwitch`; `managerOnly` disables confirm/split. `TableCheckout.tsx:375` `presetManagerOnly = preset && payIntent.manualRequiresManager && !payIntent.canManageShift` — the same rule as the register's QR manual-confirm button (`PayIntentPanel` `manualAllowed`); note `pos-tbl-checkout-preset` (`tables.checkout.presetLocked` + `pos.register.pay.intent.managerOnly`). `TablesScreen.tsx:754/782` switch ⇒ checkout re-keyed (new idempotency key) with `preset:false` (payment intents on).
+- **F5** `TableCheckout.tsx:113` `lastSubtotal` ref (initial quote, then every good quote) feeds `wantBp` for AMOUNT discounts (restore path / failed quote no longer show 0 %).
+- **F6** `RegisterScreen.tsx:922/928` `changeCart`/`updateCart` clear `tblErr` in table mode (marked).
+- **F7** gate logs stamp `head=` (+ dirty count) per gate (`scratchpad/p24u/gates.sh`); single-line `// POS P2.4U ◂` markers completed to `▸ … ◂` (RegisterModeTabs, RegisterScreen, LineEditor, RegisterTopContext, close/register pages, legacy pages); legacy floor ternary branches marked.
+- New keys (th/en): `tables.alerts.stale`, `tables.checkout.presetLocked`. No testid change for interactive elements (new display-only `pos-tbl-checkout-preset`) ⇒ inventory unchanged. No server code.
+
+Rendering impact per `--state`: **tables-panel-rounds** (collapsed row loses the ฿ figure) · **tables-checkout-dialog** — unchanged in normal mode; the preset note shows only from a PAY_PROMPTPAY alert (no state shoots it) · **tables-alerts** — none visually (behaviour only) · **register-table-mode** — none (F6 only clears a highlight after an edit). Re-shoot per ruling: `tables-panel-rounds,tables-alerts,tables-checkout-dialog`.
+
+Gates (fix head · logs `scratchpad/p24u/runs/fix1/gate-F1-*.log` + `gate-typecheck.log`, header per gate):
+| gate (code 22d68cb0 · d79ea868 for the first suite) | result | exit |
+|---|---|---|
+| typecheck (`fix1/gate-typecheck.log`) | 0 errors on 22d68cb0 (d79ea868 had 2 × TS2448 — `presetManagerOnly` used before declaration, fixed in 22d68cb0 · `gate-typecheck-d79ea868-red.log`) | 0 |
+| qc-pos-p2.4 | 49/49 · PAR 4/4 | 0 |
+| qc-pos-p1.3 · p1.18 (U · ST7 0) · products · page-authz | 128/128 · 81/81 · 24/24 · 62/62 | 0 ×4 |
+| qc-restaurant · -money · -pay · -void | pass · 6/6 · 19/19 · 11/11 | 0 ×4 |
+| qc-pos-p1.1 (merge-gate rule) | 177/178 — only **S2.33** red (base red until MAIN-MERGE lands the `recipe-actions.ts` rename; not touched here) | 1 |
+| fitness no env · QC4 env · fitness-pos | 41/41 · 41/41 · 8/8 | 0 ×3 |
+| visual `p2.4u --states --dry` tables/register × owner/cashier | 21 · 6 · 21 · 6 shots | 0 ×4 |
+`dirty=2` in the headers = this notes file + the spec (ledger, uncommitted while the batch ran).
+
+### V1 (controller vis64 · daa0296d · QC5) + harness item
+- **V1** `TablePanel.tsx` new prop `noShrink` (`shrink-0` instead of `min-h-0` on both sections); `TablesScreen.tsx` `panelOf(true)` for the xl `pos-tbl-side` column only — the column scrolls as one (panel, then "แจ้งเตือนจากโต๊ะ"), the iPad/mobile `pos-tbl-panel-frame` keeps `panelOf(false)`. Commit 6a1e0fd1.
+- **tables-checkout-dialog ❌ on daa0296d — causes:** owner: with the shrinking panel the เช็คบิล button sat under the alerts list rendered after it, so the harness click landed on the alerts (V1 fixes it). Cashier: `visual-pos` minted the owner session only when `--page register` was in the run; a cashier `--page tables` run opened the device shift with the **cashier's** cookies (no shift rights) ⇒ no shift ⇒ `checkoutBlock` "เปิดกะก่อนเริ่มขาย" (also seen over the alerts in cashier tables-draft-unsent). Fixed in the harness (5c09ef4e: owner session for `pages.includes("tables")` too). F2/F3/F4 do not affect this state's normal path.
+- Rendering changed by V1: `tables-floor` (1440, selected panel), `tables-panel-rounds`, `tables-draft-unsent`, `tables-checkout-dialog`, `tables-alerts` at 1440 (alerts now below the full panel); 1024/390 unchanged.
+- Post-V1 gates (code head 5c09ef4e · `scratchpad/p24u/runs/fix1/v1/`): typecheck 0 errors · qc-pos-p1.18 81/81 (ST7 0) · qc-pos-p2.4 49/49 PAR 4/4 · visual `p2.4u --states --dry --page tables` owner/cashier rc 0.
+- Controller re-shoot (QC5): `--state tables-panel-rounds,tables-alerts,tables-checkout-dialog,tables-draft-unsent` (owner/cashier th + owner en) and register th `--state register-table-mode,register-billtype-menu`.
