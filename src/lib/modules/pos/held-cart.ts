@@ -230,6 +230,8 @@ async function holdCore(db: Db, s: Scoped, cartRaw: unknown, label: string | nul
 // ตะกร้า = บรรทัดสินค้า/รายการกำหนดเองเท่านั้น (คูปอง · สิทธิ์ที่เลือก · ส่วนลดท้ายบิล/บรรทัด · สมาชิก · ช่องทาง · สินค้าชั่ง = VALIDATION) ·
 // หมายเหตุบรรทัดถูกเก็บ (ไปถึงครัวตอนส่งรอบ) · ลำดับปฏิเสธ: ขอบเขต (TABLE_NOT_FOUND) → รูปตะกร้า (VALIDATION) → session ไม่ OPEN (TABLE_SESSION_CLOSED)
 // ปฏิเสธ = ไม่เขียนอะไร · ราคาที่เก็บ = quote ของเซิร์ฟเวอร์บนช่องทางของโต๊ะ (แสดงอย่างเดียว · ราคาจริงคิดตอนส่งครัว)
+/** POS P2.4 ▸ fix 3 N1: ข้อความของ VALIDATION เมื่อไม่ระบุร่าง (จอใช้ pos.tables.errors.draftModeRequired) ◂ */
+const DRAFT_MODE_REQUIRED = "ต้องระบุร่างและรุ่นของร่าง";
 const DRAFT_FORBIDDEN_KEYS = ["couponCode", "memberChoices", "billDiscount", "memberId", "channelId", "tableSessionId"] as const;
 async function holdTableDraft(
   db: Db,
@@ -241,7 +243,9 @@ async function holdTableDraft(
 ): Promise<HoldRegisterCartResult> {
   if (typeof tableSessionIdRaw !== "string" || !tableSessionIdRaw || tableSessionIdRaw.length > 200) return refuse("VALIDATION", "รหัสโต๊ะไม่ถูกต้อง");
   // POS P2.4 ▸ fix 2 F1: โหมดของการพัก — newDraft:true = สร้างรอบร่างใหม่ (ต้องไม่มี HELD อยู่) · heldCartId/expectedVersion = แก้รอบร่างเดิมแบบมีเงื่อนไข
-  //   (ไม่ตรง/ถูกส่งครัว/ถูกทิ้ง = VERSION_CHANGED · ไม่มีวันสร้างแถวใหม่) · ไม่ส่งทั้งสามอย่าง = ทาง P2.4 S เดิม (สร้างหรือแก้แถว HELD) — จอ P2.4U ต้องส่งเสมอ ◂
+  //   (ไม่ตรง/ถูกส่งครัว/ถูกทิ้ง = VERSION_CHANGED · ไม่มีวันสร้างแถวใหม่) ◂
+  // POS P2.4 ▸ fix 3 N1 N2: ต้องระบุโหมดเสมอ — ไม่ส่ง newDraft และไม่ส่ง heldCartId+expectedVersion = VALIDATION · heldCartId ต้องคู่ expectedVersion
+  //   (ทาง "แก้หรือสร้าง" แบบไม่ระบุร่างของ fix 1 ถูกลบ: เขียนทับร่างของอีกเครื่อง / สร้างร่างซ้ำหลังส่งครัว) ◂
   const ev = opt.expectedVersion;
   const hid = opt.heldCartId;
   const nd = opt.newDraft;
@@ -256,6 +260,7 @@ async function holdTableDraft(
   const sess = await rest.tableSessionForPos(db, { tenantId: s.ctx.tenantId, unitId: s.ctx.unitId, sessionId: tableSessionIdRaw });
   if (!sess) return registerRefuse("TABLE_NOT_FOUND");
   if (!isRecord(cartRaw)) return refuse("VALIDATION");
+  if (!newDraft && (draftId === null || expectVersion === null)) return registerRefuse("VALIDATION", DRAFT_MODE_REQUIRED); // POS P2.4 ▸ fix 3 N1 N2 ◂
   for (const k of DRAFT_FORBIDDEN_KEYS) if (cartRaw[k] !== undefined && cartRaw[k] !== null) return refuse("VALIDATION", "รอบร่างของโต๊ะเก็บได้เฉพาะรายการ — ส่วนลด คูปอง สมาชิก ใส่ตอนเช็คบิล");
   const rawLines = Array.isArray(cartRaw.lines) ? (cartRaw.lines as unknown[]) : null;
   if (!rawLines) return refuse("VALIDATION");
@@ -311,31 +316,11 @@ async function holdTableDraft(
       throw e;
     }
   }
-  if (draftId !== null || expectVersion !== null) {
-    const cond = { ...where, ...(draftId !== null ? { id: draftId } : {}), ...(expectVersion !== null ? { version: expectVersion } : {}) };
-    const target = await db.posHeldCart.findFirst({ where: cond, select: { id: true } });
-    if (!target) return registerRefuse("VERSION_CHANGED");
-    const upd = await db.posHeldCart.updateMany({ where: { ...cond, id: target.id }, data: { ...data, heldByUserId: s.actor.userId, version: { increment: 1 } } });
-    if (upd.count !== 1) return registerRefuse("VERSION_CHANGED");
-    return done(target.id);
-  }
-  for (let attempt = 0; attempt < 3; attempt++) {
-    // พักซ้ำ = แถวเดิม (version + 1) · ไม่มีแถว HELD = สร้าง (ชนกันสองเครื่อง = partial unique P2002 → รอบถัดไปแก้แถวของผู้ชนะ)
-    const upd = await db.posHeldCart.updateMany({ where, data: { ...data, heldByUserId: s.actor.userId, version: { increment: 1 } } });
-    if (upd.count === 0) {
-      try {
-        await db.posHeldCart.create({ data: { ...rowWhere(s), ...data, tableSessionId: sess.id, heldByUserId: s.actor.userId }, select: { id: true } });
-      } catch (e) {
-        if ((e as { code?: unknown } | null)?.code === "P2002") continue;
-        throw e;
-      }
-    }
-    const row = await db.posHeldCart.findFirst({ where, select: ROW_SELECT });
-    if (!row) continue; // ถูกส่งครัว/ทิ้งระหว่างทาง — ลองใหม่ (สร้างแถวใหม่)
-    const [heldCart] = await summaries(db, [row]);
-    return { ok: true, heldCart: heldCart! };
-  }
-  return refuse("INTERNAL");
+  // แก้ร่างเดิม: ต้องตรงทั้ง id และเวอร์ชัน (updateMany แบบมีเงื่อนไข — สองเครื่องเวอร์ชันเดียวกัน = ผู้ชนะคนเดียว)
+  const cond = { ...where, id: draftId as string, version: expectVersion as number };
+  const upd = await db.posHeldCart.updateMany({ where: cond, data: { ...data, heldByUserId: s.actor.userId, version: { increment: 1 } } });
+  if (upd.count !== 1) return registerRefuse("VERSION_CHANGED");
+  return done(draftId as string);
 }
 
 /**

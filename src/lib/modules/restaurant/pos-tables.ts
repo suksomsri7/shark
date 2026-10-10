@@ -357,7 +357,8 @@ export async function cancelTableItemInTx(
     where: { id: it.id, tenantId: s.tenantId, unitId: s.unitId, saleId: null, kdsStatus: it.kdsStatus },
     data: { kdsStatus: "CANCELLED", cancelledAt: new Date(), cancelReason: s.reason, cancelledByUserId: s.byUserId },
   });
-  if (u.count !== 1) return { ok: false, code: "PAID", reason: "รายการเปลี่ยนระหว่างยกเลิก" };
+  // POS P2.4 ▸ fix 3 N3: ไม่ควรเกิด (ถือ FOR UPDATE อยู่) — throw ให้ธุรกรรมย้อน (ไม่มีคืนสต็อกโดยไม่ได้ยกเลิก) ◂
+  if (u.count !== 1) throw new Error("cancelTableItemInTx: item changed under FOR UPDATE — rolled back");
   return { ok: true };
 }
 

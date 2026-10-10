@@ -2953,7 +2953,8 @@
       "noPermission": "Ask a manager to add tables"
     },
     "errors": {
-      "occupied": "This table has guests — close their bill before seating the reservation"
+      "occupied": "This table has guests — close their bill before seating the reservation",
+      "draftModeRequired": "Specify the draft and its version"
     },
     "toast": {
       "opened": "Table {table} opened",
