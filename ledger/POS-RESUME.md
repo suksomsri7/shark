@@ -1299,3 +1299,8 @@
 - main 71a1f363 vs session/pos: 1430 ไฟล์ · ชน 7 ไฟล์ · 4 migrations (crm_perf_indexes + **account_journal_no_sequence/alloc_lock v1/v2 = O24 แก้ฝั่งบัญชี**) · ไม่มี package/lock เปลี่ยน → เปิดเลน MAIN-MERGE บนทรี b (`pos-briefs/pos-prompt-accountB-MAIN-MERGE.md`) → ผล: merge head + ด่านเต็ม → ผู้คุม ff session/pos → QC5 deploy 4 migrations → O24/P2.9 ปลดบล็อก?
 - HF-TX รอ MAIN-MERGE (builder ≤ 2) · P2.8U รอ MAIN-MERGE merge
 - เลน 2/3: P2.4U (p11) · MAIN-MERGE (b)
+
+## 10 ต.ค. 08:2xZ — P2.4U ส่งแล้ว (daa0296d · code 2136e3c2 · ด่านเขียวหมด · authz 62 · deviations 1–7 ตัดสินแล้วในรีวิว prompt: รับทั้งหมด · D4 → P2.12 "ใบกำกับภาษีบนเช็คบิลโต๊ะก่อน go-live")
+- เปิด: ผู้ตรวจ P2.4U R (p11 อ่าน · `pos-prompt-accountB-P2.4U-R.md`) · **HF-TX builder** (ทรี c · base d85ea5c3 · `pos-prompt-accountB-HF-TX-S.filled.md`) · chain63 (ทรี d build daa0296d → vis64 = tables ×7 states × owner/cashier/en + register table-mode/billtype + ถ่ายซ้ำ register default/cart3/line-editor + shifts-current + close)
+- ลำดับ merge ถัดไป: MAIN-MERGE (b) → ff session/pos → QC5 deploy 4 migrations ของ main → HF-TX merge upstream → P2.4U (หลัง R + ภาพ + ผู้คุมดู 03) → **26/55**
+- เลน 3/3: MAIN-MERGE (b) · HF-TX (c) · P2.4U R (p11 อ่าน) · chain63 (d ไม่นับเลน)
