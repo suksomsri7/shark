@@ -65,6 +65,8 @@ const CHECKS: readonly Def[] = [
   D("I6", "X2", "[R3] ช่องทางของสาขา B / ร้าน T2 / ที่ archive / id มั่ว / channelCode ไม่มีจริง → CHANNEL_INVALID · ไม่เขียน"),
   D("I7", "-", "[R3 R7] พัก CHAT → ingestOrder CHANNEL_PAUSED · พัก WEB ของสาขาเว็บ → ingestInTx CHANNEL_PAUSED · พัก LINEMAN (MANUAL) → ok · เลิกพัก"),
   D("I8", "X3", "[R3 มติ 8] บรรทัดกำหนดเอง (ชื่อ+ราคา) โดย STAFF ไม่มี pos.sale.priceOverride → PERMISSION_DENIED · OWNER → ok (productId null · 3000) · NOPERM → PERMISSION_DENIED · 101 บรรทัด → VALIDATION"),
+  // ORACLE-ADD (ผู้คุมงาน มติ 25 = บรีฟ §9 มติ 16 · 10 ต.ค.) — 86 ตอนรับเข้า (ตัวอ่าน catalog ชุดเดียวกับไทล์/quote ของหน้าขาย)
+  D("I9", "X5", "[R3 มติ 16 · ORACLE-ADD 25] 86 ตอนรับ: ต้มยำปิดขายที่สาขา A → ingestOrder PRODUCT_UNAVAILABLE lineIndex 1 · สินค้าเว็บสาขา B (ผูก POS) ปิดขายที่ B → createOrder ของเว็บร้าน throw (ingestInTx PRODUCT_UNAVAILABLE) · ไม่มี PosOrder/ShopOrder/บิล/outbox · เปิดขายคืน → รับได้ทั้งสองประตู"),
   // ── A วงจร ──
   D("A1", "-", "[R2 R5 R10] GRAB NEW → accept (STAFF2) → markPreparing → markReady → handOver: HANDED · PosOrderEvent toStatus NEW ACCEPTED PREPARING READY HANDED (from null…READY · actor ของ accept = STAFF2) · outbox received/accepted/ready/completed อย่างละ 1 · version +4 · acceptedAt readyAt handedAt closedAt"),
   D("A2", "X1", "[R2 R6 X1] รับพร้อมกัน 2 คำขอ → ok 1 + ORDER_STATE_CHANGED 1 (order.status ACCEPTED) · บิล 1 · รับซ้ำอีกครั้ง → ปฏิเสธ บิลยัง 1 · PosOrder + PosOrderEvent(ACCEPTED) + PosSaleLine xmin เดียวกัน (ธุรกรรมเดียว)"),
@@ -1455,6 +1457,55 @@ async function runDb() {
     else if (!cl || cl.productId !== null || cl.unitPriceSatang !== 3000 || cl.lineTotalSatang !== 3000) p.push(`บรรทัดกำหนดเอง ${short(cl && { p: cl.productId, u: cl.unitPriceSatang }, 60)}`);
     ORD.CUS = ok.id;
     chk("I8", good(p), "PERMISSION_DENIED ×2 · VALIDATION · OWNER ok", why(p));
+  });
+
+  await step("I9", async () => {
+    const p: string[] = [];
+    const setAvail = (productId: string, unitId: string, on: boolean) => call(catalog, "updateProduct", cc("OWNER"), productId, { availability: { [unitId]: on } });
+    const shopCount = async () => Number(await P.shopOrder.count({ where: { tenantId: T, unitId: U.B } }).catch(() => -1));
+    let spB = "";
+    if (!fx)
+      try {
+        spB = String((await shop.createProduct(sctx("B"), { name: `ของปิดขาย ${RAND}`, priceSatang: 5000 }))?.id ?? "");
+      } catch (e) {
+        p.push(`(ตั้งต้น) สินค้าเว็บสาขา B throw ${(e as Error).message.slice(0, 60)}`);
+      }
+    const rowB = spB ? String((await P.shopProduct.findUnique({ where: { id: spB } }).catch(() => null))?.posProductId ?? "") : "";
+    if (!fx && !rowB) p.push("(ตั้งต้น) สินค้าเว็บสาขา B ไม่มีแถวแคตตาล็อก");
+    const before = await counts();
+    const sb0 = await shopCount();
+    const o1 = fx ? null : await setAvail(PR.tomyum!, U.A!, false);
+    const o2 = fx || !rowB ? null : await setAvail(rowB, U.B!, false);
+    for (const [l, o] of [["ต้มยำ A", o1], ["สินค้าเว็บ B", o2]] as const) if (o?.ok === false) p.push(`(ตั้งต้น) ปิดขาย ${l} → ${codeOf(o)}`);
+    const r = fx ? null : await ingest("A", "STAFF", { channelId: CH.LM, externalRef: "LM-86A", idempotencyKey: newKey("86a"), lines: [ln("padthai", 1), ln("tomyum", 1)], customer: CUST, fulfilment: "DELIVERY", startStatus: "NEW" });
+    if (!refused(r, "PRODUCT_UNAVAILABLE") || r?.lineIndex !== 1) p.push(`ingestOrder ต้มยำที่ปิดขาย → ${codeOf(r)} lineIndex ${short(r?.lineIndex)} (คาด PRODUCT_UNAVAILABLE 1)`);
+    let webThrew = "";
+    if (!fx && spB)
+      try {
+        const so = await shop.createOrder(sctx("B"), { customerName: "คุณปิดขาย", customerPhone: "0811118686", lines: [{ productId: spB, qty: 1 }] });
+        p.push(`createOrder ของเว็บที่ปิดขายผ่าน (${short(so?.code, 20)}) — คาด throw`);
+      } catch (e) {
+        webThrew = (e as Error).message;
+      }
+    if (!fx && spB && !/หมด|ปิดขาย/.test(webThrew)) p.push(`createOrder throw ข้อความ ${short(webThrew, 60)} (คาดแจ้งว่าหมด/ปิดขาย)`);
+    const mid = await counts();
+    const d = sameCounts(before, mid);
+    if (d.length) p.push(`ปฏิเสธแล้วยังเขียน: ${d.join(", ")}`);
+    if ((await shopCount()) !== sb0) p.push(`ShopOrder สาขา B ${sb0}→${await shopCount()} (คาดไม่เพิ่ม)`);
+    // positive control: เปิดขายคืน → รับได้ทั้งสองประตู
+    if (!fx) await setAvail(PR.tomyum!, U.A!, true);
+    if (!fx && rowB) await setAvail(rowB, U.B!, true);
+    const ok1 = await mk("LM-86B", "A", "STAFF", { channelId: CH.LM, externalRef: "LM-86B", idempotencyKey: newKey("86b"), lines: [ln("padthai", 1), ln("tomyum", 1)], customer: CUST, fulfilment: "DELIVERY", startStatus: "NEW" });
+    if (!ok1.id) p.push(`หลังเปิดขาย ingestOrder → ${codeOf(ok1.r)}`);
+    if (!fx && spB)
+      try {
+        const so2 = await shop.createOrder(sctx("B"), { customerName: "คุณเปิดขาย", customerPhone: "0811118687", lines: [{ productId: spB, qty: 1 }] });
+        const po = PO && so2?.id ? await PO.count({ where: { tenantId: T, shopOrderId: so2.id } }).catch(() => -1) : -1;
+        if (po !== 1) p.push(`หลังเปิดขาย createOrder ได้ PosOrder ${po} (คาด 1)`);
+      } catch (e) {
+        p.push(`หลังเปิดขาย createOrder throw ${(e as Error).message.slice(0, 60)}`);
+      }
+    chk("I9", good(p), "PRODUCT_UNAVAILABLE lineIndex 1 · เว็บร้าน throw ไม่เขียน · เปิดคืนรับได้", why(p));
   });
 
   // ════════ A วงจร ════════
