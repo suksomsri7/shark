@@ -1141,3 +1141,5 @@
 - vis58b: register owner/cashier/en · sales owner/en · shifts owner th/en = 0 แดง · sales-cashier bills-* 12 = เป้าตกหน้า 1 (harness · addendum อยู่ใน db5af8c2 → vis59) · settings ×3 = DEVICE_LIMIT (เครื่องค้าง · ล้างแล้ว → vis58c กำลังถ่าย)
 - **07 กะ owner**: 4 แถว OPEN → DEVIATION (โครงสร้างตรงแบบ · Z state/Z list/ผลต่าง −฿15 "มีเหตุผล" ตรง · deviation: เปลือกแอป · ไม่มีปุ่ม "เปิดลิ้นชัก" ที่หัว · การ์ดส่งสรุป LINE = ข้อความรอรอบหน้า · "ดู X report" แทน "พิมพ์") · 1024/390/en ผ่าน
 - **approval-wait 1024 (P2.1U fix2 15c8781c)**: register-owner-th 88/0 (vis57 แดง 1) ⇒ ล้นหาย · ภาพ p21u ที่ 00:49–01:03 ใช้บันทึก P2.1U ได้
+
+- 01:13Z ✅ vis58c (QC5 @711b6d5e): settings owner 46/46 · cashier 46/46 · en 16/16 = 0 แดง ⇒ DEVICE_LIMIT ใน vis58b เป็นเครื่องค้างจาก snapshot จริง (ล้างแล้ว) · chain59: build59-d @db5af8c2 เริ่ม 01:13Z (`/root/pos-runs/build59-d-20261010T011305Z`) → vis59 ชุดปิดเฟสตามหลัง
