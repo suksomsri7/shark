@@ -120,6 +120,17 @@ export function priceErrorText(code: string, tp: PT, treg: PT): string {
   const k = refusalMessageKey(code);
   return k === "errors.unknown" ? tp("errors.unknown") : treg(k);
 }
+/**
+ * P2.2U fix รอบ 1 F4: คำปฏิเสธ VALIDATION ของเซิร์ฟเวอร์ที่ไม่ชี้ช่องบนจอ (CatalogError ไม่มี field) ⇒ "ตรวจช่องสีแดง" ไม่มีช่องให้ดู —
+ * แสดงข้อความของบริการแทน (errors.serverValidation {message}) · ชี้ช่องได้/รหัสอื่น = priceErrorText เดิม
+ */
+export function priceRefusalText(r: { code: string; message?: string }, fieldShown: boolean, tp: PT, treg: PT): string {
+  if (r.code === "VALIDATION" && !fieldShown) {
+    const message = (r.message ?? "").trim();
+    return message ? tp("errors.serverValidation", { message }) : tp("errors.unknown");
+  }
+  return priceErrorText(r.code, tp, treg);
+}
 
 // ═══════════ ไอคอน (เส้น · currentColor) ═══════════
 const PATHS = {

@@ -2693,7 +2693,8 @@
       "busy": "The catalogue is busy — try again in a moment",
       "conflict": "Changed at the same time — reload and try again",
       "unknown": "Something went wrong — try again",
-      "tooManyRows": "More than {max} channel price rows for one product"
+      "tooManyRows": "More than {max} channel price rows for one product",
+      "serverValidation": "Could not save — {message}"
     }
   },
   "products": {

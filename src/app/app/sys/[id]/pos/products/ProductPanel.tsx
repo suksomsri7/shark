@@ -15,7 +15,7 @@ import { setChannelPricesAction } from "@/lib/modules/pos/catalog-price-actions"
 import { CHANNEL_PRICE_ROWS_MAX } from "@/lib/modules/pos/price-shared";
 import { moneyText } from "@/lib/modules/pos/register-shared";
 import { channelDisplayName } from "@/components/pos/settings/channel-text";
-import { PriceIcon, SoonTag, markupText, parseMoneyInput, priceErrorText, ruleAdjustText, rulePriceOn, ruleStateOf, ruleTouches, ruleWindowText, satangToInput, type PT } from "@/components/pos/products/price-ui";
+import { PriceIcon, SoonTag, markupText, parseMoneyInput, priceErrorText, priceRefusalText, ruleAdjustText, rulePriceOn, ruleStateOf, ruleTouches, ruleWindowText, satangToInput, type PT } from "@/components/pos/products/price-ui";
 import type { ProductsChannel, ProductsData, ProductsPriceRow, ProductsRow } from "./products-data";
 import { channelsIn, draftOf, effectiveOf, rowsFromDraft, type DraftCell } from "./products-scope";
 
@@ -95,8 +95,10 @@ export function ProductPanel({ systemId, product: p, data, unit, canEdit, onClos
         onSaved(p.id, r.rows);
         setEditing(false);
       } else {
-        setSaveErr(priceErrorText(r.code, tp, treg));
-        if (r.field && draft[r.field]) setRowErr((x) => ({ ...x, [r.field!]: priceErrorText(r.code, tp, treg) }));
+        // P2.2U fix รอบ 1 F4: VALIDATION ที่ไม่ชี้แถวบนจอ = ข้อความของบริการ (ไม่ใช่ "ตรวจช่องสีแดง" ที่ไม่มีช่องแดง)
+        const fieldShown = !!(r.field && draft[r.field]);
+        setSaveErr(priceRefusalText(r, fieldShown, tp, treg));
+        if (fieldShown) setRowErr((x) => ({ ...x, [r.field!]: priceErrorText(r.code, tp, treg) }));
       }
     } catch {
       setSaveErr(tp("errors.unknown"));

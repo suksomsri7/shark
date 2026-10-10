@@ -62,6 +62,7 @@ Listed in `ledger/pos-briefs/pos-spec-P1.3-register-ui.md` "Addendum P2.2U"; 61 
 - F4 branch price row (null, unit) is shown through the resolver but has no editor cell (P2.11 copy/compare).
 - F5 `scanOutcome` sends a notSold product with null price through `pick` (guarded there); a dedicated scan refusal would need a register-shared change (S file) — not done.
 - F6 a full-replace save from 06 drops rows of archived branches (server removes rows not sent) — edge case, P2.11.
+- Review F4 (fix round 1 → **P2.11**, line added to `POS-MASTER-PLAN.md` §4 P2.11 row): rows of an archived custom channel / archived branch make the 06 full-replace save impossible (`setChannelPrices` VALIDATION "ไม่รู้จักช่องทางนี้"). Strategy for P2.11: S accepts unchanged rows of archived codes, or the client strips them with a note. This round only shows the service message (`price.errors.serverValidation`).
 
 ## Gate exit codes
 Final at code head **2fc89cab** (`runs/summary.txt` second block, logs `runs/final-*.log`); first block = same results at acc403e0 before the HF-P1CLOSE merge.
