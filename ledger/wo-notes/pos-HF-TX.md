@@ -59,3 +59,15 @@ Branch `wip/pos-hf-tx` · base `session/pos` d85ea5c3 · tree `shark-pos-c` · b
 - `ticket/service.ts` cancelOrder `ownsTx` gate: only a top-level caller today; any future in-tx caller must pass `callerTx(tx)`.
 - Reload computes `balanceAfter` from the card read before the tx (pre-existing; unchanged).
 - qc-pos-p1.7 still has no stock/outbox/xid assertion on the intent path — qc-hf-tx HT1 covers it.
+
+## Fix round 1 (review R1 = MERGEABLE · `ledger/wo-notes/pos-HF-TX-review.md` on session/pos) — code head 39926c02
+| finding | change |
+|---|---|
+| F1 | `scripts/qc-hf-tx.mts` HT3.2 / HT5: caller xid = `pg_current_xact_id()::xid::text` (32-bit, same domain as `xmin`) instead of `txid_current()` (64-bit, epoch-extended) — epoch-safe |
+| F2 | new **HT2.5**: two parallel `giftcard.sell` with one idempotency key ⇒ both resolve · GiftCard +1 · PosSale 1 · SELL GiftCardTxn 1 · same card/sale · pins set/null · PosSale.giftCardId = that card (loser: either the entry replay or the P2002 → `sellReplay` path). Suite 17 → 18 |
+| F3 | `POS-OWNER-PENDING.md` giftcard owner line reworded: money/card rows covered by HT2 + HT2.5 on the HF tenant; m2.6–m2.8 never ran with this HF (crash at `actorOf`, QC4 member seed) — pending rerun after the seed is fixed |
+| F4 | every gate log of this round starts with `tree=/root/projects/shark-pos-c head=<sha> dirty=<n>` (+ cmd, start/end, rc) — logs in the session scratch `hftx/gates-fix1/` (typecheck.out replaces the headerless `tc-final.out`) |
+| F5 | `// POS HF-TX ▸ … ◂` markers added (comments only): `giftcard/service.ts` `sellReplay`, `reloadReplay`, the sell return; `order.ts` `afterSaleCommit`. `afterSaleCommitted` stays where it was (no runtime change) |
+| hunt H1/H2 (money lane on 6319bc34, Low, pre-existing) | two ledger lines under the giftcard owner: reload `balanceAfter` from the pre-tx read · sell 2110 post not crash-safe — both "→ follow-up card HF-GC (controller)" |
+
+Gates at 39926c02 (dirty 0; all logs headed): typecheck 0 · qc-hf-tx forced 18/18 · unforced 18/18 (residue 0; HT3.2 xmin 5483569 = caller 5483569 · HT5 5483573 vs 5483572) · qc-pos-p1.6 48/48 · qc-pos-p2.8 59/60 (ST6 only — same PAR reason as above, expected until the merged tip is on session/pos) · fitness no-env 50/50 · env 50/50.
