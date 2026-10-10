@@ -101,7 +101,7 @@ const CHECKS: readonly Def[] = [
   D("W8", "X4", "[R9 มติ 4] บรรทัดบิลยืนยันของเว็บร้าน: productId = posProductId · ไม่มี itemId · priceSource มีค่า · สต็อกเสื้อตัดครั้งเดียวทางเว็บร้าน (ecom-<order>-<line>) −2 · ไม่มีแถวตัดสต็อกของบิล"),
   // ORACLE-ADD (P2.8 fix รอบ 2 · รีวิว F1 F2 · มติผู้คุม 10 ต.ค. 05:1xZ)
   D("W9", "X5", "[R5 มติ 13 · F1] ออเดอร์เว็บที่ร้านยืนยันรับเงินแล้ว (PAID · ยัง NEW) → rejectOrder และ cancelOrder ORDER_STATE_INVALID (ข้อความให้คืนเงิน/ยกเลิกที่หน้าเว็บร้าน) · ออเดอร์/ShopOrder/บิล ECOM ไม่เปลี่ยน · ตัวควบคุม: ออเดอร์เว็บที่ยังไม่จ่าย reject → ShopOrder CANCELLED"),
-  D("W10", "X4", "[R9 CD4 มติ 4 · F2] หน้าเว็บอ่านชั้นราคาเฉพาะของช่องทาง WEB: ไม่มีแถว WEB + แถวสาขา (ทุกช่องทาง) ฿170 + กติกาทุกช่องทาง −10% → storefront/createOrder = ราคา ShopProduct ฿200 · กติกาที่ระบุ WEB −20% → ฿160 ทั้ง storefront และ createOrder"),
+  D("W10", "X4", "[R9 CD4 มติ 4 · F2] หน้าเว็บอ่านชั้นราคาเฉพาะของช่องทาง WEB: ไม่มีแถว WEB + แถวสาขา (ทุกช่องทาง) ฿170 + กติกาทุกช่องทาง −10% → storefront/createOrder = ราคา ShopProduct ฿200 · กติกาที่ระบุ WEB −20% → ฿160 ทั้ง storefront และ createOrder · บรรทัดบิลยืนยันรับเงิน priceSource RULE + priceRuleId (H5)"),
   // ── R ตัวอ่าน ──
   D("R1", "-", "[R8] listOrders สาขา A: counts.byColumn {new preparing ready done} + counts.byChannel ตรงความจริงใน DB · summary {count totalSatang rejectedCancelled avgAcceptSeconds onTime{n m}} · การ์ด LM-48213 (ref itemCount 3 · 42000 · channel {code name}) · กรอง status/channelId"),
   D("R2", "X4", "[R8] getOrder: commission LM-48213 {12600 · 0 · net 29400} = channelCommission · GRAB {7950 · 557 · net 22493} · บรรทัด 3 แถว (options note) · history {count avgSatang} ของเบอร์เดียวกันที่สาขา = ความจริงใน DB"),
@@ -2194,6 +2194,14 @@ async function runDb() {
     const l1 = fx ? undefined : await priceIn();
     const t1 = fx ? undefined : await orderTotal();
     if (l1 !== 16000 || t1 !== 16000) p.push(`กติกาที่ระบุ WEB: storefront ${short(l1)} · createOrder ${short(t1)} (คาด 16000 · 16000)`);
+    // EDIT (P2.8 fix รอบ 3 · H5): บรรทัดของบิลเว็บร้าน (ยืนยันรับเงิน) บอกที่มา RULE + รหัสกติกา WEB (ผ่านบรรทัดออเดอร์ในจอ POS)
+    if (!fx && sp10 && ruleIds[1]) {
+      const soR = await shopTry("createOrder", () => shop.createOrder(sctx("B"), { customerName: "คุณกติกาเว็บ", customerPhone: "0811110011", lines: [{ productId: sp10, qty: 1 }] }), p);
+      const cfR = soR?.id ? await shopTry("confirmOrderPaid", () => shop.confirmOrderPaid(sctx("B"), soR.id), p) : null;
+      const sl = cfR?.posSaleId ? ((await P.posSaleLine.findMany({ where: { saleId: cfR.posSaleId } }).catch(() => [])) as Any[]) : [];
+      const ln10 = sl.find((l: Any) => l.productId === row10);
+      if (!ln10 || ln10.priceSource !== "RULE" || ln10.priceRuleId !== ruleIds[1] || ln10.unitPriceSatang !== 16000) p.push(`บรรทัดบิลเว็บของกติกา WEB ${short(ln10 && { s: ln10.priceSource, r: ln10.priceRuleId === ruleIds[1] ? "ตรง" : ln10.priceRuleId, u: ln10.unitPriceSatang }, 80)} (คาด RULE · รหัสกติกา WEB · 16000)`);
+    }
     for (const id of ruleIds) if (id) await call(ruleMod, "archivePriceRule", ctxU("A"), A("OWNER"), { id });
     chk("W10", good(p) && !!PCP, "ไม่มีแถว WEB: แถวสาขา/กติกาทุกช่องทางไม่ถึงหน้าเว็บ · กติกา WEB ถึง", why(p));
   });
