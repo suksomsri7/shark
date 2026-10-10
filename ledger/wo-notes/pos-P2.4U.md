@@ -111,3 +111,18 @@ Gates (fix head · logs `scratchpad/p24u/runs/fix1/gate-F1-*.log` + `gate-typech
 - Rendering changed by V1: `tables-floor` (1440, selected panel), `tables-panel-rounds`, `tables-draft-unsent`, `tables-checkout-dialog`, `tables-alerts` at 1440 (alerts now below the full panel); 1024/390 unchanged.
 - Post-V1 gates (code head 5c09ef4e · `scratchpad/p24u/runs/fix1/v1/`): typecheck 0 errors · qc-pos-p1.18 81/81 (ST7 0) · qc-pos-p2.4 49/49 PAR 4/4 · visual `p2.4u --states --dry --page tables` owner/cashier rc 0.
 - Controller re-shoot (QC5): `--state tables-panel-rounds,tables-alerts,tables-checkout-dialog,tables-draft-unsent` (owner/cashier th + owner en) and register th `--state register-table-mode,register-billtype-menu`.
+
+## Merge upstream (controller 10 Oct 09:2xZ · R2 MERGEABLE on 34aff664)
+| step | commit | content |
+|---|---|---|
+| merge | bdd7891a | `origin/session/pos` d63f0c3c (= MAIN-MERGE 0d581286: main 71a1f363 + `recipe-actions.ts` rename + P1.1b Part B + oracle edits p1.1/p1.3, + ledger) — `merge-tree --write-tree` clean, no conflicts · no `prisma generate`/`pnpm install` in p11 (shared client verified: `@prisma/client` → `.prisma/client/index.d.ts` has `restaurantReservation` ×29 and `posOrder` ×85) |
+Gates on bdd7891a (`scratchpad/p24u/runs/merge/gate-M-*.log` · header `head=` per gate):
+| gate | result | exit |
+|---|---|---|
+| qc-pos-p1.1 | **180/180** (S2.33 green after MAIN-MERGE) | 0 |
+| qc-pos-p1.3 · p2.4 · p2.3 · p2.8 | 128/128 · 49/49 (PAR 4/4) · 46/46 (PAR 2/2) · 60/60 (PAR 4/4) | 0 ×4 |
+| qc-pos-p1.18 (U · ST7 0) · products · page-authz | 81/81 · 24/24 · 62/62 | 0 ×3 |
+| fitness no env · QC4 env · fitness-pos | 50/50 · 50/50 · 8/8 | 0 ×3 |
+| visual `p2.4u --states --dry` tables/register × owner/cashier | 21 · 6 · 21 · 6 shots | 0 ×4 |
+| pnpm typecheck (iso · flock /tmp/pos-gate.lock · `merge/gate-typecheck.log`) | 0 errors (first attempt hit the 1 h lock wait behind another lane's typecheck/build — `gate-typecheck-locktimeout.log`, no tsc output; re-run with a longer wait) | 0 |
+Not merged into `session/pos` (controller merges after the QC5 shots).
