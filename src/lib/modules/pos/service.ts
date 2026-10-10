@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/core/db";
-import type { Prisma, PrismaClient, PosPayType } from "@prisma/client";
+import { Prisma, type PrismaClient, type PosPayType, type Role } from "@prisma/client";
 import * as coupon from "@/lib/modules/coupon/service";
 import * as inventory from "@/lib/modules/inventory/service";
 // POS P2.3 ▸ R5: ตัดสต็อกของบิลเป็นชุดเดียว (tx เดียว) ผ่าน facade ของคลัง — POS ห้ามเรียก consumeBatch จาก inventory/service ตรง (ST3) ◂
@@ -21,6 +21,9 @@ import type { TaxInvoiceSnapshot } from "./tax-invoice-shared"; // POS P1.13 ▸
 import { resolveSaleChannel } from "./channel";
 import { CHANNEL_REF_MAX, channelCommission, defaultChannelCode } from "./channel-shared";
 import { PRICE_RULE_ID_MAX, PRICE_SOURCES } from "./price-shared"; // POS P2.2 ▸ R7 ◂
+// POS P2.3 ▸ §9 Q8 ตัดสต็อกค้าง: สิทธิ์ pos.settings.manage ที่สาขา (ตัวตัดสินเดียวกับหน้าขาย) · ชนิดผลอยู่ใน register-shared (จอ P2.3U import ได้) ◂
+import { canAccessUnit, evaluate } from "@/lib/core/rbac";
+import type { RetryPendingStockCutsResult } from "./register-shared";
 
 // POS createSale — contract 2.1 (จุดตัดเงินกลาง). MVP: PAID_NOW
 //
@@ -883,6 +886,116 @@ export async function consumeSaleInventory(tenantId: string, unitId: string, sal
     console.error("[pos] stock cut failed — sale committed without stock movement", { saleId, parts: parts.length, code: stockErrorCode(e) });
     return false;
   }
+}
+
+// ═══════ POS P2.3 ▸ มติ 4 + §9 Q8: บิลค้างตัดสต็อก — กติกาเดียว (pendingStockParts) ของ registerStatus · retryPendingStockCuts ◂ ═══════
+// ส่วนที่ "ค้าง" = ส่วนตัดของบรรทัด (lineConsumption: itemId หรือ components) ที่ยังไม่มี InvMovement คีย์ของส่วนนั้น
+//   และ "ตัดได้จริง" = สินค้าอยู่ในคลังของสาขาและไม่ใช่บริการ (กติกาข้ามเดียวกับ consumeBatch) ⇒ บิลที่ส่วนที่เหลือข้ามได้ทั้งหมด = ไม่ค้าง
+//   สาขาไม่มีคลัง = ไม่มีอะไรค้าง (consumeSaleInventory ไม่ตัดอยู่แล้ว) · เฉพาะบิลขาย PAID (docType SALE) ของสาขานี้
+//   components ผิดรูป (qty ไม่ใช่จำนวนเต็ม ≥ 1) ไม่นับ (lineConsumption ข้ามเหมือนกัน)
+export type PendingStockPart = { saleId: string; lineId: string; itemId: string; key: string };
+export async function pendingStockParts(
+  db: Client,
+  q: { tenantId: string; unitId: string; since?: Date; saleIds?: string[] },
+): Promise<PendingStockPart[]> {
+  const inv = await systemForUnit(q.tenantId, q.unitId, "INVENTORY", db);
+  if (!inv) return [];
+  if (q.saleIds && q.saleIds.length === 0) return [];
+  const saleWhere = Prisma.sql`s."tenantId" = ${q.tenantId} AND s."unitId" = ${q.unitId} AND s.status = 'PAID' AND s."docType" = 'SALE'
+    ${q.since ? Prisma.sql`AND s."createdAt" >= ${q.since}` : Prisma.empty}
+    ${q.saleIds ? Prisma.sql`AND s.id = ANY(${q.saleIds}::text[])` : Prisma.empty}`;
+  return db.$queryRaw<PendingStockPart[]>`
+    WITH parts AS (
+      SELECT s.id AS "saleId", l.id AS "lineId", l."itemId" AS "itemId", 'pos-consume-' || s.id || '-' || l.id AS key
+      FROM "PosSale" s JOIN "PosSaleLine" l ON l."saleId" = s.id
+      WHERE ${saleWhere} AND l."itemId" IS NOT NULL
+      UNION ALL
+      SELECT s.id, l.id, c->>'invItemId', 'pos-consume-' || s.id || '-' || l.id || '-' || (c->>'invItemId')
+      FROM "PosSale" s JOIN "PosSaleLine" l ON l."saleId" = s.id
+        CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(l."components") = 'array' THEN l."components" ELSE '[]'::jsonb END) c
+      WHERE ${saleWhere} AND l."components" IS NOT NULL
+        AND jsonb_typeof(c) = 'object' AND jsonb_typeof(c->'invItemId') = 'string' AND (c->>'invItemId') <> ''
+        AND jsonb_typeof(c->'qty') = 'number' AND (c->>'qty') ~ '^[1-9][0-9]*$'
+    )
+    SELECT p."saleId", p."lineId", p."itemId", p.key FROM parts p
+    JOIN "InvItem" i ON i.id = p."itemId" AND i."tenantId" = ${q.tenantId} AND i."systemId" = ${inv} AND i."kind"::text <> 'SERVICE'
+    WHERE NOT EXISTS (SELECT 1 FROM "InvMovement" m WHERE m."tenantId" = ${q.tenantId} AND m."idempotencyKey" = p.key)
+    ORDER BY p."saleId", p.key`;
+}
+
+/** มติ §9 Q8: เพดานบิลต่อการกด 1 ครั้ง (เก่าสุดก่อน) */
+export const RETRY_STOCK_CUTS_MAX = 200;
+export type RetryStockCutsActor = { userId: string; role: Role; unitAccess: string[]; permissions: Record<string, unknown> };
+
+/**
+ * POS P2.3 ▸ §9 Q8 — "ตัดสต็อกค้าง N บิล · ลองอีกครั้ง": ตัดซ้ำ (idempotent) ให้บิลของสาขานี้ที่ยังค้างตัด · เก่าสุดก่อน ≤ 200 บิลต่อครั้ง
+ *   ctx = {tenantId, systemId (POS), actor} (มติ 1) · สิทธิ์ pos.settings.manage ที่สาขา · สาขาไม่ผูก POS นี้/เก็บถาวร/เข้าไม่ได้ = NOT_FOUND
+ *   คืน {scanned (บิลที่ค้างตอนเริ่ม), cut (บิลที่หายค้างหลังรอบนี้), stillPending (บิลในรอบนี้ที่ยังค้าง)} · audit "pos.stock.retry" เมื่อมีบิลให้ลอง
+ *   ปฏิเสธ = คืน {ok:false, code, message} ไม่ throw (มติ 1) · ทุกบิลตัดครบแล้ว = {scanned 0, cut 0, stillPending 0} ไม่มีแถวใหม่ ไม่มี audit
+ */
+export async function retryPendingStockCuts(
+  ctx: { tenantId: string; systemId: string; actor: RetryStockCutsActor },
+  unitId: string,
+): Promise<RetryPendingStockCutsResult> {
+  try {
+    const c = ctx as unknown as Record<string, unknown> | null;
+    if (!c || typeof c.tenantId !== "string" || !c.tenantId || typeof c.systemId !== "string" || !c.systemId || typeof unitId !== "string" || !unitId) {
+      return { ok: false, code: "NOT_FOUND", message: RETRY_MSG.NOT_FOUND };
+    }
+    const actor = retryActorOf(c.actor);
+    if (!actor) return { ok: false, code: "PERMISSION_DENIED", message: RETRY_MSG.PERMISSION_DENIED };
+    const { tenantId, systemId } = ctx;
+    const [sys, link, unit] = await Promise.all([
+      prisma.appSystem.findFirst({ where: { id: systemId, tenantId, type: "POS", active: true }, select: { id: true } }),
+      prisma.appSystemUnit.findUnique({ where: { tenantId_unitId_type: { tenantId, unitId, type: "POS" } }, select: { systemId: true } }),
+      prisma.businessUnit.findFirst({ where: { id: unitId, tenantId, status: { not: "ARCHIVED" } }, select: { id: true } }),
+    ]);
+    if (!sys || !link || link.systemId !== systemId || !unit || !canAccessUnit(actor, unitId)) return { ok: false, code: "NOT_FOUND", message: RETRY_MSG.NOT_FOUND };
+    if (!evaluate(actor, { module: "pos", action: "pos.settings.manage", unitId })) return { ok: false, code: "PERMISSION_DENIED", message: RETRY_MSG.PERMISSION_DENIED };
+    const pend = await pendingStockParts(prisma, { tenantId, unitId });
+    const pendingIds = [...new Set(pend.map((p) => p.saleId))];
+    if (pendingIds.length === 0) return { ok: true, scanned: 0, cut: 0, stillPending: 0 };
+    const order = await prisma.posSale.findMany({
+      where: { tenantId, unitId, id: { in: pendingIds } },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      take: RETRY_STOCK_CUTS_MAX,
+      select: { id: true },
+    });
+    const ids = order.map((o) => o.id);
+    for (const id of ids) await consumeSaleInventory(tenantId, unitId, id);
+    const still = new Set((await pendingStockParts(prisma, { tenantId, unitId, saleIds: ids })).map((p) => p.saleId));
+    const result = { scanned: ids.length, cut: ids.length - still.size, stillPending: still.size };
+    await prisma.auditLog.create({
+      data: {
+        tenantId,
+        unitId,
+        actorType: "USER",
+        actorId: actor.userId,
+        action: "pos.stock.retry",
+        targetType: "BusinessUnit",
+        targetId: unitId,
+        before: { pendingSales: ids.length },
+        after: result,
+      },
+    });
+    return { ok: true, ...result };
+  } catch (e) {
+    console.error("[pos] retryPendingStockCuts", { code: stockErrorCode(e) });
+    return { ok: false, code: "INTERNAL", message: RETRY_MSG.INTERNAL };
+  }
+}
+const RETRY_MSG = {
+  NOT_FOUND: "ไม่พบสาขานี้ในระบบขาย",
+  PERMISSION_DENIED: "บัญชีนี้ยังไม่มีสิทธิ์ตั้งค่าระบบขายของสาขานี้ — ให้ผู้จัดการกดตัดสต็อกค้าง",
+  INTERNAL: "ระบบขายขัดข้องชั่วคราว ยังไม่ได้ตัดสต็อกค้าง — ลองอีกครั้ง",
+} as const;
+function retryActorOf(v: unknown): RetryStockCutsActor | null {
+  const a = v as Record<string, unknown> | null;
+  if (!a || typeof a !== "object" || typeof a.userId !== "string" || !a.userId) return null;
+  if (a.role !== "OWNER" && a.role !== "MANAGER" && a.role !== "STAFF") return null;
+  if (!Array.isArray(a.unitAccess) || !a.unitAccess.every((x) => typeof x === "string")) return null;
+  if (!a.permissions || typeof a.permissions !== "object" || Array.isArray(a.permissions)) return null;
+  return { userId: a.userId, role: a.role, unitAccess: [...(a.unitAccess as string[])], permissions: a.permissions as Record<string, unknown> };
 }
 
 // POS P1.16 ▸ R3/CD2: อาร์กิวเมนต์ที่ 4 (ไม่บังคับ) = ผู้ยกเลิก + เหตุผล ⇒ AuditLog "pos.sale.void" ในtx เดียวกับการพลิกสถานะ ◂

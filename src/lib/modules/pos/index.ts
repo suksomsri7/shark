@@ -99,3 +99,5 @@ export type { PriceSource, ChannelPriceView, ChannelPriceInputRow } from "./pric
 //   ต้นทุนตามสูตร (R8 · เห็นต้นทุนเฉพาะ pos.product.manage / pos.report.view) ◂
 export { expandRecipe, RECIPE_MAX_COMPONENTS } from "./recipe-shared";
 export type { RecipeBaseLine, RecipeChoiceLine, RecipeComponent, ExpandRecipeResult } from "./recipe-shared";
+export { recipeCost } from "./recipe";
+export type { RecipeCostCtx, RecipeCostItem, RecipeCostLine, RecipeCostResult } from "./recipe";

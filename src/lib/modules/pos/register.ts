@@ -417,7 +417,7 @@ import * as couponSvc from "@/lib/modules/coupon/service";
 import { splitIncludedVat } from "@/lib/money/vat";
 import type { RegisterMemberGate, RegisterMemberQuote } from "./register-member";
 // POS P1.7 ▸ ใบขอรับเงิน (pi_…) ใช้ในธุรกรรมขายของหน้าขาย · งานหลัง commit ชุดเดียวกับ createSale (ตัดสต็อก + ระบายคิว · มติ I) ◂
-import { consumeSaleInventory } from "./service";
+import { consumeSaleInventory, pendingStockParts } from "./service";
 // POS P2.3 ▸ สูตร/BOM: สูตรที่ใช้จริงของแถว (อ่านอย่างเดียว) · กระจายสูตร/จำนวนหน่วยที่ทำได้ (บริสุทธิ์) ◂
 import { loadRowRecipes } from "./recipe";
 import { expandRecipe, recipePortions } from "./recipe-shared";
@@ -2506,17 +2506,8 @@ export async function registerStatus(ctx: RegisterCtx, actor: RegisterActor, cli
     // คีย์ตัดสต็อกต่อบรรทัดของ createSale = `pos-consume-<saleId>-<lineId>` (service.ts consumeSaleInventory) — ใช้ unique (tenantId, idempotencyKey)
     // POS P1.8 ▸ R3: เฉพาะบิลขาย (docType SALE) — บรรทัดใบคืนถือ itemId ของบรรทัดเดิมแต่ไม่มีการตัดสต็อก ◂
     // P1.2 R8: บรรทัดชุดนับจนกว่าคีย์ของ "ทุก" ส่วนประกอบ `pos-consume-<saleId>-<lineId>-<invItemId>` จะมีครบ
-    const pend = await db.$queryRaw<{ n: number }[]>`
-      SELECT count(DISTINCT s.id)::int AS n FROM "PosSale" s JOIN "PosSaleLine" l ON l."saleId" = s.id
-      WHERE s."tenantId" = ${s.tenantId} AND s."unitId" = ${s.unitId} AND s.status = 'PAID' AND s."docType" = 'SALE' AND s."createdAt" >= ${dayStart}
-        AND (
-          (l."itemId" IS NOT NULL
-            AND NOT EXISTS (SELECT 1 FROM "InvMovement" m WHERE m."tenantId" = ${s.tenantId} AND m."idempotencyKey" = 'pos-consume-' || s.id || '-' || l.id))
-          OR (l."components" IS NOT NULL AND jsonb_typeof(l."components") = 'array'
-            AND EXISTS (SELECT 1 FROM jsonb_array_elements(l."components") c
-              WHERE NOT EXISTS (SELECT 1 FROM "InvMovement" m WHERE m."tenantId" = ${s.tenantId}
-                AND m."idempotencyKey" = 'pos-consume-' || s.id || '-' || l.id || '-' || (c->>'invItemId'))))
-        )`;
+    // POS P2.3 ▸ มติ 4: ตัวนับเดียวกับ retryPendingStockCuts (pendingStockParts) — ส่วนที่สินค้าไม่อยู่ในคลังของสาขา/เป็นบริการ ไม่นับ (consumeBatch ข้ามเหมือนกัน) ◂
+    const pendingSales = new Set((await pendingStockParts(db, { tenantId: s.tenantId, unitId: s.unitId, since: dayStart })).map((x) => x.saleId));
     // POS P1.13U ▸ มติ 2: ปุ่ม "ใบกำกับเต็มรูป" บนจอ — เงื่อนไขเดียวกับ NOT_ELIGIBLE ตอนชำระ (ไม่นับ VAT ของบิล) · อ่านพลาด = false ◂
     const taxInvoiceEligible = await taxInvoiceEligibleForSystem(s.tenantId, s.systemId).catch(() => false);
     // POS P1.12U ▸ มติ 2: สาขานี้มีระบบสมาชิก (R1) — false = จอไม่มีแถวสมาชิก/ส่วนสิทธิ์เลย · อ่านพลาด = false ◂
@@ -2527,7 +2518,7 @@ export async function registerStatus(ctx: RegisterCtx, actor: RegisterActor, cli
       user: { name: user?.name?.trim() || user?.email || "-", roleLabel: REG_ROLE_LABEL[s.actor.role], role: s.actor.role },
       shift: sh.shift,
       shiftRequired: sh.required,
-      pendingStockCount: Number(pend[0]?.n ?? 0),
+      pendingStockCount: pendingSales.size,
       pendingSyncCount: 0,
       deviceStatus,
       taxInvoiceEligible,
