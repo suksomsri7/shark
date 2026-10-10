@@ -350,7 +350,12 @@ async function runStatic(): Promise<void> {
     if (at < 0) p.push(`schema ไม่มีคำอธิบาย index มือ ${UNIQUE_IDX} (แบบ PosCategory M5)`);
     else if (!/ห้ามลบ|do not remove/i.test(schemaRaw.slice(Math.max(0, at - 600), at + 600))) p.push(`schema: ${UNIQUE_IDX} ไม่มีคำเตือน "ห้ามลบ"`);
     // migration
-    const files = walk("prisma/migrations", [], /\.sql$/).filter((f) => /"PosProductChannelPrice"|"PosPriceRule"|"listPriceSatang"|"PosPriceSource"/.test(rd(f)));
+    // ORACLE-EDIT (P2.8 fix รอบ 1 · มติผู้คุม 4): นับเฉพาะ migration ที่ "สร้าง/แก้" ตารางของ P2.2 (PosProductChannelPrice · PosPriceRule · PosSaleLine)
+    //   และมีชื่อของ P2.2 — ตารางอื่นที่ใช้คอลัมน์ชื่อเดียวกัน/enum PosPriceSource (P2.8 PosOrderLine) ไม่ใช่การแตะ P2.2
+    const files = walk("prisma/migrations", [], /\.sql$/).filter((f) => {
+      const sql = rd(f).replace(/--.*$/gm, "");
+      return /"PosProductChannelPrice"|"PosPriceRule"|"listPriceSatang"|"PosPriceSource"/.test(sql) && /(CREATE\s+TABLE(\s+IF\s+NOT\s+EXISTS)?|ALTER\s+TABLE)\s+"(PosProductChannelPrice|PosPriceRule|PosSaleLine)"/i.test(sql);
+    });
     if (files.length !== 1) p.push(`migration ที่แตะ PosProductChannelPrice/PosPriceRule/listPriceSatang = ${files.length} ไฟล์ (คาด 1)`);
     for (const f of files) {
       const name = f.split("/").slice(-2, -1)[0] ?? "";
