@@ -1356,3 +1356,10 @@
 - ตัวนับยัง 26/55 (HF ไม่ใช่แถวแผน) · กฎ callerTx อยู่ใน LANE-RULES §HF-TX
 - เลน: P2.8U (b) · เปิด HF-PP (c, base 831ad163) · P2.6 S รอช่อง builder (prompt `pos-prompt-accountB-P2.6-S.md` __BASE__/__TREE__)
 - 11:2xZ ยืนยัน qc-pos-p2.8 บนทรีผู้คุม 831ad163 = **60/60** (ST6 เขียวตามคาด) · HF-TX ปิดสมบูรณ์
+- 11:5xZ HF-PP ส่งแล้ว head 447d4477 (code 49bb6ea7, gates บน 8a8e0a8d เขียวหมด: p1.7 33 ×2 · p2.4 50 · red-before 32/33 + 49/50) → reviewer อ่านอย่างเดียว · ไม่ใช้ hunter (guard เดียว) · หลัง merge → เปิด P2.6 S ทรี c
+
+### ⏱ 10 ต.ค. 12:1xZ — P2.8U ส่งแล้ว (c95012a0 / code 02c1a6d7) → reviewer + chain65
+- gates เขียวหมด (p2.8 60 · p2.4 49 · p2.3 46 · p2.2 42 · p2.1 55 · p1.3 128 · p1.12 72 · p1.16 28 · p1.18 81 ST7 0 · products 24 · authz 71 · qc-shop 15 · p1.1 180 · fitness 50/50 · typecheck 0 · --dry ×4) · deviations r1–r7 (badge md+ · title "(N)" · manual sheet search list · orders-empty owner-only · ordersChannelsAction wrapper · pay intent=null · ดูบิล deep-link) → reviewer ตัดสิน (a4136ac0, prompt `pos-prompt-accountB-P2.8U-R.md`)
+- chain65 unit `pos-chain65-1791634245`: build c95012a0 ทรี d → vis66 orders ทุก state × owner/cashier th + owner en · register `register-tab-badge,default` · tables `tables-floor` (wo p2.8u/p2.8u-en) · fixture ทิ้ง LINE MAN order + PLATFORM sale ไว้บน QC5 ต่อรอบ (เหมือน P2.1U)
+- HF-PP fix1 (UI gate EDC) กำลังทำ (c) → R2 → merge → เปิด P2.6 S ทรี c
+- เลน 3/3: HF-PP fix1 (c) · P2.8U reviewer · chain65 ภาพ · ผู้คุมดู 09 เต็ม (หน้าเงิน: ค่าคอม/ยอดสุทธิ/จ่าย) เมื่อ vis66 เสร็จ

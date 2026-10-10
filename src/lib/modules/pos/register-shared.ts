@@ -912,6 +912,14 @@ export function refusalMessageKey(code: string): string {
   return Object.prototype.hasOwnProperty.call(REFUSAL_KEY, code) ? REFUSAL_KEY[code]! : "errors.unknown";
 }
 
+// POS HF-PP ▸ fix 1: ด่านผู้จัดการของ "พร้อมเพย์/บัตรรับแล้ว" ที่ไม่มีใบขอรับเงิน (register.ts submitRegisterSale) — ข้อความเซิร์ฟเวอร์ชุดเดียว
+//   (= payment-intent.ts confirmPaymentIntentManual) · จอแปลงคำปฏิเสธนี้เป็นคีย์ของมันเอง (ไม่แสดง message ของเซิร์ฟเวอร์) ◂
+export const REGISTER_MANUAL_MANAGER_MESSAGE = "ร้านตั้งให้ผู้จัดการเป็นผู้ยืนยันเงินเข้าเท่านั้น";
+/** คีย์ใต้ `pos.register` ของคำปฏิเสธ submit: PERMISSION_DENIED ของด่านผู้จัดการ = refusal.manualConfirmManager · อื่น ๆ = refusalMessageKey(code) */
+export function submitRefusalMessageKey(r: { code: string; message?: string | null }): string {
+  return r.code === "PERMISSION_DENIED" && r.message === REGISTER_MANUAL_MANAGER_MESSAGE ? "refusal.manualConfirmManager" : refusalMessageKey(r.code);
+}
+
 /** เงินบนจอ: ทศนิยมเฉพาะเมื่อมีเศษสตางค์ (8550 → ฿85.50 · 62500 → ฿625 · −1000 → −฿10) */
 export function moneyText(satang: number): string {
   return formatBaht(satang, { decimals: satang % 100 !== 0 });

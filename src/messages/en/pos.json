@@ -384,6 +384,9 @@
       "orderUnpaid": "This order has not been paid — take payment before handing over",
       "channelPaused": "This channel is not taking orders right now"
     },
+    "refusal": {
+      "manualConfirmManager": "This shop lets only managers confirm money received — ask a manager to confirm this PromptPay/card payment, or take cash"
+    },
     "held": {
       "title": "Held bills",
       "titleCount": "Held bills ({count})",
@@ -1754,8 +1757,8 @@
       "beamNotConfigured": "No keys yet",
       "beamConfigured": "Keys set",
       "manualCard": "Manual confirmation",
-      "manualRequiresManager": "Manual payment confirmation needs a manager",
-      "manualHint": "The \"Confirm manually\" button is limited to people who manage shifts · PromptPay via Beam always needs a manager · Beam card payments cannot be confirmed manually",
+      "manualRequiresManager": "Manual payment confirmation (PromptPay and card) needs a manager",
+      "manualHint": "The \"Confirm manually\" button and card payments on the EDC terminal are limited to people who manage shifts · PromptPay via Beam always needs a manager · Beam card payments cannot be confirmed manually",
       "permissionDenied": "This account cannot change payment settings — it needs device management in every branch of this point of sale",
       "expiryInvalid": "QR lifetime must be a whole number from 5 to 60 minutes"
     },
@@ -1932,7 +1935,7 @@
           "enabled": "{value, select, true {Turned on Beam payments} other {Turned off Beam payments}}"
         },
         "qrExpiryMinutes": "Set QR expiry to {value} min",
-        "manualConfirmRequiresManager": "{value, select, true {Manual payment confirmation now needs a manager} other {Anyone can confirm payments manually}}"
+        "manualConfirmRequiresManager": "{value, select, true {Manual payment confirmation (PromptPay and card) now needs a manager} other {Anyone can confirm payments manually}}"
       },
       "integration": {
         "enabled": "{value, select, true {Turned on accounting} other {Turned off accounting}}"
