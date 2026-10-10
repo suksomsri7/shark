@@ -391,11 +391,10 @@ export function ReceiptSettings({ systemId, unitId, branchName, canEdit, canMana
                     <p className="py-3 text-[14px] text-[color:var(--color-muted)]">{tr("devicesEmpty")}</p>
                   ) : (
                     activeDevices.map((d) => (
-                      <div key={d.id} className={`flex flex-wrap items-center gap-x-[14px] gap-y-1 border-t py-2 text-[14.5px] first:border-t-0 ${d.status === "REVOKED" ? "opacity-60" : ""}`}>
+                      <div key={d.id} className="flex flex-wrap items-center gap-x-[14px] gap-y-1 border-t py-2 text-[14.5px] first:border-t-0">
                         <RegisterIcon name="print" size={14} className="text-[color:var(--color-muted)]" />
                         <span className="min-w-0 flex-1 truncate">
                           {d.name}
-                          {d.status === "REVOKED" ? ` · ${td("revokedChip")}` : ""}
                         </span>
                         <input
                           data-testid={`pos-settings-device-regno-${d.id}`}
@@ -404,7 +403,6 @@ export function ReceiptSettings({ systemId, unitId, branchName, canEdit, canMana
                           value={regNo[d.id] ?? ""}
                           placeholder={tr("posRegNoPlaceholder")}
                           maxLength={40}
-                          disabled={d.status === "REVOKED"}
                           onChange={(e) => setRegNo((m) => ({ ...m, [d.id]: e.target.value }))}
                           onBlur={() => void saveRegNo(d)}
                           onKeyDown={(e) => {

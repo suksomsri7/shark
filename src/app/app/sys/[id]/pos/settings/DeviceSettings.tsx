@@ -105,8 +105,18 @@ export function DeviceSettings({ systemId, unitId, shopName }: Props) {
       setThisCode(code);
       setPairing(readPairing(code));
       const want = keepSel ?? null;
-      const pick = r.items.find((d) => d.id === want) ?? r.items.find((d) => d.deviceCode === code && d.status === "ACTIVE") ?? r.items.find((d) => d.status === "ACTIVE") ?? r.items[0] ?? null;
+      // HF-P1CLOSE fix รอบ 1 F6: เลือกเครื่อง ACTIVE ก่อนเสมอ (ที่เลือกไว้ → เครื่องนี้ → ตัวแรก) · เครื่องเพิกถอนแล้ว = เฉพาะเมื่อไม่มี ACTIVE เลย
+      //   (แล้วกางแถวพับ "เพิกถอนแล้ว (n)" ให้การ์ดที่เลือกมองเห็น) ◂
+      const active = (d: PosDeviceListItem) => d.status === "ACTIVE";
+      const pick =
+        r.items.find((d) => d.id === want && active(d)) ??
+        r.items.find((d) => d.deviceCode === code && active(d)) ??
+        r.items.find(active) ??
+        r.items.find((d) => d.id === want) ??
+        r.items[0] ??
+        null;
       setSelId(pick?.id ?? null);
+      if (pick && !active(pick)) setShowRevoked(true);
     },
     [systemId, unitId, td],
   );
