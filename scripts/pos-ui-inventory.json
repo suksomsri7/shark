@@ -5825,6 +5825,26 @@
     },
     {
       "page": "/app/sys/[id]/pos/settings",
+      "testid": "pos-device-revoked-fold",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-device-card-*",
+        "note": "แถวพับ \"เพิกถอนแล้ว (n)\" (มีเมื่อมีเครื่อง REVOKED) → กาง/พับการ์ดเครื่องที่เพิกถอนแล้ว · ปิดไว้ก่อน (HF-P1CLOSE O7)"
+      },
+      "wo": "HF-P1CLOSE",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/settings",
       "testid": "pos-device-name",
       "kind": "input",
       "roles": [

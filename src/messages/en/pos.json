@@ -1238,6 +1238,7 @@
     "drawerOn": "Drawer",
     "drawerOff": "No drawer",
     "revokedChip": "Revoked",
+    "revokedFold": "Revoked ({count})",
     "panelTitle": "Settings · {name}",
     "paper": "Paper width",
     "paper58": "58 mm",

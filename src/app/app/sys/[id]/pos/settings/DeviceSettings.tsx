@@ -81,6 +81,7 @@ export function DeviceSettings({ systemId, unitId, shopName }: Props) {
   const [err, setErr] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [showRevoked, setShowRevoked] = useState(false); // POS HF-P1CLOSE ▸ O7 แถวพับเครื่องเพิกถอน ◂
   const [regOpen, setRegOpen] = useState(false);
   const [regName, setRegName] = useState("");
   const [regErr, setRegErr] = useState<string | null>(null);
@@ -248,6 +249,72 @@ export function DeviceSettings({ systemId, unitId, shopName }: Props) {
     if (!isMine) return td("pairOnThatDevice");
     return pairingMatches(pairing, sel.printerConfig.mode) && pairing ? td("pairedLine", { name: pairing.productName }) : td("notPaired");
   };
+  const activeItems = list.items.filter((d) => d.status !== "REVOKED");
+  const revokedItems = list.items.filter((d) => d.status === "REVOKED");
+  // POS HF-P1CLOSE ▸ O7: การ์ดเครื่อง 1 ใบ (ใช้ทั้งรายการเครื่องที่ใช้งานและแถวพับ "เพิกถอนแล้ว (n)") ◂
+  const deviceCard = (d: PosDeviceListItem) => {
+    const on = d.id === selId;
+    const revoked = d.status === "REVOKED";
+    return (
+      <button
+        key={d.id}
+        data-testid={`pos-device-card-${d.id}`}
+        type="button"
+        aria-pressed={on}
+        onClick={() => {
+          setSelId(d.id);
+          setErr(null);
+          setNote(null);
+          setPrintRes(null);
+        }}
+        className={`flex w-full flex-col gap-[14px] rounded-[18px] border bg-[color:var(--color-surface)] px-5 py-5 text-left md:px-6 ${
+          on ? "border-[color:var(--color-accent)] shadow-[inset_0_0_0_1px_var(--color-accent)]" : ""
+        } ${revoked ? "opacity-60" : ""}`}
+      >
+        <span className="flex items-center gap-[14px]">
+          <span className="grid size-11 shrink-0 place-items-center rounded-[12px] border bg-[color:var(--color-surface-2)] text-[color:var(--color-ink-soft)]">
+            <RegisterIcon name={revoked ? "x" : "cash"} size={17} />
+          </span>
+          <span className="min-w-0 flex-1">
+            <b className="block truncate text-[16.5px] font-bold">{d.name}</b>
+            <small className="block truncate text-[13px] text-[color:var(--color-muted)]">
+              {[d.posRegNo, td("codeShort", { code: shortCode(d.deviceCode) }), d.deviceCode === thisCode ? td("thisDevice") : null].filter(Boolean).join(" · ")}
+            </small>
+          </span>
+          {revoked ? (
+            <Chip tone="danger">{td("revokedChip")}</Chip>
+          ) : d.online ? (
+            <span className="inline-flex items-center gap-[6px] text-[13.5px] font-semibold">
+              <span aria-hidden className="size-2 rounded-full bg-[color:var(--color-ink)]" />
+              {td("online")}
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-[6px] text-[13px] text-[color:var(--color-muted)]">
+              <span aria-hidden className="size-2 rounded-full bg-[color:var(--color-line)]" />
+              {d.lastSeenAt ? td("lastSeen", { time: bkkHm(d.lastSeenAt) }) : td("neverSeen")}
+            </span>
+          )}
+        </span>
+        <span className="text-[13.5px] text-[color:var(--color-ink-soft)]">
+          {d.openShift ? td("shiftLine", { no: d.openShift.shiftNo, time: bkkHm(d.openShift.openedAt) }) : td("noShift")}
+        </span>
+        {!revoked && (
+          <span className="flex flex-wrap gap-2">
+            <Chip>
+              <RegisterIcon name="print" size={13} />
+              {td(MODE_CHIP[d.printerConfig.mode])} · {d.printerConfig.paper === "58" ? td("paper58") : td("paper80")}
+              {d.deviceCode === thisCode && pairingMatches(pairing, d.printerConfig.mode) ? <RegisterIcon name="check" size={12} /> : null}
+            </Chip>
+            <Chip tone={d.printerConfig.drawerKick ? "plain" : "muted"}>
+              <RegisterIcon name="cash" size={13} />
+              {d.printerConfig.drawerKick ? td("drawerOn") : td("drawerOff")}
+              {d.printerConfig.drawerKick ? <RegisterIcon name="check" size={12} /> : null}
+            </Chip>
+          </span>
+        )}
+      </button>
+    );
+  };
 
   return (
     <div data-testid="pos-settings-devices" className="flex min-w-0 flex-col gap-6 md:gap-8">
@@ -281,78 +348,33 @@ export function DeviceSettings({ systemId, unitId, shopName }: Props) {
 
       <div className="flex min-w-0 flex-col gap-6 lg:flex-row lg:items-start lg:gap-8">
         <div className="flex min-w-0 flex-1 flex-col gap-4 md:gap-5">
-          {list.items.length === 0 && (
+          {activeItems.length === 0 && (
             <p data-testid="pos-device-empty" className="rounded-[18px] border px-6 py-8 text-center text-[14.5px] text-[color:var(--color-muted)]">
               {td("empty")}
             </p>
           )}
-          {list.items.map((d) => {
-            const on = d.id === selId;
-            const revoked = d.status === "REVOKED";
-            return (
-              <button
-                key={d.id}
-                data-testid={`pos-device-card-${d.id}`}
-                type="button"
-                aria-pressed={on}
-                onClick={() => {
-                  setSelId(d.id);
-                  setErr(null);
-                  setNote(null);
-                  setPrintRes(null);
-                }}
-                className={`flex w-full flex-col gap-[14px] rounded-[18px] border bg-[color:var(--color-surface)] px-5 py-5 text-left md:px-6 ${
-                  on ? "border-[color:var(--color-accent)] shadow-[inset_0_0_0_1px_var(--color-accent)]" : ""
-                } ${revoked ? "opacity-60" : ""}`}
-              >
-                <span className="flex items-center gap-[14px]">
-                  <span className="grid size-11 shrink-0 place-items-center rounded-[12px] border bg-[color:var(--color-surface-2)] text-[color:var(--color-ink-soft)]">
-                    <RegisterIcon name={revoked ? "x" : "cash"} size={17} />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <b className="block truncate text-[16.5px] font-bold">{d.name}</b>
-                    <small className="block truncate text-[13px] text-[color:var(--color-muted)]">
-                      {[d.posRegNo, td("codeShort", { code: shortCode(d.deviceCode) }), d.deviceCode === thisCode ? td("thisDevice") : null].filter(Boolean).join(" · ")}
-                    </small>
-                  </span>
-                  {revoked ? (
-                    <Chip tone="danger">{td("revokedChip")}</Chip>
-                  ) : d.online ? (
-                    <span className="inline-flex items-center gap-[6px] text-[13.5px] font-semibold">
-                      <span aria-hidden className="size-2 rounded-full bg-[color:var(--color-ink)]" />
-                      {td("online")}
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-[6px] text-[13px] text-[color:var(--color-muted)]">
-                      <span aria-hidden className="size-2 rounded-full bg-[color:var(--color-line)]" />
-                      {d.lastSeenAt ? td("lastSeen", { time: bkkHm(d.lastSeenAt) }) : td("neverSeen")}
-                    </span>
-                  )}
-                </span>
-                <span className="text-[13.5px] text-[color:var(--color-ink-soft)]">
-                  {d.openShift ? td("shiftLine", { no: d.openShift.shiftNo, time: bkkHm(d.openShift.openedAt) }) : td("noShift")}
-                </span>
-                {!revoked && (
-                  <span className="flex flex-wrap gap-2">
-                    <Chip>
-                      <RegisterIcon name="print" size={13} />
-                      {td(MODE_CHIP[d.printerConfig.mode])} · {d.printerConfig.paper === "58" ? td("paper58") : td("paper80")}
-                      {d.deviceCode === thisCode && pairingMatches(pairing, d.printerConfig.mode) ? <RegisterIcon name="check" size={12} /> : null}
-                    </Chip>
-                    <Chip tone={d.printerConfig.drawerKick ? "plain" : "muted"}>
-                      <RegisterIcon name="cash" size={13} />
-                      {d.printerConfig.drawerKick ? td("drawerOn") : td("drawerOff")}
-                      {d.printerConfig.drawerKick ? <RegisterIcon name="check" size={12} /> : null}
-                    </Chip>
-                  </span>
-                )}
-              </button>
-            );
-          })}
+          {activeItems.map(deviceCard)}
           <p data-testid="pos-device-other" className="flex min-h-[64px] items-center justify-center gap-3 rounded-[18px] border border-dashed bg-[color:var(--color-surface-2)] px-5 py-4 text-center text-[14px] font-semibold text-[color:var(--color-ink-soft)]">
             <RegisterIcon name="plus" size={15} />
             {td("otherDevice")}
           </p>
+          {/* POS HF-P1CLOSE ▸ O7: เครื่องที่เพิกถอนแล้วพับไว้ใต้แถวเดียว "เพิกถอนแล้ว (n)" — ปิดไว้ก่อน · แตะเพื่อกาง (ข้อมูลคงอยู่ ไม่ลบ) ◂ */}
+          {revokedItems.length > 0 && (
+            <div className="flex flex-col gap-4 md:gap-5">
+              <button
+                data-testid="pos-device-revoked-fold"
+                type="button"
+                aria-expanded={showRevoked}
+                className="flex min-h-[48px] w-full items-center gap-3 rounded-[14px] border px-5 text-left text-[14px] font-semibold text-[color:var(--color-ink-soft)] hover:bg-[color:var(--color-surface-2)]"
+                onClick={() => setShowRevoked((v) => !v)}
+              >
+                <RegisterIcon name="x" size={14} />
+                <span className="min-w-0 flex-1 truncate">{td("revokedFold", { count: revokedItems.length })}</span>
+                <RegisterIcon name="chevron" size={12} className={showRevoked ? "rotate-180" : ""} />
+              </button>
+              {showRevoked && revokedItems.map(deviceCard)}
+            </div>
+          )}
         </div>
 
         <div data-testid="pos-device-panel" className="flex min-w-0 flex-col rounded-[18px] border bg-[color:var(--color-surface)] px-5 py-5 md:px-7 md:py-6 lg:w-[400px] lg:shrink-0 xl:w-[430px]">

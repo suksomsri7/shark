@@ -1238,6 +1238,7 @@
     "drawerOn": "ลิ้นชัก",
     "drawerOff": "ไม่มีลิ้นชัก",
     "revokedChip": "เพิกถอนแล้ว",
+    "revokedFold": "เพิกถอนแล้ว ({count})",
     "panelTitle": "ตั้งค่า · {name}",
     "paper": "ขนาดกระดาษ",
     "paper58": "58 มม.",
