@@ -18,10 +18,12 @@ import { channelDisplayName } from "@/components/pos/settings/channel-text";
 import { PriceIcon, SoonTag, markupText, parseMoneyInput, priceErrorText, priceRefusalText, ruleAdjustText, rulePriceOn, ruleStateOf, ruleTouches, ruleWindowText, satangToInput, type PT } from "@/components/pos/products/price-ui";
 import type { ProductsChannel, ProductsData, ProductsPriceRow, ProductsRow } from "./products-data";
 import { channelsIn, draftOf, effectiveOf, rowsFromDraft, type DraftCell } from "./products-scope";
+// POS P2.3U ▸ มติ 1: แท็บ "สูตรและวัตถุดิบ" ใช้งานจริง (RecipeSection) ◂
+import { RecipeSection } from "./RecipeSection";
 
 export type PanelTab = "general" | "options" | "recipe" | "prices" | "stock";
 const TABS: PanelTab[] = ["general", "options", "recipe", "prices", "stock"];
-const PLANNED: Partial<Record<PanelTab, string>> = { options: "P2.3", recipe: "P2.3", stock: "P2.3" };
+const PLANNED: Partial<Record<PanelTab, string>> = { options: "P2.3", stock: "P2.3" }; // POS P2.3U ▸ แท็บสูตรเปิดแล้ว ◂
 
 type Props = {
   systemId: string;
@@ -170,6 +172,9 @@ export function ProductPanel({ systemId, product: p, data, unit, canEdit, onClos
               <SoonTag text={t("drawer.soon", { phase: "P2.3" })} />
             </dd>
           </dl>
+        ) : tab === "recipe" ? (
+          // POS P2.3U ▸ มติ 1 ◂
+          <RecipeSection systemId={systemId} product={p} data={data} unit={unit} />
         ) : (
           <section data-testid="pos-prod-prices">
             <h3 className="mb-2 flex items-center gap-2 text-[13px] font-bold">

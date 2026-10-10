@@ -10803,7 +10803,7 @@
       "expect": {
         "type": "ui",
         "target": "pos-prod-drawer",
-        "note": "แท็บ ทั่วไป · ตัวเลือก · สูตรและวัตถุดิบ · ราคาตามช่องทาง · สต็อก — ตัวเลือก/สูตร/สต็อก ปิด (เร็ว ๆ นี้ · P2.3)"
+        "note": "แท็บ ทั่วไป · ตัวเลือก · สูตรและวัตถุดิบ · ราคาตามช่องทาง · สต็อก — ตัวเลือก/สต็อก ปิด (เร็ว ๆ นี้) · สูตรและวัตถุดิบ เปิดแล้ว (P2.3U)"
       },
       "wo": "P2.2U",
       "oracle": "",
@@ -11139,6 +11139,63 @@
         "note": "ยกเลิก"
       },
       "wo": "P2.2U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-prod-recipe-variant",
+      "kind": "select",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-prod-recipe",
+        "note": "แท็บสูตร: ดูสูตรของ สินค้าหลัก / ตัวแปร (ตัวแปรที่สูตรของตัวเองว่าง = สูตรของแม่ อ่านอย่างเดียว · \"สูตรของสินค้าหลัก\")"
+      },
+      "wo": "P2.3U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-prod-recipe-view-base",
+      "kind": "tab",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-prod-recipe-table",
+        "note": "ชิปมุมมอง \"สูตรพื้นฐาน\" (expandRecipe ไม่มีตัวเลือก · ต้นทุนจากหน้า)"
+      },
+      "wo": "P2.3U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-prod-recipe-view-*",
+      "kind": "tab",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-prod-recipe-table",
+        "note": "ชิปมุมมองต่อตัวเลือก (\"ขนาด M\") — expandRecipe ฝั่ง client + recipeCostAction ของมุมมองนั้น (จำผล)"
+      },
+      "wo": "P2.3U",
       "oracle": "",
       "system": "POS"
     },
