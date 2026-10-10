@@ -365,7 +365,10 @@
       "channelNotFound": "This sales channel was not found in this branch",
       "channelCodeTaken": "This channel code already exists in this branch",
       "channelBuiltinLocked": "This part of a built-in channel can't be changed (Store locks commission, payout and deactivation)",
-      "channelLimit": "This branch already has 30 sales channels"
+      "channelLimit": "This branch already has 30 sales channels",
+      "channelNotSold": "This item isn't sold on this channel — remove it from the bill or switch channel",
+      "priceRuleNotFound": "This price promotion wasn't found — it may have been archived",
+      "priceRuleLimit": "You already have 100 price promotions — archive ones you no longer use first"
     },
     "held": {
       "title": "Held bills",
@@ -2515,6 +2518,103 @@
         "commissionVatBp": "Choose 0% or 7% VAT on commission",
         "sortOrder": "Sort order must be a whole number from 0 to 9999"
       }
+    }
+  },
+  "price": {
+    "title": "Channel prices",
+    "sectionTitle": "Prices by channel and time",
+    "edit": "Edit prices",
+    "save": "Save",
+    "cancel": "Cancel",
+    "notSold": "Not sold",
+    "notSoldDash": "Not sold —",
+    "useBase": "Use regular price",
+    "base": "Regular price",
+    "allBranches": "All branches",
+    "branch": "Branch: {name}",
+    "markupPct": "+{pct}%",
+    "platformPrice": "Platform {price}",
+    "filterDiffers": "Prices differ by channel {count}",
+    "saved": "Channel prices saved",
+    "source": {
+      "BASE": "Regular price",
+      "BRANCH": "Branch price",
+      "CHANNEL": "Channel price",
+      "RULE": "Price promotion",
+      "OPEN": "Open price",
+      "CUSTOM": "Custom item",
+      "WEIGHED": "Priced by weight"
+    },
+    "badge": {
+      "rule": "Happy hour",
+      "channel": "Channel price",
+      "branch": "Branch price"
+    },
+    "billNote": {
+      "channel": "{channel} price",
+      "branch": "Branch price (regular {list})",
+      "rule": "{kind} · {name} (regular {list})"
+    },
+    "bulk": {
+      "title": "+X% for a channel",
+      "channel": "Channel",
+      "percent": "Markup (%)",
+      "roundBaht": "Round to baht",
+      "category": "Category",
+      "preview": "Preview of the first 5 items",
+      "apply": "Set prices",
+      "done": "Set {count} prices · skipped {skipped}"
+    },
+    "rule": {
+      "title": "Price promotions / Happy hour",
+      "add": "Add promotion",
+      "edit": "Edit promotion",
+      "name": "Promotion name",
+      "kindLabel": "Type",
+      "kind": {
+        "HAPPY_HOUR": "Happy hour",
+        "PROMO": "Price promotion"
+      },
+      "adjustLabel": "Price change",
+      "adjust": {
+        "PRICE": "Special price",
+        "PERCENT_OFF": "Percent off",
+        "AMOUNT_OFF": "Amount off"
+      },
+      "state": {
+        "ACTIVE": "Active",
+        "UPCOMING": "Upcoming",
+        "ENDED": "Ended",
+        "OFF": "Off"
+      },
+      "products": "Products",
+      "categories": "Categories",
+      "channels": "Channels",
+      "allChannels": "All channels",
+      "units": "Branches",
+      "weekdays": "Days",
+      "everyDay": "Every day",
+      "weekdayShort": {
+        "d0": "Sun",
+        "d1": "Mon",
+        "d2": "Tue",
+        "d3": "Wed",
+        "d4": "Thu",
+        "d5": "Fri",
+        "d6": "Sat"
+      },
+      "timeRange": "Time",
+      "dateRange": "Dates",
+      "priority": "Priority (advanced)",
+      "scope": "{products} products · {channels}",
+      "example": "{name} {from} → {to}",
+      "label": "Price promotion · {name}",
+      "active": "Active",
+      "archive": "Archive",
+      "archived": "Archived",
+      "empty": "No price promotions yet",
+      "overnightHint": "Split overnight windows into 2 promotions",
+      "saved": "Price promotion saved"
     }
   },
   "nav": {

@@ -8,6 +8,7 @@
 import { formatBaht } from "@/lib/ui/money";
 import type { PriceDiscount, PriceCartInput, PriceVat } from "./pricing-shared";
 import type { TaxInvoiceBuyerInput } from "./tax-invoice-shared"; // POS P1.13 ◂
+import type { PriceSource } from "./price-shared"; // POS P2.2 ◂
 
 // ═══════════ ค่าคงที่ ═══════════
 export const REGISTER_MAX_LINES = 200;
@@ -201,7 +202,11 @@ export type RegisterRefusalCode =
   | "CHANNEL_NOT_FOUND"
   | "CHANNEL_CODE_TAKEN"
   | "CHANNEL_BUILTIN_LOCKED"
-  | "CHANNEL_LIMIT";
+  | "CHANNEL_LIMIT"
+  // POS P2.2 ▸ ราคาตามช่องทาง (R12) — สินค้าไม่ขายในช่องทางนี้ (lineIndex) · โปรราคาไม่พบ · โปรราคาครบเพดาน ◂
+  | "CHANNEL_NOT_SOLD"
+  | "PRICE_RULE_NOT_FOUND"
+  | "PRICE_RULE_LIMIT";
 
 /** คำปฏิเสธ — คืนค่า ไม่ throw · `lineIndex` = บรรทัดที่ผิด (ลำดับเดียวกับที่ส่งมา) ถ้าระบุได้ */
 export type RegisterRefusal = { ok: false; code: RegisterRefusalCode; message: string; lineIndex?: number };
@@ -236,11 +241,22 @@ export type RegisterProduct = {
   stockLeft: number | null;
   trackStock: boolean;
   trackStockMode: "auto" | "on" | "off";
+  /**
+   * POS P2.2 ▸ R6: priceSatang = ราคาจริงของหน้าร้าน (STORE) ณ เวลาที่อ่าน · listPriceSatang = ราคาปกติ (ฐาน/ฐานของแม่ · ไม่รวมตัวเลือก) ·
+   * priceSource = ชั้นที่ชนะ (สินค้าชั่ง = WEIGHED · ไม่ตั้งราคา = null · ไม่ขายหน้าร้าน = null + priceSatang null + listPriceSatang มีค่า) ·
+   * priceRule = โปรที่ใช้อยู่ {id, name, endsAt = ปลายหน้าต่างปัจจุบัน ISO | null} · ฝั่งจอสร้างเองได้ (ไม่มี = ไม่ทราบ) ⇒ optional ◂
+   */
+  listPriceSatang?: number | null;
+  priceSource?: PriceSource | null;
+  priceRule?: { id: string; name: string; endsAt: string | null } | null;
+  /** รีวิว F6: true = แถว STORE ที่ชนะเป็น "ไม่ขาย" (รวมสินค้าไม่มีราคาฐาน) — จอแสดง "ไม่ขายหน้าร้าน" และไม่เปิดราคาเปิด · เซิร์ฟเวอร์เติมเสมอ ⇒ optional */
+  notSold?: boolean;
 };
 export type RegisterCategory = { id: string; name: string; nameEn: string | null; productCount: number };
 
 export type RegisterCatalogInput = { q?: string; categoryId?: string; cursor?: string; limit?: number };
-export type RegisterCatalogResult = { ok: true; categories: RegisterCategory[]; products: RegisterProduct[]; nextCursor: string | null } | RegisterRefusal;
+/** POS P2.2 ▸ R6: priceValidUntil = ขอบหน้าต่างโปรถัดไปภายใน 24 ชม. (ISO · null = ไม่มี) — จอ refetch แคตตาล็อกตอนนั้น ◂ */
+export type RegisterCatalogResult = { ok: true; categories: RegisterCategory[]; products: RegisterProduct[]; nextCursor: string | null; priceValidUntil: string | null } | RegisterRefusal;
 
 /** P1.2 R11: ผลสแกนป้ายเครื่องชั่ง — code = ป้ายที่ต้องส่งต่อเป็น weighedBarcode · ค่าใดคิดไม่ได้ (ไม่มีราคาต่อกก.) = null */
 export type RegisterWeighedScan = { code: string; grams: number | null; priceSatang: number | null };
@@ -305,6 +321,13 @@ export type RegisterQuoteLine = {
   options: RegisterQuoteLineOption[];
   /** P1.2 R12: น้ำหนักของบรรทัดชั่ง (กรัม) · อื่น ๆ = null */
   weightGrams: number | null;
+  /**
+   * POS P2.2 ▸ R5: ชั้นราคาที่ชนะ (เซิร์ฟเวอร์เติมทุก quote · ยอดที่จอคิดเองไม่มี ⇒ optional) · listPriceSatang = ราคาปกติไม่รวมตัวเลือก
+   * (OPEN/CUSTOM/WEIGHED = null) · priceRule = โปรที่ให้ราคานี้ {id, name} | null ◂
+   */
+  priceSource?: PriceSource;
+  listPriceSatang?: number | null;
+  priceRule?: { id: string; name: string } | null;
 };
 export type RegisterQuoteTotals = {
   /** Σ gross ก่อนส่วนลดบรรทัด = "รวม" บนจอ (มติ Q7 · ต่างจาก PosSale.subtotalSatang ที่หลังส่วนลดบรรทัด) */
@@ -830,6 +853,10 @@ const REFUSAL_KEY: Readonly<Record<string, string>> = {
   CHANNEL_CODE_TAKEN: "errors.channelCodeTaken",
   CHANNEL_BUILTIN_LOCKED: "errors.channelBuiltinLocked",
   CHANNEL_LIMIT: "errors.channelLimit",
+  // POS P2.2 ▸ ราคาตามช่องทาง (R12) ◂
+  CHANNEL_NOT_SOLD: "errors.channelNotSold",
+  PRICE_RULE_NOT_FOUND: "errors.priceRuleNotFound",
+  PRICE_RULE_LIMIT: "errors.priceRuleLimit",
 };
 
 /**

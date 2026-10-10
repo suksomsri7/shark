@@ -157,6 +157,10 @@ model PosSaleLine {
   // ── P1.8 — บรรทัดของใบ REFUND เท่านั้น (บิลขาย = null) ──
   refLineId       String? // PosSaleLine.id ของบิลเดิม (id หลวม)
   restock         Boolean? // true = รับของคืนเข้าคลัง · false = ไม่รับ (ของเสีย — ต้นทุนขายคงอยู่)
+  // ── P2.2 — สำเนาชั้นราคาที่ชนะ ณ เวลาขาย (เพิ่มคอลัมน์ล้วน · ผู้เรียกเดิม/ใบ REFUND = null = BASE/ไม่ทราบ) ──
+  priceSource     PosPriceSource? // ชั้นราคาที่ชนะ (ตัวแก้ราคา price-shared.ts) · createSale ไม่คิดราคาเอง — ผู้เรียกส่งมา
+  priceRuleId     String? // PosPriceRule.id ที่ชนะ (id หลวม · กติกาถูกเก็บถาวรได้)
+  listPriceSatang Int? // ราคาปกติขั้น ② (ฐาน/ฐานของแม่ · ไม่รวมตัวเลือก) · null = OPEN/CUSTOM/WEIGHED
   options         PosSaleLineOption[]
 
   @@index([saleId])
@@ -734,4 +738,80 @@ model SalesChannel {
 
   @@unique([unitId, code])
   @@index([tenantId, systemId, unitId])
+}
+
+// ── P2.2 — ราคาตามช่องทาง / สาขา / ช่วงเวลา (R1–R4 · CD1–CD10) ──
+// ลำดับ: กติกา (RULE) > (ช่องทาง, สาขา) > (ช่องทาง, ทุกสาขา) > (ทุกช่องทาง, สาขา) > ฐาน · ตัวแก้ราคาบริสุทธิ์ = pos/price-shared.ts
+enum PosPriceSource {
+  BASE
+  BRANCH
+  CHANNEL
+  RULE
+  OPEN
+  CUSTOM
+  WEIGHED
+}
+
+enum PosPriceRuleKind {
+  HAPPY_HOUR
+  PROMO
+}
+
+enum PosPriceRuleAdjust {
+  PRICE
+  PERCENT_OFF
+  AMOUNT_OFF
+}
+
+// ราคาตามช่องทาง/สาขาต่อสินค้า (R1) · เขียนผ่าน catalog.ts (setChannelPrices / bulkChannelMarkup) เท่านั้น · ไม่เขียนกลับ AccountProduct
+// แถว: (code, null) = ช่องทางทุกสาขา · (code, unit) = ช่องทางที่สาขา · (null, unit) = ราคาสาขาทุกช่องทาง · (null, null) ห้าม (= ฐาน)
+// channelCode (ไม่ใช่ channelId): ช่องทางเป็นของสาขา สินค้าเป็นของระบบ — ตัวตนข้ามสาขา = code (P2.1 §9) · id หลวม ไม่มี FK
+/// 🔴 unique (productId, channelCode, unitId) แบบ NULL เท่ากัน — prisma เขียนไม่ได้ ⇒ index มือใน migration 20261204100000_pos_p22_prices:
+///      CREATE UNIQUE INDEX "PosProductChannelPrice_product_code_unit_key" ON "PosProductChannelPrice" ("productId","channelCode","unitId") NULLS NOT DISTINCT;
+///    + CHECK "PosProductChannelPrice_row_check" (code ∨ unit · notSold ⇒ ราคา null · ¬notSold ⇒ มีราคา) · `prisma migrate diff` มองไม่เห็นทั้งคู่ → ห้ามลบ (do not remove) ออกจาก migration
+model PosProductChannelPrice {
+  id              String   @id @default(cuid())
+  tenantId        String
+  systemId        String // ระบบ POS
+  productId       String // PosProduct.id (id หลวม)
+  channelCode     String? // รหัสช่องทาง (CHANNEL_CODE_RE) · null = ทุกช่องทาง (แถวราคาสาขา)
+  unitId          String? // null = ทุกสาขา
+  priceSatang     Int? // สตางค์ 0..PRICE_MAX · null เมื่อ notSold
+  notSold         Boolean  @default(false) // ไม่ขายในช่องทาง/สาขานี้ ⇒ CHANNEL_NOT_SOLD
+  updatedByUserId String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([tenantId, systemId, productId])
+}
+
+// กติการาคา happy hour / โปร (R3 · CD1: POS เป็นเจ้าของจนถึง P3) · เขียนผ่าน pos/price-rule.ts เท่านั้น
+// ช่วงเวลาเป็นเวลาไทย (+7 คงที่) · [timeFrom, timeTo) ไม่ข้ามเที่ยงคืน (CD8) · [startsAt, endsAt) · weekdays 0=อา…6=ส ([] = ทุกวัน)
+model PosPriceRule {
+  id              String             @id @default(cuid())
+  tenantId        String
+  systemId        String // ระบบ POS
+  name            String // 1..60
+  kind            PosPriceRuleKind
+  active          Boolean            @default(true)
+  priority        Int                @default(0) // 0..100 · มากชนะ
+  productIds      String[]           @default([]) // ≤ 500 (id ของแม่ใช้กับตัวแปร)
+  categoryIds     String[]           @default([]) // ≤ 50
+  channelCodes    String[]           @default([]) // [] = ทุกช่องทาง
+  unitIds         String[]           @default([]) // [] = ทุกสาขา
+  adjust          PosPriceRuleAdjust
+  valueSatang     Int? // PRICE 0..MAX · AMOUNT_OFF 1..MAX
+  valueBp         Int? // PERCENT_OFF 1..10000
+  startsAt        DateTime?
+  endsAt          DateTime?
+  weekdays        Int[]              @default([])
+  timeFrom        String? // "HH:MM" เวลาไทย
+  timeTo          String?
+  archivedAt      DateTime?
+  createdByUserId String
+  updatedByUserId String
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  @@index([tenantId, systemId, archivedAt])
 }

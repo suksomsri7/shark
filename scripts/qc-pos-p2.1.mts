@@ -547,7 +547,10 @@ async function runStatic(): Promise<void> {
     if (h !== CONTRACT_BASE_HASH) p.push(`ของเดิมเปลี่ยน (แฮช ${h} ≠ ฐาน ${CONTRACT_BASE_HASH})`);
     const cs = isRecord(j?.types?.CreateSaleInput) ? j.types.CreateSaleInput : {};
     const extra = Object.keys(cs).filter((k) => !CONTRACT_BASE_FIELDS.includes(k)).sort();
-    if (short(extra) !== short(["channelId", "channelRef"])) p.push(`ฟิลด์ใหม่ = ${extra.join(",") || "—"} (คาด channelId,channelRef)`);
+    // ORACLE-EDIT (P2.2 · มติผู้คุมงาน): สัญญาเพิ่ม 3 ฟิลด์บรรทัดของ P2.2 (ไม่บังคับ) — นอกจากนั้นต้องไม่มี
+    const P22_LINE = ["lines[].listPriceSatang", "lines[].priceRuleId", "lines[].priceSource"];
+    if (short(extra) !== short(["channelId", "channelRef", ...P22_LINE].sort())) p.push(`ฟิลด์ใหม่ = ${extra.join(",") || "—"} (คาด channelId,channelRef + 3 ฟิลด์บรรทัด P2.2)`);
+    for (const k of P22_LINE) if (cs[k] && cs[k].optional !== true) p.push(`${k} ไม่ใช่ optional`);
     for (const k of ["channelId", "channelRef"]) if (cs[k] && (cs[k].optional !== true || cs[k].type !== "string")) p.push(`${k} = ${short(cs[k], 60)} (คาด optional string)`);
     chk("S8", p.length === 0, "ของเดิมตรงฐาน · เพิ่ม channelId? channelRef? พอดี", p.join(" · ") || `ครบ (${Object.keys(cs).length} ฟิลด์)`);
   }

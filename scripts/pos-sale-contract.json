@@ -228,6 +228,18 @@
       "channelRef": {
         "optional": true,
         "type": "string"
+      },
+      "lines[].priceSource": {
+        "optional": true,
+        "type": "\"BASE\" | \"BRANCH\" | \"CHANNEL\" | \"RULE\" | \"OPEN\" | \"CUSTOM\" | \"WEIGHED\""
+      },
+      "lines[].priceRuleId": {
+        "optional": true,
+        "type": "string"
+      },
+      "lines[].listPriceSatang": {
+        "optional": true,
+        "type": "number"
       }
     },
     "MemberSaleChoices": {

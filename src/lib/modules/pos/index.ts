@@ -53,6 +53,9 @@ import {
   createOptionGroup as catalogCreateOptionGroup,
   setProductOptionGroups as catalogSetProductOptionGroups,
   setRecipe as catalogSetRecipe,
+  // POS P2.2 ▸ R2 ราคาตามช่องทาง/สาขา (แทนทั้งชุด) · บวกราคาทั้งช่องทางเป็น % (ราคาตายตัว) ◂
+  setChannelPrices as catalogSetChannelPrices,
+  bulkChannelMarkup as catalogBulkChannelMarkup,
 } from "./catalog";
 export const catalog = {
   createProduct: catalogCreateProduct,
@@ -72,6 +75,15 @@ export const catalog = {
   setProductOptionGroups: catalogSetProductOptionGroups,
   /** P1.2 R8 — ส่วนประกอบของชุด/คอมโบ (BUNDLE เท่านั้น) */
   setRecipe: catalogSetRecipe,
+  /** P2.2 R2 — แถวราคาตามช่องทาง/สาขาของสินค้า 1 รายการ (แทนทั้งชุด · pos.product.setPrice ตามขอบเขตแถว) */
+  setChannelPrices: catalogSetChannelPrices,
+  /** P2.2 R2 CD6 — ราคาช่องทาง = ฐาน + X% ปัดครั้งเดียว เขียนเป็นราคาตายตัว (≤ 500 สินค้า หรือ 1 หมวด) */
+  bulkChannelMarkup: catalogBulkChannelMarkup,
 } as const;
 export type { CatalogCtx, CatalogActor, CatalogClient, CatalogErrorCode, CatalogRowScope, CatalogWriteVerdict, PosProductView, PosOptionGroupView, TrackStockMode } from "./catalog";
 export { CatalogError } from "./catalog";
+
+// POS P2.2 ▸ R10 · C-6 `priceFor` — ราคาตามชั้น (ฐาน/สาขา/ช่องทาง/กติกา) ของสินค้าแคตตาล็อก ณ เวลาหนึ่ง (ร้านอาหาร/เว็บ/QR/แชท ใช้ตัวนี้ · P2.4 P2.7 P2.8) ◂
+export { resolvePrices } from "./price";
+export type { ResolvePricesInput, ResolvePricesResult, ResolvedPriceItem, PriceScope } from "./price";
+export type { PriceSource, ChannelPriceView, ChannelPriceInputRow } from "./price-shared";

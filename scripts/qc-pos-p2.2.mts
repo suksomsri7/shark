@@ -61,10 +61,10 @@ const CHECKS: readonly Def[] = [
   // ── C ราคาช่องทาง/สาขา (catalog.ts) ──
   D("C1", "-", "[R1 R2] setChannelPrices (เจ้าของ): ตั้ง 3 แถว (LINEMAN ทุกสาขา · สาขา A ทุกช่องทาง · LINEMAN สาขา A) → แถวตรง + updatedByUserId · แทนทั้งชุดด้วย 1 แถว → เหลือ 1 · [] → 0 · รหัส builtin (QR_TABLE) ได้ · notSold → priceSatang null · ตั้งแถวของ fixture (ลาเต้ LINEMAN 9,400 → C6 9,500 · ม็อคค่า LINEMAN 8,500 · มัทฉะ LINEMAN ไม่ขาย · อเมริกาโน่ สาขา A 5,500)"),
   D("C2", "X5", "[R1 R2 CD7] VALIDATION ไม่เขียนอะไร: (code,unit) ซ้ำ · (null,null) · คีย์แปลก (แถว/บน) · notSold+ราคา · ไม่ notSold+ไม่มีราคา · ราคา −1 / 1.5 / สตริง / เกิน PRICE_MAX · รหัสที่ระบบไม่มี (GRAB) / ตัวเล็ก / ช่องทางที่เก็บถาวร · 61 แถว · rows ไม่ใช่อาร์เรย์ · สินค้าชั่ง → VALIDATION (แถวสินค้าชั่ง 0)"),
-  D("C3", "X3", "[R2 Q5 X2] สิทธิ์ pos.product.setPrice ตามขอบเขต: ผู้จัดการสาขา A เขียนแถวสาขา A ได้ · แถวทุกสาขา → PERMISSION_DENIED · พนักงาน (pos.sale.create) → PERMISSION_DENIED · สินค้าร้าน T2 / id มั่ว → PRODUCT_NOT_FOUND · แถวไม่เปลี่ยน"),
+  D("C3", "X3", "[R2 Q5 X2] สิทธิ์ pos.product.setPrice ตามขอบเขต: ผู้จัดการสาขา A เขียนแถวสาขา A ได้ · แถวทุกสาขา → PERMISSION_DENIED · พนักงาน (pos.sale.create) → PERMISSION_DENIED · สินค้าร้าน T2 / id มั่ว → NOT_FOUND (CatalogError · มติผู้คุมงาน 1) · แถวไม่เปลี่ยน"),
   D("C4", "X5", "[R2] audit pos.product.channelPrice ต่อการเขียน (actorId = userId จริง · มี productId · before/after) · คำขอที่ถูกปฏิเสธไม่มี audit · AccountProduct.salePrice + InvItem.priceSatang ของสินค้าที่ผูกบัญชีไม่เปลี่ยน (ตัวควบคุมบวก: setPrice ฐานเขียนกลับจริง)"),
   D("C5", "-", "[R6] listForUnit.channelPrices: สาขา A อเมริกาโน่ = (LINEMAN ทุกสาขา 7,600 · channelId = LINEMAN ของสาขา A) + (สาขา A 5,500 · channelId null) · สาขา B ไม่เห็นแถวสาขา A · LINEMAN ที่สาขา B ไม่มีช่องทาง → channelId null · คีย์ต่อแถวตรง {channelId channelCode unitId priceSatang notSold}"),
-  D("C6", "X4", "[R2 CD6 Q6] bulkChannelMarkup LINEMAN +27% ปัด 100 หมวดกาแฟ → แถวราคาตายตัว (ลาเต้ 9,500 · อเมริกาโน่ 7,600) · ข้ามสินค้าไม่มีราคา · ไม่แตะสินค้านอกหมวด · audit ต่อสินค้า · ผู้จัดการสาขา A ปรับเฉพาะ (LINEMAN, A) ได้ แถวอื่นของสินค้าคงอยู่ · ทุกสาขา → PERMISSION_DENIED · พนักงาน → PERMISSION_DENIED · bp 0 / 20001 · roundTo 10 · ทั้ง productIds+categoryId · ไม่มีทั้งคู่ · คีย์แปลก → VALIDATION"),
+  D("C6", "X4", "[R2 CD6 Q6] bulkChannelMarkup LINEMAN +27% ปัด 100 หมวดกาแฟ → แถวราคาตายตัว (ลาเต้ 9,500 · อเมริกาโน่ 7,600) · ข้ามสินค้าไม่มีราคา · ไม่แตะสินค้านอกหมวด · audit ต่อสินค้า · ผู้จัดการสาขา A ปรับเฉพาะ (LINEMAN, A) ได้ แถวอื่นของสินค้าคงอยู่ · ทุกสาขา → PERMISSION_DENIED · พนักงาน → PERMISSION_DENIED · แถวไม่ขาย (มัทฉะ) ในชุดที่เลือกคงไม่ขาย นับ skipped ไม่มี audit (F2) · bp 0 / 20001 · roundTo 10 · ทั้ง productIds+categoryId · ไม่มีทั้งคู่ · คีย์แปลก → VALIDATION"),
   // ── P กติการาคา (price-rule.ts) ──
   D("P1", "-", "[R3 CD8] savePriceRule/listPriceRules/archivePriceRule: สร้าง (คีย์ผล 18 ตัวพอดี · ค่าสะท้อนตรง) · แก้ด้วย id · ขอบที่ผ่าน (priority 0/100 · bp 1/10000 · PRICE 0 · ชื่อ 60 ตัว · 00:00–23:59 · หมวดล้วน) · ผิด → VALIDATION (ชื่อว่าง/61 · priority −1/101 · bp 0/10001 · AMOUNT 0 · PRICE −1/เกิน MAX · ไม่มีสินค้า+หมวด · เวลาข้างเดียว · from ≥ to · ข้ามเที่ยงคืน 22:00–02:00 · start ≥ end · วัน 7 · \"25:00\" · kind/adjust แปลก · คีย์แปลก · สินค้า 501 · หมวด 51 · ช่องทางตัวเล็ก) · archive → list ปกติไม่เห็น · includeArchived เห็น archived:true"),
   D("P2", "-", "[R3] เพดาน 100 กติกาที่ไม่เก็บถาวรต่อระบบ: เติมถึง 100 → ตัวที่ 101 → PRICE_RULE_LIMIT (ไม่มีแถวเพิ่ม) · เก็บถาวร 1 ตัว → สร้างได้อีก (กติกาที่เก็บถาวรไม่นับ)"),
@@ -79,7 +79,7 @@ const CHECKS: readonly Def[] = [
   D("Q5", "-", "[R4 CD2 Q3] กติกา STORE ไม่โดน LINEMAN (9,500 CHANNEL) → เพิ่มกติกา 20% ทุกช่องทาง priority 0 → LINEMAN 7,600 RULE (คิดบน 9,500) · STORE ยัง 5,900 (priority 10 ชนะ)"),
   D("Q6", "X4", "[R4 ⑥ CD5] ตัวเลือก M +1,000 บวกหลังกติกา: STORE 6,900 (optionsSatang 1,000) · LINEMAN 8,600 · listPriceSatang ไม่รวมตัวเลือก (7,500)"),
   D("Q7", "-", "[R4 ① CD7] ราคาเปิด 4,000 ของลาเต้ระหว่าง happy hour → 4,000 OPEN (STORE + LINEMAN) · รายการกำหนดเอง → CUSTOM · สินค้าชั่ง 500 g × 1,200/kg → 60,000 WEIGHED · ทั้งหมด priceRule null · list null"),
-  D("Q8", "X5", "[R1 R4 R12] LINEMAN [เอสเพรสโซ่, มัทฉะ(ไม่ขาย)] → CHANNEL_NOT_SOLD lineIndex 1 (ข้อความไทย \"ไม่ขายในช่องทางนี้\") · STORE ตะกร้าเดียวกันผ่าน (ตัวควบคุม) · submit LINEMAN → CHANNEL_NOT_SOLD ไม่มีบิล"),
+  D("Q8", "X5", "[R1 R4 R12] LINEMAN [เอสเพรสโซ่, มัทฉะ(ไม่ขาย)] → CHANNEL_NOT_SOLD lineIndex 1 (ข้อความไทย \"ไม่ขายในช่องทางนี้\") · STORE ตะกร้าเดียวกันผ่าน (ตัวควบคุม) · submit LINEMAN → CHANNEL_NOT_SOLD ไม่มีบิล · ราคาเปิดของมัทฉะบน LINEMAN → CHANNEL_NOT_SOLD (F1) · สินค้าไม่มีราคาฐาน + แถวไม่ขาย + ราคาเปิด → CHANNEL_NOT_SOLD (F6)"),
   D("Q9", "X4", "[R5 CD4 Q4] สมาชิก Gold 5% + คูปอง PCT10 บนราคากติกา: ลาเต้ ×2 (5,900) = ตะกร้าควบคุมรายการกำหนดเอง 5,900 ×2 ทุกยอด (คูปอง 1,180 · tier · grand) และ ≠ ตะกร้า 7,500 · เพดานส่วนลดพนักงาน 10% คิดบน 5,900 (10% ผ่าน ลด 590 · 10.01% → DISCOUNT_EXCEEDS_LIMIT) — กติกาไม่ใช่ส่วนลด"),
   D("Q10", "X5", "[R5] submit ด้วย expectedGrandTotal 5,900 หลังเก็บกติกา → PRICE_CHANGED พกยอดสด 7,500 (บรรทัด BASE) · ไม่มีแถวใหม่ (บิล/จ่าย/outbox/เลขใบเสร็จ) · ส่งใหม่ 7,500 → สำเร็จ บรรทัด BASE"),
   // ── S บิล ──
@@ -1299,11 +1299,11 @@ async function runDb() {
     if (!codeIs(s1, "PERMISSION_DENIED")) p.push(`พนักงาน → ${codeOf(s1)}`);
     if ((await cpSig(PR.tea2 ?? "")) !== want) p.push(`tea2 เปลี่ยนหลังคำปฏิเสธ ${await cpSig(PR.tea2 ?? "")}`);
     const t2 = await setCP(ownerId, PR.t2 ?? "nope", [cprow("LINEMAN", null, 1)], "C3 T2");
-    if (!codeIs(t2, "PRODUCT_NOT_FOUND")) p.push(`สินค้าร้าน T2 → ${codeOf(t2)} (คาด PRODUCT_NOT_FOUND)`);
+    if (!codeIs(t2, "NOT_FOUND")) p.push(`สินค้าร้าน T2 → ${codeOf(t2)} (คาด NOT_FOUND · มติ 1)`);
     const nf = await setCP(ownerId, `nope${RAND}`, [cprow("LINEMAN", null, 1)], "C3 nope");
-    if (!codeIs(nf, "PRODUCT_NOT_FOUND")) p.push(`id มั่ว → ${codeOf(nf)}`);
+    if (!codeIs(nf, "NOT_FOUND")) p.push(`id มั่ว → ${codeOf(nf)} (คาด NOT_FOUND · มติ 1)`);
     if ((await cpRows(PR.t2 ?? "", T2)).length !== 0) p.push("สินค้าร้าน T2 มีแถว");
-    chk("C3", NCP() === "" && p.length === 0, "ผู้จัดการ A ได้เฉพาะแถว A · ทุกสาขา/พนักงาน DENIED · ร้านอื่น PRODUCT_NOT_FOUND", FX(NCP() + (P8(p) || "ครบ")));
+    chk("C3", NCP() === "" && p.length === 0, "ผู้จัดการ A ได้เฉพาะแถว A · ทุกสาขา/พนักงาน DENIED · ร้านอื่น NOT_FOUND", FX(NCP() + (P8(p) || "ครบ")));
   }
   // C4 audit + ไม่เขียนกลับบัญชี
   {
@@ -1356,6 +1356,12 @@ async function runDb() {
     const auNew = (await audits(AUDIT.channelPrice)).slice(au0);
     const auOf = (k: string) => auNew.filter((a) => mentions(a, PR[k] ?? "-") && a.actorId === ownerId).length;
     if (auNew.length !== 2 || auOf("latte") !== 1 || auOf("americano") !== 1) p.push(`audit ใหม่ ${auNew.length} (ลาเต้ ${auOf("latte")} · อเมริกาโน่ ${auOf("americano")} · คาด 1 ต่อสินค้าที่เขียน)`);
+    // ORACLE-EDIT (reviewer F2): มัทฉะมีแถว (LINEMAN, ทุกสาขา) "ไม่ขาย" อยู่ในชุดที่เลือก → แถวคงไม่ขาย · นับใน skipped · ไม่มี audit
+    const auNs0 = (await audits(AUDIT.channelPrice)).length;
+    const ns = await bulk(ownerId, { channelCode: "LINEMAN", unitId: null, markupBp: 2700, roundTo: 100, productIds: [PR.matcha ?? "none"] }, "C6 notSold");
+    const nsSig = await cpSig(PR.matcha ?? "");
+    const auNs = (await audits(AUDIT.channelPrice)).length - auNs0;
+    if (!okish(ns) || ns.written !== 0 || ns.skipped !== 1 || nsSig !== "LINEMAN|*|X" || auNs !== 0) p.push(`มัทฉะ(ไม่ขาย) ในชุด → ${codeOf(ns)} written ${short(ns?.written, 5)} skipped ${short(ns?.skipped, 5)} ${nsSig || "—"} audit +${auNs} (คาด 0 · 1 · LINEMAN|*|X · +0)`);
     const m = await bulk(mgrId, { channelCode: "LINEMAN", unitId: U.A, markupBp: 2700, roundTo: 100, productIds: [PR.tea2 ?? "none"] }, "C6 manager A");
     if (!okish(m)) p.push(`ผู้จัดการ A (LINEMAN, A) → ${codeOf(m)}`);
     const t2want = "*|A|4000,LINEMAN|A|5300";
@@ -1488,6 +1494,14 @@ async function runDb() {
     else if (!/ไม่ขายในช่องทางนี้/.test(String(r.message ?? ""))) p.push(`ข้อความ ${short(r.message, 60)}`);
     const s = await quote("A", cart, owner, "Q8 STORE");
     if (s?.ok !== true || s.grandTotalSatang !== 11_500) p.push(`STORE (ตัวควบคุม) → ${codeOf(s)} ${s?.grandTotalSatang}`);
+    // ORACLE-EDIT (reviewer F1): ราคาเปิดของสินค้าที่แถวชนะเป็น "ไม่ขาย" ต้องถูกปฏิเสธเหมือนทางปกติ (ราคาเปิดไม่ข้าม notSold)
+    const op = await quote("A", { channelId: CH.LM_A, lines: [pl(PR.matcha ?? "none", 1, { openPrice: true, unitPriceSatang: 4000 })] }, owner, "Q8 open LINEMAN");
+    if (!refused(op, "CHANNEL_NOT_SOLD") || op.lineIndex !== 0) p.push(`ราคาเปิด LINEMAN มัทฉะ(ไม่ขาย) → ${codeOf(op)} lineIndex ${short(op?.lineIndex, 5)} (คาด CHANNEL_NOT_SOLD @0)`);
+    // ORACLE-EDIT (reviewer F6): สินค้าไม่มีราคาฐาน (ขนมไม่ตั้งราคา) + แถว (LINEMAN, ทุกสาขา) ไม่ขาย → ราคาเปิดบน LINEMAN = CHANNEL_NOT_SOLD (ไม่ใช่ผ่าน) · ล้างแถวคืนหลังตรวจ
+    const un = await setCP(ownerId, PR.unpriced ?? "", [cprow("LINEMAN", null, null, true)], "Q8 unpriced notSold");
+    const ou = await quote("A", { channelId: CH.LM_A, lines: [pl(PR.unpriced ?? "none", 1, { openPrice: true, unitPriceSatang: 4000 })] }, owner, "Q8 open unpriced LINEMAN");
+    const unc = await setCP(ownerId, PR.unpriced ?? "", [], "Q8 unpriced clear");
+    if (!okish(un) || !okish(unc) || !refused(ou, "CHANNEL_NOT_SOLD") || ou.lineIndex !== 0) p.push(`ราคาเปิด LINEMAN ขนมไม่ตั้งราคา(ไม่ขาย) → ${codeOf(ou)} lineIndex ${short(ou?.lineIndex, 5)} (คาด CHANNEL_NOT_SOLD @0 · ตั้งแถว ${codeOf(un)} · ล้าง ${codeOf(unc)})`);
     const c0 = await counts();
     const key = newKey("q8");
     const sb = await submit({ channelId: CH.LM_A, ...cart }, 11_500, [["PLATFORM", 11_500]], key);
