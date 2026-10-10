@@ -2466,6 +2466,7 @@ async function regSubmitWithIntents(
  *   ⇒ ซ่อน `$transaction` ให้ createSale ทำงานในธุรกรรมของผู้เรียกตรง ๆ ตามที่ service.ts ออกแบบ ("ถูกเรียกใน tx ผู้อื่น") —
  *   บิล + ยึดรายการ + ปิดโต๊ะ = xid เดียว (CONTROLLER-DECISION 9) · งานหลัง commit ทำที่ regSubmitTable หลังธุรกรรม ◂
  */
+// POS P2.4 ▸ HF-TX: ผู้คุมจะรวมเป็น helper กลางหลัง HF ◂
 function regCallerTx(tx: Prisma.TransactionClient): Prisma.TransactionClient {
   return new Proxy(tx, {
     has: (t, k) => (k === "$transaction" ? false : Reflect.has(t, k)),
