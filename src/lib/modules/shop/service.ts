@@ -197,7 +197,8 @@ export async function createOrder(ctx: ShopCtx, input: CreateOrderInput): Promis
           externalRef: code,
           idempotencyKey: `web-${created.id}`,
           shopOrderId: created.id,
-          lines: snap.map((l) => (l.posProductId ? { productId: l.posProductId, name: l.name, unitPriceSatang: l.unitPriceSatang, qty: l.qty } : { name: l.name, unitPriceSatang: l.unitPriceSatang, qty: l.qty })),
+          // fix รอบ 3 (H5): ที่มาของราคา/รหัสกติกา/ราคาปกติจาก webPricesForShop ติดไปกับบรรทัด (รายงานโปรนับถูก)
+          lines: snap.map((l) => (l.posProductId ? { productId: l.posProductId, name: l.name, unitPriceSatang: l.unitPriceSatang, qty: l.qty, ...webLineMeta(webPrice.get(l.productId)) } : { name: l.name, unitPriceSatang: l.unitPriceSatang, qty: l.qty })),
           customer: { name: customerName.slice(0, 100), phone: customerPhone.replace(/[^0-9+]/g, "").slice(0, 30) || null },
           fulfilment: "PICKUP",
           ...(note ? { note: note.slice(0, 500) } : {}),
@@ -238,7 +239,9 @@ export async function promptpayForOrder(ctx: ShopCtx, orderId: string): Promise<
 }
 
 // ── ยืนยันรับเงิน (หัวใจ) — ปิดบิลผ่าน POS + ตัดสต็อก ──────────
-export async function confirmOrderPaid(ctx: ShopCtx, orderId: string, _actorUserId?: string): Promise<{ ok: boolean; posSaleId?: string }> {
+/** POS P2.8 ▸ fix รอบ 3 (H1): ออเดอร์ในจอ POS ถูกร้านปฏิเสธ/ยกเลิกแล้ว — เว็บร้านไม่รับเงิน (rollback การ claim) ◂ */
+class PosOrderClosedError extends Error {}
+export async function confirmOrderPaid(ctx: ShopCtx, orderId: string, _actorUserId?: string): Promise<{ ok: boolean; posSaleId?: string; code?: "POS_ORDER_CLOSED" }> {
   const db = tenantDb(ctx);
 
   // POS P1.6 R2 F1 ▸ ด่าน POS ก่อน claim (O21): ไม่มี POS / ร้านมีหลาย POS แต่สาขานี้ไม่ผูก = โยนโดยไม่แตะออเดอร์ ◂
@@ -246,11 +249,27 @@ export async function confirmOrderPaid(ctx: ShopCtx, orderId: string, _actorUser
   if (!posGate.ok) throw new Error(posGate.code === "NO_POS" ? "เปิดระบบขาย (POS) ก่อนยืนยันรับเงิน" : posGate.message);
 
   // 1) claim อะตอมมิก: PENDING_PAYMENT → PAID (แพ้แข่ง/สถานะอื่น → ok:false, ไม่ทำเส้นเงินซ้ำ)
-  const claim = await db.shopOrder.updateMany({
-    where: { id: orderId, status: "PENDING_PAYMENT" },
-    data: { status: "PAID", paidAt: new Date() },
-  });
-  if (claim.count === 0) return { ok: false };
+  // POS P2.8 ▸ fix รอบ 3 (H1): claim + สะท้อนการรับเงินเข้าออเดอร์ในจอ POS ในธุรกรรมเดียว (ไม่พึ่งคิว) — ร้านปฏิเสธ/ยกเลิกออเดอร์แล้ว
+  //   ⇒ {ok:false, code "POS_ORDER_CLOSED"} ไม่มีอะไรถูกเขียน · ธุรกรรมดิบ (tenantDb บังคับ systemId ที่บริบทเว็บร้านไม่มี) กรองร้าน+สาขาเองแบบ tenantDb
+  let claimed: "OK" | "LOST" | "POS_ORDER_CLOSED";
+  try {
+    claimed = await prisma.$transaction(async (tx) => {
+      const c = await tx.shopOrder.updateMany({
+        where: { id: orderId, tenantId: ctx.tenantId, unitId: ctx.unitId, status: "PENDING_PAYMENT" },
+        data: { status: "PAID", paidAt: new Date() },
+      });
+      if (c.count === 0) return "LOST" as const;
+      const m = await orders.webClaimInTx(tx, orderId, { tenantId: ctx.tenantId });
+      if (m.ok === false) throw new PosOrderClosedError(m.code);
+      return "OK" as const;
+    });
+  } catch (e) {
+    if (!(e instanceof PosOrderClosedError)) throw e;
+    claimed = "POS_ORDER_CLOSED";
+  }
+  if (claimed === "POS_ORDER_CLOSED") return { ok: false, code: "POS_ORDER_CLOSED" };
+  if (claimed === "LOST") return { ok: false };
+  // ◂
 
   const order = await db.shopOrder.findFirst({ where: { id: orderId } });
   const lines = await db.shopOrderLine.findMany({ where: { orderId } });
@@ -259,11 +278,16 @@ export async function confirmOrderPaid(ctx: ShopCtx, orderId: string, _actorUser
   // 2) POS ของบิล = ด่านก่อน claim ด้านบน (สาขาที่ผูก POS · หรือ POS ตัวเดียวของร้าน — P1.6 O21)
   const posSys = { id: posGate.systemId };
   const lineSrc = await orders.webLineSources(ctx.tenantId, orderId); // POS P2.8 ▸ ที่มาของราคาจากออเดอร์ในจอ POS (ไม่มี = CHANNEL) ◂
+  // POS P2.8 ▸ fix รอบ 3 (H1): คืนการ claim = คืนออเดอร์ในจอ POS เป็นยังไม่จ่ายในธุรกรรมเดียวกัน (กรองร้าน+สาขาแบบ tenantDb)
   const revertClaim = () =>
-    db.shopOrder.updateMany({
-      where: { id: orderId, status: "PAID", posSaleId: null },
-      data: { status: "PENDING_PAYMENT", paidAt: null },
+    prisma.$transaction(async (tx) => {
+      const r = await tx.shopOrder.updateMany({
+        where: { id: orderId, tenantId: ctx.tenantId, unitId: ctx.unitId, status: "PAID", posSaleId: null },
+        data: { status: "PENDING_PAYMENT", paidAt: null },
+      });
+      if (r.count > 0) await orders.webClaimRevertInTx(tx, orderId, { tenantId: ctx.tenantId });
     });
+  // ◂
 
   // 3) เส้นเงิน C-2 — pos.createSale (idempotent ต่อ `ecom-<orderId>`)
   //   P1.6 R2 F1: createSale ปฏิเสธ (เช่น ยอด/คีย์/สต็อก) = ไม่มีบิล ⇒ คืนออเดอร์เป็นรอชำระเหมือนกรณีไม่มี POS แล้วโยนต่อ
@@ -294,6 +318,7 @@ export async function confirmOrderPaid(ctx: ShopCtx, orderId: string, _actorUser
   //    ของเดิมยิงหลังอัปเดตแบบแยกคำสั่ง: โปรเซสตายคั่นกลาง = เก็บเงินแล้วแต่ลูกค้าไม่เคยได้แต้ม
   await prisma.$transaction(async (tx) => {
     await tx.shopOrder.updateMany({ where: { id: orderId, tenantId: ctx.tenantId }, data: { posSaleId: sale.saleId } });
+    await orders.webSaleBoundInTx(tx, orderId, sale.saleId, { tenantId: ctx.tenantId }); // POS P2.8 ▸ fix รอบ 3 (H1): ผูกบิล ECOM กับออเดอร์ในจอ POS ในธุรกรรมเดียวกัน ◂
     await emitOutbox(tx, {
       tenantId: ctx.tenantId,
       unitId: ctx.unitId,
@@ -341,6 +366,11 @@ export async function confirmOrderPaid(ctx: ShopCtx, orderId: string, _actorUser
   return { ok: true, posSaleId: sale.saleId };
 }
 
+// POS P2.8 ▸ fix รอบ 3 (H5): ที่มาของราคาจาก webPricesForShop → บรรทัดออเดอร์ในจอ POS ◂
+function webLineMeta(w: { priceSource: string; priceRuleId?: string | null; listPriceSatang?: number | null } | undefined): { priceSource?: string; priceRuleId?: string; listPriceSatang?: number } {
+  if (!w) return {};
+  return { priceSource: w.priceSource, ...(w.priceRuleId ? { priceRuleId: w.priceRuleId } : {}), ...(typeof w.listPriceSatang === "number" ? { listPriceSatang: w.listPriceSatang } : {}) };
+}
 // POS P2.8 ▸ R9 (มติ 4): สินค้าแคตตาล็อก + ที่มาของราคาของบรรทัดบิลเว็บร้าน — จับคู่กับบรรทัดของออเดอร์ในจอ POS (สินค้า + ราคาต่อหน่วย) ·
 //   ไม่มีคู่ = CHANNEL (ราคาของช่องทางเว็บ ณ ตอนสั่ง) · ไม่มี posProductId (ออเดอร์ก่อน P2.8) = ไม่ส่ง (เหมือนเดิม) · ไม่มี itemId เสมอ
 type WebLineSource = { productId: string; unitPriceSatang: number; priceSource: string | null; priceRuleId: string | null; listPriceSatang: number | null };

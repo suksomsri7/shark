@@ -40,6 +40,7 @@ import {
   ORDER_STATUSES,
   ORDER_KEY_RE,
   ORDER_HAS_REFUNDS_MESSAGE,
+  ORDER_SALE_VOIDED_MESSAGE,
   ORDER_WEB_PAID_MESSAGE,
   acceptRemainingSec,
   canTransition,
@@ -780,7 +781,8 @@ export async function ingestInTx(tx: Tx, scope: { tenantId: string; unitId: stri
     if (!rowAvailable(row, s.unitId, soldOut) || (row.parentId && !liveParents.has(row.parentId))) return refuse("PRODUCT_UNAVAILABLE", undefined, { lineIndex: i });
     if (l.kind === "priced") {
       // ราคาต้นทาง = ราคาของช่องทางนี้ ณ ตอนลูกค้าสั่ง (เว็บร้าน: ราคาหน้าเว็บที่ลูกค้าเห็น)
-      lines.push({ productId: row.id, name: l.name ?? row.name, qty: l.qty, unitPriceSatang: l.unitPriceSatang, listPriceSatang: null, priceSource: "CHANNEL", priceRuleId: null, options: [], note: l.note });
+      // POS P2.8 fix รอบ 3 (H5): ที่มาของราคาจากต้นทาง (เว็บร้าน = ชั้น WEB ของ webPricesForShop) · ไม่ส่ง = CHANNEL
+      lines.push({ productId: row.id, name: l.name ?? row.name, qty: l.qty, unitPriceSatang: l.unitPriceSatang, listPriceSatang: l.listPriceSatang, priceSource: l.priceSource ?? "CHANNEL", priceRuleId: l.priceRuleId, options: [], note: l.note });
       continue;
     }
     if (l.choiceIds.length) return refuse("VALIDATION", "ประตูระบบยังไม่รับตัวเลือกของสินค้า — ส่งราคาต้นทางแทน", { lineIndex: i });
@@ -807,17 +809,66 @@ export async function afterCommit(): Promise<void> {
  */
 export async function sourceCancelledInTx(tx: Tx, scope: { tenantId: string; unitId: string }, input: { shopOrderId: string; reason?: string | null }): Promise<SourceCancelledResult> {
   if (!isRecord(scope) || !isId(scope.tenantId) || !isRecord(input) || !isId(input.shopOrderId)) return { ok: true, orderId: null, changed: false };
-  const o = await tx.posOrder.findFirst({ where: { tenantId: scope.tenantId, shopOrderId: input.shopOrderId, ...(isId(scope.unitId) ? { unitId: scope.unitId } : {}) } });
-  if (!o) return { ok: true, orderId: null, changed: false };
-  if (!canTransition(o.status, "CANCELLED")) return { ok: true, orderId: o.id, changed: false };
   const reason = typeof input.reason === "string" && input.reason.trim() ? input.reason.trim().slice(0, 300) : "ต้นทางยกเลิก";
-  try {
-    await transition(tx, o, "CANCELLED", { closedAt: new Date() }, { actorUserId: null, payload: { source: "SHOP", reason } });
-  } catch (e) {
-    if (e instanceof OrderRaced || e instanceof OrderAbort) return { ok: true, orderId: o.id, changed: false };
-    throw e;
+  // POS P2.8 fix รอบ 3 (H4): แพ้การแข่ง (เช่น ร้านกดรับพร้อมกัน) = อ่านใหม่แล้วลองอีกครั้งในธุรกรรมเดียวกัน (READ COMMITTED เห็นเวอร์ชันใหม่) — ไม่ทิ้ง
+  //   ShopOrder CANCELLED คู่กับออเดอร์ที่ยังเปิดอยู่ · ปิดแล้ว (เช่น ถูกปฏิเสธ) = ไม่เปลี่ยน
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const o = await tx.posOrder.findFirst({ where: { tenantId: scope.tenantId, shopOrderId: input.shopOrderId, ...(isId(scope.unitId) ? { unitId: scope.unitId } : {}) } });
+    if (!o) return { ok: true, orderId: null, changed: false };
+    if (!canTransition(o.status, "CANCELLED")) return { ok: true, orderId: o.id, changed: false };
+    try {
+      await transition(tx, o, "CANCELLED", { closedAt: new Date() }, { actorUserId: null, payload: { source: "SHOP", reason } });
+      return { ok: true, orderId: o.id, changed: true };
+    } catch (e) {
+      if (e instanceof OrderRaced) continue;
+      if (e instanceof OrderAbort) return { ok: true, orderId: o.id, changed: false };
+      throw e;
+    }
   }
+  throw new Error("[pos/order] sourceCancelledInTx: แข่งกันเกิน 5 รอบ");
+}
+
+// ═══════════ POS P2.8 fix รอบ 3 (H1) ▸ การรับเงินของเว็บร้านสะท้อนเข้าออเดอร์ในธุรกรรมของเว็บร้านเอง (ไม่พึ่งคิว) ◂ ═══════════
+export type WebClaimResult = { ok: true; orderId: string | null; changed: boolean } | { ok: false; code: "ORDER_CLOSED"; orderId: string; status: OrderStatus };
+async function webOrderForUpdate(tx: Tx, shopOrderId: string, tenantId?: string): Promise<PosOrder | null> {
+  const rows = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM "PosOrder" WHERE "shopOrderId" = ${shopOrderId} ORDER BY id FOR UPDATE`;
+  if (!rows.length) return null;
+  const o = await tx.posOrder.findFirst({ where: { id: rows[0]!.id, ...(tenantId ? { tenantId } : {}) } });
+  return o;
+}
+/**
+ * เว็บร้านยืนยันรับเงิน (ในธุรกรรม claim ของ confirmOrderPaid): ล็อกออเดอร์ FOR UPDATE · REJECTED/CANCELLED ⇒ {ok:false, code ORDER_CLOSED}
+ * (เว็บร้านต้องไม่รับเงินออเดอร์ที่ร้านปฏิเสธ/ยกเลิกแล้ว) · ไม่มีออเดอร์ (ร้านไม่มี POS ตอนสั่ง) ⇒ ok · อื่น ⇒ PAID + เวอร์ชัน + บันทึก paid
+ * ⇒ ปฏิเสธ/ยกเลิกของร้านเรียงคิวกับการยืนยันที่แถวเดียวกัน (ผู้แพ้ได้ ORDER_STATE_CHANGED / ORDER_CLOSED)
+ */
+export async function webClaimInTx(tx: Tx, shopOrderId: string, scope?: { tenantId: string }): Promise<WebClaimResult> {
+  if (!isId(shopOrderId)) return { ok: true, orderId: null, changed: false };
+  const o = await webOrderForUpdate(tx, shopOrderId, scope?.tenantId);
+  if (!o) return { ok: true, orderId: null, changed: false };
+  if (o.status === "REJECTED" || o.status === "CANCELLED") return { ok: false, code: "ORDER_CLOSED", orderId: o.id, status: o.status };
+  if (o.paymentState === "PAID") return { ok: true, orderId: o.id, changed: false };
+  await touch(tx, o, { paymentState: "PAID" }, { type: "paid", actorUserId: null, payload: { source: "SHOP" } });
   return { ok: true, orderId: o.id, changed: true };
+}
+/** ผูกบิล ECOM ของเว็บร้านกับออเดอร์ (ในธุรกรรมที่เว็บร้านเขียน posSaleId) — ผูกแล้ว/ไม่มีออเดอร์ = ไม่ทำอะไร */
+export async function webSaleBoundInTx(tx: Tx, shopOrderId: string, saleId: string, scope?: { tenantId: string }): Promise<{ ok: true; orderId: string | null; changed: boolean }> {
+  if (!isId(shopOrderId) || !isId(saleId)) return { ok: true, orderId: null, changed: false };
+  const o = await webOrderForUpdate(tx, shopOrderId, scope?.tenantId);
+  if (!o || o.saleId === saleId) return { ok: true, orderId: o?.id ?? null, changed: false };
+  if (o.saleId) {
+    console.error(`[pos/order] webSaleBoundInTx: ออเดอร์ ${o.id} ผูกบิลอื่นอยู่แล้ว — ไม่เขียนทับ`);
+    return { ok: true, orderId: o.id, changed: false };
+  }
+  await touch(tx, o, { saleId, ...(o.paymentState === "PAID" ? {} : { paymentState: "PAID" }) }, { type: "sale_bound", actorUserId: null, payload: { source: "SHOP", saleId } });
+  return { ok: true, orderId: o.id, changed: true };
+}
+/** เว็บร้านคืนการ claim (บิลไม่เกิด) — ออเดอร์ที่ PAID จากการ claim นั้นและยังไม่มีบิล ⇒ UNPAID (ไม่ให้ค้างสถานะจ่ายแล้วโดยไม่มีเงิน) */
+export async function webClaimRevertInTx(tx: Tx, shopOrderId: string, scope?: { tenantId: string }): Promise<{ ok: true; changed: boolean }> {
+  if (!isId(shopOrderId)) return { ok: true, changed: false };
+  const o = await webOrderForUpdate(tx, shopOrderId, scope?.tenantId);
+  if (!o || o.paymentState !== "PAID" || o.saleId) return { ok: true, changed: false };
+  await touch(tx, o, { paymentState: "UNPAID" }, { type: "paid_reverted", actorUserId: null, payload: { source: "SHOP" } });
+  return { ok: true, changed: true };
 }
 
 // ═══════════ วงจร (R5) ═══════════
@@ -909,6 +960,11 @@ async function step(name: string, ctx: RegisterCtx, actor: RegisterActor, input:
     if (!o) return refuse("ORDER_NOT_FOUND");
     if (!canTransition(o.status, to)) return stateInvalid(s, o);
     if (to === "HANDED" && (o.paymentState === "UNPAID" || o.paymentState === "PAY_ON_PICKUP")) return refuse("ORDER_UNPAID", undefined, { order: (await cardsOf(prisma, s.tenantId, [o], new Date()))[0] });
+    // POS P2.8 fix รอบ 3 (H3): บิลของออเดอร์ถูกยกเลิกแล้ว (ตัวรับ pos.sale.voided ยังไม่ถึง/ล้ม) ⇒ ห้ามส่งมอบของบนบิลที่คืนเงินแล้ว
+    if (to === "HANDED" && o.saleId) {
+      const sale = await prisma.posSale.findFirst({ where: { id: o.saleId, tenantId: s.tenantId }, select: { status: true } });
+      if (sale?.status === "VOIDED") return stateInvalid(s, o, ORDER_SALE_VOIDED_MESSAGE, "orders.errors.saleVoided");
+    }
     const now = new Date();
     const patch: Prisma.PosOrderUpdateManyMutationInput = to === "READY" ? { readyAt: now } : to === "HANDED" ? { handedAt: now, closedAt: now } : {};
     const r = await mutate(s, o.id, (tx) => transition(tx, o, to, patch, { actorUserId: s.actor.userId }));
@@ -1304,13 +1360,24 @@ export async function getOrder(ctx: RegisterCtx, actor: RegisterActor, input: { 
  * ช่องทางของบิล ECOM = WEB ของสาขาเดียวกัน (resolveSaleChannel ปริยาย) = ช่องทางของออเดอร์
  */
 export async function onShopOrderPaid(tenantId: string, payload: unknown): Promise<void> {
+  // POS P2.8 fix รอบ 3 (H1): ตัวยืนยันเท่านั้น — การรับเงินถูกสะท้อนในธุรกรรมของเว็บร้านแล้ว (webClaimInTx / webSaleBoundInTx) ·
+  //   ไม่เขียน PAID ลงออเดอร์ที่ปิดแล้ว (ปฏิเสธ/ยกเลิก) หรือบิลที่ถูกยกเลิก — บันทึกบรรทัดเตือนแทน · ช่วยเฉพาะ event ที่ค้างมาก่อนรอบนี้ (ยังไม่ PAID/ยังไม่ผูก)
   const p = isRecord(payload) ? payload : {};
   if (!isId(tenantId) || !isId(p.orderId) || !isId(p.posSaleId)) return;
   const o = await prisma.posOrder.findFirst({ where: { tenantId, shopOrderId: p.orderId } });
   if (!o || (o.paymentState === "PAID" && o.saleId === p.posSaleId)) return;
+  if (o.status === "REJECTED" || o.status === "CANCELLED") {
+    console.warn(`[pos/order] onShopOrderPaid: ออเดอร์ ${o.id} ปิดแล้ว (${o.status}) แต่เว็บร้านรับเงิน ShopOrder ${p.orderId} — ต้องคืนเงินที่หน้าเว็บร้าน`);
+    return;
+  }
+  const sale = await prisma.posSale.findFirst({ where: { id: p.posSaleId as string, tenantId }, select: { status: true } });
+  if (sale?.status === "VOIDED") {
+    console.warn(`[pos/order] onShopOrderPaid: บิล ${p.posSaleId} ถูกยกเลิกแล้ว — ไม่ผูก PAID กับออเดอร์ ${o.id}`);
+    return;
+  }
   if (o.saleId && o.saleId !== p.posSaleId) return; // ผูกบิลอื่นไปแล้ว — ไม่เขียนทับ
   try {
-    await runTx((tx) => touch(tx, o, { paymentState: "PAID", saleId: p.posSaleId as string }, { type: "paid", actorUserId: null, payload: { source: "SHOP", saleId: p.posSaleId } }));
+    await runTx((tx) => touch(tx, o, { paymentState: "PAID", saleId: p.posSaleId as string }, { type: "paid", actorUserId: null, payload: { source: "SHOP_EVENT", saleId: p.posSaleId } }));
   } catch (e) {
     if (e instanceof OrderRaced) return onShopOrderPaid(tenantId, payload); // เปลี่ยนระหว่างทาง — อ่านใหม่แล้วตัดสินอีกครั้ง
     throw e;

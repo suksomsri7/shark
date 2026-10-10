@@ -127,6 +127,10 @@ import {
   onShopOrderPaid as orderOnShopOrderPaid,
   onSaleVoided as orderOnSaleVoided,
   webLineSources as orderWebLineSources,
+  // POS P2.8 fix รอบ 3 (H1) ▸ การรับเงินของเว็บร้านสะท้อนในธุรกรรมของเว็บร้านเอง ◂
+  webClaimInTx as orderWebClaimInTx,
+  webSaleBoundInTx as orderWebSaleBoundInTx,
+  webClaimRevertInTx as orderWebClaimRevertInTx,
 } from "./order";
 export const orders = {
   /** R3 — พนักงานคีย์ออเดอร์ (MANUAL/CHAT/ช่องทางกำหนดเอง) · X1 idempotency */
@@ -153,6 +157,12 @@ export const orders = {
   onSaleVoided: orderOnSaleVoided,
   /** ที่มาของราคาบรรทัดเว็บร้าน (บรรทัดบิลตอนยืนยันรับเงิน) */
   webLineSources: orderWebLineSources,
+  /** H1 — เว็บร้าน claim รับเงิน: ล็อกออเดอร์ · ปฏิเสธ/ยกเลิกแล้ว = {ok:false, code ORDER_CLOSED} · อื่น = PAID (ในธุรกรรม claim) */
+  webClaimInTx: orderWebClaimInTx,
+  /** H1 — ผูกบิล ECOM (ในธุรกรรมที่เว็บร้านเขียน posSaleId) */
+  webSaleBoundInTx: orderWebSaleBoundInTx,
+  /** H1 — เว็บร้านคืนการ claim (บิลไม่เกิด) ⇒ ออเดอร์กลับเป็น UNPAID */
+  webClaimRevertInTx: orderWebClaimRevertInTx,
 } as const;
 export type * from "./order-shared";
 export { ORDER_ADAPTERS } from "./order-adapters";

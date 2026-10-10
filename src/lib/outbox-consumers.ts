@@ -735,7 +735,7 @@ const baseConsumers: Record<string, OutboxHandler> = {
   "pos.order.rejected": withAutomation(posOrderRejected),
   "pos.order.ready": withAutomation(async () => {}),
   "pos.order.completed": withAutomation(async () => {}),
-  "pos.order.cancelled": withAutomation(async () => {}),
+  "pos.order.cancelled": withAutomation(posOrderRejected), // POS P2.8 ▸ fix รอบ 3 (H2): ร้านยกเลิกออเดอร์เว็บที่ยังไม่จ่าย ⇒ ยกเลิก ShopOrder (รอชำระเท่านั้น · idempotent) ◂
   // Wave4-A: AppNotification "ลูกค้าทักเข้ามา" ถูกสร้างแล้วใน chat.announceInbound (de-dup) —
   // consumer นี้ปิด event เป็น DONE + เป็นจุดให้ Automation rules / Webhooks ยิงราย inbound message
   // WO 7.2: + ดูดรูปบิลที่แนบมาในข้อความเข้ากล่องขาเข้าของบัญชี (เฉพาะร้านที่เปิด inboxFromChat)

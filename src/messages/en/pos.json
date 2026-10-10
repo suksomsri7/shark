@@ -2973,7 +2973,8 @@
     },
     "errors": {
       "webPaid": "This web shop order is already paid — refund or cancel it on the web shop",
-      "hasRefunds": "This bill already has a refund — the order cannot be cancelled"
+      "hasRefunds": "This bill already has a refund — the order cannot be cancelled",
+      "saleVoided": "This order's bill has been voided — it cannot be handed over; cancel the order instead"
     }
   },
   "nav": {

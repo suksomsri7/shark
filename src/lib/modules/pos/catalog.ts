@@ -2927,7 +2927,7 @@ export async function syncWebPriceRow(tx: Prisma.TransactionClient, tenantId: st
   return (await applyWebRow(tx, tenantId, d, await webRowPlan(tx, tenantId, d), who)) ? "written" : "same";
 }
 
-export type WebShopPrice = { priceSatang: number; priceSource: PriceSource; posProductId: string | null; conflict: boolean };
+export type WebShopPrice = { priceSatang: number; priceSource: PriceSource; posProductId: string | null; conflict: boolean; priceRuleId?: string | null; listPriceSatang?: number | null };
 /**
  * ราคาหน้าเว็บร้าน (อ่านสองทาง · CD 14): ShopProduct ที่ผูกแถวแคตตาล็อกของ POS แรกของร้าน (ระบบเดียวกับที่ backfill/createShopProduct ใช้) และไม่ชน ⇒
  * ราคาช่องทาง WEB ณ ตอนนี้ (แถว (WEB, สาขาเว็บ) / (WEB, ทุกสาขา) / โปรของช่องทาง WEB) · ไม่มีแถว/โปร (ฐาน) · ไม่ตั้งราคา · ไม่ขาย · สินค้าชั่ง · ไม่มี POS ⇒
@@ -2965,7 +2965,8 @@ export async function webPricesForShop(
     }
     const rp = row.soldByWeight ? null : priceOf(book, row, WEB_CODE);
     // ใช้ผลของตัวแก้ราคาเฉพาะเมื่อแถว WEB ชนะ (CHANNEL) หรือกติกาที่ระบุ WEB ชนะ (RULE) — อื่น (ฐาน) = ราคา ShopProduct วันนี้
-    if (rp && rp.ok && (rp.source === "CHANNEL" || rp.source === "RULE")) out.set(p.id, { priceSatang: rp.unitPriceSatang, priceSource: rp.source, posProductId: row.id, conflict: false });
+    if (rp && rp.ok && (rp.source === "CHANNEL" || rp.source === "RULE"))
+      out.set(p.id, { priceSatang: rp.unitPriceSatang, priceSource: rp.source, posProductId: row.id, conflict: false, priceRuleId: rp.ruleId, listPriceSatang: rp.listPriceSatang }); // POS P2.8 fix รอบ 3 (H5) ◂
     else fallback(p, row.basePriceSatang);
   }
   return out;

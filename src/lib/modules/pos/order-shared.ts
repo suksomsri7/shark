@@ -110,7 +110,7 @@ export type OrderLineOption = { choiceId: string; groupId: string; groupName: st
 export type IngestLine =
   | { kind: "catalog"; productId: string; qty: number; choiceIds: string[]; note: string | null }
   | { kind: "custom"; name: string; unitPriceSatang: number; qty: number; note: string | null }
-  | { kind: "priced"; productId: string; name: string | null; unitPriceSatang: number; qty: number; note: string | null };
+  | { kind: "priced"; productId: string; name: string | null; unitPriceSatang: number; qty: number; note: string | null; priceSource: PriceSource | null; priceRuleId: string | null; listPriceSatang: number | null };
 export type IngestCustomer = { name: string; phone: string | null; memberId: string | null; partyId: string | null };
 export type IngestInput = {
   channelId: string | null;
@@ -141,6 +141,8 @@ export type OrderRefusal = { ok: false; code: OrderRefusalCode; message: string;
 export const ORDER_WEB_PAID_MESSAGE = "ออเดอร์เว็บร้านที่ชำระแล้ว — คืนเงิน/ยกเลิกที่หน้าเว็บร้าน";
 /** บิลของออเดอร์มีใบคืนเงินแล้ว — ยกเลิกออเดอร์ (void บิล) ไม่ได้ (รีวิว F4) */
 export const ORDER_HAS_REFUNDS_MESSAGE = "บิลนี้มีการคืนเงินแล้ว — ยกเลิกออเดอร์ไม่ได้";
+/** บิลของออเดอร์ถูกยกเลิกแล้ว — ส่งมอบไม่ได้ (fix รอบ 3 · H3) */
+export const ORDER_SALE_VOIDED_MESSAGE = "บิลของออเดอร์นี้ถูกยกเลิกแล้ว — ส่งมอบไม่ได้ ยกเลิกออเดอร์แทน";
 
 /** การ์ดออเดอร์ (คอลัมน์ของจอ 09) — ไม่มีเบอร์เต็ม (มติ 16) · เวลาเป็น ISO */
 export type OrderCard = {
@@ -247,6 +249,9 @@ const INGEST_KEYS = ["channelId", "channelCode", "externalRef", "idempotencyKey"
 /** คีย์ที่ประตูระบบ (ingestInTx · adapter) รับเพิ่ม */
 const SOURCE_KEYS = ["shopOrderId", "payload"] as const;
 const LINE_KEYS = ["productId", "name", "unitPriceSatang", "qty", "choiceIds", "note"] as const;
+/** POS P2.8 fix รอบ 3 (H5): ประตูระบบรับที่มาของราคาจากต้นทาง (เว็บร้าน: ชั้น WEB ของ webPricesForShop) บนบรรทัดราคาต้นทาง */
+const SOURCE_LINE_KEYS = ["priceSource", "priceRuleId", "listPriceSatang"] as const;
+const PRICE_SOURCE_VALUES = ["BASE", "BRANCH", "CHANNEL", "RULE", "OPEN", "CUSTOM", "WEIGHED"] as const;
 const CUSTOMER_KEYS = ["name", "phone", "memberId", "partyId"] as const;
 
 export type ParseIngestResult = { ok: true; value: IngestInput } | Bad;
@@ -284,7 +289,8 @@ export function parseIngestInput(raw: unknown, opts: { source?: boolean } = {}):
     for (let i = 0; i < raw.lines.length; i++) {
       const l: unknown = raw.lines[i];
       if (!isRecord(l)) return bad("รายการไม่ถูกต้อง", i);
-      const ex = Object.keys(l).filter((k) => !(LINE_KEYS as readonly string[]).includes(k) && l[k] !== undefined);
+      const lineKeys: readonly string[] = opts.source ? [...LINE_KEYS, ...SOURCE_LINE_KEYS] : LINE_KEYS;
+      const ex = Object.keys(l).filter((k) => !lineKeys.includes(k) && l[k] !== undefined);
       if (ex.length) return bad(`รายการมีช่องข้อมูลที่ไม่รู้จัก: ${ex.slice(0, 3).join(", ")}`, i);
       if (!isInt(l.qty, 1, REGISTER_MAX_QTY)) return bad(`จำนวนต้องเป็นจำนวนเต็ม 1–${REGISTER_MAX_QTY}`, i);
       const note = optText(l.note, REGISTER_NOTE_MAX);
@@ -310,7 +316,15 @@ export function parseIngestInput(raw: unknown, opts: { source?: boolean } = {}):
       if (hasChoices) return bad("รายการกำหนดเองใส่ตัวเลือกไม่ได้", i);
       if (!hasPrice) return bad("รายการต้องมีสินค้า หรือชื่อพร้อมราคา", i);
       if (hasProduct) {
-        lines.push({ kind: "priced", productId: l.productId as string, name, unitPriceSatang: l.unitPriceSatang as number, qty: l.qty, note });
+        // POS P2.8 fix รอบ 3 (H5): ที่มาของราคาจากต้นทาง (ประตูระบบเท่านั้น · ไม่ส่ง = null → CHANNEL)
+        const ps = l.priceSource === undefined || l.priceSource === null ? null : (PRICE_SOURCE_VALUES as readonly unknown[]).includes(l.priceSource) ? (l.priceSource as PriceSource) : undefined;
+        if (ps === undefined) return bad("ที่มาของราคาไม่ถูกต้อง", i);
+        if (l.priceRuleId !== undefined && l.priceRuleId !== null && !isId(l.priceRuleId)) return bad("รหัสโปรราคาไม่ถูกต้อง", i);
+        if (l.listPriceSatang !== undefined && l.listPriceSatang !== null && !isInt(l.listPriceSatang, 0, ORDER_UNIT_PRICE_MAX)) return bad("ราคาปกติไม่ถูกต้อง", i);
+        lines.push({
+          kind: "priced", productId: l.productId as string, name, unitPriceSatang: l.unitPriceSatang as number, qty: l.qty, note,
+          priceSource: ps, priceRuleId: (l.priceRuleId as string | null | undefined) ?? null, listPriceSatang: (l.listPriceSatang as number | null | undefined) ?? null,
+        });
         continue;
       }
       if (name === null) return bad("รายการกำหนดเองต้องมีชื่อ", i);
