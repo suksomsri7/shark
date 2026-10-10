@@ -1184,3 +1184,9 @@
 - **เลน 3 ใช้เฉพาะงานอ่านอย่างเดียว** (ผู้ตรวจ / คนเขียน oracle P2.5·P2.7) หรืองาน U ที่อยู่คนละไฟล์กับ S (P2.3U หลัง migration ขึ้น QC5)
 - เพดานรวมยัง 3 เลน · พอ builder ใบแรกส่งงาน → เปิดผู้ตรวจเป็นเลน 3 ทันที · รักษา builder ≤ 2 ตลอด
 - จุดต่อ: รอ gates63 (ทรี b) เขียว → merge `wip/pos-p2.3` 06f2d825 → QC5 `migrate deploy` p23 → แทน `__BASE__` ใน prompt P2.4-S/P2.8-S → เปิด 2 builder · vis60 จบ → เทียบ 01/12 → gates merge P2.2U → merge 36bba738 → 24/55
+
+### ⏱ 2026-10-10 02:5xZ — vis60 register: 104/105 · แดง 1 = harness
+- ❌ `register-line-badges` 390 = ตะกร้าว่างไม่มีปุ่ม `pos-reg-cart-view` ⇒ `openCartOnMobile` ตกก่อนถึงบิลที่พัก (เหตุเดียวกับ paydlg-platform P2.1U ที่ถ่ายเฉพาะ desktop/ipad) — ไม่ใช่บั๊ก UI ของ P2.2U
+- ผู้คุมแก้ harness เอง: state นี้ถ่าย desktop+ipad → `wip/pos-p2.2u` **d9385328** (โค้ด cdd700fc ไม่เปลี่ยน · ไม่ต้อง build ใหม่) · เทียบ 01: ป้ายบรรทัด RULE (ชื่อโปร) + CHANNEL "ราคาตามช่องทาง" ✓ · ไทล์โปร chip+ขีดฆ่า ฿60 ✓ · ไทล์ไม่ขายหน้าร้าน จาง ✓
+- 📌 ติดตาม P2.12: มือถือ ตะกร้าว่าง = เข้าบิลที่พักไม่ได้ (05-mobile ไม่มีปุ่ม) — ให้เจ้าของตัดสิน
+- ถัดไป: vis60 จบ (sales) → checkout ทรี d ที่ d9385328 → vis61 register owner th (QC5) → gates merge P2.2U → merge
