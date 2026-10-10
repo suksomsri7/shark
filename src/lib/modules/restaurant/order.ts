@@ -19,7 +19,8 @@ export type CartLine = {
 };
 
 type ResolvedLine = {
-  menuItemId: string;
+  menuItemId: string | null; // POS P2.4 ▸ null = บรรทัดที่ไม่ใช่เมนู (สินค้า/รายการกำหนดเองจากรอบของ POS) ◂
+  productId: string | null; // POS P2.4 ▸ PosProduct.id (เมนู = MenuItem.posProductId · ประตูเดิมเขียนใน INSERT เดียวกัน) ◂
   stationId: string;
   nameSnapshot: string;
   unitPrice: number;
@@ -27,7 +28,7 @@ type ResolvedLine = {
   qty: number;
   note: string | null;
   lineTotal: number;
-  options: { choiceId: string; groupSnapshot: string; choiceSnapshot: string; priceDelta: number }[];
+  options: { choiceId: string | null; groupSnapshot: string; choiceSnapshot: string; priceDelta: number }[];
 };
 
 export type OrderError =
@@ -37,30 +38,33 @@ export type OrderError =
   | { code: "EMPTY"; reason: string }
   | { code: "OUT_OF_STOCK"; reason: string; itemIds: string[] };
 
+// POS P2.4 ▸ include ของเมนู (ชุดเดียวกับเดิมทุกตัว) — ผู้โหลดส่งเข้ามา: ประตูเดิมใช้ tenantDb (คำสั่งเดิม) · createOrderInTx ใช้ tx + ขอบเขตชัด ◂
+const MENU_INCLUDE = {
+  optionGroups: {
+    orderBy: { sortOrder: "asc" as const },
+    include: { group: { include: { choices: { where: { archivedAt: null } } } } },
+  },
+} satisfies Prisma.MenuItemInclude;
+type MenuWithGroups = Prisma.MenuItemGetPayload<{ include: typeof MENU_INCLUDE }>;
+
 // resolve + validate ทุกบรรทัด (86 / ตัวเลือก / min-max) — ยังไม่แตะ stock
+// POS P2.4 ▸ load = ผู้โหลดเมนู (คิวรีเดียว) · ผลปฏิเสธพก index ของบรรทัดแรกที่ผิด (ประตูเดิมไม่ใช้ · createOrderInTx แปลงเป็น lineIndex) ◂
 async function resolveLines(
-  db: ReturnType<typeof tenantDb>,
+  load: (ids: string[]) => Promise<MenuWithGroups[]>,
   cart: CartLine[],
   opts: { forPublic: boolean },
-): Promise<{ ok: true; lines: ResolvedLine[] } | { ok: false; err: OrderError }> {
-  if (cart.length === 0) return { ok: false, err: { code: "EMPTY", reason: "ยังไม่มีรายการ" } };
+): Promise<{ ok: true; lines: ResolvedLine[] } | { ok: false; err: OrderError; index: number | null }> {
+  if (cart.length === 0) return { ok: false, err: { code: "EMPTY", reason: "ยังไม่มีรายการ" }, index: null };
   const lines: ResolvedLine[] = [];
   const unavailable: string[] = [];
 
   // ดึงเมนูทุกบรรทัดในคิวรีเดียว — เดิมยิงต่อบรรทัด (สั่ง 10 อย่าง = 10 round-trip ก่อนเริ่มบันทึก)
-  const menuItems = await db.menuItem.findMany({
-    where: { id: { in: [...new Set(cart.map((c) => c.menuItemId))] }, archivedAt: null },
-    include: {
-      optionGroups: {
-        orderBy: { sortOrder: "asc" },
-        include: { group: { include: { choices: { where: { archivedAt: null } } } } },
-      },
-    },
-  });
+  const menuItems = await load([...new Set(cart.map((c) => c.menuItemId))]);
   const menuById = new Map(menuItems.map((m) => [m.id, m]));
 
-  for (const c of cart) {
-    if (c.qty < 1) return { ok: false, err: { code: "BAD_OPTIONS", reason: "จำนวนไม่ถูกต้อง" } };
+  for (let ci = 0; ci < cart.length; ci++) {
+    const c = cart[ci]!;
+    if (c.qty < 1) return { ok: false, err: { code: "BAD_OPTIONS", reason: "จำนวนไม่ถูกต้อง" }, index: ci };
     const item = menuById.get(c.menuItemId);
     if (!item) {
       unavailable.push(c.menuItemId);
@@ -83,6 +87,7 @@ async function resolveLines(
         return {
           ok: false,
           err: { code: "BAD_OPTIONS", reason: `"${g.name}" เลือก ${g.minSelect}-${g.maxSelect} รายการ` },
+          index: ci,
         };
       }
       for (const ch of picked) {
@@ -97,6 +102,7 @@ async function resolveLines(
 
     lines.push({
       menuItemId: item.id,
+      productId: item.posProductId ?? null, // POS P2.4 ▸ R5: ประตูเดิมเขียน productId ใน INSERT เดียวกัน (ไม่มีคำสั่งเพิ่ม) ◂
       stationId: item.stationId,
       nameSnapshot: item.name,
       unitPrice: item.basePrice,
@@ -109,9 +115,12 @@ async function resolveLines(
   }
 
   if (unavailable.length > 0) {
+    const bad = new Set(unavailable);
+    const first = cart.findIndex((c) => bad.has(c.menuItemId));
     return {
       ok: false,
-      err: { code: "ITEM_UNAVAILABLE", reason: "บางรายการหมด/ปิดขายแล้ว", itemIds: [...new Set(unavailable)] },
+      err: { code: "ITEM_UNAVAILABLE", reason: "บางรายการหมด/ปิดขายแล้ว", itemIds: [...bad] },
+      index: first >= 0 ? first : null,
     };
   }
   return { ok: true, lines };
@@ -151,7 +160,7 @@ export async function createOrder(input: {
     if (!k.open) return { ok: false, err: { code: "KITCHEN_CLOSED", reason: k.reason || "ครัวปิด" } };
   }
 
-  const resolved = await resolveLines(db, input.cart, { forPublic: !isStaff });
+  const resolved = await resolveLines((ids) => db.menuItem.findMany({ where: { id: { in: ids }, archivedAt: null }, include: MENU_INCLUDE }), input.cart, { forPublic: !isStaff });
   if (!resolved.ok) return { ok: false, err: resolved.err };
 
   const bizDate = bizDateBkk();
@@ -159,83 +168,130 @@ export async function createOrder(input: {
   const status = requireApproval ? "PENDING" : "CONFIRMED";
 
   try {
-    const order = await prisma.$transaction(async (tx) => {
-      // หัก stockQty แบบ atomic (conditional update) — กัน oversell
-      const outOfStock: string[] = [];
-      const byItem = new Map<string, number>();
-      for (const l of resolved.lines) byItem.set(l.menuItemId, (byItem.get(l.menuItemId) ?? 0) + l.qty);
-      for (const [itemId, qty] of byItem) {
-        const it = await tx.menuItem.findFirst({ where: { id: itemId, tenantId, unitId }, select: { stockQty: true } });
-        if (it?.stockQty == null) continue; // ไม่นับสต็อก
-        const res = await consumeMenuStock(tx, { itemId, tenantId, unitId, qty });
-        if (res.count === 0) {
-          outOfStock.push(itemId);
-        } else {
-          const after = await tx.menuItem.findFirst({ where: { id: itemId }, select: { stockQty: true } });
-          if (after && after.stockQty !== null && after.stockQty <= 0) {
-            await markMenuItemOutOfStock(tx, itemId);
-          }
-        }
-      }
-      if (outOfStock.length > 0) throw new OrderTxError({ code: "OUT_OF_STOCK", reason: "บางรายการหมดพอดี", itemIds: outOfStock });
-
-      const dailyNo = await nextDailyNo(tx, tenantId, unitId, bizDate);
-      const ord = await tx.restaurantOrder.create({
-        data: {
+    // POS P2.4 ▸ ตัวเขียนเดียวกับ createOrderInTx (writeOrderTx) — คำสั่งเดิมทุกตัวตามลำดับเดิม (qc-pos-p1.1 S2.42 นับคำสั่ง) ◂
+    const order = await prisma.$transaction(async (tx) =>
+      (
+        await writeOrderTx(tx, {
           tenantId,
           unitId,
           type: input.type,
           status,
           sessionId: input.sessionId ?? null,
           bizDate,
-          dailyNo,
           guestName: input.guestName ?? null,
           guestPhone: input.guestPhone ?? null,
           guestToken: input.guestToken ?? null,
           note: input.note ?? null,
           placedByUserId: input.placedByUserId ?? null,
-          pickupStatus: input.type === "PICKUP" ? "AWAITING_CONFIRM" : null,
           pickupAt: input.pickupAt ?? null,
-        },
-      });
-      for (const l of resolved.lines) {
-        const item = await tx.restaurantOrderItem.create({
-          data: {
-            tenantId,
-            unitId,
-            orderId: ord.id,
-            menuItemId: l.menuItemId,
-            stationId: l.stationId,
-            nameSnapshot: l.nameSnapshot,
-            unitPrice: l.unitPrice,
-            optionsTotal: l.optionsTotal,
-            qty: l.qty,
-            lineTotal: l.lineTotal,
-            note: l.note,
-            kdsStatus: status === "CONFIRMED" ? "NEW" : "NEW",
-          },
-        });
-        if (l.options.length > 0) {
-          await tx.restaurantOrderItemOption.createMany({
-            data: l.options.map((o) => ({
-              tenantId,
-              unitId,
-              orderItemId: item.id,
-              choiceId: o.choiceId,
-              groupSnapshot: o.groupSnapshot,
-              choiceSnapshot: o.choiceSnapshot,
-              priceDelta: o.priceDelta,
-            })),
-          });
-        }
-      }
-      return ord;
-    });
+          lines: resolved.lines,
+        })
+      ).order,
+    );
     return { ok: true, id: order.id, dailyNo: order.dailyNo };
   } catch (e) {
     if (e instanceof OrderTxError) return { ok: false, err: e.err };
     throw e;
   }
+}
+
+/**
+ * POS P2.4 ▸ ตัวเขียนออเดอร์ในธุรกรรมของผู้เรียก (ประตูเดิม createOrder + createOrderInTx ของ POS ใช้ร่วม) —
+ *   หัก stockQty ของบรรทัดเมนูแบบ atomic (หมดพอดี = throw OrderTxError → ผู้เรียก rollback ทั้งก้อน) → เลขออเดอร์รายวัน → ออเดอร์ → รายการ + ตัวเลือก
+ *   บรรทัดที่ไม่ใช่เมนู (menuItemId null) ไม่แตะสต็อกเมนู ◂
+ */
+async function writeOrderTx(
+  tx: Prisma.TransactionClient,
+  h: {
+    tenantId: string;
+    unitId: string;
+    type: RestOrderType;
+    status: "PENDING" | "CONFIRMED";
+    sessionId: string | null;
+    bizDate: string;
+    guestName: string | null;
+    guestPhone: string | null;
+    guestToken: string | null;
+    note: string | null;
+    placedByUserId: string | null;
+    pickupAt: Date | null;
+    lines: ResolvedLine[];
+  },
+): Promise<{ order: { id: string; dailyNo: number }; itemIds: string[] }> {
+  const { tenantId, unitId, status } = h;
+  // หัก stockQty แบบ atomic (conditional update) — กัน oversell
+  const outOfStock: string[] = [];
+  const byItem = new Map<string, number>();
+  for (const l of h.lines) if (l.menuItemId) byItem.set(l.menuItemId, (byItem.get(l.menuItemId) ?? 0) + l.qty);
+  for (const [itemId, qty] of byItem) {
+    const it = await tx.menuItem.findFirst({ where: { id: itemId, tenantId, unitId }, select: { stockQty: true } });
+    if (it?.stockQty == null) continue; // ไม่นับสต็อก
+    const res = await consumeMenuStock(tx, { itemId, tenantId, unitId, qty });
+    if (res.count === 0) {
+      outOfStock.push(itemId);
+    } else {
+      const after = await tx.menuItem.findFirst({ where: { id: itemId }, select: { stockQty: true } });
+      if (after && after.stockQty !== null && after.stockQty <= 0) {
+        await markMenuItemOutOfStock(tx, itemId);
+      }
+    }
+  }
+  if (outOfStock.length > 0) throw new OrderTxError({ code: "OUT_OF_STOCK", reason: "บางรายการหมดพอดี", itemIds: outOfStock });
+
+  const dailyNo = await nextDailyNo(tx, tenantId, unitId, h.bizDate);
+  const ord = await tx.restaurantOrder.create({
+    data: {
+      tenantId,
+      unitId,
+      type: h.type,
+      status,
+      sessionId: h.sessionId,
+      bizDate: h.bizDate,
+      dailyNo,
+      guestName: h.guestName,
+      guestPhone: h.guestPhone,
+      guestToken: h.guestToken,
+      note: h.note,
+      placedByUserId: h.placedByUserId,
+      pickupStatus: h.type === "PICKUP" ? "AWAITING_CONFIRM" : null,
+      pickupAt: h.pickupAt,
+    },
+  });
+  const itemIds: string[] = [];
+  for (const l of h.lines) {
+    const item = await tx.restaurantOrderItem.create({
+      data: {
+        tenantId,
+        unitId,
+        orderId: ord.id,
+        menuItemId: l.menuItemId,
+        productId: l.productId, // POS P2.4 ▸ R5 ◂
+        stationId: l.stationId,
+        nameSnapshot: l.nameSnapshot,
+        unitPrice: l.unitPrice,
+        optionsTotal: l.optionsTotal,
+        qty: l.qty,
+        lineTotal: l.lineTotal,
+        note: l.note,
+        kdsStatus: status === "CONFIRMED" ? "NEW" : "NEW",
+      },
+    });
+    itemIds.push(item.id);
+    if (l.options.length > 0) {
+      await tx.restaurantOrderItemOption.createMany({
+        data: l.options.map((o) => ({
+          tenantId,
+          unitId,
+          orderItemId: item.id,
+          choiceId: o.choiceId,
+          groupSnapshot: o.groupSnapshot,
+          choiceSnapshot: o.choiceSnapshot,
+          priceDelta: o.priceDelta,
+        })),
+      });
+    }
+  }
+  return { order: { id: ord.id, dailyNo: ord.dailyNo }, itemIds };
 }
 
 class OrderTxError extends Error {
@@ -245,6 +301,140 @@ class OrderTxError extends Error {
     this.err = err;
   }
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════
+// POS P2.4 ▸ ส่งรอบจากโหมดโต๊ะของ POS (R5 · มติ CD2 CD3) — ออเดอร์ DINE_IN CONFIRMED ในธุรกรรมของผู้เรียก (pos/table.ts ยึดรอบร่าง + ส่งรอบใน tx เดียว)
+//   ราคา = ที่ตัวแก้ราคาของหน้าขายคิดตอนส่ง (unitPrice ไม่รวมตัวเลือก + optionsTotal · แช่แข็งตั้งแต่ส่ง · บิลไม่คิดราคาใหม่)
+//   บรรทัดเมนู (มี MenuItem.posProductId = productId หรือส่ง menuItemId มา) = กติกาเมนูเดิมทุกข้อ (86 · ตัวเลือกของเมนู min/max · สต็อกเมนู ·
+//     สถานีของเมนู · ชื่อเมนู · สำเนาตัวเลือกจาก DB) · บรรทัดอื่น = menuItemId null · สถานี = stationId ที่ส่งมา (ต้องเป็นสถานีที่ใช้งานของสาขา)
+//     ไม่งั้นสถานีแรกของสาขา (sortOrder, createdAt · ไม่มีเลย = สร้างค่าเริ่มต้นแบบ ensureDefaultStations ในธุรกรรมเดียวกัน) · สำเนาตัวเลือกจากผู้เรียก
+//   ปฏิเสธ = throw OrderInTxError (ผู้เรียกต้องปล่อยให้ธุรกรรม rollback — การหักสต็อกบรรทัดก่อนหน้าย้อนด้วย) · lineIndex = บรรทัดแรกที่ผิด
+//   🔴 ไม่มี createSale · ไม่ปล่อย outbox event (KDS อ่านแถวเหมือนออเดอร์จากประตูเดิม) ◂
+
+export type OrderInTxLine = {
+  productId: string | null;
+  menuItemId?: string | null;
+  name: string;
+  qty: number;
+  choiceIds: string[];
+  /** สำเนาตัวเลือกของบรรทัดที่ไม่ใช่เมนู (บรรทัดเมนูอ่านจาก DB) */
+  options?: { choiceId: string | null; groupSnapshot: string; choiceSnapshot: string; priceDelta: number }[];
+  note?: string | null;
+  /** ราคาต่อหน่วยไม่รวมตัวเลือก (สตางค์) · optionsTotal = Σ ส่วนต่างตัวเลือกต่อหน่วย */
+  unitPrice: number;
+  optionsTotal: number;
+  /** สถานีที่ต้องการของบรรทัดที่ไม่ใช่เมนู (PosProduct.stationId) — ไม่ส่ง/ใช้ไม่ได้ = สถานีแรกของสาขา */
+  stationId?: string | null;
+};
+export type OrderInTxInput = { tenantId: string; unitId: string; sessionId: string; placedByUserId: string; lines: OrderInTxLine[] };
+
+export class OrderInTxError extends Error {
+  readonly err: OrderError;
+  readonly lineIndex: number | null;
+  constructor(err: OrderError, lineIndex: number | null) {
+    super(err.code);
+    this.name = "OrderInTxError";
+    this.err = err;
+    this.lineIndex = lineIndex;
+  }
+}
+
+const PRICE_CAP = 100_000_000_00; // ฿100 ล้าน/หน่วย — กันค่าผิดรูป (ผู้เรียกคิดราคาผ่านตัวตรวจของหน้าขายแล้ว)
+
+export async function createOrderInTx(tx: Prisma.TransactionClient, input: OrderInTxInput): Promise<{ ok: true; id: string; dailyNo: number; itemIds: string[] }> {
+  const { tenantId, unitId } = input;
+  if (!input.lines.length) throw new OrderInTxError({ code: "EMPTY", reason: "ยังไม่มีรายการ" }, null);
+  for (let i = 0; i < input.lines.length; i++) {
+    const l = input.lines[i]!;
+    const okInt = (v: unknown) => typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= PRICE_CAP;
+    if (!Number.isInteger(l.qty) || l.qty < 1 || !okInt(l.unitPrice) || !okInt(l.optionsTotal)) throw new OrderInTxError({ code: "BAD_OPTIONS", reason: "จำนวนหรือราคาไม่ถูกต้อง" }, i);
+  }
+  // บรรทัดเมนู: menuItemId ที่ส่งมา หรือเมนูของสาขานี้ที่ผูก productId
+  const pids = [...new Set(input.lines.filter((l) => !l.menuItemId && l.productId).map((l) => l.productId as string))];
+  const byProduct = new Map<string, string>();
+  if (pids.length) {
+    const rows = await tx.menuItem.findMany({ where: { tenantId, unitId, posProductId: { in: pids } }, select: { id: true, posProductId: true }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
+    for (const m of rows) if (m.posProductId && !byProduct.has(m.posProductId)) byProduct.set(m.posProductId, m.id); // เก่าสุดก่อน (คงที่)
+  }
+  const menuIdOf = (l: OrderInTxLine): string | null => l.menuItemId ?? (l.productId ? (byProduct.get(l.productId) ?? null) : null);
+  const menuIdx = input.lines.map((l, i) => (menuIdOf(l) ? i : -1)).filter((i) => i >= 0);
+  const menuCart: CartLine[] = menuIdx.map((i) => {
+    const l = input.lines[i]!;
+    return { menuItemId: menuIdOf(l)!, qty: l.qty, note: l.note ?? undefined, choiceIds: l.choiceIds };
+  });
+  let menuLines: ResolvedLine[] = [];
+  if (menuCart.length) {
+    const r = await resolveLines(
+      (ids) => tx.menuItem.findMany({ where: { id: { in: ids }, tenantId, unitId, archivedAt: null }, include: MENU_INCLUDE }),
+      menuCart,
+      { forPublic: false },
+    );
+    if (!r.ok) throw new OrderInTxError(r.err, r.index === null ? null : (menuIdx[r.index] ?? null));
+    menuLines = r.lines;
+  }
+  // สถานีของบรรทัดที่ไม่ใช่เมนู
+  const needStation = input.lines.some((l) => !menuIdOf(l));
+  let firstStation: string | null = null;
+  const okStations = new Set<string>();
+  if (needStation) {
+    const wanted = [...new Set(input.lines.filter((l) => !menuIdOf(l) && l.stationId).map((l) => l.stationId as string))];
+    if (wanted.length) for (const st of await tx.kdsStation.findMany({ where: { tenantId, unitId, archivedAt: null, id: { in: wanted } }, select: { id: true } })) okStations.add(st.id);
+    const first = await tx.kdsStation.findFirst({ where: { tenantId, unitId, archivedAt: null }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }], select: { id: true } });
+    if (first) firstStation = first.id;
+    else {
+      // แบบเดียวกับ menu.ensureDefaultStations (ในธุรกรรมนี้)
+      firstStation = (await tx.kdsStation.create({ data: { tenantId, unitId, name: "ครัว", nameEn: "Kitchen", sortOrder: 0 } })).id;
+      await tx.kdsStation.create({ data: { tenantId, unitId, name: "เครื่องดื่ม", nameEn: "Drinks", sortOrder: 1 } });
+    }
+  }
+  let mi = 0;
+  const lines: ResolvedLine[] = input.lines.map((l) => {
+    const unitTotal = l.unitPrice + l.optionsTotal;
+    if (menuIdOf(l)) {
+      const m = menuLines[mi++]!;
+      // ราคา = ของหน้าขาย (ช่องทาง/โปร ณ ตอนส่ง) · ชื่อ/สถานี/สำเนาตัวเลือก = ของเมนู
+      return { ...m, productId: l.productId ?? m.productId, unitPrice: l.unitPrice, optionsTotal: l.optionsTotal, lineTotal: unitTotal * l.qty };
+    }
+    return {
+      menuItemId: null,
+      productId: l.productId,
+      stationId: l.stationId && okStations.has(l.stationId) ? l.stationId : (firstStation as string),
+      nameSnapshot: l.name,
+      unitPrice: l.unitPrice,
+      optionsTotal: l.optionsTotal,
+      qty: l.qty,
+      note: l.note?.trim() || null,
+      lineTotal: unitTotal * l.qty,
+      options: (l.options ?? []).map((o) => ({ choiceId: o.choiceId ?? null, groupSnapshot: o.groupSnapshot, choiceSnapshot: o.choiceSnapshot, priceDelta: o.priceDelta })),
+    };
+  });
+  try {
+    const w = await writeOrderTx(tx, {
+      tenantId,
+      unitId,
+      type: "DINE_IN",
+      status: "CONFIRMED",
+      sessionId: input.sessionId,
+      bizDate: bizDateBkk(),
+      guestName: null,
+      guestPhone: null,
+      guestToken: null,
+      note: null,
+      placedByUserId: input.placedByUserId,
+      pickupAt: null,
+      lines,
+    });
+    return { ok: true, id: w.order.id, dailyNo: w.order.dailyNo, itemIds: w.itemIds };
+  } catch (e) {
+    if (e instanceof OrderTxError) {
+      const ids = new Set("itemIds" in e.err ? e.err.itemIds : []);
+      const first = input.lines.findIndex((l) => { const m = menuIdOf(l); return !!m && ids.has(m); });
+      throw new OrderInTxError(e.err, first >= 0 ? first : null);
+    }
+    throw e;
+  }
+}
+// ◂ POS P2.4
 
 // ───────────────────────── ยกเลิก / expedite / รับออเดอร์ ─────────────────────────
 export async function confirmOrder(tenantId: string, unitId: string, orderId: string) {

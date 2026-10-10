@@ -19,6 +19,7 @@ registerScopes({
   RestaurantOrderItem: "unit",
   RestaurantOrderItemOption: "unit",
   RestaurantServiceRequest: "unit",
+  RestaurantReservation: "unit", // POS P2.4 ▸ โต๊ะจองแบบย่อ ◂
 });
 
 // ── helpers ร่วม ──

@@ -369,7 +369,14 @@
       "channelLimit": "This branch already has 30 sales channels",
       "channelNotSold": "This item isn't sold on this channel — remove it from the bill or switch channel",
       "priceRuleNotFound": "This price promotion wasn't found — it may have been archived",
-      "priceRuleLimit": "You already have 100 price promotions — archive ones you no longer use first"
+      "priceRuleLimit": "You already have 100 price promotions — archive ones you no longer use first",
+      "tableNotFound": "This table was not found at this branch",
+      "tableInactive": "This table is inactive — activate it first or choose another table",
+      "tableSessionClosed": "This table is already closed — open the table again first",
+      "tableEmpty": "This table has no unpaid items that were sent to the kitchen",
+      "tableItemsChanged": "The table's items changed during checkout — review the total again; no money was taken",
+      "tableHasUnpaid": "This table still has unpaid items — check out before closing the table",
+      "versionChanged": "This table's draft was just changed, sent or discarded on another device — reload the latest draft and try again"
     },
     "held": {
       "title": "Held bills",
@@ -2864,6 +2871,138 @@
       "noMargin": "Margin unavailable {count}"
     },
     "bomOnDone": "Recipe deduction is on"
+  },
+  "tables": {
+    "title": "Tables",
+    "modeTab": "Tables",
+    "zoneAll": "All zones",
+    "zoneCount": "{name} ({n})",
+    "tapToOpen": "Tap a table to open it",
+    "dragHint": "Drag a table to move or merge",
+    "summary": {
+      "used": "{used} of {total} tables in use",
+      "guests": "{n} guests in store",
+      "avgMinutes": "Average stay {n} min",
+      "unpaid": "Open on tables now {amount}",
+      "openTablesInfo": "Tables still open {n} · {amount}"
+    },
+    "state": {
+      "FREE": "Free",
+      "DINING": "Dining",
+      "BILL_REQUESTED": "Bill requested",
+      "NEEDS_CLEARING": "Needs clearing",
+      "RESERVED": "Reserved",
+      "INACTIVE": "Inactive"
+    },
+    "card": {
+      "seats": "{n} seats",
+      "guests": "{n} guests",
+      "open": "Open table",
+      "minutes": "{n} min",
+      "sentAt": "Sent to kitchen {time}",
+      "unsent": "{n} items not sent yet",
+      "ready": "{n} ready to serve",
+      "viaQr": "Requested via QR",
+      "atTable": "Called at table",
+      "dirtyFor": "Not cleared · {n} min",
+      "cleared": "Cleared",
+      "reservedLine": "Reserved {time} · {name} {n} guests",
+      "holdFrom": "Held from {time}",
+      "fromBooking": "From bookings"
+    },
+    "legend": "Table status",
+    "reservationsToday": "Reservations today {n}",
+    "queue": {
+      "title": "Walk-in queue",
+      "fromQueue": "From queue system",
+      "callNext": "Call next",
+      "planned": "Coming soon"
+    },
+    "panel": {
+      "title": "Table {name}",
+      "openedLine": "Opened {time} · {minutes} min · {guests} guests · staff {staff}",
+      "byQrGuest": "Opened by guest via QR",
+      "memberLine": "{name} · {tier}",
+      "round": "Order #{no} ({time})",
+      "roundByStaff": "Taken at table by {staff}",
+      "roundByQr": "Self-ordered via QR",
+      "kds": {
+        "NEW": "Waiting",
+        "COOKING": "Cooking",
+        "READY": "Ready",
+        "SERVED": "Served",
+        "CANCELLED": "Cancelled"
+      },
+      "servedMore": "{n} more served items",
+      "paid": "Paid",
+      "draft": "Draft round (not sent)",
+      "unsentWarning": "Some items are not sent to the kitchen — they are not on the bill",
+      "subtotal": "Subtotal",
+      "serviceCharge": "Service charge {rate}%",
+      "net": "Total",
+      "stockNotCut": "Stock not cut",
+      "serviceChargeDiffers": "Table mode uses the register service charge ({pos}%), not the restaurant setting ({restaurant}%)"
+    },
+    "actions": {
+      "orderMore": "Order more",
+      "sendRound": "Send to kitchen",
+      "moveTable": "Move table",
+      "mergeTable": "Merge tables",
+      "splitBill": "Split bill",
+      "printList": "Print item list",
+      "checkout": "Check out {amount}",
+      "closeTable": "Close table",
+      "clearTable": "Mark cleared",
+      "linkMember": "Link member",
+      "cancelItem": "Cancel item",
+      "planned": "Coming soon"
+    },
+    "alerts": {
+      "title": "Table alerts",
+      "callStaff": "Table {table} is calling staff",
+      "requestBill": "Table {table} asks for the bill · {amount}",
+      "payPromptpay": "Table {table} says they paid by PromptPay",
+      "fromQr": "Pressed from the table QR",
+      "minutesAgo": "{n} min",
+      "ack": "Acknowledge",
+      "done": "Done",
+      "openTable": "Open table",
+      "confirmPayment": "Confirm payment"
+    },
+    "billType": {
+      "label": "New bill",
+      "takeaway": "Takeaway",
+      "dineIn": "Dine in",
+      "pickTable": "Pick a table"
+    },
+    "reservation": {
+      "new": "Reserve a table",
+      "name": "Guest name",
+      "phone": "Phone",
+      "partySize": "Party size",
+      "at": "Time",
+      "holdFrom": "Hold table from (minutes before)",
+      "seat": "Seat guests",
+      "cancel": "Cancel reservation",
+      "overridden": "This table had a reservation — it was opened for other guests"
+    },
+    "empty": {
+      "title": "No tables at this branch yet",
+      "body": "Add zones and tables first, then table mode becomes available",
+      "setup": "Set up tables",
+      "noPermission": "Ask a manager to add tables"
+    },
+    "errors": {
+      "occupied": "This table has guests — close their bill before seating the reservation",
+      "draftModeRequired": "Specify the draft and its version"
+    },
+    "toast": {
+      "opened": "Table {table} opened",
+      "sent": "Sent to kitchen · order #{no}",
+      "closed": "Table {table} closed",
+      "cleared": "Table {table} cleared",
+      "draftSaved": "Draft round saved"
+    }
   },
   "nav": {
     "overview": "Overview",

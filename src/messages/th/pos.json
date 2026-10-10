@@ -369,7 +369,14 @@
       "channelLimit": "สาขานี้มีช่องทางขายครบ 30 ช่องทางแล้ว",
       "channelNotSold": "สินค้านี้ไม่ขายในช่องทางนี้ — เอาออกจากบิล หรือเปลี่ยนช่องทาง",
       "priceRuleNotFound": "ไม่พบโปรราคานี้ — อาจถูกเก็บถาวรไปแล้ว",
-      "priceRuleLimit": "มีโปรราคาครบ 100 รายการแล้ว — เก็บถาวรโปรที่ไม่ใช้ก่อน"
+      "priceRuleLimit": "มีโปรราคาครบ 100 รายการแล้ว — เก็บถาวรโปรที่ไม่ใช้ก่อน",
+      "tableNotFound": "ไม่พบโต๊ะนี้ในสาขานี้",
+      "tableInactive": "โต๊ะนี้ปิดใช้งานอยู่ — เปิดใช้งานก่อน หรือเลือกโต๊ะอื่น",
+      "tableSessionClosed": "โต๊ะนี้ปิดไปแล้ว — เปิดโต๊ะใหม่ก่อน",
+      "tableEmpty": "โต๊ะนี้ยังไม่มีรายการที่ส่งครัวและยังไม่จ่าย",
+      "tableItemsChanged": "รายการของโต๊ะเปลี่ยนระหว่างเช็คบิล — ตรวจยอดใหม่ ยังไม่ได้เก็บเงิน",
+      "tableHasUnpaid": "โต๊ะนี้ยังมีรายการค้างจ่าย — เช็คบิลก่อนปิดโต๊ะ",
+      "versionChanged": "รอบร่างของโต๊ะนี้เพิ่งถูกแก้ ส่งครัว หรือทิ้งจากอีกเครื่อง — โหลดรอบร่างล่าสุดแล้วลองใหม่"
     },
     "held": {
       "title": "บิลที่พัก",
@@ -2864,6 +2871,138 @@
       "noMargin": "กำไรคำนวณไม่ได้ {count}"
     },
     "bomOnDone": "เปิดตัดสต็อกตามสูตรแล้ว"
+  },
+  "tables": {
+    "title": "โต๊ะ",
+    "modeTab": "โต๊ะ",
+    "zoneAll": "ทุกโซน",
+    "zoneCount": "{name} ({n})",
+    "tapToOpen": "แตะโต๊ะเพื่อเปิด",
+    "dragHint": "ลากโต๊ะเพื่อย้าย/รวม",
+    "summary": {
+      "used": "ใช้อยู่ {used} จาก {total} โต๊ะ",
+      "guests": "ลูกค้าในร้าน {n} คน",
+      "avgMinutes": "นั่งเฉลี่ย {n} นาที",
+      "unpaid": "ยอดบนโต๊ะตอนนี้ {amount}",
+      "openTablesInfo": "โต๊ะยังไม่ปิด {n} · {amount}"
+    },
+    "state": {
+      "FREE": "ว่าง",
+      "DINING": "กำลังทาน",
+      "BILL_REQUESTED": "ขอเช็คบิล",
+      "NEEDS_CLEARING": "ต้องเก็บโต๊ะ",
+      "RESERVED": "จองไว้",
+      "INACTIVE": "ปิดใช้งาน"
+    },
+    "card": {
+      "seats": "{n} ที่นั่ง",
+      "guests": "{n} คน",
+      "open": "เปิดโต๊ะ",
+      "minutes": "{n} นาที",
+      "sentAt": "ส่งครัวแล้ว {time}",
+      "unsent": "ยังไม่ส่งครัว {n} รายการ",
+      "ready": "อาหารพร้อมเสิร์ฟ {n}",
+      "viaQr": "ขอผ่าน QR",
+      "atTable": "เรียกที่โต๊ะ",
+      "dirtyFor": "ยังไม่เก็บ · {n} นาที",
+      "cleared": "เก็บแล้ว",
+      "reservedLine": "จอง {time} · {name} {n} คน",
+      "holdFrom": "กันโต๊ะ {time}",
+      "fromBooking": "จากระบบจอง"
+    },
+    "legend": "สถานะโต๊ะ",
+    "reservationsToday": "จองโต๊ะวันนี้ {n}",
+    "queue": {
+      "title": "คิวรอหน้าร้าน",
+      "fromQueue": "จากระบบคิว",
+      "callNext": "เรียกคิวถัดไป",
+      "planned": "เร็ว ๆ นี้"
+    },
+    "panel": {
+      "title": "โต๊ะ {name}",
+      "openedLine": "เปิด {time} · {minutes} นาที · {guests} คน · พนักงาน {staff}",
+      "byQrGuest": "ลูกค้าเปิดเองผ่าน QR",
+      "memberLine": "{name} · {tier}",
+      "round": "ออเดอร์ #{no} ({time})",
+      "roundByStaff": "{staff}รับที่โต๊ะ",
+      "roundByQr": "สั่งเองผ่าน QR",
+      "kds": {
+        "NEW": "รอ",
+        "COOKING": "กำลังทำ",
+        "READY": "พร้อมเสิร์ฟ",
+        "SERVED": "เสิร์ฟแล้ว",
+        "CANCELLED": "ยกเลิก"
+      },
+      "servedMore": "เสิร์ฟแล้วอีก {n} รายการ",
+      "paid": "จ่ายแล้ว",
+      "draft": "รอบร่าง (ยังไม่ส่งครัว)",
+      "unsentWarning": "มีรายการยังไม่ส่งครัว — ไม่ถูกคิดในบิล",
+      "subtotal": "รวม",
+      "serviceCharge": "ค่าบริการ {rate}%",
+      "net": "ยอดสุทธิ",
+      "stockNotCut": "ไม่ตัดสต็อก",
+      "serviceChargeDiffers": "ค่าบริการของโหมดโต๊ะใช้ค่าตั้งของหน้าขาย ({pos}%) ไม่ใช่ของร้านอาหาร ({restaurant}%)"
+    },
+    "actions": {
+      "orderMore": "สั่งเพิ่ม",
+      "sendRound": "ส่งครัว",
+      "moveTable": "ย้ายโต๊ะ",
+      "mergeTable": "รวมโต๊ะ",
+      "splitBill": "แยกบิล",
+      "printList": "พิมพ์ใบรายการ",
+      "checkout": "เช็คบิล {amount}",
+      "closeTable": "ปิดโต๊ะ",
+      "clearTable": "เก็บโต๊ะ",
+      "linkMember": "ผูกสมาชิก",
+      "cancelItem": "ยกเลิกรายการ",
+      "planned": "เร็ว ๆ นี้"
+    },
+    "alerts": {
+      "title": "แจ้งเตือนจากโต๊ะ",
+      "callStaff": "โต๊ะ {table} เรียกพนักงาน",
+      "requestBill": "โต๊ะ {table} ขอเช็คบิล · ยอด {amount}",
+      "payPromptpay": "โต๊ะ {table} แจ้งจ่ายพร้อมเพย์แล้ว",
+      "fromQr": "กดจาก QR ที่โต๊ะ",
+      "minutesAgo": "{n} นาที",
+      "ack": "รับทราบ",
+      "done": "เสร็จแล้ว",
+      "openTable": "เปิดโต๊ะ",
+      "confirmPayment": "ยืนยันรับเงิน"
+    },
+    "billType": {
+      "label": "บิลใหม่",
+      "takeaway": "ซื้อกลับ",
+      "dineIn": "ทานที่ร้าน",
+      "pickTable": "เลือกโต๊ะ"
+    },
+    "reservation": {
+      "new": "จองโต๊ะ",
+      "name": "ชื่อผู้จอง",
+      "phone": "เบอร์โทร",
+      "partySize": "จำนวนคน",
+      "at": "เวลาจอง",
+      "holdFrom": "กันโต๊ะก่อน (นาที)",
+      "seat": "พาลูกค้านั่ง",
+      "cancel": "ยกเลิกการจอง",
+      "overridden": "โต๊ะนี้มีการจองอยู่ — เปิดให้ลูกค้าคนอื่นแล้ว"
+    },
+    "empty": {
+      "title": "ยังไม่มีโต๊ะในสาขานี้",
+      "body": "เพิ่มโซนและโต๊ะก่อน แล้วโหมดโต๊ะจะเปิดให้ใช้",
+      "setup": "ตั้งค่าโต๊ะ",
+      "noPermission": "ให้ผู้จัดการเพิ่มโต๊ะ"
+    },
+    "errors": {
+      "occupied": "โต๊ะนี้มีลูกค้าอยู่ — ปิดบิลก่อนจึงนั่งจองได้",
+      "draftModeRequired": "ต้องระบุร่างและรุ่นของร่าง"
+    },
+    "toast": {
+      "opened": "เปิดโต๊ะ {table} แล้ว",
+      "sent": "ส่งครัวแล้ว · ออเดอร์ #{no}",
+      "closed": "ปิดโต๊ะ {table} แล้ว",
+      "cleared": "เก็บโต๊ะ {table} แล้ว",
+      "draftSaved": "บันทึกรอบร่างแล้ว"
+    }
   },
   "nav": {
     "overview": "ภาพรวม",

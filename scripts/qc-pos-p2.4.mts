@@ -68,6 +68,8 @@ const CHECKS: readonly Def[] = [
   D("D4", "X1", "[R5] ส่งรอบร่างเดียวกัน 2 คำขอพร้อมกัน → ok 1 + ALREADY_RECALLED 1 · ออเดอร์ +1 · ส่งซ้ำ → ALREADY_RECALLED ไม่มีออเดอร์เพิ่ม"),
   D("D5", "X5", "[R5] เมนู stockQty 2 สั่ง 3 (บรรทัดที่ 2) → PRODUCT_UNAVAILABLE lineIndex 1 · ไม่มีออเดอร์/รายการใหม่ · stockQty ยัง 2 · รอบร่างยัง HELD"),
   D("D6", "-", "[R5] บรรทัด PRODUCT (น้ำ) ได้ stationId = สถานีแรกของสาขา (ensureDefaultStations) · createOrder เดิมเขียน productId = MenuItem.posProductId"),
+  // ORACLE-ADD ผู้คุม 10 ต.ค. (P2.4 S fix 2 · F1): รอบร่างแข่งกัน — expectedVersion/heldCartId/newDraft
+  D("D7", "X1", "[R4 F1 N1 N2] รอบร่างแข่งกัน: newDraft:true → แถวใหม่ · พักด้วย heldCartId+expectedVersion เดิมสองเครื่อง (ทีละคำขอ + พร้อมกัน) → ผ่าน 1 · VERSION_CHANGED 1 (บรรทัดของผู้ชนะไม่หาย) · heldCartId ไม่มี expectedVersion → VALIDATION · newDraft:true ขณะมี HELD → VERSION_CHANGED · พักหลังส่งครัว (RECALLED) → VERSION_CHANGED ไม่มีรอบร่างใหม่ · พักไม่ระบุร่างหลังส่ง → VALIDATION ไม่มีรอบร่างใหม่ · newDraft:true หลังส่ง → แถวใหม่"),
   // ── B quote บิลโต๊ะ ──
   D("B1", "X4", "[R6 CD3] quoteRegisterCart({lines: [], tableSessionId}) → บรรทัดจากรายการที่ยังไม่จ่าย (productId · unitPriceSatang = unitPrice+optionsTotal · grossSatang · options choiceId) + table {sessionId tableName \"A1\" itemIds itemsHash} · เปลี่ยนราคาเมนูหลังส่ง → quote ยังราคาเดิม"),
   D("B2", "X2", "[R6 R1] tableSessionId + lines ไม่ว่าง → VALIDATION · session ร้าน T2 / ctx สาขา B / id มั่ว → TABLE_NOT_FOUND"),
@@ -89,10 +91,20 @@ const CHECKS: readonly Def[] = [
   D("V2", "X1", "[R8] เล่น consumers[pos.sale.voided] ของบิล V1 ซ้ำ 2 รอบ → รายการ/session/dirtySince ไม่เปลี่ยน · เล่นซ้ำ void ของบิล RESTAURANT เดิม (L1) → session L1 ยัง CLOSED รายการยังผูกบิลใหม่"),
   D("V3", "X5", "[R8] คืนเงิน ⅓ ของบิลโต๊ะ (P3) → รายการ/session/dirtySince ของโต๊ะไม่เปลี่ยน"),
   D("V4", "X3", "[R9] registerCloseTable: มีค้างจ่าย → TABLE_HAS_UNPAID · STAFF (ไม่มี session.close) → PERMISSION_DENIED · session ว่าง (มีรอบร่าง) → CANCELLED + รอบร่าง DISCARDED · registerClearTable (MANAGER) → dirtySince null · ผัง FREE"),
+  // ORACLE-ADD ผู้คุม 10 ต.ค. (P2.4 S fix 2 · F2): ปิดโต๊ะ/จ่ายรายการสุดท้าย ⇄ รอบที่กำลังส่ง
+  D("V5", "X1", "[R7 R9 F2] รอบที่ถือล็อก session (lockOpenSessionInTx FOR SHARE + createOrderInTx) ขณะจ่ายรายการสุดท้าย → บิลผ่าน · session ยัง OPEN · รายการรอบใหม่ค้างจ่าย (ไม่ตกใน session ที่ปิด) · ปิดโต๊ะระหว่างรอบถือล็อก → รอ แล้ว TABLE_HAS_UNPAID · ปิดก่อน → lockOpenSessionInTx ปฏิเสธ (ไม่ OPEN)"),
+  // ORACLE-ADD ผู้คุม 10 ต.ค. (P2.4 S fix 4 · H1): ตัวปลดบิล void ⇄ จ่ายรายการที่เหลือ
+  D("V6a", "X1", "[R8 H1] บิลบางส่วน X (I1) บน session OPEN ที่มีรอบ I2 · ธุรกรรมที่เรียก unlinkTableSaleInTx(X) ค้าง ~3 วิ ขณะ quote+submit I2 → session ยัง OPEN · I1 saleId null · quote ของโต๊ะมี I1 (ไม่ตกค้างบน session ที่ปิด)"),
+  // ORACLE-ADD ผู้คุม 10 ต.ค. (P2.4 S fix 4 · H1b): ตัวปลดบิลเปิดโต๊ะกลับ ⇄ เปิดโต๊ะใหม่
+  D("V6b", "X1", "[R3 R8 H1] บิลเต็มโต๊ะ (session CLOSED) · ธุรกรรมที่เรียก unlinkTableSaleInTx ค้าง ~3 วิ ขณะ registerOpenTable บนโต๊ะเดียวกัน → OPEN 1 แถว · เปิดโต๊ะได้ created:false (session เดิมที่ถูกเปิดกลับ)"),
+  // ORACLE-ADD ผู้คุม 10 ต.ค. (P2.4 S fix 4 · H2): void หลังรวมโต๊ะแบบเดิม
+  D("V7", "-", "[R8 H2] บิลบางส่วน X บนโต๊ะ A (รอบร่าง HELD ให้โต๊ะเปิดอยู่) → mergeSession เดิม (B ← A) → void X + ระบายคิว → I1 saleId null · quote ของ B มี I1"),
   // ── R โต๊ะจอง ──
   D("R1", "-", "[R10 Q2] registerCreateReservation A6 (+10 นาที · 6 คน) → BOOKED · ผัง RESERVED + reservation {id name partySize} · registerSeatReservation → session OPEN guestCount 6 · SEATED · ผัง DINING"),
   D("R2", "-", "[R10] ยกเลิก → CANCELLED · ผัง FREE · จองอีก 3 ชม. → ผัง FREE (นอกช่วงกัน) · holdFromMinutes ปริยาย 15 · เปิดโต๊ะที่ถูกจองไว้ → ok + reservationOverridden true · การจองยัง BOOKED"),
   D("R3", "X2", "[R10 R1] โต๊ะร้าน T2 / ctx สาขา B / id การจองมั่ว → TABLE_NOT_FOUND · STAFF ที่ไม่มี restaurant.session.open → PERMISSION_DENIED · partySize 0 → VALIDATION · ไม่มีแถวใหม่"),
+  // ORACLE-ADD ผู้คุม 10 ต.ค. (P2.4 S fix 2 · F3): พาลูกค้าที่จองนั่งโต๊ะที่มีลูกค้าอยู่
+  D("R4", "X5", "[R10 F3] โต๊ะ E5 มี session OPEN (2 คน) + การจอง 6 คน → registerSeatReservation = VALIDATION \"โต๊ะนี้มีลูกค้าอยู่ — ปิดบิลก่อนจึงนั่งจองได้\" · การจองยัง BOOKED ไม่มี sessionId · session เดิม guestCount 2 · OPEN 1 แถว"),
   // ── L ของเดิม (PAR) ──
   D("L1", "PAR", "[R11] ประตูเดิม: openSession + createOrder → billPreview ตรงทุกไบต์ (floor ค่าบริการ 2561) · checkout CASH → ผล + PosSale (RESTAURANT · คีย์ rest-<sha> · บรรทัด Service charge 10% · channel STORE · ไม่มีกะ/ผู้ขาย) · voidCheckout ตรงทุกไบต์ · void ซ้ำ = ข้อความเดิม · checkout อีกรอบ = คีย์ -r1"),
   D("L2", "PAR", "[R11 CD4] ทะเบียนผู้เรียก createSale ของ qc-pos-p1.6 ไม่เปลี่ยน (18 จุด/15 ไฟล์ · register.ts 1 · restaurant/order.ts 1) · pos/table*.ts + restaurant/index.ts ไม่มี createSale("),
@@ -368,6 +380,8 @@ const CALL_SITES: Record<string, number> = {
   "src/lib/modules/rental/service.ts": 2, "src/lib/modules/restaurant/order.ts": 1, "src/lib/modules/school/service.ts": 1,
   "src/lib/modules/shop/service.ts": 1, "src/lib/modules/ticket/service.ts": 1,
 };
+/** ORACLE-EDIT ผู้คุม 10 ต.ค. (P2.4 S fix 1 · มติ 3): จุดเรียก createSale ที่ใบอื่นเพิ่มได้ (P2.8 S · pos/order.ts 1 จุด) — แบบเดียวกับ qc-pos-p2.6 · มี = ต้องเท่านี้พอดี · ไม่มี = ผ่าน */
+const CALL_SITES_ALLOWED_LATER: Record<string, number> = { "src/lib/modules/pos/order.ts": 1 };
 /** ลายเซ็น export ของโมดูลร้านอาหาร ณ 6dbcafe0 (exportSigs) — R11 แช่แข็ง */
 const SIGS_BASE: Record<string, Record<string, string>> = {
   table: { listZones: "c8e66837ad1f", createZone: "657bb8ee1f6f", archiveZone: "1336f49c9347", createTable: "7c7335ab1a16", updateTable: "b3b16d37834a", archiveTable: "47d96578b58e", rotateQr: "d5e7b11b54d8", floorPlan: "5d6efa1d21d5", openSession: "ab58a6782f51", getSession: "38a38ad81b0a", openSessionOfTable: "6e6fbb24512b", openSessionsList: "99cca1fa8063", linkMember: "c579f79820a7", closeSession: "05a2d36cbde3", moveSession: "ca73dc7db579", mergeSession: "e2678ceaf8ad", "type TableCard": "dd90e6b09769" },
@@ -563,7 +577,8 @@ async function runStatic(): Promise<void> {
     const edgeLines = fit.split("\n").filter((l) => /"pos→restaurant"/.test(l));
     if (edgeLines.length !== 1) p.push(`fitness.mts มี "pos→restaurant" ${edgeLines.length} บรรทัด (คาด 1)`);
     else if (!/POS P2\.4\s*▸/.test(edgeLines[0]!)) p.push('บรรทัด "pos→restaurant" ไม่มีรอยต่อ // POS P2.4 ▸ … ◂');
-    if (!/"pos→restaurant"/.test(constBody(stripComments(fit), "const ALLOWED_EDGES"))) p.push('"pos→restaurant" ไม่อยู่ใน ALLOWED_EDGES');
+    // ORACLE-EDIT ผู้คุม 10 ต.ค. (P2.4 S fix 1 · มติ 1): ตัดเฉพาะคอมเมนต์บรรทัด — stripComments มองสตริง "/*" ใน F1.3 ของ fitness.mts เป็นคอมเมนต์ก้อน แล้วกลืน ALLOWED_EDGES ทั้งก้อน
+    if (!/"pos→restaurant"/.test(constBody(fit.replace(/(^|[^:"'`\\])\/\/.*$/gm, "$1"), "const ALLOWED_EDGES"))) p.push('"pos→restaurant" ไม่อยู่ใน ALLOWED_EDGES');
     // advisory lock ใน openSession
     if (!/pg_advisory_xact_lock/.test(fnBody(srcOf(F.restTable), "openSession"))) p.push("restaurant/table.ts openSession ไม่มี pg_advisory_xact_lock (Q9)");
     // table-actions
@@ -635,7 +650,8 @@ async function runStatic(): Promise<void> {
       const n = (stripComments(rd(f)).match(/\bcreateSale\s*\(/g) ?? []).length;
       if (n) found[f] = n;
     }
-    const diff = [...new Set([...Object.keys(CALL_SITES), ...Object.keys(found)])].filter((f) => CALL_SITES[f] !== found[f]).map((f) => `${f.replace("src/lib/", "")}:${CALL_SITES[f] ?? 0}→${found[f] ?? 0}`);
+    const want = (f: string) => CALL_SITES[f] ?? (found[f] === CALL_SITES_ALLOWED_LATER[f] ? CALL_SITES_ALLOWED_LATER[f] : 0);
+    const diff = [...new Set([...Object.keys(CALL_SITES), ...Object.keys(found)])].filter((f) => want(f) !== (found[f] ?? 0)).map((f) => `${f.replace("src/lib/", "")}:${want(f)}→${found[f] ?? 0}`);
     if (diff.length) p.push(`ต่าง: ${diff.join(", ")}`);
     for (const f of [F.table, F.tableActions, F.tableShared, F.restIndex]) if (/\bcreateSale\b/.test(srcOf(f))) p.push(`${f.split("/").pop()} อ้าง createSale`);
     const total = sum(Object.values(found));
@@ -1060,7 +1076,9 @@ async function runDb() {
   /** ออเดอร์ผ่านประตูเดิม (เมนูเท่านั้น) */
   const legacyOrder = async (sessionId: string, cart: [string, number, string[]][]): Promise<Any> =>
     rorder.createOrder({ tenantId: T, unitId: U.A, type: "DINE_IN", sessionId, cart: cart.map(([k, qty, ch]) => ({ menuItemId: MI[k], qty, choiceIds: ch.map((c) => CH[c]) })), placedByUserId: uid("OWNER") });
-  const hold = (sessionId: string, lines: Any[], actor = "OWNER", extra: Any = {}, ctx: Any = ctxA(DEV1)) => call(heldMod, "holdRegisterCart", ctx, A(actor), { cart: { lines, ...extra }, tableSessionId: sessionId });
+  // ORACLE-EDIT ผู้คุม 10 ต.ค. (P2.4 S fix 3 · N1): โหมดโต๊ะต้องระบุร่าง — ปริยาย newDraft:true · แก้ร่างเดิมส่ง {heldCartId, expectedVersion} (assertion เดิมทุกข้อ)
+  const hold = (sessionId: string, lines: Any[], actor = "OWNER", extra: Any = {}, ctx: Any = ctxA(DEV1), mode: Any = { newDraft: true }) =>
+    call(heldMod, "holdRegisterCart", ctx, A(actor), { cart: { lines, ...extra }, tableSessionId: sessionId, ...mode });
   const send = (sessionId: string, heldCartId: string, actor = "OWNER") => tbl("registerSendTableRound", ctxA(DEV1), A(actor), { tableSessionId: sessionId, heldCartId });
   const tq = (sessionId: string, extra: Any = {}, ctx: Any = ctxA(DEV2), actor = "OWNER") => call(register, "quoteRegisterCart", ctx, A(actor), { lines: [], tableSessionId: sessionId, ...extra });
   const quote = (lines: Any[], extra: Any = {}) => call(register, "quoteRegisterCart", ctxA(DEV2), A("OWNER"), { lines, ...extra });
@@ -1237,7 +1255,7 @@ async function runDb() {
     const id1 = String(h1?.heldCart?.id ?? "");
     const r1 = await heldRows(SID.A1!);
     if (r1.length !== 1 || r1[0]?.id !== id1 || r1[0]?.status !== "HELD" || r1[0]?.version !== 1) p.push(`หลังพักครั้งแรก แถวผูกโต๊ะ ${short(r1.map((r) => [r.id === id1 ? "id1" : r.id, r.status, r.version]), 100)}`);
-    const h2 = await hold(SID.A1!, D3LINES());
+    const h2 = await hold(SID.A1!, D3LINES(), "OWNER", {}, ctxA(DEV1), { heldCartId: id1, expectedVersion: Number(h1?.draftVersion ?? r1[0]?.version ?? 1) }); // ORACLE-EDIT fix 3 (N1)
     const id2 = String(h2?.heldCart?.id ?? "");
     if (h2?.ok !== true || id2 !== id1) p.push(`พักซ้ำ → ${codeOf(h2)} id ${id2 === id1 ? "เดิม" : "ใหม่"}`);
     const r2 = await heldRows(SID.A1!);
@@ -1347,6 +1365,60 @@ async function runDb() {
     const its = o?.ok ? ((await P.restaurantOrderItem.findMany({ where: { orderId: o.id } }).catch(() => [])) as Any[]) : [];
     if (!o?.ok || its.length !== 1 || its[0]?.productId !== PP.rice) p.push(`createOrder เดิม → productId ${short(its.map((x) => x.productId === PP.rice ? "rice" : x.productId), 60)} (คาด posProductId ของเมนู)`);
     chk("D6", p.length === 0, "PRODUCT = สถานีแรก · createOrder เดิมเขียน productId", FX(P8(p) || "ครบ"));
+  });
+
+  // ORACLE-ADD ผู้คุม 10 ต.ค. (P2.4 S fix 2 · F1) — โต๊ะ E1 ของข้อนี้เอง
+  const mkExtraTable = async (name: string) => {
+    const r = must(`table ${name}`, await rtable.createTable(T, U.A, { zoneId: ZN.Z2!.id, name, seats: 4 }));
+    TB[name] = r.id;
+    QR[name] = r.qrToken;
+  };
+  await step("D7", async () => {
+    const p: string[] = [];
+    await mkExtraTable("E1");
+    const sid = await openT("E1", { guestCount: 2 });
+    const hd = (input: Any, actor = "OWNER") => call(heldMod, "holdRegisterCart", ctxA(DEV1), A(actor), { tableSessionId: sid, ...input });
+    const ver = async (id: string) => Number((await heldRow(id))?.version ?? -1);
+    const h0 = await hd({ cart: { lines: [ml("water", 1)] }, newDraft: true });
+    const id = String(h0?.heldCart?.id ?? "");
+    if (h0?.ok !== true || !id) p.push(`newDraft → ${codeOf(h0)} ${short(h0?.message ?? "", 60)}`);
+    const v1 = await ver(id);
+    // ทีละคำขอ: A ได้ · B (เวอร์ชันเดิม) ถูกปฏิเสธ · บรรทัดของ A อยู่ครบ
+    const a = await hd({ cart: { lines: [ml("water", 1), ml("rice", 1)] }, heldCartId: id, expectedVersion: v1 });
+    const b = await hd({ cart: { lines: [ml("water", 1), ml("tomyum", 1, "spicy")] }, heldCartId: id, expectedVersion: v1 });
+    const rowAB = await heldRow(id);
+    const cartAB = JSON.stringify((rowAB?.cartJson as Any)?.cart ?? null);
+    if (a?.ok !== true || !refused(b, "VERSION_CHANGED") || rowAB?.version !== v1 + 1 || rowAB?.lineCount !== 2 || !cartAB.includes(PP.rice ?? "none") || cartAB.includes(PP.tomyum ?? "none"))
+      p.push(`ทีละคำขอ A ${codeOf(a)} · B ${codeOf(b)} · แถว v${rowAB?.version} ${rowAB?.lineCount} บรรทัด ข้าว ${cartAB.includes(PP.rice ?? "none")} ต้มยำ ${cartAB.includes(PP.tomyum ?? "none")}`);
+    // พร้อมกัน: เวอร์ชันเดียวกันสองคำขอ → ผ่าน 1
+    const v2 = await ver(id);
+    const par = await Promise.all([
+      hd({ cart: { lines: [ml("water", 2)] }, heldCartId: id, expectedVersion: v2 }),
+      hd({ cart: { lines: [ml("water", 3)] }, heldCartId: id, expectedVersion: v2 }, "STAFF"),
+    ]);
+    const okN = par.filter((r) => r?.ok === true).length;
+    const vcN = par.filter((r) => refused(r, "VERSION_CHANGED")).length;
+    if (okN !== 1 || vcN !== 1 || (await ver(id)) !== v2 + 1) p.push(`พร้อมกัน ${par.map(codeOf).join(",")} · v${await ver(id)} (คาด ${v2 + 1})`);
+    // newDraft ขณะมี HELD
+    // ORACLE-EDIT ผู้คุม 10 ต.ค. (P2.4 S fix 3 · N2): heldCartId ต้องมาคู่ expectedVersion — ไม่มี = VALIDATION ไม่แตะร่าง
+    const vNo = await ver(id);
+    const noVer = await hd({ cart: { lines: [ml("water", 5)] }, heldCartId: id });
+    if (!refused(noVer, "VALIDATION") || (await ver(id)) !== vNo) p.push(`heldCartId ไม่มี expectedVersion → ${codeOf(noVer)} · v${vNo}→${await ver(id)}`);
+    const nd = await hd({ cart: { lines: [ml("water", 1)] }, newDraft: true });
+    if (!refused(nd, "VERSION_CHANGED")) p.push(`newDraft ขณะมี HELD → ${codeOf(nd)}`);
+    // ส่งครัวแล้วพักทับ → ปฏิเสธ · ไม่มีรอบร่างใหม่
+    const sent = await send(sid, id, "OWNER");
+    if (sent?.ok !== true) p.push(`ส่งครัว → ${codeOf(sent)}`);
+    const late = await hd({ cart: { lines: [ml("water", 1)] }, heldCartId: id, expectedVersion: await ver(id) });
+    const held = (await heldRows(sid)).filter((r) => r.status === "HELD");
+    if (!refused(late, "VERSION_CHANGED") || held.length !== 0) p.push(`พักหลังส่ง → ${codeOf(late)} · HELD ${held.length}`);
+    // ORACLE-EDIT ผู้คุม 10 ต.ค. (P2.4 S fix 3 · N1): พักแบบไม่ระบุร่างหลังส่ง (กรณี R1 (b)) = VALIDATION · ไม่มีร่าง HELD ใหม่
+    const bare = await hd({ cart: { lines: [ml("water", 1)] } });
+    const heldBare = (await heldRows(sid)).filter((r) => r.status === "HELD");
+    if (!refused(bare, "VALIDATION") || heldBare.length !== 0) p.push(`พักไม่ระบุร่างหลังส่ง → ${codeOf(bare)} · HELD ${heldBare.length}`);
+    const fresh = await hd({ cart: { lines: [ml("water", 1)] }, newDraft: true });
+    if (fresh?.ok !== true || String(fresh?.heldCart?.id ?? "") === id) p.push(`newDraft หลังส่ง → ${codeOf(fresh)}`);
+    chk("D7", p.length === 0, "รอบร่างไม่ทับกัน · ส่งแล้วไม่เกิดร่างซ้ำ", FX(P8(p) || "ครบ"));
   });
 
   // ─── fixture A4 (ขอเช็คบิล) · A5 (ทานอยู่ · จ่ายบางส่วน · สมาชิก · ร่าง · พร้อมเสิร์ฟ · เรียกพนักงาน) ───
@@ -1770,7 +1842,8 @@ async function runDb() {
       const line = ((await P.posSaleLine.findMany({ where: { saleId } }).catch(() => [])) as Any[]).find((l) => l.qty === 3);
       const s0 = await snapA("A7");
       const input = (amt: number): Any => ({ saleId, lines: [{ lineId: line?.id ?? "none", qty: 1, restock: false }], payMethods: [{ type: "CASH", amountSatang: amt }], reasonCode: "CHANGED_MIND", reason: "ลูกค้าเปลี่ยนใจ", idempotencyKey: newKey("rf") });
-      const probe = await call(refundMod, "refundSale", ctxA(DEV1), A("OWNER"), input(0));
+      // ORACLE-EDIT ผู้คุม 10 ต.ค. (P2.4 S fix 1 · มติ 2): probe 1 สตางค์ — 0 ถูกปฏิเสธ VALIDATION ที่ refund.ts:158 ก่อนถึงด่าน Σ (PAYMENT_MISMATCH พกยอดคืน)
+      const probe = await call(refundMod, "refundSale", ctxA(DEV1), A("OWNER"), input(1));
       const amt = Number(/ยอดคืน (\d+)/.exec(String(probe?.message ?? ""))?.[1] ?? NaN);
       const r = await call(refundMod, "refundSale", ctxA(DEV1), A("OWNER"), input(amt));
       if (r?.ok !== true) p.push(`refundSale → ${codeOf(r)} ${short(r?.message ?? "", 60)} (probe ${codeOf(probe)} ${amt})`);
@@ -1797,6 +1870,167 @@ async function runDb() {
     const c = cardOf(await floor(), "A7");
     if (r4?.ok !== true || t?.dirtySince !== null || c?.state !== "FREE") p.push(`เก็บ A7 → ${codeOf(r4)} dirtySince ${short(t?.dirtySince ?? "ไม่มีคอลัมน์", 30)} ผัง ${c?.state}`);
     chk("V4", NT("registerCloseTable") === "" && p.length === 0, "ปิดโต๊ะ/เก็บโต๊ะตามกติกา", FX(NT("registerCloseTable") + (P8(p) || "ครบ")));
+  });
+
+  // ORACLE-ADD ผู้คุม 10 ต.ค. (P2.4 S fix 2 · F2) — โต๊ะ E2–E4 ของข้อนี้เอง
+  await step("V5", async () => {
+    const p: string[] = [];
+    const restIdx = await tryImport("@/lib/modules/restaurant");
+    const lockFn = typeof restIdx?.lockOpenSessionInTx === "function" ? restIdx.lockOpenSessionInTx : null;
+    if (!lockFn) p.push(`${MISSING} lockOpenSessionInTx (restaurant/index.ts)`);
+    const riceLine = { productId: PP.rice, name: `ข้าวสวย ${RAND}`, qty: 1, choiceIds: [], unitPrice: 1805, optionsTotal: 0 };
+    /** รอบที่ถือ session: ล็อก (ถ้ามี) → createOrderInTx → แจ้ง → ค้างธุรกรรม holdMs */
+    const roundTx = (sessionId: string, holdMs: number, onInserted: () => void) =>
+      P.$transaction(
+        async (tx: Any) => {
+          if (lockFn) {
+            const l = await lockFn(tx, { tenantId: T, unitId: U.A, sessionId });
+            if (l?.ok !== true) throw new Error(`lock ${short(l, 60)}`);
+          }
+          await restIdx.createOrderInTx(tx, { tenantId: T, unitId: U.A, sessionId, placedByUserId: uid("OWNER"), lines: [riceLine] });
+          onInserted();
+          await sleep(holdMs);
+        },
+        { timeout: 30_000, maxWait: 10_000 },
+      );
+    // (c) จ่ายรายการสุดท้ายขณะรอบใหม่ถือ session → โต๊ะไม่ปิด รอบใหม่ยังค้างจ่าย
+    await mkExtraTable("E2");
+    const s2 = await openT("E2", { guestCount: 2 });
+    await legacyOrder(s2, [["rice", 1, []]]);
+    const q2 = await tq(s2);
+    let inserted2!: () => void;
+    const ins2 = new Promise<void>((r) => (inserted2 = r));
+    const t2 = roundTx(s2, 4000, () => inserted2()).then(() => "ok", (e: Error) => `throw ${e.message.slice(0, 60)}`);
+    await Promise.race([ins2, sleep(15_000)]);
+    const pay = await tpay(s2, q2, { ctx: ctxA(DEV2) });
+    const t2r = await t2;
+    const sess2 = await sessRow(s2);
+    const unpaid2 = (await itemsOf(s2)).filter((x) => !x.saleId && x.kdsStatus !== "CANCELLED");
+    const tb2 = await tableRow(TB.E2!);
+    if (pay.r?.ok !== true || t2r !== "ok" || sess2?.status !== "OPEN" || unpaid2.length !== 1 || tb2?.dirtySince !== null)
+      p.push(`จ่ายขณะรอบถือ session: บิล ${codeOf(pay.r)} · รอบ ${t2r} · session ${sess2?.status} · ค้างจ่าย ${unpaid2.length} · dirty ${short(tb2?.dirtySince ?? null, 30)}`);
+    // (a) ปิดโต๊ะระหว่างรอบถือล็อก → รอ แล้วเห็นรายการค้างจ่าย
+    await mkExtraTable("E3");
+    const s3 = await openT("E3", { guestCount: 1 });
+    let inserted3!: () => void;
+    const ins3 = new Promise<void>((r) => (inserted3 = r));
+    const t3 = roundTx(s3, 2500, () => inserted3()).then(() => "ok", (e: Error) => `throw ${e.message.slice(0, 60)}`);
+    await Promise.race([ins3, sleep(15_000)]);
+    let closeDone = false;
+    const cl = tbl("registerCloseTable", ctxA(), A("OWNER"), { tableSessionId: s3 }).then((r: Any) => ((closeDone = true), r));
+    await sleep(1200);
+    const blocked = !closeDone;
+    const [t3r, clr] = await Promise.all([t3, cl]);
+    if (!blocked || t3r !== "ok" || !refused(clr, "TABLE_HAS_UNPAID") || (await sessRow(s3))?.status !== "OPEN") p.push(`ปิดระหว่างรอบ: รอ ${blocked} · รอบ ${t3r} · ปิด ${codeOf(clr)} · session ${(await sessRow(s3))?.status}`);
+    // (b) ปิดก่อน → รอบถัดไปถือ session ไม่ได้
+    await mkExtraTable("E4");
+    const s4 = await openT("E4", { guestCount: 1 });
+    const c4 = await tbl("registerCloseTable", ctxA(), A("OWNER"), { tableSessionId: s4 });
+    const l4 = lockFn ? await P.$transaction((tx: Any) => lockFn(tx, { tenantId: T, unitId: U.A, sessionId: s4 })).catch((e: Error) => ({ ok: "throw", m: e.message })) : null;
+    if (c4?.ok !== true || !l4 || l4.ok !== false) p.push(`ปิดก่อน: ปิด ${codeOf(c4)} · ล็อก ${short(l4, 60)}`);
+    chk("V5", p.length === 0, "รอบใหม่ไม่ตกใน session ที่ปิด · ปิด/จ่ายรอรอบ", FX(P8(p) || "ครบ"));
+  });
+
+  // ORACLE-ADD ผู้คุม 10 ต.ค. (P2.4 S fix 4 · H1) — โต๊ะ E6 · ขับ facade ตรงเพื่อคุมจังหวะ (ตัวรับ void จริงเรียกฟังก์ชันเดียวกัน) แล้ว void X + ระบายคิวทีหลัง
+  const restFx = await tryImport("@/lib/modules/restaurant");
+  /** ธุรกรรมที่ปลดบิล X แล้วค้างไว้ holdMs (ถือล็อกของ unlinkTableSaleInTx) */
+  const unlinkTx = (sessionId: string, saleId: string, holdMs: number, onDone: () => void) =>
+    P.$transaction(
+      async (tx: Any) => {
+        const r = await restFx.unlinkTableSaleInTx(tx, { tenantId: T, unitId: U.A, sessionId, saleId });
+        onDone();
+        await sleep(holdMs);
+        return r;
+      },
+      { timeout: 30_000, maxWait: 10_000 },
+    ).then((r: Any) => short(r, 80), (e: Error) => `throw ${e.message.slice(0, 60)}`);
+  const voidX = async (saleId: string) => {
+    const v = await call(billsMod, "voidSaleByActor", ctxA(DEV2), A("OWNER"), { unitId: U.A, saleId, idempotencyKey: newKey("void"), reason: "ลูกค้ายกเลิก" });
+    await drain();
+    return v;
+  };
+  await step("V6a", async () => {
+    const p: string[] = [];
+    await mkExtraTable("E6");
+    const sid = await openT("E6", { guestCount: 2 });
+    const d1 = await hold(sid, [ml("rice", 1)]);
+    const s1 = await send(sid, String(d1?.heldCart?.id ?? ""));
+    const i1 = String(((s1?.itemIds ?? []) as string[])[0] ?? "");
+    const d2 = await hold(sid, [ml("water", 1)]); // รอบร่าง HELD = จ่ายแล้วโต๊ะยังเปิด
+    const q1 = await tq(sid);
+    const x = await tpay(sid, q1, { ctx: ctxA(DEV2) });
+    const X = String(x.r?.saleId ?? "");
+    const s2 = await send(sid, String(d2?.heldCart?.id ?? ""));
+    if (!i1 || !X || s2?.ok !== true || (await sessRow(sid))?.status !== "OPEN") p.push(`(fixture) I1 ${!!i1} · X ${codeOf(x.r)} · ส่ง I2 ${codeOf(s2)} · session ${(await sessRow(sid))?.status}`);
+    else {
+      const q2 = await tq(sid);
+      let unlinked!: () => void;
+      const done = new Promise<void>((r) => (unlinked = r));
+      const ut = unlinkTx(sid, X, 3000, () => unlinked());
+      await Promise.race([done, sleep(15_000)]);
+      const pay = await tpay(sid, q2, { ctx: ctxA(DEV2) });
+      const utr = await ut;
+      const sess = await sessRow(sid);
+      const it1 = (await itemsOf(sid)).find((r) => r.id === i1);
+      const q3 = await tq(sid);
+      const listed = q3?.ok === true && ((q3.table?.itemIds ?? []) as string[]).includes(i1);
+      if (pay.r?.ok !== true || sess?.status !== "OPEN" || it1?.saleId !== null || !listed) p.push(`ปลดบิลขณะจ่าย I2: บิล ${codeOf(pay.r)} · ปลด ${utr} · session ${sess?.status} · I1 saleId ${it1?.saleId ? "ยังผูก" : "null"} · quote ${codeOf(q3)} มี I1 ${listed}`);
+      const v = await voidX(X);
+      if (v?.ok !== true || (await itemsOf(sid)).find((r) => r.id === i1)?.saleId !== null) p.push(`void X หลังปลด → ${codeOf(v)}`);
+    }
+    chk("V6a", p.length === 0, "ปลดบิลกับจ่ายพร้อมกัน — รายการที่ปลดไม่ตกบน session ที่ปิด", FX(P8(p) || "ครบ"));
+  });
+
+  // ORACLE-ADD ผู้คุม 10 ต.ค. (P2.4 S fix 4 · H1b) — โต๊ะ E7
+  await step("V6b", async () => {
+    const p: string[] = [];
+    await mkExtraTable("E7");
+    const sid = await openT("E7", { guestCount: 2 });
+    const d1 = await hold(sid, [ml("rice", 1)]);
+    const s1 = await send(sid, String(d1?.heldCart?.id ?? ""));
+    const q1 = await tq(sid);
+    const x = await tpay(sid, q1, { ctx: ctxA(DEV2) });
+    const X = String(x.r?.saleId ?? "");
+    if (s1?.ok !== true || !X || (await sessRow(sid))?.status !== "CLOSED") p.push(`(fixture) ส่ง ${codeOf(s1)} · บิล ${codeOf(x.r)} · session ${(await sessRow(sid))?.status}`);
+    else {
+      let unlinked!: () => void;
+      const done = new Promise<void>((r) => (unlinked = r));
+      const ut = unlinkTx(sid, X, 3000, () => unlinked());
+      await Promise.race([done, sleep(15_000)]);
+      const op = await tbl("registerOpenTable", ctxA(), A("OWNER"), { tableId: TB.E7, guestCount: 4 });
+      const utr = await ut;
+      const nOpen = await openSessCount(TB.E7!);
+      if (nOpen !== 1 || op?.ok !== true || op.created !== false || String(op.sessionId) !== sid) p.push(`เปิดโต๊ะขณะปลดบิล: OPEN ${nOpen} แถว · เปิด ${codeOf(op)} created ${short(op?.created)} session เดิม ${String(op?.sessionId) === sid} · ปลด ${utr}`);
+      const v = await voidX(X);
+      if (v?.ok !== true || (await openSessCount(TB.E7!)) !== 1) p.push(`void X หลังปลด → ${codeOf(v)} · OPEN ${await openSessCount(TB.E7!)}`);
+    }
+    chk("V6b", p.length === 0, "ปลดบิลเปิดโต๊ะกลับกับเปิดโต๊ะพร้อมกัน — session OPEN เดียว", FX(P8(p) || "ครบ"));
+  });
+
+  // ORACLE-ADD ผู้คุม 10 ต.ค. (P2.4 S fix 4 · H2) — โต๊ะ E8 (A) + E9 (B)
+  await step("V7", async () => {
+    const p: string[] = [];
+    await mkExtraTable("E8");
+    await mkExtraTable("E9");
+    const sa = await openT("E8", { guestCount: 2 });
+    const sb = await openT("E9", { guestCount: 2 });
+    const d1 = await hold(sa, [ml("rice", 1)]);
+    const s1 = await send(sa, String(d1?.heldCart?.id ?? ""));
+    const i1 = String(((s1?.itemIds ?? []) as string[])[0] ?? "");
+    await hold(sa, [ml("water", 1)]); // รอบร่าง HELD = จ่ายแล้วโต๊ะ A ยังเปิด
+    const q1 = await tq(sa);
+    const x = await tpay(sa, q1, { ctx: ctxA(DEV2) });
+    const X = String(x.r?.saleId ?? "");
+    const mg = await rtable.mergeSession(T, U.A, sb, sa);
+    if (!i1 || !X || (await sessRow(sa))?.status !== "MERGED" || mg?.ok !== true) p.push(`(fixture) I1 ${!!i1} · X ${codeOf(x.r)} · รวม ${short(mg, 60)} · A ${(await sessRow(sa))?.status}`);
+    else {
+      const v = await voidX(X);
+      const it1 = (await P.restaurantOrderItem.findUnique({ where: { id: i1 } }).catch(() => null)) as Any;
+      const qb = await tq(sb);
+      const listed = qb?.ok === true && ((qb.table?.itemIds ?? []) as string[]).includes(i1);
+      if (v?.ok !== true || it1?.saleId !== null || !listed) p.push(`void หลังรวมโต๊ะ: void ${codeOf(v)} · I1 saleId ${it1?.saleId ? "ยังผูกบิลที่ void" : "null"} · quote B ${codeOf(qb)} มี I1 ${listed}`);
+    }
+    chk("V7", p.length === 0, "void บิลหลังรวมโต๊ะ — รายการกลับมาค้างจ่ายบนโต๊ะปลายทาง", FX(P8(p) || "ครบ"));
   });
 
   // ════════ R โต๊ะจอง ════════
@@ -1859,6 +2093,22 @@ async function runDb() {
     }
     if ((await resCount()) !== n0) p.push(`แถวการจอง ${n0} → ${await resCount()}`);
     chk("R3", NCOL() === "" && p.length === 0, "TABLE_NOT_FOUND ×4 · PERMISSION_DENIED · VALIDATION · ไม่เขียน", FX(NCOL() + (P8(p) || "ครบ")));
+  });
+  // ORACLE-ADD ผู้คุม 10 ต.ค. (P2.4 S fix 2 · F3) — โต๊ะ E5 ของข้อนี้เอง
+  await step("R4", async () => {
+    const p: string[] = [];
+    await mkExtraTable("E5");
+    const sid = await openT("E5", { guestCount: 2 });
+    const cr = await mkRes("E5", 10 * MIN);
+    const id = String(cr?.id ?? "");
+    if (cr?.ok !== true) p.push(`จอง → ${codeOf(cr)}`);
+    const st = await tbl("registerSeatReservation", ctxA(), A("STAFF"), { reservationId: id });
+    if (!refused(st, "VALIDATION") || !String(st?.message ?? "").includes("โต๊ะนี้มีลูกค้าอยู่ — ปิดบิลก่อนจึงนั่งจองได้")) p.push(`นั่ง → ${codeOf(st)} ${short(st?.message ?? "", 60)}`);
+    const r = await resRow(id);
+    if (r?.status !== "BOOKED" || r?.sessionId) p.push(`การจอง ${r?.status} sessionId ${short(r?.sessionId ?? null, 20)}`);
+    const s = await sessRow(sid);
+    if (s?.status !== "OPEN" || s?.guestCount !== 2 || (await openSessCount(TB.E5!)) !== 1) p.push(`session ${s?.status} guestCount ${s?.guestCount} OPEN ${await openSessCount(TB.E5!)}`);
+    chk("R4", NCOL() === "" && p.length === 0, "นั่งโต๊ะที่มีลูกค้า = VALIDATION ไม่เขียน", FX(NCOL() + (P8(p) || "ครบ")));
   });
 }
 

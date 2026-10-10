@@ -395,6 +395,10 @@ model PosHeldCart {
   version           Int               @default(1)
   // POS P1.15 ▸ คำขออนุมัติ POS_DISCOUNT_OVER ที่ผ่านแล้ว (ตัวรับคิว pos-approval-consumer.ts เขียนครั้งเดียว · ใช้ได้ 1 บิล — ตัวบอกว่าใช้แล้วอยู่ที่ PosApprovalPayload) ◂
   approvedRequestId String?
+  // POS P2.4 ▸ รอบร่างของโต๊ะ (CD6): TableSession.id ที่บิลพักนี้ผูก (null = บิลพักปกติของลิ้นชัก) · HELD ได้ 1 แถวต่อ session =
+  //   partial unique "PosHeldCart_tableSessionId_held_key" (SQL เขียนมือใน migration 20261206100000_pos_p24_tables — prisma ประกาศ partial ไม่ได้) ·
+  //   ไม่มี FK (id หลวมข้ามไฟล์ schema แบบ MenuItem.invItemId) · ผู้เขียนเดียว = pos/held-cart.ts ◂
+  tableSessionId    String?
 
   @@index([unitId, status, createdAt])
 }
