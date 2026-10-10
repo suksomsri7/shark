@@ -76,3 +76,35 @@ Logs: `/tmp/claude-0/-root/ed31d917-ff51-51e8-bfad-e5b8bfa6fa15/scratchpad/p22u/
 
 ### F6 — visual `--dry` re-run on the fix code head 6e55ba60
 `runs/fix1/dry-<page>-<user>-<th|en>.log` (12 logs, header `tree=/root/projects/shark-pos-p11 head=6e55ba60` + `rc=`): all **rc 0** · shots products 24/8 owner, 3/1 cashier · register 105/37 owner, 102/36 cashier · sales 30/10 ×2 (= the 01:24 plan counts). The old `runs/dry-*.log` (no header, review F6) are superseded.
+
+### Commits (one per item)
+| item | commit | what |
+|---|---|---|
+| F1 | ef5a7e3a | `RegisterScreen`: price-edge state `{iso, seq}` (new object on every page-1 catalog load) is the effect key; the timer callback bumps `seq` itself ⇒ same deterministic edge, failed/superseded reload and clock skew all reschedule (min 15 s · cap 1 h kept) |
+| F2 | 26e9576a | `price-ui.endDateText` = `endsAt − 1 ms` in Bangkok; `ruleWindowText` (the only display of `endsAt`: rules list + 06 callout) uses it |
+| F3 | a71c7a09 | `local` memo returns null when `cartUsesPriceLayer(cart)` (deps + `quote`); `totalsPending` and line `pending` include it ⇒ "—" until the quote; Pay/submit unchanged |
+| F4 | 34445903 | `price-ui.priceRefusalText`: VALIDATION not pointing at a row on screen ⇒ `price.errors.serverValidation` {message} (th/en); ProductPanel uses it · P2.11 line on the P2.11 row of `POS-MASTER-PLAN.md` §4 + follow-up above |
+| F5 | 585cf8ee | bulk: category VALIDATION carrying the `BULK_MARKUP_PRODUCTS_MAX` refusal ⇒ `price.bulk.tooMany`; other VALIDATION ⇒ service message; category preview label `price.bulk.previewCategory` |
+| F7 | fcf8b6ee | `price-ui.shownPriceSource`: CHANNEL on a STORE/no-channel sale ⇒ BRANCH when price (options excluded) ≠ list, else BASE (no badge). Register line badge (+ kind BRANCH, `price.badge.branch`) and bills note use it |
+| ORACLE-EDIT | 6e55ba60 | `qc-pos-p2.2.mts:475` regex `["happyHourPricing", true, null]` + push text `true, null (P2.2U Q8)` · `:477` label "happyHourPricing true" · count 42 |
+| F6 | 24bcf608 | dry logs above |
+
+- **ORACLE-EDIT red/green:** red-before `runs/fix1/oracle-red-before-qc-pos-p2.2.log` head d95ea560 **rc 1 · 41/42** (only ST3) → after `runs/fix1/qc-pos-p2.2.log` head 6e55ba60 **rc 0 · 42/42**.
+- **F7 deviation:** quote/bill lines carry no unit of the winning row and the server is unchanged (ruling), so (STORE, unit) vs (STORE, all) is split by price: a (STORE, all) row priced ≠ base reads "ราคาสาขา"; a bill line with options gets no note (unit price includes option deltas, names only). "tile badge" read as the register cart-line badge (`pos-reg-line-badge-<i>`); tiles unchanged (01 grammar = rule chip only). Exact split = a server field (winning row level/unit) → P2.11 if wanted.
+- New keys (th + en): `price.errors.serverValidation`, `price.bulk.previewCategory`. No new testids. ST7 = 0.
+- Deferred by ruling: tiles show the STORE price on platform held carts → P2.11; testid prefix sharing → left.
+
+### Gates (code head 6e55ba60 · `runs/fix1/summary.txt`)
+| gate | rc | result |
+|---|---|---|
+| typecheck (iso + flock `/tmp/pos-gate.lock`, heap 5632) | 0 | — |
+| `qc-pos-p2.2` | 0 | 42/42 |
+| `qc-pos-p2.1` | 0 | 55/55 |
+| `qc-pos-p1.18` (`QC_P118_PHASE=U`) | 0 | 81/81 · ST7 = 0 |
+| `qc-pos-p1.3` | 0 | 128/128 |
+| `qc-pos-p1.16` | 0 | 28/28 |
+| `qc-pos-products` | 0 | 24/24 |
+| `qc-hf-pos-page-authz` | 0 | 56/56 |
+| `pnpm fitness` no env / QC4 env | 0 / 0 | 41/41 · 41/41 |
+| `scripts/fitness-pos.mts` | 0 | 8/8 |
+| visual `--dry` p22u products/register/sales × owner/cashier × th/en | 0 ×12 | see F6 |
