@@ -772,7 +772,7 @@ async function regViews(db: RegDb, s: RegScope, rows: PosProduct[], book?: Price
           }
         : { priceSatang: null, listPriceSatang: rp?.code === "CHANNEL_NOT_SOLD" ? own : null, priceSource: null, priceRule: null };
     // รีวิว F6: ไม่ขายหน้าร้าน (แถว STORE ที่ชนะเป็นไม่ขาย) — รวมสินค้าไม่ตั้งราคาฐาน (listPriceSatang null) · จอแสดง "ไม่ขายหน้าร้าน" ไม่เปิดราคาเปิด
-    const tileNotSold = !weighed && (rp?.code === "CHANNEL_NOT_SOLD" || (rp?.code === "PRICE_NOT_SET" && channelNotSold(pb, p, "STORE")));
+    const tileNotSold = !weighed && !!rp && !rp.ok && (rp.code === "CHANNEL_NOT_SOLD" || (rp.code === "PRICE_NOT_SET" && channelNotSold(pb, p, "STORE")));
     return {
       id: p.id,
       invItemId: p.invItemId,
