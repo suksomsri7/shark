@@ -26,6 +26,7 @@ const { validateOpInput } = await import("@/lib/api/run");
 const { ApiError } = await import("@/lib/api/respond");
 const { membershipFromScopes } = await import("@/lib/api/actor");
 const { isPermissionKey } = await import("@/lib/core/permissions");
+const { posDayCutoffMinutes } = await import("@/lib/modules/pos/settings-shared"); // ORACLE-EDIT 10 ต.ค. (S7 ตัดวัน)
 const { API_SCOPE_BUNDLES } = await import("@/lib/api-keys/scopes");
 const { SKILLS, assertSkillRegistryComplete } = await import("@/lib/ai/skills");
 const { toolRegistry } = await import("@/lib/ai/tools");
@@ -333,24 +334,28 @@ try {
     orderBy: { createdAt: "desc" },
     select: { tenantId: true, systemId: true, createdAt: true },
   });
+  // ORACLE-EDIT (ผู้คุม 10 ต.ค. 2569 · R14 ปิดเฟส P1): คิวรีอิสระต้องนิยามเหมือน closeDaySummary หลัง P1.8 (3064857a "doc-type aware readers") —
+  //   บิล = docType SALE ที่ไม่ VOIDED (ใบที่คืนเงินเต็ม = REFUNDED ยังนับ) · ยอดสุทธิ = Σ SALE − Σ ใบ REFUND ของช่วงเดียวกัน · ใบ REFUND status PAID ไม่ใช่ยอดขาย
+  //   และ P1.18 ตัดวันด้วย settings.pos.reports.dayCutoffMinutes — suite ใช้วันไทยล้วน ⇒ ถ้าระบบตั้งตัดวัน ≠ 0 ให้ SKIP แทนที่จะแดงปลอม
+  const netAgg = async (tenantId: string, systemId: string, gte: Date, lt: Date) => {
+    const sale = await prisma.posSale.aggregate({ where: { tenantId, systemId, docType: "SALE", status: { not: "VOIDED" }, createdAt: { gte, lt } }, _sum: { grandTotalSatang: true }, _count: { _all: true } });
+    const refund = await prisma.posSale.aggregate({ where: { tenantId, systemId, docType: "REFUND", createdAt: { gte, lt } }, _sum: { grandTotalSatang: true } });
+    return { satang: (sale._sum.grandTotalSatang ?? 0) - (refund._sum.grandTotalSatang ?? 0), count: sale._count._all };
+  };
   const realSum = recent
     ? await (async () => {
         const day = bkkDate(recent.createdAt);
         const days = Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${day}T00:00:00Z`)) / DAY) + 1;
-        const range = await prisma.posSale.aggregate({
-          where: { tenantId: recent.tenantId, systemId: recent.systemId, status: "PAID", createdAt: { gte: bkkStart(minusDays(today, days - 1)), lt: new Date(bkkStart(today).getTime() + DAY) } },
-          _sum: { grandTotalSatang: true },
-          _count: { _all: true },
-        });
-        const dayAgg = await prisma.posSale.aggregate({
-          where: { tenantId: recent.tenantId, systemId: recent.systemId, status: "PAID", createdAt: { gte: bkkStart(day), lt: new Date(bkkStart(day).getTime() + DAY) } },
-          _sum: { grandTotalSatang: true },
-          _count: { _all: true },
-        });
-        return { day, days, rangeSatang: range._sum.grandTotalSatang ?? 0, rangeCount: range._count._all, daySatang: dayAgg._sum.grandTotalSatang ?? 0, dayCount: dayAgg._count._all };
+        const range = await netAgg(recent.tenantId, recent.systemId, bkkStart(minusDays(today, days - 1)), new Date(bkkStart(today).getTime() + DAY));
+        const dayAgg = await netAgg(recent.tenantId, recent.systemId, bkkStart(day), new Date(bkkStart(day).getTime() + DAY));
+        const sys = await prisma.appSystem.findUnique({ where: { id: recent.systemId }, select: { settings: true } });
+        const cutoff = posDayCutoffMinutes(sys?.settings);
+        return { day, days, rangeSatang: range.satang, rangeCount: range.count, daySatang: dayAgg.satang, dayCount: dayAgg.count, cutoff };
       })()
     : null;
-  if (realSum && realSum.rangeSatang > 0 && realSum.daySatang > 0) {
+  if (realSum && realSum.cutoff !== 0) {
+    for (const id of ["P0.2-S7.1", "P0.2-S7.5", "P0.2-S7.6"]) skip(id, "เทียบยอดของระบบจริง", `ระบบตั้งตัดวัน ${realSum.cutoff} นาที — คิวรีอิสระของ suite ใช้วันไทยล้วน (ORACLE-EDIT 10 ต.ค.)`);
+  } else if (realSum && realSum.rangeSatang > 0 && realSum.daySatang > 0) {
     const realActor = keyActor(recent!.tenantId, recent!.systemId);
     const s = await runRead("sales.summary", realActor, realSum.days);
     chk("P0.2-S7.1", `sales.summary ระบบจริง ${realSum.days} วัน = aggregate อิสระ (ยอด ${realSum.rangeSatang} สตางค์ · ${realSum.rangeCount} บิล)`, s.netSalesSatang === realSum.rangeSatang && s.billCount === realSum.rangeCount, `${realSum.rangeSatang}/${realSum.rangeCount}`, `${s.netSalesSatang}/${s.billCount}`, "CRITICAL", T_SUMMARY);
