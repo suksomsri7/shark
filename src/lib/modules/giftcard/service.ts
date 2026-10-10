@@ -18,6 +18,7 @@
 import type { Prisma, PosPayType, GiftCard as GiftCardRow, GiftCardStatus } from "@prisma/client";
 import { randomCode, safeEqualHex, sha256 } from "@/lib/core/hash";
 import { emitOutbox } from "@/lib/core/outbox";
+import { callerTx } from "@/lib/core/caller-tx"; // HF-TX ▸ createSale ในธุรกรรมของเรา (ซ่อน $transaction · ไม่มี savepoint ซ้อน) ◂
 import * as account from "@/lib/modules/account";
 import * as pos from "@/lib/modules/pos";
 import { hasMemberPerm, memberRefs, type MemberActor } from "@/lib/modules/member";
@@ -212,6 +213,15 @@ async function loadByNumber(ctx: GiftCardCtx, number: unknown): Promise<GiftCard
   return card;
 }
 
+/**
+ * HF-TX ▸ P2002 (unique ชน) ของธุรกรรมขาย/เติมบัตร — ใต้ `callerTx` createSale ไม่ลองใหม่เอง (แถวตัวนับใบเสร็จของเดือนใหม่ที่สองบิล upsert พร้อมกัน ·
+ *   หมายเลขบัตรชน) ⇒ ทั้งธุรกรรม rollback แล้วผู้เรียกลองใหม่ ≤ 3 รอบ (คีย์กันซ้ำทำให้ปลอดภัย) ◂
+ */
+const SALE_TX_ATTEMPTS = 3;
+function isUniqueViolation(e: unknown): boolean {
+  return (e as { code?: unknown } | null)?.code === "P2002";
+}
+
 /** หมายเลขใหม่ที่ยังไม่ซ้ำในร้านนี้ — `GC-` + 8 หลักสุ่มจาก crypto (ห้าม Math.random กับรหัสที่ใช้ยืนยันสิทธิ์) */
 async function nextNumber(tenantId: string): Promise<string> {
   for (let i = 0; i < 20; i += 1) {
@@ -322,6 +332,23 @@ export type SellResult = {
   accountingDocId: string | null;
 };
 
+/** ขายด้วยคีย์นี้ไปแล้ว → ผลเดิม (pin null) · ยังไม่มี = null — ใช้ทั้งตอนเข้า และตอนลองใหม่หลัง P2002 (HF-TX) */
+async function sellReplay(tenantId: string, key: string): Promise<SellResult | null> {
+  const done = await prisma.giftCardTxn.findUnique({
+    where: { tenantId_idempotencyKey: { tenantId, idempotencyKey: key } },
+    include: { giftCard: true },
+  });
+  if (!done) return null;
+  return {
+    giftCardId: done.giftCardId,
+    number: done.giftCard.number,
+    pin: null,
+    saleId: done.giftCard.saleId ?? "",
+    expiresAt: done.giftCard.expiresAt,
+    accountingDocId: done.giftCard.accountingDocId,
+  };
+}
+
 export async function sell(ctx: GiftCardCtx, actor: MemberActor, input: SellInput): Promise<SellResult> {
   assertSell(actor);
   const idem = String(input.idempotencyKey ?? "").trim();
@@ -329,20 +356,8 @@ export async function sell(ctx: GiftCardCtx, actor: MemberActor, input: SellInpu
   const key = `giftcard-sell-${idem}`;
 
   // ยิงซ้ำด้วยคีย์เดิม → คืนบัตรใบเดิม (ไม่มีบัตร/บิลใบที่สอง · ไม่คืน PIN ซ้ำ)
-  const done = await prisma.giftCardTxn.findUnique({
-    where: { tenantId_idempotencyKey: { tenantId: ctx.tenantId, idempotencyKey: key } },
-    include: { giftCard: true },
-  });
-  if (done) {
-    return {
-      giftCardId: done.giftCardId,
-      number: done.giftCard.number,
-      pin: null,
-      saleId: done.giftCard.saleId ?? "",
-      expiresAt: done.giftCard.expiresAt,
-      accountingDocId: done.giftCard.accountingDocId,
-    };
-  }
+  const done = await sellReplay(ctx.tenantId, key);
+  if (done) return done;
 
   const settings = await getSettings(ctx);
   if (!settings.enabled) {
@@ -391,81 +406,90 @@ export async function sell(ctx: GiftCardCtx, actor: MemberActor, input: SellInpu
     } as Prisma.InputJsonValue;
   }
 
-  const number = await nextNumber(ctx.tenantId);
-  const pin = randomCode(6, DIGITS);
   const posSystemId = ctx.posSystemId;
 
   // 🔴 บิล POS + ตัวบัตร + ธง `PosSale.giftCardId` ต้องอยู่ใน transaction เดียวกัน
   //    ไม่งั้น event `pos.sale.paid` อาจถูกระบายก่อนที่ธงจะถูกตั้ง ⇒ บัญชีบันทึก "ขายสินค้า" ให้บิล
   //    ขายบัตรไปแล้ว (รายได้เกิดสองรอบ: ตอนขายบัตร + ตอนใช้บัตร)
-  const created = await prisma.$transaction(
-    async (tx) => {
-      const sale = await pos.createSale(
-        {
-          tenantId: ctx.tenantId,
-          unitId: input.unitId,
-          systemId: posSystemId,
-          // 🔴 ไม่ส่ง memberId/pointSystemId โดยตั้งใจ — ซื้อบัตรกำนัลไม่ให้แต้ม (§9.1)
-          sourceModule: "MEMBER",
-          sourceId: idem,
-          idempotencyKey: key,
-          lines: [{ name: `Gift Card ${number}`, qty: 1, unitPriceSatang: satang }],
-          payMethods: payMethods.map((p) => ({ type: p.type, amountSatang: p.amountSatang })),
+  // HF-TX ▸ switched: createSale(…, callerTx(tx)) = บิลอยู่ใน xid เดียวกับบัตร (เดิม tx ดิบ ⇒ savepoint ซ้อน + ระบายคิวก่อน commit) ·
+  //   งานหลัง commit = pos.afterSaleCommitted หลังธุรกรรม · P2002 ⇒ ลองใหม่ทั้งก้อน ≤ 3 รอบ (หมายเลข/PIN ใหม่ทุกรอบ · คีย์ถูกบันทึกแล้ว = ผลเดิม) ◂
+  let created: { card: GiftCardRow; saleId: string; number: string; pin: string; saleInput: pos.CreateSaleInput } | null = null;
+  for (let attempt = 1; !created; attempt++) {
+    const number = await nextNumber(ctx.tenantId);
+    const pin = randomCode(6, DIGITS);
+    const saleInput: pos.CreateSaleInput = {
+      tenantId: ctx.tenantId,
+      unitId: input.unitId,
+      systemId: posSystemId,
+      // 🔴 ไม่ส่ง memberId/pointSystemId โดยตั้งใจ — ซื้อบัตรกำนัลไม่ให้แต้ม (§9.1)
+      sourceModule: "MEMBER",
+      sourceId: idem,
+      idempotencyKey: key,
+      lines: [{ name: `Gift Card ${number}`, qty: 1, unitPriceSatang: satang }],
+      payMethods: payMethods.map((p) => ({ type: p.type, amountSatang: p.amountSatang })),
+    };
+    try {
+      created = await prisma.$transaction(
+        async (tx) => {
+          const sale = await pos.createSale(saleInput, callerTx(tx));
+          const card = await tx.giftCard.create({
+            data: {
+              tenantId: ctx.tenantId,
+              systemId: ctx.systemId,
+              number,
+              pinHash: sha256(`${number}:${pin}`),
+              initialSatang: satang,
+              balanceSatang: satang,
+              buyerCustomerId,
+              ownerCustomerId,
+              ...(recipientContact !== undefined ? { recipientContact } : {}),
+              message: input.message ? String(input.message) : null,
+              status: "ACTIVE",
+              expiresAt,
+              saleId: sale.saleId,
+            },
+          });
+          // POS P1.6 R4 H4: บิลขาย/เติมบัตรไม่ลงบัญชีขาย (consumer ข้ามบิลที่มี giftCardId) ⇒ VAT บนบิลต้องเป็น 0 ให้ตรงสมุด
+          await tx.posSale.update({ where: { id: sale.saleId }, data: { giftCardId: card.id, vatSatang: 0 } });
+          await tx.giftCardTxn.create({
+            data: {
+              tenantId: ctx.tenantId,
+              giftCardId: card.id,
+              type: "SELL",
+              satang,
+              balanceAfter: satang,
+              refType: "PosSale",
+              refId: sale.saleId,
+              byUserId: ctx.actorUserId ?? actor.userId ?? null,
+              idempotencyKey: key,
+            },
+          });
+          await emitOutbox(tx, {
+            tenantId: ctx.tenantId,
+            type: "giftcard.sold",
+            idempotencyKey: `giftcard.sold#${card.id}`,
+            payload: {
+              giftCardId: card.id,
+              number,
+              satang,
+              buyerCustomerId,
+              ownerCustomerId,
+              saleId: sale.saleId,
+            },
+            systemId: ctx.systemId,
+            unitId: input.unitId,
+          });
+          return { card, saleId: sale.saleId, number, pin, saleInput };
         },
-        tx,
+        { timeout: 30_000, maxWait: 15_000 },
       );
-
-      const card = await tx.giftCard.create({
-        data: {
-          tenantId: ctx.tenantId,
-          systemId: ctx.systemId,
-          number,
-          pinHash: sha256(`${number}:${pin}`),
-          initialSatang: satang,
-          balanceSatang: satang,
-          buyerCustomerId,
-          ownerCustomerId,
-          ...(recipientContact !== undefined ? { recipientContact } : {}),
-          message: input.message ? String(input.message) : null,
-          status: "ACTIVE",
-          expiresAt,
-          saleId: sale.saleId,
-        },
-      });
-      // POS P1.6 R4 H4: บิลขาย/เติมบัตรไม่ลงบัญชีขาย (consumer ข้ามบิลที่มี giftCardId) ⇒ VAT บนบิลต้องเป็น 0 ให้ตรงสมุด
-      await tx.posSale.update({ where: { id: sale.saleId }, data: { giftCardId: card.id, vatSatang: 0 } });
-      await tx.giftCardTxn.create({
-        data: {
-          tenantId: ctx.tenantId,
-          giftCardId: card.id,
-          type: "SELL",
-          satang,
-          balanceAfter: satang,
-          refType: "PosSale",
-          refId: sale.saleId,
-          byUserId: ctx.actorUserId ?? actor.userId ?? null,
-          idempotencyKey: key,
-        },
-      });
-      await emitOutbox(tx, {
-        tenantId: ctx.tenantId,
-        type: "giftcard.sold",
-        idempotencyKey: `giftcard.sold#${card.id}`,
-        payload: {
-          giftCardId: card.id,
-          number,
-          satang,
-          buyerCustomerId,
-          ownerCustomerId,
-          saleId: sale.saleId,
-        },
-        systemId: ctx.systemId,
-        unitId: input.unitId,
-      });
-      return { card, saleId: sale.saleId };
-    },
-    { timeout: 30_000, maxWait: 15_000 },
-  );
+    } catch (e) {
+      if (!isUniqueViolation(e) || attempt >= SALE_TX_ATTEMPTS) throw e;
+      const replay = await sellReplay(ctx.tenantId, key);
+      if (replay) return replay;
+    }
+  }
+  await pos.afterSaleCommitted(created.saleInput, created.saleId); // HF-TX ▸ ระบายคิว (+ ตัดสต็อกถ้ามี) หลัง commit ◂
 
   // ── บัญชี (D3) — เปิดสวิตช์ + ร้านเชื่อมบัญชีกับ POS แล้วเท่านั้น ──
   let accountingDocId: string | null = null;
@@ -485,7 +509,7 @@ export async function sell(ctx: GiftCardCtx, actor: MemberActor, input: SellInpu
     }
   }
 
-  return { giftCardId: created.card.id, number, pin, saleId: created.saleId, expiresAt, accountingDocId };
+  return { giftCardId: created.card.id, number: created.number, pin: created.pin, saleId: created.saleId, expiresAt, accountingDocId };
 }
 
 // ───────────────────────── ดูยอด ─────────────────────────
@@ -629,6 +653,14 @@ export type ReloadInput = {
   idempotencyKey: string;
 };
 
+/** เติมด้วยคีย์นี้ไปแล้ว → ผลเดิม · ยังไม่มี = null — ใช้ทั้งตอนเข้า และตอนลองใหม่หลัง P2002 (HF-TX) */
+async function reloadReplay(tenantId: string, key: string): Promise<{ txnId: string; saleId: string; balanceAfter: number } | null> {
+  const done = await prisma.giftCardTxn.findUnique({
+    where: { tenantId_idempotencyKey: { tenantId, idempotencyKey: key } },
+  });
+  return done ? { txnId: done.id, saleId: done.refId ?? "", balanceAfter: done.balanceAfter } : null;
+}
+
 export async function reload(
   ctx: GiftCardCtx,
   actor: MemberActor,
@@ -638,10 +670,8 @@ export async function reload(
   const idem = String(input.idempotencyKey ?? "").trim();
   if (!idem) throw new GiftCardInputError("รายการนี้ไม่มีรหัสกันซ้ำ — เริ่มรายการใหม่อีกครั้ง");
   const key = `giftcard-reload-${idem}`;
-  const done = await prisma.giftCardTxn.findUnique({
-    where: { tenantId_idempotencyKey: { tenantId: ctx.tenantId, idempotencyKey: key } },
-  });
-  if (done) return { txnId: done.id, saleId: done.refId ?? "", balanceAfter: done.balanceAfter };
+  const done = await reloadReplay(ctx.tenantId, key);
+  if (done) return done;
 
   const settings = await getSettings(ctx);
   if (!settings.reloadable) {
@@ -669,45 +699,55 @@ export async function reload(
   const now = new Date();
   const posSystemId = ctx.posSystemId;
 
-  const res = await prisma.$transaction(
-    async (tx) => {
-      const sale = await pos.createSale(
-        {
-          tenantId: ctx.tenantId,
-          unitId: input.unitId,
-          systemId: posSystemId,
-          sourceModule: "MEMBER",
-          sourceId: idem,
-          idempotencyKey: key,
-          lines: [{ name: `Gift Card ${card.number} (เติมเงิน)`, qty: 1, unitPriceSatang: satang }],
-          payMethods: payMethods.map((p) => ({ type: p.type, amountSatang: p.amountSatang })),
+  const saleInput: pos.CreateSaleInput = {
+    tenantId: ctx.tenantId,
+    unitId: input.unitId,
+    systemId: posSystemId,
+    sourceModule: "MEMBER",
+    sourceId: idem,
+    idempotencyKey: key,
+    lines: [{ name: `Gift Card ${card.number} (เติมเงิน)`, qty: 1, unitPriceSatang: satang }],
+    payMethods: payMethods.map((p) => ({ type: p.type, amountSatang: p.amountSatang })),
+  };
+  // HF-TX ▸ switched: createSale(…, callerTx(tx)) (xid เดียวกับบัตร/รายการบัตร) · งานหลัง commit = pos.afterSaleCommitted หลังธุรกรรม ·
+  //   P2002 ⇒ ลองใหม่ทั้งก้อน ≤ 3 รอบ (คีย์ถูกบันทึกแล้ว = ผลเดิม) ◂
+  let res: { txnId: string; saleId: string; balanceAfter: number } | null = null;
+  for (let attempt = 1; !res; attempt++) {
+    try {
+      res = await prisma.$transaction(
+        async (tx) => {
+          const sale = await pos.createSale(saleInput, callerTx(tx));
+          // POS P1.6 R4 H4: บิลขาย/เติมบัตรไม่ลงบัญชีขาย (consumer ข้ามบิลที่มี giftCardId) ⇒ VAT บนบิลต้องเป็น 0 ให้ตรงสมุด
+          await tx.posSale.update({ where: { id: sale.saleId }, data: { giftCardId: card.id, vatSatang: 0 } });
+          const after = card.balanceSatang + satang;
+          await tx.giftCard.update({
+            where: { id: card.id },
+            data: { balanceSatang: { increment: satang }, status: "ACTIVE" },
+          });
+          const txn = await tx.giftCardTxn.create({
+            data: {
+              tenantId: ctx.tenantId,
+              giftCardId: card.id,
+              type: "RELOAD",
+              satang,
+              balanceAfter: after,
+              refType: "PosSale",
+              refId: sale.saleId,
+              byUserId: ctx.actorUserId ?? actor.userId ?? null,
+              idempotencyKey: key,
+            },
+          });
+          return { txnId: txn.id, saleId: sale.saleId, balanceAfter: after };
         },
-        tx,
+        { timeout: 30_000, maxWait: 15_000 },
       );
-      // POS P1.6 R4 H4: บิลขาย/เติมบัตรไม่ลงบัญชีขาย (consumer ข้ามบิลที่มี giftCardId) ⇒ VAT บนบิลต้องเป็น 0 ให้ตรงสมุด
-      await tx.posSale.update({ where: { id: sale.saleId }, data: { giftCardId: card.id, vatSatang: 0 } });
-      const after = card.balanceSatang + satang;
-      await tx.giftCard.update({
-        where: { id: card.id },
-        data: { balanceSatang: { increment: satang }, status: "ACTIVE" },
-      });
-      const txn = await tx.giftCardTxn.create({
-        data: {
-          tenantId: ctx.tenantId,
-          giftCardId: card.id,
-          type: "RELOAD",
-          satang,
-          balanceAfter: after,
-          refType: "PosSale",
-          refId: sale.saleId,
-          byUserId: ctx.actorUserId ?? actor.userId ?? null,
-          idempotencyKey: key,
-        },
-      });
-      return { txnId: txn.id, saleId: sale.saleId, balanceAfter: after };
-    },
-    { timeout: 30_000, maxWait: 15_000 },
-  );
+    } catch (e) {
+      if (!isUniqueViolation(e) || attempt >= SALE_TX_ATTEMPTS) throw e;
+      const replay = await reloadReplay(ctx.tenantId, key);
+      if (replay) return replay;
+    }
+  }
+  await pos.afterSaleCommitted(saleInput, res.saleId); // HF-TX ▸ ระบายคิว (+ ตัดสต็อกถ้ามี) หลัง commit ◂
 
   if (settings.accountingLink && card.accountingDocId) {
     await account.postGiftCardSale({

@@ -417,7 +417,8 @@ import * as couponSvc from "@/lib/modules/coupon/service";
 import { splitIncludedVat } from "@/lib/money/vat";
 import type { RegisterMemberGate, RegisterMemberQuote } from "./register-member";
 // POS P1.7 ▸ ใบขอรับเงิน (pi_…) ใช้ในธุรกรรมขายของหน้าขาย · งานหลัง commit ชุดเดียวกับ createSale (ตัดสต็อก + ระบายคิว · มติ I) ◂
-import { consumeSaleInventory, pendingStockParts, posDayStart } from "./service";
+import { afterSaleCommitted, consumeSaleInventory, pendingStockParts, posDayStart } from "./service";
+import { callerTx } from "@/lib/core/caller-tx"; // HF-TX ▸ มุมมองธุรกรรมของผู้เรียก (ซ่อน $transaction) ◂
 // POS P2.3 ▸ สูตร/BOM: สูตรที่ใช้จริงของแถว (อ่านอย่างเดียว) · กระจายสูตร/จำนวนหน่วยที่ทำได้ (บริสุทธิ์) ◂
 import { loadRowRecipes } from "./recipe";
 import { expandRecipe } from "./recipe-shared";
@@ -2376,7 +2377,9 @@ export async function submitRegisterSale(ctx: RegisterCtx, actor: RegisterActor,
 
 /**
  * POS P1.7: จุดเรียก createSale จุดเดียวของหน้าขาย (ทะเบียนผู้เรียกของ qc-pos-p1.6 U4 นับต่อจุด) —
- * client = prisma ของแอป/ของผู้เรียก (ทาง P1.6) หรือ tx ของธุรกรรมใบขอรับเงิน (createSale ไม่เปิด tx ซ้อน · ไม่ทำงานหลัง commit เอง)
+ * client = prisma ของแอป/ของผู้เรียก (ทาง P1.6 · createSale เป็นเจ้าของ tx) หรือ `callerTx(tx)` ของธุรกรรมใบขอรับเงิน/โต๊ะ
+ * HF-TX ▸ แก้คอมเมนต์เดิม "createSale ไม่เปิด tx ซ้อน" ที่ไม่จริง: tx ดิบของ Prisma 7 มี `$transaction` ⇒ createSale เปิด SAVEPOINT ซ้อน
+ *   + ทำงานหลัง commit ก่อนผู้เรียก commit — ต้องห่อ `callerTx(tx)` เสมอ แล้วผู้เรียกเรียก `afterSaleCommitted` หลังธุรกรรม ◂
  */
 function regCreateSale(input: CreateSaleInput, client: RegDb | Prisma.TransactionClient) {
   return createSale(input, client);
@@ -2402,9 +2405,10 @@ class RegIntentRefusal extends Error {
 }
 
 /**
- * POS P1.7 R4 — ส่งบิลที่อ้างใบขอรับเงิน: ธุรกรรมเดียว = ล็อก intent (FOR UPDATE) → ตรวจ → createSale(…, tx) → CONSUMED + saleId + PosPayment.note
+ * POS P1.7 R4 — ส่งบิลที่อ้างใบขอรับเงิน: ธุรกรรมเดียว = ล็อก intent (FOR UPDATE) → ตรวจ → createSale(…, callerTx(tx)) → CONSUMED + saleId + PosPayment.note
  * ⇒ สองคำขอแย่ง intent เดียว = บิลเกิดใบเดียว (ผู้แพ้รอล็อกแล้วเห็น CONSUMED) · คีย์เดิมซ้ำ = บิลเดิม (ค้นคีย์ก่อนล็อก + หลังแพ้)
- * หลัง commit: ตัดสต็อก (perpetual) + scheduleDrain() ให้ pos.sale.paid ทำงานทันที (มติ I) — ชุดเดียวกับ createSale ตอนเป็นเจ้าของ tx
+ * หลัง commit: afterSaleCommitted (ตัดสต็อก perpetual + scheduleDrain ให้ pos.sale.paid ทำงานทันที · มติ I) — ชุดเดียวกับ createSale ตอนเป็นเจ้าของ tx
+ * HF-TX ▸ P2002 ของแถวตัวนับใบเสร็จเดือนใหม่ (createSale ใต้ callerTx ไม่ลองใหม่เอง) ⇒ ธุรกรรมทั้งก้อน rollback แล้ววนรอบใหม่ (`continue` ใน catch · ≤ 3 รอบ) ◂
  */
 async function regSubmitWithIntents(
   db: RegDb,
@@ -2424,14 +2428,14 @@ async function regSubmitWithIntents(
           //   ไม่มี = บิลที่ createSale สร้างในธุรกรรมนี้ ⇒ ใช้ intent · มีแล้ว = createSale คืนบิลเดิม (เล่นซ้ำ) ⇒ ไม่แตะ intent ◂
           await tx.$queryRaw`SELECT 1 AS x FROM (SELECT pg_advisory_xact_lock(hashtext(${saleInput.tenantId}::text || ':' || ${saleInput.idempotencyKey}::text))) l`;
           const existed = await tx.posSale.findUnique({ where: { tenantId_idempotencyKey: { tenantId: saleInput.tenantId, idempotencyKey: saleInput.idempotencyKey } }, select: { id: true } });
-          const r = await regCreateSale(saleInput, tx);
+          // HF-TX ▸ switched: callerTx(tx) — บิลอยู่ใน xid เดียวกับ intent (ไม่มี savepoint · ไม่มีงานหลัง commit ก่อน commit) ◂
+          const r = await regCreateSale(saleInput, callerTx(tx));
           if (!existed) await consumeSaleIntents(tx, s, r.saleId, locked.notes);
           return r.saleId;
         },
         { timeout: 20_000, maxWait: 10_000 },
       );
-      if (saleInput.lines.some((l) => l.itemId || (l.components && l.components.length))) await consumeSaleInventory(s.tenantId, s.unitId, saleId);
-      scheduleDrain();
+      await afterSaleCommitted(saleInput, saleId); // HF-TX ▸ งานหลัง commit ชุดเดียว (ตัดสต็อก + scheduleDrain) ◂
       const row = await regLoadSale(db, s.tenantId, req.idempotencyKey);
       if (!row || row.id !== saleId) return regRefuse("INTERNAL");
       return regDuplicate(s, req, row, row.createdAt.getTime() < startedAt);
