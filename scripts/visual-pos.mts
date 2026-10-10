@@ -4340,6 +4340,9 @@ async function ensureP28uFixture(): Promise<void> {
     const A = QC_IDS.amer;
     const LT = QC_IDS.latte;
     const cust = (name: string, phoneNo?: string) => ({ name, ...(phoneNo ? { phone: phoneNo } : {}) });
+    // fix 1 F8: รอบที่มีแค่ register-tab-badge = ออเดอร์ใหม่อย่างเดียว (ไม่มีสาย PLATFORM รับ→ส่งมอบ ⇒ ไม่มีออเดอร์/บิลที่ต้องเก็บไว้)
+    const full = jobs.some((j) => j.state && P28U_FIXTURE_STATES.has(j.state) && !P28U_REG_KEYS.has(j.state));
+    if (full) {
     // กำลังเตรียม "เลยเวลา" ก่อน (เวลาเตรียม 1 นาที ⇒ เลยเมื่อผ่านไป > 1 นาที — orders-mixed รอได้)
     P28U.refs.late = p28uRef("TEL");
     await p28uIngest("late", { channelId: P28U.phone, externalRef: P28U.refs.late, lines: [{ productId: LT, qty: 2 }], customer: cust("คุณนิด (ภาพ QC)", "0891112222"), fulfilment: "PICKUP", startStatus: "ACCEPTED", paymentState: "UNPAID", prepMinutes: 1 });
@@ -4368,6 +4371,7 @@ async function ensureP28uFixture(): Promise<void> {
       const r = await ord.rejectOrder(ctx, actor, { id: P28U.orderIds.rejected!, reasonCode: "TOO_BUSY" });
       if (!r.ok) throw new Error(`rejectOrder: ${r.code}`);
     }
+    } // fix 1 F8: full
     // ใหม่ 3 ใบ (ไม่รับ): LINE MAN (แผง PLATFORM · ค่าคอมฯ 30%) · Grab · แชทรอชำระ
     P28U.refs.lm = p28uRef("LM");
     await p28uIngest("lm", { channelId: lm, externalRef: P28U.refs.lm, lines: [{ productId: A, qty: 2 }, { productId: LT, qty: 1, note: "ร้อนมาก" }], customer: cust("คุณเอก (ภาพ QC)", "0812341234"), fulfilment: "DELIVERY", address: "ซอยศาลาแดง 2 · ตึก B (ภาพ QC)", note: "ไม่ใส่น้ำแข็ง · ขอหลอด", startStatus: "NEW" });
@@ -4380,17 +4384,17 @@ async function ensureP28uFixture(): Promise<void> {
       P28U.refs.chat = g.ok ? g.order.ref : "";
     }
     P28U.done = true;
-    P28U.log.push(`สร้าง: ออเดอร์ ${P28U.ids.length + P28U.kept.length} (เก็บไว้ ${P28U.kept.length} = LINE MAN ${P28U.refs.done} + บิล PLATFORM)`);
+    P28U.log.push(full ? `สร้าง: ออเดอร์ ${P28U.ids.length + P28U.kept.length} (เก็บไว้ ${P28U.kept.length} = LINE MAN ${P28U.refs.done} + บิล PLATFORM)` : `สร้าง: ออเดอร์ใหม่ ${P28U.ids.length} (register-tab-badge เท่านั้น · ไม่มีการรับ PLATFORM)`);
   } catch (e) {
     P28U.error = e instanceof Error ? e.message.slice(0, 200) : String(e);
   }
 }
-/** orders-new-late: Grab ใหม่ที่เหลือเวลารับ < 60 วิ — ใบเดิมใกล้หมด (< 8 วิ) หรือยังไม่มี = สร้างใบใหม่ (คีย์ใหม่) แล้วรอ */
+/** orders-new-late: Grab ใหม่ที่เหลือเวลารับ < 60 วิ — ใบเดิมเหลือ < 40 วิ (fix 1 F8 · กันตัวนับหมดระหว่างโหลดหน้า) หรือยังไม่มี = สร้างใบใหม่ (คีย์ใหม่) แล้วรอ */
 async function p28uLateOrder(): Promise<{ ref: string; receivedMs: number }> {
   const ord = await import("@/lib/modules/pos/order");
   const { ctx, actor } = await p28uCtx();
   const cur = P28U.orderIds.newLate ? await ord.getOrder(ctx, actor, { id: P28U.orderIds.newLate }) : null;
-  if (cur && cur.ok && cur.order.status === "NEW" && (cur.order.acceptRemainingSec ?? 0) >= 8) return { ref: cur.order.ref, receivedMs: Date.parse(cur.order.receivedAt) };
+  if (cur && cur.ok && cur.order.status === "NEW" && (cur.order.acceptRemainingSec ?? 0) >= 40) return { ref: cur.order.ref, receivedMs: Date.parse(cur.order.receivedAt) };
   const ref = p28uRef("GF");
   await p28uIngest("newLate", { channelId: P21U.ids.GRAB!, externalRef: ref, lines: [{ productId: QC_IDS.amer, qty: 1 }], customer: { name: "คุณโอ๊ต (ภาพ QC)", phone: "0861239876" }, fulfilment: "DELIVERY", startStatus: "NEW" });
   return { ref, receivedMs: Date.now() };
@@ -4425,13 +4429,22 @@ async function cleanupP28u(): Promise<void> {
   if (!ids.length) return;
   try {
     const tenantId = T.tenantId;
-    const sales = await prisma.posOrder.findMany({ where: { tenantId, id: { in: ids }, saleId: { not: null } }, select: { id: true } });
-    if (sales.length) throw new Error(`ออเดอร์ของรอบมีบิลแล้ว ${sales.length} ใบ (${sales.map((x) => x.id).join(",")}) — ไม่ลบ (ตรวจด้วยมือ)`);
-    const ev = (await prisma.posOrderEvent.deleteMany({ where: { tenantId, orderId: { in: ids } } })).count;
-    const ln = (await prisma.posOrderLine.deleteMany({ where: { tenantId, orderId: { in: ids } } })).count;
-    const ob = (await prisma.outboxEvent.deleteMany({ where: { tenantId, type: { startsWith: "pos.order." }, OR: ids.map((id) => ({ idempotencyKey: { endsWith: `#${id}` } })) } })).count;
-    const au = (await prisma.auditLog.deleteMany({ where: { tenantId, targetType: "PosOrder", targetId: { in: ids } } })).count;
-    const od = (await prisma.posOrder.deleteMany({ where: { tenantId, id: { in: ids } } })).count;
+    // fix 1 F8: ออเดอร์ที่มีบิลแล้ว = เก็บไว้ (รายงาน) · ที่เหลือ (ไม่มีบิล) ลบตามไอดี — ไม่ข้ามทั้งชุดเพราะใบเดียว
+    const withSale = (await prisma.posOrder.findMany({ where: { tenantId, id: { in: ids }, saleId: { not: null } }, select: { id: true } })).map((x) => x.id);
+    if (withSale.length) {
+      P28U.kept.push(...withSale.filter((x) => !P28U.kept.includes(x)));
+      P28U.log.push(`มีบิลแล้ว ไม่ลบ: ${withSale.join(",")}`);
+    }
+    const kill = ids.filter((x) => !withSale.includes(x));
+    if (!kill.length) {
+      P28U.ids = [];
+      return;
+    }
+    const ev = (await prisma.posOrderEvent.deleteMany({ where: { tenantId, orderId: { in: kill } } })).count;
+    const ln = (await prisma.posOrderLine.deleteMany({ where: { tenantId, orderId: { in: kill } } })).count;
+    const ob = (await prisma.outboxEvent.deleteMany({ where: { tenantId, type: { startsWith: "pos.order." }, OR: kill.map((id) => ({ idempotencyKey: { endsWith: `#${id}` } })) } })).count;
+    const au = (await prisma.auditLog.deleteMany({ where: { tenantId, targetType: "PosOrder", targetId: { in: kill } } })).count;
+    const od = (await prisma.posOrder.deleteMany({ where: { tenantId, id: { in: kill }, saleId: null } })).count;
     P28U.log.push(`ลบ: ออเดอร์ ${od} · บรรทัด ${ln} · เหตุการณ์ ${ev} · outbox ${ob} · audit ${au}`);
     P28U.ids = [];
     P28U.orderIds = {};
