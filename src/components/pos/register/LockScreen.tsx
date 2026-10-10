@@ -337,7 +337,9 @@ export function LockScreen(p: {
         )}
       </header>
 
-      <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+      {/* POS HF-P1CLOSE ▸ O5: มือถือ = กล่องนี้สูงตามเนื้อหา (min-h-0 เฉพาะ md+) ⇒ ความสูงเลื่อนของหน้าจอล็อก = แป้น + รายชื่อพนักงาน + สลับพนักงาน + บิลพักครบ
+          (เดิม min-h-0 ทุกขนาด ⇒ กล่องหดเท่าจอ เนื้อหาล้นออกนอกกล่อง — ยังเลื่อนได้ แต่พึ่งการนับส่วนล้นของลูก) ◂ */}
+      <div className="flex flex-1 flex-col md:min-h-0 md:flex-row">
         {/* ซ้าย: PIN */}
         <section className="flex flex-1 flex-col items-center justify-center gap-5 px-5 py-8 md:py-10">
           <span className="grid size-[68px] place-items-center rounded-[18px] border bg-[color:var(--color-surface-2)]">

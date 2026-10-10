@@ -129,7 +129,7 @@ export function SharkSettings({ systemId, unitId, storefront, pay, canAddSystem,
   };
 
   const head = (
-    <TabHead title={tk("title")} desc={tk("subtitle")}>
+    <TabHead title={tk("title")} desc={tk("subtitle")} stackBelowXl>
       {data && (
         <span data-testid="pos-settings-shark-count" className="inline-flex h-8 items-center whitespace-nowrap rounded-[9px] border border-[color:var(--color-ink)] px-3 text-[13px] font-bold">
           {tk("count", { linked: data.header.linked, total: data.header.total })}
