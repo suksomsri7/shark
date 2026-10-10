@@ -1176,3 +1176,5 @@
 - 02:38Z ✅ P2.3 S fix round 2 `wip/pos-p2.3` **06f2d825** (code 09e2ca11 · log ต่อรายการ · `qc-hf-inventory-atomic` 143/143 · p2.3 46/46 · p1.3 128 · typecheck 0) → **R2 เปิด** (prompt `P2.3-R2.md`) + **gates63** ทรี b @09e2ca11 (typecheck · p2.3 · p1.1 · p2.2 · p2.1 · p1.8 · p1.2 · p1.5 · p1.9 · p1.13 · p1.15 · p1.18 · p0.2 · closeday · authz · hf-inventory-atomic · inventory · pos-account · account-cpa · fitness ×3) · เลน = 1 (R2 P2.3)
 
 - 02:42Z R2 P2.3 = **MERGEABLE** (`wo-notes/pos-P2.3-review-R2.md`) · N1/N3 → ติดตาม P2.3U (รวม F7 pending-restore) · รอ gates63 เขียว → merge 06f2d825 → QC5 migrate deploy → เปิด P2.4 S + P2.8 S
+
+- 02:43Z 🔴 เจ้าของสั่ง "ทำตามแนะนำ" (คำถาม DB): **คง A + QC5 · ไม่เปิด QC6** · ใช้ด่านล่วงหน้าบนทรี b ขณะ builder แก้ · เปิด P2.4 S + P2.8 S พร้อมกันหลัง P2.3 S merge (คนละโมดูล) · เงื่อนไขเปลี่ยน = HR/AI กลับมาเดินพร้อม POS
