@@ -1168,3 +1168,5 @@
 - **สถานะ 23/55 (42%)** · เฟส P2 เดินอยู่: fix P2.3 S (c · ด่านใกล้จบ) · fix P2.2U (p11) · oracle P2.6 บนฐาน · P2.4 S/P2.8 S รอ P2.3 S merge
 
 - 02:23Z R2 P2.2U = **MERGEABLE** (`wo-notes/pos-P2.2U-review-R2.md`) · N1 toast ทุก 15 วิ เมื่อโหลดล้ม → fix round 2 (builder เดิม p11 · เงียบเมื่อ timer เรียก + ข้ามตอนออฟไลน์) · N2 → P2.11 · chain60: build60 @6e55ba60 ทรี d → vis60 p22u (products/register/sales × owner/cashier th + owner en) บน QC5 กำลังรัน · fix P2.3 รอ typecheck
+
+- 02:25Z ✅ P2.3 S fix round 1 ส่ง `wip/pos-p2.3` 8cd0dc24 (code 0eec926f · ORACLE-ADD V6 red-before 45/46 → 46/46 ×3 · F1 restockRefundDoc ร่วม · F2 posDayStart · F3 loadRowPortions untracked ⇒ null · F5 lock 5 s · F6 re-read → restore (REFUNDED ⇒ ผ่าน refund-doc) · F8 บรรทัดบัญชี) · ด่านเขียวรอบแรกทั้งหมด · **มติ AT-24.1** (`qc-hf-inventory-atomic` 142/143): คง oracle · โค้ด log ต่อรายการเมื่อ cut ล้ม → fix round 2 (builder เดิม) · ต่อไป R2 บน diff 14dec332..head → gates63 (p1.1 ซ้ำ + ชุดที่ fix แตะ) → merge → เปิด P2.4 S + P2.8 S
