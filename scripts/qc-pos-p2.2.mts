@@ -472,9 +472,9 @@ async function runStatic(): Promise<void> {
     const reg = rd(F.register);
     if (!/P2\.2\s*▸\s*channel price here/.test(reg)) p.push("register.ts ไม่มีรอยต่อ // P2.2 ▸ channel price here ◂ (Q8: คงข้อความ · qc-pos-p2.1 ST3)");
     if (!/from\s+["']\.\/price(-shared)?["']/.test(stripComments(reg))) p.push("register.ts ไม่ import ตัวแก้ราคา (./price-shared หรือ ./price)");
-    if (!/\[\s*"happyHourPricing"\s*,\s*false\s*,\s*"P2\.2"\s*\]/.test(srcOf(F.integ))) p.push('pos-integrations MARKETING.happyHourPricing ไม่ใช่ ["happyHourPricing", false, "P2.2"] (Q8: S คงไว้ · P2.2U พลิก)');
+    if (!/\[\s*"happyHourPricing"\s*,\s*true\s*,\s*null\s*\]/.test(srcOf(F.integ))) p.push('pos-integrations MARKETING.happyHourPricing ไม่ใช่ ["happyHourPricing", true, null] (P2.2U Q8)');
     if (/channelPrices\s*:\s*\[\s*\]/.test(srcOf(F.catalog))) p.push("catalog.ts ยังคืน channelPrices: [] ตายตัว (R6)");
-    chk("ST3", p.length === 0, "price-shared บริสุทธิ์ · price/price-rule/catalog export ครบ · facade · ผู้เขียนเดียว · รอยต่อ P2.1 คงอยู่ · happyHourPricing false", P8(p) || "ครบ");
+    chk("ST3", p.length === 0, "price-shared บริสุทธิ์ · price/price-rule/catalog export ครบ · facade · ผู้เขียนเดียว · รอยต่อ P2.1 คงอยู่ · happyHourPricing true", P8(p) || "ครบ");
   }
   // ST4 "use server"
   {
