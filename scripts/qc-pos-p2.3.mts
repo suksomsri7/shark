@@ -301,8 +301,8 @@ const F = {
   msgEn: "src/messages/en/pos.json",
   ownerPending: "ledger/POS-OWNER-PENDING.md",
 };
-/** sha256 ของ scripts/pos-sale-contract.json ที่ b694aea0 (CD1: createSale ไม่เปลี่ยน) */
-const CONTRACT_SHA_B694 = "eaced8dcd2b3761f70853ace19918ce2c1a74924fcb28b4ff1afe1ffdbf08eed";
+/** sha256 ของ scripts/pos-sale-contract.json — ORACLE-EDIT ผู้คุม 10 ต.ค.: re-pin ที่ 0c20c473 (merge P2.2 S เพิ่มคีย์บรรทัด priceSource/priceRuleId/listPriceSatang ตามสัญญา P2.2 · CD1: P2.3 ห้ามเปลี่ยนอีก) · เดิม b694aea0 = eaced8dc… */
+const CONTRACT_SHA_B694 = "7a418de17b44bf7c54e9ee99a3cb740ae596fb6fb240978901e8a07b011697cd";
 const MIGRATION_NAME = "20261205100000_pos_p23_recipe";
 const RC_FIELDS = ["id", "tenantId", "productId", "product", "choiceId", "invItemId", "qtyDelta", "createdAt", "updatedAt"];
 const RC_COLS = ["id", "tenantId", "productId", "choiceId", "invItemId", "qtyDelta", "createdAt", "updatedAt"];
