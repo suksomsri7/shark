@@ -1,0 +1,26 @@
+  ✅ [M1.6-S1.1] autoMapping: ชื่อ→firstName · นามสกุล→lastName · เบอร์โทร→phone · อีเมล→email · วันเกิด→birthDate · ระดับใบรับรอง→certLevel (ฟิลด์กำหนดเองจากป้าย) · จำนวนไดฟ์สะสม→diveCount · ไม่รู้จัก → null
+  ✅ [M1.6-S1.2] previewImport(6 แถว): ok 2 (แถว 1,2) · warn 1 (แถว 5 ซ้ำสมาชิก 5 · duplicateOf brief) · err 3 (เบอร์ '12' · ค่านอก choices · ไม่มีเบอร์/อีเมล) · ไม่เขียน (สมาชิกยัง 60) · ข้อความ err ไทย
+  ✅ [M1.6-S1.3] importMembers(skip): {created 2, updated 0, skipped 1 (ซ้ำ), failed 3, errors[3]{row,message}} · สมาชิกใหม่ source IMPORT · sourceDetail.fileName · attribution FIRST IMPORT · homeUnit ป่าตอง · tags · certLevel/diveCount ผ่าน engine · birthDate · AuditLog member.import 1 แถว
+  ✅ [M1.6-S1.4] onDuplicate update: แถวซ้ำ (เบอร์สมาชิก 5) → updated 1 · nickname เปลี่ยน · firstName/lastName/name เดิมคง (ไม่ล้าง) · event member.updated
+  ✅ [M1.6-S1.5] onDuplicate candidate: ชื่อเหมือนสมาชิก 5 แต่เบอร์ใหม่ → created 1 + candidates 1 (PartyMergeCandidate ชื่อคล้าย OPEN) · โผล่ใน findDuplicates
+  ✅ [M1.6-S1.6] เพดาน MEMBER_LIMITS.importRows 10,000 → 10,001 แถว throw ไทย LIMIT · thana (ไม่มี member.customer.import) → throw · STAFF กะตะ homeUnitId ป่าตอง → throw · mapping ไปฟิลด์ที่ไม่มี → throw · ไม่มีแถวค้าง
+  ✅ [M1.6-S1.7] นำเข้าซ้ำแถวเดิม (skip) → created 0 · skipped 3 (2 ที่เพิ่งสร้าง + สมาชิก 5) · failed 3 · ไม่มีสมาชิกเพิ่ม
+  ✅ [M1.6-S1.8] checkDuplicate(phone) → brief สมาชิก 9 (เบอร์ปิดบัง · ไม่มีเบอร์เต็ม) · (email) → สมาชิก 8 · ไม่พบ → null · joinLinkFor → url /m/{slug}/join (+?src=) + qrDataUrl data:image/png
+  ✅ [M1.6-S2.1] หน้าสมัคร (ภาพ 10): page requireTenant + hasMemberPerm(member.customer.create) (ไม่มี = notFound) · ฟอร์มจาก listLayout (ส่วน/ฟิลด์ตามเลย์เอาต์ · ส่วนอ่อนไหวตาม canViewSensitive) · testid 8 · ตรวจซ้ำสด (checkDuplicateAction เมื่อพิมพ์เบอร์ครบ) · ที่มา (MemberSource label ไทย) · ผู้แนะนำ (stub ป้าย M3.5) · consent จาก consentChannels() · QR/ลิงก์ให้ลูกค้ากรอกเอง (joinLinkFor) · members-actions.ts 'use server' gate member.customer.create
+  ✅ [M1.6-S2.2] หน้านำเข้า (ภาพ 12): 3 ขั้น (อัปโหลด CSV → จับคู่คอลัมน์ (autoMapping + dropdown ฟิลด์ทั้งหมดรวมกำหนดเอง) → ตรวจแถว ok/warn/err + ตัวเลือกซ้ำ 3 โหมด → นำเข้า → ผล) · parse CSV ฝั่ง client (ไม่ส่งไฟล์ขึ้น server) · testid 9 · import-actions.ts gate member.customer.import · หน้าเก่า /member/import → redirect
+  ✅ [M1.6-S2.3] หน้าตัวซ้ำ (ภาพ 11): findDuplicates → รายการคู่ (เหตุผลไทย · คะแนน) → เปรียบเทียบข้างกัน (เลือกค่าต่อฟิลด์ A/B → fieldChoices) → รวม 2 ขั้น (พิมพ์ MERGE ยืนยัน · ConfirmDialog) → mergeMembersAction · ไม่ใช่คนเดียวกัน → dismissDuplicateAction · testid 7 · gate member.customer.merge · ผลลัพธ์ pending (MANAGER) แสดง 'รออนุมัติ'
+  ❌ [M1.6-S3.1] ภาพ 10: members-new-owner desktop+mobile 200 · thana (มี create) 200 — exp 200 ×3 | act undefined/undefined/undefined
+  ❌ [M1.6-S3.2] ภาพ 12: members-import-owner (ขั้น 1) 200 · members-import-mapping-desktop (หลังอัปโหลด fixture.csv → ขั้น 2 มีตาราง mapping) · members-import-preview-desktop (ขั้น 3) · thana (ไม่มี import) → 404 — exp 200 ×3 · 404 | act undefined/undefined/undefined/undefined
+  ❌ [M1.6-S3.3] ภาพ 11: members-duplicates-owner 200 (มีคู่จาก seed/harness) · members-dup-compare-desktop (คลิกคู่แรก → เปรียบเทียบ) · PARITY: ผ่าน ใน wo-notes/member-M1.6.md — exp 200 ×2 · PARITY | act undefined/undefined
+
+🔴 M1.6: 11/14
+JSON_SUMMARY {"total":14,"passed":11,"findings":[{"id":"M1.6-S3.1","sev":"MAJOR"},{"id":"M1.6-S3.2","sev":"MAJOR"},{"id":"M1.6-S3.3","sev":"MAJOR"}]}
+(node:1476936) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)

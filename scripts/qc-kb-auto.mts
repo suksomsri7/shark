@@ -9,6 +9,8 @@
 //   persona.ts มีกติกา auto เก็บความรู้ลง KB
 import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
 loadLegacyQcEnv("qc-kb-auto"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
+// ORACLE-EDIT C5.5-G1 r2: AiTool.execute without an actor now refuses — these checks always meant "the shop OWNER asks"
+const qcOwner = (t: string) => ({ kind: "member" as const, tenantId: t, userId: "qc-owner", membership: { role: "OWNER" as const, unitAccess: ["*"], permissions: {} } });
 import { readFileSync } from "node:fs";
 const { prisma } = await import("@/lib/core/db");
 type Sev = "CRITICAL" | "MAJOR" | "MINOR";
@@ -25,7 +27,7 @@ try {
   if (!tool) chk("KA-1.0", "มี tool kb_auto_save ใน registry", false, "มี", "ยังไม่สร้าง");
   else {
     chk("KA-1.1", "description กำกับ: ความรู้ถาวรเท่านั้น + กันซ้ำ", /ถาวร/.test(tool.def.description) && /ซ้ำ/.test(tool.def.description), "มี", tool.def.description.slice(0, 80), "MAJOR");
-    const res = await tool.execute({ tenantId: t.id, conversationId: "conv-qc" }, { title: "นโยบายคืนสินค้า", content: "รับคืนภายใน 7 วัน พร้อมใบเสร็จ สภาพสมบูรณ์เท่านั้น", category: "นโยบายร้าน" });
+    const res = await tool.execute({ tenantId: t.id, actor: qcOwner(t.id), conversationId: "conv-qc" }, { title: "นโยบายคืนสินค้า", content: "รับคืนภายใน 7 วัน พร้อมใบเสร็จ สภาพสมบูรณ์เท่านั้น", category: "นโยบายร้าน" });
     const row = await prisma.kbArticle.findFirst({ where: { tenantId: t.id, title: "นโยบายคืนสินค้า" } });
     chk("KA-1.2", "execute → KbArticle ถูกสร้างจริงใน tenant", !!row && row.body.includes("7 วัน"), "มีแถว", String(res).slice(0, 80));
     chk("KA-1.3", "ผลลัพธ์ tool บอกว่าบันทึกแล้ว (AI เอาไปตอบ user ต่อ)", /บันทึก/.test(String(res)), "มี", String(res).slice(0, 80), "MAJOR");

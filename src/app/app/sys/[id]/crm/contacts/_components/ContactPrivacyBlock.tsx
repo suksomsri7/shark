@@ -48,6 +48,16 @@ export function ContactPrivacyBlock({
     a.download = r.filename;
     a.click();
     URL.revokeObjectURL(url);
+    if (!r.complete) {
+      // CRM C5.5-fix9 (+ r2 review M1/I2): ไฟล์ไม่ใช่ข้อมูลทั้งหมดของเขา — บอกตรง ๆ ว่าเพราะอะไร (ในไฟล์มี `complete: false` + `truncated`/`scope` ด้วย)
+      const parts: string[] = [];
+      const cut = Object.entries(r.truncated).map(([t, n]) => `${t} ${n.exported.toLocaleString("th-TH")} จาก ${n.total.toLocaleString("th-TH")} แถว`);
+      if (cut.length) parts.push(`บางตารางมีข้อมูลมากเกินกว่าจะใส่ในไฟล์เดียว ไฟล์จึงมีเฉพาะแถวใหม่สุด (${cut.join(" · ")})`);
+      if (r.scope.limitedByRequesterVisibility) parts.push(`บางรายการอยู่นอกสิทธิ์การมองเห็นของบัญชีคุณจึงไม่อยู่ในไฟล์ (${(r.scope.withheldTables ?? []).join(" · ")}) — ถ้าต้องการไฟล์ที่ครบ ให้เจ้าของร้านเป็นผู้ส่งออก`);
+      if (r.scope.mergedChainIncomplete) parts.push("ผู้ติดต่อที่ถูกรวมเข้ามามีจำนวนมากเกินเพดาน ไฟล์จึงยังไม่รวมทุกคน");
+      setMsg({ ok: false, text: `ดาวน์โหลดไฟล์แล้ว แต่ไฟล์นี้ยังไม่ใช่ข้อมูลทั้งหมดของผู้ติดต่อนี้ — ${parts.join(" · ")} · แจ้งเจ้าของข้อมูลด้วยว่าไฟล์ไม่ครบ` });
+      return;
+    }
     setMsg({ ok: true, text: "ดาวน์โหลดไฟล์ข้อมูลของผู้ติดต่อนี้แล้ว — ส่งให้เจ้าของข้อมูลผ่านช่องทางที่ปลอดภัย" });
   }
 

@@ -1,0 +1,34 @@
+  ✅ [M2.3-S1.1] migration member_v2_d: StampCard {systemId name description slots ruleKind ruleConfig rewardKind rewardConfig autoRestart validMonths tierDefIds unitIds active sortOrder} index(systemId,active) · StampCardProgress {cardId customerId cycle stamps startedAt completedAt expiresAt rewardVoucherId} unique(cardId,customerId,cycle) · StampEvent {progressId type count refType refId byUserId unitId idempotencyKey} unique(tenantId,idempotencyKey) index(progressId,createdAt) · enum StampRuleKind 5 · StampEventType 5 · StampRewardKind 4 · additive · applied · migrate diff = empty
+  ✅ [M2.3-S1.2] createCard: slots 2/31 → throw ไทย · ชื่อว่าง → throw · ruleKind นอก enum → throw · thana (ไม่มี loyalty.manage) → throw · เพดานอ่าน MEMBER_LIMITS.stampCards (20) · updateCard description · listCards มีใบ + stats {active, completed, rewardsPaid} · toggleCard off → active false
+  ✅ [M2.3-S2.1] MANUAL: addStamp สมาชิก 1 → {stamps 1, cycle 1, completed false, progressId, eventId} · progress cycle 1 stamps 1 startedAt · StampEvent ADD count 1 byUserId owner refType MANUAL · event stamp.added {customerId, cardId, stamps 1, cycle 1}
+  ✅ [M2.3-S2.2] perDayMax 2: ตราที่ 2 วันเดียวกันได้ (2) · ตราที่ 3 → throw ไทย (stamps คง 2 · ไม่มี event เพิ่ม) · count 3 ทีเดียว (สมาชิก 2 · วันนี้ 0) → throw ไม่ประทับบางส่วน (ไม่มี progress/stamps 0)
+  ✅ [M2.3-S2.3] idempotencyKey เดิม (a2) ยิงซ้ำ → คืนผลเดิม {stamps 2, eventId เดิม} · ไม่สร้าง StampEvent ใหม่ (ยัง 2) · stamps ยัง 2
+  ✅ [M2.3-S2.4] tier/unit: การ์ด B tierDefIds [gold] unitIds [ป่าตอง] — สมาชิก 1 (ระดับ member) → throw ไทย · gold ป่าตอง → 1 · gold + unitId กะตะ → throw ไทย · progressFor(สมาชิก 1) ไม่แสดงการ์ด B (ไม่เข้าเกณฑ์) แต่แสดง A stamps 2 slots 5 cycle 1
+  ✅ [M2.3-S2.5] ใครประทับได้: allowStaffScan false → owner ประทับ → throw ไทย · ลูกค้า (CUSTOMER) ใส่ PIN ผิด → throw · ไม่ใส่ PIN → throw · PIN ถูก → 1 ตรา (byUserId null · refType QR/PIN) · ลูกค้าประทับให้คนอื่น → throw · การ์ด A ไม่ตั้ง PIN + ลูกค้า → throw
+  ✅ [M2.3-S2.6] PER_DAY: ตราแรกของวันได้ (1) · ตราที่ 2 วันไทยเดียวกัน → throw ไทย แม้ perDayMax 5 · count 2 ทีเดียว → throw
+  ✅ [M2.3-S2.7] สิทธิ์/ขอบเขต: thana (STAFF ป่าตอง + loyalty.stamp) ประทับสมาชิก 3 (ป่าตอง) ได้ · สมาชิก 45 (กะตะ) → throw ไทย (ไม่พบ · 404-not-403) · noPerm → throw · customerId ไม่มี → throw ไทย · การ์ดปิดใช้งาน → throw ไทย
+  ✅ [M2.3-S3.1] ครบ: การ์ด E slots 3 POINTS 50 autoRestart — addStamp count 3 สมาชิก 8 → {completed true, cycle 1, rewardKind POINTS} · progress cycle 1 completedAt + StampEvent ADD 3 + USE 3 · progress cycle 2 stamps 0 · แต้ม +50 (ledger EARN refType STAMP refId progressId) · event stamp.completed {customerId, cardId, stamps 3, cycle 1, rewardKind POINTS}
+  ✅ [M2.3-S3.2] ส่วนเกิน: cycle 2 ประทับ 2 แล้ว 2 → ครบ (3) เหลือ 1 → cycle 3 stamps 1 · แต้มอีก +50 (รวม +100) · progressFor แสดง cycle 3 stamps 1 completedCycles 2
+  ✅ [M2.3-S3.3] VOUCHER stub (autoRestart false): ครบ → completedAt · rewardVoucherId null · event payload rewardKind VOUCHER + rewardConfig · ไม่มี cycle 2 · ประทับต่อ → throw ไทย 'ครบแล้ว' · REWARD/DISCOUNT_NEXT stub ครบได้ไม่ throw (payload rewardKind) · cardStats F {active 0, completed 1} · E {active 1, completed 2, rewardsPaid 2}
+  ✅ [M2.3-S4.1] void: thana (ไม่มี loyalty.manage) → throw · owner void ADD แรกของสมาชิก 1 → StampEvent VOID (count 1 · refId = event เดิม) · stamps 2 → 1 · void ซ้ำ → throw ไทย · void ตราของใบที่ครบแล้ว → throw ไทย
+  ✅ [M2.3-S4.2] expire: validMonths 1 → expiresAt ≈ startedAt+1 เดือน (28–31 วัน) · ตั้ง expiresAt ย้อนหลัง → expireDue() → {expired ≥ 1} · StampEvent EXPIRE count 2 · stamps 0 · startedAt ใหม่ · expiresAt อนาคต · ใบสมาชิก 12 ไม่แตะ (1) · cron.ts step stampExpire + summary stampExpired
+  ✅ [M2.3-S4.3] merge hook: X (A:1) + Y (A:2) → mergeMembers(keep X) → X ใบ A stamps 3 · StampEvent MERGE count 2 refType MERGE refId Y · Y ไม่มี progress เหลือ · ผลรวมตราไม่หาย
+  ✅ [M2.3-S5.1] autoStampFromSale: บิลสมาชิก 6 (฿600 < ฿1,000) → events 0 · บิลสมาชิก 20 (฿2,000) → 1 ตรา (refType SALE refId saleId · unitId = บิล · idempotencyKey sale:<id>:<card>) · PosSale.stampEventIds มี id · ยิงซ้ำ → 0 ใหม่ (ยัง 1 event) · การ์ดปิด auto ไม่ได้ตรา · consumer pos.sale.paid → autoStampFromSale · pos.sale.voided → voidStampsForSale
+  ✅ [M2.3-S5.2] PER_ITEM: บิลใหม่สมาชิก 21 (บริการป่าตอง qty 3 + ของอื่น 1) → การ์ด I ได้ 2 ตรา (qty 3 แต่ perDayMax 2 → ตัดที่ 2 ไม่ throw) · การ์ด H (≥ ฿1,000) ได้ 1 ด้วย (บิลเดียวหลายใบ) · voidStampsForSale → VOID ทั้ง 2 ใบ (I 0 · H 0) · ซ้ำ → voided 0
+  ✅ [M2.3-S5.3] PER_VISIT: นัด DONE จาก seed → 1 ตรา (refType VISIT · Appointment.stampEventId) · ซ้ำ → 0 · นัด CONFIRMED → 0 · setAppointmentStatus(DONE) ยิง event booking.completed {appointmentId, customerId} → drainOutbox → consumer ประทับให้ลูกค้า X (1) · booking.completed ลง 3 ทะเบียน
+  ✅ [M2.3-S6.1] หน้า stamps + stamps/[cardId] (+new) requireTenant + สิทธิ์ (list = loyalty.read/read-โดยนัย · editor = loyalty.manage) · actions 'use server' gate loyalty.manage/stamp · testid 11 · nav stamps → ready · ไม่มีอีโมจิ/hex · facade export 13 · service.ts ไม่ import pos/booking/chat/kanban ตรง · ไม่มี any
+  ✅ [M2.3-S6.2] editor (ภาพ 17): ป้ายฟอร์มครบ (จำนวนช่อง 3–30 · ได้ตราเมื่อ + เงื่อนไข · สูงสุด ตรา/วัน · ใครประทับได้ 3 ช่อง · รางวัลเมื่อครบ · เริ่มใบใหม่ · อายุใบ เดือน · จำกัดระดับ · สาขา) · ตัวอย่างการ์ดจริง (วงกลม = slots · ✓ ที่ประทับแล้ว · 'n/slots ประทับแล้ว') · สถิติ 3 · ตาราง 'สแตมป์การ์ดทั้งหมด' (ช่อง/ใบที่ใช้อยู่/ครบแล้ว/สถานะ toggle) · ป้ายกฎ 5 ชนิดเป็นไทย · ป้ายจาก registry ไม่ฮาร์ดโค้ดใน JSX ซ้ำ
+  ❌ [M2.3-S6.3] ภาพ 17: stamps-owner desktop+mobile 200 ไม่ล้น · stamps-editor-owner desktop 200 · stamps-new-owner 200 · thana (read-โดยนัย) 200 อ่านอย่างเดียว (ไม่มี stamps-add) · noperm 404 — exp 200/200/200/200/200/404 | act // mobile=undefined/ovf=undefined thana=undefined noperm=undefined
+  ✅ [M2.3-S6.4] 🔴 parity ภาพ 17 — Fable ตรวจด้วยตา · wo-notes/member-M2.3.md มี 'PARITY: ผ่าน' · stamp.added/stamp.completed ลง 3 ทะเบียน · drain แล้ว event stamp.* DONE ทั้งหมด
+
+🔴 M2.3: 21/22
+JSON_SUMMARY {"total":22,"passed":21,"findings":[{"id":"M2.3-S6.3","sev":"CRITICAL"}]}
+(node:1478594) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)

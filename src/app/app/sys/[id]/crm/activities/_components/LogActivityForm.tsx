@@ -21,6 +21,11 @@ import {
   type MentionOption,
 } from "@/lib/modules/crm/activities-shared";
 import { logActivityAction, searchActivityTargetsAction } from "./actions";
+import { FieldError, useFieldErrors } from "@/components/crm/form/field-errors";
+
+// C4.3-fix part 2 ▸ ลำดับช่องบนจอ — ข้อความใต้ช่อง + โฟกัสช่องแรกที่ผิด ◂
+const LOG_FIELDS = ["target", "title", "duration", "startAt", "endAt", "dueAt", "body", "nextTitle", "nextDue"] as const;
+type LogField = (typeof LOG_FIELDS)[number];
 
 export type ActivityTarget = { contactId?: string | null; companyId?: string | null; dealId?: string | null; customRecordId?: string | null };
 type TargetPick = { kind: "CONTACT" | "DEAL" | "COMPANY"; id: string; name: string };
@@ -63,7 +68,8 @@ export function LogActivityForm({
   const [picked, setPicked] = useState<TargetPick | null>(null);
   const [q, setQ] = useState("");
   const [options, setOptions] = useState<TargetPick[]>([]);
-  const [errors, setErrors] = useState<Record<string, string>>({});
+  const fe = useFieldErrors(LOG_FIELDS);
+  const errors = fe.errors;
   const [serverError, setServerError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const seq = useRef(0);
@@ -98,11 +104,11 @@ export function LogActivityForm({
     setEndAt("");
     setDueAt("");
     setLocation("");
-    setErrors({});
+    fe.reset();
   }
 
   function submit() {
-    const e: Record<string, string> = {};
+    const e: Partial<Record<LogField, string>> = {};
     if (!title.trim()) e.title = "ใส่หัวเรื่องก่อน — เช่น \"โทรคุยเรื่องราคา\"";
     else if (title.trim().length > ACTIVITY_TITLE_MAX) e.title = `ยาวเกิน ${ACTIVITY_TITLE_MAX} ตัวอักษร`;
     if (body.length > ACTIVITY_BODY_MAX) e.body = `โน้ตยาวเกิน ${ACTIVITY_BODY_MAX.toLocaleString("th-TH")} ตัวอักษร`;
@@ -124,9 +130,8 @@ export function LogActivityForm({
     }
     const tgt: ActivityTarget | null = target ?? (picked ? { contactId: picked.kind === "CONTACT" ? picked.id : null, dealId: picked.kind === "DEAL" ? picked.id : null, companyId: picked.kind === "COMPANY" ? picked.id : null } : null);
     if (!tgt) e.target = "เลือกผู้ติดต่อ ดีล หรือบริษัทของกิจกรรมนี้ก่อน";
-    setErrors(e);
     setServerError(null);
-    if (Object.keys(e).length > 0 || !tgt) return;
+    if (fe.show(e) || !tgt) return;
     start(async () => {
       const r = await logActivityAction(systemId, {
         type,
@@ -145,7 +150,7 @@ export function LogActivityForm({
         nextTask: next,
       });
       if (!r.ok) {
-        setServerError(r.error);
+        if (!fe.show(r.fieldErrors)) setServerError(r.error);
         return;
       }
       // บอกผู้เขียนว่าเพื่อนร่วมทีมคนไหนไม่ได้รับแจ้งเตือน (ชื่อจากรายการตัวเลือกของเขาเอง · ไม่บอกเหตุผล)
@@ -185,6 +190,7 @@ export function LogActivityForm({
             <>
               <input
                 className="input text-sm"
+                {...fe.field("target")}
                 value={q}
                 onChange={(ev) => setQ(ev.target.value)}
                 placeholder="พิมพ์ชื่อผู้ติดต่อ ดีล หรือบริษัท"
@@ -200,6 +206,7 @@ export function LogActivityForm({
                         className="w-full px-3 py-2 text-left hover:bg-[color:var(--color-surface-2,transparent)]"
                         onClick={() => {
                           setPicked(o);
+                          fe.clear("target");
                           setQ("");
                           setOptions([]);
                         }}
@@ -213,7 +220,7 @@ export function LogActivityForm({
               )}
             </>
           )}
-          {errors.target && <span className="text-[color:var(--color-danger)]">{errors.target}</span>}
+          <FieldError id={fe.errorId("target")} message={errors.target} testid="activity-log-target-error" />
         </div>
       )}
 
@@ -239,8 +246,8 @@ export function LogActivityForm({
 
       <label className="flex flex-col gap-1 text-xs text-[color:var(--color-muted)]">
         หัวเรื่อง
-        <input className="input text-sm" value={title} maxLength={ACTIVITY_TITLE_MAX} onChange={(ev) => setTitle(ev.target.value)} placeholder="เช่น โทรคุยเรื่องแพ็กเกจ 25 คน" data-testid="activity-log-title" />
-        {errors.title && <span className="text-[color:var(--color-danger)]">{errors.title}</span>}
+        <input {...fe.field("title")} className="input text-sm" value={title} maxLength={ACTIVITY_TITLE_MAX} onChange={(ev) => { setTitle(ev.target.value); fe.clear("title"); }} placeholder="เช่น โทรคุยเรื่องแพ็กเกจ 25 คน" data-testid="activity-log-title" />
+        <FieldError id={fe.errorId("title")} message={errors.title} testid="activity-log-title-error" />
       </label>
 
       {chips.length > 0 && (
@@ -269,8 +276,8 @@ export function LogActivityForm({
         <div className="grid grid-cols-2 gap-2">
           <label className="flex min-w-0 flex-col gap-1 text-xs text-[color:var(--color-muted)]">
             ระยะเวลา
-            <input className="input text-sm" value={duration} onChange={(ev) => setDuration(ev.target.value)} placeholder="04:32" inputMode="numeric" data-testid="activity-log-duration" />
-            {errors.duration && <span className="text-[color:var(--color-danger)]">{errors.duration}</span>}
+            <input {...fe.field("duration")} className="input text-sm" value={duration} onChange={(ev) => { setDuration(ev.target.value); fe.clear("duration"); }} placeholder="04:32" inputMode="numeric" data-testid="activity-log-duration" />
+            <FieldError id={fe.errorId("duration")} message={errors.duration} testid="activity-log-duration-error" />
           </label>
           <label className="flex min-w-0 flex-col gap-1 text-xs text-[color:var(--color-muted)]">
             ทิศทาง
@@ -286,14 +293,14 @@ export function LogActivityForm({
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           <label className="flex min-w-0 flex-col gap-1 text-xs text-[color:var(--color-muted)]">
             เวลาเริ่ม
-            <input type="datetime-local" className="input text-sm" value={startAt} onChange={(ev) => setStartAt(ev.target.value)} data-testid="activity-log-start" />
-            {errors.startAt && <span className="text-[color:var(--color-danger)]">{errors.startAt}</span>}
+            <input {...fe.field("startAt")} type="datetime-local" className="input text-sm" value={startAt} onChange={(ev) => { setStartAt(ev.target.value); fe.clear("startAt"); }} data-testid="activity-log-start" />
+            <FieldError id={fe.errorId("startAt")} message={errors.startAt} testid="activity-log-startAt-error" />
           </label>
           {type === "MEETING" && (
             <label className="flex min-w-0 flex-col gap-1 text-xs text-[color:var(--color-muted)]">
               เวลาจบ
-              <input type="datetime-local" className="input text-sm" value={endAt} onChange={(ev) => setEndAt(ev.target.value)} data-testid="activity-log-end" />
-              {errors.endAt && <span className="text-[color:var(--color-danger)]">{errors.endAt}</span>}
+              <input {...fe.field("endAt")} type="datetime-local" className="input text-sm" value={endAt} onChange={(ev) => { setEndAt(ev.target.value); fe.clear("endAt"); }} data-testid="activity-log-end" />
+              <FieldError id={fe.errorId("endAt")} message={errors.endAt} testid="activity-log-endAt-error" />
             </label>
           )}
         </div>
@@ -309,18 +316,18 @@ export function LogActivityForm({
       {type === "TASK" && (
         <label className="flex flex-col gap-1 text-xs text-[color:var(--color-muted)]">
           ครบกำหนด
-          <input type="datetime-local" className="input text-sm" value={dueAt} onChange={(ev) => setDueAt(ev.target.value)} data-testid="activity-log-due" />
-          {errors.dueAt && <span className="text-[color:var(--color-danger)]">{errors.dueAt}</span>}
+          <input {...fe.field("dueAt")} type="datetime-local" className="input text-sm" value={dueAt} onChange={(ev) => { setDueAt(ev.target.value); fe.clear("dueAt"); }} data-testid="activity-log-due" />
+          <FieldError id={fe.errorId("dueAt")} message={errors.dueAt} testid="activity-log-dueAt-error" />
         </label>
       )}
 
       <label className="flex flex-col gap-1 text-xs text-[color:var(--color-muted)]">
         โน้ต
-        <textarea className="input min-h-[80px] text-sm" value={body} maxLength={ACTIVITY_BODY_MAX} onChange={(ev) => setBody(ev.target.value)} placeholder="สรุปสิ่งที่คุย ข้อตกลง สิ่งที่ลูกค้าขอ" data-testid="activity-log-body" />
+        <textarea {...fe.field("body")} className="input min-h-[80px] text-sm" value={body} maxLength={ACTIVITY_BODY_MAX} onChange={(ev) => { setBody(ev.target.value); fe.clear("body"); }} placeholder="สรุปสิ่งที่คุย ข้อตกลง สิ่งที่ลูกค้าขอ" data-testid="activity-log-body" />
         <span className="self-end">
           {body.length.toLocaleString("th-TH")}/{ACTIVITY_BODY_MAX.toLocaleString("th-TH")}
         </span>
-        {errors.body && <span className="text-[color:var(--color-danger)]">{errors.body}</span>}
+        <FieldError id={fe.errorId("body")} message={errors.body} testid="activity-log-body-error" />
       </label>
 
       {type === "NOTE" && (
@@ -360,13 +367,13 @@ export function LogActivityForm({
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               <label className="flex min-w-0 flex-col gap-1 text-xs text-[color:var(--color-muted)]">
                 งานถัดไป
-                <input className="input text-sm" value={nextTitle} onChange={(ev) => setNextTitle(ev.target.value)} placeholder="เช่น ส่งใบเสนอราคา + โทรติดตาม" data-testid="activity-log-next-title" />
-                {errors.nextTitle && <span className="text-[color:var(--color-danger)]">{errors.nextTitle}</span>}
+                <input {...fe.field("nextTitle")} className="input text-sm" value={nextTitle} onChange={(ev) => { setNextTitle(ev.target.value); fe.clear("nextTitle"); }} placeholder="เช่น ส่งใบเสนอราคา + โทรติดตาม" data-testid="activity-log-next-title" />
+                <FieldError id={fe.errorId("nextTitle")} message={errors.nextTitle} testid="activity-log-nextTitle-error" />
               </label>
               <label className="flex min-w-0 flex-col gap-1 text-xs text-[color:var(--color-muted)]">
                 ครบกำหนด
-                <input type="datetime-local" className="input text-sm" value={nextDue} onChange={(ev) => setNextDue(ev.target.value)} data-testid="activity-log-next-due" />
-                {errors.nextDue && <span className="text-[color:var(--color-danger)]">{errors.nextDue}</span>}
+                <input {...fe.field("nextDue")} type="datetime-local" className="input text-sm" value={nextDue} onChange={(ev) => { setNextDue(ev.target.value); fe.clear("nextDue"); }} data-testid="activity-log-next-due" />
+                <FieldError id={fe.errorId("nextDue")} message={errors.nextDue} testid="activity-log-nextDue-error" />
               </label>
             </div>
           )}

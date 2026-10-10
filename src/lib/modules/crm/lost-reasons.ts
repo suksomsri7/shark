@@ -12,6 +12,7 @@ import type { MemberActor } from "@/lib/modules/member";
 import { prisma } from "./db";
 import { crmCan, crmForbiddenMessage } from "./access";
 import { DealsError, LOST_REASON_LABEL_MAX } from "./deals-shared";
+import { crmSystemRow } from "./visibility"; // CRM C5.1-fix ▸ ระบบ CRM ผ่านด่านรวมคำสั่งเดียว (memo ต่อคำขอ) ◂
 
 export type LostReasonsCtx = { tenantId: string; systemId: string; actorUserId: string | null };
 export type LostReasonDto = { id: string; key: string; label: string; active: boolean; sortOrder: number; isSystem: boolean; usedBy: number };
@@ -24,7 +25,7 @@ async function enter(ctx: LostReasonsCtx, actor: MemberActor | null | undefined)
   if (!actor || actor.role === "CUSTOMER") throw fail("NOT_FOUND", NOT_FOUND_MSG);
   const sys =
     typeof ctx?.systemId === "string" && typeof ctx?.tenantId === "string" && ctx.systemId && ctx.tenantId
-      ? await prisma.appSystem.findFirst({ where: { id: ctx.systemId, tenantId: ctx.tenantId, type: "CRM" }, select: { id: true } })
+      ? await crmSystemRow(ctx, prisma)
       : null;
   if (!sys) throw fail("NOT_FOUND", "ไม่พบระบบ CRM นี้ในร้านที่เปิดอยู่ — รีเฟรชหน้าแล้วลองใหม่");
   return actor;
@@ -39,7 +40,7 @@ async function enterManage(ctx: LostReasonsCtx, actor: MemberActor | null | unde
 }
 
 function cleanLabel(v: unknown): string {
-  const t = typeof v === "string" ? v.trim().replace(/\s+/g, " ") : "";
+  const t = typeof v === "string" ? normalizeLostReasonLabel(v) : "";
   if (!t) throw fail("VALIDATION", "ใส่ข้อความเหตุผลก่อน — เช่น \"ราคาสูงไป\"");
   if (t.length > LOST_REASON_LABEL_MAX) throw fail("VALIDATION", `ข้อความเหตุผลยาวเกิน ${LOST_REASON_LABEL_MAX} ตัวอักษร — ย่อให้สั้นลง`);
   return t;
@@ -67,16 +68,31 @@ export async function listLostReasons(ctx: LostReasonsCtx, actor: MemberActor): 
   return rows.map((r) => toDto(r, n.get(r.id) ?? 0));
 }
 
+// C4.3-fix ▸ "ตรวจซ้ำ → insert" เคยอยู่นอก transaction ⇒ กดพร้อมกันสองครั้งได้เหตุผลชื่อเดียวกัน 2 แถว (unique มีแค่ key สุ่ม)
+//   ห้ามเพิ่ม UNIQUE(systemId,label) (migration อาจล้มบนแถวซ้ำที่มีอยู่แล้วใน prod) ⇒ ล็อก advisory ระดับ transaction ต่อ
+//   ระบบ CRM แล้วตรวจ/นับลำดับ/insert ใต้ล็อกเดียวกัน (AUDIT-CLASS X3 · แบบเดียวกับ visibility.ts:628) — ต่อระบบ ไม่ใช่ต่อชื่อ:
+//   กันทั้งชื่อซ้ำ และ sortOrder ซ้ำจาก aggregate max พร้อมกัน · การสร้างเหตุผลเกิดนาน ๆ ครั้ง ล็อกกว้างไม่กระทบใคร
+//   ผู้เขียนเหตุผลที่แพ้ทุกทาง (รวมการใส่เทมเพลตกิจการ `templates.ts`) ต้องถือล็อกนี้ + ตรวจชื่อซ้ำด้วย `normalizeLostReasonLabel`
+export const lockLostReasons = (tx: Prisma.TransactionClient, systemId: string) =>
+  tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`crm:lost-reason:${systemId}`}, 0))`;
+const lockReasons = lockLostReasons;
+/** ชื่อเหตุผลแบบที่เก็บจริง (ตัดช่องว่างหัวท้าย · ช่องว่างซ้อนเหลือหนึ่ง) — ตัวเทียบชื่อซ้ำตัวเดียวของทุกทางเขียน */
+export const normalizeLostReasonLabel = (v: string): string => v.trim().replace(/\s+/g, " ");
+const DUP_MSG = "มีเหตุผลนี้อยู่แล้ว — ถ้าถูกปิดใช้อยู่ เปิดใช้งานเหตุผลเดิมแทน";
+
 /** เพิ่มเหตุผล (key สร้างให้อัตโนมัติ — ไม่ซ้ำในระบบ) */
 export async function createLostReason(ctx: LostReasonsCtx, actor: MemberActor, input: { label: string }): Promise<LostReasonDto> {
   await enterManage(ctx, actor);
   const label = cleanLabel(input?.label);
-  const dup = await prisma.crmLostReason.findFirst({ where: { ...scope(ctx), label } });
-  if (dup) throw fail("CONFLICT", "มีเหตุผลนี้อยู่แล้ว — ถ้าถูกปิดใช้อยู่ เปิดใช้งานเหตุผลเดิมแทน");
-  const max = await prisma.crmLostReason.aggregate({ where: scope(ctx), _max: { sortOrder: true } });
   try {
-    const row = await prisma.crmLostReason.create({
-      data: { tenantId: ctx.tenantId, systemId: ctx.systemId, key: `r-${randomUUID().replace(/-/g, "").slice(0, 12)}`, label, sortOrder: (max._max.sortOrder ?? -1) + 1 },
+    const row = await prisma.$transaction(async (tx) => {
+      await lockReasons(tx, ctx.systemId);
+      const dup = await tx.crmLostReason.findFirst({ where: { ...scope(ctx), label }, select: { id: true } });
+      if (dup) throw fail("CONFLICT", DUP_MSG);
+      const max = await tx.crmLostReason.aggregate({ where: scope(ctx), _max: { sortOrder: true } });
+      return tx.crmLostReason.create({
+        data: { tenantId: ctx.tenantId, systemId: ctx.systemId, key: `r-${randomUUID().replace(/-/g, "").slice(0, 12)}`, label, sortOrder: (max._max.sortOrder ?? -1) + 1 },
+      });
     });
     await writeAudit({ tenantId: ctx.tenantId, actorId: ctx.actorUserId ?? null, action: "crm.lost_reason.create", targetType: "CrmLostReason", targetId: row.id, after: { label } });
     return toDto(row);
@@ -97,7 +113,16 @@ export async function updateLostReason(ctx: LostReasonsCtx, actor: MemberActor, 
     if (!Number.isInteger(patch.sortOrder) || patch.sortOrder < 0 || patch.sortOrder > 10_000) throw fail("VALIDATION", "ลำดับต้องเป็นจำนวนเต็ม 0–10000");
     data.sortOrder = patch.sortOrder;
   }
-  const row = await prisma.crmLostReason.update({ where: { id: cur.id }, data });
+  // C4.3-fix: เปลี่ยนชื่อไปชนเหตุผลอื่นของระบบเดียวกัน = ซ้ำแบบเดียวกับตอนสร้าง ⇒ ตรวจใต้ล็อกเดียวกัน
+  const row =
+    typeof data.label === "string" && data.label !== cur.label
+      ? await prisma.$transaction(async (tx) => {
+          await lockReasons(tx, ctx.systemId);
+          const dup = await tx.crmLostReason.findFirst({ where: { ...scope(ctx), label: data.label as string, id: { not: cur.id } }, select: { id: true } });
+          if (dup) throw fail("CONFLICT", DUP_MSG);
+          return tx.crmLostReason.update({ where: { id: cur.id }, data });
+        })
+      : await prisma.crmLostReason.update({ where: { id: cur.id }, data });
   await writeAudit({ tenantId: ctx.tenantId, actorId: ctx.actorUserId ?? null, action: "crm.lost_reason.update", targetType: "CrmLostReason", targetId: row.id, before: { label: cur.label, active: cur.active }, after: { label: row.label, active: row.active } });
   return toDto(row);
 }

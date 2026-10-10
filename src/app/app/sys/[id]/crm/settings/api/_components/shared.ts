@@ -11,6 +11,8 @@ export type CrmApiKeyRow = {
   filterLabel: string | null;
   expiresLabel: string;
   lastUsedLabel: string;
+  /** C5.4-B (รีวิว note c): ด่านคีย์ปฏิเสธคีย์นี้แล้ว — ผู้สร้างไม่มีสิทธิ์ (ออกจากร้าน/ถูกถอดสิทธิ์/สิทธิ์แคบลง) */
+  refused: boolean;
 };
 
 export type CrmApiToolRow = { name: string; kind: "read" | "write" | "danger"; scope: string; label: string };
@@ -19,9 +21,10 @@ export type CrmWebhookRow = { id: string; url: string; events: string[]; active:
 
 export type CrmWebhookDeliveryRow = { id: string; endpointId: string; eventType: string; status: "OK" | "FAILED"; attempts: number; lastError: string | null; atLabel: string };
 
-export type CrmKeyResult = { ok: true; rawKey: string } | { ok: false; reason: string };
+// C4.3-fix part 2 ▸ fieldErrors = ช่องที่ข้อความปฏิเสธเป็นของ (ฟอร์มแสดงใต้ช่อง + โฟกัส) · `reason` ยังอยู่เสมอ ◂
+export type CrmKeyResult = { ok: true; rawKey: string } | { ok: false; reason: string; fieldErrors?: Record<string, string> };
 export type CrmActionResult = { ok: true } | { ok: false; reason: string };
-export type CrmWebhookCreateResult = { ok: true; id: string; secret: string } | { ok: false; reason: string };
+export type CrmWebhookCreateResult = { ok: true; id: string; secret: string } | { ok: false; reason: string; fieldErrors?: Record<string, string> };
 
 /**
  * CRM C2.11 ▸ จำนวนคีย์สิทธิ์ที่แต่ละชุดถืออยู่ **จริง** (อ่านจาก `API_SCOPE_BUNDLES` ฝั่งเซิร์ฟเวอร์ตอนเรนเดอร์หน้า)

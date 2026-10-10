@@ -90,6 +90,18 @@ try {
     `[crm-cron] ${mode}: งาน ${r.results.length} · สำเร็จ ${by("ok")} · ล้ม ${by("failed")} · ถูกตัดงบ ${by("cut-off")} · ` +
       `ยังไม่ถึงรอบ ${by("not-due")} · มีตัวอื่นถืออยู่ ${by("busy")} · งบหมด ${by("no-budget")}${bad.length ? ` · ${bad.join(", ")}` : ""}`,
   );
+  // CRM C5.4-D ▸ L3-M1 (ส่วน CRM · ทางสำรอง): รอบ minute ระบายคิว outbox หลังทำงาน — ทางเขียนของ CRM ที่ไม่ได้ปลุกคิวเอง
+  //   (และ event ที่งานรายนาทีเพิ่งยิง เช่นเตือนนัด/ขั้นลำดับ) ถูกส่งต่อภายใน ≤ 1 นาที แทนที่จะรอ cron รายชั่วโมง · best-effort
+  //   (ระบายล้ม = WARN ในบรรทัด log ไม่ทำให้รอบล้ม — event ยังอยู่ในคิว) · งบของตัวระบายเอง ≤ 20 วิ (drainUntilQuiet) ◂
+  if (mode === "minute") {
+    try {
+      const { drainAll } = await import("@/lib/outbox-consumers");
+      const d = await drainAll();
+      console.log(`[crm-cron] minute: ระบายคิว outbox ${d.processed} รายการ`);
+    } catch (e) {
+      console.error(`[crm-cron] ⚠️ minute: ระบายคิว outbox ไม่สำเร็จ — ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
   if (r.stateReadFailed || r.dispatcherErrors > 0 || r.refusedFutureNow) {
     code = 1;
     console.error(
@@ -99,9 +111,12 @@ try {
   }
   // งานที่ถูกตัดงบยังวิ่งเบื้องหลัง — รอให้จบ (และปล่อย lease) ก่อน exit แทนการฆ่ากลางคำสั่งแล้วทิ้ง lease ค้าง 15 นาที
   //   เพดาน 75 วิ ต่ำกว่าตัวตัดตัวเอง 120 วิ อย่างปลอดภัย (งบ 20 วิ + รอ 75 วิ + เริ่มโพรเซส)
+  // CRM C5.4-D ▸ L3-M4: รอบ hourly/daily ใช้เวลาได้ถึง 80 วิ (งานละ 20 วิ) ⇒ เวลารอ = ไม่เกิน 75 วิ และไม่เกิน 110 วิ นับจากเริ่ม
+  //   (ขั้นต่ำ 5 วิ) — รวมแล้วต่ำกว่าตัวตัดตัวเอง 120 วิ เสมอ · รอบ minute (≈ 20 วิ) ได้ 75 วิ เท่าเดิม ◂
   if (by("cut-off") > 0) {
-    const settled = await settleOutstandingMinuteJobs(75_000);
-    console.log(`[crm-cron] ${mode}: รองานที่ถูกตัดงบ — ${settled ? "จบครบ ปล่อย lease แล้ว" : "ยังค้างเมื่อครบ 75 วิ (lease จะหมดเองใน ≤ 15 นาที)"}`);
+    const waitMs = Math.max(5_000, Math.min(75_000, 110_000 - (Date.now() - startedAt.getTime())));
+    const settled = await settleOutstandingMinuteJobs(waitMs);
+    console.log(`[crm-cron] ${mode}: รองานที่ถูกตัดงบ — ${settled ? "จบครบ ปล่อย lease แล้ว" : `ยังค้างเมื่อครบ ${Math.round(waitMs / 1000)} วิ (lease จะหมดเองใน ≤ 15 นาที)`}`);
   }
 } catch (e) {
   code = 1;

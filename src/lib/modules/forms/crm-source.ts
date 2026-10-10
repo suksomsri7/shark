@@ -41,3 +41,36 @@ export async function submissionWebSessionId(form: { id: string; tenantId: strin
   const crm = await import("@/lib/modules/crm");
   return crm.tracking.latestConsentedSessionId(form.tenantId, systemId, v).catch(() => null);
 }
+
+// CRM C4.4-fix3 ▸ (J3) ฟอร์มที่ร้านฝังด้วย iframe บนเว็บของตัวเอง — คุกกี้ `sd_vid` ของร้านมาไม่ถึงคำขอของฟอร์ม (คนละโดเมน)
+//   ⇒ ทางที่สองคือ "ตั๋วผู้เข้าชม" ที่สคริปต์ติดตามของร้านส่งให้ iframe ทาง postMessage (เซิร์ฟเวอร์ผนึก · ตรวจ · เผาเอง)
+
+/**
+ * การเข้าชมที่จะผูกกับคำตอบ **จากตั๋วผู้เข้าชม** — ใช้เมื่อคุกกี้ first-party ไม่ให้ผลเท่านั้น (ผู้เรียก: `service.ts`)
+ * 🔴 ตั๋วต้องเป็นของร้าน + ระบบ CRM ปลายทางของฟอร์มนี้พอดี (ตรวจใน `tracking.redeemVisitorTicket`) · ตั๋วเสีย/หมดอายุ/ใช้ซ้ำ/ของที่อื่น
+ *    = null (คำตอบยังบันทึกตามปกติ) · ไม่มีทางที่ "รหัสผู้เข้าชมดิบ" จากผู้เรียกจะผ่านทางนี้ได้ (ตั๋วที่ไม่ได้ผนึกโดยเซิร์ฟเวอร์ = null)
+ */
+export async function submissionWebSessionFromTicket(form: { id: string; tenantId: string }, ticket: string): Promise<string | null> {
+  const t = String(ticket ?? "");
+  if (!t) return null;
+  const bridges = await import("@/lib/platform/crm-bridges");
+  const systemId = await bridges.resolveFormCrmSystem({ id: form.id, tenantId: form.tenantId }).catch(() => null);
+  if (!systemId) return null;
+  const crm = await import("@/lib/modules/crm");
+  return crm.tracking.redeemVisitorTicket({ tenantId: form.tenantId, systemId }, t).catch(() => null);
+}
+
+/**
+ * หน้า `/f/<token>` เปิดตัวรับตั๋วจากหน้าเว็บที่ฝังไหม และรับจากเว็บโดเมนไหน — เฉพาะเมื่อระบบ CRM ปลายทางของฟอร์มเป็น uiVersion 2 และ
+ *   เปิดติดตามเว็บอยู่ ⇒ คืนโดเมนติดตามของระบบนั้น (r2 · review N6: หน้าฟอร์มรับตั๋วเฉพาะจากหน้าที่ฝังซึ่งอยู่ในโดเมนเหล่านี้)
+ * 🔴 ร้าน uiVersion 1 / ปิดการติดตาม / ไม่มี CRM = `[]` ⇒ หน้าฟอร์มทำงานเหมือนเดิมทุกอย่าง (ไม่ฟัง ไม่ส่งข้อความ ไม่แนบอะไรเพิ่ม)
+ */
+export async function formVisitorHandover(form: { id: string; tenantId: string }): Promise<string[]> {
+  if (!form?.id || !form?.tenantId) return [];
+  const bridges = await import("@/lib/platform/crm-bridges");
+  const systemId = await bridges.resolveFormCrmSystem({ id: form.id, tenantId: form.tenantId }).catch(() => null);
+  if (!systemId) return [];
+  const crm = await import("@/lib/modules/crm");
+  return crm.tracking.visitorHandoverHosts(form.tenantId, systemId).catch(() => [] as string[]);
+}
+// ◂ CRM C4.4-fix3

@@ -8,7 +8,7 @@
 // 🔴 กฎถาวร C1.11-S6.10: อ่านประตู `uiVersion` เองที่นี่ก่อนส่งต่อ (ด่านจริงครบทุกชั้นอยู่ในบริการ `crm/ai-bridges.ts`)
 // 🔴 ไม่โยน error ดิบถึงหน้าจอ — คืน `{ ok:false, error }` ภาษาไทยที่ไม่โทษผู้ใช้ (แสดง inline ไม่ใช่ alert)
 
-import { revalidatePath } from "next/cache";
+import { revalidateAndWake } from "@/lib/modules/crm/outbox-wake"; // CRM C5.4-D ▸ L3-M1b: รีเฟรชหน้า + ปลุกคิว outbox หลังเขียนสำเร็จ ◂
 import { requireTenant } from "@/lib/core/context";
 import { toMemberActor } from "@/lib/modules/member";
 import { assertCrmV2, CrmV2DisabledError } from "@/lib/modules/crm/ui-version";
@@ -53,7 +53,7 @@ export async function confirmAssistProposalAction(systemId: string, proposalId: 
   try {
     const { ctx, actor } = await session(systemId);
     const r = await confirmProposal(ctx, actor, String(proposalId ?? ""), { edits: edits ?? null });
-    revalidatePath(`/app/sys/${ctx.systemId}`);
+    revalidateAndWake(`/app/sys/${ctx.systemId}`);
     return { ok: true as const, note: r.note };
   } catch (e) {
     return failOf(e);
@@ -76,7 +76,7 @@ export async function setTeamRoomAction(systemId: string, teamId: string, channe
   try {
     const { ctx, actor } = await session(systemId);
     const r = await setTeamRoom(ctx, actor, { teamId: String(teamId ?? ""), channelId: channelId ? String(channelId) : null });
-    revalidatePath(`/app/sys/${ctx.systemId}/crm/settings`);
+    revalidateAndWake(`/app/sys/${ctx.systemId}/crm/settings`);
     return { ok: true as const, teamRooms: r.teamRooms };
   } catch (e) {
     return failOf(e);

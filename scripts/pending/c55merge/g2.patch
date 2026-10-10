@@ -1,0 +1,2216 @@
+diff --git a/ledger/wo-notes/crm-C5.5-G2-review.md b/ledger/wo-notes/crm-C5.5-G2-review.md
+new file mode 100644
+index 00000000..b487899f
+--- /dev/null
++++ b/ledger/wo-notes/crm-C5.5-G2-review.md
+@@ -0,0 +1,161 @@
++# CRM C5.5-G2 — independent review (AI conversations belong to their creator)
++
++Branch `wip/crm-cf14` · tip `791b25e2` (code `8c4a8a0b`) · base `be9c9658`. Reviewed 2026-10-02, runs finished 03:43 UTC (`date -u`).
++
++I read:
++- the builder note `ledger/wo-notes/crm-C5.5-G2.md`;
++- `git diff be9c9658 791b25e2`, all 36 files;
++- every reader and writer of `AiConversation`, `AiMessage`, `AiProposal` and `AiPlan` in `src/`;
++- the account-deletion flow, the platform support reply and push, and the shop memory.
++
++## What I ran (QC3 only · every heavy job through `iso.sh` + `with-gate-lock.sh`, one at a time)
++
++| run | result |
++|---|---|
++| builder `probe-cf14-g2` | **34/34** |
++| own `scripts/pending/cf14/review/probe-cf14-g2-review.mts` | **13/14** — the one red is X7.1, the open shop-memory finding (F1.1, by design not in this card) · CLEAN 0 rows, 0 users (2 tenants) |
++| `probe-cf9-g1` · `probe-cf9-g1-r2` · my `probe-cf9-g1-review` · my `probe-cf9-g1-review-r2` | 47/47 · 18/18 · **18/18** (R1.1–R1.3 = the old F1, now green) · 14/14 |
++| `pnpm typecheck` (5 GB heap, own probe included) | exit 0 |
++| fitness (QC3 env) · fitness (no env) | **39/39 · 39/39** — so the builder's `--no-verify` commits pass the gate |
++
++## Attack (a) — the id-encoding scheme
++
++- **Client-chosen ids.**
++  - Every create path calls `newConversationId(ctx)`:
++    - `sendMessage` (`service.ts:195`)
++    - mobile `createConversation`
++    - mobile welcome (`welcome/route.ts:65`)
++    - the REST tools route (`route.ts:78`)
++  - No `upsert`, `connectOrCreate` or seed path for AI conversations exists in `src/`.
++  - `support.ts:98` only updates an existing room.
++  - `AiProposal`/`AiPlan` have no FK, and they get a `conversationId` only from a room the caller can see:
++    - the tool wrapper drops a room the actor cannot see (`tools.ts:2399`);
++    - REST demands a room this key created;
++    - CRM-door proposals use pseudo ids that are never real rooms, and the CRM door intercepts them first.
++  - Own X2.1–X2.3:
++    - `sendMessage` with an owner-shaped id that does not exist, or with the OWNER's real id → a new STAFF room; no owner-shaped row is created.
++    - Mobile `POST /conversations` with `{id: …}` in the body → ignored.
++    - REST: another key's room, a key-shaped fake id and a missing id all get **404 with a byte-identical body**.
++- **LIKE wildcards.**
++  - Prisma's `startsWith` is **not escaped** (X1.0: `startsWith("u~a_c~")` matched `u~aXc~…`).
++  - It is safe because every reader re-checks rows exactly in JS with `canSeeConversationId`, or checks the exact id before the query:
++    - `findVisibleConversation`, `latestVisibleConversation`, `listConversations`, welcome, `listMessages`, the `sendMessage` history;
++    - proposals/plans list, reject and confirm.
++  - X1.1: viewers with user ids `a_c`, `abc`, `a%`, `%`, `_` and `a` see only their exact prefix, in both the list and the latest room.
++  - Prefix confusion `u~abc~` vs `u~abcd~` is closed by the trailing `~`. User ids, key ids and job names live in separate namespaces (`u`/`k`/`s`).
++  - A `~` inside an id gives no prefix, so no room can be created (X1.2).
++  - Counts and pagination could under-return only if real ids contained `_`/`%`. cuids never do, so this is INFO (finding G2-6).
++- **Tenancy and role changes.**
++  - Every query goes through `tenantDb`. The same user who is OWNER of shop B and STAFF of shop A cannot list or read the B room from A (X3.1).
++  - An OWNER demoted to STAFF keeps their own rooms and loses the OWNER-only extras: legacy, key and scheduled rooms (X3.2).
++  - A member removed and then re-added with the same `userId` gets their old rooms back. Acceptable: same person.
++- **Id format.**
++  - Length ≤ ~60 chars in a `text` column. FKs (`AiMessage` → `AiConversation`) are unaffected.
++  - `~` is an unreserved URI character, so Next `[id]` segments, `?conversation=`, expo routes and push `data` handle it unencoded.
++  - The `userId` inside the id is a pseudonymous cuid that already sits in many tables (see G2-3 for erasure).
++
++## Attack (b) — completeness
++
++Readers and writers by `grep prisma.ai*` / `tx.ai*`:
++
++| path | why it is fine |
++|---|---|
++| `onboarding-drip` | count only |
++| `cron.ts:147` | expires proposals by status |
++| CRM `ai-bridges` / `calls` | own door, pseudo ids, unchanged |
++| `crm/privacy.ts` | masks erased tokens across all rows, as intended |
++| `member/assistant.ts` `appendToolsLine` | uses the conversation id returned by `sendMessage`, so a room the caller sees |
++| `mobile/chat.ts` (lastRead / autoTitle) | uses the id returned by `sendMessage`, so a room the caller sees |
++| AI feedback | stores only the text the client sends; reads nothing |
++
++All other doors are in the builder's table and are filtered. No export or search door exists for AI conversations.
++
++## Attack (c) — proposals and plans
++
++- Confirm and reject on every door now require the confirmer to see the room:
++  - web `actions.ts:160/194`
++  - mobile confirm/reject
++  - member assistant (it also passes `userId`)
++- `executeProposal` without a `userId` refuses non-OWNERs (X4.3).
++- **API key proposes, OWNER confirms** still works. A MANAGER sees 0 key proposals and gets "not found" on confirm. A STAFF holding the confirm key is refused too. The row stays PENDING (X4.1).
++- An OWNER confirming a key proposal they did not expect is the documented design (an owner-visible room titled "คำขอจากผู้ช่วยภายนอก" with a confirm card). It is not new.
++- **Side benefit:** a non-viewer confirming a plan no longer burns it. The visibility check runs before the PENDING→RUNNING claim, so the plan stays PENDING (X4.2; closes G1-builder R5 for other people's plans).
++- CRM-door proposals (C3.4) are untouched: the CRM branch runs before the new check (qc-crm-c3.4 53/53 per builder; my probes do not touch it).
++
++## Attack (d) — shop memory (F1.1) and the remaining channels
++
++- **Confirmed, X7.1 ❌.** An OWNER turn stores a phone number from a tool result with `remember_fact`. That phone then shows up in the STAFF member's **system prompt** and in their `list_memories` output.
++- **Same class:** `kb_auto_save` by the OWNER's model puts a phone into a KB article that every member reads through `kb_search` (X7.2). The KB is shop-readable by design, and the writer needs `kb.article.create`.
++- Other cross-user surfaces I checked, all already there before this card:
++  - Support cases are listed shop-wide (`support/service.ts:123`), and their body is model-written.
++  - `support.ts:109` pushes the platform team's reply (80 chars) to every device in the shop.
++  - Proactive and scheduled pushes contain shop-wide figures or least-privileged output, not one member's tool results.
++- **Rating: MED.**
++  - It needs the model to decide to store personal data. `remember_fact`'s description encourages it ("names of regular customers").
++  - After G1 + G2 it is the **last automatic channel** carrying one member's tool-derived personal data to other members.
++- **Minimum safe change without a schema change.**
++  1. Now: `remember_fact` refuses or masks contact-data patterns (Thai mobile/landline, e-mail, 13-digit ID) — a few lines in `memory.ts` or the tool.
++  2. Next card: give memory the same id trick. `AiMemory.id` is minted by the server (`memory.ts:40`), so use `u~<userId>~…` for a member's memories. `memoryBlock` / `list_memories` then show the member's own memories plus shop facts (legacy ids, and memories written by an OWNER). `forget_fact` only deletes what the caller can see.
++- Option 1 is a 1-hour change and could ride on this card. Neither needs to **block** this card: the channel is narrower than F1 was, and memory being shared by the shop was the owner's decision D1. Make it the **next card**, with option 1 now if the owner agrees (Q1).
++
++## Attack (e) — legitimate use
++
++- Every member's own flow works:
++  - builder W2.1 / S2.2 / M2.1 / A2.1
++  - OWNER on own + legacy rooms: W2.4 / W2.5 / S2.1 / M2.2 / M2.3
++  - a key continuing its own room: K1.4
++  - scheduled-task rooms visible to the OWNER: Y1.1
++- Losses to tell the owner about:
++  - STAFF and MANAGER lose their pre-deploy history (legacy rooms become OWNER-only).
++  - REST integrations that resend an old `conversationId` get 404.
++  - A rotated API key gets a new id, so it can no longer continue rooms created by the old key (404).
++  - A MANAGER can no longer confirm key proposals.
++- **Stale app screen:** each send with someone else's (or a legacy) id opens a new room for the sender. 3 sends → 3 rooms (X6.1). Nothing is written into the other room (X6.2), so data is safe; the cost is UX and clutter (G2-4).
++
++## Attack (f) — the 8 ORACLE-EDITs
++
++All minimal and marked. The ones that run add the viewer, or move a positive control onto a room the actor can now see:
++- `qc-mobile-authz-hotfix` (fixture room created through the real route by its STAFF; delete by its creator)
++- `qc-account-api-ai-skill` K3.4 (accepts the earlier "not found" refusal; still asserts refused + PENDING)
++- builder G1 probe (per-actor rooms)
++- `probe-cf8-mobile` W1.2 / W3.2 (now expect the new visibility)
++
++`qc-ai`, `qc-ai-proposals`, `qc-mobile-chat` and `qc-mobile-help` load `.env.local` and were not run (by the builder or by me). No expected value was weakened beyond the new rule.
++
++## Findings
++
++| # | sev | where | finding | evidence / fix |
++|---|---|---|---|---|
++| G2-1 | **MED** (open, not this card — owner D1) | `ai/memory.ts` · `service.ts` `memoryBlock` · tools `remember_fact` / `list_memories` | Shop memory carries one member's tool-derived personal data into every member's system prompt. `kb_auto_save` → `kb_search` is the same class. | X7.1 ❌ · X7.2 · fix: see (d) |
++| G2-2 | LOW (existed before; follow-up the builder listed) | `platform/support.ts:109` `sendPushToTenant` | The platform team's reply (80 chars) and the room id are pushed to every device in the shop, though only the room's creator can open it. | Send only to the creator: decode `u~<userId>~` and use `sendPushToUser`; the OWNER for non-member rooms. |
++| G2-3 | LOW | `platform/account-deletion.ts:80-99` | Deleting an account leaves that user's `u~<id>~` rooms in every shop. They are now invisible to everyone, including the new OWNER, but keep the messages and tool results, with the deleted user's id in the primary key. Before G2 they were shop-visible. Retention without a door is safe, but under PDPA erasure they should go. | `deleteAccount`: soft-delete and blank the content of `u~<userId>~%` rooms per tenant (or hand them to the OWNER, as tenant handover does) — owner decision. |
++| G2-4 | LOW (UX) | `apps/mobile` chat screen ignores `result.conversationId` | A stale or deep-linked screen opens a new room on every send (X6.1). | App: adopt the returned id after the first reply. |
++| G2-5 | LOW | `conversations.ts` `latestVisibleConversation` | The OWNER's web sheet opens the newest visible room, which can be a key or scheduled room rather than the OWNER's own chat (builder Q5). | Prefer the latest own `u~` room; fall back to the extras. |
++| G2-6 | INFO | `conversation-owner.ts` `visibleConversationWhere` | Prisma `startsWith` does not escape `_`/`%` (X1.0). Safe thanks to the JS re-check, but `take: 10/100` could under-return if ids ever contained wildcards. | Escape the prefix, or compare `left(id, n)` in SQL. |
++| G2-7 | INFO | behaviour | Visible consequences for the owner: OWNER demotion drops the extras. Key rotation orphans the old key's rooms for REST (OWNER still sees them). STAFF/MANAGER lose pre-deploy history. MANAGERs cannot confirm key proposals. | Release note. |
++
++Nothing at BLOCKER or HIGH. G1 review F1 is **closed** (R1.1–R1.3 green unedited; builder W/M/S/A/K sets green).
++
++## Recommendations on the builder's owner questions
++
++- **Q1 memory.** Next card. In it, member memories are private through `u~` ids, and shop facts = OWNER-written plus legacy memories. Before that, ideally with this release: a contact-data pattern guard in `remember_fact`, and a sentence in the persona: "do not remember customer contact data". Do not block G2.
++- **Q2 confirm limited to the room's viewers.** Keep. "STAFF drafts, manager approves" belongs in the approval module.
++- **Q3 key proposals OWNER-only.** Keep for now. `ApiKey.createdById` exists (`api.prisma`), so a later option is "OWNER + the key's creator". Do not open them to all MANAGERs.
++- **Q4 legacy rooms OWNER-only, STAFF lose history.** Acceptable — those rooms mixed everyone's rights, so no safe backfill exists. Announce it in the release note together with the REST 404 for old conversation ids.
++- **Q5 scheduled rooms visible to the OWNER.** Keep, with G2-5 so they do not take over the OWNER's web sheet.
++
++## Prod and merge notes
++
++- Agree with the builder: ship G1 and G2 together. Prod has neither.
++- The `shark-hf` overlap is only the import block of the REST tools route.
++
++## Not verified
++
++- Suites that load `.env.local`, including 4 of the ORACLE-EDITed ones.
++- The mobile app on a device.
++- A production build.
++- Production-size query timings.
++- A tree merged with `shark-hf`.
++- The builder's full `run-verify.sh`. I re-ran its G2 probe, the cf9 probes, typecheck and both fitness modes.
++
++VERDICT: MERGEABLE
+diff --git a/ledger/wo-notes/crm-C5.5-G2.md b/ledger/wo-notes/crm-C5.5-G2.md
+new file mode 100644
+index 00000000..2a6ea75e
+--- /dev/null
++++ b/ledger/wo-notes/crm-C5.5-G2.md
+@@ -0,0 +1,220 @@
++# CRM C5.5-G2 — AI conversations belong to their creator (builder note)
++
++Branch `wip/crm-cf14` from `be9c9658` (G1 + 2 review rounds). Code commit `8c4a8a0b`, this note in the next commit. Written
++2026-10-02 03:07 UTC (`date -u`). Both commits use `--no-verify`: the repo's pre-commit hook runs `fitness.mts` straight from the
++shell (outside `iso.sh`); fitness with and without env was run through `iso.sh` + gate lock on the identical tree (39/39 ×2). Finding: G1 review F1 (HIGH, both rounds) = G1 builder R1. Platform AI
++conversations had no owner: the web sheet opened the shop's latest conversation (anyone's), mobile listed/read every conversation,
++`sendMessage` continued any conversation id of the shop and fed its last 40 turns to the model, REST accepted any `conversationId`, and
++pending proposals/plans were listed and confirmable shop-wide. After G1 a cashier with only `ai.chat.send` was refused the tools but
++still read (and made the model quote) the OWNER's earlier answers.
++
++## Storage decision — the creator is embedded in the conversation id (no migration)
++
++Checked in the preferred order (`prisma/schema/ai.prisma`, `core.prisma`):
++
++1. **An existing field that can carry the creator.** `AiConversation` has `id, tenantId, title, lastReadAt, deletedAt, createdAt,
++   updatedAt`; `AiMessage` has no user/meta column; `AiProposal`/`AiPlan` have no creator/confirmer column (`payload` is server-side
++   data of the action, `resultNote` is shown to users). `title` is user-editable and shown. The only field that is written once by
++   the server, never changes, is never shown as text and is already carried by every proposal and plan is **`AiConversation.id`**
++   (a `String @id @default(cuid())` — Prisma accepts an explicit value). Chosen:
++   - `u~<userId>~<96 random bits hex>` (a member) · `k~<apiKeyId>~<random>` (an API key) · `s~<job>~<random>` (an internal job).
++   - `~` is not in the cuid alphabet ⇒ an old id (plain cuid) = "creator unknown" (legacy). No door accepts a client-chosen id on
++     create (checked: sendMessage, mobile POST conversations, mobile welcome, REST tools route — all ids are minted server-side by
++     `newConversationId`), so the prefix cannot be forged; it cannot change (primary key); proposals/plans know their owner from
++     `conversationId` without a join.
++   - Meaning for other readers is unchanged: ids are opaque strings everywhere (grep: no format validation of AI conversation ids;
++     `kanban-op-from-chat` `max(40)` is the customer-chat conversation, another table; AiFeedback/AiCreditTxn store the id as text).
++   - Length 26–60 chars (text column).
++2. Derive from the first USER message: impossible — messages carry no user id.
++3. AuditLog `ai.conversation.created`: rejected — AuditLog has indexes only on `(tenantId, createdAt)` and `(action)`, none on
++   `actorId`/`targetId`; every open/continue/list would need a lookup that walks either all the tenant's audit rows or every
++   `ai.conversation.created` row of the whole platform, and it needs a second write in the creating transaction at 4 doors.
++
++Query plans (QC3, `scripts/pending/cf14/plan-cf14.mts`, EXPLAIN ANALYZE + the same with `enable_seqscan=off` to show the index a
++production-size table uses; QC3 has 20 conversations / 3,655 audit rows, so absolute times are not meaningful):
++
++| query | plan (index view) | what it walks |
++|---|---|---|
++| A1 mobile list / web latest, member | `Index Scan Backward using AiConversation_tenantId_updatedAt_idx` · Index Cond tenantId · Filter `deletedAt IS NULL AND id LIKE 'u~<me>~%'` · LIMIT 100 | the same index and order as before the card; walks the shop's conversations newest-first until 100 own rows (worst case: all of the shop's conversations for a member with few rooms) |
++| A2 same, OWNER | same index · Filter `id LIKE 'u~<me>~%' OR id NOT LIKE 'u~%'` | same |
++| A3 open by id (every door) | `Index Scan using AiConversation_pkey` · Filter tenantId | one row (prefix checked in JS before the query) |
++| B1 AuditLog alternative, list | `Index Scan using AuditLog_action_idx` · Filter tenantId, actorId | every `ai.conversation.created` row of **all tenants** |
++| B2 AuditLog alternative, open/continue | `AuditLog_action_idx` · Filter targetId | same, per request |
++
++Lists are one query (no N+1). Every row returned by a LIKE pre-filter is re-checked in JS (`canSeeConversationId`, exact prefix) so a
++`_`/`%` in an id can never widen the match.
++
++## The rule (`src/lib/ai/conversation-owner.ts`, db readers in `src/lib/ai/conversations.ts`)
++
++- A conversation (its messages, tool results, proposals, plans and their results) is visible and continuable **only by its creator**:
++  the same user (member), the same API key, the same internal job.
++- **Exception — conversations not created by a member** (legacy, API-key, scheduled-task) are also visible to members whose role is
++  **OWNER** of that tenant. Nobody else.
++  - Legacy: no backfill — OWNER only, as the card asks.
++  - API key: kept on purpose. The REST route's own header and `docs/AI_LAYER.md` (line 103) document the flow "write tools do not run;
++    a proposal is created and **the owner confirms in the app/web** in that conversation" — without this exception no human could
++    confirm a key's proposal.
++  - Scheduled task: runs with the least-privileged rights (G1) and publishes to everyone already; the OWNER can look back at it.
++- Another member's conversation is invisible to everybody, **including another OWNER** (probe W2.3/S1.3).
++- Not visible = the same answer as "does not exist" at every door (empty list / empty messages / `false` / "ไม่พบข้อเสนอนี้" / new
++  conversation / REST 404).
++
++## Door × rule
++
++| door | file | before | now |
++|---|---|---|---|
++| web: open the AI sheet | `ai/actions.ts` `loadAiChatAction` → `latestConversation` | shop's latest conversation (anyone's) + its proposals/plans | caller's latest visible conversation |
++| web: send | `sendAiMessageAction` → `sendMessage` | continued any id of the shop | continues only a visible id; otherwise opens a new conversation **owned by the caller** |
++| web: list proposals / plans of a conversation | `listPendingProposalsAction`, `loadPlansAction` | any id | visible conversation only (and it must exist) |
++| web: confirm / reject proposal, confirm / reject plan | `confirmProposalAction`, `rejectProposalAction`, `confirmPlanAction`, `rejectPlanAction` | any proposal id (key check only) | only if its conversation is visible to the confirmer (`executeProposal`/`executePlan` get `userId` + role); CRM-door proposals keep their own C3.4 door first (unchanged) |
++| model context | `service.ts` `sendMessage` | 40 turns of any conversation id | conversation looked up through `findVisibleConversation`; the history query itself carries the visibility filter (`conversation: visibleConversationWhere`) — defence in depth in the loader |
++| tool executor | `tools.ts` `guarded` (every registry tool, also via `runTool`) | `ctx.conversationId` trusted | a conversation id the actor cannot see is dropped ⇒ no proposal / plan / support case is ever attached to someone else's room |
++| mobile: list / create | `GET/POST /api/mobile/conversations` → `mobile/conversations.ts` | every room of the shop / plain id | visible rooms only / id with creator |
++| mobile: rename / delete / mark read | `PATCH/DELETE /conversations/[id]`, `POST …/read` | any room | visible rooms only (`{ok:false}` otherwise, same as a missing id) |
++| mobile: messages | `GET /conversations/[id]/messages` → `listMessages` | any room | visible rooms only (200 `{messages:[]}` otherwise — same as a missing id before the card) |
++| mobile: chat/send | `POST /api/mobile/chat/send` → `sendMobileChat` → `sendMessage` | any room | as web send |
++| mobile: welcome | `POST /api/mobile/chat/welcome` | "the shop has any room" ⇒ `existing:true` | "the caller has a visible room" ⇒ `existing:true`; otherwise the caller gets their own welcome room |
++| mobile: proposals list / confirm / reject · plans confirm / reject | `/api/mobile/proposals*`, `/api/mobile/plans/*` | any | as web |
++| member assistant page `?conversation=` and its actions | `member/assistant.ts` `assistantState(…, aiActor)`, `assistant-actions.ts`, `assistant-guard.ts` | any conversation id of the shop (incl. the OWNER's web chat) | visible only (empty state otherwise); cancel guard adds "(0) conversation is the caller's" |
++| REST `POST /api/v1/ai/tools/[name]` | route | any `conversationId` of the shop accepted, even non-existent (cards dropped into an owner's chat — G1 R4) | `conversationId` must be a conversation **this key** created, else **404 `{error, code:"conversation_not_found"}`**; new rooms are `k~<keyId>~…` |
++| scheduled tasks | `scheduled.ts` → `sendMessage(aiSystemActor)` | plain id | `s~scheduled-task~…` (OWNER-visible) |
++| support case reply into the room | `platform/support.ts` `addPlatformMessage` | by id | unchanged (writes by id; the creator sees it) — see follow-up below |
++| counts: onboarding "tried AI", AiUsage, AiCreditTxn, privacy erasure, ops | `onboarding-drip.ts`, `credit.ts`, `crm/privacy.ts` | counts | unchanged (no content) — probe O1.1 |
++| export of AI conversations | — | no such door exists (grep) | — |
++
++## Proposals / plans and the confirmation design
++
++- Today's confirm check (`KIND_ACCESS` via `assertCan`, G1 made the propose-time gate equal to it) judges **the confirmer's key**;
++  the old comment "ไม่ผ่าน = คง PENDING (คนมีสิทธิ์มากดทีหลังได้)" and the refusal text "ให้ผู้มีสิทธิ์เป็นผู้กดยืนยัน" describe a
++  "someone else with the right confirms" flow. In the product that flow only existed through the shared conversation (F1), and
++  `docs/AI_LAYER.md` §55-58 says the user confirms their own card. G1 already made it unreachable for members (a proposer must hold
++  the confirm key). ⇒ **Restricted to the conversation's viewers** (creator; OWNER for non-member rooms). Owner question Q2 below.
++- The one documented cross-actor flow — an API key proposes, the OWNER confirms in the app/web — is kept (rule exception above).
++  A non-OWNER member can no longer confirm a key's proposal (before: anyone holding the confirm key). Owner question Q3.
++- CRM-door proposals (`crm.assist.tasks`, `crm.activity.ai_fill`, card scan `crm_create_lead`, `crm.*` with `requestedByUserId`)
++  live under pseudo conversation ids (`crm:card:…`, `<prefix>:<random>`), are confirmed/cancelled through `crm.aiBridges` with their
++  own visibility rules — untouched (branch order kept; qc-crm-c3.4 53/53).
++
++## AI memory (remember_fact / list_memories / forget_fact) — finding, not changed (D1)
++
++- `AiMemory` is **per tenant** (no user column). `memoryBlock({tenantId})` is injected into the system prompt of **every**
++  `sendMessage` of the shop — every member, the member assistant, API-key REST conversations do not use it (no `sendMessage`), the
++  scheduled job does. `list_memories` is OPEN to every `ai.chat.send` holder; `remember_fact`/`forget_fact` are open to members too
++  (refused to API keys by G1).
++- 🔴 **Facts can contain tool-derived personal data.** `remember_fact`'s description tells the model to call it on its own and lists
++  "names of regular customers" as an example. Probe F1.1 (evidence, not counted): the OWNER's turn runs `customer_search` (full phone)
++  and the model stores "ลูกค้าประจำ คุณสอง โทร 0899000102" → that phone is in the **STAFF ai-only** member's system prompt (and
++  `list_memories` prints it). After this card, AiMemory is the remaining cross-user channel for data a member's own rights do not
++  allow. Owner decision D1 should be revisited with this in mind (e.g. per-user memories, or refuse/mask phone/e-mail/ID patterns in
++  `remember_fact`, or `remember_fact` only for OWNER). Not redesigned here.
++
++## Mobile app (read only — `apps/mobile`)
++
++- Sessions list (`app/(app)/sessions.tsx`): a shorter list is fine; empty list renders the empty state (`items.length === 0`).
++- Chat screen (`app/(app)/chat/[id].tsx`): messages of a room the user cannot see come back as `200 {messages:[]}` (the same answer a
++  missing id always got — no 404 introduced, so no new error path); proposals → `[]`; confirm/reject errors are shown via
++  `apiErrorText`/`note`. No crash path found.
++- Behaviour note: the chat screen sends with the route's `conversationId` and ignores `result.conversationId`. A STAFF/MANAGER who
++  had a legacy room open (or opens a stale deep link / support push) gets an empty screen, and every message sent from that screen
++  opens a new own room (replies still show on screen; history is split). Going back to the list fixes it. App change optional.
++- The orb (welcome) is hidden in the app for now (`ORB_HIDDEN_FOR_NOW`).
++
++## RED → GREEN
++
++Probe `scripts/pending/cf14/probe-cf14-g2.mts` (QC3 · own tenant swept · scripted model / built-in mock · fetch blocked · real
++doors: web actions under a session cookie, mobile route handlers with Bearer, REST route with real keys, member-assistant actions,
++`sendMessage`, `executeProposal`). Same file on both trees.
++
++- **RED on be9c9658: 11/34** (`/tmp/cf14-logs/red1.log`). Red = W1.1 (=R1.1) W1.2 W1.3 W1.4 W2.2 · M1.1 (=R1.2) M1.2 M1.3 M3.1 M3.2 ·
++  S1.1 (=R1.3) S1.2 S1.3 · K1.2 K1.3 K1.5 · A1.1 A1.2 · Y1.1, plus positives broken by the leaks on the base tree (W2.4 W2.5 M2.2 K1.1:
++  the STAFF had already confirmed/deleted the OWNER's items).
++- **GREEN: 34/34** (`/tmp/cf14-logs/green1.log`, again in the verification run `v1`). Positive controls: W2.1 S2.2 M2.1 A2.1 (each member's
++  own flow), W2.4 W2.5 S2.1 M2.2 M2.3 (OWNER: own + legacy), K1.1 K1.4 K1.5 (key continues its own room; OWNER lists and confirms the
++  key's card), Y1.1, O1.1, CLEAN (0 rows, 0 users).
++- Reviewer probe `probe-cf9-g1-review`: **15/18 → 18/18** — R1.1, R1.2, R1.3 flipped green (not edited).
++
++## Verification (QC3 · iso.sh + gate lock · one at a time · runner `scripts/pending/cf14/run-verify.sh`, summary `/tmp/cf14-logs/<label>.summary`)
++
++Runs: `v1` = full run on the final src (tree be9c9658 + this card's diff) · `v2` = re-run after the last ORACLE-EDITs ·
++`base` = the same suites on be9c9658 src (checked out temporarily over this worktree, then restored) for every suite still red.
++
++| check | this card | be9c9658 |
++|---|---|---|
++| `pnpm typecheck` (5 GB heap) | exit 0 (v1, v2) | — |
++| probe-cf14-g2 (own) | **34/34** | 11/34 |
++| probe-cf9-g1 (builder G1, ORACLE-EDIT) | 47/47 (v2; v1 before the edit: 45/47, P9.1 G9.2 = proposals into the OWNER-only legacy room) | 47/47 (G1 v4) |
++| probe-cf9-g1-r2 | 18/18 | 18/18 (G1 v4) |
++| reviewer probe-cf9-g1-review (not edited) | **18/18 — R1.1 R1.2 R1.3 flipped** | 15/18 (R1.1–R1.3) |
++| reviewer probe-cf9-g1-review-r2 | 14/14 | 14/14 (review r2) |
++| probe-cf8-mobile (ORACLE-EDIT) | 8/8 (v2; v1 before the edit: 6/8, W1.2 W3.2 = shared-room assumptions) | 8/8 (G1) |
++| probe-cf8-actions | 9/9 | 9/9 (G1) |
++| probe-cf8-review | 18/19 — X1.3 | **18/19 — X1.3 (base run)** (G1 note: no longer reproduces since G1, by design) |
++| qc-mobile-authz-hotfix (ORACLE-EDIT) | 12/12 | 12/12 (G1) |
++| qc-ai-automation | 4/4 | 4/4 (G1) |
++| qc-crm-c3.4 | 53/53 | 53/53 (G1) |
++| qc-automation-authz-hotfix · qc-payment-authz-hotfix | 12/12 · 8/8 | same (G1) |
++| qc-crm-c1.7 · qc-crm-c2.11 | 57/57 · 47/47 | same (G1) |
++| qc-crm-c1.10 | 66/67 — H.1 (HTTP :3215) | **66/67 — H.1 (base run)** |
++| qc-account-api-ai-skill (ORACLE-EDIT K3.4) | 23/33 (v2; v1 before the edit 22/33, + K3.4) — K2.1 K2.3 K2.5 K2.6 K2.8 K3.6 K3.7 K3.8 K3.10a K3.11 | **23/33, the same ten ids (base run)** (acc-v2 seed) |
++| qc-member-m3.10 | 6/21 — 15 ids | **6/21, the same 15 ids (base run)** (env: HTTP :3215 / skill copies / screenshots) |
++| qc-member-fix-s1 (static check of the member-assistant cancel guard) | 28/28 | — |
++| gen-{crm,member,kanban,account}-api-docs --check | exit 0 ×4, no tracked change | — |
++| fitness (QC3 env) · fitness (no env) | 39/39 · 39/39 | — |
++| query plans `plan-cf14.mts` | see storage decision | — |
++
++## ORACLE-EDIT (minimal; each marked `ORACLE-EDIT C5.5-G2`)
++
++| script | why | edit |
++|---|---|---|
++| `scripts/qc-mobile-chat.mts` | the mobile conversation functions take the viewer | MC-1.x lib calls use the existing OWNER actor ctx (`chatCtx`, new `chatCtx2` for the other shop) — not run (loads `.env.local`) |
++| `scripts/qc-ai.mts` | `latestConversation`/`listMessages` take the viewer | AI-5.1/5.2: "another shop" = that shop's OWNER actor — not run (`.env.local`); typecheck covers it |
++| `scripts/qc-ai-proposals.mts` | `listPendingProposals`/`rejectProposal` take the viewer | PZ-1.2/1.3/4.1/4.2 pass the OWNER actor — not run (`.env.local`) |
++| `scripts/qc-mobile-help.mts` | `listConversations` takes the viewer | HA-2.3 lists as the OWNER (the room is legacy) — not run (`.env.local`) |
++| `scripts/qc-mobile-authz-hotfix.mts` | positive controls read/renamed a legacy room as STAFF+ai.chat.send | the fixture room is opened by that STAFF through the real route; the delete positive control is its creator instead of the OWNER |
++| `scripts/qc-account-api-ai-skill.mts` | E1-K3.4: a STAFF confirming a proposal of someone else's room now gets "ไม่พบข้อเสนอนี้" before the key check | accept `สิทธิ์` or `ไม่พบข้อเสนอ`; still asserts refused + PENDING |
++| `scripts/pending/cf9/probe-cf9-g1.mts` (builder G1 probe) | P9.1/G9.2 proposed as STAFF into the shared legacy room (OWNER only now ⇒ "must be in a conversation") | `rt` gives each valid actor its own room (falls back to the shared room for actors the owner module refuses / on the base tree) |
++| `scripts/pending/cf8/probe-cf8-mobile.mts` | CF8-W1.2 / W3.2 positive controls assumed shared rooms | W1.2: MANAGER/STAFF+ai pass the gate (200) and see no legacy proposal, OWNER sees it · W3.2: OWNER/MANAGER first tap = own welcome room, second = existing |
++
++Not edited: the reviewer's probes (`scripts/pending/cf9/review/*`).
++
++## What a prod hotfix would need (prod main 929c39ce)
++
++- Prod has none of G1 (`actor.ts`, `tool-access.ts` and the mandatory actor in `sendMessage`/`runTool` are not on prod — `git diff
++  929c39ce be9c9658 --stat` over `src/lib/ai`). This card's code takes the viewer from G1's `AiActor`.
++- Recommended: ship **G1 + G2 together** (G2 alone on prod still leaves G1's leak; G1 alone leaves this one — the review said not to
++  announce G1 before F1 lands).
++- A G2-only port is possible: copy `conversation-owner.ts` with a local viewer type `{userId, role} | {keyId}` instead of `AiActor`,
++  `conversations.ts`, and the same door edits (24 src files in this card); `sendMessage` on prod has `ctx = {tenantId}` only, so its 4 callers must pass
++  the viewer (web action, mobile send, member assistant, scheduled job).
++- Data: every existing prod conversation becomes legacy ⇒ OWNER-only. **STAFF/MANAGER lose their own past AI history** (it was shared
++  with the whole shop) — no backfill. Pending proposals/plans in legacy rooms become confirmable by OWNERs only.
++- REST integrations that pass a `conversationId` from before the deploy get **404** (send without `conversationId` to open a new room).
++- Merge with `hotfix/apiv1-scope` (`/root/projects/shark-hf`, read only): it edits the same REST route — imports block (adjacent to
++  G1's two import lines + this card's two) and the `generalToolGate` line; this card only adds the conversation check/creation lines
++  further down ⇒ textual conflict limited to the import block, no semantic conflict (the hotfix gates run before; 404 comes after).
++
++## Owner questions
++
++- **Q1 (memory, D1 revisited)** AI memory is per shop and injected into every member's prompt; the model may store tool-derived
++  phones/names (probe F1.1). Per-user memories, PII filter, or OWNER-only `remember_fact`?
++- **Q2** Confirmation is now limited to the conversation's viewers (the proposer; OWNER for key/legacy/scheduled rooms). If shops want
++  "STAFF drafts, manager approves", route it through the approval module, not shared chat (same advice as the G1 review 4a).
++- **Q3** A key's proposals: OWNER-only confirmation (as documented). Should MANAGERs (or the user who created the key, if recorded)
++  also see/confirm them?
++- **Q4** Legacy rooms (all prod rooms at deploy) are OWNER-only and STAFF lose their past history. Acceptable, or announce it?
++- **Q5** Scheduled-task rooms are OWNER-visible (and can be the "latest" the OWNER's web sheet opens, as before). Keep?
++
++## Follow-ups (not in this card)
++
++- `platform/support.ts` pushes the team's reply (first 80 chars) to **every device of the shop** (`sendPushToTenant`) with the room id;
++  with this card only the room's creator can open it. `sendPushToUser(<creator from the id>)` would match the new rule.
++- `support_open_case` still records opener `"ai-assistant"` (G1 R8) — the creator is now known from the conversation id.
++- `remember_fact` (Q1).
++
++## Not verified
++
++- Suites that load `.env.local` (qc-ai, qc-ai-proposals, qc-mobile-chat, qc-mobile-help, qc-ai-tools, qc-ai-plan, qc-ai-memory, …) —
++  4 of them carry ORACLE-EDITs; only `qc-ai.mts` is statically typechecked.
++- The mobile app on a device; HTTP against the QC server :3215; a live model; prod.
++- A merged tree with `shark-hf`.
++- Production-size query timings (QC3 is tiny; plans shown with seq scans disabled).
+diff --git a/scripts/pending/cf14/plan-cf14.mts b/scripts/pending/cf14/plan-cf14.mts
+new file mode 100644
+index 00000000..03095a54
+--- /dev/null
++++ b/scripts/pending/cf14/plan-cf14.mts
+@@ -0,0 +1,49 @@
++// C5.5-G2 storage decision — query plans on QC3 (read-only: EXPLAIN ANALYZE of SELECTs only).
++//   A = chosen: creator embedded in AiConversation.id → the mobile list / web "latest" = one query on the existing (tenantId, updatedAt) index
++//   B = rejected alternative: AuditLog row `ai.conversation.created` per conversation → creator lookup has no index on (action, actorId) or targetId
++// Run: bash scripts/iso.sh bash scripts/qc3.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/pending/cf14/plan-cf14.mts
++/* eslint-disable @typescript-eslint/no-explicit-any */
++type Any = any;
++const accEnv = (await import("../../acc-v2-env.mts" as string)) as { loadQcEnv: () => { host: string } };
++const { host } = accEnv.loadQcEnv();
++if (!/ep-weathered-river/.test(host) || !/ep-weathered-river/.test(String(process.env.DATABASE_URL ?? ""))) {
++  console.log(`QC3 only — got ${host}`);
++  process.exit(1);
++}
++const { prisma } = await import("@/lib/core/db");
++const P = prisma as Any;
++const one = async (sql: string) => ((await P.$queryRawUnsafe(sql)) as Any[])[0];
++// QC3 is tiny (seq scans win) — each query is also explained with seq scans disabled (SET LOCAL, inside one read-only
++//   transaction) to show which index a production-sized table would use and what it has to walk.
++const plan = async (label: string, sql: string, ...args: unknown[]) => {
++  const rows = (await P.$queryRawUnsafe(`EXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT) ${sql}`, ...args)) as Any[];
++  console.log(`\n── ${label}\n${rows.map((r) => r["QUERY PLAN"]).join("\n")}`);
++  const forced = (await P.$transaction(async (tx: Any) => {
++    await tx.$executeRawUnsafe("SET TRANSACTION READ ONLY");
++    await tx.$executeRawUnsafe("SET LOCAL enable_seqscan = off");
++    return tx.$queryRawUnsafe(`EXPLAIN (FORMAT TEXT) ${sql}`, ...args);
++  })) as Any[];
++  console.log(`   [index plan, seqscan off]\n   ${forced.map((r) => r["QUERY PLAN"]).join("\n   ")}`);
++};
++try {
++  console.log("rows:", JSON.stringify({
++    AiConversation: (await one(`SELECT count(*)::int n FROM "AiConversation"`)).n,
++    AuditLog: (await one(`SELECT count(*)::int n FROM "AuditLog"`)).n,
++  }));
++  const top = await one(`SELECT "tenantId", count(*)::int n FROM "AiConversation" GROUP BY 1 ORDER BY 2 DESC LIMIT 1`);
++  const topAudit = await one(`SELECT "tenantId", count(*)::int n FROM "AuditLog" WHERE "tenantId" IS NOT NULL GROUP BY 1 ORDER BY 2 DESC LIMIT 1`);
++  console.log("busiest tenant (conversations):", JSON.stringify(top), " busiest tenant (audit rows):", JSON.stringify(topAudit));
++  const idx = (await P.$queryRawUnsafe(`SELECT tablename, indexdef FROM pg_indexes WHERE tablename IN ('AiConversation','AuditLog') ORDER BY 1`)) as Any[];
++  for (const i of idx) console.log(`index ${i.tablename}: ${i.indexdef}`);
++  const T = String(top?.tenantId ?? "none");
++  const TA = String(topAudit?.tenantId ?? "none");
++  // A — chosen (the SQL Prisma emits for listConversations of a STAFF / of an OWNER)
++  await plan("A1 mobile list, member (own rooms)", `SELECT "id","title","updatedAt","lastReadAt" FROM "AiConversation" WHERE "tenantId" = $1 AND "deletedAt" IS NULL AND "id" LIKE $2 ORDER BY "updatedAt" DESC LIMIT 100`, T, "u~cqcuserxxxxxxxxxxxxxxxxx~%");
++  await plan("A2 mobile list, OWNER (own + not created by a member)", `SELECT "id","title","updatedAt","lastReadAt" FROM "AiConversation" WHERE "tenantId" = $1 AND "deletedAt" IS NULL AND ("id" LIKE $2 OR NOT "id" LIKE 'u~%') ORDER BY "updatedAt" DESC LIMIT 100`, T, "u~cqcuserxxxxxxxxxxxxxxxxx~%");
++  await plan("A3 open by id (any door)", `SELECT * FROM "AiConversation" WHERE "tenantId" = $1 AND "id" = $2 LIMIT 1`, T, "u~cqcuserxxxxxxxxxxxxxxxxx~0123456789abcdef01234567");
++  // B — rejected: creator from AuditLog (one lookup per list, batch by actor)
++  await plan("B1 AuditLog: conversations created by a member (list page)", `SELECT "targetId" FROM "AuditLog" WHERE "tenantId" = $1 AND "action" = 'ai.conversation.created' AND "actorId" = $2`, TA, "cqcuserxxxxxxxxxxxxxxxxx");
++  await plan("B2 AuditLog: creator of one conversation (every open/continue)", `SELECT "actorId" FROM "AuditLog" WHERE "action" = 'ai.conversation.created' AND "targetId" = $1 LIMIT 1`, "cqcconvxxxxxxxxxxxxxxxxx");
++} finally {
++  await prisma.$disconnect();
++}
+diff --git a/scripts/pending/cf14/probe-cf14-g2.mts b/scripts/pending/cf14/probe-cf14-g2.mts
+new file mode 100644
+index 00000000..adee548a
+--- /dev/null
++++ b/scripts/pending/cf14/probe-cf14-g2.mts
+@@ -0,0 +1,331 @@
++// probe — CRM C5.5-G2 "AI conversations belong to their creator". Each check asserts the SECURE / intended property:
++//   ✅ = property holds · ❌ = leak / regression reproduced · ℹ️ = evidence, not counted.
++//   Doors are driven through their REAL entry points whose signatures did not change in this card (so the same file runs on the
++//   base tree for RED): web server actions under a session cookie · mobile route handlers with a Bearer token · REST
++//   `POST /api/v1/ai/tools/[name]` with real API keys · member-assistant server actions · `sendMessage` · `executeProposal`.
++//   W* web · M* mobile · S* model context (sendMessage) · K* REST API keys · A* member assistant · Y* scheduled (system) ·
++//   O* ops counts · F* shop memory (finding, evidence only) · R1.x = the reviewer's G1 F1 scenarios.
++// Model: scripted provider or the built-in mock (SHARK_AI_MOCK=1) — no network (fetch blocked). QC3 only · throwaway tenant swept.
++// Run: bash scripts/iso.sh env NODE_OPTIONS=--max-old-space-size=3584 bash scripts/pending/cd2/with-qc3-secret.sh \
++//        bash scripts/qc3.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/pending/cf14/probe-cf14-g2.mts
++/* eslint-disable @typescript-eslint/no-explicit-any */
++type Any = any;
++import { AsyncLocalStorage } from "node:async_hooks";
++import { randomBytes } from "node:crypto";
++
++(globalThis as Any).AsyncLocalStorage ??= AsyncLocalStorage;
++const accEnv = (await import("../../acc-v2-env.mts" as string)) as { loadQcEnv: () => { host: string } };
++const { host } = accEnv.loadQcEnv();
++if (!/ep-weathered-river/.test(host) || !/ep-weathered-river/.test(String(process.env.DATABASE_URL ?? ""))) {
++  console.log(`QC3 only — got ${host}`);
++  process.exit(1);
++}
++process.env.SHARK_AI_MOCK = "1";
++delete process.env.SHARK_AI_KEY;
++globalThis.fetch = (async () => {
++  throw new Error("network blocked");
++}) as typeof fetch;
++const { prisma } = await import("@/lib/core/db");
++const P = prisma as Any;
++const TAG = `qc-cf14-${randomBytes(4).toString("hex").replace(/[0-9]/g, (d) => "qrstuvwxyz"[Number(d)]!)}`;
++const res: { id: string; ok: boolean }[] = [];
++const chk = (id: string, ok: boolean, msg: string) => {
++  res.push({ id, ok });
++  console.log(`  ${ok ? "✅" : "❌"} [${id}] ${msg}`);
++};
++const info = (id: string, msg: string) => console.log(`  ℹ️  [${id}] ${msg}`);
++const j = (v: unknown) => JSON.stringify(v);
++const cut = (v: unknown, n = 150) => { const s = String(v ?? "").replace(/\s+/g, " "); return s.length > n ? `${s.slice(0, n)}…` : s; };
++const has = (s: unknown, x: string) => (typeof s === "string" ? s : j(s)).includes(x);
++const USERS: string[] = [];
++const TENANTS: string[] = [];
++const sysSvc = (await import("@/lib/modules/system/service" as string)) as Any;
++const svc = (await import("@/lib/ai/service" as string)) as Any;
++const ACT = (await import("@/lib/ai/actor" as string)) as Any;
++const props = (await import("@/lib/ai/proposals" as string)) as Any;
++const AIA = (await import("@/lib/ai/actions" as string)) as Any;
++const MAA = (await import("@/lib/modules/member/assistant-actions" as string)) as Any;
++const mobAuth = (await import("@/lib/mobile/auth" as string)) as Any;
++const keySvc = (await import("@/lib/api-keys/service" as string)) as Any;
++const drip = (await import("@/lib/platform/onboarding-drip" as string)) as Any;
++const R = {
++  conv: (await import("../../../src/app/api/mobile/conversations/route.ts" as string)) as Any,
++  convId: (await import("../../../src/app/api/mobile/conversations/[id]/route.ts" as string)) as Any,
++  msgs: (await import("../../../src/app/api/mobile/conversations/[id]/messages/route.ts" as string)) as Any,
++  read: (await import("../../../src/app/api/mobile/conversations/[id]/read/route.ts" as string)) as Any,
++  welcome: (await import("../../../src/app/api/mobile/chat/welcome/route.ts" as string)) as Any,
++  send: (await import("../../../src/app/api/mobile/chat/send/route.ts" as string)) as Any,
++  props: (await import("../../../src/app/api/mobile/proposals/route.ts" as string)) as Any,
++  pConfirm: (await import("../../../src/app/api/mobile/proposals/confirm/route.ts" as string)) as Any,
++  pReject: (await import("../../../src/app/api/mobile/proposals/reject/route.ts" as string)) as Any,
++  plConfirm: (await import("../../../src/app/api/mobile/plans/confirm/route.ts" as string)) as Any,
++  plReject: (await import("../../../src/app/api/mobile/plans/reject/route.ts" as string)) as Any,
++  tools: (await import("../../../src/app/api/v1/ai/tools/[name]/route.ts" as string)) as Any,
++};
++const mkUser = async (suffix: string) => {
++  const u = await P.user.create({ data: { email: `${TAG}${suffix}@qc.invalid`, name: `QC ${suffix} ${TAG}` } });
++  USERS.push(u.id);
++  return u.id as string;
++};
++const member = (uid: string, tid: string, role: string, permissions: Record<string, boolean>) =>
++  P.membership.create({ data: { userId: uid, tenantId: tid, role, unitAccess: ["*"], permissions, acceptedAt: new Date() } });
++const nextWork = (await import("next/dist/server/app-render/work-async-storage.external.js" as string)) as Any;
++const nextWorkUnit = (await import("next/dist/server/app-render/work-unit-async-storage.external.js" as string)) as Any;
++const nextCookies = (await import("next/dist/server/web/spec-extension/cookies.js" as string)) as Any;
++async function inScope<T>(cookie: string, pathname: string, fn: () => Promise<T>): Promise<T> {
++  const req = new Request(`http://qc.local${pathname}`, { headers: { cookie, "user-agent": "probe-cf14", "x-forwarded-for": "203.0.113.194" } });
++  const jar = new nextCookies.RequestCookies(req.headers);
++  const afterContext = { after: (_task: Any) => undefined };
++  const workStore = { route: pathname, page: `${pathname}/page`, forceStatic: false, dynamicShouldError: false, isStaticGeneration: false, fallbackRouteParams: null, incrementalCache: {}, pendingRevalidatedTags: [], afterContext };
++  const unit = { type: "request", phase: "action", implicitTags: [], cookies: jar, mutableCookies: jar, userspaceMutableCookies: jar, headers: req.headers, draftMode: undefined, rootParams: {}, url: { pathname, search: "" } };
++  return nextWork.workAsyncStorage.run(workStore, () => nextWorkUnit.workUnitAsyncStorage.run(unit, fn));
++}
++const coreHash = (await import("@/lib/core/hash" as string)) as Any;
++async function sessionCookie(uid: string, tid: string): Promise<string> {
++  const token = coreHash.randomToken(32) as string;
++  await P.session.create({ data: { userId: uid, tokenHash: coreHash.sha256(token), idleExpiresAt: new Date(Date.now() + 86_400_000), expiresAt: new Date(Date.now() + 86_400_000) } });
++  return `shark_session=${token}; __Host-shark_session=${token}; shark_tenant=${tid}`;
++}
++class Scripted {
++  private i = 0;
++  constructor(private steps: Any[]) {}
++  async chat(messages: Any[]) {
++    const step = this.steps[Math.min(this.i, this.steps.length - 1)];
++    this.i += 1;
++    if (step.text === "$LAST_TOOL") {
++      const last = [...messages].reverse().find((m: Any) => m.role === "tool");
++      return { text: `ผลเครื่องมือ: ${last?.content ?? "(ไม่มี)"}`, tokensIn: 10, tokensOut: 10, model: "scripted" };
++    }
++    if (step.text === "$HISTORY") {
++      // a model that quotes every earlier turn it was given ("summarise what we discussed")
++      const hist = messages.filter((m: Any) => m.role === "assistant" || m.role === "user").map((m: Any) => String(m.content)).join(" | ");
++      return { text: `สรุปที่คุยไว้: ${hist}`, tokensIn: 10, tokensOut: 10, model: "scripted" };
++    }
++    if (step.text === "$SYSTEM") {
++      const sys = messages.find((m: Any) => m.role === "system");
++      return { text: `system: ${sys?.content ?? ""}`, tokensIn: 10, tokensOut: 10, model: "scripted" };
++    }
++    return { text: step.text ?? "", toolCalls: step.toolCalls, tokensIn: 10, tokensOut: 10, model: "scripted" };
++  }
++}
++const PHONE = "0899000102"; // only the OWNER's tool result contains it
++const LEGACY = "0899000177"; // only the legacy (no creator) conversation contains it
++
++try {
++  // ═══ world ═══
++  const tA = (await P.tenant.create({ data: { name: `${TAG}-a`, slug: `${TAG}-a` } })).id as string;
++  TENANTS.push(tA);
++  const owner = await mkUser("-owner");
++  const owner2 = await mkUser("-owner2");
++  const staffAi = await mkUser("-ai");
++  const staffMem = await mkUser("-mem");
++  const perms: Record<string, Record<string, boolean>> = {
++    [owner]: {}, [owner2]: {},
++    [staffAi]: { "ai.chat.send": true, "ai.schedule.create": true },
++    [staffMem]: { "ai.chat.send": true, "ai.schedule.create": true, "member.customer.read": true },
++  };
++  const roleOf = (u: string) => (u === owner || u === owner2 ? "OWNER" : "STAFF");
++  for (const u of [owner, owner2, staffAi, staffMem]) await member(u, tA, roleOf(u), perms[u]!);
++  const act = (uid: string) => ACT.aiMemberActor(tA, uid, { role: roleOf(uid), unitAccess: ["*"], permissions: perms[uid] });
++  const M = (await sysSvc.createSystem(tA, "MEMBER", "สมาชิกทดสอบ")).id as string;
++  await P.customer.create({ data: { tenantId: tA, memberSystemId: M, name: "สมาชิกคนที่สอง", phone: PHONE, memberCode: "QRB002" } });
++  await P.aiCreditWallet.create({ data: { tenantId: tA, balanceMicro: 50_000_000, grantedAt: new Date() } });
++  const msgCount = (cid: string) => P.aiMessage.count({ where: { tenantId: tA, conversationId: cid } }) as Promise<number>;
++  const status = async (model: "aiProposal" | "aiPlan", id: string) => String((await P[model].findUnique({ where: { id } }))?.status);
++  const ck: Record<string, string> = {};
++  for (const u of [owner, owner2, staffAi, staffMem]) ck[u] = await sessionCookie(u, tA);
++  const tok: Record<string, string> = {};
++  for (const u of [owner, owner2, staffAi, staffMem]) tok[u] = (await mobAuth.issueMobileToken(u)).token as string;
++  const mreq = (u: string, path: string, method = "GET", body?: unknown) =>
++    new Request(`http://qc.invalid${path}`, { method, headers: { authorization: `Bearer ${tok[u]}`, "x-tenant-id": tA, ...(body !== undefined ? { "content-type": "application/json" } : {}) }, ...(body !== undefined ? { body: j(body) } : {}) });
++  const pid = (id: string) => ({ params: Promise.resolve({ id }) });
++  const mList = async (u: string) => (((await (await R.conv.GET(mreq(u, "/api/mobile/conversations"))).json()) as Any).conversations ?? []).map((c: Any) => c.id as string) as string[];
++  const mMsgs = async (u: string, id: string) => { const r = await R.msgs.GET(mreq(u, `/api/mobile/conversations/${id}/messages`), pid(id)); return { status: r.status as number, text: await r.text() }; };
++  const web = (u: string, fn: () => Promise<Any>): Promise<Any> => inScope(ck[u]!, "/app", fn);
++
++  // ── fixtures: the OWNER's conversation (tool result with a phone + a pending proposal + a pending plan) ──
++  const sO = await svc.sendMessage({ tenantId: tA, actor: act(owner) }, { text: "ขอเบอร์สมาชิกทุกคน" }, { provider: new Scripted([{ toolCalls: [{ id: "o1", name: "customer_search", args: { query: "สมาชิก" } }] }, { text: "$LAST_TOOL" }]) });
++  const ownerConv = sO.conversationId as string;
++  info("FIX", `OWNER conversation ${ownerConv} · reply holds the phone=${has(sO.reply, PHONE)}`);
++  const sched = (n: number) => ({ id: `p${n}`, name: "schedule_task", args: { instruction: `สรุปยอด ${TAG} ${n}`, hourBkk: 3 } });
++  await svc.sendMessage({ tenantId: tA, actor: act(owner) }, { conversationId: ownerConv, text: "ตั้งงานประจำ 4 งาน" }, { provider: new Scripted([{ toolCalls: [sched(1), sched(2), sched(3), sched(4), sched(5)] }, { text: "เสนอแล้ว" }]) });
++  await svc.sendMessage({ tenantId: tA, actor: act(owner) }, { conversationId: ownerConv, text: "ทำเป็นแผน" }, { provider: new Scripted([{ toolCalls: [{ id: "pl", name: "propose_plan", args: { title: `แผน ${TAG}`, steps: [{ kind: "ai_schedule_task", summary: "ตั้งงาน", payload: { instruction: `แผน ${TAG}`, hourBkk: 4 } }] } }] }, { text: "เสนอแผนแล้ว" }]) });
++  const oProps = ((await P.aiProposal.findMany({ where: { tenantId: tA, conversationId: ownerConv }, orderBy: { createdAt: "asc" } })) as Any[]).map((p) => p.id as string);
++  const oPlan = ((await P.aiPlan.findFirst({ where: { tenantId: tA, conversationId: ownerConv } })) as Any)?.id as string;
++  info("FIX", `OWNER proposals in own conversation=${oProps.length} · plan=${Boolean(oPlan)}`);
++  const ownerMsgs0 = await msgCount(ownerConv);
++  // ── legacy conversation (written before this card: no creator) ──
++  const legacy = (await P.aiConversation.create({ data: { tenantId: tA, title: "ห้องเดิมก่อนใบนี้" } })).id as string;
++  await P.aiMessage.create({ data: { tenantId: tA, conversationId: legacy, role: "USER", content: "เบอร์ลูกค้าเก่า" } });
++  await P.aiMessage.create({ data: { tenantId: tA, conversationId: legacy, role: "ASSISTANT", content: `ลูกค้าเก่า ${LEGACY}` } });
++  const legacyProp = (await props.createProposal({ tenantId: tA }, { conversationId: legacy, kind: "ai_schedule_task", summary: "ห้องเดิม", payload: { instruction: `เดิม ${TAG}`, hourBkk: 5 } })).id as string;
++
++  // ═══ W — web (session cookie) ═══
++  console.log("\n── W web ──");
++  const wLoad: Any = await web(staffAi, () => AIA.loadAiChatAction()).catch((e: Error) => ({ error: e.message }));
++  chk("W1.1", wLoad?.conversationId !== ownerConv && wLoad?.conversationId !== legacy && !has(wLoad, PHONE) && !has(wLoad, LEGACY),
++    `[= R1.1] STAFF ai-only opens the AI sheet (loadAiChatAction) → not the OWNER's / legacy conversation · conv=${wLoad?.conversationId === ownerConv ? "OWNER's" : wLoad?.conversationId === legacy ? "legacy" : wLoad?.conversationId} phone=${has(wLoad, PHONE)} legacy=${has(wLoad, LEGACY)}`);
++  const wPr = await web(staffAi, () => AIA.listPendingProposalsAction(ownerConv));
++  const wPl = await web(staffAi, () => AIA.loadPlansAction(ownerConv));
++  const wPrL = await web(staffAi, () => AIA.listPendingProposalsAction(legacy));
++  chk("W1.2", wPr.length === 0 && wPl.length === 0 && wPrL.length === 0, `STAFF lists the OWNER's pending proposals/plans by conversation id → ${wPr.length}/${wPl.length} · legacy proposals → ${wPrL.length}`);
++  const wC = await web(staffAi, () => AIA.confirmProposalAction(oProps[0]));
++  const wR = await web(staffAi, () => AIA.rejectProposalAction(oProps[0]));
++  const wPC = await web(staffAi, () => AIA.confirmPlanAction(oPlan));
++  const wPR = await web(staffAi, () => AIA.rejectPlanAction(oPlan));
++  chk("W1.3", !wC.ok && !wR.ok && !wPC.ok && !wPR.ok && (await status("aiProposal", oProps[0]!)) === "PENDING" && (await status("aiPlan", oPlan)) === "PENDING",
++    `STAFF holding the confirm key (ai.schedule.create) confirms/rejects the OWNER's proposal and plan → all refused, rows stay PENDING · confirm=${cut(wC.note, 50)} reject=${cut(wR.note, 40)} plan=${cut(wPC.note, 40)}`);
++  const wLC = await web(staffAi, () => AIA.confirmProposalAction(legacyProp));
++  chk("W1.4", !wLC.ok && (await status("aiProposal", legacyProp)) === "PENDING", `STAFF confirms a proposal of a legacy (creator unknown) conversation → refused · ${cut(wLC.note, 60)}`);
++  const wS = await web(staffAi, () => AIA.sendAiMessageAction({ text: `สวัสดีจากพนักงาน ${TAG}` }));
++  const wL2: Any = await web(staffAi, () => AIA.loadAiChatAction());
++  chk("W2.1", wS.ok && wL2.conversationId === wS.conversationId && has(wL2.messages, `สวัสดีจากพนักงาน ${TAG}`), `positive: STAFF's own chat — send then reopen the sheet → own conversation with own messages (${wS.ok ? "sent" : wS.message})`);
++  const staffConv = wS.conversationId as string;
++  const wO: Any = await web(owner, () => AIA.loadAiChatAction());
++  chk("W2.2", wO.conversationId !== staffConv && !has(wO.messages, `สวัสดีจากพนักงาน ${TAG}`), `OWNER opens the sheet after STAFF chatted → not the STAFF's conversation (creator only, also for the OWNER) · conv=${wO.conversationId === staffConv ? "STAFF's" : wO.conversationId === ownerConv ? "own" : wO.conversationId === legacy ? "legacy" : wO.conversationId}`);
++  const wO2: Any = await web(owner2, () => AIA.loadAiChatAction());
++  chk("W2.3", wO2.conversationId !== ownerConv && !has(wO2, PHONE), `a second OWNER opens the sheet → not the first OWNER's conversation · conv=${wO2.conversationId === ownerConv ? "OWNER-1's" : wO2.conversationId === legacy ? "legacy" : wO2.conversationId}`);
++  const wOL = await web(owner, () => AIA.listPendingProposalsAction(legacy));
++  const wOP = await web(owner, () => AIA.listPendingProposalsAction(ownerConv));
++  chk("W2.4", wOL.some((p: Any) => p.id === legacyProp) && wOP.length >= 4, `positive: OWNER lists proposals of the legacy conversation (${wOL.length}) and of own conversation (${wOP.length})`);
++  const wOC = await web(owner, () => AIA.confirmProposalAction(oProps[0]));
++  chk("W2.5", wOC.ok && (await status("aiProposal", oProps[0]!)) === "EXECUTED", `positive: OWNER confirms own proposal → ${wOC.ok ? "EXECUTED" : wOC.note}`);
++
++  // ═══ M — mobile (Bearer) ═══
++  console.log("\n── M mobile ──");
++  const sList = await mList(staffAi);
++  const mO = await mMsgs(staffAi, ownerConv);
++  const mL = await mMsgs(staffAi, legacy);
++  chk("M1.1", !sList.includes(ownerConv) && !sList.includes(legacy) && !has(mO.text, PHONE) && !has(mL.text, LEGACY),
++    `[= R1.2] STAFF list has OWNER's=${sList.includes(ownerConv)} legacy=${sList.includes(legacy)} · messages(OWNER's) ${mO.status} phone=${has(mO.text, PHONE)} · messages(legacy) ${mL.status} secret=${has(mL.text, LEGACY)}`);
++  const ren = (await (await R.convId.PATCH(mreq(staffAi, `/api/mobile/conversations/${ownerConv}`, "PATCH", { title: "แฮ็ก" }), pid(ownerConv))).json()) as Any;
++  const del = (await (await R.convId.DELETE(mreq(staffAi, `/api/mobile/conversations/${ownerConv}`, "DELETE"), pid(ownerConv))).json()) as Any;
++  const rd = (await (await R.read.POST(mreq(staffAi, `/api/mobile/conversations/${ownerConv}/read`, "POST", {}), pid(ownerConv))).json()) as Any;
++  const oRow = (await P.aiConversation.findUnique({ where: { id: ownerConv } })) as Any;
++  chk("M1.2", ren.ok === false && del.ok === false && rd.ok === false && oRow.title !== "แฮ็ก" && !oRow.deletedAt, `STAFF rename/delete/mark-read the OWNER's conversation → ${ren.ok}/${del.ok}/${rd.ok} (same answer as a missing id) · title kept=${oRow.title !== "แฮ็ก"} deleted=${Boolean(oRow.deletedAt)}`);
++  const mPr = (await (await R.props.GET(mreq(staffAi, `/api/mobile/proposals?conversationId=${encodeURIComponent(ownerConv)}`))).json()) as Any;
++  const mPC = (await (await R.pConfirm.POST(mreq(staffAi, "/api/mobile/proposals/confirm", "POST", { id: oProps[1] }))).json()) as Any;
++  const mPR = (await (await R.pReject.POST(mreq(staffAi, "/api/mobile/proposals/reject", "POST", { id: oProps[1] }))).json()) as Any;
++  const mPlC = (await (await R.plConfirm.POST(mreq(staffAi, "/api/mobile/plans/confirm", "POST", { id: oPlan }))).json()) as Any;
++  const mPlR = (await (await R.plReject.POST(mreq(staffAi, "/api/mobile/plans/reject", "POST", { id: oPlan }))).json()) as Any;
++  chk("M1.3", (mPr.proposals ?? []).length === 0 && !mPC.ok && !mPR.ok && !mPlC.ok && !mPlR.ok && (await status("aiProposal", oProps[1]!)) === "PENDING" && (await status("aiPlan", oPlan)) === "PENDING",
++    `STAFF (confirm key held) via mobile: list=${(mPr.proposals ?? []).length} confirm=${mPC.ok} reject=${mPR.ok} plan confirm=${mPlC.ok} plan reject=${mPlR.ok} · rows PENDING`);
++  const created = (await (await R.conv.POST(mreq(staffAi, "/api/mobile/conversations", "POST", { title: "ห้องพนักงาน" }))).json()) as Any;
++  const sList2 = await mList(staffAi);
++  const oList = await mList(owner);
++  const renOwn = (await (await R.convId.PATCH(mreq(staffAi, `/api/mobile/conversations/${created.id}`, "PATCH", { title: "ห้องพนักงาน 2" }), pid(created.id))).json()) as Any;
++  const mOwn = await mMsgs(staffAi, staffConv);
++  chk("M2.1", sList2.includes(created.id) && sList2.includes(staffConv) && renOwn.ok === true && mOwn.status === 200 && has(mOwn.text, `สวัสดีจากพนักงาน ${TAG}`),
++    `positive: STAFF creates, lists, renames and reads own conversations (web + mobile) · listed=${sList2.includes(created.id)}/${sList2.includes(staffConv)} rename=${renOwn.ok}`);
++  chk("M2.2", oList.includes(ownerConv) && oList.includes(legacy) && !oList.includes(created.id) && !oList.includes(staffConv),
++    `OWNER list: own=${oList.includes(ownerConv)} legacy=${oList.includes(legacy)} (positive) · STAFF's rooms=${oList.includes(created.id) || oList.includes(staffConv)} (must be false)`);
++  const mOL = await mMsgs(owner, legacy);
++  chk("M2.3", has(mOL.text, LEGACY), `positive: OWNER reads the legacy conversation (no recorded creator ⇒ OWNER only) → ${mOL.status}`);
++  const wM = (await (await R.welcome.POST(mreq(staffMem, "/api/mobile/chat/welcome", "POST", {}))).json()) as Any;
++  const wM2 = (await (await R.welcome.POST(mreq(staffMem, "/api/mobile/chat/welcome", "POST", {}))).json()) as Any;
++  const wMO = (await (await R.welcome.POST(mreq(owner, "/api/mobile/chat/welcome", "POST", {}))).json()) as Any;
++  const memList = await mList(staffMem);
++  chk("M3.1", wM.existing === false && typeof wM.conversationId === "string" && memList.includes(wM.conversationId) && wM2.existing === true && wMO.existing === true,
++    `welcome: a STAFF with no room of their own gets their own welcome room (the shop's other rooms are not "existing" for them) → ${j({ first: wM.existing, again: wM2.existing, owner: wMO.existing })}`);
++  const sse = await (await R.send.POST(mreq(staffAi, "/api/mobile/chat/send", "POST", { conversationId: ownerConv, text: "ต่อห้องเจ้าของ" }))).text();
++  const done = (sse as string).split("\n").filter((l: string) => l.startsWith("data: ")).map((l: string) => JSON.parse(l.slice(6)) as Any).find((e: Any) => e.type === "done");
++  chk("M3.2", done && done.result.conversationId !== ownerConv && (await msgCount(ownerConv)) === ownerMsgs0,
++    `mobile chat/send as STAFF with the OWNER's conversationId → answered in a NEW conversation of the STAFF; OWNER's conversation untouched (${ownerMsgs0}→${await msgCount(ownerConv)} messages)`);
++
++  // ═══ S — model context (sendMessage) ═══
++  console.log("\n── S model context ──");
++  const sH = await svc.sendMessage({ tenantId: tA, actor: act(staffAi) }, { conversationId: ownerConv, text: "สรุปที่คุยไว้หน่อย" }, { provider: new Scripted([{ text: "$HISTORY" }]) });
++  chk("S1.1", !has(sH.reply, PHONE) && sH.conversationId !== ownerConv && (await msgCount(ownerConv)) === ownerMsgs0,
++    `[= R1.3] STAFF sendMessage with the OWNER's conversationId + a model that quotes history → phone=${has(sH.reply, PHONE)} · same conversation=${sH.conversationId === ownerConv}`);
++  const sHL = await svc.sendMessage({ tenantId: tA, actor: act(staffAi) }, { conversationId: legacy, text: "สรุปห้องเดิม" }, { provider: new Scripted([{ text: "$HISTORY" }]) });
++  chk("S1.2", !has(sHL.reply, LEGACY) && sHL.conversationId !== legacy, `STAFF continues the legacy conversation → secret=${has(sHL.reply, LEGACY)} same=${sHL.conversationId === legacy}`);
++  const sO2 = await svc.sendMessage({ tenantId: tA, actor: act(owner2) }, { conversationId: ownerConv, text: "สรุปหน่อย" }, { provider: new Scripted([{ text: "$HISTORY" }]) });
++  chk("S1.3", !has(sO2.reply, PHONE) && sO2.conversationId !== ownerConv, `a second OWNER continues the first OWNER's conversation → phone=${has(sO2.reply, PHONE)} (creator only)`);
++  const sOL = await svc.sendMessage({ tenantId: tA, actor: act(owner) }, { conversationId: legacy, text: "สรุปห้องเดิม" }, { provider: new Scripted([{ text: "$HISTORY" }]) });
++  const sOO = await svc.sendMessage({ tenantId: tA, actor: act(owner) }, { conversationId: ownerConv, text: "สรุปของฉัน" }, { provider: new Scripted([{ text: "$HISTORY" }]) });
++  chk("S2.1", has(sOL.reply, LEGACY) && sOL.conversationId === legacy && has(sOO.reply, PHONE) && sOO.conversationId === ownerConv, `positive: OWNER continues the legacy conversation and own conversation with full history`);
++  const sSS = await svc.sendMessage({ tenantId: tA, actor: act(staffAi) }, { conversationId: staffConv, text: "สรุปของฉัน" }, { provider: new Scripted([{ text: "$HISTORY" }]) });
++  chk("S2.2", sSS.conversationId === staffConv && has(sSS.reply, `สวัสดีจากพนักงาน ${TAG}`), `positive: STAFF continues own conversation with own history`);
++
++  // ═══ K — REST API keys ═══
++  console.log("\n── K REST API keys ──");
++  const kGen = await keySvc.createApiKey({ tenantId: tA }, `${TAG}-gen`, {});
++  const kGen2 = await keySvc.createApiKey({ tenantId: tA }, `${TAG}-gen2`, {});
++  const post = async (raw: string, name: string, args: Any, conversationId?: string) => {
++    const r = await R.tools.POST(new Request(`http://qc.invalid/api/v1/ai/tools/${name}`, { method: "POST", headers: { authorization: `Bearer ${raw}`, "content-type": "application/json" }, body: j({ args, ...(conversationId ? { conversationId } : {}) }) }), { params: Promise.resolve({ name }) });
++    return { status: r.status as number, body: (await r.json()) as Any };
++  };
++  const k1 = await post(kGen.rawKey, "schedule_task", { instruction: `คีย์ ${TAG}`, hourBkk: 6 });
++  const keyConv = k1.body.conversationId as string;
++  const keyProp = ((await P.aiProposal.findFirst({ where: { tenantId: tA, conversationId: keyConv } })) as Any)?.id as string;
++  const oList2 = await mList(owner);
++  const sList3 = await mList(staffAi);
++  const wOK = await web(owner, () => AIA.listPendingProposalsAction(keyConv));
++  chk("K1.1", k1.status === 200 && Boolean(keyProp) && oList2.includes(keyConv) && wOK.some((p: Any) => p.id === keyProp) && !sList3.includes(keyConv),
++    `positive (documented flow "the owner confirms in the app"): key proposal ${k1.status} → OWNER lists the key's conversation=${oList2.includes(keyConv)} and its card=${wOK.length} · STAFF lists it=${sList3.includes(keyConv)}`);
++  const pBefore = await P.aiProposal.count({ where: { tenantId: tA, conversationId: ownerConv } });
++  const k2 = await post(kGen.rawKey, "schedule_task", { instruction: `แทรก ${TAG}`, hourBkk: 6 }, ownerConv);
++  const pAfter = await P.aiProposal.count({ where: { tenantId: tA, conversationId: ownerConv } });
++  chk("K1.2", k2.status === 404 && pAfter === pBefore, `REST key passes the OWNER's conversationId → ${k2.status} (not found) · proposals dropped into the OWNER's conversation ${pBefore}→${pAfter}`);
++  const k3 = await post(kGen2.rawKey, "schedule_task", { instruction: `คีย์สอง ${TAG}`, hourBkk: 6 }, keyConv);
++  const k5 = await post(kGen.rawKey, "schedule_task", { instruction: `ห้องเดิม ${TAG}`, hourBkk: 6 }, legacy);
++  chk("K1.3", k3.status === 404 && k5.status === 404, `another key with this key's conversationId → ${k3.status} · key with a legacy conversationId → ${k5.status}`);
++  const k4 = await post(kGen.rawKey, "schedule_task", { instruction: `ต่อห้องตัวเอง ${TAG}`, hourBkk: 7 }, keyConv);
++  chk("K1.4", k4.status === 200 && k4.body.conversationId === keyConv, `positive: the key continues its own conversation → ${k4.status}`);
++  const wOKC = await web(owner, () => AIA.confirmProposalAction(keyProp));
++  const keyProp2 = ((await P.aiProposal.findFirst({ where: { tenantId: tA, conversationId: keyConv, status: "PENDING" } })) as Any)?.id as string;
++  const wSKC = await web(staffAi, () => AIA.confirmProposalAction(keyProp2));
++  chk("K1.5", wOKC.ok && !wSKC.ok, `OWNER confirms the key's proposal → ${wOKC.ok ? "ok" : wOKC.note} (positive) · STAFF with the confirm key → ${wSKC.ok ? "EXECUTED" : "refused"}`);
++
++  // ═══ A — member-assistant page (session) ═══
++  console.log("\n── A member assistant ──");
++  const aS: Any = await web(staffMem, () => MAA.sendMemberAssistantAction(M, ownerConv, "สรุปให้หน่อย"));
++  chk("A1.1", aS.ok && aS.data.conversationId !== ownerConv && !has(aS.data, PHONE), `STAFF (member read) sends on the member assistant with the OWNER's conversation id → state of OWNER's conversation=${aS.data?.conversationId === ownerConv} phone=${has(aS.data, PHONE)} ${aS.ok ? "" : aS.reason}`);
++  const aC: Any = await web(staffMem, () => MAA.confirmMemberProposalAction(M, ownerConv, oProps[2], false));
++  const aX: Any = await web(staffMem, () => MAA.cancelMemberProposalAction(M, ownerConv, oProps[2]));
++  chk("A1.2", !aC.ok && !aX.ok && (await status("aiProposal", oProps[2]!)) === "PENDING" && !has(aC.state, PHONE), `STAFF confirm/cancel the OWNER's proposal through the member assistant → ${aC.ok}/${aX.ok} · row ${await status("aiProposal", oProps[2]!)}`);
++  const aN: Any = await web(staffMem, () => MAA.sendMemberAssistantAction(M, null, `สวัสดี ${TAG}`));
++  const aN2: Any = aN.ok ? await web(staffMem, () => MAA.sendMemberAssistantAction(M, aN.data.conversationId, "ต่อ")) : aN;
++  chk("A2.1", aN.ok && aN2.ok && aN2.data.conversationId === aN.data.conversationId && aN2.data.messages.length === 4, `positive: STAFF's own member-assistant conversation continues (${aN2.data?.messages?.length} messages)`);
++
++  // ═══ Y — scheduled task (system actor) ═══
++  console.log("\n── Y scheduled ──");
++  const yS = await svc.sendMessage({ tenantId: tA, actor: ACT.aiSystemActor(tA, "scheduled-task") }, { text: `สรุปประจำวัน ${TAG}` }, { provider: new Scripted([{ text: "สรุปแล้ว" }]) });
++  const yO = await mList(owner);
++  const yST = await mList(staffAi);
++  chk("Y1.1", yS.ok && yO.includes(yS.conversationId) && !yST.includes(yS.conversationId), `scheduled-task conversation: OWNER lists it=${yO.includes(yS.conversationId)} (no human creator ⇒ OWNER) · STAFF lists it=${yST.includes(yS.conversationId)}`);
++
++  // ═══ O — ops counts ═══
++  const checklist = (await drip.onboardingChecklist({ tenantId: tA })) as Any[];
++  chk("O1.1", checklist.find((x) => x.key === "triedAi")?.done === true, `positive: onboarding "tried AI" (a count over the shop's conversations) still true`);
++
++  // ═══ F — shop memory (D1) — evidence ═══
++  console.log("\n── F shop memory ──");
++  await svc.sendMessage({ tenantId: tA, actor: act(owner) }, { text: "จำลูกค้าคนนี้ไว้" }, { provider: new Scripted([{ toolCalls: [{ id: "f1", name: "customer_search", args: { query: "สมาชิก" } }] }, { toolCalls: [{ id: "f2", name: "remember_fact", args: { content: `ลูกค้าประจำ คุณสอง โทร ${PHONE}` } }] }, { text: "จำแล้ว" }]) });
++  const fS = await svc.sendMessage({ tenantId: tA, actor: act(staffAi) }, { text: "ร้านเรามีอะไรบ้าง" }, { provider: new Scripted([{ text: "$SYSTEM" }]) });
++  info("F1.1", `FINDING (not this card): the OWNER's model stored a tool-derived phone with remember_fact → it is in the STAFF's system prompt = ${has(fS.reply, PHONE)} (AiMemory is per shop, injected into every prompt; list_memories is open)`);
++} catch (e) {
++  chk("FATAL", false, `probe crashed: ${cut((e as Error)?.stack ?? e, 600)}`);
++} finally {
++  for (const T of TENANTS) {
++    const tbs = ((await P.$queryRawUnsafe(`select table_name from information_schema.columns where table_schema='public' and column_name='tenantId'`)) as Any[]).map((r) => String(r.table_name)).filter((x) => /^[A-Za-z_]+$/.test(x));
++    for (let pass = 0; pass < 4; pass += 1) for (const t of tbs) await P.$executeRawUnsafe(`DELETE FROM "${t}" WHERE "tenantId" = $1`, T).catch(() => undefined);
++    await P.appSystem.deleteMany({ where: { tenantId: T } }).catch(() => undefined);
++    await P.tenant.delete({ where: { id: T } }).catch(() => undefined);
++    let left = 0;
++    for (const t of tbs) left += Number(((await P.$queryRawUnsafe(`SELECT count(*)::int AS n FROM "${t}" WHERE "tenantId" = $1`, T).catch(() => [{ n: 0 }])) as Any[])[0]?.n ?? 0);
++    chk(`CLEAN-${T.slice(-6)}`, left === 0 && (await P.tenant.count({ where: { id: T } })) === 0, `tenant rows left=${left}`);
++  }
++  for (const id of USERS) {
++    await P.session.deleteMany({ where: { userId: id } }).catch(() => undefined);
++    await P.membership.deleteMany({ where: { userId: id } }).catch(() => undefined);
++    await P.appNotification.deleteMany({ where: { recipientUserId: id } }).catch(() => undefined);
++    await P.user.delete({ where: { id } }).catch(() => undefined);
++  }
++  const usersLeft = await P.user.count({ where: { email: { startsWith: TAG } } });
++  chk("CLEAN-users", usersLeft === 0, `users left=${usersLeft}`);
++  const pass = res.filter((r) => r.ok).length;
++  console.log(`\nJSON_SUMMARY ${j({ pass, total: res.length, red: res.filter((r) => !r.ok).map((r) => r.id) })}`);
++  await prisma.$disconnect();
++  process.exit(res.every((r) => r.ok) ? 0 : 1);
++}
+diff --git a/scripts/pending/cf14/review/probe-cf14-g2-review.mts b/scripts/pending/cf14/review/probe-cf14-g2-review.mts
+new file mode 100644
+index 00000000..4f2a329b
+--- /dev/null
++++ b/scripts/pending/cf14/review/probe-cf14-g2-review.mts
+@@ -0,0 +1,229 @@
++// review probe — CRM C5.5-G2 (independent reviewer): AI conversations belong to their creator.
++//   ✅ = property holds · ❌ = finding · ℹ️ = evidence (not counted)
++//   X1  LIKE wildcards / prefix confusion in the id prefix filter (user ids are opaque strings to the rule)
++//   X2  nobody can make a conversation with a chosen id (sendMessage / mobile send / mobile create / member assistant / REST)
++//   X3  same userId in two shops · role change (OWNER demoted) · member re-added
++//   X4  key proposals: MANAGER cannot see/confirm, OWNER can; a non-viewer confirming a plan does not burn it (G1 R5)
++//   X5  "invisible id" answers byte-identical to a missing id (mobile messages · proposals · REST 404 · confirm note)
++//   X6  stale screen: N sends with someone else's id → N new rooms (evidence)
++//   X7  remaining cross-user channels for tool-derived data: shop memory (F1.1) and kb_auto_save → kb_search
++// Model: scripted (no network) · QC3 only · throwaway tenants swept in finally.
++// Run: bash scripts/iso.sh env NODE_OPTIONS=--max-old-space-size=3584 bash scripts/pending/cd2/with-qc3-secret.sh \
++//        bash scripts/qc3.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/pending/cf14/review/probe-cf14-g2-review.mts
++/* eslint-disable @typescript-eslint/no-explicit-any */
++type Any = any;
++import { AsyncLocalStorage } from "node:async_hooks";
++import { randomBytes } from "node:crypto";
++
++(globalThis as Any).AsyncLocalStorage ??= AsyncLocalStorage;
++const accEnv = (await import("../../../acc-v2-env.mts" as string)) as { loadQcEnv: () => { host: string } };
++const { host } = accEnv.loadQcEnv();
++if (!/ep-weathered-river/.test(host) || !/ep-weathered-river/.test(String(process.env.DATABASE_URL ?? ""))) {
++  console.log(`QC3 only — got ${host}`);
++  process.exit(1);
++}
++process.env.SHARK_AI_MOCK = "1";
++delete process.env.SHARK_AI_KEY;
++globalThis.fetch = (async () => {
++  throw new Error("network blocked");
++}) as typeof fetch;
++const { prisma } = await import("@/lib/core/db");
++const P = prisma as Any;
++const TAG = `qc-cf14r-${randomBytes(4).toString("hex").replace(/[0-9]/g, (d) => "qrstuvwxyz"[Number(d)]!)}`;
++const res: { id: string; ok: boolean }[] = [];
++const chk = (id: string, ok: boolean, msg: string) => {
++  res.push({ id, ok });
++  console.log(`  ${ok ? "✅" : "❌"} [${id}] ${msg}`);
++};
++const info = (id: string, msg: string) => console.log(`  ℹ️  [${id}] ${msg}`);
++const j = (v: unknown) => JSON.stringify(v);
++const cut = (v: unknown, n = 170) => { const s = String(v ?? "").replace(/\s+/g, " "); return s.length > n ? `${s.slice(0, n)}…` : s; };
++const has = (s: unknown, x: string) => (typeof s === "string" ? s : j(s)).includes(x);
++const USERS: string[] = [];
++const TENANTS: string[] = [];
++const sysSvc = (await import("@/lib/modules/system/service" as string)) as Any;
++const svc = (await import("@/lib/ai/service" as string)) as Any;
++const tools = (await import("@/lib/ai/tools" as string)) as Any;
++const ACT = (await import("@/lib/ai/actor" as string)) as Any;
++const CO = (await import("@/lib/ai/conversation-owner" as string)) as Any;
++const MCONV = (await import("@/lib/mobile/conversations" as string)) as Any;
++const props = (await import("@/lib/ai/proposals" as string)) as Any;
++const plans = (await import("@/lib/ai/plans" as string)) as Any;
++const mobAuth = (await import("@/lib/mobile/auth" as string)) as Any;
++const R = {
++  conv: (await import("../../../../src/app/api/mobile/conversations/route.ts" as string)) as Any,
++  msgs: (await import("../../../../src/app/api/mobile/conversations/[id]/messages/route.ts" as string)) as Any,
++  send: (await import("../../../../src/app/api/mobile/chat/send/route.ts" as string)) as Any,
++  props: (await import("../../../../src/app/api/mobile/proposals/route.ts" as string)) as Any,
++  tools: (await import("../../../../src/app/api/v1/ai/tools/[name]/route.ts" as string)) as Any,
++};
++const mkUser = async (suffix: string) => {
++  const u = await P.user.create({ data: { email: `${TAG}${suffix}@qc.invalid`, name: `QC ${suffix} ${TAG}` } });
++  USERS.push(u.id);
++  return u.id as string;
++};
++class Scripted {
++  private i = 0;
++  constructor(private steps: Any[]) {}
++  async chat(messages: Any[]) {
++    const step = this.steps[Math.min(this.i, this.steps.length - 1)];
++    this.i += 1;
++    if (step.text === "$SYSTEM") return { text: `system: ${messages.find((m: Any) => m.role === "system")?.content ?? ""}`, tokensIn: 1, tokensOut: 1, model: "scripted" };
++    if (step.text === "$LAST_TOOL") return { text: `ผล: ${[...messages].reverse().find((m: Any) => m.role === "tool")?.content ?? ""}`, tokensIn: 1, tokensOut: 1, model: "scripted" };
++    return { text: step.text ?? "", toolCalls: step.toolCalls, tokensIn: 1, tokensOut: 1, model: "scripted" };
++  }
++}
++const PHONE = "0899000102";
++
++try {
++  const tA = (await P.tenant.create({ data: { name: `${TAG}-a`, slug: `${TAG}-a` } })).id as string;
++  const tB = (await P.tenant.create({ data: { name: `${TAG}-b`, slug: `${TAG}-b` } })).id as string;
++  TENANTS.push(tA, tB);
++  const owner = await mkUser("-owner");
++  const mgr = await mkUser("-mgr");
++  const staff = await mkUser("-staff");
++  const perm = { "ai.chat.send": true, "pos.sale.create": true, "kb.article.create": true };
++  await P.membership.create({ data: { userId: owner, tenantId: tA, role: "OWNER", unitAccess: ["*"], permissions: {}, acceptedAt: new Date() } });
++  await P.membership.create({ data: { userId: mgr, tenantId: tA, role: "MANAGER", unitAccess: ["*"], permissions: {}, acceptedAt: new Date() } });
++  await P.membership.create({ data: { userId: staff, tenantId: tA, role: "STAFF", unitAccess: ["*"], permissions: perm, acceptedAt: new Date() } });
++  // the same STAFF user is OWNER of shop B
++  await P.membership.create({ data: { userId: staff, tenantId: tB, role: "OWNER", unitAccess: ["*"], permissions: {}, acceptedAt: new Date() } });
++  const act = (uid: string, t = tA, role?: string) => ACT.aiMemberActor(t, uid, { role: role ?? (uid === owner ? "OWNER" : uid === mgr ? "MANAGER" : "STAFF"), unitAccess: ["*"], permissions: uid === staff && t === tA ? perm : {} });
++  const M = (await sysSvc.createSystem(tA, "MEMBER", "สมาชิกทดสอบ")).id as string;
++  await sysSvc.createSystem(tA, "POS", "ขายทดสอบ");
++  await P.customer.create({ data: { tenantId: tA, memberSystemId: M, name: "สมาชิกคนที่สอง", phone: PHONE, memberCode: "QRC002" } });
++  await P.aiCreditWallet.create({ data: { tenantId: tA, balanceMicro: 50_000_000, grantedAt: new Date() } });
++  const sO = await svc.sendMessage({ tenantId: tA, actor: act(owner) }, { text: "ขอเบอร์สมาชิก" }, { provider: new Scripted([{ toolCalls: [{ id: "o1", name: "customer_search", args: { query: "สมาชิก" } }] }, { text: "$LAST_TOOL" }]) });
++  const ownerConv = sO.conversationId as string;
++  info("FIX", `OWNER conversation id = ${ownerConv.replace(owner, "<owner>")} · reply has phone=${has(sO.reply, PHONE)}`);
++
++  // ═══ X1 — LIKE wildcards / prefix confusion ═══
++  console.log("\n── X1 id prefix filter ──");
++  const mk = (id: string) => P.aiConversation.create({ data: { id, tenantId: tA, title: `t-${id.slice(0, 12)}` } });
++  await mk(`u~aXc~${randomBytes(4).toString("hex")}`); // victim "aXc"
++  await mk(`u~abcd~${randomBytes(4).toString("hex")}`); // victim "abcd"
++  await mk(`u~a%z~${randomBytes(4).toString("hex")}`);
++  const raw = (await P.aiConversation.findMany({ where: { tenantId: tA, id: { startsWith: "u~a_c~" } }, select: { id: true } })) as Any[];
++  info("X1.0", `Prisma startsWith("u~a_c~") raw matches: ${raw.length} (${raw.length ? "NOT escaped — wildcard live, JS re-check required" : "escaped"})`);
++  const leaks: string[] = [];
++  for (const uid of ["a_c", "abc", "a%", "%", "_", "a"]) {
++    const v = ACT.aiMemberActor(tA, uid, { role: "STAFF", unitAccess: ["*"], permissions: { "ai.chat.send": true } });
++    const list = (await MCONV.listConversations({ tenantId: tA, actor: v })) as Any[];
++    const latest = await svc.latestConversation({ tenantId: tA, actor: v });
++    const bad = [...list.map((r) => r.id), latest?.id].filter((id) => id && !String(id).startsWith(`u~${uid}~`));
++    if (bad.length) leaks.push(`${uid}: ${j(bad)}`);
++  }
++  chk("X1.1", leaks.length === 0, `viewers with userIds a_c / abc / a% / % / _ / a see only their own exact prefix (list + latest) · leaks=${j(leaks)}`);
++  let threw = false;
++  try { CO.newConversationId({ tenantId: tA, actor: ACT.aiMemberActor(tA, "x~y", { role: "OWNER", unitAccess: ["*"], permissions: {} }) }); } catch { threw = true; }
++  chk("X1.2", threw && CO.canSeeConversationId(CO.sightOf({ tenantId: tA, actor: ACT.aiMemberActor(tA, "x~y", { role: "OWNER", unitAccess: ["*"], permissions: {} }) }), "u~x~y~1") === false,
++    `a userId containing "~" gets no prefix (cannot address "u~x~…") and cannot create a room`);
++
++  // ═══ X2 — chosen ids ═══
++  console.log("\n── X2 nobody chooses the id ──");
++  const victimShaped = `u~${owner}~${"0".repeat(24)}`;
++  const sA = await svc.sendMessage({ tenantId: tA, actor: act(staff) }, { conversationId: victimShaped, text: "ห้องของเจ้าของ?" }, { provider: new Scripted([{ text: "ok" }]) });
++  const sB = await svc.sendMessage({ tenantId: tA, actor: act(staff) }, { conversationId: ownerConv, text: "ต่อห้องเจ้าของ" }, { provider: new Scripted([{ text: "ok" }]) });
++  const exists = await P.aiConversation.count({ where: { id: victimShaped } });
++  chk("X2.1", sA.conversationId.startsWith(`u~${staff}~`) && sB.conversationId.startsWith(`u~${staff}~`) && exists === 0,
++    `STAFF sendMessage with an owner-shaped id that does not exist / with the OWNER's id → new STAFF rooms, owner-shaped row created=${exists}`);
++  const tok = (await mobAuth.issueMobileToken(staff)).token as string;
++  const mh = (body?: unknown, t = tA) => ({ method: body === undefined ? "GET" : "POST", headers: { authorization: `Bearer ${tok}`, "x-tenant-id": t, "content-type": "application/json" }, ...(body === undefined ? {} : { body: j(body) }) });
++  const cr = (await (await R.conv.POST(new Request("http://qc.invalid/api/mobile/conversations", mh({ id: victimShaped, title: "x" })))).json()) as Any;
++  chk("X2.2", String(cr.id).startsWith(`u~${staff}~`) && cr.id !== victimShaped, `mobile POST conversations with a body id → ignored, server-minted ${String(cr.id).slice(0, 4)}…`);
++  const keySvc = (await import("@/lib/api-keys/service" as string)) as Any;
++  const kGen = await keySvc.createApiKey({ tenantId: tA }, `${TAG}-gen`, {});
++  const kGen2 = await keySvc.createApiKey({ tenantId: tA }, `${TAG}-gen2`, {});
++  const post = async (raw: string, name: string, args: Any, conversationId?: string) => {
++    const r = await R.tools.POST(new Request(`http://qc.invalid/api/v1/ai/tools/${name}`, { method: "POST", headers: { authorization: `Bearer ${raw}`, "content-type": "application/json" }, body: j({ args, ...(conversationId ? { conversationId } : {}) }) }), { params: Promise.resolve({ name }) });
++    return { status: r.status as number, body: (await r.json().catch(() => ({}))) as Any };
++  };
++  const sale = { lines: [{ name: "กาแฟ", qty: 1, unitPriceSatang: 5000 }], payType: "CASH" };
++  const k1 = await post(kGen.rawKey, "pos_create_sale", sale);
++  const keyConv = String(k1.body.conversationId ?? "");
++  const k2 = await post(kGen2.rawKey, "pos_create_sale", sale, keyConv);
++  const k3 = await post(kGen.rawKey, "pos_create_sale", sale, `k~${kGen.id ?? "x"}~${"0".repeat(24)}`);
++  const k4 = await post(kGen.rawKey, "pos_create_sale", sale, "no-such-conversation");
++  chk("X2.3", k1.status === 200 && keyConv.startsWith("k~") && k2.status === 404 && k3.status === 404 && k4.status === 404 && j(k2.body) === j(k4.body),
++    `REST: own room k~… · other key's room 404 · key-shaped non-existent id 404 · missing id 404 · bodies identical=${j(k2.body) === j(k4.body)}`);
++
++  // ═══ X3 — two shops · role change ═══
++  console.log("\n── X3 tenancy and role changes ──");
++  const bConv = (await svc.sendMessage({ tenantId: tB, actor: act(staff, tB, "OWNER") }, { text: "ร้านบี" }, { provider: new Scripted([{ text: "ร้านบีตอบ" }]) })).conversationId as string;
++  const staffAinA = (await MCONV.listConversations({ tenantId: tA, actor: act(staff) })) as Any[];
++  const msgsBfromA = (await svc.listMessages({ tenantId: tA, actor: act(staff) }, bConv)) as Any[];
++  chk("X3.1", !staffAinA.some((r) => r.id === bConv) && msgsBfromA.length === 0, `same user in shop B (OWNER) and shop A (STAFF): shop-B room not listed/readable from shop A (tenant scope beats the shared prefix)`);
++  const demoted = ACT.aiMemberActor(tA, owner, { role: "STAFF", unitAccess: ["*"], permissions: { "ai.chat.send": true } });
++  const dList = ((await MCONV.listConversations({ tenantId: tA, actor: demoted })) as Any[]).map((r) => r.id);
++  info("X3.2", `OWNER demoted to STAFF: still sees own room=${dList.includes(ownerConv)} · key room=${dList.includes(keyConv)} (OWNER-only extras dropped)`);
++
++  // ═══ X4 — key proposals & plan burning ═══
++  console.log("\n── X4 key proposals · plans ──");
++  const keyProp = await P.aiProposal.findFirst({ where: { tenantId: tA, conversationId: keyConv, status: "PENDING" } });
++  const mgrList = (await props.listPendingProposals({ tenantId: tA, actor: act(mgr) }, keyConv)) as Any[];
++  const mgrEx = await props.executeProposal({ role: "MANAGER", unitAccess: ["*"], permissions: {} }, { tenantId: tA }, keyProp.id, { userId: mgr });
++  const stEx = await props.executeProposal({ role: "STAFF", unitAccess: ["*"], permissions: perm }, { tenantId: tA }, keyProp.id, { userId: staff });
++  const ownList = (await props.listPendingProposals({ tenantId: tA, actor: act(owner) }, keyConv)) as Any[];
++  const after = (await P.aiProposal.findUnique({ where: { id: keyProp.id } }))?.status;
++  chk("X4.1", mgrList.length === 0 && mgrEx.ok === false && stEx.ok === false && ownList.some((p) => p.id === keyProp.id) && after === "PENDING",
++    `key proposal: MANAGER lists 0 / confirm refused (${cut(mgrEx.note, 40)}) · STAFF holding pos.sale.create refused · OWNER lists it · row ${after}`);
++  // a plan in the OWNER's room confirmed by a non-viewer must stay PENDING (before: claimed RUNNING → FAILED)
++  const plan = await P.aiPlan.create({ data: { tenantId: tA, conversationId: ownerConv, title: "แผนทดสอบ", stepsJson: [{ kind: "pos_create_sale", summary: "ขาย", payload: sale, status: "PENDING" }], expiresAt: new Date(Date.now() + 86_400_000) } });
++  const pex = await plans.executePlan({ role: "STAFF", unitAccess: ["*"], permissions: perm }, { tenantId: tA }, plan.id, { userId: staff });
++  const pst = (await P.aiPlan.findUnique({ where: { id: plan.id } }))?.status;
++  chk("X4.2", pex.ok === false && pex.doneCount === 0 && pst === "PENDING", `STAFF (holds the step key) confirms the OWNER's plan → refused, plan stays ${pst} (not burned)`);
++  const noUser = await props.executeProposal({ role: "STAFF", unitAccess: ["*"], permissions: perm }, { tenantId: tA }, keyProp.id, {});
++  info("X4.3", `executeProposal without userId (non-OWNER) → ${noUser.ok ? "RAN" : "refused"} (${cut(noUser.note, 40)})`);
++
++  // ═══ X5 — invisible = missing (byte-identical) ═══
++  console.log("\n── X5 invisible answers like missing ──");
++  const missing = `u~${staff}~${"f".repeat(24)}`;
++  const mm = async (id: string) => (await R.msgs.GET(new Request(`http://qc.invalid/api/mobile/conversations/${id}/messages`, mh()), { params: Promise.resolve({ id }) })).text();
++  const mp = async (id: string) => (await R.props.GET(new Request(`http://qc.invalid/api/mobile/proposals?conversationId=${encodeURIComponent(id)}`, mh()))).text();
++  const [a1, a2, b1, b2] = [await mm(ownerConv), await mm(missing), await mp(ownerConv), await mp(missing)];
++  const ex1 = await props.executeProposal({ role: "STAFF", unitAccess: ["*"], permissions: perm }, { tenantId: tA }, keyProp.id, { userId: staff });
++  const ex2 = await props.executeProposal({ role: "STAFF", unitAccess: ["*"], permissions: perm }, { tenantId: tA }, "no-such-proposal", { userId: staff });
++  chk("X5.1", a1 === a2 && b1 === b2 && ex1.note === ex2.note, `mobile messages / proposals / confirm note for someone else's room == for a missing id (${a1.length}B, ${b1.length}B, "${cut(ex1.note, 30)}")`);
++
++  // ═══ X6 — stale screen spam ═══
++  console.log("\n── X6 stale screen ──");
++  const before = await P.aiConversation.count({ where: { tenantId: tA, id: { startsWith: `u~${staff}~` } } });
++  for (let i = 0; i < 3; i += 1) await svc.sendMessage({ tenantId: tA, actor: act(staff) }, { conversationId: ownerConv, text: `ซ้ำ ${i}` }, { provider: new Scripted([{ text: "ok" }]) });
++  const afterN = await P.aiConversation.count({ where: { tenantId: tA, id: { startsWith: `u~${staff}~` } } });
++  info("X6.1", `3 sends with the OWNER's conversation id (stale app screen) → STAFF rooms ${before}→${afterN} (one new room per send; no data reaches the OWNER's room)`);
++  chk("X6.2", (await P.aiMessage.count({ where: { conversationId: ownerConv, content: { startsWith: "ซ้ำ" } } })) === 0, `none of those sends was written into the OWNER's room`);
++
++  // ═══ X7 — remaining channels ═══
++  console.log("\n── X7 shop memory / KB ──");
++  await svc.sendMessage({ tenantId: tA, actor: act(owner) }, { conversationId: ownerConv, text: "จำไว้" }, { provider: new Scripted([{ toolCalls: [{ id: "r1", name: "remember_fact", args: { content: `ลูกค้าประจำ โทร ${PHONE}` } }] }, { text: "จำแล้ว" }]) });
++  const sSys = await svc.sendMessage({ tenantId: tA, actor: act(staff) }, { text: "สวัสดี" }, { provider: new Scripted([{ text: "$SYSTEM" }]) });
++  const lm = await tools.runTool({ tenantId: tA, actor: act(staff) }, "list_memories", {});
++  chk("X7.1", !has(sSys.reply, PHONE) && !has(lm, PHONE), `F1.1: the OWNER's tool-derived phone stored by remember_fact reaches the STAFF (system prompt=${has(sSys.reply, PHONE)} · list_memories=${has(lm, PHONE)})`);
++  await svc.sendMessage({ tenantId: tA, actor: act(owner) }, { conversationId: ownerConv, text: "เก็บความรู้" }, { provider: new Scripted([{ toolCalls: [{ id: "k1", name: "kb_auto_save", args: { title: "ลูกค้า VIP", content: `ติดต่อ ${PHONE}` } }] }, { text: "เก็บแล้ว" }]) });
++  const ks = await tools.runTool({ tenantId: tA, actor: act(staff) }, "kb_search", { query: "ลูกค้า VIP" });
++  info("X7.2", `kb_auto_save by the OWNER's model (phone in the article) → STAFF kb_search sees it=${has(ks, PHONE)} (KB is shop-readable by design; same class as memory)`);
++} catch (e) {
++  chk("FATAL", false, `probe crashed: ${cut((e as Error)?.stack ?? e, 600)}`);
++} finally {
++  for (const T of TENANTS) {
++    const tbs = ((await P.$queryRawUnsafe(`select table_name from information_schema.columns where table_schema='public' and column_name='tenantId'`)) as Any[]).map((r) => String(r.table_name)).filter((x) => /^[A-Za-z_]+$/.test(x));
++    for (let pass = 0; pass < 4; pass += 1) for (const t of tbs) await P.$executeRawUnsafe(`DELETE FROM "${t}" WHERE "tenantId" = $1`, T).catch(() => undefined);
++    await P.appSystem.deleteMany({ where: { tenantId: T } }).catch(() => undefined);
++    await P.tenant.delete({ where: { id: T } }).catch(() => undefined);
++    let left = 0;
++    for (const t of tbs) left += Number(((await P.$queryRawUnsafe(`SELECT count(*)::int AS n FROM "${t}" WHERE "tenantId" = $1`, T).catch(() => [{ n: 0 }])) as Any[])[0]?.n ?? 0);
++    chk(`CLEAN-${T.slice(-6)}`, left === 0 && (await P.tenant.count({ where: { id: T } })) === 0, `tenant rows left=${left}`);
++  }
++  for (const id of USERS) {
++    await P.session.deleteMany({ where: { userId: id } }).catch(() => undefined);
++    await P.membership.deleteMany({ where: { userId: id } }).catch(() => undefined);
++    await P.appNotification.deleteMany({ where: { recipientUserId: id } }).catch(() => undefined);
++    await P.user.delete({ where: { id } }).catch(() => undefined);
++  }
++  const usersLeft = await P.user.count({ where: { email: { startsWith: TAG } } });
++  chk("CLEAN-users", usersLeft === 0, `users left=${usersLeft}`);
++  const pass = res.filter((x) => x.ok).length;
++  console.log(`\nJSON_SUMMARY ${j({ pass, total: res.length, red: res.filter((x) => !x.ok).map((x) => x.id) })}`);
++  await prisma.$disconnect();
++  process.exit(res.every((x) => x.ok) ? 0 : 1);
++}
+diff --git a/scripts/pending/cf14/run-verify.sh b/scripts/pending/cf14/run-verify.sh
+new file mode 100644
+index 00000000..9c0aca04
+--- /dev/null
++++ b/scripts/pending/cf14/run-verify.sh
+@@ -0,0 +1,28 @@
++#!/usr/bin/env bash
++# C5.5-G2 verification — QC3 · one heavy job at a time (iso.sh + gate lock) · run a /tmp copy of this file
++#   usage: bash /tmp/cf14-run-verify.sh <label> [only-these-names…]   (summary → /tmp/cf14-logs/<label>.summary)
++set -uo pipefail
++cd /root/projects/shark-crm-cf2
++LBL="${1:-v1}"; shift || true
++ONLY=" $* "
++D=/tmp/cf14-logs; mkdir -p "$D"
++SUM="$D/$LBL.summary"; : > "$SUM"
++echo "tree $(git rev-parse --short HEAD) + worktree diff: $(git status --short -- src | tr '\n' ' ')" >> "$SUM"
++want() { [ "$ONLY" = "  " ] || [[ "$ONLY" == *" $1 "* ]]; }
++r() { local name="$1"; shift; want "$name" || return 0; local log="$D/$LBL-${name//\//_}.log"; local t0; t0=$(date +%s); "$@" > "$log" 2>&1; local rc=$?; echo "$name exit=$rc $(( $(date +%s) - t0 ))s $(grep -E 'JSON_SUMMARY|🟢|🔴|ผ่าน [0-9]|PASS [0-9]|found [0-9]+ error|error TS' "$log" | tail -1 | cut -c1-260)" >> "$SUM"; }
++q() { r "$1" bash scripts/iso.sh env CRM_V2_SWITCH=all NODE_OPTIONS=--max-old-space-size=3584 CF9_OWNER_OUT="$D/owner-$LBL.json" bash scripts/pending/cd2/with-qc3-secret.sh bash scripts/qc3.sh bash scripts/with-gate-lock.sh pnpm exec tsx "scripts/$1.mts" "${@:2}"; }
++r typecheck bash scripts/iso.sh env NODE_OPTIONS=--max-old-space-size=5120 bash scripts/with-gate-lock.sh pnpm typecheck
++q pending/cf14/probe-cf14-g2
++q pending/cf9/probe-cf9-g1
++q pending/cf9/probe-cf9-g1-r2
++q pending/cf9/review/probe-cf9-g1-review
++q pending/cf9/review/probe-cf9-g1-review-r2
++q pending/cf8/probe-cf8-mobile
++q pending/cf8/probe-cf8-actions
++q pending/cf8/review/probe-cf8-review
++for s in qc-mobile-authz-hotfix qc-ai-automation qc-crm-c3.4 qc-automation-authz-hotfix qc-payment-authz-hotfix qc-crm-c1.7 qc-crm-c1.10 qc-crm-c2.11 qc-account-api-ai-skill qc-member-m3.10 qc-member-fix-s1; do q "$s"; done
++for g in crm member kanban account; do r "docs-$g" bash scripts/iso.sh bash scripts/qc3.sh bash scripts/with-gate-lock.sh pnpm exec tsx "scripts/gen-$g-api-docs.mts" --check; done
++echo "tracked diff after docs: $(git status --short | grep -v '^??' | grep -v expected.json | tr '\n' ' ')" >> "$SUM"
++r fitness bash scripts/iso.sh bash scripts/qc3.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/fitness.mts
++r fitness-noenv bash scripts/iso.sh env -u DATABASE_URL -u DIRECT_URL bash scripts/with-gate-lock.sh pnpm exec tsx scripts/fitness.mts
++echo ALLDONE >> "$SUM"
+diff --git a/scripts/pending/cf8/probe-cf8-mobile.mts b/scripts/pending/cf8/probe-cf8-mobile.mts
+index 6eb44d9f..471a7910 100644
+--- a/scripts/pending/cf8/probe-cf8-mobile.mts
++++ b/scripts/pending/cf8/probe-cf8-mobile.mts
+@@ -92,7 +92,9 @@ try {
+     const b = r.status === 200 ? JSON.stringify(await r.json()) : (await drain(r), "");
+     w1Ok[w] = `${r.status}:${b.includes(prop.id) && b.includes("QC รับของลับ")}`;
+   }
+-  chk("CF8-W1.2", "positive control: OWNER / MANAGER / STAFF+ai.chat.send → 200 with the pending proposal", Object.values(w1Ok).every((s) => s === "200:true"), "200:true ×3", JSON.stringify(w1Ok));
++  // ORACLE-EDIT C5.5-G2: the fixture room is written without a creator (legacy) ⇒ only the OWNER sees its proposal; MANAGER and
++  //   STAFF+ai.chat.send still pass the key gate (200) and get an empty list (= the room does not exist for them)
++  chk("CF8-W1.2", "positive control: OWNER / MANAGER / STAFF+ai.chat.send → 200 · the legacy room's pending proposal shown to the OWNER only", w1Ok.owner === "200:true" && w1Ok.manager === "200:false" && w1Ok.staffAi === "200:false", "owner 200:true · manager/staffAi 200:false", JSON.stringify(w1Ok));
+ 
+   // ═══ W2 usage GET ═══
+   const w2No = await is403(R.usage.GET(req("staff", "GET")));
+@@ -117,13 +119,19 @@ try {
+   const w3OkBody = w3OkRes.status === 200 ? ((await w3OkRes.json()) as Any) : (await drain(w3OkRes), {});
+   const r2 = await rooms();
+   const w3Again: Record<string, string> = {};
++  // ORACLE-EDIT C5.5-G2: a room is its creator's — the STAFF's welcome room is not "existing" for the OWNER/MANAGER: each gets
++  //   their own welcome room on the first tap (existing:false) and existing:true on the second
+   for (const w of ["owner", "manager"] as Who[]) {
+-    const r = await R.welcome.POST(req(w, "POST", { body: {}, tenant: tidWelcome }));
+-    const b = r.status === 200 ? ((await r.json()) as Any) : (await drain(r), {});
+-    w3Again[w] = `${r.status}:${b.existing}`;
++    const seen: string[] = [];
++    for (let tap = 0; tap < 2; tap += 1) {
++      const r = await R.welcome.POST(req(w, "POST", { body: {}, tenant: tidWelcome }));
++      const b = r.status === 200 ? ((await r.json()) as Any) : (await drain(r), {});
++      seen.push(`${r.status}:${b.existing}`);
++    }
++    w3Again[w] = seen.join(",");
+   }
+-  chk("CF8-W3.2", "positive control: STAFF+ai.chat.send → 200 creates the welcome room once · OWNER/MANAGER → 200 existing:true",
+-    w3OkRes.status === 200 && w3OkBody.existing === false && !!w3OkBody.conversationId && r2 === 1 && Object.values(w3Again).every((s) => s === "200:true"),
++  chk("CF8-W3.2", "positive control: STAFF+ai.chat.send → 200 creates the welcome room once · OWNER/MANAGER → own welcome room, then 200 existing:true",
++    w3OkRes.status === 200 && w3OkBody.existing === false && !!w3OkBody.conversationId && r2 === 1 && Object.values(w3Again).every((s) => s === "200:false,200:true"),
+     "200 created + existing ×2", `staffAi=${w3OkRes.status}/${w3OkBody.existing} rooms=${r2} again=${JSON.stringify(w3Again)}`, "MAJOR");
+ 
+   // ═══ cross-tenant control: a valid token with a tenant the user is not a member of ═══
+diff --git a/scripts/pending/cf9/probe-cf9-g1.mts b/scripts/pending/cf9/probe-cf9-g1.mts
+index a181d8b3..9d950777 100644
+--- a/scripts/pending/cf9/probe-cf9-g1.mts
++++ b/scripts/pending/cf9/probe-cf9-g1.mts
+@@ -165,7 +165,20 @@ try {
+   await P.shopOrder.create({ data: { tenantId: tA, unitId: u2, code: "SO-QC2", customerName: "ผู้ซื้อสาขาสอง", customerPhone: "0822000002", totalSatang: 20_000 } });
+   await P.aiCreditWallet.create({ data: { tenantId: tA, balanceMicro: 50_000_000, grantedAt: new Date() } });
+   const conv = await P.aiConversation.create({ data: { tenantId: tA, title: "QC G1" } });
+-  const rt = (actor: Any, name: string, args: Any = {}) => tools.runTool({ tenantId: tA, actor, conversationId: conv.id }, name, args) as Promise<string>;
++  // ORACLE-EDIT C5.5-G2: an AI conversation belongs to its creator and a room written without one is the OWNER's only — a proposal
++  //   is made in the proposer's own room (as through the real doors). Each valid actor gets its own room; anything the owner module
++  //   refuses (forged / other-shop actors) — and the base tree, which has no such module — keeps the shared room
++  const CO = (await import("@/lib/ai/conversation-owner" as string).catch(() => null)) as Any;
++  const ownRooms = new Map<string, string>();
++  const roomOf = async (actor: Any): Promise<string> => {
++    let id: string;
++    try { id = CO?.newConversationId ? CO.newConversationId({ tenantId: tA, actor }) : ""; } catch { id = ""; }
++    if (!id) return conv.id as string;
++    const k = `${actor.kind}:${actor.userId ?? actor.keyId ?? actor.job}`;
++    if (!ownRooms.has(k)) { await P.aiConversation.create({ data: { id, tenantId: tA, title: "QC G1" } }); ownRooms.set(k, id); }
++    return ownRooms.get(k)!;
++  };
++  const rt = async (actor: Any, name: string, args: Any = {}) => tools.runTool({ tenantId: tA, actor, conversationId: await roomOf(actor) }, name, args) as Promise<string>;
+ 
+   // ═══ G0 registry: every registered tool is mapped by the access table (unknown = denied) ═══
+   console.log("\n── G0 access table covers the registry ──");
+diff --git a/scripts/qc-account-api-ai-skill.mts b/scripts/qc-account-api-ai-skill.mts
+index beeb9e61..315ff063 100644
+--- a/scripts/qc-account-api-ai-skill.mts
++++ b/scripts/qc-account-api-ai-skill.mts
+@@ -97,7 +97,9 @@ try {
+   const prop = await prisma.aiProposal.findUnique({ where: { id: created.proposalId } });
+   chk("E1-K3.3", "AiProposal kind=account.documents.create · risk NORMAL · summary มีชื่อลูกค้า+ยอดบาท", prop?.kind === "account.documents.create" && prop?.risk === "NORMAL" && /ณัฐพล/.test(prop?.summary ?? "") && /1,070,000|10,700/.test(prop?.summary ?? ""), "NORMAL + สรุป", `${prop?.kind} ${prop?.risk} ${prop?.summary}`);
+   const denied = await proposals.executeProposal(staffNoPerm, { tenantId: tid }, created.proposalId);
+-  chk("E1-K3.4", "STAFF ไม่มีสิทธิ์กดยืนยัน → ok:false note ไทย 'ไม่มีสิทธิ์' · proposal ยัง PENDING", denied?.ok === false && /สิทธิ์/.test(denied?.note ?? "") && (await prisma.aiProposal.findUnique({ where: { id: created.proposalId } }))?.status === "PENDING", "PENDING", JSON.stringify(denied));
++  // ORACLE-EDIT C5.5-G2: the proposal sits in a conversation of somebody else (a room written without a creator = the OWNER's), so a
++  //   STAFF confirmer is now answered "not found" before the key check — still refused, row still PENDING
++  chk("E1-K3.4", "STAFF ไม่มีสิทธิ์กดยืนยัน → ok:false note ไทย 'ไม่มีสิทธิ์' (หรือ 'ไม่พบข้อเสนอ' — ห้องของคนอื่น) · proposal ยัง PENDING", denied?.ok === false && /สิทธิ์|ไม่พบข้อเสนอ/.test(denied?.note ?? "") && (await prisma.aiProposal.findUnique({ where: { id: created.proposalId } }))?.status === "PENDING", "PENDING", JSON.stringify(denied));
+   const exec = await proposals.executeProposal(owner, { tenantId: tid }, created.proposalId);
+   const doc = await prisma.accountDocument.findFirst({ where: { systemId: SYS }, select: { id: true, status: true, grandTotal: true, source: true } });
+   chk("E1-K3.5", "OWNER ยืนยัน → ok:true · เอกสาร DRAFT 1,070,000 source AI · note ไทยบอกผล", exec?.ok === true && doc?.status === "DRAFT" && doc?.grandTotal === 1_070_000 && doc?.source === "AI" && /[ก-๙]/.test(exec?.note ?? ""), "DRAFT", `${JSON.stringify(exec)} ${JSON.stringify(doc)}`);
+diff --git a/scripts/qc-ai-proposals.mts b/scripts/qc-ai-proposals.mts
+index afe7fbe1..4950e5ce 100644
+--- a/scripts/qc-ai-proposals.mts
++++ b/scripts/qc-ai-proposals.mts
+@@ -50,9 +50,10 @@ try {
+     const p1 = await pr.createProposal(ctx, { conversationId: conv.id, kind: "inventory_receive", summary: "รับครีมนวดเข้า 10 ชิ้น", payload: { sku: "PP-1", qty: 10, costSatang: 5000 } });
+     const row1 = await prisma.aiProposal.findUnique({ where: { id: p1.id } });
+     chk("PZ-1.1", "createProposal → PENDING + หมดอายุอนาคต", row1?.status === "PENDING" && (row1?.expiresAt?.getTime() ?? 0) > Date.now(), "PENDING", String(row1?.status));
+-    chk("PZ-1.2", "listPending เห็นข้อเสนอ", (await pr.listPendingProposals(ctx, conv.id)).some((x: { id: string }) => x.id === p1.id), "เห็น", "?");
++    // ORACLE-EDIT C5.5-G2: listPendingProposals/rejectProposal take the viewer (ctx.actor) — the shop OWNER, on a conversation written without a creator
++    chk("PZ-1.2", "listPending เห็นข้อเสนอ", (await pr.listPendingProposals({ ...ctx, actor: qcOwner(tid) }, conv.id)).some((x: { id: string }) => x.id === p1.id), "เห็น", "?");
+     const t2 = await prisma.tenant.create({ data: { name: "QC PP2", slug: `qc-pp2-${Date.now()}` } }); tid2 = t2.id;
+-    chk("PZ-1.3", "tenant อื่นไม่เห็น (kernel guard)", (await pr.listPendingProposals({ tenantId: tid2 }, conv.id)).length === 0, "0", "?");
++    chk("PZ-1.3", "tenant อื่นไม่เห็น (kernel guard)", (await pr.listPendingProposals({ tenantId: tid2, actor: qcOwner(tid2) }, conv.id)).length === 0, "0", "?");
+ 
+     // 2) execute สำเร็จ (OWNER) — สต็อกเพิ่มจริง + idempotencyKey ai-<id>
+     const ex1 = await pr.executeProposal(OWNER, ctx, p1.id);
+@@ -69,8 +70,8 @@ try {
+     chk("PZ-3.1", "STAFF ไม่มีสิทธิ์ → ok:false + PENDING คงเดิม", ex2.ok === false && (await prisma.aiProposal.findUnique({ where: { id: p2.id } }))?.status === "PENDING", "false+PENDING", `${ex2.ok}/?`);
+ 
+     // 4) reject
+-    chk("PZ-4.1", "reject PENDING → true + REJECTED", (await pr.rejectProposal(ctx, p2.id)) === true && (await prisma.aiProposal.findUnique({ where: { id: p2.id } }))?.status === "REJECTED", "true", "?");
+-    chk("PZ-4.2", "reject ซ้ำ → false", (await pr.rejectProposal(ctx, p2.id)) === false, "false", "?");
++    chk("PZ-4.1", "reject PENDING → true + REJECTED", (await pr.rejectProposal({ ...ctx, actor: qcOwner(tid) }, p2.id)) === true && (await prisma.aiProposal.findUnique({ where: { id: p2.id } }))?.status === "REJECTED", "true", "?");
++    chk("PZ-4.2", "reject ซ้ำ → false", (await pr.rejectProposal({ ...ctx, actor: qcOwner(tid) }, p2.id)) === false, "false", "?");
+ 
+     // 5) หมดอายุ
+     const p3 = await pr.createProposal(ctx, { conversationId: conv.id, kind: "inventory_receive", summary: "หมดอายุ", payload: { sku: "PP-1", qty: 1 } });
+diff --git a/scripts/qc-ai.mts b/scripts/qc-ai.mts
+index 5cacab4d..cd9a0330 100644
+--- a/scripts/qc-ai.mts
++++ b/scripts/qc-ai.mts
+@@ -57,8 +57,9 @@ try {
+ 
+   // kernel guard: tenant อื่นมองไม่เห็นบทสนทนา
+   const t2 = await prisma.tenant.create({ data: { name: "QC AI 2", slug: `qc-ai2-${Date.now()}` } }); tid2 = t2.id;
+-  chk("AI-5.1", "tenant อื่นไม่เห็นบทสนทนา (kernel guard)", (await svc.latestConversation({ tenantId: tid2 })) === null, "null", "?");
+-  chk("AI-5.2", "tenant อื่นอ่านข้อความ conv นี้ไม่ได้", (await svc.listMessages({ tenantId: tid2 }, convId)).length === 0, "0", "?");
++  // ORACLE-EDIT C5.5-G2: latestConversation/listMessages take the viewer (ctx.actor) — "another shop" is now that shop's OWNER
++  chk("AI-5.1", "tenant อื่นไม่เห็นบทสนทนา (kernel guard)", (await svc.latestConversation({ tenantId: tid2, actor: qcOwner(tid2) })) === null, "null", "?");
++  chk("AI-5.2", "tenant อื่นอ่านข้อความ conv นี้ไม่ได้", (await svc.listMessages({ tenantId: tid2, actor: qcOwner(tid2) }, convId)).length === 0, "0", "?");
+ } catch (e) { chk("CRASH", "จบ", false, "จบ", e instanceof Error ? e.message.slice(0, 160) : String(e)); }
+ finally {
+   const d = async (f: () => Promise<unknown>) => { try { await f(); } catch {} };
+diff --git a/scripts/qc-mobile-authz-hotfix.mts b/scripts/qc-mobile-authz-hotfix.mts
+index 85ee7828..0d3dedfb 100644
+--- a/scripts/qc-mobile-authz-hotfix.mts
++++ b/scripts/qc-mobile-authz-hotfix.mts
+@@ -65,7 +65,9 @@ try {
+     const st = res.status; const b = st === 403 ? await res.json().catch(() => ({})) : (await drain(res), {});
+     return st === 403 && (b as Any).error === "forbidden";
+   };
+-  const conv = await P.aiConversation.create({ data: { tenantId: tid, title: "QC ห้องเดิม" } });
++  // ORACLE-EDIT C5.5-G2: an AI room is its creator's (a room written without a creator is the OWNER's only) — the room the
++  //   STAFF+ai.chat.send positive controls below read/rename/delete is that STAFF's own room, opened through the real route
++  const conv = { id: String(((await (await R.convs.POST(req("staffAi", "POST", { title: "QC ห้องเดิม" }))).json()) as Any).id) };
+   await P.aiMessage.create({ data: { tenantId: tid, conversationId: conv.id, role: "USER", content: "ข้อความลับของร้าน" } });
+ 
+   // ═══ 4a chat/send ═══ (empty text ⇒ the allowed path stops before any model call / credit)
+@@ -99,8 +101,8 @@ try {
+   chk("MZ-4b.5", "POST [id]/read: STAFF no key → 403, lastReadAt untouched", readNo && readKept, "403", `no=${readNo} kept=${readKept}`, "MAJOR");
+   const delNo = await is403(R.conv.DELETE(req("staff", "DELETE"), p(conv.id)));
+   const notDeleted = (await P.aiConversation.findUnique({ where: { id: conv.id } }))?.deletedAt == null;
+-  const delOk = (await R.conv.DELETE(req("owner", "DELETE"), p(conv.id))).status === 200 && (await P.aiConversation.findUnique({ where: { id: conv.id } }))?.deletedAt != null;
+-  chk("MZ-4b.6", "DELETE [id]: STAFF no key → 403, room not deleted · OWNER → soft-deleted", delNo && notDeleted && delOk, "403+kept / deleted", `no=${delNo} kept=${notDeleted} ok=${delOk}`);
++  const delOk = (await R.conv.DELETE(req("staffAi", "DELETE"), p(conv.id))).status === 200 /* ORACLE-EDIT C5.5-G2: the room's creator deletes it */ && (await P.aiConversation.findUnique({ where: { id: conv.id } }))?.deletedAt != null;
++  chk("MZ-4b.6", "DELETE [id]: STAFF no key → 403, room not deleted · its creator (STAFF+ai.chat.send) → soft-deleted", delNo && notDeleted && delOk, "403+kept / deleted", `no=${delNo} kept=${notDeleted} ok=${delOk}`);
+ 
+   // ═══ 4c dna/apply ═══ (unknown blueprint ⇒ an allowed caller passes the gate and then fails on the blueprint, creating nothing)
+   const sysBefore = await P.appSystem.count({ where: { tenantId: tid } }).catch(() => -1);
+diff --git a/scripts/qc-mobile-chat.mts b/scripts/qc-mobile-chat.mts
+index 11a4a272..43edddb4 100644
+--- a/scripts/qc-mobile-chat.mts
++++ b/scripts/qc-mobile-chat.mts
+@@ -40,28 +40,30 @@ try {
+   const td = await prisma.tenant.create({ data: { name: "ร้านเสริมสวย QC DNA", slug: `qc-mcd-${ts}` } }); tids.push(td.id);
+   const ctx = { tenantId: t1.id }; const ctx2 = { tenantId: t2.id };
+   const chatCtx = { ...ctx, actor: qcOwner(t1.id) };
++  // ORACLE-EDIT C5.5-G2: mobile conversation functions now take the viewer (ctx.actor) — rooms are their creator's; these checks are the shop OWNER's own rooms
++  const chatCtx2 = { ...ctx2, actor: qcOwner(t2.id) };
+ 
+   // ── lib conversations ──
+   const conv = ((await route("@/lib/mobile/conversations")) ?? {}) as unknown as { [k: string]: (...a: any[]) => Promise<any> };
+   if (typeof conv.listConversations !== "function") chk("MC-1.0", "มี lib mobile/conversations", false, "มี", "ยังไม่สร้าง");
+   else {
+-    const c1 = await conv.createConversation(ctx, "งานสต็อก");
+-    const c2 = await conv.createConversation(ctx);
+-    let list = await conv.listConversations(ctx);
++    const c1 = await conv.createConversation(chatCtx, "งานสต็อก");
++    const c2 = await conv.createConversation(chatCtx);
++    let list = await conv.listConversations(chatCtx);
+     chk("MC-1.1", "create 2 ห้อง → list 2 แถว unread=false ทั้งคู่", list.length === 2 && list.every((r: any) => r.unread === false), "2/false", JSON.stringify(list.map((r: any) => r.unread)));
+     await prisma.aiMessage.create({ data: { tenantId: t1.id, conversationId: c1.id, role: "ASSISTANT", content: "เสร็จแล้วครับ" } });
+     await prisma.aiConversation.update({ where: { id: c1.id }, data: { updatedAt: new Date() } });
+-    list = await conv.listConversations(ctx);
++    list = await conv.listConversations(chatCtx);
+     const r1 = list.find((r: any) => r.id === c1.id);
+     chk("MC-1.2", "AI ตอบใหม่ → ห้องนั้น unread=true + ขึ้นบนสุด (เรียง updatedAt)", r1?.unread === true && list[0]?.id === c1.id, "true/บนสุด", JSON.stringify({ u: r1?.unread, top: list[0]?.id === c1.id }));
+-    await conv.markRead(ctx, c1.id);
+-    list = await conv.listConversations(ctx);
++    await conv.markRead(chatCtx, c1.id);
++    list = await conv.listConversations(chatCtx);
+     chk("MC-1.3", "markRead → unread=false", list.find((r: any) => r.id === c1.id)?.unread === false, "false", "?");
+-    chk("MC-1.4", "rename ห้องตัวเอง=true · ข้าม tenant=false (กันข้ามกิจการ)", (await conv.renameConversation(ctx, c1.id, "สต็อกหลังร้าน")) === true && (await conv.renameConversation(ctx2, c1.id, "hack")) === false && (await prisma.aiConversation.findUnique({ where: { id: c1.id } }))?.title === "สต็อกหลังร้าน", "true/false", "?");
+-    await conv.deleteConversation(ctx, c2.id);
++    chk("MC-1.4", "rename ห้องตัวเอง=true · ข้าม tenant=false (กันข้ามกิจการ)", (await conv.renameConversation(chatCtx, c1.id, "สต็อกหลังร้าน")) === true && (await conv.renameConversation(chatCtx2, c1.id, "hack")) === false && (await prisma.aiConversation.findUnique({ where: { id: c1.id } }))?.title === "สต็อกหลังร้าน", "true/false", "?");
++    await conv.deleteConversation(chatCtx, c2.id);
+     const row2 = await prisma.aiConversation.findUnique({ where: { id: c2.id } });
+-    chk("MC-1.5", "delete = soft (deletedAt) + หายจาก list + แถวจริงยังอยู่", !!row2?.deletedAt && (await conv.listConversations(ctx)).every((r: any) => r.id !== c2.id), "soft", JSON.stringify({ del: !!row2?.deletedAt }));
+-    chk("MC-1.6", "ข้าม tenant ลบไม่ได้", (await conv.deleteConversation(ctx2, c1.id)) === false && !(await prisma.aiConversation.findUnique({ where: { id: c1.id } }))?.deletedAt, "false", "?");
++    chk("MC-1.5", "delete = soft (deletedAt) + หายจาก list + แถวจริงยังอยู่", !!row2?.deletedAt && (await conv.listConversations(chatCtx)).every((r: any) => r.id !== c2.id), "soft", JSON.stringify({ del: !!row2?.deletedAt }));
++    chk("MC-1.6", "ข้าม tenant ลบไม่ได้", (await conv.deleteConversation(chatCtx2, c1.id)) === false && !(await prisma.aiConversation.findUnique({ where: { id: c1.id } }))?.deletedAt, "false", "?");
+   }
+ 
+   // ── lib chat (Mock) ──
+diff --git a/scripts/qc-mobile-help.mts b/scripts/qc-mobile-help.mts
+index 25fa15c4..17337283 100644
+--- a/scripts/qc-mobile-help.mts
++++ b/scripts/qc-mobile-help.mts
+@@ -46,7 +46,8 @@ try {
+       const after = await prisma.aiConversation.findUnique({ where: { id: conv.id } });
+       chk("HA-2.2", "updatedAt ถูก touch (ห้องเด้งบนสุด)", !!after && !!before && after.updatedAt > before.updatedAt, "ใหม่กว่า", "?");
+       const mconv = ((await dyn("@/lib/mobile/conversations")) ?? {}) as { listConversations?: (c: any) => Promise<{ id: string; unread: boolean }[]> };
+-      const list = mconv.listConversations ? await mconv.listConversations(ctx) : [];
++      // ORACLE-EDIT C5.5-G2: the list takes the viewer — the AI room here was written without a creator (legacy) ⇒ the shop OWNER sees it
++      const list = mconv.listConversations ? await mconv.listConversations({ ...ctx, actor: { kind: "member", tenantId: t.id, userId: "qc-owner", membership: { role: "OWNER", unitAccess: ["*"], permissions: {} } } }) : [];
+       chk("HA-2.3", "แอปเห็น unread=true (session สีต่าง — สัญญาเจ้าของ)", list.find((r) => r.id === conv.id)?.unread === true, "true", JSON.stringify(list.find((r) => r.id === conv.id)));
+     }
+   }
+diff --git a/src/app/api/mobile/chat/send/route.ts b/src/app/api/mobile/chat/send/route.ts
+index c0e90200..8e0c6725 100644
+--- a/src/app/api/mobile/chat/send/route.ts
++++ b/src/app/api/mobile/chat/send/route.ts
+@@ -1,9 +1,8 @@
+ // POST แชท AI → SSE (text/event-stream) · แต่ละ event = data: {type,...}\n\n จบด้วย done/error
+ // (ledger/MOBILE_PLAN.md M-11) — ครอบ sendMobileChat (wrap sendMessage เดิม)
+ import { requireMobile, mobileError } from "@/lib/mobile/auth";
+-import { mobileDenied, AI_CHAT } from "@/lib/mobile/guard";
++import { mobileDenied, mobileAiCtx, AI_CHAT } from "@/lib/mobile/guard";
+ import { sendMobileChat } from "@/lib/mobile/chat";
+-import { aiMemberActor } from "@/lib/ai/actor";
+ 
+ export async function POST(req: Request) {
+   const g = await requireMobile(req);
+@@ -25,7 +24,8 @@ export async function POST(req: Request) {
+   };
+ 
+   // CRM C5.5-G1 ▸ ผู้กระทำ = เจ้าของโทเค็น + Membership ของร้านที่ X-Tenant-Id (requireMobile ตรวจแล้ว) ◂
+-  const ctx = { ...g.ctx, actor: aiMemberActor(g.ctx.tenantId, g.user.id, g.membership) };
++  //   CRM C5.5-G2: the same actor is the viewer — sendMessage continues only rooms this user can see ◂
++  const ctx = mobileAiCtx(g);
+   const encoder = new TextEncoder();
+   const stream = new ReadableStream<Uint8Array>({
+     async start(controller) {
+diff --git a/src/app/api/mobile/chat/welcome/route.ts b/src/app/api/mobile/chat/welcome/route.ts
+index 7c1284de..20ef7983 100644
+--- a/src/app/api/mobile/chat/welcome/route.ts
++++ b/src/app/api/mobile/chat/welcome/route.ts
+@@ -4,7 +4,8 @@ import { requireMobile, mobileError } from "@/lib/mobile/auth";
+ import { tenantDb } from "@/lib/core/db";
+ import { onboardingChecklist } from "@/lib/platform/onboarding-drip";
+ import { dnaFactsSummary } from "@/lib/ai/service";
+-import { mobileDenied, AI_CHAT } from "@/lib/mobile/guard";
++import { mobileDenied, mobileAiCtx, AI_CHAT } from "@/lib/mobile/guard";
++import { canSeeConversationId, newConversationId, sightOf, visibleConversationWhere } from "@/lib/ai/conversation-owner";
+ 
+ const WELCOME_TITLE = "เริ่มต้นกับผู้ช่วย AI";
+ 
+@@ -26,11 +27,15 @@ export async function POST(req: Request) {
+   const db = tenantDb(ctx);
+ 
+   // มีห้องอยู่แล้ว (ยังไม่ลบ) → ไม่สร้างเพิ่ม
+-  const existingRoom = await db.aiConversation.findFirst({
+-    where: { deletedAt: null },
++  // CRM C5.5-G2 ▸ "มีห้อง" = ห้องที่ผู้ใช้คนนี้เห็น (ของตัวเอง · เจ้าของร้าน + ห้องเดิม) — ห้องของคนอื่นไม่นับ และไม่บอกว่ามีอยู่ ◂
++  const aiCtx = mobileAiCtx(g);
++  const sight = sightOf(aiCtx);
++  const existingRooms = await db.aiConversation.findMany({
++    where: { deletedAt: null, ...visibleConversationWhere(sight) },
+     select: { id: true },
++    take: 5,
+   });
+-  if (existingRoom) return Response.json({ existing: true });
++  if (existingRooms.some((r) => canSeeConversationId(sight, r.id))) return Response.json({ existing: true });
+ 
+   // เช็กลิสต์ก่อนสร้างห้อง (ให้ triedAi/จำนวนที่เหลือสะท้อนสภาพก่อนกดครั้งแรก)
+   const checklist = await onboardingChecklist({ tenantId: ctx.tenantId });
+@@ -58,7 +63,7 @@ export async function POST(req: Request) {
+ 
+   // สร้างห้อง + ข้อความทัก (tenantId ใส่ตรง ๆ ตาม convention repo)
+   const conv = await db.aiConversation.create({
+-    data: { tenantId: ctx.tenantId, title: WELCOME_TITLE },
++    data: { id: newConversationId(aiCtx), tenantId: ctx.tenantId, title: WELCOME_TITLE },
+   });
+   await db.aiMessage.create({
+     data: { tenantId: ctx.tenantId, conversationId: conv.id, role: "ASSISTANT", content },
+diff --git a/src/app/api/mobile/conversations/[id]/messages/route.ts b/src/app/api/mobile/conversations/[id]/messages/route.ts
+index be16ef0e..562a6f9b 100644
+--- a/src/app/api/mobile/conversations/[id]/messages/route.ts
++++ b/src/app/api/mobile/conversations/[id]/messages/route.ts
+@@ -1,6 +1,6 @@
+ // GET ข้อความในห้อง (จอแชทเปิดห้องเก่า) — listMessages เดิมผ่าน tenantDb (ข้าม tenant = ว่าง)
+ import { requireMobile, mobileError } from "@/lib/mobile/auth";
+-import { mobileDenied, AI_CHAT } from "@/lib/mobile/guard";
++import { mobileDenied, mobileAiCtx, AI_CHAT } from "@/lib/mobile/guard";
+ import { listMessages } from "@/lib/ai/service";
+ 
+ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }): Promise<Response> {
+@@ -9,7 +9,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
+   const denied = mobileDenied(g, AI_CHAT); // HOTFIX 2026-10-01: same key as the web door
+   if (denied) return denied;
+   const { id } = await ctx.params;
+-  const rows = await listMessages(g.ctx, id);
++  const rows = await listMessages(mobileAiCtx(g), id); // CRM C5.5-G2: someone else's room = empty, like a missing id
+   return Response.json({
+     messages: rows.map((m) => ({ id: m.id, role: m.role, content: m.content, createdAt: m.createdAt })),
+   });
+diff --git a/src/app/api/mobile/conversations/[id]/read/route.ts b/src/app/api/mobile/conversations/[id]/read/route.ts
+index 5c95212d..a3bc05b3 100644
+--- a/src/app/api/mobile/conversations/[id]/read/route.ts
++++ b/src/app/api/mobile/conversations/[id]/read/route.ts
+@@ -1,6 +1,6 @@
+ // POST ทำเครื่องหมายว่าอ่านแล้ว (ledger/MOBILE_PLAN.md M-11)
+ import { requireMobile, mobileError } from "@/lib/mobile/auth";
+-import { mobileDenied, AI_CHAT } from "@/lib/mobile/guard";
++import { mobileDenied, mobileAiCtx, AI_CHAT } from "@/lib/mobile/guard";
+ import { markRead } from "@/lib/mobile/conversations";
+ 
+ export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+@@ -9,6 +9,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
+   const denied = mobileDenied(g, AI_CHAT); // HOTFIX 2026-10-01: same key as the web door
+   if (denied) return denied;
+   const { id } = await params;
+-  const ok = await markRead(g.ctx, id);
++  const ok = await markRead(mobileAiCtx(g), id); // CRM C5.5-G2: own rooms only
+   return Response.json({ ok });
+ }
+diff --git a/src/app/api/mobile/conversations/[id]/route.ts b/src/app/api/mobile/conversations/[id]/route.ts
+index 31e5e69d..10539111 100644
+--- a/src/app/api/mobile/conversations/[id]/route.ts
++++ b/src/app/api/mobile/conversations/[id]/route.ts
+@@ -1,7 +1,7 @@
+ // PATCH เปลี่ยนชื่อ · DELETE ลบ soft (ledger/MOBILE_PLAN.md M-11)
+ // Next 16: params เป็น Promise ต้อง await
+ import { requireMobile, mobileError } from "@/lib/mobile/auth";
+-import { mobileDenied, AI_CHAT } from "@/lib/mobile/guard";
++import { mobileDenied, mobileAiCtx, AI_CHAT } from "@/lib/mobile/guard";
+ import { renameConversation, deleteConversation } from "@/lib/mobile/conversations";
+ 
+ export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
+@@ -18,7 +18,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
+   }
+   const title = typeof body.title === "string" ? body.title.trim() : "";
+   if (!title) return Response.json({ error: "title_required" }, { status: 400 });
+-  const ok = await renameConversation(g.ctx, id, title);
++  const ok = await renameConversation(mobileAiCtx(g), id, title); // CRM C5.5-G2: own rooms only
+   return Response.json({ ok });
+ }
+ 
+@@ -28,6 +28,6 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
+   const denied = mobileDenied(g, AI_CHAT); // HOTFIX 2026-10-01: same key as the web door
+   if (denied) return denied;
+   const { id } = await params;
+-  const ok = await deleteConversation(g.ctx, id);
++  const ok = await deleteConversation(mobileAiCtx(g), id); // CRM C5.5-G2: own rooms only
+   return Response.json({ ok });
+ }
+diff --git a/src/app/api/mobile/conversations/route.ts b/src/app/api/mobile/conversations/route.ts
+index c754007d..5375381d 100644
+--- a/src/app/api/mobile/conversations/route.ts
++++ b/src/app/api/mobile/conversations/route.ts
+@@ -1,6 +1,6 @@
+ // GET รายการห้อง · POST เปิดห้องใหม่ (ledger/MOBILE_PLAN.md M-11)
+ import { requireMobile, mobileError } from "@/lib/mobile/auth";
+-import { mobileDenied, AI_CHAT } from "@/lib/mobile/guard";
++import { mobileDenied, mobileAiCtx, AI_CHAT } from "@/lib/mobile/guard";
+ import { listConversations, createConversation } from "@/lib/mobile/conversations";
+ 
+ export async function GET(req: Request) {
+@@ -8,7 +8,7 @@ export async function GET(req: Request) {
+   if (!g.ok) return mobileError(g);
+   const denied = mobileDenied(g, AI_CHAT); // HOTFIX 2026-10-01: same key as the web door
+   if (denied) return denied;
+-  const conversations = await listConversations(g.ctx);
++  const conversations = await listConversations(mobileAiCtx(g)); // CRM C5.5-G2: own rooms only
+   return Response.json({ conversations });
+ }
+ 
+@@ -23,6 +23,6 @@ export async function POST(req: Request) {
+   } catch {
+     return Response.json({ error: "bad_json" }, { status: 400 });
+   }
+-  const { id } = await createConversation(g.ctx, typeof body.title === "string" ? body.title : undefined);
++  const { id } = await createConversation(mobileAiCtx(g), typeof body.title === "string" ? body.title : undefined); // CRM C5.5-G2: creator in the id
+   return Response.json({ id });
+ }
+diff --git a/src/app/api/mobile/plans/confirm/route.ts b/src/app/api/mobile/plans/confirm/route.ts
+index 0a322cbb..58c95a1f 100644
+--- a/src/app/api/mobile/plans/confirm/route.ts
++++ b/src/app/api/mobile/plans/confirm/route.ts
+@@ -19,6 +19,7 @@ export async function POST(req: Request) {
+     unitAccess: g.membership.unitAccess as string[],
+     permissions: g.membership.permissions as Record<string, unknown>,
+   };
+-  const res = await executePlan(m, g.ctx, id, { confirm2x: body.confirm2x === true });
++  // CRM C5.5-G2 ▸ userId ของคนกด — แผนในห้องที่เขามองไม่เห็น = เหมือนไม่มีแผนนี้ ◂
++  const res = await executePlan(m, g.ctx, id, { confirm2x: body.confirm2x === true, userId: g.user.id });
+   return Response.json(res);
+ }
+diff --git a/src/app/api/mobile/plans/reject/route.ts b/src/app/api/mobile/plans/reject/route.ts
+index f38ce07d..7c73eac8 100644
+--- a/src/app/api/mobile/plans/reject/route.ts
++++ b/src/app/api/mobile/plans/reject/route.ts
+@@ -1,6 +1,7 @@
+ // POST ยกเลิกแผน (PENDING → REJECTED) (ledger/MOBILE_PLAN.md M-11)
+ import { requireMobile, mobileError } from "@/lib/mobile/auth";
+ import { rejectPlan } from "@/lib/ai/plans";
++import { mobileAiCtx } from "@/lib/mobile/guard";
+ 
+ export async function POST(req: Request) {
+   const g = await requireMobile(req);
+@@ -13,6 +14,6 @@ export async function POST(req: Request) {
+   }
+   const id = typeof body.id === "string" ? body.id : "";
+   if (!id) return Response.json({ error: "id_required" }, { status: 400 });
+-  const ok = await rejectPlan(g.ctx, id);
++  const ok = await rejectPlan(mobileAiCtx(g), id); // CRM C5.5-G2: plans of own rooms only
+   return Response.json({ ok });
+ }
+diff --git a/src/app/api/mobile/proposals/reject/route.ts b/src/app/api/mobile/proposals/reject/route.ts
+index e4858f82..4fe2adf1 100644
+--- a/src/app/api/mobile/proposals/reject/route.ts
++++ b/src/app/api/mobile/proposals/reject/route.ts
+@@ -2,6 +2,7 @@
+ import { requireMobile, mobileError } from "@/lib/mobile/auth";
+ import { rejectProposal } from "@/lib/ai/proposals";
+ import { aiBridges } from "@/lib/modules/crm";
++import { mobileAiCtx } from "@/lib/mobile/guard";
+ 
+ export async function POST(req: Request) {
+   const g = await requireMobile(req);
+@@ -22,6 +23,6 @@ export async function POST(req: Request) {
+     id,
+   );
+   if (crm.handled) return Response.json({ ok: crm.ok, ...(crm.ok ? {} : { error: crm.note }) });
+-  const ok = await rejectProposal(g.ctx, id);
++  const ok = await rejectProposal(mobileAiCtx(g), id); // CRM C5.5-G2: proposals of own rooms only
+   return Response.json({ ok });
+ }
+diff --git a/src/app/api/mobile/proposals/route.ts b/src/app/api/mobile/proposals/route.ts
+index 795a64a4..6c4fa663 100644
+--- a/src/app/api/mobile/proposals/route.ts
++++ b/src/app/api/mobile/proposals/route.ts
+@@ -1,7 +1,7 @@
+ // GET ข้อเสนอที่รอยืนยัน (PENDING) ของบทสนทนา — การ์ดยืนยันใต้แชท (ledger/MOBILE_PLAN.md M-11)
+ import { requireMobile, mobileError } from "@/lib/mobile/auth";
+ import { listPendingProposals } from "@/lib/ai/proposals";
+-import { mobileDenied, AI_CHAT } from "@/lib/mobile/guard";
++import { mobileDenied, mobileAiCtx, AI_CHAT } from "@/lib/mobile/guard";
+ 
+ export async function GET(req: Request) {
+   const g = await requireMobile(req);
+@@ -10,7 +10,7 @@ export async function GET(req: Request) {
+   if (denied) return denied;
+   const conversationId = new URL(req.url).searchParams.get("conversationId") ?? "";
+   if (!conversationId) return Response.json({ proposals: [] });
+-  const rows = await listPendingProposals(g.ctx, conversationId);
++  const rows = await listPendingProposals(mobileAiCtx(g), conversationId); // CRM C5.5-G2: own rooms only
+   const proposals = rows.map((p) => ({
+     id: p.id,
+     kind: p.kind,
+diff --git a/src/app/api/v1/ai/tools/[name]/route.ts b/src/app/api/v1/ai/tools/[name]/route.ts
+index 2cdb213e..f94cb572 100644
+--- a/src/app/api/v1/ai/tools/[name]/route.ts
++++ b/src/app/api/v1/ai/tools/[name]/route.ts
+@@ -13,6 +13,8 @@ import { prisma } from "@/lib/core/db";
+ import { crmApi } from "@/lib/modules/crm";
+ import { aiApiKeyActor } from "@/lib/ai/actor";
+ import { toolVerdict } from "@/lib/ai/tool-access";
++import { newConversationId } from "@/lib/ai/conversation-owner";
++import { findVisibleConversation } from "@/lib/ai/conversations";
+ 
+ const HEADER_SYSTEM = "x-shark-system";
+ 
+@@ -66,10 +68,15 @@ export async function POST(
+ 
+   // เครื่องมือเขียนต้องผูกห้องแชท เพราะข้อเสนอจะไปโผล่ให้เจ้าของกดยืนยันในห้องนั้น
+   // ไม่ได้ระบุมา → เปิดห้องให้อัตโนมัติ เจ้าของจะเห็นเป็นบทสนทนาใหม่พร้อมการ์ดยืนยัน
+-  let conversationId = body.conversationId;
++  // CRM C5.5-G2 ▸ ระบุมา = ต้องเป็นห้องที่ **คีย์ใบนี้** เปิดเอง (ห้องของคน/คีย์อื่น/ห้องเดิม = 404 เหมือนไม่มีอยู่ — ไม่หย่อนการ์ดเข้าห้องคนอื่น)
++  //   ห้องใหม่ = รหัสฝังคีย์ผู้สร้าง ⇒ คีย์ใบนี้ต่อได้ · เจ้าของร้านเห็นและกดยืนยันได้ (ห้องที่ไม่ได้สร้างโดยคนในร้าน) · พนักงานคนอื่นไม่เห็น ◂
++  let conversationId = typeof body.conversationId === "string" && body.conversationId.trim() ? body.conversationId.trim() : undefined;
++  if (conversationId && !(await findVisibleConversation({ tenantId: auth.tenantId, actor }, conversationId))) {
++    return apiJson({ error: "ไม่พบบทสนทนานี้", code: "conversation_not_found" }, 404);
++  }
+   if (tool.action && !conversationId) {
+     const conv = await prisma.aiConversation.create({
+-      data: { tenantId: auth.tenantId, title: "คำขอจากผู้ช่วยภายนอก" },
++      data: { id: newConversationId({ tenantId: auth.tenantId, actor }), tenantId: auth.tenantId, title: "คำขอจากผู้ช่วยภายนอก" },
+     });
+     conversationId = conv.id;
+   }
+diff --git a/src/app/app/sys/[id]/member/assistant/page.tsx b/src/app/app/sys/[id]/member/assistant/page.tsx
+index 5364d6c9..9260f813 100644
+--- a/src/app/app/sys/[id]/member/assistant/page.tsx
++++ b/src/app/app/sys/[id]/member/assistant/page.tsx
+@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
+ import { requireTenant } from "@/lib/core/context";
+ import { prisma } from "@/lib/core/db";
+ import { aiEnabled } from "@/lib/ai/service";
++import { aiMemberActor } from "@/lib/ai/actor";
+ import { canReadMember, toMemberActor } from "@/lib/modules/member/access";
+ import { assistantState } from "@/lib/modules/member/assistant";
+ import { PageHeader } from "@/components/ui/PageHeader";
+@@ -35,7 +36,8 @@ export default async function MemberAssistantPage({
+   if (!canReadMember(actor)) notFound();
+ 
+   // ชื่อสมาชิกในตารางผลค้นหา resolve ที่นี่ด้วยสิทธิ์ของคนเปิดหน้า (ไม่เข้า prompt ของ AI · ตีกลับรอบ 1)
+-  const state = await assistantState(tenantId, typeof sp.conversation === "string" ? sp.conversation : null, {
++  // CRM C5.5-G2 ▸ `?conversation=` ของคนอื่น = บทสนทนาว่าง (ผู้ดู = คนที่เปิดหน้า) ◂
++  const state = await assistantState(tenantId, typeof sp.conversation === "string" ? sp.conversation : null, aiMemberActor(tenantId, auth.user.id, auth.active), {
+     systemId: id,
+     actor,
+     userId: auth.user.id,
+diff --git a/src/lib/ai/actions.ts b/src/lib/ai/actions.ts
+index cf550730..2fa86642 100644
+--- a/src/lib/ai/actions.ts
++++ b/src/lib/ai/actions.ts
+@@ -89,6 +89,14 @@ export async function loadAiQuotaAction(): Promise<AiQuotaView | null> {
+   }
+ }
+ 
++/**
++ * CRM C5.5-G2 ▸ ctx ของประตูแชท = ร้าน + คนที่ล็อกอิน (ผู้ดู) — บทสนทนา/ข้อเสนอ/แผนที่อ่านหรือแตะได้ = ของเขาเท่านั้น
++ *   (เจ้าของร้าน + ห้องที่ไม่ได้สร้างโดยคนในร้าน · ดู ./conversation-owner.ts) ◂
++ */
++function convCtxOf(auth: Awaited<ReturnType<typeof requireTenant>>) {
++  return { tenantId: auth.active.tenantId, actor: aiMemberActor(auth.active.tenantId, auth.user.id, auth.active) };
++}
++
+ /** MembershipCtx ของคนกด — ใช้ตรวจสิทธิ์จริง ณ ตอน execute proposal */
+ function membershipOf(auth: Awaited<ReturnType<typeof requireTenant>>): MembershipCtx {
+   return {
+@@ -102,7 +110,7 @@ function membershipOf(auth: Awaited<ReturnType<typeof requireTenant>>): Membersh
+ export async function loadAiChatAction(): Promise<AiChatState> {
+   const auth = await requireTenant();
+   assertAiCan(auth, "ai.chat.send");
+-  const ctx = { tenantId: auth.active.tenantId };
++  const ctx = convCtxOf(auth);
+   const conv = await latestConversation(ctx);
+   // โหลด messages + proposals + plans พร้อมกัน (ลด round-trip)
+   const [messages, pending, plans] = conv
+@@ -123,7 +131,7 @@ export async function loadAiChatAction(): Promise<AiChatState> {
+ export async function loadPlansAction(conversationId: string): Promise<PendingPlan[]> {
+   const auth = await requireTenant();
+   assertAiCan(auth, "ai.chat.send");
+-  const plans = await listPendingPlans({ tenantId: auth.active.tenantId }, conversationId);
++  const plans = await listPendingPlans(convCtxOf(auth), conversationId);
+   return plans.map((p) => ({ id: p.id, title: p.title, hasDestructive: p.hasDestructive, steps: toPlanSteps(p.stepsJson) }));
+ }
+ 
+@@ -131,7 +139,7 @@ export async function loadPlansAction(conversationId: string): Promise<PendingPl
+ export async function listPendingProposalsAction(conversationId: string): Promise<PendingProposal[]> {
+   const auth = await requireTenant();
+   assertAiCan(auth, "ai.chat.send");
+-  const pending = await listPendingProposals({ tenantId: auth.active.tenantId }, conversationId);
++  const pending = await listPendingProposals(convCtxOf(auth), conversationId);
+   return pending.map((p) => ({ id: p.id, summary: p.summary, risk: toRisk(p.risk) }));
+ }
+ 
+@@ -166,7 +174,7 @@ export async function rejectProposalAction(proposalId: string): Promise<Proposal
+     proposalId,
+   );
+   if (crm.handled) return { ok: crm.ok, note: crm.ok ? "ยกเลิกข้อเสนอแล้ว" : crm.note };
+-  const ok = await rejectProposal(ctx, proposalId);
++  const ok = await rejectProposal(convCtxOf(auth), proposalId);
+   return { ok, note: ok ? "ยกเลิกข้อเสนอแล้ว" : "ข้อเสนอนี้ถูกดำเนินการไปแล้ว" };
+ }
+ 
+@@ -183,7 +191,7 @@ export async function confirmPlanAction(
+   const auth = await requireTenant();
+   const ctx = { tenantId: auth.active.tenantId };
+   try {
+-    const res = await executePlan(membershipOf(auth), ctx, planId, opts);
++    const res = await executePlan(membershipOf(auth), ctx, planId, { ...opts, userId: auth.user.id });
+     if (res.needsSecondConfirm) {
+       return { ok: false, needsSecondConfirm: true, note: "แผนนี้มีรายการลบ/ยกเลิกถาวร ต้องยืนยันอีกครั้งก่อนทำจริง" };
+     }
+@@ -207,8 +215,7 @@ export async function confirmPlanAction(
+ /** ยกเลิกแผน (PENDING → REJECTED) */
+ export async function rejectPlanAction(planId: string): Promise<PlanResult> {
+   const auth = await requireTenant();
+-  const ctx = { tenantId: auth.active.tenantId };
+-  const ok = await rejectPlan(ctx, planId);
++  const ok = await rejectPlan(convCtxOf(auth), planId);
+   return { ok, note: ok ? "ยกเลิกแผนแล้ว" : "แผนนี้ถูกดำเนินการไปแล้ว" };
+ }
+ 
+@@ -226,10 +233,7 @@ export async function sendAiMessageAction(input: {
+   assertAiCan(auth, "ai.chat.send");
+   try {
+     // CRM C5.5-G1 ▸ ผู้กระทำ = คนที่ล็อกอิน (Membership จาก session ของคำขอนี้) — เครื่องมือทุกตัวรันด้วยสิทธิ์ของเขา ◂
+-    const res = await sendMessage(
+-      { tenantId: auth.active.tenantId, actor: aiMemberActor(auth.active.tenantId, auth.user.id, auth.active) },
+-      input,
+-    );
++    const res = await sendMessage(convCtxOf(auth), input);
+     if (res.ok) return res;
+     const msg: Record<typeof res.error, string> = {
+       ai_disabled: "ผู้ช่วย AI ยังไม่เปิดใช้งานในระบบ — เร็ว ๆ นี้",
+diff --git a/src/lib/ai/conversation-owner.ts b/src/lib/ai/conversation-owner.ts
+new file mode 100644
+index 00000000..7aa2d415
+--- /dev/null
++++ b/src/lib/ai/conversation-owner.ts
+@@ -0,0 +1,85 @@
++// conversation-owner.ts — "บทสนทนา AI นี้เป็นของใคร" (CRM C5.5-G2)
++//
++// 🔴 ก่อนใบนี้บทสนทนาเป็นของทั้งร้าน (ตารางไม่มีคอลัมน์ผู้สร้าง): แชทเว็บเปิด "ห้องล่าสุดของร้าน" ของใครก็ได้ · แอปลิสต์/อ่านทุกห้อง ·
++//    `sendMessage` ต่อห้องไหนของร้านก็ได้แล้วป้อน 40 เทิร์นล่าสุดเข้าโมเดล ⇒ พนักงานที่มีแค่ `ai.chat.send` อ่านคำตอบที่ได้มาด้วย
++//    สิทธิ์ของเจ้าของ (เบอร์สมาชิก · ลีด · การเงิน) และให้โมเดลยกมาตอบได้ แม้ G1 จะปฏิเสธเครื่องมือของเขาแล้ว
++//
++// ที่เก็บผู้สร้าง (ไม่มี migration — การเพิ่มคอลัมน์ในตารางแชทเคยทำแชท prod ล่ม): **รหัสของบทสนทนาเอง**
++//   `u~<userId>~<สุ่ม 96 บิต>` คนในร้าน · `k~<apiKeyId>~<สุ่ม>` คีย์ API · `s~<ชื่องาน>~<สุ่ม>` งานภายใน
++//   รหัสออกโดย server ตอนสร้างเท่านั้น (ไม่มีประตูไหนรับรหัสจาก client ตอนสร้าง) จึงปลอมไม่ได้ · เปลี่ยนไม่ได้ (เป็น PK) ·
++//   ข้อเสนอ/แผนพก `conversationId` อยู่แล้ว ⇒ รู้เจ้าของได้โดยไม่ต้อง join · `~` ไม่อยู่ในชุดตัวอักษรของ cuid
++//   รหัสแบบเดิม (cuid ล้วน) = ห้องก่อนใบนี้ "ไม่รู้ผู้สร้าง"
++//
++// กติกาการมองเห็น (ทุกประตู: ลิสต์ · อ่าน · เปลี่ยนชื่อ · ลบ · ส่งต่อ · ห้องล่าสุดของเว็บ · ข้อเสนอ/แผน):
++//   - ผู้สร้างเท่านั้น (คนในร้าน = userId เดียวกัน · คีย์ = คีย์ใบเดียวกัน · งานภายใน = งานเดียวกัน)
++//   - ยกเว้น: ห้องที่ **ไม่ได้สร้างโดยคนในร้าน** (ห้องเดิมก่อนใบนี้ · ห้องของคีย์ API · ห้องของงานประจำ) = เจ้าของร้าน (role OWNER) เห็นด้วย
++//     · ห้องเดิม: ไม่มี backfill — เจ้าของร้านเท่านั้น ไม่มีใครอื่น
++//     · ห้องของคีย์: เส้นทางที่เขียนไว้ใน `/api/v1/ai/tools/[name]` — "เจ้าของต้องกดยืนยันในแอป/เว็บ" (ข้อเสนอจากคีย์อยู่ในห้องนั้น)
++//     · ห้องของงานประจำ: รันด้วยสิทธิ์ผู้อ่านน้อยที่สุดอยู่แล้ว (G1) — เจ้าของร้านดูย้อนหลังได้
++//   - ห้องของคนในร้านคนอื่น (รวมเจ้าของร้านอีกคน) = ไม่มีใครเห็น
++//   - มองไม่เห็น = ตอบแบบเดียวกับ "ไม่มีอยู่" ทุกประตู (ไม่บอกว่ามีอยู่)
++//
++// 🔴 ไฟล์นี้ต้องเบา (ไม่มี db) — ตัวอ่านฐานข้อมูลอยู่ที่ `./conversations.ts`
++
++import { randomBytes } from "node:crypto";
++import type { Prisma } from "@prisma/client";
++import type { MembershipCtx } from "@/lib/core/rbac";
++import { actorProblem, type AiActor } from "./actor";
++
++const SEP = "~";
++const MEMBER_TAG = `u${SEP}`;
++const TAG = { member: "u", apiKey: "k", system: "s" } as const;
++
++/** ctx ของประตูที่อ่าน/แตะบทสนทนา — ร้าน + **ผู้ดู (บังคับ)** */
++export type ConvCtx = { tenantId: string; actor: AiActor };
++
++/** สิ่งที่ผู้ดูคนหนึ่งเห็น: prefix ของห้องตัวเอง + (เจ้าของร้าน) ห้องที่ไม่ได้สร้างโดยคนในร้าน */
++export type ConvSight = { own: string | null; ownerExtras: boolean };
++
++const NOTHING: ConvSight = { own: null, ownerExtras: false };
++
++function prefixOf(kind: keyof typeof TAG, id: string | null | undefined): string | null {
++  const v = typeof id === "string" ? id.trim() : "";
++  if (!v || v.includes(SEP) || v !== id) return null;
++  return `${TAG[kind]}${SEP}${v}${SEP}`;
++}
++
++/** ผู้ดูจาก actor (ไม่มี / ผิดร้าน / ปลอม = ไม่เห็นอะไร) */
++export function sightOf(ctx: { tenantId: string; actor?: unknown }): ConvSight {
++  if (actorProblem(ctx)) return NOTHING;
++  const a = ctx.actor as AiActor;
++  if (a.kind === "member") return { own: prefixOf("member", a.userId), ownerExtras: a.membership.role === "OWNER" };
++  if (a.kind === "apiKey") return { own: prefixOf("apiKey", a.keyId), ownerExtras: false };
++  return { own: prefixOf("system", a.job), ownerExtras: false };
++}
++
++/** ผู้ดูจาก "คนกดยืนยัน" (ประตูยืนยันข้อเสนอ/แผนส่ง Membership + userId มา) — ไม่รู้ userId = เห็นเฉพาะส่วนของเจ้าของร้าน (ถ้าเป็น) */
++export function sightOfConfirmer(m: Pick<MembershipCtx, "role">, userId: string | null | undefined): ConvSight {
++  return { own: prefixOf("member", userId ?? null), ownerExtras: m?.role === "OWNER" };
++}
++
++/** รหัสบทสนทนาใหม่ที่ฝังผู้สร้าง — ผู้สร้างไม่ชัด = throw (ห้ามสร้างห้องที่ไม่มีเจ้าของ) */
++export function newConversationId(ctx: ConvCtx): string {
++  const own = sightOf(ctx).own;
++  if (!own) throw new Error("AI conversation needs a known creator");
++  return `${own}${randomBytes(12).toString("hex")}`;
++}
++
++/** ผู้ดูนี้เห็นบทสนทนารหัสนี้ไหม (ตรวจตรงตัวอักษร — ใช้ซ้ำหลัง query ทุกครั้ง) */
++export function canSeeConversationId(s: ConvSight, conversationId: string | null | undefined): boolean {
++  const id = typeof conversationId === "string" ? conversationId : "";
++  if (!id) return false;
++  if (s.own && id.startsWith(s.own)) return true;
++  return s.ownerExtras && !id.startsWith(MEMBER_TAG);
++}
++
++/**
++ * ตัวกรอง Prisma ของ "บทสนทนาที่ผู้ดูนี้เห็น" บนฟิลด์รหัส (`id` ของ AiConversation)
++ * 🔴 เป็นตัวกรองชั้นแรกเท่านั้น (LIKE) — แถวที่ได้ต้องผ่าน `canSeeConversationId` ซ้ำเสมอ
++ */
++export function visibleConversationWhere(s: ConvSight): Prisma.AiConversationWhereInput {
++  if (s.own && s.ownerExtras) return { OR: [{ id: { startsWith: s.own } }, { NOT: { id: { startsWith: MEMBER_TAG } } }] };
++  if (s.own) return { id: { startsWith: s.own } };
++  if (s.ownerExtras) return { NOT: { id: { startsWith: MEMBER_TAG } } };
++  return { id: { in: [] } };
++}
+diff --git a/src/lib/ai/conversations.ts b/src/lib/ai/conversations.ts
+new file mode 100644
+index 00000000..f398a4ed
+--- /dev/null
++++ b/src/lib/ai/conversations.ts
+@@ -0,0 +1,26 @@
++// conversations.ts — ตัวอ่านบทสนทนา AI "ที่ผู้ดูนี้เห็น" (CRM C5.5-G2 · กติกาอยู่ที่ ./conversation-owner.ts)
++// ทุกประตูที่รับ conversationId จากภายนอก (เว็บ · แอป · REST · หน้าผู้ช่วยของโมดูล · sendMessage) ต้องผ่านที่นี่ —
++// มองไม่เห็น = null แบบเดียวกับ "ไม่มีอยู่"
++
++import { tenantDb } from "@/lib/core/db";
++import { canSeeConversationId, sightOf, visibleConversationWhere, type ConvCtx } from "./conversation-owner";
++
++/** บทสนทนารหัสนี้ ถ้าผู้ดูเห็น (ไม่เห็น / ไม่มี / ร้านอื่น = null) */
++export async function findVisibleConversation(ctx: ConvCtx, conversationId: string | null | undefined) {
++  const s = sightOf(ctx);
++  const id = typeof conversationId === "string" ? conversationId.trim() : "";
++  if (!id || !canSeeConversationId(s, id)) return null;
++  const row = await tenantDb({ tenantId: ctx.tenantId }).aiConversation.findFirst({ where: { id } });
++  return row && canSeeConversationId(s, row.id) ? row : null;
++}
++
++/** บทสนทนาล่าสุดที่ผู้ดูเห็น (แชทเว็บเปิดห้องนี้) — ไม่มี = null */
++export async function latestVisibleConversation(ctx: ConvCtx) {
++  const s = sightOf(ctx);
++  const rows = await tenantDb({ tenantId: ctx.tenantId }).aiConversation.findMany({
++    where: visibleConversationWhere(s),
++    orderBy: { updatedAt: "desc" },
++    take: 10,
++  });
++  return rows.find((r) => canSeeConversationId(s, r.id)) ?? null;
++}
+diff --git a/src/lib/ai/plans.ts b/src/lib/ai/plans.ts
+index e44547c3..58d8a0c7 100644
+--- a/src/lib/ai/plans.ts
++++ b/src/lib/ai/plans.ts
+@@ -11,6 +11,8 @@ import { tenantDb } from "@/lib/core/db";
+ import { type MembershipCtx } from "@/lib/core/rbac";
+ import type { Prisma } from "@prisma/client";
+ import { DESTRUCTIVE_KINDS, isKnownKind, runKind, type ProposalKind } from "./proposals";
++import { canSeeConversationId, sightOf, sightOfConfirmer, type ConvCtx } from "./conversation-owner";
++import { findVisibleConversation } from "./conversations";
+ 
+ type Ctx = { tenantId: string };
+ 
+@@ -69,14 +71,16 @@ export type PlanExecResult = {
+ };
+ 
+ // ── ลงมือทำแผนจริง — อ่าน step จาก DB, ตรวจสิทธิ์คนกดต่อ step, รันต่อเนื่องผ่าน runKind ──
++// CRM C5.5-G2 ▸ `opts.userId` = คนกด — แผนเป็นของบทสนทนาที่มันเกิด: คนกดต้องเห็นบทสนทนานั้น (ไม่เห็น = เหมือนไม่มีแผนนี้) ◂
+ export async function executePlan(
+   m: MembershipCtx,
+   ctx: Ctx,
+   planId: string,
+-  opts?: { confirm2x?: boolean },
++  opts?: { confirm2x?: boolean; userId?: string | null },
+ ): Promise<PlanExecResult> {
+   const row = await tenantDb(ctx).aiPlan.findFirst({ where: { id: planId } });
+   if (!row) return { ok: false, results: [], doneCount: 0 };
++  if (!canSeeConversationId(sightOfConfirmer(m, opts?.userId ?? null), row.conversationId)) return { ok: false, results: [], doneCount: 0 };
+ 
+   // ไม่ใช่ PENDING (ทำไปแล้ว/ถูกปิด) → ไม่ทำซ้ำ
+   if (row.status !== "PENDING") return { ok: false, results: [], doneCount: 0 };
+@@ -137,18 +141,23 @@ export async function executePlan(
+ }
+ 
+ // ── ยกเลิกแผน — PENDING→REJECTED เท่านั้น (สถานะอื่น/ไม่พบ → false) ──
+-export async function rejectPlan(ctx: Ctx, id: string): Promise<boolean> {
+-  const res = await tenantDb(ctx).aiPlan.updateMany({
++// CRM C5.5-G2 ▸ เฉพาะแผนในบทสนทนาที่ผู้กดเห็น ◂
++export async function rejectPlan(ctx: ConvCtx, id: string): Promise<boolean> {
++  const row = await tenantDb({ tenantId: ctx.tenantId }).aiPlan.findFirst({ where: { id }, select: { conversationId: true } });
++  if (!row || !canSeeConversationId(sightOf(ctx), row.conversationId)) return false;
++  const res = await tenantDb({ tenantId: ctx.tenantId }).aiPlan.updateMany({
+     where: { id, status: "PENDING" },
+     data: { status: "REJECTED" },
+   });
+   return res.count > 0;
+ }
+ 
+-// ── แผนที่ยังรออยู่ของบทสนทนา (PENDING + ยังไม่หมดอายุ) เรียงเก่า→ใหม่ ──
+-export async function listPendingPlans(ctx: Ctx, conversationId: string) {
+-  return tenantDb(ctx).aiPlan.findMany({
+-    where: { conversationId, status: "PENDING", expiresAt: { gt: new Date() } },
++// ── แผนที่ยังรออยู่ของบทสนทนา (PENDING + ยังไม่หมดอายุ) เรียงเก่า→ใหม่ — CRM C5.5-G2 ▸ เฉพาะบทสนทนาที่ผู้ดูเห็น ◂ ──
++export async function listPendingPlans(ctx: ConvCtx, conversationId: string) {
++  const conv = await findVisibleConversation(ctx, conversationId);
++  if (!conv) return [];
++  return tenantDb({ tenantId: ctx.tenantId }).aiPlan.findMany({
++    where: { conversationId: conv.id, status: "PENDING", expiresAt: { gt: new Date() } },
+     orderBy: { createdAt: "asc" },
+   });
+ }
+diff --git a/src/lib/ai/proposals.ts b/src/lib/ai/proposals.ts
+index 11ad93bd..0f022379 100644
+--- a/src/lib/ai/proposals.ts
++++ b/src/lib/ai/proposals.ts
+@@ -36,6 +36,8 @@ import * as accountFacade from "@/lib/modules/account";
+ import * as automationSvc from "@/lib/automation/service";
+ import { AUTOMATION_EVENTS, eventLabel } from "@/lib/automation/labels";
+ import { createSystemAutoLink } from "@/lib/modules/system/service";
++import { canSeeConversationId, sightOf, sightOfConfirmer, type ConvCtx } from "./conversation-owner";
++import { findVisibleConversation } from "./conversations";
+ import {
+   accountDestructiveKinds,
+   accountKindAccess,
+@@ -329,9 +331,12 @@ export async function createProposal(
+ }
+ 
+ // ── ข้อเสนอที่ยังรออยู่ของบทสนทนา (PENDING + ยังไม่หมดอายุ) เรียงเก่า→ใหม่ ──
+-export async function listPendingProposals(ctx: Ctx, conversationId: string) {
+-  return tenantDb(ctx).aiProposal.findMany({
+-    where: { conversationId, status: "PENDING", expiresAt: { gt: new Date() } },
++// CRM C5.5-G2 ▸ เฉพาะบทสนทนาที่ผู้ดูเห็น (ไม่เห็น / ไม่มีห้องจริง = ว่าง) ◂
++export async function listPendingProposals(ctx: ConvCtx, conversationId: string) {
++  const conv = await findVisibleConversation(ctx, conversationId);
++  if (!conv) return [];
++  return tenantDb({ tenantId: ctx.tenantId }).aiProposal.findMany({
++    where: { conversationId: conv.id, status: "PENDING", expiresAt: { gt: new Date() } },
+     orderBy: { createdAt: "asc" },
+   });
+ }
+@@ -341,11 +346,13 @@ export async function listPendingProposals(ctx: Ctx, conversationId: string) {
+ //   `crm_create_lead` ที่มี systemId — นามบัตร): ข้อเสนอเหล่านั้นยกเลิกได้เฉพาะคนที่ยืนยันได้ ผ่าน `crm.aiBridges.cancelProposal`
+ //   (ผู้เรียกสองราย — `ai/actions.ts#rejectProposalAction` · `/api/mobile/proposals/reject` — ส่งข้อเสนอ CRM ไปทางนั้นพร้อมตัวคนกดแล้ว)
+ //   🔴 ช่องโหว่เดียวกันของ kind โมดูลอื่น (ปิดอะไรก็ได้ด้วย id) ยังอยู่ — จดเป็น finding ให้เลน AI/สมาชิก (CRM-RUN §4) ◂
+-export async function rejectProposal(ctx: Ctx, id: string): Promise<boolean> {
+-  const row = await tenantDb(ctx).aiProposal.findFirst({ where: { id }, select: { kind: true, payload: true } });
++// CRM C5.5-G2 ▸ ยกเลิกได้เฉพาะข้อเสนอในบทสนทนาที่ผู้กดเห็น (ของคนอื่น = false เหมือนไม่มีอยู่) ◂
++export async function rejectProposal(ctx: ConvCtx, id: string): Promise<boolean> {
++  const row = await tenantDb({ tenantId: ctx.tenantId }).aiProposal.findFirst({ where: { id }, select: { kind: true, payload: true, conversationId: true } });
+   if (!row) return false;
+   if (crmSvc.aiBridges.isCrmDoorKind(row.kind, row.payload)) return false; // CRM C3.4 ◂
+-  const res = await tenantDb(ctx).aiProposal.updateMany({
++  if (!canSeeConversationId(sightOf(ctx), row.conversationId)) return false;
++  const res = await tenantDb({ tenantId: ctx.tenantId }).aiProposal.updateMany({
+     where: { id, status: "PENDING" },
+     data: { status: "REJECTED" },
+   });
+@@ -380,6 +387,13 @@ export async function executeProposal(
+     return { ok: r.ok, note: r.note };
+   }
+ 
++  // CRM C5.5-G2 ▸ ข้อเสนอเป็นของบทสนทนาที่มันเกิด: คนกดต้องเห็นบทสนทนานั้น (ผู้สร้าง · เจ้าของร้านสำหรับห้องที่ไม่ได้สร้างโดยคนในร้าน
++  //   เช่นห้องของคีย์ API ที่ route เขียนไว้ว่า "เจ้าของต้องกดยืนยันในแอป/เว็บ") — ไม่เห็น = ตอบแบบเดียวกับไม่มีข้อเสนอนี้
++  //   (ประตู CRM ข้างบนมีด่านการมองเห็นของตัวเองแล้ว — ข้อเสนอเหล่านั้นไม่ได้อยู่ในห้องแชท) ◂
++  if (!canSeeConversationId(sightOfConfirmer(m, opts?.userId ?? null), row.conversationId)) {
++    return { ok: false, note: "ไม่พบข้อเสนอนี้ (อาจถูกลบไปแล้ว)" };
++  }
++
+   // CRM C3.4 ▸ รีวิว S2: ใบที่ยังถูก "จองไว้ทำงาน" (`resultNote` = WORKING#<ms> — เนื้อยังไม่มา) ยืนยันไม่ได้ทุก kind ◂
+   if (typeof row.resultNote === "string" && row.resultNote.startsWith("WORKING#")) {
+     return { ok: false, note: "ผู้ช่วย AI กำลังเตรียมข้อเสนอนี้อยู่ — รอสักครู่แล้วลองอีกครั้ง" };
+diff --git a/src/lib/ai/service.ts b/src/lib/ai/service.ts
+index 451efbb3..a7aa5c5e 100644
+--- a/src/lib/ai/service.ts
++++ b/src/lib/ai/service.ts
+@@ -11,6 +11,8 @@ import { dailyLimits, FAST_MODEL, pickModel, resolveProvider, type AiChatMessage
+ import { dayKeyBangkok, overBudget, titleFrom, trimHistory } from "./rules";
+ import { runTool, toolRegistry } from "./tools";
+ import type { AiActor } from "./actor";
++import { canSeeConversationId, newConversationId, sightOf, visibleConversationWhere, type ConvCtx } from "./conversation-owner";
++import { findVisibleConversation, latestVisibleConversation } from "./conversations";
+ import { toolsOfferedTo } from "./tool-access";
+ import {
+   CORE_TOOLS, LOAD_SKILL_TOOL, skillById, skillIndexPrompt, skillsForTenant, toolNamesOfSkills,
+@@ -61,15 +63,23 @@ function parseClarify(rawArgs: unknown): Clarify | null {
+   return { question, options };
+ }
+ 
+-/** บทสนทนาล่าสุดของ tenant (ไม่มี = null) */
+-export async function latestConversation(ctx: Ctx) {
+-  return tenantDb(ctx).aiConversation.findFirst({ orderBy: { updatedAt: "desc" } });
++/**
++ * บทสนทนาล่าสุด **ที่ผู้ดูเห็น** (ไม่มี = null)
++ * CRM C5.5-G2 ▸ เดิม = ห้องล่าสุดของทั้งร้าน (ของใครก็ได้) · ตอนนี้ = ของผู้ดูเอง (+ เจ้าของร้าน: ห้องที่ไม่ได้สร้างโดยคนในร้าน) ◂
++ */
++export async function latestConversation(ctx: ConvCtx) {
++  return latestVisibleConversation(ctx);
+ }
+ 
+-/** ข้อความในบทสนทนา (เรียงเก่า→ใหม่) */
+-export async function listMessages(ctx: Ctx, conversationId: string, take = 100) {
+-  return tenantDb(ctx).aiMessage.findMany({
+-    where: { conversationId },
++/**
++ * ข้อความในบทสนทนา (เรียงเก่า→ใหม่) — CRM C5.5-G2 ▸ เฉพาะบทสนทนาที่ผู้ดูเห็น (ไม่เห็น = ว่าง เหมือนไม่มีอยู่) ·
++ *   ตรวจสองชั้น: รหัสก่อน query + เงื่อนไขของห้องใน query เดียวกัน ◂
++ */
++export async function listMessages(ctx: ConvCtx, conversationId: string, take = 100) {
++  const s = sightOf(ctx);
++  if (!canSeeConversationId(s, conversationId)) return [];
++  return tenantDb({ tenantId: ctx.tenantId }).aiMessage.findMany({
++    where: { conversationId, conversation: visibleConversationWhere(s) },
+     orderBy: { createdAt: "asc" },
+     take,
+   });
+@@ -177,17 +187,19 @@ export async function sendMessage(
+   };
+ 
+   // บทสนทนา: ต่อของเดิมถ้าระบุ ไม่งั้นเปิดใหม่
+-  const conv = input.conversationId
+-    ? await db.aiConversation.findFirst({ where: { id: input.conversationId } })
+-    : null;
++  // CRM C5.5-G2 ▸ ต่อได้เฉพาะห้องที่ผู้กระทำเห็น (ของตัวเอง · เจ้าของร้าน + ห้องที่ไม่ได้สร้างโดยคนในร้าน) — ห้องของคนอื่น
++  //   = เหมือนไม่มีอยู่ ⇒ เปิดห้องใหม่ของผู้กระทำ (รหัสฝังผู้สร้าง) · ประวัติที่ป้อนโมเดลกรองด้วยกติกาเดียวกันอีกชั้นใน query ◂
++  const conv = input.conversationId ? await findVisibleConversation(ctx, input.conversationId) : null;
+   const conversation =
+     conv ??
+     (await prisma.aiConversation.create({
+-      data: { tenantId: ctx.tenantId, title: titleFrom(text) },
++      data: { id: newConversationId(ctx), tenantId: ctx.tenantId, title: titleFrom(text) },
+     }));
++  const sight = sightOf(ctx);
++  if (!canSeeConversationId(sight, conversation.id)) throw new Error("AI conversation is not visible to this actor");
+ 
+   const history = await db.aiMessage.findMany({
+-    where: { conversationId: conversation.id },
++    where: { conversationId: conversation.id, conversation: visibleConversationWhere(sight) },
+     orderBy: { createdAt: "desc" },
+     take: HISTORY_TAKE,
+   });
+diff --git a/src/lib/ai/tools.ts b/src/lib/ai/tools.ts
+index e77fa469..fd4362c1 100644
+--- a/src/lib/ai/tools.ts
++++ b/src/lib/ai/tools.ts
+@@ -33,6 +33,7 @@ import { openCaseFromAi } from "@/lib/support/service";
+ import { AUTOMATION_EVENTS, eventLabel } from "@/lib/automation/labels";
+ // CRM C5.5-G1 ▸ ผู้กระทำ + ด่านสิทธิ์ต่อเครื่องมือ + helper การมองเห็นของโมดูล (CRM ผ่าน facade · สมาชิก/แชท/อนุมัติผ่าน service เดิม) ◂
+ import { actorProblem, aiActorMembership, aiActorUserId, type AiActor } from "./actor";
++import { canSeeConversationId, sightOf } from "./conversation-owner";
+ import { actorCanConfirmKind, toolVerdict } from "./tool-access";
+ import { contactWhere, crmApi } from "@/lib/modules/crm";
+ import { visibleCustomerIds } from "@/lib/modules/member/service";
+@@ -2395,7 +2396,13 @@ const guarded = (t: AiTool): AiTool => ({
+   ...t,
+   async execute(ctx: ToolCtx, args: unknown): Promise<string> {
+     const bad = actorProblem(ctx);
+-    return bad ? JSON.stringify({ error: bad }) : t.execute(ctx, args);
++    if (bad) return JSON.stringify({ error: bad });
++    // CRM C5.5-G2 ▸ ห้องที่ผู้กระทำมองไม่เห็น (ของคนอื่น / ห้องเดิมสำหรับคนที่ไม่ใช่เจ้าของร้าน) = เหมือนไม่ได้อยู่ในห้อง —
++    //   ข้อเสนอ/แผน/เคสแจ้งทีมงานจึงไม่มีวันถูกผูกเข้าห้องของคนอื่น (เครื่องมือที่ต้องมีห้องตอบ "ต้องอยู่ในบทสนทนาก่อน") ◂
++    if (ctx.conversationId !== undefined && !canSeeConversationId(sightOf(ctx), ctx.conversationId)) {
++      return t.execute({ ...ctx, conversationId: undefined }, args);
++    }
++    return t.execute(ctx, args);
+   },
+ });
+ 
+diff --git a/src/lib/mobile/conversations.ts b/src/lib/mobile/conversations.ts
+index 24ce3469..f3968e48 100644
+--- a/src/lib/mobile/conversations.ts
++++ b/src/lib/mobile/conversations.ts
+@@ -2,19 +2,25 @@
+ // ทุก query ผ่าน tenantDb(ctx) กันข้ามกิจการ · ลบ = soft (deletedAt) เก็บประวัติไว้
+ // สำคัญ: rename/delete ข้าม tenant ต้องคืน false ไม่ throw → ใช้ updateMany นับ count (tenantDb.update จะโยน P2025)
+ 
++// CRM C5.5-G2 ▸ ทุกฟังก์ชันรับผู้ดู (ctx.actor) — ห้องที่ลิสต์/แก้/ลบ/อ่านได้ = ของผู้ดูเท่านั้น (เจ้าของร้าน + ห้องที่ไม่ได้สร้างโดยคนในร้าน)
++//   ห้องของคนอื่น = ตอบแบบเดียวกับไม่มีอยู่ (ลิสต์ไม่มี · rename/delete/read = false) · ห้องใหม่ = รหัสฝังผู้สร้าง ◂
++
+ import { tenantDb } from "@/lib/core/db";
+-import type { Ctx } from "@/lib/ai/service";
++import { canSeeConversationId, newConversationId, sightOf, visibleConversationWhere, type ConvCtx } from "@/lib/ai/conversation-owner";
+ 
+ export type ConversationRow = { id: string; title: string; updatedAt: Date; unread: boolean };
+ 
+ // รายการห้อง (ตัด deletedAt · เรียงล่าสุดก่อน) + คำนวณ unread = มี ASSISTANT ใหม่กว่า lastReadAt
+-export async function listConversations(ctx: Ctx): Promise<ConversationRow[]> {
+-  const db = tenantDb(ctx);
+-  const rows = await db.aiConversation.findMany({
+-    where: { deletedAt: null },
+-    orderBy: { updatedAt: "desc" },
+-    take: 100, // ร้านที่คุยเยอะมีห้องหลักพัน — จอในแอปเลื่อนดูล่าสุดอยู่แล้ว ไม่ต้องขนมาทั้งหมด
+-  });
++export async function listConversations(ctx: ConvCtx): Promise<ConversationRow[]> {
++  const db = tenantDb({ tenantId: ctx.tenantId });
++  const s = sightOf(ctx);
++  const rows = (
++    await db.aiConversation.findMany({
++      where: { deletedAt: null, ...visibleConversationWhere(s) },
++      orderBy: { updatedAt: "desc" },
++      take: 100, // ร้านที่คุยเยอะมีห้องหลักพัน — จอในแอปเลื่อนดูล่าสุดอยู่แล้ว ไม่ต้องขนมาทั้งหมด
++    })
++  ).filter((r) => canSeeConversationId(s, r.id));
+   if (rows.length === 0) return [];
+ 
+   // เวลาตอบ ASSISTANT ล่าสุดต่อห้อง (query เดียว กัน N+1)
+@@ -33,16 +39,17 @@ export async function listConversations(ctx: Ctx): Promise<ConversationRow[]> {
+ }
+ 
+ // เปิดห้องใหม่ (tenantId ใส่ตรง ๆ ให้ตรง type — convention repo)
+-export async function createConversation(ctx: Ctx, title?: string): Promise<{ id: string }> {
+-  const row = await tenantDb(ctx).aiConversation.create({
+-    data: { tenantId: ctx.tenantId, title: (title ?? "").trim() },
++export async function createConversation(ctx: ConvCtx, title?: string): Promise<{ id: string }> {
++  const row = await tenantDb({ tenantId: ctx.tenantId }).aiConversation.create({
++    data: { id: newConversationId(ctx), tenantId: ctx.tenantId, title: (title ?? "").trim() },
+   });
+   return { id: row.id };
+ }
+ 
+ // เปลี่ยนชื่อห้อง — ข้าม tenant = 0 แถว = false (ไม่ throw)
+-export async function renameConversation(ctx: Ctx, id: string, title: string): Promise<boolean> {
+-  const res = await tenantDb(ctx).aiConversation.updateMany({
++export async function renameConversation(ctx: ConvCtx, id: string, title: string): Promise<boolean> {
++  if (!canSeeConversationId(sightOf(ctx), id)) return false;
++  const res = await tenantDb({ tenantId: ctx.tenantId }).aiConversation.updateMany({
+     where: { id },
+     data: { title: title.trim() },
+   });
+@@ -50,8 +57,9 @@ export async function renameConversation(ctx: Ctx, id: string, title: string): P
+ }
+ 
+ // ลบแบบ soft (set deletedAt) — ห้ามลบแถวจริง · ข้าม tenant = false
+-export async function deleteConversation(ctx: Ctx, id: string): Promise<boolean> {
+-  const res = await tenantDb(ctx).aiConversation.updateMany({
++export async function deleteConversation(ctx: ConvCtx, id: string): Promise<boolean> {
++  if (!canSeeConversationId(sightOf(ctx), id)) return false;
++  const res = await tenantDb({ tenantId: ctx.tenantId }).aiConversation.updateMany({
+     where: { id, deletedAt: null },
+     data: { deletedAt: new Date() },
+   });
+@@ -59,8 +67,9 @@ export async function deleteConversation(ctx: Ctx, id: string): Promise<boolean>
+ }
+ 
+ // ทำเครื่องหมายว่าอ่านแล้ว (lastReadAt = now) — ข้าม tenant = false
+-export async function markRead(ctx: Ctx, id: string): Promise<boolean> {
+-  const res = await tenantDb(ctx).aiConversation.updateMany({
++export async function markRead(ctx: ConvCtx, id: string): Promise<boolean> {
++  if (!canSeeConversationId(sightOf(ctx), id)) return false;
++  const res = await tenantDb({ tenantId: ctx.tenantId }).aiConversation.updateMany({
+     where: { id },
+     data: { lastReadAt: new Date() },
+   });
+diff --git a/src/lib/mobile/guard.ts b/src/lib/mobile/guard.ts
+index 7fa0a870..6b201735 100644
+--- a/src/lib/mobile/guard.ts
++++ b/src/lib/mobile/guard.ts
+@@ -4,6 +4,7 @@
+ //    ไม่งั้นพนักงานที่ไม่มีสิทธิ์ทำผ่านแอปได้สิ่งที่เว็บห้าม · ตัดสินด้วย `evaluate` ตัวเดียวกับ `assertCan` (OWNER/MANAGER ผ่าน · STAFF ตามคีย์)
+ import { evaluate, type AccessQuery } from "@/lib/core/rbac";
+ import type { MobileAuth } from "./auth";
++import { aiMemberActor, type AiMemberActor } from "@/lib/ai/actor";
+ 
+ /** ผ่าน = `null` · ไม่ผ่าน = 403 `{ error: "forbidden" }` (รูปเดียวกับ `mobileError` ของ requireMobile) */
+ export function mobileDenied(g: MobileAuth, q: AccessQuery): Response | null {
+@@ -22,3 +23,11 @@ export function mobileDenied(g: MobileAuth, q: AccessQuery): Response | null {
+ export const AI_CHAT: AccessQuery = { module: "ai", action: "ai.chat.send" };
+ /** ประตูเว็บ "เพิ่มระบบ" (lib/actions/systems.ts addSystemAction) — การประกอบระบบจากพิมพ์เขียว DNA สร้างระบบ/สาขาเหมือนกัน */
+ export const SYSTEM_CREATE: AccessQuery = { module: "systems", action: "systems.system.create" };
++
++/**
++ * CRM C5.5-G2 ▸ ctx ของประตูแชท AI ในแอป = ร้าน (X-Tenant-Id ที่ requireMobile ตรวจแล้ว) + ผู้ใช้ของโทเค็น (ผู้ดู/ผู้กระทำ)
++ *   — บทสนทนา/ข้อเสนอ/แผนที่ลิสต์ อ่าน หรือแตะได้ = ของเขาเท่านั้น (ดู lib/ai/conversation-owner.ts) ◂
++ */
++export function mobileAiCtx(g: MobileAuth): { tenantId: string; actor: AiMemberActor } {
++  return { tenantId: g.ctx.tenantId, actor: aiMemberActor(g.ctx.tenantId, g.user.id, g.membership) };
++}
+diff --git a/src/lib/modules/member/assistant-actions.ts b/src/lib/modules/member/assistant-actions.ts
+index 79255e81..05c5e8c5 100644
+--- a/src/lib/modules/member/assistant-actions.ts
++++ b/src/lib/modules/member/assistant-actions.ts
+@@ -59,7 +59,7 @@ export async function sendMemberAssistantAction(
+     const body = String(text ?? "").trim();
+     if (!body) return { ok: false, reason: "พิมพ์คำถามก่อนกดส่ง" };
+     if (body.length > TEXT_MAX) return { ok: false, reason: `คำถามยาวได้ไม่เกิน ${TEXT_MAX.toLocaleString("th-TH")} ตัวอักษร` };
+-    const current = conversationId ? await assistantState(tenantId, conversationId) : null;
++    const current = conversationId ? await assistantState(tenantId, conversationId, aiActor) : null;
+     const used: string[] = [];
+     const res = await sendMessage(
+       { tenantId, actor: aiActor },
+@@ -70,7 +70,7 @@ export async function sendMemberAssistantAction(
+       return { ok: false, reason: res.error === "ai_disabled" ? DISABLED : res.error === "over_budget" ? (res.scope === "day" ? OVER_DAY : OVER_CREDIT) : "พิมพ์คำถามก่อนกดส่ง" };
+     }
+     await appendToolsLine(tenantId, res.conversationId, used);
+-    return { ok: true, data: await assistantState(tenantId, res.conversationId, viewer) };
++    return { ok: true, data: await assistantState(tenantId, res.conversationId, aiActor, viewer) };
+   } catch (e) {
+     return { ok: false, reason: safeReason(e, "ผู้ช่วยตอบไม่สำเร็จในตอนนี้ — ลองถามใหม่อีกครั้ง") };
+   }
+@@ -84,9 +84,10 @@ export async function confirmMemberProposalAction(
+   confirm2x: boolean,
+ ): Promise<AssistantConfirmResult> {
+   try {
+-    const { tenantId, userId, mc, viewer } = await gate(systemId);
++    const { tenantId, userId, mc, viewer, aiActor } = await gate(systemId);
++    // CRM C5.5-G2 ▸ ข้อเสนอต้องอยู่ในบทสนทนาของคนกด — executeProposal ตรวจซ้ำด้วย userId ของคนกด ◂
+     const res = await executeProposal(mc, { tenantId }, String(proposalId ?? ""), { confirm2x: confirm2x === true, userId });
+-    return { ok: res.ok, note: res.note, ...(res.needsSecondConfirm ? { needsSecondConfirm: true } : {}), state: await assistantState(tenantId, conversationId, viewer) };
++    return { ok: res.ok, note: res.note, ...(res.needsSecondConfirm ? { needsSecondConfirm: true } : {}), state: await assistantState(tenantId, conversationId, aiActor, viewer) };
+   } catch (e) {
+     return {
+       ok: false,
+@@ -103,12 +104,12 @@ export async function cancelMemberProposalAction(
+   proposalId: string,
+ ): Promise<AssistantActionResult<AssistantStateDto>> {
+   try {
+-    const { tenantId, mc, viewer } = await gate(systemId);
++    const { tenantId, mc, viewer, aiActor } = await gate(systemId);
+     // 🔴 AUDIT L10: ยกเลิกได้เฉพาะข้อเสนอของบทสนทนาที่เปิดอยู่ + ระบบสมาชิกใบนี้ + ต้องมีสิทธิ์
+     //    ชุดเดียวกับตอนกดยืนยัน (ไม่งั้นคนที่มีแค่สิทธิ์อ่านปิดงานของคนอื่นทิ้งได้ทั้งร้าน)
+-    await assertProposalInScope({ tenantId, systemId, conversationId, proposalId: String(proposalId ?? "") }, mc);
+-    await rejectProposal({ tenantId }, String(proposalId ?? ""));
+-    return { ok: true, data: await assistantState(tenantId, conversationId, viewer) };
++    await assertProposalInScope({ tenantId, systemId, conversationId, proposalId: String(proposalId ?? "") }, mc, aiActor);
++    await rejectProposal({ tenantId, actor: aiActor }, String(proposalId ?? ""));
++    return { ok: true, data: await assistantState(tenantId, conversationId, aiActor, viewer) };
+   } catch (e) {
+     return { ok: false, reason: safeReason(e, "ยกเลิกไม่สำเร็จในตอนนี้ — ลองใหม่อีกครั้ง") };
+   }
+diff --git a/src/lib/modules/member/assistant-guard.ts b/src/lib/modules/member/assistant-guard.ts
+index 26213ddb..4355f707 100644
+--- a/src/lib/modules/member/assistant-guard.ts
++++ b/src/lib/modules/member/assistant-guard.ts
+@@ -10,12 +10,16 @@
+ // 🔴 ยกเลิกไม่เปลี่ยนข้อมูลของร้าน แต่มัน "ทำให้งานของคนอื่นหายไป" จึงต้องมีเจ้าของ — AiConversation
+ //    ยังไม่มีคอลัมน์เจ้าของบทสนทนา (ดู prisma/schema/ai.prisma) จึงยังใช้กติกาสิทธิ์อย่างเดียว
+ //    (หนี้: ถ้าเพิ่ม `AiConversation.createdById` เมื่อไหร่ ให้ยอมให้เจ้าของบทสนทนายกเลิกได้ด้วย)
++//    CRM C5.5-G2: ผู้สร้างบทสนทนาฝังอยู่ในรหัสแล้ว (lib/ai/conversation-owner.ts) ⇒ ข้อ (0) ด้านล่าง = ต้องเป็นบทสนทนาของคนกด ·
++//    ข้อ (3) คงไว้ตามเดิม (ไม่ผ่อนให้ผู้สร้างยกเลิกได้โดยไม่มีสิทธิ์ — นอกขอบเขตใบนี้)
+ // 🔴 ไฟล์นี้ไม่ใช่ `"use server"` โดยตั้งใจ — เป็นตัวช่วยของ action ไม่ใช่ endpoint
+ 
+ import { tenantDb } from "@/lib/core/db";
+ import type { MembershipCtx } from "@/lib/core/rbac";
+ import { assertCan } from "@/lib/core/rbac";
+ import { memberKindAccess } from "./api/tools";
++import type { AiActor } from "@/lib/ai/actor";
++import { findVisibleConversation } from "@/lib/ai/conversations";
+ 
+ const NOT_FOUND = "ไม่พบข้อเสนอนี้ในบทสนทนานี้ — รีเฟรชหน้าแล้วลองใหม่อีกครั้ง";
+ 
+@@ -30,10 +34,13 @@ function isRecord(v: unknown): v is Record<string, unknown> {
+ export async function assertProposalInScope(
+   input: { tenantId: string; systemId: string; conversationId: string; proposalId: string },
+   membership: MembershipCtx,
++  aiActor: AiActor,
+ ): Promise<{ kind: string }> {
+   const conversationId = String(input.conversationId ?? "").trim();
+   const id = String(input.proposalId ?? "").trim();
+   if (!conversationId || !id) throw new Error(NOT_FOUND);
++  // CRM C5.5-G2 ▸ (0) บทสนทนาต้องเป็นของคนกด (ผู้สร้าง · เจ้าของร้านสำหรับห้องเดิม) — ของคนอื่น = ไม่พบ ◂
++  if (!(await findVisibleConversation({ tenantId: input.tenantId, actor: aiActor }, conversationId))) throw new Error(NOT_FOUND);
+ 
+   // (1) ร้านนี้ + บทสนทนานี้ (tenantDb ผูก tenantId ให้แล้ว ⇒ id ของร้านอื่นหาไม่เจอ)
+   const row = await tenantDb({ tenantId: input.tenantId }).aiProposal.findFirst({
+diff --git a/src/lib/modules/member/assistant.ts b/src/lib/modules/member/assistant.ts
+index 37db4d6e..9ce795f8 100644
+--- a/src/lib/modules/member/assistant.ts
++++ b/src/lib/modules/member/assistant.ts
+@@ -8,6 +8,8 @@
+ 
+ import { listMessages } from "@/lib/ai/service";
+ import { listPendingProposals } from "@/lib/ai/proposals";
++import type { AiActor } from "@/lib/ai/actor";
++import { findVisibleConversation } from "@/lib/ai/conversations";
+ import { toolRegistry } from "@/lib/ai/tools";
+ import { tenantDb } from "@/lib/core/db";
+ import type { MemberActor } from "./access";
+@@ -36,13 +38,17 @@ async function namesFor(tenantId: string, viewer: AssistantViewer, contents: str
+   return out;
+ }
+ 
+-/** สถานะหน้าจอของบทสนทนาหนึ่ง (ไม่มี/ไม่ใช่ของร้านนี้ = บทสนทนาว่าง) */
+-export async function assistantState(tenantId: string, conversationId: string | null, viewer?: AssistantViewer): Promise<AssistantStateDto> {
++/**
++ * สถานะหน้าจอของบทสนทนาหนึ่ง (ไม่มี/ไม่ใช่ของร้านนี้ = บทสนทนาว่าง)
++ * CRM C5.5-G2 ▸ `aiActor` = คนที่เปิดหน้า (บังคับ) — บทสนทนาของคนอื่น (`?conversation=` ของใครก็ได้ในร้าน) = บทสนทนาว่างเหมือนไม่มีอยู่ ◂
++ */
++export async function assistantState(tenantId: string, conversationId: string | null, aiActor: AiActor, viewer?: AssistantViewer): Promise<AssistantStateDto> {
+   const id = String(conversationId ?? "").trim();
+   if (!id) return { conversationId: null, messages: [], proposals: [], memberNames: {} };
+-  const conv = await tenantDb({ tenantId }).aiConversation.findFirst({ where: { id }, select: { id: true } });
++  const ctx = { tenantId, actor: aiActor };
++  const conv = await findVisibleConversation(ctx, id);
+   if (!conv) return { conversationId: null, messages: [], proposals: [], memberNames: {} };
+-  const [messages, proposals] = await Promise.all([listMessages({ tenantId }, conv.id, 60), listPendingProposals({ tenantId }, conv.id)]);
++  const [messages, proposals] = await Promise.all([listMessages(ctx, conv.id, 60), listPendingProposals(ctx, conv.id)]);
+   const memberNames = viewer
+     ? await namesFor(tenantId, viewer, messages.filter((m) => m.role !== "USER").map((m) => m.content)).catch(() => ({}))
+     : {};

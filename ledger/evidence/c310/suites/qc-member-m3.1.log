@@ -1,0 +1,32 @@
+  ✅ [M3.1-S1.1] migration member_v2_g: MemberSegment {systemId name definition lastCount lastCountAt ownerUserId scope} · listSegmentFields ≥ 25 (ฟิลด์ระบบ filterable + f.certLevel/f.diveCount กำหนดเอง + tier/points/inactiveDays/lastActivityAt/spent12m/visits12m/voucherCount/consent.LINE/source/unit/tags/birthdayMonth/lifecycle) · ทุกตัว label ไทย + ops[] · tier มี options 4 · f.certLevel มี options · MEMBER_LIMITS.segments 100
+  ✅ [M3.1-S2.1] tier in [gold, platinum] → 15 (สมาชิก 10+5) · sample ≤ 5 MemberBrief (ไม่มีเบอร์เต็ม) · avgSpend12mSatang เป็นตัวเลข
+  ✅ [M3.1-S2.2] inactiveDays gt 30 (ไม่ซื้อ/ไม่จอง > 30 วัน · รวมคนไม่เคยมี) → 17 · lastActivityAt after now−30d → 43 · รวมกัน = ทั้งหมด 60
+  ✅ [M3.1-S2.3] f.certLevel in [Advanced] → 12 (ตรง fieldFilterWhere ของ M1.2) · in [Advanced, Rescue] ≥ นั้น · ฟิลด์ที่ไม่ filterable (f.certNo) → throw ไทย
+  ✅ [M3.1-S2.4] f.diveCount gte 50 (ตัวเลข) → 31 · lt 50 + gte 50 = คนที่มีค่า 45
+  ✅ [M3.1-S2.5] points gte 100 → 48 (จาก PointBalance ระบบแต้มของร้าน) · points gte 0 = ทุกคน 60 (ไม่มีแถว balance = 0)
+  ✅ [M3.1-S2.6] spent12m gte 3,600,000 สตางค์ → 17 (นับสดจาก Customer.spent12mSatang · seed มีคนถึงเกณฑ์อยู่ก่อน + 4 ที่เตรียม) · visits12m gte 10 → 3
+  ✅ [M3.1-S2.7] voucherCount gte 1 (ใบ ACTIVE) → 2 (≥ 2 หลังออกให้สมาชิก 5,6) · voucherCount eq 0 = ที่เหลือ
+  ✅ [M3.1-S2.8] consent.LINE eq true → 40 (seed 40) · consent.LINE eq false = ที่เหลือ (ไม่มีแถว = ไม่ยินยอม) · ช่องทางไม่รู้จัก → throw ไทย
+  ✅ [M3.1-S2.9] source in [WALK_IN] → 60 · unit in [กะตะ] → 20 (20) · unit nin [กะตะ] → 40
+  ✅ [M3.1-S2.10] tags hasAny [vip, seg-<tag>] → 2 · hasAll [vip, seg-<tag>] → 1 · hasAny [ไม่มี] → 0
+  ✅ [M3.1-S2.11] birthdayMonth eq 10 → 12 (seed 12) · ฟิลด์ระบบ gender eq FEMALE → 15 · createdAt before วันนี้+1 → 60 (นับสด · seed มีวันสมัครในอนาคตจนถึง 30 ก.ย.)
+  ✅ [M3.1-S2.12] lifecycle in [CUSTOMER] (CRM ผ่าน partyId · ร้านนี้มี CRM) → นับได้ไม่ throw (0 เมื่อไม่มี) · op ไม่เข้ากับฟิลด์ (tier hasAll) → throw ไทย · ฟิลด์ไม่รู้จัก → throw ไทย
+  ✅ [M3.1-S3.1] AND ในกลุ่ม: tier in [gold,platinum] และ unit ป่าตอง → 0 (< 15) · OR สองกลุ่ม: [tier gold/platinum] หรือ [unit กะตะ] → 20 (union ไม่นับซ้ำ)
+  ✅ [M3.1-S3.2] groups ว่าง → ทุกคนยกเว้น MERGED (60) · กลุ่มว่าง 1 กลุ่ม = เหมือนกัน · definition รูปทรงผิด (ไม่มี groups) → throw ไทย
+  ✅ [M3.1-S4.1] perf: countSegment 4 เงื่อนไข (tier+consent+ฟิลด์กำหนดเอง+inactive) รอบที่ 2 ≤ 400ms บน seed 60 คน
+  ✅ [M3.1-S5.1] saveSegment TEAM → row lastCount 3 lastCountAt ownerUserId · PRIVATE ของปุ๊ก: owner เห็น TEAM ไม่เห็น PRIVATE ของคนอื่น · thana เห็น TEAM · ปุ๊กเห็นทั้ง 2 · thana (ไม่มี promo.manage) บันทึก → throw · ชื่อว่าง → throw · segmentMembers take 3 → items 3 + nextCursor
+  ✅ [M3.1-S5.2] unit scope: thana (ป่าตอง) นับ tier gold/platinum → 0 (เฉพาะป่าตอง) · ปุ๊กลบ segment ส่วนตัวตัวเอง → ok · thana ลบของทีม → throw · saveSegment {id} = แก้ชื่อ/นิยาม (id เดิม · lastCount ใหม่)
+  ✅ [M3.1-S6.1] หน้า /member/segments requireTenant + read-โดยนัย · actions 'use server' gate promo.manage (save/delete) · testid 12 · ป้ายภาพ 21 ขั้น 1 ครบ · nav มีทางเข้า segments (campaigns หมวด) · facade export evaluateSegment/countSegment/sampleSegment/saveSegment/listSegments/deleteSegment/segmentMembers/listSegmentFields · marketing/segments.ts re-export ผ่าน @/lib/modules/member · ไม่มี any/อีโมจิ/hex
+  ❌ [M3.1-S6.2] ภาพ 21 ขั้น 1: segments-owner desktop+mobile 200 ไม่ล้น (รายการ + builder มีเงื่อนไข 3 แถว + กล่องนับ) · thana 200 อ่านอย่างเดียว · noperm 404 · 🔴 PARITY: ผ่าน ใน wo-notes/member-M3.1.md — exp 200 + PARITY | act undefined/undefined/undefined thana=undefined noperm=undefined parity=true
+
+🔴 M3.1: 19/20
+JSON_SUMMARY {"total":20,"passed":19,"findings":[{"id":"M3.1-S6.2","sev":"MAJOR"}]}
+(node:1481120) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)

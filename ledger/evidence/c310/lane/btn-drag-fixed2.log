@@ -1,0 +1,88 @@
+== btn-drag-fixed2 start 2026-10-07T23:43:12Z · HEAD cb7405de · iso ISO_MEM=5G · cmd: pnpm exec tsx scripts/qc-crm-buttons.mts --page re:^(/app/sys/.id.|/deals)(?!/) --user owner
+
+═══ QC CRM v2 · C4.2 — press everything (registry-driven) ═══
+[env] DB tenant cmuy1cvc60000pgkzbjdrbtdz · system cmuy1gmlm0000jikz45h7xblz · answer key /root/projects/shark-crm-c310/scripts/crm-expected.json · users owner · devices desktop,mobile · dry=false · discover=false · pageFilter=re:^(/app/sys/.id.|/deals)(?!/)
+
+(node:1753448) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+── ตัวแปรบริบทที่หาค่าจริงไม่ได้ (หน้าที่ต้องใช้ค่านี้จะถูกข้าม) ──
+  · [slug (/p)] ไม่มี Page ที่เปิดอยู่และวาง widget CRM ในร้านนี้ (/p/[slug] ข้ามทั้งหน้า)
+  · [threadKey] ไม่มี CrmEmailMessage ในซีดนี้ (/emails/[threadKey] ข้ามทั้งหน้า)
+  · [sequenceId] ไม่มี CrmSequence ในซีดนี้ (/settings/sequences/[sequenceId] ข้ามทั้งหน้า)
+  · [docType/docId] ยังไม่ผูก resolver จริง (1 แถวในทะเบียน) — /app/sys/[id]/account/docs/… ข้ามทั้งหน้าเสมอในตอนนี้
+🧩 extra fixtures (it4-A): 5 — crmContact · memberSavedView · chatConversation · chatContact · crmDeal
+── บันทึกที่แต่ละบทบาทเปิด (เลือกผ่านตัวกรองการมองเห็นของ product) ──
+  · owner deal cmuyef7ps00e1v5kze5t0qxhn — ของกลาง (shared pick) · ผ่าน dealWhere() ของ product · owner=thana team=cmuyeerz30002v5kzawz2jb5b
+  · owner contact cmuyeesmi001tv5kzqqrzt4wo — ของกลาง (shared pick) · ผ่าน contactWhere() ของ product · owner=thana team=cmuyeerz30002v5kzawz2jb5b
+  · owner company cmuyees7l000qv5kztjyrykgo — ของกลาง (shared pick) · ผ่าน companyWhere() ของ product · owner=thana team=cmuyeerz30002v5kzawz2jb5b
+  · manager deal cmuyef7ps00e1v5kze5t0qxhn — ของกลาง (shared pick) · ผ่าน dealWhere() ของ product · owner=thana team=cmuyeerz30002v5kzawz2jb5b
+  · manager contact cmuyeesmi001tv5kzqqrzt4wo — ของกลาง (shared pick) · ผ่าน contactWhere() ของ product · owner=thana team=cmuyeerz30002v5kzawz2jb5b
+  · manager company cmuyees7l000qv5kztjyrykgo — ของกลาง (shared pick) · ผ่าน companyWhere() ของ product · owner=thana team=cmuyeerz30002v5kzawz2jb5b
+  · nok deal cmuyefbav00gtv5kzj6ukodzk — ของตัวเอง (ownerUserId = ผู้ใช้) · ผ่าน dealWhere() ของ product · owner=nok team=cmuyees0e0006v5kz0ttc8zc0
+  · nok contact cmuyeez6t007dv5kz8isnqhih — ของตัวเอง (ownerUserId = ผู้ใช้) · ผ่าน contactWhere() ของ product · owner=nok team=cmuyees0e0006v5kz0ttc8zc0
+  · nok company cmuyeesd9001av5kzsgu5v9wk — ไม่มีคีย์ crm.company.read (companyWhere ว่าง) ⇒ ใช้ของตัวเอง owner=nok — หน้าต้อง 404 ตามคีย์ (registry hiddenFor)
+  · thana deal cmuyef7ps00e1v5kze5t0qxhn — ของตัวเอง (ownerUserId = ผู้ใช้) · ผ่าน dealWhere() ของ product · owner=thana team=cmuyeerz30002v5kzawz2jb5b
+  · thana contact cmuyeesmi001tv5kzqqrzt4wo — ของตัวเอง (ownerUserId = ผู้ใช้) · ผ่าน contactWhere() ของ product · owner=thana team=cmuyeerz30002v5kzawz2jb5b
+  · thana company cmuyees7l000qv5kztjyrykgo — ไม่มีคีย์ crm.company.read (companyWhere ว่าง) ⇒ ใช้ของตัวเอง owner=thana — หน้าต้อง 404 ตามคีย์ (registry hiddenFor)
+  · * leadNow cmuyr9b750000ywkzyry1tgm1 — ผู้ติดต่อที่สร้างตอนนี้ (qc-btn-lead-) — กล่องที่มา lead นับเฉพาะงวดปัจจุบัน
+  · owner dealView cmuyr9b7g0001ywkzk2f9zdxd — มุมมองดีลส่วนตัวของบทบาทนี้ (qc-btn-view-) — ซีดมี 0
+  · owner chatRoom cmuyr9b880003ywkz158vy1kd — ห้องแชทของตัวกด ผูกปาร์ตี้ของผู้ติดต่อ cmuyeesmi001tv5kzqqrzt4wo (briefFor ของ product เห็นผู้ติดต่อตามสิทธิ์ของบทบาท)
+  · owner unownedDeal cmuyr9b8v0004ywkzouz6mi1i — ดีลเปิดไม่มีผู้ดูแลของตัวกด (qc-btn-unowned-) ทีมเดียวกับ cmuyef7ps00e1v5kze5t0qxhn · dealWhere ของ product ยอมรับ
+🌐 QC server http://127.0.0.1:3215 ตอบ HTTP 200
+  ✅ pre-flight: ไม่มี webhook ที่เปิด · กฎอัตโนมัติที่เปิดและส่งออกนอกระบบ · โดเมนส่ง · ผู้ให้บริการอีเมล · อุปกรณ์ push ของ persona · payrollLink · ai=mock
+🧩 fixtures: portal เปิดชั่วคราว · เลขภาษีบริษัทตัวแทน 0105500000001 → 0105599000001 · โดเมนปลายทางลิงก์ null → ["*.example.com"] (คืนตอนจบ)
+📸 snapshot 75 ตาราง · 2635 แถว (tenant cmuy1cvc60000pgkzbjdrbtdz)
+  ♻️  คืนฐาน (/deals#deal-card-* desktop (ซ่อมข้อมูลซีด)): ลบแถวใหม่ 0 · คืนค่า 2 · สร้างคืน 0
+  ♻️  คืนฐาน (/deals desktop): ลบแถวใหม่ 1 · คืนค่า 0 · สร้างคืน 0
+  [1/16] owner desktop /deals — 23/23 ok · 61 วิ
+  ♻️  คืนฐาน (/deals#deal-card-* mobile (ซ่อมข้อมูลซีด)): ลบแถวใหม่ 0 · คืนค่า 2 · สร้างคืน 0
+  ♻️  คืนฐาน (/deals mobile): ลบแถวใหม่ 1 · คืนค่า 0 · สร้างคืน 0
+  [2/16] owner mobile /deals — 24/24 ok · 47 วิ
+  ♻️  คืนฐาน (/deals#deal-bulk-move desktop (ซ่อมข้อมูลซีด)): ลบแถวใหม่ 0 · คืนค่า 2 · สร้างคืน 0
+  ♻️  คืนฐาน (/deals#deal-bulk-reassign desktop (ซ่อมข้อมูลซีด)): ลบแถวใหม่ 0 · คืนค่า 1 · สร้างคืน 0
+  ♻️  คืนฐาน (/deals#deal-bulk-tag desktop (ซ่อมข้อมูลซีด)): ลบแถวใหม่ 0 · คืนค่า 1 · สร้างคืน 0
+  ♻️  คืนฐาน (/deals desktop): ลบแถวใหม่ 1 · คืนค่า 0 · สร้างคืน 0
+  [3/16] owner desktop /deals — 16/16 ok · 42 วิ
+  ♻️  คืนฐาน (/deals#deal-bulk-move mobile (ซ่อมข้อมูลซีด)): ลบแถวใหม่ 0 · คืนค่า 2 · สร้างคืน 0
+  ♻️  คืนฐาน (/deals#deal-bulk-reassign mobile (ซ่อมข้อมูลซีด)): ลบแถวใหม่ 0 · คืนค่า 1 · สร้างคืน 0
+  ♻️  คืนฐาน (/deals#deal-bulk-tag mobile (ซ่อมข้อมูลซีด)): ลบแถวใหม่ 0 · คืนค่า 1 · สร้างคืน 0
+  ♻️  คืนฐาน (/deals mobile): ลบแถวใหม่ 1 · คืนค่า 0 · สร้างคืน 0
+  [4/16] owner mobile /deals — 15/15 ok · 37 วิ
+  [5/16] owner desktop /deals — 1/1 ok · 2 วิ
+  [6/16] owner mobile /deals — 1/1 ok · 2 วิ
+  [7/16] owner desktop /deals — 1/1 ok · 2 วิ
+  [8/16] owner mobile /deals — 1/1 ok · 1 วิ
+  [9/16] owner desktop /deals — 3/3 ok · 4 วิ
+  [10/16] owner mobile /deals — 3/3 ok · 4 วิ
+  ♻️  คืนฐาน (/app/sys/[id]#crm-template-apply desktop (ซ่อมข้อมูลซีด)): ลบแถวใหม่ 0 · คืนค่า 2 · สร้างคืน 0
+  ♻️  คืนฐาน (/app/sys/[id]#crm-template-none desktop (ซ่อมข้อมูลซีด)): ลบแถวใหม่ 0 · คืนค่า 1 · สร้างคืน 0
+  ♻️  คืนฐาน (/app/sys/[id]#crm-home-unowned-submit desktop (ซ่อมข้อมูลซีด)): ลบแถวใหม่ 0 · คืนค่า 1 · สร้างคืน 0
+  ♻️  คืนฐาน (/app/sys/[id] desktop): ลบแถวใหม่ 47 · คืนค่า 43 · สร้างคืน 0
+  [11/16] owner desktop /app/sys/[id] — 49/49 ok · 183 วิ
+  ♻️  คืนฐาน (/app/sys/[id]#crm-template-apply mobile (ซ่อมข้อมูลซีด)): ลบแถวใหม่ 0 · คืนค่า 2 · สร้างคืน 0
+  ♻️  คืนฐาน (/app/sys/[id]#crm-template-none mobile (ซ่อมข้อมูลซีด)): ลบแถวใหม่ 0 · คืนค่า 1 · สร้างคืน 0
+  ♻️  คืนฐาน (/app/sys/[id]#crm-home-unowned-submit mobile (ซ่อมข้อมูลซีด)): ลบแถวใหม่ 0 · คืนค่า 1 · สร้างคืน 0
+  ♻️  คืนฐาน (/app/sys/[id] mobile): ลบแถวใหม่ 47 · คืนค่า 43 · สร้างคืน 0
+  [12/16] owner mobile /app/sys/[id] — 49/49 ok · 105 วิ
+  ♻️  คืนฐาน (/app/sys/[id] desktop): ลบแถวใหม่ 2 · คืนค่า 2 · สร้างคืน 0
+  [13/16] owner desktop /app/sys/[id] — 8/8 ok · 14 วิ
+  ♻️  คืนฐาน (/app/sys/[id] desktop): ลบแถวใหม่ 2 · คืนค่า 0 · สร้างคืน 0
+  [14/16] owner desktop /app/sys/[id] — 1/1 ok · 3 วิ
+  [15/16] owner desktop /app/sys/[id] — 1/1 ok · 2 วิ
+  [16/16] owner mobile /app/sys/[id] — 1/1 ok · 1 วิ
+  ✅ ตรวจซ้ำหลังคืนฐาน (CLEAN): ทุกตาราง (75) ตรง snapshot ทั้งเนื้อหา
+🧩 ลบ extra fixtures 5/5
+🧩 fixtures คืนค่าเดิมแล้ว (portal false · เลขภาษี 0105500000001)
+
+🧹 คืนฐานครั้งสุดท้าย: ลบ 0 · คืนค่า 0 · สร้างคืน 0 · ค้าง 0 · กวาดแท็ก/session 1
+
+🟢 C4.2: 157/157 · cleanup 0 · outbox 0 · verify 0 · pageErrors 0 · tripwire 0 · hiddenWait 0 s/0 · dead 0 · wrongExpect 0 · hiddenLeak 0 · vacuous 0 · overflow 0 · skippedNeeds 40 · skippedSafety 0
+JSON_SUMMARY {"total":157,"passed":157,"disabled":0,"dead":0,"wrongExpect":0,"hiddenLeak":0,"vacuous":0,"consoleErrors":0,"overflow":0,"skippedNeeds":40,"skippedSafety":0,"restoreFailures":0,"cleanupFailures":0,"outboxUnsettled":0,"verifyFailures":0,"pageErrors":0,"tripwire":0,"fatal":null}
+== btn-drag-fixed2 end 2026-10-07T23:53:48Z rc=0

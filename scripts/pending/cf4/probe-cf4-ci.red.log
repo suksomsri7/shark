@@ -1,0 +1,36 @@
+(node:1460540) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ [B0.1] premise: raw equals+insensitive treats `%` and `_` as wildcards (contacts `%` ≥ 28 · `บริษัท_ก` = 1 · product sku `%` ≥ 6)
+        — ACTUAL contacts%=28 บริษัท_ก=1 sku%=6
+  ❌ [B1.1] import name `%` ⇒ no contact (was: an arbitrary contact of the book)
+        — ACTUAL got=filler 23 qc-cf4-qacvuerr
+  ❌ [B1.2] import name `บริษัท_ก …` ⇒ no contact (was: `บริษัท.ก …`)
+        — ACTUAL got=บริษัท.ก qc-cf4-qacvuerr
+  ❌ [B1.3] import name with backslash-escaped wildcards ⇒ no contact
+        — ACTUAL got=50%_off\x qc-cf4-qacvuerr
+  ❌ [B1.4] positive: same name in another case ⇒ that contact · stored literal `50%_off\x` in another case ⇒ itself · Thai exact ⇒ itself
+        — ACTUAL acme=true literal=false thai=true
+  ❌ [B2.1] dupe check name `%` ⇒ DB returns 0 rows · 0 warnings
+        — ACTUAL dbRows=20 warnings=0
+  ❌ [B2.2] dupe check name `บริษัท_ก …` ⇒ DB returns 0 rows (was: `บริษัท.ก …`)
+        — ACTUAL dbRows=1 warnings=0
+  ❌ [B2.3] dupe check name `%` + phone ⇒ exactly the phone match (no crowding of take 20)
+        — ACTUAL dbRows=20 warnings=[]
+  ❌ [B2.4] positive: other-case name ⇒ name warning on that contact · literal `%_\` name ⇒ itself
+        — ACTUAL acme=[true] literal=[]
+  ❌ [B3.1] product dupe check name `%` / sku `%` / `_` look-alikes ⇒ DB returns 0 rows · 0 hits
+        — ACTUAL dbRows=6/6/1 hits=0
+  ❌ [B3.2] positive: sku other case ⇒ sku hit · literal `%_\` name and sku ⇒ themselves · Thai exact name ⇒ itself
+        — ACTUAL sku=["sku"] litName=0 litSku=0 thai=1
+  ✅ [CLEAN] throwaway tenant, ACCOUNT system, contacts and products removed (0 rows left)
+        — ACTUAL left=0
+
+🔴 probe-cf4-ci: 2/12
+JSON_SUMMARY {"total":12,"passed":2,"findings":[{"id":"B1.1"},{"id":"B1.2"},{"id":"B1.3"},{"id":"B1.4"},{"id":"B2.1"},{"id":"B2.2"},{"id":"B2.3"},{"id":"B2.4"},{"id":"B3.1"},{"id":"B3.2"}]}

@@ -11,7 +11,7 @@
 // 🔴 ข้อความ error เป็นภาษาไทยที่ไม่โทษผู้ใช้ · error ที่ไม่รู้จัก = ข้อความกลาง (รายละเอียดไม่หลุดออกหน้าจอ)
 // 🔴 AUDIT-CLASS X8: ไม่ log หัวเรื่อง/เนื้อความ/ที่อยู่ — บันทึกเฉพาะชนิดของ error
 
-import { revalidatePath } from "next/cache";
+import { revalidateAndWake } from "./outbox-wake"; // CRM C5.4-D ▸ L3-M1b: รีเฟรชหน้า + ปลุกคิว outbox หลังเขียนสำเร็จ ◂
 import { requireTenant } from "@/lib/core/context";
 import { ForbiddenError } from "@/lib/core/rbac";
 import { toMemberActor } from "@/lib/modules/member";
@@ -19,6 +19,9 @@ import type { MemberActor } from "@/lib/modules/member";
 import { assertCanCrm } from "./access";
 import { assertCrmV2, CrmV2DisabledError } from "./ui-version";
 import { EmailError } from "./emails";
+import { CRM_EMAIL_SUBJECT_MAX, CRM_EMAIL_BODY_TOO_LONG_MSG, crmEmailBodyTooLong, crmEmailFailText, crmEmailHtmlToComposerText } from "./emails-shared";
+import { withFieldError } from "./field-errors-shared";
+import { htmlToText } from "@/lib/core/sanitize"; // CRM C5.5-fix5 ▸ RV-1 ◂
 import * as emails from "./emails";
 import * as activities from "./activities";
 import type { CrmEmailActionResult } from "@/components/crm/emails/types";
@@ -45,9 +48,9 @@ function failOf(e: unknown): { ok: false; error: string; code?: string } {
   return { ok: false, error: "ทำรายการไม่สำเร็จ ระบบยกเลิกให้แล้ว (ข้อมูลอีเมลไม่เปลี่ยน) — ลองใหม่อีกครั้ง" };
 }
 
-const touchInbox = (systemId: string) => revalidatePath(`/app/sys/${systemId}/crm/emails`);
-const touchThread = (systemId: string, threadKey: string) => revalidatePath(`/app/sys/${systemId}/crm/emails/${threadKey}`);
-const touchSettings = (systemId: string) => revalidatePath(`/app/sys/${systemId}/crm/settings/email`);
+const touchInbox = (systemId: string) => revalidateAndWake(`/app/sys/${systemId}/crm/emails`);
+const touchThread = (systemId: string, threadKey: string) => revalidateAndWake(`/app/sys/${systemId}/crm/emails/${threadKey}`);
+const touchSettings = (systemId: string) => revalidateAndWake(`/app/sys/${systemId}/crm/settings/email`);
 
 // ───────────────────────── เขียนจดหมาย ─────────────────────────
 
@@ -61,13 +64,23 @@ export async function sendCrmEmailAction(
     contactId: string;
     to?: string[];
     subject: string;
-    bodyHtml: string;
+    /** HTML (ผู้เรียกเดิม) — ช่องเขียนจดหมายบนหน้าจอส่ง `bodyText` แทนตั้งแต่ CRM C4.4-fix2 */
+    bodyHtml?: string;
+    /** CRM C4.4-fix2 ▸ J1: ข้อความล้วนจากช่องเขียนจดหมาย — บริการแปลงเป็น HTML ที่มีลิงก์นับคลิก (ตัวแปลงเดียวกับกฎ/ลำดับติดตาม) ◂ */
+    bodyText?: string;
     templateId?: string | null;
     scheduledAt?: string | null;
     replyToEmailId?: string | null;
     attachments?: { filename: string; contentType: string; base64: string }[];
   },
-): Promise<CrmEmailActionResult<{ emailId: string; threadKey: string; status: string }>> {
+): Promise<CrmEmailActionResult<{ emailId: string; threadKey: string; status: string; failReason?: string }>> {
+  // CRM C4.4-fix2 r2 ▸ SF-1: เพดานเนื้อความตรวจก่อนทุกอย่าง (ก่อนเปิด session/แปลง) — ข้อความเดียวกับบริการ ใต้ช่องเนื้อความ ◂
+  // CRM C5.5-fix5 ▸ รีวิว RV-1: `bodyHtml` ใช้เพดานเดียวกัน (เดิมตรวจแค่ bodyText ⇒ HTML ดิบขนาดเท่าที่ server action รับได้ (12 MB)
+  //   วิ่งเข้า regex ตัดแท็กแบบ n² ใน catch ข้างล่างทุกครั้งที่ action ล้ม = คำขอเดียวแช่ event loop เป็นชั่วโมง) — ตรวจก่อน session
+  //   ⇒ ไม่มีทางไหน (สำเร็จหรือล้ม) ที่แตะเนื้อความยาวเกินเพดาน · ขนาดถึงเพดานพอดียังไปต่อเหมือนเดิม ◂
+  if ((typeof input?.bodyText === "string" && crmEmailBodyTooLong(input.bodyText)) || (typeof input?.bodyHtml === "string" && crmEmailBodyTooLong(input.bodyHtml))) {
+    return { ok: false, error: CRM_EMAIL_BODY_TOO_LONG_MSG, code: "VALIDATION", fieldErrors: { body: CRM_EMAIL_BODY_TOO_LONG_MSG } };
+  }
   try {
     const { ctx, actor } = await session(systemId, "crm.email.send");
     const files = (input?.attachments ?? []).map((a) => ({
@@ -79,7 +92,7 @@ export async function sendCrmEmailAction(
       contactId: String(input?.contactId ?? ""),
       ...(Array.isArray(input?.to) && input.to.length ? { to: input.to } : {}),
       subject: String(input?.subject ?? ""),
-      bodyHtml: String(input?.bodyHtml ?? ""),
+      ...(typeof input?.bodyText === "string" && !input?.bodyHtml ? { bodyText: input.bodyText } : { bodyHtml: String(input?.bodyHtml ?? "") }),
       ...(input?.templateId ? { templateId: input.templateId } : {}),
       ...(input?.scheduledAt ? { scheduledAt: input.scheduledAt } : {}),
       ...(input?.replyToEmailId ? { replyToEmailId: input.replyToEmailId } : {}),
@@ -87,9 +100,17 @@ export async function sendCrmEmailAction(
     });
     touchInbox(systemId);
     touchThread(systemId, r.threadKey);
-    return { ok: true, emailId: r.emailId, threadKey: r.threadKey, status: r.status };
+    // C4.3-fix: ok = "บันทึกจดหมายแล้ว" (แถว + เธรดมีจริง) · ส่งไม่ถึง = status FAILED + เหตุภาษาไทยให้หน้าจอแสดง
+    return { ok: true, emailId: r.emailId, threadKey: r.threadKey, status: r.status, ...(r.status === "FAILED" ? { failReason: crmEmailFailText(r.failCode) } : {}) };
   } catch (e) {
-    return failOf(e);
+    // C4.3-fix part 2 ▸ หัวข้อ (cleanSubject) / เนื้อความว่าง = ข้อความใต้ช่องนั้นของช่องเขียนจดหมาย ◂
+    const subject = String(input?.subject ?? "").trim();
+    return withFieldError(failOf(e), {
+      subject: !subject || subject.length > CRM_EMAIL_SUBJECT_MAX || /[\r\n]/.test(subject),
+      // CRM C5.5-fix5 ▸ RV-1: ตัวแปลงเชิงเส้นของ engine กลาง (เนื้อความถูกจำกัด ≤ 500 KiB แล้วด้านบน) แทน regex ตัดแท็ก n² ·
+      //   "ว่าง" = ว่างหลังตัดแบบเดียวกับที่บริการตัดสิน (สคริปต์/สไตล์/คอมเมนต์ล้วน = ว่าง) ◂
+      body: !(String(input?.bodyText ?? "").trim() || htmlToText(typeof input?.bodyHtml === "string" ? input.bodyHtml : "")),
+    });
   }
 }
 
@@ -236,14 +257,18 @@ export async function deleteCrmEmailTemplateAction(systemId: string, templateId:
   }
 }
 
-/** เนื้อความของแม่แบบ 1 ใบ (ให้หน้าเขียนจดหมายเติมลงช่องเมื่อเลือกแม่แบบ) */
-export async function getCrmEmailTemplateAction(systemId: string, templateId: string): Promise<CrmEmailActionResult<{ subject: string; bodyHtml: string }>> {
+/**
+ * เนื้อความของแม่แบบ 1 ใบ (ให้หน้าเขียนจดหมายเติมลงช่องเมื่อเลือกแม่แบบ)
+ * CRM C4.4-fix2 ▸ J1: + `bodyText` = ข้อความสำหรับช่องเขียนจดหมาย (ข้อความล้วน) ที่ **เก็บ URL ของลิงก์ในแม่แบบไว้** — เดิมหน้าจอตัดแท็กทิ้งเอง
+ *   ⇒ ลิงก์ในแม่แบบหายทั้ง URL · ตอนส่ง ตัวแปลงกลางทำ URL กลับเป็นลิงก์ที่นับคลิกได้ ◂
+ */
+export async function getCrmEmailTemplateAction(systemId: string, templateId: string): Promise<CrmEmailActionResult<{ subject: string; bodyHtml: string; bodyText: string }>> {
   try {
     const { ctx, actor } = await session(systemId, "crm.email.read");
     const rows = await emails.listTemplates(ctx, actor);
     const one = rows.find((t) => t.id === String(templateId ?? ""));
     if (!one) return { ok: false, error: "ไม่พบแม่แบบจดหมายนี้แล้ว — รีเฟรชหน้าแล้วเลือกใหม่", code: "NOT_FOUND" };
-    return { ok: true, subject: one.subject, bodyHtml: one.bodyHtml };
+    return { ok: true, subject: one.subject, bodyHtml: one.bodyHtml, bodyText: crmEmailHtmlToComposerText(one.bodyHtml) };
   } catch (e) {
     return failOf(e);
   }

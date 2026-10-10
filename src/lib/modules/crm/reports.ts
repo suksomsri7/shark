@@ -24,7 +24,8 @@ import { prisma } from "./db";
 import { crmCan, crmForbiddenMessage, isApiActor } from "./access";
 import { parseCrmSettings } from "./settings";
 import { CrmV2DisabledError } from "./ui-version";
-import { resolve as resolveVisibility, visibleWhere } from "./visibility";
+import { crmAccess, resolve as resolveVisibility, visibleWhere } from "./visibility";
+import { crmScope } from "./request-scope";
 import { CONTACT_SOURCE_LABEL } from "./contacts-shared";
 import { ACTIVITY_TYPES, ACTIVITY_TYPE_LABEL } from "./activities-shared";
 import { SCORE_BAND_LABELS } from "./scoring-shared";
@@ -108,10 +109,11 @@ const ts = (d: Date): Sql => Prisma.sql`(${d.toISOString()}::timestamptz AT TIME
 type Sys = { tenantId: string; systemId: string };
 
 /** AUDIT-CLASS X1: ระบบ CRM ของร้านนี้เท่านั้น (อื่น = NOT_FOUND ข้อความไม่สะท้อนอะไรของอีกฝั่ง) · R-E.14 รุ่น 1 = ปฏิเสธ */
-async function loadSystem(ctx: ReportsCtx): Promise<Sys> {
+async function loadSystem(ctx: ReportsCtx, userId?: string | null): Promise<Sys> {
   const tenantId = str(ctx?.tenantId);
   const systemId = str(ctx?.systemId);
-  const sys = tenantId && systemId ? await prisma.appSystem.findFirst({ where: { id: systemId, tenantId, type: "CRM" }, select: { settings: true } }) : null;
+  // CRM C5.1-fix ▸ ระบบ + ทีม/policy ของผู้ขอในคำสั่งเดียว (crmAccess · memo ต่อคำขอ) — visibility.resolve ต่อจากนี้ไม่อ่านฐานซ้ำ ◂
+  const sys = tenantId && systemId ? (await crmAccess({ tenantId, systemId }, userId ?? null)).system : null;
   if (!sys) throw fail("NOT_FOUND", NOT_FOUND_MSG);
   if (parseCrmSettings(sys.settings).uiVersion !== 2) throw new CrmV2DisabledError();
   return { tenantId, systemId };
@@ -119,7 +121,7 @@ async function loadSystem(ctx: ReportsCtx): Promise<Sys> {
 
 /** ลำดับตายตัว: ระบบ (NOT_FOUND) → uiVersion 2 (CrmV2DisabledError) → คีย์ (FORBIDDEN ข้อความไทยไม่โทษผู้ใช้) */
 async function enter(ctx: ReportsCtx, actor: Actor | null | undefined, key: string): Promise<{ sys: Sys; actor: Actor }> {
-  const sys = await loadSystem(ctx);
+  const sys = await loadSystem(ctx, typeof actor?.userId === "string" ? actor.userId : null);
   if (!actor || actor.role === "CUSTOMER" || typeof actor.userId !== "string") throw fail("FORBIDDEN", crmForbiddenMessage(key));
   // AUDIT-CLASS X2: คีย์ผ่านตัวตัดสินตัวเดียวของ CRM
   if (!crmCan(actor, key)) throw fail("FORBIDDEN", crmForbiddenMessage(key));
@@ -137,6 +139,8 @@ type Scope = Sys & {
   allowedTeams: string[] | null;
   /** ALL ของคนที่ถูกจำกัดสาขา: กิจกรรมกำพร้าที่ visibleWhere(ACTIVITY) ไม่ให้เห็น ("ALL" = เกินเพดาน ⇒ ซ่อนกำพร้าที่ผูกบริษัท/รายการทั้งหมด) */
   hiddenOrphans: string[] | "ALL";
+  /** C5.1-fix ▸ ตัวอ่านกิจกรรมกำพร้าที่ต้องซ่อน — อ่านเมื่อแท็บใช้ขอบเขตกิจกรรมเท่านั้น (ensureOrphans) · null = อ่านแล้ว/ไม่ต้องอ่าน */
+  pendingOrphans: (() => Promise<string[] | "ALL">) | null;
   /** ตัวกรองของคีย์ API (R-C.3) */
   keyTeams: string[];
   keyOwners: string[];
@@ -158,32 +162,29 @@ async function reportScope(sys: Sys, actor: Actor): Promise<Scope> {
   if (crmCan(actor, "crm.report.all")) level = "ALL";
   else if (crmCan(actor, "crm.report.team") && RANK[level] < RANK.TEAM) level = "TEAM";
   const me = actor.userId;
-  const sc: Scope = { ...sys, level, me, teams: [], mates: [me], allowedTeams: null, hiddenOrphans: [], keyTeams: [], keyOwners: [], keyTeamMembers: [] };
+  const sc: Scope = { ...sys, level, me, teams: [], mates: [me], allowedTeams: null, hiddenOrphans: [], pendingOrphans: null, keyTeams: [], keyOwners: [], keyTeamMembers: [] };
+  // CRM C5.1-fix ▸ ทีมของฉัน/สมาชิกทีม/ทีมตามสาขา มาจากแถวชุดเดียวกับ visibility (crmAccess — คำสั่งเดียว memo ต่อคำขอ) ·
+  //   ความหมายเท่าคิวรีเดิม: ทีม = ทีมที่ยังไม่เก็บถาวรที่ฉันอยู่ · สมาชิก = TeamMember ของทีมเหล่านั้น · ทีมตามสาขา = ไม่ผูกสาขา/ผูกสาขาที่ดูแล ◂
   if (level === "TEAM") {
-    const [r] = await prisma.$queryRaw<{ teams: string[] | null; mates: string[] | null }[]>`
-      WITH mine AS (
-        SELECT tm."teamId" FROM "TeamMember" tm JOIN "Team" t ON t."id" = tm."teamId"
-         WHERE tm."tenantId" = ${sys.tenantId} AND tm."userId" = ${me} AND t."tenantId" = ${sys.tenantId} AND t."archivedAt" IS NULL
-      )
-      SELECT (SELECT array_agg(DISTINCT "teamId") FROM mine) AS "teams",
-             (SELECT array_agg(DISTINCT m."userId") FROM "TeamMember" m WHERE m."tenantId" = ${sys.tenantId} AND m."teamId" IN (SELECT "teamId" FROM mine)) AS "mates"`;
-    sc.teams = r?.teams ?? [];
-    sc.mates = [...new Set([me, ...(r?.mates ?? [])])];
+    const acc = await crmAccess(sys, me);
+    sc.teams = [...new Set(acc.mine.map((m) => m.teamId))];
+    sc.mates = [...new Set([me, ...(sc.teams.length ? acc.mates : [])])];
   }
   if (level === "ALL" && !isApiActor(actor) && !wholeShop(actor)) {
-    const rows = await prisma.$queryRaw<{ id: string }[]>`
-      SELECT "id" FROM "Team" WHERE "tenantId" = ${sys.tenantId}
-         AND (cardinality("unitIds") = 0 OR "unitIds" && ${actor.unitAccess}::text[]) LIMIT 1000`;
-    sc.allowedTeams = rows.map((x) => x.id);
+    const acc = await crmAccess(sys, me);
+    sc.allowedTeams = acc.teams.filter((t) => t.unitIds.length === 0 || t.unitIds.some((u) => actor.unitAccess.includes(u))).map((t) => t.id).slice(0, 1000);
     // S3: กิจกรรม "กำพร้า" (ไม่มีดีล/ผู้ติดต่อ — ผูกบริษัท/รายการวัตถุ) ของสาขาอื่น — ใช้กฎของ visibility.ts ตรง ๆ (visibleWhere ACTIVITY)
     //   ไม่เขียนกฎชุดที่สอง: แถวกำพร้าที่ visibleWhere ไม่ให้เห็น = ซ่อนจากรายงานด้วย · มีเพดานแบบเดียวกับ visibility (เกิน = ซ่อนทั้งกลุ่ม)
-    const vis = await visibleWhere(sys, actor, "ACTIVITY", { keyGate: false });
-    const hidden = await prisma.crmActivity.findMany({
-      where: { AND: [{ tenantId: sys.tenantId, systemId: sys.systemId, dealId: null, contactId: null }, { NOT: vis }] },
-      select: { id: true },
-      take: ORPHAN_HIDE_CAP + 1,
-    });
-    sc.hiddenOrphans = hidden.length > ORPHAN_HIDE_CAP ? "ALL" : hidden.map((x) => x.id);
+    //   C5.1-fix ▸ อ่านเมื่อแท็บใช้ขอบเขตกิจกรรมเท่านั้น (ensureOrphans ใน overview/reps/activities) — forecast/funnel/lost/sources/scores ไม่อ่าน ◂
+    sc.pendingOrphans = async () => {
+      const vis = await visibleWhere(sys, actor, "ACTIVITY", { keyGate: false });
+      const hidden = await prisma.crmActivity.findMany({
+        where: { AND: [{ tenantId: sys.tenantId, systemId: sys.systemId, dealId: null, contactId: null }, { NOT: vis }] },
+        select: { id: true },
+        take: ORPHAN_HIDE_CAP + 1,
+      });
+      return hidden.length > ORPHAN_HIDE_CAP ? "ALL" : hidden.map((x) => x.id);
+    };
   }
   if (isApiActor(actor)) {
     // AUDIT-CLASS X2: ตัวกรองของคีย์ API (pseudo-scope `crm.filter.team:` / `crm.filter.owner:`) — แคบลงเท่านั้น
@@ -223,8 +224,18 @@ function ownedScope(sc: Scope, a: string, withCollab: boolean): Sql {
   return andSql([base, ...keys]);
 }
 
+/** C5.1-fix ▸ อ่านกิจกรรมกำพร้าที่ต้องซ่อน (ครั้งเดียวต่อ scope) — แท็บที่ใช้ activityScope เรียกก่อนสร้างคำสั่ง ◂ */
+async function ensureOrphans(sc: Scope): Promise<void> {
+  if (!sc.pendingOrphans) return;
+  const load = sc.pendingOrphans;
+  sc.hiddenOrphans = await load();
+  sc.pendingOrphans = null;
+}
+
 /** กิจกรรม (ไม่มี teamId): OWN = ของฉัน · TEAM = ผู้ดูแลเป็นเพื่อนร่วมทีม · ไม่มีผู้ดูแล = นับเฉพาะ ALL (addendum ข้อ 4) */
 function activityScope(sc: Scope, a: string): Sql {
+  // C5.1-fix ▸ ขอบเขตกิจกรรมของผู้ถูกจำกัดสาขาต้องอ่านรายการกำพร้าก่อน (ensureOrphans) — ลืม = โยน ไม่ใช่ "เห็นทุกแถว" (fail closed) ◂
+  if (sc.pendingOrphans) throw new Error("reports: activityScope ก่อน ensureOrphans");
   const X = A(a);
   const keys: Sql[] = [];
   if (sc.keyTeams.length) keys.push(Prisma.sql`${X}."ownerUserId" = ANY(${sc.keyTeamMembers}::text[])`);
@@ -361,6 +372,7 @@ async function userLabels(ids: string[]): Promise<Map<string, string>> {
 type Run = { sys: Sys; actor: Actor; sc: Scope; f: Clean };
 
 async function overviewOf({ sc, f }: Run): Promise<OverviewReport> {
+  await ensureOrphans(sc);
   // 🔴 คำสั่งเดียว 4 ส่วน (ดีล · รับชำระ · กิจกรรม · lead ใหม่) — ด่านนับคิวรีของใบ (≤ 12 ต่อ overview)
   const [r] = await prisma.$queryRaw<Record<string, bigint | number | null>[]>`
     SELECT dd.*, pp."paid", aa."acts", cc."leads" FROM
@@ -488,6 +500,7 @@ async function funnelOf({ sys, sc, f }: Run): Promise<FunnelReport> {
 }
 
 async function repsOf({ sc, f }: Run): Promise<RepsReport> {
+  await ensureOrphans(sc);
   // 🔴 แถวของทุกคนที่มีดีลในขอบเขต (แม้ช่วงนี้เป็นศูนย์) + คนที่มีกิจกรรม/รับชำระ/คอมมิชชันในช่วง — รวมในคำสั่งเดียว
   const rows = await prisma.$queryRaw<{ k: string; won: number; wonv: bigint; open: number; openv: bigint; lost: number; paid: bigint; acts: number; comm: bigint }[]>`
     WITH dd AS (
@@ -506,9 +519,10 @@ async function repsOf({ sc, f }: Run): Promise<RepsReport> {
       SELECT a."ownerUserId" AS k, count(*)::int AS acts FROM "CrmActivity" a
        WHERE ${activityBase(sc, f)} AND a."ownerUserId" IS NOT NULL AND a."doneAt" IS NOT NULL AND ${per('a."doneAt"', f)} GROUP BY 1
     ), cm AS (
+      -- CRM C5.4-C ▸ L2-M1: คอมมิชชัน "สุทธิ" = APPROVED + PAID + REVERSED (แถวถอนคืนติดลบ) ตามงวด periodKey — นิยามเดียวกับ commissions.report ◂
       SELECT cc."userId" AS k, COALESCE(sum(cc."amountSatang"), 0)::bigint AS comm
         FROM "CrmCommission" cc LEFT JOIN "CrmDeal" d ON d."id" = cc."dealId"
-       WHERE ${commissionBase(sc, f)} AND cc."status"::text NOT IN ('REVERSED', 'REJECTED') GROUP BY 1
+       WHERE ${commissionBase(sc, f)} AND cc."status"::text IN ('APPROVED', 'PAID', 'REVERSED') GROUP BY 1
     ), ks AS (SELECT k FROM dd UNION SELECT k FROM pp UNION SELECT k FROM aa UNION SELECT k FROM cm)
     SELECT ks.k, COALESCE(dd.won, 0)::int AS won, COALESCE(dd.wonv, 0)::bigint AS wonv, COALESCE(dd.open, 0)::int AS open,
            COALESCE(dd.openv, 0)::bigint AS openv, COALESCE(dd.lost, 0)::int AS lost, COALESCE(pp.paid, 0)::bigint AS paid,
@@ -536,6 +550,7 @@ async function repsOf({ sc, f }: Run): Promise<RepsReport> {
 }
 
 async function activitiesOf({ sc, f }: Run): Promise<ActivitiesReport> {
+  await ensureOrphans(sc);
   const rows = await prisma.$queryRaw<{ k: string; t: string; done: number; open: number; secs: bigint }[]>`
     SELECT a."ownerUserId" AS k, a."type"::text AS t,
            count(*) FILTER (WHERE a."doneAt" IS NOT NULL AND ${per('a."doneAt"', f)})::int AS done,
@@ -712,28 +727,28 @@ async function prepare(ctx: ReportsCtx, actor: Actor | null | undefined, filters
 // ───────────────────────── ผิวสาธารณะ: 8 แท็บ + ตัวแจกงาน ─────────────────────────
 
 export async function overview(ctx: ReportsCtx, actor: Actor, filters: ReportFilters = {}): Promise<OverviewReport> {
-  return compute(await prepare(ctx, actor, filters), "overview");
+  return crmScope(async () => compute(await prepare(ctx, actor, filters), "overview"));
 }
 export async function forecast(ctx: ReportsCtx, actor: Actor, filters: ForecastFilters = {}): Promise<ForecastReport> {
-  return compute(await prepare(ctx, actor, stripGroupBy(filters)), "forecast", { groupBy: filters?.groupBy });
+  return crmScope(async () => compute(await prepare(ctx, actor, stripGroupBy(filters)), "forecast", { groupBy: filters?.groupBy }));
 }
 export async function funnel(ctx: ReportsCtx, actor: Actor, filters: ReportFilters = {}): Promise<FunnelReport> {
-  return compute(await prepare(ctx, actor, filters), "funnel");
+  return crmScope(async () => compute(await prepare(ctx, actor, filters), "funnel"));
 }
 export async function reps(ctx: ReportsCtx, actor: Actor, filters: ReportFilters = {}): Promise<RepsReport> {
-  return compute(await prepare(ctx, actor, filters), "reps");
+  return crmScope(async () => compute(await prepare(ctx, actor, filters), "reps"));
 }
 export async function activities(ctx: ReportsCtx, actor: Actor, filters: ReportFilters = {}): Promise<ActivitiesReport> {
-  return compute(await prepare(ctx, actor, filters), "activities");
+  return crmScope(async () => compute(await prepare(ctx, actor, filters), "activities"));
 }
 export async function lostReasons(ctx: ReportsCtx, actor: Actor, filters: ReportFilters = {}): Promise<LostReport> {
-  return compute(await prepare(ctx, actor, filters), "lost");
+  return crmScope(async () => compute(await prepare(ctx, actor, filters), "lost"));
 }
 export async function sources(ctx: ReportsCtx, actor: Actor, filters: ReportFilters = {}): Promise<SourcesReport> {
-  return compute(await prepare(ctx, actor, filters), "sources");
+  return crmScope(async () => compute(await prepare(ctx, actor, filters), "sources"));
 }
 export async function scores(ctx: ReportsCtx, actor: Actor, filters: ReportFilters = {}): Promise<ScoresReport> {
-  return compute(await prepare(ctx, actor, filters), "scores");
+  return crmScope(async () => compute(await prepare(ctx, actor, filters), "scores"));
 }
 
 function stripGroupBy(f: unknown): unknown {
@@ -748,9 +763,11 @@ function stripGroupBy(f: unknown): unknown {
  * แท็บที่ไม่รู้จัก = VALIDATION (หลังผ่านด่านระบบ/คีย์ — คนที่ไม่มีคีย์ได้ FORBIDDEN เสมอ)
  */
 export async function getReport(ctx: ReportsCtx, actor: Actor, tab: ReportTab | string, filters: ForecastFilters = {}): Promise<AnyReport> {
-  const run = await prepare(ctx, actor, stripGroupBy(filters));
-  if (!isReportTab(tab)) throw fail("VALIDATION", TAB_MSG);
-  return compute(run, tab, { groupBy: filters?.groupBy });
+  return crmScope(async () => {
+    const run = await prepare(ctx, actor, stripGroupBy(filters));
+    if (!isReportTab(tab)) throw fail("VALIDATION", TAB_MSG);
+    return compute(run, tab, { groupBy: filters?.groupBy });
+  });
 }
 
 // ───────────────────────── CSV (AUDIT-CLASS X6: ทุกบรรทัดผ่าน csvRow · ไม่มี BOM ในผลของบริการ) ─────────────────────────

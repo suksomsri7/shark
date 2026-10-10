@@ -7,7 +7,7 @@
 // 🔴 ข้อมูลเทมเพลต 16 ชุด + ตัว apply โหลดแบบ lazy ตอนกดเท่านั้น (รีวิว N-9 — หน้าที่ import ไฟล์นี้ไม่ลากข้อมูลเทมเพลตทั้งก้อน)
 // 🔴 ข้อความไทยที่ไม่โทษผู้ใช้ · ไม่ส่งรายละเอียดทางเทคนิคออกไป
 
-import { revalidatePath } from "next/cache";
+import { revalidateAndWake } from "./outbox-wake"; // CRM C5.4-D ▸ L3-M1b: รีเฟรชหน้า + ปลุกคิว outbox หลังเขียนสำเร็จ ◂
 import { requireTenant } from "@/lib/core/context";
 import { ForbiddenError } from "@/lib/core/rbac";
 import { toMemberActor } from "@/lib/modules/member";
@@ -47,7 +47,7 @@ export async function applyBusinessTemplateAction(
   try {
     const { ctx, actor } = await session(systemId);
     const r = await (await templatesSvc()).applyBusinessTemplate(ctx, String(key ?? ""), { actor });
-    revalidatePath(`/app/sys/${ctx.systemId}`);
+    revalidateAndWake(`/app/sys/${ctx.systemId}`);
     return { ok: true, key: r.key, created: r.created, keptObjects: r.keptObjects, skippedObjects: r.skippedObjects, notice: r.notice };
   } catch (e) {
     return failOf(e);
@@ -59,7 +59,7 @@ export async function skipBusinessTemplateAction(systemId: string): Promise<{ ok
   try {
     const { ctx } = await session(systemId);
     await (await templatesSvc()).skipBusinessTemplate(ctx);
-    revalidatePath(`/app/sys/${ctx.systemId}`);
+    revalidateAndWake(`/app/sys/${ctx.systemId}`);
     return { ok: true };
   } catch (e) {
     return failOf(e);

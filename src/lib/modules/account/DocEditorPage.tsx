@@ -29,6 +29,8 @@ import {
   previewNextDocNo,
   priceModeOf,
   creditAvailableNow,
+  listDocPayments,
+  draftReceiptAttachedPayments,
 } from "./service";
 import { computeDueDate, defaultDaysFor } from "./settings-schema";
 import { defaultPriceModeOf, whtDefaultForAccountCode } from "./policy"; // §9.3
@@ -261,6 +263,12 @@ export async function DocEditorPage({
   const paymentEnabled = docType === "RECEIPT";
   const paymentChannels = paymentEnabled ? await listPaymentChannels(tenantId, systemId) : [];
   const sourceRel = (doc?.relationsTo ?? []).find((r) => r.from.docType === "INVOICE");
+  // CRM C5.4-C ▸ round 13 · R12-1/R12-2: ร่างใบเสร็จขายสดที่ผูกรายการรับไว้แล้ว — ส่งรายการเดิมให้ฟอร์มแสดง (ไม่ให้กรอกซ้ำ) ·
+  //   รายการเดิมถูกยกเลิก/เช็คเด้งหมด ⇒ ธงเตือนว่าออกตอนนี้โดยไม่กรอกใหม่จะเป็นรับเงินสด ◂
+  const draftPays = paymentEnabled && doc?.id && doc.status === "DRAFT" && !sourceRel ? await listDocPayments(tenantId, systemId, doc.id) : [];
+  // round 14: ข้อมูลครบสำหรับส่งกลับเป็นแถวเดิม (เลขเช็ค/ธนาคาร/วันที่เช็ค · บัญชีเงิน · อัตรา WHT · ประเภทเงินได้ที่เสนอจากบรรทัด)
+  const attachedPayments = draftPays.some((p) => !p.voidedAt) && doc?.id ? await draftReceiptAttachedPayments(tenantId, systemId, doc.id) : [];
+  const attachedAllVoided = draftPays.length > 0 && attachedPayments.length === 0;
   const sourceDoc =
     paymentEnabled && sourceRel
       ? {
@@ -339,6 +347,8 @@ export async function DocEditorPage({
         depositApplied={depositApplied}
         paymentEnabled={paymentEnabled}
         paymentChannels={paymentChannels}
+        attachedPayments={attachedPayments}
+        attachedAllVoided={attachedAllVoided}
         sourceDoc={sourceDoc}
         adjustMode={adjustMode}
         refDoc={refDocView}

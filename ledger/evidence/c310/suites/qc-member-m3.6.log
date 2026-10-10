@@ -1,0 +1,31 @@
+  ✅ [M3.6-S1.1] migration member_v2_h2: MemberNotification {systemId customerId event channel status scheduledAt sentAt subject body reason refId digestOfId} index(systemId,status,scheduledAt) · NOTIF_EVENTS 8 ตัว (WELCOME POINTS_EARNED POINTS_EXPIRING TIER_UP TIER_AT_RISK VOUCHER_NEW STAMP_COMPLETE REVIEW_REQUEST) label ไทย · transactional 3 ตัวแรก · POINTS_EXPIRING มี leadDays [30,7] · NOTIF_CHANNELS 4 · settings ปริยาย: 8 template × 4 ช่อง body ไทย · LINE/EMAIL/PUSH enabled · SMS enabled false · quietHours {enabled true, 21:00, 08:00} · respectConsent true · transactionalOverride true · smsAvailable false (QC ไม่มี provider)
+  ✅ [M3.6-S1.2] setTemplate: key ไม่รู้จัก → throw ไทย · ตัวแปรนอกทะเบียน ({แต้มที่จะหมด} ใน WELCOME) → throw ไทย · timing WEEKLY → throw · thana → throw · owner แก้ VOUCHER_NEW LINE/EMAIL แล้วอ่านกลับ (ช่องอื่นคงเดิม)
+  ✅ [M3.6-S2.1] renderTemplate แทนทุกตัว (ซ้ำได้) · ตัวแปรไม่มีค่า → '' ไม่เหลือปีกกา · buildVars(สมาชิก 1) → ชื่อ = ชื่อจริง · ร้าน · ระดับ · แต้ม (ตัวเลข) · ลิงก์กระเป๋า URL เต็ม /m/<slug>/wallet · extra ผ่านมา
+  ✅ [M3.6-S2.2] send VOUCHER_NEW ให้ X (LINE+อีเมล+ยินยอม · 14:00 ไทย): LINE SENT body render แล้ว (ชื่อ X + voucher + URL) · EMAIL SENT subject 'สิทธิพิเศษสำหรับ <ชื่อ>' · PUSH SKIPPED (ไม่มี PushDevice) · SMS ไม่ถูกส่ง (enabled false) · deps.line 1 (to = LINE externalId หรือ customerId) deps.email 1 (to = อีเมล X) · MemberNotification 3 แถว body ไม่มีปีกกา
+  ✅ [M3.6-S3.1] Y ยินยอมเฉพาะอีเมล: VOUCHER_NEW (ไม่ใช่ transactional) → LINE SKIPPED reason ไทย 'ไม่ได้ยินยอม' · EMAIL SENT · deps.line 0
+  ✅ [M3.6-S3.2] transactional: POINTS_EARNED ให้ Y (ไม่ยินยอม LINE) → LINE SENT (transactionalOverride true) · ปิด transactionalOverride → WELCOME LINE SKIPPED · respectConsent false → TIER_UP LINE SENT แม้ไม่ยินยอม
+  ✅ [M3.6-S3.3] Z ไม่มี LINE identity/อีเมล (ยินยอมแล้ว) → LINE/EMAIL SKIPPED reason 'ไม่มีช่องทาง' · เทมเพลตปิด (STAMP_COMPLETE enabled false) → ทุกช่อง SKIPPED ไม่เรียก deps
+  ❌ [M3.6-S4.1] 22:00 ไทย (quiet 21:00–08:00) → LINE/EMAIL QUEUED scheduledAt = พรุ่งนี้ 08:00 ไทย · deps 0 · runDue(07:30 พรุ่งนี้) → ยัง QUEUED · runDue(08:01) → SENT sentAt · deps.line 1 · deps.email 1 — exp เลื่อนเช้า | act res=[{"channel":"LINE","status":"QUEUED","notificationId":"cmuyiqdpr001twlkz46otnewh"},{"channel":"EMAIL","status":"QUEUED","notificationId":"cmuyiqdr2001uwlkzajt7csx1"},{"channel":"PUSH","status":"SKIPPED","reason":"ไม่มีช่องทาง — สมาชิกยังไม่ได้ลงทะเบียนอุปกรณ์รับการแจ้งเตือนในแอป","notificationId":"cmuyiqdrk001vwlkzh8r6zwof"}] sched=08:00,08:00 early={"sent":36,"failed":0,"digested":89} late={"sent":2,"failed":0,"digested":0} after=SENT,SENT
+  ✅ [M3.6-S4.2] ปิด quiet hours → 23:00 ส่งทันที SENT · เปิดกลับ → 02:00 (ข้ามเที่ยงคืนยังอยู่ในช่วง) → QUEUED 08:00 วันเดียวกัน
+  ✅ [M3.6-S5.1] timing DAILY_DIGEST 09:00: ส่ง 2 ครั้ง (10:00, 15:00) → QUEUED ×2/ช่องทาง scheduledAt พรุ่งนี้ 09:00 · deps 0 · runDue(09:05 พรุ่งนี้) → LINE 1 ข้อความรวม 2 บรรทัด (มี 30 และ 45) · แถวเดิม DIGESTED digestOfId → แถว DIGEST SENT · digested 4 (LINE 2 + EMAIL 2) · deps.line 1 deps.email 1
+  ✅ [M3.6-S5.2] digest แยกต่อลูกค้า: X 1 รายการ + Y 1 รายการ → runDue ส่ง LINE 2 ข้อความ (คนละคน) · runDue ซ้ำ → 0 (ไม่ส่งซ้ำ)
+  ✅ [M3.6-S6.1] stats เดือนนี้ {sent, failed, skipped, queued, byChannel{LINE,EMAIL,SMS,PUSH}, byEvent} · sent ≥ จำนวน SENT ของลูกค้าทดสอบ · byChannel.LINE ≥ 5 · byEvent.VOUCHER_NEW ≥ 2 · thana (ไม่มี settings.manage) → throw
+  ✅ [M3.6-S7.1] SMS enabled แต่ QC ไม่มี provider (core/sms.ts getSmsProvider() null · ไม่มี deps.sms) → SMS SKIPPED reason 'ไม่มีผู้ให้บริการ SMS' · LINE/EMAIL ยัง SENT · settings.smsAvailable false
+  ✅ [M3.6-S7.2] ฉีด deps.sms → SMS SENT (to = เบอร์ X · body 'ร้าน: SMS2' ไม่มีปีกกา) · X ไม่ยินยอม SMS → ต้อง SKIPPED? — X ยินยอม LINE/EMAIL/PUSH เท่านั้น ⇒ SMS SKIPPED ยินยอม (respectConsent) · W ยินยอม SMS แต่ไม่มีเบอร์ → SKIPPED ไม่มีช่องทาง
+  ✅ [M3.6-S7.3] X ยินยอม SMS + deps.sms → SMS SENT · deps.sms[0] { to = เบอร์ X (0866…), text/body มี 'SMS4' ไม่มีปีกกา }
+  ✅ [M3.6-S8.1] consumers: member.created / point.earned / member.tier.changed / member.tier.at_risk / voucher.issued / stamp.completed → เรียก notifications.send · cron (point.expiring ตาม leadDays + runDue) มีจริง · M3.4 requestReview ใช้ REVIEW_REQUEST · testSend(POINTS_EXPIRING, EMAIL) → preview.body ไม่มีปีกกา + deps.email 1 ถึงอีเมล owner · thana → throw · ไม่มี any
+  ✅ [M3.6-S8.2] หน้า /member/settings/notifications มีจริง requireTenant · actions 'use server' + member.settings.manage · testid 16 · ป้ายภาพ 30 ครบ · nav/settings มีทางเข้า · ไม่มีอีโมจิ (✓/✗ ใช้ MemberIcon)/hex
+  ❌ [M3.6-S8.3] ภาพ 30: notifications-owner desktop+mobile 200 ไม่ล้น (ตาราง 8 แถว · ชิป 4 ช่อง · แถบสรุปเดือน) · notifications-edit-owner desktop 200 (คลิกแถว 'แต้มใกล้หมดอายุ' → แผงขวา แท็บ 4 · ตัวแปร · ตัวอย่างบับเบิล · 30/7 วันก่อน · สวิตช์ quiet/consent · ปุ่มทดสอบ/บันทึก) · thana (ไม่มีสิทธิ์) → 404 (กติกา 404-not-403 §6.4 เหมือนหน้าตั้งค่าอื่น) หรือ 403/redirect — exp 200 ×3 + 403 | act 200/200/200 thana=undefined missing=[]
+  ✅ [M3.6-S8.4] 🔴 parity ภาพ 30 — Fable ตรวจด้วยตา · wo-notes/member-M3.6.md มี 'PARITY: ผ่าน'
+
+🔴 M3.6: 17/19
+JSON_SUMMARY {"total":19,"passed":17,"findings":[{"id":"M3.6-S4.1","sev":"CRITICAL"},{"id":"M3.6-S8.3","sev":"CRITICAL"}]}
+(node:1483797) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)

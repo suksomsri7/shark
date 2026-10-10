@@ -1,0 +1,365 @@
+(node:632271) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+{
+  "db": {
+    "wonCompany": {
+      "id": "cmuk7vekl0018uokzfd44evk3",
+      "name": "บริษัท คิวซี 10 จำกัด",
+      "lifecycleStage": "CUSTOMER",
+      "score": 70,
+      "wonValueSatang": "15000000"
+    },
+    "companyLifecycleCounts": [
+      {
+        "l": "CUSTOMER",
+        "n": 10,
+        "with_won": 10
+      },
+      {
+        "l": "LEAD",
+        "n": 3,
+        "with_won": 0
+      },
+      {
+        "l": "PROSPECT",
+        "n": 10,
+        "with_won": 0
+      }
+    ]
+  },
+  "home": {
+    "status": 200,
+    "scrollWidth": 390,
+    "overflowCount": 0,
+    "overflow": [],
+    "tinyCount": 5,
+    "tiny": [
+      "a 358×20 \"จัดการการเชื่อมระบบ →\"",
+      "a[crm-home-filter-reset] 71×20 \"ล้างตัวกรอง\"",
+      "a[crm-home-all-tasks] 82×20 \"งานทั้งหมด →\"",
+      "a[crm-home-stale-all] 68×20 \"ดูทั้งหมด →\"",
+      "a[crm-home-all-deals] 68×20 \"ดูทั้งหมด →\""
+    ],
+    "codes": [
+      "SIAM",
+      "DIVE",
+      "MEMBER"
+    ],
+    "h1": "🎯 CRM · CRM QC",
+    "notFound": false,
+    "extra": null
+  },
+  "company360-won": {
+    "status": 200,
+    "scrollWidth": 390,
+    "overflowCount": 0,
+    "overflow": [],
+    "tinyCount": 6,
+    "tiny": [
+      "a[company-back-link] 13×28 \"‹\"",
+      "button[company-contact-primary-btn] 26×16 \"★\"",
+      "button[company-contact-primary-btn] 26×16 \"☆\"",
+      "button[company-contact-primary-btn] 26×16 \"☆\"",
+      "a[crm-activity-all] 43×16 \"ดูทั้งหมด\"",
+      "input[crm-files-input] 1×1 \"\""
+    ],
+    "codes": [
+      "SIAM",
+      "DIVE",
+      "MEMBER",
+      "EMAIL",
+      "CALL",
+      "TASK",
+      "MEETING",
+      "NOTE"
+    ],
+    "h1": "บริษัท 360 — บริษัท คิวซี 10 จำกัด",
+    "notFound": false,
+    "extra": "🏢\nบริษัท คิวซี 10 จำกัด\nลูกค้า\nคะแนน 70\nเลขภาษี 0-1055-00000-01-0 · อุตสาหกรรมโรงแรม · ขนาดกลาง · ผู้ดูแล ธนา ศรีสมบัติ · ทีมทีมขาย — ภูเก็ต\n+ เพิ่มผู้ติดต่อ\nเปิดดีลใหม่\nดีลเปิด\n2\nดีลชนะสะสม\n1\nมูลค่ารวม (ชนะ)\n฿150,000\nค้างชำระ\n฿0\nกิจกรรมล่าสุด\n3 ชั่วโมงก่อน"
+  },
+  "companies": {
+    "status": 200,
+    "scrollWidth": 390,
+    "overflowCount": 0,
+    "overflow": [],
+    "tinyCount": 2,
+    "tiny": [
+      "input[companies-filter-open] 13×13 \"\"",
+      "input[companies-filter-archived] 13×13 \"\""
+    ],
+    "codes": [
+      "SIAM",
+      "DIVE",
+      "MEMBER"
+    ],
+    "h1": "🎯 CRM · CRM QC",
+    "notFound": false,
+    "extra": null
+  },
+  "contacts": {
+    "status": 200,
+    "scrollWidth": 390,
+    "overflowCount": 0,
+    "overflow": [],
+    "tinyCount": 51,
+    "tiny": [
+      "input[contacts-filter-archived] 13×13 \"\"",
+      "input[contacts-card-select] 13×13 \"\"",
+      "input[contacts-card-select] 13×13 \"\"",
+      "input[contacts-card-select] 13×13 \"\"",
+      "input[contacts-card-select] 13×13 \"\"",
+      "input[contacts-card-select] 13×13 \"\"",
+      "input[contacts-card-select] 13×13 \"\"",
+      "input[contacts-card-select] 13×13 \"\""
+    ],
+    "codes": [
+      "SIAM",
+      "DIVE",
+      "MEMBER"
+    ],
+    "h1": "🎯 CRM · CRM QC",
+    "notFound": false,
+    "extra": null
+  },
+  "contact360": {
+    "status": 200,
+    "scrollWidth": 390,
+    "overflowCount": 0,
+    "overflow": [],
+    "tinyCount": 5,
+    "tiny": [
+      "a[contact-back-link] 13×28 \"‹\"",
+      "a[crm-activity-all] 43×16 \"ดูทั้งหมด\"",
+      "input[crm-files-input] 1×1 \"\"",
+      "a[contact-conn-company-link] 96×18 \"ผู้ตัดสินใจ · หลัก\"",
+      "input[contact-optout-toggle] 13×13 \"\""
+    ],
+    "codes": [
+      "SIAM",
+      "DIVE",
+      "MEMBER",
+      "MEETING",
+      "EMAIL"
+    ],
+    "h1": "ผู้ติดต่อ 360 — วรรณา ศิริพงษ์",
+    "notFound": false,
+    "extra": null
+  },
+  "deals-board": {
+    "status": 200,
+    "scrollWidth": 390,
+    "overflowCount": 0,
+    "overflow": [],
+    "tinyCount": 52,
+    "tiny": [
+      "input[deals-filter-stale] 13×13 \"\"",
+      "a[deal-column-add-cmuk7ve96000auokzi4e7uagc] 19×18 \"+\"",
+      "a[deal-card-link-cmuk7vzbc00gpuokz48gtz9ho] 293×19 \"ดีล QC 40 — แพ็กเกจดำน้ำองค์กร\"",
+      "a[deal-card-link-cmuk7vxxw00fpuokz8vgkowe5] 293×19 \"ดีล QC 31 — แพ็กเกจดำน้ำองค์กร\"",
+      "a[deal-card-link-cmuk7vwku00epuokzxzss6oex] 293×19 \"ดีล QC 22 — แพ็กเกจดำน้ำองค์กร\"",
+      "a[deal-card-link-cmukfuf6w000bxnkzstsuwa7f] 293×19 \"ดีล US3 qc-jrn-us3\"",
+      "a[deal-card-link-cmuk7vzrc00h1uokzjufkbmao] 293×19 \"ดีล QC 43 — แพ็กเกจดำน้ำองค์กร\"",
+      "a[deal-card-link-cmuk7vyen00g1uokzszt25zkp] 293×19 \"ดีล QC 34 — แพ็กเกจดำน้ำองค์กร\""
+    ],
+    "codes": [
+      "SIAM",
+      "DIVE",
+      "MEMBER"
+    ],
+    "h1": "🎯 CRM · CRM QC",
+    "notFound": false,
+    "extra": null
+  },
+  "deals-table": {
+    "status": 200,
+    "scrollWidth": 390,
+    "overflowCount": 0,
+    "overflow": [],
+    "tinyCount": 48,
+    "tiny": [
+      "input[deals-filter-stale] 13×13 \"\"",
+      "input[deal-bulk-confirm] 13×13 \"\"",
+      "a[deal-row-link-cmukfuf6w000bxnkzstsuwa7f] 252×20 \"ดีล US3 qc-jrn-us3\"",
+      "a[deal-row-link-cmuk7w02200h9uokztn2iugm3] 252×20 \"ดีล QC 45 — แพ็กเกจดำน้ำองค์กร\"",
+      "a[deal-row-link-cmuk7vzwu00h5uokz5uckryiy] 252×20 \"ดีล QC 44 — แพ็กเกจดำน้ำองค์กร\"",
+      "a[deal-row-link-cmuk7vzrc00h1uokzjufkbmao] 252×20 \"ดีล QC 43 — แพ็กเกจดำน้ำองค์กร\"",
+      "a[deal-row-link-cmuk7vzly00gxuokzxllmri9r] 252×20 \"ดีล QC 42 — แพ็กเกจดำน้ำองค์กร\"",
+      "a[deal-row-link-cmuk7vzgq00gtuokzkxwczq99] 252×20 \"ดีล QC 41 — แพ็กเกจดำน้ำองค์กร\""
+    ],
+    "codes": [
+      "SIAM",
+      "DIVE",
+      "MEMBER"
+    ],
+    "h1": "🎯 CRM · CRM QC",
+    "notFound": false,
+    "extra": null
+  },
+  "deals-new": {
+    "status": 200,
+    "scrollWidth": 390,
+    "overflowCount": 0,
+    "overflow": [],
+    "tinyCount": 1,
+    "tiny": [
+      "a 358×20 \"← กระดานดีล\""
+    ],
+    "codes": [
+      "SIAM",
+      "DIVE",
+      "MEMBER"
+    ],
+    "h1": "🎯 CRM · CRM QC",
+    "notFound": false,
+    "extra": null
+  },
+  "deal360": {
+    "status": 200,
+    "scrollWidth": 390,
+    "overflowCount": 0,
+    "overflow": [],
+    "tinyCount": 4,
+    "tiny": [
+      "a[deal-back-link] 13×28 \"‹\"",
+      "a[deal-company-link] 101×19 \"บริษัท คิวซี 16 จำกัด\"",
+      "a[deal-contact-link] 82×19 \"ประยุทธ แก้วมณี\"",
+      "input[crm-files-input] 1×1 \"\""
+    ],
+    "codes": [
+      "SIAM",
+      "DIVE",
+      "MEMBER",
+      "CALL",
+      "NOTE",
+      "TASK"
+    ],
+    "h1": "ดีล 360 — ดีล QC 16 — แพ็กเกจดำน้ำองค์กร",
+    "notFound": false,
+    "extra": null
+  },
+  "activities": {
+    "status": 200,
+    "scrollWidth": 390,
+    "overflowCount": 0,
+    "overflow": [],
+    "tinyCount": 0,
+    "tiny": [],
+    "codes": [
+      "SIAM",
+      "DIVE",
+      "MEMBER"
+    ],
+    "h1": "🎯 CRM · CRM QC",
+    "notFound": false,
+    "extra": null
+  },
+  "activities-overdue": {
+    "status": 200,
+    "scrollWidth": 390,
+    "overflowCount": 0,
+    "overflow": [],
+    "tinyCount": 0,
+    "tiny": [],
+    "codes": [
+      "SIAM",
+      "DIVE",
+      "MEMBER"
+    ],
+    "h1": "🎯 CRM · CRM QC",
+    "notFound": false,
+    "extra": null
+  },
+  "calendar": {
+    "status": 200,
+    "scrollWidth": 390,
+    "overflowCount": 0,
+    "overflow": [],
+    "tinyCount": 0,
+    "tiny": [],
+    "codes": [
+      "SIAM",
+      "DIVE",
+      "MEMBER"
+    ],
+    "h1": "🎯 CRM · CRM QC",
+    "notFound": false,
+    "extra": null
+  },
+  "notif-settings": {
+    "status": 200,
+    "scrollWidth": 390,
+    "overflowCount": 0,
+    "overflow": [],
+    "tinyCount": 35,
+    "tiny": [
+      "a 358×20 \"← ตั้งค่า CRM\"",
+      "input[crm-notify-channel-lead.assigned-IN_APP] 13×13 \"\"",
+      "input[crm-notify-channel-lead.assigned-PUSH] 13×13 \"\"",
+      "input[crm-notify-channel-lead.assigned-EMAIL] 13×13 \"\"",
+      "input[crm-notify-channel-customer.replied-IN_APP] 13×13 \"\"",
+      "input[crm-notify-channel-customer.replied-PUSH] 13×13 \"\"",
+      "input[crm-notify-channel-customer.replied-EMAIL] 13×13 \"\"",
+      "input[crm-notify-channel-deal.stale.digest-IN_APP] 13×13 \"\""
+    ],
+    "codes": [
+      "SIAM",
+      "DIVE",
+      "MEMBER"
+    ],
+    "h1": "🎯 CRM · CRM QC",
+    "notFound": false,
+    "extra": [
+      "lead ใหม่ถูกมอบหมายให้ฉัน",
+      "ลูกค้าตอบกลับ",
+      "สรุปงานของวันนี้",
+      "เตือนก่อนถึงนัด",
+      "lead ร้อน",
+      "ดีลปิดแล้ว",
+      "ใบแจ้งหนี้"
+    ]
+  },
+  "pipelines": {
+    "status": 200,
+    "scrollWidth": 390,
+    "overflowCount": 0,
+    "overflow": [],
+    "tinyCount": 3,
+    "tiny": [
+      "a 358×20 \"← pipeline ทั้งหมด\"",
+      "a[pl-stages-link-cmuk7ve8w0009uokzf9xb3okd] 33×20 \"แก้ขั้น\"",
+      "a[pl-stages-link-cmuk7veb3000fuokzb8rp49oa] 33×20 \"แก้ขั้น\""
+    ],
+    "codes": [
+      "SIAM",
+      "DIVE",
+      "MEMBER"
+    ],
+    "h1": "🎯 CRM · CRM QC",
+    "notFound": false,
+    "extra": null
+  },
+  "reports": {
+    "status": 200,
+    "scrollWidth": 390,
+    "overflowCount": 0,
+    "overflow": [],
+    "tinyCount": 0,
+    "tiny": [],
+    "codes": [
+      "SIAM",
+      "DIVE",
+      "MEMBER"
+    ],
+    "h1": "รายงาน CRM",
+    "notFound": false,
+    "extra": null
+  },
+  "sessionsLeft": 0
+}

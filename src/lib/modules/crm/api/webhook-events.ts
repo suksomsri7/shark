@@ -5,10 +5,12 @@
 // 🔴 การส่งทุกครั้งลงลายเซ็น 2 แบบของบริการฮุคกลาง (`X-Shark-Signature` = HMAC(body) · `X-Shark-Signature-V2` = HMAC(`ts.body`))
 // ไฟล์นี้ไม่ import ทะเบียน op (กันวงกลม registry → ops → openapi → registry)
 
-import { WEBHOOK_EVENTS } from "@/lib/webhooks/labels";
+import { WEBHOOK_EVENTS, WEBHOOK_GUARDED_FAMILIES } from "@/lib/webhooks/labels";
+import { isLoopbackHostname, privateTargetsAllowed } from "@/lib/webhooks/private-targets"; // C4.4-fix I3 ◂
 
-/** คำนำหน้าของเหตุการณ์ที่ CRM เป็นเจ้าของ: ของ CRM · รายการวัตถุกำหนดเอง (C1.2b) · ทีมขาย (core · C1.1) */
-export const CRM_EVENT_PREFIXES = ["crm.", "custom.record.", "team."] as const;
+/** คำนำหน้าของเหตุการณ์ที่ CRM เป็นเจ้าของ: ของ CRM · รายการวัตถุกำหนดเอง (C1.2b) · ทีมขาย (core · C1.1)
+ *  CRM C5.5 ▸ (fix3b · F4) = ครอบครัว "crm" ของแพลตฟอร์ม (`WEBHOOK_GUARDED_FAMILIES`) — รายการเดียวที่ตัวกันเหตุการณ์ของบริการ webhook ใช้ตัดสิน ◂ */
+export const CRM_EVENT_PREFIXES = WEBHOOK_GUARDED_FAMILIES.crm;
 
 // CRM C3.8 ▸ event ของ CRM ที่ "มี consumer แต่ไม่เปิดให้ร้านสมัครเว็บฮุค" โดยเจตนา (ธงภายในล้วน — ไม่มีความหมายต่อระบบภายนอก)
 //   กติกา (ข้อสอบ C3.8-S6.1): consumer ทุกตัวที่ขึ้นต้นด้วย CRM_EVENT_PREFIXES ต้อง **อยู่ในรายการเว็บฮุค หรืออยู่ในรายการนี้** — ไม่มีทางที่สาม
@@ -38,14 +40,20 @@ export function isCrmWebhookEndpoint(eventsJson: unknown, allowed: ReadonlySet<s
   return ev.length > 0 && ev.every((e) => allowed.has(e));
 }
 
-/** ปัญหาของที่อยู่ปลายทาง (ไทย · ไม่โทษผู้ใช้) — null = ใช้ได้ · https เท่านั้น (ด่าน SSRF เต็มรูปอยู่ที่บริการฮุคกลาง) */
-export function crmWebhookUrlProblem(raw: string): string | null {
+/**
+ * ปัญหาของที่อยู่ปลายทาง (ไทย · ไม่โทษผู้ใช้) — null = ใช้ได้ · https เท่านั้น (ด่าน SSRF เต็มรูปอยู่ที่บริการฮุคกลาง)
+ * C4.4-fix I3 ▸ ข้อยกเว้นเดียว: http:// ถึง **เครื่องนี้ตรงตัว** (localhost · 127.x · [::1]) เมื่อสวิตช์ช่องทดสอบของด่าน SSRF เปิดอยู่
+ *   (`privateTargetsAllowed()` — WEBHOOK_ALLOW_PRIVATE=1 และไม่ใช่ production) ⇒ QC รับ webhook ด้วยเซิร์ฟเวอร์ในเครื่องได้ ·
+ *   production = https เท่านั้นเหมือนเดิม · `allowLoopbackHttp` ส่งมาได้เพื่อให้ฟอร์มฝั่งหน้าจอใช้ค่าที่เซิร์ฟเวอร์ตัดสินแล้ว ◂
+ */
+export function crmWebhookUrlProblem(raw: string, allowLoopbackHttp: boolean = privateTargetsAllowed()): string | null {
   let parsed: URL | null = null;
   try {
     parsed = new URL(String(raw ?? "").trim());
   } catch {
     parsed = null;
   }
+  if (parsed && parsed.protocol === "http:" && allowLoopbackHttp && isLoopbackHostname(parsed.hostname)) return null;
   if (!parsed || parsed.protocol !== "https:") return "ที่อยู่ปลายทางต้องขึ้นต้นด้วย https:// — รหัสอ้างอิงลูกค้าส่งผ่านช่องทางที่ไม่เข้ารหัสไม่ได้";
   return null;
 }

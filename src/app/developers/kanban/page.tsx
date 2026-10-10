@@ -49,6 +49,7 @@ const ERROR_CODE_TH: Record<ApiErrorCode, string> = {
   idempotency_required: "คำสั่งเขียนที่ไม่ได้แนบส่วนหัว Idempotency-Key",
   idempotency_conflict: "ใช้ Idempotency-Key เดิมกับเนื้อคำขอที่ต่างออกไป",
   idempotency_in_progress: "คำขอที่ใช้คีย์กันซ้ำใบนี้ยังทำงานค้างอยู่",
+  idempotency_outcome_unknown: "คำขอเขียนที่ใช้คีย์นี้สะดุดกลางทาง ไม่รู้ว่าบันทึกแล้วหรือยัง — ตรวจรายการก่อน แล้วส่งใหม่ด้วยคีย์ใหม่",
   confirm_required: "คำสั่งอันตรายที่ไม่ได้ส่ง confirm: true มาด้วย",
   customer_session_required: "เส้นทางของลูกค้าเอง (มีเฉพาะระบบสมาชิก) — คีย์ของร้านใช้ไม่ได้ · บอร์ดงานไม่คืนรหัสนี้",
   customer_scope: "ลูกค้าที่ล็อกอินเองเรียก operation ของร้าน (มีเฉพาะระบบสมาชิก) — บอร์ดงานไม่คืนรหัสนี้",
@@ -520,7 +521,7 @@ export default function KanbanApiDevPage() {
         <p className="text-sm text-neutral-700">
           เจ้าของร้านสมัคร URL ปลายทางให้ event ใดก็ได้ในตารางนี้ · แต่ละครั้งส่งเป็น <code>POST</code> พร้อมส่วนหัว{" "}
           <code>X-Shark-Event</code> และ <code>X-Shark-Signature</code> = HMAC-SHA256 ของ <strong>ไบต์ดิบ</strong>{" "}
-          ทั้งก้อนด้วย secret ของปลายทาง (hex ตัวพิมพ์เล็ก) เนื้อคำขอเป็น <code>{"{ type, payload, sentAt }"}</code> ·
+          ทั้งก้อนด้วย secret ของปลายทาง (hex ตัวพิมพ์เล็ก) เนื้อคำขอเป็น <code>{"{ id, type, payload, sentAt }"}</code> ·
           ต้องตรวจลายเซ็นจากไบต์ดิบ <strong>ก่อน</strong> แปลง JSON · การส่งเป็นแบบ at-least-once (ลองซ้ำได้ 5 ครั้ง)
           ตัวรับจึงต้องทนของซ้ำ
         </p>

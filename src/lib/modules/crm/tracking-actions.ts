@@ -11,7 +11,7 @@
 // 🔴 ข้อความ error เป็นภาษาไทยที่ไม่โทษผู้ใช้ · error ที่ไม่รู้จัก = ข้อความกลาง (รายละเอียดไม่หลุดออกหน้าจอ)
 // 🔴 AUDIT-CLASS X8: ไม่ log url ของลูกค้า/ข้อความ consent — บันทึกเฉพาะชนิดของ error
 
-import { revalidatePath } from "next/cache";
+import { revalidateAndWake } from "./outbox-wake"; // CRM C5.4-D ▸ L3-M1b: รีเฟรชหน้า + ปลุกคิว outbox หลังเขียนสำเร็จ ◂
 import { requireTenant } from "@/lib/core/context";
 import { ForbiddenError } from "@/lib/core/rbac";
 import { toMemberActor } from "@/lib/modules/member";
@@ -20,7 +20,7 @@ import { assertCanCrm } from "./access";
 import { assertCrmV2, CrmV2DisabledError } from "./ui-version";
 import * as tracking from "./tracking";
 import { TrackingError } from "./tracking";
-import type { CrmTrackingResult, CrmTrackFormTargetRow, CrmTrackLinkRow, CrmTrackWebSettings } from "@/components/crm/tracking/types";
+import type { CrmTrackingResult, CrmTrackFormTargetRow, CrmTrackLinkPolicy, CrmTrackLinkRow, CrmTrackWebSettings } from "@/components/crm/tracking/types";
 import { CrmLimitError } from "./limits-shared"; // CRM C3.9 ◂
 
 type Ctx = { tenantId: string; systemId: string; actorUserId: string };
@@ -45,8 +45,8 @@ function failOf(e: unknown): { ok: false; error: string; code?: string } {
 }
 
 const touch = (systemId: string) => {
-  revalidatePath(`/app/sys/${systemId}/crm/settings/tracking`);
-  revalidatePath(`/app/sys/${systemId}/crm/settings/forms`);
+  revalidateAndWake(`/app/sys/${systemId}/crm/settings/tracking`);
+  revalidateAndWake(`/app/sys/${systemId}/crm/settings/forms`);
 };
 
 const linkRow = (l: Awaited<ReturnType<typeof tracking.createLink>>): CrmTrackLinkRow => ({
@@ -69,6 +69,27 @@ export async function saveCrmTrackingWebAction(
   try {
     const { ctx, actor } = await session(systemId);
     const next = await tracking.saveWebSettings(ctx, actor, patch ?? {});
+    touch(ctx.systemId);
+    return { ok: true, data: next };
+  } catch (e) {
+    return failOf(e);
+  }
+}
+
+// CRM C6.1-LINKPOLICY ▸ โดเมนปลายทางที่อนุญาตของลิงก์ติดตาม — คีย์เดียวกับการตั้งค่าติดตามอื่น (`crm.tracking.manage`) ไม่มีคีย์ใหม่ ◂
+export async function previewCrmLinkHostsAction(systemId: string, hosts: string): Promise<CrmTrackingResult<CrmTrackLinkPolicy>> {
+  try {
+    const { ctx, actor } = await session(systemId);
+    return { ok: true, data: await tracking.previewLinkHosts(ctx, actor, { hosts: String(hosts ?? "") }) };
+  } catch (e) {
+    return failOf(e);
+  }
+}
+
+export async function saveCrmLinkHostsAction(systemId: string, hosts: string): Promise<CrmTrackingResult<CrmTrackLinkPolicy>> {
+  try {
+    const { ctx, actor } = await session(systemId);
+    const next = await tracking.saveLinkHosts(ctx, actor, { hosts: String(hosts ?? "") });
     touch(ctx.systemId);
     return { ok: true, data: next };
   } catch (e) {

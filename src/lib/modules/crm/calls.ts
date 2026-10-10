@@ -30,7 +30,7 @@ import { ALLOWED_UPLOAD_TYPES, deleteFileAsset, normalizeUploadType, openStoredF
 import { canSpend, canSpendPeek, chargeUsageSafe } from "@/lib/ai/credit";
 import { resolveProvider, type AiProvider } from "@/lib/ai/provider";
 import { prisma } from "./db";
-import { crmCan, crmForbiddenMessage } from "./access";
+import { crmCan, crmCanLinkCompany, crmForbiddenMessage } from "./access";
 import { assertCrmV2 } from "./ui-version";
 import { activityWhere, contactWhere } from "./where";
 import * as companiesSvc from "./companies"; // CRM C3.4 ▸ จับคู่ชื่อบริษัทบนนามบัตรผ่านบริการบริษัท (C1.3-S0.3) ◂
@@ -696,7 +696,9 @@ export async function acceptLeadProposal(ctx: CallsCtx, actor: MemberActor, prop
       email: str(payload.email),
       jobTitle: str(payload.jobTitle),
       // CRM C3.4 ▸ บริษัทที่จับคู่ได้ตอนสแกน (createContact ตรวจการมองเห็นของบริษัทซ้ำอีกชั้นด้วยสิทธิ์ของคนกดรับ) ◂
-      ...(str(payload.companyId) ? { companyId: str(payload.companyId) } : {}),
+      //   CRM C5.5-fix6 r2 ▸ F6-1: คนกดรับที่ผูกบริษัทไม่ได้ (crmCanLinkCompany) = ไม่ส่งบริษัท (createContact ปฏิเสธทั้งใบแล้ว) —
+      //   ผลเท่าเดิมของคนกลุ่มนี้: ผู้ติดต่อเกิด ไม่ผูกบริษัท (เดิมผูกไม่สำเร็จ + คำเตือนที่ไม่มีใครอ่าน) ◂
+      ...(str(payload.companyId) && crmCanLinkCompany(a) ? { companyId: str(payload.companyId) } : {}),
       sourceKind: "OTHER",
       // 🔴 ไม่ตั้ง `sourceChannel`: ช่องนั้นรับได้เฉพาะคีย์ในทะเบียนช่องทางของระบบ (EMAIL/LINE/…) — "นามบัตร" ไม่ใช่ช่องทางสื่อสาร
       //    ที่มาที่แท้จริงถูกเก็บใน `sourceDetail.via` (+ proposalId) ผ่าน `trustedSource` — CRM C3.7

@@ -1,0 +1,12 @@
+tree 1d118384 + diff: 
+pending/cf11/probe-cf11-keys exit=0 115s JSON_SUMMARY {"total":14,"passed":14,"findings":[]}
+pending/cf11/probe-cf11-contains exit=0 18s JSON_SUMMARY {"total":12,"passed":12,"findings":[]}
+pending/cf11/probe-cf11-mail exit=0 51s JSON_SUMMARY {"total":24,"passed":24,"findings":[]}
+pending/cf11/probe-cf11-r2 exit=0 76s JSON_SUMMARY {"total":16,"passed":16,"findings":[]}
+pending/cf11/review/probe-cf11-review-keys exit=1 18s JSON_SUMMARY {"total":9,"passed":8,"findings":["RK.6"]}
+pending/cf11/review/probe-cf11-review-r2 exit=1 294s JSON_SUMMARY {"total":8,"passed":6,"findings":["R2B.1","R2A.1"]}
+pending/cf11/review/probe-cf11-review-mail exit=1 84s JSON_SUMMARY {"total":12,"passed":11,"findings":["RA.2"]}
+fitness exit=0 169s JSON_SUMMARY {"total":42,"passed":42,"findings":[]}
+fitness-noenv exit=0 461s JSON_SUMMARY {"total":42,"passed":42,"findings":[]}
+typecheck exit=0 746s 
+ALLDONE

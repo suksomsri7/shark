@@ -1,4 +1,4 @@
-import { emails } from "@/lib/modules/crm";
+import { emails, wakeOutbox } from "@/lib/modules/crm";
 
 // POST /api/email/resend/webhook — เหตุการณ์ของผู้ให้บริการอีเมล (Resend/Svix · ใบ C2.5)
 //   ชนิดที่ใช้: `email.delivered` · `email.bounced` (bounce.type Permanent) · `email.complained`
@@ -38,6 +38,7 @@ export async function POST(req: Request): Promise<Response> {
   });
   try {
     const res = await emails.providerWebhook({ headers, rawBody: raw, ip: ipOf(req) });
+    if (res.handled) wakeOutbox(); // CRM C5.5-fix13 ▸ P-it5-2 sweep: event bounced/… ของผู้ให้บริการ ◂
     return json({ ok: res.status >= 200 && res.status < 300 }, res.status);
   } catch {
     // ผู้ให้บริการเห็น 5xx = ยิงซ้ำไม่จบ · ปิดสุภาพหลังผ่านด่านลายเซ็นแล้ว

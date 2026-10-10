@@ -12,6 +12,8 @@
 // 5) UI AiChat: ปุ่มแนบรูป (file→dataURL cap ~2MB, preview, ลบได้) + ส่ง imageUrls
 import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
 loadLegacyQcEnv("qc-ai-vision"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
+// ORACLE-EDIT C5.5-G1: runTool/sendMessage now take a required actor (no actor = refusal) — these checks always meant "the shop OWNER asks"
+const qcOwner = (t: string) => ({ kind: "member" as const, tenantId: t, userId: "qc-owner", membership: { role: "OWNER" as const, unitAccess: ["*"], permissions: {} } });
 process.env.SHARK_AI_MOCK = "1";
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");
@@ -40,7 +42,7 @@ try {
   const gl = (await import("@/lib/modules/account/gl")) as unknown as { ensureAccounting: (c: { tenantId: string; systemId: string }) => Promise<unknown> };
   await accSvc.saveSettings(tid, acc.id, { orgName: "ร้าน QC", taxId: "0105561177639", vatRegistered: false } as never);
   await gl.ensureAccounting({ tenantId: tid, systemId: acc.id });
-  const ctx = { tenantId: tid };
+  const ctx = { tenantId: tid, actor: qcOwner(tid) };
 
   // 1) sendMessage imageUrls → provider เห็นรูป
   const spy = new VisionSpy();

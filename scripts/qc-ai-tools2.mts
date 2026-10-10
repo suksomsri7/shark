@@ -11,6 +11,8 @@
 // จำนวน registry รวม = 11 (5+3 เดิม + 3 ใหม่)
 import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
 loadLegacyQcEnv("qc-ai-tools2"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
+// ORACLE-EDIT C5.5-G1: runTool/sendMessage now take a required actor (no actor = refusal) — these checks always meant "the shop OWNER asks"
+const qcOwner = (t: string) => ({ kind: "member" as const, tenantId: t, userId: "qc-owner", membership: { role: "OWNER" as const, unitAccess: ["*"], permissions: {} } });
 process.env.SHARK_AI_MOCK = "1";
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");
@@ -37,16 +39,16 @@ try {
   const rtWide = tools.runTool as unknown as (c: unknown, n: string, a: unknown) => Promise<string>;
 
   // read ใหม่
-  const cs = await rtWide({ tenantId: tid }, "customer_search", { query: "สมชาย" });
+  const cs = await rtWide({ tenantId: tid, actor: qcOwner(tid) }, "customer_search", { query: "สมชาย" });
   chk("V2-1.1", "customer_search เจอสมชาย", cs.includes("สมชาย"), "เจอ", cs.slice(0, 60));
-  const cs2 = await rtWide({ tenantId: tid }, "customer_search", { query: "0812345678" });
+  const cs2 = await rtWide({ tenantId: tid, actor: qcOwner(tid) }, "customer_search", { query: "0812345678" });
   chk("V2-1.2", "ค้นด้วยเบอร์ก็เจอ", cs2.includes("สมชาย"), "เจอ", cs2.slice(0, 60));
-  const sbd = await rtWide({ tenantId: tid }, "sales_by_day", { days: 7 });
+  const sbd = await rtWide({ tenantId: tid, actor: qcOwner(tid) }, "sales_by_day", { days: 7 });
   chk("V2-1.3", "sales_by_day มียอดวันนี้ (250 บาท) + count", (sbd.includes("250") || sbd.includes("25000")) && sbd.includes("1"), "มียอด", sbd.slice(0, 80));
 
   // action member_create → proposal → execute
   const before = await prisma.customer.count({ where: { tenantId: tid } });
-  const out = await rtWide({ tenantId: tid, conversationId: conv.id }, "member_create", { name: "สมหญิง รักดี", phone: "0899999999" });
+  const out = await rtWide({ tenantId: tid, actor: qcOwner(tid), conversationId: conv.id }, "member_create", { name: "สมหญิง รักดี", phone: "0899999999" });
   const prop = await prisma.aiProposal.findFirst({ where: { tenantId: tid, kind: "member_create", status: "PENDING" }, orderBy: { createdAt: "desc" } });
   chk("V2-2.1", "member_create → proposal PENDING ไม่สร้างทันที", !!prop && out.includes(prop.id) && (await prisma.customer.count({ where: { tenantId: tid } })) === before, "proposal+นิ่ง", out.slice(0, 60));
   const ex = await pr.executeProposal(OWNER, { tenantId: tid }, prop!.id);
@@ -61,7 +63,7 @@ try {
   chk("V2-2.3", "ไม่มีระบบ MEMBER → FAILED + note ไทย", ex2.ok === false && (await prisma.aiProposal.findUnique({ where: { id: p2.id } }))?.status === "FAILED" && ex2.note.length > 0, "FAILED", ex2.note.slice(0, 60));
 
   // regression read เดิม
-  const mc = await rtWide({ tenantId: tid }, "member_count", {});
+  const mc = await rtWide({ tenantId: tid, actor: qcOwner(tid) }, "member_count", {});
   chk("V2-3.1", "member_count เดิมยังทำงาน (2 หลัง execute)", mc.includes("2"), "2", mc.slice(0, 40));
 } catch (e) { chk("CRASH", "จบ", false, "จบ", e instanceof Error ? e.message.slice(0, 160) : String(e)); }
 finally {

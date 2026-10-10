@@ -177,7 +177,7 @@ const COMMON_ERROR_RESPONSES: [string, string][] = [
 
 const WRITE_CONFLICT_RESPONSE: [string, string] = [
   "409",
-  "Conflict: idempotency key reused with a different body or still running, a danger operation without `confirm: true`, a closed period, or a record whose state does not allow this (`idempotency_conflict`, `idempotency_in_progress`, `confirm_required`, `period_locked`, `state_conflict`, `duplicate`).",
+  "Conflict: idempotency key reused with a different body or still running, a write whose outcome is unknown after a temporary failure (use a new key once you checked), a danger operation without `confirm: true`, a closed period, or a record whose state does not allow this (`idempotency_conflict`, `idempotency_in_progress`, `idempotency_outcome_unknown`, `confirm_required`, `period_locked`, `state_conflict`, `duplicate`).",
 ];
 
 /** ซองแบ่งหน้าของ op ที่ตั้ง `paged: true` — เลขหน้าจริง ไม่ใช่ cursor (ดู `paged()` ใน respond.ts) */

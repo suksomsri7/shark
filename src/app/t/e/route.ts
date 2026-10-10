@@ -47,8 +47,10 @@ export async function POST(req: Request): Promise<Response> {
     } catch {
       return empty(204, null);
     }
-    const cors = await tracking.corsOriginForPayload(body, origin).catch(() => null);
-    await tracking.collect(body, { origin, ip: ipOf(req), userAgent: req.headers.get("user-agent") ?? "", bytes });
+    // CRM C5.1-fix ▸ F5: resolve siteKey ครั้งเดียว ใช้ทั้งตัดสิน CORS และเก็บเหตุการณ์ (เดิมอ่าน AppSystem สองรอบต่อคำขอ) ◂
+    const site = await tracking.resolveSite(tracking.siteKeyOfPayload(body)).catch(() => null);
+    const cors = tracking.corsOriginForSite(site, body, origin);
+    await tracking.collect(body, { origin, ip: ipOf(req), userAgent: req.headers.get("user-agent") ?? "", bytes }, { site });
     return empty(204, cors);
   } catch {
     return empty(204, null);

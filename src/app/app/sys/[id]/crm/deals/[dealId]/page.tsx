@@ -84,6 +84,14 @@ export default async function Deal360Page({
   const m = { role: auth.active.role as Role, unitAccess: auth.active.unitAccess as string[], permissions: auth.active.permissions as Record<string, unknown> };
   const canEdit = crmCan(m, "crm.deal.update");
   const canManage = actor.role === "OWNER" || actor.role === "MANAGER";
+  // CRM C4.2-fix ▸ ปุ่มแต่ละตัวใช้คีย์ของ server action ที่มันเรียก (deals-actions.ts) — เดิมหลายปุ่มอิง crm.deal.update ทั้งก้อน ◂
+  const canMove = crmCan(m, "crm.deal.move");
+  const canQuote = crmCan(m, "crm.deal.quote");
+  const canLines = crmCan(m, "crm.deal.lines");
+  const canDelete = crmCan(m, "crm.deal.delete");
+  const canChangePipeline = canMove && canEdit;
+  const canReassign = crmCan(m, "crm.deal.reassign") && canEdit;
+  const canForecast = crmCan(m, "crm.deal.forecast") && canEdit;
   const d = data.deal;
   // CRM C1.9 ▸ มติผู้คุมงาน C1.9 ข้อ 2: `?tab=obj-<key>` = แท็บวัตถุกำหนดเอง (รู้จักแท็บนี้ ⇒ ภาพรวมไม่แสดงใต้แผงวัตถุ) ◂
   const tab: (typeof TABS)[number]["key"] | "object" = TABS.some((t) => t.key === sp.tab)
@@ -95,6 +103,8 @@ export default async function Deal360Page({
   const base = `/app/sys/${id}/crm/deals`;
   const stage = data.stages.find((s) => s.current);
   const fieldLabels = Object.fromEntries(layout.map((x) => [x.key, x.label]));
+  // CRM C5.4-E ▸ L6-M1: ชนิด/ตัวเลือกของฟิลด์กำหนดเอง → ช่องตามชนิดในหน้าต่างเงื่อนไขก่อนเข้าขั้น ◂
+  const fieldInputs = Object.fromEntries(layout.filter((x) => !x.isSystem).map((x) => [x.key, { type: x.type, choices: x.choices }]));
   const kindBadge = d.kind === "WON" ? { t: "ชนะ", c: "var(--color-accent)" } : d.kind === "LOST" ? { t: "แพ้", c: "var(--color-danger)" } : null;
 
   const linesTable = (
@@ -151,15 +161,30 @@ export default async function Deal360Page({
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2">
           {/* CRM C2.4 ▸ บันทึกการโทรของดีลนี้ (ผูกทั้งดีลและผู้ติดต่อหลัก) ◂ */}
-          <CrmClickToCall
-            systemId={id}
-            target={{ dealId: d.id, contactId: data.contact.id, companyId: d.companyId }}
-            outcomes={callOutcomes}
-            maxRecordingBytes={CRM_RECORDING_MAX_BYTES}
-            aiState={callAi.state}
-            aiMessage={callAi.message}
-          />
-          {canEdit && <DealMenu systemId={id} dealId={d.id} pipelines={pipelines.map((p) => ({ id: p.id, name: p.name }))} currentPipelineId={d.pipelineId} canManage={canManage} deletable={d.kind !== "WON" && !d.quotationDocId && !d.invoiceDocId} />}
+          {/* CRM C4.2-fix ▸ ปุ่มโทร/บันทึกสายเปิดฟอร์มบันทึกสาย = คีย์ crm.activity.create (calls.ts logCall) ◂ */}
+          {crmCan(m, "crm.activity.create") && (
+            <CrmClickToCall
+              systemId={id}
+              target={{ dealId: d.id, contactId: data.contact.id, companyId: d.companyId }}
+              outcomes={callOutcomes}
+              maxRecordingBytes={CRM_RECORDING_MAX_BYTES}
+              aiState={callAi.state}
+              aiMessage={callAi.message}
+            />
+          )}
+          {/* r2 (รีวิว addendum 2e): เมนูไม่เปิดเป็นแผงว่าง — ย้าย pipeline ต้องมี pipeline อื่นให้เลือกจริง ◂ */}
+          {((canManage && canChangePipeline && pipelines.some((p) => p.id !== d.pipelineId)) || canDelete) && (
+            <DealMenu
+              systemId={id}
+              dealId={d.id}
+              pipelines={pipelines.map((p) => ({ id: p.id, name: p.name }))}
+              currentPipelineId={d.pipelineId}
+              canManage={canManage}
+              deletable={d.kind !== "WON" && !d.quotationDocId && !d.invoiceDocId}
+              canChangePipeline={canChangePipeline}
+              canDelete={canDelete}
+            />
+          )}
         </div>
       </div>
 
@@ -196,7 +221,7 @@ export default async function Deal360Page({
                   {` · pipeline ${data.pipeline.name}`}
                 </span>
               </div>
-              {canEdit && <DealDocButtons systemId={id} dealId={d.id} hasQuotation={!!d.quotationDocId} hasInvoice={!!d.invoiceDocId} />}
+              {canQuote && <DealDocButtons systemId={id} dealId={d.id} hasQuotation={!!d.quotationDocId} hasInvoice={!!d.invoiceDocId} />}
             </div>
             <DealStageStepper
               systemId={id}
@@ -206,8 +231,10 @@ export default async function Deal360Page({
               stages={data.stages.map((s) => ({ id: s.id, name: s.name, kind: s.kind, probability: s.probability }))}
               lostReasons={lostReasons}
               fieldLabels={fieldLabels}
+              fieldInputs={fieldInputs}
               canReopen={canManage}
               daysInStage={data.daysInStage}
+              canMove={canMove}
             />
             <div className="grid gap-3 border-t pt-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))" }} data-testid="deal-360-kpis">
               <div className="flex flex-col">
@@ -305,6 +332,8 @@ export default async function Deal360Page({
                     owners={owners}
                     forecastCategory={d.forecastCategory}
                     nextStep={d.nextStep}
+                    canReassign={canReassign}
+                    canForecast={canForecast}
                   />
                 </section>
               )}
@@ -341,7 +370,7 @@ export default async function Deal360Page({
                   </span>
                 )}
               </div>
-              <DealLinesEditor systemId={id} dealId={d.id} lines={data.lines} discountBp={d.discountBp} editable={canEdit && d.kind === "OPEN"} pendingApproval={d.hasPendingLines} />
+              <DealLinesEditor systemId={id} dealId={d.id} lines={data.lines} discountBp={d.discountBp} editable={canLines && d.kind === "OPEN"} pendingApproval={d.hasPendingLines} />
             </section>
           )}
 
@@ -387,7 +416,7 @@ export default async function Deal360Page({
 
         <aside className="flex w-full shrink-0 flex-col gap-4 lg:w-[300px]" data-testid="deal-360-rail">
           {/* CRM C3.4 ▸ ผู้ช่วย AI: สรุปดีล · ทำไมเสี่ยง · เสนอขั้นถัดไป (ข้อเสนอ) · ร่างอีเมลติดตาม (ร่างเท่านั้น) ◂ */}
-          <CrmAiPanel systemId={id} entity="deal" entityId={d.id} />
+          <CrmAiPanel systemId={id} entity="deal" entityId={d.id} canProposeNextStep={canEdit} />
           {/* CRM C1.6 ▸ ไฟล์แนบ */}
           <CrmFilesBlock ctx={ctx} actor={actor} entityType="DEAL" entityId={d.id} />
           {/* ◂ CRM C1.6 */}

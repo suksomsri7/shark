@@ -1,0 +1,141 @@
+(node:1734893) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[email:dev] rich · to 1 ผู้รับ · subject: i1 qc-hunt54f-qqfqeqqq
+{
+  "tag": "qc-hunt54f-qqfqeqqq",
+  "inbound": [
+    "ctl-genuine: OUT(sentBy staff) contact=CUSTOMER",
+    "ctl-fail-then-forged(\\n): IN contact=null flag",
+    "A1 joiner \\n\\t (whitespace-led joiner): OUT(sentBy staff) contact=CUSTOMER",
+    "A2 comment breakout (unescaped ')' of attacker envelope in MTA comment): OUT(sentBy staff) contact=CUSTOMER",
+    "A3 unquoted smtp.helo with ';': OUT(sentBy staff) contact=CUSTOMER",
+    "A4 unbalanced '(' in genuine swallows joiner, forged closes it: IN contact=null flag",
+    "A5 quoted helo (RFC-conformant MTA): IN contact=null flag",
+    "A6 escaped \\) in comment (RFC-conformant): IN contact=null flag",
+    "A7 key-case collision (worker keyed case-sensitively): OUT(sentBy staff) contact=CUSTOMER",
+    "A8 multi From <evil>,<staff> + evil passes: IN contact=null flag",
+    "A9 display-name spoof: IN contact=new:a@evil.example|sales-qqfqeqqq@staff-qqfqeqqq.example",
+    "A10 authserv-id UPPER + version + comment: OUT(sentBy staff) contact=CUSTOMER",
+    "A11 header.d suffix-not-label (xstaff-qqfqeqqq.example): IN contact=null flag",
+    "A12 header.i=@staffdomain but d=evil: OUT(sentBy staff) contact=CUSTOMER",
+    "A13 Reply-To=customer, outsider From: IN contact=CUSTOMER",
+    "A14 staff plus-address, no proof (strangerToLead on): IN contact=new:sales-qqfqeqqq+ceo@staff-qqfqeqqq.example|ไม่ระบุชื่อ",
+    "A15 unregistered shop-domain address, no proof: IN contact=new:ceo@qqfqeqqq-shop.example|ไม่ระบุชื่อ flag",
+    "A16 display-name = staff name, outsider From: IN contact=new:y-qqfqeqqq@evil.example|QC sales qc-hunt54f-qqfqeqqq (sales-qqfqeqqq@staff-qqfqeqqq.example)",
+    "U1 env unset, genuine: IN contact=null flag"
+  ],
+  "link": {
+    "created": true,
+    "l": [
+      "ACTIVE: 302 loc=https://dest-qqfqeqqq.example/x cookie=yes clicks 0→1",
+      "PENDING: 302 loc=https://dest-qqfqeqqq.example/x cookie=yes clicks 1→2",
+      "SUSPENDED: 302 loc=https://shark.in.th/ cookie=no clicks 2→2",
+      "CLOSED: 302 loc=https://shark.in.th/ cookie=no clicks 2→2",
+      "PENDING_DELETE: 302 loc=https://shark.in.th/ cookie=no clicks 2→2",
+      "timing median suspended=9.5ms unknown=9.4ms · bytes-equal(loc/cookie/status)=true"
+    ]
+  },
+  "headerSafe": [
+    "\"https://a.example/x\\r\\nSet-Cookie: s=1\" → \"https://a.example/xSet-Cookie:%20s=1\"",
+    "\"https://a.example/x y z\" → \"https://a.example/x%E2%80%A8y%E2%80%A9z\"",
+    "\"https://a.example/x\" → \"https://a.example/%C2%85x\"",
+    "\"//evil.example/x\" → \"//evil.example/x\"",
+    "\"javascript:alert(1)//ไทย\" → \"javascript:alert(1)//%E0%B9%84%E0%B8%97%E0%B8%A2\"",
+    "\"https://good.example\\\\@evil.example/ไทย\" → \"https://good.example/@evil.example/%E0%B9%84%E0%B8%97%E0%B8%A2\"",
+    "\"https://аpple.com/ไทย\" → \"https://xn--pple-43d.com/%E0%B9%84%E0%B8%97%E0%B8%A2\"",
+    "\"https://evil。example/ไทย\" → \"https://evil.example/%E0%B9%84%E0%B8%97%E0%B8%A2\"",
+    "\"https://a.example/%E0%B8%AA/ไทย\" → \"https://a.example/%E0%B8%AA/%E0%B9%84%E0%B8%97%E0%B8%A2\"",
+    "\"not a url ไทย\\r\\nX: y\" → \"not%20a%20url%20%E0%B9%84%E0%B8%97%E0%B8%A2%0D%0AX:%20y\"",
+    "\"https://a.example/\\u0000x\" → \"https://a.example/%00x\""
+  ],
+  "createLink": [
+    "\"https://a.example/x y\"=rejected",
+    "\"https://a.example/ x\"=rejected",
+    "\"//evil.example/\"=rejected",
+    "\"javascript:alert(1)\"=rejected",
+    "\"https://аpple.com/\"=ACCEPTED",
+    "\"https:\\\\\\\\evil.example/\"=rejected",
+    "\"HTTPS://evil.example/\"=ACCEPTED"
+  ],
+  "unsub": {
+    "send": "ok",
+    "tok": "found",
+    "status": 200,
+    "optOut": true,
+    "getStatus": 405,
+    "start": {
+      "ev": 0,
+      "audit": 0,
+      "consent": 1,
+      "buckets": 1
+    },
+    "after5fakeFull": {
+      "ev": 0,
+      "audit": 0,
+      "consent": 1,
+      "buckets": 1
+    },
+    "afterValidFull": {
+      "ev": 1,
+      "audit": 1,
+      "consent": 2,
+      "buckets": 1
+    },
+    "after5moreValidFull": {
+      "ev": 1,
+      "audit": 1,
+      "consent": 2,
+      "buckets": 1
+    },
+    "after5validFreshIp": {
+      "ev": 1,
+      "audit": 1,
+      "consent": 2,
+      "buckets": 3
+    }
+  },
+  "gate": {
+    "verdicts": [
+      false,
+      false,
+      false,
+      false
+    ],
+    "tokenRows": 0,
+    "ipCount": 1003
+  },
+  "trackerOrigin": [
+    "production|https://shark.in.th → https://shark.in.th",
+    "production|http://127.0.0.1:3000 → https://shark.in.th",
+    "production|(unset) → https://shark.in.th",
+    "preview|https://x.vercel.app/path → https://x.vercel.app",
+    "development|http://127.0.0.1:3215 → http://127.0.0.1:3215",
+    "development|javascript:alert(1) → null",
+    "development|(unset) → http://localhost:3000",
+    "PRODUCTION|http://127.0.0.1:1 → http://127.0.0.1:1"
+  ],
+  "I1": {
+    "emailEnabled": false,
+    "result": {
+      "ok": true,
+      "providerId": "dev_1e6c97ec-75f7-4170-b9af-aa2e9a17f239"
+    },
+    "crlfTo": {
+      "ok": false,
+      "error": "INVALID_HEADER"
+    }
+  },
+  "cleanup": {
+    "tenantsLeft": 0,
+    "usersLeft": 0,
+    "bucketsLeft": 0,
+    "emailsLeft": 0
+  }
+}

@@ -1,0 +1,36 @@
+  ✅ [M2.6-S1.1] migration member_v2_f: GiftCard {systemId number pinHash pinFailedCount pinLockedUntil initialSatang balanceSatang buyerCustomerId ownerCustomerId recipientContact message status expiresAt saleId accountingDocId} unique(tenantId,number) index(ownerCustomerId) · GiftCardTxn {giftCardId type satang balanceAfter refType refId byUserId idempotencyKey} unique(tenantId,idempotencyKey) index(giftCardId,createdAt) · GiftCardSettings {systemId enabled accountingLink expiryMonths denominations transferable reloadable} · PosSale.giftCardId · enum GiftCardStatus 4 · GiftCardTxnType 7 · additive · applied · migrate diff = empty
+  ✅ [M2.6-S1.2] settings: ค่าปริยาย enabled false · accountingLink false · expiryMonths 24 · denominations 3 · transferable/reloadable true · expiryMonths 6 (< 12) → throw ไทย · denomination 0 → throw · thana (ไม่มี giftcard.manage) → throw · set enabled/link ปิด → อ่านกลับตรง
+  ✅ [M2.6-S1.3] fitness F2 มีเส้น giftcard→pos · giftcard→account · giftcard→member · facade export 13 · account/index.ts export postGiftCardSale/postGiftCardUse/postGiftCardExpire · service.ts ไม่ import โมดูลอื่นตรงนอก facade · ไม่มี any
+  ✅ [M2.6-S2.1] sell ฿1,000 (ซื้อ สมาชิก 1 → รับ สมาชิก 2): {number GC-xxxxxxxx, pin 6 หลัก, saleId, expiresAt ≈ +24 เดือน, accountingDocId null (link ปิด)} · GiftCard ACTIVE balance 100000 buyer 1 owner 2 message · pinHash = sha256(number:pin) (ไม่เก็บ pin ตรง) · PosSale giftCardId · ไม่มี memberId · line 1 'Gift Card' 100000 · payment CASH · Txn SELL balanceAfter 100000 refType PosSale · event giftcard.sold
+  ✅ [M2.6-S2.2] sell ตรวจ: idempotencyKey ซ้ำ → บัตรเดิม (pin null · ไม่มีบัตร/บิลใหม่) · enabled false → throw ไทย · ฿0 → throw · Σ payMethods ≠ ยอด → throw · expiresAt 90 วัน (< 24 เดือน) → throw ไทย · ผู้รับไม่ใช่สมาชิก → throw · noPerm → throw · thana (giftcard.sell) ขายให้ผู้รับนอกระบบ (contact LINE) → ได้ owner null recipientContact
+  ✅ [M2.6-S2.3] balance(number) ไม่ต้อง PIN → {balanceSatang 100000, expiresAt, status ACTIVE, ownerCustomerId 2} · หมายเลขไม่มี → null · ลูกค้าเจ้าของ (CUSTOMER 2) → ได้ · ลูกค้าคนอื่น (3) → throw ไทย
+  ✅ [M2.6-S2.4] use: PIN ผิด → throw ไทย (ไม่ตัด) · PIN ถูก ตัด ฿300 → {txnId, balanceAfter 70000} · Txn USE refType PosSale refId saleId · event giftcard.used {giftCardId, number, satang, saleId, balanceAfter} · ตัด ฿800 > 700 → throw ไทย ไม่เขียน · idempotencyKey ซ้ำ → txn เดิม balance คง · ใช้ใน tx ได้ (ตัดอีก 200 → 50000)
+  ✅ [M2.6-S2.5] ใช้จนหมด → balance 0 status DEPLETED · ใช้อีก → throw ไทย · reload ฿500 → ACTIVE balance 50000 · PosSale ใหม่ (giftCardId) · Txn RELOAD · reloadable false → throw ไทย
+  ✅ [M2.6-S2.6] transfer: ลูกค้าที่ไม่ใช่เจ้าของ → throw · ปลายทางไม่ใช่สมาชิก → throw ไทย · PIN ผิด → throw · เจ้าของ (CUSTOMER 2) + PIN → owner = สมาชิก 4 · Txn TRANSFER refType Customer refId 4 · transferable false → throw ไทย · staff ที่มีแค่ giftcard.sell → throw
+  ✅ [M2.6-S2.7] suspend: staff sell-only → throw · owner ระงับ → SUSPENDED · use → throw ไทย · balance แสดง status SUSPENDED · unsuspend → ACTIVE (balance 50000) · บัตรหมดอายุ (expiresAt ผ่าน) use → throw ไทย
+  ✅ [M2.6-S3.1] PIN ผิด 5 ครั้ง → ทุกครั้ง throw ไทย · pinFailedCount 5 · pinLockedUntil ≈ now+15 นาที · ครั้งที่ 6 ด้วย PIN ถูก → throw 'ระงับ' · balance ยังดูได้ 100000
+  ✅ [M2.6-S3.2] พ้นเวลาระงับ (pinLockedUntil ผ่าน) + PIN ถูก → ใช้ได้ (balance 99000) · pinFailedCount reset 0 · pinLockedUntil null
+  ✅ [M2.6-S4.1] accountingLink เปิด + ระบบบัญชีเชื่อม POS: sell ฿2,000 → AccountJournalEntry refType GiftCard refId giftCardId (Dr 1000 เงินสด 200000 · Cr 2110 เงินรับล่วงหน้า 200000 · systemId บัญชี) · GiftCard.accountingDocId = entryId · บัตรที่ขายตอน link ปิด (c1) accountingDocId ยัง null
+  ✅ [M2.6-S4.2] use ฿500 บนบัตรที่ผูกบัญชี → JV refType GiftCardTxn refId txnId (Dr 2110 50000 · Cr 4030 รายได้ค่าบริการ 50000) · idempotencyKey ซ้ำ → JV ยัง 1
+  ✅ [M2.6-S4.3] expireDue: บัตรผูกบัญชีหมดอายุ (เหลือ ฿1,500) → EXPIRED · Txn EXPIRE {satang 150000, balanceAfter 0} · JV (Dr 2110 150000 · Cr 4900 รายได้อื่น 150000) · balance 0 · cron.ts step giftCardExpire + summary giftCardExpired · บัตร c1 (ยังไม่หมดอายุ) ไม่แตะ
+  ✅ [M2.6-S4.4] สลับกลางทาง: link ปิด → ขาย → accountingDocId null ไม่มี JV · link เปิด → ขาย → มี JV · link ปิด + ใช้บัตรที่ผูก → ไม่ลง JV · link เปิด + ใช้บัตรที่ไม่ผูก (ขายตอนปิด) → ไม่ลง JV · link เปิด + ใช้บัตรที่ผูก → ลง JV (เฉพาะรายการหลังเปิด §11.6)
+  ✅ [M2.6-S4.5] refundUse (void บิล): Txn REFUND +10000 · balance กลับ 90000 · JV กลับรายการ (reversalOfId = JV ตอนใช้) · ซ้ำ → {refunded false} ไม่คืนซ้ำ
+  ✅ [M2.6-S5.1] list: rows มี numberMasked 'GC-****' + 4 หลักท้าย · buyerName/ownerName · balance/status/expiresAt · kpi {soldThisMonthSatang ≥ 700000, soldThisMonthCount ≥ 7, outstandingSatang = Σ balance ACTIVE, usedThisMonthSatang ≥ 0} · status ACTIVE กรองได้ · q=หมายเลข → 1 แถว
+  ✅ [M2.6-S5.2] merge hook: บัตรของ Y (buyer+owner) → หลังรวมเข้า X buyer/owner = X · expireDue รอบปกติ: บัตรสด (24 เดือน) ไม่แตะ (ACTIVE) · คืน {expired} เป็นตัวเลข
+  ✅ [M2.6-S6.1] giftcard.sold / giftcard.used ลง 3 ทะเบียน + consumer · drain แล้ว DONE ทั้งหมด
+  ✅ [M2.6-S6.2] consumer pos.sale.paid ข้ามบิล gift card: หลัง drain ไม่มี JV refType PosSale ของบิลขายบัตร (บัญชีขายไม่ถูกบันทึกซ้ำ) · ไม่มี pointLedger อ้างบิลขายบัตร (ไม่ให้แต้ม) · โค้ด consumer ตรวจ giftCardId
+  ✅ [M2.6-S7.1] หน้า giftcards + settings + hub (แท็บ gift card → ready) requireTenant + สิทธิ์ (giftcard.sell/manage) · actions 'use server' gate · testid 13 · ไม่มีอีโมจิ/hex · ป้ายภาพ 20 ครบ (KPI 3 · ป้ายผูกบัญชี · drawer ขาย ทุกแถว · ตาราง 7 คอลัมน์)
+  ❌ [M2.6-S7.2] ภาพ 20: giftcards-owner desktop+mobile 200 ไม่ล้น · giftcards-sell-modal-owner 200 (กดขาย → drawer) · giftcards-settings-owner 200 · thana (read-โดยนัย) 200 ไม่มีปุ่มขาย · noperm 404 — exp 200 ×5 · 404 | act // mobile=undefined/ovf=undefined thana=undefined noperm=undefined
+  ✅ [M2.6-S7.3] 🔴 parity ภาพ 20 — Fable ตรวจด้วยตา · wo-notes/member-M2.6.md มี 'PARITY: ผ่าน'
+
+🔴 M2.6: 23/24
+JSON_SUMMARY {"total":24,"passed":23,"findings":[{"id":"M2.6-S7.2","sev":"CRITICAL"}]}
+(node:1480041) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)

@@ -1,0 +1,30 @@
+  ✅ [M2.4-S1.1] migration member_v2_d2: Reward +{kind imageFileId stampCardId stampsCost tierDefIds perMemberMonthly startAt endAt unitIds pickupDays showToCustomer} · RewardRedemption +{qrCode expiresAt fulfilledById fulfilledUnitId cancelReason} · enum RewardKind {ITEM SERVICE VOUCHER DISCOUNT} · additive · applied · migrate diff = empty · v1 service.ts ยัง export redeem/fulfillRedemption/cancelRedemption
+  ✅ [M2.4-S1.2] createRewardV2: ชื่อว่าง/kind นอก enum/ไม่มีราคาเลย/stampsCost ไม่มีการ์ด → throw ไทย · thana (ไม่มี manage) → throw · สร้าง 'เสื้อยืด' 800 แต้ม สต็อก 12 (pickupDays ปริยาย 14 · showToCustomer true) · update description+pickupDays 7 · listRewardsV2 มี stats {pending, fulfilled} · toggle off → active false · เพดาน MEMBER_LIMITS.rewards 200 อ้างในโค้ด
+  ✅ [M2.4-S2.1] redeem ด้วยแต้ม: X (1,000 แต้ม) แลกเสื้อ 800 → {redemptionId, qrCode ≥ 12 ตัว, code, expiresAt ≈ now+7 วัน (pickupDays 7), pointsCost 800} · RewardRedemption PENDING pointsCost 800 qrCode expiresAt · แต้ม 200 (ledger BURN refType RewardRedemption refId redemptionId) · สต็อก 11 · event reward.redeemed {customerId, rewardId, redemptionId} · idempotencyKey ซ้ำ → redemptionId เดิม แต้มไม่ลดซ้ำ
+  ✅ [M2.4-S2.2] ไม่ผ่าน = ไม่เขียน: แต้มไม่พอ (200 < 800) → throw ไทย · สต็อก 0 → throw ไทย · ปิดใช้งาน → throw · noPerm → throw · ลูกค้าแลกให้คนอื่น → throw · แต้ม/สต็อกเท่าเดิม (200 · 11) · ไม่มี redemption เพิ่ม
+  ✅ [M2.4-S2.3] ระดับ/ช่วงเวลา: รางวัล Gold+ — X (member) → throw ไทย · สมาชิก gold → แลกได้ (สต็อก null ไม่จำกัด) · startAt อนาคต → throw ไทย · endAt ผ่านแล้ว → throw ไทย
+  ✅ [M2.4-S2.4] ต่อคนต่อเดือน 1: แลกครั้งแรกได้ · ครั้งที่ 2 เดือนเดียวกัน → throw ไทย · ยกเลิกครั้งแรก (CANCELLED ไม่นับ) → แลกใหม่ได้ · สาขา: unitIds [ป่าตอง] — ลูกค้า homeUnit กะตะ ไม่ส่ง unitId → throw ไทย · ส่ง unitId ป่าตอง → ได้
+  ✅ [M2.4-S2.5] แลกด้วยสแตมป์: X มี 3 ตรา → แลกหมวก (2 ตรา · 0 แต้ม) → progress 1 · StampEvent USE count 2 refType REWARD refId redemptionId · redemption stampsCost 2 pointsCost 0 · แต้มไม่ลด · แลกอีก (เหลือ 1) → throw ไทย
+  ✅ [M2.4-S3.1] fulfil: noPerm → throw · thana (loyalty.fulfil · ป่าตอง) ส่งมอบเสื้อ → FULFILLED fulfilledById=thana fulfilledUnitId=ป่าตอง · event reward.fulfilled · ส่งมอบซ้ำ → ok idempotent ไม่ยิง event ซ้ำ (1) · รางวัล unitIds [ป่าตอง] ส่งมอบที่กะตะ → throw ไทย
+  ✅ [M2.4-S3.2] cancel: ยกเลิกรายการที่ส่งมอบแล้ว → throw ไทย · ยกเลิก PENDING (ดำน้ำฟรี 50 แต้ม) → CANCELLED cancelReason · {refundedPoints 50} · แต้มคืน +50 · สต็อก null คงเดิม · ยกเลิกซ้ำ → idempotent refunded 0 แต้มไม่คืนซ้ำ
+  ✅ [M2.4-S3.3] cancel รายการสแตมป์: {refundedStamps 2} · progress กลับเป็น 3 · StampEvent ADD refType REWARD_CANCEL refId redemptionId (ไม่ติด perDayMax) · สต็อกหมวก +1 (3)
+  ✅ [M2.4-S3.4] หมดอายุรับ: expiresAt ผ่านแล้ว → fulfil throw ไทย 'หมดอายุ' · expireDue() → {expired ≥ 1} · รายการ → CANCELLED cancelReason EXPIRED · คืนแต้ม (+10) · X ไม่โดน · cron.ts step rewardExpire + summary rewardExpired
+  ✅ [M2.4-S4.1] lookupRedemption: ด้วย qrCode → {redemption{id,status FULFILLED,expiresAt,pointsCost 800}, reward{name เสื้อยืด,kind ITEM}, member{customerId X, name, memberCode}, fulfilledBy{name thana}} · ด้วย code v1 → รายการเดียวกัน · ไม่พบ → null · ต่างร้าน → null
+  ✅ [M2.4-S4.2] listRedemptionsV2 status FULFILLED มีเสื้อ (rewardName · memberName · fulfilledByName · unitName ป่าตอง) · กรอง unitId ป่าตอง มีรายการที่ส่งมอบที่ป่าตอง · catalogFor(X): เสื้อ affordable false (190 < 800) eligible true · Gold+ eligible false + reason ไทย · หมวก (สแตมป์ 2 · X มี 3) affordable true stampCardName · ไม่มี 'ลับ' (showToCustomer false) · ไม่มีรางวัลที่ปิด/นอกช่วงเวลา
+  ✅ [M2.4-S5.1] หน้า 5 หน้า (rewards · new · [rewardId] · fulfil · redemptions) requireTenant + สิทธิ์ (อ่าน/manage/fulfil) · actions 'use server' gate · testid 17 · nav rewards → ready · facade export 11 · v2.ts ไม่ import โมดูลอื่นตรงนอก facade · ไม่มี any/อีโมจิ/hex
+  ✅ [M2.4-S5.2] ภาพ 05/18: ป้ายครบ (แคตตาล็อก การ์ดรูป/ชื่อ/'n แต้ม · สต็อก n'/'เฉพาะ Gold+' · ตารางรอรับ · ฟอร์ม ภาพ 18 ทุกแถว · แผงรับของ สแกน QR/พิมพ์รหัส → ผลการสแกน → ส่งมอบแล้ว/ยกเลิก (คืนแต้ม) · ประวัติการแลก คอลัมน์ รหัส/ของรางวัล/สมาชิก/สถานะ/สาขา/พนักงานที่ส่งมอบ) · ชิปสถานะไทย รอรับ/รับแล้ว/ยกเลิก
+  ❌ [M2.4-S6.1] ภาพ 05: rewards-owner desktop+mobile 200 ไม่ล้น · ภาพ 18: rewards-editor-owner 200 · rewards-new-owner 200 · rewards-redemptions-owner 200 · thana (read-โดยนัย) 200 · noperm 404 — exp 200 ×6 · 404 | act /// mobile=undefined/ovf=undefined thana=undefined noperm=undefined
+  ❌ [M2.4-S6.2] ภาพ 18 ขวา: rewards-fulfil-owner 200 (ช่องสแกน) · rewards-fulfil-result-owner 200 (พิมพ์รหัสของ TMP24 → ผลการสแกน + ปุ่มส่งมอบ/ยกเลิก) — exp 200 ×2 | act undefined/undefined missing=undefined
+  ✅ [M2.4-S6.3] 🔴 parity ภาพ 05 + 18 — Fable ตรวจด้วยตา · wo-notes/member-M2.4.md มี 'PARITY: ผ่าน' · reward.redeemed/reward.fulfilled ลง 3 ทะเบียน · drain แล้ว reward.* DONE ทั้งหมด
+
+🔴 M2.4: 16/18
+JSON_SUMMARY {"total":18,"passed":16,"findings":[{"id":"M2.4-S6.1","sev":"CRITICAL"},{"id":"M2.4-S6.2","sev":"CRITICAL"}]}
+(node:1478941) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)

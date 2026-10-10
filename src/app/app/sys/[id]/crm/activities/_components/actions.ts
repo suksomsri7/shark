@@ -7,7 +7,7 @@
 // 🔴 ไม่โยน error ดิบถึงหน้าจอ — คืน { ok:false, error } ภาษาไทยที่ไม่โทษผู้ใช้ · log แค่ชนิด error (ไม่มีเนื้อโน้ต/ชื่อไฟล์ — X8)
 // 🔴 actor มาจาก `toMemberActor` เท่านั้น
 
-import { revalidatePath } from "next/cache";
+import { revalidateAndWake } from "@/lib/modules/crm/outbox-wake"; // CRM C5.4-D ▸ L3-M1b: รีเฟรชหน้า + ปลุกคิว outbox หลังเขียนสำเร็จ ◂
 import { requireTenant } from "@/lib/core/context";
 import { ForbiddenError } from "@/lib/core/rbac";
 import { assertCanCrm } from "@/lib/modules/crm/access";
@@ -27,10 +27,11 @@ import {
   type UpdateActivityInput,
 } from "@/lib/modules/crm/activities";
 import { attachFile, removeFile } from "@/lib/modules/crm/files";
-import { ActivitiesError, CRM_FILE_MAX_BYTES } from "@/lib/modules/crm/activities-shared";
+import { ACTIVITY_BODY_MAX, ACTIVITY_TITLE_MAX, ActivitiesError, CRM_FILE_MAX_BYTES } from "@/lib/modules/crm/activities-shared";
+import { blank, withFieldError, type CrmFieldErrors } from "@/lib/modules/crm/field-errors-shared";
 import { assertCrmV2, CrmV2DisabledError } from "@/lib/modules/crm/ui-version";
 
-type Fail = { ok: false; error: string; code?: string };
+type Fail = { ok: false; error: string; code?: string; fieldErrors?: CrmFieldErrors };
 
 async function session(systemId: string, action: string) {
   const auth = await requireTenant();
@@ -53,11 +54,11 @@ function failOf(e: unknown): Fail {
 
 /** หน้าที่แสดงกิจกรรม/ไฟล์: รายการ · ปฏิทิน (ของระบบนี้) + หน้า 360 ทั้งสามชนิด (แพตเทิร์น — ผู้กดยัง router.refresh() เองด้วย) */
 const touch = (systemId: string) => {
-  revalidatePath(`/app/sys/${systemId}/crm/activities`);
-  revalidatePath(`/app/sys/${systemId}/crm/calendar`);
-  revalidatePath("/app/sys/[id]/crm/contacts/[contactId]", "page");
-  revalidatePath("/app/sys/[id]/crm/companies/[companyId]", "page");
-  revalidatePath("/app/sys/[id]/crm/deals/[dealId]", "page");
+  revalidateAndWake(`/app/sys/${systemId}/crm/activities`);
+  revalidateAndWake(`/app/sys/${systemId}/crm/calendar`);
+  revalidateAndWake("/app/sys/[id]/crm/contacts/[contactId]", "page");
+  revalidateAndWake("/app/sys/[id]/crm/companies/[companyId]", "page");
+  revalidateAndWake("/app/sys/[id]/crm/deals/[dealId]", "page");
 };
 
 export async function logActivityAction(systemId: string, input: LogActivityInput): Promise<{ ok: true; id: string; nextTaskId: string | null; notified: string[] } | Fail> {
@@ -68,7 +69,15 @@ export async function logActivityAction(systemId: string, input: LogActivityInpu
     // notified = คนที่ได้รับแจ้งเตือนจริง (หน้าจอบอกผู้เขียนว่าใครไม่ได้รับ โดยใช้ชื่อจากรายการตัวเลือกของเขาเอง — ไม่บอกเหตุผล)
     return { ok: true, id: r.id, nextTaskId: r.nextTaskId, notified: r.mentions };
   } catch (e) {
-    return failOf(e);
+    // C4.3-fix part 2 ▸ ข้อความปฏิเสธของบริการชี้กลับไปที่ช่องของ LogActivityForm (target · title · body · งานถัดไป) ◂
+    const title = typeof input?.title === "string" ? input.title.trim() : "";
+    return withFieldError(failOf(e), {
+      target: !input?.contactId && !input?.dealId && !input?.companyId && !input?.customRecordId,
+      title: !title || title.length > ACTIVITY_TITLE_MAX,
+      body: typeof input?.body === "string" && input.body.length > ACTIVITY_BODY_MAX,
+      nextTitle: !!input?.nextTask && blank(input.nextTask.title),
+      nextDue: !!input?.nextTask && (input.nextTask.dueAt == null || input.nextTask.dueAt === ""),
+    });
   }
 }
 
@@ -118,7 +127,8 @@ export async function setPinnedAction(systemId: string, id: string, pinned: bool
 
 export async function deleteActivityAction(systemId: string, id: string, input: { confirm: boolean; reason: string }): Promise<{ ok: true } | Fail> {
   try {
-    const { ctx, actor } = await session(systemId, "crm.activity.create");
+    // CRM C5.5 ▸ L55-3: คีย์เดียวกับบริการและ REST (`crm.activity.delete` — พิมพ์เขียว §5.5) · เดิมด่านหน้าใช้ create ◂
+    const { ctx, actor } = await session(systemId, "crm.activity.delete");
     await deleteActivity(ctx, actor, id, input);
     touch(systemId);
     return { ok: true };

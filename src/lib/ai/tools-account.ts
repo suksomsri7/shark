@@ -9,6 +9,18 @@
 import { accountToolInfos, runAccountTool } from "./account-ops";
 import { createProposal, type ProposalKind } from "./proposals";
 import type { AiTool, ToolCtx } from "./tools";
+import { actorProblem, aiActorMembership, aiActorUserId, keyPermissions, type AiActor } from "./actor";
+import { toMemberActor } from "@/lib/modules/member/access";
+
+/**
+ * CRM C5.5-fix14 r3 (รีวิว RV14-2) ▸ ผู้ถามในสายตาโมดูลสมาชิก/CRM — รูปเดียวกับประตูเว็บ/REST:
+ *   คน (และงานภายในที่ประกาศชื่อ) = สมาชิกภาพของเขา (`crmViewerOfSession`) · คีย์ = scope ของคีย์ (`crmViewerOfApi`) · อื่น ๆ = null (ปิด)
+ */
+function askerOf(a: AiActor) {
+  if (a.kind === "apiKey") return { userId: "", role: "STAFF" as const, unitAccess: ["*"], permissions: keyPermissions(a.scopes), apiRole: "readonly" as const, keyId: a.keyId };
+  const m = aiActorMembership(a);
+  return m ? toMemberActor(aiActorUserId(a) ?? "", m) : null;
+}
 
 /**
  * เครื่องมือบัญชีทั้งชุด — สร้างจาก `ACCOUNT_OPS.filter(o => o.tool)`
@@ -21,8 +33,14 @@ export function accountTools(): AiTool[] {
     ...(info.write ? { action: true as const } : {}),
     def: { name: info.name, description: info.description, parameters: info.parameters },
     async execute(ctx: ToolCtx, args: unknown): Promise<string> {
+      // CRM C5.5-G1 r2 (F6) ▸ ไม่มี actor ที่ใช้ได้ = ปฏิเสธ (ไม่ถอยไปชุดอ่านกว้าง/คุกกี้ของคำขอ) ◂
+      const bad = actorProblem(ctx);
+      if (bad) return JSON.stringify({ error: bad });
       const outcome = await runAccountTool(ctx.tenantId, info.name, args, {
         ...(ctx.systemId ? { systemId: ctx.systemId } : {}),
+        // CRM C5.5-G1 ▸ อ่านด้วยสิทธิ์บัญชีของผู้ถาม (คีย์ API = ผ่านด่าน scope มาแล้ว → ชุดอ่านของผู้ช่วยตามเดิม) ◂
+        viewer: aiActorMembership(ctx.actor),
+        asker: askerOf(ctx.actor),
       });
       if (outcome.mode === "error") return JSON.stringify({ error: outcome.error });
       if (outcome.mode === "read") return JSON.stringify(outcome.result);

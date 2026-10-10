@@ -13,8 +13,8 @@ import { tracking } from "@/lib/modules/crm";
 export const dynamic = "force-dynamic";
 
 const ipOf = (req: Request) => req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || req.headers.get("x-real-ip")?.trim() || "unknown";
-/** ค่า header เป็น ByteString — url ที่มีอักขระนอก latin1 (ไทย/จีน) ต้องเข้ารหัสก่อน ไม่งั้นสร้าง Response ไม่ได้เลย */
-const headerSafe = (url: string) => (/^[ -~]*$/.test(url) ? url : encodeURI(url));
+/** ค่า header เป็น ByteString — url ที่มีอักขระนอก latin1 (ไทย/จีน) ต้องเข้ารหัสก่อน (ตัวเดียวกับ `/t/c` · CRM C5.4-F ▸ L4-m1) */
+const headerSafe = (url: string) => tracking.headerSafeLocation(url);
 
 function redirect(location: string, setCookie?: string): Response {
   const headers = new Headers({ Location: headerSafe(location), "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0" });

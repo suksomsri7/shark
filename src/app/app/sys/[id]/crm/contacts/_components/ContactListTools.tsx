@@ -84,7 +84,9 @@ const TONE: Record<ContactScoreBand, string> = { HOT: "var(--color-danger)", WAR
 
 // ───────────────────────── ตาราง + โอนเป็นกลุ่ม ─────────────────────────
 
-export function ContactTable({ systemId, rows, owners }: { systemId: string; rows: ContactRowView[]; owners: Opt[] }) {
+// CRM C4.2-fix ▸ `canAssign` = crmCan(crm.contact.update) ของหน้า (r2 SF-3) — ช่องติ๊กมีไว้ให้โอนเป็นกลุ่มอย่างเดียว
+//   ⇒ ไม่มีสิทธิ์โอน = ไม่มีช่องติ๊ก/แถบคำสั่งกลุ่ม (ไม่ทิ้งคอลัมน์ว่าง) ◂
+export function ContactTable({ systemId, rows, owners, canAssign }: { systemId: string; rows: ContactRowView[]; owners: Opt[]; canAssign: boolean }) {
   const router = useRouter();
   const base = `/app/sys/${systemId}/crm/contacts`;
   const [sel, setSel] = useState<Set<string>>(new Set());
@@ -131,7 +133,7 @@ export function ContactTable({ systemId, rows, owners }: { systemId: string; row
 
   return (
     <>
-      {(sel.size > 0 || done) && (
+      {canAssign && (sel.size > 0 || done) && (
         <div className="card flex flex-wrap items-center gap-2 p-3 text-sm" data-testid="contacts-bulk-bar">
           {sel.size > 0 ? (
             <>
@@ -153,9 +155,11 @@ export function ContactTable({ systemId, rows, owners }: { systemId: string; row
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b text-left text-xs text-[color:var(--color-muted)]">
-              <th className="w-10 px-3 py-2.5">
-                <input type="checkbox" aria-label="เลือกทั้งหมดในหน้านี้" checked={allOn} onChange={() => setSel(allOn ? new Set() : new Set(rows.map((r) => r.id)))} data-testid="contacts-select-all" />
-              </th>
+              {canAssign && (
+                <th className="w-10 px-3 py-2.5">
+                  <input type="checkbox" aria-label="เลือกทั้งหมดในหน้านี้" checked={allOn} onChange={() => setSel(allOn ? new Set() : new Set(rows.map((r) => r.id)))} data-testid="contacts-select-all" />
+                </th>
+              )}
               <th className="px-3 py-2.5 font-medium">ผู้ติดต่อ</th>
               <th className="px-3 py-2.5 font-medium">บริษัท / ตำแหน่ง</th>
               <th className="px-3 py-2.5 font-medium">สถานะ</th>
@@ -165,9 +169,11 @@ export function ContactTable({ systemId, rows, owners }: { systemId: string; row
           <tbody>
             {rows.map((r) => (
               <tr key={r.id} className="border-b last:border-b-0">
-                <td className="px-3 py-2.5">
-                  <input type="checkbox" aria-label={`เลือก ${r.name}`} checked={sel.has(r.id)} onChange={() => toggle(r.id)} data-testid="contacts-row-select" />
-                </td>
+                {canAssign && (
+                  <td className="px-3 py-2.5">
+                    <input type="checkbox" aria-label={`เลือก ${r.name}`} checked={sel.has(r.id)} onChange={() => toggle(r.id)} data-testid="contacts-row-select" />
+                  </td>
+                )}
                 <td className="px-3 py-2.5">
                   <Link href={`${base}/${r.id}`} className="font-medium hover:underline" data-testid="contacts-row-link">
                     {r.name}
@@ -188,7 +194,7 @@ export function ContactTable({ systemId, rows, owners }: { systemId: string; row
       <div className="flex flex-col gap-2 md:hidden" data-testid="contacts-cards">
         {rows.map((r) => (
           <div key={r.id} className="card flex items-start gap-2 p-3">
-            <input type="checkbox" aria-label={`เลือก ${r.name}`} className="mt-1" checked={sel.has(r.id)} onChange={() => toggle(r.id)} data-testid="contacts-card-select" />
+            {canAssign && <input type="checkbox" aria-label={`เลือก ${r.name}`} className="mt-1" checked={sel.has(r.id)} onChange={() => toggle(r.id)} data-testid="contacts-card-select" />}
             <Link href={`${base}/${r.id}`} className="flex min-w-0 flex-1 flex-col gap-1" data-testid="contacts-card-link">
               <span className="break-words font-medium">{r.name}</span>
               <span className="break-words text-xs text-[color:var(--color-muted)]">{[r.companyName, r.jobTitle, r.ownerName ? `ผู้ดูแล ${r.ownerName}` : null].filter(Boolean).join(" · ") || "ยังไม่มีรายละเอียด"}</span>
@@ -197,7 +203,7 @@ export function ContactTable({ systemId, rows, owners }: { systemId: string; row
           </div>
         ))}
       </div>
-      {open && (
+      {canAssign && open && (
         <Sheet label={`โอนผู้ติดต่อ ${sel.size.toLocaleString("th-TH")} คนให้ผู้ดูแลคนใหม่`} testid="contacts-bulk-assign-modal" onClose={() => setOpen(false)}>
           <label className="flex flex-col gap-1 text-xs text-[color:var(--color-muted)]">
             <span>ผู้ดูแลคนใหม่</span>
@@ -419,7 +425,7 @@ export function ContactImportButton({ systemId, customFields }: { systemId: stri
                 <ul className="mt-2 flex max-h-40 flex-col gap-1 overflow-y-auto text-xs text-[color:var(--color-muted)]">
                   {result.errors.slice(0, 50).map((e, i) => (
                     <li key={`${e.row}-${i}`}>
-                      แถว {e.row}: {e.message}
+                      แถว {e.row}{e.kind === "note" ? " (หมายเหตุ)" : ""}: {e.message}
                     </li>
                   ))}
                 </ul>

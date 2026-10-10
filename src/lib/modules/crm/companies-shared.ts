@@ -13,6 +13,12 @@ export const COMPANY_IMPORT_ACCOUNT_MAX = 500;
 /** เหตุผลของการกระทำอันตราย (รวม · เก็บถาวร) ยาวอย่างน้อยกี่ตัวอักษร */
 export const COMPANY_REASON_MIN = 5;
 /** ความยาวสูงสุดของช่องข้อความ */
+/**
+ * CRM C5.5-fix12 ▸ (sweep RV10-1) บริษัทที่ชน (เลขภาษี+สาขา หรือ Party เดียวกัน) อยู่นอกการมองเห็นของผู้สร้าง — ไม่สร้างซ้ำ แต่ไม่บอกอะไรของบริษัทนั้น
+ *   (ไม่มีชื่อ · รหัส · duplicateOf) ◂
+ */
+export const COMPANY_DUPLICATE_HIDDEN_MSG =
+  "มีบริษัทนี้ (เลขผู้เสียภาษี/ข้อมูลเดียวกัน) อยู่ในระบบแล้ว แต่อยู่นอกขอบเขตที่บัญชีนี้มองเห็น จึงสร้างซ้ำไม่ได้ — ขอให้หัวหน้าทีมหรือเจ้าของร้านตรวจ/มอบบริษัทนั้นให้";
 export const COMPANY_NAME_MAX = 200;
 export const COMPANY_TEXT_MAX = 200;
 export const COMPANY_URL_MAX = 500;
@@ -31,10 +37,13 @@ export class CompaniesError extends Error {
   /** DUPLICATE: บริษัทเดิมที่ชน */
   readonly duplicateOf?: string;
   readonly companyId?: string;
-  constructor(code: CompanyErrorCode, message: string, extra: { duplicateOf?: string } = {}) {
+  /** C4.3-fix part 2 ▸ ช่องที่ข้อความเป็นของ (fieldErrors key เช่น `cf:<fieldKey>`) ◂ */
+  readonly field?: string;
+  constructor(code: CompanyErrorCode, message: string, extra: { duplicateOf?: string; field?: string } = {}) {
     super(message);
     this.name = "CompaniesError";
     this.code = code;
+    if (extra.field) this.field = extra.field;
     if (extra.duplicateOf) {
       this.duplicateOf = extra.duplicateOf;
       this.companyId = extra.duplicateOf;
@@ -194,6 +203,8 @@ export type CompanyTimelineItem = {
   contactId: string | null;
   contactName: string | null;
   dealId: string | null;
+  /** CRM C5.5 ▸ (fix3b r2 · RV-1) มีเฉพาะกิจกรรม EMAIL ขาเข้าที่ระบบยืนยันผู้ส่งไม่ได้ ⇒ ป้าย "ไม่ยืนยันผู้ส่ง" ◂ */
+  unverifiedFrom?: true;
 };
 
 export type CompanyRef = { id: string; name: string };
@@ -240,7 +251,13 @@ export type CompanyListResult = { items: CompanyDto[]; total: number; page: numb
 
 export type DuplicatePairDto = { aId: string; aName: string; bId: string; bName: string; reason: DuplicateReason; score?: number };
 
-export type ImportCompaniesResult = { created: number; skipped: number; errors: { row: number; reason: string }[] };
+export type ImportCompaniesResult = {
+  created: number;
+  skipped: number;
+  errors: { row: number; reason: string }[];
+  /** CRM C5.4-E r2 ▸ มติผู้คุมงาน (คำถามเจ้าของข้อ 4): แถวที่นำเข้าได้แต่มีบางช่องถูกเว้นไว้ (เช่น โดเมนอีเมลสาธารณะ) · มีเฉพาะเมื่อไม่ว่าง ◂ */
+  warnings?: { row: number; reason: string }[];
+};
 
 // ───────────────────────── ตัวตรวจค่า (บริสุทธิ์ — ใช้ได้ทั้งฟอร์มและ service) ─────────────────────────
 
@@ -256,6 +273,10 @@ export function isValidThaiTaxId(taxId: string): boolean {
   for (let i = 0; i < 12; i += 1) sum += Number(taxId[i]) * (13 - i);
   return (11 - (sum % 11)) % 10 === Number(taxId[12]);
 }
+
+// C4.4-fix รอบ 2–3 ▸ แปลง lead + เลขภาษีที่มีบริษัทอยู่แล้ว (ข้อความไม่บอกชื่อ/id/สถานะของบริษัทที่ผู้กดมองไม่เห็น) ◂
+export const TAX_COMPANY_HIDDEN_MSG = "มีบริษัทที่ใช้เลขภาษีนี้อยู่แล้ว แต่บัญชีนี้ยังไม่มีสิทธิ์เห็นบริษัทนั้น — ขอให้ผู้ดูแลเพิ่มสิทธิ์ หรือเลือกบริษัทที่มีอยู่";
+export const TAX_COMPANY_ARCHIVED_MSG = "มีบริษัทที่ใช้เลขประจำตัวผู้เสียภาษีนี้อยู่แล้ว แต่ถูกเก็บถาวรไว้ — กู้คืนบริษัทนั้นก่อน หรือเลือก \"ผูกบริษัทที่มีอยู่\" แทน";
 
 /** ข้อความปัญหาของเลขภาษี (null = ใช้ได้ · ค่าว่าง = ไม่มีเลขภาษี ไม่ใช่ปัญหา) */
 export function taxIdProblem(raw: string | null | undefined): string | null {
@@ -292,11 +313,32 @@ export function websiteProblem(raw: string | null | undefined): string | null {
 export function normalizeEmailDomain(raw: string | null | undefined): string {
   return String(raw ?? "").trim().toLowerCase().replace(/^@+/, "");
 }
-export function emailDomainProblem(raw: string | null | undefined): string | null {
+/**
+ * CRM C5.4-E ▸ L6-m8: โดเมนอีเมลสาธารณะ (ใครก็สมัครได้) — ไม่ใช่ "โดเมนของบริษัท" · ถ้ายอมให้บริษัทใช้ จดหมายขาเข้าจากคนแปลกหน้า
+ * ทุกคนบนโดเมนนั้นจะถูกเก็บเข้าบริษัทนั้น (ไม่กลายเป็น lead) และบริษัท gmail ทุกแห่งกลายเป็น "ซ้ำกัน" · รายการเดียวของทั้ง CRM
+ * (emails.ts ใช้ชุดเดียวกันตัดสิน "โดเมนของพนักงาน") ◂
+ */
+export const FREE_MAIL_DOMAINS: ReadonlySet<string> = new Set([
+  "gmail.com", "googlemail.com", "outlook.com", "hotmail.com", "hotmail.co.th", "live.com", "msn.com",
+  "yahoo.com", "yahoo.co.th", "icloud.com", "me.com", "mac.com", "proton.me", "protonmail.com", "aol.com", "gmx.com",
+]);
+export function isFreeMailDomain(raw: string | null | undefined): boolean {
+  return FREE_MAIL_DOMAINS.has(normalizeEmailDomain(raw));
+}
+/** รูปแบบอย่างเดียว (ไม่ตรวจโดเมนสาธารณะ) — ใช้กับค่าเดิมที่ไม่ได้เปลี่ยนตอนแก้ไข */
+export function emailDomainFormatProblem(raw: string | null | undefined): string | null {
   const d = normalizeEmailDomain(raw);
   if (!d) return null;
   if (d.length > 190 || !/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/.test(d)) {
     return "โดเมนอีเมลควรอยู่ในรูป example.co.th (ไม่ต้องใส่ชื่อหน้า @)";
+  }
+  return null;
+}
+export function emailDomainProblem(raw: string | null | undefined): string | null {
+  const f = emailDomainFormatProblem(raw);
+  if (f) return f;
+  if (isFreeMailDomain(raw)) {
+    return `${normalizeEmailDomain(raw)} เป็นอีเมลสาธารณะที่ใครก็ใช้ได้ จึงใช้จับคู่อีเมลเข้ากับบริษัทไม่ได้ — เว้นช่องนี้ว่างไว้ หรือใส่โดเมนของบริษัทเอง เช่น example.co.th`;
   }
   return null;
 }

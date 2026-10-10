@@ -60,6 +60,8 @@ export async function onInvoicePaid(evt: BridgeEvent): Promise<void> {
   const info = await (await accountFacade()).docLinkInfo(evt.tenantId, documentId);
   if (!info) return;
   for (const systemId of systems) await crm.payments.onInvoiceFullyPaid({ tenantId: evt.tenantId, systemId }, { documentId: info.docId });
+  // CRM C5.4-E ▸ L6-M4: แจ้งผู้ดูแลดีลที่ผูกใบนี้ (invoice.paid) — หลังงานเงินเสร็จ · ล้ม = ไม่พาสะพานเงินล้ม ◂
+  for (const systemId of systems) await crm.notifySenders.dealDocumentSettled({ tenantId: evt.tenantId, systemId }, info.docId).catch(() => undefined);
 }
 
 /**
@@ -93,7 +95,14 @@ export async function onDocumentVoided(evt: BridgeEvent): Promise<void> {
   if (systems.length === 0) return;
   const info = await (await accountFacade()).docLinkInfo(evt.tenantId, documentId);
   if (!info) return;
+  // CRM C5.4-C ▸ L2-M3: ยกเลิกใบลดหนี้ ⇒ กระทบยอดของเอกสารต้นทางใหม่ (เงินคืน/มูลค่าที่ชนะ/คอมมิชชันกลับมา) — ไม่ใช่ธง "เอกสารของดีลถูกยกเลิก" ◂
+  if (String(info.docType) === "CREDIT_NOTE") {
+    for (const systemId of systems) await crm.payments.onCreditNoteChanged({ tenantId: evt.tenantId, systemId }, { documentId: info.docId });
+    return;
+  }
   for (const systemId of systems) await crm.payments.flagDocumentVoided({ tenantId: evt.tenantId, systemId }, { documentId: info.docId, reason: str(p.reason) ?? undefined });
+  // CRM C5.4-E ▸ L6-M4: เทมเพลต invoice.paid ครอบ "เอกสารถูกยกเลิก" ด้วย (ป้ายของเทมเพลต) ◂
+  for (const systemId of systems) await crm.notifySenders.dealDocumentSettled({ tenantId: evt.tenantId, systemId }, info.docId).catch(() => undefined);
 }
 
 /**

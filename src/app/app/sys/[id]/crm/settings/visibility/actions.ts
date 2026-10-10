@@ -6,15 +6,17 @@
 // 🔴 AUDIT-CLASS X9: ทุกการตั้ง/ลบ policy เขียน AuditLog `crm.visibility.policy.*` (targetId = id ของ policy) ในบริการ
 // 🔴 uiVersion: หน้านี้มีเฉพาะ CRM v2 — ระบบที่ยังไม่เปิด = FORBIDDEN ภาษาไทย (assertCrmV2)
 
-import { revalidatePath } from "next/cache";
+import { revalidateAndWake } from "@/lib/modules/crm/outbox-wake"; // CRM C5.4-D ▸ L3-M1b: รีเฟรชหน้า + ปลุกคิว outbox หลังเขียนสำเร็จ ◂
 import { requireTenant } from "@/lib/core/context";
 import { ForbiddenError } from "@/lib/core/rbac";
 import { toMemberActor } from "@/lib/modules/member";
 import { assertCanCrm } from "@/lib/modules/crm/access";
 import { policies, VisibilityError } from "@/lib/modules/crm/visibility";
 import { assertCrmV2, CrmV2DisabledError } from "@/lib/modules/crm/ui-version";
+import { withFieldError, type CrmFieldErrors } from "@/lib/modules/crm/field-errors-shared";
 
-type Result = { ok: true } | { ok: false; error: string; code?: string };
+type Result = { ok: true } | { ok: false; error: string; code?: string; fieldErrors?: CrmFieldErrors };
+type Fail = Extract<Result, { ok: false }>;
 
 async function session(systemId: string) {
   const auth = await requireTenant();
@@ -25,7 +27,7 @@ async function session(systemId: string) {
   return { ctx, actor };
 }
 
-function failOf(e: unknown): Result {
+function failOf(e: unknown): Fail {
   if (e instanceof CrmV2DisabledError) return { ok: false, error: e.message, code: e.code };
   if (e instanceof VisibilityError) return { ok: false, error: e.message, code: e.code };
   if (e instanceof ForbiddenError) return { ok: false, error: e.message, code: "FORBIDDEN" };
@@ -33,7 +35,7 @@ function failOf(e: unknown): Result {
   return { ok: false, error: "บันทึกไม่สำเร็จ ระบบยกเลิกรายการให้แล้ว (การตั้งค่าไม่เปลี่ยน) — ลองใหม่อีกครั้ง" };
 }
 
-const touch = (systemId: string) => revalidatePath(`/app/sys/${systemId}/crm/settings/visibility`);
+const touch = (systemId: string) => revalidateAndWake(`/app/sys/${systemId}/crm/settings/visibility`);
 
 /** ตั้งระดับการมองเห็น (บทบาท/ทีม/pipeline × ชนิดข้อมูล) — มีอยู่แล้ว = แก้ระดับ (ไม่เกิดแถวซ้ำ) */
 export async function setVisibilityPolicyAction(
@@ -52,7 +54,11 @@ export async function setVisibilityPolicyAction(
     touch(systemId);
     return { ok: true };
   } catch (e) {
-    return failOf(e);
+    // C4.3-fix part 2 ▸ ไม่ระบุว่าใช้กับใคร = ข้อความใต้ช่อง "ทีม" · ตั้งทับต่อ pipeline กับข้อมูลที่ไม่ใช่ดีล = ใต้ช่อง "ชนิดข้อมูล" ◂
+    return withFieldError(failOf(e), {
+      teamId: !input?.teamId && !input?.pipelineId && !input?.role,
+      entity: !!input?.pipelineId && String(input?.entity ?? "") !== "DEAL",
+    });
   }
 }
 

@@ -1,0 +1,9 @@
+▶ qc-prisma: host = ep-plain-art-ao3djg4u (QC) · คำสั่ง: prisma migrate status
+Loaded Prisma config from prisma.config.ts.
+
+Prisma schema loaded from prisma/schema.
+Datasource "db": PostgreSQL database "neondb", schema "public" at "ep-plain-art-ao3djg4u.c-2.ap-southeast-1.aws.neon.tech"
+
+151 migrations found in prisma/migrations
+
+Database schema is up to date!

@@ -59,8 +59,23 @@ export const CRM_FILE_MIME_ALLOWLIST: readonly string[] = Object.freeze([
   "text/plain",
 ]);
 
-/** AUDIT-CLASS X6: อักขระล่องหน/สลับทิศทาง (zero-width · bidi override/isolate · line/paragraph separator · BOM) — ใช้ปลอมชื่อ/นามสกุลไฟล์ */
-export const INVISIBLE_CHARS_RE = /[\u200b-\u200f\u202a-\u202e\u2066-\u2069\u2028\u2029\ufeff]/g;
+/**
+ * AUDIT-CLASS X6: อักขระล่องหน/สลับทิศทาง (zero-width · bidi override/isolate · line/paragraph separator · BOM) — ใช้ปลอมชื่อ/นามสกุลไฟล์
+ * C4.3-fix ▸ ZWJ (U+200D) เคยถูกลบทุกตัว ⇒ อีโมจิประกอบ "👨‍👩‍👧" แตกเป็น 3 ตัว · ตอนนี้เก็บ ZWJ ไว้ **เฉพาะ** ตัวที่อยู่ระหว่าง
+ *   อีโมจิสองตัว (ระหว่างนั้นมี VS16 U+FE0F และ/หรือโทนสีผิว U+1F3FB–1F3FF คั่นได้ — เช่น 🏳️‍🌈 · 👩🏽‍💻 · 👩🏽️‍💻) · ZWJ ที่อื่น
+ *   (ระหว่างตัวอักษร ซึ่งใช้ซ่อนการสะกด/ปลอมนามสกุลไฟล์ได้) ยังถูกลบเหมือนเดิม · U+FE0F ไม่อยู่ในชุดนี้ (ไม่เคยถูกลบ)
+ * 🔴 ห้ามใช้ lookbehind (ทั้งแบบบวกและแบบลบ): ไฟล์นี้ถูก import จาก client component — Safari < 16.4 (iPad รุ่นเก่าของ SHARK HUB)
+ *   แยกวิเคราะห์ regex literal ที่มี lookbehind ไม่ได้ ⇒ ทั้ง chunk พัง · ใช้ "จับอีโมจิหน้า ZWJ เป็นกลุ่ม แล้วคืนกลุ่มนั้น" แทน
+ *   (อีโมจิที่ถูกจับไม่อยู่ในชุดที่ต้องลบ และตัวหลัง ZWJ เป็น lookahead ไม่ถูกกิน ⇒ ลูกโซ่ 👨‍👩‍👧 เก็บครบทุก ZWJ)
+ *   ⇒ ใช้ผ่าน `stripInvisibleChars()` เท่านั้น (`.replace(re, "")` ตรง ๆ จะลบอีโมจิทิ้ง — จึงไม่ export ตัว regex)
+ */
+const INVISIBLE_OR_EMOJI_ZWJ_RE =
+  /(\p{Extended_Pictographic}[\u{FE0F}\u{1F3FB}-\u{1F3FF}]*\u200d)(?=\p{Extended_Pictographic})|[\u200b-\u200f\u202a-\u202e\u2066-\u2069\u2028\u2029\ufeff]/gu;
+
+/** ลบอักขระล่องหน/สลับทิศทาง — คง ZWJ ที่อยู่ระหว่างอีโมจิสองตัว (อีโมจิประกอบ) ไว้ */
+export function stripInvisibleChars(s: string): string {
+  return s.replace(INVISIBLE_OR_EMOJI_ZWJ_RE, "$1");
+}
 
 // ───────────────────────── ชนิด/ป้าย ─────────────────────────
 
@@ -208,6 +223,11 @@ export type ActivityListItem = ActivityDto & {
   companyName: string | null;
   dealTitle: string | null;
   ownerName: string | null;
+  /**
+   * CRM C5.5 ▸ (fix3b · รีวิว R2b-3) มีเฉพาะกิจกรรม EMAIL ขาเข้าที่ระบบยืนยันผู้ส่งไม่ได้ (ธงจาก `CrmEmailMessage.routing` ของ fix2)
+   *   ⇒ แถวไทม์ไลน์ขึ้นป้าย "ไม่ยืนยันผู้ส่ง" เหมือนหน้าเธรด/กล่องจดหมาย · ไม่มีช่องนี้ = ไม่มีอะไรต้องเตือน ◂
+   */
+  unverifiedFrom?: true;
 };
 
 // CRM C3.7 ▸ `replayed` = มีแถวของ `opts.sourceRef` เดียวกันอยู่แล้ว ⇒ คืนแถวเดิม ไม่เขียนอะไรใหม่ (ไม่ส่ง sourceRef = ไม่มีช่องนี้) ◂
@@ -238,6 +258,18 @@ export const DAY_MS = 86_400_000;
 /** เวลาเริ่มวัน (00:00 ไทย) ของขณะ `ms` — คืน epoch ms */
 export function thaiDayStartMs(ms: number): number {
   return Math.floor((ms + TH_OFFSET_MS) / DAY_MS) * DAY_MS - TH_OFFSET_MS;
+}
+
+/**
+ * CRM C5.4-E ▸ L6-m1: นิยาม "วันนี้ / เลยกำหนด" ชุดเดียวของทุกหน้าจอ (แท็บงานบนเว็บ · หน้าแรก · แอปมือถือ · วิดเจ็ต):
+ *   เวลาอ้างอิง = กำหนดส่ง (ไม่มี = เวลาเริ่มนัด) · **วันนี้** = อยู่ในวันปฏิทินไทยนี้ (รวมที่เลยเวลาไปแล้ววันนี้) ·
+ *   **เลยกำหนด** = ก่อน 00:00 ของวันนี้ (เวลาไทย) · งานหนึ่งชิ้นอยู่ได้แท็บเดียว (เดิมเว็บนับ "ก่อนตอนนี้" ⇒ งานที่เลยเวลาวันนี้อยู่ทั้งสองแท็บ
+ *   ขณะที่แอป/วิดเจ็ตนับเป็นวันนี้) ◂
+ * r2 (รีวิว SF-5): ป้าย "เลยกำหนด" ของแถวกิจกรรม (ActivityItems) ใช้ฟังก์ชันนี้ด้วย · **ไม่รวม** งานรายชั่วโมง `overdueSweep` และ trigger
+ *   `crm.activity.overdue` ของกฎอัตโนมัติ — สองตัวนั้นเป็น "เหตุการณ์ตอนเลยเวลากำหนด" (dueAt < ตอนนี้) ไม่ใช่แท็บ จึงคงนิยามเดิมโดยตั้งใจ
+ */
+export function isActivityOverdue(dueMs: number | null | undefined, nowMs: number): boolean {
+  return typeof dueMs === "number" && Number.isFinite(dueMs) && dueMs < thaiDayStartMs(nowMs);
 }
 
 /** วันในสัปดาห์แบบไทย (0 = อาทิตย์) ของขณะ `ms` */

@@ -15,8 +15,10 @@ import {
   MERGE_CHOICE_LABEL,
   COMPANY_SIZES,
   COMPANY_SIZE_LABEL,
+  emailDomainFormatProblem,
   emailDomainProblem,
   emailProblem,
+  normalizeEmailDomain,
   phoneProblem,
   taxIdProblem,
   websiteProblem,
@@ -28,6 +30,7 @@ import {
   mergeCompaniesAction,
   companyMergeValuesAction,
   removeContactAction,
+  setCompanyLifecycleAction,
   setOwnerAction,
   setParentAction,
   setPrimaryAction,
@@ -69,6 +72,53 @@ function ErrorLine({ text, testid }: { text: string | null; testid: string }) {
 }
 
 // ───────────────────────── เพิ่มผู้ติดต่อ ─────────────────────────
+
+/**
+ * CRM C5.4-E r2 ▸ มติผู้คุมงาน (คำถามเจ้าของข้อ 1): ปุ่มแก้ขั้นบริษัท "ลูกค้า" → "มีโอกาส" (ปิดดีลเป็นชนะโดยไม่ตั้งใจ) — หน้าแสดงเฉพาะ
+ * ผู้จัดการ/เจ้าของร้าน + บริษัทที่เป็นลูกค้าและยังใช้งาน · ยืนยันก่อนเสมอ · ข้อผิดพลาดแสดงใต้ปุ่ม (ไม่ใช้ alert) ◂
+ */
+export function CompanyLifecycleCorrect({ systemId, companyId }: { systemId: string; companyId: string }) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+  if (!open) {
+    return (
+      <button type="button" className="btn btn-ghost min-h-[32px] px-2 py-1 text-xs" onClick={() => setOpen(true)} data-testid="company-lifecycle-correct">
+        แก้ขั้นเป็น &quot;มีโอกาส&quot;
+      </button>
+    );
+  }
+  return (
+    <span className="flex flex-col gap-1 rounded-lg border p-2 text-xs" data-testid="company-lifecycle-correct-sheet">
+      {/* CRM C5.4-E r3 ▸ R2-2: บริษัทที่ยังมีดีลที่ชนะ บริการปฏิเสธพร้อมข้อความ "แก้สถานะดีลก่อน" (แสดงใต้ปุ่มด้านล่าง) ◂ */}
+      <span>ใช้เมื่อปิดดีลเป็น &quot;ชนะ&quot; โดยไม่ตั้งใจ — แก้สถานะดีลนั้นก่อน แล้วจึงปรับสถานะบริษัทที่นี่</span>
+      <span className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          className="btn btn-primary min-h-[32px] px-2 py-1 text-xs"
+          disabled={pending}
+          onClick={() =>
+            start(async () => {
+              setError(null);
+              const r = await setCompanyLifecycleAction(systemId, companyId, "PROSPECT");
+              if (!r.ok) return setError(r.error);
+              setOpen(false);
+              router.refresh();
+            })
+          }
+          data-testid="company-lifecycle-correct-confirm"
+        >
+          {pending ? "กำลังบันทึก…" : "ยืนยันแก้เป็น \"มีโอกาส\""}
+        </button>
+        <button type="button" className="btn btn-ghost min-h-[32px] px-2 py-1 text-xs" disabled={pending} onClick={() => setOpen(false)} data-testid="company-lifecycle-correct-cancel">
+          ยกเลิก
+        </button>
+      </span>
+      <ErrorLine text={error} testid="company-lifecycle-correct-error" />
+    </span>
+  );
+}
 
 export function AddContactButton({ systemId, companyId, disabled }: { systemId: string; companyId: string; disabled?: boolean }) {
   const router = useRouter();
@@ -256,7 +306,10 @@ function ContactRow({ systemId, companyId, row, disabled }: { systemId: string; 
 
 type Mode = null | "edit" | "owner" | "parent" | "merge" | "archive";
 
-export function CompanyMenu({ systemId, company, owners, parent: currentParent }: { systemId: string; company: CompanyDto; owners: Opt[]; parent: Opt | null }) {
+// CRM C4.2-fix ▸ `can` = คีย์ของ server action ของแต่ละเมนู (หน้าคำนวณด้วย crmCan) — ไม่มีสิทธิ์ = ไม่มีเมนูนั้น · ไม่มีเลย = ไม่มีปุ่ม "…" ◂
+export type CompanyMenuCan = { update: boolean; merge: boolean; archive: boolean };
+
+export function CompanyMenu({ systemId, company, owners, parent: currentParent, can }: { systemId: string; company: CompanyDto; owners: Opt[]; parent: Opt | null; can: CompanyMenuCan }) {
   const router = useRouter();
   const base = `/app/sys/${systemId}/crm/companies`;
   const [menu, setMenu] = useState(false);
@@ -327,7 +380,8 @@ export function CompanyMenu({ systemId, company, owners, parent: currentParent }
     const checks: [string, string | null][] = [
       ["taxId", taxIdProblem(edit.taxId)],
       ["website", websiteProblem(edit.website)],
-      ["emailDomain", emailDomainProblem(edit.emailDomain)],
+      // CRM C5.4-E ▸ L6-m8: ค่าเดิมที่ไม่ได้เปลี่ยนตรวจแค่รูปแบบ (บริษัทที่เก็บ gmail.com ไว้ก่อนยังแก้ช่องอื่นได้) ◂
+      ["emailDomain", normalizeEmailDomain(edit.emailDomain) === normalizeEmailDomain(company.emailDomain) ? emailDomainFormatProblem(edit.emailDomain) : emailDomainProblem(edit.emailDomain)],
       ["phone", phoneProblem(edit.phone)],
       ["email", emailProblem(edit.email)],
     ];
@@ -362,6 +416,7 @@ export function CompanyMenu({ systemId, company, owners, parent: currentParent }
     </label>
   );
 
+  if (!can.update && !can.merge && !can.archive) return null;
   return (
     <div className="relative">
       <button type="button" className="btn btn-ghost px-3 text-sm" aria-label="เมนูเพิ่มเติมของบริษัท" aria-expanded={menu} data-testid="company-menu-btn" onClick={() => setMenu((v) => !v)}>
@@ -369,21 +424,31 @@ export function CompanyMenu({ systemId, company, owners, parent: currentParent }
       </button>
       {menu && (
         <div className="absolute right-0 z-40 mt-1 flex w-52 flex-col rounded-xl border bg-[color:var(--color-surface)] p-1 text-sm shadow-lg" role="menu" data-testid="company-menu">
-          <button type="button" role="menuitem" className="rounded-lg px-3 py-2 text-left hover:bg-[color:var(--color-surface-2)]" data-testid="company-menu-edit" disabled={!live} onClick={() => openMode("edit")}>
-            แก้ไขข้อมูลบริษัท
-          </button>
-          <button type="button" role="menuitem" className="rounded-lg px-3 py-2 text-left hover:bg-[color:var(--color-surface-2)]" data-testid="company-menu-owner" disabled={!live} onClick={() => openMode("owner")}>
-            เปลี่ยนผู้ดูแล
-          </button>
-          <button type="button" role="menuitem" className="rounded-lg px-3 py-2 text-left hover:bg-[color:var(--color-surface-2)]" data-testid="company-menu-parent" disabled={!live} onClick={() => openMode("parent")}>
-            ตั้งบริษัทแม่
-          </button>
-          <button type="button" role="menuitem" className="rounded-lg px-3 py-2 text-left hover:bg-[color:var(--color-surface-2)]" data-testid="company-menu-merge" disabled={!live} onClick={() => openMode("merge")}>
-            รวมกับบริษัทที่ซ้ำ
-          </button>
-          <button type="button" role="menuitem" className="rounded-lg px-3 py-2 text-left hover:bg-[color:var(--color-surface-2)]" style={{ color: "var(--color-danger)" }} data-testid="company-menu-archive" disabled={!live} onClick={() => openMode("archive")}>
-            เก็บถาวร
-          </button>
+          {can.update && (
+            <button type="button" role="menuitem" className="rounded-lg px-3 py-2 text-left hover:bg-[color:var(--color-surface-2)]" data-testid="company-menu-edit" disabled={!live} onClick={() => openMode("edit")}>
+              แก้ไขข้อมูลบริษัท
+            </button>
+          )}
+          {can.update && (
+            <button type="button" role="menuitem" className="rounded-lg px-3 py-2 text-left hover:bg-[color:var(--color-surface-2)]" data-testid="company-menu-owner" disabled={!live} onClick={() => openMode("owner")}>
+              เปลี่ยนผู้ดูแล
+            </button>
+          )}
+          {can.update && (
+            <button type="button" role="menuitem" className="rounded-lg px-3 py-2 text-left hover:bg-[color:var(--color-surface-2)]" data-testid="company-menu-parent" disabled={!live} onClick={() => openMode("parent")}>
+              ตั้งบริษัทแม่
+            </button>
+          )}
+          {can.merge && (
+            <button type="button" role="menuitem" className="rounded-lg px-3 py-2 text-left hover:bg-[color:var(--color-surface-2)]" data-testid="company-menu-merge" disabled={!live} onClick={() => openMode("merge")}>
+              รวมกับบริษัทที่ซ้ำ
+            </button>
+          )}
+          {can.archive && (
+            <button type="button" role="menuitem" className="rounded-lg px-3 py-2 text-left hover:bg-[color:var(--color-surface-2)]" style={{ color: "var(--color-danger)" }} data-testid="company-menu-archive" disabled={!live} onClick={() => openMode("archive")}>
+              เก็บถาวร
+            </button>
+          )}
         </div>
       )}
 

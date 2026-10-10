@@ -23,6 +23,7 @@ import {
   type PipelineDto,
   type StageDto,
 } from "./deals-shared";
+import { crmSystemRow } from "./visibility"; // CRM C5.1-fix ▸ ระบบ CRM ผ่านด่านรวมคำสั่งเดียว (memo ต่อคำขอ) ◂
 
 export type PipelinesCtx = { tenantId: string; systemId: string; actorUserId: string | null };
 type Tx = Prisma.TransactionClient;
@@ -52,7 +53,7 @@ async function enter(ctx: PipelinesCtx, actor: MemberActor | null | undefined): 
   if (!actor || actor.role === "CUSTOMER") throw fail("NOT_FOUND", NOT_FOUND_PIPE);
   const sys =
     typeof ctx?.systemId === "string" && typeof ctx?.tenantId === "string" && ctx.systemId && ctx.tenantId
-      ? await prisma.appSystem.findFirst({ where: { id: ctx.systemId, tenantId: ctx.tenantId, type: "CRM" }, select: { id: true } })
+      ? await crmSystemRow(ctx, prisma)
       : null;
   if (!sys) throw fail("NOT_FOUND", "ไม่พบระบบ CRM นี้ในร้านที่เปิดอยู่ — รีเฟรชหน้าแล้วลองใหม่");
   return actor;
@@ -125,7 +126,9 @@ async function cleanRequireFields(ctx: PipelinesCtx, actor: MemberActor, v: unkn
   if (custom.length > 0) {
     let known = new Set<string>();
     try {
-      const layout = await (await memberFacade()).fields.listLayout({ tenantId: ctx.tenantId, systemId: ctx.systemId, actorUserId: ctx.actorUserId ?? null, objectKey: "deal", actor });
+      // CRM C5.4-E ▸ L6-M2: ฟิลด์ที่เก็บเข้าคลังยังเป็น key ที่รู้จัก — บันทึกขั้นพร้อมรายการเดิมได้ (เดิมตอบ "ไม่พบฟิลด์…") ·
+      //   ระหว่างเก็บเข้าคลัง deals.missingFor ไม่บังคับ key นั้น · กู้คืนฟิลด์ = บังคับอีกครั้ง ◂
+      const layout = await (await memberFacade()).fields.listLayout({ tenantId: ctx.tenantId, systemId: ctx.systemId, actorUserId: ctx.actorUserId ?? null, objectKey: "deal", actor }, { includeArchived: true });
       known = new Set(layout.sections.flatMap((s) => s.fields.filter((f) => !f.isSystem).map((f) => f.key)));
     } catch {
       known = new Set();
@@ -154,7 +157,15 @@ function stageDto(s: CrmStage): StageDto {
 
 type PipeRow = Prisma.CrmPipelineGetPayload<{ include: { stages: true } }>;
 function toDto(p: PipeRow): PipelineDto {
-  return { id: p.id, name: p.name, isDefault: p.isDefault, archivedAt: p.archivedAt ? p.archivedAt.toISOString() : null, stages: [...p.stages].sort((a, b) => a.sortOrder - b.sortOrder || a.id.localeCompare(b.id)).map(stageDto) };
+  return {
+    id: p.id,
+    name: p.name,
+    isDefault: p.isDefault,
+    archivedAt: p.archivedAt ? p.archivedAt.toISOString() : null,
+    stages: [...p.stages].sort((a, b) => a.sortOrder - b.sortOrder || a.id.localeCompare(b.id)).map(stageDto),
+    stageOnQuoteAcceptedId: p.stageOnQuoteAcceptedId ?? null,
+    stageOnQuoteRejectedId: p.stageOnQuoteRejectedId ?? null,
+  };
 }
 
 async function loadPipe(ctx: PipelinesCtx, id: unknown, db: typeof prisma | Tx = prisma): Promise<PipeRow> {
@@ -237,21 +248,49 @@ export async function createPipeline(ctx: PipelinesCtx, actor: MemberActor, inpu
   return toDto(row);
 }
 
-/** แก้ชื่อ / ตั้งเป็นค่าเริ่มต้น */
-export async function updatePipeline(ctx: PipelinesCtx, actor: MemberActor, id: string, patch: { name?: string | null; isDefault?: boolean | null }): Promise<PipelineDto> {
+export type PipelinePatch = {
+  name?: string | null;
+  isDefault?: boolean | null;
+  /** C4.4-fix ▸ US3: undefined = ไม่แตะ · null/"" = ไม่ย้าย · id = ขั้นของ pipeline นี้เท่านั้น (ร้าน + ระบบเดียวกัน) ◂ */
+  stageOnQuoteAcceptedId?: string | null;
+  stageOnQuoteRejectedId?: string | null;
+};
+
+/** แก้ชื่อ / ตั้งเป็นค่าเริ่มต้น / ขั้นที่ดีลย้ายไปเมื่อลูกค้าตอบใบเสนอราคา */
+export async function updatePipeline(ctx: PipelinesCtx, actor: MemberActor, id: string, patch: PipelinePatch): Promise<PipelineDto> {
   await enterManage(ctx, actor);
   const cur = await loadPipe(ctx, id);
   const data: Prisma.CrmPipelineUpdateInput = {};
   if (patch?.name !== undefined && patch.name !== null) data.name = cleanName(patch.name, "ชื่อ pipeline");
+  const quoteKeys = (["stageOnQuoteAcceptedId", "stageOnQuoteRejectedId"] as const).filter((k) => patch?.[k] !== undefined);
   const row = await prisma.$transaction(async (tx) => {
     if (patch?.isDefault === true && !cur.isDefault) {
       if (cur.archivedAt) throw fail("VALIDATION", "pipeline ที่เก็บถาวรตั้งเป็นค่าเริ่มต้นไม่ได้ — กู้คืนก่อน");
       await tx.crmPipeline.updateMany({ where: { ...scope(ctx), isDefault: true }, data: { isDefault: false } });
       data.isDefault = true;
     }
+    if (quoteKeys.length > 0) {
+      // C4.4-fix ▸ US3: ล็อกแถว pipeline ก่อนอ่านขั้น — ลบขั้น (deleteStage) ถือล็อกเดียวกันแล้วล้างตัวชี้ ⇒ ไม่มีทางชี้ขั้นที่เพิ่งถูกลบ ◂
+      await lockPipe(tx, ctx, cur.id);
+      for (const k of quoteKeys) {
+        const raw = patch[k];
+        const sid = typeof raw === "string" ? raw.trim() : null;
+        if (raw !== null && raw !== "" && typeof raw !== "string") throw fail("VALIDATION", "ขั้นที่เลือกอ่านไม่ออก — รีเฟรชหน้าแล้วเลือกใหม่");
+        if (!sid) {
+          (data as Record<string, unknown>)[k] = null;
+          continue;
+        }
+        const st = await tx.crmStage.findFirst({ where: { ...scope(ctx), id: sid, pipelineId: cur.id }, select: { id: true } });
+        if (!st) throw fail("VALIDATION", "ขั้นที่เลือกไม่ได้อยู่ใน pipeline นี้ (อาจถูกลบหรือย้ายไปแล้ว) — รีเฟรชหน้าแล้วเลือกใหม่จากรายการ");
+        (data as Record<string, unknown>)[k] = st.id;
+      }
+    }
     return tx.crmPipeline.update({ where: { id: cur.id }, data, include: { stages: true } });
   });
-  await audit(ctx, "crm.pipeline.update", "CrmPipeline", row.id, { before: { name: cur.name, isDefault: cur.isDefault }, after: { name: row.name, isDefault: row.isDefault } });
+  await audit(ctx, "crm.pipeline.update", "CrmPipeline", row.id, {
+    before: { name: cur.name, isDefault: cur.isDefault, ...(quoteKeys.length ? { stageOnQuoteAcceptedId: cur.stageOnQuoteAcceptedId, stageOnQuoteRejectedId: cur.stageOnQuoteRejectedId } : {}) },
+    after: { name: row.name, isDefault: row.isDefault, ...(quoteKeys.length ? { stageOnQuoteAcceptedId: row.stageOnQuoteAcceptedId, stageOnQuoteRejectedId: row.stageOnQuoteRejectedId } : {}) },
+  });
   return toDto(row);
 }
 

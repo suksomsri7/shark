@@ -21,6 +21,8 @@
 // 4) persona.ts: บอกว่า AI ดูข้อมูลจริงของร้านผ่านเครื่องมือได้ (ตัดประโยค "ยังทำรายการแทนไม่ได้" ให้เหลือเฉพาะ mutation)
 import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
 loadLegacyQcEnv("qc-ai-tools"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
+// ORACLE-EDIT C5.5-G1: runTool/sendMessage now take a required actor (no actor = refusal) — these checks always meant "the shop OWNER asks"
+const qcOwner = (t: string) => ({ kind: "member" as const, tenantId: t, userId: "qc-owner", membership: { role: "OWNER" as const, unitAccess: ["*"], permissions: {} } });
 process.env.SHARK_AI_MOCK = "1";
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");
@@ -52,7 +54,7 @@ try {
 
     // ── seed ──
     const t = await prisma.tenant.create({ data: { name: "QC TOOLS", slug: `qc-tools-${Date.now()}` } }); tid = t.id;
-    const ctx = { tenantId: tid };
+    const ctx = { tenantId: tid, actor: qcOwner(tid) };
     const member = await sys.createSystem(tid, "MEMBER", "สมาชิก");
     const inv = await sys.createSystem(tid, "INVENTORY", "คลัง");
     const hr = await sys.createSystem(tid, "HR", "พนักงาน");

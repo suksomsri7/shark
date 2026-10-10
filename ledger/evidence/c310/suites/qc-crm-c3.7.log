@@ -1,0 +1,63 @@
+
+═══ QC CRM v2 · C3.7 — 390 px pass · staff app CRM (deals · tasks · call log · card scan · push) ═══
+[env] DB ep-plain-art-ao3djg4u-pooler.c-2.ap-southeast-1.aws.neon.tech · tag qc-c37-bqqwmm
+
+── K · seed + answer keys ──
+  ✅ [C3.7-K.1] seed control: crm-expected.json resolves to the seeded shop on THIS database (CRM system uiVersion 2 · thana an accepted member) · thana owns ≥ 1 OPEN deal · the Krabi team owns ≥ 1 deal (the visibility probe has something to hide)
+
+── S0 · structure ──
+  ✅ [C3.7-S0.1] server: the 7 route files under src/app/api/mobile/crm exist · every one calls requireMobile · none imports prisma/@prisma/client (services through the CRM facade) · src/lib/mobile/crm-routes.ts holds MOBILE_CRM_RATE_LIMIT + checkRateLimitDb · call-log/scan-card/accept delegate to logCall/scanBusinessCard/acceptLeadProposal (the C2.4 engine) [static]
+  ✅ [C3.7-S0.2] app: apps/mobile/app/(app)/crm/{_layout (Stack from expo-router), index, tasks, call-log, scan-card}.tsx · ONE drawer entry testID drawer-crm navigating to "crm" (drawer-member kept) · no @react-navigation/* import in the CRM section · harness apps/mobile/qc/shoot-crm.mjs (5 SCREENS · fixture QC_CRM_FIXTURE/fixture-thana.json · sha256 · innerText · shots-crm · no EAS) [static]
+
+── X1 · mobile routes · visibility ──
+  ✅ [C3.7-X1.1] X1 deals (seed, thana): GET /api/mobile/crm/deals = exactly thana's OPEN, not-archived deals of the seeded CRM system (raw SQL) — not one Krabi deal (team krabi / owner nok|kata) · without ?systemId the tenant's first v2 CRM system gives the same list
+  ✅ [C3.7-X1.2] X1 404-not-403: thana opens his own deal (200) but a Krabi deal ⇒ 404 and the call-log prompt of a Krabi contact ⇒ 404 (nothing of it in the body) · a CRM system of ANOTHER tenant in ?systemId ⇒ 404 · a tenant he does not belong to ⇒ 403 · no / bad Bearer ⇒ 401
+  ❌ [C3.7-X1.3] X1 tasks: GET /api/mobile/crm/tasks (seed, thana) = his open tasks due up to the end of the Thai day + those done today (raw SQL), none of nok/kata · POST tasks/[id]/complete closes his own task (200, doneAt set) and answers 404 for a colleague's task of another team (untouched) — exp = SQL · own 200 · other 404 | act tasks=200 got=113 want=120 leak=0 own=200 {"id":"cmuygoso4000vvfkzqbjh7cbo","done":true} other=404 doneOwn=true doneOther=false
+  ✅ [C3.7-X1.4] R-E.14 uiVersion 1: ?systemId of a v1 CRM ⇒ 409 { error: CRM_V2_DISABLED } (reads and writes, nothing written) · a tenant whose only CRM is v1 ⇒ 404 (no v2 system to default to)
+
+── S1 · 390 px ──
+  ❌ [C3.7-S1.1] owner at 390: every C2–C3 page (26: home · 15 nav pages · 8 report tabs · e-mail thread · sequence editor) was shot by visual-crm 3.7 (c37-390-<key>-owner) with HTTP < 400, no console error and NO horizontal overflow — exp all pages clean | act summary=true pages=26 bad=email-thread:404/err
+  ✅ [C3.7-S1.2] thana (STAFF) at 390: every C2–C3 page shot (c37-390-<key>-thana) is either 404 (a page he may not open — never a crash) or < 400 with no console error, and none overflows · home and the e-mail inbox open (200)
+  ✅ [C3.7-S1.3] static proxy: no C2–C3 page/component (pages under the C2/C3 nav paths + components/crm/{automation,sequences,assignment,emails,tracking,forms,scoring,notifications,reports,home,quotas,commissions,portal}) sets an unprefixed width/min-width > 390 px unless it sits in an overflow-x scroller [static]
+  ✅ [C3.7-S1.4] static proxy: every C2–C3 file with a <table> offers cards below md (…:hidden + hidden …:block|table), drops columns below sm, or wraps it in an overflow-x-auto scroller (report tables, rule lists, e-mail inbox, sequences, assignment, scoring, quotas, commissions) [static]
+  ✅ [C3.7-S1.5] coverage: every C2–C3 page.tsx of the tree (under a C2/C3 nav path, incl. [param] pages; /settings/integrations excluded — R-D) maps to a 390 shot of the list — no page is left unmeasured (a new [param] page needs its own shot)
+  ❌ [C3.7-S1.6] freshness: both 390 summaries (.qc-shots/crm/3.7/summary-{owner,thana}.json, wo 3.7) were produced AFTER the newest C2–C3 UI file changed — a stale shot never passes the pass — exp newer than the UI | act owner=2026-10-01T00:47:00.176Z thana=2026-10-01T00:47:13.657Z newestUi=2026-10-07T09:34:11.129Z
+
+── S2 · app screens (QC render) ──
+  ✅ [C3.7-S2.1] screen ก "ดีลของฉัน" (mockup 13 a): index.tsx loads /api/mobile/crm/deals through src/api/client (Bearer + X-Tenant-Id) · stage filter chips · deal cards with stale badge and a call button that opens `tel:` via Linking — testIDs crm-deals · crm-deal-filter-* · crm-deal-card-* · crm-deal-call-* · crm-deal-stale-* [static]
+  ❌ [C3.7-S2.2] QC render of "ดีลของฉัน" (shoot-crm.mjs · 390×844 · API mocked with the fixture this oracle wrote from the SEED as thana — sha256 matches): no page error · no missing testID · no overflow · the first 5 of thana's deal titles are on screen · no Krabi deal title — exp fresh · clean · thana only | act fresh=false (fixture=a2f9278736 summary=57d226a0ab) screen=ok=true missing=[] overflow=false titles=5/5 krabi=0
+  ✅ [C3.7-S2.3] screen ค "งานวันนี้" (mockup 13 c): tasks.tsx loads /api/mobile/crm/tasks · 3 counters (วันนี้ · เลยกำหนด · เสร็จแล้ว) · rows with a check box that POSTs tasks/[id]/complete · entry to the card scanner — testIDs crm-tasks · crm-tasks-count-{today,overdue,done} · crm-task-* · crm-task-check-* · crm-scan-card-open [static]
+  ❌ [C3.7-S2.4] QC render of "งานวันนี้" (fixture = the seed as thana): no page error · no missing testID · no overflow · the counters were expected on screen · the first 5 of thana's task titles of today are shown — exp fresh · clean · titles | act fresh=false screen=ok=true missing=[] overflow=false titles=0/5
+  ✅ [C3.7-S2.5] screen ข "บันทึกสาย — วางสายแล้ว" (mockup 13 b): call-log.tsx GETs the prompt (/api/mobile/crm/call-log?contactId=…) and POSTs the log with an idempotencyKey · outcome chips from the registry · duration · direction · note · next task · save/saved (inline, no Alert) — testIDs crm-call-log · crm-call-outcome-* · crm-call-direction-{OUT,IN} · crm-call-duration · crm-call-note · crm-call-next-task · crm-call-save · crm-call-saved [static]
+  ❌ [C3.7-S2.6] QC render of the call-log sheet (fixture prompt of thana's contact): no page error · no missing testID (save → saved banner expected) · no overflow · the contact name and the first outcome of the registry are on screen — exp fresh · clean · prompt shown | act fresh=false screen=ok=true missing=[] overflow=false contact=false outcome=true
+
+── S3 · call log after tel: ──
+  ✅ [C3.7-S3.1] prompt after hanging up [static]: the app opens `tel:<phone>` (Linking), keeps a pending-call marker (contact · deal · start time) and when AppState comes back to "active" routes to /crm/call-log with it (duration pre-filled) — mockup 13 b
+  ✅ [C3.7-S3.2] the prompt route is gated by the staff session: GET/POST /api/mobile/crm/call-log without Bearer ⇒ 401 · GET (seed, thana) = { contact, deal, outcomes (registry), directions } · POST logs ONE CALL activity through calls.logCall (direction OUT · outcome · 272 s · owner = the caller · contact/deal) · a contact of another team ⇒ 404 and nothing written
+  ✅ [C3.7-X3.1] X3: 10 parallel POSTs of the same call (same idempotencyKey, separate connections) × 2 rounds ⇒ every answer 200/201 with the SAME activityId and exactly ONE CALL row per key (a double tap after hanging up never logs two calls)
+
+── S4 · push ──
+  ✅ [C3.7-S4.1] push uses the EXISTING registration: POST /api/mobile/push/register (staff Bearer) stores the device for that user + tenant · the CRM section adds no second registration route/table and its screens never call /push/register (registerPush of (app)/_layout does)
+  ✅ [C3.7-S4.2] tapping a CRM push opens the app screen: the pure mapper crmRouteFromLink(link of crmNotifLink) maps a deal link → an app route under /crm carrying the deal id · an activity link → /crm/tasks… · a chat link or a foreign absolute URL → null · it is wired in the (app)/_layout notification-response listener next to the chat handler
+
+── S5 · card scan ──
+  ✅ [C3.7-S5.1] card scan reuses the C2.4 engine [static]: the routes call scanBusinessCard / acceptLeadProposal and contain no second vision call, prompt, proposal writer or credit charge · scan-card.tsx POSTs /api/mobile/crm/scan-card then …/accept and shows the draft (mockup 13 c "AI อ่านนามบัตรแล้ว") — testIDs crm-scan-card · crm-scan-pick · crm-scan-draft · crm-scan-accept · crm-scan-done
+  ✅ [C3.7-S5.2] card scan through the routes: no Bearer ⇒ 401 · a 6 MB photo ⇒ 400 with the C2.4 service's own Thai message ("รูปนามบัตรใหญ่เกิน…") and an SVG ⇒ 400 ("ไม่ใช่รูปที่ระบบอ่านได้…") — refused before any AI call, nothing charged · accepting a card proposal of THIS system creates the contact in it (sourceDetail.via "card-scan") · the same proposal again ⇒ 409 · a proposal of another CRM system ⇒ 404
+
+── X7 · X8 · X10 ──
+  ✅ [C3.7-X7.1] X7 per-user limiter: MOBILE_CRM_RATE_LIMIT is sane (10–300 per window) · firing limit+1 requests as ONE user ⇒ the request after the limit answers 429 with a Thai message · another user of the same shop (same IP) still gets 200 · the DB bucket key carries the user id (checkRateLimitDb, not a second limiter)
+  ✅ [C3.7-X8.1] X8: the mobile DTOs carry no customer e-mail (deals · tasks · call-log prompt of the seed as thana) and the task list carries no phone number — the deal card's phone (for tel:) is the only contact datum sent to the phone
+  ✅ [C3.7-X10.1] X10 [static]: the CRM screens never put the session token in a URL (no ?token= / template with the token) and never fetch() directly — every call goes through src/api/client (Bearer header) · tel: links carry the phone only
+  ✅ [C3.7-CLEAN] the oracle gives the QC database back exactly as found — throwaway tenants and every row they owned (deals · activities · CALL logs · proposals · contacts), the throwaway users, every session of this run (incl. thana's tagged mobile session on the seed), rate buckets and push devices are gone · nothing was written into the seeded shop
+
+🔴 C3.7: 24/30
+JSON_SUMMARY {"total":30,"passed":24,"findings":[{"id":"C3.7-X1.3","sev":"CRITICAL"},{"id":"C3.7-S1.1","sev":"MAJOR"},{"id":"C3.7-S1.6","sev":"MAJOR"},{"id":"C3.7-S2.2","sev":"MAJOR"},{"id":"C3.7-S2.4","sev":"MAJOR"},{"id":"C3.7-S2.6","sev":"MAJOR"}]}
+(node:1417659) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)

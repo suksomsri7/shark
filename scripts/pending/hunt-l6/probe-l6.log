@@ -1,0 +1,166 @@
+(node:627940) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+{
+  "tag": "qc-hunt-l6-bqqqcqqq",
+  "P1": {
+    "dealWon": "WON",
+    "company": {
+      "lifecycleStage": "LEAD",
+      "score": 0,
+      "wonValueSatang": "5000000",
+      "openDealCount": 0
+    },
+    "contactLifecycle_control": "CUSTOMER"
+  },
+  "P2_stageRequire": [
+    "qcAmt",
+    "qcKind"
+  ],
+  "P2": {
+    "a_noValues": "ERR noValues: DealsError(STAGE_REQUIREMENTS) ขั้น \"เสนอราคา\" ต้องมีข้อมูลนี้ก่อน: งบประมาณ · ประเภทลูกค้า — กรอกให้ครบแล้วย้ายอีกครั้ง",
+    "b_modalPayload_numberAsString": "ERR modal-number-string: DealsError(VALIDATION) ค่าของฟิลด์ \"งบประมาณ\" ต้องเป็นตัวเลข",
+    "c_modalPayload_selectLabel": "ERR modal-select-label: DealsError(VALIDATION) ค่า \"โรงงาน\" ไม่อยู่ในตัวเลือกของฟิลด์ \"ประเภทลูกค้า\" — เลือกได้ option / option_2",
+    "d_control_typedValues": "OK stage=เสนอราคา"
+  },
+  "P3": {
+    "archived": "ok",
+    "storedValuesStillThere": [
+      {
+        "fieldId": "cmukg0qic001niskzbb7krium",
+        "valueNumber": "50000",
+        "valueText": null
+      },
+      {
+        "fieldId": "cmukg0qk8001oiskzo3h31fvk",
+        "valueNumber": null,
+        "valueText": null
+      }
+    ],
+    "moveAfterArchive": "ERR afterArchive: DealsError(STAGE_REQUIREMENTS) ขั้น \"เสนอราคา\" ต้องมีข้อมูลนี้ก่อน: qcAmt — กรอกให้ครบแล้วย้ายอีกครั้ง",
+    "moveAfterArchive_withValue": "ERR afterArchive-withValue: DealsError(VALIDATION) ฟิลด์ \"งบประมาณ\" ถูกเก็บเข้าคลังไว้ จึงบันทึกค่าใหม่ไม่ได้ — กู้คืนฟิลด์ก่อน",
+    "renameStageSendingItsOwnRequireFields": "ERR renameStage: DealsError(VALIDATION) ไม่พบฟิลด์ของดีลชื่ออ้างอิง \"qcAmt\" — เลือกจากรายการฟิลด์ของดีล"
+  },
+  "P4": {
+    "setup": {
+      "seq": "ok",
+      "enroll": "ok",
+      "email": "ok",
+      "score": "ok",
+      "web": "ok"
+    },
+    "merge": {
+      "moved": {
+        "deals": 0,
+        "activities": 0,
+        "companies": 0,
+        "dealContacts": 0,
+        "files": 0,
+        "records": 0
+      },
+      "warnings": []
+    },
+    "afterMerge": {
+      "enrollments": [
+        {
+          "contactId": "DROP",
+          "status": "ACTIVE",
+          "stoppedReason": null
+        }
+      ],
+      "emails": [
+        {
+          "contactId": "DROP"
+        }
+      ],
+      "scoreLogs": [
+        {
+          "contactId": "DROP",
+          "points": 30
+        }
+      ],
+      "webSessions": [
+        {
+          "contactId": "DROP"
+        }
+      ],
+      "keepScore": 0
+    },
+    "engineTick": {
+      "finished": 1,
+      "executed": 1
+    },
+    "enrollmentsAfterTick": [
+      {
+        "contactId": "DROP",
+        "status": "STOPPED",
+        "stoppedReason": "CONTACT_GONE"
+      }
+    ]
+  },
+  "P5": {
+    "setup": {
+      "file": "ok",
+      "portal": "ok"
+    },
+    "merge": {
+      "moved": {
+        "contacts": 1,
+        "contactsDeduped": 0,
+        "deals": 0,
+        "activities": 0,
+        "subsidiaries": 0,
+        "records": 0
+      },
+      "warnings": []
+    },
+    "fileLinks": [
+      "DROP"
+    ],
+    "portalAccess": [
+      {
+        "company": "DROP",
+        "revoked": false
+      }
+    ],
+    "contactLinksOfPortalUser": [
+      {
+        "company": "KEEP",
+        "ended": false
+      }
+    ]
+  },
+  "P6": {
+    "bangkokHour": 6,
+    "activity": "ok",
+    "web_overdueTab": 1,
+    "web_todayTab": 1,
+    "mobile_counts": {
+      "today": 1,
+      "overdue": 0,
+      "done": 0
+    },
+    "widget_counts": {
+      "today": 1,
+      "overdue": 0,
+      "done": 0
+    },
+    "homeLoader": "n/a"
+  },
+  "P7": {
+    "field": "ok",
+    "iso_BE_2569": "ACCEPTED",
+    "thaiSlash": "ERR setThaiSlash: Error(-) ค่าของฟิลด์ \"วันหมดสัญญา\" ต้องเป็นวันที่รูปแบบ ปี-เดือน-วัน เช่น 2026-03-15",
+    "storedValueDate": "2569-12-31T00:00:00.000Z"
+  },
+  "cleanup": {
+    "tenantsLeft": 0,
+    "usersLeft": 0
+  }
+}

@@ -4,6 +4,8 @@
 // fail-before/pass-after: stash การแก้ receive*Inbound แล้วรัน → เห็น FAIL (ไม่มี notification) → unstash → PASS
 import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
 loadLegacyQcEnv("qc-chat-notify"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
+// ORACLE-EDIT C5.5-G1: runTool/sendMessage now take a required actor (no actor = refusal) — these checks always meant "the shop OWNER asks"
+const qcOwner = (t: string) => ({ kind: "member" as const, tenantId: t, userId: "qc-owner", membership: { role: "OWNER" as const, unitAccess: ["*"], permissions: {} } });
 try { process.loadEnvFile(".env.local"); } catch {}
 
 const { prisma } = await import("@/lib/core/db");
@@ -124,7 +126,7 @@ try {
   // ─────────────── E) AI tool chat_unread_conversations ───────────────
   console.log("\nE) AI tool chat_unread_conversations:");
   {
-    const raw = await tools.runTool({ tenantId }, "chat_unread_conversations", {});
+    const raw = await tools.runTool({ tenantId, actor: qcOwner(tenantId) }, "chat_unread_conversations", {});
     const data = JSON.parse(raw) as { จำนวนห้องที่ยังไม่อ่าน?: number; ห้องแชท?: { ลูกค้า: string; ช่องทาง: string; ข้อความค้าง: number }[] };
     // มี unread 2 ห้อง: webchat (จาก C) + LINE (จาก D)
     assert("tool คืนห้อง unread ครบ (2 ห้อง)", data.จำนวนห้องที่ยังไม่อ่าน === 2, JSON.stringify(data));
@@ -146,9 +148,9 @@ try {
     await chat.receiveWebchatInbound({ connection: conn2, guestToken: "web-t2-" + Date.now(), body: "ทักคนละร้าน", displayName: "ลูกค้าร้าน2" });
     assert("tenant2 ได้ notification ของตัวเอง", (await notifCount(tenant2Id)) === 1);
     assert("tenant1 notification ไม่โดนผลจาก tenant2", (await notifCount(tenantId)) === t1NotifBefore);
-    const raw1 = await tools.runTool({ tenantId }, "chat_unread_conversations", {});
+    const raw1 = await tools.runTool({ tenantId, actor: qcOwner(tenantId) }, "chat_unread_conversations", {});
     assert("tool ของ tenant1 ไม่เห็นห้องของ tenant2", !raw1.includes("ลูกค้าร้าน2"));
-    const raw2 = await tools.runTool({ tenantId: tenant2Id }, "chat_unread_conversations", {});
+    const raw2 = await tools.runTool({ tenantId: tenant2Id, actor: qcOwner(tenant2Id) }, "chat_unread_conversations", {});
     const d2 = JSON.parse(raw2) as { จำนวนห้องที่ยังไม่อ่าน?: number };
     assert("tool ของ tenant2 เห็นแค่ห้องของตัวเอง (1)", d2.จำนวนห้องที่ยังไม่อ่าน === 1, raw2);
   }

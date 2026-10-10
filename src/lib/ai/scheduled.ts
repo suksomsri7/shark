@@ -9,6 +9,7 @@
 
 import { prisma, tenantDb } from "@/lib/core/db";
 import { sendMessage } from "./service";
+import { aiSystemActor } from "./actor";
 import { resolveProvider, type AiProvider } from "./provider";
 import { dayKeyBangkok } from "./rules";
 
@@ -88,8 +89,10 @@ export async function runScheduledTasks(
   for (const task of tasks) {
     try {
       // รัน AI แบบเดียวกับผู้ใช้พิมพ์คำสั่งเอง (มีเครื่องมืออ่านข้อมูลจริงครบ) — ฉีด provider fast
+      // CRM C5.5-G1 ▸ ไม่มีคนกด + แถวงานไม่เก็บผู้ตั้ง · ผลส่งเป็นแจ้งเตือนที่ "ทุกคนในร้าน" เห็น (recipientUserId null)
+      //   ⇒ รันด้วย system actor `scheduled-task` = สิทธิ์ของผู้อ่านที่น้อยที่สุด (ดูเหตุผลที่ ai/actor.ts) ◂
       const res = await sendMessage(
-        { tenantId: task.tenantId },
+        { tenantId: task.tenantId, actor: aiSystemActor(task.tenantId, "scheduled-task") },
         { text: task.instruction },
         { provider, source: "SCHEDULED" },
       );

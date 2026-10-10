@@ -1,0 +1,34 @@
+  ✅ [M2.7-S1.1] getWallet(X): points {balance 1000, expiringSoon[]} · vouchers 4 ใบของ X (ไม่มีของ K) · coupons [] · giftCards 1 (numberMasked GC-**** · balance 100000 · ACTIVE) · rewardsPending 1 (หมวก · qrCode · expiresAt) · stamps 1 (2/5 cycle 1) · tierBenefits.discountPct 10 · paidPlan null
+  ✅ [M2.7-S1.2] getWallet + cart: voucher ฿300 applicable true discountSatang 30000 · ใบหมดอายุ applicable false reason ไทย · vouchers ใช้ได้เรียงก่อน · DTO ไม่มี pinHash/pin/phone เต็ม
+  ✅ [M2.7-S1.3] perf: getWallet ≤ 1500ms บน QC (ยิงขนาน Promise.all) · wallet.ts import โมดูลอื่นผ่าน facade เท่านั้น (point/stamp/voucher/giftcard/reward/coupon) · ไม่มี any
+  ✅ [M2.7-S1.4] scope: customerId ไม่มี → throw ไทย · CUSTOMER ดูของตัวเองได้ · ดูของคนอื่น → throw · thana (ป่าตอง) ดูสมาชิกกะตะ → throw ไม่พบ · ดูสมาชิกป่าตอง → ได้
+  ✅ [M2.7-S2.1] quote ไม่มี choices: ระดับ gold 10% ของ 455,000 = 45,500 (line TIER อัตโนมัติ) · net 409,500 · order 5 ขั้นตายตัว · pointsToEarn = computeEarn บนยอดสุทธิ · conflicts [] · ไม่เขียน
+  ✅ [M2.7-S2.2] voucher ฿300: หลังระดับ 409,500 → VOUCHER 30,000 (ref v1) → net 379,500 · totalDiscount 75,500 · ลำดับ line TIER ก่อน VOUCHER
+  ✅ [M2.7-S2.3] voucher 2 ใบ (เพดาน MEMBER_LIMITS.vouchersPerSale 1): ใช้ใบแรก · ใบที่ 2 → conflict kind VOUCHER ref v2 message ไทย · net เท่า 1 ใบ
+  ✅ [M2.7-S2.4] คูปอง 5% (cap ฿200): มี voucher ฿300 (stackWithCoupon false) → conflict COUPON ไม่ใช้ · ไม่มี voucher → COUPON 20,000 (5% ของ 409,500 = 20,475 → cap) net 389,500 · voucher ฿200 (stackWithCoupon true) + คูปอง → ใช้ทั้งคู่ (5% ของ 389,500 = 19,475)
+  ✅ [M2.7-S2.5] แต้ม: 1,000 แต้ม × 10 สตางค์ = 10,000 (line POINTS) net 399,500 · 50 แต้ม < burnMinPoints 100 → conflict ไม่ใช้ · 5,000 > balance 1,000 → conflict ไม่ใช้
+  ✅ [M2.7-S2.6] burnMaxPct 50: บิล 20,000 → ระดับ −2,000 → เหลือ 18,000 → แต้ม 1,000 (10,000) เกิน 50% (9,000) → ตัดเหลือ 900 แต้ม = 9,000 · line POINTS 9000 note ไทย · conflict POINTS แจ้ง · net 9,000
+  ✅ [M2.7-S2.7] gift card ฿1,000: ใช้ 100,000 → line GIFTCARD 100000 net 309,500 · ขอ 150,000 > balance → ใช้ 100,000 + conflict GIFTCARD · บิลเล็ก (เหลือ 18,000) → ใช้แค่ 18,000 net 0 · เลขไม่มี → conflict ไม่ใช้ · quote ไม่แตะยอดบัตร (ยัง 100000)
+  ✅ [M2.7-S2.8] ครบทุกขั้น: 455,000 − ระดับ 45,500 − voucher 30,000 − แต้ม 10,000 − gift 100,000 = net 269,500 · totalDiscount 185,500 · lines เรียง TIER VOUCHER POINTS GIFTCARD · pointsToEarn = computeEarn(net, paidBy{voucher 30000, points 10000, giftCard 100000}) (ไม่ให้แต้มกับส่วนที่จ่ายด้วย voucher/แต้ม/gift ตาม settings)
+  ✅ [M2.7-S2.9] voucher ใช้ไม่ได้ → conflict มี message ไทยจาก voucher.validate: หมดอายุ · ยอดต่ำกว่าขั้นต่ำ ฿1,000 (บิลเล็ก) · ใบของคนอื่น (K) → conflict/ไม่พบ · ทั้ง 3 ไม่ throw ไม่มี line VOUCHER
+  ✅ [M2.7-S2.10] stampsToAdd preview: การ์ด PER_SALE_MIN ฿1,000 → บิลใหญ่ [{cardId, name, count 1}] · บิลเล็ก [] · ไม่เขียน progress (ยัง 2) · unit: voucher เฉพาะป่าตอง + cart สาขากะตะ → conflict · cart ป่าตอง → ใช้ได้ 10,000
+  ✅ [M2.7-S3.1] applyOnSale ใน tx: {tierDiscountSatang 45500, voucherUseIds [v1], pointsBurned 1000, pointsLedgerId, giftCardTxnId, giftCardSatang 100000, totalDiscountSatang 185500} · หลัง commit: v1 USED usedRef.saleId · ledger BURN −1000 refType PosSale refId saleId (balance 0) · gift card balance 0 DEPLETED · GiftCardTxn USE refId saleId
+  ✅ [M2.7-S3.2] rollback: applyOnSale แล้ว tx โยน error → ไม่มีอะไรเขียน (v2 ยัง ACTIVE · แต้มยัง 500 · gift card 2 ยัง 50000 ACTIVE · ไม่มี ledger/txn ของ saleId-rb)
+  ✅ [M2.7-S3.3] apply ล้ม = ไม่เขียนบางส่วน: voucher ที่ USED แล้ว → throw ไทย · gift PIN ผิด (หลัง voucher v2 ในชุดเดียวกัน) → throw และ v2 ยัง ACTIVE · แต้มเกิน balance → throw · balance ยัง 500
+  ✅ [M2.7-S3.4] releaseOnVoid(saleId): {vouchersReleased 1, pointsReversed 1, giftCardRefunded 1} · v1 กลับ ACTIVE · แต้มคืน +1000 (1,500) · gift card 1 กลับ 100000 ACTIVE (Txn REFUND) · ซ้ำ → ทั้งหมด 0 ไม่คืนซ้ำ
+  ✅ [M2.7-S3.5] scope quote: CUSTOMER quote ของตัวเองได้ (voucher ใช้ได้) · quote ให้คนอื่น → throw · thana quote สมาชิกกะตะ → throw ไม่พบ
+  ✅ [M2.7-S4.1] แท็บกระเป๋าสิทธิ์: Member360 ไม่ใช้ ComingSoon สำหรับ wallet · testid 8 · ป้ายไทย (แต้มคงเหลือ · ใกล้หมดอายุ · voucher · คูปอง · gift card · รางวัลรอรับ · สแตมป์ · สิทธิ์ระดับ) · facade export getWallet/quoteApply/applyOnSale/releaseOnVoid · MEMBER_LIMITS.vouchersPerSale · ไม่มีอีโมจิ/hex
+  ❌ [M2.7-S4.2] ภาพ 02 แท็บกระเป๋า: member-wallet-owner desktop+mobile 200 ไม่ล้น (สมาชิก 1 มีแต้ม/voucher/สแตมป์จาก TMP27) · member-wallet-thana 200 — exp 200 ×3 | act undefined/undefined/ovf=undefined thana=undefined missing=undefined
+  ✅ [M2.7-S4.3] 🔴 parity ภาพ 02 (แท็บกระเป๋า) — Fable ตรวจด้วยตา · wo-notes/member-M2.7.md มี 'PARITY: ผ่าน'
+
+🔴 M2.7: 21/22
+JSON_SUMMARY {"total":22,"passed":21,"findings":[{"id":"M2.7-S4.2","sev":"CRITICAL"}]}
+(node:1480267) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)

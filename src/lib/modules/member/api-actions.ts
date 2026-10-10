@@ -163,7 +163,7 @@ export async function createMemberWebhookAction(fd: FormData): Promise<MemberWeb
   const checked = memberWebhookEventsCheck(fd.getAll("events").map((v) => String(v)));
   if (!checked.ok) return { ok: false, reason: checked.reason };
   try {
-    const res = await createEndpoint({ tenantId }, { url, events: checked.events });
+    const res = await createEndpoint({ tenantId }, { url, events: checked.events, by: { userId } }); // CRM C5.5 ▸ by (ตัวกันเหตุการณ์กลาง) ◂
     await writeAudit({
       tenantId,
       actorId: userId,
@@ -187,7 +187,7 @@ export async function toggleMemberWebhookAction(fd: FormData): Promise<MemberWeb
   if (!row) return { ok: false, reason: "ไม่พบปลายทางนี้ในระบบสมาชิก — อาจถูกลบไปแล้ว" };
   const active = s(fd, "active") === "true";
   try {
-    await setEndpointActive({ tenantId }, row.id, active);
+    await setEndpointActive({ tenantId }, row.id, active, { userId }); // CRM C5.5 ▸ by ◂
     await writeAudit({ tenantId, actorId: userId, action: "member.api.manage", targetType: "WebhookEndpoint", targetId: row.id, after: { active } });
     revalidatePath(PATH(systemId));
     return { ok: true };

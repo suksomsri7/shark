@@ -24,7 +24,10 @@ const { prisma } = await import("@/lib/core/db");
 const tenants = await common.pickTenants(prisma, args.tenantSlug);
 common.banner(SCRIPT, args, tenants);
 
-const counts = { ร้านที่แก้: 0, ผูกสำเร็จ: 0, ไม่มีอีเมล: 0, หาบัญชีไม่เจอ: 0 };
+// HF-HR-0: กติกาเดียวกับ staff/service.grantStaffAccess — 1 บัญชี ↔ พนักงาน 1 คนต่อร้าน ·
+//   พนักงานที่มีโปรไฟล์เงินเดือนไม่ผูกอัตโนมัติ (สคริปต์ไม่มี "ผู้สั่ง" ที่มีสิทธิ์ดูเงินเดือน — อีเมลพนักงานแก้ได้โดยผู้แก้ทะเบียน
+//   ⇒ ผูกจากอีเมลอย่างเดียว = ทางลัดเปิดสลิปของคนอื่น) → ให้เจ้าของ/ผู้ดูเงินเดือนผูกเองที่หน้าผู้ใช้งาน
+const counts = { ร้านที่แก้: 0, ผูกสำเร็จ: 0, ไม่มีอีเมล: 0, หาบัญชีไม่เจอ: 0, ข้าม_มีเงินเดือน: 0, ข้าม_บัญชีผูกคนอื่นแล้ว: 0 };
 
 for (const t of tenants) {
   let touched = false;
@@ -41,6 +44,12 @@ for (const t of tenants) {
       where: { tenantId: t.id },
       select: { userId: true, user: { select: { email: true } } },
     })) as Any[];
+    const linkedUsers = new Set(
+      ((await tx.hrEmployee.findMany({ where: { tenantId: t.id, linkedUserId: { not: null } }, select: { linkedUserId: true } })) as Any[]).map((r: Any) => r.linkedUserId as string),
+    );
+    const withSalary = new Set(
+      ((await tx.hrSalaryProfile.findMany({ where: { tenantId: t.id }, select: { employeeId: true } })) as Any[]).map((r: Any) => r.employeeId as string),
+    );
     const byEmail = new Map<string, string>();
     for (const m of memberships) {
       const e = (m.user?.email ?? "").trim().toLowerCase();
@@ -58,6 +67,15 @@ for (const t of tenants) {
         counts.หาบัญชีไม่เจอ += 1;
         continue;
       }
+      if (withSalary.has(emp.id)) {
+        counts.ข้าม_มีเงินเดือน += 1;
+        continue;
+      }
+      if (linkedUsers.has(userId)) {
+        counts.ข้าม_บัญชีผูกคนอื่นแล้ว += 1;
+        continue;
+      }
+      linkedUsers.add(userId);
       counts.ผูกสำเร็จ += 1;
       touched = true;
       if (args.dryRun) {

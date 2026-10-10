@@ -2,7 +2,7 @@
 // ผูก event type → handler · handler อ่านข้อมูลจาก prisma ตรง แล้วส่งให้ pos/account-bridge
 // WO-0002: "pos.sale.paid" (ขายสด→บัญชี) · "pos.sale.voided" (void→กลับรายการ)
 
-import { after } from "next/server";
+import { scheduleCoalescedDrain } from "@/lib/core/after-drain";
 import { prisma } from "@/lib/core/db";
 import { drainOutbox, type OutboxHandler } from "@/lib/core/outbox";
 import { bridgePosSaleCommission, bridgePosSalePaid, bridgePosSaleVoided } from "@/lib/modules/pos/account-bridge";
@@ -14,6 +14,7 @@ import { dispatchWebhooks } from "@/lib/webhooks/service";
 import { entityLabel } from "@/lib/modules/approval/labels";
 import { applyApprovalEffect, applyCrmApprovalEffect } from "@/lib/approval-effects";
 import { logOps as logOpsRaw } from "@/lib/core/ops";
+import { replaceEmailsInText } from "@/lib/core/linear-text"; // CRM C5.5-fix5 ◂
 import { invalidateBrandingCache } from "@/lib/branding/service";
 import { formatThaiDate } from "@/lib/ui/date";
 import { runForEvent as runJourneysForEvent } from "@/lib/modules/member";
@@ -44,7 +45,7 @@ const saleIdOf = (payload: unknown): string | null => {
 //   • เลขติดกัน ≥ 7 หลัก = เบอร์ / เลขบัตรประชาชน / เลขบัญชี (เลขสั้นอย่างจำนวนเงิน/บรรทัดของ stack ไม่โดน)
 //   • อีเมล = ปิดทั้งใบ (ส่วนหน้า @ คือตัวระบุตัวบุคคล)
 const redactPii = (text: string): string =>
-  text.replace(/\d{7,}/g, "[ตัวเลขถูกปิดบัง]").replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, "[อีเมลถูกปิดบัง]");
+  replaceEmailsInText(text.replace(/\d{7,}/g, "[ตัวเลขถูกปิดบัง]"), () => "[อีเมลถูกปิดบัง]"); // CRM C5.5-fix5 ▸ ≡ regex อีเมลเดิม แบบเชิงเส้น ◂
 
 /**
  * `logOps` ของไฟล์นี้ — **ปิดบัง PII ให้ก่อนเสมอ** แล้วค่อยส่งต่อให้ตัวจริง (`logOpsRaw`)
@@ -389,10 +390,8 @@ const withApprovalEffect =
  *    ตามเก็บให้ต่อ (backoff ต่อใบ) ⇒ ไม่ต้องอาศัยการ retry ของคิวเพื่อส่งซ้ำ
  *    เรียกนอกคิว (ข้อสอบ/สคริปต์เรียก consumer ตรง) = ไม่มีแถว event → ยิงตามปกติ
  */
-async function webhooksAlreadyDispatched(evt: { id: string }): Promise<boolean> {
-  const row = await prisma.outboxEvent.findUnique({ where: { id: evt.id }, select: { attempts: true } });
-  return !!row && row.attempts > 0;
-}
+// C5.4 (hunter H4): เกณฑ์ "attempts > 0" ถูกแทนด้วยการจองแถวการส่งต่อ (event, ปลายทาง) ใน `dispatchWebhooks` (PK คงที่)
+//   ⇒ รอบที่สอง (retry ของคิว · drainer ซ้อนตอน lease หลุด ขณะ attempts ยัง 0) ข้ามปลายทางที่จองแล้วเอง — กันซ้ำด้วยแถวจริง
 
 const withWebhooks =
   (handler: OutboxHandler): OutboxHandler =>
@@ -406,9 +405,7 @@ const withWebhooks =
       failure = e;
     }
     try {
-      if (!(await webhooksAlreadyDispatched(evt))) {
-        await dispatchWebhooks({ tenantId: evt.tenantId, type: evt.type, payload: evt.payload });
-      }
+      await dispatchWebhooks({ tenantId: evt.tenantId, type: evt.type, payload: evt.payload, id: evt.id });
     } catch (e) {
       await logOps("WARN", "outbox", `webhook ของ "${evt.type}" ล้มเหลว`, { tenantId: evt.tenantId, detail: errDetail(e) });
     }
@@ -530,6 +527,15 @@ const crmBridge =
 // CRM C3.4 ▸ แจ้งห้องทีมใน MEETING (`crm/ai-bridges.ts` ผ่าน facade CRM) — ของแถมใต้ compose เสมอ (ล้ม = WARN ไม่พางานหลักล้ม) ·
 //   ประตู uiVersion 2 · ห้องที่ผูกไว้ใช้ไม่ได้ = WARN ในตัว (ไม่ throw) · ธงกันซ้ำต่อ event (ส่งซ้ำ/พร้อมกัน = ข้อความเดียว · AUDIT-CLASS X4)
 //   dynamic import เหตุผลเดียวกับ crmBridge (crm → … → scheduleDrain ที่ไฟล์นี้) ◂
+// CRM C5.4-E ▸ L6-M4: แจ้งเตือนพนักงาน (lead ใหม่ · ดีลปิด · lead ร้อน · เตือนผู้เข้าร่วมนัด) — ของแถมใต้ compose เสมอ (ล้ม = WARN
+//   ในตัวส่งเอง) · ประตู uiVersion/สิทธิ์/การมองเห็นอยู่ใน notifyStaff · dynamic import เหตุผลเดียวกับ crmBridge ◂
+const crmNotify =
+  (name: "onContactAssigned" | "onDealClosed" | "onScoreThreshold" | "onActivityReminder"): OutboxHandler =>
+  async (evt) => {
+    const { notifySenders } = await import("@/lib/modules/crm");
+    await notifySenders[name](evt);
+  };
+
 const crmTeamRoom =
   (name: "onDealWonTeamRoom" | "onHotLeadTeamRoom"): OutboxHandler =>
   async (evt) => {
@@ -1095,7 +1101,7 @@ const baseConsumers: Record<string, OutboxHandler> = {
   // CRM C2.2 ▸ + หยุดลำดับการติดตามของดีลนี้ (stopOnWon) เป็นของแถมใต้ compose — ล้ม = WARN · สะพานสมาชิกเดิมวิ่งก่อนเหมือนเดิม ◂
   // CRM C2.7 ▸ + ออกใบแจ้งหนี้อัตโนมัติเมื่อชนะ (pipeline.autoInvoiceOnWon) เป็นของแถมใต้ compose — ออกไม่ได้ = WARN ดีลยังชนะ ◂
   // CRM C3.4 ▸ + แจ้งห้องของทีมดีลใน MEETING (ข้อความเดียวต่อ event · ธง `crm.teamroom#won#<eventId>`) — ของแถมใต้ compose ท้ายสุด ◂
-  "crm.deal.won": withAutomation(compose(compose(compose(memberBridge("onCrmDealWon"), crmBridge("onDealWonStopSequences")), crmBridge("onDealWonAutoInvoice")), crmTeamRoom("onDealWonTeamRoom"))),
+  "crm.deal.won": withAutomation(compose(compose(compose(compose(memberBridge("onCrmDealWon"), crmBridge("onDealWonStopSequences")), crmBridge("onDealWonAutoInvoice")), crmTeamRoom("onDealWonTeamRoom")), crmNotify("onDealClosed"))), // CRM C5.4-E ▸ deal.closed ◂
   // `shop.order.paid` ยิงจาก `shop/service.ts#confirmOrderPaid` (หน้าร้านเว็บ) / ตัวเชื่อมตลาดออนไลน์ →
   //   หา/สมัครสมาชิก (MARKETPLACE) + ผูกตัวตนช่องทาง + แต้ม (ShopOrder) + แถว PURCHASE
   // CRM C2.9 ▸ + ไทม์ไลน์ CRM ของ Party ที่ผูกออเดอร์ (กิจกรรม VISIT ใบเดียว + ขั้นลูกค้า) — ต่อ **ท้ายสุด** ใต้ compose:
@@ -1158,7 +1164,7 @@ const baseConsumers: Record<string, OutboxHandler> = {
   //   (AUDIT-CLASS X4) · ผลข้างเคียงจริง (ไทม์ไลน์สมาชิก · คะแนน · สะพานแชท/บัญชี) = ใบ C1.8/C2.8 เติมเป็น "ของแถม" ใต้ compose
   "crm.contact.created": withAutomation(async () => {}),
   "crm.contact.updated": withAutomation(compose(async () => {}, crmBridge("onContactOptOutStopSequences"))), // CRM C2.2 ▸ ขอไม่รับข่าวสาร ⇒ หยุดลำดับการติดตาม ◂
-  "crm.contact.assigned": withAutomation(compose(async () => {}, crmBridge("onCrmTimelineEvent"))), // CRM C1.8 ▸ ไทม์ไลน์สมาชิก 1 แถว/event ◂
+  "crm.contact.assigned": withAutomation(compose(compose(async () => {}, crmBridge("onCrmTimelineEvent")), crmNotify("onContactAssigned"))), // CRM C1.8 ▸ ไทม์ไลน์สมาชิก 1 แถว/event ◂ · CRM C5.4-E ▸ lead.assigned ◂
   "crm.contact.converted": withAutomation(async () => {}),
   "crm.contact.merged": withAutomation(async () => {}),
   // ◂ CRM C1.4
@@ -1171,7 +1177,7 @@ const baseConsumers: Record<string, OutboxHandler> = {
   //   เขียนครบใน tx ของบริการดีลแล้ว ⇒ ส่งซ้ำ/พร้อมกันกี่รอบก็ไม่มีผลข้างเคียง (AUDIT-CLASS X4) · C1.8 เติม "ของแถม" ใต้ compose
   "crm.deal.created": withAutomation(compose(async () => {}, crmBridge("onCrmTimelineEvent"))), // CRM C1.8 ▸ ไทม์ไลน์สมาชิก 1 แถว/event ◂
   "crm.deal.stage.changed": withAutomation(compose(async () => {}, crmBridge("onCrmTimelineEvent"))), // CRM C1.8 ▸ ไทม์ไลน์สมาชิก 1 แถว/event ◂
-  "crm.deal.lost": withAutomation(compose(async () => {}, crmBridge("onDealLostStopSequences"))), // CRM C2.2 ▸ หยุดลำดับการติดตามของดีลนี้ (stopOnLost) ◂
+  "crm.deal.lost": withAutomation(compose(compose(async () => {}, crmBridge("onDealLostStopSequences")), crmNotify("onDealClosed"))), // CRM C2.2 ▸ หยุดลำดับการติดตามของดีลนี้ (stopOnLost) ◂ · CRM C5.4-E ▸ deal.closed ◂
   "crm.deal.reopened": withAutomation(compose(async () => {}, crmBridge("onCrmTimelineEvent"))), // CRM C1.8 ▸ ไทม์ไลน์สมาชิก 1 แถว/event ◂
   "crm.deal.reassigned": withAutomation(compose(async () => {}, crmBridge("onCrmTimelineEvent"))), // CRM C1.8 ▸ ไทม์ไลน์สมาชิก 1 แถว/event ◂
   "crm.deal.updated": withAutomation(async () => {}),
@@ -1195,7 +1201,7 @@ const baseConsumers: Record<string, OutboxHandler> = {
   //      push ที่โยน = แจ้งเตือนใบเดียว ไม่หาย ไม่ซ้ำ ⇒ ผลข้างเคียงทั้งหมดเกิดครบแล้วก่อน event ถูก drain
   //   ⇒ consumer = no-op ที่ปิด event เป็น DONE (ขาด consumer = คิวตัน — บทเรียน 30 ส.ค.) + เป็นจุดให้เว็บฮุคของร้านยิงต่อ
   //   payload = id ล้วน { activityId, activityType, ownerUserId, contactId, dealId, companyId } — ไม่มีหัวเรื่อง/ชื่อ/เบอร์ (X8)
-  "crm.activity.reminder": withAutomation(async () => {}),
+  "crm.activity.reminder": withAutomation(compose(async () => {}, crmNotify("onActivityReminder"))), // CRM C5.4-E ▸ activity.reminder (ผู้เข้าร่วม) ◂
   // ◂ CRM C2.4
   // CRM C2.5 ▸ อีเมล (`crm/emails.ts`) — ยิงใน tx เดียวกับการเขียนแถว/เหตุการณ์ · key `crm.email.<type>#<emailId>#<seq>`
   //   (R-C.8) · payload **id ล้วน** { emailId, contactId?, dealId?, companyId?, threadKey, sequenceStepId? } —
@@ -1214,7 +1220,7 @@ const baseConsumers: Record<string, OutboxHandler> = {
   // ◂ CRM C2.5
   // CRM C2.6 ▸ ผู้เข้าชมเว็บถูกระบุตัวตนแล้ว (`crm/tracking.ts#identify`) — ยิงใน tx เดียวกับการผูกการเข้าชม + กิจกรรม WEB
   //   key `crm.web.identified#<contactId>#<วันไทย>` (R-C.8 · 1 ใบต่อผู้ติดต่อต่อวัน) · payload **id/ตัวเลขล้วน**
-  //   { contactId, systemId, visitorId, sessionCount, pageViews, firstUrl?, by } — ไม่มีชื่อ เบอร์ อีเมล (X8)
+  //   { contactId, systemId, visitorId, sessionCount, pageViews, by } — ไม่มีชื่อ เบอร์ อีเมล url (X8 · C5.4-B L5-m6 ตัด firstUrl)
   //   no-op ที่ปิด event เป็น DONE (ขาด consumer = คิวตัน — บทเรียน 30 ส.ค.) + ทริกเกอร์กฎ + เว็บฮุคของร้าน ·
   //   ผลข้างเคียงจริง (การผูก session · กิจกรรม 1 รายการ/วันไทย) เขียนครบใน tx ของบริการแล้ว ⇒ ส่งซ้ำ/พร้อมกัน = ผลเดิม (X4)
   //   🔴 ใบ C2.8 (คะแนน) เป็นผู้บริโภคตัวจริงของ event นี้ — ใบ C2.6 แค่ยิง
@@ -1231,7 +1237,7 @@ const baseConsumers: Record<string, OutboxHandler> = {
   //   🔴 `crm.score.threshold` ถูกกรองด้วย `trigger.params.band` ใน `automation.ts` (บล็อก C2.8) ⇒ กฎ "เย็น" ไม่ทำงานตอนลูกค้าร้อน
   "crm.score.changed": withAutomation(async () => {}),
   // CRM C3.4 ▸ + lead ร้อน (band HOT เท่านั้น) → แจ้งห้องของทีมผู้ติดต่อ (ธง `crm.teamroom#hot#<eventId>`) — ของแถมใต้ compose ◂
-  "crm.score.threshold": withAutomation(compose(async () => {}, crmTeamRoom("onHotLeadTeamRoom"))),
+  "crm.score.threshold": withAutomation(compose(compose(async () => {}, crmTeamRoom("onHotLeadTeamRoom")), crmNotify("onScoreThreshold"))), // CRM C5.4-E ▸ lead.hot ◂
   // CRM C3.4 ▸ `crm.teamroom.posted` = **ธงกันซ้ำ** ของการโพสต์ห้องทีม (เขียนใน tx เดียวกับข้อความ — addendum ข้อ 5) ·
   //   ผลข้างเคียงเกิดครบแล้วก่อน event ถูก drain ⇒ consumer = no-op ปิด event เป็น DONE (ขาด consumer = คิวตัน) + จุดให้เว็บฮุคของร้าน ·
   //   payload id ล้วน { kind, dealId|contactId|teamId, channelId, meetingSystemId, day?, count? } — ไม่มีชื่อ/เบอร์/อีเมล (X8) ◂
@@ -1333,11 +1339,7 @@ export async function drainAll() {
  *    จะโยน error ⇒ ตกกลับไปใช้แบบเดิมซึ่งใช้ได้ดีนอก serverless
  */
 export function scheduleDrain(): void {
-  try {
-    after(() => {
-      void drainAll().catch(() => {});
-    });
-  } catch {
-    void drainAll().catch(() => {});
-  }
+  // CRM C5.4-D r2 ▸ N9 + r3 ▸ R2-N6 (มติผู้คุมงาน): งานของ `after()` คืน promise ของการระบาย (waitUntil ครอบ) และรวมการตั้งซ้อน
+  //   ผ่านจุดเดียวกับ `wakeOutbox` ของ CRM (`core/after-drain.ts`) — การระบายที่ตั้งไว้แล้วแต่ยังไม่เริ่มไม่ถูกตั้งซ้ำ ◂
+  scheduleCoalescedDrain(() => drainAll());
 }

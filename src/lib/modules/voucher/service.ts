@@ -318,6 +318,40 @@ function faceValueSatang(kind: VoucherKind, value: number, config: VoucherConfig
   return 0;
 }
 
+// CRM C5.5 ▸ H55-2 r1b (มติผู้คุมงาน — เพดานอนุมัติของ "ของมีมูลค่า"): คำตัดสินของประตูมือ "ออก voucher" ตัวเดียว
+//   ใช้ทั้งใน `issue` (ด้านล่าง) และให้กฎอัตโนมัติ CRM ตรวจตอนบันทึก (ผ่าน facade voucher → member) — เพดานอ่านจาก MEMBER_LIMITS ที่เดียว
+//   DIRECT = ออกได้ทันที · APPROVAL = มูลค่ารวมเกินเพดาน ต้องเข้าสายอนุมัติ (ไม่ใช่ OWNER) · REFUSED = STAFF เกินเพดานต่อใบ
+export type ManualIssueVerdict = "DIRECT" | "APPROVAL" | "REFUSED";
+function issueVerdictOf(actor: MemberActor, spec: { kind: VoucherKind; value: number; config: VoucherConfig }, count: number): ManualIssueVerdict {
+  const perVoucher = faceValueSatang(spec.kind, spec.value, spec.config);
+  if (actor.role === "STAFF") {
+    const uncappedPercent = spec.kind === "PERCENT" && spec.config.maxDiscountSatang === undefined;
+    if (uncappedPercent || perVoucher > MEMBER_LIMITS.voucherStaffMaxSatang) return "REFUSED";
+  }
+  if (actor.role !== "OWNER" && perVoucher * count > MEMBER_LIMITS.voucherIssueApprovalOverSatang) return "APPROVAL";
+  return "DIRECT";
+}
+/**
+ * คำตัดสินของประตูมือสำหรับออกใบจากแบบ `templateId` ให้ `count` คน (อ่านอย่างเดียว · แบบของร้านนี้ ระบบใดก็ได้)
+ * ไม่มีคีย์ `member.promo.issue` = REFUSED · ไม่พบแบบ/แบบปิดใช้ = NOT_FOUND
+ */
+export async function manualIssueVerdict(tenantId: string, actor: MemberActor, templateId: string, count = 1): Promise<ManualIssueVerdict | "NOT_FOUND"> {
+  if (!hasMemberPerm(actor, "member.promo.issue")) return "REFUSED";
+  const tpl = templateId ? await prisma.voucherTemplate.findFirst({ where: { id: templateId, tenantId }, select: { systemId: true, kind: true, value: true, config: true, active: true } }) : null;
+  if (!tpl || !tpl.active) return "NOT_FOUND";
+  const spec = { kind: tpl.kind, value: tpl.value, config: configOf(tpl.config) };
+  const v = issueVerdictOf(actor, spec, count);
+  if (v !== "APPROVAL") return v;
+  // CRM C5.5 ▸ RV-6: ถามนโยบายด้วยค่าเดียวกับที่ `submitIssueForApproval` ยื่น (member.voucher.issue · ระบบของแบบ · ยอดรวม) —
+  //   ไม่มีนโยบายจับ = ประตูมือ autoApprove ออกทันที ⇒ DIRECT ◂
+  const policy = await approval.resolvePolicy(
+    { tenantId },
+    { entityType: "member.voucher.issue", systemId: tpl.systemId, unitId: null, amountSatang: faceValueSatang(spec.kind, spec.value, spec.config) * count },
+  );
+  return policy ? "APPROVAL" : "DIRECT";
+}
+// ◂ CRM C5.5
+
 // ───────────────────────── สิทธิ์ (§6.1 · §6.2) ─────────────────────────
 //
 // อ่าน  = `member.promo.read` (read-โดยนัย: ใครเข้าโมดูลสมาชิกได้ก็เปิดดูรายการได้ — ด่านอยู่ที่หน้า)
@@ -738,21 +772,17 @@ export async function issue(ctx: VoucherCtx, actor: MemberActor, input: IssueInp
   }
 
   // §6.2 — พนักงาน (STAFF) ออกใบมูลค่าเกินเพดานต่อใบไม่ได้ (ไม่มีช่อง "ขออนุมัติ" ให้ STAFF)
-  const perVoucher = faceValueSatang(spec.kind, spec.value, spec.config);
-  if (actor.role === "STAFF") {
-    const staffCap = MEMBER_LIMITS.voucherStaffMaxSatang;
-    const uncappedPercent = spec.kind === "PERCENT" && spec.config.maxDiscountSatang === undefined;
-    if (uncappedPercent || perVoucher > staffCap) {
-      throw new VoucherInputError(
-        `พนักงานออก voucher ได้ไม่เกินใบละ ฿${baht(staffCap)} — ใบที่เกินกว่านี้ต้องให้ผู้จัดการหรือเจ้าของร้านเป็นคนออก`,
-      );
-    }
-  }
-
   // §11.6 — มูลค่ารวมเกินเพดาน → เก็บคำขอไว้แล้วยื่นสายอนุมัติ (OWNER ออกได้ทันทีเสมอ)
+  // CRM C5.5 ▸ สองกติกานี้อยู่ใน `issueVerdictOf` ตัวเดียว (กฎอัตโนมัติ CRM ใช้ตัวเดียวกันตอนบันทึก) — ลำดับและข้อความเดิม ◂
+  const perVoucher = faceValueSatang(spec.kind, spec.value, spec.config);
+  const verdict = issueVerdictOf(actor, spec, customerIds.length);
+  if (verdict === "REFUSED") {
+    throw new VoucherInputError(
+      `พนักงานออก voucher ได้ไม่เกินใบละ ฿${baht(MEMBER_LIMITS.voucherStaffMaxSatang)} — ใบที่เกินกว่านี้ต้องให้ผู้จัดการหรือเจ้าของร้านเป็นคนออก`,
+    );
+  }
   const totalSatang = perVoucher * customerIds.length;
-  const approvalOver = MEMBER_LIMITS.voucherIssueApprovalOverSatang;
-  if (actor.role !== "OWNER" && totalSatang > approvalOver) {
+  if (verdict === "APPROVAL") {
     return submitIssueForApproval(ctx, actor, { ...input, customerIds, origin }, totalSatang);
   }
 

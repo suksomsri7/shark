@@ -1,0 +1,45 @@
+# round 1 (full chain) — /tmp/cf10-logs/regress/
+start 2026-10-01T22:35:57Z
+probe-cf10 exit=0 205s · 🟢 probe-cf10: 34/34 JSON_SUMMARY {"total":34,"passed":34,"findings":[]} 
+probe-cf7 exit=0 102s · 🟢 probe-cf7: 30/30 JSON_SUMMARY {"total":30,"passed":30,"findings":[]} 
+probe-cf7-r2 exit=0 21s · 🟢 probe-cf7-r2: 14/14 JSON_SUMMARY {"total":14,"passed":14,"findings":[]} 
+probe-cf7-review exit=0 143s · 🟢 probe-cf7-review: 27/27 JSON_SUMMARY {"total":27,"passed":27,"findings":[]} 
+probe-cf7-review-r2 exit=0 341s · 🟢 probe-cf7-review-r2: 21/21 JSON_SUMMARY {"total":21,"passed":21,"findings":[]} 
+probe-cf5 exit=0 268s · 🟢 probe-cf5: 22/22 JSON_SUMMARY {"total":22,"passed":22,"findings":[]} 
+probe-cf5-r2 exit=0 287s · 🟢 probe-cf5-r2: 14/14 JSON_SUMMARY {"total":14,"passed":14,"findings":[]} 
+qc-crm-c1.4 exit=0 354s · 🟢 C1.4: 110/110 JSON_SUMMARY {"total":110,"passed":110,"findings":[]} 
+qc-crm-c1.3 exit=0 201s · 🟢 C1.3: 89/89 JSON_SUMMARY {"total":89,"passed":89,"findings":[]} 
+qc-crm-c1.5 exit=0 206s · 🟢 C1.5: 103/103 JSON_SUMMARY {"total":103,"passed":103,"findings":[]} 
+qc-crm-c1.10 exit=0 299s · 🟢 C1.10: 66/66 · webhook fetch stubbed 4× · keyErrors filter-foreign-team=ทีมในตัวกรองของคีย์ไม่ใช่ทีมของร้านนี้ — เลือกทีมจากรายชื่อท… JSON_SUMMARY {"total":66,"passed":66,"fi
+qc-crm-c1.11 exit=0 127s · 🟢 C1.11: 66/66 JSON_SUMMARY {"total":66,"passed":66,"findings":[]} 
+qc-crm-c2.4 exit=0 241s · 🟢 C2.4: 91/91 · outbound fetch stubbed 0× JSON_SUMMARY {"total":91,"passed":91,"findings":[]} 
+qc-crm-c1.9 exit=0 143s · 🟢 C1.9: 45/45 JSON_SUMMARY {"total":45,"passed":45,"findings":[]} 
+qc-crm-c3.5 exit=0 97s · 🟢 C3.5: 67/67 JSON_SUMMARY {"total":67,"passed":67,"findings":[]} 
+docs-crm exit=0 2s · ✅ docs/api/CRM-API.md ตรงกับทะเบียน (123 op) 
+docs-member exit=1 2s · ❌ .claude/skills/shark-member-api/references/endpoints.md ไม่ตรงกับทะเบียน (0 ไบต์บนดิสก์ vs 18819 ไบต์ที่ควรเป็น) 
+docs-kanban exit=1 3s · ❌ .claude/skills/shark-kanban-api/references/endpoints.md ไม่ตรงกับทะเบียน (0 ไบต์บนดิสก์ vs 8244 ไบต์ที่ควรเป็น) 
+docs-account exit=0 2s · ✅ docs/api/ACCOUNT-API.md + skill endpoints.md ตรงกับทะเบียน (199 op) 
+typecheck exit=0 100s · 
+fitness exit=1 5s · ผ่าน 35/36 JSON_SUMMARY {"total":36,"passed":35,"findings":[{"id":"F2.3","name":"โค้ดอื่นแตะ crm ได้เฉพาะผ่าน crm/index (facade) หรือ crm/ui (ทางเข้าคอมโพเนนต์)","detail":"ล้วงลึก: src/compo
+fitness-noenv exit=1 363s · ผ่าน 35/36 JSON_SUMMARY {"total":36,"passed":35,"findings":[{"id":"F2.3","name":"โค้ดอื่นแตะ crm ได้เฉพาะผ่าน crm/index (facade) หรือ crm/ui (ทางเข้าคอมโพเนนต์)","detail":"ล้วงลึก: src/compo
+ALLDONE 2026-10-01T23:34:29Z
+
+# round 2 (after moving the DATETIME helper to lib/ui/date — fitness F2.3) — /tmp/cf10-logs/regress2/
+start 2026-10-01T23:36:42Z
+probe-cf10 exit=0 67s · 🟢 probe-cf10: 34/34 JSON_SUMMARY {"total":34,"passed":34,"findings":[]} 
+probe-cf5 exit=0 81s · 🟢 probe-cf5: 22/22 JSON_SUMMARY {"total":22,"passed":22,"findings":[]} 
+qc-crm-c1.4 exit=0 181s · 🟢 C1.4: 110/110 JSON_SUMMARY {"total":110,"passed":110,"findings":[]} 
+qc-crm-c1.9 exit=0 45s · 🟢 C1.9: 45/45 JSON_SUMMARY {"total":45,"passed":45,"findings":[]} 
+qc-crm-c3.5 exit=0 95s · 🟢 C3.5: 67/67 JSON_SUMMARY {"total":67,"passed":67,"findings":[]} 
+docs-crm exit=0 2s · ✅ docs/api/CRM-API.md ตรงกับทะเบียน (123 op) 
+docs-member exit=1 2s · ❌ .claude/skills/shark-member-api/references/endpoints.md ไม่ตรงกับทะเบียน (0 ไบต์บนดิสก์ vs 18819 ไบต์ที่ควรเป็น) 
+docs-kanban exit=1 3s · ❌ .claude/skills/shark-kanban-api/references/endpoints.md ไม่ตรงกับทะเบียน (0 ไบต์บนดิสก์ vs 8244 ไบต์ที่ควรเป็น) 
+docs-account exit=0 2s · ✅ docs/api/ACCOUNT-API.md + skill endpoints.md ตรงกับทะเบียน (199 op) 
+typecheck exit=0 323s · 
+fitness exit=0 6s · ผ่าน 36/36 JSON_SUMMARY {"total":36,"passed":36,"findings":[]} 
+fitness-noenv exit=0 558s · ผ่าน 36/36 JSON_SUMMARY {"total":36,"passed":36,"findings":[]} 
+ALLDONE 2026-10-01T23:59:27Z
+
+# RED with the final probe on the fbd7ca2c src (swap + restore) — /tmp/cf10-logs/probe-cf10.red-final.log
+JSON_SUMMARY {"total":34,"passed":18,"findings":["F1-ui-no-dead-picker","F1-srv-own-text","F1-wiring","F2-archived-clear-atomic","F5-echo-invisible-ro","F5-echo-invisible-linker","F5-race-no-false-audit","F6-label","DT-360-thai","DT-export-iso-th","DT-roundtrip-thai-server","DT-one-helper","IM-kind","IM-failures-first","IM-job-failures-kept","IM-ui-label"]}
+exit=1 2026-10-02T00:01:14Z

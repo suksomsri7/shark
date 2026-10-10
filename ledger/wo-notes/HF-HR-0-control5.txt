@@ -1,0 +1,84 @@
+# HF-HR-0 round 5 — control runs: each fix reverted ALONE (files restored to 8c5815fb), oracle run, fix restored (cmp-verified)
+
+## control r51 — reverted R5.1 approval/service.ts
+  ✅ [L-3] MANAGER (ผ่าน evaluate) เห็นเหตุผล
+  ❌ [SC-1] 🔴 ผู้จัดการอนุมัติใบลาของตัวเองผ่าน approval.decide ไม่ได้ — คำขอคง PENDING · ไม่มีแถวการตัดสิน · ไม่มี event อนุมัติ · ใบลาคง PENDING — expected ปฏิเสธ · PENDING · 0 แถว | actual {"ok":true,"status":"APPROVED","note":null} req=APPROVED dec=1 ev=1 leave=PENDING
+  ❌ [SC-1b] เหตุผล = 'อนุมัติคำขอของตัวเองไม่ได้ — ให้ผู้อนุมัติคนอื่นตัดสิน' — expected อนุมัติคำขอของตัวเองไม่ได้ — ให้ผู้อนุมัติคนอื่นตัดสิน | actual undefined
+  ❌ [SC-2] 🔴 ปฏิเสธ (REJECTED) คำขอของตัวเองผ่านสายก็ไม่ได้ — คง PENDING · 0 แถว — expected ปฏิเสธ | actual {"ok":false,"status":"APPROVED","note":null} req=APPROVED dec=1
+  ❌ [SC-3] ผู้อนุมัติคนอื่น (ผู้จัดการอีกคน) อนุมัติได้ตามปกติ → คำขอ APPROVED · ผู้ตัดสินถูกบันทึก · ใบลา APPROVED ผ่าน effect — expected APPROVED | actual {"ok":false,"status":"APPROVED","note":null} req=APPROVED by=u-mgr-1790872890099 leave=APPROVED
+  ❌ [SC-4] 🔴 bulk: ของตัวเอง + ของคนอื่น → ของตัวเองถูกปฏิเสธ (เหตุผลไทย · คง PENDING · 0 แถว) · ของคนอื่นตัดสินได้ — expected done 1 · failed 1 (ของตัวเอง) | actual {"done":2,"failed":[]} own=APPROVED other=APPROVED
+  ❌ [SC-5] 🔴 เจ้าของร้าน (ผูกกับแถวพนักงานของตัวเอง) ตัดสินใบลาของตัวเองที่ขั้น 1 ไม่ได้ — expected ปฏิเสธ | actual {"ok":true,"status":"PENDING","note":null} dec=1
+  ❌ [SC-6] 🔴 ขั้นที่ 2: เจ้าของ (ผู้ยื่น) ตัดสินคำขอของตัวเองไม่ได้ — คงที่ขั้น 2 · มีแถวการตัดสินแค่ขั้น 1 — expected ขั้น 2 · PENDING · 1 แถว | actual [{"ok":false,"status":"PENDING","note":null},{"ok":true,"status":"APPROVED","note":null}] step=2 dec=2
+  ❌ [SC-7] 🔴 ทาง AI approval_decide: ผู้กดยืนยันเป็นเจ้าของใบลา → ปฏิเสธด้วยข้อความเดียวกัน · คำขอคง PENDING · 0 แถว — expected อนุมัติคำขอของตัวเองไม่ได้ — ให้ผู้อนุมัติคนอื่นตัดสิน | actual PENDING err=null
+  ❌ [AD-3] 🔴 ผู้กดยืนยันคือเจ้าของคำขอ (เจ้าของร้าน · ขั้น 2) → ปฏิเสธโดย R5.1 · คงที่ขั้น 2 — expected อนุมัติคำขอของตัวเองไม่ได้ — ให้ผู้อนุมัติคนอื่นตัดสิน | actual err=ตัดสินคำขอไม่สำเร็จ — คำขออาจถูกปิดไปแล้วหรือคุณไม่มีสิทธิ์ในขั้นนี้ dec=2
+  ✅ [G-2b] ให้สิทธิ์ซ้ำคนเดิม-บัญชีเดิม ยังผ่าน (idempotent)
+  ✅ [S-11] saveEmployeeProfileAction กรองช่องอ่อนไหวผ่าน employeeProfileInputFromForm
+  ✅ [S-12] requestAdjustmentAction ตอบผ่าน adjustmentReplyForViewer
+  ❌ [S-17] approval.decide ตรวจ 'คำขอของตัวเอง' ก่อนเปิดธุรกรรมเขียนการตัดสิน (ไม่ใช่ใน effect) — expected ใช่ | actual ไม่ใช่
+ผ่าน 140/150
+FINDINGS: CRITICAL 8 · MAJOR 2 · MINOR 0
+JSON_SUMMARY {"total":150,"passed":140,"findings":[{"id":"SC-1","sev":"CRITICAL"},{"id":"SC-1b","sev":"MAJOR"},{"id":"SC-2","sev":"CRITICAL"},{"id":"SC-3","sev":"MAJOR"},{"id":"SC-4","sev":"CRITICAL"},{"id":"SC-5","sev":"CRITICAL"},{"id":"SC-6","sev":"CRITICAL"},{"id":"SC-7","sev":"CRITICAL"},{"id":"AD-3","sev":"CRITICAL"},{"id":"S-17","sev":"CRITICAL"}]}
+
+## control r55 — reverted R5.5 ai/proposals.ts
+  ✅ [L-3] MANAGER (ผ่าน evaluate) เห็นเหตุผล
+  ✅ [SC-1] 🔴 ผู้จัดการอนุมัติใบลาของตัวเองผ่าน approval.decide ไม่ได้ — คำขอคง PENDING · ไม่มีแถวการตัดสิน · ไม่มี event อนุมัติ · ใบลาคง PENDING
+  ✅ [SC-3] ผู้อนุมัติคนอื่น (ผู้จัดการอีกคน) อนุมัติได้ตามปกติ → คำขอ APPROVED · ผู้ตัดสินถูกบันทึก · ใบลา APPROVED ผ่าน effect
+  ❌ [SC-7] 🔴 ทาง AI approval_decide: ผู้กดยืนยันเป็นเจ้าของใบลา → ปฏิเสธด้วยข้อความเดียวกัน · คำขอคง PENDING · 0 แถว — expected อนุมัติคำขอของตัวเองไม่ได้ — ให้ผู้อนุมัติคนอื่นตัดสิน | actual PENDING err=
+  ❌ [AD-1] 🔴 ไม่รู้ตัวผู้กดยืนยัน → ข้อความไทย (ไม่มี '/' · ไม่มี prisma · ไม่มีรหัสร้าน/รหัสคำขอ) · คำขอคง PENDING · 0 แถว — expected ข้อความไทยสะอาด | actual PENDING err=
+  ❌ [AD-2] 🔴 รู้ตัวผู้กดยืนยัน (ส่งมาจากทางยืนยัน) → ตัดสินได้ · ผู้ตัดสิน = ผู้กดยืนยัน (ขั้น 1 → ขั้น 2) — expected decidedBy u-owner-1790873028771 | actual err=
+  ❌ [AD-3] 🔴 ผู้กดยืนยันคือเจ้าของคำขอ (เจ้าของร้าน · ขั้น 2) → ปฏิเสธโดย R5.1 · คงที่ขั้น 2 — expected อนุมัติคำขอของตัวเองไม่ได้ — ให้ผู้อนุมัติคนอื่นตัดสิน | actual err=
+  ✅ [G-2b] ให้สิทธิ์ซ้ำคนเดิม-บัญชีเดิม ยังผ่าน (idempotent)
+  ✅ [S-11] saveEmployeeProfileAction กรองช่องอ่อนไหวผ่าน employeeProfileInputFromForm
+  ✅ [S-12] requestAdjustmentAction ตอบผ่าน adjustmentReplyForViewer
+  ❌ [S-18] proposals approval_decide: ไม่รู้ตัวผู้กดยืนยัน → throw ไทยก่อนค้น/เขียน · ส่ง userId ของผู้กดยืนยันให้ decide (ไม่ cast แบบเดาเอา) — expected ใช่ | actual ไม่ใช่
+ผ่าน 145/150
+FINDINGS: CRITICAL 5 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":150,"passed":145,"findings":[{"id":"SC-7","sev":"CRITICAL"},{"id":"AD-1","sev":"CRITICAL"},{"id":"AD-2","sev":"CRITICAL"},{"id":"AD-3","sev":"CRITICAL"},{"id":"S-18","sev":"CRITICAL"}]}
+
+## control r54 — reverted R5.4 ai/plans.ts
+  ✅ [L-3] MANAGER (ผ่าน evaluate) เห็นเหตุผล
+  ✅ [SC-1] 🔴 ผู้จัดการอนุมัติใบลาของตัวเองผ่าน approval.decide ไม่ได้ — คำขอคง PENDING · ไม่มีแถวการตัดสิน · ไม่มี event อนุมัติ · ใบลาคง PENDING
+  ✅ [SC-3] ผู้อนุมัติคนอื่น (ผู้จัดการอีกคน) อนุมัติได้ตามปกติ → คำขอ APPROVED · ผู้ตัดสินถูกบันทึก · ใบลา APPROVED ผ่าน effect
+  ❌ [PL5-1] 🔴 สร้างแผนที่มีขั้น 'ตัดสินใบลา' → ปฏิเสธตอนสร้าง (ข้อความไทย) · ไม่มีแถวแผนใหม่ — expected ปฏิเสธ | actual err=null plans=3/2
+  ❌ [PL5-2] 🔴 แผนที่มีขั้น 'ตัดสินคำขอในสายอนุมัติ' (ต้องมีผู้กดยืนยันเป็นคน) → ปฏิเสธตอนสร้าง — expected ปฏิเสธ | actual null
+  ❌ [PL5-3] 🔴 แผนปลอมใน DB ที่มีขั้นตัดสินใบลา → execute ไม่ทำสักขั้น (ไม่มีพนักงานใหม่ · ใบลาคง PENDING · ทุกขั้นคง PENDING) — expected 0 ขั้น | actual {"ok":false,"done":1} emp=1 leave=PENDING steps=["DONE","FAILED"]
+  ✅ [G-2b] ให้สิทธิ์ซ้ำคนเดิม-บัญชีเดิม ยังผ่าน (idempotent)
+  ✅ [S-11] saveEmployeeProfileAction กรองช่องอ่อนไหวผ่าน employeeProfileInputFromForm
+  ✅ [S-12] requestAdjustmentAction ตอบผ่าน adjustmentReplyForViewer
+ผ่าน 147/150
+FINDINGS: CRITICAL 2 · MAJOR 1 · MINOR 0
+JSON_SUMMARY {"total":150,"passed":147,"findings":[{"id":"PL5-1","sev":"CRITICAL"},{"id":"PL5-2","sev":"MAJOR"},{"id":"PL5-3","sev":"CRITICAL"}]}
+
+## control r52 — reverted R5.2 hr/privacy.ts + hr/payroll-actions.ts + hr/PayAdjustForm.tsx
+  ✅ [L-3] MANAGER (ผ่าน evaluate) เห็นเหตุผล
+  ✅ [SC-1] 🔴 ผู้จัดการอนุมัติใบลาของตัวเองผ่าน approval.decide ไม่ได้ — คำขอคง PENDING · ไม่มีแถวการตัดสิน · ไม่มี event อนุมัติ · ใบลาคง PENDING
+  ✅ [SC-3] ผู้อนุมัติคนอื่น (ผู้จัดการอีกคน) อนุมัติได้ตามปกติ → คำขอ APPROVED · ผู้ตัดสินถูกบันทึก · ใบลา APPROVED ผ่าน effect
+  ✅ [G-2b] ให้สิทธิ์ซ้ำคนเดิม-บัญชีเดิม ยังผ่าน (idempotent)
+  ❌ [OT-0] มีด่านชั่วโมง OT (privacy.screenOtHoursForViewer) — expected มี | actual ไม่มี
+  ❌ [OT-1] 🔴 ไม่ใช่ผู้ดูเงินเดือน: ชั่วโมงนอกตาราง 0.25 / <0.25 / >744 / ไม่ใช่ตัวเลข → คำปฏิเสธกลางเดียวกับ R4.6 ทุกไบต์ — expected ยื่นรายการนี้ไม่ได้ในตอนนี้ — กรุณาแจ้งผู้ดูแลงานบุคคลให้ตรวจข้อมูลพนักงานคนนี้ | actual [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null]
+  ❌ [OT-2] ไม่ใช่ผู้ดูเงินเดือน: ชั่วโมงบนตาราง 0.25 ผ่านด่าน (ไปคิดยอดตามปกติ) — expected null ทุกค่า | actual ["NO","NO","NO","NO","NO","NO","NO"]
+  ❌ [OT-3] ผู้ดูเงินเดือน: ด่านไม่ทำอะไร (พฤติกรรมเดิม) — expected null | actual มีค่า
+  ❌ [OT-3b] รายการที่ไม่ใช่ OT / OT ที่ไม่กรอกชั่วโมง: ด่านไม่ทำอะไร — expected null | actual มีค่า
+  ❌ [OT-4] 🔴 probe: ไล่ชั่วโมง 13 ค่า × 6 อัตรา (เงินเดือน 9k–200k บาท + อัตราตั้งเอง 2 สตางค์/ชม.) → สิ่งที่ผู้ยื่นเห็นเหมือนกันทุกอัตรา — expected 1 แบบ | actual 2 แบบ · ["ยื่นแล้ว — รออนุมัติ (ผู้ดูแลเงินเดือนจะเห็นยอดที่คำนวณ)","ยื่นแล้ว  | ["ยื่นแล้ว — รออนุมัติ (ผู้ดูแลเงินเดือนจะเห็นยอดที่คำนวณ)","ยื่นแล้ว  | ["ยื่นแล้ว — รออนุมัติ (ผู้ดูแลเงินเดือนจะเห็นยอดที่คำนวณ)","ยื่นแล้ว  | ["ยื่นแล้ว — รออนุมัติ (ผู้ดูแลเงินเดือนจะเห็นยอดที่คำนวณ)","ยื่นแล้ว  | ["ยื่นแล้ว — รออนุมัติ (ผู้ดูแลเงินเดือนจะเห็นยอดที่คำนวณ)","ยื่นแล้ว  | ["ยื่นแล้ว — รออนุมัติ (ผู้
+  ✅ [S-11] saveEmployeeProfileAction กรองช่องอ่อนไหวผ่าน employeeProfileInputFromForm
+  ✅ [S-12] requestAdjustmentAction ตอบผ่าน adjustmentReplyForViewer
+  ❌ [OT-6] requestAdjustmentAction เรียกด่านชั่วโมง OT ก่อนตรวจรูปแบบชั่วโมงและก่อน requestAdjustment (ก่อนอ่านอะไรที่ขึ้นกับเงินเดือน) — expected ใช่ | actual ไม่ใช่
+  ❌ [OT-7] ฟอร์ม OT: ช่องชั่วโมง step 0.25 · min 0.25 (ทุกคน · ความสวยงาม — กติกาจริงอยู่ฝั่ง server) — expected มี | actual <input name="hours" inputMode="decimal" placeholder="เช่น 6" className="input w-24" />
+ผ่าน 142/150
+FINDINGS: CRITICAL 4 · MAJOR 3 · MINOR 1
+JSON_SUMMARY {"total":150,"passed":142,"findings":[{"id":"OT-0","sev":"CRITICAL"},{"id":"OT-1","sev":"CRITICAL"},{"id":"OT-2","sev":"MAJOR"},{"id":"OT-3","sev":"MAJOR"},{"id":"OT-3b","sev":"MAJOR"},{"id":"OT-4","sev":"CRITICAL"},{"id":"OT-6","sev":"CRITICAL"},{"id":"OT-7","sev":"MINOR"}]}
+
+## control r53 — reverted R5.3 staff/service.ts
+  ✅ [L-3] MANAGER (ผ่าน evaluate) เห็นเหตุผล
+  ✅ [SC-1] 🔴 ผู้จัดการอนุมัติใบลาของตัวเองผ่าน approval.decide ไม่ได้ — คำขอคง PENDING · ไม่มีแถวการตัดสิน · ไม่มี event อนุมัติ · ใบลาคง PENDING
+  ✅ [SC-3] ผู้อนุมัติคนอื่น (ผู้จัดการอีกคน) อนุมัติได้ตามปกติ → คำขอ APPROVED · ผู้ตัดสินถูกบันทึก · ใบลา APPROVED ผ่าน effect
+  ✅ [G-2b] ให้สิทธิ์ซ้ำคนเดิม-บัญชีเดิม ยังผ่าน (idempotent)
+  ❌ [GA-1] 🔴 บัญชีเดียวกัน → พนักงาน 2 คนพร้อมกัน (คนละ process) → ผูกได้คนเดียว (4/4 รอบ · มีสมาชิกภาพ/ไม่มี/บัญชีใหม่) — expected 4/4 | actual ok/ok:2 ok/ok:2 no/ok:1 no/ok:1 late=false/false
+  ❌ [GA-2] ผู้แพ้ได้เหตุผลไทยที่ชัด (1 บัญชีผูกได้กับพนักงาน 1 คน) ไม่ใช่ 'ระบบขัดข้อง' — expected 4/4 | actual [[{"ok":true},{"ok":true},{"ok":false,"reason":"บันทึกไม่สำเร็จ ระบบขัดข้องชั่วคราว กรุณาลองอีกครั้ง"},{"ok":false,"reason":"บันทึกไม่สำเร็จ ระบบขัดข้องชั่วคราว กรุณาลองอีกครั้ง"}],[{"ok":true},{"ok":true},{"ok":true},{"ok":true}]]
+  ❌ [GA-3] ผู้แพ้ไม่ทิ้งอะไรไว้: แถวพนักงานของผู้แพ้ไม่ผูก · สมาชิกภาพของบัญชีในร้าน = 1 แถว — expected 4/4 | actual 2
+  ✅ [S-11] saveEmployeeProfileAction กรองช่องอ่อนไหวผ่าน employeeProfileInputFromForm
+  ✅ [S-12] requestAdjustmentAction ตอบผ่าน adjustmentReplyForViewer
+  ❌ [S-19] grantStaffAccess: ล็อก advisory ต่อ (ร้าน, บัญชี) ก่อนตรวจ 'บัญชีนี้ผูกกับพนักงานอื่นแล้ว' · ยังมีด่านแถว R4.3 — expected ใช่ | actual ไม่ใช่
+ผ่าน 146/150
+FINDINGS: CRITICAL 1 · MAJOR 3 · MINOR 0
+JSON_SUMMARY {"total":150,"passed":146,"findings":[{"id":"GA-1","sev":"CRITICAL"},{"id":"GA-2","sev":"MAJOR"},{"id":"GA-3","sev":"MAJOR"},{"id":"S-19","sev":"MAJOR"}]}

@@ -23,6 +23,7 @@ import { prisma } from "./db";
 import { canReadMember, coversUnit, isUnitScoped, type MemberActor } from "./access";
 import { MemberForbiddenError, MemberInputError, MemberNotFoundError } from "./errors";
 import { loadVisibleMember, type MemberCtx } from "./profile";
+import { STAFF_ONLY_MODULES } from "./activity";
 import {
   HISTORY_KINDS,
   channelDisplayName,
@@ -619,6 +620,9 @@ export async function listHistory(ctx: MemberCtx, actor: MemberActor, customerId
   if (unitFilter) base.push({ unitId: unitFilter });
   if (scoped) base.push({ OR: [{ unitId: null }, { unitId: { in: actor.unitAccess } }] });
   if (voidedRefIds.length) base.push({ NOT: { module: "pos", type: "VOID", refId: { in: voidedRefIds } } });
+  // C5.4 (L1-m5 · hunter H1): ลูกค้าเปิดดูเอง (`/me/history` REST · หน้า /m) ไม่เห็นแถวภายในของ CRM (ชื่อดีล · มูลค่า · ขั้นการขาย) —
+  //   ตัวกรองเดียวกับ `listActivity` (ค่าคงที่ร่วม) · อยู่ใน `base` ⇒ ครอบทั้งรายการและตัวนับต่อชนิด
+  if (actor.role === "CUSTOMER") base.push({ module: { notIn: [...STAFF_ONLY_MODULES] } });
 
   const listWhere: Prisma.MemberActivityWhereInput[] = [...base];
   if (kind !== "all") listWhere.push(kindWhere(kind));

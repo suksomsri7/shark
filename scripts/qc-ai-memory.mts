@@ -6,6 +6,8 @@
 //   service.ts: buildSystemPrompt ได้รับ memoryBlock ฉีดเข้า system prompt (persona รับ field memories)
 import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
 loadLegacyQcEnv("qc-ai-memory"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
+// ORACLE-EDIT C5.5-G1: runTool/sendMessage now take a required actor (no actor = refusal) — these checks always meant "the shop OWNER asks"
+const qcOwner = (t: string) => ({ kind: "member" as const, tenantId: t, userId: "qc-owner", membership: { role: "OWNER" as const, unitAccess: ["*"], permissions: {} } });
 process.env.SHARK_AI_MOCK = "1";
 const { prisma } = await import("@/lib/core/db");
 type Sev = "CRITICAL" | "MAJOR" | "MINOR";
@@ -18,7 +20,8 @@ try {
   if (!mem) { chk("ME-0", "มี ai/memory.ts", false); }
   else {
     const t = await prisma.tenant.create({ data: { name: "QC MEM", slug: `qc-mem-${Date.now()}` } }); tid = t.id;
-    const ctx = { tenantId: tid };
+    // ORACLE-EDIT C5.5-G3: memory functions take the viewer (ctx.actor) — the shop OWNER (shop facts, as these checks always meant)
+    const ctx = { tenantId: tid, actor: qcOwner(tid) };
     const m1 = await mem.rememberFact(ctx, "ร้านหยุดทุกวันจันทร์");
     await mem.rememberFact(ctx, "เจ้าของชอบสรุปสั้น ๆ");
     await mem.rememberFact(ctx, "ร้านหยุดทุกวันจันทร์"); // ซ้ำ → ไม่งอก
@@ -28,14 +31,14 @@ try {
     chk("ME-1.3", "forgetMemory → ลบจริง + block ไม่มีแล้ว", (await mem.forgetMemory(ctx, m1.id)) === true && !(await mem.memoryBlock(ctx)).includes("หยุดทุกวันจันทร์"));
     const reg = tools.toolRegistry().map((x) => x.def.name);
     chk("ME-2.1", "tools remember_fact/forget_fact/list_memories ครบ", ["remember_fact", "forget_fact", "list_memories"].every((n) => reg.includes(n)));
-    const out = await tools.runTool({ tenantId: tid }, "remember_fact", { content: "ลูกค้าประจำชื่อคุณโอ๋" });
+    const out = await tools.runTool({ tenantId: tid, actor: qcOwner(tid) }, "remember_fact", { content: "ลูกค้าประจำชื่อคุณโอ๋" });
     chk("ME-2.2", "tool remember_fact จดทันที (ไม่ผ่าน proposal)", !out.includes('"error"') && (await prisma.aiMemory.count({ where: { tenantId: tid, content: { contains: "คุณโอ๋" } } })) === 1);
     // system prompt ฉีด memory
     const personaSrc = (await import("node:fs")).readFileSync("src/lib/ai/persona.ts", "utf8");
     const svcSrc = (await import("node:fs")).readFileSync("src/lib/ai/service.ts", "utf8");
     chk("ME-3.1", "persona+service ฉีด memoryBlock เข้า system prompt", /memor/i.test(personaSrc) && /memoryBlock|memories/.test(svcSrc));
     const t2 = await prisma.tenant.create({ data: { name: "QC MEM2", slug: `qc-mem2-${Date.now()}` } }); tid2 = t2.id;
-    chk("ME-4.1", "tenant อื่นไม่เห็นความจำ (guard)", (await mem.memoryBlock({ tenantId: tid2 })) === "");
+    chk("ME-4.1", "tenant อื่นไม่เห็นความจำ (guard)", (await mem.memoryBlock({ tenantId: tid2, actor: qcOwner(tid2) })) === "");
   }
 } catch (e) { chk("CRASH", "จบ: " + (e instanceof Error ? e.message.slice(0, 130) : String(e)), false); }
 finally {

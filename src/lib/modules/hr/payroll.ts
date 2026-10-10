@@ -3,6 +3,7 @@ import type { Prisma } from "@prisma/client";
 // CRM C3.3 ▸ `hr.payroll.paid` ยิงใน tx เดียวกับการปิดรอบ (markPaid) ◂
 import { emitOutbox } from "@/lib/core/outbox";
 import { postPayrollJV, reverseEntry } from "@/lib/modules/account";
+import { writeAudit } from "@/lib/core/audit"; // HF-HR-0 ▸ รอบ 5c (F1): ประวัติการลบรายการเงิน (ตัวเดียวกับ hr/service.ts) ◂
 import {
   ssoContribution,
   monthlyWhtSatang,
@@ -84,6 +85,7 @@ export function listSalaryProfiles(ctx: Ctx) {
 export type AdjustKind = "OT" | "COMMISSION" | "BONUS" | "ALLOWANCE" | "DEDUCTION" | "ADVANCE";
 const ADJUST_KINDS: AdjustKind[] = ["OT", "COMMISSION", "BONUS", "ALLOWANCE", "DEDUCTION", "ADVANCE"];
 const PERIOD_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
+const OT_HOURS_MAX_ALL = 744; // HF-HR-0 ▸ รอบ 5b (H5) — ค่าเดียวกับ privacy.OT_HOURS_MAX (privacy import ไฟล์นี้ ⇒ ประกาศซ้ำแทนการ import วน) ◂
 
 /** อัตรา OT ต่อชั่วโมงของพนักงานคนนี้ (ตั้งเองในโปรไฟล์ หรือคิดจากเงินเดือน ÷30 ÷8 ×1.5) */
 export async function otRateFor(ctx: Ctx, employeeId: string): Promise<number> {
@@ -120,6 +122,11 @@ export async function requestAdjustment(
   const crmCommissionId = typeof input.crmCommissionId === "string" && input.crmCommissionId.trim() ? input.crmCommissionId.trim() : null;
   if (crmCommissionId || opts.tx) return requestCommissionAdjustment(ctx, input, crmCommissionId, opts.tx);
   // ◂ CRM C3.3
+  // HF-HR-0 ▸ รอบ 5b (H5): ชั่วโมง OT ต่อรายการไม่เกิน 744 (31 วัน × 24 ชม. = privacy.OT_HOURS_MAX) สำหรับทุกคน — เกินแล้วเคยได้ error ดิบ
+  //   (ยอดล้นช่อง Int) · ผู้ดูเงินเดือนเห็นข้อความนี้ · ผู้ไม่ดูได้คำปฏิเสธกลางจาก adjustmentReplyForViewer (byHours) ตามเดิม ◂
+  if (input.kind === "OT" && typeof input.hours === "number" && input.hours > OT_HOURS_MAX_ALL) {
+    return { ok: false, reason: `ชั่วโมง OT ต่อรายการต้องไม่เกิน ${OT_HOURS_MAX_ALL} ชม. (31 วัน × 24 ชม.) — แยกเป็นหลายรายการแทน` };
+  }
   const emp = await tenantDb(ctx).hrEmployee.findFirst({ where: { id: input.employeeId } });
   if (!emp) return { ok: false, reason: "ไม่พบพนักงาน" };
 
@@ -167,6 +174,16 @@ export async function decideAdjustment(
   if (!decider.isOwner && decider.userId && row.requestedById === decider.userId) {
     return { ok: false, reason: "อนุมัติรายการที่ตัวเองยื่นไม่ได้ — ให้เจ้าของหรือผู้มีสิทธิ์อนุมัติแทน" };
   }
+  // HF-HR-0 ▸ รอบ 5b (H1): "เงินของใคร" ไม่ใช่แค่ "ใครยื่น" — ผู้อนุมัติที่ไม่ใช่เจ้าของร้าน อนุมัติรายการของแถวพนักงานที่ผูกกับบัญชีตัวเองไม่ได้
+  //   (แม้คนอื่นเป็นผู้ยื่น) · ไม่รู้ตัวผู้อนุมัติ = ตรวจไม่ได้ ⇒ ไม่อนุมัติ · ปฏิเสธ (REJECTED) ยังทำได้ — ไม่มีใครเสียประโยชน์ ◂
+  // HF-HR-0 ▸ รอบ 5c (F1): ปฏิเสธ (REJECTED) รายการที่ "หักเงิน" (ไม่ใช่ isAddKind: DEDUCTION · ADVANCE · ชนิดที่ไม่รู้จัก) ของแถวตัวเอง
+  //   = เพิ่มเงินให้ตัวเอง ⇒ กติกาเดียวกับอนุมัติ · ปฏิเสธรายการเพิ่มเงิน (OT · COMMISSION · BONUS · ALLOWANCE) ของตัวเองยังทำได้ ◂
+  if (!decider.isOwner && (status === "APPROVED" || !isAddKind(row.kind))) {
+    const uid = typeof decider.userId === "string" ? decider.userId.trim() : "";
+    if (!uid) return { ok: false, reason: status === "APPROVED" ? "ระบบไม่ทราบผู้อนุมัติรายการนี้ จึงยังอนุมัติไม่ได้ — กรุณาอนุมัติในหน้าเงินเดือน" : "ระบบไม่ทราบผู้ตัดสินรายการนี้ จึงยังปฏิเสธไม่ได้ — กรุณาตัดสินในหน้าเงินเดือน" };
+    const subject = await tenantDb(ctx).hrEmployee.findFirst({ where: { id: row.employeeId }, select: { linkedUserId: true } });
+    if (subject?.linkedUserId === uid) return { ok: false, reason: status === "APPROVED" ? "อนุมัติรายการของตัวเองไม่ได้ — ให้ผู้อนุมัติคนอื่นหรือเจ้าของร้านตัดสิน" : "ปฏิเสธรายการหักเงินของตัวเองไม่ได้ — ให้ผู้อนุมัติคนอื่นหรือเจ้าของร้านตัดสิน" };
+  }
   // CRM C3.3-fix H5 ▸ รายการคอมมิชชัน CRM ที่งวดของมัน "มีรอบจ่ายแล้ว" (รอบถูกสร้างก่อนอนุมัติ) — อนุมัติในงวดเดิม = ค้างถาวร
   //   (createPayrollRun ดึงรายการของงวดได้ครั้งเดียว) ⇒ ย้ายไปงวดถัดไปที่ยังไม่มีรอบ **ในคำสั่งเดียวกับการอนุมัติ** (guard: PENDING ·
   //   runId IS NULL · งวดเดิม) · รายการที่ไม่ผูกคอมมิชชันใช้ทางเดิม ◂
@@ -202,11 +219,31 @@ function nextRunlessPeriod(periodKey: string, runs: Set<string>): string | null 
   return null;
 }
 
-export async function cancelAdjustment(ctx: Ctx, id: string): Promise<{ ok: boolean; reason?: string }> {
+// HF-HR-0 ▸ รอบ 5c (F1): `actor` = ผู้ใช้ที่กดลบ (หน้าเงินเดือน — สิทธิ์ hr.payadjust.approve เดียวกับอนุมัติ ตรวจที่ action) ·
+//   ไม่ส่ง = ทางระบบ (hr facade / CRM — ไม่มีผู้ใช้) ทำงานเหมือนเดิม · ผู้ใช้ที่ไม่ใช่เจ้าของร้าน ลบรายการของแถวพนักงานที่ผูกกับบัญชีตัวเองไม่ได้
+//   (ยกเว้นผู้ยื่นยกเลิกคำขอเพิ่มเงินที่ยังรอของตัวเอง) · ไม่รู้ตัวผู้ใช้ = ตรวจไม่ได้ ⇒ ไม่ลบ · ลบด้วยเงื่อนไขสถานะที่อ่านมา + ประวัติทุกครั้ง ◂
+export async function cancelAdjustment(ctx: Ctx, id: string, actor?: { userId?: string | null; isOwner: boolean }): Promise<{ ok: boolean; reason?: string }> {
   const row = await tenantDb(ctx).hrPayAdjustment.findFirst({ where: { id } });
   if (!row) return { ok: false, reason: "ไม่พบรายการ" };
   if (row.runId) return { ok: false, reason: "รายการนี้เข้ารอบจ่ายแล้ว ลบไม่ได้ (ใช้กลับรายการรอบจ่ายแทน)" };
-  await tenantDb(ctx).hrPayAdjustment.deleteMany({ where: { id } });
+  const uid = typeof actor?.userId === "string" ? actor.userId.trim() : "";
+  if (actor && !actor.isOwner) {
+    if (!uid) return { ok: false, reason: "ระบบไม่ทราบผู้ลบรายการนี้ จึงยังลบไม่ได้ — กรุณาลบในหน้าเงินเดือน" };
+    const subject = await tenantDb(ctx).hrEmployee.findFirst({ where: { id: row.employeeId }, select: { linkedUserId: true } });
+    const ownPendingAdd = row.status === "PENDING" && row.requestedById === uid && isAddKind(row.kind);
+    if (subject?.linkedUserId === uid && !ownPendingAdd) return { ok: false, reason: "ลบรายการของตัวเองไม่ได้ — ให้ผู้อนุมัติคนอื่นหรือเจ้าของร้านดำเนินการ" };
+  }
+  const del = await tenantDb(ctx).hrPayAdjustment.deleteMany({ where: { id, runId: null, status: row.status } });
+  if (del.count === 0) return { ok: false, reason: "รายการนี้เปลี่ยนไปแล้ว กรุณาเปิดดูใหม่" };
+  await writeAudit({
+    tenantId: ctx.tenantId,
+    actorType: actor ? "USER" : "SYSTEM",
+    actorId: actor ? uid || null : null,
+    action: "hr.payadjust.delete",
+    targetType: "HrPayAdjustment",
+    targetId: id,
+    before: { employeeId: row.employeeId, kind: row.kind, amountSatang: row.amountSatang, status: row.status, periodKey: row.periodKey, requestedById: row.requestedById, decidedById: row.decidedById },
+  });
   return { ok: true };
 }
 

@@ -572,7 +572,7 @@ PERMISSION_PARAMS: crm._maxDealDiscountBp (ค่าเริ่มต้น 100
 | `crm.quota.reached` | {ownerType, ownerId, periodKey, pct} | quotas | แจ้ง · ป้าย |
 | `crm.commission.created` / `.approved` / `.reversed` | {commissionId, userId, amountSatang, dealId, periodKey} | commissions | อนุมัติ (approval) · HR `createPayAdjustment` · แจ้งพนักงาน · รายงาน |
 | `crm.portal.viewed` / `crm.portal.quote.responded` / `crm.portal.request.created` | {companyId, contactId, docId?, action?, requestId?} | portal | scoring · ดีลเลื่อนขั้น (ตอบรับ → ขั้นที่ตั้ง `stageOnQuoteAccepted`) · กิจกรรม PORTAL · บอร์ดงาน (แจ้งเรื่อง) · แจ้งผู้ดูแล |
-| `crm.web.identified` | {contactId, sessionCount, pageViews, firstUrl} | tracking.identify | กิจกรรม WEB (สรุป) · scoring (+ต่อหน้า จำกัด/วัน) · MemberActivity |
+| `crm.web.identified` | {contactId, sessionCount, pageViews} (ไม่มี firstUrl — C5.4-B L5-m6: url เป็นพฤติกรรมของคน) | tracking.identify | กิจกรรม WEB (สรุป) · scoring (+ต่อหน้า จำกัด/วัน) · MemberActivity |
 | `custom.record.created` / `.updated` / `.archived` | {objectKey, recordId, parentType, parentId?, partyId?} | objects | MemberActivity ของแม่ · กฎ · webhook · portal (ถ้า `portalVisible`) |
 | `team.updated` (core) | {teamId, changedKeys} | core/teams | cache การมองเห็น · มุมมอง TEAM สมาชิก/CRM |
 - **ทุก event มี `systemId` (ระบบ CRM) · `unitId?` · idempotencyKey = `crm.<type>.<id>.<seq>`** · payload ไม่มีข้อมูลอ่อนไหว (ไม่มีอีเมล/เบอร์เต็ม ยกเว้น `crm.contact.created` ที่ส่ง masked)

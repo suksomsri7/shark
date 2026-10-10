@@ -15,7 +15,8 @@ import { tenantDb } from "@/lib/core/db";
 import { formatBaht } from "@/lib/ui/money";
 import { eventLabel } from "./labels";
 
-// CRM C2.1 ▸ event อาจพก `id` (OutboxEvent.id → กุญแจกันซ้ำ) · `systemId` (ระบบของ event) · `idempotencyKey` — เอนจิน v1 ไม่ใช้ช่องเหล่านี้ ◂
+// CRM C2.1 ▸ event อาจพก `id` (OutboxEvent.id → กุญแจกันซ้ำ) · `systemId` (ระบบของ event) · `idempotencyKey` ◂
+// C5.4 (L3-m4) ▸ เอนจิน v1 ใช้ `id` เป็นกุญแจ "ครั้งเดียวต่อ (กฎ, event)" แล้ว (ดู runForEvent) ◂
 export type AutomationEvent = { tenantId: string; type: string; payload: unknown; id?: string | null; systemId?: string | null; idempotencyKey?: string | null };
 export type AutomationDeps = { post?: (url: string, body: unknown) => Promise<void> };
 
@@ -26,20 +27,16 @@ const amountSatangOf = (payload: unknown): number | null => {
 };
 
 // ยิง webhook ของจริง (เมื่อไม่ได้ฉีด deps.post) — POST JSON, timeout ~5s, ไม่ 2xx = พัง
-async function postWebhook(url: string, body: unknown): Promise<void> {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 5000);
-  try {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
-      signal: ctrl.signal,
-    });
-    if (!res.ok) throw new Error(`ปลายทางตอบรหัส ${res.status}`);
-  } finally {
-    clearTimeout(timer);
-  }
+// 🔴 C5.4 (L4-M2): เดิม fetch ตรง ๆ ไม่มีด่าน SSRF เลย (และตาม redirect) — URL ของกฎมาจากร้าน ⇒ ผ่าน `outboundFetch`
+//    ตัวเดียวของแพลตฟอร์ม (บล็อกที่อยู่ภายในทุกรูป · ตรึง IP ตอนต่อ · 3xx = ล้ม) · lazy import กันวง import
+//    รอบ 2 (มติผู้คุมงาน): 3xx = ส่งถึงแล้ว (ปลายทางทำงานไปแล้ว เช่น Apps Script) ⇒ run OK พร้อมหมายเหตุ ไม่ใช่ FAILED/ไม่ตาม
+async function postWebhook(url: string, body: unknown): Promise<string | null> {
+  const { outboundFetch, redirectWarning } = await import("@/lib/webhooks/service");
+  const res = await outboundFetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), timeoutMs: 5000, maxBytes: 65_536 });
+  const moved = redirectWarning(res.status);
+  if (moved) return moved;
+  if (!res.ok) throw new Error(`ปลายทางตอบรหัส ${res.status}`);
+  return null;
 }
 
 export async function runForEvent(evt: AutomationEvent, deps?: AutomationDeps): Promise<number> {
@@ -58,17 +55,40 @@ export async function runForEvent(evt: AutomationEvent, deps?: AutomationDeps): 
   });
 
   const amountSatang = amountSatangOf(evt.payload);
-  const post = deps?.post ?? postWebhook;
+  // C5.4 รอบ 2: ตัวส่งจริงคืน "หมายเหตุ" (3xx = ส่งถึงแต่ไม่ตามที่อยู่ใหม่) · ตัวที่ฉีดมาคืน void ตามเดิม
+  const post = async (url: string, body: unknown): Promise<string | null> => (deps?.post ? (await deps.post(url, body), null) : postWebhook(url, body));
   let fired = 0;
+  // 🔴 C5.4 (L3-m4): กฎ v1 ทำงาน **ครั้งเดียวต่อ (กฎ, event)** — `withAutomation` เรียกเอนจินทุกครั้งที่คิว retry event ที่งานหลักล้ม
+  //    (สูงสุด 5 รอบ) และ drainer ซ้อนอาจหยิบ event เดียวกันได้ ⇒ เดิม NOTIFY/WEBHOOK ออกซ้ำทุกรอบ
+  //    กุญแจ = `v1:<OutboxEvent.id>` ในคอลัมน์ `eventKey` (มีอยู่แล้ว — ไม่ต้อง migration) · จองแถว run ก่อนลงมือภายใต้
+  //    advisory lock ต่อ (กฎ, กุญแจ) ⇒ สองโพรเซสพร้อมกันก็ได้แถวเดียว · event ที่ไม่มี id (เรียกนอกคิว) = ทำงานทุกครั้งเหมือนเดิม
+  //    ผลที่ยอมรับ: ถ้าโพรเซสตายหลังจองก่อนลงมือ การกระทำนั้นหาย (at-most-once — ตรงกับสัญญา "ฮุค/แจ้งเตือนรอบเดียวต่อ event")
+  const v1Key = evt.id ? `v1:${evt.id}` : null;
 
   for (const rule of rules) {
     // ── เงื่อนไข: ยอดขั้นต่ำ (มีค่า → ต้องมียอดและถึงเกณฑ์) ──
     if (rule.minAmountSatang != null) {
       if (amountSatang == null || amountSatang < rule.minAmountSatang) continue;
     }
+    let claimedRunId: string | null = null;
+    if (v1Key) {
+      const key = v1Key;
+      claimedRunId = await db.$transaction(async (tx) => {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`automation-v1:${rule.id}:${key}`}, 0))`;
+        const seen = await tx.automationRun.findFirst({ where: { ruleId: rule.id, eventKey: key }, select: { id: true } });
+        if (seen) return null;
+        const row = await tx.automationRun.create({
+          data: { tenantId: evt.tenantId, ruleId: rule.id, status: "OK", eventKey: key },
+          select: { id: true },
+        });
+        return row.id;
+      });
+      if (!claimedRunId) continue; // event นี้เคยทำให้กฎนี้ทำงานแล้ว (รอบ retry/drainer ซ้อน) ⇒ ไม่ทำซ้ำ ไม่นับ
+    }
     fired++; // นับตอน match แล้วลงมือ (webhook พังก็ถือว่ายิงไปแล้ว)
 
     const cfg = (rule.actionConfig ?? {}) as { title?: unknown; url?: unknown };
+    let runNote: string | null = null;
     try {
       if (rule.actionType === "NOTIFY") {
         const title =
@@ -81,17 +101,24 @@ export async function runForEvent(evt: AutomationEvent, deps?: AutomationDeps): 
       } else {
         const url = typeof cfg.url === "string" ? cfg.url.trim() : "";
         if (!url) throw new Error("ยังไม่ได้ตั้ง URL ปลายทาง");
-        await post(url, { event: evt.type, payload: evt.payload });
+        const note = await post(url, { event: evt.type, payload: evt.payload });
+        if (typeof note === "string" && note) runNote = note.slice(0, 500);
       }
-      await db.automationRun.create({
-        data: { tenantId: evt.tenantId, ruleId: rule.id, status: "OK" },
-      });
+      // แถวที่จองไว้แล้ว (มี id ของ event) เป็น OK อยู่แล้ว · เรียกนอกคิว = สร้างแถวตามเดิม
+      if (!claimedRunId) {
+        await db.automationRun.create({
+          data: { tenantId: evt.tenantId, ruleId: rule.id, status: "OK", ...(runNote ? { detail: runNote } : {}) },
+        });
+      } else if (runNote) {
+        await db.automationRun.updateMany({ where: { id: claimedRunId }, data: { detail: runNote } });
+      }
     } catch (e) {
       // action พัง (เช่น webhook ปลายทางล่ม) → บันทึก FAILED แล้วไปกติกาถัดไป ห้าม throw
       const detail = e instanceof Error ? e.message.slice(0, 500) : String(e);
-      await db.automationRun
-        .create({ data: { tenantId: evt.tenantId, ruleId: rule.id, status: "FAILED", detail } })
-        .catch(() => {});
+      await (claimedRunId
+        ? db.automationRun.updateMany({ where: { id: claimedRunId }, data: { status: "FAILED", detail } })
+        : db.automationRun.create({ data: { tenantId: evt.tenantId, ruleId: rule.id, status: "FAILED", detail } })
+      ).catch(() => {});
     }
   }
 

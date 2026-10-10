@@ -22,7 +22,7 @@
 
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import type { ChatChannelConnection } from "@prisma/client";
-import { apiJson } from "@/lib/api-keys/route-auth";
+import { apiJson, isGeneralApiKey, keyNotGeneralResponse } from "@/lib/api-keys/route-auth";
 import { verifyApiKey } from "@/lib/api-keys/service";
 import { rateLimitVerdict, clientIp } from "./rate-limit";
 import {
@@ -297,7 +297,35 @@ async function authenticateSecret(req: Request, rawKey: string): Promise<ChatAut
   }
 
   // systemId มาจากร้านของกุญแจเสมอ — header ระบุเจาะจงได้แต่ต้องเป็นระบบของร้านตัวเอง
-  const systemId = await resolveChatSystemId(key.tenantId, req.headers.get(SYSTEM_HEADER));
+  // HF-APIV1 ▸ โหมด secret = อ้างเป็นลูกค้าคนไหนก็ได้/ตอบในนามร้านได้ ⇒ รับเฉพาะ 2 แบบ:
+  //   (a) คีย์กลาง (scopes [] ไม่ผูกระบบ — ที่ SiamDive ใช้) → ทางเดิมทุกตัวอักษร
+  //   (b) คีย์ที่ผูก "ระบบแชท" ของร้านนี้ → ใช้ระบบที่ผูก · หัว X-Shark-System ชี้ระบบอื่น = 403 (ไม่ยึดของคีย์เงียบ ๆ)
+  //   คีย์ของโมดูลอื่น (บอร์ดงาน/บัญชี/สมาชิก/CRM) หรือ scopesJson เสีย = 403 ก่อนแตะข้อมูลแชทใด ๆ
+  let systemId: string | null;
+  if (isGeneralApiKey(key)) {
+    systemId = await resolveChatSystemId(key.tenantId, req.headers.get(SYSTEM_HEADER));
+  } else {
+    // ยังไม่มีคำศัพท์ scope ของแชท ⇒ คีย์ผูกระบบแชทต้องไม่มี scope ใด ๆ (มี scope = คีย์ของโมดูลอื่นที่ผูกผิดที่ → 403)
+    const bound =
+      key.systemId && key.scopes.length === 0 && key.scopesMalformed !== true ? await resolveChatSystemId(key.tenantId, key.systemId) : null;
+    if (!bound) return { ok: false, response: keyNotGeneralResponse() };
+    const asked = req.headers.get(SYSTEM_HEADER)?.trim();
+    if (asked && asked !== bound) {
+      return {
+        ok: false,
+        response: apiJson(
+          {
+            error: "ระบบแชทที่ระบุในส่วนหัว X-Shark-System ไม่ใช่ระบบที่คีย์นี้ผูกไว้ — ไม่ต้องส่งส่วนหัวนี้ หรือส่งรหัสระบบแชทที่ผูกกับคีย์",
+            error_en: "X-Shark-System names a different chat system than the one this key is bound to. Omit the header or send the bound system id.",
+            code: "system_mismatch",
+          },
+          403,
+        ),
+      };
+    }
+    systemId = bound;
+  }
+  // ◂ HF-APIV1
   if (!systemId) {
     return {
       ok: false,

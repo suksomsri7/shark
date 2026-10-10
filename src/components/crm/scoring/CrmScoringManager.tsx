@@ -82,7 +82,7 @@ export function CrmScoringManager({ data }: { data: CrmScorePageData }) {
   return (
     <div className="flex min-w-0 flex-col gap-4">
       {msg && (
-        <p data-testid="crm-score-msg" className={`rounded-md border px-3 py-2 text-sm ${msg.ok ? "text-[color:var(--color-accent)]" : "text-[color:var(--color-danger)]"}`}>
+        <p data-testid="crm-score-msg" role={msg.ok ? "status" : "alert"} className={`rounded-md border px-3 py-2 text-sm ${msg.ok ? "text-[color:var(--color-accent)]" : "text-[color:var(--color-danger)]"}`}>
           {msg.text}
         </p>
       )}

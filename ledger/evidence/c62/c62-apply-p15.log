@@ -1,0 +1,24 @@
+== scripts/pending/c54b/backfill-revoke-ended-portal.mts --apply 2026-10-07T22:33:50Z
+[backfill-revoke-ended-portal] host=ep-royal-night-aoidednc-pooler.c-2.ap-southeast-1.aws.neon.tech mode=APPLY
+accesses=0 liveSessions=0 tenants=0
+revoked=0
+exit=0
+== scripts/pending/c54b/backfill-revoke-ended-portal.mts DRY-RUN-after 2026-10-07T22:33:51Z
+[backfill-revoke-ended-portal] host=ep-royal-night-aoidednc-pooler.c-2.ap-southeast-1.aws.neon.tech mode=DRY-RUN
+accesses=0 liveSessions=0 tenants=0
+exit=0
+== scripts/pending/c54c/backfill-invoice-status.mts --apply 2026-10-07T22:33:53Z
+[backfill-invoice-status] DB ep-royal-night-aoidednc-pooler.c-2.ap-southeast-1.aws.neon.tech · APPLY · all tenants
+candidates (INVOICE with live credit notes, not PAID): 2
+→ PARTIAL fully settled by payments + credit notes (would become PAID): 0 in 0 tenant(s)
+(info only — not touched) AWAITING_PAYMENT fully credited, no money received: 0
+applied: 0/0 (no outbox events written)
+JSON_SUMMARY {"mode":"apply","tenant":null,"candidates":2,"wouldFix":0,"tenants":0,"applied":0,"infoFullyCreditedUnpaid":0}
+exit=0
+== scripts/pending/c54c/backfill-invoice-status.mts DRY-RUN-after 2026-10-07T22:33:55Z
+[backfill-invoice-status] DB ep-royal-night-aoidednc-pooler.c-2.ap-southeast-1.aws.neon.tech · DRY-RUN · all tenants
+candidates (INVOICE with live credit notes, not PAID): 2
+→ PARTIAL fully settled by payments + credit notes (would become PAID): 0 in 0 tenant(s)
+(info only — not touched) AWAITING_PAYMENT fully credited, no money received: 0
+JSON_SUMMARY {"mode":"dry-run","tenant":null,"candidates":2,"wouldFix":0,"tenants":0,"applied":0,"infoFullyCreditedUnpaid":0}
+exit=0

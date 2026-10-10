@@ -2,6 +2,7 @@
 // สิทธิ์แยกจากการแก้ผู้ติดต่อทั่วไป: `account.contact.merge` (เพิ่มไว้ตั้งแต่เฟส 0 · SPEC §14.11)
 import { requireAccountPage } from "@/lib/modules/account/guard";
 import { listMergeCandidates, MERGE_FIELDS } from "@/lib/modules/account/contact-merge";
+import { crmViewerOfSession } from "@/lib/modules/account/contact-links";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { ContactMergePanel } from "@/components/account-v2/ContactMergePanel";
 
@@ -14,8 +15,9 @@ export default async function Page({
 }) {
   const { id } = await params;
   const { pair } = await searchParams;
-  const { tenantId, systemId } = await requireAccountPage(id, "account.contact.merge");
-  const candidates = await listMergeCandidates({ tenantId, systemId });
+  const { tenantId, systemId, auth, userId } = await requireAccountPage(id, "account.contact.merge");
+  // C5.5-fix14: ป้าย "#รหัสสมาชิก" ตามสิทธิ์อ่านสมาชิกของคนเปิดหน้า (ไม่มีสิทธิ์ = ไม่มีป้าย)
+  const candidates = await listMergeCandidates({ tenantId, systemId }, crmViewerOfSession(userId, auth.active));
 
   return (
     <div className="flex flex-col gap-4">
