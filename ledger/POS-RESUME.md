@@ -1190,3 +1190,26 @@
 - ผู้คุมแก้ harness เอง: state นี้ถ่าย desktop+ipad → `wip/pos-p2.2u` **d9385328** (โค้ด cdd700fc ไม่เปลี่ยน · ไม่ต้อง build ใหม่) · เทียบ 01: ป้ายบรรทัด RULE (ชื่อโปร) + CHANNEL "ราคาตามช่องทาง" ✓ · ไทล์โปร chip+ขีดฆ่า ฿60 ✓ · ไทล์ไม่ขายหน้าร้าน จาง ✓
 - 📌 ติดตาม P2.12: มือถือ ตะกร้าว่าง = เข้าบิลที่พักไม่ได้ (05-mobile ไม่มีปุ่ม) — ให้เจ้าของตัดสิน
 - ถัดไป: vis60 จบ (sales) → checkout ทรี d ที่ d9385328 → vis61 register owner th (QC5) → gates merge P2.2U → merge
+
+### ⏱ 2026-10-10 03:0xZ — P2.3 S merge แล้ว · เปิด P2.4 S + P2.8 S
+- gates63 @09e2ca11 **23/23 เขียว** → `git merge --no-ff wip/pos-p2.3` (06f2d825) = `session/pos` **160299e4** (ไม่มี conflict) · push แล้ว · ทรีผู้คุม `prisma generate` ใหม่ (fitness pre-commit เคยแดง F10.1 PosRecipeChoiceLine = client เก่า)
+- prompt P2.4-S / P2.8-S แทน `__BASE__` = 160299e4 (0506d25a) · **เปิด builder 2 เลน**: P2.4 S ทรี c (`wip/pos-p2.4`) · P2.8 S ทรี b (`wip/pos-p2.8`) · เลน = 2/3 (ช่องที่ 3 สำรองผู้ตรวจ)
+- ตัวนับยัง **23/55** (P2.3 นับเมื่อ P2.3U merge · P2.2 นับเมื่อ P2.2U merge → 24)
+- ค้าง: QC5 `migrate deploy` 20261205100000_pos_p23_recipe — ทำหลัง vis61 จบ (ห้ามทับเลนภาพ) · vis61 register owner th (harness d9385328) ต่อคิวหลัง vis60
+- ถัดไป: vis60 sales → เทียบ 12 · vis61 เขียว → gates merge P2.2U (p2.2 · p2.1 · p1.18 · p1.3 · p1.16 · products · authz · typecheck · fitness) บน d9385328+merge → merge → 24/55 → TG
+
+### ⏱ 2026-10-10 03:1xZ — มติเจ้าของ: เลนภาพ (ทำตามแนะนำ) + ด่าน merge P2.2U
+- นโยบายใหม่ใน `pos-brief-LANE-RULES.md` §เลนภาพ: รอบแก้ถ่ายเฉพาะ state ที่แตะ (`--state`) · ถ่ายเต็มเฉพาะ merge/ปิดเฟส · ผู้คุมดูภาพเฉพาะ state ใหม่ + สุ่ม
+- harness `--state a,b` เพิ่มแล้ว (ผู้คุม) → `wip/pos-p2.2u` 15ac8680 (`--dry` register --state line-badges,tile-rule = 5 ภาพ · คีย์ผิด die พร้อมรายชื่อ) · hook fitness ข้ามเพราะ p11 ใช้ client ร่วมผู้คุม (P2.3) — fitness จริงใน gates64
+- merge `session/pos` 160299e4 → `wip/pos-p2.2u` = **2f8f1e67** (auto-merge pos.json th/en + MASTER-PLAN · ไม่มี conflict) · push แล้ว · fitness p11 41/41
+- **gates64** ทรี p11 @2f8f1e67 (typecheck · p2.2 · p2.1 · p1.18 · p1.3 · p1.16 · products · authz · p2.3 · p1.1 · p1.12 · p1.5 · fitness ×3) กำลังรัน · vis61 register (harness d9385328) ต่อคิวหลัง vis60
+- merge P2.2U เมื่อ: gates64 เขียว + vis61 register เขียว + vis60 sales (12) ตรงแบบ → merge 2f8f1e67 → 24/55 → TG
+- เลน: builder P2.4 S (c) · P2.8 S (b) = 2/3
+- 03:09Z vis60 จบ: products 35/35 · register owner 104/105 · cashier 101/102 · en 37/37 · sales 70/70 — แดง 2 ใบ = line-badges 390 (owner+cashier) เหตุ harness เดียวกัน (แก้แล้ว d9385328) · บิล 12: หมายเหตุบรรทัด "โปรราคา · <ชื่อโปร> (ปกติ ฿60)" + "ราคา LINE MAN" ✓ ตรงแบบ · เหลือรอ vis61 + gates64
+- 03:2xZ vis61 register owner th (harness d9385328) **104/104** ✓ · QC5 `migrate deploy` 20261205100000_pos_p23_recipe สำเร็จ (ทรีผู้คุม · status up to date) — P2.3U ถ่ายภาพได้แล้ว · gates64 10/15 เขียว (เหลือ p1.12 p1.5 fitness ×3) → เขียว = merge 2f8f1e67 → 24/55
+
+### ⏱ 2026-10-10 03:2xZ — 🏁 P2.2U merge · **24/55**
+- gates64 @2f8f1e67 **15/15 เขียว** · vis61 104/104 → `git merge --no-ff 2f8f1e67` = `session/pos` **1636da3c** · ตัวนับ **24/55** (P2.2 S+U ครบ) · ทรี p11 ว่าง
+- เลน: P2.4 S (c) · P2.8 S (b) = 2/3 · ช่อง 3 สำรองผู้ตรวจ
+- ค้างติดตาม: P2.3U (F4 setBomEnabled จาก banner · F7/N1/N3 pending-restore) · P2.11 (dead-row · scope field · category >500 field · N2) · P2.12 (19ค · 14B · ทางเข้าบิลที่พักบนมือถือ) · merge origin/main ที่จุด merge ถัดไป (P2.4/P2.8) แล้วตรวจ P1.1b B + ORACLE-EDIT P1.3 S5.12
+- ถัดไป: รอ builder P2.4 S / P2.8 S ส่งงาน → ผู้ตรวจ (เลน 3) · ภาพตาม --state ที่ builder ระบุ · QC5 ต้อง deploy migration P2.4/P2.8 ก่อน U
