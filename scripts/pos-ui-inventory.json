@@ -11485,6 +11485,82 @@
       "system": "POS"
     },
     {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-prod-recipe-chip-low",
+      "kind": "filter",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-prod-table",
+        "note": "ชิป \"ใกล้หมด N\" (สต็อก/จำนวนที่ทำได้ตามสูตร 1–5 ในขอบเขตสาขา) — สลับกรองตาราง"
+      },
+      "wo": "P2.3U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-prod-recipe-chip-out",
+      "kind": "filter",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-prod-table",
+        "note": "ชิป \"หมด N\" (ทุกสาขาในขอบเขต ≤ 0) — สลับกรองตาราง"
+      },
+      "wo": "P2.3U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-prod-recipe-chip-nocost",
+      "kind": "filter",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-prod-table",
+        "note": "ชิป \"ยังไม่ใส่ต้นทุน N\" (แถวมีสูตร · recipeCost costComplete false) — สลับกรองตาราง"
+      },
+      "wo": "P2.3U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
+      "page": "/app/sys/[id]/pos/products",
+      "testid": "pos-prod-recipe-chip-nomargin",
+      "kind": "filter",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-prod-table",
+        "note": "ชิป \"กำไรคำนวณไม่ได้ N\" (แถวมีสูตร · marginBp null) — สลับกรองตาราง"
+      },
+      "wo": "P2.3U",
+      "oracle": "",
+      "system": "POS"
+    },
+    {
       "page": "/app/sys/[id]/pos/products/price-rules",
       "testid": "pos-price-rules-module-tabs",
       "kind": "tab",
