@@ -93,6 +93,8 @@ const CHECKS: readonly Def[] = [
   D("V4", "X3", "[R9] registerCloseTable: มีค้างจ่าย → TABLE_HAS_UNPAID · STAFF (ไม่มี session.close) → PERMISSION_DENIED · session ว่าง (มีรอบร่าง) → CANCELLED + รอบร่าง DISCARDED · registerClearTable (MANAGER) → dirtySince null · ผัง FREE"),
   // ORACLE-ADD ผู้คุม 10 ต.ค. (P2.4 S fix 2 · F2): ปิดโต๊ะ/จ่ายรายการสุดท้าย ⇄ รอบที่กำลังส่ง
   D("V5", "X1", "[R7 R9 F2] รอบที่ถือล็อก session (lockOpenSessionInTx FOR SHARE + createOrderInTx) ขณะจ่ายรายการสุดท้าย → บิลผ่าน · session ยัง OPEN · รายการรอบใหม่ค้างจ่าย (ไม่ตกใน session ที่ปิด) · ปิดโต๊ะระหว่างรอบถือล็อก → รอ แล้ว TABLE_HAS_UNPAID · ปิดก่อน → lockOpenSessionInTx ปฏิเสธ (ไม่ OPEN)"),
+  // ORACLE-ADD ผู้คุม 10 ต.ค. (P2.4 S fix 4 · H1): ตัวปลดบิล void ⇄ จ่ายรายการที่เหลือ
+  D("V6a", "X1", "[R8 H1] บิลบางส่วน X (I1) บน session OPEN ที่มีรอบ I2 · ธุรกรรมที่เรียก unlinkTableSaleInTx(X) ค้าง ~3 วิ ขณะ quote+submit I2 → session ยัง OPEN · I1 saleId null · quote ของโต๊ะมี I1 (ไม่ตกค้างบน session ที่ปิด)"),
   // ── R โต๊ะจอง ──
   D("R1", "-", "[R10 Q2] registerCreateReservation A6 (+10 นาที · 6 คน) → BOOKED · ผัง RESERVED + reservation {id name partySize} · registerSeatReservation → session OPEN guestCount 6 · SEATED · ผัง DINING"),
   D("R2", "-", "[R10] ยกเลิก → CANCELLED · ผัง FREE · จองอีก 3 ชม. → ผัง FREE (นอกช่วงกัน) · holdFromMinutes ปริยาย 15 · เปิดโต๊ะที่ถูกจองไว้ → ok + reservationOverridden true · การจองยัง BOOKED"),
@@ -1923,6 +1925,56 @@ async function runDb() {
     const l4 = lockFn ? await P.$transaction((tx: Any) => lockFn(tx, { tenantId: T, unitId: U.A, sessionId: s4 })).catch((e: Error) => ({ ok: "throw", m: e.message })) : null;
     if (c4?.ok !== true || !l4 || l4.ok !== false) p.push(`ปิดก่อน: ปิด ${codeOf(c4)} · ล็อก ${short(l4, 60)}`);
     chk("V5", p.length === 0, "รอบใหม่ไม่ตกใน session ที่ปิด · ปิด/จ่ายรอรอบ", FX(P8(p) || "ครบ"));
+  });
+
+  // ORACLE-ADD ผู้คุม 10 ต.ค. (P2.4 S fix 4 · H1) — โต๊ะ E6 · ขับ facade ตรงเพื่อคุมจังหวะ (ตัวรับ void จริงเรียกฟังก์ชันเดียวกัน) แล้ว void X + ระบายคิวทีหลัง
+  const restFx = await tryImport("@/lib/modules/restaurant");
+  /** ธุรกรรมที่ปลดบิล X แล้วค้างไว้ holdMs (ถือล็อกของ unlinkTableSaleInTx) */
+  const unlinkTx = (sessionId: string, saleId: string, holdMs: number, onDone: () => void) =>
+    P.$transaction(
+      async (tx: Any) => {
+        const r = await restFx.unlinkTableSaleInTx(tx, { tenantId: T, unitId: U.A, sessionId, saleId });
+        onDone();
+        await sleep(holdMs);
+        return r;
+      },
+      { timeout: 30_000, maxWait: 10_000 },
+    ).then((r: Any) => short(r, 80), (e: Error) => `throw ${e.message.slice(0, 60)}`);
+  const voidX = async (saleId: string) => {
+    const v = await call(billsMod, "voidSaleByActor", ctxA(DEV2), A("OWNER"), { unitId: U.A, saleId, idempotencyKey: newKey("void"), reason: "ลูกค้ายกเลิก" });
+    await drain();
+    return v;
+  };
+  await step("V6a", async () => {
+    const p: string[] = [];
+    await mkExtraTable("E6");
+    const sid = await openT("E6", { guestCount: 2 });
+    const d1 = await hold(sid, [ml("rice", 1)]);
+    const s1 = await send(sid, String(d1?.heldCart?.id ?? ""));
+    const i1 = String(((s1?.itemIds ?? []) as string[])[0] ?? "");
+    const d2 = await hold(sid, [ml("water", 1)]); // รอบร่าง HELD = จ่ายแล้วโต๊ะยังเปิด
+    const q1 = await tq(sid);
+    const x = await tpay(sid, q1, { ctx: ctxA(DEV2) });
+    const X = String(x.r?.saleId ?? "");
+    const s2 = await send(sid, String(d2?.heldCart?.id ?? ""));
+    if (!i1 || !X || s2?.ok !== true || (await sessRow(sid))?.status !== "OPEN") p.push(`(fixture) I1 ${!!i1} · X ${codeOf(x.r)} · ส่ง I2 ${codeOf(s2)} · session ${(await sessRow(sid))?.status}`);
+    else {
+      const q2 = await tq(sid);
+      let unlinked!: () => void;
+      const done = new Promise<void>((r) => (unlinked = r));
+      const ut = unlinkTx(sid, X, 3000, () => unlinked());
+      await Promise.race([done, sleep(15_000)]);
+      const pay = await tpay(sid, q2, { ctx: ctxA(DEV2) });
+      const utr = await ut;
+      const sess = await sessRow(sid);
+      const it1 = (await itemsOf(sid)).find((r) => r.id === i1);
+      const q3 = await tq(sid);
+      const listed = q3?.ok === true && ((q3.table?.itemIds ?? []) as string[]).includes(i1);
+      if (pay.r?.ok !== true || sess?.status !== "OPEN" || it1?.saleId !== null || !listed) p.push(`ปลดบิลขณะจ่าย I2: บิล ${codeOf(pay.r)} · ปลด ${utr} · session ${sess?.status} · I1 saleId ${it1?.saleId ? "ยังผูก" : "null"} · quote ${codeOf(q3)} มี I1 ${listed}`);
+      const v = await voidX(X);
+      if (v?.ok !== true || (await itemsOf(sid)).find((r) => r.id === i1)?.saleId !== null) p.push(`void X หลังปลด → ${codeOf(v)}`);
+    }
+    chk("V6a", p.length === 0, "ปลดบิลกับจ่ายพร้อมกัน — รายการที่ปลดไม่ตกบน session ที่ปิด", FX(P8(p) || "ครบ"));
   });
 
   // ════════ R โต๊ะจอง ════════
