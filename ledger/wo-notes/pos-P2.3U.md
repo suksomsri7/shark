@@ -55,7 +55,7 @@ See `ledger/pos-briefs/pos-spec-P1.3-register-ui.md` "Addendum P2.3U" (full list
 - **Proposal (beyond ruling 8, own commit 27c6c8d5 — controller decides):** `scripts/qc-pos-p2.3.mts:508` ST4 pinned `["bomDeduct", false, "P2.3"]` "(พลิกใน P2.3U)", so ruling 8 turns it red. Edit pins `["bomDeduct", true, null]`; count unchanged (46). Reject = `git revert 27c6c8d5` ⇒ p2.3 45/46 (ST4) by design.
 
 ## Fixtures (visual-pos p2.3u · `scripts/visual-pos.mts`, hunks `// POS P2.3U ▸ … ◂`)
-Owner only. Ids `posqc-vis-<pid>-p23u-<round>-*`, QC coffee shop, unit silom: 7 temp InvItems in the QC inventory (beans g ฿0.65 · milk ml ฿0.05 · cup12 ฿2.80 · cup16 ฿3.50 · lid ฿1.20 onHand 3 ⇒ latte portions 3 = low · caramel syrup cost 0 · coke can) + group "ขนาด" S/M/L (fallback names on unique clash) + 4 temp MENUs: ลาเต้สูตร ฿75 (base 18/150/1/1 + deltas M/L) · โค้กสูตรเดิม (1 line, bom off = backfilled) · ชาไทยยังไม่มีสูตร · คาราเมลมัคคิอาโต้ (zero-cost ingredient). Recipes via `catalog.setRecipe/setRecipeChoiceLines/setBomEnabled` as the owner. `register-pending-cuts`: one pending bill = `createSale` inside the script's tx (cash outside shift ฿75, key `posqc-vis-p23u-pend-<pid>-<round>`), `voidSale` right after its last shot (a VOIDED bill + its journal/reversal stay in QC4, like other shot bills). Fixture created before the first job of each contiguous P2.3U block, removed after the block / finally / signal; leftovers > 1 h swept (void + delete) before creating.
+Owner only. Ids `posqc-vis-<pid>-p23u-<round>-*`, QC coffee shop, unit silom: 7 temp InvItems in the QC inventory (beans g ฿0.65 · milk ml ฿0.05 · cup12 ฿2.80 · cup16 ฿3.50 · lid ฿1.20 onHand 3 ⇒ latte portions 3 = low · caramel syrup cost 0 · coke can) + group "ขนาด" S/M/L (fallback names on unique clash) + 4 temp MENUs: ลาเต้สูตร ฿75 (base 18/150/1/1 + deltas M/L) · โค้กสูตรเดิม (1 line, bom off = backfilled) · ชาไทยยังไม่มีสูตร · คาราเมลมัคคิอาโต้ (zero-cost ingredient). Recipes via `catalog.setRecipe/setRecipeChoiceLines/setBomEnabled` as the owner. `register-pending-cuts`: one pending bill = `createSale` inside the script's tx (cash outside shift ฿75, key `posqc-vis-p23u-pend-<pid>-<round>`), `voidSale` right after its last shot (a VOIDED bill + its journal/reversal stay in the shot DB — **QC5** for the controller's real shots (`qc5.sh`), the suites run on QC4 — like other shot bills). Fixture created before the first job of each contiguous P2.3U block, removed after the block / finally / signal; leftovers > 1 h swept (void + delete) before creating.
 
 ## `--state` list for the controller (QC5 shots · owner)
 - `pnpm exec tsx scripts/visual-pos.mts p2.3u --user owner --page products --states --state products-recipe-view,products-recipe-edit,products-recipe-empty,products-recipe-backfilled,products-recipe-incomplete-cost,products-table-chips` (+ `LOCALE=en`, 1440)
@@ -91,3 +91,35 @@ DB = QC4 via `bash scripts/iso.sh [env QC_FORCE=1] bash scripts/qc4.sh env GATE_
 | `visual-pos.mts p2.3u --states --dry` (CI=1) products / register / stock | plan printed | 0 · 0 · 0 |
 | `pnpm typecheck` (iso + flock /tmp/pos-gate.lock, heap 5632) | 0 errors | 0 |
 Pre-commit fitness green on every step commit. During the build: partial `tsc` (scratch tsconfig over the touched files, with a positive control that went red) after steps 2–5 and 8, all rc 0.
+
+## Fix round 1 (review `pos-P2.3U-review.md` · controller rulings 10 Oct 05:5xZ)
+Base `wip/pos-p2.3u` 0364d26a (code 7e73e513). Commits (explicit paths):
+| id | commit | change |
+|---|---|---|
+| F1 | 0f7f06ae | `RecipeSection.startEdit` copies only choice deltas whose `choiceId` is in `chips` (choices of linked, non-archived groups). Stale rows (group unlinked/archived, choice archived) are not in the draft ⇒ the next save (replace-all `setRecipeChoiceLines`) **drops them** instead of failing NOT_FOUND forever. They were already ignored by `expandRecipe` (choice not pickable). |
+| F2 | 0f7f06ae | `searchRecipeItemsAction`: live POS branches filtered by `canAccessUnit(m, u.id)` before resolving inventories (comment: list mirrors the private `inventorySystemsOfPos`). A branch-limited manager now searches only their branches' inventories. |
+| F4 | 0f7f06ae | after a successful **parent** save the drawer clears the cost cache of the parent and of every variant with no own recipe (they inherit the parent's lines). |
+| nit banner | 0f7f06ae | `hiddenAt`: an ingredient missing from the ingredient map counts as "not at this branch" (same as `register.ts` `NOT EXISTS InvItem`). |
+| F5 | 261ebea0 | `POS-OWNER-PENDING.md` owner line (คลัง): direct `prisma.invItem` display read in `products-data.ts` (facade hides archived; same pattern as `stock-count-actions.ts:260`) + duplicated branch-list logic → P2.11 shared helper. |
+| nit ORACLE-EDIT | ac598727 | `oracle-edit(p2.3): wording ST4` — text only at `qc-pos-p2.3.mts:55` (D) and `:524` (label); count 46 unchanged. |
+| notes | (this commit) | DB wording (real shots = QC5) + this section. |
+- F3 → P2.11 (ruling: en text for VALIDATION needs finer service codes).
+- **Rendering impact per `--state`: none.** F1 changes only the edit draft when stale deltas exist (fixture has none); F2 changes results only for branch-limited users (shots use the owner); F4 changes cached cost only after a save (no state saves); the banner nit needs an ingredient missing from the map (fixture items all exist). Visual dry plan unchanged.
+
+### Follow-ups added
+- P2.11: S cleanup (or ignore) of `PosRecipeChoiceLine` rows on group unlink / archive (root cause of F1) · en text for VALIDATION refusals (F3) · export a shared POS→inventory branch-list helper (F5 / `inventorySystemsOfPos`).
+- P2.14: choice-level sold-out in OptionsDialog (D7).
+
+### Gates (fix round 1 · code head ac598727 · logs `scratchpad/p23u/runs/fix1/*.log`, header `tree=/root/projects/shark-pos-p11 head=ac598727` + `rc=`)
+| gate | result | exit |
+|---|---|---|
+| `qc-pos-p2.3` (QC_FORCE) | 46/46 · residue 0 | 0 |
+| `qc-pos-p1.18` (QC_FORCE) | 81/81 · phase U · ST7 = 0 | 0 |
+| `qc-pos-p1.3` (QC_FORCE) | 128/128 | 0 |
+| `qc-pos-p1.16` (QC_FORCE) | 28/28 | 0 |
+| `qc-pos-products` | 24/24 | 0 |
+| `qc-hf-pos-page-authz` | 56/56 | 0 |
+| `scripts/fitness-pos.mts` | 8/8 | 0 |
+| `visual-pos.mts p2.3u --states --dry` (CI=1) products / register / stock | plan unchanged | 0 · 0 · 0 |
+| `pnpm typecheck` (iso + flock, heap 5632) | 0 errors | 0 |
+Pre-commit fitness green on every commit.
