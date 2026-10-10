@@ -302,23 +302,52 @@ export async function settleTableItemsInTx(
 }
 
 /**
- * ตัวรับ void ของบิลโต๊ะ (R8 · CD5 · CONTROLLER-DECISION 4): ปลดรายการที่ผูกบิลนี้ (saleId/settledAt = null) ของ session ที่บิลอ้าง →
- * ปลดได้ ≥ 1 รายการ และ session ถูกปิด (CLOSED) และโต๊ะไม่มี session OPEN อื่น ⇒ เปิด session กลับ + ล้าง dirtySince (กติกาเดียวกับ voidCheckout)
- * เล่นซ้ำ = 0 แถว ไม่แตะ session (idempotent)
+ * ตัวรับ void ของบิลโต๊ะ (R8 · CD5 · CONTROLLER-DECISION 4): ปลดรายการที่ผูกบิลนี้ (saleId/settledAt = null · กรองด้วย saleId — fix 4 H2) →
+ * ปลดได้ ≥ 1 รายการ: session ที่เป็นเจ้าของรายการ (อาจไม่ใช่ sourceId ของบิลหลังรวมโต๊ะ) ที่ CLOSED และโต๊ะไม่มี session OPEN อื่น ⇒ เปิดกลับ + ล้าง dirtySince
+ * (กติกาเดียวกับ voidCheckout) · ล็อก session → โต๊ะ → รายการ (fix 4 H1) · เล่นซ้ำ = 0 แถว ไม่แตะ session (idempotent)
  */
-export async function unlinkTableSaleInTx(tx: Prisma.TransactionClient, s: Scope & { sessionId: string; saleId: string }): Promise<{ itemsReset: number; sessionReopened: boolean }> {
+export async function unlinkTableSaleInTx(
+  tx: Prisma.TransactionClient,
+  s: Scope & { saleId: string; sessionId?: string },
+): Promise<{ itemsReset: number; sessionReopened: boolean }> {
+  // POS P2.4 ▸ fix 4 H2: รายการของบิล = กรองด้วย saleId เท่านั้น (หลังรวมโต๊ะแบบเดิม ออเดอร์ย้ายไป session อื่นแล้ว) · เปิดกลับ session ที่ "เป็นเจ้าของ" รายการตอนนี้
+  // POS P2.4 ▸ fix 4 H1: ลำดับล็อก session (FOR UPDATE · อ่านสถานะใต้ล็อก) → ล็อกโต๊ะ (advisory คีย์เดียวกับ openSession) → รายการ ·
+  //   จ่าย/ปิดโต๊ะ (FOR UPDATE session) รอจนปลดเสร็จแล้วนับรายการที่ปลด · เปิดโต๊ะใหม่ (advisory) รอแล้วเห็น session ที่ถูกเปิดกลับ ◂
+  const ownersOf = async () =>
+    [...new Set((await tx.restaurantOrderItem.findMany({ where: { tenantId: s.tenantId, unitId: s.unitId, saleId: s.saleId }, select: { order: { select: { sessionId: true } } } }))
+      .map((r) => r.order.sessionId)
+      .filter((x): x is string => !!x))].sort();
+  let owners = await ownersOf();
+  if (!owners.length) return { itemsReset: 0, sessionReopened: false }; // เล่นซ้ำ = ไม่แตะอะไร
+  let locked: { id: string; status: string; tableId: string }[] = [];
+  for (let round = 0; round < 3; round++) {
+    locked = await tx.$queryRaw<{ id: string; status: string; tableId: string }[]>`
+      SELECT id, status::text AS status, "tableId" FROM "TableSession"
+      WHERE id = ANY(${owners}::text[]) AND "tenantId" = ${s.tenantId} AND "unitId" = ${s.unitId}
+      ORDER BY id FOR UPDATE`;
+    const again = await ownersOf(); // ออเดอร์ย้าย session ระหว่างรอล็อก (รวมโต๊ะ) — ล็อกชุดใหม่
+    if (again.join(",") === owners.join(",")) break;
+    owners = again;
+    if (!owners.length) return { itemsReset: 0, sessionReopened: false };
+  }
+  for (const tableId of [...new Set(locked.map((x) => x.tableId))].sort()) {
+    await tx.$queryRaw`SELECT 1 AS x FROM (SELECT pg_advisory_xact_lock(hashtext(${`restaurant-table:${tableId}`}::text))) l`;
+  }
   const upd = await tx.restaurantOrderItem.updateMany({
-    where: { tenantId: s.tenantId, unitId: s.unitId, saleId: s.saleId, order: { sessionId: s.sessionId } },
+    where: { tenantId: s.tenantId, unitId: s.unitId, saleId: s.saleId },
     data: { saleId: null, settledAt: null },
   });
   if (upd.count === 0) return { itemsReset: 0, sessionReopened: false };
-  const sess = await tx.tableSession.findFirst({ where: { id: s.sessionId, tenantId: s.tenantId, unitId: s.unitId }, select: { id: true, status: true, tableId: true } });
-  if (!sess || sess.status !== "CLOSED") return { itemsReset: upd.count, sessionReopened: false };
-  const conflicting = await tx.tableSession.findFirst({ where: { tenantId: s.tenantId, unitId: s.unitId, tableId: sess.tableId, status: "OPEN", id: { not: sess.id } }, select: { id: true } });
-  if (conflicting) return { itemsReset: upd.count, sessionReopened: false };
-  await tx.tableSession.update({ where: { id: sess.id }, data: { status: "OPEN", closedAt: null } });
-  await tx.restaurantTable.updateMany({ where: { id: sess.tableId, tenantId: s.tenantId, unitId: s.unitId }, data: { dirtySince: null } });
-  return { itemsReset: upd.count, sessionReopened: true };
+  let reopened = false;
+  for (const sess of locked) {
+    if (sess.status !== "CLOSED") continue;
+    const conflicting = await tx.tableSession.findFirst({ where: { tenantId: s.tenantId, unitId: s.unitId, tableId: sess.tableId, status: "OPEN", id: { not: sess.id } }, select: { id: true } });
+    if (conflicting) continue;
+    await tx.tableSession.update({ where: { id: sess.id }, data: { status: "OPEN", closedAt: null } });
+    await tx.restaurantTable.updateMany({ where: { id: sess.tableId, tenantId: s.tenantId, unitId: s.unitId }, data: { dirtySince: null } });
+    reopened = true;
+  }
+  return { itemsReset: upd.count, sessionReopened: reopened };
 }
 
 /**

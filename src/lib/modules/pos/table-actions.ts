@@ -132,7 +132,7 @@ export async function registerLinkTableMemberAction(args: Target & { tableSessio
   }
 }
 
-/** พักรอบร่างของโต๊ะ (ตะกร้าเดียวต่อโต๊ะ · พักซ้ำ = แก้แถวเดิม) */
+/** พักรอบร่างของโต๊ะ (ตะกร้าเดียวต่อโต๊ะ · newDraft หรือ heldCartId+expectedVersion) */
 export async function holdTableDraftAction(
   args: Target & { tableSessionId: string; cart: RegisterQuoteInput; label?: string | null; staffToken?: string | null; expectedVersion?: number | null; heldCartId?: string | null; newDraft?: boolean | null },
 ): Promise<HoldRegisterCartResult> {
