@@ -332,6 +332,8 @@ export function TableCheckout(p: Props) {
     );
   }
 
+  // fix 1 F4 (มติผู้คุม): พร้อมเพย์ที่แจ้งจากโต๊ะ = ไม่สร้างใบใหม่ (D4) แต่ใช้ด่านเดียวกับปุ่มยืนยันเองของ QR (P1.7): ร้านตั้งให้ผู้จัดการยืนยัน + ผู้ใช้ไม่มี pos.shift.manage ⇒ ยืนยันไม่ได้
+  const presetManagerOnly = p.promptpayPreset && !!p.payIntent?.manualRequiresManager && !p.payIntent?.canManageShift;
   const over = quoteErr === "DISCOUNT_EXCEEDS_LIMIT";
   const quoteError: PayError | null = quoteErr ? { code: quoteErr, key: refusalMessageKey(quoteErr) } : null;
   const extras = (
@@ -372,8 +374,6 @@ export function TableCheckout(p: Props) {
   );
   const sub0 = lastSubtotal.current;
   const wantBp = billDiscount ? (billDiscount.type === "PERCENT" ? billDiscount.value : sub0 && sub0 > 0 ? Math.ceil((billDiscount.value * 10_000) / sub0) : 0) : 0;
-  // fix 1 F4 (มติผู้คุม): พร้อมเพย์ที่แจ้งจากโต๊ะ = ไม่สร้างใบใหม่ (D4) แต่ใช้ด่านเดียวกับปุ่มยืนยันเองของ QR (P1.7): ร้านตั้งให้ผู้จัดการยืนยัน + ผู้ใช้ไม่มี pos.shift.manage ⇒ ยืนยันไม่ได้
-  const presetManagerOnly = p.promptpayPreset && !!p.payIntent?.manualRequiresManager && !p.payIntent?.canManageShift;
 
   return (
     <div data-testid="pos-tbl-checkout" data-phase={phase} className="contents">
