@@ -97,6 +97,8 @@ const CHECKS: readonly Def[] = [
   D("R1", "-", "[R10 Q2] registerCreateReservation A6 (+10 นาที · 6 คน) → BOOKED · ผัง RESERVED + reservation {id name partySize} · registerSeatReservation → session OPEN guestCount 6 · SEATED · ผัง DINING"),
   D("R2", "-", "[R10] ยกเลิก → CANCELLED · ผัง FREE · จองอีก 3 ชม. → ผัง FREE (นอกช่วงกัน) · holdFromMinutes ปริยาย 15 · เปิดโต๊ะที่ถูกจองไว้ → ok + reservationOverridden true · การจองยัง BOOKED"),
   D("R3", "X2", "[R10 R1] โต๊ะร้าน T2 / ctx สาขา B / id การจองมั่ว → TABLE_NOT_FOUND · STAFF ที่ไม่มี restaurant.session.open → PERMISSION_DENIED · partySize 0 → VALIDATION · ไม่มีแถวใหม่"),
+  // ORACLE-ADD ผู้คุม 10 ต.ค. (P2.4 S fix 2 · F3): พาลูกค้าที่จองนั่งโต๊ะที่มีลูกค้าอยู่
+  D("R4", "X5", "[R10 F3] โต๊ะ E5 มี session OPEN (2 คน) + การจอง 6 คน → registerSeatReservation = VALIDATION \"โต๊ะนี้มีลูกค้าอยู่ — ปิดบิลก่อนจึงนั่งจองได้\" · การจองยัง BOOKED ไม่มี sessionId · session เดิม guestCount 2 · OPEN 1 แถว"),
   // ── L ของเดิม (PAR) ──
   D("L1", "PAR", "[R11] ประตูเดิม: openSession + createOrder → billPreview ตรงทุกไบต์ (floor ค่าบริการ 2561) · checkout CASH → ผล + PosSale (RESTAURANT · คีย์ rest-<sha> · บรรทัด Service charge 10% · channel STORE · ไม่มีกะ/ผู้ขาย) · voidCheckout ตรงทุกไบต์ · void ซ้ำ = ข้อความเดิม · checkout อีกรอบ = คีย์ -r1"),
   D("L2", "PAR", "[R11 CD4] ทะเบียนผู้เรียก createSale ของ qc-pos-p1.6 ไม่เปลี่ยน (18 จุด/15 ไฟล์ · register.ts 1 · restaurant/order.ts 1) · pos/table*.ts + restaurant/index.ts ไม่มี createSale("),
@@ -1973,6 +1975,22 @@ async function runDb() {
     }
     if ((await resCount()) !== n0) p.push(`แถวการจอง ${n0} → ${await resCount()}`);
     chk("R3", NCOL() === "" && p.length === 0, "TABLE_NOT_FOUND ×4 · PERMISSION_DENIED · VALIDATION · ไม่เขียน", FX(NCOL() + (P8(p) || "ครบ")));
+  });
+  // ORACLE-ADD ผู้คุม 10 ต.ค. (P2.4 S fix 2 · F3) — โต๊ะ E5 ของข้อนี้เอง
+  await step("R4", async () => {
+    const p: string[] = [];
+    await mkExtraTable("E5");
+    const sid = await openT("E5", { guestCount: 2 });
+    const cr = await mkRes("E5", 10 * MIN);
+    const id = String(cr?.id ?? "");
+    if (cr?.ok !== true) p.push(`จอง → ${codeOf(cr)}`);
+    const st = await tbl("registerSeatReservation", ctxA(), A("STAFF"), { reservationId: id });
+    if (!refused(st, "VALIDATION") || !String(st?.message ?? "").includes("โต๊ะนี้มีลูกค้าอยู่ — ปิดบิลก่อนจึงนั่งจองได้")) p.push(`นั่ง → ${codeOf(st)} ${short(st?.message ?? "", 60)}`);
+    const r = await resRow(id);
+    if (r?.status !== "BOOKED" || r?.sessionId) p.push(`การจอง ${r?.status} sessionId ${short(r?.sessionId ?? null, 20)}`);
+    const s = await sessRow(sid);
+    if (s?.status !== "OPEN" || s?.guestCount !== 2 || (await openSessCount(TB.E5!)) !== 1) p.push(`session ${s?.status} guestCount ${s?.guestCount} OPEN ${await openSessCount(TB.E5!)}`);
+    chk("R4", NCOL() === "" && p.length === 0, "นั่งโต๊ะที่มีลูกค้า = VALIDATION ไม่เขียน", FX(NCOL() + (P8(p) || "ครบ")));
   });
 }
 
