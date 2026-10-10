@@ -68,6 +68,8 @@ const CHECKS: readonly Def[] = [
   D("D4", "X1", "[R5] ส่งรอบร่างเดียวกัน 2 คำขอพร้อมกัน → ok 1 + ALREADY_RECALLED 1 · ออเดอร์ +1 · ส่งซ้ำ → ALREADY_RECALLED ไม่มีออเดอร์เพิ่ม"),
   D("D5", "X5", "[R5] เมนู stockQty 2 สั่ง 3 (บรรทัดที่ 2) → PRODUCT_UNAVAILABLE lineIndex 1 · ไม่มีออเดอร์/รายการใหม่ · stockQty ยัง 2 · รอบร่างยัง HELD"),
   D("D6", "-", "[R5] บรรทัด PRODUCT (น้ำ) ได้ stationId = สถานีแรกของสาขา (ensureDefaultStations) · createOrder เดิมเขียน productId = MenuItem.posProductId"),
+  // ORACLE-ADD ผู้คุม 10 ต.ค. (P2.4 S fix 2 · F1): รอบร่างแข่งกัน — expectedVersion/heldCartId/newDraft
+  D("D7", "X1", "[R4 F1] รอบร่างแข่งกัน: newDraft:true → แถวใหม่ · พักด้วย heldCartId+expectedVersion เดิมสองเครื่อง (ทีละคำขอ + พร้อมกัน) → ผ่าน 1 · VERSION_CHANGED 1 (บรรทัดของผู้ชนะไม่หาย) · newDraft:true ขณะมี HELD → VERSION_CHANGED · พักหลังส่งครัว (RECALLED) → VERSION_CHANGED ไม่มีรอบร่างใหม่ · newDraft:true หลังส่ง → แถวใหม่"),
   // ── B quote บิลโต๊ะ ──
   D("B1", "X4", "[R6 CD3] quoteRegisterCart({lines: [], tableSessionId}) → บรรทัดจากรายการที่ยังไม่จ่าย (productId · unitPriceSatang = unitPrice+optionsTotal · grossSatang · options choiceId) + table {sessionId tableName \"A1\" itemIds itemsHash} · เปลี่ยนราคาเมนูหลังส่ง → quote ยังราคาเดิม"),
   D("B2", "X2", "[R6 R1] tableSessionId + lines ไม่ว่าง → VALIDATION · session ร้าน T2 / ctx สาขา B / id มั่ว → TABLE_NOT_FOUND"),
@@ -1351,6 +1353,52 @@ async function runDb() {
     const its = o?.ok ? ((await P.restaurantOrderItem.findMany({ where: { orderId: o.id } }).catch(() => [])) as Any[]) : [];
     if (!o?.ok || its.length !== 1 || its[0]?.productId !== PP.rice) p.push(`createOrder เดิม → productId ${short(its.map((x) => x.productId === PP.rice ? "rice" : x.productId), 60)} (คาด posProductId ของเมนู)`);
     chk("D6", p.length === 0, "PRODUCT = สถานีแรก · createOrder เดิมเขียน productId", FX(P8(p) || "ครบ"));
+  });
+
+  // ORACLE-ADD ผู้คุม 10 ต.ค. (P2.4 S fix 2 · F1) — โต๊ะ E1 ของข้อนี้เอง
+  const mkExtraTable = async (name: string) => {
+    const r = must(`table ${name}`, await rtable.createTable(T, U.A, { zoneId: ZN.Z2!.id, name, seats: 4 }));
+    TB[name] = r.id;
+    QR[name] = r.qrToken;
+  };
+  await step("D7", async () => {
+    const p: string[] = [];
+    await mkExtraTable("E1");
+    const sid = await openT("E1", { guestCount: 2 });
+    const hd = (input: Any, actor = "OWNER") => call(heldMod, "holdRegisterCart", ctxA(DEV1), A(actor), { tableSessionId: sid, ...input });
+    const ver = async (id: string) => Number((await heldRow(id))?.version ?? -1);
+    const h0 = await hd({ cart: { lines: [ml("water", 1)] }, newDraft: true });
+    const id = String(h0?.heldCart?.id ?? "");
+    if (h0?.ok !== true || !id) p.push(`newDraft → ${codeOf(h0)} ${short(h0?.message ?? "", 60)}`);
+    const v1 = await ver(id);
+    // ทีละคำขอ: A ได้ · B (เวอร์ชันเดิม) ถูกปฏิเสธ · บรรทัดของ A อยู่ครบ
+    const a = await hd({ cart: { lines: [ml("water", 1), ml("rice", 1)] }, heldCartId: id, expectedVersion: v1 });
+    const b = await hd({ cart: { lines: [ml("water", 1), ml("tomyum", 1, "spicy")] }, heldCartId: id, expectedVersion: v1 });
+    const rowAB = await heldRow(id);
+    const cartAB = JSON.stringify((rowAB?.cartJson as Any)?.cart ?? null);
+    if (a?.ok !== true || !refused(b, "VERSION_CHANGED") || rowAB?.version !== v1 + 1 || rowAB?.lineCount !== 2 || !cartAB.includes(PP.rice ?? "none") || cartAB.includes(PP.tomyum ?? "none"))
+      p.push(`ทีละคำขอ A ${codeOf(a)} · B ${codeOf(b)} · แถว v${rowAB?.version} ${rowAB?.lineCount} บรรทัด ข้าว ${cartAB.includes(PP.rice ?? "none")} ต้มยำ ${cartAB.includes(PP.tomyum ?? "none")}`);
+    // พร้อมกัน: เวอร์ชันเดียวกันสองคำขอ → ผ่าน 1
+    const v2 = await ver(id);
+    const par = await Promise.all([
+      hd({ cart: { lines: [ml("water", 2)] }, heldCartId: id, expectedVersion: v2 }),
+      hd({ cart: { lines: [ml("water", 3)] }, heldCartId: id, expectedVersion: v2 }, "STAFF"),
+    ]);
+    const okN = par.filter((r) => r?.ok === true).length;
+    const vcN = par.filter((r) => refused(r, "VERSION_CHANGED")).length;
+    if (okN !== 1 || vcN !== 1 || (await ver(id)) !== v2 + 1) p.push(`พร้อมกัน ${par.map(codeOf).join(",")} · v${await ver(id)} (คาด ${v2 + 1})`);
+    // newDraft ขณะมี HELD
+    const nd = await hd({ cart: { lines: [ml("water", 1)] }, newDraft: true });
+    if (!refused(nd, "VERSION_CHANGED")) p.push(`newDraft ขณะมี HELD → ${codeOf(nd)}`);
+    // ส่งครัวแล้วพักทับ → ปฏิเสธ · ไม่มีรอบร่างใหม่
+    const sent = await send(sid, id, "OWNER");
+    if (sent?.ok !== true) p.push(`ส่งครัว → ${codeOf(sent)}`);
+    const late = await hd({ cart: { lines: [ml("water", 1)] }, heldCartId: id, expectedVersion: await ver(id) });
+    const held = (await heldRows(sid)).filter((r) => r.status === "HELD");
+    if (!refused(late, "VERSION_CHANGED") || held.length !== 0) p.push(`พักหลังส่ง → ${codeOf(late)} · HELD ${held.length}`);
+    const fresh = await hd({ cart: { lines: [ml("water", 1)] }, newDraft: true });
+    if (fresh?.ok !== true || String(fresh?.heldCart?.id ?? "") === id) p.push(`newDraft หลังส่ง → ${codeOf(fresh)}`);
+    chk("D7", p.length === 0, "รอบร่างไม่ทับกัน · ส่งแล้วไม่เกิดร่างซ้ำ", FX(P8(p) || "ครบ"));
   });
 
   // ─── fixture A4 (ขอเช็คบิล) · A5 (ทานอยู่ · จ่ายบางส่วน · สมาชิก · ร่าง · พร้อมเสิร์ฟ · เรียกพนักงาน) ───
