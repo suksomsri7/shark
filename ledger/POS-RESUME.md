@@ -1174,3 +1174,5 @@
 - 02:35Z ✅ P2.2U fix round 2 (N1) `wip/pos-p2.2u` **36bba738** (code cdd700fc · timer reload เงียบ + ข้ามออฟไลน์ · typecheck 0 · p1.18 U 81/81 ST7 0 · dry register 0) → รอ vis60 (ภาพ @6e55ba60 ใช้ได้ ไม่กระทบหน้าจอ) เทียบ 06/01/12/10 → gates merge (p2.2 · p2.1 · p1.18 U · p1.3 · p1.16 · products · authz · typecheck · fitness) บน cdd700fc → merge → 24/55 · เลน = 1 (fix2 P2.3)
 
 - 02:38Z ✅ P2.3 S fix round 2 `wip/pos-p2.3` **06f2d825** (code 09e2ca11 · log ต่อรายการ · `qc-hf-inventory-atomic` 143/143 · p2.3 46/46 · p1.3 128 · typecheck 0) → **R2 เปิด** (prompt `P2.3-R2.md`) + **gates63** ทรี b @09e2ca11 (typecheck · p2.3 · p1.1 · p2.2 · p2.1 · p1.8 · p1.2 · p1.5 · p1.9 · p1.13 · p1.15 · p1.18 · p0.2 · closeday · authz · hf-inventory-atomic · inventory · pos-account · account-cpa · fitness ×3) · เลน = 1 (R2 P2.3)
+
+- 02:42Z R2 P2.3 = **MERGEABLE** (`wo-notes/pos-P2.3-review-R2.md`) · N1/N3 → ติดตาม P2.3U (รวม F7 pending-restore) · รอ gates63 เขียว → merge 06f2d825 → QC5 migrate deploy → เปิด P2.4 S + P2.8 S
