@@ -127,3 +127,21 @@ Actions (`src/lib/modules/pos/table-actions.ts`, all `{systemId, unitId, deviceI
 | qc-pos-p2.6 forced (DB) | 7/51 · PAR 5/5 · residue 0 — **K5 now runs and is red by reason** (P2.6 columns/PosAvailabilityMark/ticket board missing), no longer dependency-skipped | 1 |
 | pnpm typecheck (iso · flock /tmp/pos-gate.lock) | 0 errors | 0 |
 Batch A (head b49c9856, before the P2.4U-inputs commit) had identical results for every DB suite (`gate-A-*.log`).
+
+## Fix round 1 (controller rulings `pos-prompt-accountB-P2.4-S-fix.md` · 10 Oct 04:3xZ)
+ORACLE-EDIT log (each its own commit · check count unchanged 43):
+| ruling | commit | edit |
+|---|---|---|
+| 1 ST3 | c5913612 | fitness edge sub-check: `constBody(fit.replace(/(^\|[^:"'\`\\])\/\/.*$/gm, "$1"), "const ALLOWED_EDGES")` (line comments only) |
+| 2 V3 | 425fab53 | refund probe `input(1)` (1 satang) |
+| 3 L2 | d72caed4 | `CALL_SITES_ALLOWED_LATER = { "src/lib/modules/pos/order.ts": 1 }` + `want(f)` exactly as qc-pos-p2.6 (P2.8 S call site: present ⇒ must be exactly 1 · absent ⇒ ok) |
+| 4 | be3a0699 | `regCallerTx` marked `// POS P2.4 ▸ HF-TX: ผู้คุมจะรวมเป็น helper กลางหลัง HF ◂` (comment only · P1.7 code untouched) |
+No other code change.
+
+Gates (head be3a0699 · `runs/gate-C-*.log`):
+| gate | result | exit |
+|---|---|---|
+| qc-pos-p2.4 forced #1 / #2 | 43/43 · PAR 4/4 · residue 0 · leaks 0 | 0 / 0 |
+| qc-pos-p2.4 unforced | 43/43 · PAR 4/4 · residue 0 | 0 |
+| qc-pos-p2.4 --no-db | 7/7 (ST1–ST5 · L2 · L3; L1 = DB, green above) | 0 |
+| pnpm typecheck | 0 errors | 0 |
