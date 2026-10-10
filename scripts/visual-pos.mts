@@ -210,7 +210,7 @@ const fileOf = (p: PosPage, w: number, h: number) => `${OUT}/${p}-${userKey}-${w
 const STATES_ON = /^p1\.3/i.test(WO) || argv.includes("--states");
 const LOCALE_EN = process.env.LOCALE === "en";
 type Device = (typeof POS_VIEWPORTS)[number]["name"];
-type StateKey = "held-drawer" | "paydlg-promptpay-timeout" | "paydlg-platform" | "register-en" | "register-empty-catalogue" | "default" | "cart3" | "cart4-01" | "line-editor" | "bill-discount" | "custom-item" | "paydlg-cash" | "paydlg-promptpay-qr" | "paydlg-promptpay-paid" | "paydlg-card-edc" | "sale-done" | "search-empty" | "stock-warn" | "offline" | "mobile-sheet" | "options-popover" | "weigh" | "taxinvoice-dialog" | "taxinvoice-set" | MemberStateKey | P115StateKey | StockStateKey | ShiftsStateKey | BillsStateKey | SettingsStateKey | RpubStateKey;
+type StateKey = "held-drawer" | "paydlg-promptpay-timeout" | "paydlg-platform" | "register-en" | "register-empty-catalogue" | "default" | "cart3" | "cart4-01" | "line-editor" | "bill-discount" | "custom-item" | "paydlg-cash" | "paydlg-promptpay-qr" | "paydlg-promptpay-paid" | "paydlg-card-edc" | "sale-done" | "search-empty" | "stock-warn" | "offline" | "mobile-sheet" | "options-popover" | "weigh" | "taxinvoice-dialog" | "taxinvoice-set" | MemberStateKey | P115StateKey | StockStateKey | ShiftsStateKey | BillsStateKey | SettingsStateKey | RpubStateKey | P22uProductsKey | P22uRegKey;
 const STATE_PLAN: { key: StateKey; devices: readonly Device[]; note: string }[] = [
   { key: "default", devices: ["desktop", "ipad", "mobile"], note: "เปิดหน้า (ตะกร้าว่าง) — การ์ดเหลือน้อย/หมด/ปิดขายของ fixture อยู่ในกริด" },
   { key: "cart3", devices: ["desktop", "ipad", "mobile"], note: "อเมริกาโน่×2 · ลาเต้ (ลด ฿10) · ครัวซองต์ (สต็อก N → N−1)" },
@@ -262,6 +262,10 @@ const STATE_PLAN: { key: StateKey; devices: readonly Device[]; note: string }[] 
   // POS HF-P1CLOSE ▸ มติ O6 (14B): บิลพักใหม่ต่อภาพ (holdRegisterCart) → ลิ้นชักบิลที่พัก ◂
   { key: "held-drawer", devices: ["desktop", "ipad", "mobile"], note: "พักบิล 1 ใบ (holdRegisterCart อเมริกาโน่×2 + ลาเต้ · ทิ้งใน finally) → ปุ่มบิลที่พัก → ลิ้นชัก 14B (390 = ใส่สินค้า 1 ชิ้น → แผ่นตะกร้า → บิลที่พัก)" },
   { key: "paydlg-platform", devices: ["desktop", "ipad"], note: "บิลพัก LINE MAN (holdRegisterCart + channelId) → บิลที่พัก → เรียกคืน → ชำระ → ช่อง \"แพลตฟอร์ม\" เลือกไว้เต็มยอด ช่องอื่นปิด (ไม่ยืนยัน)" },
+  // POS P2.2U ▸ มติ 5/11 (ท้ายแผน: fixture ราคา/โปรตั้งก่อนงานแรกของ P2.2U และคืนหลังงานสุดท้าย — สถานะก่อนหน้าไม่เห็นราคาโปร) ◂
+  { key: "register-tile-rule", devices: ["desktop", "ipad", "mobile"], note: "โปร PRICE ที่กำลังใช้บนลาเต้ (fixture P2.2U) → ไทล์: ชิปชื่อโปร + ราคาปกติขีดฆ่า" },
+  { key: "register-tile-notsold", devices: ["desktop", "ipad", "mobile"], note: "ครัวซองต์ (STORE, ทุกสาขา) ไม่ขาย → ไทล์ \"ไม่ขายหน้าร้าน\" (เพิ่มลงตะกร้าไม่ได้)" },
+  { key: "register-line-badges", devices: ["desktop", "ipad"], note: "(มือถือไม่ถ่าย — ตะกร้าว่างไม่มีปุ่มดูตะกร้า ⇒ ถึงบิลที่พักไม่ได้ เหมือน paydlg-platform P2.1U · ติดตาม P2.12) บิลพัก LINE MAN (holdRegisterCart) ลาเต้ + อเมริกาโน่ → เรียกคืน → ป้ายบรรทัด: ชื่อโปร (RULE) + \"ราคาตามช่องทาง\" (CHANNEL)" },
 ];
 /** POS P1.18U ▸ สถานะหน้าขายที่แคชเชียร์ QC ถ่ายไม่ได้ (เข้าสาขา fixture ไม่ได้ · ห้ามแก้ membership ของ seed) ◂ */
 const OWNER_ONLY_STATES: ReadonlySet<string> = new Set(["register-empty-catalogue"]);
@@ -286,7 +290,7 @@ const SHIFTS_STATE_PLAN: { key: ShiftsStateKey; devices: readonly Device[]; note
   { key: "shifts-z", devices: ["desktop", "ipad", "mobile"], note: "ปิดกะ → แผง Z + กะที่ปิดแล้ว (ขนาดถัดไป = เปิด Z จากแถวในรายการ)" },
 ];
 // POS P1.16 ▸ สถานะของหน้าบิลวันนี้ (ข้อมูลสร้างครั้งเดียวก่อนเปิด chromium · ทุกสถานะอ่านอย่างเดียว ไม่กดยืนยัน) ◂
-type BillsStateKey = "bills-list" | "bills-drawer" | "bills-void" | "bills-refund" | "bills-empty" | "bill-taxinvoice-requested" | "bill-taxinvoice-issued" | "bills-channels" | "bills-drawer-commission";
+type BillsStateKey = "bills-list" | "bills-drawer" | "bills-void" | "bills-refund" | "bills-empty" | "bill-taxinvoice-requested" | "bill-taxinvoice-issued" | "bills-channels" | "bills-drawer-commission" | "bills-drawer-pricenote";
 const BILLS_STATE_PLAN: { key: BillsStateKey; devices: readonly Device[]; note: string }[] = [
   { key: "bills-list", devices: ["desktop", "ipad", "mobile"], note: "วันนี้ ≥ 6 บิล: ยกเลิก 1 · คืนบางส่วน 1 · คืนครบ 1 · เงินสดนอกกะ 1 · ปกติ/จ่ายผสม" },
   { key: "bills-drawer", devices: ["desktop", "ipad", "mobile"], note: "เลือกบิลปกติ → ลิ้นชักบิล (390 = แผ่นเต็มจอ)" },
@@ -298,6 +302,8 @@ const BILLS_STATE_PLAN: { key: BillsStateKey; devices: readonly Device[]; note: 
   { key: "bill-taxinvoice-issued", devices: ["desktop", "ipad", "mobile"], note: "⚠️ บิลกาแฟ ABB → issueFullTaxInvoice (ใบ TX ค้างในบัญชี QC4) → ลิ้นชัก \"ใบกำกับเต็มรูป <เลข> · ผู้ซื้อ\"" },
   // POS P2.1U ▸ มติ 3–4 (ภาพ 12 คอลัมน์ช่องทาง · ภาพ 09 บล็อกค่าคอมฯ) ◂
   { key: "bills-channels", devices: ["desktop", "ipad", "mobile"], note: "วันนี้มีบิลหน้าร้าน + เว็บร้าน + LINE MAN (PLATFORM · LM-48152 ในช่องลูกค้า · จ่าย \"แพลตฟอร์ม\") · บรรทัด \"หน้าร้าน N · ออนไลน์ M\"" },
+  // POS P2.2U ▸ มติ 6/11: หมายเหตุราคาต่อบรรทัดในลิ้นชัก (บิล LINE MAN ของ fixture P2.2U: บรรทัดโปร + บรรทัดราคาช่องทาง) ◂
+  { key: "bills-drawer-pricenote", devices: ["desktop", "ipad", "mobile"], note: "บิล fixture P2.2U (createSale คีย์ตายตัว posqc-vis-p22u-bill-<วันที่> · LINE MAN): ลาเต้ RULE + อเมริกาโน่ CHANNEL → ลิ้นชัก pos-bill-line-note-0/1" },
   { key: "bills-drawer-commission", devices: ["desktop", "ipad", "mobile"], note: "แตะบิล LINE MAN → ลิ้นชัก: บล็อกค่าคอมฯ ฿420 −฿126 รับจริง ฿294 (เจ้าของ) · แคชเชียร์ = บรรทัดช่องทางอย่างเดียว" },
 ];
 // POS P1.10 U ▸ สถานะของหน้าตั้งค่า (เครื่อง QC 2 เครื่องลงทะเบียนครั้งเดียวก่อนเปิด chromium · ไม่กดยืนยันเพิกถอน/ไม่กดพิมพ์) ◂
@@ -355,6 +361,30 @@ const P21U_CHANNELS = [
 /** เลขออเดอร์แพลตฟอร์มของบิลภาพ (ภาพ 12 แถว LINE MAN) */
 const P21U_REF = "LM-48152";
 const P21U_FIXTURE_STATES: ReadonlySet<string> = new Set(["settings-channels", "settings-channel-drawer", "settings-channel-create", "settings-channels-readonly", "bills-channels", "bills-drawer-commission", "paydlg-platform"]);
+// ── POS P2.2U ▸ ราคาตามช่องทาง / โปรราคา (มติ 11 · --page products|register|sales --states · 3 ขนาด · th + LOCALE=en · owner + cashier) ◂
+type P22uProductsKey = "products-matrix" | "products-drawer-prices" | "products-drawer-prices-edit" | "products-drawer-notsold" | "products-bulk" | "price-rules-list" | "price-rules-editor" | "price-rules-error" | "products-readonly";
+type P22uRegKey = "register-tile-rule" | "register-line-badges" | "register-tile-notsold";
+const P22U_PRODUCTS_PLAN: { key: P22uProductsKey; rules: boolean; devices: readonly Device[]; note: string }[] = [
+  { key: "products-matrix", rules: false, devices: ["desktop", "ipad", "mobile"], note: "ตาราง 06: ลาเต้ ราคาขาย + \"แพลตฟอร์ม ฿x\" (LINE MAN) · ชิป ร้าน/LM/เว็บ (Grab ไม่ขาย = ซ่อน) · การ์ดราคาต่างกันตามช่องทาง" },
+  { key: "products-drawer-prices", rules: false, devices: ["desktop", "ipad", "mobile"], note: "ลิ้นชักลาเต้ แท็บราคาตามช่องทาง (ดู): ตาราง 2 คอลัมน์ · LINE MAN +27% · กล่องโปรที่กำลังใช้" },
+  { key: "products-drawer-prices-edit", rules: false, devices: ["desktop", "ipad", "mobile"], note: "\"แก้ราคา\" → ช่องเงิน + ไม่ขาย + ใช้ราคาปกติ ต่อช่องทาง (ไม่บันทึก)" },
+  { key: "products-drawer-notsold", rules: false, devices: ["desktop", "ipad", "mobile"], note: "ลิ้นชักลาเต้: ช่อง Grab = \"ไม่ขาย —\" (แบบ Shopee ในภาพ)" },
+  { key: "products-bulk", rules: false, devices: ["desktop", "ipad", "mobile"], note: "เลือกลาเต้ + อเมริกาโน่ → \"+X% ทั้งช่องทาง\" → ตัวอย่าง 2 รายการ (ไม่กดตั้งราคา)" },
+  { key: "price-rules-list", rules: true, devices: ["desktop", "ipad", "mobile"], note: "จอโปรราคา: 3 แถว fixture — กำลังใช้ / รอเริ่ม / หมดแล้ว" },
+  { key: "price-rules-editor", rules: true, devices: ["desktop", "ipad", "mobile"], note: "แตะโปรที่กำลังใช้ → ลิ้นชักแก้ + ตัวอย่างสด \"ลาเต้ ฿x → ฿59\" (ไม่บันทึก)" },
+  { key: "price-rules-error", rules: true, devices: ["desktop", "ipad", "mobile"], note: "เพิ่มโปร → ชื่ออย่างเดียว → บันทึก → ข้อความใต้ช่องสินค้า (VALIDATION productIds · ตรวจฝั่ง client)" },
+  { key: "products-readonly", rules: false, devices: ["desktop", "ipad", "mobile"], note: "แคชเชียร์: หน้า 06 (บันทึก HTTP · 404 วันนี้ / การ์ดปฏิเสธหลัง HF-P1CLOSE)" },
+];
+const P22U_REG_KEYS: ReadonlySet<string> = new Set(["register-tile-rule", "register-line-badges", "register-tile-notsold"]);
+const P22U_BILL_STATE = "bills-drawer-pricenote";
+const P22U_PRODUCTS_KEYS: ReadonlySet<string> = new Set(P22U_PRODUCTS_PLAN.map((s) => s.key));
+const isP22uProducts = (k: StateKey): k is P22uProductsKey => P22U_PRODUCTS_KEYS.has(k);
+/** สถานะที่ต้องมี fixture ราคา/โปรของ P2.2U (ทุกหน้า · ยกเว้นแคชเชียร์หน้า 06 ที่ไม่ใช้ข้อมูล) */
+const P22U_FIXTURE_STATES: ReadonlySet<string> = new Set([...P22U_PRODUCTS_PLAN.filter((p) => p.key !== "products-readonly").map((p) => p.key), ...P22U_REG_KEYS, P22U_BILL_STATE]);
+/** ชื่อโปร fixture (ขึ้นต้นด้วยค่านี้ — กวาดซากรอบก่อนด้วยชื่อ) */
+const P22U_RULE_PREFIX = "QC ภาพ P2.2U";
+const productsStatesOn = STATES_ON && tenantKey === "coffee" && (onlyPage === "products" || /^p2\.?2u/i.test(WO));
+const productsPath = (k: P22uProductsKey) => `/app/sys/${SYS}/pos/products${P22U_PRODUCTS_PLAN.find((p) => p.key === k)?.rules ? "/price-rules" : ""}?unit=${encodeURIComponent(unitId)}`;
 const SETTINGS_STATE_KEYS: ReadonlySet<string> = new Set(SETTINGS_STATE_PLAN.map((s) => s.key));
 const isSettingsState = (k: StateKey): k is SettingsStateKey => SETTINGS_STATE_KEYS.has(k);
 /** เครื่อง QC ของหน้าตั้งค่า (brief §6) — 1 = มี printerConfig (ภาพจับคู่) · 2 = เบราว์เซอร์ (กะ + บิลของ paydone-print) */
@@ -419,7 +449,7 @@ const billsPath = (st: BillsStateKey) => `/app/sys/${SYS}/pos/sales?unit=${encod
 const RPUB_VIEWPORT = POS_VIEWPORTS.find((v) => v.name === "mobile")!;
 const rpubOn = tenantKey === "coffee" && pages.includes("receipt-public");
 const rpubPlan = RPUB_STATE_PLAN.filter((st) => STATES_ON || st.key === "rpub-paid");
-const jobs: Job[] = pages.flatMap((p: PosPage): Job[] =>
+const jobsPlanned: Job[] = pages.flatMap((p: PosPage): Job[] =>
   p === "receipt-public"
     ? rpubOn
       ? rpubPlan.flatMap((st): Job[] =>
@@ -431,6 +461,12 @@ const jobs: Job[] = pages.flatMap((p: PosPage): Job[] =>
         viewports
           .filter((v) => st.devices.includes(v.name))
           .map((v): Job => ({ page: p, v, state: st.key, path: settingsPath(st.key), file: `${OUT}/${p}-${st.key.replace(/^settings-/, "")}-${userKey}-${v.w}x${v.h}${LOCALE_EN ? "-en" : ""}.png` })),
+      )
+    : productsStatesOn && p === "products"
+    ? P22U_PRODUCTS_PLAN.filter((st) => (userKey === "owner" ? st.key !== "products-readonly" : st.key === "products-readonly")).flatMap((st): Job[] =>
+        viewports
+          .filter((v) => st.devices.includes(v.name))
+          .map((v): Job => ({ page: p, v, state: st.key, path: productsPath(st.key), file: `${OUT}/${p}-${st.key.replace(/^products-/, "")}-${userKey}-${v.w}x${v.h}${LOCALE_EN ? "-en" : ""}.png` })),
       )
     : billsStatesOn && p === "sales"
     ? BILLS_STATE_PLAN.flatMap((st): Job[] =>
@@ -458,6 +494,16 @@ const jobs: Job[] = pages.flatMap((p: PosPage): Job[] =>
       )
     : viewports.map((v): Job => ({ page: p, v, state: null, file: LOCALE_EN ? fileOf(p, v.w, v.h).replace(/\.png$/, "-en.png") : fileOf(p, v.w, v.h) })),
 );
+// POS ผู้คุม 10 ต.ค. ▸ --state a,b,c = ถ่ายเฉพาะสถานะที่ระบุ (ต้องคู่กับ --states) — รอบแก้ถ่ายเฉพาะ state ที่ใบงานแตะ · รอบ merge/ปิดเฟสถ่ายเต็ม
+//   คีย์ที่ไม่อยู่ในแผนของหน้า/ผู้ใช้/ภาษานี้ = หยุดพร้อมรายชื่อที่ใช้ได้ (กันพิมพ์ผิดแล้วได้ 0 ภาพเงียบ ๆ) ◂
+const onlyStates = flag("--state")?.split(",").map((x) => x.trim()).filter(Boolean) ?? null;
+if (onlyStates && !STATES_ON) die("--state ใช้คู่กับ --states เท่านั้น");
+if (onlyStates) {
+  const known = new Set(jobsPlanned.flatMap((j) => (j.state ? [String(j.state)] : [])));
+  const unknown = onlyStates.filter((x) => !known.has(x));
+  if (unknown.length) die(`--state ไม่รู้จัก/ไม่อยู่ในแผนของหน้า-ผู้ใช้นี้: ${unknown.join(", ")} — ใช้ได้: ${[...known].join(" · ")}`);
+}
+const jobs: Job[] = onlyStates ? jobsPlanned.filter((j) => j.state && onlyStates.includes(String(j.state))) : jobsPlanned;
 const needFixtures = STATES_ON && tenantKey === "coffee" && jobs.some((j) => j.state && j.page === "register");
 if (STATES_ON && tenantKey !== "coffee" && pages.includes("register")) die("สถานะหน้าขาย P1.3 ถ่ายได้เฉพาะ --tenant coffee (มี PromptPay + สินค้าตายตัวที่ขั้นตอนใช้)");
 // ◂
@@ -543,6 +589,16 @@ if (DRY) {
       console.log("  HF-P1CLOSE: paydlg-promptpay-timeout เลื่อน expiresAt ของใบ PENDING ล่าสุดของเครื่องรอบนี้เป็นอดีต (แถวของรอบนี้ · ไม่แตะใบอื่น)");
     if (settingsStatesOn && jobs.some((j) => j.state === "paydone-print-failed"))
       console.log("  HF-P1CLOSE: paydone-print-failed สลับ printerConfig เครื่อง 2 เป็น USB (updateDevice) · ขายเงินสด 1 บิล · คืนค่าปริยาย (null) ทันทีหลังการ์ดขึ้น");
+    if (productsStatesOn && pages.includes("products")) {
+      console.log(`สถานะหน้า 06 + โปรราคา P2.2U${userKey === "cashier" ? " (แคชเชียร์ = products-readonly เท่านั้น)" : ""}:`);
+      for (const st of P22U_PRODUCTS_PLAN) console.log(`  · ${st.key.padEnd(27)} ${st.devices.join("/").padEnd(20)} ${st.note}`);
+    }
+    if (jobs.some((j) => j.state && P22U_FIXTURE_STATES.has(j.state)))
+      console.log(
+        `  P2.2U: fixture ราคา (catalog.setChannelPrices · เจ้าของร้าน) ลาเต้ (LINEMAN, ทุกสาขา) = ฐาน +27% ปัดบาท · (GRAB, ทุกสาขา) ไม่ขาย · อเมริกาโน่ (LINEMAN, ทุกสาขา) = ฐาน +25% · ครัวซองต์ (STORE, ทุกสาขา) ไม่ขาย — ` +
+          `แถวเดิมจำไว้และคืนทั้งชุดหลังงาน P2.2U สุดท้าย/finally · โปร 3 ตัว "${P22U_RULE_PREFIX} · …" (savePriceRule: กำลังใช้ PRICE ฿59 บนลาเต้ · รอเริ่ม พรุ่งนี้ · หมดแล้ว เมื่อวาน) เก็บถาวรใน finally (ซากชื่อเดียวกันถูกเก็บก่อนสร้าง) · ` +
+          `ช่องทาง LINEMAN/GRAB = ensureChannelFixture (P2.1U)${jobs.some((j) => j.state === P22U_BILL_STATE) ? ` · บิล LINE MAN 1 ใบ (createSale คีย์ posqc-vis-p22u-bill-<วันที่ไทย> · ไม่ลบ)` : ""}${jobs.some((j) => j.state === "register-line-badges") ? " · บิลพัก LINE MAN ต่อภาพ (holdRegisterCart · ทิ้งใน finally)" : ""}`,
+      );
     if (pages.includes("register") && jobs.some((j) => j.state === "paydlg-platform"))
       console.log("  P2.1U: paydlg-platform พักบิล LINE MAN (holdRegisterCart + channelId) ใหม่ต่อภาพ → เรียกคืนผ่าน UI · ที่ค้างทิ้งใน finally (discardHeldCart)");
     if (needFixtures) console.log(`  fixture: สินค้าชั่วคราว 11 ตัว (เหลือ 2 · หมดสต็อก · ปิดขาย + 4 ตัวของภาพ 01 + ลาเต้มีตัวแปร 1+2 + สินค้าชั่ง 1) + กลุ่มตัวเลือก 4 กลุ่ม ที่สาขา ${unitKey} — ลบใน finally`);
@@ -762,6 +818,13 @@ for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
         if (SHIFT.close) console.error(`${SHIFT.close.ok ? "🧹" : "⚠️"} ${SHIFT.close.detail}`);
       } catch (e) {
         console.error(`❌ ปิดกะไม่สำเร็จ: ${e instanceof Error ? e.message : e}`);
+      }
+      // POS P2.2U: เก็บโปร fixture · คืนแถวราคา · ทิ้งบิลพัก (เหมือน finally)
+      try {
+        await cleanupP22u();
+        if (P22U.cleanup) console.error(`${P22U.cleanup.ok ? "🧹" : "⚠️"} ${P22U.cleanup.detail}`);
+      } catch (e) {
+        console.error(`❌ เก็บกวาด P2.2U ไม่สำเร็จ: ${e instanceof Error ? e.message : e}`);
       }
       // POS P2.1U: ทิ้งบิลพัก LINE MAN ที่ยังค้าง (เหมือน finally)
       try {
@@ -1290,6 +1353,8 @@ async function runState(page: Any, state: StateKey, device: Device): Promise<voi
   // R3: แยกด้วยสมาชิกชุดที่แน่นอน ไม่ใช่คำนำหน้า — สถานะหน้าขาย "stock-warn" ขึ้นต้น "stock-" แต่ไม่ใช่สถานะหน้าสต็อก
   if (isStockState(state)) return runStockState(page, state); // POS P1.14 U
   if (isShiftsState(state)) return runShiftsState(page, state); // POS P1.9 U
+  if (isP22uProducts(state)) return runP22uProductsState(page, state, device); // POS P2.2U
+  if (state === P22U_BILL_STATE) return runP22uBillNote(page); // POS P2.2U
   if (isBillsState(state)) return runBillsState(page, state); // POS P1.16 U
   if (isRpubState(state)) return runRpubState(page, state); // POS P1.11U
   if (isSettingsState(state)) return runSettingsState(page, state, device); // POS P1.10 U
@@ -1310,6 +1375,10 @@ async function runState(page: Any, state: StateKey, device: Device): Promise<voi
       return runPromptPayTimeout(page, device); // POS HF-P1CLOSE
     case "paydlg-platform":
       return runPlatformPayState(page, device); // POS P2.1U
+    case "register-tile-rule":
+    case "register-tile-notsold":
+    case "register-line-badges":
+      return runP22uRegisterState(page, state, device); // POS P2.2U
     case "cart3":
       return addCart3(page, device);
     case "cart4-01": {
@@ -3498,6 +3567,251 @@ async function cleanupHfP1(): Promise<void> {
 // ◂
 // ◂
 
+// ═══════════════════ POS P2.2U ▸ fixture ราคา/โปร + ขั้นตอนของสถานะ (มติ 11) ═══════════════════
+//   แถวราคา: catalog.setChannelPrices (เจ้าของร้าน · แทนทั้งชุด) — แถวเดิมของสินค้าที่แตะจำไว้แล้วคืน "ทั้งชุด" ใน cleanupP22u ·
+//   โปร: price-rule.savePriceRule 3 ตัว (กำลังใช้ / รอเริ่ม / หมดแล้ว) → archivePriceRule ใน cleanupP22u (ซากชื่อขึ้นต้น P22U_RULE_PREFIX ถูกเก็บก่อนสร้าง) ·
+//   บิล: createSale LINE MAN คีย์ตายตัวต่อวัน (ซ้ำ = บิลเดิม · ไม่ลบ — บิลขายจริงของวันใน QC) · บิลพักของ register-line-badges ทิ้งใน cleanupP22u
+const P22U = {
+  done: false,
+  error: null as string | null,
+  rules: [] as { id: string; state: string }[],
+  activeRuleId: "",
+  rowsBefore: new Map<string, { channelCode: string | null; unitId: string | null; priceSatang: number | null; notSold: boolean }[]>(),
+  names: { latte: "", amer: "", crois: "" },
+  sale: "",
+  receiptNo: "",
+  held: [] as string[],
+  cleanup: null as null | { ok: boolean; detail: string },
+};
+async function ensureP22uFixture(withBill: boolean): Promise<void> {
+  if (P22U.done || P22U.error) return;
+  try {
+    await ensureChannelFixture();
+    if (P21U.error || !P21U.ids.LINEMAN || !P21U.ids.GRAB) throw new StepError(`fixture ช่องทาง: ${P21U.error ?? "ไม่มี LINEMAN/GRAB"}`);
+    if (!QC_IDS.latte || !QC_IDS.amer || !QC_IDS.crois) throw new StepError("ไม่มีสินค้า QC (ลาเต้/อเมริกาโน่/ครัวซองต์) ของร้านกาแฟ");
+    const { setChannelPrices } = await import("@/lib/modules/pos/catalog");
+    const { channelMarkupPrice } = await import("@/lib/modules/pos/price-shared");
+    const { listPriceRules, savePriceRule, archivePriceRule } = await import("@/lib/modules/pos/price-rule");
+    const actor = await ownerActor();
+    const rctx = { tenantId: T.tenantId, systemId: SYS, unitId };
+    const cctx = { tenantId: T.tenantId, systemId: SYS, actorUserId: actor.userId };
+    const prods = await prisma.posProduct.findMany({ where: { tenantId: T.tenantId, id: { in: [QC_IDS.latte, QC_IDS.amer, QC_IDS.crois] } }, select: { id: true, name: true, basePriceSatang: true } });
+    const by = new Map(prods.map((p) => [p.id, p]));
+    const latte = by.get(QC_IDS.latte);
+    const amer = by.get(QC_IDS.amer);
+    if (!latte?.basePriceSatang || !amer?.basePriceSatang) throw new StepError("ลาเต้/อเมริกาโน่ของร้าน QC ไม่มีราคาฐาน");
+    P22U.names = { latte: latte.name, amer: amer.name, crois: by.get(QC_IDS.crois)?.name ?? "" };
+    // ── แถวราคา (แทนเฉพาะคีย์ที่ภาพต้องใช้ · แถวอื่นของสินค้าคงเดิม) ──
+    const want: Record<string, { channelCode: string | null; unitId: string | null; priceSatang: number | null; notSold: boolean }[]> = {
+      [QC_IDS.latte]: [
+        { channelCode: "LINEMAN", unitId: null, priceSatang: channelMarkupPrice(latte.basePriceSatang, 2700, 100), notSold: false },
+        { channelCode: "GRAB", unitId: null, priceSatang: null, notSold: true },
+      ],
+      [QC_IDS.amer]: [{ channelCode: "LINEMAN", unitId: null, priceSatang: channelMarkupPrice(amer.basePriceSatang, 2500, 100), notSold: false }],
+      [QC_IDS.crois]: [{ channelCode: "STORE", unitId: null, priceSatang: null, notSold: true }],
+    };
+    for (const [productId, rows] of Object.entries(want)) {
+      const before = await prisma.posProductChannelPrice.findMany({ where: { tenantId: T.tenantId, systemId: SYS, productId }, select: { channelCode: true, unitId: true, priceSatang: true, notSold: true } });
+      P22U.rowsBefore.set(productId, before);
+      const key = (r: { channelCode: string | null; unitId: string | null }) => `${r.channelCode ?? ""}|${r.unitId ?? ""}`;
+      const keep = before.filter((b) => !rows.some((r) => key(r) === key(b)));
+      await setChannelPrices(cctx, { productId, rows: [...keep, ...rows] });
+    }
+    // ── โปร: เก็บซากรอบก่อน แล้วสร้าง 3 ตัว ──
+    const l = await listPriceRules(rctx, actor, {});
+    if (!l.ok) throw new StepError(`listPriceRules: ${l.code}`);
+    for (const r of l.items.filter((x) => x.name.startsWith(P22U_RULE_PREFIX))) await archivePriceRule(rctx, actor, { id: r.id });
+    const day = 86_400_000;
+    const isoBkk = (ms: number) => `${new Date(ms + 7 * 3_600_000).toISOString().slice(0, 10)}T00:00:00+07:00`;
+    const now = Date.now();
+    const specs = [
+      { state: "ACTIVE", name: `${P22U_RULE_PREFIX} · บ่ายชิล`, kind: "HAPPY_HOUR", adjust: "PRICE", valueSatang: 5900, productIds: [QC_IDS.latte] },
+      { state: "UPCOMING", name: `${P22U_RULE_PREFIX} · พรุ่งนี้ลด 20%`, kind: "PROMO", adjust: "PERCENT_OFF", valueBp: 2000, productIds: [QC_IDS.amer], startsAt: isoBkk(now + day) },
+      { state: "ENDED", name: `${P22U_RULE_PREFIX} · เมื่อวาน ลด ฿10`, kind: "PROMO", adjust: "AMOUNT_OFF", valueSatang: 1000, productIds: [QC_IDS.latte], startsAt: isoBkk(now - 2 * day), endsAt: isoBkk(now) },
+    ] as const;
+    for (const sp of specs) {
+      const { state, ...input } = sp;
+      const r = await savePriceRule(rctx, actor, { ...input, productIds: [...input.productIds] });
+      if (!r.ok) throw new StepError(`savePriceRule ${state}: ${r.code} ${r.field ?? ""}`);
+      P22U.rules.push({ id: r.rule.id, state });
+      if (state === "ACTIVE") P22U.activeRuleId = r.rule.id;
+    }
+    // ── บิล LINE MAN (ลิ้นชักบิล: บรรทัดโปร + บรรทัดช่องทาง) ──
+    if (withBill) {
+      const { createSale } = await import("@/lib/modules/pos/service");
+      const amerLm = channelMarkupPrice(amer.basePriceSatang, 2500, 100);
+      const sale = await createSale({
+        tenantId: T.tenantId,
+        unitId,
+        systemId: SYS,
+        sourceModule: "POS",
+        shiftId: BILLS.shiftId || null,
+        soldByUserId: actor.userId,
+        idempotencyKey: `${FIX.prefix}p22u-bill-${bkkToday()}`,
+        channelId: P21U.ids.LINEMAN,
+        channelRef: "LM-22022",
+        lines: [
+          { productId: QC_IDS.latte, name: `${latte.name} ${BILL_TAG}`, qty: 1, unitPriceSatang: 5900, priceSource: "RULE", priceRuleId: P22U.activeRuleId, listPriceSatang: latte.basePriceSatang },
+          { productId: QC_IDS.amer, name: `${amer.name} ${BILL_TAG}`, qty: 1, unitPriceSatang: amerLm, priceSource: "CHANNEL", listPriceSatang: amer.basePriceSatang },
+        ],
+        payMethods: [{ type: "PLATFORM", amountSatang: 5900 + amerLm }],
+      } as never);
+      P22U.sale = sale.saleId;
+      P22U.receiptNo = (await prisma.posSale.findUnique({ where: { id: sale.saleId }, select: { receiptNo: true } }))?.receiptNo ?? "";
+    }
+    P22U.done = true;
+  } catch (e) {
+    P22U.error = e instanceof Error ? e.message.slice(0, 200) : String(e);
+  }
+}
+/** หลังงาน P2.2U สุดท้าย / finally / สัญญาณ: เก็บโปร · คืนแถวราคาทั้งชุด · ทิ้งบิลพัก — เรียกซ้ำได้ · ไม่โยน */
+async function cleanupP22u(): Promise<void> {
+  if (P22U.cleanup || (!P22U.rules.length && !P22U.rowsBefore.size && !P22U.held.length)) return;
+  const parts: string[] = [];
+  let ok = true;
+  try {
+    const actor = await ownerActor();
+    const rctx = { tenantId: T.tenantId, systemId: SYS, unitId };
+    if (P22U.held.length) {
+      const { discardHeldCart } = await import("@/lib/modules/pos/held-cart");
+      let n = 0;
+      for (const id of P22U.held) if ((await discardHeldCart(rctx, actor, { id })).ok) n++;
+      parts.push(`บิลพัก ${P22U.held.length} · ทิ้ง ${n}`);
+    }
+    if (P22U.rules.length) {
+      const { archivePriceRule } = await import("@/lib/modules/pos/price-rule");
+      let n = 0;
+      for (const r of P22U.rules) if ((await archivePriceRule(rctx, actor, { id: r.id })).ok) n++;
+      if (n !== P22U.rules.length) ok = false;
+      parts.push(`เก็บโปร ${n}/${P22U.rules.length}`);
+    }
+    if (P22U.rowsBefore.size) {
+      const { setChannelPrices } = await import("@/lib/modules/pos/catalog");
+      const cctx = { tenantId: T.tenantId, systemId: SYS, actorUserId: actor.userId };
+      for (const [productId, rows] of P22U.rowsBefore) await setChannelPrices(cctx, { productId, rows });
+      parts.push(`คืนแถวราคา ${P22U.rowsBefore.size} สินค้า`);
+    }
+  } catch (e) {
+    ok = false;
+    parts.push(`ล้ม: ${e instanceof Error ? e.message.slice(0, 160) : String(e)}`);
+  }
+  P22U.cleanup = { ok, detail: `P2.2U: ${parts.join(" · ")}` };
+}
+async function openP22uProduct(page: Any, device: Device, id: string): Promise<void> {
+  await clickEl(page, tid(device === "mobile" ? `pos-prod-copen-${id}` : `pos-prod-open-${id}`));
+  await visibleEl(page, tid("pos-prod-drawer"), 0, 10_000);
+  await visibleEl(page, tid("pos-prod-prices"), 0, 10_000);
+}
+async function runP22uProductsState(page: Any, state: P22uProductsKey, device: Device): Promise<void> {
+  if (state === "products-readonly") return; // แคชเชียร์: บันทึก HTTP/ภาพอย่างเดียว (PAGE_EXPECT products.cashier = record)
+  if (P22U.error) throw new StepError(`fixture P2.2U: ${P22U.error}`);
+  const latte = QC_IDS.latte;
+  if (state.startsWith("price-rules")) {
+    await visibleEl(page, tid("pos-price-rules"), 0, 15_000);
+    const active = P22U.rules.find((r) => r.state === "ACTIVE")?.id ?? "";
+    for (const r of P22U.rules) {
+      const txt = (await (await visibleEl(page, tid(`pos-price-rule-state-${r.id}`), 0, 10_000)).evaluate((e: Element) => e.textContent ?? "")) as string;
+      if (!txt.trim()) throw new StepError(`ป้ายสถานะโปร ${r.state} ว่าง`);
+    }
+    if (state === "price-rules-editor") {
+      await clickEl(page, tid(`pos-price-rule-open-${active}`));
+      await visibleEl(page, tid("pos-price-rule-drawer"), 0, 10_000);
+      const ex = (await (await visibleEl(page, tid("pos-price-rule-example"), 0, 5_000)).evaluate((e: Element) => e.textContent ?? "")) as string;
+      if (!/→/.test(ex) || !/59/.test(ex)) throw new StepError(`ตัวอย่างสด = "${ex}" (คาด "ลาเต้ ฿x → ฿59")`);
+    }
+    if (state === "price-rules-error") {
+      await clickEl(page, tid("pos-price-rule-add"));
+      await visibleEl(page, tid("pos-price-rule-drawer"), 0, 10_000);
+      await typeInto(page, tid("pos-price-rule-name"), "โปรไม่มีสินค้า");
+      await typeInto(page, tid("pos-price-rule-value"), "59");
+      await clickEl(page, tid("pos-price-rule-save"));
+      await visibleEl(page, tid("pos-price-rule-err-productIds"), 0, 5_000).catch(() => {
+        throw new StepError("ไม่มีข้อความใต้ช่องสินค้า (pos-price-rule-err-productIds)");
+      });
+    }
+    return;
+  }
+  await visibleEl(page, tid(device === "mobile" ? "pos-prod-cards" : "pos-prod-table"), 0, 15_000);
+  if (state === "products-matrix") {
+    const price = (await (await visibleEl(page, tid(`pos-prod-price-${latte}`), 0, 10_000)).evaluate((e: Element) => e.textContent ?? "")) as string;
+    if (!/แพลตฟอร์ม|Platform/.test(price)) throw new StepError(`ช่องราคาลาเต้ไม่มีบรรทัดแพลตฟอร์ม ("${price}")`);
+    const chips = (await (await visibleEl(page, tid(`pos-prod-channels-${latte}`), 0, 5_000)).evaluate((e: Element) => e.textContent ?? "")) as string;
+    if (!/LM/.test(chips) || /Grab/.test(chips)) throw new StepError(`ชิปช่องทางของลาเต้ = "${chips}" (คาด LM · ไม่มี Grab)`);
+    return;
+  }
+  if (state === "products-bulk") {
+    for (const id of [latte, QC_IDS.amer]) await clickEl(page, tid(device === "mobile" ? `pos-prod-cselect-${id}` : `pos-prod-select-${id}`));
+    await clickEl(page, tid("pos-prod-bulk-open"));
+    await visibleEl(page, tid("pos-prod-bulk"), 0, 10_000);
+    await clickEl(page, tid("pos-prod-bulk-scope-selected"));
+    const pv = (await (await visibleEl(page, tid("pos-prod-bulk-preview"), 0, 5_000)).evaluate((e: Element) => e.textContent ?? "")) as string;
+    if (!/→/.test(pv)) throw new StepError(`ตัวอย่าง +X% ไม่มีราคา ("${pv.slice(0, 80)}")`);
+    return;
+  }
+  await openP22uProduct(page, device, latte);
+  if (state === "products-drawer-prices") {
+    await visibleEl(page, tid("pos-prod-cell-LINEMAN"), 0, 5_000);
+    await visibleEl(page, tid(`pos-prod-rule-${P22U.activeRuleId}`), 0, 5_000).catch(() => {
+      throw new StepError("ไม่มีกล่องโปรที่กำลังใช้ในลิ้นชักลาเต้");
+    });
+  } else if (state === "products-drawer-notsold") {
+    const g = (await (await visibleEl(page, tid("pos-prod-cell-GRAB"), 0, 5_000)).evaluate((e: Element) => e.textContent ?? "")) as string;
+    if (!/ไม่ขาย|Not sold/.test(g)) throw new StepError(`ช่อง Grab = "${g}" (คาด ไม่ขาย —)`);
+  } else if (state === "products-drawer-prices-edit") {
+    await clickEl(page, tid("pos-prod-price-edit"));
+    await visibleEl(page, tid("pos-prod-price-LINEMAN"), 0, 5_000);
+    await visibleEl(page, tid("pos-prod-notsold-GRAB"), 0, 5_000);
+  }
+}
+async function runP22uRegisterState(page: Any, state: P22uRegKey, device: Device): Promise<void> {
+  if (P22U.error) throw new StepError(`fixture P2.2U: ${P22U.error}`);
+  if (state === "register-tile-rule" || state === "register-tile-notsold") {
+    const id = state === "register-tile-rule" ? QC_IDS.latte : QC_IDS.crois;
+    // ราคาไทล์มาจาก registerCatalog ตอนโหลดหน้า (fixture ตั้งก่อน goto) · ค้นด้วยชื่อให้ไทล์อยู่ในกริด
+    await typeInto(page, tid("pos-reg-search"), state === "register-tile-rule" ? P22U.names.latte : P22U.names.crois);
+    await visibleEl(page, tid(`pos-reg-product-${id}`), 0, 10_000);
+    await visibleEl(page, tid(state === "register-tile-rule" ? `pos-reg-tile-rule-${id}` : `pos-reg-tile-notsold-${id}`), 0, 10_000).catch(() => {
+      throw new StepError(state === "register-tile-rule" ? "ไทล์ลาเต้ไม่มีชิปโปร (priceSource RULE?)" : "ไทล์ครัวซองต์ไม่แสดง \"ไม่ขายหน้าร้าน\"");
+    });
+    if (state === "register-tile-notsold") {
+      await clickEl(page, tid(`pos-reg-product-${id}`));
+      const lines = await page.$$('[data-testid^="pos-reg-cart-line-"]');
+      if (lines.length) throw new StepError("แตะไทล์ที่ไม่ขายหน้าร้านแล้วมีบรรทัดในตะกร้า (ต้องเพิ่มไม่ได้)");
+    }
+    return;
+  }
+  // register-line-badges: บิลพัก LINE MAN (ลาเต้ = โปร · อเมริกาโน่ = ราคาช่องทาง) → เรียกคืนผ่าน UI
+  const { holdRegisterCart } = await import("@/lib/modules/pos/held-cart");
+  const h = await holdRegisterCart({ tenantId: T.tenantId, systemId: SYS, unitId }, await ownerActor(), {
+    cart: { lines: [{ productId: QC_IDS.latte, qty: 1 }, { productId: QC_IDS.amer, qty: 1 }], channelId: P21U.ids.LINEMAN },
+    label: "LINE MAN LM-22022 (ภาพ QC P2.2U)",
+  });
+  if (!h.ok) throw new StepError(`พักบิล LINE MAN ไม่ได้: ${h.code}`);
+  P22U.held.push(h.heldCart.id);
+  await openCartOnMobile(page, device);
+  await clickEl(page, tid("pos-reg-held-bills"));
+  await visibleEl(page, tid("pos-reg-held-drawer"), 0, 10_000);
+  await clickEl(page, tid(`pos-reg-held-recall-${h.heldCart.id}`)).catch(() => {
+    throw new StepError("ไม่เห็นบิลพัก LINE MAN ในลิ้นชักบิลที่พัก");
+  });
+  await expectLines(page, 2);
+  await waitPayReady(page);
+  if (device === "mobile") await clickEl(page, tid("pos-reg-cart-view"));
+  for (const i of [0, 1])
+    await visibleEl(page, tid(`pos-reg-line-badge-${i}`), 0, 10_000).catch(() => {
+      throw new StepError(`บรรทัด ${i + 1} ไม่มีป้ายราคา (pos-reg-line-badge-${i})`);
+    });
+}
+async function runP22uBillNote(page: Any): Promise<void> {
+  if (P22U.error || !P22U.sale) throw new StepError(`ไม่มีบิล fixture P2.2U: ${P22U.error ?? "ยังไม่ได้สร้าง"}`);
+  await openBillBySearch(page, P22U.sale, P22U.receiptNo);
+  for (const i of [0, 1])
+    await visibleEl(page, tid(`pos-bill-line-note-${i}`), 0, 10_000).catch(() => {
+      throw new StepError(`ลิ้นชักบิลไม่มีหมายเหตุราคาบรรทัด ${i + 1} (pos-bill-line-note-${i})`);
+    });
+}
+// ◂
+
 // ═══════════════════ POS P1.7U ▸ ใบขอรับเงินของภาพ (PromptPay ID ของร้าน QC · เก็บกวาดใบของรอบนี้) ═══════════════════
 const INTENT_STATES: ReadonlySet<string> = new Set(["paydlg-promptpay-qr", "paydlg-promptpay-paid", "paydlg-promptpay-timeout"]); // POS HF-P1CLOSE ▸ + timeout ◂
 const INTENTS = {
@@ -3739,6 +4053,11 @@ try {
           await seedEmptyCatalogueOnce();
           console.log(P118U.empty.error ? `  ⚠️ fixture ภาพ 19ก: ${P118U.empty.error}` : `  fixture ภาพ 19ก: ระบบ ${P118U.empty.systemId} · สาขา ${EMPTY_UNIT.id}${P118U.empty.created.length ? ` (สร้าง ${P118U.empty.created.join("+")})` : " (ใช้ของเดิม)"}`);
         }
+        // POS P2.2U ▸ fixture ราคา/โปรก่อนงานแรกที่ใช้ (พังไม่โยน — สถานะตกพร้อมเหตุผล) ◂
+        if (job.state && P22U_FIXTURE_STATES.has(job.state) && !P22U.done && !P22U.error) {
+          await ensureP22uFixture(jobs.some((j) => j.state === P22U_BILL_STATE));
+          console.log(P22U.error ? `  ⚠️ fixture P2.2U: ${P22U.error}` : `  fixture P2.2U: โปร ${P22U.rules.map((r) => r.state).join("/")} · แถวราคา ${P22U.rowsBefore.size} สินค้า${P22U.sale ? ` · บิล ${P22U.sale}` : ""}`);
+        }
         const resp = await page.goto(`${BASE}${p === "receipt-public" && job.state && isRpubState(job.state) ? rpubPath(job.state) : job.state === "register-empty-catalogue" ? emptyPath() : (job.path ?? pathOf(p))}`, { waitUntil: "networkidle2", timeout: 60_000 }).catch(() => null);
         await new Promise((r) => setTimeout(r, 800));
         // POS P1.3 ▸ ขั้นตอนของสถานะ (พัง = บันทึก stepError แล้วถ่าย ณ จุดนั้น) ◂
@@ -3780,6 +4099,7 @@ try {
         const file = job.file;
         await page.screenshot({ path: file, fullPage: job.state !== "lock-screen-scroll" }); // POS HF-P1CLOSE ▸ จอล็อกที่เลื่อนแล้ว = ภาพเท่าจอ (overlay fixed) ◂
         if (job.state === "register-en") await restoreThaiLocale(page); // POS P1.18U
+        if (job.state && P22U_FIXTURE_STATES.has(job.state) && job === jobs.filter((j) => j.state && P22U_FIXTURE_STATES.has(j.state)).at(-1)) await cleanupP22u(); // POS P2.2U
         if (job.state === "register-empty-catalogue" && job === jobs.filter((j) => j.state === "register-empty-catalogue").at(-1)) await cleanupEmptyCatalogue(); // POS P1.18U
         // POS P1.7U ▸ ใบที่ PAID แล้วต้องถูกใช้ในบิล (ไม่ทิ้งเงินเข้าไม่มีบิล) — พัง = ภาพนี้ตก ◂
         if (job.state === "paydlg-promptpay-paid" && !stepError) {
@@ -3841,6 +4161,9 @@ try {
   await cleanupSettingsState(); // POS P1.10 U
   if (SETTINGS.cleanup) console.error(`${SETTINGS.cleanup.ok ? "🧹" : "⚠️"} ${SETTINGS.cleanup.detail}`);
   if (SETTINGS.cleanup && !SETTINGS.cleanup.ok) failures++;
+  await cleanupP22u(); // POS P2.2U (ก่อน P2.1U — บิลพักของภาพป้ายบรรทัด · แถวราคา · โปร)
+  if (P22U.cleanup) console.error(`${P22U.cleanup.ok ? "🧹" : "⚠️"} ${P22U.cleanup.detail}`);
+  if (P22U.cleanup && !P22U.cleanup.ok) failures++;
   await cleanupP21u(); // POS P2.1U (บิลพัก LINE MAN ที่ยังค้าง)
   if (P21U.cleanup) console.error(`${P21U.cleanup.ok ? "🧹" : "⚠️"} ${P21U.cleanup.detail}`);
   if (P21U.cleanup && !P21U.cleanup.ok) failures++;
