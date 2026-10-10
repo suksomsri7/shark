@@ -434,6 +434,7 @@ async function saleLinesOf(tx: Tx, s: { tenantId: string; systemId: string; unit
  * แถวบิลได้ xid ของ savepoint ไม่ใช่ของการรับ) — ซ่อน $transaction ให้ createSale ทำงานใน tx เดียวกันตามสัญญาเดิม ("tx ของผู้เรียก")
  * แล้วงานหลัง commit (ตัดสต็อก · ระบายคิว) ทำที่นี่เองแบบเดียวกับ register.ts · ไม่แตะ service.ts (มติ 3)
  */
+// POS P2.8 ▸ HF-TX: ผู้คุมจะรวมเป็น helper กลางหลัง HF ◂
 function flatTx(tx: Tx): Tx {
   return new Proxy(tx, {
     has: (t, p) => p !== "$transaction" && Reflect.has(t, p),
