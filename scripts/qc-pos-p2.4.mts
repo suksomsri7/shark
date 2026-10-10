@@ -9,6 +9,7 @@
 //        qc-pos-p1.6 (ทะเบียนผู้เรียก createSale) · qc-pos-p2.1 (ร้านชั่วคราว · ช่องทาง · GL) · qc-pos-p1.12 (สมาชิก/ระดับ) · qc-pos-p2.3 (โครงข้อสอบ)
 //        โน้ต: ledger/wo-notes/pos-P2.4-oracle.md (ตารางชื่อ = สัญญาของผู้สร้าง S · ความคลาดเคลื่อน · CONTROLLER-DECISION · ผลแดงที่คาด)
 // ชื่อทุกตัวที่ยังไม่มีในโค้ดถูก "ตั้ง" ในไฟล์นี้และลงทะเบียนในตารางชื่อของโน้ต — ผู้สร้างห้ามแก้ข้อสอบนี้ (ORACLE-EDIT เท่านั้น)
+//   ORACLE-EDIT P9 (hotfix HF-PP · brief pos-brief-HF-PP.md scope 4 · ผู้คุม 10 ต.ค.) → 50 ข้อ: manualConfirmRequiresManager บังคับที่ submit บิลโต๊ะด้วย
 //
 // ของที่ใบ P2.4 (S) ต้องส่ง (ย่อ — ละเอียดในโน้ต):
 //   migration `20261206100000_pos_p24_tables`: PosHeldCart.tableSessionId TEXT + partial unique PosHeldCart_tableSessionId_held_key ·
@@ -86,6 +87,8 @@ const CHECKS: readonly Def[] = [
   D("P6", "-", "[R7] มีรอบร่าง HELD อยู่ → จ่ายแล้ว session ยัง OPEN · dirtySince null · รอบร่างยัง HELD"),
   D("P7", "X4", "[R7 CD4] GL ของบิล P1: Dr 1000 = ยอดบิล · Cr 2200 = VAT ของบิล · Σ Dr = Σ Cr = ยอดบิล (รวมค่าบริการ)"),
   D("P8", "X4", "[Q10] xReport: กะเครื่อง 2 billCount +1 salesTotal +ยอดบิล · กะเครื่อง 1 ไม่ขยับ"),
+  // ORACLE-EDIT ผู้คุม 10 ต.ค. (hotfix HF-PP · P2.4U R2 F8 · brief pos-brief-HF-PP.md scope 4) → 50 ข้อ: ด่านผู้จัดการของ "พร้อมเพย์แจ้งจ่ายแล้ว" บนบิลโต๊ะ
+  D("P9", "X3", "[HF-PP] manualConfirmRequiresManager true + บิลโต๊ะ (regSubmitTable · ทาง preset \"โต๊ะแจ้งจ่ายพร้อมเพย์แล้ว\") โดย STAFF (ไม่มี pos.shift.manage): PROMPTPAY ไม่มี reference / CARD ไม่มี reference → PERMISSION_DENIED ข้อความ \"ร้านตั้งให้ผู้จัดการเป็นผู้ยืนยันเงินเข้าเท่านั้น\" · PosSale/PosPayment +0 · session OPEN รายการยังค้างจ่าย · STAFF CASH → ok · เจ้าของร้าน PROMPTPAY → ok · ปิดค่าตั้ง → STAFF PROMPTPAY ok (ตัวควบคุมบวก)"),
   // ── V void/คืน/ปิด/เก็บ ──
   D("V1", "-", "[R8 CD5] ยกเลิกบิลโต๊ะจากลิ้นชักบิล (voidSaleByActor) + ระบายคิว → รายการของบิลหลุด (saleId/settledAt null) · session A1 กลับ OPEN · บิล VOIDED"),
   D("V2", "X1", "[R8] เล่น consumers[pos.sale.voided] ของบิล V1 ซ้ำ 2 รอบ → รายการ/session/dirtySince ไม่เปลี่ยน · เล่นซ้ำ void ของบิล RESTAURANT เดิม (L1) → session L1 ยัง CLOSED รายการยังผูกบิลใหม่"),
@@ -2109,6 +2112,55 @@ async function runDb() {
     const s = await sessRow(sid);
     if (s?.status !== "OPEN" || s?.guestCount !== 2 || (await openSessCount(TB.E5!)) !== 1) p.push(`session ${s?.status} guestCount ${s?.guestCount} OPEN ${await openSessCount(TB.E5!)}`);
     chk("R4", NCOL() === "" && p.length === 0, "นั่งโต๊ะที่มีลูกค้า = VALIDATION ไม่เขียน", FX(NCOL() + (P8(p) || "ครบ")));
+  });
+  // ORACLE-EDIT ผู้คุม 10 ต.ค. (HF-PP) — โต๊ะ H1–H3 ของข้อนี้เอง · ค่าตั้งผ่านตัวเขียนจริง updatePosIntentSettings (เจ้าของร้าน)
+  await step("P9", async () => {
+    const p: string[] = [];
+    const MGR_MSG = "ร้านตั้งให้ผู้จัดการเป็นผู้ยืนยันเงินเข้าเท่านั้น";
+    const setMgr = async (on: boolean) => must(`manualConfirmRequiresManager ${on}`, await call(paySetMod, "updatePosIntentSettings", { tenantId: T, systemId: S.POS }, A("OWNER"), { manualConfirmRequiresManager: on }));
+    const counts = async () => ({ sale: Number(await P.posSale.count({ where: { tenantId: T } }).catch(() => -1)), pay: Number(await P.posPayment.count({ where: { tenantId: T } }).catch(() => -1)) });
+    /** บิลโต๊ะทั้งก้อนด้วยวิธีจ่ายเดียว (ไม่มี reference) โดย actor */
+    const tsub = async (sessionId: string, q: Any, actor: string, type: string): Promise<Any> => {
+      const grand = q?.ok === true ? Number(q.grandTotalSatang) : 0;
+      const r = await call(register, "submitRegisterSale", ctxA(DEV2), A(actor), {
+        lines: [], tableSessionId: sessionId, expectedTableItemsHash: q?.table?.itemsHash ?? "none",
+        idempotencyKey: newKey("pp"), expectedGrandTotalSatang: grand, payMethods: [{ type, amountSatang: grand }], ...(type === "CASH" ? { cashReceivedSatang: grand } : {}),
+      });
+      if (r?.ok === true && r.saleId && !MY_SALES.includes(String(r.saleId))) MY_SALES.push(String(r.saleId));
+      return r;
+    };
+    const table = async (name: string): Promise<{ sid: string; q: Any }> => {
+      await mkExtraTable(name);
+      const sid = await openT(name, { guestCount: 2 });
+      await legacyOrder(sid, [["rice", 1, []]]);
+      return { sid, q: await tq(sid, {}, ctxA(DEV2), "STAFF") };
+    };
+    await setMgr(true);
+    try {
+      const h1 = await table("H1");
+      if (h1.q?.ok !== true) p.push(`quote H1 → ${codeOf(h1.q)}`);
+      const c0 = await counts();
+      for (const type of ["PROMPTPAY", "CARD"]) {
+        const r = await tsub(h1.sid, h1.q, "STAFF", type);
+        if (!refused(r, "PERMISSION_DENIED") || String(r?.message ?? "") !== MGR_MSG) p.push(`STAFF ${type} → ${codeOf(r)} ${short(r?.message ?? "", 60)}`);
+      }
+      const c1 = await counts();
+      if (c1.sale !== c0.sale || c1.pay !== c0.pay) p.push(`แถวเพิ่ม PosSale ${c0.sale}→${c1.sale} PosPayment ${c0.pay}→${c1.pay}`);
+      const s1 = await sessRow(h1.sid);
+      const unpaid1 = (await itemsOf(h1.sid)).filter((x) => !x.saleId && x.kdsStatus !== "CANCELLED");
+      if (s1?.status !== "OPEN" || unpaid1.length !== 1) p.push(`H1 หลังปฏิเสธ session ${s1?.status} ค้างจ่าย ${unpaid1.length}`);
+      const cash = await tsub(h1.sid, h1.q, "STAFF", "CASH");
+      if (cash?.ok !== true) p.push(`STAFF CASH → ${codeOf(cash)}`);
+      const h2 = await table("H2");
+      const own = await tsub(h2.sid, h2.q, "OWNER", "PROMPTPAY");
+      if (own?.ok !== true) p.push(`เจ้าของร้าน PROMPTPAY → ${codeOf(own)}`);
+    } finally {
+      await setMgr(false);
+    }
+    const h3 = await table("H3");
+    const off = await tsub(h3.sid, h3.q, "STAFF", "PROMPTPAY");
+    if (off?.ok !== true) p.push(`ปิดค่าตั้ง STAFF PROMPTPAY → ${codeOf(off)}`);
+    chk("P9", p.length === 0, "STAFF PROMPTPAY/CARD บิลโต๊ะ → PERMISSION_DENIED ไม่มีแถว โต๊ะยังเปิด · CASH ok · เจ้าของ ok · ปิดค่าตั้ง ok", FX(P8(p) || "ครบ"));
   });
 }
 

@@ -16,6 +16,7 @@ import {
   moneyText,
   refusalMessageKey,
   REGISTER_MAX_PAY_METHODS,
+  submitRefusalMessageKey, // POS HF-PP ▸ fix 1 ◂
   type RegisterPayMethod,
   type RegisterQuote,
   type RegisterQuoteInput,
@@ -251,7 +252,7 @@ export function TableCheckout(p: Props) {
       }
       if (r.code === "STAFF_TOKEN_INVALID") p.onStaffTokenDead();
       if (r.code === "PIN_INVALID" || r.code === "PIN_LOCKED" || r.code === "PIN_THROTTLED") setPin(null);
-      setError({ code: r.code, key: refusalMessageKey(r.code) });
+      setError({ code: r.code, key: submitRefusalMessageKey(r) }); // POS HF-PP ▸ fix 1: ด่านผู้จัดการ = refusal.manualConfirmManager · อื่น ๆ = refusalMessageKey ◂
       if (r.code === "PRICE_CHANGED" || r.code === "PAYMENT_MISMATCH" || r.code === "COUPON_INVALID" || r.code === "DISCOUNT_EXCEEDS_LIMIT") void requote();
     } catch {
       savePending(sale, "unknown");

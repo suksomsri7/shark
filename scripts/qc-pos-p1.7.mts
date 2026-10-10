@@ -1,6 +1,8 @@
 // QC — POS RUN ใบ P1.7: PromptPay ไดนามิก (QR ล็อกยอด) · Beam (PromptPay ยืนยันอัตโนมัติ + บัตร) · PosPaymentIntent · ยืนยันเงินเข้าแบบ idempotent · ปิดสุภาพเมื่อไม่มีกุญแจ
 //   เขียนก่อนสร้าง (fail-before) · ผู้เขียนข้อสอบ · ORACLE-EDIT C31 (fix round 1 F1 อนุมัติ 9 ต.ค.) → 31 ข้อ ·
 //   ORACLE-EDIT S1-U (P1.7U มติ 6 · อนุมัติในพรอมต์ P1.7U) → 32 ข้อ: ค่าตั้ง 17A "วิธีรับเงิน" ไป-กลับ + STAFF ถูกปฏิเสธ
+//   ORACLE-EDIT R4b (hotfix HF-PP · brief pos-brief-HF-PP.md scope 4 · ผู้คุม 10 ต.ค.) → 33 ข้อ: manualConfirmRequiresManager บังคับที่ submit ด้วย
+//     (PROMPTPAY/CARD ไม่อ้าง pi_ = "เงินเข้าแล้ว" แบบไม่มีใบขอรับเงิน — ต้องมี pos.shift.manage เหมือน confirmPaymentIntentManual)
 // requires: pos-seed
 //
 // สัญญา: ledger/pos-briefs/pos-brief-P1.7.md §2 R1–R8 · §4 แผนข้อสอบ · §5 CD1–CD6 · pos-brief-COMMON · pos-brief-LANE-RULES
@@ -85,6 +87,8 @@ const CHECKS: readonly Def[] = [
   // ORACLE-EDIT C31 (fix round 1 F1 · อนุมัติโดยผู้คุมงาน) — pi_ บนโอน = VALIDATION + intent ถูกใช้ครั้งเดียว
   D("C31", "X4", "[R4 F1] submit [{TRANSFER 100 ref pi_X}, {PROMPTPAY A ref pi_X}] → VALIDATION ไม่มีบิล · pi_X คง PAID saleId null · submit ที่ถูก → CONSUMED saleId = บิล · PosPayment อ้าง pi_X 1 แถว · บิลที่สองอ้าง pi_X → INTENT_CONSUMED"),
   D("S6", "X4", "[R4 CD-A] ทาง P1.6 ไม่เปลี่ยน: PROMPTPAY ไม่มี reference → PAID reference null · CARD + EDC \"EDC-778899\" → PAID reference ตรงตัว · TRANSFER + reference → PAID · PROMPTPAY + reference ที่ไม่ใช่ pi_ → VALIDATION ไม่มีบิล · ไม่มี intent เกิด"),
+  // ORACLE-EDIT R4b (HF-PP · P2.4U R2 F8) — ด่านผู้จัดการฝั่งเซิร์ฟเวอร์ของ "พร้อมเพย์/บัตรรับแล้ว" ที่ไม่มีใบขอรับเงิน
+  D("R4b", "X3", "[HF-PP R3b] manualConfirmRequiresManager true + submitRegisterSale โดยแคชเชียร์ (pos.sale.create + priceOverride · ไม่มี pos.shift.manage): PROMPTPAY ไม่มี reference / CARD เลข EDC / เงินสด+PROMPTPAY → PERMISSION_DENIED ข้อความ \"ร้านตั้งให้ผู้จัดการเป็นผู้ยืนยันเงินเข้าเท่านั้น\" · PosSale/PosPayment +0 · เจ้าของร้าน PROMPTPAY → ok · แคชเชียร์ CASH → ok · แคชเชียร์ PROMPTPAY อ้าง pi_ ที่ PAID → ok (ด่านอยู่ที่ยืนยัน) · ปิดค่าตั้ง → แคชเชียร์ PROMPTPAY ok (ตัวควบคุมบวก)"),
   // ── E หมดอายุ ──
   D("E1", "X1", "[R5] expirePaymentIntents(tenantId) → จำนวน = PENDING ที่หมดเวลาของร้านนี้ · แถวเหล่านั้น EXPIRED · PENDING ที่ยังไม่หมด / PAID ที่ expiresAt ผ่านแล้ว ไม่ถูกแตะ · เรียกซ้ำ → 0 · /api/cron/hourly เรียก expirePaymentIntents"),
   D("E2", "X2", "[R5] paymentIntentStatus(ctx, actor, {intentId}) → {ok, status, amountSatang, kind, qrPayload, expiresAt, paidAt, confirmedVia} · PENDING หมดเวลา → \"EXPIRED\" และเขียนลงแถว (ข้อสอบเลือก: เขียน) · PAID → paidAt/confirmedVia · id มั่ว / intent สาขาอื่น → INTENT_NOT_FOUND · ไม่มี pos.sale.create → PERMISSION_DENIED"),
@@ -1214,6 +1218,40 @@ async function runDb() {
       const i1 = await intentCount();
       if (PI && i1 !== i0) p.push(`intent เพิ่ม ${i0}→${i1}`);
       chk("S6", !fx && p.length === 0, "PROMPTPAY เปล่า PAID · CARD EDC PAID · TRANSFER PAID · PROMPTPAY+ref อื่น VALIDATION · ไม่มี intent", FX(p.join(" · ") || "ครบ (ทาง P1.6 เดิม)"));
+    }
+
+    // ════════ R4b (ORACLE-EDIT · HF-PP) ด่านผู้จัดการที่ submit — PROMPTPAY/CARD ไม่อ้าง pi_ ════════
+    {
+      const p: string[] = [];
+      const MGR_MSG = "ร้านตั้งให้ผู้จัดการเป็นผู้ยืนยันเงินเข้าเท่านั้น";
+      // แคชเชียร์ที่ขายรายการกำหนดเองได้ (ตัด PERMISSION_DENIED ของราคาเอง Q8 ออกจากผล) แต่ไม่มี pos.shift.manage
+      const cashierPx = { userId: cashierId, role: "STAFF", unitAccess: [U.A, U.B], permissions: { "pos.sale.create": true, "pos.sale.priceOverride": true } };
+      const payCount = async (): Promise<number> => (T ? Number(await P.posPayment.count({ where: { tenantId: T } }).catch(() => -1)) : -1);
+      const denied = (r: Any) => refused(r, "PERMISSION_DENIED") && String(r?.message ?? "") === MGR_MSG;
+      await setPay({ manualConfirmRequiresManager: true });
+      const pre = await mkPaid("R4b pi", 5300, "MANUAL"); // เจ้าของร้านยืนยันเอง (มี pos.shift.manage) ขณะค่าตั้งเปิด
+      const n0 = await saleCount();
+      const q0 = await payCount();
+      const cases: [string, [string, number][], Any[]][] = [
+        ["PROMPTPAY เปล่า", [["ของ R4b a", 5100]], [{ type: "PROMPTPAY", amountSatang: 5100 }]],
+        ["CARD EDC", [["ของ R4b b", 5200]], [{ type: "CARD", amountSatang: 5200, reference: "EDC-4242" }]],
+        ["เงินสด+PROMPTPAY", [["ของ R4b c", 5400]], [{ type: "CASH", amountSatang: 400 }, { type: "PROMPTPAY", amountSatang: 5000 }]],
+      ];
+      for (const [lbl, lines, pays] of cases) {
+        const x = await sell(`R4b แคชเชียร์ ${lbl}`, lines, pays, { actor: cashierPx });
+        if (!denied(x.r)) p.push(`แคชเชียร์ ${lbl} → ${codeOf(x.r)} ${short(x.r?.message ?? "", 60)}`);
+      }
+      if ((await saleCount()) !== n0 || (await payCount()) !== q0) p.push(`แถวเพิ่ม PosSale ${n0}→${await saleCount()} PosPayment ${q0}→${await payCount()}`);
+      const o = await sell("R4b เจ้าของร้าน PROMPTPAY", [["ของ R4b d", 5500]], [{ type: "PROMPTPAY", amountSatang: 5500 }]);
+      if (o.r?.ok !== true) p.push(`เจ้าของร้าน → ${codeOf(o.r)}`);
+      const c = await sell("R4b แคชเชียร์ CASH", [["ของ R4b e", 5600]], [{ type: "CASH", amountSatang: 5600 }], { actor: cashierPx });
+      if (c.r?.ok !== true) p.push(`แคชเชียร์ CASH → ${codeOf(c.r)}`);
+      const i = pre.id ? await sell("R4b แคชเชียร์ pi_", [["ของ R4b f", 5300]], [{ ...pi(pre.id), amountSatang: 5300 }], { actor: cashierPx }) : null;
+      if (i?.r?.ok !== true || (await intentRow(pre.id))?.status !== "CONSUMED") p.push(`แคชเชียร์ อ้าง pi_ → ${codeOf(i?.r)} ${(await intentRow(pre.id))?.status}`);
+      await setPay(null);
+      const off = await sell("R4b ปิดค่าตั้ง แคชเชียร์ PROMPTPAY", [["ของ R4b g", 5700]], [{ type: "PROMPTPAY", amountSatang: 5700 }], { actor: cashierPx });
+      if (off.r?.ok !== true) p.push(`ปิดค่าตั้ง แคชเชียร์ → ${codeOf(off.r)}`);
+      chk("R4b", !fx && !NM() && p.length === 0, "แคชเชียร์ PROMPTPAY/CARD/แบ่งจ่าย ไม่มี pi_ → PERMISSION_DENIED ×3 ไม่มีแถว · เจ้าของ ok · CASH ok · pi_ ok · ปิดค่าตั้ง ok", FX(NM() + (p.join(" · ") || "ครบ")));
     }
 
     // ════════ C31 (ORACLE-EDIT · fix round 1 F1) pi_ บนโอน + ใช้ครั้งเดียว ════════

@@ -1,0 +1,148 @@
+# HF-PP red-before — oracle 73a98f16 on base 831ad163 (code unchanged) · QC4 · 10 Oct 2026
+# expected red: P1.7-R4b + P2.4-P9 only (cashier/STAFF PROMPTPAY/CARD without pi_ accepted on the base); all positive controls in both checks pass on base
+
+===== qc-pos-p1.7 =====
+tree=/root/projects/shark-pos-c head=831ad163 dirty=2
+[env] qc-pos-p1.7 · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4)
+  กุญแจ Beam ของแพลตฟอร์มในโปรเซสนี้: ไม่มี (ไม่พิมพ์ค่า)
+(node:1164661) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ [P1.7-C9] [R1 R5 R6 CD5] สถิต: model PosPaymentIntent ครบคอลัมน์ R1 (kind/status/confirmedVia เป็น String · lateWebhook 
+  ✅ [P1.7-NC] ตัวควบคุมลบ: ตัวตรวจของข้อสอบจับคำตอบที่ผิดโดยตั้งใจได้ (EMV CRC ผิด · ยอด 54 ผิดรูป · 01=11 แบบไม่ล็อกยอด · ไ
+
+── ร้านชั่วคราว qc-p17-uvuogx · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech ──
+   POS-A ผูกสมุดบัญชี · สาขา A (เครื่อง DEV1 กะเปิด · DEV2 ถูกเพิกถอน) + สาขา B · PaymentProfile.promptpayId + ช่องทางธนาคารของสมุด = 0812345678
+  ✅ [P1.7-C1] [R1 R2] createPaymentIntent PROMPTPAY ไม่มี Beam → {ok:true, reused:false} · id ขึ้นต้น pi_ · kind PROMPTPAY_S
+  ✅ [P1.7-C2] [R2] คีย์เดิม + ยอดเดิม → reused:true id เดิม ไม่มีแถวเพิ่ม · คีย์เดิม + ยอดต่าง → IDEMPOTENCY_CONFLICT แถวเดิ
+  ✅ [P1.7-C3] [R2] ไม่มีพร้อมเพย์ของร้าน (PaymentProfile + ช่องทางการเงินของสมุดที่ผูก ว่างทั้งคู่) → PROMPTPAY_NOT_CONFIGUR
+  ✅ [P1.7-C4] [R2 CD1] ร้านเปิด settings.pos.payment.beam.enabled + deps.beam (enabled true) → kind PROMPTPAY_BEAM · beamCha
+  ✅ [P1.7-C5] [R2] Beam ล้ม (createCharge คืน {error} / throw) → ถอยเป็น PROMPTPAY_STATIC (qrPayload EMV ถูก · beamChargeId 
+  ✅ [P1.7-C6] [R2] CARD: ร้านไม่เปิด Beam / แพลตฟอร์มไม่มีกุญแจ / ร้านไม่เปิดแต่มีกุญแจ / Beam ล้ม → CARD_UNAVAILABLE ไม่มีแ
+  ✅ [P1.7-C7] [R2] settings.pos.payment.qrExpiryMinutes: 30 → +30 นาที · 5 → +5 · 60 → +60 · 4 / 61 / "20" → ปริยาย +15
+  ✅ [P1.7-C8] [R2 P1.10] ผู้ใช้ไม่มี pos.sale.create → PERMISSION_DENIED · เครื่องที่ถูกเพิกถอน → DEVICE_REVOKED · รหัสเครื่
+  ✅ [P1.7-W1] [R3a R6] onBeamWebhookEvent({referenceId "pos-"+id, chargeId, status SUCCEEDED, amountSatang, raw}) intent BEA
+  ✅ [P1.7-W2] [R3a] webhook ซ้ำ → ok · paidAt เดิม · outbox ยัง 1 · markIntentPaid(id, {via WEBHOOK, beamRef, amountSatang})
+  ✅ [P1.7-W3] [R3a] ยอดใน webhook ≠ intent → AMOUNT_MISMATCH · status PENDING · paidAt null · ops event "pos.payment.amount_
+  ✅ [P1.7-W4] [R3a CD4] webhook หลังหมดเวลา: PENDING ที่ expiresAt ผ่านแล้ว → PAID lateWebhook true · สถานะ EXPIRED → PAID l
+  ✅ [P1.7-W5] [R3a R8] อ้างอิงที่ไม่รู้จัก / อินพุต null → ไม่ throw · สถานะ FAILED → intent คง PENDING · route จริง (กุญแจป
+  ✅ [P1.7-M1] [R3b CD2] confirmPaymentIntentManual โดยแคชเชียร์ (pos.sale.create · ค่าตั้งปริยาย) → ok · PAID · confirmedVia
+  ✅ [P1.7-M2] [R3b] intent PENDING ที่ expiresAt ผ่านแล้ว → INTENT_EXPIRED · ไม่ PAID · ไม่มี audit
+  ✅ [P1.7-M3] [R3b] manualConfirmRequiresManager true: แคชเชียร์ (ไม่มี pos.shift.manage) → PERMISSION_DENIED คง PENDING · ผ
+  ✅ [P1.7-S1] [R4 R7] submitRegisterSale CASH 7,500 + PROMPTPAY 32,500 reference = intent PAID (webhook) → บิล PAID · intent
+  ✅ [P1.7-S2] [R4 CD4] ไม่มีบิลเกิด + intent ไม่เปลี่ยน: PENDING / CANCELLED / EXPIRED → INTENT_NOT_PAID · pi_ ไม่มีจริง / i
+  ✅ [P1.7-S3] [R4] PROMPTPAY 15,000 อ้าง intent PAID 20,000 (+ เงินสด 5,000) → AMOUNT_MISMATCH · ไม่มีบิล · intent คง PAID
+  ✅ [P1.7-S4] [R4] ส่งสองบิล (คีย์ต่างกัน) อ้าง intent เดียวพร้อมกันบน 2 connection → บิลเกิด 1 ใบพอดี · อีกคำขอ INTENT_CONS
+  ✅ [P1.7-S5] [R4] ส่งบิล S1 ซ้ำ (คีย์เดิม payload เดิม) → ok saleId เดิม duplicated true · intent คง CONSUMED โดยบิลเดิม · 
+  ✅ [P1.7-S6] [R4 CD-A] ทาง P1.6 ไม่เปลี่ยน: PROMPTPAY ไม่มี reference → PAID reference null · CARD + EDC "EDC-778899" → PAI
+  ❌ [P1.7-R4b] [HF-PP R3b] manualConfirmRequiresManager true + submitRegisterSale โดยแคชเชียร์ (pos.sale.create + priceOverri — expected แคชเชียร์ PROMPTPAY/CARD/แบ่งจ่าย ไม่มี pi_ → PERMISSION_DENIED ×3 ไม่มีแถว · เจ้าของ ok · CASH ok · pi_ ok · ปิดค่าตั้ง ok | actual แคชเชียร์ PROMPTPAY เปล่า → OK  · แคชเชียร์ CARD EDC → OK  · แคชเชียร์ เงินสด+PROMPTPAY → OK  · แถวเพิ่ม PosSale 8→11 PosPayment 9→13
+  ✅ [P1.7-C31] [R4 F1] submit [{TRANSFER 100 ref pi_X}, {PROMPTPAY A ref pi_X}] → VALIDATION ไม่มีบิล · pi_X คง PAID saleId n
+  ✅ [P1.7-E1] [R5] expirePaymentIntents(tenantId) → จำนวน = PENDING ที่หมดเวลาของร้านนี้ · แถวเหล่านั้น EXPIRED · PENDING ที
+  ✅ [P1.7-E2] [R5] paymentIntentStatus(ctx, actor, {intentId}) → {ok, status, amountSatang, kind, qrPayload, expiresAt, paid
+  ✅ [P1.7-X1] [R3c] cancelPaymentIntent PENDING → ok · CANCELLED · audit pos.payment.cancel 1 แถว · PAID → INTENT_PAID คง PA
+  ✅ [P1.7-S1-U] [P1.7U มติ 6] updatePosIntentSettings(ctx, actor, patch) (payment-settings.ts · ตัวเขียนพี่น้องของ updatePosPa
+  ✅ [P1.7-C10] [R8] คำปฏิเสธเป็นข้อมูลครบ 13 รหัส (VALIDATION IDEMPOTENCY_CONFLICT PROMPTPAY_NOT_CONFIGURED CARD_UNAVAILABLE 
+  ลบร้านชั่วคราว cmv2bds850000npkzzbx6t5x1: 328 ตาราง · แถวค้าง 0 {} · Tenant 0 · OpsEvent ไม่มีร้าน ลบ 1 ค้าง 0
+  ✅ [P1.7-Z1] QC4 คืนสภาพ: ร้านชั่วคราวเหลือ 0 แถวทุกตารางที่มี tenantId + แถว Tenant ถูกลบ + OpsEvent ไม่มีร้าน (route 401 
+  ✅ [P1.7-Z2] QC4 ลายนิ้วมือ: แถวของร้าน QC POS (seed) ก่อน = หลัง (นับ + hash · รวม posPaymentIntent)
+
+===== qc-pos-p1.7 ===== ผ่าน 32/33 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-pos-p1.7","total":33,"passed":32,"failed":["P1.7-R4b"],"skipped":false,"forced":true,"missing":[],"guardHits":0,"beamCalls":14,"a5":{"drift":[],"fpDrift":[],"tempLeft":[]}}
+exit=1
+
+===== qc-pos-p2.4 =====
+tree=/root/projects/shark-pos-c head=831ad163 dirty=2
+[env] qc-pos-p2.4 · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4)
+(node:1165231) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+── ST ข้อสถิต (ไม่แตะ DB) ──
+  ✅ [P2.4-ST1] [§3 R4 R10] schema + migration เพิ่มอย่างเดียว: PosHeldCart.tableSessionId String? · RestaurantTable.dirtySince DateTime
+  ✅ [P2.4-ST2] [R1 R12] ลงทะเบียน: core/scope.ts RestaurantReservation: unit · pos-qc-env POS_MODELS restaurantReservation · RegisterRe
+  ✅ [P2.4-ST3] [R1 CD1 hard rules] ขอบเขต: มี restaurant/index.ts (รอยต่อ POS P2.4 ▸ · export createOrderInTx) · order.ts export create
+  ✅ [P2.4-ST4] [CD4 Q2 R12] scripts/pos-sale-contract.json ตรงฐาน 6dbcafe0 ทุกไบต์ (sha256) · pos-integrations BOOKING tableReservation
+  ✅ [P2.4-L2] [R11 CD4] ทะเบียนผู้เรียก createSale ของ qc-pos-p1.6 ไม่เปลี่ยน (18 จุด/15 ไฟล์ · register.ts 1 · restaurant/order.ts 1)
+  ✅ [P2.4-L3] [R11] ทุก export ของ restaurant/{table,order,menu,kds,storefront,scope}.ts ณ 6dbcafe0 (ฟังก์ชัน + type) ยังอยู่ด้วยลายเซ
+
+── ST5 บริสุทธิ์ (table-shared · refusalMessageKey) ──
+  ✅ [P2.4-ST5] [R2 R6 R10 R12] table-shared บริสุทธิ์: TABLE_STATES = INACTIVE BILL_REQUESTED DINING NEEDS_CLEARING RESERVED FREE (ลำดั
+
+── ร้านชั่วคราว posqc-p24-7yiw2o (+ posqc-p24-7yiw2o-t2) · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech ──
+   สาขา A (RESTAURANT · POS + คลัง + สมาชิก + บัญชี VAT · ค่าบริการ POS 10% · RestaurantSetting 10%) · สาขา B (POS · ไม่มีโต๊ะ) · ร้าน T2 สาขา X (โต๊ะ X1)
+
+── L ของเดิม (ต้องเขียวทั้งก่อนและหลังสร้าง) ──
+  ✅ [P2.4-L1] [R11] ประตูเดิม: openSession + createOrder → billPreview ตรงทุกไบต์ (floor ค่าบริการ 2561) · checkout CASH → ผล + PosSal
+
+── T ผัง/เปิดโต๊ะ ──
+  ✅ [P2.4-T2] [R3 Q9] registerOpenTable 10 คำขอพร้อมกันบน A1 → ok ทั้ง 10 · created:true 1 ครั้ง · sessionId เดียว · OPEN 1 แถว (guest
+  ✅ [P2.4-T3] [R1] โต๊ะร้าน T2 / โต๊ะสาขา A จาก ctx สาขา B / id มั่ว → TABLE_NOT_FOUND (open + clear) · registerTables สาขา B → tables
+  ✅ [P2.4-T4] [R3] A3 INACTIVE → registerOpenTable TABLE_INACTIVE · ไม่มี session (ตัวควบคุม: ประตูเดิมก็ปฏิเสธ)
+  ✅ [P2.4-T5] [R2 R3 CD8] STAFF ที่ไม่มี restaurant.session.open → PERMISSION_DENIED · STAFF ที่มีแค่ pos.sale.read → registerTables o
+
+── D รอบร่าง/ส่งรอบ ──
+  ✅ [P2.4-D1] [R4 CD6] holdRegisterCart({cart, tableSessionId}) → PosHeldCart 1 แถว (tableSessionId · HELD · version 1) · พักซ้ำ = แก้
+  ✅ [P2.4-D2] [R4 R1] รอบร่างไม่ขึ้นใน listHeldCarts (บิลพักปกติขึ้น = ตัวควบคุม) · couponCode / billDiscount → VALIDATION · session ท
+  ✅ [P2.4-D3] [R5 CD2 CD3] registerSendTableRound(STAFF) → {ok, orderId, itemIds} · RestaurantOrder DINE_IN CONFIRMED placedByUserId=S
+  ✅ [P2.4-D4] [R5] ส่งรอบร่างเดียวกัน 2 คำขอพร้อมกัน → ok 1 + ALREADY_RECALLED 1 · ออเดอร์ +1 · ส่งซ้ำ → ALREADY_RECALLED ไม่มีออเดอร์
+  ✅ [P2.4-D5] [R5] เมนู stockQty 2 สั่ง 3 (บรรทัดที่ 2) → PRODUCT_UNAVAILABLE lineIndex 1 · ไม่มีออเดอร์/รายการใหม่ · stockQty ยัง 2 ·
+  ✅ [P2.4-D6] [R5] บรรทัด PRODUCT (น้ำ) ได้ stationId = สถานีแรกของสาขา (ensureDefaultStations) · createOrder เดิมเขียน productId = Me
+  ✅ [P2.4-D7] [R4 F1 N1 N2] รอบร่างแข่งกัน: newDraft:true → แถวใหม่ · พักด้วย heldCartId+expectedVersion เดิมสองเครื่อง (ทีละคำขอ + พร
+
+── B quote บิลโต๊ะ ──
+  ✅ [P2.4-B1] [R6 CD3] quoteRegisterCart({lines: [], tableSessionId}) → บรรทัดจากรายการที่ยังไม่จ่าย (productId · unitPriceSatang = un
+  ✅ [P2.4-B2] [R6 R1] tableSessionId + lines ไม่ว่าง → VALIDATION · session ร้าน T2 / ctx สาขา B / id มั่ว → TABLE_NOT_FOUND
+  ✅ [P2.4-B3] [R6] สมาชิกจาก session (เปิดโต๊ะพร้อม memberId) → tierDiscountSatang > 0 และเท่าตะกร้าปกติที่แนบสมาชิกคนเดียวกัน · ยอดสุ
+  ✅ [P2.4-B4] [R6 CD7 Q4] ค่าบริการจากค่าตั้ง POS ปัดครึ่งขึ้น: 19805 → 1981 (เท่าตะกร้าปกติ · ไม่ใช่ floor 1980 ของ RestaurantSetting
+  ✅ [P2.4-B5] [R6] session ว่าง → TABLE_EMPTY · มีแต่รายการที่ยกเลิก → TABLE_EMPTY
+  ✅ [P2.4-B6] [R6] itemsHash คงที่เมื่อไม่มีอะไรเปลี่ยน · รอบร่างที่ยังไม่ส่งไม่ถูกคิดเงิน (hash/บรรทัดเท่าเดิม) · ส่งรอบใหม่ → hash เ
+
+── P ชำระ ──
+  ✅ [P2.4-P1] [R7 CD4 Q4] submitRegisterSale({lines: [], tableSessionId, expectedTableItemsHash}) เครื่อง 2 → PosSale POS sourceId=ses
+  ✅ [P2.4-P2] [R7] ส่งซ้ำคีย์เดิม → บิลเดิม duplicated:true · คีย์ใหม่หลังจ่ายแล้ว → ปฏิเสธ (TABLE_EMPTY/TABLE_SESSION_CLOSED/TABLE_IT
+  ✅ [P2.4-P5] [R7] น้ำ (PRODUCT นับสต็อก) ตัดตอนจ่าย: OUT 2 แถว (คีย์ pos-consume-<sale>-<line>) Σ −3 · onHand −3
+  ✅ [P2.4-P7] [R7 CD4] GL ของบิล P1: Dr 1000 = ยอดบิล · Cr 2200 = VAT ของบิล · Σ Dr = Σ Cr = ยอดบิล (รวมค่าบริการ)
+  ✅ [P2.4-P8] [Q10] xReport: กะเครื่อง 2 billCount +1 salesTotal +ยอดบิล · กะเครื่อง 1 ไม่ขยับ
+  ✅ [P2.4-P3] [R7] 2 เครื่อง คนละคีย์ จ่ายโต๊ะเดียวกันพร้อมกัน → บิล 1 ใบ + TABLE_ITEMS_CHANGED · PosSale +1 · PosPayment +1 · เลขใบเส
+  ✅ [P2.4-P4] [R7] ส่งรอบใหม่ระหว่าง quote กับ submit → TABLE_ITEMS_CHANGED (ก่อน PRICE_CHANGED) · ไม่มีบิล · รายการยังไม่จ่าย · sessi
+  ✅ [P2.4-P6] [R7] มีรอบร่าง HELD อยู่ → จ่ายแล้ว session ยัง OPEN · dirtySince null · รอบร่างยัง HELD
+
+── T ผัง ──
+  ✅ [P2.4-T1] [R2] registerTables หลังชำระ: zones 2 โซน · tables ทุกโต๊ะของสาขา (คีย์ DTO ครบ) · สถานะ A1/A7 NEEDS_CLEARING (dirtySinc
+  ✅ [P2.4-T6] [R2 R9] การ์ด A5: DINING · guestCount 3 · unpaidSatang 22000 (ไม่รวมรายการที่จ่ายแล้วผ่าน checkout เดิม) · unsentCount 2
+
+── V void/คืน/ปิด/เก็บ ──
+  ✅ [P2.4-V1] [R8 CD5] ยกเลิกบิลโต๊ะจากลิ้นชักบิล (voidSaleByActor) + ระบายคิว → รายการของบิลหลุด (saleId/settledAt null) · session A1
+  ✅ [P2.4-V2] [R8] เล่น consumers[pos.sale.voided] ของบิล V1 ซ้ำ 2 รอบ → รายการ/session/dirtySince ไม่เปลี่ยน · เล่นซ้ำ void ของบิล RE
+  ✅ [P2.4-V3] [R8] คืนเงิน ⅓ ของบิลโต๊ะ (P3) → รายการ/session/dirtySince ของโต๊ะไม่เปลี่ยน
+  ✅ [P2.4-V4] [R9] registerCloseTable: มีค้างจ่าย → TABLE_HAS_UNPAID · STAFF (ไม่มี session.close) → PERMISSION_DENIED · session ว่าง 
+  ✅ [P2.4-V5] [R7 R9 F2] รอบที่ถือล็อก session (lockOpenSessionInTx FOR SHARE + createOrderInTx) ขณะจ่ายรายการสุดท้าย → บิลผ่าน · sess
+  ✅ [P2.4-V6a] [R8 H1] บิลบางส่วน X (I1) บน session OPEN ที่มีรอบ I2 · ธุรกรรมที่เรียก unlinkTableSaleInTx(X) ค้าง ~3 วิ ขณะ quote+subm
+  ✅ [P2.4-V6b] [R3 R8 H1] บิลเต็มโต๊ะ (session CLOSED) · ธุรกรรมที่เรียก unlinkTableSaleInTx ค้าง ~3 วิ ขณะ registerOpenTable บนโต๊ะเดี
+  ✅ [P2.4-V7] [R8 H2] บิลบางส่วน X บนโต๊ะ A (รอบร่าง HELD ให้โต๊ะเปิดอยู่) → mergeSession เดิม (B ← A) → void X + ระบายคิว → I1 saleId
+
+── R โต๊ะจอง ──
+  ✅ [P2.4-R1] [R10 Q2] registerCreateReservation A6 (+10 นาที · 6 คน) → BOOKED · ผัง RESERVED + reservation {id name partySize} · regi
+  ✅ [P2.4-R2] [R10] ยกเลิก → CANCELLED · ผัง FREE · จองอีก 3 ชม. → ผัง FREE (นอกช่วงกัน) · holdFromMinutes ปริยาย 15 · เปิดโต๊ะที่ถูกจ
+  ✅ [P2.4-R3] [R10 R1] โต๊ะร้าน T2 / ctx สาขา B / id การจองมั่ว → TABLE_NOT_FOUND · STAFF ที่ไม่มี restaurant.session.open → PERMISSIO
+  ✅ [P2.4-R4] [R10 F3] โต๊ะ E5 มี session OPEN (2 คน) + การจอง 6 คน → registerSeatReservation = VALIDATION "โต๊ะนี้มีลูกค้าอยู่ — ปิดบ
+  ❌ [P2.4-P9] [HF-PP] manualConfirmRequiresManager true + บิลโต๊ะ (regSubmitTable · ทาง preset "โต๊ะแจ้งจ่ายพร้อมเพย์แล้ว") โดย STAFF  — expected STAFF PROMPTPAY/CARD บิลโต๊ะ → PERMISSION_DENIED ไม่มีแถว โต๊ะยังเปิด · CASH ok · เจ้าของ ok · ปิดค่าตั้ง ok | actual STAFF PROMPTPAY → OK  · STAFF CARD → TABLE_SESSION_CLOSED โต๊ะนี้ปิดไปแล้ว — เปิดโต๊ะใหม่ก่อน · แถวเพิ่ม PosSale 12→13 PosPayment 12→13 · H1 หลังปฏิเสธ session CLOSED ค้างจ่าย 0 · STAFF CASH → TABLE_SESSION_CLOSED
+  ลบร้านชั่วคราว cmv2bei8600003jkzabnw0jsm + cmv2bei8i00013jkz2cx7y0ul: 328 ตาราง · แถวค้าง 0 {} · Tenant 0 · ผู้ใช้ 0
+  ✅ [P2.4-Z1] QC4 คืนสภาพ: ร้านชั่วคราว T + T2 เหลือ 0 แถวทุกตารางที่มี tenantId (Restaurant* TableSession PosHeldCart PosSale/Line/Pa
+  ✅ [P2.4-Z2] รอยของรอบนี้นอกร้านชั่วคราว = 0 (PosSale คีย์ · AuditLog/OutboxEvent ที่มีรหัสรอบ · โซนชื่อรอบ · Tenant slug) · ลายนิ้วม
+
+===== qc-pos-p2.4 ===== ผ่าน 49/50 (QC_FORCE) · PAR 4/4
+JSON_SUMMARY {"suite":"qc-pos-p2.4","total":50,"passed":49,"failed":["P2.4-P9"],"parRed":[],"skipped":false,"forced":true,"missing":[],"guardHits":0,"residue":0,"leaks":[],"fpDrift":[]}
+exit=1

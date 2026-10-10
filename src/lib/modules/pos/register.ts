@@ -423,7 +423,7 @@ import { callerTx } from "@/lib/core/caller-tx"; // HF-TX ▸ มุมมอง
 import { loadRowRecipes } from "./recipe";
 import { expandRecipe } from "./recipe-shared";
 import { consumeSaleIntents, lockSaleIntents, type SaleIntentRef } from "./payment-intent";
-import { isPaymentIntentId } from "./payment-intent-shared";
+import { isPaymentIntentId, parsePosIntentSettings } from "./payment-intent-shared"; // POS HF-PP ▸ + ตัวอ่านค่าตั้งเดียวกับ createPaymentIntent (scopeOf) ◂
 import { posPaymentSettings, type PosPaymentSettings } from "./payment-settings";
 // POS P1.9 ▸ กะของเครื่อง (S5/S6/S15) ◂
 import { isShiftDeviceId, registerShiftStatus, resolveRegisterShift } from "./shift";
@@ -466,6 +466,7 @@ import {
   REGISTER_PAGE_MAX,
   REGISTER_PAGE_SIZE,
   REGISTER_PAY_TYPES,
+  REGISTER_MANUAL_MANAGER_MESSAGE, // POS HF-PP ▸ fix 1 ◂
   POS_DISCOUNT_CAPS_DEFAULT,
   posDiscountCaps,
   type PosDiscountCaps,
@@ -678,6 +679,10 @@ async function regScope(db: RegDb, ctx: unknown, actorRaw: unknown, perms: reado
   return { tenantId, systemId, unitId, unitName: unit.name, unitInv: inv?.systemId ?? null, actor };
 }
 const REG_SELL_PERMS: readonly string[] = ["pos.sale.create"];
+// POS HF-PP ▸ (มติ 3) วิธีจ่ายที่ "รับเงินแล้ว" ได้โดยไม่มีใบขอรับเงิน = ต้องผ่านด่าน manualConfirmRequiresManager ที่ submit ·
+//   เจ้าของร้านค้านเรื่องบัตร = ถอด "CARD" ออกจากชุดนี้ที่เดียว (POS-OWNER-PENDING · P1.7) · ข้อความ = payment-intent.ts confirmPaymentIntentManual ◂
+const REG_MANUAL_METHODS: ReadonlySet<string> = new Set(["PROMPTPAY", "CARD"]);
+const REG_MANUAL_MANAGER_MESSAGE = REGISTER_MANUAL_MANAGER_MESSAGE; // POS HF-PP ▸ fix 1: ข้อความชุดเดียวกับที่จอใช้แปลงเป็นคีย์ (register-shared) ◂
 
 // ── กติกามองเห็นสินค้า (ชุดเดียวกับ catalog.listForUnit) ──
 function regVisibleWhere(s: RegScope): Prisma.Sql {
@@ -2218,6 +2223,16 @@ export async function submitRegisterSale(ctx: RegisterCtx, actor: RegisterActor,
       if (!st || isRegRefusal(st)) return regRefuse("STAFF_TOKEN_INVALID");
       s = st;
       actor = st.actor; // ผู้ขายของบิลนี้ = คนในโทเคน (ไม่ใช่ผู้ใช้ session)
+    }
+    // POS HF-PP ▸ (P2.4U R2 F8 · brief §9): ร้านตั้ง manualConfirmRequiresManager ⇒ พร้อมเพย์/บัตรที่ไม่อ้างใบขอรับเงิน (pi_) = ยืนยันเงินเข้าเอง →
+    //   ต้องมี pos.shift.manage ที่สาขานี้ (ผู้กระทำ = คนในโทเคนเมื่อส่งโทเคน) · ด่านเดียวเหนือทางแยก regSubmitTable/regSubmitWithIntents/regCreate ·
+    //   ก่อนเขียนอะไร · อ่านค่าตั้งเฉพาะเมื่อมีวิธีจ่ายแบบนี้และผู้กระทำไม่มีสิทธิ์ (เงินสด/โอน/อ้าง pi_ ไม่แตะ DB เพิ่ม) ◂
+    if (
+      req.payMethods.some((x) => REG_MANUAL_METHODS.has(x.type) && !isPaymentIntentId(x.reference)) &&
+      !evaluate(s.actor, { module: "pos", action: "pos.shift.manage", unitId: s.unitId })
+    ) {
+      const sys = await db.appSystem.findFirst({ where: { id: s.systemId, tenantId: s.tenantId }, select: { settings: true } });
+      if (parsePosIntentSettings(sys?.settings).manualConfirmRequiresManager) return regRefuse("PERMISSION_DENIED", REG_MANUAL_MANAGER_MESSAGE);
     }
     // POS P1.10 ▸ R2: เครื่องที่ถูกเพิกถอนของสาขานี้ขายไม่ได้ (หลังคีย์ซ้ำ ⇒ ลองซ้ำบิลที่ commit ก่อนเพิกถอน = บิลเดิม) · ไม่ลงทะเบียน = ขายได้ (Q3) ◂
     if (deviceId && (await posDeviceRevoked(db, s.tenantId, s.unitId, deviceId))) return regRefuse("DEVICE_REVOKED");
