@@ -19,7 +19,7 @@ import { channelDisplayName, channelRateText } from "@/components/pos/settings/c
 import { ChannelChip, PlannedChip } from "./OrderCardView";
 import { acceptLeftSec, bkkClock, mmss, ORDERS_ACCEPT_RED_SEC, type OrdersChannel } from "./orders-ui";
 
-export type PanelPerms = { accept: boolean; reject: boolean; create: boolean };
+export type PanelPerms = { accept: boolean; reject: boolean; create: boolean; voidSale: boolean };
 
 const EVENT_TYPES = new Set(["received", "accepted", "preparing", "ready", "completed", "rejected", "cancelled", "paid", "paid_reverted", "sale_bound", "prep_changed", "refunded"]);
 
@@ -55,6 +55,8 @@ export function OrderPanel(p: {
   const noAccept = !p.perms.accept ? t("perm.accept") : undefined;
   const noReject = !p.perms.reject ? t("perm.reject") : undefined;
   const noCreate = !p.perms.create ? t("perm.create") : undefined;
+  // fix 1 F5: ยกเลิกออเดอร์ที่มีบิลแล้ว = ยกเลิกบิลด้วย ⇒ ต้องมี pos.sale.void ด้วย (เซิร์ฟเวอร์ตรวจซ้ำ) · บิลถูกยกเลิกไปแล้ว (saleVoided) = ไม่ต้อง
+  const noCancel = !p.perms.reject ? t("perm.reject") : d?.saleId && !p.saleVoided && !p.perms.voidSale ? t("perm.void") : undefined;
 
   const head = (
     <header className="flex items-start gap-3 border-b px-5 pb-3 pt-4">
@@ -274,8 +276,8 @@ export function OrderPanel(p: {
           <button
             type="button"
             data-testid="pos-ord-cancel"
-            disabled={p.busy || !p.perms.reject}
-            title={noReject}
+            disabled={p.busy || !!noCancel}
+            title={noCancel}
             className={`btn h-11 rounded-[14px] text-[14px] disabled:opacity-50 ${p.saleVoided ? "bg-[color:var(--color-danger)] font-bold text-[color:var(--color-surface)]" : "btn-ghost text-[color:var(--color-danger)]"}`}
             onClick={p.onCancel}
           >

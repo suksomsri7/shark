@@ -3323,7 +3323,8 @@
     "perm": {
       "accept": "Needs the accept online orders permission",
       "reject": "Needs the reject/cancel online orders permission",
-      "create": "Needs the sell permission"
+      "create": "Needs the sell permission",
+      "void": "Needs the void bill permission too (this order already has a bill)"
     },
     "prep": {
       "less": "Less",

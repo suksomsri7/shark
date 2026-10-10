@@ -458,7 +458,7 @@ export function OrdersScreen(p: OrdersScreenProps) {
         loadError={detailErr}
         channel={chanById.get(selCard.channel.id) ?? null}
         now={now}
-        perms={{ accept: p.perms.accept, reject: p.perms.reject, create: p.perms.create }}
+        perms={{ accept: p.perms.accept, reject: p.perms.reject, create: p.perms.create, voidSale: p.perms.voidSale }}
         busy={busy}
         acceptPrep={acceptPrepOf(selCard)}
         error={panelErr}
