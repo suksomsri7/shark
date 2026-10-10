@@ -56,3 +56,24 @@
 | visual-pos `all --states --dry` (CI=1 only here) products/register/sales/settings × owner/cashier | rc 0 ×8 · shots 42/3 · 107/101 · 30/30 · 47/47 | rc 0 |
 
 Product code was not changed beyond the merge resolution and the F15.1 semantic fix above. No push to main, no deploy, no servers/build.
+
+# Fix round 1 + 2 (controller rulings 10 Oct · account A)
+| commit | what |
+|---|---|
+| bf5c7db0 | **S2.33 ruling (b)**: `git mv src/lib/modules/pos/catalog-recipe-actions.ts → src/lib/modules/pos/recipe-actions.ts`. The read-only `inventory.searchItems` import is now outside `pos/catalog*.ts`. Updated: the `RecipeSection.tsx` import, the file's own header/log prefixes, and the pointer in `POS-OWNER-PENDING.md:81`. No oracle, fitness, json or spec pinned the old name (grep of scripts/ and *.json), so no ORACLE-EDIT. Historical briefs/notes keep the old name. |
+| 8d1ff684 | `oracle-edit(p1.3): S5.12 legacy sha after main HF-O23`: `LEGACY_SHA` = d661c7ed… (register-ui.tsx) / e076ca3d… (actions/pos.ts). Count 128 unchanged. |
+| 5fa2b30b | **P1.1b Part B applied as written** (`pos-P1.1b.md` "Part B — exact hunks"): `account/service.ts` imports `* as legacy from "@/lib/modules/pos/catalog-legacy"` · `updateAccountProductSalePrice` → `prisma.$transaction(tx => legacy.writeAccountProductSalePrice(tx, …))` · `createAccountProductWithSalePrice` → `prisma.$transaction(tx => legacy.createAccountProduct(tx, {…}))` · `fitness-pos.mts` `CATALOG_WRITER_BASELINE` → `{}`. Same import pattern as account/product.ts and inventory-link.ts. |
+| b99dd2b5 | `POS-OWNER-PENDING.md`: account owner, the `ciEquals` change (accepted, for information) · member owner, the m2.6–m2.8 QC4 seed setup crash `null.role` (POS does not touch seeds). |
+| 5b24f8b3 | `oracle-edit(p1.1): S2.19a`: Part A collapsed into Part B. S2.19a now asserts baseline `{}` + writer set catalog.ts + catalog-legacy.ts + 0 scanner hits outside it. Id and count 180 unchanged. |
+
+**S2.19 / S2.11b really execute (not skipped)**: guard `partBStarted = CATALOG_IMPORT_RE.test(read("src/lib/modules/account/service.ts"))` (`qc-pos-p1.1.mts:513`) → `runPartB = partBStarted` (`:2178`) → S2.19 assertions inside `if (runPartB)` (`:2299`), S2.11b in `behaveIds` (`:2528`). Log on 5b24f8b3: `✅ [P1.1-S2.19] PART-B F15.1: CATALOG_WRITER_BASELINE ว่าง …` and `✅ [P1.1-S2.11b] PART-B …`, JSON_SUMMARY `"partBStarted":true,"skippedChecks":{}`. The guard was not changed.
+
+## Gates fix1 (head b99dd2b5 · `runs/fix1-b99dd2b5/`)
+typecheck clean · fitness env 50/50 · no-env 50/50 · fitness-pos 8/8 · **qc-pos-p1.1 179/180** (only S2.19a, obsolete Part-A baseline → ruled, fixed in 5b24f8b3; S2.33 ✅, S2.11b ✅, S2.19 ✅) · qc-pos-p1.3 **128/128** · p2.3 46/46 · p2.4 49/49 · p2.8 60/60 · p1.18 81/81 · products 24/24 · hf-pos-page-authz 56/56 · pos-account 16/16 · account-cpa 107/107 · visual `all --states --dry --page products` owner rc 0 (42 shots) / cashier rc 0 (3).
+
+## Gates fix2 (head 5b24f8b3 · `runs/fix2-5b24f8b3/`, clean tree)
+| gate | result |
+|---|---|
+| fitness env / no-env | 50/50 · 50/50 |
+| qc-pos-p1.1 | **180/180** (178 + S2.11b + S2.19 opened) · 0 red · skippedChecks {} |
+| qc-pos-p1.3 | **128/128** |
