@@ -919,11 +919,13 @@ export function RegisterScreen(props: RegisterScreenProps) {
   const changeCart = (next: RegisterCart) => {
     setCart(next);
     setCartVer((v) => v + 1);
+    if (tableOn) setTblErr(null); // POS P2.4U ▸ fix 1 F6: ตะกร้าเปลี่ยน = ไฮไลต์บรรทัดที่ส่งครัวไม่ได้หมดความหมาย (ตำแหน่งเลื่อน) ◂
   };
   /** แก้ตะกร้าจากค่าล่าสุดเสมอ (setCart แบบฟังก์ชัน) — ใช้กับการเพิ่มสินค้าที่อาจมาจากงาน async (B2.2 S1) */
   const updateCart = (fn: (prev: RegisterCart) => RegisterCart) => {
     setCart(fn);
     setCartVer((v) => v + 1);
+    if (tableOn) setTblErr(null); // POS P2.4U ▸ fix 1 F6 ◂
   };
   // ═══════ POS P1.12U fix รอบ 1 (F1 · F9) ▸ ตะกร้าที่มีสมาชิก/คูปอง + สิทธิ์เกินเพดาน (PIN ผู้จัดการที่เตรียมไว้ · บิลพักที่อนุมัติแล้ว) ═══════
   //   ยอดในเครื่องใช้ไม่ได้ (มติ 1) ⇒ quote ฝั่งเซิร์ฟเวอร์ด้วยสิทธิ์นั้น (quoteRegisterCartOverrideAction · อ่านอย่างเดียว · ทางเดียวกับ quote ปกติ ⇒
@@ -1434,7 +1436,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
   /** P1.2 U: บรรทัดชั่ง (ป้ายเครื่องชั่ง หรือน้ำหนักที่กรอก) — qty 1 ไม่รวมกับบรรทัดใด · ราคาจริงจาก quote */
   const addWeighed = (p: RegisterProduct, weight: { weighedBarcode: string } | { weightGrams: number }, options: string[], note?: string) => {
     if (frozenRef.current) return;
-    if (tableOn) return showToast({ key: "order.noWeighed", ns: "tables" }); // POS P2.4U ◂
+    if (tableOn) return showToast({ key: "order.noWeighed", ns: "tables" }); // POS P2.4U ▸ โหมดโต๊ะ ◂
     if (cartRef.current.lines.length >= REGISTER_MAX_LINES) return showToast({ key: "errors.tooManyLines", values: { max: REGISTER_MAX_LINES } });
     known.current.set(p.id, p);
     const key = newKey();

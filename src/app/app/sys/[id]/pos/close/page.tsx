@@ -57,7 +57,7 @@ export default async function PosCloseDayPage({
     closeDaySummary({ tenantId, systemId: id, unitIds }, businessDate),
     closeDayBills({ tenantId, systemId: id, unitIds }, businessDate),
   ]);
-  const tableUnits = (await posUnits(tenantId, id)).filter((u) => !unitIds || unitIds.includes(u.id)).map((u) => ({ id: u.id, name: u.name })); // POS P2.4U ◂
+  const tableUnits = (await posUnits(tenantId, id)).filter((u) => !unitIds || unitIds.includes(u.id)).map((u) => ({ id: u.id, name: u.name })); // POS P2.4U ▸ โหมดโต๊ะ ◂
 
   return (
     <div className="flex max-w-2xl flex-col gap-5">

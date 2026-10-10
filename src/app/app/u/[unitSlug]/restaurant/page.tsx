@@ -38,7 +38,7 @@ export default async function RestaurantPage({
   ]);
   const kitchen = kitchenOpenNow(setting);
   const posTables = await posTableModeForUnit(auth, unit.id); // POS P2.4U ▸ F4b ◂
-  const tl = await getTranslations("pos.tables"); // POS P2.4U ◂
+  const tl = await getTranslations("pos.tables"); // POS P2.4U ▸ โหมดโต๊ะ ◂
   const byZone = new Map<string, typeof tables>();
   for (const t of tables) {
     const arr = byZone.get(t.zoneName) ?? [];
@@ -207,18 +207,18 @@ export default async function RestaurantPage({
                             >
                               ดูโต๊ะ
                             </Link>
-                            {posTables ? ( // POS P2.4U ▸ F4b ◂
+                            {posTables ? ( // POS P2.4U ▸ F4b: สาขาโหมดโต๊ะ = ลิงก์ไป POS แทนเช็คบิลเดิม
                               <Link href={`${posTables.href}&open=${t.sessionId}`} className="btn-sm">
                                 {tl("legacy.manageAtPos")}
                               </Link>
-                            ) : (
+                            ) : ( // POS P2.4U ▸ F4b: สาขาที่ไม่ใช้โหมดโต๊ะ = ปุ่มเดิม
                             <Link
                               href={`/app/u/${unitSlug}/restaurant/checkout/${t.sessionId}`}
                               className="btn-sm"
                             >
                               เช็คบิล
                             </Link>
-                            )}
+                            )}{/* ◂ POS P2.4U F4b */}
                           </div>
                         </div>
                       ) : (

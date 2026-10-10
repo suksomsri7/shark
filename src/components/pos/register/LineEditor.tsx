@@ -53,7 +53,7 @@ export function LineEditor({ lineKey, name, qty, discount, note, focus, onApply,
   const qtyRef = useRef<HTMLInputElement>(null);
   const discRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
-    (focus === "qty" || noDiscount ? qtyRef : discRef).current?.focus(); // POS P2.4U ◂
+    (focus === "qty" || noDiscount ? qtyRef : discRef).current?.focus(); // POS P2.4U ▸ โหมดโต๊ะ ◂
   }, [focus, noDiscount]);
 
   const n = /^\d+$/.test(q.trim()) ? Number(q.trim()) : NaN;

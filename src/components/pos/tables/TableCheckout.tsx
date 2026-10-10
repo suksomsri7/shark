@@ -85,6 +85,8 @@ type Props = {
   onStaffTokenDead: () => void;
   /** paid = บิลจบ (ผู้เรียกโหลดผัง/แผงใหม่) · closed = โต๊ะปิด/ว่างระหว่างทาง · aborted = ปิดกล่องเอง */
   onFinished: (kind: "paid" | "closed" | "aborted") => void;
+  /** fix 1 F4: โหมดพร้อมเพย์ที่แจ้งจากโต๊ะ — แตะวิธีจ่ายอื่น ⇒ ผู้เรียกปิดกล่องนี้แล้วเปิดเช็คบิลปกติ (มีใบขอรับเงิน) */
+  onSwitchToNormal?: () => void;
 };
 
 type Sub = { kind: "discount" } | { kind: "coupon" } | { kind: "over" } | null;
@@ -108,6 +110,8 @@ export function TableCheckout(p: Props) {
   const pendingRef = useRef<RegisterSubmitInput | null>(p.restore?.sale ?? null);
   const sendingRef = useRef(false);
   const quoteSeq = useRef(0);
+  /** fix 1 F5: ยอดก่อนส่วนลดของ quote ที่ดีล่าสุด (คิด "ขอส่วนลด N%" ของส่วนลดแบบบาท — ทาง restore/quote ล้มก็ยังมีค่า) */
+  const lastSubtotal = useRef<number | null>(p.initialQuote?.subtotalSatang ?? null);
   const storeKey = tablePendingKey(p.systemId, p.unitId, p.userId);
 
   const savePending = (sale: RegisterSubmitInput, ph: "sending" | "unknown") => {
@@ -163,6 +167,7 @@ export function TableCheckout(p: Props) {
           return;
         }
         setQuote(r);
+        lastSubtotal.current = r.subtotalSatang;
         return;
       }
       setQuote(null);
@@ -352,6 +357,12 @@ export function TableCheckout(p: Props) {
       >
         {couponCode ? t("checkout.couponSet", { code: couponCode }) : t("checkout.coupon")}
       </button>
+      {p.promptpayPreset && (
+        <p data-testid="pos-tbl-checkout-preset" className="w-full text-[12.5px] text-[color:var(--color-ink-soft)]">
+          {t("checkout.presetLocked")}
+          {presetManagerOnly && <b className="mt-0.5 block text-[color:var(--color-danger)]">{tr("pay.intent.managerOnly")}</b>}
+        </p>
+      )}
       {over && (
         <button data-testid="pos-tbl-checkout-discount-over" type="button" className="h-11 px-1 text-[13.5px] font-bold text-[color:var(--color-accent)] underline underline-offset-2" onClick={() => setSub({ kind: "over" })}>
           {tr("discountOver.open")}
@@ -359,7 +370,10 @@ export function TableCheckout(p: Props) {
       )}
     </div>
   );
-  const wantBp = billDiscount ? (billDiscount.type === "PERCENT" ? billDiscount.value : p.initialQuote && p.initialQuote.subtotalSatang > 0 ? Math.ceil((billDiscount.value * 10_000) / p.initialQuote.subtotalSatang) : 0) : 0;
+  const sub0 = lastSubtotal.current;
+  const wantBp = billDiscount ? (billDiscount.type === "PERCENT" ? billDiscount.value : sub0 && sub0 > 0 ? Math.ceil((billDiscount.value * 10_000) / sub0) : 0) : 0;
+  // fix 1 F4 (มติผู้คุม): พร้อมเพย์ที่แจ้งจากโต๊ะ = ไม่สร้างใบใหม่ (D4) แต่ใช้ด่านเดียวกับปุ่มยืนยันเองของ QR (P1.7): ร้านตั้งให้ผู้จัดการยืนยัน + ผู้ใช้ไม่มี pos.shift.manage ⇒ ยืนยันไม่ได้
+  const presetManagerOnly = p.promptpayPreset && !!p.payIntent?.manualRequiresManager && !p.payIntent?.canManageShift;
 
   return (
     <div data-testid="pos-tbl-checkout" data-phase={phase} className="contents">
@@ -389,7 +403,7 @@ export function TableCheckout(p: Props) {
           memberSection={extras}
           intent={p.payIntent && !p.promptpayPreset ? { ...p.payIntent, systemId: p.systemId, unitId: p.unitId, cartKey: idemKey, discountOverCap: over } : null}
           taxInvoice={null}
-          {...(p.promptpayPreset ? { initialMethod: "PROMPTPAY" as const } : {})}
+          {...(p.promptpayPreset ? { initialMethod: "PROMPTPAY" as const, lockedMethod: { managerOnly: presetManagerOnly, onSwitch: () => p.onSwitchToNormal?.() } } : {})}
         />
       </div>
       {sub?.kind === "discount" && (

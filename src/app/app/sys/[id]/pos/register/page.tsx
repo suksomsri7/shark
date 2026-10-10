@@ -40,8 +40,8 @@ export default async function PosRegisterPage({
 }) {
   const { id } = await params;
   const { unit: unitParam } = await searchParams;
-  const tableRaw = (await searchParams).table; // POS P2.4U ◂
-  const tableSessionId = (Array.isArray(tableRaw) ? tableRaw[0] : tableRaw) || null; // POS P2.4U ◂
+  const tableRaw = (await searchParams).table; // POS P2.4U ▸ โหมดโต๊ะ ◂
+  const tableSessionId = (Array.isArray(tableRaw) ? tableRaw[0] : tableRaw) || null; // POS P2.4U ▸ โหมดโต๊ะ ◂
   const auth = await requireTenant();
   const tenantId = auth.active.tenantId;
 

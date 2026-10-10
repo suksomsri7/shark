@@ -41,7 +41,7 @@ export default async function SessionPage({
   const otherOpen = tables.filter((t) => t.sessionId && t.sessionId !== sessionId);
   const hasPaidItems = session.orders.some((o) => o.items.some((it) => it.saleId));
   const posTables = await posTableModeForUnit(auth, unit.id); // POS P2.4U ▸ F4b ◂
-  const tl = await getTranslations("pos.tables"); // POS P2.4U ◂
+  const tl = await getTranslations("pos.tables"); // POS P2.4U ▸ โหมดโต๊ะ ◂
 
   return (
     <div className="flex max-w-2xl flex-col gap-6">

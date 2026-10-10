@@ -97,7 +97,7 @@ function UnitChooser({ systemId, units, activeUnitId, label, mobile, unitHref }:
               className={`flex h-11 items-center rounded-[8px] px-2.5 text-[14px] hover:bg-[color:var(--color-surface-2)] ${u.id === activeUnitId ? "font-bold" : ""}`}
               role="menuitem"
               aria-current={u.id === activeUnitId ? "true" : undefined}
-              href={unitHref ? unitHref(u.id) : `/app/sys/${systemId}/pos/register?unit=${u.id}`} // POS P2.4U ◂
+              href={unitHref ? unitHref(u.id) : `/app/sys/${systemId}/pos/register?unit=${u.id}`} // POS P2.4U ▸ โหมดโต๊ะ ◂
               onClick={() => setOpen(false)}
             >
               <span className="truncate">{u.name}</span>

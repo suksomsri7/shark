@@ -199,23 +199,31 @@ export function TablesScreen(p: TablesScreenProps) {
   const [floorErr, setFloorErr] = useState<string | null>(null);
   const [requests, setRequests] = useState<TableRequest[]>([]);
   const floorSeq = useRef(0);
-  const refreshFloor = useCallback(async () => {
+  /** ดึงผัง + คำขอ — คืนผังล่าสุด (null = ล้ม/คำตอบเก่า) · fix 1 F3: ดึงคำขอไม่สำเร็จ = ล้างรายการแจ้งเตือน (ไม่ค้างของเก่าที่อาจชี้ session ที่ปิดไปแล้ว) */
+  const refreshFloor = useCallback(async (): Promise<Floor | null> => {
     const seq = ++floorSeq.current;
     try {
       const [f, rq] = await Promise.all([
         registerTablesAction({ systemId: p.systemId, unitId: p.unitId }),
         registerTableRequestsAction({ systemId: p.systemId, unitId: p.unitId }).catch(() => null),
       ]);
-      if (seq !== floorSeq.current) return;
+      if (seq !== floorSeq.current) return null;
+      setRequests(rq && rq.ok ? rq.requests : []);
       if (f.ok) {
         setFloor(f);
         setClock({ serverMs: Date.parse(f.serverTime), localMs: Date.now() });
         setFloorErr(null);
         setLastSyncAt(new Date());
-      } else setFloorErr(refusalMessageKey(f.code));
-      if (rq && rq.ok) setRequests(rq.requests);
+        return f;
+      }
+      setFloorErr(refusalMessageKey(f.code));
+      return null;
     } catch {
-      if (seq === floorSeq.current) setFloorErr("errors.loadFailed");
+      if (seq === floorSeq.current) {
+        setFloorErr("errors.loadFailed");
+        setRequests([]);
+      }
+      return null;
     }
   }, [p.systemId, p.unitId]);
 
@@ -306,7 +314,7 @@ export function TablesScreen(p: TablesScreenProps) {
       if (r.selSession) void r.loadDetail(r.selSession);
     };
     if (!p.initialFloor) run();
-    else void registerTableRequestsAction({ systemId: p.systemId, unitId: p.unitId }).then((rq) => rq.ok && setRequests(rq.requests)).catch(() => undefined);
+    else void registerTableRequestsAction({ systemId: p.systemId, unitId: p.unitId }).then((rq) => setRequests(rq.ok ? rq.requests : [])).catch(() => setRequests([]));
     const id = setInterval(() => {
       if (document.visibilityState === "visible") run();
     }, POLL_MS);
@@ -453,7 +461,12 @@ export function TablesScreen(p: TablesScreenProps) {
     try {
       const r = await registerSeatReservationAction({ ...target(), reservationId: c.reservation.id, tableId: c.id });
       if (!r.ok) {
-        showToast(r.code === "VALIDATION" && c.sessionId ? { key: "errors.occupied", ns: "tables" } : errKey(r.code));
+        // fix 1 F2: อีกเครื่องเปิดโต๊ะไปก่อน (ผังในเครื่องยังเก่า) ⇒ ดึงผังใหม่ แล้วตัดสินข้อความจากการ์ดล่าสุด
+        if (r.code === "VALIDATION") {
+          const fresh = await refreshFloor();
+          const now2 = fresh?.tables.find((x) => x.id === c.id);
+          showToast(now2?.sessionId ? { key: "errors.occupied", ns: "tables" } : errKey(r.code));
+        } else showToast(errKey(r.code));
         return;
       }
       showToast({ key: "reservation.seated", ns: "tables", values: { table: c.name } });
@@ -594,6 +607,12 @@ export function TablesScreen(p: TablesScreenProps) {
   // ═══════ วาด ═══════
   const empty = !!floor && floor.tables.length === 0;
   const unpaidOf = (tableId: string) => floor?.tables.find((c) => c.id === tableId)?.unpaidSatang ?? 0;
+  /** fix 1 F3: การ์ดของคำขอ = โต๊ะที่ session ยังเป็น session ของคำขอ · ไม่เจอ = คำขอค้าง (โต๊ะเปลี่ยนสถานะแล้ว) */
+  const cardOfRequest = (r: TableRequest) => floor?.tables.find((x) => !!x.sessionId && x.sessionId === r.sessionId) ?? null;
+  const staleRequest = async () => {
+    showToast({ key: "alerts.stale", ns: "tables" });
+    await refreshFloor();
+  };
   const alertsNode = (compact: boolean) => (
     <TableAlerts
       requests={requests}
@@ -604,12 +623,14 @@ export function TablesScreen(p: TablesScreenProps) {
       onAck={(r) => void reqAction(r, "ack")}
       onDone={(r) => void reqAction(r, "done")}
       onOpen={(r) => {
-        const c = floor?.tables.find((x) => x.id === r.tableId);
+        const c = cardOfRequest(r);
         if (c) selectCard(c);
+        else void staleRequest();
       }}
       onConfirmPay={(r) => {
-        const c = floor?.tables.find((x) => x.id === r.tableId);
-        if (!c) return;
+        // fix 1 F3: หาโต๊ะด้วย session ของคำขอ (ไม่ใช่โต๊ะ) — โต๊ะที่ปิดบิลแล้วเปิดใหม่ = คนละ session ห้ามเปิดเช็คบิลของ session ใหม่ด้วยคำขอเก่า
+        const c = cardOfRequest(r);
+        if (!c) return void staleRequest();
         selectCard(c);
         if (!checkoutBlock) openCheckout(c, true);
       }}
@@ -715,6 +736,7 @@ export function TablesScreen(p: TablesScreenProps) {
             deviceId={deviceId}
             tables={floor?.tables ?? []}
             nowMs={now ?? Date.now()}
+            onRefresh={async () => (await refreshFloor())?.tables ?? null}
             onChanged={(m, seatedSessionId) => {
               if (m) showToast(m);
               if (seatedSessionId) {
@@ -729,6 +751,7 @@ export function TablesScreen(p: TablesScreenProps) {
       case "checkout":
         return (
           <TableCheckout
+            key={`${layer.sessionId}:${layer.preset ? "pp" : "n"}`} // fix 1 F4: สลับจากโหมดพร้อมเพย์ = กล่องใหม่ (คีย์บิลใหม่)
             systemId={p.systemId}
             unitId={p.unitId}
             userId={p.userId}
@@ -756,6 +779,8 @@ export function TablesScreen(p: TablesScreenProps) {
               void reloadAll();
               void refreshStatus();
             }}
+            // fix 1 F4: โหมดพร้อมเพย์ที่แจ้งจากโต๊ะ — แตะวิธีอื่น ⇒ เปิดเช็คบิลปกติของ session เดียวกัน (คีย์บิลใหม่ · มีใบขอรับเงิน)
+            onSwitchToNormal={() => setLayer({ kind: "checkout", sessionId: layer.sessionId, tableName: layer.tableName, preset: false, restore: null })}
           />
         );
     }

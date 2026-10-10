@@ -2995,7 +2995,8 @@
       "ack": "Acknowledge",
       "done": "Done",
       "openTable": "Open table",
-      "confirmPayment": "Confirm payment"
+      "confirmPayment": "Confirm payment",
+      "stale": "The table changed — reloaded"
     },
     "billType": {
       "label": "New bill",
@@ -3099,7 +3100,8 @@
       "coupon": "Coupon",
       "couponSet": "Coupon {code}",
       "discountSet": "Discount {amount}",
-      "done": "Table {table} checked out"
+      "done": "Table {table} checked out",
+      "presetLocked": "Confirming the PromptPay the table reported — tap another method for a normal checkout"
     },
     "order": {
       "chip": "Table {name} · order more",

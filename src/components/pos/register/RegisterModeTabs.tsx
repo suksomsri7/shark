@@ -19,10 +19,10 @@ type Tab = { key: TabKey; msg: string; icon: RegisterIconName; href: string | nu
 export function RegisterModeTabs({ systemId, active = "sale", tablesHref = null, unitId }: { systemId: string; active?: "sale" | "tables"; tablesHref?: string | null; unitId?: string }) {
   const t = useTranslations("pos.register");
   const base = `/app/sys/${systemId}`;
-  const unitQ = unitId ? `?unit=${encodeURIComponent(unitId)}` : ""; // POS P2.4U ◂
+  const unitQ = unitId ? `?unit=${encodeURIComponent(unitId)}` : ""; // POS P2.4U ▸ โหมดโต๊ะ ◂
   const tabs: Tab[] = [
-    { key: "sale", msg: "sale", icon: "cash", href: active === "tables" ? `${base}/pos/register${unitQ}` : null }, // POS P2.4U ◂
-    { key: "tables", msg: "tables", icon: "grid", href: tablesHref }, // POS P2.4U ◂
+    { key: "sale", msg: "sale", icon: "cash", href: active === "tables" ? `${base}/pos/register${unitQ}` : null }, // POS P2.4U ▸ โหมดโต๊ะ ◂
+    { key: "tables", msg: "tables", icon: "grid", href: tablesHref }, // POS P2.4U ▸ โหมดโต๊ะ ◂
     { key: "online-orders", msg: "onlineOrders", icon: "truck", href: null },
     { key: "bills", msg: "bills", icon: "doc", href: `${base}/pos/sales` },
     { key: "shift", msg: "shift", icon: "clock", href: `${base}/pos/close` },

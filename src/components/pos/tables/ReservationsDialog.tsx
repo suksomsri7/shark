@@ -25,6 +25,8 @@ type Props = {
   tables: TableCard[];
   nowMs: number;
   onChanged: (toast: Msg | null, seatedSessionId?: string) => void;
+  /** fix 1 F2: ดึงผังใหม่ (คืนการ์ดล่าสุด · null = ล้ม) — ใช้ตัดสินข้อความ "โต๊ะมีลูกค้าอยู่" */
+  onRefresh: () => Promise<TableCard[] | null>;
   onClose: () => void;
 };
 
@@ -76,7 +78,9 @@ export function ReservationsDialog(p: Props) {
         return;
       }
       // fix-2 F3: โต๊ะมีลูกค้าอยู่ = VALIDATION (ข้อความไทยของเซิร์ฟเวอร์) ⇒ คีย์ tables.errors.occupied
-      const occupied = res.code === "VALIDATION" && !!p.tables.find((x) => x.id === (tableId ?? r.tableId) && !!x.sessionId);
+      //   P2.4U fix 1 F2: ตัดสินจากผังที่ดึงใหม่ (อีกเครื่องอาจเปิดโต๊ะไปหลังรอบดึงล่าสุด)
+      const fresh = res.code === "VALIDATION" ? await p.onRefresh() : null;
+      const occupied = res.code === "VALIDATION" && !!(fresh ?? p.tables).find((x) => x.id === (tableId ?? r.tableId) && !!x.sessionId);
       setErr(occupied ? { key: "errors.occupied", ns: "tables" } : { key: refusalMessageKey(res.code), ns: "register" });
     } catch {
       setErr({ key: "errors.unknown", ns: "register" });
