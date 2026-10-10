@@ -161,3 +161,6 @@ Base `wip/pos-p2.3` 14dec332 (code 276a1934). One commit per finding (explicit p
 | `pnpm typecheck` (iso + flock /tmp/pos-gate.lock, heap 5632) | 0 errors | 0 |
 | extra `qc-hf-inventory-atomic` | 142/143 (AT-24.1 — see extra finding) | 0 |
 All suites green on the first run (no re-runs). Pre-commit fitness green on every commit.
+
+## Fix round 2 (controller ruling AT-24.1 · keep the oracle)
+- `09e2ca11` — `consumeSaleInventory` logs `[pos] stock cut failed — sale committed without stock movement` `{saleId, itemId, qty, code}` once per item that was not cut: every part on a `consumeBatch` throw (+ the batch summary line) and every `skipped` part (code = SERVICE | NOT_FOUND). Gates on 09e2ca11 (`runs/fix2/`, tree/head/rc headers): `qc-hf-inventory-atomic` 143/143 · `qc-pos-p2.3` forced 46/46 residue 0 · `qc-pos-p1.3` 128/128 · typecheck rc 0 · fitness-pos 8/8.
