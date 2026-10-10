@@ -1257,3 +1257,8 @@
 - prompt: `pos-briefs/pos-prompt-accountB-P2.8-H.filled.md` (Part A = ตรวจ F1–F5 + W9/W10 · Part B = ล่าเลนเงิน) → ผลลง `wo-notes/pos-P2.8-hunt.md`
 - ถ้า R2 OK + ไม่มี Medium+ → merge `wip/pos-p2.8` (+ `git merge origin/main` ที่จุดนี้ แล้วตรวจ P1.1b ส่วน B + ORACLE-EDIT P1.3 S5.12) → ด่าน merge → deploy p28 migration บน QC5 → P2.8U ต่อคิว
 - เลน 3/3: P2.3U fix1 (p11) · P2.4 R3+H (c อ่าน) · P2.8 R2+H (b อ่าน)
+
+## 10 ต.ค. 06:0xZ — P2.3U fix1 ส่งแล้ว (a59655ac · code ac598727 · 17 บรรทัด · ด่านเขียวหมด · ไม่มี --state เปลี่ยนภาพ) → ผู้คุมตรวจ diff เอง: F1 กรอง chips ✓ · F2 canAccessUnit ✓ · F4 ล้าง cache ตัวแปร ✓ · banner nit ✓ · ORACLE-EDIT ข้อความล้วน (46 คง) ✓ → ไม่เปิด R2 แยก
+- chain62 ปล่อยแล้ว (unit pos-chain62-1791612474): build a59655ac ทรี d → vis63 ถ่ายเต็มจุด merge (products/register/sales/stock/settings × owner-th/cashier-th/owner-en + close/reports/shifts/receipt-public owner-th · wo `p23u-m`/`p23u-m-en`) · waiter พื้นหลัง bkemkfgua
+- หลัง vis63 เขียว: ด่าน merge P2.3U = ด่านของ fix1 (p11 head ac598727) ถือเป็นด่าน merge ได้ (ไม่มี commit อื่นบน session/pos ตั้งแต่ 1636da3c นอกจาก ledger) → ff/merge `wip/pos-p2.3u` → **25/55** → TG
+- เลน 2/3: P2.4 R3+H (c อ่าน) · P2.8 R2+H (b อ่าน) · p11 ว่าง
