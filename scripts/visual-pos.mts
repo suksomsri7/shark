@@ -1166,7 +1166,9 @@ async function runP115State(page: Any, state: StateKey, device: Device): Promise
         return r.height > 0 && r.top >= 0 && r.bottom <= window.innerHeight;
       }).catch(() => null)) as boolean | null;
     const sw = await inView("pos-staff-switch");
-    const held = P115.heldId ? await inView("pos-staff-held") : true;
+    // HF-P1CLOSE fix รอบ 1 F3: ต้องพิสูจน์การ์ดบิลพักทุกครั้ง — ไม่มีบิลพักของ seed = ตก (ไม่ข้าม) ◂
+    if (!P115.heldId) throw new StepError("ไม่มีบิลพักของข้อมูลภาพ P1.15U — พิสูจน์การ์ดบิลพักบนจอล็อก 390 ไม่ได้");
+    const held = await inView("pos-staff-held");
     if (!(m.sh > m.ch && m.top > 0) || !sw || !held)
       throw new StepError(`จอล็อก 390 เลื่อนไม่ถึง: scrollHeight ${m.sh} · clientHeight ${m.ch} · scrollTop ${m.top} · สลับพนักงานในจอ ${sw} · บิลพักในจอ ${held}`);
     LOCK_SCROLL.push(`${userKey}: scrollHeight ${m.sh} > clientHeight ${m.ch} · scrollTop ${m.top} · สลับพนักงาน/บิลพักอยู่ในจอ`);
