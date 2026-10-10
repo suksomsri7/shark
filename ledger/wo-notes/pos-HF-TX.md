@@ -1,0 +1,62 @@
+# POS HF-TX — builder notes (account B · 10 Oct 2026)
+
+Branch `wip/pos-hf-tx` · base `session/pos` d85ea5c3 · tree `shark-pos-c` · brief `ledger/pos-briefs/pos-brief-HF-TX.md` (§9 rulings 1–5 binding) · investigation `ledger/wo-notes/pos-HF-TX-investigation.md`.
+
+## Commits
+| step | commit | what |
+|---|---|---|
+| 1 | 132b0d0c | `src/lib/core/caller-tx.ts` `callerTx<T extends object>(tx: T): T` (Proxy: `has` false / `get` undefined for `$transaction`, methods bound; pure, no imports; JSDoc = why + rule) · `pos/service.ts` `afterSaleCommitted(input, saleId)` = the old post-commit body (stock lines ⇒ `consumeSaleInventory`; then `scheduleDrain()`); createSale's owned branch now calls it · facade `pos/index.ts` exports it |
+| 2 | fc057096 · d70af6ea | suite `scripts/qc-hf-tx.mts` (HT1–HT7, 17 checks) · red-before `ledger/wo-notes/HF-TX-red.txt` |
+| 3 | 7e186c27 | register intent path + giftcard sell/reload switched · giftcard P2002 retry · P1.7 comment corrected |
+| 4 | 874cde70 | P2.4 table submit + P2.8 `orderCreateSale` switched · both local proxies deleted |
+| 5 | 3de80ed3 (+ this file) | owner lines (`POS-OWNER-PENDING.md`) · notes |
+| 6 | a140c628 | merge `origin/session/pos` eaae6ecd (ledger only — no src/scripts change) · gates |
+
+## Per-site diff (file:line at head)
+- `src/lib/core/caller-tx.ts:15` — `callerTx` (new).
+- `src/lib/modules/pos/service.ts:806` — `if (ownsTx) await afterSaleCommitted(input, result.saleId);` · `:816` `export async function afterSaleCommitted(input: Pick<CreateSaleInput, "tenantId" | "unitId" | "lines">, saleId)` — param narrowed to `Pick<…>` (a full `CreateSaleInput` is still accepted) so P2.8's `afterSaleCommit(tenantId, unitId, saleId, lines)` can call it without rebuilding the input. Facade `pos/index.ts:24`.
+- `src/lib/modules/pos/register.ts:2431` (P1.7 intent path, `regSubmitWithIntents`) — `regCreateSale(saleInput, callerTx(tx))`; `:2437` `await afterSaleCommitted(saleInput, saleId)` replaces the inline cut+drain. `:2377–2382` regCreateSale JSDoc: the P1.7 claim "createSale does not open a nested tx" corrected.
+- `src/lib/modules/pos/register.ts:2516` (P2.4 table submit, `regSubmitTable`) — `regCreateSale(saleInput, callerTx(tx))`; `:2525` `afterSaleCommitted`; the local proxy + its JSDoc deleted; HF-TX marker = "switched". Unused imports `consumeSaleInventory` / `scheduleDrain` dropped from register.ts.
+- `src/lib/modules/pos/order.ts:438` (P2.8 `orderCreateSale`, used at `:487` accept-in-tx and `:1116` payOrder) — `createSale(input, callerTx(tx))`; local proxy + JSDoc deleted; marker "switched". `:466–468` `afterSaleCommit` now = `afterSaleCommitted({ tenantId, unitId, lines }, saleId)` (adds the canonical `scheduleDrain()`; the callers' own later `scheduleDrain()` at :612/:904/:1136 vicinity stay — a second drain is harmless, leased).
+- `src/lib/modules/giftcard/service.ts:434` (sell) / `:719` (reload) — `pos.createSale(saleInput, callerTx(tx))`; `:492` / `:750` `await pos.afterSaleCommitted(…)` after the `$transaction` resolves (keeps an immediate post-commit drain; before, the only drain was the early in-tx one).
+- Grep `regCallerTx` / `flatTx` over `src` = empty.
+
+## P2002 retry (ruling 2 / brief item 4)
+- Under `callerTx`, createSale no longer retries P2002 itself (`ownsTx` false — service.ts `createSale` retry loop needs `ownsTx`); a P2002 (receipt-counter row of a new month upserted by two bills) aborts the caller tx.
+- Register intent path: already retries the whole tx — `register.ts:2451` `if (code === "P2002") { …regLoadSale… continue; }` inside `for (attempt < 3)` (table path same at `:2542`). Verified, no change.
+- Giftcard: `giftcard/service.ts:220` `SALE_TX_ATTEMPTS = 3` + `isUniqueViolation` (P2002). sell `:487` / reload `:745`: on P2002 below the cap, re-check the idempotency key (`sellReplay` / `reloadReplay`, extracted from the existing entry replay) — a racing request with the same key that committed ⇒ return its result; otherwise retry. sell draws a new card number + PIN per attempt (a card-number P2002 is retryable too). Reload keeps the pre-read card (same as before).
+
+## Evidence (xmin, QC4)
+- Red-before (src = d85ea5c3, suite forced): HT1 intent path PosSale/Line 5454374 vs PosPayment/PosPaymentIntent 5454373 + spy `intent:found:false,intent:found` (createSale's own cut ran pre-commit) · HT2 sell PosSaleLine/PosPayment 5454358 vs PosSale/GiftCard/GiftCardTxn 5454357 (PosSale shows the outer xid only because the giftcard flag UPDATE rewrites it), reload 5454360 vs 5454359 · HT2.2 sell event PENDING after 20 s (early drain). HT4/HT5 controls green, HT6.4 registry green. 6/17.
+- Green (head): HT1 all four tables 5456857, spy `intent:found` only · HT2 sell all five 5456843, reload all five 5456848, both events DONE · HT3.2 sale xmin 5456864 = caller xid 5456864, 0 reads inside the tx, OUT 0 → 1 after `afterSaleCommitted` · HT5 still sees 5456868 vs 5456867 + `found:false` (the checker can go red). 17/17.
+- Note HT2.4 (reload drain) was green on the red run: the in-tx `drainAll` can land after commit (race noted in the investigation §3) — the deterministic red signals are the xmin checks.
+
+## Contract
+- `scripts/pos-sale-contract.json` unchanged (sha 7a418de1…). F15.2 green; its info line "createSale callers +1 order.ts" predates this HF (P2.8) and is not refreshed — ruling 4 pins the JSON.
+- P1.6 U4 registry unchanged (19 sites / 16 files, = qc-pos-p1.6 CALL_SITES; HT6.4).
+
+## Gates
+Run at a140c628 (merged head; src = 874cde70 + ledger only), QC4 via iso → qc4 → POS gate lock.
+
+| gate | result |
+|---|---|
+| typecheck | 0 (at 874cde70; the merge changed no src/scripts) |
+| qc-hf-tx forced / unforced | 17/17 · 17/17 (plus an earlier unforced 17/17 at 3de80ed3) · residue 0 |
+| qc-pos-p1.6 (U4 + F15.2) | 48/48 |
+| qc-pos-p1.7 | 32/32 |
+| qc-pos-p1.1 (lane rule 1d843e0c) | 177/178 — S2.33 red = pre-existing on session/pos since the P2.3U merge (`pos/catalog-recipe-actions.ts` imports inventory); fixed by the MAIN-MERGE lane (file rename, POS-RESUME :1309/:1320), not by this HF |
+| qc-pos-p1.3 | 128/128 |
+| qc-pos-p2.3 | 46/46 |
+| qc-pos-p2.4 | 49/49 |
+| qc-pos-p2.8 | 59/60 — ST6 (PAR) red by design: it pins `register.ts`/`service.ts` sha to the P2.8 base or to the merge-base with origin/session/pos; HF-TX changes both on purpose (rulings 1/3). Turns green once HF-TX is merged into session/pos (merge-base moves). No behavioural check red |
+| qc-pos-p1.12 | 72/72 |
+| qc-pos-account | 16/16 |
+| fitness no-env / env | 41/41 · 41/41 |
+| fitness-pos | 8/8 (F15.2 green, contract JSON unchanged) |
+| qc-member-m2.6 / m2.7 / m2.8 (R14, run last) | crash at fixture `actorOf` (null membership.role) = QC4 member seed missing; pre-existing (POS-RESUME :476, :1311). Giftcard sell/reload covered by qc-hf-tx HT2 on its own tenant |
+
+## Follow-ups
+- Out-of-scope `"$transaction" in` helpers listed in `POS-OWNER-PENDING.md` (HF-TX · HT7 line) — HT7 fails if one is added/removed without updating the list.
+- `ticket/service.ts` cancelOrder `ownsTx` gate: only a top-level caller today; any future in-tx caller must pass `callerTx(tx)`.
+- Reload computes `balanceAfter` from the card read before the tx (pre-existing; unchanged).
+- qc-pos-p1.7 still has no stock/outbox/xid assertion on the intent path — qc-hf-tx HT1 covers it.
