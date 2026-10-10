@@ -12,9 +12,10 @@ import { useTranslations } from "next-intl";
 import { moneyText } from "@/lib/modules/pos/register-shared";
 import { RegisterIcon } from "./RegisterIcon";
 
-type Props = { peek: string; count: number; totalText: string; payEnabled: boolean; empty: boolean; onOpen: () => void; onPay: () => void };
+// POS P2.4U ▸ มติ 4: payLabel = ป้ายปุ่มหลักของโหมดโต๊ะ ("ส่งครัว") · ไม่ส่ง = "ชำระ" เดิม ◂
+type Props = { peek: string; count: number; totalText: string; payEnabled: boolean; empty: boolean; onOpen: () => void; onPay: () => void; payLabel?: string };
 
-export function MobileCartBar({ peek, count, totalText, payEnabled, empty, onOpen, onPay }: Props) {
+export function MobileCartBar({ peek, count, totalText, payEnabled, empty, onOpen, onPay, payLabel }: Props) {
   const t = useTranslations("pos.register");
   return (
     <div
@@ -47,7 +48,7 @@ export function MobileCartBar({ peek, count, totalText, payEnabled, empty, onOpe
           disabled={!payEnabled}
           onClick={onPay}
         >
-          {empty ? `${t("cart.payShort")} ${moneyText(0)}` : `${t("cart.payShort")} ›`}
+          {payLabel ? `${payLabel} ›` : empty ? `${t("cart.payShort")} ${moneyText(0)}` : `${t("cart.payShort")} ›`}
         </button>
       </div>
     </div>

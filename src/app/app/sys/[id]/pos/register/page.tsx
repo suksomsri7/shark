@@ -18,6 +18,8 @@ import { RegisterScreen } from "@/components/pos/register/RegisterScreen";
 import { evaluate } from "@/lib/core/rbac";
 import { beamEnabled } from "@/lib/payment/beam";
 import { parsePosIntentSettings, promptpayIdForUnit } from "@/lib/modules/pos/payment-intent-shared";
+// POS P2.4U ▸ มติ 1/4/6: แท็บ "โต๊ะ" + ชิปทานที่ร้าน (registerTableMode) · ?table=<session> = หน้าขายผูกโต๊ะ ◂
+import { registerTableMode } from "@/lib/modules/pos/table";
 
 // หน้าขาย POS (cashier) — เปิดบิลเก็บเงิน walk-in เงินสด/พร้อมเพย์
 //
@@ -34,10 +36,12 @@ export default async function PosRegisterPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ unit?: string }>;
+  searchParams: Promise<{ unit?: string; table?: string | string[] }>; // POS P2.4U ▸ + table ◂
 }) {
   const { id } = await params;
   const { unit: unitParam } = await searchParams;
+  const tableRaw = (await searchParams).table; // POS P2.4U ◂
+  const tableSessionId = (Array.isArray(tableRaw) ? tableRaw[0] : tableRaw) || null; // POS P2.4U ◂
   const auth = await requireTenant();
   const tenantId = auth.active.tenantId;
 
@@ -67,7 +71,7 @@ export default async function PosRegisterPage({
   if (v2) {
     const actor = { userId: auth.user.id, ...posMembership(auth.active) };
     const ctx = { tenantId, systemId: id, unitId: active.id };
-    const [catalog, status, vat, profile, oversell, caps] = await Promise.all([
+    const [catalog, status, vat, profile, oversell, caps, tableMode] = await Promise.all([
       registerCatalog(ctx, actor),
       registerStatus(ctx, actor),
       registerVatConfig(ctx),
@@ -76,6 +80,7 @@ export default async function PosRegisterPage({
       unitOversellPolicy(prisma, tenantId, active.id),
       // POS P1.15U ▸ มติ 4: เพดานส่วนลดตามบทบาทของระบบนี้ → limits (ผู้ใช้ session) + caps (ผู้ขายในโทเคน) ◂
       registerDiscountCaps(ctx),
+      registerTableMode(ctx, actor), // POS P2.4U ▸ มติ 1 (Q5) ◂
     ]);
     const limits = registerSellerLimits(actor, active.id, caps);
     // POS P1.18U ▸ มติ 10b (F6): QR พร้อมเพย์แบบคงที่ = เลขของสาขาก่อน เลขของร้าน (PaymentProfile) ทีหลัง — ลำดับเดียวกับ createPaymentIntent ◂
@@ -84,7 +89,7 @@ export default async function PosRegisterPage({
     const intentSet = parsePosIntentSettings(sys.settings);
     return (
       <RegisterScreen
-        key={active.id}
+        key={`${active.id}:${tableSessionId ?? ""}`} // POS P2.4U ▸ สลับโต๊ะ/ขายปกติ = จอใหม่ ◂
         systemId={id}
         unitId={active.id}
         userId={auth.user.id}
@@ -108,6 +113,9 @@ export default async function PosRegisterPage({
         canManageProducts={evaluate(posMembership(auth.active), { module: "pos", action: "pos.product.manage", unitId: active.id })}
         // POS P2.3U ▸ มติ 5: ปุ่ม "ลองอีกครั้ง" ของตัดสต็อกค้าง = pos.settings.manage ที่สาขานี้ (บริการตัดสินซ้ำ) ◂
         canRetryStockCuts={evaluate(posMembership(auth.active), { module: "pos", action: "pos.settings.manage", unitId: active.id })}
+        // POS P2.4U ▸ มติ 4/1/6 ◂
+        tableSessionId={tableSessionId}
+        tableMode={tableMode.ok ? { visible: tableMode.visible, tableCount: tableMode.tableCount } : null}
       />
     );
   }
