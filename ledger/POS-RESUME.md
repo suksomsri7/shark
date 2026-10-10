@@ -1342,3 +1342,4 @@
 - HF-TX: ทรี c merge 97cdf1c8 (= 0d581286) เข้า `wip/pos-hf-tx` 6319bc34 สะอาด · notes abead49c · gates กำลังรัน (pos-account …)
 - R2 P2.4U = MERGEABLE · F8 → `pos-brief-HF-PP.md` (ใบ S เล็ก หลัง HF-TX)
 - จุดต่อ: vis65 ❌ 0 + ผู้คุมดู 03 ซ้ำ (panel-rounds/alerts/checkout-dialog/draft-unsent/floor) → P2.4U builder รายงาน head หลัง merge upstream → ผู้คุม merge → 26/55 → TG · HF-TX รายงาน → reviewer
+- 10:5xZ HF-TX ส่งแล้ว head 361ae11f (code 6319bc34, qc-hf-tx 17/17, red-before 6/17, p2.8 59/60 ST6 red = เทียบ merge-base → reviewer ตัดสิน a/b) → reviewer อ่านอย่างเดียว (a4d5ebc8, prompt `pos-prompt-accountB-HF-TX-R.md`) · build64 กำลัง build จริงแล้ว (10:48Z) · เลน 3/3: P2.4U gates (p11) · HF-TX reviewer · chain64b ภาพ
