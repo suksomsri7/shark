@@ -1197,3 +1197,11 @@
 - ตัวนับยัง **23/55** (P2.3 นับเมื่อ P2.3U merge · P2.2 นับเมื่อ P2.2U merge → 24)
 - ค้าง: QC5 `migrate deploy` 20261205100000_pos_p23_recipe — ทำหลัง vis61 จบ (ห้ามทับเลนภาพ) · vis61 register owner th (harness d9385328) ต่อคิวหลัง vis60
 - ถัดไป: vis60 sales → เทียบ 12 · vis61 เขียว → gates merge P2.2U (p2.2 · p2.1 · p1.18 · p1.3 · p1.16 · products · authz · typecheck · fitness) บน d9385328+merge → merge → 24/55 → TG
+
+### ⏱ 2026-10-10 03:1xZ — มติเจ้าของ: เลนภาพ (ทำตามแนะนำ) + ด่าน merge P2.2U
+- นโยบายใหม่ใน `pos-brief-LANE-RULES.md` §เลนภาพ: รอบแก้ถ่ายเฉพาะ state ที่แตะ (`--state`) · ถ่ายเต็มเฉพาะ merge/ปิดเฟส · ผู้คุมดูภาพเฉพาะ state ใหม่ + สุ่ม
+- harness `--state a,b` เพิ่มแล้ว (ผู้คุม) → `wip/pos-p2.2u` 15ac8680 (`--dry` register --state line-badges,tile-rule = 5 ภาพ · คีย์ผิด die พร้อมรายชื่อ) · hook fitness ข้ามเพราะ p11 ใช้ client ร่วมผู้คุม (P2.3) — fitness จริงใน gates64
+- merge `session/pos` 160299e4 → `wip/pos-p2.2u` = **2f8f1e67** (auto-merge pos.json th/en + MASTER-PLAN · ไม่มี conflict) · push แล้ว · fitness p11 41/41
+- **gates64** ทรี p11 @2f8f1e67 (typecheck · p2.2 · p2.1 · p1.18 · p1.3 · p1.16 · products · authz · p2.3 · p1.1 · p1.12 · p1.5 · fitness ×3) กำลังรัน · vis61 register (harness d9385328) ต่อคิวหลัง vis60
+- merge P2.2U เมื่อ: gates64 เขียว + vis61 register เขียว + vis60 sales (12) ตรงแบบ → merge 2f8f1e67 → 24/55 → TG
+- เลน: builder P2.4 S (c) · P2.8 S (b) = 2/3

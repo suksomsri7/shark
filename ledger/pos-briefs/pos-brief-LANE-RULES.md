@@ -11,3 +11,10 @@ Another Claude account is running the CRM RUN on this machine right now (4 lanes
 7. No `git commit/push` unless your brief says so (briefs here allow ONE safety commit on your own wip branch + push of that wip branch; never push `main` or `session/crm`). No `eas`, no deploy, no Telegram.
 8. Checkpoint as you go: keep `ledger/wo-notes/pos-<WO>.md` updated (what is done, what is next, commands + final summary lines) so a restart can continue from the files.
 9. Report in English, compact (format in crm-brief-COMMON "Reports").
+
+## เลนภาพ (มติเจ้าของ 10 ต.ค. 03:1xZ — "ทำตามแนะนำ")
+- **รอบแก้ (fix round) ถ่ายเฉพาะ state ที่ใบงานแตะ** ด้วย `--states --state a,b,c` (มีตั้งแต่ `visual-pos.mts` 15ac8680) · ไม่ถ่ายทั้งหน้า × 3 ผู้ใช้ × 2 ภาษา
+- **ถ่ายเต็ม** (ทุกหน้า × owner/cashier × th/en) เฉพาะ **จุด merge** และ **ปิดเฟส**
+- ผู้คุมเปิดดูภาพเฉพาะ state ใหม่ + สุ่ม 1–2 ใบ · ที่เหลือให้ harness ตัดสิน (testid-step · console · overflow · 5xx)
+- แก้แค่ harness/ledger = ไม่ build ใหม่ (server เดิมเสิร์ฟโค้ดเดิม) · builder ระบุรายการ `--state` ที่ผู้คุมต้องถ่ายไว้ท้ายโน้ต
+- ฝั่ง builder: brief/prompt ต้องตัดสินทุกข้อเปิดล่วงหน้า (rulings) — รอบแก้ 1 รอบแพงกว่าภาพทั้งรอบ
