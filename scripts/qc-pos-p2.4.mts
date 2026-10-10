@@ -69,7 +69,7 @@ const CHECKS: readonly Def[] = [
   D("D5", "X5", "[R5] เมนู stockQty 2 สั่ง 3 (บรรทัดที่ 2) → PRODUCT_UNAVAILABLE lineIndex 1 · ไม่มีออเดอร์/รายการใหม่ · stockQty ยัง 2 · รอบร่างยัง HELD"),
   D("D6", "-", "[R5] บรรทัด PRODUCT (น้ำ) ได้ stationId = สถานีแรกของสาขา (ensureDefaultStations) · createOrder เดิมเขียน productId = MenuItem.posProductId"),
   // ORACLE-ADD ผู้คุม 10 ต.ค. (P2.4 S fix 2 · F1): รอบร่างแข่งกัน — expectedVersion/heldCartId/newDraft
-  D("D7", "X1", "[R4 F1] รอบร่างแข่งกัน: newDraft:true → แถวใหม่ · พักด้วย heldCartId+expectedVersion เดิมสองเครื่อง (ทีละคำขอ + พร้อมกัน) → ผ่าน 1 · VERSION_CHANGED 1 (บรรทัดของผู้ชนะไม่หาย) · newDraft:true ขณะมี HELD → VERSION_CHANGED · พักหลังส่งครัว (RECALLED) → VERSION_CHANGED ไม่มีรอบร่างใหม่ · newDraft:true หลังส่ง → แถวใหม่"),
+  D("D7", "X1", "[R4 F1 N1 N2] รอบร่างแข่งกัน: newDraft:true → แถวใหม่ · พักด้วย heldCartId+expectedVersion เดิมสองเครื่อง (ทีละคำขอ + พร้อมกัน) → ผ่าน 1 · VERSION_CHANGED 1 (บรรทัดของผู้ชนะไม่หาย) · heldCartId ไม่มี expectedVersion → VALIDATION · newDraft:true ขณะมี HELD → VERSION_CHANGED · พักหลังส่งครัว (RECALLED) → VERSION_CHANGED ไม่มีรอบร่างใหม่ · พักไม่ระบุร่างหลังส่ง → VALIDATION ไม่มีรอบร่างใหม่ · newDraft:true หลังส่ง → แถวใหม่"),
   // ── B quote บิลโต๊ะ ──
   D("B1", "X4", "[R6 CD3] quoteRegisterCart({lines: [], tableSessionId}) → บรรทัดจากรายการที่ยังไม่จ่าย (productId · unitPriceSatang = unitPrice+optionsTotal · grossSatang · options choiceId) + table {sessionId tableName \"A1\" itemIds itemsHash} · เปลี่ยนราคาเมนูหลังส่ง → quote ยังราคาเดิม"),
   D("B2", "X2", "[R6 R1] tableSessionId + lines ไม่ว่าง → VALIDATION · session ร้าน T2 / ctx สาขา B / id มั่ว → TABLE_NOT_FOUND"),
@@ -1070,7 +1070,9 @@ async function runDb() {
   /** ออเดอร์ผ่านประตูเดิม (เมนูเท่านั้น) */
   const legacyOrder = async (sessionId: string, cart: [string, number, string[]][]): Promise<Any> =>
     rorder.createOrder({ tenantId: T, unitId: U.A, type: "DINE_IN", sessionId, cart: cart.map(([k, qty, ch]) => ({ menuItemId: MI[k], qty, choiceIds: ch.map((c) => CH[c]) })), placedByUserId: uid("OWNER") });
-  const hold = (sessionId: string, lines: Any[], actor = "OWNER", extra: Any = {}, ctx: Any = ctxA(DEV1)) => call(heldMod, "holdRegisterCart", ctx, A(actor), { cart: { lines, ...extra }, tableSessionId: sessionId });
+  // ORACLE-EDIT ผู้คุม 10 ต.ค. (P2.4 S fix 3 · N1): โหมดโต๊ะต้องระบุร่าง — ปริยาย newDraft:true · แก้ร่างเดิมส่ง {heldCartId, expectedVersion} (assertion เดิมทุกข้อ)
+  const hold = (sessionId: string, lines: Any[], actor = "OWNER", extra: Any = {}, ctx: Any = ctxA(DEV1), mode: Any = { newDraft: true }) =>
+    call(heldMod, "holdRegisterCart", ctx, A(actor), { cart: { lines, ...extra }, tableSessionId: sessionId, ...mode });
   const send = (sessionId: string, heldCartId: string, actor = "OWNER") => tbl("registerSendTableRound", ctxA(DEV1), A(actor), { tableSessionId: sessionId, heldCartId });
   const tq = (sessionId: string, extra: Any = {}, ctx: Any = ctxA(DEV2), actor = "OWNER") => call(register, "quoteRegisterCart", ctx, A(actor), { lines: [], tableSessionId: sessionId, ...extra });
   const quote = (lines: Any[], extra: Any = {}) => call(register, "quoteRegisterCart", ctxA(DEV2), A("OWNER"), { lines, ...extra });
@@ -1247,7 +1249,7 @@ async function runDb() {
     const id1 = String(h1?.heldCart?.id ?? "");
     const r1 = await heldRows(SID.A1!);
     if (r1.length !== 1 || r1[0]?.id !== id1 || r1[0]?.status !== "HELD" || r1[0]?.version !== 1) p.push(`หลังพักครั้งแรก แถวผูกโต๊ะ ${short(r1.map((r) => [r.id === id1 ? "id1" : r.id, r.status, r.version]), 100)}`);
-    const h2 = await hold(SID.A1!, D3LINES());
+    const h2 = await hold(SID.A1!, D3LINES(), "OWNER", {}, ctxA(DEV1), { heldCartId: id1, expectedVersion: Number(h1?.draftVersion ?? r1[0]?.version ?? 1) }); // ORACLE-EDIT fix 3 (N1)
     const id2 = String(h2?.heldCart?.id ?? "");
     if (h2?.ok !== true || id2 !== id1) p.push(`พักซ้ำ → ${codeOf(h2)} id ${id2 === id1 ? "เดิม" : "ใหม่"}`);
     const r2 = await heldRows(SID.A1!);
@@ -1392,6 +1394,10 @@ async function runDb() {
     const vcN = par.filter((r) => refused(r, "VERSION_CHANGED")).length;
     if (okN !== 1 || vcN !== 1 || (await ver(id)) !== v2 + 1) p.push(`พร้อมกัน ${par.map(codeOf).join(",")} · v${await ver(id)} (คาด ${v2 + 1})`);
     // newDraft ขณะมี HELD
+    // ORACLE-EDIT ผู้คุม 10 ต.ค. (P2.4 S fix 3 · N2): heldCartId ต้องมาคู่ expectedVersion — ไม่มี = VALIDATION ไม่แตะร่าง
+    const vNo = await ver(id);
+    const noVer = await hd({ cart: { lines: [ml("water", 5)] }, heldCartId: id });
+    if (!refused(noVer, "VALIDATION") || (await ver(id)) !== vNo) p.push(`heldCartId ไม่มี expectedVersion → ${codeOf(noVer)} · v${vNo}→${await ver(id)}`);
     const nd = await hd({ cart: { lines: [ml("water", 1)] }, newDraft: true });
     if (!refused(nd, "VERSION_CHANGED")) p.push(`newDraft ขณะมี HELD → ${codeOf(nd)}`);
     // ส่งครัวแล้วพักทับ → ปฏิเสธ · ไม่มีรอบร่างใหม่
@@ -1400,6 +1406,10 @@ async function runDb() {
     const late = await hd({ cart: { lines: [ml("water", 1)] }, heldCartId: id, expectedVersion: await ver(id) });
     const held = (await heldRows(sid)).filter((r) => r.status === "HELD");
     if (!refused(late, "VERSION_CHANGED") || held.length !== 0) p.push(`พักหลังส่ง → ${codeOf(late)} · HELD ${held.length}`);
+    // ORACLE-EDIT ผู้คุม 10 ต.ค. (P2.4 S fix 3 · N1): พักแบบไม่ระบุร่างหลังส่ง (กรณี R1 (b)) = VALIDATION · ไม่มีร่าง HELD ใหม่
+    const bare = await hd({ cart: { lines: [ml("water", 1)] } });
+    const heldBare = (await heldRows(sid)).filter((r) => r.status === "HELD");
+    if (!refused(bare, "VALIDATION") || heldBare.length !== 0) p.push(`พักไม่ระบุร่างหลังส่ง → ${codeOf(bare)} · HELD ${heldBare.length}`);
     const fresh = await hd({ cart: { lines: [ml("water", 1)] }, newDraft: true });
     if (fresh?.ok !== true || String(fresh?.heldCart?.id ?? "") === id) p.push(`newDraft หลังส่ง → ${codeOf(fresh)}`);
     chk("D7", p.length === 0, "รอบร่างไม่ทับกัน · ส่งแล้วไม่เกิดร่างซ้ำ", FX(P8(p) || "ครบ"));
