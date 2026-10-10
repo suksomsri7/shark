@@ -1190,3 +1190,10 @@
 - ผู้คุมแก้ harness เอง: state นี้ถ่าย desktop+ipad → `wip/pos-p2.2u` **d9385328** (โค้ด cdd700fc ไม่เปลี่ยน · ไม่ต้อง build ใหม่) · เทียบ 01: ป้ายบรรทัด RULE (ชื่อโปร) + CHANNEL "ราคาตามช่องทาง" ✓ · ไทล์โปร chip+ขีดฆ่า ฿60 ✓ · ไทล์ไม่ขายหน้าร้าน จาง ✓
 - 📌 ติดตาม P2.12: มือถือ ตะกร้าว่าง = เข้าบิลที่พักไม่ได้ (05-mobile ไม่มีปุ่ม) — ให้เจ้าของตัดสิน
 - ถัดไป: vis60 จบ (sales) → checkout ทรี d ที่ d9385328 → vis61 register owner th (QC5) → gates merge P2.2U → merge
+
+### ⏱ 2026-10-10 03:0xZ — P2.3 S merge แล้ว · เปิด P2.4 S + P2.8 S
+- gates63 @09e2ca11 **23/23 เขียว** → `git merge --no-ff wip/pos-p2.3` (06f2d825) = `session/pos` **160299e4** (ไม่มี conflict) · push แล้ว · ทรีผู้คุม `prisma generate` ใหม่ (fitness pre-commit เคยแดง F10.1 PosRecipeChoiceLine = client เก่า)
+- prompt P2.4-S / P2.8-S แทน `__BASE__` = 160299e4 (0506d25a) · **เปิด builder 2 เลน**: P2.4 S ทรี c (`wip/pos-p2.4`) · P2.8 S ทรี b (`wip/pos-p2.8`) · เลน = 2/3 (ช่องที่ 3 สำรองผู้ตรวจ)
+- ตัวนับยัง **23/55** (P2.3 นับเมื่อ P2.3U merge · P2.2 นับเมื่อ P2.2U merge → 24)
+- ค้าง: QC5 `migrate deploy` 20261205100000_pos_p23_recipe — ทำหลัง vis61 จบ (ห้ามทับเลนภาพ) · vis61 register owner th (harness d9385328) ต่อคิวหลัง vis60
+- ถัดไป: vis60 sales → เทียบ 12 · vis61 เขียว → gates merge P2.2U (p2.2 · p2.1 · p1.18 · p1.3 · p1.16 · products · authz · typecheck · fitness) บน d9385328+merge → merge → 24/55 → TG
