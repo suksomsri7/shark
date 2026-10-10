@@ -1270,3 +1270,8 @@
 ## 10 ต.ค. 06:1xZ — P2.8 R2+H ผล: R2 OK · hunt = 2 Medium (H1 การยืนยันจ่ายฝั่งเว็บไม่เช็ค PosOrder ที่ reject/cancel → เงิน+สต็อกค้าง · H2 cancel ออเดอร์เว็บที่รับแล้วไม่ยกเลิก ShopOrder) + 3 Low (H3 handOver หลัง void · H4 race cancel/accept · H5 priceSource mirror) → **รอบแก้ 3 ก่อน merge** (W11/W12/+W13 · 57→59/60) — `wo-notes/pos-P2.8-hunt.md` + prompt `pos-briefs/pos-prompt-accountB-P2.8-S-fix3.md`
 - หลัง fix3: hunter คนเดิมตรวจซ้ำ (R3 อ่าน) → merge (+ `git merge origin/main` ที่จุดนี้) → deploy p28 บน QC5 → P2.8U
 - เลน 2/3: P2.4 fix4 (c) · P2.8 fix3 (b) · chain62 ทรี d (ไม่นับเลน) · p11 ว่าง
+
+## 10 ต.ค. 06:5xZ — P2.4 fix4 ส่งแล้ว (b2c2aa84 · code 3bbb4a51 · p2.4 49/49 ×3 · V6a/V6b/V7 red-before) → hunter คนเดิมตรวจซ้ำ R4 (c อ่าน)
+- ข้อสังเกต builder: QC4 มี partial unique index `one_open_session_per_table` อยู่แล้วทั้งที่ไม่มี migration สร้าง → owner line P6.1 runbook ต้องเช็ค prod ก่อนสร้าง · ให้ R4 หาที่มา + ยืนยันว่า fix H1 ยืนได้เองโดยไม่พึ่ง index
+- ถ้า R4 OK → merge `wip/pos-p2.4` (ff/merge เข้า session/pos) → ด่าน merge (p1.1 CONTROLLER-RUN + ชุดเต็มบนทรี c) → `prisma generate` ทรีผู้คุม (เมื่อ p11 ว่าง) → deploy p24 บน QC5 → P2.4U (prompt พร้อม)
+- เลน 2/3: P2.8 fix3 (b กำลังรันด่าน) · P2.4 R4 (c อ่าน) · chain62 ทรี d
