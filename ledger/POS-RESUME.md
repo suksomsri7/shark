@@ -1275,3 +1275,7 @@
 - ข้อสังเกต builder: QC4 มี partial unique index `one_open_session_per_table` อยู่แล้วทั้งที่ไม่มี migration สร้าง → owner line P6.1 runbook ต้องเช็ค prod ก่อนสร้าง · ให้ R4 หาที่มา + ยืนยันว่า fix H1 ยืนได้เองโดยไม่พึ่ง index
 - ถ้า R4 OK → merge `wip/pos-p2.4` (ff/merge เข้า session/pos) → ด่าน merge (p1.1 CONTROLLER-RUN + ชุดเต็มบนทรี c) → `prisma generate` ทรีผู้คุม (เมื่อ p11 ว่าง) → deploy p24 บน QC5 → P2.4U (prompt พร้อม)
 - เลน 2/3: P2.8 fix3 (b กำลังรันด่าน) · P2.4 R4 (c อ่าน) · chain62 ทรี d
+
+## 10 ต.ค. 06:5xZ — P2.4 R4 OK → merge GO (เลนเงิน) · เปิด gates67 ทรี c @b2c2aa84 = CONTROLLER-RUN p1.1 + ชุด regression ที่ fix4 ไม่ได้รัน (p2.3/p2.2/p2.1/p1.18/p1.12/p1.5/p1.9/p1.15/products/authz)
+- ลำดับ merge: รอ vis63 → merge P2.3U ก่อน (ภาพเต็มถ่ายบน head นั้น) → ให้ builder P2.4 merge origin/session/pos (มี P2.3U UI) → รัน p2.4+p2.3+p1.18+typecheck+fitness บนทรี c → ff session/pos → P2.8 ตาม
+- เลน 2/3: P2.8 fix3 (b) · gates67 (c · ไม่นับเลน) · p11 ว่าง
