@@ -505,7 +505,8 @@ async function runStatic(): Promise<void> {
     const raw = existsSync(join(ROOT, F.contract)) ? readFileSync(join(ROOT, F.contract)) : Buffer.from("");
     const h = createHash("sha256").update(raw).digest("hex");
     if (h !== CONTRACT_SHA_B694) p.push(`pos-sale-contract.json เปลี่ยน (sha ${h.slice(0, 12)} ≠ ${CONTRACT_SHA_B694.slice(0, 12)})`);
-    if (!/\["bomDeduct",\s*false,\s*"P2\.3"\]/.test(srcOf(F.integrations))) p.push('pos-integrations INVENTORY ไม่ใช่ ["bomDeduct", false, "P2.3"] (พลิกใน P2.3U)');
+    // ORACLE-EDIT P2.3U (ข้อเสนอ · นอกมติ 8 — ผู้คุมตัดสิน): P2.3U พลิก bomDeduct เป็น live ตามมติ 8 ⇒ ST4 ยึดค่าหลังพลิก · เดิม ["bomDeduct", false, "P2.3"]
+    if (!/\["bomDeduct",\s*true,\s*null\]/.test(srcOf(F.integrations))) p.push('pos-integrations INVENTORY ไม่ใช่ ["bomDeduct", true, null] (พลิกแล้วใน P2.3U)');
     const files = walk(POS_DIR).filter((f) => /^["']use server["']/.test(rd(f).replace(/^\s*(\/\/[^\n]*\n|\/\*[\s\S]*?\*\/\s*)*/, "").trimStart()));
     for (const f of files) {
       const bad = [...srcOf(f).matchAll(/^\s*export\s+[^\n]*/gm)].map((m) => m[0].trim()).filter((l) => !/^export\s+async\s+function\s+\w+/.test(l));
