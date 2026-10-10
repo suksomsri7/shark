@@ -801,14 +801,24 @@ async function createSaleOnce(input: CreateSaleInput, client: Client, ownsTx: bo
   // ── หลัง tx commit: ตัดสต็อก (perpetual) + post บัญชี ──
   // ทำเฉพาะเมื่อ createSale เป็นเจ้าของ tx (ownsTx = commit แน่แล้ว) — ถ้าถูกเรียกใน tx ผู้อื่น
   //   ปล่อยให้ flow นั้นจัดการ (เลี่ยง orphan movement ถ้า tx นอกโดน rollback)
-  if (ownsTx) {
-    // ตัดสต็อกเฉพาะบิลที่มี line ผูก itemId — inventory.consume เปิด tx เอง + โพสต์ COGS หลัง tx
-    //   (P1.6 BLOCK: ตัดไปแล้วในtx ของบิล — คีย์เดิมคืนรายการเดิม ไม่ตัดซ้ำ แต่ยังโพสต์ COGS ให้)
-    //   (Dr5000/Cr1200 ผ่าน bridge) จึงทำนอก tx ของบิล = เลี่ยง nested tx
-    if (input.lines.some((l) => l.itemId || (l.components && l.components.length))) await consumeSaleInventory(input.tenantId, input.unitId, result.saleId);
-    scheduleDrain(); // post ยอดขาย→บัญชี · cron /api/cron/outbox เก็บตกถ้าล้ม
-  }
+  // HF-TX ▸ ผู้เรียกที่ส่ง tx ต้องส่ง `callerTx(tx)` (core/caller-tx) — ไม่งั้น Prisma 7 ทำให้ ownsTx จริงเสมอ (savepoint ซ้อน) ·
+  //   งานหลัง commit ของผู้เรียก = afterSaleCommitted (ชุดเดียวกันทุกตัว) ◂
+  if (ownsTx) await afterSaleCommitted(input, result.saleId);
   return result;
+}
+
+/**
+ * HF-TX ▸ งานหลัง commit ของบิลขาย (ชุดเดียว · createSale ตอนเป็นเจ้าของ tx เรียกเอง) — ผู้เรียกที่สร้างบิลในธุรกรรมของตัวเอง
+ * (`createSale(input, callerTx(tx))`) ต้องเรียกตัวนี้ **หลัง** `$transaction` resolve (commit แล้ว) ไม่ใช่ข้างใน:
+ *   บรรทัดผูกคลัง/ส่วนประกอบ ⇒ consumeSaleInventory (อ่านบิลผ่าน prisma กลาง · ไม่เจอ/void = ข้าม) · แล้ว scheduleDrain() (pos.sale.paid ทำงานทันที)
+ * รับเฉพาะ tenantId/unitId/lines (ส่ง CreateSaleInput ทั้งก้อนได้) ◂
+ */
+export async function afterSaleCommitted(input: Pick<CreateSaleInput, "tenantId" | "unitId" | "lines">, saleId: string): Promise<void> {
+  // ตัดสต็อกเฉพาะบิลที่มี line ผูก itemId — inventory.consume เปิด tx เอง + โพสต์ COGS หลัง tx
+  //   (P1.6 BLOCK: ตัดไปแล้วในtx ของบิล — คีย์เดิมคืนรายการเดิม ไม่ตัดซ้ำ แต่ยังโพสต์ COGS ให้)
+  //   (Dr5000/Cr1200 ผ่าน bridge) จึงทำนอก tx ของบิล = เลี่ยง nested tx
+  if (input.lines.some((l) => l.itemId || (l.components && l.components.length))) await consumeSaleInventory(input.tenantId, input.unitId, saleId);
+  scheduleDrain(); // post ยอดขาย→บัญชี · cron /api/cron/outbox เก็บตกถ้าล้ม
 }
 
 // HF-INV-1 ▸ R3.3: รหัสสั้นของสาเหตุ (SQLSTATE/รหัส Prisma/ชื่อ error) สำหรับบรรทัด log — ไม่ใส่ข้อความ (อาจมีชื่อสินค้า) ◂
