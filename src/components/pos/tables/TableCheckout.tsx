@@ -139,6 +139,7 @@ export function TableCheckout(p: Props) {
     const seq = ++quoteSeq.current;
     setQuoting(true);
     setQuoteErr(null);
+    setQuote(null); // ยอดเก่าใช้ไม่ได้แล้ว (ส่วนลด/คูปอง/PIN/ชุดรายการเปลี่ยน) — ปุ่มยืนยันปิดจนกว่า quote ใหม่ตอบ
     try {
       const cart = cartInput(billDiscount, couponCode);
       const r = pin
