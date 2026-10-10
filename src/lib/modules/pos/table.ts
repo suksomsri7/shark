@@ -14,6 +14,7 @@ import { evaluate } from "@/lib/core/rbac";
 import { registerPriceTableRound, registerRefuse, registerScopeFor, registerTableChannelId } from "./register";
 import { claimTableDraftInTx, discardTableDraftsInTx, tableDraftLineCounts, tableDraftOf } from "./held-cart";
 import { registerMemberBriefs, registerMemberGate } from "./register-member";
+import { posPaymentSettings } from "./payment-settings"; // ค่าบริการของหน้าขาย (มติ Q3: แหล่งเดียวของบิลโต๊ะ) ◂
 import {
   RESERVATION_HOLD_DEFAULT_MINUTES,
   RESERVATION_HOLD_MAX_MINUTES,
@@ -23,6 +24,7 @@ import {
   tableItemsHash,
   tableStateOf,
   type RegisterTableDetailResult,
+  type RegisterTableModeResult,
   type RegisterTablesResult,
   type TableCard,
   type TableMemberBrief,
@@ -100,10 +102,12 @@ export async function registerTables(ctx: RegisterCtx, actor: RegisterActor, cli
     const sessOf = new Map<string, (typeof fl.sessions)[number]>();
     for (const x of fl.sessions) if (!sessOf.has(x.tableId)) sessOf.set(x.tableId, x);
     const shown = [...sessOf.values()];
-    const [drafts, members] = await Promise.all([
+    const [drafts, members, pay] = await Promise.all([
       tableDraftLineCounts(db, { tenantId: s.tenantId, systemId: s.systemId, unitId: s.unitId, sessionIds: shown.map((x) => x.id) }),
       registerMemberBriefs({ tenantId: s.tenantId, unitId: s.unitId, actor: s.actor }, shown.flatMap((x) => (x.memberId ? [x.memberId] : []))),
+      posPaymentSettings({ tenantId: s.tenantId, systemId: s.systemId }, db),
     ]);
+    const posBp = pay.ok && pay.serviceCharge.enabled ? pay.serviceCharge.rateBp : 0;
     const nowMs = now.getTime();
     const tables: TableCard[] = fl.tables.map((t) => {
       const x = sessOf.get(t.id) ?? null;
@@ -145,8 +149,21 @@ export async function registerTables(ctx: RegisterCtx, actor: RegisterActor, cli
       },
       reservationsToday: fl.reservationsToday,
       canCreateTables: evaluate(s.actor, { module: "restaurant", action: "restaurant.table.create", unitId: s.unitId }),
+      serviceCharge: { posBp, restaurantBp: fl.restaurantServiceChargeBps, differs: posBp !== fl.restaurantServiceChargeBps },
       serverTime: now.toISOString(),
     };
+  });
+}
+
+/** แท็บ "โต๊ะ" ของหน้าขาย (มติ Q5): แสดงเมื่อสาขามีโต๊ะที่ไม่เก็บถาวร ≥ 1 หรือผู้ใช้เพิ่มโต๊ะได้ (หน้าว่างพร้อมปุ่มตั้งค่า) — อ่านอย่างเดียว */
+export async function registerTableMode(ctx: RegisterCtx, actor: RegisterActor, client?: Db): Promise<RegisterTableModeResult> {
+  return guard("registerTableMode", async (): Promise<RegisterTableModeResult> => {
+    const db: Db = client ?? prisma;
+    const s = await scope(db, ctx, actor, null);
+    if (isRefusal(s)) return s;
+    const tableCount = await (await restaurant()).tableCountForPos(db, { tenantId: s.tenantId, unitId: s.unitId });
+    const canCreateTables = evaluate(s.actor, { module: "restaurant", action: "restaurant.table.create", unitId: s.unitId });
+    return { ok: true, visible: tableCount > 0 || canCreateTables, tableCount, canCreateTables };
   });
 }
 

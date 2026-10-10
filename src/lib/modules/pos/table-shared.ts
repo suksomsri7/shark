@@ -99,9 +99,13 @@ export type TableCard = {
 export type TableZone = { id: string; name: string; sortOrder: number; tableCount: number };
 /** ตัวเลขแถบบนของผัง (R2 · CONTROLLER-DECISION 2) — ใช้แสดง "โต๊ะยังไม่ปิด N · ฿" ในหน้า X/Z/ปิดวันได้ด้วย (Q10 · แสดงอย่างเดียว) */
 export type TableFloorSummary = { used: number; total: number; guests: number; avgMinutes: number; unpaidSatang: number };
+/** ค่าบริการ (basis point): pos = ค่าตั้งหน้าขายที่บิลโต๊ะใช้ (ปิด = 0 · มติ Q3/CD7) · restaurant = ของร้านอาหารที่เช็คบิลเดิมใช้ · differs = จอเตือน */
+export type TableServiceCharge = { posBp: number; restaurantBp: number; differs: boolean };
 export type RegisterTablesResult =
-  | { ok: true; zones: TableZone[]; tables: TableCard[]; summary: TableFloorSummary; reservationsToday: number; canCreateTables: boolean; serverTime: string }
+  | { ok: true; zones: TableZone[]; tables: TableCard[]; summary: TableFloorSummary; reservationsToday: number; canCreateTables: boolean; serviceCharge: TableServiceCharge; serverTime: string }
   | RegisterRefusal;
+/** แท็บ "โต๊ะ" ของหน้าขาย (มติ Q5 · ไม่มีค่าตั้งใหม่): visible = มีโต๊ะที่ไม่เก็บถาวร ≥ 1 หรือผู้ใช้เพิ่มโต๊ะได้ (หน้าว่าง + ปุ่มตั้งค่า) */
+export type RegisterTableModeResult = { ok: true; visible: boolean; tableCount: number; canCreateTables: boolean } | RegisterRefusal;
 
 /** แผงโต๊ะ (ภาพ 03 ขวา): รอบที่ส่งแล้ว + รายการ + รอบร่าง */
 export type TableRoundItem = {

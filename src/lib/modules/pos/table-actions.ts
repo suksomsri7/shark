@@ -25,11 +25,12 @@ import {
   registerSeatReservation,
   registerSendTableRound,
   registerTableDetail,
+  registerTableMode,
   registerTableRequests,
   registerTables,
 } from "./table";
 import type { HoldRegisterCartResult, RegisterActor, RegisterCtx, RegisterQuoteInput, RegisterRefusal } from "./register-shared";
-import type { RegisterTableDetailResult, RegisterTablesResult } from "./table-shared";
+import type { RegisterTableDetailResult, RegisterTableModeResult, RegisterTablesResult } from "./table-shared";
 
 type Session = Awaited<ReturnType<typeof requireTenant>>;
 type Target = { systemId: string; unitId: string; deviceId?: string };
@@ -92,6 +93,15 @@ export async function registerTablesAction(args: Target): Promise<RegisterTables
     return await run("registerTablesAction", args, (ctx, actor) => registerTables(ctx, actor));
   } catch (e) {
     return unexpected("registerTablesAction", e);
+  }
+}
+
+/** แท็บ "โต๊ะ" แสดงไหม (มติ Q5) */
+export async function registerTableModeAction(args: Target): Promise<RegisterTableModeResult> {
+  try {
+    return await run("registerTableModeAction", args, (ctx, actor) => registerTableMode(ctx, actor));
+  } catch (e) {
+    return unexpected("registerTableModeAction", e);
   }
 }
 

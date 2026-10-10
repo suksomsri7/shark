@@ -32,6 +32,8 @@ export type PosFloorData = {
   reservations: { id: string; tableId: string | null; name: string; phone: string | null; partySize: number; at: Date; holdFromMinutes: number }[];
   /** การจอง BOOKED/SEATED ที่เวลาจองอยู่ใน [dayStart, dayEnd) */
   reservationsToday: number;
+  /** ค่าบริการของร้านอาหาร (RestaurantSetting · เช็คบิลเดิมใช้ · ไม่มีแถว = 0) — จอเตือนเมื่อไม่ตรงกับค่าตั้งหน้าขาย (มติ Q3) */
+  restaurantServiceChargeBps: number;
 };
 
 /** ผังของสาขา (R2): โซน · โต๊ะที่ไม่เก็บถาวร · session OPEN (ยอดค้างจ่าย · พร้อมเสิร์ฟ · ธงคำขอ) · การจองที่อาจกันโต๊ะ */
@@ -40,7 +42,7 @@ export async function tableFloorForPos(
   s: Scope & { now: Date; lateMinutes: number; maxHoldMinutes: number; dayStart: Date; dayEnd: Date },
 ): Promise<PosFloorData> {
   const { tenantId, unitId } = s;
-  const [zones, tables, sessions, reqs, reservations, reservationsToday] = await Promise.all([
+  const [zones, tables, sessions, reqs, reservations, reservationsToday, setting] = await Promise.all([
     db.restaurantZone.findMany({ where: { tenantId, unitId, archivedAt: null }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }, { id: "asc" }], select: { id: true, name: true, sortOrder: true } }),
     db.restaurantTable.findMany({
       where: { tenantId, unitId, archivedAt: null },
@@ -67,6 +69,7 @@ export async function tableFloorForPos(
       select: { id: true, tableId: true, name: true, phone: true, partySize: true, at: true, holdFromMinutes: true },
     }),
     db.restaurantReservation.count({ where: { tenantId, unitId, status: { in: ["BOOKED", "SEATED"] }, at: { gte: s.dayStart, lt: s.dayEnd } } }),
+    db.restaurantSetting.findFirst({ where: { tenantId, unitId }, select: { serviceChargeBps: true } }),
   ]);
   const flagsOf = new Map<string, PosFloorSession["flags"]>();
   for (const r of reqs) {
@@ -96,6 +99,7 @@ export async function tableFloorForPos(
     }),
     reservations,
     reservationsToday,
+    restaurantServiceChargeBps: setting?.serviceChargeBps ?? 0,
   };
 }
 
