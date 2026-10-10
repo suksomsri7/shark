@@ -311,7 +311,7 @@ const FACTS: Record<(typeof CARD_CODES)[number], readonly Fact[]> = {
   COUPON: [["couponCode", true, null], ["voucherPayment", false, "P2.9"], ["couponUnitLimit", true, null]],
   REWARD: [["rewardRedeem", true, null], ["rewardNearCustomerDisplay", false, "P2.10"]],
   ACCOUNT: [["autoPost", true, null], ["taxInvoice", true, null], ["platformCommission", false, "P2.1"], ["promptpayReconcile", false, "P3.10"]],
-  INVENTORY: [["stockDeduct", true, null], ["bomDeduct", false, "P2.3"], ["oversellPolicy", true, null], ["lowStockReorder", false, "P3"]],
+  INVENTORY: [["stockDeduct", true, null], ["bomDeduct", true, null], ["oversellPolicy", true, null], ["lowStockReorder", false, "P3"]], // ORACLE-EDIT P2.3U (มติ 8 ผู้คุม): bomDeduct live — เดิม ["bomDeduct", false, "P2.3"]
   HR: [["shiftPinSchedule", false, "P3.5"], ["salesCommission", false, "P3.5"], ["leaveHidesShift", false, "P3.5"]],
   CRM: [["dealPaidCount", true, null], ["bigBillDeal", false, "P3.6"], ["corporateCredit", false, "P3.6"]],
   CHAT: [["lineReceipt", true, null], ["chatOrders", false, "P2.8"], ["orderStatusBot", false, "P3.7"]],
