@@ -420,7 +420,7 @@ import type { RegisterMemberGate, RegisterMemberQuote } from "./register-member"
 import { consumeSaleInventory, pendingStockParts, posDayStart } from "./service";
 // POS P2.3 ▸ สูตร/BOM: สูตรที่ใช้จริงของแถว (อ่านอย่างเดียว) · กระจายสูตร/จำนวนหน่วยที่ทำได้ (บริสุทธิ์) ◂
 import { loadRowRecipes } from "./recipe";
-import { expandRecipe, recipePortions } from "./recipe-shared";
+import { expandRecipe } from "./recipe-shared";
 import { consumeSaleIntents, lockSaleIntents, type SaleIntentRef } from "./payment-intent";
 import { isPaymentIntentId } from "./payment-intent-shared";
 import { scheduleDrain } from "@/lib/outbox-consumers";
@@ -450,7 +450,7 @@ import {
   releasePosApprovalClaim,
   submitPosApproval,
 } from "./pos-approval";
-import { effectiveTrackStock, menuSoldOutIds, rowAvailable } from "./catalog";
+import { effectiveTrackStock, loadRowPortions, menuSoldOutIds, rowAvailable } from "./catalog";
 import { priceCart, roundHalfUp, PRICE_MAX_SATANG, type PriceDiscount } from "./pricing-shared";
 // POS P1.2 ▸ R10 ป้ายเครื่องชั่ง (ตัวถอดบริสุทธิ์ชุดเดียวกับจอ) ◂
 import { parseWeighedBarcode, weighedBarcodeSettings, weighedGramsFromPrice, weighedPriceSatang, type WeighedBarcodeSettings } from "./scan-shared";
@@ -763,16 +763,13 @@ async function regViews(db: RegDb, s: RegScope, rows: PosProduct[], book?: Price
   const movedSet = new Set(moved.map((m) => m.id));
   // POS P2.3 ▸ R9: แถวที่ตัดตามสูตร (ชุด · เมนู bomEnabled) → "เหลือ N" = จำนวนหน่วยที่ทำได้ min ⌊onHand/qty⌋ ของสูตรฐานในคลังของสาขา (แสดงผลอย่างเดียว · CD6) ◂
   const rowRecipes = await loadRowRecipes(db, s.tenantId, rows);
-  const portionIds = s.unitInv ? [...new Set([...rowRecipes.values()].filter((r) => r.live).flatMap((r) => r.lines.map((l) => l.invItemId)))] : [];
-  const portionStock = new Map(
-    (portionIds.length ? await db.invItem.findMany({ where: { tenantId: s.tenantId, systemId: s.unitInv!, id: { in: portionIds } }, select: { id: true, onHand: true } }) : []).map((i) => [i.id, i.onHand]),
-  );
+  // fix round 1 (รีวิว F3): ตัวคำนวณเดียวกับ catalog.listForUnit — ส่วนประกอบชุดที่ไม่ติดตามสต็อก (C2) = ไม่รู้ ⇒ null ◂
+  const portionsOf = await loadRowPortions(db, s.tenantId, s.systemId, s.unitInv, rows, rowRecipes);
   return rows.map((p) => {
     const inv = p.invItemId ? itemById.get(p.invItemId) : undefined;
     const ts = effectiveTrackStock(p, inv ? { hasMovement: movedSet.has(inv.id), onHand: inv.onHand } : null);
     const grp = links.filter((l) => l.productId === (p.parentId ?? p.id)).map((l) => groupById.get(l.groupId)).filter((g): g is { id: string; minSelect: number } => !!g);
-    const rr = rowRecipes.get(p.id);
-    const portions = rr?.live && s.unitInv ? recipePortions(rr.lines, (iid) => portionStock.get(iid)) : null;
+    const portions = portionsOf(p.id);
     const stockLeft = portions !== null ? portions : ts.trackStock && inv ? inv.onHand : null;
     const unavailable = !rowAvailable(p, s.unitId, menuSoldOut);
     // มติ 3.1 ข้อ 12: ปิดขายมือชนะหมดสต็อก

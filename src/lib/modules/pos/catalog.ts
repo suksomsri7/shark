@@ -34,7 +34,7 @@ import { prisma } from "./db";
 import { CHANNEL_BUILTIN_CODES, CHANNEL_CODE_RE, isChannelBuiltinCode } from "./channel-shared";
 import { BULK_MARKUP_BP_MAX, BULK_MARKUP_PRODUCTS_MAX, CHANNEL_PRICE_ROWS_MAX, channelMarkupPrice, type ChannelPriceInputRow, type ChannelPriceView } from "./price-shared";
 // POS P2.3 ▸ สูตร/BOM: ตัวโหลดสูตรที่ใช้จริง (อ่านอย่างเดียว) + จำนวนหน่วยที่ทำได้ (บริสุทธิ์) ◂
-import { loadRowRecipes } from "./recipe";
+import { loadRowRecipes, type RowRecipe } from "./recipe";
 import { recipePortions } from "./recipe-shared";
 
 // ═══════════════════ ชนิดข้อมูล + error ═══════════════════
@@ -595,6 +595,54 @@ export function effectiveTrackStock(
   return { trackStock: !!p.invItemId && p.kind === "PRODUCT" && !!inv && (inv.hasMovement || inv.onHand !== 0), mode: "auto" };
 }
 
+/**
+ * POS P2.3 ▸ R9 จำนวนหน่วยที่ทำได้ต่อแถว (ไทล์หน้าขาย · listForUnit.stock) — ตัวเดียวของ register.ts และ catalog.ts
+ *   แถวที่ตัดตามสูตร (live: ชุด · เมนู bomEnabled) = min ⌊onHand/qty⌋ ของสูตรฐานในคลังของสาขา · สาขาไม่มีคลัง/ไม่ใช่แถวสูตร = null
+ *   fix round 1 (รีวิว F3 · มติผู้คุมงาน): ส่วนประกอบของ "ชุด" ใช้กติกา C2 แบบไทล์สินค้า (effectiveTrackStock ของแถว PRODUCT ที่ผูก
+ *     InvItem นั้นใน POS นี้ · ไม่มีแถว = AUTO) — ไม่ติดตามสต็อก (ปิดเอง หรือ AUTO ที่ onHand 0 และไม่เคยเคลื่อนไหว) = ไม่รู้ ⇒ null
+ *     (ไทล์ไม่แสดงอะไร แบบ P1.2) · ติดตามแล้วติดลบภายใต้ ALLOW = 0 เหมือนเดิม · เมนู bomEnabled = ร้านเปิดเอง ⇒ ใช้ onHand ตรง (A2: ใบชา 0 = หมด) ◂
+ */
+export async function loadRowPortions(
+  db: CatalogClient,
+  tenantId: string,
+  posSystemId: string,
+  unitInv: string | null,
+  rows: readonly { id: string; kind: PosProductKind }[],
+  rowRecipes: ReadonlyMap<string, RowRecipe>,
+): Promise<(rowId: string) => number | null> {
+  if (!unitInv) return () => null;
+  const liveRows = rows.filter((r) => rowRecipes.get(r.id)?.live);
+  const idsOf = (rs: readonly { id: string }[]) => [...new Set(rs.flatMap((r) => rowRecipes.get(r.id)!.lines.map((l) => l.invItemId)))];
+  const portionIds = idsOf(liveRows);
+  if (!portionIds.length) return () => null;
+  const stock = new Map(
+    (await db.invItem.findMany({ where: { tenantId, systemId: unitInv, id: { in: portionIds } }, select: { id: true, onHand: true } })).map((i) => [i.id, i.onHand]),
+  );
+  const bundleIds = idsOf(liveRows.filter((r) => r.kind === "BUNDLE")).filter((id) => stock.has(id));
+  const untracked = new Set<string>();
+  if (bundleIds.length) {
+    const prodRows = await db.posProduct.findMany({ where: { tenantId, systemId: posSystemId, invItemId: { in: bundleIds } }, select: { invItemId: true, trackStock: true, kind: true } });
+    const rowOf = new Map(prodRows.map((r) => [r.invItemId!, r]));
+    const needMove = bundleIds.filter((id) => (rowOf.get(id)?.trackStock ?? null) === null && stock.get(id) === 0);
+    const moved = needMove.length
+      ? await db.$queryRaw<{ id: string }[]>`SELECT i.id FROM "InvItem" i WHERE i.id = ANY(${needMove}::text[]) AND i."tenantId" = ${tenantId}
+          AND EXISTS (SELECT 1 FROM "InvMovement" m WHERE m."itemId" = i.id AND m."tenantId" = ${tenantId} AND m."systemId" = ${unitInv} LIMIT 1)`
+      : [];
+    const movedSet = new Set(moved.map((m) => m.id));
+    for (const id of bundleIds) {
+      const row = rowOf.get(id) ?? { trackStock: null, invItemId: id, kind: "PRODUCT" as PosProductKind };
+      if (!effectiveTrackStock({ trackStock: row.trackStock, invItemId: id, kind: row.kind }, { hasMovement: movedSet.has(id), onHand: stock.get(id)! }).trackStock) untracked.add(id);
+    }
+  }
+  const bundleRows = new Set(liveRows.filter((r) => r.kind === "BUNDLE").map((r) => r.id));
+  return (rowId) => {
+    const rr = rowRecipes.get(rowId);
+    if (!rr?.live) return null;
+    const bundle = bundleRows.has(rowId);
+    return recipePortions(rr.lines, (iid) => (bundle && untracked.has(iid) ? undefined : stock.get(iid)));
+  };
+}
+
 /** สมุดบัญชีที่ผูก POS (findAccountLinkForPos — account/service.ts:551) + จด VAT ไหม (vatConfigOf :602 · ไม่มีตั้งค่า = จด) */
 type BookInfo = { accountSystemId: string | null; vatRegistered: boolean };
 async function bookOfPos(tenantId: string, posSystemId: string, db: CatalogClient): Promise<BookInfo> {
@@ -985,14 +1033,7 @@ async function toViews(tenantId: string, unitId: string, unitInv: string | null,
   ]);
   const choiceLinesBy = new Map<string, { choiceId: string; invItemId: string; qtyDelta: number }[]>();
   for (const c of choiceRows) choiceLinesBy.set(c.productId, [...(choiceLinesBy.get(c.productId) ?? []), { choiceId: c.choiceId, invItemId: c.invItemId, qtyDelta: c.qtyDelta }]);
-  const portionIds = unitInv ? [...new Set([...rowRecipes.values()].filter((r) => r.live).flatMap((r) => r.lines.map((l) => l.invItemId)))] : [];
-  const portionStock = new Map(
-    (portionIds.length ? await db.invItem.findMany({ where: { tenantId, systemId: unitInv!, id: { in: portionIds } }, select: { id: true, onHand: true } }) : []).map((i) => [i.id, i.onHand]),
-  );
-  const portionsOf = (id: string): number | null => {
-    const rr = rowRecipes.get(id);
-    return rr?.live && unitInv ? recipePortions(rr.lines, (iid) => portionStock.get(iid)) : null;
-  };
+  const portionsOf = await loadRowPortions(db, tenantId, systemId, unitInv, rows, rowRecipes); // fix round 1 F3: ชุดใช้กติกา C2 ◂
   return rows.map((p) => {
     const inv = p.invItemId ? itemById.get(p.invItemId) : undefined;
     const optionGroups: PosOptionGroupView[] = (linksBy.get(p.id) ?? []).flatMap((l) => {
