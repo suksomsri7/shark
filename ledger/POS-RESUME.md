@@ -1294,3 +1294,29 @@
 - P2.8: ส่ง builder merge upstream 7365d4db (ชน 5 ไฟล์ เก็บทั้งสองฝั่ง) + prisma generate ทรี b + ด่านสั้น → รายงาน → ผู้คุม ff `session/pos` → `git merge origin/main` (350 commits) → ตรวจ P1.1b ส่วน B + ORACLE-EDIT P1.3 S5.12 → deploy p28 QC5 → P2.8U
 - **P2.4U เปิดแล้ว** (p11 · base 7365d4db · prompt `pos-prompt-accountB-P2.4U.filled.md` rulings 1–13) · HF-TX รอ P2.8 merge (prompt `pos-prompt-accountB-HF-TX-S.md` พร้อม)
 - เลน 2/3: P2.8 merge-upstream (b) · P2.4U (p11) · gates68 (c · ไม่นับเลน)
+
+## 10 ต.ค. 07:3xZ — ✅ merge P2.8 S (d85ea5c3) · gates68 เขียวหมด (ต้นไม้รวม P2.3U+P2.4) · QC5 deploy p28 แล้ว · P2.4/P2.8 นับเมื่อ U เข้า → ตัวนับยัง 25/55
+- main 71a1f363 vs session/pos: 1430 ไฟล์ · ชน 7 ไฟล์ · 4 migrations (crm_perf_indexes + **account_journal_no_sequence/alloc_lock v1/v2 = O24 แก้ฝั่งบัญชี**) · ไม่มี package/lock เปลี่ยน → เปิดเลน MAIN-MERGE บนทรี b (`pos-briefs/pos-prompt-accountB-MAIN-MERGE.md`) → ผล: merge head + ด่านเต็ม → ผู้คุม ff session/pos → QC5 deploy 4 migrations → O24/P2.9 ปลดบล็อก?
+- HF-TX รอ MAIN-MERGE (builder ≤ 2) · P2.8U รอ MAIN-MERGE merge
+- เลน 2/3: P2.4U (p11) · MAIN-MERGE (b)
+
+## 10 ต.ค. 08:2xZ — P2.4U ส่งแล้ว (daa0296d · code 2136e3c2 · ด่านเขียวหมด · authz 62 · deviations 1–7 ตัดสินแล้วในรีวิว prompt: รับทั้งหมด · D4 → P2.12 "ใบกำกับภาษีบนเช็คบิลโต๊ะก่อน go-live")
+- เปิด: ผู้ตรวจ P2.4U R (p11 อ่าน · `pos-prompt-accountB-P2.4U-R.md`) · **HF-TX builder** (ทรี c · base d85ea5c3 · `pos-prompt-accountB-HF-TX-S.filled.md`) · chain63 (ทรี d build daa0296d → vis64 = tables ×7 states × owner/cashier/en + register table-mode/billtype + ถ่ายซ้ำ register default/cart3/line-editor + shifts-current + close)
+- ลำดับ merge ถัดไป: MAIN-MERGE (b) → ff session/pos → QC5 deploy 4 migrations ของ main → HF-TX merge upstream → P2.4U (หลัง R + ภาพ + ผู้คุมดู 03) → **26/55**
+- เลน 3/3: MAIN-MERGE (b) · HF-TX (c) · P2.4U R (p11 อ่าน) · chain63 (d ไม่นับเลน)
+
+## 10 ต.ค. 08:3xZ — MAIN-MERGE รายงาน (head bfac8165 · merge 2c64d972 · ชน 7 ไฟล์แก้แล้ว · fitness 50/50 · p1.x/p2.x/เงิน เขียว · QC4 มี 4 migrations ของ main อยู่แล้ว (0 applied) · **O24 แก้ฝั่งบัญชีแล้ว** (sequence + lock · เพิ่มบรรทัดใน OWNER-PENDING) · ใบกำกับ VAT บัตรของขวัญ (O24 บรรทัด 63) ยังเปิด)
+- แดง 2: **S5.12** (main HF-O23 แก้ไฟล์ legacy) → ตัดสิน ORACLE-EDIT LEGACY_SHA · **S2.33** (P2.3U `catalog-recipe-actions.ts` import inventory — แดงบน session/pos ตั้งแต่ merge P2.3U เพราะด่าน merge ไม่ได้รัน p1.1 ❗บทเรียน: ด่าน merge ทุกใบต้องมี p1.1) → ตัดสินย้ายไฟล์เป็น `recipe-actions.ts` (ไม่แก้ oracle)
+- **P1.1b ส่วน B** พร้อมแล้ว → สั่งทำในเลนนี้ (2 จุดใน account/service.ts + ล้าง CATALOG_WRITER_BASELINE · เปิด S2.11b/S2.19)
+- member m2.6–m2.8 crash null.role = seed QC4 (เหมือน 9 ต.ค.) → บรรทัดเจ้าของสมาชิก · `ciEquals` (F15.1 ของ main) รับ
+- ส่ง go รอบแก้ 1 ให้ MAIN-MERGE builder แล้ว → ผล → ff session/pos → QC5 `migrate deploy` (idempotent) → HF-TX/P2.4U merge upstream
+
+## 10 ต.ค. 08:3xZ — P2.4U R1: MERGEABLE-AFTER-FIXES (F1 Medium UI รวมเงินเอง · F3 PromptPay เปิดผิด session · F2 · F4 ruling P1.7 manager gate บน preset · F5–F7 nits) → รอบแก้ 1 ส่ง go แล้ว (`pos-prompt-accountB-P2.4U-fix.md`)
+- chain63 build กำลังรัน → vis64 (daa0296d) = ผู้คุมดู 03 เต็ม (หน้าเงิน) · หลังแก้ถ่ายซ้ำเฉพาะ tables-panel-rounds,tables-alerts,tables-checkout-dialog
+- เลน 3/3: MAIN-MERGE fix1 (b) · HF-TX (c) · P2.4U fix1 (p11 = U แยกไฟล์)
+
+### ⏱ 10 ต.ค. 08:43Z — vis64 ดูแล้ว (03 เต็ม) · V1 แผงทับแจ้งเตือน · S2.19a oracle-edit
+- vis64 (daa0296d, QC5): 03 ตรงแบบ ยกเว้น **V1** = แผงโต๊ะในคอลัมน์ขวา (`pos-tbl-panel` `min-h-0`) หดแล้วยอด/ปุ่ม/เช็คบิลทับ "แจ้งเตือนจากโต๊ะ" (owner th+en, cashier draft-unsent) → มติ `shrink-0` ในคอลัมน์ · ส่งเข้า fix1 ของ P2.4U แล้ว (builder aa102b20 กำลัง gates 22d68cb0) · tables-checkout-dialog ❌ ก่อนแก้ (คาด F2–F4 แก้) · register th ไม่ได้ถ่าย (`--state` ผิดใน chain63) → ถ่ายซ้ำหลัง fix1: tables `tables-panel-rounds,tables-alerts,tables-checkout-dialog,tables-draft-unsent` × owner/cashier th + owner en · register th `register-table-mode,register-billtype-menu` · บันทึก `wo-notes/pos-P2.4U-review.md` ท้ายไฟล์
+- MAIN-MERGE fix1 (b99dd2b5): p1.1 179/180 — S2.33 เขียวแล้ว · **S2.19a แดง** (Part B ใช้แล้ว baseline = 0) → มติ ORACLE-EDIT: S2.19a = baseline ว่าง + ให้ Part B รันจริง (ไม่ข้าม) · own commit · รัน p1.1/p1.3/fitness ซ้ำ · ส่ง builder a733eb8e แล้ว
+- เลน 3/3: MAIN-MERGE fix1 (b) · HF-TX (c, a92f3a5e ยังรัน) · P2.4U fix1 (p11)
+- จุดต่อ: MAIN-MERGE รายงาน → merge-tree → ff/merge session/pos → merge gates (p1.1 p1.3 fitness typecheck) → QC5 `migrate deploy` 4 migrations ของ main → `prisma generate` ทรีผู้คุม · P2.4U รายงาน head สุดท้าย → reviewer R2 (a5aea681 resume) → chain64 build ทรี d + ถ่ายซ้ำตามรายการ → merge upstream → gates → merge → 26/55 → TG
