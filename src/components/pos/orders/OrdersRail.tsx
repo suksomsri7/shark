@@ -97,6 +97,8 @@ export function RailSettings(p: {
   channels: readonly OrdersChannel[];
   /** ช่องทางที่ค่าตั้ง (เวลาเตรียม/ปิดรับ) จะไปลง: ช่องที่เลือกในราง หรือทุกช่องทาง */
   targetLabel: string;
+  /** fix 1 F9: มีช่องทางออนไลน์ (WEB/CHAT/API ที่เปิดใช้) ให้ตั้งไหม — ไม่มี = เวลาเตรียม/ปิดรับปิด */
+  hasTarget: boolean;
   prepValue: number | null;
   busy: boolean;
   onAuto: (c: OrdersChannel, on: boolean) => void;
@@ -137,7 +139,7 @@ export function RailSettings(p: {
         <select
           data-testid="pos-ord-prep-default"
           aria-label={t("rail.prepDefault")}
-          disabled={p.busy}
+          disabled={p.busy || !p.hasTarget}
           value={p.prepValue ?? ""}
           onChange={(e) => {
             const n = Number(e.target.value);
@@ -156,7 +158,7 @@ export function RailSettings(p: {
         <p className="px-1 text-[11.5px] leading-[1.5] text-[color:var(--color-muted)]">{t("rail.prepToPlatform")}</p>
         <p className="px-1 text-[11.5px] text-[color:var(--color-muted)]">{t("rail.appliesTo", { target: p.targetLabel })}</p>
       </section>
-      <button type="button" data-testid="pos-ord-pause" disabled={p.busy} className="btn btn-ghost h-12 rounded-[14px] text-[14px] disabled:opacity-50" onClick={p.onPause}>
+      <button type="button" data-testid="pos-ord-pause" disabled={p.busy || !p.hasTarget} className="btn btn-ghost h-12 rounded-[14px] text-[14px] disabled:opacity-50" onClick={p.onPause}>
         <RegisterIcon name="lock" size={14} />
         {t("rail.pause")}
       </button>

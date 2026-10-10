@@ -3166,7 +3166,8 @@
       "autoPauseKitchen": "Auto pause when the kitchen is backed up",
       "prepMixed": "Mixed",
       "appliesTo": "Applies to: {target}",
-      "pauseHint": "While paused, web shop and chat orders are refused · keyed-in orders are still accepted"
+      "pauseHint": "While paused, web shop and chat orders are refused · keyed-in orders are still accepted",
+      "noTarget": "This channel's prep time/pause can't be set here (web shop · chat · API-linked channels only)"
     },
     "card": {
       "items": "{count} items · <b>{amount}</b>",

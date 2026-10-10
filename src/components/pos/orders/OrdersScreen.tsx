@@ -286,12 +286,15 @@ export function OrdersScreen(p: OrdersScreenProps) {
   const cols = useMemo(() => cardsByColumn(shownCards), [shownCards]);
   const chanById = useMemo(() => new Map(channels.map((c) => [c.id, c])), [channels]);
   const railRows = useMemo(() => railChannels(channels), [channels]);
-  /** ช่องทางที่ค่าตั้ง (เวลาเตรียม/ปิดรับ) จะลง: ช่องที่เลือกในราง · ทุกช่องทาง = ทุกช่องในราง */
-  const settingTargets = useMemo(() => (filter === "all" ? railRows : railRows.filter((c) => c.id === filter)), [filter, railRows]);
-  const targetLabel = filter === "all" ? t("rail.all") : (() => {
-    const c = chanById.get(filter);
-    return c ? channelDisplayName(c.code, c.name, tch) : t("rail.all");
-  })();
+  /**
+   * ช่องทางที่ค่าตั้ง (เวลาเตรียม/ปิดรับ) จะลง (fix 1 F9): เฉพาะช่องทางออนไลน์ที่เปิดใช้ (adapter WEB/CHAT/API — ช่องทางที่ระบบรับออเดอร์เอง) ·
+   * ทุกช่องทาง = ทุกช่องแบบนั้นในราง · เลือกช่องในราง = ช่องนั้นถ้าเข้าเกณฑ์ ไม่งั้นไม่มีเป้าหมาย (ปุ่มปิด) — แพลตฟอร์มที่คีย์มือ (MANUAL) ยังไม่มีผลกับแพลตฟอร์มจนถึง P3
+   */
+  const settingTargets = useMemo(() => {
+    const eligible = railRows.filter((c) => c.active && (c.adapter === "WEB" || c.adapter === "CHAT" || c.adapter === "API"));
+    return filter === "all" ? eligible : eligible.filter((c) => c.id === filter);
+  }, [filter, railRows]);
+  const targetLabel = settingTargets.length ? settingTargets.map((c) => channelDisplayName(c.code, c.name, tch)).join(" · ") : t("rail.noTarget");
   const prepValue = useMemo(() => {
     const vals = new Set(settingTargets.map((c) => c.prepMinutes ?? ORDER_PREP_DEFAULT_MIN));
     return vals.size === 1 ? [...vals][0]! : settingTargets.length === 0 ? ORDER_PREP_DEFAULT_MIN : null;
@@ -441,6 +444,7 @@ export function OrdersScreen(p: OrdersScreenProps) {
     <RailSettings
       channels={railRows}
       targetLabel={targetLabel}
+      hasTarget={settingTargets.length > 0}
       prepValue={prepValue}
       busy={busy}
       onAuto={(c, on) => void saveSettings([c], { autoAccept: on }, on ? t("toast.autoOn", { channel: channelDisplayName(c.code, c.name, tch) }) : t("toast.autoOff", { channel: channelDisplayName(c.code, c.name, tch) }))}
