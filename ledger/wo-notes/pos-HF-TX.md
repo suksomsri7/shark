@@ -71,3 +71,7 @@ Branch `wip/pos-hf-tx` · base `session/pos` d85ea5c3 · tree `shark-pos-c` · b
 | hunt H1/H2 (money lane on 6319bc34, Low, pre-existing) | two ledger lines under the giftcard owner: reload `balanceAfter` from the pre-tx read · sell 2110 post not crash-safe — both "→ follow-up card HF-GC (controller)" |
 
 Gates at 39926c02 (dirty 0; all logs headed): typecheck 0 · qc-hf-tx forced 18/18 · unforced 18/18 (residue 0; HT3.2 xmin 5483569 = caller 5483569 · HT5 5483573 vs 5483572) · qc-pos-p1.6 48/48 · qc-pos-p2.8 59/60 (ST6 only — same PAR reason as above, expected until the merged tip is on session/pos) · fitness no-env 50/50 · env 50/50.
+
+## Final upstream merge — 088e78ed
+- `git merge-tree` HEAD (ad3949cc) × origin/session/pos fe69efe6 = clean (no conflict). fe69efe6 = P2.4U merge c81f5bbf + ledger-only commits (8e0f0c26 · 4ba580c6 · 178cf781 · fe69efe6). P2.4U did not touch `register.ts` / `order.ts` / `service.ts` / giftcard / prisma ⇒ no hunk reconciliation, no `prisma generate`. Grep `regCallerTx|flatTx` in src = empty.
+- Gates at 088e78ed (dirty 0, headed logs in scratch `hftx/gates-final/`): typecheck 0 (incremental tsc, 48 s) · qc-hf-tx forced 18/18 · unforced 18/18 · qc-pos-p2.4 49/49 · qc-pos-p2.8 59/60 (ST6 PAR only — `register.ts`/`service.ts` differ from the P2.8 base and from the merge-base with origin/session/pos; green once this tip is on session/pos) · qc-pos-p1.1 180/180 · qc-pos-p1.3 128/128 · qc-pos-p1.6 48/48 · qc-pos-p1.7 32/32 · fitness no-env 50/50 · env 50/50 · fitness-pos 8/8.
