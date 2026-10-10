@@ -1,5 +1,5 @@
 "use server";
-// catalog-recipe-actions.ts — server action สูตร/วัตถุดิบ (BOM) ของจอ 06 (POS P2.3U ▸ มติ 1/2) · เปลือกบาง: session → ctx → catalog.* / recipe.recipeCost / inventory facade
+// recipe-actions.ts (MAIN-MERGE fix1 ▸ เดิม catalog-recipe-actions.ts · ย้ายออกจาก pos/catalog*.ts ตามมติ S2.33 (b) — import inventory.searchItems อ่านล้วน) — server action สูตร/วัตถุดิบ (BOM) ของจอ 06 (POS P2.3U ▸ มติ 1/2) · เปลือกบาง: session → ctx → catalog.* / recipe.recipeCost / inventory facade
 //
 // 🔴 ไฟล์ "use server" export ได้เฉพาะ async function — ชนิดผลลัพธ์เขียนในลายเซ็น (จอใช้ Awaited<ReturnType<…>>)
 // 🔴 ไม่มีตรรกะสูตร/เงินเอง: ผู้เขียน = catalog.setRecipe / setRecipeChoiceLines / setBomEnabled (F15.1) · ต้นทุน/กำไร = recipe.recipeCost (คืนผลตามเดิมทุกคีย์)
@@ -27,7 +27,7 @@ const Q_MAX = 128;
 
 function refusalOf(where: string, e: unknown): RecipeActionRefusal {
   if (e instanceof CatalogError) return { ok: false, code: e.code, message: e.message };
-  console.error(`[pos/catalog-recipe-actions] ${where}`, e);
+  console.error(`[pos/recipe-actions] ${where}`, e);
   return { ok: false, code: "INTERNAL", message: INTERNAL };
 }
 
@@ -123,7 +123,7 @@ export async function recipeCostAction(args: { systemId: string; unitId: string;
     );
   } catch (e) {
     unstable_rethrow(e);
-    console.error("[pos/catalog-recipe-actions] recipeCostAction", e);
+    console.error("[pos/recipe-actions] recipeCostAction", e);
     return { ok: false, code: "INTERNAL", message: INTERNAL };
   }
 }
