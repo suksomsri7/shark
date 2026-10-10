@@ -1205,3 +1205,4 @@
 - **gates64** ทรี p11 @2f8f1e67 (typecheck · p2.2 · p2.1 · p1.18 · p1.3 · p1.16 · products · authz · p2.3 · p1.1 · p1.12 · p1.5 · fitness ×3) กำลังรัน · vis61 register (harness d9385328) ต่อคิวหลัง vis60
 - merge P2.2U เมื่อ: gates64 เขียว + vis61 register เขียว + vis60 sales (12) ตรงแบบ → merge 2f8f1e67 → 24/55 → TG
 - เลน: builder P2.4 S (c) · P2.8 S (b) = 2/3
+- 03:09Z vis60 จบ: products 35/35 · register owner 104/105 · cashier 101/102 · en 37/37 · sales 70/70 — แดง 2 ใบ = line-badges 390 (owner+cashier) เหตุ harness เดียวกัน (แก้แล้ว d9385328) · บิล 12: หมายเหตุบรรทัด "โปรราคา · <ชื่อโปร> (ปกติ ฿60)" + "ราคา LINE MAN" ✓ ตรงแบบ · เหลือรอ vis61 + gates64
