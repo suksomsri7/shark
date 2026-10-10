@@ -156,4 +156,4 @@ export const orders = {
 } as const;
 export type * from "./order-shared";
 export { ORDER_ADAPTERS } from "./order-adapters";
-export type { OrderAdapter, OrderAdapterCode } from "./order-adapters";
+export type { OrderAdapter, OrderAdapterKind } from "./order-adapters";

@@ -6,10 +6,10 @@
 //    API (LINE MAN/Grab/… จริง) = P3.1–3.3: เติมตัวที่นี่ + ตรวจลายเซ็นที่ route webhook · ห้ามใส่ความลับใน adapterConfig จนกว่า P3.1 (มติ 11)
 // 🔴 ฟังก์ชันของ adapter ต้องไม่ throw ใส่ผู้เรียก (order.ts เรียกหลัง commit) · ไม่ import shop/chat/restaurant (มติ 1 5 6)
 
-export type OrderAdapterCode = "MANUAL" | "WEB" | "CHAT" | "API" | "NONE";
+export type OrderAdapterKind = "MANUAL" | "WEB" | "CHAT" | "API" | "NONE";
 export type OrderAdapterRef = { orderId: string; externalRef: string | null };
 export type OrderAdapter = {
-  code: OrderAdapterCode;
+  code: OrderAdapterKind;
   /** แจ้งแพลตฟอร์มว่ารับแล้ว + เวลาเตรียม */
   accept: (ref: OrderAdapterRef & { prepMinutes: number }) => Promise<void>;
   /** แจ้งแพลตฟอร์มว่าปฏิเสธ + เหตุผล */
@@ -25,7 +25,7 @@ export type OrderAdapter = {
 };
 
 const noop = async (): Promise<void> => {};
-const local = (code: OrderAdapterCode): OrderAdapter => ({ code, accept: noop, reject: noop, setReady: noop, syncMenu: noop, setAvailability: noop, setStoreStatus: noop });
+const local = (code: OrderAdapterKind): OrderAdapter => ({ code, accept: noop, reject: noop, setReady: noop, syncMenu: noop, setAvailability: noop, setStoreStatus: noop });
 
 /** ทะเบียน adapter ตาม SalesChannel.adapter — ไม่มีในทะเบียน (NONE · API ก่อน P3) = ไม่มีอะไรให้ส่ง */
 export const ORDER_ADAPTERS: Readonly<Partial<Record<string, OrderAdapter>>> = {
