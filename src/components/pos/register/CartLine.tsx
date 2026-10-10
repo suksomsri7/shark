@@ -29,6 +29,10 @@ export type CartLineModel = {
   pending?: boolean;
   /** P1.2 U: ตัวเลือกที่เลือก + น้ำหนัก ("M · นมโอ๊ต · 250 กรัม") — ภาพ 01 บรรทัดรองใต้ชื่อ */
   detail?: string;
+  /** POS P2.2U ▸ มติ 5: ลำดับบรรทัด (testid ป้าย) · ป้าย "ราคาตามช่องทาง" (CHANNEL) / ชื่อโปร (RULE) · คำปฏิเสธของบรรทัด (CHANNEL_NOT_SOLD) ◂ */
+  index?: number;
+  badge?: { kind: "CHANNEL" | "RULE"; text: string };
+  error?: string;
 };
 
 type Props = {
@@ -84,7 +88,22 @@ export function CartLine({ line, frozen, onOpen, onKeep, onReduce }: Props) {
                 {line.detail}
               </span>
             )}
+            {line.badge && (
+              <span
+                data-testid={`pos-reg-line-badge-${line.index ?? 0}`}
+                className={`mt-1 inline-flex max-w-full truncate rounded-[6px] border px-1.5 py-px text-[11px] font-bold ${
+                  line.badge.kind === "RULE" ? "border-[color:var(--color-accent)] bg-[color:var(--color-accent-soft)] text-[color:var(--color-accent)]" : "border-[color:var(--color-line)] text-[color:var(--color-ink-soft)]"
+                }`}
+              >
+                {line.badge.text}
+              </span>
+            )}
             {sub && <span className="mt-px block text-[12.5px] text-[color:var(--color-muted)] xl:mt-1 xl:text-[13.5px]">{sub}</span>}
+            {line.error && (
+              <span data-testid={`pos-reg-line-error-${line.index ?? 0}`} role="alert" className="mt-px block text-[12.5px] font-semibold text-[color:var(--color-danger)] xl:text-[13px]">
+                {line.error}
+              </span>
+            )}
             {line.note && (
               <span data-testid={`pos-reg-line-note-text-${line.key}`} className="mt-px flex items-start gap-1 text-[12.5px] text-[color:var(--color-ink-soft)] xl:text-[13px]">
                 <RegisterIcon name="edit" size={12} className="mt-[3px]" />

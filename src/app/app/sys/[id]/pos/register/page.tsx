@@ -90,7 +90,7 @@ export default async function PosRegisterPage({
         userId={auth.user.id}
         tenantName={auth.active.tenant.name}
         units={units.map((u) => ({ id: u.id, name: u.name }))}
-        initialCatalog={catalog.ok ? { categories: catalog.categories, products: catalog.products, nextCursor: catalog.nextCursor } : null}
+        initialCatalog={catalog.ok ? { categories: catalog.categories, products: catalog.products, nextCursor: catalog.nextCursor, priceValidUntil: catalog.priceValidUntil } : null}
         initialStatus={status.ok ? status : null}
         vat={vat.ok ? { mode: vat.mode, rateBp: vat.rateBp } : { mode: "NONE", rateBp: 0 }}
         limits={limits}

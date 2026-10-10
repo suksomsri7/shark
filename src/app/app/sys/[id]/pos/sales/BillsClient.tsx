@@ -131,6 +131,7 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
   const tpos = useTranslations("pos") as T;
   const trg = useTranslations("pos.register");
   const tch = useTranslations("pos.channel") as T; // POS P2.1U ◂
+  const tpr = useTranslations("pos.price") as T; // POS P2.2U ▸ หมายเหตุราคาต่อบรรทัด (R11 · มติ 6) ◂
   const locale = useLocale();
   // POS P1.18U ▸ มติ 9 (บิล drawer en): ชื่อผู้ทำ "ระบบ" (ไม่มีผู้ใช้) + ไทม์ไลน์ แปลตามภาษาจอ (kind + params จากเซิร์ฟเวอร์ · ไม่มี kind = text เดิม) ◂
   const who = (n: string) => (n === BILLS_SYSTEM_NAME ? t("drawer.system") : n);
@@ -259,6 +260,15 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
 
   const ok: PageOk | null = data && data.ok ? data : null;
   const bill: Detail | null = detail && detail.ok ? detail.bill : null;
+  // POS P2.2U ▸ มติ 6 (R11): หมายเหตุราคาของบรรทัด — ช่องทาง "ราคา LINE MAN" · สาขา "ราคาสาขา (ปกติ ฿75)" · โปร "โปรราคา · บ่ายชิล (ปกติ ฿75)" ·
+  //   ราคาปกติ/ราคาเปิด/กำหนดเอง/ชั่ง/บิลเดิม (null) = ไม่มีหมายเหตุ · ใบเสร็จไม่เปลี่ยน (CD9) ◂
+  const priceNote = (l: Detail["lines"][number]): string | null => {
+    const list = typeof l.listPriceSatang === "number" ? money(l.listPriceSatang) : null;
+    if (l.priceSource === "CHANNEL" && bill?.channel) return tpr("billNote.channel", { channel: channelDisplayName(bill.channel.code, bill.channel.name, tch) });
+    if (l.priceSource === "BRANCH" && list) return tpr("billNote.branch", { list });
+    if (l.priceSource === "RULE" && list) return tpr("billNote.rule", { kind: tpr("source.RULE"), name: l.priceRuleName ?? "—", list });
+    return null;
+  };
 
   // ── POS P2.1U ▸ มติ 3: "หน้าร้าน N · ออนไลน์ M" ของทั้งวัน (บิลที่ไม่ยกเลิก = การ์ด "บิล") ──
   //   N = บิลช่องทาง STORE (ตัวกรอง salesChannelId ทั้งวัน − ที่ยกเลิก) · M = บิลทั้งหมด − N · คิดใหม่เมื่อวัน/สาขา/ตัวเลขของวันเปลี่ยน
@@ -1304,6 +1314,11 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
                           {o}
                         </small>
                       ))}
+                      {priceNote(l) ? (
+                        <small data-testid={`pos-bill-line-note-${i}`} className="text-[11px] text-[color:var(--color-accent)]">
+                          {priceNote(l)}
+                        </small>
+                      ) : null}
                     </span>
                     <span className="font-semibold tabular-nums">{money(l.lineTotalSatang)}</span>
                   </div>
