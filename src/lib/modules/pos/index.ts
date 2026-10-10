@@ -20,6 +20,8 @@ export type {
 export {
   /** สร้างบิลขาย (จุดเดียวที่เงินเข้าระบบ — ยิง `pos.sale.paid` ให้บัญชี/แต้ม/สมาชิกเก็บต่อ) */
   createSale,
+  /** HF-TX: งานหลัง commit ของบิล (ตัดสต็อก + ระบายคิว) — ผู้เรียกที่ส่ง `callerTx(tx)` ให้ createSale เรียกหลัง `$transaction` resolve */
+  afterSaleCommitted,
   /** ยกเลิกบิล (คืนแต้ม/คูปอง/สต็อก + ยิง `pos.sale.voided` ให้บัญชีกลับรายการ) */
   voidSale,
   /** สรุปยอดปิดวันของระบบ POS */
