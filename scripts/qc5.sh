@@ -15,4 +15,5 @@ for U in "$D" "$P"; do
   case "$U" in *ep-royal-night*|*ep-plain-art*|*ep-cool-shadow*|*ep-weathered-river*|*ep-frosty-lab*|"") echo "🔴 qc5: URL is production, QC1–QC4 or empty — stop" >&2; exit 4 ;; esac
   case "$U" in *ep-fragrant-thunder*) : ;; *) echo "🔴 qc5: URL is not QC5 (ep-fragrant-thunder)" >&2; exit 4 ;; esac
 done
-exec env DATABASE_URL="$P" DIRECT_URL="$D" QC_ENV_FILE="$F" GATE_LOCK_FILE=/tmp/shark-gate-qc5.lock QC_BRANCH=qc5 "$@"
+# POS_QC_ALLOW_HOST: ด่านใน scripts/pos-qc-env.mts (loadPosQcEnv) รับเฉพาะ QC4 เว้นแต่ตั้งใจ — QC5 คือตั้งใจ (prod/QC1–3 ยังถูกปฏิเสธก่อน)
+exec env DATABASE_URL="$P" DIRECT_URL="$D" QC_ENV_FILE="$F" GATE_LOCK_FILE=/tmp/shark-gate-qc5.lock QC_BRANCH=qc5 POS_QC_ALLOW_HOST=ep-fragrant-thunder "$@"
