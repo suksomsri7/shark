@@ -1136,3 +1136,8 @@
 - brief P2.6 (drafter · 1c26ef28) + **§9 มติ 1–16** (f71f4e30): ตั๋ว = RestaurantOrder + 6 คอลัมน์ลิงก์ · ⏮ เปลี่ยนเป็น P2.4 S + P2.8 S (แถวแผนแก้แล้ว · ~44+Z) · ตั๋วหน้าขายหลัง commit + heal · routing non-MENU ตาม PosProduct.stationId (โต๊ะคง P2.4 R5) · 86 ต่อหน่วย · hot path S2.42 แช่แข็ง · ไม่มีคีย์สิทธิ์ใหม่ · ใบครัวพิมพ์ที่เครื่อง (LAN P3.11 · pre-bill → P2.5) · เป้าเวลา online→prepMinutes→critical 15 · pause/backlog ต่อสถานี · **86 ตอน ingest ย้ายเข้า P2.8 S (brief P2.8 §9 ข้อ 16)** · เข้าหน้า route เดียว ไม่มี nav key · migration `20261208100000_pos_p26_kds`
 - เลน = 3: P2.3 S (c) · P2.2U (p11) · **oracle P2.6 (b · `wip/pos-p2.6-oracle` จาก f71f4e30 · prompt `pos-prompt-accountB-P2.6-O.md`)** · คิวเมื่อเลนว่าง: ผู้ตรวจ P2.3 S / P2.2U → P2.4 S + P2.8 S หลัง P2.3 S merge
 - ค้าง: vis58b (register-cashier + shifts) → vis58c settings → chain59 build59 → vis59 → เติม HANDOVER §3 → ปิดเฟส P1
+
+## 2026-10-10T01:07Z · vis58b จบ (QC5 @711b6d5e) · ภาพกะ owner 07 ปิดแถว parity แล้ว · fix2 P2.1U ยืนยัน
+- vis58b: register owner/cashier/en · sales owner/en · shifts owner th/en = 0 แดง · sales-cashier bills-* 12 = เป้าตกหน้า 1 (harness · addendum อยู่ใน db5af8c2 → vis59) · settings ×3 = DEVICE_LIMIT (เครื่องค้าง · ล้างแล้ว → vis58c กำลังถ่าย)
+- **07 กะ owner**: 4 แถว OPEN → DEVIATION (โครงสร้างตรงแบบ · Z state/Z list/ผลต่าง −฿15 "มีเหตุผล" ตรง · deviation: เปลือกแอป · ไม่มีปุ่ม "เปิดลิ้นชัก" ที่หัว · การ์ดส่งสรุป LINE = ข้อความรอรอบหน้า · "ดู X report" แทน "พิมพ์") · 1024/390/en ผ่าน
+- **approval-wait 1024 (P2.1U fix2 15c8781c)**: register-owner-th 88/0 (vis57 แดง 1) ⇒ ล้นหาย · ภาพ p21u ที่ 00:49–01:03 ใช้บันทึก P2.1U ได้
