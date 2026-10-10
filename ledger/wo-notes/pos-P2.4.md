@@ -184,3 +184,21 @@ Gates (final · head 7f915ad2 = fix 85d3bcfe + merge `origin/session/pos` 750e98
 | **qc-shop-refund · qc-hotel-money · qc-ticket-money · qc-subscription-money** (F8 · COMMON §7) | 12/12 · 5/5 · 6/6 · 14/14 | 0 ×4 |
 | pnpm fitness (no env · QC4 env) · fitness-pos | 41/41 · 41/41 · pass | 0 ×3 |
 | pnpm typecheck (iso · flock /tmp/pos-gate.lock) | 0 errors | 0 |
+
+## Fix round 3 (review R2 `wo-notes/pos-P2.4-review-R2.md` N1–N3 · controller rulings 10 Oct 05:3xZ)
+- **ORACLE-EDIT 5fdb8da7** (mechanical, assertions unchanged, count 46): `hold` helper passes `newDraft:true` (optional 6th arg = mode) · D1 re-hold passes `{heldCartId: id1, expectedVersion: h1.draftVersion}` · D7 extended: (ii) `heldCartId` without `expectedVersion` ⇒ VALIDATION, version unchanged · (i) field-less hold after send ⇒ VALIDATION and 0 HELD rows. Red-before on the fix-2 code: `scratchpad/p24/runs/red-before-fix3-D7.log` 45/46 — D7 red (no-version hold updated v3→4 · field-less hold after send created a HELD draft); every other check stayed green with the new helper.
+- **Fix e21d4cc4**:
+  - N1 + N2 `held-cart.ts holdTableDraft`: table mode needs `newDraft:true` **or** `heldCartId` + `expectedVersion` — anything else ⇒ VALIDATION "ต้องระบุร่างและรุ่นของร่าง" (`tables.errors.draftModeRequired` th/en). The check sits after scope (TABLE_NOT_FOUND) with the other shape checks. The fix-1 field-less update-or-create loop is deleted; the edit path is one conditional `updateMany {id, version, HELD}` (0 rows ⇒ VERSION_CHANGED). Normal held carts are untouched.
+  - N3 `pos-tables.ts cancelTableItemInTx`: `u.count !== 1` now **throws**, so the tx rolls back and no menu stock is restored without the cancel.
+- **P2.4U contract** (amends fix 2): draft saves are always `{newDraft:true}` or `{heldCartId, expectedVersion}`. The F6 badge text is "ไม่ได้ตัดวัตถุดิบตามสูตร" (not "ไม่ได้ตัดสต็อก" — a recipe line with a tracked `invItemId` still cuts that item). The U builder words `tables.panel.stockNotCut` accordingly.
+- Merged `origin/session/pos` 45f7c05a (ledger only, no conflicts) → head d4ecad76.
+
+Gates (head d4ecad76 · `scratchpad/p24/runs/gate-E-*.log`):
+| gate | result | exit |
+|---|---|---|
+| qc-pos-p2.4 forced #1 / #2 / unforced | 46/46 ×3 · PAR 4/4 · residue 0 | 0 / 0 / 0 |
+| qc-pos-p2.4 --no-db | 7/7 | 0 |
+| qc-pos-p1.5 · p1.15 · p1.3 | 21/21 · 39/39 · 128/128 | 0 ×3 |
+| pnpm fitness (no env · QC4 env) · fitness-pos | 41/41 · 41/41 · pass | 0 ×3 |
+| pnpm typecheck | 0 errors | 0 |
+Not re-run (the fix-3 code touches only `held-cart.ts holdTableDraft` and `cancelTableItemInTx`): p2.3 46 · p2.2 42 · p2.1 55 · p1.6 48 · p1.9 53 · p1.12 72 · p1.16 28 · p1.1 178 · restaurant ×4 · pos-account 16 · account-cpa 107 · shop-refund 12 · hotel-money 5 · ticket-money 6 · subscription-money 14 — results as in fix round 2 (`gate-D-*`).
