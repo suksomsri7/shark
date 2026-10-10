@@ -140,3 +140,17 @@ P2.2-Z1	-
 P2.2-Z2	-
 X-coverage: S=5 P=7 -=11 X5=6 X3=2 X4=8 X2=2 X1=1	
 ```
+
+## ORACLE-EDIT — builder S (controller ruling 1) · 9 Oct 2026 · account B
+- Commit `18244782` `test(pos P2.2): ORACLE-EDIT C3 — catalog NOT_FOUND (controller ruling 1)` — **own commit, oracle only** (`scripts/qc-pos-p2.2.mts` C3: title text + two `codeIs(…, "NOT_FOUND")` asserts + chk label). Count **42 unchanged**.
+- Why: C3 expected `PRODUCT_NOT_FOUND` for another tenant's / unknown product; ruling 1 keeps the existing `CatalogErrorCode` `NOT_FOUND` (house style, union not widened).
+- Red before (pre-edit oracle, step-2 code): `/tmp/claude-0/-root/ed31d917-ff51-51e8-bfad-e5b8bfa6fa15/scratchpad/p22/runs/s2-forced1.log` — C3 red only on PRODUCT_NOT_FOUND vs NOT_FOUND. Green from step 6 on (42/42). Accepted by reviewer S (`pos-P2.2-review-S.md` "ORACLE-EDIT").
+
+## ORACLE-EDIT — fix round 1 (reviewer F1, F2 · controller rulings 9 Oct 23:2xZ) · builder S (account B)
+- Commit `b78896fb` `test(pos P2.2): ORACLE-EDIT Q8 — open price refused on a notSold row (reviewer F1)` — **own commit, oracle only**: one assert inside Q8 — LINEMAN cart `[matcha {openPrice:true, unitPriceSatang:4000}]` (matcha has (LINEMAN, all) notSold) ⇒ `CHANNEL_NOT_SOLD` lineIndex 0 (+ Q8 D-text). Count **42 unchanged**.
+- Commit `a6c1f0b0` `test(pos P2.2): ORACLE-EDIT C6 — bulk markup keeps notSold rows (reviewer F2)` — **own commit, oracle only**: one assert inside C6 — owner `bulkChannelMarkup({LINEMAN, unitId:null, 2700 bp, roundTo 100, productIds:[matcha]})` ⇒ ok · written 0 · skipped 1 · row still `LINEMAN|*|X` · channelPrice audit +0 (+ C6 D-text). Count **42 unchanged**.
+- Red before: `/tmp/claude-0/-root/ed31d917-ff51-51e8-bfad-e5b8bfa6fa15/scratchpad/p22-fix/runs/red-p22-forced.log` (a6c1f0b0, no fixes) 39/42 — C6 (matcha → written 1, `LINEMAN|*|8300`, audit +1) with C5/Q8 cascade · `/tmp/claude-0/-root/ed31d917-ff51-51e8-bfad-e5b8bfa6fa15/scratchpad/p22-fix/runs/red2-p22-forced-noF1.log` (b2c8b0c6, F2–F4 fixed) 41/42 — only the new Q8 assert. Green at 5244b8eb (42/42 ×3).
+
+## ORACLE-EDIT — fix round 2 (reviewer R2 F6 · controller ruling 9 Oct 23:5xZ) · builder S (account B)
+- Commit `ec074d01` `test(pos P2.2): ORACLE-EDIT Q8 — base-null product notSold refuses open price (reviewer F6)` — **own commit, oracle only**: one more assert inside Q8 — set (LINEMAN, all) notSold on the base-null fixture "ขนมไม่ตั้งราคา" (`PR.unpriced`) → LINEMAN quote `[unpriced {openPrice:true, unitPriceSatang:4000}]` ⇒ `CHANNEL_NOT_SOLD` lineIndex 0 → clear the rows again (before Q8's `counts()` snapshot; no later check reads `unpriced` or channelPrice audits) (+ Q8 D-text). Count **42 unchanged**.
+- Red before: `/tmp/claude-0/-root/ed31d917-ff51-51e8-bfad-e5b8bfa6fa15/scratchpad/p22-fix/runs/r2-red-p22-forced-noF6.log` (ec074d01, F6 not fixed) 41/42 — only Q8: "ราคาเปิด LINEMAN ขนมไม่ตั้งราคา(ไม่ขาย) → OK (คาด CHANNEL_NOT_SOLD @0 · ตั้งแถว VALUE · ล้าง VALUE)". Green after f4e96cac + f6cb73c2 (42/42 ×3).
