@@ -1,0 +1,73 @@
+(node:2906605) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+── R1 PDPA erase × AI memories / plans / support / scheduled tasks ──
+  ✅ [R1.0] (control) control: erase (batch 2) succeeded
+        — ACTUAL erased=true counts={"emails":0,"activities":0,"recordings":0,"files":0,"webSessions":0,"clicks":0,"portal":0,"proposals":0,"notifications":3,"customValues":0,"records":0,"consents":0,"fileLinks":0,"mergedContacts":0,"pa…
+  ✅ [R1.1] (control) control: second tenant's AiMessage / AiMemory / AiPlan / SupportCase / SupportMessage / AiScheduledTask / title are byte-identical (tenant scoping of every new statement)
+        — ACTUAL {"m":[{"content":"สมศรี \"แอน\" qc-cf18r-exdexbtx 0839650203"}],"mem":[{"content":"สมศรี \"แอน\" qc-cf18r-exdexbtx โทร 0839650203 ทีม support","updatedAt":"2026-10-02T11:16:28.958Z"}],"plan":[{"title"…
+  ✅ [R1.2] (control) control: paging (batch 2, 8 matching plans) reaches all 5 phone plans — masked + EXPIRED
+        — ACTUAL ["EXPIRED:[{\"kind\":\"booking_create_appointment\",\"status\":\"PE…","EXPIRED:[{\"kind\":\"booking_create_appointment\",\"status\":\"PE…","EXPIRED:[{\"kind\":\"booking_create_appointment\",\"status\":\"PE…","EXPIRED:[{\"kind\":\"booking_create_appointment\",\"status\":\"PE…","EXPIRED:[{\"kind\":\"booking_create_appointment\",\"status\":\"PE…"]
+  ✅ [R1.3] (control) control: a name with double quotes (JSON-escaped in stepsJson::text) is found and masked in summary + payload
+        — ACTUAL {"status":"EXPIRED","stepsJson":[{"kind":"booking_create_appointment","status":"PENDING","payload":{"customerName":"[ข้อมูลถูกลบ]"},"summary":"นัด [ข้อมูลถูกลบ]"}]}
+  ℹ️  [R1.4] token as a JSON KEY survives (keys are not walked) — still holds the name: true · status DONE · [{"kind":"booking_create_appointment","status":"DONE","payload":{"notes":{"สมศรี \"แอน\" qc-cf18r-exdexbtx":"vip"}},"summary":"โน้ตลูกค้า"}]
+  ℹ️  [R1.5] phone as a JSON NUMBER (token variant 66…) survives; the plan is still selected and retired: status EXPIRED · [{"kind":"booking_create_appointment","status":"PENDING","payload":{"tel":66839650203},"summary":"นัดลูกค้า"}]
+  ✅ [R1.6] (control) control: memory masked in place, updatedAt not bumped
+        — ACTUAL {"content":"ลูกค้า [ข้อมูลถูกลบ] เบอร์ 083-9650203","updatedAt":"2026-10-02T11:16:28.682Z"}
+  ℹ️  [R1.7] phone written as 081-2345678 (outside the variant list): memory keeps it=true · AI message keeps it=true (consistent with the pre-existing message masking)
+  ✅ [R1.8] (control) control: the memory that was only the person is deleted
+        — ACTUAL left=0
+  ❌ [R1.9] (FINDING) FINDING: a generic e-mail local part ('support' from support@…) does not rewrite unrelated memories / the SHARK team's support replies
+        — ACTUAL memory="ลูกค้าส่วนใหญ่ติดต่อทีม [ข้อมูลถูกลบ] ทางไลน์ qc-cf18r-exdexbtx" platformReply="ทีม [ข้อมูลถูกลบ] ของ SHARK รับเรื่องแล้ว qc-cf18r-exdexbtx" aiMessage(pre-existing path)="แจ้งทีม [ข้อมูลถูกลบ] ว่าระบบช้า qc-cf18r-exdexbtx"
+  ❌ [R1.10] (FINDING) FINDING: the scheduled task's instruction (sent to the model daily, copied into an AppNotification + push) no longer holds the name/phone
+        — ACTUAL {"instruction":"ทุกเช้าเตือนให้โทรหา สมศรี \"แอน\" qc-cf18r-exdexbtx ที่เบอร์ 0839650203"}
+  ℹ️  [R1.11] non-CRM pending proposal with the same content as a plan step: status PENDING · still names the person=true (plans with the same step → EXPIRED + masked) — owner question 2
+  ✅ [R1.12] (control) control: support case subject + shop message masked
+        — ACTUAL {"subject":"ใบเสร็จของ [ข้อมูลถูกลบ]","messages":[{"body":"ลูกค้าโทร [ข้อมูลถูกลบ]","attachmentsJson":[{"url":"https://files.qc.invalid/x.jpg","kind":"image","name":"สมศรี \"แอน\" qc-cf18r-exdexbtx-บัตรประชาชน.jpg"}],"au…
+  ℹ️  [R1.13] support attachment named after the person survives: true (attachmentsJson not masked; the file itself is not deleted)
+
+── R2 CRM door × G2 rooms (legacy room · generic door consistency) ──
+  ✅ [R2.0] (control) control (premise): A's chat turn left a crm.* proposal without requestedByUserId
+        — ACTUAL "crm.contacts.create"
+  ✅ [R2.1] (control) control (G2 consistency): the generic confirm door refuses staff B AND the OWNER on A's u~ proposal with the 'not found' text of a ghost id — same rule the CRM door now applies (P1.3 is not a regression)
+        — ACTUAL B={"ok":false,"note":"ไม่พบข้อเสนอนี้ (อาจถูกลบไปแล้ว)"} O={"ok":false,"note":"ไม่พบข้อเสนอนี้ (อาจถูกลบไปแล้ว)"} ghost={"ok":false,"note":"ไม่พบข้อเสนอนี้ (อาจถูกลบไปแล้ว)"}
+  ✅ [R2.2] (control) control: legacy cuid room proposal — staff B and A get the ghost answer, OWNER cancels (G2 legacy rooms = OWNER only)
+        — ACTUAL B={"handled":false,"ok":false,"note":""} A={"handled":false,"ok":false,"note":""} O={"handled":true,"ok":true,"note":"ยกเลิกข้อเสนอแล้ว"}
+  ℹ️  [R2.3] confirmProposalById hidden={"handled":true,"ok":false,"note":"ไม่พบข้อเสนอนี้ในระบบ CRM ที่เปิดอยู่ (อาจถูกจัดการไปแล้วหรืออยู่คนละระบบ)"} vs ghost={"handled":false,"ok":false,"note":""} — differs, but executeProposal never sends a no-requestedBy chat row there (defence in depth only)
+  ✅ [R2.4] (control) control: A's row still PENDING after all foreign attempts
+        — ACTUAL status
+
+── R3 company merge field — system sends read back by a restricted member ──
+  ✅ [R3.1] (control) control: A's own template mail carries no hidden company name
+        — ACTUAL "ใบเสนอราคา"
+  ℹ️  [R3.2] system send (sequence step / rule SEND_EMAIL — reachable from A's own enrol/write) rendered into the thread A reads: shows hidden company=true · "ใบเสนอราคา บริษัทลับ qc-cf18r-exdexbtx"
+
+── R4 CRM read tools × API keys ──
+  ✅ [R4.1] (control) control: crm_contact_360 / crm_score_explain also answer 403 with the CRM-REST hint; body has only `error` (no scope internals)
+        — ACTUAL 360=403 {"error":"เครื่องมืออ่านข้อมูล CRM ของผู้ช่วยใช้ได้เฉพาะคนในร้านที่เปิดผู้ช่วยในแอป (ผู้ช่วยอ่านด้วยสิทธิ์ของคนที่ถาม) —… score=403
+  ℹ️  [R4.2] key without crm.contact.read → crm_search: {"status":403,"body":{"error":"คีย์นี้ไม่มีสิทธิ์ใช้เครื่องมือนี้","hint":"ต้องการสิทธิ์ ที่ตรงกับเครื่องมือนี้"}} (route scope check runs before toolVerdict ⇒ the CRM-REST hint is only shown to keys that hold the scope)
+
+── R5 public-route wakes with garbage tokens ──
+  ❌ [R5.1] (FINDING) FINDING: a garbage token on /u no-track (no rate limit) schedules no outbox drain
+        — ACTUAL wakes=1 status=200
+  ❌ [R5.2] (FINDING) FINDING: a garbage token on /u one-click schedules no outbox drain
+        — ACTUAL wakes=1 status=200
+  ❌ [R5.3] (FINDING) FINDING: a garbage token on /t/o (counted as 'allowed' by the rate gate, nothing written) schedules no outbox drain
+        — ACTUAL wakes=1 status=200
+  ✅ [R5.4] (control) control: a garbage token on /t/c does not wake (no url ⇒ home before the wake)
+        — ACTUAL wakes=0 status=302
+  ✅ [R5.5] (control) control (P-it5-3): the no-track / one-click done pages carry the viewport meta
+        — ACTUAL nt=true oc=true
+  ℹ️  [R5.6] 10 unauthenticated garbage no-track POSTs, each after the previous drain started → 10 drains scheduled (coalescing only merges not-yet-started drains; no 15 s bound)
+  ✅ [CLEAN] (control) throwaway tenants, users, system rows and rate buckets removed (0 rows left)
+        — ACTUAL - buckets=0
+
+controls 16/16 green · findings reproduced (RED) 5/5
+JSON_SUMMARY {"controls":[["R1.0",true],["R1.1",true],["R1.2",true],["R1.3",true],["R1.6",true],["R1.8",true],["R1.12",true],["R2.0",true],["R2.1",true],["R2.2",true],["R2.4",true],["R3.1",true],["R4.1",true],["R5.4",true],["R5.5",true],["CLEAN",true]],"findings":[["R1.9","REPRODUCED"],["R1.10","REPRODUCED"],["R5.1","REPRODUCED"],["R5.2","REPRODUCED"],["R5.3","REPRODUCED"]]}

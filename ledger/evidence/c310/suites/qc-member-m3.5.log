@@ -1,0 +1,33 @@
+  ✅ [M3.5-S1.1] ตาราง ReferralProgram {enabled referrerRewardKind referrerRewardValue refereeRewardKind refereeRewardValue convertOn minFirstPurchaseSatang monthlyCap fraudPhoneDevice shareText} · Referral {referrerCustomerId refereeCustomerId refereeContact code status convertedAt conversionRef rewardedAt referrerRewardRef refereeRewardRef rejectReason} · enum 4/2 · getProgram ปริยาย (enabled false · 300 แต้ม · voucher ฿100 · FIRST_PURCHASE ≥ 50000 · cap 10 · fraud true · shareText มี {link}) · convertOn ผิด → throw ไทย · points -5 → throw · thana → throw · set แล้วอ่านกลับ enabled true
+  ✅ [M3.5-S1.2] codeFor(สมาชิก 1) → { code = Customer.referralCode, link /ref/<code>, shareText แทน {link} ด้วย URL เต็ม (http) ไม่เหลือ {link} }
+  ✅ [M3.5-S2.1] createMember(referralCode A) → consumer member.created → Referral PENDING {referrerCustomerId A, refereeCustomerId B, code} (attach อัตโนมัติผ่าน outbox หรือ sync) · Customer B source REFERRAL referredById A · MemberActivity REFERRAL_JOINED ของ A · event referral.joined
+  ✅ [M3.5-S2.2] attach ซ้ำ (B) → referral เดิม PENDING (unique refereeCustomerId) · แนะนำตัวเอง (A→A) → REJECTED rejectReason ไทย · code ไม่มี → throw ไทย
+  ✅ [M3.5-S2.3] สมาชิกเก่า (สมาชิก 5 · มีบิลก่อน) → REJECTED 'ไม่ใช่สมาชิกใหม่' · เบอร์ referee ซ้ำเบอร์ผู้แนะนำ → REJECTED · device fingerprint ซ้ำกับ referee คนก่อนของผู้แนะนำเดียวกัน → REJECTED (fraudPhoneDevice true)
+  ✅ [M3.5-S2.4] fraudPhoneDevice false → fingerprint ซ้ำผ่านเป็น PENDING (สวิตช์ทำงานจริง)
+  ✅ [M3.5-S3.1] FIRST_PURCHASE: บิล ฿300 < ขั้นต่ำ ฿500 → converted false reason ไทย · ยัง PENDING · ผู้แนะนำแต้มไม่เพิ่ม
+  ✅ [M3.5-S3.2] บิล PAID ฿600 ≥ ขั้นต่ำ (consumer pos.sale.paid → evaluateConversion PURCHASE) → status REWARDED convertedAt conversionRef {saleId, netSatang} rewardedAt · ผู้แนะนำ +300 แต้ม (ledger EARN refType REFERRAL refId referralId) · เพื่อนได้ voucher FIXED 100 origin REFERRAL originRef {referralId} หมดอายุ +30 วัน · referrerRewardRef {ledgerId} refereeRewardRef {voucherId} · event referral.converted · MemberActivity REFERRAL_CONVERTED ของ A
+  ✅ [M3.5-S3.3] idempotent: rewardBoth ซ้ำ / evaluateConversion ซ้ำ / บิลที่สอง → ไม่จ่ายซ้ำ (แต้ม A ยัง +300 · voucher REFERRAL ของ B 1 ใบ · ledger REFERRAL 1)
+  ✅ [M3.5-S3.4] convertOn SIGNUP + สลับชนิดรางวัล (ผู้แนะนำ voucher 10% 14 วัน · เพื่อน 50 แต้ม): สมัครด้วยโค้ด → REWARDED ทันทีไม่ต้องซื้อ · A ได้ voucher PERCENT 10 · G ได้ 50 แต้ม
+  ✅ [M3.5-S4.1] monthlyCap 2: A มีรางวัลเดือนนี้แล้ว 2 (B, G) → H1..H3 REWARDED แต่ผู้แนะนำไม่ได้แต้มเพิ่ม (referrerRewardRef {capped true}) · เพื่อน H3 ยังได้ 5 แต้ม
+  ✅ [M3.5-S4.2] โปรแกรมปิด: สมัครด้วยโค้ด → ยังบันทึก PENDING (นับต่อ 30 วัน) ไม่จ่ายรางวัล · reject(REWARDED) → throw ไทย 'จ่ายรางวัลแล้ว' · reject(PENDING) → REJECTED rejectReason · thana → throw
+  ✅ [M3.5-S5.1] listReferrals: items มี referrer{name, memberCode} referee{name} status createdAt convertedAt rewards · กรอง status REJECTED ≥ 5 (self · เก่า · เบอร์ซ้ำ · fp ซ้ำ · K) · กรอง referrerCustomerId A = ทั้งหมดของ A · แถว B status REWARDED rewards.referrer.kind POINTS rewards.referee.kind VOUCHER
+  ✅ [M3.5-S5.2] leaderboard 90 วัน: อันดับ 1 = A {referred ≥ 6 (ไม่นับ REJECTED), converted 6 (B,G,H1,H2,H3 + …), pointsEarned 300 (ORACLE-EDIT M3.5-S5.2: H1–H3 ติดเพดานตาม S4.1 ⇒ ไม่มี +10)} · stats {referredMembers ≥ 6, conversionPct 0–100, costPerMemberSatang ≥ 0, first90dSpendSatang ≥ 0, vsAvgPct number}
+  ✅ [M3.5-S5.3] referralsForMember(A) → { code = codeA, link, referred, converted ≥ 5, pointsEarned 300, tree[{refereeId, name, status, convertedAt}] มี B (REWARDED) } · getMember360(A) มี referrals summary (counters.referrals หรือ referral block) · thana (ป่าตอง) เห็นรายการ (A home ป่าตอง) · unit scope ทำงาน
+  ✅ [M3.5-S6.1] referral.joined / referral.converted ลง 3 ทะเบียน + consumer · drain แล้ว DONE · consumer member.created เรียก referrals (attach/evaluate) ไม่ใช่ no-op · pos.sale.paid → evaluateConversion ผ่าน member-bridges
+  ✅ [M3.5-S6.2] facade member/index.ts export getProgram/setProgram/codeFor/attach/evaluateConversion/rewardBoth/reject/listReferrals/leaderboard/stats(referralStats)/referralsForMember · referrals.ts ไม่ import point/voucher ภายใน (ผ่าน facade index) · ไม่มี any · ปรับ perm 'member.referral.manage' อยู่ในทะเบียนสิทธิ์
+  ✅ [M3.5-S7.1] หน้า /member/referrals + LIFF /m/[slug]/referral + /ref/[code] (redirect → LIFF join ?ref=) มีจริง · หน้า admin requireTenant · actions 'use server' + member.referral.manage · testid 15 · ป้ายภาพ 24/08 ครบ · nav มีทางเข้า referrals · ไม่มีอีโมจิ/hex
+  ❌ [M3.5-S7.2] ภาพ 24: referrals-owner desktop+mobile 200 ไม่ล้น (ตั้งค่าซ้าย · KPI 4 · ผู้แนะนำสูงสุด · การแนะนำล่าสุด มีแถว รอ/สำเร็จ/ถูกปฏิเสธ) · ภาพ 08 ขวา: member-referrals-owner desktop 200 (การ์ดแนะนำเพื่อน โค้ด/ลิงก์/สถิติ/ต้นไม้) — exp 200 ×3 | act undefined/undefined/undefined missing=undefined
+  ❌ [M3.5-S7.3] LIFF: m-referral (--user customer:<สมาชิก 1>) mobile 200 (โค้ด · QR · ปุ่มแชร์ LINE · สถิติของฉัน) · r-landing (/r/<code ของสมาชิก 1>) → ไปหน้า join/login พร้อม ?ref= (status 200 หลัง redirect) — exp 200 ×2 | act undefined/undefined missing=undefined
+  ✅ [M3.5-S7.4] 🔴 parity ภาพ 24 + 08 (ขวา) — Fable ตรวจด้วยตา · wo-notes/member-M3.5.md มี 'PARITY: ผ่าน'
+
+🔴 M3.5: 19/21
+JSON_SUMMARY {"total":21,"passed":19,"findings":[{"id":"M3.5-S7.2","sev":"CRITICAL"},{"id":"M3.5-S7.3","sev":"CRITICAL"}]}
+(node:1483479) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)

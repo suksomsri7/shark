@@ -18,6 +18,7 @@ import { parseCrmSettings } from "../settings";
 import { isPortalToken } from "@/lib/modules/member/session-facade"; // facade ที่สองของสมาชิก (ผิว session เท่านั้น — facade หลักแบบค่าทำให้เกิดวงโหลดของบัญชี)
 import { crmApiKeyActor, crmScopesCan } from "./actor";
 import { CRM_RATE_LIMITS } from "./rate";
+import { CRM_KEY_CREATOR_GONE_EN, CRM_KEY_CREATOR_GONE_TH, crmKeyCreatorStillEntitled } from "./key-guard";
 
 export { CRM_RATE_LIMITS } from "./rate";
 
@@ -121,6 +122,11 @@ export const CRM_API_CONFIG: ApiModuleConfig = {
       }
     }
     const auth = await requireApi(effective, op, CORE_CONFIG, requestId);
+    // CRM C5.4-B ▸ L1-m1 / Q16 ค่าเริ่มต้น: คีย์ตายตามสิทธิ์ของคนออก — คนออกออกจากร้าน/ถูกถอด crm.api.manage/สิทธิ์แคบลงกว่าชุดของคีย์ ⇒ 403
+    //   (อ่านสดทุกคำขอ · คีย์เก่าที่ไม่มี createdById = ตัดสินไม่ได้ ⇒ ผ่าน) ◂
+    if (auth.ok && auth.actor.kind === "apikey" && !(await crmKeyCreatorStillEntitled({ tenantId: auth.actor.tenantId, systemId: auth.actor.systemId, createdById: auth.actor.userId, scopes: auth.actor.scopes }))) {
+      return { ok: false, response: fail(403, "forbidden", CRM_KEY_CREATOR_GONE_TH, CRM_KEY_CREATOR_GONE_EN, requestId) };
+    }
     if (!auth.ok || gated || V1_ALLOWED_OPS.has(op.id)) return auth;
     // ด่านรุ่นยังไม่ได้ตัดสิน (ไม่ควรเกิด — กันไว้แบบปิดก่อน): อ่านจากระบบที่ด่านแกนเลือกให้แล้ว
     return (await isV2(auth.actor.tenantId, auth.actor.systemId)) === true ? auth : { ok: false, response: v1Response(requestId) };

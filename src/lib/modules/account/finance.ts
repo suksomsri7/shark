@@ -820,7 +820,8 @@ export async function financeStatement(
     include: {
       entry: { select: { id: true, date: true, docNo: true, memo: true, refType: true, refId: true } },
     },
-    orderBy: [{ entry: { date: "asc" } }, { entry: { docNo: "asc" } }],
+    // CRM C5.4-N ▸ ลำดับรองในวันเดียวกัน = เวลาที่ลงบัญชี (เดิมเรียงเลขที่ใบสำคัญแบบข้อความ ⇒ "…-10000" มาก่อน "…-9999") ◂
+    orderBy: [{ entry: { date: "asc" } }, { entry: { createdAt: "asc" } }, { entry: { id: "asc" } }],
   });
 
   let bal = opening;

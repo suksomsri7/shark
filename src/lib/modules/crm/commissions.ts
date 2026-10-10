@@ -39,6 +39,7 @@ import { dealWhere } from "./where";
 import { parseCrmSettings, setCrmCommissionSettings } from "./settings";
 import { z } from "zod";
 import { CrmV2DisabledError } from "./ui-version";
+import { CREDIT_NOTE_REF_TYPE } from "./payments-shared";
 import {
   COMMISSION_KINDS,
   COMMISSION_LIMITS,
@@ -336,24 +337,26 @@ async function lockRules(tx: Tx, ctx: Scope, rules: CrmCommissionRule[]): Promis
   return new Set(rows.filter((r) => r.active && seen.get(r.id) === new Date(r.updatedAt).getTime()).map((r) => r.id));
 }
 type Ratio = { net: bigint; grand: bigint };
-type Ratios = { payments: Map<string, Ratio>; docs: Map<string, Ratio>; anchor: Ratio | null };
+type Ratios = { payments: Map<string, Ratio>; docs: Map<string, Ratio>; anchor: Ratio | null; credits: Map<string, Ratio> };
 
 /**
  * อัตราส่วนก่อน VAT ของ "เอกสารของแต่ละงวด" (รีวิวรอบ 2 S-a + รอบ 5 N6) — อ่านนอกล็อก (facade บัญชี `commissionDocRatios`)
  * รับชำระ (PAYMENT) → เอกสารที่การรับชำระนั้นลง · ปิดยอด (DOC_SETTLE) → เอกสารนั้นเอง · ไม่รู้ = ยอดเต็ม
  */
 async function docRatiosOf(ctx: Scope, deal: DealForCommission): Promise<Ratios> {
-  const rows = await prisma.crmDealPayment.findMany({ where: { ...scopeOf(ctx), dealId: deal.id, refType: { in: ["PAYMENT", "DOC_SETTLE"] } }, select: { refType: true, refId: true }, take: 500 });
+  const rows = await prisma.crmDealPayment.findMany({ where: { ...scopeOf(ctx), dealId: deal.id, refType: { in: ["PAYMENT", "DOC_SETTLE", CREDIT_NOTE_REF_TYPE] } }, select: { refType: true, refId: true }, take: 500 });
   const anchorId = deal.invoiceDocId ?? deal.quotationDocId;
   // รอบ 6: fail CLOSED — อ่านไม่ได้ = โยน (ตัวต่อ WARN · งานรายนาทีลองใหม่) ไม่ใช่คิดเป็นยอดเต็มแบบเงียบ ๆ
   const r = await (await accountFacade()).commissionDocRatios(ctx.tenantId, {
     paymentIds: rows.filter((x) => x.refType === "PAYMENT").map((x) => x.refId),
     docIds: [...rows.filter((x) => x.refType === "DOC_SETTLE").map((x) => x.refId), ...(anchorId ? [anchorId] : [])],
+    // CRM C5.4-C ▸ L2-M3: แถวใบลดหนี้ (refId = เอกสารต้นทาง) ⇒ อัตราส่วนก่อน VAT ของใบลดหนี้ที่ยังมีผลของเอกสารนั้น ◂
+    creditSourceIds: rows.filter((x) => x.refType === CREDIT_NOTE_REF_TYPE).map((x) => x.refId),
   });
   const conv = (o: Record<string, { net: number; grand: number }>) =>
     new Map(Object.entries(o).filter(([, v]) => v.grand > 0).map(([k, v]) => [k, { net: BigInt(v.net), grand: BigInt(v.grand) }] as const));
   const docs = conv(r.docs);
-  return { payments: conv(r.payments), docs, anchor: anchorId ? docs.get(anchorId) ?? null : null };
+  return { payments: conv(r.payments), docs, anchor: anchorId ? docs.get(anchorId) ?? null : null, credits: conv(r.credits ?? {}) };
 }
 
 /**
@@ -366,16 +369,30 @@ async function netOfPayments(tx: Tx, ctx: Scope, rows: PayRow[], ratios: Ratios)
   const sales = saleIds.length
     ? new Map((await tx.posSale.findMany({ where: { tenantId: ctx.tenantId, id: { in: saleIds } }, select: { id: true, grandTotalSatang: true, vatSatang: true }, take: 500 })).map((x) => [x.id, x]))
     : new Map<string, { id: string; grandTotalSatang: number; vatSatang: number }>();
+  // CRM C5.4-C ▸ (review round 2 · 1 สตางค์) ปัดเศษ **ครั้งเดียวต่ออัตราส่วน** — รวมสตางค์ของทุกงวดที่ใช้อัตราส่วนเดียวกันก่อน
+  //   (การรับชำระ + แถวปิดยอด WHT ของเอกสารเดียวกัน · ใบลดหนี้ที่อัตราเท่ากัน) แล้วค่อยคูณ/หาร ⇒ จ่ายครบเอกสาร = ยอดก่อน VAT พอดี
+  //   (เดิมปัดลงทีละงวด: 9,360,000 + 270,000 ของใบ 100/107 ได้ 8,999,999) · ไม่รู้อัตรา = ยอดเต็ม (เหมือนเดิม) ◂
   let total = ZERO;
+  const byRatio = new Map<string, { net: bigint; grand: bigint; satang: bigint }>();
+  const add = (net: bigint, grand: bigint, satang: bigint) => {
+    const k = `${net}/${grand}`;
+    const g = byRatio.get(k) ?? { net, grand, satang: ZERO };
+    g.satang += satang;
+    byRatio.set(k, g);
+  };
   for (const r of rows) {
     if (r.refType === "POS_SALE") {
       const sale = sales.get(r.refId);
-      total += sale && sale.grandTotalSatang > 0 ? (r.satang * BigInt(Math.max(0, sale.grandTotalSatang - sale.vatSatang))) / BigInt(sale.grandTotalSatang) : r.satang;
+      if (sale && sale.grandTotalSatang > 0) add(BigInt(Math.max(0, sale.grandTotalSatang - sale.vatSatang)), BigInt(sale.grandTotalSatang), r.satang);
+      else total += r.satang;
     } else {
-      const ratio = (r.refType === "PAYMENT" ? ratios.payments.get(r.refId) : ratios.docs.get(r.refId)) ?? null;
-      total += ratio ? (r.satang * ratio.net) / ratio.grand : r.satang;
+      // CRM C5.4-C ▸ แถวใบลดหนี้ (satang ติดลบ) ⇒ อัตราส่วนของใบลดหนี้เอง (net/grand ของ CN) ◂
+      const ratio = (r.refType === "PAYMENT" ? ratios.payments.get(r.refId) : r.refType === CREDIT_NOTE_REF_TYPE ? ratios.credits.get(r.refId) : ratios.docs.get(r.refId)) ?? null;
+      if (ratio) add(ratio.net, ratio.grand, r.satang);
+      else total += r.satang;
     }
   }
+  for (const g of byRatio.values()) total += (g.satang * g.net) / g.grand;
   return total;
 }
 
@@ -433,6 +450,36 @@ async function flagOnce(ctx: Scope, action: string, targetId: string, after: Rec
 }
 async function hasFlag(ctx: Scope, action: string, targetId: string): Promise<boolean> {
   return !!(await prisma.auditLog.findFirst({ where: { tenantId: ctx.tenantId, action, targetId }, select: { id: true } }));
+}
+
+/**
+ * CRM C5.4-C ▸ L2-M3: แบ่งยอดหักคืน `amount` (> 0) ตามสัดส่วนเครดิตสุทธิของแต่ละคน (กฎนี้ · ดีลนี้ · งวดที่ยังนับอยู่ในร่างปัจจุบัน ·
+ * ยังไม่ถูกถอน) · ปัดลงต่อคน เศษให้คนที่ได้มากที่สุด · คืนยอดติดลบ
+ * (review round 2 · S2) นับเฉพาะแถว APPROVED + PAID (สุทธิรวมแถวหักคืนเดิม) — แถวที่ไม่อนุมัติ/ยังรออนุมัติไม่เคยเป็นเงินของใคร
+ *   ⇒ ไม่หักคืนจากมัน และยอดหักคืนรวมไม่เกิน APPROVED + PAID สุทธิของแต่ละคน ◂
+ */
+async function clawbackParts(tx: Tx, ctx: Scope, dealId: string, ruleId: string, exceptPayId: string, amount: bigint): Promise<{ userId: string; amount: bigint }[]> {
+  const rows = await tx.$queryRaw<{ userId: string; s: string }[]>`
+    SELECT c."userId", SUM(c."amountSatang")::text AS s FROM "CrmCommission" c JOIN "CrmDealPayment" p ON p."id" = ${payIdSql("c")}
+    WHERE c."dealId" = ${dealId} AND c."ruleId" = ${ruleId} AND c."refType" = ${REF_PAYMENT} AND c."reversedOfId" IS NULL
+      AND c."tenantId" = ${ctx.tenantId} AND c."status"::text IN ('APPROVED', 'PAID') AND p."status" = 'COUNTED' AND p."id" <> ${exceptPayId} AND ${ofCurrentSql("c", "p")}
+      AND NOT EXISTS (SELECT 1 FROM "CrmCommission" r WHERE r."reversedOfId" = c."id")
+    GROUP BY c."userId" ORDER BY c."userId"`;
+  const pos = rows.map((r) => ({ userId: r.userId, c: BigInt(r.s) })).filter((r) => r.c > ZERO);
+  const total = pos.reduce((a, r) => a + r.c, ZERO);
+  if (total <= ZERO) return [];
+  const take = amount < total ? amount : total;
+  const out = pos.map((r) => ({ userId: r.userId, amount: (take * r.c) / total }));
+  let rest = take - out.reduce((a, r) => a + r.amount, ZERO);
+  const order = [...out.keys()].sort((a, b) => (pos[b]!.c > pos[a]!.c ? 1 : pos[b]!.c < pos[a]!.c ? -1 : a - b));
+  for (const i of order) {
+    if (rest <= ZERO) break;
+    const room = pos[i]!.c - out[i]!.amount;
+    const add = room < rest ? room : rest;
+    out[i]!.amount += add;
+    rest -= add;
+  }
+  return out.filter((r) => r.amount > ZERO).map((r) => ({ userId: r.userId, amount: -r.amount }));
 }
 
 const noFreePeriod = () => fail("VALIDATION", "หางวดเงินเดือนที่ยังไม่มีรอบจ่ายไม่พบภายใน 20 ปีข้างหน้า — ตรวจรอบจ่ายเงินเดือนในระบบ HR");
@@ -544,13 +591,20 @@ export async function onPaid(ctx: CommissionsCtx, input: { dealId: string; refTy
       const paid = await netOfPayments(tx, s, [...creditedPays, { id: cur.id, refType: cur.refType, refId: cur.refId, satang: cur.satang }], ratios);
       const full = commissionOf(rule.kind, configOf(rule), T);
       const share = cumulativeOf(full, T, paid) - BigInt(credited[0]?.s ?? "0");
-      const parts = share > ZERO ? splitParts(share, rule.splitCollaboratorsBp, live.ownerUserId, live.collaboratorUserIds) : [];
+      // CRM C5.4-C ▸ L2-M3 (มติผู้คุมงาน SF1): แถวใบลดหนี้ ⇒ ส่วนแบ่ง **ติดลบ** = หักคืนส่วนก่อน VAT ของเงินที่คืน (ยอดสะสมซ่อมตัวเองเหมือนเดิม)
+      //   แบ่งหักคืนตามสัดส่วนที่แต่ละคนเคยได้จากกฎนี้บนดีลนี้ (ไม่ใช่เจ้าของปัจจุบัน — คนที่ไม่เคยได้ต้องไม่ถูกหัก) ◂
+      const parts = share > ZERO
+        ? splitParts(share, rule.splitCollaboratorsBp, live.ownerUserId, live.collaboratorUserIds)
+        : share < ZERO && cur.refType === CREDIT_NOTE_REF_TYPE ? await clawbackParts(tx, s, dealId, rule.id, cur.id, -share) : [];
       if (parts.length === 0) {
         if (settledBase) zeroShare.push(rule.id); // แถวยอด 0 ไม่ถูกเขียน (ผลรวมซ่อมตัวเอง) · ธงกันคิวหยิบซ้ำ — S1 ของรอบ 5 คิดใหม่ให้เมื่อมีงวดอื่นถูกถอน
         continue;
       }
       const refId = key;
       const periodKey = commissionPeriodOf(at, rule.payoutDelayDays);
+      // CRM C5.4-C ▸ (review round 2 · S3 — มติผู้คุมงาน) แถวหักคืนของเงินคืนตามใบลดหนี้ = **แถวของระบบ**: เกิดเป็น APPROVED ทันที
+      //   (ไม่ผ่านสายอนุมัติ · ไม่มีป้าย "เคยถูกปฏิเสธ" · ผู้อนุมัติกดไม่อนุมัติไม่ได้เพราะ reject รับเฉพาะ PENDING) + audit หลัง commit ◂
+      const clawback = parts.some((p) => p.amount < ZERO);
       const rows = await tx.crmCommission.createManyAndReturn({
         data: parts.map((p) => ({
           ...s,
@@ -560,11 +614,12 @@ export async function onPaid(ctx: CommissionsCtx, input: { dealId: string; refTy
           amountSatang: p.amount,
           basisSatang: T,
           basis: "PAID" as const,
-          status: "PENDING" as const,
+          status: clawback ? ("APPROVED" as const) : ("PENDING" as const),
+          ...(clawback ? { decidedAt: new Date() } : {}),
           periodKey,
           refType: REF_PAYMENT,
           refId,
-          ...(wasRejected ? { note: COMMISSION_WAS_REJECTED_NOTE } : {}),
+          ...(wasRejected && !clawback ? { note: COMMISSION_WAS_REJECTED_NOTE } : {}),
         })),
         skipDuplicates: true,
       });
@@ -573,13 +628,19 @@ export async function onPaid(ctx: CommissionsCtx, input: { dealId: string; refTy
       }
       for (const r of rows) {
         await emitCommission(tx, r, "created");
+        if (clawback) await emitCommission(tx, r, "approved");
         out.push(r);
       }
     }
     return out;
   }, TX_OPTS);
   if (zeroShare.length) await setNomatch(preKey, zeroShare);
-  for (const r of made) await advanceSafe(s, r.id);
+  for (const r of made) {
+    if (r.amountSatang < ZERO) {
+      await audit(s, "crm.commission.approve", "CrmCommission", r.id, { after: { status: "APPROVED", via: "SYSTEM_CLAWBACK", amountSatang: num(r.amountSatang), reason: "หักคืนตามใบลดหนี้ที่คืนเงินลูกค้า (แถวของระบบ)" } }, null);
+    }
+    await advanceSafe(s, r.id);
+  }
   return { created: made.length };
 }
 
@@ -842,7 +903,7 @@ async function advance(ctx: Scope, id: string): Promise<void> {
     } else {
       const r = await (await approvalFacade()).submitForApproval(
         { tenantId: ctx.tenantId },
-        { entityType: APPROVAL_ENTITY, entityId: row.id, systemId: ctx.systemId, amountSatang: Math.min(INT_MAX, num(row.amountSatang)), requestedById: row.userId },
+        { entityType: APPROVAL_ENTITY, entityId: row.id, systemId: ctx.systemId, amountSatang: Math.min(INT_MAX, Math.abs(num(row.amountSatang))), requestedById: row.userId }, // C5.4-C: แถวหักคืน (ติดลบ) ยื่นด้วยขนาดของยอด
       );
       if ("requestId" in r) {
         await prisma.crmCommission.updateMany({ where: { id: row.id, ...ctx, status: "PENDING", approvalRequestId: null }, data: { approvalRequestId: r.requestId } });
@@ -910,8 +971,11 @@ async function handoff(ctx: Scope, id: string): Promise<boolean> {
   if (row.status !== "APPROVED" && row.status !== "PAID") return false;
   const emp = await hr.payrollEmployeeOfUser(ctx.tenantId, row.userId);
   if (!emp) return false; // รอผูกพนักงาน (ไม่มี หรือพ้นสภาพพนักงานแล้ว) — ห้ามจ่ายผิดคน
-  if (row.amountSatang <= ZERO) return false;
-  if (row.amountSatang > BigInt(COMMISSION_LIMITS.hrMaxSatang)) {
+  if (row.amountSatang === ZERO) return false;
+  // CRM C5.4-C ▸ L2-M3: แถวหักคืนของใบลดหนี้ (ติดลบ · ไม่ใช่แถวถอนคืน) ⇒ รายการหัก (DEDUCTION จำนวนบวก) ของพนักงานคนเดียวกัน ◂
+  const clawback = row.amountSatang < ZERO;
+  const size = clawback ? -row.amountSatang : row.amountSatang;
+  if (size > BigInt(COMMISSION_LIMITS.hrMaxSatang)) {
     if (await flagOnce(ctx, "crm.commission.warn.hrmax", row.id, { amountSatang: num(row.amountSatang) })) {
       await warn(ctx, "ยอดเกินที่ระบบเงินเดือนรับได้ต่อรายการ — ต้องส่งด้วยมือ", null, { commissionId: row.id });
     }
@@ -925,8 +989,11 @@ async function handoff(ctx: Scope, id: string): Promise<boolean> {
     if (cur.status !== "APPROVED" && cur.status !== "PAID") return false;
     // ถูกถอนคืนระหว่างรอ (ยังไม่เคยส่ง) = ไม่ส่งทั้งคู่ (หักล้างกันเอง)
     if (await tx.crmCommission.findFirst({ where: { reversedOfId: cur.id, ...ctx }, select: { id: true } })) return false;
-    const adjId = await requestInTx(tx, ctx, hr, cur, { systemId: emp.systemId, employeeId: emp.employeeId, kind: "COMMISSION", amount: cur.amountSatang, base: cur.periodKey,
-      note: `ค่าคอมมิชชัน CRM · งวด ${cur.periodKey} · อ้างอิง ${cur.id}`, requestedById });
+    const adjId = await requestInTx(tx, ctx, hr, cur, clawback
+      ? { systemId: emp.systemId, employeeId: emp.employeeId, kind: "DEDUCTION", amount: -cur.amountSatang, base: cur.periodKey,
+          note: `หักคืนค่าคอมมิชชัน CRM (ใบลดหนี้ลดยอดดีล) · งวด ${cur.periodKey} · อ้างอิง ${cur.id}`, requestedById }
+      : { systemId: emp.systemId, employeeId: emp.employeeId, kind: "COMMISSION", amount: cur.amountSatang, base: cur.periodKey,
+          note: `ค่าคอมมิชชัน CRM · งวด ${cur.periodKey} · อ้างอิง ${cur.id}`, requestedById });
     return adjId !== null;
   }, TX_OPTS);
 }
@@ -1000,9 +1067,13 @@ async function handoffReversal(ctx: Scope, row: CrmCommission, hr: HrFacade): Pr
       }
     }
     const amount = -rev.amountSatang;
-    if (amount <= ZERO) return { kind: "noop" as const };
-    const adjId = await requestInTx(tx, ctx, hr, rev, { systemId: adj.systemId, employeeId: adj.employeeId, kind: "DEDUCTION", amount, base: rev.periodKey,
-      note: `หักคืนค่าคอมมิชชัน CRM (รายการรับเงินถูกยกเลิก) · อ้างอิง ${orig.id}`, requestedById: null });
+    if (amount === ZERO) return { kind: "noop" as const };
+    // CRM C5.4-C ▸ ต้นทางเป็นแถวหักคืนของใบลดหนี้ (ติดลบ · เข้าเงินเดือนเป็น DEDUCTION ไปแล้ว) แล้วใบลดหนี้ถูกยกเลิก ⇒ คืนเป็น COMMISSION ◂
+    const adjId = await requestInTx(tx, ctx, hr, rev, amount > ZERO
+      ? { systemId: adj.systemId, employeeId: adj.employeeId, kind: "DEDUCTION", amount, base: rev.periodKey,
+          note: `หักคืนค่าคอมมิชชัน CRM (รายการรับเงินถูกยกเลิก) · อ้างอิง ${orig.id}`, requestedById: null }
+      : { systemId: adj.systemId, employeeId: adj.employeeId, kind: "COMMISSION", amount: -amount, base: rev.periodKey,
+          note: `คืนค่าคอมมิชชัน CRM ที่เคยหัก (ใบลดหนี้ถูกยกเลิก) · อ้างอิง ${orig.id}`, requestedById: null });
     return { kind: adjId ? ("deducted" as const) : ("noop" as const) };
   }, TX_OPTS);
   if (out.kind === "settled") {

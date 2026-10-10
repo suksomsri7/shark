@@ -55,6 +55,11 @@ export type RunOpArgs = {
   reason?: string;
   /** ฟิลด์เสริมใน `AuditLog.after` (REST ใส่ keyName · AI ใส่ proposalId) */
   audit?: Record<string, unknown>;
+  /**
+   * CRM C5.5 ▸ RV-3: ห่อ "ด่านก่อน handler" (ตรวจ scope) — REST ส่ง `ctl.beforeHandler` ของ `withIdempotency` มา ⇒ error ชั่วคราว
+   * ที่เกิดในช่วงนี้พิสูจน์ได้ว่ายังไม่ได้เขียนอะไร (ปล่อยการจอง · ลองคีย์เดิมได้) · ไม่ส่ง = รันตรง (AI/ผู้เรียกอื่นเหมือนเดิม) ◂
+   */
+  beforeHandler?: <T>(fn: () => T | Promise<T>) => Promise<T>;
 };
 
 export type RunOpResult = { data: unknown; page?: PagedInfo; extra?: Record<string, unknown> };
@@ -64,15 +69,20 @@ export type RunOpResult = { data: unknown; page?: PagedInfo; extra?: Record<stri
  * โยน `ApiError` เมื่อสิทธิ์ไม่พอ · error ของ service ปล่อยผ่านขึ้นไปให้ผู้เรียกแปลเอง (`mapError`)
  */
 export async function runOpAsActor(op: ApiOp, actor: ApiActor, args: RunOpArgs): Promise<RunOpResult> {
-  if (!actorCan(actor, op.action)) {
-    throw new ApiError(
-      403,
-      "scope_missing",
-      actor.denyMessageTh ?? "ไม่มีสิทธิ์ทำรายการนี้",
-      "The actor does not have the permission required for this operation.",
-      `ต้องการสิทธิ์ ${op.action}`,
-    );
-  }
+  const assertScope = (): void => {
+    if (!actorCan(actor, op.action)) {
+      throw new ApiError(
+        403,
+        "scope_missing",
+        actor.denyMessageTh ?? "ไม่มีสิทธิ์ทำรายการนี้",
+        "The actor does not have the permission required for this operation.",
+        `ต้องการสิทธิ์ ${op.action}`,
+      );
+    }
+  };
+  // CRM C5.5 ▸ RV-3: ด่าน scope อยู่ในเขต beforeHandler เมื่อผู้เรียกส่งมา (REST) — ไม่ส่ง = ตรวจตรงเหมือนเดิมทุกตัวอักษรของผล ◂
+  if (args.beforeHandler) await args.beforeHandler(assertScope);
+  else assertScope();
   const env = unwrapEnvelope(
     await op.handler({
       actor,

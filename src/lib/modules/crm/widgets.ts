@@ -20,6 +20,7 @@ import { crmCan } from "./access";
 import { parseCrmSettings } from "./settings";
 import { CrmV2DisabledError } from "./ui-version";
 import { activityWhere, dealWhere } from "./where";
+import { activityStatusWhere } from "./activities"; // CRM C5.4-E ▸ L6-m1 ◂
 import { DAY_MS, thaiDayStartMs } from "./activities-shared";
 import { parsePortalSettings, portalLive, portalPath } from "./portal-shared";
 import { IntegrationsError } from "./integrations-shared";
@@ -100,8 +101,9 @@ export async function todayTasks(ctx: WidgetCtx, actor: Actor, opts: { now?: Dat
   const end = new Date(start.getTime() + DAY_MS);
   const limit = clampInt(opts?.limit, 20, 50);
   const base: Prisma.CrmActivityWhereInput = { AND: [await activityWhere(scope, actor), { ...scope, ownerUserId: sys.userId }] };
-  const wToday: Prisma.CrmActivityWhereInput = { AND: [base, { doneAt: null, dueAt: { gte: start, lt: end } }] };
-  const wOverdue: Prisma.CrmActivityWhereInput = { AND: [base, { doneAt: null, dueAt: { lt: start } }] };
+  // CRM C5.4-E ▸ L6-m1: นิยามเดียวกับแท็บงานบนเว็บและแอปมือถือ (`activities.activityStatusWhere`) ◂
+  const wToday: Prisma.CrmActivityWhereInput = { AND: [base, activityStatusWhere("today", nowMs)] };
+  const wOverdue: Prisma.CrmActivityWhereInput = { AND: [base, activityStatusWhere("overdue", nowMs)] };
   const wDone: Prisma.CrmActivityWhereInput = { AND: [base, { doneAt: { gte: start, lt: end } }] };
   const select = { id: true, title: true, type: true, dueAt: true, doneAt: true, dealId: true, contactId: true } as const;
   const [today, overdue, done, rToday, rOverdue, rDone] = await Promise.all([

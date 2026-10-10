@@ -1,0 +1,66 @@
+
+===== QC WO 8.2 · นโยบายบัญชี (§9.3) =====
+🗄️  DB QC: ep-plain-art-ao3djg4u-pooler.c-2.ap-southeast-1.aws.neon.tech
+
+P1 ปีบัญชี:
+  ✅ P1.1 เริ่ม ม.ค. = ปีปฏิทิน
+  ✅ P1.2 เริ่ม เม.ย. · วันที่ในเดือน ก.ย. → รอบ 2026
+  ✅ P1.3 เริ่ม เม.ย. · วันที่ในเดือน ก.พ. → ยังอยู่รอบ 2025
+  ✅ P1.4 ขอบล่าง: 1 เม.ย. = วันแรกของรอบใหม่
+  ✅ P1.5 ขอบบน: 31 มี.ค. = วันสุดท้ายของรอบก่อน
+  ✅ P1.6 เริ่ม ต.ค. → ข้ามปีเช่นกัน
+  ✅ P1.7 เริ่ม ต.ค. · 1 ต.ค. = รอบใหม่
+  ✅ P1.8 รอบที่มี ก.พ. ปีอธิกสุรทิน (เริ่ม มี.ค. 2027 → จบ ก.พ. 2028 = 29 วัน)
+  ✅ P1.9 เดือนเริ่มนอกช่วง 1–12 ตกกลับเป็น ม.ค.
+  ✅ P1.10 เดือนสิ้นปีบัญชีจากเดือนเริ่ม (1→12 · 4→3 · 10→9)
+  ✅ P1.11 ป้ายไทยของรอบ
+  ✅ P1.12 คีย์งวดต้น/ปลายรอบ
+  ✅ P1.13 รอบก่อนหน้า = รอบเดียวกันของปีก่อน
+  ✅ P1.14 ต้นปีบัญชีที่ reports ใช้ ตรงกับ policy (แหล่งเดียว ไม่ fork สูตร)
+  ✅ P1.15 ใช้เวลาไทยเสมอ (00:30 ของ 1 เม.ย. → รอบใหม่ ไม่ใช่รอบก่อน)
+
+P2 งบแสดงฐานะการเงินตามปีบัญชี เม.ย.–มี.ค.:
+  ✅ P2.1 ต้นปีบัญชีที่งบใช้ = เม.ย. ของรอบ
+  ✅ P2.2 กำไรปีบัญชีนี้ = SQL อิสระของช่วง เม.ย.–ก.ย.
+  ✅ P2.3 กำไรสะสม = SQL อิสระของทุกอย่างก่อนต้นปีบัญชี
+  ✅ P2.4 กำไรสะสม + กำไรปีนี้ = กำไรสะสมทั้งหมด (เส้นแบ่งไม่ทำให้เงินหาย)
+  ✅ P2.5 ชุดข้อมูล QC ไม่มีรายการก่อน เม.ย. 2026 ⇒ กำไรสะสม 0 ทั้งสองแบบ (ตัวพิสูจน์ว่าต่างจริงอยู่ที่ P2b)
+  ✅ P2.6 งบยังสมดุลเมื่อเปลี่ยนปีบัญชี
+
+P12 รายงานทางอีเมล:
+  ✅ P12.1 คีย์งวดรายวัน = วันไทย
+  ✅ P12.2 คีย์งวดรายสัปดาห์ = วันจันทร์ของสัปดาห์นั้น
+  ✅ P12.3 วันอาทิตย์ยังนับเป็นสัปดาห์ที่เริ่มจันทร์ก่อนหน้า
+  ✅ P12.4 คีย์กันส่งซ้ำผูกกับร้าน+ชนิด+งวด
+  ✅ P12.5 รายสัปดาห์ถึงกำหนดเฉพาะวันจันทร์
+  ✅ P12.6 หัวเรื่องเป็นภาษาคน + วันที่ไทย
+  ✅ P12.7 เนื้อความมียอดค้างรับจริง (บาท ไม่ใช่สตางค์)
+  ✅ P12.8 เนื้อความมีปีบัญชี
+  ✅ P12.9 เนื้อความบอกทางปิดรายงาน
+  ✅ P12.10 ไม่มีชื่อ/เบอร์ลูกค้าในอีเมล (มีแต่ตัวเลขรวม)
+
+P15 นโยบายของชุดข้อมูล QC ตรงเฉลย:
+  ❌ P15.1 เดือนเริ่มปีบัญชี — ได้ 1 · ควรได้ 4
+  ❌ P15.2 วันปิดงวด — ได้ null · ควรได้ 5
+  ✅ P15.3 VAT (จด/อัตรา/จุดรับรู้)
+  ❌ P15.4 ประเภทราคาเริ่มต้น — ได้ null · ควรได้ "INCL_VAT"
+(node:981381) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+/root/projects/shark-crm/src/lib/modules/account/policy.ts:121
+  return d.toLocaleDateString("en-CA", { timeZone: TZ });
+           ^
+
+
+TypeError: Cannot read properties of null (reading 'toLocaleDateString')
+    at Object.policyDayKey (/root/projects/shark-crm/src/lib/modules/account/policy.ts:121:12)
+    at <anonymous> (/root/projects/shark-crm/scripts/qc-acc-v2-policy.mts:297:39)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+
+Node.js v20.20.2

@@ -1,0 +1,137 @@
+(node:2162763) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+── R1 (RV-1) no body-sized load before the buckets ──
+  ❌ [R1.1] dropped unproven mail citing 50 stored mails (200 k + 200 k chars each) → rate_limited · CrmEmailMessage rows loaded before the drop ≈ 20051235 chars in 383 ms (want < 1 M; round 1 loaded ≈ 21.6 M)
+  ✅ [R1.2] control: an accepted mail citing one big row still loads that one parent row after the buckets (threading) → stored, ≈ 401028 chars
+
+── R2 (RV-2) proven mail: own bounded buckets · exact-address thread proof ──
+  ❌ [R2.1] thread-proven replies of the customer with both UNPROVEN buckets full: 110/110 stored (want 100 — first 100 get in despite the forged flood, then the proven per-sender cap) · proven bucket 0 · unproven buckets untouched 100/1000
+  ❌ [R2.2] CC participant of our mail (not a contact) citing it: 105/105 stored (want 100)
+  ❌ [R2.3] DMARC-proven attacker-owned address: 120/120 stored (want 100 = the per-address bound before this card)
+  ✅ [R2.4] non-recipient citing our valid Message-ID → rate_limited · recipient of an OUT mail of ANOTHER CRM system citing it → rate_limited (both unproven ⇒ dropped by the full unproven buckets; proven buckets untouched)
+  ❌ [R2.5] proven system bucket full → undefined/undefined · audits since R2 start ["sender","sender"] (want sender-proven ×3, system-proven ×1) · owner notices +0 (want 1: system-proven; the sender-proven notice was already sent this window)
+
+── R3 (RV-3) per-sender owner notice deduped per system ──
+  ❌ [R3.1] 12 forged senders each tripping their unproven bucket → owner notices 12 (want 1) · sender audit lines 12 (want 12)
+  ❌ [R3.2] same window: a 13th tripping sender → notices 13 (want still 1)
+  ❌ [R3.3] next window (notice bucket expired/cleared) → a new tripping sender notifies again → 14 (want 2)
+
+── R4 (RV-5) account page rotate/revoke only account-managed keys ──
+[account/gl] journal sequences not created at setup — the first posting will try inside its transaction {
+  systemId: 'cmuq7ggwg00ojsrkzn5oklulc',
+  code: '42883',
+  message: '\n' +
+    'Invalid `prisma.$queryRawUnsafe()` invocation:\n' +
+    '\n' +
+    '\n' +
+    'Raw query failed. Code: `42883`. Message: `function account_jno_ensure_system(unknown) does not exist`'
+}
+[account/gl] journal sequences not created at setup — the first posting will try inside its transaction {
+  systemId: 'cmuq7ggwg00ojsrkzn5oklulc',
+  code: '42883',
+  message: '\n' +
+    'Invalid `prisma.$queryRawUnsafe()` invocation:\n' +
+    '\n' +
+    '\n' +
+    'Raw query failed. Code: `42883`. Message: `function account_jno_ensure_system(unknown) does not exist`'
+}
+[account/gl] journal sequences not created at setup — the first posting will try inside its transaction {
+  systemId: 'cmuq7ggwg00ojsrkzn5oklulc',
+  code: '42883',
+  message: '\n' +
+    'Invalid `prisma.$queryRawUnsafe()` invocation:\n' +
+    '\n' +
+    '\n' +
+    'Raw query failed. Code: `42883`. Message: `function account_jno_ensure_system(unknown) does not exist`'
+}
+[account/gl] journal sequences not created at setup — the first posting will try inside its transaction {
+  systemId: 'cmuq7ggwg00ojsrkzn5oklulc',
+  code: '42883',
+  message: '\n' +
+    'Invalid `prisma.$queryRawUnsafe()` invocation:\n' +
+    '\n' +
+    '\n' +
+    'Raw query failed. Code: `42883`. Message: `function account_jno_ensure_system(unknown) does not exist`'
+}
+[account/gl] journal sequences not created at setup — the first posting will try inside its transaction {
+  systemId: 'cmuq7ggwg00ojsrkzn5oklulc',
+  code: '42883',
+  message: '\n' +
+    'Invalid `prisma.$queryRawUnsafe()` invocation:\n' +
+    '\n' +
+    '\n' +
+    'Raw query failed. Code: `42883`. Message: `function account_jno_ensure_system(unknown) does not exist`'
+}
+[account/gl] journal sequences not created at setup — the first posting will try inside its transaction {
+  systemId: 'cmuq7ggwg00ojsrkzn5oklulc',
+  code: '42883',
+  message: '\n' +
+    'Invalid `prisma.$queryRawUnsafe()` invocation:\n' +
+    '\n' +
+    '\n' +
+    'Raw query failed. Code: `42883`. Message: `function account_jno_ensure_system(unknown) does not exist`'
+}
+[account/gl] journal sequences not created at setup — the first posting will try inside its transaction {
+  systemId: 'cmuq7ggwg00ojsrkzn5oklulc',
+  code: '42883',
+  message: '\n' +
+    'Invalid `prisma.$queryRawUnsafe()` invocation:\n' +
+    '\n' +
+    '\n' +
+    'Raw query failed. Code: `42883`. Message: `function account_jno_ensure_system(unknown) does not exist`'
+}
+[account/gl] journal sequences not created at setup — the first posting will try inside its transaction {
+  systemId: 'cmuq7ggwg00ojsrkzn5oklulc',
+  code: '42883',
+  message: '\n' +
+    'Invalid `prisma.$queryRawUnsafe()` invocation:\n' +
+    '\n' +
+    '\n' +
+    'Raw query failed. Code: `42883`. Message: `function account_jno_ensure_system(unknown) does not exist`'
+}
+[account/gl] journal sequences not created at setup — the first posting will try inside its transaction {
+  systemId: 'cmuq7ggwg00ojsrkzn5oklulc',
+  code: '42883',
+  message: '\n' +
+    'Invalid `prisma.$queryRawUnsafe()` invocation:\n' +
+    '\n' +
+    '\n' +
+    'Raw query failed. Code: `42883`. Message: `function account_jno_ensure_system(unknown) does not exist`'
+}
+  ❌ [R4.1] account page revoke + rotate of non-account-managed keys → pos-unbound:revoke {"ok":true} · rotate {"ok":false,"reason":"คีย์นี้มีสิทธิ์ \"pos.sale.create\" ซึ่งไม่ใช่สิทธิ์ของระบบบัญชี จึงหมุนคีย์ให้ไม่ได้ — เพิกถอนคีย์นี้แล้วสร้างคีย์ใหม่แทน (สิทธิ์ของระบบอื่นออกที่หน้าตั้งค่า API ของระบบนั้น)"} · revoked=true kids=0 · general:revoke {"ok":true} · rotate {"ok":false,"reason":"ไม่พบคีย์หรือถูกเพิกถอนแล้ว"} · revoked=true kids=0 · acc-unbound:revoke {"ok":true} · rotate {"ok":false,"reason":"ไม่พบคีย์หรือถูกเพิกถอนแล้ว"} · revoked=true kids=0 · crm-on-account:revoke {"ok":true} · rotate {"ok":false,"reason":"คีย์นี้มีสิทธิ์ \"crm.contact.read\" ซึ่งไม่ใช่สิทธิ์ของระบบบัญชี จึงหมุนคีย์ให้ไม่ได้ — เพิกถอนคีย์นี้แล้วสร้างคีย์ใหม่แทน (สิทธิ์ของระบบอื่นออกที่หน้าตั้งค่า API ของระบบนั้น)"} · revoked=true kids=0
+[account/gl] journal sequences not created at setup — the first posting will try inside its transaction {
+  systemId: 'cmuq7ggwg00ojsrkzn5oklulc',
+  code: '42883',
+  message: '\n' +
+    'Invalid `prisma.$queryRawUnsafe()` invocation:\n' +
+    '\n' +
+    '\n' +
+    'Raw query failed. Code: `42883`. Message: `function account_jno_ensure_system(unknown) does not exist`'
+}
+[account/gl] journal sequences not created at setup — the first posting will try inside its transaction {
+  systemId: 'cmuq7ggwg00ojsrkzn5oklulc',
+  code: '42883',
+  message: '\n' +
+    'Invalid `prisma.$queryRawUnsafe()` invocation:\n' +
+    '\n' +
+    '\n' +
+    'Raw query failed. Code: `42883`. Message: `function account_jno_ensure_system(unknown) does not exist`'
+}
+  ✅ [R4.2] positive: account-bound account key rotates → ok · account-bound legacy [] key can still be revoked here → ok
+
+── R5 P14 fail-closed ──
+  ✅ [R5.1] CRM_INBOUND_AUTHSERV_ID unset + a perfect-looking A-R header → flagged=true · unproven sender bucket 1 · proven bucket 0 (want true · 1 · 0)
+  ✅ [CLEAN-buckets] rate buckets of the throwaway systems removed
+  ✅ [CLEAN-6nuj9u] tenant rows left=0
+  ✅ [CLEAN-users] users left=0
+
+🔴 probe-cf11-r2: 7/16
+JSON_SUMMARY {"total":16,"passed":7,"findings":["R1.1","R2.1","R2.2","R2.3","R2.5","R3.1","R3.2","R3.3","R4.1"]}

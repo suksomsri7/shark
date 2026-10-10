@@ -47,6 +47,10 @@ import { crmLimitOf } from "./limits"; // CRM C3.9 ▸ เพดานรอบ�
 import { isErasedContact } from "./erased"; // CRM C3.9-fix ▸ มติข้อ 4 ◂
 import { resolveCrmTargets } from "./integrations"; // CRM C3.6 ▸ ปลายทางแชทของ SEND_LINE (ชนิดเดียว) ◂
 import { crmCan, CrmForbiddenError } from "./access";
+import { permissionLabel } from "@/lib/core/permissions"; // CRM C5.5 ▸ H55-2 ◂
+import { evaluate as rbacEvaluate } from "@/lib/core/rbac"; // CRM C5.5 ▸ H55-2: คีย์แพลตฟอร์ม (แชท · webhook) ◂
+import { CRM_WEBHOOK_WIDER_TH, crmSeesAllOf, crmWebhookWiderThanCreator } from "./api/key-guard"; // CRM C5.5 ▸ H55-2 ◂
+import type { CrmVisEntity } from "./visibility-shared"; // CRM C5.5 ▸ H55-2 ◂
 import { assertCrmV2, crmUiVersion } from "./ui-version";
 import { canContact, memberSystemOf } from "./consents";
 import { contactWhere } from "./where";
@@ -95,9 +99,12 @@ export type CrmSendRequest = {
   body: string;
   subject?: string;
   title?: string;
+  /** CRM C4.4-fix2 r2 ▸ BL-1: ข้อความของผู้เขียนกฎก่อนแทนค่า + ค่าตัวแปร (จากตัวรันกลาง — อีเมลเท่านั้น) ◂ */
+  bodyTemplate?: string;
+  vars?: Record<string, string | undefined>;
 };
 export type CrmSendFn = (req: CrmSendRequest) => Promise<RunnerSendResult>;
-export type CrmKanbanRequest = { tenantId: string; systemId: string; ruleId: string; runId: string; contactId: string | null; boardId: string; title: string; description: string; sourceKey: string };
+export type CrmKanbanRequest = { tenantId: string; systemId: string; ruleId: string; runId: string; contactId: string | null; dealId?: string | null; boardId: string; title: string; description: string; sourceKey: string };
 export type CrmKanbanFn = (req: CrmKanbanRequest) => Promise<{ ok: boolean; cardId?: string; error?: string }>;
 /** ตัวส่งที่ฉีดแทนได้ (ข้อสอบ) — ไม่ฉีด = ตัวจริงปริยาย (อีเมล: ยังไม่เปิดจนถึง C2.5 · LINE: แชท · push: พนักงาน · การ์ด: บอร์ดงาน · webhook: fetch 5 วิ) */
 export type CrmRuleDeps = {
@@ -351,8 +358,9 @@ async function cleanAction(ctx: CrmAutomationCtx, raw: unknown, depth: number): 
     }
     case "WEBHOOK": {
       const url = need(str(p.url), "URL ปลายทาง");
-      const { webhookTargetProblem } = await import("@/lib/webhooks/service");
-      const problem = await webhookTargetProblem(url);
+      // C5.4 (L4-M2): ด่านตอนบันทึก (ที่อยู่ภายในถูกปฏิเสธทันที · ตอนยิงผ่าน outboundFetch ตรวจซ้ำ + ตรึง IP)
+      const { webhookSaveProblem } = await import("@/lib/webhooks/service");
+      const problem = await webhookSaveProblem(url);
       if (problem) throw fail("VALIDATION", `ส่ง webhook: ${problem}`);
       return { type, params: { url } };
     }
@@ -395,6 +403,122 @@ async function cleanInput(ctx: CrmAutomationCtx, raw: unknown): Promise<CleanRul
   }
   return { name, trigger, conditions, actions, pipelineId, enabled: input.enabled !== false };
 }
+
+// ───────────────────────── CRM C5.5 ▸ H55-2: ทำอัตโนมัติได้เฉพาะสิ่งที่ผู้ตั้งกฎทำเองด้วยมือได้ ─────────────────────────
+// มติผู้คุมงาน C5.5-fix1: ตัวรันยังทำงานในนาม "ระบบ" (OWNER) เหมือนเดิม — ด่านอยู่ที่ "ประตูที่เขียนกฎ" ทุกบาน (สร้าง · แก้ · เปิดใช้)
+//   ผู้ตั้งกฎต้องผ่าน **ด่านเดียวกับประตูมือ** ของการกระทำแต่ละขั้น: คีย์ของบริการนั้น + การมองเห็น (กฎทำงานกับรายการใดก็ได้ในระบบ
+//   ⇒ ต้องเห็นเอนทิตีที่ขั้นนั้นแตะ "ทั้งร้าน" — กติกาเดียวกับคีย์ API ไม่กรอง C5.4-B) + เป้าหมายคงที่ (บอร์ด) · ตาราง ledger/wo-notes/crm-C5.5-fix1.md
+//   🔴 ขั้นใหม่ใน CRM_ACTION_TYPES ต้องมีแถวที่นี่ (ไม่มี = ปฏิเสธ — ปลอดภัยไว้ก่อน)
+type HandNeed = {
+  keys: string[];
+  vis: CrmVisEntity[];
+  pipelineId?: string | null;
+  platform?: { module: string; action: string };
+  member?: string;
+  /** r1b: ของมีมูลค่า — ต้องให้ได้ "ทันทีโดยไม่ต้องอนุมัติ" ตามประตูมือของแต้ม/voucher (ผ่าน facade สมาชิก) */
+  grant?: { kind: "GIVE_POINTS"; points: number } | { kind: "ISSUE_VOUCHER"; templateId: string };
+  boardId?: string;
+  webhook?: true;
+};
+
+async function handNeedOf(ctx: CrmAutomationCtx, a: CrmRuleAction, rulePipelineId: string | null): Promise<HandNeed | null> {
+  const p = isObj(a.params) ? a.params : {};
+  switch (a.type as CrmActionType) {
+    case "MOVE_STAGE": {
+      // deals.moveDeal: crm.deal.move + เห็นดีล (ไปป์ไลน์ของขั้นปลายทาง)
+      const st = await prisma.crmStage.findFirst({ where: { id: str(p.stageId), tenantId: ctx.tenantId, systemId: ctx.systemId }, select: { pipelineId: true } });
+      return { keys: ["crm.deal.move"], vis: ["DEAL"], pipelineId: st?.pipelineId ?? rulePipelineId };
+    }
+    case "ASSIGN":
+      // contacts.assignContact (crm.contact.update) · deals.reassignDeal (crm.deal.update + crm.deal.reassign เมื่อข้ามทีม — กฎไม่รู้ทีมของดีลล่วงหน้า)
+      return { keys: ["crm.contact.update", "crm.deal.update", "crm.deal.reassign"], vis: ["CONTACT", "DEAL"], pipelineId: rulePipelineId };
+    case "CREATE_ACTIVITY":
+      return { keys: ["crm.activity.create"], vis: ["CONTACT", "DEAL"], pipelineId: rulePipelineId }; // activities.logActivity
+    case "CREATE_DEAL":
+      return { keys: ["crm.deal.create"], vis: ["CONTACT", "DEAL"], pipelineId: str(p.pipelineId) || rulePipelineId }; // deals.createDeal
+    case "OPEN_KANBAN_CARD":
+      // activities.openTaskCard: crm.activity.create + บอร์ดใน visibleBoardOptions + บทบาทบอร์ด ≥ EDITOR
+      return { keys: ["crm.activity.create"], vis: ["CONTACT", "DEAL"], pipelineId: rulePipelineId, boardId: str(p.boardId) };
+    case "SEND_EMAIL":
+      return { keys: ["crm.email.send"], vis: ["CONTACT"] }; // emails.sendEmail
+    case "SEND_LINE":
+      return { keys: [], vis: ["CONTACT"], platform: { module: "chat", action: "chat.message.send" } }; // ตอบลูกค้าทางแชท (chat/actions.ts)
+    case "ENROLL_SEQUENCE":
+    case "STOP_SEQUENCE":
+      return { keys: ["crm.sequence.enroll"], vis: ["CONTACT"] }; // sequences.enroll / stop
+    case "SET_FIELD":
+      return str(p.objectKey) === "deal"
+        ? { keys: ["crm.deal.update"], vis: ["DEAL"], pipelineId: rulePipelineId } // deals.updateDeal
+        : { keys: ["crm.contact.update"], vis: ["CONTACT"] }; // contacts.updateContact
+    case "ADD_TAG":
+    case "REMOVE_TAG":
+      return { keys: ["crm.contact.update"], vis: ["CONTACT"] }; // contacts.setTags
+    case "ADJUST_SCORE":
+      return { keys: ["crm.score.manage"], vis: ["CONTACT"] }; // scoring.adjust
+    case "NOTIFY_STAFF":
+    case "SEND_PUSH":
+      return { keys: [], vis: [] }; // แจ้งพนักงานภายในร้าน · ผู้รับถูกกรองตามการมองเห็นตอนส่ง (C5.4-B) — ไม่มีประตูมือที่ต้องใช้คีย์เพิ่ม
+    case "WEBHOOK":
+      // ประตูมือ = เพิ่มปลายทาง webhook ของ CRM: crm.api.manage + webhook.endpoint.create + เห็นทั้งร้าน (L55-4)
+      return { keys: ["crm.api.manage"], vis: [], platform: { module: "webhook", action: "webhook.endpoint.create" }, webhook: true };
+    case "ISSUE_VOUCHER":
+      return { keys: [], vis: ["CONTACT"], member: "member.promo.issue", grant: { kind: "ISSUE_VOUCHER", templateId: str(p.templateId) } }; // voucher/service.ts issue (เพดานต่อใบ STAFF · เพดานรวม → อนุมัติ)
+    case "GIVE_POINTS":
+      return { keys: [], vis: ["CONTACT"], member: "member.point.adjust", grant: { kind: "GIVE_POINTS", points: Math.trunc(numOr(p.points, 0)) } }; // member REST points.credit · point/adjust.ts (adjustApprovalOver)
+    case "WAIT_THEN":
+      return { keys: [], vis: [] }; // ขั้นที่ซ้อนถูกตรวจทีละขั้น
+  }
+  return null;
+}
+
+const VIS_WHAT: Record<CrmVisEntity, string> = { CONTACT: "ผู้ติดต่อ", COMPANY: "บริษัท", DEAL: "ดีล", ACTIVITY: "กิจกรรม", REPORT: "รายงาน" };
+const BY_HAND = "กฎอัตโนมัติทำได้เฉพาะสิ่งที่ผู้ตั้งกฎทำเองด้วยมือได้";
+
+async function assertAuthorCanDoByHand(ctx: CrmAutomationCtx, actor: MemberActor, actions: readonly CrmRuleAction[], rulePipelineId: string | null, prefix = ""): Promise<void> {
+  if (actor.role === "OWNER") return;
+  if (actor.role === "CUSTOMER") throw fail("NOT_FOUND", SYSTEM_NOT_FOUND);
+  const sys = { tenantId: ctx.tenantId, systemId: ctx.systemId };
+  const mc = { role: actor.role, unitAccess: actor.unitAccess, permissions: actor.permissions };
+  for (const a of actions) {
+    const label = `${prefix}${CRM_ACTION_LABELS[a.type as CrmActionType] ?? a.type}`;
+    if (a.type === "WAIT_THEN") {
+      const inner = isObj(a.params) && Array.isArray(a.params.thenActions) ? (a.params.thenActions as CrmRuleAction[]) : [];
+      await assertAuthorCanDoByHand(ctx, actor, inner, rulePipelineId, `${label} › `);
+      continue;
+    }
+    const need = await handNeedOf(ctx, a, rulePipelineId);
+    if (!need) throw fail("FORBIDDEN", `${label}: ยังตรวจสิทธิ์ของขั้นนี้ไม่ได้ — ให้เจ้าของร้านเป็นผู้ตั้งกฎนี้`);
+    const missingKey = need.keys.find((k) => !crmCan(actor, k));
+    const missing = missingKey ?? (need.platform && !rbacEvaluate(mc, need.platform) ? need.platform.action : undefined);
+    if (missing) {
+      throw fail("FORBIDDEN", `${label}: ต้องใช้สิทธิ์ "${permissionLabel(missing)}" ซึ่งบัญชีนี้ยังไม่ได้รับ (${BY_HAND}) — ขอให้เจ้าของร้านเปิดสิทธิ์ให้ หรือให้เจ้าของร้านเป็นผู้ตั้งกฎนี้`);
+    }
+    if (need.member) {
+      const { hasMemberPerm, manualGrantVerdict } = await import("@/lib/modules/member");
+      if (!hasMemberPerm(actor, need.member)) {
+        throw fail("FORBIDDEN", `${label}: ต้องใช้สิทธิ์ "${permissionLabel(need.member)}" ของระบบสมาชิก ซึ่งบัญชีนี้ยังไม่ได้รับ (${BY_HAND}) — ขอให้เจ้าของร้านเปิดสิทธิ์ให้ หรือให้เจ้าของร้านเป็นผู้ตั้งกฎนี้`);
+      }
+      // CRM C5.5 ▸ H55-2 r1b (มติผู้คุมงาน): ของมีมูลค่า — ได้เฉพาะจำนวนที่ผู้ตั้งกฎให้เองได้ "ทันทีโดยไม่ต้องอนุมัติ" (คนที่อนุมัติเองได้เท่านั้นจึงตั้งเกินได้) ◂
+      if (need.grant) {
+        const verdict = await manualGrantVerdict(ctx.tenantId, actor, need.grant);
+        if (verdict === "NOT_FOUND") throw fail("VALIDATION", `${label}: ไม่พบแบบ voucher ที่เลือก หรือแบบนี้ถูกปิดใช้อยู่ — เลือกแบบใหม่จากรายการ`);
+        if (verdict !== "DIRECT") {
+          throw fail("FORBIDDEN", `${label}: ${need.grant.kind === "GIVE_POINTS" ? "จำนวนแต้มนี้" : "มูลค่า voucher นี้"}เกินกว่าที่บัญชีนี้ให้ได้ทันทีด้วยมือ (ต้องขออนุมัติ หรือเกินเพดานของพนักงาน) — กฎอัตโนมัติให้ของมีมูลค่าได้ไม่เกินที่ผู้ตั้งกฎให้เองได้โดยไม่ต้องอนุมัติ ลดจำนวนลง หรือให้เจ้าของร้านเป็นผู้ตั้งกฎนี้`);
+        }
+      }
+    }
+    if (need.webhook && (await crmWebhookWiderThanCreator(sys, actor))) throw fail("FORBIDDEN", `${label}: ${CRM_WEBHOOK_WIDER_TH}`);
+    if (need.vis.length && !(await crmSeesAllOf(sys, actor, need.vis, { pipelineId: need.pipelineId ?? null }))) {
+      throw fail("FORBIDDEN", `${label}: กฎนี้ทำงานกับ${need.vis.map((e) => VIS_WHAT[e]).join("และ")}ทุกรายการของระบบ แต่บัญชีนี้มองเห็นเฉพาะบางส่วน (ตามทีมหรือสาขา) — ${BY_HAND} ให้เจ้าของร้านหรือผู้ที่เห็นข้อมูลทั้งร้านเป็นผู้ตั้งกฎนี้`);
+    }
+    if (need.boardId) {
+      const L = await import("@/lib/modules/kanban/links");
+      const ok = (await L.canOpenCardOnBoard(ctx.tenantId, { userId: actor.userId, role: actor.role, unitAccess: actor.unitAccess, permissions: actor.permissions }, need.boardId));
+      if (!ok) throw fail("FORBIDDEN", `${label}: บัญชีนี้ยังเปิดการ์ดในบอร์ดที่เลือกด้วยมือไม่ได้ (มองไม่เห็นบอร์ด หรือดูได้อย่างเดียว) — ${BY_HAND} ขอให้ผู้ดูแลบอร์ดเพิ่มสิทธิ์แก้ไข หรือเลือกบอร์ดอื่น`);
+    }
+  }
+}
+// ◂ CRM C5.5
 
 // ───────────────────────── จัดการกฎ ─────────────────────────
 
@@ -442,6 +566,7 @@ function ruleData(ctx: CrmAutomationCtx, v: CleanRule, starter: string | null = 
 export async function createRule(ctx: CrmAutomationCtx, actor: MemberActor, input: CrmRuleInput): Promise<{ id: string }> {
   await enter(ctx, actor);
   const v = await cleanInput(ctx, input);
+  await assertAuthorCanDoByHand(ctx, actor, v.actions, v.pipelineId); // CRM C5.5 ▸ H55-2 ◂
   const row = await prisma.automationRule.create({
     // actionType/actionConfig = placeholder (เอนจิน v1 กรอง scope KANBAN จึงไม่เคยเห็นแถวนี้)
     data: { tenantId: ctx.tenantId, scope: SCOPE, kind: "RULE", actionType: "NOTIFY", actionConfig: {}, ...ruleData(ctx, v) },
@@ -455,6 +580,7 @@ export async function updateRule(ctx: CrmAutomationCtx, actor: MemberActor, id: 
   await enter(ctx, actor);
   const row = await loadRule(ctx, id);
   const v = await cleanInput(ctx, input);
+  await assertAuthorCanDoByHand(ctx, actor, v.actions, v.pipelineId); // CRM C5.5 ▸ H55-2 ◂
   await prisma.automationRule.update({ where: { id: row.id }, data: ruleData(ctx, v, starterKeyOf(row)) });
   if (!v.enabled && row.enabled) await cancelWaiting(row.id, "ยกเลิก — กฎถูกปิดก่อนถึงเวลา");
   await audit(ctx, "update", row.id, { before: { name: row.name, event: row.event, enabled: row.enabled }, after: { name: v.name, event: v.trigger.event, enabled: v.enabled, actions: v.actions.map((a) => a.type) } });
@@ -465,6 +591,8 @@ export async function updateRule(ctx: CrmAutomationCtx, actor: MemberActor, id: 
 export async function toggleRule(ctx: CrmAutomationCtx, actor: MemberActor, id: string, enabled: boolean): Promise<{ enabled: boolean; cancelled: number }> {
   await enter(ctx, actor);
   const row = await loadRule(ctx, id);
+  // CRM C5.5 ▸ H55-2: เปิดใช้ = ผู้กดต้องทำทุกขั้นของกฎเองได้ (ปิดได้เสมอ) — กฎเก่าที่บันทึกไว้แล้วยังทำงานจนกว่าจะถูกแก้/เปิดใหม่ ◂
+  if (enabled) await assertAuthorCanDoByHand(ctx, actor, actionsOf(row), row.pipelineId);
   await prisma.automationRule.update({ where: { id: row.id }, data: { enabled: !!enabled } });
   const cancelled = enabled ? 0 : await cancelWaiting(row.id, "ยกเลิก — กฎถูกปิดก่อนถึงเวลา");
   await audit(ctx, enabled ? "enable" : "disable", row.id, { before: { enabled: row.enabled }, after: { enabled: !!enabled, cancelledWaits: cancelled } });
@@ -838,6 +966,23 @@ async function tenantOwnerId(tenantId: string): Promise<string> {
   const m = await prisma.membership.findFirst({ where: { tenantId, role: "OWNER" }, orderBy: { createdAt: "asc" }, select: { userId: true } });
   return m?.userId ?? "";
 }
+/**
+ * C4.4-fix ▸ US8: ผู้ติดต่อหลักของบริษัท (ลิงก์ที่ยังใช้งาน isPrimary · บริษัท/ผู้ติดต่อของร้าน + ระบบนี้ · ไม่เก็บถาวร/รวม/ลบตาม PDPA)
+ *   เลือกแบบกำหนดแน่นอน (เริ่มลิงก์ก่อน → id) · ไม่พบ = เหตุผลภาษาไทยให้ผู้เรียกบันทึกเป็น "ข้าม" ◂
+ */
+async function primaryContactOfCompany(tenantId: string, systemId: string, companyId: string): Promise<{ ok: true; contact: CrmContact } | { ok: false; reason: string }> {
+  const co = await companySystemRef(tenantId, companyId);
+  if (!co || co.systemId !== systemId) return { ok: false, reason: "ไม่พบบริษัทของเหตุการณ์นี้ในระบบ CRM นี้ — เปิดดีลให้ไม่ได้" };
+  const links = await prisma.crmCompanyContact.findMany({
+    where: { tenantId, companyId: co.id, isPrimary: true, endedAt: null, contact: { tenantId, systemId, archivedAt: null, mergedIntoId: null } },
+    orderBy: [{ startedAt: "asc" }, { id: "asc" }],
+    take: 5,
+    select: { contact: true },
+  });
+  for (const l of links) if (!(await isErasedContact(tenantId, l.contact.id))) return { ok: true, contact: l.contact };
+  return { ok: false, reason: "บริษัทนี้ยังไม่มีผู้ติดต่อหลัก — เปิดดีลให้ไม่ได้ (ตั้งผู้ติดต่อหลักในหน้าบริษัทก่อน)" };
+}
+
 async function ownerOf(s: CrmSubject): Promise<string> {
   return s.contact?.ownerUserId ?? s.deal?.ownerUserId ?? (await tenantOwnerId(s.tenantId));
 }
@@ -907,17 +1052,29 @@ async function runCrmDomainAction(kind: string, params: Record<string, unknown>,
         return ok("สร้างงานติดตามแล้ว");
       }
       case "CREATE_DEAL": {
-        if (!s.contact) return skip(i, kind, "เหตุการณ์นี้ไม่มีผู้ติดต่อ — เปิดดีลให้ไม่ได้");
+        // C4.4-fix ▸ US8: เหตุการณ์ของ "บริษัท" (เช่น สัญญาที่ผูกบริษัท · custom.record.field_due) ไม่มีผู้ติดต่อในตัว ⇒ ใช้ผู้ติดต่อหลัก
+        //   ของบริษัทนั้น (ร้าน + ระบบเดียวกัน · ยังใช้งาน · ไม่ถูกลบตาม PDPA · เลือกแบบกำหนดแน่นอน) และผูกดีลกับบริษัท ·
+        //   ไม่มีผู้ติดต่อหลัก = ข้ามพร้อมเหตุผลที่อ่านรู้เรื่อง (บันทึกในผลของกฎ) — ไม่ล้ม ไม่ทำเป็นสำเร็จ ◂
+        let dealContact: CrmContact | null = s.contact;
+        let dealCompanyId: string | null = null;
+        if (!dealContact && !s.deal && s.companyId) {
+          const pc = await primaryContactOfCompany(s.tenantId, s.systemId, s.companyId);
+          if (!pc.ok) return skip(i, kind, pc.reason);
+          dealContact = pc.contact;
+          dealCompanyId = s.companyId;
+        }
+        if (!dealContact) return skip(i, kind, "เหตุการณ์นี้ไม่มีผู้ติดต่อ — เปิดดีลให้ไม่ได้");
         const pipe = await prisma.crmPipeline.findFirst({ where: { id: str(params.pipelineId), tenantId: s.tenantId, systemId: s.systemId, archivedAt: null }, select: { id: true } });
         if (!pipe) return skip(i, kind, "pipeline ที่ตั้งไว้ไม่อยู่ในระบบ CRM นี้แล้ว — ไม่ได้เปิดดีล");
         const first = await prisma.crmStage.findFirst({ where: { pipelineId: pipe.id, kind: "OPEN" }, orderBy: { sortOrder: "asc" }, select: { id: true } });
-        const owner = await ownerOf(s);
-        await touch(env, `contact:${s.contact.id}`);
+        const owner = dealContact.ownerUserId ?? (await ownerOf(s));
+        await touch(env, `contact:${dealContact.id}`);
         const nd = await deals.createDeal(svcCtx(s), systemActor(owner), {
           pipelineId: pipe.id,
           stageId: first?.id ?? null,
           title: ((await render(str(params.titleTpl))) || "ดีลใหม่").slice(0, 200),
-          contactId: s.contact.id,
+          contactId: dealContact.id,
+          ...(dealCompanyId ? { companyId: dealCompanyId } : {}),
           ...(params.valueSatang !== undefined ? { valueSatang: numOr(params.valueSatang, 0) } : {}),
           ...(owner ? { ownerUserId: owner } : {}),
         });
@@ -962,7 +1119,17 @@ async function runCrmDomainAction(kind: string, params: Record<string, unknown>,
           recipients = o ? [o] : [];
         }
         recipients = [...new Set(recipients)];
-        if (recipients.length === 0) return skip(i, kind, "ไม่พบพนักงานที่ต้องแจ้ง");
+        // CRM C5.4-B ▸ L1-m4 (C2.10 "ผู้รับถูกกรอง ไม่ใช่เชื่อ"): ข้อความของกฎแทน {ชื่อ}/{ดีล} ได้ ⇒ ผู้รับต้องเปิดทุกระเบียนที่เรื่องนี้อ้างถึงได้
+        //   (ด่านเดียวกับ notifyStaff: รับคำเชิญแล้ว + คีย์อ่าน + visibleWhere) — คนที่มองไม่เห็นไม่ได้ใบ ◂
+        const { crmRecipientsWhoSee } = await import("./notifications");
+        const refs = [
+          ...(s.contact ? [{ target: "CONTACT" as const, id: s.contact.id }] : []),
+          ...(s.deal ? [{ target: "DEAL" as const, id: s.deal.id }] : []),
+          ...(s.activity ? [{ target: "ACTIVITY" as const, id: s.activity.id }] : []),
+          ...(s.record ? [{ target: "RECORD" as const, id: s.record.id }] : []),
+        ];
+        recipients = await crmRecipientsWhoSee({ tenantId: s.tenantId, systemId: s.systemId }, recipients, refs);
+        if (recipients.length === 0) return skip(i, kind, "ไม่พบพนักงานที่ต้องแจ้ง (หรือผู้รับที่ตั้งไว้มองไม่เห็นรายการนี้)");
         const title = ((await render(str(params.text))) || `กฎอัตโนมัติ "${env.rule.name}"`).slice(0, 200);
         // AUDIT-CLASS X8: เนื้อความมีแต่ชื่อกฎ + ลิงก์ (ไม่มีเบอร์/อีเมลของลูกค้า) — หน้าปลายทางตรวจสิทธิ์เอง
         const link = s.deal ? `/app/sys/${s.systemId}/crm/deals/${s.deal.id}` : s.contact ? `/app/sys/${s.systemId}/crm/contacts/${s.contact.id}` : `/app/sys/${s.systemId}/crm`;
@@ -980,8 +1147,11 @@ async function runCrmDomainAction(kind: string, params: Record<string, unknown>,
           ruleId: env.rule.id,
           runId: env.runId,
           contactId: s.contact?.id ?? null,
+          dealId: s.deal?.id ?? null,
           boardId: board.id,
-          title: ((await render(str(params.title))) || env.rule.name).slice(0, 200),
+          // CRM C5.4-B ▸ L1-m4/L5-M2: บอร์ดงานเป็นของทั้งทีม (สมาชิกบอร์ด ≠ คนที่เห็นผู้ติดต่อนี้ใน CRM) ⇒ ชื่อการ์ดไม่มีชื่อลูกค้า/ชื่อดีล —
+          //   {ชื่อ}/{ดีล} กลายเป็นรหัสอ้างอิงสั้น ๆ · ตัวตนจริงอยู่ที่ลิงก์ CRM_CONTACT/DEAL ของการ์ด (ตัวแสดงลิงก์ตรวจสิทธิ์รายคน) ◂
+          title: (renderTemplate(str(params.title), cardVars(env)) || env.rule.name).slice(0, 200),
           description: `จากกฎอัตโนมัติ CRM "${env.rule.name}"`,
           sourceKey: `crm-rule:${env.runId}:${i}`,
         });
@@ -990,8 +1160,9 @@ async function runCrmDomainAction(kind: string, params: Record<string, unknown>,
       case "WEBHOOK": {
         const url = str(params.url);
         // AUDIT-CLASS X6: ด่าน SSRF ตัวเดียวของระบบ — ตรวจซ้ำตอนยิง (แถวกฎที่ถูกแก้ตรงในฐานก็ยิงหาเครือข่ายภายในไม่ได้)
-        const { webhookTargetProblem } = await import("@/lib/webhooks/service");
-        const problem = await webhookTargetProblem(url);
+        //   C5.4 (L4-M2): ตัวส่งจริง (`postWebhook`) ผ่าน outboundFetch = ตรวจซ้ำตอนต่อ + ตรึง IP + ไม่ตาม 3xx
+        const { webhookSaveProblem } = await import("@/lib/webhooks/service");
+        const problem = await webhookSaveProblem(url);
         if (problem) return { i, type: kind, ok: false, note: `ไม่ได้ส่ง webhook — ${problem}` };
         // AUDIT-CLASS X8: เนื้อความมีแต่ id (ไม่มีชื่อ/เบอร์/อีเมล)
         await (env.deps.post ?? postWebhook)(url, {
@@ -1059,16 +1230,19 @@ async function runCrmDomainAction(kind: string, params: Record<string, unknown>,
 async function crmVars(env: CrmEnv, _text: string): Promise<Record<string, string | undefined>> {
   return { ชื่อ: contactName(env.subject.contact), ดีล: env.subject.deal?.title ?? "" };
 }
+/** ตัวแปรของชื่อการ์ดบอร์ดงาน — ไม่มีชื่อคน/ชื่อดีล (C5.4-B L1-m4 · L5-M2) */
+function cardVars(env: CrmEnv): Record<string, string | undefined> {
+  const ref = (label: string, id: string | undefined) => (id ? `${label} #${id.slice(-6)}` : "");
+  return { ชื่อ: ref("ลูกค้า", env.subject.contact?.id), ดีล: ref("ดีล", env.subject.deal?.id) };
+}
 
+
+// C5.4 (L4-M2): ยิงผ่าน `outboundFetch` ตัวเดียวของแพลตฟอร์ม (ตรวจปลายทาง · ตรึง IP ตอนต่อ · ไม่ตาม 3xx)
 async function postWebhook(url: string, body: unknown): Promise<void> {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 5000);
-  try {
-    const res = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal: ctrl.signal, redirect: "manual" });
-    if (!res.ok) throw new Error(`ปลายทางตอบรหัส ${res.status}`);
-  } finally {
-    clearTimeout(timer);
-  }
+  const { outboundFetch, redirectWarning } = await import("@/lib/webhooks/service");
+  const res = await outboundFetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), timeoutMs: 5000, maxBytes: 65_536 });
+  if (redirectWarning(res.status)) return; // C5.4 รอบ 2: 3xx = ส่งถึงแล้ว (ไม่ตาม · ไม่ลองซ้ำ)
+  if (!res.ok) throw new Error(`ปลายทางตอบรหัส ${res.status}`);
 }
 
 // ── ตัวส่งจริงปริยาย (ห้าม throw — คืน {ok:false} แทน) ──
@@ -1079,7 +1253,18 @@ const defaultKanban: CrmKanbanFn = async (req) => {
     const { createCardFromExternal } = await import("@/lib/modules/kanban/links");
     const r = await createCardFromExternal(
       { tenantId: req.tenantId, systemId: board.systemId, actorUserId: null },
-      { boardId: req.boardId, title: req.title, description: req.description, sourceType: "AUTOMATION", sourceKey: req.sourceKey },
+      {
+        boardId: req.boardId,
+        title: req.title,
+        description: req.description,
+        sourceType: "AUTOMATION",
+        sourceKey: req.sourceKey,
+        // CRM C5.4-B ▸ L5-M2: ผูกการ์ดกับผู้ติดต่อ/ดีลตั้งแต่เกิด ⇒ ลบข้อมูลส่วนบุคคล (erase) หาการ์ดเจอผ่านลิงก์ CRM_CONTACT ◂
+        links: [
+          ...(req.contactId ? [{ linkType: "CRM_CONTACT" as const, linkId: req.contactId, role: "RELATED" as const }] : []),
+          ...(req.dealId ? [{ linkType: "DEAL" as const, linkId: req.dealId, role: "RELATED" as const }] : []),
+        ],
+      },
     );
     return { ok: true, cardId: r.cardId };
   } catch (e) {
@@ -1095,14 +1280,18 @@ export const CRM_DEFAULT_DEPS: Required<Omit<CrmRuleDeps, "kanban" | "post">> & 
     if (!req.contactId) return { ok: false, skipped: true, error: "ไม่มีผู้ติดต่อปลายทางของอีเมลนี้ จึงข้ามขั้นนี้" };
     try {
       const emails = await import("./emails");
-      const body = String(req.body ?? "")
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/\n/g, "<br>");
+      // CRM C4.4-fix2 ▸ J1: ข้อความของกฎส่งเป็น `bodyText` — ตัวแปลงกลางตัวเดียว (escape + URL http(s) เป็นลิงก์นับคลิก) แทนการ escape เองที่นี่
+      //   r2 (รีวิว BL-1): ส่ง "ข้อความของผู้เขียนกฎ" + ค่า `{ชื่อ}`/`{ดีล}` แยกกัน ⇒ ลิงก์มาจากข้อความของกฎเท่านั้น · ค่าเป็นข้อความ escape ◂
+      const authored = typeof req.bodyTemplate === "string";
       const r = await emails.sendAsSystem(
         { tenantId: req.tenantId, systemId: req.systemId },
-        { contactId: req.contactId, ...(req.to ? { to: [req.to] } : {}), subject: req.subject ?? "", bodyHtml: `<p>${body}</p>` },
+        {
+          contactId: req.contactId,
+          ...(req.to ? { to: [req.to] } : {}),
+          subject: req.subject ?? "",
+          bodyText: authored ? (req.bodyTemplate as string) : String(req.body ?? ""),
+          ...(authored ? { bodyVars: { syntax: "brace" as const, values: req.vars ?? {} } } : {}),
+        },
       );
       if (r.status === "FAILED") return { ok: false, error: "ส่งอีเมลไม่สำเร็จ — ระบบจะลองกฎนี้อีกครั้งในรอบถัดไป" };
       return { ok: true };
@@ -1520,9 +1709,12 @@ async function* cronCandidatePages(tenantId: string, systemId: string, trigger: 
       const obj = await prisma.customObject.findFirst({ where: { tenantId, systemId, key: objectKey }, select: { id: true } });
       const field = obj ? await prisma.memberField.findFirst({ where: { tenantId, systemId, objectKey, key: fieldKey }, select: { id: true } }) : null;
       if (!obj || !field) return;
-      // ฟิลด์ DATE เก็บเป็นเที่ยงคืน UTC ของวันในปฏิทิน (engine ฟิลด์ parseYmd) ⇒ เทียบ "วันที่" ตรง ๆ
-      const from = new Date(`${thaiYmd(new Date(now.getTime() + Math.max(0, d - CRON_CATCHUP_DAYS) * DAY_MS))}T00:00:00.000Z`);
-      const to = new Date(new Date(`${thaiYmd(new Date(now.getTime() + d * DAY_MS))}T00:00:00.000Z`).getTime() + DAY_MS);
+      // CRM C5.5 ▸ (fix3b · H2b-4) หน้าต่าง = ขอบ "วันไทย" (00:00 น.) แบบเดียวกับ close_due — ใช้ได้กับทั้งสองชนิดของฟิลด์:
+      //   DATE เก็บเป็นเที่ยงคืน UTC ของวันในปฏิทิน (engine ฟิลด์ parseYmd = 07:00 น. ของวันนั้น ⇒ อยู่ในวันไทยเดียวกัน — ผลเท่าเดิม)
+      //   DATETIME เก็บเป็นขณะจริง (`new Date(iso).toISOString()`) — เดิมหน้าต่างขอบเที่ยงคืน UTC (= 07:00 น.) ⇒ ค่าเวลา 00:00–06:59 น.
+      //   ของวัน X ถูกนับเป็นวัน X-1 (กฎ "7 วันก่อน" ยิงก่อน 8 วัน · "วันครบกำหนด" ยิงตั้งแต่เย็นวันก่อน) · กุญแจกันซ้ำใช้วันไทยของค่า ◂
+      const from = thaiDayStart(thaiYmd(new Date(now.getTime() + Math.max(0, d - CRON_CATCHUP_DAYS) * DAY_MS)));
+      const to = new Date(thaiDayStart(thaiYmd(new Date(now.getTime() + d * DAY_MS))).getTime() + DAY_MS);
       for (let cursor: string | null = null; ; ) {
         const vals: { id: string; recordId: string; valueDate: Date | null }[] = await prisma.customRecordValue.findMany({
           where: { tenantId, fieldId: field.id, valueDate: { gte: from, lt: to }, ...after(cursor) },
@@ -1535,7 +1727,7 @@ async function* cronCandidatePages(tenantId: string, systemId: string, trigger: 
           const live = new Set(recs.map((r) => r.id));
           const page = vals
             .filter((v) => live.has(v.recordId))
-            .map((v) => ({ payload: { recordId: v.recordId, objectKey, fieldKey, daysBefore: d }, key: `custom.record.field_due#${objectKey}.${fieldKey}#${d}#${v.recordId}#${(v.valueDate ?? now).toISOString().slice(0, 10)}` }));
+            .map((v) => ({ payload: { recordId: v.recordId, objectKey, fieldKey, daysBefore: d }, key: `custom.record.field_due#${objectKey}.${fieldKey}#${d}#${v.recordId}#${thaiYmd(v.valueDate ?? now)}` }));
           if (page.length) yield page;
         }
         if (vals.length < CRON_PAGE) return;

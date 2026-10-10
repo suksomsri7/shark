@@ -1,0 +1,1 @@
+probe-6-account-party-match.mts — SUPERSEDED (C4.4-fix round 3 ruling): asserted the account-side party matching (change (b)) that was reverted; account party matching belongs to a later account card. Kept for reference only, expected red on this tree — do not run as a gate.

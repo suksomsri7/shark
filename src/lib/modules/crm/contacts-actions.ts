@@ -7,9 +7,10 @@
 // 🔴 actor สร้างด้วย `toMemberActor` เท่านั้น · ไม่โยน error ดิบถึงหน้าจอ — คืน { ok:false, error } ภาษาไทยที่ไม่โทษผู้ใช้
 
 import { revalidatePath } from "next/cache";
+import { revalidateAndWake } from "./outbox-wake"; // CRM C5.4-D ▸ L3-M1b: รีเฟรชหน้า + ปลุกคิว outbox หลังเขียนสำเร็จ ◂
 import { requireTenant } from "@/lib/core/context";
 import { ForbiddenError } from "@/lib/core/rbac";
-import { assertCanCrm } from "./access";
+import { assertCanCrm, crmCan } from "./access";
 import { toMemberActor } from "@/lib/modules/member";
 import { assertCrmV2, CrmV2DisabledError } from "./ui-version";
 import {
@@ -29,6 +30,7 @@ import {
   setLifecycle,
   setOptOut,
   setTags,
+  setTrackingOptOut,
   updateContact,
   type ContactsCtx,
   type CreateContactInput,
@@ -36,16 +38,20 @@ import {
   type UpdateContactPatch,
 } from "./contacts";
 import { set as setConsent } from "./consents";
-import { CONTACT_IMPORT_INLINE_MAX_ROWS, CONTACT_IMPORT_MAX_BYTES, ContactsError, type ContactListInput, type ConvertInput, type DuplicateHit, type ImportContactsResult, type ImportDuplicateMode } from "./contacts-shared";
+import { CONTACT_IMPORT_INLINE_MAX_ROWS, CONTACT_IMPORT_MAX_BYTES, ContactsError, contactPhoneProblem, emailProblem, nameProblem, type ContactListInput, type ConvertInput, type DuplicateHit, type ImportContactsResult, type ImportDuplicateMode } from "./contacts-shared";
 import { CrmLimitError } from "./limits-shared"; // CRM C3.9 ◂
+import { withFieldError, type CrmFieldErrors } from "./field-errors-shared";
 
-type Fail = { ok: false; error: string; code?: string; duplicates?: DuplicateHit[] };
+type Fail = { ok: false; error: string; code?: string; duplicates?: DuplicateHit[]; fieldErrors?: CrmFieldErrors };
 
-async function session(systemId: string, action: string) {
+// CRM C4.2-fix r2 ▸ (รีวิว addendum 2a) `action` เป็นรายการได้ = "คีย์ใดคีย์หนึ่ง" — ใช้กับช่องเลือกที่หลายฟอร์มเปิดใช้
+//   (ไม่มีสักคีย์ = FORBIDDEN ด้วยข้อความของคีย์แรก · การมองเห็นของผลยังตัดสินที่บริการเหมือนเดิม) ◂
+async function session(systemId: string, action: string | readonly string[]) {
   const auth = await requireTenant();
   // CRM C1.7 ▸ มติผู้คุมงาน C1.7 ข้อ 3: ด่านคีย์ผ่าน `crm/access.ts` (MANAGER ปริยายไม่ได้ 5 คีย์ตั้งค่า · อ่านโดยนัยของคน) ◂
   const actor = toMemberActor(auth.user.id, auth.active);
-  assertCanCrm(actor, action);
+  const keys = typeof action === "string" ? [action] : action;
+  if (!keys.some((k) => crmCan(actor, k))) assertCanCrm(actor, keys[0] ?? "crm.contact.read");
   const ctx: ContactsCtx = { tenantId: auth.active.tenantId, systemId: String(systemId ?? ""), actorUserId: auth.user.id };
   // CRM uiVersion gate ▸ action ของหน้า v2 ใช้ได้เฉพาะระบบที่เปิด CRM ใหม่ (settings.crm.uiVersion = 2) — action v1 (`actions.ts`) ไม่ผ่านที่นี่ ◂
   await assertCrmV2(ctx);
@@ -56,7 +62,7 @@ async function session(systemId: string, action: string) {
 function failOf(e: unknown, multiStep = false): Fail {
   if (e instanceof CrmLimitError) return { ok: false, error: e.message, code: "LIMIT" }; // CRM C3.9 ▸ เกินเพดาน = ข้อความไทยของเพดาน ◂
   if (e instanceof CrmV2DisabledError) return { ok: false, error: e.message, code: e.code };
-  if (e instanceof ContactsError) return { ok: false, error: e.message, code: e.code, ...(e.duplicates ? { duplicates: e.duplicates } : {}) };
+  if (e instanceof ContactsError) return { ok: false, error: e.message, code: e.code, ...(e.duplicates ? { duplicates: e.duplicates } : {}), ...(e.field ? { fieldErrors: { [e.field]: e.message } } : {}) };
   if (e instanceof ForbiddenError) return { ok: false, error: "บัญชีนี้ยังไม่ได้รับสิทธิ์ทำรายการนี้ในระบบ CRM — ขอให้เจ้าของร้านเปิดสิทธิ์ให้ แล้วลองอีกครั้ง", code: "FORBIDDEN" };
   // 🔴 ไม่ส่งรายละเอียดทางเทคนิค/ข้อมูลลูกค้าออกไป (log แค่ชนิด error)
   console.error(`[crm.contacts] action ล้มเหลว — ${e instanceof Error ? e.name : "unknown"}`);
@@ -73,11 +79,17 @@ export async function createContactAction(
 ): Promise<{ ok: true; id: string; created: boolean; duplicates: DuplicateHit[]; warnings: string[] } | Fail> {
   try {
     const { ctx, actor } = await session(systemId, "crm.contact.create");
-    const r = await createContact(ctx, actor, input);
-    if (r.created) revalidatePath(base(systemId));
+    const r = await createContact(ctx, actor, input, { requireCustom: true });
+    if (r.created) revalidateAndWake(base(systemId));
     return { ok: true, id: r.contact.id, created: r.created, duplicates: r.duplicates, warnings: r.warnings };
   } catch (e) {
-    return failOf(e, true);
+    // C4.3-fix part 2 ▸ ข้อความปฏิเสธของบริการชี้กลับไปที่ช่อง (ตัวตรวจชุดเดียวกับฟอร์ม) ◂
+    return withFieldError(failOf(e, true), {
+      firstName: !!nameProblem(input?.firstName, "ชื่อจริง", true),
+      lastName: !!nameProblem(input?.lastName ?? "", "นามสกุล", false),
+      phone: !!contactPhoneProblem(input?.phone),
+      email: !!emailProblem(input?.email),
+    });
   }
 }
 
@@ -85,7 +97,7 @@ export async function updateContactAction(systemId: string, contactId: string, p
   try {
     const { ctx, actor } = await session(systemId, "crm.contact.update");
     await updateContact(ctx, actor, contactId, patch);
-    revalidatePath(`${base(systemId)}/${contactId}`);
+    revalidateAndWake(`${base(systemId)}/${contactId}`);
     return { ok: true };
   } catch (e) {
     return failOf(e, true);
@@ -97,7 +109,7 @@ export async function setStatusAction(systemId: string, contactId: string, input
     const { ctx, actor } = await session(systemId, "crm.contact.update");
     if (input.leadStatus) await setLeadStatus(ctx, actor, contactId, input.leadStatus);
     if (input.lifecycleStage) await setLifecycle(ctx, actor, contactId, input.lifecycleStage);
-    revalidatePath(`${base(systemId)}/${contactId}`);
+    revalidateAndWake(`${base(systemId)}/${contactId}`);
     return { ok: true };
   } catch (e) {
     return failOf(e, true);
@@ -108,7 +120,7 @@ export async function setTagsAction(systemId: string, contactId: string, tags: s
   try {
     const { ctx, actor } = await session(systemId, "crm.contact.update");
     await setTags(ctx, actor, contactId, tags);
-    revalidatePath(`${base(systemId)}/${contactId}`);
+    revalidateAndWake(`${base(systemId)}/${contactId}`);
     return { ok: true };
   } catch (e) {
     return failOf(e);
@@ -119,7 +131,19 @@ export async function setOptOutAction(systemId: string, contactId: string, optOu
   try {
     const { ctx, actor } = await session(systemId, "crm.contact.update");
     await setOptOut(ctx, actor, contactId, { optOut, source: "STAFF" });
-    revalidatePath(`${base(systemId)}/${contactId}`);
+    revalidateAndWake(`${base(systemId)}/${contactId}`);
+    return { ok: true };
+  } catch (e) {
+    return failOf(e);
+  }
+}
+
+// CRM C5.4-B ▸ L5-M4: ลูกค้าขอ "ไม่ให้ติดตามการเปิดอ่าน/คลิก" (บล็อกความยินยอมในหน้า 360) ◂
+export async function setTrackingOptOutAction(systemId: string, contactId: string, optOut: boolean): Promise<{ ok: true } | Fail> {
+  try {
+    const { ctx, actor } = await session(systemId, "crm.contact.update");
+    await setTrackingOptOut(ctx, actor, contactId, { optOut, source: "STAFF" });
+    revalidateAndWake(`${base(systemId)}/${contactId}`);
     return { ok: true };
   } catch (e) {
     return failOf(e);
@@ -130,7 +154,7 @@ export async function setConsentAction(systemId: string, contactId: string, chan
   try {
     const { ctx, actor } = await session(systemId, "crm.contact.update");
     await setConsent(ctx, actor, contactId, { channel, granted, source: "STAFF" });
-    revalidatePath(`${base(systemId)}/${contactId}`);
+    revalidateAndWake(`${base(systemId)}/${contactId}`);
     return { ok: true };
   } catch (e) {
     return failOf(e);
@@ -139,9 +163,9 @@ export async function setConsentAction(systemId: string, contactId: string, chan
 
 export async function assignContactAction(systemId: string, contactId: string, userId: string | null): Promise<{ ok: true } | Fail> {
   try {
-    const { ctx, actor } = await session(systemId, "crm.contact.assign");
+    const { ctx, actor } = await session(systemId, "crm.contact.update") /* CRM C4.2-fix r2 ▸ SF-3: เดิม "crm.contact.assign" = คีย์ที่ไม่มีในทะเบียน (ให้พนักงานไม่ได้) · บริการตรวจ crm.contact.update (พิมพ์เขียว §4 ข้อ assign) ◂ */;
     await assignContact(ctx, actor, contactId, { userId: userId || null });
-    revalidatePath(`${base(systemId)}/${contactId}`);
+    revalidateAndWake(`${base(systemId)}/${contactId}`);
     return { ok: true };
   } catch (e) {
     return failOf(e);
@@ -150,9 +174,9 @@ export async function assignContactAction(systemId: string, contactId: string, u
 
 export async function bulkAssignAction(systemId: string, input: { ids: string[]; userId: string | null; confirm: boolean; reason: string }): Promise<{ ok: true; updated: number } | Fail> {
   try {
-    const { ctx, actor } = await session(systemId, "crm.contact.assign");
+    const { ctx, actor } = await session(systemId, "crm.contact.update") /* CRM C4.2-fix r2 ▸ SF-3: เดิม "crm.contact.assign" = คีย์ที่ไม่มีในทะเบียน (ให้พนักงานไม่ได้) · บริการตรวจ crm.contact.update (พิมพ์เขียว §4 ข้อ assign) ◂ */;
     const r = await bulkAssign(ctx, actor, input);
-    revalidatePath(base(systemId));
+    revalidateAndWake(base(systemId));
     return { ok: true, updated: r.updated };
   } catch (e) {
     return failOf(e);
@@ -161,11 +185,11 @@ export async function bulkAssignAction(systemId: string, input: { ids: string[];
 
 export async function archiveContactAction(systemId: string, contactId: string, confirm: boolean, reason: string, restore = false): Promise<{ ok: true } | Fail> {
   try {
-    const { ctx, actor } = await session(systemId, "crm.contact.archive");
+    const { ctx, actor } = await session(systemId, "crm.contact.delete") /* CRM C4.2-fix r2 ▸ SF-3: เดิม "crm.contact.archive" (ไม่มีในทะเบียน) · บริการตรวจ crm.contact.delete (contacts.ts:1148) ◂ */;
     if (restore) await restoreContact(ctx, actor, contactId, { confirm, reason });
     else await archiveContact(ctx, actor, contactId, { confirm, reason });
-    revalidatePath(base(systemId));
-    revalidatePath(`${base(systemId)}/${contactId}`);
+    revalidateAndWake(base(systemId));
+    revalidateAndWake(`${base(systemId)}/${contactId}`);
     return { ok: true };
   } catch (e) {
     return failOf(e);
@@ -176,12 +200,13 @@ export async function convertContactAction(
   systemId: string,
   contactId: string,
   input: ConvertInput,
-): Promise<{ ok: true; customerId: string | null; companyId: string | null; dealId: string | null } | Fail> {
+): Promise<{ ok: true; customerId: string | null; companyId: string | null; dealId: string | null; reusedCompany: { id: string; name: string } | null } | Fail> {
   try {
     const { ctx, actor } = await session(systemId, "crm.contact.convert");
     const r = await convertContact(ctx, actor, contactId, input);
-    revalidatePath(`${base(systemId)}/${contactId}`);
-    return { ok: true, customerId: r.customerId, companyId: r.companyId, dealId: r.dealId };
+    revalidateAndWake(`${base(systemId)}/${contactId}`);
+    // C4.4-fix รอบ 2 · S2: ใช้บริษัทเดิมจากเลขภาษี (ที่ผู้กดมองเห็น) — ส่งชื่อกลับให้หน้าต่างบอกผู้ใช้ ◂
+    return { ok: true, customerId: r.customerId, companyId: r.companyId, dealId: r.dealId, reusedCompany: r.reusedCompany ?? null };
   } catch (e) {
     return failOf(e, true);
   }
@@ -192,8 +217,8 @@ export async function mergeContactsAction(systemId: string, input: { keepId: str
   try {
     const { ctx, actor } = await session(systemId, "crm.contact.merge");
     const r = await mergeContacts(ctx, actor, { ...input, fieldChoices: (input?.fieldChoices ?? null) as MergeContactsInput["fieldChoices"] }); // CRM C1.11 ◂
-    revalidatePath(base(systemId));
-    revalidatePath(`${base(systemId)}/${r.keptId}`);
+    revalidateAndWake(base(systemId));
+    revalidateAndWake(`${base(systemId)}/${r.keptId}`);
     return { ok: true, keptId: r.keptId, warnings: r.warnings };
   } catch (e) {
     return failOf(e, true);
@@ -220,10 +245,12 @@ export async function importContactsAction(
     }
     const records = rows.map((r) => Object.fromEntries(headers.map((h, i) => [h, String((Array.isArray(r) ? r[i] : "") ?? "")])));
     const r = await importContacts(ctx, actor, { rows: records, mapping: input.mapping, options: { onDuplicate: input.onDuplicate, source: "IMPORT" } });
-    revalidatePath(base(systemId));
+    revalidateAndWake(base(systemId));
     return { ok: true, jobId: r.jobId, ...r.result };
   } catch (e) {
-    revalidatePath(base(systemId));
+    // CRM C5.4-D r2 ▸ N4: นำเข้าล้มกลางทางอาจเขียนไปบางส่วนแล้ว ⇒ ปลุกคิว · แต่ระบบรุ่น 1 (CrmV2DisabledError) ไม่ได้เขียนอะไร = ไม่ปลุก ◂
+    if (e instanceof CrmV2DisabledError) revalidatePath(base(systemId));
+    else revalidateAndWake(base(systemId));
     return failOf(e, true);
   }
 }
@@ -251,7 +278,9 @@ export async function searchContactsAction(systemId: string, excludeId: string |
 /** ช่องเลือกบริษัท (ค้นฝั่งเซิร์ฟเวอร์) — ใช้ตอนเพิ่มผู้ติดต่อ/แก้ไข/แปลง */
 export async function searchCompaniesAction(systemId: string, q: string): Promise<{ ok: true; items: { id: string; name: string }[] } | Fail> {
   try {
-    const { ctx, actor } = await session(systemId, "crm.contact.update");
+    // CRM C4.2-fix r2 ▸ (รีวิว addendum 2a) ช่องนี้เปิดจาก: แก้ไข (update) · แปลงเป็นลูกค้า (convert) · ฟอร์มเพิ่มผู้ติดต่อ (create) —
+    //   ผลยังเป็นเฉพาะบริษัทที่บัญชีนี้มองเห็น (companyWhere ในบริการ) ◂
+    const { ctx, actor } = await session(systemId, ["crm.contact.update", "crm.contact.convert", "crm.contact.create"]);
     return { ok: true, items: await companyOptions(ctx, actor, q) };
   } catch (e) {
     return failOf(e);

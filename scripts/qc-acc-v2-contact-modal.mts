@@ -263,33 +263,37 @@ try {
   if (!piya || !somchai) {
     bad("P5.0 หาแถวสาธิตของ seed ไม่เจอ", "ต้อง seed ใหม่");
   } else {
-    const sug = await links.suggestLinks(ctx, { phone: piya.phone, partyId: piya.partyId });
+    // ORACLE-EDIT P5.1 (C5.4-A round 3 · hunter H2 fail-closed member viewer): member rows/links need an explicit viewer now — this system-level oracle passes "system"; assertions unchanged
+    const sug = await links.suggestLinks(ctx, { phone: piya.phone, partyId: piya.partyId }, "system");
     sug.member.length >= 1 ? ok(`P5.1 เดาสมาชิกจากเบอร์ได้ (${sug.member.length} รายการ)`) : bad("P5.1 เดาสมาชิกจากเบอร์ได้", JSON.stringify(sug));
     eq("P5.2 ช่องแชทยังไม่ต่อสาย (ห้ามแตะ chat/**) → null ไม่ใช่ผลลวง", sug.chat, null);
     eq("P5.3 บอกได้ว่าร้านนี้เปิดระบบสมาชิก/CRM อยู่", [sug.available.member, sug.available.crm], [true, true]);
-    const sugCrm = await links.suggestLinks(ctx, { phone: somchai.phone, partyId: somchai.partyId });
+    // ORACLE-EDIT P5.4 (C5.4-A round 2 · fail-closed viewer): CRM rows/links need an explicit viewer now — this system-level oracle passes "system"; assertions unchanged
+    const sugCrm = await links.suggestLinks(ctx, { phone: somchai.phone, partyId: somchai.partyId }, "system");
     sugCrm.crm.length >= 1 ? ok(`P5.4 เดาผู้ติดต่อ CRM จากเบอร์ได้ (${sugCrm.crm.length} รายการ)`) : bad("P5.4 เดาผู้ติดต่อ CRM จากเบอร์ได้", JSON.stringify(sugCrm));
 
     // สร้างผู้ติดต่อใหม่ที่ยังไม่ผูก Party แล้วสั่งเชื่อมกับสมาชิกของปิยธิดา
     const memberSystemId = (await svc.findLinkedSystemIds(tenantId)).memberSystemId!;
-    const cand = (await memberSvc.findCustomersForLink(tenantId, memberSystemId, { phoneVariants: links.phoneVariants(piya.phone) }))[0];
+    // ORACLE-EDIT P5.5/P5.6/P5.7 (C5.4-A round 3 · hunter H2 fail-closed member viewer): member rows/links need an explicit viewer now — this system-level oracle passes "system"; assertions unchanged
+    const cand = (await memberSvc.findCustomersForLink(tenantId, memberSystemId, { phoneVariants: links.phoneVariants(piya.phone) }, "system"))[0];
     if (!cand) bad("P5.5 หาแถวสมาชิกปลายทางไม่เจอ", "seed ไม่มีสมาชิกเบอร์นี้");
     else {
-      const linkRes = await links.linkContactTo(ctx, { contactId: piya.id, target: "member", targetId: cand.id });
+      const linkRes = await links.linkContactTo(ctx, { contactId: piya.id, target: "member", targetId: cand.id }, "system");
       linkRes.ok ? ok("P5.5 กด 'ใช่ คนเดียวกัน' สำเร็จ") : bad("P5.5 กด 'ใช่ คนเดียวกัน' สำเร็จ", linkRes.reason);
       if (linkRes.ok) {
         const after = await prisma.accountContact.findFirst({ where: { id: piya.id }, select: { partyId: true } });
-        const custAfter = (await memberSvc.findCustomersForLink(tenantId, memberSystemId, { phoneVariants: links.phoneVariants(piya.phone) }))[0];
+        const custAfter = (await memberSvc.findCustomersForLink(tenantId, memberSystemId, { phoneVariants: links.phoneVariants(piya.phone) }, "system"))[0];
         after?.partyId && after.partyId === custAfter?.partyId
           ? ok("P5.6 ทั้งสองฝั่งชี้ Party เดียวกันจริง")
           : bad("P5.6 ทั้งสองฝั่งชี้ Party เดียวกันจริง", `contact=${after?.partyId} customer=${custAfter?.partyId}`);
       }
-      const bogus = await links.linkContactTo(ctx, { contactId: piya.id, target: "member", targetId: "id-ของร้านอื่น" });
+      const bogus = await links.linkContactTo(ctx, { contactId: piya.id, target: "member", targetId: "id-ของร้านอื่น" }, "system");
       eq("P5.7 id ปลายทางที่ไม่ใช่ของร้านนี้ = ปฏิเสธ (กัน IDOR) ไม่ใช่ throw", bogus.ok, false);
       const crmSystemId = (await svc.findLinkedSystemIds(tenantId)).crmSystemId!;
-      const crmCand = (await crmSvc.findContactsForLink({ tenantId, systemId: crmSystemId }, { phoneVariants: links.phoneVariants(somchai.phone) }))[0];
+      // ORACLE-EDIT P5.8 (C5.4-A round 2 · fail-closed viewer): CRM rows/links need an explicit viewer now — this system-level oracle passes "system"; assertions unchanged
+      const crmCand = (await crmSvc.findContactsForLink({ tenantId, systemId: crmSystemId }, { phoneVariants: links.phoneVariants(somchai.phone) }, "system"))[0];
       if (crmCand) {
-        const r = await links.linkContactTo(ctx, { contactId: somchai.id, target: "crm", targetId: crmCand.id });
+        const r = await links.linkContactTo(ctx, { contactId: somchai.id, target: "crm", targetId: crmCand.id }, "system"); // ORACLE-EDIT P5.8 (C5.4-A round 2)
         r.ok ? ok("P5.8 เชื่อม CRM ผ่าน facade ของ crm สำเร็จ") : bad("P5.8 เชื่อม CRM ผ่าน facade ของ crm สำเร็จ", r.reason);
       } else bad("P5.8 เชื่อม CRM", "หาแถว CRM ปลายทางไม่เจอ");
     }

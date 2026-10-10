@@ -14,7 +14,7 @@ import { AccountDocType } from "@prisma/client";
 // 🔴 ห้าม import แบบ static: `contact-profile.ts` ลาก `./ui`/`doc-editor-config` ที่แตะ session/env ตอนโหลด
 //    ⇒ ทะเบียน op (ซึ่ง fitness/CI โหลดโดยไม่มี .env) จะพังตั้งแต่ import — โหลดตอนใช้จริงเท่านั้น (บทเรียน WO 1.9/8.2)
 const loadProfileSvc = () => import("../../contact-profile");
-import { getContactForLinking, suggestLinks } from "../../contact-links";
+import { crmViewerOfApi, getContactForLinking, suggestLinks } from "../../contact-links";
 import { listMergeCandidates } from "../../contact-merge";
 import { loadContactsSidebar, listContactsPage, type ContactGroupKey } from "../../contacts-list";
 import { DBD_REASON, lookupJuristic } from "../../dbd";
@@ -65,7 +65,8 @@ const contactsList = defineOp({
   test: "B2-C1.1",
   async handler({ actor, input }) {
     const ctx = { tenantId: actor.tenantId, systemId: actor.systemId };
-    const sidebar = await loadContactsSidebar(ctx);
+    // C5.4 (L1-M3): ตัวนับ/ป้าย CRM ตามสิทธิ์ CRM ของผู้เรียก
+    const sidebar = await loadContactsSidebar(ctx, undefined, crmViewerOfApi(actor));
     const group: ContactGroupKey = (input.group as ContactGroupKey | undefined) ?? "active";
     const result = await listContactsPage(
       ctx,
@@ -101,7 +102,8 @@ const contactsGet = defineOp({
     const ctx = { tenantId, systemId };
     const id = params.id ?? "";
     // tab "links" คำนวณ header/info/kpi เหมือนทุก tab + เติม linksTab.cards (ต้องใช้ตัดสิน `links.*`)
-    const profile = await (await loadProfileSvc()).contactProfile(ctx, id, { tab: "links", base: "" });
+    // C5.4 (L1-M3): การ์ด CRM ตามสิทธิ์ CRM ของผู้เรียก (คีย์บัญชีไม่มี crm.* ⇒ ไม่เห็นข้อมูล CRM)
+    const profile = await (await loadProfileSvc()).contactProfile(ctx, id, { tab: "links", base: "", crmViewer: crmViewerOfApi(actor) });
     if (!profile) throw new Error(ERR.CONTACT_NOT_FOUND);
     const [groups, docsPage] = await Promise.all([
       loadProfileSvc().then((m) => m.listContactGroupsOf(ctx, id)),
@@ -195,7 +197,7 @@ const linkSuggestions = defineOp({
       email: contact.email,
       taxId: contact.taxId,
       partyId: contact.partyId,
-    });
+    }, crmViewerOfApi(actor));
     return linkSuggestionsView(suggestions);
   },
 });

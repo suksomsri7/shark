@@ -1,0 +1,490 @@
+host ok: QC1 · HEAD 725f0e0a · READY 12:10 725f0e0a port=3215 ai=mock webhook-private=on cwd=shark-crm · start 2026-10-07T12:11:23Z
+
+> shark-in-th@0.1.0 qc:all /root/projects/shark-crm
+> bash scripts/with-gate-lock.sh tsx scripts/qc-all.mts
+
+▶ รันข้อสอบ 380 ชุด (เรียงทีละตัว)
+
+🌱 34 ชุดต้องใช้ชุดข้อมูล QC บัญชี V2: acc-v2-attachments, acc-v2-coa, acc-v2-contact-merge, acc-v2-contact-modal, acc-v2-contact-profile, acc-v2-contacts, acc-v2-dashboard, acc-v2-doc-settings, acc-v2-finance-overview, acc-v2-finance, acc-v2-home, acc-v2-inbox, acc-v2-invitem, acc-v2-journal, acc-v2-list, acc-v2-mobile, acc-v2-overview, acc-v2-party, acc-v2-perf, acc-v2-period-assets, acc-v2-permissions, acc-v2-policy, acc-v2-pos-lines, acc-v2-products, acc-v2-promptpay, acc-v2-reconcile, acc-v2-reports-drill, acc-v2-seed-check, acc-v2-wht-cheque, account-api-read-docs, account-api-read-finance, account-api-read-gl, account-api-read-master, account-api-settings
+   ↩︎ มีชุดข้อมูล QC ใน DB นี้อยู่แล้ว + เฉลยตรงกัน → ข้าม seed (4.1s)
+   ✅ เตรียมชุดข้อมูล QC 4.1s
+
+🌱 36 ชุดต้องใช้ชุดข้อมูล QC บอร์ดงาน: kanban-k1.1, kanban-k1.10, kanban-k1.11, kanban-k1.12, kanban-k1.13, kanban-k1.14, kanban-k1.15, kanban-k1.2, kanban-k1.3, kanban-k1.4, kanban-k1.5, kanban-k1.6, kanban-k1.7, kanban-k1.8, kanban-k1.9, kanban-k2.1, kanban-k2.10, kanban-k2.11, kanban-k2.12, kanban-k2.2, kanban-k2.3, kanban-k2.4, kanban-k2.5, kanban-k2.6, kanban-k2.7, kanban-k2.8, kanban-k2.9, kanban-k3.1, kanban-k3.2, kanban-k3.3, kanban-k3.4, kanban-k3.5, kanban-k3.6, kanban-k3.7, kanban-k3.8, kanban-k3.9
+(node:970530) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+   ↩︎ มีชุดข้อมูล QC บอร์ดงานใน DB นี้อยู่แล้ว → ข้าม seed (1.4s)
+   ✅ เตรียมชุดข้อมูล QC บอร์ดงาน 1.4s
+
+🌱 34 ชุดต้องใช้ชุดข้อมูล QC สมาชิก: member-fix-s1, member-fix-s3, member-m1.10, member-m1.11, member-m1.12, member-m1.2, member-m1.3, member-m1.4, member-m1.5, member-m1.6, member-m1.7, member-m1.8, member-m1.9, member-m2.1, member-m2.10, member-m2.2, member-m2.3, member-m2.4, member-m2.5, member-m2.6, member-m2.7, member-m2.8, member-m2.9, member-m3.1, member-m3.10, member-m3.11, member-m3.2, member-m3.3, member-m3.4, member-m3.5, member-m3.6, member-m3.7, member-m3.8, member-m3.9
+   ↩︎ มีชุดข้อมูล QC สมาชิกใน DB นี้อยู่แล้ว → ข้าม seed (0.2s)
+   ✅ เตรียมชุดข้อมูล QC สมาชิก 0.2s
+
+🌱 42 ชุดต้องใช้ชุดข้อมูล QC CRM: crm-buttons, crm-c0.2, crm-c0.3, crm-c0.4, crm-c0.5, crm-c1.1, crm-c1.10, crm-c1.11, crm-c1.2a, crm-c1.2b, crm-c1.3, crm-c1.4, crm-c1.5, crm-c1.6, crm-c1.7, crm-c1.8, crm-c1.9, crm-c2.0, crm-c2.1, crm-c2.10, crm-c2.11, crm-c2.2, crm-c2.3, crm-c2.4, crm-c2.5, crm-c2.6-web, crm-c2.6, crm-c2.7, crm-c2.8, crm-c2.9, crm-c3.0, crm-c3.1, crm-c3.2, crm-c3.3, crm-c3.4, crm-c3.5, crm-c3.6, crm-c3.7, crm-c3.8, crm-c3.9, crm-forms, crm-v1
+   ↩︎ มีชุดข้อมูล QC CRM ใน DB นี้อยู่แล้ว → ข้าม seed (0.2s)
+
+   ✅ เตรียมชุดข้อมูล QC CRM 3.6s
+
+  ✅ acc-v2-adjust            ผ่านทั้งหมด            17.3s
+  ✅ acc-v2-attachments       -                      7.5s
+  ✅ acc-v2-cheap-routes      -                      10.2s
+  ❌ acc-v2-coa               ผ่าน 101 ข้อ           6.2s
+  ✅ acc-v2-components        ผ่าน 78/78             1.9s
+  ❌ acc-v2-contact-merge     -                      100.0s
+  ✅ acc-v2-contact-modal     -                      5.0s
+  ❌ acc-v2-contact-profile   -                      2.6s
+  ❌ acc-v2-contacts          -                      2.7s
+  ❌ acc-v2-dashboard         -                      2.7s
+  ✅ acc-v2-detail            ผ่านทั้งหมด            7.6s
+  ❌ acc-v2-doc-settings      -                      3.5s
+  ✅ acc-v2-editor            ผ่านทั้งหมด            5.8s
+  ❌ acc-v2-finance-overview  -                      6.6s
+  ❌ acc-v2-finance           -                      2.4s
+  ✅ acc-v2-gl-inclvat        -                      8.0s
+  ✅ acc-v2-groups            ผ่านทั้งหมด            21.5s
+  ✅ acc-v2-guard             ผ่านทั้งหมด            4.4s
+  ❌ acc-v2-home              -                      2.5s
+  ✅ acc-v2-import            ผ่านทั้งหมด            8.9s
+  ❌ acc-v2-inbox             -                      7.7s
+  ❌ acc-v2-invitem           -                      9.1s
+  ❌ acc-v2-journal           -                      2.5s
+  ❌ acc-v2-list              -                      2.8s
+  ❌ acc-v2-mobile            -                      77.3s
+  ✅ acc-v2-nav               ผ่านทั้งหมด            1.3s
+  ❌ acc-v2-overview          -                      3.5s
+  ✅ acc-v2-party             ผ่านทั้งหมด            10.6s
+  ✅ acc-v2-payments          ผ่านทั้งหมด            21.4s
+  ❌ acc-v2-perf              -                      3.3s
+  ❌ acc-v2-period-assets     ผ่าน 79 ข้อ            5.6s
+  ❌ acc-v2-permissions       ผ่าน 137 ข้อ           7.3s
+  ❌ acc-v2-policy            -                      2.7s
+  ❌ acc-v2-pos-lines         -                      9.2s
+  ❌ acc-v2-products          -                      13.4s
+  ❌ acc-v2-promptpay         -                      15.9s
+  ❌ acc-v2-reconcile         -                      2.8s
+  ✅ acc-v2-recurring         ผ่านทั้งหมด            10.0s
+  ❌ acc-v2-reports-drill     ผ่าน 47 ข้อ            3.1s
+  ✅ acc-v2-schema            ผ่านทั้งหมด            12.2s
+  ❌ acc-v2-security          -                      17.9s
+  ❌ acc-v2-seed-check        -                      4.7s
+  ✅ acc-v2-simplicity        -                      17.0s
+  ❌ acc-v2-wht-cheque        -                      6.4s
+  ❌ account-api-ai-external  ผ่าน 0/1               3.8s
+  ❌ account-api-ai-skill     ผ่าน 28/33             7.1s
+  ✅ account-api-core         ผ่าน 64/64             13.4s
+  ✅ account-api-docs         ผ่าน 17/17             2.6s
+  ✅ account-api-keys         ผ่าน 51/51             2.6s
+  ✅ account-api-openapi      ผ่าน 26/26             5.4s
+  ❌ account-api-read-docs    ผ่าน 0/1               3.6s
+  ❌ account-api-read-finance ผ่าน 0/1               4.6s
+  ❌ account-api-read-gl      ผ่าน 0/1               3.0s
+  ❌ account-api-read-master  ผ่าน 0/1               3.1s
+  ❌ account-api-settings     ผ่าน 0/9               18.3s
+  ✅ account-api-webhooks     ผ่าน 22/22             30.8s
+  ✅ account-api-write-docs   ผ่าน 52/52             14.2s
+  ✅ account-api-write-finance ผ่าน 33/33             13.5s
+  ✅ account-api-write-gl     ผ่าน 35/35             8.8s
+  ✅ account-api-write-master ผ่าน 44/44             11.7s
+  ✅ account-api-write-ops    ผ่าน 29/29             11.5s
+  ✅ account-api-write-payments ผ่าน 32/32             17.4s
+  ✅ account-api-write-settings ผ่าน 39/39             9.1s
+  ✅ account-cpa              ผ่าน 107/107           15.3s
+  ✅ account-deep             ผ่าน 10/10             22.2s
+  ✅ account-deletion         ผ่าน 18/18             2.5s
+  ✅ account-doc-settings     ผ่าน 23/23             2.5s
+  ✅ account-gatea            ผ่านทั้งหมด            6.3s
+  ✅ account-p2p3             -                      4.1s
+  ✅ account-qc7              -                      21.3s
+  ✅ add-system-modal         -                      1.2s
+  ✅ ai-actions               ผ่าน 11/12             5.2s
+  ✅ ai-analyst               ผ่าน 9/9               2.3s
+  ✅ ai-automation            -                      3.8s
+  ✅ ai-brain                 ผ่าน 8/8               1.6s
+  ✅ ai-credit                ผ่าน 32/32             4.4s
+  ✅ ai-eval                  ผ่าน 4/4               3.3s
+  ✅ ai-feedback              ผ่าน 5/5               1.7s
+  ✅ ai-growth                ผ่าน 8/8               3.8s
+  ✅ ai-interview             ผ่าน 9/9               1.1s
+  ✅ ai-kanban-board          ผ่าน 3/3               3.4s
+  ✅ ai-memory                ผ่าน 7/7               3.3s
+  ✅ ai-phase-a               ผ่าน 9/9               4.4s
+  ✅ ai-phase-b1              ผ่าน 9/9               5.1s
+  ✅ ai-phase-b2              ผ่าน 11/11             6.8s
+  ✅ ai-plan                  ผ่าน 7/7               4.1s
+  ✅ ai-proactive             ผ่าน 6/6               17.1s
+  ✅ ai-proposals             ผ่าน 16/16             5.0s
+  ✅ ai-quality               ผ่าน 5/5               4.6s
+  ✅ ai-schedule              ผ่าน 8/8               3.9s
+  ✅ ai-skills                ผ่าน 23/23             2.9s
+  ✅ ai-tools                 ผ่าน 18/18             4.9s
+  ✅ ai-tools2                ผ่าน 8/8               4.1s
+  ✅ ai-tuning                ผ่าน 7/7               1.7s
+  ✅ ai-usage                 -                      2.0s
+  ✅ ai-vision                ผ่าน 6/6               4.2s
+  ✅ ai-wave5b                ผ่าน 23/23             6.9s
+  ✅ ai                       ผ่าน 17/17             3.9s
+  ✅ announce                 ผ่าน 8/8               2.1s
+  ✅ approval-edit            ผ่าน 12/12             2.3s
+  ✅ approval-wiring          ผ่าน 7/7               4.6s
+  ✅ approval                 ผ่าน 16/16             2.5s
+  ✅ appstore-ready           ผ่าน 28/28             1.0s
+  ✅ audit-trail              -                      3.7s
+  ✅ automation-authz-hotfix  ผ่าน 12/12             2.1s
+  ✅ automation               ผ่าน 13/13             2.1s
+  ✅ backoffice               ผ่าน 14/14             3.2s
+  ✅ booking-deposit          ผ่าน 18/18             6.8s
+  ✅ booking-edit-schedule    ผ่าน 26/26             5.3s
+  ✅ booking-hours-hr         ผ่าน 13/13             3.4s
+  ✅ booking-race             ผ่าน 8/8               3.6s
+  ✅ branding-b1              ผ่าน 21/21             3.8s
+  ✅ branding-b2              ผ่าน 15/16             1.1s
+  ✅ branding-b3              ผ่าน 19/20             1.7s
+  ✅ branding-b4              ผ่าน 7/7               3.0s
+  ✅ branding-b5              ผ่าน 6/6               1.0s
+  ✅ branding                 ผ่าน 5/5               2.9s
+  ✅ bulk-ops                 ผ่าน 13/13             5.4s
+  ✅ calendar                 ผ่าน 9/9               2.2s
+  ✅ catalog-services         ผ่าน 35/35             4.9s
+  ✅ chat-ai-suggest          ผ่าน 44/44             2.3s
+  ✅ chat-api-v1              ผ่าน 89/89             2.4s
+  ✅ chat-attachments         ผ่าน 37/37             2.5s
+  ✅ chat-business-hours      ผ่าน 73/73             2.3s
+  ✅ chat-core-v2             ผ่าน 47/47             2.5s
+  ✅ chat-inbox-ui            ผ่าน 55/55             1.5s
+  ✅ chat-learning            ผ่าน 32/32             3.0s
+  ✅ chat-member-autolink     ผ่าน 11/11             3.1s
+  ✅ chat-notify-v2           ผ่าน 30/30             2.3s
+  ✅ chat-notify              ผ่าน 23 ข้อ            16.7s
+  ✅ chat-push-badge          ผ่าน 48/48             2.6s
+  ✅ chat-replies             ผ่าน 60/60             2.4s
+  ✅ chat-retention           ผ่าน 50/50             2.3s
+  ✅ chat-security-scope      ผ่าน 20/20             2.2s
+  ✅ chat-security            ผ่าน 38 ข้อ            14.8s
+  ✅ chat-staff-perms         ผ่าน 49/49             2.7s
+  ✅ chat-translate           ผ่าน 34/34             2.4s
+  ✅ chat-v2-composer         ผ่าน 54/54             1.3s
+  ✅ chat-v2-context          ผ่าน 53/53             1.1s
+  ✅ chat-v2-icons            ผ่าน 35/35             1.0s
+  ✅ chat-v2-list             ผ่าน 41/41             1.0s
+  ✅ chat-v2-quickreply       ผ่าน 28/28             1.7s
+  ✅ chat-v2-realtime         ผ่าน 26/26             1.3s
+  ✅ chat-v2-room             ผ่าน 42/42             1.0s
+  ✅ chat-v2-shell            ผ่าน 26/26             0.9s
+  ✅ chat-v2-voice            ผ่าน 50/50             2.3s
+  ✅ cheque-audit             -                      12.5s
+  ✅ clinic-public            ผ่าน 15/15             3.2s
+  ✅ clinic-refund            ผ่าน 13/13             8.7s
+  ✅ clinic                   ผ่าน 8/8               4.0s
+  ✅ connections              -                      1.7s
+  ✅ crm-activity             ผ่าน 12/12             2.8s
+  ✅ crm-buttons              -                      18255.7s
+  ✅ crm-c0.2                 -                      19.8s
+  ✅ crm-c0.3                 -                      86.4s
+  ✅ crm-c0.4                 -                      25.0s
+  ✅ crm-c0.5                 -                      49.8s
+  ✅ crm-c1.1                 -                      95.5s
+  ✅ crm-c1.10                -                      128.0s
+  ✅ crm-c1.11                -                      74.6s
+  ✅ crm-c1.2a                -                      142.3s
+  ❌ crm-c1.2b                -                      152.5s
+  ✅ crm-c1.3                 -                      140.4s
+  ✅ crm-c1.4                 -                      182.9s
+  ✅ crm-c1.5                 -                      203.0s
+  ✅ crm-c1.6                 -                      158.7s
+  ✅ crm-c1.7                 -                      118.9s
+  ✅ crm-c1.8                 -                      143.1s
+  ✅ crm-c1.9                 -                      47.2s
+  ✅ crm-c2.0                 -                      26.5s
+  ❌ crm-c2.1                 -                      98.1s
+  ✅ crm-c2.10                -                      30.0s
+  ✅ crm-c2.11                -                      28.3s
+  ✅ crm-c2.2                 -                      65.0s
+  ✅ crm-c2.3                 -                      152.2s
+  ✅ crm-c2.4                 -                      72.2s
+  ✅ crm-c2.5                 -                      62.9s
+  ✅ crm-c2.6-web             -                      122.2s
+  ✅ crm-c2.6                 -                      146.5s
+  ✅ crm-c2.7                 -                      406.7s
+  ✅ crm-c2.8                 -                      134.4s
+  ✅ crm-c2.9                 -                      44.6s
+  ✅ crm-c3.0                 -                      11.7s
+  ✅ crm-c3.1                 -                      26.2s
+  ✅ crm-c3.2                 -                      89.5s
+  ✅ crm-c3.3                 -                      567.8s
+  ✅ crm-c3.4                 -                      36.2s
+  ✅ crm-c3.5                 -                      129.6s
+  ✅ crm-c3.6                 -                      23.2s
+  ❌ crm-c3.7                 -                      21.6s
+  ✅ crm-c3.8                 -                      170.5s
+  ✅ crm-c3.9                 -                      128.3s
+  ❌ crm-c5.3                 -                      0.9s
+  ❌ crm-c51fix-equiv         -                      1.0s
+  ✅ crm-forms                passed":669,"failures":0,"advisories":32,"skipped":32,"positiveControls":"35/35 1764.8s
+  ❌ crm-perf                 -                      1.1s
+  ✅ crm-v1                   -                      20.0s
+  ✅ crm                      ผ่าน 25/25             4.5s
+  ✅ cron                     ผ่าน 4/4               14.5s
+  ✅ csv-import               ผ่าน 25/25             2.8s
+  ✅ dashboard-builder        ผ่าน 6/6               1.7s
+  ✅ dashboard                ผ่าน 7/7               3.0s
+  ✅ delivery                 ผ่าน 8/8               3.3s
+  ✅ dna-review               ผ่าน 5/5               2.9s
+  ✅ dna                      ผ่าน 27/27             4.8s
+  ✅ domain                   ผ่าน 9/10              2.5s
+  ✅ env-guard                -                      0.9s
+  ✅ form                     ผ่าน 10/10             4.0s
+  ✅ forms-notify             -                      13.7s
+  ✅ hardening                ผ่าน 15/15             2.9s
+  ✅ hardening2               ผ่าน 14/14             1.9s
+  ✅ help-v2                  ผ่าน 8/8               2.0s
+  ✅ hf-apiv1-scope           ผ่าน 143/143           50.1s
+  ✅ hf-hr-privacy            ผ่าน 194/194           141.5s
+  ✅ hf-inventory-atomic      ผ่าน 143/143           224.8s
+  ✅ hf-inventory-authz       ผ่าน 118/118           8.0s
+  ❌ hf-o23                   -                      0.9s
+  ✅ hf-pos-page-authz        ผ่าน 56/56             5.2s
+  ✅ hf-reports-authz         ผ่าน 79/79             6.0s
+  ✅ host-routing             ผ่าน 5/5               1.6s
+  ✅ hotel-money              ผ่าน 5/5               4.3s
+  ✅ hotel-public             ผ่าน 15/15             4.8s
+  ✅ hotel-refund             ผ่าน 15/15             6.1s
+  ✅ hr-attendance            ผ่าน 31/31             3.9s
+  ✅ hr-leave-booking         ผ่าน 14/14             3.9s
+  ✅ hr-payadjust             ผ่าน 27/27             3.3s
+  ✅ hr-roster                ผ่าน 24/24             4.0s
+  ✅ hr                       ผ่าน 9/9               1.8s
+  ✅ i18n                     ผ่าน 7/7               1.0s
+  ✅ i18n2                    ผ่าน 6/6               0.9s
+  ✅ i18n3                    ผ่าน 19/19             0.9s
+  ✅ inventory-account        ผ่าน 23/23             5.3s
+  ✅ inventory-item           ผ่าน 11/11             2.8s
+  ✅ inventory                ผ่าน 12/12             3.4s
+  ✅ kanban-k1.1              ผ่าน 30/30             6.7s
+  ✅ kanban-k1.10             ผ่าน 16/16             5.2s
+  ✅ kanban-k1.11             ผ่าน 20/21             3.4s
+  ✅ kanban-k1.12             ผ่าน 18/18             6.5s
+  ✅ kanban-k1.13             ผ่าน 16/16             5.4s
+  ✅ kanban-k1.14             ผ่าน 15/15             4.0s
+  ✅ kanban-k1.15             ผ่าน 30/30             8.0s
+  ✅ kanban-k1.2              ผ่าน 25/25             7.9s
+  ✅ kanban-k1.3              ผ่าน 29/29             4.1s
+  ✅ kanban-k1.4              ผ่าน 30/30             86.1s
+  ✅ kanban-k1.5              ผ่าน 17/17             2.7s
+  ✅ kanban-k1.6              ผ่าน 20/20             5.3s
+  ✅ kanban-k1.7              ผ่าน 21/21             8.5s
+  ✅ kanban-k1.8              ผ่าน 18/18             3.9s
+  ✅ kanban-k1.9              ผ่าน 18/18             5.4s
+  ✅ kanban-k2.1              ผ่าน 21/22             5.4s
+  ✅ kanban-k2.10             ผ่าน 21/22             2.1s
+  ✅ kanban-k2.11             ผ่าน 29/30             12.0s
+  ✅ kanban-k2.12             ผ่าน 12/13             3.6s
+  ✅ kanban-k2.2              ผ่าน 15/16             3.5s
+  ❌ kanban-k2.3              ผ่าน 15/17             3.3s
+  ✅ kanban-k2.4              ผ่าน 11/12             3.4s
+  ✅ kanban-k2.5              ผ่าน 14/15             2.9s
+  ✅ kanban-k2.6              ผ่าน 16/17             5.8s
+  ✅ kanban-k2.7              ผ่าน 30/31             7.8s
+  ✅ kanban-k2.8              ผ่าน 16/17             6.7s
+  ✅ kanban-k2.9              ผ่าน 25/26             6.9s
+  ✅ kanban-k3.1              ผ่าน 19/20             4.9s
+  ✅ kanban-k3.2              ผ่าน 18/19             4.0s
+  ✅ kanban-k3.3              ผ่าน 14/15             8.2s
+  ✅ kanban-k3.4              ผ่าน 11/11             4.1s
+  ✅ kanban-k3.5              ผ่าน 20/21             5.6s
+  ✅ kanban-k3.6              ผ่าน 9/10              3.7s
+  ✅ kanban-k3.7              ผ่าน 13/14             6.0s
+  ✅ kanban-k3.8              ผ่าน 10/11             4.2s
+  ✅ kanban-k3.9              ผ่าน 12/13             5.5s
+  ✅ kanban-notify            -                      15.1s
+  ✅ kb-auto                  -                      3.2s
+  ✅ kb-search                -                      11.8s
+  ✅ kb                       ผ่าน 12/12             3.8s
+  ✅ kernel-guard             ผ่าน 19/19             1.9s
+  ✅ lot                      ผ่าน 13/13             16.6s
+  ✅ marketing                ผ่าน 8/8               3.1s
+  ✅ marketplace              ผ่าน 7/7               3.5s
+  ✅ meeting-invite           ผ่าน 22/22             2.5s
+  ✅ member-fix-s1            -                      9.6s
+  ✅ member-fix-s2            -                      34.7s
+  ✅ member-fix-s3            -                      8.8s
+  ✅ member-fix-s4            -                      7.7s
+  ❌ member-m1.10             -                      1.8s
+  ❌ member-m1.11             -                      11.8s
+  ❌ member-m1.12             -                      7.0s
+  ✅ member-m1.2              -                      8.2s
+  ❌ member-m1.3              -                      1.7s
+  ✅ member-m1.4              -                      20.9s
+  ❌ member-m1.5              -                      5.8s
+  ❌ member-m1.6              -                      4.3s
+  ❌ member-m1.7              ผ่าน ใน wo-notes/member-M1.7.md — exp 200/404 12.7s
+  ❌ member-m1.8              -                      4.8s
+  ✅ member-m1.9              -                      8.2s
+  ✅ member-m2.1              -                      24.6s
+  ✅ member-m2.10             -                      11.2s
+  ❌ member-m2.2              -                      6.9s
+  ❌ member-m2.3              -                      17.7s
+  ❌ member-m2.4              -                      12.9s
+  ❌ member-m2.5              -                      47.9s
+  ❌ member-m2.6              -                      12.8s
+  ❌ member-m2.7              -                      10.0s
+  ❌ member-m2.8              -                      23.7s
+  ❌ member-m2.9              -                      9.1s
+  ❌ member-m3.1              -                      8.6s
+  ✅ member-m3.10             -                      20.7s
+  ❌ member-m3.11             -                      6.6s
+  ❌ member-m3.2              -                      15.2s
+  ❌ member-m3.3              -                      32.9s
+  ❌ member-m3.4              -                      14.1s
+  ❌ member-m3.5              -                      15.2s
+  ❌ member-m3.6              -                      14.1s
+  ✅ member-m3.7              -                      16.3s
+  ❌ member-m3.8              -                      3.7s
+  ❌ member-m3.9              -                      15.0s
+  ✅ member-public            ผ่าน 19/19             2.2s
+  ✅ member-tier              -                      1.9s
+  ✅ migrate-status           ผ่าน 3/3               5.5s
+  ✅ mobile-app               -                      6.4s
+  ✅ mobile-auth              -                      3.8s
+  ✅ mobile-authz-hotfix      ผ่าน 12/12             5.0s
+  ✅ mobile-chat              -                      7.4s
+  ✅ mobile-help              -                      3.5s
+  ✅ money-mapping            ผ่าน 5/5               5.8s
+  ✅ nav-functions            ผ่านทั้งหมด            1.0s
+  ✅ onboarding-drip          ผ่าน 6/6               15.4s
+  ✅ ops                      ผ่าน 7/7               2.2s
+  ✅ owner-guard              -                      1.0s
+  ✅ pages                    ผ่าน 31/31             3.1s
+  ✅ payment-authz-hotfix     ผ่าน 8/8               1.8s
+  ✅ payment                  ผ่าน 16/16             2.0s
+  ✅ payroll-reverse          -                      3.8s
+  ✅ payroll                  ผ่าน 19/19             3.8s
+  ✅ pdpa                     ผ่าน 0/1               4.4s
+  ✅ point                    ผ่าน 18/18             3.9s
+  ✅ pos-account              ผ่าน 16/16             5.8s
+  ✅ pos-closeday             ผ่าน 22/22             3.9s
+  ✅ pos-coupon               ผ่าน 8/8               3.7s
+  ✅ pos-inventory            ผ่าน 25/25             5.4s
+  ✅ pos-products             ผ่าน 24/24             4.6s
+  ✅ pos-register             ผ่าน 42/42             8.9s
+  ✅ procurement              ผ่าน 12/12             2.9s
+  ✅ public-api               ผ่าน 18/18             2.9s
+  ✅ public-links             ผ่าน 11/11             1.0s
+  ✅ push                     -                      1.6s
+  ✅ pwa                      ผ่าน 5/5               1.0s
+  ✅ queue-public             ผ่าน 20/20             2.5s
+  ✅ rental-public            ผ่าน 16/16             4.8s
+  ✅ rental-race              ผ่าน 6/6               3.0s
+  ✅ rental-refund            ผ่าน 11/11             5.7s
+  ✅ rental                   ผ่าน 11/11             3.4s
+  ✅ report-builder           ผ่าน 9/9               2.0s
+  ✅ restaurant-money         ผ่าน 6/6               4.7s
+  ✅ restaurant-pay           ผ่าน 19/19             4.7s
+  ✅ restaurant-void          ผ่าน 11/11             6.7s
+  ✅ restaurant               -                      5.7s
+  ✅ reward                   ผ่าน 20/20             5.1s
+  ✅ sanitize-hotfix          -                      16.5s
+  ✅ school-public            ผ่าน 18/18             5.2s
+  ✅ school-refund            ผ่าน 11/11             6.0s
+  ✅ school                   ผ่าน 7/7               3.9s
+  ✅ security-hotfix          -                      0.9s
+  ✅ shop-refund              ผ่าน 12/12             5.0s
+  ✅ shop                     ผ่าน 15/15             4.2s
+  ✅ storage                  ผ่าน 11/11             1.6s
+  ✅ subscription-money       ผ่าน 14/14             5.7s
+  ✅ subscription             ผ่าน 11/11             3.6s
+  ✅ support-ai               ผ่าน 7/7               1.9s
+  ✅ support                  ผ่าน 12/12             2.3s
+  ✅ systems-manage           ผ่าน 12/12             1.7s
+  ✅ systems                  ผ่านทั้งหมด            5.8s
+  ✅ tax-print-audit          -                      3.4s
+  ✅ ticket-cancel            ผ่าน 10/10             6.5s
+  ✅ ticket-money             ผ่าน 6/6               4.3s
+  ✅ ticket-public            ผ่าน 24/24             5.2s
+  ✅ unit-location            ผ่าน 40/40             1.1s
+  ✅ vendor-portal            ผ่าน 6/6               2.8s
+  ✅ warehouse                ผ่าน 15/15             4.2s
+  ✅ webhook-ui               ผ่าน 11/11             0.9s
+  ✅ webhook                  ผ่าน 15/15             1.9s
+
+===== QC ALL =====
+ผ่าน 313/380 ชุด · รวม 27098s
+
+❌ ชุดที่แดง:
+   · acc-v2-coa — ผ่าน 101 ข้อ
+   · acc-v2-contact-merge — -
+   · acc-v2-contact-profile — -
+   · acc-v2-contacts — -
+   · acc-v2-dashboard — -
+   · acc-v2-doc-settings — -
+   · acc-v2-finance-overview — -
+   · acc-v2-finance — -
+   · acc-v2-home — -
+   · acc-v2-inbox — -
+   · acc-v2-invitem — -
+   · acc-v2-journal — -
+   · acc-v2-list — -
+   · acc-v2-mobile — -
+   · acc-v2-overview — -
+   · acc-v2-perf — -
+   · acc-v2-period-assets — ผ่าน 79 ข้อ
+   · acc-v2-permissions — ผ่าน 137 ข้อ
+   · acc-v2-policy — -
+   · acc-v2-pos-lines — -
+   · acc-v2-products — -
+   · acc-v2-promptpay — -
+   · acc-v2-reconcile — -
+   · acc-v2-reports-drill — ผ่าน 47 ข้อ
+   · acc-v2-security — -
+   · acc-v2-seed-check — -
+   · acc-v2-wht-cheque — -
+   · account-api-ai-external — ผ่าน 0/1
+   · account-api-ai-skill — ผ่าน 28/33
+   · account-api-read-docs — ผ่าน 0/1
+   · account-api-read-finance — ผ่าน 0/1
+   · account-api-read-gl — ผ่าน 0/1
+   · account-api-read-master — ผ่าน 0/1
+   · account-api-settings — ผ่าน 0/9
+   · crm-c1.2b — -
+   · crm-c2.1 — -
+   · crm-c3.7 — -
+   · crm-c5.3 — -
+   · crm-c51fix-equiv — -
+   · crm-perf — -
+   · hf-o23 — -
+   · kanban-k2.3 — ผ่าน 15/17
+   · member-m1.10 — -
+   · member-m1.11 — -
+   · member-m1.12 — -
+   · member-m1.3 — -
+   · member-m1.5 — -
+   · member-m1.6 — -
+   · member-m1.7 — ผ่าน ใน wo-notes/member-M1.7.md — exp 200/404
+   · member-m1.8 — -
+   · member-m2.2 — -
+   · member-m2.3 — -
+   · member-m2.4 — -
+   · member-m2.5 — -
+   · member-m2.6 — -
+   · member-m2.7 — -
+   · member-m2.8 — -
+   · member-m2.9 — -
+   · member-m3.1 — -
+   · member-m3.11 — -
+   · member-m3.2 — -
+   · member-m3.3 — -
+   · member-m3.4 — -
+   · member-m3.5 — -
+   · member-m3.6 — -
+   · member-m3.8 — -
+   · member-m3.9 — -
+
+JSON_SUMMARY {"total":380,"passed":313,"findings":[{"id":"acc-v2-coa","detail":"ผ่าน 101 ข้อ"},{"id":"acc-v2-contact-merge","detail":"-"},{"id":"acc-v2-contact-profile","detail":"-"},{"id":"acc-v2-contacts","detail":"-"},{"id":"acc-v2-dashboard","detail":"-"},{"id":"acc-v2-doc-settings","detail":"-"},{"id":"acc-v2-finance-overview","detail":"-"},{"id":"acc-v2-finance","detail":"-"},{"id":"acc-v2-home","detail":"-"},{"id":"acc-v2-inbox","detail":"-"},{"id":"acc-v2-invitem","detail":"-"},{"id":"acc-v2-journal","detail":"-"},{"id":"acc-v2-list","detail":"-"},{"id":"acc-v2-mobile","detail":"-"},{"id":"acc-v2-overview","detail":"-"},{"id":"acc-v2-perf","detail":"-"},{"id":"acc-v2-period-assets","detail":"ผ่าน 79 ข้อ"},{"id":"acc-v2-permissions","detail":"ผ่าน 137 ข้อ"},{"id":"acc-v2-policy","detail":"-"},{"id":"acc-v2-pos-lines","detail":"-"},{"id":"acc-v2-products","detail":"-"},{"id":"acc-v2-promptpay","detail":"-"},{"id":"acc-v2-reconcile","detail":"-"},{"id":"acc-v2-reports-drill","detail":"ผ่าน 47 ข้อ"},{"id":"acc-v2-security","detail":"-"},{"id":"acc-v2-seed-check","detail":"-"},{"id":"acc-v2-wht-cheque","detail":"-"},{"id":"account-api-ai-external","detail":"ผ่าน 0/1"},{"id":"account-api-ai-skill","detail":"ผ่าน 28/33"},{"id":"account-api-read-docs","detail":"ผ่าน 0/1"},{"id":"account-api-read-finance","detail":"ผ่าน 0/1"},{"id":"account-api-read-gl","detail":"ผ่าน 0/1"},{"id":"account-api-read-master","detail":"ผ่าน 0/1"},{"id":"account-api-settings","detail":"ผ่าน 0/9"},{"id":"crm-c1.2b","detail":"-"},{"id":"crm-c2.1","detail":"-"},{"id":"crm-c3.7","detail":"-"},{"id":"crm-c5.3","detail":"-"},{"id":"crm-c51fix-equiv","detail":"-"},{"id":"crm-perf","detail":"-"},{"id":"hf-o23","detail":"-"},{"id":"kanban-k2.3","detail":"ผ่าน 15/17"},{"id":"member-m1.10","detail":"-"},{"id":"member-m1.11","detail":"-"},{"id":"member-m1.12","detail":"-"},{"id":"member-m1.3","detail":"-"},{"id":"member-m1.5","detail":"-"},{"id":"member-m1.6","detail":"-"},{"id":"member-m1.7","detail":"ผ่าน ใน wo-notes/member-M1.7.md — exp 200/404"},{"id":"member-m1.8","detail":"-"},{"id":"member-m2.2","detail":"-"},{"id":"member-m2.3","detail":"-"},{"id":"member-m2.4","detail":"-"},{"id":"member-m2.5","detail":"-"},{"id":"member-m2.6","detail":"-"},{"id":"member-m2.7","detail":"-"},{"id":"member-m2.8","detail":"-"},{"id":"member-m2.9","detail":"-"},{"id":"member-m3.1","detail":"-"},{"id":"member-m3.11","detail":"-"},{"id":"member-m3.2","detail":"-"},{"id":"member-m3.3","detail":"-"},{"id":"member-m3.4","detail":"-"},{"id":"member-m3.5","detail":"-"},{"id":"member-m3.6","detail":"-"},{"id":"member-m3.8","detail":"-"},{"id":"member-m3.9","detail":"-"}]}
+ ELIFECYCLE  Command failed with exit code 1.
+exit=1 end 2026-10-07T19:51:47Z
+ALLDONE

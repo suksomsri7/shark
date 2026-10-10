@@ -1,0 +1,81 @@
+
+===== QC WO 8.1 · ตั้งค่าเอกสาร (§9.2 · f10) =====
+🗄️  DB QC: ep-plain-art-ao3djg4u-pooler.c-2.ap-southeast-1.aws.neon.tech
+
+T1 ไวยากรณ์รูปแบบเลขที่:
+  ✅ T1.1 {ปี}{เดือน} + {0000}
+  ✅ T1.2 ตัวแปรอังกฤษให้ผลเดียวกับไทย
+  ✅ T1.3 {ปีสั้น}/{YY}
+  ✅ T1.4 ความกว้างของ {0} = จำนวนศูนย์ที่พิมพ์
+  ✅ T1.5 {สาขา}/{BR} = รหัสสาขา
+  ✅ T1.6 {คำนำหน้า}/{PREFIX}
+  ✅ T1.7 {วัน}/{DD} = วันที่ตามเวลาไทย
+  ✅ T1.8 {SEQ} เดิมยังใช้ได้ (เติมศูนย์ 4)
+  ✅ T1.9 ตัวแปรที่ไม่รู้จัก ปล่อยตามที่พิมพ์
+  ✅ T1.10 สาขาว่าง = 00000
+  ✅ T1.11 ใช้เวลาไทยเสมอ (00:30 ของ 1 ต.ค. เวลาไทย → เดือน 10 ไม่ใช่ 09)
+  ✅ T1.12 รูปแบบเริ่มต้นตามนโยบาย (คงสูตรเดิมของระบบ)
+  ✅ T1.13 รับค่า reset ทั้ง MONTH/MONTHLY · YEAR/YEARLY
+  ✅ T1.14 คีย์งวด: ไม่รีเซ็ต=- · รายปี=YYYY · รายเดือน=YYYY-MM
+  ✅ T1.15 ตัวอย่างในหน้าตั้งค่าใช้สูตรเดียวกับตอนออกเลขจริง
+
+T7 วันครบกำหนด:
+  ✅ T7.1 นับจากวันที่ออก + 30
+  ✅ T7.2 นับจากสิ้นเดือน + 30 (ก.ย. 30 วัน)
+  ✅ T7.3 สิ้นเดือน ก.พ. ปีอธิกสุรทิน 2028
+  ✅ T7.4 ข้ามปี
+  ✅ T7.5 ค่าเริ่มต้นต่อชนิด (QT/IV/PO/RE)
+
+T13 เทมเพลตพิมพ์:
+  ✅ T13.1 มาตรฐาน: ป้ายไทย + ระยะปกติ
+  ✅ T13.2 หมายเหตุ/เงื่อนไขของชนิดนั้นถูกใช้ก่อนค่ากลาง
+  ✅ T13.3 ชนิดที่ไม่ได้ตั้งหมายเหตุ = ตกไปใช้ข้อความกลางของกิจการ
+  ✅ T13.4 ภาษาอังกฤษเปลี่ยนป้ายทุกช่อง
+  ✅ T13.5 กะทัดรัด: บีบระยะ + บังคับปิดรูปสินค้า
+  ✅ T13.6 มีรูปสินค้า: บังคับเปิดคอลัมน์รูป
+  ✅ T13.7 ฟิลด์ที่ปิดไว้ = ไม่ถูกส่งให้หน้าพิมพ์
+  ✅ T13.9 BILLING_NOTE: ถูกจัดเป็นเอกสารกลุ่ม + ปิดคอลัมน์สินค้าแม้เลือกเทมเพลต "มีรูปสินค้า"
+  ✅ T13.9 COMBINED_PAYMENT: ถูกจัดเป็นเอกสารกลุ่ม + ปิดคอลัมน์สินค้าแม้เลือกเทมเพลต "มีรูปสินค้า"
+  ✅ T13.10 เอกสารปกติยังเป็นตารางสินค้าเหมือนเดิม (ไม่ใช่กลุ่ม)
+  ✅ T13.11 ป้ายของเอกสารกลุ่มมีครบ 2 ภาษา (TH ตรงคำของ WO 1.7)
+  ✅ T13.8 ข้อความตามกฎหมายพิมพ์เฉพาะใบกำกับภาษี
+
+T17 ตั้งค่าของร้าน QC = เฉลย:
+  ❌ T17.1 เลขที่เอกสาร 3 ชนิดที่ตั้งไว้ — ได้ {} · ควรได้ {"INVOICE":{"prefix":"INV","pattern":"INV-{ปีสั้น}{เดือน}-{0000}","reset":"MONTH"},"QUOTATION":{"prefix":"QO","pattern":"QO-{ปี}-{00000}","reset":"YEAR"},"EXPENSE":{"prefix":"EXP","pattern":"EXP-{0000}","reset":"NONE"}}
+  ❌ T17.2 หมายเหตุ/เงื่อนไขต่อชนิด — ได้ {} · ควรได้ {"INVOICE":{"footer":"ขอบคุณที่ใช้บริการ SIAM DIVE QC — โอนแล้วส่งสลิปทางไลน์ได้เลย","terms":"ชำระภายใน 30 วันนับจากวันที่ออกใบแจ้งหนี้"},"QUOTATION":{"footer":"ราคานี้รวมอุปกรณ์ดำน้ำครบชุด","terms":"มัดจำ 30% เมื่อยืนยันการจอง"}}
+  ❌ T17.3 วันครบกำหนด (รวมนับจากสิ้นเดือน) — ได้ {"quotationValidDays":30,"invoiceCreditDays":30,"purchaseOrderDueDays":7,"basis":"ISSUE"} · ควรได้ {"quotationValidDays":15,"invoiceCreditDays":30,"purchaseOrderDueDays":10,"basis":"MONTH_END"}
+  ❌ T17.4 เทมเพลตพิมพ์/ภาษา/ฟิลด์ — ได้ ["STANDARD","TH",false,false] · ควรได้ ["COMPACT","TH",true,false]
+  ✅ T17.5 ลิงก์สาธารณะ
+  ✅ T17.6 ใบกำกับอัตโนมัติ
+  ❌ T17.7 กฎอัตโนมัติ (ล็อกเลข/เตือนข้ามลำดับ) — ได้ {"lockNumberOnIssue":true,"warnOnGap":false} · ควรได้ {"lockNumberOnIssue":true,"warnOnGap":true}
+  ✅ T17.8 ลิงก์ขอใบกำกับ
+  ❌ T17.9 คอลัมน์เดิม defaultValidDays/defaultDueDays ตรงกับตั้งค่าใหม่ (แหล่งความจริงเดียว) — ได้ [30,30] · ควรได้ [15,30]
+  ✅ T17.10 ตารางเลขที่เอกสารมีครบทุกชนิดที่ตั้งค่าได้
+  ❌ T17.11 ตัวอย่างเลขถัดไปของใบแจ้งหนี้ใช้รูปแบบที่ตั้งไว้ (ได้ IV-2026-09-0001) — IV-2026-09-0001
+
+T9 ช่องทางรับชำระบนเอกสาร:
+  ❌ T9.1 ลำดับตรงกับที่ตั้งไว้ — ได้ [] · ควรได้ ["cmungk3k800ry56kzx0ghyjnt","cmungk38t00l656kzmlbrjn9q","cmungk31600go56kz2xmvdxhn"]
+  ❌ T9.2 รหัสช่องทางเรียงตามลำดับที่ตั้งไว้ — ได้ [] · ควรได้ ["EWL001","BSV001","CSH001"]
+  ✅ T9.3 ช่องทางที่ไม่ได้ติ๊ก 'แสดงบนเอกสาร' ไม่ถูกพิมพ์ (เงินสดย่อย)
+
+T10 แท็กเอกสาร (ร้าน QC · อ่านอย่างเดียว):
+  ❌ T10.1 แท็กที่ seed ไว้ — ได้ [] · ควรได้ [{"name":"ทริปสิมิลัน","color":"blue","docTypes":["INVOICE","QUOTATION"]},{"name":"ลูกค้าองค์กร","color":"green","docTypes":[]}]
+(node:975728) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+/root/projects/shark-crm/scripts/qc-acc-v2-doc-settings.mts:276
+  eq("T10.2 นับจำนวนเอกสารที่ติดแท็กจริง (จาก tags[] ของเอกสาร)", tripTag.usageCount, 1);
+                                                                    ^
+
+
+TypeError: Cannot read properties of undefined (reading 'usageCount')
+    at <anonymous> (/root/projects/shark-crm/scripts/qc-acc-v2-doc-settings.mts:276:75)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+
+Node.js v20.20.2

@@ -6,7 +6,7 @@
 // 🔴 uiVersion: หน้านี้มีเฉพาะ CRM v2 — ระบบที่ยังไม่เปิด = FORBIDDEN ภาษาไทย (assertCrmV2)
 // 🔴 ข้อความ error ไม่โทษผู้ใช้ · error ที่ไม่รู้จัก = ข้อความกลางภาษาไทย (รายละเอียดไม่หลุดไปหน้าจอ)
 
-import { revalidatePath } from "next/cache";
+import { revalidateAndWake } from "@/lib/modules/crm/outbox-wake"; // CRM C5.4-D ▸ L3-M1b: รีเฟรชหน้า + ปลุกคิว outbox หลังเขียนสำเร็จ ◂
 import { requireTenant } from "@/lib/core/context";
 import { ForbiddenError } from "@/lib/core/rbac";
 import { toMemberActor } from "@/lib/modules/member";
@@ -41,7 +41,7 @@ function failOf(e: unknown): { ok: false; error: string; code?: string } {
   return { ok: false, error: "บันทึกไม่สำเร็จ ระบบยกเลิกรายการให้แล้ว (กฎไม่เปลี่ยน) — ลองใหม่อีกครั้ง" };
 }
 
-const touch = (systemId: string) => revalidatePath(`/app/sys/${systemId}/crm/settings/automation`);
+const touch = (systemId: string) => revalidateAndWake(`/app/sys/${systemId}/crm/settings/automation`);
 
 /** สร้างกฎใหม่ */
 export async function createCrmRuleAction(systemId: string, input: CrmRuleInput): Promise<{ ok: true; id: string } | { ok: false; error: string; code?: string }> {

@@ -303,8 +303,10 @@ export function crmNotifPath(refType: string, refId: string): string {
   const id = String(refId ?? "").trim();
   if (refType === "CrmDeal" && id) return `/deals/${id}`;
   if (refType === "CrmContact" && id) return `/contacts/${id}`;
+  if (refType === "CrmContactBatch") return "/contacts"; // CRM C5.4-E r2 ▸ SF-3: lead ที่ได้รับเป็นชุด → รายชื่อผู้ติดต่อ ◂
   if (refType === "CrmCompany" && id) return `/companies/${id}`;
   if (refType === "CrmActivity") return "/activities";
+  if (refType === "CrmTasksToday") return "/activities"; // CRM C5.4-E ▸ L6-M4 (+ &status=today&scope=mine ผ่าน linkQuery) ◂
   if (refType === "CrmStaleDeals") return "/deals";
   if (refType === "CrmCommission") return "/settings/commissions"; // CRM C3.3 ▸ รายการคอมมิชชัน (ลิงก์ไปหน้าอนุมัติ) ◂
   // CRM C3.2 ▸ (รีวิว N5) โควตาถึงเกณฑ์ → หน้าแรกของระบบ CRM (KPI "ชนะเดือนนี้ vs โควตา") · "" = หน้าแรก (`crmNotifLink` สร้าง `/app/sys/<id>`) ◂

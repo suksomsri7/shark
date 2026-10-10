@@ -1,0 +1,9 @@
+run 28 Sep 2026 · QC2 · tenant qc-hunt54b-cqadccqe (cleanup: tenantsLeft 0 · usersLeft 0)
+A_portal: legacy_valid_before=true · legacy_valid_after_end=false · readd_legacy=ok · legacy_OLD_session_valid_after_readd=TRUE (LEAK)
+          control fixed path: remove→re-add · fixed_OLD_session_valid_after_readd=false (held)
+B_keys:   owner crm.admin key rotated by STAFF accountant via rotateApiKey({tenantId}, crmKeyId): newKeySystem=CRM · creator=accountant ·
+          scopesCopied=true · rawKeyReturned=true · owner_key_revoked=TRUE · new_key_passes_guard=false (escalation held) · mint guard refuses accountant
+C_erase (X = secondary CrmDealContact on a deal whose primary is Y):
+  before: title has name/dashed phone/email local · stage note 1 · deal activity 1 · own activity 1 · card 1 · won post 1
+  after : title "ต่อสัญญา [ข้อมูลถูกลบ] โทร 089-123-4567 somying.<rand>" (phone-dashed + email local LEFT) · stageNotesWithName 1 (LEAK) ·
+          dealActivityWithName 1 (LEAK) · ownActivityWithName 0 (positive control) · cardsWithName 1 (LEAK) · wonPostsWithName 1 (LEAK)

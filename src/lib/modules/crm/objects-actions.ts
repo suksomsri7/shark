@@ -10,7 +10,7 @@
 //    FORBIDDEN (ระบบ uiVersion 1 = FORBIDDEN ผ่าน CrmV2DisabledError) · ข้อความไทยที่ไม่โทษผู้ใช้ · ไม่ส่งรายละเอียดทางเทคนิคออกไป
 // 🔴 ชุด action ของฟิลด์/ส่วน = payload ของ member `fields-actions` + `objectKey` (ตระกูลผลลัพธ์เดียวกัน) ⇒ FieldDesigner สลับชุดได้
 
-import { revalidatePath } from "next/cache";
+import { revalidateAndWake } from "./outbox-wake"; // CRM C5.4-D ▸ L3-M1b: รีเฟรชหน้า + ปลุกคิว outbox หลังเขียนสำเร็จ ◂
 import { Prisma } from "@prisma/client";
 import { requireTenant } from "@/lib/core/context";
 import { ForbiddenError } from "@/lib/core/rbac";
@@ -24,13 +24,14 @@ import { crmUsage, perParentCap } from "./limits"; // CRM C3.9 ▸ เพดา�
 import { objectKeyProblem, ObjectsError, OBJECT_PARENT_TYPES, type ObjectDto, type ObjectParentType, type RecordDto } from "./objects-shared";
 
 type Code = "NOT_FOUND" | "VALIDATION" | "DUPLICATE" | "CONFIRM_REQUIRED" | "FORBIDDEN";
-type Fail = { ok: false; error: string; reason: string; code: Code };
+// C4.3-fix part 2 ▸ fieldErrors = ช่องที่ข้อความเป็นของ (บริการติด `field` มากับ ObjectsError) — ฟอร์มแสดงใต้ช่อง + โฟกัส ◂
+type Fail = { ok: false; error: string; reason: string; code: Code; fieldErrors?: Record<string, string> };
 type Ok<T> = { ok: true; data: T };
 type Result<T> = Promise<Ok<T> | Fail>;
 
 type Ctx = { tenantId: string; systemId: string; actorUserId: string };
 
-const fail = (code: Code, message: string): Fail => ({ ok: false, error: message, reason: message, code });
+const fail = (code: Code, message: string, field?: string): Fail => ({ ok: false, error: message, reason: message, code, ...(field ? { fieldErrors: { [field]: message } } : {}) });
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
 const txt = (v: unknown): string => (typeof v === "string" ? v : "");
 const settingsPath = (systemId: string) => `/app/sys/${systemId}/crm/settings/objects`;
@@ -60,12 +61,12 @@ function failOf(e: unknown): Fail {
   const digest = isObj(e) && typeof (e as { digest?: unknown }).digest === "string" ? String((e as { digest: string }).digest) : "";
   if (digest.startsWith("NEXT_")) throw e;
   if (e instanceof CrmV2DisabledError) return fail("FORBIDDEN", e.message);
-  if (e instanceof ObjectsError) return fail(e.code, e.message);
+  if (e instanceof ObjectsError) return fail(e.code, e.message, e.field);
   if (e instanceof ForbiddenError) {
     return fail("FORBIDDEN", /[ก-๙]/.test(e.message) ? e.message : "บัญชีนี้ยังไม่ได้รับสิทธิ์ทำรายการนี้ในระบบ CRM — ขอให้เจ้าของร้านเปิดสิทธิ์ให้ แล้วลองอีกครั้ง");
   }
   // AUDIT-CLASS X3: key ซ้ำที่ชนกันพร้อมกัน — unique index ตัดสิน · ผู้แพ้ได้ข้อความไทย
-  if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") return fail("DUPLICATE", "ชื่ออ้างอิงนี้ถูกใช้ไปแล้วในระบบ CRM นี้ — ตั้งชื่ออ้างอิงอื่น");
+  if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") return fail("DUPLICATE", "ชื่ออ้างอิงนี้ถูกใช้ไปแล้วในระบบ CRM นี้ — ตั้งชื่ออ้างอิงอื่น", "key");
   const name = e instanceof Error ? e.name : "";
   const msg = e instanceof Error ? e.message : "";
   const thai = /[ก-๙]/.test(msg);
@@ -91,7 +92,7 @@ export async function createObjectAction(
     const inp = isObj(input) ? input : ({} as Record<string, unknown>);
     // AUDIT-CLASS X6: กติกา key ตัวเดียว (มติ C1.9 ข้อ 1) ตรวจก่อนแตะบริการ — รูปแบบผิด/key สงวน = VALIDATION ไม่มีแถว
     const problem = objectKeyProblem(inp.key);
-    if (problem) return fail("VALIDATION", problem);
+    if (problem) return fail("VALIDATION", problem, "key");
     const parentType = txt(inp.parentType) as ObjectParentType;
     if (!OBJECT_PARENT_TYPES.includes(parentType)) return fail("VALIDATION", "เลือกว่ารายการของวัตถุนี้เป็นของใคร: สมาชิก · ผู้ติดต่อ · บริษัท · ดีล · หรือไม่ผูกกับใคร");
     const obj = await objects.create(ctx, actor, {
@@ -104,7 +105,7 @@ export async function createObjectAction(
       portalVisible: inp.portalVisible === true,
       templateKey: txt(inp.templateKey).trim() || null,
     });
-    revalidatePath(settingsPath(ctx.systemId));
+    revalidateAndWake(settingsPath(ctx.systemId));
     return { ok: true, data: obj };
   } catch (e) {
     return failOf(e);
@@ -123,7 +124,7 @@ export async function updateObjectAction(
     if (p.key !== undefined && txt(p.key).trim() !== txt(objectKey).trim()) {
       // AUDIT-CLASS X6: เปลี่ยนชื่ออ้างอิง = กติกาเดียวกับตอนสร้าง (บริการตรวจต่อ: มีรายการแล้ว/มีฟิลด์ LOOKUP ชี้มา = ปฏิเสธ)
       const problem = objectKeyProblem(p.key);
-      if (problem) return fail("VALIDATION", problem);
+      if (problem) return fail("VALIDATION", problem, "key");
       clean.key = txt(p.key).trim();
     }
     if (p.label !== undefined) clean.label = txt(p.label);
@@ -133,7 +134,7 @@ export async function updateObjectAction(
     if (p.showAsTab !== undefined) clean.showAsTab = p.showAsTab === true;
     if (p.portalVisible !== undefined) clean.portalVisible = p.portalVisible === true;
     const obj = await objects.update(ctx, actor, txt(objectKey), clean);
-    revalidatePath(settingsPath(ctx.systemId));
+    revalidateAndWake(settingsPath(ctx.systemId));
     return { ok: true, data: obj };
   } catch (e) {
     return failOf(e);
@@ -146,7 +147,7 @@ export async function archiveObjectAction(systemId: string, objectKey: string, o
     const { ctx, actor } = await gate(systemId, "crm.object.manage");
     const o: Record<string, unknown> = isObj(opts) ? opts : {};
     const obj = await objects.archive(ctx, actor, txt(objectKey), { confirmKey: txt(o.confirmKey) || null, reason: txt(o.reason) || null });
-    revalidatePath(settingsPath(ctx.systemId));
+    revalidateAndWake(settingsPath(ctx.systemId));
     return { ok: true, data: obj };
   } catch (e) {
     return failOf(e);
@@ -157,7 +158,7 @@ export async function restoreObjectAction(systemId: string, objectKey: string): 
   try {
     const { ctx, actor } = await gate(systemId, "crm.object.manage");
     const obj = await objects.restore(ctx, actor, txt(objectKey));
-    revalidatePath(settingsPath(ctx.systemId));
+    revalidateAndWake(settingsPath(ctx.systemId));
     return { ok: true, data: obj };
   } catch (e) {
     return failOf(e);
@@ -180,7 +181,7 @@ async function designCtx(input: unknown): Promise<{ ctx: Ctx; fctx: fields.Field
 
 async function designAudit(ctx: Ctx, action: string, targetType: string, targetId: string | undefined, after: unknown) {
   await writeAudit({ tenantId: ctx.tenantId, actorId: ctx.actorUserId, action, targetType, targetId, after });
-  revalidatePath(settingsPath(ctx.systemId));
+  revalidateAndWake(settingsPath(ctx.systemId));
 }
 
 export async function createObjectSectionAction(input: DesignIn & fields.CreateSectionInput): Result<fields.SectionDef> {
@@ -307,7 +308,7 @@ export async function createRecordAction(systemId: string, objectKey: string, in
       title: txt(i.title).trim() || null,
       values: cleanValues(i.values),
     });
-    revalidatePath(listPath(ctx.systemId, rec.objectKey));
+    revalidateAndWake(listPath(ctx.systemId, rec.objectKey));
     return { ok: true, data: rec };
   } catch (e) {
     return failOf(e);
@@ -326,7 +327,7 @@ export async function updateRecordAction(systemId: string, objectKey: string, re
       ...(p.title !== undefined && p.title !== null && txt(p.title).trim() ? { title: txt(p.title) } : {}),
       values: cleanValues(p.values),
     });
-    revalidatePath(`${listPath(ctx.systemId, rec.objectKey)}/${rec.id}`);
+    revalidateAndWake(`${listPath(ctx.systemId, rec.objectKey)}/${rec.id}`);
     return { ok: true, data: rec };
   } catch (e) {
     return failOf(e);
@@ -338,7 +339,7 @@ export async function archiveRecordAction(systemId: string, objectKey: string, r
   try {
     const { ctx, actor } = await gate(systemId, "crm.record.read");
     const rec = await objects.records.archive(ctx, actor, txt(objectKey), txt(recordId));
-    revalidatePath(listPath(ctx.systemId, rec.objectKey));
+    revalidateAndWake(listPath(ctx.systemId, rec.objectKey));
     return { ok: true, data: rec };
   } catch (e) {
     return failOf(e);
@@ -350,10 +351,12 @@ export async function importRecordsAction(systemId: string, objectKey: string, i
   try {
     const { ctx, actor } = await gate(systemId, "crm.record.create");
     const r = await objects.records.import(ctx, actor, txt(objectKey), { csv: txt(isObj(input) ? input.csv : "") });
-    revalidatePath(listPath(ctx.systemId, txt(objectKey)));
+    revalidateAndWake(listPath(ctx.systemId, txt(objectKey)));
     return { ok: true, data: r };
   } catch (e) {
-    return failOf(e);
+    // C4.3-fix part 2 ▸ ฟอร์มนำเข้ามีช่องเดียว: ไฟล์ถูกปฏิเสธ (ว่าง/ใหญ่เกิน/หัวคอลัมน์ผิด) = ข้อความของช่อง CSV ◂
+    const f = failOf(e);
+    return f.code === "VALIDATION" && !f.fieldErrors ? { ...f, fieldErrors: { csv: f.error } } : f;
   }
 }
 
@@ -376,8 +379,8 @@ export async function saveObjectViewAction(
     const { ctx, actor } = await gate(systemId, "crm.record.read");
     const i: Record<string, unknown> = isObj(input) ? input : {};
     const name = txt(i.name).trim();
-    if (!name) return fail("VALIDATION", "ตั้งชื่อมุมมองก่อนจึงบันทึกได้");
-    if (name.length > VIEW_NAME_MAX) return fail("VALIDATION", `ชื่อมุมมองยาวเกิน ${VIEW_NAME_MAX} ตัวอักษร — ตั้งให้สั้นลง`);
+    if (!name) return fail("VALIDATION", "ตั้งชื่อมุมมองก่อนจึงบันทึกได้", "name");
+    if (name.length > VIEW_NAME_MAX) return fail("VALIDATION", `ชื่อมุมมองยาวเกิน ${VIEW_NAME_MAX} ตัวอักษร — ตั้งให้สั้นลง`, "name");
     const scope = i.scope === "TEAM" ? "TEAM" : "PRIVATE";
     if (scope === "TEAM" && actor.role !== "OWNER" && actor.role !== "MANAGER") {
       return fail("FORBIDDEN", 'บันทึกมุมมองแบบ "ทั้งร้าน" ได้เฉพาะเจ้าของร้านและผู้จัดการ — บันทึกเป็นมุมมองส่วนตัวแทนได้');
@@ -407,7 +410,7 @@ export async function saveObjectViewAction(
       select: { id: true, name: true },
     });
     await writeAudit({ tenantId: ctx.tenantId, actorId: ctx.actorUserId, action: "crm.object.view.create", targetType: "MemberSavedView", targetId: row.id, after: { objectKey, scope, filterKeys: Object.keys(f) } });
-    revalidatePath(listPath(ctx.systemId, txt(objectKey)));
+    revalidateAndWake(listPath(ctx.systemId, txt(objectKey)));
     return { ok: true, data: row };
   } catch (e) {
     return failOf(e);
@@ -440,11 +443,11 @@ export async function renameObjectViewAction(systemId: string, objectKey: string
     const { ctx, actor } = await gate(systemId, "crm.record.read");
     const row = await editableView(ctx, actor, txt(objectKey), txt(viewId));
     const name = txt(isObj(input) ? input.name : "").trim();
-    if (!name) return fail("VALIDATION", "ตั้งชื่อมุมมองก่อนจึงบันทึกได้");
-    if (name.length > VIEW_NAME_MAX) return fail("VALIDATION", `ชื่อมุมมองยาวเกิน ${VIEW_NAME_MAX} ตัวอักษร — ตั้งให้สั้นลง`);
+    if (!name) return fail("VALIDATION", "ตั้งชื่อมุมมองก่อนจึงบันทึกได้", "name");
+    if (name.length > VIEW_NAME_MAX) return fail("VALIDATION", `ชื่อมุมมองยาวเกิน ${VIEW_NAME_MAX} ตัวอักษร — ตั้งให้สั้นลง`, "name");
     const out = await prisma.memberSavedView.update({ where: { id: row.id }, data: { name }, select: { id: true, name: true } });
     await writeAudit({ tenantId: ctx.tenantId, actorId: ctx.actorUserId, action: "crm.object.view.rename", targetType: "MemberSavedView", targetId: row.id, before: { name: row.name }, after: { name } });
-    revalidatePath(listPath(ctx.systemId, txt(objectKey)));
+    revalidateAndWake(listPath(ctx.systemId, txt(objectKey)));
     return { ok: true, data: out };
   } catch (e) {
     return failOf(e);
@@ -457,7 +460,7 @@ export async function deleteObjectViewAction(systemId: string, objectKey: string
     const row = await editableView(ctx, actor, txt(objectKey), txt(viewId));
     await prisma.memberSavedView.delete({ where: { id: row.id } });
     await writeAudit({ tenantId: ctx.tenantId, actorId: ctx.actorUserId, action: "crm.object.view.delete", targetType: "MemberSavedView", targetId: row.id, before: { name: row.name, scope: row.scope, objectKey } });
-    revalidatePath(listPath(ctx.systemId, txt(objectKey)));
+    revalidateAndWake(listPath(ctx.systemId, txt(objectKey)));
     return { ok: true, data: { id: row.id } };
   } catch (e) {
     return failOf(e);

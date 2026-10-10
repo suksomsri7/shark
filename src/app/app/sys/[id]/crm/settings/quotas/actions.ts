@@ -6,7 +6,7 @@
 // 🔴 ด่าน: uiVersion 2 (assertCrmV2) → คีย์ `crm.quota.manage` (assertCanCrm) → บริการตรวจซ้ำ + งวดที่จบแล้วต้อง MANAGER/OWNER
 // 🔴 ข้อความ error ไม่โทษผู้ใช้ · error ที่ไม่รู้จัก = ข้อความกลาง (รายละเอียดไม่หลุดไปหน้าจอ)
 
-import { revalidatePath } from "next/cache";
+import { revalidateAndWake } from "@/lib/modules/crm/outbox-wake"; // CRM C5.4-D ▸ L3-M1b: รีเฟรชหน้า + ปลุกคิว outbox หลังเขียนสำเร็จ ◂
 import { requireTenant } from "@/lib/core/context";
 import { ForbiddenError } from "@/lib/core/rbac";
 import { toMemberActor } from "@/lib/modules/member";
@@ -34,8 +34,8 @@ export async function setQuotaAction(
       // รีวิว S2: ไม่ส่งมา = คงค่าเดิม (ไม่ล้างเป็น null) · targetActivities/note ไม่อยู่ในหน้าจอนี้ ⇒ ไม่แตะ
       ...(input?.targetDeals !== undefined ? { targetDeals: input.targetDeals } : {}),
     });
-    revalidatePath(`/app/sys/${systemId}/crm/settings/quotas`);
-    revalidatePath(`/app/sys/${systemId}`);
+    revalidateAndWake(`/app/sys/${systemId}/crm/settings/quotas`);
+    revalidateAndWake(`/app/sys/${systemId}`);
     return { ok: true };
   } catch (e) {
     if (e instanceof CrmV2DisabledError) return { ok: false, error: e.message, code: e.code };

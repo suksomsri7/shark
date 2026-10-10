@@ -16,7 +16,9 @@ import type { CrmAiResult } from "./types";
 
 const muted = "text-[color:var(--color-muted)]";
 
-export function CrmAiPanel({ systemId, entity, entityId }: { systemId: string; entity: "deal" | "contact" | "company"; entityId: string }) {
+// CRM C4.2-fix ▸ `canProposeNextStep` = crmCan(crm.deal.update) ของหน้า — บริการปฏิเสธ deal.nextStep เมื่อไม่มีคีย์นี้ (ai-bridges.ts
+//   runAssist) ⇒ ไม่แสดงปุ่มที่กดแล้วโดนปฏิเสธ · ไม่ส่ง = ไม่แสดง ◂
+export function CrmAiPanel({ systemId, entity, entityId, canProposeNextStep = false }: { systemId: string; entity: "deal" | "contact" | "company"; entityId: string; canProposeNextStep?: boolean }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [result, setResult] = useState<CrmAiResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -62,9 +64,11 @@ export function CrmAiPanel({ systemId, entity, entityId }: { systemId: string; e
             <button type="button" className={btn} disabled={!!busy} onClick={() => run("deal.risk")} data-testid="crm-ai-deal-risk">
               {busy === "deal.risk" ? "กำลังวิเคราะห์…" : "ทำไมเสี่ยง"}
             </button>
-            <button type="button" className={btn} disabled={!!busy} onClick={() => run("deal.nextStep")} data-testid="crm-ai-deal-next-step">
-              {busy === "deal.nextStep" ? "กำลังคิด…" : "เสนอขั้นถัดไป"}
-            </button>
+            {canProposeNextStep && (
+              <button type="button" className={btn} disabled={!!busy} onClick={() => run("deal.nextStep")} data-testid="crm-ai-deal-next-step">
+                {busy === "deal.nextStep" ? "กำลังคิด…" : "เสนอขั้นถัดไป"}
+              </button>
+            )}
             <button type="button" className={btn} disabled={!!busy} onClick={() => run("deal.draftEmail")} data-testid="crm-ai-deal-draft-email">
               {busy === "deal.draftEmail" ? "กำลังร่าง…" : "ร่างอีเมลติดตาม"}
             </button>

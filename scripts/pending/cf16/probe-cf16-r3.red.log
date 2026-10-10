@@ -1,0 +1,27 @@
+(node:2706750) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ❌ [R3-WEB-wired] calls-actions failOf calls contactRefusalOf(e) before the generic text
+
+── DUP ──
+  ❌ [R3-WEB-dup-hidden] STAFF accepts a card whose phone is a hidden contact's → service DUPLICATE · web action gets null "" · leaks []
+  ❌ [R3-MOB-dup-hidden] mobileErrorOf → 500 error "ระบบ CRM ขัดข้องชั่วคราว (ข้อมูลไม่เปลี่ยน) — ลองใหม่อีกครั้งในอีกสักครู่" · proposal PENDING · rows with that phone 1
+
+── CONTROL ──
+  ✅ [R3-visible-control] visible match (STAFF) → OK rows 2 (duplicate created, as before) · owner on the hidden one → OK rows 2
+
+── CAP ──
+  ❌ [R3-cap] plan cap 1 contact → service LIMIT "ถึงเพดานผู้ติดต่อ ของระบบนี้แล้ว (1 คน) — เก็บถาวร/ลบรายการที่ไม่ใช้ก่…" · web null · mobile 500 error · rows 0
+  ❌ [R3-rate-limited] bucket full → service RATE_LIMITED · web null · mobile 429 rate_limited
+  ❌ [R3-scope] helper ignores other codes (VALIDATION → null) · mobile keeps its old answer for them (500)
+  ✅ [CLEAN-2xmb4w] tenant rows left=0
+
+🔴 probe-cf16-r3: 2/8
+JSON_SUMMARY {"total":8,"passed":2,"findings":["R3-WEB-wired","R3-WEB-dup-hidden","R3-MOB-dup-hidden","R3-cap","R3-rate-limited","R3-scope"]}
+exit=1 2026-10-02T08:11:06Z

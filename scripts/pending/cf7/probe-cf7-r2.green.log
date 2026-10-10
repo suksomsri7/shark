@@ -1,0 +1,36 @@
+(node:1898770) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ [P-premise] visibility: roCo sees R=true X=false · linker sees L=true X=false (want true/false · true/false)
+
+── F61 ──
+  ✅ [F61-create-refused] createContact({companyId: visible R}) by read-without-update → FORBIDDEN "บัญชีนี้ยังไม่ได้รับสิทธิ์ "แก้ไขบริษัท" ในระบบ CRM — ขอให้เจ้าของร้านเปิดสิทธิ์…" · tenant writes: none (want FORBIDDEN · none)
+  ✅ [F61-create-control] createContact({companyId: L}) by read+update → OK · linked=true · warnings=[] (positive control)
+  ✅ [F61-import-readonly] import by read-without-update (2 rows with a company) → OK created=2 failed=0 · companies +0 links +0 · notes [{"row":1,"message":"เพิ่มผู้ติดต่อแล้ว แต่ไม่ได้ผูกบริษัทให้แถวที่มีชื่อบริษัท — บัญชีนี้ยังไม่ได้รับสิทธิ์ \"แก้ไขบริษัท\" ในระบบ CRM — ขอให้เจ้าของร้านเปิดสิ… (want 2 · 0 · +0 · +0 · a note)
+  ✅ [F61-import-linker] import by read+update without company.create → OK created=2 failed=0 · companies +0 links +1 (existing linked=1) · notes [{"row":2,"message":"เพิ่มผู้ติดต่อแล้ว แต่ผูกบริษัทไม่สำเร็จ — บัญชีนี้ยังไม่ได้รับสิทธิ์ \"เพิ่มบริษัท\" ในระบบ CRM — ขอให้เจ้าของร้านเปิดสิทธิ์ให้ แล้วลองอีก… (want 2 · 0 · +0 · +1 · note on row 2)
+
+── F62 ──
+  ✅ [F62-clear-invisible] updateContact({firstName, companyId:null}) by read+update, current company invisible → NOT_FOUND "ไม่พบบริษัทนี้ในระบบ CRM ที่เปิดอยู่ (อาจถูกลบหรืออยู่คนละระบบ) — รีเฟ…" · firstName "ล้างมองไม่เห็น" · company kept=true · writes: none (want NOT_FOUND · unchanged · none)
+  ✅ [F62-clear-control] clear of a VISIBLE company by the same user → OK "" · companyId=null (positive control: OK · null)
+
+── F63 ──
+  ✅ [F63-move-invisible] updateContact({companyId: L, moveOpenDeals}) by read+update, current company invisible → NOT_FOUND · contact at X=true · owner's deal at X=true · links X · writes: none (want NOT_FOUND · X · X · "X" · none)
+  ✅ [F63-move-control] owner move + moveOpenDeals → OK "" · deal now at L=true (positive control)
+
+── F64 ──
+  ✅ [F64-nonprimary-neutral] primary hidden, other link visible: line=true · text "บริษัท: บริษัทอาร์ dfvxrwur (ย้ายบริษัทได้เฉพาะบัญชีที่มีสิทธิ์แก้ไขบริษัท)" (want "บริษัท: <R>", no "บริษัทหลัก", no X name)
+  ✅ [F64-primary-control] primary visible: text "บริษัทหลัก: บริษัทอาร์ dfvxrwur (ย้ายบริษัทได้เฉพาะบัญชีที่มีสิทธิ์แก้ไขบริษัท)" (positive control: "บริษัทหลัก: <R>")
+  ✅ [F64-wiring] contacts/[contactId]/page.tsx passes companyIsPrimary = (shown company id === contact.companyId)
+
+── F67 ──
+  ✅ [F67-system-prompt] system prompt mentions the marker: true · ok=true
+  ✅ [CLEAN-4dtccx] tenant rows left=0
+
+🟢 probe-cf7-r2: 14/14
+JSON_SUMMARY {"total":14,"passed":14,"findings":[]}

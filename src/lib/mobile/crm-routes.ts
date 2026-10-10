@@ -7,7 +7,7 @@
 //    กุญแจถัง = `mobile-crm:<userId>` (ไม่มี token/IP ดิบ) · 120 ครั้ง/นาที ≈ แตะจอทุกครึ่งวินาทีต่อเนื่องหนึ่งนาที — คนจริงไม่ถึง
 // 🔴 มองไม่เห็น = 404 (ไม่ใช่ 403) — ตัดสินในบริการ CRM (`crm.mobile.mobileErrorOf`)
 import { checkRateLimitDb } from "@/lib/core/rate-limit-db";
-import { mobile as crmMobile } from "@/lib/modules/crm";
+import { mobile as crmMobile, wakeOutbox } from "@/lib/modules/crm";
 import { toMemberActor, type MemberActor } from "@/lib/modules/member";
 import type { MobileAuth, MobileGate } from "./auth";
 import { mobileMemberAuthError, readJson } from "./member-routes";
@@ -66,6 +66,8 @@ export async function runMobileCrm(
     const systemId = await crmMobile.resolveSystem(g.ctx.tenantId, url.searchParams.get("systemId"));
     const actor = toMemberActor(g.user.id, g.membership);
     const out = await run({ ctx: { tenantId: g.ctx.tenantId, systemId, actorUserId: g.user.id }, actor, url, body });
+    // CRM C5.5-fix13 ▸ P-it5-2 sweep: คำขอเขียนที่สำเร็จ (ไม่ใช่ GET · ไม่ใช่ 4xx/5xx) ⇒ ปลุกคิว outbox — กติกาเดียวกับ REST CRM (`api/dispatch.ts`) ◂
+    if (req.method !== "GET" && !(out instanceof Response && out.status >= 400)) wakeOutbox();
     return out instanceof Response ? out : Response.json(out);
   } catch (e) {
     return mobileCrmError(e);

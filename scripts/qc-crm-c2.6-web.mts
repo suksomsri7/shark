@@ -206,6 +206,7 @@ const waitForPosts = async (p: string, n: number, timeoutMs = 15_000) => {
 
 let browser: Any = null;
 let server: Any = null;
+let fwdServer: Any = null; // ORACLE-EDIT C5.4-F (controller ruling): plain-http forward proxy for the environment's own http origin
 const FIXTURE_NOTES: string[] = [];
 
 try {
@@ -342,14 +343,20 @@ ${siteKey ? `<script src="${"__SCRIPT_ORIGIN__"}/t/s/${siteKey}.js"></script>` :
     const anyPage = PAGES.get(`${host}*`);
     return anyPage ?? null;
   };
-  server = httpsMod.createServer({ key: readFileSync(KEYF), cert: readFileSync(CRTF) }, (req: Any, res: Any) => {
+  // ORACLE-EDIT C5.4-F (controller ruling on C4.4-I2: tracker origin = THIS environment): outside production the served tracker
+  //   posts to the QC server's own APP_URL origin (http://127.0.0.1:<port>), never to shark.in.th. The browser reaches that origin
+  //   through a second, plain-http FORWARD proxy (`--proxy-server=http=…` + `<-loopback>`) that shares this handler, so every POST
+  //   is still logged here and still leaves the browser for real (CORS / mixed-content decided by chromium, nothing mocked).
+  const onReq = (req: Any, res: Any) => {
     const chunks: Buffer[] = [];
     req.on("data", (c: Buffer) => chunks.push(c));
     req.on("end", () => {
       const body = Buffer.concat(chunks);
-      const rawHost = String(req.headers.host ?? "");
+      const rawUrl = String(req.url ?? "/");
+      const absUrl = /^https?:\/\//i.test(rawUrl) ? new URL(rawUrl) : null; // forward-proxy request line = absolute-form
+      const rawHost = absUrl ? absUrl.host : String(req.headers.host ?? "");
       const host = rawHost.split(":")[0] ?? "";
-      const url = String(req.url ?? "/");
+      const url = absUrl ? `${absUrl.pathname}${absUrl.search}` : rawUrl;
       const path = url.split("?")[0] ?? "/";
       const origin = String(req.headers.origin ?? "");
       const appPath = /^\/(t|f|l|u|api|_next|__nextjs)(\/|$)/.test(path);
@@ -365,7 +372,8 @@ ${siteKey ? `<script src="${"__SCRIPT_ORIGIN__"}/t/s/${siteKey}.js"></script>` :
       const headers: Record<string, Any> = { ...req.headers };
       headers.host = appHeaderHost;
       headers["x-forwarded-for"] = ip;
-      headers["x-forwarded-proto"] = "https";
+      headers["x-forwarded-proto"] = req.socket?.encrypted ? "https" : "http";
+      delete headers["proxy-connection"];
       headers["x-forwarded-host"] = rawHost;
       delete headers["content-length"];
       const preq = upstream.request(
@@ -397,9 +405,13 @@ ${siteKey ? `<script src="${"__SCRIPT_ORIGIN__"}/t/s/${siteKey}.js"></script>` :
       if (body.length > 0) preq.write(body);
       preq.end();
     });
-  });
+  };
+  server = httpsMod.createServer({ key: readFileSync(KEYF), cert: readFileSync(CRTF) }, onReq);
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", () => r()));
   const PROXY_PORT = Number((server.address() as Any).port);
+  fwdServer = httpMod.createServer(onReq);
+  await new Promise<void>((r) => fwdServer.listen(0, "127.0.0.1", () => r()));
+  const FWD_PORT = Number((fwdServer.address() as Any).port);
 
   // the origin the served tracker posts to (from the served bytes — never guessed)
   const servedScript = await fetch(`${BASE}/t/s/${SITE[crmA]}.js`).then(async (r) => ({ status: r.status, ct: r.headers.get("content-type") ?? "", body: await r.text() })).catch((e: unknown) => ({ status: -1, ct: "", body: `ERR ${e instanceof Error ? e.message : String(e)}` }));
@@ -433,6 +445,7 @@ ${siteKey ? `<script src="${"__SCRIPT_ORIGIN__"}/t/s/${siteKey}.js"></script>` :
       `--host-resolver-rules=MAP * 127.0.0.1:${PROXY_PORT}, EXCLUDE localhost, EXCLUDE 127.0.0.1`,
       "--ignore-certificate-errors",
       "--allow-running-insecure-content",
+      `--proxy-server=http=127.0.0.1:${FWD_PORT}`, "--proxy-bypass-list=<-loopback>", // ORACLE-EDIT C5.4-F: http:// only (https keeps the resolver map)
       "--disable-features=Translate,BackForwardCache,OptimizationHints",
     ],
   });
@@ -543,8 +556,12 @@ ${siteKey ? `<script src="${"__SCRIPT_ORIGIN__"}/t/s/${siteKey}.js"></script>` :
   chk("C2.6W-S0.3", "the tracker runs clean in a real browser: no uncaught page error, no console error, no sub-request ≥ 400 from the page",
     c0.errors.length === 0 && c0.console.filter((l) => l.startsWith("error:")).length === 0 && !LOG.some((r) => r.host === DOM_A && r.status >= 400),
     "no errors", `pageerrors=${cut(c0.errors.join(" | "), 120) || "-"} console=${cut(c0.console.filter((l) => l.startsWith("error:")).join(" | "), 140) || "-"} http4xx=${LOG.filter((r) => r.host === DOM_A && r.status >= 400).map((r) => `${r.path}:${r.status}`).join(",") || "-"}`);
-  chk("C2.6W-S0.4", "the served tracker posts to an ABSOLUTE https URL of the app (a relative `/t/e` would hit the shop's own domain in production) [static on the served bytes]",
-    /^https:\/\//.test(absPost), "absolute https", absPost || "relative or not found", "MAJOR");
+  // ORACLE-EDIT C5.4-F (controller ruling on C4.4-I2): the absolute post-back origin is THIS environment's origin — https in
+  //   production (unchanged), the QC server's own origin elsewhere — and never the public shark.in.th from a non-shark.in.th server
+  const ENV_ORIGIN = new URL(BASE).origin;
+  chk("C2.6W-S0.4", "the served tracker posts to an ABSOLUTE URL of THIS environment's app origin (a relative `/t/e` would hit the shop's own domain; a QC/dev page must never post to shark.in.th) — https when the environment is https [static on the served bytes]",
+    !!absPost && (absPost === ENV_ORIGIN || (/^https:\/\//.test(ENV_ORIGIN) && /^https:\/\//.test(absPost))) && (absPost !== "https://shark.in.th" || ENV_ORIGIN === absPost),
+    `absolute = ${ENV_ORIGIN}`, absPost || "relative or not found", "MAJOR");
 
   // ═════════════════════════════════════════════════════════════════════════════
   // S3 — the SIX headless items of CRM-RUN §2 "C2.6 · S3"
@@ -1154,6 +1171,7 @@ ${siteKey ? `<script src="${"__SCRIPT_ORIGIN__"}/t/s/${siteKey}.js"></script>` :
   // ═════════════════════════════════════════════════════════════════════════════
   try { if (browser) await browser.close(); } catch { /* ignore */ }
   try { if (server) await new Promise<void>((r) => server.close(() => r())); } catch { /* ignore */ }
+  try { if (fwdServer) await new Promise<void>((r) => fwdServer.close(() => r())); } catch { /* ignore */ }
   try { rmSync(TMP, { recursive: true, force: true }); } catch { /* ignore */ }
   const ids = TENANTS.filter((x) => /^[a-z0-9]+$/i.test(x));
   const del = async (fn: () => Promise<unknown>) => { try { await fn(); } catch { /* order/FK — retried next pass */ } };

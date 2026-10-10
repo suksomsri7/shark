@@ -64,7 +64,9 @@ export async function CrmActivityBlock({
       canManage={actor.role === "OWNER" || actor.role === "MANAGER"}
       canLog={canLog}
       canComplete={can("crm.activity.complete")}
+      canDelete={canLog && can("crm.activity.delete")}
       allHref={`/app/sys/${ctx.systemId}/crm/activities?${q.toString()}`}
+      nowMs={Date.now()} // CRM C5.4-E r2 ▸ SF-5 ◂
     />
   );
   if (!recordings || recordingItems.length === 0) return panel;

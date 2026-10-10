@@ -6,7 +6,7 @@
 
 import { prisma } from "@/lib/core/db";
 import { canReadMember, canViewSensitive, fields, type MemberActor } from "@/lib/modules/member";
-import { crmCan, objects, parseCrmSettings } from "@/lib/modules/crm";
+import { crmCan, objects, parseCrmSettings, visibility } from "@/lib/modules/crm";
 import type { ObjectFormField } from "./types";
 
 export type ObjectsPageCtx = { tenantId: string; systemId: string; actorUserId: string };
@@ -56,6 +56,31 @@ export async function customerLinks(tenantId: string, actor: MemberActor, custom
   if (customerIds.length === 0 || !canReadMember(actor)) return out;
   const rows = await prisma.customer.findMany({ where: { tenantId, id: { in: [...new Set(customerIds)] } }, select: { id: true, memberSystemId: true } });
   for (const r of rows) if (r.memberSystemId) out.set(r.id, `/app/sys/${r.memberSystemId}/member/members/${r.id}`);
+  return out;
+}
+
+// CRM C4.2-fix ▸ B4: ลิงก์ "เปิด<แม่>" ของรายการวัตถุ — เดิมสร้างจาก parentId ตรง ๆ ⇒ แม่ที่ผู้ดูเปิดไม่ได้ (บริษัทของทีมอื่น ·
+//   ไม่มีคีย์ crm.company.read ฯลฯ) กลายเป็นลิงก์ที่พาไป 404 · ตอนนี้คืนเฉพาะแม่ที่ "หน้าปลายทางจะเปิดให้" (visibleIdsAmong =
+//   การมองเห็น + คีย์อ่านของแม่ ตัวเดียวกับที่หน้าแม่ใช้) — ที่เหลือแสดงเป็นข้อความชนิดแม่เฉย ๆ ไม่มีชื่อ/ลิงก์ (ไม่รั่วว่าแม่คือใคร)
+//   ลูกค้า (CUSTOMER) ยังผ่าน `customerLinks` ตามเดิม · คิวรี = 1 ครั้งต่อชนิดแม่ ไม่ใช่ต่อแถว ◂
+const PARENT_PATH: Readonly<Record<string, string>> = { CONTACT: "contacts", COMPANY: "companies", DEAL: "deals" };
+
+export async function parentLinks(
+  ctx: ObjectsPageCtx,
+  actor: MemberActor,
+  refs: readonly { parentType: string; parentId: string | null }[],
+): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  // r2 (รีวิว N-6): เฉพาะแม่ใน "ระบบ CRM นี้" (`systemId` ของ visibleIdsAmong) — เดิมดูทุกระบบของร้าน ⇒ แม่ที่อยู่อีกระบบได้ลิงก์ใต้ระบบนี้ = 404
+  //   (ไม่คิวรีตารางเองที่นี่ — กติกา C1.3-S0.3/C1.4: การอ่านผ่านบริการ/visibility เท่านั้น) · 1 คิวรีต่อชนิดแม่ ◂
+  for (const type of ["CONTACT", "COMPANY", "DEAL"] as const) {
+    const ids = [...new Set(refs.filter((r) => r.parentType === type && r.parentId).map((r) => r.parentId as string))];
+    if (ids.length === 0) continue;
+    const seen = await visibility.visibleIdsAmong(ctx.tenantId, actor, type, ids, { systemId: ctx.systemId });
+    for (const id of seen) out.set(`${type}:${id}`, `/app/sys/${ctx.systemId}/crm/${PARENT_PATH[type]}/${id}`);
+  }
+  const cust = [...new Set(refs.filter((r) => r.parentType === "CUSTOMER" && r.parentId).map((r) => r.parentId as string))];
+  if (cust.length) for (const [id, href] of await customerLinks(ctx.tenantId, actor, cust)) out.set(`CUSTOMER:${id}`, href);
   return out;
 }
 

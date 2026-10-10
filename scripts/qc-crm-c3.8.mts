@@ -257,7 +257,8 @@ try {
   const SV = await mkSys(T, "CRM v1");
   const SB = await mkSys(TB, "CRM B");
   const PORTAL_SETTINGS = { enabled: true, loginMethods: ["EMAIL_OTP"], showDeals: true, allowIssue: true, issueBoardId: null };
-  await setCrm(S, { uiVersion: 2, bridgesEnabled: true, portal: PORTAL_SETTINGS });
+  // ORACLE-EDIT (C6.1-LINKPOLICY · owner P11/Q15 (ข)): the tracked-link fixture points at example.invalid — declare it as an allowed destination
+  await setCrm(S, { uiVersion: 2, bridgesEnabled: true, portal: PORTAL_SETTINGS, tracking: { linkHosts: ["example.invalid"] } });
   await setCrm(S2, { uiVersion: 2 });
   await setCrm(SV, { uiVersion: 1 });
   await setCrm(SB, { uiVersion: 2 });

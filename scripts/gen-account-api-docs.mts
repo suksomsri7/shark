@@ -83,6 +83,11 @@ const ERROR_CODE_DOCS: Record<ApiErrorCode, CodeDoc> = {
     meaning: "A request with this key is still running.",
     action: "Wait a moment and retry with the same key; you will get the original response.",
   },
+  idempotency_outcome_unknown: {
+    status: 409,
+    meaning: "A temporary database or network failure hit the request after it had started, so it is unknown whether it took effect. The key is kept in this state until it expires (24 h); retries with the same key return this answer and never run the request again.",
+    action: "Check whether the record exists (read or list it). If it does not, send the request again with a NEW `Idempotency-Key`; never reuse this key for a retry.",
+  },
   confirm_required: {
     status: 409,
     meaning: "A danger operation was called without `confirm: true`.",
@@ -213,8 +218,8 @@ const WEBHOOK_EVENT_DOCS: Record<string, { when: string; payload: Record<string,
     },
   },
   "account.invoice.paid": {
-    when: "An invoice reached fully paid.",
-    payload: { documentId: "cmf1doc0001", docNo: "IV-202609-0007", grandTotalSatang: 107000 },
+    when: "An invoice reached fully paid: payments (incl. withholding tax) plus live credit notes cover the grand total and some money was received. `paidTotalSatang` and `creditNoteSatang` show the split.",
+    payload: { documentId: "cmf1doc0001", docNo: "IV-202609-0007", grandTotalSatang: 107000, paidTotalSatang: 96300, creditNoteSatang: 10700 },
   },
   "account.payment_request.paid": {
     when: "A PromptPay payment link was paid - either confirmed by the provider webhook or by a staff member for a static QR.",
@@ -311,7 +316,7 @@ const VERIFY_SAMPLE = [
   "  if (got.length !== expected.length || !timingSafeEqual(Buffer.from(got), Buffer.from(expected))) {",
   "    return { status: 401 };",
   "  }",
-  "  const event = JSON.parse(rawBody.toString(\"utf8\")) as { type: string; payload: unknown; sentAt: string };",
+  "  const event = JSON.parse(rawBody.toString(\"utf8\")) as { id: string; type: string; payload: unknown; sentAt: string };",
   "  // Answer 2xx fast, then do the work. Anything else is retried up to 5 times.",
   "  void enqueue(event);",
   "  return { status: 200 };",
@@ -335,11 +340,12 @@ function webhookSection(): string[] {
     "| --- | --- |",
     "| `X-Shark-Event` | The event type, for example `account.document.issued`. |",
     "| `X-Shark-Signature` | `HMAC-SHA256(secret, raw request body)` as lowercase hex. |",
+    "| `X-Shark-Event-Id` | The event id (same as `id` in the body). It stays the same on every retry of that event - store it and drop duplicates. |",
     "",
-    "The body is always the same three fields:",
+    "The body is always the same four fields (`id` = the event id, see `X-Shark-Event-Id`):",
     "",
     "```json",
-    JSON.stringify({ type: "account.document.issued", payload: { documentId: "cmf1doc0001" }, sentAt: "2026-09-05T09:15:00.000Z" }, null, 2),
+    JSON.stringify({ id: "cmf1evt0001", type: "account.document.issued", payload: { documentId: "cmf1doc0001" }, sentAt: "2026-09-05T09:15:00.000Z" }, null, 2),
     "```",
     "",
     "`payload` never contains your shop id or accounting book id: the endpoint already belongs to one shop. Money fields are integers of satang and end in `Satang`, calendar dates are `YYYY-MM-DD` (UTC+7) and instants are ISO-8601 UTC ending in `At` - the same conventions as the REST API.",
@@ -367,7 +373,7 @@ function webhookSection(): string[] {
   for (const e of accountEvents) {
     const doc = WEBHOOK_EVENT_DOCS[e.value];
     if (!doc) continue;
-    out.push(`#### \`${e.value}\``, "", doc.when, "", "```json", JSON.stringify({ type: e.value, payload: doc.payload, sentAt: "2026-09-05T09:15:00.000Z" }, null, 2), "```", "");
+    out.push(`#### \`${e.value}\``, "", doc.when, "", "```json", JSON.stringify({ id: "cmf1evt0001", type: e.value, payload: doc.payload, sentAt: "2026-09-05T09:15:00.000Z" }, null, 2), "```", "");
   }
   return out;
 }
@@ -682,7 +688,7 @@ export function renderDocs(ops: ApiOp[] = ACCOUNT_OPS): string {
     "",
     "- **Money is satang.** Every amount is an integer number of satang (1 baht = 100 satang) and the field name ends with `Satang`. 1,250.50 baht is `125050`. Decimals are rejected, never rounded.",
     "- **Dates are `YYYY-MM-DD`.** A date field means a Thai calendar day (UTC+7), not an instant. Fields that really are instants are ISO-8601 UTC strings and are named `*At`.",
-    "- **Idempotency.** Every write (POST, PATCH, PUT, DELETE) requires an `Idempotency-Key` header, unique per logical attempt. Retrying with the same key and the same body replays the stored response and adds `Idempotent-Replayed: true`; the same key with a different body fails with 409 `idempotency_conflict`. Records are kept 24 hours.",
+    "- **Idempotency.** Every write (POST, PATCH, PUT, DELETE) requires an `Idempotency-Key` header, unique per logical attempt. Retrying with the same key and the same body replays the stored response and adds `Idempotent-Replayed: true`; the same key with a different body fails with 409 `idempotency_conflict`. Records are kept 24 hours. Error answers raised by the operation are stored and replayed too (only `idempotency_*` answers and `rate_limited` are not: the per-key limit, and the per-book limits of `import.run` and `reports.email`, so a same-key retry after the wait runs for real), so after fixing the cause send a new key. If a write is cut by a temporary database or network failure after it started, every try with that key answers 409 `idempotency_outcome_unknown`: check whether the record exists, then use a NEW key.",
     "- **`X-Shark-System`.** Selects the accounting book when the key is not bound to one. When the key is bound, the header may be sent only if it matches.",
     "- **Danger operations.** `confirm: true` plus a `reason` of at least 5 characters. The reason is stored in the audit log next to the key name.",
     "- **Envelope.** Success is `{ data, page?, requestId }`. Failure is `{ error: { code, message_th, message_en, hint?, details? }, requestId }`. `requestId` is also the `X-Request-Id` header; quote it in support tickets.",

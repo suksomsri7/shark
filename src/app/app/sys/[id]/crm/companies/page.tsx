@@ -5,6 +5,7 @@ import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
 import { systemDef } from "@/lib/systems";
 import { toMemberActor } from "@/lib/modules/member";
+import { crmCan } from "@/lib/modules/crm/access";
 import { listCompanies, ownerOptions, savedViewOptions } from "@/lib/modules/crm/companies";
 import {
   COMPANY_LIFECYCLE_LABEL,
@@ -23,7 +24,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { ModuleTabs } from "@/components/module-tabs";
 import { CompanyExportButton, CompanyImportButton } from "./_components/CompanyListTools";
 // CRM C3.2 ▸ มุมมองที่บันทึกของรายชื่อบริษัท (objectKey "company" · ทีมจริง) — เลือก · บันทึก · ลบ ◂
-import { viewTeamOptions } from "@/lib/modules/crm/views";
+import { viewSkippedFilters, viewTeamOptions } from "@/lib/modules/crm/views";
 import { createCrmViewAction, deleteCrmViewAction } from "@/lib/modules/crm/views-actions";
 import { SavedViewControls } from "@/components/crm/views/SavedViewControls";
 
@@ -48,6 +49,14 @@ export default async function CompaniesPage({
   // CRM uiVersion gate ▸ route นี้มีเฉพาะ CRM v2 — ระบบที่ยังไม่เปิด (settings.crm.uiVersion ≠ 2) = 404 ◂
   await requireCrmV2Page({ tenantId: tenantId, systemId: id });
   const actor = toMemberActor(auth.user.id, auth.active);
+  // CRM C5.5-fix2 ▸ it4 F1: ไม่มีคีย์อ่านบริษัท = 404 (404-not-403 แบบหน้ารายงาน/อีเมล) — เดิมหน้าเปิดได้ (ตัวกรอง + "ยังไม่มีบริษัท…") ◂
+  if (!crmCan(actor, "crm.company.read")) notFound();
+  // CRM C4.2-fix ▸ ปุ่มของหน้านี้ = คีย์ของ server action ที่เรียก (companies-actions.ts) · นำเข้าต้องผ่านคีย์ของบริการ (create) ด้วย ◂
+  const can = {
+    create: crmCan(actor, "crm.company.create"),
+    importCsv: crmCan(actor, "crm.company.import") && crmCan(actor, "crm.company.create"),
+    exportCsv: crmCan(actor, "crm.company.export"),
+  };
   const ctx = { tenantId, systemId: id, actorUserId: auth.user.id };
   const one = (k: string) => (typeof sp[k] === "string" ? (sp[k] as string) : "");
 
@@ -78,6 +87,7 @@ export default async function CompaniesPage({
     viewTeamOptions(ctx, actor).catch(() => []),
   ]);
   const ownerName = new Map(owners.map((o) => [o.id, o.name]));
+  const viewSkipped = view ? await viewSkippedFilters(ctx, actor, "company", view).catch(() => [] as string[]) : []; // CRM C5.4-E ▸ L6-m11 ◂
   const def = systemDef(sys.type);
   const base = `/app/sys/${id}/crm/companies`;
   const filters = { q: q || null, industry: industry || null, size: size || null, owner: owner || null, hasOpenDeals: open ? true : null, includeArchived: archived };
@@ -105,15 +115,17 @@ export default async function CompaniesPage({
         desc="บริษัท — ลูกค้าองค์กร ผู้ติดต่อ ดีล และยอดค้างชำระในที่เดียว"
         actions={
           <>
-            <CompanyImportButton systemId={id} />
-            <CompanyExportButton systemId={id} filters={filters} />
-            <Link href={`${base}/new`} className="btn btn-primary text-sm" data-testid="companies-new-btn">
-              + เพิ่มบริษัท
-            </Link>
+            {can.importCsv && <CompanyImportButton systemId={id} />}
+            {can.exportCsv && <CompanyExportButton systemId={id} filters={filters} />}
+            {can.create && (
+              <Link href={`${base}/new`} className="btn btn-primary text-sm" data-testid="companies-new-btn">
+                + เพิ่มบริษัท
+              </Link>
+            )}
           </>
         }
       />
-      <ModuleTabs items={crmNavItems(id)} />
+      <ModuleTabs items={crmNavItems(id, (k) => crmCan(actor, k))} />
 
       <form method="get" action={base} className="card flex flex-wrap items-end gap-2 p-3" data-testid="companies-filter-form">
         <label className="flex min-w-[180px] flex-1 flex-col gap-1 text-xs text-[color:var(--color-muted)]">
@@ -205,6 +217,12 @@ export default async function CompaniesPage({
           {viewFail.message}
         </div>
       )}
+      {/* CRM C5.4-E ▸ L6-m11: ตัวกรองของมุมมองที่ฟิลด์ถูกเก็บเข้าคลัง/ปิดการกรอง = ข้าม (รายการยังขึ้น) + บอกให้รู้ ◂ */}
+      {viewSkipped.length > 0 && (
+        <p className="card p-3 text-sm text-[color:var(--color-muted)]" data-testid="companies-view-skipped">
+          ตัวกรองบางตัวของมุมมองนี้ถูกข้าม เพราะฟิลด์ถูกเก็บเข้าคลังหรือปิดการกรองไปแล้ว: {viewSkipped.join(" · ")} — รายการด้านล่างกรองด้วยตัวกรองที่เหลือ
+        </p>
+      )}
 
       <div className="text-xs text-[color:var(--color-muted)]" data-testid="companies-count">
         ทั้งหมด {list.total.toLocaleString("th-TH")} บริษัท
@@ -213,11 +231,13 @@ export default async function CompaniesPage({
       {list.items.length === 0 ? (
         <div className="card py-10 text-center" data-testid="companies-empty">
           <p className="text-sm text-[color:var(--color-muted)]">
-            {q || industry || size || owner || open ? "ไม่พบบริษัทที่ตรงกับตัวกรองนี้ — ลองล้างตัวกรองหรือค้นด้วยคำอื่น" : "ยังไม่มีบริษัทในระบบนี้ — เริ่มจากเพิ่มบริษัทแรก หรือนำเข้าจากไฟล์ CSV"}
+            {q || industry || size || owner || open ? "ไม่พบบริษัทที่ตรงกับตัวกรองนี้ — ลองล้างตัวกรองหรือค้นด้วยคำอื่น" : (can.create && can.importCsv ? "ยังไม่มีบริษัทในระบบนี้ — เริ่มจากเพิ่มบริษัทแรก หรือนำเข้าจากไฟล์ CSV" : can.create ? "ยังไม่มีบริษัทในระบบนี้ — เริ่มจากเพิ่มบริษัทแรก" : "ยังไม่มีบริษัทที่บัญชีนี้มองเห็นในระบบนี้") /* r2 addendum 2e */}
           </p>
-          <Link href={`${base}/new`} className="btn btn-ghost mt-3 text-sm" data-testid="companies-empty-new">
-            + เพิ่มบริษัท
-          </Link>
+          {can.create && (
+            <Link href={`${base}/new`} className="btn btn-ghost mt-3 text-sm" data-testid="companies-empty-new">
+              + เพิ่มบริษัท
+            </Link>
+          )}
         </div>
       ) : (
         <>

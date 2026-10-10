@@ -69,6 +69,7 @@ import {
   setDocumentTags,
   setQuotationResponse,
   setRecurringRuleActive,
+  sourceDocProblemFor,
   updateDocument,
   updateRecurringRule,
   voidDocument,
@@ -230,7 +231,7 @@ const documentFields = {
   discountSatang: z.number().int().min(0).optional().describe("Discount on the whole document in satang (integer)."),
   note: z.string().max(2000).nullish().describe("Note printed on the document."),
   adjustReason: z.string().max(500).nullish().describe("Reason required by the Revenue Department on credit and debit notes."),
-  sourceDocId: z.string().max(40).nullish().describe("Id of the document this one refers to (credit and debit notes)."),
+  sourceDocId: z.string().max(40).nullish().describe("Id of the document this one refers to: a QUOTATION of this book for INVOICE; an invoice, receipt or tax invoice for credit and debit notes; any document of this book otherwise. An INVOICE pointing at anything but a QUOTATION is rejected with 422 `validation`."),
   tags: tagsField.optional(),
 } as const;
 
@@ -340,6 +341,15 @@ const documentsCreate = defineOp({
       );
     }
     await assertContact(tenantId, systemId, input.contactId);
+    // CRM C5.4-C ▸ (round 6 · F6) sourceDocId ของเอกสารฝั่งขาย: ด่านเดียวกับ service (ใบแจ้งหนี้ ← ใบเสนอราคาเท่านั้น · อื่น ๆ ← เอกสารของเล่มนี้)
+    //   ตอบ 422 `validation` แทนการปล่อยให้ service โยน (500) ◂
+    if (input.sourceDocId && !isGroupDocType(type) && !PURCHASE_ORDER_TYPES.includes(type) && sideOf(type) !== "expense") {
+      const problem = await sourceDocProblemFor(tenantId, systemId, type as AccountDocType, input.sourceDocId);
+      if (problem) {
+        throw new ApiError(422, "validation", problem,
+          "`sourceDocId` is not allowed here: an INVOICE may only refer to a QUOTATION of this book, and the document must exist in this book.");
+      }
+    }
 
     // กันซ้ำระดับธุรกิจ: คู่ (refType, refId) ของชนิดนี้ต้องมีเอกสารได้ใบเดียว
     // (คนละชั้นกับ Idempotency-Key ซึ่งกัน "คำขอเดิมที่ยิงซ้ำ" — ตัวนี้กัน "งานเดิมที่ยิงคนละครั้ง")

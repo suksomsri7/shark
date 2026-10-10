@@ -1,0 +1,41 @@
+== c3.7-x13 start 2026-10-07T19:58:11Z · HEAD 9741df4a · args: scripts/qc-crm-c3.7.mts
+
+═══ QC CRM v2 · C3.7 — 390 px pass · staff app CRM (deals · tasks · call log · card scan · push) ═══
+[env] DB ep-plain-art-ao3djg4u-pooler.c-2.ap-southeast-1.aws.neon.tech · tag qc-c37-cnwqzx
+
+── K · seed + answer keys ──
+(node:1503570) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ❌ [C3.7-K.1] seed control: crm-expected.json resolves to the seeded shop on THIS database (CRM system uiVersion 2 · thana an accepted member) · thana owns ≥ 1 OPEN deal · the Krabi team owns ≥ 1 deal (the visibility probe has something to hide) — exp seed as assumed | act system=false v2=false thanaMember=false thanaOpen=0 krabi=0 thanaTasksToday=0
+
+── S0 · structure ──
+  ✅ [C3.7-S0.1] server: the 7 route files under src/app/api/mobile/crm exist · every one calls requireMobile · none imports prisma/@prisma/client (services through the CRM facade) · src/lib/mobile/crm-routes.ts holds MOBILE_CRM_RATE_LIMIT + checkRateLimitDb · call-log/scan-card/accept delegate to logCall/scanBusinessCard/acceptLeadProposal (the C2.4 engine) [static]
+  ✅ [C3.7-S0.2] app: apps/mobile/app/(app)/crm/{_layout (Stack from expo-router), index, tasks, call-log, scan-card}.tsx · ONE drawer entry testID drawer-crm navigating to "crm" (drawer-member kept) · no @react-navigation/* import in the CRM section · harness apps/mobile/qc/shoot-crm.mjs (5 SCREENS · fixture QC_CRM_FIXTURE/fixture-thana.json · sha256 · innerText · shots-crm · no EAS) [static]
+  ❌ [C3.7-FATAL] the oracle ran to the end without an unexpected exception — exp no exception | act PrismaClientKnownRequestError: 
+Invalid `prisma.session.create()` invocation in
+/root/projects/shark-crm-c310/src/lib/mobile/auth.ts:30:24
+
+  27 const token = randomToken();
+  28 const now = Date.now();
+  29 const expiresAt = new Date(now + ABS_MS);
+→ 30 await prisma.session.create(
+Foreign key constraint violated on the constraint: `Session_userId_fkey`
+PrismaClientKnownRequestError: 
+Invalid `prisma.session.create()` invocation in
+/root/projects/shark-crm-c310/src/lib/mobile/auth.ts:30:24
+
+  27 const token = randomToken();
+  28 const now = Date.now();
+  29 const expiresAt = new Date(now + AB…
+  ✅ [C3.7-CLEAN] the oracle gives the QC database back exactly as found — throwaway tenants and every row they owned (deals · activities · CALL logs · proposals · contacts), the throwaway users, every session of this run (incl. thana's tagged mobile session on the seed), rate buckets and push devices are gone · nothing was written into the seeded shop
+
+🔴 C3.7: 3/5
+JSON_SUMMARY {"total":5,"passed":3,"findings":[{"id":"C3.7-K.1","sev":"MAJOR"},{"id":"C3.7-FATAL","sev":"CRITICAL"}]}
+== c3.7-x13 end 2026-10-07T20:00:54Z rc=1

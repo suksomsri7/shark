@@ -22,7 +22,9 @@ export function ActivityPanel({
   canManage,
   canLog,
   canComplete,
+  canDelete = false,
   allHref,
+  nowMs,
 }: {
   systemId: string;
   target: ActivityTarget;
@@ -35,8 +37,12 @@ export function ActivityPanel({
   canManage: boolean;
   canLog: boolean;
   canComplete: boolean;
+  /** CRM C4.2-fix ▸ B2: crm.activity.delete + crm.activity.create (คีย์ของ deleteActivityAction + บริการ) ◂ */
+  canDelete?: boolean;
   /** ลิงก์ "ดูทั้งหมด" → หน้ากิจกรรมที่กรองเฉพาะระเบียนนี้ */
   allHref: string;
+  /** CRM C5.4-E r2 ▸ SF-5: เวลาตอนเรนเดอร์จากเซิร์ฟเวอร์ ◂ */
+  nowMs?: number;
 }) {
   const [tab, setTab] = useState<"activities" | "notes">("activities");
   const [open, setOpen] = useState<null | ActivityType>(null);
@@ -92,7 +98,7 @@ export function ActivityPanel({
       ) : (
         <ul className="flex flex-col divide-y">
           {list.map((i) => (
-            <ActivityRow key={i.id} systemId={systemId} item={i} currentUserId={currentUserId} canManage={canManage} boards={boards} canComplete={canComplete} />
+            <ActivityRow key={i.id} systemId={systemId} item={i} currentUserId={currentUserId} canManage={canManage} boards={boards} canComplete={canComplete} canLog={canLog} canDelete={canDelete} nowMs={nowMs} />
           ))}
         </ul>
       )}

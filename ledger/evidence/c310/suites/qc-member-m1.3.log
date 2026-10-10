@@ -1,0 +1,26 @@
+  ✅ [M1.3-S1.1] page.tsx: requireTenant · หา AppSystem {id, tenantId, type MEMBER} ไม่เจอ = notFound · ไม่มี member.settings.manage = notFound (ไม่ใช่ 403/หน้าว่าง) · โหลด layout ผ่าน fields.listLayout + เทมเพลตจาก templates registry · render <FieldDesigner …>
+  ✅ [M1.3-S1.2] FieldDesigner.tsx: 'use client' · testid ครบ 20 (designer/palette/props/props-label/template-select/preview-mobile/counter/item-/section-/prop-×11) · ใช้ @dnd-kit (ลากเรียงส่วน+ฟิลด์) · ไม่มีอีโมจิใน UI · ตัวนับ '/ 60' อ่านจาก MEMBER_LIMITS ไม่ฮาร์ดโค้ด
+  ✅ [M1.3-S1.3] field-types.ts: FIELD_TYPE_LABELS 11 ชนิด ป้ายไทย (ข้อความสั้น/ข้อความยาว/ตัวเลข/จำนวนเงิน/วันที่/วันที่+เวลา/ตัวเลือกเดียว/หลายตัวเลือก/ใช่-ไม่ใช่/ไฟล์/อ้างอิง…) · FIELD_TYPE_ORDER 11 · ไฟล์บริสุทธิ์ (ไม่ import prisma/next) · palette ใน UI วนจากทะเบียนนี้
+  ✅ [M1.3-S1.4] fields-actions.ts: 'use server' · export เฉพาะ *Action (≥ 10: section create/update/reorder/delete · field create/update/reorder/archive/restore · applyTemplate) · ทุก action ผ่านด่านเดียว (gate → requireTenant + assertCan member.settings.manage + ระบบ MEMBER ของร้าน) · เรียก fields.ts ไม่แตะ prisma.member* ตรง · revalidatePath · คืน {ok:false, reason ไทย} ผ่าน safeReason
+  ✅ [M1.3-S1.5] permissions.ts: คีย์ member.* v2 ครบ 30 (§6.1) ป้ายไทย · คีย์เดิม (tier.update/plan.*/subscription.*) ยังอยู่ (backward compat) · permissionLabel() คืนไทยทุกคีย์
+  ✅ [M1.3-S1.6] nav.ts: MEMBER_NAV 9 หมวด §2.2 (members tiers points stamps rewards promotions campaigns reports settings · ป้ายไทย · path ใต้ /member/…) · status ready ต้องมี page.tsx จริง (settings → /member/settings/fields ready) · memberNavChildren(base, actor) · layout.tsx case MEMBER ใช้ memberNavChildren (ไม่ใช่รายการมือ)
+  ✅ [M1.3-S2.1] access.ts (บริสุทธิ์): canReadMember — OWNER/MANAGER ผ่าน · STAFF ผ่านเมื่อมีคีย์ member.* ใดก็ได้ (read-โดยนัย บทเรียน K3.1) · STAFF ไม่มีคีย์ member.* = ไม่ผ่าน · canManageSettings — OWNER ผ่าน · MANAGER ไม่ผ่านโดยปริยาย (§6.1) เว้นมีคีย์ · STAFF ต้องมีคีย์ member.settings.manage
+  ✅ [M1.3-S2.2] แผงคุณสมบัติ: ฟิลด์ระบบ (isSystem) ปิดการแก้ type/key/unique/archive (disabled + คำอธิบาย 'ฟิลด์ระบบ') · เปิด customerEditable กับฟิลด์ sensitive → คำเตือน (§11.2 'ไม่ควร') · archive ต้องยืนยัน (ConfirmDialog) · LOOKUP เลือก target 5 ชนิด · SELECT/MULTI แก้ choices ได้ (เพิ่ม/ลบ/สี)
+  ✅ [M1.3-S2.3] เทมเพลตกิจการ: dropdown (field-template-select) วนจาก TEMPLATES registry (ชื่อไทย · ไม่ฮาร์ดโค้ดรายชื่อกิจการใน UI) · กด 'ใช้เทมเพลต' → ยืนยันก่อน (จะเพิ่ม n ส่วน / m ฟิลด์ · ไม่ทับของเดิม) → applyTemplateAction · ตัวอย่างมือถือ (field-preview-mobile) เรียงตามส่วน/ฟิลด์ · ส่วนอ่อนไหวมีไอคอนล็อก (KanbanIcon/MemberIcon ไม่ใช่อีโมจิ)
+  ✅ [M1.3-S2.4] โครง UI ชุดเดียวกับบอร์ดงาน/บัญชี: MemberIcon.tsx (ไอคอน SVG ชุดโมดูล · pattern AccountIcon/KanbanIcon) · MemberTabs.tsx (แถบหมวด 9 จาก nav.ts · soon = จาง + 'เร็ว ๆ นี้') · หน้า settings/fields ใช้ PageHeader + MemberTabs · โทเคนสี/ระยะจาก globals.css (ไม่มี hex สีใหม่ใน tsx)
+  ❌ [M1.3-S3.1] ภาพ owner: field-designer-owner-desktop/mobile + field-designer-selected-desktop (≥ 3 ใบ) · HTTP 200 · testid ครบ · ไม่มี console error — exp 3 ใบ · 200 | act shots= owner=null
+  ❌ [M1.3-S3.2] ภาพ thana (STAFF ไม่มี settings.manage): HTTP 404 (notFound) ไม่ใช่ 200 หน้าว่าง/500 — exp 404 | act status=undefined shots=false
+  ❌ [M1.3-S3.3] มือถือ (390): ตัวออกแบบใช้ได้ — palette เป็นแถบเลื่อน/ปุ่ม '+ เพิ่มฟิลด์' · แผงคุณสมบัติเป็น sheet ล่าง (ไม่ซ้อนทับจนกดไม่ได้) · ไม่มี console error — exp 200 · responsive | act mobile=null responsive=true
+  ✅ [M1.3-S3.4] 🔴 parity กับภาพ 03 — Fable ตรวจด้วยตา (ledger/wo-notes/member-M1.3.md ต้องมีหัวข้อ 'ตรวจภาพ' ที่ Fable เขียนผล) · ข้อนี้เขียวเมื่อไฟล์โน้ตมีบรรทัด 'PARITY: ผ่าน'
+
+🔴 M1.3: 11/14
+JSON_SUMMARY {"total":14,"passed":11,"findings":[{"id":"M1.3-S3.1","sev":"MAJOR"},{"id":"M1.3-S3.2","sev":"MAJOR"},{"id":"M1.3-S3.3","sev":"MAJOR"}]}
+(node:1476260) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)

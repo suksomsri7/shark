@@ -3,6 +3,7 @@
 import { requireTenant } from "@/lib/core/context";
 import { assertCan, type MembershipCtx } from "@/lib/core/rbac";
 import { aiEnabled, latestConversation, listMessages, sendMessage, type Clarify } from "./service";
+import { aiMemberActor } from "./actor";
 import { executeProposal, listPendingProposals, rejectProposal } from "./proposals";
 import { executePlan, listPendingPlans, rejectPlan } from "./plans";
 import { recordFeedback, type FeedbackRating } from "./feedback";
@@ -10,7 +11,7 @@ import { quotaMessage } from "./usage";
 import { ensureWallet } from "./credit";
 import { formatUsd } from "./pricing";
 // CRM C3.4 ▸ ประตูข้อเสนอของ CRM (ยกเลิกได้เฉพาะคนที่ยืนยันได้) ผ่าน facade ◂
-import { aiBridges } from "@/lib/modules/crm";
+import { aiBridges, wakeOutbox } from "@/lib/modules/crm";
 
 // convention action = "ai.<entity>.<verb>" — OWNER/MANAGER ผ่าน · STAFF ต้องมี ai.chat.send หรือ ai.*
 function assertAiCan(auth: Awaited<ReturnType<typeof requireTenant>>, action: string) {
@@ -88,6 +89,14 @@ export async function loadAiQuotaAction(): Promise<AiQuotaView | null> {
   }
 }
 
+/**
+ * CRM C5.5-G2 ▸ ctx ของประตูแชท = ร้าน + คนที่ล็อกอิน (ผู้ดู) — บทสนทนา/ข้อเสนอ/แผนที่อ่านหรือแตะได้ = ของเขาเท่านั้น
+ *   (เจ้าของร้าน + ห้องที่ไม่ได้สร้างโดยคนในร้าน · ดู ./conversation-owner.ts) ◂
+ */
+function convCtxOf(auth: Awaited<ReturnType<typeof requireTenant>>) {
+  return { tenantId: auth.active.tenantId, actor: aiMemberActor(auth.active.tenantId, auth.user.id, auth.active) };
+}
+
 /** MembershipCtx ของคนกด — ใช้ตรวจสิทธิ์จริง ณ ตอน execute proposal */
 function membershipOf(auth: Awaited<ReturnType<typeof requireTenant>>): MembershipCtx {
   return {
@@ -101,7 +110,7 @@ function membershipOf(auth: Awaited<ReturnType<typeof requireTenant>>): Membersh
 export async function loadAiChatAction(): Promise<AiChatState> {
   const auth = await requireTenant();
   assertAiCan(auth, "ai.chat.send");
-  const ctx = { tenantId: auth.active.tenantId };
+  const ctx = convCtxOf(auth);
   const conv = await latestConversation(ctx);
   // โหลด messages + proposals + plans พร้อมกัน (ลด round-trip)
   const [messages, pending, plans] = conv
@@ -122,7 +131,7 @@ export async function loadAiChatAction(): Promise<AiChatState> {
 export async function loadPlansAction(conversationId: string): Promise<PendingPlan[]> {
   const auth = await requireTenant();
   assertAiCan(auth, "ai.chat.send");
-  const plans = await listPendingPlans({ tenantId: auth.active.tenantId }, conversationId);
+  const plans = await listPendingPlans(convCtxOf(auth), conversationId);
   return plans.map((p) => ({ id: p.id, title: p.title, hasDestructive: p.hasDestructive, steps: toPlanSteps(p.stepsJson) }));
 }
 
@@ -130,7 +139,7 @@ export async function loadPlansAction(conversationId: string): Promise<PendingPl
 export async function listPendingProposalsAction(conversationId: string): Promise<PendingProposal[]> {
   const auth = await requireTenant();
   assertAiCan(auth, "ai.chat.send");
-  const pending = await listPendingProposals({ tenantId: auth.active.tenantId }, conversationId);
+  const pending = await listPendingProposals(convCtxOf(auth), conversationId);
   return pending.map((p) => ({ id: p.id, summary: p.summary, risk: toRisk(p.risk) }));
 }
 
@@ -148,7 +157,9 @@ export async function confirmProposalAction(
   const ctx = { tenantId: auth.active.tenantId };
   try {
     // K3.5 — id ของคนกด: ประวัติ/บันทึกของโมดูลปลายทางต้องชี้ไปที่คนจริง (บางคำสั่งต้องมีตัวตนถึงทำได้)
-    return await executeProposal(membershipOf(auth), ctx, proposalId, { ...opts, userId: auth.user.id });
+    const res = await executeProposal(membershipOf(auth), ctx, proposalId, { ...opts, userId: auth.user.id });
+    if (res.ok) wakeOutbox(); // CRM C5.5-fix13 ▸ P-it5-2 sweep: งานของข้อเสนอ (CRM ฯลฯ) commit แล้ว ⇒ ปลุกคิว outbox ◂
+    return res;
   } catch {
     return { ok: false, note: "ทำรายการไม่สำเร็จชั่วคราว ลองใหม่อีกครั้ง" };
   }
@@ -165,7 +176,7 @@ export async function rejectProposalAction(proposalId: string): Promise<Proposal
     proposalId,
   );
   if (crm.handled) return { ok: crm.ok, note: crm.ok ? "ยกเลิกข้อเสนอแล้ว" : crm.note };
-  const ok = await rejectProposal(ctx, proposalId);
+  const ok = await rejectProposal(convCtxOf(auth), proposalId);
   return { ok, note: ok ? "ยกเลิกข้อเสนอแล้ว" : "ข้อเสนอนี้ถูกดำเนินการไปแล้ว" };
 }
 
@@ -182,7 +193,8 @@ export async function confirmPlanAction(
   const auth = await requireTenant();
   const ctx = { tenantId: auth.active.tenantId };
   try {
-    const res = await executePlan(membershipOf(auth), ctx, planId, opts);
+    const res = await executePlan(membershipOf(auth), ctx, planId, { ...opts, userId: auth.user.id });
+    if (res.doneCount && res.doneCount > 0) wakeOutbox(); // CRM C5.5-fix13 ▸ P-it5-2 sweep ◂
     if (res.needsSecondConfirm) {
       return { ok: false, needsSecondConfirm: true, note: "แผนนี้มีรายการลบ/ยกเลิกถาวร ต้องยืนยันอีกครั้งก่อนทำจริง" };
     }
@@ -206,8 +218,7 @@ export async function confirmPlanAction(
 /** ยกเลิกแผน (PENDING → REJECTED) */
 export async function rejectPlanAction(planId: string): Promise<PlanResult> {
   const auth = await requireTenant();
-  const ctx = { tenantId: auth.active.tenantId };
-  const ok = await rejectPlan(ctx, planId);
+  const ok = await rejectPlan(convCtxOf(auth), planId);
   return { ok, note: ok ? "ยกเลิกแผนแล้ว" : "แผนนี้ถูกดำเนินการไปแล้ว" };
 }
 
@@ -224,7 +235,8 @@ export async function sendAiMessageAction(input: {
   const auth = await requireTenant();
   assertAiCan(auth, "ai.chat.send");
   try {
-    const res = await sendMessage({ tenantId: auth.active.tenantId }, input);
+    // CRM C5.5-G1 ▸ ผู้กระทำ = คนที่ล็อกอิน (Membership จาก session ของคำขอนี้) — เครื่องมือทุกตัวรันด้วยสิทธิ์ของเขา ◂
+    const res = await sendMessage(convCtxOf(auth), input);
     if (res.ok) return res;
     const msg: Record<typeof res.error, string> = {
       ai_disabled: "ผู้ช่วย AI ยังไม่เปิดใช้งานในระบบ — เร็ว ๆ นี้",

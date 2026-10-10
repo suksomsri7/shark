@@ -11,6 +11,7 @@ import {
   voidGroupPaymentAction,
 } from "@/lib/modules/account/group-actions";
 import type { GroupPanelData } from "@/lib/modules/account/group";
+import { GROUP_PAYMENT_MAX_CHILDREN, groupPaymentTooManyChildrenMsg } from "@/lib/modules/account/group-batch";
 import { SlideOver } from "./SlideOver";
 import { DateInput } from "./DateInput";
 import { MoneyInput } from "./MoneyInput";
@@ -179,6 +180,12 @@ export function GroupPaymentPanel({
       setOk("");
       if (tieOff <= 0) {
         setError("กรุณากรอกจำนวนเงินมากกว่า 0");
+        return;
+      }
+      // CRM C5.4-C ▸ round 11 · R10-8: กติกาเดียวกับ server (ไม่เกิน 40 ใบต่อครั้ง) — บอกก่อนกด ไม่ต้องรอ server ◂
+      const children = allocations.filter((a) => a.take > 0).length;
+      if (children > GROUP_PAYMENT_MAX_CHILDREN) {
+        setError(groupPaymentTooManyChildrenMsg(children));
         return;
       }
       const res = await recordGroupPaymentAction(

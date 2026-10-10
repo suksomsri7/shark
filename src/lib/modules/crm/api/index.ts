@@ -25,4 +25,6 @@ export {
   runCrmTool,
 } from "./tools";
 export type { CrmToolCtx, CrmToolInfo, CrmToolOutcome } from "./tools";
+// CRM C5.5-G1 ▸ ตัวปิดบังเบอร์/อีเมลของผู้ช่วย (กติกาเดียวกับ present() ของ REST) — เครื่องมือรุ่นแรก `recent_leads` (ai/tools.ts) ใช้ตัวเดียวกัน ◂
+export { maskPiiDeep } from "./serialize";
 export { crmWebhookEvents, isCrmWebhookEndpoint, CRM_INTERNAL_EVENTS } from "./webhook-events";

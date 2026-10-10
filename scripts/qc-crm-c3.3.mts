@@ -108,6 +108,15 @@ const ARGV = process.argv.slice(2);
 const WORKER_AT = ARGV.indexOf("--x3-worker");
 const FORCE = ARGV.includes("--force-run");
 const read = (p: string) => (p && existsSync(p) ? readFileSync(p, "utf8") : "");
+// ORACLE-EDIT C3.3-S0.4 (C5.1-fix · controller-approved index-only migration): the perf-index migration `20261103000000_crm_perf_indexes`
+//   is allowlisted by exact name ONLY while every statement of its SQL is `CREATE INDEX IF NOT EXISTS "…" ON "…" [USING …] (…)`
+//   (comments stripped) — any other statement (table/column/constraint/data) ⇒ it counts as a new CRM migration again (still red)
+const C51_INDEX_MIG = "20261103000000_crm_perf_indexes";
+const c51IndexOnly = (d: string): boolean => {
+  if (d !== C51_INDEX_MIG) return false;
+  const stmts = read(join(MIG_DIR, d, "migration.sql")).replace(/--[^\n]*/g, "").split(";").map((x) => x.trim()).filter(Boolean);
+  return stmts.length > 0 && stmts.every((x) => /^CREATE\s+INDEX\s+IF\s+NOT\s+EXISTS\s+"[^"]+"\s+ON\s+"[^"]+"\s*(USING\s+\w+\s*)?\([^;]*\)$/i.test(x));
+};
 const walk = (dir: string): string[] => {
   if (!existsSync(dir)) return [];
   const out: string[] = [];
@@ -371,7 +380,7 @@ try {
       per.every((x) => x.count === 1 && x.consumer) && blocks, "4 × (1 label · consumer)", `${per.map((x) => `${x.ev}:${x.count}/${x.consumer}`).join(" ")} block=${blocks}${ABSENT}`);
   }
   {
-    const migs = existsSync(MIG_DIR) ? readdirSync(MIG_DIR).filter((d) => d > C30_MIG && (/crm/i.test(d) || /crmCommission|HrPayAdjustment/.test(read(join(MIG_DIR, d, "migration.sql"))))) : [];
+    const migs = existsSync(MIG_DIR) ? readdirSync(MIG_DIR).filter((d) => d > C30_MIG && !c51IndexOnly(d) && (/crm/i.test(d) || /crmCommission|HrPayAdjustment/.test(read(join(MIG_DIR, d, "migration.sql"))))) : [];
     const hrIdx = read(HR_INDEX);
     const hrPure = hrIdx.length > 0 && !/from\s+["'](@\/lib\/core\/db|@prisma\/client)["']|new\s+PrismaClient/.test(hrIdx); // imports only — its header comment mentions PrismaClient
     const job = /name:\s*["']crm\.commissions\.payroll["']/.test(read(JOBS_FILE));

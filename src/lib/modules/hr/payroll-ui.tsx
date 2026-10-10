@@ -10,10 +10,9 @@ import { formatBaht } from "@/lib/ui/money";
 import { listEmployees, monthlyAttendance, employeesWithSchedule, bkkParts, type Ctx } from "./service";
 import { listSalaryProfiles, listRuns, listAdjustments } from "./payroll";
 import PayAdjustForm from "./PayAdjustForm";
+import PayAdjustRowActions from "./PayAdjustRowActions"; // HF-HR-0 ▸ รอบ 5c (F5): ปุ่มของรายการ + เหตุผลที่ถูกปฏิเสธในแถว ◂
 import {
   approvePayrollRunAction,
-  decideAdjustmentAction,
-  cancelAdjustmentAction,
   createPayrollRunAction,
   markPaidAction,
   reverseRunAction,
@@ -229,29 +228,7 @@ export async function PayrollSection({ systemId }: { systemId: string }) {
                   </span>
                   <span className="flex shrink-0 items-center gap-2">
                     <StatusChip value={a.status} map={ADJUST_STATUS_LABEL} toneOf={adjustTone} />
-                    {a.status === "PENDING" && !a.runId && (
-                      <>
-                        <form action={decideAdjustmentAction}>
-                          <input type="hidden" name="systemId" value={systemId} />
-                          <input type="hidden" name="id" value={a.id} />
-                          <input type="hidden" name="status" value="APPROVED" />
-                          <SubmitButton variant="primary">อนุมัติ</SubmitButton>
-                        </form>
-                        <form action={decideAdjustmentAction}>
-                          <input type="hidden" name="systemId" value={systemId} />
-                          <input type="hidden" name="id" value={a.id} />
-                          <input type="hidden" name="status" value="REJECTED" />
-                          <SubmitButton variant="ghost">ไม่อนุมัติ</SubmitButton>
-                        </form>
-                      </>
-                    )}
-                    {a.status !== "PENDING" && !a.runId && (
-                      <form action={cancelAdjustmentAction}>
-                        <input type="hidden" name="systemId" value={systemId} />
-                        <input type="hidden" name="id" value={a.id} />
-                        <button className="text-xs text-[color:var(--color-danger)] underline">ลบ</button>
-                      </form>
-                    )}
+                    {!a.runId && <PayAdjustRowActions systemId={systemId} id={a.id} pending={a.status === "PENDING"} />}
                   </span>
                 </div>
               ))

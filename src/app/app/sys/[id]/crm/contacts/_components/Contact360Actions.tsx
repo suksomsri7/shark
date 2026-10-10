@@ -8,6 +8,7 @@
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
+  CONTACT_PRIMARY_COMPANY_HIDDEN_MSG,
   CONTACT_REASON_MIN,
   // CRM C1.11 ▸ เลือกค่าต่อฟิลด์ตอนรวม ◂
   MERGE_CHOICE_FIELDS,
@@ -25,6 +26,8 @@ import {
   type ContactLifecycle,
   type ConvertOptions,
 } from "@/lib/modules/crm/contacts-shared";
+// C4.4-fix ▸ US2: เลขภาษีของบริษัทใหม่ + บทบาทของผู้ติดต่อในบริษัท (ตัวตรวจ/ป้ายชุดเดียวกับฝั่งบริการ — ไฟล์บริสุทธิ์) ◂
+import { COMPANY_CONTACT_ROLES, COMPANY_CONTACT_ROLE_LABEL, taxIdProblem, type CompanyContactRole } from "@/lib/modules/crm/companies-shared";
 import {
   archiveContactAction,
   assignContactAction,
@@ -35,11 +38,13 @@ import {
   searchContactsAction,
   setConsentAction,
   setOptOutAction,
+  setTrackingOptOutAction,
   setStatusAction,
   setTagsAction,
   updateContactAction,
 } from "@/lib/modules/crm/contacts-actions";
 import { ContactPicker } from "./ContactPicker";
+import { FieldError, useFieldErrors } from "@/components/crm/form/field-errors"; // C4.4-fix รอบ 2 (S3) ◂
 // CRM C1.11 ▸ เลือกค่าต่อฟิลด์ตอนรวม ◂
 import { MergeFieldChoices, choosableFields, toFieldChoices } from "@/components/crm/merge/MergeFieldChoices";
 
@@ -87,6 +92,7 @@ export function ConvertButton({
   companyName,
   jobTitle,
   converted,
+  canPickCompany,
 }: {
   systemId: string;
   contactId: string;
@@ -96,6 +102,8 @@ export function ConvertButton({
   companyName: string | null;
   jobTitle: string | null;
   converted: boolean;
+  /** CRM C5.5-fix6 ▸ F3: crm.company.read — ไม่มี = ไม่มีตัวเลือก "ผูกบริษัทที่มีอยู่" (ตัวค้นหาว่างเสมอ) · "สร้างบริษัทใหม่" คงเดิม ◂ */
+  canPickCompany: boolean;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -106,6 +114,10 @@ export function ConvertButton({
   const [companyMode, setCompanyMode] = useState<"new" | "pick">("new");
   const [companyNew, setCompanyNew] = useState(companyName ?? "");
   const [companyPick, setCompanyPick] = useState("");
+  const [companyTaxId, setCompanyTaxId] = useState("");
+  // บริษัทใหม่จาก lead = ผู้ติดต่อคนนี้คือผู้ตัดสินใจ (US2 · แก้ได้) · ผูกบริษัทเดิม = ค่าว่าง "ไม่เปลี่ยน" (ไม่ทับบทบาทเดิมโดยไม่ตั้งใจ)
+  const [roleNew, setRoleNew] = useState<CompanyContactRole>("DECISION_MAKER");
+  const [rolePick, setRolePick] = useState<CompanyContactRole | "">("");
   const [tickDeal, setTickDeal] = useState(true);
   const defaultPipe = options.pipelines[0];
   const [pipelineId, setPipelineId] = useState(defaultPipe?.id ?? "");
@@ -113,33 +125,51 @@ export function ConvertButton({
   const [title, setTitle] = useState(`ดีล ${contactName}`);
   const [valueBaht, setValueBaht] = useState("");
   const [error, setError] = useState<string | null>(null);
+  // C4.4-fix รอบ 2 · S3: ข้อความของเลขภาษี (ตรวจในเครื่อง + ที่เซิร์ฟเวอร์ชี้ field "taxId") แสดงใต้ช่อง · ข้อผิดพลาดอื่นอยู่กล่องเดิม
+  const fe = useFieldErrors(["taxId"] as const);
+  // C4.4-fix รอบ 2 · S2: เลขภาษีตรงกับบริษัทที่มีอยู่ ⇒ ระบบใช้บริษัทนั้น — บอกชื่อในหน้าต่างก่อนปิด (ไม่ใช้เงียบ ๆ)
+  const [reused, setReused] = useState<{ id: string; name: string } | null>(null);
   const [pending, start] = useTransition();
   const pipe = options.pipelines.find((p) => p.id === pipelineId);
 
   const openModal = () => {
     setKey(newKey()); // 1 การเปิดโมดัล = 1 คีย์ ⇒ กดแปลงรัวกี่ครั้งก็ได้ชุดเดียว
     setError(null);
+    fe.reset();
+    setReused(null);
     setOpen(true);
   };
   const submit = () =>
     start(async () => {
       setError(null);
+      fe.reset();
       if (!tickMember && !tickCompany && !tickDeal) return setError("ติ๊กอย่างน้อย 1 อย่างก่อนกดแปลง");
       if (tickMember && !member && !memberSystem) return setError("ร้านนี้ยังไม่มีระบบสมาชิก — เปิดระบบสมาชิกก่อน หรือเอาติ๊กสมาชิกออก");
       if (tickCompany && companyMode === "new" && !companyNew.trim()) return setError("ใส่ชื่อบริษัทที่จะสร้าง");
       if (tickCompany && companyMode === "pick" && !companyPick) return setError("เลือกบริษัทที่จะผูก");
+      const taxProblem = tickCompany && companyMode === "new" ? taxIdProblem(companyTaxId) : null;
+      if (taxProblem) return void fe.show({ taxId: taxProblem });
+      const role = companyMode === "new" ? roleNew : rolePick || null;
       if (tickDeal && (!pipelineId || !title.trim())) return setError("เลือก pipeline และใส่ชื่อดีล");
       const baht = valueBaht.trim() ? Number(valueBaht.replace(/,/g, "")) : 0;
       if (tickDeal && (!Number.isFinite(baht) || baht < 0)) return setError("มูลค่าดีลต้องเป็นตัวเลขตั้งแต่ 0 ขึ้นไป");
       const r = await convertContactAction(systemId, contactId, {
         idempotencyKey: key,
         member: tickMember && memberSystem ? { systemId: memberSystem } : null,
-        company: tickCompany ? (companyMode === "new" ? { new: { name: companyNew.trim() } } : { id: companyPick }) : null,
+        company: tickCompany
+          ? companyMode === "new"
+            ? { new: { name: companyNew.trim(), taxId: companyTaxId.trim() || null }, role }
+            : { id: companyPick, role }
+          : null,
         deal: tickDeal ? { pipelineId, stageId: stageId || null, title: title.trim(), valueSatang: Math.round(baht * 100) } : null,
       });
-      if (!r.ok) return setError(r.error);
-      setOpen(false);
+      if (!r.ok) {
+        if (!fe.show(r.fieldErrors as { taxId?: string } | undefined)) setError(r.error);
+        return;
+      }
       router.refresh();
+      if (r.reusedCompany) return setReused(r.reusedCompany);
+      setOpen(false);
     });
 
   const box = (on: boolean) => ({ borderColor: on ? "var(--color-accent)" : "var(--color-line)", background: on ? "var(--color-surface-2)" : undefined });
@@ -193,16 +223,36 @@ export function ConvertButton({
                     <input type="radio" name="convert-company-mode" checked={companyMode === "new"} onChange={() => setCompanyMode("new")} data-testid="contact-convert-company-mode-new" />
                     สร้างบริษัทใหม่
                   </label>
-                  <label className="flex items-center gap-1.5">
-                    <input type="radio" name="convert-company-mode" checked={companyMode === "pick"} onChange={() => setCompanyMode("pick")} data-testid="contact-convert-company-mode-pick" />
-                    ผูกบริษัทที่มีอยู่
-                  </label>
+                  {canPickCompany && (
+                    <label className="flex items-center gap-1.5">
+                      <input type="radio" name="convert-company-mode" checked={companyMode === "pick"} onChange={() => setCompanyMode("pick")} data-testid="contact-convert-company-mode-pick" />
+                      ผูกบริษัทที่มีอยู่
+                    </label>
+                  )}
                 </div>
                 {companyMode === "new" ? (
-                  <label className="flex flex-col gap-1 text-xs text-[color:var(--color-muted)]">
-                    <span>ชื่อบริษัท</span>
-                    <input value={companyNew} onChange={(e) => setCompanyNew(e.target.value)} className="input text-sm" placeholder="เช่น โรงแรมกะตะ คลิฟ รีสอร์ท" data-testid="contact-convert-company-name" />
-                  </label>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <label className="flex flex-col gap-1 text-xs text-[color:var(--color-muted)]">
+                      <span>ชื่อบริษัท</span>
+                      <input value={companyNew} onChange={(e) => setCompanyNew(e.target.value)} className="input text-sm" placeholder="เช่น โรงแรมกะตะ คลิฟ รีสอร์ท" data-testid="contact-convert-company-name" />
+                    </label>
+                    <label className="flex flex-col gap-1 text-xs text-[color:var(--color-muted)]">
+                      <span>เลขประจำตัวผู้เสียภาษี (ถ้ามี)</span>
+                      <input
+                        {...fe.field("taxId")}
+                        value={companyTaxId}
+                        onChange={(e) => {
+                          setCompanyTaxId(e.target.value);
+                          fe.clear("taxId");
+                        }}
+                        inputMode="numeric"
+                        className="input text-sm"
+                        placeholder="13 หลัก"
+                        data-testid="contact-convert-company-taxid"
+                      />
+                      <FieldError id={fe.errorId("taxId")} message={fe.errors.taxId} testid="contact-convert-company-taxid-error" />
+                    </label>
+                  </div>
                 ) : (
                   <ContactPicker
                     kind="convert-company"
@@ -214,6 +264,22 @@ export function ConvertButton({
                     search={(q) => searchCompaniesAction(systemId, q)}
                   />
                 )}
+                <label className="flex flex-col gap-1 text-xs text-[color:var(--color-muted)]">
+                  <span>บทบาทในบริษัท</span>
+                  <select
+                    value={companyMode === "new" ? roleNew : rolePick}
+                    onChange={(e) => (companyMode === "new" ? setRoleNew(e.target.value as CompanyContactRole) : setRolePick(e.target.value as CompanyContactRole | ""))}
+                    className="input text-sm"
+                    data-testid="contact-convert-company-role"
+                  >
+                    {companyMode === "pick" && <option value="">ไม่เปลี่ยน (คงบทบาทเดิม)</option>}
+                    {COMPANY_CONTACT_ROLES.map((r) => (
+                      <option key={r} value={r}>
+                        {COMPANY_CONTACT_ROLE_LABEL[r]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
                 {jobTitle && <span className="text-xs text-[color:var(--color-muted)]">ตำแหน่งของผู้ติดต่อนี้: {jobTitle}</span>}
               </>
             )}
@@ -269,14 +335,25 @@ export function ConvertButton({
               ))}
           </section>
           <ErrorLine text={error} testid="contact-convert-error" />
-          <div className="grid grid-cols-2 gap-2">
-            <button type="button" className="btn btn-ghost text-sm" onClick={() => setOpen(false)} data-testid="contact-convert-cancel">
-              ยกเลิก
-            </button>
-            <button type="button" className="btn btn-primary text-sm" disabled={pending} onClick={submit} data-testid="contact-convert-submit">
-              {pending ? "กำลังแปลง…" : "✓ แปลง"}
-            </button>
-          </div>
+          {reused ? (
+            <>
+              <p className="rounded-xl border p-3 text-sm" style={{ borderColor: "var(--color-accent)" }} role="status" data-testid="contact-convert-reused">
+                แปลงแล้ว — ใช้บริษัทเดิม &quot;{reused.name}&quot; ที่มีเลขภาษีนี้อยู่แล้ว (ไม่ได้สร้างบริษัทใหม่)
+              </p>
+              <button type="button" className="btn btn-primary text-sm" onClick={() => setOpen(false)} data-testid="contact-convert-done">
+                ปิด
+              </button>
+            </>
+          ) : (
+            <div className="grid grid-cols-2 gap-2">
+              <button type="button" className="btn btn-ghost text-sm" onClick={() => setOpen(false)} data-testid="contact-convert-cancel">
+                ยกเลิก
+              </button>
+              <button type="button" className="btn btn-primary text-sm" disabled={pending} onClick={submit} data-testid="contact-convert-submit">
+                {pending ? "กำลังแปลง…" : "✓ แปลง"}
+              </button>
+            </div>
+          )}
         </Sheet>
       )}
     </>
@@ -298,9 +375,21 @@ type MenuContact = {
   tags: string[];
   archived: boolean;
   companyId: string | null;
+  /** CRM C5.5-fix6 ▸ F3: ชื่อบริษัทหลักที่ผู้ดูมองเห็น (getContact360().company — ผ่าน companyWhere) · มองไม่เห็น = null (ไม่แสดงชื่อ) ◂ */
+  companyName?: string | null;
+  /** CRM C5.5-fix6 r2 ▸ F6-4: บริษัทที่แสดงคือบริษัทหลักจริงไหม (getContact360 ใช้ลิงก์อื่นที่มองเห็นแทนเมื่อบริษัทหลักมองไม่เห็น) ◂ */
+  companyIsPrimary?: boolean;
+  /** CRM C5.5-fix7 ▸ R2F-1: ผู้ดูผูกบริษัทได้ แต่บริษัทหลักปัจจุบันอยู่นอกการมองเห็น ⇒ ไม่มีช่องเลือก (ทุกการเลือกถูกปฏิเสธ) · แสดงบรรทัดอธิบายแทน ◂ */
+  companyLocked?: boolean;
 };
 
-export function ContactMenu({ systemId, contact, owners }: { systemId: string; contact: MenuContact; owners: Opt[] }) {
+// CRM C4.2-fix ▸ `can` = คีย์เดียวกับ server action ของแต่ละเมนู (หน้าคำนวณด้วย crmCan · C1.7) — ไม่มีสิทธิ์ = ไม่มีเมนูนั้น ·
+//   ไม่มีเมนูที่ทำได้เลย = ไม่มีปุ่ม "…" (ไม่เปิดเมนูว่าง) ◂
+// CRM C5.5-fix6 ▸ F3: `company` = crmCanLinkCompany (อ่าน + แก้บริษัท) — ไม่ผ่าน = แผ่นแก้ไขไม่มีช่องย้ายบริษัท (แสดงชื่อเดิมแบบอ่านอย่างเดียว
+//   เฉพาะเมื่อผู้ดูมองเห็นบริษัทนั้น) · บันทึกไม่ส่ง companyId ⇒ บริษัทเดิมคงอยู่ ◂
+export type ContactMenuCan = { update: boolean; assign: boolean; merge: boolean; archive: boolean; company: boolean };
+
+export function ContactMenu({ systemId, contact, owners, can }: { systemId: string; contact: MenuContact; owners: Opt[]; can: ContactMenuCan }) {
   const router = useRouter();
   const [menu, setMenu] = useState(false);
   const [sheet, setSheet] = useState<null | "edit" | "owner" | "status" | "tags" | "merge" | "archive">(null);
@@ -389,13 +478,14 @@ export function ContactMenu({ systemId, contact, owners }: { systemId: string; c
   );
 
   const ITEMS: { key: NonNullable<typeof sheet>; label: string; show: boolean }[] = [
-    { key: "edit", label: "แก้ไขข้อมูลติดต่อ", show: !contact.archived },
-    { key: "owner", label: "เปลี่ยนผู้ดูแล", show: !contact.archived },
-    { key: "status", label: "ขั้น / สถานะ lead", show: !contact.archived },
-    { key: "tags", label: "แท็ก", show: !contact.archived },
-    { key: "merge", label: "รวมกับผู้ติดต่อที่ซ้ำ", show: !contact.archived },
-    { key: "archive", label: contact.archived ? "กู้คืนผู้ติดต่อ" : "เก็บถาวร", show: true },
+    { key: "edit", label: "แก้ไขข้อมูลติดต่อ", show: !contact.archived && can.update },
+    { key: "owner", label: "เปลี่ยนผู้ดูแล", show: !contact.archived && can.assign },
+    { key: "status", label: "ขั้น / สถานะ lead", show: !contact.archived && can.update },
+    { key: "tags", label: "แท็ก", show: !contact.archived && can.update },
+    { key: "merge", label: "รวมกับผู้ติดต่อที่ซ้ำ", show: !contact.archived && can.merge },
+    { key: "archive", label: contact.archived ? "กู้คืนผู้ติดต่อ" : "เก็บถาวร", show: can.archive },
   ];
+  if (!ITEMS.some((i) => i.show)) return null;
 
   return (
     <div className="relative">
@@ -430,8 +520,18 @@ export function ContactMenu({ systemId, contact, owners }: { systemId: string; c
               </label>
             ))}
           </div>
-          <ContactPicker kind="edit-company" label="ย้ายไปบริษัทหลัก (ไม่เลือก = คงเดิม)" placeholder="พิมพ์ชื่อบริษัท" emptyLabel="— คงบริษัทเดิม —" value={companyId} onChange={setCompanyId} search={(q) => searchCompaniesAction(systemId, q)} />
-          {companyId && contact.companyId && (
+          {can.company ? (
+            <ContactPicker kind="edit-company" label="ย้ายไปบริษัทหลัก (ไม่เลือก = คงเดิม)" placeholder="พิมพ์ชื่อบริษัท" emptyLabel="— คงบริษัทเดิม —" value={companyId} onChange={setCompanyId} search={(q) => searchCompaniesAction(systemId, q)} />
+          ) : contact.companyLocked ? (
+            <p className="text-xs text-[color:var(--color-muted)]" data-testid="contact-edit-company-locked">
+              {CONTACT_PRIMARY_COMPANY_HIDDEN_MSG}
+            </p>
+          ) : contact.companyName ? (
+            <p className="text-xs text-[color:var(--color-muted)]" data-testid="contact-edit-company-readonly">
+              {contact.companyIsPrimary ? "บริษัทหลัก" : "บริษัท"}: {contact.companyName} (ย้ายบริษัทได้เฉพาะบัญชีที่มีสิทธิ์แก้ไขบริษัท)
+            </p>
+          ) : null}
+          {can.company && companyId && contact.companyId && (
             <label className="flex items-center gap-2 text-sm">
               <input type="checkbox" checked={moveDeals} onChange={(e) => setMoveDeals(e.target.checked)} data-testid="contact-edit-move-deals" />
               ย้ายดีลที่ยังเปิดของบริษัทเดิมไปบริษัทใหม่ด้วย
@@ -448,7 +548,7 @@ export function ContactMenu({ systemId, contact, owners }: { systemId: string; c
                 phone: edit.phone || null,
                 email: edit.email || null,
                 jobTitle: edit.jobTitle || null,
-                ...(companyId ? { companyId, moveOpenDeals: moveDeals } : {}),
+                ...(can.company && companyId ? { companyId, moveOpenDeals: moveDeals } : {}),
               }),
             );
           })}
@@ -565,7 +665,20 @@ export function ContactMenu({ systemId, contact, owners }: { systemId: string; c
 
 // ───────────────────────── ความยินยอม / ไม่รับข่าวสาร (C20) ─────────────────────────
 
-export function ConsentBlock({ systemId, contactId, consent, disabled }: { systemId: string; contactId: string; consent: ConsentView; disabled: boolean }) {
+export function ConsentBlock({
+  systemId,
+  contactId,
+  consent,
+  disabled,
+  memberConsentLocked = false,
+}: {
+  systemId: string;
+  contactId: string;
+  consent: ConsentView;
+  disabled: boolean;
+  /** CRM C4.2-fix r2 ▸ ผูกสมาชิกแต่ผู้ดูไม่มี member.customer.update — ปุ่มยินยอม/ไม่ยินยอมกดไม่ได้ (ระบบสมาชิกจะปฏิเสธ) ◂ */
+  memberConsentLocked?: boolean;
+}) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -576,6 +689,11 @@ export function ConsentBlock({ systemId, contactId, consent, disabled }: { syste
       if (!r.ok) return setError(r.error);
       router.refresh();
     });
+  // CRM C5.4-E ▸ E4: ปุ่มยินยอม/ไม่ยินยอมที่ล็อก (ผูกสมาชิก + ไม่มีสิทธิ์ · ไม่มีสิทธิ์แก้) เดิม disabled แต่หน้าตาเหมือนกดได้ (`.btn-ghost`
+  //   ไม่มีสไตล์ตอน disabled) ⇒ จางลง + เคอร์เซอร์ห้าม + คำอธิบายเมื่อชี้ · สถานะที่เลือกอยู่ยังเห็นสีเดิม (แค่จางลง) · เฉพาะบล็อกนี้ (ไม่แตะ CSS กลาง — หน้า v1 เท่าเดิม) ◂
+  const channelLocked = disabled || memberConsentLocked;
+  const lockedLook = channelLocked ? " cursor-not-allowed opacity-50" : "";
+  const lockedTitle = memberConsentLocked ? "ความยินยอมของผู้ติดต่อนี้เก็บที่ระบบสมาชิก — ต้องมีสิทธิ์แก้ไขข้อมูลสมาชิก" : undefined;
   return (
     <section className="card flex flex-col gap-3 p-4" data-testid="contact-consent">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -593,7 +711,22 @@ export function ConsentBlock({ systemId, contactId, consent, disabled }: { syste
         </span>
         <input type="checkbox" checked={consent.optOut} disabled={disabled || pending} onChange={(e) => run(() => setOptOutAction(systemId, contactId, e.target.checked))} data-testid="contact-optout-toggle" />
       </label>
+      {/* CRM C5.4-B ▸ L5-M4: ลูกค้าขอไม่ให้ติดตาม (พิมพ์เขียว §11.4 trackingOptOut) — ยังรับอีเมลได้ ◂ */}
+      <label className="flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm">
+        <span>
+          ไม่ให้ติดตามการเปิดอ่าน/คลิก
+          <span className="block text-xs text-[color:var(--color-muted)]">
+            เปิด = อีเมลถึงคนนี้ไม่ใส่ตัวนับการเปิดอ่านและไม่ห่อลิงก์ · การเข้าเว็บของร้านไม่ผูกกับคนนี้ (ยังส่งอีเมลได้ตามความยินยอมด้านล่าง)
+          </span>
+        </span>
+        <input type="checkbox" checked={consent.trackingOptOut} disabled={disabled || pending} onChange={(e) => run(() => setTrackingOptOutAction(systemId, contactId, e.target.checked))} data-testid="contact-tracking-optout-toggle" />
+      </label>
       {consent.emailBounced && <p className="text-xs text-[color:var(--color-danger)]">อีเมลของผู้ติดต่อนี้ส่งไม่ถึง (เด้งกลับ) — ระบบหยุดส่งอีเมลให้แล้ว</p>}
+      {memberConsentLocked && (
+        <p className="text-xs text-[color:var(--color-muted)]" data-testid="contact-consent-member-locked">
+          ความยินยอมรายช่องทางของผู้ติดต่อนี้เก็บที่ระบบสมาชิก — ต้องมีสิทธิ์ &quot;แก้ไขข้อมูลสมาชิก&quot; จึงเปลี่ยนได้ ขอให้เจ้าของร้านเปิดสิทธิ์ให้หากต้องแก้
+        </p>
+      )}
       <ul className="flex flex-col divide-y text-sm">
         {consent.channels.map((c) => (
           <li key={c.channel} className="flex flex-wrap items-center justify-between gap-2 py-2">
@@ -604,9 +737,11 @@ export function ConsentBlock({ systemId, contactId, consent, disabled }: { syste
             <span className="flex gap-1">
               <button
                 type="button"
-                className="btn btn-ghost px-2 py-1 text-xs"
+                className={`btn btn-ghost px-2 py-1 text-xs${lockedLook}`}
                 style={c.granted === true ? { borderColor: "var(--color-accent)", color: "var(--color-accent)", fontWeight: 600 } : undefined}
-                disabled={disabled || pending || c.granted === true}
+                title={lockedTitle}
+                aria-disabled={channelLocked || undefined}
+                disabled={disabled || memberConsentLocked || pending || c.granted === true}
                 onClick={() => run(() => setConsentAction(systemId, contactId, c.channel, true))}
                 data-testid="contact-consent-grant"
               >
@@ -614,9 +749,11 @@ export function ConsentBlock({ systemId, contactId, consent, disabled }: { syste
               </button>
               <button
                 type="button"
-                className="btn btn-ghost px-2 py-1 text-xs"
+                className={`btn btn-ghost px-2 py-1 text-xs${lockedLook}`}
                 style={c.granted === false ? { borderColor: "var(--color-danger)", color: "var(--color-danger)", fontWeight: 600 } : undefined}
-                disabled={disabled || pending || c.granted === false}
+                title={lockedTitle}
+                aria-disabled={channelLocked || undefined}
+                disabled={disabled || memberConsentLocked || pending || c.granted === false}
                 onClick={() => run(() => setConsentAction(systemId, contactId, c.channel, false))}
                 data-testid="contact-consent-revoke"
               >

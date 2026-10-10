@@ -1,0 +1,44 @@
+  ✅ [M3.3-S1.1] migration member_v2_g3: AutomationRule +{holdoutPct reentryDays trigger} · AutomationRun +{customerId scheduledAt stepIndex payload journeyId finishedAt} · enum AutomationRunStatus +WAITING/HOLDOUT/SKIPPED/CANCELLED (OK/FAILED คงเดิม) · JOURNEY_PRESETS 6 (birthday new_member inactive at_risk no_show review) ชื่อไทย · MEMBER_LIMITS.journeys 50 · automationRunsPerMonth 5,000
+  ✅ [M3.3-S1.2] createJourney ตรวจ: SET_TIER → throw ไทย · event นอกทะเบียน → throw · WAIT_THEN 120 วัน (> 90) → throw · thana (ไม่มี promo.manage) → throw · createFromPreset 6 ตัว → AutomationRule scope MEMBER_JOURNEY memberSystemId event ตรง trigger (birthday = member.birthday.upcoming daysBefore 7 · holdoutPct 10 · actions มี ISSUE_VOUCHER templateId ที่ส่ง)
+  ✅ [M3.3-S2.1] birthday: emitJourneyCronEvents → event member.birthday.upcoming {customerId X, daysBefore 7} (วันเกิดอีก 7 วัน) · runForEvent → run OK · voucher origin JOURNEY originRef {journeyId, runId} · SEND_LINE deps.line เรียก (ข้อความมี {ชื่อ} แทนแล้ว) · GIVE_POINTS → แต้ม +100 (ledger refType JOURNEY)
+  ✅ [M3.3-S2.2] birthday ซ้ำวันเดียวกัน: emit อีกครั้ง → event ไม่ซ้ำ (1) · runForEvent event เดิม (idempotencyKey เดิม) → loop guard ไม่รันซ้ำ (run OK ยัง 1 · voucher 1 · แต้ม 100)
+  ✅ [M3.3-S2.3] new_member: member.created (จาก createMember) → consumer → run OK · ADD_TAG 'new' อยู่ใน tags · WAIT_THEN 7 + WAIT_THEN 30 → run WAITING 2 แถว scheduledAt ≈ +7 และ +30 วัน (payload.thenActions) · MemberActivity JOURNEY_STEP ≥ 1
+  ✅ [M3.3-S2.4] runDueWaits ตอนนี้ → 0 (ยังไม่ถึง) · now+8 วัน → run 7 วัน OK (thenActions SEND_LINE เรียก deps.line ให้ N) · run 30 วันยัง WAITING · finishedAt ตั้ง
+  ✅ [M3.3-S2.5] inactive 60 วัน: I1 (silver · ยินยอม LINE · หาย 70 วัน) → event member.inactive {days 60} → run OK · voucher + SEND_LINE · WAIT_THEN 7 ifVoucherUnused (WAITING payload.voucherId) · I2 (silver · ไม่ยินยอม) → SKIPPED detail conditions · I3 (member · ต่ำกว่า silver) → SKIPPED conditions
+  ✅ [M3.3-S2.6] WAIT_THEN ifVoucherUnused: I1 ยังไม่ใช้ voucher → หลัง 7 วัน ทำ SEND_SMS (deps.sms เรียก · run OK) · I4 ใช้ voucher ไปแล้ว → run SKIPPED detail 'ใช้แล้ว' ไม่ส่ง SMS
+  ✅ [M3.3-S2.7] at_risk: member.tier.at_risk → run OK · SEND_LINE (deps.line) · NOTIFY_STAFF → AppNotification +1 (title ไทย มีชื่อสมาชิก)
+  ✅ [M3.3-S2.8] no_show: setAppointmentStatus NO_SHOW ยิง event booking.no_show {appointmentId, customerId} (3 ทะเบียน) · journey → run OK · voucher origin JOURNEY + SEND_LINE
+  ✅ [M3.3-S2.9] review: pos.sale.paid (consumer จริง) → run OK + WAITING 1 วัน (scheduledAt ≈ +1d) · runDueWaits +2 วัน → REQUEST_REVIEW → MemberActivity REVIEW_REQUESTED refId saleId (stub M3.4) · run OK
+  ✅ [M3.3-S2.10] review reentryDays 30 (preset): บิลที่ 2 ภายใน 30 วัน → run SKIPPED detail re-entry (ไม่ขอรีวิวซ้ำ) · run OK ยัง 1
+  ✅ [M3.3-S2.11] 6 journey สำเร็จรูปมี run OK ครบทุกตัว (≥ 6 รวม) · MemberActivity JOURNEY_STEP ต่อ action ที่ทำจริง ≥ 10 · ทุก run OK มี detail ไทยสรุปขั้น
+  ✅ [M3.3-S2.12] action อื่น: OPEN_KANBAN_CARD → deps.kanban เรียก {boardId, title แทน {ชื่อ}} · REMOVE_TAG 'new' → tags เหลือ ['vip'] · SEND_EMAIL (deps.email) · SEND_PUSH (deps.push) · run OK
+  ✅ [M3.3-S3.1] run WAITING 30 วัน: now+29 วัน → ยัง WAITING (ไม่ทำก่อนเวลา)
+  ✅ [M3.3-S3.2] ปิด journey (toggle enabled=false) → run WAITING ที่เหลือ → CANCELLED ทันที · runDueWaits หลังนั้นไม่ทำ (deps.line 0) · rule.enabled false
+  ✅ [M3.3-S3.3] เปิดใหม่ → สมาชิกใหม่ N2 เข้า journey ได้ (WAITING 2) · runDueWaits ซ้ำ 2 ครั้ง → thenActions ทำครั้งเดียว (deps.line ให้ N2 = 1)
+  ✅ [M3.3-S3.4] WAIT_THEN ซ้อน 1 ชั้น: หลัง 1.5 วัน tag w1 (ยังไม่มี w2) · หลัง 2.5 วัน w2 · ซ้อน 3 ชั้น → throw ไทย
+  ✅ [M3.3-S4.1] holdout 50%: run HOLDOUT = ชุด hashPct(ruleId:customerId) < 50 เป๊ะ (4/8) · คนอื่น OK
+  ✅ [M3.3-S4.2] HOLDOUT ไม่ทำ action (tag ติดเฉพาะกลุ่ม OK) แต่บันทึก run เพื่อเทียบ · ยิง event ซ้ำคนเดิม → ไม่เปลี่ยนกลุ่ม (deterministic) · rule.holdoutPct 50
+  ✅ [M3.3-S5.1] reentryDays 10: event ที่ 2 (idempotencyKey ใหม่) ภายใน 10 วัน → SKIPPED re-entry · OK 1
+  ✅ [M3.3-S5.2] พ้น 10 วัน (run เก่า createdAt −11 วัน) → เข้าใหม่ได้ (OK 2) · reentryDays null = ครั้งเดียวตลอดชีพ: แม้ run เก่า 400 วัน → SKIPPED
+  ✅ [M3.3-S6.1] quota Tenant.limits.member.automationRunsPerMonth = ที่ใช้ไป+1: Q1 ยังรันได้ · Q2 → SKIPPED detail quota (ไม่ทำ action)
+  ✅ [M3.3-S6.2] loop guard: event เดียวกัน (idempotencyKey เดิม) ยิงพร้อมกัน 2 + ซ้ำอีก 1 → run ของ journey at_risk สำหรับ L1 = 1 (ไม่นับ SKIPPED)
+  ✅ [M3.3-S7.1] dryRun(inactive): {candidates ≥ 4 (I1–I4 · lastActivityAt เก่า 70 วัน), wouldEnter, holdout, skippedByConditions ≥ 2 (I2 ไม่ยินยอม · I3 ระดับต่ำ), perStep[]} · ไม่เขียน (run/voucher เท่าเดิม)
+  ✅ [M3.3-S7.2] dryRun(birthday daysBefore 7): candidates ≥ 1 (X วันเกิดอีก 7 วัน) · thana (ไม่มี promo.read? — read-โดยนัยผ่าน) ไม่ throw หรือ throw ไทย · journey ไม่มี → throw ไทย
+  ✅ [M3.3-S8.1] journeyStats(inactive): entered = run เข้า (OK+HOLDOUT) · perStep มี label ไทย + count (ISSUE_VOUCHER = จำนวน voucher · WAIT_THEN = จำนวน WAITING/OK ของขั้นนั้น) · results {sent, used ≥ 1 (I4 ใช้ voucher), usedPct, saleSatang, costSatang ≥ 30000, roi} · holdout {entered 0, converted 0} · recent[] มีชื่อ · daily[]
+  ✅ [M3.3-S8.2] journeyStats(holdout): holdout.entered = 4 · uplift = usedPct − holdout.convertedPct (ตัวเลข) · AutomationRule.journeyStats Json เก็บสรุป · listJourneys แถว inactive มี stats30d {entered, used, saleSatang, costSatang, roi} + enabled + trigger
+  ✅ [M3.3-S9.1] หน้า journeys · new · [journeyId] requireTenant + สิทธิ์ · actions 'use server' gate promo.manage · testid 20 · ป้ายภาพ 07/22 ครบ · facade export createJourney/updateJourney/toggleJourney/deleteJourney/listJourneys/getJourney/runForEvent/runDueWaits/emitJourneyCronEvents/dryRun/journeyStats/createFromPreset · journeys.ts ไม่ import โมดูลอื่นตรงนอก facade · cron.ts มี journeyWaits (รายชั่วโมง) + emitJourneyCronEvents (รายวัน) · outbox-consumers เรียก runForEvent ผ่าน withAutomation/best-effort · ไม่มี any/อีโมจิ/hex
+  ❌ [M3.3-S9.2] ภาพ 07 บน: journeys-owner desktop+mobile 200 ไม่ล้น (builder + ตาราง journey ที่เปิดใช้อยู่ ≥ 6 แถว) · thana 200 · noperm 404 — exp 200 ×3 · 404 | act 200/200/200/undefined
+  ✅ [M3.3-S9.3] ภาพ 22: journey-detail-owner desktop 200 (ขั้นตอน 5 การ์ด · ผลลัพธ์ 5 ตัวเลข · กล่อง holdout · กราฟรายวัน · เข้าล่าสุด) · journey-new-owner 200 (builder ว่าง + สำเร็จรูป 6)
+  ✅ [M3.3-S9.4] 🔴 parity ภาพ 07 (บน) + 22 — Fable ตรวจด้วยตา · wo-notes/member-M3.3.md มี 'PARITY: ผ่าน'
+
+🔴 M3.3: 31/32
+JSON_SUMMARY {"total":32,"passed":31,"findings":[{"id":"M3.3-S9.2","sev":"CRITICAL"}]}
+(node:1482431) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)

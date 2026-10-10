@@ -43,7 +43,29 @@ import { CARD_FROM_CHAT_ADAPTER, CARD_FROM_CHAT_OP } from "./kanban-op-from-chat
  */
 const ASSISTANT_READ_SCOPES = ["kanban.board.read", "kanban.report.view"] as const;
 
-function assistantActor(tenantId: string, systemId: string): ApiActor {
+/**
+ * CRM C5.5-G1 ▸ "คนที่ถาม" ของเครื่องมืออ่าน — ส่งมา = อ่านด้วยสิทธิ์และ **บทบาทในบอร์ด** ของคนนั้น (บอร์ด PRIVATE ที่ไม่ได้เป็นสมาชิก
+ *   มองไม่เห็น · เหมือนหน้าจอ) ผ่านทาง actor `user` ของ `kanbanCtxOf` · ชุดอ่านของผู้ช่วยยังเป็นเพดาน (เขียนไม่ได้เสมอ)
+ *   ไม่ส่ง = คีย์ API (ผ่านด่าน scope ของ route + ด่านเครื่องมือมาแล้ว) ⇒ actor ระดับร้านแบบเดิม (D18) ◂
+ */
+export type KanbanToolViewer = { userId: string; membership: MembershipCtx };
+
+function assistantActor(tenantId: string, systemId: string, viewer?: KanbanToolViewer | null): ApiActor {
+  if (viewer) {
+    const m = viewer.membership;
+    return {
+      kind: "user",
+      module: "kanban",
+      tenantId,
+      systemId,
+      userId: viewer.userId,
+      keyName: "ผู้ช่วย AI",
+      scopes: [],
+      membership: m,
+      can: (action) => kanbanScopesCan([...ASSISTANT_READ_SCOPES], action) && kanbanMembershipCan(m, action),
+      denyMessageTh: KANBAN_DENY_TH,
+    };
+  }
   const scopes = [...ASSISTANT_READ_SCOPES];
   return {
     kind: "assistant",
@@ -76,7 +98,7 @@ function userActor(tenantId: string, systemId: string, m: MembershipCtx, userId?
 }
 
 /** สิทธิ์ของ "คน" ต่อ action ของบอร์ดงาน — ความหมายเดียวกับ `assertKanbanCan` ของ actions.ts */
-function kanbanMembershipCan(m: MembershipCtx, action: string): boolean {
+export function kanbanMembershipCan(m: MembershipCtx, action: string): boolean {
   if (m.role === "OWNER" || m.role === "MANAGER") return true;
   if (m.permissions[action] === true || m.permissions["kanban.*"] === true) return true;
   // §6.1: มีคีย์ `kanban.*` ตัวใดตัวหนึ่ง = อ่านได้ (backward compat ของ K1.3)
@@ -520,7 +542,7 @@ export async function runKanbanTool(
   tenantId: string,
   name: string,
   rawArgs: unknown,
-  opts: { systemId?: string } = {},
+  opts: { systemId?: string; viewer?: KanbanToolViewer | null } = {},
 ): Promise<KanbanToolOutcome> {
   const op = kanbanToolOps().find((o) => o.tool?.name === name);
   if (!op) return { mode: "error", error: `ไม่รู้จักเครื่องมือ "${name}"` };
@@ -550,7 +572,7 @@ export async function runKanbanTool(
     };
   }
 
-  const actor = assistantActor(tenantId, system.id);
+  const actor = assistantActor(tenantId, system.id, opts.viewer);
   if (!actor.can(prepared.op.action)) return { mode: "error", error: "ผู้ช่วยไม่มีสิทธิ์อ่านข้อมูลส่วนนี้" };
   try {
     const env = await runOpAsActor(prepared.op, actor, {

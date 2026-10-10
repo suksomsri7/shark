@@ -27,7 +27,7 @@ import {
   CRM_FILE_MAX_BYTES,
   CRM_FILE_MIME_ALLOWLIST,
   CRM_FILE_NAME_MAX,
-  INVISIBLE_CHARS_RE,
+  stripInvisibleChars,
   type CrmFileEntityType,
   type FileLinkDto,
 } from "./activities-shared";
@@ -85,7 +85,7 @@ async function assertEntity(ctx: FilesCtx, a: MemberActor, type: CrmFileEntityTy
  */
 export function sanitizeFileName(raw: unknown, ext: string): string {
   let s = typeof raw === "string" ? raw.normalize("NFC") : "";
-  s = s.replace(INVISIBLE_CHARS_RE, "").replace(/[\u0000-\u001f\u007f-\u009f]+/g, "").replace(/[/\\<>:"|?*]+/g, "").replace(/\s+/g, " ").trim();
+  s = stripInvisibleChars(s).replace(/[\u0000-\u001f\u007f-\u009f]+/g, "").replace(/[/\\<>:"|?*]+/g, "").replace(/\s+/g, " ").trim();
   s = s.replace(/^[.\s]+/, "").trim();
   if (!s) s = `ไฟล์แนบ.${ext}`;
   if (s.length > CRM_FILE_NAME_MAX) {

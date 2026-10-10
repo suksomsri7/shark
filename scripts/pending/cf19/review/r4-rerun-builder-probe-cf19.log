@@ -1,0 +1,7 @@
+  ✅ [CF19-Q1] OWNER: 12 statements
+  ✅ [CF19-Q2] STAFF without member read: 11 statements
+  ✅ [CF19-Q3] branch-limited entitled STAFF: 12 statements (was 14 at 4aa42ad2: briefFor loaded points)
+  ℹ️  RV14-4 (known debt, not fixed): with a CRM system in the shop the OWNER's links tab costs 14 statements (CRM contact + deal lookups) — Q1–Q3 above are measured before the CRM system exists
+  ℹ️  CRM contact list page SQL statements: OWNER 3 · member-blind STAFF 3 · branch-limited STAFF 4 / 4
+  ℹ️  links tab SQL statements: OWNER 12 · no member read 11 · branch-limited entitled 12
+JSON_SUMMARY {"total":56,"passed":56,"findings":[]}

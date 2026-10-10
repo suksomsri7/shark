@@ -1,0 +1,127 @@
+
+===== QC WO 4.3 · สินค้า/บริการ V2 + หน่วย + จัดชุด + เบิก/คืน/ปรับต้นทุน =====
+[env] DB ep-plain-art-ao3djg4u-pooler.c-2.ap-southeast-1.aws.neon.tech
+
+PR1 ชุดข้อมูล QC: สินค้า/หน่วย/รายการจัดชุด
+  ❌ PR1.1 สินค้าตามชนิด (SQL) = เฉลย — ได้ {"GOODS":0,"SERVICE":0,"BUNDLE":0} · ควรได้ {"GOODS":7,"SERVICE":5,"BUNDLE":1}
+  ❌ PR1.2 สินค้ารวม = เฉลย — ได้ 0 · ควรได้ 13
+  ❌ PR1.3 หน่วยเริ่มต้น §8.3 ครบ 12 — ได้ 0 · ควรได้ 12
+  ✅ PR1.4 หน่วยเริ่มต้นมีรหัส PU/SU + ชื่ออังกฤษ ครบทุกตัว
+  ✅ PR1.5 รหัสหน่วยไม่ซ้ำ
+  ❌ PR1.6 ชุดมีส่วนประกอบตามสูตร — ได้ [] · ควรได้ [{"sku":"MASK-01","qty":1},{"sku":"TANK-12","qty":1}]
+  ❌ PR1.7 ชุดเป็นชนิด BUNDLE และไม่ผูกคลังเอง — {}
+  ❌ PR1.8 ชุดมีเลขที่ขึ้นต้น B — undefined
+
+PR2 หน้ารายการสินค้า: แท็บ · ค้นหา · แบ่งหน้า · มูลค่าสต็อก
+  ❌ PR2.1 ตัวนับแท็บชนิด = เฉลย — ได้ {"GOODS":0,"SERVICE":0,"BUNDLE":0} · ควรได้ {"GOODS":7,"SERVICE":5,"BUNDLE":1}
+  ❌ PR2.2 จำนวนแถวในหน้า ≤ ขนาดหน้า — ได้ 0 · ควรได้ 7
+  ✅ PR2.3 จำนวนหน้า
+  ✅ PR2.4 หน้า 2 ไม่ซ้ำกับหน้า 1
+  ❌ PR2.5 ค้นหาชื่อไทยเจอ — 0 แถว
+  ❌ PR2.6 ค้นหาด้วยรหัสสินค้า (SKU) เจอ 1 — ได้ 0 · ควรได้ 1
+  ✅ PR2.7 ค้นหาที่ไม่มี = 0 แถว
+  ✅ PR2.8 แท็บย่อย 'ปิดใช้งาน' = เฉลย SQL
+  ✅ PR2.9 มูลค่าสต็อกรวม = เฉลย SQL
+  ❌ PR2.10 แท็บ 'รายการจัดชุด' มีชุดเดียว + นับส่วนประกอบได้ — ได้ [] · ควรได้ [2]
+  ✅ PR2.11 บริการไม่มีมูลค่าสต็อก
+
+PR3 การ์ดสินค้าที่ติดตาม (f6)
+  ✅ PR3.1 การ์ดไม่เกิน 6 ใบ
+  ❌ PR3.2 มีการ์ดของสินค้าที่ผูกคลัง — 0
+  ❌ PR3.3 คงเหลือ/จุดสั่งซื้อบนการ์ด = ค่าจากคลัง (SQL) — {}
+
+PR4 เลขที่สินค้า P/S/B (§8.2)
+  ✅ PR4.1 เลขที่แยกสายตามชนิด
+  ✅ PR4.2 กรอกเลขที่เองได้
+  ✅ PR4.3 เลขที่ซ้ำถูกปฏิเสธเป็นภาษาไทย
+  ✅ PR4.4 สร้างพร้อมกัน 5 ตัวสำเร็จครบ
+  ✅ PR4.5 เลขที่ไม่ซ้ำกันเลย
+  ✅ PR4.6 ไม่มีเลขที่ซ้ำในฐานข้อมูล (SQL)
+
+PR5 หน่วยนับ (§8.3)
+  ✅ PR5.1 seed หน่วยครั้งแรกได้ 12
+  ✅ PR5.2 seed ซ้ำไม่สร้างเพิ่ม (idempotent)
+  ✅ PR5.3 จำนวนหน่วยใน DB (SQL) = 12
+  ✅ PR5.4 หน่วยสินค้าได้รหัส PU · หน่วยบริการได้ SU
+  ✅ PR5.5 หน่วยชื่อซ้ำถูกปฏิเสธ
+  ✅ PR5.6 ชื่อหน่วยยาวเกิน 20 ถูกปฏิเสธ
+  ✅ PR5.7 นับ 'ใช้กับสินค้า n' ถูก
+
+PR6/PR7 ติดตามสต็อก + ขายผ่าน POS (§8.2 การเชื่อมต่อ)
+  ✅ PR6.1 สร้างสินค้าสำเร็จ
+  ✅ PR6.2 ติดตามสต็อก → สร้าง InvItem + ผูกสองทาง
+  ✅ PR6.3 InvItem ได้ sku/จุดสั่งซื้อ/ขากลับ
+  ✅ PR6.4 สินค้าจำคลังที่เลือกไว้
+  ✅ PR6.5 บันทึกบาร์โค้ด/หมวด/ขายผ่าน POS
+  ✅ PR7.1 POS เห็นสินค้าที่ติดตามสต็อก
+  ✅ PR7.2 POS เห็นราคาขายของบัญชี
+  ✅ PR6.6 บริการติดตามสต็อกไม่ได้
+
+PR8 ขายรายการจัดชุด 1 ชุด → ตัดสต็อกส่วนประกอบ (§8.2)
+  ✅ PR8.1 ตั้งสูตรชุดสำเร็จ
+  ✅ PR8.2 ออกใบแจ้งหนี้ที่มีรายการจัดชุดได้
+  ✅ PR8.3 ขายชุด 1 → ส่วนประกอบลดตามสูตร (SQL)
+  ✅ PR8.4 คีย์ movement = acc-issue-<lineId>-<componentId>
+  ✅ PR8.5 ตัดซ้ำด้วยคีย์เดิมไม่เบิ้ล (idempotent)
+  ✅ PR8.6 ชุดใส่ตัวเองไม่ได้
+  ✅ PR8.7 ชุดซ้อนชุดไม่ได้
+
+PR9–PR11 ใบเบิก/ส่งคืน: ตัดสต็อก + ลงบัญชี (§8.4 · g12)
+  ✅ PR11.1 บันทึกร่างใบเบิกได้
+  ✅ PR11.2 ร่างไม่ตัดสต็อก
+  ✅ PR11.3 ร่างไม่มี JV
+  ✅ PR11.4 ร่างยังไม่มีเลขที่
+  ✅ PR11.5 อนุมัติร่างได้
+  ✅ PR11.6 เลขที่รูปแบบ PRR-YYYYMM####
+  ✅ PR9.1 อนุมัติแล้วตัดสต็อก 2
+  ✅ PR9.2 ต้นทุนที่คลังคืนมา = 2 × 5,000.00
+  ✅ PR9.3 JV ใบเบิก = Dr 5300 / Cr 1200 เท่าต้นทุน movement
+  ✅ PR9.4 เก็บต้นทุนที่ตัดจริงไว้ที่บรรทัด
+  ✅ PR11.7 อนุมัติซ้ำถูกปฏิเสธ
+  ✅ PR9.5 เลือกบัญชี Dr เองได้
+  ✅ PR9.6 JV ใช้บัญชีที่เลือก (6300 ค่าการตลาด)
+  ✅ PR10.1 สร้างใบส่งคืนได้
+  ✅ PR10.2 เลขที่ใบส่งคืน RPR-YYYYMM####
+  ✅ PR10.3 JV ใบส่งคืนกลับด้าน (Dr 1200 / Cr 5300)
+  ✅ PR10.4 คืนแล้วสต็อกกลับมา
+  ✅ PR10.5 คืนเกินที่เบิกถูกปฏิเสธ
+  ✅ PR9.7 เบิกเกินสต็อกถูกปฏิเสธเป็นภาษาไทย
+  ✅ PR16.1 เบิกล้ม = ไม่มีเอกสารค้าง (rollback)
+
+PR12 ใบปรับต้นทุนสินค้า (§8.4)
+  ❌ PR12.1 JV ใบปรับต้นทุนของ seed = (ใหม่−เดิม)×คงเหลือ — ได้ [] · ควรได้ [{"code":"1200","debit":168000,"credit":0},{"code":"5310","debit":0,"credit":168000}]
+  ❌ CRASH — Cannot read properties of undefined (reading 'costSatang')
+    at <anonymous> (/root/projects/shark-crm/scripts/qc-acc-v2-products.mts:527:65)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+
+🧹 ลบร้านทดสอบ 5 ร้าน
+
+===== QC WO 4.3 · สินค้า V2 สรุป =====
+ผ่าน 57 · ตก 15
+  - PR1.1 สินค้าตามชนิด (SQL) = เฉลย — ได้ {"GOODS":0,"SERVICE":0,"BUNDLE":0} · ควรได้ {"GOODS":7,"SERVICE":5,"BUNDLE":1}
+  - PR1.2 สินค้ารวม = เฉลย — ได้ 0 · ควรได้ 13
+  - PR1.3 หน่วยเริ่มต้น §8.3 ครบ 12 — ได้ 0 · ควรได้ 12
+  - PR1.6 ชุดมีส่วนประกอบตามสูตร — ได้ [] · ควรได้ [{"sku":"MASK-01","qty":1},{"sku":"TANK-12","qty":1}]
+  - PR1.7 ชุดเป็นชนิด BUNDLE และไม่ผูกคลังเอง — {}
+  - PR1.8 ชุดมีเลขที่ขึ้นต้น B — undefined
+  - PR2.1 ตัวนับแท็บชนิด = เฉลย — ได้ {"GOODS":0,"SERVICE":0,"BUNDLE":0} · ควรได้ {"GOODS":7,"SERVICE":5,"BUNDLE":1}
+  - PR2.2 จำนวนแถวในหน้า ≤ ขนาดหน้า — ได้ 0 · ควรได้ 7
+  - PR2.5 ค้นหาชื่อไทยเจอ — 0 แถว
+  - PR2.6 ค้นหาด้วยรหัสสินค้า (SKU) เจอ 1 — ได้ 0 · ควรได้ 1
+  - PR2.10 แท็บ 'รายการจัดชุด' มีชุดเดียว + นับส่วนประกอบได้ — ได้ [] · ควรได้ [2]
+  - PR3.2 มีการ์ดของสินค้าที่ผูกคลัง — 0
+  - PR3.3 คงเหลือ/จุดสั่งซื้อบนการ์ด = ค่าจากคลัง (SQL) — {}
+  - PR12.1 JV ใบปรับต้นทุนของ seed = (ใหม่−เดิม)×คงเหลือ — ได้ [] · ควรได้ [{"code":"1200","debit":168000,"credit":0},{"code":"5310","debit":0,"credit":168000}]
+  - CRASH — Cannot read properties of undefined (reading 'costSatang')
+    at <anonymous> (/root/projects/shark-crm/scripts/qc-acc-v2-products.mts:527:65)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+JSON_SUMMARY {"total":72,"passed":57,"findings":["PR1.1 สินค้าตามชนิด (SQL) = เฉลย — ได้ {\"GOODS\":0,\"SERVICE\":0,\"BUNDLE\":0} · ควรได้ {\"GOODS\":7,\"SERVICE\":5,\"BUNDLE\":1}","PR1.2 สินค้ารวม = เฉลย — ได้ 0 · ควรได้ 13","PR1.3 หน่วยเริ่มต้น §8.3 ครบ 12 — ได้ 0 · ควรได้ 12","PR1.6 ชุดมีส่วนประกอบตามสูตร — ได้ [] · ควรได้ [{\"sku\":\"MASK-01\",\"qty\":1},{\"sku\":\"TANK-12\",\"qty\":1}]","PR1.7 ชุดเป็นชนิด BUNDLE และไม่ผูกคลังเอง — {}","PR1.8 ชุดมีเลขที่ขึ้นต้น B — undefined","PR2.1 ตัวนับแท็บชนิด = เฉลย — ได้ {\"GOODS\":0,\"SERVICE\":0,\"BUNDLE\":0} · ควรได้ {\"GOODS\":7,\"SERVICE\":5,\"BUNDLE\":1}","PR2.2 จำนวนแถวในหน้า ≤ ขนาดหน้า — ได้ 0 · ควรได้ 7","PR2.5 ค้นหาชื่อไทยเจอ — 0 แถว","PR2.6 ค้นหาด้วยรหัสสินค้า (SKU) เจอ 1 — ได้ 0 · ควรได้ 1","PR2.10 แท็บ 'รายการจัดชุด' มีชุดเดียว + นับส่วนประกอบได้ — ได้ [] · ควรได้ [2]","PR3.2 มีการ์ดของสินค้าที่ผูกคลัง — 0","PR3.3 คงเหลือ/จุดสั่งซื้อบนการ์ด = ค่าจากคลัง (SQL) — {}","PR12.1 JV ใบปรับต้นทุนของ seed = (ใหม่−เดิม)×คงเหลือ — ได้ [] · ควรได้ [{\"code\":\"1200\",\"debit\":168000,\"credit\":0},{\"code\":\"5310\",\"debit\":0,\"credit\":168000}]","CRASH — Cannot read properties of undefined (reading 'costSatang')\n    at <anonymous> (/root/projects/shark-crm/scripts/qc-acc-v2-products.mts:527:65)\n    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)"]}
+(node:981624) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)

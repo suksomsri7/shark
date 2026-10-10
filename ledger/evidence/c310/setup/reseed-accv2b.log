@@ -1,0 +1,142 @@
+== seed acc-v2 (JS clock 2026-09-30T09:00+07) == 11:58:27
+[shift-clock] JS clock shifted by -177.97 h → 2026-09-30T02:00:00.006Z
+[shift-clock] JS clock shifted by -177.97 h → 2026-09-30T02:00:00.006Z
+[shift-clock] JS clock shifted by -177.97 h → 2026-09-30T02:00:00.006Z
+[shift-clock] JS clock shifted by -177.97 h → 2026-09-30T02:00:00.000Z
+🗄️  DB QC: ep-plain-art-ao3djg4u-pooler.c-2.ap-southeast-1.aws.neon.tech
+
+(node:944970) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+🧹 ลบร้าน QC เดิม (cmuy1k6fi0000e4kzyasl8a9y) — 1372 แถว
+🏢 ร้าน "SIAM DIVE QC" cmungjwz5000056kzt87exnca · ระบบบัญชี cmungjx0t000456kzud07jupq
+📏 หน่วยนับ 15 หน่วย (ชุดเริ่มต้น §8.3 สร้างใหม่ 12 · เติมรหัสให้ของเดิม 0)
+📦 สินค้า/บริการ 12 รายการ
+🔗 ผูกคลังสินค้า 2 รายการ (MASK-01=24 · TANK-12=9)
+🎁 รายการจัดชุด 1 ชุด (B00001) · ส่วนประกอบ 2 รายการ
+📥 ยอดยกมา LOGBK-01 50 ชิ้น × ฿180.00 = ฿9,000.00
+🧮 ใบปรับต้นทุน CA-202609-0001 · MASK-01 ฿1,680.00 → ฿1,750.00 × 24 = ฿1,680.00
+👥 ผู้ติดต่อ 63 ราย (ลูกค้า 41 · ผู้ขาย 22)
+🗂️  กลุ่มผู้ติดต่อกำหนดเอง 3 กลุ่ม (VIP 5 · โรงแรมพันธมิตร 4 · ซัพพลายเออร์หลัก 4)
+🔗 สาธิตป้าย "ที่มา": สมาชิก 1 ราย (ปิยธิดา อินสุ่ม) · CRM 1 ราย (คุณสมชาย ใจดี)
+💳 CSH001 เงินสด · ยอดยกมา ฿14,000.00
+💳 BSV001 กสิกรไทย ออมทรัพย์ · ยอดยกมา ฿405,050.00
+💳 EWL001 พร้อมเพย์ · ยอดยกมา ฿50,000.00
+💳 PTY001 เงินสดย่อย · ยอดยกมา ฿20,000.00
+🗄️  BSV002 ธนาคารกรุงเทพ (เลิกใช้) · ปิดใช้งานแล้ว (ไม่นับในยอดรวม)
+📌 ปักหมุดบัญชีเงินที่ติดตาม: กสิกรไทย ออมทรัพย์ · เงินสด · พร้อมเพย์
+📌 ปักหมุดบัญชีที่ติดตาม: 4000 รายได้จากการขายสินค้า · 5000 ซื้อสินค้า/ต้นทุนขาย
+🧾 ใบแจ้งหนี้ 53 ใบ + ใบรับมัดจำ 1 ใบ
+🧾 เอกสารฝั่งจ่าย 16 ใบ (ค้างจ่าย 10)
+🐷 สำรองรับ-จ่าย: เติม ฿10,000 · ค่าใช้จ่าย 2 รายการ (เบิกชดเชยแล้ว 1) → PTY001 ฿29,700.00 · BSV001 ฿901,800.00
+👯 คู่ผู้ติดต่อซ้ำที่ตั้งใจใส่: C00001 ↔ C00007 (เลขภาษีเดียวกัน คนละสาขา) — ตัวรองมีเอกสาร 14 ใบ · JV 1 · กลุ่ม 2 · กฎประจำ 1
+🧾 บิลขายหน้าร้าน (POS) 2 ใบ · รวม ฿13,500.00 · บรรทัดสินค้า 3 บรรทัด (ผูกทะเบียนสินค้าครบ) · สต็อกเหลือ MASK-01=22 · TANK-12=8
+🏦 กระทบยอดธนาคาร BSV001 2026-09: นำเข้า 11 แถว · จับคู่ 8 · แนะนำ 1 · รอจับคู่ 2
+🏦 กระทบยอดธนาคาร BSV001 2026-08: นำเข้า 6 แถว · จับคู่ครบ · ส่วนต่าง 0 (ปุ่มยืนยันกดได้)
+   ทำเครื่องหมายนำส่งแล้ว: ภ.ง.ด.53 ก.ย. 69 (1 ใบ · ภาษี 150.00)
+🧾 WHT V2: เครดิต 3 ใบ (รับสุทธิ 62,400.00 · เครดิตภาษี 1,800.00) · หัก 3 ใบ (จ่ายสุทธิ 23,920.00 · ภาษีที่หัก 690.00) · CSH001 Δ 38,480.00
+🖊️  เช็ค V2: เช็ครับ 2 (1 รอครบกำหนด · 1 เด้ง) · เช็คจ่าย 2 (1 รอเรียกเก็บ · 1 ยกเลิก) — ไม่มีใบใดเคลียร์
+🔗 PromptPay V2: คำขอ 2 ใบ (Beam จ่ายแล้ว 7,490.00 · QR นิ่งรอชำระ 24,900.00) · EWL001 Δ 7,490.00
+🧾 ผังบัญชี V2: +บัญชีสร้างเอง 2 (6301/4031) +ปิดใช้งาน 1 (6302)
+📒 WO 6.2: สินทรัพย์ 2 ตัว · ค่าเสื่อม 6 แถว (2 ตัว × 3 งวด) (รวม 32,999.91) · JV มือ 1 · ⚑ 1 (9999 ค้าง 1,000.00) · กลับรายการ 1 คู่ · ปิดงวด 2026-08
+⚙️  ตั้งค่าเอกสาร §9.2: เลขที่ 3 ชนิด · หมายเหตุ 2 ชนิด · แท็ก 2 · เทมเพลตพิมพ์ กะทัดรัด
+⚙️  นโยบายบัญชี §9.3: ปีบัญชีเริ่ม เม.ย. · ล็อกก่อน 31 ส.ค. 2026 · ราคารวม VAT · สินค้าซ้ำ=ห้าม · QT→ใบรับมัดจำ · รายงานรายสัปดาห์
+🔐 สิทธิ์/การเชื่อมต่อ §9.4–9.5: ผู้ใช้ +3 · บทบาท 2 (พนักงานขาย · ผู้อนุมัติ เพดาน ฿50,000) · เชื่อม 5 ระบบ · HR ยังไม่เชื่อม · คีย์ API shark_631560… · webhook cmungli1x09t256kzbem877sg
+📎 คลังเอกสาร: 6 ไฟล์ (3 ลอย · 2 ผูกแล้ว EXP+IV · 1 ไม่ใช่เอกสารบัญชี) · ผู้อัปโหลด 2 คน
+📥 กล่องขาเข้า: 3 ไฟล์ลอย (AI อ่านได้ 1 · ยังไม่อ่าน 1 · อ่านไม่ได้ 1) · ที่มา CHAT/APP/UPLOAD
+🧾 เฉลยผังบัญชี: 52 บัญชีที่เปิดใช้งาน · ตัวอย่าง 1100=494,300.00 · 4000=1,411,214.97 · 1000-01=124,880.00
+
+✅ seed เสร็จ — เขียนเฉลยลง scripts/acc-v2-expected.json · ACC_V2_SEED=created
+   ⚠️ เฉลยหน้าหลัก (คีย์ dashboard) ถูกเขียนทับไปด้วย — รันต่อ: QC_ENV_FILE=.env.qc pnpm tsx scripts/acc-v2-expected-dashboard.mts
+   ค้างรับ ฿494,300.00 · 4 ใบพ้นกำหนด ฿128,400.00
+   ค้างจ่าย ฿214,750.00 · เงินคงเหลือรวม ฿1,329,730.00
+   ระบบบัญชี /app/sys/cmungjx0t000456kzud07jupq
+exit=0 11:59:49
+== oracle dashboard == 11:59:49
+🗄️  DB QC: ep-plain-art-ao3djg4u-pooler.c-2.ap-southeast-1.aws.neon.tech
+(node:946462) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+✅ เขียนเฉลย dashboard+overview ลง scripts/acc-v2-expected.json (ณ 2026-09-30T12:00:00+07:00)
+   [2.3] รายรับ 2026-09: เอกสารที่ออก ฿619,300.00 (23 ใบ) · ปี 2026: ชำระแล้ว ฿923,450.00 · รอชำระ ฿458,150.00 · พ้นกำหนด ฿128,400.00
+   [2.3] รายจ่าย 2026-09: เอกสารที่ออก ฿151,960.00 (12 ใบ) · ปี 2026: ชำระแล้ว ฿170,410.00 · รอชำระ ฿137,250.00 · พ้นกำหนด ฿77,500.00
+   2026-09: รายได้ ฿591,401.88 · ค่าใช้จ่าย ฿169,038.68 · กำไร ฿422,363.20
+   ปี 2026: รายได้ ฿1,411,214.97 · ค่าใช้จ่าย ฿419,982.52 · กำไร ฿991,232.45 (ปีก่อน ฿0.00)
+   ค้างรับ ฿494,300.00 (20 ใบ · พ้นกำหนด 4 ใบ ฿128,400.00)
+   ค้างจ่าย ฿214,750.00 (10 ใบ) · เงินรวมทุกช่องทาง ฿1,329,730.00
+   ปฏิทิน 2026-09: เข้า ฿262,200.00 · ออก ฿55,320.00
+exit=0 11:59:51
+== oracle contacts == 11:59:51
+🗄️  DB QC: ep-plain-art-ao3djg4u-pooler.c-2.ap-southeast-1.aws.neon.tech
+(node:946533) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+✅ เขียนเฉลย contacts+contactsOverview ลง scripts/acc-v2-expected.json
+   contacts: all=63 customer=41 vendor=22 archived=5 regular=12
+   groups: ลูกค้า VIP=6 · โรงแรมพันธมิตร=5 · ซัพพลายเออร์หลัก=4
+   source: สมาชิก=1 · CRM=1
+   overview: ลูกค้าใหม่เดือนนี้=9 · กลับมาซื้อ=13 · top purchases=10 · top outstanding=10 · top vendors=9
+exit=0 11:59:52
+== oracle contact-profile == 11:59:52
+🗄️  DB QC: ep-plain-art-ao3djg4u-pooler.c-2.ap-southeast-1.aws.neon.tech
+(node:946605) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✅ เขียนคีย์ contactProfile + mergeDuplicate ลง scripts/acc-v2-expected.json
+   โปรไฟล์ C00019: ค้างรับ 5820000 สตางค์ (2 ใบ · พ้นกำหนด 1) · ซื้อสะสมปี 2026 0 · เอกสาร 3 · ไฟล์ 0
+   คู่ซ้ำ C00001 (เอกสาร 2) ↔ C00007 (เอกสาร 14 · 4 ชนิด · JV 1 · กลุ่ม 2 (ซ้ำ 1) · กฎประจำ 1)
+exit=0 11:59:54
+== DRAIN == 11:59:54
+(node:946698) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ [CR-1.1] sweep subs: หมดอายุ 1 → EXPIRED · ตัวยังไม่หมดคงเดิม
+  ✅ [CR-1.2] sweep subs ซ้ำ → 0 (idempotent)
+  ✅ [CR-2.1] sweep proposals: เก่า→EXPIRED ใหม่คง PENDING
+  ✅ [CR-3.1] runDailyCron คืนครบ 3 ตัวเลข ไม่ throw
+
+===== QC Cron =====
+ผ่าน 4/4
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":4,"passed":4,"findings":[]}
+exit=0 12:00:13
+== backup qc1-expected == 12:00:13
+.qc-shots/qc1-expected/scripts/fixtures/acc-v2/kbank-2026-09.expected.json
+.qc-shots/qc1-expected/scripts/fixtures/acc-v2/kbank-2026-08.expected.json
+.qc-shots/qc1-expected/scripts/member-expected.json
+.qc-shots/qc1-expected/scripts/acc-v2-expected.json
+.qc-shots/qc1-expected/scripts/crm-expected.json
+exit=0 12:00:13
+ALLDONE

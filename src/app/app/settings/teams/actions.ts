@@ -11,9 +11,13 @@ import type { TeamRole } from "@prisma/client";
 import { requireTenant } from "@/lib/core/context";
 import { addMember, archiveTeam, createTeam, removeMember, restoreTeam, setAcceptingLeads, setLead, updateTeam, TeamError } from "@/lib/core/teams";
 import { toMemberActor } from "@/lib/modules/member";
-import { crmCan } from "@/lib/modules/crm";
+import { crmCan, wakeOutbox } from "@/lib/modules/crm";
 
-type Result = { ok: true } | { ok: false; error: string };
+// C4.3-fix part 2 ▸ code + fieldErrors = ช่องที่ข้อความปฏิเสธเป็นของ (หน้าจอแสดงใต้ช่อง + โฟกัส) · `error` ยังอยู่เสมอ
+//   (รูปเดียวกับ crm/field-errors-shared แต่เขียนตรงนี้ — ไฟล์นี้อยู่นอกโมดูล CRM แตะได้แค่ facade · fitness F2.3) ◂
+type Result = { ok: true } | { ok: false; error: string; code?: string; fieldErrors?: Record<string, string> };
+type Fail = Extract<Result, { ok: false }>;
+const onField = (f: Fail, field: string): Fail => ({ ...f, fieldErrors: { [field]: f.error } });
 
 class NoTeamAccess extends Error {}
 
@@ -24,9 +28,9 @@ async function session(): Promise<{ tenantId: string; actorUserId: string }> {
   return { tenantId: auth.active.tenantId, actorUserId: auth.user.id };
 }
 
-function failOf(e: unknown): Result {
+function failOf(e: unknown): Fail {
   if (e instanceof NoTeamAccess) return { ok: false, error: 'บัญชีนี้ยังไม่ได้รับสิทธิ์ "จัดการทีมขาย" — ขอให้เจ้าของร้านเปิดสิทธิ์ให้ แล้วลองอีกครั้ง' };
-  if (e instanceof TeamError) return { ok: false, error: e.message };
+  if (e instanceof TeamError) return { ok: false, error: e.message, code: e.code };
   console.error(`[settings.teams] action ล้มเหลว — ${e instanceof Error ? e.name : "unknown"}`);
   return { ok: false, error: "บันทึกไม่สำเร็จ ระบบยกเลิกรายการให้แล้ว (ข้อมูลไม่เปลี่ยน) — ลองใหม่อีกครั้ง" };
 }
@@ -40,6 +44,7 @@ async function run(fn: (ctx: { tenantId: string; actorUserId: string }) => Promi
     const ctx = await session();
     await fn(ctx);
     touch();
+    wakeOutbox(); // CRM C5.5-fix13 ▸ P-it5-2: ปลุกคิว outbox หลังเขียนสำเร็จ — event team.updated (กลไกเดียวกับ action/REST ของ CRM — `wakeOutbox` หลัง commit · ไม่เคยทำให้คำขอล้ม) ◂
     return { ok: true };
   } catch (e) {
     return failOf(e);
@@ -47,7 +52,11 @@ async function run(fn: (ctx: { tenantId: string; actorUserId: string }) => Promi
 }
 
 export async function createTeamAction(input: { name: string; unitIds?: string[]; leadUserId?: string | null }): Promise<Result> {
-  return run((ctx) => createTeam(ctx, { name: s(input?.name), unitIds: ids(input?.unitIds), leadUserId: s(input?.leadUserId) || null }));
+  const r = await run((ctx) => createTeam(ctx, { name: s(input?.name), unitIds: ids(input?.unitIds), leadUserId: s(input?.leadUserId) || null }));
+  if (r.ok) return r;
+  // ชื่อว่าง/ยาวเกิน (cleanName · 80 ตัว) หรือชื่อซ้ำ = ข้อความของช่อง "ชื่อทีม"
+  const name = s(input?.name).replace(/\s+/g, " ");
+  return r.code === "DUPLICATE" || (r.code === "VALIDATION" && (!name || name.length > 80)) ? onField(r, "name") : r;
 }
 
 export async function renameTeamAction(teamId: string, name: string): Promise<Result> {
@@ -68,7 +77,9 @@ export async function restoreTeamAction(teamId: string): Promise<Result> {
 
 export async function addMemberAction(teamId: string, userId: string, role?: string): Promise<Result> {
   const r: TeamRole = role === "LEAD" ? "LEAD" : "MEMBER";
-  return run((ctx) => addMember(ctx, s(teamId), { userId: s(userId), role: r }));
+  const res = await run((ctx) => addMember(ctx, s(teamId), { userId: s(userId), role: r }));
+  // ฟอร์มนี้มีช่องเดียว (พนักงาน): ค่าไม่ผ่าน (ไม่ได้เลือก/ไม่ใช่คนในร้าน) = ข้อความของช่องเลือกพนักงาน
+  return res.ok || res.code !== "VALIDATION" ? res : onField(res, "userId");
 }
 
 /** §11.6: ดีลของคนที่ถูกย้ายออกยังเป็นของเขา (ทีมเดิมมองไม่เห็น) — หน้าจอเตือน "โอนดีลก่อนไหม" ก่อนเรียกตัวนี้ */

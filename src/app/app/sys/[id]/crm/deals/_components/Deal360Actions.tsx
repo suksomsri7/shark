@@ -29,7 +29,7 @@ import {
   type DealKind,
   type ForecastCategory,
 } from "@/lib/modules/crm/deals-shared";
-import { useDealMover } from "./DealMoveDialogs";
+import { useDealMover, type DealFieldInput } from "./DealMoveDialogs";
 
 type Opt = { id: string; name: string };
 
@@ -51,8 +51,10 @@ export function DealStageStepper({
   stages,
   lostReasons,
   fieldLabels,
+  fieldInputs,
   canReopen,
   daysInStage,
+  canMove,
 }: {
   systemId: string;
   dealId: string;
@@ -61,11 +63,15 @@ export function DealStageStepper({
   stages: { id: string; name: string; kind: DealKind; probability: number }[];
   lostReasons: { id: string; label: string }[];
   fieldLabels: Record<string, string>;
+  /** CRM C5.4-E ▸ L6-M1 ◂ */
+  fieldInputs?: Record<string, DealFieldInput>;
   canReopen: boolean;
   daysInStage: number;
+  /** CRM C4.2-fix ▸ crm.deal.move (คีย์ของ moveDealAction/reopenDealAction) — ไม่มี = เห็นขั้นแต่กดย้าย/แพ้/เปิดใหม่ไม่ได้ ◂ */
+  canMove: boolean;
 }) {
   const router = useRouter();
-  const mover = useDealMover({ systemId, lostReasons, fieldLabels, canReopen, onMoved: () => router.refresh() });
+  const mover = useDealMover({ systemId, lostReasons, fieldLabels, fieldInputs, canReopen, onMoved: () => router.refresh() });
   const lostStage = stages.find((s) => s.kind === "LOST");
   const firstOpen = stages.find((s) => s.kind === "OPEN");
   const go = (s: { id: string; name: string; kind: DealKind }) => {
@@ -79,6 +85,17 @@ export function DealStageStepper({
           const cur = s.id === currentStageId;
           return (
             <li key={s.id} className="flex items-center gap-1.5">
+              {!canMove ? (
+                <span
+                  aria-current={cur ? "step" : undefined}
+                  className="rounded-full border px-2.5 py-1"
+                  style={cur ? { borderColor: "var(--color-accent)", color: "var(--color-accent)", fontWeight: 700 } : { color: "var(--color-muted)" }}
+                >
+                  {cur ? "● " : ""}
+                  {s.name}
+                  {cur && s.kind === "OPEN" ? ` — ${s.probability}%` : ""}
+                </span>
+              ) : (
               <button
                 type="button"
                 onClick={() => go(s)}
@@ -91,6 +108,7 @@ export function DealStageStepper({
                 {s.name}
                 {cur && s.kind === "OPEN" ? ` — ${s.probability}%` : ""}
               </button>
+              )}
               {i < stages.length - 1 && <span className="text-[color:var(--color-muted)]" aria-hidden>›</span>}
             </li>
           );
@@ -98,12 +116,12 @@ export function DealStageStepper({
         <li className="text-[color:var(--color-muted)]">อยู่ขั้นนี้มา {daysInStage.toLocaleString("th-TH")} วัน</li>
       </ol>
       <div className="flex flex-wrap gap-2">
-        {kind === "OPEN" && lostStage && (
+        {canMove && kind === "OPEN" && lostStage && (
           <button type="button" className="btn btn-ghost text-sm" onClick={() => go(lostStage)} data-testid="deal-lost-btn">
             แพ้ (ระบุเหตุผล)
           </button>
         )}
-        {kind !== "OPEN" && canReopen && firstOpen && (
+        {canMove && kind !== "OPEN" && canReopen && firstOpen && (
           <button type="button" className="btn btn-ghost text-sm" onClick={() => go(firstOpen)} data-testid="deal-reopen-btn">
             เปิดดีลใหม่
           </button>
@@ -163,6 +181,8 @@ export function DealFieldsEditor({
   owners,
   forecastCategory,
   nextStep,
+  canReassign,
+  canForecast,
 }: {
   systemId: string;
   dealId: string;
@@ -175,6 +195,10 @@ export function DealFieldsEditor({
   owners: Opt[];
   forecastCategory: ForecastCategory;
   nextStep: string | null;
+  /** CRM C4.2-fix ▸ crm.deal.reassign (reassignDealAction) — ไม่มี = แสดงชื่อผู้ดูแลเป็นข้อความ ◂ */
+  canReassign: boolean;
+  /** CRM C4.2-fix ▸ crm.deal.forecast (บริการ setForecastCategory) — ไม่มี = แสดงหมวดเป็นข้อความ ◂ */
+  canForecast: boolean;
 }) {
   const router = useRouter();
   const [t, setT] = useState(title);
@@ -237,6 +261,9 @@ export function DealFieldsEditor({
       </label>
       <label className="flex min-w-0 flex-col gap-1 text-xs text-[color:var(--color-muted)]">
         <span>ผู้ดูแล</span>
+        {!canReassign ? (
+          <span className="text-sm text-[color:var(--color-fg,inherit)]">{owners.find((o) => o.id === owner)?.name ?? "ยังไม่มีผู้ดูแล"}</span>
+        ) : (
         <select
           value={owner}
           onChange={(e) => {
@@ -253,9 +280,13 @@ export function DealFieldsEditor({
             </option>
           ))}
         </select>
+        )}
       </label>
       <label className="flex min-w-0 flex-col gap-1 text-xs text-[color:var(--color-muted)]">
         <span>หมวดพยากรณ์</span>
+        {!canForecast ? (
+          <span className="text-sm text-[color:var(--color-fg,inherit)]">{FORECAST_CATEGORY_LABEL[cat as ForecastCategory] ?? cat}</span>
+        ) : (
         <select
           value={cat}
           onChange={(e) => {
@@ -271,6 +302,7 @@ export function DealFieldsEditor({
             </option>
           ))}
         </select>
+        )}
       </label>
       <label className="flex min-w-0 flex-col gap-1 text-xs text-[color:var(--color-muted)] sm:col-span-2">
         <span>ขั้นถัดไป</span>
@@ -366,6 +398,34 @@ export function DealLinesEditor({
       {rows.length === 0 && <p className="text-sm text-[color:var(--color-muted)]">ยังไม่มีรายการ — มูลค่าดีลกรอกเองได้จนกว่าจะเพิ่มรายการ</p>}
       {rows.map((r, i) => {
         const amt = lineAmountSatang({ qty: Number(r.qty) || 0, unitPriceSatang: bahtTextToSatang(r.price) ?? 0, discountBp: Math.round(Number(r.disc || "0") * 100) });
+        // CRM C4.2-fix r2 ▸ (รีวิว addendum 1) ไม่มีคีย์ crm.deal.lines หรือดีลปิดแล้ว = อ่านอย่างเดียวเป็นข้อความ — ไม่มีช่องกรอก
+        //   (ช่องที่ disabled ยังเป็นคอนโทรลที่ "เห็น" ในสายตาผู้ตรวจปุ่ม และในสายตาคนก็ดูเหมือนแก้ได้) ◂
+        if (!editable) {
+          const vatLabel = VAT_OPTIONS.find((o) => o.value === r.vat)?.label ?? VAT_OPTIONS[0]!.label;
+          return (
+            <div key={r.key} className="grid grid-cols-2 gap-x-2 gap-y-1 border-b pb-2 text-sm md:grid-cols-[minmax(0,1fr)_70px_100px_70px_100px_28px] md:items-center md:border-0 md:pb-0">
+              <span className="col-span-2 min-w-0 break-words font-medium md:col-span-1">{r.name || "—"}</span>
+              <span className="text-[color:var(--color-muted)] md:text-right md:text-[color:inherit]">
+                <span className="md:hidden">จำนวน </span>
+                {Number(r.qty).toLocaleString("th-TH")}
+              </span>
+              <span className="text-right">
+                <span className="text-[color:var(--color-muted)] md:hidden">ราคา/หน่วย </span>
+                {formatBaht(bahtTextToSatang(r.price) ?? 0)}
+              </span>
+              <span className="text-[color:var(--color-muted)] md:text-right md:text-[color:inherit]">
+                <span className="md:hidden">ส่วนลด </span>
+                {Number(r.disc || "0").toLocaleString("th-TH")}%
+              </span>
+              <span className="text-right font-medium">{formatBaht(amt)}</span>
+              <span className="hidden md:block" />
+              <span className="col-span-2 text-xs text-[color:var(--color-muted)] md:col-span-6">
+                {vatLabel}
+                {r.note ? ` · ${r.note}` : ""}
+              </span>
+            </div>
+          );
+        }
         return (
           <div key={r.key} className="grid grid-cols-2 gap-2 border-b pb-2 md:grid-cols-[minmax(0,1fr)_70px_100px_70px_100px_28px] md:items-center md:border-0 md:pb-0">
             <input value={r.name} onChange={(e) => set(r.key, { name: e.target.value })} disabled={!editable} aria-label={`ชื่อสินค้า บรรทัด ${i + 1}`} className="input col-span-2 min-w-0 text-sm md:col-span-1" data-testid={`deal-line-name-${i}`} />
@@ -441,6 +501,8 @@ export function DealMenu({
   currentPipelineId,
   canManage,
   deletable,
+  canChangePipeline,
+  canDelete,
 }: {
   systemId: string;
   dealId: string;
@@ -448,6 +510,10 @@ export function DealMenu({
   currentPipelineId: string;
   canManage: boolean;
   deletable: boolean;
+  /** CRM C4.2-fix ▸ changePipelineAction ตรวจ crm.deal.move · บริการตรวจ crm.deal.update ⇒ หน้าส่งผลของทั้งคู่ ◂ */
+  canChangePipeline: boolean;
+  /** CRM C4.2-fix ▸ crm.deal.delete (deleteDealAction + บริการ) — เดิมเมนูทั้งก้อนอิง crm.deal.update ◂ */
+  canDelete: boolean;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -465,7 +531,7 @@ export function DealMenu({
       </button>
       {open && (
         <div className="card absolute right-0 z-40 mt-1 flex w-[min(20rem,86vw)] flex-col gap-3 p-3 text-sm shadow-lg" data-testid="deal-menu-panel">
-          {canManage && others.length > 0 && (
+          {canManage && canChangePipeline && others.length > 0 && (
             <div className="flex flex-col gap-1">
               <span className="text-xs text-[color:var(--color-muted)]">ย้ายไป pipeline อื่น (ไปขั้นเปิดแรก)</span>
               <span className="flex gap-2">
@@ -495,13 +561,14 @@ export function DealMenu({
               </span>
             </div>
           )}
-          {deletable ? (
-            <button type="button" className="btn btn-ghost text-sm" style={{ color: "var(--color-danger)" }} onClick={() => setDel(true)} data-testid="deal-delete-btn">
-              ลบดีลนี้
-            </button>
-          ) : (
-            <p className="text-xs text-[color:var(--color-muted)]">ดีลที่ชนะแล้วหรือมีเอกสารบัญชีลบไม่ได้ — ย้ายเป็นแพ้พร้อมเหตุผลแทน</p>
-          )}
+          {canDelete &&
+            (deletable ? (
+              <button type="button" className="btn btn-ghost text-sm" style={{ color: "var(--color-danger)" }} onClick={() => setDel(true)} data-testid="deal-delete-btn">
+                ลบดีลนี้
+              </button>
+            ) : (
+              <p className="text-xs text-[color:var(--color-muted)]">ดีลที่ชนะแล้วหรือมีเอกสารบัญชีลบไม่ได้ — ย้ายเป็นแพ้พร้อมเหตุผลแทน</p>
+            ))}
           <Msg m={msg} testid="deal-menu-msg" />
         </div>
       )}

@@ -7,6 +7,10 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { archiveRecordAction, createRecordAction, updateRecordAction } from "@/lib/modules/crm/objects-actions";
 import { isoToThaiInput, thaiInputToIso, type ObjectFormField, type ObjectValueView } from "@/components/crm/objects/types";
+import { FieldError, useFieldErrors, type FieldErrors } from "@/components/crm/form/field-errors";
+
+/** ค่าในช่องว่างไหม (กติกาเดียวกับบริการ objects.ts records.create: "" / ช่องว่างล้วน / เลือกหลายค่าแต่ไม่เลือกเลย) */
+const isBlank = (v: string | boolean | string[] | undefined) => v === undefined || (typeof v === "string" && v.trim() === "") || (Array.isArray(v) && v.length === 0);
 
 type Draft = Record<string, string | boolean | string[]>;
 
@@ -69,16 +73,26 @@ export function RecordForm({
   const [draft, setDraft] = useState<Draft>(() => start ?? toDraft(editable, {}));
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  // C4.3-fix part 2 ▸ ช่องบังคับที่ว่าง = ข้อความใต้ช่องนั้น + โฟกัสช่องแรก (ข้อความเดียวกับบริการ) · ข้อความของบริการที่ระบุช่อง (fieldErrors) ก็ลงใต้ช่อง ◂
+  const fe = useFieldErrors(editable.map((f) => f.key));
 
   function submit() {
     setError(null);
+    const missing: FieldErrors = {};
+    for (const f of editable) {
+      if (!f.required || f.type === "BOOLEAN") continue;
+      // แก้ไข: ตรวจเฉพาะช่องที่เปลี่ยน (บริการตรวจเฉพาะค่าที่ส่งไป — รายการเก่าที่ช่องบังคับว่างอยู่แล้วยังแก้ช่องอื่นได้)
+      if (start && JSON.stringify(start[f.key]) === JSON.stringify(draft[f.key])) continue;
+      if (isBlank(draft[f.key])) missing[f.key] = `ฟิลด์ "${f.label}" เป็นข้อมูลที่ต้องกรอก — ใส่ค่าก่อนบันทึก`;
+    }
+    if (fe.show(missing)) return;
     const values = toValues(editable, draft, start);
     startTransition(async () => {
       const res = recordId
         ? await updateRecordAction(systemId, objectKey, recordId, { values })
         : await createRecordAction(systemId, objectKey, { parentId: parentId ?? null, values });
       if (!res.ok) {
-        setError(res.error);
+        if (!fe.show(res.fieldErrors)) setError(res.error);
         return;
       }
       onDone?.();
@@ -104,17 +118,25 @@ export function RecordForm({
             </span>
             {f.type === "BOOLEAN" ? (
               <input
+                {...fe.field(f.key)}
                 type="checkbox"
                 data-testid={`object-record-field-${f.key}`}
                 checked={draft[f.key] === true}
-                onChange={(e) => setDraft((d) => ({ ...d, [f.key]: e.target.checked }))}
+                onChange={(e) => {
+                  setDraft((d) => ({ ...d, [f.key]: e.target.checked }));
+                  fe.clear(f.key);
+                }}
                 className="h-4 w-4"
               />
             ) : f.type === "SELECT" ? (
               <select
+                {...fe.field(f.key)}
                 data-testid={`object-record-field-${f.key}`}
                 value={String(draft[f.key] ?? "")}
-                onChange={(e) => setDraft((d) => ({ ...d, [f.key]: e.target.value }))}
+                onChange={(e) => {
+                  setDraft((d) => ({ ...d, [f.key]: e.target.value }));
+                  fe.clear(f.key);
+                }}
                 className="input text-sm"
               >
                 <option value="">— ไม่ระบุ —</option>
@@ -126,10 +148,14 @@ export function RecordForm({
               </select>
             ) : f.type === "MULTI_SELECT" ? (
               <select
+                {...fe.field(f.key)}
                 multiple
                 data-testid={`object-record-field-${f.key}`}
                 value={Array.isArray(draft[f.key]) ? (draft[f.key] as string[]) : []}
-                onChange={(e) => setDraft((d) => ({ ...d, [f.key]: Array.from(e.target.selectedOptions).map((o) => o.value) }))}
+                onChange={(e) => {
+                  setDraft((d) => ({ ...d, [f.key]: Array.from(e.target.selectedOptions).map((o) => o.value) }));
+                  fe.clear(f.key);
+                }}
                 className="input text-sm"
               >
                 {f.choices.map((c) => (
@@ -140,22 +166,31 @@ export function RecordForm({
               </select>
             ) : f.type === "LONG_TEXT" ? (
               <textarea
+                {...fe.field(f.key)}
                 data-testid={`object-record-field-${f.key}`}
                 value={String(draft[f.key] ?? "")}
-                onChange={(e) => setDraft((d) => ({ ...d, [f.key]: e.target.value }))}
+                onChange={(e) => {
+                  setDraft((d) => ({ ...d, [f.key]: e.target.value }));
+                  fe.clear(f.key);
+                }}
                 rows={3}
                 className="input text-sm"
               />
             ) : (
               <input
+                {...fe.field(f.key)}
                 type={INPUT_TYPE[f.type] ?? "text"}
                 data-testid={`object-record-field-${f.key}`}
                 value={String(draft[f.key] ?? "")}
-                onChange={(e) => setDraft((d) => ({ ...d, [f.key]: e.target.value }))}
+                onChange={(e) => {
+                  setDraft((d) => ({ ...d, [f.key]: e.target.value }));
+                  fe.clear(f.key);
+                }}
                 step={f.type === "NUMBER" || f.type === "MONEY" ? "any" : undefined}
                 className="input text-sm"
               />
             )}
+            <FieldError id={fe.errorId(f.key)} message={fe.errors[f.key]} testid={`object-record-field-${f.key}-error`} />
           </label>
         ))}
       </div>

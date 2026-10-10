@@ -2,6 +2,7 @@
 // DESTRUCTIVE ไม่ส่ง confirm2x → คืน needsSecondConfirm (server บังคับเสมอ) (ledger/MOBILE_PLAN.md M-11)
 import { requireMobile, mobileError } from "@/lib/mobile/auth";
 import { executeProposal } from "@/lib/ai/proposals";
+import { wakeOutbox } from "@/lib/modules/crm";
 
 export async function POST(req: Request) {
   const g = await requireMobile(req);
@@ -22,5 +23,6 @@ export async function POST(req: Request) {
   };
   // K3.5 — ส่ง userId ของคนกดต่อไปด้วย (ประวัติของโมดูลปลายทางต้องชี้ไปที่คนจริง ไม่ใช่ "ระบบ")
   const res = await executeProposal(m, g.ctx, id, { confirm2x: body.confirm2x === true, userId: g.user.id });
+  if (res.ok) wakeOutbox(); // CRM C5.5-fix13 ▸ P-it5-2 sweep ◂
   return Response.json(res);
 }

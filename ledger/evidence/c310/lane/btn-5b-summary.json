@@ -1,0 +1,1084 @@
+{
+  "at": "2026-10-07T22:51:41.780Z",
+  "users": [
+    "owner"
+  ],
+  "devices": [
+    "desktop",
+    "mobile"
+  ],
+  "pageFilter": "/settings/automation",
+  "total": 92,
+  "passed": 92,
+  "dead": [],
+  "wrongExpect": [],
+  "hiddenLeak": [],
+  "vacuous": [],
+  "disabled": [],
+  "consoleErrors": [],
+  "overflow": [],
+  "picks": [
+    {
+      "user": "owner",
+      "entity": "deal",
+      "id": "cmuyef7ps00e1v5kze5t0qxhn",
+      "why": "ของกลาง (shared pick) · ผ่าน dealWhere() ของ product · owner=thana team=cmuyeerz30002v5kzawz2jb5b"
+    },
+    {
+      "user": "owner",
+      "entity": "contact",
+      "id": "cmuyeesmi001tv5kzqqrzt4wo",
+      "why": "ของกลาง (shared pick) · ผ่าน contactWhere() ของ product · owner=thana team=cmuyeerz30002v5kzawz2jb5b"
+    },
+    {
+      "user": "owner",
+      "entity": "company",
+      "id": "cmuyees7l000qv5kztjyrykgo",
+      "why": "ของกลาง (shared pick) · ผ่าน companyWhere() ของ product · owner=thana team=cmuyeerz30002v5kzawz2jb5b"
+    },
+    {
+      "user": "manager",
+      "entity": "deal",
+      "id": "cmuyef7ps00e1v5kze5t0qxhn",
+      "why": "ของกลาง (shared pick) · ผ่าน dealWhere() ของ product · owner=thana team=cmuyeerz30002v5kzawz2jb5b"
+    },
+    {
+      "user": "manager",
+      "entity": "contact",
+      "id": "cmuyeesmi001tv5kzqqrzt4wo",
+      "why": "ของกลาง (shared pick) · ผ่าน contactWhere() ของ product · owner=thana team=cmuyeerz30002v5kzawz2jb5b"
+    },
+    {
+      "user": "manager",
+      "entity": "company",
+      "id": "cmuyees7l000qv5kztjyrykgo",
+      "why": "ของกลาง (shared pick) · ผ่าน companyWhere() ของ product · owner=thana team=cmuyeerz30002v5kzawz2jb5b"
+    },
+    {
+      "user": "nok",
+      "entity": "deal",
+      "id": "cmuyefbav00gtv5kzj6ukodzk",
+      "why": "ของตัวเอง (ownerUserId = ผู้ใช้) · ผ่าน dealWhere() ของ product · owner=nok team=cmuyees0e0006v5kz0ttc8zc0"
+    },
+    {
+      "user": "nok",
+      "entity": "contact",
+      "id": "cmuyeez6t007dv5kz8isnqhih",
+      "why": "ของตัวเอง (ownerUserId = ผู้ใช้) · ผ่าน contactWhere() ของ product · owner=nok team=cmuyees0e0006v5kz0ttc8zc0"
+    },
+    {
+      "user": "nok",
+      "entity": "company",
+      "id": "cmuyeesd9001av5kzsgu5v9wk",
+      "why": "ไม่มีคีย์ crm.company.read (companyWhere ว่าง) ⇒ ใช้ของตัวเอง owner=nok — หน้าต้อง 404 ตามคีย์ (registry hiddenFor)"
+    },
+    {
+      "user": "thana",
+      "entity": "deal",
+      "id": "cmuyef7ps00e1v5kze5t0qxhn",
+      "why": "ของตัวเอง (ownerUserId = ผู้ใช้) · ผ่าน dealWhere() ของ product · owner=thana team=cmuyeerz30002v5kzawz2jb5b"
+    },
+    {
+      "user": "thana",
+      "entity": "contact",
+      "id": "cmuyeesmi001tv5kzqqrzt4wo",
+      "why": "ของตัวเอง (ownerUserId = ผู้ใช้) · ผ่าน contactWhere() ของ product · owner=thana team=cmuyeerz30002v5kzawz2jb5b"
+    },
+    {
+      "user": "thana",
+      "entity": "company",
+      "id": "cmuyees7l000qv5kztjyrykgo",
+      "why": "ไม่มีคีย์ crm.company.read (companyWhere ว่าง) ⇒ ใช้ของตัวเอง owner=thana — หน้าต้อง 404 ตามคีย์ (registry hiddenFor)"
+    }
+  ],
+  "pageStatus": [
+    {
+      "page": "/settings/automation",
+      "path": "/app/sys/cmuy1gmlm0000jikz45h7xblz/crm/settings/automation",
+      "user": "owner",
+      "device": "desktop",
+      "status": 200,
+      "rows": 49,
+      "hiddenRows": 0
+    },
+    {
+      "page": "/settings/automation",
+      "path": "/app/sys/cmuy1gmlm0000jikz45h7xblz/crm/settings/automation",
+      "user": "owner",
+      "device": "mobile",
+      "status": 200,
+      "rows": 49,
+      "hiddenRows": 0
+    }
+  ],
+  "skippedNeeds": [
+    {
+      "page": "/settings/automation",
+      "testid": "crm-auto-param-field",
+      "user": "owner",
+      "device": "desktop",
+      "needs": "วัตถุกำหนดเองที่มีฟิลด์วันที่ (ตัวเลือกของเหตุการณ์ custom.record.field_due)",
+      "detail": "คอนโทรลมีแต่ใช้ไม่ได้ (ไม่มีตัวเลือกอื่น)"
+    },
+    {
+      "page": "/settings/automation",
+      "testid": "crm-auto-action-board",
+      "user": "owner",
+      "device": "desktop",
+      "needs": "บอร์ดงาน (KanbanBoard) ≥1 ให้เลือกในการกระทำ 'เปิดการ์ดงาน' — ซีด QC1 มี 0",
+      "detail": "คอนโทรลมีแต่ใช้ไม่ได้ (ไม่มีตัวเลือกอื่น)"
+    },
+    {
+      "page": "/settings/automation",
+      "testid": "crm-auto-action-field",
+      "user": "owner",
+      "device": "desktop",
+      "needs": "ฟิลด์กำหนดเองของผู้ติดต่อ (MemberField objectKey=contact) ≥1 — ซีด QC1 มี 0 (มีแต่ของวัตถุ contract 5 · automation.ts builderOptions.contactFields) ⇒ select มีแค่ตัวเลือกว่าง 'เลือกฟิลด์ของผู้ติดต่อ'",
+      "detail": "คอนโทรลมีแต่ใช้ไม่ได้ (ไม่มีตัวเลือกอื่น)"
+    },
+    {
+      "page": "/settings/automation",
+      "testid": "crm-auto-param-field",
+      "user": "owner",
+      "device": "mobile",
+      "needs": "วัตถุกำหนดเองที่มีฟิลด์วันที่ (ตัวเลือกของเหตุการณ์ custom.record.field_due)",
+      "detail": "คอนโทรลมีแต่ใช้ไม่ได้ (ไม่มีตัวเลือกอื่น)"
+    },
+    {
+      "page": "/settings/automation",
+      "testid": "crm-auto-action-board",
+      "user": "owner",
+      "device": "mobile",
+      "needs": "บอร์ดงาน (KanbanBoard) ≥1 ให้เลือกในการกระทำ 'เปิดการ์ดงาน' — ซีด QC1 มี 0",
+      "detail": "คอนโทรลมีแต่ใช้ไม่ได้ (ไม่มีตัวเลือกอื่น)"
+    },
+    {
+      "page": "/settings/automation",
+      "testid": "crm-auto-action-field",
+      "user": "owner",
+      "device": "mobile",
+      "needs": "ฟิลด์กำหนดเองของผู้ติดต่อ (MemberField objectKey=contact) ≥1 — ซีด QC1 มี 0 (มีแต่ของวัตถุ contract 5 · automation.ts builderOptions.contactFields) ⇒ select มีแค่ตัวเลือกว่าง 'เลือกฟิลด์ของผู้ติดต่อ'",
+      "detail": "คอนโทรลมีแต่ใช้ไม่ได้ (ไม่มีตัวเลือกอื่น)"
+    }
+  ],
+  "skippedSafety": [],
+  "restores": [
+    {
+      "label": "/settings/automation desktop",
+      "deleted": 6,
+      "updated": 0,
+      "recreated": 0,
+      "failed": []
+    },
+    {
+      "label": "/settings/automation mobile",
+      "deleted": 6,
+      "updated": 0,
+      "recreated": 0,
+      "failed": []
+    }
+  ],
+  "dbCheckUnparsed": {
+    "/settings/automation#crm-auto-starters": [
+      "AutomationRule scope=CRM crmSystemId=ระบบนี้ ×6 (+1 ต่อข้อมูลกำหนดเองจากเทมเพลต) enabled=false",
+      "trigger.starter=คีย์",
+      "AuditLog crm.automation.starter.create",
+      "กดซ้ำไม่เพิ่ม"
+    ],
+    "/settings/automation#crm-auto-save": [
+      "AutomationRule scope=CRM crmSystemId=ระบบนี้ (event/trigger/conditions/actions/pipelineId)",
+      "AuditLog crm.automation.create|update"
+    ],
+    "/settings/automation#crm-auto-rule-toggle": [
+      "AutomationRule.enabled สลับ",
+      "ปิด = AutomationRun WAITING ของกฎ → CANCELLED",
+      "AuditLog crm.automation.enable|disable"
+    ],
+    "/settings/automation#crm-auto-delete-confirm": [
+      "AutomationRule ถูกลบ (เหตุผล ≥ 5 ตัวอักษร",
+      "AuditLog crm.automation.delete)",
+      "เหตุผลสั้น = ข้อความไทยในหน้า ไม่ลบ"
+    ]
+  },
+  "fatal": null,
+  "cleanupFailures": [],
+  "outboxUnsettled": [],
+  "verifyFailures": [],
+  "postChecked": [],
+  "dbVerified": [
+    {
+      "page": "/settings/automation",
+      "testid": "crm-auto-starters",
+      "user": "owner",
+      "device": "desktop",
+      "models": [
+        "AutomationRule",
+        "AuditLog crm.automation.starter.create"
+      ]
+    },
+    {
+      "page": "/settings/automation",
+      "testid": "crm-auto-save",
+      "user": "owner",
+      "device": "desktop",
+      "models": [
+        "AutomationRule",
+        "AuditLog crm.automation.create|update"
+      ]
+    },
+    {
+      "page": "/settings/automation",
+      "testid": "crm-auto-rule-toggle",
+      "user": "owner",
+      "device": "desktop",
+      "models": [
+        "AutomationRule",
+        "AuditLog crm.automation.enable|disable"
+      ]
+    },
+    {
+      "page": "/settings/automation",
+      "testid": "crm-auto-delete-confirm",
+      "user": "owner",
+      "device": "desktop",
+      "models": [
+        "AutomationRule",
+        "AuditLog crm.automation.delete"
+      ]
+    },
+    {
+      "page": "/settings/automation",
+      "testid": "crm-auto-starters",
+      "user": "owner",
+      "device": "mobile",
+      "models": [
+        "AutomationRule",
+        "AuditLog crm.automation.starter.create"
+      ]
+    },
+    {
+      "page": "/settings/automation",
+      "testid": "crm-auto-save",
+      "user": "owner",
+      "device": "mobile",
+      "models": [
+        "AutomationRule",
+        "AuditLog crm.automation.create|update"
+      ]
+    },
+    {
+      "page": "/settings/automation",
+      "testid": "crm-auto-rule-toggle",
+      "user": "owner",
+      "device": "mobile",
+      "models": [
+        "AutomationRule",
+        "AuditLog crm.automation.enable|disable"
+      ]
+    },
+    {
+      "page": "/settings/automation",
+      "testid": "crm-auto-delete-confirm",
+      "user": "owner",
+      "device": "mobile",
+      "models": [
+        "AutomationRule",
+        "AuditLog crm.automation.delete"
+      ]
+    }
+  ],
+  "presence": [
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-new",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-starters",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-trigger",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-param-days",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-param-days-before",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-param-band",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-pipeline",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-cond-mode",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-cond-field",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-cond-op",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-cond-value",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-cond-remove",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-add-condition",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-action-type",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-action-stage",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-action-user",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-action-activity-type",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-action-title",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-action-due",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-action-pipeline",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-action-deal-title",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-action-card-title",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-action-subject",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-action-message",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-action-value",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-action-tag",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-action-points",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-action-voucher",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-action-notify-to",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-action-text",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-action-url",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-action-days",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-action-remove",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-add-then",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-add-action",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-name",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-dry-run",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-cancel",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-save",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-param-object",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-param-field",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-action-board",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-action-field",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-rule-toggle",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-rule-edit",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-rule-delete",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-delete-reason",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-delete-confirm",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-delete-cancel",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-new",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-starters",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-trigger",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-param-days",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-param-days-before",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-param-band",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-pipeline",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-cond-mode",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-cond-field",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-cond-op",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-cond-value",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-cond-remove",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-add-condition",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-action-type",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-action-stage",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-action-user",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-action-activity-type",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-action-title",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-action-due",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-action-pipeline",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-action-deal-title",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-action-card-title",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-action-subject",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-action-message",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-action-value",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-action-tag",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-action-points",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-action-voucher",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-action-notify-to",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-action-text",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-action-url",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-action-days",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-action-remove",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-add-then",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-add-action",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-name",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-dry-run",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-cancel",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-save",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-param-object",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-param-field",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-action-board",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-action-field",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-rule-toggle",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-rule-edit",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-rule-delete",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-delete-reason",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-delete-confirm",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/settings/automation",
+      "t": "crm-auto-delete-cancel",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    }
+  ],
+  "customerLockout": [],
+  "pageErrors": [],
+  "tripwire": [],
+  "hiddenWait": {
+    "ms": 0,
+    "rows": 0
+  },
+  "runStart": "2026-10-07T22:47:42.418Z"
+}

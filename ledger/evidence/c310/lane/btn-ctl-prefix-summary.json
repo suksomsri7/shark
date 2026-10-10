@@ -1,0 +1,512 @@
+{
+  "at": "2026-10-07T22:38:24.087Z",
+  "users": [
+    "owner",
+    "manager",
+    "nok",
+    "thana",
+    "customer"
+  ],
+  "devices": [
+    "desktop",
+    "mobile"
+  ],
+  "pageFilter": "/pipelines",
+  "total": 34,
+  "passed": 32,
+  "dead": [],
+  "wrongExpect": [],
+  "hiddenLeak": [
+    {
+      "page": "/pipelines",
+      "testid": "(page)",
+      "user": "customer",
+      "device": "desktop",
+      "detail": "session ลูกค้า (พอร์ทัล) เปิดหน้าพนักงานได้: HTTP 200 · /app/sys/cmuy1gmlm0000jikz45h7xblz/crm/pipelines · เห็น pipelines-open-board-*,pipelines-open-forecast-*"
+    },
+    {
+      "page": "/pipelines",
+      "testid": "(page)",
+      "user": "customer",
+      "device": "mobile",
+      "detail": "session ลูกค้า (พอร์ทัล) เปิดหน้าพนักงานได้: HTTP 200 · /app/sys/cmuy1gmlm0000jikz45h7xblz/crm/pipelines · เห็น pipelines-open-board-*,pipelines-open-forecast-*"
+    }
+  ],
+  "vacuous": [],
+  "disabled": [],
+  "consoleErrors": [],
+  "overflow": [],
+  "picks": [
+    {
+      "user": "owner",
+      "entity": "deal",
+      "id": "cmuyef7ps00e1v5kze5t0qxhn",
+      "why": "ของกลาง (shared pick) · ผ่าน dealWhere() ของ product · owner=thana team=cmuyeerz30002v5kzawz2jb5b"
+    },
+    {
+      "user": "owner",
+      "entity": "contact",
+      "id": "cmuyeesmi001tv5kzqqrzt4wo",
+      "why": "ของกลาง (shared pick) · ผ่าน contactWhere() ของ product · owner=thana team=cmuyeerz30002v5kzawz2jb5b"
+    },
+    {
+      "user": "owner",
+      "entity": "company",
+      "id": "cmuyees7l000qv5kztjyrykgo",
+      "why": "ของกลาง (shared pick) · ผ่าน companyWhere() ของ product · owner=thana team=cmuyeerz30002v5kzawz2jb5b"
+    },
+    {
+      "user": "manager",
+      "entity": "deal",
+      "id": "cmuyef7ps00e1v5kze5t0qxhn",
+      "why": "ของกลาง (shared pick) · ผ่าน dealWhere() ของ product · owner=thana team=cmuyeerz30002v5kzawz2jb5b"
+    },
+    {
+      "user": "manager",
+      "entity": "contact",
+      "id": "cmuyeesmi001tv5kzqqrzt4wo",
+      "why": "ของกลาง (shared pick) · ผ่าน contactWhere() ของ product · owner=thana team=cmuyeerz30002v5kzawz2jb5b"
+    },
+    {
+      "user": "manager",
+      "entity": "company",
+      "id": "cmuyees7l000qv5kztjyrykgo",
+      "why": "ของกลาง (shared pick) · ผ่าน companyWhere() ของ product · owner=thana team=cmuyeerz30002v5kzawz2jb5b"
+    },
+    {
+      "user": "nok",
+      "entity": "deal",
+      "id": "cmuyefbav00gtv5kzj6ukodzk",
+      "why": "ของตัวเอง (ownerUserId = ผู้ใช้) · ผ่าน dealWhere() ของ product · owner=nok team=cmuyees0e0006v5kz0ttc8zc0"
+    },
+    {
+      "user": "nok",
+      "entity": "contact",
+      "id": "cmuyeez6t007dv5kz8isnqhih",
+      "why": "ของตัวเอง (ownerUserId = ผู้ใช้) · ผ่าน contactWhere() ของ product · owner=nok team=cmuyees0e0006v5kz0ttc8zc0"
+    },
+    {
+      "user": "nok",
+      "entity": "company",
+      "id": "cmuyeesd9001av5kzsgu5v9wk",
+      "why": "ไม่มีคีย์ crm.company.read (companyWhere ว่าง) ⇒ ใช้ของตัวเอง owner=nok — หน้าต้อง 404 ตามคีย์ (registry hiddenFor)"
+    },
+    {
+      "user": "thana",
+      "entity": "deal",
+      "id": "cmuyef7ps00e1v5kze5t0qxhn",
+      "why": "ของตัวเอง (ownerUserId = ผู้ใช้) · ผ่าน dealWhere() ของ product · owner=thana team=cmuyeerz30002v5kzawz2jb5b"
+    },
+    {
+      "user": "thana",
+      "entity": "contact",
+      "id": "cmuyeesmi001tv5kzqqrzt4wo",
+      "why": "ของตัวเอง (ownerUserId = ผู้ใช้) · ผ่าน contactWhere() ของ product · owner=thana team=cmuyeerz30002v5kzawz2jb5b"
+    },
+    {
+      "user": "thana",
+      "entity": "company",
+      "id": "cmuyees7l000qv5kztjyrykgo",
+      "why": "ไม่มีคีย์ crm.company.read (companyWhere ว่าง) ⇒ ใช้ของตัวเอง owner=thana — หน้าต้อง 404 ตามคีย์ (registry hiddenFor)"
+    }
+  ],
+  "pageStatus": [
+    {
+      "page": "/pipelines",
+      "path": "/app/sys/cmuy1gmlm0000jikz45h7xblz/crm/pipelines",
+      "user": "owner",
+      "device": "desktop",
+      "status": 200,
+      "rows": 4,
+      "hiddenRows": 0
+    },
+    {
+      "page": "/pipelines",
+      "path": "/app/sys/cmuy1gmlm0000jikz45h7xblz/crm/pipelines",
+      "user": "owner",
+      "device": "mobile",
+      "status": 200,
+      "rows": 4,
+      "hiddenRows": 0
+    },
+    {
+      "page": "/pipelines",
+      "path": "/app/sys/cmuy1gmlm0000jikz45h7xblz/crm/pipelines",
+      "user": "manager",
+      "device": "desktop",
+      "status": 200,
+      "rows": 4,
+      "hiddenRows": 2
+    },
+    {
+      "page": "/pipelines",
+      "path": "/app/sys/cmuy1gmlm0000jikz45h7xblz/crm/pipelines",
+      "user": "manager",
+      "device": "mobile",
+      "status": 200,
+      "rows": 4,
+      "hiddenRows": 2
+    },
+    {
+      "page": "/pipelines",
+      "path": "/app/sys/cmuy1gmlm0000jikz45h7xblz/crm/pipelines",
+      "user": "nok",
+      "device": "desktop",
+      "status": 200,
+      "rows": 4,
+      "hiddenRows": 2
+    },
+    {
+      "page": "/pipelines",
+      "path": "/app/sys/cmuy1gmlm0000jikz45h7xblz/crm/pipelines",
+      "user": "nok",
+      "device": "mobile",
+      "status": 200,
+      "rows": 4,
+      "hiddenRows": 2
+    },
+    {
+      "page": "/pipelines",
+      "path": "/app/sys/cmuy1gmlm0000jikz45h7xblz/crm/pipelines",
+      "user": "thana",
+      "device": "desktop",
+      "status": 200,
+      "rows": 4,
+      "hiddenRows": 2
+    },
+    {
+      "page": "/pipelines",
+      "path": "/app/sys/cmuy1gmlm0000jikz45h7xblz/crm/pipelines",
+      "user": "thana",
+      "device": "mobile",
+      "status": 200,
+      "rows": 4,
+      "hiddenRows": 2
+    }
+  ],
+  "skippedNeeds": [],
+  "skippedSafety": [],
+  "restores": [
+    {
+      "label": "CLEAN (จบรอบ)",
+      "deleted": 2,
+      "updated": 1,
+      "recreated": 0,
+      "failed": []
+    }
+  ],
+  "dbCheckUnparsed": {},
+  "fatal": null,
+  "cleanupFailures": [],
+  "outboxUnsettled": [],
+  "verifyFailures": [],
+  "postChecked": [],
+  "dbVerified": [],
+  "presence": [
+    {
+      "p": "/pipelines",
+      "t": "pipelines-settings-link",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/pipelines",
+      "t": "pipelines-open-board-*",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/pipelines",
+      "t": "pipelines-open-forecast-*",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/pipelines",
+      "t": "pipelines-edit-stages-*",
+      "d": "desktop",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/pipelines",
+      "t": "pipelines-settings-link",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/pipelines",
+      "t": "pipelines-open-board-*",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/pipelines",
+      "t": "pipelines-open-forecast-*",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/pipelines",
+      "t": "pipelines-edit-stages-*",
+      "d": "mobile",
+      "u": "owner",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/pipelines",
+      "t": "pipelines-settings-link",
+      "d": "desktop",
+      "u": "manager",
+      "h": true,
+      "f": false
+    },
+    {
+      "p": "/pipelines",
+      "t": "pipelines-open-board-*",
+      "d": "desktop",
+      "u": "manager",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/pipelines",
+      "t": "pipelines-open-forecast-*",
+      "d": "desktop",
+      "u": "manager",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/pipelines",
+      "t": "pipelines-edit-stages-*",
+      "d": "desktop",
+      "u": "manager",
+      "h": true,
+      "f": false
+    },
+    {
+      "p": "/pipelines",
+      "t": "pipelines-settings-link",
+      "d": "mobile",
+      "u": "manager",
+      "h": true,
+      "f": false
+    },
+    {
+      "p": "/pipelines",
+      "t": "pipelines-open-board-*",
+      "d": "mobile",
+      "u": "manager",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/pipelines",
+      "t": "pipelines-open-forecast-*",
+      "d": "mobile",
+      "u": "manager",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/pipelines",
+      "t": "pipelines-edit-stages-*",
+      "d": "mobile",
+      "u": "manager",
+      "h": true,
+      "f": false
+    },
+    {
+      "p": "/pipelines",
+      "t": "pipelines-settings-link",
+      "d": "desktop",
+      "u": "nok",
+      "h": true,
+      "f": false
+    },
+    {
+      "p": "/pipelines",
+      "t": "pipelines-open-board-*",
+      "d": "desktop",
+      "u": "nok",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/pipelines",
+      "t": "pipelines-open-forecast-*",
+      "d": "desktop",
+      "u": "nok",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/pipelines",
+      "t": "pipelines-edit-stages-*",
+      "d": "desktop",
+      "u": "nok",
+      "h": true,
+      "f": false
+    },
+    {
+      "p": "/pipelines",
+      "t": "pipelines-settings-link",
+      "d": "mobile",
+      "u": "nok",
+      "h": true,
+      "f": false
+    },
+    {
+      "p": "/pipelines",
+      "t": "pipelines-open-board-*",
+      "d": "mobile",
+      "u": "nok",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/pipelines",
+      "t": "pipelines-open-forecast-*",
+      "d": "mobile",
+      "u": "nok",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/pipelines",
+      "t": "pipelines-edit-stages-*",
+      "d": "mobile",
+      "u": "nok",
+      "h": true,
+      "f": false
+    },
+    {
+      "p": "/pipelines",
+      "t": "pipelines-settings-link",
+      "d": "desktop",
+      "u": "thana",
+      "h": true,
+      "f": false
+    },
+    {
+      "p": "/pipelines",
+      "t": "pipelines-open-board-*",
+      "d": "desktop",
+      "u": "thana",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/pipelines",
+      "t": "pipelines-open-forecast-*",
+      "d": "desktop",
+      "u": "thana",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/pipelines",
+      "t": "pipelines-edit-stages-*",
+      "d": "desktop",
+      "u": "thana",
+      "h": true,
+      "f": false
+    },
+    {
+      "p": "/pipelines",
+      "t": "pipelines-settings-link",
+      "d": "mobile",
+      "u": "thana",
+      "h": true,
+      "f": false
+    },
+    {
+      "p": "/pipelines",
+      "t": "pipelines-open-board-*",
+      "d": "mobile",
+      "u": "thana",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/pipelines",
+      "t": "pipelines-open-forecast-*",
+      "d": "mobile",
+      "u": "thana",
+      "h": false,
+      "f": true
+    },
+    {
+      "p": "/pipelines",
+      "t": "pipelines-edit-stages-*",
+      "d": "mobile",
+      "u": "thana",
+      "h": true,
+      "f": false
+    },
+    {
+      "p": "/pipelines",
+      "t": "(page)",
+      "d": "desktop",
+      "u": "customer",
+      "h": true,
+      "f": true
+    },
+    {
+      "p": "/pipelines",
+      "t": "(page)",
+      "d": "mobile",
+      "u": "customer",
+      "h": true,
+      "f": true
+    }
+  ],
+  "customerLockout": [
+    {
+      "page": "/pipelines",
+      "path": "/app/sys/cmuy1gmlm0000jikz45h7xblz/crm/pipelines",
+      "device": "desktop",
+      "status": 200,
+      "finalPath": "/app/sys/cmuy1gmlm0000jikz45h7xblz/crm/pipelines",
+      "visible": [
+        "pipelines-open-board-*",
+        "pipelines-open-forecast-*"
+      ],
+      "ok": false
+    },
+    {
+      "page": "/pipelines",
+      "path": "/app/sys/cmuy1gmlm0000jikz45h7xblz/crm/pipelines",
+      "device": "mobile",
+      "status": 200,
+      "finalPath": "/app/sys/cmuy1gmlm0000jikz45h7xblz/crm/pipelines",
+      "visible": [
+        "pipelines-open-board-*",
+        "pipelines-open-forecast-*"
+      ],
+      "ok": false
+    }
+  ],
+  "pageErrors": [],
+  "tripwire": [],
+  "hiddenWait": {
+    "ms": 31625,
+    "rows": 12
+  },
+  "runStart": "2026-10-07T22:36:59.835Z"
+}

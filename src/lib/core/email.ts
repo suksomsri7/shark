@@ -1,4 +1,5 @@
 import { env, emailEnabled } from "@/lib/env";
+import { trailingAngleAddr } from "./inbound-address"; // CRM C5.5-fix5 ◂
 
 // ส่งอีเมล — dev fallback: log ออก console (ยังไม่มี Resend key)
 // เมื่อเสียบ RESEND_API_KEY จะส่งจริงผ่าน Resend (verify domain shark.in.th)
@@ -87,8 +88,8 @@ const RICH_ADDR_RE = /^[^\s<>@,;"]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
 
 /** `"ชื่อ" <addr>` หรือ `addr` — คืนส่วนที่เป็นที่อยู่ล้วน (ใช้ตรวจรูปแบบอย่างเดียว) */
 function bareAddr(v: string): string {
-  const m = v.match(/<([^>]*)>\s*$/);
-  return (m ? (m[1] ?? "") : v).trim();
+  // CRM C5.5-fix5 ▸ เดิม `v.match(/<([^>]*)>\s*$/)` = n² บน `<` ยาว ๆ ไม่มี `>` · ตัวแกะเชิงเส้นตัวเดียวของระบบ (ผลเท่าเดิมทุกไบต์) ◂
+  return (trailingAngleAddr(v) ?? v).trim();
 }
 
 function richAddrOk(v: unknown): boolean {
@@ -120,6 +121,15 @@ export async function sendEmailRich(msg: RichEmail, deps?: RichEmailDeps): Promi
     if (msg.from !== undefined && !richAddrOk(msg.from)) return { ok: false, error: "INVALID_HEADER" };
     if (msg.replyTo !== undefined && !richAddrOk(msg.replyTo)) return { ok: false, error: "INVALID_HEADER" };
     if (Object.keys(headers).some((k) => !/^[A-Za-z0-9!#$%&'*+.^_`|~-]+$/.test(k))) return { ok: false, error: "INVALID_HEADER" };
+
+    // CRM C5.4-F ▸ C4.4-I1: ทางสำรองของ dev/QC แบบเดียวกับ `sendEmail` (ตัวแยกเดียวกัน `emailEnabled` = มี RESEND_API_KEY) —
+    //   ไม่มีกุญแจ = ไม่ยิง Resend จริง (เดิมยิงด้วย `Bearer ` ว่าง ⇒ 401 ⇒ แถวอีเมล FAILED บนเครื่อง QC) · ตอบสำเร็จพร้อม
+    //   providerId ของ dev · ด่านหัวจดหมาย (X6) ข้างบนยังทำงานครบ · `deps.fetch` ที่ฉีดมา (ข้อสอบ) ยังได้คำขอเหมือนเดิม
+    //   🔴 production มีกุญแจเสมอ ⇒ ทางนี้ไม่เปลี่ยนพฤติกรรมของ prod ◂
+    if (!deps?.fetch && !emailEnabled) {
+      console.log(`[email:dev] rich · to ${to.length + cc.length + bcc.length} ผู้รับ · subject: ${msg.subject}`);
+      return { ok: true, providerId: `dev_${globalThis.crypto.randomUUID()}` };
+    }
 
     const fromAddr = (msg.from ?? env.EMAIL_FROM).trim();
     const from = msg.fromName ? `${msg.fromName} <${bareAddr(fromAddr)}>` : fromAddr;

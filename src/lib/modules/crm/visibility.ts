@@ -36,6 +36,7 @@ import type { MemberActor } from "@/lib/modules/member";
 import { prisma } from "./db";
 import { crmCan, isApiActor } from "./access";
 import { parseCrmSettings } from "./settings";
+import { requestMemo } from "./request-scope";
 import {
   CRM_VIS_DEFAULT,
   CRM_VIS_RANK,
@@ -76,24 +77,79 @@ const ORPHAN_HIDE_CAP = 5_000;
 
 const dbOf = (o?: { db?: VisDb } | null): VisDb => o?.db ?? prisma;
 
-// ───────────────────────── ระบบ + ภาพสถานะ ณ คำขอนี้ (อ่านใหม่ทุกครั้ง · ไม่มีแคช) ─────────────────────────
+// ───────────────────────── ระบบ + ภาพสถานะ ณ คำขอนี้ (อ่านจากฐาน · memo ได้แค่ภายใน 1 คำขอ — request-scope.ts) ─────────────────────────
 
 type SysInfo = { v2: boolean; settingsVis: unknown };
 
+type PolicyRow = { id: string; role: Role | null; teamId: string | null; pipelineId: string | null; entity: string; visibility: CrmVisLevel };
+
+/** แถวดิบของด่าน CRM ต่อ (ร้าน · ระบบ · ผู้ดู) — ระบบ + ทีมของฉัน + สมาชิกทีม + policy + ทีมทั้งร้าน (สาขา) ในคำสั่งเดียว */
+export type CrmAccessRows = {
+  /** null = ไม่มีระบบ CRM นี้ในร้านนี้ */
+  system: { settings: unknown } | null;
+  mine: { teamId: string; role: string }[];
+  mates: string[];
+  policies: PolicyRow[];
+  teams: { id: string; unitIds: string[] }[];
+};
+
+/**
+ * C5.1-fix ▸ ด่านทั้งหมดของ CRM ใน **คำสั่งเดียว** (เดิม AppSystem + TeamMember ×2 + CrmVisibilityPolicy + Team = 4–5 คำสั่งต่อบริการ) ·
+ * memo ต่อคำขอด้วยกุญแจ ร้าน+ระบบ+ผู้ดู (request-scope.ts) · `db` = tx ⇒ อ่านสดเสมอ
+ * ความหมายเท่าคิวรีเดิมทุกตัว: ทีมของฉัน = TeamMember ของร้าน ที่ทีมยังไม่เก็บถาวร · สมาชิกทีม = TeamMember ทุกคนของทีมเหล่านั้น ·
+ * policy = ของระบบนี้ทั้งหมด · ทีมทั้งร้าน (รวมที่เก็บถาวร — แบบเดียวกับ unitTeams เดิม)
+ */
+export async function crmAccess(ctx: { tenantId: string; systemId: string }, userId: string | null | undefined, db: VisDb = prisma): Promise<CrmAccessRows> {
+  const tenantId = typeof ctx?.tenantId === "string" ? ctx.tenantId : "";
+  const systemId = typeof ctx?.systemId === "string" ? ctx.systemId : "";
+  const me = typeof userId === "string" ? userId : "";
+  if (!tenantId || !systemId) return { system: null, mine: [], mates: [], policies: [], teams: [] };
+  return requestMemo(`crm-access|${tenantId}|${systemId}|${me}`, db, async () => {
+    const [r] = await db.$queryRaw<{ sys: { s: unknown } | null; mine: { teamId: string; role: string }[] | null; mates: string[] | null; policies: PolicyRow[] | null; teams: { id: string; unitIds: string[] }[] | null }[]>`
+      WITH mine AS (
+        SELECT tm."teamId", tm."role"::text AS "role"
+          FROM "TeamMember" tm JOIN "Team" t ON t."id" = tm."teamId"
+         WHERE ${me} <> '' AND tm."tenantId" = ${tenantId} AND tm."userId" = ${me} AND t."tenantId" = ${tenantId} AND t."archivedAt" IS NULL
+      )
+      SELECT
+        (SELECT json_build_object('s', s."settings") FROM "AppSystem" s WHERE s."id" = ${systemId} AND s."tenantId" = ${tenantId} AND s."type" = 'CRM' LIMIT 1) AS "sys",
+        (SELECT json_agg(json_build_object('teamId', mine."teamId", 'role', mine."role")) FROM mine) AS "mine",
+        (SELECT array_agg(DISTINCT m."userId") FROM "TeamMember" m WHERE m."tenantId" = ${tenantId} AND m."teamId" IN (SELECT "teamId" FROM mine)) AS "mates",
+        (SELECT json_agg(json_build_object('id', p."id", 'role', p."role", 'teamId', p."teamId", 'pipelineId', p."pipelineId", 'entity', p."entity", 'visibility', p."visibility"))
+           FROM "CrmVisibilityPolicy" p WHERE p."tenantId" = ${tenantId} AND p."systemId" = ${systemId}) AS "policies",
+        (SELECT json_agg(json_build_object('id', t."id", 'unitIds', t."unitIds")) FROM "Team" t WHERE t."tenantId" = ${tenantId}) AS "teams"`;
+    return {
+      system: r?.sys ? { settings: r.sys.s } : null,
+      mine: r?.mine ?? [],
+      mates: r?.mates ?? [],
+      policies: (r?.policies ?? []) as PolicyRow[],
+      teams: (r?.teams ?? []).map((t) => ({ id: t.id, unitIds: Array.isArray(t.unitIds) ? t.unitIds : [] })),
+    };
+  });
+}
+
+/**
+ * C5.1-fix ▸ แถวระบบ CRM ของ ctx (ร้านนี้ · ชนิด CRM) ผ่านด่านรวม — แทน `appSystem.findFirst({ id, tenantId, type: "CRM" })`
+ * ของบริการทุกตัว (ความหมายเดียวกัน · `null` = ไม่พบ) · ผู้ดู = `ctx.actorUserId` (หน้า/สคริปต์ตั้งเป็นผู้ใช้คนเดียวกับ actor)
+ */
+export async function crmSystemRow(
+  ctx: { tenantId: string; systemId: string; actorUserId?: string | null },
+  db: VisDb = prisma,
+): Promise<{ id: string; settings: Prisma.JsonValue } | null> {
+  const acc = await crmAccess(ctx, ctx?.actorUserId ?? null, db);
+  return acc.system ? { id: ctx.systemId, settings: (acc.system.settings ?? null) as Prisma.JsonValue } : null;
+}
+
 /** ระบบ CRM ของ ctx (ร้านนี้ · ชนิด CRM) — `null` = ไม่พบ · v2 = uiVersion 2 (R-E.14) */
-async function sysInfo(ctx: VisCtx, db: VisDb): Promise<SysInfo | null> {
-  const sys =
-    typeof ctx?.systemId === "string" && typeof ctx?.tenantId === "string" && ctx.systemId && ctx.tenantId
-      ? await db.appSystem.findFirst({ where: { id: ctx.systemId, tenantId: ctx.tenantId, type: "CRM" }, select: { settings: true } })
-      : null;
-  if (!sys) return null;
-  const s = sys.settings;
+async function sysInfo(ctx: VisCtx, actor: Actor | null | undefined, db: VisDb): Promise<SysInfo | null> {
+  if (!(typeof ctx?.systemId === "string" && typeof ctx?.tenantId === "string" && ctx.systemId && ctx.tenantId)) return null;
+  const acc = await crmAccess(ctx, actor?.userId, db);
+  if (!acc.system) return null;
+  const s = acc.system.settings;
   const crm = s && typeof s === "object" && !Array.isArray(s) ? (s as Record<string, unknown>).crm : null;
   const settingsVis = crm && typeof crm === "object" && !Array.isArray(crm) ? (crm as Record<string, unknown>).visibility : undefined;
   return { v2: parseCrmSettings(s).uiVersion === 2, settingsVis };
 }
-
-type PolicyRow = { id: string; role: Role | null; teamId: string | null; pipelineId: string | null; entity: string; visibility: CrmVisLevel };
 
 type Snapshot = {
   me: string;
@@ -107,27 +163,19 @@ type Snapshot = {
   settingsVis: unknown;
 };
 
-/** AUDIT-CLASS X1: อ่านทีมของฉัน + สมาชิกทีม + policy จากฐาน **ทุกครั้ง** (คำขอถัดไปเห็นการเปลี่ยนแปลงทันที) */
+/** AUDIT-CLASS X1: ทีมของฉัน + สมาชิกทีม + policy จากฐาน (คำขอถัดไปเห็นการเปลี่ยนแปลงทันที — memo แค่ภายในคำขอ) */
 async function snapshot(ctx: VisCtx, actor: Actor, info: SysInfo, db: VisDb): Promise<Snapshot> {
   const me = typeof actor.userId === "string" ? actor.userId : "";
-  const mine = me
-    ? await db.teamMember.findMany({
-        where: { tenantId: ctx.tenantId, userId: me, team: { tenantId: ctx.tenantId, archivedAt: null } },
-        select: { teamId: true, role: true },
-      })
-    : [];
+  const acc = await crmAccess(ctx, me, db);
+  const mine = me ? acc.mine : [];
   const teamIds = [...new Set(mine.map((m) => m.teamId))];
-  const mates = teamIds.length ? await db.teamMember.findMany({ where: { tenantId: ctx.tenantId, teamId: { in: teamIds } }, select: { userId: true } }) : [];
-  const policies = await db.crmVisibilityPolicy.findMany({
-    where: { tenantId: ctx.tenantId, systemId: ctx.systemId },
-    select: { id: true, role: true, teamId: true, pipelineId: true, entity: true, visibility: true },
-  });
+  const mates = teamIds.length ? acc.mates : [];
   return {
     me,
     teamIds,
     isLead: mine.some((m) => m.role === "LEAD"),
-    teammateIds: [...new Set([...mates.map((m) => m.userId), ...(me ? [me] : [])])],
-    policies: policies as PolicyRow[],
+    teammateIds: [...new Set([...mates, ...(me ? [me] : [])])],
+    policies: acc.policies,
     settingsVis: info.settingsVis,
   };
 }
@@ -192,7 +240,7 @@ export async function resolve(ctx: VisCtx, actor: Actor, entity: CrmVisEntity, o
   if (!actor || actor.role === "CUSTOMER") return "OWN";
   if (actor.role === "OWNER" || isApiActor(actor)) return "ALL";
   const db = dbOf(opts);
-  const info = await sysInfo(ctx, db);
+  const info = await sysInfo(ctx, actor, db);
   if (!info || !info.v2) return "ALL";
   const s = await snapshot(ctx, actor, info, db);
   return levelOf(s, actor, entity, opts?.pipelineId ?? null);
@@ -206,7 +254,7 @@ const wholeShop = (actor: Actor) => actor.role === "OWNER" || actor.unitAccess.l
 /** ทีมที่ actor ที่ถูกจำกัดสาขาเห็นได้ใน ALL — `null` = ไม่ถูกจำกัด (รายการทีมของร้าน · ขนาดจำกัดตามจำนวนทีม) */
 async function unitTeams(ctx: VisCtx, actor: Actor, db: VisDb): Promise<string[] | null> {
   if (wholeShop(actor)) return null;
-  const teams = await db.team.findMany({ where: { tenantId: ctx.tenantId }, select: { id: true, unitIds: true } });
+  const teams = (await crmAccess(ctx, actor.userId, db)).teams;
   return teams.filter((t) => t.unitIds.length === 0 || t.unitIds.some((u) => actor.unitAccess.includes(u))).map((t) => t.id);
 }
 
@@ -351,7 +399,7 @@ export async function visibleWhere(ctx: VisCtx, actor: Actor, entity: Exclude<Cr
   if (!actor || actor.role === "CUSTOMER") return { ...scope, ...NOTHING };
   if (!isVisEntity(entity) || (entity as string) === "REPORT") throw new VisibilityError("VALIDATION", "ชนิดข้อมูลที่ขอดูการมองเห็นไม่ถูกต้อง");
   const db = dbOf(opts);
-  const info = await sysInfo(ctx, db);
+  const info = await sysInfo(ctx, actor, db);
   if (!info) return { ...scope, ...NOTHING };
   // R-E.14: ระบบที่ยังไม่เปิด CRM v2 = ขอบเขตเดิมก่อน C1.7 ทุกประการ
   if (!info.v2) return scope;
@@ -407,6 +455,41 @@ function dealSql(s: Snapshot, actor: Actor, allowed: string[] | null, p: string)
 }
 
 /**
+ * C5.1-fix ▸ AUDIT-CLASS X1: `visibleWhere` ของผู้ติดต่อ/บริษัท/ดีล **ในรูป SQL** ของแถว alias ที่ระบุ — ร้าน + ระบบ + การมองเห็น +
+ * คีย์อ่าน + ตัวกรองของคีย์ API ครบทุกข้อเหมือนตัว Prisma (ตัดสินด้วย helper ชุดเดียวกัน: baseLevel · levelOf · ownedSql · dealSql)
+ * ใช้ในรายการ/กระดาน/ผลรวมที่ต้องประกอบเงื่อนไขเป็น SQL คำสั่งเดียว (ไม่มีรายการ id) · ข้อสอบเทียบผลกับ visibleWhere: scripts/qc-crm-c51fix-equiv.mts
+ */
+export async function visibleSql(ctx: VisCtx, actor: Actor, entity: OwnedEntity, alias: string, opts: WhereOpts = {}): Promise<Prisma.Sql> {
+  if (!/^[a-z][a-z0-9_]{0,15}$/.test(alias)) throw new VisibilityError("VALIDATION", "alias ของตารางไม่ถูกต้อง");
+  const a = Prisma.raw(alias);
+  const scope = Prisma.sql`${a}."tenantId" = ${ctx.tenantId} AND ${a}."systemId" = ${ctx.systemId}`;
+  if (!actor || actor.role === "CUSTOMER") return sqlFalse;
+  if (!isVisEntity(entity)) throw new VisibilityError("VALIDATION", "ชนิดข้อมูลที่ขอดูการมองเห็นไม่ถูกต้อง");
+  const db = dbOf(opts);
+  const info = await sysInfo(ctx, actor, db);
+  if (!info) return sqlFalse;
+  if (!info.v2) return Prisma.sql`(${scope})`;
+  if (opts.keyGate !== false && !crmCan(actor, READ_KEY[entity])) return sqlFalse;
+  if (actor.role === "OWNER") return Prisma.sql`(${scope})`;
+  if (isApiActor(actor)) {
+    const f = keyFilters(actor);
+    const allowed = await unitTeams(ctx, actor, db);
+    const parts: Prisma.Sql[] = [scope, ownedSql(entity, "ALL", emptySnap(), allowed, alias)];
+    if (f.teamIds.length) parts.push(Prisma.sql`${a}."teamId" = ANY(${f.teamIds}::text[])`);
+    if (f.ownerIds.length) parts.push(Prisma.sql`${a}."ownerUserId" = ANY(${f.ownerIds}::text[])`);
+    return Prisma.sql`(${Prisma.join(parts, " AND ")})`;
+  }
+  const s = await snapshot(ctx, actor, info, db);
+  const allowed = await unitTeams(ctx, actor, db);
+  if (entity === "DEAL") {
+    const pid = opts.pipelineId ?? null;
+    const body = pid ? Prisma.sql`(${a}."pipelineId" = ${pid} AND ${ownedSql("DEAL", levelOf(s, actor, "DEAL", pid), s, allowed, alias)})` : dealSql(s, actor, allowed, alias);
+    return Prisma.sql`(${scope} AND ${body})`;
+  }
+  return Prisma.sql`(${scope} AND ${ownedSql(entity, baseLevel(s, actor, entity), s, allowed, alias)})`;
+}
+
+/**
  * AUDIT-CLASS X1: เงื่อนไข SQL (ใช้กับแถว `CustomRecord` alias `r`) ว่า actor เห็นรายการไหน — แม่เป็นผู้ติดต่อ/บริษัท/ดีล = EXISTS
  * ของแม่ที่เห็น · แม่อื่น = ขอบเขตสาขา · ต้องมีคีย์ `crm.record.read`
  * คืน `null` = เห็นทุกรายการของระบบ (ระบบ uiVersion 1 · OWNER · ไม่ถูกจำกัดใด ๆ) — ผู้เรียกไม่ต้องกรองเพิ่ม
@@ -415,7 +498,7 @@ export async function recordVisibilitySql(ctx: VisCtx, actor: Actor, opts: { db?
   const db = dbOf(opts);
   const r = Prisma.raw(opts.alias ?? "r");
   if (!actor || actor.role === "CUSTOMER") return sqlFalse;
-  const info = await sysInfo(ctx, db);
+  const info = await sysInfo(ctx, actor, db);
   if (!info) return sqlFalse;
   if (!info.v2) return null;
   if (!crmCan(actor, READ_KEY.RECORD)) return sqlFalse;
@@ -506,12 +589,19 @@ export async function canSee(ctx: VisCtx, actor: Actor, entity: VisTarget | CrmV
  * ต่อ (ระบบ · ชนิด): where การมองเห็น 1 ครั้ง + findMany ของ id ที่ขอ 1 ครั้ง (ไม่ canSee ทีละ id) · ระบบ uiVersion 1 = เห็นทุก id
  * (R-E.14 — ด่านโมดูลเดิมของผู้เรียกตัดสินเอง) · ระบบ CRM ของแต่ละแถวอ่านจากแถวนั้นเอง (การ์ดอาจชี้หลายระบบของร้านเดียวกัน)
  */
-export async function visibleIdsAmong(tenantId: string, actor: Actor, entity: VisTarget, ids: readonly string[], opts: { db?: VisDb } = {}): Promise<Set<string>> {
+export async function visibleIdsAmong(
+  tenantId: string,
+  actor: Actor,
+  entity: VisTarget,
+  ids: readonly string[],
+  // CRM C4.2-fix r2 ▸ (รีวิว N-6) `systemId` = เฉพาะแถวของระบบ CRM นี้ (ลิงก์ใต้ /sys/<systemId>/crm/… ต้องเป็นของระบบนั้น) — ไม่ส่ง = ทุกระบบของร้าน (เดิม) ◂
+  opts: { db?: VisDb; systemId?: string | null } = {},
+): Promise<Set<string>> {
   const want = [...new Set(ids.filter((x) => typeof x === "string" && x))];
   const out = new Set<string>();
   if (want.length === 0 || !actor) return out;
   const db = dbOf(opts);
-  const base = { tenantId, id: { in: want } };
+  const base = { tenantId, id: { in: want }, ...(opts.systemId ? { systemId: opts.systemId } : {}) };
   const rows =
     entity === "DEAL"
       ? await db.crmDeal.findMany({ where: base, select: { id: true, systemId: true } })
@@ -567,7 +657,7 @@ export async function visibleIdsForViewer(
             ? await prisma.customRecord.findMany({ where: { tenantId, id: { in: want } }, select: { id: true, systemId: true } })
             : await prisma.crmActivity.findMany({ where: { tenantId, id: { in: want } }, select: { id: true, systemId: true } });
   for (const systemId of new Set(rows.map((r) => r.systemId))) {
-    const info = await sysInfo({ tenantId, systemId }, prisma);
+    const info = await sysInfo({ tenantId, systemId }, actor, prisma);
     if (info && !info.v2) for (const r of rows) if (r.systemId === systemId) out.add(r.id);
   }
   return out;

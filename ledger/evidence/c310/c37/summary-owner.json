@@ -1,0 +1,293 @@
+{
+  "wo": "3.7",
+  "user": "owner",
+  "at": "2026-10-08T00:11:31.741Z",
+  "results": [
+    {
+      "name": "c37-390-home-owner",
+      "device": "mobile",
+      "status": 200,
+      "missing": [],
+      "errors": [],
+      "httpErrors": [],
+      "file": ".qc-shots/crm/3.7/c37-390-home-owner-mobile.png",
+      "overflow": false,
+      "overflowEl": null
+    },
+    {
+      "name": "c37-390-emails-owner",
+      "device": "mobile",
+      "status": 200,
+      "missing": [],
+      "errors": [],
+      "httpErrors": [],
+      "file": ".qc-shots/crm/3.7/c37-390-emails-owner-mobile.png",
+      "overflow": false,
+      "overflowEl": null
+    },
+    {
+      "name": "c37-390-reports-owner",
+      "device": "mobile",
+      "status": 200,
+      "missing": [],
+      "errors": [],
+      "httpErrors": [],
+      "file": ".qc-shots/crm/3.7/c37-390-reports-owner-mobile.png",
+      "overflow": false,
+      "overflowEl": null
+    },
+    {
+      "name": "c37-390-settings-automation-owner",
+      "device": "mobile",
+      "status": 200,
+      "missing": [],
+      "errors": [],
+      "httpErrors": [],
+      "file": ".qc-shots/crm/3.7/c37-390-settings-automation-owner-mobile.png",
+      "overflow": false,
+      "overflowEl": null
+    },
+    {
+      "name": "c37-390-settings-sequences-owner",
+      "device": "mobile",
+      "status": 200,
+      "missing": [],
+      "errors": [],
+      "httpErrors": [],
+      "file": ".qc-shots/crm/3.7/c37-390-settings-sequences-owner-mobile.png",
+      "overflow": false,
+      "overflowEl": null
+    },
+    {
+      "name": "c37-390-settings-holidays-owner",
+      "device": "mobile",
+      "status": 200,
+      "missing": [],
+      "errors": [],
+      "httpErrors": [],
+      "file": ".qc-shots/crm/3.7/c37-390-settings-holidays-owner-mobile.png",
+      "overflow": false,
+      "overflowEl": null
+    },
+    {
+      "name": "c37-390-settings-assignment-owner",
+      "device": "mobile",
+      "status": 200,
+      "missing": [],
+      "errors": [],
+      "httpErrors": [],
+      "file": ".qc-shots/crm/3.7/c37-390-settings-assignment-owner-mobile.png",
+      "overflow": false,
+      "overflowEl": null
+    },
+    {
+      "name": "c37-390-settings-email-owner",
+      "device": "mobile",
+      "status": 200,
+      "missing": [],
+      "errors": [],
+      "httpErrors": [],
+      "file": ".qc-shots/crm/3.7/c37-390-settings-email-owner-mobile.png",
+      "overflow": false,
+      "overflowEl": null
+    },
+    {
+      "name": "c37-390-settings-tracking-owner",
+      "device": "mobile",
+      "status": 200,
+      "missing": [],
+      "errors": [],
+      "httpErrors": [],
+      "file": ".qc-shots/crm/3.7/c37-390-settings-tracking-owner-mobile.png",
+      "overflow": false,
+      "overflowEl": null
+    },
+    {
+      "name": "c37-390-settings-forms-owner",
+      "device": "mobile",
+      "status": 200,
+      "missing": [],
+      "errors": [],
+      "httpErrors": [],
+      "file": ".qc-shots/crm/3.7/c37-390-settings-forms-owner-mobile.png",
+      "overflow": false,
+      "overflowEl": null
+    },
+    {
+      "name": "c37-390-settings-scoring-owner",
+      "device": "mobile",
+      "status": 200,
+      "missing": [],
+      "errors": [],
+      "httpErrors": [],
+      "file": ".qc-shots/crm/3.7/c37-390-settings-scoring-owner-mobile.png",
+      "overflow": false,
+      "overflowEl": null
+    },
+    {
+      "name": "c37-390-settings-commissions-owner",
+      "device": "mobile",
+      "status": 200,
+      "missing": [],
+      "errors": [],
+      "httpErrors": [],
+      "file": ".qc-shots/crm/3.7/c37-390-settings-commissions-owner-mobile.png",
+      "overflow": false,
+      "overflowEl": null
+    },
+    {
+      "name": "c37-390-commissions-owner",
+      "device": "mobile",
+      "status": 200,
+      "missing": [],
+      "errors": [],
+      "httpErrors": [],
+      "file": ".qc-shots/crm/3.7/c37-390-commissions-owner-mobile.png",
+      "overflow": false,
+      "overflowEl": null
+    },
+    {
+      "name": "c37-390-settings-notifications-owner",
+      "device": "mobile",
+      "status": 200,
+      "missing": [],
+      "errors": [],
+      "httpErrors": [],
+      "file": ".qc-shots/crm/3.7/c37-390-settings-notifications-owner-mobile.png",
+      "overflow": false,
+      "overflowEl": null
+    },
+    {
+      "name": "c37-390-settings-quotas-owner",
+      "device": "mobile",
+      "status": 200,
+      "missing": [],
+      "errors": [],
+      "httpErrors": [],
+      "file": ".qc-shots/crm/3.7/c37-390-settings-quotas-owner-mobile.png",
+      "overflow": false,
+      "overflowEl": null
+    },
+    {
+      "name": "c37-390-settings-portal-owner",
+      "device": "mobile",
+      "status": 200,
+      "missing": [],
+      "errors": [],
+      "httpErrors": [],
+      "file": ".qc-shots/crm/3.7/c37-390-settings-portal-owner-mobile.png",
+      "overflow": false,
+      "overflowEl": null
+    },
+    {
+      "name": "c37-390-report-overview-owner",
+      "device": "mobile",
+      "status": 200,
+      "missing": [],
+      "errors": [],
+      "httpErrors": [],
+      "file": ".qc-shots/crm/3.7/c37-390-report-overview-owner-mobile.png",
+      "overflow": false,
+      "overflowEl": null
+    },
+    {
+      "name": "c37-390-report-forecast-owner",
+      "device": "mobile",
+      "status": 200,
+      "missing": [],
+      "errors": [],
+      "httpErrors": [],
+      "file": ".qc-shots/crm/3.7/c37-390-report-forecast-owner-mobile.png",
+      "overflow": false,
+      "overflowEl": null
+    },
+    {
+      "name": "c37-390-report-funnel-owner",
+      "device": "mobile",
+      "status": 200,
+      "missing": [],
+      "errors": [],
+      "httpErrors": [],
+      "file": ".qc-shots/crm/3.7/c37-390-report-funnel-owner-mobile.png",
+      "overflow": false,
+      "overflowEl": null
+    },
+    {
+      "name": "c37-390-report-reps-owner",
+      "device": "mobile",
+      "status": 200,
+      "missing": [],
+      "errors": [],
+      "httpErrors": [],
+      "file": ".qc-shots/crm/3.7/c37-390-report-reps-owner-mobile.png",
+      "overflow": false,
+      "overflowEl": null
+    },
+    {
+      "name": "c37-390-report-activities-owner",
+      "device": "mobile",
+      "status": 200,
+      "missing": [],
+      "errors": [],
+      "httpErrors": [],
+      "file": ".qc-shots/crm/3.7/c37-390-report-activities-owner-mobile.png",
+      "overflow": false,
+      "overflowEl": null
+    },
+    {
+      "name": "c37-390-report-lost-owner",
+      "device": "mobile",
+      "status": 200,
+      "missing": [],
+      "errors": [],
+      "httpErrors": [],
+      "file": ".qc-shots/crm/3.7/c37-390-report-lost-owner-mobile.png",
+      "overflow": false,
+      "overflowEl": null
+    },
+    {
+      "name": "c37-390-report-sources-owner",
+      "device": "mobile",
+      "status": 200,
+      "missing": [],
+      "errors": [],
+      "httpErrors": [],
+      "file": ".qc-shots/crm/3.7/c37-390-report-sources-owner-mobile.png",
+      "overflow": false,
+      "overflowEl": null
+    },
+    {
+      "name": "c37-390-report-scores-owner",
+      "device": "mobile",
+      "status": 200,
+      "missing": [],
+      "errors": [],
+      "httpErrors": [],
+      "file": ".qc-shots/crm/3.7/c37-390-report-scores-owner-mobile.png",
+      "overflow": false,
+      "overflowEl": null
+    },
+    {
+      "name": "c37-390-email-thread-owner",
+      "device": "mobile",
+      "status": 200,
+      "missing": [],
+      "errors": [],
+      "httpErrors": [],
+      "file": ".qc-shots/crm/3.7/c37-390-email-thread-owner-mobile.png",
+      "overflow": false,
+      "overflowEl": null
+    },
+    {
+      "name": "c37-390-sequence-editor-owner",
+      "device": "mobile",
+      "status": 200,
+      "missing": [],
+      "errors": [],
+      "httpErrors": [],
+      "file": ".qc-shots/crm/3.7/c37-390-sequence-editor-owner-mobile.png",
+      "overflow": false,
+      "overflowEl": null
+    }
+  ]
+}

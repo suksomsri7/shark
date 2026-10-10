@@ -19,6 +19,8 @@
 process.env.SHARK_AI_MOCK = "1";
 import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
 loadLegacyQcEnv("qc-mobile-chat"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
+// ORACLE-EDIT C5.5-G1: runTool/sendMessage now take a required actor (no actor = refusal) — these checks always meant "the shop OWNER asks"
+const qcOwner = (t: string) => ({ kind: "member" as const, tenantId: t, userId: "qc-owner", membership: { role: "OWNER" as const, unitAccess: ["*"], permissions: {} } });
 process.env.SHARK_AI_MOCK = "1"; // ย้ำหลัง loadEnvFile — .env ห้าม override ข้อสอบ
 const { prisma } = await import("@/lib/core/db");
 type Sev = "CRITICAL" | "MAJOR" | "MINOR";
@@ -37,28 +39,31 @@ try {
   const t2 = await prisma.tenant.create({ data: { name: "QC MC อื่น", slug: `qc-mc2-${ts}` } }); tids.push(t2.id);
   const td = await prisma.tenant.create({ data: { name: "ร้านเสริมสวย QC DNA", slug: `qc-mcd-${ts}` } }); tids.push(td.id);
   const ctx = { tenantId: t1.id }; const ctx2 = { tenantId: t2.id };
+  const chatCtx = { ...ctx, actor: qcOwner(t1.id) };
+  // ORACLE-EDIT C5.5-G2: mobile conversation functions now take the viewer (ctx.actor) — rooms are their creator's; these checks are the shop OWNER's own rooms
+  const chatCtx2 = { ...ctx2, actor: qcOwner(t2.id) };
 
   // ── lib conversations ──
   const conv = ((await route("@/lib/mobile/conversations")) ?? {}) as unknown as { [k: string]: (...a: any[]) => Promise<any> };
   if (typeof conv.listConversations !== "function") chk("MC-1.0", "มี lib mobile/conversations", false, "มี", "ยังไม่สร้าง");
   else {
-    const c1 = await conv.createConversation(ctx, "งานสต็อก");
-    const c2 = await conv.createConversation(ctx);
-    let list = await conv.listConversations(ctx);
+    const c1 = await conv.createConversation(chatCtx, "งานสต็อก");
+    const c2 = await conv.createConversation(chatCtx);
+    let list = await conv.listConversations(chatCtx);
     chk("MC-1.1", "create 2 ห้อง → list 2 แถว unread=false ทั้งคู่", list.length === 2 && list.every((r: any) => r.unread === false), "2/false", JSON.stringify(list.map((r: any) => r.unread)));
     await prisma.aiMessage.create({ data: { tenantId: t1.id, conversationId: c1.id, role: "ASSISTANT", content: "เสร็จแล้วครับ" } });
     await prisma.aiConversation.update({ where: { id: c1.id }, data: { updatedAt: new Date() } });
-    list = await conv.listConversations(ctx);
+    list = await conv.listConversations(chatCtx);
     const r1 = list.find((r: any) => r.id === c1.id);
     chk("MC-1.2", "AI ตอบใหม่ → ห้องนั้น unread=true + ขึ้นบนสุด (เรียง updatedAt)", r1?.unread === true && list[0]?.id === c1.id, "true/บนสุด", JSON.stringify({ u: r1?.unread, top: list[0]?.id === c1.id }));
-    await conv.markRead(ctx, c1.id);
-    list = await conv.listConversations(ctx);
+    await conv.markRead(chatCtx, c1.id);
+    list = await conv.listConversations(chatCtx);
     chk("MC-1.3", "markRead → unread=false", list.find((r: any) => r.id === c1.id)?.unread === false, "false", "?");
-    chk("MC-1.4", "rename ห้องตัวเอง=true · ข้าม tenant=false (กันข้ามกิจการ)", (await conv.renameConversation(ctx, c1.id, "สต็อกหลังร้าน")) === true && (await conv.renameConversation(ctx2, c1.id, "hack")) === false && (await prisma.aiConversation.findUnique({ where: { id: c1.id } }))?.title === "สต็อกหลังร้าน", "true/false", "?");
-    await conv.deleteConversation(ctx, c2.id);
+    chk("MC-1.4", "rename ห้องตัวเอง=true · ข้าม tenant=false (กันข้ามกิจการ)", (await conv.renameConversation(chatCtx, c1.id, "สต็อกหลังร้าน")) === true && (await conv.renameConversation(chatCtx2, c1.id, "hack")) === false && (await prisma.aiConversation.findUnique({ where: { id: c1.id } }))?.title === "สต็อกหลังร้าน", "true/false", "?");
+    await conv.deleteConversation(chatCtx, c2.id);
     const row2 = await prisma.aiConversation.findUnique({ where: { id: c2.id } });
-    chk("MC-1.5", "delete = soft (deletedAt) + หายจาก list + แถวจริงยังอยู่", !!row2?.deletedAt && (await conv.listConversations(ctx)).every((r: any) => r.id !== c2.id), "soft", JSON.stringify({ del: !!row2?.deletedAt }));
-    chk("MC-1.6", "ข้าม tenant ลบไม่ได้", (await conv.deleteConversation(ctx2, c1.id)) === false && !(await prisma.aiConversation.findUnique({ where: { id: c1.id } }))?.deletedAt, "false", "?");
+    chk("MC-1.5", "delete = soft (deletedAt) + หายจาก list + แถวจริงยังอยู่", !!row2?.deletedAt && (await conv.listConversations(chatCtx)).every((r: any) => r.id !== c2.id), "soft", JSON.stringify({ del: !!row2?.deletedAt }));
+    chk("MC-1.6", "ข้าม tenant ลบไม่ได้", (await conv.deleteConversation(chatCtx2, c1.id)) === false && !(await prisma.aiConversation.findUnique({ where: { id: c1.id } }))?.deletedAt, "false", "?");
   }
 
   // ── lib chat (Mock) ──
@@ -66,7 +71,7 @@ try {
   if (typeof chat.sendMobileChat !== "function") chk("MC-2.0", "มี lib mobile/chat.sendMobileChat", false, "มี", "ยังไม่สร้าง");
   else {
     const events: any[] = [];
-    for await (const ev of chat.sendMobileChat(ctx, { text: "สวัสดี ทดสอบระบบ" })) events.push(ev);
+    for await (const ev of chat.sendMobileChat(chatCtx, { text: "สวัสดี ทดสอบระบบ" })) events.push(ev);
     const done = events.find((e) => e.type === "done");
     const cid = done?.result?.conversationId as string | undefined;
     chk("MC-2.1", "sendMobileChat → มี done + conversationId", !!done && !!cid, "done+cid", JSON.stringify(events.map((e) => e.type)));

@@ -1,0 +1,12 @@
+# QC2 run 27 Sep 2026 · tenant qc-hunt-l5-ccqeeqqq (deleted: tenantsLeft 0 usersLeft 0)
+# name = "สมหญิงccqeeqqq ทดสอบลบccqeeqqq"
+before.dealTitlesWithName   = ["ดีลอัตโนมัติ <name>" (automation CREATE_DEAL {ชื่อ}), "ดีล <name>" (convert-sheet default)]
+before.cardTitlesWithName   = ["โทรหา <name>"] (automation OPEN_KANBAN_CARD {ชื่อ}) · cardsLinkedToContact = 0
+before.meetingBodiesWithName= ["🔥 lead ร้อน: <name> · คะแนน 90 ..."] (aiBridges.onHotLeadTeamRoom)
+before.activityTitlesWithName = ["โทรหา <name>"] (positive control)
+erase = { erased: true, counts.activities 1, kanban 0, notifications 0 }
+after.dealTitlesWithName    = 2   (LEAK)
+after.cardTitlesWithName    = 1   (LEAK)
+after.meetingBodiesWithName = 1   (LEAK)
+after.activityTitlesWithName= 0   (positive control masked OK)
+verdict = { dealTitleLeak: 2, kanbanCardLeak: 1, meetingPostLeak: 1, positiveControlActivityMasked: true }

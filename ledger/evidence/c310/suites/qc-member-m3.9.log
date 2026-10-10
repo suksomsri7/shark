@@ -1,0 +1,36 @@
+  ✅ [M3.9-S1.1] TEMPLATES 17 key ครบตามลำดับ §10 + general · name ไทยไม่ซ้ำ · description ไทย · ไฟล์ต่อชุด 17 ไฟล์ในโฟลเดอร์ templates/ · เทมเพลตเป็นข้อมูลล้วน (ไม่ import prisma/facade อื่น)
+  ✅ [M3.9-S1.2] general: tiers 4 · stamps 1 (slots 10 · 'ซื้อครบ 10 ครั้ง') · journeys 6 อ้าง presetKey ที่มีจริงใน JOURNEY_PRESETS (birthday new_member inactive_60 tier_at_risk review_request points_expiring หรือชื่อ preset ของ M3.3)
+  ✅ [M3.9-S2.1] dive (ดำน้ำ / กีฬาทางน้ำ): validate ok · กติกา §10 (ส่วน ≥1 · ฟิลด์ ≥3 · อ่อนไหว · ระดับ ≥2 · สแตมป์ ≥1 · journey ≥1) · apply จริง (fields+tiers+stamps+journeys) added = preview.new* · apply ซ้ำ → 0 ทุกช่อง
+  ✅ [M3.9-S2.2] clinic (คลินิก / ความงาม): validate ok · กติกา §10 (ส่วน ≥1 · ฟิลด์ ≥3 · อ่อนไหว · ระดับ ≥2 · สแตมป์ ≥1 · journey ≥1) · apply จริง (fields+tiers+stamps+journeys) added = preview.new* · apply ซ้ำ → 0 ทุกช่อง
+  ✅ [M3.9-S2.3] dental (ทันตกรรม): validate ok · กติกา §10 (ส่วน ≥1 · ฟิลด์ ≥3 · อ่อนไหว · ระดับ ≥2 · สแตมป์ ≥1 · journey ≥1) · apply จริง (fields+tiers+stamps+journeys) added = preview.new* · apply ซ้ำ → 0 ทุกช่อง
+  ✅ [M3.9-S2.4] restaurant (ร้านอาหาร / คาเฟ่): validate ok · กติกา §10 (ส่วน ≥1 · ฟิลด์ ≥3 · ระดับ ≥2 · สแตมป์ ≥1 · journey ≥1) · apply จริง (fields+tiers+stamps+journeys) added = preview.new* · apply ซ้ำ → 0 ทุกช่อง
+  ✅ [M3.9-S2.5] fitness (ฟิตเนส / โยคะ): validate ok · กติกา §10 (ส่วน ≥1 · ฟิลด์ ≥3 · อ่อนไหว · ระดับ ≥2 · สแตมป์ ≥1 · journey ≥1) · apply จริง (fields+tiers+stamps+journeys) added = preview.new* · apply ซ้ำ → 0 ทุกช่อง
+  ✅ [M3.9-S2.6] hotel (โรงแรม / รีสอร์ต): validate ok · กติกา §10 (ส่วน ≥1 · ฟิลด์ ≥3 · อ่อนไหว · ระดับ ≥2 · สแตมป์ ≥1 · journey ≥1) · apply จริง (fields+tiers+stamps+journeys) added = preview.new* · apply ซ้ำ → 0 ทุกช่อง
+  ✅ [M3.9-S2.7] retail (ร้านค้าปลีก / แฟชั่น): validate ok · กติกา §10 (ส่วน ≥1 · ฟิลด์ ≥3 · ระดับ ≥2 · สแตมป์ ≥1 · journey ≥1) · apply จริง (fields+tiers+stamps+journeys) added = preview.new* · apply ซ้ำ → 0 ทุกช่อง
+  ✅ [M3.9-S2.8] salon (ซาลอน / สปา): validate ok · กติกา §10 (ส่วน ≥1 · ฟิลด์ ≥3 · อ่อนไหว · ระดับ ≥2 · สแตมป์ ≥1 · journey ≥1) · apply จริง (fields+tiers+stamps+journeys) added = preview.new* · apply ซ้ำ → 0 ทุกช่อง
+  ✅ [M3.9-S2.9] tutoring (กวดวิชา / สอนพิเศษ): validate ok · กติกา §10 (ส่วน ≥1 · ฟิลด์ ≥3 · อ่อนไหว · ระดับ ≥2 · สแตมป์ ≥1 · journey ≥1) · apply จริง (fields+tiers+stamps+journeys) added = preview.new* · apply ซ้ำ → 0 ทุกช่อง
+  ✅ [M3.9-S2.10] vet (คลินิกสัตว์): validate ok · กติกา §10 (ส่วน ≥1 · ฟิลด์ ≥3 · สแตมป์ ≥1 · journey ≥1) · apply จริง (fields+tiers+stamps+journeys) added = preview.new* · apply ซ้ำ → 0 ทุกช่อง
+  ✅ [M3.9-S2.11] carcare (คาร์แคร์ / อู่): validate ok · กติกา §10 (ส่วน ≥1 · ฟิลด์ ≥3 · ระดับ ≥2 · สแตมป์ ≥1 · journey ≥1) · apply จริง (fields+tiers+stamps+journeys) added = preview.new* · apply ซ้ำ → 0 ทุกช่อง
+  ✅ [M3.9-S2.12] travel (ทัวร์ / ทราเวล): validate ok · กติกา §10 (ส่วน ≥1 · ฟิลด์ ≥3 · อ่อนไหว · ระดับ ≥2 · สแตมป์ ≥1 · journey ≥1) · apply จริง (fields+tiers+stamps+journeys) added = preview.new* · apply ซ้ำ → 0 ทุกช่อง
+  ✅ [M3.9-S2.13] sportsclub (สโมสรกีฬา / กอล์ฟ): validate ok · กติกา §10 (ส่วน ≥1 · ฟิลด์ ≥3 · ระดับ ≥2 · สแตมป์ ≥1 · journey ≥1) · apply จริง (fields+tiers+stamps+journeys) added = preview.new* · apply ซ้ำ → 0 ทุกช่อง
+  ✅ [M3.9-S2.14] repair (ร้านซ่อม / บริการ): validate ok · กติกา §10 (ส่วน ≥1 · ฟิลด์ ≥3 · สแตมป์ ≥1 · journey ≥1) · apply จริง (fields+tiers+stamps+journeys) added = preview.new* · apply ซ้ำ → 0 ทุกช่อง
+  ✅ [M3.9-S2.15] realestate (อสังหา / ให้เช่า): validate ok · กติกา §10 (ส่วน ≥1 · ฟิลด์ ≥3 · อ่อนไหว · ระดับ ≥2 · journey ≥1) · apply จริง (fields+tiers+stamps+journeys) added = preview.new* · apply ซ้ำ → 0 ทุกช่อง
+  ✅ [M3.9-S2.16] b2b (B2B / ขายส่ง): validate ok · กติกา §10 (ส่วน ≥1 · ฟิลด์ ≥3 · อ่อนไหว · ระดับ ≥2 · journey ≥1) · apply จริง (fields+tiers+stamps+journeys) added = preview.new* · apply ซ้ำ → 0 ทุกช่อง
+  ✅ [M3.9-S3.1] ไม่ทับของเดิม: ฟิลด์ dive ที่ seed ไว้ (certLevel/diveCount) label/options เท่าเดิม · ต่อชุด: จำนวน section/field ที่เพิ่ม = Σ created ids · ทุก field ใหม่ผูก section ของระบบนี้ · หลังเก็บกวาดทีละชุด จำนวนกลับเท่าก่อนเริ่ม
+  ✅ [M3.9-S3.2] ของที่ apply สร้างจริง (ตรวจต่อชุด): tierDef (key/name ไทย · systemId นี้) · stampCard (slots 3–30 · ไม่ active/ปิดรับสแตมป์อัตโนมัติจนกว่าร้านเปิด หรือ active ได้ตามที่ builder ตัดสิน — ต้องจดใน wo-notes) · journey = AutomationRule scope MEMBER_JOURNEY enabled false
+  ✅ [M3.9-S3.3] key ไม่รู้จัก → throw ไทย · thana (ไม่มี settings.manage) apply tiers → throw · รูปแบบเดิม fields.applyTemplate(ctx, 'general') ยังใช้ได้ (= fields เท่านั้น · คืน added {sections, fields}) · previewTemplate(general) exists ถูก (ฟิลด์ที่มีแล้ว exists true) · counts.newFields = 0 หลัง apply
+  ✅ [M3.9-S4.1] FieldDesigner: testid 10 · dropdown วนจาก TEMPLATES (17 · ไม่ฮาร์ดโค้ดรายชื่อ) · แผงตัวอย่าง + เช็กบ็อกซ์ 4 ส่วน + ผลหลัง apply · ป้ายไทย · ไม่มีอีโมจิ/hex · action apply รับ parts
+  ❌ [M3.9-S4.2] ภาพ 03 (kbar เทมเพลต): fields-template-owner desktop 200 (เลือก 'คลินิก/ความงาม' → แผงตัวอย่าง นับ + รายการฟิลด์ + ตัวอย่างมือถือ) · fields-template-mobile-owner mobile 200 ไม่ล้น — exp 200 ×2 | act undefined/undefined missing=undefined
+  ✅ [M3.9-S4.3] 🔴 parity ภาพ 03 (ส่วนเลือกเทมเพลต + ตัวอย่างมือถือ) — Fable ตรวจด้วยตา · wo-notes/member-M3.9.md มี 'PARITY: ผ่าน'
+
+🔴 M3.9: 23/24
+JSON_SUMMARY {"total":24,"passed":23,"findings":[{"id":"M3.9-S4.2","sev":"CRITICAL"}]}
+(node:1484626) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)

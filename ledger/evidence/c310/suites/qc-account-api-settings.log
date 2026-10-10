@@ -1,0 +1,26 @@
+
+===== QC A2 · หน้าตั้งค่าคีย์ API ของบัญชี =====
+[env] DB ep-plain-art-ao3djg4u-pooler.c-2.ap-southeast-1.aws.neon.tech
+
+  ❌ S1.1 เปิดแท็บแอปภายนอก/API ได้ (มี connections-api) — ไม่พบ connections-api
+  ❌ S1.2 ฟอร์มมี radio bundle ครบ 5 ชุด — ขาดบางตัวจาก read-only,issue-and-collect,accountant,danger,settings
+  ❌ S1.3 default bundle = issue-and-collect — ไม่ถูกเลือก
+  ❌ S1.4 select หมดอายุ default 365 — ค่า null
+  ❌ S1.5 มีปุ่มกาง scope รายตัว — ไม่พบ api-key-scopes-toggle
+  ❌ S1.6 กาง scope: ทุก scope ของ issue-and-collect ถูกติ๊กไว้ — บางตัวไม่ถูกติ๊ก
+  ❌ S1.7 scope อันตราย (account.doc.void) ไม่ถูกติ๊ก — null
+  ❌ S1.8 เลือก bundle read-only → account.doc.create ถูกเอาออก — ยังติ๊กอยู่
+  ❌ CRASH — No element found for selector: [data-testid="api-key-name"]
+
+===== QC A2 =====
+ผ่าน 0/9
+JSON_SUMMARY {"total":9,"passed":0,"findings":["S1.1 เปิดแท็บแอปภายนอก/API ได้ (มี connections-api) — ไม่พบ connections-api","S1.2 ฟอร์มมี radio bundle ครบ 5 ชุด — ขาดบางตัวจาก read-only,issue-and-collect,accountant,danger,settings","S1.3 default bundle = issue-and-collect — ไม่ถูกเลือก","S1.4 select หมดอายุ default 365 — ค่า null","S1.5 มีปุ่มกาง scope รายตัว — ไม่พบ api-key-scopes-toggle","S1.6 กาง scope: ทุก scope ของ issue-and-collect ถูกติ๊กไว้ — บางตัวไม่ถูกติ๊ก","S1.7 scope อันตราย (account.doc.void) ไม่ถูกติ๊ก — null","S1.8 เลือก bundle read-only → account.doc.create ถูกเอาออก — ยังติ๊กอยู่","CRASH — No element found for selector: [data-testid=\"api-key-name\"]"]}
+(node:985489) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)

@@ -11,6 +11,7 @@ import { clampSearch } from "./search-input";
 // re-export ให้ผู้เรียกเดิมที่ import ค่าเหล่านี้จาก "./attachment" ยังใช้ได้ (ของจริงอยู่ attachment-shared.ts
 // ซึ่งบริสุทธิ์ ไม่แตะ prisma — client component ต้อง import จากไฟล์นั้นตรง ๆ ห้าม import จากไฟล์นี้)
 import { isPrivateAttachmentUrl, viewableAttachmentUrl } from "./attachment-shared"; // CRM C3.5 ◂
+import { ciContains } from "@/lib/core/ci-equals"; // CRM C5.5-fix8 ▸ คำค้นไม่มี wildcard รั่ว ◂
 export type { AttachmentStatus, AttachmentSource } from "./attachment-shared";
 export { ATTACHMENT_MAX_BYTES, ATTACHMENT_ALLOWED_MIME, DOC_TYPE_HINT_OPTIONS, validateAttachmentUpload, validateAttachmentBytes, sniffAttachmentMime } from "./attachment-shared";
 
@@ -114,7 +115,7 @@ export function listAttachments(
       ...(opts?.documentId !== undefined ? { documentId: opts.documentId } : {}),
       ...(opts?.centralOnly ? { documentId: null } : {}),
       ...(opts?.folder ? { folder: opts.folder } : {}),
-      ...(opts?.q ? { fileName: { contains: opts.q, mode: "insensitive" } } : {}),
+      ...(opts?.q ? { fileName: ciContains(opts.q) } : {}),
     },
     include: {
       document: { select: { id: true, docType: true, docNo: true } },
@@ -377,8 +378,8 @@ async function uploaderIdsMatching(tenantId: string, q: string): Promise<string[
     where: {
       tenantId,
       OR: [
-        { user: { is: { name: { contains: q, mode: "insensitive" } } } },
-        { user: { is: { email: { contains: q, mode: "insensitive" } } } },
+        { user: { is: { name: ciContains(q) } } },
+        { user: { is: { email: ciContains(q) } } },
       ],
     },
     select: { userId: true },
@@ -425,7 +426,7 @@ async function attachmentsBaseWhere(
     ...(q
       ? {
           OR: [
-            { fileName: { contains: q, mode: "insensitive" as const } },
+            { fileName: ciContains(q) },
             ...(uploaderIds.length ? [{ uploadedById: { in: uploaderIds } }] : []),
           ],
         }
@@ -533,8 +534,8 @@ export async function searchDocumentsForAttach(
       tenantId,
       systemId,
       OR: [
-        { docNo: { contains: query, mode: "insensitive" } },
-        { contact: { is: { name: { contains: query, mode: "insensitive" } } } },
+        { docNo: ciContains(query) },
+        { contact: { is: { name: ciContains(query) } } },
       ],
     },
     select: { id: true, docType: true, docNo: true, contact: { select: { name: true } } },

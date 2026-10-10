@@ -1,0 +1,1147 @@
+{
+ "at": "2026-10-08T01:59:47.132Z",
+ "since": "2026-10-08T01:28:22.082Z",
+ "rows": [
+  {
+   "table": "AppNotification",
+   "why": "rows addressed to a temp user",
+   "row": {
+    "id": "cmuyvh5ee000406p6n5obtwpa",
+    "tenantId": "cmtazbpjh000004lcjikxju2i",
+    "title": "[not walk text — 10 chars withheld]",
+    "body": "[not walk text — 193 chars withheld]",
+    "readAt": null,
+    "createdAt": "2026-10-08T01:43:18.422Z",
+    "recipientUserId": "qcprodbfab0692895ba890bc7",
+    "emailedAt": "2026-10-08T01:43:18.391Z"
+   }
+  },
+  {
+   "table": "AppNotification",
+   "why": "rows addressed to a temp user",
+   "row": {
+    "id": "cmuyvdgf0000506jp5svy5pq6",
+    "tenantId": "cmtazbpjh000004lcjikxju2i",
+    "title": "[not walk text — 24 chars withheld]",
+    "body": "[not walk text — 195 chars withheld]",
+    "readAt": null,
+    "createdAt": "2026-10-08T01:40:26.076Z",
+    "recipientUserId": "qcprode04f51fe031dd38ee54",
+    "emailedAt": "2026-10-08T01:40:26.044Z"
+   }
+  },
+  {
+   "table": "AppNotification",
+   "why": "rows addressed to a temp user",
+   "row": {
+    "id": "cmuyvgueg000406mr386roclg",
+    "tenantId": "cmtazbpjh000004lcjikxju2i",
+    "title": "[not walk text — 10 chars withheld]",
+    "body": "[not walk text — 193 chars withheld]",
+    "readAt": null,
+    "createdAt": "2026-10-08T01:43:04.168Z",
+    "recipientUserId": "qcprode04f51fe031dd38ee54",
+    "emailedAt": "2026-10-08T01:43:04.142Z"
+   }
+  },
+  {
+   "table": "OutboxEvent",
+   "why": "event history rows whose payload points at a temp id (crm.* / custom.* / team.*)",
+   "row": {
+    "id": "cmuyvdcua000z05jys3qu5tnf",
+    "tenantId": "cmtazbpjh000004lcjikxju2i",
+    "systemId": "cmtdvoopr000004jpf1vaply9",
+    "unitId": null,
+    "type": "crm.contact.created",
+    "payload": {
+     "partyId": "cmuyvdctf000x05jyyz0uq7v8",
+     "contactId": "cmuyvdctm000y05jy57wk9ejw"
+    },
+    "idempotencyKey": "crm.contact.created#cmuyvdctm000y05jy57wk9ejw#1",
+    "status": "DONE",
+    "attempts": 0,
+    "availableAt": "2026-10-08T01:46:21.595Z",
+    "lastError": null,
+    "processedAt": "2026-10-08T01:40:21.607Z",
+    "createdAt": "2026-10-08T01:40:21.442Z"
+   }
+  },
+  {
+   "table": "OutboxEvent",
+   "why": "event history rows whose payload points at a temp id (crm.* / custom.* / team.*)",
+   "row": {
+    "id": "cmuyvdcuf001005jy07x559fl",
+    "tenantId": "cmtazbpjh000004lcjikxju2i",
+    "systemId": "cmtdvoopr000004jpf1vaply9",
+    "unitId": null,
+    "type": "crm.contact.assigned",
+    "payload": {
+     "contactId": "cmuyvdctm000y05jy57wk9ejw",
+     "ownerUserId": "cmtazbehq000004l77f899ulm",
+     "previousOwnerUserId": null
+    },
+    "idempotencyKey": "crm.contact.assigned#cmuyvdctm000y05jy57wk9ejw#1",
+    "status": "DONE",
+    "attempts": 0,
+    "availableAt": "2026-10-08T01:46:21.633Z",
+    "lastError": null,
+    "processedAt": "2026-10-08T01:40:21.669Z",
+    "createdAt": "2026-10-08T01:40:21.447Z"
+   }
+  },
+  {
+   "table": "OutboxEvent",
+   "why": "event history rows whose payload points at a temp id (crm.* / custom.* / team.*)",
+   "row": {
+    "id": "cmuyvdcvs001205jyv9kogcmn",
+    "tenantId": "cmtazbpjh000004lcjikxju2i",
+    "systemId": "cmtdvoopr000004jpf1vaply9",
+    "unitId": null,
+    "type": "crm.company.updated",
+    "payload": {
+     "companyId": "cmuyvd8z8000e05jyuebqu58f",
+     "contactId": "cmuyvdctm000y05jy57wk9ejw",
+     "changedKeys": [
+      "contacts"
+     ]
+    },
+    "idempotencyKey": "crm.company.updated#cmuyvd8z8000e05jyuebqu58f#18fcf0796def43bf89d246fa33c8eceb",
+    "status": "DONE",
+    "attempts": 0,
+    "availableAt": "2026-10-08T01:46:21.674Z",
+    "lastError": null,
+    "processedAt": "2026-10-08T01:40:21.681Z",
+    "createdAt": "2026-10-08T01:40:21.496Z"
+   }
+  },
+  {
+   "table": "OutboxEvent",
+   "why": "event history rows whose payload points at a temp id (crm.* / custom.* / team.*)",
+   "row": {
+    "id": "cmuyvdg81000206jpdai3ij42",
+    "tenantId": "cmtazbpjh000004lcjikxju2i",
+    "systemId": "cmtdvoopr000004jpf1vaply9",
+    "unitId": null,
+    "type": "crm.contact.created",
+    "payload": {
+     "partyId": "cmuyvdg7k000006jpmhghm2yx",
+     "contactId": "cmuyvdg7t000106jpdhunpdx6"
+    },
+    "idempotencyKey": "crm.contact.created#cmuyvdg7t000106jpdhunpdx6#1",
+    "status": "DONE",
+    "attempts": 0,
+    "availableAt": "2026-10-08T01:46:25.949Z",
+    "lastError": null,
+    "processedAt": "2026-10-08T01:40:25.984Z",
+    "createdAt": "2026-10-08T01:40:25.825Z"
+   }
+  },
+  {
+   "table": "OutboxEvent",
+   "why": "event history rows whose payload points at a temp id (crm.* / custom.* / team.*)",
+   "row": {
+    "id": "cmuyvg3sd000106l51sbs1owq",
+    "tenantId": "cmtazbpjh000004lcjikxju2i",
+    "systemId": "cmtdvoopr000004jpf1vaply9",
+    "unitId": null,
+    "type": "crm.deal.stage.changed",
+    "payload": {
+     "kind": "OPEN",
+     "dealId": "cmuyvdod3000006mqqh8fqpso",
+     "toStageId": "cmtdvooxe000404jpz8uxj7y4",
+     "pipelineId": "cmtdvooxc000104jpgmflgqzh",
+     "fromStageId": "cmtdvooxe000304jpmffzftmw"
+    },
+    "idempotencyKey": "crm.deal.stage.changed#cmuyvdod3000006mqqh8fqpso#cmuyvg3s2000006l5r3vmew3i",
+    "status": "DONE",
+    "attempts": 0,
+    "availableAt": "2026-10-08T01:48:29.984Z",
+    "lastError": null,
+    "processedAt": "2026-10-08T01:42:30.059Z",
+    "createdAt": "2026-10-08T01:42:29.677Z"
+   }
+  },
+  {
+   "table": "OutboxEvent",
+   "why": "event history rows whose payload points at a temp id (crm.* / custom.* / team.*)",
+   "row": {
+    "id": "cmuyvh50l000106p60lysbeuu",
+    "tenantId": "cmtazbpjh000004lcjikxju2i",
+    "systemId": "cmtdvoopr000004jpf1vaply9",
+    "unitId": null,
+    "type": "crm.deal.stage.changed",
+    "payload": {
+     "kind": "LOST",
+     "dealId": "cmuyvh0i4000006qm7rgq0jyg",
+     "toStageId": "cmtdvooxe000604jpxscgmhh7",
+     "pipelineId": "cmtdvooxc000104jpgmflgqzh",
+     "fromStageId": "cmtdvooxe000204jp5gxkgraz"
+    },
+    "idempotencyKey": "crm.deal.stage.changed#cmuyvh0i4000006qm7rgq0jyg#cmuyvh503000006p66ja508wh",
+    "status": "DONE",
+    "attempts": 0,
+    "availableAt": "2026-10-08T01:49:18.319Z",
+    "lastError": null,
+    "processedAt": "2026-10-08T01:43:18.353Z",
+    "createdAt": "2026-10-08T01:43:17.925Z"
+   }
+  },
+  {
+   "table": "OutboxEvent",
+   "why": "event history rows whose payload points at a temp id (crm.* / custom.* / team.*)",
+   "row": {
+    "id": "cmuyvh50t000206p6ndtu97ly",
+    "tenantId": "cmtazbpjh000004lcjikxju2i",
+    "systemId": "cmtdvoopr000004jpf1vaply9",
+    "unitId": null,
+    "type": "crm.deal.lost",
+    "payload": {
+     "dealId": "cmuyvh0i4000006qm7rgq0jyg",
+     "lostReasonId": "cmuyt796e000006l72aqmo6s4"
+    },
+    "idempotencyKey": "crm.deal.lost#cmuyvh0i4000006qm7rgq0jyg#cmuyvh503000006p66ja508wh",
+    "status": "DONE",
+    "attempts": 0,
+    "availableAt": "2026-10-08T01:49:18.359Z",
+    "lastError": null,
+    "processedAt": "2026-10-08T01:43:18.440Z",
+    "createdAt": "2026-10-08T01:43:17.933Z"
+   }
+  },
+  {
+   "table": "OutboxEvent",
+   "why": "event history rows whose payload points at a temp id (crm.* / custom.* / team.*)",
+   "row": {
+    "id": "cmuyvhav6000206mklplwyzjq",
+    "tenantId": "cmtazbpjh000004lcjikxju2i",
+    "systemId": "cmtdvoopr000004jpf1vaply9",
+    "unitId": null,
+    "type": "crm.deal.created",
+    "payload": {
+     "dealId": "cmuyvhauq000006mkjyiigwyh",
+     "stageId": "cmtdvooxe000204jp5gxkgraz",
+     "companyId": "cmuyvd8z8000e05jyuebqu58f",
+     "contactId": "cmuyvdctm000y05jy57wk9ejw",
+     "pipelineId": "cmtdvooxc000104jpgmflgqzh",
+     "ownerUserId": "cmtazbehq000004l77f899ulm"
+    },
+    "idempotencyKey": "crm.deal.created#cmuyvhauq000006mkjyiigwyh#1",
+    "status": "DONE",
+    "attempts": 0,
+    "availableAt": "2026-10-08T01:49:25.620Z",
+    "lastError": null,
+    "processedAt": "2026-10-08T01:43:25.717Z",
+    "createdAt": "2026-10-08T01:43:25.506Z"
+   }
+  },
+  {
+   "table": "OutboxEvent",
+   "why": "event history rows whose payload points at a temp id (crm.* / custom.* / team.*)",
+   "row": {
+    "id": "cmuyvje4o000906l523gqsuui",
+    "tenantId": "cmtazbpjh000004lcjikxju2i",
+    "systemId": "cmtdvoopr000004jpf1vaply9",
+    "unitId": null,
+    "type": "custom.record.created",
+    "payload": {
+     "partyId": null,
+     "objectId": "cmuyvhxe1000006mj878v81rz",
+     "parentId": null,
+     "recordId": "cmuyvje46000806l5kohmg8mb",
+     "objectKey": "qcprodcontract",
+     "parentType": "NONE"
+    },
+    "idempotencyKey": "custom.record.created#cmuyvje46000806l5kohmg8mb#1",
+    "status": "DONE",
+    "attempts": 0,
+    "availableAt": "2026-10-08T01:51:03.193Z",
+    "lastError": null,
+    "processedAt": "2026-10-08T01:45:03.232Z",
+    "createdAt": "2026-10-08T01:45:03.048Z"
+   }
+  },
+  {
+   "table": "OutboxEvent",
+   "why": "event history rows whose payload points at a temp id (crm.* / custom.* / team.*)",
+   "row": {
+    "id": "cmuyvdg86000306jprnxdnlm4",
+    "tenantId": "cmtazbpjh000004lcjikxju2i",
+    "systemId": "cmtdvoopr000004jpf1vaply9",
+    "unitId": null,
+    "type": "crm.contact.assigned",
+    "payload": {
+     "contactId": "cmuyvdg7t000106jpdhunpdx6",
+     "ownerUserId": "qcprode04f51fe031dd38ee54",
+     "previousOwnerUserId": null
+    },
+    "idempotencyKey": "crm.contact.assigned#cmuyvdg7t000106jpdhunpdx6#1",
+    "status": "DONE",
+    "attempts": 0,
+    "availableAt": "2026-10-08T01:46:25.999Z",
+    "lastError": null,
+    "processedAt": "2026-10-08T01:40:26.102Z",
+    "createdAt": "2026-10-08T01:40:25.830Z"
+   }
+  },
+  {
+   "table": "OutboxEvent",
+   "why": "event history rows whose payload points at a temp id (crm.* / custom.* / team.*)",
+   "row": {
+    "id": "cmuyvgty2000106mrxsgbz1xc",
+    "tenantId": "cmtazbpjh000004lcjikxju2i",
+    "systemId": "cmtdvoopr000004jpf1vaply9",
+    "unitId": null,
+    "type": "crm.deal.stage.changed",
+    "payload": {
+     "kind": "WON",
+     "dealId": "cmuyvdod3000006mqqh8fqpso",
+     "toStageId": "cmtdvooxe000504jpbqao2ssr",
+     "pipelineId": "cmtdvooxc000104jpgmflgqzh",
+     "fromStageId": "cmtdvooxe000404jpz8uxj7y4"
+    },
+    "idempotencyKey": "crm.deal.stage.changed#cmuyvdod3000006mqqh8fqpso#cmuyvgtwy000006mrjhitz6f4",
+    "status": "DONE",
+    "attempts": 0,
+    "availableAt": "2026-10-08T01:49:03.999Z",
+    "lastError": null,
+    "processedAt": "2026-10-08T01:43:04.042Z",
+    "createdAt": "2026-10-08T01:43:03.578Z"
+   }
+  },
+  {
+   "table": "OutboxEvent",
+   "why": "event history rows whose payload points at a temp id (crm.* / custom.* / team.*)",
+   "row": {
+    "id": "cmuyvgty8000206mrq76eik6o",
+    "tenantId": "cmtazbpjh000004lcjikxju2i",
+    "systemId": "cmtdvoopr000004jpf1vaply9",
+    "unitId": null,
+    "type": "crm.deal.won",
+    "payload": {
+     "dealId": "cmuyvdod3000006mqqh8fqpso",
+     "partyId": "cmuyvdg7k000006jpmhghm2yx",
+     "companyId": null,
+     "contactId": "cmuyvdg7t000106jpdhunpdx6",
+     "ownerUserId": "qcprode04f51fe031dd38ee54",
+     "valueSatang": 18000000
+    },
+    "idempotencyKey": "crm.deal.won#cmuyvdod3000006mqqh8fqpso#cmuyvgtwy000006mrjhitz6f4",
+    "status": "DONE",
+    "attempts": 0,
+    "availableAt": "2026-10-08T01:49:04.050Z",
+    "lastError": null,
+    "processedAt": "2026-10-08T01:43:04.190Z",
+    "createdAt": "2026-10-08T01:43:03.584Z"
+   }
+  },
+  {
+   "table": "OutboxEvent",
+   "why": "event history rows whose payload points at a temp id (crm.* / custom.* / team.*)",
+   "row": {
+    "id": "cmuyvdoe1000206mq02wlv8sm",
+    "tenantId": "cmtazbpjh000004lcjikxju2i",
+    "systemId": "cmtdvoopr000004jpf1vaply9",
+    "unitId": null,
+    "type": "crm.deal.created",
+    "payload": {
+     "dealId": "cmuyvdod3000006mqqh8fqpso",
+     "stageId": "cmtdvooxe000204jp5gxkgraz",
+     "companyId": null,
+     "contactId": "cmuyvdg7t000106jpdhunpdx6",
+     "pipelineId": "cmtdvooxc000104jpgmflgqzh",
+     "ownerUserId": "qcprode04f51fe031dd38ee54"
+    },
+    "idempotencyKey": "crm.deal.created#cmuyvdod3000006mqqh8fqpso#1",
+    "status": "DONE",
+    "attempts": 0,
+    "availableAt": "2026-10-08T01:46:36.527Z",
+    "lastError": null,
+    "processedAt": "2026-10-08T01:40:36.617Z",
+    "createdAt": "2026-10-08T01:40:36.409Z"
+   }
+  },
+  {
+   "table": "OutboxEvent",
+   "why": "event history rows whose payload points at a temp id (crm.* / custom.* / team.*)",
+   "row": {
+    "id": "cmuyvfmtg000706jpppupg97m",
+    "tenantId": "cmtazbpjh000004lcjikxju2i",
+    "systemId": "cmtdvoopr000004jpf1vaply9",
+    "unitId": null,
+    "type": "crm.deal.stage.changed",
+    "payload": {
+     "kind": "OPEN",
+     "dealId": "cmuyvdod3000006mqqh8fqpso",
+     "toStageId": "cmtdvooxe000304jpmffzftmw",
+     "pipelineId": "cmtdvooxc000104jpgmflgqzh",
+     "fromStageId": "cmtdvooxe000204jp5gxkgraz"
+    },
+    "idempotencyKey": "crm.deal.stage.changed#cmuyvdod3000006mqqh8fqpso#cmuyvfmt0000606jppicdg194",
+    "status": "DONE",
+    "attempts": 0,
+    "availableAt": "2026-10-08T01:48:08.001Z",
+    "lastError": null,
+    "processedAt": "2026-10-08T01:42:08.028Z",
+    "createdAt": "2026-10-08T01:42:07.684Z"
+   }
+  },
+  {
+   "table": "OutboxEvent",
+   "why": "event history rows whose payload points at a temp id (crm.* / custom.* / team.*)",
+   "row": {
+    "id": "cmuyvh0j1000206qm0ncjpo9x",
+    "tenantId": "cmtazbpjh000004lcjikxju2i",
+    "systemId": "cmtdvoopr000004jpf1vaply9",
+    "unitId": null,
+    "type": "crm.deal.created",
+    "payload": {
+     "dealId": "cmuyvh0i4000006qm7rgq0jyg",
+     "stageId": "cmtdvooxe000204jp5gxkgraz",
+     "companyId": null,
+     "contactId": "cmuyvdg7t000106jpdhunpdx6",
+     "pipelineId": "cmtdvooxc000104jpgmflgqzh",
+     "ownerUserId": "qcprodbfab0692895ba890bc7"
+    },
+    "idempotencyKey": "crm.deal.created#cmuyvh0i4000006qm7rgq0jyg#1",
+    "status": "DONE",
+    "attempts": 0,
+    "availableAt": "2026-10-08T01:49:12.353Z",
+    "lastError": null,
+    "processedAt": "2026-10-08T01:43:12.489Z",
+    "createdAt": "2026-10-08T01:43:12.109Z"
+   }
+  },
+  {
+   "table": "OutboxEvent",
+   "why": "event history rows whose payload points at a temp id (crm.* / custom.* / team.*)",
+   "row": {
+    "id": "cmuyvfi1v000106l2pkunqj1f",
+    "tenantId": "cmtazbpjh000004lcjikxju2i",
+    "systemId": "cmtdvoopr000004jpf1vaply9",
+    "unitId": null,
+    "type": "crm.activity.logged",
+    "payload": {
+     "type": "CALL",
+     "dealId": "cmuyvdod3000006mqqh8fqpso",
+     "companyId": null,
+     "contactId": "cmuyvdg7t000106jpdhunpdx6",
+     "activityId": "cmuyvfhyk000006l2gsbmqhji",
+     "ownerUserId": "qcprode04f51fe031dd38ee54",
+     "customRecordId": null
+    },
+    "idempotencyKey": "crm.activity.logged#cmuyvfhyk000006l2gsbmqhji#3f7d0f84c0b046a488bf0254d92c2d4f",
+    "status": "DONE",
+    "attempts": 0,
+    "availableAt": "2026-10-08T01:48:01.978Z",
+    "lastError": null,
+    "processedAt": "2026-10-08T01:42:02.059Z",
+    "createdAt": "2026-10-08T01:42:01.508Z"
+   }
+  },
+  {
+   "table": "OutboxEvent",
+   "why": "event history rows whose payload points at a temp id (crm.* / custom.* / team.*)",
+   "row": {
+    "id": "cmuyvgphc000206qd58ov4zk6",
+    "tenantId": "cmtazbpjh000004lcjikxju2i",
+    "systemId": "cmtdvoopr000004jpf1vaply9",
+    "unitId": null,
+    "type": "crm.deal.updated",
+    "payload": {
+     "dealId": "cmuyvdod3000006mqqh8fqpso",
+     "changedKeys": [
+      "lines",
+      "valueSatang",
+      "discountBp"
+     ]
+    },
+    "idempotencyKey": "crm.deal.updated#cmuyvdod3000006mqqh8fqpso#dae86cee659f42dfb3cb7ad7ddc6a260",
+    "status": "DONE",
+    "attempts": 0,
+    "availableAt": "2026-10-08T01:48:58.150Z",
+    "lastError": null,
+    "processedAt": "2026-10-08T01:42:58.179Z",
+    "createdAt": "2026-10-08T01:42:57.792Z"
+   }
+  },
+  {
+   "table": "OutboxEvent",
+   "why": "event history rows whose payload points at a temp id (crm.* / custom.* / team.*)",
+   "row": {
+    "id": "cmuyw07hb000105nk4h428m40",
+    "tenantId": "cmtazbpjh000004lcjikxju2i",
+    "systemId": "cmtdvoopr000004jpf1vaply9",
+    "unitId": null,
+    "type": "crm.portal.viewed",
+    "payload": {
+     "day": "2026-10-08",
+     "accessId": "qcprod17bb6baf10763b924fe",
+     "companyId": "cmuyvd8z8000e05jyuebqu58f",
+     "contactId": "cmuyvdctm000y05jy57wk9ejw"
+    },
+    "idempotencyKey": "crm.portal.viewed#qcprod17bb6baf10763b924fe#2026-10-08",
+    "status": "DONE",
+    "attempts": 0,
+    "availableAt": "2026-10-08T02:04:07.652Z",
+    "lastError": null,
+    "processedAt": "2026-10-08T01:58:07.685Z",
+    "createdAt": "2026-10-08T01:58:07.583Z"
+   }
+  },
+  {
+   "table": "OutboxEvent",
+   "why": "event history rows whose payload points at a temp id (crm.* / custom.* / team.*)",
+   "row": {
+    "id": "cmuyvd8zs000f05jyqbc40j9x",
+    "tenantId": "cmtazbpjh000004lcjikxju2i",
+    "systemId": "cmtdvoopr000004jpf1vaply9",
+    "unitId": null,
+    "type": "crm.company.created",
+    "payload": {
+     "partyId": "cmuyvd8y9000d05jy8j5o95ns",
+     "companyId": "cmuyvd8z8000e05jyuebqu58f"
+    },
+    "idempotencyKey": "crm.company.created#cmuyvd8z8000e05jyuebqu58f#1",
+    "status": "DONE",
+    "attempts": 0,
+    "availableAt": "2026-10-08T01:46:16.539Z",
+    "lastError": null,
+    "processedAt": "2026-10-08T01:40:16.665Z",
+    "createdAt": "2026-10-08T01:40:16.456Z"
+   }
+  },
+  {
+   "table": "AuditLog",
+   "why": "audit rows whose actor is a temp user or whose target is a temp row",
+   "row": {
+    "id": "cmuyvd90d000g05jypirlkpkv",
+    "tenantId": "cmtazbpjh000004lcjikxju2i",
+    "unitId": null,
+    "actorType": "USER",
+    "actorId": "cmtazbehq000004l77f899ulm",
+    "onBehalfOf": null,
+    "action": "crm.company.create",
+    "targetType": "CrmCompany",
+    "targetId": "cmuyvd8z8000e05jyuebqu58f",
+    "before": null,
+    "after": {
+     "fields": [],
+     "partyId": "cmuyvd8y9000d05jy8j5o95ns",
+     "candidates": []
+    },
+    "ip": null,
+    "createdAt": "2026-10-08T01:40:16.477Z"
+   }
+  },
+  {
+   "table": "AuditLog",
+   "why": "audit rows whose actor is a temp user or whose target is a temp row",
+   "row": {
+    "id": "cmuyvdcw0001305jy4n65iyns",
+    "tenantId": "cmtazbpjh000004lcjikxju2i",
+    "unitId": null,
+    "actorType": "USER",
+    "actorId": "cmtazbehq000004l77f899ulm",
+    "onBehalfOf": null,
+    "action": "crm.company.contact.add",
+    "targetType": "CrmCompany",
+    "targetId": "cmuyvd8z8000e05jyuebqu58f",
+    "before": null,
+    "after": {
+     "role": "OTHER",
+     "changed": true,
+     "created": true,
+     "contactId": "cmuyvdctm000y05jy57wk9ejw",
+     "isPrimary": false
+    },
+    "ip": null,
+    "createdAt": "2026-10-08T01:40:21.504Z"
+   }
+  },
+  {
+   "table": "AuditLog",
+   "why": "audit rows whose actor is a temp user or whose target is a temp row",
+   "row": {
+    "id": "cmuyvdcw4001405jypejitdrm",
+    "tenantId": "cmtazbpjh000004lcjikxju2i",
+    "unitId": null,
+    "actorType": "USER",
+    "actorId": "cmtazbehq000004l77f899ulm",
+    "onBehalfOf": null,
+    "action": "crm.contact.create",
+    "targetType": "CrmContact",
+    "targetId": "cmuyvdctm000y05jy57wk9ejw",
+    "before": null,
+    "after": {
+     "fields": [],
+     "partyId": "cmuyvdctf000x05jyyz0uq7v8",
+     "duplicates": [],
+     "sourceKind": "CRM",
+     "ownerUserId": "cmtazbehq000004l77f899ulm"
+    },
+    "ip": null,
+    "createdAt": "2026-10-08T01:40:21.508Z"
+   }
+  },
+  {
+   "table": "AuditLog",
+   "why": "audit rows whose actor is a temp user or whose target is a temp row",
+   "row": {
+    "id": "cmuyvdg8d000406jpzs9vnirv",
+    "tenantId": "cmtazbpjh000004lcjikxju2i",
+    "unitId": null,
+    "actorType": "USER",
+    "actorId": "qcprod19a83e0308d81cc485f",
+    "onBehalfOf": null,
+    "action": "crm.contact.create",
+    "targetType": "CrmContact",
+    "targetId": "cmuyvdg7t000106jpdhunpdx6",
+    "before": null,
+    "after": {
+     "fields": [],
+     "partyId": "cmuyvdg7k000006jpmhghm2yx",
+     "duplicates": [],
+     "sourceKind": "CRM",
+     "ownerUserId": "qcprode04f51fe031dd38ee54"
+    },
+    "ip": null,
+    "createdAt": "2026-10-08T01:40:25.837Z"
+   }
+  },
+  {
+   "table": "AuditLog",
+   "why": "audit rows whose actor is a temp user or whose target is a temp row",
+   "row": {
+    "id": "cmuyvdoe9000306mq76eqgs6w",
+    "tenantId": "cmtazbpjh000004lcjikxju2i",
+    "unitId": null,
+    "actorType": "USER",
+    "actorId": "qcprode04f51fe031dd38ee54",
+    "onBehalfOf": null,
+    "action": "crm.deal.create",
+    "targetType": "CrmDeal",
+    "targetId": "cmuyvdod3000006mqqh8fqpso",
+    "before": null,
+    "after": {
+     "lines": 0,
+     "fields": [],
+     "stageId": "cmtdvooxe000204jp5gxkgraz",
+     "companyId": null,
+     "contactId": "cmuyvdg7t000106jpdhunpdx6",
+     "pipelineId": "cmtdvooxc000104jpgmflgqzh",
+     "valueSatang": 18000000
+    },
+    "ip": null,
+    "createdAt": "2026-10-08T01:40:36.417Z"
+   }
+  },
+  {
+   "table": "AuditLog",
+   "why": "audit rows whose actor is a temp user or whose target is a temp row",
+   "row": {
+    "id": "cmuyvfi2d000206l2h60chbec",
+    "tenantId": "cmtazbpjh000004lcjikxju2i",
+    "unitId": null,
+    "actorType": "USER",
+    "actorId": "qcprode04f51fe031dd38ee54",
+    "onBehalfOf": null,
+    "action": "crm.activity.log",
+    "targetType": "CrmActivity",
+    "targetId": "cmuyvfhyk000006l2gsbmqhji",
+    "before": null,
+    "after": {
+     "type": "CALL",
+     "dealId": "cmuyvdod3000006mqqh8fqpso",
+     "pinned": false,
+     "mentions": 0,
+     "companyId": null,
+     "contactId": "cmuyvdg7t000106jpdhunpdx6",
+     "nextTaskId": null,
+     "customRecordId": null
+    },
+    "ip": null,
+    "createdAt": "2026-10-08T01:42:01.525Z"
+   }
+  },
+  {
+   "table": "AuditLog",
+   "why": "audit rows whose actor is a temp user or whose target is a temp row",
+   "row": {
+    "id": "cmuyvfmtr000806jpkp6uifyy",
+    "tenantId": "cmtazbpjh000004lcjikxju2i",
+    "unitId": null,
+    "actorType": "USER",
+    "actorId": "qcprodbfab0692895ba890bc7",
+    "onBehalfOf": null,
+    "action": "crm.deal.move",
+    "targetType": "CrmDeal",
+    "targetId": "cmuyvdod3000006mqqh8fqpso",
+    "before": {
+     "stageId": "cmtdvooxe000204jp5gxkgraz"
+    },
+    "after": {
+     "kind": "OPEN",
+     "stageId": "cmtdvooxe000304jpmffzftmw",
+     "lostReasonId": null
+    },
+    "ip": null,
+    "createdAt": "2026-10-08T01:42:07.695Z"
+   }
+  },
+  {
+   "table": "AuditLog",
+   "why": "audit rows whose actor is a temp user or whose target is a temp row",
+   "row": {
+    "id": "cmuyvg3sn000206l5ejfrh9yf",
+    "tenantId": "cmtazbpjh000004lcjikxju2i",
+    "unitId": null,
+    "actorType": "USER",
+    "actorId": "qcprodbfab0692895ba890bc7",
+    "onBehalfOf": null,
+    "action": "crm.deal.move",
+    "targetType": "CrmDeal",
+    "targetId": "cmuyvdod3000006mqqh8fqpso",
+    "before": {
+     "stageId": "cmtdvooxe000304jpmffzftmw"
+    },
+    "after": {
+     "kind": "OPEN",
+     "stageId": "cmtdvooxe000404jpz8uxj7y4",
+     "lostReasonId": null
+    },
+    "ip": null,
+    "createdAt": "2026-10-08T01:42:29.687Z"
+   }
+  },
+  {
+   "table": "AuditLog",
+   "why": "audit rows whose actor is a temp user or whose target is a temp row",
+   "row": {
+    "id": "cmuyvgphm000306qdt64v0x64",
+    "tenantId": "cmtazbpjh000004lcjikxju2i",
+    "unitId": null,
+    "actorType": "USER",
+    "actorId": "qcprod19a83e0308d81cc485f",
+    "onBehalfOf": null,
+    "action": "crm.deal.lines.set",
+    "targetType": "CrmDeal",
+    "targetId": "cmuyvdod3000006mqqh8fqpso",
+    "before": null,
+    "after": {
+     "lines": 2,
+     "discountBp": 0,
+     "valueSatang": 18000000
+    },
+    "ip": null,
+    "createdAt": "2026-10-08T01:42:57.802Z"
+   }
+  },
+  {
+   "table": "AuditLog",
+   "why": "audit rows whose actor is a temp user or whose target is a temp row",
+   "row": {
+    "id": "cmuyvgtyv000306mrpt066aub",
+    "tenantId": "cmtazbpjh000004lcjikxju2i",
+    "unitId": null,
+    "actorType": "USER",
+    "actorId": "qcprod19a83e0308d81cc485f",
+    "onBehalfOf": null,
+    "action": "crm.deal.move",
+    "targetType": "CrmDeal",
+    "targetId": "cmuyvdod3000006mqqh8fqpso",
+    "before": {
+     "stageId": "cmtdvooxe000404jpz8uxj7y4"
+    },
+    "after": {
+     "kind": "WON",
+     "stageId": "cmtdvooxe000504jpbqao2ssr",
+     "lostReasonId": null
+    },
+    "ip": null,
+    "createdAt": "2026-10-08T01:43:03.607Z"
+   }
+  },
+  {
+   "table": "AuditLog",
+   "why": "audit rows whose actor is a temp user or whose target is a temp row",
+   "row": {
+    "id": "cmuyvh0jb000306qmfbyvt5qz",
+    "tenantId": "cmtazbpjh000004lcjikxju2i",
+    "unitId": null,
+    "actorType": "USER",
+    "actorId": "qcprodbfab0692895ba890bc7",
+    "onBehalfOf": null,
+    "action": "crm.deal.create",
+    "targetType": "CrmDeal",
+    "targetId": "cmuyvh0i4000006qm7rgq0jyg",
+    "before": null,
+    "after": {
+     "lines": 0,
+     "fields": [],
+     "stageId": "cmtdvooxe000204jp5gxkgraz",
+     "companyId": null,
+     "contactId": "cmuyvdg7t000106jpdhunpdx6",
+     "pipelineId": "cmtdvooxc000104jpgmflgqzh",
+     "valueSatang": 9500000
+    },
+    "ip": null,
+    "createdAt": "2026-10-08T01:43:12.119Z"
+   }
+  },
+  {
+   "table": "AuditLog",
+   "why": "audit rows whose actor is a temp user or whose target is a temp row",
+   "row": {
+    "id": "cmuyvh51b000306p6mpkgs6qm",
+    "tenantId": "cmtazbpjh000004lcjikxju2i",
+    "unitId": null,
+    "actorType": "USER",
+    "actorId": "qcprode04f51fe031dd38ee54",
+    "onBehalfOf": null,
+    "action": "crm.deal.move",
+    "targetType": "CrmDeal",
+    "targetId": "cmuyvh0i4000006qm7rgq0jyg",
+    "before": {
+     "stageId": "cmtdvooxe000204jp5gxkgraz"
+    },
+    "after": {
+     "kind": "LOST",
+     "stageId": "cmtdvooxe000604jpxscgmhh7",
+     "lostReasonId": "cmuyt796e000006l72aqmo6s4"
+    },
+    "ip": null,
+    "createdAt": "2026-10-08T01:43:17.951Z"
+   }
+  },
+  {
+   "table": "AuditLog",
+   "why": "audit rows whose actor is a temp user or whose target is a temp row",
+   "row": {
+    "id": "cmuyvhave000306mkl04ke0jl",
+    "tenantId": "cmtazbpjh000004lcjikxju2i",
+    "unitId": null,
+    "actorType": "USER",
+    "actorId": "cmtazbehq000004l77f899ulm",
+    "onBehalfOf": null,
+    "action": "crm.deal.create",
+    "targetType": "CrmDeal",
+    "targetId": "cmuyvhauq000006mkjyiigwyh",
+    "before": null,
+    "after": {
+     "lines": 0,
+     "fields": [],
+     "stageId": "cmtdvooxe000204jp5gxkgraz",
+     "companyId": "cmuyvd8z8000e05jyuebqu58f",
+     "contactId": "cmuyvdctm000y05jy57wk9ejw",
+     "pipelineId": "cmtdvooxc000104jpgmflgqzh",
+     "valueSatang": 40000000
+    },
+    "ip": null,
+    "createdAt": "2026-10-08T01:43:25.514Z"
+   }
+  },
+  {
+   "table": "AuditLog",
+   "why": "audit rows whose actor is a temp user or whose target is a temp row",
+   "row": {
+    "id": "cmuyvhshk000106lbzqtd190v",
+    "tenantId": "cmtazbpjh000004lcjikxju2i",
+    "unitId": null,
+    "actorType": "USER",
+    "actorId": "cmtazbehq000004l77f899ulm",
+    "onBehalfOf": null,
+    "action": "crm.lost_reason.create",
+    "targetType": "CrmLostReason",
+    "targetId": "cmuyvhshc000006lbyb2qgejs",
+    "before": null,
+    "after": {
+     "label": "qc-prod-เหตุผลทดสอบระบบ"
+    },
+    "ip": null,
+    "createdAt": "2026-10-08T01:43:48.344Z"
+   }
+  },
+  {
+   "table": "AuditLog",
+   "why": "audit rows whose actor is a temp user or whose target is a temp row",
+   "row": {
+    "id": "cmuyvhxed000106mj4x84okgu",
+    "tenantId": "cmtazbpjh000004lcjikxju2i",
+    "unitId": null,
+    "actorType": "USER",
+    "actorId": "cmtazbehq000004l77f899ulm",
+    "onBehalfOf": null,
+    "action": "crm.object.create",
+    "targetType": "CustomObject",
+    "targetId": "cmuyvhxe1000006mj878v81rz",
+    "before": null,
+    "after": {
+     "key": "qcprodcontract",
+     "systemId": "cmtdvoopr000004jpf1vaply9",
+     "parentType": "NONE",
+     "templateKey": null,
+     "titleFieldKey": "name"
+    },
+    "ip": null,
+    "createdAt": "2026-10-08T01:43:54.709Z"
+   }
+  },
+  {
+   "table": "AuditLog",
+   "why": "audit rows whose actor is a temp user or whose target is a temp row",
+   "row": {
+    "id": "cmuyvi2yf000206p1fqfs0xzf",
+    "tenantId": "cmtazbpjh000004lcjikxju2i",
+    "unitId": null,
+    "actorType": "USER",
+    "actorId": "qcprod19a83e0308d81cc485f",
+    "onBehalfOf": null,
+    "action": "crm.sequence.create",
+    "targetType": "CrmSequence",
+    "targetId": "cmuyvi2xk000006p1avrt6xvl",
+    "before": null,
+    "after": {
+     "name": "qc-prod-ลำดับติดตามทดสอบ",
+     "steps": [
+      "WAIT"
+     ],
+     "version": 1
+    },
+    "ip": null,
+    "createdAt": "2026-10-08T01:44:01.911Z"
+   }
+  },
+  {
+   "table": "AuditLog",
+   "why": "audit rows whose actor is a temp user or whose target is a temp row",
+   "row": {
+    "id": "cmuyvi691000406l53nuxo1r3",
+    "tenantId": "cmtazbpjh000004lcjikxju2i",
+    "unitId": null,
+    "actorType": "USER",
+    "actorId": "qcprod19a83e0308d81cc485f",
+    "onBehalfOf": null,
+    "action": "crm.quota.set",
+    "targetType": "CrmQuota",
+    "targetId": "cmuyvi68u000306l5f3szkrgl",
+    "before": null,
+    "after": {
+     "note": null,
+     "ownerId": "qcprode04f51fe031dd38ee54",
+     "ownerType": "USER",
+     "periodKey": "2026-10",
+     "targetDeals": null,
+     "targetSatang": 50000000,
+     "targetActivities": null
+    },
+    "ip": null,
+    "createdAt": "2026-10-08T01:44:06.181Z"
+   }
+  },
+  {
+   "table": "AuditLog",
+   "why": "audit rows whose actor is a temp user or whose target is a temp row",
+   "row": {
+    "id": "cmuyvib5o000406p1qcu0r22d",
+    "tenantId": "cmtazbpjh000004lcjikxju2i",
+    "unitId": null,
+    "actorType": "USER",
+    "actorId": "qcprod19a83e0308d81cc485f",
+    "onBehalfOf": null,
+    "action": "crm.assignment.rule.create",
+    "targetType": "CrmAssignmentRule",
+    "targetId": "cmuyvib5e000306p1ktyfbyxy",
+    "before": null,
+    "after": {
+     "mode": "FIXED",
+     "name": "qc-prod-กฎแจกลีดทดสอบ",
+     "active": true,
+     "teamId": null,
+     "userIds": [
+      "qcprode04f51fe031dd38ee54"
+     ],
+     "conditions": [],
+     "maxOpenPerUser": null
+    },
+    "ip": null,
+    "createdAt": "2026-10-08T01:44:12.540Z"
+   }
+  },
+  {
+   "table": "AuditLog",
+   "why": "audit rows whose actor is a temp user or whose target is a temp row",
+   "row": {
+    "id": "cmuyviekh000506l52im6r1w7",
+    "tenantId": "cmtazbpjh000004lcjikxju2i",
+    "unitId": null,
+    "actorType": "USER",
+    "actorId": "qcprod19a83e0308d81cc485f",
+    "onBehalfOf": null,
+    "action": "crm.assignment.rule.toggle",
+    "targetType": "CrmAssignmentRule",
+    "targetId": "cmuyvib5e000306p1ktyfbyxy",
+    "before": {
+     "active": true
+    },
+    "after": {
+     "active": false
+    },
+    "ip": null,
+    "createdAt": "2026-10-08T01:44:16.961Z"
+   }
+  },
+  {
+   "table": "AuditLog",
+   "why": "audit rows whose actor is a temp user or whose target is a temp row",
+   "row": {
+    "id": "cmuyvij8d000106pjt81djrsm",
+    "tenantId": "cmtazbpjh000004lcjikxju2i",
+    "unitId": null,
+    "actorType": "USER",
+    "actorId": "qcprod19a83e0308d81cc485f",
+    "onBehalfOf": null,
+    "action": "crm.score.rule.create",
+    "targetType": "CrmScoreRule",
+    "targetId": "cmuyvij83000006pjpx3xudf0",
+    "before": null,
+    "after": {
+     "name": "qc-prod-กฎคะแนนทดสอบ",
+     "event": "forms.submission.received",
+     "active": false,
+     "points": 1
+    },
+    "ip": null,
+    "createdAt": "2026-10-08T01:44:23.005Z"
+   }
+  },
+  {
+   "table": "AuditLog",
+   "why": "audit rows whose actor is a temp user or whose target is a temp row",
+   "row": {
+    "id": "cmuyvinil000706l5cr4u9ksu",
+    "tenantId": "cmtazbpjh000004lcjikxju2i",
+    "unitId": null,
+    "actorType": "USER",
+    "actorId": "qcprode04f51fe031dd38ee54",
+    "onBehalfOf": null,
+    "action": "crm.view.create",
+    "targetType": "MemberSavedView",
+    "targetId": "cmuyvinib000606l56kqkk5dn",
+    "before": null,
+    "after": {
+     "scope": "PRIVATE",
+     "teamId": null,
+     "objectKey": "contact",
+     "filterKeys": [
+      "q"
+     ]
+    },
+    "ip": null,
+    "createdAt": "2026-10-08T01:44:28.557Z"
+   }
+  },
+  {
+   "table": "AuditLog",
+   "why": "audit rows whose actor is a temp user or whose target is a temp row",
+   "row": {
+    "id": "cmuyvje4u000a06l5annymg26",
+    "tenantId": "cmtazbpjh000004lcjikxju2i",
+    "unitId": null,
+    "actorType": "USER",
+    "actorId": "qcprod19a83e0308d81cc485f",
+    "onBehalfOf": null,
+    "action": "crm.record.create",
+    "targetType": "CustomRecord",
+    "targetId": "cmuyvje46000806l5kohmg8mb",
+    "before": null,
+    "after": {
+     "fields": [],
+     "objectId": "cmuyvhxe1000006mj878v81rz",
+     "parentId": null,
+     "objectKey": "qcprodcontract",
+     "parentType": "NONE"
+    },
+    "ip": null,
+    "createdAt": "2026-10-08T01:45:03.054Z"
+   }
+  },
+  {
+   "table": "AuditLog",
+   "why": "owner-SESSION audit rows written inside the walk's own owner-step time windows (crm.* / custom.* only; never crm.settings.uiVersion)",
+   "row": {
+    "id": "cmuyvzysu000005nk2dr6i4rz",
+    "tenantId": "cmtazbpjh000004lcjikxju2i",
+    "unitId": null,
+    "actorType": "USER",
+    "actorId": "cmtazbehq000004l77f899ulm",
+    "onBehalfOf": null,
+    "action": "crm.portal.settings",
+    "targetType": "AppSystem",
+    "targetId": "cmtdvoopr000004jpf1vaply9",
+    "before": {
+     "enabled": false,
+     "showDeals": false,
+     "statusMap": {},
+     "allowIssue": true,
+     "issueBoardId": null,
+     "loginMethods": [
+      "EMAIL_OTP",
+      "LINE"
+     ]
+    },
+    "after": {
+     "enabled": true,
+     "showDeals": false,
+     "statusMap": {},
+     "allowIssue": true,
+     "issueBoardId": null,
+     "loginMethods": [
+      "EMAIL_OTP",
+      "LINE"
+     ]
+    },
+    "ip": null,
+    "createdAt": "2026-10-08T01:57:56.334Z"
+   }
+  },
+  {
+   "table": "AuditLog",
+   "why": "owner-SESSION audit rows written inside the walk's own owner-step time windows (crm.* / custom.* only; never crm.settings.uiVersion)",
+   "row": {
+    "id": "cmuyw0rqd000106l40zlr6woa",
+    "tenantId": "cmtazbpjh000004lcjikxju2i",
+    "unitId": null,
+    "actorType": "USER",
+    "actorId": "cmtazbehq000004l77f899ulm",
+    "onBehalfOf": null,
+    "action": "crm.portal.settings",
+    "targetType": "AppSystem",
+    "targetId": "cmtdvoopr000004jpf1vaply9",
+    "before": {
+     "enabled": true,
+     "showDeals": false,
+     "statusMap": {},
+     "allowIssue": true,
+     "issueBoardId": null,
+     "loginMethods": [
+      "EMAIL_OTP",
+      "LINE"
+     ]
+    },
+    "after": {
+     "enabled": false,
+     "showDeals": false,
+     "statusMap": {},
+     "allowIssue": true,
+     "issueBoardId": null,
+     "loginMethods": [
+      "EMAIL_OTP",
+      "LINE"
+     ]
+    },
+    "ip": null,
+    "createdAt": "2026-10-08T01:58:33.829Z"
+   }
+  }
+ ]
+}
