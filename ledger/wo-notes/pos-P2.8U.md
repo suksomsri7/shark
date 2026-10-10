@@ -80,3 +80,21 @@ Module functions only (owner actor): channels LINEMAN/GRAB via `ensureChannelFix
 | visual `p2.8u --states --dry` orders/register × owner/cashier (`CI=1`) | 27 · 2 · 24 · 2 shots planned | 0 ×4 |
 | pnpm typecheck (iso · flock /tmp/pos-gate.lock · `gate-G-typecheck.log`) | 0 errors | 0 |
 Before the final batch: two scoped `tsc` runs over the new graph (`p28u/tsconfig.scoped.json`, 0 errors) and dev fitness-pos runs (F15.3a: renamed `*Sheet`/`*Select` components that the scanner treats as controls, literal rail testids; F6.1: first-layer `assertCan` in the wrapper). Pre-commit fitness green on every commit. No real screenshots (QC5 = controller).
+
+## Fix round 1 (review R1 `pos-P2.8U-review.md` · controller rulings 10 Oct 12:3xZ) — UI + harness only
+Merged `session/pos` **ca5a07b4** (HF-PP) first → `dee9650e` (clean). Reused HF-PP `edcManagerOnly` / `pay.intent.managerOnly` / `submitRefusalMessageKey` (no duplicates).
+| finding | commit | change (file) |
+|---|---|---|
+| F1 | b78300f5 | orders `page.tsx`: `payManagerOnly` = `manualConfirmRequiresManager && !pos.shift.manage@unit` (as register page) → `OrdersScreen` → `OrderPay managerOnly`: `promptpayId=null` (PromptPay tile off) + `PayDialog manualManagerOnly` (new marked prop feeding HF-PP `edcManagerOnly` when `intent` is null ⇒ CARD/EDC confirm/split blocked with `pay.intent.managerOnly`) · refusals via `submitRefusalMessageKey` (`InterimPayDialog.tsx`, `OrderPay.tsx`) |
+| F2 + F6 | 5c6cc7be | `ManualOrderEntry.tsx` `manualChannels` = `!archived && active && (kind !== "BUILTIN" \|\| code === "CHAT")`; start state for every channel with the server default; effect re-defaults `channelId` when not in the list · spec §8 · fixture QCPHONE natural adapter NONE (old MANUAL row reset) (one commit: same file) |
+| F4 | 3339024d | `use-orders-badge.ts` polls only while `matchMedia("(min-width: 768px)")` matches |
+| F5 | ea0aa51c | `OrderPanel.tsx` `pos-ord-cancel` disabled + tooltip `orders.perm.void` when `saleId && !voidSale` (not when the bill is already voided) · `OrdersScreen` passes `voidSale` |
+| F8 | 60fcb25c | `visual-pos.mts`: badge-only runs create NEW orders only; `orders-new-late` reuse threshold ≥ 40 s; cleanup deletes sale-less ids (`saleId: null` guard) and reports kept ones |
+| F9 | 0008d1d1 | `OrdersScreen.tsx`/`OrdersRail.tsx`: pause/prep targets = active WEB/CHAT/API channels (rail selection when eligible, else all eligible); none ⇒ disabled + `orders.rail.noTarget`; "ใช้กับ:" lists names · spec §3 |
+F3/F7 → P2.11 (no action). New keys: `orders.perm.void`, `orders.rail.noTarget` (th/en).
+Owner line (F9): pausing / prep time of keyed-in platform channels (LINE MAN, Grab — adapter MANUAL) has no effect on the platform itself until P3 adapters; the 09 rail therefore only pauses web shop / chat / API channels.
+Gates (reduced set per controller PAUSE order · logs `scratchpad/p28u/runs/fix1/`, head `60fcb25c`): typecheck 0 errors · qc-pos-p1.18 (U) 81/81 · visual `p2.8u --states --dry --page orders --user owner` rc 0 (27 shots). Not run this round (pending on resume): page-authz · p2.8 · p1.3 · fitness ±env · fitness-pos (pre-commit fitness green on every commit) · `--dry` register + cashier.
+Re-shoot (controller): `orders-pay-dialog,orders-manual-sheet,orders-paused-banner,orders-detail-direct-unpaid` + `register-tab-badge`.
+
+## ⏸ PAUSED (10 Oct ~12:35Z · controller PAUSE order, account quota)
+All fix-1 findings done (F1 F2 F4 F5 F6 F8 F9). Resume point: run the remaining fix-1 gates on the branch head — `TAG=F1b RUNS=scratchpad/p28u/runs/fix1 SUITES="qc-hf-pos-page-authz qc-pos-p2.8 qc-pos-p1.3" bash scratchpad/p28u/gates.sh` with `SKIP_TSC=1` (covers fitness ±env, fitness-pos, `--dry` orders/register × owner/cashier), then report to the controller for R2 + QC5 re-shoot. Do not merge into `session/pos`.
