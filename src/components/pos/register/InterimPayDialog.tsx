@@ -107,6 +107,8 @@ type Props = {
   platform?: { name: string } | null;
   /** POS P1.13U ▸ สวิตช์ "ออกใบกำกับภาษีเต็มรูป" ท้ายจอ (ภาพ 02) — buyer = ผู้ซื้อที่ตั้งไว้ (สวิตช์เปิด) · ปิดสวิตช์ = onClear · แก้/เปิด = onOpen (กล่อง 15A) ◂ */
   taxInvoice?: { eligible: boolean; buyer: TaxInvoiceBuyerInput | null; onOpen: () => void; onClear: () => void } | null;
+  /** POS P2.4U ▸ มติ 8: วิธีจ่ายที่เลือกไว้ตอนเปิด (แจ้งเตือน PAY_PROMPTPAY "ยืนยันรับเงิน" = PROMPTPAY) · ไม่ส่ง = เงินสด (เดิม) · บิลแพลตฟอร์มชนะเสมอ ◂ */
+  initialMethod?: RegisterPayType;
 };
 
 /** แถวที่แยกจ่ายไว้แล้ว (ยังไม่ส่ง) · id = ตัวนับในกล่อง (ไม่ใช่คีย์บิล) */
@@ -174,9 +176,11 @@ export function PayDialog(p: Props) {
   const [rows, setRows] = useState<PayRow[]>([]);
   // POS P2.1U ▸ มติ 6: บิลแพลตฟอร์มเริ่มที่ช่อง "แพลตฟอร์ม" เต็มยอด (entry null = ยอดคงเหลือพอดี) ◂
   const platformOn = !!p.platform;
-  const [method, setMethod] = useState<RegisterPayType>(platformOn ? "PLATFORM" : "CASH");
+  // POS P2.4U ▸ มติ 8: initialMethod (ไม่ใช่เงินสด ⇒ ช่องจำนวนเริ่มที่ยอดคงเหลือพอดีแบบเดียวกับแตะช่องนั้น) ◂
+  const firstMethod: RegisterPayType = platformOn ? "PLATFORM" : (p.initialMethod ?? "CASH");
+  const [method, setMethod] = useState<RegisterPayType>(firstMethod);
   /** ค่าที่กรอก (บาท ทศนิยม ≤ 2) · null = ใช้ยอดคงเหลือพอดี (ค่าเริ่มของบัตร/โอน/พร้อมเพย์) */
-  const [entry, setEntry] = useState<string | null>(platformOn ? null : "");
+  const [entry, setEntry] = useState<string | null>(firstMethod === "CASH" ? "" : null);
   const [reference, setReference] = useState("");
   const [tipOn, setTipOn] = useState(false);
   const [tipText, setTipText] = useState("");
