@@ -49,6 +49,7 @@ import { BillChannelPill, BillIcon, StatusChip, SummaryCard, bkkHm, billChannelT
 import { listChannelsAction } from "@/lib/modules/pos/channel-actions";
 import { channelCommission, channelNet, type ChannelItem } from "@/lib/modules/pos/channel-shared";
 import { channelDisplayName, channelRateText } from "@/components/pos/settings/channel-text";
+import { shownPriceSource } from "@/components/pos/products/price-ui"; // POS P2.2U fix รอบ 1 F7
 
 type Unit = { id: string; name: string };
 type Props = {
@@ -264,8 +265,10 @@ export function BillsClient({ systemId, units, unitId, today, initialDate, hasAn
   //   ราคาปกติ/ราคาเปิด/กำหนดเอง/ชั่ง/บิลเดิม (null) = ไม่มีหมายเหตุ · ใบเสร็จไม่เปลี่ยน (CD9) ◂
   const priceNote = (l: Detail["lines"][number]): string | null => {
     const list = typeof l.listPriceSatang === "number" ? money(l.listPriceSatang) : null;
-    if (l.priceSource === "CHANNEL" && bill?.channel) return tpr("billNote.channel", { channel: channelDisplayName(bill.channel.code, bill.channel.name, tch) });
-    if (l.priceSource === "BRANCH" && list) return tpr("billNote.branch", { list });
+    // P2.2U fix รอบ 1 F7: แถว (STORE, *) ไม่ใช่ "ราคา หน้าร้าน" — (STORE, สาขา) = หมายเหตุราคาสาขา · (STORE, ทุกสาขา) = ไม่มี (บรรทัดมีตัวเลือก = เทียบราคาไม่ได้ ⇒ ไม่มี)
+    const shown = shownPriceSource(l.priceSource, bill?.channel?.code ?? null, l.options.length ? null : l.unitPriceSatang, l.listPriceSatang);
+    if (shown === "CHANNEL" && bill?.channel) return tpr("billNote.channel", { channel: channelDisplayName(bill.channel.code, bill.channel.name, tch) });
+    if (shown === "BRANCH" && list) return tpr("billNote.branch", { list });
     if (l.priceSource === "RULE" && list) return tpr("billNote.rule", { kind: tpr("source.RULE"), name: l.priceRuleName ?? "—", list });
     return null;
   };

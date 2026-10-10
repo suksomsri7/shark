@@ -31,7 +31,7 @@ export type CartLineModel = {
   detail?: string;
   /** POS P2.2U ▸ มติ 5: ลำดับบรรทัด (testid ป้าย) · ป้าย "ราคาตามช่องทาง" (CHANNEL) / ชื่อโปร (RULE) · คำปฏิเสธของบรรทัด (CHANNEL_NOT_SOLD) ◂ */
   index?: number;
-  badge?: { kind: "CHANNEL" | "RULE"; text: string };
+  badge?: { kind: "CHANNEL" | "BRANCH" | "RULE"; text: string };
   error?: string;
 };
 

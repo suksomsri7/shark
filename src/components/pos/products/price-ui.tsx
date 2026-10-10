@@ -4,7 +4,7 @@
 // 🔴 ไม่มีข้อความไทยนอกคอมเมนต์ (ST7) — คำทั้งหมดมาจาก t() ที่ผู้เรียกส่งมา
 
 import { PRICE_MAX_SATANG } from "@/lib/modules/pos/pricing-shared";
-import { applyPriceRule, channelMarkupBpOf, priceRuleState, type PriceRuleItem, type PriceRuleLike } from "@/lib/modules/pos/price-shared";
+import { applyPriceRule, channelMarkupBpOf, priceRuleState, type PriceRuleItem, type PriceRuleLike, type PriceSource } from "@/lib/modules/pos/price-shared";
 import { moneyText, refusalMessageKey } from "@/lib/modules/pos/register-shared";
 
 export type PT = (key: string, values?: Record<string, string | number>) => string;
@@ -48,6 +48,23 @@ const PRESET_SHORT: Readonly<Record<string, string>> = { LINEMAN: "LM", GRAB: "G
 export function channelShort(code: string, name: string, tchip: PT): string {
   if (code === "STORE" || code === "WEB" || code === "QR_TABLE" || code === "CHAT") return tchip(code);
   return PRESET_SHORT[code] ?? (Array.from(name.trim()).slice(0, 6).join("") || code);
+}
+
+/**
+ * P2.2U fix รอบ 1 F7 (มติเจ้าของ): ชั้นราคาที่ "แสดง" บนป้ายบรรทัดหน้าขาย/หมายเหตุบิล — แถว (STORE, *) ไม่ใช่ "ราคาตามช่องทาง":
+ *   (STORE, สาขา) ⇒ BRANCH "ราคาสาขา" · (STORE, ทุกสาขา) ⇒ BASE ไม่มีป้าย (คือราคาปกติของร้าน) · ช่องทางอื่น/ชั้นอื่น = ตามเซิร์ฟเวอร์
+ *   บรรทัด quote/บิลไม่พกสาขาของแถวที่ชนะ (ไม่แก้เซิร์ฟเวอร์) ⇒ แยกด้วยราคา: ราคา (ไม่รวมตัวเลือก) = ราคาปกติ หรือไม่รู้ ⇒ BASE · ต่างจากราคาปกติ ⇒ BRANCH
+ *   channelCode ว่าง = หน้าร้าน (บิล/ตะกร้าที่ไม่มีช่องทาง)
+ */
+export function shownPriceSource(
+  source: PriceSource | null | undefined,
+  channelCode: string | null | undefined,
+  priceSatang: number | null | undefined,
+  listPriceSatang: number | null | undefined,
+): PriceSource | null {
+  if (!source) return null;
+  if (source !== "CHANNEL" || (channelCode ?? "STORE") !== "STORE") return source;
+  return typeof priceSatang === "number" && typeof listPriceSatang === "number" && priceSatang !== listPriceSatang ? "BRANCH" : "BASE";
 }
 
 /** "จ.–ศ." / "ทุกวัน" / "ส. อา." — ช่วงวันติดกันย่อเป็นขีด */

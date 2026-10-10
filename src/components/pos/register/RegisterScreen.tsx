@@ -32,6 +32,7 @@ import { useLocale, useTranslations } from "next-intl";
 import { formatThaiTime } from "@/lib/ui/date";
 import { useInApp } from "@/lib/ui/use-in-app";
 import { priceCart, type PriceDiscount } from "@/lib/modules/pos/pricing-shared";
+import { shownPriceSource } from "@/components/pos/products/price-ui"; // POS P2.2U fix รอบ 1 F7
 import {
   cartAddProduct,
   cartAddWeighed,
@@ -1131,7 +1132,15 @@ export function RegisterScreen(props: RegisterScreenProps) {
     const over = stockLeft !== null && l.qty > stockLeft;
     // POS P2.2U ▸ มติ 5: ป้ายบรรทัด — โปร (ชื่อโปร) / ราคาตามช่องทาง (CHANNEL) จาก quote ของเซิร์ฟเวอร์ · ไทล์โปรระหว่างรอ quote · บรรทัดที่ถูกปฏิเสธ CHANNEL_NOT_SOLD ◂
     const ruleName = ql?.priceRule?.name ?? (!ql && prod?.priceSource === "RULE" ? (prod.priceRule?.name ?? null) : null);
-    const badge = ruleName ? { kind: "RULE" as const, text: ruleName } : ql?.priceSource === "CHANNEL" ? { kind: "CHANNEL" as const, text: tPrice("badge.channel") } : null;
+    // P2.2U fix รอบ 1 F7: แถว (STORE, *) ไม่ใช่ "ราคาตามช่องทาง" — (STORE, สาขา) = "ราคาสาขา" · (STORE, ทุกสาขา) = ไม่มีป้าย (shownPriceSource)
+    const shownSource = ql ? shownPriceSource(ql.priceSource, quoteFresh?.channel?.code ?? null, ql.unitPriceSatang - ql.optionsSatang, ql.listPriceSatang) : null;
+    const badge = ruleName
+      ? { kind: "RULE" as const, text: ruleName }
+      : shownSource === "CHANNEL"
+        ? { kind: "CHANNEL" as const, text: tPrice("badge.channel") }
+        : shownSource === "BRANCH"
+          ? { kind: "BRANCH" as const, text: tPrice("badge.branch") }
+          : null;
     const lineError = quoteErrNow === "CHANNEL_NOT_SOLD" && quoteErr?.lineIndex === i ? t("errors.channelNotSold") : null;
     return {
       key: l.key,
