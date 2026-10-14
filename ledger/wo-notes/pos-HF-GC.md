@@ -26,7 +26,7 @@ H2 — `ensureGiftCardSalePosted(tenantId, giftCardId, { accountingLink })`:
 - `src/lib/modules/account/gl.ts:1947–1955` + `src/lib/modules/account/index.ts:84, 623–634` **read-only** reader `giftCardSaleEntryId` (see CONTROLLER-DECISION).
 
 ## Switch rule (Scope 3)
-No column on `GiftCard` records the switch decision (`prisma/schema/giftcard.prisma:28–61`; `accountingDocId` null is ambiguous after a crash) and this card allows no schema change ⇒ the rule is: **consumer = `payload.accountingLink` (sale-time decision; rows emitted before HF-GC have no flag ⇒ never post)** · **replay path = `settings.accountingLink` at replay time** · normal path = settings at sale time. Residual: switch flipped off→on between a sale and a same-key replay would post that card (FU-3).
+No column on `GiftCard` records the switch decision (`prisma/schema/giftcard.prisma:28–61`; `accountingDocId` null is ambiguous after a crash) and this card allows no schema change ⇒ the rule is: **consumer = `payload.accountingLink` (sale-time decision; rows emitted before HF-GC have no flag ⇒ never post)** · **replay path = the same payload flag (fix round 1, review F1)** · normal path = settings at sale time. (Original round used `settings.accountingLink` at replay time — closed by fix 1.)
 
 ## Idempotency proof
 - `src/lib/modules/account/gl.ts:1909–1945` `postGiftCardSale` → `alreadyPosted(ctx, "${refType}#${refId}#GIFTCARD_SOLD")` (`gl.ts:280–286`) returns `{ skipped: true }` (facade: `posted-before`, no `entryId`), and `commitEntry` writes `idempotencyKey` (`gl.ts:244, 261`) under `@@unique([tenantId, idempotencyKey])` (`prisma/schema/account_gl.prisma:493`) ⇒ two concurrent posts: the loser fails P2002 and rolls back.
@@ -57,3 +57,20 @@ All logs headed `tree=/root/projects/shark-pos-b head=14742f2b dirty=0` (scratch
 - FU-2 `unsuspend` (`service.ts:907`) decides ACTIVE/DEPLETED from the pre-tx balance.
 - FU-3 durable switch decision per card needs a column (`GiftCard.accountingLinkAtSale`) — schema change ⇒ separate card.
 - FU-4 the backstop step failing (e.g. period closed) is WARN-only by the `compose` contract ⇒ such a card waits for the next same-key replay; a sweep (cards with `saleId`, no `accountingDocId`, sold with the switch on) would need FU-3.
+
+## Fix round 1 (review F1)
+Reviewer R1: MERGEABLE, F1 Low. Problem: the same-key replay paths decided with `getSettings().accountingLink` at replay time, so a card sold with the switch OFF could post later if the owner turned the switch ON and the sale was replayed.
+- Oracle first: added HT2.7 (c2) at `scripts/qc-hf-tx.mts:589–596` (count stays 20): a card sold with the switch OFF → switch ON → same-key `sell` replay ⇒ JV by ref 0 · `accountingDocId` null. Red-before on code 566349a7 → `ledger/wo-notes/HF-GC-red2.txt` 19/20: `❌ [HT2.7] … (c2) สวิตช์ปิดตอนขาย → ขายซ้ำหลังเปิด: คืน cmv859etg… · doc cmv… · JV 1` (fd855aeb).
+- Fix (7ba05923): `src/lib/modules/giftcard/service.ts:356–364` new `soldWithAccountingLink(tenantId, giftCardId)` reads `payload.accountingLink === true` from the outbox row `giftcard.sold#<cardId>` (`@@unique([tenantId, idempotencyKey])`). That row is written in the sale transaction and is the consumer's source too. A missing row, or a row without the flag, gives false and nothing posts. `service.ts:419–424` `replayed()` calls `ensureGiftCardSalePosted` with that flag (it covers both the entry replay and the P2002 retry at :557). Doc comment :312 updated. No schema change.
+- Owner lines (7d4894fc): F1 closed + open items F2 late-link gap · F3 reload `status:"ACTIVE"` unguarded (next hotfix) · FU-1 `expireDue` stale `leftover` (**HF-GC2**, real money) · FU-2 `unsuspend` · FU-4 consumer step WARN-only — none of them fixed in this card (controller ruling).
+- Upstream `origin/session/pos` 18669c3e merged (ledger only) → ceb281c1.
+
+| gate (logs `scratchpad/hfgc/gates-fix1/*.out`, headed `tree=/root/projects/shark-pos-b head=ceb281c1 dirty=0`, 13:28–13:35Z) | result |
+|---|---|
+| typecheck (pos-gate.lock · 5632/6500M) | rc 0 |
+| fitness no-env / env (qc4) | 50/50 · 50/50 |
+| fitness-pos | 8/8 |
+| qc-hf-tx forced / unforced | 20/20 · 20/20 (HT2.7 (c2) `JV 0 · doc null` · residue 0) |
+| qc-pos-p1.6 | 48/48 |
+| qc-pos-account | 16/16 |
+| qc-member-m2.x | skipped this round (controller) |
