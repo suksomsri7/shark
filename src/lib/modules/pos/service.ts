@@ -299,8 +299,8 @@ async function tenderStep<T>(member: MemberTenderFacade, fn: () => Promise<T>): 
   }
 }
 /**
- * R3 R7 — เตรียมแถวบัตร (ก่อนตัวนับใบเสร็จ): เครดิตร้าน = ของสมาชิกของบิลในระบบสมาชิกของบิล (walk-in/คนอื่น = STORE_CREDIT_NOT_OWNER) ·
- * แล้วล็อกแถวบัตรทุกใบ (เรียง id) ⇒ ลำดับล็อก บัตร → ตัวนับ เหมือนกันทุกบิล · ไม่มีแถวบัตร = ไม่มี query
+ * R3 R7 — เตรียมแถวบัตร (ก่อนตัวนับใบเสร็จ · ไม่ล็อก): เครดิตร้าน = ของสมาชิกของบิลในระบบสมาชิกของบิล (walk-in/คนอื่น = STORE_CREDIT_NOT_OWNER) ·
+ * PIN ตรวจที่นี่ · ล็อกแถวบัตร (เรียง id) ใน createSaleOnce หลังตัวนับใบเสร็จ (fix1 F1) · ไม่มีแถวบัตร = ไม่มี query
  */
 async function prepareSaleTenders(tx: Client, input: CreateSaleInput, memberSystemId: string | null): Promise<SaleTender[]> {
   const rows = input.payMethods.map((p, index) => ({ p, index })).filter((x) => x.p.type === "STORE_CREDIT" || x.p.type === "GIFT_CARD");
@@ -319,9 +319,9 @@ async function prepareSaleTenders(tx: Client, input: CreateSaleInput, memberSyst
     const r = await tenderStep(member, () => member.prepareStoreCreditTender(input.tenantId, { systemId: memberSystemId, customerId: input.memberId!, satang: p.amountSatang }, db));
     out.push({ index, giftCardId: r.giftCardId, satang: p.amountSatang });
   }
-  await member.lockTenderCards(db, out.map((t) => t.giftCardId));
   return out;
 }
+
 /** R3 R7 — ตัดยอดของแถวบัตรใน tx ของบิล (หลังเขียนแถวชำระ) แล้วผูก PosPayment.giftCardId/giftCardTxnId */
 async function useSaleTenders(tx: Client, input: CreateSaleInput, saleId: string, tenders: SaleTender[], paymentIds: string[]): Promise<void> {
   if (!tenders.length) return;
@@ -651,7 +651,7 @@ async function createSaleOnce(input: CreateSaleInput, client: Client, ownsTx: bo
     if (!memberSystemId && paidSum !== beforeMember) {
       throw new Error(`PAYMENT_MISMATCH: จ่าย ${paidSum} ≠ ยอด ${beforeMember}`);
     }
-    // POS P2.9 ▸ R3 R7: แถวบัตร/เครดิตร้าน — ตรวจ + ล็อกแถวบัตร ก่อนล็อกสินค้า/ตัวนับใบเสร็จ (ปฏิเสธ = ไม่มีบิล) ◂
+    // POS P2.9 ▸ R3 R7: แถวบัตร/เครดิตร้าน — ตรวจ + PIN ก่อนล็อกสินค้า/ตัวนับใบเสร็จ (ปฏิเสธ = ไม่มีบิล · ล็อกบัตรหลังตัวนับ — fix1 F1) ◂
     const tenders = await prepareSaleTenders(tx, input, memberSystemId);
 
     // POS P1.2 R2 F1: ส่วนประกอบชุดต้องอยู่ในคลังของสาขาที่ขายทุกชิ้น (ผู้เรียกอื่นนอกหน้าขายก็เช่นกัน) — สาขาไม่มีคลัง/ชิ้นนอกคลัง = VALIDATION ไม่มีบิล
@@ -696,6 +696,8 @@ async function createSaleOnce(input: CreateSaleInput, client: Client, ownsTx: bo
       update: { seq: { increment: 1 } },
     });
     const receiptNo = `${period}-${String(counter.seq).padStart(4, "0")}`;
+    // POS P2.9 ▸ fix1 F1 (มติ 1): ล็อกแถวบัตร (เรียง id) **หลัง** ตัวนับใบเสร็จ — ลำดับเดียวกับเติมเงิน/ส่วนลดบัตรเดิม (สต็อก → ตัวนับ → บัตร) ◂
+    if (tenders.length) await (await import("@/lib/modules/member")).lockTenderCards(tx as Prisma.TransactionClient, tenders.map((t) => t.giftCardId));
 
     const sale = await tx.posSale.create({
       data: {
