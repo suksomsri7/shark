@@ -244,7 +244,7 @@ function parseSplit(raw: unknown): ParsedSplit | RegisterRefusal {
 }
 
 /** เพดานส่วนลดท้ายบิลของแผน (P1.15 · สูตรเดียวกับ priceCart: PERCENT = bp × ฐาน · AMOUNT = สตางค์ × 10000 + ผ่อน ½ สตางค์) — PIN ผู้จัดการ = เพดานของคนนั้น */
-async function discountCap(db: Db, s: S, d: TableSplitDiscount | null, base: number, p: ParsedSplit): Promise<RegisterRefusal | null> {
+async function discountCap(db: Db, s: S, d: TableSplitDiscount | null, base: number, p: ParsedSplit): Promise<RegisterRefusal | { viaPin: string } | null> {
   if (!d) return null;
   const caps = await registerDiscountCaps({ tenantId: s.tenantId, systemId: s.systemId }, db);
   const use = d.type === "PERCENT" ? d.value * base : d.value * 10_000;
@@ -253,7 +253,7 @@ async function discountCap(db: Db, s: S, d: TableSplitDiscount | null, base: num
   if (p.managerPin === null) return refuse("DISCOUNT_EXCEEDS_LIMIT");
   const v = await verifyManagerPin({ tenantId: s.tenantId, unitId: s.unitId, deviceId: s.deviceId }, { managerPin: p.managerPin, managerUserId: p.managerUserId }, db);
   if (isRefusal(v)) return v;
-  return over(registerSellerLimits(v.actor, s.unitId, caps).maxDiscountBp) ? refuse("DISCOUNT_EXCEEDS_LIMIT") : null;
+  return over(registerSellerLimits(v.actor, s.unitId, caps).maxDiscountBp) ? refuse("DISCOUNT_EXCEEDS_LIMIT") : { viaPin: v.actor.userId };
 }
 
 type BillItem = Awaited<ReturnType<RestFacade["tableUnpaidItemsForPos"]>>[number];
@@ -316,7 +316,7 @@ export async function registerSplitTable(
     });
     if (!alloc.ok) return refuse(alloc.code, alloc.code === "VALIDATION" ? alloc.message : undefined);
     const cap = await discountCap(db, s, p.billDiscount, alloc.baseSatang, p);
-    if (cap) return cap;
+    if (isRefusal(cap)) return cap;
     // สมาชิกของใบ: ปริยาย = สมาชิกของโต๊ะอยู่ใบ 1 · ส่งมา = ตามที่ส่ง (null = ไม่มี) · ทุกคนผ่านด่านสมาชิกของหน้าขาย
     const members = new Map<number, string | null>([[1, sess.memberId]]);
     const labels = new Map<number, string | null>();
@@ -417,6 +417,17 @@ export async function registerSplitTable(
       targetId: plan.id,
       after: { sessionId: sess.id, mode: plan.mode, partCount: plan.partCount, version: plan.version, totalSatang: plan.totalSatang, discountSatang: plan.discountSatang, itemsHash: plan.itemsHash },
     });
+    // ส่วนลดของแผนเกินเพดานของผู้ทำ อนุญาตด้วย PIN ผู้จัดการ = ร่องรอยเดียวกับบิลหน้าขาย (P1.15 · pos.discount.override via pin)
+    if (cap) {
+      await writeAudit({
+        tenantId: s.tenantId,
+        actorId: cap.viaPin,
+        action: "pos.discount.override",
+        targetType: "PosTableSplit",
+        targetId: plan.id,
+        after: { splitId: plan.id, byUserId: cap.viaPin, forUserId: s.actor.userId, discountSatang: plan.discountSatang, via: "pin" },
+      });
+    }
     return { ok: true as const, split: await planView(db, s, plan) };
   });
 }
