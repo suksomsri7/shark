@@ -96,5 +96,47 @@ Owner line (F9): pausing / prep time of keyed-in platform channels (LINE MAN, Gr
 Gates (reduced set per controller PAUSE order · logs `scratchpad/p28u/runs/fix1/`, head `60fcb25c`): typecheck 0 errors · qc-pos-p1.18 (U) 81/81 · visual `p2.8u --states --dry --page orders --user owner` rc 0 (27 shots). Not run this round (pending on resume): page-authz · p2.8 · p1.3 · fitness ±env · fitness-pos (pre-commit fitness green on every commit) · `--dry` register + cashier.
 Re-shoot (controller): `orders-pay-dialog,orders-manual-sheet,orders-paused-banner,orders-detail-direct-unpaid` + `register-tab-badge`.
 
-## ⏸ PAUSED (10 Oct ~12:35Z · controller PAUSE order, account quota)
-All fix-1 findings done (F1 F2 F4 F5 F6 F8 F9). Resume point: run the remaining fix-1 gates on the branch head — `TAG=F1b RUNS=scratchpad/p28u/runs/fix1 SUITES="qc-hf-pos-page-authz qc-pos-p2.8 qc-pos-p1.3" bash scratchpad/p28u/gates.sh` with `SKIP_TSC=1` (covers fitness ±env, fitness-pos, `--dry` orders/register × owner/cashier), then report to the controller for R2 + QC5 re-shoot. Do not merge into `session/pos`.
+resumed 14 Oct (account B)
+
+## Fix round 2 (R2 G1/G2 + controller V1/V2 · 14 Oct)
+Account B · tree b · branch `wip/pos-p2.8u` from **da3898a3** (code 60fcb25c) · rulings "Controller rulings — fix round 2" in `pos-P2.8U-review.md`. UI/copy only; marked hunks `POS P2.8U ▸ fix 2 … ◂`; no server/action/lib/script/prisma/fixture change.
+| finding | commit | change (file:line) |
+|---|---|---|
+| G1 | ae3aa61a | `InterimPayDialog.tsx:640` PromptPay tile sub-text: `!p.intent && p.manualManagerOnly` ⇒ `pay.intent.managerOnly` (else `pay.noPromptPay` as before); tile stays disabled (`promptpayId=null`) |
+| G2 | e4ad1cef | `OrdersScreen.tsx:297` `targetLabel` = channel names only · `OrdersRail.tsx:159` line = `hasTarget ? rail.appliesTo : rail.noTarget` (own line, not inside "ใช้กับ:") · `orders.rail.noTarget` th "ไม่มีช่องทางที่ตั้งเวลาเตรียม/ปิดรับจากจอนี้ได้ (ได้เฉพาะเว็บร้าน · แชท · ช่องทางที่เชื่อม API)" / en "No channel here takes prep time/pause from this screen (web shop · chat · API-linked channels only)" · spec §3 line updated. `PauseDialog` keeps `appliesTo` (opens only with a target) |
+| V1 | 5706a999 | `OrderCardView.tsx` (own file): card = `@container` (:92) · header (:106-111) chip `fit` (new prop :33 — `shrink min-w-9 px-1.5 12px`), ref `shrink-0 truncate max-w-[calc(100%-2.625rem)]` (never shrinks before the chip; cut only when row < ref + 42 px), time in the header only when the card content ≥ 220 px (`@min-[220px]`), else right end of the "N รายการ · ฿x" line (12.5 px, `flex-wrap`) · buttons (:147-171) `flex flex-wrap gap-1.5`, `whitespace-nowrap`, accept `grow-[3] px-1.5`, reject `grow px-2`, `h-11` (44 px) kept, testids unchanged; content < 140 px ⇒ 13 px + px-1; if both still don't fit, reject wraps to its own full-width line (no mid-word break) |
+| V2 | — (no change) | Cause = harness, not the sheet: `visual-pos.mts:4549` `clickEl(pos-ord-man-product-<amer>)` → `clickEl` (:1068) does `scrollIntoView({block:"center"})`, which scrolls the inner product list (`ManualOrderEntry.tsx:412`, `max-h-[220px] overflow-y-auto`) so the Americano row is centred ⇒ first visible row half-clipped. The component has no autofocus / scrollIntoView / sticky header; a real user opens the list at scrollTop 0. **P2.11 follow-up (harness)**: after the click reset the list `scrollTop = 0` (or type the search first). Out of scope here (`scripts/**`). |
+
+### V1 width reasoning (measured)
+Card content width W = column − 2×(border 1 + p-3 12): 1440 + panel 320: board 1440−56 nav−220 rail−321 panel = 843 − 32 px pad − 3×12 gaps = 4 cols × 194 ⇒ **W 168** (matches shot: card 196 css) · 1024 (rail, no panel): 748−32−36 ⇒ col 170 ⇒ **W 142** (matches shot 168 css card) · 1280 + panel ⇒ W 128 · 1279 ⇒ W 207 · 768 (4 cols, no rail) ⇒ W 135 · 390 ⇒ one column W ≈ 332.
+Text (IBM Plex Sans Thai advances): "รับออเดอร์" 700/14 = 62.6 · "ปฏิเสธ" 600/14 = 38.8 · "Accept order" 84.7 · "Reject" 41.2 · chip "LINE MAN" 700/12 = 57.1 (+12 pad +3 border = 72) · ref "LM-6087611" 700/14 = 83.3. Old buttons: reject px-4 = 72 ⇒ accept 88 − 32 pad = 56 < 62.6 ⇒ wrap (the V1 shot). New: th need 62.6+12 + 6 + 38.8+16+2 = 137.4 ≤ 142 (1024) and ≤ 168 (1440); en 159.9 ≤ 168 (1440 one line), en at 1024 stacks (graceful). Header 1440: chip 72 + 6 + ref 83 = 161 ≤ 168 ⇒ chip and ref both full; 1024: ref full, chip → "LINE…" (≈ 53 px) — ref ellipsizes only when W < ref + 42 (e.g. an 88-px ref at W 128).
+Checked by rendering the card markup with the compiled Tailwind 4.3.2 classes and the real font in headless chromium (static file, no server) at W 168/142/128/207/135/332 × th/en × 4 refs (LM-6087611, GF-6135000, OD-0008, SP-2609-118): 1440 th+en and 1024 th = both buttons one line, 44 px high, ref uncut; 1279/390 one line, chip full; 1280-panel/768 th one line at 13 px; en at 1024/1280/768 = reject on its own line. Mobile 390: header shows the time (≥ 220), buttons one line — no regression.
+
+### Gates (head **5706a999** · dirty 0 · logs `/tmp/claude-0/-root/5169ed6b-3dd4-5e42-a1eb-90ec4124521e/scratchpad/p28u-fix2/runs/gate-*.log`, header `tree= head= dirty= gate= start=` · 11:21–11:23Z)
+| gate | result | exit | log |
+|---|---|---|---|
+| pnpm typecheck (iso 6500M · heap 5632 · flock /tmp/pos-gate.lock) | 0 errors | 0 | `gate-typecheck.log` |
+| qc-pos-p1.18 (QC_FORCE · phase U · ST7 0 Thai literals) | 81/81 · residue 0 | 0 | `gate-p1.18.log` |
+| fitness no env · QC4 env | 50/50 · 50/50 | 0 ×2 | `gate-fitness-noenv.log` · `gate-fitness-qc4.log` |
+| fitness-pos | 8/8 | 0 | `gate-fitness-pos.log` |
+| visual `p2.8u --states --dry` orders owner/cashier · register owner/cashier (CI=1) | 27 · 24 · 2 · 2 shots planned | 0 ×4 | `gate-dry-{orders,register}-{owner,cashier}.log` |
+Pre-commit fitness green on each fix-2 commit.
+
+`git diff --stat da3898a3..5706a999` (no server/action/lib/script/prisma/fixture file ⇒ the fix-1 DB suites in `/root/pos-runs/gates69-b-*/SUMMARY.txt` — page-authz · p2.8 · p1.3 — stay valid):
+```
+ ledger/pos-briefs/pos-spec-P2.8-orders-ui.md     |  2 +-
+ src/components/pos/orders/OrderCardView.tsx      | 43 +++++++++++++++++-------
+ src/components/pos/orders/OrdersRail.tsx         |  3 +-
+ src/components/pos/orders/OrdersScreen.tsx       |  3 +-
+ src/components/pos/register/InterimPayDialog.tsx |  4 ++-
+ src/messages/en/pos.json                         |  2 +-
+ src/messages/th/pos.json                         |  2 +-
+ 7 files changed, 41 insertions(+), 18 deletions(-)
+```
+
+### Re-shoot list (controller · chain67)
+`--states --state orders-mixed,orders-new-late,orders-pay-dialog,orders-manual-sheet,orders-paused-banner,orders-detail-direct-unpaid` × owner/cashier th + owner en (`--page orders`) · `--state register-tab-badge` owner/cashier (`--page register`). G1 is visible only as cashier with `manualConfirmRequiresManager` on (owner shot will not show it). G2 is visible only when no WEB/CHAT/API channel is eligible (the QC fixture has web shop + chat ⇒ normal "ใช้กับ:" line).
+
+### Follow-ups
+- V2 harness scroll (above) → P2.11 · G3 (cancel disabled until `pos.sale.voided` consumer closes the order) → P2.11 · HF-PP2 server backstop unchanged.
+- en "Accept order" stacks the reject button on cards narrower than ~160 px (1024/1280-panel/768 en); shorter en copy ("Accept") would keep one line — owner/copy call, not done.
