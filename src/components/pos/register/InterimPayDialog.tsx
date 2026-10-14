@@ -989,7 +989,12 @@ export function PayDialog(p: Props) {
                         )}
                         <span className="font-bold tabular-nums">{moneyText(r.amountSatang)}</span>
                         <RegisterIcon name="check" size={14} />
-                        <span className="min-w-0 flex-1 truncate text-[color:var(--color-muted)]">
+                        {/* POS P2.9U ▸ fix1 V4: แถวบัตร < md = "คงเหลือ ฿x" ขึ้นบรรทัดที่ 2 ใต้แถว (ไม่ตัดเหลือ "ค…") ◂ */}
+                        <span
+                          className={`min-w-0 flex-1 truncate text-[color:var(--color-muted)] ${
+                            r.card ? "max-md:order-last max-md:basis-full max-md:whitespace-normal max-md:pb-1 max-md:pl-[27px]" : ""
+                          }`}
+                        >
                           {r.card
                             ? left !== null
                               ? t("pay.gc.rowLeft", { amount: moneyText(Math.max(left, 0)) })
@@ -1004,7 +1009,7 @@ export function PayDialog(p: Props) {
                         </span>
                         <button
                           data-testid={`pos-reg-paydlg-row-remove-${r.id}`}
-                          className="-mr-2 grid size-11 shrink-0 place-items-center rounded-[11px] text-[color:var(--color-muted)] hover:bg-[color:var(--color-surface-2)] disabled:opacity-50 aria-disabled:opacity-40"
+                          className="-mr-2 ml-auto grid size-11 shrink-0 place-items-center rounded-[11px] text-[color:var(--color-muted)] hover:bg-[color:var(--color-surface-2)] disabled:opacity-50 aria-disabled:opacity-40"
                           type="button"
                           disabled={busy}
                           aria-disabled={r.via !== undefined || undefined}
@@ -1014,7 +1019,7 @@ export function PayDialog(p: Props) {
                           <RegisterIcon name="x" size={14} />
                         </button>
                         {r.type === "GIFT_CARD" && r.card?.note && (
-                          <span className="flex basis-full items-center gap-3 pb-1 pl-[27px] md:pl-[33px]">
+                          <span className="flex basis-full items-center gap-3 pb-1 pl-[27px] max-md:order-last md:pl-[33px]">
                             <span data-testid={`pos-reg-paydlg-giftcard-row-note-${gcN}`} className="min-w-0 flex-1 text-[12.5px] font-semibold text-[color:var(--color-danger)]" role="alert">
                               {t(r.card.note === "pinWrong" ? "pay.gc.pinWrong" : "pay.gc.pinAgain")}
                             </span>
