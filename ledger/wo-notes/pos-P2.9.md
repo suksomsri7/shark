@@ -317,3 +317,39 @@ All logs headed `tree=/root/projects/shark-pos-b head=08cb294c dirty=0` (scratch
 | qc-hf-pos-page-authz | shark-pos-b 08cb294c | 81/81 |
 | qc-pos-p2.8 | shark-pos-b 08cb294c | 59/61 — ST6 + L2 wip-only (register.ts/service.ts/pos-sale-contract.json differ from base be246009; both accept the merge-base sha ⇒ green once merged into session/pos; L2's caller-registry half is green) |
 | qc-member-m2.x | — | skipped (known QC4 setup failures) |
+
+## Fix round 1 (R1 MERGEABLE-AFTER-FIXES + money hunt H1–H6 · controller rulings 1–9, 14 Oct)
+Oracle first: `deebbff4` (ORACLE-ADD ST5 T6 S5 G9 G10 RC1 MG1 MG2 C5 · ORACLE-EDIT V4/V6/V7 pro-rata 117/108 · 208/192, dated markers `ผู้คุม 14 ต.ค. (fix 1)`) + self-fix `2e850b08` (S5 restores the SC card on the base so G8/R1 do not cascade) · 48 → **57**. Red-before block 3 (`01cac8a2`, head 2e850b08, code 0e9e3144): **49/57** — red ST5 T6 S5 G9 G10 RC1 MG2 C5; MG1 green-before (fold already sums; MG2 pins the void path), V4/V6/V7 edited values were already accepted by the uncapped base (ruling 2 pins the split).
+
+| finding | ruling | commit | change |
+|---|---|---|---|
+| F1 Medium lock order | 1 | 3d5114f6 | `pos/service.ts` `prepareSaleTenders` no longer locks; `createSaleOnce` locks the card rows (sorted) right after `posReceiptCounter.upsert` ⇒ stock → counter → card like `reload` / legacy `memberChoices.giftCard`. ST5. C1–C4 unchanged and green. |
+| H2/F5 Med PIN lockout bypass | 3 | 5e0f4eb4 | `giftcard/service.ts verifyPin`: wrong PIN = one `UPDATE … SET pinFailedCount = pinFailedCount + 1, pinLockedUntil = CASE … END WHERE id AND (pinLockedUntil IS NULL OR <= now()) RETURNING`, 0 rows ⇒ LOCKED, lock decided from the returned row; correct-PIN reset only when not locked (`updateMany` guard). `pos/service.ts preverifyGiftPins`: when createSale owns the tx and the key has no bill, gift-card PINs are verified **before** opening the tx (wrong-PIN bursts no longer hold a tx connection while waiting for the counter's second connection — G9 showed P2028 pool timeouts on the base). G9: 20 parallel ⇒ counter 5, LOCKED, 0 bills. |
+| H1 Med cash-out of card share | 2 | b293359e | `pos/refund.ts planRefundTenders`: cash-like rows (CASH/PROMPTPAY/TRANSFER/CARD) capped at cash-like paid − tip − cash-like already refunded (only on bills that have GIFT_CARD/STORE_CREDIT rows; other bills unchanged). Excess allowed only as the unrefunded share of **unusable** gift cards, on **walk-in** bills, by a manager (`canRefund`) or the approval/PIN-override path, with a reason (`REASON_REQUIRED` otherwise) — audit `after.cardShareToCash` + reason. Member bill ⇒ `REFUND_METHOD_INVALID` "คืนเป็นเครดิตร้าน". RC1 + V4/V6/V7 edit. |
+| H3/F3 Med merged-away credit | 4 | 55a46fa7 | `giftcard/service.ts mergeTargetOf`: STORE_CREDIT card with no owner ⇒ follow the `ADJUST refType MERGE` (refId = keeper card, ≤ 5 hops); `refundTenderUse` (void) and `refundToCard` credit the keeper (both rows locked, sorted). `issueStoreCredit` re-reads `Customer.status` under the card lock (MERGED ⇒ refused, tx rolls back). MG1 MG2. |
+| H4/F2 Low void onto EXPIRED card | 5 | 55a46fa7 (same function as H3) | `refundTenderUse`: target EXPIRED or past `expiresAt` ⇒ REFUND then EXPIRE same satang (key `giftcard-refund-expire-<USE>`, status EXPIRED) + `postRestoreExpire` → `postGiftCardExpire` (Dr 2110 / Cr 4900) when `accountingLink` + `accountingDocId` (same gate as `expireDue`; retried on the replay path, idempotent). C5: balance 0, REFUND 40 + EXPIRE 40, 1 JV, 2110 net 0. Owner line: expiry-at-void policy. |
+| H5 Med tip ledger archived ⇒ dead-letter | 6 | 80503d91 | `pos/service.ts`: tip > 0 ⇒ `tipLedgerOk` (exported from payment-settings) re-checked in the sale tx ⇒ VALIDATION, no bill. `account/coa.ts` (approved exception, marked, 8 lines): `archiveLedger` and `updateLedger` (type away from LIABILITY) refuse a ledger referenced by `AppSystem(POS).settings.pos.tip.ledgerAccountId` (read-only lookup). T6. |
+| F4 Low SC accepts gift-card ops | 7 | 5cc13810 | `loadByNumber` refuses kind STORE_CREDIT (NOT_FOUND) ⇒ reload/suspend/unsuspend/transfer/legacy use; `list` rows + KPI (sold/used/outstanding) filter kind GIFT; `listForCustomer` DTO + `kind` (SC masked `SC-••••`). S5. |
+| H6 Low PIN-less replay (S part) | 8 | c5f2d1ba | `register.ts regParseSubmit`: GIFT_CARD `giftCard` without `pin` accepted; `submitRegisterSale` returns the existing bill for a committed key (duplicate lookup comes first), otherwise VALIDATION "ใส่ PIN…" before any write. P2.9U contract line: `savePending` strips `giftCard.pin`. G10. |
+| owner lines + U contract | 3 5 6 · CD1b | 3d6d1789 | pool connection (F5) · expiry-at-void policy · CD1b reload with link off · coa tip-ledger exception · P2.9U lines (strip PIN, `kind` on giftCards, refund caps). |
+Upstream `origin/session/pos` bffa77e2 merged (ledger only) → **2612ee53**.
+
+### Gates — fix round 1
+All logs headed `tree=/root/projects/shark-pos-b head=2612ee53 dirty=0` (scratch `p29/gates-fix1/*.out`, 14 Oct 18:44–19:2xZ).
+| gate | tree= head= | result |
+|---|---|---|
+| typecheck (pos-gate.lock · 5632/6500M) | shark-pos-b 2612ee53 | rc 0 |
+| fitness no-env / env (qc4) | shark-pos-b 2612ee53 | 50/50 · 50/50 |
+| fitness-pos | shark-pos-b 2612ee53 | 8/8 |
+| qc-pos-p2.9 forced ×2 / unforced | shark-pos-b 2612ee53 | **57/57 · 57/57 · 57/57** (residue 0) |
+| qc-hf-tx | shark-pos-b 2612ee53 | 22/22 |
+| qc-pos-p1.6 | shark-pos-b 2612ee53 | 48/48 |
+| qc-pos-p1.8 | shark-pos-b 2612ee53 | 49/49 |
+| qc-pos-p1.12 | shark-pos-b 2612ee53 | 72/72 |
+| qc-pos-p1.3 | shark-pos-b 2612ee53 | 128/128 |
+| qc-pos-p1.1 | shark-pos-b 2612ee53 | 180/180 |
+| qc-pos-account | shark-pos-b 2612ee53 | 16/16 |
+| qc-account-cpa (account hunk) | shark-pos-b 2612ee53 | 107/107 |
+| qc-pos-p1.7 | shark-pos-b 2612ee53 | 33/33 |
+| qc-hf-pos-page-authz | shark-pos-b 2612ee53 | 81/81 |
+| qc-pos-p2.8 | shark-pos-b 2612ee53 | 59/61 — ST6 + L2 wip-only (merge-base sha accepted ⇒ green once merged) |
