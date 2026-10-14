@@ -1308,7 +1308,10 @@ export function PayDialog(p: Props) {
                           }`}
                           type="button"
                           disabled={busy || !!gcRowFor}
-                          onClick={() => setGc((g) => ({ ...g, target: "amount" }))}
+                          onClick={() => {
+                            setPadTip(false);
+                            setGc((g) => ({ ...g, target: "amount" }));
+                          }}
                         >
                           <span className="min-w-0 truncate">{t("pay.gc.amount")}</span>
                           <span className="text-[22px] font-bold tabular-nums text-[color:var(--color-ink)]">{gcRowFor || gc.amount === null ? hundredthsText(gcAmount) : gc.amount || "0"}</span>
@@ -1342,7 +1345,10 @@ export function PayDialog(p: Props) {
                             defaultValue=""
                             disabled={busy}
                             aria-describedby="pos-gc-pin-hint"
-                            onFocus={() => setGc((g) => (g.target === "pin" ? g : { ...g, target: "pin" }))}
+                            onFocus={() => {
+                              setPadTip(false);
+                              setGc((g) => (g.target === "pin" ? g : { ...g, target: "pin" }));
+                            }}
                             onChange={(e) => {
                               const d = e.target.value.replace(/\D/g, "").slice(0, GIFT_CARD_PIN_MAX);
                               if (d !== e.target.value) e.target.value = d;
