@@ -917,7 +917,11 @@ async function runDb() {
       const su = await call(gcMod, "suspend", gctx, owner, { number: scNumber, reason: "QC S5" });
       if (su?.ok !== false) p.push(`suspend SC → ${codeOf(su)}`);
       const c = (await scCard(X))[0];
-      if (c?.balanceSatang !== b0 || c?.status !== "ACTIVE") p.push(`เครดิต ${b0}→${c?.balanceSatang}/${c?.status}`);
+      if (c?.balanceSatang !== b0 || c?.status !== "ACTIVE") {
+        p.push(`เครดิต ${b0}→${c?.balanceSatang}/${c?.status}`);
+        // คืนสภาพ (กันข้อถัดไปพังตาม — เฉพาะเมื่อโค้ดยังรับ SC เป็นบัตรกำนัล)
+        if (c?.id) await P.giftCard.update({ where: { id: c.id }, data: { balanceSatang: Number(b0), status: "ACTIVE" } });
+      }
       const ls = await call(gcMod, "list", gctx, { take: 200 });
       if (ls?.ok === false || (ls?.rows ?? []).some((r: Any) => String(r.number).startsWith("SC-"))) p.push(`list ${codeOf(ls)} มีเลข SC`);
       const giftBal = sum(((await P.$queryRawUnsafe(`SELECT "balanceSatang" AS b FROM "GiftCard" WHERE "tenantId" = $1 AND "systemId" = $2 AND status::text = 'ACTIVE' AND kind::text = 'GIFT'`, T, S.MEM)) as Any[]).map((r) => Number(r.b)));
