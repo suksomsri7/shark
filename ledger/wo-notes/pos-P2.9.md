@@ -381,3 +381,25 @@ All logs headed `tree=/root/projects/shark-pos-b head=1d6d3abb dirty=0` (scratch
 | qc-pos-account / qc-account-cpa | shark-pos-b 1d6d3abb | 16/16 · 107/107 |
 | qc-pos-p1.7 / qc-hf-pos-page-authz | shark-pos-b 1d6d3abb | 33/33 · 81/81 |
 | qc-pos-p2.8 | shark-pos-b 1d6d3abb | 59/61 — ST6 + L2 wip-only (merge-base accepted) |
+
+## Fix round 3 (R3 MERGEABLE · hunter final N4 N5 Low, 14 Oct)
+Oracle first: `c1f2e64d` (ORACLE-ADD G12 · MG3, dated `ผู้คุม 14 ต.ค. (fix 3)`) · 60 → **62**. Red-before block 5 (`b6a84df1`, fix-2 code): **60/62** — red G12 (same key + other card served the first bill) and MG3 (credit landed on the just-orphaned keeper K: K 30000, W 15000).
+
+| finding | commit | change |
+|---|---|---|
+| N4 same key, different gift card | e93a05a8 | `pos/service.ts samePayload` + `register.ts regSameSubmission`: GIFT_CARD rows compare the normalised card number too (stored rows: `giftCardId` → number via member facade `giftCardNumbersByIds` → giftcard `tenderCardNumbers`, server-side only; `regLoadSale` adds `payments[].giftCardNumber`) ⇒ a different card on a committed key = `IDEMPOTENCY_CONFLICT`; the PIN pre-check sees the existing bill and never touches the other card. G12 (register + createSale, card Y balance/counter/txns unchanged). |
+| N5 keeper merged again while the void waits | e65d3ef7 | `giftcard/service.ts lockMergeTarget`: after the old card is locked, resolve → lock → re-resolve from the locked card until stable (≤ 5 hops, each new target locked); used by `refundTenderUse` and `refundToCard`. MG3: a third tx holds K, the void waits on K, the tx folds K → W and commits ⇒ W +300, K 0, REFUND on W. |
+Upstream `origin/session/pos` merged (ledger only) → **cd1e93f3**.
+
+### Gates — fix round 3
+All logs headed `tree=/root/projects/shark-pos-b head=cd1e93f3 dirty=0` (scratch `p29/gates-fix3/*.out`).
+| gate | result |
+|---|---|
+| typecheck | rc 0 |
+| fitness no-env / env | 50/50 · 50/50 |
+| fitness-pos | 8/8 |
+| qc-pos-p2.9 forced ×2 / unforced | **62/62 · 62/62 · 62/62** (residue 0) |
+| qc-hf-tx | 22/22 |
+| qc-pos-p1.3 / p1.1 / p1.6 | 128/128 · 180/180 · 48/48 |
+| qc-pos-account | 16/16 |
+| qc-pos-p2.8 | 59/61 — ST6 + L2 wip-only (merge-base accepted) |
