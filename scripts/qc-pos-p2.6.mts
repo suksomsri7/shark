@@ -1572,7 +1572,8 @@ async function runDb() {
     const tbl = (fn: string, ...args: unknown[]) => call(tableMod, fn, ...args);
     const op = await tbl("registerOpenTable", ctxA(), A("OWNER"), { tableId: TB.A3, guestCount: 2 });
     const sid = String(op?.sessionId ?? "");
-    const h = await call(heldMod, "holdRegisterCart", ctxA(DEV1), A("OWNER"), { cart: { lines: [ln("kaprao", 1)] }, tableSessionId: sid });
+    // ORACLE-EDIT ผู้คุม 14 ต.ค. (P2.6 S · CD 1 · drift จาก P2.4 S fix 3 N1): โหมดโต๊ะต้องระบุร่าง → newDraft:true (assertion เดิมทุกข้อ)
+    const h = await call(heldMod, "holdRegisterCart", ctxA(DEV1), A("OWNER"), { cart: { lines: [ln("kaprao", 1)] }, tableSessionId: sid, newDraft: true });
     const send = await tbl("registerSendTableRound", ctxA(DEV1), A("OWNER"), { tableSessionId: sid, heldCartId: String(h?.heldCart?.id ?? "") });
     if (send?.ok !== true) p.push(`ส่งรอบโต๊ะ → ${codeOf(send)} ${short(send?.message ?? "", 60)}`);
     else {
