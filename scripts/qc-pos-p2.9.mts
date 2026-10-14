@@ -1044,7 +1044,10 @@ async function runDb() {
       box.ps = starts.map((s) => settle(s()));
       const t0 = Date.now();
       while (Date.now() - t0 < 20_000) {
-        const n = Number(((await P.$queryRawUnsafe(`SELECT count(*)::int AS n FROM pg_stat_activity WHERE $1::int = ANY(pg_blocking_pids(pid))`, pid)) as Any[])[0].n);
+        // ผู้รอชั้นที่ 2 (รอผู้รอคนแรกที่ถือคิวล็อกแถว) นับด้วย — pg_blocking_pids ของเขาคือผู้รอคนแรก ไม่ใช่ A
+        const n = Number(((await P.$queryRawUnsafe(
+          `WITH w1 AS (SELECT pid FROM pg_stat_activity WHERE $1::int = ANY(pg_blocking_pids(pid)))
+           SELECT count(*)::int AS n FROM pg_stat_activity WHERE pid IN (SELECT pid FROM w1) OR pg_blocking_pids(pid) && ARRAY(SELECT pid FROM w1)`, pid)) as Any[])[0].n);
         blocked = Math.max(blocked, n);
         if (blocked >= minWaiters && Date.now() - t0 >= 800) break;
         await sleep(150);
@@ -1299,7 +1302,7 @@ async function runDb() {
       const pays = rc?.receipt?.payments ?? rc?.payload?.payments ?? rc?.payments;
       const c = cardOf(pays, "GIFT_CARD");
       if (c?.kind !== "GIFT" || c?.numberMasked !== `GC-••••${GC.A.number.slice(-4)}` || c?.balanceAfterSatang !== 17_500) p.push(`ใบเสร็จ ${codeOf(rc)} ${short(c ?? pays, 160)}`);
-      const bd = await call(billsMod, "billDetail", ctxOf("A"), owner, { saleId: g2Sale });
+      const bd = await call(billsMod, "billDetail", ctxOf("A"), owner, { saleId: g2Sale, unitId: U.A });
       const bc = cardOf(bd?.bill?.payments ?? bd?.payments, "GIFT_CARD");
       if (bc?.kind !== "GIFT" || bc?.balanceAfterSatang !== 17_500) p.push(`billDetail ${codeOf(bd)} ${short(bc, 100)}`);
     }
