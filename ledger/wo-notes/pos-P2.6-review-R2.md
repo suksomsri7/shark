@@ -1,0 +1,47 @@
+# P2.6 S review R2: fix round 1, `wip/pos-p2.6` 2b781ea0 (code 7d5339c8)
+**Verdict: MERGEABLE-AFTER-FIXES.** The fixes for R1 F1–F4 and hunter H1/H3/H5/H6 are correct, the oracle diff is clean and the gates match the logs. One Medium remains: the heal guard (G1 = Q1). It is a one-line fix. G2 is also a one-liner and should ride with it.
+
+## Findings
+- **G1 (Medium) Q1 confirmed: the H4 heal guard switches heal off for counted MENU items.** `MenuItem.updatedAt` is `@updatedAt` (`restaurant.prisma` MenuItem). The floor consume writes the row with `tx.menuItem.update` (`catalog-legacy.ts:233`), so Prisma bumps `updatedAt` on every ticket. Legacy `consumeMenuStock` (`updateMany`, `:327`), 86/release and menu edits bump it too. The heal guard is `m."updatedAt" <= s."createdAt"` (`kds.ts:304`). Input: sale S with ข้าวมันไก่ (counted). `ticketForSale` fails for S, either from an error or a residual 40P01 (see G3), and the competing transaction is by definition one that touched the same MenuItem. Any later ticket or QR order for that item then pushes `updatedAt` past S. Heal skips S forever: a paid order never reaches the kitchen, with no signal. Smallest fix: in the MENU branch, replace `m."updatedAt" <= s."createdAt"` with `m."createdAt" <= s."createdAt"`. `MenuItem.stationId` is required, so a MENU product is always routed once its MenuItem exists; the ghost case is only "MenuItem or station created after the sale", and that is covered by `m.createdAt` plus `k.createdAt`. Keep the non-MENU branch as is (`kds.ts:309`); no sale path writes `PosProduct` (grep of service/register/order/inventory: none). **K12 stays green**: it uses เมล็ดกาแฟ (non-MENU, `qc-pos-p2.6` K12). K9 stays green. Residual risk: a station moved or un-archived after the sale can give a ghost ticket for ≤ 12 h. Accept that and add an owner line.
+- **G2 (Low) After a legacy release, the daily reset re-86s the item.** `setMenuItemStock({isOutOfStock:false})` (legacy restaurant menu page) does not delete the KDS/MANUAL mark. `resetMenuItemDailyStock` then writes `isOutOfStock: keep86` unconditionally (`catalog-legacy.ts:197-198`). Input: the cook 86s ผัดไทย on KDS; the manager releases it on the legacy page. Next morning's reset sets it sold out again and emits a MANUAL `false` event, and this repeats every day until someone releases it in the KDS sheet. Smallest fix: `isOutOfStock: keep86 && !!was?.isOutOfStock`. Better still, also make `setMenuItemStock` delete the (unit, product) mark when it sets `isOutOfStock:false`; catalog-legacy is a permitted mark writer. A10 stays green (OOS is still true at reset).
+- **G3 (Low, inventory note)** The builder's follow-up "legacy `advanceItem` item → round = opposite order" is not a deadlock: `advanceItem` and `maybeCompleteOrder` are autocommit statements with no transaction (`restaurant/kds.ts:37-81`), so they hold one lock at a time and the worst case is a short wait. Two real residual 40P01 cycles remain, both Low, legacy-only and covered by owner lines (fixing them in S would touch pinned legacy files):
+  - (a) Legacy `cancelOrderItem` (`$transaction`: MenuItem restore → ROI update, `restaurant/order.ts:452-476`) against `kitchenCancelInTx` (round → ROI FOR UPDATE → MenuItem, `kitchen.ts:336-340` + restore). This happens only when the legacy page cancels an item of a register/online round while the void/cancel consumer runs. The consumer loses and retries silently; the legacy user sees an error.
+  - (b) Legacy `writeOrderTx` locks counted MenuItems in cart order, while `createKitchenRoundInTx` locks them sorted by id (`kitchen.ts:119`). With 2+ counted items in opposite order this can still deadlock. Legacy-vs-legacy already has the same cycle.
+
+  The victim sees: register → heal (blocked by G1 until it is fixed) · accept/table/QR → error, user retries. Recommendation: Low plus an owner-line sentence; no S fix.
+- **G4 (Nit)** `lockRoundInTx` uses `FOR UPDATE` (`kitchen.ts:300`). `FOR NO KEY UPDATE` gives the same serialisation of round writers without blocking FK `KEY SHARE` from inserts or updates that reference the round. Plain readers (board, legacy pages) are not blocked either way.
+
+## Q1
+**Confirmed** (G1): the `@updatedAt` column plus the consume's `update` makes popular counted items un-healable within the 12 h window. Fix: use `m.createdAt` in the MENU branch. K12 remains green because it exercises the non-MENU branch.
+
+## Oracle diff (2e6328db..7d5339c8 -- scripts/)
+Exactly as expected: p2.6 ORACLE-ADD K10, K11 (+ served variant), K12, V3, A10, A11 + ROI_FIELDS `stockTaken`, all with dated markers · p2.4 ROI_FIELDS `stockTaken` (dated) · p1.1 S2.43 own-row cleanup (dated, CD 3) · p2.8 = HF-PP2 P10 (blob `d19d304c` is identical to 44ee7f4c). Nothing else changed.
+
+Determinism:
+- **K10** is deterministic on the fixed code: a third transaction holds the counter, the ticket transaction already holds MenuItem, and legacy waits on MenuItem, so no cycle is possible.
+- **K11** is deterministic: the round lock serialises the two moves, and the second sees the first commit.
+- On the old code both are timing-ordered (600/800 ms sleeps). That is acceptable; red2 showed both red.
+- **A11**: a static probe plus a must-stay-1 race guard is acceptable for a lock-order assertion. Postgres wake order is not FIFO.
+- **red2** header: `head=beed468d dirty=2 (src/ at 2e6328db)` → 51/57, with exactly K10, K11, K12, V3, A10, A11 red, so it really ran on the unchanged `src/`.
+
+## Verified OK
+1. Lock orders: round creation MenuItem (sorted) → counter (`kitchen.ts:119-121`), consistent with `writeOrderTx` (`order.ts:229` → `:241`) for single items. `kitchenMoveInTx` round → ROI → PosOrder (`kitchen.ts:280`, `kds.ts:387-393`). `kitchenCancelInTx` round → ROI → MenuItem (`kitchen.ts:336-340`, `kds.ts:635`). `setAvailability` PosProduct → MenuItem. Accept: PosOrder → MenuItem → counter. The floor consume never locks PosProduct (`emitMenuFlip` uses a plain `findFirst`). Table claim takes ROI only. The only residual 40P01s are G3 (a) and (b).
+2. H3 walk: A locks the round, sets station 1 READY, reads fresh (station 2 COOKING), so PosOrder stays PREPARING; A commits. B was blocked at `lockRoundInTx`; it then sets station 2 READY, reads both READY, and does PosOrder FOR UPDATE → READY. Result: 1 `pos.order.ready#id` and 1 PosOrderEvent. `settleRoundStatus` (`:305`) reads after the lock, so a concurrent serve now gives COMPLETED. Readers are not blocked.
+3. H1: taken = `max(stock,0) − left` (`catalog-legacy.ts:232`), so stock 1 with qty 3 gives stockTaken 1. Restore gives back `stockTaken` only, null ⇒ 0 (`kds.ts:635`). The split across items works (`kitchen.ts:355-367`). Legacy/table paths still use `restoreMenuStock` full qty (consumption there is all-or-nothing); p2.4 50/50. The migration is additive with `IF NOT EXISTS` and lock_timeout 3s; schema `stockTaken Int?`; notes record "applied on QC4".
+4. H5: `heldBy86Mark` checks KDS/MANUAL only (`:244`). No STOCK marks are ever written (deviation 2), so a reset with no manual mark brings the item back. Only setAvailability(true) clears a mark (except G2).
+5. H6: `catalog.ts:1029` takes MenuItem FOR UPDATE before the read, giving PosProduct → MenuItem. The consume path is MenuItem → counter and never locks PosProduct, so there is no cycle.
+6. See G1/Q1.
+7. F4: `kds.ts:236` checks stations before reading the sale or opening a transaction; the reason is `NO_STATIONS` with the same result shape; units that have stations are unchanged.
+8. F5 deferral: agreed. B6 back-dates a round to yesterday (`qc-pos-p2.6:1782`), and T4/T5 expect today's rounds only (`:1873-1874`), so including yesterday turns T5 red. The P2.6U contract line and the owner line are present.
+9. Covered in the oracle diff section above.
+10. CD 3 deletes only `tenantId = rsT`, `type = pos.product.availability`, `createdAt ≥ s243At` rows. POS gates are serialised by the gate lock, and clock skew can only under-delete, which shows up as R.1 red and never as a wrong deletion. p1.1 180/180 ×2.
+11. Merge hygiene: `qc-pos-p2.8` matches 44ee7f4c byte for byte. HF-PP2 hunks are intact (`order.ts` payOrder gate + imports, `register.ts:470/:685`). Against 44ee7f4c, the only removed lines are P2.6 replacements. `register.ts:2460` comes after `afterSaleCommitted` (`:2458`); `:2805` comes after the createSale-owned transaction. Both sections of `POS-OWNER-PENDING` are present.
+12. All logs start with `head=1b177a45 dirty=0`; 1b177a45..2b781ea0 adds ledger only. p2.6 57/57 ×3 (PAR 5/5, residue 0) · p1.1 180 ×2 · p2.4 50 · p2.8 60/61 (ST6 only) · hf-tx 18 · p2.3 46 · p1.3 128 · p1.6 48 · p1.10 40 · p1.18 81 · restaurant 4 suites green · products 24 · authz 71 · fitness 50/50 ±env · fitness-pos 8 · typecheck 0. Log filenames have a stray leading `-` (cosmetic).
+13. R1 status: **F1 closed** (residual G3b) · **F2 closed** (H3) · **F3 closed** (H1 `stockTaken`) · **F4 closed** · **F5 open by ruling** (P2.6U plus owner line). Owner lines 597ec99a are present and accurate (deviation 6 web shop, legacy writers, held-NEW, midnight). The legacy line does not mention the G3a deadlock.
+
+## Follow-ups
+- **Fix round 2** (light gates: p2.6 ×2 + typecheck + p1.1 S2.43): G1, G2, and optionally G4.
+- **P2.6U:** F5 (ORACLE-EDIT T5) · held-by-kitchen badge · legacy-board banner.
+- **P2.11:** sweeper for held-NEW orders.
+- **Owner:** one sentence for G3a, plus the G1 residual (station moved after the sale).
+- **Controller:** re-run p2.8 on session/pos after merge (must be 61/61).

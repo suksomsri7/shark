@@ -1059,7 +1059,14 @@ const baseConsumers: Record<string, OutboxHandler> = {
   // แล้ว — consumer นี้ทำงานจริง 1 อย่าง: **เขียนไทม์ไลน์ของเจ้าของบัตร** (บัตรที่ยังไม่มีเจ้าของในระบบ
   // = ไม่มีใครให้บันทึก จบเงียบ ๆ) + ปิด event เป็น DONE + เป็นจุดให้กฎอัตโนมัติ/เว็บฮุคยิงต่อ
   // M3.7 — ตัวเขียนย้ายไปสะพาน (recordOnce: ขาย = 1 แถวต่อบัตร · ใช้ = 1 แถวต่อการใช้ครั้งนั้น — replay ไม่ซ้ำ)
-  "giftcard.sold": withAutomation(memberBridge("onLoyaltyEvent")),
+  // POS HF-GC ▸ + ขั้นเสริมหลังไทม์ไลน์ (ไม่ใช่ขั้นแรก): ตาข่ายหนี้สิน 2110 — พังหลัง commit ขาย = ลงให้ที่นี่ · idempotent (ตัวช่วยเดียว)
+  //   · payload.accountingLink ≠ true (ขายตอนสวิตช์ปิด/แถวเก่า) = ไม่ลงย้อนหลัง · ล้ม = WARN ตามสัญญา compose ◂
+  "giftcard.sold": withAutomation(compose(memberBridge("onLoyaltyEvent"), async (evt) => {
+    const p = evt.payload as { giftCardId?: unknown; accountingLink?: unknown } | null;
+    if (!p || typeof p.giftCardId !== "string" || p.accountingLink !== true) return;
+    const gc = await import("@/lib/modules/giftcard");
+    await gc.ensureGiftCardSalePosted(evt.tenantId, p.giftCardId, { accountingLink: true });
+  })),
   "giftcard.used": withAutomation(memberBridge("onLoyaltyEvent")),
   // ── สแตมป์การ์ด (M2.3 · §7.1) ──
   // 🔴 no-op เหมือนกลุ่มแต้ม/สมาชิก: ใบสะสม · รายการตรา · รางวัล (แต้ม) ถูกเขียนครบใน transaction

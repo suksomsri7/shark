@@ -56,3 +56,56 @@ Fix: legacy file pinned (L1/ST4), so record it as an owner line for the P2.6U le
 - ร้านอาหาร: an order held at NEW by pause or the backlog cap is never auto-accepted after unpause or when the backlog drains. Staff must accept it on 09, and there is no sweeper. Consider a "held by kitchen" badge or sweeper in P2.6U.
 - คลัง: H1 and H5 change sellable counts that online channels read. Fix them before channels go live.
 - P2.7: QR and legacy hot-path auto-86 still emit no event. H2's lock order must be kept when QR moves off the hot path. Adapter errors are swallowed with no retry, so P3 needs a per-channel retry/outbox.
+
+
+---
+
+## Re-check (account B, 14 Oct 13:3xZ) — head 2b781ea0 / code 7d5339c8
+
+# P2.6 S HUNT RE-CHECK (money/stock) · tree c @ 2b781ea0 (code 7d5339c8) · read-only
+**Verdict: FINDINGS.** 2 Medium (N1, N2) and 2 Low (N3, N4). The H3 and H6 fixes are clean. H4's fix swaps ghost tickets for lost tickets (N2). H5 is still open through the live P2.4 table-cancel path (N1). Paths: `kit.ts`=restaurant/kitchen.ts · `kds.ts`=pos/kds.ts · `leg.ts`=pos/catalog-legacy.ts · `cat.ts`=pos/catalog.ts · `ptb.ts`=restaurant/pos-tables.ts · `rord.ts`=restaurant/order.ts
+
+| H | status | fix (file:line @7d5339c8) · input that still breaks it |
+|---|---|---|
+| H1 restore > taken | **closed** (P2.6 paths) | Consume returns `taken` (`leg.ts:232`). It is spread over items in creation order (`kit.ts` kitchenSetStockTakenInTx), and cancel restores only `stockTaken` (`kds.ts:634-635`). One residual is owner-lined (POS-OWNER-PENDING:133): legacy `cancelOrderItem` on a P2.6 round item still restores the full qty. |
+| H2 deadlock counter↔MenuItem | **closed** for single-menu rounds | Counted MenuItems are locked sorted before the counter (`kit.ts:117-119`). See N3 for the multi-menu residual. |
+| H3 stale allReady | **closed** | The round row is locked first in `kitchenMoveInTx` and `kitchenCancelInTx` (`kit.ts:280`, `kit.ts:336`). Order is round → items → PosOrder. Legacy advanceItem/maybeComplete are autocommit (no multi-lock tx), and P2.4 claim/unlink/cancel lock items only. No new cycle (K11). |
+| H4 ghost heal | **closed, but over-corrected** (see N2) | `kds.ts:302-309` routing `updatedAt ≤ sale.createdAt` |
+| H5 restore un-86s a mark | **partial** | Void restore and daily reset keep 86 (`leg.ts:261`, `leg.ts:198`). P2.4 table cancel and legacy setItemStock still clear it (N1). |
+| H6 double flip | **closed** | MenuItem `FOR UPDATE` after PosProduct (`cat.ts:1029`). The race is kept as a guard. Residual: legacy `setMenuItemStock` without dailyStockQty still reads `was` unlocked. |
+| H7 legacy advanceItem overwrite | **open, accepted** | Owner line 133 (pinned file). |
+
+**N1 Medium · a KDS/MANUAL 86 is undone by a P2.4 table-mode cancel (a live register path) and by legacy writers. The mark stays.**
+- `cancelTableItemInTx` (`ptb.ts:382-383`, from `pos/table.ts:473`) calls hot-path `restoreMenuStock`, which sets `isOutOfStock:false` unconditionally (`leg.ts:328-329`).
+- Legacy `cancelOrderItem` and legacy `setItemStock({isOutOfStock:false})` do the same.
+
+Input: the cook 86s pad thai (KDS mark, counter 5 or 0). A waiter cancels a NEW pad thai on table 3 in register table mode. Result: stock +1 and isOutOfStock false, so pad thai sells again on register, QR and web. `board.eightySix` still shows the KDS mark, and no flip event is emitted, so the channels keep their stale state.
+Smallest fix: in `cancelTableItemInTx` (P2.4 file, marked hunk) re-apply `isOutOfStock:true` after the restore when `heldBy86Mark` is true (export it). Have `setMenuItemStock(isOutOfStock:false)` delete the mark, or refuse while a mark exists.
+ORACLE-ADD A12: KDS 86, then table-mode cancel of a NEW item → availabilityFor false.
+
+**N2 Medium · the heal guard is blind for any dish touched after the sale, so a paid line can silently never reach the kitchen.** The guard is `m."updatedAt" <= s."createdAt"` and `p."updatedAt" <= s."createdAt"` (`kds.ts:304`, `kds.ts:309`).
+- `MenuItem.updatedAt` is `@updatedAt`, so it is bumped by every later floor consume (`leg.ts:233`), every legacy `consumeMenuStock` updateMany, `setAvailability`, and legacy stock/86 edits.
+- `PosProduct.updatedAt` is bumped by the availability SQL (`cat.ts` `"updatedAt" = now()`), price and name edits, and sync.
+
+Input: sale S of kaprao, and `ticketForSale` returns ERROR (a transient DB error, a pool timeout, a residual 40P01 from N3, or a crash after createSale commits). Any later kaprao sale or table round then bumps `MenuItem.updatedAt` past `S.createdAt`, so heal never selects S. The customer has paid and no ticket exists. Nothing logs it except the one `console.error`.
+Smallest fix: judge routing time, not the row's write time. Either:
+- have `ticketForSale` record an evaluated-negative marker (e.g. `PosKitchenSkip{saleId, reason NO_STATIONS|NO_KITCHEN_LINES}`, written by pos) and heal = no round AND no skip row (drop the `updatedAt` terms), or
+- add `stationSetAt` columns, written only when stationId changes.
+
+ORACLE-ADD K13: make ticketForSale fail for sale S (delete its round as in K9), sell the same counted dish once more, then read the board → S gets 1 round.
+
+**N3 Low · multi-menu lock-order residual of H2.** Ours locks MenuItems sorted by id (`kit.ts:119`). Legacy `writeOrderTx` locks them in cart order (`rord.ts:225-229`).
+Input: a ticket with tracked [A,B] while a table round sends [B,A]. Legacy holds B, ours holds A and waits for B, legacy waits for A: 40P01. Losing the ticket side feeds N2. K10 only exercises one menu.
+Fix: sort `byItem` in `writeOrderTx`. Hot-path order is frozen by S2.42, so this needs an owner line or controller ruling. Or accept it once N2 is fixed, since heal then recovers.
+
+**N4 Low · recall re-opens cooking for a voided bill.** After a void, the SERVED items remain and the round is COMPLETED. `kdsRecall` (from SERVED to COOKING, `kds.ts` moveTicket, with no check of the round's cancel cause) puts the voided sale's dish back on the board. The kitchen cooks an unpaid line. Fix: refuse recall when any item of the round has `cancelReason = KDS_CANCEL_REASON_SALE/ORDER` (TICKET_NOT_FOUND).
+
+## Walked clean
+- **stockTaken null** means 0 restored (`kds.ts:635`): this covers untracked menus and pre-column rounds (QC only; P2.6 has never been in prod). Legacy table rounds are never on the posSaleId/posOrderId cancel path.
+- **No double restore:**
+  - Cancel-then-void removes the line from the NEW/COOKING/READY set, so it is not restored again.
+  - Order-cancel plus PLATFORM-sale void: the sale has no posSaleId round, so there is no second restore.
+  - Replays ×2 cancel nothing.
+- **F1 lock vs setAvailability:** PosProduct → MenuItem against MenuItem → counter has no cycle. `emitMenuFlip` reads PosProduct without a lock.
+- **F4 NO_STATIONS** returns before the sale read. A unit without stations correctly gets no ticket.
+- **No ticket without payment or accept:** a register round needs PAID under FOR SHARE, and an online round is created only in the accept xid. Money on items stays 0 and saleId null, and slips carry no money.

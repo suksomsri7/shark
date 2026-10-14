@@ -1,0 +1,37 @@
+# HF-GC fix 1 (review F1) red-before — qc-hf-tx on code 566349a7 + HT2.7 (c2)
+tree=/root/projects/shark-pos-b head=566349a7 (code 566349a7 + HT2.7(c2) oracle, uncommitted) 2026-10-14T13:26:53Z
+── qc-hf-tx · [static] ──
+  ✅ [HT6.1] [static] createSale/regCreateSale ที่ส่ง client: prisma/PrismaClient หรือ callerTx(…) เท่านั้น — ครบ 7 จุด: giftcard/service.ts:492 createSale(…, callerTx(tx)) · giftcard/service.ts:768 createSale(…, callerTx(tx)) · pos/order.ts:440 createSale(…, callerTx(tx)) · pos/register.ts:2400 createSale(…, client) · pos/register.ts:2447 regCreateSale(…, callerTx(tx)) · pos/register.ts:2532 regCreateSale(…, callerTx(tx)) · pos/register.ts:2796 regCreateSale(…, db)
+  ✅ [HT6.2] [static] ไม่มี Proxy ซ่อน $transaction นอก core/caller-tx.ts (regCallerTx/flatTx หาย) — ไม่มี (มีแค่ core/caller-tx.ts)
+  ✅ [HT6.3] [static] core/caller-tx.ts บริสุทธิ์ (ไม่มี import) + export callerTx · service.ts export afterSaleCommitted · facade ส่งออก — บริสุทธิ์ · export ครบ
+  ✅ [HT6.4] [static] ทะเบียนผู้เรียก createSale (qc-pos-p1.6 U4) ไม่เปลี่ยน — 19 จุด/16 ไฟล์ ตรงทะเบียน
+  ✅ [HT7] [static] helper `"$transaction" in` นอกขอบเขต ถูกจดใน POS-OWNER-PENDING.md (HF-TX · HT7) ครบ/ตรงจำนวน — ตรง 7 ไฟล์ 9 จุด
+[env] qc-hf-tx · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4)
+
+To prepare for this change:
+
+── HT2 บัตรกำนัล sell + reload ──
+  ✅ [HT2.1] บัตรกำนัล sell: PosSale/Line/Payment xmin = GiftCard/GiftCardTxn xmin · giftCardId ตั้งแล้ว — xmin {"PosSale":["5549282"],"PosSaleLine":["5549282"],"PosPayment":["5549282"],"GiftCard":["5549282"],"GiftCardTxn":["5549282"]} · giftCardId ตั้งแล้ว
+  ✅ [HT2.2] บัตรกำนัล sell: pos.sale.paid 1 แถว → DONE (ระบายหลัง commit) — pos.sale.paid 1 แถว · DONE/0
+  ✅ [HT2.3] บัตรกำนัล reload: PosSale/Line/Payment xmin = GiftCard/GiftCardTxn xmin · giftCardId ตั้งแล้ว — xmin {"PosSale":["5549287"],"PosSaleLine":["5549287"],"PosPayment":["5549287"],"GiftCard":["5549287"],"GiftCardTxn":["5549287"]} · giftCardId ตั้งแล้ว
+  ✅ [HT2.4] บัตรกำนัล reload: pos.sale.paid 1 แถว → DONE (ระบายหลัง commit) — pos.sale.paid 1 แถว · DONE/0
+  ✅ [HT2.5] บัตรกำนัล sell พร้อมกัน 2 คำขอคีย์เดียว ⇒ GiftCard 1 · PosSale 1 · SELL 1 · ผลที่เล่นซ้ำ pin null — สำเร็จ 2/2 · GiftCard +1 · PosSale 1 · SELL 1 · บัตร/บิลเดียวกัน ใช่ · pin set/null · ธงบิล ตรง
+── HT4 positive control ──
+  ✅ [HT4] positive control: หน้าขายเงินสด xmin เดียว + OUT 1 — xmin 5549296 · OUT -1 · onHand 100→99 · อ่าน cash:found
+── HT1 ทางใบขอรับเงิน (P1.7) ──
+  ✅ [HT1.1] ทางใบขอรับเงิน: PosSale/PosSaleLine/PosPayment/PosPaymentIntent xmin เดียว — xmin {"PosSale":["5549302"],"PosSaleLine":["5549302"],"PosPayment":["5549302"],"PosPaymentIntent":["5549302"]} · intent CONSUMED
+  ✅ [HT1.2] ทางใบขอรับเงิน: OUT 1 แถว (−1) · onHand −1 — OUT -1 · onHand 99→98
+  ✅ [HT1.3] ทางใบขอรับเงิน: pos.sale.paid 1 แถว — pos.sale.paid 1 แถว · DONE/0
+  ✅ [HT1.4] ทางใบขอรับเงิน: ไม่มีการอ่านบิลก่อน commit (ไม่มี found:false) · มีอ่านหลัง commit — อ่าน intent:found
+── HT3 สัญญา callerTx ──
+  ✅ [HT3.1] callerTx + ผู้เรียก rollback ⇒ บิล 0 แถว · OUT 0 — ผู้เรียก throw "HFTX_ROLLBACK" · บิล 0 แถว · OUT 0 · อ่าน ไม่มี
+  ✅ [HT3.2] callerTx + commit + afterSaleCommitted ⇒ xmin = xid ผู้เรียก · ไม่มีการอ่านในธุรกรรม · OUT 1 — xmin 5549310 vs ผู้เรียก 5549310 · อ่านในธุรกรรม ไม่มี · OUT ก่อน/หลัง afterSaleCommitted 0/1 · onHand 98→97
+── HT5 negative control (tx ดิบ) ──
+  ✅ [HT5] negative control: tx ดิบ ⇒ ตัวตรวจเห็น xmin แยก + found:false ก่อน commit — ตัวตรวจเห็น: xmin บรรทัด 5549314 vs ผู้เรียก 5549313 (แยก) · อ่านในธุรกรรม ht5-in-tx:found:false
+── HT2.6/HT2.7 บัตรกำนัล (HF-GC) ──
+  ✅ [HT2.6] บัตรกำนัล reload พร้อมกัน 5 คำขอ ⇒ balanceAfter ไม่ซ้ำ = initial + k·satang · max = ยอดบัตร · ผลที่คืน = แถวของตัวเอง — สำเร็จ 5/5 · RELOAD 5 แถว · balanceAfter 110000,120000,130000,140000,150000 (คาด 110000,120000,130000,140000,150000) · ยอดบัตร 150000 · ผลที่คืนตรงแถว ใช่
+  ❌ [HT2.7] บัตรกำนัล ตาข่ายหนี้สิน 2110: ขายซ้ำ/consumer คืน accountingDocId · JV GiftCard#<id> = 1 เสมอ · ขายตอนสวิตช์ปิด = 0 ตลอดไป — (c2) สวิตช์ปิดตอนขาย → ขายซ้ำหลังเปิด: คืน cmv859etg0075fmkzvk9ke3rr · doc cmv859etg0075fmkzvk9ke3rr · JV 1
+
+===== qc-hf-tx ===== ผ่าน 19/20 (QC_FORCE) · ล้างร้านชั่วคราว: แถวค้าง 0 · ร้าน 0 · ผู้ใช้ 0
+JSON_SUMMARY {"suite":"qc-hf-tx","total":20,"passed":19,"failed":["HT2.7"],"skipped":false,"forced":true,"missing":[],"residue":0}
+exit=1
