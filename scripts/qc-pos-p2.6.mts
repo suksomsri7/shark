@@ -75,7 +75,7 @@ const CHECKS: readonly Def[] = [
   D("K12", "X5", "[H4] heal ไม่สร้างตั๋วย้อนหลัง: ขายสินค้าที่ยังไม่เข้าครัว (เมล็ดกาแฟ) แล้วจึงตั้ง stationId → อ่านบอร์ด ⇒ บิลนั้น 0 รอบ · ตัวนับรายวันไม่ขยับ"),
   D("V3", "X4", "[H1] ตัวนับเมนูคืนเท่าที่หักจริง: stock 1 ขาย ×3 → 0 · void ขณะ NEW → 1 (ไม่ใช่ 3) · สองตั๋ว 2+2 บน stock 4 แล้วรอบแรกถูกสร้างใหม่ตอนตัวนับ 0 (หัก 0) → void บิลนั้น ⇒ ตัวนับคง 0"),
   D("A10", "X4", "[H5] ตัวนับ 0 + ครัวแจ้ง 86 (KDS) → void ตั๋ว NEW ⇒ ตัวนับคืนแต่ยังหมด (availabilityFor false · isOutOfStock true) · mark ยังอยู่ · resetDailyStock ก็ไม่ปลด"),
-  D("A11", "X1", "[H6] แข่ง: ถือแถวเมนู → ticketForSale (หักชิ้นสุดท้าย) เข้าคิวก่อน → setAvailability(false) เข้าคิวหลัง → ปล่อย ⇒ event pos.product.availability 1 แถวเท่านั้น"),
+  D("A11", "X1", "[H6] (สถิต) setAvailability ล็อกแถว MenuItem FOR UPDATE ก่อนอ่าน (ลำดับ PosProduct → MenuItem) · (การแข่ง — ข้อจำกัด: Postgres ปลุกผู้รอแถวไม่เรียงคิว ⇒ บังคับลำดับไม่ได้) ticketForSale ชิ้นสุดท้าย ∥ setAvailability(false) ⇒ event 1 แถว"),
   // ── B ปุ่มครัว ──
   D("B1", "X1", "[R6] kdsStart (COOK) ตั๋วครัวร้อน → รายการ NEW → COOKING (cookingAt) · ตั๋วเครื่องดื่มไม่ขยับ · ซ้ำ → ok changed 0"),
   D("B2", "-", "[R5 R6 R7] kdsLineDone 1 บรรทัด → READY · บอร์ด: ตั๋ว COOKING doneCount 1 lineCount 2 (เสร็จ 1/2) · lines[].done"),
@@ -2500,6 +2500,11 @@ async function runDb() {
     if (t?.created !== true || a?.ok !== true) p.push(`ticketForSale ${short(t?.created)} · setAvailability ${codeOf(a)}`);
     const n = (await availEvents(PP.a11)).length - e0;
     if (n !== 1) p.push(`event pos.product.availability ${n} แถว (คาด 1 — พลิกครั้งเดียว)`);
+    // สถิต (ข้อจำกัด: ลำดับผู้ได้ล็อกหลังปล่อยไม่แน่นอน ⇒ คู่แข่งข้างบนเป็นตัวกันถอย ไม่ใช่ตัวพิสูจน์): อ่าน MenuItem หลังล็อก FOR UPDATE เท่านั้น
+    const body = stripComments(fnBody(rd(F.catalog), "setAvailability"));
+    const lockAt = body.search(/"MenuItem"[^`]*FOR UPDATE/);
+    const readAt = body.search(/\.menuItem\.find(First|Unique)\(/);
+    if (lockAt < 0 || readAt < 0 || lockAt > readAt) p.push(`setAvailability ไม่ล็อก MenuItem FOR UPDATE ก่อนอ่าน (lock@${lockAt} read@${readAt})`);
     await setAvail("COOK", PP.a11, true, "KDS");
     chk("A11", p.length === 0, "แข่ง 86 กับตั๋วชิ้นสุดท้าย → event 1", FX(NA() + (P8(p) || "ครบ")));
   });
