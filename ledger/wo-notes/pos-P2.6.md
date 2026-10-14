@@ -42,6 +42,9 @@ Binding: `pos-brief-P2.6.md` §9 + §10 · `wo-notes/pos-P2.6-oracle.md` (names 
 ## CONTROLLER-DECISION
 1. **ruled 14 Oct (controller): ORACLE-EDIT applied ccf595f4** (line 1575 `newDraft: true` + comment line; nothing else in the oracle). — **K5 = oracle drift vs P2.4 S fix 3 (N1).** The fixture holds the table draft with `holdRegisterCart({cart, tableSessionId: sid})` (oracle line 1575, written at f71f4e30); since P2.4 S fix 3 (ORACLE-EDIT 10 Oct in qc-pos-p2.4 `hold(... mode = { newDraft: true })`) table mode must name the draft (`newDraft: true` or `{heldCartId, expectedVersion}`), so the hold is refused → `heldCartId ""` → `registerSendTableRound` VALIDATION → K5 red, and the follow-on table bill has no lines (CASH 0 → VALIDATION). Red-before also had K5 red. **Positive control** (scratch copy in `scripts/`, deleted after; only change = `, newDraft: true` on that line): **51/51**, K5 green (table bill → no extra round, heal adds none, sent round = TABLE + label A3 + staffName). **Ask:** ORACLE-EDIT line 1575 → `{ cart: { lines: [ln("kaprao", 1)] }, tableSessionId: sid, newDraft: true }`. Builder stopped this check here (oracle not edited).
 
+2. **ruled 14 Oct (controller): accepted on wip, re-run at merge.** p2.8 59/60 — ST6 PAR red = register.ts P2.6 hunks vs merge-base (controller ruling: accepted on wip, re-run at merge). `git diff origin/session/pos -- register.ts` = additions only, 3 marked `// POS P2.6 ▸` hunks (CD 8 `soldOutMark` map + two after-commit `ticketForSale` calls).
+3. **OPEN — qc-pos-p1.1 R.1 (row-count restore of the QC seed tenants) vs ruling 6 / A7.** p1.1 179/180: R.1 `OutboxEvent 561→563`. Read-only peek on QC4: the +2 rows are `pos.product.availability` {source MANUAL, available false then true} on `posqc-resto-unit-main`, produced by p1.1 S2.43's legacy `menu.setItemStock({isOutOfStock:true…})` + `({isOutOfStock:false})`. Ruling 6 + P2.6 A7 require exactly these MANUAL flip events from legacy `setItemStock`, so every p1.1 run adds 2 PENDING outbox rows to the seed tenant (S2.42 13/6 and S2.43 "no PosProduct write" stay green). **Ask:** ORACLE-EDIT p1.1 R.1 to tolerate `OutboxEvent` rows of type `pos.product.availability` (or have the S2.43 section delete the events it triggered). Builder did not edit p1.1. The 2 PENDING rows from this gate run remain in the seed tenant; their consumer is a no-op fan-out.
+
 ## Deviations (each with the ruling it touches)
 1. New restaurant writers in a **new file `restaurant/kitchen.ts`** (not `order.ts`/`kds.ts`) — §7 "builder's choice recorded" · keeps L1 sigs / ST4 hot-path bodies / S2.42 byte-identical.
 2. **No STOCK mark row** (R9 / CD6): marks are written only by `setAvailability` (KDS/MANUAL, who/when). `kdsBoard.eightySix` = marks + MENU rows sold out without a mark (counter ≤ 0 ⇒ `STOCK`, legacy 86 ⇒ `MANUAL`, `at` = MenuItem.updatedAt) + non-MENU rows closed for the unit without a mark (`MANUAL`). Reason: a counter release (void restore / daily reset) never leaves a stale mark.
@@ -70,3 +73,23 @@ Binding: `pos-brief-P2.6.md` §9 + §10 · `wo-notes/pos-P2.6-oracle.md` (names 
 - Controller: prod `RestaurantOrder` row count before deploying the partial uniques (§9 ruling 14); ORACLE-EDIT K5 (CD 1 above).
 - post-merge hardening (hunter-facing): `ticketForSale` re-reads the sale status **inside** the round tx under `SELECT … FOR SHARE` — a void that commits first ⇒ no round (`NOT_PAID`); a void that comes later waits for the round tx, then its `pos.sale.voided` consumer cancels the round's unserved items. Closes the read-then-void window of the heal/after-commit path.
 - 14 Oct · ORACLE-EDIT K5 applied **ccf595f4** (controller ruling CD 1) · merged `origin/session/pos` 4ff45114 (P2.8U UI/messages/visual-pos/pos-qc-env) — auto-merge, `pos.json` th/en keep `orders` (P2.8U) + `kds` (P2.6), `pos-qc-env` keeps `posAvailabilityMark`. Earlier partial gate run on c7309135 superseded (p2.6 ×3 = 50/51 K5 only · fitness ×3 + fitness-pos ✅ · qc-hf-tx ✅); final gates rerun on the post-merge head below.
+
+## Final gates — tree `/root/projects/shark-pos-c` head **e580cf6b** (code head e580cf6b = ccf595f4 ORACLE-EDIT + merge 4ff45114) · dirty 0 · logs `scratchpad/p26/gates/*.log` (each starts `tree=… head=e580cf6b dirty=0`)
+| gate | result |
+|---|---|
+| typecheck (iso · pos-gate.lock · 5632 MB) | exit 0 |
+| fitness no-env / env | 50/50 · 50/50 |
+| fitness-pos | 8/8 |
+| qc-pos-p2.6 forced #1 / #2 / unforced | **51/51 · 51/51 · 51/51** · PAR 5/5 · SKIP 0 · residue 0 · leaks 0 |
+| qc-hf-tx | 18/18 |
+| qc-pos-p2.4 | 50/50 (PAR 4/4) |
+| qc-pos-p2.8 | 59/60 — ST6 PAR (CD 2 ruled: accepted on wip, re-run at merge) |
+| qc-pos-p2.3 | 46/46 |
+| qc-pos-p1.10 | 40/40 |
+| qc-pos-p1.6 | 48/48 |
+| qc-pos-p1.1 | 179/180 — R.1 OutboxEvent +2 (CD 3 open) · S2.42 13/6 ✅ · S2.43 ✅ |
+| qc-pos-p1.3 | 128/128 |
+| qc-pos-p1.18 | 81/81 |
+| qc-restaurant / -money / -pay / -void | 6/6 · 6/6 · 19/19 · 11/11 |
+| qc-pos-products | 24/24 |
+| qc-hf-pos-page-authz | 71/71 |
