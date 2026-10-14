@@ -87,6 +87,8 @@ const CHECKS: readonly Def[] = [
   D("A14", "X1", "[H2 มติ P2.6U-16] (สถิต) restoreMenuStockKeep86InTx + resetMenuItemDailyStock ล็อก MenuItem FOR UPDATE ก่อน heldBy86Mark · (การแข่ง — ตัวกันถอย: ลำดับผู้ได้ล็อกไม่แน่นอน) ยกเลิกรายการโต๊ะ ∥ ครัวแจ้ง 86 ⇒ ยังหมด (isOutOfStock true · availabilityFor false · mark อยู่)"),
   // ORACLE-ADD ผู้คุม 14 ต.ค. (P2.6U fix1 · รีวิว R1 F1 · มติ fix1-1 — page-authz ไม่ครอบ action ⇒ ข้อนี้)
   D("A15", "X3", "[F1 มติ P2.6U fix1-1] kdsKitchenProducts (แผ่น 86 ของจอครัว): COOK ที่มีแค่ restaurant.kds.advance ได้รายการ = เมนูของสาขา + สินค้าที่ผูกสถานี (กะเพรา ชาเย็น คุกกี้) ไม่มีสินค้าที่ไม่เข้าครัว (น้ำเปล่า) · available = availabilityFor · ไม่มีคีย์เงิน · NOPERM → PERMISSION_DENIED"),
+  // ORACLE-ADD ผู้คุม 14 ต.ค. (P2.6U fix2 · ล่า N2 · มติ fix2 addendum): ผูกตัวแปรใหม่ไม่ทำให้บิลที่ตั๋วหลุด heal ไม่ได้
+  D("K12c", "X1", "[N2 มติ P2.6U fix2] ตัวแปร V (คลัง) ผูกกับแม่ A (สถานีขนม) → ขาย S ของ V → ลบรอบ (จัดฉาก) → ผูก V กับแม่ B ที่ส่งเข้าขนมเหมือนกัน (createProduct {invItemId, parentId:B}) ⇒ ไม่ประทับ stationSetAt ใหม่ (สถานีจริงไม่เปลี่ยน · การผูกซ้ำถูกปฏิเสธก็ได้) → อ่านบอร์ด ⇒ S ได้รอบคืน 1 รอบ"),
   D("K12b", "X5", "[H3 มติ P2.6U-17] ขายสินค้าคลังที่ยังไม่เป็นตัวแปร (ไม่เข้าครัว) → ผูกเป็นตัวแปรของแม่ที่ตั้งสถานี (createProduct {invItemId, parentId}) → อ่านบอร์ด ⇒ บิลนั้น 0 รอบ · ตัวนับรายวันไม่ขยับ"),
   // ── B ปุ่มครัว ──
   D("B1", "X1", "[R6] kdsStart (COOK) ตั๋วครัวร้อน → รายการ NEW → COOKING (cookingAt) · ตั๋วเครื่องดื่มไม่ขยับ · ซ้ำ → ok changed 0"),
@@ -2724,6 +2726,40 @@ async function runDb() {
     const cnt1 = short(await P.restaurantDailyCounter.findMany({ where: { tenantId: T }, select: { unitId: true, bizDate: true, seq: true } }), 2000);
     if (cnt1 !== cnt0) p.push("ตัวนับรายวันขยับ");
     chk("K12b", p.length === 0, "บิลก่อนผูกเป็นตัวแปรของแม่ที่เข้าครัว ไม่ถูก heal · ตัวนับไม่ขยับ", FX(P8(p) || "ครบ"));
+  });
+  // ════════ ORACLE-ADD ผู้คุม 14 ต.ค. (P2.6U fix2 · N2): K12c ════════
+  await step("K12c", async () => {
+    const p: string[] = [];
+    const ictx = { tenantId: T, systemId: S.INV, actorUserId: uid("OWNER") };
+    const it = await invSvc.createItem(ictx, { sku: `${KEY_PREFIX}-k12c`, name: `บราวนี่ ${RAND}`, unitLabel: "ชิ้น", costSatang: 100 });
+    await invSvc.receive(ictx, { itemId: it.id, qty: 10, costSatang: 100, idempotencyKey: `${KEY_PREFIX}-recv-k12c` });
+    PP.k12c = String((await P.posProduct.findFirst({ where: { tenantId: T, systemId: S.POS, invItemId: it.id }, select: { id: true } }))?.id ?? "");
+    if (!PP.k12c) throw new Error("k12c ไม่มีแถว PRODUCT (P1.1b)");
+    must("setPrice k12c", await call(catalog, "setPrice", cc("OWNER"), PP.k12c, 5500));
+    const link = (parentId: string) => call(catalog, "createProduct", cc("OWNER"), { name: `บราวนี่ ${RAND}`, invItemId: it.id, parentId, basePriceSatang: 5500 });
+    const a1 = await link(PP.cookie);
+    if (a1?.ok === false || (await P.posProduct.findUnique({ where: { id: PP.k12c } }))?.parentId !== PP.cookie) throw new Error(`ผูก V กับคุกกี้ไม่ได้ ${codeOf(a1)}`);
+    await sleep(50);
+    const s0 = await sell([ln("k12c", 1)]);
+    const r0 = (await waitRounds(s0.saleId))[0];
+    if (!r0) throw new Error(`บิล V ไม่มีรอบตั้งต้น ${SALE_FAIL(s0)}`);
+    await delRound(r0.id);
+    // แม่ B: สินค้าที่ส่งเข้าขนมเหมือนกัน
+    const b = await call(catalog, "createProduct", cc("OWNER"), { name: `ขนมแม่ B ${RAND}`, kind: "PRODUCT", basePriceSatang: 4000 });
+    const bId = String(b?.id ?? "");
+    if (!bId) throw new Error(`สร้างแม่ B ไม่ได้ ${codeOf(b)}`);
+    const ub = await call(catalog, "updateProduct", cc("OWNER"), bId, { stationId: ST.dessert });
+    if (ub?.ok === false) throw new Error(`ตั้งสถานีแม่ B ไม่ได้ ${codeOf(ub)}`);
+    const before = msOf((await P.posProduct.findUnique({ where: { id: PP.k12c } }))?.stationSetAt);
+    await sleep(50);
+    await link(bId); // ผลใดก็ได้ (ปฏิเสธ = ไม่เปลี่ยน · ผ่าน = สถานีจริงยังเป็นขนม)
+    const after = msOf((await P.posProduct.findUnique({ where: { id: PP.k12c } }))?.stationSetAt);
+    if (!(Number.isNaN(before) && Number.isNaN(after)) && after !== before) p.push("ผูกแม่ใหม่ที่ส่งเข้าสถานีเดิมแต่ stationSetAt ถูกประทับใหม่");
+    const bd = await board(ST.dessert);
+    if (bd?.ok !== true) p.push(`kdsBoard → ${codeOf(bd)}`);
+    const rs = await roundsOfSale(s0.saleId);
+    if (rs.length !== 1) p.push(`บิล S หลังอ่านบอร์ด → รอบ ${rs.length} (คาด 1 — heal ต้องไม่หลุดเพราะผูกแม่ใหม่)`);
+    chk("K12c", p.length === 0, "ผูกแม่ใหม่ที่สถานีเดิม ไม่ทำให้ตั๋วที่หลุด heal ไม่ได้", FX(NCOL() + (P8(p) || "ครบ")));
   });
   // ════════ ORACLE-ADD ผู้คุม 14 ต.ค. (P2.6U fix1 · F1): A15 ════════
   await step("A15", async () => {
