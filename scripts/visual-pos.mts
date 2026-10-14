@@ -4361,6 +4361,8 @@ const P26U = {
   zones: [] as string[],
   tableSession: "",
   sale: "",
+  shiftId: "",
+  saleVoided: false,
   marked: [] as string[],
   pausedBefore: undefined as { paused: boolean; note: string | null } | undefined,
   pausedOn: false,
@@ -4370,6 +4372,8 @@ const P26U = {
 };
 const P26U_STATION_NAMES = { hot: `ครัวร้อน ${P26U_LETTER}`, drink: `เครื่องดื่ม ${P26U_LETTER}`, dessert: `ขนม ${P26U_LETTER}` } as const;
 const p26uKey = () => `posqc-vis-p26u-${P26U.stamp}-${++P26U.seq}`;
+/** fix1 V4: เครื่องของบิลหน้าขายใน fixture (กะของตัวเอง — สาขา QC บังคับกะ) */
+const P26U_DEVICE_ID = `posqc-vis-p26u-${process.pid}`;
 async function p26uCtx() {
   return { ctx: { tenantId: T.tenantId, systemId: SYS, unitId }, actor: await memberActorOf("owner") };
 }
@@ -4509,13 +4513,18 @@ async function ensureP26uFixture(): Promise<void> {
     await p26uOrder("served", chat.id, [{ productId: A, qty: 1 }], { accepted: false, name: "คุณแพร (ภาพ QC)" });
     await p26uKds("kdsTicketDone", { orderId: P26U.roundOf.served, stationId: P26U.stations.hot });
     await p26uKds("kdsServed", { orderId: P26U.roundOf.served, stationId: P26U.stations.hot });
-    // บิลหน้าขาย 1 ใบ (ซื้อกลับ · คิว N) — ขายไม่ได้ (เช่นบังคับกะ) = ข้ามพร้อมบันทึก
+    // บิลหน้าขาย 1 ใบ (ซื้อกลับ · คิว N) ในกะของเครื่อง fixture (fix1 V4 · ยกเลิกบิล + ปิดกะตอนเก็บกวาด = มติ fix1-5) — ขายไม่ได้ = ข้ามพร้อมบันทึก
     try {
       const { quoteRegisterCart, submitRegisterSale } = await import("@/lib/modules/pos/register");
+      const { openShift } = await import("@/lib/modules/pos/shift");
+      const dctx = { ...ctx, deviceId: P26U_DEVICE_ID };
+      const op = await openShift(dctx, actor, { deviceId: P26U_DEVICE_ID, deviceLabel: "เครื่องภาพครัว QC", floatSatang: 100000 });
+      if (!op.ok) throw new Error(`openShift ${op.code}`);
+      P26U.shiftId = op.shift.id;
       const cart = { lines: [{ productId: C, qty: 1 }] };
-      const q = await quoteRegisterCart(ctx, actor, cart as never);
+      const q = await quoteRegisterCart(dctx, actor, cart as never);
       if (!q.ok) throw new Error(`quote ${q.code}`);
-      const r = await submitRegisterSale(ctx, actor, { ...cart, idempotencyKey: p26uKey(), expectedGrandTotalSatang: q.grandTotalSatang, payMethods: [{ type: "CASH", amountSatang: q.grandTotalSatang }], cashReceivedSatang: q.grandTotalSatang } as never);
+      const r = await submitRegisterSale(dctx, actor, { ...cart, idempotencyKey: p26uKey(), expectedGrandTotalSatang: q.grandTotalSatang, payMethods: [{ type: "CASH", amountSatang: q.grandTotalSatang }], cashReceivedSatang: q.grandTotalSatang } as never);
       if (!r.ok) throw new Error(`submit ${r.code}`);
       P26U.sale = r.saleId;
       for (let i = 0; i < 20 && !P26U.roundOf.sale; i++) {
@@ -4524,7 +4533,7 @@ async function ensureP26uFixture(): Promise<void> {
         else await sleep(250);
       }
       if (P26U.roundOf.sale) await p26uKds("kdsTicketDone", { orderId: P26U.roundOf.sale, stationId: P26U.stations.hot });
-      P26U.log.push(`บิลหน้าขาย ${r.saleId} (เก็บไว้)`);
+      P26U.log.push(`บิลหน้าขาย ${r.saleId} (ยกเลิกตอนเก็บกวาด)`);
     } catch (e) {
       P26U.log.push(`ข้ามบิลหน้าขาย: ${e instanceof Error ? e.message.slice(0, 80) : String(e)}`);
     }
@@ -4611,6 +4620,23 @@ async function cleanupP26u(): Promise<void> {
     P26U.productStation = {};
     return `คืนสถานีสินค้า ${ids.length}`;
   });
+  // fix1 F5 (มติ fix1-5): ยกเลิกบิลหน้าขายของ fixture (ตัวรับคิวยกเลิกตั๋ว · คืนสต็อก) แล้วปิดกะของเครื่อง fixture
+  await step("ยกเลิกบิลหน้าขาย", async () => {
+    if (!P26U.sale || P26U.saleVoided) return;
+    const { voidSaleByActor } = await import("@/lib/modules/pos/bills");
+    const actor = await memberActorOf("owner");
+    const v = await voidSaleByActor({ tenantId, systemId: SYS, unitId, deviceId: P26U_DEVICE_ID }, actor, { unitId, saleId: P26U.sale, reason: "ยกเลิกบิลภาพครัว (ภาพ QC)", idempotencyKey: `posqc-vis-p26u-void-${P26U.stamp}` });
+    if (!v.ok) throw new Error(`voidSaleByActor ${P26U.sale}: ${v.code}`);
+    P26U.saleVoided = true;
+    return `ยกเลิกบิล ${P26U.sale}`;
+  });
+  await step("ปิดกะ fixture", async () => {
+    if (!P26U.shiftId) return;
+    const c = await closeShiftAsOwner(P26U.shiftId, `p26u-close-${P26U.stamp}`);
+    if (!c.ok) throw new Error(c.detail);
+    P26U.shiftId = "";
+    return c.detail;
+  });
   await step("ลบรอบ/ออเดอร์", async () => {
     const rounds = (await prisma.restaurantOrder.findMany({ where: { tenantId, OR: [{ posOrderId: { in: P26U.orders } }, ...(P26U.sale ? [{ posSaleId: P26U.sale }] : [])] }, select: { id: true } })).map((r) => r.id);
     const items = rounds.length ? (await prisma.restaurantOrderItem.findMany({ where: { tenantId, orderId: { in: rounds } }, select: { id: true } })).map((i) => i.id) : [];
@@ -4630,7 +4656,7 @@ async function cleanupP26u(): Promise<void> {
     }
     P26U.orders = [];
     P26U.roundOf = {};
-    return `ลบ: รอบ ${rounds.length} · รายการ ${items.length} · ออเดอร์ ${od}${P26U.sale ? ` · บิลหน้าขาย ${P26U.sale} เก็บไว้` : ""}`;
+    return `ลบ: รอบ ${rounds.length} · รายการ ${items.length} · ออเดอร์ ${od}${P26U.sale ? ` · บิลหน้าขาย ${P26U.sale} ${P26U.saleVoided ? "ยกเลิกแล้ว" : "ค้าง"}` : ""}`;
   });
   await step("ลบโต๊ะ", async () => {
     if (!P26U.zones.length) return;
@@ -4706,8 +4732,10 @@ async function runP26uState(page: Any, state: P26uKdsKey | P26uOtherKey, device:
     });
     return;
   }
-  // บอร์ดของสถานี (ครัวร้อน / เครื่องดื่ม)
-  await visibleEl(page, tidPrefix("pos-kds-ticket-"), 0, 15_000);
+  // บอร์ดของสถานี (ครัวร้อน / เครื่องดื่ม) · fix1 V3: 390 = ทีละคอลัมน์ (ค่าเริ่ม "ใหม่") ⇒ แถบเสิร์ฟแล้วอยู่ใต้ช่อง "พร้อม"
+  await visibleEl(page, tid("pos-kds-board"), 0, 15_000);
+  if (device === "mobile" && (state === "kds-served-recall" || state === "kds-refusal-toast")) await clickEl(page, tid("pos-kds-seg-ready"));
+  if (state !== "kds-refusal-toast") await visibleEl(page, tidPrefix("pos-kds-ticket-"), 0, 15_000);
   if (state === "kds-mixed") {
     if (device !== "mobile") {
       await visibleEl(page, '[data-testid^="pos-kds-ticket-"][data-late="1"]', 0, 10_000).catch(() => {
