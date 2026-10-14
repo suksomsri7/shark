@@ -47,7 +47,7 @@ export function KdsChannelChip({ ticket, inverse }: { ticket: Pick<KdsTicket, "l
   );
 }
 
-function LineRow({ line, tappable, onTap, testId }: { line: KdsLine; tappable: boolean; onTap: () => void; testId: string }) {
+function LineRow({ line, tappable, onTap }: { line: KdsLine; tappable: boolean; onTap: () => void }) {
   const t = useTranslations("pos.kds");
   const body = (
     <>
@@ -65,9 +65,14 @@ function LineRow({ line, tappable, onTap, testId }: { line: KdsLine; tappable: b
     </>
   );
   const cls = "flex w-full items-start gap-3 border-t border-[color:var(--color-line)] px-4 py-3 text-left";
-  if (!tappable) return <div className={cls} data-testid={testId} data-done={line.done ? "1" : undefined}>{body}</div>;
+  if (!tappable)
+    return (
+      <div className={cls} data-testid={`pos-kds-line-${line.itemId}`} data-done={line.done ? "1" : undefined}>
+        {body}
+      </div>
+    );
   return (
-    <button type="button" className={`${cls} min-h-11 hover:bg-[color:var(--color-surface-2)]`} data-testid={testId} onClick={onTap} aria-label={t("lineDoneAria", { name: line.name })}>
+    <button type="button" className={`${cls} min-h-11 hover:bg-[color:var(--color-surface-2)]`} data-testid={`pos-kds-line-${line.itemId}`} onClick={onTap} aria-label={t("lineDoneAria", { name: line.name })}>
       {body}
     </button>
   );
@@ -85,7 +90,7 @@ export function KdsTicketCard({
   onServed,
   onRush,
   onPrint,
-  onSelect,
+  onChoose,
 }: {
   ticket: KdsTicket;
   now: number | null;
@@ -98,7 +103,7 @@ export function KdsTicketCard({
   onServed: () => void;
   onRush: (rush: boolean) => void;
   onPrint: () => void;
-  onSelect: (on: boolean) => void;
+  onChoose: (on: boolean) => void;
 }) {
   const t = useTranslations("pos.kds");
   const sourceText = useSourceText();
@@ -174,7 +179,6 @@ export function KdsTicketCard({
             line={l}
             tappable={!isNew && !ready && !l.done && !l.cancelled && perms.advance && !busy}
             onTap={() => onLineDone(l.itemId)}
-            testId={`pos-kds-line-${l.itemId}`}
           />
         ))}
       </div>
@@ -282,6 +286,7 @@ export function KdsTicketCard({
           <button
             type="button"
             role="menuitem"
+            data-testid="pos-kds-print-this"
             className="flex h-11 w-full items-center rounded-[8px] px-2.5 text-left text-[14px] hover:bg-[color:var(--color-surface-2)]"
             onClick={() => {
               setMenu(false);
@@ -293,10 +298,11 @@ export function KdsTicketCard({
           <button
             type="button"
             role="menuitem"
+            data-testid="pos-kds-select"
             className="flex h-11 w-full items-center rounded-[8px] px-2.5 text-left text-[14px] hover:bg-[color:var(--color-surface-2)]"
             onClick={() => {
               setMenu(false);
-              onSelect(!selected);
+              onChoose(!selected);
             }}
           >
             {selected ? t("menu.unselect") : t("menu.select")}

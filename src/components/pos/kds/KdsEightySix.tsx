@@ -61,22 +61,22 @@ export function KdsBottomBar({ board, mounted, onOpen }: { board: Pick<KdsBoard,
   );
 }
 
-export function KdsEightySixSheet({
+export function KdsEightySixPanel({
   systemId,
   unitId,
   board,
   canMark,
   busyId,
-  onToggle,
-  onClose,
+  onFlip,
+  onDismiss,
 }: {
   systemId: string;
   unitId: string;
   board: Pick<KdsBoard, "pending" | "eightySix"> | null;
   canMark: boolean;
   busyId: string | null;
-  onToggle: (productId: string, name: string, available: boolean, note: string | null) => void;
-  onClose: () => void;
+  onFlip: (productId: string, name: string, available: boolean, note: string | null) => void;
+  onDismiss: () => void;
 }) {
   const t = useTranslations("pos.kds");
   const [q, setQ] = useState("");
@@ -108,7 +108,7 @@ export function KdsEightySixSheet({
   const pending = board?.pending ?? [];
   const cleanNote = note.trim() ? note.trim().slice(0, 200) : null;
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/30" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex justify-end bg-black/30" data-testid="pos-kds-86-backdrop" onClick={onDismiss}>
       <div
         data-testid="pos-kds-86-sheet"
         role="dialog"
@@ -119,7 +119,7 @@ export function KdsEightySixSheet({
       >
         <header className="flex items-center gap-3 border-b px-5 py-3">
           <h2 className="min-w-0 flex-1 truncate text-[17px] font-bold">{t("eightySix.title")}</h2>
-          <button type="button" data-testid="pos-kds-86-close" aria-label={t("close")} className="grid size-11 place-items-center rounded-[12px] border" onClick={onClose}>
+          <button type="button" data-testid="pos-kds-86-close" aria-label={t("close")} className="grid size-11 place-items-center rounded-[12px] border" onClick={onDismiss}>
             <RegisterIcon name="x" size={14} />
           </button>
         </header>
@@ -144,10 +144,11 @@ export function KdsEightySixSheet({
                     </span>
                     <button
                       type="button"
+                      data-testid={`pos-kds-86-release-${x.productId}`}
                       className="inline-flex h-11 shrink-0 items-center rounded-[10px] border px-3 text-[13px] font-bold disabled:opacity-50"
                       disabled={!canMark || busyId === x.productId}
                       title={!canMark ? t("perm.availability") : undefined}
-                      onClick={() => onToggle(x.productId, x.name, true, cleanNote)}
+                      onClick={() => onFlip(x.productId, x.name, true, cleanNote)}
                     >
                       {t("eightySix.release")}
                     </button>
@@ -183,13 +184,14 @@ export function KdsEightySixSheet({
                       <span className="min-w-0 flex-1 truncate text-[14px]">{p.name}</span>
                       <button
                         type="button"
+                        data-testid={`pos-kds-86-toggle-${p.id}`}
                         aria-pressed={out}
                         className={`inline-flex h-11 shrink-0 items-center rounded-[10px] px-3 text-[13px] font-bold disabled:opacity-50 ${
                           out ? "border" : "bg-[color:var(--color-danger)] text-[color:var(--color-surface)]"
                         }`}
                         disabled={!canMark || busyId === p.id}
                         title={!canMark ? t("perm.availability") : undefined}
-                        onClick={() => onToggle(p.id, p.name, out, cleanNote)}
+                        onClick={() => onFlip(p.id, p.name, out, cleanNote)}
                       >
                         {out ? t("eightySix.release") : t("eightySix.markOut")}
                       </button>

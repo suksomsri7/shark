@@ -56,6 +56,7 @@ function UnitChip({ p, mobile }: { p: KdsTopBarProps; mobile: boolean }) {
             <Link
               key={u.id}
               role="menuitem"
+              data-testid={`pos-kds-unit-option-${u.id}`}
               href={`/app/sys/${p.systemId}/pos/kds?unit=${encodeURIComponent(u.id)}`}
               aria-current={u.id === p.activeUnitId ? "true" : undefined}
               className={`flex h-11 items-center rounded-[8px] px-2.5 text-[14px] hover:bg-[color:var(--color-surface-2)] ${u.id === p.activeUnitId ? "font-bold" : ""}`}

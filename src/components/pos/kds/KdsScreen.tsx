@@ -34,7 +34,7 @@ import { kitchenPauseAction } from "@/lib/actions/restaurant";
 import { RegisterIcon } from "@/components/pos/register/RegisterIcon";
 import { KdsTopBar } from "./KdsTopBar";
 import { KdsChannelChip, KdsTicketCard, useSourceText } from "./KdsTicketCard";
-import { KdsBottomBar, KdsEightySixSheet } from "./KdsEightySix";
+import { KdsBottomBar, KdsEightySixPanel } from "./KdsEightySix";
 import { printKitchenSlips } from "./kds-print";
 import { bkkClock, clockNow, columnTickets, expoGroups, KDS_TICK_MS, midnightWindow, stationName, ticketKey, type FloorClock } from "./kds-ui";
 
@@ -317,7 +317,7 @@ export function KdsScreen(p: KdsScreenProps) {
       onServed={() => onServed(x)}
       onRush={(r) => onRush(x, r)}
       onPrint={() => void printTickets([x])}
-      onSelect={(on) => setSelected(on ? ticketKey(x) : null)}
+      onChoose={(on) => setSelected(on ? ticketKey(x) : null)}
     />
   );
 
@@ -587,7 +587,7 @@ export function KdsScreen(p: KdsScreenProps) {
           <KdsBottomBar board={board} mounted={mounted} onOpen={() => setSheet(true)} />
         </>
       )}
-      {sheet && <KdsEightySixSheet systemId={p.systemId} unitId={p.unitId} board={board} canMark={p.perms.availability} busyId={busy86} onToggle={(id, n, a, note) => void on86(id, n, a, note)} onClose={() => setSheet(false)} />}
+      {sheet && <KdsEightySixPanel systemId={p.systemId} unitId={p.unitId} board={board} canMark={p.perms.availability} busyId={busy86} onFlip={(id, n, a, note) => void on86(id, n, a, note)} onDismiss={() => setSheet(false)} />}
       {toast && (
         <div
           role="status"
