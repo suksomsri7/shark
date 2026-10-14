@@ -10,8 +10,8 @@ import { unstable_rethrow } from "next/navigation";
 import { requireTenant } from "@/lib/core/context";
 import { assertCan, canAccessUnit } from "@/lib/core/rbac";
 import { posMembership } from "./access";
-import { setAvailability } from "./catalog";
-import { kdsBoard, kdsLineDone, kdsRecall, kdsRush, kdsServed, kdsSetAutoAcceptMax, kdsStart, kdsTicketDone, kitchenProgress, kitchenSlipPayload } from "./kds";
+import { setAvailability, updateProduct, CatalogError } from "./catalog"; // POS P2.6U ▸ + updateProduct (มติ 9b · สถานีของสินค้าที่ไม่ใช่เมนู) ◂
+import { kdsBoard, kdsLineDone, kdsRecall, kdsRush, kdsServed, kdsSetAutoAcceptMax, kdsStart, kdsTicketDone, kitchenProgress, kitchenSlipPayload, kitchenStateForUnit, queueNoForSale } from "./kds"; // POS P2.6U ▸ + kitchenStateForUnit · queueNoForSale ◂
 import type {
   KdsActionResult,
   KdsAutoAcceptResult,
@@ -39,6 +39,8 @@ const NEED = {
   rush: [["restaurant", "restaurant.order.rush"]],
   pause: [["restaurant", "restaurant.kitchen.pause"]],
   availability: [["pos", "pos.sale.create"], ["restaurant", "restaurant.kds.advance"], ["pos", "pos.product.manage"]],
+  manage: [["pos", "pos.product.manage"]], // POS P2.6U ▸ มติ 9b: สถานีครัวของสินค้า (catalog.updateProduct ตรวจซ้ำ) ◂
+  sale: [["pos", "pos.sale.create"], ["pos", "pos.sale.read"]], // POS P2.6U ▸ มติ 10: คิวของบิล (PayDone) ◂
 } as const;
 
 /** session → ขอบเขต + ผู้ใช้ · เข้าสาขาไม่ได้ / ไม่มีคีย์ของงาน = PERMISSION_DENIED (kds.ts/catalog.ts ตรวจซ้ำกับ DB) */
@@ -208,5 +210,57 @@ export async function setAvailabilityAction(
   } catch (e) {
     unstable_rethrow(e);
     return unexpected("setAvailabilityAction", e);
+  }
+}
+
+// ═══════════ POS P2.6U ▸ ตัวห่อบาง ๆ ที่สัญญา S ยังไม่มี (บันทึกเป็น deviation ในโน้ต P2.6U) ═══════════
+
+/**
+ * มติ 9b (จอ 06): ตั้งสถานีครัวของสินค้าที่ไม่ใช่เมนู → catalog.updateProduct({stationId}) (ตัวเขียนเดียว F15.1 · pos.product.manage ตรวจซ้ำในแคตตาล็อก ·
+ * สถานีต้องเป็นของสาขาเดียวกับสินค้า · เมนู = VALIDATION) · คำปฏิเสธของแคตตาล็อก → รหัสของจอครัว
+ */
+export async function setProductStationAction(args: Target & { productId: string; stationId: string | null }): Promise<{ ok: true; stationId: string | null } | KdsRefusal> {
+  try {
+    const s = await sessionScope(args, "manage");
+    if ("ok" in s) return s;
+    const stationId = args?.stationId === null ? null : typeof args?.stationId === "string" ? args.stationId : undefined;
+    if (stationId === undefined || typeof args?.productId !== "string" || !args.productId) return { ok: false, code: "VALIDATION", message: "ข้อมูลไม่ถูกต้อง" };
+    const row = await updateProduct({ tenantId: s.ctx.tenantId, systemId: s.ctx.systemId, actorUserId: s.actor.userId }, args.productId, { stationId });
+    return { ok: true, stationId: row.stationId ?? null };
+  } catch (e) {
+    unstable_rethrow(e);
+    if (e instanceof CatalogError) {
+      const code = e.code === "NOT_FOUND" ? "PRODUCT_NOT_FOUND" : e.code === "PERMISSION_DENIED" ? "PERMISSION_DENIED" : e.code === "VALIDATION" ? "VALIDATION" : "INTERNAL";
+      return { ok: false, code, message: e.message };
+    }
+    return unexpected("setProductStationAction", e);
+  }
+}
+
+/**
+ * มติ 9c + 11 (จอ 09): สถานะครัวของสาขา — พักครัว · เพดานรับอัตโนมัติ (autoAcceptMaxOpen) · ตั๋วค้าง (ใหม่+กำลังทำ) ต่อสถานี
+ * (kds.kitchenStateForUnit = kitchenSettingForPos ของ facade ร้านอาหาร + kitchenBacklog) · อ่านอย่างเดียว · สิทธิ์อ่านเดียวกับบอร์ด
+ */
+export async function kdsKitchenStateAction(args: Target): Promise<{ ok: true; paused: boolean; maxOpen: number | null; backlog: { stationId: string; open: number }[] } | KdsRefusal> {
+  try {
+    const s = await sessionScope(args, "read");
+    if ("ok" in s) return s;
+    return { ok: true, ...(await kitchenStateForUnit(s.ctx.tenantId, s.ctx.unitId)) };
+  } catch (e) {
+    unstable_rethrow(e);
+    return unexpected("kdsKitchenStateAction", e);
+  }
+}
+
+/** มติ 10 (PayDone "คิว N"): เลขคิวของรอบครัวของบิลนี้ (null = ไม่มีรอบ) — queueNoForSale ของ kds.ts (อ่านอย่างเดียว) */
+export async function kdsQueueNoAction(args: Target & { saleId: string }): Promise<{ ok: true; queueNo: number | null } | KdsRefusal> {
+  try {
+    const s = await sessionScope(args, "sale");
+    if ("ok" in s) return s;
+    if (typeof args?.saleId !== "string" || !args.saleId) return { ok: false, code: "VALIDATION", message: "ข้อมูลไม่ถูกต้อง" };
+    return { ok: true, queueNo: await queueNoForSale(s.ctx.tenantId, s.ctx.unitId, args.saleId) };
+  } catch (e) {
+    unstable_rethrow(e);
+    return unexpected("kdsQueueNoAction", e);
   }
 }

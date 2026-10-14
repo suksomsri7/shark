@@ -24,6 +24,7 @@ import { RECEIPT_EMAIL_RE } from "@/lib/modules/pos/receipt-public-shared";
 import { PrintStatus } from "@/components/pos/print/PrintStatus";
 import { printReceipt, printerPaired } from "@/components/pos/print/printReceipt";
 import type { PrintResult } from "@/components/pos/print/types";
+import { kdsQueueNoAction } from "@/lib/modules/pos/kds-actions"; // POS P2.6U ▸ มติ 10: "คิว N" ◂
 import { RegisterDialog, SheetGrab } from "./RegisterDialog";
 import { RegisterIcon } from "./RegisterIcon";
 
@@ -50,6 +51,8 @@ type Props = {
    *   ตัวเลขเป็นค่าที่คาด (quote.pointsToEarn) — แต้มจริงเขียนหลังคิว pos.sale.paid ระบาย (ไม่ poll) ◂
    */
   member?: { pointsBurned: number; pointsExpected: number; pointsBalanceAfterBurn: number };
+  /** POS P2.6U ▸ มติ 10: สาขาของบิล — ส่งมา = ถามเลขคิวครัวของบิล (≤ 3 ครั้ง × 1 วิ) แล้วแสดง "คิว N" (ไม่มีรอบ = ไม่แสดง) ◂ */
+  unitId?: string;
 };
 
 /** บิลที่สั่งพิมพ์อัตโนมัติไปแล้ว (ระดับโมดูล — จอสำเร็จถูกวาดใหม่/StrictMode ก็ไม่พิมพ์ซ้ำ) */
@@ -61,8 +64,29 @@ const autoPrinted = new Set<string>();
  */
 const printedOriginal = new Set<string>();
 
-export function PayDone({ receiptNo, totalSatang, changeSatang, payMethods, onNext, systemId, saleId, printer, locale, memberAttached = false, taxInvoicePending = false, member }: Props) {
+export function PayDone({ receiptNo, totalSatang, changeSatang, payMethods, onNext, systemId, saleId, printer, locale, memberAttached = false, taxInvoicePending = false, member, unitId }: Props) {
   const t = useTranslations("pos.register");
+  // POS P2.6U ▸ มติ 10: รอบครัวสร้างหลัง commit ⇒ ถาม ≤ 3 ครั้ง ห่าง 1 วิ · ได้เลข = หยุด · ไม่ได้ = ไม่แสดงอะไร ◂
+  const [queueNo, setQueueNo] = useState<number | null>(null);
+  useEffect(() => {
+    if (!unitId || !saleId) return;
+    let live = true;
+    void (async () => {
+      for (let i = 0; i < 3 && live; i++) {
+        if (i > 0) await new Promise((r) => setTimeout(r, 1000));
+        const r = await kdsQueueNoAction({ systemId, unitId, saleId }).catch(() => null);
+        if (!live) return;
+        if (r && r.ok === true && r.queueNo !== null) {
+          setQueueNo(r.queueNo);
+          return;
+        }
+        if (r && r.ok !== true) return;
+      }
+    })();
+    return () => {
+      live = false;
+    };
+  }, [systemId, unitId, saleId]);
   const tm = useTranslations("pos.member");
   const tp = useTranslations("pos.print");
   const trc = useTranslations("pos.receipt");
@@ -189,6 +213,14 @@ export function PayDone({ receiptNo, totalSatang, changeSatang, payMethods, onNe
               {receiptNo ?? "-"}
             </span>
           </div>
+          {queueNo !== null && ( // POS P2.6U ▸ มติ 10 ◂
+            <div className={cell}>
+              <span className="text-[11.5px] text-[color:var(--color-muted)]">{t("done.kitchenLabel")}</span>
+              <span data-testid="pos-reg-done-queue" className="text-[15px] font-bold tabular-nums">
+                {t("done.queue", { n: queueNo })}
+              </span>
+            </div>
+          )}
           {paidBy && (
             <div className={cell}>
               <span className="text-[11.5px] text-[color:var(--color-muted)]">{t("done.paidBy")}</span>

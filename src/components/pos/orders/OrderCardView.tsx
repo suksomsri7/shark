@@ -17,6 +17,8 @@ import { channelDisplayName } from "@/components/pos/settings/channel-text";
 import { acceptLeftSec, bkkClock, mmss, ORDERS_ACCEPT_RED_SEC, prepState } from "./orders-ui";
 
 export type CardPerms = { accept: boolean; reject: boolean };
+/** POS P2.6U ▸ มติ 9c/11: มาตรครัวของออเดอร์ (kitchenProgressAction · ไม่มีรอบ = null) · ออเดอร์ใหม่ค้างเพราะครัว (พักครัว / ครัวค้าง ≥ เพดาน) ◂ */
+export type CardKitchen = { progress: { done: number; total: number } | null; held: boolean };
 
 /** ชิปช่องทาง (ภาพ 09: กรอบมน · แพลตฟอร์ม = กรอบดำหนา ตัวหนา · อื่น = กรอบจาง) */
 export function ChannelChip({
@@ -67,7 +69,9 @@ export function OrderCardView({
   onAccept,
   onReject,
   onHandOver,
+  kitchen, // POS P2.6U ▸ มติ 9c/11 ◂
 }: {
+  kitchen?: CardKitchen;
   card: OrderCard;
   selected: boolean;
   now: number | null;
@@ -142,7 +146,21 @@ export function OrderCardView({
             <span className="text-[12px] text-[color:var(--color-accent)]">{t(`payment.${c.paymentState}`)}</span>
           ) : null}
         </button>
-        {(c.status === "ACCEPTED" || c.status === "PREPARING") && <PlannedChip label={t("card.kitchenMeter")} />}
+        {/* POS P2.6U ▸ มติ 9c: มาตรครัวจริง "ครัวกำลังทำ d/t" (แทนชิปเร็ว ๆ นี้) · ไม่มีรอบครัว = ไม่แสดง ◂ */}
+        {(c.status === "ACCEPTED" || c.status === "PREPARING" || c.status === "READY") && kitchen?.progress && kitchen.progress.total > 0 && (
+          <span data-testid="pos-ord-kitchen-meter" className="flex items-center gap-2 text-[12px] text-[color:var(--color-ink-soft)]">
+            <span className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-[color:var(--color-surface-2)]">
+              <span className="block h-full rounded-full bg-[color:var(--color-ink)]" style={{ width: `${Math.round((kitchen.progress.done / kitchen.progress.total) * 100)}%` }} />
+            </span>
+            <span className="shrink-0 tabular-nums">{t("card.kitchenProgress", { done: kitchen.progress.done, total: kitchen.progress.total })}</span>
+          </span>
+        )}
+        {/* POS P2.6U ▸ มติ 11: ออเดอร์ใหม่ที่ระบบไม่รับอัตโนมัติเพราะครัว (อ่านอย่างเดียว · ไม่มีตัวกวาด — P2.11) ◂ */}
+        {c.status === "NEW" && kitchen?.held && (
+          <span data-testid="pos-ord-kitchen-held" title={t("card.kitchenHeldHint")} className="inline-flex h-6 self-start items-center rounded-[7px] border border-dashed border-[color:var(--color-danger)] px-2 text-[11.5px] font-bold text-[color:var(--color-danger)]">
+            {t("card.kitchenHeld")}
+          </span>
+        )}
         {c.status === "NEW" && (
           // POS P2.8U ▸ fix 2 V1 (ภาพ 09): ปุ่มบรรทัดเดียว — ไม่ตัดคำ · flex-wrap: ไม่พอจริง ๆ ⇒ "ปฏิเสธ" ลงบรรทัดใหม่เต็มกว้าง (ไม่หักกลางคำ) ·
           //   ระยะซ้ายขวาแคบ (รับ 6 · ปฏิเสธ 8) ส่วนเกินแบ่งด้วย grow 3:1 · การ์ด < 140px ⇒ 13px + ระยะ 4 · สูง 44 คงเดิม ◂

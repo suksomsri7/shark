@@ -23,10 +23,11 @@ import { ProductPanel } from "./ProductPanel";
 import { BulkMarkupDialog } from "./BulkMarkupDialog";
 // POS P2.3U ▸ มติ 1/2: ผลบันทึกสูตร/สวิตช์จากลิ้นชัก ◂
 import type { RecipePatch } from "./RecipeSection";
+import type { KitchenPatch } from "@/components/pos/products/kitchen-ui"; // POS P2.6U ◂
 
-type Props = { systemId: string; data: ProductsData; canEdit: boolean; initialUnit: string | null; canEditRecipe?: boolean };
+type Props = { systemId: string; data: ProductsData; canEdit: boolean; initialUnit: string | null; canEditRecipe?: boolean; canMark86?: boolean }; // POS P2.6U ▸ + canMark86 ◂
 
-export function ProductsClient({ systemId, data, canEdit, initialUnit, canEditRecipe = false }: Props) {
+export function ProductsClient({ systemId, data, canEdit, initialUnit, canEditRecipe = false, canMark86 = false }: Props) {
   const t = useTranslations("pos.products") as PT;
   const tp = useTranslations("pos.price") as PT;
   const tchip = useTranslations("pos.products.chip") as PT;
@@ -108,6 +109,21 @@ export function ProductsClient({ systemId, data, canEdit, initialUnit, canEditRe
     setToast(text);
     router.refresh();
   };
+  // POS P2.6U ▸ มติ 9b: ผลจากส่วนครัวของลิ้นชัก (สถานี / 86 ของสาขา) → แถวในตาราง ◂
+  const onKitchenSaved = (productId: string, patch: KitchenPatch, text: string) => {
+    setProducts((ps) =>
+      ps.map((p) =>
+        p.id !== productId
+          ? p
+          : {
+              ...p,
+              ...(patch.stationId !== undefined ? { stationId: patch.stationId } : {}),
+              ...(patch.available ? { available: { ...p.available, [patch.available.unitId]: patch.available.value } } : {}),
+            },
+      ),
+    );
+    setToast(text);
+  };
   const toggleSel = (id: string) =>
     setSelected((s) => {
       const n = new Set(s);
@@ -129,6 +145,13 @@ export function ProductsClient({ systemId, data, canEdit, initialUnit, canEditRe
   };
 
   const statusPill = (p: ProductsRow) => {
+    // POS P2.6U ▸ มติ 9b (06): สาขาที่เลือกปิดขาย (86 ของครัว/ร้าน หรือของหมด) = ชิป "หมด · 86 แล้ว" ◂
+    if (unit && p.available[unit] === false)
+      return (
+        <span data-testid={`pos-prod-86-${p.id}`} className="inline-flex h-7 items-center whitespace-nowrap rounded-lg border border-[color:var(--color-danger)] px-2.5 text-[11.5px] font-bold text-[color:var(--color-danger)]">
+          {t("kitchen.chip86")}
+        </span>
+      );
     const off = offAll(p);
     const out = !off && outOf(p);
     const cls = out ? "border-[color:var(--color-danger)] font-bold text-[color:var(--color-danger)]" : off ? "border-dashed text-[color:var(--color-muted)]" : "text-[color:var(--color-muted)]";
@@ -390,6 +413,9 @@ export function ProductsClient({ systemId, data, canEdit, initialUnit, canEditRe
           onSaved={onSaved}
           canEditRecipe={canEditRecipe}
           onRecipeSaved={onRecipeSaved}
+          canManage={canEditRecipe} // POS P2.6U ▸ มติ 9b: pos.product.manage (ค่าเดียวกับ canEditRecipe ของหน้า) ◂
+          canMark86={canMark86}
+          onKitchenSaved={onKitchenSaved}
         />
       ) : null}
 

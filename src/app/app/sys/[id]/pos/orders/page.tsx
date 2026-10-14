@@ -73,6 +73,7 @@ export default async function PosOrdersPage({ params, searchParams }: { params: 
         create: can("pos.sale.create"),
         priceOverride: can("pos.sale.priceOverride"),
         voidSale: can("pos.sale.void"),
+        kitchenPause: evaluate(m, { module: "restaurant", action: "restaurant.kitchen.pause", unitId: active.id }), // POS P2.6U ▸ มติ 9c ◂
       }}
       promptpayId={ppId}
       payManagerOnly={payManagerOnly}

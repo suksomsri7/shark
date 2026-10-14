@@ -28,8 +28,10 @@ import {
   setPrepMinutesAction,
 } from "@/lib/modules/pos/order-actions";
 import { ordersChannelsAction } from "@/lib/modules/pos/order-ui-actions";
+import { kdsKitchenStateAction, kdsSetAutoAcceptMaxAction, kitchenProgressAction } from "@/lib/modules/pos/kds-actions"; // POS P2.6U ▸ มติ 9c/11 ◂
 import { ORDER_COLUMNS, ORDER_PREP_DEFAULT_MIN, type ListOrdersResult, type OrderActionResult, type OrderCard, type OrderColumn, type OrderDetail, type OrderRefusal, type OrderRejectReason } from "@/lib/modules/pos/order-shared";
 import { moneyText, refusalMessageKey, type RegisterStatus } from "@/lib/modules/pos/register-shared";
+import { kdsRefusalMessageKey } from "@/lib/modules/pos/kds-shared"; // POS P2.6U ◂
 import { registerStatusAction } from "@/lib/modules/pos/register-actions";
 import { getPosDeviceId } from "@/lib/modules/pos/device-id";
 import { readStaffSession, type StaffSession } from "@/lib/modules/pos/staff-session";
@@ -64,7 +66,7 @@ import {
 
 type List = Extract<ListOrdersResult, { ok: true }>;
 type Toast = { text: string; tone?: "danger" };
-export type OrdersPerms = { accept: boolean; reject: boolean; create: boolean; priceOverride: boolean; voidSale: boolean };
+export type OrdersPerms = { accept: boolean; reject: boolean; create: boolean; priceOverride: boolean; voidSale: boolean; kitchenPause?: boolean }; // POS P2.6U ▸ + kitchenPause (restaurant.kitchen.pause) ◂
 
 export type OrdersScreenProps = {
   systemId: string;
@@ -104,6 +106,7 @@ export function OrdersScreen(p: OrdersScreenProps) {
   const tr = useTranslations("pos.register");
   const tpos = useTranslations("pos");
   const tch = useTranslations("pos.channel");
+  const tk = useTranslations("pos.kds"); // POS P2.6U ▸ คำปฏิเสธของเพดานครัว ◂
   const wide = useMedia("(min-width: 768px)");
   const lg = useMedia("(min-width: 1024px)") === true;
   const xl = useMedia("(min-width: 1280px)") === true;
@@ -173,6 +176,8 @@ export function OrdersScreen(p: OrdersScreenProps) {
   const [list, setList] = useState<List | null>(null);
   const [listErr, setListErr] = useState<string | null>(null);
   const [channels, setChannels] = useState<OrdersChannel[]>([]);
+  // POS P2.6U ▸ มติ 9c/11: สถานะครัวของสาขา (ดึงพร้อมรายการ) — progress ต่อออเดอร์ · พักครัว · เพดาน · ตั๋วค้างสูงสุดต่อสถานี · อ่านไม่ได้ = null ◂
+  const [kitchen, setKitchen] = useState<{ progress: Record<string, { done: number; total: number }>; paused: boolean; maxOpen: number | null; backlogMax: number; hasStations: boolean } | null>(null);
   const seenNew = useRef<Set<string> | null>(null);
   const listSeq = useRef(0);
   const refreshList = useCallback(async (): Promise<List | null> => {
@@ -200,6 +205,15 @@ export function OrdersScreen(p: OrdersScreenProps) {
         }
       }
       seenNew.current = ids;
+      // POS P2.6U ▸ มติ 9c/11: ครัว (พังเงียบ — จอออเดอร์ยังใช้ได้) ◂
+      const live = r.orders.filter((o) => o.status === "ACCEPTED" || o.status === "PREPARING" || o.status === "READY").map((o) => o.id).slice(0, 200);
+      void Promise.all([kdsKitchenStateAction(target()).catch(() => null), live.length ? kitchenProgressAction({ ...target(), posOrderIds: live }).catch(() => null) : Promise.resolve(null)]).then(([ks, kp]) => {
+        if (seq !== listSeq.current) return;
+        if (!ks || ks.ok !== true) return setKitchen(null);
+        const progress: Record<string, { done: number; total: number }> = {};
+        if (kp && kp.ok === true) for (const x of kp.progress) progress[x.orderId] = { done: x.done, total: x.total };
+        setKitchen({ progress, paused: ks.paused, maxOpen: ks.maxOpen, backlogMax: Math.max(0, ...ks.backlog.map((b) => b.open)), hasStations: ks.backlog.length > 0 });
+      });
       return r;
     } catch {
       if (seq === listSeq.current) setListErr(t("page.loadFailed"));
@@ -433,6 +447,24 @@ export function OrdersScreen(p: OrdersScreenProps) {
       setBusy(false);
     }
   };
+  // POS P2.6U ▸ มติ 9c: เพดานครัวค้าง (kdsSetAutoAcceptMaxAction · restaurant.kitchen.pause) ◂
+  const setKitchenMax = async (n: number | null) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const r = await kdsSetAutoAcceptMaxAction({ ...target(), maxOpen: n });
+      if (r.ok === true) {
+        setKitchen((k) => (k ? { ...k, maxOpen: r.maxOpen } : k));
+        showToast({ text: r.maxOpen === null ? t("rail.autoPauseOff") : t("rail.autoPauseHint", { n: r.maxOpen }) });
+      } else showToast({ text: tk(kdsRefusalMessageKey(r.code)), tone: "danger" });
+    } catch {
+      showToast({ text: t("page.loadFailed"), tone: "danger" });
+    } finally {
+      setBusy(false);
+    }
+  };
+  /** POS P2.6U ▸ มติ 11: ออเดอร์ใหม่ค้างเพราะครัว = พักครัว หรือ ตั๋วค้างของสถานีใดสถานีหนึ่ง ≥ เพดาน (กติกาเดียวกับ autoAcceptBlockedInTx) ◂ */
+  const kitchenHeld = !!kitchen && (kitchen.paused || (kitchen.maxOpen !== null && kitchen.backlogMax >= kitchen.maxOpen));
   const pause = (minutes: number | null) => {
     const base0 = now ?? Date.now();
     const until = new Date(base0 + (minutes === null ? PAUSE_UNTIL_REOPEN_MS : minutes * 60_000)).toISOString();
@@ -451,6 +483,9 @@ export function OrdersScreen(p: OrdersScreenProps) {
       onAuto={(c, on) => void saveSettings([c], { autoAccept: on }, on ? t("toast.autoOn", { channel: channelDisplayName(c.code, c.name, tch) }) : t("toast.autoOff", { channel: channelDisplayName(c.code, c.name, tch) }))}
       onPrep={(n) => void saveSettings(settingTargets, { prepMinutes: n }, t("toast.prepDefault", { n }))}
       onPause={() => openLayer({ kind: "pause" })}
+      kitchenMax={kitchen?.hasStations ? kitchen.maxOpen : undefined} // POS P2.6U ▸ มติ 9c ◂
+      kitchenMaxEditable={!!p.perms.kitchenPause}
+      onKitchenMax={(n) => void setKitchenMax(n)}
     />
   ) : null;
 
@@ -479,6 +514,7 @@ export function OrdersScreen(p: OrdersScreenProps) {
         onCancel={() => openLayer({ kind: "cancel", card: selCard, key: newOrderKey("ordcancel") })}
         onRetry={() => void loadDetail(selCard.id)}
         onClose={inAside ? undefined : closePanel}
+        kitchen={kitchen ? { hasStations: kitchen.hasStations, progress: kitchen.progress[selCard.id] ?? null } : undefined} // POS P2.6U ▸ มติ 9c ◂
       />
     ) : null;
 
@@ -614,6 +650,7 @@ export function OrdersScreen(p: OrdersScreenProps) {
                 onAccept={() => accept(c)}
                 onReject={() => openLayer({ kind: "reject", card: c })}
                 onHandOver={() => handOver(c)}
+                kitchen={{ progress: kitchen?.progress[c.id] ?? null, held: kitchenHeld }} // POS P2.6U ▸ มติ 9c/11 ◂
               />
             ))}
           </ul>

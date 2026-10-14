@@ -21,6 +21,11 @@ import type { PrinterPairing, PrintResult } from "@/components/pos/print/types";
 import { listDevicesAction, registerDeviceAction, revokeDeviceAction, updateDeviceAction } from "@/lib/modules/pos/device-actions";
 import { getPosDeviceId } from "@/lib/modules/pos/device-id";
 import { POS_DEVICE_NAME_MAX, POS_REG_NO_MAX, type PosDeviceListItem, type PosPrinterConfig } from "@/lib/modules/pos/device-shared";
+// POS P2.6U ▸ มติ 9e (ภาพ 17B): ใบครัวของเครื่อง (kitchenSlipSettings · ตัวเขียน = updateDeviceAction เดิม) + สถานีจาก kdsBoardAction(expo) · ลิงก์จอครัว (มติ 1) ◂
+import Link from "next/link";
+import { kitchenSlipSettings } from "@/lib/modules/pos/device-shared";
+import { kdsBoardAction } from "@/lib/modules/pos/kds-actions";
+import { KDS_EXPO, type KdsStationTab } from "@/lib/modules/pos/kds-shared";
 import { Chip, InlineNote, SwitchKnob, TabHead } from "./settings-ui";
 
 type Props = { systemId: string; unitId: string; shopName: string };
@@ -91,6 +96,17 @@ export function DeviceSettings({ systemId, unitId, shopName }: Props) {
   const [pairing, setPairing] = useState<PrinterPairing | null>(null);
   const [pairOpen, setPairOpen] = useState(false);
   const [printRes, setPrintRes] = useState<PrintResult | null>(null);
+  // POS P2.6U ▸ มติ 9e: สถานีครัวของสาขา (สำหรับช่องติ๊กใบครัว) — อ่านไม่ได้/ไม่มีครัว = [] ◂
+  const [kStations, setKStations] = useState<KdsStationTab[] | null>(null);
+  useEffect(() => {
+    let live = true;
+    void kdsBoardAction({ systemId, unitId, stationId: KDS_EXPO })
+      .then((r) => live && setKStations(r && r.ok === true ? r.stations : []))
+      .catch(() => live && setKStations([]));
+    return () => {
+      live = false;
+    };
+  }, [systemId, unitId]);
 
   const load = useCallback(
     async (keepSel?: string | null) => {
@@ -329,6 +345,10 @@ export function DeviceSettings({ systemId, unitId, shopName }: Props) {
   return (
     <div data-testid="pos-settings-devices" className="flex min-w-0 flex-col gap-6 md:gap-8">
       <TabHead title={td("tabTitle")} desc={td("subtitle")}>
+        {/* POS P2.6U ▸ มติ 1: ทางเข้าจอครัวจากหน้าเครื่อง ◂ */}
+        <Link data-testid="pos-device-kds-link" href={`/app/sys/${systemId}/pos/kds?unit=${encodeURIComponent(unitId)}`} className="btn btn-ghost h-11 gap-2 rounded-[11px] px-4 text-[14px] font-semibold">
+          {td("kitchen.openKds")}
+        </Link>
         <button
           data-testid="pos-device-register"
           type="button"
@@ -518,6 +538,58 @@ export function DeviceSettings({ systemId, unitId, shopName }: Props) {
                     )}
                   </div>
 
+                  {/* POS P2.6U ▸ มติ 9e (17B): ใบครัว — ไม่พิมพ์ / พิมพ์หลังขายที่เครื่องนี้ / LAN (เร็ว ๆ นี้ P3.11) + สถานีที่พิมพ์ ◂ */}
+                  {(() => {
+                    const ks = kitchenSlipSettings(sel.printerConfig);
+                    return (
+                      <div data-testid="pos-device-kitchen" className="flex flex-col gap-2 border-t pt-5">
+                        <span className="text-[13px] font-bold text-[color:var(--color-ink-soft)]">{td("kitchen.title")}</span>
+                        <div role="radiogroup" aria-label={td("kitchen.title")} className="flex flex-wrap gap-1 rounded-[13px] border bg-[color:var(--color-surface-2)] p-1">
+                          <button data-testid="pos-device-kitchen-off" type="button" role="radio" aria-checked={ks.mode === "off"} disabled={busy} className={`${seg(ks.mode === "off")} flex-1`} onClick={() => cfg("kitchenSlip", "off")}>
+                            {td("kitchen.off")}
+                          </button>
+                          <button data-testid="pos-device-kitchen-after" type="button" role="radio" aria-checked={ks.mode === "after-sale"} disabled={busy} className={`${seg(ks.mode === "after-sale")} flex-1`} onClick={() => cfg("kitchenSlip", "after-sale")}>
+                            {td("kitchen.afterSale")}
+                          </button>
+                          <span data-testid="pos-device-kitchen-lan" role="radio" aria-checked={false} aria-disabled="true" title={td("kitchen.lanSoon")} className={`${seg(false)} flex-1 gap-1.5 opacity-60`}>
+                            {td("kitchen.lan")}
+                            <span className="rounded-[6px] border px-1.5 text-[11px] leading-[18px] text-[color:var(--color-muted)]">{td("kitchen.planned")}</span>
+                          </span>
+                        </div>
+                        {ks.mode === "after-sale" && (
+                          <div className="flex flex-col gap-1">
+                            <span className="text-[12.5px] text-[color:var(--color-muted)]">{td("kitchen.stations")}</span>
+                            {kStations === null ? null : kStations.length === 0 ? (
+                              <span className="text-[13px] text-[color:var(--color-muted)]">{td("kitchen.noStations")}</span>
+                            ) : (
+                              kStations.map((st) => {
+                                const on = ks.stationIds.length === 0 || ks.stationIds.includes(st.id);
+                                return (
+                                  <label key={st.id} className="flex min-h-11 items-center gap-3 text-[14px]">
+                                    <input
+                                      data-testid={`pos-device-kitchen-station-${st.id}`}
+                                      type="checkbox"
+                                      className="size-5"
+                                      checked={on}
+                                      disabled={busy}
+                                      onChange={() => {
+                                        const all = kStations.map((x) => x.id);
+                                        const cur = ks.stationIds.length ? ks.stationIds : all;
+                                        const next = on ? cur.filter((x) => x !== st.id) : [...cur, st.id];
+                                        cfg("kitchenStationIds", next.length === all.length ? [] : next);
+                                      }}
+                                    />
+                                    <span className="min-w-0 flex-1 truncate">{locale === "en" && st.nameEn ? st.nameEn : st.name}</span>
+                                  </label>
+                                );
+                              })
+                            )}
+                            <small className="text-[12px] text-[color:var(--color-muted)]">{td("kitchen.stationsHint")}</small>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                   <PrintStatus result={printRes} onRetry={() => void testPrint()} onBrowser={() => void testPrint(true)} />
                   <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-5">
                     <button data-testid="pos-device-test-print" type="button" className="btn btn-ghost h-12 gap-2 rounded-[13px] px-5 text-[15px]" disabled={busy} onClick={() => void testPrint()}>

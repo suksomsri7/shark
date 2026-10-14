@@ -386,6 +386,21 @@ export async function kitchenBacklog(tenantId: string, unitId: string): Promise<
   return backlogOf(await restaurant(), prisma, { tenantId, unitId });
 }
 
+// POS P2.6U ▸ มติ 10: ตัวอ่านเลขคิวของบิลหน้าขาย (PayDone "คิว N") — อ่านอย่างเดียว · รอบของบิล (posSaleId) ที่สาขานี้ · ไม่มีรอบ = null ◂
+export async function queueNoForSale(tenantId: string, unitId: string, saleId: string): Promise<number | null> {
+  if (!isId(tenantId) || !isId(unitId) || !isId(saleId)) return null;
+  const r = await prisma.restaurantOrder.findFirst({ where: { tenantId, unitId, posSaleId: saleId }, select: { dailyNo: true } });
+  return r?.dailyNo ?? null;
+}
+/** POS P2.6U ▸ มติ 9c/11: สถานะครัวของสาขาสำหรับจอ 09 (พักครัว · เพดานรับอัตโนมัติ · ตั๋วค้างต่อสถานี) — อ่านอย่างเดียว · ผู้เรียกตรวจสิทธิ์ ◂ */
+export async function kitchenStateForUnit(tenantId: string, unitId: string): Promise<{ paused: boolean; maxOpen: number | null; backlog: KitchenBacklogRow[] }> {
+  if (!isId(tenantId) || !isId(unitId)) return { paused: false, maxOpen: null, backlog: [] };
+  const R = await restaurant();
+  const [setting, backlog] = await Promise.all([R.kitchenSettingForPos(prisma, { tenantId, unitId }), kitchenBacklog(tenantId, unitId)]);
+  return { paused: setting.kitchenPaused, maxOpen: setting.autoAcceptMaxOpen, backlog };
+}
+// ◂ POS P2.6U
+
 /** หลังเลื่อนตั๋วของรอบออนไลน์ (ในธุรกรรมเดียวกัน · CD7): ออกจาก NEW ครั้งแรก ⇒ PREPARING · ครบทุกรายการ READY/SERVED ⇒ READY (ไม่ถอยหลัง) */
 async function onlineProgressInTx(tx: Tx, R: RestFacade, s: { tenantId: string; unitId: string }, orderId: string, posOrderId: string): Promise<void> {
   const round = await R.kitchenRoundForPos(tx, { tenantId: s.tenantId, unitId: s.unitId, orderId });
@@ -557,7 +572,8 @@ export async function kdsBoard(ctx: RegisterCtx, actor: RegisterActor, input: { 
       ok: true,
       stations: stations.map((st) => ({ id: st.id, name: st.name, nameEn: st.nameEn, openCount: all.filter((t) => t.stationId === st.id && t.state !== "SERVED").length })),
       tickets: ordered(onBoard),
-      servedToday: { count: served.length, last: last ? { no: last.no, label: last.label, source: last.source, at: new Date(last.servedAtMs ?? now.getTime()).toISOString() } : null },
+      // P2.6U ▸ มติ 7: + orderId/stationId ของใบล่าสุด (แถบเสิร์ฟแล้วดึงใบกลับได้ · เพิ่มอย่างเดียว) ◂
+      servedToday: { count: served.length, last: last ? { no: last.no, label: last.label, source: last.source, at: new Date(last.servedAtMs ?? now.getTime()).toISOString(), orderId: last.pub.orderId, stationId: last.stationId } : null },
       pending: [...pend.entries()].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0)).slice(0, KDS_PENDING_TOP).map(([name, qty]) => ({ name, qty })),
       avgMinutes: avgReadyMinutes(mine.filter((t) => t.readyAtMs !== null).map((t) => ({ sentAtMs: t.sentAtMs, readyAtMs: t.readyAtMs as number }))),
       eightySix: await eightySixOf(R, s),
