@@ -98,21 +98,25 @@ export async function createKitchenRoundInTx(tx: Tx, input: KitchenRoundInput): 
   const stations = new Set((await tx.kdsStation.findMany({ where: { tenantId, unitId, archivedAt: null }, select: { id: true } })).map((x) => x.id));
   if (!stations.size) return none("NO_STATIONS");
   const pids = [...new Set(input.lines.map((l) => l.productId).filter((x): x is string => !!x))];
-  const menuOf = new Map<string, { id: string; stationId: string }>();
+  const menuOf = new Map<string, { id: string; stationId: string; counted: boolean }>();
   if (pids.length) {
     const rows = await tx.menuItem.findMany({
       where: { tenantId, unitId, posProductId: { in: pids }, archivedAt: null },
-      select: { id: true, stationId: true, posProductId: true },
+      select: { id: true, stationId: true, posProductId: true, stockQty: true },
       orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     });
-    for (const m of rows) if (m.posProductId && !menuOf.has(m.posProductId)) menuOf.set(m.posProductId, { id: m.id, stationId: m.stationId }); // เก่าสุดก่อน (คงที่ · แบบ createOrderInTx)
+    for (const m of rows) if (m.posProductId && !menuOf.has(m.posProductId)) menuOf.set(m.posProductId, { id: m.id, stationId: m.stationId, counted: m.stockQty !== null }); // เก่าสุดก่อน (คงที่ · แบบ createOrderInTx)
   }
   const routed = input.lines.flatMap((l) => {
     const m = l.productId ? menuOf.get(l.productId) : undefined;
-    if (m) return stations.has(m.stationId) ? [{ l, menuItemId: m.id as string | null, stationId: m.stationId }] : [];
-    return l.stationHint && stations.has(l.stationHint) ? [{ l, menuItemId: null, stationId: l.stationHint }] : [];
+    if (m) return stations.has(m.stationId) ? [{ l, menuItemId: m.id as string | null, stationId: m.stationId, counted: m.counted }] : [];
+    return l.stationHint && stations.has(l.stationHint) ? [{ l, menuItemId: null, stationId: l.stationHint, counted: false }] : [];
   });
   if (!routed.length) return none("NO_KITCHEN_LINES");
+  // fix1 F1 (รีวิว R1 · มติ fix1-1): ล็อกแถวเมนูที่นับสต็อก (เรียง id · ล็อกอย่างเดียว ไม่เขียน) "ก่อน" ตัวนับรายวัน — ลำดับเดียวกับ writeOrderTx เดิม
+  //   (MenuItem → ตัวนับ) ⇒ รอบครัวที่หักตัวนับทีหลัง (catalog-legacy) ไม่สลับลำดับล็อกกับ createOrder/รอบโต๊ะ/QR (ไม่มี 40P01)
+  const counted = [...new Set(routed.filter((r) => r.counted).map((r) => r.menuItemId as string))].sort();
+  if (counted.length) await tx.$queryRaw`SELECT id FROM "MenuItem" WHERE id = ANY(${counted}::text[]) AND "tenantId" = ${tenantId} ORDER BY id FOR UPDATE`;
   const bizDate = bizDateBkk();
   const counter = await tx.restaurantDailyCounter.upsert({
     where: { unitId_bizDate: { unitId, bizDate } },
