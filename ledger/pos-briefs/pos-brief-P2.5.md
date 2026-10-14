@@ -111,3 +111,15 @@ typecheck (5632 MB, pos gate lock) · `pnpm fitness` ±env · `fitness-pos` · `
 10. **CD10**: no new permission keys (split/pay = `pos.sale.create`; move/merge/pre-bill = the P2.4 table keys).
 11. **CD11**: 2–20 parts.
 12. **CD12 — sequencing**: **oracle writer now** (P2.5 O on tree c: `scripts/qc-pos-p2.5.mts` ~38 checks + names table + red run); **builder S after P2.9 S merges** (both touch `register.ts`); the controller may open S earlier if P2.9's `register.ts` hunks turn out confined to the tender block. No expected ORACLE-EDIT; any pin that goes red must be listed as a CONTROLLER-DECISION, not edited.
+
+## 11. Controller rulings on the oracle's CONTROLLER-DECISION items (account B, 14 Oct 18:2xZ) — binding; the oracle `wip/pos-p2.5-oracle` e50c132b (40 checks) is the contract
+1. **EQUAL rounding** = the oracle's rule: part totals first (q+1 / q by largest remainder, ties to the lower bill number), then per part `service = total − base + discount`; R2's per-item steps are superseded. 15B/15C numbers (M1–M7) are binding.
+2. **Move/merge locks** = table advisory locks + session rows only (sorted by id), never item rows (ruling 8 amended); pay keeps items → part → session. C5(b)/C6 must be green.
+3. Scope registration: Part/Line tables register as `unit` (or `tenant`) — no `systemId` column.
+4. Pre-bill header: th per ruling 9; en must contain "PRE-BILL — NOT A RECEIPT".
+5. Move/merge: no open-round refusal; rounds follow the session (builder updates the round's table reference so KDS cards show the new table).
+6–9. Accepted as the oracle encodes them (`TOO_MANY_LINES` pure-only; M4 MANAGER actor; `TABLE_SPLIT_EXISTS` carries `splitId`/`version`; full tax invoice on part 2 of the member table).
+10. Builder adds the P2.5 owner lines (ST3).
+11. `qc-pos-p2.8` ST6 re-run at merge (push first).
+12. Orphan held drafts sweep → P2.11 follow-up line.
+13. **CD12 amended — builder S opens now on tree c**: P2.9's `register.ts` hunks are confined to pay-row parsing, REG_MESSAGE and the submit tender block (8 hunks, +35) and `service.ts` createSale tender block; P2.5 must not edit those regions. When P2.9 S merges into `session/pos`, the builder merges upstream **before** its final gates (controller sends the SHA); REG_MESSAGE additions from both cards are kept.
