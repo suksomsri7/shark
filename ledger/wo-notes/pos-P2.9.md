@@ -4,7 +4,7 @@ Brief `ledger/pos-briefs/pos-brief-P2.9.md` (§10 rulings 1–13 binding) · pro
 Prisma client: base added P2.6 columns ⇒ `pnpm exec prisma generate` once after checkout, again after the P2.9 schema (tree b own node_modules).
 
 ## Status
-- [x] 1 oracle `scripts/qc-pos-p2.9.mts` (45 checks · 13b9fbbd, fixture fix 8f… see log) + ORACLE-EDIT p1.6 K4/K5 (46610467) + p1.12 ST4 (95271e10) · red-before `ledger/wo-notes/P2.9-red.txt` (ee93ca56)
+- [x] 1 oracle `scripts/qc-pos-p2.9.mts` (45 checks · 13b9fbbd · fixture fix b1b95525 · self-fixes 8867a10e 09d8a5b6) + ORACLE-EDIT p1.6 K4/K5 (46610467) + p1.12 ST4 (95271e10) · red-before `ledger/wo-notes/P2.9-red.txt` (ee93ca56)
 - [x] 2 schema + migration `20261209100000_pos_p29_tenders` (5e55b669) — **applied on QC4**
 - [x] 3 server (4baf8809 primitives · 68b11bc4 POS server · a3fa7b32 readers) — **GIFT_CARD in `createSale` stopped at the contract → CONTROLLER-DECISION below**
 - [x] 4 owner lines (7126235f) + these notes
