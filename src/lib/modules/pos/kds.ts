@@ -283,6 +283,8 @@ export async function ticketForSale(tenantId: string, unitId: string, saleId: st
 /**
  * heal (R3 · มติ 3): บิล POS ของสาขาที่ PAID ภายใน 12 ชม. · ไม่มี sourceId · มีบรรทัดที่เข้าครัวได้ · ยังไม่มีรอบ — ≤ 20 บิลต่อครั้ง (ใหม่ก่อน) ·
  * VOIDED/คืนเงินเต็ม = ไม่เคยสร้าง · เรียกจาก kdsBoard ทุกครั้ง
+ * fix1 H4 (มติ addendum): บรรทัดนับเฉพาะเมื่อการผูกครัว "มีอยู่ก่อนขาย" — MenuItem/PosProduct(/แม่).updatedAt และ KdsStation.createdAt ≤ เวลาขาย
+ *   (ตั้งสถานีให้สินค้า/เพิ่มสถานีแรกทีหลัง ไม่สร้างตั๋วย้อนหลังให้บิลที่ขายไปแล้ว · ข้อจำกัด: เมนูนับสต็อกที่ถูกแก้/หักหลังขายจะไม่ถูก heal)
  */
 export async function healMissingTickets(tenantId: string, unitId: string): Promise<HealResult> {
   if (!isId(tenantId) || !isId(unitId)) return { ok: true, healed: 0 };
@@ -295,11 +297,14 @@ export async function healMissingTickets(tenantId: string, unitId: string): Prom
       AND EXISTS (
         SELECT 1 FROM "PosSaleLine" l
         WHERE l."saleId" = s.id AND l."productId" IS NOT NULL AND (
-          EXISTS (SELECT 1 FROM "MenuItem" m JOIN "KdsStation" k ON k.id = m."stationId" AND k."archivedAt" IS NULL
-                  WHERE m."posProductId" = l."productId" AND m."tenantId" = ${tenantId} AND m."unitId" = ${unitId} AND m."archivedAt" IS NULL)
+          EXISTS (SELECT 1 FROM "MenuItem" m JOIN "KdsStation" k ON k.id = m."stationId" AND k."archivedAt" IS NULL AND k."createdAt" <= s."createdAt"
+                  WHERE m."posProductId" = l."productId" AND m."tenantId" = ${tenantId} AND m."unitId" = ${unitId} AND m."archivedAt" IS NULL
+                    AND m."updatedAt" <= s."createdAt")
           OR EXISTS (SELECT 1 FROM "PosProduct" p LEFT JOIN "PosProduct" pp ON pp.id = p."parentId"
                      JOIN "KdsStation" k ON k.id = coalesce(p."stationId", pp."stationId") AND k."tenantId" = ${tenantId} AND k."unitId" = ${unitId} AND k."archivedAt" IS NULL
-                     WHERE p.id = l."productId" AND p."tenantId" = ${tenantId} AND p.kind::text <> 'MENU')))
+                       AND k."createdAt" <= s."createdAt"
+                     WHERE p.id = l."productId" AND p."tenantId" = ${tenantId} AND p.kind::text <> 'MENU'
+                       AND p."updatedAt" <= s."createdAt" AND (p."stationId" IS NOT NULL OR pp."updatedAt" <= s."createdAt"))))
     ORDER BY s."createdAt" DESC, s.id
     LIMIT ${KDS_HEAL_MAX}`;
   let healed = 0;
