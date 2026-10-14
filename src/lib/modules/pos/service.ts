@@ -107,7 +107,8 @@ export type CreateSaleInput = {
   couponCode?: string;
   // POS P1.6 (เพิ่มล้วน · ไม่ส่ง = พฤติกรรมเดิม):
   //   cashTenderedSatang = เงินที่รับจริงของแถว CASH (≥ ยอดแถว · ทอน = รับ − ยอดแถว เก็บบนแถวนั้น) · reference = เลขอ้างอิงบัตร/EDC
-  payMethods: { type: PosPayType; amountSatang: number; refSaleId?: string; cashTenderedSatang?: number; reference?: string }[];
+  // POS P2.9 (R3 · มติ 3 4 · เพิ่มล้วน): giftCard = บัตรของขวัญของแถว GIFT_CARD เท่านั้น {number, pin} (ตัดยอดใน tx ของบิล · ≤ 3 ใบไม่ซ้ำ)
+  payMethods: { type: PosPayType; amountSatang: number; refSaleId?: string; cashTenderedSatang?: number; reference?: string; giftCard?: { number: string; pin: string } }[];
   /** หมายเหตุบิล (≤500 ตัว) */
   note?: string;
   /** ค่าบริการ (สตางค์ · รวมอยู่ใน grandTotal และฐาน VAT) — ผู้เรียกคิดเอง · ไม่ส่ง = 0 (ผู้เรียกเดิมที่มีบรรทัดค่าบริการของตัวเองไม่โดนคิดซ้ำ) */
@@ -255,14 +256,23 @@ const TIP_FUNDING_TYPES: ReadonlySet<string> = new Set(["CASH", "PROMPTPAY", "TR
 export const MAX_GIFT_CARD_ROWS = 3;
 /**
  * ตรวจโครงแถวชนิดใหม่ (ก่อนแตะตัวนับ) — ตรวจเฉพาะเมื่อมีแถว GIFT_CARD/STORE_CREDIT หรือทิป > 0 (ผู้เรียกเดิมไม่ถูกตรวจเพิ่ม):
- *   GIFT_CARD = ยังไม่รับผ่าน createSale (รอ CONTROLLER-DECISION: payMethods[].giftCard — สัญญา F15.2) · STORE_CREDIT ได้แถวเดียว ·
+ *   GIFT_CARD ≤ 3 ใบไม่ซ้ำ ต้องมี giftCard {number, pin} (ห้ามบนแถวอื่น) · STORE_CREDIT ได้แถวเดียว ·
  *   ห้ามบนบิลขาย/เติมบัตร (sourceModule MEMBER) และห้ามคู่ทางส่วนลดเดิม memberChoices.giftCard · ทิป ≤ Σ แถวเงินจริง
  */
 function validateTenderRows(input: CreateSaleInput): void {
   const bad = (m: string) => new PosSaleError("VALIDATION", m);
   const gift = input.payMethods.filter((p) => p.type === "GIFT_CARD");
   const credit = input.payMethods.filter((p) => p.type === "STORE_CREDIT");
-  if (gift.length) throw bad("ยังไม่เปิดรับบัตรของขวัญเป็นวิธีชำระ — รอการยืนยันสัญญาข้อมูลของบิล (P2.9)");
+  if (input.payMethods.some((p) => p.type !== "GIFT_CARD" && p.giftCard !== undefined && p.giftCard !== null)) throw bad("ข้อมูลบัตรใส่ได้เฉพาะรายการบัตรของขวัญ");
+  if (gift.length > MAX_GIFT_CARD_ROWS) throw bad(`ใช้บัตรของขวัญได้ไม่เกิน ${MAX_GIFT_CARD_ROWS} ใบต่อบิล`);
+  const seen = new Set<string>();
+  for (const p of gift) {
+    const g = p.giftCard;
+    if (!g || typeof g.number !== "string" || typeof g.pin !== "string" || !g.number.trim() || g.number.trim().length > 40 || !g.pin || g.pin.length > 12) throw bad("ข้อมูลบัตรของขวัญไม่ครบ (หมายเลข + PIN)");
+    const n = g.number.trim().toUpperCase();
+    if (seen.has(n)) throw bad("บัตรของขวัญใบเดียวกันใส่ได้รายการเดียว");
+    seen.add(n);
+  }
   if (credit.length > 1) throw bad("เครดิตร้านใส่ได้รายการเดียว");
   if (gift.length + credit.length > 0) {
     if (input.sourceModule === "MEMBER") throw bad("บิลขาย/เติมบัตรกำนัลจ่ายด้วยบัตรของขวัญหรือเครดิตร้านไม่ได้");
@@ -293,12 +303,18 @@ async function tenderStep<T>(member: MemberTenderFacade, fn: () => Promise<T>): 
  * แล้วล็อกแถวบัตรทุกใบ (เรียง id) ⇒ ลำดับล็อก บัตร → ตัวนับ เหมือนกันทุกบิล · ไม่มีแถวบัตร = ไม่มี query
  */
 async function prepareSaleTenders(tx: Client, input: CreateSaleInput, memberSystemId: string | null): Promise<SaleTender[]> {
-  const rows = input.payMethods.map((p, index) => ({ p, index })).filter((x) => x.p.type === "STORE_CREDIT");
+  const rows = input.payMethods.map((p, index) => ({ p, index })).filter((x) => x.p.type === "STORE_CREDIT" || x.p.type === "GIFT_CARD");
   if (!rows.length) return [];
   const member = await import("@/lib/modules/member");
   const db = tx as Prisma.TransactionClient;
   const out: SaleTender[] = [];
   for (const { p, index } of rows) {
+    if (p.type === "GIFT_CARD") {
+      // มติ 3: PIN ทุกครั้ง (ผิด = ตัวนับนอก tx คงอยู่ · บิลไม่เกิด) · บัตรทั้งร้าน (CD11)
+      const r = await tenderStep(member, () => member.prepareGiftCardTender(input.tenantId, { number: p.giftCard!.number, pin: p.giftCard!.pin, satang: p.amountSatang }, db));
+      out.push({ index, giftCardId: r.giftCardId, satang: p.amountSatang });
+      continue;
+    }
     if (!input.memberId || !memberSystemId) throw new PosSaleError("STORE_CREDIT_NOT_OWNER", "เครดิตร้านใช้ได้เฉพาะบิลของสมาชิกเจ้าของเครดิต — เลือกสมาชิกก่อน");
     const r = await tenderStep(member, () => member.prepareStoreCreditTender(input.tenantId, { systemId: memberSystemId, customerId: input.memberId!, satang: p.amountSatang }, db));
     out.push({ index, giftCardId: r.giftCardId, satang: p.amountSatang });

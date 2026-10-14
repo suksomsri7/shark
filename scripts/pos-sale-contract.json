@@ -240,6 +240,18 @@
       "lines[].listPriceSatang": {
         "optional": true,
         "type": "number"
+      },
+      "payMethods[].giftCard": {
+        "optional": true,
+        "type": "object"
+      },
+      "payMethods[].giftCard.number": {
+        "optional": false,
+        "type": "string"
+      },
+      "payMethods[].giftCard.pin": {
+        "optional": false,
+        "type": "string"
       }
     },
     "MemberSaleChoices": {
@@ -302,6 +314,7 @@
       "src/lib/modules/hotel/service.ts",
       "src/lib/modules/member/subscription.ts",
       "src/lib/modules/pos/api/ops/sales.ts",
+      "src/lib/modules/pos/order.ts",
       "src/lib/modules/pos/register.ts",
       "src/lib/modules/rental/service.ts",
       "src/lib/modules/restaurant/order.ts",

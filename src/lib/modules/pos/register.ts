@@ -411,7 +411,7 @@ export async function posLinkSaleToDeal(tenantId: string, actor: MemberActor, in
 //    ส่วนลดเกินเพดาน/เกินยอด = ปฏิเสธ · บิลจริงเดินผ่าน createSale เดิม (ตัดสต็อก · บัญชี · แต้ม · outbox เหมือนวันนี้ทุกประการ)
 import { Prisma, type PosProduct, type PrismaClient } from "@prisma/client";
 import { canAccessUnit, evaluate, permissionValue } from "@/lib/core/rbac";
-import { createSale, PosSaleError, saleWalletCart, type CreateSaleInput, type SaleWalletCart } from "./service";
+import { createSale, MAX_GIFT_CARD_ROWS, PosSaleError, saleWalletCart, type CreateSaleInput, type SaleWalletCart } from "./service";
 // POS P1.12 ▸ คูปองที่หน้าขาย (R6 · ตรวจบนฐานเดียวกับ createSale) · VAT ของยอดหลังสิทธิ์สมาชิก (สูตรเดียวกับ createSale) ◂
 import * as couponSvc from "@/lib/modules/coupon/service";
 import { splitIncludedVat } from "@/lib/money/vat";
@@ -1126,7 +1126,8 @@ const REG_SUBMIT_KEYS: ReadonlySet<string> = new Set([
   "channelRef", // POS P2.1 ▸ R10 ◂
   "expectedTableItemsHash", // POS P2.4 ▸ R7 แฮชชุดรายการจาก quote ของโต๊ะ ◂
 ]);
-const REG_PAY_KEYS: ReadonlySet<string> = new Set(["type", "amountSatang", "reference"]);
+const REG_GIFT_KEYS: ReadonlySet<string> = new Set(["number", "pin"]); // POS P2.9 ◂
+const REG_PAY_KEYS: ReadonlySet<string> = new Set(["type", "amountSatang", "reference", "giftCard"]); // POS P2.9 ▸ giftCard {number, pin} เฉพาะ GIFT_CARD ◂
 const REG_LINE_KEYS: ReadonlySet<string> = new Set(["productId", "name", "qty", "unitPriceSatang", "openPrice", "discount", "note", "options", "weighedBarcode", "weightGrams"]);
 /** P1.2 R1: คีย์ของรายการตัวเลือก — priceDeltaSatang/name รับได้แต่ "ไม่ใช้" (ราคาจาก client ไม่ถูกเชื่อ · มติ R2) · คีย์อื่น = VALIDATION */
 const REG_OPTION_KEYS: ReadonlySet<string> = new Set(["choiceId", "priceDeltaSatang", "name"]);
@@ -1880,7 +1881,7 @@ type RegParsedSubmit = {
   cart: RegParsedCart;
   /** คีย์ที่เก็บจริง = REG_KEY_PREFIX + คีย์ของ client (R4 K1) */
   idempotencyKey: string;
-  payMethods: { type: RegisterPayType; amountSatang: number; reference: string | null }[];
+  payMethods: { type: RegisterPayType; amountSatang: number; reference: string | null; giftCard?: { number: string; pin: string } }[]; // POS P2.9 ▸ giftCard เฉพาะ GIFT_CARD ◂
   cashReceivedSatang: number | null;
   expected: number;
   /** P1.6 ทิป (0 = ไม่มี) · หมายเหตุบิล (null = ไม่มี) */
@@ -1948,6 +1949,16 @@ function regParseSubmit(raw: unknown): RegParsedSubmit | RegisterRefusal {
     if (p.type === "CASH" && payMethods.some((x) => x.type === "CASH")) return regRefuse("VALIDATION", "เงินสดใส่ได้รายการเดียว");
     // POS P2.9 ▸ R7: เครดิตร้านได้รายการเดียว ไม่มีเลขอ้างอิง (สมาชิกของบิล = เจ้าของเครดิต — ตรวจตอนส่ง) ◂
     if (p.type === "STORE_CREDIT" && (payMethods.some((x) => x.type === "STORE_CREDIT") || (p.reference !== undefined && p.reference !== null))) return regRefuse("VALIDATION", "เครดิตร้านใส่ได้รายการเดียว และไม่มีเลขอ้างอิง");
+    // POS P2.9 ▸ R1 R3 (มติ 3 4): บัตรของขวัญ = giftCard {number, pin} ตรงตัว · ไม่มีเลขอ้างอิง · ≤ 3 ใบ ไม่ซ้ำ · giftCard บนแถวอื่น = VALIDATION ◂
+    let giftCard: { number: string; pin: string } | undefined;
+    if (p.giftCard !== undefined || p.type === "GIFT_CARD") {
+      const g = p.giftCard;
+      if (p.type !== "GIFT_CARD" || !regIsRecord(g) || !regOnlyKeys(g, REG_GIFT_KEYS) || typeof g.number !== "string" || typeof g.pin !== "string") return regRefuse("VALIDATION", "ข้อมูลบัตรของขวัญไม่ถูกต้อง");
+      const number = g.number.trim().toUpperCase();
+      if (!number || number.length > 40 || !regCleanText(number) || !/^[0-9]{4,12}$/.test(g.pin) || (p.reference !== undefined && p.reference !== null)) return regRefuse("VALIDATION", "ข้อมูลบัตรของขวัญไม่ถูกต้อง");
+      if (payMethods.filter((x) => x.type === "GIFT_CARD").length >= MAX_GIFT_CARD_ROWS || payMethods.some((x) => x.giftCard?.number === number)) return regRefuse("VALIDATION", "ใช้บัตรของขวัญได้ไม่เกิน 3 ใบต่อบิล และใบเดียวกันได้รายการเดียว");
+      giftCard = { number, pin: g.pin };
+    }
     let reference: string | null = null;
     if (p.reference !== undefined && p.reference !== null) {
       // POS P1.7 ▸ พร้อมเพย์รับเลขอ้างอิงได้เฉพาะ id ใบขอรับเงิน (pi_…) · อื่น ๆ = VALIDATION เหมือน P1.6 ◂
@@ -1957,7 +1968,7 @@ function regParseSubmit(raw: unknown): RegParsedSubmit | RegisterRefusal {
       if (typeof p.reference !== "string" || p.reference.length > REGISTER_REFERENCE_MAX || !regCleanText(p.reference)) return regRefuse("VALIDATION", "เลขอ้างอิงไม่ถูกต้อง");
       reference = p.reference.trim() || null;
     }
-    payMethods.push({ type: p.type as RegisterPayType, amountSatang: p.amountSatang, reference });
+    payMethods.push({ type: p.type as RegisterPayType, amountSatang: p.amountSatang, reference, ...(giftCard ? { giftCard } : {}) });
   }
   let cashReceivedSatang: number | null = null;
   if (raw.cashReceivedSatang !== undefined && raw.cashReceivedSatang !== null) {
@@ -2355,6 +2366,7 @@ export async function submitRegisterSale(ctx: RegisterCtx, actor: RegisterActor,
         type: x.type,
         amountSatang: x.amountSatang,
         ...(x.reference ? { reference: x.reference } : {}),
+        ...(x.giftCard ? { giftCard: { number: x.giftCard.number, pin: x.giftCard.pin } } : {}), // POS P2.9 ▸ R3 ◂
         ...(x.type === "CASH" && req.cashReceivedSatang !== null ? { cashTenderedSatang: req.cashReceivedSatang } : {}),
       })),
       ...(q.serviceChargeSatang > 0 ? { serviceChargeSatang: q.serviceChargeSatang } : {}),

@@ -1112,6 +1112,8 @@ export async function payOrder(ctx: RegisterCtx, actor: RegisterActor, input: { 
       if (p.reference !== undefined && p.reference !== null && (typeof p.reference !== "string" || p.reference.length > REGISTER_REFERENCE_MAX)) return refuse("VALIDATION", "เลขอ้างอิงยาวเกินไป");
       pays.push({ type: p.type as (typeof REGISTER_PAY_TYPES)[number], amountSatang: p.amountSatang, reference: typeof p.reference === "string" && p.reference.trim() ? p.reference.trim() : null });
     }
+    // POS P2.9 ▸ CD-P29-1 (b): จอออเดอร์ (09) ยังไม่มีขั้น PIN/เจ้าของเครดิต ⇒ บัตรของขวัญ/เครดิตร้านรับที่หน้าขายเท่านั้น (ออเดอร์ = ใบถัดไป · owner line) ◂
+    if (pays.some((p) => p.type === "GIFT_CARD" || p.type === "STORE_CREDIT")) return refuse("VALIDATION", "ออเดอร์ยังรับบัตรของขวัญ/เครดิตร้านไม่ได้ — รับเงินด้วยวิธีอื่น หรือเช็คบิลที่หน้าขาย");
     const cashRows = pays.filter((p) => p.type === "CASH");
     let cashReceived: number | null = null;
     if (inp.cashReceivedSatang !== undefined && inp.cashReceivedSatang !== null) {
