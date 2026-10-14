@@ -3209,7 +3209,9 @@
       "autoPauseOff": "Auto-accept ignores the kitchen backlog",
       "autoPauseLess": "Lower the kitchen backlog limit",
       "autoPauseMore": "Raise the kitchen backlog limit",
-      "autoPauseTurnOff": "Turn off"
+      "autoPauseTurnOff": "Turn off",
+      "autoPauseOffShort": "Off",
+      "autoPauseValue": "{n} tickets"
     },
     "card": {
       "items": "{count} items · <b>{amount}</b>",

@@ -149,10 +149,11 @@ export function OrderCardView({
         {/* POS P2.6U ▸ มติ 9c: มาตรครัวจริง "ครัวกำลังทำ d/t" (แทนชิปเร็ว ๆ นี้) · ไม่มีรอบครัว = ไม่แสดง ◂ */}
         {(c.status === "ACCEPTED" || c.status === "PREPARING" || c.status === "READY") && kitchen?.progress && kitchen.progress.total > 0 && (
           <span data-testid="pos-ord-kitchen-meter" className="flex items-center gap-2 text-[12px] text-[color:var(--color-ink-soft)]">
+            {/* fix1 F6: ข้อความก่อนแถบ (ภาพ 09 "ครัวกำลังทำ 0/3 ▬▬") */}
+            <span className="shrink-0 tabular-nums">{t("card.kitchenProgress", { done: kitchen.progress.done, total: kitchen.progress.total })}</span>
             <span className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-[color:var(--color-surface-2)]">
               <span className="block h-full rounded-full bg-[color:var(--color-ink)]" style={{ width: `${Math.round((kitchen.progress.done / kitchen.progress.total) * 100)}%` }} />
             </span>
-            <span className="shrink-0 tabular-nums">{t("card.kitchenProgress", { done: kitchen.progress.done, total: kitchen.progress.total })}</span>
           </span>
         )}
         {/* POS P2.6U ▸ มติ 11: ออเดอร์ใหม่ที่ระบบไม่รับอัตโนมัติเพราะครัว (อ่านอย่างเดียว · ไม่มีตัวกวาด — P2.11) ◂ */}

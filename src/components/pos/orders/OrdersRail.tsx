@@ -149,7 +149,8 @@ export function RailSettings(p: {
               >
                 <RegisterIcon name="minus" size={14} />
               </button>
-              <span className="min-w-10 text-center text-[15px] font-bold tabular-nums">{p.kitchenMax ?? "—"}</span>
+              {/* fix1 V8: ค่าเป็นข้อความ ("ปิด" / "N ใบ") — ไม่ใช่กล่องที่ดูเหมือนปุ่ม */}
+              <span data-testid="pos-ord-kitchen-max-value" className="min-w-14 px-1 text-center text-[14px] font-bold tabular-nums">{p.kitchenMax === null || p.kitchenMax === undefined ? t("rail.autoPauseOffShort") : t("rail.autoPauseValue", { n: p.kitchenMax })}</span>
               <button
                 type="button"
                 data-testid="pos-ord-kitchen-max-plus"

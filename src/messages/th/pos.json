@@ -3209,7 +3209,9 @@
       "autoPauseOff": "ไม่พักรับอัตโนมัติตามคิวครัว",
       "autoPauseLess": "ลดเพดานครัวค้าง",
       "autoPauseMore": "เพิ่มเพดานครัวค้าง",
-      "autoPauseTurnOff": "ปิด"
+      "autoPauseTurnOff": "ปิด",
+      "autoPauseOffShort": "ปิด",
+      "autoPauseValue": "{n} ใบ"
     },
     "card": {
       "items": "{count} รายการ · <b>{amount}</b>",

@@ -19,12 +19,14 @@ export function RegisterMoreEntry({ systemId, unitId }: { systemId: string; unit
       setAt(null);
     };
     const esc = (e: KeyboardEvent) => e.key === "Escape" && setAt(null);
+    const resize = () => setAt(null);
     document.addEventListener("mousedown", close);
     document.addEventListener("keydown", esc);
-    window.addEventListener("resize", () => setAt(null), { once: true });
+    window.addEventListener("resize", resize);
     return () => {
       document.removeEventListener("mousedown", close);
       document.removeEventListener("keydown", esc);
+      window.removeEventListener("resize", resize); // fix1 F6
     };
   }, [at]);
   const unitQ = unitId ? `?unit=${encodeURIComponent(unitId)}` : "";

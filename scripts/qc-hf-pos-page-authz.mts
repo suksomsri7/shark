@@ -121,7 +121,7 @@ console.log("── [static] หน้า/แอ็กชันใช้ผล�
         ord.indexOf(gate) < firstRead && Number.isFinite(firstRead) && !ord.includes("assertCan("), "ครบ", "ไม่ครบ");
   }
 
-  // ORACLE-ADD 14 ต.ค. (P2.6U มติ 1 · builder ตามคำสั่ง prompt "page-authz rows KD-1…KD-n"): จอครัว /pos/kds — ไม่มีสาขา POS ที่เข้าได้ = notFound ·
+  // ORACLE-ADD ผู้คุม 14 ต.ค. (P2.6U มติ 1 · builder ตามคำสั่ง prompt "page-authz rows KD-1…KD-n"): จอครัว /pos/kds — ไม่มีสาขา POS ที่เข้าได้ = notFound ·
   //   posKdsView ไม่ผ่าน (ไม่มี restaurant.kds.advance / pos.sale.read / pos.sale.create ที่สาขา หรือขอสาขาอื่น) = การ์ดปฏิเสธ pos-kds-refusal ก่อนอ่านข้อมูลครัว
   //   (จอครัวดึง kdsBoardAction ฝั่ง client) · ไม่มี assertCan
   {
@@ -170,7 +170,7 @@ type Access = {
   posCanSetTenantPrice: (m: M | null, unitIds: string[]) => boolean;
   posRegisterView: <T extends { id: string }>(m: M | null, linked: T[], unitParam?: string) => RegView<T>;
   posOrdersView?: <T extends { id: string }>(m: M | null, linked: T[], unitParam?: string) => RegView<T>; // ORACLE-ADD P2.8U
-  posKdsView?: <T extends { id: string }>(m: M | null, linked: T[], unitParam?: string) => RegView<T>; // ORACLE-ADD 14 ต.ค. P2.6U
+  posKdsView?: <T extends { id: string }>(m: M | null, linked: T[], unitParam?: string) => RegView<T>; // ORACLE-ADD ผู้คุม 14 ต.ค. P2.6U
 };
 let access: Access | null = null;
 try {
@@ -403,7 +403,7 @@ try {
   chk("OR-8", "ผู้จัดการทุกสาขา ?unit=B → หน้าออเดอร์สาขา B", ordersPage(P.mgrAll, uB.id) === "page@B", "page@B", ordersPage(P.mgrAll, uB.id));
   chk("OR-9", "เข้าสาขาใดของ POS นี้ไม่ได้เลย → 404", ordersPage(outsider) === "404", "404", ordersPage(outsider));
 
-  // ── 7) จอครัว /pos/kds (ORACLE-ADD 14 ต.ค. · P2.6U มติ 1) — ด่านอ่านของ S (NEED.read ของ kds.ts: restaurant.kds.advance | pos.sale.read | pos.sale.create ที่สาขา) ·
+  // ── 7) จอครัว /pos/kds (ORACLE-ADD ผู้คุม 14 ต.ค. · P2.6U มติ 1) — ด่านอ่านของ S (NEED.read ของ kds.ts: restaurant.kds.advance | pos.sale.read | pos.sale.create ที่สาขา) ·
   //    404 เมื่อเข้าสาขาใด ๆ ของ POS ไม่ได้ · การ์ดปฏิเสธเมื่อเข้าได้แต่อ่านไม่ได้ · สิทธิ์เดิน/ดึงกลับ/เร่ง/พักครัวไม่ใช่ด่านของหน้า (ปุ่มปิดในจอ) ──
   console.log("\n── /pos/kds ──");
   const kdsPage = (m: M, param?: string): string => {
