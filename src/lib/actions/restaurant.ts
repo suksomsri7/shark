@@ -14,6 +14,7 @@ import * as order from "@/lib/modules/restaurant/order";
 import * as kds from "@/lib/modules/restaurant/kds";
 import type { CartLine } from "@/lib/modules/restaurant/order";
 import { CatalogError } from "@/lib/modules/pos";
+import { legacyCancelItemSplitGuard, legacyCheckoutSplitGuard } from "@/lib/modules/pos/table-split"; // POS P2.5 ▸ fix1 มติ 2 (N2): หน้าเดิมไม่เช็คบิล/ยกเลิกรายการของโต๊ะที่แยกบิลอยู่ ◂
 
 function base(unitSlug: string) {
   return `/app/u/${unitSlug}/restaurant`;
@@ -337,6 +338,9 @@ export async function confirmOrderAction(unitSlug: string, formData: FormData) {
 export async function cancelOrderItemAction(unitSlug: string, formData: FormData) {
   const { tenantId, unitId, userId } = await ctx(unitSlug, "restaurant.order.cancelItem");
   const reason = String(formData.get("reason") ?? "") || "ยกเลิกโดยพนักงาน";
+  // POS P2.5 ▸ fix1 มติ 2: รายการในแผนแยกบิลที่เปิดอยู่ ยกเลิกจากหน้าเดิมไม่ได้ (แผนจะค้างจ่ายไม่ได้) ◂
+  const sg = await legacyCancelItemSplitGuard({ tenantId, unitId, itemId: String(formData.get("itemId") ?? "") });
+  if (!sg.ok) redirect(`${base(unitSlug)}?err=${encodeURIComponent(sg.reason)}`);
   await order.cancelOrderItem(tenantId, unitId, String(formData.get("itemId") ?? ""), reason, userId);
   revalidatePath(base(unitSlug));
 }
@@ -366,6 +370,9 @@ export async function confirmPromptpayPaymentAction(unitSlug: string, formData: 
   const { tenantId, unitId } = await ctx(unitSlug, "restaurant.checkout.create");
   const sessionId = String(formData.get("sessionId") ?? "");
   const requestId = String(formData.get("requestId") ?? "");
+  // POS P2.5 ▸ fix1 มติ 2: โต๊ะที่แยกบิลอยู่ (แผน OPEN) เช็คบิลจากหน้าเดิมไม่ได้ (กันเก็บเงินซ้ำกับใบที่จ่ายแล้ว) ◂
+  const sg = await legacyCheckoutSplitGuard({ tenantId, unitId, sessionId });
+  if (!sg.ok) redirect(`${base(unitSlug)}?err=${encodeURIComponent(sg.reason)}`);
   const res = await order.checkout({ tenantId, unitId, sessionId, payMethod: "PROMPTPAY" });
   if (res.ok && requestId) await order.doneServiceRequest(tenantId, unitId, requestId);
   revalidatePath(base(unitSlug));
@@ -395,6 +402,9 @@ export async function checkoutAction(
   args: { sessionId: string; itemIds?: string[]; payMethod?: "CASH" | "TRANSFER" | "PROMPTPAY" },
 ) {
   const { tenantId, unitId } = await ctx(unitSlug, "restaurant.checkout.create");
+  // POS P2.5 ▸ fix1 มติ 2: โต๊ะที่แยกบิลอยู่ (แผน OPEN) เช็คบิลจากหน้าเดิมไม่ได้ ◂
+  const sg = await legacyCheckoutSplitGuard({ tenantId, unitId, sessionId: args.sessionId });
+  if (!sg.ok) return sg;
   const res = await order.checkout({
     tenantId,
     unitId,
