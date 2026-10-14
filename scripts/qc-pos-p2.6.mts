@@ -85,6 +85,8 @@ const CHECKS: readonly Def[] = [
   // ORACLE-ADD ผู้คุม 14 ต.ค. (P2.6U มติ 15–17 · รีวิว R3 H1 H2 H3)
   D("K14b", "X5", "[H1 มติ P2.6U-15] ออเดอร์ออนไลน์ (CHAT รับแล้ว) → ตั๋ว READY → SERVED → ถือแถวรอบไว้ (ธุรกรรมที่สาม) → kdsRecall เข้าคิว → ยกเลิกออเดอร์ (commit) → ปล่อย ⇒ TICKET_VOIDED · รายการยัง SERVED · รอบ COMPLETED · ไม่มี event ใหม่ของออเดอร์นอกจากการยกเลิก"),
   D("A14", "X1", "[H2 มติ P2.6U-16] (สถิต) restoreMenuStockKeep86InTx + resetMenuItemDailyStock ล็อก MenuItem FOR UPDATE ก่อน heldBy86Mark · (การแข่ง — ตัวกันถอย: ลำดับผู้ได้ล็อกไม่แน่นอน) ยกเลิกรายการโต๊ะ ∥ ครัวแจ้ง 86 ⇒ ยังหมด (isOutOfStock true · availabilityFor false · mark อยู่)"),
+  // ORACLE-ADD ผู้คุม 14 ต.ค. (P2.6U fix1 · รีวิว R1 F1 · มติ fix1-1 — page-authz ไม่ครอบ action ⇒ ข้อนี้)
+  D("A15", "X3", "[F1 มติ P2.6U fix1-1] kdsKitchenProducts (แผ่น 86 ของจอครัว): COOK ที่มีแค่ restaurant.kds.advance ได้รายการ = เมนูของสาขา + สินค้าที่ผูกสถานี (กะเพรา ชาเย็น คุกกี้) ไม่มีสินค้าที่ไม่เข้าครัว (น้ำเปล่า) · available = availabilityFor · ไม่มีคีย์เงิน · NOPERM → PERMISSION_DENIED"),
   D("K12b", "X5", "[H3 มติ P2.6U-17] ขายสินค้าคลังที่ยังไม่เป็นตัวแปร (ไม่เข้าครัว) → ผูกเป็นตัวแปรของแม่ที่ตั้งสถานี (createProduct {invItemId, parentId}) → อ่านบอร์ด ⇒ บิลนั้น 0 รอบ · ตัวนับรายวันไม่ขยับ"),
   // ── B ปุ่มครัว ──
   D("B1", "X1", "[R6] kdsStart (COOK) ตั๋วครัวร้อน → รายการ NEW → COOKING (cookingAt) · ตั๋วเครื่องดื่มไม่ขยับ · ซ้ำ → ok changed 0"),
@@ -2722,6 +2724,26 @@ async function runDb() {
     const cnt1 = short(await P.restaurantDailyCounter.findMany({ where: { tenantId: T }, select: { unitId: true, bizDate: true, seq: true } }), 2000);
     if (cnt1 !== cnt0) p.push("ตัวนับรายวันขยับ");
     chk("K12b", p.length === 0, "บิลก่อนผูกเป็นตัวแปรของแม่ที่เข้าครัว ไม่ถูก heal · ตัวนับไม่ขยับ", FX(P8(p) || "ครบ"));
+  });
+  // ════════ ORACLE-ADD ผู้คุม 14 ต.ค. (P2.6U fix1 · F1): A15 ════════
+  await step("A15", async () => {
+    const p: string[] = [];
+    const r = await K("kdsKitchenProducts", ctxA(), A("COOK"), {});
+    const items: Any[] = Array.isArray(r?.items) ? r.items : [];
+    const ids = new Set(items.map((x) => x.productId));
+    if (r?.ok !== true) p.push(`COOK → ${codeOf(r)}`);
+    for (const k of ["kaprao", "chayen", "cookie"]) if (!ids.has(PP[k])) p.push(`ไม่มี ${k} (เข้าครัว)`);
+    if (ids.has(PP.water)) p.push("มีน้ำเปล่า (ไม่เข้าครัว)");
+    if (items.length) {
+      const av = await call(catalog, "availabilityFor", T, U.A, items.map((x) => x.productId));
+      const bad = items.filter((x) => (isRecord(av) ? av[x.productId] : undefined) !== x.available);
+      if (bad.length) p.push(`available ≠ availabilityFor ${bad.length} แถว (${short(bad[0]?.productId)})`);
+    }
+    const mk = moneyKeys(r);
+    if (mk.length) p.push(`มีคีย์เงิน ${mk.slice(0, 3).join(",")}`);
+    const np = await K("kdsKitchenProducts", ctxA(), A("NOPERM"), {});
+    if (!refused(np, "PERMISSION_DENIED")) p.push(`NOPERM → ${codeOf(np)}`);
+    chk("A15", NK("kdsKitchenProducts") === "" && p.length === 0, "COOK อ่านรายการครัวของสาขาได้ · ตรง availabilityFor · NOPERM ถูกปฏิเสธ", FX(NK("kdsKitchenProducts") + (P8(p) || "ครบ")));
   });
 
   // ════════ P1 ใบครัว ════════
