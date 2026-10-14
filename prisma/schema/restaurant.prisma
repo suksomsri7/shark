@@ -453,6 +453,7 @@ model RestaurantOrderItem {
   saleId    String? // PosSale.id เมื่อรายการนี้ถูกชำระ → lock
   settledAt DateTime?
   productId String? // P1.1a: PosProduct.id (แคตตาล็อกเดียว · id หลวม) · null = ออเดอร์เดิม
+  stockTaken Int? // POS P2.6 ▸ fix1 H1: จำนวนที่รอบครัวหักตัวนับเมนูได้จริง (void/ยกเลิกคืนเท่านี้ · null = รอบเดิม) ◂
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
