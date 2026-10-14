@@ -241,6 +241,9 @@ export async function ticketForSale(tenantId: string, unitId: string, saleId: st
     const hints = await stationHints(prisma, tenantId, sale.lines.map((l) => l.productId));
     const run = () =>
       prisma.$transaction(async (tx) => {
+        // แข่งกับ void: ถือแถวบิล FOR SHARE แล้วอ่านสถานะซ้ำ — void ที่ commit ก่อน = ไม่สร้างรอบ · void ที่มาทีหลังรอธุรกรรมนี้ แล้วตัวรับยกเลิกรายการเอง
+        const st = await tx.$queryRaw<{ status: string }[]>`SELECT status::text AS status FROM "PosSale" WHERE id = ${sale.id} AND "tenantId" = ${tenantId} FOR SHARE`;
+        if (st[0]?.status !== "PAID") return { created: false, orderId: null, dailyNo: null, reason: "NOT_PAID" as const, menuLines: [] };
         const r = await R.createKitchenRoundInTx(tx, {
           tenantId,
           unitId,

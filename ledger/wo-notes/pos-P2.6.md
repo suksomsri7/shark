@@ -68,3 +68,4 @@ Binding: `pos-brief-P2.6.md` §9 + §10 · `wo-notes/pos-P2.6-oracle.md` (names 
 - P2.7: move QR ordering off the frozen hot path → emit `pos.product.availability` on QR auto-86/restore (closes owner line c).
 - P3.1–3.3: real `setAvailability` / `setReady` pushes (call `setReady` on KDS-driven READY then).
 - Controller: prod `RestaurantOrder` row count before deploying the partial uniques (§9 ruling 14); ORACLE-EDIT K5 (CD 1 above).
+- post-merge hardening (hunter-facing): `ticketForSale` re-reads the sale status **inside** the round tx under `SELECT … FOR SHARE` — a void that commits first ⇒ no round (`NOT_PAID`); a void that comes later waits for the round tx, then its `pos.sale.voided` consumer cancels the round's unserved items. Closes the read-then-void window of the heal/after-commit path.
