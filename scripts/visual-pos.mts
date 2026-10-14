@@ -638,7 +638,7 @@ const jobsPlanned: Job[] = pages.flatMap((p: PosPage): Job[] =>
     // POS P2.6U ▸ มติ 12: จอครัว (--states · ทุก wo) · wo p2.6u หน้าขาย/ออเดอร์ = ไทล์ 86 / มาตรครัว อย่างเดียว ◂
     : p26uOn && p === "kds"
     ? P26U_KDS_PLAN.filter((st) => userKey === "owner" || !P26U_OWNER_ONLY.has(st.key)).flatMap((st): Job[] =>
-        viewports
+        (LOCALE_EN ? [...POS_VIEWPORTS] : viewports) // fix2 G3b: จอครัว en ถ่าย 3 ขนาด (รวม 390)
           .filter((v) => st.devices.includes(v.name))
           .map((v): Job => ({ page: p, v, state: st.key, path: `/app/sys/${SYS}/pos/kds?unit=${encodeURIComponent(st.key === "kds-empty-unit" ? P26U_EMPTY_UNIT : unitId)}&station=<p26u>`, file: `${OUT}/${p}-${st.key.replace(/^kds-/, "")}-${userKey}-${v.w}x${v.h}${LOCALE_EN ? "-en" : ""}.png` })),
       )
@@ -4587,7 +4587,8 @@ async function p26uPause(on: boolean): Promise<void> {
   P26U.log.push("คืนค่าพักครัว");
 }
 async function cleanupP26u(): Promise<void> {
-  if (!P26U.stationsCreated.length && !P26U.orders.length && !P26U.zones.length && !P26U.marked.length && !P26U.pausedOn) return;
+  // fix2 G1: บิล/กะของ fixture ที่ยังค้าง (ยกเลิก/ปิดล้มรอบก่อน) ก็ต้องเข้ามาเก็บอีกรอบ — ยกเลิก/ปิดซ้ำได้ (คีย์ยกเลิกคงที่ · ปิดกะที่ไม่ OPEN = ok)
+  if (!P26U.stationsCreated.length && !P26U.orders.length && !P26U.zones.length && !P26U.marked.length && !P26U.pausedOn && !P26U.shiftId && !(P26U.sale && !P26U.saleVoided)) return;
   const step = async (name: string, fn: () => Promise<string | void>) => {
     try {
       const r = await fn();
