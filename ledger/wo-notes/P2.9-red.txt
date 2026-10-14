@@ -52,3 +52,11 @@ result: 6/45 green (L1 L2 L3 A2 = PAR by design · Z1 Z2 = residue/seed leak) ·
   ลบร้านชั่วคราว cmv8c6ub70001t3kzx3h9ylda: 329 ตาราง · แถวค้าง 0 {} · Tenant 0
 JSON_SUMMARY {"suite":"qc-pos-p2.9","total":45,"passed":6,"failed":["P2.9-ST1","P2.9-ST2","P2.9-ST3","P2.9-ST4","P2.9-T1","P2.9-T2","P2.9-T3","P2.9-T5","P2.9-T4","P2.9-S1","P2.9-S2","P2.9-S3","P2.9-S4","P2.9-G1","P2.9-G2","P2.9-G3","P2.9-G4","P2.9-G5","P2.9-G6","P2.9-G7","P2.9-G8","P2.9-A1","P2.9-A3","P2.9-A4","P2.9-C1","P2.9-C2","P2.9-C3","P2.9-C4","P2.9-V1","P2.9-V2","P2.9-V3","P2.9-V4","P2.9-V5","P2.9-V6","P2.9-V7","P2.9-V8","P2.9-V9","P2.9-R1","P2.9-R2"],"skipped":false,"forced":true,"missing":["src/lib/modules/pos/tender.ts ยังไม่มี","ยังไม่มี export regist
 rc=1
+
+# Block 2 — CD-P29-1 ORACLE-ADD (APIN · O1 · O2) red-before on the branch state before applying CD-P29-1 (GIFT_CARD refused by createSale)
+tree=/root/projects/shark-pos-b head=38965237 dirty=0 (branch state before CD-P29-1: GIFT_CARD refused)
+result: 24/48 · new checks: APIN red (no gift-card bill can exist: register/createSale refuse GIFT_CARD) · O1 + O2 green before and must stay green after (they pin the refusal on payOrder / API sales.create once createSale accepts GIFT_CARD)
+❌ P2.9-APIN — expected PIN 0 ที่ (audit · outbox · แถวชำระ · txn · DTO · ข้อความผิด) | actual หน้าขาย GIFT_CARD → VALIDATION วิธีชำระเงินไม่ถูกต้อง · ไม่มีบิล G2
+✅ P2.9-O1 
+✅ P2.9-O2 
+JSON_SUMMARY {"suite":"qc-pos-p2.9","total":48,"passed":24,"failed":["P2.9-G2","P2.9-G3","P2.9-G4","P2.9-G5","P2.9-G6","P2.9-G7","P2.9-A1","P2.9-A3","P2.9-A4","P2.9-APIN","P2.9-C1","P2.9-C2","P2.9-C3"
