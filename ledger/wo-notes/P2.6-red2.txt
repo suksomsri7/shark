@@ -1,6 +1,6 @@
-tree=/root/projects/shark-pos-c head=2e6328db dirty=2 (code 2e6328db unchanged · oracle + K10 K11) · 2026-10-14T12:38:26Z
+tree=/root/projects/shark-pos-c head=beed468d dirty=2 (src/ checked out at 2e6328db = unchanged code · oracle 57 checks committed · schema + stockTaken) · 2026-10-14T12:45:14Z
 [env] qc-pos-p2.6 · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4)
-(node:2209884) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+(node:2219547) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
 In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
 
 To prepare for this change:
@@ -27,7 +27,7 @@ See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode de
   ✅ [P2.6-P3] [R14 มติ 8] parsePrinterConfig: kitchenSlip "after-sale" + kitchenStationIds [s1 s2] ผ่านตรงตัว · ค่าผิด (kitchenSlip "a
   ✅ [P2.6-L4] [มติ 8 15] PosPrinterConfig: POS_PRINTER_DEFAULTS 6 คีย์เดิมค่าเดิม · parsePrinterConfig(undefined/null/{}) = 6 คีย์เดิม
 
-── ร้านชั่วคราว posqc-p26-36p5q2 (+ posqc-p26-36p5q2-t2) · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech ──
+── ร้านชั่วคราว posqc-p26-5kpj9y (+ posqc-p26-5kpj9y-t2) · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech ──
    สาขา A (RESTAURANT · POS + คลัง · สถานี ครัวร้อน/เครื่องดื่ม/ขนม · โต๊ะ A1–A4 · kdsCriticalMins 10 · ช่องทาง LINEMAN + CHAT) · สาขา B (SHOP · ไม่มีสถานี) · ร้าน T2 สาขา X (POS · สถานี · เมนู · รอบเดิม)
 
 ── L2 ทางร้อนของเดิม (ต้องเขียวทั้งก่อนและหลังสร้าง) ──
@@ -60,7 +60,7 @@ See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode de
   ✅ [P2.6-T5] [R7 R13] servedToday {count last} = DB · avgMinutes = DB · expo = ตั๋ว READY ทุกสถานี · kitchenBacklog = ตั๋ว NEW+COOKIN
 
 ── O ออเดอร์ออนไลน์ตามครัว ──
-(node:2209884) DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated and will be removed in pg@9.0. Use async/await or an external async flow control mechanism instead.
+(node:2219547) DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated and will be removed in pg@9.0. Use async/await or an external async flow control mechanism instead.
   ✅ [P2.6-O1] [P2.8][R11 CD7] ตั๋วแรกของรอบออนไลน์ออกจาก NEW → PosOrder ACCEPTED → PREPARING (PosOrderEvent 1 แถว actor null) · start 
   ✅ [P2.6-O2] [P2.8][R11] READY บางสถานี → ยัง PREPARING · ครบทุกสถานี → READY + outbox pos.order.ready 1 แถว · recall → ออเดอร์ยัง RE
   ✅ [P2.6-O3] [P2.8][R11] ยกเลิกออเดอร์ CHAT ที่รับแล้ว → ระบายคิว → รายการ NEW/COOKING/READY ของรอบ = CANCELLED (cancelReason "ออเดอร
@@ -83,13 +83,17 @@ See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode de
 
 ── K10 K11 ลำดับล็อก / READY พร้อมกัน ──
   ❌ [P2.6-K10] [F1 มติ fix1-1] ลำดับล็อก: ถือแถวตัวนับรายวันไว้ (ธุรกรรมที่สาม) → ticketForSale (เมนูนับสต็อก) เข้าคิวก่อน → createOrde — expected ถือตัวนับรายวัน · ticketForSale ก่อน createOrder เดิม → ทั้งคู่ commit · ตัวนับ −2 · ×5 | actual รอบ 1: createOrder เดิม → deadlock detected · รอบ 1: ตัวนับ 99 → 98 (คาด 97)
-  ❌ [P2.6-K11] [F2 มติ fix1-2] ออเดอร์ออนไลน์สองสถานี (PREPARING): ถือ PosOrder FOR UPDATE ไว้ (ธุรกรรมที่สาม) → kdsTicketDone สองสถานี — expected สองสถานี READY พร้อมกัน → PosOrder READY · ready 1 · event 1 · ×5 | actual รอบ 1: ออเดอร์ PREPARING · ready event 0 · PosOrderEvent READY 0 (คาด READY 1 1)
+  ❌ [P2.6-K11] [F2 H3 มติ fix1-2] ออเดอร์ออนไลน์สองสถานี (PREPARING): ถือ PosOrder FOR UPDATE ไว้ (ธุรกรรมที่สาม) → kdsTicketDone สองสถ — expected สองสถานี READY พร้อมกัน → PosOrder READY · ready 1 · event 1 · ×5 | actual รอบ 1: ออเดอร์ PREPARING · ready event 0 · PosOrderEvent READY 0 (คาด READY 1 1) · รอบ 1: เสิร์ฟครบสองสถานีพร้อมกัน → รอบ CONFIRMED (คาด COMPLETED)
+  ❌ [P2.6-K12] [H4] heal ไม่สร้างตั๋วย้อนหลัง: ขายสินค้าที่ยังไม่เข้าครัว (เมล็ดกาแฟ) แล้วจึงตั้ง stationId → อ่านบอร์ด ⇒ บิลนั้น 0 รอบ — expected บิลก่อนตั้งสถานี ไม่ถูก heal · ตัวนับไม่ขยับ | actual heal สร้างตั๋วย้อนหลังให้บิลที่ขายก่อนตั้งสถานี · ตัวนับรายวันขยับ
+  ❌ [P2.6-V3] [H1] ตัวนับเมนูคืนเท่าที่หักจริง: stock 1 ขาย ×3 → 0 · void ขณะ NEW → 1 (ไม่ใช่ 3) · สองตั๋ว 2+2 บน stock 4 แล้วรอบแรกถู — expected คืนตัวนับเท่าที่หักจริง (ไม่มีของผี) | actual void ขณะ NEW → stock 3 (คาด 1 = เท่าที่หักจริง) · void ตั๋วที่หัก 0 → stock 2 (คาด 0)
+  ❌ [P2.6-A10] [H5] ตัวนับ 0 + ครัวแจ้ง 86 (KDS) → void ตั๋ว NEW ⇒ ตัวนับคืนแต่ยังหมด (availabilityFor false · isOutOfStock true) · mar — expected 86 ของครัวอยู่รอด void/รีเซ็ต · mark คงอยู่ | actual หลัง void: stock 2 isOutOfStock false availabilityFor true (คาด 2 · true · false) · resetDailyStock ปลด 86 ของครัว (isOutOfStock false)
+  ❌ [P2.6-A11] [H6] (สถิต) setAvailability ล็อกแถว MenuItem FOR UPDATE ก่อนอ่าน (ลำดับ PosProduct → MenuItem) · (การแข่ง — ข้อจำกัด: Po — expected แข่ง 86 กับตั๋วชิ้นสุดท้าย → event 1 | actual setAvailability ไม่ล็อก MenuItem FOR UPDATE ก่อนอ่าน (lock@-1 read@2263)
 
 ── P1 ใบครัว ──
   ✅ [P2.6-P1] [R14 CD8] kitchenSlipPayload(รอบ K1) → 2 ใบ (ใบละสถานี) · ไม่มีคีย์เงิน · lines {qty name options note} · stationId → 1 
-  ลบร้านชั่วคราว cmv83hh8w00005okzi0ytxylp + cmv83hh9700015okzizpk4svd: 329 ตาราง · แถวค้าง 0 {} · Tenant 0 · ผู้ใช้ 0
+  ลบร้านชั่วคราว cmv83rleu0000m3kznqo3oddu + cmv83rlf60001m3kzpwjph1cp: 329 ตาราง · แถวค้าง 0 {} · Tenant 0 · ผู้ใช้ 0
   ✅ [P2.6-Z1] QC4 คืนสภาพ: ร้านชั่วคราว T + T2 เหลือ 0 แถวทุกตารางที่มี tenantId (Restaurant* KdsStation PosAvailabilityMark PosOrder*
   ✅ [P2.6-Z2] รอยของรอบนี้นอกร้านชั่วคราว = 0 (PosSale คีย์ · AuditLog/OutboxEvent ที่มีรหัสรอบ · Tenant slug) · ลายนิ้วมือร้านอื่น (R
 
-===== qc-pos-p2.6 ===== ผ่าน 51/53 (QC_FORCE) · PAR 5/5 · SKIP-until-export 0
-JSON_SUMMARY {"suite":"qc-pos-p2.6","total":53,"passed":51,"failed":["P2.6-K10","P2.6-K11"],"parRed":[],"depSkipped":[],"skipped":false,"forced":true,"missing":[],"depP24":[],"depP28":[],"guardHits":0,"residue":0,"leaks":[],"fpDrift":[]}
+===== qc-pos-p2.6 ===== ผ่าน 51/57 (QC_FORCE) · PAR 5/5 · SKIP-until-export 0
+JSON_SUMMARY {"suite":"qc-pos-p2.6","total":57,"passed":51,"failed":["P2.6-K10","P2.6-K11","P2.6-K12","P2.6-V3","P2.6-A10","P2.6-A11"],"parRed":[],"depSkipped":[],"skipped":false,"forced":true,"missing":[],"depP24":[],"depP28":[],"guardHits":0,"residue":0,"leaks":[],"fpDrift":[]}
