@@ -149,3 +149,15 @@ Binding: `pos-P2.6-review.md` "Controller rulings — fix round 2" 1–7.
 | merge | e5fc0392 | `origin/session/pos` b788e523 (HF-GC: giftcard/account/consumers + qc-hf-tx) — code auto-merged; `POS-OWNER-PENDING` both sides kept |
 
 After fixes (pre-merge head fc4eac32): `qc-pos-p2.6` forced **62/62**.
+
+### Fix round 2 gates — head **a5534c37** (code head e5fc0392 = fix2 + HF-GC merge) · dirty 0 · logs `scratchpad/p26/gates/*.log`
+| gate | result |
+|---|---|
+| typecheck | exit 0 |
+| fitness no-env / env · fitness-pos | 50/50 · 50/50 · 8/8 |
+| `qc-pos-p2.6` forced ×2 / unforced | **62/62 ×3** · PAR 5/5 · residue 0 |
+| `qc-pos-p2.8` | 60/61 — ST6 only (wip-only, CD 2) |
+| `qc-pos-p1.1` · `p2.4` · `p1.3` · `p1.18` | 180/180 · 50/50 · 128/128 · 81/81 |
+| `qc-hf-tx` | 20/20 (HF-GC grew it from 18) |
+| `qc-restaurant` / -money / -pay / -void | 6/6 · 6/6 · 19/19 · 11/11 |
+| `qc-pos-products` · authz | 24/24 · 71/71 |
