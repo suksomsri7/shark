@@ -156,7 +156,8 @@ export function RailSettings(p: {
           ))}
         </select>
         <p className="px-1 text-[11.5px] leading-[1.5] text-[color:var(--color-muted)]">{t("rail.prepToPlatform")}</p>
-        <p className="px-1 text-[11.5px] text-[color:var(--color-muted)]">{t("rail.appliesTo", { target: p.targetLabel })}</p>
+        {/* POS P2.8U ▸ fix 2 G2: ไม่มีเป้าหมาย ⇒ บรรทัดของตัวเอง (คำกลาง ใช้ได้ทั้งช่องเดียวและ "ทุกช่องทาง") ◂ */}
+        <p className="px-1 text-[11.5px] leading-[1.5] text-[color:var(--color-muted)]">{p.hasTarget ? t("rail.appliesTo", { target: p.targetLabel }) : t("rail.noTarget")}</p>
       </section>
       <button type="button" data-testid="pos-ord-pause" disabled={p.busy || !p.hasTarget} className="btn btn-ghost h-12 rounded-[14px] text-[14px] disabled:opacity-50" onClick={p.onPause}>
         <RegisterIcon name="lock" size={14} />

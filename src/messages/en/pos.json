@@ -3167,7 +3167,7 @@
       "prepMixed": "Mixed",
       "appliesTo": "Applies to: {target}",
       "pauseHint": "While paused, web shop and chat orders are refused · keyed-in orders are still accepted",
-      "noTarget": "This channel's prep time/pause can't be set here (web shop · chat · API-linked channels only)"
+      "noTarget": "No channel here takes prep time/pause from this screen (web shop · chat · API-linked channels only)"
     },
     "card": {
       "items": "{count} items · <b>{amount}</b>",

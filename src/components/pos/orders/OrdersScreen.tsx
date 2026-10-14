@@ -294,7 +294,8 @@ export function OrdersScreen(p: OrdersScreenProps) {
     const eligible = railRows.filter((c) => c.active && (c.adapter === "WEB" || c.adapter === "CHAT" || c.adapter === "API"));
     return filter === "all" ? eligible : eligible.filter((c) => c.id === filter);
   }, [filter, railRows]);
-  const targetLabel = settingTargets.length ? settingTargets.map((c) => channelDisplayName(c.code, c.name, tch)).join(" · ") : t("rail.noTarget");
+  // POS P2.8U ▸ fix 2 G2: ไม่มีเป้าหมาย = บรรทัด rail.noTarget แยกในราง (ไม่ซ้อนใน rail.appliesTo) ◂
+  const targetLabel = settingTargets.map((c) => channelDisplayName(c.code, c.name, tch)).join(" · ");
   const prepValue = useMemo(() => {
     const vals = new Set(settingTargets.map((c) => c.prepMinutes ?? ORDER_PREP_DEFAULT_MIN));
     return vals.size === 1 ? [...vals][0]! : settingTargets.length === 0 ? ORDER_PREP_DEFAULT_MIN : null;
