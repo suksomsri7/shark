@@ -73,6 +73,8 @@ const CHECKS: readonly Def[] = [
   D("A2", "PAR", "[ของเดิม P1.12 Z2] ทางส่วนลดเดิม memberChoices.giftCard → JV GIFTCARD_USED ของ USE นั้น 1 รายการ (Dr 2110 / Cr 4030)"),
   D("A3", "X4", "[CD1b] บัตรที่ขายตอนปิดสวิตช์ผูกบัญชี (ไม่มี accountingDocId) ใช้ชำระ 200 → JV ขาย Dr 2110 200"),
   D("A4", "X4", "[มติ 1] เอกสารขาย (ABB) ของบิล G2 grandTotal = 625 (ไม่ใช่ 625 − 325)"),
+  // ORACLE-ADD ผู้คุม 14 ต.ค. (CD-P29-1 อนุมัติ · เงื่อนไข a b) → 48 ข้อ ◂
+  D("APIN", "X2", "[CD-P29-1 (a)] PIN ไม่ถูกเก็บ/บันทึก/สะท้อน: บิลบัตรของขวัญทางหน้าขาย (submitRegisterSale) + บิล G2 → ค้นสตริง PIN (เป็นคำ) ใน AuditLog · OutboxEvent · PosPayment ของร้าน · คำตอบ submit · createSale · receiptPayload · billDetail · registerGiftCardLookup = 0 ที่"),
   // ── C แข่ง (ธุรกรรมที่สามถือล็อก) ──
   D("C1", "X1", "[R3] บัตร D 100 สองเครื่องพร้อมกัน (ทั้งคู่ถูกกั้น) → PAID 1 ใบ อีกใบ GIFT_CARD_CHANGED · บัตร 0 ไม่ติดลบ · USE 1"),
   D("C2", "X1", "[R3 R13] คีย์เดียวกัน ×10 พร้อมกัน (บัตร K 100 + เงินสด) → บิล 1 ใบ saleId เดียวกันทุกคำตอบ · USE ของบัตร 1 แถว"),
@@ -95,6 +97,9 @@ const CHECKS: readonly Def[] = [
   D("L1", "PAR", "[§7 F15.2] scripts/pos-sale-contract.json เทียบฐาน 57dc226b = เพิ่มอย่างเดียว (ของเดิมทุกคีย์เท่าเดิม · ของใหม่มีแค่ payMethods[].giftCard*) · ทะเบียนผู้เรียกในไฟล์ไม่ลด"),
   D("L2", "PAR", "[§7 HF-TX] ผู้เรียก createSale( ใน src ต่อไฟล์ = ฐาน 57dc226b (มติ 6: ไม่มีจุดใหม่)"),
   D("L3", "PAR", "[CD2 P1.12 Z2] ทางเดิม memberChoices.giftCard: grand = 30,000 − 10,000 · giftCardTxnId · USE refType PosSale · แถวชำระ CASH อย่างเดียว · memberBenefits มี GIFTCARD 10,000"),
+  // ── O ผู้เรียก createSale อื่นยังไม่รับบัตรของขวัญ (CD-P29-1 (b)) ──
+  D("O1", "X5", "[CD-P29-1 (b)] ออเดอร์ CHAT (DIRECT) ACCEPTED → payOrder GIFT_CARD (ไม่มี/มี giftCard) → VALIDATION · ออเดอร์ยังไม่จ่าย (paymentState ≠ PAID · saleId null) · ไม่มีบิล · ยอดบัตรเท่าเดิม"),
+  D("O2", "X5", "[CD-P29-1 (b)] API sales.create (SALES_OPS) payMethods GIFT_CARD (+giftCard) → schema ปฏิเสธ (VALIDATION · 422) ก่อนถึง createSale · ไม่มีบิล"),
   // ── Z คืนสภาพ ──
   D("Z1", "-", "QC4 คืนสภาพ: ร้านชั่วคราว (+ -t2) เหลือ 0 แถวทุกตารางที่มี tenantId + Tenant ถูกลบ"),
   D("Z2", "-", "ร้าน QC ของ seed ไม่มีแถวของรอบนี้ (บิล/บัตร/txn/outbox/audit ที่มีรหัสรอบ) — นับก่อน/หลังพิมพ์เป็นข้อมูล"),
@@ -471,6 +476,9 @@ const gcMod = await tryImport("@/lib/modules/giftcard");
 const vatMod = await tryImport("@/lib/money/vat");
 const ctxMod = await tryImport("@/lib/core/caller-tx");
 const consMod = await tryImport("@/lib/outbox-consumers");
+const orderMod = await tryImport("@/lib/modules/pos/order"); // ORACLE-ADD CD-P29-1 (b) ◂
+const chMod = await tryImport("@/lib/modules/pos/channel");
+const apiSales = await tryImport("@/lib/modules/pos/api/ops/sales");
 
 const RAND = Math.random().toString(36).slice(2, 8);
 const TAG = `qc-p2.9-${RAND}`;
@@ -1030,6 +1038,50 @@ async function runDb() {
     if (!doc || doc.grandTotal !== 62_500) p.push(`เอกสาร ${doc ? doc.grandTotal : "ไม่มี"} (คาด 62500)`);
     chk("A4", !!g2Sale && p.length === 0, "ABB 625", FXB(g2Sale ? joinP(p) : "ไม่มีบิล G2"));
   }
+  // ORACLE-ADD ผู้คุม 14 ต.ค. (CD-P29-1 (a)): PIN ไม่หลุดออกไปที่ใดเลย ◂
+  {
+    const p: string[] = [];
+    const pins: string[] = [];
+    const tok = (pin: string) => new RegExp(`(^|[^0-9])${pin}([^0-9]|$)`);
+    const hits = (label: string, v: unknown) => {
+      const str = (() => {
+        try {
+          return JSON.stringify(v) ?? "";
+        } catch {
+          return String(v);
+        }
+      })();
+      for (const pin of pins) if (tok(pin).test(str)) p.push(`${label} มี PIN`);
+    };
+    let regRes: Any = null;
+    if (fx || !GC.A || !GC.M) p.push("fixture");
+    else {
+      pins.push(GC.A.pin, GC.M.pin);
+      const k = key("apin");
+      const cart: Any = { lines: [{ name: `ของ PIN ${RAND}`, qty: 1, unitPriceSatang: 5_000 }] };
+      const q = await call(regMod, "quoteRegisterCart", ctxOf("A"), owner, cart);
+      regRes = await call(regMod, "submitRegisterSale", ctxOf("A", DEV1), owner, { ...cart, idempotencyKey: k, expectedGrandTotalSatang: Number(q?.grandTotalSatang ?? 5_000), payMethods: [{ type: "GIFT_CARD", amountSatang: 5_000, giftCard: { number: GC.M.number, pin: GC.M.pin } }] });
+      if (regRes?.ok !== true) p.push(`หน้าขาย GIFT_CARD → ${codeOf(regRes)} ${short(regRes?.message ?? "", 60)}`);
+      await drain();
+      hits("คำตอบ submit", regRes);
+      const saleIds = [String(regRes?.saleId ?? ""), g2Sale].filter(Boolean);
+      for (const id of saleIds) {
+        hits(`receiptPayload ${id.slice(-4)}`, await call(rcpMod, "receiptPayload", ctxOf("A"), owner, { saleId: id }));
+        hits(`billDetail ${id.slice(-4)}`, await call(billsMod, "billDetail", ctxOf("A"), owner, { saleId: id, unitId: U.A }));
+      }
+      hits("registerGiftCardLookup", await call(tenderMod, "registerGiftCardLookup", ctxOf("A"), owner, { number: GC.A.number }));
+      hits("AuditLog", await P.auditLog.findMany({ where: { tenantId: T } }).catch(() => []));
+      hits("OutboxEvent", await P.outboxEvent.findMany({ where: { tenantId: T }, select: { type: true, payload: true } }).catch(() => []));
+      hits("PosPayment", await P.$queryRawUnsafe(`SELECT * FROM "PosPayment" WHERE "tenantId" = $1`, T).catch(() => []));
+      hits("GiftCardTxn", await P.giftCardTxn.findMany({ where: { tenantId: T } }).catch(() => []));
+      const wrong = GC.E?.pin === "0000" ? "1111" : "0000";
+      const bad = await cs(saleIn(key("apin"), [["ของ PIN ผิด", 1_000]], [gcPay(1_000, "A", wrong)]));
+      pins.push(wrong);
+      hits("ข้อความ GIFT_CARD_PIN", bad?.message ?? "");
+      if (!g2Sale) p.push("ไม่มีบิล G2");
+    }
+    chk("APIN", p.length === 0 && pins.length > 0, "PIN 0 ที่ (audit · outbox · แถวชำระ · txn · DTO · ข้อความผิด)", FXB(joinP(p, `ค้น ${pins.length} PIN · 0 ที่`)));
+  }
 
   // ════════ C แข่ง ════════
   type Settled = { ok: true; v: Any } | { ok: false; e: Any };
@@ -1350,6 +1402,51 @@ async function runDb() {
       if (!(ben?.lines ?? []).some((l: Any) => l.kind === "GIFTCARD" && l.discountSatang === 10_000)) p.push(`memberBenefits ${short(ben, 100)}`);
     }
     chk("L3", p.length === 0, "ทางส่วนลดเดิมเหมือนเดิม", FXB(joinP(p)));
+  }
+  // ════════ O ผู้เรียก createSale อื่น (CD-P29-1 (b)) ════════
+  {
+    const p: string[] = [];
+    if (fx || !GC.K) p.push("fixture");
+    else {
+      const chans = (await call(chMod, "ensureUnitChannels", P, { tenantId: T, systemId: S.POS, unitId: U.A })) as Any;
+      const chat = Array.isArray(chans) ? chans.find((c: Any) => c.code === "CHAT") : null;
+      if (!chat) p.push(`ไม่มีช่องทาง CHAT (${codeOf(chans)})`);
+      else {
+        const ing = await call(orderMod, "ingestOrder", ctxOf("A"), owner, { channelId: chat.id, idempotencyKey: key("o1"), lines: [{ name: `ของออเดอร์ ${RAND}`, unitPriceSatang: 1_000, qty: 1 }], customer: { name: "คุณแชท" }, fulfilment: "PICKUP", paymentState: "PAY_ON_PICKUP" });
+        const id = String(ing?.orderId ?? "");
+        if (!id) p.push(`ingestOrder → ${codeOf(ing)} ${short(ing?.message ?? "", 60)}`);
+        else {
+          const acc = await call(orderMod, "acceptOrder", ctxOf("A", DEV1), owner, { id });
+          if (acc?.ok !== true) p.push(`acceptOrder → ${codeOf(acc)}`);
+          const b0 = (await card("K"))?.balanceSatang;
+          const s0 = await P.posSale.count({ where: { tenantId: T } });
+          for (const pm of [{ type: "GIFT_CARD", amountSatang: 1_000 }, { type: "GIFT_CARD", amountSatang: 1_000, giftCard: { number: GC.K.number, pin: GC.K.pin } }]) {
+            const r = await call(orderMod, "payOrder", ctxOf("A", DEV1), owner, { id, idempotencyKey: key("o1p"), payMethods: [pm] });
+            if (!refused(r, "VALIDATION")) p.push(`payOrder ${pm.giftCard ? "+giftCard" : ""} → ${codeOf(r)}`);
+          }
+          const o = await P.posOrder.findUnique({ where: { id } }).catch(() => null);
+          if (!o || o.paymentState === "PAID" || o.saleId) p.push(`ออเดอร์ ${o?.paymentState}/${o?.saleId ? "มีบิล" : "-"}`);
+          if ((await P.posSale.count({ where: { tenantId: T } })) !== s0 || (await card("K"))?.balanceSatang !== b0) p.push("มีบิล/บัตรถูกตัด");
+        }
+      }
+    }
+    chk("O1", p.length === 0, "VALIDATION ×2 · ออเดอร์ยังไม่จ่าย · ไม่มีบิล", FXB(joinP(p)));
+  }
+  {
+    const p: string[] = [];
+    const op = ((apiSales?.SALES_OPS ?? []) as Any[]).find((o) => o?.id === "sales.create");
+    if (!op?.input?.safeParse) p.push("ไม่พบ op sales.create");
+    else {
+      const s0 = await P.posSale.count({ where: { tenantId: T } });
+      for (const pm of [{ type: "GIFT_CARD", amountSatang: 1_000 }, { type: "GIFT_CARD", amountSatang: 1_000, giftCard: { number: GC.K?.number ?? "GC-0", pin: "123456" } }]) {
+        const r = op.input.safeParse({ unitId: U.A, lines: [{ name: "API", qty: 1, unitPriceSatang: 1_000 }], payMethods: [pm] });
+        if (r?.success !== false) p.push(`schema ยอมรับ ${short(pm)}`);
+      }
+      const okIn = op.input.safeParse({ unitId: U.A, lines: [{ name: "API", qty: 1, unitPriceSatang: 1_000 }], payMethods: [{ type: "CASH", amountSatang: 1_000 }] });
+      if (okIn?.success !== true) p.push("ตัวควบคุมบวก: CASH ถูกปฏิเสธ");
+      if ((await P.posSale.count({ where: { tenantId: T } })) !== s0) p.push("มีบิลเกิด");
+    }
+    chk("O2", p.length === 0, "schema ปฏิเสธ GIFT_CARD ×2 · CASH ผ่าน", FXB(joinP(p)));
   }
   if (notes.length) console.log(`  ℹ️  ฟิกซ์เจอร์มีหมายเหตุ ${notes.length}: ${notes.slice(0, 6).join(" | ")}`);
 }
