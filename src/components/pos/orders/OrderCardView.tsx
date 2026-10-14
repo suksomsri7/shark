@@ -19,12 +19,25 @@ import { acceptLeftSec, bkkClock, mmss, ORDERS_ACCEPT_RED_SEC, prepState } from 
 export type CardPerms = { accept: boolean; reject: boolean };
 
 /** ชิปช่องทาง (ภาพ 09: กรอบมน · แพลตฟอร์ม = กรอบดำหนา ตัวหนา · อื่น = กรอบจาง) */
-export function ChannelChip({ code, name, payout, size = "md" }: { code: string; name: string; payout: "PLATFORM" | "DIRECT" | null; size?: "md" | "sm" }) {
+export function ChannelChip({
+  code,
+  name,
+  payout,
+  size = "md",
+  fit = false,
+}: {
+  code: string;
+  name: string;
+  payout: "PLATFORM" | "DIRECT" | null;
+  size?: "md" | "sm";
+  /** POS P2.8U ▸ fix 2 V1: ชิปบนการ์ด = หดได้ (ตัด …) ก่อนเลขอ้างอิง · พื้นต่ำสุด 36px ◂ */
+  fit?: boolean;
+}) {
   const tch = useTranslations("pos.channel");
   const strong = payout === "PLATFORM";
   return (
     <span
-      className={`inline-flex min-w-0 shrink-0 items-center rounded-[8px] px-2 leading-[22px] ${size === "sm" ? "text-[11.5px]" : "text-[12.5px]"} ${
+      className={`inline-flex min-w-0 items-center rounded-[8px] leading-[22px] ${fit ? "min-w-9 shrink px-1.5 text-[12px]" : `shrink-0 px-2 ${size === "sm" ? "text-[11.5px]" : "text-[12.5px]"}`} ${
         strong ? "border-[1.5px] border-[color:var(--color-ink)] font-bold text-[color:var(--color-ink)]" : "border border-[color:var(--color-line)] text-[color:var(--color-ink-soft)]"
       }`}
     >
@@ -76,7 +89,8 @@ export function OrderCardView({
   return (
     <li className="list-none">
       <div
-        className={`flex flex-col gap-2 rounded-[16px] border bg-[color:var(--color-surface)] p-3 ${
+        // POS P2.8U ▸ fix 2 V1: การ์ด = @container — ระยะของหัวการ์ด/ปุ่มตัดสินจากความกว้างเนื้อการ์ด (คอลัมน์ ≈ 128–207px บนจอ 1024–1440) ◂
+        className={`@container flex flex-col gap-2 rounded-[16px] border bg-[color:var(--color-surface)] p-3 ${
           selected ? "border-transparent ring-2 ring-[color:var(--color-accent)]" : "border-[color:var(--color-line)]"
         }`}
       >
@@ -89,13 +103,16 @@ export function OrderCardView({
           className="flex min-h-11 w-full flex-col gap-1 text-left"
           onClick={onPick}
         >
-          <span className="flex w-full min-w-0 items-center gap-2">
-            <ChannelChip code={c.channel.code} name={c.channel.name} payout={c.channel.payout} />
-            <b className="min-w-0 truncate text-[14px]">{c.ref}</b>
-            <span className="ml-auto shrink-0 text-[12px] tabular-nums text-[color:var(--color-muted)]">{now !== null ? bkkClock(c.receivedAt) : ""}</span>
+          {/* POS P2.8U ▸ fix 2 V1 (ภาพ 09): เลขอ้างอิงมาก่อน — เลขไม่หด (กว้างสุด = แถว − พื้นชิป 36 − ช่อง 6 แล้วจึงตัด …) · ชิปหดแทน · เวลาเข้าอยู่หัวการ์ดเมื่อการ์ด ≥ 220px
+              ไม่งั้นย้ายไปท้ายบรรทัด "N รายการ · ฿x" (12.5px) ◂ */}
+          <span className="flex w-full min-w-0 items-center gap-1.5">
+            <ChannelChip code={c.channel.code} name={c.channel.name} payout={c.channel.payout} fit />
+            <b className="max-w-[calc(100%-2.625rem)] shrink-0 truncate text-[14px]">{c.ref}</b>
+            <span className="ml-auto hidden shrink-0 pl-1 text-[12.5px] tabular-nums text-[color:var(--color-muted)] @min-[220px]:inline">{now !== null ? bkkClock(c.receivedAt) : ""}</span>
           </span>
-          <span className="text-[13.5px] text-[color:var(--color-ink-soft)]">
-            {t.rich("card.items", { count: c.itemCount, amount: moneyText(c.totalSatang), b: (x) => <b className="text-[color:var(--color-ink)]">{x}</b> })}
+          <span className="flex w-full flex-wrap items-baseline gap-x-2 text-[13.5px] text-[color:var(--color-ink-soft)]">
+            <span>{t.rich("card.items", { count: c.itemCount, amount: moneyText(c.totalSatang), b: (x) => <b className="text-[color:var(--color-ink)]">{x}</b> })}</span>
+            <span className="ml-auto shrink-0 text-[12.5px] tabular-nums text-[color:var(--color-muted)] @min-[220px]:hidden">{now !== null ? bkkClock(c.receivedAt) : ""}</span>
           </span>
           {c.customerName ? (
             <span className="truncate text-[12.5px] text-[color:var(--color-muted)]">
@@ -127,13 +144,15 @@ export function OrderCardView({
         </button>
         {(c.status === "ACCEPTED" || c.status === "PREPARING") && <PlannedChip label={t("card.kitchenMeter")} />}
         {c.status === "NEW" && (
-          <div className="grid grid-cols-[1fr_auto] gap-2">
+          // POS P2.8U ▸ fix 2 V1 (ภาพ 09): ปุ่มบรรทัดเดียว — ไม่ตัดคำ · flex-wrap: ไม่พอจริง ๆ ⇒ "ปฏิเสธ" ลงบรรทัดใหม่เต็มกว้าง (ไม่หักกลางคำ) ·
+          //   ระยะซ้ายขวาแคบ (รับ 6 · ปฏิเสธ 8) ส่วนเกินแบ่งด้วย grow 3:1 · การ์ด < 140px ⇒ 13px + ระยะ 4 · สูง 44 คงเดิม ◂
+          <div className="flex flex-wrap gap-1.5">
             <button
               type="button"
               data-testid={`pos-ord-card-accept-${c.ref}`}
               disabled={busy || !perms.accept}
               title={noAccept}
-              className="btn btn-primary h-11 rounded-[12px] text-[14px] font-bold disabled:opacity-50"
+              className="btn btn-primary h-11 grow-[3] whitespace-nowrap rounded-[12px] px-1.5 text-[14px] font-bold disabled:opacity-50 @max-[140px]:px-1 @max-[140px]:text-[13px]"
               onClick={onAccept}
             >
               {t("actions.accept")}
@@ -144,7 +163,7 @@ export function OrderCardView({
                 data-testid={`pos-ord-card-reject-${c.ref}`}
                 disabled={busy || !perms.reject}
                 title={noReject}
-                className="btn btn-ghost h-11 rounded-[12px] px-4 text-[14px] disabled:opacity-50"
+                className="btn btn-ghost h-11 grow whitespace-nowrap rounded-[12px] px-2 text-[14px] disabled:opacity-50 @max-[140px]:px-1 @max-[140px]:text-[13px]"
                 onClick={onReject}
               >
                 {t("actions.reject")}
