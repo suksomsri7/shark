@@ -869,3 +869,90 @@ model PosAvailabilityMark {
   @@index([tenantId, unitId])
 }
 // ◂ POS P2.6
+
+// ═══════════════════ POS P2.5 ▸ แยกบิลของโต๊ะ (รายรายการ · หารเท่า · ตามที่นั่ง) — แผนเก็บถาวร (มติ CD2) ═══════════════════
+// ผู้เขียนเดียว = src/lib/modules/pos/table-split.ts (สร้าง/แทน/ยกเลิก) + register.ts (จ่ายใบ) + table.ts (ตัวรับ void) ·
+// splitId / partId / sessionId / itemId / saleId = id หลวม (ไม่มี @relation · ลบทิ้งตามร้านได้ทุกลำดับ) · ไม่มี FK ไป TableSession · RestaurantOrderItem · PosSale (หมุด TS_FIELDS/ROI_FIELDS) ·
+// แผน OPEN ได้ 1 แถวต่อ session = partial unique "PosTableSplit_session_open_key" · ใบหนึ่งผูกบิลได้ 1 ใบ = partial unique (saleId)
+//   (SQL เขียนมือใน migration 20261210100000_pos_p25_split — prisma ประกาศ partial ไม่ได้) ·
+// ตัวเลขทุกตัว = ผลของ allocateTableSplit (table-split-shared.ts · บริสุทธิ์) ตรงตัว
+enum PosTableSplitMode {
+  ITEM
+  EQUAL
+  SEAT
+}
+
+enum PosTableSplitStatus {
+  OPEN
+  DONE
+  CANCELLED
+}
+
+enum PosTableSplitPartStatus {
+  OPEN
+  PAID
+}
+
+model PosTableSplit {
+  id                  String              @id @default(cuid())
+  tenantId            String
+  systemId            String // AppSystem.id (type POS)
+  unitId              String // BusinessUnit.id
+  sessionId           String // TableSession.id (id หลวม)
+  mode                PosTableSplitMode
+  status              PosTableSplitStatus @default(OPEN)
+  partCount           Int // 2..20
+  itemsHash           String // tableItemsHash ของรายการค้างจ่ายตอนสร้าง/แทน (= quote ของโต๊ะ)
+  billDiscount        Json? // ส่วนลดท้ายบิลของโต๊ะ {type, value} (null = ไม่มี)
+  serviceChargeBp     Int
+  baseSatang          Int
+  discountSatang      Int
+  serviceChargeSatang Int
+  totalSatang         Int
+  version             Int                 @default(1)
+  createdByUserId     String?
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+  doneAt              DateTime?
+  cancelledAt         DateTime?
+
+  @@index([tenantId, unitId])
+  @@index([sessionId])
+}
+
+model PosTableSplitPart {
+  id                  String                  @id @default(cuid())
+  tenantId            String
+  splitId             String
+  no                  Int // 1..partCount
+  label               String?
+  memberId            String? // Customer.id ของใบ (สิทธิ์สมาชิกเฉพาะใบนี้ · null = ไม่มี)
+  baseSatang          Int
+  discountSatang      Int
+  serviceChargeSatang Int
+  totalSatang         Int
+  status              PosTableSplitPartStatus @default(OPEN)
+  saleId              String? // PosSale.id (id หลวม · ใบที่ PAID)
+  paidAt              DateTime?
+
+  @@unique([splitId, no])
+  @@index([tenantId])
+}
+
+model PosTableSplitLine {
+  id           String  @id @default(cuid())
+  tenantId     String
+  splitId      String
+  partId       String
+  itemId       String // RestaurantOrderItem.id (id หลวม)
+  qty          Int? // หน่วยเต็ม (null = ส่วนแบ่ง)
+  shareNum     Int? // ส่วนแบ่ง: จำนวนหน่วยที่หารกัน
+  shareDen     Int? // ส่วนแบ่ง: จำนวนใบที่หาร
+  amountSatang Int
+  stockOwner   Boolean // ใบนี้ตัดสต็อกของหน่วยเหล่านี้ (ส่วนแบ่ง = ใบเลขต่ำสุด · มติ 3)
+
+  @@index([splitId])
+  @@index([itemId])
+}
+
+// ◂ POS P2.5
