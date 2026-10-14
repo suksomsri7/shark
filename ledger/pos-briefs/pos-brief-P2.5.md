@@ -112,7 +112,7 @@ typecheck (5632 MB, pos gate lock) · `pnpm fitness` ±env · `fitness-pos` · `
 11. **CD11**: 2–20 parts.
 12. **CD12 — sequencing**: **oracle writer now** (P2.5 O on tree c: `scripts/qc-pos-p2.5.mts` ~38 checks + names table + red run); **builder S after P2.9 S merges** (both touch `register.ts`); the controller may open S earlier if P2.9's `register.ts` hunks turn out confined to the tender block. No expected ORACLE-EDIT; any pin that goes red must be listed as a CONTROLLER-DECISION, not edited.
 
-## 11. Controller rulings on the oracle's CONTROLLER-DECISION items (account B, 14 Oct 18:2xZ) — binding; the oracle `wip/pos-p2.5-oracle` e50c132b (40 checks) is the contract
+## 11. Controller rulings on the oracle's CONTROLLER-DECISION items (account B, 14 Oct 18:1xZ) — binding; the oracle `wip/pos-p2.5-oracle` e50c132b (40 checks) is the contract
 1. **EQUAL rounding** = the oracle's rule: part totals first (q+1 / q by largest remainder, ties to the lower bill number), then per part `service = total − base + discount`; R2's per-item steps are superseded. 15B/15C numbers (M1–M7) are binding.
 2. **Move/merge locks** = table advisory locks + session rows only (sorted by id), never item rows (ruling 8 amended); pay keeps items → part → session. C5(b)/C6 must be green.
 3. Scope registration: Part/Line tables register as `unit` (or `tenant`) — no `systemId` column.
