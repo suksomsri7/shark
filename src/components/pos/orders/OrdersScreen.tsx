@@ -650,7 +650,7 @@ export function OrdersScreen(p: OrdersScreenProps) {
                 onAccept={() => accept(c)}
                 onReject={() => openLayer({ kind: "reject", card: c })}
                 onHandOver={() => handOver(c)}
-                kitchen={{ progress: kitchen?.progress[c.id] ?? null, held: kitchenHeld }} // POS P2.6U ▸ มติ 9c/11 ◂
+                kitchen={{ progress: kitchen?.progress[c.id] ?? null, held: kitchenHeld && !!chanById.get(c.channel.id)?.autoAccept && c.channel.adapter !== "MANUAL" }} // POS P2.6U ▸ มติ 9c/11 · fix1 F4: เฉพาะช่องทางที่รับอัตโนมัติ ◂
               />
             ))}
           </ul>
