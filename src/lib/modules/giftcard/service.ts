@@ -250,19 +250,32 @@ async function verifyPin(card: GiftCardRow, pin: unknown): Promise<void> {
   const given = String(pin ?? "");
   if (given && safeEqualHex(card.pinHash, sha256(`${card.number}:${given}`))) {
     if (card.pinFailedCount !== 0 || card.pinLockedUntil) {
-      await prisma.giftCard.update({ where: { id: card.id }, data: { pinFailedCount: 0, pinLockedUntil: null } });
+      // POS P2.9 ▸ fix1 H2: ล้างตัวนับเฉพาะเมื่อแถวปัจจุบันไม่ได้ถูกล็อก (คำขอผิดพร้อมกันอาจเพิ่งล็อก) · ล็อกอยู่ = ใช้ไม่ได้ ◂
+      const n = await prisma.giftCard.updateMany({ where: { id: card.id, OR: [{ pinLockedUntil: null }, { pinLockedUntil: { lte: new Date() } }] }, data: { pinFailedCount: 0, pinLockedUntil: null } });
+      if (n.count === 0) {
+        throw new GiftCardStateError(
+          `บัตรใบนี้ถูกระงับชั่วคราวเพราะใส่ PIN ผิดหลายครั้ง — รออีกสักครู่ (ระงับครั้งละ ${GIFTCARD_PIN_LOCK_MINUTES} นาที) แล้วลองใหม่`,
+        );
+      }
     }
     return;
   }
-  const failed = card.pinFailedCount + 1;
-  const lock = failed >= GIFTCARD_PIN_MAX_FAIL;
-  await prisma.giftCard.update({
-    where: { id: card.id },
-    data: {
-      pinFailedCount: failed,
-      pinLockedUntil: lock ? new Date(now + GIFTCARD_PIN_LOCK_MINUTES * 60_000) : null,
-    },
-  });
+  // POS P2.9 ▸ fix1 H2/F5 (มติ 3): นับ PIN ผิดด้วยคำสั่งเดียว (เพิ่มบนแถว + ตั้งล็อกเมื่อครบ · ไม่เขียนทับจากค่าที่อ่านก่อน) — N คำขอพร้อมกัน
+  //   = +N จริง · บัตรที่ล็อกอยู่ (ตามแถวปัจจุบัน) = 0 แถว ⇒ ล็อก · ตัดสินจากแถวที่ RETURNING (ไม่ใช่ค่าก่อนหน้า) ◂
+  const rows = await prisma.$queryRaw<{ pinFailedCount: number; locked: boolean }[]>`
+    UPDATE "GiftCard"
+       SET "pinFailedCount" = "pinFailedCount" + 1,
+           "pinLockedUntil" = CASE WHEN "pinFailedCount" + 1 >= ${GIFTCARD_PIN_MAX_FAIL}::int THEN now() + make_interval(mins => ${GIFTCARD_PIN_LOCK_MINUTES}::int) ELSE NULL END,
+           "updatedAt" = now()
+     WHERE id = ${card.id} AND ("pinLockedUntil" IS NULL OR "pinLockedUntil" <= now())
+     RETURNING "pinFailedCount", ("pinLockedUntil" IS NOT NULL) AS locked`;
+  const failed = rows[0] ? Number(rows[0].pinFailedCount) : GIFTCARD_PIN_MAX_FAIL;
+  const lock = !rows[0] || rows[0].locked;
+  if (!rows[0]) {
+    throw new GiftCardStateError(
+      `บัตรใบนี้ถูกระงับชั่วคราวเพราะใส่ PIN ผิดหลายครั้ง — รออีกสักครู่ (ระงับครั้งละ ${GIFTCARD_PIN_LOCK_MINUTES} นาที) แล้วลองใหม่`,
+    );
+  }
   if (lock) {
     throw new GiftCardStateError(
       `ใส่ PIN ผิดครบ ${GIFTCARD_PIN_MAX_FAIL} ครั้ง — ระงับการใช้บัตรใบนี้ ${GIFTCARD_PIN_LOCK_MINUTES} นาที แล้วลองใหม่อีกครั้ง`,

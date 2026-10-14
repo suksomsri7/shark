@@ -322,6 +322,23 @@ async function prepareSaleTenders(tx: Client, input: CreateSaleInput, memberSyst
   return out;
 }
 
+/**
+ * POS P2.9 ▸ fix1 H2/F5 (มติ 3): PIN บัตรของขวัญตรวจ **ก่อนเปิด tx** เมื่อ createSale เป็นเจ้าของ tx และคีย์นี้ยังไม่มีบิล —
+ * PIN ผิด (ตัวนับเขียนนอก tx อยู่แล้ว) จึงไม่ถือ connection ของ tx ไว้ระหว่างรอ connection ที่สอง (คลื่นคำขอ PIN ผิดพร้อมกันไม่ทำ pool ตัน) ·
+ * ใน tx ยังตรวจซ้ำ (PIN ถูก = ไม่เขียน) · คีย์ที่มีบิลแล้ว = ไม่ตรวจ (เล่นซ้ำคืนบิลเดิม) ◂
+ */
+async function preverifyGiftPins(input: CreateSaleInput): Promise<void> {
+  if (!Array.isArray(input.payMethods) || !input.payMethods.some((p) => p?.type === "GIFT_CARD")) return;
+  const dup = await prisma.posSale.findUnique({ where: { tenantId_idempotencyKey: { tenantId: input.tenantId, idempotencyKey: input.idempotencyKey } }, select: { id: true } });
+  if (dup) return;
+  validateSaleInput(input);
+  const member = await import("@/lib/modules/member");
+  for (const p of input.payMethods) {
+    if (p.type !== "GIFT_CARD" || !p.giftCard) continue;
+    await tenderStep(member, () => member.prepareGiftCardTender(input.tenantId, { number: p.giftCard!.number, pin: p.giftCard!.pin, satang: p.amountSatang }));
+  }
+}
+
 /** R3 R7 — ตัดยอดของแถวบัตรใน tx ของบิล (หลังเขียนแถวชำระ) แล้วผูก PosPayment.giftCardId/giftCardTxnId */
 async function useSaleTenders(tx: Client, input: CreateSaleInput, saleId: string, tenders: SaleTender[], paymentIds: string[]): Promise<void> {
   if (!tenders.length) return;
@@ -555,6 +572,7 @@ export async function createSale(input: CreateSaleInput, client: Client = prisma
   const ownsTx = "$transaction" in client && typeof (client as PrismaClient).$transaction === "function";
   // POS P1.6 I7: คีย์เดียวกันพร้อมกันถูกเรียงคิวด้วย advisory lock ต่อ (ร้าน, คีย์) ก่อนค้นคีย์ซ้ำ (R2 F4 · ทั้งสองโหมด) ⇒ ไม่มี P2002 ของคีย์
   //   ที่ยังเหลือ: P2002 ของแถวตัวนับใบเสร็จเดือนใหม่ (สองบิลคนละคีย์ upsert แถวเดียวกันพร้อมกัน) — ลองใหม่ได้เฉพาะเมื่อเราเป็นเจ้าของ tx
+  if (ownsTx) await preverifyGiftPins(input); // POS P2.9 ▸ fix1 H2 ◂
   for (let attempt = 0; ; attempt++) {
     try {
       return await createSaleOnce(input, client, ownsTx);
