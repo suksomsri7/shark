@@ -126,3 +126,54 @@ tree=/root/projects/shark-pos-c head=daf78a06 dirty=0 code=86392e7d 2026-10-14T2
 ===== qc-pos-p2.5 ===== ผ่าน 40/43 (QC_FORCE) · PAR 3/3
 JSON_SUMMARY {"suite":"qc-pos-p2.5","total":43,"passed":40,"failed":["P2.5-X5","P2.5-P7","P2.5-T4"],"parRed":[],"skipped":false,"forced":true,"missing":[],"guardHits":0,"residue":0,"leaks":[],"fpDrift":[]}
 exit=1
+
+════════ block 3 · fix1 ruling 7 red-before (14 Oct · ORACLE-ADD M9 at 7cb4bdd6 on merge 392a89fc = P2.9 S upstream 4967ce2d · forced · QC4) ════════
+tree=/root/projects/shark-pos-c head=7cb4bdd6 dirty=0 code=392a89fc (merge P2.9) 2026-10-14T22:23:48Z (red-before ruling 7)
+  ✅ [P2.5-ST1] [§3 มติ 2] schema + migration เพิ่มอย่างเดียว: enum PosTableSplitMode {ITEM EQUAL SEAT} · PosTableSplitStatus {OPEN DONE
+  ✅ [P2.5-ST2] [R1 R4 R11] ลงทะเบียน: core/scope.ts 3 model · pos-qc-env POS_MODELS posTableSplit/posTableSplitPart/posTableSplitLine ·
+  ✅ [P2.5-ST3] [R7 R8 R9 §7 มติ 8 9] ขอบเขต: restaurant/index.ts รอยต่อ POS P2.5 ▸ export moveTableSessionInTx mergeTableSessionsInTx u
+  ✅ [P2.5-L1] [§7 มติ 8] ลายเซ็น export ของ restaurant/{table,order,menu,kds,storefront,scope}.ts = ตาราง L3 ของ qc-pos-p2.4 ตรงตัว (ร
+  ❌ [P2.5-L2] [§7] scripts/pos-sale-contract.json sha 7a418de1… ตรงตัว · ทะเบียนผู้เรียก createSale เท่าเดิม (ไฟล์แยกบิล/ใบรายการไม่มี — expected สัญญา createSale ตรง · ผู้เรียกเท่าเดิม · ticketForSale 2 จุด | actual pos-sale-contra
+  ✅ [P2.5-M6] [R2 มติ 4 CD11] allocateTableSplit บริสุทธิ์: 15B/15C/EQUAL 3/EQUAL 4 ตรงตัวเลข · 500 แผนสุ่ม (seed คงที่ · ITEM/EQUAL/S
+  ✅ [P2.5-B3] [R9 มติ 9] pre-bill-render บริสุทธิ์: renderPreBillHtml/renderPreBillEscPos ผลเดิมทุกไบต์ · หัว th "ใบรายการ — ไม่ใช่ใบเ
+  ✅ [P2.5-L3] [§0 §7 มติ 8] ประตูเดิม moveSession/mergeSession ผลตรงทุกไบต์: ย้าย {ok:true} (ไม่ตั้ง dirtySince) · ย้ายไปโต๊ะไม่ว่าง →
+  ✅ [P2.5-P5] [R1 R5 CD10 CD11] ขอบเขต/เพดาน: partCount 1 / 21 · ใบว่าง · ยังไม่ระบุ/เกินจำนวน · รายการโต๊ะอื่น → VALIDATION · expecte
+  ✅ [P2.5-B1] [R9 มติ 9] registerTablePreBill ทั้งโต๊ะ → kind PRE_BILL · notReceipt · ยอด = quote (subtotal/serviceCharge/vat/total/it
+  ✅ [P2.5-M1] [R1 R2 R5 15B มติ 4] registerSplitTable ITEM บนโต๊ะ A5 (ข้าว 3+1 · ลาเต้ 1+1 · ที่เหลือตามภาพ) → ใบ 1 ฐาน 67500 ค่าบริกา
+  ✅ [P2.5-M2] [R2 มติ 4 CD4] EQUAL 3 บน 136400 → สุทธิ 45467 / 45467 / 45466 (เศษ 2 → ใบ 1–2) · ฐาน 41334/41334/41332 (ส่วนแบ่งต่อรายก
+  ✅ [P2.5-M3] [R1 R2 15C] SEAT 4 ที่นั่ง + ยำวุ้นเส้นกลางโต๊ะ → 33825 / 45815 / 24255 / 32505 · ยำ 3750 × 4 · ใบ 1 ถือสต็อกของยำ (stoc
+  ✅ [P2.5-M4] [R2 R5 CD5 มติ 5] ส่วนลดท้ายบิล 10% บนแผน ITEM 15B → ส่วนลด 6750/5650 · ค่าบริการ 6075/5085 · สุทธิ 66825/55935 · Σ 1227
+  ✅ [P2.5-M7] [R4 CD5 มติ 5] สมาชิกของโต๊ะไปอยู่ใบ 1 (ปริยาย) → quote ใบ 1 tierDiscountSatang > 0 · ใบ 2 ไม่มีส่วนลดสมาชิก · Σ(ยอด + ส
+  ✅ [P2.5-P3] [R4 R5 มติ 6] ขณะแผน OPEN: quote/submit ทั้งโต๊ะ (tableSessionId) → TABLE_SPLIT_OPEN · registerCancelTableItem รายการในแ
+  ✅ [P2.5-P1] [R3 R4 R10 มติ 7] จ่ายใบ 1 (tableSplitPartId + expectedSplitVersion) → PosSale POS sourceId=session STORE · subtotal/bil
+  ✅ [P2.5-P4] [R5 มติ 6] expectedVersion เก่า → VERSION_CHANGED · แทนแผน → version+1 · หลังจ่ายใบแรก แทน/ยกเลิก → TABLE_SPLIT_LOCKED ·
+  ✅ [P2.5-P2] [R4 มติ 7] จ่ายใบสุดท้าย → ทุกรายการผูกบิล (ข้าว/ลาเต้ = บิลใบที่จ่ายครบ) · แผน DONE + doneAt · session CLOSED + dirtySi
+  ✅ [P2.5-M5] [R2(6) COMMON-1] VAT ของแต่ละใบ = splitIncludedVat(สุทธิใบ) ที่ระดับบิลของใบ (บิลจริงของ 15B ทั้งสองใบ) · |Σ VAT ใบ − VA
+  ✅ [P2.5-S1] [R3 §4 มติ 3] ตัดสต็อกครั้งเดียว: 15B ข้าว (PRODUCT) OUT −3 บนบิลใบ 1 / −1 บนบิลใบ 2 (Σ −4) · EQUAL 4: ข้าว −4 และวุ้นเส
+  ✅ [P2.5-S2] [§4] ตัวนับเมนู (MenuItem.stockQty ของบราวนี่) ไม่ขยับจากการจ่ายใบใด ๆ (หักไปแล้วตอนส่งรอบ)
+  ✅ [P2.5-S3] [§4 R4] GL ต่อใบ: Dr 1000 = ยอดบิล · Cr 2200 = VAT บิล · Σ Dr = Σ Cr · Σ ยอดบิลทุกใบ = 136400 · สร้าง/แทน/ยกเลิกแผน + ใบ
+  ✅ [P2.5-B2] [R9 CD9 CD10] ใบรายการของใบ (tableSplitPartId) = ยอดของใบ + part {no, of} · copy:true → copy · WAITER (pos.sale.read) ok
+  ✅ [P2.5-X1] [R6 มติ 7] void บิลใบ 2 + ระบายคิว → JV กลับรายการ · ข้าว +1 · ใบ 2 OPEN saleId null · แผน DONE → OPEN · รายการที่มีในใบ
+  ✅ [P2.5-X2] [R6 §4] จ่ายใบ 2 ใหม่ (คีย์ใหม่) → บิลใหม่ · DONE · ทุกรายการผูก · ข้าวตัดอีก 1 ครั้ง · Σ ใบ PAID = 136400 · EQUAL: void
+  ✅ [P2.5-X3] [R6 P2.4 R8] คืนเงินบางบรรทัดของบิลใบ → แผน/ใบ/รายการ/session ไม่เปลี่ยน
+  ✅ [P2.5-X4] [R6 CD7] จ่ายครบ → เปิดโต๊ะเดิมให้ลูกค้าใหม่ → void บิลใบ 1 → ใบ 1 OPEN · session เดิมยัง CLOSED · quote/จ่ายใบ 1 → TABL
+  ✅ [P2.5-X5] [มติ fix1 ข้อ 1] แผนเก่า DONE + แผนใหม่ OPEN บน session เดียว → void บิลใบของแผนเก่า → ตัวรับ void จบ (event DONE ไม่ FA
+  ✅ [P2.5-P6] [R5 R10 R4 §4] รอบระหว่างแผน + ครัว: แยกบิลขณะตั๋ว COOKING → kdsStatus ไม่เปลี่ยน · ส่งรอบใหม่หลังแยก → อยู่นอกแผน (outs
+  ✅ [P2.5-P7] [มติ fix1 ข้อ 2] หน้าเดิม /restaurant: checkoutAction + confirmPromptpayPaymentAction เรียก legacyCheckoutSplitGuard · c
+  ✅ [P2.5-C1] [R5 CD6] สองเครื่องสร้างแผนบน session เดียวพร้อมกัน (ถือแถวรายการแรกไว้ · ทั้งคู่รอ) → แผน OPEN 1 · อีกคน TABLE_SPLIT_EX
+  ✅ [P2.5-C2] [R4] สองเครื่อง คนละคีย์ จ่ายใบเดียวกัน (ถือรายการไว้ · ทั้งคู่รอ) → บิล 1 + TABLE_SPLIT_PART_PAID · Δ PosSale/PosPaymen
+  ✅ [P2.5-C3] [R4 มติ 7] สองเครื่องจ่ายคนละใบพร้อมกัน (ถือรายการไว้) → บิล 2 ใบ · แผน DONE · ทุกรายการผูกบิลเดียวกัน (ใบที่จ่ายครบ) · 
+  ✅ [P2.5-C4] [R5 P5] สร้างแผน ⇄ จ่ายทั้งโต๊ะ (ถือรายการไว้ · ทั้งคู่รอ) → ผู้ชนะคนเดียว: บิล + แผนถูกปฏิเสธ หรือ แผน OPEN + จ่าย TABL
+  ✅ [P2.5-C5] [R7 มติ 8] ย้าย ⇄ เปิดโต๊ะปลายทาง (ถือล็อกโต๊ะปลายทาง) → session OPEN บนโต๊ะปลายทาง 1 แถว (ย้ายผ่าน+เปิดได้ session เดิม
+  ✅ [P2.5-C6] [R8 มติ 8] รวมโต๊ะ ⇄ จ่ายของโต๊ะต้นทาง (ถือรายการไว้) → จ่ายแล้วรวม (ออเดอร์ที่จ่ายย้ายตาม) หรือ รวมแล้วจ่าย TABLE_ITEMS
+  ✅ [P2.5-T1] [R7 CD8 มติ 8] registerMoveTable (WAITER) ขณะรอบ NEW + รอบร่าง + แผน OPEN → tableId เปลี่ยน · โต๊ะเดิม dirtySince (ต้องเ
+  ✅ [P2.5-T2] [R7 CD10] ย้ายไปโต๊ะที่มีลูกค้า → TABLE_BUSY · INACTIVE → TABLE_INACTIVE · โต๊ะร้าน T2 / id มั่ว / ctx สาขา B → TABLE_NO
+  ✅ [P2.5-T3] [R8 CD8] registerMergeTables (WAITER) A←B,C → ออเดอร์/คำขอย้าย · guestCount Σ · สมาชิกของต้นทาง · ต้นทาง MERGED + merged
+  ✅ [P2.5-T4] [มติ fix1 ข้อ 6] แผน DONE บนโต๊ะ B (มีรอบร่าง) → รวม B เข้า A → แผนย้ายไป session A · void บิลใบ 1 → ใบ OPEN บน session 
+  ✅ [P2.5-M8] [มติ fix1 ข้อ 5 · CD-P25-N3] (ก) regVat คืนได้แค่ INCLUDED | NONE (หมุดซอร์ส · ไม่มี EXCLUDED ใน regVat/regFixedServiceC
+  ❌ [P2.5-M9] [มติ fix1 ข้อ 7 · F4] ใบของโต๊ะสมาชิก (ใบ 1 = สมาชิก) จ่ายด้วย STORE_CREDIT → ok (เครดิตของสมาชิกของใบ) · ส่ง memberId ข — expected STORE_CREDIT บนใบ = เครดิตของสมาชิกของใบ · สมาชิกอื่น/�
+  ✅ [P2.5-Z1] QC4 คืนสภาพ: ร้านชั่วคราว T + T2 เหลือ 0 แถวทุกตารางที่มี tenantId (PosTableSplit* TableSession Restaurant* PosHeldCart 
+  ✅ [P2.5-Z2] รอยของรอบนี้นอกร้านชั่วคราว = 0 (PosSale คีย์ · AuditLog/OutboxEvent ที่มีรหัสรอบ · Tenant slug) · ลายนิ้วมือร้านอื่น (R
+===== qc-pos-p2.5 ===== ผ่าน 43/45 (QC_FORCE) · PAR 2/3
+JSON_SUMMARY {"suite":"qc-pos-p2.5","total":45,"passed":43,"failed":["P2.5-L2","P2.5-M9"],"parRed":["P2.5-L2"],"skipped":false,"forced":true,"missing":[],"guardHits":0,"residue":0,"leaks":[],"fpDrift":[]}
+exit=1
