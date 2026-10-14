@@ -264,7 +264,7 @@ function runStatic(): void {
     const m = srcOf(F.member);
     for (const n of MEMBER_FNS) if (!new RegExp(`\\b${n}\\b`).test(m)) p.push(`member facade ไม่มี ${n}`);
     const cons = srcOf(F.consumers);
-    const vb = /"pos\.sale\.voided"\s*:([\s\S]*?)\n\s*\/\/ POS P1\.8/.exec(cons)?.[1] ?? "";
+    const vb = /"pos\.sale\.voided"\s*:([\s\S]*?)"pos\.sale\.refunded"/.exec(cons)?.[1] ?? "";
     if (!/tenderSaleVoided|tenderOnSaleVoided/.test(vb)) p.push("pos.sale.voided ไม่เรียกขั้นย้อนบัตร (tenderSaleVoided)");
     chk("ST2", p.length === 0, "POS → บัตรผ่าน member facade · tender.ts + member exports + ขั้น void", joinP(p));
   }
@@ -1309,6 +1309,10 @@ async function runDb() {
       const c = cardOf(rc?.receipt?.payments ?? rc?.payload?.payments ?? rc?.payments, "STORE_CREDIT");
       if (c?.kind !== "STORE_CREDIT") p.push(`ใบเสร็จเครดิต ${short(c, 100)}`);
     }
+    // บิลเครดิตร้านที่ยังมีชีวิตในกะ (บิล S3 ถูก void ใน S4) — แล้วอ่าน X
+    const sk = key("r1");
+    const sr = SHIFT && X ? await cs(saleIn(sk, [["ของ R1 เครดิต", 1_000]], [{ type: "STORE_CREDIT", amountSatang: 1_000 }], { ...memberOf(X), shiftId: SHIFT })) : null;
+    if (!ok(sr)) p.push(`บิลเครดิตในกะ → ${codeOf(sr)} ${short(sr?.message ?? "", 60)}`);
     const x = SHIFT ? await call(shiftMod, "xReport", ctxOf("A", DEV1), owner, { shiftId: SHIFT }) : null;
     const rows = (x?.report?.byMethod ?? []) as Any[];
     if (!rows.some((m) => m.type === "STORE_CREDIT")) p.push(`X byMethod ${short(rows.map((m) => m.type))}`);
