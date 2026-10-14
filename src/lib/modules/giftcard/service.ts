@@ -304,6 +304,65 @@ async function posSystemIdOf(ctx: GiftCardCtx | null, card: { saleId: string | n
   return sale?.systemId ?? null;
 }
 
+// POS HF-GC ▸ H2 ตาข่ายหนี้สิน 2110 ของการขายบัตร ◂
+/**
+ * ลงบัญชี "รับเงินล่วงหน้า" (Dr ช่องทางเงิน · Cr 2110) ของบัตรที่ขายแล้วให้ครบ **ครั้งเดียว** แล้วผูก `accountingDocId`
+ * — **ผู้เขียน accountingDocId ตัวเดียว** (มติ §9 ข้อ 1) · เรียกจาก 3 ทาง: ขายปกติหลัง commit · ขายซ้ำคีย์เดิม · consumer `giftcard.sold` (ตาข่าย)
+ * เหตุ: เดิมลงบัญชีนอกธุรกรรมขาย — พังระหว่าง commit กับการผูก = บัตรใช้ได้แต่ไม่มีหนี้สิน 2110 และใช้/หมดอายุก็ไม่ลงตลอดไป (ดูข้อ 2 หัวไฟล์)
+ * 🔴 `accountingLink` = การตัดสินตอนขาย (payload `giftcard.sold` — ทั้ง consumer และทางขายซ้ำ · fix 1) ⇒ false = ไม่ลงย้อนหลังเด็ดขาด
+ * idempotent: gl.ts `postGiftCardSale` ข้ามคีย์ `GiftCard#<id>#GIFTCARD_SOLD` ที่มีแล้ว (alreadyPosted) + unique (tenantId, idempotencyKey) ของ JV
+ *   กันการลงพร้อมกัน (แพ้ = P2002) ⇒ ทั้งสองกรณีอ่าน id ของ JV เดิมตามอ้างอิงแล้วผูก (updateMany เงื่อนไข accountingDocId null)
+ */
+export async function ensureGiftCardSalePosted(
+  tenantId: string,
+  giftCardId: string,
+  opts: { accountingLink: boolean },
+): Promise<string | null> {
+  if (!opts.accountingLink) return null;
+  const card = await prisma.giftCard.findFirst({
+    where: { id: giftCardId, tenantId },
+    select: { id: true, accountingDocId: true, saleId: true, initialSatang: true, createdAt: true },
+  });
+  if (!card) return null;
+  if (card.accountingDocId) return card.accountingDocId;
+  const posSystemId = await posSystemIdOf(null, card);
+  if (!posSystemId || !card.saleId) return null;
+  // ช่องทางเงินจากบิลขายบัตรเอง (แถวเดียวกับที่บิลเก็บ — ไม่พึ่งค่าที่ผู้เรียกส่งมา)
+  const pays = await prisma.posPayment.findMany({
+    where: { tenantId, saleId: card.saleId },
+    select: { type: true, amountSatang: true },
+    orderBy: { id: "asc" },
+  });
+  const ref = { tenantId, sourceSystemId: posSystemId, refType: "GiftCard" as const, refId: card.id };
+  let entryId: string | null = null;
+  try {
+    const posted = await account.postGiftCardSale({
+      ...ref,
+      occurredAt: card.createdAt,
+      satang: card.initialSatang,
+      payMethods: pays.map((p) => ({ channel: accountChannel(p.type), amountSatang: p.amountSatang })),
+    });
+    if (posted.reason === "unlinked") return null; // ร้านไม่ได้เชื่อมบัญชีกับ POS = ไม่ลง (เชื่อมทีหลัง → consumer/ขายซ้ำลงให้)
+    entryId = posted.entryId ?? null;
+  } catch (e) {
+    if (!isUniqueViolation(e)) throw e; // อีกทางลงไปพร้อมกันแล้ว → อ่านตามอ้างอิงข้างล่าง
+  }
+  entryId ??= await account.giftCardSaleEntryId(ref);
+  if (!entryId) return null;
+  await prisma.giftCard.updateMany({ where: { id: card.id, accountingDocId: null }, data: { accountingDocId: entryId } });
+  return entryId;
+}
+
+// POS HF-GC ▸ fix 1 (รีวิว F1): การตัดสินสวิตช์ผูกบัญชี "ตอนขาย" ของบัตรใบนี้ = payload `accountingLink` ของแถว outbox `giftcard.sold#<id>`
+//   (เขียนในธุรกรรมขายเดียวกับตัวบัตร · แหล่งเดียวกับ consumer) · ไม่มีแถว/แถวก่อน HF-GC ไม่มีธง = false (ไม่ลงย้อนหลัง) ◂
+async function soldWithAccountingLink(tenantId: string, giftCardId: string): Promise<boolean> {
+  const e = await prisma.outboxEvent.findUnique({
+    where: { tenantId_idempotencyKey: { tenantId, idempotencyKey: `giftcard.sold#${giftCardId}` } },
+    select: { payload: true },
+  });
+  return (e?.payload as { accountingLink?: unknown } | null)?.accountingLink === true;
+}
+
 // ───────────────────────── ขาย ─────────────────────────
 
 export type SellRecipient =
@@ -357,7 +416,16 @@ export async function sell(ctx: GiftCardCtx, actor: MemberActor, input: SellInpu
   const key = `giftcard-sell-${idem}`;
 
   // ยิงซ้ำด้วยคีย์เดิม → คืนบัตรใบเดิม (ไม่มีบัตร/บิลใบที่สอง · ไม่คืน PIN ซ้ำ)
-  const done = await sellReplay(ctx.tenantId, key);
+  // POS HF-GC ▸ H2(b): ขายซ้ำคีย์เดิม = ผลเดิม + ตาข่ายลงบัญชี (ช่วงพังหลัง commit) · fix 1 (รีวิว F1): การตัดสินมาจาก payload ตอนขาย
+  //   (แถว outbox `giftcard.sold#<id>` — แหล่งเดียวกับ consumer) ไม่ใช่สวิตช์ปัจจุบัน ⇒ ขายตอนปิดแล้วเปิดทีหลัง + ขายซ้ำ = ไม่ลงย้อนหลัง ◂
+  const replayed = async (): Promise<SellResult | null> => {
+    const r = await sellReplay(ctx.tenantId, key);
+    if (r && !r.accountingDocId) {
+      r.accountingDocId = await ensureGiftCardSalePosted(ctx.tenantId, r.giftCardId, { accountingLink: await soldWithAccountingLink(ctx.tenantId, r.giftCardId) });
+    }
+    return r;
+  };
+  const done = await replayed();
   if (done) return done;
 
   const settings = await getSettings(ctx);
@@ -476,6 +544,7 @@ export async function sell(ctx: GiftCardCtx, actor: MemberActor, input: SellInpu
               buyerCustomerId,
               ownerCustomerId,
               saleId: sale.saleId,
+              accountingLink: settings.accountingLink, // POS HF-GC ▸ H2(3): การตัดสินตอนขาย — consumer ตาข่ายลงบัญชีเฉพาะ true ◂
             },
             systemId: ctx.systemId,
             unitId: input.unitId,
@@ -486,29 +555,15 @@ export async function sell(ctx: GiftCardCtx, actor: MemberActor, input: SellInpu
       );
     } catch (e) {
       if (!isUniqueViolation(e) || attempt >= SALE_TX_ATTEMPTS) throw e;
-      const replay = await sellReplay(ctx.tenantId, key);
+      const replay = await replayed(); // POS HF-GC ▸ ผลเดิม + ตาข่ายลงบัญชี ◂
       if (replay) return replay;
     }
   }
   await pos.afterSaleCommitted(created.saleInput, created.saleId); // HF-TX ▸ ระบายคิว (+ ตัดสต็อกถ้ามี) หลัง commit ◂
 
   // ── บัญชี (D3) — เปิดสวิตช์ + ร้านเชื่อมบัญชีกับ POS แล้วเท่านั้น ──
-  let accountingDocId: string | null = null;
-  if (settings.accountingLink) {
-    const posted = await account.postGiftCardSale({
-      tenantId: ctx.tenantId,
-      sourceSystemId: posSystemId,
-      refType: "GiftCard",
-      refId: created.card.id,
-      occurredAt: now,
-      satang,
-      payMethods: payMethods.map((p) => ({ channel: accountChannel(p.type), amountSatang: p.amountSatang })),
-    });
-    if (posted.entryId) {
-      accountingDocId = posted.entryId;
-      await prisma.giftCard.update({ where: { id: created.card.id }, data: { accountingDocId } });
-    }
-  }
+  // POS HF-GC ▸ H2(a): ลงทันทีผ่านตัวช่วยเดียว (มติ §9 ข้อ 1 — เร็ว · ผลรูปเดิม) · พังตรงนี้ = consumer giftcard.sold / ขายซ้ำ ลงให้ภายหลัง ◂
+  const accountingDocId = await ensureGiftCardSalePosted(ctx.tenantId, created.card.id, { accountingLink: settings.accountingLink });
 
   // POS HF-TX ▸ หมายเลข/PIN มาจากรอบที่ commit จริง (ออกใหม่ทุกรอบที่ลองซ้ำ) ◂
   return { giftCardId: created.card.id, number: created.number, pin: created.pin, saleId: created.saleId, expiresAt, accountingDocId };
@@ -596,7 +651,9 @@ export async function use(ctx: GiftCardCtx, input: UseInput, tx?: Tx): Promise<U
     if (upd.count === 0) {
       throw new GiftCardStateError("ยอดในบัตรถูกใช้ไปก่อนหน้านี้แล้ว — ตรวจยอดคงเหลือแล้วทำรายการใหม่");
     }
-    const after = card.balanceSatang - satang;
+    // POS HF-GC ▸ H1: ยอดหลังตัด = อ่านจากแถวที่ธุรกรรมนี้ล็อกอยู่ (หลัง updateMany) — ไม่ใช่ยอดที่อ่านก่อนธุรกรรม
+    //   (สองเครื่องตัดพร้อมกัน: ยอดในคอลัมน์ถูกเพราะ decrement แต่ balanceAfter บนรายการ/ที่คืนไปซ้ำกัน) ◂
+    const after = (await db.giftCard.findUniqueOrThrow({ where: { id: card.id }, select: { balanceSatang: true } })).balanceSatang;
     if (after === 0) await db.giftCard.update({ where: { id: card.id }, data: { status: "DEPLETED" } });
 
     const txn = await db.giftCardTxn.create({
@@ -722,11 +779,14 @@ export async function reload(
           const sale = await pos.createSale(saleInput, callerTx(tx));
           // POS P1.6 R4 H4: บิลขาย/เติมบัตรไม่ลงบัญชีขาย (consumer ข้ามบิลที่มี giftCardId) ⇒ VAT บนบิลต้องเป็น 0 ให้ตรงสมุด
           await tx.posSale.update({ where: { id: sale.saleId }, data: { giftCardId: card.id, vatSatang: 0 } });
-          const after = card.balanceSatang + satang;
-          await tx.giftCard.update({
+          // POS HF-GC ▸ H1: balanceAfter = ผลของ increment ในธุรกรรมนี้ (แถวถูกล็อกแล้ว) — เดิม `card.balanceSatang + satang`
+          //   จากการอ่านก่อนธุรกรรม ⇒ เติมพร้อมกันได้ balanceAfter ซ้ำกันทุกแถว (คอลัมน์ยอดถูก แต่ร่องรอยผิด) ◂
+          const upd = await tx.giftCard.update({
             where: { id: card.id },
             data: { balanceSatang: { increment: satang }, status: "ACTIVE" },
+            select: { balanceSatang: true },
           });
+          const after = upd.balanceSatang;
           const txn = await tx.giftCardTxn.create({
             data: {
               tenantId: ctx.tenantId,
@@ -799,14 +859,14 @@ export async function transfer(
   await assertMember(ctx, to, "ผู้รับโอนที่เลือก");
 
   await prisma.$transaction(async (tx) => {
-    await tx.giftCard.update({ where: { id: card.id }, data: { ownerCustomerId: to } });
+    const upd = await tx.giftCard.update({ where: { id: card.id }, data: { ownerCustomerId: to }, select: { balanceSatang: true } }); // POS HF-GC ▸ H1: ยอดจากแถวที่ล็อก ◂
     await tx.giftCardTxn.create({
       data: {
         tenantId: ctx.tenantId,
         giftCardId: card.id,
         type: "TRANSFER",
         satang: 0,
-        balanceAfter: card.balanceSatang,
+        balanceAfter: upd.balanceSatang,
         refType: "Customer",
         refId: to,
         byUserId: ctx.actorUserId ?? actor.userId ?? null,
@@ -828,14 +888,14 @@ export async function suspend(
   const card = await loadByNumber(ctx, input.number);
   if (card.status === "SUSPENDED") return { ok: true };
   await prisma.$transaction(async (tx) => {
-    await tx.giftCard.update({ where: { id: card.id }, data: { status: "SUSPENDED" } });
+    const upd = await tx.giftCard.update({ where: { id: card.id }, data: { status: "SUSPENDED" }, select: { balanceSatang: true } }); // POS HF-GC ▸ H1: ยอดจากแถวที่ล็อก ◂
     await tx.giftCardTxn.create({
       data: {
         tenantId: ctx.tenantId,
         giftCardId: card.id,
         type: "ADJUST",
         satang: 0,
-        balanceAfter: card.balanceSatang,
+        balanceAfter: upd.balanceSatang,
         refType: "SUSPEND",
         refId: input.reason ? String(input.reason).slice(0, 200) : null,
         byUserId: ctx.actorUserId ?? actor.userId ?? null,
@@ -857,14 +917,14 @@ export async function unsuspend(
   // ปลดระงับแล้วกลับไปสถานะที่ "ควรจะเป็น" ตามยอดคงเหลือ (ยอด 0 = ใช้หมด ไม่ใช่พร้อมใช้)
   const status: GiftCardStatus = card.balanceSatang > 0 ? "ACTIVE" : "DEPLETED";
   await prisma.$transaction(async (tx) => {
-    await tx.giftCard.update({ where: { id: card.id }, data: { status } });
+    const upd = await tx.giftCard.update({ where: { id: card.id }, data: { status }, select: { balanceSatang: true } }); // POS HF-GC ▸ H1: ยอดจากแถวที่ล็อก ◂
     await tx.giftCardTxn.create({
       data: {
         tenantId: ctx.tenantId,
         giftCardId: card.id,
         type: "ADJUST",
         satang: 0,
-        balanceAfter: card.balanceSatang,
+        balanceAfter: upd.balanceSatang,
         refType: "UNSUSPEND",
         byUserId: ctx.actorUserId ?? actor.userId ?? null,
         idempotencyKey: `giftcard-unsuspend-${card.id}-${Date.now()}`,
@@ -895,16 +955,17 @@ export async function refundUse(
   if (done) return { refunded: false, txnId: done.id, balanceAfter: done.balanceAfter };
 
   const card = src.giftCard;
-  const after = card.balanceSatang + src.satang;
   const res = await prisma.$transaction(async (tx) => {
-    await tx.giftCard.update({
+    // POS HF-GC ▸ H1: ยอด/สถานะหลังคืน = แถวที่ธุรกรรมนี้ล็อก (ผลของ increment) — เดิมอ่านก่อนธุรกรรม ⇒ คืนพร้อมการใช้/คืนอีกใบ
+    //   ได้ balanceAfter ผิด และบัตรที่เพิ่งถูกใช้จนหมดระหว่างนั้นค้าง DEPLETED ทั้งที่มียอด ◂
+    const upd = await tx.giftCard.update({
       where: { id: card.id },
-      // บัตรที่ใช้จนหมด (DEPLETED) กลับมาใช้ได้เมื่อคืนยอด · บัตรที่ถูกระงับ/หมดอายุ คงสถานะเดิม
-      data: {
-        balanceSatang: { increment: src.satang },
-        ...(card.status === "DEPLETED" ? { status: "ACTIVE" as GiftCardStatus } : {}),
-      },
+      data: { balanceSatang: { increment: src.satang } },
+      select: { balanceSatang: true, status: true },
     });
+    const after = upd.balanceSatang;
+    // บัตรที่ใช้จนหมด (DEPLETED) กลับมาใช้ได้เมื่อคืนยอด · บัตรที่ถูกระงับ/หมดอายุ คงสถานะเดิม
+    if (upd.status === "DEPLETED") await tx.giftCard.update({ where: { id: card.id }, data: { status: "ACTIVE" } });
     const txn = await tx.giftCardTxn.create({
       data: {
         tenantId: ctx.tenantId,

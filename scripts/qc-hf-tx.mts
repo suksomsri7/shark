@@ -19,6 +19,14 @@
 //   HT6 [static] ทุก createSale(/regCreateSale( ใน src ที่ส่งอาร์กิวเมนต์ที่ 2 = prisma/PrismaClient หรือ callerTx(…) · ไม่มี Proxy ซ่อน $transaction ตัวอื่น
 //       (regCallerTx/flatTx หาย) · core/caller-tx.ts บริสุทธิ์ · ทะเบียนผู้เรียก qc-pos-p1.6 U4 ไม่เปลี่ยน
 //   HT7 [static] helper `"$transaction" in` ที่อยู่นอกขอบเขต (ไม่แก้) ถูกจดใน ledger/POS-OWNER-PENDING.md (บรรทัด HF-TX · HT7) ครบ/ตรงจำนวน — ไม่ให้รายการเน่าเงียบ
+//   POS HF-GC ▸ (ledger/pos-briefs/pos-brief-HF-GC.md Scope 4 · §9 มติ 2) ◂
+//   HT2.6 เติมบัตรใบเดียวพร้อมกัน 5 คำขอ (คีย์ต่างกัน ยอดเท่ากัน) ⇒ RELOAD 5 แถว · balanceAfter ไม่ซ้ำ = initial + k·satang (k=1..5) · max = ยอดบัตร ·
+//       balanceAfter ที่แต่ละคำขอคืน = แถวของตัวเอง (แดงก่อนแก้: ทุกแถว = initial + satang เพราะอ่านยอดก่อนธุรกรรม)
+//   HT2.7 ตาข่ายหนี้สิน 2110 ของการขายบัตร (ร้านเชื่อมบัญชี · สวิตช์ผูกบัญชีเปิด): ขาย ⇒ accountingDocId + JV อ้างอิง GiftCard#<id> 1 ใบ ·
+//       ล้าง accountingDocId (จำลองช่วงพังหลัง commit) แล้ว (a) ขายซ้ำคีย์เดิม ⇒ คืน accountingDocId + JV ยัง 1 · (b) ล้างอีกครั้ง + เล่น consumer
+//       giftcard.sold ×2 ต่อกัน + ×2 พร้อมกัน ⇒ คืน accountingDocId + JV ยัง 1 · (b2) ขายตอนตัดการเชื่อมบัญชี (ช่วงพังก่อนลงบัญชี — ยังไม่มี JV)
+//       แล้วเชื่อมกลับ + เล่น consumer ⇒ JV 1 + accountingDocId ตั้ง · (c) ขายตอนสวิตช์ปิด → เปิดสวิตช์ + เล่น consumer ⇒ JV 0 · accountingDocId null
+//       (แดงก่อนแก้: (a) คืน null / ไม่มีตาข่ายใน consumer) · (c2) fix 1 (รีวิว F1): สวิตช์ปิดตอนขาย → เปิด → ขายซ้ำคีย์เดิม ⇒ JV 0 · accountingDocId null
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
@@ -40,6 +48,9 @@ const CHECKS: [string, string][] = [
   ["HT2.3", "บัตรกำนัล reload: PosSale/Line/Payment xmin = GiftCard/GiftCardTxn xmin · giftCardId ตั้งแล้ว"],
   ["HT2.4", "บัตรกำนัล reload: pos.sale.paid 1 แถว → DONE (ระบายหลัง commit)"],
   ["HT2.5", "บัตรกำนัล sell พร้อมกัน 2 คำขอคีย์เดียว ⇒ GiftCard 1 · PosSale 1 · SELL 1 · ผลที่เล่นซ้ำ pin null"],
+  // POS HF-GC ▸ +2 (18 → 20) ◂
+  ["HT2.6", "บัตรกำนัล reload พร้อมกัน 5 คำขอ ⇒ balanceAfter ไม่ซ้ำ = initial + k·satang · max = ยอดบัตร · ผลที่คืน = แถวของตัวเอง"],
+  ["HT2.7", "บัตรกำนัล ตาข่ายหนี้สิน 2110: ขายซ้ำ/consumer คืน accountingDocId · JV GiftCard#<id> = 1 เสมอ · ขายตอนสวิตช์ปิด = 0 ตลอดไป"],
   ["HT3.1", "callerTx + ผู้เรียก rollback ⇒ บิล 0 แถว · OUT 0"],
   ["HT3.2", "callerTx + commit + afterSaleCommitted ⇒ xmin = xid ผู้เรียก · ไม่มีการอ่านในธุรกรรม · OUT 1"],
   ["HT4", "positive control: หน้าขายเงินสด xmin เดียว + OUT 1"],
@@ -464,6 +475,128 @@ try {
     const split = xs.length > 0 && !xs.includes(callerXid);
     const preRead = inside.some((x) => !x.found);
     chk("HT5", split && preRead, `ตัวตรวจเห็น: xmin บรรทัด ${xs.join(",")} vs ผู้เรียก ${callerXid} (${split ? "แยก" : "ไม่แยก"}) · อ่านในธุรกรรม ${fmtReads(inside)}`);
+  }
+
+  // POS HF-GC ▸ HT2.6 + HT2.7 — ทำท้ายสุด (ผูกบัญชีให้ร้านชั่วคราวนี้ · ไม่กระทบข้อก่อนหน้า) · ก้อนของตัวเอง: ล้ม = แดงสองข้อนี้ ไม่ลากข้ออื่น ◂
+  console.log("── HT2.6/HT2.7 บัตรกำนัล (HF-GC) ──");
+  try {
+    const gctx = { tenantId: T, systemId: MEM, posSystemId: POS, actorUserId: user.id };
+    const accSys = await sysSvc.createSystem(T, "ACCOUNT", `ACC ${RAND}`);
+    const accSvc: Any = await import("@/lib/modules/account/service" as string);
+    const gl: Any = await import("@/lib/modules/account/gl" as string);
+    await accSvc.saveSettings(T, accSys.id, { orgPrefix: "บริษัท", orgName: `HF-GC QC ${RAND} จำกัด`, taxId: "0835565009999", branchCode: "00000", vatRegistered: false, vatRateBp: 700, taxPointBasis: "ON_ISSUE", defaultDueDays: 30, defaultValidDays: 30 });
+    await gl.ensureAccounting({ tenantId: T, systemId: accSys.id });
+    const link = await P.accountSystemLink.create({ data: { tenantId: T, systemId: accSys.id, linkedKind: "POS", linkedId: POS } });
+    await G.setSettings(gctx, owner, { enabled: true, reloadable: true, accountingLink: true });
+    const consMod: Any = await import("@/lib/outbox-consumers" as string);
+    const soldH: ((e: Any) => Promise<void>) | undefined = consMod?.consumers?.["giftcard.sold"];
+    const jvCount = (cardId: string) => P.accountJournalEntry.count({ where: { tenantId: T, refType: "GiftCard", refId: cardId } }) as Promise<number>;
+    const docOf = async (cardId: string) => ((await P.giftCard.findUnique({ where: { id: cardId }, select: { accountingDocId: true } })) as Any)?.accountingDocId ?? null;
+    const soldEvt = (cardId: string) => P.outboxEvent.findFirst({ where: { tenantId: T, idempotencyKey: `giftcard.sold#${cardId}` } });
+    const waitSold = async (cardId: string, ms = 20_000) => {
+      const t0 = Date.now();
+      let e: Any = null;
+      while (Date.now() - t0 < ms) {
+        e = await soldEvt(cardId);
+        if (e && e.status !== "PENDING" && e.status !== "PROCESSING") break;
+        await sleep(400);
+      }
+      return e;
+    };
+    const sellK = (k: string, satang = 100_000) => G.sell(gctx, owner, { satang, payMethods: [{ type: "CASH", amountSatang: satang }], unitId: U, recipient: { print: true }, idempotencyKey: `hfgc-${RAND}-${k}` });
+    const runSold = async (cardId: string, n: number, parallel: boolean): Promise<string[]> => {
+      const errs: string[] = [];
+      const evt = await soldEvt(cardId);
+      if (!evt || typeof soldH !== "function") return [!evt ? "ไม่มีแถว giftcard.sold" : "ไม่มี consumers[giftcard.sold]"];
+      const one = () => soldH(evt).catch((e: Error) => { errs.push(String(e?.message ?? e).slice(0, 60)); });
+      if (parallel) await Promise.all(Array.from({ length: n }, one));
+      else for (let i = 0; i < n; i++) await one();
+      return errs;
+    };
+
+    // ── HT2.6 เติมพร้อมกัน 5 คำขอ ──
+    {
+      phase = "gc-reload-par";
+      const s = await sellK("r0", 100_000);
+      const num = ((await P.giftCard.findUnique({ where: { id: s.giftCardId }, select: { number: true } })) as Any).number as string;
+      const SAT = 10_000;
+      const settled = await Promise.allSettled(Array.from({ length: 5 }, (_, i) =>
+        G.reload(gctx, owner, { number: num, satang: SAT, payMethods: [{ type: "CASH", amountSatang: SAT }], unitId: U, idempotencyKey: `hfgc-${RAND}-rl${i}` })));
+      const ok = settled.filter((x): x is PromiseFulfilledResult<Any> => x.status === "fulfilled").map((x) => x.value);
+      const errs = settled.filter((x): x is PromiseRejectedResult => x.status === "rejected").map((x) => String((x.reason as Error)?.message ?? x.reason).slice(0, 60));
+      const rows = (await P.giftCardTxn.findMany({ where: { tenantId: T, giftCardId: s.giftCardId, type: "RELOAD" }, select: { id: true, balanceAfter: true } })) as Any[];
+      const bal = ((await P.giftCard.findUnique({ where: { id: s.giftCardId }, select: { balanceSatang: true } })) as Any).balanceSatang as number;
+      const got = rows.map((r) => Number(r.balanceAfter)).sort((a, b) => a - b);
+      const want = [1, 2, 3, 4, 5].map((k) => 100_000 + k * SAT);
+      const byId = new Map(rows.map((r) => [r.id as string, Number(r.balanceAfter)]));
+      const retMatch = ok.length === 5 && ok.every((r) => byId.get(r.txnId) === r.balanceAfter);
+      chk("HT2.6", ok.length === 5 && rows.length === 5 && JSON.stringify(got) === JSON.stringify(want) && Math.max(...got) === bal && retMatch,
+        `สำเร็จ ${ok.length}/5${errs.length ? ` (ล้ม: ${errs.join(" · ")})` : ""} · RELOAD ${rows.length} แถว · balanceAfter ${got.join(",")} (คาด ${want.join(",")}) · ยอดบัตร ${bal} · ผลที่คืนตรงแถว ${retMatch ? "ใช่" : "ไม่"}`);
+    }
+
+    // ── HT2.7 ตาข่ายหนี้สิน 2110 ──
+    {
+      const p: string[] = [];
+      const notes: string[] = [];
+      // ขายปกติ (สวิตช์เปิด + เชื่อมบัญชี)
+      phase = "gc-acc-sell";
+      const s1 = await sellK("a1");
+      const d0 = await docOf(s1.giftCardId);
+      const n0 = await jvCount(s1.giftCardId);
+      notes.push(`ขาย: doc ${d0 ? "ตั้ง" : "null"} · JV ${n0}`);
+      if (!s1.accountingDocId || d0 !== s1.accountingDocId || n0 !== 1) p.push(`ขายปกติ: doc ${s1.accountingDocId ? "ตั้ง" : "null"}/${d0 ? "ตั้ง" : "null"} · JV ${n0} (คาด 1)`);
+      await waitSold(s1.giftCardId);
+      // (a) ช่วงพังหลัง commit → ขายซ้ำคีย์เดิม
+      await P.giftCard.update({ where: { id: s1.giftCardId }, data: { accountingDocId: null } });
+      const ra = await sellK("a1");
+      const da = await docOf(s1.giftCardId);
+      const na = await jvCount(s1.giftCardId);
+      notes.push(`(a) ขายซ้ำ: คืน ${ra.accountingDocId ? "ตั้ง" : "null"} · แถว ${da ? "ตั้ง" : "null"} · JV ${na}`);
+      if (!ra.accountingDocId || da !== ra.accountingDocId || na !== 1 || ra.pin !== null) p.push(`(a) ขายซ้ำ: คืน ${ra.accountingDocId ?? "null"} · แถว ${da ?? "null"} · JV ${na} · pin ${ra.pin === null ? "null" : "set"}`);
+      // (b) ช่วงพังหลัง commit → consumer เป็นตาข่าย (×2 ต่อกัน + ×2 พร้อมกัน)
+      await P.giftCard.update({ where: { id: s1.giftCardId }, data: { accountingDocId: null } });
+      const eb1 = await runSold(s1.giftCardId, 2, false);
+      const db1 = await docOf(s1.giftCardId);
+      await P.giftCard.update({ where: { id: s1.giftCardId }, data: { accountingDocId: null } });
+      const eb2 = await runSold(s1.giftCardId, 2, true);
+      const db2 = await docOf(s1.giftCardId);
+      const nb = await jvCount(s1.giftCardId);
+      notes.push(`(b) consumer ต่อกัน/พร้อมกัน: doc ${db1 ? "ตั้ง" : "null"}/${db2 ? "ตั้ง" : "null"} · JV ${nb}${eb1.length + eb2.length ? ` · throw ${[...eb1, ...eb2].join(" · ")}` : ""}`);
+      if (!db1 || !db2 || db1 !== s1.accountingDocId || db2 !== s1.accountingDocId || nb !== 1 || eb1.length || eb2.length) p.push(`(b) consumer: doc ${db1 ?? "null"}/${db2 ?? "null"} · JV ${nb} · throw ${eb1.length + eb2.length}`);
+      // (b2) ช่วงพังก่อนลงบัญชี: ขายตอนตัดการเชื่อม (ยังไม่มี JV) → เชื่อมกลับ → consumer ลงให้ 1 ใบ
+      await P.accountSystemLink.update({ where: { id: link.id }, data: { enabled: false } });
+      phase = "gc-acc-unlinked";
+      const s2 = await sellK("a2");
+      await waitSold(s2.giftCardId);
+      const n2a = await jvCount(s2.giftCardId);
+      await P.accountSystemLink.update({ where: { id: link.id }, data: { enabled: true } });
+      const e2 = await runSold(s2.giftCardId, 2, true);
+      const d2 = await docOf(s2.giftCardId);
+      const n2b = await jvCount(s2.giftCardId);
+      notes.push(`(b2) ไม่มี JV → consumer: JV ${n2a}→${n2b} · doc ${d2 ? "ตั้ง" : "null"}`);
+      if (s2.accountingDocId || n2a !== 0 || n2b !== 1 || !d2 || e2.length) p.push(`(b2) ไม่มี JV: ขายคืน ${s2.accountingDocId ?? "null"} · JV ${n2a}→${n2b} · doc ${d2 ?? "null"}${e2.length ? ` · throw ${e2.join(" · ")}` : ""}`);
+      // (c) ขายตอนสวิตช์ปิด → เปิดสวิตช์ + consumer ⇒ ไม่ลงย้อนหลัง
+      await G.setSettings(gctx, owner, { accountingLink: false });
+      phase = "gc-acc-off";
+      const s3 = await sellK("a3");
+      await waitSold(s3.giftCardId);
+      await G.setSettings(gctx, owner, { accountingLink: true });
+      const e3 = await runSold(s3.giftCardId, 2, false);
+      const d3 = await docOf(s3.giftCardId);
+      const n3 = await jvCount(s3.giftCardId);
+      notes.push(`(c) สวิตช์ปิดตอนขาย: JV ${n3} · doc ${d3 ? "ตั้ง" : "null"}`);
+      if (s3.accountingDocId || d3 || n3 !== 0 || e3.length) p.push(`(c) สวิตช์ปิด: ขายคืน ${s3.accountingDocId ?? "null"} · doc ${d3 ?? "null"} · JV ${n3}${e3.length ? ` · throw ${e3.join(" · ")}` : ""}`);
+      // (c2) fix 1 (รีวิว F1): สวิตช์ยังเปิดอยู่ (ตั้งหลังขาย) + ขายซ้ำคีย์เดิม ⇒ ยังไม่ลงย้อนหลัง (การตัดสินมาจาก payload ตอนขาย ไม่ใช่สวิตช์ปัจจุบัน)
+      phase = "gc-acc-off-replay";
+      const r3 = await sellK("a3");
+      const d3b = await docOf(s3.giftCardId);
+      const n3b = await jvCount(s3.giftCardId);
+      notes.push(`(c2) สวิตช์ปิดตอนขาย → เปิด → ขายซ้ำ: JV ${n3b} · doc ${d3b ? "ตั้ง" : "null"}`);
+      if (r3.accountingDocId || d3b || n3b !== 0 || r3.giftCardId !== s3.giftCardId) p.push(`(c2) สวิตช์ปิดตอนขาย → ขายซ้ำหลังเปิด: คืน ${r3.accountingDocId ?? "null"} · doc ${d3b ?? "null"} · JV ${n3b}`);
+      chk("HT2.7", p.length === 0, p.length ? p.join(" | ") : notes.join(" · "));
+    }
+  } catch (e) {
+    console.log(`💥 HF-GC block: ${(e as Error)?.stack?.split("\n").slice(0, 4).join(" | ")}`);
   }
 } catch (e) {
   console.log(`💥 ${SUITE}: ${(e as Error)?.stack?.split("\n").slice(0, 4).join(" | ")}`);
