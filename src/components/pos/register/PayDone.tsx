@@ -12,13 +12,16 @@
 // 🔴 duplicated:true ก็คือขายสำเร็จบิลเดิม · ปิดด้วยม่าน/Esc ไม่ได้
 // 🔴 มติผู้คุมงาน (7 ต.ค. Q2): นับถอยหลัง 5 วินาทีแล้วไปบิลถัดไปเอง (ภาพ 02b) เฉพาะเมื่อไม่มีเงินทอน (ทอน 0) ·
 //    มีเงินทอน = จอค้างจนกด Enter/ปุ่ม "ขายต่อ" (แคชเชียร์ต้องอ่านยอดทอนให้ทัน)
+// POS P2.9U ▸ มติ 7 (02b): บิลที่มีแถวบัตรของขวัญ/เครดิตร้าน ⇒ ช่อง "ชำระด้วย" เป็นรายบรรทัดจาก payload ใบเสร็จ (payments[].card: เลขปิดบัง ·
+//   ยอดหลังรายการ) "บัตรของขวัญ GC-••••1234 ฿325 · คงเหลือ ฿175" · "เครดิตร้าน SC-•••• ฿x" + "ทิป ฿x" เมื่อ > 0 ·
+//   อ่าน receiptPayloadAction ครั้งเดียว (บิลสด ≤ 30 นาที = ต้นฉบับ ไม่เขียน audit · บิลซ้ำ duplicated = ไม่อ่าน) · ตัวเรนเดอร์ใบเสร็จไม่แก้ ◂
 
 import { useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { moneyText, type RegisterPayMethod, type RegisterPayType } from "@/lib/modules/pos/register-shared";
 import type { PosPrinterConfig } from "@/lib/modules/pos/device-shared";
 import { receiptPayloadAction, reprintReceiptAction } from "@/lib/modules/pos/receipt-actions";
-import { receiptRefusalMessageKey } from "@/lib/modules/pos/receipt-render";
+import { receiptRefusalMessageKey, type ReceiptPayment } from "@/lib/modules/pos/receipt-render";
 import { sendReceiptAction } from "@/lib/modules/pos/receipt-send-actions";
 import { RECEIPT_EMAIL_RE } from "@/lib/modules/pos/receipt-public-shared";
 import { PrintStatus } from "@/components/pos/print/PrintStatus";
@@ -56,6 +59,9 @@ type Props = {
   member?: { pointsBurned: number; pointsExpected: number; pointsBalanceAfterBurn: number };
   /** POS P2.6U ▸ มติ 10: สาขาของบิล — ส่งมา = ถามเลขคิวครัวของบิล (≤ 3 ครั้ง × 1 วิ) แล้วแสดง "คิว N" (ไม่มีรอบ = ไม่แสดง) ◂ */
   unitId?: string;
+  /** POS P2.9U ▸ มติ 7: ทิปของบิล (บรรทัด "ทิป ฿x" เมื่อ > 0) · duplicated = บิลเดิมของคีย์ (ไม่อ่าน payload — กันสำเนา/audit ของบิลเก่า) ◂ */
+  tipSatang?: number;
+  duplicated?: boolean;
 };
 
 /** POS P2.6U ▸ fix1 F2: บิลที่สั่งพิมพ์ใบครัวหลังขายไปแล้ว (ระดับโมดูล — ครั้งเดียวต่อบิล) ◂ */
@@ -69,8 +75,23 @@ const autoPrinted = new Set<string>();
  */
 const printedOriginal = new Set<string>();
 
-export function PayDone({ receiptNo, totalSatang, changeSatang, payMethods, onNext, systemId, saleId, printer, locale, memberAttached = false, taxInvoicePending = false, member, unitId }: Props) {
+export function PayDone({ receiptNo, totalSatang, changeSatang, payMethods, onNext, systemId, saleId, printer, locale, memberAttached = false, taxInvoicePending = false, member, unitId, tipSatang = 0, duplicated = false }: Props) {
   const t = useTranslations("pos.register");
+  // ── POS P2.9U ▸ มติ 7: แถวบัตรของบิล (เลขปิดบัง · ยอดหลังรายการ) จาก payload ใบเสร็จ — ครั้งเดียวต่อบิล ◂
+  const hasCards = payMethods.some((m) => m.type === "GIFT_CARD" || m.type === "STORE_CREDIT");
+  const [cardPays, setCardPays] = useState<ReceiptPayment[] | null>(null);
+  useEffect(() => {
+    if (!hasCards || duplicated || !saleId) return;
+    let live = true;
+    receiptPayloadAction({ systemId, saleId })
+      .then((r) => {
+        if (live && r.ok) setCardPays(r.payload.payments);
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [hasCards, duplicated, systemId, saleId]);
   // POS P2.6U ▸ มติ 10: รอบครัวสร้างหลัง commit ⇒ ถาม ≤ 3 ครั้ง ห่าง 1 วิ · ได้เลข = หยุด · ไม่ได้ = ไม่แสดงอะไร ◂
   const [queueNo, setQueueNo] = useState<number | null>(null);
   const [kitchenErr, setKitchenErr] = useState<string | null>(null); // POS P2.6U ▸ fix1 F2 ◂
@@ -193,6 +214,20 @@ export function PayDone({ receiptNo, totalSatang, changeSatang, payMethods, onNe
     if (auto && left <= 0) nextRef.current();
   }, [auto, left]);
   const paidBy = payMethods.map((m) => `${t(PAY_LABEL[m.type])} ${moneyText(m.amountSatang)}`).join(" · ");
+  // POS P2.9U ▸ มติ 7: บรรทัดวิธีชำระ (บิลที่มีบัตร/ทิป) — payload มาแล้วใช้แถวของบิลจริง · ยังไม่มา = แถวที่ส่ง (ยังไม่มีเลขปิดบัง) ◂
+  const payLines: string[] =
+    hasCards || tipSatang > 0
+      ? [
+          ...((cardPays ?? payMethods) as (ReceiptPayment | RegisterPayMethod)[]).map((m) => {
+            const label = Object.prototype.hasOwnProperty.call(PAY_LABEL, m.type) ? t(PAY_LABEL[m.type as RegisterPayType]) : String(m.type);
+            const c = "card" in m ? m.card : undefined;
+            return c
+              ? [`${label} ${c.numberMasked} ${moneyText(m.amountSatang)}`, ...(c.kind === "GIFT" ? [t("pay.gc.rowLeft", { amount: moneyText(c.balanceAfterSatang) })] : [])].join(" \u00b7 ")
+              : `${label} ${moneyText(m.amountSatang)}`;
+          }),
+          ...(tipSatang > 0 ? [`${t("done.tip")} ${moneyText(tipSatang)}`] : []),
+        ]
+      : [];
   const cell = "flex min-w-[150px] flex-col gap-[3px] px-5 py-[11px] max-md:border-t max-md:first:border-t-0 md:border-l md:first:border-l-0";
   return (
     <RegisterDialog onDismiss={() => undefined}>
@@ -245,12 +280,22 @@ export function PayDone({ receiptNo, totalSatang, changeSatang, payMethods, onNe
               </span>
             </div>
           )}
-          {paidBy && (
+          {payLines.length > 0 ? (
+            // POS P2.9U ▸ มติ 7: บรรทัดละวิธี (บัตรของขวัญ + คงเหลือ · เครดิตร้าน · ทิป) ◂
+            <div className={cell}>
+              <span className="text-[11.5px] text-[color:var(--color-muted)]">{t("done.paidBy")}</span>
+              <span data-testid="pos-reg-done-pay-lines" className="flex flex-col text-[14px] font-bold tabular-nums">
+                {payLines.map((x, i) => (
+                  <span key={i}>{x}</span>
+                ))}
+              </span>
+            </div>
+          ) : paidBy ? (
             <div className={cell}>
               <span className="text-[11.5px] text-[color:var(--color-muted)]">{t("done.paidBy")}</span>
               <span className="text-[15px] font-bold tabular-nums">{paidBy}</span>
             </div>
-          )}
+          ) : null}
           {taxInvoicePending && (
             <div className={cell}>
               <span className="text-[11.5px] text-[color:var(--color-muted)]">{t("taxInvoice.doneLabel")}</span>
