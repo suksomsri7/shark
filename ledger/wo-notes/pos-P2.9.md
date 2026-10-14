@@ -9,9 +9,9 @@ Prisma client: base added P2.6 columns ⇒ `pnpm exec prisma generate` once afte
 - [x] 3 server (4baf8809 primitives · 68b11bc4 POS server · a3fa7b32 readers) — **GIFT_CARD in `createSale` stopped at the contract → CONTROLLER-DECISION below**
 - [x] 4 owner lines (7126235f) + these notes
 - [x] 5 merge `origin/session/pos` 5e610133 (ledger only) → a72b170b → gates (table below)
-- ⏸ **STOPPED at the createSale contract** (prompt rule): `payMethods[].giftCard` is not in this branch. Exact diff + evidence in **CONTROLLER-DECISION CD-P29-1**.
+- ~~⏸ STOPPED at the createSale contract~~ → **CD-P29-1 APPROVED by the controller 14 Oct** (conditions a–d) — oracle +3 (APIN O1 O2 · `test(qc-pos-p2.9)` 38965237) · red-before block 2 (5c62c65d) · patch applied **0e9e3144** · upstream `origin/session/pos` 23561d97 (P2.6U merged 4449123f) → **08cb294c** · gates green (table "Gates after CD-P29-1").
 
-## CONTROLLER-DECISION CD-P29-1 — `createSale` input `payMethods[].giftCard` (F15.2 contract change) — ⏳ waiting
+## CONTROLLER-DECISION CD-P29-1 — `createSale` input `payMethods[].giftCard` (F15.2 contract change) — ✅ APPROVED 14 Oct · applied 0e9e3144
 **Why it is needed**: the GIFT_CARD tender needs the card number + PIN inside the sale transaction (R3 · ruling 3 PIN · ruling 13 "consumed inside the sale tx"). No existing `payMethods[]` field can carry a PIN without changing a field's meaning (COMMON 2). STORE_CREDIT needs **no** input change (card = the bill member's credit), so it is live in this branch.
 **What the branch does without it**: `createSale` refuses any GIFT_CARD row with VALIDATION "ยังไม่เปิดรับบัตรของขวัญเป็นวิธีชำระ — รอการยืนยันสัญญาข้อมูลของบิล (P2.9)" (`service.ts` `validateTenderRows`) · register `REGISTER_PAY_TYPES` has STORE_CREDIT only · `scripts/pos-sale-contract.json` unchanged (sha256 `7a418de1…97cd`, = base).
 **Proposed change (additive only)**: `payMethods[].giftCard?: { number: string; pin: string }` (GIFT_CARD rows only; ≤ 3 distinct cards; wrong key on another row = VALIDATION) + register `RegisterPayMethod.giftCard?` / `REGISTER_PAY_TYPES += GIFT_CARD` + contract snapshot via `pnpm exec tsx scripts/fitness-pos.mts --update-pos-contract` (adds `payMethods[].giftCard` (optional object) · `.number` · `.pin`). ⚠️ The same `--update-pos-contract` run also records the **pre-existing** caller `src/lib/modules/pos/order.ts` (added by P2.8, never snapshotted — F15.2 already prints it as info); it is in the diff below, it is not a P2.9 call site (L2 = caller registry unchanged vs base).
@@ -285,4 +285,32 @@ ORACLE-EDITs (each own `test(...)` commit, dated marker `ORACLE-EDIT ผู้�
 - `refundUse` (legacy) and `refundTenderUse` share the key `giftcard-refund-<USE>` by design (one REFUND per USE whichever path runs).
 - Visual states for the controller (P2.9U): `paydlg-giftcard-entry`, `paydlg-giftcard-split`, `paydlg-giftcard-pin-error`, `paydlg-giftcard-insufficient`, `paydlg-giftcard-changed`, `paydlg-storecredit`, `paydlg-tip`, `sale-done-giftcard`, `refund-to-card` (no visual run in S).
 
-⏸ STOPPED (prompt rule) at CD-P29-1 — waiting for the controller.
+
+## CD-P29-1 applied (0e9e3144) — conditions (controller 14 Oct)
+Commit `pos P2.9 S: createSale payMethods[].giftCard (CD-P29-1 approved by the controller 14 Oct)` = `ledger/wo-notes/P2.9-CD-giftcard-tender.patch` byte-for-byte + two explicit refusals for (b).
+Hunks: `pos/service.ts:110–111` input type · :259–287 `validateTenderRows` (giftCard only on GIFT_CARD rows · ≤ 3 · number 1–40 + pin 1–12 · distinct numbers) · :303–321 `prepareSaleTenders` GIFT_CARD → `member.prepareGiftCardTender` · `register-shared.ts:23` REGISTER_PAY_TYPES + GIFT_CARD · :417 `RegisterPayMethod.giftCard?` · `register.ts:1129` REG_GIFT_KEYS · :1950–1971 GIFT_CARD parse (exact keys, PIN 4–12 digits, no reference, ≤ 3, distinct) · :2369 pass-through to createSale · `PayDone.tsx` label · `pos/order.ts:1115` payOrder refuses GIFT_CARD/STORE_CREDIT (VALIDATION) · `pos/api/ops/sales.ts:27` comment: `EXTERNAL_PAY_TYPES` (CASH/TRANSFER/PROMPTPAY) + `.strict()` already refuse GIFT_CARD and `giftCard` · `scripts/pos-sale-contract.json` via `--update-pos-contract`.
+- **(a) PIN never persisted/logged/echoed** — oracle **APIN** (ORACLE-ADD, `test(qc-pos-p2.9)` commit): after a register gift-card sale (`submitRegisterSale`) + the createSale G2 bill, the PIN strings (and a wrong PIN) are searched as whole tokens in the tenant's AuditLog, OutboxEvent payloads, PosPayment rows, GiftCardTxn rows, the submit response, `receiptPayload`, `billDetail`, `registerGiftCardLookup` and the GIFT_CARD_PIN error message ⇒ **0 hits**. Cite: PIN goes only to `verifyPin` (sha256 compare, giftcard/service.ts — never stored raw since M2.6); `PosPayment` has no PIN column (`giftCardId`/`giftCardTxnId` only); `useTender` outbox payload {giftCardId, number, satang, saleId, balanceAfter, ownerCustomerId, tender}; lookup DTO = `numberMasked` "GC-••••1234" + balance/status (no number, no PIN); receipt/bill `card` = {kind, numberMasked, balanceAfterSatang}; refusal messages carry no PIN. P2.9U: PIN keypad value must stay in component state only (contract section).
+- **(b) other createSale callers refuse GIFT_CARD** — oracle **O1**: CHAT (DIRECT) order ACCEPTED → `payOrder` GIFT_CARD with and without `giftCard` ⇒ VALIDATION, order not PAID, no bill, card balance unchanged · **O2**: `SALES_OPS` `sales.create` schema rejects GIFT_CARD (+giftCard) (422 validation, never reaches createSale), CASH positive control passes. Owner line added (gift card / store credit via API and online orders = later card).
+- **(c) F15.2** — fitness-pos 8/8 with the updated snapshot · `git diff 57dc226b -- scripts/pos-sale-contract.json` = exactly `payMethods[].giftCard` (optional object) + `.number` + `.pin` + the `src/lib/modules/pos/order.ts` caller line (oracle L1 also green).
+- **(d) `qc-pos-p1.6` U4 registry unchanged** — p1.6 48/48 incl. U4 ✅ · oracle L2 (createSale( per file = base 57dc226b) ✅ — no new call site.
+Red-before of the adds = block 2 in `P2.9-red.txt` (branch state before the patch, 24/48: APIN red · O1/O2 green-before by design — they pin the refusal after createSale accepts GIFT_CARD).
+
+## Gates after CD-P29-1
+All logs headed `tree=/root/projects/shark-pos-b head=08cb294c dirty=0` (scratch `p29/gates-cd/*.out`, 14 Oct 17:49–18:10Z); 08cb294c = code 0e9e3144 + upstream 23561d97 (P2.6U code merged upstream as 4449123f).
+| gate | tree= head= | result |
+|---|---|---|
+| typecheck (pos-gate.lock · 5632/6500M) | shark-pos-b 08cb294c | rc 0 |
+| fitness no-env / env (qc4) | shark-pos-b 08cb294c | 50/50 · 50/50 |
+| fitness-pos | shark-pos-b 08cb294c | 8/8 (F15.2 with updated snapshot) |
+| qc-pos-p2.9 forced ×2 / unforced | shark-pos-b 08cb294c | **48/48 · 48/48 · 48/48** (residue 0 · guardHits 0) |
+| qc-hf-tx | shark-pos-b 08cb294c | 22/22 |
+| qc-pos-p1.6 | shark-pos-b 08cb294c | 48/48 (U4 ✅) |
+| qc-pos-p1.8 | shark-pos-b 08cb294c | 49/49 |
+| qc-pos-p1.12 | shark-pos-b 08cb294c | 72/72 |
+| qc-pos-p1.3 | shark-pos-b 08cb294c | 128/128 |
+| qc-pos-p1.1 | shark-pos-b 08cb294c | 180/180 |
+| qc-pos-account | shark-pos-b 08cb294c | 16/16 |
+| qc-pos-p1.7 | shark-pos-b 08cb294c | 33/33 |
+| qc-hf-pos-page-authz | shark-pos-b 08cb294c | 81/81 |
+| qc-pos-p2.8 | shark-pos-b 08cb294c | 59/61 — ST6 + L2 wip-only (register.ts/service.ts/pos-sale-contract.json differ from base be246009; both accept the merge-base sha ⇒ green once merged into session/pos; L2's caller-registry half is green) |
+| qc-member-m2.x | — | skipped (known QC4 setup failures) |
