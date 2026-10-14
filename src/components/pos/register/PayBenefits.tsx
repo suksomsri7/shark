@@ -75,7 +75,8 @@ export function PayBenefits(p: PayBenefitsProps) {
   const card = "rounded-[16px] border bg-[color:var(--color-surface)]";
 
   return (
-    <div data-testid="pos-member-pay" className="flex flex-col gap-3">
+    // POS P2.9U ▸ fix1 V2: จังหวะแนวตั้งกระชับบน md+ (การ์ดแต้ม/คูปอง) ให้จอ 02 ทั้งชุดพอดีกล่อง ◂
+    <div data-testid="pos-member-pay" className="flex flex-col gap-3 md:gap-2.5">
       {p.rightsChanged && showMember && (
         <p data-testid="pos-member-rights-changed" className="flex items-center gap-2 rounded-[12px] border-[1.5px] border-[color:var(--color-accent)] bg-[color:var(--color-accent-soft)] px-4 py-2.5 text-[13.5px] font-semibold text-[color:var(--color-accent)]" role="status">
           <RegisterIcon name="warn" size={15} />
@@ -85,7 +86,7 @@ export function PayBenefits(p: PayBenefitsProps) {
 
       {/* ── การ์ดแต้ม ── */}
       {showMember && pts && (
-        <div data-testid="pos-member-points" data-state={belowMin ? "below-min" : applied ? "applied" : "idle"} className={`${card} flex flex-col gap-2.5 px-[18px] py-3.5 ${belowMin ? "opacity-60" : ""}`}>
+        <div data-testid="pos-member-points" data-state={belowMin ? "below-min" : applied ? "applied" : "idle"} className={`${card} flex flex-col gap-2.5 px-[18px] py-3.5 md:gap-2 md:py-2.5 ${belowMin ? "opacity-60" : ""}`}>
           <div className="flex items-center gap-2.5">
             <RegisterIcon name="coin" size={16} />
             <span className="flex-1 text-[14.5px] font-bold">{t("pay.pointsTitle")}</span>

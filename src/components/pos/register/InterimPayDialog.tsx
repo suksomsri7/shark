@@ -838,7 +838,8 @@ export function PayDialog(p: Props) {
             : t("pay.confirm", { amount: moneyText(Math.max(plan.state === "complete" ? (remaining > 0 ? plan.amount : due) : remaining, 0)) });
   const showForm = p.phase === "form" || p.phase === "sending";
   const tile = (on: boolean) =>
-    `flex h-[66px] flex-col items-center justify-center gap-1 rounded-[16px] border px-2 text-center text-[15px] font-semibold leading-tight disabled:cursor-not-allowed disabled:text-[color:var(--color-muted)] xl:h-[78px] xl:gap-1.5 ${
+    // POS P2.9U ▸ fix1 V2: ช่องเตี้ยลง (60 / xl 70 · ภาพ 02 ≈ 75) ให้เนื้อหา 02 ทั้งชุดพอดีกล่องที่ 1440×900 และ 1024×768 ◂
+    `flex h-[60px] flex-col items-center justify-center gap-0.5 rounded-[16px] border px-2 text-center text-[15px] font-semibold leading-tight disabled:cursor-not-allowed disabled:text-[color:var(--color-muted)] xl:h-[70px] xl:gap-1 ${
       on ? "border-[color:var(--color-ink)] bg-[color:var(--color-surface-2)] shadow-[inset_0_0_0_1px_var(--color-ink)]" : "bg-[color:var(--color-surface)]"
     }`;
 
@@ -846,7 +847,7 @@ export function PayDialog(p: Props) {
     <RegisterDialog onDismiss={() => void tryClose()} locked={busy || closing}>
       <div
         data-testid="pos-reg-paydlg"
-        className="relative flex h-[100dvh] w-full flex-col overflow-hidden bg-[color:var(--color-surface)] shadow-xl md:h-[min(760px,calc(100dvh-32px))] md:w-[min(1120px,calc(100vw-32px))] md:rounded-[16px]"
+        className="relative flex h-[100dvh] w-full flex-col overflow-hidden bg-[color:var(--color-surface)] shadow-xl md:h-[min(840px,calc(100dvh-32px))] md:w-[min(1120px,calc(100vw-32px))] md:rounded-[16px]"
         role="dialog"
         aria-modal="true"
         aria-label={t("pay.title")}
@@ -891,11 +892,12 @@ export function PayDialog(p: Props) {
         >
           <div className="flex min-h-0 flex-1 flex-col overflow-y-auto md:flex-row md:overflow-hidden">
             {/* ── คอลัมน์ซ้าย ── */}
-            <div className="flex min-w-0 flex-col gap-5 px-5 py-4 md:flex-1 md:overflow-y-auto md:border-r md:px-[22px] md:py-[18px] xl:gap-[23px]">
-              <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-1">
+            {/* POS P2.9U ▸ fix1 V2: กล่องสูงตามภาพ 02 (≤ 840 · 1440×900 = 840) · จังหวะแนวตั้งกระชับ · หัวยอดที่ต้องชำระติดบนคอลัมน์ (sticky md+) ◂ */}
+            <div className="flex min-w-0 flex-col gap-5 px-5 py-4 md:flex-1 md:gap-3.5 md:overflow-y-auto md:border-r md:px-[22px] md:pb-[14px] md:pt-0 xl:gap-[18px]">
+              <div data-testid="pos-reg-paydlg-due-head" className="flex flex-wrap items-end justify-between gap-x-4 gap-y-1 md:sticky md:top-0 md:z-10 md:bg-[color:var(--color-surface)] md:pb-1 md:pt-[14px] xl:pt-[18px]">
                 <div>
                   <div className="text-[12px] text-[color:var(--color-muted)]">{t("pay.due")}</div>
-                  <div data-testid="pos-reg-paydlg-due" className="text-[44px] font-bold leading-[1.1] tracking-[-0.03em] tabular-nums xl:text-[56px]">
+                  <div data-testid="pos-reg-paydlg-due" className="text-[44px] font-bold leading-[1.1] tracking-[-0.03em] tabular-nums md:text-[40px] xl:text-[52px]">
                     {moneyText(due)}
                   </div>
                 </div>
@@ -1047,7 +1049,7 @@ export function PayDialog(p: Props) {
                     )}
                     <div
                       data-testid="pos-reg-paydlg-remaining"
-                      className="flex items-center gap-3 bg-[color:var(--color-accent-soft)] px-[14px] py-[11px] text-[14.5px] font-bold text-[color:var(--color-accent)]"
+                      className="flex items-center gap-3 bg-[color:var(--color-accent-soft)] px-[14px] py-[11px] text-[14.5px] font-bold text-[color:var(--color-accent)] md:py-2"
                       role="listitem"
                     >
                       <span>{t("pay.remaining")}</span>
@@ -1066,7 +1068,7 @@ export function PayDialog(p: Props) {
               {showForm && !zero && (
                 <div>
                   <div className="mb-1.5 text-[12px] text-[color:var(--color-muted)]">{t("pay.methodsTitle")}</div>
-                  <div className={`grid grid-cols-2 gap-3 xl:gap-4 ${platformOn ? "sm:grid-cols-5" : "sm:grid-cols-4"}`} role="group" aria-label={t("pay.methodsTitle")}>
+                  <div className={`grid grid-cols-2 gap-3 md:gap-2.5 xl:gap-3 ${platformOn ? "sm:grid-cols-5" : "sm:grid-cols-4"}`} role="group" aria-label={t("pay.methodsTitle")}>
                     {platformOn && (
                       // POS P2.1U ▸ มติ 6: ช่อง "แพลตฟอร์ม" (ช่องทาง payout PLATFORM เท่านั้น) — เลือกไว้แล้ว เต็มยอด ◂
                       <button
@@ -1117,7 +1119,7 @@ export function PayDialog(p: Props) {
                   </div>
                   {/* POS P2.9U ▸ มติ 1: แถวที่ 2 จริง (หน้าขายส่ง tenders) — บัตรของขวัญ · เครดิตร้าน · มัดจำ "เร็ว ๆ นี้" · ลงบิลห้องพักเฉพาะสาขาโรงแรม ◂ */}
                   {p.tenders ? (
-                    <div className={`mt-3 grid grid-cols-2 gap-3 xl:mt-4 xl:gap-4 ${tenders?.roomCharge.visible ? "sm:grid-cols-4" : "sm:grid-cols-3"}`} role="group" aria-label={t("pay.gc.tilesTitle")}>
+                    <div className={`mt-3 grid grid-cols-2 gap-3 md:mt-2.5 md:gap-2.5 xl:mt-3 xl:gap-3 ${tenders?.roomCharge.visible ? "sm:grid-cols-4" : "sm:grid-cols-3"}`} role="group" aria-label={t("pay.gc.tilesTitle")}>
                       {(() => {
                         const gcOn = !!tenders?.giftCard.enabled && !busy && !platformOn && !p.lockedMethod;
                         const gcSub = !tenders ? null : !tenders.giftCard.enabled ? t("pay.gc.tileOff") : gcRows.length ? t("pay.gc.tileUsed", { count: gcRows.length }) : t("pay.gc.tileHint");
