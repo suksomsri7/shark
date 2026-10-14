@@ -63,6 +63,9 @@ import {
   setBomEnabled as catalogSetBomEnabled,
   // POS P2.8 ▸ R9 ราคาหน้าเว็บร้าน (อ่านสองทาง: แถว WEB ของแถวแคตตาล็อก หรือราคา ShopProduct) ◂
   webPricesForShop as catalogWebPricesForShop,
+  // POS P2.6 ▸ R9 R10 ผู้เขียน/ผู้อ่านความพร้อมขาย (86) ต่อสาขา (CD 9 11) ◂
+  setAvailability as catalogSetAvailability,
+  availabilityFor as catalogAvailabilityFor,
 } from "./catalog";
 export const catalog = {
   createProduct: catalogCreateProduct,
@@ -92,6 +95,10 @@ export const catalog = {
   bulkChannelMarkup: catalogBulkChannelMarkup,
   /** P2.8 R9 — ราคาหน้าเว็บร้านของ ShopProduct ชุดหนึ่ง (เว็บร้านเรียก · อ่านอย่างเดียว · ชน = ราคา ShopProduct ของตัวเอง) */
   webPricesForShop: catalogWebPricesForShop,
+  /** POS P2.6 ▸ R9 — 86/คืนขายต่อสาขา (ctx, actor, input) คืนคำปฏิเสธ · event pos.product.availability เฉพาะเมื่อพลิก ◂ */
+  setAvailability: catalogSetAvailability,
+  /** POS P2.6 ▸ R10 — ความพร้อมขายของสินค้าที่สาขา { [productId]: boolean } (หน้าเว็บร้าน/09) ◂ */
+  availabilityFor: catalogAvailabilityFor,
 } as const;
 export type { CatalogCtx, CatalogActor, CatalogClient, CatalogErrorCode, CatalogRowScope, CatalogWriteVerdict, PosProductView, PosOptionGroupView, TrackStockMode } from "./catalog";
 export { CatalogError } from "./catalog";
@@ -133,6 +140,7 @@ import {
   webClaimInTx as orderWebClaimInTx,
   webSaleBoundInTx as orderWebSaleBoundInTx,
   webClaimRevertInTx as orderWebClaimRevertInTx,
+  kitchenProgressInTx as orderKitchenProgressInTx, // POS P2.6 ▸ R11 ◂
 } from "./order";
 export const orders = {
   /** R3 — พนักงานคีย์ออเดอร์ (MANUAL/CHAT/ช่องทางกำหนดเอง) · X1 idempotency */
@@ -165,6 +173,8 @@ export const orders = {
   webSaleBoundInTx: orderWebSaleBoundInTx,
   /** H1 — เว็บร้านคืนการ claim (บิลไม่เกิด) ⇒ ออเดอร์กลับเป็น UNPAID */
   webClaimRevertInTx: orderWebClaimRevertInTx,
+  /** POS P2.6 ▸ R11 CD7 — ครัวขับ ACCEPTED→PREPARING→READY ในธุรกรรมของจอครัว (pos/kds.ts เรียก · ไม่ถอยสถานะ) ◂ */
+  kitchenProgressInTx: orderKitchenProgressInTx,
 } as const;
 export type * from "./order-shared";
 export { ORDER_ADAPTERS } from "./order-adapters";

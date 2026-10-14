@@ -38,6 +38,8 @@ import { loadRowRecipes, type RowRecipe } from "./recipe";
 import { recipePortions } from "./recipe-shared";
 import { loadPriceBook, priceOf } from "./price"; // POS P2.8 ▸ ราคาหน้าเว็บร้าน = ช่องทาง WEB (R9 อ่านสองทาง) ◂
 import type { PriceSource } from "./price-shared"; // POS P2.8 ◂
+import { emitOutbox } from "@/lib/core/outbox"; // POS P2.6 ▸ event pos.product.availability ในธุรกรรมของผู้เขียน ◂
+import type { AvailabilitySource, KdsRefusal, SetAvailabilityResult } from "./kds-shared"; // POS P2.6 ◂
 
 // ═══════════════════ ชนิดข้อมูล + error ═══════════════════
 
@@ -948,6 +950,142 @@ export function rowAvailable(p: { id: string; kind: PosProductKind; unavailableU
   return p.kind === "MENU" ? !menuSoldOut.has(p.id) : !p.isOutOfStock;
 }
 
+// ═══════════════════ POS P2.6 ▸ ความพร้อมขาย (86) ต่อสาขา — ผู้เขียน/ผู้อ่านเดียว (R9 R10 · CD 6 9 11 · มติ 5 6 7) ═══════════════════
+//   ความจริงอยู่ที่เดิม (CD6): MENU = MenuItem.isOutOfStock/ตัวนับของสาขา · อื่น ๆ = PosProduct.unavailableUnitIds (คำสั่งเดียวกับ updateProduct)
+//   PosAvailabilityMark = ใคร/เมื่อไร/แหล่ง (สร้างตอน 86 · ลบตอนคืนขาย) · event `pos.product.availability` เฉพาะเมื่อสถานะจริงพลิก (ในธุรกรรมเดียว)
+//   ฟังก์ชันแบบหน้าขาย (ctx, actor, input) → คืนคำปฏิเสธ ไม่ throw (CD 11) · สิทธิ์ = pos.sale.create | restaurant.kds.advance | pos.product.manage (มติ 7)
+
+/** เมนูขายได้ตอนนี้ไหม (กติกาเดียวกับ menuSoldOutIds / orderingMenu) */
+export const menuAvailableNow = (m: { isOutOfStock: boolean; stockQty: number | null }): boolean => !m.isOutOfStock && (m.stockQty === null || m.stockQty > 0);
+
+/** outbox `pos.product.availability` 1 แถวต่อการพลิก (คีย์ไม่ซ้ำต่อการพลิก · ผู้เรียกตัดสินว่าพลิกจริง) — ตัวรับกระจายไป adapter ทุกช่องทางของสาขา */
+export async function emitAvailabilityFlipInTx(
+  tx: Prisma.TransactionClient,
+  e: { tenantId: string; systemId: string; unitId: string; productId: string; available: boolean; source: AvailabilitySource },
+): Promise<void> {
+  await emitOutbox(tx, {
+    tenantId: e.tenantId,
+    type: "pos.product.availability",
+    idempotencyKey: `pos.product.availability#${e.unitId}#${e.productId}#${randomUUID()}`,
+    systemId: e.systemId,
+    unitId: e.unitId,
+    payload: { productId: e.productId, unitId: e.unitId, systemId: e.systemId, available: e.available, source: e.source, at: new Date().toISOString() },
+  });
+}
+
+type AvailCtx = { tenantId: string; systemId: string; unitId: string; deviceId?: string };
+type AvailActor = { userId: string; role: string; unitAccess: string[]; permissions: Record<string, unknown> };
+const AVAIL_MSG: Record<string, string> = {
+  VALIDATION: "ข้อมูลที่ส่งมาไม่ถูกต้อง — ยังไม่ได้บันทึกอะไร",
+  PERMISSION_DENIED: "บัญชีนี้ยังไม่มีสิทธิ์แจ้งของหมด — ขอสิทธิ์จากเจ้าของร้าน",
+  PRODUCT_NOT_FOUND: "ไม่พบสินค้านี้ในสาขานี้",
+  INTERNAL: "ระบบขายขัดข้องชั่วคราว ยังไม่ได้บันทึก — ลองอีกครั้ง",
+};
+const availRefuse = (code: "VALIDATION" | "PERMISSION_DENIED" | "PRODUCT_NOT_FOUND" | "INTERNAL", message?: string): KdsRefusal => ({ ok: false, code, message: message ?? AVAIL_MSG[code]! });
+class AvailAbort extends Error {
+  constructor(readonly refusal: KdsRefusal) {
+    super(refusal.code);
+  }
+}
+const isAvailId = (v: unknown): v is string => typeof v === "string" && v.length > 0 && v.length <= 200 && isCleanText(v);
+/** สิทธิ์ 86 (มติ 7 · ไม่มีคีย์ใหม่) */
+export function canSetAvailability(actor: MembershipCtx, unitId: string): boolean {
+  return (
+    canAccessUnit(actor, unitId) &&
+    (evaluate(actor, { module: "pos", action: "pos.sale.create", unitId }) ||
+      evaluate(actor, { module: "restaurant", action: "restaurant.kds.advance", unitId }) ||
+      evaluate(actor, { module: "pos", action: PERM_MANAGE, unitId }))
+  );
+}
+
+/**
+ * 86 / คืนขาย ของสินค้า ที่สาขาของ ctx (R9 · CD 11): input {productId, unitId (= สาขาของ ctx), available, source "KDS"|"MANUAL", note?, resetCounter?} ·
+ * MENU ⇒ MenuItem ของสาขา (คืนขายล้างตัวนับที่หมดเฉพาะเมื่อ resetCounter) · อื่น ⇒ unavailableUnitIds · mark สร้าง/ลบ · audit + event เฉพาะเมื่อพลิก ·
+ * ล็อกแถว PosProduct ก่อนอ่านสถานะ ⇒ กดพร้อมกันหลายเครื่อง = พลิกครั้งเดียว · ร้าน/สาขาอื่น/id มั่ว = PRODUCT_NOT_FOUND · ปฏิเสธ = ไม่เขียนอะไร
+ */
+export async function setAvailability(ctx: AvailCtx, actor: AvailActor, input: unknown, client: PrismaClient = prisma): Promise<SetAvailabilityResult> {
+  try {
+    if (!isRecord(ctx) || !isAvailId(ctx.tenantId) || !isAvailId(ctx.systemId) || !isAvailId(ctx.unitId)) return availRefuse("PERMISSION_DENIED");
+    if (!isRecord(actor) || typeof actor.userId !== "string" || !actor.userId || !ROLES.has(String(actor.role)) || !Array.isArray(actor.unitAccess) || !isRecord(actor.permissions)) return availRefuse("PERMISSION_DENIED");
+    if (!isRecord(input)) return availRefuse("VALIDATION");
+    const { productId, unitId, available, source } = input;
+    if (!isAvailId(productId) || unitId !== ctx.unitId || typeof available !== "boolean" || (source !== "KDS" && source !== "MANUAL")) return availRefuse("VALIDATION");
+    const note = input.note === undefined || input.note === null ? null : typeof input.note === "string" && input.note.length <= 200 && isCleanText(input.note) ? input.note.trim() || null : undefined;
+    if (note === undefined || (input.resetCounter !== undefined && typeof input.resetCounter !== "boolean")) return availRefuse("VALIDATION");
+    const m: MembershipCtx = { role: actor.role as MembershipCtx["role"], unitAccess: actor.unitAccess.filter((x): x is string => typeof x === "string"), permissions: actor.permissions };
+    if (!canSetAvailability(m, ctx.unitId)) return availRefuse("PERMISSION_DENIED");
+    const [sys, link] = await Promise.all([
+      client.appSystem.findFirst({ where: { id: ctx.systemId, tenantId: ctx.tenantId, type: "POS", active: true }, select: { id: true } }),
+      client.appSystemUnit.findUnique({ where: { tenantId_unitId_type: { tenantId: ctx.tenantId, unitId: ctx.unitId, type: "POS" } }, select: { systemId: true } }),
+    ]);
+    if (!sys || link?.systemId !== ctx.systemId) return availRefuse("PERMISSION_DENIED");
+    return await client.$transaction(async (tx) => {
+      const [row] = await lockProductRows(tx, ctx.tenantId, [productId]);
+      if (!row || row.systemId !== ctx.systemId || row.archivedAt || (row.unitId !== null && row.unitId !== ctx.unitId)) throw new AvailAbort(availRefuse("PRODUCT_NOT_FOUND"));
+      let before: boolean;
+      let after: boolean;
+      if (row.kind === "MENU") {
+        const mi = await tx.menuItem.findFirst({ where: { tenantId: ctx.tenantId, unitId: ctx.unitId, posProductId: row.id, archivedAt: null }, select: { id: true, isOutOfStock: true, stockQty: true, dailyStockQty: true }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
+        if (!mi) throw new AvailAbort(availRefuse("PRODUCT_NOT_FOUND"));
+        before = menuAvailableNow(mi);
+        const data: Prisma.MenuItemUncheckedUpdateInput = {};
+        if (!available && !mi.isOutOfStock) data.isOutOfStock = true;
+        if (available && mi.isOutOfStock) data.isOutOfStock = false;
+        if (available && input.resetCounter === true && mi.stockQty !== null && mi.stockQty <= 0) data.stockQty = mi.dailyStockQty !== null && mi.dailyStockQty > 0 ? mi.dailyStockQty : null;
+        const now = Object.keys(data).length ? await tx.menuItem.update({ where: { id: mi.id, tenantId: ctx.tenantId, unitId: ctx.unitId }, data, select: { isOutOfStock: true, stockQty: true } }) : mi;
+        after = menuAvailableNow(now);
+      } else {
+        const off = (row.unavailableUnitIds ?? []).includes(ctx.unitId);
+        before = !off && !row.isOutOfStock;
+        if (off === available) {
+          const offs = available ? [] : [ctx.unitId];
+          const ons = available ? [ctx.unitId] : [];
+          // คำสั่งเดียวกับ updateProduct({availability}) — ชุดสาขาที่ปิดขาย: เพิ่ม off · ลบ on
+          await tx.$executeRaw`UPDATE "PosProduct" SET "unavailableUnitIds" = ARRAY(
+              SELECT DISTINCT u FROM unnest(coalesce("unavailableUnitIds", ARRAY[]::text[]) || ${offs}::text[]) AS u
+              WHERE u <> ALL(${ons}::text[]) ORDER BY u),
+            "updatedAt" = now()
+            WHERE id = ${row.id} AND "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId}`;
+        }
+        after = available && !row.isOutOfStock;
+      }
+      // mark: 86 = สร้าง (มีแล้ว = คงเวลา/ผู้แจ้งเดิม) · คืนขาย = ลบ
+      if (!available)
+        await tx.posAvailabilityMark.upsert({
+          where: { unitId_productId: { unitId: ctx.unitId, productId: row.id } },
+          create: { tenantId: ctx.tenantId, systemId: ctx.systemId, unitId: ctx.unitId, productId: row.id, source, note, markedByUserId: actor.userId },
+          update: {},
+        });
+      else await tx.posAvailabilityMark.deleteMany({ where: { tenantId: ctx.tenantId, unitId: ctx.unitId, productId: row.id } });
+      if (before !== after) {
+        await audit(tx, { tenantId: ctx.tenantId, systemId: ctx.systemId, actorUserId: actor.userId }, "pos.product.availability", "PosProduct", row.id, { available: before, unitId: ctx.unitId }, { available: after, unitId: ctx.unitId, source, note });
+        await emitAvailabilityFlipInTx(tx, { tenantId: ctx.tenantId, systemId: ctx.systemId, unitId: ctx.unitId, productId: row.id, available: after, source });
+      }
+      return { ok: true as const, changed: before !== after, available: after };
+    });
+  } catch (e) {
+    if (e instanceof AvailAbort) return e.refusal;
+    console.error("[pos/catalog] setAvailability INTERNAL", e);
+    return availRefuse("INTERNAL");
+  }
+}
+
+/** ความพร้อมขายของสินค้าที่สาขา (CD 9 · ความจริงเดียวกับ rowAvailable) → { [productId]: boolean } · ไม่พบ/ร้านอื่น = false */
+export async function availabilityFor(tenantId: string, unitId: string, productIds: string[], client: CatalogClient = prisma): Promise<Record<string, boolean>> {
+  const ids = [...new Set((Array.isArray(productIds) ? productIds : []).filter(isAvailId))].slice(0, 500);
+  const out: Record<string, boolean> = {};
+  if (!isAvailId(tenantId) || !isAvailId(unitId) || !ids.length) return out;
+  const rows = await client.posProduct.findMany({ where: { tenantId, id: { in: ids }, archivedAt: null }, select: { id: true, kind: true, unitId: true, unavailableUnitIds: true, isOutOfStock: true } });
+  const soldOut = await menuSoldOutIds(tenantId, rows, client);
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  for (const id of ids) {
+    const r = byId.get(id);
+    out[id] = !!r && (r.unitId === null || r.unitId === unitId) && rowAvailable(r, unitId, soldOut);
+  }
+  return out;
+}
+// ◂ POS P2.6
+
 // ═══════════════════ ตัวอ่าน: listForUnit · byBarcode ═══════════════════
 
 type Cursor = { n: string; i: string };
@@ -1478,8 +1616,10 @@ export type UpdateProductPatch = {
   /** P1.2 R9: สินค้าชั่ง · รหัสป้ายชั่ง 5 หลัก (null = ล้าง) */
   soldByWeight?: boolean;
   scalePlu?: string | null;
+  /** POS P2.6 ▸ มติ 4: สถานีครัวของสินค้าที่ไม่ใช่เมนู (KdsStation ของสาขาเดียวกันที่ใช้งาน · null = ไม่เข้าครัว) — เมนูตั้งที่หน้าเมนูร้านอาหาร ◂ */
+  stationId?: string | null;
 };
-const PATCH_KEYS: ReadonlySet<string> = new Set(["name", "nameEn", "categoryId", "unitId", "trackStock", "availability", "soldByWeight", "scalePlu"]);
+const PATCH_KEYS: ReadonlySet<string> = new Set(["name", "nameEn", "categoryId", "unitId", "trackStock", "availability", "soldByWeight", "scalePlu", "stationId"]); // POS P2.6 ▸ + stationId ◂
 
 /**
  * แก้ชื่อ/หมวด/สาขา/การตัดสต็อก/ความพร้อมขาย (สิทธิ์ pos.product.manage) — ราคาไปทาง setPrice
@@ -1542,6 +1682,19 @@ export async function updateProduct(ctx: CatalogCtx, id: string, patch: UpdatePr
         if (plu && plu !== before.scalePlu && !before.archivedAt) await assertScalePluFree(ctx, plu, before.id, tx);
         if ("soldByWeight" in p) data.soldByWeight = changed.soldByWeight = sbw;
         if ("scalePlu" in p) data.scalePlu = changed.scalePlu = plu;
+      }
+      // POS P2.6 ▸ มติ 4: สถานีครัวของแถวที่ไม่ใช่เมนู — สถานีที่ใช้งานของร้านนี้ · แถวของสาขา = สถานีของสาขานั้น · แถวทุกสาขา = สถานีของสาขาที่ผูก POS นี้และเข้าได้ ◂
+      if ("stationId" in p) {
+        if (before.kind === "MENU") throw invalid("สถานีครัวของเมนูตั้งที่หน้าเมนูร้านอาหาร");
+        if (p.stationId === null) data.stationId = changed.stationId = null;
+        else {
+          if (typeof p.stationId !== "string" || !p.stationId) throw invalid("สถานีครัวไม่ถูกต้อง");
+          const st = await tx.kdsStation.findFirst({ where: { id: p.stationId, tenantId: ctx.tenantId, archivedAt: null }, select: { id: true, unitId: true } });
+          if (!st) throw invalid("ไม่พบสถานีครัวนี้ในร้าน (หรือถูกเก็บแล้ว)");
+          if (unitId && st.unitId !== unitId) throw invalid("สถานีครัวต้องเป็นของสาขาเดียวกับสินค้า");
+          await assertUnit(ctx, actor, st.unitId, tx);
+          data.stationId = changed.stationId = st.id;
+        }
       }
       let off: string[] = [];
       let on: string[] = [];
