@@ -1649,6 +1649,9 @@ async function runDb() {
     const s = await seat("A3", { guestCount: 4 });
     const pct = (bp: number) => ({ type: "PERCENT" as const, value: bp });
     const base = { mode: "ITEM" as const, partCount: 2, items: itemsOfSeat(s), allocations: alloc(s, ALLOC_15B), serviceChargeBp: 1000, vatRateBp: 700 };
+    // ORACLE-EDIT ผู้คุม 14 ต.ค. (CD-P25-B1: whole-table quote is refused TABLE_SPLIT_OPEN while a plan is open — ruling 6/P3)
+    const qd = await wq(s.sid, { billDiscount: pct(1000) });
+    if (qd?.ok !== true || qd.grandTotalSatang !== 122760) p.push(`(ตัวควบคุม) quote ทั้งโต๊ะส่วนลด 10% → ${codeOf(qd)} ${qd?.grandTotalSatang} (คาด 122760)`);
     const r1 = await mkSplit(s.sid, { mode: "ITEM", partCount: 2, allocations: alloc(s, ALLOC_15B), billDiscount: pct(1000) });
     const s1 = splitOf(r1);
     if (!s1) p.push(`ส่วนลด 10% → ${codeOf(r1)} ${short(r1?.message ?? "", 60)}`);
@@ -1657,8 +1660,6 @@ async function runDb() {
       const got = ((s1.parts ?? []) as Any[]).map((x) => [x.discountSatang, x.serviceChargeSatang, x.totalSatang]);
       if (short(got) !== short([[6750, 6075, 66825], [5650, 5085, 55935]])) p.push(`[ส่วนลด ค่าบริการ สุทธิ] ${short(got)}`);
     }
-    const qd = await wq(s.sid, { billDiscount: pct(1000) });
-    if (qd?.ok !== true || qd.grandTotalSatang !== 122760) p.push(`(ตัวควบคุม) quote ทั้งโต๊ะส่วนลด 10% → ${codeOf(qd)} ${qd?.grandTotalSatang} (คาด 122760)`);
     const v1 = Number(s1?.version ?? 1);
     const rc = await mkSplit(s.sid, { mode: "ITEM", partCount: 2, allocations: alloc(s, ALLOC_15B), billDiscount: pct(2000), splitId: s1?.splitId ?? "none", expectedVersion: v1 }, "CASHIER");
     if (!refused(rc, "DISCOUNT_EXCEEDS_LIMIT")) p.push(`CASHIER 20% → ${codeOf(rc)} (คาด DISCOUNT_EXCEEDS_LIMIT)`);
