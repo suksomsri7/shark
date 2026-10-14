@@ -82,6 +82,7 @@ import {
   postGiftCardUse as postGiftCardUseGl,
   postGiftCardExpire as postGiftCardExpireGl,
   giftCardSaleEntryId as giftCardSaleEntryIdGl, // POS HF-GC ◂
+  liabilityLedgerOf, // POS P2.9 ▸ R9 บัญชีพักทิป ◂
   reverseFor,
   type GlCtx,
 } from "./gl";
@@ -109,7 +110,13 @@ export async function applyExternalSale(input: {
   grossSatang: number; // ยอดรวม (ราคารวม VAT ถ้าร้านจด)
   // ส่วนของยอดรวมที่มาจาก "บริการ" — ไม่ระบุ = ถือเป็นขายสินค้าทั้งก้อน (พฤติกรรมเดิม)
   serviceGrossSatang?: number;
-  payMethods: { channel: "CASH" | "TRANSFER" | "PROMPTPAY" | "DEPOSIT" | "ROOM_CHARGE" | "PLATFORM"; amountSatang: number }[];
+  // POS P2.9 ▸ STORED_VALUE = บัตรของขวัญ/เครดิตร้านของ POS (เงินรับล่วงหน้า) → Dr 2110 (มติ 1 · CD1b · เพิ่มล้วน) ◂
+  payMethods: { channel: "CASH" | "TRANSFER" | "PROMPTPAY" | "DEPOSIT" | "ROOM_CHARGE" | "PLATFORM" | "STORED_VALUE"; amountSatang: number }[];
+  /**
+   * POS P2.9 ▸ R9 (มติ 7 · เพิ่มล้วน): ทิปที่อยู่ในเงินที่รับ (Σ payMethods = gross + tip) → Cr บัญชีพักทิป `ledgerId` (LIABILITY ของสมุดที่ผูกเท่านั้น)
+   *   ไม่ส่ง = เดิมทุกไบต์ (ผู้เรียกตัดทิปออกจาก payMethods เอง) · บัญชีไม่ใช่หนี้สินของสมุดนี้/ถูกเก็บ = โยน (คิวลองใหม่ — เงินเกินห้ามหายเงียบ) ◂
+   */
+  tip?: { satang: number; ledgerId: string };
   /** POS P2.1 (เพิ่มล้วน · มติ 1 / CD6): ชื่อช่องทางขาย — แถว PLATFORM ลงลูกหนี้ 1100 ผูกผู้ติดต่อชื่อนี้ (ไม่ส่ง/ไม่มีแถว PLATFORM = เดิมทุกไบต์) */
   channelName?: string | null;
   /** WO 4.2 — บรรทัดของบิล (สตางค์ · ราคาต่อหน่วยตามที่ขายจริง = รวม VAT เมื่อร้านจด VAT)
@@ -175,12 +182,14 @@ export async function applyExternalSale(input: {
   //   DEPOSIT → 2110 (DEPOSIT_RECEIVED ลดหนี้สินมัดจำรับ) · ROOM_CHARGE → 1100 (AR ลูกหนี้)
   //   POS P2.1: PLATFORM → ลูกหนี้แพลตฟอร์ม (PLATFORM_RECEIVABLE = 1100 · option A) ผูกผู้ติดต่อของช่องทาง
   const channelToKey = (
-    ch: "CASH" | "TRANSFER" | "PROMPTPAY" | "DEPOSIT" | "ROOM_CHARGE" | "PLATFORM",
+    ch: "CASH" | "TRANSFER" | "PROMPTPAY" | "DEPOSIT" | "ROOM_CHARGE" | "PLATFORM" | "STORED_VALUE",
   ): "CASH" | "BANK" | "DEPOSIT_RECEIVED" | "AR" => {
     switch (ch) {
       case "CASH":
         return "CASH";
       case "DEPOSIT":
+        return "DEPOSIT_RECEIVED";
+      case "STORED_VALUE": // POS P2.9 ▸ บัตรของขวัญ/เครดิตร้าน = ลดเงินรับล่วงหน้า 2110 (มติ 1 · มติ 9 บัญชีเดียวกับมัดจำ) ◂
         return "DEPOSIT_RECEIVED";
       case "ROOM_CHARGE":
         return "AR";
@@ -204,6 +213,13 @@ export async function applyExternalSale(input: {
   const svcGross = Math.min(Math.max(0, Math.round(input.serviceGrossSatang ?? 0)), gross);
   const svcBase = gross > 0 ? Math.min(base, Math.round((base * svcGross) / gross)) : 0;
 
+  // POS P2.9 ▸ R9: ทิป → Cr บัญชีพักทิป (หนี้สินของสมุดนี้) · ตรวจทุกครั้งก่อนลง (บัญชีถูกเก็บ/ผิดชนิด = โยน ⇒ คิวลองใหม่ ไม่ลงผิดที่) ◂
+  let tipCr: { accountId: string; amountSatang: number; note: string }[] | undefined;
+  if (input.tip && input.tip.satang > 0) {
+    const ledger = await liabilityLedgerOf(ctx, input.tip.ledgerId);
+    if (!ledger) throw new Error("บัญชีพักทิปของจุดขายนี้ใช้ไม่ได้ (ไม่ใช่หนี้สินของสมุดที่ผูก หรือถูกเก็บแล้ว) — แก้ที่ตั้งค่าการชำระเงินของ POS");
+    tipCr = [{ accountId: ledger.id, amountSatang: input.tip.satang, note: "ทิปรอจ่ายพนักงาน" }];
+  }
   const res = await postExternalSale(ctx, {
     refId: input.refId,
     date: input.occurredAt,
@@ -211,6 +227,7 @@ export async function applyExternalSale(input: {
     vatSatang: vat,
     serviceBaseSatang: svcBase,
     drLines,
+    ...(tipCr ? { crExtra: tipCr } : {}), // POS P2.9 ◂
   });
   const posted = "entryId" in res;
 
@@ -389,7 +406,8 @@ export async function applyExternalRefund(input: {
   grossSatang: number; // ยอดคืน (รวม VAT ถ้าร้านจด)
   /** ส่วนของยอดคืนที่เป็นบริการ (กลับ 4030) — ไม่ส่ง = สินค้าทั้งก้อน */
   serviceGrossSatang?: number;
-  payMethods: { channel: "CASH" | "TRANSFER" | "PROMPTPAY" | "DEPOSIT" | "ROOM_CHARGE" | "PLATFORM"; amountSatang: number }[];
+  // POS P2.9 ▸ STORED_VALUE = คืนเข้าบัตรของขวัญ/เครดิตร้าน → Cr 2110 (R6 R7 · เพิ่มล้วน) ◂
+  payMethods: { channel: "CASH" | "TRANSFER" | "PROMPTPAY" | "DEPOSIT" | "ROOM_CHARGE" | "PLATFORM" | "STORED_VALUE"; amountSatang: number }[];
   /** POS P2.1 (เพิ่มล้วน): ชื่อช่องทางขาย — แถว PLATFORM (แพลตฟอร์มคืนลูกค้า) ลดลูกหนี้ 1100 ของผู้ติดต่อนี้ */
   channelName?: string | null;
   /** บรรทัดของใบคืน (Σ qty×unitPrice − discount = grossSatang เป๊ะ) — ไม่ส่ง/ว่าง = ไม่มีชั้นเอกสาร */
@@ -430,7 +448,9 @@ export async function applyExternalRefund(input: {
   const crLines = input.payMethods.map((p) =>
     p.channel === "PLATFORM"
       ? { key: CHANNEL_GL_KEY["PLATFORM_RECEIVABLE"], amountSatang: p.amountSatang, ...(refundPlatformContact ? { contactId: refundPlatformContact } : {}) }
-      : { key: (p.channel === "CASH" ? "CASH" : "BANK") as "CASH" | "BANK", amountSatang: p.amountSatang },
+      : p.channel === "STORED_VALUE" // POS P2.9 ▸ คืนเข้าบัตร/เครดิตร้าน = เพิ่มเงินรับล่วงหน้า 2110 (R6 R7) ◂
+        ? { key: "DEPOSIT_RECEIVED" as const, amountSatang: p.amountSatang }
+        : { key: (p.channel === "CASH" ? "CASH" : "BANK") as "CASH" | "BANK", amountSatang: p.amountSatang },
   );
   const res = await postExternalRefund(ctx, { refId: input.refId, date: input.occurredAt, baseSatang: base, vatSatang: vat, serviceBaseSatang: svcBase, crLines });
   const posted = "entryId" in res;
