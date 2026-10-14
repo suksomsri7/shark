@@ -50,8 +50,8 @@ All migrations have been successfully applied.   (exit 0)
 9. Merge: `guestCount` = Σ non-null (all null ⇒ null) · member = into ?? first from (input order) · from tables dirty only if not the into table · single from-draft re-pointed (version + 1) in the same tx · audits `pos.table.move` / `pos.table.merge` / `pos.table.split.save|cancel` / `pos.table.preBill` (prisma `AuditLog`, no outbox).
 10. Rounds follow the session (ruling 11.5): `RestaurantOrder` has no table column — `kdsBoard` already reads `session.table.name` (T1 label N2); no code needed.
 
-## CONTROLLER-DECISION (oracle NOT edited)
-- **CD-P25-B1 — M4 control quote conflicts with P3.** M4 creates the 10 % plan on A3 and *then* runs its control `wq(s.sid, {billDiscount 10%})` expecting `ok` 122760; P3 (and R5/ruling 6/names row 15) require a whole-table quote while a plan is OPEN to be `TABLE_SPLIT_OPEN`. Both cannot hold (on the base the control passed only because no plan was created). **Proposal ORACLE-EDIT (2 lines moved, no assertion changed):** run the control quote before `mkSplit` in M4 (`qc-pos-p2.5.mts:1660–1661` → before `:1652`). Positive control: scratch copy with exactly that move (+ absolute `pos-qc-env` import so it runs from the scratchpad) on head fbad0b15 → **40/40 · PAR 3/3 · residue 0 · exit 0** (`scratchpad/p25/gates/p25-oracle-edit-B1.log`). Unmodified oracle: **39/40** (M4 only) forced ×2 + unforced.
+## CONTROLLER-DECISION — **CD-P25-B1 APPROVED 14 Oct** (ORACLE-EDIT applied e9af3b45 · deviations 1–5 accepted)
+- **CD-P25-B1 — M4 control quote conflicts with P3.** M4 creates the 10 % plan on A3 and *then* runs its control `wq(s.sid, {billDiscount 10%})` expecting `ok` 122760; P3 (and R5/ruling 6/names row 15) require a whole-table quote while a plan is OPEN to be `TABLE_SPLIT_OPEN`. Both cannot hold (on the base the control passed only because no plan was created). **Proposal ORACLE-EDIT (2 lines moved, no assertion changed):** run the control quote before `mkSplit` in M4 (`qc-pos-p2.5.mts:1660–1661` → before `:1652`). Positive control: scratch copy with exactly that move (+ absolute `pos-qc-env` import so it runs from the scratchpad) on head fbad0b15 → **40/40 · PAR 3/3 · residue 0 · exit 0** (`scratchpad/p25/gates/p25-oracle-edit-B1.log`). Unmodified oracle (before the edit): 39/40 (M4 only) forced ×2 + unforced on fbad0b15. **Applied** e9af3b45: `// ORACLE-EDIT ผู้คุม 14 ต.ค. (CD-P25-B1 …)` — the two control lines moved before `mkSplit`, nothing else changed. Owner line for deviation 3 updated (`POS-OWNER-PENDING.md` "หารเท่าเมื่อปิดค่าบริการ").
 
 ## Drift vs the names table
 No rename. Additions beyond the table (all additive): facade `lockTableSessionInTx`, `tableItemsByIdsForPos`, `tableItemNamesForPos`, `PosMergeSession`; `table-split.ts` in-tx helpers (`splitPartForPay`, `lockSplitPartInTx`, `checkSplitPlanInTx`, `markSplitPartPaidInTx`, `releaseSplitPartInTx`, `splitPartOfSale`, `openSplitOfSession`, `openSplitSessions`, `itemInOpenSplit`, `splitSummariesOf`); `register.ts` `registerTableBillPreview`; `table-split-shared.ts` `largestRemainderSplit`, `tableSplitShareName`, `tableSplitSaleAmounts`, `TABLE_SPLIT_MAX_ITEMS`, `TABLE_SPLIT_MAX_PART_LINES`; `PRE_BILL_LABELS` carries extra label keys (part/table/guests/…); payload adds `locale` (in row 21) only.
@@ -72,7 +72,8 @@ Actions `src/lib/modules/pos/table-split-actions.ts` (args `{systemId, unitId, d
 |---|---|
 | typecheck (iso · pos-gate.lock · 5632 MB) | exit 0 |
 | fitness no-env / env (qc4) · fitness-pos | 50/50 · 50/50 · 8/8 (contract sha unchanged) |
-| qc-pos-p2.5 forced #1 / #2 / unforced | **39/40 · 39/40 · 39/40** — M4 only (CD-P25-B1) · PAR 3/3 · SKIP 0 · residue 0 · leaks 0 |
+| qc-pos-p2.5 forced #1 / #2 / unforced (head **e9af3b45** = ORACLE-EDIT CD-P25-B1 · dirty 0 · `gates/p25-final-*.log`) | **40/40 · 40/40 · 40/40** · PAR 3/3 · SKIP 0 · residue 0 · leaks 0 |
+| qc-pos-p2.5 forced #1 / #2 / unforced before the edit (fbad0b15) | 39/40 ×3 — M4 only (CD-P25-B1) |
 | qc-pos-p2.5 scratch copy with CD-P25-B1 edit only (positive control) | **40/40** · residue 0 · exit 0 |
 | qc-pos-p2.5 --no-db | 7/7 |
 | qc-pos-p2.6 | 67/67 |
