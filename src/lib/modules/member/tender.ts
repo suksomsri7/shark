@@ -21,8 +21,13 @@ export function giftCardTenderLookup(tenantId: string, number: unknown): Promise
 }
 
 /** R3 — ตรวจบัตรของขวัญ + PIN ก่อนตัวนับใบเสร็จ (ไม่ตัดยอด) */
-export function prepareGiftCardTender(tenantId: string, input: { number: string; pin: string; satang: number }, db?: Tx) {
-  return giftcard.prepareGiftTender(tenantId, input, db);
+export function prepareGiftCardTender(tenantId: string, input: { number: string; pin: string; satang: number }, db?: Tx, pinDb?: Tx) {
+  return giftcard.prepareGiftTender(tenantId, input, db, pinDb); // POS P2.9 ▸ fix2: pinDb = tx สั้นของการตรวจก่อนบิล (commit เสมอ) ◂
+}
+
+/** POS P2.9 ▸ fix2: ตรวจบัตรของขวัญซ้ำใน tx ของบิล หลัง PIN ผ่านขั้นตรวจก่อนบิลแล้ว (ไม่เทียบ PIN ซ้ำ) ◂ */
+export function recheckGiftCardTender(tenantId: string, input: { number: string; satang: number }, db?: Tx) {
+  return giftcard.recheckGiftTender(tenantId, input, db);
 }
 
 /** R7 — ตรวจเครดิตร้านของสมาชิกของบิล (ไม่มี PIN) */

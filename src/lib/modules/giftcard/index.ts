@@ -32,6 +32,7 @@ export {
   maskTenderNumber,
   tenderLookup,
   prepareGiftTender,
+  recheckGiftTender,
   prepareStoreCreditTender,
   storeCreditCardOf,
   lockTenderCards,

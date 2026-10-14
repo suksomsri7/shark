@@ -140,6 +140,7 @@ export {
   tenderErrorCode,
   giftCardTenderLookup,
   prepareGiftCardTender,
+  recheckGiftCardTender,
   prepareStoreCreditTender,
   lockTenderCards,
   useGiftCardTender,

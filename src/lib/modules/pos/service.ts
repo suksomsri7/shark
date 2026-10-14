@@ -302,7 +302,7 @@ async function tenderStep<T>(member: MemberTenderFacade, fn: () => Promise<T>): 
  * R3 R7 — เตรียมแถวบัตร (ก่อนตัวนับใบเสร็จ · ไม่ล็อก): เครดิตร้าน = ของสมาชิกของบิลในระบบสมาชิกของบิล (walk-in/คนอื่น = STORE_CREDIT_NOT_OWNER) ·
  * PIN ตรวจที่นี่ · ล็อกแถวบัตร (เรียง id) ใน createSaleOnce หลังตัวนับใบเสร็จ (fix1 F1) · ไม่มีแถวบัตร = ไม่มี query
  */
-async function prepareSaleTenders(tx: Client, input: CreateSaleInput, memberSystemId: string | null): Promise<SaleTender[]> {
+async function prepareSaleTenders(tx: Client, input: CreateSaleInput, memberSystemId: string | null, pinsVerified = false): Promise<SaleTender[]> {
   const rows = input.payMethods.map((p, index) => ({ p, index })).filter((x) => x.p.type === "STORE_CREDIT" || x.p.type === "GIFT_CARD");
   if (!rows.length) return [];
   const member = await import("@/lib/modules/member");
@@ -311,7 +311,12 @@ async function prepareSaleTenders(tx: Client, input: CreateSaleInput, memberSyst
   for (const { p, index } of rows) {
     if (p.type === "GIFT_CARD") {
       // มติ 3: PIN ทุกครั้ง (ผิด = ตัวนับนอก tx คงอยู่ · บิลไม่เกิด) · บัตรทั้งร้าน (CD11)
-      const r = await tenderStep(member, () => member.prepareGiftCardTender(input.tenantId, { number: p.giftCard!.number, pin: p.giftCard!.pin, satang: p.amountSatang }, db));
+      // POS P2.9 ▸ fix2: PIN ผ่านขั้นตรวจก่อนบิลของคำขอนี้แล้ว ⇒ ตรวจสถานะ/ยอดซ้ำโดยไม่เทียบ PIN (ไม่ใช้ connection ที่สองระหว่างถือ tx) ◂
+      const r = await tenderStep(member, () =>
+        pinsVerified
+          ? member.recheckGiftCardTender(input.tenantId, { number: p.giftCard!.number, satang: p.amountSatang }, db)
+          : member.prepareGiftCardTender(input.tenantId, { number: p.giftCard!.number, pin: p.giftCard!.pin, satang: p.amountSatang }, db),
+      );
       out.push({ index, giftCardId: r.giftCardId, satang: p.amountSatang });
       continue;
     }
@@ -327,16 +332,29 @@ async function prepareSaleTenders(tx: Client, input: CreateSaleInput, memberSyst
  * PIN ผิด (ตัวนับเขียนนอก tx อยู่แล้ว) จึงไม่ถือ connection ของ tx ไว้ระหว่างรอ connection ที่สอง (คลื่นคำขอ PIN ผิดพร้อมกันไม่ทำ pool ตัน) ·
  * ใน tx ยังตรวจซ้ำ (PIN ถูก = ไม่เขียน) · คีย์ที่มีบิลแล้ว = ไม่ตรวจ (เล่นซ้ำคืนบิลเดิม) ◂
  */
-async function preverifyGiftPins(input: CreateSaleInput): Promise<void> {
-  if (!Array.isArray(input.payMethods) || !input.payMethods.some((p) => p?.type === "GIFT_CARD")) return;
-  const dup = await prisma.posSale.findUnique({ where: { tenantId_idempotencyKey: { tenantId: input.tenantId, idempotencyKey: input.idempotencyKey } }, select: { id: true } });
-  if (dup) return;
-  validateSaleInput(input);
+async function preverifyGiftPins(input: CreateSaleInput): Promise<boolean> {
+  if (!Array.isArray(input.payMethods) || !input.payMethods.some((p) => p?.type === "GIFT_CARD")) return false;
   const member = await import("@/lib/modules/member");
-  for (const p of input.payMethods) {
-    if (p.type !== "GIFT_CARD" || !p.giftCard) continue;
-    await tenderStep(member, () => member.prepareGiftCardTender(input.tenantId, { number: p.giftCard!.number, pin: p.giftCard!.pin, satang: p.amountSatang }));
-  }
+  // POS P2.9 ▸ fix2 (มติ 2 · C2): tx สั้นต่อคำขอ — คีย์เดียวกันเรียงคิว (advisory lock เดียวกับ createSale) · บิลของคีย์มีแล้ว = ไม่ตรวจ ·
+  //   การจองช่อง PIN เขียนบน tx นี้ (connection เดียวต่อคำขอ · ไม่รอ connection ที่สอง) แล้ว commit เสมอ — ผลผิดคืนหลัง commit (ตัวนับคงอยู่) ◂
+  const failure = await prisma.$transaction(async (t) => {
+    await t.$queryRaw`SELECT 1 AS x FROM (SELECT pg_advisory_xact_lock(hashtext(${input.tenantId}::text || ':' || ${input.idempotencyKey}::text))) l`;
+    const dup = await t.posSale.findUnique({ where: { tenantId_idempotencyKey: { tenantId: input.tenantId, idempotencyKey: input.idempotencyKey } }, select: { id: true } });
+    if (dup) return "dup" as const;
+    validateSaleInput(input);
+    for (const p of input.payMethods) {
+      if (p.type !== "GIFT_CARD" || !p.giftCard) continue;
+      try {
+        await member.prepareGiftCardTender(input.tenantId, { number: p.giftCard.number, pin: p.giftCard.pin, satang: p.amountSatang }, t, t);
+      } catch (e) {
+        return e;
+      }
+    }
+    return null;
+  }, { timeout: 20_000, maxWait: 10_000 });
+  if (failure === "dup") return false;
+  if (failure) await tenderStep(member, () => Promise.reject(failure));
+  return true;
 }
 
 /** R3 R7 — ตัดยอดของแถวบัตรใน tx ของบิล (หลังเขียนแถวชำระ) แล้วผูก PosPayment.giftCardId/giftCardTxnId */
@@ -572,10 +590,10 @@ export async function createSale(input: CreateSaleInput, client: Client = prisma
   const ownsTx = "$transaction" in client && typeof (client as PrismaClient).$transaction === "function";
   // POS P1.6 I7: คีย์เดียวกันพร้อมกันถูกเรียงคิวด้วย advisory lock ต่อ (ร้าน, คีย์) ก่อนค้นคีย์ซ้ำ (R2 F4 · ทั้งสองโหมด) ⇒ ไม่มี P2002 ของคีย์
   //   ที่ยังเหลือ: P2002 ของแถวตัวนับใบเสร็จเดือนใหม่ (สองบิลคนละคีย์ upsert แถวเดียวกันพร้อมกัน) — ลองใหม่ได้เฉพาะเมื่อเราเป็นเจ้าของ tx
-  if (ownsTx) await preverifyGiftPins(input); // POS P2.9 ▸ fix1 H2 ◂
+  const pinsVerified = ownsTx ? await preverifyGiftPins(input) : false; // POS P2.9 ▸ fix1 H2 · fix2: ผ่านแล้ว = ใน tx ไม่เทียบ PIN ซ้ำ ◂
   for (let attempt = 0; ; attempt++) {
     try {
-      return await createSaleOnce(input, client, ownsTx);
+      return await createSaleOnce(input, client, ownsTx, pinsVerified);
     } catch (e) {
       if (ownsTx && attempt < 3 && isUniqueViolation(e)) continue;
       throw e;
@@ -583,7 +601,7 @@ export async function createSale(input: CreateSaleInput, client: Client = prisma
   }
 }
 
-async function createSaleOnce(input: CreateSaleInput, client: Client, ownsTx: boolean): Promise<SaleResult> {
+async function createSaleOnce(input: CreateSaleInput, client: Client, ownsTx: boolean, pinsVerified = false): Promise<SaleResult> {
   const result = await withTx(client, async (tx): Promise<SaleResult> => {
     // R2 F4: เรียงคิวคีย์เดียวกัน (ปล่อยเองตอน tx จบ · ใช้ได้ทั้ง tx ของเราและของผู้เรียก)
     await tx.$queryRaw`SELECT 1 AS x FROM (SELECT pg_advisory_xact_lock(hashtext(${input.tenantId}::text || ':' || ${input.idempotencyKey}::text))) l`;
@@ -674,7 +692,7 @@ async function createSaleOnce(input: CreateSaleInput, client: Client, ownsTx: bo
       throw new Error(`PAYMENT_MISMATCH: จ่าย ${paidSum} ≠ ยอด ${beforeMember}`);
     }
     // POS P2.9 ▸ R3 R7: แถวบัตร/เครดิตร้าน — ตรวจ + PIN ก่อนล็อกสินค้า/ตัวนับใบเสร็จ (ปฏิเสธ = ไม่มีบิล · ล็อกบัตรหลังตัวนับ — fix1 F1) ◂
-    const tenders = await prepareSaleTenders(tx, input, memberSystemId);
+    const tenders = await prepareSaleTenders(tx, input, memberSystemId, pinsVerified);
 
     // POS P1.2 R2 F1: ส่วนประกอบชุดต้องอยู่ในคลังของสาขาที่ขายทุกชิ้น (ผู้เรียกอื่นนอกหน้าขายก็เช่นกัน) — สาขาไม่มีคลัง/ชิ้นนอกคลัง = VALIDATION ไม่มีบิล
     const compIds = [...new Set(lines.flatMap((l) => (l.components ?? []).map((c) => c.invItemId)))];

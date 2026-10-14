@@ -241,14 +241,15 @@ async function nextNumber(tenantId: string): Promise<string> {
  * ตรวจ PIN + นับครั้งที่ผิด (§11.6)
  * 🔴 เขียนตัวนับด้วย `prisma` (นอก transaction ของรายการ) โดยตั้งใจ — ดูหมายเหตุข้อ 3 ที่หัวไฟล์
  */
-async function verifyPin(card: GiftCardRow, pin: unknown): Promise<void> {
+// POS P2.9 ▸ fix2: pinDb = ตัวเขียนตัวนับ (ปริยาย prisma นอก tx) — ทางตรวจก่อนบิลของ POS ส่ง tx สั้นที่ commit เสมอ (ผลผิดคืนหลัง commit) ◂
+async function verifyPin(card: GiftCardRow, pin: unknown, pinDb: Db = prisma): Promise<void> {
   const lockedMsg = `บัตรใบนี้ถูกระงับชั่วคราวเพราะใส่ PIN ผิดหลายครั้ง — รออีกสักครู่ (ระงับครั้งละ ${GIFTCARD_PIN_LOCK_MINUTES} นาที) แล้วลองใหม่`;
   if (card.pinLockedUntil && card.pinLockedUntil.getTime() > Date.now()) throw new GiftCardStateError(lockedMsg);
   // POS P2.9 ▸ fix2 H2/N3 (มติ 2): "จองสิทธิ์ก่อนเทียบ" — ทุกครั้งที่จะเทียบ hash ต้องได้ช่องจากตัวนับก่อน (คำสั่งเดียว · ≤ 5 ช่องต่อรอบล็อก) ·
   //   ช่องที่ 5 ตั้งล็อกในคำสั่งเดียวกัน · ไม่ได้ช่อง (ล็อกอยู่/ครบ 5) = LOCKED โดยไม่เทียบ hash · รอบล็อกหมดแล้ว = เริ่มนับใหม่ที่ 1 ◂
   const MAX = GIFTCARD_PIN_MAX_FAIL;
   const MIN = GIFTCARD_PIN_LOCK_MINUTES;
-  const rows = await prisma.$queryRaw<{ pinFailedCount: number }[]>`
+  const rows = await pinDb.$queryRaw<{ pinFailedCount: number }[]>`
     UPDATE "GiftCard"
        SET "pinFailedCount" = (CASE WHEN "pinLockedUntil" IS NOT NULL AND "pinLockedUntil" <= now() THEN 0 ELSE "pinFailedCount" END) + 1,
            "pinLockedUntil" = CASE WHEN (CASE WHEN "pinLockedUntil" IS NOT NULL AND "pinLockedUntil" <= now() THEN 0 ELSE "pinFailedCount" END) + 1 >= ${MAX}::int
@@ -262,7 +263,7 @@ async function verifyPin(card: GiftCardRow, pin: unknown): Promise<void> {
   const given = String(pin ?? "");
   if (given && safeEqualHex(card.pinHash, sha256(`${card.number}:${given}`))) {
     // ถูก: คืนช่อง (ตัวนับ = 0 · ล้างล็อกที่ช่องนี้ตั้งเอง) เฉพาะเมื่อแถวไม่ได้ถูกล็อกโดยคำขอผิดอื่น — ถูกล็อกไปแล้ว = LOCKED ◂
-    const reset = await prisma.$executeRaw`
+    const reset = await pinDb.$executeRaw`
       UPDATE "GiftCard" SET "pinFailedCount" = 0, "pinLockedUntil" = NULL, "updatedAt" = now()
        WHERE id = ${card.id} AND ("pinLockedUntil" IS NULL OR "pinFailedCount" = ${slot}::int)`;
     if (reset === 0) throw new GiftCardStateError(lockedMsg);
@@ -1305,7 +1306,7 @@ export async function tenderLookup(tenantId: string, number: unknown): Promise<T
  * R3 — เตรียมแถวบัตรของขวัญ (ก่อนตัวนับใบเสร็จ · ไม่ตัดยอด): หาบัตร (ร้านนี้ · ชนิด GIFT) → ล็อก PIN อยู่? → ใช้ได้/ยอดพอ? → PIN (ตัวนับนอก tx)
  * คืน id บัตร · โยน GiftCardTenderError (NOT_FOUND · LOCKED · CHANGED · PIN)
  */
-export async function prepareGiftTender(tenantId: string, input: { number: string; pin: string; satang: number }, db: Db = prisma): Promise<{ giftCardId: string; systemId: string }> {
+export async function prepareGiftTender(tenantId: string, input: { number: string; pin: string; satang: number }, db: Db = prisma, pinDb: Db = prisma): Promise<{ giftCardId: string; systemId: string }> {
   const n = normNumber(input.number);
   const card = n ? await db.giftCard.findFirst({ where: { tenantId, number: n } }) : null;
   if (!card || card.kind !== "GIFT") throw tenderErr("GIFT_CARD_NOT_FOUND");
@@ -1313,12 +1314,26 @@ export async function prepareGiftTender(tenantId: string, input: { number: strin
   if (block === "PIN_LOCKED") throw tenderErr("GIFT_CARD_LOCKED");
   if (block || !Number.isInteger(input.satang) || input.satang <= 0 || input.satang > card.balanceSatang) throw tenderErr("GIFT_CARD_CHANGED");
   try {
-    await verifyPin(card, input.pin);
+    await verifyPin(card, input.pin, pinDb);
   } catch (e) {
     if (e instanceof GiftCardStateError) throw tenderErr("GIFT_CARD_LOCKED");
     if (e instanceof GiftCardInputError) throw tenderErr("GIFT_CARD_PIN", e.message);
     throw e;
   }
+  return { giftCardId: card.id, systemId: card.systemId };
+}
+
+/**
+ * POS P2.9 ▸ fix2: ตรวจบัตรของขวัญซ้ำใน tx ของบิล **หลัง** ผ่าน PIN ในขั้นตรวจก่อนบิลของคำขอเดียวกันแล้ว (ไม่เทียบ PIN ซ้ำ · ไม่ใช้ connection ที่สอง):
+ * ชนิด GIFT · ล็อก PIN · สถานะ/ยอด — ไม่ได้ให้สิทธิ์ใช้บัตรเอง (ตัดยอดจริง = useTender ใต้ล็อกหลังตัวนับ) ◂
+ */
+export async function recheckGiftTender(tenantId: string, input: { number: string; satang: number }, db: Db = prisma): Promise<{ giftCardId: string; systemId: string }> {
+  const n = normNumber(input.number);
+  const card = n ? await db.giftCard.findFirst({ where: { tenantId, number: n } }) : null;
+  if (!card || card.kind !== "GIFT") throw tenderErr("GIFT_CARD_NOT_FOUND");
+  const block = tenderBlock(card);
+  if (block === "PIN_LOCKED") throw tenderErr("GIFT_CARD_LOCKED");
+  if (block || !Number.isInteger(input.satang) || input.satang <= 0 || input.satang > card.balanceSatang) throw tenderErr("GIFT_CARD_CHANGED");
   return { giftCardId: card.id, systemId: card.systemId };
 }
 
