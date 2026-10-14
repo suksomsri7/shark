@@ -43,6 +43,7 @@ export {
   issueStoreCredit,
   tenderCardInfo,
   tenderEnabled,
+  tenderCardNumbers,
   type TenderLookupDto,
 } from "./service";
 

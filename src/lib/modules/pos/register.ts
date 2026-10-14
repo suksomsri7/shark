@@ -2048,7 +2048,9 @@ function regParseSubmit(raw: unknown): RegParsedSubmit | RegisterRefusal {
 
 // P1.2 R14: บรรทัดพกตัวเลือกที่บันทึก (PosSaleLineOption) มาด้วย — ใช้เทียบคำขอซ้ำ
 // POS P1.12: + คูปองของบิล (โค้ด · ส่วนลด) — ใช้แยกส่วนลดท้ายบิลออกจากคูปอง/สิทธิ์สมาชิกตอนเทียบคำขอซ้ำ
-type RegSaleRow = Prisma.PosSaleGetPayload<{ include: { lines: { include: { options: true } }; payments: true } }> & { coupons: { code: string; discountSatang: number }[] };
+type RegSaleRowBase = Prisma.PosSaleGetPayload<{ include: { lines: { include: { options: true } }; payments: true } }>;
+// POS P2.9 ▸ fix3 N4: payments[].giftCardNumber = หมายเลขบัตรของแถว GIFT_CARD (เทียบคำขอซ้ำเท่านั้น) ◂
+type RegSaleRow = Omit<RegSaleRowBase, "payments"> & { payments: (RegSaleRowBase["payments"][number] & { giftCardNumber?: string })[]; coupons: { code: string; discountSatang: number }[] };
 async function regLoadSale(db: RegDb, tenantId: string, idempotencyKey: string): Promise<RegSaleRow | null> {
   // B1.1: ลำดับคงที่ (การเทียบเป็น multiset อยู่แล้ว — ลำดับนี้ให้ผลอ่านซ้ำได้เหมือนเดิมทุกครั้ง)
   const sale = await db.posSale.findUnique({
@@ -2060,7 +2062,14 @@ async function regLoadSale(db: RegDb, tenantId: string, idempotencyKey: string):
     where: { tenantId, OR: [{ saleId: sale.id }, { refType: "PosSale", refId: sale.id }] },
     select: { discountSatang: true, coupon: { select: { code: true } } },
   });
-  return { ...sale, coupons: reds.map((r) => ({ code: (r.coupon?.code ?? "").toUpperCase(), discountSatang: r.discountSatang })) };
+  // POS P2.9 ▸ fix3 N4: หมายเลขบัตรของแถว GIFT_CARD เดิม (เทียบคำขอซ้ำ · ไม่มีแถวบัตร = ไม่มี query · ไม่ส่งออกจอ) ◂
+  const gcIds = sale.payments.filter((p) => p.type === "GIFT_CARD" && p.giftCardId).map((p) => p.giftCardId!);
+  const cardNo = gcIds.length ? await (await import("@/lib/modules/member")).giftCardNumbersByIds(tenantId, gcIds) : new Map<string, string>();
+  return {
+    ...sale,
+    payments: sale.payments.map((p) => ({ ...p, giftCardNumber: p.type === "GIFT_CARD" && p.giftCardId ? (cardNo.get(p.giftCardId) ?? "") : "" })),
+    coupons: reds.map((r) => ({ code: (r.coupon?.code ?? "").toUpperCase(), discountSatang: r.discountSatang })),
+  };
 }
 
 /** กุญแจของบรรทัดแบบมาตรฐาน (ราคาต่อหน่วย · จำนวน · ส่วนลดเป็นสตางค์) */
@@ -2161,8 +2170,9 @@ function regSameSubmission(s: RegScope, req: RegParsedSubmit, sale: RegSaleRow):
   if (sale.grandTotalSatang !== req.expected) return false;
   // P1.6: ทิป + หมายเหตุบิลเป็นส่วนหนึ่งของคำขอ
   if (sale.tipSatang !== req.tipSatang || (sale.note ?? null) !== req.note) return false;
-  const payKey = (xs: { type: string; amountSatang: number }[]) => regBag(xs.map((p) => `${p.type}:${p.amountSatang}`));
-  if (payKey(sale.payments) !== payKey(req.payMethods)) return false;
+  // POS P2.9 ▸ fix3 N4: แถว GIFT_CARD เทียบหมายเลขบัตรด้วย (คีย์เดิมบัตรคนละใบ = IDEMPOTENCY_CONFLICT) ◂
+  const payKey = (xs: { type: string; amountSatang: number; card: string }[]) => regBag(xs.map((p) => `${p.type}:${p.amountSatang}${p.type === "GIFT_CARD" ? `:${p.card}` : ""}`));
+  if (payKey(sale.payments.map((p) => ({ type: p.type, amountSatang: p.amountSatang, card: p.giftCardNumber ?? "" }))) !== payKey(req.payMethods.map((p) => ({ type: p.type, amountSatang: p.amountSatang, card: p.giftCard?.number ?? "" })))) return false;
   // POS P1.12: PosSale.discountSatang = ท้ายบิล + คูปอง + สิทธิ์สมาชิก (Σ memberBenefits) — เทียบส่วนท้ายบิลหลังหักสองส่วนนั้น ·
   //   คูปอง (โค้ด) · แต้มที่ตัด · ว่อชเชอร์ ต้องตรงคำขอ (บิลก่อน P1.12 ไม่มี memberBenefits/คูปอง = 0 เหมือนเดิม)
   const ben = regIsRecord(sale.memberBenefits) ? sale.memberBenefits : null;

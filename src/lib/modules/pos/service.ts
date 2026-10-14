@@ -380,8 +380,10 @@ function samePayload(
     tipSatang: number;
     channelId?: string | null; // POS P2.1 ▸ CD3 ◂
     lines: { qty: number; unitPriceSatang: number; discountSatang: number; itemId: string | null; productId: string | null; serviceId: string | null; weightGrams: number | null }[];
-    payments: { type: string; amountSatang: number }[];
+    payments: { type: string; amountSatang: number; giftCardId?: string | null }[];
   },
+  /** POS P2.9 ▸ fix3 N4: id บัตร → หมายเลข ของแถว GIFT_CARD เดิม (ไม่มีแถวบัตร = ไม่ส่ง · เทียบเดิมทุกไบต์) ◂ */
+  cardNo?: Map<string, string>,
 ): boolean {
   const bag = (xs: string[]) => [...xs].sort().join(",");
   // R2 F6: บรรทัดเทียบ ราคา|จำนวน|ส่วนลด|สินค้าคลัง|สินค้า POS|บริการ · สมาชิกของบิลด้วย · P1.2: + น้ำหนัก (ไม่ส่ง = ว่าง = เทียบเหมือนเดิม)
@@ -394,7 +396,9 @@ function samePayload(
     dup.serviceChargeSatang === (input.serviceChargeSatang ?? 0) &&
     dup.tipSatang === (input.tipSatang ?? 0) &&
     bag(dup.lines.map(tup)) === bag(input.lines.map(tup)) &&
-    bag(dup.payments.map((p) => `${p.type}|${p.amountSatang}`)) === bag(input.payMethods.map((p) => `${p.type}|${p.amountSatang}`)) &&
+    // POS P2.9 ▸ fix3 N4: แถว GIFT_CARD เทียบหมายเลขบัตรด้วย (คีย์เดิมบัตรคนละใบ = คำขอคนละอัน ⇒ IDEMPOTENCY_CONFLICT) ◂
+    bag(dup.payments.map((p) => `${p.type}|${p.amountSatang}${p.type === "GIFT_CARD" ? `|${(p.giftCardId && cardNo?.get(p.giftCardId)) ?? ""}` : ""}`)) ===
+      bag(input.payMethods.map((p) => `${p.type}|${p.amountSatang}${p.type === "GIFT_CARD" ? `|${String(p.giftCard?.number ?? "").trim().toUpperCase()}` : ""}`)) &&
     // POS P2.1 ▸ CD3: ช่องทางเข้าเทียบเฉพาะเมื่อผู้เรียกส่ง channelId (ผู้เรียกเดิม = เทียบแบบเดิมทุกไบต์) ◂
     (input.channelId === undefined || input.channelId === null || (dup.channelId ?? null) === input.channelId)
   );
@@ -610,12 +614,15 @@ async function createSaleOnce(input: CreateSaleInput, client: Client, ownsTx: bo
       where: { tenantId_idempotencyKey: { tenantId: input.tenantId, idempotencyKey: input.idempotencyKey } },
       include: {
         lines: { select: { qty: true, unitPriceSatang: true, discountSatang: true, itemId: true, productId: true, serviceId: true, weightGrams: true } },
-        payments: { select: { type: true, amountSatang: true } },
+        payments: { select: { type: true, amountSatang: true, giftCardId: true } },
       },
     });
     if (dup) {
+      // POS P2.9 ▸ fix3 N4: หมายเลขบัตรของแถว GIFT_CARD เดิม (ไม่มีแถวบัตร = ไม่มี query) ◂
+      const gcIds = dup.payments.filter((p) => p.type === "GIFT_CARD" && p.giftCardId).map((p) => p.giftCardId!);
+      const cardNo = gcIds.length ? await (await import("@/lib/modules/member")).giftCardNumbersByIds(input.tenantId, gcIds, tx as Prisma.TransactionClient) : undefined;
       // POS P1.8 F7 ▸ คีย์ของใบคืน (REFUND) ใช้ที่เดียวกับคีย์บิลขาย — เจอใบคืน = ชนเสมอ (ห้ามตอบใบคืนเป็น "บิลเดิม") ◂
-      if (dup.docType === "REFUND" || !samePayload(input, dup)) {
+      if (dup.docType === "REFUND" || !samePayload(input, dup, cardNo)) {
         throw new PosSaleError("IDEMPOTENCY_CONFLICT", "มีบิลของรหัสรายการนี้อยู่แล้วแต่รายการ/ยอด/วิธีจ่ายไม่ตรงกัน — ตรวจบิลเดิมก่อน ห้ามขายซ้ำ");
       }
       return {

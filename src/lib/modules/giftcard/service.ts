@@ -1539,6 +1539,14 @@ export async function issueStoreCredit(
   return { giftCardId: cardId, txnId: txn.id, balanceAfter: upd.balanceSatang };
 }
 
+/** POS P2.9 ▸ fix3 N4: id บัตร → หมายเลขบัตร (เทียบคำขอซ้ำของบิลเดิม · ฝั่งเซิร์ฟเวอร์เท่านั้น ไม่ส่งออกไปจอ) ◂ */
+export async function tenderCardNumbers(tenantId: string, giftCardIds: string[], db: Db = prisma): Promise<Map<string, string>> {
+  const ids = [...new Set(giftCardIds.filter(Boolean))];
+  if (!ids.length) return new Map();
+  const rows = await db.giftCard.findMany({ where: { tenantId, id: { in: ids } }, select: { id: true, number: true } });
+  return new Map(rows.map((r) => [r.id, r.number]));
+}
+
 /** R2 (ช่องจอชำระ) — ร้านนี้เปิดใช้บัตรกำนัลในระบบสมาชิกใดอยู่ไหม (อ่านอย่างเดียว · บัตรใช้ข้ามสาขาได้ทั้งร้าน — CD11) */
 export async function tenderEnabled(tenantId: string): Promise<boolean> {
   return (await prisma.giftCardSettings.count({ where: { tenantId, enabled: true } })) > 0;

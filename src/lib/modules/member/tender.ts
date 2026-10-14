@@ -84,3 +84,8 @@ export function tenderCardInfo(tenantId: string, txnIds: string[]) {
 export function giftCardTenderEnabled(tenantId: string) {
   return giftcard.tenderEnabled(tenantId);
 }
+
+/** POS P2.9 ▸ fix3 N4: id บัตรของแถวชำระเดิม → หมายเลข (เทียบคำขอซ้ำคีย์เดิม · ไม่ส่งออกจอ) ◂ */
+export function giftCardNumbersByIds(tenantId: string, giftCardIds: string[], db?: Tx) {
+  return giftcard.tenderCardNumbers(tenantId, giftCardIds, db);
+}

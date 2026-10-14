@@ -151,6 +151,7 @@ export {
   storeCreditOf,
   tenderCardInfo,
   giftCardTenderEnabled,
+  giftCardNumbersByIds,
 } from "./tender";
 
 /**
