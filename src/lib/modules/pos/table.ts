@@ -31,7 +31,7 @@ import {
   type TableZone,
 } from "./table-shared";
 import type { RegisterActor, RegisterCtx, RegisterRefusal, RegisterRefusalCode } from "./register-shared";
-import { itemInOpenSplit, openSplitSessions, releaseSplitPartInTx, splitPartOfSale, splitSummariesOf } from "./table-split"; // POS P2.5 ▸ แผนแยกบิล (R5 R6 R8 R10) ◂
+import { itemInOpenSplit, openSplitSessions, releaseSplitPartInTx, repointSplitPlansInTx, splitPartOfSale, splitSummariesOf } from "./table-split"; // POS P2.5 ▸ แผนแยกบิล (R5 R6 R8 R10) ◂
 import { heldTableDraftSessions, repointTableDraftsInTx } from "./held-cart"; // POS P2.5 ▸ รวมโต๊ะ: รอบร่างตาม session ปลายทาง (R8) ◂
 import { registerTableBillPreview } from "./register"; // POS P2.5 ▸ ใบรายการ = ยอดของ quote โต๊ะ/ใบ (R9) ◂
 import { receiptSettingsOf } from "./receipt-settings";
@@ -635,19 +635,32 @@ export async function tableSaleVoided(evt: { tenantId: string; payload: unknown 
   if (!sale || sale.sourceModule !== "POS" || !sale.sourceId || sale.status !== "VOIDED") return 0;
   const rest = await restaurant();
   // POS P2.5 ▸ R6 มติ 7: บิลของใบแยกบิล — ปลดทุกรายการที่ใบนี้ถือ (unlinkTableItemsInTx · ลำดับล็อก session → โต๊ะ → รายการ เดียวกับ unlinkTableSaleInTx) +
-  //   ใบ OPEN (saleId/paidAt = null) + แผน DONE → OPEN · ธุรกรรมเดียว · เล่นซ้ำ/ระบายซ้ำ (ใบไม่ได้ถือบิลนี้แล้ว) = 0 แถว ◂
+  //   ใบ OPEN (saleId/paidAt = null) + แผน DONE → OPEN เมื่อ session ไม่มีแผน OPEN อื่น (fix1 มติ 1) · ธุรกรรมเดียว · เล่นซ้ำ/ระบายซ้ำ = 0 แถว ·
+  //   ไม่วนลองไม่จบ: ชนกัน (unique/deadlock/write conflict) ⇒ ลองอีกครั้งแบบไม่เปิดแผน ⇒ ยังชน = audit pos.table.split.voidConflict แล้วจบ (event DONE) ◂
   const part = await splitPartOfSale(prisma, { tenantId: evt.tenantId, saleId });
   if (part) {
     const NOOP = "pos-p25-split-void-noop";
-    try {
-      return await prisma.$transaction(async (tx) => {
+    const once = (reopen: boolean) =>
+      prisma.$transaction(async (tx) => {
         const u = await rest.unlinkTableItemsInTx(tx, { tenantId: evt.tenantId, unitId: sale.unitId, itemIds: part.itemIds });
-        if (!(await releaseSplitPartInTx(tx, { tenantId: evt.tenantId, partId: part.partId, splitId: part.splitId, saleId }))) throw new Error(NOOP);
+        const r = await releaseSplitPartInTx(tx, { tenantId: evt.tenantId, partId: part.partId, splitId: part.splitId, saleId, reopen });
+        if (!r.released) throw new Error(NOOP);
         return u.itemsReset + 1;
       });
+    const conflict = (e: unknown) => isTxConflict(e) || (e as { code?: unknown } | null)?.code === "P2002";
+    try {
+      return await once(true);
     } catch (e) {
       if (e instanceof Error && e.message === NOOP) return 0;
-      throw e;
+      if (!conflict(e)) throw e;
+      try {
+        return await once(false);
+      } catch (e2) {
+        if (e2 instanceof Error && e2.message === NOOP) return 0;
+        if (!conflict(e2)) throw e2;
+        await writeAudit({ tenantId: evt.tenantId, action: "pos.table.split.voidConflict", targetType: "PosTableSplitPart", targetId: part.partId, after: { saleId, splitId: part.splitId, error: String((e2 as Error)?.message ?? e2).slice(0, 200) } });
+        return 0;
+      }
     }
   }
   const sessionId = sale.sourceId;
@@ -747,7 +760,10 @@ export async function registerMergeTables(ctx: RegisterCtx, actor: RegisterActor
               return (drafts.has(into) && fromDrafts >= 1) || fromDrafts >= 2 ? "TABLE_HAS_DRAFT" : null;
             },
           });
-          if (m.ok && m.changed) await repointTableDraftsInTx(tx, { ...key, fromSessionIds: fromIds, toSessionId: into });
+          if (m.ok && m.changed) {
+            await repointTableDraftsInTx(tx, { ...key, fromSessionIds: fromIds, toSessionId: into });
+            await repointSplitPlansInTx(tx, { tenantId: s.tenantId, unitId: s.unitId, fromSessionIds: fromIds, toSessionId: into }); // POS P2.5 ▸ fix1 มติ 6 (N4) ◂
+          }
           return m;
         },
         { maxWait: 10_000, timeout: 20_000 },

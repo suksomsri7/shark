@@ -143,12 +143,17 @@ export async function openSplitSessions(client: Db | Tx, s: { tenantId: string; 
   return new Set(rows.map((r) => r.sessionId));
 }
 
-/** รายการนี้อยู่ในแผน OPEN ไหม (ยกเลิกรายการระหว่างแยกบิล = TABLE_SPLIT_OPEN · R5) */
+/**
+ * รายการนี้อยู่ในแผน OPEN ไหม (ยกเลิกรายการระหว่างแยกบิล = TABLE_SPLIT_OPEN · R5) — fix1 มติ 6 (N4): แผน OPEN บน session ที่ไม่ OPEN แล้ว
+ * (void ใบหลังโต๊ะปิด/ถูกรวม) ไม่นับ ⇒ รายการค้างจ่ายของ session ที่ปิดแล้วยกเลิกได้
+ */
 export async function itemInOpenSplit(client: Db | Tx, s: { tenantId: string; itemId: string }): Promise<boolean> {
   const lines = await client.posTableSplitLine.findMany({ where: { tenantId: s.tenantId, itemId: s.itemId }, select: { splitId: true } });
   if (!lines.length) return false;
-  const n = await client.posTableSplit.count({ where: { tenantId: s.tenantId, id: { in: [...new Set(lines.map((x) => x.splitId))] }, status: "OPEN" } });
-  return n > 0;
+  const plans = await client.posTableSplit.findMany({ where: { tenantId: s.tenantId, id: { in: [...new Set(lines.map((x) => x.splitId))] }, status: "OPEN" }, select: { sessionId: true, unitId: true } });
+  const rest = plans.length ? await restaurant() : null;
+  for (const pl of plans) if ((await rest!.tableSessionForPos(client, { tenantId: s.tenantId, unitId: pl.unitId, sessionId: pl.sessionId }))?.status === "OPEN") return true;
+  return false;
 }
 
 /** สรุปแผน OPEN ต่อ session (R10 · การ์ดผัง + แผงโต๊ะ) */
@@ -542,14 +547,22 @@ export async function markSplitPartPaidInTx(tx: Tx, s: { tenantId: string; split
 }
 
 /**
- * ตัวรับ void ของใบ (R6 · มติ 7 · ธุรกรรมของตัวรับ หลังปลดรายการ): ใบที่ saleId = บิลที่ถูก void ⇒ OPEN · saleId/paidAt = null · แผน DONE ⇒ OPEN ·
- * เล่นซ้ำ (ใบไม่ได้ถือบิลนี้แล้ว) = false
+ * ตัวรับ void ของใบ (R6 · มติ 7 · ธุรกรรมของตัวรับ หลังปลดรายการ): ใบที่ saleId = บิลที่ถูก void ⇒ OPEN · saleId/paidAt = null ·
+ * แผน DONE ⇒ OPEN **เฉพาะเมื่อ session ของแผนไม่มีแผน OPEN อื่น** (fix1 มติ 1 · F1/N1 — partial unique แผน OPEN 1 แถวต่อ session): มีแผนใหม่ OPEN อยู่ =
+ * แผนเก่าคง DONE · ใบกลับ OPEN · รายการของใบหลุดแล้ว (จ่ายผ่านการแทนแผนใหม่ หรือทั้งโต๊ะหลังแผนใหม่ DONE · checkSplitPlanInTx ไม่ให้จ่ายใบของแผนที่ไม่ OPEN) ·
+ * reopen = false บังคับไม่เปิดแผน (ตัวรับลองซ้ำหลังชนกัน) · ล็อก session ของแผน (FOR UPDATE) ก่อนตรวจ = เรียงคิวกับการสร้างแผน (รายการ → session) ·
+ * คืน false = เล่นซ้ำ (ใบไม่ได้ถือบิลนี้แล้ว)
  */
-export async function releaseSplitPartInTx(tx: Tx, s: { tenantId: string; partId: string; splitId: string; saleId: string }): Promise<boolean> {
+export async function releaseSplitPartInTx(tx: Tx, s: { tenantId: string; partId: string; splitId: string; saleId: string; reopen?: boolean }): Promise<{ released: boolean; planReopened: boolean }> {
   const u = await tx.posTableSplitPart.updateMany({ where: { id: s.partId, tenantId: s.tenantId, saleId: s.saleId }, data: { status: "OPEN", saleId: null, paidAt: null } });
-  if (u.count !== 1) return false;
-  await tx.posTableSplit.updateMany({ where: { id: s.splitId, tenantId: s.tenantId, status: "DONE" }, data: { status: "OPEN", doneAt: null } });
-  return true;
+  if (u.count !== 1) return { released: false, planReopened: false };
+  const plan = await tx.posTableSplit.findFirst({ where: { id: s.splitId, tenantId: s.tenantId }, select: { status: true, sessionId: true, unitId: true } });
+  if (!plan || plan.status !== "DONE" || s.reopen === false) return { released: true, planReopened: false };
+  await (await restaurant()).lockTableSessionInTx(tx, { tenantId: s.tenantId, unitId: plan.unitId, sessionId: plan.sessionId });
+  const other = await tx.posTableSplit.findFirst({ where: { tenantId: s.tenantId, sessionId: plan.sessionId, status: "OPEN", id: { not: s.splitId } }, select: { id: true } });
+  if (other) return { released: true, planReopened: false };
+  const r = await tx.posTableSplit.updateMany({ where: { id: s.splitId, tenantId: s.tenantId, status: "DONE" }, data: { status: "OPEN", doneAt: null } });
+  return { released: true, planReopened: r.count === 1 };
 }
 
 /** ใบที่ถือบิลนี้ + id รายการของใบ (ตัวรับ void · ไม่พบ = ไม่ใช่บิลของใบ) */
@@ -558,4 +571,32 @@ export async function splitPartOfSale(client: Db | Tx, s: { tenantId: string; sa
   if (!part) return null;
   const lines = await client.posTableSplitLine.findMany({ where: { tenantId: s.tenantId, partId: part.id }, select: { itemId: true } });
   return { partId: part.id, splitId: part.splitId, itemIds: [...new Set(lines.map((l) => l.itemId))] };
+}
+
+// ═══════════════════ fix1 มติ 2 (N2): ตัวกันของหน้าเดิม /restaurant (เช็คบิล · ยืนยันพร้อมเพย์ · ยกเลิกรายการ) ═══════════════════
+// เนื้อของประตูเดิม (restaurant/order.ts checkout/cancelOrderItem) ถูกหมุด — กันที่ชั้น action (src/lib/actions/restaurant.ts) ก่อนเรียกประตูเดิม ·
+// รูปผลแบบประตูเดิม {ok:false, reason} (ข้อความไทย) · ไม่มีแผน OPEN = {ok:true}
+const LEGACY_SPLIT_OPEN = "โต๊ะนี้แยกบิลอยู่ในหน้าขาย (POS) — ชำระทีละใบที่หน้าขาย หรือยกเลิกการแยกบิลก่อน";
+
+/** เช็คบิล/ยืนยันพร้อมเพย์ของหน้าเดิม: session นี้มีแผนแยกบิล OPEN = ปฏิเสธ (กันเก็บเงินซ้ำกับใบที่จ่ายแล้ว) */
+export async function legacyCheckoutSplitGuard(s: { tenantId: string; unitId: string; sessionId: string }, client?: Db): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const db: Db = client ?? prisma;
+  const open = await db.posTableSplit.findFirst({ where: { tenantId: s.tenantId, unitId: s.unitId, sessionId: s.sessionId, status: "OPEN" }, select: { id: true } });
+  return open ? { ok: false, reason: LEGACY_SPLIT_OPEN } : { ok: true };
+}
+
+/** ยกเลิกรายการของหน้าเดิม: รายการอยู่ในแผนแยกบิล OPEN (ของ session ที่ยัง OPEN) = ปฏิเสธ (กันแผนค้างจ่ายไม่ได้) */
+export async function legacyCancelItemSplitGuard(s: { tenantId: string; unitId: string; itemId: string }, client?: Db): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const db: Db = client ?? prisma;
+  return (await itemInOpenSplit(db, { tenantId: s.tenantId, itemId: s.itemId })) ? { ok: false, reason: LEGACY_SPLIT_OPEN } : { ok: true };
+}
+
+/**
+ * fix1 มติ 6 (N4): รวมโต๊ะ — แผน DONE ของ session ต้นทางย้ายไป session ปลายทาง (ธุรกรรมเดียวกับการรวม · ผู้เรียกกันแผน OPEN ไว้แล้ว) ⇒ void ใบภายหลัง
+ * เปิดแผนบน session ที่ยังใช้อยู่ (ใบจ่ายต่อได้ที่โต๊ะปลายทาง) ไม่ใช่ session ที่ MERGED แล้ว
+ */
+export async function repointSplitPlansInTx(tx: Tx, s: { tenantId: string; unitId: string; fromSessionIds: string[]; toSessionId: string }): Promise<number> {
+  if (!s.fromSessionIds.length) return 0;
+  const u = await tx.posTableSplit.updateMany({ where: { tenantId: s.tenantId, unitId: s.unitId, sessionId: { in: s.fromSessionIds }, status: "DONE" }, data: { sessionId: s.toSessionId } });
+  return u.count;
 }
