@@ -15,6 +15,13 @@ enum GiftCardStatus {
   SUSPENDED // ร้านระงับ (บัตรหาย/สงสัยทุจริต)
 }
 
+// POS P2.9 (มติ 5): ชนิดของ "บัตร" — GIFT = บัตรกำนัลเดิม (PIN · ขาย/เติม) · STORE_CREDIT = เครดิตร้านของสมาชิก (ออกจากการคืนเงิน ·
+//   ไม่มี PIN · ใช้ได้เฉพาะเจ้าของ · 1 ใบต่อสมาชิกต่อระบบ — unique index บางส่วนใน migration 20261209100000_pos_p29_tenders)
+enum GiftCardKind {
+  GIFT
+  STORE_CREDIT
+}
+
 enum GiftCardTxnType {
   SELL
   USE
@@ -45,6 +52,7 @@ model GiftCard {
 
   status    GiftCardStatus @default(ACTIVE)
   expiresAt DateTime?
+  kind      GiftCardKind   @default(GIFT) // POS P2.9 ▸ มติ 5 ◂
 
   saleId          String? // PosSale.id ของบิลขายบัตร
   accountingDocId String? // AccountJournalEntry.id ตอนขาย — null = ขายตอน accountingLink ปิด (ห้ามลงบัญชีย้อนหลัง §11.6)
