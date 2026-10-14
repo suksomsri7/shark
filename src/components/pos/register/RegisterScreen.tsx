@@ -2699,6 +2699,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
             memberAttached={!!l.memberAttached}
             taxInvoicePending={!!l.taxInvoice}
             member={l.result.member}
+            unitId={unitId} // POS P2.6U ▸ มติ 10: "คิว N" ◂
           />
         );
       case "options":

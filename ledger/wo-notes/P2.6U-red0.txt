@@ -1,0 +1,8 @@
+# P2.6U red-before (rulings 15–17 ORACLE-ADD K14b A14 K12b) — 14 Oct 2026, account B
+# tree /root/projects/shark-pos-c head 2038f0a3 (oracle adds only) · code = 671e6fd2 (P2.6 S merged) · src/prisma untouched · QC_FORCE=1 on QC4
+# expected: 62/65, exactly K14b A14 K12b red (A14 red at the static lock-order probe; its race part is a guard)
+  ❌ [P2.6-K14b] [H1 มติ P2.6U-15] ออเดอร์ออนไลน์ (CHAT รับแล้ว) → ตั๋ว READY → SERVED → ถือแถวรอบไว้ (ธุรกรรมที่สาม) → kdsRecall เข้าคิว — expected ดึงกลับตั๋วออนไลน์ของออเดอร์ที่ยกเลิกไม่ได้ (ล็อกรอบก่อนอ่านสถานะ) | actual recall ตั๋วของออเดอร์ที่ถูกยกเลิกระหว่างรอล็อก → OK (คาด TICKET_VOIDED) · recall/ตัวรับเขียนรายการ (คาดยัง SERVED) · รอบ CANCELLED (คาด COMPLETED)
+  ❌ [P2.6-A14] [H2 มติ P2.6U-16] (สถิต) restoreMenuStockKeep86InTx + resetMenuItemDailyStock ล็อก MenuItem FOR UPDATE ก่อน heldBy86Mark — expected ล็อก MenuItem ก่อนอ่าน mark · 86 ของครัวรอดการแข่ง | actual restoreMenuStockKeep86InTx ไม่ล็อก MenuItem FOR UPDATE ก่อน heldBy86Mark (lock@-1 mark@213) · resetMenuItemDailyStock ไม่ล็อก MenuItem FOR UPDATE ก่อน heldBy86Mark (lock@-1 mark@161)
+  ❌ [P2.6-K12b] [H3 มติ P2.6U-17] ขายสินค้าคลังที่ยังไม่เป็นตัวแปร (ไม่เข้าครัว) → ผูกเป็นตัวแปรของแม่ที่ตั้งสถานี (createProduct {invIt — expected บิลก่อนผูกเป็นตัวแปรของแม่ที่เข้าครัว ไม่ถูก heal · ตัวนับไม่ขยับ | actual heal สร้างตั๋วย้อนหลังให้บิลที่ขายก่อนผูกเป็นตัวแปร · ตัวนับรายวันขยับ
+===== qc-pos-p2.6 ===== ผ่าน 62/65 (QC_FORCE) · PAR 5/5 · SKIP-until-export 0
+JSON_SUMMARY {"suite":"qc-pos-p2.6","total":65,"passed":62,"failed":["P2.6-K14b","P2.6-A14","P2.6-K12b"],"parRed":[],"depSkipped":[],"skipped":false,"forced":true,"missing":[],"depP24":[],"depP28":[],"guardHits":0,"residue":0,"leaks":[],"fpDrift":[]}

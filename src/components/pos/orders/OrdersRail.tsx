@@ -104,6 +104,10 @@ export function RailSettings(p: {
   onAuto: (c: OrdersChannel, on: boolean) => void;
   onPrep: (n: number) => void;
   onPause: () => void;
+  /** POS P2.6U ▸ มติ 9c: เพดานครัวค้างของการรับอัตโนมัติ (null = ปิด · undefined = อ่านไม่ได้/ไม่มีครัว) · ตั้งได้ (restaurant.kitchen.pause) ◂ */
+  kitchenMax?: number | null;
+  kitchenMaxEditable?: boolean;
+  onKitchenMax?: (n: number | null) => void;
 }) {
   const t = useTranslations("pos.orders");
   const tch = useTranslations("pos.channel");
@@ -130,9 +134,45 @@ export function RailSettings(p: {
             </button>
           </div>
         ))}
-        <div className="px-1">
-          <PlannedChip label={t("rail.autoPauseKitchen")} />
-        </div>
+        {/* POS P2.6U ▸ มติ 9c: "พักรับอัตโนมัติเมื่อครัวค้าง" ใช้งานจริง — ตัวเพิ่ม/ลด N (1..99) + ปิด → kdsSetAutoAcceptMaxAction ◂ */}
+        {p.kitchenMax !== undefined ? (
+          <div data-testid="pos-ord-kitchen-max" className="flex flex-col gap-1 px-1">
+            <span className="text-[12.5px]">{p.kitchenMax === null ? t("rail.autoPauseOff") : t("rail.autoPauseHint", { n: p.kitchenMax })}</span>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                data-testid="pos-ord-kitchen-max-minus"
+                aria-label={t("rail.autoPauseLess")}
+                disabled={p.busy || !p.kitchenMaxEditable || p.kitchenMax === null}
+                className="grid size-11 place-items-center rounded-[10px] border disabled:opacity-50"
+                onClick={() => p.onKitchenMax?.(p.kitchenMax === null || p.kitchenMax === undefined || p.kitchenMax <= 1 ? null : p.kitchenMax - 1)}
+              >
+                <RegisterIcon name="minus" size={14} />
+              </button>
+              {/* fix1 V8: ค่าเป็นข้อความ ("ปิด" / "N ใบ") — ไม่ใช่กล่องที่ดูเหมือนปุ่ม */}
+              <span data-testid="pos-ord-kitchen-max-value" className="min-w-14 px-1 text-center text-[14px] font-bold tabular-nums">{p.kitchenMax === null || p.kitchenMax === undefined ? t("rail.autoPauseOffShort") : t("rail.autoPauseValue", { n: p.kitchenMax })}</span>
+              <button
+                type="button"
+                data-testid="pos-ord-kitchen-max-plus"
+                aria-label={t("rail.autoPauseMore")}
+                disabled={p.busy || !p.kitchenMaxEditable || (p.kitchenMax ?? 0) >= 99}
+                className="grid size-11 place-items-center rounded-[10px] border disabled:opacity-50"
+                onClick={() => p.onKitchenMax?.(p.kitchenMax === null || p.kitchenMax === undefined ? 8 : p.kitchenMax + 1)}
+              >
+                <RegisterIcon name="plus" size={14} />
+              </button>
+              {p.kitchenMax !== null && (
+                <button type="button" data-testid="pos-ord-kitchen-max-off" disabled={p.busy || !p.kitchenMaxEditable} className="ml-auto inline-flex h-11 items-center rounded-[10px] px-2 text-[12.5px] text-[color:var(--color-ink-soft)] disabled:opacity-50" onClick={() => p.onKitchenMax?.(null)}>
+                  {t("rail.autoPauseTurnOff")}
+                </button>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="px-1">
+            <PlannedChip label={t("rail.autoPauseKitchen")} />
+          </div>
+        )}
       </section>
       <section className="flex flex-col gap-1.5 border-t pt-3">
         <h3 className="px-1 text-[12px] font-bold text-[color:var(--color-muted)]">{t("rail.prepDefault")}</h3>

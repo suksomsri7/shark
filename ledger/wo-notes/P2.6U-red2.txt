@@ -1,0 +1,5 @@
+# P2.6U fix2 red-before (ORACLE-ADD K12c · hunter N2) — 14 Oct 2026, account B
+# head da5f7115 · src = fix1 code a14dcb61 (+ fix2 UI/harness only) · QC_FORCE=1 on QC4
+# RESULT: 67/67 — K12c is GREEN on the fix1 code: the N2 path is unreachable — adoptVariantRow refuses a row that already has a parent (catalog.ts 'if (row.parentId) throw conflict'), updateProduct has no parentId key, no other parentId writer exists ⇒ a re-link never stamps. N2 fix applied defensively (effective-station rule); K12c pins the behaviour.
+===== qc-pos-p2.6 ===== ผ่าน 67/67 (QC_FORCE) · PAR 5/5 · SKIP-until-export 0
+JSON_SUMMARY {"suite":"qc-pos-p2.6","total":67,"passed":67,"failed":[],"parRed":[],"depSkipped":[],"skipped":false,"forced":true,"missing":[],"depP24":[],"depP28":[],"guardHits":0,"residue":0,"leaks":[],"fpDrift":[]}

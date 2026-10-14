@@ -20,6 +20,8 @@ import type { ProductsChannel, ProductsData, ProductsPriceRow, ProductsRow } fro
 import { channelsIn, draftOf, effectiveOf, rowsFromDraft, type DraftCell } from "./products-scope";
 // POS P2.3U ▸ มติ 1: แท็บ "สูตรและวัตถุดิบ" ใช้งานจริง (RecipeSection) ◂
 import { RecipeSection, type RecipePatch } from "./RecipeSection";
+// POS P2.6U ▸ มติ 9b: ส่วน "ครัว" ในแท็บทั่วไป (สถานีครัว · 86 ของสาขา) ◂
+import { ProductKitchenSection, type KitchenPatch } from "@/components/pos/products/kitchen-ui";
 
 export type PanelTab = "general" | "options" | "recipe" | "prices" | "stock";
 const TABS: PanelTab[] = ["general", "options", "recipe", "prices", "stock"];
@@ -36,9 +38,13 @@ type Props = {
   // POS P2.3U ▸ มติ 1/2: แก้สูตรได้ (pos.product.manage) · ผลบันทึกสูตร/สวิตช์ → ตาราง ◂
   canEditRecipe?: boolean;
   onRecipeSaved?: (productId: string, patch: RecipePatch, toast: string) => void;
+  // POS P2.6U ▸ มติ 9b: ตั้งสถานี (pos.product.manage) · แจ้ง 86 (pos.sale.create | pos.product.manage) · ผลกลับตาราง ◂
+  canManage?: boolean;
+  canMark86?: boolean;
+  onKitchenSaved?: (productId: string, patch: KitchenPatch, toast: string) => void;
 };
 
-export function ProductPanel({ systemId, product: p, data, unit, canEdit, onClose, onSaved, canEditRecipe = false, onRecipeSaved }: Props) {
+export function ProductPanel({ systemId, product: p, data, unit, canEdit, onClose, onSaved, canEditRecipe = false, onRecipeSaved, canManage = false, canMark86 = false, onKitchenSaved }: Props) {
   const t = useTranslations("pos.products") as PT;
   const tp = useTranslations("pos.price") as PT;
   const tr = useTranslations("pos.price.rule") as PT;
@@ -173,6 +179,10 @@ export function ProductPanel({ systemId, product: p, data, unit, canEdit, onClos
             <dd>{soldUnits > 0 ? t("status.selling") : t("status.off")}</dd>
             <dd className="col-span-2 mt-2">
               <SoonTag text={t("drawer.soon", { phase: "P2.3" })} />
+            </dd>
+            {/* POS P2.6U ▸ มติ 9b ◂ */}
+            <dd className="col-span-2">
+              <ProductKitchenSection systemId={systemId} product={p} unit={unit} canManage={canManage} canMark={canMark86} onSaved={(id, patch, toast) => onKitchenSaved?.(id, patch, toast)} />
             </dd>
           </dl>
         ) : tab === "recipe" ? (

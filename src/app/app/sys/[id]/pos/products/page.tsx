@@ -91,7 +91,7 @@ export default async function PosProductsPage({
       {head(stockLink)}
 
       {/* POS P2.3U ▸ มติ 1: แก้สูตรได้ = pos.product.manage (ตัวเขียน catalog.ts ตรวจซ้ำตามขอบเขตแถว) ◂ */}
-      <ProductsClient systemId={id} data={productsData} canEdit={canEditPrices} initialUnit={unit ?? null} canEditRecipe={evaluate(m, { module: "pos", action: "pos.product.manage" })} />
+      <ProductsClient systemId={id} data={productsData} canEdit={canEditPrices} initialUnit={unit ?? null} canEditRecipe={evaluate(m, { module: "pos", action: "pos.product.manage" })} canMark86={evaluate(m, { module: "pos", action: "pos.sale.create" }) || evaluate(m, { module: "pos", action: "pos.product.manage" })} /* POS P2.6U ▸ มติ 9b ◂ */ />
 
       {/* POS P2.2U ▸ หน้าเดิม (บริการ + ราคาขายในคลัง) — พับไว้ · เปิดเองเมื่อมีผลจากฟอร์มเดิม (?err / ?ok) ◂ */}
       <details data-testid="pos-products-legacy" open={!!(err || ok)} className="max-w-2xl">

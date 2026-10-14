@@ -98,3 +98,9 @@ F1–F6 + V1–V9 closed as ruled; server diff = readers only (`roundOfSale`, `k
 
 ## Controller visual check 2 (account B, 14 Oct 16:5xZ · vis71 f67790a7 on QC5, all 13 runs rc 0 incl. 390)
 V1 ✓ (chip shows the initial "จ") · V2 ✓ (56 px top row) · V3 ✓ (390 recall toast "เรียกใบ #86 กลับมาแล้ว") · V4 ✓ (takeaway ticket "#87 · ซื้อกลับ" in READY) · V5 ✓ (86 sheet lists kitchen items by default, 86'd first) · V6 ✓ (vertical radio rows, PLANNED chip inline) · V7 ✓ (first word ≤ 12 + "…") · V8 ✓ ("ปิด") · V9 ✓ ("#84 · โต๊ะ E2"). Parity with mockup 04 accepted. No reshoot needed after fix round 2 unless a visible state changes (G2 status line is not in the state list — accepted).
+
+## R3 (account B, 14 Oct 17:0xZ) — head d3396aab / code 8db5cda5 — **MERGEABLE** (full report `pos-P2.6U-review-R3.md`)
+Stamp rule correct; no re-link path exists (`adoptVariantRow` refuses rows with a parent; only creation writes `parentId`) so K12c is a regression guard (red2 67/67 explained); G1 guard retry-safe; G3a `\p{L}` minus Thai leading vowels; N1 accepted — Low note: a sale with no kitchen lines on an after-sale device shows the "no kitchen ticket" line (false alarm) → **P2.11 follow-up** (skip when no line maps to a station). Server diff = `catalog.ts` only. Gates match (head=f74ca51d).
+
+## Controller rulings — merge (account B, 14 Oct 17:0xZ)
+Merge locally 4449123f → gates77 on tree c → push → p2.8 re-run if ST6 red (register.ts untouched by U ⇒ expected green) → **28/55** + TG. Follow-ups P2.11: N1 false alarm · held-NEW sweeper · audible alert · per-station 09 split · previous-bizDate tickets (ORACLE-EDIT T5). Owner: cook account needs no sale keys; `setAvailability({resetCounter:true})` by a COOK refills a counter (gate behind `pos.product.manage`?).

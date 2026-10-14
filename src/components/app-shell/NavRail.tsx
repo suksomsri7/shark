@@ -19,7 +19,8 @@ import type { NavItem } from "./NavDrawer";
 export function isRailPath(pathname: string, posRegisterV2Ids: readonly string[] = []): boolean {
   // POS P2.4U ▸ หน้าโต๊ะ (/pos/tables) ใช้กรอบเดียวกับหน้าขาย — ธงเดียวกัน ◂
   // POS P2.8U ▸ หน้าออเดอร์ทุกช่องทาง (/pos/orders) ใช้กรอบเดียวกับหน้าขาย — ธงเดียวกัน ◂
-  const pos = /^\/app\/sys\/([^/]+)\/pos\/register\/?$/.exec(pathname) ?? /^\/app\/sys\/([^/]+)\/pos\/(?:tables|orders)\/?$/.exec(pathname);
+  // POS P2.6U ▸ จอครัว (/pos/kds · มติ 1) เต็มจอแบบหน้าขาย (รางไอคอน · ไม่มีแท็บโมดูล) — ธงเดียวกัน ◂
+  const pos = /^\/app\/sys\/([^/]+)\/pos\/register\/?$/.exec(pathname) ?? /^\/app\/sys\/([^/]+)\/pos\/(?:tables|orders|kds)\/?$/.exec(pathname);
   return /^\/app\/sys\/[^/]+\/kanban\/b\//.test(pathname) || (!!pos && posRegisterV2Ids.includes(pos[1]));
 }
 

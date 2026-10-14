@@ -53,6 +53,8 @@ export type ProductsRow = {
   recipeGroups: ProductsRecipeGroup[];
   recipeVariants: ProductsRecipeVariant[];
   recipeCost: ProductsRecipeCost | null;
+  /** POS P2.6U ▸ มติ 9b: สถานีครัวของแถวที่ไม่ใช่เมนู (PosProduct.stationId · null = ไม่ส่งเข้าครัว) ◂ */
+  stationId?: string | null;
 };
 export type ProductsData = {
   units: { id: string; name: string }[];
@@ -191,6 +193,12 @@ export async function loadProductsData(
   const chList = [...channels.values()].sort((a, b) => rank(a.code) - rank(b.code));
   // คงลำดับของช่องทางที่ไม่ใช่ builtin ตาม sorted (sort ของ JS เสถียร)
   const products = [...byId.values()];
+  // POS P2.6U ▸ มติ 9b: สถานีครัวของแถว (อ่านอย่างเดียว · คำสั่งเดียว) ◂
+  if (products.length) {
+    const st = await prisma.posProduct.findMany({ where: { tenantId, id: { in: products.map((p) => p.id) } }, select: { id: true, stationId: true } });
+    const m = new Map(st.map((x) => [x.id, x.stationId]));
+    for (const p of products) p.stationId = m.get(p.id) ?? null;
+  }
   const recipeData = await loadRecipeData(scope, actor, units, products, variantRows); // POS P2.3U
   return {
     units,

@@ -48,6 +48,8 @@ export function OrderPanel(p: {
   onCancel: () => void;
   onRetry: () => void;
   onClose?: () => void;
+  /** POS P2.6U ▸ มติ 9c: สาขามีสถานีครัวไหม (บรรทัด "เมื่อกดรับ") · มาตรครัวของออเดอร์นี้ (kitchenProgressAction) ◂ */
+  kitchen?: { hasStations: boolean; progress: { done: number; total: number } | null };
 }) {
   const t = useTranslations("pos.orders");
   const tch = useTranslations("pos.channel");
@@ -185,14 +187,22 @@ export function OrderPanel(p: {
           <ul className="flex list-disc flex-col gap-1 pl-5 text-[color:var(--color-ink-soft)]">
             {platform ? <li>{t("detail.onAcceptSaleNow", { channel: channelName })}</li> : <li>{t("detail.onAcceptSaleLater")}</li>}
             {platform ? <li>{t("detail.onAcceptStock")}</li> : null}
-            <li className="list-none -ml-5">
-              <PlannedChip label={t("detail.onAcceptKitchen")} />
-            </li>
+            {/* POS P2.6U ▸ มติ 9c: ส่งใบครัวจริงเมื่อรับ (สาขามีสถานีครัว) — ไม่มีสถานี = ไม่ส่ง ◂ */}
+            {p.kitchen?.hasStations ? <li data-testid="pos-ord-on-accept-kitchen">{t("detail.onAcceptKitchenLive")}</li> : null}
             {platform ? (
               <li className="list-none -ml-5">
                 <PlannedChip label={t("detail.onAcceptPlatform", { channel: channelName })} />
               </li>
             ) : null}
+          </ul>
+        </section>
+      ) : null}
+      {/* POS P2.6U ▸ มติ 9c: ใบครัวของออเดอร์ที่รับแล้ว (จำนวนรายการในครัว · เสร็จแล้ว) ◂ */}
+      {d.status !== "NEW" && p.kitchen?.progress && p.kitchen.progress.total > 0 ? (
+        <section data-testid="pos-ord-detail-kitchen" className="border-b px-5 py-3 text-[12.5px]">
+          <h3 className="mb-1.5 text-[12px] font-bold text-[color:var(--color-muted)]">{t("detail.kitchenSection")}</h3>
+          <ul className="flex list-disc flex-col gap-1 pl-5 text-[color:var(--color-ink-soft)]">
+            <li>{t("detail.kitchenSent", { total: p.kitchen.progress.total, done: p.kitchen.progress.done })}</li>
           </ul>
         </section>
       ) : null}

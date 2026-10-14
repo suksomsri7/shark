@@ -53,6 +53,7 @@ export {
   kitchenRushInTx,
   kitchenCancelInTx,
   kitchenSetStockTakenInTx, // fix1 H1
+  kitchenLockRoundInTx, // P2.6U มติ 15: kdsRecall ล็อกรอบก่อนอ่านสถานะบิล/ออเดอร์
   kitchenSetAutoAcceptMaxInTx,
   kitchenStationsForPos,
   kitchenSettingForPos,
