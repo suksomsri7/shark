@@ -2833,7 +2833,7 @@ async function regSubmitTable(
  *   (ได้ไม่ครบ = TABLE_ITEMS_CHANGED) → ล็อกใบ (PAID แล้ว = TABLE_SPLIT_PART_PAID) → session FOR UPDATE (ไม่ OPEN = TABLE_SESSION_CLOSED) → แผน FOR UPDATE
  *   (ยกเลิก = TABLE_SPLIT_NOT_FOUND · เวอร์ชันไม่ตรง = VERSION_CHANGED) → regCreateSale(…, callerTx(tx)) (จุดเรียกเดิม · sourceId = session) →
  *   (ใช้ใบขอรับเงิน) → ใบ PAID + saleId → รายการที่ทุกใบที่ถือมันจ่ายแล้ว ผูกกับบิลนี้ → ไม่มีรายการค้าง + ไม่มีรอบร่าง HELD ⇒ session CLOSED + dirtySince ·
- *   ทุกใบ PAID ⇒ แผน DONE · หลัง commit: afterSaleCommitted · ไม่มี ticketForSale (ไม่มีรอบครัวจากบิลของใบ) ◂
+ *   ทุกใบ PAID ⇒ แผน DONE · หลัง commit: afterSaleCommitted · ไม่สร้างตั๋วครัวจากบิลของใบ (มติ P2.6 ข้อ 3 ขยายถึงบิลย่อย) ◂
  */
 async function regSubmitSplitPart(
   db: RegDb,
