@@ -1415,8 +1415,7 @@ export async function refundTenderUse(tenantId: string, input: { txnId: string }
       // POS P2.9 ▸ fix2 H3 (มติ 3): ล็อกใบเดิมก่อน แล้วค่อยหาปลายทาง (เห็นการรวมสมาชิกที่ commit ก่อนเราได้ล็อก) แล้วล็อกใบผู้เก็บ ·
       //   ไม่ตายกับการรวม: การรวมล็อกสองใบพร้อมกัน — ถ้ามันยังไม่ commit เราไม่เห็น MERGE (คืนเข้าใบเดิม แล้วการรวมย้ายยอดให้) · ถ้า commit แล้วก็ปล่อยล็อกแล้ว ◂
       await tx.$queryRaw`SELECT id FROM "GiftCard" WHERE id = ${src.giftCardId} FOR UPDATE`;
-      const target = await mergeTargetOf(tx, src.giftCardId);
-      if (target !== src.giftCardId) await tx.$queryRaw`SELECT id FROM "GiftCard" WHERE id = ${target} FOR UPDATE`;
+      const target = await lockMergeTarget(tx, src.giftCardId); // POS P2.9 ▸ fix3 N5 ◂
       const again = await tx.giftCardTxn.findUnique({ where: { tenantId_idempotencyKey: { tenantId, idempotencyKey: key } } });
       if (again) return { refunded: false, txnId: again.id, balanceAfter: again.balanceAfter };
       const upd = await tx.giftCard.update({ where: { id: target }, data: { balanceSatang: { increment: src.satang } }, select: { balanceSatang: true, status: true } });
@@ -1459,6 +1458,21 @@ async function mergeTargetOf(db: Db, giftCardId: string): Promise<string> {
   return id;
 }
 
+/**
+ * POS P2.9 ▸ fix3 N5: ปลายทางที่ "ล็อกแล้วและนิ่ง" — ใบเริ่มต้นถูกล็อกโดยผู้เรียกแล้ว · หาปลายทาง → ล็อก → หาซ้ำจากใบที่ล็อก
+ * จนไม่เปลี่ยน (≤ 5 รอบ) ⇒ ผู้เก็บถูกรวมต่ออีกทอดระหว่างที่เรารอล็อก = ตามไปใบใหม่ (ไม่คืนเข้าใบที่เพิ่งไม่มีเจ้าของ) ◂
+ */
+async function lockMergeTarget(tx: Tx, lockedCardId: string): Promise<string> {
+  let cur = lockedCardId;
+  for (let i = 0; i < 5; i++) {
+    const next = await mergeTargetOf(tx, cur);
+    if (next === cur) return cur;
+    await tx.$queryRaw`SELECT id FROM "GiftCard" WHERE id = ${next} FOR UPDATE`;
+    cur = next;
+  }
+  return cur;
+}
+
 /** POS P2.9 ▸ fix1 H4: ลง JV หมดอายุ (Dr 2110 / Cr 4900) ของ EXPIRE ที่เกิดจากการคืนเข้าบัตรที่หมดอายุ — กติกาเดียวกับ expireDue · idempotent ◂ */
 async function postRestoreExpire(tenantId: string, expireKey: string): Promise<void> {
   const ex = await prisma.giftCardTxn.findUnique({ where: { tenantId_idempotencyKey: { tenantId, idempotencyKey: expireKey } }, include: { giftCard: true } });
@@ -1489,7 +1503,7 @@ export async function refundToCard(
   if (!Number.isInteger(input.satang) || input.satang <= 0) throw tenderErr("GIFT_CARD_CHANGED");
   const now = new Date();
   await tx.$queryRaw`SELECT id FROM "GiftCard" WHERE id = ${input.giftCardId} FOR UPDATE`; // POS P2.9 ▸ fix2 H3: ล็อกก่อนหาปลายทาง ◂
-  const cardId = await mergeTargetOf(tx, input.giftCardId); // POS P2.9 ▸ fix1 H3 ◂
+  const cardId = await lockMergeTarget(tx, input.giftCardId); // POS P2.9 ▸ fix1 H3 · fix3 N5 ◂
   input = { ...input, giftCardId: cardId };
   const upd = await tx.giftCard.updateMany({
     where: { id: input.giftCardId, tenantId, status: { in: ["ACTIVE", "DEPLETED"] }, OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] },
