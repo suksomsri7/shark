@@ -781,12 +781,23 @@ export async function reload(
           await tx.posSale.update({ where: { id: sale.saleId }, data: { giftCardId: card.id, vatSatang: 0 } });
           // POS HF-GC ▸ H1: balanceAfter = ผลของ increment ในธุรกรรมนี้ (แถวถูกล็อกแล้ว) — เดิม `card.balanceSatang + satang`
           //   จากการอ่านก่อนธุรกรรม ⇒ เติมพร้อมกันได้ balanceAfter ซ้ำกันทุกแถว (คอลัมน์ยอดถูก แต่ร่องรอยผิด) ◂
-          const upd = await tx.giftCard.update({
-            where: { id: card.id },
+          // POS HF-GC2 ▸ F3: เขียนเฉพาะบัตรที่ยัง ACTIVE/DEPLETED (เงื่อนไขอยู่ในคำสั่งเขียน — ด่านก่อนธุรกรรมอ่านแถวเก่า)
+          //   เดิม `update` ไม่มีเงื่อนไขสถานะ ⇒ การระงับ/หมดอายุที่ commit ระหว่างด่านกับคำสั่งนี้ถูกลบทิ้งเงียบ (บัตรกลับเป็น ACTIVE + ยอดเติม)
+          //   ไม่ตรง = โยน GiftCardStateError ในธุรกรรมนี้ ⇒ บิล createSale (callerTx) rollback ไปด้วย ◂
+          const upd = await tx.giftCard.updateMany({
+            where: { id: card.id, status: { in: ["ACTIVE", "DEPLETED"] } },
             data: { balanceSatang: { increment: satang }, status: "ACTIVE" },
-            select: { balanceSatang: true },
           });
-          const after = upd.balanceSatang;
+          if (upd.count === 0) {
+            const cur = await tx.giftCard.findUnique({ where: { id: card.id }, select: { status: true } });
+            throw new GiftCardStateError(
+              cur?.status === "SUSPENDED"
+                ? "บัตรใบนี้ถูกระงับอยู่ — ปลดระงับก่อนจึงจะเติมเงินได้"
+                : "บัตรใบนี้หมดอายุแล้ว — ออกบัตรใบใหม่ให้ลูกค้าแทนการเติมเงิน",
+            );
+          }
+          // POS HF-GC ▸ H1 (คงเดิมหลัง HF-GC2): ยอดหลังเติม = อ่านจากแถวที่ธุรกรรมนี้ล็อกอยู่ (หลัง updateMany · แบบเดียวกับ use) ◂
+          const after = (await tx.giftCard.findUniqueOrThrow({ where: { id: card.id }, select: { balanceSatang: true } })).balanceSatang;
           const txn = await tx.giftCardTxn.create({
             data: {
               tenantId: ctx.tenantId,
