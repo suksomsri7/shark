@@ -74,3 +74,13 @@ tree=/root/projects/shark-pos-b head=2e850b08 dirty=0 (code 0e9e3144 · fix-1 or
 ❌ P2.9-C5 — expected EXPIRED 0 · REFUND 40 + EXPIRE 40 · JV 1 · 2110 สุทธิ 0 | actual บัตร EXPIRED/4000 · REFUND [4000] · EXPIRE [6000] · JV ของ EXPIRE หลัง void 0 · 2110 สุทธิ -4000 {"1000":10000,"2110":-4000,"4900":-6000}
 green-before among the adds: MG1 (fold already sums and orphans the merged card — pinned by MG2) · V4/V6/V7 edited values are allowed by base code (no cap) — ruling 2 pins the split
 JSON_SUMMARY {"suite":"qc-pos-p2.9","total":57,"passed":49,"failed":["P2.9-ST5","P2.9-T6","P2.9-S5","P2.9-G9","P2.9-G10","P2.9-RC1","P2.9-MG2","P2.9-C5"],"skipped":false,"forced":true,"missing":[],"gu
+
+# Block 4 — fix round 2 ORACLE-ADD (G11 RC2 C5b · RC1 sub-case d) red-before on head before the fixes
+tree=/root/projects/shark-pos-b head=af7f2b12 dirty=0 (fix-1 code · fix-2 oracle only)
+===== qc-pos-p2.9 ===== ผ่าน 57/60 (QC_FORCE)
+❌ P2.9-RC1 — expected a REFUND_METHOD_INVALID · b CASH ปฏิเสธ/STORE_CREDIT ok · c REASON_REQUIRED → ok + audit · d STAFF + PIN ผู้จัดการ ok | actual d: STAFF + PIN ผู้จัดการ → REFUND_METHOD_INVALID คืนเป็นเงินได้ไม่เกินส่ว�
+❌ P2.9-C5b — expected void → ACTIVE 300 · expireDue → EXPIRE 300 · 2110 สุทธิ 0 | actual หลัง void EXPIRED/20000 · EXPIRE 1 (คาด ACTIVE 30000 · 0) · หลัง expireDue EXPIRED/20000 · EXPIRE [10000] · 2110 สุทธิ -20000 {"1000":30000,"2110":-20000,"4900":-10000}
+❌ P2.9-RC2 — expected เครดิตผู้เก็บ +100 | actual คืน STORE_CREDIT → REFUND_METHOD_INVALID คืนเป็นเครดิตร้านได้เฉพาะบิลของสมาชิก — เลือกเงินสดหรือวิธีอ · ผู้เก็บ
+✅ P2.9-G11
+G11 green-before: its observable bounds (counter ≤ 5, ≤ 1 bill, non-LOCKED ≤ 5/10) already hold with the fix-1 atomic counter; the fix-2 change (reserve before the hash compare) removes the extra hash evaluations/timing leak the hunter describes, which this black-box check cannot measure — pinned statically by the reserve-first code path.
+JSON_SUMMARY {"suite":"qc-pos-p2.9","total":60,"passed":57,"failed":["P2.9-RC1","P2.9-C5b","P2.9-RC2"],"skipped":false,"forced":true,"missing":[],"guardHits":0,"residue":0,"leaks":[],"drift":[]}
