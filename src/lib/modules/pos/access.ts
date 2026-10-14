@@ -91,3 +91,21 @@ export function posRegisterView<T extends { id: string }>(
   if (unitParam && linked.some((u) => u.id === unitParam) && !units.some((u) => u.id === unitParam)) return { ok: false };
   return { ok: true, units, active: units.find((u) => u.id === unitParam) ?? units[0] };
 }
+
+// POS P2.8U ▸ หน้าออเดอร์ทุกช่องทาง /pos/orders (มติ 1): ด่านเดียวกับตัวอ่านของ S (listOrders = pos.sale.read หรือ pos.sale.create ที่สาขา) ·
+//   ไม่มีสิทธิ์อ่านที่สาขาใดเลย / ขอสาขาของ POS นี้ที่อ่านไม่ได้ = ok:false (หน้าแสดงการ์ดปฏิเสธ O13 ก่อนอ่านข้อมูลออเดอร์) ·
+//   ?unit= ค่าอื่น/ไม่ระบุ = สาขาแรกที่อ่านได้ · สิทธิ์รับ/ปฏิเสธ (pos.order.accept / pos.order.reject) ตัดสินแยกที่หน้า (ปุ่มปิด + tooltip) ◂
+export function posOrdersView<T extends { id: string }>(
+  m: MembershipCtx | null,
+  linked: T[],
+  unitParam?: string,
+): { ok: false } | { ok: true; units: T[]; active: T | null } {
+  const canRead = (mm: MembershipCtx, unitId?: string) =>
+    evaluate(mm, { module: "pos", action: "pos.sale.read", ...(unitId ? { unitId } : {}) }) || evaluate(mm, { module: "pos", action: "pos.sale.create", ...(unitId ? { unitId } : {}) });
+  if (!m || !canRead(m)) return { ok: false };
+  if (linked.length === 0) return { ok: true, units: [], active: null };
+  const units = linked.filter((u) => canRead(m, u.id));
+  if (units.length === 0) return { ok: false };
+  if (unitParam && linked.some((u) => u.id === unitParam) && !units.some((u) => u.id === unitParam)) return { ok: false };
+  return { ok: true, units, active: units.find((u) => u.id === unitParam) ?? units[0] };
+}

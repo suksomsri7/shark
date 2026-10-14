@@ -16,9 +16,9 @@ import { BillsClient } from "./BillsClient";
 // POS P1.16 U — หน้า "บิลวันนี้" (ภาพ 12 · route เดิม /pos/sales · มติ CD1 แทนหน้าประวัติบิลเดิม)
 //   ข้อมูลทั้งหน้าโหลดจาก billsPageDataAction คำขอเดียว (client) · หน้านี้เลือกสาขาที่เข้าได้ + บอกว่าร้านเคยมีบิลไหม (ข้อความว่าง)
 // 🔴 HF-POS-PAGES: ต้องขายได้ที่สาขาใดสาขาหนึ่ง · คนจำกัดสาขาเห็นเฉพาะสาขาของตัวเอง — สิทธิ์จริงต่อบิลตัดสินใน bills.ts
-export default async function PosSalesPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ unit?: string; date?: string }> }) {
+export default async function PosSalesPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ unit?: string; date?: string; bill?: string }> }) {
   const { id } = await params;
-  const { unit, date } = await searchParams;
+  const { unit, date, bill } = await searchParams; // POS P2.8U ▸ ?bill=<saleId> = เปิดลิ้นชักบิลนั้นทันที (ปุ่ม "ดูบิล" ของจอออเดอร์ · สิทธิ์ตรวจใน billDetailAction) ◂
   const auth = await requireTenant();
   const tenantId = auth.active.tenantId;
   const sys = await prisma.appSystem.findFirst({ where: { id, tenantId, type: "POS" } });
@@ -51,7 +51,17 @@ export default async function PosSalesPage({ params, searchParams }: { params: P
       <PageHeader title={`${def?.icon ?? ""} ${sys.name}`.trim()} desc={t("desc")} />
       <ModuleTabs items={posTabs(id, await getTranslations("pos"))} />
       {unitId ? (
-        <BillsClient systemId={id} units={units} unitId={unitId} today={today} initialDate={initialDate} hasAnyBill={!!anyBill} accountSystemId={accountSystemId} canIssueTaxInvoice={canIssueTaxInvoice} />
+        <BillsClient
+          systemId={id}
+          units={units}
+          unitId={unitId}
+          today={today}
+          initialDate={initialDate}
+          hasAnyBill={!!anyBill}
+          accountSystemId={accountSystemId}
+          canIssueTaxInvoice={canIssueTaxInvoice}
+          initialBillId={typeof bill === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(bill) ? bill : null} // POS P2.8U ▸ ?bill= ◂
+        />
       ) : (
         <div className="card text-sm text-[color:var(--color-muted)]" data-testid="pos-bills-no-unit">
           {t("noUnits")}
