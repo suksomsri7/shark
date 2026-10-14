@@ -131,3 +131,21 @@ After fixes (pre-merge head 4abd3c99 + oracle): `qc-pos-p2.6` forced **57/57**.
 | `qc-pos-p1.3` · `p1.6` · `p1.10` · `p1.18` | 128/128 · 48/48 · 40/40 · 81/81 |
 | `qc-restaurant` / -money / -pay / -void | 6/6 · 6/6 · 19/19 · 11/11 |
 | `qc-pos-products` · `qc-hf-pos-page-authz` | 24/24 · 71/71 |
+
+## Fix round 2 (review R2 G1–G4 + hunter re-check N1–N4) — 14 Oct, account B
+Binding: `pos-P2.6-review.md` "Controller rulings — fix round 2" 1–7.
+
+| finding | commit | change |
+|---|---|---|
+| ORACLE-ADD K13a K13b A12 A13 K14 (dated) | f9d0df0e | p2.6 = 62 checks |
+| red-before | 950b50f7 | `P2.6-red3.txt`: `src/`+`prisma/` at 7d5339c8 → **57/62**, exactly K13a K13b A12 A13 K14 red (A13 red at both the mark step and the reset step) |
+| migration `20261208100200_pos_p26_station_set_at` | 8f4f3c22 | `PosProduct.stationSetAt TIMESTAMP(3)` (additive · lock_timeout 3s) · QC4 deploy: "Applying migration `20261208100200_pos_p26_station_set_at` … All migrations have been successfully applied." · client regenerated · QC5 = controller · no oracle pins the PosProduct column set (p2.6 ST1 bad-field list and p1.1 S1.3 required list unaffected) |
+| G1/N2 heal guard | d7af3382 | MENU: `m."createdAt" ≤ s."createdAt"`; non-MENU: `coalesce(stationSetAt, createdAt)` of the row (or the parent when the parent's station is used) ≤ sale; both `updatedAt` terms dropped. **Writers of `PosProduct.stationId`:** `catalog.updateProduct` PATCH `stationId` (non-MENU) and `catalog-legacy.syncMenuRow` (MENU mirror of `MenuItem.stationId`) — both set `stationSetAt = now()` when the value changes; backfill/`menuItemProductFields` create rows (null ⇒ createdAt) |
+| N1 | 38c92958 | `catalog-legacy.restoreMenuStockKeep86InTx` (restore + `isOutOfStock = heldBy86Mark`, no event); `restaurant/pos-tables.ts cancelTableItemInTx` uses it (import + one call site, marked `POS P2.6 ▸ fix2 N1 ◂`); `qc-pos-p2.4` has no sha pin on that file (no ORACLE-EDIT) |
+| G2 | 38c92958 | `setMenuItemStock({isOutOfStock:false})` deletes the (unit, product) KDS/MANUAL mark; daily reset unchanged |
+| N4 | bdc9afb6 | `kdsRecall` → `TICKET_VOIDED` (KDS_NEW_CODES + `kds.errors.ticketVoided` th/en) when the round's sale is not PAID (read under FOR SHARE) or its order is CANCELLED/REJECTED (plain read: a FOR SHARE there would deadlock two concurrent recalls at the PosOrder FOR UPDATE step); nothing written |
+| G4 | fc4eac32 | `lockRoundInTx` → `FOR NO KEY UPDATE` (K10/K11 green) |
+| G3 (a)(b) / N3 · G1 residual · N1 legacy | 16f7d488 | owner lines only |
+| merge | e5fc0392 | `origin/session/pos` b788e523 (HF-GC: giftcard/account/consumers + qc-hf-tx) — code auto-merged; `POS-OWNER-PENDING` both sides kept |
+
+After fixes (pre-merge head fc4eac32): `qc-pos-p2.6` forced **62/62**.
