@@ -747,6 +747,13 @@ const baseConsumers: Record<string, OutboxHandler> = {
         if (!failed) err = e;
         failed = true;
       }
+      // POS P2.9 ▸ R5 มติ 10: คืนยอดบัตรของขวัญ/เครดิตร้านของแถวชำระ (งานหลัก · ก่อนสะพานสมาชิก · walk-in ได้ · idempotent ต่อ USE) ◂
+      try {
+        await (await import("@/lib/modules/pos/tender")).tenderSaleVoided(evt);
+      } catch (e) {
+        if (!failed) err = e;
+        failed = true;
+      }
       if (failed) throw err;
     }, kanbanBridge("onVoidedSale")), stampVoidForSale), memberSaleBridge("onPosSaleVoided")), crmBridge("onPosSaleVoided")), posOrderOnSaleVoided),
   ),

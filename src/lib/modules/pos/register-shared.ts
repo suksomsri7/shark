@@ -19,7 +19,8 @@ export const REGISTER_LOW_STOCK = 5;
 export const REGISTER_PAGE_SIZE = 100;
 export const REGISTER_PAGE_MAX = 500;
 /** วิธีจ่ายที่หน้าขายรับ (P1.3 Addendum 2 + P1.6 R2: โอน + บัตรแบบกรอกเลขอ้างอิง EDC · ไม่มีเกตเวย์ = P1.7) */
-export const REGISTER_PAY_TYPES = ["CASH", "PROMPTPAY", "TRANSFER", "CARD", "PLATFORM"] as const; // POS P2.1 ▸ PLATFORM เฉพาะช่องทาง payout PLATFORM (R5 · CHANNEL_PAY_MISMATCH) ◂
+// POS P2.9 ▸ R1: + GIFT_CARD (giftCard {number, pin} · ≤ 3 ใบ) + STORE_CREDIT (เครดิตร้านของสมาชิกในบิล · ไม่มี PIN · แถวเดียว) ◂
+export const REGISTER_PAY_TYPES = ["CASH", "PROMPTPAY", "TRANSFER", "CARD", "PLATFORM", "GIFT_CARD", "STORE_CREDIT"] as const; // POS P2.1 ▸ PLATFORM เฉพาะช่องทาง payout PLATFORM (R5 · CHANNEL_PAY_MISMATCH) ◂
 /** P1.6 R2: แบ่งจ่ายได้ไม่เกินกี่รายการ (ชนิดซ้ำได้ · เงินสดได้รายการเดียว) — เกิน = SPLIT_INVALID */
 export const REGISTER_MAX_PAY_METHODS = 10;
 /** P1.6 R5: หมายเหตุบิล/บรรทัดยาวได้ไม่เกิน (ตัวอักษร) */
@@ -216,7 +217,13 @@ export type RegisterRefusalCode =
   | "TABLE_ITEMS_CHANGED"
   | "TABLE_HAS_UNPAID"
   // POS P2.4 ▸ fix 2 F1: รอบร่างของโต๊ะถูกแก้/ส่งครัว/ทิ้งโดยอีกเครื่อง (expectedVersion/heldCartId ไม่ตรง · newDraft ขณะมีรอบร่าง) ◂
-  | "VERSION_CHANGED";
+  | "VERSION_CHANGED"
+  // POS P2.9 ▸ R11: บัตรของขวัญ/เครดิตร้านเป็นวิธีชำระ — ไม่พบ (รวมร้านอื่น) · PIN ผิด · ล็อก PIN · ยอด/สถานะเปลี่ยน · ไม่ใช่เจ้าของเครดิต ◂
+  | "GIFT_CARD_NOT_FOUND"
+  | "GIFT_CARD_PIN"
+  | "GIFT_CARD_LOCKED"
+  | "GIFT_CARD_CHANGED"
+  | "STORE_CREDIT_NOT_OWNER";
 
 /** คำปฏิเสธ — คืนค่า ไม่ throw · `lineIndex` = บรรทัดที่ผิด (ลำดับเดียวกับที่ส่งมา) ถ้าระบุได้ */
 export type RegisterRefusal = { ok: false; code: RegisterRefusalCode; message: string; lineIndex?: number };
@@ -406,7 +413,8 @@ export type RegisterQuoteOverrideInput = { cart: RegisterQuoteInput; staffToken?
 
 export type RegisterPayType = (typeof REGISTER_PAY_TYPES)[number];
 /** reference = เลขอ้างอิงบัตร/EDC หรือโอน (P1.6 · ≤ REGISTER_REFERENCE_MAX · เงินสดไม่มี) · P1.7: "pi_…" บน PROMPTPAY/CARD = id ใบขอรับเงินที่ PAID แล้ว (พร้อมเพย์รับเฉพาะ pi_…) */
-export type RegisterPayMethod = { type: RegisterPayType; amountSatang: number; reference?: string };
+/** POS P2.9 ▸ giftCard = บัตรของขวัญของแถว GIFT_CARD เท่านั้น (เลขที่สแกน/พิมพ์ + PIN ของลูกค้า · ห้ามเก็บ/บันทึก PIN ที่จอ) ◂ */
+export type RegisterPayMethod = { type: RegisterPayType; amountSatang: number; reference?: string; giftCard?: { number: string; pin: string } };
 export type RegisterSubmitInput = RegisterQuoteInput & {
   /** คีย์เดียวต่อบิล — คงเดิมทุกการลองซ้ำ (สเปก §3.4) */
   idempotencyKey: string;
@@ -879,6 +887,12 @@ const REFUSAL_KEY: Readonly<Record<string, string>> = {
   POINTS_CAPPED: "errors.pointsCapped",
   BENEFITS_EXCEED_TOTAL: "errors.benefitsExceedTotal",
   MEMBER_RIGHTS_CHANGED: "errors.memberRightsChanged",
+  // POS P2.9 ▸ R11 ◂
+  GIFT_CARD_NOT_FOUND: "errors.giftCardNotFound",
+  GIFT_CARD_PIN: "errors.giftCardPin",
+  GIFT_CARD_LOCKED: "errors.giftCardLocked",
+  GIFT_CARD_CHANGED: "errors.giftCardChanged",
+  STORE_CREDIT_NOT_OWNER: "errors.storeCreditNotOwner",
   // POS P2.1 ▸ ช่องทางขาย (R13) ◂
   CHANNEL_INVALID: "errors.channelInvalid",
   CHANNEL_PAY_MISMATCH: "errors.channelPayMismatch",

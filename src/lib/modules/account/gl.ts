@@ -1739,6 +1739,8 @@ export async function postExternalSale(
     serviceBaseSatang?: number;
     // POS P2.1 ▸ contactId (ไม่บังคับ) = ผู้ติดต่อของแพลตฟอร์มบนบรรทัดลูกหนี้ (CD6) · ไม่ส่ง = บรรทัดเดิมทุกไบต์ ◂
     drLines: { key: "CASH" | "BANK" | "DEPOSIT_RECEIVED" | "AR"; amountSatang: number; contactId?: string | null }[];
+    /** POS P2.9 ▸ R9: ขา Cr เพิ่ม (บัญชีที่ facade ตรวจแล้ว — ทิปรอจ่ายพนักงาน) · ไม่ส่ง = JV เดิมทุกไบต์ ◂ */
+    crExtra?: { accountId: string; amountSatang: number; note?: string }[];
   },
   tx?: Tx,
 ): Promise<{ entryId: string } | { skipped: true }> {
@@ -1754,6 +1756,7 @@ export async function postExternalSale(
     if (goodsBase > 0) b.cr(await b.id("INCOME_GOODS"), goodsBase);
     if (svcBase > 0) b.cr(await b.id("INCOME_SERVICE"), svcBase);
     if (o.vatSatang > 0) b.cr(await b.id("VAT_OUTPUT"), o.vatSatang);
+    for (const x of o.crExtra ?? []) b.cr(x.accountId, x.amountSatang, x.note); // POS P2.9 ▸ R9 ทิป ◂
 
     const entry = await commitEntry(
       ctx,
@@ -1771,6 +1774,12 @@ export async function postExternalSale(
     );
     return { entryId: entry.id };
   });
+}
+
+/** POS P2.9 ▸ R9 (มติ 7): บัญชีหนี้สินของสมุดนี้ที่ยังไม่ถูกเก็บ (บัญชีพักทิป) — อ่านอย่างเดียว · ไม่ใช่/ไม่พบ = null ◂ */
+export async function liabilityLedgerOf(ctx: GlCtx, ledgerId: string): Promise<{ id: string } | null> {
+  if (!ledgerId) return null;
+  return prisma.accountLedger.findFirst({ where: { id: ledgerId, tenantId: ctx.tenantId, systemId: ctx.systemId, archivedAt: null, type: "LIABILITY" }, select: { id: true } });
 }
 
 /** POS P1.8 F8 ▸ บิล POS นี้ลง JV ขาย (PosSale#<refId>#PAID) แล้วหรือยัง — คีย์เดียวกับ postExternalSale (อ่านอย่างเดียว) ◂ */
@@ -1791,7 +1800,8 @@ export async function postExternalRefund(
     vatSatang: number;
     serviceBaseSatang?: number;
     // POS P2.1 ▸ AR = แพลตฟอร์มคืนลูกค้า (ลดลูกหนี้แพลตฟอร์ม · R9) + contactId ของแพลตฟอร์ม · ไม่ส่ง = เดิม ◂
-    crLines: { key: "CASH" | "BANK" | "AR"; amountSatang: number; contactId?: string | null }[];
+    // POS P2.9 ▸ DEPOSIT_RECEIVED = คืนเข้าบัตรของขวัญ/เครดิตร้าน (Cr 2110) ◂
+    crLines: { key: "CASH" | "BANK" | "AR" | "DEPOSIT_RECEIVED"; amountSatang: number; contactId?: string | null }[];
   },
   tx?: Tx,
 ): Promise<{ entryId: string } | { skipped: true }> {

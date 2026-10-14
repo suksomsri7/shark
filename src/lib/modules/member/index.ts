@@ -135,6 +135,25 @@ export {
   WALLET_ORDER,
 } from "./wallet";
 
+// ── POS P2.9 ▸ บัตรของขวัญ/เครดิตร้านเป็นวิธีชำระ (R2–R7 · มติ 1 3 5 10) — POS เรียกบัตรผ่านตรงนี้เท่านั้น ◂ ──
+export {
+  tenderErrorCode,
+  giftCardTenderLookup,
+  prepareGiftCardTender,
+  recheckGiftCardTender,
+  prepareStoreCreditTender,
+  lockTenderCards,
+  useGiftCardTender,
+  refundGiftCardTender,
+  giftCardRefundable,
+  refundToGiftCard,
+  issueStoreCredit,
+  storeCreditOf,
+  tenderCardInfo,
+  giftCardTenderEnabled,
+  giftCardNumbersByIds,
+} from "./tender";
+
 /**
  * M2.6 — จุดตัดเงิน POS ที่ผูกสาขาเดียวกับ "ระบบสมาชิก" นี้ (+ ระบบแต้มถ้ามี)
  * โมดูลที่ต้องเก็บเงินผ่าน POS (บัตรกำนัล · แพ็กเกจสมาชิก) ถามที่นี่ที่เดียว — ไม่ต้องรู้จัก `system/service`
