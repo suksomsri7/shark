@@ -421,9 +421,15 @@ async function planRefundTenders(tx: Tx, s: Scope, sale: { id: string; memberId:
   }
   if (creditRows.length) {
     if (creditRows.length > 1) return refuse("VALIDATION", "คืนเป็นเครดิตร้านได้รายการเดียว");
-    const c = sale.memberId ? await tx.customer.findFirst({ where: { id: sale.memberId, tenantId: s.tenantId }, select: { memberSystemId: true, status: true } }) : null;
-    if (!c || c.status === "MERGED" || !c.memberSystemId) return refuse("REFUND_METHOD_INVALID", "คืนเป็นเครดิตร้านได้เฉพาะบิลของสมาชิก — เลือกเงินสดหรือวิธีอื่น");
-    plan.credit = { index: creditRows[0]!.index, systemId: c.memberSystemId, customerId: sale.memberId!, satang: creditRows[0]!.p.amountSatang };
+    // POS P2.9 ▸ fix2 N2 (มติ 5): สมาชิกของบิลถูกรวมไปแล้ว ⇒ ตาม mergedIntoId (≤ 5 ชั้น) ไปออกเครดิตให้ผู้เก็บ ◂
+    let cid = sale.memberId;
+    let c = cid ? await tx.customer.findFirst({ where: { id: cid, tenantId: s.tenantId }, select: { memberSystemId: true, status: true, mergedIntoId: true } }) : null;
+    for (let hop = 0; hop < 5 && c && c.status === "MERGED" && c.mergedIntoId; hop++) {
+      cid = c.mergedIntoId;
+      c = await tx.customer.findFirst({ where: { id: cid, tenantId: s.tenantId }, select: { memberSystemId: true, status: true, mergedIntoId: true } });
+    }
+    if (!c || !cid || c.status === "MERGED" || !c.memberSystemId) return refuse("REFUND_METHOD_INVALID", "คืนเป็นเครดิตร้านได้เฉพาะบิลของสมาชิก — เลือกเงินสดหรือวิธีอื่น");
+    plan.credit = { index: creditRows[0]!.index, systemId: c.memberSystemId, customerId: cid, satang: creditRows[0]!.p.amountSatang };
   }
   return plan;
 }
