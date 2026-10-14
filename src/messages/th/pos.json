@@ -281,7 +281,8 @@
       "auto": "(อัตโนมัติ {sec} วินาที)",
       "nextShort": "ขายต่อ",
       "kitchenLabel": "ครัว",
-      "queue": "คิว {n}"
+      "queue": "คิว {n}",
+      "kitchenPrintFailed": "พิมพ์ใบครัวไม่สำเร็จ — {reason} (พิมพ์ซ้ำได้ที่จอครัว)"
     },
     "roles": {
       "owner": "เจ้าของ",

@@ -24,7 +24,10 @@ import { RECEIPT_EMAIL_RE } from "@/lib/modules/pos/receipt-public-shared";
 import { PrintStatus } from "@/components/pos/print/PrintStatus";
 import { printReceipt, printerPaired } from "@/components/pos/print/printReceipt";
 import type { PrintResult } from "@/components/pos/print/types";
-import { kdsQueueNoAction } from "@/lib/modules/pos/kds-actions"; // POS P2.6U ▸ มติ 10: "คิว N" ◂
+import { kdsQueueNoAction, kitchenSlipPayloadAction } from "@/lib/modules/pos/kds-actions"; // POS P2.6U ▸ มติ 10: "คิว N" · fix1 F2: ใบครัวหลังขาย ◂
+import { kitchenSlipSettings } from "@/lib/modules/pos/device-shared"; // POS P2.6U ▸ fix1 F2 ◂
+import type { KitchenSlip } from "@/lib/modules/pos/kds-shared"; // POS P2.6U ▸ fix1 F2 ◂
+import { printKitchenSlips } from "@/components/pos/kds/kds-print"; // POS P2.6U ▸ fix1 F2 ◂
 import { RegisterDialog, SheetGrab } from "./RegisterDialog";
 import { RegisterIcon } from "./RegisterIcon";
 
@@ -55,6 +58,8 @@ type Props = {
   unitId?: string;
 };
 
+/** POS P2.6U ▸ fix1 F2: บิลที่สั่งพิมพ์ใบครัวหลังขายไปแล้ว (ระดับโมดูล — ครั้งเดียวต่อบิล) ◂ */
+const kitchenPrinted = new Set<string>();
 /** บิลที่สั่งพิมพ์อัตโนมัติไปแล้ว (ระดับโมดูล — จอสำเร็จถูกวาดใหม่/StrictMode ก็ไม่พิมพ์ซ้ำ) */
 const autoPrinted = new Set<string>();
 /**
@@ -68,6 +73,21 @@ export function PayDone({ receiptNo, totalSatang, changeSatang, payMethods, onNe
   const t = useTranslations("pos.register");
   // POS P2.6U ▸ มติ 10: รอบครัวสร้างหลัง commit ⇒ ถาม ≤ 3 ครั้ง ห่าง 1 วิ · ได้เลข = หยุด · ไม่ได้ = ไม่แสดงอะไร ◂
   const [queueNo, setQueueNo] = useState<number | null>(null);
+  const [kitchenErr, setKitchenErr] = useState<string | null>(null); // POS P2.6U ▸ fix1 F2 ◂
+  /** POS P2.6U ▸ fix1 F2 (17B "พิมพ์หลังขายที่เครื่องนี้"): ใบครัวของรอบนี้ ครั้งเดียวต่อบิล · เฉพาะสถานีที่เลือก · พังไม่บล็อกจอ (ข้อความบรรทัดเดียว) ◂ */
+  const printKitchen = async (orderId: string) => {
+    const ks = kitchenSlipSettings(printer.config);
+    if (ks.mode !== "after-sale" || !unitId || kitchenPrinted.has(saleId)) return;
+    kitchenPrinted.add(saleId);
+    const slips: KitchenSlip[] = [];
+    for (const stationId of ks.stationIds.length ? ks.stationIds : [undefined]) {
+      const r = await kitchenSlipPayloadAction({ systemId, unitId, orderId, ...(stationId ? { stationId } : {}), locale }).catch(() => null);
+      if (r && r.ok === true) slips.push(...r.slips);
+    }
+    if (!slips.length) return;
+    const res = await printKitchenSlips(slips, printer.config, locale);
+    if (!res.ok) setKitchenErr(tp(`errors.${res.code}`));
+  };
   useEffect(() => {
     if (!unitId || !saleId) return;
     let live = true;
@@ -78,6 +98,7 @@ export function PayDone({ receiptNo, totalSatang, changeSatang, payMethods, onNe
         if (!live) return;
         if (r && r.ok === true && r.queueNo !== null) {
           setQueueNo(r.queueNo);
+          if (r.orderId) void printKitchen(r.orderId).catch(() => undefined); // POS P2.6U ▸ fix1 F2 ◂
           return;
         }
         if (r && r.ok !== true) return;
@@ -86,6 +107,7 @@ export function PayDone({ receiptNo, totalSatang, changeSatang, payMethods, onNe
     return () => {
       live = false;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- POS P2.6U ▸ fix1 F2: printKitchen อ่านค่าตั้งเครื่องตอนได้รอบ (ครั้งเดียวต่อบิล) ◂
   }, [systemId, unitId, saleId]);
   const tm = useTranslations("pos.member");
   const tp = useTranslations("pos.print");
@@ -236,6 +258,11 @@ export function PayDone({ receiptNo, totalSatang, changeSatang, payMethods, onNe
             </div>
           )}
         </div>
+        {kitchenErr && ( // POS P2.6U ▸ fix1 F2: ใบครัวหลังขายพิมพ์ไม่สำเร็จ (ไม่บล็อกจอ) ◂
+          <p data-testid="pos-reg-done-kitchen-error" role="status" className="w-full text-left text-[13px] text-[color:var(--color-danger)]">
+            {t("done.kitchenPrintFailed", { reason: kitchenErr })}
+          </p>
+        )}
         {loadErr && (
           <p data-testid="pos-print-load-error" role="alert" className="w-full rounded-[13px] border-[1.5px] border-[color:var(--color-danger)] px-4 py-2 text-left text-[13.5px]">
             {loadErr}
