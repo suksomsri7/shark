@@ -231,13 +231,15 @@ async function stationHints(db: Db, tenantId: string, productIds: (string | null
 export async function ticketForSale(tenantId: string, unitId: string, saleId: string): Promise<TicketForSaleResult> {
   try {
     if (!isId(tenantId) || !isId(unitId) || !isId(saleId)) return { ok: true, orderId: null, created: false, reason: "VALIDATION" };
+    // fix1 F4 (รีวิว R1): สาขาไม่มีสถานีครัว (ร้านค้า/คาเฟ่ไม่ใช้ครัว) = คำสั่งเดียวแล้วจบ — ไม่อ่านบิล ไม่เปิดธุรกรรม
+    const R = await restaurant();
+    if (!(await R.kitchenStationsForPos(prisma, { tenantId, unitId })).length) return { ok: true, orderId: null, created: false, reason: "NO_STATIONS" };
     const sale = await prisma.posSale.findFirst({
       where: { id: saleId, tenantId, unitId },
       select: { id: true, status: true, docType: true, sourceModule: true, sourceId: true, soldByUserId: true, note: true, lines: { select: { productId: true, name: true, qty: true, note: true, options: { select: { choiceId: true, groupName: true, choiceName: true } } }, orderBy: { id: "asc" } } },
     });
     if (!sale) return { ok: true, orderId: null, created: false, reason: "NOT_FOUND" };
     if (sale.status !== "PAID" || sale.docType !== "SALE" || sale.sourceModule !== "POS" || sale.sourceId) return { ok: true, orderId: null, created: false, reason: "NOT_REGISTER_SALE" };
-    const R = await restaurant();
     const hints = await stationHints(prisma, tenantId, sale.lines.map((l) => l.productId));
     const run = () =>
       prisma.$transaction(async (tx) => {
