@@ -1953,11 +1953,13 @@ function regParseSubmit(raw: unknown): RegParsedSubmit | RegisterRefusal {
     let giftCard: { number: string; pin: string } | undefined;
     if (p.giftCard !== undefined || p.type === "GIFT_CARD") {
       const g = p.giftCard;
-      if (p.type !== "GIFT_CARD" || !regIsRecord(g) || !regOnlyKeys(g, REG_GIFT_KEYS) || typeof g.number !== "string" || typeof g.pin !== "string") return regRefuse("VALIDATION", "ข้อมูลบัตรของขวัญไม่ถูกต้อง");
+      // POS P2.9 ▸ fix1 H6 (มติ 8): pin ไม่ส่งได้ (จอลบ PIN ออกจากที่เก็บบิลค้างส่ง) — รับเฉพาะการส่งซ้ำคีย์ที่มีบิลแล้ว (ตรวจหลังค้นคีย์ซ้ำใน submit) ◂
+      const pinless = regIsRecord(g) && (g.pin === undefined || g.pin === null);
+      if (p.type !== "GIFT_CARD" || !regIsRecord(g) || !regOnlyKeys(g, REG_GIFT_KEYS) || typeof g.number !== "string" || (!pinless && typeof g.pin !== "string")) return regRefuse("VALIDATION", "ข้อมูลบัตรของขวัญไม่ถูกต้อง");
       const number = g.number.trim().toUpperCase();
-      if (!number || number.length > 40 || !regCleanText(number) || !/^[0-9]{4,12}$/.test(g.pin) || (p.reference !== undefined && p.reference !== null)) return regRefuse("VALIDATION", "ข้อมูลบัตรของขวัญไม่ถูกต้อง");
+      if (!number || number.length > 40 || !regCleanText(number) || (!pinless && !/^[0-9]{4,12}$/.test(String(g.pin))) || (p.reference !== undefined && p.reference !== null)) return regRefuse("VALIDATION", "ข้อมูลบัตรของขวัญไม่ถูกต้อง");
       if (payMethods.filter((x) => x.type === "GIFT_CARD").length >= MAX_GIFT_CARD_ROWS || payMethods.some((x) => x.giftCard?.number === number)) return regRefuse("VALIDATION", "ใช้บัตรของขวัญได้ไม่เกิน 3 ใบต่อบิล และใบเดียวกันได้รายการเดียว");
-      giftCard = { number, pin: g.pin };
+      giftCard = { number, pin: pinless ? "" : String(g.pin) };
     }
     let reference: string | null = null;
     if (p.reference !== undefined && p.reference !== null) {
@@ -2239,6 +2241,8 @@ export async function submitRegisterSale(ctx: RegisterCtx, actor: RegisterActor,
     // ① คีย์เดิมก่อนคิดราคา (ลองซ้ำหลังราคาเปลี่ยนต้องได้บิลเดิม)
     const prior = await regLoadSale(db, s0.tenantId, req.idempotencyKey);
     if (prior) return tableSess ? regTableDuplicate(db, s0, req, prior, true) : regDuplicate(s0, req, prior, true);
+    // POS P2.9 ▸ fix1 H6 (มติ 8): แถวบัตรของขวัญไม่มี PIN = ส่งซ้ำได้เฉพาะคีย์ที่มีบิลแล้ว (ด้านบน) · คีย์ใหม่ = VALIDATION ไม่มีบิล ◂
+    if (req.payMethods.some((x) => x.type === "GIFT_CARD" && x.giftCard && !x.giftCard.pin)) return regRefuse("VALIDATION", "ใส่ PIN ของบัตรของขวัญก่อนชำระ");
     // POS P1.15 ▸ R3: โทเคนผู้ขายบนเครื่อง — ผู้ขาย/สิทธิ์/เพดานส่วนลด = คนในโทเคน (มติ 2) · ผิด/หมดอายุ/เครื่องอื่น/ถูกถอดสิทธิ์ = STAFF_TOKEN_INVALID
     //   (ไม่ถอยไปใช้ผู้ใช้ session เงียบ ๆ) · ไม่ส่งโทเคน = ผู้ใช้ session เหมือนเดิม ◂
     let s: RegScope = s0;
