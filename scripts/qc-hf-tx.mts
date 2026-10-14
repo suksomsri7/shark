@@ -26,7 +26,7 @@
 //       ล้าง accountingDocId (จำลองช่วงพังหลัง commit) แล้ว (a) ขายซ้ำคีย์เดิม ⇒ คืน accountingDocId + JV ยัง 1 · (b) ล้างอีกครั้ง + เล่น consumer
 //       giftcard.sold ×2 ต่อกัน + ×2 พร้อมกัน ⇒ คืน accountingDocId + JV ยัง 1 · (b2) ขายตอนตัดการเชื่อมบัญชี (ช่วงพังก่อนลงบัญชี — ยังไม่มี JV)
 //       แล้วเชื่อมกลับ + เล่น consumer ⇒ JV 1 + accountingDocId ตั้ง · (c) ขายตอนสวิตช์ปิด → เปิดสวิตช์ + เล่น consumer ⇒ JV 0 · accountingDocId null
-//       (แดงก่อนแก้: (a) คืน null / ไม่มีตาข่ายใน consumer)
+//       (แดงก่อนแก้: (a) คืน null / ไม่มีตาข่ายใน consumer) · (c2) fix 1 (รีวิว F1): สวิตช์ปิดตอนขาย → เปิด → ขายซ้ำคีย์เดิม ⇒ JV 0 · accountingDocId null
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
@@ -586,6 +586,13 @@ try {
       const n3 = await jvCount(s3.giftCardId);
       notes.push(`(c) สวิตช์ปิดตอนขาย: JV ${n3} · doc ${d3 ? "ตั้ง" : "null"}`);
       if (s3.accountingDocId || d3 || n3 !== 0 || e3.length) p.push(`(c) สวิตช์ปิด: ขายคืน ${s3.accountingDocId ?? "null"} · doc ${d3 ?? "null"} · JV ${n3}${e3.length ? ` · throw ${e3.join(" · ")}` : ""}`);
+      // (c2) fix 1 (รีวิว F1): สวิตช์ยังเปิดอยู่ (ตั้งหลังขาย) + ขายซ้ำคีย์เดิม ⇒ ยังไม่ลงย้อนหลัง (การตัดสินมาจาก payload ตอนขาย ไม่ใช่สวิตช์ปัจจุบัน)
+      phase = "gc-acc-off-replay";
+      const r3 = await sellK("a3");
+      const d3b = await docOf(s3.giftCardId);
+      const n3b = await jvCount(s3.giftCardId);
+      notes.push(`(c2) สวิตช์ปิดตอนขาย → เปิด → ขายซ้ำ: JV ${n3b} · doc ${d3b ? "ตั้ง" : "null"}`);
+      if (r3.accountingDocId || d3b || n3b !== 0 || r3.giftCardId !== s3.giftCardId) p.push(`(c2) สวิตช์ปิดตอนขาย → ขายซ้ำหลังเปิด: คืน ${r3.accountingDocId ?? "null"} · doc ${d3b ?? "null"} · JV ${n3b}`);
       chk("HT2.7", p.length === 0, p.length ? p.join(" | ") : notes.join(" · "));
     }
   } catch (e) {
