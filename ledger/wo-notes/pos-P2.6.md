@@ -15,14 +15,17 @@ Binding: `pos-brief-P2.6.md` §9 + §10 · `wo-notes/pos-P2.6-oracle.md` (names 
 - **QC4 deploy** `bash scripts/iso.sh bash scripts/qc4.sh pnpm exec prisma migrate deploy` → host ep-frosty-lab · "Applying migration `20261208100000_pos_p26_kds` … All migrations have been successfully applied." (**APPLIED on QC4**).
 - Prod `RestaurantOrder` row count: not available to the builder; the controller supplies it (§9 ruling 14).
 
-## ⏸ PAUSED (controller order 10 Oct 12:2xZ — weekly quota)
-- **Last completed step:** step 0. Step 1 is committed as WIP: schema, migration, QC4 deploy, scope, and qc-env are done.
-- **Resume point (step 1 remainder):** create `src/lib/modules/pos/kds-shared.ts`. It must be pure, with no prisma/db/server imports and no `node:`. Exports per names table row 11: `KDS_TICKET_STATES` · `KDS_SOURCES` · `KDS_WARN_SEC=120` · `ticketStateOf` · `ticketSourceOf` (ONLINE > REGISTER > TABLE > QR > LEGACY) · `ticketTargetMinutes` (round → max prep → critical) · `ticketTimer` (floor elapsed · remaining = target·60 − elapsed · late = elapsed ≥ target·60 · warn = !late && remaining ≤ 120) · `avgReadyMinutes` (floor mean, 0 when empty) · `sortColumn` (non-mutating · NEW sentAt · COOKING rush then remainingSec · READY readyAt · ties by id) · `kdsRefusalMessageKey` (`errors.<camel>` · unknown → `errors.unknown`) · code literals `TICKET_NOT_FOUND TICKET_TOO_OLD KDS_STATION_NOT_FOUND` + DTO types. Commit it as "pos P2.6 S step 1", then start step 2.
-- **Design decided so far (not yet coded):**
+## ▶️ RESUMED 14 Oct 2026 (account B · controller B) — from ffaee746 (step 1 WIP) · scratch `/tmp/claude-0/-root/5169ed6b-3dd4-5e42-a1eb-90ec4124521e/scratchpad/p26/`
+- Tree clean at ffaee746 · `prisma migrate status` up to date (controller) · client already has `posAvailabilityMark` (no regenerate needed).
+- Step 1 remainder: `src/lib/modules/pos/kds-shared.ts` (pure · row 11 + DTO types of the P2.6U contract) → `--no-db`: ST1 T1 T2 T3 green (8/13; remaining reds = later steps).
+
+## Design decisions (carried from the pause + refined on resume)
   - restaurant `createKitchenRoundInTx`: advisory lock per sale/order · existing round = `created:false` · non-archived stations only · MENU routing via `MenuItem.posProductId`, non-MENU via `PosProduct.stationId` (or the parent's) · round items carry **price 0** and `saleId` null (money untouched) · floor-at-0 consume through a new catalog-legacy function that emits a STOCK flip event plus a STOCK mark.
   - KDS moves: conditional `updateMany … WHERE kdsStatus IN (…)` in restaurant `*InTx` functions.
   - `kitchenProgressInTx` goes in `pos/order.ts`. `kds.ts` lazy-imports `./order`, and `order.ts` imports `./kds` statically. The p2.8 ST3 check bans any restaurant import in `order*` files, so the restaurant calls go through `kds.ts`.
   - Kitchen pause and backlog use the `pauseRefuses` adapters (WEB/CHAT/API).
   - `setAvailability` writes MenuItem directly in `catalog.ts` (F15.1 writer). Routing it through catalog-legacy would create an import cycle; the MENU write still stays inside the catalog writer pair.
-- **CONTROLLER-DECISION items:** none so far.
-- **Commands planned next:** `pnpm exec tsx scripts/qc-pos-p2.6.mts --no-db` after kds-shared · then build steps 2–8 · final gates per the prompt.
+  - **Refined on resume:** (a) the new restaurant writers live in a new file `restaurant/kitchen.ts` (re-exported by `restaurant/index.ts` in a `// POS P2.6 ▸ … ◂` block) so the pinned `restaurant/order.ts`/`kds.ts` (L1 sigs · ST4 hot-path bodies) stay byte-identical; (b) the restaurant writer does **not** touch MenuItem — the floor-at-0 MENU counter consume/restore is a new catalog-legacy function called by `pos/kds.ts` in the same tx (F15.1 writer pair · restaurant module stays free of catalog writes); (c) **no STOCK mark row** — the board's `eightySix` lists marks (KDS/MANUAL, with who/when) plus MENU rows sold out by counter/legacy 86 (source STOCK, `at` = MenuItem.updatedAt), so a counter release never leaves a stale mark; (d) legacy `setItemStock`/`resetDailyStock` flips emit events only (no mark) — the mark is the `setAvailability` record.
+
+## Per-step results
+- step 1 ✅ (this commit) — migration/schema/scope/qc-env (ffaee746) + kds-shared.ts.
