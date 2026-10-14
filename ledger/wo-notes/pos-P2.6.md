@@ -93,3 +93,28 @@ Binding: `pos-brief-P2.6.md` §9 + §10 · `wo-notes/pos-P2.6-oracle.md` (names 
 | qc-restaurant / -money / -pay / -void | 6/6 · 6/6 · 19/19 · 11/11 |
 | qc-pos-products | 24/24 |
 | qc-hf-pos-page-authz | 71/71 |
+
+## Fix round 1 (review R1 + hunter H1–H7 + CD 3) — 14 Oct, account B
+Binding: `pos-P2.6-review.md` "Controller rulings — fix round 1" 1–8 + "Hunter findings folded in" (addendum). **Rework note:** my first F2 fix (35684d13, PosOrder-first lock) conflicted with the addendum (round-row lock) → reverted in e1408ded and redone as H3.
+
+| finding | commit | change |
+|---|---|---|
+| ORACLE-ADD K10 K11 (F1 F2) | 0bc09c95 | deterministic: a third tx holds the daily-counter row (K10) / the PosOrder row (K11) so the bad interleaving is forced |
+| ORACLE-ADD K11 served variant · K12 V3 A10 A11 · ORACLE-EDIT ROI_FIELDS + `stockTaken` (p2.4 + p2.6, dated) | e7b48df9 · beed468d (A11 → static probe) | p2.6 = 57 checks |
+| migration `20261208100100_pos_p26_stock_taken` | 8ed0a9c1 | `RestaurantOrderItem.stockTaken INTEGER` (additive · lock_timeout 3s) · **applied on QC4** ("All migrations have been successfully applied") · client regenerated (tree c) · QC5 = controller |
+| F1 / H2 deadlock | d71f67ca | `createKitchenRoundInTx` locks counted MenuItem rows `ORDER BY id FOR UPDATE` before the counter upsert (lock only) |
+| F2 / H3 READY stall + served race | 2ffd29b2 | `kitchenMoveInTx` / `kitchenCancelInTx` lock the round row first (round → items → PosOrder); settle + online progress read fresh |
+| H1 / F3 phantom stock | f2186892 | floor consume returns qty taken → `kitchenSetStockTakenInTx` writes `stockTaken`; void/cancel restores `stockTaken` only (null ⇒ 0) |
+| H5 stale 86 | f2186892 | restore + legacy `resetMenuItemDailyStock` keep `isOutOfStock` while a KDS/MANUAL mark exists |
+| H6 double flip | f63822fc | `setAvailability` locks MenuItem FOR UPDATE before reading |
+| H4 heal ghost tickets | b3b4d5d5 | heal line needs routing older than the sale (`MenuItem/PosProduct(/parent).updatedAt`, `KdsStation.createdAt` ≤ sale.createdAt). Limitation: a counted menu bumped (sold/edited) after the sale is no longer healed |
+| F4 perf | 4abd3c99 | `ticketForSale` returns NO_STATIONS after one station query |
+| F5 midnight | — | not in S (would turn T5 red: yesterday's READY would show on expo) → P2.6U contract line + owner line |
+| CD 3 (§10.3) | c9d24d66 | ORACLE-EDIT `qc-pos-p1.1` S2.43: deletes its own `pos.product.availability` outbox rows (tenant rsT, since section start); QC4 leftovers removed once by a scratch probe: before 2 · deleted 2 · after 0 (probe deleted) |
+| owner lines | 597ec99a | deviation 6 (pause blocks web-shop checkout) · legacy writers on new rounds (H1/H7 residual) · held-NEW after unpause · F5 |
+| merge | 7d5339c8 | `origin/session/pos` 44ee7f4c (HF-PP2): code auto-merged (order.ts/register.ts/register-shared.ts), `POS-OWNER-PENDING` conflict = both sides kept |
+
+**red2** (`P2.6-red2.txt`, one run on the unchanged code: `src/` checked out at 2e6328db with all oracle adds committed) → **51/57**: K10 (`deadlock detected`, counter 99→98) · K11 (PosOrder PREPARING, 0 ready) · K12 (heal ghost round) · V3 (restore 3 instead of 1) · A10 (86 released by void) · A11 (static probe: no MenuItem lock before read). A11 limitation: Postgres wakes row-lock waiters in no fixed order, so the setAvailability-vs-last-unit race cannot be forced; the race is kept as a must-stay-1 guard and the lock order is asserted statically.
+After fixes (pre-merge head 4abd3c99 + oracle): `qc-pos-p2.6` forced **57/57**.
+**P2.6U contract additions:** F5 — `kdsBoard`/`kitchenBacklog` to include the previous bizDate's non-SERVED tickets (needs ORACLE-EDIT T5) · 09 "held by kitchen" badge for NEW orders kept by pause/backlog · legacy-board banner (H7).
+**Follow-ups:** P2.11 sweeper for held NEW orders · legacy-board vs new board lock order (legacy `advanceItem` locks item → round; owner line) · P3 `setReady`.
