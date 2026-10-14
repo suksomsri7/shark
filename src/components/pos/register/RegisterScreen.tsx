@@ -2729,7 +2729,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
             member={l.result.member}
             unitId={unitId} // POS P2.6U ▸ มติ 10: "คิว N" ◂
             tipSatang={l.tipSatang ?? 0} // POS P2.9U ▸ มติ 7 ◂
-            duplicated={l.result.duplicated}
+            duplicated={l.result.duplicated} // POS P2.9U ▸ มติ 7: บิลเดิมของคีย์ = 02b ไม่อ่าน payload ใบเสร็จ ◂
           />
         );
       case "options":
