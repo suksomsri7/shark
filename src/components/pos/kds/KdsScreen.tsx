@@ -36,7 +36,7 @@ import { KdsTopBar } from "./KdsTopBar";
 import { KdsChannelChip, KdsTicketCard, useSourceText } from "./KdsTicketCard";
 import { KdsBottomBar, KdsEightySixPanel } from "./KdsEightySix";
 import { printKitchenSlips } from "./kds-print";
-import { bkkClock, clockNow, columnTickets, expoGroups, KDS_TICK_MS, midnightWindow, stationName, ticketKey, type FloorClock } from "./kds-ui";
+import { bkkClock, clockNow, columnTickets, expoGroups, KDS_TICK_MS, midnightWindow, shortName, stationName, ticketKey, type FloorClock } from "./kds-ui";
 
 export type KdsPerms = { advance: boolean; recall: boolean; rush: boolean; pause: boolean; setupStations: boolean; availability: boolean };
 export type KdsScreenProps = {
@@ -375,8 +375,14 @@ export function KdsScreen(p: KdsScreenProps) {
         {groups.map((g) => (
           <div key={g.orderId} data-testid={`pos-kds-expo-${g.orderId}`} className="flex flex-col rounded-[14px] border-[1.5px] border-[color:var(--color-ink)] bg-[color:var(--color-surface)]">
             <div className="flex min-h-12 items-center gap-2.5 px-4 py-2.5 text-[14px] font-bold">
-              <span className="tabular-nums">{`#${g.head.no}`}</span>
-              {g.head.source === "ONLINE" ? <KdsChannelChip ticket={g.head} /> : <span className="truncate">{`· ${sourceText(g.head)}`}</span>}
+              {g.head.source === "ONLINE" ? (
+                <>
+                  <span className="tabular-nums">{`#${g.head.no}`}</span>
+                  <KdsChannelChip ticket={g.head} />
+                </>
+              ) : (
+                <span className="min-w-0 truncate tabular-nums">{`#${g.head.no} \u00B7 ${sourceText(g.head)}`}</span>
+              )}
             </div>
             <div className="flex flex-wrap gap-1.5 px-4 pb-2">
               {g.tickets.map((x) => (
@@ -400,7 +406,7 @@ export function KdsScreen(p: KdsScreenProps) {
                 )),
             )}
             <div className="mt-auto flex items-center gap-3 rounded-b-[13px] border-t bg-[color:var(--color-surface-2)] px-3 py-2">
-              <span className="min-w-0 flex-1 truncate text-[11.5px] text-[color:var(--color-muted)]">{g.head.staffName ? t("server", { name: g.head.staffName }) : ""}</span>
+              <span className="min-w-0 flex-1 truncate text-[11.5px] text-[color:var(--color-muted)]">{g.head.staffName ? t("server", { name: shortName(g.head.staffName) }) : ""}</span>
               <button
                 type="button"
                 data-testid="pos-kds-served"

@@ -49,6 +49,14 @@ function bkkHm(iso: string): string {
 }
 const shortCode = (code: string) => (code.length > 10 ? `…${code.slice(-6)}` : code);
 
+/** POS P2.6U ▸ fix1 V6: วงกลมของแถวเลือก (radio) ◂ */
+function RadioDot({ on }: { on: boolean }) {
+  return (
+    <span aria-hidden className={`grid size-5 shrink-0 place-items-center rounded-full border-2 ${on ? "border-[color:var(--color-ink)]" : "border-[color:var(--color-line)]"}`}>
+      {on ? <span className="size-2.5 rounded-full bg-[color:var(--color-ink)]" /> : null}
+    </span>
+  );
+}
 /** กล่องกลางจอ (390 = แผ่นล่าง) · Esc ปิด */
 function DialogBox({ testid, labelledBy, onClose, children }: { testid: string; labelledBy: string; onClose: () => void; children: ReactNode }) {
   useEffect(() => {
@@ -543,16 +551,20 @@ export function DeviceSettings({ systemId, unitId, shopName }: Props) {
                     return (
                       <div data-testid="pos-device-kitchen" className="flex flex-col gap-2 border-t pt-5">
                         <span className="text-[13px] font-bold text-[color:var(--color-ink-soft)]">{td("kitchen.title")}</span>
-                        <div role="radiogroup" aria-label={td("kitchen.title")} className="flex flex-wrap gap-1 rounded-[13px] border bg-[color:var(--color-surface-2)] p-1">
-                          <button data-testid="pos-device-kitchen-off" type="button" role="radio" aria-checked={ks.mode === "off"} disabled={busy} className={`${seg(ks.mode === "off")} flex-1`} onClick={() => cfg("kitchenSlip", "off")}>
-                            {td("kitchen.off")}
+                        {/* fix1 V6: แถวเลือกแบบเรียงลง (ป้ายยาวไม่หัก · ชิปเร็ว ๆ นี้อยู่ในบรรทัด) แทน segmented 3 ช่อง */}
+                        <div role="radiogroup" aria-label={td("kitchen.title")} className="flex flex-col divide-y rounded-[13px] border">
+                          <button data-testid="pos-device-kitchen-off" type="button" role="radio" aria-checked={ks.mode === "off"} disabled={busy} className="flex min-h-12 items-center gap-3 px-4 text-left text-[15px] disabled:opacity-60" onClick={() => cfg("kitchenSlip", "off")}>
+                            <RadioDot on={ks.mode === "off"} />
+                            <span className={`min-w-0 flex-1 ${ks.mode === "off" ? "font-bold" : ""}`}>{td("kitchen.off")}</span>
                           </button>
-                          <button data-testid="pos-device-kitchen-after" type="button" role="radio" aria-checked={ks.mode === "after-sale"} disabled={busy} className={`${seg(ks.mode === "after-sale")} flex-1`} onClick={() => cfg("kitchenSlip", "after-sale")}>
-                            {td("kitchen.afterSale")}
+                          <button data-testid="pos-device-kitchen-after" type="button" role="radio" aria-checked={ks.mode === "after-sale"} disabled={busy} className="flex min-h-12 items-center gap-3 px-4 text-left text-[15px] disabled:opacity-60" onClick={() => cfg("kitchenSlip", "after-sale")}>
+                            <RadioDot on={ks.mode === "after-sale"} />
+                            <span className={`min-w-0 flex-1 ${ks.mode === "after-sale" ? "font-bold" : ""}`}>{td("kitchen.afterSale")}</span>
                           </button>
-                          <span data-testid="pos-device-kitchen-lan" role="radio" aria-checked={false} aria-disabled="true" title={td("kitchen.lanSoon")} className={`${seg(false)} flex-1 gap-1.5 opacity-60`}>
-                            {td("kitchen.lan")}
-                            <span className="rounded-[6px] border px-1.5 text-[11px] leading-[18px] text-[color:var(--color-muted)]">{td("kitchen.planned")}</span>
+                          <span data-testid="pos-device-kitchen-lan" role="radio" aria-checked={false} aria-disabled="true" title={td("kitchen.lanSoon")} className="flex min-h-12 items-center gap-3 px-4 text-[15px] text-[color:var(--color-muted)]">
+                            <RadioDot on={false} />
+                            <span className="min-w-0 flex-1">{td("kitchen.lan")}</span>
+                            <span className="shrink-0 whitespace-nowrap rounded-[6px] border px-1.5 text-[11px] leading-[18px]">{td("kitchen.planned")}</span>
                           </span>
                         </div>
                         {ks.mode === "after-sale" && (

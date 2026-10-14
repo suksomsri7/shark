@@ -69,6 +69,18 @@ export function onlineChannelName(t: Pick<KdsTicket, "label" | "channelCode" | "
   return name || t.channelCode || "";
 }
 
+/** fix1 V7: ชื่อสั้นของพนักงานบนการ์ด (คำแรก ก่อนวงเล็บ/ช่องว่าง · ≤ 12 ตัวอักษร + …) — ภาพ 04 "ต้น" */
+export function shortName(name: string | null | undefined): string {
+  const first = String(name ?? "").trim().split(/[\s(]+/)[0] ?? "";
+  const chars = [...first];
+  return chars.length > 12 ? `${chars.slice(0, 12).join("")}\u2026` : first;
+}
+/** fix1 V1: อักษรย่อของผู้ใช้ — ข้ามสระหน้า (เ แ โ ใ ไ) ไม่ให้เหลือ "เ" ตัวเดียวที่ดูเหมือน "ι" */
+export function userInitial(name: string): string {
+  const s = name.trim().replace(/^[\u0E40-\u0E44]+/, "");
+  return (s.charAt(0) || name.trim().charAt(0) || "?").toUpperCase();
+}
+
 /** ชั่วโมงเวลาไทยของ ms (ตั๋วข้ามเที่ยงคืน — มติ 11) */
 export const bkkHour = (ms: number): number => new Date(ms + 7 * 3_600_000).getUTCHours();
 /** ช่วงที่แสดงหมายเหตุตั๋วข้ามเที่ยงคืน (00:00–02:59 เวลาไทย) — F5 ไม่อยู่ในสัญญา ⇒ แสดงข้อความเจ้าของแทน */

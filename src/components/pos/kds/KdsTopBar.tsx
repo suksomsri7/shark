@@ -10,6 +10,7 @@ import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { RegisterIcon } from "@/components/pos/register/RegisterIcon";
+import { userInitial } from "./kds-ui";
 
 export type KdsTopBarProps = {
   systemId: string;
@@ -85,11 +86,12 @@ export function KdsTopBar(p: KdsTopBarProps) {
     m.addEventListener("change", on);
     return () => m.removeEventListener("change", on);
   }, []);
-  const initial = p.userName.trim().charAt(0).toUpperCase() || "?";
+  const initial = userInitial(p.userName); // fix1 V1
   const bar = (inline: boolean) => (
     <div
       data-testid="pos-kds-topbar"
-      className={`flex min-w-0 flex-1 items-center gap-3 ${inline ? "h-14 shrink-0 border-b bg-[color:var(--color-surface)] px-4 lg:px-5" : ""}`}
+      // fix1 V2: แถวในหน้า (มือถือ) = สูง 56 ไม่ยืด (flex-1 ในคอลัมน์ทำให้แถบสูงเต็มที่ว่าง) · ในแถบบนแอป = กินที่ว่างแนวนอน
+      className={`flex min-w-0 items-center gap-3 ${inline ? "h-14 shrink-0 grow-0 border-b bg-[color:var(--color-surface)] px-4 lg:px-5" : "flex-1"}`}
     >
       <Link
         href={`/app/sys/${p.systemId}`}

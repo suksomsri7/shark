@@ -13,7 +13,7 @@ import { useTranslations } from "next-intl";
 import type { KdsLine, KdsTicket } from "@/lib/modules/pos/kds-shared";
 import { RegisterIcon } from "@/components/pos/register/RegisterIcon";
 import { channelDisplayName } from "@/components/pos/settings/channel-text";
-import { KDS_LONG_PRESS_MS, lateMinutes, minutesSince, mmss2, onlineChannelName, timerOf, warnMinutes } from "./kds-ui";
+import { KDS_LONG_PRESS_MS, lateMinutes, minutesSince, mmss2, onlineChannelName, shortName, timerOf, warnMinutes } from "./kds-ui";
 
 export type KdsCardPerms = { advance: boolean; rush: boolean };
 
@@ -143,14 +143,14 @@ export function KdsTicketCard({
   // ท้ายใบ: บริบท (ที่มา · ผู้รับ · คิว · เลขอ้างอิง · เสร็จ d/t)
   const ctx: string[] = [];
   if (ready) {
-    if (tk.staffName) ctx.push(t("server", { name: tk.staffName }));
+    if (tk.staffName) ctx.push(t("server", { name: shortName(tk.staffName) }));
   } else {
     if (tk.doneCount > 0) ctx.push(t("lineProgress", { done: tk.doneCount, total: tk.lineCount }));
-    if (tk.source === "TABLE" && tk.staffName) ctx.push(tk.doneCount > 0 ? tk.staffName : t("tableStaff", { name: tk.staffName }));
+    if (tk.source === "TABLE" && tk.staffName) ctx.push(tk.doneCount > 0 ? shortName(tk.staffName) : t("tableStaff", { name: shortName(tk.staffName) }));
     else if (tk.source === "QR") ctx.push(t("qrGuest"));
     else if (tk.source === "REGISTER") ctx.push(t("waitingCounter", { n: tk.queueNo ?? tk.no }));
     else if (tk.source === "ONLINE" && tk.externalRef) ctx.push(tk.externalRef);
-    else if (tk.staffName) ctx.push(tk.staffName);
+    else if (tk.staffName) ctx.push(shortName(tk.staffName));
   }
 
   const cardBody = (
@@ -160,8 +160,9 @@ export function KdsTicketCard({
         data-late={late ? "1" : undefined}
       >
         <span className="flex min-w-0 flex-1 items-center gap-2.5 text-[14px] font-bold">
-          <span className="shrink-0 tabular-nums">{`#${tk.no}`}</span>
-          {tk.source === "ONLINE" ? <KdsChannelChip ticket={tk} inverse={late} /> : src ? <span className="truncate">{`· ${src}`}</span> : null}
+          {/* fix1 V9: "#16 · โต๊ะ A2" เป็นข้อความเดียว (ไม่มีช่องว่างซ้อน) · ออนไลน์ = เลข + ชิปช่องทาง */}
+          {tk.source === "ONLINE" || !src ? <span className="shrink-0 tabular-nums">{`#${tk.no}`}</span> : <span className="min-w-0 truncate tabular-nums">{`#${tk.no} \u00B7 ${src}`}</span>}
+          {tk.source === "ONLINE" ? <KdsChannelChip ticket={tk} inverse={late} /> : null}
           {tk.isRush && (
             <span data-testid={`pos-kds-rush-chip-${tk.orderId}`} className="inline-flex h-6 shrink-0 items-center rounded-[7px] border-[1.5px] border-[color:var(--color-danger)] bg-[color:var(--color-surface)] px-2 text-[11.5px] font-bold text-[color:var(--color-danger)]">
               {t("rush")}
