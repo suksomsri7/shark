@@ -135,6 +135,15 @@
 //   receipt-public: rpub-* ถ่าย 3 ขนาด (th + LOCALE=en) ยกเว้น rpub-issue-sent = 390 เท่านั้น (เขียนแถวแจ้งปัญหาจริง · เพดาน 3 แถว/บิล/วัน)
 //   `--list` = พิมพ์รายการหน้า + id สถานะทั้งหมด (ไม่ต่อ DB · ไม่ต้องมี <wo>) ◂
 //
+// POS P2.9U ▸ จอชำระบัตรของขวัญ/เครดิตร้าน/ทิป · 02b · คืนเข้าบัตร (12) · บัญชีพักทิป (มติผู้คุม P2.9U ข้อ 10 · wo p2.9u · --page register|sales|settings --states ·
+//   3 ขนาด · th + LOCALE=en · owner + cashier): register = paydlg-giftcard-entry · paydlg-giftcard-split (เงินสด ฿300 + บัตร ฿325 บนตะกร้า 02) ·
+//   paydlg-giftcard-pin-error · paydlg-giftcard-insufficient · paydlg-giftcard-changed · paydlg-storecredit · paydlg-tip · sale-done-giftcard (1440 · ⚠️ บิล PAID จริง
+//   1 ใบต่อผู้ใช้: บัตร + เงินสด) · sales = refund-to-card (บิลของ sale-done-giftcard · หน้าต่างคืนเงิน + ชิปบัตร · ไม่กดยืนยัน) · settings = settings-tip-ledger
+//   fixture (ensureP29uFixture · พังไม่โยน): เปิดบัตรกำนัลของร้าน QC (setSettings · คืนค่าเดิมตอนเก็บกวาด) · ขายบัตร 4 ใบผ่าน giftcard.sell (เงินสด · บิลขายบัตรคงอยู่)
+//   แล้วตั้ง PIN เป็นค่าคงที่ของ fixture ด้วยสูตรแฮชของโมดูล (sha256 "<เลข>:<PIN>" — giftcard/service.ts sell) · ค่า PIN ไม่พิมพ์ลง log/ชื่อไฟล์ ·
+//   เครดิตร้านของสมาชิก QC ผ่าน member.issueStoreCredit (คีย์ต่อวัน — เติมครั้งเดียวต่อวัน) · ทิป: เปิด tip + บัญชีหนี้สินของสมุดที่เชื่อม (updatePosPaymentSettings ·
+//   คืนค่าเดิมหลังภาพทิปสุดท้าย) · GIFT_CARD_CHANGED = ตัดยอดบัตรผ่าน giftcard.use ระหว่างค้นกับยืนยัน · เก็บกวาด: ระงับบัตรของรอบ (giftcard.suspend) ·
+//   คืนค่าตั้งบัตร/ทิป · บิลขายคงอยู่ (แบบ sale-done) ◂
 // 🔴 ไม่มีค่าปริยายของ base — ไม่ส่ง `--base`/`QC_BASE` = exit 2 · ต่อไม่ได้ = exit 2 · `:3215` = exit 2
 //    (พอร์ต 3215 เป็นของเซิร์ฟเวอร์ CRM RUN — LANE-RULES ข้อ 4 · ตั้ง POS_VISUAL_ALLOW_3215=1 เมื่อ CRM ปิดแล้วเท่านั้น)
 // 🔴 ชื่อไฟล์จงใจไม่ขึ้นต้น qc- (ต้องมีเซิร์ฟเวอร์ + chromium — ไม่เข้า qc:all)
@@ -216,7 +225,7 @@ const fileOf = (p: PosPage, w: number, h: number) => `${OUT}/${p}-${userKey}-${w
 const STATES_ON = /^p1\.3/i.test(WO) || argv.includes("--states");
 const LOCALE_EN = process.env.LOCALE === "en";
 type Device = (typeof POS_VIEWPORTS)[number]["name"];
-type StateKey = "held-drawer" | "paydlg-promptpay-timeout" | "paydlg-platform" | "register-en" | "register-empty-catalogue" | "default" | "cart3" | "cart4-01" | "line-editor" | "bill-discount" | "custom-item" | "paydlg-cash" | "paydlg-promptpay-qr" | "paydlg-promptpay-paid" | "paydlg-card-edc" | "sale-done" | "search-empty" | "stock-warn" | "offline" | "mobile-sheet" | "options-popover" | "weigh" | "taxinvoice-dialog" | "taxinvoice-set" | MemberStateKey | P115StateKey | StockStateKey | ShiftsStateKey | BillsStateKey | SettingsStateKey | RpubStateKey | P22uProductsKey | P22uRegKey | P23uProductsKey | P23uRegKey | P24uTablesKey | P24uRegKey | P28uOrdersKey | P28uRegKey | P26uKdsKey | P26uOtherKey; // POS P2.4U ▸ + P24u ◂ · POS P2.8U ▸ + P28u ◂ · POS P2.6U ▸ + P26u ◂
+type StateKey = "held-drawer" | "paydlg-promptpay-timeout" | "paydlg-platform" | "register-en" | "register-empty-catalogue" | "default" | "cart3" | "cart4-01" | "line-editor" | "bill-discount" | "custom-item" | "paydlg-cash" | "paydlg-promptpay-qr" | "paydlg-promptpay-paid" | "paydlg-card-edc" | "sale-done" | "search-empty" | "stock-warn" | "offline" | "mobile-sheet" | "options-popover" | "weigh" | "taxinvoice-dialog" | "taxinvoice-set" | MemberStateKey | P115StateKey | StockStateKey | ShiftsStateKey | BillsStateKey | SettingsStateKey | RpubStateKey | P22uProductsKey | P22uRegKey | P23uProductsKey | P23uRegKey | P24uTablesKey | P24uRegKey | P28uOrdersKey | P28uRegKey | P26uKdsKey | P26uOtherKey | P29uRegKey | P29uOtherKey; // POS P2.4U ▸ + P24u ◂ · POS P2.8U ▸ + P28u ◂ · POS P2.6U ▸ + P26u ◂ · POS P2.9U ▸ + P29u ◂
 const STATE_PLAN: { key: StateKey; devices: readonly Device[]; note: string }[] = [
   { key: "default", devices: ["desktop", "ipad", "mobile"], note: "เปิดหน้า (ตะกร้าว่าง) — การ์ดเหลือน้อย/หมด/ปิดขายของ fixture อยู่ในกริด" },
   { key: "cart3", devices: ["desktop", "ipad", "mobile"], note: "อเมริกาโน่×2 · ลาเต้ (ลด ฿10) · ครัวซองต์ (สต็อก N → N−1)" },
@@ -498,6 +507,29 @@ const P26U_FIXTURE_STATES: ReadonlySet<string> = new Set([...P26U_KDS_KEYS, ...P
 const P26U_EMPTY_UNIT = (T.units as Record<string, { id: string }>).ari?.id ?? unitId;
 const P26U_LETTER = "ABCDEFGHJKLMNPQRSTUVWXYZ"[(process.pid + 7) % 24]!;
 const p26uPlanFor = (page: PosPage) => P26U_OTHER_PLAN.filter((st) => st.page === page && (userKey === "owner" || !P26U_OWNER_ONLY.has(st.key)));
+// ── POS P2.9U ▸ บัตรของขวัญ/เครดิตร้าน/ทิป (มติผู้คุม P2.9U ข้อ 10 · wo p2.9u · --page register|sales|settings --states · 3 ขนาด · th + LOCALE=en · owner + cashier) ◂
+type P29uRegKey = "paydlg-giftcard-entry" | "paydlg-giftcard-split" | "paydlg-giftcard-pin-error" | "paydlg-giftcard-insufficient" | "paydlg-giftcard-changed" | "paydlg-storecredit" | "paydlg-tip" | "sale-done-giftcard";
+type P29uOtherKey = "refund-to-card" | "settings-tip-ledger";
+const P29U_REG_PLAN: { key: P29uRegKey; devices: readonly Device[]; note: string }[] = [
+  { key: "paydlg-giftcard-entry", devices: ["desktop", "ipad", "mobile"], note: "ตะกร้า 02 → ชำระ → ช่องบัตรของขวัญ → เลขบัตร (fixture ฿500) + ค้นหา → GC-••••1234 · คงเหลือ · หมดอายุ + จำนวน + PIN (จุด) — ไม่กดใช้บัตร" },
+  { key: "paydlg-giftcard-split", devices: ["desktop", "ipad", "mobile"], note: "แยกจ่ายเงินสด ฿300 → บัตร ฿325 (แป้น md+) + PIN → ใช้บัตรนี้ ⇒ แถว \"บัตรของขวัญ GC-••••1234 ฿325 ✓ · คงเหลือ ฿175\" — ไม่ยืนยัน" },
+  { key: "paydlg-giftcard-pin-error", devices: ["desktop", "ipad", "mobile"], note: "บัตร PIN-error (fixture แยก · ≤ 3 ครั้งต่อรอบ < ล็อก 5) + PIN ผิด → ใช้บัตร → เงินสดพอดี → ยืนยัน ⇒ GIFT_CARD_PIN: แถว \"PIN ไม่ถูกต้อง\" + แผงใส่ PIN ใหม่ (ไม่มีบิล)" },
+  { key: "paydlg-giftcard-insufficient", devices: ["desktop", "ipad", "mobile"], note: "บัตร ฿100 บนบิล 02 → จำนวน = ฿100 (ตัดที่ยอดบัตร) + \"รับส่วนต่างด้วยวิธีอื่น\"" },
+  { key: "paydlg-giftcard-changed", devices: ["desktop", "ipad", "mobile"], note: "บัตร CHANGED + PIN → ใช้บัตร → ⚠️ ตัดยอดบัตรผ่าน giftcard.use (เหลือน้อยกว่าแถว) → เงินสดพอดี → ยืนยัน ⇒ แบนเนอร์ \"ยอดบัตรเปลี่ยน\" + ค้นใหม่ (จำนวนตัดลง · ใส่ PIN ใหม่) · ไม่มีบิล" },
+  { key: "paydlg-storecredit", devices: ["desktop", "ipad", "mobile"], note: "ผูกสมาชิก QC (เครดิตร้าน ฿200 · issueStoreCredit คีย์ต่อวัน) → ช่องเครดิตร้าน \"คงเหลือ ฿200\" → แยกจ่าย ⇒ แถว \"เครดิตร้าน SC-••••\" — ไม่ยืนยัน" },
+  { key: "paydlg-tip", devices: ["desktop", "ipad", "mobile"], note: "ร้านเปิดทิป (fixture · บัญชีหนี้สินของสมุดที่เชื่อม) → สวิตช์ทิป + ฿20 → แยกจ่ายเงินสด ฿300 ⇒ \"รวมทิป ฿20\" ใต้รายการ — ไม่ยืนยัน" },
+  { key: "sale-done-giftcard", devices: ["desktop"], note: "⚠️ บิลขายจริง 1 ใบต่อผู้ใช้: บัตร ฿325 + เงินสดพอดี → 02b บรรทัด \"บัตรของขวัญ GC-••••1234 ฿325 · คงเหลือ ฿175\" + เงินสด" },
+];
+const P29U_OTHER_PLAN: { key: P29uOtherKey; page: PosPage; devices: readonly Device[]; note: string }[] = [
+  { key: "refund-to-card", page: "sales", devices: ["desktop", "ipad", "mobile"], note: "บิลของ sale-done-giftcard (หรือบิลบัตรล่าสุดของวันนี้ในสาขา) → ลิ้นชัก → คืนเงิน → 1 บรรทัด → ชิป \"คืนเข้าบัตร GC-••••1234 (สูงสุด ฿x)\" — ไม่ยืนยัน · แคชเชียร์ = ลิ้นชัก (ไม่มีปุ่มคืนเงิน)" },
+  { key: "settings-tip-ledger", page: "settings", devices: ["desktop", "ipad", "mobile"], note: "แท็บวิธีรับเงิน → การ์ดทิป: บัญชีพักทิป (หนี้สินเท่านั้น) เลือกตัวแรก — ไม่บันทึก · แคชเชียร์ = \"เฉพาะเจ้าของร้าน\"" },
+];
+const P29U_WO = /^p2\.?9u/i.test(WO);
+const p29uOn = STATES_ON && tenantKey === "coffee";
+const P29U_KEYS: ReadonlySet<string> = new Set([...P29U_REG_PLAN.map((s) => s.key), ...P29U_OTHER_PLAN.map((s) => s.key)]);
+const isP29uState = (k: StateKey | null | undefined): k is P29uRegKey | P29uOtherKey => !!k && P29U_KEYS.has(k);
+const p29uPath = (k: P29uRegKey | P29uOtherKey): string =>
+  k === "refund-to-card" ? `/app/sys/${SYS}/pos/sales?unit=${encodeURIComponent(unitId)}` : k === "settings-tip-ledger" ? `/app/sys/${SYS}/pos/settings?tab=payments&unit=${encodeURIComponent(unitId)}` : pathOf("register");
 const productsPath = (k: P22uProductsKey) => `/app/sys/${SYS}/pos/products${P22U_PRODUCTS_PLAN.find((p) => p.key === k)?.rules ? "/price-rules" : ""}?unit=${encodeURIComponent(unitId)}`;
 const SETTINGS_STATE_KEYS: ReadonlySet<string> = new Set(SETTINGS_STATE_PLAN.map((s) => s.key));
 const isSettingsState = (k: StateKey): k is SettingsStateKey => SETTINGS_STATE_KEYS.has(k);
@@ -570,6 +602,13 @@ const jobsPlanned: Job[] = pages.flatMap((p: PosPage): Job[] =>
           (st.key === "rpub-issue-sent" ? [RPUB_VIEWPORT] : [...POS_VIEWPORTS]).map((v): Job => ({ page: p, v, state: st.key, expect: st.expect, path: `/r/${st.bill === "none" ? RPUB_MISSING_TOKEN : `<token:${st.bill}>`}${LOCALE_EN ? "?lang=en" : ""}`, file: `${OUT}/${p}-${st.key.replace(/^rpub-/, "")}-${userKey}-${v.w}x${v.h}${LOCALE_EN ? "-en" : ""}.png` })),
         )
       : []
+    // POS P2.9U ▸ มติ 10: wo p2.9u หน้าขาย/บิล/ตั้งค่า = สถานะของใบนี้อย่างเดียว ◂
+    : p29uOn && P29U_WO && (p === "register" || p === "sales" || p === "settings")
+    ? (p === "register" ? P29U_REG_PLAN : P29U_OTHER_PLAN.filter((st) => st.page === p)).flatMap((st): Job[] =>
+        viewports
+          .filter((v) => st.devices.includes(v.name))
+          .map((v): Job => ({ page: p, v, state: st.key, path: p29uPath(st.key), file: `${OUT}/${p}-${st.key}-${userKey}-${v.w}x${v.h}${LOCALE_EN ? "-en" : ""}.png` })),
+      )
     // POS P2.6U ▸ มติ 12: wo p2.6u หน้าตั้งค่า = ฟอร์มใบครัวของเครื่อง (17B) อย่างเดียว ◂
     : p26uOn && P26U_WO && p === "settings"
     ? p26uPlanFor(p).flatMap((st): Job[] =>
@@ -711,9 +750,12 @@ if (LIST) {
   for (const st of P26U_KDS_PLAN) row(st.key, st.devices, `${P26U_OWNER_ONLY.has(st.key) ? "[เจ้าของ] " : ""}${st.note}`);
   console.log("register/orders/products/settings P2.6U (wo p2.6u --page <page> --states):"); // POS P2.6U
   for (const st of P26U_OTHER_PLAN) row(st.key, st.devices, `${st.page} · ${P26U_OWNER_ONLY.has(st.key) ? "[เจ้าของ] " : ""}${st.note}`);
+  console.log("register/sales/settings P2.9U (wo p2.9u --page <page> --states):"); // POS P2.9U
+  for (const st of P29U_REG_PLAN) row(st.key, st.devices, `register · ${st.note}`);
+  for (const st of P29U_OTHER_PLAN) row(st.key, st.devices, `${st.page} · ${st.note}`);
   console.log("receipt-public (--page receipt-public · ไม่ส่ง --states = rpub-paid):");
   for (const st of RPUB_STATE_PLAN) row(st.key, st.key === "rpub-issue-sent" ? "mobile" : POS_VIEWPORTS.map((v) => v.name), `คาด ${st.expect} · ${st.note}`);
-  const ids = [STATE_PLAN, STOCK_STATE_PLAN, SHIFTS_STATE_PLAN, BILLS_STATE_PLAN, SETTINGS_STATE_PLAN, RPUB_STATE_PLAN, P23U_PRODUCTS_PLAN, P24U_TABLES_PLAN, P24U_REG_PLAN, P28U_ORDERS_PLAN, P28U_REG_PLAN, P26U_KDS_PLAN, P26U_OTHER_PLAN].flatMap((pl) => pl.map((x) => x.key)); // POS P2.6U ▸ + P26U ◂ // POS P2.4U ▸ + P24U ◂ · POS P2.8U ▸ + P28U ◂ // POS P2.3U ▸ + P23U_PRODUCTS_PLAN ◂
+  const ids = [STATE_PLAN, STOCK_STATE_PLAN, SHIFTS_STATE_PLAN, BILLS_STATE_PLAN, SETTINGS_STATE_PLAN, RPUB_STATE_PLAN, P23U_PRODUCTS_PLAN, P24U_TABLES_PLAN, P24U_REG_PLAN, P28U_ORDERS_PLAN, P28U_REG_PLAN, P26U_KDS_PLAN, P26U_OTHER_PLAN, P29U_REG_PLAN, P29U_OTHER_PLAN].flatMap((pl) => pl.map((x) => x.key)); // POS P2.9U ▸ + P29U ◂ // POS P2.6U ▸ + P26U ◂ // POS P2.4U ▸ + P24U ◂ · POS P2.8U ▸ + P28U ◂ // POS P2.3U ▸ + P23U_PRODUCTS_PLAN ◂
   console.log(`JSON_SUMMARY ${JSON.stringify({ list: true, pages: POS_PAGES, states: ids.length, ids })}`);
   process.exit(0);
 }
@@ -823,6 +865,17 @@ if (DRY) {
             `ออเดอร์อื่นของรอบ (+ PosOrderLine/Event · OutboxEvent pos.order.* · AuditLog ของออเดอร์) ลบตามไอดีหลังงานสุดท้าย/finally/สัญญาณ · orders-paused-banner ปิดรับแชท 30 นาที แล้วคืน pausedUntil เดิม`,
         );
       if (jobs.some((j) => j.state === "orders-empty")) console.log(`  P2.8U: orders-empty สาขาอารีย์ ${P28U_EMPTY_UNIT} (มีออเดอร์วันนี้ = ภาพตก)`);
+    }
+    // POS P2.9U ▸ มติ 10 ◂
+    if (jobs.some((j) => j.state && isP29uState(j.state))) {
+      console.log(`สถานะบัตรของขวัญ/เครดิตร้าน/ทิป P2.9U (${userKey}${userKey === "cashier" ? " · ไม่มี pos.sale.refund — refund-to-card = ลิ้นชักไม่มีปุ่มคืนเงิน · settings-tip-ledger = เฉพาะเจ้าของร้าน" : ""}):`);
+      for (const st of [...P29U_REG_PLAN, ...P29U_OTHER_PLAN]) console.log(`  · ${st.key.padEnd(29)} ${st.devices.join("/").padEnd(20)} ${st.note}`);
+      console.log(
+        `  P2.9U: fixture (สาขา ${unitKey}) — บัตรกำนัลของร้าน QC เปิด (คืนค่าเดิมตอนเก็บกวาด) · บัตร 4 ใบผ่าน giftcard.sell (เงินสด ฿500/฿500/฿100/฿500 · คีย์ posqc-vis-p29u-<pid>-<k> · ` +
+          `บิลขายบัตรคงอยู่) + PIN ค่าคงที่ของ fixture (สูตรแฮชของโมดูล · ไม่พิมพ์ค่า) · เครดิตร้าน ฿200 ของสมาชิก QC (member.issueStoreCredit · คีย์ต่อวัน) · ` +
+          `ทิป (เปิด + บัญชีหนี้สินของสมุดที่เชื่อม · คืนค่าหลังภาพทิปสุดท้าย) · changed = ตัดยอดบัตรผ่าน giftcard.use · ⚠️ sale-done-giftcard = บิล PAID 1 ใบ · ` +
+          `เก็บกวาดหลังงานสุดท้าย/finally/สัญญาณ: ระงับบัตรของรอบ (giftcard.suspend)`,
+      );
     }
     if (pages.includes("register") && jobs.some((j) => j.state === "paydlg-platform"))
       console.log("  P2.1U: paydlg-platform พักบิล LINE MAN (holdRegisterCart + channelId) ใหม่ต่อภาพ → เรียกคืนผ่าน UI · ที่ค้างทิ้งใน finally (discardHeldCart)");
@@ -1071,6 +1124,13 @@ for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
         if (P28U.log.length) console.error(p28uCleanupLine());
       } catch (e) {
         console.error(`❌ เก็บกวาด P2.8U ไม่สำเร็จ: ${e instanceof Error ? e.message : e}`);
+      }
+      // POS P2.9U: ระงับบัตรของรอบ · คืนค่าตั้งบัตร/ทิป (เหมือน finally)
+      try {
+        await cleanupP29u();
+        if (P29U.log.length) console.error(`${P29U.ok ? "🧹" : "⚠️"} P2.9U: ${P29U.log.join(" · ")}`);
+      } catch (e) {
+        console.error(`❌ เก็บกวาด P2.9U ไม่สำเร็จ: ${e instanceof Error ? e.message : e}`);
       }
       // POS P2.4U: ลบ fixture โต๊ะของรอบนี้ (เหมือน finally)
       try {
@@ -1604,6 +1664,7 @@ async function cleanupP115(): Promise<void> {
 
 async function runState(page: Any, state: StateKey, device: Device): Promise<void> {
   // R3: แยกด้วยสมาชิกชุดที่แน่นอน ไม่ใช่คำนำหน้า — สถานะหน้าขาย "stock-warn" ขึ้นต้น "stock-" แต่ไม่ใช่สถานะหน้าสต็อก
+  if (isP29uState(state)) return runP29uState(page, state, device); // POS P2.9U
   if (isP26uState(state)) return runP26uState(page, state, device); // POS P2.6U
   if (isP24uState(state)) return runP24uState(page, state, device); // POS P2.4U
   if (isP28uState(state)) return runP28uState(page, state, device); // POS P2.8U
@@ -4964,6 +5025,360 @@ async function cleanupP28u(): Promise<void> {
   }
 }
 const p28uCleanupLine = () => `${P28U.ok ? "🧹" : "⚠️"} P2.8U: ${P28U.log.join(" · ")}${P28U.kept.length ? ` · เก็บไว้ (บิล PLATFORM): ${P28U.kept.join(",")}` : ""}`;
+// ═══════════════════ POS P2.9U ▸ บัตรของขวัญ/เครดิตร้าน/ทิป · 02b · คืนเข้าบัตร · บัญชีพักทิป (มติผู้คุม P2.9U ข้อ 10) ═══════════════════
+//   🔴 PIN ของบัตร fixture = ค่าคงที่ในโค้ดนี้เท่านั้น (ตั้งด้วยสูตรแฮชของโมดูลบัตร sha256("<เลข>:<PIN>") — giftcard/service.ts sell) · ห้ามพิมพ์ลง log/summary/ชื่อไฟล์
+const P29U_PIN = "2580";
+const P29U_WRONG_PIN = "9137";
+const P29U_DAY = new Date(Date.now() + 7 * 3_600_000).toISOString().slice(0, 10).replace(/-/g, "");
+type P29uCardKey = "main" | "pin" | "small" | "chg";
+const P29U_CARDS: Record<P29uCardKey, number> = { main: 50_000, pin: 50_000, small: 10_000, chg: 50_000 };
+const P29U = {
+  done: false,
+  error: null as string | null,
+  ok: true,
+  log: [] as string[],
+  cleaned: false,
+  memberSystemId: "",
+  cards: {} as Partial<Record<P29uCardKey, { id: string; number: string }>>,
+  gcSettingsBefore: null as null | { enabled: boolean; accountingLink: boolean },
+  tipBefore: null as null | { enabled: boolean; ledgerAccountId: string | null },
+  tipError: null as string | null,
+  scError: null as string | null,
+  /** บิลของ sale-done-giftcard (refund-to-card ใช้ต่อ) */
+  saleId: "",
+  chgN: 0,
+};
+const p29uGctx = () => ({ tenantId: T.tenantId, systemId: P29U.memberSystemId, posSystemId: SYS, actorUserId: T.users.owner.userId });
+/** fixture ก่อนงานแรกของใบนี้ — พังไม่โยน (P29U.error · สถานะตกพร้อมเหตุผล) */
+async function ensureP29uFixture(): Promise<void> {
+  if (P29U.done || P29U.error) return;
+  try {
+    const C = T as Any;
+    P29U.memberSystemId = String(C.systems?.MEMBER?.id ?? "");
+    if (!P29U.memberSystemId) throw new StepError("ร้านนี้ไม่มีระบบสมาชิก QC (บัตรกำนัลผูกระบบสมาชิก) — เฉพาะ --tenant coffee");
+    const owner = (await ownerActor()) as Any;
+    const gc = await import("@/lib/modules/giftcard");
+    const needCards = jobs.some((j) => j.state && P29U_REG_PLAN.some((x) => x.key === j.state && x.key !== "paydlg-storecredit" && x.key !== "paydlg-tip"));
+    if (needCards) {
+      // บัตรกำนัลของร้านต้องเปิด (ช่องบัตรของขวัญ = tenders.giftCard.enabled) — คืนค่าเดิมตอนเก็บกวาด
+      const before = await gc.getSettings(p29uGctx());
+      P29U.gcSettingsBefore = { enabled: before.enabled, accountingLink: before.accountingLink };
+      if (!before.enabled) {
+        await gc.setSettings(p29uGctx(), owner, { enabled: true });
+        P29U.log.push("เปิดบัตรกำนัลของร้าน QC (คืนค่าตอนเก็บกวาด)");
+      }
+      for (const k of Object.keys(P29U_CARDS) as P29uCardKey[]) {
+        const satang = P29U_CARDS[k];
+        const r = await gc.sell(p29uGctx(), owner, { satang, payMethods: [{ type: "CASH", amountSatang: satang }], unitId, recipient: { print: true }, idempotencyKey: `posqc-vis-p29u-${process.pid}-${k}` } as Any);
+        // ตั้ง PIN เป็นค่าคงที่ของ fixture ด้วยสูตรแฮชเดียวกับโมดูล (PIN สุ่มที่ sell คืนมาไม่ถูกใช้/ไม่ถูกพิมพ์)
+        await prisma.giftCard.update({ where: { id: r.giftCardId }, data: { pinHash: sha256(`${r.number}:${P29U_PIN}`), pinFailedCount: 0, pinLockedUntil: null } });
+        P29U.cards[k] = { id: r.giftCardId, number: r.number };
+      }
+      P29U.log.push(`บัตร ${Object.keys(P29U.cards).length} ใบ (giftcard.sell · ${Object.values(P29U.cards).map((c) => `GC-••••${c!.number.slice(-4)}`).join(" ")})`);
+    }
+    if (jobs.some((j) => j.state && P29U_REG_PLAN.some((x) => x.key === j.state))) await prepMemberFixture(); // คูปอง WELCOME50 ของตะกร้า 02 + สมาชิก QC (find-or-create ของ P1.12U)
+    if (jobs.some((j) => j.state === "paydlg-storecredit")) {
+      try {
+        if (MEMBERX.error || !MEMBERX.id) throw new StepError(`สมาชิก QC: ${MEMBERX.error ?? "ไม่มี"}`);
+        const member = await import("@/lib/modules/member");
+        const before = await member.storeCreditOf(T.tenantId, P29U.memberSystemId, MEMBERX.id);
+        if (!before || before.balanceSatang <= 0) {
+          await prisma.$transaction((tx) => member.issueStoreCredit(T.tenantId, { systemId: P29U.memberSystemId, customerId: MEMBERX.id, satang: 20_000, idempotencyKey: `posqc-vis-p29u-sc-${P29U_DAY}`, refundSaleId: `posqc-vis-p29u-${P29U_DAY}` }, tx as Any));
+          P29U.log.push(`เครดิตร้าน ฿200 ของสมาชิก QC (คีย์ต่อวัน ${P29U_DAY})`);
+        } else P29U.log.push(`เครดิตร้านของสมาชิก QC มีอยู่แล้ว ฿${(before.balanceSatang / 100).toFixed(2)}`);
+      } catch (e) {
+        P29U.scError = e instanceof Error ? e.message.slice(0, 160) : String(e);
+      }
+    }
+    if (jobs.some((j) => j.state === "paydlg-tip")) {
+      try {
+        const ps = await import("@/lib/modules/pos/payment-settings");
+        const cur = await ps.posPaymentSettings({ tenantId: T.tenantId, systemId: SYS });
+        if (!cur.ok) throw new StepError(`อ่านค่าตั้งการชำระเงินไม่ได้: ${cur.code}`);
+        if (!cur.tip.enabled) {
+          const link = await prisma.accountSystemLink.findFirst({ where: { tenantId: T.tenantId, linkedKind: "POS", linkedId: SYS, archivedAt: null, enabled: true }, select: { systemId: true } });
+          if (!link) throw new StepError("POS ของร้าน QC ไม่ได้เชื่อมสมุดบัญชี — เปิดทิปไม่ได้");
+          const led = await prisma.accountLedger.findFirst({ where: { tenantId: T.tenantId, systemId: link.systemId, archivedAt: null, type: "LIABILITY" }, orderBy: { code: "asc" }, select: { id: true, code: true } });
+          if (!led) throw new StepError("สมุดที่เชื่อมไม่มีบัญชีหมวดหนี้สิน — เปิดทิปไม่ได้");
+          const r = await ps.updatePosPaymentSettings({ tenantId: T.tenantId, systemId: SYS }, owner, { tip: { enabled: true, ledgerAccountId: led.id } });
+          if (!r.ok) throw new StepError(`เปิดทิปไม่ได้: ${r.code}`);
+          P29U.tipBefore = { enabled: cur.tip.enabled, ledgerAccountId: cur.tip.ledgerAccountId };
+          P29U.log.push(`เปิดทิป (บัญชี ${led.code} · คืนค่าหลังภาพทิปสุดท้าย)`);
+        } else P29U.log.push("ทิปของร้าน QC เปิดอยู่แล้ว");
+      } catch (e) {
+        P29U.tipError = e instanceof Error ? e.message.slice(0, 160) : String(e);
+      }
+    }
+    P29U.done = true;
+  } catch (e) {
+    P29U.error = e instanceof Error ? e.message.slice(0, 200) : String(e);
+  }
+}
+/** คืนค่าทิปที่ fixture เปิด (หลังภาพทิปสุดท้าย · finally) — ไม่โยน */
+async function p29uTipRestore(): Promise<void> {
+  if (!P29U.tipBefore) return;
+  const before = P29U.tipBefore;
+  P29U.tipBefore = null;
+  try {
+    const ps = await import("@/lib/modules/pos/payment-settings");
+    const r = await ps.updatePosPaymentSettings({ tenantId: T.tenantId, systemId: SYS }, (await ownerActor()) as Any, { tip: { enabled: before.enabled, ledgerAccountId: before.ledgerAccountId } });
+    P29U.log.push(r.ok ? "คืนค่าทิป" : `⚠️ คืนค่าทิปไม่ได้: ${r.code}`);
+    if (!r.ok) P29U.ok = false;
+  } catch (e) {
+    P29U.ok = false;
+    P29U.log.push(`⚠️ คืนค่าทิปไม่ได้: ${e instanceof Error ? e.message.slice(0, 120) : String(e)}`);
+  }
+}
+/** เก็บกวาด (หลังงานสุดท้าย · finally · สัญญาณ — เรียกซ้ำได้): ระงับบัตรของรอบ · คืนค่าตั้งบัตร/ทิป · บิลขายคงอยู่ (แบบ sale-done) */
+async function cleanupP29u(): Promise<void> {
+  await p29uTipRestore();
+  if (P29U.cleaned || (!Object.keys(P29U.cards).length && !P29U.gcSettingsBefore)) return;
+  P29U.cleaned = true;
+  try {
+    const gc = await import("@/lib/modules/giftcard");
+    const owner = (await ownerActor()) as Any;
+    let n = 0;
+    for (const c of Object.values(P29U.cards)) {
+      if (!c) continue;
+      await gc
+        .suspend(p29uGctx(), owner, { number: c.number, reason: "QC P2.9U visual (fixture ของรอบ)" })
+        .then(() => n++)
+        .catch((e: unknown) => {
+          // ยอดหมด (DEPLETED) / ระงับอยู่แล้ว = ไม่ใช่ความผิดพลาดของการเก็บกวาด
+          if (!/DEPLETED|SUSPENDED|ระงับ|หมด/i.test(e instanceof Error ? e.message : String(e))) {
+            P29U.ok = false;
+            P29U.log.push(`⚠️ ระงับบัตร GC-••••${c.number.slice(-4)} ไม่ได้: ${e instanceof Error ? e.message.slice(0, 100) : String(e)}`);
+          }
+        });
+    }
+    P29U.log.push(`ระงับบัตรของรอบ ${n} ใบ`);
+    if (P29U.gcSettingsBefore && !P29U.gcSettingsBefore.enabled) {
+      await gc.setSettings(p29uGctx(), owner, { enabled: false });
+      P29U.log.push("คืนค่าบัตรกำนัลของร้าน (ปิด)");
+    }
+  } catch (e) {
+    P29U.ok = false;
+    P29U.log.push(`⚠️ เก็บกวาดบัตรไม่สำเร็จ: ${e instanceof Error ? e.message.slice(0, 160) : String(e)}`);
+  }
+}
+/** ตะกร้า 02: ตะกร้า 4 บรรทัดของภาพ 01 (cart4-01) + คูปอง WELCOME50 ⇒ ฿625 (คูปองใส่ไม่ได้ = ภาพตก — ยอดไม่เท่าภาพ 02) */
+async function p29uCart(page: Any, device: Device): Promise<void> {
+  await runState(page, "cart4-01", device);
+  await openCartOnMobile(page, device);
+  await applyQcCoupon(page, "cart");
+  if (device === "mobile") {
+    await page.keyboard.press("Escape");
+    await sleep(250);
+  }
+  await waitPayReady(page);
+}
+async function p29uOpenPay(page: Any, device: Device): Promise<void> {
+  await clickPay(page, device);
+  await visibleEl(page, tid("pos-reg-paydlg"), 0, 10_000);
+  await page.waitForFunction(() => !(document.querySelector('[data-testid="pos-reg-paydlg-method-cash"]') as HTMLButtonElement | null)?.disabled, { timeout: 15_000 }).catch(() => undefined);
+}
+/** แยกจ่ายเงินสด (บาท) — รอบเงินสดรับน้อยกว่าคงเหลือ ⇒ "แยกจ่าย" */
+async function p29uCashSplit(page: Any, baht: number): Promise<void> {
+  await clickEl(page, tid("pos-reg-paydlg-method-cash"));
+  await typeInto(page, tid("pos-reg-paydlg-received"), String(baht));
+  await clickEl(page, tid("pos-reg-paydlg-add-split"));
+}
+/** ช่องบัตรของขวัญ → เลขบัตร → ค้นหา → ผลค้น (มติ 2a–b) */
+async function p29uLookup(page: Any, k: P29uCardKey): Promise<void> {
+  const c = P29U.cards[k];
+  if (!c) throw new StepError(`ไม่มีบัตร fixture ${k}`);
+  await page.waitForFunction(() => !(document.querySelector('[data-testid="pos-reg-paydlg-method-giftcard"]') as HTMLButtonElement | null)?.disabled, { timeout: 15_000 }).catch(() => {
+    throw new StepError("ช่องบัตรของขวัญยังปิด (registerPayTendersAction.giftCard.enabled — บัตรกำนัลของร้าน QC เปิดหรือยัง?)");
+  });
+  await clickEl(page, tid("pos-reg-paydlg-method-giftcard"));
+  await typeInto(page, tid("pos-reg-paydlg-giftcard-number"), c.number);
+  await clickEl(page, tid("pos-reg-paydlg-giftcard-lookup"));
+  await visibleEl(page, tid("pos-reg-paydlg-giftcard-result"), 0, 15_000).catch(() => {
+    throw new StepError("ค้นบัตรแล้วไม่ขึ้นผล (pos-reg-paydlg-giftcard-result)");
+  });
+}
+/** จำนวนที่ใช้จากบัตรด้วยแป้นตัวเลข (md+ เท่านั้น — มือถือใช้ค่าปริยาย min(คงเหลือ, ยอดบัตร)) */
+async function p29uAmount(page: Any, device: Device, baht: number): Promise<void> {
+  if (device === "mobile") return;
+  await clickEl(page, tid("pos-reg-paydlg-giftcard-amount"));
+  for (const d of String(baht)) await clickEl(page, tid(`pos-reg-paydlg-key-${d}`));
+}
+async function p29uPin(page: Any, pin: string): Promise<void> {
+  const h = await visibleEl(page, tid("pos-reg-paydlg-giftcard-pin"));
+  await h.click();
+  await h.type(pin);
+  await sleep(150);
+}
+async function p29uUse(page: Any): Promise<void> {
+  await page.waitForFunction(() => !(document.querySelector('[data-testid="pos-reg-paydlg-giftcard-use"]') as HTMLButtonElement | null)?.disabled, { timeout: 5_000 }).catch(() => {
+    throw new StepError("ปุ่ม \"ใช้บัตรนี้\" ยังปิดหลังใส่ PIN");
+  });
+  await clickEl(page, tid("pos-reg-paydlg-giftcard-use"));
+  await visibleEl(page, tid("pos-reg-paydlg-giftcard-row-1"), 0, 5_000).catch(() => {
+    throw new StepError("ใช้บัตรแล้วไม่ขึ้นแถวบัตร (pos-reg-paydlg-giftcard-row-1)");
+  });
+}
+/** รอบสุดท้ายเงินสดพอดี → ยืนยัน (F4 เดียวกับปุ่ม) */
+async function p29uCashExactConfirm(page: Any): Promise<void> {
+  await clickEl(page, tid("pos-reg-paydlg-method-cash"));
+  await clickEl(page, tid("pos-reg-paydlg-quick-exact"));
+  await page.waitForFunction(() => !(document.querySelector('[data-testid="pos-reg-paydlg-confirm"]') as HTMLButtonElement | null)?.disabled, { timeout: 8_000 }).catch(() => {
+    throw new StepError("ปุ่มยืนยันรับเงินยังปิด (PIN ครบ · ยอดครบ?)");
+  });
+  await clickEl(page, tid("pos-reg-paydlg-confirm"));
+}
+async function runP29uState(page: Any, state: P29uRegKey | P29uOtherKey, device: Device): Promise<void> {
+  if (P29U.error) throw new StepError(`fixture P2.9U: ${P29U.error}`);
+  if (state === "settings-tip-ledger") {
+    if (userKey !== "owner") {
+      await visibleEl(page, tid("pos-settings-tip-owner-only"), 0, 15_000).catch(() => {
+        throw new StepError("แคชเชียร์ไม่เห็น \"เฉพาะเจ้าของร้านตั้งค่าทิปได้\" (pos-settings-tip-owner-only)");
+      });
+      return;
+    }
+    await visibleEl(page, tid("pos-settings-tip-card"), 0, 15_000);
+    await page.waitForFunction(() => !(document.querySelector('[data-testid="pos-settings-tip-ledger"]') as HTMLSelectElement | null)?.disabled, { timeout: 15_000 }).catch(() => {
+      throw new StepError("ตัวเลือกบัญชีพักทิปปิด (POS ไม่เชื่อมสมุด / ไม่มีบัญชีหนี้สิน)");
+    });
+    const first = await page.$eval(tid("pos-settings-tip-ledger"), (e: Element) => Array.from((e as HTMLSelectElement).options).map((o) => o.value).find((v) => !!v) ?? "");
+    if (!first) throw new StepError("ไม่มีบัญชีหมวดหนี้สินในตัวเลือก");
+    const sel = await visibleEl(page, tid("pos-settings-tip-ledger"));
+    await sel.evaluate((el: Element) => el.scrollIntoView({ block: "center" }));
+    await page.select(tid("pos-settings-tip-ledger"), first);
+    await sleep(300);
+    return; // 🔴 ไม่กดบันทึก
+  }
+  if (state === "refund-to-card") {
+    let saleId = P29U.saleId;
+    let cardId = P29U.cards.main?.id ?? "";
+    if (!saleId) {
+      // ไม่มีบิลของรอบนี้ (ถ่ายเฉพาะ refund-to-card) ⇒ บิลบัตรล่าสุดของวันนี้ในสาขา (ยังไม่คืน)
+      const start = new Date(Date.parse(`${new Date(Date.now() + 7 * 3_600_000).toISOString().slice(0, 10)}T00:00:00+07:00`));
+      const s = await prisma.posSale.findFirst({
+        where: { tenantId: T.tenantId, systemId: SYS, unitId, docType: "SALE", status: "PAID", refundedSatang: 0, createdAt: { gte: start }, payments: { some: { type: "GIFT_CARD" } } },
+        orderBy: { createdAt: "desc" },
+        select: { id: true, payments: { where: { type: "GIFT_CARD" }, select: { giftCardId: true } } },
+      });
+      if (!s) throw new StepError("ไม่มีบิลจ่ายด้วยบัตรของวันนี้ — ถ่าย sale-done-giftcard ก่อน");
+      saleId = s.id;
+      cardId = s.payments[0]?.giftCardId ?? "";
+    }
+    const rn = (await prisma.posSale.findFirst({ where: { id: saleId, tenantId: T.tenantId }, select: { receiptNo: true } }))?.receiptNo;
+    await visibleEl(page, tid("pos-bills-list"), 0, 15_000).catch(() => {
+      throw new StepError("หน้าบิลวันนี้ไม่ขึ้น (pos-bills-list)");
+    });
+    const sel = `[data-bill-id="${saleId}"]`;
+    const onPage1 = await visibleEl(page, sel, 0, 6_000).then(() => true).catch(() => false);
+    if (!onPage1) {
+      if (!rn) throw new StepError("บิลบัตรไม่อยู่หน้าแรกและไม่มีเลขบิลให้ค้น");
+      await typeInto(page, tid("pos-bills-search"), rn);
+      await visibleEl(page, sel, 0, 15_000);
+    }
+    await clickEl(page, sel);
+    await visibleEl(page, tid("pos-bills-timeline"), 0, 15_000);
+    if (userKey !== "owner") {
+      const has = await visibleEl(page, tid("pos-bills-refund-open"), 0, 1_500).then(() => true).catch(() => false);
+      if (has) throw new StepError("แคชเชียร์เห็นปุ่มคืนเงิน (ต้องซ่อน — ไม่มี pos.sale.refund)");
+      return;
+    }
+    await clickEl(page, tid("pos-bills-refund-open"));
+    await visibleEl(page, tid("pos-bills-refund-line"), 0, 15_000);
+    await clickEl(page, tid("pos-bills-refund-line"));
+    await visibleEl(page, tid(`pos-bills-refund-method-card-${cardId}`), 0, 15_000).catch(() => {
+      throw new StepError("ไม่ขึ้นชิปคืนเข้าบัตร (refundTenderOptionsAction)");
+    });
+    await clickEl(page, tid(`pos-bills-refund-method-card-${cardId}`));
+    await sleep(300);
+    return; // 🔴 ไม่กดยืนยันคืนเงิน
+  }
+  await visibleEl(page, tid("pos-reg-root"), 0, 15_000).catch(() => {
+    throw new StepError("หน้าขายใหม่ไม่ขึ้น (pos-reg-root)");
+  });
+  await ensureShift(page);
+  await p29uCart(page, device);
+  if (state === "paydlg-storecredit") {
+    if (P29U.scError) throw new StepError(`เครดิตร้าน: ${P29U.scError}`);
+    await attachQcMember(page, device, true);
+    await p29uOpenPay(page, device);
+    await page.waitForFunction(() => !(document.querySelector('[data-testid="pos-reg-paydlg-method-storecredit"]') as HTMLButtonElement | null)?.disabled, { timeout: 15_000 }).catch(() => {
+      throw new StepError("ช่องเครดิตร้านยังปิด (สมาชิกไม่มีเครดิต / benefits ยังไม่มา)");
+    });
+    await clickEl(page, tid("pos-reg-paydlg-method-storecredit"));
+    await clickEl(page, tid("pos-reg-paydlg-add-split"));
+    await visibleEl(page, tid("pos-reg-paydlg-storecredit-row"), 0, 5_000);
+    return; // 🔴 ไม่ยืนยัน
+  }
+  await p29uOpenPay(page, device);
+  switch (state) {
+    case "paydlg-giftcard-entry":
+      await p29uLookup(page, "main");
+      await p29uPin(page, P29U_PIN);
+      return; // 🔴 ไม่กดใช้บัตร
+    case "paydlg-giftcard-split":
+      await p29uCashSplit(page, 300);
+      await p29uLookup(page, "main");
+      await p29uAmount(page, device, 325);
+      await p29uPin(page, P29U_PIN);
+      await p29uUse(page);
+      return; // 🔴 ไม่ยืนยัน
+    case "paydlg-giftcard-pin-error":
+      await p29uLookup(page, "pin");
+      await p29uPin(page, P29U_WRONG_PIN);
+      await p29uUse(page);
+      await p29uCashExactConfirm(page);
+      await visibleEl(page, tid("pos-reg-paydlg-giftcard-row-note-1"), 0, 20_000).catch(() => {
+        throw new StepError("ยืนยันด้วย PIN ผิดแล้วไม่ขึ้น \"PIN ไม่ถูกต้อง\" ที่แถวบัตร");
+      });
+      return;
+    case "paydlg-giftcard-insufficient":
+      await p29uLookup(page, "small");
+      await visibleEl(page, tid("pos-reg-paydlg-giftcard-insufficient"), 0, 5_000);
+      await p29uPin(page, P29U_PIN);
+      return; // 🔴 ไม่กดใช้บัตร
+    case "paydlg-giftcard-changed": {
+      const c = P29U.cards.chg;
+      await p29uLookup(page, "chg");
+      await p29uPin(page, P29U_PIN);
+      await p29uUse(page);
+      // ⚠️ ตัดยอดบัตรผ่านโมดูล (legacy use) ระหว่างค้นกับยืนยัน: แถว = ยอดบัตรทั้งใบ (คงเหลือของบิล 02 ≥ ยอดบัตร) ⇒ ตัดครึ่งใบ = ยอดใหม่ < แถว ⇒ GIFT_CARD_CHANGED
+      const bal = (await prisma.giftCard.findUnique({ where: { id: c!.id }, select: { balanceSatang: true } }))?.balanceSatang ?? 0;
+      if (bal < 2) throw new StepError("ยอดบัตร CHANGED เหลือน้อยเกินไป");
+      const gc = await import("@/lib/modules/giftcard");
+      await gc.use(p29uGctx(), { number: c!.number, pin: P29U_PIN, satang: Math.ceil(bal / 2), saleId: `posqc-vis-p29u-${process.pid}-chg-${++P29U.chgN}`, idempotencyKey: `posqc-vis-p29u-${process.pid}-chg-${P29U.chgN}` });
+      await p29uCashExactConfirm(page);
+      await visibleEl(page, tid("pos-reg-paydlg-giftcard-changed"), 0, 20_000).catch(() => {
+        throw new StepError("ยอดบัตรเปลี่ยนแล้วยืนยัน ไม่ขึ้นแบนเนอร์ \"ยอดบัตรเปลี่ยน\"");
+      });
+      await sleep(800); // ค้นบัตรใหม่ (ตัดจำนวนลง)
+      return;
+    }
+    case "paydlg-tip":
+      if (P29U.tipError) throw new StepError(`ทิป: ${P29U.tipError}`);
+      await clickEl(page, tid("pos-reg-paydlg-tip-toggle")).catch(() => {
+        throw new StepError("ไม่เห็นสวิตช์ทิป (ร้านเปิดทิป — fixture?)");
+      });
+      await typeInto(page, tid("pos-reg-paydlg-tip"), "20");
+      await p29uCashSplit(page, 300);
+      await visibleEl(page, tid("pos-reg-paydlg-tip-total"), 0, 5_000);
+      return; // 🔴 ไม่ยืนยัน
+    case "sale-done-giftcard": {
+      await p29uLookup(page, "main");
+      await p29uAmount(page, device, 325);
+      await p29uPin(page, P29U_PIN);
+      await p29uUse(page);
+      await p29uCashExactConfirm(page);
+      await visibleEl(page, tid("pos-reg-done"), 0, 20_000).catch(() => {
+        throw new StepError("ยืนยันแล้วไม่ขึ้นจอสำเร็จ (pos-reg-done)");
+      });
+      await visibleEl(page, tid("pos-reg-done-pay-lines"), 0, 10_000);
+      const cardId = P29U.cards.main?.id ?? "";
+      const s = await prisma.posSale.findFirst({ where: { tenantId: T.tenantId, unitId, docType: "SALE", payments: { some: { giftCardId: cardId } } }, orderBy: { createdAt: "desc" }, select: { id: true } });
+      if (s) P29U.saleId = s.id;
+      await sleep(1_200); // payload ใบเสร็จ (เลขปิดบัง · คงเหลือ)
+      return;
+    }
+  }
+}
 async function runP28uState(page: Any, state: P28uOrdersKey | P28uRegKey, device: Device): Promise<void> {
   if (state === "register-tab-badge") {
     await visibleEl(page, tid("pos-reg-root"), 0, 15_000);
@@ -5460,7 +5875,7 @@ try {
     await ensureQcPromptPay(); // POS P1.7U
     console.log(`  PromptPay ของร้าน QC: ${INTENTS.ppNote}`);
   }
-  if (settingsStatesOn && pages.includes("settings")) {
+  if (settingsStatesOn && pages.includes("settings") && !P29U_WO) { // POS P2.9U ▸ wo p2.9u ไม่ใช้เครื่อง/กะของ 17B ◂
     await seedSettingsOnce(); // POS P1.10 U — พังไม่โยน (ทุกสถานะ settings-* ตกพร้อมเหตุผล)
     console.log(SETTINGS.error ? `  ⚠️ เครื่อง QC ของหน้าตั้งค่า: ${SETTINGS.error}` : `  เครื่อง QC ของหน้าตั้งค่า: ${SETTINGS.devices.map((d) => d.id).join(" · ")} · กะ ${SETTINGS.shiftId || "-"}`);
   }
@@ -5485,7 +5900,7 @@ try {
     await seedTaxInvBillsOnce();
     console.log(TAXINV.billsError ? `  ⚠️ บิลภาพใบกำกับ: ${TAXINV.billsError}` : `  บิลภาพใบกำกับ: คำขอ ${TAXINV.reqSale || "-"} (${TAXINV.requestId || "-"}) · ออกแล้ว ${TAXINV.issSale || "-"} → TX ${TAXINV.docNo ?? "?"} docId ${TAXINV.docId || "-"}${TAXINV.reused.length ? ` (ใช้ชุดวันนี้ซ้ำ: ${TAXINV.reused.join(" · ")})` : ""}`);
   }
-  if (billsStatesOn && pages.includes("sales")) {
+  if (billsStatesOn && pages.includes("sales") && !P29U_WO) { // POS P2.9U ▸ wo p2.9u ใช้บิลของ sale-done-giftcard ◂
     await seedBillsOnce(); // POS P1.16 U — พังไม่โยน (ทุกสถานะ bills-* ตกพร้อมเหตุผล)
     console.log(BILLS.error ? `  ⚠️ บิลชุดภาพ: ${BILLS.error}` : `  บิลชุดภาพ: ${BILLS.reused ? "ใช้ชุดของวันนี้ซ้ำ" : `สร้าง ${Object.keys(BILLS.ids).length} ใบ`} · เป้าหมาย ${BILLS.target}`);
   }
@@ -5595,6 +6010,11 @@ try {
             if (job.state === "kds-refusal-toast") await prep("ออเดอร์เสิร์ฟแล้ว-ยกเลิก", p26uVoidedServed);
           }
         }
+        // POS P2.9U ▸ fixture บัตร/เครดิต/ทิปก่อนงานแรกของใบนี้ (พังไม่โยน — สถานะตกพร้อมเหตุผล) ◂
+        if (job.state && isP29uState(job.state) && !P29U.done && !P29U.error) {
+          await ensureP29uFixture();
+          console.log(P29U.error ? `  ⚠️ fixture P2.9U: ${P29U.error}` : `  fixture P2.9U: ${P29U.log.join(" · ")}`);
+        }
         // POS P2.4U ▸ fixture โต๊ะก่อนงานแรกที่ใช้ (พังไม่โยน — สถานะตกพร้อมเหตุผล) ◂
         if (job.state && P24U_FIXTURE_STATES.has(job.state) && !P24U.done && !P24U.error) {
           await ensureP24uFixture();
@@ -5654,6 +6074,8 @@ try {
         if (job.state && P26U_FIXTURE_STATES.has(job.state) && job === jobs.filter((j) => j.state && P26U_FIXTURE_STATES.has(j.state)).at(-1)) await cleanupP26u(); // POS P2.6U
         if (job.state === "orders-paused-banner" && job === jobs.filter((j) => j.state === "orders-paused-banner").at(-1)) await p28uPause(false).catch(() => undefined); // POS P2.8U
         if (job.state && P28U_FIXTURE_STATES.has(job.state) && job === jobs.filter((j) => j.state && P28U_FIXTURE_STATES.has(j.state)).at(-1)) await cleanupP28u(); // POS P2.8U
+        if (job.state === "paydlg-tip" && job === jobs.filter((j) => j.state === "paydlg-tip").at(-1)) await p29uTipRestore(); // POS P2.9U
+        if (job.state && isP29uState(job.state) && job === jobs.filter((j) => j.state && isP29uState(j.state)).at(-1)) await cleanupP29u(); // POS P2.9U
         // POS P1.7U ▸ ใบที่ PAID แล้วต้องถูกใช้ในบิล (ไม่ทิ้งเงินเข้าไม่มีบิล) — พัง = ภาพนี้ตก ◂
         if (job.state === "paydlg-promptpay-paid" && !stepError) {
           await finishPaidIntentSale(page).catch((e: unknown) => {
@@ -5729,6 +6151,9 @@ try {
   await cleanupP26u(); // POS P2.6U (พักครัว · 86 · สถานีสินค้า · รอบ/ออเดอร์/โต๊ะ/สถานีของรอบที่ยังค้าง)
   if (P26U.log.length) console.error(p26uCleanupLine());
   if (!P26U.ok) failures++;
+  await cleanupP29u(); // POS P2.9U (ระงับบัตรของรอบ · คืนค่าตั้งบัตร/ทิป)
+  if (P29U.log.length) console.error(`${P29U.ok ? "🧹" : "⚠️"} P2.9U: ${P29U.log.join(" · ")}`);
+  if (!P29U.ok) failures++;
   await cleanupP21u(); // POS P2.1U (บิลพัก LINE MAN ที่ยังค้าง)
   if (P21U.cleanup) console.error(`${P21U.cleanup.ok ? "🧹" : "⚠️"} ${P21U.cleanup.detail}`);
   if (P21U.cleanup && !P21U.cleanup.ok) failures++;
