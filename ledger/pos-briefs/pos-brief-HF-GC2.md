@@ -1,6 +1,6 @@
 # POS HF-GC2 — gift card: `expireDue` leftover read under lock (FU-1) + `reload` status guard (F3)
 
-Origin: HF-GC review R1 (`pos-HF-GC-review.md` FU-1, F3; controller ruling 2 → "next hotfix card HF-GC2"). Base = `session/pos` **__BASE__** (after HF-GC merged). Tree **__TREE__**. Not counted (hotfix). Money lane: oracle red-before → fix → gates → independent reviewer.
+Origin: HF-GC review R1 (`pos-HF-GC-review.md` FU-1, F3; controller ruling 2 → "next hotfix card HF-GC2"). Base = `session/pos` **0f978264** (code 071402d8 = HF-GC merged). Tree **/root/projects/shark-pos-b**. Not counted (hotfix). Money lane: oracle red-before → fix → gates → independent reviewer.
 
 ## Facts (verified by the controller on adbb1640 — line numbers shift after HF-GC; builder re-cites the live lines)
 - `src/lib/modules/giftcard/service.ts expireDue` ≈969–1026: `due = findMany({status ACTIVE, expiresAt ≤ now})` **outside** any tx (:970); per card `leftover = card.balanceSatang` from that stale row (:980); inside the tx `updateMany({id, status ACTIVE} → {EXPIRED, balanceSatang 0})` (:983) with no `RETURNING`; the EXPIRE `GiftCardTxn.satang = leftover` (:994) and `account.postGiftCardExpire({satang: leftover})` (:1007–1013) both use the stale value; the JV gate also uses the pre-read `card.accountingDocId` (:1006).
