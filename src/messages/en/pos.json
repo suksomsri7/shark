@@ -3270,6 +3270,89 @@
       "saleVoided": "This order's bill has been voided — it cannot be handed over; cancel the order instead"
     }
   },
+  "kds": {
+    "title": "Kitchen display",
+    "deviceChip": "Kitchen display · {device}",
+    "deviceChipPlain": "Kitchen display",
+    "expo": "All stations (Expo)",
+    "noStations": "No kitchen stations yet",
+    "noStationsHint": "Add kitchen stations in restaurant settings first, then tickets will appear here",
+    "setupStations": "Set up stations",
+    "emptyStation": "No tickets at this station",
+    "columns": {
+      "new": "New",
+      "cooking": "Cooking",
+      "ready": "Ready"
+    },
+    "hints": {
+      "new": "Tap a ticket to start",
+      "cooking": "Sorted by time left to target",
+      "ready": "Runners notified"
+    },
+    "avg": "Avg {avg} min · target {target}",
+    "pause": "Pause kitchen orders",
+    "pausedBanner": "Kitchen paused · online and QR orders are on hold",
+    "printSlip": "Print kitchen ticket",
+    "reprint": "Reprint",
+    "source": {
+      "table": "Table {table}",
+      "qr": "QR Table {table}",
+      "register": "Takeaway",
+      "online": "{channel}",
+      "legacy": "Counter"
+    },
+    "queue": "Queue {n}",
+    "takeaway": "Takeaway",
+    "readyFor": "Ready {min} min",
+    "rush": "Rush",
+    "unrush": "Cancel rush",
+    "late": "Over target by {min} min",
+    "warn": "{min} min left to target",
+    "lineProgress": "Done {done}/{total}",
+    "done": "Done",
+    "served": "Served",
+    "server": "Runner {name}",
+    "tableStaff": "Taken at table by {name}",
+    "qrGuest": "Guest ordered via QR",
+    "waitingCounter": "Waiting at counter · Queue {n}",
+    "servedToday": "Served today {count} tickets",
+    "servedLast": "last #{no} · {label} · {time}",
+    "tapRecall": "tap to recall",
+    "pending": "Pending today:",
+    "soldOut": "Sold out (86):",
+    "soldOutSynced": "— POS and online channels updated",
+    "markSoldOut": "Mark sold out",
+    "eightySix": {
+      "title": "Mark sold out (86)",
+      "search": "Search this branch's menu",
+      "markOut": "Sold out",
+      "release": "Back on sale",
+      "note": "Note (optional)",
+      "current": "Currently sold out",
+      "kitchenAt": "Kitchen marked {time}",
+      "bySource": {
+        "kds": "Kitchen",
+        "manual": "Store",
+        "stock": "Counter ran out"
+      }
+    },
+    "autoAcceptMax": "Pause auto-accept when the kitchen has more than {n} open tickets",
+    "autoAcceptOff": "Do not pause auto-accept by kitchen backlog",
+    "progress": "Kitchen cooking {done}/{total}",
+    "mobileSummary": "Pending {pending} · Sold out {soldOut}",
+    "errors": {
+      "ticketNotFound": "This kitchen ticket was not found at this branch — it may have been cancelled or moved",
+      "ticketTooOld": "This ticket is from an earlier day — it cannot be recalled",
+      "kdsStationNotFound": "This kitchen station was not found at this branch",
+      "validation": "Invalid data — please try again",
+      "permissionDenied": "This account is not allowed to do this on the kitchen display",
+      "productNotFound": "This product was not found at this branch",
+      "productUnavailable": "This product is sold out at this branch",
+      "channelPaused": "The kitchen is paused",
+      "internal": "The kitchen display is temporarily unavailable — please try again",
+      "unknown": "Something went wrong — please try again"
+    }
+  },
   "nav": {
     "overview": "Overview",
     "register": "Register",
