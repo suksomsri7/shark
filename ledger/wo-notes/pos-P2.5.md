@@ -121,3 +121,21 @@ Remaining for ruling 8 (after the P2.9 merge + item 7): full list incl. qc-pos-p
 
 ### CD-P25-N3 ruled (option 2) — head ffaa1b40 · dirty 0 · logs `scratchpad/p25/gates-fix1/*m8*.log`
 de691dd1 = ORACLE-ADD ผู้คุม 14 ต.ค. **M8** (static: `regVat` returns only INCLUDED|NONE, no EXCLUDED in `regVat`/`regFixedServiceCharge` · invariant: EQUAL-2 plan in INCLUDED and in NONE (book `vatRegistered:false`, restored in `finally`) ⇒ part total shown = part quote grand, NONE VAT 0) ⇒ **44 checks**. ffaa1b40 = `regFixedServiceCharge` INCLUDED|NONE only (EXCLUDED branch removed). Gates: typecheck exit 0 · fitness-pos 8/8 · **qc-pos-p2.5 44/44 forced ×2 + unforced** · residue 0 · leaks 0. Ruling 5 row above = done (not a CD any more).
+
+## Upstream merge + ruling 7 + ruling 8 gates (14 Oct, account B)
+- Merge **392a89fc** = `origin/session/pos` 4967ce2d (P2.9 S merged · code tip d871877c · contract sha 72afb258). Conflicts: `ledger/POS-OWNER-PENDING.md` only (both sides kept); `register.ts` · `register-shared.ts` · `pos.prisma` · `pos.json` th/en auto-merged (P2.9 hunks unchanged, order kept). `pnpm exec prisma generate` in tree c (QC4 already has `20261209100000_pos_p29_tenders`).
+- **ORACLE-ADD M9** 7cb4bdd6 (ruling 7 · 45 checks) · **ORACLE-EDIT L2** 63bb1fdc (contract sha re-pin 72afb258 under CD-P29-1 — the same re-pin the controller applied to qc-pos-p2.4/p2.6; without it L2 is red after the P2.9 merge). Red-before block 3 (`P2.5-red.txt`, merge 392a89fc): 43/45 — L2 (sha) + M9 (`VALIDATION` instead of `STORE_CREDIT_NOT_OWNER`).
+- **Ruling 7** a181840e — `register.ts` `submitRegisterSale`: load block (≈:2475) a client memberId ≠ part member with STORE_CREDIT ⇒ `STORE_CREDIT_NOT_OWNER` (else `VALIDATION`); split stage after `regSplitCart` (≈:2541) re-runs P2.9's owner pre-check with the part's member. P2.5U contract: `memberId` mandatory on member parts.
+
+### Ruling 8 gates — head **0e29ffb5** · dirty 0 · one systemd-run unit · `scratchpad/p25/gates-r8/SUMMARY.txt` + per-suite logs (all suites QC_FORCE=1)
+| gate | result |
+|---|---|
+| typecheck (pos-gate.lock) | exit 0 |
+| fitness no-env / env · fitness-pos | 50/50 · 50/50 · 8/8 |
+| qc-pos-p2.5 ×3 | **45/45 · 45/45 · 45/45** · residue 0 |
+| qc-pos-p2.9 | 62/62 |
+| qc-pos-p2.4 · p2.6 | 50/50 · 67/67 |
+| qc-restaurant / -money / -pay / -void | 6/6 · 6/6 · 19/19 · 11/11 |
+| qc-pos-p1.3 · p1.1 · p1.6 · p1.8 | 128/128 · 180/180 · 48/48 · 49/49 |
+| qc-hf-tx · p1.10 · p1.18 · hf-pos-page-authz | 22/22 · 40/40 · 81/81 · 81/81 |
+| qc-pos-p2.8 | 60/61 — ST6 PAR only (wip-only, ruling 11.11) |
