@@ -296,9 +296,9 @@ export async function kitchenMoveInTx(tx: Tx, s: Scope, m: KitchenMoveInput): Pr
   return { changed: r.count, roundStatus };
 }
 
-/** fix1 H3: ล็อกแถวรอบ (RestaurantOrder FOR UPDATE) — ผู้เขียนรายการครัวทุกตัวของไฟล์นี้ถือก่อนแตะรายการ */
+/** fix1 H3 + fix2 G4: ล็อกแถวรอบ (RestaurantOrder FOR NO KEY UPDATE) — ผู้เขียนรายการครัวทุกตัวของไฟล์นี้ถือก่อนแตะรายการ */
 async function lockRoundInTx(tx: Tx, tenantId: string, orderId: string): Promise<void> {
-  await tx.$queryRaw`SELECT id FROM "RestaurantOrder" WHERE id = ${orderId} AND "tenantId" = ${tenantId} FOR UPDATE`;
+  await tx.$queryRaw`SELECT id FROM "RestaurantOrder" WHERE id = ${orderId} AND "tenantId" = ${tenantId} FOR NO KEY UPDATE`; // fix2 G4: ไม่บล็อก KEY SHARE ของ FK
 }
 
 /** สถานะรอบหลังเลื่อนรายการ: ทุกรายการ SERVED/CANCELLED (มีอย่างน้อย 1 SERVED) = COMPLETED · ดึงกลับจาก COMPLETED = CONFIRMED · ยกเลิกหมด = CANCELLED */
