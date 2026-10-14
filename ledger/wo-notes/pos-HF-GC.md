@@ -8,7 +8,7 @@ Prisma client: generated 10 Oct 11:18, schema diff vs `prisma/schema/*.prisma` =
 - [x] 2 H1 (cf5e8528)
 - [x] 3 H2 helper + paths + consumer backstop + payload flag (a0658d6f)
 - [x] 4 owner lines + these notes
-- [ ] 5 merge `origin/session/pos` → gates (table below)
+- [x] 5 merge `origin/session/pos` 44ee7f4c (ledger-only) → 14742f2b → gates (table below)
 
 ## Hunks (file:line at a0658d6f)
 H1 — `after`/`balanceAfter` from the row this transaction holds locked (never the pre-tx `loadByNumber` read):
@@ -38,9 +38,19 @@ No column on `GiftCard` records the switch decision (`prisma/schema/giftcard.pri
 18/20 · HT2.6 ❌ `balanceAfter 110000 ×5` (want 110000…150000; card balance 150000 correct) · HT2.7 ❌ (a) replay returns `accountingDocId` null (JV 1) · (b) consumer leaves null · (b2) unlinked-then-linked JV 0→0 · (c) green on base (guard). Residue 0.
 
 ## Gates
+All logs headed `tree=/root/projects/shark-pos-b head=14742f2b dirty=0` (scratch `hfgc/gates/*.out`, 14 Oct 12:54–13:20Z); head 14742f2b = code a0658d6f + upstream 44ee7f4c (ledger only).
 | gate | tree= head= | result |
 |---|---|---|
-| (filled at step 5) | | |
+| typecheck (pos-gate.lock · 5632/6500M) | shark-pos-b 14742f2b | rc 0 |
+| fitness no-env / env (qc4) | shark-pos-b 14742f2b | 50/50 · 50/50 |
+| fitness-pos | shark-pos-b 14742f2b | 8/8 |
+| qc-hf-tx forced / unforced | shark-pos-b 14742f2b | 20/20 · 20/20 (residue 0) |
+| qc-pos-p1.6 | shark-pos-b 14742f2b | 48/48 |
+| qc-pos-account | shark-pos-b 14742f2b | 16/16 |
+| qc-pos-p1.3 | shark-pos-b 14742f2b | 128/128 |
+| qc-pos-p1.1 | shark-pos-b 14742f2b | 180/180 |
+| qc-pos-p2.8 | shark-pos-b 14742f2b | 61/61 · PAR 4/4 |
+| qc-member-m2.6 / m2.7 / m2.8 | shark-pos-b 14742f2b | known QC4 setup failure, run once, not reseeded: `💥 TypeError: Cannot read properties of null (reading 'role')` → `M2.x-ERR` (×3) |
 
 ## Follow-ups (not in this card)
 - FU-1 `expireDue` (`service.ts:1030`) `leftover = card.balanceSatang` read before the tx ⇒ use ∥ expiry cron = EXPIRE txn + 4900 JV overstated (the `status: ACTIVE` guard prevents doubles, not staleness). Fix = read the balance under the lock (`SELECT … FOR UPDATE` or update-returning) — owner line added.
