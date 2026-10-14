@@ -45,6 +45,7 @@ import {
   quoteInputToCart,
   refusalMessageKey,
   submitRefusalMessageKey, // POS HF-PP ▸ fix 1 ◂
+  stripPayPins, // POS P2.9U ▸ มติ 3 ◂
   REGISTER_MAX_LINES,
   REGISTER_MAX_PAY_METHODS,
   REGISTER_MAX_QTY,
@@ -194,7 +195,7 @@ type Layer =
   | { kind: "clear" }
   // POS P1.12U: focusPoints = เปิดจากปุ่ม "ใช้แต้ม" ของการ์ดสมาชิก (โฟกัสช่องแต้ม)
   | { kind: "pay"; focusPoints?: boolean }
-  | { kind: "done"; result: RegisterSubmitOk; payMethods: RegisterPayMethod[]; memberAttached?: boolean; taxInvoice?: boolean }
+  | { kind: "done"; result: RegisterSubmitOk; payMethods: RegisterPayMethod[]; tipSatang?: number; memberAttached?: boolean; taxInvoice?: boolean } // POS P2.9U ▸ tipSatang (02b "ทิป ฿x") · payMethods ไม่มี PIN ◂
   // POS P1.13U: กล่องใบกำกับเต็มรูป (15A) · errorKey = คำปฏิเสธจาก submit (คีย์ใต้ pos) ที่ทำให้เปิดซ้ำ
   | { kind: "taxInvoice"; errorKey?: string }
   | { kind: "note" }
@@ -701,9 +702,11 @@ export function RegisterScreen(props: RegisterScreenProps) {
     try {
       // POS P1.15U ▸ fix รอบ 1 F3: PIN ผู้จัดการห้ามลง storage (อ่านได้จากเครื่อง) — สำเนาที่เก็บไม่มี managerPin/managerUserId ·
       //   โหลดกลับแล้วลองซ้ำ = บิลเดิมถ้าบันทึกแล้ว · ไม่งั้นได้ DISCOUNT_EXCEEDS_LIMIT ชัด ๆ (ไม่มีบิล) แล้วใส่ PIN ใหม่ · staffToken อยู่ใน sessionStorage อยู่แล้ว ◂
-      const { managerPin: _pin, managerUserId: _mgr, ...stored } = sale;
+      const { managerPin: _pin, managerUserId: _mgr, ...kept } = sale;
       void _pin;
       void _mgr;
+      // POS P2.9U ▸ มติ 3 (H6): PIN บัตรของขวัญห้ามลง storage — แถว GIFT_CARD เก็บ number อย่างเดียว (โหลดกลับ = บิลเดิม หรือขอ PIN ใหม่) ◂
+      const stored = { ...kept, payMethods: stripPayPins(kept.payMethods) };
       window.sessionStorage.setItem(pendingStoreKey, JSON.stringify({ v: 1, userId, idempotencyKey: stored.idempotencyKey, sale: stored, phase }));
     } catch {
       /* เก็บไม่ได้ — ลองซ้ำในหน้านี้ยังได้ */
@@ -1715,7 +1718,8 @@ export function RegisterScreen(props: RegisterScreenProps) {
     // POS P1.15U ▸ fix รอบ 1 F4: จอล็อกทับอยู่ = ไม่ส่ง (ยกเว้นลองซ้ำชุดคำขอที่ค้างจากก่อนโหลดหน้า — ชุดเดิมพกโทเคนของมันเอง) ◂
     if (lockedRef.current && !opts?.restore) return;
     sendingRef.current = true;
-    pendingSubmit.current = sale;
+    // POS P2.9U ▸ มติ 3: คำขอค้างในหน่วยความจำ (ลองซ้ำ) ก็ไม่เก็บ PIN — ลองซ้ำคีย์ที่บันทึกแล้ว = บิลเดิม · ยังไม่บันทึก = VALIDATION ⇒ ขอ PIN ใหม่ ◂
+    pendingSubmit.current = { ...sale, payMethods: stripPayPins(sale.payMethods) };
     savePending(sale, "sending");
     setPayPhase("sending");
     setPayError(null);
@@ -1726,7 +1730,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
         pendingSubmit.current = null;
         clearPending();
         setPayPhase("form");
-        setLayers((s) => [...s.filter((l) => l.kind !== "pay" && l.kind !== "sheet" && l.kind !== "member" && l.kind !== "coupon"), { kind: "done", result: r, payMethods: sale.payMethods, memberAttached: !!sale.memberId, taxInvoice: !!sale.taxInvoice }]);
+        setLayers((s) => [...s.filter((l) => l.kind !== "pay" && l.kind !== "sheet" && l.kind !== "member" && l.kind !== "coupon"), { kind: "done", result: r, payMethods: stripPayPins(sale.payMethods), tipSatang: sale.tipSatang ?? 0, memberAttached: !!sale.memberId, taxInvoice: !!sale.taxInvoice }]);
         void refreshStatus();
         return;
       }

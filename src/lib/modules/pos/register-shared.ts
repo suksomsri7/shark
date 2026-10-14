@@ -774,13 +774,71 @@ export function cartToSubmitInput(
   return {
     ...cartToQuoteInput(cart),
     idempotencyKey: pay.idempotencyKey,
-    payMethods: pay.payMethods.map((p) => ({ type: p.type, amountSatang: p.amountSatang, ...(p.reference ? { reference: p.reference } : {}) })),
+    // POS P2.9U ▸ มติ 2: แถว GIFT_CARD พก giftCard {number, pin} ไปกับคำขอ (เดิมทิ้ง) · PIN ที่ถูกตัดแล้ว (คำขอที่โหลดกลับ · H6) = ส่ง number อย่างเดียว ◂
+    payMethods: pay.payMethods.map((p) => ({
+      type: p.type,
+      amountSatang: p.amountSatang,
+      ...(p.reference ? { reference: p.reference } : {}),
+      ...(p.type === "GIFT_CARD" && p.giftCard ? { giftCard: (p.giftCard.pin ? { number: p.giftCard.number, pin: p.giftCard.pin } : { number: p.giftCard.number }) as NonNullable<RegisterPayMethod["giftCard"]> } : {}),
+    })),
     ...(hasCash && pay.cashReceivedSatang !== undefined ? { cashReceivedSatang: pay.cashReceivedSatang } : {}),
     ...(pay.tipSatang ? { tipSatang: pay.tipSatang } : {}),
     ...(pay.note ? { note: pay.note } : {}),
     expectedGrandTotalSatang: pay.expectedGrandTotalSatang,
   };
 }
+
+// ═══════════ POS P2.9U ▸ วิธีชำระบัตรของขวัญ/เครดิตร้าน/ทิป ที่จอชำระ (ตัวช่วยบริสุทธิ์ · ไม่มี PIN ออกนอกหน่วยความจำของจอ) ═══════════
+/** แถวชำระที่เป็น "เงินจริง" (ทิปจ่ายได้จากแถวเหล่านี้เท่านั้น — R3 · มติ 6) */
+export const REGISTER_CASH_LIKE_PAY: ReadonlySet<RegisterPayType> = new Set<RegisterPayType>(["CASH", "PROMPTPAY", "TRANSFER", "CARD"]);
+/** บัตรของขวัญต่อบิลได้ไม่เกิน (CD4) */
+export const REGISTER_MAX_GIFT_CARDS = 3;
+/** PIN บัตรของขวัญ 4–12 หลัก (เท่ากับตัวตรวจของ regParseSubmit) */
+export const GIFT_CARD_PIN_MIN = 4;
+export const GIFT_CARD_PIN_MAX = 12;
+/** หมายเลขบัตรสำหรับเทียบซ้ำในบิล (ตัดช่องว่าง · ตัวใหญ่ — แบบเดียวกับ validateTenderRows) */
+export const giftCardNumberKey = (n: string): string => n.replace(/\s+/g, "").toUpperCase();
+/**
+ * H6 (มติ 3): สำเนาคำขอที่ "เก็บ" (sessionStorage · คำขอค้างในหน่วยความจำ · จอสำเร็จ) — แถว GIFT_CARD เหลือ number อย่างเดียว (ไม่มี PIN) ·
+ * เซิร์ฟเวอร์รับแถวไม่มี PIN เฉพาะคีย์ที่มีบิลแล้ว (คืนบิลเดิม) — คีย์ที่ยังไม่มีบิล = VALIDATION ⇒ จอขอ PIN ใหม่
+ */
+export function stripPayPins(payMethods: readonly RegisterPayMethod[]): RegisterPayMethod[] {
+  return payMethods.map((m) => (m.giftCard ? { ...m, giftCard: { number: m.giftCard.number } as NonNullable<RegisterPayMethod["giftCard"]> } : { ...m }));
+}
+/** คำขอมีแถวบัตรของขวัญที่ไม่มี PIN (คำขอที่ถูกตัด PIN แล้ว) */
+export const hasPinlessGiftCard = (payMethods: readonly RegisterPayMethod[]): boolean => payMethods.some((m) => m.type === "GIFT_CARD" && !!m.giftCard && !m.giftCard.pin);
+/**
+ * F4 (fix1 · สัญญา P2.9U): ชนิดของบัตรในกระเป๋าสมาชิก — ใช้ `kind` เมื่อเซิร์ฟเวอร์ส่งมา · ไม่มี = อ่านจากคำนำหน้าเลขปิดบังของโมดูลบัตร
+ * (`SC-••••` = STORE_CREDIT · อื่น = GIFT — giftcard/service.ts maskTenderNumber) — wallet ของสมาชิกยังไม่ส่ง kind ถึงหน้าขาย (โน้ต P2.9U deviation 1)
+ */
+export function giftCardKindOf(c: { numberMasked: string; kind?: string | null }): "GIFT" | "STORE_CREDIT" {
+  if (c.kind === "STORE_CREDIT" || c.kind === "GIFT") return c.kind;
+  return /^SC-/i.test(c.numberMasked) ? "STORE_CREDIT" : "GIFT";
+}
+/** เครดิตร้านของสมาชิกในบิล (ใบแรกที่ยอด > 0) — ไม่มี = null */
+export function storeCreditOf(giftCards: readonly { numberMasked: string; balanceSatang: number; kind?: string | null }[] | null | undefined): { numberMasked: string; balanceSatang: number } | null {
+  const c = (giftCards ?? []).find((g) => giftCardKindOf(g) === "STORE_CREDIT" && g.balanceSatang > 0);
+  return c ? { numberMasked: c.numberMasked, balanceSatang: c.balanceSatang } : null;
+}
+/**
+ * มติ 3 (H6): คำขอที่โหลดกลับหลัง reload แล้วถูกปฏิเสธ "ใส่ PIN" ⇒ สร้างตะกร้าคืนจากคำขอที่เก็บ (บรรทัด · ส่วนลดท้ายบิล · สมาชิก · คูปอง ·
+ * ช่องทาง · หมายเหตุ · สิทธิ์ที่เลือก) เพื่อให้จอชำระเปิดต่อด้วยยอดเดิม (quote ใหม่ตัดสิน) · key ของบรรทัดจาก newKey ของผู้เรียก
+ */
+export function submitInputToCart(sale: RegisterSubmitInput, newKey: () => string): RegisterCart {
+  const base = quoteInputToCart(sale, newKey);
+  // บิลพักไม่เก็บหมายเหตุบรรทัด/สิทธิ์ที่เลือก แต่คำขอ submit เก็บ ⇒ เติมคืน (ลำดับบรรทัดเดียวกับคำขอ)
+  const lines = base.lines.map((l, i): RegisterCartLine => {
+    const note = (sale.lines[i] as { note?: unknown } | undefined)?.note;
+    return typeof note === "string" && note ? { ...l, note } : l;
+  });
+  return {
+    ...base,
+    lines,
+    ...(sale.memberId && sale.memberChoices ? { memberChoices: { ...sale.memberChoices } } : {}),
+    ...(sale.note ? { note: sale.note } : {}),
+  };
+}
+// ◂
 
 /**
  * ตะกร้า → อินพุตของ priceCart สำหรับคิดยอดทันใจบนจอ (ราคาจากกริด · VAT/เพดานจากหน้าเพจ) — ยอดจริงมาจาก quote เสมอ
