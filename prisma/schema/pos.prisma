@@ -290,6 +290,7 @@ model PosProduct {
   unavailableUnitIds String[]       @default([]) // สาขาที่ปิดขายชั่วคราว (availability[unit] = false)
   // ── สำเนาจาก MenuItem (copy-only ถึง P1.1b/P2.4) ──
   stationId          String? // KdsStation.id
+  stationSetAt       DateTime? // POS P2.6 ▸ fix2 G1/N2: เวลาที่ stationId ถูกตั้ง/เปลี่ยน (heal ใช้ · null = ตั้งแต่สร้าง) ◂
   stockQty           Int?
   dailyStockQty      Int?
   isOutOfStock       Boolean        @default(false)
