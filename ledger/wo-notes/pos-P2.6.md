@@ -118,3 +118,16 @@ Binding: `pos-P2.6-review.md` "Controller rulings — fix round 1" 1–8 + "Hunt
 After fixes (pre-merge head 4abd3c99 + oracle): `qc-pos-p2.6` forced **57/57**.
 **P2.6U contract additions:** F5 — `kdsBoard`/`kitchenBacklog` to include the previous bizDate's non-SERVED tickets (needs ORACLE-EDIT T5) · 09 "held by kitchen" badge for NEW orders kept by pause/backlog · legacy-board banner (H7).
 **Follow-ups:** P2.11 sweeper for held NEW orders · legacy-board vs new board lock order (legacy `advanceItem` locks item → round; owner line) · P3 `setReady`.
+
+### Fix round 1 gates — tree `/root/projects/shark-pos-c` head **1b177a45** (code head 7d5339c8 = fixes + HF-PP2 merge) · dirty 0 · logs `scratchpad/p26/gates/*.log`
+| gate | result |
+|---|---|
+| typecheck | exit 0 |
+| fitness no-env / env · fitness-pos | 50/50 · 50/50 · 8/8 |
+| `qc-pos-p2.6` forced ×2 / unforced | **57/57 · 57/57 · 57/57** · PAR 5/5 · SKIP 0 · residue 0 |
+| `qc-pos-p1.1` ×2 | **180/180 · 180/180** (CD 3 closed) |
+| `qc-pos-p2.8` | 60/61 — ST6 PAR only (CD 2 ruled: wip-only, re-run at merge) · P10 green |
+| `qc-hf-tx` · `qc-pos-p2.4` · `qc-pos-p2.3` | 18/18 · 50/50 (ROI ORACLE-EDIT) · 46/46 |
+| `qc-pos-p1.3` · `p1.6` · `p1.10` · `p1.18` | 128/128 · 48/48 · 40/40 · 81/81 |
+| `qc-restaurant` / -money / -pay / -void | 6/6 · 6/6 · 19/19 · 11/11 |
+| `qc-pos-products` · `qc-hf-pos-page-authz` | 24/24 · 71/71 |
