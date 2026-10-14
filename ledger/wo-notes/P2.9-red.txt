@@ -84,3 +84,10 @@ tree=/root/projects/shark-pos-b head=af7f2b12 dirty=0 (fix-1 code · fix-2 oracl
 ✅ P2.9-G11
 G11 green-before: its observable bounds (counter ≤ 5, ≤ 1 bill, non-LOCKED ≤ 5/10) already hold with the fix-1 atomic counter; the fix-2 change (reserve before the hash compare) removes the extra hash evaluations/timing leak the hunter describes, which this black-box check cannot measure — pinned statically by the reserve-first code path.
 JSON_SUMMARY {"suite":"qc-pos-p2.9","total":60,"passed":57,"failed":["P2.9-RC1","P2.9-C5b","P2.9-RC2"],"skipped":false,"forced":true,"missing":[],"guardHits":0,"residue":0,"leaks":[],"drift":[]}
+
+# Block 5 — fix round 3 ORACLE-ADD (G12 · MG3) red-before on head before the fixes
+tree=/root/projects/shark-pos-b head=c1f2e64d dirty=0 (fix-2 code · fix-3 oracle only)
+===== qc-pos-p2.9 ===== ผ่าน 60/62 (QC_FORCE)
+❌ P2.9-G12 — expected CONFLICT ×2 · บัตรใบที่สองไม่ถูกแตะ | actual หน้าขาย: ครั้งแรก OK · บัตรอื่นคีย์เดิม OK · createSale: ครั้งแรก OK · บัตรอื่นคีย์เดิม OK
+❌ P2.9-MG3 — expected W +300 · K 0 · REFUND บน W | actual กั้น 1 · K 30000 (คาด 0) · W 15000 (คาด 45000) · REFUND บน W 0
+JSON_SUMMARY {"suite":"qc-pos-p2.9","total":62,"passed":60,"failed":["P2.9-G12","P2.9-MG3"],"skipped":false,"forced":true,"missing":[],"guardHits":0,"residue":0,"leaks":[],"drift":[]}
