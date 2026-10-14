@@ -75,6 +75,8 @@ const CHECKS: readonly Def[] = [
   D("G9", "X3", "[fix1 H2 มติ 3] 20 บิลพร้อมกัน PIN ผิด (คนละคีย์) บนบัตรใบเดียว → pinFailedCount = 5 · มี GIFT_CARD_LOCKED · ทุกคำตอบ PIN/LOCKED · 0 บิล · ยอดบัตรเท่าเดิม"),
   // ORACLE-ADD ผู้คุม 14 ต.ค. (fix 2) ▸ 57 → 60: G11 RC2 C5b · RC1 + กรณี STAFF + PIN ผู้จัดการ ◂
   D("G11", "X3", "[fix2 H2/N3 มติ 2] 50 บิลพร้อมกันบนบัตรนับ 0 (มี PIN ถูก 1 ใบ) → จองสิทธิ์ก่อนเทียบ: ตัวนับ ≤ 5 · คำตอบที่ไม่ใช่ LOCKED ≤ 5 (≤ 10 ถ้า PIN ถูกได้บิลแล้วล้างตัวนับ) · ที่เหลือ GIFT_CARD_LOCKED · บิล ≤ 1"),
+  // ORACLE-ADD ผู้คุม 14 ต.ค. (fix 3) ▸ 60 → 62: G12 MG3 ◂
+  D("G12", "X1", "[fix3 N4] คีย์เดียวกัน บัตรคนละใบ (หน้าขาย + createSale) → IDEMPOTENCY_CONFLICT · บัตรใบที่สองไม่ถูกแตะ (ยอด · ตัวนับ PIN · txn)"),
   D("G10", "X1", "[fix1 H6 มติ 8] หน้าขาย: ส่งซ้ำคีย์ที่บันทึกแล้วด้วยแถว GIFT_CARD ไม่มี PIN → บิลเดิม (duplicated) ตัดบัตรครั้งเดียว · คีย์ใหม่ไม่มี PIN → VALIDATION ไม่มีบิล"),
   // ── A บัญชี (มติ 1) ──
   D("A1", "X4", "[R4 มติ 1] JV ขายของบิล G2: Dr 1000 300 · Dr 2110 325 · Cr 4000 ฐาน + Cr 2200 VAT ของยอดเต็ม 625 (splitIncludedVat) · สมดุล · JV GIFTCARD_USED ของ USE แถวชำระ = 0"),
@@ -102,6 +104,7 @@ const CHECKS: readonly Def[] = [
   D("RC1", "X4", "[fix1 H1 มติ 2 · fix2 มติ 6] เพดานคืนเป็นเงิน: บิล walk-in จ่ายบัตร 100% → คืน CASH → REFUND_METHOD_INVALID · บิลสมาชิก บัตรถูกระงับ → CASH ปฏิเสธ · STORE_CREDIT ได้ · บิล walk-in บัตรถูกระงับ → CASH ต้องมีเหตุผล (REASON_REQUIRED) · มีเหตุผล → ok + audit cardShareToCash · STAFF (ไม่มีสิทธิ์คืน) + PIN ผู้จัดการ → ok · audit ผู้กระทำ = ผู้จัดการ + cardShareToCash"),
   D("RC2", "X4", "[fix2 N2 มติ 5] บิลเครดิตของ ME → รวม ME เข้า MF → คืนบางส่วน STORE_CREDIT → เครดิตของ MF (ผู้เก็บ) +100 · ไม่ปฏิเสธ"),
   D("MG1", "X4", "[fix1 H3 มติ 4] รวมสมาชิก (ทั้งคู่มีเครดิต 200 + 300) → ใบผู้เก็บ 500 · ใบผู้ถูกรวม 0 DEPLETED ไม่มีเจ้าของ · ADJUST MERGE 2 แถว · ยอดรวมเท่าเดิม · ผู้เก็บจ่ายเครดิต 500 ได้"),
+  D("MG3", "X1", "[fix3 N5] ผู้เก็บถูกรวมต่อระหว่างที่ void รอล็อก (ถือล็อกใบผู้เก็บ K แล้วรวม K → W ใน tx เดียวกัน) → คืนเข้า W +300 · K 0 · REFUND บน W"),
   D("MG2", "X5", "[fix1 H3 มติ 4] ใช้เครดิต 300 → รวมสมาชิก → void บิล → เครดิตผู้เก็บ +300 · ใบที่ถูกรวม 0 · REFUND อยู่บนใบผู้เก็บ"),
   D("C5", "X4", "[fix1 H4 มติ 5] ใช้บัตร 40 → บัตรหมดอายุ (expireDue 60) → void บิล → บัตร EXPIRED ยอด 0 · REFUND 40 + EXPIRE 40 · JV ของ EXPIRE นั้น 1 รายการ · 2110 ของบัตร (ขาย+บิล+หมดอายุ) สุทธิ 0"),
   D("C5b", "X4", "[fix2 G1/N1 มติ 1] บัตรเลยวันหมดอายุแต่ยัง ACTIVE ยอด 200 → void บิล 100 → ACTIVE 300 ไม่มี EXPIRE · expireDue → EXPIRE 300 · 2110 ของบัตรสุทธิ 0"),
@@ -626,14 +629,14 @@ async function runDb() {
     if (r?.giftCardId) GC[k] = { id: String(r.giftCardId), number: String(r.number), pin: String(r.pin) };
   };
   if (!fx) {
-    for (const k of ["X", "Y", "MA", "MB", "MC", "MD", "ME", "MF"]) {
+    for (const k of ["X", "Y", "MA", "MB", "MC", "MD", "ME", "MF", "MS", "MK", "MW"]) {
       const r = await step(`สมาชิก ${k}`, () => memMod.createMember(ctxM, owner, { phone: `0895${rnd(6)}`, name: `${k === "X" ? "สมชาย" : k === "Y" ? "สมหญิง" : `สมาชิก${k}`} บัตรดี ${RAND}`, source: "WALK_IN", homeUnitId: U.A }));
       if (r?.customerId) C[k] = String(r.customerId);
     }
     await step("บัตร: เปิดใช้ (สวิตช์บัญชีปิด)", () => gcMod.setSettings(gctx, owner, { enabled: true, accountingLink: false }));
     await sellCard("F", 20_000); // CD1b — ขายตอนสวิตช์ปิด
     await step("บัตร: สวิตช์บัญชีเปิด", () => gcMod.setSettings(gctx, owner, { enabled: true, accountingLink: true }));
-    const plan: [string, number][] = [["A", 50_000], ["B", 10_000], ["C", 30_000], ["D", 10_000], ["E", 30_000], ["S", 10_000], ["X", 10_000], ["V", 20_000], ["W", 15_000], ["R", 10_000], ["Q", 10_000], ["K", 30_000], ["Z", 10_000], ["Y", 10_000], ["H", 20_000], ["L", 30_000], ["M", 10_000], ["RC1", 50_000], ["RC2", 10_000], ["RC3", 10_000], ["PN", 30_000], ["PL", 10_000], ["QQ", 10_000], ["QB", 30_000], ["PX", 10_000], ["RC4", 10_000]]; // + fix1 + fix2
+    const plan: [string, number][] = [["A", 50_000], ["B", 10_000], ["C", 30_000], ["D", 10_000], ["E", 30_000], ["S", 10_000], ["X", 10_000], ["V", 20_000], ["W", 15_000], ["R", 10_000], ["Q", 10_000], ["K", 30_000], ["Z", 10_000], ["Y", 10_000], ["H", 20_000], ["L", 30_000], ["M", 10_000], ["RC1", 50_000], ["RC2", 10_000], ["RC3", 10_000], ["PN", 30_000], ["PL", 10_000], ["QQ", 10_000], ["QB", 30_000], ["PX", 10_000], ["RC4", 10_000], ["PY", 10_000], ["PZ", 10_000]]; // + fix1 + fix2 + fix3
     for (const [k, s] of plan) await sellCard(k, s);
     if (GC.S) await step("บัตร S ระงับ", () => gcMod.suspend(gctx, owner, { number: GC.S.number, reason: "QC P2.9" }));
     if (GC.X) await step("บัตร X หมดอายุ", () => P.giftCard.update({ where: { id: GC.X.id }, data: { expiresAt: new Date(Date.now() - 3_600_000) } }));
@@ -1122,6 +1125,30 @@ async function runDb() {
     }
     chk("G10", p.length === 0, "ซ้ำไม่มี PIN = บิลเดิม · ตัดครั้งเดียว · คีย์ใหม่ VALIDATION", FXB(joinP(p)));
   }
+  // ORACLE-ADD ผู้คุม 14 ต.ค. (fix 3): คีย์เดียวกันแต่บัตรคนละใบ = คำขอคนละอัน ◂
+  {
+    const p: string[] = [];
+    if (fx || !GC.PY || !GC.PZ) p.push("fixture");
+    else {
+      const z0 = await card("PZ");
+      const nz0 = (await txns(GC.PZ.id)).length;
+      const cart: Any = { lines: [{ name: `ของ G12 ${RAND}`, qty: 1, unitPriceSatang: 3_000 }] };
+      const q = await call(regMod, "quoteRegisterCart", ctxOf("A"), owner, cart);
+      const exp = Number(q?.grandTotalSatang ?? 3_000);
+      const sub = (k: string, kk: string) => call(regMod, "submitRegisterSale", ctxOf("A", DEV1), owner, { ...cart, idempotencyKey: k, expectedGrandTotalSatang: exp, payMethods: [{ type: "GIFT_CARD", amountSatang: 3_000, giftCard: { number: GC[kk].number, pin: GC[kk].pin } }] });
+      const k1 = key("g12");
+      const a = await sub(k1, "PY");
+      const b = a?.ok === true ? await sub(k1, "PZ") : null;
+      if (a?.ok !== true || !refused(b, "IDEMPOTENCY_CONFLICT")) p.push(`หน้าขาย: ครั้งแรก ${codeOf(a)} · บัตรอื่นคีย์เดิม ${codeOf(b)}`);
+      const k2 = key("g12");
+      const c = await cs(saleIn(k2, [["ของ G12 ตรง", 2_000]], [gcPay(2_000, "PY")]));
+      const d = ok(c) ? await cs(saleIn(k2, [["ของ G12 ตรง", 2_000]], [gcPay(2_000, "PZ")])) : null;
+      if (!ok(c) || !refused(d, "IDEMPOTENCY_CONFLICT")) p.push(`createSale: ครั้งแรก ${codeOf(c)} · บัตรอื่นคีย์เดิม ${codeOf(d)}`);
+      const z1 = await card("PZ");
+      if (z1?.balanceSatang !== z0?.balanceSatang || z1?.pinFailedCount !== z0?.pinFailedCount || (await txns(GC.PZ.id)).length !== nz0) p.push(`บัตร PZ ถูกแตะ ${z0?.balanceSatang}→${z1?.balanceSatang} · ตัวนับ ${z0?.pinFailedCount}→${z1?.pinFailedCount}`);
+    }
+    chk("G12", p.length === 0, "CONFLICT ×2 · บัตรใบที่สองไม่ถูกแตะ", FXB(joinP(p)));
+  }
 
   // ════════ A บัญชี ════════
   await drain();
@@ -1593,6 +1620,43 @@ async function runDb() {
       }
     }
     chk("MG2", p.length === 0, "ผู้เก็บ +300 · ใบที่ถูกรวม 0", FXB(joinP(p)));
+  }
+  // ORACLE-ADD ผู้คุม 14 ต.ค. (fix 3): ผู้เก็บถูกรวมต่อระหว่างที่การคืนรอล็อกใบผู้เก็บ ◂
+  {
+    const p: string[] = [];
+    if (fx || !C.MS || !C.MK || !C.MW) p.push("fixture");
+    else {
+      await creditOf(C.MS, 30_000, "MS");
+      await creditOf(C.MK, 10_000, "MK");
+      await creditOf(C.MW, 5_000, "MW");
+      const kCard = (await anyCard("MK"))[0];
+      const wCard = (await anyCard("MW"))[0];
+      const bill = await cs(saleIn(key("mg3"), [["ของ MG3", 30_000]], [{ type: "STORE_CREDIT", amountSatang: 30_000 }], memberOf(C.MS)));
+      if (!ok(bill) || !kCard || !wCard) p.push(`บิลเครดิต → ${codeOf(bill)}`);
+      else {
+        await drain();
+        const mg = await call(memMod, "mergeMembers", ctxM, owner, { keepId: C.MK, mergeId: C.MS, confirm: "MERGE" });
+        if (mg?.ok === false) p.push(`merge MS→MK → ${codeOf(mg)}`);
+        const kId = String(kCard.id);
+        const wId = String(wCard.id);
+        // A ถือล็อก K · void + ระบายคิว (การคืนรอล็อก K) · ระหว่างนั้น A รวม K → W (แถวเดียวกับ foldStoreCreditOnMerge) แล้ว commit
+        const h = await holdLock(kId, 1, [async () => { await voidBill(bill.saleId); await drain(1); }], async (tx) => {
+          const kb = Number(((await tx.$queryRawUnsafe(`SELECT "balanceSatang" AS b FROM "GiftCard" WHERE id = $1`, kId)) as Any[])[0].b);
+          await tx.$executeRawUnsafe(`SELECT id FROM "GiftCard" WHERE id = $1 FOR UPDATE`, wId);
+          await tx.giftCard.update({ where: { id: wId }, data: { balanceSatang: { increment: kb } } });
+          await tx.giftCard.update({ where: { id: kId }, data: { balanceSatang: 0, status: "DEPLETED", ownerCustomerId: null } });
+          const wb = Number(((await tx.$queryRawUnsafe(`SELECT "balanceSatang" AS b FROM "GiftCard" WHERE id = $1`, wId)) as Any[])[0].b);
+          await tx.giftCardTxn.create({ data: { tenantId: T, giftCardId: kId, type: "ADJUST", satang: kb, balanceAfter: 0, refType: "MERGE", refId: wId, idempotencyKey: `qc29-${RAND}-mg3-out` } });
+          await tx.giftCardTxn.create({ data: { tenantId: T, giftCardId: wId, type: "ADJUST", satang: kb, balanceAfter: wb, refType: "MERGE", refId: kId, idempotencyKey: `qc29-${RAND}-mg3-in` } });
+        });
+        await drain();
+        const k = await cardById(kId);
+        const w = await cardById(wId);
+        const refOnW = (await txns(wId, "REFUND")).filter((t) => t.refType === "GiftCardTxn");
+        if (h.blocked < 1 || k?.balanceSatang !== 0 || w?.balanceSatang !== 45_000 || refOnW.length !== 1) p.push(`กั้น ${h.blocked} · K ${k?.balanceSatang} (คาด 0) · W ${w?.balanceSatang} (คาด 45000) · REFUND บน W ${refOnW.length}`);
+      }
+    }
+    chk("MG3", p.length === 0, "W +300 · K 0 · REFUND บน W", FXB(joinP(p)));
   }
   // ORACLE-ADD ผู้คุม 14 ต.ค. (fix 1 · H4): void คืนเข้าบัตรที่หมดอายุแล้ว ⇒ REFUND + EXPIRE · 2110 สุทธิ 0 ◂
   {
