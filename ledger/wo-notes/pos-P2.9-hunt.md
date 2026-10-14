@@ -80,3 +80,38 @@ Missing check: 50 parallel submits on a count-0 card, one of them with the right
 - **Lock window and expiry:** count ≥ 5 after the lock expires ⇒ the next wrong PIN re-locks at once.
 - **Keeper chain:** follows the latest `MERGE` ADJUST; the keeper card always exists, because the fold requires it.
 - **Kind filters:** `loadByNumber` refuses SC (reload, suspend, transfer and legacy `use`/wallet ⇒ NOT_FOUND); list/KPI filter GIFT; `balance()` still reads SC by number, which is read-only and owner-checked.
+
+
+---
+
+## Final re-check after fix round 2 (account B, 14 Oct 21:0xZ) — head 318ef7aa
+
+# P2.9 S final money re-check, fix round 2 — `wip/pos-p2.9` 318ef7aa (code 1d6d3abb) · read-only
+**Verdict: FINDINGS** (2 low only; no open medium or high money path). Paths are in `/root/projects/shark-pos-b` at 1d6d3abb.
+
+| Item | Status | Evidence / remaining input |
+|---|---|---|
+| N1 past-date ACTIVE restore | CLOSED | `giftcard/service.ts:~1424`: `expired = status === "EXPIRED"` only. The past-date ACTIVE card keeps B+X, and `expireDue`'s locked read then does one EXPIRE and one JV (C5b). |
+| N2 merged-member credit refund | CLOSED | `pos/refund.ts:424-432`: follows `mergedIntoId` ≤ 5 hops. `issueStoreCredit` re-checks the keeper under its lock. No double credit with the void path: void needs `refundedSatang = 0`, and refund needs PAID under the sale lock. |
+| N3 / H2 PIN | CLOSED | `service.ts:245-277` reserves before verify (≤ 5 hash compares per lock window, 0 rows ⇒ LOCKED and no compare). The correct PIN resets only if the row is not locked or the count equals its own slot. A correct PIN at slot 5 still resets. The slot is released on a correct PIN even when the sale later fails (reset inside the committed short tx), so a customer is not locked out after N failed sales. |
+| H3 residual | **PARTIAL → N5** | `service.ts:1415-1417`: the old card is locked first and then resolved, but the keeper is not re-resolved after it is locked. |
+| H5 residual | CLOSED | `account/coa.ts:636`: `setLedgerActive(false)` is guarded. |
+| H1 manager PIN | CLOSED | `refund.ts:571`: the plan step defers. Commit needs `canRefund`, or `auditActorId` set by `verifyManagerPin` plus `pos.sale.refund` on the approver (`:283-288`), or the approval consumer. The amount is capped by `stuck` (card share − card refunds). Two racing approvals both re-plan under the sale `FOR UPDATE`, and Σ cash ≤ bill lines, so no over-refund. |
+
+**New code (08ef0359 short PIN tx), probed and clean:**
+- **Replay of a committed key:** returns `"dup"` before any reserve (`pos/service.ts:272-274`), so no slot is consumed. A PIN-less register replay never reaches `createSale`.
+- **Card suspended, drained or expired between the pre-check and the sale tx:** `recheckGiftTender` (`service.ts:1330-1338`) re-reads status, balance and lock in the tx, and `useTender` keeps its `gte`/ACTIVE guard after the counter.
+- **PIN changed in between:** not possible; `pinHash` is only written at sell (`:512`), and transfer keeps it.
+- **A wrong PIN:** the slot persists (the short tx commits, then the failure is rethrown). `validateSaleInput` throws inside the tx, so it rolls back with no slot consumed.
+- **callerTx paths (`pinsVerified = false`):** still compare in the tx, with a reserve through `prisma`.
+- **Two voids along one keeper chain:** they lock in chain direction (old → keeper), so there is no cycle and no deadlock with the fold, which never re-locks an ownerless card.
+
+**N4 LOW — a same-key submit with a different card is served the first bill (pre-existing idempotency semantics, now with a PIN verified for card Y).** `pos/service.ts:338-362` `samePayload` and `register.ts` `regSameSubmission` compare only `type:amount`.
+Input: request A (key K, GC-X ฿325 + cash 300) commits. Request B (same K, same lines, GC-Y ฿325, correct PIN) gets `"dup"` and the duplicate result with A's bill: "paid", while Y is never charged. This needs a reused client key (a bug or a malicious client), so it is low.
+Fix: put the normalised card number (or `giftCardId`) into both bags for GIFT_CARD rows, so B ⇒ IDEMPOTENCY_CONFLICT.
+Missing check: same key, different card ⇒ CONFLICT, and card Y's balance and counter are unchanged.
+
+**N5 LOW — the keeper can be merged again while a void waits on it, so the credit lands on an ownerless card.** `giftcard/service.ts:1415-1417` and `refundToCard` `:1491-1492` resolve the target once.
+Input: void of a bill paid with old card G starts: it locks G and resolves the keeper K (owned at that moment). A concurrent fold of K into W commits: K is ownerless with balance 0 and W receives K's balance. The void then locks K and credits K ⇒ the ฿x is orphaned on K. This needs a second merge racing the void.
+Fix: after locking the target, re-run `mergeTargetOf` and loop until it stops changing (≤ 5).
+Missing check: hold a lock on K while the fold K→W commits, then drain the void ⇒ W +x and K 0.
