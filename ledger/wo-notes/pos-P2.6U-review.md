@@ -87,3 +87,10 @@ Parity overall good: tabs with filled count badge, avg/target, pause switch, pri
 - **V9 (nit)**: "#4  · โต๊ะ M2" has a double space before the separator; mockup "#16 · โต๊ะ A2".
 - **V10 (nit)**: card "···" menu is not in the mockup — accepted (rush/line-done need a home) but keep it 44 px and out of the footer text's way.
 Rulings: V1–V9 join fix round 1 (UI/harness only). After fix1 the controller re-shoots the full `p2.6u` state list (kds ×8 owner/cashier th + owner en incl. 390, register-tile-86, orders-kitchen-meter, products-drawer-station, settings-device-kitchen-slip).
+
+## R2 (account B, 14 Oct 16:3xZ) — head f67790a7 / code a14dcb61 — **MERGEABLE** (full report `pos-P2.6U-review-R2.md`)
+F1–F6 + V1–V9 closed as ruled; server diff = readers only (`roundOfSale`, `kdsKitchenProducts`, `kdsStations`); oracle = A15 only; gates match logs (head=fb115dd0). Low/Nit: **G1** fixture cleanup guard ignores the shift/bill on a failed first pass (OPEN shift + PAID bill could remain on QC5) · **G2** after-sale print silent when the round is not there within 3 polls · **G3** initial regex skips only Thai leading vowels; dry logs lack headers; en dry plan 1440-only. Note: the builder's "code head 1df0a6c2" does not exist — real code head a14dcb61 (chain69 failed at checkout; restarted as chain70 at f67790a7).
+
+## Controller rulings — fix round 2 (account B, 14 Oct 16:3xZ)
+1. G1 → fix (guard + idempotent void/close on retry) · G3 → fix (non-letter skip, dry-log headers, en 390 plan) · G2 → optional status line if ≤ 10 lines. Harness/UI only; gates typecheck · fitness ±env · fitness-pos · visual --dry th+en incl. 390 · p1.18 if keys changed. No R3 needed if the diff is harness/UI only (controller reads the diff).
+2. Merge path after fix2 + vis71 reviewed + hunter clean: merge upstream (`origin/session/pos`, ledger-only expected) → merge gates on tree c (p2.6 66 · p1.1 · p1.3 · p1.18 · authz · p2.8 · p2.4 · p1.10 · p1.12 · p1.16 · restaurant ×4 · products · hf-tx · fitness ±env · fitness-pos · typecheck) → merge → **28/55** + TG.
