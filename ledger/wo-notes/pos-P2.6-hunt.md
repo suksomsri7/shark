@@ -109,3 +109,45 @@ Fix: sort `byItem` in `writeOrderTx`. Hot-path order is frozen by S2.42, so this
 - **F1 lock vs setAvailability:** PosProduct → MenuItem against MenuItem → counter has no cycle. `emitMenuFlip` reads PosProduct without a lock.
 - **F4 NO_STATIONS** returns before the sale read. A unit without stations correctly gets no ticket.
 - **No ticket without payment or accept:** a register round needs PAID under FOR SHARE, and an online round is created only in the accept xid. Money on items stays 0 and saleId null, and slips carry no money.
+
+
+---
+
+## P2.6U merge-time hunt (account B, 14 Oct 16:3xZ) — head f67790a7
+
+# P2.6U MERGE-TIME HUNT (money / stock / order state) · tree c · read-only
+Head `wip/pos-p2.6u` f67790a7. The named code head `1df0a6c2` does not exist in this repo, so I hunted the last code commit, **addc79cd** (= f67790a7 minus ledger). Base: 671e6fd2. Scope: `kds.ts`, `kds-actions.ts`, `kds-shared.ts`, `catalog.ts`, `catalog-legacy.ts`, `restaurant/{kitchen,index}.ts`, plus the PayDone print path.
+
+**Verdict: FINDINGS (Low only; not merge-blocking).** No Medium or High finding. The questions asked are walked below.
+
+**N1 Low: a sale whose round is created later by heal never gets an after-sale kitchen slip.**
+- Where: `PayDone.tsx:93-104` asks `kdsQueueNoAction` at most 3 times, 1 s apart. If no round exists yet, it stops and never prints. `healMissingTickets` (`kds.ts`, board read) later creates the round but prints nothing.
+- Input: a unit whose kitchen runs on printers only (17B after-sale, no KDS screen) and a `ticketForSale` that returns ERROR. Heal creates the round on the next board poll, if any, but no slip ever prints. The customer has paid and the kitchen never sees the order.
+- Smallest fix: if no queue number comes back after the 3 polls, show a cashier warning ("ใบครัวไม่ออก — พิมพ์จากจอครัว"). Owner line: print-only kitchens must keep a KDS or expo tab open so heal runs.
+
+**N2 Low: one routing re-link can still hide a failed ticket (the K13 class, narrow).**
+- Where: `catalog.ts:1485` stamps `stationSetAt` whenever an un-stationed variant gets a new parent. Heal then needs both the row stamp and the parent stamp to be ≤ the sale time (`kds.ts:319`).
+- Input: sale S of variant V (parent A, station X), and `ticketForSale` fails. V is then re-linked to parent B, which also routes to station X. The kitchen route never changed, but the stamp moves past S, so heal skips S. Lost ticket.
+- Smallest fix: stamp only when the effective station changes (`coalesce(row.stationId, oldParent.stationId) !== coalesce(row.stationId, newParent.stationId)`). This is the same rule as `catalog.ts:1704` and `catalog-legacy.ts:83`.
+- K12b passes as written (no stale ghost tickets). Stamps are written only on a station change (`catalog.ts:1695/1704`, `catalog-legacy.ts:83`) and never by sales, so N2 from the previous re-check (blind heal) stays closed.
+
+## Questions asked, walked clean
+- **Leaks across unit or tenant.** Every new reader takes `tenantId` from the session (`kds-actions.ts` sessionScope). `unitId` goes through `canAccessUnit` and the per-need keys.
+  - `roundOfSale`/`queueNoForSale` filter tenantId + unitId + posSaleId and return only dailyNo and the round id.
+  - `kitchenStateForUnit` reads one unit's setting and backlog.
+  - `kdsKitchenProducts` (kscope `availability`) returns MENU rows only through this unit's MenuItems on this unit's stations. Non-MENU rows must have `unitId` null or this unit, a station in this unit's stations, and the matching systemId. Availability and marks are unit-scoped.
+  - `kdsStations` returns names only.
+  - An OWNER passing another tenant's unitId gets empty or default results, because tenantId is fixed from the session.
+- **Recall lock order.** Recall locks in this order: round FOR NO KEY UPDATE (`kitchen.ts:304`), then PosSale FOR SHARE (register rounds only), then a plain PosOrder read (online rounds only), then items, then PosOrder FOR UPDATE. Online rounds never take the PosSale lock. None of the other writers can close a cycle:
+  - The void consumer and order-cancel consumer (`kitchenCancelInTx`) lock round → items → MenuItem and never PosSale or PosOrder.
+  - `voidSale`, refund and receipt locks take only PosSale.
+  - `cancelOrder` locks PosOrder → PosSale, but not on a round that is posSaleId-linked.
+  - `ticketForSale` never locks an existing round.
+  - Legacy `advanceItem`/`recallItem` run as single autocommit statements.
+  - P2.4 claim/unlink/cancel lock session/items, never the round.
+
+  Recall against a void, in either order, ends at TICKET_VOIDED (K14b). The H7 legacy `recallItem` stays owner-lined.
+- **After-sale print path.** `kitchenSlipPayloadAction` uses kscope `read` and `ticketOf`, filtered by unit. It reads only and writes no rows. A round that is all CANCELLED gives TICKET_NOT_FOUND, so nothing prints. Slips carry no money keys. Printing once per sale is guarded by a module Set (client side, not an integrity control).
+- **Cook-only stock or availability writes.** None are new. `setProductStationAction` needs `pos.product.manage` (re-checked in `updateProduct`), and the new readers write nothing. Pre-existing S note: `setAvailability({available:true, resetCounter:true})` lets a COOK refill a sold-out counter to `dailyStockQty`. Owner may want that behind `restaurant.kitchen.pause` or `pos.product.manage`.
+- **MenuItem FOR UPDATE before `heldBy86Mark`** (`catalog-legacy.ts:200`, `catalog-legacy.ts:353`). It takes the same row the update already locked, so the lock order is unchanged (RestaurantOrderItem → MenuItem; PosProduct → MenuItem in setAvailability). Under the lock, the mark read is serialized with setAvailability's mark write (A14).
+- **TICKET_VOIDED.** It fires when `status ≠ PAID`, so a full refund refuses recall. A partial refund stays PAID and recall is allowed, which is consistent with V2.
