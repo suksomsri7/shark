@@ -1688,7 +1688,10 @@ export async function updateProduct(ctx: CatalogCtx, id: string, patch: UpdatePr
       // POS P2.6 ▸ มติ 4: สถานีครัวของแถวที่ไม่ใช่เมนู — สถานีที่ใช้งานของร้านนี้ · แถวของสาขา = สถานีของสาขานั้น · แถวทุกสาขา = สถานีของสาขาที่ผูก POS นี้และเข้าได้ ◂
       if ("stationId" in p) {
         if (before.kind === "MENU") throw invalid("สถานีครัวของเมนูตั้งที่หน้าเมนูร้านอาหาร");
-        if (p.stationId === null) data.stationId = changed.stationId = null;
+        if (p.stationId === null) {
+          data.stationId = changed.stationId = null;
+          if (before.stationId !== null) data.stationSetAt = new Date(); // fix2 G1/N2: เวลาที่การผูกครัวเปลี่ยน (heal)
+        }
         else {
           if (typeof p.stationId !== "string" || !p.stationId) throw invalid("สถานีครัวไม่ถูกต้อง");
           const st = await tx.kdsStation.findFirst({ where: { id: p.stationId, tenantId: ctx.tenantId, archivedAt: null }, select: { id: true, unitId: true } });
@@ -1696,6 +1699,7 @@ export async function updateProduct(ctx: CatalogCtx, id: string, patch: UpdatePr
           if (unitId && st.unitId !== unitId) throw invalid("สถานีครัวต้องเป็นของสาขาเดียวกับสินค้า");
           await assertUnit(ctx, actor, st.unitId, tx);
           data.stationId = changed.stationId = st.id;
+          if (before.stationId !== st.id) data.stationSetAt = new Date(); // fix2 G1/N2
         }
       }
       let off: string[] = [];

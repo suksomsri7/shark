@@ -80,6 +80,7 @@ async function syncMenuRow(tx: Tx, who: Who, row: PosProduct, item: MenuItem): P
   await applySync(tx, who, row, {
     name: d.name, nameEn: d.nameEn, categoryId: d.categoryId, basePriceSatang: d.basePriceSatang, images: d.images,
     sortOrder: d.sortOrder, stationId: d.stationId, dailyStockQty: d.dailyStockQty,
+    ...(row.stationId !== d.stationId ? { stationSetAt: new Date() } : {}), // POS P2.6 ▸ fix2 G1: เวลาที่สถานีเปลี่ยน ◂
   });
 }
 
