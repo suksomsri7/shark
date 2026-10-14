@@ -1944,6 +1944,16 @@ export async function postGiftCardSale(
   });
 }
 
+// POS HF-GC ▸ ตัวอ่านของ JV ขาย/เติมบัตรกำนัล (อ่านอย่างเดียว · ไม่เขียนอะไร) — คีย์เดียวกับ postGiftCardSale ข้างบน ◂
+/** id ของ JV `${refType}#${refId}#GIFTCARD_SOLD` ที่ลงไว้แล้ว — ไม่มี = null */
+export async function giftCardSaleEntryId(ctx: GlCtx, refType: string, refId: string): Promise<string | null> {
+  const e = await prisma.accountJournalEntry.findFirst({
+    where: { systemId: ctx.systemId, idempotencyKey: `${refType}#${refId}#GIFTCARD_SOLD` },
+    select: { id: true },
+  });
+  return e?.id ?? null;
+}
+
 /** ใช้บัตรกำนัลชำระค่าสินค้า/บริการ → รับรู้รายได้ (Dr 2110 · Cr 4030) */
 export async function postGiftCardUse(
   ctx: GlCtx,

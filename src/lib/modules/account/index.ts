@@ -81,6 +81,7 @@ import {
   postGiftCardSale as postGiftCardSaleGl,
   postGiftCardUse as postGiftCardUseGl,
   postGiftCardExpire as postGiftCardExpireGl,
+  giftCardSaleEntryId as giftCardSaleEntryIdGl, // POS HF-GC ◂
   reverseFor,
   type GlCtx,
 } from "./gl";
@@ -617,6 +618,18 @@ export async function postGiftCardSale(input: {
     drLines: input.payMethods.map((p) => ({ key: giftCardChannelKey(p.channel), amountSatang: p.amountSatang })),
   }, tx);
   return "entryId" in res ? { posted: true, entryId: res.entryId } : { posted: false, reason: "posted-before" };
+}
+
+// POS HF-GC ▸ อ่านอย่างเดียว: JV ขายบัตรที่ลงไว้แล้ว — ให้ตาข่ายของ giftcard ผูก accountingDocId คืนได้ เมื่อ postGiftCardSale
+//   ตอบ "posted-before" (ไม่มี entryId) หรือแพ้ unique ตอนลงพร้อมกัน · ไม่เชื่อมบัญชี = null ◂
+export async function giftCardSaleEntryId(input: {
+  tenantId: string;
+  sourceSystemId: string;
+  refType?: "GiftCard" | "GiftCardTxn";
+  refId: string;
+}): Promise<string | null> {
+  const ctx = await giftCardCtx(input.tenantId, input.sourceSystemId);
+  return ctx ? giftCardSaleEntryIdGl(ctx, input.refType ?? "GiftCard", input.refId) : null;
 }
 
 /** ใช้บัตรกำนัลชำระบิล → รับรู้รายได้ (Dr 2110 · Cr 4030) */

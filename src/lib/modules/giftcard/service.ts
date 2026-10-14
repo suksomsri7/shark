@@ -304,6 +304,55 @@ async function posSystemIdOf(ctx: GiftCardCtx | null, card: { saleId: string | n
   return sale?.systemId ?? null;
 }
 
+// POS HF-GC ▸ H2 ตาข่ายหนี้สิน 2110 ของการขายบัตร ◂
+/**
+ * ลงบัญชี "รับเงินล่วงหน้า" (Dr ช่องทางเงิน · Cr 2110) ของบัตรที่ขายแล้วให้ครบ **ครั้งเดียว** แล้วผูก `accountingDocId`
+ * — **ผู้เขียน accountingDocId ตัวเดียว** (มติ §9 ข้อ 1) · เรียกจาก 3 ทาง: ขายปกติหลัง commit · ขายซ้ำคีย์เดิม · consumer `giftcard.sold` (ตาข่าย)
+ * เหตุ: เดิมลงบัญชีนอกธุรกรรมขาย — พังระหว่าง commit กับการผูก = บัตรใช้ได้แต่ไม่มีหนี้สิน 2110 และใช้/หมดอายุก็ไม่ลงตลอดไป (ดูข้อ 2 หัวไฟล์)
+ * 🔴 `accountingLink` = การตัดสินตอนขาย (payload `giftcard.sold` · ทางขายซ้ำใช้สวิตช์ ณ ตอนเล่นซ้ำ — บัตรไม่มีคอลัมน์เก็บ) ⇒ false = ไม่ลงย้อนหลังเด็ดขาด
+ * idempotent: gl.ts `postGiftCardSale` ข้ามคีย์ `GiftCard#<id>#GIFTCARD_SOLD` ที่มีแล้ว (alreadyPosted) + unique (tenantId, idempotencyKey) ของ JV
+ *   กันการลงพร้อมกัน (แพ้ = P2002) ⇒ ทั้งสองกรณีอ่าน id ของ JV เดิมตามอ้างอิงแล้วผูก (updateMany เงื่อนไข accountingDocId null)
+ */
+export async function ensureGiftCardSalePosted(
+  tenantId: string,
+  giftCardId: string,
+  opts: { accountingLink: boolean },
+): Promise<string | null> {
+  if (!opts.accountingLink) return null;
+  const card = await prisma.giftCard.findFirst({
+    where: { id: giftCardId, tenantId },
+    select: { id: true, accountingDocId: true, saleId: true, initialSatang: true, createdAt: true },
+  });
+  if (!card) return null;
+  if (card.accountingDocId) return card.accountingDocId;
+  const posSystemId = await posSystemIdOf(null, card);
+  if (!posSystemId || !card.saleId) return null;
+  // ช่องทางเงินจากบิลขายบัตรเอง (แถวเดียวกับที่บิลเก็บ — ไม่พึ่งค่าที่ผู้เรียกส่งมา)
+  const pays = await prisma.posPayment.findMany({
+    where: { tenantId, saleId: card.saleId },
+    select: { type: true, amountSatang: true },
+    orderBy: { id: "asc" },
+  });
+  const ref = { tenantId, sourceSystemId: posSystemId, refType: "GiftCard" as const, refId: card.id };
+  let entryId: string | null = null;
+  try {
+    const posted = await account.postGiftCardSale({
+      ...ref,
+      occurredAt: card.createdAt,
+      satang: card.initialSatang,
+      payMethods: pays.map((p) => ({ channel: accountChannel(p.type), amountSatang: p.amountSatang })),
+    });
+    if (posted.reason === "unlinked") return null; // ร้านไม่ได้เชื่อมบัญชีกับ POS = ไม่ลง (เชื่อมทีหลัง → consumer/ขายซ้ำลงให้)
+    entryId = posted.entryId ?? null;
+  } catch (e) {
+    if (!isUniqueViolation(e)) throw e; // อีกทางลงไปพร้อมกันแล้ว → อ่านตามอ้างอิงข้างล่าง
+  }
+  entryId ??= await account.giftCardSaleEntryId(ref);
+  if (!entryId) return null;
+  await prisma.giftCard.updateMany({ where: { id: card.id, accountingDocId: null }, data: { accountingDocId: entryId } });
+  return entryId;
+}
+
 // ───────────────────────── ขาย ─────────────────────────
 
 export type SellRecipient =
@@ -357,7 +406,15 @@ export async function sell(ctx: GiftCardCtx, actor: MemberActor, input: SellInpu
   const key = `giftcard-sell-${idem}`;
 
   // ยิงซ้ำด้วยคีย์เดิม → คืนบัตรใบเดิม (ไม่มีบัตร/บิลใบที่สอง · ไม่คืน PIN ซ้ำ)
-  const done = await sellReplay(ctx.tenantId, key);
+  // POS HF-GC ▸ H2(b): ขายซ้ำคีย์เดิม = ผลเดิม + ตาข่ายลงบัญชี (ช่วงพังหลัง commit) · สวิตช์ ณ ตอนเล่นซ้ำ (บัตรไม่มีคอลัมน์เก็บการตัดสิน) ◂
+  const replayed = async (): Promise<SellResult | null> => {
+    const r = await sellReplay(ctx.tenantId, key);
+    if (r && !r.accountingDocId) {
+      r.accountingDocId = await ensureGiftCardSalePosted(ctx.tenantId, r.giftCardId, { accountingLink: (await getSettings(ctx)).accountingLink });
+    }
+    return r;
+  };
+  const done = await replayed();
   if (done) return done;
 
   const settings = await getSettings(ctx);
@@ -476,6 +533,7 @@ export async function sell(ctx: GiftCardCtx, actor: MemberActor, input: SellInpu
               buyerCustomerId,
               ownerCustomerId,
               saleId: sale.saleId,
+              accountingLink: settings.accountingLink, // POS HF-GC ▸ H2(3): การตัดสินตอนขาย — consumer ตาข่ายลงบัญชีเฉพาะ true ◂
             },
             systemId: ctx.systemId,
             unitId: input.unitId,
@@ -486,29 +544,15 @@ export async function sell(ctx: GiftCardCtx, actor: MemberActor, input: SellInpu
       );
     } catch (e) {
       if (!isUniqueViolation(e) || attempt >= SALE_TX_ATTEMPTS) throw e;
-      const replay = await sellReplay(ctx.tenantId, key);
+      const replay = await replayed(); // POS HF-GC ▸ ผลเดิม + ตาข่ายลงบัญชี ◂
       if (replay) return replay;
     }
   }
   await pos.afterSaleCommitted(created.saleInput, created.saleId); // HF-TX ▸ ระบายคิว (+ ตัดสต็อกถ้ามี) หลัง commit ◂
 
   // ── บัญชี (D3) — เปิดสวิตช์ + ร้านเชื่อมบัญชีกับ POS แล้วเท่านั้น ──
-  let accountingDocId: string | null = null;
-  if (settings.accountingLink) {
-    const posted = await account.postGiftCardSale({
-      tenantId: ctx.tenantId,
-      sourceSystemId: posSystemId,
-      refType: "GiftCard",
-      refId: created.card.id,
-      occurredAt: now,
-      satang,
-      payMethods: payMethods.map((p) => ({ channel: accountChannel(p.type), amountSatang: p.amountSatang })),
-    });
-    if (posted.entryId) {
-      accountingDocId = posted.entryId;
-      await prisma.giftCard.update({ where: { id: created.card.id }, data: { accountingDocId } });
-    }
-  }
+  // POS HF-GC ▸ H2(a): ลงทันทีผ่านตัวช่วยเดียว (มติ §9 ข้อ 1 — เร็ว · ผลรูปเดิม) · พังตรงนี้ = consumer giftcard.sold / ขายซ้ำ ลงให้ภายหลัง ◂
+  const accountingDocId = await ensureGiftCardSalePosted(ctx.tenantId, created.card.id, { accountingLink: settings.accountingLink });
 
   // POS HF-TX ▸ หมายเลข/PIN มาจากรอบที่ commit จริง (ออกใหม่ทุกรอบที่ลองซ้ำ) ◂
   return { giftCardId: created.card.id, number: created.number, pin: created.pin, saleId: created.saleId, expiresAt, accountingDocId };
