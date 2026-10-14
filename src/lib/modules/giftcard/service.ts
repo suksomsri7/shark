@@ -309,7 +309,7 @@ async function posSystemIdOf(ctx: GiftCardCtx | null, card: { saleId: string | n
  * ลงบัญชี "รับเงินล่วงหน้า" (Dr ช่องทางเงิน · Cr 2110) ของบัตรที่ขายแล้วให้ครบ **ครั้งเดียว** แล้วผูก `accountingDocId`
  * — **ผู้เขียน accountingDocId ตัวเดียว** (มติ §9 ข้อ 1) · เรียกจาก 3 ทาง: ขายปกติหลัง commit · ขายซ้ำคีย์เดิม · consumer `giftcard.sold` (ตาข่าย)
  * เหตุ: เดิมลงบัญชีนอกธุรกรรมขาย — พังระหว่าง commit กับการผูก = บัตรใช้ได้แต่ไม่มีหนี้สิน 2110 และใช้/หมดอายุก็ไม่ลงตลอดไป (ดูข้อ 2 หัวไฟล์)
- * 🔴 `accountingLink` = การตัดสินตอนขาย (payload `giftcard.sold` · ทางขายซ้ำใช้สวิตช์ ณ ตอนเล่นซ้ำ — บัตรไม่มีคอลัมน์เก็บ) ⇒ false = ไม่ลงย้อนหลังเด็ดขาด
+ * 🔴 `accountingLink` = การตัดสินตอนขาย (payload `giftcard.sold` — ทั้ง consumer และทางขายซ้ำ · fix 1) ⇒ false = ไม่ลงย้อนหลังเด็ดขาด
  * idempotent: gl.ts `postGiftCardSale` ข้ามคีย์ `GiftCard#<id>#GIFTCARD_SOLD` ที่มีแล้ว (alreadyPosted) + unique (tenantId, idempotencyKey) ของ JV
  *   กันการลงพร้อมกัน (แพ้ = P2002) ⇒ ทั้งสองกรณีอ่าน id ของ JV เดิมตามอ้างอิงแล้วผูก (updateMany เงื่อนไข accountingDocId null)
  */
@@ -351,6 +351,16 @@ export async function ensureGiftCardSalePosted(
   if (!entryId) return null;
   await prisma.giftCard.updateMany({ where: { id: card.id, accountingDocId: null }, data: { accountingDocId: entryId } });
   return entryId;
+}
+
+// POS HF-GC ▸ fix 1 (รีวิว F1): การตัดสินสวิตช์ผูกบัญชี "ตอนขาย" ของบัตรใบนี้ = payload `accountingLink` ของแถว outbox `giftcard.sold#<id>`
+//   (เขียนในธุรกรรมขายเดียวกับตัวบัตร · แหล่งเดียวกับ consumer) · ไม่มีแถว/แถวก่อน HF-GC ไม่มีธง = false (ไม่ลงย้อนหลัง) ◂
+async function soldWithAccountingLink(tenantId: string, giftCardId: string): Promise<boolean> {
+  const e = await prisma.outboxEvent.findUnique({
+    where: { tenantId_idempotencyKey: { tenantId, idempotencyKey: `giftcard.sold#${giftCardId}` } },
+    select: { payload: true },
+  });
+  return (e?.payload as { accountingLink?: unknown } | null)?.accountingLink === true;
 }
 
 // ───────────────────────── ขาย ─────────────────────────
@@ -406,11 +416,12 @@ export async function sell(ctx: GiftCardCtx, actor: MemberActor, input: SellInpu
   const key = `giftcard-sell-${idem}`;
 
   // ยิงซ้ำด้วยคีย์เดิม → คืนบัตรใบเดิม (ไม่มีบัตร/บิลใบที่สอง · ไม่คืน PIN ซ้ำ)
-  // POS HF-GC ▸ H2(b): ขายซ้ำคีย์เดิม = ผลเดิม + ตาข่ายลงบัญชี (ช่วงพังหลัง commit) · สวิตช์ ณ ตอนเล่นซ้ำ (บัตรไม่มีคอลัมน์เก็บการตัดสิน) ◂
+  // POS HF-GC ▸ H2(b): ขายซ้ำคีย์เดิม = ผลเดิม + ตาข่ายลงบัญชี (ช่วงพังหลัง commit) · fix 1 (รีวิว F1): การตัดสินมาจาก payload ตอนขาย
+  //   (แถว outbox `giftcard.sold#<id>` — แหล่งเดียวกับ consumer) ไม่ใช่สวิตช์ปัจจุบัน ⇒ ขายตอนปิดแล้วเปิดทีหลัง + ขายซ้ำ = ไม่ลงย้อนหลัง ◂
   const replayed = async (): Promise<SellResult | null> => {
     const r = await sellReplay(ctx.tenantId, key);
     if (r && !r.accountingDocId) {
-      r.accountingDocId = await ensureGiftCardSalePosted(ctx.tenantId, r.giftCardId, { accountingLink: (await getSettings(ctx)).accountingLink });
+      r.accountingDocId = await ensureGiftCardSalePosted(ctx.tenantId, r.giftCardId, { accountingLink: await soldWithAccountingLink(ctx.tenantId, r.giftCardId) });
     }
     return r;
   };
