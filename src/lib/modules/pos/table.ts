@@ -657,6 +657,8 @@ export async function tableSaleVoided(evt: { tenantId: string; payload: unknown 
         return await once(false);
       } catch (e2) {
         if (e2 instanceof Error && e2.message === NOOP) return 0;
+        // POS P2.5 ▸ fix2 มติ 3 (F3): ยังชนแบบ deadlock/write conflict = โยนต่อให้คิวลองใหม่ (reopen=false ไม่มีทางชน unique ซ้ำ ⇒ ไม่วน) · audit + จบเฉพาะทางที่ไม่ใช่ชนกัน ◂
+        if (isTxConflict(e2)) throw e2;
         if (!conflict(e2)) throw e2;
         await writeAudit({ tenantId: evt.tenantId, action: "pos.table.split.voidConflict", targetType: "PosTableSplitPart", targetId: part.partId, after: { saleId, splitId: part.splitId, error: String((e2 as Error)?.message ?? e2).slice(0, 200) } });
         return 0;
