@@ -62,6 +62,8 @@ const CHECKS: readonly Def[] = [
   D("M7", "X4", "[R4 CD5 มติ 5] สมาชิกของโต๊ะไปอยู่ใบ 1 (ปริยาย) → quote ใบ 1 tierDiscountSatang > 0 · ใบ 2 ไม่มีส่วนลดสมาชิก · Σ(ยอด + ส่วนลดสมาชิก) = ยอดแผน · คูปองบนใบ 2 (ไม่มีสมาชิก) → VALIDATION · จ่ายใบ 1 → PosSale.customerId = สมาชิก · ใบ 2 ไม่มี"),
   // ORACLE-ADD ผู้คุม 14 ต.ค. (P2.5 fix round 1 ruling 5 · CD-P25-N3 option 2: no VAT-EXCLUDED mode in the register)
   D("M8", "X4", "[มติ fix1 ข้อ 5 · CD-P25-N3] (ก) regVat คืนได้แค่ INCLUDED | NONE (หมุดซอร์ส · ไม่มี EXCLUDED ใน regVat/regFixedServiceCharge) · (ข) แผน 2 ใบทั้งโหมด INCLUDED และ NONE → ยอดของใบในแผน (ที่จอแสดง) = grandTotal ของ quote ใบ (ที่เก็บจริง) ตรงทุกสตางค์ · NONE → VAT 0"),
+  // ORACLE-ADD ผู้คุม 14 ต.ค. (P2.5 fix round 1 ruling 7 · F4 · P2.9 merged: STORE_CREDIT on a split part uses the part's member)
+  D("M9", "X2", "[มติ fix1 ข้อ 7 · F4] ใบของโต๊ะสมาชิก (ใบ 1 = สมาชิก) จ่ายด้วย STORE_CREDIT → ok (เครดิตของสมาชิกของใบ) · ส่ง memberId ของสมาชิกอื่นบนใบนั้น + STORE_CREDIT → STORE_CREDIT_NOT_OWNER ไม่มีบิล · ใบที่ไม่มีสมาชิก + STORE_CREDIT → STORE_CREDIT_NOT_OWNER"),
   // ── P วงจรแผน ──
   D("P1", "X1", "[R3 R4 R10 มติ 7] จ่ายใบ 1 (tableSplitPartId + expectedSplitVersion) → PosSale POS sourceId=session STORE · subtotal/billDiscount/serviceCharge = แผน · บรรทัดเต็มหน่วย (กะเพรา 2×9900 · ข้าว 3×1500 itemId ข้าว · …) · ใบ 1 PAID+saleId · รายการเฉพาะใบ 1 ผูกบิล · ข้าว/ลาเต้ (มีในใบ 2 ด้วย) ยังไม่ผูก · session OPEN · ส่งซ้ำคีย์เดิม → บิลเดิม duplicated · registerTableDetail.split {paidParts 1 partCount 2 remainingSatang 62150} · การ์ดผัง split {1,2}"),
   D("P2", "-", "[R4 มติ 7] จ่ายใบสุดท้าย → ทุกรายการผูกบิล (ข้าว/ลาเต้ = บิลใบที่จ่ายครบ) · แผน DONE + doneAt · session CLOSED + dirtySince · ไม่มีรอบครัวใหม่ · ตัวแปร: มีรอบร่าง HELD → จ่ายครบแล้ว session ยัง OPEN dirtySince null"),
@@ -2494,6 +2496,52 @@ async function runDb() {
       await accSvc.saveSettings(T, S.ACC, { ...org, vatRegistered: true });
     }
     chk("M8", p.length === 0, "VAT ของหน้าขาย = INCLUDED|NONE · ยอดใบที่แสดง = ยอดที่เก็บ ทั้งสองโหมด", FX(P8(p) || "ครบ"));
+  });
+  // ORACLE-ADD ผู้คุม 14 ต.ค. (P2.5 fix round 1 ruling 7 · F4 · P2.9 merged: STORE_CREDIT on a split part uses the part's member)
+  await step("M9", async () => {
+    const p: string[] = [];
+    if (!MEMBER) throw new Error("ไม่มีสมาชิก (fixture)");
+    const ctxM: Any = { tenantId: T, systemId: S.MEM, actorUserId: uid("OWNER") };
+    const other = await memMod.createMember(ctxM, A("OWNER"), { phone: `0896${String(Math.floor(Math.random() * 1e6)).padStart(6, "0")}`, name: `คุณสมศรี คิวซี ${RAND}`, source: "WALK_IN", homeUnitId: U.A });
+    const OTHER = String(other?.customerId ?? "");
+    for (const [cust, k] of [[MEMBER, "m"], [OTHER, "o"]] as const)
+      await P.$transaction((tx: Any) => memMod.issueStoreCredit(T, { systemId: S.MEM, customerId: cust, satang: 300_000, idempotencyKey: `${KEY_PREFIX}-sc-${k}`, refundSaleId: `${KEY_PREFIX}-fixture` }, tx));
+    const s = await seat("M9", { guestCount: 2, memberId: MEMBER, lines: [ml("tomyum", 1), ml("chayen", 1)] });
+    const pl = splitOf(await mkSplit(s.sid, { mode: "EQUAL", partCount: 2 }));
+    if (!pl || partOf(pl, 1)?.memberId !== MEMBER) throw new Error(`(fixture) แผน ${pl ? "ok" : "ไม่มี"} · ใบ 1 สมาชิก ${partOf(pl, 1)?.memberId === MEMBER}`);
+    const credit = async (no: number, memberId: string | null) => {
+      const pid = String(partOf(pl, no)?.id ?? "");
+      const q = await pq(pid, memberId ? { memberId: partOf(pl, no)?.memberId ?? memberId } : {});
+      const grand = q?.ok === true ? Number(q.grandTotalSatang) : Number(partOf(pl, no)?.totalSatang ?? 0);
+      const r = await call(register, "submitRegisterSale", ctxA(DEV2), A("OWNER"), {
+        lines: [], tableSplitPartId: pid, expectedSplitVersion: Number(pl.version), ...(memberId ? { memberId } : {}),
+        idempotencyKey: newKey("sc"), expectedGrandTotalSatang: grand, payMethods: [{ type: "STORE_CREDIT", amountSatang: grand }],
+      });
+      if (r?.ok === true && r.saleId) MY_SALES.push(String(r.saleId));
+      return r;
+    };
+    const c0 = await counts();
+    const wrong = await credit(1, OTHER);
+    if (!refused(wrong, "STORE_CREDIT_NOT_OWNER")) p.push(`ใบ 1 + memberId สมาชิกอื่น + STORE_CREDIT → ${codeOf(wrong)} (คาด STORE_CREDIT_NOT_OWNER)`);
+    const none = await credit(2, null);
+    if (!refused(none, "STORE_CREDIT_NOT_OWNER")) p.push(`ใบ 2 (ไม่มีสมาชิก) + STORE_CREDIT → ${codeOf(none)} (คาด STORE_CREDIT_NOT_OWNER)`);
+    const c1 = await counts();
+    if (c1.sale !== c0.sale) p.push(`ปฏิเสธแล้วยังมีบิล ${c0.sale}→${c1.sale}`);
+    const ok = await credit(1, MEMBER);
+    const sale = await saleRow(String(ok?.saleId ?? ""));
+    if (ok?.ok !== true || sale?.memberId !== MEMBER || !(sale?.payments as Any[] | undefined)?.some((x) => x.type === "STORE_CREDIT")) p.push(`ใบ 1 (สมาชิกของใบ) + STORE_CREDIT → ${codeOf(ok)} ${short(ok?.message ?? "", 60)}`);
+    const okNoId = await (async () => {
+      // ใบ 1 จ่ายแล้ว — ตรวจกรณีไม่ส่ง memberId ด้วยโต๊ะใหม่ (เซิร์ฟเวอร์ใช้สมาชิกของใบ)
+      const s2 = await seat("M9b", { guestCount: 2, memberId: MEMBER, lines: [ml("tomyum", 1)] });
+      const pl2 = splitOf(await mkSplit(s2.sid, { mode: "EQUAL", partCount: 2 }));
+      const pid = String(partOf(pl2, 1)?.id ?? "");
+      const q = await pq(pid);
+      const grand = q?.ok === true ? Number(q.grandTotalSatang) : 0;
+      return call(register, "submitRegisterSale", ctxA(DEV2), A("OWNER"), { lines: [], tableSplitPartId: pid, expectedSplitVersion: Number(pl2?.version ?? 1), idempotencyKey: newKey("sc"), expectedGrandTotalSatang: grand, payMethods: [{ type: "STORE_CREDIT", amountSatang: grand }] });
+    })();
+    if (okNoId?.ok !== true) p.push(`ใบสมาชิกไม่ส่ง memberId + STORE_CREDIT → ${codeOf(okNoId)} (คาด ok · สมาชิกของใบ)`);
+    else MY_SALES.push(String(okNoId.saleId));
+    chk("M9", p.length === 0, "STORE_CREDIT บนใบ = เครดิตของสมาชิกของใบ · สมาชิกอื่น/ใบไม่มีสมาชิก = STORE_CREDIT_NOT_OWNER", FX(P8(p) || "ครบ"));
   });
 }
 
