@@ -43,3 +43,30 @@ export {
 // POS P2.4 ▸ โต๊ะจองแบบย่อ (R10 · มติ Q2)
 export { createReservationForPos, reservationForPos, markReservationSeatedInTx, cancelReservationForPos, bookedReservationsOfTable, type PosReservationRow } from "./reservation";
 // ◂ POS P2.4
+
+// POS P2.6 ▸ จอครัวใหม่ (R1–R6 R11–R13 · มติ 1 3 4 10 · CD 2 3 7 16 18): รอบครัวของหน้าขาย/ออนไลน์ (createKitchenRoundInTx) · เดิน/ดึงกลับ/เร่ง/ยกเลิกตั๋ว
+//   (kitchenMoveInTx · kitchenRushInTx · kitchenCancelInTx) · เพดานครัวค้าง (kitchenSetAutoAcceptMaxInTx) · ผู้อ่านของบอร์ด/expo/คิวค้าง/86 ·
+//   ผู้เรียก = pos/kds.ts (lazy import) · ไม่มี createSale · ไม่ปล่อย outbox · ไม่เขียน MenuItem (ตัวนับเมนู = catalog-legacy)
+export {
+  createKitchenRoundInTx,
+  kitchenMoveInTx,
+  kitchenRushInTx,
+  kitchenCancelInTx,
+  kitchenSetAutoAcceptMaxInTx,
+  kitchenStationsForPos,
+  kitchenSettingForPos,
+  kitchenRoundsForPos,
+  kitchenRoundForPos,
+  kitchenItemForPos,
+  kitchenRoundsOfOrdersForPos,
+  kitchenSoldOutMenusForPos,
+  type KitchenRoundInput,
+  type KitchenRoundLine,
+  type KitchenRoundResult,
+  type KitchenRoundRow,
+  type KitchenItemRow,
+  type KitchenMoveInput,
+  type KitchenSettingView,
+  type KitchenStationRow,
+} from "./kitchen";
+// ◂ POS P2.6

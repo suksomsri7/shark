@@ -29,3 +29,4 @@ Binding: `pos-brief-P2.6.md` §9 + §10 · `wo-notes/pos-P2.6-oracle.md` (names 
 
 ## Per-step results
 - step 1 ✅ (this commit) — migration/schema/scope/qc-env (ffaee746) + kds-shared.ts.
+- step 2 ✅ — `restaurant/kitchen.ts` (new file · client param, no raw prisma import → F5.1 unchanged): `createKitchenRoundInTx` (advisory lock per sale/order + partial unique · EXISTS/NO_STATIONS/NO_KITCHEN_LINES · price 0 · saleId null · option snapshots · returns MENU lines for the counter) · `kitchenMoveInTx` (conditional `updateMany … kdsStatus IN (from)` · recall clears readyAt/servedAt · round COMPLETED/CONFIRMED/CANCELLED settle) · `kitchenRushInTx` · `kitchenCancelInTx` (FOR UPDATE · NEW/COOKING/READY only · returns wasNew) · `kitchenSetAutoAcceptMaxInTx` · readers (stations · setting · rounds of the day · round · item · rounds of PosOrders · sold-out menus). Re-exported in `restaurant/index.ts` `// POS P2.6 ▸ … ◂`. Legacy `order.ts`/`kds.ts` untouched. Scoped tsc clean.
