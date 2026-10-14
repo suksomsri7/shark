@@ -62,3 +62,16 @@ Cashier = QC STAFF with `pos.sale.create` only (seed has no `restaurant.kds.adva
 - F5 previous-bizDate tickets (ORACLE-EDIT T5) · P2.11 held-NEW sweeper · audible alert (P2.11).
 - Per-station kitchen-progress split for the 09 bullet (contract).
 - 86 search for non-MENU routed rows (needs `stationId` in the register catalogue or a KDS products reader).
+
+## Final gates — tree `/root/projects/shark-pos-c` · typecheck at **fa3a8338**, DB suites at **8e8fc7b6** (= fa3a8338 + notes only) · dirty 0 · logs `scratchpad/p26u/runs/g-*.log` (first line = tree/head/dirty)
+| gate | result |
+|---|---|
+| typecheck (iso · pos-gate.lock · 5632 MB) | exit 0 |
+| fitness no-env / env · fitness-pos | 50/50 · 50/50 · 8/8 |
+| `qc-pos-p2.6` forced ×2 / unforced | **65/65 ×3** (62 + K14b A14 K12b) |
+| `qc-hf-pos-page-authz` | 81/81 (+ KD-1…KD-10) |
+| `qc-pos-p2.8` | 61/61 (register.ts untouched ⇒ ST6 green) |
+| `qc-pos-p2.4` · `p1.3` · `p1.10` · `p1.12` · `p1.16` · `p1.18` | 50/50 · 128/128 · 40/40 · 72/72 · 28/28 · 81/81 (ST7 0 · nav pins) |
+| `qc-pos-p1.1` (merge-point static G4) · `qc-pos-products` | 180/180 · 24/24 |
+| `qc-restaurant` / -money / -pay / -void | 6/6 · 6/6 · 19/19 · 11/11 |
+| `visual-pos.mts p2.6u --states --dry` (CI=1) | rc 0 — kds/register/products/orders/settings × owner/cashier + LOCALE=en + full-wo + `--state` filter + `--list` (`runs/dry-*.log`) |
