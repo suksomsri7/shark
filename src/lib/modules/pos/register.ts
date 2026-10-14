@@ -1659,13 +1659,15 @@ async function regPrice(
   return { quote, resolved, coupon, member, conflicts, channel };
 }
 
-/** POS P2.5 ▸ R4: ยอดของใบแยกบิลด้วยค่าบริการคงที่ของแผน (แทนการคิดจาก bp) — ฐาน VAT = สุทธิ + ค่าบริการ · VAT ระดับบิลของใบ (สูตรเดียวกับ priceCart) ◂ */
+/**
+ * POS P2.5 ▸ R4: ยอดของใบแยกบิลด้วยค่าบริการคงที่ของแผน (แทนการคิดจาก bp) — ฐาน VAT = สุทธิ + ค่าบริการ · VAT รวมในยอดระดับบิลของใบ (สูตรเดียวกับ priceCart) ·
+ * หน้าขายมีแค่ INCLUDED | NONE (regVat · fix1 มติ 5 / CD-P25-N3) ⇒ ยอดบิล = ฐาน VAT เสมอ ◂
+ */
 function regFixedServiceCharge(r: ReturnType<typeof priceCart>, serviceChargeSatang: number): ReturnType<typeof priceCart> {
   if (!r.ok) return r;
   const vatBase = r.netSatang + serviceChargeSatang;
-  const rate = r.vatMode === "NONE" ? 0 : r.vatRateBp;
-  const vatSatang = rate > 0 ? (r.vatMode === "EXCLUDED" ? roundHalfUp(vatBase * rate, 10_000) : roundHalfUp(vatBase * rate, 10_000 + rate)) : 0;
-  return { ...r, serviceChargeSatang, vatSatang, grandTotalSatang: r.vatMode === "EXCLUDED" ? vatBase + vatSatang : vatBase };
+  const vatSatang = r.vatMode === "INCLUDED" && r.vatRateBp > 0 ? roundHalfUp(vatBase * r.vatRateBp, 10_000 + r.vatRateBp) : 0;
+  return { ...r, serviceChargeSatang, vatSatang, grandTotalSatang: vatBase };
 }
 
 /** P1.6: ค่าตั้งการชำระเงินของระบบ POS นี้ (อ่านไม่ได้ = ปิดทั้งคู่ — ยอดเท่าวันนี้ ไม่เดาค่าบริการ) */
