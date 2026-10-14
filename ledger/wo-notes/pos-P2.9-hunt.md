@@ -43,3 +43,40 @@ Missing check: a U visual/unit test "pending store has no `pin`; PIN-less replay
 - Shift and X/Z count CASH only.
 - Lookup requires `pos.sale.create` and is tenant-scoped. `registerPayTenders` (scope only) returns booleans only. `payOrder` and API ops refuse GIFT_CARD/STORE_CREDIT. DEPOSIT/ROOM_CHARGE are not in `REGISTER_PAY_TYPES`.
 - On the server the PIN is never stored, logged or echoed (payment rows map explicit fields, outbox payload is `{saleId}`, errors carry no PIN).
+
+
+---
+
+## Re-check after fix round 1 (account B, 14 Oct 19:2xZ) — head affd5640
+
+# P2.9 S money re-check after fix round 1 — `wip/pos-p2.9` affd5640 (code 2612ee53) · read-only
+**Verdict: FINDINGS** (H2 partial · 1 new medium · 3 new low). Paths are in `/root/projects/shark-pos-b` at 2612ee53.
+
+| # | Status | Where / what still breaks |
+|---|---|---|
+| H1 refund cash-out | CLOSED | `pos/refund.ts:274-295`. The cap is cash-like paid − tip − cash-like already refunded, at bill level; prior docs are read after the sale lock. Two cards + cash + a prior partial refund: Σ cash ≤ cash paid and per-card ≤ card share. Approval commit re-plans. No rounding: the cashier picks the amounts and the cap is aggregate. Functional note, not money: STAFF + manager PIN on a walk-in with an unusable card is refused at the plan step (`managerOk` = `s.canRefund`, `:563` vs `:283`); only users with `pos.sale.refund` can cash out. |
+| H2 PIN lockout | **PARTIAL** | `giftcard/service.ts:251-260`. The success path trusts the stale row: when `pinFailedCount` = 0 and the row is unlocked, it neither writes nor re-checks the current lock. N parallel guesses that read the row before the 5th wrong increment all get their hash evaluated, and the right one returns OK from `preverifyGiftPins` (`pos/service.ts:383-393`) even after the card is locked. Then either it pays (if it beats the lock), or it fails `GIFT_CARD_LOCKED` in the tx re-check. That failure comes visibly later than the wrong guesses, which fail in preverify, so latency reveals the PIN. Window 1 therefore evaluates N PINs, not 5. The counter itself is now atomic (OK). |
+| H3 merge orphan | CLOSED, low race | `service.ts:1404-1429`, `:1482-1484`, `:1524-1525`; chain ≤ 5 hops. Residual: `mergeTargetOf` is resolved **before** the `FOR UPDATE` (`:1413`). Order void starts → fold commits → void locks the old card ⇒ the old card is credited while ownerless. Fix: re-resolve the target after taking the lock. |
+| H4 expired restore | **PARTIAL → N1** | `service.ts:1431-1437`. 2110 nets to 0 for an EXPIRED card. When `accountingDocId` is null there is no JV, and nothing is stranded because the sale JV reversal mirrors the tender Dr. |
+| H5 tip ledger | CLOSED, low residual | Fixed in `createSale` `pos/service.ts:619-622`, and `coa.ts` `updateLedger`/`archiveLedger` (retype to ASSET refused; the JSON path `pos.tip.ledgerAccountId` matches `payment-settings.ts:65-69`). Residual: `coa.ts:618-644` `setLedgerActive(false)` is not guarded. It archives a tip ledger with 0 journal lines, so bills committed but not yet drained ⇒ `pos.sale.paid` DEAD. Fix: add the same `usedAsPosTipLedger` line there. |
+| H6 PIN-less replay | CLOSED (S) | `register.ts:1956-1962`, `:2244-2245`. Replay with a different amount ⇒ IDEMPOTENCY_CONFLICT (`regSameSubmission` type:amount). Different card, same amount ⇒ the same bill and no decrement. A PIN-less new key ⇒ VALIDATION before any write. The U contract line (strip the PIN in `savePending`) is pending in P2.9U. |
+
+**N1 MEDIUM — the restore onto a card that is past its date but not yet swept marks it EXPIRED and strands its existing balance.** `giftcard/service.ts:1431-1437`.
+Input: card balance B = ฿200 with `expiresAt` = yesterday, and the daily `expireDue` has not run yet (status ACTIVE). Void a bill that used ฿100 → REFUND 100 → EXPIRE 100 → `status: "EXPIRED"`, balance ฿200. `expireDue` only selects ACTIVE (`:1057-1058`), so the ฿200 never gets an EXPIRE txn or the Dr 2110 / Cr 4900 JV. 2110 is overstated by ฿200 forever, and the card is unusable.
+Fix: in that branch, expire the whole locked balance (B + X) with one EXPIRE txn and one JV, as `expireDue` does. Or keep the status as is when it was ACTIVE and expire only X.
+Missing check: card past date and ACTIVE with balance 200 → void a ฿100 tender ⇒ balance 0, EXPIRE Σ 300, 2110 net 0.
+
+**N2 LOW — an STORE_CREDIT-paid bill of a member who was later merged cannot be partially refunded.** `pos/refund.ts:~423`.
+Input: X pays ฿300 by STORE_CREDIT → X is merged into Z (`member/profile.ts:1841` does not repoint `PosSale.memberId`) → refund one line. The STORE_CREDIT method is refused because the customer is MERGED; CASH is refused because the cap applies and `sale.memberId` is set (`:289`); GIFT_CARD has no card on the bill. The only remaining route is a full void.
+Fix: in `planRefundTenders`, resolve `Customer.mergedIntoId` (bounded chain) to the keeper and issue the credit there.
+Missing check: "credit bill → merge → partial refund STORE_CREDIT ⇒ keeper credit +x".
+
+**N3 LOW — PIN guesses are evaluated by hash before the lock is consulted** (the mechanism behind H2).
+Fix: reserve before verifying. Run `UPDATE … SET "pinFailedCount" = "pinFailedCount" + 1 WHERE id = $1 AND unlocked AND "pinFailedCount" < 5 RETURNING` first (0 rows ⇒ LOCKED, and no hash compare), then compare. On a match, reset the counter to 0 with a conditional write. This caps hash evaluations at 5 per window regardless of parallelism.
+Missing check: 50 parallel submits on a count-0 card, one of them with the right PIN ⇒ ≤ 5 hash evaluations (wrong-count + successes ≤ 5) and, once the lock is set, every response is LOCKED with flat latency. The current ORACLE-ADD covers wrong PINs only.
+
+**Clean on re-probe:**
+- **PIN pre-check outside the tx:** inside the tx, `prepareSaleTenders` re-reads the card and re-runs status, balance and PIN, so a suspend, drain or transfer in between ⇒ refusal and no bill. `useTender` keeps its `gte` guard after the counter (F1 lock order: stock → counter → card).
+- **Lock window and expiry:** count ≥ 5 after the lock expires ⇒ the next wrong PIN re-locks at once.
+- **Keeper chain:** follows the latest `MERGE` ADJUST; the keeper card always exists, because the fold requires it.
+- **Kind filters:** `loadByNumber` refuses SC (reload, suspend, transfer and legacy `use`/wallet ⇒ NOT_FOUND); list/KPI filter GIFT; `balance()` still reads SC by number, which is read-only and owner-checked.
