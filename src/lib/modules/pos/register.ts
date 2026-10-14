@@ -781,6 +781,10 @@ async function regViews(db: RegDb, s: RegScope, rows: PosProduct[], book?: Price
   const rowRecipes = await loadRowRecipes(db, s.tenantId, rows);
   // fix round 1 (รีวิว F3): ตัวคำนวณเดียวกับ catalog.listForUnit — ส่วนประกอบชุดที่ไม่ติดตามสต็อก (C2) = ไม่รู้ ⇒ null ◂
   const portionsOf = await loadRowPortions(db, s.tenantId, s.systemId, s.unitInv, rows, rowRecipes);
+  // POS P2.6 ▸ CD 8: เวลา/แหล่งของ 86 ที่ครัว/ผู้จัดการแจ้ง (PosAvailabilityMark) — ไทล์ "หมด · ครัวแจ้ง HH:MM" (ใส่คีย์เฉพาะแถวที่มี mark) ◂
+  const marks = new Map(
+    (await db.posAvailabilityMark.findMany({ where: { tenantId: s.tenantId, unitId: s.unitId, productId: { in: ids } }, select: { productId: true, source: true, markedAt: true } })).map((m) => [m.productId, { source: m.source, at: m.markedAt.toISOString() }]),
+  );
   return rows.map((p) => {
     const inv = p.invItemId ? itemById.get(p.invItemId) : undefined;
     const ts = effectiveTrackStock(p, inv ? { hasMovement: movedSet.has(inv.id), onHand: inv.onHand } : null);
@@ -827,6 +831,7 @@ async function regViews(db: RegDb, s: RegScope, rows: PosProduct[], book?: Price
       soldByWeight: p.soldByWeight,
       soldOut: soldOutReason !== null,
       soldOutReason,
+      ...(soldOutReason === "UNAVAILABLE" && marks.has(p.id) ? { soldOutMark: marks.get(p.id) } : {}), // POS P2.6 ▸ CD 8 ◂
       stockLeft,
       trackStock: ts.trackStock,
       trackStockMode: ts.mode,
@@ -2450,6 +2455,8 @@ async function regSubmitWithIntents(
         { timeout: 20_000, maxWait: 10_000 },
       );
       await afterSaleCommitted(saleInput, saleId); // HF-TX ▸ งานหลัง commit ชุดเดียว (ตัดสต็อก + scheduleDrain) ◂
+      // POS P2.6 ▸ R3 มติ 3: ตั๋วครัวหลัง commit (ทางใบขอรับเงิน · หลัง afterSaleCommitted · ไม่ปฏิเสธบิล — ล้ม = log แล้ว heal ตอนอ่านบอร์ด) ◂
+      await (await import("./kds")).ticketForSale(s.tenantId, s.unitId, saleId);
       const row = await regLoadSale(db, s.tenantId, req.idempotencyKey);
       if (!row || row.id !== saleId) return regRefuse("INTERNAL");
       return regDuplicate(s, req, row, row.createdAt.getTime() < startedAt);
@@ -2793,6 +2800,8 @@ async function regCreate(db: RegDb, s: RegScope, req: RegParsedSubmit, saleInput
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
       const r = await regCreateSale(saleInput, db);
+      // POS P2.6 ▸ R3 มติ 3: ตั๋วครัวหลัง commit (ทางปกติ · createSale เป็นเจ้าของธุรกรรมและทำงานหลัง commit แล้ว · ไม่ปฏิเสธบิล — ล้ม = log แล้ว heal) ◂
+      await (await import("./kds")).ticketForSale(s.tenantId, s.unitId, r.saleId);
       // createSale คืนบิลเดิมเงียบ ๆ เมื่อคีย์ถูกบันทึกระหว่างที่เราตรวจ ⇒ อ่านบิลจริงมาเทียบ payload ทุกครั้ง
       const row = await regLoadSale(db, s.tenantId, req.idempotencyKey);
       if (!row || row.id !== r.saleId) return regRefuse("INTERNAL");

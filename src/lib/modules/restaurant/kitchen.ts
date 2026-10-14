@@ -245,10 +245,10 @@ export async function kitchenRoundsOfOrdersForPos(db: Db, s: { tenantId: string;
 }
 
 /** เมนูของสาขาที่ขายไม่ได้ตอนนี้ (86 มือ หรือ ตัวนับ ≤ 0 · กติกาเดียวกับ orderingMenu) — บอร์ด "ของหมด (86)" (R7) */
-export async function kitchenSoldOutMenusForPos(db: Db, s: Scope): Promise<{ posProductId: string | null; name: string; updatedAt: Date }[]> {
+export async function kitchenSoldOutMenusForPos(db: Db, s: Scope): Promise<{ posProductId: string | null; name: string; isOutOfStock: boolean; stockQty: number | null; updatedAt: Date }[]> {
   return db.menuItem.findMany({
     where: { tenantId: s.tenantId, unitId: s.unitId, archivedAt: null, OR: [{ isOutOfStock: true }, { stockQty: { lte: 0 } }] },
-    select: { posProductId: true, name: true, updatedAt: true },
+    select: { posProductId: true, name: true, isOutOfStock: true, stockQty: true, updatedAt: true },
     orderBy: [{ updatedAt: "asc" }, { id: "asc" }],
   });
 }
