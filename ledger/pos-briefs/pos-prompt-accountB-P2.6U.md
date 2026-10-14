@@ -33,3 +33,10 @@ typecheck 0 · `qc-pos-p2.6` (count on the base, forced ×1 + unforced) · `qc-p
 
 ## Done =
 Commit per step + push `wip/pos-p2.6u`; notes `ledger/wo-notes/pos-P2.6U.md` (components, keys, testids, deviations with the ruling each touches, fixtures, **`--state` list for the controller**, follow-ups, gates table with log paths `scratchpad/p26u/runs/`); report ≤ 25 lines (head SHA first). Do not merge. Commit trailer: `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
+
+## Rulings 15–18 (added after S R3, 14 Oct — server items, do FIRST, oracle first, each with a dated ORACLE-ADD in `qc-pos-p2.6`)
+15. **H1** `kdsRecall`: take the round lock first (expose `kitchenLockRoundInTx` on the restaurant facade; call it at the top of the recall tx, then the plain PosOrder/PosSale status read) — two recalls on one round stay serialised, no deadlock; ORACLE-ADD **K14b** (online order: accept → ticket → SERVED → cancel order → recall ⇒ `TICKET_VOIDED`, nothing written).
+16. **H2** `restoreMenuStockKeep86InTx` and `resetMenuItemDailyStock`: `SELECT … FROM "MenuItem" WHERE id = … FOR UPDATE` before `heldBy86Mark` (lock order ROI/PosProduct → MenuItem unchanged); ORACLE-ADD **A14** (static lock-order probe + race as a must-stay-86 guard).
+17. **H3** every writer of `PosProduct.parentId` stamps `stationSetAt = now()` when the parent changes and the row has no own `stationId` (variant link ≈ `catalog.ts:1419–1461`); ORACLE-ADD **K12b** (sell a variant-less product, then link it as a variant of a routed parent ⇒ board read ⇒ 0 rounds). Owner line extended: "or linked as a variant".
+18. **H4** `TICKET_VOIDED` message covers refunded sales (th/en "บิลนี้ถูกยกเลิก/คืนเงินแล้ว — …"); remove the unused `items` param of `roundVoidedInTx`; move the fix2 owner lines under the P2.6 heading in `POS-OWNER-PENDING.md`.
+Gate counts after 15–17: `qc-pos-p2.6` **65** (62 + K14b A14 K12b) forced ×2 + unforced; red-before `P2.6U-red0.txt` for the three adds on the S code.
