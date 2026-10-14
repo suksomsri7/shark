@@ -600,3 +600,10 @@ export async function repointSplitPlansInTx(tx: Tx, s: { tenantId: string; unitI
   const u = await tx.posTableSplit.updateMany({ where: { tenantId: s.tenantId, unitId: s.unitId, sessionId: { in: s.fromSessionIds }, status: "DONE" }, data: { sessionId: s.toSessionId } });
   return u.count;
 }
+
+/** fix2 มติ 2 (F2): รวมโต๊ะของหน้าเดิม (mergeSession แช่แข็ง) — แผนแยกบิล OPEN ฝั่งต้นทางหรือปลายทาง = ปฏิเสธ (แผนไม่ตาม/ใบจ่ายไม่ได้) · แผน DONE รวมได้ */
+export async function legacyMergeSplitGuard(s: { tenantId: string; unitId: string; intoSessionId: string; fromSessionId: string }, client?: Db): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const db: Db = client ?? prisma;
+  const open = await db.posTableSplit.findFirst({ where: { tenantId: s.tenantId, unitId: s.unitId, sessionId: { in: [s.intoSessionId, s.fromSessionId] }, status: "OPEN" }, select: { id: true } });
+  return open ? { ok: false, reason: LEGACY_SPLIT_OPEN } : { ok: true };
+}

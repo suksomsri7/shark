@@ -14,7 +14,7 @@ import * as order from "@/lib/modules/restaurant/order";
 import * as kds from "@/lib/modules/restaurant/kds";
 import type { CartLine } from "@/lib/modules/restaurant/order";
 import { CatalogError } from "@/lib/modules/pos";
-import { legacyCancelItemSplitGuard, legacyCheckoutSplitGuard } from "@/lib/modules/pos/table-split"; // POS P2.5 ▸ fix1 มติ 2 (N2): หน้าเดิมไม่เช็คบิล/ยกเลิกรายการของโต๊ะที่แยกบิลอยู่ ◂
+import { legacyCancelItemSplitGuard, legacyCheckoutSplitGuard, legacyMergeSplitGuard } from "@/lib/modules/pos/table-split"; // POS P2.5 ▸ fix1 มติ 2 (N2): หน้าเดิมไม่เช็คบิล/ยกเลิกรายการของโต๊ะที่แยกบิลอยู่ ◂
 
 function base(unitSlug: string) {
   return `/app/u/${unitSlug}/restaurant`;
@@ -288,6 +288,9 @@ export async function moveSessionAction(unitSlug: string, formData: FormData): P
 
 export async function mergeSessionAction(unitSlug: string, formData: FormData): Promise<void> {
   const { tenantId, unitId } = await ctx(unitSlug, "restaurant.session.merge");
+  // POS P2.5 ▸ fix2 มติ 2 (F2): โต๊ะที่แยกบิลอยู่ (แผน OPEN ฝั่งใดฝั่งหนึ่ง) รวมจากหน้าเดิมไม่ได้ ◂
+  const sg = await legacyMergeSplitGuard({ tenantId, unitId, intoSessionId: String(formData.get("intoSessionId") ?? ""), fromSessionId: String(formData.get("fromSessionId") ?? "") });
+  if (!sg.ok) redirect(`${base(unitSlug)}?err=${encodeURIComponent(sg.reason)}`);
   await table.mergeSession(
     tenantId,
     unitId,
