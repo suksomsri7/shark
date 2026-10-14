@@ -60,6 +60,8 @@ const CHECKS: readonly Def[] = [
   D("M5", "X4", "[R2(6) COMMON-1] VAT ของแต่ละใบ = splitIncludedVat(สุทธิใบ) ที่ระดับบิลของใบ (บิลจริงของ 15B ทั้งสองใบ) · |Σ VAT ใบ − VAT ทั้งโต๊ะ| ≤ ⌊(N+1)/2⌋ · ข้อบริสุทธิ์ vatRateBp 0 → VAT 0 ทุกใบ"),
   D("M6", "P", "[R2 มติ 4 CD11] allocateTableSplit บริสุทธิ์: 15B/15C/EQUAL 3/EQUAL 4 ตรงตัวเลข · 500 แผนสุ่ม (seed คงที่ · ITEM/EQUAL/SEAT · ส่วนลด · ค่าบริการ) ตรงตัวอ้างอิง largest remainder เสมอไปใบต่ำ · Σ สุทธิ = ยอดทั้งโต๊ะ · สต็อกต่อรายการ = qty หนึ่งครั้ง · เรียกซ้ำผลเดิม ไม่แก้อินพุต · ปฏิเสธ: 1/21 ใบ · ใบว่าง · ยังไม่ระบุ/เกิน · ITEM แบ่งกลาง · 201 รายการ TOO_MANY_LINES"),
   D("M7", "X4", "[R4 CD5 มติ 5] สมาชิกของโต๊ะไปอยู่ใบ 1 (ปริยาย) → quote ใบ 1 tierDiscountSatang > 0 · ใบ 2 ไม่มีส่วนลดสมาชิก · Σ(ยอด + ส่วนลดสมาชิก) = ยอดแผน · คูปองบนใบ 2 (ไม่มีสมาชิก) → VALIDATION · จ่ายใบ 1 → PosSale.customerId = สมาชิก · ใบ 2 ไม่มี"),
+  // ORACLE-ADD ผู้คุม 14 ต.ค. (P2.5 fix round 1 ruling 5 · CD-P25-N3 option 2: no VAT-EXCLUDED mode in the register)
+  D("M8", "X4", "[มติ fix1 ข้อ 5 · CD-P25-N3] (ก) regVat คืนได้แค่ INCLUDED | NONE (หมุดซอร์ส · ไม่มี EXCLUDED ใน regVat/regFixedServiceCharge) · (ข) แผน 2 ใบทั้งโหมด INCLUDED และ NONE → ยอดของใบในแผน (ที่จอแสดง) = grandTotal ของ quote ใบ (ที่เก็บจริง) ตรงทุกสตางค์ · NONE → VAT 0"),
   // ── P วงจรแผน ──
   D("P1", "X1", "[R3 R4 R10 มติ 7] จ่ายใบ 1 (tableSplitPartId + expectedSplitVersion) → PosSale POS sourceId=session STORE · subtotal/billDiscount/serviceCharge = แผน · บรรทัดเต็มหน่วย (กะเพรา 2×9900 · ข้าว 3×1500 itemId ข้าว · …) · ใบ 1 PAID+saleId · รายการเฉพาะใบ 1 ผูกบิล · ข้าว/ลาเต้ (มีในใบ 2 ด้วย) ยังไม่ผูก · session OPEN · ส่งซ้ำคีย์เดิม → บิลเดิม duplicated · registerTableDetail.split {paidParts 1 partCount 2 remainingSatang 62150} · การ์ดผัง split {1,2}"),
   D("P2", "-", "[R4 มติ 7] จ่ายใบสุดท้าย → ทุกรายการผูกบิล (ข้าว/ลาเต้ = บิลใบที่จ่ายครบ) · แผน DONE + doneAt · session CLOSED + dirtySince · ไม่มีรอบครัวใหม่ · ตัวแปร: มีรอบร่าง HELD → จ่ายครบแล้ว session ยัง OPEN dirtySince null"),
@@ -2454,6 +2456,44 @@ async function runDb() {
       if (ci?.ok !== true) p.push(`ยกเลิกรายการของแผน OPEN บน session ที่ปิดแล้ว → ${codeOf(ci)} (คาด ok)`);
     } else p.push(`(fixture) แผน A5 ${s15?.status} · session ${(await sessRow(S15.sid))?.status} (คาด OPEN · CLOSED จาก X4)`);
     chk("T4", p.length === 0, "รวมโต๊ะย้ายแผน DONE · void ใบหลังรวมจ่ายต่อได้ · แผนบน session ปิดไม่กันการยกเลิก", FX(P8(p) || "ครบ"));
+  });
+  // ORACLE-ADD ผู้คุม 14 ต.ค. (P2.5 fix round 1 ruling 5 · CD-P25-N3 option 2: no VAT-EXCLUDED mode in the register)
+  await step("M8", async () => {
+    const p: string[] = [];
+    const reg = stripComments(rd(F.register));
+    const fnOf = (name: string) => {
+      const m = new RegExp(`function\\s+${name}\\s*\\(`).exec(reg);
+      if (!m) return "";
+      const end = reg.indexOf("\n}", m.index);
+      return end < 0 ? "" : reg.slice(m.index, end + 2);
+    };
+    const rv = fnOf("regVat");
+    const modes = [...rv.matchAll(/mode:\s*"([A-Z]+)"/g)].map((m) => m[1]!);
+    if (!rv || /EXCLUDED/.test(rv) || !modes.length || modes.some((x) => x !== "INCLUDED" && x !== "NONE")) p.push(`regVat คืน ${short(modes)} ${/EXCLUDED/.test(rv) ? "มี EXCLUDED" : ""}`);
+    if (/EXCLUDED/.test(fnOf("regFixedServiceCharge"))) p.push("regFixedServiceCharge ยังมีทาง EXCLUDED");
+    const run = async (name: string, mode: "INCLUDED" | "NONE") => {
+      const s = await seat(name, { guestCount: 2, lines: [ml("squid", 1), ml("brownie", 1)] });
+      const pl = splitOf(await mkSplit(s.sid, { mode: "EQUAL", partCount: 2 }));
+      if (!pl) return p.push(`${mode}: สร้างแผนไม่ได้`);
+      for (const no of [1, 2]) {
+        const pt = partOf(pl, no);
+        const q = await pq(String(pt?.id ?? ""));
+        if (q?.ok !== true || q.grandTotalSatang !== pt?.totalSatang) p.push(`${mode} ใบ ${no}: แสดง ${pt?.totalSatang} · เก็บ ${q?.ok ? q.grandTotalSatang : codeOf(q)}`);
+        if (mode === "NONE" && (pt?.vatSatang !== 0 || q?.vatSatang !== 0)) p.push(`NONE ใบ ${no}: VAT แผน ${pt?.vatSatang} · quote ${q?.vatSatang} (คาด 0)`);
+        if (mode === "INCLUDED" && (q?.vatMode !== "INCLUDED" || pt?.vatSatang !== q?.vatSatang)) p.push(`INCLUDED ใบ ${no}: VAT แผน ${pt?.vatSatang} · quote ${q?.vatSatang} ${q?.vatMode}`);
+      }
+      const sum = ((pl.parts ?? []) as Any[]).reduce((t, x) => t + Number(x.totalSatang), 0);
+      if (sum !== pl.totalSatang) p.push(`${mode}: Σ ใบ ${sum} ≠ แผน ${pl.totalSatang}`);
+    };
+    await run("M8a", "INCLUDED");
+    const org = { orgName: `บ้านกาแฟสวนผึ้งคิวซี ${RAND} จำกัด`, taxId: "0105561177639" };
+    try {
+      await accSvc.saveSettings(T, S.ACC, { ...org, vatRegistered: false });
+      await run("M8b", "NONE");
+    } finally {
+      await accSvc.saveSettings(T, S.ACC, { ...org, vatRegistered: true });
+    }
+    chk("M8", p.length === 0, "VAT ของหน้าขาย = INCLUDED|NONE · ยอดใบที่แสดง = ยอดที่เก็บ ทั้งสองโหมด", FX(P8(p) || "ครบ"));
   });
 }
 
