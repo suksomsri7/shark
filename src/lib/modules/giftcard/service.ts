@@ -1414,13 +1414,14 @@ export async function refundTenderUse(tenantId: string, input: { txnId: string }
       await tx.$queryRaw`SELECT id FROM "GiftCard" WHERE id = ANY(${[...new Set([src.giftCardId, target])].sort()}::text[]) ORDER BY id FOR UPDATE`;
       const again = await tx.giftCardTxn.findUnique({ where: { tenantId_idempotencyKey: { tenantId, idempotencyKey: key } } });
       if (again) return { refunded: false, txnId: again.id, balanceAfter: again.balanceAfter };
-      const upd = await tx.giftCard.update({ where: { id: target }, data: { balanceSatang: { increment: src.satang } }, select: { balanceSatang: true, status: true, expiresAt: true } });
+      const upd = await tx.giftCard.update({ where: { id: target }, data: { balanceSatang: { increment: src.satang } }, select: { balanceSatang: true, status: true } });
       if (upd.status === "DEPLETED") await tx.giftCard.update({ where: { id: target }, data: { status: "ACTIVE" } });
       const txn = await tx.giftCardTxn.create({
         data: { tenantId, giftCardId: target, type: "REFUND", satang: src.satang, balanceAfter: upd.balanceSatang, refType: "GiftCardTxn", refId: src.id, idempotencyKey: key },
       });
-      // POS P2.9 ▸ fix1 H4 (มติ 5): บัตรหมดอายุแล้ว (สถานะ/วันที่) ⇒ REFUND แล้ว EXPIRE ยอดเดียวกันทันที (ไม่ค้างหนี้สิน 2110 ในบัตรที่ใช้ไม่ได้) ◂
-      const expired = upd.status === "EXPIRED" || (!!upd.expiresAt && upd.expiresAt.getTime() <= Date.now());
+      // POS P2.9 ▸ fix1 H4 (มติ 5): บัตรที่ "ถูกตัดหมดอายุแล้ว" (สถานะ EXPIRED บนแถวที่ล็อก) ⇒ REFUND แล้ว EXPIRE ยอดเดียวกันทันที (ไม่ค้างหนี้สิน 2110) ·
+      //   fix2 G1/N1 (มติ 1): เลยวันแต่ยัง ACTIVE (expireDue ยังไม่รัน) = คงสถานะ ยอด B + X ⇒ expireDue รอบถัดไปตัดทั้งก้อน (อ่านใต้ล็อก · JV เดียว) ◂
+      const expired = upd.status === "EXPIRED";
       if (expired) {
         const after = (await tx.giftCard.update({ where: { id: target }, data: { balanceSatang: { decrement: src.satang }, status: "EXPIRED" }, select: { balanceSatang: true } })).balanceSatang;
         await tx.giftCardTxn.create({ data: { tenantId, giftCardId: target, type: "EXPIRE", satang: src.satang, balanceAfter: after, refType: "GiftCardTxn", refId: txn.id, idempotencyKey: expireKey } });
